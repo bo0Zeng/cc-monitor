@@ -720,6 +720,10 @@ mod tests {
             "〔RM1a〕帧面 `relay-status`：这台机器上那个口有没有人在听（只收端口）",
         ),
         (
+            "machine::our_relay_listening",
+            "〔US1〕上游选择出成品（`launch-endpoint` · `apikey-routing`）时问「这台机器上我们的中转在不在听」—— 与 `relay-status` 同一个判准，只收端口、只回布尔",
+        ),
+        (
             "route::segment_is_safe",
             "上游选择装表判账号 id 与中转切键是**同一个谓词**（`route.rs` 头注）",
         ),

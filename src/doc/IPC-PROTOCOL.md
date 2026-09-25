@@ -1602,6 +1602,8 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 
 四个键恒在（形状恒定）。**错误码**：`bad_args`。远端「中转不在就起、有界等」那一截要定时器 ⇒ 在 monitor（`relay-status` → `relay-ensure` → 再问）。
 
+⚠ **CLI 面也有它们**（`--apikey-routing` / `--launch-endpoint`），从 `inbound::REGISTRY` 派生，入参从 stdin 读。
+
 #### 中转在「这台机器」上的进程（RM1a · 第四波，2026-09-24）
 
 〔RL1 · V107〕本机的中转住**本机常驻后端进程里**（monitor 起本机后端时交 `CCM_RELAY_PORT`，见 `--relay` 那一条下的「进程内」一格）；
@@ -2521,7 +2523,7 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
   今天只登记了 `claude-code`（默认 `https://api.anthropic.com`，`CCM_AGENT_UPSTREAM_CLAUDE_CODE` 只盖这一家；
   〔R3〕这个变量先前叫中转的名字，改名不留兼容读旧名）；
   **codex 刻意没登记**（它的默认上游本仓零证据）⇒ 它走 `/t/` 回 **502**，不回落到任何一家。
-  表住 `accounts::AGENT_UPSTREAMS`。**基址里可以带一段路径前缀**
+  表住 `agents::Adapter::upstream`（〔NT2 · V25〕跟着适配层）。**基址里可以带一段路径前缀**
   （`K-R1`，形如 `https://<host>/<前缀>`）。
   ⚠ **订正〔`K-R1` 09-04〕**：这一行先前逐字写着「`http://` 只给本机夹具用」——**那半句今天不准确了**。
   今天的分界线是**回环**：`http://` 打到本机回环是一等公民（〔用 09-04〕逐字要「还可以接本地部署的」），

@@ -140,7 +140,9 @@ fn an_unparseable_file_is_refused_and_left_byte_for_byte() {
         r["problem"].is_string(),
         "读口把读坏了的文件报成了没问题：{r}"
     );
-    assert_eq!(r["rows"], json!([]));
+    // 〔US1〕「表里有哪几行」不再出线（`rows_at` 一份）：读坏了 ⇒ 零条。
+    assert!(r.get("rows").is_none(), "`rows` 又回到了 `apikey-read` 的应答里：{r}");
+    assert!(rows_at_with(&f, &|_| None).is_empty());
     assert_no_residue(f.parent().unwrap());
     let _ = std::fs::remove_dir_all(&home);
 }
@@ -206,7 +208,7 @@ fn the_plaintext_never_leaves_in_either_answer() {
             );
         }
     }
-    assert_eq!(read["rows"], json!(["work"]));
+    assert_eq!(rows_at_with(&f, &|_| None), vec!["work".to_string()]);
     assert_eq!(
         read["configured"], false,
         "顶层那一把没配，`configured` 说的是顶层那一把"
@@ -254,7 +256,7 @@ fn the_read_face_on_an_absent_file_says_nothing_is_there() {
     assert_eq!(r["masked"], "");
     assert!(r["notice"].is_null(), "文件不在时不该报权限问题：{r}");
     assert!(r["problem"].is_null(), "文件不在不是读坏了：{r}");
-    assert_eq!(r["rows"], json!([]));
+    assert!(rows_at_with(&file_in(&home), &|_| None).is_empty());
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -268,7 +270,7 @@ fn rows_that_cannot_be_a_route_segment_are_not_reported() {
         r#"{"accounts":{"ok-1":{"api_key":"sk-a"},"bad id":{"api_key":"sk-b"}}}"#,
     )
     .unwrap();
-    assert_eq!(read_at(&f)["rows"], json!(["ok-1"]));
+    assert_eq!(rows_at_with(&f, &|_| None), vec!["ok-1".to_string()]);
     let _ = std::fs::remove_dir_all(&home);
 }
 

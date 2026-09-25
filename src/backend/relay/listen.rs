@@ -20,7 +20,7 @@
 //! | 留在 `server.rs` 的 | 钉住它的登记（都在写区外） |
 //! |---|---|
 //! | `DOWNSTREAM_DEADLINE` ＋ `apply_downstream_deadline` | 〔`P16` 订正〕那个**值**今天住本文件，`REGISTERED_DURATION_USES` 那两行的住址栏逐字 `"listen.rs"`；装它的那一手仍在 `server.rs`（改成收入参） |
-//! | `DEFAULT_PORT` | `src/bridge/src/backend/control/payload.rs` 的散文逐字点着 `src/backend/relay/server.rs::DEFAULT_PORT`，而 `structural_scan::every_symbol_address_in_the_sources_still_resolves` **真的判得了那条住址**（现打：搬走之后它当场红，诊断逐字「符号还在，但**搬家了**」） |
+//! | `DEFAULT_PORT` | `src/bridge/src/backend/control/payload.rs` 的散文逐字点着 `src/backend/relay/server.rs::DEFAULT_PORT`，而 `structural_scan::every_symbol_address_in_the_sources_still_resolves` **真的判得了那条住址**（现打：搬走之后它当场红，诊断逐字「符号还在，但**搬家了**」）。〔US1〕它的值今天是 `relay_route_core::PORT`（共享 crate，monitor 用同一个 const） |
 //! | `INFLIGHT_CONNECTIONS` | 同上，钉它的是 `src/bridge/src/local_backend_host.rs` 那句散文 |
 //! | `LOOPBACK` | 同上，钉它的是 **`src/backend/listen.rs`**（K-P1 那个常驻监听口，与本文件同名但是另一棵）那句「理由与 `…/relay/server.rs::LOOPBACK` 逐字同源」 |
 //!

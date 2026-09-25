@@ -334,15 +334,23 @@ mod tests {
             lines[0]
         );
 
-        // ★ 非空对照：同一把尺子量 monitor 那份 manifest，**必须数得到**。
-        let theirs = std::fs::read_to_string(
-            crate::guard_support::repo_root().join("src/bridge/Cargo.toml"),
-        )
-        .expect("读不到 monitor 的 Cargo.toml");
-        let theirs = guard_core::strip_hash_comment_lines(&theirs);
+        // ★ 非空对照：同一把尺子量 `creds-core` 自己那份 manifest（定义这个 feature 的那一行），**必须数得到**。
+        //   〔US1 · 4D〕先前量的是 monitor 那份（它当时也开着）；monitor 从此不读不写这份文件、不开它 ⇒ 反过来钉「monitor 零处」。
+        let read_manifest = |rel: &str| {
+            guard_core::strip_hash_comment_lines(
+                &std::fs::read_to_string(crate::guard_support::repo_root().join(rel))
+                    .unwrap_or_else(|e| panic!("读不到 {rel}：{e}")),
+            )
+        };
+        let defining = read_manifest("src/bridge/crates/creds-core/Cargo.toml");
         assert!(
-            theirs.lines().any(|l| l.contains(&feature)),
-            "非空对照失败：monitor 那份 manifest 里也数不到 `{feature}` —— 这把尺子是瞎的"
+            defining.lines().any(|l| l.trim_start().starts_with(&format!("{feature} = ["))),
+            "非空对照失败：`creds-core` 那份 manifest 里数不到定义 `{feature}` 的那一行 —— 这把尺子是瞎的"
+        );
+        let monitor = read_manifest("src/bridge/Cargo.toml");
+        assert!(
+            !monitor.lines().any(|l| l.contains(&feature)),
+            "monitor 又开了 `{feature}` —— 它不写也不读这份文件（写者与读者都是那台后端），写半边该由编译器挡在它外面"
         );
     }
 
