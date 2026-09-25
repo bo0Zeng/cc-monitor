@@ -1966,9 +1966,11 @@ fn a_delete_with_expect_removes_only_the_bytes_it_was_told_about() {
     std::fs::write(root.join("t.json"), b"planned").expect("铺链接目标");
     std::os::unix::fs::symlink(root.join("t.json"), root.join("l.json")).expect("铺链接");
 
-    // 不等 ⇒ stale，盘上逐字节不变。
-    let err = delete_file_expecting(&root, "a.json", b"someone else").expect_err("🔴 不等也删了");
-    assert_eq!(err.code(), "stale", "{err:?}");
+    // 不等 ⇒ stale，盘上逐字节不变（长度不同 · **长度相同、字节不同** 两形 —— 后一形是死值验 K7 首刀没砍中补的格）。
+    for other in [&b"someone else"[..], &b"PLANNED"[..]] {
+        let err = delete_file_expecting(&root, "a.json", other).expect_err("🔴 不等也删了");
+        assert_eq!(err.code(), "stale", "{err:?}");
+    }
     assert_eq!(std::fs::read(root.join("a.json")).expect("读"), b"planned");
     // 正控：等 ⇒ 删。
     delete_file_expecting(&root, "a.json", b"planned").expect("逐字节相等却被拒");

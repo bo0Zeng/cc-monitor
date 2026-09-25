@@ -346,7 +346,9 @@ fn coded(code: &str) -> Result<Value, Asked> {
 /// ★ 「缺 / 旧」⇒ **恰推一次、恰再问一次**、交回第二问的结果；其余失败 ⇒ **零推**、原话带回。
 #[test]
 fn only_missing_or_old_bytes_trigger_exactly_one_push_and_one_retry() {
-    for code in PUSH_ON {
+    // 期望取自题面（`RM1c.md §4 ①`「远端 `panorama` 回 `not_installed`（或 `unsupported` = 旧版，缺某个 op）时」），
+    // 不取自 [`PUSH_ON`] —— 拿被测的表去驱动判它的用例，两侧同源恒真（死值验 K1 首刀就是这样没砍中的）。
+    for code in ["not_installed", "unsupported"] {
         let asks = Answers::new(vec![coded(code), Ok(json!({"ok": 1}))]);
         let pushed = RefCell::new(0usize);
         let got = futures::executor::block_on(ask_or_push(
