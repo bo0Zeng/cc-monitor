@@ -350,8 +350,8 @@ grep -nE "tmux (new-session|send-keys|attach)" src/remote-launch.ts   # 命中�
 
 1. fork → branch（命名 `feat/<short-desc>` / `fix/<short-desc>`）
 2. 改代码 + 测试 + 文档（参照本文档对应 cookbook）
-3. `cargo fmt + cargo clippy + cargo test --workspace --exclude code-picture-core + cargo test -p code-picture-core + npm test + npm run coverage + npm run build` 全绿。
-   ⚠ **`--all` 只是 `--workspace` 的弃用别名**，差的是 **vendor 排除** —— 少了 `--exclude code-picture-core` 会把红线里「一字节不动」的 vendor 也跑进来（audit-0805 F18 订正）。
+3. `cargo fmt + cargo clippy + cargo test --workspace --exclude code-picture-core + cargo test -p code-picture-core〔在 src/panorama-engine 里跑〕 + npm test + npm run coverage + npm run build` 全绿。
+   ⚠ **`--all` 只是 `--workspace` 的弃用别名**，差的是 **vendor 排除** —— 少了 `--exclude code-picture-core` 会把红线里「一字节不动」的 vendor 也跑进来（audit-0805 F18 订正）。〔TL1 · 4C〕RM1f 起 monitor 不再依赖 vendor（链它的只剩全景小程序），这条 `--exclude` 在 `src/bridge` 里今天只剩一条 cargo warning；vendor 自测要到 `src/panorama-engine` 里跑（`ci.yml` 那一步同）。
    ⚠ **各项条数与 CI job 数刻意不写在这里**：那些数在仓里曾有 4-5 份拷贝、全部漂成假的。
    分工照旧：`npm test` = node 纯函数 + vitest DOM = **前端那个 CI job**；本机后端 / 远端后端 / e2e 冒烟是**各自独立的 job**，`npm test` 不含它们；动滚动/渲染管线另跑 `tests/e2e/f40-suite.sh`（见 tests/e2e/README.md）
 4. PR 描述：
