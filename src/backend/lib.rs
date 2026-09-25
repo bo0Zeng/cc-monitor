@@ -1390,7 +1390,14 @@ fn wire_commands_unavailable_on(t: Target) -> Vec<String> {
 /// 「哪几条载体是 tmux」住 `control::ccm::CCM_TMUX_CARRIED`（紧挨着那一面的 `CAPABILITIES`，
 /// 一条能力一个住址）；这里只做「× 平台档」那一步。
 fn ccm_launcher_on(t: Target) -> Vec<&'static str> {
-    let no_tmux = tmux_by_platform(t) == Some(false);
+    ccm_launcher_with(tmux_platform_of(t))
+}
+
+/// 〔WIN1 · RT1 F7〕上面那一步的内核：平台档是**入参**（同 [`tmux_present`] 的做法），
+/// 于是「能力账」（按 [`Target`] 问）与「`ccm --ccm-probe` 自报」（按本二进制的 [`TMUX_PLATFORM`] 问）
+/// 走的是**同一个函数**，不另写名单。
+pub(crate) fn ccm_launcher_with(p: TmuxPlatform) -> Vec<&'static str> {
+    let no_tmux = tmux_present(p, None) == Some(false);
     control::ccm::CAPABILITIES
         .iter()
         .copied()

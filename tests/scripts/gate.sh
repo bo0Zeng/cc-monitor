@@ -1361,6 +1361,8 @@ run_gate winchk-backend '不是数出来的数：`cargo check --all-targets --ta
 # `RT1.md §8` 逐字「`-gnu` 交叉编 monitor **两个 profile 都链不过**：`monitor_lib.dll`（`[lib] crate-type`
 # 里的 `cdylib`）导出序号超 65535（release 125 946 / dev 241 784）。门禁 `winchk` 只 `cargo check`，看不见」。
 # ⇒ 上面 `winchk` 那一格的分母逐字写着「买不到『链接得起来』（`check` 不链接）」—— 这一格补的就是那半。
+# 设计住址：`设计/01 §6.7a` 表 B 逐字「**本机 Windows**（x86_64） | ✅ **承诺** | 独立进程那个壳要有字节、要进门禁」。
+#   以及 `设计/01 §7.3` 逐字「门禁补一格真链接、桌面不需要的 `cdylib` 收掉（4D WIN1）」。
 #
 # ## 它买什么 / 不买什么
 #   · 买：`-p monitor` 的**两个二进制**（`monitor` 主窗 ＋ `cc-monitor-filewin` 文件窗口）在

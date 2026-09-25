@@ -1081,7 +1081,8 @@ fn the_direct_print_does_not_change_with_ccm_sid_or_the_token() {
 
 // ── 〔WIN1 · 第四波 4D〕Windows 本机那一格：`is_exec` · 家目录 · 路径分隔符 ──────────────
 //
-// 要求住址：`设计/01 §3.1` 表 B「本机 Windows」是承诺格（翻译官那一层要把平台读法翻对）；
+// 要求住址：`设计/01 §6.7a` 表 B 逐字「**本机 Windows**（x86_64） | ✅ **承诺**」；`设计/01 §3.1` 逐字
+// 「「怎么读到这个事实」   → platform      （各平台读法不同）」—— 「这个文件跑得起来吗」在 Windows 上的读法是 `PATHEXT`；
 // 读数出处 `真相源/106 §3.4` 逐字「`plan.rs::is_exec` 的 `#[cfg(not(unix))]` 分支是 `p.is_file()` ⇒ 在 Windows 上
 // **「可执行」退化成「存在」**」与「那句错误话术里的路径是 `C:\…\fakehome/.claude-alt/accounts.json` ——
 // **反斜杠与正斜杠混着**」（WN1 件 G）。
