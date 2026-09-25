@@ -4043,7 +4043,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔C4c · 第四波 4B〕「退出行为」问 / 交写改走通道：monitor 那两条命令与它们的期限删了，原处各一块；设置页头注点它们旧名。
         ("src/bridge/src/backend_policy.rs", 2),
         ("src/settings/backend-section.ts", 1),
-        // 〔RN1 · 第四波 4C · V114〕「层 2 / 账号层」改名「上游选择」、模块 `apikey` → `upstream`：两处讲旧叫法来历的注释各挂一块
+        // 〔RN1 · 第四波 4C · V114〕改名「上游选择」、模块 `apikey` → `upstream`：两处讲旧叫法来历的注释各挂一块
         //   （旧叫法本身不是 snake_case 死名，不进 `TOMBSTONED`；命名判据 `account-vs-relay-naming` 的 V114 那张表按这块标记放行这两行）。
         ("src/backend/accounts/upstream/mod.rs", 1),
         ("src/backend/relay/mod.rs", 1),
