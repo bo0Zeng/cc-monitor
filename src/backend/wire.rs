@@ -454,6 +454,13 @@ pub enum Frame {
     /// 带外要么另开通道要么发明转义序列，两者都要新的解析纪律，而取消排队等一下并无妨。
     Cancelled { id: String },
 
+    /// 〔SR1a · 2026-09-24 · `设计/05 §13.6 ③`〕**这台机器上的账号清单变了**（账号 manifest 被改写）。
+    ///
+    /// 无载荷：客户端收到就重拉一次账号清单（`accounts-list`），不在帧里带清单本身 ——
+    /// 清单的唯一出口仍是那条查询，别让同一份数据有两个出口。watcher 盯 manifest 所在目录，
+    /// 一批文件事件里 manifest 动了几次都只发一帧。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    AccountsChanged,
+
     /// 〔SR1a · 2026-09-24〕**一条链路的下行字节**（`dial/link.rs`）。
     ///
     /// 用户裁「改成单一常驻后端」：本机只常驻一个后端，到各远端的 SSH 连接由它持有并复用；
@@ -527,6 +534,8 @@ impl Frame {
             //   按不可恢复算是保守的那一侧。
             Frame::Reply { .. } => false,
             Frame::Cancelled { .. } => false,
+            // 〔SR1a〕一次状态变化的通知，没有「下一次必然重发」⇒ 保守（丢了客户端就一直拿着旧清单）。
+            Frame::AccountsChanged => false,
             // 〔SR1a〕链路字节：丢一块 = 那条链路上的数据坏了，别处没有第二份。
             // 与上面两个同理，它们**不走**会丢帧的那条通道（走应答通道、阻塞发送）。
             Frame::LinkData { .. } => false,
@@ -550,6 +559,7 @@ impl Frame {
             Frame::Overflow { .. } => ("overflow", None),
             Frame::Reply { id, .. } => ("reply", Some(id.clone())),
             Frame::Cancelled { id } => ("cancelled", Some(id.clone())),
+            Frame::AccountsChanged => ("accounts_changed", None),
             Frame::LinkData { link, .. } => ("link_data", Some(link.clone())),
             Frame::LinkEnd { link, .. } => ("link_end", Some(link.clone())),
         };

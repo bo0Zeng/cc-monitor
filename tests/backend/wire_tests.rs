@@ -329,6 +329,8 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
             "reply",
         ),
         (Frame::Cancelled { id: "r1".into() }, "cancelled"),
+        // 〔SR1a〕账号清单变了（无载荷；逐字节形状另由 `link_frames_have_exactly_these_bytes` 钉）。
+        (Frame::AccountsChanged, "accounts_changed"),
         // 〔SR1a〕链路两帧（逐字节形状另由 `link_frames_have_exactly_these_bytes` 钉）。
         (
             Frame::LinkData {
@@ -390,7 +392,7 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
     );
 }
 
-/// 〔SR1a〕★ W1：链路两帧的**逐字节**金标准。`link_end` 的 `error` 缺席时不上线（正常收尾）。
+/// 〔SR1a〕★ W1：链路两帧 ＋ `accounts_changed` 的**逐字节**金标准。`link_end` 的 `error` 缺席时不上线（正常收尾）。
 #[test]
 fn link_frames_have_exactly_these_bytes() {
     let cases = [
@@ -415,6 +417,7 @@ fn link_frames_have_exactly_these_bytes() {
             },
             "{\"kind\":\"link_end\",\"link\":\"m1.0-3\",\"error\":\"读链路下行失败\"}\n",
         ),
+        (Frame::AccountsChanged, "{\"kind\":\"accounts_changed\"}\n"),
     ];
     for (f, want) in cases {
         assert_eq!(to_line(&f).unwrap(), want);

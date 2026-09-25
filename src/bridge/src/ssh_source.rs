@@ -1583,6 +1583,8 @@ pub enum InboundFrame {
     },
     /// U6b-1 / U8a-2a：某条在跑的入方向命令**已被取消**。
     Cancelled { id: String },
+    /// 〔SR1a · `设计/05 §13.6 ③`〕那台机器上的账号清单变了（后端 `wire::Frame::AccountsChanged`，无载荷）。
+    AccountsChanged,
     /// 〔SR1a〕一条链路的下行字节（后端 `wire::Frame::LinkData`；`data` 在解帧这一步就解开了 base64）。
     /// 只有**本机后端**那条流上会有（monitor 只在那条流上开链路），交 `link_mux`。
     LinkData { link: String, data: Vec<u8> },
@@ -1839,6 +1841,9 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
             Some(InboundFrame::Cancelled { id })
         }
 
+        // 〔SR1a · `设计/05 §13.6 ③`〕账号清单变了。
+        "accounts_changed" => Some(InboundFrame::AccountsChanged),
+
         // 〔SR1a〕链路两帧。`data` 解不开 ⇒ 整帧 `None`（坏帧，调用方 warn）—— 不交一段猜出来的字节。
         "link_data" => {
             let link = obj.get("link")?.as_str()?.to_string();
@@ -1878,6 +1883,7 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
 /// `known_kinds_matches_parse_frame` 两条钉住。
 #[cfg(test)]
 const KNOWN_FRAME_KINDS: &[&str] = &[
+    "accounts_changed",
     "cancelled",
     "hello",
     "line",
@@ -3002,6 +3008,16 @@ async fn stream_loop(
             // U8a-2a：入方向应答 —— 交给本连接的客户端按 `id` 路由回请求方。
             Some(f @ (InboundFrame::Reply { .. } | InboundFrame::Cancelled { .. })) => {
                 route_inbound_frame(&host_label, inbound.as_ref(), f);
+            }
+            // 〔SR1a · `设计/05 §13.6 ③`〕那台的账号清单变了 ⇒ 发前端既有的「这台就绪」那一个事件
+            //   （账号表与 chip 听的就是它，`main.ts`），多带一个 `reason` 说清这一次为什么（additive）。
+            Some(InboundFrame::AccountsChanged) => {
+                if let Err(e) = app.emit(
+                    crate::bridge::events::REMOTE_BACKEND_READY,
+                    &serde_json::json!({ "origin": host_label, "reason": "accounts_changed" }),
+                ) {
+                    tracing::warn!("remote-backend-ready（accounts_changed）emit failed: {e}");
+                }
             }
             // 〔SR1a〕链路帧只该出现在**本机后端**那条流上（monitor 只在那里开链路）。
             // 远端后端发来 ⇒ 协议对不上，照实说、丢掉。
