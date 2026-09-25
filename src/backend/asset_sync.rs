@@ -32,30 +32,21 @@
 //! 界面看机器页前交一次 `assets-sync {}`（对可达表里每一台各一趟）。本模块一个会自己醒的构件都没有；
 //! 一趟的期限归调用方（monitor 那一侧的调用预算），同本后端其余异步命令。
 //!
-//! # 可达表（内存）
+//! # 可达表（内存）与「问远端」那一跳
 //!
-//! `origin → {拨号请求, 远端后端路径, 对面的 id}`：只在本进程里，后端重启就空（下次连上再填）。
-//! 拨号请求里只有路径（`key_path`），没有私钥本体（凭据面 `K11` 同 `dial_host::request`）。
+//! 〔C4d · 第四波 4B〕两样都**不住这里了**：主会话 09-25 裁「一路造、两路用」—— `DialRemote`（capture 那一跳）
+//! 与可达表（`origin → {拨号请求, 远端后端路径, 对面的 id}`）原样提到中立住址 `crate::remote_ask`，逻辑一字不改；
+//! 本模块只剩资产目录那一套（拉什么、并什么、推什么、扇不扇出）。历史跨机 join 用的是同一张表、同一个对面。
 
 use std::collections::BTreeMap;
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::Mutex;
 
 use serde_json::{json, Value};
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+
+// 〔C4d〕问远端那一跳与可达表住 `remote_ask`（原样搬过去的）；这里只取用，不再导出。
+use crate::remote_ask::{lock, Reach, Remote, Table, REACH};
 
 /// 一块推的载荷（JSON 本身，引号转义之前）的上限。`sh -c` 那一个参数 128 KiB，留出引号转义与命令本身的余量。
 pub const PUSH_MAX_BYTES: usize = 96 * 1024;
-
-/// 拉回来那一份（远端 stdout）的上限。目录文件本身 16 MiB 封顶（`asset_catalog::CATALOG_MAX_BYTES`），这里取同一个数。
-pub const PULL_MAX_BYTES: usize = 16 * 1024 * 1024;
-
-/// 可达表的条数上限（有界资源；一个人配不出这么多台远端）。
-pub const MAX_REACH: usize = 256;
-
-/// 老后端不认一次性子命令会进流模式、第一行是 hello —— capture 看见它就收工（不让它装 hook、不挂住）。
-const HELLO_MARKER: &str = "\"kind\":\"hello\"";
 
 /// 远端后端的两条一次性子命令（与 `lib.rs::SUBCOMMANDS` 同名，判据钉）。
 pub const PULL_FLAG: &str = "--assets-catalog";
@@ -64,32 +55,6 @@ pub const PUSH_FLAG: &str = "--assets-catalog-merge";
 /// 本机写口（`asset_catalog::answer_merge`）—— **由门（`inbound.rs`）递进来**，本模块不直呼它（第四层判据 ④）。
 pub type Fold =
     std::sync::Arc<dyn Fn(&Value) -> Result<Value, (&'static str, String)> + Send + Sync>;
-
-/// 对面：在那台上跑一条一次性命令，交回它的 stdout。生产 = [`DialRemote`]（经 `dial` 的 capture）；判据用替身。
-pub trait Remote: Send + Sync {
-    fn run<'a>(
-        &'a self,
-        dial: &'a Value,
-        command: String,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>>;
-}
-
-/// 可达表的一行。
-#[derive(Clone, Debug, PartialEq)]
-pub struct Reach {
-    dial: Value,
-    backend: String,
-    peer: Option<String>,
-}
-
-/// 可达表（本进程一张）。
-pub type Table = Mutex<BTreeMap<String, Reach>>;
-
-static REACH: Table = Mutex::new(BTreeMap::new());
-
-fn lock(t: &Table) -> std::sync::MutexGuard<'_, BTreeMap<String, Reach>> {
-    t.lock().unwrap_or_else(|e| e.into_inner())
-}
 
 /// 远端上那两条命令的完整字面（**只此一处拼**）。
 pub fn pull_command(backend: &str) -> String {
@@ -263,36 +228,9 @@ pub async fn answer_with(
 ) -> Result<Value, (&'static str, String)> {
     let origin = args.get("origin").and_then(Value::as_str);
     let mut first: Option<String> = None;
-    if let Some(o) = origin {
-        if o.is_empty() {
-            return Err(("bad_args", "`origin` 是空串".into()));
-        }
-        let dial = args.get("dial").filter(|d| d.is_object()).ok_or((
-            "bad_args",
-            "给了 `origin` 就要给 `dial`（一份拨号请求）".to_string(),
-        ))?;
-        let backend = args
-            .get("backend")
-            .and_then(Value::as_str)
-            .filter(|b| !b.is_empty())
-            .ok_or((
-                "bad_args",
-                "给了 `origin` 就要给 `backend`（那台上后端的路径）".to_string(),
-            ))?;
-        let mut t = lock(table);
-        if !t.contains_key(o) && t.len() >= MAX_REACH {
-            return Err(("bad_args", format!("可达表已满（{MAX_REACH} 台）")));
-        }
-        let peer = t.get(o).and_then(|r| r.peer.clone());
-        t.insert(
-            o.to_string(),
-            Reach {
-                dial: dial.clone(),
-                backend: backend.to_string(),
-                peer,
-            },
-        );
-        first = Some(o.to_string());
+    if origin.is_some() {
+        // 〔C4d〕登记那一段原样搬进 `remote_ask::register`（可达表唯一的写口；`remote-reach` 也经它）。
+        first = Some(crate::remote_ask::register(table, args)?);
     } else if args.get("dial").is_some() || args.get("backend").is_some() {
         return Err(("bad_args", "给了 `dial` / `backend` 却没给 `origin`".into()));
     }
@@ -329,110 +267,8 @@ pub async fn answer_with(
             }
         }
     }
-    let reach_rows: Vec<Value> = lock(table)
-        .iter()
-        .map(|(o, r)| json!({ "origin": o, "machine": r.peer }))
-        .collect();
+    let reach_rows = crate::remote_ask::reach_rows(table);
     Ok(json!({ "self": own_id, "synced": synced, "reach": reach_rows }))
-}
-
-// ───────────────────────── 生产那一个对面：经 dial 的 capture ─────────────────────────
-
-/// 经本机常驻后端池里那条 SSH 连接跑 capture（`dial::uses::run`，与 monitor 开的链路同一条路，零新连接）。
-pub struct DialRemote;
-
-/// 读一行（带上限；超了是错，不截断）。
-async fn capped_line<R: tokio::io::AsyncBufRead + Unpin>(
-    r: &mut R,
-    cap: u64,
-) -> Result<Option<String>, String> {
-    let mut buf = Vec::new();
-    let n = r
-        .take(cap + 1)
-        .read_until(b'\n', &mut buf)
-        .await
-        .map_err(|e| format!("读拨号链路失败：{e}"))?;
-    if n == 0 {
-        return Ok(None);
-    }
-    if buf.len() as u64 > cap {
-        return Err(format!("拨号链路上一行超过 {cap} 字节 —— 拒收"));
-    }
-    Ok(Some(String::from_utf8_lossy(&buf).trim_end().to_string()))
-}
-
-impl Remote for DialRemote {
-    fn run<'a>(
-        &'a self,
-        dial: &'a Value,
-        command: String,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
-        Box::pin(async move {
-            let mut v = dial.clone();
-            let obj = v.as_object_mut().ok_or("拨号请求不是对象".to_string())?;
-            obj.insert("use".into(), json!("capture"));
-            obj.insert("command".into(), json!(command));
-            obj.insert(
-                "capture".into(),
-                json!({ "max_bytes": PULL_MAX_BYTES, "abort_marker": HELLO_MARKER }),
-            );
-            obj.insert("stages".into(), json!(false));
-            obj.insert("probe".into(), json!(false));
-            let req = crate::dial::parse_request_value(&v)
-                .map_err(|e| format!("拨号请求认不出来：{e}"))?;
-            // 上行那根管子我们一个字节都不写（capture 不读上行）；留着不关，直到拿到结果。
-            let (_up_w, up_r) = tokio::io::duplex(1024);
-            let (mut down_w, down_r) = tokio::io::duplex(64 * 1024);
-            let task = tokio::spawn(async move {
-                let stages = crate::dial::StageSink::new(false);
-                crate::dial::uses::run(&req, &stages, up_r, &mut down_w).await;
-            });
-            let mut rd = BufReader::new(down_r);
-            let result = async {
-                let ack = capped_line(&mut rd, 64 * 1024)
-                    .await?
-                    .ok_or("拨号链路没回 ack 就断了")?;
-                let ack: Value =
-                    serde_json::from_str(&ack).map_err(|e| format!("ack 认不出来：{e}"))?;
-                if ack.get("ok").and_then(Value::as_bool) != Some(true) {
-                    return Err(format!(
-                        "连不上那台：{}",
-                        ack.get("error")
-                            .and_then(Value::as_str)
-                            .unwrap_or("（没说为什么）")
-                    ));
-                }
-                let got = capped_line(&mut rd, (PULL_MAX_BYTES as u64) * 8)
-                    .await?
-                    .ok_or("那台跑完没交结果就断了")?;
-                let got: Value =
-                    serde_json::from_str(&got).map_err(|e| format!("结果认不出来：{e}"))?;
-                let stdout = got.get("stdout").and_then(Value::as_str).unwrap_or("");
-                if stdout.contains(HELLO_MARKER) {
-                    return Err(
-                        "那台的后端太旧，不认资产目录（一次性子命令进了流模式）".to_string()
-                    );
-                }
-                if got.get("exit_status").and_then(Value::as_u64) != Some(0) {
-                    let stderr = got.get("stderr").and_then(Value::as_str).unwrap_or("");
-                    let said = serde_json::from_str::<Value>(stderr.trim())
-                        .ok()
-                        .and_then(|e| e.get("message").and_then(Value::as_str).map(str::to_string))
-                        .unwrap_or_else(|| stderr.trim().to_string());
-                    return Err(format!("那台的后端没办成：{said}"));
-                }
-                if stdout.len() >= PULL_MAX_BYTES {
-                    return Err(format!(
-                        "那台的目录超过 {PULL_MAX_BYTES} 字节 —— 拒收，不拿截断的用"
-                    ));
-                }
-                Ok(stdout.to_string())
-            }
-            .await;
-            task.abort();
-            result
-        })
-    }
 }
 
 #[cfg(test)]

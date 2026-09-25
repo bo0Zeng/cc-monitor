@@ -6,9 +6,9 @@
  *  - 关闭时反向还原
  *
  * 两级懒加载（性能优化）：
- *   1. open / refresh：调 `list_history_projects` 只拿项目级元数据（不读 jsonl 内容）。
- *      500+ 项目 < 100ms。所有组**默认折叠**。
- *   2. 用户展开某个项目组：调 `list_history_sessions_in_project(projectDir)` 拿该项目
+ *   1. open / refresh：问本机后端 `history-projects` 只拿项目级元数据（不读 jsonl 内容）。
+ *      所有组**默认折叠**。〔C4d〕本机与远端都问本机常驻后端（远端那台由它沿 SSH 去问）。
+ *   2. 用户展开某个项目组：问本机后端 `history-sessions`（带 projectDir 与 origin）拿该项目
  *      下所有会话详情，缓存到 `sessionCache`。下次展开同项目直接读缓存。
  *
  * 搜索两种模式（issue #6）：
@@ -23,7 +23,6 @@
  */
 
 import { resolveResumeCommand } from "../remote-config";
-import { Channel } from "@tauri-apps/api/core";
 import { commands } from "../ipc/commands";
 // 〔步 12·C〕本机那个 origin 的**唯一住址**（Rust 侧是 `inbound_client::LOCAL_ORIGIN`，
 // 两侧由 `origin_tests::the_sentinel_agrees_with_the_two_existing_homes` 两向钉着）。
@@ -72,8 +71,7 @@ import {
   type OriginOpenOverrides,
 } from "./history-prefs";
 
-/** 项目级元数据，从 `list_history_projects` 拿。不含 session 内容。
- *  P1.2：后端 wire 全 camelCase（`#[serde(rename_all = "camelCase")]`）。 */
+/** 项目级元数据，从本机后端 `history-projects` 拿（〔C4d〕`../history-reads::fetchLocalProjects`）。不含 session 内容。 */
 
 /** issue #16：项目缓存/展开态的 key。本地 = projectDir；远端用 origin 命名空间隔离
  *  （本地与远端可能有相同的编码目录名，裸 projectDir 会撞 key）。 */
@@ -81,7 +79,7 @@ function projectKey(p: { origin?: string; projectDir: string }): string {
   return p.origin ? `${p.origin}\u0000${p.projectDir}` : p.projectDir;
 }
 
-/** 会话级详情，从 `stream_history_sessions_in_project` 流式拿。 */
+/** 会话级详情，从本机后端 `history-sessions` 拿（〔C4d〕`../history-reads::fetchSessions`，一次交全）。 */
 
 /**
  * issue #12: session tree node。child 关系由 forkedFromSessionId 建。
@@ -93,8 +91,19 @@ function projectKey(p: { origin?: string; projectDir: string }): string {
 //
 // `SessionTreeNode` **留手写**：它是前端自己的树形模型（Rust 不认识它），
 // 同账本第 4 行「IR 是前端的意图模型，别拖过边界」。
-import type { HistoryProject } from "../generated/HistoryProject";
-import type { HistorySessionEntry } from "../generated/HistorySessionEntry";
+// 〔C4d · 第四波 4B〕项目 / 会话两行的类型从 ts-rs 生成物改成手写（Rust 那份随 monitor 的 join 一起删了；形状由本机后端的成品 ＋
+//   跨语言金样 `tests/__fixtures__/history-products.golden.json` 定），与问法一起住 `../history-reads`。
+import {
+  annotate,
+  fetchLocalProjects,
+  fetchRemoteProjects,
+  fetchSessions,
+  forgetAnnotation,
+  historyReasonOf,
+  lastAccounts,
+  type HistoryProject,
+  type HistorySessionEntry,
+} from "../history-reads";
 import type { Hit as SearchHit } from "../generated/Hit";
 import type { SearchResponse } from "../generated/SearchResponse";
 import type { SessionHits as SearchSessionHits } from "../generated/SessionHits";
@@ -106,7 +115,7 @@ interface SessionTreeNode {
   orphan: boolean;
 }
 
-/** 后端 `update_history_metadata` 返回值；wire 是 camelCase（带 snake_case alias）。 */
+/** 〔C4d〕改注解回的那一条（`EntryMetadata`）住 `../history-reads`（本机后端 `history-annotate`）。 */
 
 /** 组内会话排序模式（顶层布局固定按工作目录分组，不是 sort 选项）。 */
 type SortMode = "updated_desc" | "started_desc";
@@ -393,9 +402,12 @@ export class HistoryView {
     // 本地批：每次重扫。失败即整体失败（本地都读不了没得显示）。
     let local: HistoryProject[];
     try {
-      local = await commands.list_history_projects();
+      // 〔C4d〕问本机常驻后端（它并注解、判活、合成 Codex 项目）；注解没并上 ⇒ 说一声（星标 / 隐藏数显示成「不知道」）。
+      const got = await fetchLocalProjects();
+      local = got.projects;
+      if (got.notice) showActionFailureToast("星标 / 隐藏没并上", got.notice);
     } catch (e) {
-      if (seq === this.refreshSeq) this.statusEl.textContent = `加载失败：${String(e)}`;
+      if (seq === this.refreshSeq) this.statusEl.textContent = `加载失败：${historyReasonOf(e)}`;
       return;
     }
     if (seq !== this.refreshSeq) return; // 被更新的 refresh 抢占
@@ -409,9 +421,8 @@ export class HistoryView {
     }
     // 需 fan-out：独立 try——远端连不上/无配置不影响本地浏览。
     try {
-      // C04d 批 6c：原来是内联字面量 `{ projects: HistoryProject[]; failedHosts: string[] }`
-      // ——它正是 Rust 的 `RemoteProjectsResult`，现在由包装层给出。
-      const res = await commands.list_remote_history_projects();
+      // 〔C4d〕逐台问本机后端（它沿池里那条 SSH 去问那台、并上本机的注解）；fan-out 住 `../history-reads`。
+      const res = await fetchRemoteProjects();
       if (seq !== this.refreshSeq) return; // 抢占：丢弃过期结果
       const remote = res.projects;
       if (res.failedHosts.length === 0) {
@@ -440,12 +451,8 @@ export class HistoryView {
   /**
    * 懒加载某个项目下的会话详情。重复调返回同一个 Promise。
    *
-   * issue #12: 改用流式 IPC `stream_history_sessions_in_project` + Channel —— 后端
-   * 边解析边发，前端 rAF 节流 re-render。大项目（几十个 session）首条 < 100ms 出现，
-   * 不再"等齐"。完成（invoke resolve）即所有 entry 都在 cache 里。
-   *
-   * 取消：当 HistoryView 关闭 / 缓存 clear 时 channel 失去引用 → 后端 send 返 Err
-   * → 后端 break loop。无需显式 cancel IPC。
+   * 〔C4d · 第四波 4B〕问本机常驻后端 `history-sessions`，一次交全（从前 issue #12 那条逐条流式的 Tauri Channel 退役：
+   * 本机那一支原是 monitor 进程内自己边扫边发；join 进了本机后端之后本机与远端同一条路、同一份口径）。
    */
   private loadProjectSessions(proj: HistoryProject): Promise<void> {
     const key = projectKey(proj);
@@ -456,36 +463,18 @@ export class HistoryView {
     const entries: HistorySessionEntry[] = [];
     this.sessionCache.set(key, entries);
 
-    const channel = new Channel<HistorySessionEntry>();
-    channel.onmessage = (entry) => {
-      entries.push(entry);
-      // F07（台账没点到的第四个放大器）：这里原来是**每个项目各一个** `rafPending` 布尔 ——
-      // 去重只在单个项目内部生效，P 个项目同时流式回来时**一帧里仍可能重画 P 次**。
-      // 改走视图级的 `scheduleRender()`：去重位是整个视图共用的一个。
-      this.scheduleRender();
-    };
-
-    // 🔴 **〔步 12·C 2026-09-20〕两条命令收成了一条**（同拍的还有两个 `stream_read_*`）。
-    //
-    // 这一段原先记着 C04d 批 6c 把「动态派发口」拆成两次静态调用、让盲区归零那件事。
-    // 那件事没白做（命令名从此是 TS 侧的字面量），但它治的是**症状**：
-    // 病根是同一件事有两条命令，而 `设计/00 §2.5 ①` 治的是病根。
-    // ⚠ 那句「本地 `proj.origin=undefined` → JSON 省略，本地命令无感」**从此不成立**：
-    //   本机要逐字送 `LOCAL_ORIGIN`，送 `null`/省略会被 Rust 侧 `Origin::route` 当场拒。
-
+    // 〔C4d · 第四波 4B〕本机与远端同一条路：问本机常驻后端 `history-sessions`（远端那台由它沿 SSH 去问、并上本机的注解）。
+    //   从前本机那条是 Tauri Channel **逐条流式**（monitor 自己边扫边发）—— 今天一次交全（后端扫完整个项目才回），
+    //   大项目「首条 < 100ms 出现」那一格没了（如实登记在 `C4d.md`），换来本机与远端同一份口径（fork 树 · 标题 · 摘录）。
     const p = (async () => {
       try {
-        await commands.stream_history_sessions_in_project({
-          origin: proj.origin ?? LOCAL_ORIGIN,
-          projectDir: proj.projectDir,
-          onEntry: channel,
-        });
-        // 完成后再画一次（兜底最后一帧没触发 rAF 的边界）
+        const { sessions, notice } = await fetchSessions(proj);
+        entries.push(...sessions);
+        if (notice) console.warn(`[history] ${key}：${notice}`);
         if (this.isOpen) this.renderList();
       } catch (e) {
-        console.warn(`stream sessions in ${key} failed:`, e);
-        if (proj.origin) showActionFailureToast("远端会话列表加载失败", String(e));
-        // 失败时保留已收集的 entries（部分流完的也算）
+        console.warn(`sessions in ${key} failed:`, e);
+        showActionFailureToast(proj.origin ? "远端会话列表加载失败" : "会话列表加载失败", historyReasonOf(e));
       } finally {
         this.loadingProjects.delete(key);
       }
@@ -1585,10 +1574,7 @@ export class HistoryView {
       proj = ctx.project;
     if (!e || !proj) return;
     try {
-      const next = await commands.update_history_metadata({
-        sessionId: e.sessionId,
-        patch: { starred: !e.starred },
-      });
+      const next = await annotate(e.sessionId, { starred: !e.starred });
       const wasStarred = e.starred;
       e.starred = next.starred;
       // 同步 project 的 starred_count
@@ -1611,10 +1597,9 @@ export class HistoryView {
     const next = window.prompt("自定义标题（留空恢复默认）", cur);
     if (next === null) return;
     try {
-      const updated = await commands.update_history_metadata({
-        sessionId: e.sessionId,
-        patch: { customTitle: next.trim() === "" ? null : next.trim() },
-      });
+      // 〔C4d〕清空传**空串**（缺格 / `null` = 不改 —— 从前这里传 `null`，而 monitor 那份 patch 同样把 `null` 读成「不改」，
+      //   「留空恢复默认」其实一直没生效；本机后端照搬了那条语义，这里改传空串，清空才真的清空）。
+      const updated = await annotate(e.sessionId, { customTitle: next.trim() });
       e.customTitle = updated.customTitle;
       this.renderList();
     } catch (err) {
@@ -1627,10 +1612,7 @@ export class HistoryView {
       proj = ctx.project;
     if (!e || !proj) return;
     try {
-      const updated = await commands.update_history_metadata({
-        sessionId: e.sessionId,
-        patch: { hidden: !e.hidden },
-      });
+      const updated = await annotate(e.sessionId, { hidden: !e.hidden });
       const wasHidden = e.hidden;
       e.hidden = updated.hidden;
       if (!wasHidden && updated.hidden)
@@ -1649,13 +1631,13 @@ export class HistoryView {
       // F34：用户自定义远端 resume 命令（如 cct）；空 = 后端默认
       const origin = ctx.origin;
       const behavior = await getBehavior();
-      // account-ux U3:无显式选号 → 跟随。先读该会话的 pin(源②,list_last_accounts 只读本地 metadata,
+      // account-ux U3:无显式选号 → 跟随。先读该会话的 pin(源②,本机后端 `history-last-accounts` 只读本地那份注解,
       // 非远端 SSH)传给 follow,使「粘性优先」在 history 入口也成立——有 pin 走 pin、无 pin 走当前账号;
       // 配合 withAccount 的不-clobber 记账,绝不把既有 pin 翻成当前账号(U3 审计 重要-1)。显式选号维持 A4。
       let rowLastAccount: string | undefined;
       if (!ctx.account) {
         try {
-          const lastMap = await commands.list_last_accounts();
+          const lastMap = await lastAccounts();
           rowLastAccount = lastMap?.[ctx.sessionId];
         } catch {
           rowLastAccount = undefined;
@@ -1828,6 +1810,8 @@ export class HistoryView {
         return;
       }
     }
+    // 〔C4d〕会话删了 ⇒ 连带删本机那条注解（从前 monitor 删完顺手清；今天注解归本机后端，由这里交 `history-forget`）。
+    void forgetAnnotation(e.sessionId);
     // 成功后：从缓存移除 + 同步 project counts（本地 / 远端一致）。
     const arr = this.sessionCache.get(projectKey(proj));
     if (arr) {

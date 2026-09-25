@@ -59,15 +59,8 @@ pub(crate) fn answer(cmd: &str, args: &Value) -> Answer {
 fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
     use crate::observe::{accounts_query, history_query, search_query};
     match cmd {
-        "history-projects" => {
-            lines(|out| history_query::list_projects_into(home, out).map_err(|e| ("failed", e)))
-        }
-        "history-sessions" => {
-            let dir = str_arg(args, "project_dir")?;
-            lines(|out| {
-                history_query::list_sessions_into(home, dir, out).map_err(|e| ("failed", e))
-            })
-        }
+        // 〔C4d · 第四波 4B〕`history-projects` / `history-sessions` 两臂搬走了：它们从此出成品（并注解 ＋ 判活 ＋ 远端那一跳），
+        //   住 `history_join.rs`（历史跨机 join 的唯一的家）；这里只剩按行 / 按页的换壳。
         "history-subagents" => {
             let parent = str_arg(args, "parent")?;
             lines(|out| history_query::list_subagents_into(home, parent, out))
