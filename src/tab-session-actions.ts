@@ -19,7 +19,9 @@
  * 换成 `this.host.…`（同一个值，换了个取法）。
  */
 import { openPath } from "@tauri-apps/plugin-opener";
-import { restartLocateFailureMessage, withAccount, type SessionAccount } from "./accounts";
+import type { SessionAccount } from "./accounts";
+import { withAccount } from "./launch-account";
+import { restartLocateFailureMessage } from "./account-restart";
 import { resumeLocalSession } from "./local-resume";
 import { restartWithAccount, DEFAULT_EXIT_WAIT_MS } from "./account-restart";
 import { showActionFailureToast } from "./error-toast";

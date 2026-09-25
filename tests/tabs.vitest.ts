@@ -188,7 +188,10 @@ vi.mock("../src/behavior", () => ({
   }),
 }));
 // A5：换号重启编排（单测在 account-restart.vitest）——这里 mock 成 spy，只验 tabs 侧守卫是否放行。
-vi.mock("../src/account-restart", () => ({
+// 〔FE1〕`restartLocateFailureMessage`（换号重启定位不到时那句话）从 `accounts.ts` 搬来了这里 —— 它是纯函数，用真身；
+//   只桩编排器本体。
+vi.mock("../src/account-restart", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/account-restart")>()),
   restartWithAccount: vi.fn().mockResolvedValue(undefined),
   DEFAULT_EXIT_WAIT_MS: 10_000, // tabs.ts awaitExitFor 默认参用；mock 需导出，否则 undefined
 }));
@@ -203,11 +206,8 @@ import {
   withSessionReads,
 } from "./test-support/chan-fake";
 import { restartWithAccount } from "../src/account-restart";
-import {
-  invalidateAccountsCache,
-  __resetLocalLaunchSnapshotForTests,
-  __setLocalLaunchSnapshotForTests,
-} from "../src/accounts";
+import { invalidateAccountsCache } from "../src/account-reads";
+import { __resetLocalLaunchSnapshotForTests, __setLocalLaunchSnapshotForTests } from "../src/launch-account";
 import { showActionFailureToast } from "../src/error-toast";
 import { __setHostOsForTests, type HostOs } from "../src/settings/host-os";
 import {

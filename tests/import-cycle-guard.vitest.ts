@@ -178,11 +178,8 @@ function cycleComponents(graph: Map<string, string[]>): string[][] {
  * 拆掉了不摘 ⇒ 红；新长一个 ⇒ 红。
  */
 const TYPE_CYCLE_EXEMPT: ReadonlyArray<readonly [members: readonly string[], why: string]> = [
-  [
-    ["src/accounts-decode.ts", "src/accounts.ts"],
-    "〔FE1 子步 4 → 子步 5 摘〕`accounts.ts` 值 import 解码器、解码器回头 `import type` 账号形状。" +
-      "FE1 子步 5 拆 `accounts.ts` 时，读面（连同对解码器的依赖）挪出去，账号形状留在模型那一侧 ⇒ 环自然断，这一行归 FE1 自己摘。",
-  ],
+  // 〔FE1 子步 5〕`accounts-decode ⇄ accounts` 那一行摘了：`accounts.ts` 拆成模型（纯）＋ 读面（`account-reads.ts`）之后，
+  //   值 import 解码器的是读面，解码器 `import type` 的是模型 ⇒ 环断（子步 4 登记时写明归本路摘）。
   [
     ["src/cards/index.ts", "src/cards/subagent.ts"],
     "纯类型边闭合（`cards/subagent.ts` 回头 `import type { JsonlRecord, RenderContext, RenderResult } from \"./index\"`）；" +
@@ -323,14 +320,16 @@ describe("〔FE1〕全图（值边 ＋ 类型边）的环 == 登记表（两向�
     expect(cycleComponents(new Map([[a, [b]], [b, [c]], [c, []]]))).toEqual([]);
     expect(cycleComponents(new Map([[a, [b]], [b, [c]], [c, [a]]]))).toEqual([[a, b, c]]);
     expect(cycleComponents(new Map([[a, [a]]]))).toEqual([[a]]);
-    // 真图上注一条回边（`ipc/commands.ts` 回头依赖账号域 —— FE1 拆掉的正是这一条），必须多出一个环。
+    // 真图上注一条回边（`ipc/commands.ts` 回头依赖账号域的读面 —— 读面本来就依赖包装层），必须多出一个环。
+    //   ⚠ 注的是 `account-reads.ts` 而不是 `accounts.ts`：子步 5 之后账号模型（`accounts.ts`）零 IO、不依赖包装层，
+    //   往它身上注一条边成不了环 —— 那恰恰是拆分要的结果，不是判据瞎了。
     const injected = new Map(graph);
     const commands = join(SRC, "ipc", "commands.ts");
-    const accounts = join(SRC, "accounts.ts");
+    const accounts = join(SRC, "account-reads.ts");
     injected.set(commands, [...(injected.get(commands) ?? []), accounts]);
     expect(
       cycleComponents(injected).some((c) => c.includes(commands) && c.includes(accounts)),
-      "注了 `ipc/commands.ts → accounts.ts` 这条回边，判据却没看见它们成环",
+      "注了 `ipc/commands.ts → account-reads.ts` 这条回边，判据却没看见它们成环",
     ).toBe(true);
     expect(cycleComponents(graph).some((c) => c.includes(commands))).toBe(false);
   });

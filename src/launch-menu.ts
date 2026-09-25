@@ -24,7 +24,8 @@
  * **本文件现在只负责账号轴**；容器那两项（tmux / 直连）住在 `tabs.ts::containerLeaves`，
  * 是全仓唯一来源。找它们别再来这里。
  */
-import { fetchAccounts, selectableAccounts } from "./accounts.ts";
+import { selectableAccounts } from "./accounts.ts";
+import { fetchAccounts } from "./account-reads.ts";
 
 /**
  * 一个账号修饰选项。

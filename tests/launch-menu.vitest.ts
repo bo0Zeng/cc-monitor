@@ -3,8 +3,9 @@ import type { Account, AccountsState } from "../src/accounts.ts";
 
 const fetchAccountsMock = vi.fn<(origin: string) => Promise<AccountsState>>();
 
-vi.mock("../src/accounts.ts", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../src/accounts.ts")>();
+// 〔FE1〕`fetchAccounts` 拆去了 `account-reads.ts`（规则仍在 `accounts.ts`，用真身）。
+vi.mock("../src/account-reads.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/account-reads.ts")>();
   return { ...actual, fetchAccounts: (origin: string) => fetchAccountsMock(origin) };
 });
 

@@ -21,6 +21,9 @@ import {
 import type { RemoteHostConfig } from "../src/remote-config";
 import type { AccountsState, Account } from "../src/accounts";
 import * as accountsMod from "../src/accounts";
+// 〔FE1〕读面与偏好从 `accounts.ts` 拆出去了（`account-reads.ts` / `account-prefs.ts`），桩打在它们真住的模块上。
+import * as readsMod from "../src/account-reads";
+import * as prefsMod from "../src/account-prefs";
 // `D4 阻-4`：命令面板那一侧的**生产段**（chip 的快照就是喂给它的）。
 import { buildAccountCommands } from "../src/account-commands";
 import { LOCAL_ORIGIN } from "../src/ipc/origin";
@@ -30,7 +33,7 @@ beforeEach(() => {
   readRemoteConfigMock.mockReset();
   fetchAccountsMock.mockReset();
   invokeMock.mockReset().mockResolvedValue(undefined);
-  vi.spyOn(accountsMod, "fetchAccounts").mockImplementation(() => fetchAccountsMock());
+  vi.spyOn(readsMod, "fetchAccounts").mockImplementation(() => fetchAccountsMock());
   // F10 Phase D 审计排障发现：多条既有测试打开 chip 菜单后从不显式关闭（`toggleMenu` 把菜单
   // append 到 `document.body`，不像 tabs.ts 的上下文菜单那样每次开新的前先关旧的）——留下的
   // 陈旧 `.account-picker` 菜单会一直挂在全局 DOM 里，后面用 `document.querySelector(...)`
@@ -146,8 +149,8 @@ describe("F1 chip 纯全局切换器（无 ⚠k）", () => {
     fetchAccountsMock.mockResolvedValue(
       state({ accounts: [acct({ name: "wei" }), acct({ name: "amy" })], defaultName: "wei" }),
     );
-    const setDef = vi.spyOn(accountsMod, "setDefaultName").mockResolvedValue(undefined);
-    vi.spyOn(accountsMod, "invalidateAccountsCache").mockImplementation(() => {});
+    const setDef = vi.spyOn(prefsMod, "setDefaultName").mockResolvedValue(undefined);
+    vi.spyOn(readsMod, "invalidateAccountsCache").mockImplementation(() => {});
     let changed = 0;
     const chip = new AccountChip({ openSettings: () => {}, onDefaultChanged: () => (changed += 1) });
     await chip.refresh();
@@ -414,10 +417,10 @@ describe("K-H2b D1 阻-5：没有远端时 chip 渲染本机账号，徽章带 a
     //    否则数出来的是三次的**累加**（本轮实测：应为 2，实得 4）。
     document.querySelectorAll(".account-picker").forEach((el) => el.remove());
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
-    vi.spyOn(accountsMod, "fetchLocalAccounts").mockResolvedValue(
+    vi.spyOn(readsMod, "fetchLocalAccounts").mockResolvedValue(
       state({ accounts, defaultName: accounts[0]?.name ?? "" }),
     );
-    const spy = vi.spyOn(accountsMod, "fetchLocalApikeyRouting");
+    const spy = vi.spyOn(readsMod, "fetchLocalApikeyRouting");
     if (routing === "fail") spy.mockRejectedValue(new Error("问不到"));
     else spy.mockResolvedValue(routing);
     const chip = new AccountChip({ openSettings: () => {} });
@@ -455,7 +458,7 @@ describe("K-H2b D1 阻-5：没有远端时 chip 渲染本机账号，徽章带 a
 
   it("★ 本机那一趟问的是本机那条路（不是 `list_remote_accounts`）", async () => {
     const A = apiKey("acct-a", "/h/.claude-accts/acct-a");
-    const localSpy = vi.spyOn(accountsMod, "fetchLocalAccounts");
+    const localSpy = vi.spyOn(readsMod, "fetchLocalAccounts");
     await localMenuRows([A], { routed: [], running: false });
     expect(localSpy).toHaveBeenCalled();
     // 阴性对照：远端那条一次都没被问 —— 否则「渲染的是本机账号」这句话又成了假的。
@@ -470,7 +473,7 @@ describe("K-H2b D2 阻-7：本机那一档 not-ready 仍然整个隐藏", () => 
   it("★ 没有远端 + 本机也没有 manifest ⇒ chip 隐藏（不许冒出一句远端口吻的假话）", async () => {
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
     // 本机没启用多账号：`available:true` 但 `meta.enabled:false` ⇒ `deriveUi` 判 not-enabled。
-    vi.spyOn(accountsMod, "fetchLocalAccounts").mockResolvedValue({
+    vi.spyOn(readsMod, "fetchLocalAccounts").mockResolvedValue({
       origin: "<local>",
       available: true,
       error: null,
@@ -501,10 +504,10 @@ describe("K-H2b D2 阻-7：本机那一档 not-ready 仍然整个隐藏", () => 
   it("★ 本机那一档不渲染「刷新用量」那个静默死按钮", async () => {
     document.querySelectorAll(".account-picker").forEach((el) => el.remove());
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
-    vi.spyOn(accountsMod, "fetchLocalAccounts").mockResolvedValue(
+    vi.spyOn(readsMod, "fetchLocalAccounts").mockResolvedValue(
       state({ accounts: [acct({ name: "acct-a", configDir: "/h/.claude-accts/acct-a" })], defaultName: "acct-a" }),
     );
-    vi.spyOn(accountsMod, "fetchLocalApikeyRouting").mockResolvedValue({ routed: [], running: false });
+    vi.spyOn(readsMod, "fetchLocalApikeyRouting").mockResolvedValue({ routed: [], running: false });
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
     await chip.openMenu();
@@ -541,8 +544,8 @@ describe("K-H2b D4 阻-4：chip 能列出来的号，命令面板也能列出来
   async function localChip(accounts: Account[], defaultName: string | null): Promise<AccountChip> {
     document.querySelectorAll(".account-picker").forEach((el) => el.remove());
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
-    vi.spyOn(accountsMod, "fetchLocalAccounts").mockResolvedValue(state({ accounts, defaultName }));
-    vi.spyOn(accountsMod, "fetchLocalApikeyRouting").mockResolvedValue({ routed: [], running: false });
+    vi.spyOn(readsMod, "fetchLocalAccounts").mockResolvedValue(state({ accounts, defaultName }));
+    vi.spyOn(readsMod, "fetchLocalApikeyRouting").mockResolvedValue({ routed: [], running: false });
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
     return chip;
@@ -602,11 +605,11 @@ describe("K-H2b D4 阻-4：chip 能列出来的号，命令面板也能列出来
     document.querySelectorAll(".account-picker").forEach((el) => el.remove());
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
     // `meta.enabled:false` ⇒ `deriveUi` 判 not-enabled ⇒ `refresh` 把 state 清回 null 并隐藏。
-    vi.spyOn(accountsMod, "fetchLocalAccounts").mockResolvedValue({
+    vi.spyOn(readsMod, "fetchLocalAccounts").mockResolvedValue({
       ...state({ accounts: [], defaultName: null }),
       meta: { enabled: false, acctsDir: "", manifestPath: "", updatedAt: null, sharedStore: null, count: 0, error: null },
     } as unknown as AccountsState);
-    vi.spyOn(accountsMod, "fetchLocalApikeyRouting").mockResolvedValue({ routed: [], running: false });
+    vi.spyOn(readsMod, "fetchLocalApikeyRouting").mockResolvedValue({ routed: [], running: false });
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
     expect(

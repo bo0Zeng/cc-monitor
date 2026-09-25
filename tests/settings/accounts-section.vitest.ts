@@ -44,6 +44,8 @@ import { computeGaps, summarizeGaps } from "../../src/settings/readiness";
 import type { ApikeyCredentialsStatus } from "../../src/ipc/commands";
 import { showActionFailureToast } from "../../src/error-toast";
 import * as accounts from "../../src/accounts";
+// 〔FE1〕读面从 `accounts.ts` 拆去了 `account-reads.ts`，桩打在它真住的模块上。
+import * as accountReads from "../../src/account-reads";
 import type { AccountsState, Account } from "../../src/accounts";
 import { setCurrentMachine, __resetMachineContextForTests } from "../../src/settings/machine-context";
 import { buildAcctIsoCmd } from "../../src/settings/acct-deploy";
@@ -144,9 +146,9 @@ beforeEach(() => {
   // `N-F1b`：默认给「这台机一个隔离账号都没有」——最保守的一档，
   // 想量别的态的用例自己在里面覆盖掉它。
   fetchLocalAccountsMock.mockReset().mockResolvedValue(localState({ accounts: [] }));
-  vi.spyOn(accounts, "fetchAccounts").mockImplementation(() => fetchAccountsMock());
-  vi.spyOn(accounts, "fetchLocalAccounts").mockImplementation(() => fetchLocalAccountsMock());
-  vi.spyOn(accounts, "invalidateAccountsCache").mockImplementation(() => {});
+  vi.spyOn(accountReads, "fetchAccounts").mockImplementation(() => fetchAccountsMock());
+  vi.spyOn(accountReads, "fetchLocalAccounts").mockImplementation(() => fetchLocalAccountsMock());
+  vi.spyOn(accountReads, "invalidateAccountsCache").mockImplementation(() => {});
 });
 
 /** 降级态**一律**不该长出 ready 态的三件套（表 / 横幅 / 维护区）——这正是 IA 重排最该防的回归。 */

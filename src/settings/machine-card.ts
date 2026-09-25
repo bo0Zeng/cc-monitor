@@ -29,12 +29,9 @@ import { AGENT_PROFILE } from "../agent-profile";
 import { deriveTmuxName } from "../remote-launch";
 // 〔FE1〕铸名口（列名单 ＋ 避让 ＋ 「列不出 ⇒ 不起」）本机远端同一个家。
 import { mintFreshTmuxName, refuseUnmintable } from "../tmux-name-mint";
-import {
-  fetchAccounts,
-  isSelectable,
-  currentWorkingAccount,
-  withAccount,
-} from "../accounts";
+import { isSelectable, currentWorkingAccount } from "../accounts";
+import { fetchAccounts } from "../account-reads";
+import { withAccount } from "../launch-account";
 import { runRemoteLauncher } from "../remote-launch-run";
 import type { ConnTestResult } from "../generated/ConnTestResult";
 import type { ResolvedHost } from "../generated/ResolvedHost";

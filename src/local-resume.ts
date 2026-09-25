@@ -28,14 +28,7 @@
  */
 import { commands } from "./ipc/commands";
 import { LOCAL_ORIGIN } from "./ipc/origin";
-import {
-  explicitLocalAccountWire,
-  localFollowPlan,
-  primeLocalLaunchAccounts,
-  recordLocalLaunchAccount,
-  refuseUnavailableAccount,
-  type LocalAccountWire,
-} from "./accounts";
+import { explicitLocalAccountWire, localFollowPlan, primeLocalLaunchAccounts, recordLocalLaunchAccount, refuseUnavailableAccount, type LocalAccountWire } from "./launch-account";
 import { validateLocalLaunch } from "./launch-requests";
 import { getBehavior } from "./behavior";
 import { mintFromListing, readTmuxListing } from "./tmux-name-mint";

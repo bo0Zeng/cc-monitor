@@ -15,21 +15,9 @@
 // `fetchLocalAccounts`，并且那几行的徽章带上「这个号走不走 apikey 端点改写」的三态
 // （`accountStatusBadge` 的 `{scope:"local",…}`）。在此之前 `KH2B7` 那三态
 // **在用户看得见的地方一处都没落地**（两个取值函数生产调用方各 0）。
-import {
-  fetchAccounts,
-  fetchLocalAccounts,
-  fetchLocalApikeyRouting,
-  localApikeyEndpointStateFor,
-  deriveUi,
-  currentWorkingAccount,
-  accountColorsActive,
-  isSelectable,
-  accountStatusBadge,
-  setDefaultName,
-  invalidateAccountsCache,
-  type AccountsState,
-  type Account,
-} from "./accounts";
+import { localApikeyEndpointStateFor, deriveUi, currentWorkingAccount, accountColorsActive, isSelectable, accountStatusBadge, type AccountsState, type Account } from "./accounts";
+import { fetchAccounts, fetchLocalAccounts, fetchLocalApikeyRouting, invalidateAccountsCache } from "./account-reads";
+import { setDefaultName } from "./account-prefs";
 import type { ApikeyRoutingView } from "./apikey-routing-view";
 import { accountAvatarEl } from "./account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "./remote-config";

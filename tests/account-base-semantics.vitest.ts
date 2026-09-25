@@ -173,7 +173,8 @@ const WITH_ACCOUNT_SITES: ReadonlyArray<
   ],
   [
     // 〔FE1 · D-h〕`withAccount` 自己的一处：要的号选不了 ⇒ 不起、给一个显式选择；用户点了 ⇒ 以**显式**选号再走一次。
-    "src/accounts.ts",
+    //   〔FE1 子步 5〕`withAccount` 随起停那一格从 `accounts.ts` 搬到 `launch-account.ts`。
+    "src/launch-account.ts",
     1,
     false,
     "〔FE1 · D-h〕用户点了「改用当前账号 / 不指定账号」那条提示之后的再起：号是用户这一次**点的**，" +
