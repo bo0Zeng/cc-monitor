@@ -260,9 +260,9 @@ mod framer; // `17 §3.7`：`relay/` 里唯一的增量分帧器（游标，不 
 mod http1;
 mod listen; // `20 §4`：监听面 —— bind / accept / 在途上界 / 起监听之前的接线
 mod machine; // 〔RM1a〕这台机器上的中转进程：口上有没有人在听 · 没有就起一个脱离的（帧面 `relay-*`）
+mod route;
 // 〔AR1 · `设计/15 §2.1` B3〕`nodelay_guard`（Nagle 零命中的源码扫描）退役删了：「两个方向都真的关了 Nagle」
 //   由行为格 `server_tests.rs::both_directions_really_disable_nagle_on_the_socket`（`getsockopt` 背书）判。
-mod route;
 mod server; // `20 §4` 要的名字是 `exchange.rs`；改不了名的理由整段写在它的头注里
 #[cfg(test)]
 #[path = "../../../tests/backend/relay/table_guard.rs"]
