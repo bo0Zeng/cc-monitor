@@ -328,7 +328,7 @@ describe("〔U2〕tabs.ts 只剩组装根", () => {
         //   `tab-menu.ts` 改从新家拿 ⇒ 旧 import 面少这一个名字。
         "TabsSummary",
         // tab-drop.ts
-        "moveTabBlock",
+        "moveTab",
         "pickDropTarget",
         "tabUnderY",
         "commonDirName",

@@ -481,8 +481,6 @@ export class TabBarView {
     // 本地不存在，故 .remote 类只隐藏「打开工作目录」📂（CSS）。「调出终端」↗ 现在保留
     // 给远端 —— 点击走 bringRemoteTerminalToFront（后端按 ccm-rbind 拉本地 ssh 窗口）。
     const remote = isRemoteOrigin(tab.origin);
-    // Batch7-F24：bg 任务 tab——缩进 + ⌞ 前缀由 CSS 承担
-    const bg = tab.kind !== null && tab.kind !== "interactive";
     // issue #23 红绿灯：busy=绿（.live-dot 默认色）/ idle·shell=红 / waiting=黄。
     // activity 为 null（旧版 CC / 远端 v1）不加类 → 维持现状绿点。
     // F91：语义抽到 session-status.ts 供 tab-bar 与 mission-control grid 共用（逐字节等价）。
@@ -514,7 +512,6 @@ export class TabBarView {
       pinned,
       hasCwd,
       remote,
-      bg,
       lightClass === "act-idle",
       lightClass === "act-waiting",
       reconnectable,
@@ -530,7 +527,6 @@ export class TabBarView {
       refs.root.classList.toggle("pinned", pinned);
       refs.root.classList.toggle("has-cwd", hasCwd);
       refs.root.classList.toggle("remote", remote);
-      refs.root.classList.toggle("tab-bg", bg);
       refs.root.classList.toggle("act-idle", lightClass === "act-idle");
       refs.root.classList.toggle("act-waiting", lightClass === "act-waiting");
       refs.root.classList.toggle("reconnectable", reconnectable);
