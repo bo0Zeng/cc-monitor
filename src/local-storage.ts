@@ -57,6 +57,8 @@ export const LS_KEYS = {
    *  `src/file-window.ts` 开窗时一次性搬进原生窗口的书签文件、搬成才删。退役条件：用户那台机器上开过一次窗之后，
    *  这一行连同 `file-window.ts` 那一段与它的判据一起删。**只读、只删，不再写。** */
   legacySftpBookmarksPrefix: "cc-monitor.sftp.bookmarks.",
+  /** Batch11-F33：竖直 tab 栏拖出来的宽度（px）。〔CFG1〕从 `main.ts` 的直写收进来，读写者只有 `tab-bar-width.ts`。 */
+  tabBarWidth: "cc-monitor.tab-bar-w",
 } as const;
 
 export function safeGet(key: string): string | null {
