@@ -260,7 +260,9 @@ pub(crate) fn range_payloads(
         if numberer.next_seq() >= seq_base + max_lines {
             break;
         }
-        let Some((seq, rec)) = numbered_displayable(&mut numberer, l, parse_line) else {
+        // 〔ST3〕看不懂的行记在 `origin` 名下（本机 / 那台远端，同载荷上那个）。
+        let Some((seq, rec)) = numbered_displayable(&mut numberer, l, |b| parse_line(origin, b))
+        else {
             continue;
         };
         out.push(crate::bridge::JsonlLinePayload {

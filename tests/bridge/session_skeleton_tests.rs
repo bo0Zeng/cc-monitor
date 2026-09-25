@@ -256,3 +256,30 @@ fn both_history_readers_go_through_the_one_numbering_home() {
         );
     }
 }
+
+fn st3_booked(o: &crate::origin::Origin, face: crate::drift_ledger::DriftFace, key: &str) -> bool {
+    crate::drift_ledger::snapshot(o)
+        .into_iter()
+        .any(|f| f.face == face && f.entries.iter().any(|e| e.key == key))
+}
+
+/// 〔ST3〕★ 接缝：按偏移取回的正文里看不懂的行，记在**所问那台**名下（本机 / 远端同一条路）。
+#[test]
+fn unreadable_range_lines_are_booked_under_the_asked_origin() {
+    use crate::drift_ledger::DriftFace;
+    let aya = crate::origin::Origin("st3-range-probe".into());
+    let lines = l(&[r#"{"type":"st3-range-seam-probe"}"#]);
+    let _ = range_payloads(&lines, 0, 1, "sid", "/p/sid.jsonl", &aya);
+    assert!(
+        st3_booked(&aya, DriftFace::UnknownRecordType, "st3-range-seam-probe"),
+        "没记在所问那台名下"
+    );
+    assert!(
+        !st3_booked(
+            &crate::origin::Origin::local(),
+            DriftFace::UnknownRecordType,
+            "st3-range-seam-probe"
+        ),
+        "远端取回的行记进了本机那一本"
+    );
+}

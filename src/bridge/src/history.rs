@@ -703,7 +703,8 @@ pub async fn stream_read_session_jsonl(
         for line in reader.lines().map_while(Result::ok) {
             let Some((seq, rec)) =
                 crate::session_skeleton::numbered_displayable(&mut numberer, &line, |b| {
-                    crate::parser::parse_for_kind(kind, b)
+                    // 〔ST3〕这一支是 `route` 之后的本机那一支 ⇒ `origin` 就是本机。
+                    crate::parser::parse_for_kind(kind, &origin, b)
                 })
             else {
                 continue;
@@ -2101,7 +2102,7 @@ fn relay_prefix_for(
 /// # 它买不到什么（如实写，别读宽）
 ///
 /// 本结构只管「**问不问**」与「**答案用不用**」。「那三个取值口自己答得对不对」由它们各自的
-/// 判据买（[`apikey_rows_at`] 那条读真文件的 · `local_backend_host::relay_running_really_reads_the_handle_table`）。
+/// 判据买（[`apikey_rows_at`] 那条读真文件的 · `local_backend_host::relay_running_really_asks_the_loopback_port`〔RL1 接替读句柄表那一条〕）。
 /// 而「生产上这条缝里插的**就是**那三个取值口」由 `the_production_relay_facts_are_those_two_take_points`
 /// 按**函数地址**对拍 —— 不是按文本。
 ///
@@ -2217,6 +2218,94 @@ pub(crate) fn inject_facts() -> InjectFactSources {
     PRODUCTION_INJECT_FACTS
 }
 
+/// 〔RL1〕一次拉起的中转问句里「账号」那两格：apikey 表里的 id · `/t/` 的账号标签。
+///
+/// **本机拉起（[`relay_prefix_for_launch`]）与远端拉起（[`relay_endpoint_on`]）共用这一份** ——
+/// 两边各推一遍，漂开的那天症状是「同一个号本机走中转、远端不走」，而两边看起来都没错。
+/// `/t/` 那一格的标签：`Named` ⇒ 同 id；账号 0 ⇒ 固定标签；没表态 ⇒ 说不出就不走 `/t/`。
+pub(crate) fn relay_account_slots(
+    account: Option<&LaunchAccount>,
+) -> (Option<String>, Option<String>) {
+    let id = apikey_account_id(account);
+    let label = match account {
+        Some(LaunchAccount::Base) => {
+            Some(crate::backend::control::payload::BASE_ACCOUNT_SEGMENT.to_string())
+        }
+        _ => id.clone(),
+    };
+    (id, label)
+}
+
+/// 〔RL1〕一次拉起的中转地址：`None` = 不注入（照旧直连）；`Err` = 该走却走不了（**拒绝起会话**，出声）。
+///
+/// 住本文件（起会话那一侧）而不住 `remote_relay`：它要同时叫得出层 1（中转在不在）与层 2（apikey 表的行），
+/// 而 `remote_relay` 一个账号层的名字都不许有（`this_module_knows_no_account_layer_name`）。
+/// **判断只在 `payload::relay_endpoint_for` 一处**（`设计/20 §3.2` 那张表）；本函数只换**事实的来源**：
+/// - 本机：两个事实经起会话那一侧同一条缝（`history::inject_facts`）取 —— 与 `launch_local` 同一份；
+/// - 远端：表里有哪几行问**那台**的账号层（`apikey-read`），中转在不在问**那台**的回环口，
+///   **用到才起**：先按「假如在跑」问一次判断口，答 `None` ⇒ 一条中转命令都不发；答了地址才 `relay-status` →
+///   没人听 ⇒ `relay-ensure` → 有界等它 bind。起不来 ⇒ 再问一次判断口（「真的没在跑」）：
+///   apikey 行那一格回 `Err`（换成远端的说法）；`/t/` 那一格回 `None`（「有它更好」，照旧直连）。
+pub(crate) async fn relay_endpoint_on(
+    origin: &crate::origin::Origin,
+    account: Option<&LaunchAccount>,
+    sid: Option<&str>,
+) -> Result<Option<String>, String> {
+    let (id, label) = relay_account_slots(account);
+    let facts = inject_facts();
+    let all_sessions = (facts.all_sessions)();
+    let ask = |rows: &[String], running: bool| {
+        crate::backend::control::payload::relay_endpoint_for(
+            &crate::backend::control::payload::RelayAsk {
+                account_id: id.as_deref(),
+                passthrough_label: label.as_deref(),
+                rows,
+                running,
+                sid,
+                agent: launch_agent_id(),
+                all_sessions,
+            },
+        )
+    };
+    match origin.route("relay_endpoint_for_launch")? {
+        crate::origin::Route::Local => ask(&(facts.rows)(), (facts.running)()),
+        crate::origin::Route::Remote(host) => {
+            // 表读不出 ⇒ 零行（与本机 `history::apikey_rows` 同一处置：照旧直连，只出声）。
+            let rows = crate::apikey_remote::rows_on(origin)
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!("[{host}] 读不到那台的 apikey 表，按零行办（照旧直连）：{e}");
+                    Vec::new()
+                });
+            let Some(url) = ask(&rows, true)? else {
+                return Ok(None);
+            };
+            let Err(why) = crate::remote_relay::listening_or_started(origin).await else {
+                return Ok(Some(url));
+            };
+            match ask(&rows, false) {
+                Err(_) => Err(remote_relay_refusal(host, id.as_deref(), &why)),
+                Ok(_) => {
+                    tracing::info!(
+                        "[{host}] 中转不在（{why}）⇒ 这一发照旧直连（`/t/` 那一格是「有它更好」）"
+                    );
+                    Ok(None)
+                }
+            }
+        }
+    }
+}
+
+/// 远端「非它不可」那一格的说法（本机那一句在 `payload::apikey_endpoint_for`，说的是「先起本机后端」）。
+pub(crate) fn remote_relay_refusal(host: &str, account: Option<&str>, why: &str) -> String {
+    format!(
+        "apikey 端点改写不可用：账号 {account:?} 在 [{host}] 的 apikey 表里有一行，\
+         但那台机器上的中转起不来（{why}）——\n\
+         这一发要是照旧起出去，claude 那边会报一个与网络故障同形的连接失败。\n\
+         ⇒ 重装那台机器的后端再试，或把该账号那一行从那台机器的凭据文件里去掉。"
+    )
+}
+
 /// 上一条的**接线半**：这台机器上的两个事实（表里有哪几行 · 中转在不在）在这里读。
 ///
 /// ⚠ 两个事实**只从 [`inject_facts`] 取**（理由见 [`InjectFactSources`] 头注：
@@ -2225,14 +2314,7 @@ fn relay_prefix_for_launch(
     action: &LocalPsAction,
     account: Option<&LaunchAccount>,
 ) -> Result<String, String> {
-    let id = apikey_account_id(account);
-    // `/t/` 那一格的账号标签：`Named` ⇒ 同 id；账号 0 ⇒ 固定标签；没表态 ⇒ 说不出就不走 `/t/`。
-    let label = match account {
-        Some(LaunchAccount::Base) => {
-            Some(crate::backend::control::payload::BASE_ACCOUNT_SEGMENT.to_string())
-        }
-        _ => id.clone(),
-    };
+    let (id, label) = relay_account_slots(account);
     let sid = match action {
         LocalPsAction::Resume(sid) => Some(sid.as_str()),
         LocalPsAction::New => None,
@@ -2680,6 +2762,8 @@ fn analyze_jsonl(
     // （两种空格形态；仅徽标用途，误报面可忽略）。
     let mut is_bg = false;
 
+    // 〔ST3〕本机历史清单只读本机文件 ⇒ 看不懂的行记在本机名下。
+    let local = crate::origin::Origin::local();
     let reader = BufReader::new(file);
     for line in reader.lines().map_while(Result::ok) {
         let trimmed = line.trim();
@@ -2692,7 +2776,7 @@ fn analyze_jsonl(
         {
             is_bg = true;
         }
-        let rec = match parse_line(trimmed) {
+        let rec = match parse_line(&local, trimmed) {
             Ok(Some(r)) => r,
             _ => continue,
         };

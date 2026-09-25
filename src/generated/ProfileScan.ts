@@ -21,7 +21,7 @@ conflicting_functions: Array<string>,
  * 加一段给用户自己动手的说明。**产品一个字节都不删**（`K31` + 用户逐字
  * 「原本的配置要手动删除」）—— 那些行没有围栏，边界只有人知道。
  *
- * ⚠ **只对 [`ProfileFlavor::PosixRc`] 有内容**；PowerShell 那一侧的遗留由
+ * ⚠ **只对 [`Shell::Posix`] 有内容**；PowerShell 那一侧的遗留由
  * [`scan_legacy_profiles`] 按**围栏**答（那是另一件事：它找的是**装错位置的整块**，
  * 这一格找的是**根本没有围栏的裸行**）。
  */

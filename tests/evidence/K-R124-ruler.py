@@ -147,6 +147,11 @@ COMPILE_STEPS = [
     ("build-backends", "Cross-compile backend for both musl targets",
      "两个 musl target 的静态字节（x86_64 ＋ aarch64）",
      "远端 Linux（musl 两个 arch）· 本机 Linux（同一份字节自释放，不另编）"),
+    # 〔RM1c · 第四波〕只装代码全景引擎的独立小程序（V108 选 B）：同一格平台、同两个 target，
+    # 另一个 crate（`src/panorama-engine`）。它是那一格的**第二件字节**，不是第二个平台。
+    ("build-backends", "Cross-compile panorama for both musl targets",
+     "全景小程序两个 musl target 的静态字节（x86_64 ＋ aarch64）",
+     "远端 Linux（musl 两个 arch）—— 只传给开过远端全景的机器"),
     ("build-windows", "Build local backend (native)",
      "runner host triple 的原生 `.exe`",
      "本机 Windows x86_64"),
@@ -178,6 +183,7 @@ BYTE_LINES = [
         "runner": ("build-backends", "ubuntu-latest"),
         "steps": [
             ("build-backends", "Cross-compile backend for both musl targets"),
+            ("build-backends", "Cross-compile panorama for both musl targets"),
             ("build-backends", "Stage binaries"),
             ("build-windows", "Place + verify embedded backends"),
         ],
@@ -247,6 +253,9 @@ BRIDGE_GITIGNORE = "src/bridge/.gitignore"
 REEMBED_CMD = "bash tests/scripts/re-embed.sh"
 #: ⑬b 的对照物：`release.yml` 里产 musl 字节那一步（与 `COMPILE_STEPS` 第一条同源）。
 MUSL_STEP = ("build-backends", "Cross-compile backend for both musl targets")
+#: ⑬b 的第三个对照物〔RM1c · 第四波〕：全景小程序那一步。本机 re-embed 用**同一对**
+#: `REEMBED_TARGETS` / `REEMBED_BUILD_FLAGS` 编它 ⇒ 它与发版那一步同样要两向对拍。
+PANORAMA_STEP = ("build-backends", "Cross-compile panorama for both musl targets")
 #: ⑬b 的第二个对照物：两个 job 里那条原生编译（`--native` 那一趟要与它同配方）。
 NATIVE_STEP = "Build local backend (native)"
 #: ⑬d 注册侧：`build.rs` 里登记落点目录名的那两个常量。
@@ -373,7 +382,12 @@ FOREIGN_SIDECARS = {
 #
 # ⚠ 边界：本机个人的 `src/bridge/.cargo/`（被 `.gitignore` 挡着、不进 CI）**不在射程**；
 #   本条也不问「那个目录在 runner 上真有东西」—— 那仍然是发版那一趟才知道的事。
-CARGO_CONFIGS = [".cargo/config.toml", "src/backend/.cargo/config.toml"]
+CARGO_CONFIGS = [
+    ".cargo/config.toml",
+    "src/backend/.cargo/config.toml",
+    # 〔RM1c · 第四波〕全景小程序那棵树（`release.yml` 从 `.build/panorama/…` 取它的 musl 字节）。
+    "src/panorama-engine/.cargo/config.toml",
+]
 #: ⑮ 的口径：路径里有一段**恰好**是这些之一 ⇒ 它是一条 cargo 产物路径。
 PROFILE_SEGS = {"release", "debug"}
 #: 交叉编译时 cargo 会在档位前多插一层 `<triple>/` ⇒ 剥掉它，剩下的才是产物根。
@@ -1060,12 +1074,61 @@ def run_checks(emit):
               "脚本 %r · 发版那一步现打 %r —— 少一个 `--locked` 就是"
               "「本机编的那份与发版编的那份依赖树可能不同」（理由住 `release.yml` 那一步的头注）"
               % (want, yml_flags))
+        # 〔RM1c〕全景小程序那一步：target 两向集合相等 ＋ 旗标逐字相同（同上两格的口径）。
+        pano_run = next((str(st.get("run") or "") for jn, _, st in steps
+                         if (jn, str(st.get("name") or "")) == PANORAMA_STEP), "")
+        pano_targets = set(re.findall(r"--target\s+(\S+)", pano_run))
+        pano_flags = re.findall(r"cargo zigbuild\s+(.*?)\s+--target", pano_run)
+        check(bool(pano_run) and set(targets) == pano_targets
+              and bool(pano_flags) and all(f == want for f in pano_flags),
+              "⑬b本机 re-embed ↔ 发版那一步（全景小程序），target 两向相等且旗标逐字相同",
+              "发版那一步%s · target 现打 %s（脚本 %s）· 旗标现打 %r（脚本 %r）—— "
+              "差一个就是「本机 re-embed 完了，发版那趟的全景小程序还少一份字节」或配方漂开"
+              % ("取到了" if pano_run else "**取不到**（改名/改 job 了）",
+                 sorted(pano_targets), sorted(targets), pano_flags, want))
+        check("cc-monitor-panorama-$arch" in reembed and "src/panorama-engine" in reembed,
+              "⑬b本机 re-embed 真编也真铺全景小程序",
+              "脚本里 `src/panorama-engine` %s · `cc-monitor-panorama-$arch` %s"
+              % ("在" if "src/panorama-engine" in reembed else "**不在**",
+                 "在" if "cc-monitor-panorama-$arch" in reembed else "**不在**"))
         native_runs = [str(st.get("run") or "").strip() for _, _, st in steps
                        if str(st.get("name") or "") == NATIVE_STEP]
         check(bool(native_runs) and all(r == "cargo build " + want for r in native_runs),
               "⑬b`--native` 那一趟 ↔ 发版那两步，逐字相同",
               "发版那两步现打 %r · 脚本那一趟是 `cargo build %s` —— 本条盯的是"
               "「本机那一份字节」的配方，与上面 musl 那两格是两条产线" % (native_runs, want))
+
+    # ── ⑬i〔RM1c · 第四波〕全景小程序的字节**一路走到落点**：暂存 → artifact → 两个 job 的铺放 ──────
+    #   ⑨ 只看「编它的那一步在不在」；编出来之后每一跳都可能把它静默丢掉（没进 artifact、
+    #   Windows / Linux 那一步没铺）⇒ `embed_panoramas` 缺席时**不 panic、只 warning**，
+    #   于是整条远端全景在安装包里静默关掉。本条逐跳钉「那一跳的文本里点名了它」。
+    #   ⚠ 买不到：那一跳在 runner 上真的拷到了（本判据不跑流水线）。
+    #   每一跳要的是**写进下一跳的那一串**（不是「提到这个名字」—— 只提名字的 `find` 一行
+    #   在拷贝被删掉之后照样命中，死值验现打过）。
+    pano_arches = sorted({t.split("-", 1)[0] for t in TRIPLES})
+    pano_hops = [
+        ("build-backends", "Stage binaries", "run",
+         ["staged/cc-monitor-panorama-%s" % a for a in pano_arches]),
+        ("build-backends", None, "with.path", ["staged/cc-monitor-panorama-*"]),
+        ("build-windows", "Place + verify embedded backends", "run",
+         ['src/bridge/embedded-backends/cc-monitor-panorama-$a']),
+        ("build-linux", "Place embedded backends", "run",
+         ['src/bridge/embedded-backends/cc-monitor-panorama-$a']),
+    ]
+    for jn_want, sn_want, field, needles in pano_hops:
+        if field == "with.path":
+            texts = [str(((st.get("with") or {}) or {}).get("path") or "") for jn, _, st in steps
+                     if jn == jn_want and "upload-artifact" in str(st.get("uses") or "")]
+            label = "%s / upload-artifact 的 path" % jn_want
+        else:
+            texts = [str(st.get("run") or "") for jn, _, st in steps
+                     if jn == jn_want and str(st.get("name") or "") == sn_want]
+            label = "%s / %s" % (jn_want, sn_want)
+        missing = [n for n in needles if not (len(texts) == 1 and n in texts[0])]
+        check(len(texts) == 1 and not missing,
+              "⑬i全景小程序的字节走到这一跳·%s" % label,
+              "那一跳命中 %d 处，缺 %s —— 丢在这一跳 ⇒ 安装包里远端全景静默关掉"
+              "（`build.rs::embed_panoramas` 缺席只打 warning）" % (len(texts), missing))
 
     # ── ⑬c 落点的 arch ↔ `build.rs` 吃字节那一侧，两向集合相等 ──────────────────
     eb = rust_fn_body(brs, "embed_backends") or ""
@@ -1077,6 +1140,15 @@ def run_checks(emit):
           "脚本派生 %s · `build.rs` 现打 %s —— 铺了没人吃（多出来的那份白编）"
           "或吃了没人铺（那一格的自动部署静默关掉）"
           % (sorted(sh_arches), sorted(rs_arches) if m else "<`for arch in [...]` 抠不到>"))
+    # 〔RM1c〕全景小程序：re-embed 铺的 arch ↔ `embed_panoramas` 吃的 arch，两向集合相等。
+    ep = rust_fn_body(brs, "embed_panoramas") or ""
+    mp = re.search(r"for arch in \[([^\]]*)\]", ep)
+    rs_pano = set(re.findall(r'"([^"]+)"', mp.group(1))) if mp else set()
+    check(bool(rs_pano) and rs_pano == sh_arches and "cc-monitor-panorama-{arch}" in ep,
+          "⑬c re-embed 铺的 arch ↔ `embed_panoramas` 吃的 arch（全景小程序），两向集合相等",
+          "脚本派生 %s · `build.rs::embed_panoramas` 现打 %s · 文件名模板 `cc-monitor-panorama-{arch}` %s"
+          % (sorted(sh_arches), sorted(rs_pano) if mp else "<`for arch in [...]` 抠不到>",
+             "在" if "cc-monitor-panorama-{arch}" in ep else "**不在**"))
     check("cc-monitor-backend-{arch}" in eb and "cc-monitor-backend-$arch" in reembed,
           "⑬c两侧的文件名模板对得上",
           "`build.rs` 里 `cc-monitor-backend-{arch}` %s · 脚本里 `cc-monitor-backend-$arch` %s"

@@ -116,6 +116,10 @@
 //! - 行为面为什么今天不撞：`--relay` 住**一次性子命令**分派臂（`main.rs`），是**独立进程**，
 //!   它的 stdout 不与流式那条 wire 流共享。⚠ 而「谁在同一个进程里既跑流式又跑中转」
 //!   **今天没有任何判据挡着**（那条「只有一个写者」的判据人群只有三个文件，**不含 `relay/`**）。
+//! - 〔RL1 · V107〕**那一格今天真的出现了**：常驻后端的流模式进程里也起中转（`listen::host`，
+//!   `main.rs` 流模式那一处）。⇒ 进程内那一份的 tee **不落 stdout**，落丢弃（`TeeSink::discard`）——
+//!   stdio 载体上 stdout 就是 wire。挡着它的判据：`host_tests::the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout`
+//!   （真子进程走生产接线，转发之后 stdout 上零 tee 行）。上面「写 stdout」那一段只对 `--relay` 那一形成立。
 //!
 //! ## ㈡ 每行**不带 `t_ns`**（`裁-3`）
 //!
@@ -269,7 +273,7 @@ mod wire_golden; // `设计/20 §7` 步 1–3：「零行为变化」的字节�
 
 /// `--relay` 的层 1 入口。**层 2 那只手由调用方递进来**（`accounts::apikey::run_relay`）——
 /// 本层叫不出它的名字（`account_layer_guard` ㈢ 零命中）。
-pub(crate) use listen::run;
+pub(crate) use listen::{host, run};
 
 /// 〔RM1a · 第四波〕**第二个口**：帧面 `relay-status` / `relay-ensure` 的两个处理器（这台机器上的中转进程在不在 · 起一个）。
 /// 只交出端口这一个入参，一个账号层的名字都不经过它。对外口的全集由 `layering_guard` 那张登记表两向钉着。

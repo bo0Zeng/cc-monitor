@@ -83,7 +83,15 @@ const LINES_BUDGET: Duration = Duration::from_secs(30);
 const PAGE_BUDGET: Duration = Duration::from_secs(60);
 
 /// 发一条帧命令，拿 `data`。
-async fn call(origin: &Origin, cmd: &str, args: Value, budget: Duration) -> Result<Value, String> {
+///
+/// 〔RM1c · 第四波〕开成 `pub(crate)`：代码全景（`panorama_call.rs`）要一个**期限由调用方给**的出口
+/// （建索引是分钟级，`lines` 那一档的 30 s 不够）。**不新增发送端** —— 仍是这一处、仍走同一个分流器。
+pub(crate) async fn call(
+    origin: &Origin,
+    cmd: &str,
+    args: Value,
+    budget: Duration,
+) -> Result<Value, String> {
     let origin = origin.as_wire_str();
     let Some(client) = inbound_client::client_for(origin) else {
         return Err(said(no_channel(origin)));
