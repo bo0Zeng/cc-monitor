@@ -432,7 +432,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p3c-panorama-plan**（2026-09-24，第四波 RM1d 合并那一拍）：子命令集不变，**行为**变更 ——
 /// 后端 `panorama` 的 op 表 ＋7（六个 `plan_*` 只回算好的新内容、不写盘 ＋ `refresh_doc_links`）；
 /// 旧后端不认 ⇒ 写批注会回 `unsupported` ⇒ 必须判 stale。照 p1v 先例不加历史行。
-pub const BUILD_ID: &str = "p3c-panorama-plan";
+///
+/// ★★★ **p3d-sftp-resident**（2026-09-24，第四波 SR1b 合并那一拍）：子命令 ＋4 —— `ch:transfer-upload` / `-download` / `-start` / `-stop`
+/// （传输台搬进后端，只在帧面）。＋ 线上：链路多一种用途 `use:"files"`（sftp 子系统上的一问一答）· 新出方向帧 `transfer`。
+/// 界面进程从此零 SSH（V89）：旧后端不认 `files` 用途 ⇒ 部署 / 传输全断 ⇒ 必须判 stale。
+pub const BUILD_ID: &str = "p3d-sftp-resident";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
