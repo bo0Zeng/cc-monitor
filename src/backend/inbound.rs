@@ -1501,7 +1501,8 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "history-record",
         doc_anchor: Some("#### `history-record`"),
         codes: &["bad_args"],
-        fields: &["present", "root", "sid"],
+        // 〔GP1 · 第四波〕+`configDir`（可选入参：这次 resume 要用的账号根）。
+        fields: &["configDir", "present", "root", "sid"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::read_face::answer(&r.cmd, &r.args)

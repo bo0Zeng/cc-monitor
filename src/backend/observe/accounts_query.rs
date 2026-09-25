@@ -117,7 +117,7 @@ struct Manifest {
 /// （PM 09-05 改这段注释时多写了一次，当场红：「盘上 2 处，登记表写 1 处」）。
 /// 允许普通空格与常规非 ASCII（如中文；单引号内无害且常见），拒绝引号/命令替换/
 /// 重定向/通配/控制字符 + 视觉欺骗类 Unicode。
-fn is_safe_config_dir(p: &str) -> bool {
+pub(crate) fn is_safe_config_dir(p: &str) -> bool {
     // 🔴 `N-F1c`：这个判据被**拆成两半**了。拆法逐字照 monitor 那份同名实现的模块头注
     // （`src/bridge/src/local_accounts.rs` 顶部那一节，逐字：「判据落在性质上，不落在表面
     // 特征上 —— 照抄 `starts_with('/')` 是抄了形式、丢了性质」）：
