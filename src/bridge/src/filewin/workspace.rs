@@ -1,4 +1,5 @@
-//! 〔FW34 · 第四波 2026-09-24〕窗口的最外一层：**标签页 ＋ 双栏 ＋ 复制到另一栏**。
+//! 〔FW34 · 第四波 2026-09-24〕窗口的最外一层：**标签页 ＋ 双栏 ＋ 复制到另一栏**（预览开关也挂在这儿，
+//! 预览本身住 [`super::preview`]：右侧一块，跟焦点那一栏）。
 //!
 //! 设计住 `调研/第四波记录/FW34.md` 第三节；这里只留落地要知道的。
 //!
@@ -59,10 +60,13 @@ pub struct Workspace {
     next_id: u64,
     /// 上一件「做不了」时说的那句话（`None` ＝ 没话说）。下一次点工具条 / 标签栏就清。
     notice: Option<String>,
+    /// 〔预览〕开着吗 ＋ 它自己的状态（`None` ＝ 关着）。逻辑住 [`super::preview`]。
+    pub preview: Option<super::preview::Preview>,
 }
 
 /// 工具条上那几颗 —— **唯一住址**（判据按同一个常量去找它画出来的字）。
 pub const SPLIT_LABEL: &str = "双栏";
+pub const PREVIEW_LABEL: &str = "预览";
 pub const COPY_ACROSS_LABEL: &str = "复制到另一栏";
 pub const NEW_TAB_LABEL: &str = "＋";
 pub const CLOSE_TAB_LABEL: &str = "×";
@@ -80,6 +84,7 @@ impl Workspace {
             focus: 0,
             next_id: 1,
             notice: None,
+            preview: None,
         };
         w.sync_focus();
         w
@@ -269,6 +274,11 @@ impl Workspace {
         true
     }
 
+    /// 开 / 关预览。关 ＝ 整块状态扔掉（在飞的那一趟回来没人收，无害）。
+    pub fn set_preview(&mut self, on: bool) {
+        self.preview = on.then(super::preview::Preview::default);
+    }
+
     /// 🔴 **复制到另一栏**：焦点那一栏选中的恰好一个文件 → 另一栏当前目录、同名。
     ///
     /// 走现成那条复制流水线（先探目标 → 已在就问一次覆盖 → 才动手；后端 `files-copy`，围栏在后端），
@@ -326,13 +336,18 @@ impl Workspace {
 
     /// 🔴 **每一帧的正文**（`eframe::App::ui` 只剩一句委派，判据直接喂它 —— 同 `FileWindow::frame_body`）。
     pub fn frame(&mut self, ui: &mut egui::Ui) {
-        // ── 工具条：双栏 · 复制到另一栏 ──
+        // ── 工具条：双栏 · 预览 · 复制到另一栏 ──
         let mut split: Option<bool> = None;
+        let mut preview: Option<bool> = None;
         let mut across = false;
         ui.horizontal(|ui| {
             let two = self.sides.len() == 2;
             if ui.selectable_label(two, SPLIT_LABEL).clicked() {
                 split = Some(!two);
+            }
+            let on = self.preview.is_some();
+            if ui.selectable_label(on, PREVIEW_LABEL).clicked() {
+                preview = Some(!on);
             }
             if two && ui.button(COPY_ACROSS_LABEL).clicked() {
                 across = true;
@@ -344,9 +359,24 @@ impl Workspace {
         if let Some(on) = split {
             self.set_split(on);
         }
+        if let Some(on) = preview {
+            self.set_preview(on);
+        }
         if across {
             let ctx = ui.ctx().clone();
             self.copy_to_other(Some(ctx));
+        }
+        // ── 预览（右侧一块，跟焦点那一栏）──
+        if self.preview.is_some() {
+            let ctx = ui.ctx().clone();
+            let side = &self.sides[self.focus];
+            let pane = &side.tabs[side.active].pane;
+            if let Some(p) = self.preview.as_mut() {
+                p.follow(pane, Some(ctx));
+                egui::Panel::right("filewin-preview-panel")
+                    .default_size(360.0)
+                    .show(ui, |ui| p.ui(ui));
+            }
         }
         // ── 一栏 / 两栏 ──
         let whole = ui.available_rect_before_wrap();
