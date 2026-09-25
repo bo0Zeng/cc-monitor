@@ -23,7 +23,7 @@
  *
  * # 时序（量出来的，别加 `await`）
  *
- * 取账号那一跳是**同步**读快照（`accounts.ts::localLaunchAccountSync` 头注：两条 DOM 判据只放行一个微任务）；
+ * 取账号那一跳是**同步**读快照（`launch-account.ts::localLaunchAccountSync` 头注：两条 DOM 判据只放行一个微任务）；
  * 本函数的 `await` 只有「行为设置（调用方给了就不读）→ tmux 名单（给了名字就不问）→ 拉起」这几拍。
  */
 import { commands } from "./ipc/commands";

@@ -537,7 +537,7 @@ export class TabMenu {
     // 〔U4〕「给 Resume 还是给换号重启」按 `isResumeOnly` 分，与菜单主体那一格同一个谓词（原先是 `status === "archived"`）。
     const resumeOnly = isResumeOnly(state);
     // 〔`A3` 第二波〕本机已结束的 tab 不带账号选择（本机 Resume 走那条会话上次的号，
-    // 见 `accounts.ts::localLaunchAccountSync`）⇒ 本机只进下面「换号重启」那一支。
+    // 见 `launch-account.ts::localLaunchAccountSync`）⇒ 本机只进下面「换号重启」那一支。
     if (origin === LOCAL_ORIGIN && resumeOnly) return;
     const gen = menuGeneration(); // 捕获这一代菜单
     const accountOptions = await enumerateAccountModifiers(origin);

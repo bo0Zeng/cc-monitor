@@ -104,7 +104,7 @@ export function localLaunchAccountNameSync(sid: string | null): string | null {
  * |---|---|---|
  * | `named` | pin 可选 / 没 pin 而当前号可选 | 带这个号起 |
  * | `silent` | 快照还冷 / 没 pin 也没可选的当前号 / 那个号没有 `configDir` | 缺席（逐字节旧行为，见上面那条诚实边界） |
- * | `pinGone` | **有 pin，而那个号选不了** | **不起**，说清、给「用当前账号」的显式选择（`accounts.ts::refuseUnavailableAccount`） |
+ * | `pinGone` | **有 pin，而那个号选不了** | **不起**，说清、给「用当前账号」的显式选择（`launch-account.ts::refuseUnavailableAccount`） |
  *
  * 🔴 `pinGone` 先前落进 `silent`：载荷不带账号 ⇒ 落 shell rc 里的默认号，**不说一个字**（E7 的本机那一形）。
  * `设计/01 §6.2`「「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」。
