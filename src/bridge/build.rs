@@ -8,6 +8,7 @@ fn main() {
     embed_backends();
     embed_panoramas();
     embed_native_backend();
+    embed_native_panorama();
     tauri_build::build()
 }
 
@@ -842,6 +843,60 @@ fn embed_native_backend() {
     // 那要在 `write_site_registry::WRITE_SITES` 里申报（`fs::copy(` 是它的 needle 之一），
     // 而那张表**不在本件写区**。少一次拷贝同时也少一条要申报的写点 —— 两头都更干净。
     println!("cargo:rustc-cfg=embedded_native_backend");
+}
+
+/// 〔RM1f〕本机原生全景小程序的文件名（落点目录同 [`NATIVE_BACKEND_DIR`]，旁挂 `.target` 清单同那一对）。
+/// `byte_table.rs`（〔DP1〕全仓唯一的取字节口）用**同一条路径的字面量** `include_bytes!` 它
+/// （四处同一个串：本常量 · 那个字面量 · `re-embed.sh --native` · `release.yml` 的 Windows 那一格 —— 判据对拍）。
+const NATIVE_PANORAMA_FILE: &str = "cc-monitor-panorama";
+
+/// 〔RM1f · V108 后半句「之后本机也走这条路、monitor 摘内嵌引擎」〕**把本机原生的全景小程序也内嵌进 exe**。
+///
+/// # 为什么要它
+///
+/// monitor 摘掉内嵌引擎之后，本机全景 = 「本机后端 → 插件口 → `cc-monitor-panorama`」。本机后端要在
+/// `~/.cc-monitor/bin/` 找到一份**这台机器能跑的**小程序 ⇒ 字节得跟着 monitor 走（本机不经推送，
+/// 由 monitor 放下来：`local_backend::place_local_panorama`）。Linux 本机用远端那两份 musl 就跑得起来
+/// （`panorama_bytes::local_panorama_binary` 的第二个来源）；**Windows / macOS 本机没有**，只能按 `TARGET` 原生编一份。
+///
+/// # 形状与 [`embed_native_backend`] 同一套（理由逐字住那里，不抄第二份）
+///
+/// 定死名字（消费侧 `include_bytes!` 要字面量）· 旁挂 `.target` 清单（名字里没有 triple，只能靠它）·
+/// 对不上当场 panic（内嵌一个别的平台的程序 = 放到用户盘上起不来）· 缺席 ⇒ 不置 cfg ＋ **可见的** warning。
+/// ⚠ **没有身份戳、没有半 bump 守卫**：它不随 `BUILD_ID` 走（同 [`embed_panoramas`] 那一条）；
+/// 「与源码是不是同一代」由 [`REEMBED_CMD`] 的 `--check` 真起一趟 `--probe` 比能力表来答。
+/// ⚠ **不往 `OUT_DIR` 拷**（同 [`embed_native_backend`] 末尾那条：少一个要申报的写点）。
+fn embed_native_panorama() {
+    println!("cargo:rustc-check-cfg=cfg(embedded_native_panorama)");
+    let target = std::env::var("TARGET").unwrap_or_else(|_| "unknown-target".into());
+    let dir = Path::new(NATIVE_BACKEND_DIR);
+    let src = dir.join(NATIVE_PANORAMA_FILE);
+    let target_manifest = dir.join(format!("{NATIVE_PANORAMA_FILE}.target"));
+    for f in [&src, &target_manifest] {
+        println!("cargo:rerun-if-changed={}", f.display());
+    }
+    if !src.exists() {
+        println!(
+            "cargo:warning=没有本机内嵌全景小程序（src/bridge/{}）⇒ 这一趟编出来的可执行文件在**非 Linux 本机**上\
+             没有代码全景（Linux 本机用远端那两份 musl 字节，若铺了）。要它：`{REEMBED_CMD} --native`。",
+            src.display()
+        );
+        return;
+    }
+    let staged_target = read_trimmed(&target_manifest);
+    if staged_target != target {
+        panic!(
+            "本机内嵌全景小程序（src/bridge/{}）是给 `{}` 编的，而这一趟的 TARGET 是 `{target}`。\n\
+             （清单读作 `{staged_target}`；空串 = 根本没有 `{}.target` 这个文件。）\n\
+             内嵌一个别的平台的程序 = 放到用户盘上起不来。\
+             出路二选一，**两条都是同一条命令**：① `{REEMBED_CMD} --native` 为这一趟的 TARGET 重编重铺；\
+             ② `{REEMBED_CMD} --clean` 删掉落点（本机全景诚实关着，编译立刻恢复）。",
+            src.display(),
+            staged_target,
+            NATIVE_PANORAMA_FILE,
+        );
+    }
+    println!("cargo:rustc-cfg=embedded_native_panorama");
 }
 
 /// 读一份单值清单，读不到就给空串（「没有这个文件」与「文件是空的」在这里同义：都不可信）。

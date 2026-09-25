@@ -1651,6 +1651,119 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 `needs_consent`（`take` 里有 `differs` 的一条没在 `overwrite` 里点名 —— **整趟拒**，不静默跳过）。
 ⚠ **CLI 面也有它**（`--mcp-sync-plan`），入参从 stdin 读。
 
+#### `assets-catalog`：资产目录 —— 这台现扫一次、记下、回整份（AS2 · 第四波 4B，2026-09-25）
+
+用户裁（`99 §1` V113，逐字）：「比如本机后端在本机看见一个skill并记录下来, 就会和远端后端同步, 这样远端后端也能在远端装skill或者mcp / mcp保持项目级别」·「目录自动同步，装要你点」。
+本条是「记下来」那一半：这台后端现扫一次它看到的 skill（`<配置根>/skills/<名>/`）与项目级 MCP（`.claude.json` 的 `projects` × `<项目>/.mcp.json` 的 `mcpServers`），
+放进**后端自有**的目录文件 `~/.cc-monitor/assets-catalog.json`（第四层：只有本后端写它；**一个用户文件都不写**），变了才写，回整份目录 ＋「别的机器有的，这台怎样」。
+
+```text
+→ {"id":"a1","cmd":"assets-catalog","args":{}}
+← {"kind":"reply","id":"a1","ok":true,"data":{"self":"9f…","machines":[{"id":"9f…","label":"u@h","gen":3,"seenAt":1727250000,"assets":[{"kind":"skill","name":"demo","digest":"…","summary":{"description":"…","files":2,"bytes":120,"binary":false,"truncated":false}}]}],"rows":[{"kind":"mcp","name":"gh","state":"missing","from":[{"machine":"4c…","project":"/home/r/x","digest":"…","summary":{…}}]}],"problems":[],"changed":false,"path":"/home/u/.cc-monitor/assets-catalog.json"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `self` | ← | 这台机器的 id（第一次记目录时生成，之后不变） |
+| `machines` | ← | 各台一份快照 `{id, label, gen, seenAt, assets}`：`gen` 是那台**自己**的代数（它自己那份变了才 +1）；`seenAt` 是那一代的时刻（那台的钟，只给人看、不参与合并）。`assets[]` 是 `{kind, name, project?, digest, summary}`：`kind` 闭集 `skill` · `mcp`；`project` 只有 MCP 有（**项目级**）；`digest` 只答相同 / 不同（FNV-1a 64，不防篡改） |
+| `rows` | ← | 别的机器有的每个（`kind`, `name`）一行 `{kind, name, state, from}`：`state` 闭集 `missing`（这台一条同名的都没有）· `differs`（有同名的，摘要都不同）· `same`（有一条摘要相同）；`from` 是别处那几条 `{machine, project, digest, summary}` |
+| `problems` | ← | 这一趟扫描读不出来的那几份（一句话一份）—— 「这台没有」与「这台那份读不出来」分开说 |
+| `changed` | ← | 这一趟目录有没有变（变了才写盘） |
+| `path` | ← | 目录文件在这台上的路径 |
+
+🔴 **MCP 的 `env` / `headers` 的值不进目录**，只进键名（`envKeys` / `headersKeys`）；`args` / `command` / `cwd` / `type` / `url` 原样，其余字段只记键名（`otherKeys`）。
+`digest` 按整条原文算（只差密钥值也判得出不同）。理由：目录是**自动**同步到每台的；「原样拷」（V112）发生在用户点「装」那一下、从来源那台现读。
+
+**错误码**：`catalog_unreadable`（目录文件在但读不懂 / 是更新的格式 —— **不覆盖**）· `io_failed`（家目录解析不出来 / 写不进去）。
+⚠ **CLI 面也有它**（`--assets-catalog`），无入参。
+
+#### `assets-catalog-merge`：把另一台后端的整份目录并进来（AS2 · 第四波 4B，2026-09-25）
+
+同 `assets-catalog`（先现扫这台、记下），再把 `catalog` 里各台的快照并进来：**同一台取 `gen` 大的那一份整份**（删除随整份替换传播）；
+这台自己那一格**只认自己扫的**（别处传来的一律不收）。不比墙钟、幂等、与到达顺序无关 ⇒ 反复同步收敛。回并完之后的整份（形状同上）。
+
+```text
+→ {"id":"a2","cmd":"assets-catalog-merge","args":{"catalog":{"self":"4c…","machines":[{"id":"4c…","label":"r@x","gen":2,"seenAt":1727250100,"assets":[…]}]}}}
+← {"kind":"reply","id":"a2","ok":true,"data":{"self":"9f…","machines":[…],"rows":[…],"problems":[],"changed":true,"path":"…"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `catalog` | → | 另一台后端的整份目录，形状就是 `assets-catalog` 的应答（只读它的 `machines`） |
+| 其余 | ← | 同 `assets-catalog` |
+
+**错误码**：`bad_args`（缺 `catalog` / 某台缺格 / 类型不对 / `kind` 不在闭集 —— 不猜）· `catalog_unreadable` · `io_failed`。
+⚠ **CLI 面也有它**（`--assets-catalog-merge`），入参从 stdin 读。
+
+#### `assets-sync`：本机常驻后端沿池里那条 SSH 同步资产目录（AS2 · 第四波 4B，2026-09-25）
+
+「目录自动同步」那一半（V113）：`设计/01 §3.5`「观测方沿它本来就拥有的那条连接去拉被观测方」。只有**本机常驻后端**有意义（SSH 连接与可达表都住在它的进程里）。
+一趟对一台远端：① 在池里那条连接上多开一个 exec 通道，capture `<远端后端> --assets-catalog`（远端现扫、记下、回它的整份）；
+② 并进本机目录（同 `assets-catalog-merge`）；③ 远端缺的 / 比远端新的那几台快照（不含远端自己那格）经 `printf '%s\n' '<json>' | <远端后端> --assets-catalog-merge` 推过去（一块 ≤ 96 KiB，单台超了那一台不推、说出来）；
+④ 本机目录因这一趟变了（或开头那一次现扫发现本机自己那份变了）⇒ 对可达表里其余每台各做一趟（只一层）。**不往任何机器装东西**（装要用户点）。
+不起远端的流模式（流模式会往 tmux 装指向自己 pid 的全局 hook，一个用完就退的流会把真流的 hook 盖掉）；老远端不认子命令会进流模式 —— capture 见到 hello 就收工、报「太旧」。
+
+```text
+→ {"id":"s1","cmd":"assets-sync","args":{"origin":"dev","dial":{"host":"10.0.0.2","port":22,"user":"u","key_path":"~/.ssh/id_ed25519"},"backend":"/home/u/.cc-monitor/bin/ccm"}}
+← {"kind":"reply","id":"s1","ok":true,"data":{"self":"9f…","synced":[{"origin":"dev","peer":"4c…","changed":true,"pushed":1,"error":null}],"reach":[{"origin":"dev","machine":"4c…"}]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `origin` | → | 可缺席。给了 ⇒ 记进可达表（内存，后端重启就空）并先对它做一趟；缺席 ⇒ 对可达表里每一台各做一趟 |
+| `dial` | → | 给了 `origin` 就必给：那台的拨号请求（同 `link-open` 的 `dial`；只有路径，没有私钥本体）。本条会把 `use` 改成 `capture` |
+| `backend` | → | 给了 `origin` 就必给：那台上后端的路径 |
+| `synced` | ← | 每一趟一行 `{origin, peer, changed, pushed, error}`：`peer` 是那台目录的 `self`；`changed` 本机目录因这一趟变了没有；`pushed` 推过去几台快照；`error` 那一趟哪里没办成（`null` = 全办成了） |
+| `self` | ← | 本机目录的 id（开头那一次现扫拿到的）—— 界面据它把目录里本机那一格对回 `<local>` |
+| `reach` | ← | 可达表 `[{origin, machine}]`：`machine` 是那台目录的 id（还没拉成过 ⇒ `null`）—— 界面据它把目录里的机器 id 对回 origin |
+
+**错误码**：`bad_args`（`origin` 空串 · 给了 `origin` 缺 `dial` / `backend` · 给了 `dial` / `backend` 没给 `origin` · 可达表满）· `io_failed`（本机目录开头那一次现扫没办成）。某一台连不上 / 太旧 / 没办成**不是整条失败**，落在那一行的 `error`。
+⚠ **CLI 面也有它**（`--assets-sync`，入参从 stdin 读；按派生规则「非内建即上 CLI」），但一次性进程没有常驻那一个的连接池与可达表：
+它自己新拨一条 SSH、只对给的那一台做一趟，扇出恒为零台 —— 真正的用法是常驻后端的帧面。
+
+#### `skill-read`：读来源那台上的一个 skill（AS2 · 第四波 4B，2026-09-25，**只读**）
+
+「装要用户点」（V113）那一步的读半边：在**来源那台**跑，交出 `<skill 根>/<名>/` 下每个文件的原文（V112「内容，原样拷过去」）。
+
+```text
+→ {"id":"k1","cmd":"skill-read","args":{"name":"demo"}}
+← {"kind":"reply","id":"k1","ok":true,"data":{"root":"/home/u/.claude/skills","dir":"/home/u/.claude/skills/demo","files":[{"path":"SKILL.md","text":"---\n…","bytes":120,"exec":false,"why":null},{"path":"bin/tool","text":null,"bytes":90210,"exec":true,"why":"不是文本文件"}],"skipped":[]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `name` | → | skill 的目录名（一段：不许分隔符 / `..` / 点开头） |
+| `root` / `dir` | ← | 这台 skill 的根 / 这个 skill 的目录（绝对路径） |
+| `files` | ← | 每个普通文件一条 `{path, text, bytes, exec, why}`：`path` 是 skill 里的相对路径（`/` 分段）；`text` 是原文，**不是文本 / 超 4 MiB / 读不出来 ⇒ `null` ＋ `why`**（这一个装不过去：今天的写口只收文本）；`exec` 执行位（非 unix 恒 `false`） |
+| `skipped` | ← | 没读的那几处（指向目录的链接 / 特殊文件） |
+
+**错误码**：`bad_args`（名字不对）· `not_found`（这台没有这个 skill）· `too_large`（文件超过 512 个 —— 装一半比不装更坏，整趟不读）· `io_failed`。
+⚠ **CLI 面也有它**（`--skill-read`），入参从 stdin 读。
+
+#### `skill-install-plan`：在要被写的那一台判 skill 装不装得过来（AS2 · 第四波 4B，2026-09-25，**只读**）
+
+在**要被写的那一台**跑（事实是那台的）。差异四态与「不同的要显式说盖、不然整趟拒」那道闸**原样用** `mcp-sync-plan` 的那一份（键 = 文件相对路径，值 = `{text, exec}`）。
+一个字节都不写：写经调用方 → 那台后端 `files-put`（`expect` = 这里回的 `target` 里那一份，不存在 = `null`，`parents: true`）＋ `files-chmod`。
+
+```text
+→ {"id":"k2","cmd":"skill-install-plan","args":{"name":"demo","source":[{"path":"SKILL.md","text":"---\n…","exec":false}]}}
+← {"kind":"reply","id":"k2","ok":true,"data":{"root":"…/skills","dir":"…/skills/demo","rows":[{"path":"SKILL.md","state":"new","suspects":[],"blocked":null}],"target":[],"write":null}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `name` | → | skill 的目录名 |
+| `source` | → | `skill-read` 读到的 `[{path, text, exec}]`（`text` 可为 `null` = 装不过去的那一个） |
+| `take` / `overwrite` | → | 可缺席，语义同 `mcp-sync-plan`（给了 `take` 才答 `write`；`differs` 的要在 `overwrite` 里点名） |
+| `root` / `dir` | ← | 这台 skill 的根 / 要写进去的目录 |
+| `base` / `prefix` | ← | 写的时候 `files-put` 用的 `root` 与相对前缀：`rel` = `<prefix>/<path>`。skill 根在 ⇒ `base` 就是它；不在 ⇒ 是它的上一层（配置根），由 `parents` 建出来 |
+| `rows` | ← | 每个路径一行 `{path, state, suspects, blocked}`：`state` 闭集同 `mcp-sync-plan`；`suspects` 只在 `new` / `differs` 上有 `{kind, value, there}` —— `kind` 闭集 `executable`（有执行位或 `#!` 开头）· `binary`（来源读不出原文）· `abs-path`（文本里的绝对路径，`there` 闭集同 `mcp-sync-plan`）· `command-missing`（`#!/usr/bin/env X` 的 `X` 在这台后端的 `PATH` 上找不到）；`blocked` = 这台上那一份盖不了的原因（不是文本等），否则 `null` |
+| `target` | ← | 这一趟拷的那几个路径在这台上现有的原文 `[{path, text}]` —— 写的时候当 CAS 期望 |
+| `write` | ← | 没给 `take` ⇒ `null`；给了 ⇒ 真要写的路径（排序） |
+
+**错误码**：`bad_args`（名字 / 路径不对 · `take` 里有不在 `source` 里的 · `take` 了来源读不出原文的那一个）· `bad_file`（`take` 了这台上盖不了的那一个）· `needs_consent`（同 `mcp-sync-plan`）· `too_large` · `io_failed`。
+⚠ **CLI 面也有它**（`--skill-install-plan`），入参从 stdin 读。
+
 #### 只读查询面（`C1`，2026-09-24）—— **八条一次性查询搬上这条长连接**
 
 出处 `设计/15 §3.2` 层 1 ＋ `设计/99 §4.19.2 ⑥`。这八条此前**只有**一次性子命令那一面：monitor 每问一次就新拨一条 SSH（握手 ＋ 鉴权 ＋ exec），账号那两条还被一个 10 秒的轮询按台数翻倍。现在它们也在帧面上 —— **跑的是 CLI 那一臂同一个函数**，只是输出从 stdout 换成应答里的 `data`。
@@ -1661,7 +1774,7 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 | `history-sessions` | `--list-sessions` | 按行 |
 | `history-search` | `--search` | 按行 |
 | `history-subagents` | `--list-subagents` | 按行 |
-| `accounts-list` | `--list-accounts` | 按行 |
+| `accounts-list` | `--list-accounts` | 〔C4c〕成品（`{meta, accounts, notice}`） |
 | `accounts-sessions` | `--session-accounts` | 按行 |
 | `history-read` | `--read-session` · `--read-session-from-offset`（不带 `--index`） | 按字节分页 |
 | `history-tail` | `--read-session-tail` 的那张「尾段在哪」的图 | 四个数 |
@@ -1724,16 +1837,39 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 | `parent` | → | 父会话 jsonl 路径（`projects/` 围栏照旧；越界 ⇒ `path_refused`，推不出目录 ⇒ `bad_parent`） |
 | `lines` | ← | 每候选一行 `{path, description, timestamp}`，同 `--list-subagents`（只列不挑） |
 
-#### `accounts-list`：账号清单（**不读 stdin**）
+#### `accounts-list`：账号清单（〔C4c · 第四波 4B〕**出成品**）
 
 ```text
-→ {"id":"q5","cmd":"accounts-list","args":{}}
-← {"kind":"reply","id":"q5","ok":true,"data":{"lines":["{\"kind\":\"accounts-meta\",…}", "{\"name\":…}", …]}}
+→ {"id":"q5","cmd":"accounts-list","args":{"agent":"claude-code"}}
+← {"kind":"reply","id":"q5","ok":true,"data":{"meta":{"enabled":true,…},"accounts":[{"name":…,"authKind":…,"authReady":…},…],"notice":null}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `lines` | ← | 同 `--list-accounts`：首行 `accounts-meta`，其后每账号一行。账号库目录走默认解析，**帧面不收 `--accts-dir`** |
+| `agent` | → | 必填：这次起会话的是哪一家（适配器 id）。只有它是这台机器 apikey 表的那一家时，表里的行才算数（条 49） |
+| `meta` | ← | `{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error}`（同 `--list-accounts` 首行去掉分帧用的 `kind` / `accountZeroAware`）。账号库目录走默认解析，**帧面不收 `--accts-dir`** |
+| `accounts` | ← | 每账号一个对象，字段同 `--list-accounts` 的账号行；**并上了这台机器自己那份 apikey 表**：表里有行的号 `authKind` 是 `api-key`、`authReady` 按 `acct_core::auth_ready`（规则住 `acct-core`，CLI 那一臂不并表） |
+| `notice` | ← | 「能用但有缺」：启用了却一个账号 0 都没有（cc-acct-iso 写侧旧）时的一句话；否则 `null` |
+
+**错误码**：`bad_args`（缺 `agent`）· `too_large`。
+⚠ 〔C4c〕此前应答是 `{"lines": [...]}`（与 CLI 逐行同形）、并表在 monitor 做且只并本机；老后端仍回旧形状 ⇒ 新界面当场认出「两端契约对不上」。
+
+#### `accounts-trust`：换号前的信任预检（〔C4c · 第四波 4B〕替掉逐次拨号的 `--account-trust` / `--account-trust-zero`）
+
+```text
+→ {"id":"q7","cmd":"accounts-trust","args":{"configDir":"/home/u/.claude-accts/a","cwd":"/home/u/proj"}}
+← {"kind":"reply","id":"q7","ok":true,"data":{"trusted":true,"known":true}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `configDir` | → | 目标账号的 config dir（必须逐字 ∈ manifest，否则 `unknown_config_dir`）；**缺席或 `null` = 账号 0**（读 `$HOME/.claude.json`，不收路径） |
+| `cwd` | → | 要预检的工作目录（必填） |
+| `trusted` | ← | 这个账号接受过该目录的信任对话框 |
+| `known` | ← | 这个账号的 `.claude.json` 里有该目录的记录（`false` ⇒ 首次进入，大概率会弹确认） |
+
+**错误码**：`bad_args` · `unsafe_config_dir` · `unknown_config_dir` · `manifest_unavailable` · `no_home` · `failed`（读 / 解析那个账号的配置文件失败等 agent 那一层的码一律落它，原因原样带着 —— 通用层不认 agent 的名字）。
+与 `--account-trust` / `--account-trust-zero` 是**同一个函数的两个宿主**；CLI 面照例自动派生一个 `--accounts-trust`（stdin 一段 JSON）。
 
 #### `accounts-sessions`：正在跑的会话各属哪个账号（**不读 stdin**）
 
@@ -1891,11 +2027,13 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
   `{"value": …, "edit": null | {"rel", "before", "after", "parents"}}`（`rel` 仓相对；`before` = 算的那一刻盘上原样、`null` = 不存在；
   `after = null` = 删；`edit = null` = 盘上已经是想要的样子）。落盘是调用方拿着计划另发 `files-put`（`root` = 仓、`expect = before`、`parents`）
   或 `files-delete`；`stale` ⇒ 重新 `plan_*`。写了 `.md` 之后发 `refresh_doc_links` 让文档关联的查询跟上（只写索引）。
-- 阻塞档（起一个进程、等它退出；建索引可到分钟级）⇒ `cancel` 命中回 `not_cancellable`。
+- 〔RM1f〕**可取消**：异步档（起进程走插件口的 `run_abortable`，异步等子进程）⇒ `cancel` 命中时处理器被撤、小程序连同 `timeout` 前缀那一组子进程一起被杀，回 `cancelled` 帧。〔墓碑 —— RM1c 那一版是阻塞档：`cancel` 命中回 `not_cancellable`。〕
 - 〔RM1e · V108「只传给开过远端全景的机器」〕`not_installed` / `unsupported` 是**推字节的触发条件**：monitor 听到这两个码
   （只对远端）⇒ `uname -s -m` 选内嵌字节 → 经本机常驻后端那条 `files` 链路（部署那一问一答，写只许 `~/.cc-monitor/bin/` 与暂存区）
   推到 `~/.cc-monitor/bin/cc-monitor-panorama`（`0755`，后端读回逐字节比对）→ **再问一次**；仍是这两个码 ⇒ 原话交给人，不循环。
   本命令自己不推、不写。
+  〔RM1f · 本机对称〕本机那一台同一个触发点：本机后端答这两个码 ⇒ monitor 把它自己带着的那一份（按 `TARGET` 内嵌的原生小程序，Linux 本机退用 musl 那份）
+  放到 `~/.cc-monitor/bin/cc-monitor-panorama[.exe]`（逐字节相等就不写）→ 再问一次。Windows 上后端找的文件名带 `.exe`、插件口的 Windows 臂只认 `.exe`。
 
 #### `history-find`：会话内查找（〔SR1a × SE2〕2026-09-24 上帧面）
 

@@ -146,8 +146,10 @@ fn choose_answers_every_cell_of_both_tables() {
         (Panorama, Remote, k(Linux, X86_64), Give),
         (Panorama, Remote, k(Linux, Aarch64), Give),
         (Panorama, Local, k(Linux, X86_64), Give),
-        (Panorama, Remote, k(Windows, X86_64), Unsupported),
-        (Panorama, Local, k(Windows, X86_64), Unsupported),
+        // 〔RM1f〕全景 Windows x86_64 有原生产线（`release.yml` 的 `Stage native panorama for self-extract`）：本机承诺、远端不做。
+        (Panorama, Local, k(Windows, X86_64), Give),
+        (Panorama, Remote, k(Windows, X86_64), NotPromised),
+        (Panorama, Local, k(Windows, Aarch64), Unsupported),
         (Panorama, Remote, k(Mac, Aarch64), Unsupported),
     ];
     for &(product, route, key, want) in expect {
@@ -257,8 +259,8 @@ fn include_targets(prod: &str) -> Vec<String> {
 }
 
 /// B2：`byte_table.rs` 的每个槽恰挂表 A 的一个键（从 `include_bytes!` 的目标名读：`<类>-<arch>` ⇒ (类, Linux, arch)；
-/// 本机原生那一份 ⇒ 这一份产物的 `TARGET` 那一格）。一个 (类, 键) 恰一个槽，**唯一的例外**是本机原生那一槽在
-/// Linux 构建上落在 (Backend, Linux, x86_64 或 aarch64)（`96 §7.3` 第一条，没裁），例外名单两向相等。
+/// 本机原生那两份 ⇒ 这一份产物的 `TARGET` 那一格）。一个 (类, 键) 恰一个槽，**仅有的例外**是本机原生那两槽（后端 ·
+/// 〔RM1f〕全景）在 Linux 构建上与 musl 同格（`96 §7.3` 第一条，没裁），例外名单两向相等。
 #[test]
 fn every_slot_hangs_on_exactly_one_key_and_one_key_has_one_slot_but_the_one_listed_exception() {
     let src = read("src/bridge/src/byte_table.rs");
@@ -266,14 +268,16 @@ fn every_slot_hangs_on_exactly_one_key_and_one_key_has_one_slot_but_the_one_list
     let targets = include_targets(&prod);
     assert_eq!(
         targets.len(),
-        5,
-        "byte_table.rs 生产段里 `include_bytes!` 应当恰好 5 处（后端 musl 2 · 全景 musl 2 · 本机原生 1）：{targets:?}"
+        6,
+        "byte_table.rs 生产段里 `include_bytes!` 应当恰好 6 处（后端 musl 2 · 全景 musl 2 · 本机原生 2：后端 ＋ 〔RM1f〕全景）：{targets:?}"
     );
     let native_key = Key::this_machine().expect("这一份产物的 TARGET 不在表 A 的轴上");
     let mut slots: Vec<(Product, Key)> = Vec::new();
     for t in &targets {
         let slot = if t.contains("native-backend/cc-monitor-native") {
             (Product::Backend, native_key)
+        } else if t.contains("native-backend/cc-monitor-panorama") {
+            (Product::Panorama, native_key)
         } else {
             let name = t
                 .rsplit('/')
@@ -301,13 +305,15 @@ fn every_slot_hangs_on_exactly_one_key_and_one_key_has_one_slot_but_the_one_list
         }
     }
     let expected_doubled: BTreeSet<(bool, Key)> = if native_key.os == Os::Linux {
-        [(true, native_key)].into_iter().collect()
+        [(true, native_key), (false, native_key)]
+            .into_iter()
+            .collect()
     } else {
         BTreeSet::new()
     };
     assert_eq!(
         doubled, expected_doubled,
-        "一格两槽的名单变了 —— 唯一许的是本机原生那一槽在 Linux 构建上与 musl 同格（`96 §7.3` 第一条）"
+        "一格两槽的名单变了 —— 只许本机原生那两槽在 Linux 构建上与 musl 同格（`96 §7.3` 第一条）"
     );
     // 每个槽的键都在表 A 的产线里（槽挂在一个没有产线的键上 = 那一格的字节永远没人选）。
     for (p, key) in &slots {

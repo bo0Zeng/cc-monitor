@@ -12,19 +12,19 @@
 //! 〔墓碑 —— 本拍之前字节从三处各自取：远端部署在 `sftp.rs` 里只 `match arch`、不认 OS；
 //!  本机 `local_backend_host.rs::start_local_backend` 压一道 `cfg!(target_os = "linux")` 的闸再按 `consts::ARCH` 取那两份
 //!  musl；宿主交白卷时 `local_backend.rs` 再给一份按编译期 `TARGET` 定死的。
-//!  全景小程序那两份住 `panorama_bytes::panorama_binary` 的函数体里。〕 ⇒ 五个槽今天都住本文件。
+//!  全景小程序那两份住 `panorama_bytes::panorama_binary` 的函数体里。〕 ⇒ 五个槽今天都住本文件（合主线时 RM1f 的原生全景小程序那一槽也收了进来，共六个）。
 //!
 //! # 表 A：键是 (OS, arch)，6 行
 //!
 //! 键从**探测得出来的**轴来：OS 3 值 × arch 2 值（`96 §7.1.1b`）。键之外的组合（FreeBSD · riscv64 …）不在表里，
 //! 与表里「那一格没有产线」的几行落在同一个拒绝形上（[`Refusal::UnsupportedMachine`]）。
 //!
-//! # 同一格两份来源 —— 只有一处，而且没有裁
+//! # 同一格两份来源 —— 只有「本机原生 × Linux」这一形，而且没有裁
 //!
-//! Linux 构建上，这一份产物按 `TARGET` 内嵌的本机原生后端（开发树 `re-embed.sh --native` 铺的那份）也落在
-//! (Linux, x86_64) 这一格，与远端那份 musl 同格。`96 §7.3` 第一条逐字「本机 Linux 那两份字节哪份留 ——
-//! 要先有条 62 那次迁移才谈得上」⇒ **本表不替它裁**：那一格按今天的次序给一个值（musl 先），判据把它登记成
-//! 唯一的双来源格，多出第二处就红。
+//! Linux 构建上，这一份产物按 `TARGET` 内嵌的本机原生那两份（后端 · 〔RM1f〕全景小程序；开发树 `re-embed.sh --native`
+//! 铺的）也落在 (Linux, 这台的 arch) 这一格，与远端那份 musl 同格。`96 §7.3` 第一条逐字「本机 Linux 那两份字节哪份留 ——
+//! 要先有条 62 那次迁移才谈得上」⇒ **本表不替它裁**：那一格按各自今天的次序给一个值（见 [`pick`]），判据把这两格
+//! 登记成仅有的双来源格，多出别的就红。
 //!
 //! # 不在本文件的
 //!
@@ -233,6 +233,13 @@ pub(crate) const LINES: &[(Product, Key)] = &[
     (
         Product::Panorama,
         Key {
+            os: Os::Windows,
+            arch: Arch::X86_64,
+        },
+    ),
+    (
+        Product::Panorama,
+        Key {
             os: Os::Linux,
             arch: Arch::X86_64,
         },
@@ -308,6 +315,23 @@ fn native_backend() -> Option<Picked> {
     None
 }
 
+/// 〔RM1f → DP1〕这一份产物按 `TARGET` 内嵌的原生全景小程序（`build.rs::embed_native_panorama`）。没有身份戳。
+///
+/// 🔴 路径必须是字面量（同上）⇒ 名字定死在两处：这一行与 `build.rs` 的 `NATIVE_BACKEND_DIR` ＋ `NATIVE_PANORAMA_FILE`。
+#[cfg(embedded_native_panorama)]
+fn native_panorama() -> Option<Picked> {
+    Some(Picked {
+        bytes: include_bytes!("../native-backend/cc-monitor-panorama"),
+        build_id: None,
+    })
+}
+
+/// 没内嵌那一份时的同名壳。
+#[cfg(not(embedded_native_panorama))]
+fn native_panorama() -> Option<Picked> {
+    None
+}
+
 fn musl_backend(arch: Arch) -> Option<Picked> {
     #[cfg(embedded_backends)]
     {
@@ -344,20 +368,20 @@ fn native_key() -> Option<Key> {
 }
 
 /// 🔴 **全仓唯一的取字节入口**：只查槽，不判承诺（承诺在 [`choose`]）。那一格没有这一版带着的字节 ⇒ `None`。
+///
+/// 双来源格（头注「同一格两份来源」）：Linux 构建上，本机原生那两槽也落在 (Linux, 这台的 arch)。**两类字节的次序
+/// 各照各自今天的**：后端 musl 先（`start_local_backend` 从前就是「宿主那份 musl 优先、产物自带的兜底」）；全景原生先
+/// （RM1f 的 `local_panorama_binary` 就是「原生 → 否则 musl」）。两份哪份该留是 `96 §7.3` 第一条，本表不替它裁。
 pub(crate) fn pick(product: Product, key: Key) -> Option<Picked> {
-    let native = || {
-        if native_key() == Some(key) {
-            native_backend()
-        } else {
-            None
-        }
-    };
+    let mine = native_key() == Some(key);
+    let native_b = || if mine { native_backend() } else { None };
+    let native_p = || if mine { native_panorama() } else { None };
     match (product, key.os) {
-        // 唯一的双来源格（头注「同一格两份来源」）：Linux 构建上本机原生那份也落在这里。musl 先 —— 今天的次序。
-        (Product::Backend, Os::Linux) => musl_backend(key.arch).or_else(native),
-        (Product::Backend, Os::Windows) => native(),
-        (Product::Panorama, Os::Linux) => musl_panorama(key.arch),
-        (Product::Backend, Os::Mac) | (Product::Panorama, Os::Windows | Os::Mac) => None,
+        (Product::Backend, Os::Linux) => musl_backend(key.arch).or_else(native_b),
+        (Product::Backend, Os::Windows) => native_b(),
+        (Product::Panorama, Os::Linux) => native_p().or_else(|| musl_panorama(key.arch)),
+        (Product::Panorama, Os::Windows) => native_p(),
+        (Product::Backend | Product::Panorama, Os::Mac) => None,
     }
 }
 

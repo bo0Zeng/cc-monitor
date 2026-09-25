@@ -1500,6 +1500,8 @@ fn claims() -> Vec<Claim> {
     const PROFILE_INSTALLER: &str = include_str!("../../src/bridge/src/profile_installer.rs");
     const MCP: &str = include_str!("../../src/bridge/src/mcp.rs");
     const CC_BUS_DEPLOY: &str = include_str!("../../src/bridge/src/cc_bus_deploy.rs");
+    // 〔AS2 · 第四波 4B〕skill「装到这台」的家。
+    const SKILL_INSTALL: &str = include_str!("../../src/bridge/src/skill_install.rs");
     const ACCT_ISO_DEPLOY: &str = include_str!("../../src/bridge/src/acct_iso_deploy.rs");
     let sftp = || ImplHome {
         addr: "sftp.rs",
@@ -1593,6 +1595,20 @@ fn claims() -> Vec<Claim> {
                 // 并因此被 rustfmt 折成多行。
                 definition: "pub async fn remove_project_mcp_server(\n    origin: Origin,\n    project_dir: String,\n    name: String,\n) -> Result<(), String> {",
             }),
+        },
+        // 〔AS2 · 第四波 4B · V113〕资产目录里「装到这台」的 skill：装口是 `skill_install_apply`（经那台后端 `files-put`）；
+        //   **没有卸口**（`uninstall: None`，负向扫描守着：这个家里长出一个 `uninstall… / remove… / strip… / purge…` 就红）。
+        Claim {
+            tool: "skill-install",
+            home: Some(ImplHome {
+                addr: "skill_install.rs",
+                text: SKILL_INSTALL,
+            }),
+            install: Some(ImplSite {
+                addr: "skill_install.rs::skill_install_apply",
+                definition: "pub async fn skill_install_apply(\n    to: Origin,\n    name: String,\n    source: Vec<SkillFile>,\n    target: Vec<SkillTargetText>,\n    take: Vec<String>,\n    overwrite: Vec<String>,\n) -> Result<SkillInstallApplied, String> {",
+            }),
+            uninstall: None,
         },
         Claim {
             tool: "posix-rc-aliases",

@@ -7,8 +7,10 @@
  * /`unresolved_calls`…）。这些类型**照抄 core 的 snake_case**，本模块局部不与项目 camelCase
  * 惯例统一（手册推荐做法，省一层 DTO 样板）。
  *
- * 唯一例外：`PanoramaStatus` 是 cc-monitor 侧新建的 DTO（`src/bridge/src/panorama.rs`），
- * 带 `#[serde(rename_all="camelCase")]` → 这里用 **camelCase**（`indexedAt`）。
+ * 唯一例外：`PanoramaStatus` 是 cc-monitor 侧新建的 DTO（今天住全景小程序 `src/panorama-engine/main.rs`
+ * 的 `status` 那一臂，逐字沿用当初 monitor 那份 camelCase；〔RM1f〕monitor 那份 Rust 源随内嵌引擎删了、
+ * 生成物 `src/generated/PanoramaStatus.ts` 跟着删了 ⇒ 这里是它唯一的 TS 住址，
+ * 小程序判据 `the_status_shape_matches_the_monitor_dto` 读本文件对拍）→ 这里用 **camelCase**（`indexedAt`）。
  */
 
 // 枚举都序列化为字符串（externally-tagged 单元变体）

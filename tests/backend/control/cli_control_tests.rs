@@ -236,8 +236,9 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
     /// 〔B2 · 条 66〕`exit-policy-read` 进来，**同一形**（无入参、有输出字段 `state` / `killOnExit` …）：
     /// 它是「那台机器上的值是什么」那一问，挂住等 EOF 就是把一句问话变成一次卡死。
     /// 同族 `exit-policy-set` 要输入（`killOnExit`），不在表里。
+    /// 〔C4c · 第四波 4B〕`accounts-list` **出了这张表**：它从此收一格 `agent`（这次起会话的是哪一家，
+    /// 并 apikey 表要看它）⇒ 要输入。
     const NO_INPUT_TODAY: &[&str] = &[
-        "accounts-list",
         "accounts-sessions",
         "bus-list",
         "bus-state",
@@ -252,6 +253,8 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "ping",
         // 〔RM1b · 第四波〕问这台机器登记了哪些插件市场：无入参，输出 `lines`。
         "plugins-marketplaces",
+        // 〔AS2 · 第四波 4B〕这台现扫一次资产、记进目录、回整份：无入参。
+        "assets-catalog",
     ];
     let declared: Vec<&str> = REGISTRY
         .iter()

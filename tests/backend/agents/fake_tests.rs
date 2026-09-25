@@ -214,6 +214,8 @@ fn a_brand_new_agent_is_discovered_and_announced_with_zero_general_layer_change(
     let adapter = crate::agents::Adapter {
         kind: AGENT_KIND,
         account_env: None,
+        // 〔AS2〕最小假 agent 没有资产面（它要证的是「通用层零改动」，不是资产）。
+        assets: None,
         home: home_of_announce,
     };
     let discovered = crate::agents::visible_among(std::slice::from_ref(&adapter));

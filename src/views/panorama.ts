@@ -115,8 +115,8 @@ export class PanoramaView implements OverlayHandle {
   /** 当前视图针对的仓（**那台机器上**的路径；无仓时为 null）。搜索/刷新/详情都用它。 */
   private repo: string | null = null;
   /**
-   * 〔RM1c · 第四波〕当前仓在哪台机器上。本机走进程内那几条命令，远端问那台的后端
-   * （`panorama/api.ts`）。与 `repo` 一起换（`switchRepo`）。
+   * 〔RM1c · 第四波〕当前仓在哪台机器上：问那台机器的后端（`panorama/api.ts`；〔RM1f〕本机也是，
+   * 改前本机走进程内那几条命令）。与 `repo` 一起换（`switchRepo`）。
    */
   private origin: Origin = LOCAL_ORIGIN;
   /**
@@ -381,8 +381,9 @@ export class PanoramaView implements OverlayHandle {
       // 已启用（symbols>0）：陈旧则自动重建（用户此前已 opt-in，保持新鲜属正常运行、非新
       // opt-in——避免静默展示过期图）。非陈旧直接加载。
       if (st.stale) {
-        this.showLoading("索引已陈旧，重建中…");
-        await api.index(this.at(repo));
+        const cancel = this.cancelHandle();
+        this.showLoading("索引已陈旧，重建中…", cancel.abort);
+        await api.index(this.at(repo), cancel.signal);
         if (seq !== this.loadSeq) return;
       }
       this.showLoading("加载全景…");
@@ -392,6 +393,10 @@ export class PanoramaView implements OverlayHandle {
     } catch (e) {
       if (seq !== this.loadSeq) return;
       this.hideLoading();
+      if (e instanceof api.PanoramaCancelled) {
+        this.showIndexCancelled(repo);
+        return;
+      }
       showActionFailureToast("全景加载失败", String(e));
       this.showMessage("加载失败", String(e));
     }
@@ -401,9 +406,10 @@ export class PanoramaView implements OverlayHandle {
   private async enableAndIndex(repo: string): Promise<void> {
     const seq = ++this.loadSeq;
     this.hideMessage();
-    this.showLoading("首次建立索引中…（大仓较慢，请稍候）");
+    const cancel = this.cancelHandle();
+    this.showLoading("首次建立索引中…（大仓较慢，请稍候）", cancel.abort);
     try {
-      await api.index(this.at(repo));
+      await api.index(this.at(repo), cancel.signal);
       if (seq !== this.loadSeq) return;
       this.showLoading("加载全景…");
       const ov = await api.overview(this.at(repo));
@@ -412,9 +418,37 @@ export class PanoramaView implements OverlayHandle {
     } catch (e) {
       if (seq !== this.loadSeq) return;
       this.hideLoading();
+      if (e instanceof api.PanoramaCancelled) {
+        this.showIndexCancelled(repo);
+        return;
+      }
       showActionFailureToast("建立索引失败", String(e));
       this.showMessage("建立索引失败", String(e));
     }
+  }
+
+  /**
+   * 〔RM1f〕一个撤单手柄：`abort` 给转圈旁那个「取消」按钮，`signal` 给那一问。
+   * 本机远端都经那台后端 → 小程序，都撤得掉（后端 `panorama` 是可取消档）。
+   */
+  private cancelHandle(): { abort: () => void; signal: AbortSignal } {
+    const ctrl = new AbortController();
+    return { abort: () => ctrl.abort(), signal: ctrl.signal };
+  }
+
+  /** 〔RM1f〕建索引被人撤了：那一趟在后端已经停下；给一个重新开始的按钮。 */
+  private showIndexCancelled(repo: string): void {
+    this.showMessage(
+      "已取消建立索引",
+      "那一趟已经停下，这个仓的索引没有建完。想看全景时再点一次。",
+      {
+        label: "重新建立索引",
+        onClick: (btn) => {
+          btn.disabled = true;
+          void this.enableAndIndex(repo);
+        },
+      },
+    );
   }
 
   private applyOverview(ov: Overview, repo: string): void {
@@ -494,9 +528,10 @@ export class PanoramaView implements OverlayHandle {
     const repo = this.repo;
     const seq = ++this.loadSeq;
     this.refreshBtn.disabled = true;
-    this.showLoading("重建索引中…");
+    const cancel = this.cancelHandle();
+    this.showLoading("重建索引中…", cancel.abort);
     try {
-      await api.reindex(this.at(repo));
+      await api.reindex(this.at(repo), cancel.signal);
       if (seq !== this.loadSeq) return;
       this.showLoading("加载全景…");
       const ov = await api.overview(this.at(repo));
@@ -505,6 +540,10 @@ export class PanoramaView implements OverlayHandle {
     } catch (e) {
       if (seq !== this.loadSeq) return;
       this.hideLoading();
+      if (e instanceof api.PanoramaCancelled) {
+        this.showIndexCancelled(repo);
+        return;
+      }
       showActionFailureToast("重建索引失败", String(e));
     } finally {
       if (seq === this.loadSeq) this.refreshBtn.disabled = false;
@@ -705,7 +744,8 @@ export class PanoramaView implements OverlayHandle {
     this.highlightBarEl.style.display = "";
   }
 
-  private showLoading(text: string): void {
+  /** 〔RM1f〕`onCancel` 给了 ⇒ 转圈下面多一个「取消」按钮（点一下就撤、按钮随即变灰）。 */
+  private showLoading(text: string, onCancel?: () => void): void {
     this.loadingEl.replaceChildren();
     const spin = document.createElement("div");
     spin.className = "panorama-spinner";
@@ -714,6 +754,18 @@ export class PanoramaView implements OverlayHandle {
     label.className = "panorama-loading-text";
     label.textContent = text;
     this.loadingEl.appendChild(label);
+    if (onCancel) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "panorama-btn";
+      btn.textContent = "取消";
+      btn.addEventListener("click", () => {
+        btn.disabled = true;
+        label.textContent = "正在取消…";
+        onCancel();
+      });
+      this.loadingEl.appendChild(btn);
+    }
     this.loadingEl.style.display = "";
   }
   private hideLoading(): void {

@@ -176,6 +176,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "history-tail"
                 | "accounts-list"
                 | "accounts-sessions"
+                | "accounts-trust" // 〔C4c〕信任预检：读 manifest ＋ `.claude.json`，同档
                 // 〔B2 · 条 66〕「退出行为」那两条：同步文件 I/O（读一份小文件 / 原子写一份），
                 // 不许占 tokio worker。开跑之后打不断 ⇒ `cancel` 命中回 `not_cancellable`。
                 | "exit-policy-read"
@@ -183,8 +184,8 @@ fn every_registered_command_declares_its_run_kind() {
                 // 〔RM1b · 第四波〕功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
                 | "plugins-marketplaces"
                 | "tasks-list"
-                // 〔RM1c · 第四波〕代码全景：起一个进程、等它退出（建索引可到分钟级）。
-                | "panorama"
+                // 〔RM1f〕`panorama` 不在这里了：起进程改成异步等（`plugin::invoke::run_abortable`），
+                //   `cancel` 打得断 ⇒ `Run::Async`。〔墓碑 —— RM1c 那一版在这一档：「起一个进程、等它退出」。〕
                 // 〔RM1a · 第四波〕账号层那份凭据文件的两条：同步文件 I/O（读一份小文件 / 原子写一份）。
                 | "apikey-key-set"
                 | "apikey-read"
@@ -195,6 +196,12 @@ fn every_registered_command_declares_its_run_kind() {
                 | "footprint-probe"
                 // 〔AS1 · 第四波 4B〕MCP 同步的判定：对可疑路径逐条 stat、在 PATH 上找名字（同步文件 I/O）。
                 | "mcp-sync-plan"
+                // 〔AS2 · 第四波 4B〕资产目录两条：扫 skill 目录 / 读项目 `.mcp.json` ＋ 原子写目录文件，同步文件 I/O。
+                | "assets-catalog"
+                | "assets-catalog-merge"
+                // 〔AS2〕skill「装到这台」两条：走 skill 目录、读文件原文、stat 可疑路径（同步文件 I/O）。
+                | "skill-read"
+                | "skill-install-plan"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_));
         assert_eq!(
@@ -237,6 +244,8 @@ fn every_registered_command_declares_its_run_kind() {
         "link-open",
         "ping",
         "resolve",
+        // 〔AS2 · 第四波 4B〕资产目录的同步：真异步（拨号 / 等远端 capture），在 await 点可取消。
+        "assets-sync",
         "bus-list",
         "bus-send",
         "bus-kill",
@@ -273,6 +282,7 @@ fn every_registered_command_declares_its_run_kind() {
         "history-tail",
         "accounts-list",
         "accounts-sessions",
+        "accounts-trust", // 〔C4c〕
         "exit-policy-read",
         "exit-policy-set",
         "plugins-marketplaces",
@@ -283,6 +293,11 @@ fn every_registered_command_declares_its_run_kind() {
         "relay-ensure",
         "relay-status",
         "footprint-probe",
+        // 〔AS2 · 第四波 4B〕资产目录两条（阻塞档，理由在上面 `expected_blocking`）。
+        "assets-catalog",
+        "assets-catalog-merge",
+        "skill-read",
+        "skill-install-plan",
         // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话（阻塞档，理由在上面 `expected_blocking`）。
         "files-peek",
         "files-put",

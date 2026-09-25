@@ -53,8 +53,7 @@ src/bridge/
     ├── launch.rs      # B14-F41 终端拉起单一入口（wt.exe→PowerShell）+ 远端 ssh 拉起（本地 resume 与 F41/F51/F52/F53 共用）
     ├── search.rs      # issue #6 历史全文搜索：后台建内存索引 + substring 查询（含远端结果合并）
     ├── mcp.rs         # F87 MCP 管理：跨 scope 宽容读 / 只写项目 .mcp.json（SS-14 读写分界）
-    ├── panorama.rs    # Batch15 code-picture 代码全景后端：per-repo Engine 池（索引落 monitor 数据目录）+ 全景查询/批注命令族
-    ├── panorama_call.rs # 〔RM1c〕远端仓的全景：按 origin 问那台后端的 `panorama` 帧命令（后端经插件口起独立全景小程序）
+    ├── panorama_call.rs # 〔RM1c · RM1f〕全景（本机远端同一条）：按 origin 问那台后端的 `panorama` 帧命令（后端经插件口起独立全景小程序）· 撤票
     ├── ssh_source.rs  # russh 远端数据源：连接/鉴权/指纹校验 + 后端流帧解析 + 版本协商 + ssh-config 导入 + 测试连接 + B14-F59 daemonless 降级读取(纯 tail 轮询)
     ├── remote_history.rs # 远端历史浏览 + 远端全文搜索查询（一次性 exec 后端子命令，多机 fan-out）
     ├── sftp.rs        # SS-D 统一 SFTP 写层：后端自动部署 (#29) + 远端历史删除 (F11) + ccm 安装 (F10)
@@ -91,7 +90,6 @@ src/bridge/
 | **launch.rs** (B14-F41) | 终端拉起单一入口：`launch_powershell_window`（从 `history.rs::resume_impl` 抽出，wt.exe Plan A → `CREATE_NEW_CONSOLE` Plan B，`-NoExit -EncodedCommand` 不带 `-NoProfile`）+ `build_remote_ssh_ps_command`（`ssh -t … "bash -lic '<cmd>'"`）+ `launch_remote_terminal`；本地 resume 与远端族 F41 resume / F51 attach / F52 tmux / F53 launcher 共用此单一入口；命令为 async（`spawn_blocking` 起窗）。三层引号/注入防线各自独立 | `launch_powershell_window() / build_remote_ssh_ps_command() / launch_remote_terminal()` + IPC `launch_remote_terminal` |
 | **search.rs** (issue #6) | 历史全文搜索：后台线程扫 projects/**/*.jsonl 建内存索引（按 session 分组 + 原文/小写副本两份）；默认搜 user/assistant 文本，`include_tools` 附加 tool_use/result/thinking；CLI 注入噪声按 INVARIANT § 20 剥掉；两级匹配（lc.contains 粗筛 + find_ci 精定位 snippet）+ 文本截断封顶。`Arc<SearchIndex>` State | IPC `search_history / get_search_index_status / rebuild_search_index` |
 | **mcp.rs** (F87 #50+#51 / F89a-b #远端MCP) | MCP 管理（SS-14 读写分界）：**读**跨 scope 宽容展示（本机用户/local/项目 + **远端** user scope via SSH-exec cat / **远端项目** `.mcp.json` via SFTP）；**写只**项目 `.mcp.json`——本机 `mcp_json_path` 硬编码 / **远端** `is_safe_remote_mcp_json` 守卫经 `sftp::upload_atomic`（SS-14：绝不写 `~/.claude.json`/`settings.json`，本机远端皆然；SS-G 用户显式触发，见 INVARIANTS §1 例外 #5） | `read_mcp_servers / list_mcp_project_dirs / write_project_mcp_server / remove_project_mcp_server`（〔步 12·C〕后三条**都吃 `origin`，两侧各一条**）` / read_remote_mcp_servers / read_remote_project_mcp / list_remote_mcp_origins` —— 远端那三个写函数（`write_remote_mcp_server` / `remove_remote_mcp_server` / `list_remote_mcp_project_dirs`）**已不是命令**，是上面那三条的远端分支 |
-| **panorama.rs** (Batch15-P1) | code-picture 代码全景后端：引 vendored `code-picture-core` 的 `Engine`（不走 MCP，直调库）；**per-repo Engine 模块-static 池**（非 Tauri State、不进 STATE-MATRIX，照 sftp_pool），命令 async + spawn_blocking + `Mutex` 独占（Engine 非 Sync）；索引仅用户显式「建立索引」才建，落 monitor 数据目录 `panorama/`（不写用户仓） | `panorama_{index,reindex,status,overview,node,subgraph,callers,callees,impact,search,docs_for,touching,symbols_in_file,drift}` + 批注/doc-link 命令 |
 | **sftp_pool.rs** (B14-F47/F49) | SFTP 文件面板后端:per-host utility 连接池(与后端流分离)+ 浏览/传输/写命令 + 小文件编辑(F49:`decode_editable` 三防护 + `sftp_read_text_for_edit`〔散文墓碑〕/`sftp_write_text`);防误伤守卫**已搬走** —— 见下面 `claude_data_fence.rs` 那一行(池子这边只剩一行 `pub use`) | `with_sftp() / sftp_list_dir / sftp_download / sftp_upload / ...`(11 命令) |
 | **claude_data_fence.rs** (步 H2) | **哪些路径是 Claude 自己的数据,不许我们写** —— 一个判定 ＋ 它的拒绝,别无他物(零 IO / 零 async ⇒ 「被挡住」在一台没有连接的机器上判得动)。`INVARIANTS §1` 底下 **F47**(SFTP 面板 / 原生文件窗口)与 **F03b**(收件箱编辑的纵深②)两段澄清共用它这**一个**判定;〔用户 2026-09-21 逐字裁「拆」,`设计/99 §2 Q2`〕从 `sftp_pool.rs` 搬出,**判定的射程一个字没动**。⚠ 方向相反的那一道从前是 `sftp.rs` 里的 `is_safe_remote_jsonl`〔散文墓碑〕(〔RW1 · 第四波 09-24〕随 F11 改经远端后端删走了,今天住后端 `session_file_for_delete`;下面是原话:「只许删 projects 下的 jsonl」),**两道不许互相替代** | `is_protected_claude_data_path() / guard_write()` |
 | **ssh_source.rs** (issue #15) | russh 远端数据源：`connect_session` 全套 host-key 指纹校验 + publickey/agent 鉴权；`run` 长连接 exec 后端把流帧（`InboundFrame`）的内容那一半交 `LineIntake`（〔CF1〕本机那条流 `consume_local` 用同一个）；hello 带 `build_id` 做版本协商（#33）；`Overflow` 帧 → remote-health 提示（#32）；ssh-config 导入 + 测试连接。**B14-F56 跳板**：`RemoteConfig.jump`（另一主机 label）有值时 `connect_via_jump`——connect_session(跳板)→ `channel_open_direct_tcpip` → `connect_stream` 跑目标 SSH（隧道上验目标指纹）；跳板 session 存 `jump_holders` 保活；fail-closed（环/查无/连不上 → Err）。**B14-F59 daemonless 降级**：`RemoteConfig.daemonless=true`（per-host 开关）时 `run()` 顶层二选一走 `daemonless_stream_loop`（不连后端，持久会话上 `exec_on_session` 跑 `find`+`tail -c +offset` 轮询读 jsonl，`drain_complete_lines`/`plan_file_read` 复刻 watcher 增量语义、复用 `flush_lines` 下游），default-false 时后端路径 `stream_loop` 一行不动；能力子集经 `degraded` remote-health 如实提示 | `run() / stream_loop() / daemonless_stream_loop() / connect_session() / connect_via_jump() / connect_and_exec_cmd() / parse_frame()` + IPC `list_ssh_host_aliases / resolve_ssh_host / test_remote_connection` |
@@ -149,25 +147,9 @@ src/bridge/
 | `push_public_key` (B14-F50) | `{ cfg, pubKeyPath? }` | `PushResult {outcome,pubPath}` | 公钥推送 authorized_keys;pubKeyPath 空则取 `{keyPath}.pub`;`sanitize_public_key`(单行防注入)+ `grep -qxF` 去重,返回 added/already |
 | `list_remote_tmux` (B14-F51) | `{ origin }` | `TmuxSession[] \| null` | tab 右键 attach 反查;`command -v tmux` 无 → `null`(隐藏 attach);否则 `tmux ls -F`(真 TAB)解析成会话列表;走 exec 通道 |
 | `capture_remote_pane` (B14-F60) | `{ origin, target }` | `String` | tab 右键「预览远端 tmux 画面」;`tmux capture-pane -p -t <会话>` 抓当前屏只读快照;`command -v tmux` 门控 + `NO_PANE` 哨兵(会话不存在),`classify_capture_output` 纯函数判;走 exec 通道 target 经 `shell_quote` |
-| `panorama_call` (RM1c) | `{ origin, op, repo, args }` | `unknown`（形状随 op，与本机那几条同形） | 远端仓的全景：按 origin 问那台机器的后端 `panorama` |
+| `panorama_call` (RM1c · RM1f) | `{ origin, op, repo, args, ticket? }` | `unknown`（形状随 op） | 全景的每一问（本机远端同一条，RM1f 起本机也是）：按 origin 问那台机器的后端 `panorama`（后端经插件口起全景小程序）；那台缺 / 旧 ⇒ 远端推一份、本机放一份，再问一次；带 `ticket` 的那一问能被 `panorama_cancel` 撤掉。〔RM1f：进程内那十七条 `panorama_*` 本机命令随内嵌引擎删了〕 |
 | `panorama_edit` (RM1d) | `{ origin, repo, op, args }` | `unknown`（id / 在不在 / `null`，随 op） | 批注 / 文档关联的写（本机远端同一条，V110「引擎只算、文件管理来写」）：`op` ∈ 人写 / 提议 / 批准 / 删批注 · 写 / 删文档关联；那台机器算出新内容，落盘经那台机器后端的 `files-put`（带 CAS）/ `files-delete` |
-| `panorama_index` (Batch15-P1) | `{ repo }` | `IndexStats` | 用户显式点「建立索引」：tree-sitter 全仓扫描，落 monitor 数据目录 `panorama/` |
-| `panorama_reindex` (Batch15) | `{ repo }` | `IndexStats` | 「重新索引」按钮 |
-| `panorama_status` (Batch15) | `{ repo }` | `PanoramaStatus` | 打开全景视图查索引就绪 / `indexedAt` |
-| `panorama_overview` (Batch15) | `{ repo, budget? }` | `Overview` | 画全景地图（子系统聚类 + 脊柱文件 + 入口点） |
-| `panorama_node` (Batch15) | `{ repo, symbol }` | `NodeView \| null` | 点节点看单符号详情（+ 直接 callers/callees + 关联文档/批注） |
-| `panorama_subgraph` (Batch15) | `{ repo, symbol, depth }` | `SubGraph` | 以某符号为心的双向邻域子图 |
-| `panorama_callers` (Batch15) | `{ repo, symbol, depth }` | `Edge[]` | 谁调用该符号 |
-| `panorama_callees` (Batch15) | `{ repo, symbol, depth }` | `Edge[]` | 该符号调用谁 |
-| `panorama_impact` (Batch15) | `{ repo, symbol }` | `ImpactSet` | 改该符号的波及面 |
-| `panorama_search` (Batch15) | `{ repo, query, limit? }` | `Symbol[]` | 符号搜索框（默认 30 条） |
-| `panorama_docs_for` (Batch15) | `{ repo, symbol }` | `DocLink[]` | 符号关联文档 |
-| `panorama_touching` (Batch15-P3/F70) | `{ repo, files }` | `String[]` (符号 id) | 从 jsonl Edit/Write 拿「本轮改了哪些文件」→ 全景图高亮命中节点 |
-| `panorama_symbols_in_file` (Batch15) | `{ repo, file }` | `Symbol[]` | 某文件内符号列表 |
-| `panorama_drift` (Batch15) | `{ repo }` | `DriftItem[]` | 文档 ↔ 代码漂移对账 |
-| `panorama_list_annotations` (Batch15) | `{ repo }` | `Annotation[]` | 列全部批注 |
-| `panorama_diagram_kinds` (PN1b) | — | `DiagramKindInfo[]` | 图种注册表原样透出（id · 人读名 · 认哪些参数 · 形状），选图下拉从它现读 |
-| `panorama_diagram` (PN1b) | `{ repo, kind, request }` | `{ diagram, mermaid }` | 画一张图：上游 `Diagram`（按形状分变体 ＋ 公共诚实信号）原样透出，另附 Mermaid 渲染；认不出的 kind 报错 |
+| `panorama_cancel` (RM1f) | `{ ticket }` | `boolean`（那张票此刻在不在飞） | 撤掉一问在飞的全景（「取消建立索引」）：那一问被丢 ⇒ 补发 `cancel` ⇒ 后端杀掉小程序那一组子进程 |
 | `start_forward` (B14-F58) | `{ spec: {origin,localPort,remoteHost,remotePort} }` | `String`(id) | 启动本地端口转发:校验→connect_session→bind 127.0.0.1:localPort→accept 循环隧道 direct-tcpip;返回转发 id |
 | `stop_forward` (B14-F58) | `{ id }` | `()` | 停止转发:abort accept 循环 + drop session 关连接 |
 | `list_forwards` (B14-F58) | — | `ForwardStatus[]` | 列所有转发(id/spec/state/connCount) |
