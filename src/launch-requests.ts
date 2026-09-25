@@ -173,7 +173,8 @@ export function planLauncher(
  * 只留一句 `void cwd;`，`tsc` 与 `npm test` **705 全绿**（改造前同一变异红 5 条，
  * 因为那时返回类型让这次调用在**类型层**是承重的；改成 `void` 恰恰把类型层强制降级成了
  * 一句谁都能顺手删的裸语句）。而它想验的东西**别处已经在验**：
- * `launch-render-cli.test.ts` 有 `ctxOf({ transport: { kind: "local" } })` → `buildLaunchPlan` 的用例。
+ * 当时 `launch-render-cli.test.ts` 有 `ctxOf({ transport: { kind: "local" } })` → `buildLaunchPlan` 的用例
+ * （〔LR1〕那份套件随 TS 渲染器删了；`transport:local` 下 `buildLaunchPlan` 照走，由 `tests/launch-requests.vitest.ts` 管）。
  * 生产侧它纯属浪费，且是 **fail-closed 风险**——将来任何对 `transport:local` 抛异常的新维度，
  * 都会让本地 resume 彻底拉不起来，而收益是零。
  *

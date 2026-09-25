@@ -96,9 +96,9 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   //    （形状闸逐格 · `""` 是坏数据不是「没有」· attach 不带 · cliFlags 恒 null ·
   //     两条顺序不变量 · buildLaunchPlan 数组顺序 · renderFallback 逐字节 · applies 两态）。
   ["test:launch-dimensions", "tests/launch-dimensions.test.ts", 38],
-  // `K-R53` +1（`KR53D3`：「没探出来」与「真的没装」不许给同一句降级理由）；
-  // 🔴 〔`设计/80 §8` 步 1 · 2026-09-23〕**27 → 30**：带令牌 ⇒ 诚实放弃 CLI ＋ 对照组 ＋ attach 豁免。
-  ["test:launch-render-cli", "tests/launch-render-cli.test.ts", 30],
+  // 🔴 〔LR1 · U8c-3〕原先这里有 `["test:launch-render-cli", "tests/launch-render-cli.test.ts", 30]`。
+  // TS 那份 `ccm …` 调用行渲染器删了 ⇒ 套件整删（**被测对象没了**）；它测的行为逐条由
+  // Rust `ccm_invocation_tests.rs` 与入库夹具 `cli-golden.json` 接着（对照见 `调研/第四波记录/LR1.md`）。
 ];
 
 /**
@@ -116,7 +116,10 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
 // **往上棘**：这条是地板，不棘它等于让「加了 13 条、明天删掉 13 条」在它眼里完全同形
 // —— 地板在「变少」方向本来就是瞎的，棘到现打值才买得到东西。
 // 复算命令：遍历 `tests/**/*.test.ts` 数行首 `test(`（本文件 `allTestTsFiles` 用的同一把尺子）。
-const TOTAL_FLOOR = 250;
+// 🔴 〔LR1 · U8c-3〕**250 → 221**，往下走的第二次，理由同上一次（**被测对象没了**）：
+// `tests/launch-render-cli.test.ts` 整份删除（30 条，TS 那份 `ccm …` 渲染器删了）；
+// 删前现打 251（地板比现打落后 1），删后现打 221 ⇒ 棘到现打值。
+const TOTAL_FLOOR = 221;
 
 /** 判定一条 npm 命令是不是「用 tsx 跑某个 `.test.ts`」。`tsx …` 与 `npx tsx …` 都算。 */
 const TSX_SUITE_CMD = /(^|\s)(npx\s+)?tsx\s+(--\S+\s+)*(\S+\.test\.ts)\s*$/;
