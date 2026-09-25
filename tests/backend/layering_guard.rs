@@ -82,29 +82,29 @@ mod tests {
     /// ⚠ **类型也要登记，不只是函数**：`Done` / `NotRun` 出现在调用方的签名与 `match` 里，
     /// 它们和函数一样是接口面。漏登记等于「接口只算函数」——那是个会腐的口径。
     const ALLOWED_INTO_PLUGIN: &[(&str, &str, &str)] = &[
-        // 〔`A3` 第二波〕账号层经本口起 `cc-acct-iso shellinit`（`accounts/iso.rs`）。
+        // 〔`A3` 第二波〕账号域经本口起 `cc-acct-iso shellinit`（`accounts/iso.rs`）。
         // 四条边与 `control` 那几条同一套形状；码 → 语义的映射留在调用方（`shellinit_outcome`）。
         (
             "accounts",
             "crate::plugin::discover::find",
             "① 找它：`$HOME/.local/bin/cc-acct-iso` 先、`PATH` 后（与远端 `command -v` 前置 \
-             `~/.local/bin` 同一个顺序），找不到那句话的尾巴由账号层给",
+             `~/.local/bin` 同一个顺序），找不到那句话的尾巴由账号域给",
         ),
         (
             "accounts",
             "crate::plugin::invoke::run",
             "③ 传 argv 起它：`cc-acct-iso shellinit`（只读，全是 `printf`），期限走 `timeout` 前缀、\
-             环境白名单 —— 账号层不另开一处 `Command::new`",
+             环境白名单 —— 账号域不另开一处 `Command::new`",
         ),
         (
             "accounts",
             "crate::plugin::invoke::Done",
-            "④ 骨架的返回类型：账号层自己判「只有码 0 才算产出了片段」（码的语义留在调用方）",
+            "④ 骨架的返回类型：账号域自己判「只有码 0 才算产出了片段」（码的语义留在调用方）",
         ),
         (
             "accounts",
             "crate::plugin::invoke::NotRun",
-            "「根本没跑起来」那一类：账号层要分得出它与「跑了但失败」（两个不同的失败码）",
+            "「根本没跑起来」那一类：账号域要分得出它与「跑了但失败」（两个不同的失败码）",
         ),
         (
             "control",
@@ -492,7 +492,7 @@ mod tests {
     /// 形状照 [`ALLOWED_OBSERVE_TO_CONTROL`]：不是禁绝（调用口本来就是给人用的），
     /// 是**让每一条边被人看见一次**。
     ///
-    /// 〔`A3` 第二波〕扫描面加了 **`accounts/`**：账号层从这一拍起经本口起 `cc-acct-iso`
+    /// 〔`A3` 第二波〕扫描面加了 **`accounts/`**：账号域从这一拍起经本口起 `cc-acct-iso`
     /// （`accounts/iso.rs`），不把它纳进来，那几条边就落在盲区里、本条照绿。
     ///
     /// ⚠ 扫的是 **`control/` 与 `observe/` 两层**，不只是 control ——
@@ -705,11 +705,11 @@ mod tests {
     const RELAY_EXPORTS: &[(&str, &str)] = &[
         (
             "listen::host",
-            "〔RL1 · V107〕流模式常驻后端**进程内**起中转的层 1 入口；层 2 那只手由 `accounts::upstream::host_relay` 递进来",
+            "〔RL1 · V107〕流模式常驻后端**进程内**起中转的入口；上游选择那只手由 `accounts::upstream::host_relay` 递进来",
         ),
         (
             "listen::run",
-            "`--relay` 那一臂的层 1 入口；层 2 那只手由 `accounts::upstream::run_relay` 递进来",
+            "`--relay` 那一臂的中转入口；上游选择那只手由 `accounts::upstream::run_relay` 递进来",
         ),
         (
             "machine::answer_ensure",
@@ -721,11 +721,11 @@ mod tests {
         ),
         (
             "route::segment_is_safe",
-            "层 2 装表判账号 id 与层 1 切键是**同一个谓词**（`route.rs` 头注）",
+            "上游选择装表判账号 id 与中转切键是**同一个谓词**（`route.rs` 头注）",
         ),
         (
             "upstream::Base",
-            "层 1 的传输原语：一行的上游是什么，层 2 解析它、焊进行里、原样交回",
+            "中转的传输原语：一行的上游是什么，上游选择解析它、焊进行里、原样交回",
         ),
     ];
 
@@ -791,7 +791,7 @@ mod tests {
     /// 中转对外**只有一个口**：`relay/mod.rs` 里那一行 `pub(crate) use server::run;`。
     /// 谁绕过它去引 `crate::relay::server` / `crate::relay::upstream`，
     /// 中转的内部结构就变成了公共契约 —— 之后 `upstream.rs` 想换个形状都得先问一圈。
-    /// （路由表是账号层的，住 `accounts::upstream::table`，不在 `relay/` 里。）
+    /// （路由表是上游选择的，住 `accounts::upstream::table`，不在 `relay/` 里。）
     ///
     /// # ⚠ 这一支够不到哪儿（如实登记，别读成「全体没有」）
     ///

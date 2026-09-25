@@ -326,7 +326,7 @@ mod tests {
         //   子命令 ＋21：C1 只读查询面八条上帧面（`ch:history-*` 六条 ＋ `ch:accounts-*` 两条，
         //   各自自动派生的 CLI 面 `--history-*` / `--accounts-*`）· SE1 `--list-user-inputs` ·
         //   A3 `--acct-iso-status` / `--acct-iso-shellinit` · BS1b `--bus-spawn` ＋ `ch:bus-spawn`。
-        //   另有**行为**变更、指纹看不见：R2 让中转层 1 的传输失败从 502/无响应改成 504 ＋ 一句人话。
+        //   另有**行为**变更、指纹看不见：R2 让中转的传输失败从 502/无响应改成 504 ＋ 一句人话。
         // ⚠ 失效形状同 p2m…p2o：旧后端 CLI 面 `unknown argument`、帧面 `Unsupported`（C1 那八条 ⇒ monitor 明说
         //   「后端还不认」，**不会**悄悄回落拨号）；止于「判 stale 只看 build_id」。
         // 🔴 上面各行快照一个字节没改。

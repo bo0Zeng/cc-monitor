@@ -15,7 +15,7 @@
 //!   · `tests/backend/build_id_guard.rs`（真身份住址的逐条核对）
 //! **别在第四处写它的住址。**
 
-pub mod accounts; // 账号层（apikey 端点改写）：`resolve` 那张决策表 ＋ 表 ＋ 凭据 ＋ 热重载。**不是中转**，不住 relay/
+pub mod accounts; // 账号域：上游选择（`resolve` 那张决策表 ＋ 表 ＋ 凭据 ＋ 热重载）＋ `iso`。**不是中转**，不住 relay/
 #[cfg(test)]
 #[path = "../../tests/backend/agent_boundary_guard.rs"]
 mod agent_boundary_guard; // S1：通用层不许知道任何 agent 的名字与文件格式（整体 #[cfg(test)]）
@@ -373,7 +373,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p2p-readface-outline-acctiso-spawn-504**（2026-09-24，第二波合并那一拍）：
 /// 子命令 ＋21 —— C1 只读查询面八条上帧面（及其自动派生的 CLI 面）· SE1 `--list-user-inputs` ·
 /// A3 `--acct-iso-status` / `--acct-iso-shellinit` · BS1b `bus-spawn`（两个命令面）；
-/// ＋ 一处**行为**变更（R2：中转层 1 传输失败回 504 并说清卡在哪一步）。
+/// ＋ 一处**行为**变更（R2：中转传输失败回 504 并说清卡在哪一步）。
 /// ★ re-embed 归发版那一拍（同 p2d…p2o）。
 ///
 /// ★★★ **p2q-no-ccm-self**（2026-09-24，第二波 MC1+AL1 合并那一拍）：**子命令集一个没变，是行为变了**
@@ -383,7 +383,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★ re-embed 归发版那一拍。
 ///
 /// ★★★ **p2r-apikey-naming**（2026-09-24，第三波 R3 合并那一拍）：**子命令集一个没变，是行为变了** ——
-/// 账号层读的凭据文件改叫 `apikey-credentials.json`、环境变量改叫 `CCM_APIKEY_CREDENTIALS` /
+/// 上游选择读的凭据文件改叫 `apikey-credentials.json`、环境变量改叫 `CCM_APIKEY_CREDENTIALS` /
 /// `CCM_AGENT_UPSTREAM_CLAUDE_CODE`（旧名逐条登记在 `tests/naming/account-vs-relay-naming.vitest.ts` 那张表里，
 /// 这里**刻意不复写**，否则那条判据当场红）。用户裁「不要把账号和中转混为一谈」，不留兼容读旧名。
 /// ⚠ 新 monitor 递新变量名、旧后端不认 ⇒ 回头读旧文件名 ⇒ 界面配好了、请求静默 404 ⇒ **必须**让已部署的后端被判 stale。
@@ -409,7 +409,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// ⚠ 旧本机后端不认 `link-open` ⇒ 界面判「本机后端太旧」、不回落（D11）⇒ **必须**让它被判 stale。
 ///
 /// ★★★ **p2w-apikey-relay-footprint**（2026-09-24，第四波 C4a ＋ RM1a 合并那一拍）：子命令 ＋5 ——
-/// RM1a `apikey-key-set` / `apikey-read`（账号层那份凭据文件：远端由那台后端读写，第四层）· `relay-status` / `relay-ensure`
+/// RM1a `apikey-key-set` / `apikey-read`（上游选择那份凭据文件：远端由那台后端读写，第四层）· `relay-status` / `relay-ensure`
 /// （远端中转）· `footprint-probe`（足迹的这台机器那一半），两个命令面都动。
 /// ＋ 行为：后端开 `creds-core` 的 `harden`（远端要写那份文件；「后端写不了」从编译期收窄成两条判据）。C4a 不动后端。
 ///
@@ -574,12 +574,12 @@ pub const SUBCOMMANDS: &[&str] = &[
     // ⚠ 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
     "--exit-policy-read",
     "--exit-policy-set",
-    // 〔RM1a · 第四波〕账号层那份凭据文件在这台机器上的两条命令（`inbound::REGISTRY` 的 `apikey-*`）
+    // 〔RM1a · 第四波〕上游选择那份凭据文件在这台机器上的两条命令（`inbound::REGISTRY` 的 `apikey-*`）
     // 自动派生的 CLI 面。⚠ `--apikey-key-set` 的入参（含 key）**从 stdin 读**（`takes_input: true`），
     // 不收 argv —— argv 在同机任何用户的 `ps` 里都看得见。加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
     "--apikey-key-set",
     "--apikey-read",
-    // 〔RM1a · 第四波〕中转（层 1）那两条（`inbound::REGISTRY` 的 `relay-*`）自动派生的 CLI 面。
+    // 〔RM1a · 第四波〕中转那两条（`inbound::REGISTRY` 的 `relay-*`）自动派生的 CLI 面。
     // 入参只有端口，从 stdin 读。同上：加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
     "--relay-ensure",
     "--relay-status",

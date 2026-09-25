@@ -48,7 +48,7 @@ pub(crate) const MOVED: &[(&str, &str)] = &[
     ("--list-user-inputs", "history-user-inputs"),
     // 〔SR1a × SE2〕会话内查找（Ctrl+F）：同一个处境（新子命令、此前在远端逐次拨号），一起上帧面。
     ("--find-in-session", "history-find"),
-    // 〔C4c · 第四波 4B〕换号前的信任预检（主会话裁：随账号层一起上帧面）。两形合进**一条**帧命令
+    // 〔C4c · 第四波 4B〕换号前的信任预检（主会话裁：随账号域一起上帧面）。两形合进**一条**帧命令
     //   （`configDir` 缺席 / null = 账号 0）⇒ 右列 `accounts-trust` 出现两次，判据按集合比。
     ("--account-trust", "accounts-trust"),
     ("--account-trust-zero", "accounts-trust"),
@@ -67,7 +67,7 @@ pub(crate) const BORN_ON_FRAME: &[&str] = &[
 
 /// 仍然逐次拨号的一次性查询 —— `(子命令, 为什么今天还拨)`。**只有它们**过得了拨号那条路。
 ///
-/// 〔C4c · 第四波 4B〕**今天是空表**：最后两行（`--account-trust` / `--account-trust-zero`）随账号层上了帧面
+/// 〔C4c · 第四波 4B〕**今天是空表**：最后两行（`--account-trust` / `--account-trust-zero`）随账号域上了帧面
 /// （`accounts-trust`，见 [`MOVED`]）⇒ 拨号那条路（`remote_history::run_list_query`）从此一条都放不过去。
 /// 表与闸门留着：它们是「新长一条逐次拨号的查询」时第一个要表态的地方（判据按两向相等管它）。
 pub(crate) const STILL_DIALED: &[(&str, &str)] = &[

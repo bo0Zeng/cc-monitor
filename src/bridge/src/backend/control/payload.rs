@@ -712,7 +712,7 @@ pub const RELAY_PASSTHROUGH_PREFIX: &str = "/t/";
 /// 路由键走哪个前缀。**只有 [`relay_route_path_in`] 一处把它翻成字面量。**
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RouteMode {
-    /// `/s/`：代入 —— apikey 表里有这一行（账号层的事，见 [`apikey_endpoint_for`]）。
+    /// `/s/`：代入 —— apikey 表里有这一行（上游选择的事，见 [`apikey_endpoint_for`]）。
     Substitute,
     /// `/t/`：直通 —— 表里没这一行，只为过中转拿 SSE（见 [`relay_endpoint_for`]）。
     Passthrough,
@@ -938,14 +938,14 @@ pub const APIKEY_TABLE_AGENT: &str = "claude-code";
 
 /// 「这次拉起要不要**改写 apikey 端点**」的**唯一判断口**〔`§0e` 裁一：**只接 api-key 号**〕。
 ///
-/// ⚠ 〔`设计/90 §1.2` · `设计/20 §6` 命名推论〕它问的是**账号层**的事（这个号有没有第三方 key、
+/// ⚠ 〔`设计/90 §1.2` · `设计/20 §6` 命名推论〕它问的是**上游选择**的事（这个号有没有第三方 key、
 /// 要不要把端点改写掉），**不是**「要不要走中转」—— 改写恰好经由本机中转落地，但「过不过中转」
-/// 是层 1 的事，将来对每一条会话都成立（`设计/20 §3.2` 表里无行那一格的 `/t/`）。
-/// 本函数先前的名字（旧名见 `设计/90 §1.2` 那张对照表的左列）与这一行头注都用中转的名字说账号层的事，两处都改了。
+/// 是中转的事，将来对每一条会话都成立（`设计/20 §3.2` 表里无行那一格的 `/t/`）。
+/// 本函数先前的名字（旧名见 `设计/90 §1.2` 那张对照表的左列）与这一行头注都用中转的名字说上游选择的事，两处都改了。
 ///
 /// # 判据是「表里有没有这一行」，不是「这个号看起来是不是 api-key 号」
 ///
-/// 账号层的 apikey 表按 (agent, 账号 id) 索引，**没有那一行就是 404**（`KL7` 第 2 条：查不到 ⇒ 404 且
+/// 上游选择的 apikey 表按 (agent, 账号 id) 索引，**没有那一行就是 404**（`KL7` 第 2 条：查不到 ⇒ 404 且
 /// 一个字节不发上游、不许回落）。⇒ 把一个表里没有的号指向中转 = 亲手把一个能用的号弄坏。
 /// 而**行是用户配第三方 key 时才会有的** ⇒ 「表里有行」与「这是个 api-key 号」在生产上同延，
 /// 但前者是**可判定的**、后者要靠 manifest 里那个自述字段。
@@ -1073,7 +1073,7 @@ pub struct RelayAsk<'a> {
 /// 用户在 shell 或 `settings.json` 里有没有设它 —— 开关打开时，那种号的端点会被本注入盖掉（或盖不掉，
 /// 取决于 claude 自己的优先级，本仓零证据、`C7` 不许起真 claude 去量）。这是开关默认关的理由之一。
 pub fn relay_endpoint_for(ask: &RelayAsk<'_>) -> Result<Option<String>, String> {
-    // ① 账号层先答。它答 `Some` 或 `Err` 就是终局 —— 「非它不可」那一格不许被下面的「有它更好」盖掉。
+    // ① 上游选择先答。它答 `Some` 或 `Err` 就是终局 —— 「非它不可」那一格不许被下面的「有它更好」盖掉。
     if let Some(u) = apikey_endpoint_for(ask.account_id, ask.rows, ask.running, ask.sid, ask.agent)?
     {
         return Ok(Some(u));

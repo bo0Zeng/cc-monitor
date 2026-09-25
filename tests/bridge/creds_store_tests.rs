@@ -1,7 +1,7 @@
-//! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md`「账号层那份凭据文件在「这台机器」上的读写」节（本机这一份的写者就是 monitor）
+//! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md`「上游选择那份凭据文件在「这台机器」上的读写」节（本机这一份的写者就是 monitor）
 //!
 //! 核原文：该节逐字「**每台机器上的程序写者恰好一个**：monitor 所在那台是 monitor 自己」·「**路径**与那台机器上 `--relay`
-//! 进程的账号层**同一个出处**」；`apikey-key-set` 节 `baseUrl` 行逐字「给了就先过与本机那一侧**同一条**形状关」。
+//! 进程的上游选择**同一个出处**」；`apikey-key-set` 节 `baseUrl` 行逐字「给了就先过与本机那一侧**同一条**形状关」。
 //! 本族判 monitor 这个本机写者：与后端算同一份文件并显式交出去、真写盘不吃人手编内容、出生即只给本人、Base URL 形状错整次不写。
 //! 明文出口跨三棵树逐处计数那几条守 `设计/20 §6` 第 4 行逐字「明文只有一个出口」（原文点一个，判据登记两个 —— 原文比判据窄）。
 //! ⚠ 「本机写者也照后端那套写法写」是从契约推出来的，不是明文；「key 不进 `config.json`」与 TS 状态类型对拍那几条没有逐字原文。
@@ -12,7 +12,7 @@ use super::*;
 /// ★★ **跨 crate 契约对拍**：monitor 与后端算出来的是**同一份文件**。
 ///
 /// 两边各写一份路径字面量的话，漂开的那天没有任何东西会说，
-/// 而症状是「界面上配好了，账号层说没配」——查不出来的那一类。
+/// 而症状是「界面上配好了，上游选择说没配」——查不出来的那一类。
 #[test]
 fn the_two_sides_resolve_the_same_file() {
     let home = dirs::home_dir().expect("这台机器得有 home");
@@ -31,11 +31,11 @@ fn the_two_sides_resolve_the_same_file() {
     // 钉不住「两侧的**根**会不会算到两个地方去」。而那正是阻-3 的病：
     // backend 侧的根走 `resolve_home()`，它**认 `CLAUDE_CONFIG_DIR`**；
     // monitor 这一侧**刻意不跟随**（本模块头注逐字）⇒ 中转一旦继承到那个变量，
-    // 两侧读写的就是两份文件，而症状是「界面上配好了，账号层说没配」。
+    // 两侧读写的就是两份文件，而症状是「界面上配好了，上游选择说没配」。
     //
     // ⇒ 今天买断这一格的**不是**路径算法，是**把路径显式传过去**：
     // 〔RL1〕起本机后端时用 `CCM_APIKEY_CREDENTIALS` 把**本函数算出来的这一个**交给它
-    // （中转与账号层住在那个进程里，`local_backend_host::relay_host_envs`）。
+    // （中转与上游选择住在那个进程里，`local_backend_host::relay_host_envs`）。
     //
     // 🔴 `D6 阻-1` 回修（08-29）：这里先前是两条「`local_backend_host.rs` 的生产段里有没有
     // `crate::creds_store::resolve_path()` / `"CCM_APIKEY_CREDENTIALS".into()` 这两段文本」——
@@ -241,7 +241,7 @@ fn a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style() {
         "写侧给没写过 auth_style 的那一条**凭空加**了一格：{back}"
     );
 
-    // ★★ 而这份文件**装回账号层那一侧**之后，那两格真的被读了出来
+    // ★★ 而这份文件**装回上游选择那一侧**之后，那两格真的被读了出来
     //    —— 只断「JSON 里还在」的话，一个读侧的回落（比如把 `auth_style` 忽略掉）
     //    在本条上**看不见**。
     let doc = store::parse(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
@@ -1145,7 +1145,7 @@ fn a_malformed_base_url_writes_nothing_at_all() {
         assert!(e.contains("Base URL"), "报错没说是哪一格：{e}");
         assert!(!p.exists(), "{bad:?} 形状不对，文件却已经建出来了");
     }
-    // 反向对照：形状对的 http 回环照收（明文 http 是不是只许回环由账号层判，本侧不另写一份）。
+    // 反向对照：形状对的 http 回环照收（明文 http 是不是只许回环由上游选择判，本侧不另写一份）。
     write_key_at(
         &p,
         "/h/.claude-alt/acct-x",

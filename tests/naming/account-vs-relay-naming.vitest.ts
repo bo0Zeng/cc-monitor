@@ -6,10 +6,10 @@
  *
  * | 词 | 指什么 |
  * |---|---|
- * | **中转** / `relay` | 层 1：HTTP 那一层本身 —— 让流量经过它、拿到 SSE 流。`--relay` 这个进程、它的端口、往会话里注的那个回环地址、注入前缀、「中转在不在跑」都是这一层的事 |
- * | **账号** / `apikey` | 层 2：apikey 表（凭据文件）· 按 (agent, 账号) 查行 · 换 key · 每 agent 的默认上游。**不许叫中转** |
+ * | **中转** / `relay` | 中转：HTTP 那一层本身 —— 让流量经过它、拿到 SSE 流。`--relay` 这个进程、它的端口、往会话里注的那个回环地址、注入前缀、「中转在不在跑」都是这一层的事 |
+ * | **账号** / `apikey` | 上游选择：apikey 表（凭据文件）· 按 (agent, 账号) 查行 · 换 key · 每 agent 的默认上游。**不许叫中转** |
  *
- * `--relay` 这**一个进程**同时承载两层（层 2 挂在层 1 上，依赖只许层 2 → 层 1）。
+ * `--relay` 这**一个进程**同时承载两层（上游选择挂在中转上，依赖只许上游选择 → 中转）。
  * 所以「中转进程」「中转起没起来」照旧叫中转；**它里面那张表、那把 key、那份凭据文件**不叫中转。
  *
  * # 判什么（两向）
@@ -23,8 +23,8 @@
  *
  * ⇒ 登记与盘面逐条相等；收口那一拍 `pending` 为空，整张表就是「旧名全仓零命中」。
  *
- * [`RELAY_NAMES`] 是同一次现打里**确认是中转（层 1）**的名字 —— 它们**刻意不改**，
- * 逐条写了为什么是层 1。每条要求非零命中（表不腐）。
+ * [`RELAY_NAMES`] 是同一次现打里**确认是中转**的名字 —— 它们**刻意不改**，
+ * 逐条写了为什么是中转。每条要求非零命中（表不腐）。
  *
  * # 扫描面与刻意不扫的（每一格写理由）
  *
@@ -34,7 +34,7 @@
  *
  * - 把每条旧名种进一段内存里的文本，匹配器必须认出来（匹配式本身不是空转）；
  * - 扫描面必须含下面这几份锚文件（自定位：扫描器没跑到别的根上去）；
- * - [`RELAY_NAMES`] 每条非零命中 —— 同一个扫描器对层 1 的词**真的看得见**。
+ * - [`RELAY_NAMES`] 每条非零命中 —— 同一个扫描器对中转的词**真的看得见**。
  *
  * # 死值验（2026-09-24 现打，每刀：锚串恰好 1 处 · 替换串不含原串 · 备份拷回后 sha256 逐字节一致 · 恢复后本文件全绿）
  *
@@ -43,7 +43,7 @@
  * | K1 | `creds_core::store::FILE_NAME` 改回旧文件名 | 主判：「relay-credentials.json」done 却还有 1 处 |
  * | K2 | 本表 CSS 类那一行 done → pending | 主判：pending 却已零命中 |
  * | K3 | 本表 `CCM_RELAY_CREDENTIALS` 那行的新名匹配式指向不存在的名字 | 主判：新名全仓零命中 |
- * | K4 | `creds_store.rs` 头注「账号层说没配」改回「中转说没配」 | 主判：散文词组 done 却还有 1 处 |
+ * | K4 | `creds_store.rs` 头注「上游选择说没配」改回「中转说没配」 | 主判：散文词组 done 却还有 1 处 |
  * | K5 | 扫描面把 `src/` 整个排掉 | 正控 ①（锚文件不在）＋ 主判（新名零命中） |
  * | K6 | `relay::creds` 的匹配式去掉边界 | 正控 ②（吃进 `relay::creds_guard`）＋ 主判（5 处） |
  * | K7 | `account-chip.ts` 的字段改回 `relayRouting` | 主判：done 却还有 1 处 |
@@ -72,7 +72,7 @@ interface AccountName {
   /** 新名的匹配式；散文词组那几行没有固定新名 ⇒ `null`（只判旧名零命中）。 */
   freshRe: RegExp | null;
   kind: Kind;
-  /** 为什么它是账号（层 2），不是中转。 */
+  /** 为什么它是账号（上游选择），不是中转。 */
   why: string;
   state: "done" | "pending";
 }
@@ -94,7 +94,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     fresh: "CCM_APIKEY_CREDENTIALS",
     freshRe: ident("CCM_APIKEY_CREDENTIALS"),
     kind: "环境变量",
-    why: "盖的是 apikey 凭据文件的路径 —— 读它的是层 2（`accounts::upstream::creds`），层 1 一个字节都不读",
+    why: "盖的是 apikey 凭据文件的路径 —— 读它的是上游选择（`accounts::upstream::creds`），中转一个字节都不读",
     state: "done",
   },
   {
@@ -112,7 +112,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     fresh: "CCM_AGENT_UPSTREAM_CLAUDE_CODE",
     freshRe: ident("CCM_AGENT_UPSTREAM_CLAUDE_CODE"),
     kind: "环境变量",
-    why: "层 2 每 agent 默认上游表（`accounts::upstream::AGENT_UPSTREAMS`）里 claude-code 那一行的旋钮；层 1 没有默认上游",
+    why: "上游选择每 agent 默认上游表（`accounts::upstream::AGENT_UPSTREAMS`）里 claude-code 那一行的旋钮；中转没有默认上游",
     state: "done",
   },
   // ── 命令面（前端 ↔ monitor；不上后端的线）─────────────────────────────────────
@@ -225,7 +225,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     why: "设置页 apikey 凭据文件那一块 ＋ 账号行里配 key 那一格的类名",
     state: "done",
   },
-  // ── 后端里过期的住址（层 2 早已搬出 `relay/`）──────────────────────────────────
+  // ── 后端里过期的住址（上游选择早已搬出 `relay/`）──────────────────────────────────
   {
     old: "relay::table",
     re: ident("relay::table"),
@@ -260,7 +260,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     fresh: "upstream_selection_loads_the_key_from_a_hand_written_file_alone",
     freshRe: ident("upstream_selection_loads_the_key_from_a_hand_written_file_alone"),
     kind: "判据名",
-    why: "它量的是层 2 的 `creds::load`，一个中转进程都没起；拿到 key 的也不是层 1",
+    why: "它量的是上游选择的 `creds::load`，一个中转进程都没起；拿到 key 的也不是中转",
     state: "done",
   },
   {
@@ -269,7 +269,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     fresh: "a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_accounts_key",
     freshRe: ident("a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_accounts_key"),
     kind: "判据名",
-    why: "「带着那个号的 key」的是到上游的那一发（层 2 换的头），不是中转",
+    why: "「带着那个号的 key」的是到上游的那一发（上游选择换的头），不是中转",
     state: "done",
   },
   // ── 散文词组（中转被说成了账号那一层的东西）──────────────────────────────────────
@@ -279,7 +279,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     fresh: "第三方 API key / apikey 表里那一把",
     freshRe: null,
     kind: "散文词组",
-    why: "key 是账号的一格，层 1 手里没有任何 key",
+    why: "key 是账号的一格，中转手里没有任何 key",
     state: "done",
   },
   {
@@ -288,7 +288,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     fresh: "apikey 表",
     freshRe: null,
     kind: "散文词组",
-    why: "那张表是层 2 的",
+    why: "那张表是上游选择的",
     state: "done",
   },
   {
@@ -312,34 +312,34 @@ export const ACCOUNT_NAMES: AccountName[] = [
   {
     old: "中转去读哪份凭据 / 中转说没配",
     re: /中转(?:去读|说没配)/,
-    fresh: "层 2 去读哪份凭据 / 账号层说没配",
+    fresh: "上游选择去读哪份凭据 / 上游选择说没配",
     freshRe: null,
     kind: "散文词组",
-    why: "读凭据文件、判「这个号配没配」的是层 2",
+    why: "读凭据文件、判「这个号配没配」的是上游选择",
     state: "done",
   },
 ];
 
-/** 同一次现打里确认是**中转（层 1）**的名字 —— 刻意不改。 */
+/** 同一次现打里确认是**中转**的名字 —— 刻意不改。 */
 export const RELAY_NAMES: { name: string; re: RegExp; why: string }[] = [
   { name: "--relay", re: /--relay(?![A-Za-z0-9_-])/, why: "中转进程的子命令；它承载两层，但进程本身是中转" },
   { name: "CCM_RELAY_PORT", re: ident("CCM_RELAY_PORT"), why: "中转监听的端口" },
   { name: "CCM_RELAY_ALL_SESSIONS", re: ident("CCM_RELAY_ALL_SESSIONS"), why: "全量注入开关：让订阅号的会话也过中转（`/t/`）" },
   { name: "RELAY_PORT", re: ident("RELAY_PORT"), why: "monitor 侧拼注入地址用的端口" },
   { name: "relay_endpoint_for", re: ident("relay_endpoint_for"), why: "「往 ANTHROPIC_BASE_URL 里写哪个中转地址」的唯一判断口（有行时它把那一格交给 `apikey_endpoint_for`）" },
-  { name: "relay_route_path_in", re: ident("relay_route_path_in"), why: "拼中转路由键（层 1 的线格式）" },
+  { name: "relay_route_path_in", re: ident("relay_route_path_in"), why: "拼中转路由键（中转的线格式）" },
   { name: "relay_base_url_in", re: ident("relay_base_url_in"), why: "拼中转地址" },
   { name: "relay_env_prefix_posix", re: ident("relay_env_prefix_posix"), why: "把中转地址拼成命令前缀" },
   { name: "relay_prefix_for_launch", re: ident("relay_prefix_for_launch"), why: "起会话那一刻挑中转前缀的接线口" },
   { name: "relay_running", re: ident("relay_running"), why: "本机中转进程在不在跑" },
-  // 〔RL1 · V107〕`start_local_relay` / `LOCAL_RELAY` 两条随「monitor 另起中转」那一族删掉，换成接替它们的两个层 1 名字。〔散文墓碑〕
-  { name: "relay_host_envs", re: ident("relay_host_envs"), why: "起本机后端时交给它的中转端口（与凭据路径 —— 那是账号层要读的，但交接这一步是为中转在那个进程里起来）" },
-  { name: "host_relay", re: ident("host_relay"), why: "常驻后端进程内起中转的装配口（层 1 的 host ＋ 层 2 那只手）" },
+  // 〔RL1 · V107〕`start_local_relay` / `LOCAL_RELAY` 两条随「monitor 另起中转」那一族删掉，换成接替它们的两个中转名字。〔散文墓碑〕
+  { name: "relay_host_envs", re: ident("relay_host_envs"), why: "起本机后端时交给它的中转端口（与凭据路径 —— 那是上游选择要读的，但交接这一步是为中转在那个进程里起来）" },
+  { name: "host_relay", re: ident("host_relay"), why: "常驻后端进程内起中转的装配口（中转的 host ＋ 上游选择那只手）" },
   { name: "RelayAsk", re: ident("RelayAsk"), why: "`relay_endpoint_for` 的入参" },
-  { name: "relay_segment_is_safe", re: ident("relay_segment_is_safe"), why: "中转路由段的字符闸（层 1 线格式）" },
+  { name: "relay_segment_is_safe", re: ident("relay_segment_is_safe"), why: "中转路由段的字符闸（中转线格式）" },
   { name: "RELAY_KEEPS_THE_OLD_PATH", re: ident("RELAY_KEEPS_THE_OLD_PATH"), why: "中转前缀在场时本机拉起走旧路的理由句" },
-  { name: "run_relay", re: ident("run_relay"), why: "`--relay` 的装配口：跑中转 ＋ 把层 2 那只手递进去（住层 2，依赖层 2 → 层 1）" },
-  { name: "src/backend/relay/", re: lit("src/backend/relay/"), why: "层 1 的目录" },
+  { name: "run_relay", re: ident("run_relay"), why: "`--relay` 的装配口：跑中转 ＋ 把上游选择那只手递进去（住上游选择，依赖上游选择 → 中转）" },
+  { name: "src/backend/relay/", re: lit("src/backend/relay/"), why: "中转的目录" },
   { name: "\"source\":\"relay\"", re: lit('"source":"relay"'), why: "tee 流的线上字段值（中转抄出来的 SSE 行）" },
 ];
 
@@ -433,9 +433,9 @@ describe("R3 · 账号 / 中转命名清账（`设计/20` 术语归属）", () =
     expect(hitsIn(new Map([["x", "relay::creds_guard::LOG_ROOTS"]]), guard.re)).toHaveLength(0);
   });
 
-  it("正控 ③：中转（层 1）那几个名字逐条看得见（同一个扫描器，表不腐）", () => {
+  it("正控 ③：中转那几个名字逐条看得见（同一个扫描器，表不腐）", () => {
     const blind = RELAY_NAMES.filter((r) => hitsIn(corpus.texts, r.re).length === 0).map((r) => r.name);
-    expect(blind, "这几条登记为层 1 的名字全仓零命中 —— 表腐了或扫描器瞎了").toEqual([]);
+    expect(blind, "这几条登记为中转的名字全仓零命中 —— 表腐了或扫描器瞎了").toEqual([]);
   }, 60_000);
 
   it("每条账号名的状态与盘面逐条相等：done ⇒ 旧名零命中且新名在；pending ⇒ 旧名还在", () => {

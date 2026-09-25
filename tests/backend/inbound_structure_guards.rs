@@ -187,7 +187,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "tasks-list"
                 // 〔RM1f〕`panorama` 不在这里了：起进程改成异步等（`plugin::invoke::run_abortable`），
                 //   `cancel` 打得断 ⇒ `Run::Async`。〔墓碑 —— RM1c 那一版在这一档：「起一个进程、等它退出」。〕
-                // 〔RM1a · 第四波〕账号层那份凭据文件的两条：同步文件 I/O（读一份小文件 / 原子写一份）。
+                // 〔RM1a · 第四波〕上游选择那份凭据文件的两条：同步文件 I/O（读一份小文件 / 原子写一份）。
                 | "apikey-key-set"
                 | "apikey-read"
                 // 〔RM1a · 第四波〕中转那两条：回环连一次 / 起一个进程，同步阻塞。

@@ -518,7 +518,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "tasks-list",
         // 〔RM1f〕`panorama` 从这里挪走了：起进程改走 `invoke::run_abortable`（异步等子进程），
         //   上面「纯计算留在普通 spawn」那一格里单列它（可取消档）。
-        // 〔RM1a · 第四波〕账号层那份凭据文件的两条：同步文件 I/O（读 / 原子写那一份）。
+        // 〔RM1a · 第四波〕上游选择那份凭据文件的两条：同步文件 I/O（读 / 原子写那一份）。
         "apikey-key-set",
         "apikey-read",
         // 〔RM1a · 第四波〕中转那两条：回环连一次 / 起一个进程。

@@ -322,7 +322,7 @@ let localLaunchSnapshot: { state: AccountsState; pins: Record<string, string> } 
  *
  * 🔴 **上一拍这里读的是 `a.isDefault`（manifest 字段），而头注写的是 `currentWorkingAccount`
  * （优先 config.json 的 `defaultName`）—— 两者在「用户切过号」之后就不是同一个答案。**
- * 后果是**切过号之后新会话静默串号**，而且账号层会按错的 id 换上别人那一行的 key。
+ * 后果是**切过号之后新会话静默串号**，而且上游选择会按错的 id 换上别人那一行的 key。
  * ⇒ 快照现在整份存 `AccountsState`（`defaultName` 在里面），这里直接调那条唯一的规则。
  */
 export function localLaunchAccountNameSync(sid: string | null): string | null {

@@ -388,7 +388,7 @@ fn ask(t: &RoutingTable, u: &Upstreams, mode: Mode, seg1: &str, seg2: &str) -> S
             ),
         });
     });
-    out.expect("层 2 一次都没答")
+    out.expect("上游选择一次都没答")
 }
 
 /// 没有任何环境变量时那一份（每家取内置默认）。

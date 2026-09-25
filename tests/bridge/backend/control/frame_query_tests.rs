@@ -18,13 +18,13 @@ const DESIGN_EIGHT: &[&str] = &[
     "--read-session-from-offset",
     // 〔SR1a × SE2〕协调方加的：`--find-in-session` 一起搬。
     "--find-in-session",
-    // 〔C4c · 第四波 4B〕主会话裁「仍在拨号的 `--account-trust` / `--account-trust-zero`」随账号层上帧面（异源：题面那一句）。
+    // 〔C4c · 第四波 4B〕主会话裁「仍在拨号的 `--account-trust` / `--account-trust-zero`」随账号域上帧面（异源：题面那一句）。
     "--account-trust",
     "--account-trust-zero",
 ];
 
 /// 〔SR1a〕拨号那条路从此只放行这两条（题面「`STILL_DIALED` 缩到只剩真该拨号的」—— 点一次换号才发一次）。
-/// 〔C4c · 第四波 4B〕**零条**：那两条随账号层上了帧面（题面 C4c「仍在拨号的 `--account-trust` / `--account-trust-zero`」）。
+/// 〔C4c · 第四波 4B〕**零条**：那两条随账号域上了帧面（题面 C4c「仍在拨号的 `--account-trust` / `--account-trust-zero`」）。
 /// **异源**：抄自题面，不从表派生。
 const STILL_DIALED_WANT: &[&str] = &[];
 
@@ -208,7 +208,7 @@ const CHANNELED: &[(&str, &str)] = &[
         "history-find",
         "后端出成品 `{total, hits}`；命中口径只住后端（`search_query` ＋ `search-core`），monitor 那份核头尾删了",
     ),
-    // 〔C4c · 第四波 4B〕账号层那两条（主会话裁：账号层读自己那台的 apikey 表、规则搬进 `acct-core`、agent 随请求带）。
+    // 〔C4c · 第四波 4B〕账号域那两条（主会话裁：账号域读自己那台的 apikey 表、规则搬进 `acct-core`、agent 随请求带）。
     (
         "accounts-list",
         "后端出成品 `{meta, accounts, notice}`，并上**那台机器自己**那份 apikey 表（`acct_core::apikey_routed_subset`）；\
@@ -285,7 +285,7 @@ fn backend_registered_commands() -> std::collections::BTreeSet<String> {
 /// `history-sessions` 的设计写在 `调研/第四波记录/C4c.md §3`（「本机后端问远端后端」那一跳今天不存在，报备中）；
 /// `history-read` / `history-subagents` 等后端二次拆包；`history-tail` 归 CF2。⇒ 今天五行。
 const HELD_BACK: &[(&str, &str)] = &[
-    // 〔C4c · 第四波 4B〕`accounts-list` 那一行挪进了 [`CHANNELED`]（账号层搬家做了：后端出成品、并它自己那份表）。
+    // 〔C4c · 第四波 4B〕`accounts-list` 那一行挪进了 [`CHANNELED`]（账号域搬家做了：后端出成品、并它自己那份表）。
     (
         "history-projects",
         "每一行要并**本机**的注解（星标 / 隐藏计数，`history-metadata.json` 住 monitor 数据目录）＋ 本机判活（`SessionMap`）\
