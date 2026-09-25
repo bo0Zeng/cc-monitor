@@ -68,7 +68,8 @@ use std::time::Duration;
 /// `ssh_source` 那条同名判据的锚点也随之从「本地不产 Superseded」翻成「本地确实产」。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RemovalCause {
-    /// 真的没了：pidfile 被删 / 进程退出 / 连接断开时兜底归档。**默认值。**
+    /// 真的没了：pidfile 被删 / 进程退出。**默认值。**
+    /// 〔GP1 · 第四波〕从前这句还有「/ 连接断开时兜底归档」—— 断开那一形改成了下面的 [`Self::Unseen`]。
     #[default]
     Gone,
     /// 同一个 pidfile 原地换了 sid（`/branch`、`/clear`）：旧 sid **不是死了，是被顶替了**。
@@ -76,6 +77,12 @@ pub enum RemovalCause {
     /// 此时旧 sid 的 tmux 格子确实还在，但那一格现在挂的是**新** sid；判成灰点的话，
     /// 用户会看到一个永远消不掉、也 attach 不上的灰点（按旧 sid 去匹配 `@ccm_sid` 恒失败）。
     Superseded,
+    /// 〔GP1 · 第四波〕**那台机器看不见了**（到它的那条连接断了）：说不清这条会话还在不在。
+    ///
+    /// 唯一产出者是 `ssh_source::run` 的断连 flush（`ssh_source::disconnect_removals`）。
+    /// 它说的是**机器**，不是会话 ⇒ 裁决不看 tmux 快照（断连时那一台的快照已经忘了），
+    /// 落到前端是「说不清」而不是「已结束」（`设计/30 §3.5.7a`：`Unseen` 不许被显示成已结束）。
+    Unseen,
 }
 
 /// S0：removed 列表的元素——sid + 它为什么走。
