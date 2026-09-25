@@ -163,6 +163,11 @@ fn servers_in(text: Option<&str>) -> Map<String, Value> {
         .unwrap_or_default()
 }
 
+/// 对面后端的应答认不出来（缺格 / 类型不对）时给人的那句话 —— 几处同一句：对用户来说它们是同一件事。
+/// 多半是两台的后端版本不一样；**不猜默认值**（猜出来的「空差异」会让人以为两边一样）。
+const UNREADABLE_REPLY: &str =
+    "对面的后端答的内容认不出来，多半是两边版本不一样。这一趟什么都没写。";
+
 /// 后端那一行 → 差异表的一行（值由调用方从原文里原样取）。契约对不上 ⇒ 报错，不猜默认值。
 fn row_from_wire(
     r: &Value,
@@ -170,7 +175,7 @@ fn row_from_wire(
     target: &Map<String, Value>,
 ) -> Result<McpSyncRow, String> {
     let s = |k: &str| r.get(k).and_then(Value::as_str).map(str::to_string);
-    let broken = || format!("`{CMD}` 的应答形状不对 —— 两端契约对不上");
+    let broken = || UNREADABLE_REPLY.to_string();
     let name = s("name").ok_or_else(broken)?;
     let state = s("state").ok_or_else(broken)?;
     let suspects = r
@@ -226,7 +231,7 @@ pub(crate) async fn preview_with(
     let rows = data
         .get("rows")
         .and_then(Value::as_array)
-        .ok_or_else(|| format!("`{CMD}` 的应答里没有 `rows` —— 两端契约对不上"))?
+        .ok_or_else(|| UNREADABLE_REPLY.to_string())?
         .iter()
         .map(|r| row_from_wire(r, &sv, &tv))
         .collect::<Result<Vec<_>, String>>()?;
@@ -267,11 +272,11 @@ pub(crate) async fn apply_with(
     let names: Vec<String> = data
         .get("write")
         .and_then(Value::as_array)
-        .ok_or_else(|| format!("`{CMD}` 的应答里没有 `write` —— 两端契约对不上"))?
+        .ok_or_else(|| UNREADABLE_REPLY.to_string())?
         .iter()
         .map(|n| n.as_str().map(str::to_string))
         .collect::<Option<_>>()
-        .ok_or_else(|| format!("`{CMD}` 的 `write` 里有不是名字的东西 —— 两端契约对不上"))?;
+        .ok_or_else(|| UNREADABLE_REPLY.to_string())?;
     let unchanged = |names| McpSyncApplied {
         path: to_target.to_string(),
         written: false,
