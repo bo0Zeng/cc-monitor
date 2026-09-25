@@ -466,3 +466,28 @@ async fn parked_sessions_are_looked_up_where_a_transfer_may_land() {
     assert!(c.len() == 1 && Arc::ptr_eq(&c[0], &x.conn) && !Arc::ptr_eq(&c[0], &s.conn));
     assert!(pool.transfer_candidates("另一个身份").is_empty());
 }
+
+/// ★ W1（`NT1.md §4`）：在一条连接上等远端回话的那一段**被丢了**（链路被关 ⇒ 任务被 abort）⇒ 这条连接从族里摘掉，
+/// 下一条放置拨新的；**等到了**（`done`）⇒ 不动。两向。摘掉 ≠ 关掉：手里还攥着它的照样活着。
+#[tokio::test]
+async fn an_interrupted_wait_on_a_connection_evicts_it_and_a_finished_one_does_not() {
+    let pool: Pool<Fake> = Pool::new();
+    let dials = AtomicUsize::new(0);
+    let a = place(&pool, "k", Lane::Stream, &dials).await;
+    Watch::new(&pool, "k", &a.conn).done();
+    let b = place(&pool, "k", Lane::Query, &dials).await;
+    assert!(
+        b.how == How::Reused && Arc::ptr_eq(&a.conn, &b.conn),
+        "等到了回话却把连接摘了"
+    );
+    drop(Watch::new(&pool, "k", &a.conn));
+    let c = place(&pool, "k", Lane::Query, &dials).await;
+    assert_eq!(
+        c.how,
+        How::Fresh,
+        "等回话被打断之后，新的放置还落在那条（可能是黑洞的）连接上"
+    );
+    assert!(!Arc::ptr_eq(&a.conn, &c.conn));
+    assert!(!a.conn.is_closed(), "摘掉 ≠ 关掉");
+    assert_eq!(dials.load(Ordering::SeqCst), 2);
+}

@@ -155,7 +155,19 @@ impl Lease {
                     self.lane
                 ));
             };
-            let e = match self.linked.session.channel_open_session().await {
+            // 〔NT1〕等远端回「开好了」这一段被打断（链路被关）⇒ 摘掉这条连接（`pool::Watch`）。
+            let opened = {
+                let watch = self
+                    .key
+                    .as_deref()
+                    .map(|k| pool::Watch::new(pool::ssh(), k, &self.linked));
+                let r = self.linked.session.channel_open_session().await;
+                if let Some(w) = watch {
+                    w.done();
+                }
+                r
+            };
+            let e = match opened {
                 Ok(c) => return Ok((c, permit)),
                 Err(e) => e,
             };

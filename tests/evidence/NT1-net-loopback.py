@@ -24,6 +24,8 @@ sftp 子系统起始目录钉在临时目录 —— 同 `SR1b-sftp-loopback.py`�
   ② 预算满：长流 ＋ 8 条重叠的 capture（每条连接的通道闸 8 格）⇒ 全部跑通、鉴权 **恰好 2**
   ③ 远端 MaxSessions=2（乙台）：长流 ＋ 3 条重叠的 capture ⇒ 全部跑通（被拒的那一条挪到新连接上）、鉴权 **恰好 2**；sshd 的拒绝原话
   ④ 压缩（回环）：sshd 日志里我们这几条连接的协商结果全是 `compression: none`（回环不开，判准只有 `connect.rs::compression_for`）
+  ⑦ 断线续传现打：下载中途断线 ⇒ 读终局与 `.part`（只印）；上传中途断线 ⇒ failed、暂存件留着；重传 ⇒ sftp-server 记下的写入 == 总长 − 已有
+  ⑧ 黑洞：已有 TCP 变黑洞之后，第一条新链路在开通道那一步被吞、被关掉 ⇒ 第二条**拨新的**、跑通（新鉴权恰好 1 次；基线：第二条也被吞）
   ⑥（`--compress`）强制压 vs 不压（真 sshd）：sshd 日志按先后 `none` · `zlib@openssh.com`；今天 russh 0.61 的 zlib 解压有缺陷（闸
      `connect.rs::RUSSH_ZLIB_SOUND` 关着）⇒ 压的那趟卡在第一条通道上、收不全 —— 这一格就是闸为什么关着的真 sshd 读数
   ⑤ 弱网读数（甲台经整形代理，DELAY 单程 · BPS 每方向）：下载 16 MiB 期间长流上的回声延迟 · 顺序小文件下载每件耗时 ·
@@ -144,19 +146,40 @@ class ShapedProxy:
         threading.Thread(target=self._accept, daemon=True).start()
 
     def _accept(self):
+        self.pairs = []
         while True:
             c, _ = self.ls.accept()
             s = socket.create_connection(("127.0.0.1", self.upstream))
+            pair = {"socks": (c, s), "frozen": False}
+            self.pairs.append(pair)
             for a, b, neck in ((c, s, self.up), (s, c, self.down)):
-                threading.Thread(target=self._pump, args=(a, b, neck), daemon=True).start()
+                threading.Thread(target=self._pump, args=(a, b, neck, pair), daemon=True).start()
+
+    def freeze(self):
+        """此刻已有的每条 TCP 变黑洞：两头照读、一个字节都不转（没有 RST —— 换网 / NAT 表过期那一形）。之后新接进来的照常。"""
+        for pair in list(getattr(self, "pairs", [])):
+            pair["frozen"] = True
+
+    def cut(self):
+        """此刻已有的每条 TCP 当场断（两头都关）。"""
+        for pair in list(getattr(self, "pairs", [])):
+            for sk in pair["socks"]:
+                try:
+                    sk.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
 
     @staticmethod
-    def _pump(src, dst, neck):
+    def _pump(src, dst, neck, pair):
         while True:
             try:
                 data = src.recv(4096)
             except OSError:
                 data = b""
+            if pair["frozen"]:
+                if not data:
+                    return
+                continue
             if not data:
                 neck.put(dst, None)
                 return
@@ -257,8 +280,9 @@ class Sshd:
                 f"AuthorizedKeysFile {d}/authorized_keys\nPidFile {d}/{name}.pid\nUsePAM no\n"
                 "StrictModes no\nPasswordAuthentication no\nKbdInteractiveAuthentication no\n"
                 f"PubkeyAuthentication yes\nLogLevel DEBUG1\nMaxSessions {max_sessions}\n"
-                f"Subsystem sftp {sftp_server} -d {rhome}\n"
+                f"Subsystem sftp {sftp_server} -e -l VERBOSE -d {rhome} 2>>{d}/{name}-sftp.log\n"
             )
+        self.sftp_log = f"{d}/{name}-sftp.log"
         self.p = subprocess.Popen([sshd, "-D", "-E", self.log, "-f", cfg])
         for _ in range(50):
             try:
@@ -274,6 +298,17 @@ class Sshd:
 
     def auths(self):
         return self.text().count("Accepted publickey")
+
+    def written(self, path):
+        """sftp-server 记下的、关掉 `path` 那一次的写入字节数（最后一次）。"""
+        n = None
+        if not os.path.exists(self.sftp_log):
+            return None
+        with open(self.sftp_log, errors="replace") as fh:
+            for ln in fh.read().splitlines():
+                if f'close "{path}"' in ln and " written " in ln:
+                    n = int(ln.rsplit(" written ", 1)[1].split()[0])
+        return n
 
 
 def pct(xs, p):
@@ -299,7 +334,7 @@ def main():
     user = os.environ.get("USER") or os.getlogin()
     d = os.path.realpath(tempfile.mkdtemp(prefix="nt1."))
     home, rhome = os.path.join(d, "home"), os.path.join(d, "rhome")
-    for p in (home, rhome, os.path.join(home, ".claude-accts"), os.path.join(d, "dl")):
+    for p in (home, rhome, os.path.join(home, ".claude-accts"), os.path.join(d, "dl"), os.path.join(rhome, ".cc-monitor", "staging")):
         os.makedirs(p)
     with open(os.path.join(home, ".claude-accts", "accounts.json"), "w") as fh:
         fh.write('{"version":1,"accounts":[]}\n')
@@ -435,6 +470,59 @@ def main():
             subs = a.text().count("Starting session: subsystem 'sftp'") - sub0
             check("一趟大下载 ＋ 顺序 6 趟小下载 ⇒ sshd 记下的 sftp 子系统请求恰好 1 次（用完停进空位、下一趟复用；基线 7 次）", subs == 1, subs)
             be.call("link-close", {"link": "s5"})
+        if want(7):
+            print("⑦ 断线续传现打（整形代理当场断掉传输那条 TCP）")
+            px7 = ShapedProxy(a.port)
+            be.open("s7", dial(a, port=px7.port, command="cat", use="stream"))
+            be.wait(lambda: be.lines("s7") or None, 60)
+            dl7 = os.path.join(d, "dl", "big7.bin")
+            xid = be.download(dial(a, port=px7.port), big, dl7)
+            be.wait(lambda: any(f["got"] > 2 * 1024 * 1024 for f in be.xfer.get(xid, [])) or None, 120)
+            px7.cut()
+            last = be.end_of(xid, 300)
+            print(f"  read 下载中途断线 ⇒ 终局 {last and last['end']} · .part 还在：{os.path.exists(dl7 + '.part')}（设计/60 §4.3：失败删 .part —— 弱网上断线就是失败，续传的本钱没了）")
+            up7 = os.path.join(d, "up7.bin")
+            with open(up7, "wb") as fh:
+                fh.write(os.urandom(8 * 1024 * 1024))
+            px7b = ShapedProxy(a.port)
+            be.open("s7b", dial(a, port=px7b.port, command="cat", use="stream"))
+            be.wait(lambda: be.lines("s7b") or None, 60)
+            r = be.call("transfer-upload", {"dial": dial(a, port=px7b.port), "local_path": up7})
+            xid, key = r["data"]["id"], r["data"]["key"]
+            be.call("transfer-start", {"id": xid})
+            be.wait(lambda: any(f["got"] > 2 * 1024 * 1024 for f in be.xfer.get(xid, [])) or None, 120)
+            px7b.cut()
+            last = be.end_of(xid, 300)
+            part = os.path.join(rhome, ".cc-monitor", "staging", key + ".part")
+            have = os.path.getsize(part) if os.path.exists(part) else 0
+            check("上传中途断线 ⇒ failed、暂存件留着（续传的本钱）", bool(last) and last["end"].get("state") == "failed" and have > 0, (last, have))
+            r = be.call("transfer-upload", {"dial": dial(a), "local_path": up7})
+            xid2 = r["data"]["id"]
+            be.call("transfer-start", {"id": xid2})
+            last2 = be.end_of(xid2, 300)
+            w = a.written(f".cc-monitor/staging/{key}.part")
+            print(f"  read 重传同一份：sftp-server 记下的写入 {w} 字节（总长 {8 * 1024 * 1024} − 已有 {have}；续传按尾块对拍接上）")
+            check("重传 ⇒ done，写入字节 == 总长 − 已有（真从断点接）", bool(last2) and last2["end"].get("state") == "done" and w == 8 * 1024 * 1024 - have, (last2, w, have))
+
+        if want(8):
+            print("⑧ 黑洞（整形代理把此刻已有的 TCP 变黑洞：没有 RST，看着还活着）")
+            px8 = ShapedProxy(a.port)
+            be.open("s8", dial(a, port=px8.port, command="cat", use="stream"))
+            be.wait(lambda: be.lines("s8") or None, 60)
+            a0 = a.auths()
+            px8.freeze()
+            be.open("c8a", dial(a, port=px8.port, command="echo first", use="capture", capture={"max_bytes": 100}))
+            stuck = not be.wait(lambda: "c8a" in be.ends or None, 3)
+            be.call("link-close", {"link": "c8a"})  # 模拟界面的握手期限到点（真界面是 45 s）
+            t0 = time.monotonic()
+            be.open("c8b", dial(a, port=px8.port, command="echo second", use="capture", capture={"max_bytes": 100}))
+            done = be.wait(lambda: "c8b" in be.ends or None, 20)
+            ls = be.lines("c8b")
+            ok = bool(done) and len(ls) == 2 and json.loads(ls[1]).get("stdout") == "second\n"
+            print(f"  read 第一条被黑洞吞掉：{stuck} · 关掉它之后第二条：{'%.0f ms 收全' % ((time.monotonic() - t0) * 1000) if ok else '20 s 内没收全'} · 新鉴权 {a.auths() - a0} 次")
+            check("黑洞上等开通道被打断 ⇒ 那条连接被摘掉，下一条拨新的、跑通（新鉴权恰好 1 次）", stuck and ok and a.auths() - a0 == 1, (stuck, ls, a.auths() - a0))
+            be.call("link-close", {"link": "s8"})
+
         if compress_mode:
             print("⑥ 压缩（强制，真 sshd）：dial_compress_tests::zr_…（#[ignore]）")
             k0 = len([ln for ln in a.text().splitlines() if "kex: client->server" in ln])
