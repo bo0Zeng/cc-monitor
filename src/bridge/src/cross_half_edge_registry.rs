@@ -280,7 +280,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          `analyze_session`（本机与远端同一个函数）⇒ 这条性质只能同时读两侧源码才验得了。失效方向同它立项时那一次：\
          CC 再改一次标题记录的名字，后端那一臂接不住，会话列表上的标题静默消失，两侧各自全绿。",
     ),
-    // ── backend → monitor（4 条 · 〔RK1〕3 → 4：`door_tests` 那一条）：backend 的判据去读 monitor ────────────────────
+    // ── backend → monitor（2 条 · 〔RK1〕3 → 4 · 〔US1〕4 → 2：两条对拍随「只剩一份」出列）：backend 的判据去读 monitor ──
     (
         "backend→monitor",
         // 〔步 7c 后端剖分 2026-09-19 · C 类〕住址跟着那条 include 搬进 `tests/backend/`。
@@ -297,31 +297,9 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "★ 跨轨对拍：`format!(\"={target}:\")` 这个精确匹配形状两侧必须同形 —— \
          F01 实测过，一边写裸 `-t` 就会打到兄弟会话上，而另一边不会，排查极难",
     ),
-    (
-        "backend→monitor",
-        // 〔步 7c 后端剖分 2026-09-19 · C 类〕住址跟着那条 include 搬进 `tests/backend/`。
-        "tests/backend/relay/route_tests.rs",
-        "src/bridge/src/backend/control/payload.rs",
-        "★★〔`K-H2b` `KH2B4` 08-28 新增〕**中转路由键 `/s/<agent>/<account>/<key>/…` \
-         的两侧对拍**：注入侧（monitor 的 `relay_route_path`）拼、中转侧（backend 的 \
-         `route::parse`）切，而**两侧不可能共用一份实现** —— `src/backend` \
-         单向依赖 `src/bridge/crates/*`，共享实现只能落在某个 `crates/*`，今天一个都没有。\
-         ⇒ backend 的判据 `include_str!` monitor 那份源码，把 `RELAY_ROUTE_SAMPLE` \
-         那一行的字面量抠出来喂给**真** `parse`，断言四段各落各位。\
-         ⚠ 为什么必须编译期读：本条要买的是「**两半漂开而两边都不红**」这一形 —— \
-         PM 08-28 亲手实测过它存在：把 monitor 的 `relay_env_prefix_posix` 改成返回空串，\
-         monitor 半边红 3 条，**backend 半边的 `KH2B1` 一条都不红**（它的桩启动器自己读环境变量，\
-         够不着 monitor 的函数）。跨轨对拍是唯一能把这一格焊住的形状。",
-    ),
-    (
-        "backend→monitor",
-        "tests/backend/relay/door_tests.rs",
-        "src/bridge/src/backend/control/payload.rs",
-        "★〔RK1 · 第四波 4C 新增〕**中转钥匙文件的相对路径两侧同一个串** —— \
-         `door_tests::the_key_file_is_the_same_path_on_both_halves`。中转（backend `door::KEY_FILE_REL`）在那里读 / 铸钥匙，\
-         monitor 的渲染器（`payload::RELAY_KEY_FILE_REL`）拼 `$(cat \"$HOME/…\")` 让 pane shell 现读它。\
-         失效方向**很安静**：两边漂开 ⇒ shell 读一个不在的文件 ⇒ 钥匙段为空 ⇒ 每一发 403，与「钥匙不对」同形，两侧各自全绿。",
-    ),
+    // 〔US1 · 第四波 4D〕这里原先还有两条 backend → monitor：`relay/route_tests.rs` 抠 `payload.rs` 的路由样例 /
+    //   凭据文件那一家 / 登记了默认上游的 agent（`KH2B4` 那一族）· `relay/door_tests.rs` 抠 `payload.rs` 的钥匙文件路径（RK1）。
+    //   两样都不再有第二份：路由语法与门牌进了共享 crate `relay-route-core`（`设计/20 §5` 目标），决策表进了后端上游选择 ⇒ 两条边出列（4 → 2）。
 ];
 
 #[cfg(test)]

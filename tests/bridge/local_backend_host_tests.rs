@@ -63,10 +63,9 @@ fn the_strip_rule_this_file_leans_on_is_still_on_disk() {
 //   本机中转在不在由本机常驻后端自己答（RK1 的差分探针），monitor 这一侧不再连回环口。
 
 // ★★★ `D5 阻-1`：**`the_two_inputs_at_the_call_site_are_still_the_two_take_points`
-//    这条判据整条删了**，新住址是 `history.rs` 里那**三条**判据
-//    （行为：`the_launch_side_really_asks_those_two_take_points_and_uses_their_answers` ·
-//     `the_ui_status_side_asks_those_two_take_points_and_uses_their_answers`；
-//     按函数地址对拍：`the_production_relay_facts_are_those_two_take_points`）。
+//    这条判据整条删了**，新住址是 `history.rs` 里那几条判据
+//    （〔US1〕行为：`the_launch_side_really_asks_the_backend_and_uses_its_answer`；
+//     按函数地址对拍：`the_production_relay_facts_are_those_take_points`）。
 //
 // 删它的理由是一个实测读数，不是风格：它量的是「`relay_prefix_for_launch` 的体切出
 // 700 字节，那个窗口里**有没有**那两段文本」。`D5` 现打：在同一个窗口里加一行把那两段
@@ -79,8 +78,7 @@ fn the_strip_rule_this_file_leans_on_is_still_on_disk() {
 //   而两轮的量法都是「量文本」。这一族已经连着五层了，出路是**不量文本**：
 //   两个事实走 `history.rs::InjectFactSources` 那条缝，判据喂替身、断言前缀随答案变。
 //
-// ⚠ 本文件上一条 `relay_running_really_asks_the_loopback_port`〔RL1 换掉了先前读句柄表那一条〕
-//   买的是另一半（那个取值口自己真的去连那个口），两者不重叠。
+// ⚠ 〔US1〕先前本文件上一条买的是另一半（那个取值口自己真的去连那个口）；那个取值口随「本机中转在不在由本机后端答」一起退役。
 
 /// 〔RL1 · V107〕M2：**两条载体起本机后端时交的是同一份环境，且恰好是中转那两格**。
 ///

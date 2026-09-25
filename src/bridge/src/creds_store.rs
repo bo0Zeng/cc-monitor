@@ -37,6 +37,13 @@ pub(crate) fn resolve_path() -> Option<PathBuf> {
 //   界面经 `chan.call` 直接问、按形状收（`src/apikey-reads.ts`，「永远只有掩码」那一格由后端应答的形状与跨语言金样钉着）。
 //   本机与远端同一条路 —— monitor 这一侧从此不读这份文件。
 
+// 〔GP1 · 第四波〕**这里原来是本机那一份的写口**（`write_key`〔散文墓碑〕 / `write_key_at`〔散文墓碑〕 /
+// `check_base_url`〔散文墓碑〕）。主会话 09-25 裁「每台机器一个写者 ＝ 那台的后端」⇒ 本机那一份也交本机常驻后端写
+// （`apikey_remote::write_key_on` → 帧面 `apikey-key-set` → `src/backend/accounts/upstream/file_face.rs`），
+// monitor 一个字节都不落。那几条写路性质（写的那一刻读盘 · 未知键一个不吃 · 顺序稳定 · 出生即只给本人 ·
+// 说不出账号拒写 · Base URL 形状错整次不写）在后端那一份的判据里逐条都有（`tests/backend/accounts/upstream/file_face_tests.rs`，
+// 本侧独有的三条随之搬了过去，名字带 `gp1_`）。
+
 #[cfg(test)]
 #[path = "../../../tests/bridge/creds_store_tests.rs"]
 mod tests;

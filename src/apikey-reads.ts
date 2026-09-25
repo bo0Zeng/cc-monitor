@@ -95,7 +95,9 @@ const APIKEY_OLD_BACKEND =
 /** 那台机器上那份凭据文件的状态。问不到 / 形状不对 ⇒ 抛一句人话（不退化成「没配」）。 */
 export async function readApikeyStatus(origin: Origin): Promise<ApikeyCredentialsStatus> {
   try {
-    const reply = await chan.call(origin, "apikey-read", jsonBody({}), budgetWithin(APIKEY_BUDGET_MS));
+    const body = jsonBody({});
+    const budget = budgetWithin(APIKEY_BUDGET_MS);
+    const reply = await chan.call(origin, "apikey-read", body, budget);
     return decodeApikeyStatus(readJson(reply));
   } catch (e) {
     throw new Error(saidOf(e, APIKEY_OLD_BACKEND));
@@ -109,12 +111,9 @@ export async function fetchApikeyRouting(
   configDirs: string[],
 ): Promise<ApikeyRoutingView> {
   try {
-    const reply = await chan.call(
-      origin,
-      "apikey-routing",
-      jsonBody({ agent, configDirs }),
-      budgetWithin(APIKEY_BUDGET_MS),
-    );
+    const body = jsonBody({ agent, configDirs });
+    const budget = budgetWithin(APIKEY_BUDGET_MS);
+    const reply = await chan.call(origin, "apikey-routing", body, budget);
     return decodeApikeyRouting(readJson(reply));
   } catch (e) {
     throw new Error(saidOf(e, APIKEY_OLD_BACKEND));

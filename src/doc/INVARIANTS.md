@@ -2200,7 +2200,7 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 
 **谁在守**：`door_tests.rs::only_the_exact_key_as_the_first_segment_gets_in` · `door_tests.rs::any_origin_header_is_refused_before_the_key_is_looked_at` ·
 `door_tests.rs::only_a_loopback_literal_host_gets_in` · `door_tests.rs::the_three_refusals_are_distinct_faces` ·
-`door_tests.rs::the_key_file_is_minted_once_private_and_read_back_across_restarts`（`0600` · 跨重起同一把 · 坏文件换新）· `door_tests.rs::the_key_file_is_the_same_path_on_both_halves`（跨半边对拍）·
+`door_tests.rs::the_key_file_is_minted_once_private_and_read_back_across_restarts`（`0600` · 跨重起同一把 · 坏文件换新）· `door_tests.rs::the_key_file_and_the_key_shape_come_from_the_shared_crate`（〔US1〕钥匙路径与形状只住共享 crate `relay-route-core`，两半同一个 const）·
 `server_tests.rs::rk1_the_door_refuses_without_the_key_and_that_is_not_a_404` · `server_tests.rs::rk1_browser_and_rebinding_requests_are_refused_but_the_cli_shape_passes` ·
 `server_tests.rs::rk1_the_minted_key_never_shows_up_in_logs_tee_argv_env_or_upstream`（真子进程 · 零命中带正控）·
 `machine_tests.rs::ensure_starts_nothing_when_our_relay_already_listens` · `machine_tests.rs::a_port_held_by_something_else_is_not_ours_and_ensure_says_so`；
