@@ -25,10 +25,14 @@ import {
   summarizeOwedInstallers,
   owedInstallerNames,
   UNKNOWN_IS_NOT_ABSENT,
+  REMOTE_UNANSWERED_WHY,
+  answersFor,
+  readFootprint,
   type ConfigSurfaceReport,
   type SurfaceRow,
 } from "../../src/settings/config-surface-section";
 import { GAP_HEAD } from "../../src/settings/readiness";
+import { setCurrentMachine, __resetMachineContextForTests } from "../../src/settings/machine-context";
 
 function row(over: Partial<SurfaceRow> = {}): SurfaceRow {
   return {
@@ -490,5 +494,98 @@ describe("〔ST2 · `70 §10.2` · 步 15〕「PowerShell profile 备份」搬�
     expect(box.textContent).toContain("读不到 PowerShell profile 备份在哪");
     expect(box.textContent).toContain("盘坏了");
     expect(s.element.querySelectorAll(".config-surface-row").length, "备份那一格读不到把表也带走了").toBe(1);
+  });
+});
+
+describe("〔ST2 · 用户 09-24 裁「远端也有真栏」〕足迹按机器去问，回声对上才画", () => {
+  afterEach(() => __resetMachineContextForTests());
+  const flush = async () => {
+    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+  };
+
+  it("★ 问的时候带着这台机器（本机 = LOCAL_ORIGIN），不再是零参数", async () => {
+    const mod = await import("../../src/ipc/commands");
+    const spy = vi.spyOn(mod.commands, "config_surface_report").mockResolvedValue(report());
+    try {
+      await readFootprint(null);
+      await readFootprint("devbox");
+      expect(spy.mock.calls.map((c) => (c as unknown[])[0])).toEqual([{ origin: "<local>" }, { origin: "devbox" }]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("★★ 读口没合进来（参数被静默丢掉、回的是不带 origin 的本机那份）⇒ 远端页说答不了，**不画表**", async () => {
+    invokeMock.mockResolvedValue(report());
+    setCurrentMachine("devbox");
+    const s = new ConfigSurfaceSection();
+    s.loadNow();
+    await flush();
+    expect(s.element.querySelectorAll(".config-surface-row").length, "拿本机的答案冒充 devbox 的").toBe(0);
+    const box = s.element.querySelector<HTMLElement>("[data-footprint-unanswered]")!;
+    expect(box.hidden).toBe(false);
+    const why = box.querySelector<HTMLElement>("[aria-label]");
+    expect(s.element.textContent).toContain("这台机器（devbox）的足迹还查不了");
+    expect(why?.getAttribute("aria-label")).toBe(REMOTE_UNANSWERED_WHY);
+  });
+
+  it("★★ 回声对上（报告说它答的就是 devbox）⇒ 远端页画表；`$PROFILE` 备份那一格不问（只答本机）", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "config_surface_report"
+        ? Promise.resolve({ ...report(), origin: "devbox" })
+        : Promise.reject(new Error(`不该问 ${cmd}`)),
+    );
+    setCurrentMachine("devbox");
+    const s = new ConfigSurfaceSection();
+    s.loadNow();
+    await flush();
+    expect(s.element.querySelectorAll(".config-surface-row").length).toBe(1);
+    expect(s.element.textContent).not.toContain("还查不了");
+    expect(invokeMock.mock.calls.map((c) => c[0])).toEqual(["config_surface_report"]);
+  });
+
+  it("★ 回声是另一台（答错了机器）⇒ 照样不画", async () => {
+    invokeMock.mockResolvedValue({ ...report(), origin: "laptop" });
+    setCurrentMachine("devbox");
+    const s = new ConfigSurfaceSection();
+    s.loadNow();
+    await flush();
+    expect(s.element.querySelectorAll(".config-surface-row").length).toBe(0);
+    expect(s.element.textContent).toContain("这台机器（devbox）的足迹还查不了");
+  });
+
+  it("★ 本机：旧读口不带 origin ⇒ 照画（反向对照）；带的是别的机器 ⇒ 扫描失败，不画", async () => {
+    expect(answersFor(report(), null)).toBe(true);
+    expect(answersFor({ ...report(), origin: "<local>" } as never, null)).toBe(true);
+    expect(answersFor({ ...report(), origin: "devbox" } as never, null)).toBe(false);
+    invokeMock.mockResolvedValue({ ...report(), origin: "devbox" });
+    const s = new ConfigSurfaceSection();
+    await s.refresh();
+    expect(s.element.querySelectorAll(".config-surface-row").length).toBe(0);
+    expect(s.element.textContent).toContain("扫描失败");
+  });
+
+  it("★ 切机器快过答复：晚到的上一台的答复不许盖掉当前这台", async () => {
+    let releaseLocal!: (v: unknown) => void;
+    invokeMock.mockImplementation((cmd: string, args?: { origin?: string }) => {
+      void args;
+      if (cmd !== "config_surface_report") return Promise.resolve({ profileBackupDirs: [] });
+      return new Promise((r) => {
+        releaseLocal = r;
+      });
+    });
+    const s = new ConfigSurfaceSection();
+    s.loadNow(); // 本机那一趟挂着
+    const firstRelease = releaseLocal;
+    invokeMock.mockImplementation(() => Promise.resolve({ ...report(), origin: "devbox" }));
+    setCurrentMachine("devbox"); // 订阅那一路重读 devbox
+    await flush();
+    expect(s.element.querySelectorAll(".config-surface-row").length).toBe(1);
+    firstRelease(report({ rows: [row(), row({ path_declared: "~/.bashrc" })] })); // 本机那份晚到
+    await flush();
+    expect(
+      s.element.querySelectorAll(".config-surface-row").length,
+      "晚到的本机答复盖掉了 devbox 那一页",
+    ).toBe(1);
   });
 });

@@ -1197,3 +1197,6 @@ src/settings/config-surface-section.ts:95	查不动不等于它不在：只是�
 src/settings/config-surface-section.ts:142	暂无撤销：还没有安装入口	保留	[对外] 足迹「能否撤」那一格，欠装口那一档（ST2 · 70 §11.4 #1）：一格状态，「还没有」语义保留（KR65D2）
 src/settings/config-surface-section.ts:171	⚠ {…} 项还没有安装入口	保留	[对外] 足迹计数行（ST2 · 70 §11.4 #2）：数照旧数得出来（KR65D2），名单挪进展开
 src/settings/config-surface-section.ts:183	== cc-monitor 足迹 ==	保留	[对外] 可复制诊断文本首行，跟块名统一（用户 09-24 裁「一起改」，70 §11.6 #4）
+src/settings/config-surface-section.ts:255	「答不出来」不等于「它没动过你的文件」。	保留	[对外] 远端足迹答不了那一句的 ⓘ（ST2 · 70 §11.4 #4：对冲后半挪进 ⓘ，区分保留）
+src/settings/config-surface-section.ts:448	这台机器（{…}）的足迹还查不了：要那台机器上的后端来答，它这一版还答不了。	保留	[对外] 远端足迹栏回声对不上时那一句（ST2，用户 09-24 裁远端也有真栏；读口归 RM1a）
+src/settings/panel.ts:1128	足迹	保留	[对外] 机器子页「足迹」那一块的块名（ST2 起经 loadableBlock 建）
