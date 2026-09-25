@@ -18,6 +18,9 @@
   ② 它所在判据文件的 `//!` 头注里有
   ③ 收留它的生产模块的 `//!` 头注里有
 三层都没有 ⇒ 真的点不出。
+〔JA1 2026-09-24〕另出第四个数 ④：判据文件头注标了 `〔缺址〕` 的族 —— 有人逐字核过原文、
+**主住址缺**（该升格成条，或设计篇该补一节）。它从 ②③ 里摘出来单列，不算「点到」，
+也不再混在「三层都点不出」里（那一栏只剩**没人核过**的）。
 
 ⚠ 它买到什么、买不到什么
 ========================
@@ -37,6 +40,14 @@
     而 ③ 会印一个看起来正常的 `0`。⇒ 本尺子用 `-F`，并且**映射为空就拒绝出数**。
 二、扫「头注」时漏了 `F47` / `铁律` / `D1` 这几种住址写法 ⇒ 读数虚高 20 个百分点。
     ⇒ 住址形状写在 `PAT` 一处，改它就是改口径，不许在别处再拼一份。
+三、〔JA1 2026-09-24 现打〕**判据全集本身数多了 95 条**：`TESTATTR` 原先在整行里找
+    `#[test]`，于是注释与字符串里讲形状的那些字样也被数成一条判据
+    （`local_backend_host_tests.rs` 报「族内 56」，真判据 33）。⇒ 只认行首（前面只许空白）。
+    ⚠ 仍买不到：行首就是那几个字的原始字符串夹具（本仓今天现打没有，将来有了会再多数）。
+四、〔同日〕形状巧合：`K-R7-D2` 这类审计标签里的 `D2` 被认成横切纪律 `D2`；
+    「本条 11:08:09」里的「条 11」被认成条号。⇒ `D` 号前面不许紧跟 `-` 或字母数字，
+    条号后面不许紧跟数字或冒号。⚠ 「铁律 12」这种过程纪律编号、`K-P2 D3` 这种空格隔开的
+    审计标签**形状上分不出来**，照样算命中 —— 那一层只能靠人逐族核原文（`第四波记录/JA1.md`）。
 """
 import io, os, re, subprocess, sys
 
@@ -44,8 +55,11 @@ import io, os, re, subprocess, sys
 # 〔JA1 2026-09-24〕加 `V\d{2,3}`（用户裁决总表 `设计/99 §1.1` 的 V01–V108）：题面把「用户裁决 V 号」
 # 列为合法住址，而此前这里不认它。只收两到三位 —— 仓里 `V1` / `V2` / `V7-2` 这种一位的是别的东西
 # （变异编号 · 进程版本 · 审计条目），现打过。这一刀单独一拍落，它自己买的命中数记在 `第四波记录/JA1.md §1`。
-PAT = re.compile(r'INVARIANTS|条 ?\d+|§\d+|\bF\d+[a-z]?\b|铁律|\bD\d+\b|\bV\d{2,3}\b')
-TESTATTR = re.compile(r'#\[(?:tokio::)?test\b')
+PAT = re.compile(r'INVARIANTS|条 ?\d+(?![\d:])|§\d+|\bF\d+[a-z]?\b|铁律|(?<![-\w])D\d+\b|\bV\d{2,3}\b')
+TESTATTR = re.compile(r'^\s*#\[(?:tokio::)?test\b')
+# 〔JA1〕判据文件头注里写了这个记号 ⇒ 这一族**有人逐字核过原文、主住址缺**（候选升格 / 设计篇缺节）。
+# 它不算「点到」：头注里为了说清缺口顺带提到的近邻住址会被 `PAT` 命中，不许借那一下把缺口算成有址。
+GAP = "〔缺址〕"
 FN = re.compile(r'\s*(?:async\s+)?fn\s+([a-zA-Z0-9_]+)')
 
 
@@ -104,10 +118,11 @@ def main():
     if not files:
         sys.exit("FAIL 判据文件全集是空的 —— 拒绝出数")
 
-    tally = {"own": 0, "file": 0, "home": 0, "none": 0}
-    none_by_file, size_by_file = {}, {}
+    tally = {"own": 0, "gap": 0, "file": 0, "home": 0, "none": 0}
+    none_by_file, gap_by_file, size_by_file = {}, {}, {}
     for t in sorted(files):
         lines = io.open(t, encoding="utf-8").read().split("\n")
+        gap = GAP in header(t)
         fh = PAT.search(header(t)) is not None
         hh = any(PAT.search(header(p)) for p in pairs.get(t, []))
         for i, l in enumerate(lines):
@@ -121,6 +136,9 @@ def main():
             size_by_file[t] = size_by_file.get(t, 0) + 1
             if PAT.search(prose_around(lines, i, j)):
                 tally["own"] += 1
+            elif gap:
+                tally["gap"] += 1
+                gap_by_file[t] = gap_by_file.get(t, 0) + 1
             elif fh:
                 tally["file"] += 1
             elif hh:
@@ -137,6 +155,7 @@ def main():
     for k, label in (("own", "① 判据自己那几行"),
                      ("file", "② 判据文件的头注"),
                      ("home", "③ 生产侧模块的头注"),
+                     ("gap", "④ 核过、主住址缺（〔缺址〕）"),
                      ("none", "── 三层都点不出")):
         print("  %s %5d  %4.1f%%" % (label, tally[k], 100.0 * tally[k] / tot))
     print()
@@ -151,6 +170,10 @@ def main():
           % ("全部" if everything else "最集中的 10 份"))
     ranked = sorted(none_by_file.items(), key=lambda kv: (-kv[1], kv[0]))
     for f, n in (ranked if everything else ranked[:10]):
+        print("  %4d 条 / 族内 %-4d  %s" % (n, size_by_file[f], f))
+    print()
+    print("核过、主住址缺的族（〔缺址〕，交主会话裁升格 / 补节）：%d 族" % len(gap_by_file))
+    for f, n in sorted(gap_by_file.items(), key=lambda kv: (-kv[1], kv[0])):
         print("  %4d 条 / 族内 %-4d  %s" % (n, size_by_file[f], f))
 
 
