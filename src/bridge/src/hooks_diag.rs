@@ -12,6 +12,8 @@
 //! 不能对着自己写的样板校准——这与 B03 那几个发现同源。
 
 /// 一个钩子的诊断结论。
+use crate::copy_table::copy_text;
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
@@ -204,7 +206,7 @@ pub fn diagnose(raw: Option<&str>, exists: &dyn Fn(&str) -> bool) -> HooksDiagno
         return HooksDiagnosis {
             session_start: HookState::NotInstalled,
             stop: HookState::NotInstalled,
-            note: "没读到 ~/.claude/settings.json（文件不存在或读取失败）".to_string(),
+            note: copy_text("rsHooksDiag.diagnose.noSettings", &[]),
         };
     };
     // BOM 容忍（同 mcp.rs 读 ~/.claude.json 的处理）
@@ -213,14 +215,14 @@ pub fn diagnose(raw: Option<&str>, exists: &dyn Fn(&str) -> bool) -> HooksDiagno
         return HooksDiagnosis {
             session_start: HookState::NotInstalled,
             stop: HookState::NotInstalled,
-            note: "~/.claude/settings.json 不是合法 JSON —— 未改动它，请先自行修复".to_string(),
+            note: copy_text("rsHooksDiag.diagnose.badJson", &[]),
         };
     };
     if !v.is_object() {
         return HooksDiagnosis {
             session_start: HookState::NotInstalled,
             stop: HookState::NotInstalled,
-            note: "~/.claude/settings.json 顶层不是对象".to_string(),
+            note: copy_text("rsHooksDiag.diagnose.notObject", &[]),
         };
     }
     HooksDiagnosis {
@@ -286,18 +288,9 @@ pub fn snippet(home: bool, probe: &SnippetProbe) -> Snippet {
     // **只在确定"不在"时才警示。** `None`（取不到）不警示——报一个我们并不知道的问题，
     // 和漏报一样是失信。
     let warning = if home && probe.home_path_exists == Some(false) {
-        Some(
-            "你选的是 $HOME 显式路径形态，但 $HOME/.local/bin/ 下找不到 cc-register / \
-             cc-bus-stop-hook——照这段贴进去会得到一个指不到东西的钩子（钩子诊断会报 path-missing）。\
-             要么改选「裸命令」形态，要么先把 cc-bus 装到那个位置。"
-                .to_string(),
-        )
+        Some(copy_text("rsHooksDiag.snippet.homeMissing", &[]))
     } else if !home && probe.on_path == Some(false) {
-        Some(
-            "你选的是裸命令形态，但这两个命令不在 PATH 上——照这段贴进去钩子跑不起来。\
-             改选「$HOME 显式路径」形态，或把它们所在目录加进 PATH。"
-                .to_string(),
-        )
+        Some(copy_text("rsHooksDiag.snippet.bareMissing", &[]))
     } else {
         None
     };
@@ -404,7 +397,7 @@ pub async fn diagnose_local_cc_bus_hooks() -> Result<HooksReport, String> {
         let Some(home) = dirs::home_dir() else {
             return report(
                 diagnose(None, &|_| false),
-                "（取不到 HOME）".to_string(),
+                copy_text("rsHooksDiag.local.noHome", &[]),
                 // 连 HOME 都取不到 → 两项都是"不知道"，**不猜**
                 SnippetProbe {
                     home_path_exists: None,
@@ -540,8 +533,12 @@ const REMOTE_SETTINGS_CAP: u64 = 4 * 1024 * 1024;
 #[tauri::command]
 pub async fn diagnose_remote_cc_bus_hooks(origin: String) -> Result<HooksReport, String> {
     use tokio::io::AsyncReadExt;
-    let cfg = crate::load_remote_config_by_label(&origin)
-        .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))?;
+    let cfg = crate::load_remote_config_by_label(&origin).ok_or_else(|| {
+        copy_text(
+            "rsHooksDiag.remote.notConfigured",
+            &[("machine", &origin.to_string())],
+        )
+    })?;
     let read = async {
         let stream = crate::ssh_source::connect_and_exec_cmd(&cfg, REMOTE_HOOKS_CMD).await?;
         let mut buf = Vec::new();
@@ -551,17 +548,23 @@ pub async fn diagnose_remote_cc_bus_hooks(origin: String) -> Result<HooksReport,
             .take(REMOTE_SETTINGS_CAP + 1)
             .read_to_end(&mut buf)
             .await
-            .map_err(|e| format!("读远端 settings.json 失败: {e}"))?;
+            .map_err(|e| copy_text("rsHooksDiag.remote.readFailed", &[("e", &e.to_string())]))?;
         if buf.len() as u64 > REMOTE_SETTINGS_CAP {
-            return Err(format!(
-                "远端 settings.json 超过 {REMOTE_SETTINGS_CAP} 字节上限 —— 拒收，不拿截断的 JSON 去解析"
+            return Err(copy_text(
+                "rsHooksDiag.remote.tooBig",
+                &[("cap", &REMOTE_SETTINGS_CAP.to_string())],
             ));
         }
         Ok::<Vec<u8>, String>(buf)
     };
     let raw = tokio::time::timeout(std::time::Duration::from_secs(30), read)
         .await
-        .map_err(|_| format!("远端 '{origin}' 读取超时（30s）"))??;
+        .map_err(|_| {
+            copy_text(
+                "rsHooksDiag.remote.timeout",
+                &[("machine", &origin.to_string())],
+            )
+        })??;
     let text = String::from_utf8_lossy(&raw).into_owned();
     tokio::task::spawn_blocking(move || {
         let (json_part, probe_part) = match text.split_once(HOOKS_SPLIT_MARKER) {

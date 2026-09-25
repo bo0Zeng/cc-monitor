@@ -75,23 +75,18 @@ src/bridge/src/ccm_probe.rs	未抽
 src/bridge/src/chan/host.rs	未抽
 src/bridge/src/chan/wire.rs	未抽
 src/bridge/src/claude_data_fence.rs	未抽
-src/bridge/src/config_surface.rs	未抽
 src/bridge/src/creds_store.rs	未抽
 src/bridge/src/data_paths.rs	未抽
 src/bridge/src/dial_host.rs	未抽
-src/bridge/src/drift_ledger.rs	未抽
 src/bridge/src/fenced_block.rs	未抽
 src/bridge/src/footprint_remote.rs	未抽
 src/bridge/src/history.rs	C4d 在改这一带，留最后一批
-src/bridge/src/hooks_diag.rs	未抽
 src/bridge/src/launch.rs	未抽
 src/bridge/src/lib.rs	未抽
 src/bridge/src/link_mux.rs	未抽
 src/bridge/src/local_accounts.rs	C4d 在改这一带，留最后一批
 src/bridge/src/local_backend_host.rs	C4d 在改这一带，留最后一批
 src/bridge/src/logging.rs	未抽
-src/bridge/src/mcp.rs	未抽
-src/bridge/src/mcp_sync.rs	未抽
 src/bridge/src/origin.rs	未抽
 src/bridge/src/panorama_bytes.rs	未抽
 src/bridge/src/panorama_call.rs	未抽

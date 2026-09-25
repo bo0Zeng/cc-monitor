@@ -141,8 +141,6 @@ src/bridge/src/account_aliases.rs:561	别名文件和盘上那份一模一样，
 src/bridge/src/account_aliases.rs:568	{rc_raw} 里加了一行 source（要撤就把 cc-monitor 那一小块整块删掉）。	保留	[对外] 写入结果：说清动了用户哪份文件、怎么撤；括号是撤法，不是论证
 src/bridge/src/account_aliases.rs:571	{rc_raw} 里已经接上了这份文件，没有再动它。	保留	[对外] 写入结果，短
 src/bridge/src/account_aliases.rs:575	新开一个终端就能用；当前终端要先执行一次 . {}	保留	[对外] 生效方式，一句一件事
-src/bridge/src/mcp_sync.rs:169	对面的后端答的内容认不出来，多半是两边版本不一样。这一趟什么都没写。	保留	[对外] 〔AS1〕MCP 推 / 拉：对面后端的应答缺格 / 类型不对（多半版本不一样）时的那一句；先说结果，第二句说后果，不露命令名与字段名
-src/bridge/src/mcp_sync.rs:250	{machine} 上那份配置在你看差异之后又被改过了，这一趟一个字节都没写。重新看一次差异再决定。	保留	[对外] 〔AS1〕MCP 推 / 拉：写的那一刻对面那份已不是看差异时那一份（CAS 拒）；说清发生了什么、没写、下一步是用户做得了的「重新看一次差异」
 src/bridge/src/shell_dialect.rs:322	# 这份文件由 cc-monitor 设置里「别名」那一块整份重写，别手改 —— 下一次写入会原样覆盖。\n\n         # 每一行是一条别名：名字 ＋ 一组 ccm 参数，调用时再给的参数接在后面。\n\n         # 写法是 POSIX sh 函数，bash / zsh 都 source 得了；fish 不行。\n	保留	[对外] 生成文件的头注（用户打开 ~/.cc-monitor/account-aliases.sh 会看到）：说清谁写的、别手改、一行一条、fish 不行，四句各一件事
 src/bridge/src/shell_dialect.rs:364	`{name}`：cc-monitor 自带的别名块（src/shared/ccm-aliases.sh）里已经有同名函数 —— \n                 那一份用 `declare -f` 让着你，所以你这条会赢；确认这就是你要的	改·§2.1	[对外] 别名冲突提示里露出源码住址 src/shared/ccm-aliases.sh 和实现细节 declare -f 兼§2.4 →「{name} 与 cc-monitor 自带的命令同名，以你这条为准」
 src/bridge/src/shell_dialect.rs:370	`{name}`：PATH 上已经有一个同名程序（{}）—— source 之后你在终端敲 `{name}` \n                 打到的是这条别名，不再是那个程序	保留	[对外] PATH / source / 终端都是用户自己会这么叫的词；破折号后接的是后果，信息必要
@@ -195,37 +193,6 @@ src/bridge/src/ccm_probe.rs:388	说不出你 PATH 上那个 `ccm` 是谁 —— 
 src/bridge/src/ccm_probe.rs:398	探不到（没有一个答得出 `--ccm-probe` 的 ccm）	改·§2.1	[对外] 括号里露出内部探针参数 --ccm-probe →「没找到」
 src/bridge/src/ccm_probe.rs:401	version={} · {} 项能力	保留	[对外] ccm 名片「version=… · N 项能力」；半机读形但短，版本号是用户要核对的（CP2 可改「版本 …」）
 src/bridge/src/ccm_probe.rs:402	(没报版本)	保留	[对外] 版本缺席占位，短
-src/bridge/src/config_surface.rs:393	仓内文件（编译期内嵌）：{repo_path}	改·§2.1	[对外] 足迹页「来源」列：仓内文件（编译期内嵌）＋ 仓相对路径，是开发者视角的源码住址 新词:编译期内嵌 →「随 cc-monitor 一起安装」
-src/bridge/src/config_surface.rs:394	仓内目录：{repo_path}	改·§2.1	[对外] 足迹页「来源」列：仓内目录＋仓相对路径（源码住址）→「随 cc-monitor 一起安装」
-src/bridge/src/config_surface.rs:398	vendored + 指纹：{repo_path}（{fingerprint_file}）	改·§2.1	[对外] 足迹页「来源」列：vendored + 指纹 ＋ 仓内路径与指纹文件名 新词:vendored 新词:指纹 →「随 cc-monitor 一起安装的第三方组件」
-src/bridge/src/config_surface.rs:399	交叉编译内嵌的二进制：{repo_path}	改·§2.1	[对外] 足迹页「来源」列：交叉编译内嵌 ＋ 仓内路径 新词:交叉编译内嵌 →「随 cc-monitor 一起安装的程序」
-src/bridge/src/config_surface.rs:400	由 cc-monitor 现场生成的文本	保留	[对外] 足迹页「来源」列，短而清楚
-src/bridge/src/config_surface.rs:403	不由 cc-monitor 提供：{who}	保留	[对外] 足迹页「来源」列：先说不是我们的，再点名
-src/bridge/src/config_surface.rs:418	本机	保留	[对外] 足迹页作用域标签
-src/bridge/src/config_surface.rs:419	远端	保留	[对外] 足迹页作用域标签
-src/bridge/src/config_surface.rs:420	本机或远端	保留	[对外] 足迹页作用域标签
-src/bridge/src/config_surface.rs:421	项目目录	保留	[对外] 足迹页作用域标签
-src/bridge/src/config_surface.rs:428	只读（诊断用），我们不写	保留	[对外] 足迹页「我们对它做什么」列，短
-src/bridge/src/config_surface.rs:429	插入/更新一个有围栏的块；卸载时按围栏精确剥离	内部词→「标记块」	[对外] 足迹页「我们对它做什么」列；「围栏」是本仓对 BEGIN/END 标记块的叫法 新词:围栏 →「插入或更新一段带标记的内容；卸载时只删这一段」
-src/bridge/src/config_surface.rs:430	整个文件由 cc-monitor 拥有，部署时整体覆盖	保留	[对外] 足迹页「我们对它做什么」列，一句一件事
-src/bridge/src/config_surface.rs:431	只生成待贴文本，由你自己粘贴——我们不写这个文件	保留	[对外] 同上；破折号后是必要的「我们不写」，短
-src/bridge/src/config_surface.rs:434	我们不直接写它；但你在 cc-monitor 里的操作会让它被写（由被调用的命令追加内容）	保留	[对外] 同上；分号两半各一件事，括号里是必要的「谁写的」
-src/bridge/src/config_surface.rs:586	申报自相矛盾：声明「app 装的」，却没有一条 ToolSpec 说得出装到哪	改·§2.1	[对外] 登记表自相矛盾时的「来源」列（只在代码登记出错时出现）：ToolSpec 是内部类型名，「申报」是内部说法 兼§2.2 新词:ToolSpec 新词:申报 →「安装信息缺失（程序内部错误）」
-src/bridge/src/config_surface.rs:587	装得了就该有落点与 touches —— 这一行的申报是坏的	改·§2.2	[对外] 同上一格的「做什么」列：「装得了就该有落点与 touches」是写给开发者的论证 兼§2.1（touches 字段名）新词:touches 新词:落点
-src/bridge/src/config_surface.rs:591	不由 cc-monitor 提供 —— 这是通用工具，请你自己装	保留	[对外] 用户自己装通用工具（git 之类）确是用户的事，R4 成立；破折号接的是直接结论
-src/bridge/src/config_surface.rs:592	我们不装它，只查它在不在；缺了这一行会告诉你，去装上就好	保留	[对外] 说清我们做什么、不做什么，可操作
-src/bridge/src/config_surface.rs:597	该由 cc-monitor 自带（K38：app 独有的东西）—— 而今天还没有装口	改·§2.1	[对外] 足迹页「来源」列里露出内部裁决编号 K38 兼§2.2（「而今天还没有装口」）兼§2.4 新词:装口 →「应随 cc-monitor 一起安装（暂未提供）」
-src/bridge/src/config_surface.rs:598	这一项该我们装，但安装入口还没写；本页照样去查它在不在，缺了也别当成「不该我们装」	改·§2.2	[对外] 足迹页「做什么」列：「缺了也别当成『不该我们装』」是防误读的设计论证 →「本页仍会检查它是否存在」
-src/bridge/src/config_surface.rs:601	不由 cc-monitor 提供	保留	[对外] 足迹页「来源」列，短
-src/bridge/src/config_surface.rs:602	我们查得到它在不在，但装不了	保留	[对外] 足迹页「做什么」列，短
-src/bridge/src/config_surface.rs:651	PATH 上找得到 `{named}`	保留	[对外] 足迹页检测结果，短
-src/bridge/src/config_surface.rs:765	用户级	保留	[对外] 设置作用域名
-src/bridge/src/config_surface.rs:767	钩子诊断读的就是这一份；本页只做字样粗匹配，装没装看「cc-bus 钩子」页	改·§2.1	[对外] 设置作用域说明里讲了本页的实现方式「只做字样粗匹配」→「是否已装以『cc-bus 钩子』页为准」
-src/bridge/src/config_surface.rs:772	用户级 local	保留	[对外] 设置作用域名，local 对应 settings.local.json，用户认得
-src/bridge/src/config_surface.rs:774	优先级高于上一行；这里定义的钩子同样生效	保留	[对外] 作用域说明，短
-src/bridge/src/config_surface.rs:779	项目级	保留	[对外] 设置作用域名
-src/bridge/src/config_surface.rs:780	<项目目录>/.claude/settings.json 与 settings.local.json	保留	[对外] 路径模板，是用户自己机器上的文件路径
-src/bridge/src/config_surface.rs:788	优先级最高	保留	[对外] 优先级说明，短
 src/bridge/src/creds_store.rs:101	读不动这份文件：{e}	保留	[对外] 凭据文件读失败，结果＋原因，短
 src/bridge/src/creds_store.rs:132	{how}。怎么修：{fix}	保留	[对外] 骨架「{how}。怎么修：{fix}」，干净；病在灌进来的 how/fix 本身（见 perm.rs）
 src/backend/accounts/apikey/file_face.rs:178	{how}。怎么修：{fix}	保留	[对外] 〔RM1a〕远端那台机器上那份凭据文件的权限提醒（`apikey-read` 的 notice，回到设置页那一块）；骨架与 creds_store.rs 那一句同文、干净，病在灌进来的 how/fix 本身（见 perm.rs）
@@ -248,10 +215,6 @@ src/bridge/src/data_paths.rs:144	诊断日志（按天滚动，保留 3 天）	�
 src/bridge/src/data_paths.rs:204	WebView2 cache / localStorage / IndexedDB / cookies。由 WebView2 Runtime 管理。	保留	[对外] 设置「数据」页里 EBWebView 目录的说明；WebView2 是用户盘上真实存在、目录名就是它的外部组件，属 R1b 限用（localStorage/IndexedDB 可在 CP2 收成「网页缓存」）
 src/bridge/src/data_paths.rs:223	PowerShell profile 备份目录	保留	[对外] 设置「数据」页条目名，PowerShell profile 是用户自己的叫法
 src/bridge/src/data_paths.rs:224	v1.7.10+ 装 cc 集成时自动备份到 <profile>.ccm-backup-<时间戳>	保留	[对外] 设置「数据」页说明，告诉用户备份文件名规则，可核对（「v1.7.10+」可删）
-src/bridge/src/drift_ledger.rs:79	这条记录不显示、不进搜索、不计费；链路仍完整（抢救保 uuid）。多半是 CC 加了新记录类型	改·§2.1	[对外] 诊断面直接显示的后果句：「链路仍完整（抢救保 uuid）」是实现细节 兼§2.4 新词:抢救 新词:链路 →「这条记录不显示、不进搜索。多半是 Claude Code 加了新的记录类型」
-src/bridge/src/drift_ledger.rs:82	**值得警惕**：CC 很可能改了某个已知类型的字段形状。记录被抢救成原文，但结构信息丢了	改·§2.4	[对外] 诊断面后果句开头 markdown **值得警惕** 会原样显示星号 新词:抢救 →「Claude Code 可能改了某类记录的格式；这些记录只能按原文显示」
-src/bridge/src/drift_ledger.rs:85	该会话被当作后台（bg）：关掉「显示后台会话」就完全看不见它	内部词→「后台」（删去括号里的 bg）	[对外] 诊断面后果句；（bg）是会话记录里的字段值，其余清楚
-src/bridge/src/drift_ledger.rs:88	该能力不会被使用（保守缺省）。多半是远端后端比 monitor 新	保留	[对外] 诊断面后果句，两句各一件事；「保守缺省」偏术语但不是内部造词（CP2 可删括号）
 src/bridge/src/fenced_block.rs:123	远端 POSIX 的 ~/<用户选的那份 rc>	保留	[不对外] FENCE_SHAPES：只被 #[cfg(test)] 判据读的登记表（pub const 但生产代码无读者）
 src/bridge/src/fenced_block.rs:124	整块别名 snippet（src/shared/ccm-aliases.sh）	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:129	落盘走 SFTP（upload_atomic + 远端备份），本机那两套走本地原子替换	保留	[不对外] FENCE_SHAPES 登记表字段
@@ -283,9 +246,6 @@ src/bridge/src/history.rs:1520	没有 tmux 会话名（前端未传）—— 名
 src/bridge/src/history.rs:1809	这个号走中转，而这一行还没改成「探到 `base-url-across-tmux` 才放行」——\n     转发做到了、也声明了（`src/backend/control/ccm/mod.rs`），\n     差的只是这一行；`K-R61` 只重裁理由，不动行为	改·§2.1	[可达存疑] RELAY_KEEPS_THE_OLD_PATH 作 Err：源码住址 src/backend/control/ccm/mod.rs、探针名 base-url-across-tmux、K-R61 兼§2.2（「差的只是这一行」）兼§2.4
 src/bridge/src/history.rs:1816	attach 不经本机拉起那条路：它 spawn 出去、stdio 全 null，接不上任何终端；     `§1.3` 把最终那次 exec 钉在用户自己的终端进程里 ⇒ 本机后端交的是**那一串**     （`render_local_attach`），不是一次 spawn	改·§2.1	[可达存疑] ATTACH_IS_NOT_A_SPAWN 作 Err：spawn / stdio / exec / §1.3 设计条目全是实现细节 兼§2.2 兼§2.4 →「接回会话需要在终端里执行，已复制命令」一类
 src/bridge/src/history.rs:2644	Windows 上没有 tmux 容器（定框 `C12`〔用 08-12〕逐字「windows不要tmux」）\n     ⇒ 也就没有「把终端接进那个容器」这件事。要翻它先回去翻定框。	改·§2.2	[可达存疑] Windows 下 attach 的拒词 Err：引用内部裁决「定框 C12」与用户原话、「要翻它先回去翻定框」是内部推理 兼§2.5（定框）→「Windows 上不支持接回已有会话」
-src/bridge/src/hooks_diag.rs:290	你选的是 $HOME 显式路径形态，但 $HOME/.local/bin/ 下找不到 cc-register / \n             cc-bus-stop-hook——照这段贴进去会得到一个指不到东西的钩子（钩子诊断会报 path-missing）。\n             要么改选「裸命令」形态，要么先把 cc-bus 装到那个位置。	改·§2.1	[对外] 钩子片段生成的警告：括号里露出诊断内部码 path-missing 兼§2.4（破折号＋括号＋三句）；两条出路本身可操作 →「$HOME/.local/bin/ 下没有 cc-bus 的两个命令，照这段贴会用不了。改选『裸命令』，或先装 cc-bus。」
-src/bridge/src/hooks_diag.rs:297	你选的是裸命令形态，但这两个命令不在 PATH 上——照这段贴进去钩子跑不起来。\n             改选「$HOME 显式路径」形态，或把它们所在目录加进 PATH。	保留	[对外] 同上一族：结果＋后果＋两条可操作的出路，短
-src/bridge/src/hooks_diag.rs:407	（取不到 HOME）	保留	[对外] 路径取不到时的占位
 src/bridge/src/launch.rs:110	本地命令	保留	[可达存疑] validate_launch_cmd 的对象名，拼进它的报错里，短
 src/bridge/src/launch.rs:370	远端命令	保留	[可达存疑] validate_launch_cmd 的对象名，短
 src/bridge/src/launch.rs:630	本机不是 Windows：cc-monitor **刻意不替你挑终端模拟器**（会话容器是 tmux）——\n     命令已复制，在你自己的 bash 里粘贴执行即可。这是既定设计，不是没做完。	改·§2.2	[对外] POSIX 下开不了终端窗口的提示：「这是既定设计，不是没做完」是防御性论证 兼§2.4（markdown **刻意不替你挑终端模拟器** ＋ 括号 ＋ 破折号）→「命令已复制，请在你的终端里粘贴执行。」
