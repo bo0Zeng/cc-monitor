@@ -375,6 +375,14 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
              （`K34` 逐字：原本的配置要手动删除）；那一份的存在与否是靠**跑一次 `--ccm-probe`**\
              问出来的，不是靠 stat 一个路径（比路径认不出同名不同物）。",
     ),
+    // 〔RM1f〕本机那一份代码全景小程序的落点：`~/.cc-monitor/bin/`（本机后端找它的第二个候选）。
+    (
+        "panorama_bytes.rs",
+        "place_local",
+        "`~/.cc-monitor/bin/cc-monitor-panorama[.exe]`（本机代码全景小程序）",
+        "**不是伸手拿用户的东西**：monitor 自己的目录（与自释放出来的本机后端同一个）。只在本机后端答\
+             「没装 / 装的太旧」时放一次；写侧登记在 `write_site_registry` 的 `local_backend.rs::place_local_panorama`",
+    ),
     (
         "local_backend_host.rs",
         "cc_monitor_dir",

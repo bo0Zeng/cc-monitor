@@ -68,12 +68,15 @@ const REGISTERED: &[Candidate] = &[
     },
     Candidate {
         id: "code-picture",
-        home: "src/bridge/vendor/code-picture-core",
+        // 〔RM1f〕住址从 vendor 副本换到那个小程序：今天「它」是后端经插件口起的那个独立二进制。
+        home: "src/panorama-engine",
         semantics: Semantics::Plugin,
         shape: Shape::LocalBackend,
-        today: "vendor crate 由 path 依赖**编进 monitor**；backend 侧整棵树零命中",
-        gap: "★ **今天对不上**：轴二说本机后端，而 monitor 侧是内嵌。\
-                  `E10` 裁「本区不做」、待决 `EU5` 记着这笔账 —— 本模块只如实登记，不去拆它",
+        today: "〔RM1f〕只装引擎的**独立小程序**（`src/panorama-engine`，path 依赖 vendor crate）；\
+                    本机与远端都由那台机器的后端经插件通用调用口起它（V108）。monitor 与 backend 两棵树**零引擎**",
+        gap: "无差 —— `EU5` 兑现：轴二（本机后端那一档）对上了，形状是「后端经插件口按需起的独立二进制」。\
+                  〔墓碑 —— 改前这一格写着「★ **今天对不上**：轴二说本机后端，而 monitor 侧是内嵌。\
+                  `E10` 裁『本区不做』、待决 `EU5` 记着这笔账」；`today` 那一格写着「由 path 依赖**编进 monitor**」。〕",
     },
     Candidate {
         id: "cc-spawn",
@@ -426,25 +429,59 @@ fn cc_bus_is_reached_only_through_its_command_surface_today() {
     );
 }
 
-/// `EF01-Y4`：`code-picture` 今天**编在 monitor 里**、**不在后端里** ——
-/// 这一格是本表唯一一处「提案与现状对不上」，把它钉成会红的，而不是抹平。
+/// `EF01-Y4`：`code-picture` 今天**住它自己的小程序里**，**不在 monitor 里、也不在后端里**。
+///
+/// 〔RM1f · V108 后半句「之后本机也走这条路、monitor 摘内嵌引擎」〕这一格原来是本表唯一一处
+/// 「提案与现状对不上」（编进 monitor），钉成会红的；本机对称那一拍把它**对上了** ——
+/// 钉子干对了活（当场红：「那条 vendor path 依赖不见了」），而断言的主语跟着事实换：
+/// ① monitor 清单**零**那条依赖、monitor 源码树**零**引擎词；② 小程序清单里那条 path 依赖**整行**在；
+/// ③ ④ backend 清单与源码树零命中（原样）。
+/// 〔改前测试名 `code_picture_is_compiled_into_the_monitor_and_absent_from_the_backend`〔散文墓碑〕。〕
 #[test]
-fn code_picture_is_compiled_into_the_monitor_and_absent_from_the_backend() {
-    // ① monitor 侧：那条 path 依赖**整行**在（`pin_line` 而不是子串 —— 事实就是「有这么一行」）。
-    let cargo = must_read("src/bridge/Cargo.toml", 1_000);
+fn code_picture_lives_in_its_own_program_and_neither_in_the_monitor_nor_the_backend() {
+    // ① monitor 侧：清单里零那条依赖（剥 `#` 注释后按词找），源码树生产段零引擎词。
+    let cargo = guard_core::strip_hash_comment_lines(&must_read("src/bridge/Cargo.toml", 1_000));
+    assert!(
+        !guard_core::contains_word(&cargo, "code-picture-core ="),
+        "monitor 的 `Cargo.toml` 又依赖上了 vendor 全景引擎 —— 〔RM1f〕monitor 已经摘掉内嵌引擎（V108 后半句），\
+             全景本机远端都经那台机器的后端起小程序。要回到内嵌，先去 `EU5` 把账改了。"
+    );
+    let root = repo_root();
+    let monitor_files = guard_core::scan_tree!(&root.join("src/bridge/src"), &["rs"]);
+    assert!(
+        monitor_files.len() >= 80,
+        "只遍历到 {} 个 monitor 源文件 —— 遍历坏了，本条此刻是空转的",
+        monitor_files.len()
+    );
+    // 〔RM1f 死值验 K15b 逼出来的〕两根针都要：`contains_word` 把 `_` 当词内字符，只拿 `code_picture`
+    // 认不出 `code_picture_core`（真正的导入形）—— 首刀往 monitor 生产段塞一行 `"code_picture_core"`，本条照绿。
+    let words = [
+        format!("code{}picture", '_'),
+        format!("code{u}picture{u}core", u = '_'),
+    ];
+    let in_monitor: Vec<String> = monitor_files
+        .iter()
+        .filter(|(_, src)| {
+            let prod = guard_core::production_code(src);
+            words.iter().any(|w| guard_core::contains_word(&prod, w))
+        })
+        .map(|(p, _)| p.to_string_lossy().replace('\\', "/"))
+        .collect();
+    assert!(
+        in_monitor.is_empty(),
+        "monitor 的源码树（生产段）里又出现了全景引擎：{in_monitor:?}"
+    );
+    // ② 小程序那一侧：那条 path 依赖**整行**在（`pin_line` 而不是子串 —— 事实就是「有这么一行」；
+    //    用整行相等是刻意的：子串会被「path 改指别处」这种撑大式改动从缝里溜过去）。
+    let program = must_read("src/panorama-engine/Cargo.toml", 300);
     let dep = format!(
-        "code-picture-core = {} path = \"vendor/code-picture-core\" {}",
+        "code-picture-core = {} path = \"../bridge/vendor/code-picture-core\" {}",
         '{', '}'
     );
-    guard_core::pin_line(&cargo, &dep).unwrap_or_else(|e| {
+    guard_core::pin_line(&program, &dep).unwrap_or_else(|e| {
         panic!(
-            "monitor 的 `Cargo.toml` 里那条 vendor path 依赖不见了或变形了：{e}\n\
-                 ⇒ 本表 `code-picture` 那一行的 `today` 逐字说「**编进 monitor**」。\
-                 真改成了别的形态（local_backend / 可选 feature），那是待决 `EU5` 的答案落地 —— \
-                 请先去 `E10`/`EU5` 把账改了，再回来改这一行，别反过来。\n\
-                 ⚠ 只是**改了写法**（空格 / 换成表段形式）而语义没变的话，同轮把这里的\
-                 期望串一起改 —— 用整行相等是刻意的：子串会被「path 改指别处」\
-                 这种撑大式改动从缝里溜过去（`needle_anchor_registry` 那一族）。"
+            "全景小程序的 `Cargo.toml` 里那条 vendor path 依赖不见了或变形了：{e}\n\
+                 ⇒ 本表 `code-picture` 那一行的 `today` 说它住这个小程序里。真换了形态，先改那一行。"
         )
     });
 

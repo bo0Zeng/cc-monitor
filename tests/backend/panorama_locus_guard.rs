@@ -16,7 +16,7 @@
 //!
 //! # 今天的读数（就是下面那两张登记表的内容，别在这段散文里复述第二遍）
 //!
-//! 人群 = 本仓今天的三个 `Cargo.lock`（monitor 那棵 · backend 那棵 · 独立全景小程序那棵）+ 两棵源码树的生产段
+//! 人群 = 本仓今天的三个 `Cargo.lock`（monitor 那棵 · backend 那棵 · 独立全景小程序那棵）+ 三棵源码树的生产段（〔RM1f〕＋小程序那一棵）
 //! + `src/bridge/crates/` 下每个共享 crate 的 manifest。
 //!
 //! # ⚠ 它认不出什么（逐条写，别读成全覆盖）
@@ -41,12 +41,12 @@
 //!   `exclude = ["vendor/code-picture-core"]`（那是 workspace 成员身份，不是依赖）
 //!   不会被误读成链接（件文件 `§0c` 逐字点过这两个 `vendor` 字样是两件事）。
 //! - **与 monitor 侧 `panorama_seam_registry` 有一处重叠，如实说**：那边的
-//!   `the_engine_is_opened_in_exactly_one_place` 只看 `panorama.rs` 一个文件、
-//!   `the_engine_type_does_not_escape_the_panorama_module` 看 monitor 那一棵树。
-//!   本条第三格把「恰好一处」量到**整棵 monitor 树的生产段**上（超集），
+//!   `the_engine_is_opened_in_exactly_one_place` 〔RM1f 起〕只看小程序 `main.rs` 一个文件、
+//!   `the_engine_type_does_not_escape_the_panorama_module` 看 monitor 那一棵树（零导入）。
+//!   本条第三格把「恰好一处」量到**整棵小程序树 ＋ 整棵 monitor 树的生产段**上（超集），
 //!   而本条真正新买的是后端那半与**跨树的链接登记**。
-//!   ⇒ 若 `KW2D4` 落地成「三棵树合起来恰好一处」，本条第三格就成了第二份真相，
-//!   那时该合并的是它们，不是各留一半。
+//!   ⇒ 若 `KW2D4` 落地成「每棵树合起来恰好一处」（`engine_port_scope` 今天已经是这个形状），本条第三格就是第二份真相，
+//!   该合并的是它们，不是各留一半（留给主会话裁）。
 //!
 //! # 🔴 删任何一格之前先读这一段（变异实测逼出来的，不是风格）
 //!
@@ -103,13 +103,13 @@ mod tests {
 
     /// **登记表②**：上面那几份里，**允许**含引擎那个包的是哪几份。
     ///
-    /// 今天恰好两份 —— monitor 那棵（本机全景仍在 monitor 进程内，第二拍才摘）与独立小程序那棵
-    /// （远端全景：后端起它，解析在它的进程里）。**后端那一份不在** —— 那就是「后端本体零引擎」
-    /// （`C21` / V108）的账面形态。
-    /// 〔改前原话逐字：「今天恰好一份 —— monitor 那棵。」〕
-    /// ⚠ 这是一道**相等断言**，不是地板：多一份（backend 也链了）与少一份（monitor 不再链了）
+    /// 〔RM1f · V108 后半句〕今天恰好一份 —— 独立小程序那棵（本机与远端的全景都由那台机器的后端起它，
+    /// 解析在它的进程里）。**monitor 与后端两份都不在** —— 那就是「宿主零引擎」的账面形态。
+    /// 〔改前原话逐字：「今天恰好两份 —— monitor 那棵（本机全景仍在 monitor 进程内，第二拍才摘）与独立小程序那棵」；
+    ///  再往前是「今天恰好一份 —— monitor 那棵。」〕
+    /// ⚠ 这是一道**相等断言**，不是地板：多一份（monitor / backend 又链了）与少一份（小程序那份 lock 挪了位）
     /// 都会红，而两种红各有各的处置，诊断里分开写。
-    const ENGINE_LINKED_BY: &[&str] = &["src/bridge/Cargo.lock", "src/panorama-engine/Cargo.lock"];
+    const ENGINE_LINKED_BY: &[&str] = &["src/panorama-engine/Cargo.lock"];
 
     /// 读一份仓内文件，**读不到就 panic，不许静默成空串地绿**。
     fn read_pinned(rel: &str, floor: usize) -> String {
@@ -244,12 +244,25 @@ mod tests {
         );
     }
 
-    /// ★ 正题③（**取用面 · monitor 这一棵**）：本机侧的解析入口**恰好一处**。
+    /// ★ 正题③（**取用面 · 小程序这一棵 ＋ monitor 这一棵**）：解析入口**恰好一处**，住小程序里；monitor 零处。
     ///
     /// 它是件文件 `§3` 点名要的那一刀（「合成 monitor 侧多一处解析入口 ⇒ 红」）的落点。
-    /// 与 monitor 侧那条的差别写在本模块头注最后一段（那边看一个文件，这边量整棵树）。
+    /// 〔RM1f · V108 后半句〕`KW2D1` 那个分叉落地了（monitor 摘掉内嵌引擎）：那「恰好一处」搬进了
+    /// `src/panorama-engine/`，monitor 那棵变成**零处**。⚠ 头注「删任何一格之前先读这一段」说的那条
+    /// fail-closed 照旧成立：小程序那一格的期望是**非空的 1**，采集器被打瞎时是它先红，
+    /// backend 与 monitor 那两格的「零」才不是空真。
+    /// 〔改前测试名 `the_monitor_tree_keeps_exactly_one_parse_entrance`〔散文墓碑〕，期望是「monitor 树恰好 1 处」。〕
     #[test]
-    fn the_monitor_tree_keeps_exactly_one_parse_entrance() {
+    fn the_engine_program_keeps_exactly_one_parse_entrance_and_the_monitor_none() {
+        let program = repo_root().join("src/panorama-engine");
+        let in_program = open_sites(&program, &open_needle());
+        assert_eq!(
+            in_program.iter().map(|(_, n)| n).sum::<usize>(),
+            1,
+            "全景小程序的生产段里打开引擎的处数不是 1：{in_program:?}\n\
+             **0 处**：取用口又搬走了（或采集器瞎了 —— 那样下面 monitor 那格的「零」是空真）；\
+             **多于 1**：第二处 = 第二条 SQLite 连接（同一索引库并发写的那条真事故）。"
+        );
         let root = repo_root().join("src/bridge").join("src");
         let files = guard_core::scan_tree!(&root, &["rs"]);
         // 反空真：monitor 那棵树读不到（路径挪了 / 只剩几个文件）⇒ 下面会零命中地绿。
@@ -263,13 +276,10 @@ mod tests {
         let opens = open_sites(&root, &open_needle());
         let total: usize = opens.iter().map(|(_, n)| n).sum();
         assert_eq!(
-            total, 1,
-            "monitor 树的生产段里打开引擎的处数是 {total}（该是 1）：{opens:?}\n\
-             **多出来的**：第二处 = 第二条连接（`panorama.rs` 自己记着那条事故）；\
-             而对 `KW2D3` 还多一层意思 —— 解析在本机侧多了一个入口，\
-             「哪一侧解析」这句话就不再有唯一答案。\n\
-             **少了的（0 处）**：引擎取用口搬走了 ⇒ 那是 `KW2D1` 那个分叉真的落地了，\
-             该同轮改的是本条与 `ENGINE_LINKED_BY` 两张表，不是把数字改成 0 了事。"
+            total, 0,
+            "monitor 树的生产段里又出现了打开引擎那一处（{total} 处）：{opens:?}\n\
+             ⇒ 〔RM1f〕monitor 已经摘掉内嵌引擎（V108 后半句）：本机全景也经本机后端起小程序。\
+             monitor 再开一处 = 解析回到宿主自己的地址空间，而且与小程序那一处是**两条连接**。"
         );
     }
 

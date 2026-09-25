@@ -1741,7 +1741,7 @@ fn line_number_addresses_stay_in_range_and_never_grow() {
         ("local_backend_host_tests.rs", "structural_scan.rs", 425),
         // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
         ("local_backend_host_tests.rs", "structural_scan.rs", 508),
-        ("panorama.rs", "engine.rs", 42),
+        // 〔RM1f〕`("panorama.rs", "engine.rs", 42)` 这一行删了：引用方那份文件随 monitor 的内嵌引擎一起删了。
         // 🔴 〔搬树 2026-09-18〕**这一行删掉了**：`config_surface.rs` 的测试段搬走之后
         //    那份文件只剩 853 行，1062 行**越界**了（本条第 ① 格当场逮住）。
         //    按本条头注唯一那条改法**改成了符号地址**
@@ -2694,6 +2694,33 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// `tool_registry`（→ `tool_registry_environment_tests.rs`）。
     /// 另有**真新增的一条**（退役判据留下的墓碑），挂在本表末尾、单独写了理由。
     const TOMBSTONED: &[(&str, &str, usize)] = &[
+        // 🔴 〔RM1f · V108 后半句〕monitor 摘掉内嵌引擎：`panorama.rs` 与它的判据文件删了，三处散文里的旧名挂墓碑。
+        ("src/panorama-engine/main.rs", "collect_symbols_in_file", 1),
+        (
+            "tests/bridge/panorama_seam_registry_tests.rs",
+            "panorama_diagram_kinds",
+            1,
+        ),
+        (
+            "tests/bridge/parity_ledger_tests.rs",
+            "panorama_diagram_kinds",
+            1,
+        ),
+        (
+            "tests/backend/panorama_locus_guard.rs",
+            "the_monitor_tree_keeps_exactly_one_parse_entrance",
+            1,
+        ),
+        (
+            "tests/bridge/plugin_class_registry_tests.rs",
+            "code_picture_is_compiled_into_the_monitor_and_absent_from_the_backend",
+            1,
+        ),
+        (
+            "tests/panorama/diagram-guards.vitest.ts",
+            "the_diagram_commands_pass_the_upstream_through_untouched",
+            1,
+        ),
         // 〔S5 · 第四波 · V41〕`parse_remote_hosts` 旧单对象那一支删了，守它的测试随之删；
         //    接替它的判据头注逐字说那条旧测试守的是什么 ⇒ 第②条出路。
         (
@@ -3938,8 +3965,12 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/filewin/source_tests.rs", 2), // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         // 〔AL1 · 2026-09-24〕+5：`write_account_aliases` 退役那一行 ＋ 增量账里它那一行 ＋ 合并主线时
         //   三个计数旁的增量注（`EXPECTED_LOCAL_OR_BOTH` · `LEDGER.len()` · 增量账）。
-        ("tests/bridge/parity_ledger_tests.rs", 17), // 〔C4c〕16 → 17（「退出行为」两条退役，`ORIGIN_TAKING_BOTH` 摘掉处一块） // 〔合并 C4c × 主线 6b375621〕12 ＋ 本路 2 ＋ AL1d 2 ⇒ 16 // 〔C4c〕12 → 14（信任预检 · 记录那一问两条命令退役，`ORIGIN_TAKING_BOTH` 那两条摘掉处各挂一块） // 〔AL1d〕12 → 14（「终端集成」退役的两行 LEDGER 注释挂墓碑） // 〔C4a · 第四波〕11 → 12（E79 那条本机会话账号命令退役，账本那一行挂墓碑） // 〔F7c 收尾 09-24〕10 → 11（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
-        ("tests/bridge/plugin_class_registry_tests.rs", 2),
+        ("tests/bridge/parity_ledger_tests.rs", 18), // 〔合并 RM1f × 主线 60ace11b〕主线 17 ＋ 本路 1 ⇒ 18（PN1b 那行增量账里 `panorama_diagram_kinds` 随内嵌引擎退役，挂墓碑） // 〔C4c〕16 → 17（「退出行为」两条退役，`ORIGIN_TAKING_BOTH` 摘掉处一块） // 〔合并 C4c × 主线 6b375621〕12 ＋ 本路 2 ＋ AL1d 2 ⇒ 16 // 〔C4c〕12 → 14（信任预检 · 记录那一问两条命令退役，`ORIGIN_TAKING_BOTH` 那两条摘掉处各挂一块） // 〔AL1d〕12 → 14（「终端集成」退役的两行 LEDGER 注释挂墓碑） // 〔C4a · 第四波〕11 → 12（E79 那条本机会话账号命令退役，账本那一行挂墓碑） // 〔F7c 收尾 09-24〕10 → 11（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
+        ("tests/bridge/plugin_class_registry_tests.rs", 3), // 〔RM1f〕2 → 3：`code-picture` 那一格对上之后，旧测试名挂墓碑
+        ("src/panorama-engine/main.rs", 1), // 〔RM1f〕monitor 那份按文件列符号的旧函数名（随内嵌引擎删了）
+        ("tests/bridge/panorama_seam_registry_tests.rs", 1), // 〔RM1f〕PN1b 那一行增量账里的旧命令名（随内嵌引擎退役）
+        ("tests/backend/panorama_locus_guard.rs", 1),        // 〔RM1f〕正题③改名前的旧测试名
+        ("tests/panorama/diagram-guards.vitest.ts", 1), // 〔RM1f〕它原先点的那条 monitor 真引擎判据（随内嵌引擎删了）
         ("tests/bridge/polling_registry_tests.rs", 1),
         // 〔AL1 · 2026-09-24〕+1：`rollback_note_matches_what_actually_happened` 搬走的那块墓碑。
         ("tests/bridge/sftp_tests.rs", 5), // 〔SR1b〕+1：`SftpFile` 改名 `RemoteFile`

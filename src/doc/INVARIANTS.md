@@ -677,7 +677,7 @@ cc-monitor **没有一个**「自铸 opaque id + 落盘/上 wire + 从路径算�
 - 会话表 / 历史 metadata / 窗口句柄缓存 key = Claude Code `sessionId`（`session_map.rs`、`history.rs::HistoryMetadata.entries`、`bind.rs::SidHwndBinding`）。
 - ps-registry key = OS `pid`（`bind.rs`）。
 - 唯一自铸的 opaque token = bind 握手 marker `ccm-bind-{PID}-{随机8字符UUID}`（`bind.rs`）——**瞬时握手、用完即删、不从路径算**，不当持久身份，合规。
-- panorama 进程内选 Engine 的 key 用仓根路径，但**纯内存、绝不落盘**（保持现状，别存盘）。持久的节点身份由 **code-picture-core** 写进侧车 DB、守它自己的 uuid 规矩，cc-monitor 只消费不自铸。
+- panorama 进程内选 Engine 的 key 用仓根路径，但**纯内存、绝不落盘**（保持现状，别存盘）。持久的节点身份由 **code-picture-core** 写进侧车 DB、守它自己的 uuid 规矩，cc-monitor 只消费不自铸。〔RM1f 09-25：monitor 进程内那个 Engine 池随内嵌引擎删了（本机全景也经本机后端起全景小程序，一问一进程）⇒ 前半句今天**没有对象**；后半句照旧成立 —— 身份仍由小程序里那份 core 写、monitor 只消费。〕
 
 ### `origin` 边界（有意的外部稳定 id，别手滑）
 `RemoteConfig.label`（`ssh_source.rs`，空则回退 `host`）是唯一「持久（config.json）+
