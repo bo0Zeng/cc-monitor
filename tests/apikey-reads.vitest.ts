@@ -17,13 +17,27 @@ import { resolve } from "node:path";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { decodeApikeyRouting, decodeApikeyStatus, fetchApikeyRouting, readApikeyStatus } from "../src/apikey-reads";
+import {
+  decodeApikeyRouting,
+  decodeApikeyStatus,
+  fetchApikeyRouting,
+  readApikeyStatus,
+} from "../src/apikey-reads";
 import { REPO_ROOT } from "./test-support/repo-root";
-import { chanArgsJson, chanReply, NO_CHANNEL, UNSUPPORTED, type ChanCallArgs } from "./test-support/chan-fake";
+import {
+  chanArgsJson,
+  chanReply,
+  NO_CHANNEL,
+  UNSUPPORTED,
+  type ChanCallArgs,
+} from "./test-support/chan-fake";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const golden = JSON.parse(
-  readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/apikey.golden.json"), "utf8"),
+  readFileSync(
+    resolve(REPO_ROOT, "tests/__fixtures__/apikey.golden.json"),
+    "utf8",
+  ),
 ) as Record<string, unknown>;
 
 beforeEach(() => {
@@ -77,14 +91,23 @@ describe("请求：经通道问那台机器的后端", () => {
     const calls = invokeMock.mock.calls;
     expect(calls.map((c) => c[0])).toEqual(["chan_call"]);
     const a = calls[0][1] as ChanCallArgs;
-    expect([a.origin, a.op, chanArgsJson(a)]).toEqual(["host-a", "apikey-read", {}]);
+    expect([a.origin, a.op, chanArgsJson(a)]).toEqual([
+      "host-a",
+      "apikey-read",
+      {},
+    ]);
   });
   it("apikey-routing：op 对、agent 与 configDirs 随请求带", async () => {
     invokeMock.mockResolvedValue(chanReply(golden["apikey-routing"]));
-    const got = await fetchApikeyRouting("<local>", "claude-code", ["/h/.claude-alt/work"]);
+    const got = await fetchApikeyRouting("<local>", "claude-code", [
+      "/h/.claude-alt/work",
+    ]);
     const a = invokeMock.mock.calls[0][1] as ChanCallArgs;
     expect([a.origin, a.op]).toEqual(["<local>", "apikey-routing"]);
-    expect(chanArgsJson(a)).toEqual({ agent: "claude-code", configDirs: ["/h/.claude-alt/work"] });
+    expect(chanArgsJson(a)).toEqual({
+      agent: "claude-code",
+      configDirs: ["/h/.claude-alt/work"],
+    });
     expect(got.routed).toEqual(["/h/.claude-alt/work"]);
   });
 });
@@ -96,6 +119,8 @@ describe("失败：一句人话，不退化成「没配」/「没行」", () => 
   });
   it("没有控制通道 ⇒ 说够不着（不是空表）", async () => {
     invokeMock.mockRejectedValue(NO_CHANNEL);
-    await expect(fetchApikeyRouting("host-a", "claude-code", ["/d"])).rejects.toThrow(/够不着/);
+    await expect(
+      fetchApikeyRouting("host-a", "claude-code", ["/d"]),
+    ).rejects.toThrow(/够不着/);
   });
 });
