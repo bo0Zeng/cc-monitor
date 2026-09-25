@@ -3447,7 +3447,7 @@ fn a_refusal_from_the_byte_table_reaches_the_missing_reason_and_writes_nothing()
         reason.contains("旁边没有本机后端"),
         "「旁边没有」那一句被换掉了（两件事都要说）：{reason}"
     );
-    let left: Vec<_> = std::fs::read_dir(&base).unwrap().collect();
-    assert!(left.is_empty(), "拒绝了却往盘上写了东西：{left:?}");
-    let _ = std::fs::remove_dir_all(&base);
+    // 「一个字节都不写」：空目录才删得掉（`remove_dir` 对非空目录报错）—— 不遍历目录。
+    std::fs::remove_dir(&base)
+        .unwrap_or_else(|e| panic!("拒绝了却往盘上写了东西（目录删不掉：{e}）"));
 }
