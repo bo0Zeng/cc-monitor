@@ -200,6 +200,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/remote-launch-run.ts",
     "src/remote-launch.ts",
     "src/session-reads.ts", // 〔C4c〕resume 之前问记录还在不在（经通道问 `history-record`）
+    "src/tmux-name-mint.ts", // 〔FE1〕tmux 全新 resume 的铸名只经这一个家（名单没问到 ⇒ 不起、说清）
     "src/tmux-sessions.ts",
   ],
 };

@@ -44,6 +44,7 @@ import { commands } from "./ipc/commands";
 import { probeSessionRecord, type RecordProbe } from "./session-reads";
 import { lastAccounts } from "./history-reads";
 import { mintSessionTmuxName } from "./remote-launch";
+import { listingFromFetch, mintFromListing, refuseUnmintable } from "./tmux-name-mint";
 import { getBehavior } from "./behavior";
 // F78：远端会话「打开工作目录」→ 用该机配置开文件窗口进入远端 cwd（而非只提示打不开）。〔F7b〕老 SFTP 面板删了。
 import { openFileWindow } from "./file-window";
@@ -356,8 +357,10 @@ export class TabSessionActions {
     // 8s 缓存里的 @ccm_sid 可能已被 /branch 漂移（快照记 N=A，N 此刻跑 B）→ 据陈旧快照 attach
     // 又会撞进漂移会话，正是本刀要修的 bug。故这里**总是新查、不读缓存**（用户主动 resume，一次
     // ssh 可接受；与 resolveAttachMenuItem 的 attach 一律新查对齐），查回来仍写缓存惠及其它路径。
-    // 查询失败（undefined）→ 当作没有会话，走下面 fresh 分支（沿用旧幂等 resume 名，退化不变砖）。
-    const sessions = (await this.fetchTmuxFresh(origin)) ?? null;
+    // 查询失败（undefined）→ 找不到活的那一个，走到下面 fresh 分支；〔FE1〕那一支要铸名，
+    //   而「没问到」不是「零会话」⇒ 在那里拒、说清（先前这里 `?? null` 把两者压成一个，空集铸名 = #76）。
+    const fetched = await this.fetchTmuxFresh(origin);
+    const sessions = fetched ?? null;
     // ① 目标 sid 正活在某 tmux（@ccm_sid 命中）→ 直接 attach 它，回到活的后端，别重开一个。
     // F04（R10）：命中 ≥2 个时**仍 attach 到第一个**（resume 非破坏性、可撤销：重新点一次就能换
     // 目标，不像 kill 一旦选错代价不可逆），但诚实告知——不静默假装只有一个。分级理由见 F04
@@ -417,8 +420,12 @@ export class TabSessionActions {
     // ② 目标会话不在任何 tmux（已结束 / 已漂移到别的 sid）→ 起**全新** resume。tmux 名从现有
     // 名里挑一个不撞的，避免复用被 /branch 漂移占着的 `<项目名>-cc`（那正是「resume 进 branch」老 bug）。
     // 🔴 `K-R96`：基名从 cwd 派生（可读），不再是 `<sid8>-cc`。
-    const existing = new Set((sessions ?? []).map((s) => s.name));
-    const name = mintSessionTmuxName(cwd, existing);
+    // 〔FE1〕铸名只经 `tmux-name-mint.ts`；名单没问到 ⇒ 不铸、不起、说清（不拿空集去避让）。
+    const name = mintFromListing(cwd, listingFromFetch(origin, fetched));
+    if (name === null) {
+      refuseUnmintable(origin, copyText("tmuxMint.unknown.notAsked"));
+      return;
+    }
     // account-ux U3:tmux 版归档 resume 也跟随账号(注入 configDir)。① attach 活会话分支不动(账号焊死)。
     await withAccount(
       origin,

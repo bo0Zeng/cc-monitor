@@ -26,6 +26,7 @@ import {
   type ForkLaunchInput,
 } from "./fork-launch";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
+import { copyText } from "./copy-table";
 
 /** 用户在追问小窗里给的答案。只覆盖 `unknown` 的那几格。 */
 export interface ForkChoices {
@@ -88,8 +89,12 @@ export interface ForkStartInput {
   source: ForkLaunchInput;
   /** 源会话所在的 tmux 名（用来取一个**不同**的新名）。 */
   sourceTmuxName?: string | null;
-  /** 已被占用的 tmux 名（避让）。 */
-  takenTmuxNames?: readonly string[];
+  /**
+   * 已被占用的 tmux 名（避让）。〔FE1〕**必填**，`null` = 名单没问到：选了 tmux 就不起
+   * （抛，由 `runForkFlow` 出声）—— 空集铸名就是「不避让」，#76 的形状。
+   * 先前是可选 ＋ `?? []`：不传就等于没查，而它「看起来有查」（`forkTmuxName` 那个默认值 F13 删过一次，同一个坑）。
+   */
+  takenTmuxNames: readonly string[] | null;
 }
 
 /** `failed` 与 `cancelled` 必须分开：前者要报错，后者是用户自己收手、不该再弹任何东西。 */
@@ -163,6 +168,12 @@ export async function startForkedSession(
   }
 
   // 远端：tmux 名**必须与原会话不同**，否则 ccm 会 attach 进原窗口。
+  if (useTmux && input.takenTmuxNames === null) {
+    throw new Error(copyText("tmuxMint.refused.body", {
+      machine: input.origin,
+      reason: copyText("tmuxMint.unknown.notAsked"),
+    }));
+  }
   const tmuxName = useTmux
     ? forkTmuxName(input.sourceTmuxName ?? cwd ?? "fork", input.takenTmuxNames ?? [])
     : null;
