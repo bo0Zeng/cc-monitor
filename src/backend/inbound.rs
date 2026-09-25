@@ -1145,7 +1145,18 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "files-copy",
         doc_anchor: Some("#### `files-copy`"),
         codes: &["bad_args", "bad_path", "io_failed", "refused"],
-        fields: &["bytes", "from", "overwrite", "path", "root", "to"],
+        // 〔W5-FILES〕`recursive`（入）· `files` / `dirs`（出）：显式才复制目录。
+        fields: &[
+            "bytes",
+            "dirs",
+            "files",
+            "from",
+            "overwrite",
+            "path",
+            "recursive",
+            "root",
+            "to",
+        ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args)
