@@ -99,7 +99,7 @@ fn powershell_golden() {
 /// 同一份清单，两个方言各自渲染 → 各自读回 → **两边都等于原清单**（两向：读回的不多一条、不少一条）。
 #[test]
 fn both_dialects_read_back_exactly_what_they_wrote() {
-    for d in [Shell::Posix.dialect(), Shell::PowerShell.dialect()] {
+    for (sh, d) in [Shell::Posix, Shell::PowerShell].map(|x| (x, x.dialect())) {
         let text: String = sample()
             .iter()
             .map(|(n, a)| d.render_alias(n, a) + "\n")
@@ -107,13 +107,13 @@ fn both_dialects_read_back_exactly_what_they_wrote() {
         let back: Vec<(String, Vec<String>)> = d
             .parse_file(&text)
             .into_iter()
-            .map(|r| r.unwrap_or_else(|e| panic!("{:?} 读不回自己写的：{e}", d.shell())))
+            .map(|r| r.unwrap_or_else(|e| panic!("{:?} 读不回自己写的：{e}", sh)))
             .collect();
         let want: Vec<(String, Vec<String>)> = sample()
             .into_iter()
             .map(|(n, a)| (n.to_string(), a))
             .collect();
-        assert_eq!(back, want, "{:?}", d.shell());
+        assert_eq!(back, want, "{:?}", sh);
     }
 }
 
@@ -168,12 +168,12 @@ fn only_powershell_gets_a_bom() {
 /// 名字：两种方言同一个字符集；PowerShell 大小写不敏感（`Zcc` 与 `alphacc` 是同一个函数）。
 #[test]
 fn names_are_portable_and_powershell_folds_case() {
-    for d in [Shell::Posix.dialect(), Shell::PowerShell.dialect()] {
+    for (sh, d) in [Shell::Posix, Shell::PowerShell].map(|x| (x, x.dialect())) {
         for ok in ["alphacc", "_x", "a1_b"] {
-            assert!(d.name_is_valid(ok), "{:?} {ok}", d.shell());
+            assert!(d.name_is_valid(ok), "{:?} {ok}", sh);
         }
         for bad in ["", "1a", "a-b", "a.b", "a b", "名字"] {
-            assert!(!d.name_is_valid(bad), "{:?} {bad}", d.shell());
+            assert!(!d.name_is_valid(bad), "{:?} {bad}", sh);
         }
     }
     assert!(PowerShell.same_name("Zcc", "alphacc"));

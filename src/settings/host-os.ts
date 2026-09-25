@@ -3,7 +3,8 @@
  *
  * # 为什么需要它
  *
- * 「PowerShell 集成」这一块（`cc_integration.ts`）挂在**本机页**上，而它整篇都是
+ * 「PowerShell 集成」这一块（从前的 `cc_integration.ts`；〔AL1c〕今天是 `machine-aliases.ts` 里 PowerShell 那一侧的别名块，
+ * 由 `machine-aliases.ts::localShell` 按本模块选平台）挂在**本机页**上，而它整篇都是
  * `$PROFILE` / `Microsoft.PowerShell_profile.ps1`。v3.4.0 已经发了 `.deb` ——
  * Linux 用户打开设置就会看到一个装 PowerShell profile 的安装器。
  *

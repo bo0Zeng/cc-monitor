@@ -76,9 +76,6 @@ pub type Parsed = Result<(String, Vec<String>), String>;
 /// 🔴 **`71 §4.4` 那组接口。** 每个方法都只回答「这个 shell 里怎么写 / 怎么读 / 文件在哪」；
 /// 任何「合不合格」的判断都不许写进实现里（那是通用层的，两边一模一样）。
 pub trait ShellDialect: Sync {
-    /// 它是哪一种。
-    fn shell(&self) -> Shell;
-
     /// 围栏块的排版（`fenced_block::Layout`）：规则不分方言，分方言的只有排版。
     fn layout(&self) -> Layout;
 
@@ -269,10 +266,6 @@ impl Posix {
 }
 
 impl ShellDialect for Posix {
-    fn shell(&self) -> Shell {
-        Shell::Posix
-    }
-
     fn layout(&self) -> Layout {
         Layout::Posix
     }
@@ -475,10 +468,6 @@ impl PowerShell {
 }
 
 impl ShellDialect for PowerShell {
-    fn shell(&self) -> Shell {
-        Shell::PowerShell
-    }
-
     fn layout(&self) -> Layout {
         Layout::PowerShell
     }

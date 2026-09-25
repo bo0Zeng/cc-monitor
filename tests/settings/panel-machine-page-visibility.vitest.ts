@@ -19,7 +19,7 @@
 // # 尺子的非空对照（本文件的第三条）
 //
 // 「`hidden === false`」这种断言最容易变成空真：抓错元素、或整块压根没进文档，
-// 读出来都是 `false`。⇒ 第三条拿一块**登记成 `"local"`** 的分节（终端集成）
+// 读出来都是 `false`。⇒ 第三条拿一块**登记成 `"local"`** 的分节（〔AL1c〕别名 —— 从前是终端集成，它并进了别名）
 // 在**远端页**上读，必须读出 `hidden === true`。同一把尺子读得出两种结局，
 // 上面两条才算数。
 
@@ -86,15 +86,6 @@ vi.mock("../../src/settings/diagnostics-section", () => ({
     element = document.createElement("div");
   },
 }));
-vi.mock("../../src/settings/cc_integration", () => ({
-  CcIntegrationSection: class {
-    element = (() => {
-      const d = document.createElement("div");
-      d.className = "cc-integration-stub";
-      return d;
-    })();
-  },
-}));
 vi.mock("../../src/settings/mcp-section", () => ({
   McpSection: class {
     element = document.createElement("div");
@@ -157,8 +148,8 @@ vi.mock("@tauri-apps/api/window", () => ({
 import { SettingsPanel } from "../../src/settings/panel";
 import { __setHostOsForTests } from "../../src/settings/host-os";
 
-// jsdom 的 UA 含 `linux` ⇒ 不置覆盖值的话「终端集成」那块根本不构造，
-// 而本文件第三条（尺子的非空对照）正要拿它当那块 `appliesTo: "local"` 的分节。
+// jsdom 的 UA 含 `linux`；本文件照 Windows 形态跑（〔AL1c〕第三条那块 `appliesTo: "local"` 的分节今天是「别名」，
+// 两个平台都构造 —— 钉成 windows 只是沿用本文件一直以来的形态）。
 beforeEach(() => {
   __setHostOsForTests("windows");
   captured.pages = null;
@@ -216,8 +207,8 @@ describe("N-F1b NF1bD5：账号那一节在本机页上真的显示出来（穿�
 
   it("★ 尺子的非空对照：同一把尺子在远端页上读一块 `appliesTo: \"local\"` 的分节，读出 hidden === true", async () => {
     await mountPanel();
-    // 本机页上「终端集成」该是可见的（它就是本机专属的那一块）。
-    const local = blockOf(".cc-integration-stub");
+    // 本机页上「别名」该是可见的（它就是本机专属的那一块；〔AL1c〕终端集成并进了它）。
+    const local = blockOf(".machine-aliases");
     expect(local.hidden, "本机页上连本机专属那一块都被藏了 —— 尺子或夹具坏了").toBe(false);
     // ★ 切到远端页：同一块必须翻面。翻不了 ⇒ 这把尺子读不出 `true`，
     //   上面两条「=== false」就都是空真。

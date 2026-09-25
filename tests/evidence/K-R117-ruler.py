@@ -395,8 +395,10 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "`FRONTEND_GOAL_PER_ITEM['S1']`（`K-R131` 09-15：这一栏从前逐字写着"
             "「目标：空」，与 `FRONTEND_GOAL_PER_GROUP = 1` 同份输出里打架）")),
     ("S2", (("src/ccm-probe.ts",
-             "src/settings/cc_integration.ts",
              "src/settings/machine-aliases.ts"),
+            "〔AL1c · 第四波 4B · 2026-09-24〕**3 → 2**：`src/settings/cc_integration.ts` 并进了 "
+            "`src/settings/machine-aliases.ts`（`设计/71 §7` W5：界面合成一份，终端集成成了 PowerShell 那一侧的别名块），"
+            "它那几处 `cc_integration_*` 调用换到同一份文件里 ⇒ 落点少一份。"
             "量于 09-15 · 同上。〔AL1 · 2026-09-24〕`src/launcher-diagnostics.ts` → "
             "`src/settings/machine-aliases.ts`：本机别名块的装 / 卸 / 扫（`cc_integration_*`）· "
             "`local_ccm_entry_status` · 用户级 PATH 那三条（`ccm_user_path_*`）整块搬去了机器页「别名」。"

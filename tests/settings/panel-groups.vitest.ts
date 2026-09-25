@@ -11,7 +11,7 @@ import { describe, it, expect, vi } from "vitest";
 
 // refresh spy 守 F82b 段移动没丢 this.remoteSection/this.dataSection 字段（丢了 open() 的
 // `?.refresh()` 会静默 no-op）。vi.hoisted 让 spy 在被提升的 vi.mock 工厂里可见。
-const { remoteRefresh, dataRefresh, dataLoadNow, ccIntegrationBuilds } = vi.hoisted(() => ({
+const { remoteRefresh, dataRefresh, dataLoadNow } = vi.hoisted(() => ({
   // ⚠ 必须**真的回一个 Promise**：`RemoteSection.refresh()` 的签名是 `Promise<void>`，
   //   而 `panel.open()` 在它上面接了 `.catch()`（步 4·D：失败要落在那一块上，
   //   不许再多产一条走状态栏的未捕获 rejection）。回 `undefined` 的 stub 会让
@@ -19,10 +19,9 @@ const { remoteRefresh, dataRefresh, dataLoadNow, ccIntegrationBuilds } = vi.hois
   remoteRefresh: vi.fn().mockResolvedValue(undefined),
   dataRefresh: vi.fn(),
   dataLoadNow: vi.fn(),
-  // S9：数**构造**次数，不是数 DOM。真 CcIntegrationSection 的构造函数会发两次
-  // Windows 专用 IPC，所以门必须开在「建不建」这一层 ——「建了再 hidden」也能让
-  // DOM 断言通过，只有构造计数分得开这两者。
-  ccIntegrationBuilds: { n: 0 },
+  // 〔AL1c · 4B〕这里原来还有一个 `ccIntegrationBuilds` 计数（S9：数「终端集成」那块**构造**了几次）。
+  // 那块并进了「别名」（`设计/71 §7` W5），「构造即发 Windows 专用 IPC」那条纪律跟着过去、
+  // 改由 `machine-aliases.vitest.ts` 的「构造零 I/O」两平台各钉一遍 ⇒ 计数与替身一起走了。
 }));
 
 // —— 重子分区 stub 成 { element }，聚焦分组结构本身 —— //
@@ -87,14 +86,6 @@ vi.mock("../../src/settings/diagnostics-section", () => ({
     loadNow = vi.fn();
   },
 }));
-vi.mock("../../src/settings/cc_integration", () => ({
-  CcIntegrationSection: class {
-    element = document.createElement("div");
-    constructor() {
-      ccIntegrationBuilds.n += 1;
-    }
-  },
-}));
 vi.mock("../../src/settings/mcp-section", () => ({
   McpSection: class {
     element = document.createElement("div");
@@ -157,11 +148,10 @@ import { __setHostOsForTests } from "../../src/settings/host-os";
 import { beforeEach, afterEach } from "vitest";
 
 // S9：jsdom 的 UA 含 `linux` ⇒ 不置覆盖值，本文件整套跑的就是「非 Windows」那条分支，
-// 而下面这些断言（含「终端集成」那块）本来是照 Windows 形态写的。
+// 而下面这些断言本来是照 Windows 形态写的。
 // **显式钉成 windows**，Linux 那条形态由本文件末尾专门的一节覆盖。
 beforeEach(() => {
   __setHostOsForTests("windows");
-  ccIntegrationBuilds.n = 0;
 });
 afterEach(() => __setHostOsForTests(null));
 
@@ -198,7 +188,7 @@ describe("S2 设置面板分页结构", () => {
   /** 等 RemoteSection 那边异步注册完本机页（真实实现是在 `refresh()` 里注册的）。 */
   const tick = () => new Promise((r) => setTimeout(r, 0));
 
-  it("★ 逐页完整清单 —— 18 个叶子块一个不少、一个不错位", async () => { // P8a +1（插件（marketplace））；〔AL1〕+1（别名）
+  it("★ 逐页完整清单 —— 17 个叶子块一个不少、一个不错位", async () => { // P8a +1（插件（marketplace））；〔AL1〕+1（别名）；〔AL1c〕−1（终端集成并进别名）
     // 这是本轮最重要的一条：S2 只搬不改，**搬丢一块 = 一个功能凭空消失**，
     // 而它在 UI 上的表现只是「某个设置项找不到了」，不会报错。
     // 用**完整相等**而不是 `toContain`：后者对「多出一块」和「顺序乱了」都是瞎的。
@@ -229,7 +219,7 @@ describe("S2 设置面板分页结构", () => {
     // 它们跟着「当前在看哪台机器」走；初始落在本机页上（与 machine-context 的初始值对齐）。
     expect(pageTitles("machine:（本机）")).toEqual([
       "账号",
-      "终端集成",
+      // 〔AL1c · 4B〕「终端集成」并进了下面「别名」那一块（Windows 上它是 PowerShell 那一侧的别名块）。
       // 〔AL1 · 2026-09-24〕`设计/71 §13` ②：别名并进机器页（`70 §3.3`），从「应用 → 行为」搬来。
       "别名",
       "MCP",
@@ -355,8 +345,8 @@ describe("S2 设置面板分页结构", () => {
     const visibleTitles = [...local.querySelectorAll<HTMLElement>(".settings-group")]
       .filter((g) => !g.hidden)
       .map((g) => g.querySelector(".settings-group-title")?.textContent ?? "");
-    // 「终端集成」（PowerShell $PROFILE）只对本机有意义 ⇒ 显示。
-    expect(visibleTitles).toContain("终端集成");
+    // 「别名」（〔AL1c〕含从前的「终端集成」，PowerShell $PROFILE 那一块）只对本机有意义 ⇒ 显示。
+    expect(visibleTitles).toContain("别名");
     // 🔴 **`N-F1b`（09-05）改了这一格的事实，PM 落**。
     //
     // 旧断言逐字：`expect(visibleTitles).not.toContain("账号");`
@@ -404,8 +394,7 @@ describe("S2 设置面板分页结构", () => {
     expect(pageTitles("machines")).toEqual([
       "连接（远端）",
       "账号",
-      "终端集成",
-      "别名", // 〔AL1〕本机那一格的 ②，跟着 per-machine 那几块一起留在兜底落点
+      "别名", // 〔AL1〕本机那一格的 ②，跟着 per-machine 那几块一起留在兜底落点（〔AL1c〕终端集成并进了它）
       "MCP",
       "插件（marketplace）",
       "cc-bus 钩子",
@@ -473,7 +462,7 @@ describe("S2 设置面板分页结构", () => {
       strip.querySelector<HTMLElement>(`.settings-page[data-route-id="machine:devbox#${id}"]`)!;
     // 账号块进「账号」栏
     expect(tabPage("acct").querySelector(".accounts-section-stub")).toBeTruthy();
-    // MCP / cc-bus 钩子 / 终端集成 进「工具」栏
+    // MCP / cc-bus 钩子 进「工具」栏（〔AL1c〕终端集成并进了「别名」）
     const toolTitles = [...tabPage("tools").querySelectorAll(".settings-group-title")].map(
       (e) => e.textContent,
     );
@@ -518,80 +507,54 @@ describe("S2 设置面板分页结构", () => {
 });
 
 /**
- * S9：本机页上的「终端集成」按 OS 显隐。
+ * S9：本机页上的「终端集成」按 OS 显隐 —— 〔AL1c · 第四波 4B〕那块并进了「别名」（`设计/71 §7` W5），
+ * 门从「建不建那一块」变成「别名那一块用哪个平台」：Windows ⇒ PowerShell（含终端集成）；其余 ⇒ POSIX。
+ * 「构造即发 Windows 专用 IPC」那条纪律跟着搬过去了：`machine-aliases.vitest.ts` 两个平台各钉「构造零 I/O」。
  *
- * v3.4.0 已经发了 `.deb` ⇒ Linux 用户会在本机页看到一个装 PowerShell profile 的安装器。
+ * v3.4.0 已经发了 `.deb` ⇒ Linux 用户不该在本机页看到一个装 PowerShell profile 的安装器。
  */
-describe("S9 本机 OS 门（终端集成）", () => {
+describe("S9 本机 OS 门（〔AL1c〕别名那一块的平台）", () => {
   const tick = () => new Promise((r) => setTimeout(r, 0));
 
-  /** 本机页「终端集成」那一格的元素（两条分支下标题相同，靠内容区分）。 */
-  function ccIntegrationBlock(): HTMLElement | null {
+  /** 本机页「别名」那一块（`buildAliasManager` 的根）。 */
+  function aliasBlock(): HTMLElement {
     const page = document.querySelector<HTMLElement>(
       '.settings-page[data-route-id="machine:（本机）"]',
     );
     if (!page) throw new Error("本机页不在");
-    for (const g of page.querySelectorAll<HTMLElement>(".settings-group")) {
-      const t = g.querySelector(".settings-group-title");
-      if (t?.textContent === "终端集成") return g;
-    }
-    return null;
+    const b = page.querySelector<HTMLElement>(".machine-aliases");
+    if (!b) throw new Error("本机页上没有「别名」那一块");
+    return b;
   }
 
-  it("★ Windows：那块照常构造并出现", async () => {
-    __setHostOsForTests("windows");
-    ccIntegrationBuilds.n = 0;
-    document.body.replaceChildren();
-    new SettingsPanel({ windowMode: true });
-    await tick();
-    expect(ccIntegrationBuilds.n, "Windows 上必须真的构造").toBe(1);
-    expect(ccIntegrationBlock()).not.toBeNull();
-    expect(ccIntegrationBlock()!.dataset.naBlock).toBeUndefined();
-  });
+  /** 本机页上任何一块叫「终端集成」的（并进去之后一块都不该有）。 */
+  function terminalBlocks(): number {
+    const page = document.querySelector<HTMLElement>(
+      '.settings-page[data-route-id="machine:（本机）"]',
+    )!;
+    return [...page.querySelectorAll(".settings-group-title")].filter(
+      (t) => t.textContent === "终端集成",
+    ).length;
+  }
 
-  it("★ Linux：**整块不构造**（构造即发两次 Windows 专用 IPC）", async () => {
-    __setHostOsForTests("linux");
-    ccIntegrationBuilds.n = 0;
-    document.body.replaceChildren();
-    new SettingsPanel({ windowMode: true });
-    await tick();
-    // 这一条是「不构造」与「构造了再 hidden」的分界 —— 只看 DOM 分不出来。
-    expect(ccIntegrationBuilds.n, "非 Windows 上一次都不该构造").toBe(0);
-  });
-
-  it("★ Linux：那一格不是凭空少一块，而是一行「不适用」说明", async () => {
-    __setHostOsForTests("linux");
-    document.body.replaceChildren();
-    new SettingsPanel({ windowMode: true });
-    await tick();
-    const blk = ccIntegrationBlock();
-    expect(blk, "格子还在（标题不变），换的是内容").not.toBeNull();
-    expect(blk!.dataset.naBlock).toBe("终端集成");
-    expect(blk!.textContent).toContain("不适用");
-    // 不适用 ≠ 缺（S5 readiness 立的那条区分）⇒ 不能做成警告
-    expect(blk!.textContent).not.toContain("⚠");
-    expect(blk!.querySelector(".settings-block-failed")).toBeNull();
-  });
-
-  it("macOS 也不适用（PowerShell 不是只有 Linux 上没有）", async () => {
-    __setHostOsForTests("macos");
-    ccIntegrationBuilds.n = 0;
-    document.body.replaceChildren();
-    new SettingsPanel({ windowMode: true });
-    await tick();
-    expect(ccIntegrationBuilds.n).toBe(0);
-    expect(ccIntegrationBlock()!.dataset.naBlock).toBe("终端集成");
-  });
-
-  it("★ 认不出 OS 时**照常显示** —— 藏错了 Windows 用户就找不到安装入口", async () => {
-    __setHostOsForTests("unknown");
-    ccIntegrationBuilds.n = 0;
-    document.body.replaceChildren();
-    new SettingsPanel({ windowMode: true });
-    await tick();
-    expect(ccIntegrationBuilds.n, "不确定时倒向无回归的那一侧").toBe(1);
-    expect(ccIntegrationBlock()!.dataset.naBlock).toBeUndefined();
-  });
+  for (const [os, shell] of [
+    ["windows", "powershell"],
+    ["linux", "posix"],
+    ["macos", "posix"],
+    // ⚠ 认不出 OS ⇒ POSIX。从前「终端集成」在这一格**照常构造**（藏错了 Windows 用户就找不到安装入口），
+    //   而「别名」在这一格走 POSIX；两块并成一块只能取一边 ⇒ 取别名那一边（不在非 Windows 上写 `$PROFILE`）。
+    //   这一格的取舍报给主会话（`调研/第四波记录/AL1c.md §5`）。
+    ["unknown", "posix"],
+  ] as const) {
+    it(`★ ${os} ⇒ 别名那一块是 ${shell}；单独的「终端集成」一块不再有`, async () => {
+      __setHostOsForTests(os);
+      document.body.replaceChildren();
+      new SettingsPanel({ windowMode: true });
+      await tick();
+      expect(aliasBlock().dataset.shell).toBe(shell);
+      expect(terminalBlocks()).toBe(0);
+    });
+  }
 
   it("门只管这一块 —— 同栏的 MCP / cc-bus 钩子在 Linux 上照常在", async () => {
     __setHostOsForTests("linux");
