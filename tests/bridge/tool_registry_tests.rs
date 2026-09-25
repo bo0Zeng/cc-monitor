@@ -1503,6 +1503,8 @@ fn claims() -> Vec<Claim> {
     // 〔AS2 · 第四波 4B〕skill「装到这台」的家。
     const SKILL_INSTALL: &str = include_str!("../../src/bridge/src/skill_install.rs");
     const ACCT_ISO_DEPLOY: &str = include_str!("../../src/bridge/src/acct_iso_deploy.rs");
+    // 〔TL1 · 4C〕代码全景小程序的家（本机放 · 远端推，同一个入口 `push_to` 按 origin 分）。
+    const PANORAMA_BYTES: &str = include_str!("../../src/bridge/src/panorama_bytes.rs");
     let sftp = || ImplHome {
         addr: "sftp.rs",
         text: SFTP,
@@ -1576,6 +1578,20 @@ fn claims() -> Vec<Claim> {
                 definition: "pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, String> {",
             }),
         },
+        // 〔TL1 · 4C〕代码全景小程序：装口 `push_to`（本机那一臂落 `place_local`，远端那一臂经那台后端的文件链路推）；
+        //   **没有卸口**（`uninstall: None`，负向扫描守着这个家）。
+        Claim {
+            tool: "panorama",
+            home: Some(ImplHome {
+                addr: "panorama_bytes.rs",
+                text: PANORAMA_BYTES,
+            }),
+            install: Some(ImplSite {
+                addr: "panorama_bytes.rs::push_to",
+                definition: "pub(crate) async fn push_to(origin: &crate::origin::Origin) -> Result<(), String> {",
+            }),
+            uninstall: None,
+        },
         Claim {
             tool: "project-mcp",
             home: Some(ImplHome {
@@ -1635,14 +1651,16 @@ fn claims() -> Vec<Claim> {
     ]
 }
 
-/// 从逐字签名里抠出 `pin_definition` 要的**赋值前缀**（签名到第一个 `(` 为止）。
+/// 从逐字签名里抠出 `pin_definition` 要的**赋值前缀**（签名到 `fn <名>` 之后第一个 `(` 为止）。
 /// **算出来的，不再写第二份字面量**〔`13b`〕。
+/// 〔TL1 · 4C〕从前是「到第一个 `(` 为止」—— 可见性带括号（`pub(crate)`）时会抠成 `pub`；`panorama` 那一行
+/// 的装口是 `pub(crate)`，当场逮住（住址 `…::push_to` 对上抠出来的 `…::pub`）。
 fn assign_prefix_of(definition: &str) -> &str {
-    definition
-        .split('(')
-        .next()
-        .unwrap_or(definition)
-        .trim_end()
+    let from = definition.find("fn ").unwrap_or(0);
+    let end = definition[from..]
+        .find('(')
+        .map_or(definition.len(), |i| from + i);
+    definition[..end].trim_end()
 }
 
 /// 从逐字签名里抠出那个 `fn` 名。
