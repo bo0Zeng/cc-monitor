@@ -444,6 +444,7 @@ const SCAN: &[&str] = &[
     "tests/session-backend.test.ts",
     "tests/session-reads.vitest.ts", // 〔C4b〕读跨语言金样（`tests/__fixtures__/session-reads.golden.json`）
     "tests/tmux-control.vitest.ts", // 〔C4e〕读跨语言金样（`tests/__fixtures__/tmux-control.golden.json`）
+    "tests/cc-bus-control.vitest.ts", // 〔C4e 批 3b〕读跨语言金样（`tests/__fixtures__/cc-bus-control.golden.json`）
     "tests/settings/accounts-section.vitest.ts",
     "tests/settings/backend-section.vitest.ts",
     "tests/settings/base-wording-guard.vitest.ts",

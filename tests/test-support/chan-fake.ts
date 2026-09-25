@@ -561,3 +561,71 @@ export function killCallsOf(calls: ReadonlyArray<readonly unknown[]>): [string, 
       return ["kill_remote_tmux", { origin: a.origin, target: (chanArgsJson(a) as Record<string, unknown>).name }];
     });
 }
+
+// ─── 〔C4e 批 3b〕cc-bus 驾驶舱写面那几发（`src/cc-bus-control.ts`）───
+// 它们从前是五条 Tauri 命令（`check_cc_bus_agent_online` / `cc_bus_send` / `cc_bus_kill` / `cc_bus_spawn` / `cc_bus_broadcast`〔散文墓碑〕），
+// 驾驶舱的 DOM 判据按命令名答话、断言旧形参。今天它们是一发 `chan_call`（op = `bus-list` / `bus-send` / `bus-kill` / `bus-spawn` /
+// `bus-broadcast`）⇒ 本节把一发 `chan_call` 译回「哪一问 ＋ 旧形参」交给判据手里那个 `invoke` 替身，再把它的旧回包译成**后端的成品字节**。
+// ⚠ 译法逐格照生产：请求体键名是 `src/cc-bus-control.ts` 发的那几个，成品键名是后端那几个构造器出的那几个
+//   （跨语言金样 `tests/__fixtures__/cc-bus-control.golden.json` 钉着两侧）。
+// ⚠ 查在线是**唯一译不回旧形参的一格**：`bus-list` 的请求体里没有 id（问的是整份名单，挑人在界面）⇒ 旧形参只剩 `{origin}`，
+//   替身回 `{<id>: true | false | null}`（每人一格 `live`），本节把它铺成名单。
+
+/**
+ * 一个「按旧命令名答话」的 `invoke` 替身 ⇒ 生产 `invoke` 该有的样子：cc-bus 那几发 `chan_call` 译过去再译回来，其余一切原样交给它。
+ * 旧回包 ⇒ 通道结局：解析成功 ⇒ 成品（发消息：在线；收掉：真收了；派生：从回显里认 `已 spawn: <名>`，认不出 ⇒ `id:null`；
+ * 广播：发到 1 个）；抛 ⇒ 对端说「不行」（码 `failed`，原话原样带上）。
+ */
+export function ccBusControlShim(
+  inner: (cmd: string, args?: unknown) => unknown,
+): (cmd: string, args?: unknown) => Promise<unknown> {
+  return async (cmd, args) => {
+    if (cmd !== "chan_call") return inner(cmd, args);
+    const a = args as ChanCallArgs;
+    const old: Record<string, string> = {
+      "bus-list": "check_cc_bus_agent_online",
+      "bus-send": "cc_bus_send",
+      "bus-kill": "cc_bus_kill",
+      "bus-spawn": "cc_bus_spawn",
+      "bus-broadcast": "cc_bus_broadcast",
+    };
+    const name = old[a.op];
+    if (name === undefined) return inner(cmd, args);
+    const body = chanArgsJson(a) as Record<string, unknown>;
+    const oldArgs: Record<string, unknown> =
+      a.op === "bus-list"
+        ? { origin: a.origin }
+        : a.op === "bus-send"
+          ? { origin: a.origin, id: body.to, text: body.text }
+          : a.op === "bus-kill"
+            ? { origin: a.origin, id: body.id }
+            : a.op === "bus-spawn"
+              ? { origin: a.origin, dir: body.dir, task: body.task, tool: body.tool, account: body.account ?? "" }
+              : { origin: a.origin, text: body.text };
+    let res: unknown;
+    try {
+      res = await inner(name, oldArgs);
+    } catch (e) {
+      throw refusedReply("failed", wordsOf(e));
+    }
+    switch (a.op) {
+      case "bus-list": {
+        const live = (res ?? {}) as Record<string, boolean | null>;
+        return chanReply({
+          agents: Object.entries(live).map(([id, l]) => ({ id, target: `${id}:0.0`, unread: 0, live: l, ccm_sid: null })),
+        });
+      }
+      case "bus-send":
+        return chanReply({ to: body.to, sent: true, registered: true, live: true, from: body.from });
+      case "bus-kill":
+        return chanReply({ id: body.id, killed: true, stale_only: false });
+      case "bus-spawn": {
+        const said = String(res ?? "");
+        const m = /已 spawn: (\S+)/.exec(said);
+        return chanReply({ spawned: true, id: m ? m[1] : null, said });
+      }
+      default:
+        return chanReply({ sent: 1, skipped_offline: 0, liveness_unknown: false, failed: [] });
+    }
+  };
+}

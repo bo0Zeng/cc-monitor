@@ -286,7 +286,8 @@ pub enum TouchEffect {
     /// 这一档是 T02 审计的阻塞项逼出来的：`~/.cc-bus/` 原先声明成 [`Self::ReadOnly`]，
     /// 于是审计页渲染出「只读（诊断用），我们不写」——**假话**。
     /// cc-monitor 的 cc-bus 驾驶舱有两个按钮走的是
-    /// `cc_bus::cc_bus_send`（远端跑 `cc-send`）与 `cc_bus::cc_bus_spawn`（跑 `cc-spawn`），
+    /// `cc_bus::cc_bus_send`（远端跑 `cc-send`）与 `cc_bus::cc_bus_spawn`（跑 `cc-spawn`）〔散文墓碑〕
+    /// （〔C4e〕今天是界面经通道直接说那台后端的 `bus-send` / `bus-spawn`，后端照旧调那两份脚本 —— 这一档的理由不变），
     /// 而 `cc-bus-lib.sh:221` 是 `printf '%s\n' "$line" >> "$inbox"`、
     /// `cc-spawn:141` 追加 `spawned.tsv`、`cc-register:25` 换掉 `agents.tsv`。
     /// 「我们只是调了别人的命令」不改变**用户的文件因为在我们这儿点了一下而变了**这件事。
@@ -572,8 +573,9 @@ pub const TOOLS: &[ToolSpec] = &[
                 //
                 // ⇒ 改 `Either`。原文担心的那个「用新的假阳性换掉旧的假阴性」今天不成立了：
                 // 本机确实会被读（`P4a`），所以说「本机存在」不再是冒充。
-                // ⚠ 但 `IndirectWrite` 那句仍要留神：**写**面（`cc_bus_send`/`_spawn`/
+                // ⚠ 但 `IndirectWrite` 那句仍要留神：**写**面（`cc_bus_send`/`_spawn`/〔散文墓碑〕
                 // `_broadcast`/`_kill`）至今**只动远端**（`refuse_local_write`），
+                // 〔C4e 订正〕这半句早已不成立（P4f / BS1b 起写面本机也走后端，〔C4e〕起由界面经通道直接说，本机与远端同一条路）；
                 // 所以 note 里把「读」与「写」分开说，别让人以为本机那个也会被写。
                 host: HostScope::Either,
                 note: Some(

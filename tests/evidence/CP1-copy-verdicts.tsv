@@ -186,30 +186,10 @@ src/bridge/src/backend/control/cc_bus.rs:325	不在	保留	[对外] 同一处 if
 src/bridge/src/backend/control/cc_bus.rs:376	读 ~/.cc-bus	保留	[对外] local_shell_read 的 what 参数，拼进超时/失败报错；~/.cc-bus 是用户自己机器上的路径，可说
 src/bridge/src/backend/control/cc_bus.rs:636	\n[cc-monitor] ⚠ 远端输出超过 {cap} 字节上限，以上内容已截断。\n             命令本身已经执行完毕，**不要重试**。	改·§2.4	[对外] 追加在读出的输出末尾给用户看（注释明写）；markdown `**不要重试**` ＋ `[cc-monitor]` 日志式前缀 兼§2.1（日志行格式） →「输出超过 {cap} 字节，后面截掉了。命令已执行完，不用重试。」
 src/bridge/src/backend/control/cc_bus.rs:777	这台机器上找不到可用的 `bash` —— cc-bus 的本机读面**跑不起来**。\n\n         ⚠ 这**不是**「一个 agent 都没有」：清单根本没去读，有没有是**不知道**。\n\n         已经找过（顺序即优先级）：\n{list}\n\n         ⚠ **刻意不去 `PATH` 上碰运气**：Windows 的进程创建把 `C:\\Windows\\System32`\n         排在 `PATH` 之前，而 WSL 功能开着却没装发行版时那里有一个 `bash.exe` 存根 ——\n         按裸名找到的多半正是它，跑起来什么都不做就退（那正是本件的病根）。\n\n         装一份 Git for Windows，或把 `{BASH_OVERRIDE_VAR}` 指向你要用的那个 `bash.exe`。	改·§2.2	[对外] 找不到 bash 的报错；「刻意不去 PATH 上碰运气…那正是本件的病根」是设计论证 兼§2.1（本机读面） 兼§2.4（markdown＋破折号＋多段） 新词:读面 →「找不到可用的 bash。已找过：{list}。装 Git for Windows，或设 {BASH_OVERRIDE_VAR} 指向 bash.exe。」
-src/bridge/src/backend/control/cc_bus.rs:1017	{}上问不到 `{id}` 在不在线：{why}\n\n         ⚠ 这是**问不到**，不是**不在线** —— 别把它读成一盏灭灯。	改·§2.4	[对外] markdown ＋ 破折号 ＋ 「别把它读成一盏灭灯」自造比喻 兼§2.5 →「{机器}上查不到 {id} 是否在线：{why}」
-src/bridge/src/backend/control/cc_bus.rs:1185	已广播给 {ok} 个**已登记** agent（问不到谁在线，所以全发了）	改·§2.4	[对外] 广播结果；markdown `**已登记**` ＋ 括号里解释为什么 →「已广播给 {ok} 个已登记的 agent（无法确认谁在线）」
-src/bridge/src/backend/control/cc_bus.rs:1187	已广播给 {ok} 个**在线** agent	改·§2.4	[对外] markdown `**在线**` 会把星号原样显示（ui-copy-discipline 的 markdown 形状）→ 去星号即可
-src/bridge/src/backend/control/cc_bus.rs:1191	；跳过 {} 个不在线的（它们的收件箱今天没人读）	保留	[对外] 广播结果的追加片段；一个短括号，单信号，无病
-src/bridge/src/backend/control/cc_bus.rs:1196	；{} 个失败：{}	保留	[对外] 广播结果的追加片段，无病
 src/bridge/src/backend/control/cc_bus.rs:1223	本机	保留	[对外] machine_label 的称呼，无病
-src/bridge/src/backend/control/cc_bus.rs:1236	{} 的后端通道没起来 —— {what}要经它（设置里可以起/停每台机器的后端）；\n         {outcome}。	改·§2.4	[对外] 破折号 ＋ 括号 ＋ 分号接结局：没起来 / 要经它 / 去哪起 / 结局 四件事一句 →「{机器} 的后端没连上，{outcome}。可在设置里启动它。」
-src/bridge/src/backend/control/cc_bus.rs:1244	发消息	保留	[对外] describe_no_channel_for 的 what 参数片段，无病
-src/bridge/src/backend/control/cc_bus.rs:1244	{id} 的消息**没有发出去**	改·§2.4	[对外] outcome 片段；markdown `**没有发出去**` 会原样显示星号
 src/bridge/src/backend/control/cc_bus.rs:1257	{} 的后端太旧：它没声明 `{cmd}` 这条命令（这是**能力协商**问出来的，\n         不是超时、也不是网络错）—— {outcome}；把这台的后端升到新版就能用。	改·§2.2	[对外] 「这是能力协商问出来的，不是超时、也不是网络错」是内部归因推理 兼§2.1（`{cmd}` 命令名） 兼§2.4（markdown＋括号＋破折号） 新词:能力协商 →「{机器} 的后端版本太旧，{outcome}。升级后端后可用。」
-src/bridge/src/backend/control/cc_bus.rs:1265	{id} 的消息**没有发出去**	改·§2.4	[对外] outcome 片段；markdown `**没有发出去**`
-src/bridge/src/backend/control/cc_bus.rs:1284	{outcome} —— 分流器判成已完成，这不该发生	改·§2.2	[对外] 「分流器判成已完成，这不该发生」是内部推理（只在 bug 时出现） 兼§2.1 新词:分流器 →「{outcome}（内部错误）」
-src/bridge/src/backend/control/cc_bus.rs:1293	{id} 的消息**没有发出去**	改·§2.4	[对外] outcome 片段；markdown `**没有发出去**`
-src/bridge/src/backend/control/cc_bus.rs:1362	已投递给 {id}，但**这个名字没在总线上登记过** —— 今天没有任何进程会读它的收件箱（名字打错了吗？）	改·§2.4	[对外] 投递结果；markdown ＋ 破折号 ＋ 括号问句三信号 →「已投递给 {id}，但这个名字没有登记，没人会读到。名字打错了吗？」
-src/bridge/src/backend/control/cc_bus.rs:1365	已投递给 {id}，但**它当前不在线** —— 消息留在收件箱里，它下次起来才会读到	改·§2.4	[对外] markdown ＋ 破折号 →「已投递给 {id}。它当前不在线，下次上线会读到。」
-src/bridge/src/backend/control/cc_bus.rs:1367	已投递给 {id}	保留	[对外] 无病
-src/bridge/src/backend/control/cc_bus.rs:1369	已投递给 {id}（在不在线：问不到）	保留	[对外] 一个短括号补充，单信号，无病
 src/bridge/src/backend/control/cc_bus.rs:1379	读 inbox	保留	[对外] local_shell_read 的 what 参数，拼进超时/失败报错；inbox 是 cc-bus 用户自己的词
 src/bridge/src/backend/control/cc_bus.rs:1387	读 inbox	保留	[对外] exec_read 的 what 参数，同 :1379
-src/bridge/src/backend/control/cc_bus.rs:1463	已收掉 {id}（会话与进程树都杀了）	保留	[对外] 结果一句 ＋ 短括号，无病
-src/bridge/src/backend/control/cc_bus.rs:1465	{id} 的**登记摘掉了，会话没动** —— 那个名字今天挂在别人的会话上（身份对不上）	改·§2.4	[对外] markdown ＋ 破折号 ＋ 括号 三信号 →「只摘掉了 {id} 的登记，会话没动：这个名字现在属于别的会话」
-src/bridge/src/backend/control/cc_bus.rs:1468	{id} 没有被收掉：backend 说它既没杀会话、也没摘登记（多半这个名字根本不在总线上）	内部词→后端（backend）	[对外] 英文 backend 夹在中文报错里；界面统一叫「后端」（91 §3.1）
-src/bridge/src/backend/control/cc_bus.rs:1471	收掉 {id} 的应答形状不认识（缺 `killed` / `stale_only`）—— 这一端与那一端的契约漂开了；\n             ⚠ **不知道它到底动没动**，别当成「没杀成」重来一次	改·§2.1	[对外] 字段名 `killed` / `stale_only` 与「契约漂开」外泄 兼§2.2 兼§2.4（markdown＋破折号＋括号） 新词:应答形状 新词:契约 →「不确定 {id} 有没有被收掉，先别重试。」
-src/bridge/src/backend/control/cc_bus.rs:1495	`{id}` **没有被收掉**	改·§2.4	[对外] outcome 片段；markdown `**没有被收掉**`
 src/bridge/src/backend/control/ccm_invocation.rs:57	远端未装 ccm	内部词→后端（ccm）	[可达存疑] Refusal::reason：远端路只进 console.debug（remote-launch-run.ts:135），本机拉起只进 tracing::debug，唯 render_local_attach 的 Err 会回前端；ccm 是我们的助手名（91 §2.1 原例「ccm 助手」） 新词:ccm 〔CP2a 据术语表改：原换法「后端助手」与 terms.json「ccm」相抵 —— 讲机器上装的那个程序时说「后端」，「ccm 助手」是禁词（设计/70 §5）〕
 src/bridge/src/backend/control/ccm_invocation.rs:67	本地路径不走 CLI 渲染器	改·§2.1	[可达存疑] Refusal::reason：远端路只进 console.debug（remote-launch-run.ts:135），本机拉起只进 tracing::debug，唯 render_local_attach 的 Err 会回前端；「CLI 渲染器」是实现名（注释自承今天产不出来） 新词:CLI渲染器
 src/bridge/src/backend/control/ccm_invocation.rs:68	远端 ccm 缺能力 {c}	改·§2.1	[可达存疑] Refusal::reason：远端路只进 console.debug（remote-launch-run.ts:135），本机拉起只进 tracing::debug，唯 render_local_attach 的 Err 会回前端；ccm ＋ 能力名 {c} 外泄 新词:ccm 新词:能力
@@ -1052,10 +1032,6 @@ src/accounts.ts:785	本机会话结束后，Resume 沿用它上次的账号；�
 src/accounts.ts:786	可以等它结束后，用右键「把此会话切到账号 X」。	保留	[对外] 换号重启定位失败时远端那一支的补救句；〔U4〕「先归档」换成「等它结束」：归档不是用户能做的动作，能做的是等会话结束（设计/30 §3.5.2）
 src/backend/accounts/iso.rs:64	这台机器上还没装 cc-acct-iso。	保留	[可达存疑] 本机「找不到 cc-acct-iso」那句话的尾巴（前半「查过哪些地方」由 plugin::discover 拼）；进 --acct-iso-status 的 looked 与 --acct-iso-shellinit 的 not_installed 信封，短而直接
 src/backend/control/cc_bus.rs:782	已 spawn:	保留	[不对外] 在 cc-spawn 回显里认新会话名字的匹配串（spawned_id_of），只决定回值里的 id，不是展示文本
-src/bridge/src/backend/control/cc_bus.rs:1483	已派生 {id}\n{said}	保留	[对外] 设置页 cc-bus 区派生成功的回执：新会话名 ＋ cc-spawn 自己的回显，无病
-src/bridge/src/backend/control/cc_bus.rs:1485	已派生，但没认出新会话的名字。会话应该已经在运行，请不要重试，到 cc-bus 名单里找它。\n{said}	保留	[对外] 派生成功但没认出会话名：先说结果（已派生）、再说该做什么（不要重试、去名单里找），无星号无破折号
-src/bridge/src/backend/control/cc_bus.rs:1487	派生的回应格式认不出来，不确定会话有没有起来。请先看一眼 cc-bus 名单，不要直接重试。	保留	[对外] 派生回值形状认不出时的话：说清不确定起没起、给出下一步，无内部词
-src/bridge/src/backend/control/cc_bus.rs:1538	没有派生	保留	[对外] 派生失败时拼进「后端通道没起来 / 后端太旧」那两句的结局片段（describe_no_channel_for / describe_backend_too_old_for）；短、无星号
 src/bridge/src/cc_bus_deploy.rs:434	这里查的是 cc-monitor 自己装的那一份 ccm。cc-spawn 实际调用的是 PATH 上的 ccm，\n                       在 Windows 上查不到那一个是哪一份。	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么
 src/bridge/src/cc_bus_deploy.rs:438	本机还没有 cc-monitor 装的 ccm（应在 ~/.cc-monitor/bin/），查不了装出去的 cc-spawn 能不能用。\n             cc-spawn 启动时需要 ccm 支持：{needs}，缺一项就会退出。请先在设置页装好本机后端，再装 cc-bus。	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么
 src/bridge/src/cc_bus_deploy.rs:444	问了 cc-monitor 装的 ccm（{at}），它没有回答版本信息，查不了它能不能用。\n             cc-spawn 启动时需要 ccm 支持：{needs}。	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么
@@ -1351,7 +1327,12 @@ src/settings/assets-section.ts:103	rows 那一格	保留	[不对外] 〔AS2〕�
 src/settings/assets-section.ts:109	from 那一格	保留	[不对外] 〔AS2〕同上一行
 src/settings/assets-section.ts:116	problems 那一格	保留	[不对外] 〔AS2〕同上一行
 src/settings/panel.ts:1103	资产目录	保留	[对外] 〔AS2〕机器页「工具」栏一块的标题（名词短语）
-src/tmux-control.ts:71	{…} 的应答{…}	保留	[不对外] 〔C4e〕`ControlError.detail`：只进日志（哪条命令的应答哪一格不对）；给人看的那句走文案表 `tmuxControl.reply.unreadable`
 src/tmux-control.ts:116	不是恰好 `{name, screen}` 两格字符串	保留	[不对外] 〔C4e〕`ControlError.detail` 的一截：只进日志；抓屏成品形状不对时给人看的那句走文案表
 src/tmux-control.ts:227	不是恰好 `{session, killed}` 两格	保留	[不对外] 〔C4e〕`ControlError.detail` 的一截：只进日志；结束会话成品形状不对时给人看的那句走文案表
 src/tmux-control.ts:289	不是恰好 `{session, created, typed}` 三格	保留	[不对外] 〔C4e〕`ControlError.detail` 的一截：只进日志；发按键 / 就地 resume 成品形状不对时给人看的那句走文案表
+src/cc-bus-control.ts:78	不是恰好 `{agents}` 一格数组	保留	[不对外] 〔C4e 批 3b〕`ControlError.detail` 的一截：只进日志；cc-bus 成品形状不对时给人看的那句走文案表 `control.reply.unreadable`
+src/cc-bus-control.ts:90	里有一行不是那五格	保留	[不对外] 〔C4e 批 3b〕`ControlError.detail` 的一截：只进日志；cc-bus 成品形状不对时给人看的那句走文案表 `control.reply.unreadable`
+src/cc-bus-control.ts:166	不是那五格（或 `sent` 不为真）	保留	[不对外] 〔C4e 批 3b〕`ControlError.detail` 的一截：只进日志；cc-bus 成品形状不对时给人看的那句走文案表 `control.reply.unreadable`
+src/cc-bus-control.ts:330	不是那四格	保留	[不对外] 〔C4e 批 3b〕`ControlError.detail` 的一截：只进日志；cc-bus 成品形状不对时给人看的那句走文案表 `control.reply.unreadable`
+src/cc-bus-control.ts:334	的 `failed` 里有一条不是那三格	保留	[不对外] 〔C4e 批 3b〕`ControlError.detail` 的一截：只进日志；cc-bus 成品形状不对时给人看的那句走文案表 `control.reply.unreadable`
+src/control-said.ts:56	{…} 的应答{…}	保留	[不对外] 〔C4e〕`ControlError.detail`：只进日志（哪条命令的应答哪一格不对）；给人看的那句走文案表 `control.reply.unreadable`（从 `tmux-control.ts` 搬来，那边这一行随之退役）

@@ -2091,8 +2091,9 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 
 **为什么不能松动**：
 - **「对端会校验」不是理由**：对端校验的是它自己的入口；本侧不判，拼错的那一段就已经在路上了 ——
-  而收掉一个 agent 的后果是**杀掉一棵进程树**（`cc_bus_tests.rs::the_kill_entry_still_refuses_bad_ids_before_it_asks_anyone` 里逐字「**不能靠对端校验**，这一条的后果是杀掉一棵进程树」）。
-  把命令串换成后端原语之后，**注入面没了，这一条没作废**：校验从「拼命令之前」挪到「交给后端之前」（BS1b · `K-R98` · `K-R112` 三次搬家，判据逐次跟着换住址）。
+  而收掉一个 agent 的后果是**杀掉一棵进程树**（守它的判据逐字「**不能靠对端校验**，这一条的后果是杀掉一棵进程树」）。
+  把命令串换成后端原语之后，**注入面没了，这一条没作废**：校验从「拼命令之前」挪到「交给后端之前」（BS1b · `K-R98` · `K-R112` 三次搬家，判据逐次跟着换住址）；
+  〔C4e〕第四次搬家：cc-bus 写面改由界面经通道直接说后端，校验挪到**界面发出之前**（`src/cc-bus-control.ts`，判据 `tests/cc-bus-control.vitest.ts`：坏 id 一个字节都不发、好 id 发得出去）。
 - **「这是我们自己的数据」不是理由**：盘上真出现过没人预料的 id —— `~/.cc-bus/inbox/--help.jsonl`（188 字节）是真实存在的文件，
   那个 id 一拼进 `cc-send` 就被当成一个 flag（B03 审计）。manifest 是我们自己维护的，账号名照样要过字符集。
 - **拒过头也算违反**：放行判定写错成「恒拒」，功能在那个平台上就整条没了（见下「违反过几次」第 3 条）。
@@ -2102,8 +2103,8 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 
 | 值 | 本侧放行判定 | 判据 |
 |---|---|---|
-| cc-bus agent id（①） | `cc_bus.rs::is_valid_bus_id` | `cc_bus_tests.rs::rejects_leading_dash_ids_from_real_disk` · `cc_bus_tests.rs::rejects_shell_metachars_and_control` · `cc_bus_tests.rs::accepts_real_ids` · `cc_bus_tests.rs::builders_reject_bad_ids_at_the_call_site` · `cc_bus_tests.rs::the_kill_entry_still_refuses_bad_ids_before_it_asks_anyone`（真调生产入口，拒在问通道之前，并断合法 id 走得过去） |
-| 派生时的账号名（①，交后端之前） | `cc_bus.rs::check_spawn_shape` | `cc_bus_tests.rs::spawn_shape_is_checked_on_this_side_before_the_backend`（含「不许白名单 agent 种类」那一格） |
+| cc-bus agent id（①） | `cc_bus.rs::is_valid_bus_id`（读收件箱那一条）· `src/cc-bus-control.ts` 的 `isValidBusId`（查在线 · 发消息 · 收掉，〔C4e〕） | `cc_bus_tests.rs::rejects_leading_dash_ids_from_real_disk` · `cc_bus_tests.rs::rejects_shell_metachars_and_control` · `cc_bus_tests.rs::accepts_real_ids` · `cc_bus_tests.rs::builders_reject_bad_ids_at_the_call_site` · `cc_bus_tests.rs::the_bus_id_rule_agrees_with_the_front_end_on_the_shared_samples`（两份实现读同一份金样 `tests/__fixtures__/cc-bus-control.golden.json` 的 `ids`）· `tests/cc-bus-control.vitest.ts`（真调界面入口，拒在问通道之前，并断合法 id 走得过去） |
+| 派生时的账号名（①，交后端之前） | `src/cc-bus-control.ts` 的 `checkSpawnShape`（〔C4e〕从 monitor 挪到界面） | `tests/cc-bus-control.vitest.ts`（含「不许白名单 agent 种类」那一格） |
 | 唯一的 quote（②） | `ssh_source.rs::shell_quote` | `cc_bus_tests.rs::quote_roundtrip_is_the_real_property` |
 | ccm 建的 tmux 会话名（①，后端） | `plan.rs::validate_tmux_name` | `plan_tests.rs::a_session_name_that_would_confuse_tmux_is_refused` |
 | 分叉的 sid / 消息 uuid（①） | `remote_branch.rs::validate_fork_id` | `remote_branch_tests.rs::fork_ids_are_whitelisted` |
