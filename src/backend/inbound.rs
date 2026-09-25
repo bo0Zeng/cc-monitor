@@ -1170,7 +1170,9 @@ pub const REGISTRY: &[CommandSpec] = &[
     // 🔴 用户裁「只允许后端的文件管理部分写文件」**只管用户的文件、本机也管** ⇒ monitor 进程
     //   不再直接写用户文件；本机与远端都经这三条（`call(origin, …)`，同一条路）。处理器同住
     //   `control/files_write.rs`（第三层），本文件照旧是那一层唯一的门。阻塞档（同步文件 I/O）。
-    //   `files-delete-session` 是会话文件围栏**唯一的例外**，只收 sid（理由住那个模块的 `delete_session`）。
+    //   `files-delete-session` 只收 sid（理由住那个模块的 `delete_session`）。
+    //   〔AR1 · V119〕上一版说它是「会话文件围栏**唯一的例外**」—— FN1 之后文件管理写面已不设会话文件围栏，
+    //   这一条「只许删会话形状那一份」的限制是它自己的，不是谁的例外。
     CommandSpec {
         name: "files-peek",
         doc_anchor: Some("#### `files-peek`"),

@@ -417,7 +417,8 @@ pub const PROTO_VERSION: u32 = 1;
 /// ＋ 行为：后端开 `creds-core` 的 `harden`（远端要写那份文件；「后端写不了」从编译期收窄成两条判据）。C4a 不动后端。
 ///
 /// ★★★ **p2x-user-files-put**（2026-09-24，第四波 RW1 合并那一拍）：子命令 ＋3 ——
-/// `files-peek` / `files-put`（读改写，CAS）· `files-delete-session`（只收 sid 的会话文件围栏例外），两个命令面都动。
+/// `files-peek` / `files-put`（读改写，CAS）· `files-delete-session`（只收 sid 的会话文件围栏例外 —— 当时的说法；
+/// 〔AR1〕V119（FN1）之后写面已无会话文件围栏，它只剩自己「只许删会话形状」那道限制），两个命令面都动。
 /// ＋ 行为：后端开始写**用户**文件（别名 / `$PROFILE` / `.mcp.json` / skill `INBOX.txt` / cc-bus skill 部署），
 /// 本机分叉与删历史会话改走后端 —— 旧后端不认这三条 ⇒ 这些按钮在旧后端上会明确报错，所以必须判 stale。
 ///
