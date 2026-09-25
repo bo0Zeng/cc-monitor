@@ -498,6 +498,10 @@ src/bridge/src/filewin/writeops.rs:607	做勾上的	保留	[对外] 按钮（act
 src/bridge/src/filewin/writeops.rs:610	都别做	保留	[对外] 按钮（action 档）
 src/bridge/src/filewin/writeops.rs:630	上一摞 {} 件没做成：{}	保留	[对外] 结果行
 src/bridge/src/filewin/writeops.rs:640	上一摞 {} 件做完、{} 件跳过	保留	[对外] 结果行
+src/bridge/src/filewin/shell.rs:1923	正在读现在的权限…	保留	[对外] 〔GP1〕改权限框上那一行：现值那一趟还没答回来
+src/bridge/src/filewin/writeops.rs:670	读不到现在的权限	保留	[对外] 〔GP1〕改权限框上那一行：有一项没问到现值（不预填、不猜）
+src/bridge/src/filewin/writeops.rs:681	这几项现在的权限不一样	保留	[对外] 〔GP1〕批量改权限框上那一行：几项的现值不一样（不替用户挑一个预填）
+src/bridge/src/filewin/writeops.rs:686	现在是 {m:o}	保留	[对外] 〔GP1〕改权限框上那一行：现值（八进制），并预填进那一栏
 src/bridge/src/filewin/shell.rs:178	这个窗口没连上后端，请重开窗口	保留	[对外] 窗口没拿到通道时每一件要问后端的事都说这一句；结果 ＋ 用户做得到的一步
 src/bridge/src/filewin/source.rs:743	`{cmd}` 被拒：{}	改·§2.1	[对外] 对端拒绝而 body 读不成 JSON 时的兜底；句首把内部命令名摆给用户（与 find.rs 那句 refusal 同族） →「被拒：{}」
 src/bridge/src/filewin/source.rs:746	那台机器上的后端不认 `{cmd}`，多半是版本旧了	改·§2.1	[对外] 后端没声明这条命令；句中带内部命令名 →「那台机器上的后端版本旧了，不支持这个操作」

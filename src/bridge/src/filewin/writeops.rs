@@ -87,9 +87,11 @@
 //! - ✅〔FW5 · 第四波〕~~目录递归删除没做~~：删**目录**现在带 `recursive: true` 走后端
 //!   `files-delete`（连同里面全部内容；后端逐条目过围栏，树里藏着会话文件 ⇒ 整趟拒）。
 //!   原话「`sftp_delete` 的 `is_dir` 走的是 `remove_dir`，递归要一条新的池命令」是 SFTP 那一版的事。
-//! - **改权限没有「当前是多少」可显示**：[`super::source::Row`] 里没有 mode，
-//!   〔FW5 现打〕后端 `files-ls` / `files-stat` 两条读口也都不送权限位 ⇒ 那个框**空着开**，
-//!   刻意不预填一个猜出来的值（预填错了而用户直接点确认 = 静默改坏权限）。补读口在后端 `files/mod.rs`，已报备。
+//! - ✅〔GP1 · 第四波〕~~改权限没有「当前是多少」可显示~~：后端 `files-stat` 从此送 `mode`（unix 权限位低 12 位，
+//!   非 unix 缺席）⇒ 框一摆出来就逐项问一次（[`ModeProbe`] · [`probe_modes`]），答回来之后框上说现值
+//!   （[`mode_readout`]），只有一项或各项相同时**预填**那个值（它是读回来的，不是猜的；用户直接点确认 = 原样不变）。
+//!   问不到 ⇒ 照旧空着开、说「读不到现在的权限」—— 不猜。〔墓碑 —— FW5 那一版这里写着「那个框**空着开**，刻意不预填一个
+//!   猜出来的值」：那句的前提是「没有读口」，读口有了。〕
 //! - ✅〔FW5〕~~多选只有删除~~：多选也给「权限」（一个框、一个八进制数、出 N 件、一次问完）。
 //! - ✅〔FW5〕~~有损名一律不许写~~：带着原始字节（`Listed::raw_name`）的有损名能改名 · 删除 · 改权限（相对段发 b16）；
 //!   **进一个有损名的目录 · 复制 / 下载 / 编辑有损名**仍然做不到（那几条用的是整条路径字符串，要把窗口的路径换成字节，单独一刀）。
@@ -459,6 +461,9 @@ pub struct WritePrompt {
     pub src_name: String,
     /// 正在编辑的那几个字。
     pub text: String,
+    /// 〔GP1〕改权限那个框：读回来的现值**已经处理过一次**了（预填过，或决定不预填）。
+    /// 只预填一次 —— 用户清空那一栏之后不再被塞回去。
+    pub prefilled: bool,
 }
 
 impl WritePrompt {
@@ -468,6 +473,7 @@ impl WritePrompt {
             dir: dir.to_string(),
             src_name: String::new(),
             text: String::new(),
+            prefilled: false,
         }
     }
 
@@ -484,14 +490,13 @@ impl WritePrompt {
             dir: dir.to_string(),
             src_name: r.name.clone(),
             text: r.name.clone(),
+            prefilled: false,
         }
     }
 
-    /// 改权限那个框 —— **空着开**。理由住本模块头注最后一节
-    /// （列表里没有 mode 可读，预填一个猜出来的值而用户直接点确认 = 静默改坏权限）。
-    ///
-    /// 🔴〔FW5〕「显示现值」**今天做不到**：后端 `files-ls` / `files-stat` 两条读口都不送权限位
-    /// （现打两条的 `fields`），窗口没有任何一条路拿得到它；补读口在后端 `files/mod.rs`，不在本路写区，已报备。
+    /// 改权限那个框 —— 摆出来时**空着**；现值由 [`ModeProbe`] 逐项问回来之后再说、再预填（[`mode_readout`]）。
+    /// 〔GP1 · 第四波〕后端 `files-stat` 送 `mode` 了。〔墓碑 —— FW5 那一版这里写着「显示现值**今天做不到**：
+    /// 后端 `files-ls` / `files-stat` 两条读口都不送权限位」。〕
     pub fn for_chmod(dir: &str, r: &Listed) -> Self {
         Self::for_chmod_many(dir, &[r])
     }
@@ -517,6 +522,7 @@ impl WritePrompt {
                 _ => String::new(),
             },
             text: String::new(),
+            prefilled: false,
         }
     }
 
@@ -638,6 +644,143 @@ fn parse_mode(t: &str) -> Result<u32, String> {
 /// 拿 `std::path` 切远端路径，在 Windows 上会把 `\` 也当分隔符）。
 pub(super) fn join_remote(dir: &str, name: &str) -> String {
     format!("{}/{}", dir.trim_end_matches('/'), name)
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 〔GP1 · 第四波〕改权限那个框的**现值**（`设计/60 §7` · `调研/第四波记录/GP1.md §5`）
+// ═══════════════════════════════════════════════════════════════════════
+
+/// 框上那一行说的现值，以及要不要预填。**纯函数**（判据直接喂它）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModeReadout {
+    /// 框上那一行（「现在是 644」/「这几项现在的权限不一样」/「读不到现在的权限」）。
+    pub line: String,
+    /// 预填进那一栏的八进制串；`None` = 不预填（各项不同 / 读不到）。
+    pub prefill: Option<String>,
+}
+
+/// 逐项读回来的权限位（`None` = 那一项没读到）⇒ 框上怎么说。
+///
+/// - 全读到且都一样 ⇒ 「现在是 644」，预填 `644`（一项就是这一形）；
+/// - 全读到但不一样 ⇒ 「这几项现在的权限不一样」，不预填（填哪一个都是替用户挑）；
+/// - 有一项没读到 ⇒ 「读不到现在的权限」，不预填 —— **不猜**：预填一个猜出来的值而用户直接点确认 = 静默改坏权限；
+/// - 空摞 ⇒ 同「读不到」（框本身会被 [`WritePrompt::to_ops`] 拒，不会走到这里）。
+pub fn mode_readout(modes: &[Option<u32>]) -> ModeReadout {
+    let unreadable = || ModeReadout {
+        line: "读不到现在的权限".to_string(),
+        prefill: None,
+    };
+    let Some(all) = modes.iter().copied().collect::<Option<Vec<u32>>>() else {
+        return unreadable();
+    };
+    let Some(&m) = all.first() else {
+        return unreadable();
+    };
+    if all.iter().any(|x| *x != m) {
+        return ModeReadout {
+            line: "这几项现在的权限不一样".to_string(),
+            prefill: None,
+        };
+    }
+    ModeReadout {
+        line: format!("现在是 {m:o}"),
+        prefill: Some(format!("{m:o}")),
+    }
+}
+
+/// `files-stat` 一次应答里的 `mode`（缺席 / 不是非负整数 / 超出低 12 位 ⇒ `None`：当读不到，不猜）。
+pub fn mode_of(reply: &serde_json::Value) -> Option<u32> {
+    reply
+        .get("mode")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|m| u32::try_from(m).ok())
+        .filter(|m| *m <= 0o7777)
+}
+
+/// 逐项问一次 `files-stat`（同 [`super::transfer::probe_remote`] 那一问、同一个期限），按入参顺序交回。
+pub async fn probe_modes(line: &Line, origin: &Origin, paths: &[String]) -> Vec<Option<u32>> {
+    let mut out = Vec::with_capacity(paths.len());
+    for p in paths {
+        let got = super::source::ask(
+            line,
+            origin,
+            "files-stat",
+            &serde_json::json!({ "path": p }),
+            super::transfer::PROBE_BUDGET,
+        )
+        .await;
+        out.push(got.ok().as_ref().and_then(mode_of));
+    }
+    out
+}
+
+/// 现值那一趟的共享落点（UI 线程读，tokio 那条写）。带一个**代数**：框换了（又摆了一个），
+/// 上一个框那一趟晚到的答案不许落到新框上。形状照 [`WriteBoard`]（含「敲窗口的手」）。
+#[derive(Clone, Default)]
+pub struct ModeProbe {
+    inner: Arc<Mutex<ModeProbeInner>>,
+}
+
+#[derive(Default)]
+struct ModeProbeInner {
+    gen: u64,
+    got: Option<Vec<Option<u32>>>,
+    ctx: Option<egui::Context>,
+}
+
+impl ModeProbe {
+    /// 新摆了一个框：代数 +1、清掉上一个框的答案，交回这一趟的代数。
+    pub fn start(&self) -> u64 {
+        let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        g.gen += 1;
+        g.got = None;
+        g.gen
+    }
+
+    /// 答案到了。代数对不上（框已经换了）⇒ 丢掉。
+    pub fn land(&self, gen: u64, modes: Vec<Option<u32>>) {
+        let ctx = {
+            let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            if g.gen != gen {
+                return;
+            }
+            g.got = Some(modes);
+            g.ctx.clone()
+        };
+        if let Some(c) = ctx {
+            c.request_repaint();
+        }
+    }
+
+    /// 把窗口交给它（答案到了要敲一下，不然等用户动鼠标才画出来）。
+    pub fn attach(&self, ctx: egui::Context) {
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).ctx = Some(ctx);
+    }
+
+    /// 这一个框的现值（还没答回来 ⇒ `None`）。
+    pub fn readout(&self) -> Option<ModeReadout> {
+        self.inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .got
+            .as_deref()
+            .map(mode_readout)
+    }
+}
+
+/// 〔GP1〕现值答回来之后，框里那一栏预填**至多一次**（纯函数：判据直接喂它）。
+///
+/// 只在「还没处理过」且「那一栏是空的」时填；填与不填都记「处理过了」—— 用户后来清空那一栏，不再被塞回去。
+pub fn apply_prefill(p: &mut WritePrompt, r: &ModeReadout) {
+    if p.prefilled {
+        return;
+    }
+    p.prefilled = true;
+    if p.text.is_empty() {
+        if let Some(v) = &r.prefill {
+            p.text = v.clone();
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
