@@ -1862,6 +1862,10 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
   `after = null` = 删；`edit = null` = 盘上已经是想要的样子）。落盘是调用方拿着计划另发 `files-put`（`root` = 仓、`expect = before`、`parents`）
   或 `files-delete`；`stale` ⇒ 重新 `plan_*`。写了 `.md` 之后发 `refresh_doc_links` 让文档关联的查询跟上（只写索引）。
 - 阻塞档（起一个进程、等它退出；建索引可到分钟级）⇒ `cancel` 命中回 `not_cancellable`。
+- 〔RM1e · V108「只传给开过远端全景的机器」〕`not_installed` / `unsupported` 是**推字节的触发条件**：monitor 听到这两个码
+  （只对远端）⇒ `uname -s -m` 选内嵌字节 → 经本机常驻后端那条 `files` 链路（部署那一问一答，写只许 `~/.cc-monitor/bin/` 与暂存区）
+  推到 `~/.cc-monitor/bin/cc-monitor-panorama`（`0755`，后端读回逐字节比对）→ **再问一次**；仍是这两个码 ⇒ 原话交给人，不循环。
+  本命令自己不推、不写。
 
 #### `history-find`：会话内查找（〔SR1a × SE2〕2026-09-24 上帧面）
 
