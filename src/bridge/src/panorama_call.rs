@@ -43,9 +43,17 @@
 //! 码从分流器递回的 `(code, message)` 里认，不自己 match 错误枚举 —— 与 `user_files.rs::BackendDoor::ask` 同形；
 //! 登记在 `backend_route_tests::SENDERS`）。〔墓碑 —— RM1c 那一版经 `frame_query::call` 发，它把码压进了一句话。〕
 //!
+//! # 〔RM1f〕可取消（建索引点下去可以撤）
+//!
+//! `panorama_call` 带一张 `ticket`（界面每一问现造一张）；界面点「取消」⇒ [`panorama_cancel`] 拉那张票的铃 ⇒
+//! 等那一问的 future 被**丢掉** ⇒ `inbound_client::call` 的放弃守卫补发 `cancel{target}` ⇒ 后端 `panorama`
+//! （可取消档）撤掉处理器、小程序连同 `timeout` 前缀那一组子进程一起被杀。界面收到 [`CANCELLED_SAID`]。
+//! ⚠ 撤单是 best-effort 的那一格与超时同一格（`cancel` 那一行入不了写队列就不发）；撤得掉的只有**在后端跑着**
+//! 的那一段 —— 推字节那一段（`push_to`）被丢时上传中途停下，远端留一份暂存旁名，下一次推照常覆盖。
+//!
 //! # 诚实边界
 //!
-//! - 打不断：后端那一侧是阻塞档（`cancel` 回 `not_cancellable`）；这边等到期限为止。
+//! - 〔墓碑 —— RM1c 那一版这里写着「打不断：后端那一侧是阻塞档（`cancel` 回 `not_cancellable`）；这边等到期限为止」。〕
 //! - 〔RM1e〕删批注的 CAS 闭合在后端那一侧（核与删在同一个函数里紧挨着，窗只剩那两行之间 —— 后端写面头注那条 TOCTOU）。
 //!   〔墓碑 —— RM1d 那一版这里写着「删批注**没有 CAS**（`files-delete` 不收 `expect`）：删前 `peek` 核一遍，核与删之间仍有一个窗口」。〕
 
@@ -249,15 +257,86 @@ pub(crate) fn frame_args(op: &str, repo: Option<&str>, args: Option<Value>) -> V
 }
 
 /// 问 `origin` 那台机器的后端做一次全景查询，拿回 `result`。
+///
+/// 〔RM1f〕`ticket`：给了 ⇒ 这一问能被 [`panorama_cancel`] 撤掉（头注「可取消」一节）；不给 ⇒ 等到结局为止。
 #[tauri::command]
 pub async fn panorama_call(
     origin: Origin,
     op: String,
     repo: Option<String>,
     args: Option<Value>,
+    ticket: Option<String>,
 ) -> Result<Value, String> {
     let _ = origin.route("panorama_call")?;
-    ask(&origin, &op, repo.as_deref(), args).await
+    let asked = ask(&origin, &op, repo.as_deref(), args);
+    match ticket {
+        None => asked.await,
+        Some(t) => with_ticket(t, asked).await,
+    }
+}
+
+/// 〔RM1f〕撤掉一张票（界面上「取消」那一下）。回这张票此刻在不在飞（不在 ⇒ 已经有结局了，撤了也没用）。
+#[tauri::command]
+pub fn panorama_cancel(ticket: String) -> bool {
+    let bell = lock_tickets().get(&ticket).cloned();
+    match bell {
+        Some(b) => {
+            // `notify_one` 在还没人等时也会留一张许可 ⇒ 撤单先到、等待后到也撤得掉。
+            b.notify_one();
+            true
+        }
+        None => false,
+    }
+}
+
+/// 〔RM1f〕被撤掉的那一问交给界面的那句话（界面按「是我撤的」认它，不当失败弹）。
+pub(crate) const CANCELLED_SAID: &str = "已取消（后端那一趟已经停下）";
+
+/// 〔RM1f〕在飞的票：票 → 撤单铃。进程内、按票登记、有结局即摘（[`TicketGuard`]）。
+fn lock_tickets() -> std::sync::MutexGuard<
+    'static,
+    std::collections::HashMap<String, std::sync::Arc<tokio::sync::Notify>>,
+> {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, OnceLock};
+    static TICKETS: OnceLock<Mutex<HashMap<String, Arc<tokio::sync::Notify>>>> = OnceLock::new();
+    TICKETS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// 〔RM1f〕这张票的登记随它一起走（有结局 / 被撤 / 调用方自己被丢，都摘掉）。
+struct TicketGuard(String);
+
+impl Drop for TicketGuard {
+    fn drop(&mut self) {
+        lock_tickets().remove(&self.0);
+    }
+}
+
+/// 〔RM1f〕带票等一问：票被撤 ⇒ `asked` 被**丢掉**（⇒ `inbound_client::call` 的放弃守卫补发 `cancel`
+/// ⇒ 后端撤掉处理器、杀掉小程序那一组子进程），回 [`CANCELLED_SAID`]。
+/// 同一张票同时只许一问（前一问的撤单铃被后一问顶掉，前一问就撤不掉了 ⇒ 当场拒）。
+pub(crate) async fn with_ticket<F>(ticket: String, asked: F) -> Result<Value, String>
+where
+    F: std::future::Future<Output = Result<Value, String>>,
+{
+    let bell = std::sync::Arc::new(tokio::sync::Notify::new());
+    {
+        let mut t = lock_tickets();
+        if t.contains_key(&ticket) {
+            return Err(format!(
+                "代码全景：取消票 `{ticket}` 还有一问在飞，这一问没有发出去（界面应当每一问一张新票）"
+            ));
+        }
+        t.insert(ticket.clone(), bell.clone());
+    }
+    let _registered = TicketGuard(ticket);
+    tokio::select! {
+        r = asked => r,
+        () = bell.notified() => Err(CANCELLED_SAID.to_string()),
+    }
 }
 
 /// 分流器那三态里给人看的那句话。

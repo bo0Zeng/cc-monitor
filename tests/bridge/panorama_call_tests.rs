@@ -530,3 +530,69 @@ fn the_door_sends_expect_with_every_delete() {
     assert!(theirs.len() >= 3, "后端那一侧只抽到 {theirs:?} —— 抽取坏了");
     assert_eq!(ours, theirs, "门发 files-delete 的键与后端声明的对不上");
 }
+
+/// ★〔RM1f · C5〕**撤票 ⇒ 那一问被丢掉**（不是等它自己回来）、交回「已取消」、票摘掉；
+/// 没撤 ⇒ 原样交回、票同样摘掉；同一张票同时只许一问；撤一张不在飞的票 ⇒ `false`。
+///
+/// 「被丢掉」是承重的：`inbound_client::call` 的放弃守卫靠析构补发 `cancel`，后端才撤得掉建索引
+/// （那一格由 `inbound_client_tests::abandoning_the_wait_fires_one_cancel_and_finishing_fires_none` 钉）。
+#[tokio::test]
+async fn a_cancelled_ticket_drops_the_ask_and_says_so() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    struct Flag(Arc<AtomicBool>);
+    impl Drop for Flag {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
+    let dropped = Arc::new(AtomicBool::new(false));
+    let flag = Flag(dropped.clone());
+    // 一问永远不回来（模拟后端那一趟建索引），被丢时举旗。
+    let never = async move {
+        let _f = flag;
+        std::future::pending::<Result<Value, String>>().await
+    };
+    let t = "rm1f-c5-a".to_string();
+    let waiter = tokio::spawn(with_ticket(t.clone(), never));
+    // 等它登记上（登记在第一次 poll 里做）。
+    for _ in 0..200 {
+        if lock_tickets().contains_key(&t) {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    assert!(lock_tickets().contains_key(&t), "票没登记上");
+    assert!(panorama_cancel(t.clone()), "在飞的票撤不掉");
+    let got = waiter.await.expect("task");
+    assert_eq!(got, Err(CANCELLED_SAID.to_string()));
+    assert!(
+        dropped.load(Ordering::SeqCst),
+        "撤了票，那一问却没被丢掉 —— 后端收不到 cancel"
+    );
+    assert!(!lock_tickets().contains_key(&t), "撤完票还留在表里");
+    assert!(!panorama_cancel(t.clone()), "撤一张不在飞的票应当回 false");
+
+    // 没撤：原样交回、票摘掉。
+    let t2 = "rm1f-c5-b".to_string();
+    let ok = with_ticket(t2.clone(), async { Ok(json!({"n": 1})) }).await;
+    assert_eq!(ok, Ok(json!({"n": 1})));
+    assert!(!lock_tickets().contains_key(&t2));
+
+    // 同一张票同时只许一问。
+    let t3 = "rm1f-c5-c".to_string();
+    let first = tokio::spawn(with_ticket(
+        t3.clone(),
+        std::future::pending::<Result<Value, String>>(),
+    ));
+    for _ in 0..200 {
+        if lock_tickets().contains_key(&t3) {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    let dup = with_ticket(t3.clone(), async { Ok(json!(null)) }).await;
+    assert!(dup.is_err(), "同一张票第二问没被拒：{dup:?}");
+    assert!(panorama_cancel(t3.clone()));
+    assert_eq!(first.await.expect("task"), Err(CANCELLED_SAID.to_string()));
+}

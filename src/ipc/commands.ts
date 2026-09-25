@@ -411,8 +411,17 @@ export const commands = {
    * 〔RM1c · 第四波〕代码全景**经那台机器的后端**走（V108 选 B）：发帧命令 `panorama`，拿回 `result`。
    * `result` 的形状随 `op` 而定（与本机那几条逐字同形）⇒ 这里是 `unknown`，由 `panorama/api.ts` 按 op 收窄。
    */
-  panorama_call: (args: { origin: Origin; op: string; repo: string | null; args: unknown }) =>
-    invoke<unknown>("panorama_call", args),
+  panorama_call: (args: {
+    origin: Origin;
+    op: string;
+    repo: string | null;
+    args: unknown;
+    /** 〔RM1f〕给了 ⇒ 这一问能被 `panorama_cancel` 撤掉（每一问一张新票）。 */
+    ticket?: string | null;
+  }) => invoke<unknown>("panorama_call", args),
+
+  /** 〔RM1f〕撤掉一问在飞的全景（「取消建索引」）。回那张票此刻在不在飞。 */
+  panorama_cancel: (args: { ticket: string }) => invoke<boolean>("panorama_cancel", args),
 
   /**
    * 〔RM1d · 第四波〕批注 / 文档关联的**写**（V110「引擎只算、文件管理来写」）：问那台机器要编辑计划、
