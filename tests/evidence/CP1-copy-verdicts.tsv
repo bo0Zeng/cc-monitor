@@ -1062,7 +1062,6 @@ src/settings/panel.ts:912	账号	保留	[对外] 设置面板里一块的标题�
 src/settings/panel.ts:940	插件（marketplace）	保留	[对外] 设置面板里一块的标题（名词短语）；ST1 延后加载把它从 safeBlock( 挪进 loadableBlock(，文字没变
 src/settings/panel.ts:947	cc-bus 钩子	保留	[对外] 设置面板里一块的标题（名词短语）；ST1 延后加载把它从 safeBlock( 挪进 loadableBlock(，文字没变
 src/settings/panel.ts:1504	终端集成	保留	[对外] 设置面板里一块的标题（名词短语）；ST1 延后加载把它从 safeBlock( 挪进 loadableBlock(，文字没变
-src/settings/panel.ts:742	外观或 Claude 数据目录有改动还没保存。	保留	[对外] ST1 未保存关窗拦截那一条的正文：先说发生了什么，后面跟三颗按钮（保存并关闭 / 丢弃改动 / 继续编辑）
 src/backend/accounts/apikey/creds.rs:86	读不动凭据文件：{e}	保留	[可达存疑] 中转进程里账号层（层 2）装表/重载时写到 stdout 的公告行（accounts::apikey::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；短、先说结果（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
 src/backend/accounts/apikey/table.rs:255	账号 id 当不了路由段（只许字母数字与 - _，最长 128 字节）	内部词→用在请求地址里（路由段）	[可达存疑] 中转进程里账号层（层 2）装表/重载时写到 stdout 的公告行（accounts::apikey::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；括号里的约束可操作 新词:路由段（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
 src/backend/accounts/apikey/table.rs:264	base_url 是明文 http 而主机不是本机回环 —— 那会把这一行的 key 明着发上网线。要么换 https，要么把上游放到本机回环上	保留	[可达存疑] 中转进程里账号层（层 2）装表/重载时写到 stdout 的公告行（accounts::apikey::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；字段名 base_url 是用户自己写的键，两句：结果＋两种修法，可操作（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
@@ -1204,3 +1203,8 @@ src/first-run-hint.ts:68	诊断：	保留	[对外] 主窗口状态栏那条指�
 src/settings/drift-ledger-section.ts:93	这台机器单独的那一份还读不到：这本账今天不分机器，都在本机那一栏里。	保留	[对外] 远端机器「足迹」栏里「未识别的数据」那一句（ST2：账不分机器，只做本机；指向本机那一栏）
 src/settings/drift-ledger-section.ts:96	这本账是 monitor 这次运行的全部：从远端读来的记录也记在这里，今天还分不开是哪台机器。	保留	[对外] 本机「未识别的数据」那一句：账不分机器，当场说清（否则会被当成本机这台的账）
 src/settings/panel.ts:1140	未识别的数据	保留	[对外] 机器子页「足迹」栏里那一块的块名（原顶层「改动足迹」页的漂移记账）
+src/settings/panel.ts:732	Claude 数据目录	保留	[对外] 落盘失败 / 重启条那一格的名字（ST2 步 9：全即时，每一格改了就落）
+src/settings/panel.ts:744	Claude 数据目录	保留	[对外] 落盘失败 / 重启条那一格的名字（ST2 步 9：全即时，每一格改了就落）
+src/settings/panel.ts:1545	Claude 数据目录	保留	[对外] 落盘失败 / 重启条那一格的名字（ST2 步 9：全即时，每一格改了就落）
+src/settings/panel.ts:1733	外观	保留	[对外] 落盘失败时说是哪一格（ST2 步 9）
+src/settings/panel.ts:1763	外观	保留	[对外] 落盘失败时说是哪一格（ST2 步 9）

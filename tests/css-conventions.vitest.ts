@@ -312,7 +312,7 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   // ⚠ 〔第四波 ST2 · 2026-09-24〕又漂了（多拍）：步 14 / 删顶层「改动足迹」/ 步 15 在 `panel.ts` 上游
   //    改了 buildBody（后端四格寄居、应用下挂三个子页、漂移记账那块）。住址与语义一字未动，只是行号跟着挪；
   //    三处照旧由脚本按「`b.el.hidden =` / 两处 `perMachineFallbackHint.hidden =`」现打。
-  "src/settings/panel.ts:793":
+  "src/settings/panel.ts:801":
     "`b.el` —— `b` 来自 `this.perMachineBlocks` 数组，元素由各 section 自己建，跨文件",
   // 🔴 〔步 20 · `设计/70 §1.3 C`〕兜底态那块提示的显隐。它的类名是
   //    `skeleton.ts::makeSkeleton` 挂上去的（`settings-hint`），**跨文件** ——
@@ -320,9 +320,9 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   //    ⚠ 顺带说清它安不安全：`settings-hint` 在 `src/styles.css` 里**没有 display 规则**
   //      ⇒ UA 的 `[hidden] { display: none }` 不会被压过，那两句不是空写。
   //      这一条是**人工核过的**，不是这把尺子判的 —— 所以它在登记表里，不在绿里。
-  "src/settings/panel.ts:1290":
+  "src/settings/panel.ts:1305":
     "`this.perMachineFallbackHint` —— 类名由 `skeleton.ts::makeSkeleton` 挂，跨文件",
-  "src/settings/panel.ts:1303":
+  "src/settings/panel.ts:1318":
     "`this.perMachineFallbackHint` —— 同上（兜底态亮出来那一支）",
   // 🔴 〔步 20 · `设计/70 §10.1`〕「足迹」那一块里，本机那一整套的显隐包装。
   //    它**刻意不挂任何类**：只负责显隐、不要样式。挂了类就得在 CSS 里给它写规则
