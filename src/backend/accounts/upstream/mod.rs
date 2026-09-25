@@ -28,17 +28,17 @@
 //! | 改什么 | 今天是 | 住址 |
 //! |---|---|---|
 //! | 表的键 | `(seg1, seg2)` 两段都是键，一段都不省 | `table::RoutingTable::lookup` |
-//! | 默认上游 | **每 agent 一行**：`agent → (环境旋钮, 内置默认)`；进程级的那个常量**整删** | [`AGENT_UPSTREAMS`] |
+//! | 默认上游 | **每 agent 一行**：`agent → (环境旋钮, 内置默认)`；进程级的那个常量**整删**；〔NT2 · V25〕那一格住适配层 | `agents::Adapter::upstream`（经 `agents::default_upstreams` 读） |
 //! | 未登记的 agent | `/t/` 无行 ⇒ **502**；`/s/` 无行 ⇒ 404（不变）。**不回落到任何一家** | [`decide`] 最后那一支 |
 //!
 //! ⚠ **「未登记 ⇒ 502」不是没做完，是照 `§3.1` 第 4 行那条 🔴「不许回落到某一个写死的常量」
 //! 做的 fail-closed** —— 先前它对**每一个** `seg1` 都成立（那张表还不存在），今天只对
 //! 表里没有的那几家成立。别把它改成「查不到就透传」：透传到哪一家？那正是要拆掉的那个回落。
 //!
-//! ⚠ **今天表里只登记了一家**（`claude-code`）。codex **刻意没登记** —— 它的默认上游
+//! ⚠ **今天只登记了一家**（`claude-code`，适配层那一格）。codex **刻意没登记** —— 它的默认上游
 //! 是哪一个、它认不认 base URL 的覆盖，本仓**零证据**（`C7`：不起真 agent），
 //! 而把一个猜的值写进这张表，就是把「未登记直接拒」换成「静默发去一个猜的地方」。
-//! 登记它的那一天，改的只是这张表多一行，**形状不用改**。
+//! 登记它的那一天，改的只是注册表里 codex 那一行的 `upstream` 那一格，**形状不用改**。
 //!
 //! # ⚠ `设计/20 §7` 步 3 的「怎么验」那一栏与 `§3.1` 第 4 行 —— 今天**不再互斥**
 //!
@@ -81,37 +81,11 @@ use table::{RoutingTable, Row};
 /// 不在本层），那一天本常量整删、换成逐行读出来的 agent。
 pub(crate) const CREDENTIALS_FILE_AGENT: &str = "claude-code";
 
-/// 一家 agent 在上游选择里登记的那一行：**它的默认上游从哪儿来**〔条 59 / 条 60〕。
-///
-/// 三格焊在一起，理由与 `table::Row` 把上游、key、鉴权头形状焊在一起是同一条：
-/// 分开取就写得出「A 家的旋钮配 B 家的默认值」。
-pub(crate) struct AgentUpstream {
-    /// 路由键第 1 段的那个值（monitor 侧 `adapter::…::id()` 的产物，`RELAY_ROUTE_SAMPLE` 首段）。
-    pub(crate) agent: &'static str,
-    /// 盖掉内置默认的那个环境变量名。**每家一个**（条 60：不留「覆盖哪一家说不清」的全局旋钮）。
-    pub(crate) env: &'static str,
-    /// 没配 `env` 时这一家发到哪儿。
-    pub(crate) fallback: &'static str,
-}
+// 〔NT2 · V25〕这里原先是 `AgentUpstream` 与每 agent 一行的默认上游表 `AGENT_UPSTREAMS`〔散文墓碑〕。
+// 用户 V25「写死, 跟着适配层」⇒ 那一格搬回 `agents::Adapter::upstream`（claude-code 那一行住 `agents/claudecode`），
+// 本层只经 `agents::default_upstreams` 读 —— 形状（每家一行 · 每家一个旋钮 · 未登记即拒）一格不变，只换了住址。
 
-/// ★★ **每 agent 一行的默认上游表**。不在这里的 agent = **未登记** ⇒ `/t/` 无行回 502。
-///
-/// 🔴 **它替掉的是一个进程级常量**（先前的 `DEFAULT_UPSTREAM`）：那一个值对每个 `seg1` 都成立，
-/// 于是「codex 的请求发给 Anthropic」在上游选择里写得出来。今天那个 URL 字面量只作为
-/// **claude-code 这一行的一格**存在 —— `table_guard::the_relay_has_no_default_upstream_to_fall_back_to`
-/// 数着它的处数（上游选择恰好登记那几处，中转零处）。
-///
-/// 环境变量名 `CCM_AGENT_UPSTREAM_CLAUDE_CODE`〔R3 改名；先前叫中转的名字 —— 旧名见 `设计/20` R3 那一段〕：
-/// 它是**本表里 claude-code 那一行**的旋钮，不是中转的配置（中转没有默认上游）。名字照本表的形状起：
-/// `CCM_AGENT_UPSTREAM_<agent>`，哪天登记第二家就照这个形状加一行。
-/// `src/doc/IPC-PROTOCOL.md` 那一行逐字点着这个名字，同拍改。
-pub(crate) const AGENT_UPSTREAMS: &[AgentUpstream] = &[AgentUpstream {
-    agent: CREDENTIALS_FILE_AGENT,
-    env: "CCM_AGENT_UPSTREAM_CLAUDE_CODE",
-    fallback: "https://api.anthropic.com",
-}];
-
-/// [`AGENT_UPSTREAMS`] 解析之后的样子：`agent → Base`。**一个进程一份**，首次装表与每次重载共用。
+/// 适配层那一格（`agents::Adapter::upstream`）解析之后的样子：`路由名 → Base`。**一个进程一份**，首次装表与每次重载共用。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Upstreams {
     by_agent: std::collections::BTreeMap<&'static str, Base>,
@@ -126,10 +100,11 @@ impl Upstreams {
     ///   变成「那一家的每一发都 502」，而进程照常跑着、启动日志里只有一行 —— 那是静默降级。
     pub(crate) fn from_env(get: &dyn Fn(&str) -> Option<String>) -> Option<Self> {
         let mut by_agent = std::collections::BTreeMap::new();
-        for a in AGENT_UPSTREAMS {
+        // 〔NT2 · V25〕默认上游只查适配层（`agents::Adapter::upstream`）。
+        for a in crate::agents::default_upstreams() {
             let raw = get(a.env);
             let base = Base::parse(raw.as_deref().unwrap_or(a.fallback)).ok()?;
-            by_agent.insert(a.agent, base);
+            by_agent.insert(a.route_id, base);
         }
         // 凭据文件那一家必须登记过，否则那份文件里的行**没有默认上游可取**。
         // 这是一条构造期的事实，由 `table_tests` 那条相等断言钉着；这里只是不让它静默成立。
