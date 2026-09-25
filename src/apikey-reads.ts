@@ -45,12 +45,16 @@ export interface ApikeyRoutingView {
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
   v !== null && typeof v === "object" && !Array.isArray(v);
-const sameKeys = (o: Record<string, unknown>, want: readonly string[]): boolean => {
+const sameKeys = (
+  o: Record<string, unknown>,
+  want: readonly string[],
+): boolean => {
   const got = Object.keys(o).sort();
   const w = [...want].sort();
   return got.length === w.length && got.every((k, i) => k === w[i]);
 };
-const nullableStr = (v: unknown): v is string | null => v === null || typeof v === "string";
+const nullableStr = (v: unknown): v is string | null =>
+  v === null || typeof v === "string";
 
 /** `apikey-read` 的成品 ⇒ 状态。严格收。 */
 export function decodeApikeyStatus(v: unknown): ApikeyCredentialsStatus {
@@ -65,7 +69,13 @@ export function decodeApikeyStatus(v: unknown): ApikeyCredentialsStatus {
   ) {
     throw new Error("凭据文件状态的应答形状不对 —— 两端契约对不上");
   }
-  return { configured: v.configured, masked: v.masked, path: v.path, notice: v.notice, problem: v.problem };
+  return {
+    configured: v.configured,
+    masked: v.masked,
+    path: v.path,
+    notice: v.notice,
+    problem: v.problem,
+  };
 }
 
 /** `apikey-routing` 的成品 ⇒ 两格事实。严格收。 */
@@ -77,7 +87,9 @@ export function decodeApikeyRouting(v: unknown): ApikeyRoutingView {
     !v.routed.every((d) => typeof d === "string") ||
     typeof v.running !== "boolean"
   ) {
-    throw new Error("「这几个号在表里有没有行」的应答形状不对 —— 两端契约对不上");
+    throw new Error(
+      "「这几个号在表里有没有行」的应答形状不对 —— 两端契约对不上",
+    );
   }
   return { routed: v.routed as string[], running: v.running };
 }
@@ -93,7 +105,9 @@ const APIKEY_OLD_BACKEND =
   "那台机器的后端版本过旧，还不认这一问（API key 那两问上帧面之后才有）—— 重装那台机器的后端就有了";
 
 /** 那台机器上那份凭据文件的状态。问不到 / 形状不对 ⇒ 抛一句人话（不退化成「没配」）。 */
-export async function readApikeyStatus(origin: Origin): Promise<ApikeyCredentialsStatus> {
+export async function readApikeyStatus(
+  origin: Origin,
+): Promise<ApikeyCredentialsStatus> {
   try {
     const body = jsonBody({});
     const budget = budgetWithin(APIKEY_BUDGET_MS);
