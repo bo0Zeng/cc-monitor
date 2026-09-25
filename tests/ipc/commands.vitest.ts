@@ -965,8 +965,8 @@ describe("K-H2b D5 阻-2：tab 栏那条本机 resume 也是**行为**判据（�
 // | ② 生成物面 | `src/generated/Origin.ts` 的**正文** | `ts-rs` 从 Rust 的 `origin::Origin` 生成 | 有人手写一处 `origin: string \| null` ⇒ 生成物一个字不动，而本条照绿 |
 //
 // ⚠ **它们买不到**：① 换个名字传同一件事（`host: string | null`）——
-//   词是 `origin`，改名就出人群；② **出方向**那一半（`JsonlRecord` /
-//   `RemoteHealthPayload` 一族仍是 `origin: string | null`，`null` = 本机）——
+//   词是 `origin`，改名就出人群；② **出方向**那一半（`JsonlRecord` 一族仍是可缺省的 `origin`，缺省 = 本机；
+//   〔C4b〕`RemoteHealthPayload.origin` 已改成恒有值的 `string`）——
 //   那几份住 `src/bridge/src/{bridge,history,search}.rs` 与 `lib.rs`，
 //   不在步 2 的写区里，逐份读数在交回件里。**别把这一节读成「全仓没有 `null` 了」。**
 // ══════════════════════════════════════════════════════════════════════════
@@ -1099,7 +1099,7 @@ describe("`设计/05 §8` 步 2：origin 去 null 化（入方向）", () => {
  *
  * # 判据（零命中带正控；人群恒等）
  *
- * 1. 违例集合 == [`PENDING`]（两向）—— 今天只剩生成物一处，住址与解锁条件写在表里；
+ * 1. 违例集合 == [`PENDING`]（两向）—— 〔C4b〕待办表今天为空（生成物那一处已改 `string`）；
  * 2. 人群条数**恒等**（不是地板）—— 塌成 0 与「全都合规」在终端上一模一样；
  * 3. 识别器阳性对照五形 ＋ 阴性对照三形（`originalType` 不算、值不算、干净类型不算）；
  * 4. 真语料锚点：`Tab.origin`（`tab-model.ts`）与 `pickPrimaryOrigin` 的返回（`account-chip.ts`）
@@ -1121,11 +1121,8 @@ describe("`设计/05 §8` 步 2：origin 去 null 化（入方向）", () => {
  * 它与盘上的违例两向相等，修好了不摘 ⇒ 红；新长一处 ⇒ 红。
  */
 const PENDING: Record<string, string> = {
-  "src/generated/RemoteHealthPayload.ts::RemoteHealthPayload.origin":
-    "Rust 出方向 `bridge.rs::RemoteHealthPayload.origin` 仍是 `Option<String>`（头注自认「`None` 理论不该出现」，" +
-    "五个发射点现打全是 `Some(host)`）。改成 `String` 要动那五个发射点，而它们全住 `ssh_source.rs` —— " +
-    "第四波 SR1a 的写区（单一常驻后端正在重写它）。解锁：SR1a 合并后同拍把字段改成 `String`、" +
-    "五处 `Some(x.clone())` 改成 `x.clone()`、重生成绑定，再摘这一行。",
+  // 〔C4b · 第四波 4B〕最后一行摘了：`RemoteHealthPayload.origin` Rust 侧改成 `String`（五个发射点全带 label），
+  //   生成物随之是 `origin: string`。本表从此是空表 —— 判据照旧两向相等：新长一处装得下 null 的 origin ⇒ 红。
 };
 
 /** 基线之后现打的人群条数（带类型标注、名字带 origin 的声明）。 */
@@ -1236,7 +1233,7 @@ function originCorpus(): Decl[] {
 }
 
 describe("〔C4a〕TS 侧 origin 去 null（`设计/05 §8` 步 2，全 TS ＋ 生成物）", { timeout: 30_000 }, () => {
-  it("★★ 装得下 `null` 的 origin 声明 == 登记的待办（两向；今天只剩生成物一处）", () => {
+  it("★★ 装得下 `null` 的 origin 声明 == 登记的待办（两向；〔C4b〕待办表今天为空）", () => {
     const found = originCorpus()
       .filter((d) => d.nullable)
       .map((d) => d.key)
