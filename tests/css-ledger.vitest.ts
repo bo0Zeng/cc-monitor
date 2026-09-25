@@ -19,7 +19,8 @@
  * | ① | `z-index` 只许写 `var(--z-*)` | **恒等**（一处裸数字都不许） | 判过的 `z-index` 声明条数 |
  * | ② | CSS 里的类名有人用（CSS → 代码） | **恒等**（未解释集合 == 登记的已知死规则） | 判过的 CSS 类名个数 |
  * | ③ | 代码挂的类名 CSS 里有规则（代码 → CSS） | **递减棘轮** | 判过的代码侧类名引用个数 |
- * | ④ | `npx stylelint` 的报错总数 | **递减棘轮** | 被 lint 的 CSS 文件份数 |
+ * | ④ | `npx stylelint` 的报错总数（`no-descending-specificity` 除外） | **递减棘轮** | 被 lint 的 CSS 文件份数 |
+ * | ④b | 〔UC2〕`no-descending-specificity` 的命中 == 登记的例外 | **两向相等**（多一条红、修掉一条也红） | 登记表条数 |
  *
  * 🔴 **本文件不装第五格（`#app` 布局根，`设计/40 §7` 步 9 ③）—— 它有自己的家。**
  * 本轮落地时它红在一个真缺陷上（`src/tabs.ts` 的 `ensureArchiveUi()` 往 `#app` 插的
@@ -229,7 +230,132 @@ const KNOWN_DEAD: readonly { name: string; why: string }[] = [
 // 〔2026-09-24 U1 合并那一拍棘 47 → 39〕三入口 ＋ CSS 拆 10 份 ＋ 层真包进去之后现打 39（现打，不是 47−8 算的）。
 // 〔F7b 09-24 棘 39 → 36〕老 SFTP 面板那整段 CSS 退役，带走 `shared.css` 里 3 条 `color-function-alias-notation`
 //   （`rgba` → `rgb`；那一份 7 → 4，现打，不是 39−3 算的：全仓 `npx stylelint` 现打 36）。
+// 〔UC2 09-24〕`no-descending-specificity` 打开（`设计/41 §3` / `§12` 待拍 2）。它的命中**不进**本棘轮 ——
+//   另由 ④b 的两向相等登记表管（比棘轮严）；本上限仍是「除它以外」的报错总数，数值不动（现打 36）。
 const STYLELINT_CEILING = 36;
+
+/**
+ * ★ 〔UC2〕**`no-descending-specificity` 的例外登记表**（④b · `设计/41 §3` 待拍 2 · `设计/40 §8`「特异度冲突」）。
+ *
+ * 这条 lint 抓的是「后写的选择器特异度更低」：读源码的人以为后者覆盖前者，实际前者赢。
+ * `@layer` 落地之后它终于可以打开（`设计/41 §3`：「`@layer` 本来要买的正是这条 lint 可以打开」）。
+ * 打开时现打 **39** 条：写区内能**证明零级联变化**的 6 条当拍修掉（纯挪位，逐对核过先后翻转的规则，
+ * 读数在 `调研/第四波记录/UC2.md §3`），余下 **33** 条逐条登记在这里。
+ *
+ * 形态是**两向相等**（命中的多重集 == 本表）：
+ * - 新写出一条降序特异度 ⇒ 红（要么改写法，要么登记并写理由 —— 审的人看得见）；
+ * - 修掉一条（或那条规则被改写 / 删掉）⇒ 本表出现死条目 ⇒ 红，删掉那一条。
+ * 键是「文件 ＋ 后写的选择器 ＋ 先写的选择器」（**不含行号** —— 行号随别处增删漂移，钉它只会持续假红）。
+ * `n` ＝ 同一对在同一文件里出现几次（缺省 1）。
+ *
+ * `kind`：
+ * - `list`：同一条规则的选择器列表内部（声明一模一样，谁赢都一样）；
+ * - `harmless`：逐条看过，结构上打不到同一个元素，或打到了也是作者要的结果（理由写在 `why`）；
+ * - `defect?`：**真冲突，缺陷候选**，交主会话拍（改了会改变可见样式，本机无图形会话不能目视）；
+ * - `U4` / `ST3`：在同波别的路的写区里（tab 规则 · `settings.css`），本路**没逐条判**，照实登记为「未判」。
+ *
+ * ⚠ 并发：U4 改 tab 规则、ST3 改 `settings.css` 时，这张表会在合并那一拍红（多了或少了条目）——
+ *   那是本条要的红：按现打把对应条目增删并写理由即可。
+ */
+const DESCENDING_SPECIFICITY_EXCEPTIONS: readonly {
+  file: string;
+  later: string;
+  earlier: string;
+  n?: number;
+  kind: "list" | "harmless" | "defect?" | "U4" | "ST3";
+  why: string;
+}[] = [
+  // ── src/styles.css：本路判过的 7 条 ──
+  {
+    file: "src/styles.css",
+    later: ".viewer-branch-btn:focus-visible",
+    earlier: ".has-branch-btn:hover .viewer-branch-btn",
+    kind: "list",
+    why: "两者是同一条规则 `…, .viewer-branch-btn:focus-visible { opacity: 0.7 }` 的选择器列表，声明相同。",
+  },
+  {
+    file: "src/styles.css",
+    later: ".viewer-branch-btn:hover",
+    earlier: ".has-branch-btn:hover .viewer-branch-btn",
+    kind: "harmless",
+    why:
+      "〔UC2 合并时已修〕同一条规则的选择器列表里补了 `.has-branch-btn .viewer-branch-btn:hover`（0-3-0，写在 0.7 那条之后 ⇒ 悬停按钮时它赢，" +
+      "opacity 到得了 1）。这一条仍命中，是因为列表里原来那个 `.viewer-branch-btn:hover`（0-2-0）还在 —— 它今天只管「不在 `.has-branch-btn` 卡片里」" +
+      "的按钮，而那种按钮不受 0.7 那条影响，无害。⚠ 视觉没目视。",
+  },
+  {
+    file: "src/styles.css",
+    later: ".branch-fold-wrap .viewer-branch-btn",
+    earlier: ".has-branch-btn:hover .viewer-branch-btn",
+    kind: "harmless",
+    why: "属性不相交：前者只设 `opacity`，后者设 `border-style` / `color` / `border-color`。",
+  },
+  {
+    file: "src/styles.css",
+    later: ".block-thinking .block-summary",
+    earlier: ".block-collapsible .block-summary:hover",
+    kind: "harmless",
+    why: "悬停高亮（背景 ＋ 正文色）压过 thinking 摘要的淡色 —— 悬停反馈本来就该压过变体色，与其余摘要一致。",
+  },
+  {
+    file: "src/styles.css",
+    later: ".block-tool-result-inline > .block-summary",
+    earlier: ".block-collapsible .block-summary:hover",
+    kind: "harmless",
+    why: "同上：悬停高亮压过内联 tool result 摘要的底色与字色。",
+  },
+  {
+    file: "src/styles.css",
+    later: ".block-diff-line code.hljs",
+    earlier: ".code-block pre code.hljs",
+    kind: "harmless",
+    why: "结构上打不到同一个元素：diff 行不在 `.code-block pre` 里（后一条规则头注逐字：`.code-block` 的 transparent 覆盖不 scope 到 `.block-diff`，所以才单写一条防御）。",
+  },
+  // ── src/styles.css：tab 规则（U4 写区，未判）──
+  { file: "src/styles.css", later: ".tab-pin", earlier: ".tab:not(.pinned) .tab-pin", kind: "U4", why: "未判：tab 规则在 U4 写区" },
+  { file: "src/styles.css", later: ".tab-title", earlier: ".tab.archived .tab-title", kind: "U4", why: "未判：tab 规则在 U4 写区" },
+  { file: "src/styles.css", later: ".live-dot", earlier: ".tab.archived .live-dot", kind: "U4", why: "未判：tab 规则在 U4 写区" },
+  { file: "src/styles.css", later: ".tab-badge", earlier: ".tab .tab-badge", kind: "U4", why: "未判：tab 规则在 U4 写区" },
+  { file: "src/styles.css", later: ".tab-close", earlier: ".tab:not(.archived) .tab-close", kind: "U4", why: "未判：tab 规则在 U4 写区" },
+  { file: "src/styles.css", later: ".tab-close:hover", earlier: ".tab:not(.archived) .tab-close", kind: "U4", why: "未判：tab 规则在 U4 写区" },
+  { file: "src/styles.css", later: ".tab-focus", earlier: ".tab.archived .tab-focus", n: 2, kind: "U4", why: "未判：tab 规则在 U4 写区" },
+  { file: "src/styles.css", later: ".tab-focus:hover", earlier: ".tab.archived .tab-focus", kind: "U4", why: "未判：tab 规则在 U4 写区" },
+  { file: "src/styles.css", later: ".tab-cwd", earlier: ".tab.archived .tab-cwd", n: 2, kind: "U4", why: "未判：tab 规则在 U4 写区" },
+  { file: "src/styles.css", later: ".tab-cwd:hover", earlier: ".tab.archived .tab-cwd", kind: "U4", why: "未判：tab 规则在 U4 写区" },
+  // ── src/styles/settings.css（ST3 写区，未判）──
+  ...(
+    [
+      [".settings-data-item-open:disabled", ".settings-data-item-open:hover:not(:disabled)"],
+      [".remote-machine-legend", ".remote-machine-row .remote-machine-legend"],
+      [".kb-editor-btn-record:disabled", ".kb-editor-btn-record:hover:not(:disabled)"],
+      [".kb-editor-btn-reset:disabled", ".kb-editor-btn-reset:hover:not(:disabled)"],
+      [".accounts-new-adv > summary", ".accounts-maint-wrap > summary:hover"],
+      [".accounts-new-adv > summary::before", ".accounts-maint-wrap[open] > summary::before"],
+      [".accounts-maint", ".accounts-maint-wrap .accounts-maint"],
+      [".ccm-alias-gen > summary", ".accounts-maint-wrap > summary:hover"],
+      [".ccm-alias-gen > summary::before", ".accounts-maint-wrap[open] > summary::before"],
+      [".accounts-wiz-btns button", ".accounts-row-actions button:hover"],
+      [".accounts-wiz-copyrow button", ".accounts-row-actions button:hover"],
+      [".accounts-maint button", ".accounts-row-actions button:hover"],
+      [".accounts-wiz-btns button:disabled", ".accounts-wiz-btns button:hover:not(:disabled)"],
+      [".accounts-maint button:disabled", ".accounts-wiz-btns button:hover:not(:disabled)"],
+      [".paste-block-out", ".ccm-alias-gen-out > .paste-block-out"],
+    ] as const
+  ).map(([later, earlier]) => ({
+    file: "src/styles/settings.css",
+    later,
+    earlier,
+    kind: "ST3" as const,
+    why: "未判：`settings.css` 在 ST3 写区",
+  })),
+];
+
+const NDS = "no-descending-specificity";
+/** 一条 `no-descending-specificity` 报错 → 登记键（不含行号）。认不出形状就原样返回，让它在等式里显形。 */
+function ndsKey(file: string, text: string): string {
+  const m = /^Expected selector "(.*?)"(?: \(".*?"\))? to come before selector "(.*?)"(?: \(".*?"\))?, at line \d+/.exec(text);
+  return m ? `${file} :: ${m[1]} ⇐ ${m[2]}` : `${file} :: <认不出的报错形状> ${text}`;
+}
 
 /**
  * ★ **靠前缀（而不是靠直接住址）才解释得通的 CSS 类名个数**上限。现打 **35**（分母 777）。
@@ -565,7 +691,9 @@ describe("S25 ④ stylelint 报错总数（递减棘轮）", () => {
       "stylelint 扫到的 CSS 与本账扫到的不是同一批 —— 两个 glob 漂了，其中一边在守空气",
     ).toEqual([...led.cssFiles].sort());
 
-    const warnings = linted.flatMap((r) => r.warnings);
+    const all = linted.flatMap((r) => r.warnings);
+    // 〔UC2〕`no-descending-specificity` 不进棘轮，由 ④b 的等号登记表管
+    const warnings = all.filter((w) => w.rule !== NDS);
     const byRule = new Map<string, number>();
     for (const w of warnings) byRule.set(w.rule, (byRule.get(w.rule) ?? 0) + 1);
     const top = [...byRule].sort((a, b) => b[1] - a[1]).map(([r, n]) => `${r}×${n}`);
@@ -586,7 +714,41 @@ describe("S25 ④ stylelint 报错总数（递减棘轮）", () => {
       "z-index 白名单在真 stylelint 下报出了命中 —— 与格 ① 的读数矛盾，两把尺子有一把坏了",
     ).toBe(0);
 
-    denom("④", linted.length, `份 CSS 文件（报错 ${warnings.length}/${STYLELINT_CEILING}，棘轮只许降）`);
+    denom("④", linted.length, `份 CSS 文件（报错 ${warnings.length}/${STYLELINT_CEILING}，棘轮只许降；另 ${all.length - warnings.length} 条 ${NDS} 归 ④b）`);
+
+    // ── ④b 〔UC2〕no-descending-specificity 的命中 == 登记的例外（两向，多重集）──
+    const got = linted
+      .flatMap((r) =>
+        r.warnings
+          .filter((w) => w.rule === NDS)
+          .map((w) => ndsKey((r.source ?? "").slice(REPO_ROOT.length + 1).split("\\").join("/"), w.text)),
+      )
+      .sort();
+    const want = DESCENDING_SPECIFICITY_EXCEPTIONS.flatMap((e) =>
+      Array.from({ length: e.n ?? 1 }, () => `${e.file} :: ${e.later} ⇐ ${e.earlier}`),
+    ).sort();
+    expect(
+      got,
+      `\`${NDS}\` 的命中与 \`DESCENDING_SPECIFICITY_EXCEPTIONS\` 不等。\n` +
+        "★ 多出来的（在 got 不在 want）：新写出了一条「后写的选择器特异度更低」—— 改写法（把低特异度的挪到前面、或把后者写得同样具体），" +
+        "或确认无害后登记并写理由。\n" +
+        "★ 少了的（在 want 不在 got）：那一条修掉了 / 规则改写了 —— 把登记删掉（本表只许缩，除非新登记写了理由）。",
+    ).toEqual(want);
+  }, TIMEOUT_MS);
+
+  it("④b 〔UC2〕no-descending-specificity 真的开着，而且真能报（正控：一段降序特异度的夹具必须恰报 1 条）", async () => {
+    const cfg = JSON.parse(readFileSync(resolve(REPO_ROOT, ".stylelintrc.json"), "utf8")) as { rules: Record<string, unknown> };
+    expect(cfg.rules[NDS], "`.stylelintrc.json` 里 `no-descending-specificity` 没开 —— ④b 的等式会对着 0 条命中零命中地绿").toBe(true);
+    const res = await stylelint.lint({
+      code: "@layer components {\n  .a .b:hover {\n    color: red;\n  }\n\n  .b {\n    color: blue;\n  }\n}\n",
+      codeFilename: resolve(REPO_ROOT, "src/__uc2_probe__.css"),
+      configFile: resolve(REPO_ROOT, ".stylelintrc.json"),
+    });
+    const nds = res.results.flatMap((r) => r.warnings).filter((w) => w.rule === NDS);
+    expect(nds.map((w) => ndsKey("probe", w.text)), "仓里的配置对一段典型的降序特异度不报 —— 规则没生效").toEqual(["probe :: .b ⇐ .a .b:hover"]);
+    const kinds = new Map<string, number>();
+    for (const e of DESCENDING_SPECIFICITY_EXCEPTIONS) kinds.set(e.kind, (kinds.get(e.kind) ?? 0) + (e.n ?? 1));
+    denom("④b", [...kinds.values()].reduce((a, b) => a + b, 0), `条登记的例外（${[...kinds].map(([k, n]) => `${k} ${n}`).join(" · ")}），与真 stylelint 的命中两向相等`);
   }, TIMEOUT_MS);
 
   it("`ci.yml` 里那个数与本文件的上限是同一个值（散文要有一条会红的判据读它）", () => {
