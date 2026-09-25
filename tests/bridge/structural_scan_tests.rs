@@ -4034,7 +4034,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/verified_write.rs", 3), // 〔RW1〕+1：`verify_and_rollback` 零调用方删了
         ("tests/bridge/verified_write_tests.rs", 1), // 〔RW1〕那三条回滚判据随它走了
         // 〔SR1b〕+2：传输台那三行摘掉时留的墓碑（暂存区上传 · 本机下载落地两个旧名）。
-        ("tests/bridge/remote_write_registry_tests.rs", 12), // 〔F7c 收尾 09-24〕1 → 7（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔RW1〕+1：F11 那条 SFTP 直删 · 〔SR1b 子步 3〕+2：写点表整张空了，`sftp.rs` 那一对原语（原子上传 · 入口落点类型）的旧名
+        ("tests/bridge/remote_write_registry_tests.rs", 11), // 〔FN1 · V119〕−1：双路径写入口那张表整条判据退役，表里那块墓碑（一个旧池命令名）随之走了 · 〔F7c 收尾 09-24〕1 → 7（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔RW1〕+1：F11 那条 SFTP 直删 · 〔SR1b 子步 3〕+2：写点表整张空了，`sftp.rs` 那一对原语（原子上传 · 入口落点类型）的旧名
         // 〔MC1 · 2026-09-24〕`CCM_SELF` 删了那一拍：shim 那条判据改名留的墓碑。
         ("tests/bridge/backend/control/local_backend_tests.rs", 1),
         // 〔AL1 · 2026-09-24〕别名改由后端渲染那一拍：本模块头注里 TS 那个旧生成器（`buildAliasLine`）·
