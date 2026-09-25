@@ -152,7 +152,7 @@ src/settings/data-section.ts	未抽
 src/settings/diagnostics-section.ts	未抽
 src/settings/drift-ledger-section.ts	未抽
 src/settings/mcp-section.ts	未抽
-src/settings/panel.ts	未抽
+src/settings/panel.ts	TL1 第 4 件那一句（REMOTE_INFO_TEXT「由远端后端取代本地 jsonl-watcher…」）归 TL1 改，本路跳过；其余已抽
 src/settings/plugins-section.ts	未抽
 src/settings/remote-section.ts	未抽
 src/views/history-actions.ts	C4d 在改这一带，留最后一批
