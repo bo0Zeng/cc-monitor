@@ -51,7 +51,26 @@ fn read_reply() -> Value {
     })
 }
 
+/// 〔SU1〕那台判的「每个要写的记什么」：恰是 `write` 那几个（摘要取假的、按位置编号；monitor 只原样交回，不看内容）。
+fn ledger_of(write: &Value) -> Value {
+    match write.as_array() {
+        None => Value::Null,
+        Some(w) => Value::Object(
+            w.iter()
+                .enumerate()
+                .map(|(i, p)| {
+                    (
+                        p.as_str().unwrap().to_string(),
+                        json!({"digest": format!("{i:016x}"), "created": i % 2 == 0}),
+                    )
+                })
+                .collect(),
+        ),
+    }
+}
+
 fn plan_reply(write: Value) -> Value {
+    let ledger = ledger_of(&write);
     json!({
         "root": "/dst/skills", "dir": "/dst/skills/demo", "base": "/dst", "prefix": "skills/demo",
         "rows": [
@@ -61,6 +80,7 @@ fn plan_reply(write: Value) -> Value {
         ],
         "target": [{"path": "SKILL.md", "text": "old\n"}],
         "write": write,
+        "ledger": ledger,
     })
 }
 
@@ -160,7 +180,8 @@ async fn apply_writes_exactly_the_judged_paths_with_the_seen_expectations() {
     let base = home.display().to_string();
     let mut reply = plan_reply(json!(["SKILL.md", "run.sh"]));
     reply["base"] = json!(base);
-    let ask = FakeAsk::new(vec![Ok(reply)]);
+    let ledger = reply["ledger"].clone();
+    let ask = FakeAsk::new(vec![Ok(reply), Ok(json!({"remaining": 2}))]);
     let door = DiskDoor::new(&home);
     let target = vec![SkillTargetText {
         path: "SKILL.md".into(),
@@ -221,6 +242,14 @@ async fn apply_writes_exactly_the_judged_paths_with_the_seen_expectations() {
     let asked = ask.asked.borrow().clone();
     assert_eq!(asked[0].2["take"], json!(["SKILL.md", "run.sh"]));
     assert_eq!(asked[0].2["overwrite"], json!(["SKILL.md"]));
+    // 〔SU1〕写完把真写成了的那几个原样交那台记下（那台判的那几格，一个字不改）
+    assert_eq!(asked.len(), 2);
+    assert_eq!((asked[1].0.as_str(), asked[1].1.as_str()), ("dev", RECORD));
+    assert_eq!(
+        asked[1].2,
+        json!({"op": "add", "name": "demo", "files": {"SKILL.md": ledger["SKILL.md"], "run.sh": ledger["run.sh"]}})
+    );
+    assert_eq!(out.record_failed, None);
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt as _;
@@ -309,7 +338,16 @@ fn what_monitor_sends_and_reads_is_what_the_backend_registers() {
     ]);
     let mut want = used_plan.clone();
     want.insert("root".into()); // 本侧不读 `root`（只给人看的那一格用 `dir`）
+    want.insert("ledger".into()); // 〔SU1〕本侧读、原样交回 `skill-install-record`（在上面那张 used 里就是它；这里单列是为了看得见）
     assert_eq!(declared(PLAN), want);
+    // 〔SU1〕记：发 `op` / `name` / `files`（add）· `dir` / `paths`（drop）；应答本侧不读 ⇒ `changed` / `remaining` 登记为不读的那两格。
+    let mut rec = set(&["dir", "files", "name", "op", "paths"]);
+    rec.extend(set(&["changed", "remaining"]));
+    assert_eq!(declared(RECORD), rec);
+    // 〔SU1〕卸：发 `dir` / `take` / `confirm`，读 `delete` / `forget`；`name` / `rows` / `seen` 是界面经通道看的那一半读的（本侧不读）。
+    let mut un = set(&["confirm", "delete", "dir", "forget", "take"]);
+    un.extend(set(&["name", "rows", "seen"]));
+    assert_eq!(declared(UNINSTALL_PLAN), un);
 }
 
 /// 判定没长第二个家：本模块生产段零闭集线上名（人群从后端源码现抠：AS1 的四态 ＋ skill 的可疑项种类）。
@@ -323,6 +361,8 @@ fn this_module_holds_no_install_rule() {
     for (file, konst) in [
         ("src/backend/mcp_sync.rs", "pub(crate) const STATES"),
         ("src/backend/skill_install.rs", "pub const SUSPECT_KINDS"),
+        // 〔SU1〕卸的四态也只许住后端（界面的给字表按它逐键给字，monitor 一个都不许写）。
+        ("src/backend/skill_install.rs", "pub const UNINSTALL_STATES"),
     ] {
         let src = std::fs::read_to_string(root.join(file)).unwrap();
         let at = src
@@ -340,4 +380,257 @@ fn this_module_holds_no_install_rule() {
         hits.is_empty(),
         "monitor 这一侧出现了判定的线上名：{hits:?}"
     );
+}
+
+// ═══════════════════════ 〔SU1 · 第四波 4C · V116〕装完记 · 卸 ═══════════════════════
+//
+// 守的要求（住址）：用户裁决 **V116**「要，只删装时写进去的文件」—— 原文「装的时候记下写了哪些文件，卸只删这些（装完用户自己改过的先问）」；
+// `调研/第四波记录/SU1.md §1.2`（写到一半停下也记 · 记不下来装照样算成、说清）· `§1.3`（卸：删经那台 `files-delete` 带 `expect`、stale 就停、删掉的摘掉）。
+// 买到：替身后端 ＋ 替身门（临时目录上 CAS 删）—— 记的恰是真写成了的那几个、那几格原样 · 删的恰是判定放行的、期望是看的时候那一份 ·
+// 摘的恰是删掉的 ＋ 已经不在的 · 停在半路也先摘已删的 · 记 / 摘失败说清不吞。
+// 买不到：🔴 真远端 · 真后端（`BackendAsk` / `BackendDoor` 那一跳）· 空目录留着（`Door` 没有删空目录的口）。
+
+#[tokio::test]
+async fn a_partial_install_still_records_what_was_written() {
+    let home = temp_home("skill-partial");
+    std::fs::create_dir_all(home.join("skills/demo")).unwrap();
+    // 看差异时 SKILL.md 是 "old\n"，之后被人改了 ⇒ 写它那一下 stale；run.sh 在它前面、已经写进去了
+    std::fs::write(home.join("skills/demo/SKILL.md"), "someone else\n").unwrap();
+    let mut reply = plan_reply(json!(["run.sh", "SKILL.md"]));
+    reply["base"] = json!(home.display().to_string());
+    let ledger = reply["ledger"].clone();
+    let ask = FakeAsk::new(vec![Ok(reply), Ok(json!({"remaining": 1}))]);
+    let door = DiskDoor::new(&home);
+    let target = vec![SkillTargetText {
+        path: "SKILL.md".into(),
+        text: "old\n".into(),
+    }];
+    let e = apply_with(
+        &ask,
+        &door,
+        &origin("dev"),
+        "demo",
+        &source_files(),
+        &target,
+        &["run.sh".into(), "SKILL.md".into()],
+        &["SKILL.md".into()],
+    )
+    .await
+    .expect_err("stale 仍被当成写成");
+    assert!(e.contains("前面已经写了 run.sh"), "{e}");
+    let asked = ask.asked.borrow().clone();
+    assert_eq!(asked.len(), 2, "停在半路也要把已写的记下");
+    assert_eq!(
+        asked[1].2,
+        json!({"op": "add", "name": "demo", "files": {"run.sh": ledger["run.sh"]}}),
+        "记的恰是真写成了的那一个"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[tokio::test]
+async fn a_record_that_cannot_be_kept_is_said_and_the_install_still_stands() {
+    let home = temp_home("skill-norecord");
+    let mut reply = plan_reply(json!(["run.sh"]));
+    reply["base"] = json!(home.display().to_string());
+    let ask = FakeAsk::new(vec![Ok(reply), Err("记录读不懂".into())]);
+    let door = DiskDoor::new(&home);
+    let out = apply_with(
+        &ask,
+        &door,
+        &origin("dev"),
+        "demo",
+        &source_files(),
+        &[],
+        &["run.sh".into()],
+        &[],
+    )
+    .await
+    .expect("装本身成了");
+    assert_eq!(out.written, vec!["run.sh".to_string()]);
+    let why = out.record_failed.expect("记不下来要说");
+    assert!(
+        why.contains("记录读不懂") && why.contains("卸不掉"),
+        "{why}"
+    );
+    // 那台没给「怎么记」⇒ 同样说清，不拿猜的摘要去记
+    let mut reply = plan_reply(json!(["later.md"]));
+    reply["base"] = json!(home.display().to_string());
+    reply["ledger"] = json!({});
+    let ask = FakeAsk::new(vec![Ok(reply)]);
+    let out = apply_with(
+        &ask,
+        &door,
+        &origin("dev"),
+        "demo",
+        &source_files(),
+        &[],
+        &["later.md".into()],
+        &[],
+    )
+    .await
+    .expect("装本身成了");
+    assert!(out.record_failed.is_some_and(|w| w.contains("卸不掉")));
+    assert_eq!(ask.asked.borrow().len(), 1, "没有可记的就不去记");
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+fn uninstall_reply(delete: Value, forget: Value) -> Value {
+    json!({"dir": "/ignored", "name": "demo", "rows": [], "seen": [], "delete": delete, "forget": forget})
+}
+
+#[tokio::test]
+async fn uninstall_deletes_exactly_the_judged_paths_with_the_seen_texts_and_drops_them() {
+    let home = temp_home("skill-uninstall");
+    let dir = home.join("skills/demo");
+    std::fs::create_dir_all(&dir).unwrap();
+    for (p, t) in [("a.md", "a\n"), ("b.md", "b\n"), ("keep.md", "k\n")] {
+        std::fs::write(dir.join(p), t).unwrap();
+    }
+    let ask = FakeAsk::new(vec![
+        Ok(uninstall_reply(json!(["a.md", "b.md"]), json!(["gone.md"]))),
+        Ok(json!({"remaining": 1})),
+    ]);
+    let door = DiskDoor::new(&home);
+    let d = dir.display().to_string();
+    let seen = vec![
+        SkillTargetText {
+            path: "a.md".into(),
+            text: "a\n".into(),
+        },
+        SkillTargetText {
+            path: "b.md".into(),
+            text: "b\n".into(),
+        },
+        SkillTargetText {
+            path: "keep.md".into(),
+            text: "k\n".into(),
+        },
+    ];
+    let out = uninstall_with(
+        &ask,
+        &door,
+        &origin("dev"),
+        &d,
+        &seen,
+        &["a.md".into(), "b.md".into()],
+        &["b.md".into()],
+    )
+    .await
+    .expect("卸");
+    assert_eq!(out.deleted, vec!["a.md".to_string(), "b.md".to_string()]);
+    assert_eq!(out.record_failed, None);
+    assert_eq!(
+        door.deleted.borrow().clone(),
+        vec![
+            ("a.md".to_string(), "a\n".to_string()),
+            ("b.md".to_string(), "b\n".to_string())
+        ],
+        "删的恰是判定放行的那几个，期望是看的时候那一份"
+    );
+    assert!(dir.join("keep.md").exists(), "没被放行的不许删");
+    assert!(dir.exists(), "目录留着（只删文件）");
+    let asked = ask.asked.borrow().clone();
+    assert_eq!(
+        (asked[0].0.as_str(), asked[0].1.as_str(), asked[0].2.clone()),
+        (
+            "dev",
+            UNINSTALL_PLAN,
+            json!({"dir": d, "take": ["a.md", "b.md"], "confirm": ["b.md"]})
+        ),
+        "交给判定的 take / confirm 原样"
+    );
+    assert_eq!(
+        (asked[1].1.as_str(), asked[1].2.clone()),
+        (
+            RECORD,
+            json!({"op": "drop", "dir": d, "paths": ["a.md", "b.md", "gone.md"]})
+        ),
+        "摘的恰是删掉的 ＋ 已经不在的"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[tokio::test]
+async fn an_uninstall_that_hits_a_changed_file_stops_says_so_and_still_drops_what_was_deleted() {
+    let home = temp_home("skill-uninstall-stale");
+    let dir = home.join("skills/demo");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("a.md"), "a\n").unwrap();
+    std::fs::write(dir.join("b.md"), "b, edited after the look\n").unwrap();
+    let ask = FakeAsk::new(vec![
+        Ok(uninstall_reply(json!(["a.md", "b.md"]), json!([]))),
+        Ok(json!({"remaining": 1})),
+    ]);
+    let door = DiskDoor::new(&home);
+    let d = dir.display().to_string();
+    let seen = vec![
+        SkillTargetText {
+            path: "a.md".into(),
+            text: "a\n".into(),
+        },
+        SkillTargetText {
+            path: "b.md".into(),
+            text: "b\n".into(),
+        },
+    ];
+    let e = uninstall_with(
+        &ask,
+        &door,
+        &origin("dev"),
+        &d,
+        &seen,
+        &["a.md".into(), "b.md".into()],
+        &[],
+    )
+    .await
+    .expect_err("stale 仍被当成删成");
+    assert!(
+        e.contains("b.md") && e.contains("前面已经删了 a.md") && e.contains("重新看一次"),
+        "{e}"
+    );
+    assert!(dir.join("b.md").exists(), "看过之后被改的那一份不许删");
+    let asked = ask.asked.borrow().clone();
+    assert_eq!(asked.len(), 2, "stale 不重读重算；已删的照样摘");
+    assert_eq!(
+        asked[1].2,
+        json!({"op": "drop", "dir": d, "paths": ["a.md"]})
+    );
+    // 摘也失败 ⇒ 两件事都说
+    let ask = FakeAsk::new(vec![
+        Ok(uninstall_reply(json!(["zzz.md"]), json!(["gone.md"]))),
+        Err("写不进去".into()),
+    ]);
+    let e = uninstall_with(
+        &ask,
+        &door,
+        &origin("dev"),
+        &d,
+        &seen,
+        &["zzz.md".into()],
+        &[],
+    )
+    .await
+    .expect_err("没有原文的那一个不许删");
+    assert!(e.contains("两端对不上") && e.contains("写不进去"), "{e}");
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[tokio::test]
+async fn an_uninstall_reply_that_breaks_the_contract_deletes_nothing() {
+    let home = temp_home("skill-uninstall-broken");
+    let door = DiskDoor::new(&home);
+    for bad in [
+        json!({"delete": ["a"]}),
+        json!({"forget": []}),
+        json!({"delete": [1], "forget": []}),
+    ] {
+        let ask = FakeAsk::new(vec![Ok(bad.clone())]);
+        let e = uninstall_with(&ask, &door, &origin("dev"), "/d", &[], &["a".into()], &[])
+            .await
+            .expect_err("坏应答被收下");
+        assert_eq!(e, UNREADABLE_REPLY, "{bad}");
+    }
+    assert!(door.deleted.borrow().is_empty());
+    let _ = std::fs::remove_dir_all(&home);
 }

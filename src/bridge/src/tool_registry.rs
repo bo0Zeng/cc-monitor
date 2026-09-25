@@ -764,12 +764,14 @@ pub const TOOLS: &[ToolSpec] = &[
     // 〔AS2 · 第四波 4B · V113〕**skill「装到这台」**：资产目录里别的机器有的 skill，用户点了才装到这台 ——
     //   文件原样从来源那台拷来（V112），写经这台后端 `files-put`（带 `expect`，`skill_install.rs`）。
     //   `96 §4`：每个写点都要在足迹里可见。落点由用户点的那一条决定（这台 skills 下以那个名字为名的目录）⇒ 占位符，不猜。
-    //   `uninstallable: false`：没有「卸掉装来的 skill」这条口，如实声明。
+    //   〔SU1 · 第四波 4C · V116〕`uninstallable: true`：用户裁「要，只删装时写进去的文件」—— 装的时候那台后端记下写了哪几个
+    //   （第二条 touch：那台后端自己的装记录），卸口 `skill_install.rs::skill_uninstall_apply` 只删记着的那几个（装完改过的先问）。
+    //   〔墓碑 —— AS2 那一版这里是 `uninstallable: false`（「没有卸掉装来的 skill 这条口，如实声明」）。〕
     ToolSpec {
         id: "skill-install",
         display_name: "从别的机器装来的 skill",
         installable: true,
-        uninstallable: false,
+        uninstallable: true,
         carriers: &[Carrier {
             what: "资产目录里你点了「装到这台」的那个 skill：另一台机器上那个 skill 目录里的文件（你勾的那几个），原样写进这台",
             source: ToolSource::Generated,
@@ -780,7 +782,16 @@ pub const TOOLS: &[ToolSpec] = &[
                 host: HostScope::Either,
                 note: Some(
                     "装到哪台就写哪台，只写 skills 下以你点的那个 skill 为名的那一个目录；\
-                     只写你勾的那几个文件（不同的要你点了「盖」才盖），别的文件不动",
+                     只写你勾的那几个文件（不同的要你点了「盖」才盖），别的文件不动；\
+                     卸的时候只删装时写进去的那几个（装完你改过的、装之前就在的先问你），目录本身留着",
+                ),
+                effect: TouchEffect::OwnedFile,
+            }, TouchedFile {
+                path: "~/.cc-monitor/skill-installs.json",
+                host: HostScope::Either,
+                note: Some(
+                    "装到哪台就记在哪台：那台后端自己的装记录（每个装写进去的文件的摘要 ＋ 装之前在不在），卸只认这里记着的；\
+                     卸掉的从这里摘掉",
                 ),
                 effect: TouchEffect::OwnedFile,
             }],

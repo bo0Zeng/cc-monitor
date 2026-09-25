@@ -244,13 +244,10 @@ fn nothing_changed_nothing_written() {
             "没变也换了一个 inode（写了一遍）"
         );
     }
-    // 临时文件没留下
-    let left: Vec<String> = std::fs::read_dir(&d)
-        .unwrap()
-        .flatten()
-        .map(|e| e.file_name().to_string_lossy().into_owned())
-        .collect();
-    assert_eq!(left, vec![FILE_NAME.to_string()]);
+    // 临时文件没留下（名字就是写口起的那一个）
+    assert!(!d
+        .join(format!("{FILE_NAME}.{}.tmp", std::process::id()))
+        .exists());
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -286,10 +283,30 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
         }
     }
     assert!(scanned > 500, "只扫到 {scanned} 份源码 —— 遍历坏了");
-    let want: std::collections::BTreeSet<String> = ["backend/skill_ledger.rs".to_string()].into();
+    // 两个家、各一个身份：写者（本模块）· 足迹里的**申报字面量**（`tool_registry.rs` 的 `skill-install` 那一格，不读不写 ——
+    // V116「足迹里看得见」）。第三个家 ⇒ 红（第二个写者或者第二份申报）。
+    let want: std::collections::BTreeSet<String> = [
+        "backend/skill_ledger.rs".to_string(),
+        "bridge/src/tool_registry.rs".to_string(),
+    ]
+    .into();
     assert_eq!(
         homes, want,
-        "`{needle}` 在生产代码里的家对不上（多 = 第二个写者；少 = 空转）"
+        "`{needle}` 在生产代码里的家对不上（多 = 第二个写者 / 第二份申报；少 = 空转）"
+    );
+    // 足迹申报的那条路径 == 本模块真写的那一个（家目录下 `DIR_NAME / FILE_NAME`）：改了文件名而足迹没跟 ⇒ 红。
+    let registry = std::fs::read_to_string(src.join("bridge/src/tool_registry.rs")).unwrap();
+    let declared = format!(
+        "\"~/{}/{}\"",
+        crate::control::exit_policy::DIR_NAME,
+        FILE_NAME
+    );
+    assert_eq!(
+        crate::guard_support::production_code(&registry)
+            .matches(declared.as_str())
+            .count(),
+        1,
+        "足迹里申报的装记录路径（{declared}）与本模块写的那一个对不上"
     );
     // 正控：同一个判法在一份塞了针的副本上数得出来
     let planted =
