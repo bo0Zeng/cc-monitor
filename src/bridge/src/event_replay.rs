@@ -14,16 +14,21 @@
 //!
 //! ## 容量
 //!
-//! 〔U3b · `设计/10` 步 8〕**两档**，以「前端能不能按偏移把正文要回来」为界：
+//! 〔CF2 · 第四波 4B〕**一档**：每个会话只留 seq 最高的 [`REPLAY_TAIL_KEEP`] 条（修剪有 [`TRIM_SLACK`] 的
+//! 摊还余量 ⇒ 单会话上界 `KEEP + SLACK`）。丢掉的正文前端要得回来，两条路：
 //!
-//! | 会话 | 留多少 | 丢掉的正文从哪回来 |
-//! |---|---|---|
-//! | 前端**已接上骨架**并调过 [`EventReplay::keep_tail_only`] | 尾巴 [`REPLAY_TAIL_KEEP`] 条（修剪有 [`TRIM_SLACK`] 的摊还余量 ⇒ 上界 `KEEP + SLACK`） | 骨架滚到那里时 `read_session_range`（`--read-session-from-offset --until`） |
-//! | 其余（没索引：本机后端不在 / 老后端 / Codex） | **不设上限**（原样） | 无处可回 ⇒ 不许丢 |
+//! | tab | 丢掉的正文从哪回来 |
+//! |---|---|
+//! | 接上了骨架 | 骨架滚到那里时按**字节**取（`read_session_range`，边界取自索引） |
+//! | 没接骨架（后台 tab · 老后端 · seq 对不上的） | 往上翻过了账本最老那一条时按**行号**取（`read_session_lines`，后端 `history-lines`） |
 //!
-//! 🔴 **第二档仍然无上限，这是刻意的**：没有骨架的会话，丢掉的正文前端再也拿不回来
-//! （上翻到头就没了），而「内存省一点」换「历史少一截」是回归。极端情况重启 monitor 即清（原话照旧）。
-//! 读数（长度 / 修剪次数）见 [`EventReplay::stats`] 与每次修剪的 `[replay]` 日志行。
+//! 原来这里是**两档**（〔U3b〕只有前端调过 `keep_tail_only`〔散文墓碑〕的会话才修剪，其余「无处可回 ⇒ 不许丢」，
+//! 第二档不设上限 —— `设计/05 §3.3.4` 的级 3）。按行号取回之后「无处可回」不存在了，分档随之取消
+//! （`调研/第四波记录/CF2.md §2`）。
+//!
+//! ⚠ **仍然没有上界的那一维是会话数**（`CF2.md §2.2`）：单会话 ≤ `KEEP + SLACK` 条，缓冲里有几个会话
+//! 由「宣告过多少个 × 前端关没关（[`EventReplay::forget`]）× monitor 重启」决定。
+//! 读数（长度 / 会话数 / 修剪次数）见 [`EventReplay::stats`] 与每次修剪的 `[replay]` 日志行。
 
 use crate::bridge::{events, JsonlBatchPayload, JsonlLinePayload};
 use parking_lot::Mutex;
@@ -43,14 +48,22 @@ struct Inner {
     /// Batch8-F26：frontend-ready 携带的"用户上次所在 tab"（F19 语义）。存下来
     /// 供远端快照拉取排队（当前 tab 的会话先拉）；None = 无记忆/未就绪。
     priority_sid: Option<String>,
-    /// 〔U3b〕前端已接上骨架的会话 → 它在 `history` 里此刻有几条（只给这些会话计数，
-    /// 未登记的会话一条都不数 ⇒ 第二档零额外开销）。
-    tail_only: std::collections::HashMap<String, usize>,
+    /// 〔CF2〕每个会话此刻在 `history` 里有几条 ＋ 它最低留存的 seq（修剪过之后才有；
+    /// 之后到达、seq 低于它的行不进缓冲 —— 见 [`push_and_trim`]）。
+    sessions: std::collections::HashMap<String, Held>,
     /// 〔U3b〕累计修剪掉的条数（读数口，[`EventReplay::stats`]）。
     trimmed_total: u64,
 }
 
-/// 〔U3b · `设计/10` 步 8〕**接上骨架的会话，history 里只留尾巴这么多条可显示记录。**
+/// 〔CF2〕一个会话在缓冲里的账：几条 ＋ 修剪过的话最低留存的 seq。
+#[derive(Debug, Default, Clone, Copy)]
+struct Held {
+    count: usize,
+    /// 修剪之后留下的最低 seq；`None` = 从没修剪过。
+    floor: Option<u64>,
+}
+
+/// 〔U3b · `设计/10` 步 8〕→〔CF2〕**每个会话在 history 里只留尾巴这么多条可显示记录。**
 ///
 /// # 依据（量出来的，不是拍的）
 ///
@@ -70,14 +83,15 @@ pub const REPLAY_TAIL_KEEP: usize = 600;
 
 /// 修剪的摊还余量：一个会话超过 `KEEP + SLACK` 才修剪回 `KEEP`。
 /// 修剪一次是 O(history)（按 seq 找第 KEEP 大、再 retain）⇒ 每来一行都修会让 live 路付 O(history)；
-/// 攒 `KEEP/4` 条修一次，摊到每行是 O(history)/150。**代价**：接了骨架的会话上界是 750 条不是 600。
+/// 攒 `KEEP/4` 条修一次，摊到每行是 O(history)/150。**代价**：单会话上界是 750 条不是 600。
 pub const TRIM_SLACK: usize = REPLAY_TAIL_KEEP / 4;
 
-/// 〔U3b〕读数：`history` 总长 · 接了骨架的会话数 · 累计修剪条数。
+/// 〔U3b〕读数：`history` 总长 · 缓冲里的会话数 · 累计修剪条数。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReplayStats {
     pub history_len: usize,
-    pub tail_only_sessions: usize,
+    /// 〔CF2〕缓冲里有几个会话（原 `tail_only_sessions`〔散文墓碑〕：只数接了骨架的那些；分档取消之后数全部）。
+    pub sessions: usize,
     pub trimmed_total: u64,
 }
 
@@ -110,7 +124,7 @@ impl EventReplay {
                 history: VecDeque::new(),
                 ready: false,
                 priority_sid: None,
-                tail_only: std::collections::HashMap::new(),
+                sessions: std::collections::HashMap::new(),
                 trimmed_total: 0,
             }),
         }
@@ -298,7 +312,7 @@ impl EventReplay {
     /// 用户主动关闭 archived Tab 时调用 —— 否则 F5 刷新 history 会重放出来"复活" Tab。
     pub fn forget(&self, session_id: &str) {
         let mut inner = self.inner.lock();
-        inner.tail_only.remove(session_id);
+        inner.sessions.remove(session_id);
         let before = inner.history.len();
         inner.history.retain(|p| p.session_id != session_id);
         let removed = before - inner.history.len();
@@ -307,28 +321,12 @@ impl EventReplay {
         }
     }
 
-    /// 〔U3b〕前端对这个会话**接上了骨架**（拿得到索引、按偏移取得回正文）⇒ 从此它在 history 里
-    /// 只留尾巴 [`REPLAY_TAIL_KEEP`] 条。当场修剪一次；返回这次丢掉的条数。幂等。
-    ///
-    /// ⚠ 登记是**单向**的：之后若索引再拿不到（远端断线 / 后端被换成老版本），F5 之后那个 tab
-    /// 只剩尾巴，上翻到头就没了 —— 要等索引恢复。如实登记在 `设计/10 §10` 的「买不到」。
-    pub fn keep_tail_only(&self, session_id: &str) -> usize {
-        let mut inner = self.inner.lock();
-        let n = inner
-            .history
-            .iter()
-            .filter(|p| p.session_id == session_id)
-            .count();
-        inner.tail_only.insert(session_id.to_string(), n);
-        trim_to_tail(&mut inner, session_id)
-    }
-
     /// 〔U3b〕读数口（日志与判据用）。
     pub fn stats(&self) -> ReplayStats {
         let inner = self.inner.lock();
         ReplayStats {
             history_len: inner.history.len(),
-            tail_only_sessions: inner.tail_only.len(),
+            sessions: inner.sessions.len(),
             trimmed_total: inner.trimmed_total,
         }
     }
@@ -385,17 +383,23 @@ impl Default for EventReplay {
     }
 }
 
-/// 〔U3b〕进账：push 进 history；登记过「只留尾巴」的会话计数，超过 `KEEP + SLACK` 就修回 `KEEP`。
+/// 〔U3b〕→〔CF2〕进账：push 进 history、给**每个**会话计数，超过 `KEEP + SLACK` 就修回 `KEEP`。
+///
+/// 修剪过的会话，之后到达、seq **低于**它最低留存那一条的行（尾部优先快照的头段回填）⇒ **不进缓冲**：
+/// 它们进来也会在下一次修剪时被第一批丢掉，而每进 150 条就要付一次 O(history) 的修剪。
+/// 这些行照样实时发给已就绪的前端（本函数只管缓冲）；F5 之后前端要，按行号取回。
 fn push_and_trim(inner: &mut Inner, payloads: &[JsonlLinePayload]) {
     let mut over: Vec<String> = Vec::new();
     for p in payloads {
-        inner.history.push_back(p.clone());
-        if let Some(n) = inner.tail_only.get_mut(&p.session_id) {
-            *n += 1;
-            if *n > REPLAY_TAIL_KEEP + TRIM_SLACK && !over.contains(&p.session_id) {
-                over.push(p.session_id.clone());
-            }
+        let held = inner.sessions.entry(p.session_id.clone()).or_default();
+        if held.floor.is_some_and(|f| p.seq < f) {
+            continue;
         }
+        held.count += 1;
+        if held.count > REPLAY_TAIL_KEEP + TRIM_SLACK && !over.contains(&p.session_id) {
+            over.push(p.session_id.clone());
+        }
+        inner.history.push_back(p.clone());
     }
     for sid in over {
         trim_to_tail(inner, &sid);
@@ -423,7 +427,13 @@ fn trim_to_tail(inner: &mut Inner, sid: &str) -> usize {
         .retain(|p| p.session_id != sid || p.seq >= floor);
     let dropped = before - inner.history.len();
     let kept = seqs.len() - dropped;
-    inner.tail_only.insert(sid.to_string(), kept);
+    inner.sessions.insert(
+        sid.to_string(),
+        Held {
+            count: kept,
+            floor: Some(floor),
+        },
+    );
     inner.trimmed_total += dropped as u64;
     tracing::info!(
         "[replay] {sid} 修剪到尾巴 {kept} 条（丢 {dropped}，seq < {floor}）；history 总长 {}",

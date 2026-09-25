@@ -690,12 +690,9 @@ export class TabStreamView {
     this.updateSentinel(tab);
     if (this.store.activeId === tab.sessionId) view.fillVisible();
     // 〔U3b · `设计/10` 步 8〕骨架接上 ⇒ 正文不必再驻留：丢掉的那些滚到时按偏移要回来。
-    // ① 前端账本只留离已渲染尾巴最近的一批（第一次上翻不用等 IPC）；
-    // ② monitor 的重放缓冲只留尾巴（F5 之后也只重放尾巴，其余同样按偏移要）。
+    // 前端账本只留离已渲染尾巴最近的一批（第一次上翻不用等 IPC）。
+    // 〔CF2〕monitor 的重放缓冲那一半不用再登记了：它对**每个**会话都只留尾巴（`event_replay·rs` 头注「容量」）。
     tab.window.keepHighest(TabStreamView.FILL_BATCH);
-    void commands
-      .replay_keep_tail_only({ sessionId: tab.sessionId })
-      .catch((e: unknown) => console.warn(`[tabs] 重放缓冲留尾巴失败（${tab.sessionId.slice(0, 8)}）：`, e));
   }
 
   /**
