@@ -97,11 +97,14 @@ async fn downstream_bytes_arrive_whole_and_in_order_then_the_link_ends() {
 }
 
 /// ★ L4：流控。不还信用 ⇒ 发出去的字节**恰好等于**窗口；还一次 X ⇒ 再发**恰好** X。
+///
+/// ⚠ 窗口与还的信用**刻意不是块长的整数倍**：整数倍时「先读满一块、再等够一块的信用」那种泵也恰好凑满，
+/// 本条就分不出它与「先等信用、再按信用读」（死值验 K1 首跑实测：窗口取两块时那一刀照样绿）。
 #[tokio::test]
 async fn without_credit_exactly_one_window_goes_out() {
     let (tx, mut rx) = mpsc::channel::<Frame>(1024);
     let table = Table::new(tx);
-    let window = 2 * LINK_CHUNK_BYTES as u64;
+    let window = LINK_CHUNK_BYTES as u64 + 1000;
     let big = pattern(16 * LINK_CHUNK_BYTES);
     let r = table.install(
         "t",
@@ -121,7 +124,7 @@ async fn without_credit_exactly_one_window_goes_out() {
         "没还信用时发出去的字节不等于窗口"
     );
     assert_eq!(ended(&first, "W"), None);
-    let more = LINK_CHUNK_BYTES as u64;
+    let more = 777;
     let r = table.credit("c", &serde_json::json!({"link": "W", "bytes": more}));
     assert!(matches!(r, Frame::Reply { ok: true, .. }));
     settle().await;
@@ -256,9 +259,10 @@ async fn close_aborts_the_link_and_is_idempotent() {
     assert!(matches!(r, Frame::Reply { ok: true, .. }));
     assert_eq!(table.len(), 0);
     settle().await;
+    let gone = tokio::time::timeout(std::time::Duration::from_secs(5), drop_rx.recv()).await;
     assert!(
-        drop_rx.recv().await.is_none(),
-        "关了链路，serve 手里的东西没被丢"
+        matches!(gone, Ok(None)),
+        "关了链路 5 秒，serve 手里的东西还没被丢"
     );
     let again = table.close("y", &serde_json::json!({"link": "C"}));
     assert!(
@@ -289,9 +293,10 @@ async fn dropping_the_table_aborts_every_link() {
     settle().await;
     drop(table);
     settle().await;
+    let gone = tokio::time::timeout(std::time::Duration::from_secs(5), drop_rx.recv()).await;
     assert!(
-        drop_rx.recv().await.is_none(),
-        "表丢了，还有链路的 serve 活着"
+        matches!(gone, Ok(None)),
+        "表丢了 5 秒，还有链路的 serve 活着"
     );
 }
 
