@@ -68,6 +68,9 @@ pub struct AssetsReach {
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 pub struct AssetsSynced {
+    /// 本机目录的 id（界面据它把目录里本机那一格对回 `<local>`）。本机后端没答出来 ⇒ `null`。
+    #[serde(rename = "self")]
+    pub self_id: Option<String>,
     pub synced: Vec<AssetsSyncRow>,
     pub reach: Vec<AssetsReach>,
 }
@@ -123,7 +126,11 @@ pub(crate) fn parse_reply(v: &Value) -> Result<AssetsSynced, String> {
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
-    Ok(AssetsSynced { synced, reach })
+    Ok(AssetsSynced {
+        self_id: opt_str(v, "self")?,
+        synced,
+        reach,
+    })
 }
 
 /// 一台远端的入参：`origin` ＋ 拨号请求（`capture` 用法；后端会再钉一遍）＋ 那台后端的路径。

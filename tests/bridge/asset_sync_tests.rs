@@ -46,6 +46,7 @@ fn cfg() -> crate::ssh_source::RemoteConfig {
 
 fn good_reply() -> Value {
     json!({
+        "self": "9f",
         "synced": [{"origin": "dev", "peer": "4c", "changed": true, "pushed": 1, "error": null}],
         "reach": [{"origin": "dev", "machine": "4c"}],
     })
@@ -96,6 +97,7 @@ fn a_reply_that_breaks_the_contract_is_an_error_not_a_guess() {
         ("synced.0.origin", json!(3)),
         ("synced.0.error", json!(false)),
         ("reach.0.machine", json!(7)),
+        ("self", json!(1)),
     ] {
         let mut v = good_reply();
         let mut at = &mut v;
@@ -134,10 +136,11 @@ fn what_monitor_sends_and_reads_is_what_the_backend_registers() {
         .step_by(2)
         .map(str::to_string)
         .collect();
-    let used: std::collections::BTreeSet<String> = ["origin", "dial", "backend", "synced", "reach"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
+    let used: std::collections::BTreeSet<String> =
+        ["origin", "dial", "backend", "self", "synced", "reach"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
     assert_eq!(
         declared, used,
         "本侧发 / 读的字段与后端声明的不相等（两向）"

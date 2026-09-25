@@ -2,4 +2,8 @@
 import type { AssetsReach } from "./AssetsReach";
 import type { AssetsSyncRow } from "./AssetsSyncRow";
 
-export type AssetsSynced = { synced: Array<AssetsSyncRow>, reach: Array<AssetsReach>, };
+export type AssetsSynced = { 
+/**
+ * 本机目录的 id（界面据它把目录里本机那一格对回 `<local>`）。本机后端没答出来 ⇒ `null`。
+ */
+self: string | null, synced: Array<AssetsSyncRow>, reach: Array<AssetsReach>, };

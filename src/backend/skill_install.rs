@@ -405,6 +405,25 @@ pub(crate) fn answer_plan_with(facts: &dyn Facts, root: Option<&Path>, args: &Va
         }
     };
     // 只交这一趟拷的那几个路径在这台上的原文（写的时候当 CAS 期望）；只在这台有的那几个不碰，也不回传。
+    // 写的落点：`files-put` 的 `root` 必须已在 ⇒ skill 根在就用它，不在就用它的上一层（配置根）、让 `parents` 建出来。
+    let base = if root.is_dir() {
+        root.clone()
+    } else {
+        root.parent()
+            .filter(|p| p.is_dir())
+            .map(Path::to_path_buf)
+            .ok_or((
+                "io_failed",
+                format!(
+                    "{} 与它的上一层都不在 —— 这台机器上没有可以放 skill 的地方",
+                    root.display()
+                ),
+            ))?
+    };
+    let prefix = dir
+        .strip_prefix(&base)
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_else(|_| name.clone());
     let target: Vec<Value> = here_text
         .iter()
         .filter(|(p, _)| source.contains_key(*p))
@@ -413,6 +432,8 @@ pub(crate) fn answer_plan_with(facts: &dyn Facts, root: Option<&Path>, args: &Va
     Ok(json!({
         "root": root.display().to_string(),
         "dir": dir.display().to_string(),
+        "base": base.display().to_string(),
+        "prefix": prefix,
         "rows": rows_json,
         "target": target,
         "write": write,

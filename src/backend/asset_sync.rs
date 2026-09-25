@@ -244,7 +244,8 @@ async fn sync_one(
 }
 
 /// `assets-sync`：给了 `origin`（＋ `dial` ＋ `backend`）⇒ 记进可达表、对它做一趟，本机因此变了再对其余各台各一趟；
-/// 什么都没给 ⇒ 对可达表里每一台各一趟。回 `{synced, reach}`。
+/// 什么都没给 ⇒ 对可达表里每一台各一趟。开头先让本机现扫一次：本机自己那份变了也算「目录变了」（扇出到每一台）。
+/// 回 `{self, synced, reach}`（`self` = 本机目录的 id，界面据它把目录里本机那一格对回 `<local>`）。
 pub async fn answer(
     args: &Value,
     fold: Fold,
@@ -299,6 +300,13 @@ pub async fn answer_with(
         .iter()
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
+    // 这一趟先让本机现扫一次（并一份空的进来 = 只刷新自己那一格）：拿到本机目录的 id，
+    // 并且本机自己那份变了（刚装了 / 删了一个 skill）就算「目录变了」—— 下面对可达表里每一台都做一趟。
+    let own = fold_blocking(&fold, json!({ "catalog": { "machines": [] } }))
+        .await
+        .map_err(|e| ("io_failed", e))?;
+    let own_id = own.get("self").cloned().unwrap_or(Value::Null);
+    let own_changed = own.get("changed").and_then(Value::as_bool).unwrap_or(false);
     let mut synced = Vec::new();
     match &first {
         Some(o) => {
@@ -309,7 +317,7 @@ pub async fn answer_with(
                 .expect("刚插进去的那一行");
             let (changed, row) = sync_one(o, &r, &fold, remote, table).await;
             synced.push(row);
-            if changed {
+            if changed || own_changed {
                 for (other, r) in rows.iter().filter(|(k, _)| k != o) {
                     synced.push(sync_one(other, r, &fold, remote, table).await.1);
                 }
@@ -325,7 +333,7 @@ pub async fn answer_with(
         .iter()
         .map(|(o, r)| json!({ "origin": o, "machine": r.peer }))
         .collect();
-    Ok(json!({ "synced": synced, "reach": reach_rows }))
+    Ok(json!({ "self": own_id, "synced": synced, "reach": reach_rows }))
 }
 
 // ───────────────────────── 生产那一个对面：经 dial 的 capture ─────────────────────────

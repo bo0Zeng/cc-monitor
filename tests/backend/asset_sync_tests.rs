@@ -178,6 +178,7 @@ async fn one_sync_pulls_merges_and_pushes_exactly_what_the_other_side_lacks() {
         .await
         .expect("一趟");
     let row = &out["synced"][0];
+    assert_eq!(out["self"], json!(lid), "回本机目录的 id");
     assert_eq!(row["error"], Value::Null, "{out}");
     assert_eq!(row["peer"], json!(rid));
     assert_eq!(row["changed"], json!(true));
@@ -264,6 +265,19 @@ async fn a_change_fans_out_once_to_every_other_reachable_machine() {
         quiet["synced"].as_array().unwrap().len(),
         1,
         "没变却扇出了：{quiet}"
+    );
+    // 本机自己那份变了（刚装了一个 skill）⇒ 哪怕这一台没带来新东西，也要扇出到其余每一台
+    let changed_local = Machine {
+        scan: vec!["a", "b"],
+        ..local.clone()
+    };
+    let fan = answer_with(&sync_args("r1"), changed_local.fold(), &fakes, &table)
+        .await
+        .unwrap();
+    assert_eq!(
+        fan["synced"].as_array().unwrap().len(),
+        2,
+        "本机变了却没扇出：{fan}"
     );
     // 什么都没给 ⇒ 表里每台各一趟
     let all = answer_with(&json!({}), local.fold(), &fakes, &table)
