@@ -1384,3 +1384,4 @@ src/settings/assets-section.ts:103	rows 那一格	保留	[不对外] 〔AS2〕�
 src/settings/assets-section.ts:109	from 那一格	保留	[不对外] 〔AS2〕同上一行
 src/settings/assets-section.ts:116	problems 那一格	保留	[不对外] 〔AS2〕同上一行
 src/settings/panel.ts:1103	资产目录	保留	[对外] 〔AS2〕机器页「工具」栏一块的标题（名词短语）
+src/bridge/src/dial_host.rs:203	超过 {}s 还没做完，放弃这一趟	保留	[对外] 〔NT2 · A4〕一次性远端查询的总时限到点：接在各调用方自己那句「读 xx 失败：」后面上屏，说清是等太久放弃了（不是远端报错），秒数是事实；不含内部词
