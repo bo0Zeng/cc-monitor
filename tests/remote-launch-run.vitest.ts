@@ -777,8 +777,8 @@ describe("W22B 外层 tmux 三格的生产切换 —— 那道闸的判据", () 
 //
 // 🔴 这一组是本件在**生产路上**的唯一一道闸，而它必须存在的理由是一条不对称：
 //
-//   · TS 的 `RBIND_TOKEN_DIMENSION.cliFlags` 返回 `null`（诚实放弃），
-//     但 `tryRenderCli` **今天不是生产渲染器**（生产在 Rust 的 `ccm_invocation`）；
+//   · 〔LR1〕TS 那份渲染器（它会因令牌维度说不出 CLI 而放弃）已删 —— 它本来就不在生产路上，
+//     生产的 CLI 渲染在 Rust 的 `ccm_invocation`；
 //   · Rust 那侧的 `CliSpec` **没有** `rbind-token` 这个维度（本件没动它，见交回报告）
 //     ⇒ 把一个带令牌的请求送过去，它会**照常渲成功**，只是渲出来的 `ccm …` 里没有令牌。
 //

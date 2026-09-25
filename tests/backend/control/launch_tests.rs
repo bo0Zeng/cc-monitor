@@ -246,7 +246,7 @@ fn exact_target_shape_matches_the_monitor_side() {
 
 /// ★ #76 防线的形态迁移：`send-into` **绝不新建会话**。
 ///
-/// TS 侧那条防线（`launch-render-cli.ts` 让 `send-into` 强制走兜底）挡的是
+/// CLI 渲染器那条防线（今天在 `ccm_invocation.rs`，让 `send-into` 强制走兜底）挡的是
 /// 「用 create-or-attach 的语法去近似 send-into」；backend 直接调 tmux 之后那个
 /// 表达力缺口没了，但**语义陷阱还在**：顺手新建就是 #76 的反向。
 ///

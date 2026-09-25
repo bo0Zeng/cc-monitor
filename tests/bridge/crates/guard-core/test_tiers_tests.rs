@@ -62,9 +62,8 @@ const UNIT: &[&str] = &[
     "tests/account-restart.vitest.ts",
     "tests/accounts.vitest.ts",
     "tests/backend-policy.vitest.ts",
-    "tests/backend/accounts/apikey/table_tests.rs",
+    "tests/backend/accounts/upstream/table_tests.rs",
     "tests/backend/accounts/iso_tests.rs",
-    "tests/backend/agents/claudecode/liveness_tests.rs",
     "tests/backend/agents/claudecode/records_tests.rs",
     "tests/backend/agents/claudecode/resume_tests.rs",
     "tests/backend/agents/codex/parse_tests.rs",
@@ -149,7 +148,6 @@ const UNIT: &[&str] = &[
     "tests/keybindings/actions.vitest.ts",
     "tests/launch-dimensions.test.ts",
     "tests/launch-menu.vitest.ts",
-    "tests/launch-render-cli.test.ts",
     "tests/launch-requests.vitest.ts",
     "tests/launcher-diagnostics.vitest.ts",
     "tests/live-window.vitest.ts",
@@ -289,7 +287,7 @@ const SCAN: &[&str] = &[
     "tests/backend/protocol_doc_guard.rs",
     "tests/backend/ratchet_guard.rs",
     "tests/backend/readonly_guard.rs",
-    "tests/backend/relay/account_layer_guard.rs",
+    "tests/backend/relay/upstream_selection_guard.rs",
     "tests/backend/relay/bind_guard.rs",
     "tests/backend/relay/creds_guard.rs",
     "tests/backend/relay/framer_tests.rs",
@@ -426,7 +424,6 @@ const SCAN: &[&str] = &[
     "tests/ipc/commands.vitest.ts",
     "tests/launch-cli-wire.vitest.ts",
     "tests/launch-payload-golden.vitest.ts",
-    "tests/launch-render-cli.vitest.ts",
     "tests/launch-render-fallback.vitest.ts",
     "tests/launch-tmux-outer-golden.vitest.ts",
     "tests/liveness-process-names-parity.vitest.ts",
@@ -479,8 +476,8 @@ const SCAN: &[&str] = &[
 
 /// 集成层：碰 OS（起进程 · 套接字 · 真文件系统写 · 临时目录）。
 const INTEGRATION: &[&str] = &[
-    "tests/backend/accounts/apikey/creds_tests.rs",
-    "tests/backend/accounts/apikey/file_face_tests.rs",
+    "tests/backend/accounts/upstream/creds_tests.rs",
+    "tests/backend/accounts/upstream/file_face_tests.rs",
     "tests/backend/agents/claudecode/assets_tests.rs", // 〔AS2〕
     "tests/backend/agents/fake_tests.rs",
     "tests/backend/agents_tests.rs",
@@ -630,6 +627,7 @@ const E2E: &[&str] = &[
     "tests/e2e/graylight-suite.sh",
     "tests/e2e/inbound-backend-frames.sh",
     "tests/e2e/local-backend-supervise.sh",
+    "tests/e2e/p3t-local-tmux.sh", // 〔TL1 · 4C〕接回执行链（`package.json` ＋ `ci.yml` 地板）
     "tests/e2e/rbind-token-endtoend.sh",
     "tests/e2e/restart-backend-frames.sh",
     "tests/e2e/restart-suite.sh",
@@ -648,7 +646,6 @@ const E2E_SUPPORT: &[&str] = &[
     "tests/e2e/local-backend-container/build-image.sh",
     "tests/e2e/local-backend-container/guard-run-netns.sh",
     "tests/e2e/local-backend-container/rig.sh",
-    "tests/e2e/p3t-local-tmux.sh",
     "tests/e2e/reap-orphan-backends.sh",
     "tests/e2e/tier2-rig.sh",
     "tests/e2e/tmux-shim.sh",
@@ -659,20 +656,22 @@ const E2E_SUPPORT: &[&str] = &[
 ];
 
 /// `tests/e2e/` 下**没有任何一份脚本 / 配置 / 测试引用**的 shell（剥注释后按文件名找）——
-/// 本件落地时现打逮到的两份，**报备、不处置**（删还是接回执行链，是主会话 / 用户的裁定）：
+/// **报备、不处置**（删还是接回执行链，是主会话 / 用户的裁定）：
 /// `(文件, 为什么还留着 / 现状)`。每一行必须真的仍是孤儿（有人引用了 ⇒ 死行 ⇒ 红）。
-const UNREFERENCED: &[(&str, &str)] = &[
-    (
-        "tests/e2e/p3t-local-tmux.sh",
-        "〔TQ1 报备〕一套真 e2e（带 ok/bad 账本），却不在 `package.json` 里 ⇒ `e2e_gate_registry` 与 CI 地板都看不见它；\
-         它又是 `history_tests.rs::emit_local_launch_command_for_e2e` 那条 `#[ignore]` 的唯一触发者 ⇒ 那条也跟着没人跑。\
-         只在 README 与注释里被提到",
-    ),
-    (
-        "tests/e2e/tier2-rig.sh",
-        "〔TQ1 报备〕tier-2 台架搭建器（`setup` / `dev` / `run` / `teardown`），手动工具；只在 `tests/e2e/README.md` 与注释里被提到",
-    ),
-];
+///
+/// 〔TL1 · 4C〕TQ1 落地时报备的两份都裁了，表清空：`p3t-local-tmux.sh` 现打 10 过 / 0 败 ⇒ 接回执行链（进了 `E2E`）；
+/// `tier2-rig.sh` 是手动真机台架 ⇒ 留，挪进 [`MANUAL_RIGS`]（有了裁定就不再是「报备」）。再长出孤儿 ⇒ 照红。
+const UNREFERENCED: &[(&str, &str)] = &[];
+
+/// **手动、真机**的台架：刻意不进任何执行链（要真图形会话 / 真 dev 实例，门禁与 CI 都起不来），由人照 README 跑。
+/// `(文件, 为什么不进执行链 · 谁来跑)`。与 [`UNREFERENCED`] 同一道闸：每一行必须真的仍是没人引用的辅助件
+/// （有脚本 / 配置 / 测试引用它了 ⇒ 它不再是「只有人手跑」⇒ 死行 ⇒ 红）。
+const MANUAL_RIGS: &[(&str, &str)] = &[(
+    "tests/e2e/tier2-rig.sh",
+    "〔TL1 · 4C 裁〕tier-2 台架搭建器（`setup` / `dev` / `run` / `teardown`：沙箱 ＋ Xvfb ＋ dev 实例 ＋ 回环 ssh）；\
+     它起的是**跑着的 dev app**，无头门禁与 CI 里没有那个 app（同 `e2e_gate_registry` 里 `graylight` / `f40` 两条豁免的理由）。\
+     真机测试资源（`99 §2 ⑤`）未拍 ⇒ 留作手动工具，跑法在 `tests/e2e/README.md`「全链套件怎么跑」",
+)];
 
 /// 集成层自检现打逮到的「缺环境就 `return`」，**报备、不处置**（改测试体不在本件写区）：
 /// `(文件, 测试函数, 现状)`。每一行必须真的仍是那一形（修好了 ⇒ 死行 ⇒ 红）。
@@ -2017,21 +2016,34 @@ fn e2e_tier_is_what_package_json_runs_and_no_helper_is_orphaned() {
             .filter(|(p, _)| p != h)
             .filter(|(_, text)| crate::contains_word(text, base))
             .count();
-        let reported = UNREFERENCED.iter().any(|(f, _)| f == h);
+        let reported = UNREFERENCED.iter().chain(MANUAL_RIGS).any(|(f, _)| f == h);
         match (users == 0, reported) {
             (true, false) => bad.push(format!(
                 "  辅助件 `{h}` 没有任何一份脚本 / 配置 / 测试引用它 —— 孤儿：接回执行链或删掉（或进 `UNREFERENCED` 报备）"
             )),
             (false, true) => bad.push(format!(
-                "  `UNREFERENCED` 里的 `{h}` 现在有 {users} 份在引用它了 —— 死行，删掉"
+                "  `UNREFERENCED` / `MANUAL_RIGS` 里的 `{h}` 现在有 {users} 份在引用它了 —— 死行，删掉"
             )),
             _ => {}
         }
     }
-    for (f, _) in UNREFERENCED {
+    for (f, why) in UNREFERENCED.iter().chain(MANUAL_RIGS) {
         if !helpers.contains(*f) {
             bad.push(format!(
-                "  `UNREFERENCED` 里的 `{f}` 已不是 `tests/e2e/` 下的辅助件 —— 死行，删掉"
+                "  `UNREFERENCED` / `MANUAL_RIGS` 里的 `{f}` 已不是 `tests/e2e/` 下的辅助件 —— 死行，删掉"
+            ));
+        }
+        if why.trim().chars().count() < 20 {
+            bad.push(format!(
+                "  `{f}` 那一行的理由太短 —— 写清为什么不进执行链、谁来跑"
+            ));
+        }
+    }
+    // 两张表不许同时登记同一份（「报备待裁」与「已裁：手动」是两个互斥的状态）。
+    for (f, _) in MANUAL_RIGS {
+        if UNREFERENCED.iter().any(|(u, _)| u == f) {
+            bad.push(format!(
+                "  `{f}` 同时在 `UNREFERENCED` 与 `MANUAL_RIGS` 里 —— 只许一个状态"
             ));
         }
     }

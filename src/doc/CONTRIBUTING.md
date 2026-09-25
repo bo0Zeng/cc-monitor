@@ -36,7 +36,7 @@ cd .. && grep -rn 'invoke<.*"aliases_read"' src/
 grep -rn 'ps-await\|ps-registry' src/bridge/src/ src/
 
 # 6. 删完跑：
-cd src/bridge && cargo check && cargo test --workspace --exclude code-picture-core
+cd src/bridge && cargo check && cargo test --workspace
 cd .. && npm run build
 
 # !! cargo check 不能挡 State 漏 manage 的运行时 panic !!
@@ -87,7 +87,7 @@ powershell -NoProfile -File scripts\run.ps1 dev
       > 时是优雅降级，那一档由 `ssh_source_stream_flag_gate_tests.rs::embedded_build_id_single_source_wired` 兜。
       > 详见 [REMOTE-PHASE0-DEPLOY.md § 发版构建](REMOTE-PHASE0-DEPLOY.md#发版构建交叉编译--内嵌-backend-二进制f08b)。
 - [ ] [CHANGELOG.md](../../CHANGELOG.md) 加新版本段（写法见 [RELEASING.md](RELEASING.md)）
-- [ ] `cargo fmt --all --check + cargo check + cargo test --workspace --exclude code-picture-core + npm run build` 全绿
+- [ ] `cargo fmt --all --check + cargo check + cargo test --workspace + npm run build` 全绿
       （`.github/workflows/ci.yml` 第一步就是 `cargo fmt --check` 严格 verify；
       本地写完代码先 `cargo fmt` 一次再发版，避免 tag 推完才发现 CI 红需要补
       style commit 的尴尬。v2.0.0 就踩过这个坑）
@@ -155,7 +155,7 @@ const activeIds = await invoke<string[]>("monitor_get_active_ids");
 ```
 
 5. **检查**：
-- [ ] `cargo check + cargo test --workspace --exclude code-picture-core`
+- [ ] `cargo check + cargo test --workspace`
 - [ ] `npm run build` TS 编译过
 - [ ] dev mode 实测命令真的能从前端 invoke 到（State 漏 manage 才能挡住）
 - [ ] [STATE-MATRIX.md § 2](STATE-MATRIX.md) 表已更新
@@ -350,8 +350,8 @@ grep -nE "tmux (new-session|send-keys|attach)" src/remote-launch.ts   # 命中�
 
 1. fork → branch（命名 `feat/<short-desc>` / `fix/<short-desc>`）
 2. 改代码 + 测试 + 文档（参照本文档对应 cookbook）
-3. `cargo fmt + cargo clippy + cargo test --workspace --exclude code-picture-core + cargo test -p code-picture-core + npm test + npm run coverage + npm run build` 全绿。
-   ⚠ **`--all` 只是 `--workspace` 的弃用别名**，差的是 **vendor 排除** —— 少了 `--exclude code-picture-core` 会把红线里「一字节不动」的 vendor 也跑进来（audit-0805 F18 订正）。
+3. `cargo fmt + cargo clippy + cargo test --workspace + cargo test -p code-picture-core〔在 src/panorama-engine 里跑〕 + npm test + npm run coverage + npm run build` 全绿。
+   ⚠ **`--all` 只是 `--workspace` 的弃用别名**（audit-0805 F18 订正）。〔TL1 · 4C 拍板 ③〕RM1f 起 monitor 不再依赖 vendor `code-picture-core`（链它的只剩 `src/panorama-engine`）⇒ 它不再是 `src/bridge` workspace 的成员，这条 `--exclude` 在那里只剩一条 cargo warning（`excluded package(s) not found`）⇒ 删了；裸 `--workspace` 现打就是那 9 个成员（`monitor` ＋ 8 个共享 crate）。vendor 再被拉回来会让成员数变 10：monitor 清单零 vendor 依赖那条判据（`shared_crate_registry`）与门禁 `cargo` 那一格的包数相等当场红。vendor 自测要到 `src/panorama-engine` 里跑（`ci.yml` 那一步同）。
    ⚠ **各项条数与 CI job 数刻意不写在这里**：那些数在仓里曾有 4-5 份拷贝、全部漂成假的。
    分工照旧：`npm test` = node 纯函数 + vitest DOM = **前端那个 CI job**；本机后端 / 远端后端 / e2e 冒烟是**各自独立的 job**，`npm test` 不含它们；动滚动/渲染管线另跑 `tests/e2e/f40-suite.sh`（见 tests/e2e/README.md）
 4. PR 描述：

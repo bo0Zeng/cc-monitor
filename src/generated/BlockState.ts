@@ -17,6 +17,12 @@ present: boolean,
  */
 version: string | null, 
 /**
+ * 〔TL1 · 4C〕块在、而版本串不是这一版模板的那个 ⇒ `true`（只有 PowerShell 那一对有版本串）。
+ * v3 起模板结尾多一行接上别名文件（`设计/71 §6.1`）—— 装着 v2 的人**重装一次**才带上那一行，界面据此提示。
+ * 「这一版是哪个」只从模板本身读（[`current_block_version`]），不另写一份字面量。
+ */
+outdated: boolean, 
+/**
  * 块外已有的同名函数（与 [`CC_FUNCTION_NAME`] 同名）。
  */
 conflictingFunctions: Array<string>, 
