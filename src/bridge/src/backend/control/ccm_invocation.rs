@@ -1,4 +1,4 @@
-//! U8c-2c-1：**`ccm …` 调用行的渲染器** —— TS `launch-render-cli.ts::tryRenderCli` 的 Rust 对侧。
+//! U8c-2c-1：**`ccm …` 调用行的渲染器** —— 全仓唯一一份（〔LR1 · U8c-3〕TS 那份对侧已删）。
 //!
 //! ⚠ **P4b 搬家**：它原来是共享 crate（当时叫 `launch-core`）的 `cli` 模块 —— 而 **backend 对它零引用**。
 //! 架构审计点破「这就是决策内核，放在共享 crate 里的真实原因是 monitor 没处放」。
@@ -21,9 +21,12 @@
 //! 「这个维度在当前上下文里说不出 CLI 语法」⇒ **整条放弃**，不是「跳过这个维度继续渲染」。
 //! 后者会渲染出一条**丢了修饰**的命令，而丢的恰好是账号那类东西（R11/R08 的病灶）。
 //!
-//! # 与 TS 的一致性靠什么保住
+//! # 「该渲成什么」的独立说法住哪
 //!
-//! 入库夹具逐字节对拍（同 U8c-1）：TS 生成 → 入库 → 两侧各自与它比。
+//! 〔LR1 · U8c-3〕TS 那份渲染器删了之后，不再有「另一种语言的实现」可对拍。独立说法是两份
+//! **手写**的期望：本文件的自测（P1 那批，判据自带清单、不遍历被测常量，见文件尾）与入库夹具
+//! `fixtures/cli-golden.json`（`src/launch-cli-golden.ts` 用例表手写 `out`，`req` 由生产的
+//! TS 请求构造现产 ⇒ 顺带钉住线与映射，`launch_cli_parity.rs`）。
 //! ⚠ **ok 与 refusal 两类都要覆盖** —— 只比 ok 的话，「该降级却渲染出来了」抓不到，
 //! 而那正是 §33 铁律要防的形态。
 
@@ -51,19 +54,18 @@ pub enum Refusal {
 }
 
 impl Refusal {
-    /// 与 TS 侧 `reason` 字符串**逐字节相同**（夹具对拍的比较对象）。
+    /// 降级理由。入库夹具 `cli-golden.json` 的 refusal 用例逐字节比它（夹具那一侧是手写期望）。
     pub fn reason(&self) -> String {
         match self {
             Refusal::NotInstalled => "远端未装 ccm".into(),
             // ⚠ **P3t 之后这句话比事实宽**（登记在案的诚实边界，不是没看见）：
             // Rust 侧现在只在 `!is_ssh && !local_posix` 时回它，也就是**Windows 本机**。
-            // 不改它的理由有两条，都不是「懒」：
-            // ① 它与 TS `launch-render-cli.ts:76` **逐字节对拍**（金串 `cli-golden.json` 也存了这一条），
-            //    改 Rust 不改 TS 会当场红；而那个 TS 函数已降级为「只供夹具对拍」、**排期 U8c-3 删掉**。
-            // ② 它今天**产不出来**：两个活着的 Rust 调用方一个恒 `is_ssh: true`
-            //    （`launch_wire`，前端只在 ssh 时才调），一个恒 `local_posix: true`
-            //    （`history.rs::render_local_ccm`，整个函数挂在 `cfg(not(windows))` 下）。
-            // ⇒ 等 U8c-3 删掉 TS 那份时，这句连同它的金串用例一起改成「Windows 本机…」。
+            // 它今天**产不出来**：两个活着的 Rust 调用方一个恒 `is_ssh: true`
+            // （`launch_wire`，前端只在 ssh 时才调），一个恒 `local_posix: true`
+            // （`history.rs::render_local_ccm`，整个函数挂在 `cfg(not(windows))` 下）。
+            // 〔LR1 · U8c-3〕原先挡着改字的那条（与 TS 渲染器逐字节对拍）随 TS 那份删了；
+            // 改成「Windows 本机…」归本文件的对外字面量进文案表那一拍（CP1 台账已裁「改·§2.1」），
+            // 连同 `src/launch-cli-golden.ts` 里「本地 transport」那条用例的期望一起改。
             Refusal::NotSsh => "本地路径不走 CLI 渲染器".into(),
             Refusal::MissingCap(c) => format!("远端 ccm 缺能力 {c}"),
             Refusal::SendIntoHasNoCliForm => {
@@ -82,7 +84,8 @@ impl Refusal {
 
 /// CLI 语法覆盖面 —— **每次调用都无条件要求**的能力。
 ///
-/// 与 TS `launch-render-cli.ts::CLI_REQUIRED_CAPS` 逐项同序。只放「与具体维度无关的
+/// 全仓唯一一份（〔LR1〕TS 那份随 TS 渲染器删了；`tests/e2e/ccm-contract-parity.sh` 从本文件
+/// 抽它去比真 `ccm --ccm-probe` 的 `capabilities=`）。只放「与具体维度无关的
 /// 动作/容器语法」；`account`/`model` 由各自维度用 `required_caps` 声明（§37）。
 pub const CLI_REQUIRED_CAPS: &[&str] = &[
     "new", "resume", "attach", "tmux", "cwd", "launcher", "ccm-sid",
@@ -161,7 +164,7 @@ pub struct CliSpec<'a> {
     pub ccm_path: &'a str,
 }
 
-/// argv token 的 quote：只在含 ccm 允许字符集之外的东西时才包单引号（与 TS `argv()` 同规则）。
+/// argv token 的 quote：只在含 ccm 允许字符集之外的东西时才包单引号（〔LR1〕TS 那份同规则的 `argv()` 随 TS 渲染器删了）。
 fn argv(token: &str) -> String {
     let safe = !token.is_empty()
         && token.chars().all(|c| {
@@ -187,7 +190,7 @@ type Flags = Option<Vec<String>>;
 /// [`crate::render_payload`] 里了。
 fn dimension_flags(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Vec<String>, Refusal> {
     let mut out = Vec::new();
-    // ⚠ **能力检查与 flags 是逐维度交错的**（与 TS 的 `for (const dim of …)` 同构）——
+    // ⚠ **能力检查与 flags 是逐维度交错的**（与已删的 TS 渲染器那个维度循环同构）——
     // 初版我把能力检查整体提到循环外，那会在「缺能力」与「说不出」同时成立时给出**另一个**
     // 理由；而 reason 是生产侧唯一的降级线索，换一个就是换一条诊断。
     for dim in DIMENSION_ORDER {
@@ -313,7 +316,7 @@ fn push(out: &mut Vec<String>, id: &str, flags: Flags) -> Result<(), Refusal> {
     }
 }
 
-/// `ctx → ccm 调用行`。与 TS `tryRenderCli` 同构、逐字节对拍。
+/// `ctx → ccm 调用行`。生产入口是 `launch_wire::render_ccm_launch`（远端）与本机 POSIX 那一条。
 pub fn render_ccm_invocation(
     spec: &CliSpec,
     caps: &BTreeSet<String>,
@@ -402,10 +405,9 @@ pub fn render_ccm_invocation(
 // ────────────────────────────────────────────────────────────────────────────
 // P1（2026-08-03 三视角复盘）：**本文件此前一条自测都没有。**
 //
-// 为什么必须补，而不是靠跨语言夹具：今天挡「两侧一起错」的是 TS 的
-// `launch-render-cli.test.ts`，而它**排期在 U8c-3 被删**。那天一到，`cli-golden.json`
-// 就变成一个没有生成者的冻结文件 —— 跨语言对拍会退化成「Rust 没变」的快照。
-// 于是「渲染器该做什么」这件事在本仓就再没有独立说法了。
+// 为什么必须补，而不是靠跨语言夹具：当时挡「两侧一起错」的是 TS 那份渲染器的自测，
+// 而它**排期在 U8c-3 被删**（〔LR1〕已删）。那天一到，跨语言对拍就不再有另一种语言 ——
+// 「渲染器该做什么」这件事的独立说法只剩这里这批手写期望（＋ 夹具里手写的 `out`）。
 //
 // 补之前先量：对本文件逐条造变异、只跑现有门禁（当时那个 crate 15 条 + monitor 侧
 // `_parity` 9 条），**七个存活**（R1–R7）。对照组「`--base` 改字」「account/model 换序」

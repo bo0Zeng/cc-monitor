@@ -36,12 +36,12 @@
 # - **B 组 `CCM_ENV`**：S10 七项里**唯一全仓零覆盖**的一项（摸底 `grep -rn CCM_ENV`
 #   只命中 ccm 自己与计划文档）。它是「真正非 shell 不可」的那一条，U9b 之后也必须还在。
 # - **C 组 `--ccm-probe` 契约**：`src/bridge/src/ccm_probe.rs::parse_probe_output` 靠**字面** `name=ccm`
-#   判「装没装」，`src/launch-render-cli.ts::CLI_REQUIRED_CAPS` 靠 `capabilities=` 决定
-#   走 CLI 渲染器还是兜底。两处都只对**手写 fixture** 测过。
+#   判「装没装」，`src/bridge/src/backend/control/ccm_invocation.rs::CLI_REQUIRED_CAPS` 靠 `capabilities=` 决定
+#   走 CLI 渲染器还是兜底（〔LR1〕TS 那份随 TS 渲染器删了，清单只剩 Rust 这一份）。两处都只对**手写 fixture** 测过。
 #   ⚠ 精确说法（审计订正）：真脚本的 probe 输出**并非全无覆盖** —— `cc-spawn-uplift` 主流程
 #   不设 `CCM_BIN`，于是 `cc-spawn` 解析到真 `ccm` 并对 `detach`/`tmux-size` 两项
 #   fail-closed，那 21 条间接盖住了这两项。**零覆盖的是**：首行 `name=ccm` · `version=` ·
-#   `agents=` · TS 侧那 7 项 `CLI_REQUIRED_CAPS`。少一项能力 ⇒ app 静默退到兜底渲染器
+#   `agents=` · 渲染器那 7 项 `CLI_REQUIRED_CAPS`。少一项能力 ⇒ app 静默退到兜底渲染器
 #   （丢账号保真度），用户看不见。
 #
 # ## 差分不能单独用（血泪 10 的形状）
@@ -287,20 +287,24 @@ PROBE="$(env CCM_CONFIG=/nonexistent "$CCM" --ccm-probe 2>&1)"
 ck "首行逐字 name=ccm（ccm_probe.rs::parse_probe_output 的判活依据）" "name=ccm" "$(printf '%s\n' "$PROBE" | head -1)"
 ck "有 version= 行" "1" "$(printf '%s\n' "$PROBE" | grep -c '^version=')"
 CAPS="$(printf '%s\n' "$PROBE" | sed -n 's/^capabilities=//p' | tr ',' '\n')"
-# TS 侧要求的能力从**源码里抽**，不手抄——手抄一份等于又造一个双写点。
-TS_CAPS="$(sed -n 's/^const CLI_REQUIRED_CAPS = \[\(.*\)\] as const;$/\1/p' "$REPO/src/launch-render-cli.ts" \
-           | tr -d '" ' | tr ',' '\n' | grep -v '^$')"
-TS_N="$(printf '%s\n' "$TS_CAPS" | grep -c .)"
+# 渲染器要求的能力从**源码里抽**，不手抄——手抄一份等于又造一个双写点。
+# 〔LR1 · U8c-3〕源从 TS `src/launch-render-cli.ts`（已删）换成生产那一份 Rust
+# `ccm_invocation.rs`：从 `pub const CLI_REQUIRED_CAPS` 那一行抽到 `];`，收引号串 ——
+# 不认行形（`rustfmt` 折不折行都抽得到）。
+REQ_CAPS="$(sed -n '/^pub const CLI_REQUIRED_CAPS: /,/\];/p' "$REPO/src/bridge/src/backend/control/ccm_invocation.rs" \
+           | grep -o '"[^"]*"' | tr -d '"')"
+REQ_N="$(printf '%s\n' "$REQ_CAPS" | grep -c .)"
 # ★ 抽取器自检：抽空了的话下面那条"逐个都在"会**零命中零失败**地变绿。
-ck "抽取器自检：CLI_REQUIRED_CAPS 抽到 ≥5 项（实得 $TS_N）" "yes" \
-   "$([ "$TS_N" -ge 5 ] && echo yes || echo no)"
+# 〔LR1〕由「≥5」改成**相等**：Rust 那份清单增删一项 ⇒ 这里红，回来改数（强制触碰）；
+# 抽法坏了（抽成 0 或把别的引号串也收进来）同样红。
+ck "抽取器自检：CLI_REQUIRED_CAPS 抽到恰好 7 项（实得 $REQ_N）" "7" "$REQ_N"
 MISSING=""
-for c in $TS_CAPS; do
+for c in $REQ_CAPS; do
   printf '%s\n' "$CAPS" | grep -qx "$c" || MISSING="$MISSING $c"
 done
 # **覆盖（⊇）不是相等**：ccm 多声明能力是允许的（今天就多 6 项），少声明才是病。
 # 谁要是把这条收紧成相等，每加一个 flag 都会红 —— 那不是本条要防的东西。
-ck "capabilities= 覆盖 TS 侧全部 CLI_REQUIRED_CAPS（⊇，不是 ==）" "" "$MISSING"
+ck "capabilities= 覆盖渲染器全部 CLI_REQUIRED_CAPS（⊇，不是 ==）" "" "$MISSING"
 ck "agents= 行列出 claude 与 codex" "1" \
    "$(printf '%s\n' "$PROBE" | grep -c '^agents=claude,codex$')"
 
