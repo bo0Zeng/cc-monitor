@@ -225,6 +225,9 @@ import {
 } from "../src/tabs";
 import type { TabCollection } from "../src/tab-collections";
 import { ENDED, LIVE, RECONNECTABLE } from "../src/tab-session-state";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { REPO_ROOT } from "./test-support/repo-root.ts";
 import type { TabStore } from "../src/tab-store";
 import type { TabBarView } from "../src/tab-bar-view";
 import type { TabBarDrag } from "../src/tab-bar-drag";
@@ -579,6 +582,37 @@ describe("TabManager 生命周期", () => {
     tm.archiveTab("tt1");
     expect(btn().title).toBe("这个会话已结束");
     expect([btn().classList.contains("ended"), btn().classList.contains("reconnectable")]).toEqual([true, false]);
+  });
+
+  it("〔U4 · S6〕e2e 探针真吐的行 ↔ graylight-suite.sh 的两条 grep（shell 语料 vs 运行输出，两向）", () => {
+    // 套件里那两条模式（ERE）原样取出来：`GRAY="$(wait_log "$MARK" "<模式>" …` / `ARCH=…`。
+    const suite = readFileSync(resolve(REPO_ROOT, "tests/e2e/graylight-suite.sh"), "utf8");
+    const pat = (name: string): string => {
+      const m = new RegExp(`^${name}="\\$\\(wait_log "\\$MARK" "([^"]+)"`, "m").exec(suite);
+      expect(m, `套件里找不到 ${name} 那条 wait_log —— 抽取器或套件变了`).not.toBeNull();
+      return m![1];
+    };
+    const sid = "0123abcd-e2e0-4000-8000-000000000000";
+    // shell 双引号里 `\[` 原样留着反斜杠、`$SID8` 展开成前 8 位 ⇒ 这就是 grep -E 真拿到的模式。
+    const ere = (name: string): RegExp => new RegExp(pat(name).replace("$SID8", sid.slice(0, 8)));
+    const lines: string[] = [];
+    const spy = vi.spyOn(console, "info").mockImplementation((l: unknown) => {
+      if (typeof l === "string" && l.startsWith("[e2e] tab-state")) lines.push(l);
+    });
+    try {
+      tm.ensureTab(sid, "/x", "p", 0, "pi"); // 活（建 tab 不打探针）
+      tm.markTmuxIdle(sid); // → 可重连
+      tm.archiveTab(sid); // → 已结束
+    } finally {
+      spy.mockRestore();
+    }
+    expect(lines, "两次转移各打一行").toHaveLength(2);
+    const [toIdle, toEnded] = lines;
+    const gray = ere("GRAY");
+    const arch = ere("ARCH");
+    // 两向：各自只认自己那一行。
+    expect([gray.test(toIdle), gray.test(toEnded)]).toEqual([true, false]);
+    expect([arch.test(toIdle), arch.test(toEnded)]).toEqual([false, true]);
   });
 
   it("F03.2 收到活动信号回到活（claude 复活）——activity 值不变也回且重绘", () => {
