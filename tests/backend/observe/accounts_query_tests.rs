@@ -672,13 +672,24 @@ fn account_zero_without_shared_store_is_not_logged_in() {
     let _ = fs::remove_dir_all(&root);
 }
 
+/// 〔TQ1 报 · 合并时修〕一个**环境里确实没有** `CLAUDE_CONFIG_DIR` 的活进程，当「裸起会话」用。
+/// 从前两条用例拿测试进程自己当会话、见变量有值就 `return` —— 而在 Claude Code 会话里跑测试时
+/// 它恒有值 ⇒ 两条在门禁上**从没执行过**。`/proc/self/environ` 是进程起来那一刻的环境，
+/// 事后 `remove_var` 改不了它 ⇒ 只能另起一个清掉该变量的子进程。
+#[cfg(target_os = "linux")]
+fn bare_child() -> std::process::Child {
+    std::process::Command::new("sleep")
+        .arg("30")
+        .env_remove("CLAUDE_CONFIG_DIR")
+        .spawn()
+        .expect("起一个 sleep 子进程当裸起会话")
+}
+
 /// 裸起会话（活着但没设 CLAUDE_CONFIG_DIR）现在归属账号 0。
 #[cfg(target_os = "linux")]
 #[test]
 fn bare_session_is_attributed_to_account_zero() {
-    if std::env::var_os("CLAUDE_CONFIG_DIR").is_some() {
-        return; // 跑在已设了该变量的 shell 里 ⇒ 本用例不适用
-    }
+    let mut child = bare_child();
     let root = tmpdir("acct0sess");
     let claude = root.join("claude");
     let sessions = claude.join("sessions");
@@ -688,8 +699,8 @@ fn bare_session_is_attributed_to_account_zero() {
         &accts,
         r#"{"version":1,"accounts":[{"name":"0","mode":"bare"}]}"#,
     );
-    let me = std::process::id();
-    let ticks = proc_starttime(me).expect("能读自己的 starttime");
+    let me = child.id();
+    let ticks = proc_starttime(me).expect("能读子进程的 starttime");
     fs::write(
         sessions.join(format!("{me}.json")),
         format!(r#"{{"sessionId":"sid-zero","cwd":"/w","procStart":"{ticks}"}}"#),
@@ -699,6 +710,8 @@ fn bare_session_is_attributed_to_account_zero() {
     assert_eq!(by["sid-zero"]["alive"], true);
     assert_eq!(by["sid-zero"]["bare"], true);
     assert_eq!(by["sid-zero"]["account"], "0", "裸起不再是「归属不明」");
+    let _ = child.kill();
+    let _ = child.wait();
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -945,9 +958,7 @@ fn an_unreadable_environ_is_never_reported_as_the_zero_account() {
 #[cfg(target_os = "linux")]
 #[test]
 fn bare_session_without_account_zero_stays_unattributed() {
-    if std::env::var_os("CLAUDE_CONFIG_DIR").is_some() {
-        return;
-    }
+    let mut child = bare_child();
     let root = tmpdir("acct0none");
     let claude = root.join("claude");
     let sessions = claude.join("sessions");
@@ -957,7 +968,7 @@ fn bare_session_without_account_zero_stays_unattributed() {
         &accts,
         r#"{"version":1,"accounts":[{"name":"z","configDir":"/h/.claude-accts/z"}]}"#,
     );
-    let me = std::process::id();
+    let me = child.id();
     let ticks = proc_starttime(me).unwrap();
     fs::write(
         sessions.join(format!("{me}.json")),
@@ -966,6 +977,8 @@ fn bare_session_without_account_zero_stays_unattributed() {
     .unwrap();
     let by = sid_map(&session_accounts(&claude, &accts));
     assert_eq!(by["sid-none"]["account"], serde_json::Value::Null);
+    let _ = child.kill();
+    let _ = child.wait();
     let _ = fs::remove_dir_all(&root);
 }
 
