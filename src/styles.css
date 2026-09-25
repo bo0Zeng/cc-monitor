@@ -714,22 +714,10 @@
   margin-left: auto;
 }
 
-/* user 内容用 sans 字体跟 assistant 的 serif 区分角色 */
-.card-user .card-body {
-  font-family: var(--font-base);
-  font-size: var(--font-size-base);
-  line-height: 1.55;
-}
-
 /* assistant 消息：full-width、无背景、无色条 */
 .card-assistant {
   background: transparent;
   padding: 0;
-}
-
-/* user 卡里不显示 "用户·HH:MM" header；只靠右对齐区分 */
-.card-user .card-header {
-  display: none;
 }
 
 .card-header {
@@ -739,6 +727,11 @@
   font-size: var(--font-size-xs);
   color: var(--text-faint);
   margin-bottom: 4px;
+}
+
+/* user 卡里不显示 "用户·HH:MM" header；只靠右对齐区分 */
+.card-user .card-header {
+  display: none;
 }
 
 .card-header .role {
@@ -764,6 +757,13 @@
   line-height: var(--line-height-prose);
   /* 长无断点串(URL/贴的日志)强制可断,防撑宽(同 .block-body 既有约定) */
   overflow-wrap: anywhere;
+}
+
+/* user 内容用 sans 字体跟 assistant 的 serif 区分角色 */
+.card-user .card-body {
+  font-family: var(--font-base);
+  font-size: var(--font-size-base);
+  line-height: 1.55;
 }
 
 .card-body .katex-display {
@@ -1687,16 +1687,16 @@
     background 0.12s;
 }
 
-.status-first-run-open:hover,
-.status-first-run-dismiss:hover {
-  color: var(--text, #d6cfc6);
-  background: var(--field-bg);
-}
-
 .status-first-run-dismiss {
   padding: 1px 6px;
   border-left: 1px solid var(--border, #3a342e);
   line-height: 1;
+}
+
+.status-first-run-open:hover,
+.status-first-run-dismiss:hover {
+  color: var(--text, #d6cfc6);
+  background: var(--field-bg);
 }
 
 /* === G6：分叉起会话前的追问小窗 ===
@@ -2193,15 +2193,15 @@
   padding: 2px 8px;
 }
 
-.user-inputs-toggle:hover:not(:disabled) {
-  color: var(--text);
-  background: var(--overlay-hover);
-}
-
 /* 0 条 ⇒ `disabled`（JS 那侧已有这个行为，这里只是让它看起来也像禁用）。 */
 .user-inputs-toggle:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.user-inputs-toggle:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--overlay-hover);
 }
 
 /* === 〔SE2 · `设计/10 §2.2b ④`〕实时 tab 的会话内查找面板（搜索 / 大纲两个模式） ===
