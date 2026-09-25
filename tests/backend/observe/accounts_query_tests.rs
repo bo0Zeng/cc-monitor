@@ -98,6 +98,7 @@ fn list_accounts_degrades_gracefully() {
 }
 
 // ---- 3. 非法 configDir 被丢弃，其余正常 ----
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；②形。
 #[test]
 fn unsafe_config_dirs_are_dropped() {
     let root = tmpdir("unsafe");
@@ -1742,7 +1743,7 @@ fn an_inherited_launch_id_is_never_reported_as_the_childs_own_identity() {
 // ============================================================================
 //
 // 要求住址：`设计/05 §8` 步 5「一次性请求那半收口成 `call` —— 按能力分批」· `设计/01 §5` D1「一个判定只有一个家」·
-// 用户裁决 V107「中转（层 1）＋ 账号层住本机常驻后端进程」—— 主会话据此裁「账号层读自己那台的 apikey 表、
+// 用户裁决 V107「中转 ＋ 上游选择住本机常驻后端进程」—— 主会话据此裁「账号域读自己那台的 apikey 表、
 // 两条规则搬进 `acct-core`、agent 随请求带」。夹具只造结构（目录名 ＋ 占位 manifest），不采真账号数据。
 
 /// 夹具：账号库（一个账号 0 ＋ 两个隔离号，`acct-a` 有订阅凭据、`acct-b` 没有）。回 `(root, accts)`。
@@ -2037,6 +2038,8 @@ fn read_regular_capped_keeps_its_three_failures_distinguishable() {
 }
 
 /// ★ 欺骗字符**按来源分组**各取一个代表，任何一组从 `acct-core` 的内核里掉出去 ⇒ 红（码位表逐字搬自 monitor 那条）。
+///
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；②形（拒绝集那张表）。
 #[test]
 fn every_group_of_deceptive_characters_is_rejected_in_a_config_dir() {
     let groups: &[(char, &str)] = &[

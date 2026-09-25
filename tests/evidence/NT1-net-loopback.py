@@ -26,8 +26,10 @@ sftp 子系统起始目录钉在临时目录 —— 同 `SR1b-sftp-loopback.py`�
   ④ 压缩（回环）：sshd 日志里我们这几条连接的协商结果全是 `compression: none`（回环不开，判准只有 `connect.rs::compression_for`）
   ⑦ 断线续传现打：下载中途断线 ⇒ 读终局与 `.part`（〔DP1〕判：`.part` 留着且是源的前缀、重拖落地逐字节对、没有从 0 起）；上传中途断线 ⇒ failed、暂存件留着；重传 ⇒ sftp-server 记下的写入 == 总长 − 已有
   ⑧ 黑洞：已有 TCP 变黑洞之后，第一条新链路在开通道那一步被吞、被关掉 ⇒ 第二条**拨新的**、跑通（新鉴权恰好 1 次；基线：第二条也被吞）
-  ⑥（`--compress`）强制压 vs 不压（真 sshd）：sshd 日志按先后 `none` · `zlib@openssh.com`；今天 russh 0.61 的 zlib 解压有缺陷（闸
-     `connect.rs::RUSSH_ZLIB_SOUND` 关着）⇒ 压的那趟卡在第一条通道上、收不全 —— 这一格就是闸为什么关着的真 sshd 读数
+  ⑥（`--compress`）强制压 vs 不压（真 sshd）：sshd 日志按先后 `none` · `zlib@openssh.com`。上游 russh 0.61 的 zlib 解压有缺陷
+     （NT1：闸关着时压的那趟卡在第一条通道上、收不全）；〔CZ1 · V118〕后端链仓内补过的副本、闸开 ⇒ 压的那趟**收全、逐字节同、
+     线上字节 < 不压那趟的一半**；上行那一半（客户端压、sshd 解）把一段会话 jsonl 样子的载荷喂给远端 `sha256sum`，摘要对、
+     线上字节 < 一半（两个方向的压缩比由那一行 `NT1-COMPRESS` 读数给出）
   ⑤ 弱网读数（甲台经整形代理，DELAY 单程 · BPS 每方向）：下载 16 MiB 期间长流上的回声延迟 · 顺序小文件下载每件耗时 ·
      首条 / 复用 capture 耗时（握手成本）—— 只印、不判（墙钟读数）；一趟大下载 ＋ 顺序 6 趟小下载的 sftp 子系统请求次数 **恰好 1**（判，计数）
 
@@ -563,7 +565,13 @@ def main():
                                cwd=os.path.join(ROOT, "src", "backend"), env=env, capture_output=True, text=True, timeout=3000)
             line = next((ln for ln in r.stdout.splitlines() if ln.startswith("NT1-COMPRESS")), "")
             print(f"  read {line}")
-            check("读数用例本身过（不压那趟收全；闸关着 ⇒ 压的那趟 30 s 内收不全 —— russh 0.61 解压缺陷；闸开着 ⇒ 线上字节 < 一半）", "1 passed" in r.stdout, (r.stdout[-800:], r.stderr[-800:]))
+            check("读数用例本身过（不压那趟收全；闸关着 ⇒ 压的那趟 30 s 内收不全 —— 上游 russh 0.61 解压缺陷；闸开着（CZ1 补过的副本）⇒ 收全、逐字节同、线上字节 < 一半）", "1 passed" in r.stdout, (r.stdout[-800:], r.stderr[-800:]))
+            kv = dict(x.split("=", 1) for x in line.split()[1:] if "=" in x)
+            if kv.get("wire_on", "0").isdigit() and int(kv.get("wire_on", "0")) > 0:
+                print(f"  read 线上字节：不压 {int(kv['wire_off'])} · 压 {int(kv['wire_on'])} ⇒ {int(kv['wire_off']) / int(kv['wire_on']):.1f} 倍")
+            if kv.get("up_on", "0").isdigit() and int(kv.get("up_on", "0")) > 0:
+                print(f"  read 上行（会话 jsonl 样子的载荷 {int(kv['upload'])} 字节喂给远端 sha256sum，摘要两趟都对：{kv.get('up_off_ok')}/{kv.get('up_on_ok')}）："
+                      f"不压 {int(kv['up_off'])} · 压 {int(kv['up_on'])} ⇒ {int(kv['up_off']) / int(kv['up_on']):.1f} 倍")
             kex = [ln.split("compression:")[1].split()[0] for ln in a.text().splitlines() if "kex: client->server" in ln and "compression:" in ln][k0:]
             check("sshd 那一侧协商结果：不压那趟 none、压的那趟 zlib@openssh.com（按先后）", kex == ["none", "zlib@openssh.com"], kex)
     finally:

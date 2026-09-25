@@ -96,20 +96,6 @@ export function parseServerConfig(
   return { ok: true, value: v };
 }
 
-/** F89b：确定性 JSON（递归排序对象键）——供 catalog dedup，防同配置不同键序被判成两条。纯函数。 */
-export function stableStringify(v: unknown): string {
-  if (v === null || typeof v !== "object") return JSON.stringify(v) ?? "null";
-  if (Array.isArray(v)) return `[${v.map(stableStringify).join(",")}]`;
-  const obj = v as Record<string, unknown>;
-  const keys = Object.keys(obj).sort();
-  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(",")}}`;
-}
-
-/** F89b：统一目录（库）的去重键 = 名 + \0 + 确定性 server JSON。纯函数。 */
-export function catalogKey(name: string, server: unknown): string {
-  return `${name}\u0000${stableStringify(server)}`;
-}
-
 const SCOPE_LABEL: Record<McpScope, string> = {
   user: "用户",
   local: "本项目(local)",
@@ -151,8 +137,6 @@ export class McpSection {
   /** ST1：`loadNow()` 之前收到的「要看哪台」（只记不读）。 */
   private wantedOrigin: Origin = getCurrentMachine();
   private loaded = false;
-  /** F89b：统一目录（库）——会话内读到过的所有 distinct server（键=catalogKey），供一键注册进项目。累积不清（有清空钮）。 */
-  private catalog = new Map<string, { name: string; server: unknown }>();
   /**
    * 〔AS1 · 第四波 4B〕「跨机器推 / 拉」那一块（`mcp-sync.ts`）。一个实例跟着本分节活，挂在可写的项目 scope 下面；
    * 本页那台机器 ＝ `this.origin`、项目目录 ＝ 输入框里那一个。拉（写的是本页这台）写完 ⇒ 本页重读。
@@ -547,18 +531,14 @@ export class McpSection {
 
   /** 渲染分组列表。remote 模式跳过空 scope（user scope 只读噪音）——**但可写的远端项目 scope 即使空也渲染**
    *  （F89a 审计修·阻塞：否则新/空远端项目不出加表单，无法建第一条 server）。
-   *  F89b：读到的 server 累进库；列表尾 append 库区（可一键注册进当前项目）。 */
+   *  〔TL1 · 4C〕从前这里还把读到的 server 累进一个「库」、列表尾挂一块「注册到此项目」（F89b）—— 退役了：
+   *  资产目录的家是后端（V113，机器页「资产目录」那一块），装要经差异、对面不同要问盖不盖（V111 / V112），
+   *  而「库」是本分节内存里的第二份目录、同名直接盖（`调研/第四波记录/TL1.md` 件 3）。 */
   private renderList(
     entries: McpServerEntry[],
     dir: string,
     remote: boolean,
   ): void {
-    for (const e of entries) {
-      this.catalog.set(catalogKey(e.name, e.server), {
-        name: e.name,
-        server: e.server,
-      });
-    }
     this.listBox.replaceChildren();
     const grouped = groupByScope(entries);
     for (const scope of ["user", "local", "project"] as McpScope[]) {
@@ -568,91 +548,6 @@ export class McpSection {
         this.renderScope(scope, grouped[scope], dir, remote),
       );
     }
-    // F89b：库区（尾部）。注册目标 = 当前机器(this.origin)+当前项目目录(dir)。已在本项目的条目标注、不重复注册。
-    const projectKeys = new Set(
-      grouped.project.map((e) => catalogKey(e.name, e.server)),
-    );
-    const cat = this.renderCatalog(dir, projectKeys);
-    if (cat) this.listBox.appendChild(cat);
-  }
-
-  /** F89b：统一目录（库）区。空库 → null（不显）。可折叠。每条：已在本项目→标注；否则有可写目标→注册钮。 */
-  private renderCatalog(
-    dir: string,
-    projectKeys: Set<string>,
-  ): HTMLElement | null {
-    if (this.catalog.size === 0) return null;
-    const box = document.createElement("div");
-    box.className = "mcp-scope mcp-catalog";
-
-    const head = document.createElement("div");
-    head.className = "settings-group-title mcp-catalog-head";
-    const toggle = document.createElement("button");
-    toggle.type = "button";
-    toggle.className = "settings-btn settings-btn-secondary mcp-catalog-toggle";
-    const title = document.createElement("span");
-    title.textContent = `库（${this.catalog.size} 个见过的 MCP server）`;
-    const clear = document.createElement("button");
-    clear.type = "button";
-    clear.className = "settings-btn settings-btn-secondary";
-    clear.textContent = "清空库";
-    clear.addEventListener("click", () => {
-      this.catalog.clear();
-      void this.refresh();
-    });
-    const body = document.createElement("div");
-    body.className = "mcp-catalog-body";
-    toggle.textContent = "▾";
-    toggle.addEventListener("click", () => {
-      const hidden = body.classList.toggle("is-collapsed");
-      toggle.textContent = hidden ? "▸" : "▾";
-    });
-    head.append(toggle, title, clear);
-    box.appendChild(head);
-
-    const hint = document.createElement("div");
-    hint.className = "settings-hint";
-    hint.textContent = dir
-      ? `注册目标：${isLocalOrigin(this.origin) ? "本机" : `远端 [${this.origin}]`} 项目 ${dir}`
-      : "注册到项目需先在上方填项目目录（作为注册目标）。";
-    body.appendChild(hint);
-
-    for (const { name, server } of this.catalog.values()) {
-      const key = catalogKey(name, server);
-      const row = document.createElement("div");
-      row.className = "mcp-server-row";
-      const nameEl = document.createElement("span");
-      nameEl.className = "mcp-server-name";
-      nameEl.textContent = name;
-      const summary = document.createElement("span");
-      summary.className = "mcp-server-summary";
-      summary.textContent = serverSummary(server);
-      row.append(nameEl, summary);
-      if (projectKeys.has(key)) {
-        const mark = document.createElement("span");
-        mark.className = "mcp-catalog-here";
-        mark.textContent = "✓ 已在本项目";
-        row.appendChild(mark);
-      } else {
-        const reg = document.createElement("button");
-        reg.type = "button";
-        reg.className = "settings-btn settings-btn-secondary mcp-catalog-reg";
-        reg.textContent = "注册到此项目";
-        if (!dir) {
-          reg.disabled = true;
-          reg.title = "先填项目目录作注册目标";
-        } else {
-          reg.addEventListener(
-            "click",
-            () => void this.writeEntry(dir, name, server),
-          );
-        }
-        row.appendChild(reg);
-      }
-      body.appendChild(row);
-    }
-    box.appendChild(body);
-    return box;
   }
 
   private renderScope(

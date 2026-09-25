@@ -629,7 +629,7 @@ fn ccm_is_one_skeleton_with_a_per_agent_table() {
         "`--ccm-probe` 的能力 token 从 18 个变成 {}：{caps:?}\n\
              ⇒ 这是插件协商的**样板**（`E7`：一条 probe 子命令 → `key=value` 行 → \
              消费者声明它要哪些 token）。加能力是好事，但今天已有两个真实消费者\
-             （`src/shared/cc-bus/scripts/cc-spawn` 检 4 个 token · `src/launch-render-cli.ts` 的 \
+             （`src/shared/cc-bus/scripts/cc-spawn` 检 4 个 token · `ccm_invocation.rs` 的 \
              `CLI_REQUIRED_CAPS` 检 7 个），这个数变了要顺手看一眼它们。\n\
              ⚠ 两个消费者**都是子集检查** ⇒ **加 token 安全，删/改名才危险**。\
              ⇒ 下一个人加 token 时不必重读这两处；**改名或删 token 时必须重读**。\n\

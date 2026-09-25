@@ -384,6 +384,8 @@ fn the_orphan_reaper_lists_but_never_collects_a_relay() {
 /// 它拿「真实存量」当自检，存量归零就分不清「判定坏了」与「真的没有了」。
 /// ⇒ 换成**夹具自检**（下面那三条 `assert!`）：判定对不对，用合成输入问，
 /// 不靠「盘上还欠着东西」。
+///
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §48.3`（测试里起真后端必须 fail-closed 地隔离用户 tmux）；shell 套件那一侧。
 #[test]
 fn no_e2e_suite_isolates_with_tmux_tmpdir() {
     // ── 夹具自检：判定本身对不对（不依赖盘上有没有存量）
@@ -502,6 +504,8 @@ fn no_e2e_suite_isolates_with_tmux_tmpdir() {
 ///
 /// 抽出来之前它在三个套件里**各抄了一份** —— 红线的落地有三份实现，
 /// 改一处漏两处正是本仓一路在收的那一族。
+///
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §48.3`（测试里起真后端必须 fail-closed 地隔离用户 tmux）；shell 套件那一侧。
 #[test]
 fn the_tmux_shim_primitive_has_exactly_one_home() {
     let shim = read_e2e("tmux-shim.sh");

@@ -1267,7 +1267,7 @@ pub(crate) fn apikey_routed_subset(
     )
 }
 
-/// 起本机会话时写进中转路由键第 1 段的那个 agent 名（适配器的 `id()`；读它的是账号层）。**起会话那一侧与界面那一侧共用这一处**，
+/// 起本机会话时写进中转路由键第 1 段的那个 agent 名（适配器的 `id()`；读它的是上游选择）。**起会话那一侧与界面那一侧共用这一处**，
 /// 两边问的是同一件事（「这一家的号走不走 apikey 端点改写」）⇒ 不许各自去问适配层。
 pub(crate) fn launch_agent_id() -> &'static str {
     crate::adapter::active().id()
@@ -1294,12 +1294,12 @@ pub(crate) fn apikey_rows() -> Vec<String> {
 ///
 /// # ⚠ 它与中转那侧的人群**不完全一致**，差在哪要写清楚
 ///
-/// 账号层装表时会把两类行**丢出表**（`accounts::apikey::table::build`）：① 账号 id 当不了路由段；
+/// 上游选择装表时会把两类行**丢出表**（`accounts::upstream::table::build`）：① 账号 id 当不了路由段；
 /// ② `base_url` 解析不了。本函数**只筛得掉第 ①** 类（`payload::relay_segment_is_safe`
 /// 与 `route::segment_is_safe` 是同一条规则，由 `payload.rs` 那边的头注登记着）。
 /// **第 ② 类筛不掉** —— 那要一份 `Base::parse`，而它住后端那一侧、monitor 够不着
 /// （单向依赖）。
-/// ⇒ **残留的症状**：一行 `base_url` 打错的账号，界面会说「经本机中转」而账号层那侧 404。
+/// ⇒ **残留的症状**：一行 `base_url` 打错的账号，界面会说「经本机中转」而上游选择那侧 404。
 /// **如实登记，不假装两侧人群相等。**〔`D1` 点名的那条同族，处置是「筛掉能筛的、写清剩下的」。〕
 pub(crate) fn apikey_rows_at(path: &std::path::Path) -> Vec<String> {
     let Ok(raw) = std::fs::read_to_string(path) else {
@@ -1534,11 +1534,11 @@ pub(crate) fn relay_account_slots(
 
 /// 〔RL1〕一次拉起的中转地址：`None` = 不注入（照旧直连）；`Err` = 该走却走不了（**拒绝起会话**，出声）。
 ///
-/// 住本文件（起会话那一侧）而不住 `remote_relay`：它要同时叫得出层 1（中转在不在）与层 2（apikey 表的行），
-/// 而 `remote_relay` 一个账号层的名字都不许有（`this_module_knows_no_account_layer_name`）。
+/// 住本文件（起会话那一侧）而不住 `remote_relay`：它要同时叫得出中转（在不在）与上游选择（apikey 表的行），
+/// 而 `remote_relay` 一个上游选择的名字都不许有（`this_module_knows_no_upstream_selection_name`）。
 /// **判断只在 `payload::relay_endpoint_for` 一处**（`设计/20 §3.2` 那张表）；本函数只换**事实的来源**：
 /// - 本机：两个事实经起会话那一侧同一条缝（`history::inject_facts`）取 —— 与 `launch_local` 同一份；
-/// - 远端：表里有哪几行问**那台**的账号层（`apikey-read`），中转在不在问**那台**的回环口，
+/// - 远端：表里有哪几行问**那台**的上游选择（`apikey-read`），中转在不在问**那台**的回环口，
 ///   **用到才起**：先按「假如在跑」问一次判断口，答 `None` ⇒ 一条中转命令都不发；答了地址才 `relay-status` →
 ///   没人听 ⇒ `relay-ensure` → 有界等它 bind。起不来 ⇒ 再问一次判断口（「真的没在跑」）：
 ///   apikey 行那一格回 `Err`（换成远端的说法）；`/t/` 那一格回 `None`（「有它更好」，照旧直连）。
