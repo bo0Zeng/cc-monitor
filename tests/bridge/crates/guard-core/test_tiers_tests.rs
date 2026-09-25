@@ -248,6 +248,7 @@ const SCAN: &[&str] = &[
     "tests/account-availability-guard.vitest.ts",
     "tests/account-base-semantics.vitest.ts",
     "tests/account-chip.vitest.ts",
+    "tests/accounts-decode.vitest.ts", // 〔C4c〕读跨语言金样（`tests/__fixtures__/accounts.golden.json`）
     "tests/agent-profile-parity.vitest.ts",
     "tests/app-grid-claims.vitest.ts",
     "tests/backend/agent_boundary_guard.rs",

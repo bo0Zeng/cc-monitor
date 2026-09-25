@@ -18,11 +18,15 @@ const DESIGN_EIGHT: &[&str] = &[
     "--read-session-from-offset",
     // 〔SR1a × SE2〕协调方加的：`--find-in-session` 一起搬。
     "--find-in-session",
+    // 〔C4c · 第四波 4B〕主会话裁「仍在拨号的 `--account-trust` / `--account-trust-zero`」随账号层上帧面（异源：题面那一句）。
+    "--account-trust",
+    "--account-trust-zero",
 ];
 
 /// 〔SR1a〕拨号那条路从此只放行这两条（题面「`STILL_DIALED` 缩到只剩真该拨号的」—— 点一次换号才发一次）。
-/// **异源**：抄自题面与 `STILL_DIALED` 那两行的理由，不从表派生。
-const STILL_DIALED_WANT: &[&str] = &["--account-trust", "--account-trust-zero"];
+/// 〔C4c · 第四波 4B〕**零条**：那两条随账号层上了帧面（题面 C4c「仍在拨号的 `--account-trust` / `--account-trust-zero`」）。
+/// **异源**：抄自题面，不从表派生。
+const STILL_DIALED_WANT: &[&str] = &[];
 
 fn sorted(v: impl IntoIterator<Item = String>) -> Vec<String> {
     let mut v: Vec<String> = v.into_iter().collect();
@@ -67,13 +71,16 @@ fn the_moved_table_matches_the_design_list_and_the_backend_registry() {
         "搬上帧面的子命令与题面那几条不相等"
     );
     // 〔U4b〕右边还要并上「生在帧面上」的那几条（没有被替掉的拨号子命令，见 `BORN_ON_FRAME`）。
+    // 〔C4c〕右列按**集合**比：信任预检两形合进一条帧命令（`accounts-trust` 在右列出现两次）。
+    let mut right = sorted(
+        MOVED
+            .iter()
+            .map(|(_, c)| c.to_string())
+            .chain(BORN_ON_FRAME.iter().map(|c| c.to_string())),
+    );
+    right.dedup();
     assert_eq!(
-        sorted(
-            MOVED
-                .iter()
-                .map(|(_, c)| c.to_string())
-                .chain(BORN_ON_FRAME.iter().map(|c| c.to_string()))
-        ),
+        right,
         backend_read_face_commands(),
         "monitor 这边以为搬上去的帧命令，与后端真登记的对不上"
     );
@@ -201,6 +208,17 @@ const CHANNELED: &[(&str, &str)] = &[
         "history-find",
         "后端出成品 `{total, hits}`；命中口径只住后端（`search_query` ＋ `search-core`），monitor 那份核头尾删了",
     ),
+    // 〔C4c · 第四波 4B〕账号层那两条（主会话裁：账号层读自己那台的 apikey 表、规则搬进 `acct-core`、agent 随请求带）。
+    (
+        "accounts-list",
+        "后端出成品 `{meta, accounts, notice}`，并上**那台机器自己**那份 apikey 表（`acct_core::apikey_routed_subset`）；\
+         monitor 那份行解析 / 降级说明 / 本机并表删了，界面经 `src/accounts.ts::fetchAccounts` 问、按形状收，本机与远端同一条路",
+    ),
+    (
+        "accounts-trust",
+        "后端出成品 `{trusted, known}`（CLI 那一臂同一个函数）；替掉最后两条逐次拨号的 `--account-trust*`，\
+         界面经 `src/accounts.ts::checkTrust` 问",
+    ),
 ];
 
 /// 〔C4b · 第四波 4B〕**帧面只读查询那一族之外**、同样改成「前端经通道直接问、后端出成品」的帧命令 ——
@@ -213,12 +231,42 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "`feature_face`（RM1b）那一族：后端应答就是整份 survey（成品），monitor 那条命令（`list_plugin_marketplaces`）\
          只在核「恰一行 ＋ 严格形状」—— 核验搬到唯一的消费者 `settings/plugins-section.ts::decodeSurvey`，命令与 `plugins.rs` 删了",
     ),
+    // 〔C4c · 第四波 4B〕`C4b.md §6.6` A 组第一批：后端已是成品、monitor 只在转的那一条。
+    (
+        "history-record",
+        "`BORN_ON_FRAME`（U4b）那一条：后端应答就是成品 `{present, root}`，monitor 那条命令（`probe_session_record`）\
+         只在转、核两格 —— 核验搬到唯一的消费者 `src/session-reads.ts::decodeRecord`（缺一格仍是契约坏了，不读成「不在」），\
+         命令与发送端（`frame_query::record`）删了",
+    ),
+    // 〔C4c · 第四波 4B〕`C4b.md §6.6` A 组第二批：`app.backend-policy`（S5 进主线后前置满足）。
+    (
+        "exit-policy-read",
+        "〔B2〕问那台机器「退出行为」那个值：monitor 那条命令（`backend_exit_policy`）只在拦空白名 ＋ 转 ＋ 原样交回，\
+         解释本来就在界面（`settings/backend-section.ts::readExitAnswer`）⇒ 设置页经通道直接问，命令删了。\
+         ⚠ monitor 自己**另有**一处问它（退出臂，见 [`ASKED_BY_MONITOR_ITSELF`]）—— 那不是替界面转",
+    ),
+    (
+        "exit-policy-set",
+        "〔B2〕交那台机器写那个值：同上一行（`set_backend_exit_policy` 删了），画的仍是后端写完读回来的那一份",
+    ),
     (
         "assets-catalog",
         "〔AS2 · 4B · V113〕资产目录：生来就走通道（没有过 monitor 那一条）—— 后端应答就是成品（整份目录 ＋「这台缺什么」的判定），\
          界面 `settings/assets-section.ts::decodeCatalog` 按形状收",
     ),
 ];
+
+/// 〔C4c · 第四波 4B〕**monitor 自己**（不是替界面转）也要问的帧命令 —— `(帧命令, 生产段里几处, 为什么)`。
+///
+/// 它们同时在 [`CHANNELED_ELSEWHERE`] 里（界面那一问已走通道）；下面那条判据里 monitor 生产段的字面量
+/// 从此 == `BORN_ON_FRAME` 那一次 ＋ 本表登记的处数（两向相等：多一处 = 又长出一个替界面转的发送点；
+/// 少一处 = monitor 那件自己的事不问了，这一行馊了）。
+const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[(
+    "exit-policy-read",
+    1,
+    "退出臂在决定那一刻现问一次（`backend_policy::kill_on_exit_now`，`设计/01 §3.3b ④`）：\
+     monitor 自己要不要跟着收那台后端 —— 它的答案不给界面",
+)];
 
 /// 后端 `inbound.rs` 生产段里登记的全部帧命令名（异源：从后端源码数，不读本文件的表）。
 fn backend_registered_commands() -> std::collections::BTreeSet<String> {
@@ -233,13 +281,11 @@ fn backend_registered_commands() -> std::collections::BTreeSet<String> {
 ///
 /// 〔C4b · 第四波 4B〕逐行重裁过（`调研/第四波记录/C4b.md §1`）：判准照旧是「业务解释只有一个家」，
 /// 正路是「解释挪进后端、直接出成品」。九行里三行做到了（挪进了 [`CHANNELED`]）；下面六行**逐条写清卡在哪**。
+/// 〔C4c · 第四波 4B〕主会话裁六行的去向：`accounts-list` 做了（挪进 [`CHANNELED`]）；`history-projects` /
+/// `history-sessions` 的设计写在 `调研/第四波记录/C4c.md §3`（「本机后端问远端后端」那一跳今天不存在，报备中）；
+/// `history-read` / `history-subagents` 等后端二次拆包；`history-tail` 归 CF2。⇒ 今天五行。
 const HELD_BACK: &[(&str, &str)] = &[
-    (
-        "accounts-list",
-        "行解析与降级说明挪得进后端，卡在**本机那一侧要并 apikey 表**：并的规则（`history::apikey_routed_subset`）\
-         与「这次起会话的是哪一家 agent」住 monitor 起会话那一侧；挪进后端 = 规则搬进 `acct-core`、agent 随请求带过去、\
-         本机后端读它自己那份凭据文件（V107：账号层住本机常驻后端）—— 是账号层的一次搬家，不是本拍能顺手做的",
-    ),
+    // 〔C4c · 第四波 4B〕`accounts-list` 那一行挪进了 [`CHANNELED`]（账号层搬家做了：后端出成品、并它自己那份表）。
     (
         "history-projects",
         "每一行要并**本机**的注解（星标 / 隐藏计数，`history-metadata.json` 住 monitor 数据目录）＋ 本机判活（`SessionMap`）\
@@ -250,20 +296,22 @@ const HELD_BACK: &[(&str, &str)] = &[
         "history-sessions",
         "同 `history-projects`：每一行并本机注解（星标 / 改名 / 隐藏，`remote_session_entry`）＋ 判活 —— 跨机 join",
     ),
+    // 〔C4c · 第四波 4B〕下面三行按主会话裁决重写：`history-read` / `history-subagents` **等后端二次拆包**，
+    //   `history-tail` 归 CF2（`subscribe`）。三行都仍有 monitor 侧发送点（判据照旧要求它们真有）。
     (
         "history-read",
-        "应答要过记录解析（`parse_line`，ts-rs 类型的来源）与可计行号（`LineNumberer`）—— 两样住 monitor crate，\
-         后端是独立 crate、不链接它 ⇒ 出成品 = 把 `messages.rs` / `parser.rs` 搬进两边共用的 crate（`00 §1.5.4` 的\
-         `backend-core`）。另两个发送点（实时 tab 的快照续点 · 按区间取正文）同样吃这两样",
+        "**等后端二次拆包**（主会话裁，4B 第六批）：应答要过记录解析（`parse_line`，ts-rs 类型的来源）与可计行号\
+         （`LineNumberer`），两样住 monitor crate；出成品要先把 `messages.rs` / `parser.rs` 搬进两边共用的 crate\
+         （`00 §1.5.4` 的 `backend-core`）—— 那一拆之前不迁，不在 TS 再写一份记录解析",
     ),
     (
         "history-subagents",
-        "列完候选还要挑一个（`choose_subagent`）、再读那份文件并过记录解析（`parse_line`）⇒ 同 `history-read`",
+        "**等后端二次拆包**：挑候选（`choose_subagent`）之后还要读那份文件、过记录解析（`parse_line`）⇒ 同 `history-read`",
     ),
     (
         "history-tail",
-        "**不是前端查询**：它只被实时 tab 的快照续点用（`ssh_source` 的流机器，monitor 内部），webview 从不问它 ——\
-         属于「流那半收口成 `subscribe`」（`设计/05 §8` 步 6），不属于 `call`",
+        "**归 CF2（`subscribe`）**：它不是前端查询，只被实时 tab 的快照续点用（`ssh_source` 的流机器）——\
+         会话流收口成 `subscribe`（`设计/05 §8` 步 6）时由 CF2 处置，不属于 `call`",
     ),
     // 〔C4a 与 SR1a 合并〕SR1a 同波搬上来的 `history-index` / `history-user-inputs` / `history-find` 三行
     // 〔C4b · 第四波 4B〕挪进了 [`CHANNELED`]（后端出成品）。
@@ -340,7 +388,8 @@ fn chan_ops_in(
 /// （C4a 立它时是 C1 那八条；SR1a 同波又搬上来三条 ⇒ 今天十一条。）
 #[test]
 fn the_eight_are_partitioned_into_channeled_and_held_back() {
-    let moved = sorted(MOVED.iter().map(|(_, c)| c.to_string()));
+    let mut moved = sorted(MOVED.iter().map(|(_, c)| c.to_string()));
+    moved.dedup(); // 〔C4c〕信任预检两形合进一条帧命令
     let mut both: Vec<String> = CHANNELED
         .iter()
         .chain(HELD_BACK)
@@ -390,6 +439,13 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
         "从后端 `inbound.rs` 只数到 {} 条帧命令 —— 抽取坏了",
         registered.len()
     );
+    for (op, _, why) in ASKED_BY_MONITOR_ITSELF {
+        assert!(!why.trim().is_empty(), "`{op}` 没写理由");
+        assert!(
+            CHANNELED_ELSEWHERE.iter().any(|(c, _)| c == op),
+            "`{op}` 登记成「monitor 自己也问」，却不在 `CHANNELED_ELSEWHERE` 里"
+        );
+    }
     for (op, why) in CHANNELED_ELSEWHERE {
         assert!(!why.trim().is_empty(), "`{op}` 没写理由");
         assert!(registered.contains(*op), "`{op}` 不是后端登记的帧命令");
@@ -397,20 +453,30 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
             !MOVED.iter().any(|(_, c)| c == op),
             "`{op}` 是 `C1` 那一族的，该登记在 `CHANNELED`"
         );
+        // 〔C4c〕生在帧面上的那几条在 `BORN_ON_FRAME` 里各有一次字面量（判据的一侧，不是发送点）；
+        //   monitor 自己也问的那几条另有登记的处数（`ASKED_BY_MONITOR_ITSELF`）。
+        let on_frame = BORN_ON_FRAME.iter().filter(|c| **c == *op).count();
+        let itself: usize = ASKED_BY_MONITOR_ITSELF
+            .iter()
+            .filter(|(c, _, _)| c == op)
+            .map(|(_, n, _)| *n)
+            .sum();
         assert_eq!(
             monitor_literal_count(op),
-            0,
+            on_frame + itself,
             "`{op}` 已迁到通道，monitor 生产段却还有它的字面量（又长出了一个发送点）"
         );
     }
     let mut still_sent_by_monitor: Vec<String> = Vec::new();
     for (op, _) in MOVED.iter().map(|(_, c)| (*c, ())) {
-        // `MOVED` 那一行自己就是一次字面量出现。
-        if monitor_literal_count(op) > 1 {
+        // `MOVED` 那几行自己就是字面量出现（〔C4c〕信任预检两形合进一条帧命令 ⇒ 那一条在表里出现两次）。
+        let in_moved = MOVED.iter().filter(|(_, c)| *c == op).count();
+        if monitor_literal_count(op) > in_moved {
             still_sent_by_monitor.push(op.to_string());
         }
     }
     still_sent_by_monitor.sort();
+    still_sent_by_monitor.dedup();
     assert_eq!(
         still_sent_by_monitor,
         sorted(HELD_BACK.iter().map(|(c, _)| c.to_string())),
@@ -441,38 +507,5 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
     assert_eq!(bad.len(), 1, "非字面量那一处没被认出来：{bad:?}");
 }
 
-/// 〔U4b · 第四波 · G1〕`history-record` 的应答解释：两个字段齐 ⇒ 原样；缺一个 ⇒ `Err`（**绝不**读成「不在」）。
-#[test]
-fn a_record_reply_missing_a_field_is_an_error_not_absent() {
-    use serde_json::json;
-    assert_eq!(
-        parse_record(
-            &Origin("h".into()),
-            &json!({"present": false, "root": "/r/projects"})
-        )
-        .unwrap(),
-        RecordProbe {
-            present: false,
-            root: "/r/projects".into()
-        }
-    );
-    assert_eq!(
-        parse_record(
-            &Origin("h".into()),
-            &json!({"present": true, "root": "/r/projects"})
-        )
-        .unwrap()
-        .present,
-        true
-    );
-    for bad in [
-        json!({"root": "/r"}),
-        json!({"present": false}),
-        json!({"present": "no", "root": "/r"}),
-    ] {
-        assert!(
-            parse_record(&Origin("h".into()), &bad).is_err(),
-            "{bad} 不许被读成一个答案"
-        );
-    }
-}
+// 〔C4c · 第四波 4B〕`history-record` 应答解释那条判据（`parse_record`〔散文墓碑〕）随发送端删了；同一条口径
+//   「缺一格是契约坏了，**绝不**读成『不在』」搬到 TS 那一侧 `session-reads.ts::decodeRecord`（`tests/session-reads.vitest.ts`）。

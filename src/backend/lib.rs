@@ -453,7 +453,10 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p3g-conn-family**（2026-09-25，第四波 NT1 合并那一拍）：子命令集不变、线上字节不变，**行为**变更 ——
 /// 长流在时传输走同一身份的第二条 SSH 连接 · 被远端回拒的连接不再摘 · 在黑洞上等回话被打断时摘掉那条 ·
 /// 传输用完的 sftp 会话停着复用（远端多一个空闲 sftp-server）。照 p1v 先例不加历史行。
-pub const BUILD_ID: &str = "p3g-conn-family";
+///
+/// ★★★ **p3h-accounts-product**（2026-09-25，第四波 C4c 合并那一拍）：子命令 ＋1 —— `accounts-trust`（两个命令面）。
+/// ＋ 行为：`accounts-list` 应答改成后端出成品 `{meta, accounts, notice}`、并上这台自己的 apikey 表（agent 随请求带）。
+pub const BUILD_ID: &str = "p3h-accounts-product";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -532,6 +535,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     //   不是第二份实现（理由整段在 `inbound::REGISTRY` 那一段）。
     "--accounts-list",
     "--accounts-sessions",
+    // 〔C4c · 第四波 4B〕帧命令 `accounts-trust` 自动派生出来的 CLI 面（与 `--account-trust` / `--account-trust-zero`
+    //   是同一个函数的两个宿主）。⚠ 逼出一次 `BUILD_ID` bump —— 本路不 bump，合并那一拍统一做。
+    "--accounts-trust",
     // ── P4d：控制面的 CLI 面。**它们不在这里各写一条实现** ——
     // 分派臂按 `cli_control::spec_for` 派生（见下面那条臂），实现落在 `inbound::REGISTRY`。
     // 登记在这张表里是因为 `is_query_mode` 与 `argv_table_guard` 都读它，

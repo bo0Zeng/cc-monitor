@@ -150,16 +150,7 @@ pub(crate) fn read_at(path: &Path) -> Value {
         Some(k) => (true, k.masked()),
         None => (false, String::new()),
     };
-    let rows: Vec<String> = doc
-        .as_ref()
-        .map(|d| {
-            store::read_accounts(d)
-                .into_iter()
-                .map(|e| e.id)
-                .filter(|id| crate::relay::segment_is_safe(id))
-                .collect()
-        })
-        .unwrap_or_default();
+    let rows: Vec<String> = doc.as_ref().map(rows_of).unwrap_or_default();
     json!({
         "configured": configured,
         "masked": masked,
@@ -169,6 +160,26 @@ pub(crate) fn read_at(path: &Path) -> Value {
         "problem": problem,
         "rows": rows,
     })
+}
+
+/// 「表里有哪几行」—— `store::read_accounts` 的 id，筛掉当不了路由段的（装表那一步同一个谓词）。
+/// `apikey-read` 的 `rows` 与 [`rows_at`] 共用这一份口径。
+fn rows_of(doc: &Map<String, Value>) -> Vec<String> {
+    store::read_accounts(doc)
+        .into_iter()
+        .map(|e| e.id)
+        .filter(|id| crate::relay::segment_is_safe(id))
+        .collect()
+}
+
+/// 〔C4c · 第四波 4B〕只要「表里有哪几行」（`accounts-list` 出成品时并表用）。**读不动 / 解析不了 ⇒ 零条**：
+/// 零条的正确行为就是「谁都不按 apikey 号算」，把一份坏文件变成一次清单失败，是拿一个能用的状态去换一条报错
+/// （与 monitor 那一侧 `history::apikey_rows_at` 同一条理由）。坏文件自己的那句话由 `apikey-read` 的 `problem` 说。
+pub(crate) fn rows_at(path: &Path) -> Vec<String> {
+    match read_doc(path) {
+        Ok(Some(doc)) => rows_of(&doc),
+        Ok(None) | Err(_) => Vec::new(),
+    }
 }
 
 /// 读一次、解析一次。`Ok(None)` = 文件不在（还没配）；空文件 = 空对象。
