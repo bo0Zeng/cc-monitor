@@ -48,9 +48,7 @@ use crate::ssh_source::RemoteConfig;
 /// 它交回的是**比对的事实**（读回长度 · 首个差异的偏移，读不回 ⇒ `None`）；判不判通过、话怎么说仍住这里。
 pub fn verify_readback(path: &str, expected_len: u64, readback: Readback) -> Result<(), String> {
     let Some((got_len, first_diff)) = readback else {
-        return Err(format!(
-            "上传后读不回 {path}——无法确认写对了。已中止，未写入版本标记（下次会重新部署）。"
-        ));
+        return Err(format!("上传后读不回 {path}，无法确认写对了。"));
     };
     if got_len == expected_len {
         let Some(at) = first_diff else {
@@ -58,13 +56,11 @@ pub fn verify_readback(path: &str, expected_len: u64, readback: Readback) -> Res
         };
         return Err(format!(
             "上传后校验失败：{path} 长度相同（{expected_len} 字节）但内容不同，首个差异在第 {at} 字节。\
-             这类损坏（传输截断后补齐 / 编码变形）只比长度是查不出来的。\
-             已中止，未写入版本标记（下次会重新部署）。"
+             这类损坏（传输截断后补齐 / 编码变形）只比长度是查不出来的。"
         ));
     }
     Err(format!(
-        "上传后校验失败：{path} 长度不匹配（期望 {expected_len} 字节，读回 {got_len} 字节）。\
-         已中止，未写入版本标记（下次会重新部署）。"
+        "上传后校验失败：{path} 长度不匹配（期望 {expected_len} 字节，读回 {got_len} 字节）。"
     ))
 }
 
@@ -84,6 +80,10 @@ pub fn verify_readback(path: &str, expected_len: u64, readback: Readback) -> Res
 /// 下次 `deploy_decision` 判「已是最新，跳过」→ **坏二进制永久驻留**，
 /// 而用户看到的是部署成功。标记写在校验之后，就断了这条链。
 /// 〔SR1b〕上传与读回都经本机后端（`RemoteFs::put`，`verify` 那一格）；判定照旧是 [`verify_readback`]。
+///
+/// 〔DP1 · 第四波〕**读回不对 ⇒ 当场删掉传坏的那一份。** 从前断这条链靠「标记写在校验之后」；后端那条路的旁挂标记
+/// 退役之后（身份读字节自己的戳），一份传坏的字节若恰好还带着对的戳，下次会被判「已是这一版」⇒ 坏字节永久驻留。
+/// 删掉它，下次就是「落点没有 ⇒ 装」。删不掉也要说出来（那一份还在）。
 pub(crate) async fn upload_verified(
     fs: &RemoteFs,
     remote_path: &str,
@@ -91,7 +91,13 @@ pub(crate) async fn upload_verified(
     mode: u32,
 ) -> Result<(), String> {
     let back = fs.put(remote_path, bytes, mode, true).await?;
-    verify_readback(remote_path, bytes.len() as u64, back)
+    let Err(bad) = verify_readback(remote_path, bytes.len() as u64, back) else {
+        return Ok(());
+    };
+    Err(match fs.remove(remote_path).await {
+        Ok(_) => format!("{bad}已删掉传坏的这一份，下次连上会重新装。"),
+        Err(e) => format!("{bad}传坏的这一份没删掉：{e}"),
+    })
 }
 
 /// 版本标记那一类小文件：读回来的字节；读不出 ⇒ `None`（标记不在，下一步就是部署）。
@@ -234,11 +240,10 @@ pub enum DeployAction {
 
 /// 比对远端版本标记与期望 build_id，决定是否（重）部署。
 ///
-/// ⚠ **这个函数只回答「版本对不对」一件事**，它的入参里根本没有落点那个文件
-/// ——「那个文件在不在」由 [`TargetBinary`] 单独取样、在 [`deploy_decision_at`] 里
-/// 与本判定合并。backend 那条路**只许走 `deploy_decision_at`**（见它的头注）；
-/// 本函数留给 `acct_iso_deploy` 那条按目录取标记的路，那里标记与内容同一次上传、
-/// 且落点是目录不是单个文件。
+/// ⚠ **这个函数只回答「版本对不对」一件事**，入参是一份旁挂的版本标记。
+/// 〔DP1 · 第四波〕backend 那条路**不走它**：后端的身份读那份字节自己里的身份戳（[`identity_decision`]，
+/// `设计/96 §7.2.1`），旁挂标记在那条路上退役了。本函数只留给 `acct_iso_deploy` 那条按目录取标记的路 ——
+/// 那里是一批脚本（没有身份戳可读），标记与内容同一次上传，且落点是目录不是单个文件。
 pub fn deploy_decision(remote_build_id: Option<&str>, expected: &str) -> DeployAction {
     match remote_build_id {
         None => DeployAction::Deploy("远端无 backend / 无版本标记".to_string()),
@@ -249,7 +254,7 @@ pub fn deploy_decision(remote_build_id: Option<&str>, expected: &str) -> DeployA
     }
 }
 
-/// 部署落点那个文件**本身**的取样结论（`deploy_decision_at` 的第二个输入）。
+/// 部署落点那个文件**本身**的取样结论（〔DP1〕[`remote_identity`] 的第一步：没有 / 0 字节就不必再问它是谁）。
 ///
 /// 与 [`interpret_profile_read`] 同一条纪律：**「问不出来」不许读成上面任何一个确定答案**
 /// ——把无权限/传输失败当成「不在」会变成每次连接都重传（把版本门控拆了），
@@ -269,65 +274,139 @@ pub enum TargetBinary {
     Unknown,
 }
 
-/// 版本这一侧的事实用一句话说出来（给 `Deploy` 的人读原因用）。
-/// 单独抽出来是因为**两侧的事实要各自有各自的话**：落点没文件时，
-/// 版本可能是对的、不符的、或压根没标记，三种都要说得出来。
-fn marker_phrase(remote_build_id: Option<&str>, expected: &str) -> String {
-    match remote_build_id {
-        None => "且无版本标记".to_string(),
-        Some(r) if r.trim() != expected => {
-            format!("版本标记也不符（远端 {} ≠ 期望 {expected}）", r.trim())
+/// 〔DP1 · 第四波〕**那台机器上落点那一份后端是谁** —— `设计/96 §7.2.4` 那张四态表 ＋ 0 字节那一格。
+///
+/// 〔墓碑 —— 从前这一问读的是同目录一份旁挂的版本标记文件（目录级，路径里不带二进制名），再与落点那个文件在不在
+///  合起来判（`K-W4 §0c`）：标记是**标签不是指纹**，二进制被换成别的东西而标记照旧，就会判「已是这一版」。
+///  `96 §7.2.1`：「读它字节里那段身份戳，不跑它」。〕
+/// 四态**不许合并**：没装 ⇒ 装；问不出 / 问出多个 / 读不到 ⇒ **显式失败、不覆盖**（「判不了」要作为结论说出来）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RemoteIdentity {
+    /// 落点没有那个文件（没装）。
+    Missing,
+    /// 落点那个文件是 0 字节 —— 里面没有任何可保护的东西（真机截断事故就是这一形），按「没装」装。
+    Empty,
+    /// 那份字节里恰好一个身份戳。
+    Stamp(String),
+    /// 有文件、字节里一个身份戳都没有（不是我们编的 / 太旧 / 被改过）。
+    NoStamp,
+    /// 问出不止一个身份（身份不唯一）。
+    Ambiguous(Vec<String>),
+    /// 读不到（权限 / 链路 / 那台上没有能用的只读扫描手段）—— **判不了**。
+    Unreadable(String),
+}
+
+/// 在目标机器上扫身份戳的那一条命令（`96 §7.2.1` 档 A：目标机器**自己的**只读工具，一次 exec，常数字节回传）。
+///
+/// 正则与 `tests/scripts/re-embed.sh::bytes_id` 同一条（界标之间是 `[[:alnum:]_.-]`，这里要**至少一个字符** ——
+/// 两个界标在 `.rodata` 里挨着就是空串那一形，`build.rs::bytes_build_id` 也不收它）。
+/// 界标**不写字面量**，只从 `build.rs` 交进来的 env 取（闭集唯一住址在后端源码）。**纯函数**。
+pub(crate) fn stamp_scan_cmd(path: &str) -> String {
+    let ere = |s: &str| -> String {
+        s.chars()
+            .map(|c| {
+                if "\\^$.|?*+()[]{}".contains(c) {
+                    format!("\\{c}")
+                } else {
+                    c.to_string()
+                }
+            })
+            .collect()
+    };
+    let pattern = format!(
+        "{}[[:alnum:]_.-]+{}",
+        ere(env!("BACKEND_STAMP_OPEN")),
+        ere(env!("BACKEND_STAMP_CLOSE"))
+    );
+    format!(
+        "LC_ALL=C grep -aoE {} -- {}",
+        crate::ssh_source::shell_quote(&pattern),
+        crate::ssh_source::shell_quote(path)
+    )
+}
+
+/// 那一条扫描的收全结果 → [`RemoteIdentity`]（落点在、不是 0 字节时才问）。**纯函数**。
+///
+/// `grep` 的退出码：0 = 扫到了 · 1 = 一个都没有 · 其余（2 = 读不了 / 链路断了没给退出码）= 判不了。
+pub(crate) fn interpret_stamp_scan(
+    exit: Option<u32>,
+    stdout: &str,
+    stderr: &str,
+) -> RemoteIdentity {
+    let (open, close) = (env!("BACKEND_STAMP_OPEN"), env!("BACKEND_STAMP_CLOSE"));
+    match exit {
+        Some(0) => {
+            let mut ids: Vec<String> = stdout
+                .lines()
+                .filter_map(|l| l.trim().strip_prefix(open)?.strip_suffix(close))
+                .filter(|id| !id.is_empty())
+                .map(str::to_string)
+                .collect();
+            ids.sort();
+            ids.dedup();
+            match ids.len() {
+                0 => RemoteIdentity::NoStamp,
+                1 => RemoteIdentity::Stamp(ids.remove(0)),
+                _ => RemoteIdentity::Ambiguous(ids),
+            }
         }
-        Some(_) => format!("而版本标记说它已是 {expected}"),
+        Some(1) => RemoteIdentity::NoStamp,
+        // 退出码不进这句话（`Some(..)` / `None` 是实现的形状）：没有错误输出时只说「没答完」。
+        _ => RemoteIdentity::Unreadable(match stderr.trim() {
+            "" => "那一问没有答完".to_string(),
+            said => said.to_string(),
+        }),
     }
 }
 
-/// 部署决策 —— **两个各自独立的事实合起来判**：`.build_id` 说的「版本对不对」
-/// 与落点那个文件的「在不在」。
+/// 要不要（重）部署 —— **对照物是手上那份字节自报的身份**（`96 §7.2.3`），不是源码常量。**纯函数**。
 ///
-/// ## 为什么不能只看 `.build_id`（K-W4 `§0c`）
-///
-/// `.build_id` 是 **目录级** 的（[`marker_path`] 把它放在二进制的同目录，
-/// 路径里不带二进制名），而 [`deploy_decision`] **只读它、从不 stat 二进制本身**。
-/// 于是那一个读数今天同时被当成两件事用：「版本对不对」**和**「那个文件在不在」。
-/// 已部署且 build 未变的机器上，二进制被删 / 被截成 0 字节 / `backendPath` 被改到
-/// 同目录另一个文件名，标记照旧匹配 ⇒ 判 `Skip` ⇒ 新的字节**永远不会上传**，
-/// 而 exec 走的是那个不存在的路径。
-///
-/// ⚠ **那时用户看到什么，逐字**（`ssh_source.rs` 的连接面）：
-/// 「SSH 连上了，但后端在超时内未回 hello（未部署 / 路径错 / 启动失败？）。」
-/// —— 一个**三选一的猜测**。★ 病灶正在这里：**手里握着一条 SFTP 会话、能一问就知道
-/// 那个文件在不在的这一层，什么都没说**；而要去猜的是**够不着那个事实**的那一层。
-/// 本函数买的就是让前一层把它知道的那半句说出来。
-///
-/// ⚠ **本条没实测过的部分**：上面那句是从源码摘的逐字串（住址在 `ssh_source.rs` 里
-/// `未回 hello` 那一处），**不是**真机跑出来的截图 —— 本轮不碰真远端。
-///
-/// 本模块此前只断掉了这条链的**上传那一段**（[`upload_verified`] 的头注：
-/// 「标记写在校验之后，就断了这条链」）—— 那管的是「我们自己传坏了」，
-/// **管不到部署成功之后那个文件再出事**。这里补的是后半段。
-///
-/// ## 边界：不是「每次都重传」
-/// 只有落点**明确**没文件 / 是 0 字节才越过版本门控。`Present` 与 `Unknown`
-/// 一律交回 [`deploy_decision`]，Batch8/9 那套 stale 防御一个字节没动。
-pub fn deploy_decision_at(
-    remote_build_id: Option<&str>,
+/// `Err` = 显式失败、**一个字节都不写**（出路交给用户：机器页「卸载后端」删掉那个文件，就是明确授权覆盖）。
+pub(crate) fn identity_decision(
+    id: &RemoteIdentity,
     expected: &str,
-    target: TargetBinary,
-) -> DeployAction {
-    match target {
-        TargetBinary::Missing => DeployAction::Deploy(format!(
-            "落点没有后端二进制（{}）",
-            marker_phrase(remote_build_id, expected)
+    machine: &str,
+    path: &str,
+) -> Result<DeployAction, String> {
+    let hands_off = "没有覆盖它。要换成这一版：先在机器页点「卸载后端」删掉它，再部署。";
+    match id {
+        RemoteIdentity::Missing => Ok(DeployAction::Deploy("那台上还没有后端".to_string())),
+        RemoteIdentity::Empty => Ok(DeployAction::Deploy("那台上那一份是 0 字节".to_string())),
+        RemoteIdentity::Stamp(s) if s == expected => Ok(DeployAction::Skip),
+        RemoteIdentity::Stamp(s) => Ok(DeployAction::Deploy(format!(
+            "那台上是 {s}，这一版是 {expected}"
+        ))),
+        RemoteIdentity::NoStamp => Err(format!(
+            "{machine} 的 {path} 已经有一个文件，它不说自己是哪一版后端，{hands_off}"
         )),
-        TargetBinary::Empty => DeployAction::Deploy(format!(
-            "落点的后端二进制是 0 字节（{}）",
-            marker_phrase(remote_build_id, expected)
+        RemoteIdentity::Ambiguous(ids) => Err(format!(
+            "{machine} 的 {path} 自报了不止一个版本（{}），{hands_off}",
+            ids.join("、")
         )),
-        // 「在」与「问不出来」都退回版本门控 —— 后者刻意保守：宁可与今天同答，
-        // 也不拿一次 stat 失败换一次全量重传。
-        TargetBinary::Present | TargetBinary::Unknown => deploy_decision(remote_build_id, expected),
+        RemoteIdentity::Unreadable(why) => Err(format!(
+            "判不了 {machine} 的 {path} 是哪一版后端，没有动它：{why}"
+        )),
     }
+}
+
+/// 〔DP1〕问那台落点那一份是谁：先 stat（没有 / 0 字节就不必再问），在就扫它字节里的身份戳（一次 exec，不跑它）。
+async fn remote_identity(
+    cfg: &RemoteConfig,
+    fs: &RemoteFs,
+    path: &str,
+) -> Result<RemoteIdentity, String> {
+    Ok(match probe_target_binary(fs, path).await? {
+        TargetBinary::Missing => RemoteIdentity::Missing,
+        TargetBinary::Empty => RemoteIdentity::Empty,
+        TargetBinary::Present | TargetBinary::Unknown => {
+            match crate::ssh_source::connect_and_exec_capture(cfg, &stamp_scan_cmd(path), None)
+                .await
+            {
+                Ok(r) => interpret_stamp_scan(r.exit_status, &r.stdout, &r.stderr),
+                Err(e) => RemoteIdentity::Unreadable(e),
+            }
+        }
+    })
 }
 
 /// 远端路径的父目录（远端恒为 POSIX `/` 分隔，不用 std::path）。
@@ -336,19 +415,6 @@ fn remote_parent(path: &str) -> &str {
         Some(0) => "/",
         Some(i) => &path[..i],
         None => ".",
-    }
-}
-
-/// 版本标记文件路径：backend 二进制同目录下 `.build_id`。
-///
-/// ⚠ **目录级** —— 路径里不带二进制名。所以它认不出「同目录里换了个文件名」，
-/// 那半个事实由 [`probe_target_binary`] 单独取样（K-W4 `§0c`）。
-fn marker_path(backend_path: &str) -> String {
-    let dir = remote_parent(backend_path);
-    if dir == "/" {
-        "/.build_id".to_string()
-    } else {
-        format!("{dir}/.build_id")
     }
 }
 
@@ -386,7 +452,7 @@ pub(crate) fn interpret_target_probe(
     }
 }
 
-/// [`deploy_decision_at`] 的异步取样：**只问落点那个文件在不在 / 有没有字节**。
+/// [`remote_identity`] 的第一步取样：**只问落点那个文件在不在 / 有没有字节**。
 ///
 /// 不 `read` 它 —— 那是 2.3 MB 的二进制，为判存在把它拉回来是白花带宽；
 /// `metadata` 一次往返就够。取样与判定分开（纯函数可单测）是本模块既有的形状，
@@ -483,14 +549,9 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, Deplo
     //   `~/.cc-monitor/bin/` 下 ⇒ 后端围栏拒，这里原话往上报 —— 调用方对 Err 只 warn，手动部署的后端照旧能连）。
     let fs = RemoteFs::open(cfg).await?;
 
-    let marker = marker_path(&cfg.backend_path);
-    let remote_id = read_marker(&fs, &marker)
-        .await?
-        .map(|b| String::from_utf8_lossy(&b).trim().to_string());
-    // K-W4 §0c：标记是目录级的，光凭它判 Skip 会在「标记还在、二进制没了」时静默跳过。
-    let target = probe_target_binary(&fs, &cfg.backend_path).await?;
-
-    match deploy_decision_at(remote_id.as_deref(), bin.build_id, target) {
+    // 〔DP1〕那台上那一份是谁：读它字节里的身份戳（不跑它）；判不了 / 它不肯说 ⇒ 显式失败、一个字节都不写。
+    let id = remote_identity(cfg, &fs, &cfg.backend_path).await?;
+    match identity_decision(&id, bin.build_id, &cfg.origin_label(), &cfg.backend_path)? {
         DeployAction::Skip => {
             tracing::info!(
                 "远端 [{}] backend 已是 {}，跳过部署",
@@ -506,7 +567,6 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, Deplo
             );
             fs.mkdirs(remote_parent(&cfg.backend_path)).await?;
             upload_verified(&fs, &cfg.backend_path, bin.bytes, 0o700).await?;
-            put_marker(&fs, &marker, bin.build_id.as_bytes(), 0o600).await?;
             tracing::info!(
                 "远端 [{}] backend 部署完成：{}",
                 cfg.origin_label(),
@@ -600,14 +660,9 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
     };
     // 〔SR1b〕经本机常驻后端那条 `files` 链路；`path` 不在 `~/.cc-monitor/bin/` 下 ⇒ 后端围栏拒、原话带回。
     let fs = RemoteFs::open(&cfg).await?;
-    let marker = marker_path(&path);
-    let remote_id = read_marker(&fs, &marker)
-        .await?
-        .map(|b| String::from_utf8_lossy(&b).trim().to_string());
-    // K-W4 §0c：手动「安装后端」按钮此前也只看标记 —— 落点文件被删/截断时，
-    // 它会对着一个不存在的文件回「已是最新，无需重装」。同一条病，同一处修法。
-    let target = probe_target_binary(&fs, &path).await?;
-    let backend_msg = match deploy_decision_at(remote_id.as_deref(), bin.build_id, target) {
+    // 〔DP1〕与自动部署同一条判定：读那台上那一份字节自报的身份，不读旁挂标记。
+    let id = remote_identity(&cfg, &fs, &path).await?;
+    let backend_msg = match identity_decision(&id, bin.build_id, &cfg.origin_label(), &path)? {
         DeployAction::Skip => format!(
             "远端已是最新后端（{}，{}）：{path}，无需重装。",
             bin.build_id, bin.machine
@@ -615,7 +670,6 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
         DeployAction::Deploy(reason) => {
             fs.mkdirs(remote_parent(&path)).await?;
             upload_verified(&fs, &path, bin.bytes, 0o700).await?;
-            put_marker(&fs, &marker, bin.build_id.as_bytes(), 0o600).await?;
             tracing::info!(
                 "远端 [{}] 手动部署后端完成：{}",
                 cfg.origin_label(),
@@ -641,7 +695,8 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
     Ok(format!("{backend_msg}{entry}"))
 }
 
-/// 卸载远端后端（设置面板「卸载后端」按钮）：删后端二进制 + 同目录 `.build_id`。
+/// 卸载远端后端（设置面板「卸载后端」按钮）：删后端二进制。
+/// 〔DP1 · 第四波〕旁挂的版本标记退役了（身份读字节自己的戳）⇒ 只删二进制；从前留在那台上的旧标记不读、不写、不删。
 /// [`is_safe_remote_backend_path`] 守卫。只读铁律豁免（SS-G）：用户显式触发的删。
 /// 注意：若该机器仍启用，自动部署会在下次连接重新装回——提示见返回消息。
 #[tauri::command]
@@ -657,24 +712,18 @@ pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, Strin
     }
     // 〔SR1b〕经本机常驻后端那条 `files` 链路删（写只许 `~/.cc-monitor/bin/` 与暂存区 —— 围栏拒 ⇒ 原话带回）。
     let fs = RemoteFs::open(&cfg).await?;
-    let marker = marker_path(&path);
-    let mut removed = Vec::new();
-    for f in [path.clone(), marker.clone()] {
-        if fs.remove(&f).await? {
-            removed.push(f);
-        }
-    }
-    tracing::info!("远端 [{}] 卸载后端：删除 {removed:?}", cfg.origin_label());
-    if removed.is_empty() {
+    let removed = fs.remove(&path).await?;
+    tracing::info!(
+        "远端 [{}] 卸载后端：{path} {}",
+        cfg.origin_label(),
+        if removed { "已删" } else { "本来就不在" }
+    );
+    if removed {
         Ok(format!(
-            "没有可删的后端文件（{path} 及其 .build_id 都不在，可能已卸载）。"
+            "已删除 {path}。若这台机器仍勾选「启用」，下次连接时会自动装回；彻底移除请取消启用或删除这台机器。"
         ))
     } else {
-        Ok(format!(
-            "已删除 {} 个文件：{}。注意：若本机器仍勾选「启用」，自动部署会在下次连接时把后端装回——彻底移除请取消该机器启用 / 删除该机器后重启 monitor。",
-            removed.len(),
-            removed.join("、")
-        ))
+        Ok(format!("{path} 不在，可能已经卸载过了。"))
     }
 }
 
