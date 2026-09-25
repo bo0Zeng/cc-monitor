@@ -15224,6 +15224,256 @@
       "kind": "title",
       "zh": "ccm 命令入口",
       "args": []
+    },
+    "settingsPanel.info.remote": {
+      "kind": "body",
+      "zh": "「远端 (SSH)」：monitor 经 SSH 连到远端主机，把那台机器上的会话也列进来。远端会话和本机会话显示方式相同。\n\n默认关闭，这时一切走本地，不受影响。启用或修改任意远端设置后，需重启 monitor 才生效。配置不完整时，比如缺主机、用户或后端路径，后端自动回退本地模式。",
+      "args": []
+    },
+    "rsLocalBackendHost.stop.notRunning": {
+      "kind": "body",
+      "zh": "本机后端本来就没在跑",
+      "args": []
+    },
+    "rsLocalBackendHost.stop.local": {
+      "kind": "body",
+      "zh": "本机后端已停止",
+      "args": []
+    },
+    "rsLocalBackendHost.lock.poisoned": {
+      "kind": "error",
+      "zh": "内部状态坏了：{e}",
+      "args": ["e"]
+    },
+    "rsLocalBackendHost.local.noBuildId": {
+      "kind": "error",
+      "zh": "这一份本机后端说不出自己是哪一版，没有拿它来起",
+      "args": []
+    },
+    "rsLocalBackendHost.local.machine": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
+    },
+    "rsLocalBackendHost.signal.failed": {
+      "kind": "error",
+      "zh": "结束进程 {pid} 的命令退出码 {st}",
+      "args": ["pid", "st"]
+    },
+    "rsLocalBackendHost.signal.spawnFailed": {
+      "kind": "error",
+      "zh": "没能执行结束进程的命令：{e}",
+      "args": ["e"]
+    },
+    "rsLocalBackendHost.kill.unsupported": {
+      "kind": "error",
+      "zh": "这个平台上后端不能常驻，也就没有上次留下的后端",
+      "args": []
+    },
+    "rsLocalBackendHost.kill.notOurs": {
+      "kind": "error",
+      "zh": "进程 {pid} 现在跑的是 {exe}，不是 cc-monitor 的后端，不动它（进程号被复用了）",
+      "args": ["pid", "exe"]
+    },
+    "rsLocalBackendHost.kill.exeUnreadable": {
+      "kind": "error",
+      "zh": "读不到 /proc/{pid}/exe（{e}），它可能已经不在了",
+      "args": ["pid", "e"]
+    },
+    "rsLocalBackendHost.kill.noExe": {
+      "kind": "error",
+      "zh": "不知道进程 {pid} 该是哪个程序（那份记录缺了一行），不动它",
+      "args": ["pid"]
+    },
+    "rsLocalBackendHost.kill.noPid": {
+      "kind": "error",
+      "zh": "不知道它的进程号（起它的那次 cc-monitor 没能记下来）",
+      "args": []
+    },
+    "rsLocalBackendHost.stop.adoptedKillFailed": {
+      "kind": "error",
+      "zh": "已断开本机后端，但没能结束它（pid={pid}：{e}），请手动结束这个进程。",
+      "args": ["pid", "e"]
+    },
+    "rsLocalBackendHost.stop.adopted": {
+      "kind": "body",
+      "zh": "上次留下的本机后端已停（pid={pid}）",
+      "args": ["pid"]
+    },
+    "rsLocalBackendHost.stop.detached": {
+      "kind": "body",
+      "zh": "本机后端已停（常驻，pid={pid}）",
+      "args": ["pid"]
+    },
+    "rsLocalBackendHost.adopt.waited": {
+      "kind": "error",
+      "zh": "{last}（等了 {tries}×{interval}ms 还是这样）",
+      "args": ["last", "tries", "interval"]
+    },
+    "rsLocalBackendHost.adopt.notYet": {
+      "kind": "error",
+      "zh": "端口 {port} 上还没有程序在监听",
+      "args": ["port"]
+    },
+    "rsLocalBackendHost.adopt.nobody": {
+      "kind": "error",
+      "zh": "端口上没有程序在监听",
+      "args": []
+    },
+    "rsLocalBackendHost.afterSpawn.neverListened": {
+      "kind": "error",
+      "zh": "端口 {port} 上一直没有程序在监听，多半是后端起来就崩了",
+      "args": ["port"]
+    },
+    "rsLocalBackendHost.start.unreachableKilled": {
+      "kind": "error",
+      "zh": "后端起来了却连不上它（{e}），已把它停掉",
+      "args": ["e"]
+    },
+    "rsLocalBackendHost.start.refused": {
+      "kind": "error",
+      "zh": "端口 {port} 上已经有程序，但接不上它：{why}。不会再起第二个，也不会换端口。要重来，先把那个进程停掉",
+      "args": ["port", "why"]
+    },
+    "rsLocalBackendHost.start.refusedNotice": {
+      "kind": "error",
+      "zh": "本机后端没有启动：端口 {port} 上已有的后端接不上（{why}）。下一步：结束那个进程再重开 cc-monitor，它的进程号记在 {pidPath}。",
+      "args": ["port", "why", "pidPath"]
+    },
+    "rsLocalBackendHost.start.noToken": {
+      "kind": "error",
+      "zh": "拿不到连接用的钥匙（{e}），没有起后端",
+      "args": ["e"]
+    },
+    "rsLocalBackendHost.stream.lost": {
+      "kind": "error",
+      "zh": "和本机后端的连接断了",
+      "args": []
+    },
+    "rsLocalBackendHost.stream.asyncFailed": {
+      "kind": "error",
+      "zh": "连接接入异步运行时失败：{e}",
+      "args": ["e"]
+    },
+    "rsLocalBackendHost.stream.nonblockingFailed": {
+      "kind": "error",
+      "zh": "连接转成非阻塞失败：{e}",
+      "args": ["e"]
+    },
+    "rsLocalBackendHost.stream.notHello": {
+      "kind": "error",
+      "zh": "后端的第一行应答不对，没有登记这条连接",
+      "args": []
+    },
+    "rsLocalBackendHost.stream.badFirstLine": {
+      "kind": "error",
+      "zh": "后端的第一行应答解析不出来",
+      "args": []
+    },
+    "rsLocalBackendHost.spawn.unsupported": {
+      "kind": "error",
+      "zh": "这个平台上后端不能脱离 cc-monitor 常驻（{bin}）",
+      "args": ["bin"]
+    },
+    "rsLocalBackendHost.spawn.failed": {
+      "kind": "error",
+      "zh": "起本机后端失败（{bin}）：{e}",
+      "args": ["bin", "e"]
+    },
+    "rsLocalBackendHost.attach.unreadable": {
+      "kind": "error",
+      "zh": "后端的应答看不懂：{line}",
+      "args": ["line"]
+    },
+    "rsLocalBackendHost.attach.refused": {
+      "kind": "error",
+      "zh": "后端拒绝了连接：{reason}",
+      "args": ["reason"]
+    },
+    "rsLocalBackendHost.attach.notJson": {
+      "kind": "error",
+      "zh": "后端的应答不是 JSON（{e}）：{line}",
+      "args": ["e", "line"]
+    },
+    "rsLocalBackendHost.attach.sendFailed": {
+      "kind": "error",
+      "zh": "连接后端的请求没发出去：{e}",
+      "args": ["e"]
+    },
+    "rsLocalBackendHost.handshake.readFailed": {
+      "kind": "error",
+      "zh": "读对方的应答失败：{e}",
+      "args": ["e"]
+    },
+    "rsLocalBackendHost.handshake.tooLong": {
+      "kind": "error",
+      "zh": "对方回的一行超过 {cap} 字节还没换行，不再读",
+      "args": ["cap"]
+    },
+    "rsLocalBackendHost.handshake.notUtf8": {
+      "kind": "error",
+      "zh": "对方回的这一行不是 UTF-8：{e}",
+      "args": ["e"]
+    },
+    "rsLocalBackendHost.handshake.closed": {
+      "kind": "error",
+      "zh": "对方关了连接",
+      "args": []
+    },
+    "rsLocalBackendHost.probe.noAnswer": {
+      "kind": "error",
+      "zh": "端口 {port} 能连上，但对方没有应答：{e}",
+      "args": ["port", "e"]
+    },
+    "rsLocalBackendHost.probe.noDeadline": {
+      "kind": "error",
+      "zh": "连不上端口上的后端（{e}）",
+      "args": ["e"]
+    },
+    "rsLocalBackendHost.hello.homeMismatch": {
+      "kind": "error",
+      "zh": "端口上的后端看的是 {theirs}，而当前 cc-monitor 看的是 {ours}",
+      "args": ["theirs", "ours"]
+    },
+    "rsLocalBackendHost.hello.buildMismatch": {
+      "kind": "error",
+      "zh": "端口上的后端版本与当前 cc-monitor 不一致：那边是 {theirs}，这边要 {ours}",
+      "args": ["theirs", "ours"]
+    },
+    "rsLocalBackendHost.hello.notBackend": {
+      "kind": "error",
+      "zh": "端口上的程序答得不像后端",
+      "args": []
+    },
+    "rsLocalBackendHost.hello.notBackendLine": {
+      "kind": "error",
+      "zh": "端口上的程序答的第一行不是后端的应答（{bytes} 字节）",
+      "args": ["bytes"]
+    },
+    "rsLocalBackendHost.fs.writeFailed": {
+      "kind": "error",
+      "zh": "写 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "rsLocalBackendHost.fs.mkdirFailed": {
+      "kind": "error",
+      "zh": "建目录 {dir} 失败：{e}",
+      "args": ["dir", "e"]
+    },
+    "rsLocalBackendHost.fs.createFailed": {
+      "kind": "error",
+      "zh": "建 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "rsLocalBackendHost.token.empty": {
+      "kind": "error",
+      "zh": "{path} 在盘上，但内容是空的，本机后端起不来也接不上。下一步：删掉这个文件再起一次（rm {path}）；还在跑的旧后端删了之后也接不上，一并停掉它",
+      "args": ["path"]
+    },
+    "rsLocalBackendHost.fs.readFailed": {
+      "kind": "error",
+      "zh": "读 {path} 失败：{e}",
+      "args": ["path", "e"]
     }
   }
 }

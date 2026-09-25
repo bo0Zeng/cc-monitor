@@ -163,11 +163,9 @@ const TERMINAL_INTEGRATION_INFO_TEXT = (): string =>
 const APPEARANCE_INFO_TEXT = (): string =>
   copyText("settingsPanel.info.appearance");
 
-const REMOTE_INFO_TEXT =
-  "「远端 (SSH)」：monitor 经 SSH 连到远端主机，把那台机器上的会话也列进来。" +
-  "远端会话和本机会话显示方式相同。\n\n" +
-  "关闭（默认）时一切走本地，不受影响。启用 / 修改任意远端设置后需重启 monitor 才生效。" +
-  "配置不完整（缺 host / user / backendPath）时后端自动回退本地模式。";
+// 〔CP2b〕TL1 那一句改过之后这一段整段进表；做成取值器（模块顶层不留取文口调用）。
+const REMOTE_INFO_TEXT = (): string =>
+  copyText("settingsPanel.info.remote");
 
 // 🔴 `70 §10.3`/`§10.2` 改名 ＋ `§2.4` 纪律：两块的名字跟着改（「诊断」→「日志」·
 // 「数据存储」→「数据位置」），并且把 `tracing` 这个**内部标识符**拿掉
@@ -184,7 +182,7 @@ const APP_PAGE_INFO_TEXT = (): string =>
   copyText("settingsPanel.info.appPage", { behavior: BEHAVIOR_INFO_TEXT(), keybindings: KEYBINDINGS_INFO_TEXT() });
 // S2：机器页的文案 = 怎么连上远端 + 这台机上的启动器集成。
 const MACHINES_PAGE_INFO_TEXT = (): string =>
-  copyText("settingsPanel.info.machinesPage", { remote: REMOTE_INFO_TEXT, aliases: TERMINAL_INTEGRATION_INFO_TEXT() });
+  copyText("settingsPanel.info.machinesPage", { remote: REMOTE_INFO_TEXT(), aliases: TERMINAL_INTEGRATION_INFO_TEXT() });
 // S2 删除：原 `REMOTE_GROUP_INFO_TEXT` 描述的是那个「留空占位」的空组（F82b 拍板的 4 组之一，
 // 后被 A3 借去放账号）。它逐字写着「当前尚无独立项…留空占位」「在上面的『连接』组」——
 // 那个组和那个「上面」都不存在了，留着就是一句会误导人的话。
