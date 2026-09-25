@@ -36,9 +36,46 @@ import type {
 /** 哪台机器上的哪个仓。`path` 是**那台机器上**的绝对路径。 */
 export type RepoAt = { origin: Origin; path: string };
 
-/** 远端：问那台机器的后端（`result` 的形状由 op 定，与本机那条同形）。 */
-function remote<T>(at: { origin: Origin; path: string | null }, op: string, args?: object): Promise<T> {
-  return commands.panorama_call({ origin: at.origin, op, repo: at.path, args: args ?? null }) as Promise<T>;
+/** 〔RM1f〕一问被 `cancel` 撤掉时抛的那一个（界面按它认「是我撤的」，不当失败弹）。 */
+export class PanoramaCancelled extends Error {
+  constructor() {
+    super("代码全景：这一问已取消");
+    this.name = "PanoramaCancelled";
+  }
+}
+
+/**
+ * 〔RM1f〕这一问能不能撤：带票的只有经那台机器后端走的那一路（`panorama_call` ＋ `panorama_cancel`）。
+ * 本机今天仍是进程内命令（撤不掉）—— 本机对称那一拍之后两边一样。
+ */
+export const cancellable = (at: RepoAt): boolean => !isLocalOrigin(at.origin);
+
+/** 远端：问那台机器的后端（`result` 的形状由 op 定，与本机那条同形）。给了 `cancel` ⇒ 带一张票，拨下就撤。 */
+function remote<T>(
+  at: { origin: Origin; path: string | null },
+  op: string,
+  args?: object,
+  cancel?: AbortSignal,
+): Promise<T> {
+  const base = { origin: at.origin, op, repo: at.path, args: args ?? null };
+  if (!cancel) return commands.panorama_call({ ...base, ticket: null }) as Promise<T>;
+  if (cancel.aborted) return Promise.reject(new PanoramaCancelled());
+  const ticket = `pano-${crypto.randomUUID()}`;
+  const onAbort = (): void => {
+    void commands.panorama_cancel({ ticket });
+  };
+  cancel.addEventListener("abort", onAbort, { once: true });
+  return (commands.panorama_call({ ...base, ticket }) as Promise<T>).then(
+    (v) => {
+      cancel.removeEventListener("abort", onAbort);
+      return v;
+    },
+    (e: unknown) => {
+      cancel.removeEventListener("abort", onAbort);
+      // 撤了之后那一问回的是「已取消」—— 换成类型，免得调用方去认那句话。
+      throw cancel.aborted ? new PanoramaCancelled() : e;
+    },
+  );
 }
 
 /** 〔RM1d〕写：本机远端同一条（`op` 是 monitor `panorama_call.rs::EDITS` 第一列）。 */
@@ -54,13 +91,17 @@ export const sameRepo = (a: RepoAt | null, b: RepoAt | null): boolean =>
 export const repoLabel = (at: RepoAt): string =>
   isLocalOrigin(at.origin) ? at.path : `${at.path}（远端 ${at.origin}）`;
 
-/** 建索引（重活：tree-sitter 解析全仓 → SQLite）。开面板首次调 + loading。 */
-export const index = (at: RepoAt): Promise<IndexStats> =>
-  isLocalOrigin(at.origin) ? commands.panorama_index({ repo: at.path }) : remote(at, "index");
+/** 建索引（重活：tree-sitter 解析全仓 → SQLite）。开面板首次调 + loading。〔RM1f〕`cancel` 拨下 ⇒ 撤（[`cancellable`] 的那几台）。 */
+export const index = (at: RepoAt, cancel?: AbortSignal): Promise<IndexStats> =>
+  isLocalOrigin(at.origin)
+    ? commands.panorama_index({ repo: at.path })
+    : remote(at, "index", undefined, cancel);
 
-/** 重建索引（改代码后刷新；只写索引，非侵入）。刷新按钮调。 */
-export const reindex = (at: RepoAt): Promise<IndexStats> =>
-  isLocalOrigin(at.origin) ? commands.panorama_reindex({ repo: at.path }) : remote(at, "reindex");
+/** 重建索引（改代码后刷新；只写索引，非侵入）。刷新按钮调。〔RM1f〕`cancel` 同上。 */
+export const reindex = (at: RepoAt, cancel?: AbortSignal): Promise<IndexStats> =>
+  isLocalOrigin(at.origin)
+    ? commands.panorama_reindex({ repo: at.path })
+    : remote(at, "reindex", undefined, cancel);
 
 /** 索引新鲜度 + 上次索引时间 + 符号总数。开面板时查一次决定是否需索引。 */
 export const status = (at: RepoAt): Promise<PanoramaStatus> =>

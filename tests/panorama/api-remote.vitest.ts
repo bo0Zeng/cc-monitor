@@ -89,7 +89,8 @@ describe("全景 IPC 按机器分路（RM1c）", () => {
     const exported = Object.entries(api)
       .filter(([, v]) => typeof v === "function")
       .map(([k]) => k)
-      .filter((k) => !["panoramaLoadDecision", "repoLabel", "sameRepo"].includes(k))
+      // 〔RM1f〕`cancellable`（判定）与 `PanoramaCancelled`（错误类）不是发 IPC 的入口。
+      .filter((k) => !["panoramaLoadDecision", "repoLabel", "sameRepo", "cancellable", "PanoramaCancelled"].includes(k))
       .sort();
     expect(exported).toEqual([...Object.keys(READS), ...Object.keys(WRITES)].sort());
   });
@@ -141,8 +142,9 @@ describe("全景 IPC 按机器分路（RM1c）", () => {
     await api.overview(REMOTE, 1234);
     await api.search(REMOTE, "q");
     const s = sent();
-    expect(s[0].args).toEqual({ origin: "box1", op: "overview", repo: "/srv/proj", args: { budget: 1234 } });
-    expect(s[1].args).toEqual({ origin: "box1", op: "search", repo: "/srv/proj", args: { query: "q" } });
+    // 〔RM1f〕没给撤单手柄的一问不带票（`ticket: null`）。
+    expect(s[0].args).toEqual({ origin: "box1", op: "overview", repo: "/srv/proj", args: { budget: 1234 }, ticket: null });
+    expect(s[1].args).toEqual({ origin: "box1", op: "search", repo: "/srv/proj", args: { query: "q" }, ticket: null });
   });
 
   it("A5 住址带机器：本机就是路径，远端带上机器名；同一个路径换一台机器就是另一个仓", () => {

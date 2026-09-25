@@ -1456,6 +1456,8 @@ pub fn run() {
             panorama::panorama_diagram,
             panorama_call::panorama_call,
             panorama_call::panorama_edit,
+            // 〔RM1f〕撤掉一问在飞的全景（建索引可以取消了）。
+            panorama_call::panorama_cancel,
             port_forward::start_forward,
             port_forward::stop_forward,
             port_forward::list_forwards,

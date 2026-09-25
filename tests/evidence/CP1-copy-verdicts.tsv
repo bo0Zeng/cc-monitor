@@ -1327,6 +1327,8 @@ src/backend/control/panorama.rs:224	异常退出，码 {c}	保留	[可达存疑]
 src/backend/control/panorama.rs:225	被中途终止	保留	[可达存疑] 〔RM1c〕同上一行的另一支（被信号打断），不写「信号」这个内部词
 src/panorama-engine/main.rs:368	读不出盘上那一份：{e}	保留	[可达存疑] 〔RM1d〕全景小程序算批注 / 文档关联的新内容时读现状失败（权限 / 编码 / 是个目录，不是「不存在」）⇒ failed 经后端回到全景页写入口的失败提示；{e} 是系统那句原话，给人判是哪一种；绝不当成不存在去覆盖
 src/panorama/api.ts:57	{…}（远端 {…}）	保留	[对外] 〔RM1c〕远端仓的标签：路径 ＋ 机器名（「复制给 agent」的住址行也用它，97 §6 ④）
+src/panorama/api.ts:42	代码全景：这一问已取消	保留	[不对外] 〔RM1f〕`PanoramaCancelled` 的 `message`：视图按类型认它（`instanceof`），说的是自己那句「已取消建立索引」；这一句只进日志 / 开发者控制台
 src/views/panorama.ts:318	 · 远端 {…}	保留	[对外] 〔RM1c〕全景标题里远端仓的机器名那一段（同一个路径在两台机器上是两个仓）
 src/bridge/src/panorama_call.rs:263	代码全景这一问出了内部错误，没有拿到结果	保留	[可达存疑] 〔RM1e〕分流器 Done 那一臂的兜底（本族走不到）；同 backend_policy.rs / apikey_remote.rs 那一句的形
 src/bridge/src/panorama_call.rs:305	{who} 的代码全景没答上来（{code}）：{message}	保留	[对外] 〔RM1e〕那台机器的全景失败原话：{who} 是「本机」或机器名，{code} 是后端的错误码（not_installed / unsupported / timed_out …，同 frame_query 那一句「查询失败（code）」的形，用户据此能跟着报错走），{message} 是后端那句人话
+src/bridge/src/panorama_call.rs:293	已取消（后端那一趟已经停下）	保留	[可达存疑] 〔RM1f〕撤票那一问交回的话：界面自己撤的（`AbortSignal` 已拨下）⇒ `api.ts` 换成 `PanoramaCancelled` 类型、视图说它自己的「已取消建立索引」；只有别的调用方拿票撤了才会原话见人，句子本身不带内部名
