@@ -474,7 +474,7 @@ fn dispatch(op: &str, e: &mut Engine, args: Value) -> Result<Value, Fail> {
             out(e.symbols_touching(&files, &ranges))
         }
         "symbols_in_file" => {
-            // 同 monitor `collect_symbols_in_file`：core 没有公开的按文件查询口 ⇒
+            // 同 monitor 旧的 `collect_symbols_in_file`〔散文墓碑〕（随内嵌引擎删了，RM1f）：core 没有公开的按文件查询口 ⇒
             // `symbols_touching`（ranges 空 = 整文件）＋ 逐 id `find_symbol`。
             let a: FileArgs = take(op, args)?;
             let ids = e.symbols_touching(&[PathBuf::from(&a.file)], &[]);

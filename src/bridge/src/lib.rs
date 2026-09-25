@@ -70,7 +70,7 @@ mod local_origin_registry;
 mod logging;
 mod mcp; // F87（#50+#51）：MCP 管理（读跨 scope 展示 / 写只项目 .mcp.json，SS-14）
 mod messages;
-mod panorama;
+// 〔RM1f · V108 后半句〕`mod panorama;`（进程内 per-repo 引擎池 ＋ 17 条本机全景命令）删了：本机也走本机后端 → 全景小程序（`panorama_call`），monitor 不再链 vendored 引擎。
 mod panorama_bytes; // 〔RM1c · 第四波〕全景小程序的字节从哪来：按 (OS, arch) 选内嵌的那一份（推上去归 F08 部署路 / SR1b）
 mod panorama_call; // 〔RM1c · 第四波〕代码全景经那台机器的后端走（V108 选 B）：`panorama_call(origin, op, repo, args)`
 mod panorama_seam_registry; // P7c-2 第一刀：引擎住哪一侧要可换（整体 #[cfg(test)]）
@@ -1429,7 +1429,7 @@ pub fn run() {
             ccm_probe::probe_ccm_cli,
             // 🔴 `K-R69` / `KR69D2`：本机 `ccm` 这一格（我们那一份 · PATH 上那一份 · 判词）。
             ccm_probe::local_ccm_entry_status,
-            // Batch15-P1：code-picture 代码全景后端命令族（per-repo Engine 池,只读查询）
+            // 〔RM1f〕Batch15-P1 那一族本机全景命令（per-repo Engine 池）删了：本机远端同一条 `panorama_call`（见下）。
             // devbench F03：skill 接入面（列出 / 读 / 写那个「人手写的注入文件」）。
             // ⚠ 写走 `skill_host::resolve_editable` 的三道围栏 + `verified_write` 读回比对。
             skill_host::list_skills,
@@ -1437,23 +1437,6 @@ pub fn run() {
             skill_host::write_skill_file,
             cc_bus_deploy::deploy_local_cc_bus,
             cc_bus_deploy::cc_bus_install_state,
-            panorama::panorama_index,
-            panorama::panorama_reindex,
-            panorama::panorama_status,
-            panorama::panorama_overview,
-            panorama::panorama_node,
-            panorama::panorama_subgraph,
-            panorama::panorama_callers,
-            panorama::panorama_callees,
-            panorama::panorama_impact,
-            panorama::panorama_search,
-            panorama::panorama_docs_for,
-            panorama::panorama_touching,
-            panorama::panorama_symbols_in_file,
-            panorama::panorama_drift,
-            panorama::panorama_list_annotations,
-            panorama::panorama_diagram_kinds,
-            panorama::panorama_diagram,
             panorama_call::panorama_call,
             panorama_call::panorama_edit,
             // 〔RM1f〕撤掉一问在飞的全景（建索引可以取消了）。

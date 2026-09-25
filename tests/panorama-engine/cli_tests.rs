@@ -258,21 +258,28 @@ fn every_op_runs_on_a_real_engine_over_a_synthetic_repo() {
     assert_eq!(ran, table, "有 op 没在真引擎上跑过");
 }
 
-/// ★ `status` 的三格 == monitor 那侧 `PanoramaStatus` 的 TS 生成物（异源：TS 文件由 ts-rs 从
-/// monitor 的 Rust 类型导出）。两条路（进程内 / 经后端）给前端的是同一个形状。
+/// ★ `status` 的三格 == 前端 `PanoramaStatus`（`src/panorama/types.ts` 那个手写接口 —— 异源：前端按它收）。
+///
+/// 〔RM1f · V108 后半句〕对拍的另一侧从 ts-rs 生成物（`src/generated/PanoramaStatus.ts`，源是 monitor 那份 Rust
+/// 类型）换成前端手写的那一份：monitor 那份 Rust 源随内嵌引擎删了，**本程序就是这个形状今天唯一的产出方**，
+/// 前端认的那一份是唯一的消费方 —— 本条钉两者逐格相等。
 ///
 /// ⚠ 跨树运行时读（不走 `include_str!`）：同 `panorama_locus_guard` 的取舍 —— 文件挪了只有本条红。
 #[test]
 fn the_status_shape_matches_the_monitor_dto() {
-    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../generated/PanoramaStatus.ts");
+    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../panorama/types.ts");
     let ts = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}：{e}"));
-    let body = &ts[ts.find('{').expect("TS 类型没有 `{`")..];
+    let at = ts.find("export interface PanoramaStatus {").expect(
+        "前端 types.ts 里找不到 `export interface PanoramaStatus {` —— 改了写法，本条跟着改",
+    );
+    let body = &ts[at..at + ts[at..].find('}').expect("接口没收尾")];
+    let body = &body[body.find('{').unwrap() + 1..];
     let mut fields: Vec<String> = body
-        .split(',')
-        .filter_map(|seg| {
-            let (k, _) = seg.split_once(':')?;
-            let k = k.trim().trim_start_matches('{').trim();
-            (!k.is_empty()).then(|| k.to_string())
+        .lines()
+        .filter_map(|l| {
+            let (k, _) = l.trim().split_once(':')?;
+            let k = k.trim();
+            (!k.is_empty() && !k.starts_with('/') && !k.starts_with('*')).then(|| k.to_string())
         })
         .collect();
     fields.sort();

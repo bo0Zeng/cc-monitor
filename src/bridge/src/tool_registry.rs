@@ -1425,6 +1425,11 @@ pub const NOT_MANAGED: &[(&str, &str)] = &[
         "**不是「装到别处的工具」，所以不属本表的语义** —— 它是 **vendored 进 cc-monitor \
          二进制**的 crate（`src/bridge/vendor/code-picture-core`），`panorama.rs` 直接 \
          `use Engine` 调它画图。没有 `destination`、没有安装动作、卸载它等于重新编译 monitor。\n\
+         🔴 **〔RM1f 09-25〕上面这一句过期了**：monitor 摘掉了内嵌引擎（V108 后半句），今天它是只装引擎的\
+         **独立小程序** `cc-monitor-panorama`（`src/panorama-engine`），随 monitor 的字节带着，本机放到\
+         `~/.cc-monitor/bin/`（`panorama_bytes::place_local`）、远端推到那台的 `~/.cc-monitor/bin/`（`push_to`）——\
+         那是**有落点**的部署物。它该不该像 `backend` 那样进 `TOOLS`（两个载体、两个落点），**已报备、本件没改**；\
+         在那之前本条的「不属本表」只对「vendored 进二进制」那个旧身份成立。\n\
          ⚠ 它另有一个身份是 **MCP server（code-picture 的 Agent head，给 Claude 用）**，\
          那一个确实「装到别处」—— 但**装它走已有的 `project-mcp` 机制**（往 `.mcp.json` 加一个 \
          server 条目），是**用法**不是新工具。仓里今天对那个 MCP head 零实现（`mcp.rs` / \

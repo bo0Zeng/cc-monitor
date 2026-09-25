@@ -553,7 +553,7 @@ const INTEGRATION: &[&str] = &[
     // 〔RM1f〕SCAN → 集成：本机那一份小程序的放法（临时目录真写 · 逐字节相等零写 · 字节变了重写）
     "tests/bridge/panorama_bytes_tests.rs",
     "tests/bridge/panorama_call_tests.rs",
-    "tests/bridge/panorama_tests.rs",
+    // 〔RM1f〕`tests/bridge/panorama_tests.rs` 删了（monitor 的内嵌引擎连同它的判据一起删了）。
     "tests/bridge/profile_installer_tests.rs",
     "tests/bridge/pubkey_tests.rs",
     "tests/bridge/scanning_guard_registry_tests.rs",
