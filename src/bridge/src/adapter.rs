@@ -45,8 +45,9 @@ pub struct SessionLayout {
     pub record_ext: &'static str,
     /// 从记录文件路径取 sid 的策略(CC = `Stem`;Codex = `CodexRollout`)。
     pub sid_strategy: SidStrategy,
-    /// 扫描时跳过的路径段(CC = `["subagents"]`,子会话不当独立会话)。
-    pub skip_segments: &'static [&'static str],
+    // 〔CF1 · 2026-09-24〕「扫描时跳过的路径段」那一格（CC = `subagents`）随 monitor 自己那套 jsonl watcher 删了 ——
+    //   它唯一的读者就是那条 watcher 的「是不是顶层会话记录文件」判定；本机会话内容改走本机后端的 `line` 帧之后，
+    //   同一条规矩由后端那一份（`observe/watcher.rs` 的 subagent 路径判定）管。
 }
 
 /// 一个 agent CLI 的适配器。第一个实例 = [`claude_code::ClaudeCodeAdapter`]。
@@ -149,18 +150,6 @@ pub fn tasks_dir(data_root: &Path) -> Option<PathBuf> {
 /// F-MA:路径扩展名是不是该 agent 的会话记录扩展(CC = `jsonl`)。
 pub fn has_record_ext(p: &Path) -> bool {
     p.extension().and_then(|e| e.to_str()) == Some(active().layout().record_ext)
-}
-
-/// F-MA:路径是否落在跳过段下(CC = `subagents`,子会话不当独立会话)。大小写不敏感。
-pub fn is_skipped_path(p: &Path) -> bool {
-    let skip = active().layout().skip_segments;
-    p.components()
-        .any(|c| skip.iter().any(|s| c.as_os_str().eq_ignore_ascii_case(s)))
-}
-
-/// F-MA:一个路径是不是该 agent 的**顶层会话记录文件**(扩展名对 + 不在跳过段下)。
-pub fn is_record_file(p: &Path) -> bool {
-    has_record_ext(p) && !is_skipped_path(p)
 }
 
 /// F-MA:从记录文件路径取 session_id(CC = `file_stem`)。约定不成立则 `None`。

@@ -159,12 +159,12 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/lib.rs",
         "wait-for-condition",
-        3,
-        "三处都有终止条件：① resize 稳定检测 `loop { sleep(60ms); if now == last { break } }`；\
+        2,
+        "两处都有终止条件：① resize 稳定检测 `loop { sleep(60ms); if now == last { break } }`；\
              ② `remote-bind-scan` 的 `for _ in 0..15`（每 ~0.6s、最多 ~9s，命中即停；\
-             〔U2〕带启动令牌的会话不起这条线程，见 `lib.rs::wants_title_prescan`）；\
-             ③ 等 watcher 首扫完成 `loop { …; if elapsed > WAIT_TIMEOUT { break }; sleep(10ms) }`\
-             （10s 上限，超时就带部分历史 replay）。**三处都不是节拍器。**",
+             〔U2〕带启动令牌的会话不起这条线程，见 `lib.rs::wants_title_prescan`）。**两处都不是节拍器。**\
+             〔CF1 · 第四波 09-24〕**3 → 2**：原来的第三处「frontend-ready 之后 10ms 一拍等本机 watcher 首扫完成（10s 上限）」\
+             随本机 watcher 删了 —— 本机会话内容改走本机后端的 `line` 帧之后与远端同形，replay 不等。",
     ),
     (
         "src/event_replay.rs",

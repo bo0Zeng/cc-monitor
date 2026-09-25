@@ -11,5 +11,4 @@ fn claude_layout_locked() {
     assert_eq!(l.tasks_subdir, Some("tasks"));
     assert_eq!(l.record_ext, "jsonl");
     assert_eq!(l.sid_strategy, SidStrategy::Stem);
-    assert_eq!(l.skip_segments, ["subagents"]);
 }
