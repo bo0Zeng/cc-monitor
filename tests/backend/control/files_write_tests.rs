@@ -1947,3 +1947,104 @@ fn put_keeps_explicit_acl_entries_on_windows() {
     );
     std::fs::remove_dir_all(&base).ok();
 }
+
+// ── 〔RM1e · 第四波〕带 CAS 的删（`files-delete` 的 `expect`）────────────────────────
+//
+// 要求住址：用户 09-24 **V110**（`设计/99 §1`）「引擎只算、文件管理来写」——全景删批注侧车是一次读改写的写那一半；
+// `调研/第四波记录/RM1d.md §6 ⑤`「删批注没有 CAS …… 要闭合得给 `files-delete` 加 `expect`」。
+
+/// ★ 盘上 == `expect` ⇒ 删；≠ ⇒ `stale`、一个字节不动；已经不在 ⇒ `stale`；
+/// 目录 / 链接 ⇒ `refused`、原样；会话文件 ⇒ 围栏照旧 `refused`。
+#[test]
+#[cfg(unix)]
+fn a_delete_with_expect_removes_only_the_bytes_it_was_told_about() {
+    let base = temp_root("rm-cas");
+    let root = base.join("cfg");
+    let (live, bytes) = plant_live_session(&base);
+    std::fs::write(root.join("a.json"), b"planned").expect("铺");
+    std::fs::create_dir_all(root.join("d")).expect("铺目录");
+    std::fs::write(root.join("t.json"), b"planned").expect("铺链接目标");
+    std::os::unix::fs::symlink(root.join("t.json"), root.join("l.json")).expect("铺链接");
+
+    // 不等 ⇒ stale，盘上逐字节不变（长度不同 · **长度相同、字节不同** 两形 —— 后一形是死值验 K7 首刀没砍中补的格）。
+    for other in [&b"someone else"[..], &b"PLANNED"[..]] {
+        let err = delete_file_expecting(&root, "a.json", other).expect_err("🔴 不等也删了");
+        assert_eq!(err.code(), "stale", "{err:?}");
+    }
+    assert_eq!(std::fs::read(root.join("a.json")).expect("读"), b"planned");
+    // 正控：等 ⇒ 删。
+    delete_file_expecting(&root, "a.json", b"planned").expect("逐字节相等却被拒");
+    assert!(!root.join("a.json").exists(), "说删了，盘上还在");
+    // 已经不在 ⇒ stale（读的时候还在）。
+    let err = delete_file_expecting(&root, "a.json", b"planned").expect_err("不在也回成功");
+    assert_eq!(err.code(), "stale", "{err:?}");
+    // 目录 / 链接 ⇒ refused，原样（链接指向的那份字节等于 expect 也不删）。
+    for rel in ["d", "l.json"] {
+        let err = delete_file_expecting(&root, rel, b"planned").expect_err("非普通文件被删了");
+        assert_eq!(err.code(), "refused", "{rel}: {err:?}");
+    }
+    assert!(root.join("d").is_dir());
+    assert!(
+        std::fs::symlink_metadata(root.join("l.json")).is_ok_and(|m| m.file_type().is_symlink())
+    );
+    assert_eq!(std::fs::read(root.join("t.json")).expect("读"), b"planned");
+    // 会话文件：expect 恰好对得上也拒（围栏在 CAS 之前）。
+    let err =
+        delete_file_expecting(&root, "projects/-x/abc.jsonl", &bytes).expect_err("会话文件被删了");
+    assert_eq!(err.code(), "refused", "{err:?}");
+    assert_eq!(std::fs::read(&live).expect("读会话"), bytes);
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// ★ 命令面：`expect` 各形的码（字符串 / b16 · `null` · 与 `recursive` 同给 · 不等）；不给 ⇒ 行为不变。
+#[test]
+fn the_command_face_takes_expect_only_as_bytes_of_one_file() {
+    let base = temp_root("rm-cas-cmd");
+    let root = base.join("cfg");
+    std::fs::create_dir_all(&root).expect("建根");
+    let r = root.to_str().expect("utf8");
+    std::fs::write(root.join("x.md"), b"xy").expect("铺");
+    for (bad, want) in [
+        (
+            serde_json::json!({"root": r, "rel": "x.md", "expect": null}),
+            "bad_args",
+        ),
+        (
+            serde_json::json!({"root": r, "rel": "x.md", "expect": 1}),
+            "bad_args",
+        ),
+        (
+            serde_json::json!({"root": r, "rel": "x.md", "expect": "xy", "recursive": true}),
+            "bad_args",
+        ),
+        (
+            serde_json::json!({"root": r, "rel": "x.md", "expect": "x"}),
+            "stale",
+        ),
+    ] {
+        let (code, _) = answer_wire("files-delete", &bad).expect_err("该拒的收下了");
+        assert_eq!(code, want, "{bad}");
+    }
+    assert_eq!(
+        std::fs::read(root.join("x.md")).expect("读"),
+        b"xy",
+        "被拒的几次动了盘"
+    );
+    // b16 形：「xy」= 7879。
+    let v = answer_wire(
+        "files-delete",
+        &serde_json::json!({"root": r, "rel": "x.md", "expect": {"b16": "7879"}}),
+    )
+    .expect("逐字节相等却被拒");
+    assert_eq!(v["removed"], 1, "{v}");
+    assert!(!root.join("x.md").exists());
+    // 不给 expect ⇒ 旧行为（不看内容就删）。
+    std::fs::write(root.join("y.md"), b"whatever").expect("铺");
+    answer_wire(
+        "files-delete",
+        &serde_json::json!({"root": r, "rel": "y.md"}),
+    )
+    .expect("旧形被拒");
+    assert!(!root.join("y.md").exists());
+    std::fs::remove_dir_all(&base).ok();
+}

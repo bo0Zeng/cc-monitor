@@ -7,8 +7,8 @@
 use super::*;
 use std::path::PathBuf;
 
-fn jline(session_id: &str, seq: u64, raw: &str) -> watcher::JsonlLine {
-    watcher::JsonlLine {
+fn jline(session_id: &str, seq: u64, raw: &str) -> ssh_source::JsonlLine {
+    ssh_source::JsonlLine {
         session_id: session_id.to_string(),
         path: PathBuf::from("/tmp/projects/proj/s-abc.jsonl"),
         seq,

@@ -26,10 +26,8 @@ import { showActionFailureToast } from "../error-toast";
 // L2：账号选择复用既有封装——`fetchAccounts` 带 TTL 缓存、`selectableAccounts` 是
 // 「可选账号」的单一判据（`accounts.ts:130` 注释明写"别各处再 filter 一遍"）。
 import { fetchAccounts, selectableAccounts } from "../accounts";
-// ⚠ **本机 origin 必须从 `backend-policy` 导**，不是从上面那个 `../accounts`：
-// 仓里有**两个** `LOCAL_ORIGIN` —— `backend-policy.ts` 的是 `"<local>"`（与 Rust 侧
-// `inbound_client::LOCAL_ORIGIN` 逐字相同，跨语言钉住），`accounts.ts` 的是 `"__local__"`
-// （账号面的标记）。导错了**不会报错**，只会让后端那条本机分支永远走不到。
+// 本机 origin：`backend-policy.ts` 的 `"<local>"`（与 Rust 侧 `inbound_client::LOCAL_ORIGIN` 逐字相同，跨语言钉住）。
+// 〔C4b〕`accounts.ts` 先前那个同名的 `"__local__"`（账号面的标记）已退役 —— 全仓只剩这一个本机表示。
 import { LOCAL_ORIGIN } from "../backend-policy";
 
 // C04d 批 5a：四个类型换成生成物（源 `cc_bus.rs`）。手写版与生成物**逐字等价** ⇒ 零漂移，

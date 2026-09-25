@@ -320,3 +320,73 @@ fn unknown_capabilities_are_booked_under_that_remote() {
         "远端 hello 的 token 记进了本机那一本"
     );
 }
+
+// ─── 〔CF1 · 第四波 09-24〕F5：本机后端的起参也是「monitor 发、后端剥」的那一族 ─────────────────
+// 与上面那条（远端 `connect_and_exec` 拼的旗标）同一个失效方向：后端不认的 `--flag` 会被当成一次性查询、
+// 跑完就退（§26）。本机那两条载体的起参是 `local_backend::LOCAL_STREAM_ARGS` 一份常量；住这里是因为
+// 「读后端 `lib.rs` 的源码」这条跨半边已经为本文件登记过了（`cross_half_edge_registry`），不另开一条。
+// 判据总表住 `local_lines_tests.rs` 头注（F1–F8）。
+
+/// 后端 `lib.rs::STREAM_FLAGS` 的字面量（从后端源码摘，异源）。
+fn backend_stream_flags_cf1() -> std::collections::BTreeSet<String> {
+    let src = include_str!("../../src/backend/lib.rs");
+    let at = src
+        .find("pub const STREAM_FLAGS: &[&str] = &[")
+        .expect("后端 lib.rs 里找不到 `STREAM_FLAGS` 的定义");
+    let rest = &src[at..];
+    let body = &rest[..rest.find("];").expect("STREAM_FLAGS 没有收尾")];
+    body.split('"')
+        .skip(1)
+        .step_by(2)
+        .map(str::to_string)
+        .collect()
+}
+
+#[test]
+fn both_carriers_start_the_backend_with_the_same_stream_flags_the_backend_strips() {
+    use crate::backend::control::local_backend::LOCAL_STREAM_ARGS;
+    let backend = backend_stream_flags_cf1();
+    assert!(
+        backend.len() >= 2,
+        "后端 STREAM_FLAGS 只摘到 {backend:?} —— 抽取坏了"
+    );
+    for a in LOCAL_STREAM_ARGS {
+        assert!(
+            backend.contains(*a),
+            "本机后端起参 `{a}` 不在后端 `STREAM_FLAGS`（{backend:?}）里 —— 后端不剥它 ⇒ 当成一次性查询跑完就退（§26）"
+        );
+    }
+    assert!(
+        LOCAL_STREAM_ARGS.contains(&"--with-bg"),
+        "少了 `--with-bg` ⇒ bg 会话的内容从此静默没了（`showBgSessions` 缺省是开的）"
+    );
+    assert_eq!(
+        LOCAL_STREAM_ARGS.contains(&"--tail-only"),
+        crate::ssh_source::LOCAL_STREAM_TAIL_ONLY,
+        "起参里有没有 `--tail-only` 与本机消费者认定的「这条流是 tail-only」对不上 —— \
+         要么历史整份重放两遍，要么历史一行都没有"
+    );
+    // 两条载体用的是**这一份**，不是各写一份字面量。
+    let stdio = guard_core::production_code(include_str!(
+        "../../src/bridge/src/backend/control/local_backend.rs"
+    ));
+    let host =
+        guard_core::production_code(include_str!("../../src/bridge/src/local_backend_host.rs"));
+    assert_eq!(
+        stdio.matches("LOCAL_STREAM_ARGS.iter()").count(),
+        2,
+        "stdio 载体的两个起法（`start_if_present` · `start_or_extract`）都要用 LOCAL_STREAM_ARGS"
+    );
+    guard_core::find_pinned(&host, "cmd.args(local_backend::LOCAL_STREAM_ARGS)")
+        .unwrap_or_else(|e| panic!("常驻载体没用 LOCAL_STREAM_ARGS：{e}"));
+    assert_eq!(
+        stdio.matches("\"--tail-only\"").count(),
+        1,
+        "local_backend·rs 里 `\"--tail-only\"` 字面量只许住在 LOCAL_STREAM_ARGS 那一处"
+    );
+    assert_eq!(
+        host.matches("\"--tail-only\"").count(),
+        0,
+        "local_backend_host·rs 里不许再有自己的 `\"--tail-only\"` 字面量"
+    );
+}

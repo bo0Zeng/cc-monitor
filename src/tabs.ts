@@ -296,9 +296,10 @@ export class TabManager {
       originFromWire(payload.origin),
     );
 
-    // SSH 重连后远端后端从 seq 0 重发该 session 整段 jsonl → 按 seq 去重。必须在
-    // renderStreamRecord 之前、且覆盖 skip 记录（attachment/isMeta/空 user 有 seq 但不入
-    // timeline，timeline.has 漏判）。本地 seq 全程唯一 → 此 set 永不命中（本地 no-op）。
+    // 按 seq 去重：旁路快照与实时行的重叠区是精确重复的 (sid, seq)（后端 seq = 行号，§25a），
+    // 老后端重连还会从 seq 0 重发整段。必须在 renderStreamRecord 之前、且覆盖 skip 记录
+    // （attachment/isMeta/空 user 有 seq 但不入 timeline，timeline.has 漏判）。
+    // 〔CF1〕本机会话的行也走后端的帧与旁路快照之后，这一道本机同样会命中（原先写「本地永不命中」）。
     if (tab.seenSeqs.has(payload.seq)) return;
     tab.seenSeqs.add(payload.seq);
 

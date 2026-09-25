@@ -35,9 +35,11 @@
 //! - **打不断**：阻塞档（起进程、等它退出），`cancel` 命中回 `not_cancellable`。
 //!   建索引最长等到期限（[`BUILD_DEADLINE_SECS`]）—— 长期限 ＋ 可取消的口今天没有（`RM1b.md §3.3` ③）。
 //! - 机器上没有 `timeout(1)` ⇒ 插件口如实裸跑（没有期限），那一条降级由插件口自己的判据钉着。
-//! - **字节怎么到那台机器上**不归本模块：部署那一步（F08，往 `~/.cc-monitor/bin/` 推）在本机常驻后端
-//!   那一侧（SR1b 正在搬）。本模块只认「在不在、是不是它、会不会这个 op」，不在就说 `not_installed`
-//!   ＋ 查过哪儿。
+//! - **字节怎么到那台机器上**不归本模块：〔RM1e〕monitor 听到本模块回 `not_installed` / `unsupported`
+//!   ⇒ 经本机常驻后端那条 `files` 链路把内嵌字节推到 `<家>/.cc-monitor/bin/`（[`fixed_candidates`] 的第二个候选）
+//!   再问一次（`panorama_call.rs::ask_or_push`）。本模块只认「在不在、是不是它、会不会这个 op」，
+//!   不在就说 `not_installed` ＋ 查过哪儿 —— **这两个码是推字节的触发条件**（monitor 那一侧的 `PUSH_ON`
+//!   与下面 `discover::find` / `negotiate` 两处映射出的码两向相等，判据读本文件）。
 
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -101,8 +103,8 @@ pub(crate) const OPS: &[(&str, u64)] = &[
 
 /// 找不到时那句话的尾巴（这个插件自己的话）。
 ///
-/// ⚠ 只说「没装」，不许说「重装后端就有了」：把字节推到那台机器上的那一步（F08 部署路）
-/// 今天还没接（`调研/第四波记录/RM1c.md §4`），说了就是一句假的出路。
+/// ⚠ 只说「没装」，不许说「重装后端就有了」：重装后端**不带**这份小程序（它只推给开过远端全景的机器）。
+/// 〔RM1e〕monitor 听到 `not_installed` 会自己推一次再问（`panorama_call.rs`），推完仍缺才把这句话交到人眼前。
 const NOT_INSTALLED_HINT: &str = "这台机器上还没装代码全景组件。";
 
 /// 命令级错误：`(code, message)`。

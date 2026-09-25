@@ -280,7 +280,7 @@ export type LedgerFetch =
   | { ok: false; reason: string };
 
 /**
- * 把一次 `read_session_index` 的回包折成账本。`base` = 这份索引第一行的 seq
+ * 把一次骨架索引的回包（〔C4b〕`session-reads.ts::readSessionIndex`）折成账本。`base` = 这份索引第一行的 seq
  * （冷启动 0；续传 = 旧账本的 `endSeq`，由调用方 `append`）。
  */
 export function ledgerFromIndex(

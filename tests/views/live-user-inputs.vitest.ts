@@ -30,15 +30,18 @@ const indexStub = vi.hoisted(() => ({ rows: null as null | Array<Record<string, 
 // --- 只 mock「会真的去碰机器」的那几样；渲染管线保持真身 ---
 vi.mock("@tauri-apps/api/core", async () => {
   const rig = await import("../test-support/session-viewer-rig");
+  const { withSessionReads } = await import("../test-support/chan-fake");
   return {
-    invoke: vi.fn(async (cmd: string, args: { fromOffset: number }) => {
+    // 〔C4b〕会话读面三问改走通道（`withSessionReads` 译 `chan_call` ⇄ 旧名字 ＋ 旧回包）。
+    invoke: vi.fn(withSessionReads(async (cmd: string, raw: Record<string, unknown>) => {
+      const args = raw as { fromOffset: number };
       if (cmd === "list_user_inputs") return rig.answerListUserInputs(args);
       if (cmd === "read_session_index" && indexStub.rows && args.fromOffset === 0) {
         const rows = indexStub.rows;
         return { available: true, from: 0, end: rows.length, rows };
       }
       return undefined;
-    }),
+    })),
   };
 });
 vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn().mockResolvedValue(undefined) }));
@@ -61,6 +64,7 @@ vi.mock("../../src/account-restart", () => ({
 vi.mock("../../src/fork-flow", () => ({ runForkFlow: vi.fn().mockResolvedValue(undefined) }));
 
 import { invoke } from "@tauri-apps/api/core";
+import { sessionReadCalls } from "../test-support/chan-fake";
 import {
   installViewerRig,
   assistantLine,
@@ -78,7 +82,7 @@ import { MAX_TRANSIENT_FAILURES } from "../../src/views/outline-source";
 
 /** 这一趟里发了哪些 `list_user_inputs`（只看参数）。 */
 const outlineCalls = (): unknown[] =>
-  vi.mocked(invoke).mock.calls.filter((c) => c[0] === "list_user_inputs").map((c) => c[1]);
+  sessionReadCalls(vi.mocked(invoke).mock.calls, "list_user_inputs");
 
 let rig: ViewerRigHandles;
 let tm: TabManager;
@@ -327,7 +331,7 @@ describe("SE2 首屏：索引顺带出大纲 ⇒ 同一份文件只读一遍", (
     }));
   }
   const indexCalls = (): unknown[] =>
-    vi.mocked(invoke).mock.calls.filter((c) => c[0] === "read_session_index").map((c) => c[1]);
+    sessionReadCalls(vi.mocked(invoke).mock.calls, "read_session_index");
 
   function replay(): void {
     tm.onBatchStart();
