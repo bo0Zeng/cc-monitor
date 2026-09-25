@@ -220,6 +220,9 @@ fn write_at(
             return Err(("io_failed", format!("建 {} 失败：{e}", dir.display())));
         }
     }
+    // 〔HX2〕读—改—写整段在那个目录的跨进程锁里（`platform/lock.rs`）：两个后端进程同时给两个号写 key，
+    //   从前后写的那一份整份盖掉先写的那一格（这一份连进程内锁都没有）。
+    let _lock = crate::platform::lock::hold(dir).map_err(|e| ("io_failed", e))?;
     // ★ 写的这一刻读盘。解析不了 ⇒ `bad_file`，**不覆盖**。
     let current = read_doc(path)?.unwrap_or_default();
     let merged = store::merge_account_key(&current, id, key);

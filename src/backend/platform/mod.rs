@@ -47,6 +47,7 @@
 //! - [`signal`]：`send_sigusr1`（U3 从 `control/tmux_hook.rs` 下沉）· 〔RM1f〕`kill_group`（插件口可打断的那一形被丢时收掉整组子进程）
 //! - [`ssh_agent`]：连本机 ssh-agent（Unix 套接字 / Windows 命名管道）—— 〔C2〕拨号代理没配私钥路径时用
 //! - [`tcp_rtt`]：〔NT1〕一条已连上的 TCP 的往返时间（问内核 `TCP_INFO`，不掐表）—— 压缩判准要它（`dial/connect.rs::compression_for`）
+//! - [`lock`]：〔HX2〕后端自有状态文件（第四层）的跨进程锁 —— 锁那份文件所在的目录（unix `flock` · Windows 命名互斥量）
 //! - [`detach`]：〔RM1a〕把要起的子进程放进自己的进程组（远端那台的中转不许随 SSH 断而没了）· 〔RM1f〕插件口可打断的那一形也用它（让「杀一组」有组可杀）
 //! - `win_proc`：〔WN1 · U4b〕Windows 上判活 / 起始时刻 / 等进程退出的 Win32 读法（`OpenProcess` 一族），
 //!   只在 Windows 编译时存在（刻意不写 intra-doc 链接：本机 Linux 上它不存在，链接会悬空）
@@ -66,6 +67,7 @@ pub(crate) mod detach;
 #[path = "../../../tests/backend/platform/fallback_guard.rs"]
 mod fallback_guard;
 pub(crate) mod liveness;
+pub(crate) mod lock;
 pub(crate) mod paths;
 pub(crate) mod pidwatch;
 pub(crate) mod proc;
