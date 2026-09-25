@@ -15,16 +15,10 @@ import type { UserInputPanel } from "./views/user-input-panel";
 import type { OutlineSource } from "./views/outline-source";
 import type { AgentEntry } from "./agents-panel";
 import type { Origin } from "./ipc/origin";
+import type { SessionState } from "./tab-session-state";
 
-/**
- * Tab 生命周期：
- * - `live`：session 进程还在跑（`~/.claude/sessions/<PID>.json` 存在且 PID 探活通过）
- * - `archived`：session 进程退出，Tab 灰显但保留内容；用户可主动关
- *
- * 历史：设计文档原本规划过 `idle`（5min 无消息变灰），但实际未落地，
- * 移除以免误用。
- */
-export type TabStatus = "live" | "archived";
+// 〔U4〕原先这里是 `TabStatus = "live" | "archived"`（与下面的 `tmuxIdle` 一起挤着两个轴）。
+//   会话状态改住 `tab-session-state.ts` 的 `SessionState`（活性 × 可恢复性），字段是 `Tab.state`。
 
 export interface Tab {
   sessionId: string;
@@ -60,15 +54,19 @@ export interface Tab {
    * 〔C4a · `设计/05 §8` 步 2〕本机不再是 `null`：判本机 / 远端一律经 `ipc/origin.ts`。
    */
   origin: Origin;
-  status: TabStatus;
+  /**
+   * 〔U4 · `设计/01 §6.2`〕**活性 × 可恢复性**两个轴（形状、转移与谓词都住 `tab-session-state.ts`）。
+   * 只经那一份的 `nextState` 改、经它的谓词读 —— 别处不再各判一遍。
+   */
+  state: SessionState;
   /**
    * 〔步 17·B · `设计/30 §B`〕**固定** —— 「关了 app 再打开它还在」。
    *
-   * 🔴 **必须是正交的一维，不能做成 `TabStatus` 的第三态**（`§B.3` 逐字）：
+   * 🔴 **必须是正交的一维，不能做成会话状态的第三态**（`§B.3` 逐字）：
    * `archived + pinned` 才是用户的主用例（固定住一个**已经跑完**的会话），
    * 做成第三态就表达不了它。三个维度各管一件事：
-   * `status`（进程活没活，用户改不了）· `pinned`（你要不要它一直在，只由用户改）·
-   * 集合归属（你怎么分类）。仓里已有先例：`tmuxIdle` 那条注释逐字「与 `archived` 正交」。
+   * `state`（进程活没活、死了怎么回去，用户改不了）· `pinned`（你要不要它一直在，只由用户改）·
+   * 集合归属（你怎么分类）。
    *
    * ⚠ **它只影响「重启后还在不在」，不影响位置**（`§B.3b` 用户 2026-09-16 收窄）：
    *   没有「固定区」，固定的 tab **留在原位**，只多一个 📌 角标；位置由 `§C` 的顺序落盘管。
@@ -77,19 +75,12 @@ export interface Tab {
    */
   pinned: boolean;
   /**
-   * issue #23：红绿灯（与 TabStatus 正交，不碰 archived 门控）。null=未知（旧版 CC
+   * issue #23：红绿灯（与 `state` 正交）。null=未知（旧版 CC
    * 无 status 字段 / 远端 v1 暂无透传）→ 维持现状绿点。
    */
   activity: { status: string; waitingFor: string | null } | null;
-  /**
-   * audit-fixes F03.2（灰灯 / 第三态渲染）：远端 tmux 会话「claude 已退但 tmux 会话还在」
-   * = idle-tmux。**与 TabStatus/activity 都正交**：不是 archived（内容仍在、可 attach 复用），
-   * 也不是 live（claude 进程没了）；仅驱动 `.tab.tmux-idle` 灰点渲染。后端 emitter 收 backend
-   * `removed` 时若 `@ccm_sid` 仍在则 emit `session-idle`（见 ssh_source F03.2a-wire），前端
-   * markTmuxIdle 置 true；复活（session-change added）/ 归档（真 tmux 没了 → session-ended）/
-   * 本会话再有活动（onActivity）时清回 false。默认 false。
-   */
-  tmuxIdle: boolean;
+  // 〔U4〕原先这里是 `tmuxIdle: boolean`（「claude 已退但 tmux 会话还在」，与 `status` 正交、却让 `status` 留在 live）。
+  //   它说的是可恢复性那一轴 ⇒ 并进 `state`：`RECONNECTABLE`（死 ＋ 容器还在）。
   /**
    * issue #23（第二增量）：本会话的 subagent 列表（tool_use id → entry，插入序）。
    * jsonl 流里配对 Task/Agent 的 tool_use（running）与 tool_result（done）；
@@ -205,11 +196,11 @@ export interface Tab {
   inputsEl: HTMLElement;
 }
 
-/** Tab 数量摘要，发给宿主用于状态栏 / empty-state 等外部 UI */
+/** Tab 数量摘要，发给宿主用于状态栏 / empty-state 等外部 UI。〔U4〕按活性轴分：活 / 死（死里含可重连）。 */
 export interface TabsSummary {
   total: number;
   live: number;
-  archived: number;
+  dead: number;
 }
 
 function projectNameFromCwd(cwd: string): string | null {
