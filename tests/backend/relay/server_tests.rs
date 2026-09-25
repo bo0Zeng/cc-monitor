@@ -3333,7 +3333,7 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_acc
 /// 手写一份 JSON 只能证「**我以为写侧会产出的那个形状**能走通」——
 /// 写侧哪天换个形状（换个字段名 / 换一层嵌套 / 换个 id），这条判据**照绿**。
 ///
-/// ⇒ 这里调的是写侧生产段里逐字那两个纯函数（〔GP1 · 第四波〕写侧 ＝ 每台机器那台后端的 `accounts/apikey/file_face.rs`，
+/// ⇒ 这里调的是写侧生产段里逐字那两个纯函数（〔GP1 · 第四波〕写侧 ＝ 每台机器那台后端的 `accounts/upstream/file_face.rs`，
 /// 本机也是；monitor 那侧当年的写口 `write_key_at`〔散文墓碑〕删了）
 /// （`store::merge_account_key` + `store::to_pretty_json`），两侧因此**在 `creds-core`
 /// 这个共同祖先上会合**：backend 单向依赖 `src/bridge/crates/*`，够得着它们。

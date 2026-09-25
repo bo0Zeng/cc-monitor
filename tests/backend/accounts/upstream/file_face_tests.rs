@@ -383,7 +383,7 @@ fn gp1_a_program_write_keeps_everything_the_human_put_there() {
 
 /// ★★★ `K-R1` 写侧那一格（原 monitor `a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style`〔散文墓碑〕）：
 /// 配一次 key 不许吃掉**同一行**上人手编的 `auth_style` / `base_url` / 未知键；别的行一个字节不动，
-/// 也不许凭空给别的行加 `auth_style`。并且装回账号层之后那两格真的读得出来（不只是「JSON 里还在」）。
+/// 也不许凭空给别的行加 `auth_style`。并且装回上游选择那一层之后那两格真的读得出来（不只是「JSON 里还在」）。
 #[test]
 fn gp1_a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style() {
     let home = temp_dir("gp1-keep-row");
@@ -439,7 +439,7 @@ fn gp1_a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style() {
 #[test]
 fn gp1_the_write_side_never_targets_the_legacy_top_level_slot() {
     let src = guard_core::production_code(include_str!(
-        "../../../../src/backend/accounts/apikey/file_face.rs"
+        "../../../../src/backend/accounts/upstream/file_face.rs"
     ));
     assert!(
         src.contains("merge_account_key("),
