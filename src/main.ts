@@ -794,7 +794,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     onSessionActivity: (e) =>
       tabs.updateActivity(e.session_id, e.status, e.waiting_for),
     // Batch5-F18：远端会话宣告 → 骨架 Tab。Batch7-F24：p1e backend 附 cwd/kind/name
-    // ——骨架标题即时完整（bg → ⚙ + 树状挂宿主后）；旧后端缺省照旧 sid 前缀。
+    // ——骨架标题即时完整（bg → ⚙ ＋ 任务名；〔BG1〕不再挂宿主排成树）；旧后端缺省照旧 sid 前缀。
     onRemoteSessionAdded: (sessionId, origin, meta) => {
       tabs.createSkeletonTab(
         sessionId,
