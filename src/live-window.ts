@@ -42,6 +42,18 @@ function lowerBound(arr: JsonlLinePayload[], x: number): number {
 }
 
 /**
+ * 〔CF2 · 第四波 4B〕**账本（还没上屏的那些）的上界**：超过 {@link PENDING_CAP} 条就只留 seq 最高的
+ * {@link PENDING_KEEP} 条，其余出账 —— 它们往上翻到时按行号取回（`fetchBelow`；接了骨架的按字节，`fetchMissingRows`）。
+ *
+ * `设计/05 §3.3.4` 逐字「⇒ **级 3 是判据**：任何一个订阅侧缓冲都要有上界」—— 这本账本就是 webview 这一侧的订阅缓冲：
+ * 原来没接骨架的 tab 在这里驻留整段历史（一份 4 万行的会话，后台 tab 里 4 万个 payload）。
+ * 取数：一次物化最多 600 条（`materializeUntilFilled` 150 × 4）、上翻一批 200 条 ⇒ 留 2000 条够首屏 ＋ 七八次上翻不用等 IPC；
+ * 摊还余量 1000（与 monitor 那一侧 `TRIM_SLACK` 同一个道理：每来一条都修会让收纳路付 O(n)）。
+ */
+export const PENDING_KEEP = 2000;
+export const PENDING_CAP = 3000;
+
+/**
  * 〔CF2 · 第四波 4B〕**账本之下还有没有行**（`调研/第四波记录/CF2.md §1.4`）。
  *
  * seq 就是行号、从 0 起 ⇒ 渲染窗口最老那一条的 seq > 0 且账本空了 ⇒ 下面**可能**还有
@@ -137,11 +149,19 @@ export class TailWindow {
     return this.floor !== null && seq >= this.floor;
   }
 
-  /** 收纳一条未渲染 payload。到达序通常块内升序 → 尾追加免排序。 */
+  /**
+   * 收纳一条未渲染 payload。到达序通常块内升序 → 尾追加免排序。
+   * 〔CF2〕账本超过 {@link PENDING_CAP} ⇒ 只留 seq 最高的 {@link PENDING_KEEP} 条（出账的那些往上翻时按行号取回；
+   * 「下面还有」这件事随之回到 `maybe`）。
+   */
   defer(p: JsonlLinePayload): void {
     const last = this.pending[this.pending.length - 1];
     if (last !== undefined && p.seq < last.seq) this.dirty = true;
     this.pending.push(p);
+    if (this.pending.length > PENDING_CAP) {
+      this.keepHighest(PENDING_KEEP);
+      if (this.below.kind === "none") this.below = { kind: "maybe" };
+    }
   }
 
   /**
