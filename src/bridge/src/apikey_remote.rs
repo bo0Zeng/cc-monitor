@@ -6,13 +6,23 @@
 //! 而远端账号页调的也是它们 ⇒ 远端建的 apikey 号，key 落在**本机**那份表里，远端会话用不上
 //! （`设计/70 §13.2` 第三条）。今天三条都收 `origin`：
 //!
-//! | origin | 谁读写那份文件 |
-//! |---|---|
-//! | 本机 | monitor 自己（`creds_store`，既有、一个字节没动）|
-//! | 某台远端 | 那台机器的后端（帧面 `apikey-key-set` / `apikey-read`，`src/backend/accounts/apikey/file_face.rs`）|
+//! | origin | 谁写那份文件 | 谁读（界面状态 / 行） |
+//! |---|---|---|
+//! | 本机 | **本机常驻后端**（帧面 `apikey-key-set`，与远端同一条路）| monitor 自己（`creds_store::read_status` · 起会话那一侧同步读行）|
+//! | 某台远端 | 那台机器的后端（帧面 `apikey-key-set` / `apikey-read`，`src/backend/accounts/apikey/file_face.rs`）| 同左（`apikey-read`）|
 //!
-//! ⇒ **每台机器上这份文件的程序写者恰好一个**。本机那一臂**只进 `creds_store`**，从不把
-//! `apikey-key-set` 发给本机后端（判据：`the_local_arm_never_sends_the_key_to_a_backend`）。
+//! ⇒ **每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端**（主会话 09-25 裁；`调研/第四波记录/GP1.md §3`）。
+//! 〔墓碑 —— RM1a 那一版本机那一臂进 `creds_store::write_key`〔散文墓碑〕、「从不把 `apikey-key-set` 发给本机后端」，
+//!  判据 `the_local_arm_never_sends_the_key_to_a_backend`〔散文墓碑〕；RM1a / RL1 两次把「本机也走本机后端」交主会话，
+//!  顾虑是 `CCM_DATA_DIR` 隔离跑时会写穿到真 profile。〕
+//!
+//! # 🔴 本机那一臂先核「写的是不是我这一份」
+//!
+//! 常驻后端按**家目录**认（`local_backend_host::listen_port_for` · token 在 `~/.cc-monitor`），**不按数据目录** ⇒
+//! 一个 `CCM_DATA_DIR` 隔离跑的 monitor 会接上真 profile 那个 monitor 起的常驻后端，而那个后端的凭据路径
+//! （起它时交的 `CCM_APIKEY_CREDENTIALS`）指的是**真数据目录**。直接交出去就写穿了。
+//! ⇒ 发 `apikey-key-set` 之前先问一次 `apikey-read`：它回的 `path` 必须 == 本 monitor 的 `creds_store::resolve_path()`，
+//! 不等 / 问不到 ⇒ **拒写**、两个路径都说出来。那个后端的路径由它起时的环境定死、进程一辈子不变 ⇒ 先核后写没有窗。
 //!
 //! # 归属（判清全文 `调研/第四波记录/RM1a.md §1`）
 //!
@@ -21,8 +31,8 @@
 //!
 //! # 明文走哪
 //!
-//! 界面 → tauri 入参（IPC 那一跳，`K-H2a` 起就登记为「判不了」，原样）→ 本机：`creds_store::write_key`；
-//! 远端：装进 `apikey-key-set` 的 `args.key`，经那台机器那条长连接的入方向送过去。
+//! 界面 → tauri 入参（IPC 那一跳，`K-H2a` 起就登记为「判不了」，原样）→ 装进 `apikey-key-set` 的 `args.key`，
+//! 经那台机器那条长连接的入方向送过去（〔GP1〕本机 ＝ 本机常驻后端那条，与远端同一条路）。
 //! **不进日志、不进报错文案、不进任何结构体字段**；逐跳由 `creds_store_tests::PLAINTEXT_HOPS` 钉着。
 //!
 //! # 它**不**做什么
@@ -43,12 +53,12 @@ pub(crate) const CMD_READ: &str = "apikey-read";
 /// 一趟往返的上限。远端要走一趟长连接，给宽一点（同 `backend_policy::EXIT_POLICY_BUDGET`）。
 const BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
 
-/// 配一把 key（与可选的 Base URL）：本机进 `creds_store`，远端交那台机器的后端。
+/// 配一把 key（与可选的 Base URL）：**两臂同一条路** —— 交那台机器的后端（本机 ＝ 本机常驻后端）。
 ///
-/// ⚠ 明文 `key` 在本函数里**恰好两处**，一臂一处（两台机器、两个写者），逐处登记在
-/// `creds_store_tests::PLAINTEXT_HOPS`。
+/// ⚠ 明文 `key` 在本函数里**恰好两处**，一臂一处，逐处登记在 `creds_store_tests::PLAINTEXT_HOPS`。
+/// 本机那一臂多交一格「那份文件应当在哪」（`creds_store::resolve_path()`）：后端答的路径不是它 ⇒ 不写（本模块头注）。
 /// 〔ST2 × RM1a〕`base_url` 跟着 key 走同一台机器：缺席 / 空 = 不碰那一格；形状关只在**写者**那一侧
-/// （本机 `creds_store` · 远端后端 `file_face`，两处调的是 `creds_core` 同一个函数），本函数不另判一遍。
+/// （后端 `file_face` 调 `creds_core` 那一个函数），本函数不另判一遍。
 pub(crate) async fn write_key_on(
     origin: &Origin,
     config_dir: &str,
@@ -56,20 +66,32 @@ pub(crate) async fn write_key_on(
     base_url: Option<String>,
 ) -> Result<(), String> {
     match origin.route("write_apikey_credentials_key")? {
-        Route::Local => crate::creds_store::write_key(config_dir, &key, base_url.as_deref()),
-        Route::Remote(host) => send_key(host, config_dir, key, base_url).await,
+        Route::Local => send_key(LOCAL, config_dir, key, base_url, Some(local_file()?)).await,
+        Route::Remote(host) => send_key(host, config_dir, key, base_url, None).await,
     }
 }
 
-/// 远端那一臂：推账号 id（全仓唯一那份规则）→ 装进 `args.key` → 交那台机器的后端。
+/// 本机那条长连接在客户端登记表里的名字（与 `backend_policy` 等同族一样，本机就是一个具名 origin）。
+const LOCAL: &str = crate::backend::control::inbound_client::LOCAL_ORIGIN;
+
+/// 本 monitor 认的那份本机凭据文件（`CCM_DATA_DIR` 隔离跑时跟着它走）。说不出 ⇒ 不写（不猜一个路径让后端去写）。
+fn local_file() -> Result<std::path::PathBuf, String> {
+    crate::creds_store::resolve_path().ok_or_else(|| {
+        "说不出本机那份凭据文件该在哪（找不到 monitor 的数据目录）—— 没有写".to_string()
+    })
+}
+
+/// 推账号 id（全仓唯一那份规则）→（本机：先核那台后端写的就是 `same_file`）→ 装进 `args.key` → 交那台机器的后端。
 ///
 /// ⚠ 明文绑定在这里叫 `plain`（不叫 `key`）：`args` 里那个字段名逐字是 `"key"`，
 /// 同名的话「明文被碰了几次」那把按标识符数的尺子会把字段名也数进去。
-async fn send_key(
+/// ⚠ 顺序承重：说不出账号 id ⇒ **一次都不问**就拒（先于任何往返）；核路径那一问（`apikey-read`）不带明文。
+pub(crate) async fn send_key(
     host: &str,
     config_dir: &str,
     plain: String,
     base_url: Option<String>,
+    same_file: Option<std::path::PathBuf>,
 ) -> Result<(), String> {
     let account = crate::history::apikey_account_id_of_dir(config_dir).ok_or_else(|| {
         format!(
@@ -77,6 +99,18 @@ async fn send_key(
              写进去的那一行谁也命中不了"
         )
     })?;
+    if let Some(want) = same_file {
+        let got = path_from_wire(host, &call(host, CMD_READ, json!({})).await?)?;
+        if got != want {
+            return Err(format!(
+                "[{host}] 的后端写的是 {}，而这个 monitor 用的是 {} —— 两份不是同一个文件，没有写。\
+                 多半是这个 monitor 隔离跑（`CCM_DATA_DIR`）而接上了别的数据目录起的那个后端；\
+                 停掉那个后端、让这个 monitor 自己起一个，再配",
+                got.display(),
+                want.display()
+            ));
+        }
+    }
     call(
         host,
         CMD_KEY_SET,
@@ -84,6 +118,16 @@ async fn send_key(
     )
     .await?;
     Ok(())
+}
+
+/// `apikey-read` 的应答里那份文件的路径（缺 / 不是字符串 ⇒ 报错：说不出写哪一份就不写）。
+fn path_from_wire(host: &str, d: &Value) -> Result<std::path::PathBuf, String> {
+    d.get("path")
+        .and_then(Value::as_str)
+        .map(std::path::PathBuf::from)
+        .ok_or_else(|| {
+            format!("[{host}] `{CMD_READ}` 的应答里没有 `path` —— 说不出它写哪一份，没有写")
+        })
 }
 
 /// 读那台机器上那份文件的状态（只回掩码）。

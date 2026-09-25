@@ -1891,10 +1891,11 @@ async fn relay_endpoint_for_launch(
 /// `K-H2a` `KS10`：从界面配一把 key。
 ///
 /// ⚠ **它和人手编是同一份文件的两个写者** —— 写的那一刻才去读盘，
-/// 未知键一个不吃、字段顺序按名字排、原子替换、写完立刻收窄成只给本人。
-/// 整段论证见 `creds_store::write_key`。
+/// 未知键一个不吃、字段顺序按名字排、原子替换、出生即只给本人。
+/// 〔GP1 · 第四波〕这几条今天由**那台机器的后端**兑现（本机 ＝ 本机常驻后端，`src/backend/accounts/apikey/file_face.rs`）；
+/// 整段论证住那一份的头注。〔墓碑 —— 从前这里写「整段论证见 `creds_store::write_key`〔散文墓碑〕」：monitor 不再写这份文件。〕
 ///
-/// ⚠ **入参是明文，而它一进来就被包成 `SecretKey`**（在 `write_key` 里）。
+/// ⚠ **入参是明文，而它一进来就被包成 `SecretKey`**（在那台后端的写口里）。
 /// 这一层的签名收 `String` 是没办法的事：IPC 边界上只有 JSON。
 ///
 /// ⚠⚠ **订正措辞〔D1，08-27，PM 采纳审计改判〕**：先前这里写的是「那一段**不在本件的判据面里**」
@@ -1922,8 +1923,8 @@ async fn relay_endpoint_for_launch(
 ///
 /// # 〔RM1a · 第四波〕**收 `origin`**：key 落在会话跑的那台机器上
 ///
-/// 本机那一臂只进 `creds_store`（原样）；远端那一臂由 monitor 推出账号 id、交**那台机器的后端**写
-/// （帧面 `apikey-key-set`，后端账号域那一份是那台机器上唯一的写者）。分派住 `apikey_remote::write_key_on`。
+/// 两臂同一条路：monitor 推出账号 id、交**那台机器的后端**写（帧面 `apikey-key-set`，后端账号域那一份是那台机器上唯一的写者；
+/// 〔GP1 · 第四波〕本机 ＝ 本机常驻后端，先核它写的就是本 monitor 认的那一份）。分派住 `apikey_remote::write_key_on`。
 /// 明文在本函数体里仍然**只被往下传一次**（`PLAINTEXT_HOPS` 那一行跟着改了住址）。
 #[tauri::command]
 async fn write_apikey_credentials_key(
@@ -1931,7 +1932,7 @@ async fn write_apikey_credentials_key(
     key: String,
     config_dir: String,
     // 〔第四波 ST2 · `设计/70 §4.4`〕加账号表单 apikey 那一支的 Base URL。缺席 = 用默认上游（不碰那一格）。
-    // 〔RM1a〕它与 key 一起按 origin 走：本机进 `creds_store`，远端交那台机器的后端（`apikey-key-set` 的 `baseUrl`）。
+    // 〔RM1a〕它与 key 一起按 origin 走，交那台机器的后端（`apikey-key-set` 的 `baseUrl`；〔GP1〕本机也是）。
     base_url: Option<String>,
 ) -> Result<(), String> {
     apikey_remote::write_key_on(&origin, &config_dir, key, base_url).await

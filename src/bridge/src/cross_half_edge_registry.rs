@@ -119,6 +119,13 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
+        "tests/bridge/creds_store_tests.rs",
+        "src/backend/accounts/apikey/file_face.rs",
+        "〔GP1 · 第四波〕本机凭据文件的写者换成本机常驻后端之后，「monitor 生产段零处够写半边」那条零命中判据的**正控** \
+         要落在真写者身上 —— 同一把针在后端那一份写口里数得到，才说明零命中不是针瞎了（合成样本证不了针对准了真写口）",
+    ),
+    (
+        "monitor→backend",
         "tests/bridge/backend/control/backend_send_keys_tests.rs",
         "src/backend/control/launch.rs",
         "两个 mode 名必须是后端真能 parse 的那两个（`parse_request` 不 deny unknown \
