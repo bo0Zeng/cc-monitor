@@ -64,10 +64,8 @@ import {
 /** Claude 嵌套会话环境标记（空格分隔，喂 `unset`）。CLAUDE_CONFIG_DIR 刻意不含。 */
 export const CLAUDE_NESTED_ENV_VARS = AGENT_PROFILE.nestedEnvVars.join(" ");
 
-// U8c-2a：`buildUsageProbePayload` **已退役** —— 用量探针的载荷改由 Rust 内核
-// `backend::control::payload::usage_probe_payload` 编译（账本 S28 的第 ② 份产出点就此消失）。
-// 那条「两态、绝不裸载荷、空串是坏数据」的 fail-closed 纪律原样搬了过去并有测试；
-// 前端只报 `configDir`（`null` = 账号 0）。
+// U8c-2a：`buildUsageProbePayload` **已退役** —— 用量探针的载荷当时改由 Rust 内核编译（账本 S28 的第 ② 份产出点就此消失）。
+// 〔AR1〕后来整条探针轴随 `设计/50` 删了：Rust 那一份载荷编译今天也不存在。
 
 /**
  * 直连 resume 命令（F41）：`unset <嵌套env>; [cd '<cwd>' && ]<launcher> --resume <sid>`。
