@@ -10,7 +10,7 @@
 #
 # 加一个新维度 = ccm 多一个 flag + 这里多一行别名，不是再写一个实现。
 
-# ccm 的落点**两边不同**：本机 ~/.cc-monitor/bin（monitor 放的那份）· 远端 ~/.local/bin（推过去的 shim）
+# ccm 的落点：本机 ~/.cc-monitor/bin（monitor 放的那份）· 远端也是 ~/.cc-monitor/bin（部署后端时放的入口；更早的版本放在 ~/.local/bin，那份不删、照旧能用）
 for __ccm_d in "$HOME/.local/bin" "$HOME/.cc-monitor/bin"; do case ":$PATH:" in *":$__ccm_d:"*) ;; *) export PATH="$__ccm_d:$PATH";; esac; done; unset __ccm_d  # 两边共用一份文本 ⇒ 两个都加；本机那个排在前面（赢过你那份旧的）
 
 # 便捷别名 —— **不覆盖你已有的同名函数**（有自己启动器的用户在自己的函数里调 ccm 即可）

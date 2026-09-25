@@ -425,7 +425,18 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p3a-panorama-engine**（2026-09-24，第四波 RM1c 合并那一拍）：子命令 ＋1 —— `panorama`（两个命令面）：
 /// 后端经插件口起独立全景小程序 `cc-monitor-panorama`，只说查询语义（V108）；后端本体仍零 code-picture。
-pub const BUILD_ID: &str = "p3a-panorama-engine";
+///
+/// ★★★ **p3b-session-facts**（2026-09-24，第四波 U4b 合并那一拍）：子命令 ＋1 —— `history-record`（`{sid}` → 记录在不在，两个命令面）。
+/// ＋ 线上：`session_added` 多一个可选字段 `container`（tmux / none）· 新出方向帧 `sessions_replayed`。
+///
+/// ★★★ **p3c-panorama-plan**（2026-09-24，第四波 RM1d 合并那一拍）：子命令集不变，**行为**变更 ——
+/// 后端 `panorama` 的 op 表 ＋7（六个 `plan_*` 只回算好的新内容、不写盘 ＋ `refresh_doc_links`）；
+/// 旧后端不认 ⇒ 写批注会回 `unsupported` ⇒ 必须判 stale。照 p1v 先例不加历史行。
+///
+/// ★★★ **p3d-sftp-resident**（2026-09-24，第四波 SR1b 合并那一拍）：子命令 ＋4 —— `ch:transfer-upload` / `-download` / `-start` / `-stop`
+/// （传输台搬进后端，只在帧面）。＋ 线上：链路多一种用途 `use:"files"`（sftp 子系统上的一问一答）· 新出方向帧 `transfer`。
+/// 界面进程从此零 SSH（V89）：旧后端不认 `files` 用途 ⇒ 部署 / 传输全断 ⇒ 必须判 stale。
+pub const BUILD_ID: &str = "p3d-sftp-resident";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -602,6 +613,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--history-index",
     "--history-projects",
     "--history-read",
+    // 〔U4b · 第四波〕`history-record` 的 CLI 面（CLI 面从 `REGISTRY` 派生，`is_query_mode` 那道闸门读本表）。
+    // **是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    "--history-record",
     "--history-search",
     "--history-sessions",
     "--history-subagents",
@@ -1461,10 +1475,16 @@ pub const EMITS: &[&str] = &[
     "tmux_session_closed",
     // 〔SR1a · `设计/05 §13.6 ③`〕账号清单变了（watcher 盯 manifest 所在目录，登记 = 承诺真发，已接线）。
     "accounts_changed",
+    // 〔U4b · 第四波〕活会话清单报完了（watch_loop Phase 1 走完那一刻发一次，登记 = 承诺真发，已接线）。
+    // 固定复活的 tab 靠它分「说不清」与「已结束」（`设计/30 §3.5.7a`）。
+    "sessions_replayed",
     // 〔SR1a〕链路的下行字节与收尾（`dial/link.rs` 的两台泵真发，登记 = 承诺真发）。
     // 只在 monitor 开了链路之后才出现；旧 monitor / 仓外 aterm 不认这两个 kind ⇒ 忽略（additive）。
     "link_data",
     "link_end",
+    // 〔SR1b〕一趟传输的进度与终局（`control/transfer.rs` 的转发任务真发，登记 = 承诺真发）。
+    // 只在客户端 `transfer-start` 之后才出现；旧客户端不认 ⇒ 忽略（additive）。
+    "transfer",
 ];
 
 /// ① 流模式 flag：出现即剥离并置位，**不影响模式判定**。

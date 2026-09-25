@@ -245,6 +245,18 @@ export function renderStreamRecord(
 // §2.4 点名的那种 O(len) 操作**。常开 = 为了量成本而付一份同量级的成本。
 // ⇒ 探针默认 `null`，热路径上塌成一次布尔判断；开了之后，字节数在
 // **总时刻取完之后**才算，不污染任何一段读数（但确实会抬高整体 wall time —— 见判据的射程段）。
+//
+// # 〔SC1 · 第四波〕成本轴是**卡型**，不是字节 ⇒ 样本上多两格
+//
+// 秤 1 自己的读数推翻了「字节即成本」（`设计/17 §6`「装秤之后改过的三条判断」第 1 条：
+// 字节不是成本轴，卡型才是），而样本上一直**没有卡型** —— 只有四条分支，分支比卡型粗一层
+// （`card` 分支里混着一种便宜的卡 `card-compact`：23 KB 的记录只物化 27 个字）。
+// - `card`：这条记录落进了哪种卡（第一个 `card-*` 类名，与 `height-estimate.ts::warnUnknownCard`、
+//   秤 2 的 `cardClassOf` 同一口径；tool-group 两支取外壳；skip 记 `"skip"`）。
+// - `domChars`：这条记录**物化进 DOM** 的字符数（卡 / 新外壳取 `textContent` 长度，并入的取新 units 之和）。
+//   它是「为什么卡型才是成本轴」的机制那一半：折叠的卡型把正文留在 DOM 外（`§2.8` 那个惰性 body），
+//   物化量不随记录字节变 —— 判据拿它做**不看墙钟**的相等断言（`tests/scale1-render-cost.vitest.ts` 的 S2）。
+// 两格与 `bytes` 同一纪律：**总时刻取完之后**才算，探针关着时零成本。
 // ───────────────────────────────────────────────────────────────────────────
 
 /** 秤 1 的一条样本。时间单位 ms（`performance.now()` 的差）。 */
@@ -256,6 +268,10 @@ export interface RenderCostSample {
    * 从账上抹掉它，长尾里的 attachment/空 user 就成了免费的。
    */
   branch: "skip" | "card" | "tool-group" | "tool-group-merged";
+  /** 落进了哪种卡（第一个 `card-*` 类名；skip 记 `"skip"`）—— 成本轴 */
+  card: string;
+  /** 这条记录物化进 DOM 的字符数（`textContent` 长度）—— 成本轴的机制那一半 */
+  domChars: number;
   /** ① `renderMessage()` */
   render: number;
   /** ② tool-group 合并 / 新建外壳 */
@@ -315,6 +331,18 @@ function recordBytes(message: JsonlRecord): number {
   }
 }
 
+/** 卡型：第一个 `card-*` 类名（同 `height-estimate.ts::warnUnknownCard` 的口径）。 */
+function cardTypeOf(el: HTMLElement): string {
+  return Array.from(el.classList).find((c) => c.startsWith("card-")) ?? `<${el.tagName.toLowerCase()}>`;
+}
+
+/** 物化进 DOM 的字符数。⚠ 同 `recordBytes`：调用点必须在**总时刻取完之后**。 */
+function domCharsOf(els: readonly Element[]): number {
+  let n = 0;
+  for (const el of els) n += (el.textContent ?? "").length;
+  return n;
+}
+
 /**
  * 纯渲染段:建卡 / tool-group 后处理合并 / DOM 挂载 / userActive。
  * 前置:routeMetaAndBranch 已对该 payload 返回 "content"(meta 已消费、branch 已喂)。
@@ -347,6 +375,8 @@ export function renderContentRecord(
         pushCostSample(probe, {
           bytes: recordBytes(message),
           branch: "skip",
+          card: "skip",
+          domChars: 0,
           render: tRender - t0,
           merge: 0,
           estimate: 0,
@@ -386,6 +416,8 @@ export function renderContentRecord(
         pushCostSample(probe, {
           bytes: recordBytes(message),
           branch: "card",
+          card: cardTypeOf(result.element),
+          domChars: domCharsOf([result.element]),
           render: tRender - t0,
           merge: 0,
           estimate: tEstimate - tRender,
@@ -413,6 +445,8 @@ export function renderContentRecord(
           pushCostSample(probe, {
             bytes: recordBytes(message),
             branch: "tool-group-merged",
+            card: cardTypeOf(prev.toolGroup.root),
+            domChars: domCharsOf(result.units),
             render: tRender - t0,
             merge: tMerge - tRender,
             estimate: 0,
@@ -444,6 +478,8 @@ export function renderContentRecord(
         pushCostSample(probe, {
           bytes: recordBytes(message),
           branch: "tool-group",
+          card: cardTypeOf(group.root),
+          domChars: domCharsOf([group.root]),
           render: tRender - t0,
           merge: tMerge - tRender,
           estimate: tEstimate - tMerge,

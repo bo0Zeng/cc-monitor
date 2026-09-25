@@ -1,17 +1,15 @@
 //! F5：一键部署 vendored `cc-acct-iso`（bash skill）到远端 + 存在性检测。
 //!
 //! 对标 [`crate::sftp::deploy_remote_backend`]，但 cc-acct-iso 是一套 **bash 脚本**（非架构相关
-//! 二进制），故直接 `include_bytes!` 内嵌 `src/bridge/vendor/cc-acct-iso/`，部署时 SFTP 推文件 +
+//! 二进制），故直接 `include_bytes!` 内嵌 `src/bridge/vendor/cc-acct-iso/`，部署时经本机常驻后端（SFTP，〔SR1b〕只许落 `~/.cc-monitor/bin/` 底下）推文件 +
 //! 跑 `cc-acct-iso-install.sh`（**只软链 `~/.local/bin`、不碰 rc**，见脚本头注释）。
 //!
 //! 版本身份 = vendored 脚本内容哈希（`.vendor_id`）→ 远端 marker `<dest>/.vendor_id`，复用
 //! [`crate::sftp::deploy_decision`] 的 skip-if-current 语义。**只读铁律豁免**：这是用户显式触发的
 //! 一键安装（同后端部署），且落点被 [`is_safe_remote_acct_iso_dir`] 守卫限制。
 
-use crate::sftp::{
-    connect_sftp, deploy_decision, ensure_dir_all, read_optional, upload_atomic,
-    upload_atomic_verified, DeployAction,
-};
+use crate::dial_host::RemoteFs;
+use crate::sftp::{deploy_decision, put_marker, read_marker, upload_verified, DeployAction};
 use crate::ssh_source::{connect_and_exec_cmd, RemoteConfig};
 use serde::Serialize;
 use std::time::Duration;
@@ -190,7 +188,9 @@ pub(crate) const SHELLINIT_FENCE_END: &str = "# ===== END cc-acct-iso =====";
 pub async fn deploy_remote_acct_iso(cfg: RemoteConfig, dest_dir: String) -> Result<String, String> {
     let dest = dest_dir.trim().trim_end_matches('/').to_string();
     if dest.is_empty() {
-        return Err("请先填部署目录（绝对路径，如 /home/<user>/.cc-monitor/cc-acct-iso）".into());
+        return Err(
+            "请先填部署目录（绝对路径，如 /home/<user>/.cc-monitor/bin/cc-acct-iso）".into(),
+        );
     }
     if dest.contains('~') {
         return Err("部署目录含 ~（SFTP 不展开 ~），请改用绝对路径".into());
@@ -201,11 +201,12 @@ pub async fn deploy_remote_acct_iso(cfg: RemoteConfig, dest_dir: String) -> Resu
         ));
     }
 
-    let conn = connect_sftp(&cfg).await?;
-    let sftp = &conn.sftp;
+    // 〔SR1b · 2026-09-24〕经本机常驻后端那条 `files` 链路（写只许 `~/.cc-monitor/bin/` 与暂存区 ⇒ `dest` 必须在
+    //   `~/.cc-monitor/bin/` 下；前端默认推导同拍改成 `…/.cc-monitor/bin/cc-acct-iso`，不在就是后端围栏原话拒）。
+    let fs = RemoteFs::open(&cfg).await?;
     let marker = format!("{dest}/.vendor_id");
-    let remote_id = read_optional(sftp, &marker)
-        .await
+    let remote_id = read_marker(&fs, &marker)
+        .await?
         .map(|b| String::from_utf8_lossy(&b).trim().to_string());
 
     match deploy_decision(remote_id.as_deref(), vendor_id()) {
@@ -215,37 +216,36 @@ pub async fn deploy_remote_acct_iso(cfg: RemoteConfig, dest_dir: String) -> Resu
         )),
         DeployAction::Deploy(reason) => {
             // 建目录树：<dest>/scripts/test、<dest>/examples。
-            ensure_dir_all(sftp, &format!("{dest}/scripts/test")).await;
-            ensure_dir_all(sftp, &format!("{dest}/examples")).await;
+            fs.mkdirs(&format!("{dest}/scripts/test")).await?;
+            fs.mkdirs(&format!("{dest}/examples")).await?;
 
             // 上传脚本（可执行 0o755）与文档/示例（0o644）。
             let scripts_dir = format!("{dest}/scripts");
-            upload_atomic_verified(
-                sftp,
+            upload_verified(
+                &fs,
                 &format!("{scripts_dir}/cc-acct-iso"),
                 SCRIPT_MAIN,
                 0o755,
             )
             .await?;
-            upload_atomic_verified(sftp, &format!("{scripts_dir}/lib.sh"), SCRIPT_LIB, 0o755)
-                .await?;
-            upload_atomic_verified(
-                sftp,
+            upload_verified(&fs, &format!("{scripts_dir}/lib.sh"), SCRIPT_LIB, 0o755).await?;
+            upload_verified(
+                &fs,
                 &format!("{scripts_dir}/cc-acct-iso-install.sh"),
                 SCRIPT_INSTALL,
                 0o755,
             )
             .await?;
-            upload_atomic_verified(
-                sftp,
+            upload_verified(
+                &fs,
                 &format!("{scripts_dir}/test/run-tests.sh"),
                 SCRIPT_TEST,
                 0o755,
             )
             .await?;
-            upload_atomic_verified(sftp, &format!("{dest}/SKILL.md"), SKILL_MD, 0o644).await?;
-            upload_atomic_verified(
-                sftp,
+            upload_verified(&fs, &format!("{dest}/SKILL.md"), SKILL_MD, 0o644).await?;
+            upload_verified(
+                &fs,
                 &format!("{dest}/examples/config"),
                 EXAMPLE_CONFIG,
                 0o644,
@@ -275,7 +275,7 @@ pub async fn deploy_remote_acct_iso(cfg: RemoteConfig, dest_dir: String) -> Resu
             }
 
             // install 成功 → 写 marker（部署成功身份）。
-            upload_atomic(sftp, &marker, vendor_id().as_bytes(), 0o644).await?;
+            put_marker(&fs, &marker, vendor_id().as_bytes(), 0o644).await?;
 
             // 复检 PATH 里是否可见。此时 install 已成功（软链已建），MISS 只可能是 ~/.local/bin
             // 不在**非交互 shell** 的 PATH 里 → 归因 PATH（不再误导成「脚本没就位」）。

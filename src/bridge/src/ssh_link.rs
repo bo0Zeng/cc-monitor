@@ -22,7 +22,7 @@
 //!
 //! # 线上形状（与后端 `dial/mod.rs` 头注同一份，住那边，这里不抄第二份）
 //!
-//! ack 之前零到多行 `{"stage":{…}}` → 恰好一行 ack → 之后按用法。
+//! ack 之前零到多行 `{"stage":{…}}` → 恰好一行 ack → 之后按用法（〔SR1b〕`files` 是一问一答，读应答那一行用 [`reply_line`]）。
 //! 🔴 **老代理出声**：ack 的 `uses` 不含所请求的用法 ⇒ [`LinkError::TooOld`]，不去解后面那些字节。
 
 use serde::{Deserialize, Serialize};
@@ -207,6 +207,17 @@ pub async fn accepted<R: AsyncBufRead + Unpin>(
         .and_then(serde_json::Value::as_u64)
         .map(Some)
         .ok_or_else(|| LinkError::Garbled(format!("转发计数行没有 accepted（原文 {line:?}）")))
+}
+
+/// 〔SR1b〕`files` 用法：ack 之后一问一答，这里读**一行应答**（JSON 对象）。管子关了 ⇒ [`LinkError::Silent`]。
+pub async fn reply_line<R: AsyncBufRead + Unpin>(
+    r: &mut R,
+    cap: u64,
+) -> Result<serde_json::Value, LinkError> {
+    let Some(line) = read_line_capped(r, cap).await? else {
+        return Err(LinkError::Silent);
+    };
+    serde_json::from_str(&line).map_err(|e| LinkError::Garbled(format!("{e}（原文 {line:?}）")))
 }
 
 #[cfg(test)]

@@ -373,6 +373,8 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
         ("stream", Use::Stream),
         ("capture", Use::Capture),
         ("forward", Use::Forward),
+        // 〔SR1b〕受限的远端文件一问一答（部署）。
+        ("files", Use::Files),
     ] {
         let raw = format!(
             r#"{{"host":"h","port":1,"user":"u","key_path":null,"host_key_fingerprint":null,"use":"{word}"}}"#
@@ -385,14 +387,15 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
     }
     assert_eq!(
         USES.len(),
-        3,
+        4,
         "`uses` 与 `Use` 的变体必须一一对应（两向：上面逐个读过，这里数一遍）"
     );
-    // SFTP 子系统刻意不认（红线 I7 那一裁没拍，见 `dial/mod.rs` 头注）：读到它就是请求坏了。
+    // 原始子系统字节流刻意不认（〔SR1b〕SFTP 住本机后端，界面只拿 `files` 的一问一答与 `transfer-*`，
+    // 见 `dial/mod.rs` 头注）：读到它就是请求坏了。
     let sub = r#"{"host":"h","port":1,"user":"u","key_path":null,"host_key_fingerprint":null,"use":"subsystem"}"#;
     assert!(
         parse_request(sub).is_err(),
-        "代理认了 subsystem —— 后端长出了远端文件传输能力"
+        "代理认了 subsystem —— SFTP 的协议字节会回到界面进程"
     );
 }
 

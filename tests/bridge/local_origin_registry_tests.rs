@@ -128,10 +128,12 @@ fn every_remote_config_lookup_deals_with_the_local_origin_first() {
     //    `cc_bus.rs::check_cc_bus_agent_online` 与 `tmux.rs::capture_remote_pane`
     //    不再自己去查远端配置（两条都整条走后端通道，`client_for(origin)` 对 `<local>`
     //    与远端一视同仁）⇒ 这个人群**恰好少两处**。
+    // 🔴 〔SR1b · 09-24〕地板 17 → **16**：`inproc_dial.rs` 里跳板那一跳的 `connect_via_jump`〔散文墓碑〕（查配置，只服务 SFTP）
+    //    随那份文件整份删了（界面进程零 SSH）⇒ 这个人群**恰好少一处**（登记表那一行同拍还掉）。
     assert!(
-        sites >= 17,
+        sites >= 16,
         "只数到 {sites} 处 `{CALL}` —— 抽取坏了，本断言在空转（08-12 实测 28 处，\
-             `K-R104` 09-13 现打 19，`K-R112` 09-13 现打 17）"
+             `K-R104` 09-13 现打 19，`K-R112` 09-13 现打 17，SR1b 09-24 现打 16）"
     );
     // 反向自检之二：**函数定位不许大面积退回文件头**。
     // 退回文件头会让位置比较退化成「文件里有没有」——那比本护栏声称的弱，
@@ -155,7 +157,8 @@ fn every_remote_config_lookup_deals_with_the_local_origin_first() {
     //    〔`设计/50`：那一族今天连功能都不在了 —— 这个数**不动**，因为它当时就已经出表了。〕
     //    ★ 这是本表第二次往下走，而「变少 ⇒ 好事」正是它自己报错文案里写的那一句。
     // 〔RW1 · 第四波 09-24〕14 → **12**：`mcp.rs` 远端写 / 删两个分支随「用户文件改经后端写」不再查远端配置。
-    const TRIAGE_DEBT_TODAY: usize = 12;
+    // 〔SR1b · 第四波 09-24〕12 → **11**：`inproc_dial.rs` 里的 `connect_via_jump`〔散文墓碑〕（只服务 SFTP 的跳板查配置）随那份文件整份删了。
+    const TRIAGE_DEBT_TODAY: usize = 11;
     assert_eq!(
         TRIAGE_DEBT.len(),
         TRIAGE_DEBT_TODAY,

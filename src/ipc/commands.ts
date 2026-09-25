@@ -129,6 +129,7 @@ import type { Origin } from "../generated/Origin";
 import type { SessionIndexResult } from "../generated/SessionIndexResult";
 import type { UserInputsResult } from "../generated/UserInputsResult";
 import type { FindResult } from "../generated/FindResult";
+import type { SessionRecordProbe } from "../generated/SessionRecordProbe";
 import type { CcBusMessage } from "../generated/CcBusMessage";
 import type { CcBusState } from "../generated/CcBusState";
 import type { ConnectStage } from "../generated/ConnectStage";
@@ -312,19 +313,6 @@ export const commands = {
     limit: number | null;
   }) => invoke<SearchResponse>("search_history", args),
 
-  /** F72：批准一条 Proposed 批注。 */
-  panorama_approve_annotation: (args: { repo: string; id: string }) =>
-    invoke<boolean>("panorama_approve_annotation", args),
-
-  /** F72：新增批注，返回批注 id。 */
-  panorama_add_annotation: (args: {
-    repo: string;
-    file: string;
-    symbol: string | null;
-    body: string;
-    author: string;
-  }) => invoke<string>("panorama_add_annotation", args),
-
   /**
    * devbench F03：列出接入的 skill 及其状态。
    *
@@ -425,6 +413,14 @@ export const commands = {
   panorama_call: (args: { origin: Origin; op: string; repo: string | null; args: unknown }) =>
     invoke<unknown>("panorama_call", args),
 
+  /**
+   * 〔RM1d · 第四波〕批注 / 文档关联的**写**（V110「引擎只算、文件管理来写」）：问那台机器要编辑计划、
+   * 经那台机器后端的文件管理落盘（本机远端同一条）。`op` ∈ `add_annotation` · `propose_annotation` ·
+   * `approve_annotation` · `remove_annotation` · `write_doc_link` · `remove_doc_link`；回的值随 op 而定。
+   */
+  panorama_edit: (args: { origin: Origin; repo: string; op: string; args: unknown }) =>
+    invoke<unknown>("panorama_edit", args),
+
   /** 某符号的被调者边。`depth` 是 `u32` ⇒ `number`。 */
   panorama_callees: (args: { repo: string; symbol: string; depth: number }) =>
     invoke<Edge[]>("panorama_callees", args),
@@ -469,25 +465,8 @@ export const commands = {
   panorama_overview: (args: { repo: string; budget?: number | null }) =>
     invoke<Overview>("panorama_overview", args),
 
-  /** F72：提一条待审批注，返回 id。 */
-  panorama_propose_annotation: (args: {
-    repo: string;
-    file: string;
-    symbol: string | null;
-    body: string;
-    author: string;
-  }) => invoke<string>("panorama_propose_annotation", args),
-
   /** 全量重建索引。 */
   panorama_reindex: (args: { repo: string }) => invoke<IndexStats>("panorama_reindex", args),
-
-  /** F72：删批注。 */
-  panorama_remove_annotation: (args: { repo: string; id: string }) =>
-    invoke<boolean>("panorama_remove_annotation", args),
-
-  /** 删一条文档链接。 */
-  panorama_remove_doc_link: (args: { repo: string; doc: string; target: string }) =>
-    invoke<boolean>("panorama_remove_doc_link", args),
 
   /** 按名子串搜符号 → 拿全限定 id。`limit` 是 `Option<usize>` ⇒ `number | null`。 */
   panorama_search: (args: { repo: string; query: string; limit?: number | null }) =>
@@ -518,10 +497,6 @@ export const commands = {
     files: string[];
     ranges: [number, number][];
   }) => invoke<string[]>("panorama_touching", args),
-
-  /** 写一条文档链接。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  panorama_write_doc_link: (args: { repo: string; doc: string; target: string }) =>
-    invoke<void>("panorama_write_doc_link", args),
 
   // 〔第四波 S4〕`sftp_copy`（远端内部复制，步 23b）的包装随那条命令退役删了：窗口的复制走后端 `files-copy`。
 
@@ -703,6 +678,14 @@ export const commands = {
      */
     tmuxName?: string | null;
   }) => invoke<void>("resume_history_session", args),
+
+  /**
+   * 〔U4b · 第四波〕**resume 之前问：这条会话的记录还在那台机器上吗**（`设计/01 §6.2` 最后一条）。
+   * 判定住那台的后端（`history-record`，只收 sid）；本机与远端同一个口。**问不到 ⇒ reject**：
+   * 调用方当「不知道」，**不当「不在」**。返回值字段被真消费 ⇒ 生成物（桶③）。
+   */
+  probe_session_record: (args: { origin: Origin; sessionId: string }) =>
+    invoke<SessionRecordProbe>("probe_session_record", args),
 
   /** **本机今天有哪些 tmux 会话** —— 与远端 `list_remote_tmux` 同形（本机没有 SSH 那一跳）。
    *

@@ -1,3 +1,9 @@
+//! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md` 的 `--acct-iso-status` / `--acct-iso-shellinit` 两条
+//!
+//! 核原文：`--acct-iso-status` 条逐字「先查 `$HOME/.local/bin/cc-acct-iso`（install 脚本的软链落点）、再查 `PATH`」·
+//! 「**「没装」是答案不是错误**（exit 0，`looked` 说清查过哪儿）」；`--acct-iso-shellinit` 条逐字「退出码 0 时把它的 stdout **原样**吐出」，
+//! 失败码 `not_installed` · `timed_out` · `tool_failed` · `not_run` · `bad_args` —— 本族五条与这几句一一对上。〔JA1 点址 2026-09-24〕
+
 use super::*;
 use crate::plugin::invoke::{Done, NotRun, TIMED_OUT_CODE};
 
