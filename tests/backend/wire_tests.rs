@@ -1,3 +1,9 @@
+//! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md §10`（backend → client 线上契约）
+//!
+//! 核原文：`IPC-PROTOCOL.md §10` 逐字「每行恰好一个 UTF-8 JSON 对象，`\n` 结尾，对象内无裸 `\n`/`\r`」；同节帧表逐格写了各字段的
+//! additive 规则与今天的取值 —— 本族判出方向帧的字节与那张表一致。出方向单写者那两条服务同一节的「每行恰好一个对象」与「首帧」；
+//! 它不单独立条是 V97 的裁定（「SSH 流单写者」不升）。〔JA1 点址 2026-09-24〕
+
 /// ★★ **出方向帧只许有一个写者**〔audit-0805 08-08，Phase G 第 60 件，D6〕。
 ///
 /// `inbound.rs` 头注逐字写着「`writer_task`（**出方向帧的唯一出口**）」。
@@ -267,6 +273,7 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
                 status: None,
                 waiting_for: None,
                 rbind_token: None,
+                container: None,
             },
             "session_added",
         ),
@@ -346,6 +353,17 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
             },
             "link_end",
         ),
+        // 〔SR1b〕传输进度 / 终局（逐字节形状另由 `transfer_frames_have_exactly_these_bytes` 钉）。
+        (
+            Frame::Transfer {
+                id: "xfer-1".into(),
+                got: 0,
+                total: 0,
+                end: None,
+            },
+            "transfer",
+        ),
+        (Frame::SessionsReplayed, "sessions_replayed"),
     ];
 
     // ★ 人群自检：**样本必须覆盖 `Frame` 的每一个变体**〔audit-0805 08-06〕。
@@ -421,6 +439,40 @@ fn link_frames_have_exactly_these_bytes() {
     ];
     for (f, want) in cases {
         assert_eq!(to_line(&f).unwrap(), want);
+    }
+}
+
+/// 〔SR1b〕★ B8：`transfer` 帧的**逐字节**金标准（四形：进行中 · 传完 · 失败 · 撤）；`end` 缺席时不上线；
+/// 它丢了不可恢复（终局丢了，看的人永远等下去）。
+#[test]
+fn transfer_frames_have_exactly_these_bytes() {
+    let f = |end: Option<crate::wire::TransferEnd>| Frame::Transfer {
+        id: "xfer-7".into(),
+        got: 262144,
+        total: 1000000,
+        end,
+    };
+    let cases = [
+        (
+            f(None),
+            "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000}\n",
+        ),
+        (
+            f(Some(crate::wire::TransferEnd::Done { bytes: 1000000 })),
+            "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"done\",\"bytes\":1000000}}\n",
+        ),
+        (
+            f(Some(crate::wire::TransferEnd::Failed { why: "写暂存件失败".into() })),
+            "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"failed\",\"why\":\"写暂存件失败\"}}\n",
+        ),
+        (
+            f(Some(crate::wire::TransferEnd::Cancelled)),
+            "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"cancelled\"}}\n",
+        ),
+    ];
+    for (frame, want) in cases {
+        assert_eq!(to_line(&frame).unwrap(), want);
+        assert!(!frame.loss_is_recoverable(), "传输帧被判成丢了可恢复");
     }
 }
 
@@ -796,6 +848,7 @@ fn dg3_codex_fields_serialize_when_present() {
         status: None,
         waiting_for: None,
         rbind_token: None,
+        container: None,
     })
     .unwrap();
     assert_eq!(
@@ -854,6 +907,7 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
         status: None,
         waiting_for: None,
         rbind_token: None,
+        container: None,
     })
     .unwrap();
     assert_eq!(
@@ -1002,6 +1056,7 @@ fn session_added_rbind_token_is_additive_present_and_absent() {
         status: None,
         waiting_for: None,
         rbind_token: None,
+        container: None,
     })
     .unwrap();
     assert_eq!(
@@ -1025,11 +1080,59 @@ fn session_added_rbind_token_is_additive_present_and_absent() {
         status: None,
         waiting_for: None,
         rbind_token: Some("0123456789abcdef0123456789abcdef".into()),
+        container: None,
     })
     .unwrap();
     assert_eq!(
         present,
         "{\"kind\":\"session_added\",\"sid\":\"s\",\"rbind_token\":\"0123456789abcdef0123456789abcdef\"}\n",
         "`rbind_token` 的线上名 / 位置变了 —— 那个名字是两路共用的契约（`设计/80 §8.7` 那张表钉死）"
+    );
+}
+
+/// 〔U4b · 第四波〕`session_added.container` 的线上形：**两个字面量 ＋ 缺席**，三格各钉一处。
+///
+/// - 缺席：与本字段加进来之前逐字节相同（右边那串与上一条 absent 那串刻意逐字重复）。
+/// - `tmux` / `none`：字段按声明序排在最后（`rbind_token` 之后）。这两个字面量是 monitor
+///   `ssh_source::parse_frame` 照着认的东西 —— 两边各写一遍，对不上时 monitor 把它当「不知道」，
+///   而「不知道」是合法值 ⇒ **不会有任何东西报错**，所以这里用精确字节钉。
+#[test]
+fn session_added_container_is_additive_with_two_literals() {
+    let frame = |c: Option<crate::wire::SessionContainer>| {
+        to_line(&Frame::SessionAdded {
+            sid: "s".into(),
+            agent_kind: None,
+            liveness_confidence: None,
+            session_kind: None,
+            attachable: None,
+            cwd: None,
+            name: None,
+            path: None,
+            lines: None,
+            status: None,
+            waiting_for: None,
+            rbind_token: None,
+            container: c,
+        })
+        .unwrap()
+    };
+    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\"}\n");
+    assert_eq!(
+        frame(Some(crate::wire::SessionContainer::Tmux)),
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"container\":\"tmux\"}\n"
+    );
+    assert_eq!(
+        frame(Some(crate::wire::SessionContainer::None)),
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"container\":\"none\"}\n"
+    );
+}
+
+/// 〔U4b · 第四波〕`sessions_replayed` 的**逐字节**金标准：无载荷，只有 kind。
+/// monitor `ssh_source::parse_frame` 照这个字面量认它。
+#[test]
+fn sessions_replayed_has_exactly_these_bytes() {
+    assert_eq!(
+        to_line(&Frame::SessionsReplayed).unwrap(),
+        "{\"kind\":\"sessions_replayed\"}\n"
     );
 }

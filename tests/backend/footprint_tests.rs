@@ -1,3 +1,9 @@
+//! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md` 的 `footprint-probe` 节（足迹的这台机器那一半，只交路径事实）
+//!
+//! 核原文：该节逐字「目录名字超过 4096 个 / 列不动 ⇒ `entries:null` ＋ `notice`（**不截断**）」·「**文件内容一个字节都不回**」，
+//! 入参错误码 `bad_args` / `too_large` 与 `HOME` 缺时退 `USERPROFILE` —— 本族在临时目录上真 stat 真读，判的正是这几句。
+//! 这个读口为什么要有：V101「补后端读口，远端也有真栏」。与 `tests/bridge/footprint_remote_tests.rs` 不重复（那是 monitor 半）。〔JA1 点址 2026-09-24〕
+//!
 //! 〔RM1a · 第四波〕`footprint.rs` 的判据 —— 「足迹」的这台机器那一半（只读路径事实）。
 //!
 //! # 买到的（临时目录上真 stat 真读）
