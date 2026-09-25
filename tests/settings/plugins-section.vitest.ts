@@ -296,7 +296,7 @@ describe("〔C4b〕plugins-marketplaces 的成品按形状收（`decodeSurvey`�
       ["a-good", "github:o/r", 2],
       ["b-bad", null, null],
     ]);
-    expect(s.entries[1].declared_error).toContain("落点里没有");
+    expect(s.entries[1].declared_error).toContain("插件市场目录里没有");
     expect(decodeSurvey({ entries: [], file_absent: true })).toEqual({ entries: [], file_absent: true });
   });
 

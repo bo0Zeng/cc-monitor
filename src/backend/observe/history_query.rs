@@ -22,6 +22,7 @@
 // ⇒ U3 按 `common/` 自己的「≥2 层」门槛搬回 `observe/`。
 use crate::agents::claudecode::paths::projects_root;
 use crate::observe::fs::mtime_ms;
+use copy_core::copy_text;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
@@ -304,7 +305,12 @@ pub(crate) fn list_subagents_into(
         .and_then(|s| s.to_str())
         .and_then(|stem| parent_path.parent().map(|d| d.join(stem).join("subagents")))
     else {
-        return Err(("bad_parent", "父路径推不出 subagents 目录".to_string()));
+        return Err((
+            "bad_parent",
+            crate::common::contract::malformed(
+                "cannot derive the subagents directory from the parent path",
+            ),
+        ));
     };
     // 目录不在 = 这个会话没有 subagent，**不是错**：回空、exit 0。
     let Ok(rd) = std::fs::read_dir(&dir) else {
@@ -1131,8 +1137,12 @@ pub(crate) fn read_page(
                     if bytes.len() > line_cap {
                         return Err((
                             "oversized_line",
-                            format!(
-                                "偏移 {offset} 起的那一行超过 {line_cap} 字节，一帧装不下 —— 拒收，不截半行"
+                            copy_text(
+                                "beHistoryQuery.readPage.lineTooLong",
+                                &[
+                                    ("lineCap", &line_cap.to_string()),
+                                    ("offset", &offset.to_string()),
+                                ],
                             ),
                         ));
                     }
@@ -1238,7 +1248,10 @@ pub(crate) fn read_lines_from<R: std::io::BufRead>(
         if body.len() > line_cap {
             return Err((
                 "oversized_line",
-                format!("第 {at} 行超过 {line_cap} 字节，一帧装不下 —— 拒收，不截半行"),
+                copy_text(
+                    "beHistoryQuery.readLinesFrom.lineTooLong",
+                    &[("at", &at.to_string()), ("lineCap", &line_cap.to_string())],
+                ),
             ));
         }
         bytes += body.len();
@@ -1284,9 +1297,9 @@ pub(crate) struct LinesPage {
 /// 时报的话要说清是「这棵树里没有」，不是「世上没有」。
 pub(crate) fn record_in(agent_home: &Path, sid: &str) -> Result<RecordProbe, String> {
     if !branch_core::is_plain_sid(sid) {
-        return Err(format!(
-            "sid 形状不对（只许字母 / 数字 / 连字符，1..=64）：{sid:?}"
-        ));
+        return Err(crate::common::contract::malformed(&format!(
+            "bad session id shape (letters, digits, hyphen; 1..=64): {sid:?}"
+        )));
     }
     let root = projects_root(agent_home);
     let present = branch_core::find_session_file(&root, sid).is_ok();
@@ -1314,9 +1327,10 @@ pub(crate) fn record_for(
         None => agent_home.to_path_buf(),
         Some(d) if super::accounts_query::is_safe_config_dir(d) => std::path::PathBuf::from(d),
         Some(d) => {
-            return Err(format!(
-                "configDir 不是一个能查的账号配置目录（要绝对路径，不许上跳、不许 shell 元字符）：{d:?}"
-            ))
+            return Err(crate::common::contract::malformed(&format!(
+                "configDir is not a queryable account config dir \
+                 (absolute path, no `..`, no shell metacharacters): {d:?}"
+            )))
         }
     };
     record_in(&tree, sid)

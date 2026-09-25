@@ -1027,7 +1027,7 @@ pub enum GapKind {
 ///
 /// ⚠ **「暂时不做」是一种合法答复，但必须写出来** —— 用户那一拍逐字
 /// 「**做得到. 除非暂时不做. windows用windows自己的后台服务. 后面在做**」。
-/// ⇒ [`TargetGap::why`] 要同时答两件：**今天为什么做不到** ＋ **将来怎么办**。
+/// ⇒ [`TargetGap::rationale`] 要同时答两件：**今天为什么做不到** ＋ **将来怎么办**。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TargetGap {
     /// 哪一面。必须是 [`CAPABILITY_FACES`] 或 [`COMMAND_FACES`] 里真有的族名。
@@ -1039,7 +1039,11 @@ pub struct TargetGap {
     /// 🔴 **哪一档**：结构上没有 · 欠着。两档不许合成一档（[`GapKind`] 头注）。
     pub kind: GapKind,
     /// 🔴 **为什么做不到 ＋ 将来怎么办。** 不许留空（判据有长度地板）。
-    pub why: &'static str,
+    ///
+    /// 〔CP2c · 第四波 4C〕字段名 `why` → `rationale`：它是**设计登记的理由散文**（只给判据读，从不上界面），
+    /// 而普查的字段出口按字段名认文案（`why:` / `reason:` / `what:` …）—— 叫 `why` 就被数成了对外文案。
+    /// 改名让字段说实话（`调研/第四波记录/CP2c.md §3` 第 5 类），不是给它开豁免。
+    pub rationale: &'static str,
 }
 
 /// 🔴 **全部逐能力豁免 —— 唯一住址。**
@@ -1073,28 +1077,28 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "tmux",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "Windows 上没有 tmux（也不打算装）。将来由 **Windows 自己的后台服务**               承担「会话活在前端之外」这件事〔用户 2026-09-21 拍板〕，**暂时不做**。",
+        rationale: "Windows 上没有 tmux（也不打算装）。将来由 **Windows 自己的后台服务**               承担「会话活在前端之外」这件事〔用户 2026-09-21 拍板〕，**暂时不做**。",
     },
     TargetGap {
         family: "ccm-launcher",
         capability: "attach",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "「接回一个还活着的会话」今天的实现是 `tmux attach`。Windows 上那条路不存在               ⇒ 等那个后台服务落地时一并给出等价物〔同上裁决〕，**暂时不做**。",
+        rationale: "「接回一个还活着的会话」今天的实现是 `tmux attach`。Windows 上那条路不存在               ⇒ 等那个后台服务落地时一并给出等价物〔同上裁决〕，**暂时不做**。",
     },
     TargetGap {
         family: "ccm-launcher",
         capability: "detach",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "「把会话留在后台」今天是 `tmux detach`。同 `attach`，等那个后台服务，**暂时不做**。",
+        rationale: "「把会话留在后台」今天是 `tmux detach`。同 `attach`，等那个后台服务，**暂时不做**。",
     },
     TargetGap {
         family: "ccm-launcher",
         capability: "tmux-size",
         target: Target::Windows,
         kind: GapKind::Structural,
-        why: "给 tmux 那个窗格定尺寸。没有 tmux 就没有这一格；将来那个后台服务里              「会话的终端多大」是另一种形状，**不照搬这一条** ⇒ 这一条本身不跨过去；\
+        rationale: "给 tmux 那个窗格定尺寸。没有 tmux 就没有这一格；将来那个后台服务里              「会话的终端多大」是另一种形状，**不照搬这一条** ⇒ 这一条本身不跨过去；\
               那个后台服务里的尺寸若要有，是**另一条**能力、另立一行〔PR1 分档：结构〕。",
     },
     TargetGap {
@@ -1102,7 +1106,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "tmux-base",
         target: Target::Windows,
         kind: GapKind::Structural,
-        why: "tmux 的窗格编号基数（`base-index`）。它是 tmux 自己的配置面，              Windows 上连对应概念都没有 ⇒ **不是推后，是这一条本身不该跨过去**。",
+        rationale: "tmux 的窗格编号基数（`base-index`）。它是 tmux 自己的配置面，              Windows 上连对应概念都没有 ⇒ **不是推后，是这一条本身不该跨过去**。",
     },
     // ── `ccm-launcher` × Windows：**真机现打补上的三条**〔2026-09-21〕 ───────
     //
@@ -1119,7 +1123,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "bus-register",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "**硬链在 tmux 上，不是自己做不到**：`argv.rs` 两道闸串着 —— \
+        rationale: "**硬链在 tmux 上，不是自己做不到**：`argv.rs` 两道闸串着 —— \
               `--bus-register` 要 `--detach`，而 `--detach` 要 `--tmux`。\
               真机现打（Win11）把两个 bus 脚本都种齐、排掉「脚本缺失」这个变量之后，\
               仍然 `EXIT=4 no_tmux` ⇒ **唯一闸门就是 tmux**。\
@@ -1131,7 +1135,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "ccm-sid",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "〔S5 · 第四波 09-24〕**直路语义已定，Windows 上仍欠在读侧。** \
+        rationale: "〔S5 · 第四波 09-24〕**直路语义已定，Windows 上仍欠在读侧。** \
               从前：`--ccm-sid` 只在容器（tmux）那条路上被消费（`Container.ccm_sid` → \
               `tmux set-option @ccm_sid_expect`），直路上被接受、零效果、不出声。\
               主会话裁：**不报错**（报错 ＝ 让它依赖 tmux，撞 V63），直路语义走启动期令牌 \
@@ -1178,7 +1182,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "base-url-across-tmux",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "把中转地址跨 tmux 会话传下去。载体没了这一条就没了；              将来那个后台服务要自己回答「地址怎么传给它起的会话」，**暂时不做**。",
+        rationale: "把中转地址跨 tmux 会话传下去。载体没了这一条就没了；              将来那个后台服务要自己回答「地址怎么传给它起的会话」，**暂时不做**。",
     },    // ── 〔PR1 · 2026-09-24〕命令面 × Windows：**不是新裁的，是第一次被看见** ────────────
     //
     // 这六行在 PR1 之前就是真的（`K-P4` 那一拍 `unavailable_from` 在 Windows 上就会列出这三条），
@@ -1192,7 +1196,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "capture-pane",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "抓一屏今天就是起一次 `tmux capture-pane`（命令自己声明了 `no_tmux` 码）。\
+        rationale: "抓一屏今天就是起一次 `tmux capture-pane`（命令自己声明了 `no_tmux` 码）。\
               Windows 上没有 tmux ⇒ 平台默认做不到。将来由那个 Windows 后台服务给出\
               「看一眼会话画面」的等价物〔用户 2026-09-21 拍板〕，**暂时不做**。",
     },
@@ -1201,7 +1205,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "kill",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "结束会话今天是起一次 `tmux kill-session`（命令自己声明了 `no_tmux` 码）。\
+        rationale: "结束会话今天是起一次 `tmux kill-session`（命令自己声明了 `no_tmux` 码）。\
               Windows 上没有 tmux ⇒ 平台默认做不到。将来由那个 Windows 后台服务\
               管会话的生死〔用户 2026-09-21 拍板〕，**暂时不做**。",
     },
@@ -1210,7 +1214,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "launch",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "起会话今天是在 tmux 里开一个新会话（命令自己声明了 `no_tmux` 码）。\
+        rationale: "起会话今天是在 tmux 里开一个新会话（命令自己声明了 `no_tmux` 码）。\
               Windows 上没有 tmux ⇒ 平台默认做不到。将来由那个 Windows 后台服务\
               承担「会话活在前端之外」〔用户 2026-09-21 拍板〕，**暂时不做**。",
     },
@@ -1219,7 +1223,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "--capture-pane",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "与帧面 `capture-pane` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
+        rationale: "与帧面 `capture-pane` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
               派生到同一条登记）⇒ 同一个理由，将来与帧面那一行同拍还，**暂时不做**。",
     },
     TargetGap {
@@ -1227,7 +1231,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "--kill",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "与帧面 `kill` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
+        rationale: "与帧面 `kill` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
               派生到同一条登记）⇒ 同一个理由，将来与帧面那一行同拍还，**暂时不做**。",
     },
     TargetGap {
@@ -1235,7 +1239,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "--launch",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "与帧面 `launch` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
+        rationale: "与帧面 `launch` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
               派生到同一条登记）⇒ 同一个理由，将来与帧面那一行同拍还，**暂时不做**。",
     },
     // ── 〔FW5 · 第四波 · 2026-09-24〕`files-chmod` × Windows：`设计/96 §8.5` 待拍 3 ────────────
@@ -1250,7 +1254,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "files-chmod",
         target: Target::Windows,
         kind: GapKind::Structural,
-        why: "改的是 **unix 权限位**（低 12 位），命令自己声明了 `no_unix_mode` 码。Windows 上没有这套位\
+        rationale: "改的是 **unix 权限位**（低 12 位），命令自己声明了 `no_unix_mode` 码。Windows 上没有这套位\
               （那边是 ACL ＋ 只读属性），`change_mode` 在那里回 `no_unix_mode`、一个字节不动。\
               ⇒ 这一条本身**不该跨过去**；Windows 那边若要「改访问权限」，是另一条能力、另立一行〔FW5 分档：结构〕。",
     },
@@ -1259,7 +1263,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "--files-chmod",
         target: Target::Windows,
         kind: GapKind::Structural,
-        why: "与帧面 `files-chmod` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
+        rationale: "与帧面 `files-chmod` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
               派生到同一条登记）⇒ 同一个理由：unix 权限位这一条**不该跨过去**。",
     },
 ];

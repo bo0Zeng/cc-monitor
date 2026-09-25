@@ -67,8 +67,26 @@ def load_cp1():
     return mod
 
 
+# 〔MG1 · 合并 CP2b × CP2c，09-25〕常驻端 `src/backend/**` 与 monitor 的子 crate `src/bridge/crates/**` 归 CP2c 的待办表
+# （`CP2c-backend-copy-pending.py`，射程恰是这两棵）⇒ 本表的人群排除它们：两张表各管一半、人群不重叠，
+# 并集仍是普查的全部对外字面量（两份判据都挂在 vitest 上，漏哪一半都红）。
+# ⚠ 前缀按「相对仓根」判；monitor crate 里的 `src/bridge/src/backend/` 是界面进程的后端调用层，仍归本表。
+CP2C_SCOPE = ("src/backend/", "src/bridge/crates/")
+
+
 def outward_literals(cp1, src_root: Path | None = None, ledger: Path | None = None):
-    """→ [dict(file, line, text, from)]：今天源码里全部对外字面量。"""
+    """→ [dict(file, line, text, from)]：今天源码里全部对外字面量（CP2c 那两棵除外）。"""
+    return [x for x in _outward_literals_all(cp1, src_root, ledger) if not _in_cp2c_scope(x["file"])]
+
+
+def _in_cp2c_scope(rel: str) -> bool:
+    # 普查对仓外临时树（selftest 的空语料）给绝对路径 ⇒ 取 `/src/` 之后那一截再判（同 CP2c 的 `in_scope`）。
+    if rel.startswith("/") and "/src/" in rel:
+        rel = "src/" + rel.split("/src/", 1)[1]
+    return rel.startswith(CP2C_SCOPE)
+
+
+def _outward_literals_all(cp1, src_root: Path | None = None, ledger: Path | None = None):
     census = cp1.load_census()
     if src_root is not None:
         census.SRC_ROOT = src_root

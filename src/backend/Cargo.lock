@@ -227,6 +227,7 @@ dependencies = [
  "acct-core",
  "branch-core",
  "codex-token-core",
+ "copy-core",
  "creds-core",
  "gate-core",
  "guard-core",
@@ -319,6 +320,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
 
 [[package]]
+name = "copy-core"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -361,6 +369,7 @@ dependencies = [
 name = "creds-core"
 version = "0.1.0"
 dependencies = [
+ "copy-core",
  "serde_json",
  "windows 0.56.0",
 ]
