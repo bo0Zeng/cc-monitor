@@ -38,6 +38,9 @@ function headlineFor(kind: string): string {
     // 〔DP1 · 第四波〕连接前那一步自动部署没成（那台机器不要这份后端 / 这一版没带 / 装不上），正文是那句原因。
     case "deploy":
       return "⚠ 远端后端没装上";
+    // 〔RM1f〕推代码全景组件之前那一句（`panorama_call.rs::install_notice`）。不是故障，所以不带 ⚠。
+    case "panorama-install":
+      return "正在装代码全景组件";
     default:
       return "⚠ 远端提示";
   }

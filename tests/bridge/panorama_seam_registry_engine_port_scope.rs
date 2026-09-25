@@ -20,6 +20,14 @@ const TREES: &[(&str, &str, usize, &str)] = &[
              （09-04 现打 73 份 `.rs`，地板取 55）。今天它这一格是 0，\
              而**「0」只有在尺子接上了的时候才算数**，那一格由本模块第二条判据买",
     ),
+    // 〔RM1f · V108 后半句〕**取用口今天住这棵树**：monitor 摘掉内嵌引擎之后，全体只剩全景小程序这一处。
+    (
+        "全景小程序",
+        "src/panorama-engine",
+        1,
+        "只装代码全景引擎的独立小程序（V108 选 B）—— 本机与远端的全景都经后端插件口起它，\
+             引擎取用口 `Engine::open` 与引擎类型的导入今天**只**在这里（09-25 现打 1 份 `.rs`：`main.rs`，地板取 1）",
+    ),
     (
         "共享 crate",
         "src/bridge/crates",
@@ -38,7 +46,7 @@ const EXCLUDED_TREES: &[(&str, &str)] = &[(
     "引擎本体自己的家：取用口那个符号是在这里**定义**的，把它算进人群等于要求\
          「定义处也只许有一处取用」——那是另一件事。且 `C7` 逐字「vendor 不动」，\
          它进人群只会造出一条谁也不许修的红。monitor 清单的 `[workspace] exclude` \
-         也逐字排除着它，两处口径一致。",
+         也逐字排除着它，两处口径一致。〔RM1f〕今天依赖它的只剩全景小程序那份清单（monitor 那一行删了）。",
 )];
 
 fn repo_root() -> std::path::PathBuf {
@@ -133,9 +141,10 @@ fn the_engine_port_is_pinned_across_every_tree_we_compile() {
     }
     for (needle, what) in port_needles() {
         let found = ports_in(&corpus, &needle);
+        // 〔RM1f〕住址从 `monitor:panorama.rs`（已删）搬到全景小程序（上面 ② 那一种：换侧，同轮改期望）。
         assert_eq!(
             found,
-            vec!["monitor:panorama.rs".to_string()],
+            vec!["全景小程序:main.rs".to_string()],
             "{what}（针 `{needle}`）的住址表变了：{found:?}\n\
                  各树语料：{sizes:?}\n\
                  ★ **这不是要你把这里的期望改掉了事** —— 先回答是下面哪一种：\n\
@@ -226,6 +235,8 @@ fn the_set_of_trees_this_scope_covers_is_itself_pinned() {
     for (manifest_rel, home) in [
         ("src/bridge/Cargo.toml", "src/bridge"),
         ("src/backend/Cargo.toml", "src/backend"),
+        // 〔RM1f〕第三份清单：全景小程序（今天唯一链 vendored 引擎的那一棵）。
+        ("src/panorama-engine/Cargo.toml", "src/panorama-engine"),
     ] {
         let manifest = std::fs::read_to_string(root.join(manifest_rel))
             .unwrap_or_else(|e| panic!("读不到 {manifest_rel}: {e}"));

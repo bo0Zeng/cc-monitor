@@ -198,6 +198,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/remote-config.ts",
     "src/remote-launch-run.ts",
     "src/remote-launch.ts",
+    "src/session-reads.ts", // 〔C4c〕resume 之前问记录还在不在（经通道问 `history-record`）
     "src/tmux-sessions.ts",
   ],
 };

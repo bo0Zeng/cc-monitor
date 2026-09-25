@@ -211,6 +211,14 @@ do_native() {
   # （`build.rs::embed_native_backend` 的 ① 号硬校验读它，对不上当场 panic）。
   printf '%s\n' "$triple" > "$NATIVE_DIR/cc-monitor-native.target"
   printf '==> 铺好 src/bridge/native-backend/cc-monitor-native（＋ .target = %s）\n' "$triple"
+  # 〔RM1f〕本机原生的全景小程序（monitor 摘内嵌引擎之后，本机全景 = 本机后端 → 插件口 → 它）。
+  #   与 `release.yml` 的 `Build local panorama (native)` ＋ `Stage native panorama for self-extract` 同一条配方；
+  #   落点名字定死在 `build.rs::NATIVE_PANORAMA_FILE`（判据对拍）。
+  printf '==> cargo build %s（本机 target %s，src/panorama-engine）\n' "${REEMBED_BUILD_FLAGS[*]}" "$triple"
+  ( cd "$PANORAMA_SRC" && cargo build "${REEMBED_BUILD_FLAGS[@]}" )
+  cp "$ROOT/.build/panorama/release/cc-monitor-panorama$exe" "$NATIVE_DIR/cc-monitor-panorama"
+  printf '%s\n' "$triple" > "$NATIVE_DIR/cc-monitor-panorama.target"
+  printf '==> 铺好 src/bridge/native-backend/cc-monitor-panorama（＋ .target = %s）\n' "$triple"
 }
 
 # 🔴〔B1〕**真起一趟**本机那一份，回它 stdout 的第一行（起不来就回空串）。
@@ -357,6 +365,28 @@ do_check() {
       fi
     else
       printf 'skip  本机内嵌后端起不起得来 :: 它是给 [%s] 编的、这台是 [%s] —— 不在这里起（错 triple 那一形由 build.rs 当场拦）\n' "$staged" "$host"
+    fi
+    # 〔RM1f〕本机原生全景小程序：铺了、而且是给这台编的 ⇒ 真起一趟 `--probe`，能力表 == 源码 op 表。
+    #   没铺：本机全景在非 Linux 上关着（Linux 本机用 musl 那两份）—— 这里只 skip，不在 --check-dev 里判红
+    #   （它是「看代码全景」的前提，不是「起得来本机后端」的前提）。
+    local pf="$NATIVE_DIR/cc-monitor-panorama" pstaged pcaps
+    if [ -f "$pf" ]; then
+      present=$((present + 1))
+      pstaged="$(tr -d '[:space:]' < "$NATIVE_DIR/cc-monitor-panorama.target" 2>/dev/null || true)"
+      if [ -n "$host" ] && [ "$pstaged" = "$host" ]; then
+        want_ops="$(panorama_src_ops)"
+        pcaps="$(panorama_probe_caps "$pf")"
+        if [ -n "$want_ops" ] && [ "$pcaps" = "$want_ops" ]; then
+          ok "本机内嵌全景小程序与源码同一代（真起一趟 --probe）" "字节自报能力 [$pcaps] == 源码 op 表"
+        else
+          bad "本机内嵌全景小程序与源码同一代（真起一趟 --probe）" \
+              "字节自报能力 [$pcaps]，源码 op 表 [$want_ops] —— 旧字节（或起不来）：本机全景会拿到一份不认新 op 的小程序"
+        fi
+      else
+        printf 'skip  本机内嵌全景小程序与源码同一代 :: 它是给 [%s] 编的、这台是 [%s] —— 不在这里起\n' "$pstaged" "$host"
+      fi
+    else
+      printf 'skip  本机内嵌全景小程序 :: 没铺（非 Linux 本机就没有代码全景；Linux 本机用 musl 那两份）\n'
     fi
   elif [ "$require_native" = "1" ]; then
     bad "开发构建起得来本机后端（本机那一份在盘上）" \

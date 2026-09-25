@@ -2,10 +2,10 @@
 
 use super::*;
 
-/// 〔DP1〕键的解析与字节住 `byte_table`：本条判的是「全景这一类字节认哪几格」（只 Linux 两格），
-/// 与「别的 OS 答没有、不把一份 Linux ELF 推过去」。
+/// 〔DP1〕键的解析与字节住 `byte_table`：本条判的是「全景这一类字节认哪几格」（Linux 两格 ＋ 〔RM1f〕Windows x86_64
+/// 那一格的原生产线），与「别的 OS / arch 答没有、不把一份 Linux ELF 推过去」。
 #[test]
-fn only_linux_and_the_two_known_arches_get_bytes() {
+fn only_the_panorama_cells_with_a_production_line_get_bytes() {
     use crate::byte_table::{key_of, Arch, Key, Os, Product, LINES};
     let linux = |arch| {
         Some(Key {
@@ -18,9 +18,18 @@ fn only_linux_and_the_two_known_arches_get_bytes() {
         ("linux", "amd64", linux(Arch::X86_64)),
         ("Linux", "aarch64", linux(Arch::Aarch64)),
         ("Linux", "arm64", linux(Arch::Aarch64)),
-        // 远端是别的 OS：答「没有」，不把一份 Linux ELF 推过去。
+        // 〔RM1f〕Windows x86_64 那一格有原生产线（`release.yml` 的 `Stage native panorama for self-extract`）。
+        (
+            "MINGW64_NT-10.0",
+            "x86_64",
+            Some(Key {
+                os: Os::Windows,
+                arch: Arch::X86_64,
+            }),
+        ),
+        // 别的 OS / arch：答「没有」，不把一份 Linux ELF 推过去。
         ("Darwin", "arm64", None),
-        ("MINGW64_NT-10.0", "x86_64", None),
+        ("MINGW64_NT-10.0", "arm64", None),
         // 没登记的 arch：答「没有」。
         ("Linux", "riscv64", None),
         ("Linux", "", None),
@@ -38,8 +47,9 @@ fn only_linux_and_the_two_known_arches_get_bytes() {
     }
 }
 
-/// ★ 表里全景那几格 == `build.rs::embed_panoramas` 放进 `OUT_DIR` 的那几个 arch（两向集合相等，
-/// **异源**：一侧是 `byte_table::LINES` 里全景的格子，一侧读 `build.rs` 源码里那个 `for arch in [...]`）。
+/// ★ 表里全景的 **Linux** 那几格 == `build.rs::embed_panoramas` 放进 `OUT_DIR` 的那几个 arch（两向集合相等，
+/// **异源**：一侧是 `byte_table::LINES` 里全景的 Linux 格子，一侧读 `build.rs` 源码里那个 `for arch in [...]`）。
+/// Windows 那一格是原生产线（`embed_native_panorama`，按 `TARGET`），不在 musl 那一步里 —— 它由 `byte_table_tests` 对 `release.yml` 判。
 ///
 /// 多一格 ⇒ 表里有一格、却没有那份字节；少一格 ⇒ 放进来的字节永远没人选。
 #[test]
@@ -66,7 +76,7 @@ fn the_arches_we_pick_are_exactly_the_ones_build_rs_embeds() {
         .collect();
     let lines: std::collections::BTreeSet<_> = LINES
         .iter()
-        .filter(|(p, _)| *p == Product::Panorama)
+        .filter(|(p, k)| *p == Product::Panorama && k.os == crate::byte_table::Os::Linux)
         .map(|(_, k)| *k)
         .collect();
     assert!(!embedded.is_empty(), "抠不到 arch —— 抽取坏了");
@@ -121,15 +131,27 @@ fn the_push_lands_where_the_backend_looks_and_inside_a_remote_write_root() {
         PROGRAM_NAME,
         "名字两边对不上"
     );
-    // 后端 `fixed_candidates` 的第二个候选是按 家 → DIR_NAME → "bin" → PLUGIN_NAME 拼的。
+    // 后端 `fixed_candidates` 的第二个候选是按 家 → DIR_NAME → "bin" → 文件名 拼的；
+    // 〔RM1f〕文件名 = `program_file_name()` = PLUGIN_NAME ＋ 那台机器的可执行后缀（Windows 本机 `.exe`）。
     let at = pano
         .find("fn fixed_candidates(")
         .expect("后端没有 fixed_candidates");
     let body = &pano[at..at + pano[at..].find("\n}\n").unwrap()];
     let chain: String = body.split_whitespace().collect();
     assert!(
-        chain.contains(".join(super::exit_policy::DIR_NAME).join(\"bin\").join(PLUGIN_NAME)"),
-        "后端第二候选不再是 <家>/DIR_NAME/bin/PLUGIN_NAME —— 推的落点跟着改：{body}"
+        chain.contains("letfile=program_file_name();")
+            && chain.contains(".join(super::exit_policy::DIR_NAME).join(\"bin\").join(&file)"),
+        "后端第二候选不再是 <家>/DIR_NAME/bin/<program_file_name()> —— 推的落点跟着改：{body}"
+    );
+    let at = pano
+        .find("fn program_file_name(")
+        .expect("后端没有 program_file_name");
+    let body: String = pano[at..at + pano[at..].find("\n}\n").unwrap()]
+        .split_whitespace()
+        .collect();
+    assert!(
+        body.contains("format!(\"{PLUGIN_NAME}{}\",std::env::consts::EXE_SUFFIX)"),
+        "后端认的文件名不再是 PLUGIN_NAME ＋ 本机可执行后缀：{body}"
     );
     let dir_name = str_const(&backend_prod("backend/control/exit_policy.rs"), "DIR_NAME");
     assert_eq!(format!("{dir_name}/bin"), PUSH_DIR);
@@ -161,4 +183,106 @@ fn uname_must_answer_exactly_os_and_arch() {
     for bad in ["", "Linux", "Linux x86_64 extra", "   \n"] {
         assert!(parse_uname(bad).is_err(), "{bad:?}");
     }
+}
+
+// ── 〔RM1f〕本机那一份 ───────────────────────────────────────────────────────────
+//
+// 要求住址：用户 09-24 **V108**（`设计/99 §1`）「之后本机也走这条路、monitor 摘内嵌引擎」·
+// `INVARIANTS §40`（本机 ＝ 不走 ssh 的远端：本机后端也经插件口起那个小程序）。
+
+/// ★〔RM1f · L1〕本机放下来的那一份，名字 == 本机后端去找的那个名字：`PROGRAM_NAME` ＋ **这台**的可执行后缀
+/// （monitor 这一侧取 `build.rs` 按 `TARGET` 算的后缀，后端那一侧取它自己的 `EXE_SUFFIX` —— 同一台机器上必须相等；
+/// 本判据跑在的就是 `TARGET` 那台）；落点目录与推到远端同一个 [`PUSH_DIR`]（上一条钉它 == 后端第二候选的目录）。
+#[test]
+fn the_local_copy_is_named_the_way_the_local_backend_looks_for_it() {
+    assert_eq!(
+        local_file_name(),
+        format!("{PROGRAM_NAME}{}", std::env::consts::EXE_SUFFIX)
+    );
+    let src = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/panorama_bytes.rs"),
+    )
+    .expect("读 panorama_bytes.rs");
+    let prod = guard_core::production_code(&src);
+    let at = prod.find("fn place_local()").expect("没有 place_local");
+    let body: String = prod[at..at + prod[at..].find("\n}\n").unwrap()]
+        .split_whitespace()
+        .collect();
+    assert!(
+        body.contains("PUSH_DIR.split('/')") && body.contains("&local_file_name(),"),
+        "本机那一份的落点不再是 <家>/PUSH_DIR/<local_file_name()>：{body}"
+    );
+}
+
+/// ★〔RM1f · L2〕放那一份：第一次写（且置可执行位）；**逐字节相等**的第二次零写；字节变了就重写；
+/// 置可执行位失败 ⇒ 报、盘上没有半截的正式文件。
+#[test]
+fn placing_the_local_copy_writes_once_and_only_rewrites_when_the_bytes_differ() {
+    use crate::backend::control::local_backend::place_local_panorama;
+    use std::cell::Cell;
+    let dir = std::env::temp_dir().join(format!("ccm-rm1f-place-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let made = Cell::new(0usize);
+    let mk = |_: &std::path::Path| -> Result<(), String> {
+        made.set(made.get() + 1);
+        Ok(())
+    };
+    let p = place_local_panorama(&dir, "cc-monitor-panorama", b"v1-bytes", &mk).unwrap();
+    assert_eq!(std::fs::read(&p).unwrap(), b"v1-bytes");
+    assert_eq!(made.get(), 1, "第一次没置可执行位");
+    // 同字节：零写（可执行位那一跳是「写了」的见证）。
+    place_local_panorama(&dir, "cc-monitor-panorama", b"v1-bytes", &mk).unwrap();
+    assert_eq!(made.get(), 1, "逐字节相等还重写了一次");
+    // 同长不同字节：要重写（只比长度会把旧版当新版留着）。
+    place_local_panorama(&dir, "cc-monitor-panorama", b"v2-bytes", &mk).unwrap();
+    assert_eq!(made.get(), 2, "字节变了却没重写");
+    assert_eq!(std::fs::read(&p).unwrap(), b"v2-bytes");
+    // 置可执行位失败：报出来，正式文件还是上一份（没有半截的新版顶替它）。
+    let bad = |_: &std::path::Path| -> Result<(), String> { Err("不许".to_string()) };
+    assert!(place_local_panorama(&dir, "cc-monitor-panorama", b"v3-bytes!", &bad).is_err());
+    assert_eq!(std::fs::read(&p).unwrap(), b"v2-bytes");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// ★〔RM1f · L3〕本机原生小程序的落点名字**四处同一个串**：`build.rs` 的 `NATIVE_BACKEND_DIR` ＋
+/// `NATIVE_PANORAMA_FILE` == 消费侧 `include_bytes!` 那个字面量 == `re-embed.sh --native` 铺的 ==
+/// `release.yml` Windows 那一格铺的。名字是定死的（字面量 `include_bytes!` 逼的），漂了就是「编进去一个空 cfg」
+/// 或「铺了没人吃」。异源：四份文件现读。
+#[test]
+fn the_native_panorama_landing_is_spelled_the_same_in_all_four_places() {
+    let root = crate::guard_support::repo_root();
+    let read = |rel: &str| {
+        std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| panic!("读不到 {rel}：{e}"))
+    };
+    let build = read("src/bridge/build.rs");
+    let dir = str_const(&build, "NATIVE_BACKEND_DIR");
+    let file = str_const(&build, "NATIVE_PANORAMA_FILE");
+    let landing = format!("{dir}/{file}");
+    assert_eq!(
+        landing, "native-backend/cc-monitor-panorama",
+        "正控：抠得到"
+    );
+    // 〔DP1 · 第四波〕消费侧那个 `include_bytes!` 搬进了 `byte_table.rs`（全仓唯一的取字节口）。
+    let bytes_src = guard_core::production_code(&read("src/bridge/src/byte_table.rs"));
+    // 针在运行时拼（整串写死在本文件里，`cross_half_edge_registry` 会把它当成一处解析不出路径的内嵌）。
+    let needle = format!("{}!(\"../{landing}\")", "include_bytes");
+    assert!(
+        bytes_src.contains(&needle),
+        "消费侧的内嵌字面量不是 `../{landing}`"
+    );
+    let reembed = read("tests/scripts/re-embed.sh");
+    assert!(
+        reembed.contains(&format!("\"$NATIVE_DIR/{file}\""))
+            && reembed.contains(&format!("\"$NATIVE_DIR/{file}.target\"")),
+        "`re-embed.sh --native` 铺的不是 `{landing}` ＋ `.target`"
+    );
+    assert!(
+        reembed.contains(&format!("NATIVE_DIR=\"$ROOT/src/bridge/{dir}\"")),
+        "`re-embed.sh` 的 NATIVE_DIR 不是 src/bridge/{dir}"
+    );
+    let yml = read(".github/workflows/release.yml");
+    assert!(
+        yml.contains(&format!("$dst = \"src/bridge/{landing}\"")),
+        "`release.yml` Windows 那一格铺的不是 src/bridge/{landing}"
+    );
 }

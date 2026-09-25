@@ -68,7 +68,7 @@ import { invoke, type Channel } from "@tauri-apps/api/core";
  * **必须手动同步**，由 Rust 侧 `the_ts_status_type_matches_this_struct` **双向**对拍
  *（Rust 的字段名从结构体源码派生、TS 的从本接口体派生，**两边条数相等**，多一个少一个都红）。
  */
-import type { ApikeyRoutingView, RawAccountsResult, TrustResult } from "../accounts";
+import type { ApikeyRoutingView } from "../accounts";
 
 export interface ApikeyCredentialsStatus {
   /** 配了没配。 */
@@ -126,7 +126,6 @@ import type { BranchResult } from "../generated/BranchResult";
 //   判据 `tests/ipc/commands.vitest.ts` 末尾「TS 侧 origin 去 null」那一节，全 TS ＋ 生成物）；
 //   〔C4b〕生成物 `RemoteHealthPayload.origin` 那最后一处也改成了 `string`（那一节的 `PENDING` 从此为空）。
 import type { Origin } from "../generated/Origin";
-import type { SessionRecordProbe } from "../generated/SessionRecordProbe";
 import type { CcBusMessage } from "../generated/CcBusMessage";
 import type { CcBusState } from "../generated/CcBusState";
 import type { ConnectStage } from "../generated/ConnectStage";
@@ -139,30 +138,10 @@ import type { DriftLedgerReport } from "../generated/DriftLedgerReport";
 import type { CcBusDeployReport } from "../generated/CcBusDeployReport";
 import type { CcBusInstallState } from "../generated/CcBusInstallState";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
-// **panorama 一族的返回类型指向 `src/panorama/types.ts` 的手写类型，不是生成物。**
-// 不是漏了——那 10 个类型（`Overview`/`NodeView`/`SubGraph`/`Edge`/`ImpactSet`/`Symbol`/
-// `DocLink`/`Annotation`/`DriftItem`/`IndexStats`）住在 **vendored** 的
-// `src/bridge/vendor/code-picture-core/src/model.rs`，而 `VENDOR.md` 有一条明写的铁律：
-// 「**副本是上游的镜子，不是分身**（SS-10）：只照上游改，绝不在副本里改出自己的版本」。
-// 给它们加 `ts_rs::TS` 派生就是在副本里改出自己的版本；而「先改上游再 re-vendor」要动
-// `code-picture` 仓——**本会话在册的红线**。⇒ 按 §5 那条「名字钉死是普遍的、类型生成是按需的」，
-// 本批只做**名字钉死 + 实参把关**，类型生成如实登记为结构性阻塞（BACKLOG E38）。
-// `PanoramaStatus` 例外：它在 `panorama.rs`、是本仓自己的类型 ⇒ 已生成。
-import type {
-  Annotation,
-  DiagramKindInfo,
-  DiagramRequest,
-  DocLink,
-  DriftItem,
-  Edge,
-  ImpactSet,
-  IndexStats,
-  NodeView,
-  Overview,
-  PanoramaDiagram,
-  SubGraph,
-  Symbol as PanoramaSymbol,
-} from "../panorama/types";
+// 〔RM1f〕panorama 一族今天只剩 `panorama_call` / `panorama_edit` / `panorama_cancel` 三条，返回 `unknown`，
+// 由 `src/panorama/api.ts` 按 op 收窄成 `src/panorama/types.ts` 的手写类型（那 10 个住 vendored
+// `code-picture-core/src/model.rs`，`VENDOR.md` 铁律「副本是上游的镜子」⇒ 不在副本里加 `ts_rs` 派生）。
+// 〔改前这里 import 那十几个类型给进程内那十七条包装用，`PanoramaStatus` 用生成物；三样都随内嵌引擎退役了。〕
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { TmuxSession } from "../generated/TmuxSession";
 import type { EntryMetadata } from "../generated/EntryMetadata";
@@ -172,15 +151,19 @@ import type { HistorySessionEntry } from "../generated/HistorySessionEntry";
 import type { HooksReport } from "../generated/HooksReport";
 import type { ImportGroup } from "../generated/ImportGroup";
 import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
-import type { PanoramaStatus } from "../generated/PanoramaStatus";
 import type { PushResult } from "../generated/PushResult";
 import type { RemoteProjectsResult } from "../generated/RemoteProjectsResult";
 import type { ResolvedHost } from "../generated/ResolvedHost";
 import type { SearchIndexStatus } from "../generated/SearchIndexStatus";
 import type { SearchResponse } from "../generated/SearchResponse";
 import type { LogFileInfo } from "../generated/LogFileInfo";
+import type { AssetsSynced } from "../generated/AssetsSynced";
 import type { McpServerEntry } from "../generated/McpServerEntry";
 import type { McpSyncApplied } from "../generated/McpSyncApplied";
+import type { SkillFile } from "../generated/SkillFile";
+import type { SkillInstallApplied } from "../generated/SkillInstallApplied";
+import type { SkillInstallPreview } from "../generated/SkillInstallPreview";
+import type { SkillTargetText } from "../generated/SkillTargetText";
 import type { McpSyncPreview } from "../generated/McpSyncPreview";
 import type { RestartHint } from "../generated/RestartHint";
 import type { SessionActivityPayload } from "../generated/SessionActivityPayload";
@@ -408,8 +391,17 @@ export const commands = {
    * 〔RM1c · 第四波〕代码全景**经那台机器的后端**走（V108 选 B）：发帧命令 `panorama`，拿回 `result`。
    * `result` 的形状随 `op` 而定（与本机那几条逐字同形）⇒ 这里是 `unknown`，由 `panorama/api.ts` 按 op 收窄。
    */
-  panorama_call: (args: { origin: Origin; op: string; repo: string | null; args: unknown }) =>
-    invoke<unknown>("panorama_call", args),
+  panorama_call: (args: {
+    origin: Origin;
+    op: string;
+    repo: string | null;
+    args: unknown;
+    /** 〔RM1f〕给了 ⇒ 这一问能被 `panorama_cancel` 撤掉（每一问一张新票）。 */
+    ticket?: string | null;
+  }) => invoke<unknown>("panorama_call", args),
+
+  /** 〔RM1f〕撤掉一问在飞的全景（「取消建索引」）。回那张票此刻在不在飞。 */
+  panorama_cancel: (args: { ticket: string }) => invoke<boolean>("panorama_cancel", args),
 
   /**
    * 〔RM1d · 第四波〕批注 / 文档关联的**写**（V110「引擎只算、文件管理来写」）：问那台机器要编辑计划、
@@ -419,82 +411,10 @@ export const commands = {
   panorama_edit: (args: { origin: Origin; repo: string; op: string; args: unknown }) =>
     invoke<unknown>("panorama_edit", args),
 
-  /** 某符号的被调者边。`depth` 是 `u32` ⇒ `number`。 */
-  panorama_callees: (args: { repo: string; symbol: string; depth: number }) =>
-    invoke<Edge[]>("panorama_callees", args),
-
-  /** 某符号的调用者边。 */
-  panorama_callers: (args: { repo: string; symbol: string; depth: number }) =>
-    invoke<Edge[]>("panorama_callers", args),
-
-  /** PN1b：画一张图（图种 id 来自注册表，不在本仓写死）。认不出的 kind / 缺符号都是 reject。 */
-  panorama_diagram: (args: { repo: string; kind: string; request: DiagramRequest }) =>
-    invoke<PanoramaDiagram>("panorama_diagram", args),
-
-  /** PN1b：图种注册表原样透出（选图下拉从它现读，CP2）。 */
-  panorama_diagram_kinds: () => invoke<DiagramKindInfo[]>("panorama_diagram_kinds"),
-
-  /** 某符号关联的文档链接。 */
-  panorama_docs_for: (args: { repo: string; symbol: string }) =>
-    invoke<DocLink[]>("panorama_docs_for", args),
-
-  /** 悬空文档链接清单。 */
-  panorama_drift: (args: { repo: string }) => invoke<DriftItem[]>("panorama_drift", args),
-
-  /** 某符号的影响面（blast radius）。 */
-  panorama_impact: (args: { repo: string; symbol: string }) =>
-    invoke<ImpactSet>("panorama_impact", args),
-
-  /** 建/增量更新索引。 */
-  panorama_index: (args: { repo: string }) => invoke<IndexStats>("panorama_index", args),
-
-  /** F72：列全部批注（含 Proposed，给审批队列）。 */
-  panorama_list_annotations: (args: { repo: string }) =>
-    invoke<Annotation[]>("panorama_list_annotations", args),
-
-  /**
-   * 单符号视图。**Rust 返回 `Result<Option<NodeView>, String>`** ⇒ `NodeView | null`
-   * （符号不存在时是 `null`，不是抛错）。
-   */
-  panorama_node: (args: { repo: string; symbol: string }) =>
-    invoke<NodeView | null>("panorama_node", args),
-
-  /** 全局概览（脊柱 / 子系统 / 入口点）。`budget` 是 `Option<usize>` ⇒ `number | null`。 */
-  panorama_overview: (args: { repo: string; budget?: number | null }) =>
-    invoke<Overview>("panorama_overview", args),
-
-  /** 全量重建索引。 */
-  panorama_reindex: (args: { repo: string }) => invoke<IndexStats>("panorama_reindex", args),
-
-  /** 按名子串搜符号 → 拿全限定 id。`limit` 是 `Option<usize>` ⇒ `number | null`。 */
-  panorama_search: (args: { repo: string; query: string; limit?: number | null }) =>
-    invoke<PanoramaSymbol[]>("panorama_search", args),
-
-  /** 索引状态（是否过期 / 建立时刻 / 符号数）。**这个类型是本仓的 ⇒ 用生成物。** */
-  panorama_status: (args: { repo: string }) => invoke<PanoramaStatus>("panorama_status", args),
-
-  /** 某符号周边子图。 */
-  panorama_subgraph: (args: { repo: string; symbol: string; depth: number }) =>
-    invoke<SubGraph>("panorama_subgraph", args),
-
-  /** 某文件里的符号清单。 */
-  panorama_symbols_in_file: (args: { repo: string; file: string }) =>
-    invoke<PanoramaSymbol[]>("panorama_symbols_in_file", args),
-
-  /**
-   * 给定文件集（可带行范围）触及的符号 id。返回原始类型数组。
-   *
-   * **`ranges` 是我第一版漏掉的参数**：Rust 签名是 `ranges: Vec<(usize, usize)>`
-   * （1-based `[start,end]`，空则整文件），而我提取参数的正则用了 `[^,]+?`
-   * ——**被元组里的逗号截断了**。是包装层的精确签名让 `tsc` 当场报
-   * 「'ranges' does not exist」才发现的。
-   * ⇒ **量 Rust 签名时，参数类型里可能有逗号（元组/泛型），别用 `[^,]` 切。**
-   */
-  panorama_touching: (args: {
-    repo: string;
-    files: string[];
-    ranges: [number, number][];
-  }) => invoke<string[]>("panorama_touching", args),
+  // 〔RM1f · V108 后半句〕本机那十七条进程内全景命令的包装随内嵌引擎退役删了（panorama_callees · panorama_callers ·
+  //   panorama_diagram · panorama_diagram_kinds · panorama_docs_for · panorama_drift · panorama_impact · panorama_index ·
+  //   panorama_list_annotations · panorama_node · panorama_overview · panorama_reindex · panorama_search · panorama_status ·
+  //   panorama_subgraph · panorama_symbols_in_file · panorama_touching）：本机远端同一条 `panorama_call`。
 
   // 〔第四波 S4〕`sftp_copy`（远端内部复制，步 23b）的包装随那条命令退役删了：窗口的复制走后端 `files-copy`。
 
@@ -677,13 +597,8 @@ export const commands = {
     tmuxName?: string | null;
   }) => invoke<void>("resume_history_session", args),
 
-  /**
-   * 〔U4b · 第四波〕**resume 之前问：这条会话的记录还在那台机器上吗**（`设计/01 §6.2` 最后一条）。
-   * 判定住那台的后端（`history-record`，只收 sid）；本机与远端同一个口。**问不到 ⇒ reject**：
-   * 调用方当「不知道」，**不当「不在」**。返回值字段被真消费 ⇒ 生成物（桶③）。
-   */
-  probe_session_record: (args: { origin: Origin; sessionId: string }) =>
-    invoke<SessionRecordProbe>("probe_session_record", args),
+  // 〔C4c · 第四波 4B〕「resume 之前问记录还在不在」那一条退役：界面经通道直接问后端 `history-record`
+  //   （`src/session-reads.ts::probeSessionRecord`，成品 `{present, root}`）。
 
   /** **本机今天有哪些 tmux 会话** —— 与远端 `list_remote_tmux` 同形（本机没有 SSH 那一跳）。
    *
@@ -782,6 +697,12 @@ export const commands = {
    */
   config_surface_report: (args: { origin: Origin }) =>
     invoke<ConfigSurfaceReport>("config_surface_report", args),
+
+  /**
+   * 〔AS2 · 第四波 4B · V113〕资产目录同步：让本机常驻后端对 `origin` 那台做一趟「拉 · 并 · 推」
+   * （本机那一页逐字 `LOCAL_ORIGIN` ⇒ 对它够得到的每一台各一趟）。回每一趟的结局 ＋ 可达表（origin ↔ 目录里的机器 id）。
+   */
+  assets_sync: (args: { origin: Origin }) => invoke<AssetsSynced>("assets_sync", args),
   // U-CC1：数据面漂移记账（只读、按需一次，不轮询）。
   // 〔ST3〕按机器分：问哪台答哪台，回包带回 `origin`（界面按回声判）。monitor 自己的命令，不经后端。
   drift_ledger_report: (args: { origin: Origin }) =>
@@ -939,21 +860,9 @@ export const commands = {
    */
   load_config: () => invoke<Record<string, unknown>>("load_config"),
 
-  /**
-   * 〔B2 · 条 66〕问那台机器的后端：「退出行为」那个值现在是什么（值住那台机器上，`设计/01 §3.3b`）。
-   * Rust 那边是后端回的不透明 JSON（`state` / `killOnExit` / `reason` / `path`）⇒ **桶②**，
-   * 形状由 `settings/backend-section.ts` 的 `readExitAnswer` 逐格取、缺一格就当问不到。
-   * `origin` 本机是 `"<local>"`（见 `backend-policy.ts` 的 `LOCAL_ORIGIN`，两侧有判据对拍）。
-   */
-  backend_exit_policy: (args: { origin: string }) =>
-    invoke<Record<string, unknown>>("backend_exit_policy", args),
-
-  /**
-   * 〔B2 · 条 66〕交那台机器的后端去写那个值；回**写完读回来的那一份**（同上一条的形状）⇒ **桶②**。
-   * 前端从不碰那份文件 —— 这条命令就是前端改它的唯一一条路（`§3.3b ③`）。
-   */
-  set_backend_exit_policy: (args: { origin: string; kill: boolean }) =>
-    invoke<Record<string, unknown>>("set_backend_exit_policy", args),
+  // 〔C4c · 第四波 4B〕「退出行为」那两条（〔B2 · 条 66〕问 / 交写，monitor 只转 ＋ 原样交回）退役：
+  //   设置页经通道直接说后端 `exit-policy-read` / `exit-policy-set`（`settings/backend-section.ts::askExitPolicy` /
+  //   `putExitPolicy`），形状仍由 `readExitAnswer` 收。
 
   /**
    * P2s（C8）：这台机的后端现在什么状态。Rust 那边是不透明 JSON（同 `load_config` 那处的
@@ -1110,6 +1019,26 @@ export const commands = {
     overwrite: string[];
   }) => invoke<McpSyncApplied>("mcp_sync_apply", args),
 
+  /**
+   * 〔AS2 · 第四波 4B · V113〕skill「装到这台」：看差异。`from` 那台的 skill `name` 装到 `to` 那台会发生什么 ——
+   * 来源那台的后端读（`skill-read`），`to` 那台的后端判（`skill-install-plan`：差异四态与闸原样用 AS1 那一份）。
+   */
+  skill_install_preview: (args: { from: Origin; to: Origin; name: string }) =>
+    invoke<SkillInstallPreview>("skill_install_preview", args),
+
+  /**
+   * 〔AS2〕skill「装到这台」：写。把勾的那几个文件原样写进 `to` 那台（`overwrite` = 那台不同、用户说了要盖的那几个）。
+   * `source` / `target` 原样送回看差异时拿到的那两份（后者是 CAS 期望：那台在那之后变了 ⇒ 停下，说清前面写了哪几个）。
+   */
+  skill_install_apply: (args: {
+    to: Origin;
+    name: string;
+    source: SkillFile[];
+    target: SkillTargetText[];
+    take: string[];
+    overwrite: string[];
+  }) => invoke<SkillInstallApplied>("skill_install_apply", args),
+
   // ════════════════════════════════════════════════════════════════════════
   // 〔C4a · 子步 2〕**最后十条**：原先在 `tab-session-actions.ts`（tab 层）与 `accounts.ts`
   // 里直呼裸 `invoke` 的那 16 处调的命令里，没进包装层的这十条。自此 **142/142** 条全部经本表，
@@ -1138,21 +1067,9 @@ export const commands = {
   /** 把监控窗口拉到最前。**桶①**。 */
   bring_monitor_to_front: () => invoke<void>("bring_monitor_to_front"),
 
-  /** 某台远端的账号清单。**桶③**（手写形状 `RawAccountsResult`，住 `accounts.ts`，理由见那里）。 */
-  list_remote_accounts: (args: { origin: Origin }) =>
-    invoke<RawAccountsResult>("list_remote_accounts", args),
-
-  /** 本机账号清单（问本机后端 `--list-accounts`）。**桶③**，同上。 */
-  list_local_accounts: () => invoke<RawAccountsResult>("list_local_accounts"),
-
   // 〔C4a · 子步 3〕远端那条「某会话跑在哪个账号下」退役（子步 2 刚收进来，子步 3 连同本机那条一起改走通道）。
-
-  /**
-   * 换号前的目录信任预检。**桶③**（手写 `TrustResult`，住 `accounts.ts`）。
-   * `configDir: null` = 问账号 0（后端走 `--account-trust-zero`）—— **绝不传空串**（Z01）。
-   */
-  check_account_trust: (args: { origin: Origin; configDir: string | null; cwd: string }) =>
-    invoke<TrustResult>("check_account_trust", args),
+  // 〔C4c · 第四波 4B〕账号清单两条（远端 / 本机）与换号前的信任预检退役：前端经通道直接说帧命令
+  //   `accounts-list` / `accounts-trust`（`src/accounts.ts::fetchAccounts` / `checkTrust`），后端出成品。
 
   /** issue #23：红绿灯快照（启动 / F5 后拉一次做初始收敛）。**桶③**（生成物）。 */
   list_session_activity: () => invoke<SessionActivityPayload[]>("list_session_activity"),

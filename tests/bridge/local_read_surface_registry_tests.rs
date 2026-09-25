@@ -153,18 +153,9 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     // 〔RM1b · 第四波〕`src/tasks.rs` 那条 `reader`（3 处，「读 `tasks/<sid>/*.json`（issue #11 的任务面）。
     //   退役归 F10 本体。」）**真退役**：读任务文件搬进后端 `tasks-list`（本机与远端同一条路），
     //   monitor 那份直读函数与「解析当前任务根」那个小帮手一起删了 ⇒ 本文件 0 处，整行摘掉。
-    (
-        "src/accounts.rs",
-        "remote",
-        2,
-        "⚠ **〔F10b-2 订正分类〕它根本不属退役范围** —— 头注逐字写着它是\
-             「这件事的**远端**那半（把后端的 `--list-accounts` 包成 Tauri 命令）」，\
-             生产段**零本机文件读**。那 2 个命中是**用户可见的提示字符串**里提到了 \
-             `CLAUDE_CONFIG_DIR`（第 82/88 行「远端后端版本较旧…」那两句）。\
-             ⚠ 这不是退役、**不算工作量减少** —— 是把一条误分类改对。\
-             ★ 它暴露了量法的口径：`hits()` 数的是「提到那几个词的行」，\
-             里面会有提示文案与 `/proc` 环境键名，**不等于「未退役的直读点」**。",
-    ),
+    // 〔C4c · 第四波 4B〕`src/accounts.rs` 那条 `remote`（2 处：「远端后端版本较旧…」那两句提示里提到了配置目录那个环境变量）
+    //   **整行摘掉**：那两句随 `degraded_notice`〔散文墓碑〕一起删了（账号清单改由那台机器的后端出成品、「缺账号 0」那句由后端说）
+    //   ⇒ 本文件 0 处。⚠ 与这张表别的「往下走」一样**不算工作量减少**：它本来就不是本机读面。
     (
         "src/mcp.rs",
         "reader",
@@ -204,7 +195,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/tool_registry.rs",
         "non-read",
-        7,
+        9,
         "T01 受管工具登记表的一句**文案**里提到它，不读文件 ⇒ **不属**读面。\
              ⚠ **08-10（devbench F06）4 → 5**：新增的 `NOT_MANAGED` 反向登记表里，\
              `planned-build` 那条理由写着它装在 `<claude_dir>/skills/planned-build/`。\
@@ -214,7 +205,10 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              『装得了就必须申报装到哪』当场要它）与 `~/.claude/projects/`\
              （Claude Code 自己写的会话记录，app 装不了、只读）。\
              两条都仍是**登记表里的申报字面量**，本文件零文件读取 —— \
-             真去 stat 它们的是 `config_surface`（已在本表里单列，仍是 3 处）。",
+             真去 stat 它们的是 `config_surface`（已在本表里单列，仍是 3 处）。\
+             ⚠ **〔AS2 · 第四波 4B〕7 → 9**：`skill-install` 那一条的两个申报字面量 —— \
+             落点 `.claude/skills` 与足迹路径 `~/.claude/skills`（资产目录里「装到这台」的 skill 写在那下面）。\
+             仍是登记表里的申报字面量，本文件零文件读取。",
     ),
     (
         "src/skill_host.rs",
@@ -380,6 +374,14 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
              🔴 **它刻意够不到 `~/.local/bin/ccm`** —— 用户那份旧的由产品**一个字节都不碰**\
              （`K34` 逐字：原本的配置要手动删除）；那一份的存在与否是靠**跑一次 `--ccm-probe`**\
              问出来的，不是靠 stat 一个路径（比路径认不出同名不同物）。",
+    ),
+    // 〔RM1f〕本机那一份代码全景小程序的落点：`~/.cc-monitor/bin/`（本机后端找它的第二个候选）。
+    (
+        "panorama_bytes.rs",
+        "place_local",
+        "`~/.cc-monitor/bin/cc-monitor-panorama[.exe]`（本机代码全景小程序）",
+        "**不是伸手拿用户的东西**：monitor 自己的目录（与自释放出来的本机后端同一个）。只在本机后端答\
+             「没装 / 装的太旧」时放一次；写侧登记在 `write_site_registry` 的 `local_backend.rs::place_local_panorama`",
     ),
     (
         "local_backend_host.rs",

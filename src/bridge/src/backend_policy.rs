@@ -125,14 +125,16 @@ pub const HEALTH_COPY: &[(&str, &str)] = &[
 pub const CROSS_LANGUAGE_COPY: &[(&str, &[(&str, &str)])] =
     &[("EXIT_COPY", EXIT_COPY), ("HEALTH_COPY", HEALTH_COPY)];
 
-/// 问 / 改那台机器上的值时的期限（界面那两条）。远端要走一趟 SSH 长连接，给宽一点。
-const EXIT_POLICY_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
+// 〔C4c · 第四波 4B〕界面那两条（问 / 改那台机器上的值）的期限 `EXIT_POLICY_BUDGET`〔散文墓碑〕随那两条 Tauri 命令一起走了：
+//   设置页经通道直接问后端（期限同值 10 秒，住 `settings/backend-section.ts`）。
 
 /// monitor 退出臂那一问的期限。**monitor 正在退**：问不到就按缺省办，不许把退出拖住。
 /// 本机后端读一份小文件就回，这个数是上界不是节拍（问的是本机那条已经连着的流）。
 const EXIT_ASK_BUDGET: std::time::Duration = std::time::Duration::from_millis(1500);
 
-/// 三件事共用的发送口（形状照 `frame_query::call`）：没通道 / 旧后端不认 / 调用失败，各说各的话。
+/// 发送口（形状照 `frame_query::call`）：没通道 / 旧后端不认 / 调用失败，各说各的话。
+/// 〔C4c · 第四波 4B〕今天只剩一个调用方 —— 退出臂那一问（[`kill_on_exit_now`]，**monitor 自己的事**，不是替界面转）；
+/// 界面那两条（问 / 改）改走通道了。
 async fn exit_policy_call(
     origin: &Origin,
     cmd: &str,
@@ -164,32 +166,9 @@ fn said(r: Routed) -> String {
     }
 }
 
-/// 〔B2〕问那台机器：「退出行为」那个值现在是什么。回后端那份原样（`state` / `killOnExit` / `reason` / `path`）。
-#[tauri::command]
-pub async fn backend_exit_policy(origin: Origin) -> Result<Value, String> {
-    // 本机与远端**同一条路**（都是那台机器那条长连接，`C1`）；`route` 只用来拦空白名 ——
-    // 「没给名字」不是本机（`origin.rs::Origin::route` 头注）。两臂之后没有分叉。
-    let _ = origin.route("backend_exit_policy")?;
-    exit_policy_call(&origin, "exit-policy-read", json!({}), EXIT_POLICY_BUDGET).await
-}
-
-/// 〔B2〕交那台机器写那个值。回**写完读回来**的那一份。
-#[tauri::command]
-pub async fn set_backend_exit_policy(origin: Origin, kill: bool) -> Result<Value, String> {
-    // 同上一条：`route` 只拦空白名 —— 策略是每台机器一份的，没有「全局」这一档。
-    let _ = origin.route("set_backend_exit_policy")?;
-    tracing::info!(
-        "交 [{}] 的后端写退出策略：killOnExit={kill}",
-        origin.as_wire_str()
-    );
-    exit_policy_call(
-        &origin,
-        "exit-policy-set",
-        json!({ "killOnExit": kill }),
-        EXIT_POLICY_BUDGET,
-    )
-    .await
-}
+// 〔C4c · 第四波 4B〕〔B2〕那两条 Tauri 命令（问「退出行为」那个值 · 交那台机器写它：`backend_exit_policy` /
+//   `set_backend_exit_policy`〔散文墓碑〕）退役：它们只在「拦空白名 ＋ 转一条 `exit-policy-read` / `exit-policy-set` ＋ 原样交回」，
+//   解释本来就在界面那一侧（`settings/backend-section.ts::readExitAnswer`）⇒ 设置页经通道直接问，本机与远端同一条路。
 
 /// 从后端那份应答里取生效值。形状不对 ⇒ `None`（调用方按缺省办并出声）。
 pub(crate) fn kill_from_answer(data: &Value) -> Option<bool> {

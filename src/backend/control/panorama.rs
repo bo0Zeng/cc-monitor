@@ -32,8 +32,13 @@
 //!
 //! # 诚实边界
 //!
-//! - **打不断**：阻塞档（起进程、等它退出），`cancel` 命中回 `not_cancellable`。
-//!   建索引最长等到期限（[`BUILD_DEADLINE_SECS`]）—— 长期限 ＋ 可取消的口今天没有（`RM1b.md §3.3` ③）。
+//! - 〔RM1f〕**打得断**：异步档（`Run::Async`），两次起进程都走 `plugin::invoke::run_abortable` ——
+//!   `cancel` 命中 ⇒ 处理器 future 被丢 ⇒ 小程序连同 `timeout` 前缀那一组子进程一起被杀、回 `cancelled`。
+//!   期限照旧住子进程（[`BUILD_DEADLINE_SECS`]）；「长期限 ＋ 可取消」（`RM1b.md §3.3` ③）两半都齐了。
+//!   〔墓碑 —— RM1c 那一版这里写着「**打不断**：阻塞档（起进程、等它退出），`cancel` 命中回 `not_cancellable`。
+//!    建索引最长等到期限 —— 长期限 ＋ 可取消的口今天没有」。〕
+//!   ⚠ 被杀的那一趟索引留在 SQLite 自己的事务语义下（小程序没有写到一半的中间态要收拾；
+//!   锁是 `flock`，进程一死就放）。
 //! - 机器上没有 `timeout(1)` ⇒ 插件口如实裸跑（没有期限），那一条降级由插件口自己的判据钉着。
 //! - **字节怎么到那台机器上**不归本模块：〔RM1e〕monitor 听到本模块回 `not_installed` / `unsupported`
 //!   ⇒ 经本机常驻后端那条 `files` 链路把内嵌字节推到 `<家>/.cc-monitor/bin/`（[`fixed_candidates`] 的第二个候选）
@@ -101,6 +106,12 @@ pub(crate) const OPS: &[(&str, u64)] = &[
     ("refresh_doc_links", BUILD_DEADLINE_SECS),
 ];
 
+/// 〔RM1f〕小程序每条输出流最多留多少字节（交给插件口 `run_abortable`，多出来的它照读照丢）：
+/// 与「结果太大」那一格（[`classify`]）**同一个**上限 `read_face::LINES_CAP_BYTES` ⇒ `len() >` 它就是 `too_large`。
+fn keep() -> u64 {
+    crate::read_face::LINES_CAP_BYTES as u64
+}
+
 /// 找不到时那句话的尾巴（这个插件自己的话）。
 ///
 /// ⚠ 只说「没装」，不许说「重装后端就有了」：重装后端**不带**这份小程序（它只推给开过远端全景的机器）。
@@ -123,18 +134,25 @@ pub(crate) fn store_dir(home: &Path) -> PathBuf {
     home.join(super::exit_policy::DIR_NAME).join("panorama")
 }
 
+/// 〔RM1f〕盘上那个可执行文件的**文件名**：身份名 ＋ 这台机器的可执行后缀（Windows 上 `.exe`，别处空串）。
+///
+/// 身份（`--probe` 首行、[`PLUGIN_NAME`]）不带后缀；只有「去盘上哪儿找」这一格要它 ——
+/// Windows 本机那一份是 `cc-monitor-panorama.exe`（monitor 按目标平台放下来的，`panorama_bytes::local_file_name`）。
+/// 后端就跑在它要找的那台机器上 ⇒ 它自己的后缀就是那台的后缀。
+pub(crate) fn program_file_name() -> String {
+    format!("{PLUGIN_NAME}{}", std::env::consts::EXE_SUFFIX)
+}
+
 /// 固定候选 —— **纯函数**（不读环境，好测）。后端自己旁边优先（随后端一起铺的那一份），
 /// 其次是部署落点 `<家>/.cc-monitor/bin/`。
 pub(crate) fn fixed_candidates(exe_dir: Option<&Path>, home: Option<&Path>) -> Vec<PathBuf> {
+    let file = program_file_name();
     let mut out = Vec::new();
     if let Some(d) = exe_dir {
-        out.push(d.join(PLUGIN_NAME));
+        out.push(d.join(&file));
     }
     if let Some(h) = home {
-        let p = h
-            .join(super::exit_policy::DIR_NAME)
-            .join("bin")
-            .join(PLUGIN_NAME);
+        let p = h.join(super::exit_policy::DIR_NAME).join("bin").join(&file);
         if !out.contains(&p) {
             out.push(p);
         }
@@ -142,8 +160,8 @@ pub(crate) fn fixed_candidates(exe_dir: Option<&Path>, home: Option<&Path>) -> V
     out
 }
 
-/// 帧面入口。
-pub(crate) fn answer(args: &Value) -> Result<Value, (String, String)> {
+/// 帧面入口。〔RM1f〕异步：注册表里是 `Run::Async`，`cancel` 命中 ⇒ 这个 future 被丢 ⇒ 小程序那一组子进程被杀。
+pub(crate) async fn answer(args: &Value) -> Result<Value, (String, String)> {
     let home = home();
     let exe_dir = std::env::current_exe()
         .ok()
@@ -155,11 +173,17 @@ pub(crate) fn answer(args: &Value) -> Result<Value, (String, String)> {
             "这台机器上解析不出家目录（HOME / USERPROFILE 都没有）—— 不知道把索引放哪".to_string(),
         ));
     };
-    answer_with(&fixed, &store_dir(&home), args).map_err(|(c, m)| (c.to_string(), m))
+    answer_with(&fixed, &store_dir(&home), args)
+        .await
+        .map_err(|(c, m)| (c.to_string(), m))
 }
 
 /// [`answer`] 的本体：候选与索引根是参数（判据拿夹具喂它，不去动进程级环境）。
-pub(crate) fn answer_with(fixed: &[PathBuf], store: &Path, args: &Value) -> Result<Value, CmdErr> {
+pub(crate) async fn answer_with(
+    fixed: &[PathBuf],
+    store: &Path,
+    args: &Value,
+) -> Result<Value, CmdErr> {
     let op = args
         .get("op")
         .and_then(Value::as_str)
@@ -186,7 +210,10 @@ pub(crate) fn answer_with(fixed: &[PathBuf], store: &Path, args: &Value) -> Resu
     let bin = crate::plugin::discover::find(PLUGIN_NAME, fixed, false, NOT_INSTALLED_HINT)
         .map_err(|m| ("not_installed", m))?;
     // ② 问它会什么：要的就是这一次的 op。
-    let probe = crate::plugin::invoke::run(&bin, &[PROBE_FLAG], PROBE_DEADLINE_SECS, &[]);
+    // 〔RM1f〕两次起进程都走可打断的那一形（探测也是：它卡住时同样要能被撤掉）。
+    let probe =
+        crate::plugin::invoke::run_abortable(&bin, &[PROBE_FLAG], PROBE_DEADLINE_SECS, &[], keep())
+            .await;
     let text = match probe {
         Ok(d) if d.code == Some(0) => String::from_utf8_lossy(&d.stdout).into_owned(),
         Ok(d) => {
@@ -215,7 +242,7 @@ pub(crate) fn answer_with(fixed: &[PathBuf], store: &Path, args: &Value) -> Resu
     if let Some(a) = op_args.as_deref() {
         argv.extend(["--args", a]);
     }
-    let done = crate::plugin::invoke::run(&bin, &argv, *deadline, &[]);
+    let done = crate::plugin::invoke::run_abortable(&bin, &argv, *deadline, &[], keep()).await;
     classify(op, *deadline, done.map_err(|n| not_run(&bin, n))?)
 }
 

@@ -124,7 +124,10 @@ jobs:
       # F09：vendor code-picture-core 是 path 依赖、**非** workspace 成员 → `--all` 测不到它。
       # 显式 `-p` 把它的 25 个测试跑起来（tree-sitter 符号索引 + git 锚点 + SQLite 内核）。
       # 不动 vendor crate 源码/Cargo.toml（红线：别误伤 vendor）。
+      # 〔RM1f · V108 后半句〕monitor 不再依赖它（摘掉了内嵌引擎）⇒ 在 `src/bridge` 里 `-p` 选不到它了；
+      #   今天链它的只剩全景小程序 ⇒ 这一步换到那棵树里跑（同一个包、同一份 vendor 源码，`-p` 照旧选中依赖图里的它）。
       - name: cargo test (vendor code-picture-core)
+        working-directory: src/panorama-engine
         run: cargo test -p code-picture-core
 
   # ── `15 §5.2 B4`：**monitor 这棵树在 Linux 上的行为，云端一次都没有被执行过** ──────

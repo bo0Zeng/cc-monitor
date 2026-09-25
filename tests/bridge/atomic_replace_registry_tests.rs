@@ -21,8 +21,8 @@ const SITES: &[(&str, &str, usize, &str, &str)] = &[
     (
         "backend/control/local_backend.rs",
         "rename",
-        2,
-        "monitor 自己的缓存（自释放出来的后端二进制 · `K-R69` 起还有本机那条 `ccm` 入口）",
+        3,
+        "monitor 自己的缓存（自释放出来的后端二进制 · `K-R69` 起还有本机那条 `ccm` 入口 · 〔RM1f〕本机那一份代码全景小程序）",
         "P2z 的自释放：先写 `.partial` 再 rename，防的是**半截文件被当成可执行的后端起起来**。\
              §4 把 `ReplaceFileW` 的要求限定在**用户文件**（要保 ACL/ADS），这里写的是 monitor 自己\
              刚建的新文件、dst 通常压根不存在 ⇒ 没有要保留的 ACL，`rename` 的语义正合适。\
@@ -30,7 +30,9 @@ const SITES: &[(&str, &str, usize, &str, &str)] = &[
              第二处是 `install_local_ccm_entry`（本机那条 `ccm` 入口 = 后端二进制的改名副本）。\
              它**同属 monitor 自己的文件**：落点是 `~/.cc-monitor/bin/`，不是用户的 `~/.local/bin/ccm`。\
              ⚠ **那个区别正是本件的要害**：往用户那份上写就要保 ACL、更要先问用户 —— 而 `K34` 逐字\
-             「原本的配置**要手动删除**」⇒ 产品根本不往那儿写。所以这一处仍落 monitor 自己那一档。",
+             「原本的配置**要手动删除**」⇒ 产品根本不往那儿写。所以这一处仍落 monitor 自己那一档。\
+             🔴 〔RM1f 从 2 处涨到 3 处，重判一次 —— 结论不变〕第三处是 `place_local_panorama`（本机代码全景小程序），\
+             落点同是 `~/.cc-monitor/bin/`，我们自己放、本机后端自己起 ⇒ 没有要保留的 ACL，`rename` 正合适。",
     ),
     (
         "cc_bus_deploy.rs",

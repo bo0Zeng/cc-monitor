@@ -75,3 +75,24 @@ fn opting_out_of_path_really_skips_it() {
         "说没走 PATH，但那句话里的目录数不是 0：{err}"
     );
 }
+
+/// ★〔RM1f · W1〕Windows 那一臂只认 `.exe`（大小写不敏感）：`.bat` / `.cmd` 要经 `cmd.exe` 才起得来，
+/// 插件口 argv 直传、不过 shell ⇒ 认它们等于认一个起不来的东西；没有扩展名的（unix 那种）也不认。
+/// 纯函数那一格在哪个平台上都测得到（真正的 Windows 臂只在 Windows 上编）。
+#[test]
+fn on_windows_only_an_exe_counts_as_launchable() {
+    use std::path::Path;
+    for yes in ["C:/x/cc-monitor-panorama.exe", "a.EXE", "b.Exe"] {
+        assert!(windows_launchable_name(Path::new(yes)), "{yes}");
+    }
+    for no in [
+        "C:/x/cc-monitor-panorama",
+        "run.bat",
+        "run.cmd",
+        "tool.com",
+        "x.exe.txt",
+        "exe",
+    ] {
+        assert!(!windows_launchable_name(Path::new(no)), "{no}");
+    }
+}

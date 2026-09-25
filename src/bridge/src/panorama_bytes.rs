@@ -19,6 +19,23 @@
 //! 〔DP1〕今天后端与全景小程序都经 `byte_table` 按 (OS, arch) 取：远端是 Windows 的那天，这里答「没有」，
 //! 而不是把一份 Linux ELF 推过去（`build.rs::embed_native_backend` 头注那条真机读数就是这个形状）。
 
+/// 〔RM1f〕本机那一份在盘上的文件名：[`PROGRAM_NAME`] ＋ **目标平台**的可执行后缀
+/// （`build.rs` 按 `TARGET` 算好的 `CCM_TARGET_EXE_SUFFIX`，同本机后端释放名那条来路）
+/// == 本机后端 `control/panorama.rs::program_file_name()`（后端就跑在这台上，它的后缀就是这台的；判据对拍）。
+pub(crate) fn local_file_name() -> String {
+    format!("{PROGRAM_NAME}{}", env!("CCM_TARGET_EXE_SUFFIX"))
+}
+
+/// 〔RM1f〕**本机**要放下来的那一份（本机不经推送：本机后端在 `~/.cc-monitor/bin/` 找它，`local_backend::place_local_panorama` 放下来）。
+///
+/// 〔DP1 · 第四波〕字节从 `byte_table` 按**这台机器自己**的 (OS, arch) 取（`设计/01 §6.7a` 规矩 4：本机只是「目标机器恰好是自己」）。
+/// 〔墓碑 —— RM1f 那一版这里自己 `include_bytes!` 按 `TARGET` 内嵌的原生小程序（`build.rs::embed_native_panorama`），
+///  没有就退到本机是 Linux 时 musl 那两份里对得上 arch 的一份；那一槽搬进了 `byte_table.rs`，次序原样（原生先、musl 后，见那边 `pick`）。〕
+pub(crate) fn local_panorama_binary() -> Option<&'static [u8]> {
+    let key = crate::byte_table::Key::this_machine().ok()?;
+    crate::byte_table::pick(crate::byte_table::Product::Panorama, key).map(|p| p.bytes)
+}
+
 /// 按那台机器的 `uname -s` / `uname -m`（原样）选字节。**只认得出、且这一版带着的组合才给**，其余 `None`。
 ///
 /// 〔DP1 · 第四波〕只改函数体、签名不动：字节与 (OS, arch) → 键的解析都住 `byte_table`（全仓唯一的取字节口，
@@ -77,10 +94,13 @@ async fn probe_uname(cfg: &crate::ssh_source::RemoteConfig) -> Result<(String, S
 /// 〔RM1e〕把这一版的全景小程序推到 `origin` 那台机器上（头注「推上去」）。
 ///
 /// 那台的 (OS, arch) 没有内嵌字节 ⇒ 如实说、一个字节不推。
+/// 〔RM1f〕本机那一台不经 SSH：[`place_local`] 把 [`local_panorama_binary`] 放进 `~/.cc-monitor/bin/`（本机后端的第二个候选）。
+/// 〔墓碑 —— RM1e 那一版本机这一臂直接拒：「本机的代码全景组件不经推送 —— 它随本机后端一起放在本机后端旁边」。〕
 pub(crate) async fn push_to(origin: &crate::origin::Origin) -> Result<(), String> {
-    // 本机不走这条路：本机后端旁边的那一份怎么到位是「本机对称」那一拍的事（`RM1e.md §1.3`）。
     if origin.as_wire_str() == crate::backend::control::inbound_client::LOCAL_ORIGIN {
-        return Err("本机的代码全景组件不经推送 —— 它随本机后端一起放在本机后端旁边".to_string());
+        return tokio::task::spawn_blocking(place_local)
+            .await
+            .map_err(|e| format!("放本机代码全景组件的任务没能跑完：{e}"))?;
     }
     let label = origin.as_wire_str();
     let cfg = crate::load_remote_config_by_label(label)
@@ -98,6 +118,37 @@ pub(crate) async fn push_to(origin: &crate::origin::Origin) -> Result<(), String
     crate::sftp::upload_verified(&fs, &file, bytes, PUSH_MODE).await?;
     tracing::info!(
         "[{label}] 代码全景组件已推到 {file}（{os} / {arch}，{} 字节）",
+        bytes.len()
+    );
+    Ok(())
+}
+
+/// 〔RM1f〕本机那一台：把这一份产物带着的小程序放到 `~/.cc-monitor/bin/<local_file_name>`。
+///
+/// # 为什么是「缺 / 旧时才放」，不是「随本机后端释放一起放」
+///
+/// 本机后端有两条来路：monitor 这一趟**起**它（走 `local_backend::resolve_or_extract`）、或者**接上**一个已经在跑的
+/// 常驻后端（`local_backend_host::start_detached` 的 adopt 那一臂 —— 那一臂**根本不找二进制**）。只在前一条路上放，
+/// 接上旧常驻后端的那一趟就永远没有小程序。⇒ 与远端同一个触发点：本机后端答「没装 / 装的太旧」时放一次、再问一次
+/// （`panorama_call.rs::ask_or_push`）。**写的那一下住 `local_backend.rs`**（与释放本机后端同一套：暂存旁名 → 可执行位 → 换名）。
+fn place_local() -> Result<(), String> {
+    let bytes = local_panorama_binary().ok_or_else(|| {
+        "这一版没有带给本机的代码全景组件（开发构建里一份都不带；要它：`bash tests/scripts/re-embed.sh --native`）"
+            .to_string()
+    })?;
+    // 与推到远端同一个落点（[`PUSH_DIR`]，判据对拍后端的第二个候选）。
+    let dir = dirs::home_dir()
+        .map(|h| PUSH_DIR.split('/').fold(h, |p, seg| p.join(seg)))
+        .ok_or_else(|| "找不到家目录 —— 不知道把代码全景组件放到哪".to_string())?;
+    let placed = crate::backend::control::local_backend::place_local_panorama(
+        &dir,
+        &local_file_name(),
+        bytes,
+        &crate::platform_fs::make_executable,
+    )?;
+    tracing::info!(
+        "本机代码全景组件已放到 {}（{} 字节）",
+        placed.display(),
         bytes.len()
     );
     Ok(())

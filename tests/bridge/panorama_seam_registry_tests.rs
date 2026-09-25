@@ -1,4 +1,11 @@
-const PANORAMA: &str = include_str!("../../src/bridge/src/panorama.rs");
+// 〔RM1f · V108 后半句「之后本机也走这条路、monitor 摘内嵌引擎」〕**两条性质的住址都搬了家**：
+//   ① 全景的命令面：monitor 这一侧只剩 `panorama_call.rs` 那三条（按 origin 转一问 · 写 · 撤票），
+//      它们的签名里仍不许有存储 / 解析细节；**op 词表**那一层（真正说「查什么」的地方）住后端
+//      `protocol_doc_guard::the_panorama_protocol_would_only_expose_query_semantics`（两向 ＋ 禁词）。
+//   ② 引擎取用口恰好一处：从 monitor `panorama.rs`（已删）搬到全景小程序 `src/panorama-engine/main.rs`
+//      （monitor 进程一行引擎都不链了 —— 第二条判据改钉「monitor 源码树零引擎导入」）。
+const PANORAMA: &str = include_str!("../../src/bridge/src/panorama_call.rs");
+const ENGINE_PROGRAM: &str = include_str!("../../src/panorama-engine/main.rs");
 
 /// 只留生产段（剥 `//` 注释与 `#[cfg(test)] mod`）。
 fn prod() -> String {
@@ -42,8 +49,9 @@ fn the_panorama_command_surface_leaks_no_storage_or_parser_detail() {
     // 反向自检：抽取坏了的话下面的空集会"恰好通过"。
     // 〔RM1d〕地板 20 → 15：六条写命令删了（写改走 `panorama_call.rs::panorama_edit`），今天 17 条。
     //   这是反空真的自检地板（抽取坏了会塌到个位数），不是判据；判据是下面那条恒等计数。
+    // 〔RM1f〕地板 15 → 3：人群换成 `panorama_call.rs`（进程内那 17 条随内嵌引擎删了），今天 3 条。
     assert!(
-        sigs.len() >= 15,
+        sigs.len() >= 3,
         "只抽到 {} 条命令签名 —— 抽取坏了，本断言在空转",
         sigs.len()
     );
@@ -84,13 +92,17 @@ fn the_panorama_command_surface_leaks_no_storage_or_parser_detail() {
 fn adding_a_panorama_command_forces_a_look_at_this_seam() {
     // ⚠ **21 不是 22**：裸 grep 数到 22，其中一处命令属性写在注释里
     //（`production_code` 剥掉了它）。判据数的是**生产段**，两个数不一样是对的。
-    // 〔PN1b 09-24〕21 → 23：多了 `panorama_diagram_kinds`（注册表原样透出）与
+    // 〔PN1b 09-24〕21 → 23：多了 `panorama_diagram_kinds`〔散文墓碑〕（注册表原样透出）与
     // `panorama_diagram`（画一张图）—— 都是查询语义：说的是「代码里有什么结构」，
     // 参数是图种 id ＋ 画图旋钮，没有一个字关于存储或解析。
     // 〔RM1d 09-24〕23 → 17：少了六条**写**命令（人写 / 提议 / 批准 / 删批注、写 / 删文档关联）——
     // 它们经内嵌引擎直写被分析仓（V88），改成「算（`plan_local`，不是命令）＋ 那台后端的文件管理写」，
     // 命令入口挪到 `panorama_call.rs::panorama_edit`（本机远端同一条）。只减不加，没有新面要看。
-    const COMMANDS_TODAY: usize = 17;
+    // 〔RM1f 09-25〕人群换了一份文件：进程内那 17 条随内嵌引擎删了（本机也经 `panorama_call` 问本机后端），
+    // 今天数的是 `panorama_call.rs` 的三条 —— `panorama_call`（按 origin 转一问：`op` 是不透明串，
+    // 词表那一层在后端 `protocol_doc_guard` 钉着）· `panorama_edit`（写：只收 `EDITS` 那六个词）·
+    // `panorama_cancel`（撤一张票）。三条的签名里都没有一个字关于存储或解析。
+    const COMMANDS_TODAY: usize = 3;
     let n = prod().matches(cmd_attr().as_str()).count();
     assert_eq!(
         n, COMMANDS_TODAY,
@@ -101,25 +113,30 @@ fn adding_a_panorama_command_forces_a_look_at_this_seam() {
     );
 }
 
-/// `P7c2-Y2`：**引擎取用口恰好一处**。
+/// `P7c2-Y2`：**引擎取用口恰好一处**。〔RM1f〕那一处今天住全景小程序（`src/panorama-engine/main.rs`）。
 #[test]
 fn the_engine_is_opened_in_exactly_one_place() {
-    let prod = prod();
+    let prod = guard_core::production_code(ENGINE_PROGRAM);
+    assert!(
+        prod.contains("fn dispatch("),
+        "全景小程序的生产段没读到真文件"
+    );
     let needle = format!("Engine{}open", "::");
     guard_core::find_pinned(&prod, &needle).unwrap_or_else(|e| {
         panic!(
             "`{needle}` 在生产段不是恰好一处：{e}\n\
-                 ⇒ 第二处 = 第二条 rusqlite 连接。`panorama.rs` 自己的注释记着那条真事故：\n\
-                 「对同一 index.db 并发写 → SQLITE_BUSY + 缓存不一致」。\n\
+                 ⇒ 第二处 = 第二条 rusqlite 连接。（`panorama.rs`（已删）的注释记过那条真事故：\n\
+                 「对同一 index.db 并发写 → SQLITE_BUSY + 缓存不一致」。）\n\
                  而且换引擎（内嵌 / 侧车 / 编进后端）那天要改的就是这一处 —— 多一处多一份漏改。"
         )
     });
 }
 
-/// `P7c2-Y2` 的射程：vendor 引擎**只被 `panorama.rs` 导入**。
+/// `P7c2-Y2` 的射程：〔RM1f〕**monitor 这棵源码树零引擎导入**（`EU5` 兑现：monitor 摘掉内嵌引擎）。
 ///
-/// 上一条只看 `panorama.rs` 自己。若别的模块也拿到 `Engine`，
-/// 「恰好一处」就只是本文件内的局部真理。
+/// 〔改前是「vendor 引擎只被 `panorama.rs`（已删）导入」—— 那一份文件随内嵌引擎删了，
+///  monitor 里**一处都不许有**；引擎的家只剩全景小程序（上一条钉它在那里恰好一处，
+///  `engine_port_scope` 钉「每一棵我们编的树合起来」只有那一处）。〕
 #[test]
 fn the_engine_type_does_not_escape_the_panorama_module() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
@@ -130,9 +147,6 @@ fn the_engine_type_does_not_escape_the_panorama_module() {
             .unwrap_or(&path)
             .to_string_lossy()
             .replace('\\', "/");
-        if rel == "panorama.rs" {
-            continue;
-        }
         let p = guard_core::production_code(&src);
         // ⚠ 钉的是**导入**，不是"文件里出现过 Engine 这个词"。
         //   第一版用整词匹配 `Engine`，当场误伤 `tool_registry.rs` —— 那里的 `Engine`
@@ -142,10 +156,15 @@ fn the_engine_type_does_not_escape_the_panorama_module() {
             elsewhere.push(rel);
         }
     }
+    // 正控：同一个判定在一份合成的导入上会命中（不然零命中什么也说明不了）。
+    assert!(guard_core::contains_word(
+        &guard_core::production_code(&format!("use code_picture{}core::Engine;\n", "_")),
+        &format!("code_picture{}core", "_")
+    ));
     assert!(
         elsewhere.is_empty(),
-        "`Engine` 跑出了 panorama 模块：{elsewhere:?}\n\
-             ⇒ 那样「取用口恰好一处」就只是 panorama.rs 内部的局部真理，\n\
-             换侧那天要追着改的地方不止一处。要用引擎请走 `panorama.rs` 里那个池子。"
+        "monitor 源码树里又有了引擎导入：{elsewhere:?}\n\
+             ⇒ 〔RM1f〕monitor 已经摘掉内嵌引擎（V108 后半句）：全景本机远端都经那台机器的后端 → 全景小程序。\n\
+             要全景里的东西请经 `panorama_call`（加 op 是小程序 ＋ 后端适配层 ＋ 协议白名单三处同拍的事）。"
     );
 }

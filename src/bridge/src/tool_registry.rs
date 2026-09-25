@@ -754,11 +754,37 @@ pub const TOOLS: &[ToolSpec] = &[
                 touches: &[TouchedFile {
                     path: ".mcp.json",
                     host: HostScope::ProjectDir,
-                    note: Some("相对你在推 / 拉那一块里选定的项目目录；只加 / 盖你勾的那几条，别的条目不动"),
+                    // 〔AS2 · 4B〕资产目录那一块的「装到这台」（MCP）走的就是这一格（同一条命令 `mcp_sync_apply`，只勾那一条）。
+                    note: Some("相对你在推 / 拉那一块（或资产目录的「装到这台」）里选定的项目目录；只加 / 盖你勾的那几条，别的条目不动"),
                     effect: TouchEffect::OwnedFile,
                 }],
             },
         ],
+    },
+    // 〔AS2 · 第四波 4B · V113〕**skill「装到这台」**：资产目录里别的机器有的 skill，用户点了才装到这台 ——
+    //   文件原样从来源那台拷来（V112），写经这台后端 `files-put`（带 `expect`，`skill_install.rs`）。
+    //   `96 §4`：每个写点都要在足迹里可见。落点由用户点的那一条决定（这台 skills 下以那个名字为名的目录）⇒ 占位符，不猜。
+    //   `uninstallable: false`：没有「卸掉装来的 skill」这条口，如实声明。
+    ToolSpec {
+        id: "skill-install",
+        display_name: "从别的机器装来的 skill",
+        installable: true,
+        uninstallable: false,
+        carriers: &[Carrier {
+            what: "资产目录里你点了「装到这台」的那个 skill：另一台机器上那个 skill 目录里的文件（你勾的那几个），原样写进这台",
+            source: ToolSource::Generated,
+            // 落在 skills 目录下（以那个 skill 为名的那一个子目录；名字由你点的那一条定）—— 与 cc-bus 那一格同一个根。
+            destination: ToolDestination::LocalHomeRelative(".claude/skills"),
+            touches: &[TouchedFile {
+                path: "~/.claude/skills",
+                host: HostScope::Either,
+                note: Some(
+                    "装到哪台就写哪台，只写 skills 下以你点的那个 skill 为名的那一个目录；\
+                     只写你勾的那几个文件（不同的要你点了「盖」才盖），别的文件不动",
+                ),
+                effect: TouchEffect::OwnedFile,
+            }],
+        }],
     },
     // ═══ 〔`K-R62` 09-11〕**从第三档升上来的第一项** ═══
     //
@@ -1443,6 +1469,11 @@ pub const NOT_MANAGED: &[(&str, &str)] = &[
         "**不是「装到别处的工具」，所以不属本表的语义** —— 它是 **vendored 进 cc-monitor \
          二进制**的 crate（`src/bridge/vendor/code-picture-core`），`panorama.rs` 直接 \
          `use Engine` 调它画图。没有 `destination`、没有安装动作、卸载它等于重新编译 monitor。\n\
+         🔴 **〔RM1f 09-25〕上面这一句过期了**：monitor 摘掉了内嵌引擎（V108 后半句），今天它是只装引擎的\
+         **独立小程序** `cc-monitor-panorama`（`src/panorama-engine`），随 monitor 的字节带着，本机放到\
+         `~/.cc-monitor/bin/`（`panorama_bytes::place_local`）、远端推到那台的 `~/.cc-monitor/bin/`（`push_to`）——\
+         那是**有落点**的部署物。它该不该像 `backend` 那样进 `TOOLS`（两个载体、两个落点），**已报备、本件没改**；\
+         在那之前本条的「不属本表」只对「vendored 进二进制」那个旧身份成立。\n\
          ⚠ 它另有一个身份是 **MCP server（code-picture 的 Agent head，给 Claude 用）**，\
          那一个确实「装到别处」—— 但**装它走已有的 `project-mcp` 机制**（往 `.mcp.json` 加一个 \
          server 条目），是**用法**不是新工具。仓里今天对那个 MCP head 零实现（`mcp.rs` / \

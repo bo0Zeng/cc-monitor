@@ -228,3 +228,38 @@ export async function readSessionIndex(origin: Origin, jsonlPath: string, fromOf
     return { available: false, reason, from: fromOffset, end: fromOffset, rows: [] };
   }
 }
+
+// ─── 〔C4c · 第四波 4B〕第四问：这条会话的记录还在不在（resume 一跳先问）───
+
+/**
+ * 那台机器的后端对「这条会话的记录还在不在」的答案（后端 `read_face.rs` 的 `history-record`，成品 `{present, root}`）。
+ * `root` = 查的那棵记录树的根（答「不在」时要说清查的是哪里，`设计/01 §6.9`）。
+ */
+export interface RecordProbe {
+  present: boolean;
+  root: string;
+}
+
+/** `history-record` 的成品 ⇒ [`RecordProbe`]。两格缺一格 / 多一格 / 类型不对 ⇒ 抛 —— **绝不**把缺字段读成「不在」。 */
+export function decodeRecord(v: unknown): RecordProbe {
+  if (!isObj(v) || Object.keys(v).length !== 2 || typeof v.present !== "boolean" || !isStr(v.root)) {
+    throw new ShapeError("history-record", "不是恰好 `present` / `root` 两格");
+  }
+  return { present: v.present, root: v.root };
+}
+
+/**
+ * **resume 之前问那台机器：这条会话的记录还在不在**（`设计/01 §6.2` 最后一条）。本机与远端同一条路。
+ *
+ * 〔C4c〕此前是 Tauri 命令 `probe_session_record`〔散文墓碑〕：它在 monitor 里只做「转一条 `history-record`、核两格」
+ * （`frame_query::record` / `parse_record`〔散文墓碑〕）—— 后端早已出成品，那一跳一行解释都不该有 ⇒ 改成界面经通道直接问。
+ *
+ * **失败就抛**（不折成一个答案）：调用方（`tab-session-actions.ts::recordStillThere`）把「问不到」当「不知道」，
+ * 与「不在」分开处置 —— 折成 `present:false` 会把一条接得上的 resume 拦掉。期限与上一个住址同值（30 秒）。
+ */
+export async function probeSessionRecord(origin: Origin, sid: string): Promise<RecordProbe> {
+  const body = jsonBody({ sid });
+  const budget = budgetWithin(READ_BUDGET_MS);
+  const reply = await chan.call(origin, "history-record", body, budget);
+  return decodeRecord(readJson(reply));
+}
