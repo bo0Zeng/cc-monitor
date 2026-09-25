@@ -14844,6 +14844,386 @@
       "kind": "error",
       "zh": "远端后端需要更新",
       "args": []
+    },
+    "rsToolRegistry.environment.managedWhy": {
+      "kind": "body",
+      "zh": "由声明推出来。谁该装看它装到哪，今天装不装得了看有没有安装功能",
+      "args": []
+    },
+    "rsToolRegistry.env.acctIsoLocalWhy": {
+      "kind": "body",
+      "zh": "本机这一份该由 cc-monitor 装，但还没有这个功能；能装的只有远端那一份",
+      "args": []
+    },
+    "rsToolRegistry.env.acctIsoLocalName": {
+      "kind": "title",
+      "zh": "cc-acct-iso 本机那份",
+      "args": []
+    },
+    "rsToolRegistry.env.mcpServerWhy": {
+      "kind": "body",
+      "zh": "cc-monitor 写得了那份配置，但它指到的程序本身不装也不查",
+      "args": []
+    },
+    "rsToolRegistry.env.mcpServerCannotProbe": {
+      "kind": "body",
+      "zh": "它的名字由你项目 .mcp.json 里那行 command 决定，这一页不猜是哪个项目。要查，先选定项目再看那份配置",
+      "args": []
+    },
+    "rsToolRegistry.env.mcpServerName": {
+      "kind": "title",
+      "zh": "MCP server 程序本身",
+      "args": []
+    },
+    "rsToolRegistry.env.loginShellWhy": {
+      "kind": "body",
+      "zh": "探 ccm 能力时要一个登录 shell 把你的 rc 读进来",
+      "args": []
+    },
+    "rsToolRegistry.env.loginShellName": {
+      "kind": "title",
+      "zh": "bash 登录 shell",
+      "args": []
+    },
+    "rsToolRegistry.env.xdgOpenWhy": {
+      "kind": "body",
+      "zh": "开链接、开日志目录用它",
+      "args": []
+    },
+    "rsToolRegistry.env.pgrepWhy": {
+      "kind": "body",
+      "zh": "数 cc-bus 的 agent 时用它",
+      "args": []
+    },
+    "rsToolRegistry.env.sshWhy": {
+      "kind": "body",
+      "zh": "远端那一侧全都经它；cc-monitor 只看它在不在 PATH 上，装不了",
+      "args": []
+    },
+    "rsToolRegistry.env.sshName": {
+      "kind": "title",
+      "zh": "ssh 客户端、密钥与主机配置",
+      "args": []
+    },
+    "rsToolRegistry.env.gitWhy": {
+      "kind": "body",
+      "zh": "认 skill 所在的工作树与主检出时要用它",
+      "args": []
+    },
+    "rsToolRegistry.env.terminalExitWhy": {
+      "kind": "body",
+      "zh": "POSIX 上开会话窗口只认这一个统一出口",
+      "args": []
+    },
+    "rsToolRegistry.env.terminalExitName": {
+      "kind": "title",
+      "zh": "POSIX 终端出口",
+      "args": []
+    },
+    "rsToolRegistry.env.tmuxWhy": {
+      "kind": "body",
+      "zh": "在 tmux 里起会话要用它；缺了的话，起会话被拒时会提一句",
+      "args": []
+    },
+    "rsToolRegistry.env.tmuxName": {
+      "kind": "title",
+      "zh": "tmux",
+      "args": []
+    },
+    "rsToolRegistry.env.agentCliWhy": {
+      "kind": "body",
+      "zh": "起会话时直接拿它当启动器；装没装、是哪个版本，cc-monitor 都不问",
+      "args": []
+    },
+    "rsToolRegistry.env.agentCliName": {
+      "kind": "title",
+      "zh": "Claude Code 的可执行文件",
+      "args": []
+    },
+    "rsToolRegistry.envTier.appOnlyChecks": {
+      "kind": "body",
+      "zh": "app 只查",
+      "args": []
+    },
+    "rsToolRegistry.envTier.userInstallsWePrompt": {
+      "kind": "body",
+      "zh": "你自己装，缺了会提示你",
+      "args": []
+    },
+    "rsToolRegistry.envTier.appShipsNoInstallerYet": {
+      "kind": "body",
+      "zh": "app 该自带，今天还没有安装功能",
+      "args": []
+    },
+    "rsToolRegistry.envTier.appInstalls": {
+      "kind": "body",
+      "zh": "app 装的",
+      "args": []
+    },
+    "rsToolRegistry.provisioning.notAnInstall": {
+      "kind": "body",
+      "zh": "不是装出来的",
+      "args": []
+    },
+    "rsToolRegistry.provisioning.userProvides": {
+      "kind": "body",
+      "zh": "你自己装",
+      "args": []
+    },
+    "rsToolRegistry.provisioning.appShips": {
+      "kind": "body",
+      "zh": "app 自带",
+      "args": []
+    },
+    "rsToolRegistry.tools.sessionRecordsNote": {
+      "kind": "body",
+      "zh": "历史浏览与搜索索引的全部输入，每个会话一份会话记录。cc-monitor 只读，装不了，也不该由它装",
+      "args": []
+    },
+    "rsToolRegistry.tools.sessionRecordsWhose": {
+      "kind": "body",
+      "zh": "Claude Code 的数据目录",
+      "args": []
+    },
+    "rsToolRegistry.tools.sessionRecordsWho": {
+      "kind": "body",
+      "zh": "Claude Code 自己建、自己写",
+      "args": []
+    },
+    "rsToolRegistry.tools.sessionRecordsWhat": {
+      "kind": "body",
+      "zh": "Claude Code 自己建、自己写的会话记录。cc-monitor 只读",
+      "args": []
+    },
+    "rsToolRegistry.tools.sessionRecordsName": {
+      "kind": "title",
+      "zh": "Claude Code 的会话记录",
+      "args": []
+    },
+    "rsToolRegistry.tools.powershellNote": {
+      "kind": "body",
+      "zh": "Windows 客户端侧，具体路径由 PowerShell 决定",
+      "args": []
+    },
+    "rsToolRegistry.tools.powershellWhat": {
+      "kind": "body",
+      "zh": "现场生成的那段 PowerShell 代码块，合进你的 $PROFILE",
+      "args": []
+    },
+    "rsToolRegistry.tools.powershellName": {
+      "kind": "title",
+      "zh": "PowerShell 集成",
+      "args": []
+    },
+    "rsToolRegistry.tools.posixAliasesNote": {
+      "kind": "body",
+      "zh": "本机的那份 shell rc，具体哪一份由你在界面上选。本机与远端装进 rc 的是同一个东西",
+      "args": []
+    },
+    "rsToolRegistry.tools.posixAliasesRcWhat": {
+      "kind": "body",
+      "zh": "「按账号生成命令」那一块里的 rc 下拉。从盘上真有的 .bashrc / .zshrc / .bash_profile / .profile 里由你自己选",
+      "args": []
+    },
+    "rsToolRegistry.tools.posixAliasesWhat": {
+      "kind": "body",
+      "zh": "cc-monitor 带着的别名脚本，合进你自己选的那份 rc",
+      "args": []
+    },
+    "rsToolRegistry.tools.posixAliasesName": {
+      "kind": "title",
+      "zh": "POSIX rc 里的 ccm 别名块（cc / cct / alphacc …）",
+      "args": []
+    },
+    "rsToolRegistry.tools.skillInstallNote": {
+      "kind": "body",
+      "zh": "装到哪台就写哪台，只写 skills 下以这个 skill 为名的目录。只写你勾的那几个文件，不同的要你点了「盖」才盖，别的文件不动",
+      "args": []
+    },
+    "rsToolRegistry.tools.skillInstallWhat": {
+      "kind": "body",
+      "zh": "资产目录里你点了「装到这台」的那个 skill。另一台机器上那个 skill 目录里你勾的文件，原样写进这台",
+      "args": []
+    },
+    "rsToolRegistry.tools.skillInstallName": {
+      "kind": "title",
+      "zh": "从别的机器装来的 skill",
+      "args": []
+    },
+    "rsToolRegistry.tools.mcpSyncNote": {
+      "kind": "body",
+      "zh": "相对你选定的项目目录。项目目录在推 / 拉那一块或资产目录的「装到这台」里选；只加或覆盖你勾的那几条，别的条目不动",
+      "args": []
+    },
+    "rsToolRegistry.tools.mcpSyncWhat": {
+      "kind": "body",
+      "zh": "推 / 拉：另一台机器那份 .mcp.json 里你勾的条目。原样合进这台机器上你选定的项目目录",
+      "args": []
+    },
+    "rsToolRegistry.tools.projectMcpNote": {
+      "kind": "body",
+      "zh": "相对你选定的项目目录",
+      "args": []
+    },
+    "rsToolRegistry.tools.projectMcpWhat": {
+      "kind": "body",
+      "zh": "现场生成的一段 JSON，写进你选定的那个项目目录",
+      "args": []
+    },
+    "rsToolRegistry.tools.projectMcpName": {
+      "kind": "title",
+      "zh": "项目 MCP 配置",
+      "args": []
+    },
+    "rsToolRegistry.tools.panoramaRemoteNote": {
+      "kind": "body",
+      "zh": "只推给开过远端代码全景的机器；经那台的后端写，写完读回来逐字节比对",
+      "args": []
+    },
+    "rsToolRegistry.tools.panoramaRemoteWhat": {
+      "kind": "body",
+      "zh": "推到远端那台机器的那一份代码全景组件。按那台的系统与架构挑，那台后端说没装或太旧时推过去",
+      "args": []
+    },
+    "rsToolRegistry.tools.panoramaLocalNote": {
+      "kind": "body",
+      "zh": "本机后端找它的第二个位置；Windows 上文件名带 .exe。和盘上那份逐字节相同就不重写",
+      "args": []
+    },
+    "rsToolRegistry.tools.panoramaLocalWhat": {
+      "kind": "body",
+      "zh": "放在本机的那一份代码全景组件。本机后端第一次说没装时放下去",
+      "args": []
+    },
+    "rsToolRegistry.tools.panoramaName": {
+      "kind": "title",
+      "zh": "代码全景组件",
+      "args": []
+    },
+    "rsToolRegistry.tools.backendRemoteNote": {
+      "kind": "body",
+      "zh": "路径由这条连接的「后端路径」配置项决定。在那台机器上它就是那台机器的本地后端，「远端」只是相对这台 cc-monitor 说的",
+      "args": []
+    },
+    "rsToolRegistry.tools.backendRemoteDestWhat": {
+      "kind": "body",
+      "zh": "每个远端连接的「后端路径」配置项",
+      "args": []
+    },
+    "rsToolRegistry.tools.backendRemoteWhat": {
+      "kind": "body",
+      "zh": "推到远端那台机器上跑的那一份后端。在那台机器上它就是本地后端",
+      "args": []
+    },
+    "rsToolRegistry.tools.backendEmbeddedNote": {
+      "kind": "body",
+      "zh": "本机释放出来的那份后端，文件名带版本号。同一版不会重复写，旧版本不回收",
+      "args": []
+    },
+    "rsToolRegistry.tools.backendEmbeddedWhat": {
+      "kind": "body",
+      "zh": "cc-monitor 自己带着的那一份后端。旁边没有本机后端时释放出来用",
+      "args": []
+    },
+    "rsToolRegistry.tools.backendBesideNote": {
+      "kind": "body",
+      "zh": "本机，随安装包落盘；文件名带目标平台，Windows 上再带 .exe",
+      "args": []
+    },
+    "rsToolRegistry.tools.backendBesideDestWhat": {
+      "kind": "body",
+      "zh": "装机时安装向导里选的那个安装目录",
+      "args": []
+    },
+    "rsToolRegistry.tools.backendBesideWhat": {
+      "kind": "body",
+      "zh": "安装包放在 cc-monitor 程序旁边的那一份后端。找本机后端时先用它",
+      "args": []
+    },
+    "rsToolRegistry.tools.backendName": {
+      "kind": "title",
+      "zh": "cc-monitor 后端",
+      "args": []
+    },
+    "rsToolRegistry.tools.acctIsoVaultNote": {
+      "kind": "body",
+      "zh": "账号库：列举走远端 ssh；本机 CLAUDE_CONFIG_DIR 也可能指进来，两端都可能有",
+      "args": []
+    },
+    "rsToolRegistry.tools.acctIsoDestNote": {
+      "kind": "body",
+      "zh": "远端，部署目录是你在账号页填的那个值",
+      "args": []
+    },
+    "rsToolRegistry.tools.acctIsoDestWhat": {
+      "kind": "body",
+      "zh": "部署时在账号页填的「部署目录」",
+      "args": []
+    },
+    "rsToolRegistry.tools.acctIsoWhat": {
+      "kind": "body",
+      "zh": "随 cc-monitor 带着的那一份 cc-acct-iso，部署到远端你填的那个目录",
+      "args": []
+    },
+    "rsToolRegistry.tools.acctIsoName": {
+      "kind": "title",
+      "zh": "cc-acct-iso 多账号隔离",
+      "args": []
+    },
+    "rsToolRegistry.tools.ccBusStateNote": {
+      "kind": "body",
+      "zh": "运行期状态：收件箱、名册、队列、日志。本机与远端都读；发消息、派活、广播、收掉这些写操作只动远端那份",
+      "args": []
+    },
+    "rsToolRegistry.tools.ccBusBinNote": {
+      "kind": "body",
+      "zh": "cc-bus 自己的安装脚本建的 11 条命令链接，不是 cc-monitor 建的。钩子诊断时只查 cc-register 与 cc-bus-stop-hook 在不在；这个通配也会数到 cc-acct-iso 的同前缀链接，所以计数多 1",
+      "args": []
+    },
+    "rsToolRegistry.tools.ccBusHooksNote": {
+      "kind": "body",
+      "zh": "只碰 hooks 段，而且 cc-monitor 不写，只生成待贴文本",
+      "args": []
+    },
+    "rsToolRegistry.tools.ccBusDirNote": {
+      "kind": "body",
+      "zh": "部署时整个目录写进来，覆盖前先改名备份。只能从本机装，cc-bus 本身跟着 Claude Code 走",
+      "args": []
+    },
+    "rsToolRegistry.tools.ccBusWhat": {
+      "kind": "body",
+      "zh": "cc-bus 的 skill 目录，整个装进 Claude Code 那台机器的 skills 下",
+      "args": []
+    },
+    "rsToolRegistry.tools.ccBusName": {
+      "kind": "title",
+      "zh": "cc-bus 多实例消息总线",
+      "args": []
+    },
+    "rsToolRegistry.tools.ccmLocalNote": {
+      "kind": "body",
+      "zh": "本机那条 ccm 入口，放在 cc-monitor 自己的目录里。不碰你 ~/.local/bin 下那份旧的，那一份要不要删由你定",
+      "args": []
+    },
+    "rsToolRegistry.tools.ccmLocalWhat": {
+      "kind": "body",
+      "zh": "本机上的 ccm 命令。它就是后端程序本身换了个名字，不是另一份实现",
+      "args": []
+    },
+    "rsToolRegistry.tools.ccmRemoteProfileNote": {
+      "kind": "body",
+      "zh": "或你在部署向导里选的其它 profile",
+      "args": []
+    },
+    "rsToolRegistry.tools.ccmRemoteWhat": {
+      "kind": "body",
+      "zh": "远端那台机器上的 ccm 命令。它只是一个小入口，把参数转给那台机器上的后端",
+      "args": []
+    },
+    "rsToolRegistry.tools.ccmName": {
+      "kind": "title",
+      "zh": "ccm 命令入口",
+      "args": []
     }
   }
 }
