@@ -165,7 +165,10 @@ fn a_port_held_by_something_else_is_not_ours_and_ensure_says_so() {
     let get = home_env(&home);
     match occupant(port, &get) {
         Occupant::NotOurs(why) => {
-            assert!(why.contains("404"), "为什么里要说出两次各得了什么：{why}");
+            assert!(
+                why.contains(&port.to_string()),
+                "为什么里要点名那个口：{why}"
+            );
             assert_eq!(
                 why.matches(super::super::door::door_tests::TEST_KEY)
                     .count(),

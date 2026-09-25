@@ -559,7 +559,7 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     let Some(head) = http1::parse_request(&raw_head) else {
         return respond_and_drain(&mut down_w, BAD_REQUEST);
     };
-    // 🔴 〔RK1 · `INVARIANTS §48.1`〕**进门三问排在一切之前**（读请求体之前、问上游选择之前）：
+    // 🔴 〔RK1 · `INVARIANTS §48.1a`〕**进门三问排在一切之前**（读请求体之前、问上游选择之前）：
     //   Origin ⇒ 403 · Host 非回环 ⇒ 421 · 钥匙不对 ⇒ 403。过了才剥掉 `/<钥匙>`，余下的交给 `route::parse`
     //   ⇒ 「钥匙对、表里没这一行」仍是 404，与 403 可分。钥匙不进上游（转上去的是剥之后的路径）、不进 tee、不进日志。
     let target = match door::admit(&head, &relay.door) {
