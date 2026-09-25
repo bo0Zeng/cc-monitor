@@ -25,7 +25,15 @@
 // ## 只读、按需
 //
 // 一次 `invoke`，**不轮询**（红线，同 `config-surface-section.ts` / `drift-ledger-section.ts`）。
+//
+// ## 〔RM1b · 第四波〕跟着「当前在看哪台机器」走
+//
+// 读法搬进了后端（`plugins-marketplaces`，本机后端与远端后端同一个二进制），命令收 `origin` ⇒
+// 本节与 MCP 那节一样订阅 `machine-context`：切到哪台就问哪台（切换即重读一次，不轮询）。
+// 「这台机器」这几个字说的就是被选中的那一台 —— 本机页与远端页同一套话。
 import { commands } from "../ipc/commands";
+import { LOCAL_ORIGIN } from "../backend-policy";
+import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import type { MarketplaceEntry } from "../generated/MarketplaceEntry";
 import type { MarketplaceSurvey } from "../generated/MarketplaceSurvey";
 
@@ -64,10 +72,18 @@ export class PluginsSection {
    * `P7b`（两个按钮各自异步）上各修过一次；`panorama.ts` 的 `searchSeq` 是更早的先例。
    */
   private seq = 0;
+  /** 〔RM1b〕要看哪台（`machine-context` 的口径：`null` = 本机）。`loadNow()` 之前只记不读。 */
+  private wanted = getCurrentMachine();
+  private loaded = false;
 
   constructor() {
     this.element = this.build();
     // ST1「延后加载」：构造期不读 —— 见 `loadNow()`。
+    // 〔RM1b〕切机器：已经放过第一发的话就当场问新那一台（同 `McpSection`；store 同值不通知）。
+    subscribeMachine((origin) => {
+      this.wanted = origin;
+      if (this.loaded) void this.refresh();
+    });
   }
 
   /**
@@ -76,6 +92,7 @@ export class PluginsSection {
    * 重开设置后宿主会再调一次（重开要看新读数）。
    */
   loadNow(): void {
+    this.loaded = true;
     void this.refresh();
   }
 
@@ -113,7 +130,7 @@ export class PluginsSection {
     const mine = ++this.seq;
     let survey: MarketplaceSurvey;
     try {
-      survey = await commands.list_plugin_marketplaces();
+      survey = await commands.list_plugin_marketplaces({ origin: this.wanted ?? LOCAL_ORIGIN });
     } catch (e) {
       if (mine !== this.seq) return; // 迟到的失败也不许盖掉新结果
       // 读不到就说读不到 —— **不显示成「一个都没有」**（那是对用户撒谎）。
