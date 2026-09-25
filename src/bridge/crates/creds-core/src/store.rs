@@ -36,10 +36,10 @@ pub const KEY_FIELD: &str = "api_key";
 /// 形状：`{"accounts": {"<账号 id>": {"api_key": "…", "base_url": "…"}}}`。
 /// `<账号 id>` 会**原样**变成路由键里那一段（`/s/<agent>/<账号 id>/<key>/…`）
 /// ⇒ 它必须是路由段放得下的字符；放不下的那一条**永远匹配不上**，
-/// 由账号层装表时出声（`accounts::upstream::table::build` 那条「这一行进不了表」）。
+/// 由上游选择装表时出声（`accounts::upstream::table::build` 那条「这一行进不了表」）。
 pub const ACCOUNTS_FIELD: &str = "accounts";
 
-/// 一条账号的**上游端点**住哪个字段。缺席 / 空串 ⇒ 用这个 agent 的默认上游（账号层 `AGENT_UPSTREAMS`）。
+/// 一条账号的**上游端点**住哪个字段。缺席 / 空串 ⇒ 用这个 agent 的默认上游（上游选择 `AGENT_UPSTREAMS`）。
 ///
 /// ⚠ 它**不是**「回落」：`base_url` 缺席说的是「这一行用默认端点」，
 /// 而「这一行根本不在表里」说的是**404**。两件事不许混 —— 见 `K-H2` `KH2`。
@@ -79,7 +79,7 @@ pub const AUTH_STYLE_FIELD: &str = "auth_style";
 ///
 /// ★ 为什么写侧非换不可（这不是洁癖）：写顶层那一格 ⇒ 读回来 id 逐字是本常量，
 /// 而起会话那一侧按**账号目录末段名**索引 ⇒ **从界面配的 key 永远匹配不上任何账号**，
-/// 账号层按 `KL7` 第 2 条给 404、一个字节不发上游。
+/// 上游选择按 `KL7` 第 2 条给 404、一个字节不发上游。
 /// 〔`K-H2c` `§0` 的立件读数，09-02 在写侧接上之前仍然属实。〕
 ///
 /// ⚠ 而 [`merge_key`]（写顶层那一格的那个纯函数）**没有被删**：
@@ -94,7 +94,7 @@ pub const LEGACY_ACCOUNT_ID: &str = "default";
 /// monitor 与后端各有自己的「家目录」解析（前者 `paths::resolve_monitor_data_dir`，
 /// 后者 `agents::claudecode::paths::resolve_home`），但**落点的相对路径必须是同一个** ——
 /// 两边各写一份字符串，漂开的那天没有任何东西会说，而症状是
-/// 「界面上配好了，账号层说没配」这种**查不出来**的形状。
+/// 「界面上配好了，上游选择说没配」这种**查不出来**的形状。
 ///
 /// ⚠ 它**不**跟随 `claudeDir` 覆盖（monitor 自己的数据目录本来就不跟随，见
 /// `src/bridge/src/config.rs` 头注逐字：「monitor 自己的设置永远在默认
@@ -116,7 +116,7 @@ pub fn path_under_claude_home(home: &std::path::Path) -> std::path::PathBuf {
 ///
 /// 那个闭集只有一个住址（[`AuthStyle::ALL`]）。在这里再抄一份，加第四个成员的那天
 /// 这份模板会**静默变旧**，而它是随产物发到用户机器上的那一份。
-/// ⇒ 模板只点名字段，合法值由账号层装表时**现算**印出来（`accounts::upstream::creds::announce`）。
+/// ⇒ 模板只点名字段，合法值由上游选择装表时**现算**印出来（`accounts::upstream::creds::announce`）。
 pub const TEMPLATE: &str = r#"{
   "_note": "把第三方 API key 填进 api_key。这份文件可以直接用编辑器改，改完下次读就生效；也可以整份换成另一份 JSON（导入）。本文件之外的键不会被程序动。",
   "_note_accounts": "多账号写进 accounts：每条一个 id（会原样出现在中转的路由键里，只许字母数字与 - _），每条可带 api_key、base_url 与 auth_style。base_url 留空就用这个 agent 的默认上游，写全路径（含网关前缀）也认；api_key 留空就原样转发客户端自己那份鉴权头。例：\"accounts\": { \"my-account\": { \"api_key\": \"sk-...\", \"base_url\": \"https://api.example.com\" } }",
@@ -306,19 +306,19 @@ pub fn read_auth_style(doc: &Map<String, Value>) -> AuthStyleSetting {
 }
 
 /// 表里的一条。**上游与 key 在这里还是分开的两个值** ——
-/// 把它们焊成一个不可分解的值是**账号层**的活（`accounts::upstream::table` 的 `Row`）。
+/// 把它们焊成一个不可分解的值是**上游选择**的活（`accounts::upstream::table` 的 `Row`）。
 ///
 /// ⚠ **刻意不 `derive(Debug)`**：同 `relay::server::Relay` 那条（`KS1` 的第二道）。
 /// `SecretKey` 自己的 `Debug` 是遮蔽形，但**少一个能顺手印整条的入口就少一个出口**。
 pub struct AccountEntry {
     /// 路由键里那一段账号 id。
     pub id: String,
-    /// 这一行的上游端点；`None` = 用这个 agent 的默认上游（账号层 `AGENT_UPSTREAMS`）。
+    /// 这一行的上游端点；`None` = 用这个 agent 的默认上游（上游选择 `AGENT_UPSTREAMS`）。
     pub base_url: Option<String>,
     /// 这一行的 key；`None` = **原样转发下游那份鉴权头**（订阅制那一档是合法状态）。
     pub key: Option<SecretKey>,
     /// 这一行的鉴权头风格〔`K-R1`〕。**三态原样带出去，本模块不替它做决定** ——
-    /// 同 `base_url`：把 `Unknown` 折成默认值是一次静默回落，而出声那一步在账号层装表那侧
+    /// 同 `base_url`：把 `Unknown` 折成默认值是一次静默回落，而出声那一步在上游选择装表那侧
     /// （它才有日志出口）。
     pub auth_style: AuthStyleSetting,
 }
@@ -348,7 +348,7 @@ pub struct AccountEntry {
 ///
 /// 不判 `id` 能不能当路由段用（那要 `route::segment_is_safe`，住后端那一侧，
 /// 本 crate 刻意不认识 HTTP）· 不解析 `base_url`（那要 `upstream::Base`，同上）。
-/// ⇒ **这两格由账号层在装表那一刻判并出声**，本函数只负责「文件里写了什么」。
+/// ⇒ **这两格由上游选择在装表那一刻判并出声**，本函数只负责「文件里写了什么」。
 pub fn read_accounts(doc: &Map<String, Value>) -> Vec<AccountEntry> {
     let mut out: Vec<AccountEntry> = Vec::new();
 
@@ -428,7 +428,7 @@ pub fn merge_account_key(
 }
 
 /// 〔第四波 ST2 · `设计/70 §4.4`〕`base_url` 那一格在**写之前**的形状关：只认 `https://` / `http://` 开头、
-/// 中间没有空白。更细的（明文 http 只许回环、带路径前缀的提示）由账号层装表时判并出声 ——
+/// 中间没有空白。更细的（明文 http 只许回环、带路径前缀的提示）由上游选择装表时判并出声 ——
 /// 那一层有 `Base::parse`，这里不另写一份解析器（同一条规则一个家）。
 ///
 /// 〔RM1a〕从 monitor 的 `creds_store` 搬来：那份文件在**每台机器上**各有一个写者
@@ -449,7 +449,7 @@ pub fn check_base_url_shape(raw: &str) -> Result<(), String> {
 ///
 /// 形状与 [`merge_account_key`] 逐条相同（clone-then-replace 两层、签名逼调用方说清改哪一条），
 /// 只是这一格不是凭据：`base_url` 是明文端点，不经 `SecretKey`。
-/// ⚠ 本 crate 不解析它（不认识 HTTP，见 [`read_accounts`] 头注）—— 形状对不对由账号层装表时判、并出声。
+/// ⚠ 本 crate 不解析它（不认识 HTTP，见 [`read_accounts`] 头注）—— 形状对不对由上游选择装表时判、并出声。
 pub fn merge_account_base_url(
     current: &Map<String, Value>,
     id: &str,

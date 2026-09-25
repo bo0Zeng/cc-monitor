@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 /// 〔SR1a · 09-24〕+2：`history-index` / `history-user-inputs`（题面「`--list-user-inputs` 与骨架
 /// `--read-session-from-offset --index` 上帧面」那一句 —— 异源仍是题面，不是 `inbound.rs`）。
 /// 〔C4c · 第四波 4B〕+1：`accounts-trust`（主会话裁「仍在拨号的 `--account-trust` / `--account-trust-zero`」
-/// 随账号层一起上帧面 —— 异源是题面 `C4c` 那一句，不是 `inbound.rs`）。
+/// 随账号域一起上帧面 —— 异源是题面 `C4c` 那一句，不是 `inbound.rs`）。
 const FAMILY: &[&str] = &[
     "accounts-list",
     "accounts-sessions",

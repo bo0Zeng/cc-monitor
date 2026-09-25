@@ -1,10 +1,10 @@
-//! 层 1 · **监听面**：绑回环 · accept · 在途上界 · 起监听之前那点接线。
+//! 中转 · **监听面**：绑回环 · accept · 在途上界 · 起监听之前那点接线。
 //!
 //! # 它从哪儿来（`设计/20 §4`：`server.rs` 4506 行按职责拆）
 //!
 //! 规格那张表把 `server.rs` 拆成三份，本文件是其中一份，逐字：
 //! 「`relay/listen.rs`  🔴 **要劈两半**：listen / accept / `INFLIGHT_CONNECTIONS` → 后端侧
-//! （`01 C5`）；serve / `apply_downstream_deadline` → 层 1」。
+//! （`01 C5`）；serve / `apply_downstream_deadline` → 中转」。
 //!
 //! ⚠⚠ **那「两半」本拍只劈了一半，另一半劈不动，理由现打**：
 //! 把 bind/accept 挪到**后端侧**要在 `relay/` 之外新开一个模块，而本拍的写区
@@ -43,13 +43,13 @@ pub(super) const ENV_PORT: &str = "CCM_RELAY_PORT";
 // ⇒ 期限（超时）与端口号同是**策略值**……通信层自己**没有任何期限常量**」。
 // `设计/05 §3.3.2` 把分工写成三段：**值归后端 · 执行归通信层 · 说法归调用方**。
 //
-// 🔴 **这两个值先前住层 1**（`server.rs` 与 `upstream.rs`）—— 那正是 `P16` 完成判据里
+// 🔴 **这两个值先前住中转**（`server.rs` 与 `upstream.rs`）—— 那正是 `P16` 完成判据里
 // 点名的「两个期限常量（`X2`）」。搬来这里的理由不是品味：本文件自己就是**监听面**，
 // 按 `C5` 括号里那条「端口号是策略值，从配置来 ⇒ 按 `C4` 本就归后端」它**语义上就在
 // 边界外**（`comm_boundary_registry` 那张表里它逐字登记为「这一份**语义上就该在外面**，
 // 不是等它变干净」）。⇒ 期限值与端口号是同一类东西，它们该住同一层。
 //
-// ⚠ **搬走的只有值**：装它们的那两手还在层 1（`server::apply_downstream_deadline`
+// ⚠ **搬走的只有值**：装它们的那两手还在中转（`server::apply_downstream_deadline`
 // 与 `upstream::connect`），只是改成收入参 —— **执行仍归通信层**，这一条没变。
 // ⚠ 这两条在 `no_timer_guard::REGISTERED_DURATION_USES` 里各占一行，住址栏跟着改成
 // 本文件。那张表是**恰好相等**的断言 ⇒ 住址改错/漏改当场红。
@@ -57,7 +57,7 @@ pub(super) const ENV_PORT: &str = "CCM_RELAY_PORT";
 // （与 `relay/mod.rs ㈠` 那一节记的只读护栏同一族坑）—— 在散文里提它一次，
 // 这份文件当场就「自称成员」了。本拍第一版正是这么红的，逐字
 // 「这几份文件**自称**通信层成员，却不在登记表里」。**要改就改措辞。**
-// ⚠ **不许把值搬回层 1**：`upstream.rs` 今天盖着那枚成员标记，`X2`（生产段
+// ⚠ **不许把值搬回中转**：`upstream.rs` 今天盖着那枚成员标记，`X2`（生产段
 // 零期限字面量）对它当场成立；搬回去它立刻掉出边界。
 
 /// **下游**那条 socket 的读写期限〔回修轮之六 08-25，D3 `阻-3(D3)` 的**后半段**〕。
@@ -224,9 +224,9 @@ pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>) {
 /// 实测：把 `run()` 的函数体整个换成 `2`，384 条判据**全绿**（审计 `CG1`）——
 /// 端口与（当时还是进程级的）默认上游那两个环境变量的解析、两个默认值，**一样都没被量过**。
 ///
-/// ⚠ 〔「中转层里没有账号」那一刀的前置〕它先前还顺手解析上游 —— 那是**层 2 的配置**
+/// ⚠ 〔「中转层里没有账号」那一刀的前置〕它先前还顺手解析上游 —— 那是**上游选择的配置**
 /// （每 agent 一行的默认上游，`设计/20 §3.1`）。今天那一半归 [`Startup::check`]，
-/// 本函数只剩层 1 自己的那一格：端口（`C5`：端口是后端交给通信层的策略值）。
+/// 本函数只剩中转自己的那一格：端口（`C5`：端口是后端交给通信层的策略值）。
 pub(super) fn resolve_port(port_env: Option<&str>) -> u16 {
     port_env
         .and_then(|v| v.parse::<u16>().ok())
@@ -239,8 +239,8 @@ pub(super) fn resolve_port(port_env: Option<&str>) -> u16 {
 /// 「端口起不来就退出并出声」（`:16-17` 头注承诺的那条）两条。
 /// 成功那一条尾巴上是永不返回的 `serve()` ⇒ 判据够不到，登记为 `判不了`。
 ///
-/// ⚠ 「读一次凭据、装表、把该说的话说出去、接热重载」那一段**是层 2 的**，
-/// 本函数只经 `startup` 那两步够到它（[`Startup`] / [`Ready`]）—— 它**叫不出**层 2 的任何一个名字。
+/// ⚠ 「读一次凭据、装表、把该说的话说出去、接热重载」那一段**是上游选择的**，
+/// 本函数只经 `startup` 那两步够到它（[`Startup`] / [`Ready`]）—— 它**叫不出**上游选择的任何一个名字。
 pub(super) fn run_with(
     port_env: Option<&str>,
     get: &dyn Fn(&str) -> Option<String>,
@@ -255,7 +255,7 @@ pub(super) fn run_with(
     0
 }
 
-/// `--relay` 与流模式进程内（[`host`]）**共用的那一段**：层 2 认启动配置 → 绑回环 → 报地址 → 装表 → 造 `Relay`。
+/// `--relay` 与流模式进程内（[`host`]）**共用的那一段**：上游选择认启动配置 → 绑回环 → 报地址 → 装表 → 造 `Relay`。
 ///
 /// 〔RL1〕从 [`run_with`] 里原样抽出来 —— 两条入口若各写一遍，那几句 `[relay]` 日志就是两份、
 /// 顺序（「起监听之后才印凭据路径」）也是两份，迟早漂。失败时**该说的那一句已经说了**，
@@ -267,13 +267,13 @@ fn prepare(
     startup: &dyn Startup,
     tee: TeeSink,
 ) -> Result<(TcpListener, Arc<Relay>), String> {
-    // ⚠ `K-R1`：层 2 认不出时**为什么**认不出，这里拿不到 —— 如实登记为射程外：
+    // ⚠ `K-R1`：上游选择认不出时**为什么**认不出，这里拿不到 —— 如实登记为射程外：
     //   这一支只印一句 `[relay] bad upstream base url`，而改那句报文要同拍改
     //   `creds_guard::LOG_SITES` 那张表 ⇒ 另一拍。★ 而**每一行**账号的 `base_url`
-    //   那句为什么，今天是真的印出去了（层 2 装表时）。
+    //   那句为什么，今天是真的印出去了（上游选择装表时）。
     let Some(ready) = startup.check(get) else {
         eprintln!("[relay] bad upstream base url");
-        return Err("上游基址认不出（层 2 拒了启动配置）".to_string());
+        return Err("上游基址认不出（上游选择拒了启动配置）".to_string());
     };
     let listener = match listen(port) {
         Ok(l) => l,
@@ -332,7 +332,7 @@ impl std::fmt::Display for Hosted {
 ///
 /// # 与 [`run_with`] 共用的与不共用的
 ///
-/// 共用：层 2 那两步（`check` → `into_destinations`）· [`listen`]（回环）· [`serve`] · 两个期限值。
+/// 共用：上游选择那两步（`check` → `into_destinations`）· [`listen`]（回环）· [`serve`] · 两个期限值。
 /// 不共用：① 端口**没有缺省值**（交了一个认不出的串 ⇒ `Failed`，不悄悄退回 `DEFAULT_PORT` ——
 /// 注入侧拼的是它交出来的那个数，两边对不上就是一个查不出来的连接失败）；
 /// ② tee 落 [`TeeSink::discard`]：本进程的 stdout 在 stdio 载体上**就是 wire**（一行一帧），
@@ -395,7 +395,7 @@ pub(super) fn run_reading(
     let port = get(ENV_PORT);
     // ⚠ `get` 原样往下传：凭据与每家上游那两条路的取值器**必须与端口是同一个**，
     //   否则判据喂进去的环境和生产段读的环境是两套（那正是「量具的作用域对不上事实」）。
-    // ⚠ 〔条 60〕上游那个变量**不在这里读了**：它每家一个，名字住层 2 那张表，
+    // ⚠ 〔条 60〕上游那个变量**不在这里读了**：它每家一个，名字住上游选择那张表，
     //   本层只读自己的端口（`C5`：端口是后端交给通信层的策略值）。
     exec(port.as_deref(), get, home)
 }
@@ -406,8 +406,8 @@ pub(super) fn run_reading(
 /// 喂给哪个位）住 `run_reading`，那里有判据钉着。**别往里加逻辑**：加进来的就又没判据了
 /// —— 本函数这一行今天是**判不了**的那一格，登记住址件文件 §8.18.3。
 pub(crate) fn run(home: &std::path::Path, _args: &[String], startup: &dyn Startup) -> i32 {
-    // ★ 层 2 那只手是**调用方递进来的**（`accounts::upstream::run_relay`，`--relay` 的装配口）——
-    //   本层**叫不出**它的名字。先前这里写死 `super::accounts::Boot`：层 2 搬出 `relay/` 那一拍删的。
+    // ★ 上游选择那只手是**调用方递进来的**（`accounts::upstream::run_relay`，`--relay` 的装配口）——
+    //   本层**叫不出**它的名字。先前这里写死 `super::accounts::Boot`：上游选择搬出 `relay/` 那一拍删的。
     run_reading(&|k| std::env::var(k).ok(), home, &|p, get, h| {
         run_with(p, get, h, startup)
     })

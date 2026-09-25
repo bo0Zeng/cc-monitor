@@ -1,4 +1,4 @@
-//! 〔RM1a · 第四波〕`apikey_remote.rs` 的判据 —— 账号层那份凭据文件按机器读写的 monitor 半。
+//! 〔RM1a · 第四波〕`apikey_remote.rs` 的判据 —— 上游选择那份凭据文件按机器读写的 monitor 半。
 //!
 //! # 买到的
 //!

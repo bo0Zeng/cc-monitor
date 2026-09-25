@@ -88,7 +88,7 @@ mod profile_installer;
 mod pubkey;
 mod remote_branch; // G6：远端分叉（经 ssh 调 backend `--fork-session`）——写面故与只读的 remote_history 分家
 mod remote_history;
-mod remote_relay; // 〔RM1a〕中转（层 1）按机器：本机由 monitor 监护，远端问 / 交那台机器的后端
+mod remote_relay; // 〔RM1a〕中转按机器：本机由 monitor 监护，远端问 / 交那台机器的后端
 mod remote_write_registry; // devbench F10c：远端写面登记（接三张表各自划出去、然后没人接的那道缝）
 mod search;
 mod session_facts; // 〔U4b〕两条后端流交来、要送前端的会话事实（容器 · 本机可重连落已结束）的一个口
@@ -1813,7 +1813,7 @@ struct ApikeyRouting {
 /// # 〔RM1a · 第四波〕**收 `origin`**：两件事都问**那台机器**
 ///
 /// 上面「只答本机」那段理由的前提是「本机这一侧在结构上答不了远端那台」—— 今天远端那台的后端
-/// 自己答得了：表里有哪几行（账号层，`apikey-read`）· 那个口上有没有人在听（中转，`relay-status`）。
+/// 自己答得了：表里有哪几行（上游选择，`apikey-read`）· 那个口上有没有人在听（中转，`relay-status`）。
 /// 两件事**各问各的**（`apikey_remote::rows_on` / `remote_relay::running_on`，两个模块互不引用），
 /// 只在这里拼成一份给界面。本机那一臂两件事都照旧走 [`history::inject_facts`] 那条缝。
 /// 〔RL1〕两台的 `running` 今天是**同一个判准**：「那个口上有人在听」（本机那一格也改成回环连一次）。

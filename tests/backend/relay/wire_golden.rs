@@ -191,7 +191,7 @@ const GOLDEN: &[Golden] = &[
     },
     // ⑤ 🔴 **直通模式 ＋ 表里那一行有 key ⇒ 绝不代入**（`20 §3.1` 第 3 行）。
     //    与 ① **同一个账号段**（`acctA`，表里配着 `KEY-A`），只有前缀不同 ⇒
-    //    量到的差别只能来自模式那一格。`/t/` 逐字是「层 1 永不代入 auth」：
+    //    量到的差别只能来自模式那一格。`/t/` 逐字是「中转永不代入 auth」：
     //    上游收到的必须是**客户端那把**（`CLIENT-TOKEN`），`KEY-A` 一个字节都不许出现。
     Golden {
         target: "/t/agentA/acctA/sid-TTT/v1/messages",
@@ -364,7 +364,7 @@ fn spawn_relay(up: SocketAddr) -> (SocketAddr, TeeTap) {
         ]
         .into_iter(),
     );
-    // ⚠ 走的是**生产段那条真实的层 2**（`Accounts`），不是判据自己造的一个假 `Destinations`。
+    // ⚠ 走的是**生产段那条真实的上游选择**（`Accounts`），不是判据自己造的一个假 `Destinations`。
     let relay = Arc::new(Relay::new(
         Arc::new(Accounts::new(
             table,

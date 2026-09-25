@@ -2,9 +2,9 @@
 //!
 //! # 买到的（全在本机临时目录上真读真写，不是源码扫描）
 //!
-//! - 写进去的那一行，**账号层真的装得进表**：写口产出的文件交给生产段 `creds::load` ＋ `table::build`
-//!   （中转进程里账号层装表那两步），`(claude-code, 账号)` 那一行在表里、带 key。两侧异源：
-//!   写的是本模块，读的是层 2 那条既有的装表路。
+//! - 写进去的那一行，**上游选择真的装得进表**：写口产出的文件交给生产段 `creds::load` ＋ `table::build`
+//!   （中转进程里上游选择装表那两步），`(claude-code, 账号)` 那一行在表里、带 key。两侧异源：
+//!   写的是本模块，读的是上游选择那条既有的装表路。
 //! - `KS10` 那组性质在这一侧同样成立：别的行与两层的未知键一个不动 · 写的那一刻读盘 ·
 //!   解析不了 ⇒ 拒绝且**逐字节不动** · 不留临时文件 · 文件只给本人（unix 位）。
 //! - 🔴 明文不出这一层：两条应答（序列化之后的整串）里**零命中**那把 key（带正控：同一把尺子
@@ -50,11 +50,11 @@ fn a_written_row_is_really_loaded_by_upstream_selection() {
         "回的掩码应当是盘上那一行的掩码"
     );
 
-    // ★ 交给账号层装表那两步（生产段那条既有的路），而不是本模块自己再解析一遍。
+    // ★ 交给上游选择装表那两步（生产段那条既有的路），而不是本模块自己再解析一遍。
     let loaded = super::super::creds::load(&f);
     assert!(
         loaded.problem.is_none(),
-        "账号层读不动写口产出的文件：{:?}",
+        "上游选择读不动写口产出的文件：{:?}",
         loaded.problem
     );
     let base = crate::relay::Base::parse("https://api.example.invalid").expect("夹具上游");
@@ -62,7 +62,7 @@ fn a_written_row_is_really_loaded_by_upstream_selection() {
         super::super::table::build(loaded.accounts, super::super::CREDENTIALS_FILE_AGENT, &base);
     assert!(
         rejected.is_empty(),
-        "写进去的那一行被账号层拒了：{} 条",
+        "写进去的那一行被上游选择拒了：{} 条",
         rejected.len()
     );
     assert_eq!(table.len(), 1, "表里应当恰好这一行");
@@ -70,7 +70,7 @@ fn a_written_row_is_really_loaded_by_upstream_selection() {
         table
             .lookup(super::super::CREDENTIALS_FILE_AGENT, "work")
             .is_some(),
-        "账号层按 (agent, 账号) 查不到写进去的那一行"
+        "上游选择按 (agent, 账号) 查不到写进去的那一行"
     );
     let _ = std::fs::remove_dir_all(&home);
 }

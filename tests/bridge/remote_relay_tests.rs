@@ -1,4 +1,4 @@
-//! 〔RM1a · 第四波〕`remote_relay.rs` 的判据 —— 中转（层 1）按机器，monitor 半。
+//! 〔RM1a · 第四波〕`remote_relay.rs` 的判据 —— 中转按机器，monitor 半。
 //!
 //! # 买到的
 //!
@@ -7,7 +7,7 @@
 //!   （装替身、翻答案 ⇒ 结果跟着翻）。
 //! - 远端那一臂在没有通道时说得出是哪台机器。
 //! - 应答解析跟着后端**声明的字段**走（后端 `REGISTRY` 里 `relay-*` 两行的 `fields`，现抠）。
-//! - 🔴 本模块一个账号层的名字都没有（生产段零命中，带正控）。
+//! - 🔴 本模块一个上游选择的名字都没有（生产段零命中，带正控）。
 //!
 //! # 买不到的
 //!
@@ -155,7 +155,7 @@ fn the_answers_are_parsed_from_the_fields_the_backend_declares() {
 #[test]
 fn this_module_knows_no_upstream_selection_name() {
     let prod = own_production();
-    // 正控：同一把尺子在隔壁那份（账号层那一半）上数得到。
+    // 正控：同一把尺子在隔壁那份（上游选择那一半）上数得到。
     let apikey = guard_core::production_code(include_str!("../../src/bridge/src/apikey_remote.rs"));
     let needles = ["apikey", "creds", "account"];
     assert!(
@@ -171,7 +171,7 @@ fn this_module_knows_no_upstream_selection_name() {
     for n in needles {
         assert!(
             !code.contains(n),
-            "中转那一半的代码里出现了账号层的词 `{n}`"
+            "中转那一半的代码里出现了上游选择的词 `{n}`"
         );
     }
 }

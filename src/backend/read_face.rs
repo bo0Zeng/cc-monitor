@@ -88,9 +88,9 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
             }
             Ok(json!({ "lines": rows }))
         }
-        // 〔C4c · 第四波 4B〕账号清单**出成品**（主会话裁：账号层读自己那台的 apikey 表、agent 随请求带）：
+        // 〔C4c · 第四波 4B〕账号清单**出成品**（主会话裁：账号域读自己那台的 apikey 表、agent 随请求带）：
         //   monitor 那一份行解析 / 降级说明 / 本机并表（`local_accounts::with_apikey_table`）删了〔散文墓碑〕，界面经通道直接问。
-        //   并的是**这台机器自己**那份表（与 `apikey-read` · 中转里的账号层同一个出处）—— 远端从此第一次并上它自己的表。
+        //   并的是**这台机器自己**那份表（与 `apikey-read` · 中转里的上游选择同一个出处）—— 远端从此第一次并上它自己的表。
         "accounts-list" => {
             let agent = str_arg(args, "agent")?;
             let rows = crate::accounts::upstream::file_face::rows_at(

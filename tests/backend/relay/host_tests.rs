@@ -178,7 +178,7 @@ fn an_unreadable_port_is_refused_rather_than_defaulted() {
     }
 }
 
-/// H2：层 2 认不出启动配置（默认上游那个变量是坏的）⇒ `Failed`，而且**没有去绑那个口**（顺序：先认配置、再绑）。
+/// H2：上游选择认不出启动配置（默认上游那个变量是坏的）⇒ `Failed`，而且**没有去绑那个口**（顺序：先认配置、再绑）。
 #[test]
 fn a_bad_upstream_config_fails_before_any_port_is_bound() {
     // 先拿一个此刻空着的口，再交给它 —— 失败之后我们还绑得上它 ⇒ 它没被占。

@@ -3144,7 +3144,7 @@ fn only_an_account_that_has_a_row_in_the_apikey_table_gets_the_base_url_prefix()
 ///
 /// 第一版只喂**一个**账号（`acct-a`）⇒ `D6` 的刀 `E6` 把 [`apikey_account_id`] 的答案
 /// `.map(|_| "acct-a")` 写死（那段文本一字不动）⇒ **全绿、门禁四个数与干净树逐字相同**。
-/// 生产后果是**路由键的 `<account>` 段恒是一个号** ⇒ 账号层按它取 key ⇒
+/// 生产后果是**路由键的 `<account>` 段恒是一个号** ⇒ 上游选择按它取 key ⇒
 /// **acct-b 的会话拿着 acct-a 的那把 key 发请求，两边都显示成功** ——
 /// 正是整个多账号工作要防的最坏那一形。
 /// ⇒ 本条**至少喂两个不同的号**，并断言前缀里的 `<account>` 段跟着变。
@@ -3256,7 +3256,7 @@ fn the_launch_side_really_asks_those_two_take_points_and_uses_their_answers() {
     assert_ne!(
         got, got_b,
         "\n换一个号，拼出来的前缀一个字节都没变 —— 「这次拉起是哪个号」这一维成了常量。\n\
-             生产后果：路由键的 `<account>` 段恒指一个号 ⇒ 账号层按它取 key ⇒\n\
+             生产后果：路由键的 `<account>` 段恒指一个号 ⇒ 上游选择按它取 key ⇒\n\
              **acct-b 的会话拿着 acct-a 的那把 key 发请求，而两边都显示成功。**"
     );
     assert!(
@@ -3629,7 +3629,7 @@ fn the_rows_really_come_from_that_file_not_from_a_constant() {
         vec!["acct-a".to_string(), "acct-b".to_string()],
         "没把那份文件里的行读出来 —— 这个取值口恒空的话，谁都不会走中转，而且全绿"
     );
-    // ③ 当不了路由段的 id **筛掉**（与账号层装表那一侧同一条规则）。
+    // ③ 当不了路由段的 id **筛掉**（与上游选择装表那一侧同一条规则）。
     std::fs::write(
         &f,
         b"{\n  \"accounts\": {\n    \"ok-1\": {},\n    \"has.dot\": {},\n    \"has/slash\": {}\n  }\n}\n",
@@ -3638,7 +3638,7 @@ fn the_rows_really_come_from_that_file_not_from_a_constant() {
     assert_eq!(
         apikey_rows_at(&f),
         vec!["ok-1".to_string()],
-        "界面这一侧收下了账号层装表时会丢掉的行 —— 那会让界面说「经本机中转」而账号层 404"
+        "界面这一侧收下了上游选择装表时会丢掉的行 —— 那会让界面说「经本机中转」而上游选择 404"
     );
     // ④ 文件坏了 ⇒ 零条 + 不 panic（人手编打错一个逗号是常态）。
     std::fs::write(&f, b"{ not json").expect("写夹具");
