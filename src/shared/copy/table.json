@@ -696,6 +696,46 @@
       "kind": "body",
       "zh": "留意：{value}",
       "args": ["value"]
+    },
+    "tabBar.persist.collectionsFailed": {
+      "kind": "error",
+      "zh": "分组没存上，重启后会回到上次存下的分组",
+      "args": []
+    },
+    "tabBar.persist.pinnedFailed": {
+      "kind": "error",
+      "zh": "固定没存上，重启后会回到上次存下的固定",
+      "args": []
+    },
+    "tabBar.persist.orderFailed": {
+      "kind": "error",
+      "zh": "顺序没存上，重启后会回到上次存下的顺序",
+      "args": []
+    },
+    "settings.behavior.saveFailed": {
+      "kind": "error",
+      "zh": "行为设置没存上",
+      "args": []
+    },
+    "keybindings.persist.failed": {
+      "kind": "error",
+      "zh": "快捷键没存上，重启后会回到上次存下的键位",
+      "args": []
+    },
+    "history.star.failed": {
+      "kind": "error",
+      "zh": "星标没改成",
+      "args": []
+    },
+    "history.rename.failed": {
+      "kind": "error",
+      "zh": "标题没改成",
+      "args": []
+    },
+    "history.hide.failed": {
+      "kind": "error",
+      "zh": "隐藏没改成",
+      "args": []
     }
   }
 }

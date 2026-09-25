@@ -37,6 +37,7 @@ import { SessionViewer, type ViewerOptions } from "./session-viewer";
 import { liveRank, starRank, bumpCounted, isKnown } from "./counted";
 import { dispatcher } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
+import { copyText } from "../copy-table";
 import { runRemoteResume, runNewSessionRemote } from "../remote-launch-run";
 import { validateLocalLaunch } from "../launch-requests";
 import {
@@ -1587,6 +1588,8 @@ export class HistoryView {
       this.renderList();
     } catch (err) {
       console.warn("star update failed:", err);
+      // 〔CFG1 · 4D〕从前只记日志：点了星标、什么都没变、也不说（E §3.3）。改名 / 隐藏同。
+      showActionFailureToast(copyText("history.star.failed"), String(err));
     }
   }
 
@@ -1604,6 +1607,7 @@ export class HistoryView {
       this.renderList();
     } catch (err) {
       console.warn("rename failed:", err);
+      showActionFailureToast(copyText("history.rename.failed"), String(err));
     }
   }
 
@@ -1622,6 +1626,7 @@ export class HistoryView {
       this.renderList();
     } catch (err) {
       console.warn("hide toggle failed:", err);
+      showActionFailureToast(copyText("history.hide.failed"), String(err));
     }
   }
 
