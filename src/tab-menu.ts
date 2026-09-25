@@ -12,6 +12,7 @@
 import { showActionFailureToast } from "./error-toast";
 import type { Tab } from "./tab-model";
 import { hasTerminal, isResumeOnly, type SessionState } from "./tab-session-state";
+import { copyText } from "./copy-table";
 import {
   addMember,
   collectionOf,
@@ -112,9 +113,10 @@ export class TabMenu {
     if (t && this.host.pinnedLoaded()) {
       items.push({
         label: t.pinned ? "取消固定" : "📌 固定此标签",
+        // 〔U4〕说到会话状态的句子住文案表 `sessionState.*`；原句里的「变灰」「灰着」是禁用词（`设计/91 §4`）。
         title: t.pinned
-          ? "取消后：这个会话变灰之后，关掉 app 再打开就没了"
-          : "固定后：关掉 app 再打开它还在（灰着，可 resume）。位置不变 —— pin 管的是「别丢」，不是「排前面」",
+          ? copyText("sessionState.pin.unpinHint")
+          : copyText("sessionState.pin.pinHint"),
         onClick: () => this.host.togglePin(sid),
       });
     }

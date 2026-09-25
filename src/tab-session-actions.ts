@@ -57,6 +57,7 @@ import {
   type TmuxSession,
 } from "./tmux-sessions";
 import type { Tab } from "./tab-model";
+import { copyText } from "./copy-table";
 
 /**
  * auto-e2e F-E0:DEV-only 断言出口。同 e2e-probe.ts 的 `log()`——把状态转移写成可 grep 的
@@ -629,15 +630,16 @@ export class TabSessionActions {
       ? // 〔U2 · 按 `terms.json` ＋ CP1 台账改词〕不说标记、不派「重装 ccm 助手」；「可能杀到别的 Claude」这条后果必须留着。
         `\n\n⚠ 认不出这是哪个会话：「${tmuxName}」是按工作目录匹配到的，可能是同目录里另一个正在运行的 Claude。`
       : "";
-    // idle-tmux（灰 tab）：claude 已退、只剩空 shell，文案别再说"正在运行的 Claude"；
-    // 杀掉这个残留 tmux → tab 转归档（archived）→ 即可 Resume（给灰态一个出口，治 UX 审计 #1）。
+    // 可重连的 tab：claude 已退、只剩空 shell，文案别再说"正在运行的 Claude"；
+    // 杀掉这个残留 tmux → tab 变成已结束 → 即可 Resume（给可重连一个出口，治 UX 审计 #1）。
+    // 〔U4〕说到会话状态的句子住文案表 `sessionState.*`（原句说「转归档」「变灰」）。
     // ★ P3 刀 2 UI：本机也会走到这里 ⇒ 文案不能再写死「远端」。
     // 这不是措辞洁癖：一个说「将终止**远端**……」的确认框，用在本机会话上是**在说假话**，
     // 而它恰好是个不可恢复的破坏性动作的最后一道人工闸。
     const isLocal = origin === LOCAL_ORIGIN;
     const where = isLocal ? "本机" : "远端";
     const body = opts?.idle
-      ? "该会话里 Claude 已退出（只剩空 tmux shell）；kill 掉这个残留会话。杀掉后 tab 转归档、可 Resume（若是该机唯一会话，可能要等下次重连对账才归档）。"
+      ? copyText("sessionState.killIdle.confirm")
       : `将终止${where}这个 tmux 会话里正在运行的 Claude，未保存的交互会中断。`;
     // auto-e2e F-E4：可注入 confirm seam（对齐 account-restart.ts 的 `opts.confirm ?? window.confirm`）。
     // 默认（不传 opts）走 `window.confirm`，交互零变化——headless e2e/DEV 才注入 ()=>true/false。
@@ -653,8 +655,8 @@ export class TabSessionActions {
         showActionFailureToast(
           "已杀死会话",
           opts?.idle
-            ? `${who} 的 tmux 会话「${tmuxName}」已终止；tab 随后转归档、可 Resume（唯一会话时可能要等下次对账）。`
-            : `${who} 的 tmux 会话「${tmuxName}」已终止；tab 稍后自动变灰。`,
+            ? copyText("sessionState.killIdle.done", { who, name: tmuxName })
+            : copyText("sessionState.killLive.done", { who, name: tmuxName }),
           { level: "info", durationMs: 6000 },
         );
       } catch (err) {

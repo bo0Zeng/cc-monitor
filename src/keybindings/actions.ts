@@ -66,7 +66,7 @@ export const ACTIONS: ReadonlyArray<Action> = [
   { id: "tab.jump-7", label: "跳到第 7 个 Tab", category: "Tab", default: "Digit7", available: true },
   { id: "tab.jump-8", label: "跳到第 8 个 Tab", category: "Tab", default: "Digit8", available: true },
   { id: "tab.jump-9", label: "跳到第 9 个 Tab", category: "Tab", default: "Digit9", available: true },
-  { id: "tab.close-archived", label: "关闭已归档 Tab", category: "Tab", default: "KeyW", available: true },
+  { id: "tab.close-archived", label: "关闭已结束的 Tab", category: "Tab", default: "KeyW", available: true },
   { id: "tab.open-cwd", label: "打开当前 Tab 的工作目录", category: "Tab", default: "KeyE", available: true },
   {
     id: "tab.pop-out",
