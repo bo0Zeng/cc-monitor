@@ -3,7 +3,7 @@
 //!
 //! # 为什么走生成物，而不是再开一条 IPC
 //!
-//! 与上一件 `K-R93` 同一个理由：消费点（`accounts.ts::localLaunchAccountSync` 的载荷键名）
+//! 与上一件 `K-R93` 同一个理由：消费点（`launch-account.ts::localLaunchAccountSync` 的载荷键名）
 //! 是**同步纯函数**，而 IPC 是异步的。⇒ 选生成物那条：
 //! **同样做到「后端改一处，前端手里那份跟着变」**。
 //!

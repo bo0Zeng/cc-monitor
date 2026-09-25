@@ -564,7 +564,7 @@ export class TabSessionActions {
       // `K-P5g`：这句话原来把**两条成因**并排摆着（「不在本工具 tmux 里」**或**「不是本工具
       // 起的」），而当时没有任何东西分得开它们。现在分得开了——`--session-accounts` 读回来的
       // 身份 token（`launchId`）说得出这条会话是不是从本工具这条路起来的，于是这里**拿它做
-      // 决定**：选哪一条成因、给哪一句补救。判据见 `accounts.ts::restartLocateFailureMessage`
+      // 决定**：选哪一条成因、给哪一句补救。判据见 `account-restart.ts::restartLocateFailureMessage`
       // 头注与 `accounts.vitest.ts`；本处的接线由 `tabs.vitest.ts` 那两条对照钉着。
       const msg = restartLocateFailureMessage(this.host.sessionAccount(sid), {
         local: origin === LOCAL_ORIGIN,

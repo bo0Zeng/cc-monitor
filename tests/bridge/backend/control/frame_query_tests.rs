@@ -179,7 +179,7 @@ const CHANNELED: &[(&str, &str)] = &[
     (
         "accounts-sessions",
         "本机与远端都迁：两条 Tauri 命令（远端帧面 · 本机一次性 exec）各在 Rust 里把同一种行解析一遍；\
-         迁过去之后逐行解释只剩 `src/accounts.ts::parseSessionAccountLines` 一处",
+         迁过去之后逐行解释只剩 `src/account-reads.ts::parseSessionAccountLines` 一处",
     ),
     (
         "history-search",
@@ -204,12 +204,12 @@ const CHANNELED: &[(&str, &str)] = &[
     (
         "accounts-list",
         "后端出成品 `{meta, accounts, notice}`，并上**那台机器自己**那份 apikey 表（`acct_core::apikey_routed_subset`）；\
-         monitor 那份行解析 / 降级说明 / 本机并表删了，界面经 `src/accounts.ts::fetchAccounts` 问、按形状收，本机与远端同一条路",
+         monitor 那份行解析 / 降级说明 / 本机并表删了，界面经 `src/account-reads.ts::fetchAccounts` 问、按形状收，本机与远端同一条路",
     ),
     (
         "accounts-trust",
         "后端出成品 `{trusted, known}`（CLI 那一臂同一个函数）；替掉最后两条逐次拨号的 `--account-trust*`，\
-         界面经 `src/accounts.ts::checkTrust` 问",
+         界面经 `src/account-reads.ts::checkTrust` 问",
     ),
     // 〔C4d · 第四波 4B〕历史跨机 join 那两条（主会话 09-25 裁：注解读写者换成本机常驻后端，它经 `remote_ask` 问远端那台、
     //   并上注解、出成品）—— 从 [`HELD_BACK`] 挪过来：「远端那台的后端出不了成品」那条理由由「问**本机**后端、带 `origin`」解开了。
