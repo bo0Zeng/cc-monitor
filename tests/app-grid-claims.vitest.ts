@@ -134,11 +134,12 @@ const INSERTED_CHILDREN: readonly AppChild[] = [
     why: "同上（className 是 `tasks-popover agents-popover`，认领靠前者）",
   },
   {
-    file: "src/main.ts",
+    // 〔CFG1 · 4D〕拖宽把手从 `main.ts` 搬进 tab 栏自己的模块（D §D5）。
+    file: "src/tab-bar-width.ts",
     expr: "resizer",
     selector: "#tab-bar-resizer",
     modes: ["default"],
-    why: "bootstrapMain 建；viewer 路不建（CSS 另有一条兜底隐藏）",
+    why: "bootstrapMain 经 `mountTabBarResizer()` 建；viewer 路不建（CSS 另有一条兜底隐藏）",
   },
   {
     file: "src/main.ts",
