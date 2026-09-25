@@ -45,6 +45,7 @@ import type { Shell } from "../generated/Shell";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { makeInfoIcon } from "./info-icon";
 import { hostOs } from "./host-os";
+import { copyText } from "../copy-table";
 
 /**
  * 〔AL1c〕这台机器（monitor 跑在的那台本机）用哪种 shell 的方言。**测不出就按 POSIX**（与 `host-os.ts`
@@ -1089,7 +1090,12 @@ function buildPsExtras(): PsExtras {
       autoLaunchPathSpan.title = cfg.monitor_exe_path ?? "";
     } catch (e) {
       console.warn("cc_get_auto_launch failed:", e);
+      // 〔W5-UI · 设计/70 §7 #4〕读不到时别把「不知道」画成「没勾」：复选框禁用、路径那格说读不到。
+      autoLaunchCheckbox.disabled = true;
+      autoLaunchPathSpan.textContent = copyText("machineAliases.autoLaunch.unreadable", { e: String(e) });
+      return;
     }
+    autoLaunchCheckbox.disabled = false;
   };
   autoLaunchCheckbox.addEventListener("change", () => {
     const enabled = autoLaunchCheckbox.checked;
