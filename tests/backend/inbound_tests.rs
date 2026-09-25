@@ -505,6 +505,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "history-tail",
         "accounts-list",
         "accounts-sessions",
+        // 〔C4c · 第四波 4B〕信任预检：读一份 manifest ＋ 一份 `.claude.json`（同步文件 I/O），同族同档。
+        "accounts-trust",
         // 〔B2 · 条 66〕「退出行为」那两条：同步文件 I/O（读 / 原子写 `~/.cc-monitor` 下那一份）。
         "exit-policy-read",
         "exit-policy-set",
@@ -588,6 +590,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "history-tail",
         "accounts-list",
         "accounts-sessions",
+        "accounts-trust", // 〔C4c〕
         "exit-policy-read",
         "exit-policy-set",
         "plugins-marketplaces",

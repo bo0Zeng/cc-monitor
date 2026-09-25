@@ -175,3 +175,33 @@ fn ordinary_characters_are_not_rejected() {
         assert!(!is_deceptive_char(c), "{c:?} 被误判成欺骗字符");
     }
 }
+
+/// 〔C4c · 第四波 4B〕两条 apikey 规则搬进来之后的行为钉（逐格照搬前 monitor `history.rs` 那一份的口径）。
+///
+/// 要求住址：`设计/01 §5` D1「**一个判定只有一个家**」—— 这两条规则此后由 monitor（起会话那一侧）与
+/// 后端（`accounts-list` 出成品时并表）两个调用方共用，住 `acct-core` 一处。
+#[test]
+fn the_account_id_is_the_last_path_segment_and_the_subset_is_per_agent() {
+    assert_eq!(
+        apikey_account_id_of_dir("  /home/u/.claude-accts/acct-a/  ").as_deref(),
+        Some("acct-a"),
+        "带空白与尾斜杠的写法要落到同一个 id 上"
+    );
+    assert_eq!(apikey_account_id_of_dir(""), None, "说不出 id 就不表态");
+    assert_eq!(apikey_account_id_of_dir("/"), None);
+    let rows = vec!["acct-a".to_string()];
+    let dirs = vec![
+        "/home/u/.claude-accts/acct-a".to_string(),
+        "/home/u/.claude-accts/acct-b".to_string(),
+    ];
+    assert_eq!(
+        apikey_routed_subset(&dirs, &rows, "claude-code", "claude-code"),
+        vec!["/home/u/.claude-accts/acct-a".to_string()],
+        "表里有行的那一个没被挑出来"
+    );
+    assert!(
+        apikey_routed_subset(&dirs, &rows, "codex", "claude-code").is_empty(),
+        "别家的号不许借这张表（条 49：有行说的是 (agent, 账号) 这一对）"
+    );
+    assert!(apikey_routed_subset(&dirs, &[], "claude-code", "claude-code").is_empty());
+}

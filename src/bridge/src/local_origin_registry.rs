@@ -89,7 +89,8 @@ const TRIAGE_DEBT: &[(&str, &str)] = &[
     //    编排搬上后端帧面之后，`account_usage`（远端）与 `account_usage_local`（本机）  〔散文墓碑〕
     //    **是同一个函数**，只差一个 origin —— `<local>` 也是一个 origin，`client_for` 两侧都答得出。
     //    ⇒ 它不再是「只服务远端」的那一族。**表只许变短，这一次它真的短了。**
-    ("accounts.rs", "cfg_for"),
+    // 〔C4c · 第四波 4B〕账号面那一行（`cfg_for`，原住 `accounts.rs`）〔散文墓碑〕**还掉了**：它只服务远端账号清单与信任预检两条 Tauri 命令，
+    //   两条都改走通道（`<local>` 与远端同一条路、不查远端配置），函数随命令一起删了。**表只许变短，这一次它真的短了。**
     ("ccm_probe.rs", "probe_ccm_cli"),
     ("hooks_diag.rs", "diagnose_remote_cc_bus_hooks"),
     ("launch.rs", "build_remote_ssh_ps_command"),

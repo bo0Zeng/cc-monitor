@@ -2440,12 +2440,16 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     // 〔C4b · 第四波 4B〕2 → 5：`session-reads.ts` 的三问（`history-index` / `history-user-inputs` / `history-find`，
     //    会话读面那三条从 monitor 的 Tauri 命令改走通道；每处显式给期限）。5 → 6：`settings/plugins-section.ts::fetchSurvey`
     //    （`plugins-marketplaces`）。
-    // 〔AS2 · 4B〕6 → 7：`settings/assets-section.ts` 问那台的资产目录（`assets-catalog`，显式给期限）。
+    // 〔C4c · 第四波 4B〕6 → 8：`accounts.ts::fetchAccounts`（`accounts-list`）· `accounts.ts::checkTrust`（`accounts-trust`）——
+    //    账号清单与信任预检从 monitor 的三条 Tauri 命令改走通道；每处显式给期限。
+    //    8 → 9：`session-reads.ts::probeSessionRecord`（`history-record`，resume 之前问记录还在不在）。
+    //    9 → 11：`settings/backend-section.ts::askExitPolicy` / `putExitPolicy`（「退出行为」问 / 交写）。
+    //    〔合并 AS2〕11 → 12：`settings/assets-section.ts` 问那台的资产目录（`assets-catalog`，显式给期限）。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 7usize),
+            ("chan.call", 12usize),
             ("subscribe", 1usize)
         ]
         .into_iter()

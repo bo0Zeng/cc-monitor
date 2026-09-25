@@ -223,7 +223,8 @@ describe("C01 边界生成物", () => {
       "SessionEndedPayload.ts", //    C02
       "SessionHits.ts", // C04d 批6c
       "SessionIdlePayload.ts", //     C02
-      "SessionRecordProbe.ts", //     〔U4b〕resume 之前问记录还在不在的答案
+      // 〔C4c · 第四波 4B〕`SessionRecordProbe.ts`（〔U4b〕resume 之前问记录还在不在的答案）出列：那条命令退役、界面经通道
+      //   直接问后端 `history-record`，形状改住 `src/session-reads.ts::RecordProbe`（手写，跨语言由后端判据钉）。
       "SessionStartedPayload.ts", //  C02
       "SettingsScope.ts", //          C04d 批2（ConfigSurfaceReport 的传递依赖）
       "Shell.ts", //                  〔AL1c · 4B〕别名三条命令的 shell 方言入参（`shell_dialect.rs`）

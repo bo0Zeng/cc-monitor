@@ -1774,7 +1774,7 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 | `history-sessions` | `--list-sessions` | 按行 |
 | `history-search` | `--search` | 按行 |
 | `history-subagents` | `--list-subagents` | 按行 |
-| `accounts-list` | `--list-accounts` | 按行 |
+| `accounts-list` | `--list-accounts` | 〔C4c〕成品（`{meta, accounts, notice}`） |
 | `accounts-sessions` | `--session-accounts` | 按行 |
 | `history-read` | `--read-session` · `--read-session-from-offset`（不带 `--index`） | 按字节分页 |
 | `history-tail` | `--read-session-tail` 的那张「尾段在哪」的图 | 四个数 |
@@ -1837,16 +1837,39 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 | `parent` | → | 父会话 jsonl 路径（`projects/` 围栏照旧；越界 ⇒ `path_refused`，推不出目录 ⇒ `bad_parent`） |
 | `lines` | ← | 每候选一行 `{path, description, timestamp}`，同 `--list-subagents`（只列不挑） |
 
-#### `accounts-list`：账号清单（**不读 stdin**）
+#### `accounts-list`：账号清单（〔C4c · 第四波 4B〕**出成品**）
 
 ```text
-→ {"id":"q5","cmd":"accounts-list","args":{}}
-← {"kind":"reply","id":"q5","ok":true,"data":{"lines":["{\"kind\":\"accounts-meta\",…}", "{\"name\":…}", …]}}
+→ {"id":"q5","cmd":"accounts-list","args":{"agent":"claude-code"}}
+← {"kind":"reply","id":"q5","ok":true,"data":{"meta":{"enabled":true,…},"accounts":[{"name":…,"authKind":…,"authReady":…},…],"notice":null}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `lines` | ← | 同 `--list-accounts`：首行 `accounts-meta`，其后每账号一行。账号库目录走默认解析，**帧面不收 `--accts-dir`** |
+| `agent` | → | 必填：这次起会话的是哪一家（适配器 id）。只有它是这台机器 apikey 表的那一家时，表里的行才算数（条 49） |
+| `meta` | ← | `{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error}`（同 `--list-accounts` 首行去掉分帧用的 `kind` / `accountZeroAware`）。账号库目录走默认解析，**帧面不收 `--accts-dir`** |
+| `accounts` | ← | 每账号一个对象，字段同 `--list-accounts` 的账号行；**并上了这台机器自己那份 apikey 表**：表里有行的号 `authKind` 是 `api-key`、`authReady` 按 `acct_core::auth_ready`（规则住 `acct-core`，CLI 那一臂不并表） |
+| `notice` | ← | 「能用但有缺」：启用了却一个账号 0 都没有（cc-acct-iso 写侧旧）时的一句话；否则 `null` |
+
+**错误码**：`bad_args`（缺 `agent`）· `too_large`。
+⚠ 〔C4c〕此前应答是 `{"lines": [...]}`（与 CLI 逐行同形）、并表在 monitor 做且只并本机；老后端仍回旧形状 ⇒ 新界面当场认出「两端契约对不上」。
+
+#### `accounts-trust`：换号前的信任预检（〔C4c · 第四波 4B〕替掉逐次拨号的 `--account-trust` / `--account-trust-zero`）
+
+```text
+→ {"id":"q7","cmd":"accounts-trust","args":{"configDir":"/home/u/.claude-accts/a","cwd":"/home/u/proj"}}
+← {"kind":"reply","id":"q7","ok":true,"data":{"trusted":true,"known":true}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `configDir` | → | 目标账号的 config dir（必须逐字 ∈ manifest，否则 `unknown_config_dir`）；**缺席或 `null` = 账号 0**（读 `$HOME/.claude.json`，不收路径） |
+| `cwd` | → | 要预检的工作目录（必填） |
+| `trusted` | ← | 这个账号接受过该目录的信任对话框 |
+| `known` | ← | 这个账号的 `.claude.json` 里有该目录的记录（`false` ⇒ 首次进入，大概率会弹确认） |
+
+**错误码**：`bad_args` · `unsafe_config_dir` · `unknown_config_dir` · `manifest_unavailable` · `no_home` · `failed`（读 / 解析那个账号的配置文件失败等 agent 那一层的码一律落它，原因原样带着 —— 通用层不认 agent 的名字）。
+与 `--account-trust` / `--account-trust-zero` 是**同一个函数的两个宿主**；CLI 面照例自动派生一个 `--accounts-trust`（stdin 一段 JSON）。
 
 #### `accounts-sessions`：正在跑的会话各属哪个账号（**不读 stdin**）
 
