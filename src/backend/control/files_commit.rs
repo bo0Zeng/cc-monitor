@@ -216,7 +216,7 @@ pub(crate) fn placeholder_note(dest: &Path, undo: &std::io::Result<()>) -> Strin
     match undo {
         Ok(()) => String::new(),
         Err(e) => format!(
-            "；目标那里还留着这一趟刚建的一份 0 字节占位（{}，删不掉：{e}）—— 它不是你的数据，删掉它再重试",
+            "；目标位置留下了一个 0 字节的空文件 {}，没能删掉：{e}。它不是你的数据，删掉后再试",
             dest.display()
         ),
     }

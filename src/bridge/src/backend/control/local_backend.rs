@@ -614,11 +614,15 @@ const STDERR_CUT_MARK: &str = " …〔这一行超过单行上界，在此切开
 ///    而滚动日志是按天滚的；没有上界的话一次崩溃循环能把当天那份撑爆，
 ///    于是**下一次故障的线索反而被这一次的噪音淹掉**。
 ///
-/// 3. **级别一律 `warn`，绝不 `error`。** `logging.rs` 的 `ErrorEmitterLayer` 只拦
+/// 3. **级别按行首映射，但封顶 `warn`、绝不 `error`。** `logging.rs` 的 `ErrorEmitterLayer` 只拦
 ///    `Level::ERROR`，拦到就 emit `monitor-error` → 前端弹红色 toast。而这里搬的是
-///    **子进程说的话**，它自己的级别在文本里（后端那侧 `tracing_subscriber` 的 fmt 前缀），
-///    我们**没有**可靠办法把它还原成本进程的级别。
-///    ⇒ 拿不准就别替用户决定「这值得弹一个红框」：进日志文件，不进 toast。
+///    **子进程说的话**，它自己的级别在文本里（后端那侧 `tracing_subscriber` 的 fmt 前缀）。
+///    〔HX1 · 4D〕主会话裁（NT2 问 3 ＋ RT1 F3）「后端 stderr 进 monitor 日志按级别映射，不一律 WARN」⇒
+///    [`backend_stderr_level`] 认行首那个级别字：`INFO` / `DEBUG` / `TRACE` 照原级记，`WARN` 与 `ERROR` 记 `warn`，
+///    认不出（panic 信息、继承 stderr 的子进程的裸输出）记 `warn`（它们本来就是异常路径）。
+///    ⚠ `ERROR` 封顶在 `warn` 是**刻意的**（本条原话的理由不变）：拿不准就别替用户决定「这值得弹一个红框」
+///    —— 进日志文件，不进 toast。行里原样带着后端自己的 `ERROR` 字样，读日志的人看得见。
+///    〔旧话「级别一律 `warn`」—— HX1 起只剩 `WARN` / `ERROR` / 认不出那三格是 `warn`。〕
 ///    ⚠ 这一格是**刻意的诚实边界**：用户看得到的是日志文件，不是弹窗。真要某一类后端错误
 ///    弹到脸上，那是**按内容分类**的活（谁分类、分哪几类 = 一次产品裁定），不是这里加个 `if`。
 ///
@@ -656,10 +660,13 @@ pub(crate) fn drain_child_stderr_into_log(err: std::process::ChildStderr, pid: u
         if line.is_empty() {
             continue;
         }
-        if cut {
-            tracing::warn!("本机后端[pid {pid}] {line}{STDERR_CUT_MARK}");
-        } else {
-            tracing::warn!("本机后端[pid {pid}] {line}");
+        let mark = if cut { STDERR_CUT_MARK } else { "" };
+        match backend_stderr_level(line) {
+            tracing::Level::TRACE => tracing::trace!("本机后端[pid {pid}] {line}{mark}"),
+            tracing::Level::DEBUG => tracing::debug!("本机后端[pid {pid}] {line}{mark}"),
+            tracing::Level::INFO => tracing::info!("本机后端[pid {pid}] {line}{mark}"),
+            // `WARN` · `ERROR`（封顶，见约束 3）· 认不出的。
+            _ => tracing::warn!("本机后端[pid {pid}] {line}{mark}"),
         }
     }
     if unlogged > 0 {
@@ -669,6 +676,24 @@ pub(crate) fn drain_child_stderr_into_log(err: std::process::ChildStderr, pid: u
              ⚠ 别把它读成「后端只说了这些」：它说的比记下来的多。"
         );
     }
+}
+
+/// 〔HX1〕后端 stderr 一行 ⇒ 记进 monitor 日志用的级别（约束 3）。
+///
+/// 后端那侧是 `tracing_subscriber::fmt()` 的缺省格式：`<时间戳> <级别> <target>: <正文>`，级别右对齐补到 5 格
+/// （`" INFO"`）；〔HX1〕后端从此不往非终端上色，行首没有转义码。⇒ 看**前两个**空白分隔的词里有没有一个恰是级别字。
+/// `ERROR` 封顶成 `WARN`；认不出 ⇒ `WARN`。
+pub(crate) fn backend_stderr_level(line: &str) -> tracing::Level {
+    for word in line.split_whitespace().take(2) {
+        match word {
+            "TRACE" => return tracing::Level::TRACE,
+            "DEBUG" => return tracing::Level::DEBUG,
+            "INFO" => return tracing::Level::INFO,
+            "WARN" | "ERROR" => return tracing::Level::WARN,
+            _ => {}
+        }
+    }
+    tracing::Level::WARN
 }
 
 /// 见 [`StdioSink`]。`stdio` 为 `None` ⇒ 不接消费者（stdin 恒 `null`）。
