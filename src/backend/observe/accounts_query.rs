@@ -295,8 +295,12 @@ fn load_manifest(accts_dir: &Path) -> Result<Manifest, String> {
     let p = manifest_path(accts_dir);
     let bytes = read_regular_capped(&p, MAX_MANIFEST_BYTES)
         .map_err(|e| format!("manifest 不可读（{}）：{e}", p.display()))?;
+    // 〔S5 · 第四波〕UTF-8 BOM 剥掉再解析：PowerShell 5.1 `-Encoding UTF8` 与记事本默认写 BOM，
+    //   `serde_json` 不吃它 ⇒ 不剥就是整份「不是合法 JSON」、账号页整块空（`control/ccm/plan.rs::AccountTable::load`
+    //   09-21 修过同一份文件的另一个读者；两个读者读出同一张表由 `tests::both_readers_of_the_manifest_see_the_same_accounts` 钉）。
+    let body = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&bytes);
     let root: serde_json::Value =
-        serde_json::from_slice(&bytes).map_err(|e| format!("manifest 不是合法 JSON：{e}"))?;
+        serde_json::from_slice(body).map_err(|e| format!("manifest 不是合法 JSON：{e}"))?;
     match root.get("version").and_then(|v| v.as_u64()) {
         Some(SUPPORTED_SCHEMA) => {}
         Some(v) => return Err(format!("manifest schema 版本 {v} 不受支持（本后端只认 1）")),
