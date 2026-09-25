@@ -1,9 +1,5 @@
 文件	理由
-src/backend/accounts/iso.rs	未抽
-src/backend/accounts/upstream/creds.rs	NT2 在改（默认上游挪进适配层），留最后一批
 src/backend/accounts/upstream/file_face.rs	NT2 在改（默认上游挪进适配层），留最后一批
-src/backend/accounts/upstream/mod.rs	NT2 在改（默认上游挪进适配层），留最后一批
-src/backend/accounts/upstream/table.rs	NT2 在改（默认上游挪进适配层），留最后一批
 src/backend/agents/claudecode/assets.rs	SU1 在改（skill 卸载），留最后一批
 src/backend/agents/claudecode/paths.rs	FN1 在改（去数据围栏），留最后一批
 src/backend/asset_catalog.rs	SU1 在改（skill 卸载），留最后一批
@@ -20,11 +16,5 @@ src/backend/dial/link.rs	NT2 / CZ1 / GP1 在改（期限 · 压缩 · 部署）�
 src/backend/dial/sftp.rs	NT2 / CZ1 / GP1 在改（期限 · 压缩 · 部署），留最后一批
 src/backend/dial/uses.rs	NT2 / CZ1 / GP1 在改（期限 · 压缩 · 部署），留最后一批
 src/backend/files/mod.rs	FN1 在改（去数据围栏），留最后一批
-src/backend/relay/http1.rs	未抽
-src/backend/relay/listen.rs	未抽
-src/backend/relay/machine.rs	未抽
-src/backend/relay/server.rs	未抽
-src/backend/relay/upstream.rs	未抽
 src/backend/skill_install.rs	SU1 在改（skill 卸载），留最后一批
-src/bridge/crates/creds-core/src/perm.rs	未抽
 src/bridge/crates/creds-core/src/store.rs	未抽

@@ -258,7 +258,10 @@ fn a_timeout_and_an_oversized_answer_are_said_as_such() {
     );
     assert_eq!(
         classify("status", 1, done(None, Vec::new())).unwrap_err(),
-        ("failed", "代码全景「status」没做成（被中途终止）：".to_string())
+        (
+            "failed",
+            "代码全景「status」没做成（被中途终止）：".to_string()
+        )
     );
     // 成功那一格：`data` 原样装进 `result`（`null` 也是一个答案：「没有这个符号」）。
     assert_eq!(

@@ -364,7 +364,7 @@ pub(crate) fn decide(
             //   （每 agent 一行的默认上游住本层，中转一个上游字面量都没有，`table_guard` 那条两向相等断言钉着）。
             act(Destination::Refuse {
                 status: NO_ROW,
-                why: "代入模式要求表里有这一行",
+                why: copy_core::copy_static!("beUpstream.decide.noRow"),
             });
         }
 
@@ -396,7 +396,7 @@ pub(crate) fn decide(
             //   Anthropic」）与「拒」。选拒。
             None => act(Destination::Refuse {
                 status: AGENT_NOT_REGISTERED,
-                why: "这个 agent 没有登记上游",
+                why: copy_core::copy_static!("beUpstream.decide.agentNotRegistered"),
             }),
         },
     }
