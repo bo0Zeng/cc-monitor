@@ -32,12 +32,13 @@ fn the_non_linux_arm_is_wired_into_the_source() {
         "生产段只剩 {} 行 —— 剥法坏了或文件被掏空，本条此刻是空转的",
         lines.len()
     );
-    // 反空真②：**恰好两条臂**。多一条 = 多了一个平台答案（第二份真相）；
+    // 反空真②：**恰好三条臂**〔WN1：Windows 有了自己的那条腿，是第三个真实的平台答案〕。
+    //           多一条 = 多了一个平台答案（第二份真相）；
     //           少一条 = 有人把平台这一维塞回了一行 `cfg!()`，护栏的人群就够不着它了。
     assert_eq!(
         lines.iter().filter(|l| **l == SIG).count(),
-        2,
-        "`death_events_available` 的臂数不是 2 —— 平台这一维只许在这两条 `#[cfg]` 臂上成值。\n\
+        3,
+        "`death_events_available` 的臂数不是 3 —— 平台这一维只许在这三条 `#[cfg]` 臂上成值。\n\
              写成 `const X: bool = cfg!(target_os = \"linux\");` 那种一行式**看着更干净**，\n\
              但那一行不带 `#[cfg]` 属性 ⇒ 整个掉出 `platform/fallback_guard.rs` 的人群，牙就没了。"
     );
@@ -65,8 +66,8 @@ fn the_non_linux_arm_is_wired_into_the_source() {
             .unwrap_or("");
         arms.push((cfg, body));
     }
-    // 反空真③：抽取器真的取到了两条，且体不是空的（取行跑飞会给空串）。
-    assert_eq!(arms.len(), 2, "抽出来 {} 条臂 —— 抽取器跑飞了", arms.len());
+    // 反空真③：抽取器真的取到了三条，且体不是空的（取行跑飞会给空串）。
+    assert_eq!(arms.len(), 3, "抽出来 {} 条臂 —— 抽取器跑飞了", arms.len());
     for (cfg, body) in &arms {
         assert!(
             !body.trim().is_empty(),
@@ -80,9 +81,9 @@ fn the_non_linux_arm_is_wired_into_the_source() {
             .unwrap_or_else(|| panic!("找不到 `{cfg}` 那条臂 —— 两条臂的 cfg 被换过了：{arms:?}"))
     };
     assert_eq!(
-        arm_of("#[cfg(not(target_os = \"linux\"))]"),
+        arm_of("#[cfg(not(any(target_os = \"linux\", windows)))]"),
         "false",
-        "非 Linux 那条臂不再是「确证没有」。\n\
+        "没有进程看守的那条臂（既非 Linux 也非 Windows）不再是「确证没有」。\n\
              `fallback::watch_pid_until_exit` 什么都不做、`on_dead` 永远不会被调用 ——\n\
              这里给一个乐观值就是替一条不存在的腿担保，而上层会拿它当「崩了会有人管」。\n\
              ⚠ 也不许改成「不知道」：那正是 `K-P4` 拆开的那条病（一个值装了两件事），\n\
@@ -93,8 +94,15 @@ fn the_non_linux_arm_is_wired_into_the_source() {
         "true",
         "Linux 那条臂不再说「有」—— 而那条腿（pidfd + poll）今天就在旁边绿着"
     );
+    assert_eq!(
+        arm_of("#[cfg(windows)]"),
+        "win32::WAKES_ON_EXIT",
+        "Windows 那条臂不再读 `win32.rs` 紧挨着实现的那个声明 —— 写成字面量会被 \
+         `fallback_guard` 判成伪造成功（它说得对：Windows 块里的「有」要有东西背书），\
+         写成别的就是第二份真相〔WN1：那条腿只到编得过 ＋ 源码对拍〕"
+    );
     // ★ 编译期那一半也要真的写在那儿：本机编不到它，只能读源码文本。
-    //   （`#[cfg(not(target_os = "linux"))]` 在本文件里出现四处 —— `mod fallback;` ·
+    //   （`#[cfg(not(any(target_os = "linux", windows)))]` 在本文件里出现四处 —— `mod fallback;` ·
     //    那条 `use` · 上面那条臂 · 本断言 ⇒ 不用 `pin_line`，它要求整份文件里恰好一行。）
     guard_core::pin_line(&prod, "const _: () = assert!(").unwrap_or_else(|why| {
         panic!(
