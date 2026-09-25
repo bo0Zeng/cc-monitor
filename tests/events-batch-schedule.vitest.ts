@@ -56,8 +56,11 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
 vi.mock("../src/ipc/commands", () => ({
   commands: new Proxy({}, { get: () => vi.fn().mockResolvedValue(undefined) }),
 }));
+// 〔CF2 · 第四波 4B〕会话内容从通道 `subscribe` 来：换成桩，按句柄的形状灌（`test-support/chan-stream-fake.ts`）。
+vi.mock("../src/ipc/chan", async () => (await import("./test-support/chan-stream-fake.ts")).chanStreamModule);
 
 import { bindEvents } from "../src/events";
+import { streamFake } from "./test-support/chan-stream-fake.ts";
 
 const payload = (seq: number): unknown => ({
   session_id: "s",
@@ -71,9 +74,9 @@ interface Harness {
   onBatchStart: ReturnType<typeof vi.fn>;
   onBatchEnd: ReturnType<typeof vi.fn>;
   onLine: ReturnType<typeof vi.fn>;
-  /** 发一块 jsonl-batch（`chunkIndex === 0` 才带 batch-start 哨兵）。 */
+  /** 发成批那一段的一块（〔CF2〕`chunkIndex === 0` 才以 `batch:start` 开头；每块以 `batch:end` 收尾）。 */
   chunk: (chunkIndex: number, seqs: number[]) => void;
-  /** 发一条裸 jsonl-line。 */
+  /** 发一条逐行来的实时格。 */
   line: (seq: number) => void;
   /** 后端的 snapshot-inflight 计数。 */
   inflight: (count: number) => void;
@@ -81,6 +84,7 @@ interface Harness {
 
 async function bind(): Promise<Harness> {
   subs.clear();
+  streamFake.reset();
   const onBatchStart = vi.fn();
   const onBatchEnd = vi.fn();
   const onLine = vi.fn();
@@ -89,20 +93,16 @@ async function bind(): Promise<Harness> {
     onSessionEnded: vi.fn(),
     onBatchStart,
     onBatchEnd,
-  } as never);
-  // 抽取器自检：三条通道少订一条，下面全是零命中地绿。
-  for (const ch of ["jsonl-batch", "jsonl-line", "snapshot-inflight"]) {
-    expect(subs.get(ch), `没订到 \`${ch}\` —— 本文件会零命中地绿（检查 listen 的 mock）`).toBeTruthy();
-  }
+  } as never, { streams: [{ origin: "<local>", kind: "session-lines" }] });
+  // 抽取器自检：会话流与 snapshot-inflight 少订一条，下面全是零命中地绿。
+  expect(streamFake.subscriptions.length, "没订到会话流 —— 本文件会零命中地绿").toBe(1);
+  expect(subs.get("snapshot-inflight"), "没订到 `snapshot-inflight` —— 本文件会零命中地绿").toBeTruthy();
   return {
     onBatchStart,
     onBatchEnd,
     onLine,
-    chunk: (chunkIndex, seqs) =>
-      subs.get("jsonl-batch")!({
-        payload: { chunkIndex, chunkTotal: 2, payloads: seqs.map(payload) },
-      }),
-    line: (seq) => subs.get("jsonl-line")!({ payload: payload(seq) }),
+    chunk: (chunkIndex, seqs) => streamFake.chunk(chunkIndex === 0, seqs.map(payload)),
+    line: (seq) => streamFake.lines([payload(seq)]),
     inflight: (count) => subs.get("snapshot-inflight")!({ payload: { count } }),
   };
 }
@@ -282,6 +282,81 @@ describe("events.ts 批量调度状态机（audit-0805 F17 下半的三条分支
       "强制清零时没有留下痕迹 —— 这是「静默失败要给身份」那条（定框 E4）：" +
         "被上限踢开说明后端计数出过问题，得有人看得见。",
     ).toContain("snapshot-inflight");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// 〔CF2 · 第四波 4B〕会话流那一段：credit 怎么还 · `gap` 怎么进队
+//
+// 要求住址：`设计/05 §3.3.4`「级 1 · 回推：订阅方不取 ⇒ 通信层不读」（这一侧的队列上界 = 给出去的 credit，
+// 处理掉一格还一格）· 「`Gap` 必须在流里的原位」（进 queue 与行保序）。
+// ═══════════════════════════════════════════════════════════════════════
+describe("〔CF2〕会话流：还 credit 与丢格", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("★ 处理掉几格就还几格（按 drain 一片还一次，不是逐格一次 IPC）；批边界也算格；读不懂的一格也还", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const h = await bind();
+    const rec = streamFake.subscriptions[0];
+    h.chunk(0, [1, 2, 3]); // start + 3 行 + end = 5 格
+    rec.sink([{ t: "frame", seq: 99, body: "不是 JSON" }]); // 读不懂：跳过，但照还
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.onLine).toHaveBeenCalledTimes(3);
+    expect(
+      rec.wants.reduce((a, b) => a + b, 0),
+      "处理掉 6 格（含两个批边界与一格读不懂的），还回去的 credit 不等于 6 —— 窗口会越用越小直到停摆",
+    ).toBe(6);
+    expect(rec.wants.length, "一片 drain 里逐格还 credit（每格一次 IPC）").toBeLessThanOrEqual(2);
+  });
+
+  it("★ `gap` 进 queue、排在它之前到的行之后：宿主收到 `onStreamGap(那台机器)` 时，前面的行都已交给它", async () => {
+    subs.clear();
+    streamFake.reset();
+    const order: string[] = [];
+    await bindEvents(
+      {
+        onLine: (p: { seq: number }) => order.push(`line ${p.seq}`),
+        onSessionEnded: vi.fn(),
+        onBatchStart: vi.fn(),
+        onBatchEnd: vi.fn(),
+        onStreamGap: (o: string) => order.push(`gap ${o}`),
+      } as never,
+      { streams: [{ origin: "box", kind: "session-lines" }] },
+    );
+    streamFake.lines([payload(1), payload(2)]);
+    streamFake.gap(2, 5);
+    streamFake.lines([payload(6)]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(order).toEqual(["line 1", "line 2", "gap box", "line 6"]);
+  });
+});
+
+// ★ S6〔CF2 · 第四波 4B〕：会话内容的旧路（两个广播事件 ＋ 独立窗口的定向重放命令）在前端生产段**零命中**。
+//
+// 要求住址：`设计/05 §8` 步 6「流那半收口成 `subscribe`」—— 旧路留着一处订阅，会话内容就有了第二个入口
+// （而且那个入口没有 credit、丢了也不报 `Gap`）。正控：同一识别器在合成代码上三针全中、在注释里不中。
+describe("〔CF2〕会话内容的旧路退役", () => {
+  const needles = [`"jsonl-${"line"}"`, `"jsonl-${"batch"}"`, `replay_session_${"to_window"}`];
+  const strip = (t: string): string =>
+    t
+      .split("\n")
+      .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+      .join("\n");
+  const hits = (t: string): string[] => needles.filter((n) => strip(t).includes(n));
+  it("★ S6：前端生产段零命中（正控三针全中；注释不算）", () => {
+    expect(hits(`listen("jsonl-${"line"}"); sub("jsonl-${"batch"}"); invoke("replay_session_${"to_window"}");`)).toHaveLength(3);
+    expect(hits(`// 原来的 "jsonl-${"line"}" 退役了`)).toEqual([]);
+    const files = productionTsFiles("src");
+    expect(files.length, "前端生产语料一份都没扫到 —— 本条零命中地绿").toBeGreaterThan(100);
+    const offenders = files.flatMap(({ file, text }) => hits(text).map((n) => `${file}: ${n}`));
+    expect(offenders, "会话内容的旧路又长回来了（该经 `chan.subscribe`，`events.ts` 的 `streams`）").toEqual([]);
   });
 });
 

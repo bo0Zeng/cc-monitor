@@ -91,18 +91,24 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
 vi.mock("../src/ipc/commands", () => ({
   commands: new Proxy({}, { get: () => vi.fn(() => Promise.resolve()) }),
 }));
+// 〔CF2 · 第四波 4B〕会话内容从通道 `subscribe` 来：换成桩，按句柄的形状灌（`test-support/chan-stream-fake.ts`）。
+//   ⚠ 读数的适用范围跟着变了一格：生产上句柄按 credit 交（`events.ts::STREAM_WINDOW` 格），前端落后超过一个窗口
+//   句柄就**停下等**（重放）/ 丢并报 `gap`（实时）⇒ 队列深度在生产上有上界 = 窗口。本文件的桩**不看 credit**，
+//   量的仍是「前端这一侧的 drain 追不追得上」那条曲线本身。
+vi.mock("../src/ipc/chan", async () => (await import("./test-support/chan-stream-fake.ts")).chanStreamModule);
 
 import { bindEvents } from "../src/events";
+import { streamFake } from "./test-support/chan-stream-fake.ts";
 
 // ───────────────────────── 镜像常量（下面第 3 条判据机检它们没漂）─────────────────────────
 
 /** `src/events.ts` 的 `BATCH_SIZE`：问不到 `isInputPending` 时，每个 drain tick 至多处理这么多条。 */
 const FRONT_BATCH_SIZE = 40;
-/** `src/bridge/src/event_replay.rs:48`：后端 replay 的切块大小。 */
+/** `src/bridge/src/event_replay.rs` 的 `CHUNK_SIZE`：后端 replay 的切块大小。 */
 const BACKEND_CHUNK_SIZE = 600;
-/** `src/bridge/src/event_replay.rs:47`：低于此条数后端**不切块**，单次 emit。 */
-const BACKEND_SINGLE_CHUNK_THRESHOLD = 200;
-/** `src/bridge/src/event_replay.rs:50`：块与块之间后端 sleep 这么久。 */
+// 〔CF2〕原来还有一个「低于它就不切块、单次 emit」的阈值（200）：重放改走通道的订阅之后没了 ——
+//   一块就是一次投递，不足 600 条自然就是一块。
+/** `src/bridge/src/event_replay.rs` 的 `CHUNK_PAUSE_MS`：块与块之间后端 sleep 这么久。 */
 const BACKEND_CHUNK_PAUSE_MS = 10;
 
 // ───────────────────────── 队列深度探针 ─────────────────────────
@@ -171,10 +177,9 @@ function makePayload(seq: number): unknown {
 /**
  * 复刻 `src/bridge/src/event_replay.rs` 的 `build_chunks`：**从尾往前切**，所以
  * `chunks[0..n-2]` 各 `CHUNK_SIZE` 条，**最后一块**才是余数（可能小于 CHUNK_SIZE）。
- * 另按 `replay_and_mark_ready` 的 `n < SINGLE_CHUNK_THRESHOLD` 那一支：低于阈值后端根本不切块，单块 emit。
+ * 〔CF2〕原来还有「低于 200 条不切块」那一支；重放改走订阅之后没了（不足一块自然就是一块）。
  */
 function buildChunkSizes(total: number): number[] {
-  if (total < BACKEND_SINGLE_CHUNK_THRESHOLD) return [total];
   const sizes: number[] = [];
   let end = total;
   while (end > 0) {
@@ -218,6 +223,7 @@ interface ReplayResult {
  */
 async function runReplay(total: number, ticksPerGap: number): Promise<ReplayResult> {
   subs.clear();
+  streamFake.reset();
   const onLine = vi.fn();
   const onBatchStart = vi.fn();
   const onBatchEnd = vi.fn();
@@ -226,11 +232,10 @@ async function runReplay(total: number, ticksPerGap: number): Promise<ReplayResu
     onSessionEnded: vi.fn(),
     onBatchStart,
     onBatchEnd,
-  } as never);
+  } as never, { streams: [{ origin: "<local>", kind: "session-lines" }] });
 
-  const cb = subs.get("jsonl-batch");
   // 抽取器自检：没订上就什么都没测。
-  expect(cb, "没订到 jsonl-batch —— 本条会零命中地绿（检查 listen 的 mock）").toBeTruthy();
+  expect(streamFake.subscriptions.length, "没订到会话流 —— 本条会零命中地绿").toBe(1);
 
   const probe = new QueueDepthProbe();
   const samples: Sample[] = [];
@@ -253,12 +258,12 @@ async function runReplay(total: number, ticksPerGap: number): Promise<ReplayResu
     const payloads: unknown[] = [];
     for (let j = 0; j < size; j++) payloads.push(makePayload(seq + j));
     seq += size;
-    // 账本按 `events.ts` 的 `jsonl-batch` 订阅里真实的 push 顺序记：chunkIndex===0 时先一个 batch-start，
-    // 然后 N 个 payload，最后一个 batch-end。
+    // 账本按 `events.ts` 收会话流时真实的 push 顺序记（〔CF2〕句柄那一侧的形状：首块以 `batch:start` 开头、
+    // 每块以 `batch:end` 收尾）：第 0 块先一个 batch-start，然后 N 个 payload，最后一个 batch-end。
     if (i === 0) probe.push("batch-start");
     for (let j = 0; j < size; j++) probe.push("payload");
     probe.push("batch-end");
-    cb!({ payload: { chunkIndex: i, chunkTotal: sizes.length, payloads } });
+    streamFake.chunk(i === 0, payloads);
 
     if (i === 0) {
       // 抽取器自检：第一块推完后，`ensureScheduled` 必须已经把 drain 排在一个**假定时器**上。
@@ -346,7 +351,7 @@ describe("秤 5 · A：启动重放的队列深度曲线（纯外部观测，0 �
       lines.push("=== 秤 5 · A 队列深度（queue.length 峰值，[下界,上界] 宽度 ≤1） ===");
       lines.push(
         `模型：后端 CHUNK_SIZE=${BACKEND_CHUNK_SIZE} / CHUNK_PAUSE_MS=${BACKEND_CHUNK_PAUSE_MS}` +
-          ` / SINGLE_CHUNK_THRESHOLD=${BACKEND_SINGLE_CHUNK_THRESHOLD}；前端 BATCH_SIZE=${FRONT_BATCH_SIZE}`,
+          `；前端 BATCH_SIZE=${FRONT_BATCH_SIZE}（〔CF2〕生产上另有 credit 窗口封顶，本桩不看它）`,
       );
       lines.push(
         "gap内drain | 输入条数 | 块数 | 队列峰值[lo,hi] | 峰值/输入 | 峰值出现在 | 收尾深度 | onLine",
@@ -449,9 +454,9 @@ describe("秤 5 · A：启动重放的队列深度曲线（纯外部观测，0 �
     120_000,
   );
 
-  it("单块重放（后端不切块那一档）：峰值 = 整块 + 两个哨兵", async () => {
+  it("单块重放（不足一块那一档）：峰值 = 整块 + 两个哨兵", async () => {
     const r = await runReplay(150, 0);
-    expect(r.chunks, "150 < SINGLE_CHUNK_THRESHOLD=200 时后端应该单块 emit").toBe(1);
+    expect(r.chunks, "150 < CHUNK_SIZE=600 时后端应该一块交完").toBe(1);
     console.log(
       `[秤5·A 单块] total=150 → 峰值[${r.peak.lo},${r.peak.hi}]（= 150 payload + batch-start + batch-end）`,
     );
@@ -565,11 +570,11 @@ describe("秤 5 · B：shift() 排空 vs 头指针排空（只产读数，不拿
 
 // ───────────────────────── C. 镜像常量防漂 ─────────────────────────
 
-describe("秤 5 · C：本文件镜像的那 4 个常量没有漂（读，不改）", () => {
+describe("秤 5 · C：本文件镜像的那 3 个常量没有漂（读，不改）", () => {
   const read = (rel: string): string =>
     readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
 
-  it("events.ts 的 BATCH_SIZE 与 event_replay.rs 的三个切块常量都还是本文件写的那个值", () => {
+  it("events.ts 的 BATCH_SIZE 与 event_replay.rs 的两个切块常量都还是本文件写的那个值", () => {
     const events = read("../src/events.ts");
     const replay = read("../src/bridge/src/event_replay.rs");
     // 抽取器自检：文件必须真的读到了东西。
@@ -584,12 +589,6 @@ describe("秤 5 · C：本文件镜像的那 4 个常量没有漂（读，不改
         src: events,
         re: /const\s+BATCH_SIZE\s*=\s*(\d+)\s*;/,
         mine: FRONT_BATCH_SIZE,
-      },
-      {
-        where: "src/bridge/src/event_replay.rs",
-        src: replay,
-        re: /const\s+SINGLE_CHUNK_THRESHOLD\s*:\s*usize\s*=\s*(\d+)\s*;/,
-        mine: BACKEND_SINGLE_CHUNK_THRESHOLD,
       },
       {
         where: "src/bridge/src/event_replay.rs",

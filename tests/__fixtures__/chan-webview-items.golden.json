@@ -1,0 +1,12 @@
+{
+  "sub": 3,
+  "items": [
+    { "t": "frame", "seq": 7, "body": "{\"line\":{\"x\":1}}" },
+    { "t": "gap", "from_seq": 8, "to_seq": 12 },
+    { "t": "unseen", "idx": 1, "tag": "open", "why": "Unreachable" },
+    { "t": "seen", "from": null },
+    { "t": "seen", "from": [1, 2] },
+    { "t": "closed_by_peer", "body": "{\"code\":\"no-such-stream\"}" },
+    { "t": "closed_by_ours", "why": "Broken" }
+  ]
+}
