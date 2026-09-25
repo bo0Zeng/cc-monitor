@@ -119,6 +119,13 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
+        "tests/bridge/creds_store_tests.rs",
+        "src/backend/accounts/upstream/file_face.rs",
+        "〔GP1 · 第四波〕本机凭据文件的写者换成本机常驻后端之后，「monitor 生产段零处够写半边」那条零命中判据的**正控** \
+         要落在真写者身上 —— 同一把针在后端那一份写口里数得到，才说明零命中不是针瞎了（合成样本证不了针对准了真写口）",
+    ),
+    (
+        "monitor→backend",
         "tests/bridge/backend/control/backend_send_keys_tests.rs",
         "src/backend/control/launch.rs",
         "两个 mode 名必须是后端真能 parse 的那两个（`parse_request` 不 deny unknown \
@@ -177,6 +184,14 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "tests/bridge/ssh_source_stream_flag_gate_tests.rs",
         "src/backend/lib.rs",
         "★★〔`设计/80 §8.7` 步 3 · 09-23 新增〕**monitor 发的每一条流模式 flag，         后端都必须认得并剥离** —— `the_stream_flags_monitor_sends_are_all_strippable`。         失效方向是本仓栽过的 §26：老后端把**不认识**的 `--flag` 当成一次性查询、         处理完就退出 ⇒ 无 hello ⇒ monitor 重连 ⇒ **死循环**。         而「monitor 拼进命令行的那几个字面量」住 `ssh_source::connect_and_exec`、         「后端认得哪几个」住 `backend::STREAM_FLAGS` —— 两处各写一份，         只有同时读两侧源码才验得了。         ⚠ 如实写它买不到什么：**文本级**（从生产函数体里抠 `push_str` 的那几个串），         不是真起一个老后端看它会不会退出。",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/logging_tests.rs",
+        "src/backend/stderr_log.rs",
+        "〔NT2 · S1〕**跨 crate 字面量对拍**：宿主交给脱离常驻那条载体的 `CCM_BACKEND_STDERR_LOG` 与后端读的那一个，\
+         两边各声明一份；漂了**不会报错** —— 后端当作「没交」、stderr 照旧进 `/dev/null`，设置页那一行永远是「还没有」。\
+         ⇒ 只能同时读两侧的源码才验得了（形状同下一行 `CCM_LISTEN_PORT` 那一条）。",
     ),
     (
         "monitor→backend",

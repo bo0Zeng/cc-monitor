@@ -316,6 +316,7 @@ src/bridge/src/config_surface.rs:774	优先级高于上一行；这里定义的�
 src/bridge/src/config_surface.rs:779	项目级	保留	[对外] 设置作用域名
 src/bridge/src/config_surface.rs:780	<项目目录>/.claude/settings.json 与 settings.local.json	保留	[对外] 路径模板，是用户自己机器上的文件路径
 src/bridge/src/config_surface.rs:788	优先级最高	保留	[对外] 优先级说明，短
+src/bridge/src/config_surface.rs:473	cc-monitor 旧版放的：认出是它放的就删，认不出的不动	保留	[对外] 〔GP1〕足迹那一页「我们对它做什么」一列（旧版入口那一行）
 src/bridge/src/creds_store.rs:101	读不动这份文件：{e}	保留	[对外] 凭据文件读失败，结果＋原因，短
 src/bridge/src/creds_store.rs:132	{how}。怎么修：{fix}	保留	[对外] 骨架「{how}。怎么修：{fix}」，干净；病在灌进来的 how/fix 本身（见 perm.rs）
 src/backend/accounts/upstream/file_face.rs:178	{how}。怎么修：{fix}	保留	[对外] 〔RM1a〕远端那台机器上那份凭据文件的权限提醒（`apikey-read` 的 notice，回到设置页那一块）；骨架与 creds_store.rs 那一句同文、干净，病在灌进来的 how/fix 本身（见 perm.rs）
@@ -493,6 +494,10 @@ src/bridge/src/filewin/writeops.rs:607	做勾上的	保留	[对外] 按钮（act
 src/bridge/src/filewin/writeops.rs:610	都别做	保留	[对外] 按钮（action 档）
 src/bridge/src/filewin/writeops.rs:630	上一摞 {} 件没做成：{}	保留	[对外] 结果行
 src/bridge/src/filewin/writeops.rs:640	上一摞 {} 件做完、{} 件跳过	保留	[对外] 结果行
+src/bridge/src/filewin/shell.rs:1923	正在读现在的权限…	保留	[对外] 〔GP1〕改权限框上那一行：现值那一趟还没答回来
+src/bridge/src/filewin/writeops.rs:670	读不到现在的权限	保留	[对外] 〔GP1〕改权限框上那一行：有一项没问到现值（不预填、不猜）
+src/bridge/src/filewin/writeops.rs:681	这几项现在的权限不一样	保留	[对外] 〔GP1〕批量改权限框上那一行：几项的现值不一样（不替用户挑一个预填）
+src/bridge/src/filewin/writeops.rs:686	现在是 {m:o}	保留	[对外] 〔GP1〕改权限框上那一行：现值（八进制），并预填进那一栏
 src/bridge/src/filewin/shell.rs:178	这个窗口没连上后端，请重开窗口	保留	[对外] 窗口没拿到通道时每一件要问后端的事都说这一句；结果 ＋ 用户做得到的一步
 src/bridge/src/filewin/source.rs:743	`{cmd}` 被拒：{}	改·§2.1	[对外] 对端拒绝而 body 读不成 JSON 时的兜底；句首把内部命令名摆给用户（与 find.rs 那句 refusal 同族） →「被拒：{}」
 src/bridge/src/filewin/source.rs:746	那台机器上的后端不认 `{cmd}`，多半是版本旧了	改·§2.1	[对外] 后端没声明这条命令；句中带内部命令名 →「那台机器上的后端版本旧了，不支持这个操作」
@@ -597,6 +602,7 @@ src/bridge/src/sftp.rs:1340	已从远端 {profile} 删掉别名块。	保留	[�
 src/bridge/src/sftp.rs:1376	{profile} 里的别名块已是最新，没有改动。	保留	[对外] 装别名块结果（没写）
 src/bridge/src/sftp.rs:1379	（原文件备份在 {b}）	保留	[对外] 装别名块结果的拼接段（备份路径）
 src/bridge/src/sftp.rs:1383	别名块已写进 {profile}{backup_note}。重连 ssh 之后，终端里就有 cc / cct，\n         以及「别名」里生成的那几条。	保留	[对外] 装别名块结果：先说结果，再说生效之后能用什么；ssh 是用户自己也这么叫的词（R1b）
+src/bridge/src/sftp.rs:701	旧版入口 ~/{} 这一次没查成：{e}	保留	[对外] 〔GP1〕部署后端那句结果话的句尾：查旧版入口没查成（不挡部署），原因原样带上
 src/bridge/src/chan/host.rs:325	传输进度不支持从某一格续看	保留	[可达存疑] 传输进度流带了续传游标时原位回的那句（窗口的 source::watch 从不带，只有协议用错才会看到）；短、无内部词
 src/bridge/src/sftp_pool.rs:1560	这一趟传输的状态丢了	保留	[可达存疑] 传输台的快照流发送端没了才走到（发送端在票里、票在守卫里，按构造到不了）；窗口若收到会原样画在失败那一行；短、无内部词
 src/bridge/src/skill_host.rs:147	planned-build 今天不在 tool_registry 那张表里（那张表收哪几条，\n             唯一住址是 `tool_registry::TOOLS`）。把它变成可装归 devbench F06。	改·§2.1	[对外] skill 不支持安装的说明（源码注释自己写着「这一句是用户看得见的」）：露出 tool_registry::TOOLS 源码住址与内部工单 devbench F06 兼§2.2 →「planned-build 暂不支持在这里安装」
@@ -767,6 +773,7 @@ src/settings/diagnostics-section.ts:54	monitor 没有可以看的控制台窗口
 src/settings/diagnostics-section.ts:56	出错时同时在右下角弹一条提示，点它直接打开日志文件。	保留	[对外] 说用户看得见的行为，一句
 src/settings/diagnostics-section.ts:237	打开中…	保留	[对外] 按钮忙碌态
 src/settings/diagnostics-section.ts:246	打开中…	保留	[对外] 按钮忙碌态
+src/settings/diagnostics-section.ts:287	打开中…	保留	[对外] 按钮忙碌态（〔NT2 · S1〕「本机后端的输出」那颗「打开」多了一处同文）
 src/settings/diagnostics-section.ts:256	读取中…	保留	[对外] 按钮忙碌态
 src/settings/diagnostics-section.ts:314	日志文件开关	保留	[对外] 「需重启生效」条子上的设置名
 src/settings/drift-ledger-section.ts:35	看不懂的记录类型	改·§2.6	[对外] 区块标题用口语「看不懂的」→「未知记录类型」
@@ -1388,3 +1395,11 @@ src/backend/main.rs:352	hello 写不出去	保留	[不对外] 〔HX1〕同上，
 src/backend/main.rs:415	收到停机信号	保留	[不对外] 〔HX1〕同上，只进后端日志
 src/backend/main.rs:420	对端走了（写不出去）	保留	[不对外] 〔HX1〕同上，只进后端日志
 src/backend/main.rs:742	流结束 ⇒ 这台机器的退出策略是「结束」	保留	[不对外] 〔HX1〕同上，只进后端日志
+src/bridge/src/ccm_legacy.rs:39	# ccm — cc-monitor 统一启动器	保留	[不对外] 〔GP1〕匹配用的记号：认旧版 bash 启动器（09-11 前推到远端 ~/.local/bin/ccm 的那一份）第二行
+src/bridge/src/ccm_legacy.rs:72	旧版放在 ~/{LEGACY_REL} 的入口已删掉。	保留	[对外] 〔GP1〕部署后端那句结果话的句尾：旧版入口认出是我们放的、删了
+src/bridge/src/ccm_legacy.rs:73	~/{LEGACY_REL} 没动：{why}。	保留	[对外] 〔GP1〕部署后端那句结果话的句尾：旧版入口没动，说为什么（不是我们放的 / 读不成 / 刚被改过）
+src/bridge/src/dial_host.rs:203	超过 {}s 还没做完，放弃这一趟	保留	[对外] 〔NT2 · A4〕一次性远端查询的总时限到点：接在各调用方自己那句「读 xx 失败：」后面上屏，说清是等太久放弃了（不是远端报错），秒数是事实；不含内部词
+src/backend/stderr_log.rs:51	[stderr-log] 上一份挪成 {}（每份上限 {CAP_BYTES} 字节）；再早的那一份丢了\n	保留	[不对外] 〔NT2 · S1〕后端 stderr 诊断文件滚动时写进新那份第一行的日志行（丢了哪一份要带身份）；只进日志文件
+src/backend/stderr_log.rs:163	[stderr] 没被交日志路径 ⇒ stderr 原样	保留	[不对外] 〔NT2 · S1〕后端流模式起来时的一行 tracing 日志（没被交路径 ⇒ stderr 不动）
+src/backend/stderr_log.rs:165	[stderr] 本进程的输出落在 {}（每份上限 {} 字节，留一份旧的）	保留	[不对外] 〔NT2 · S1〕后端流模式起来时的一行 tracing 日志：诊断落在哪份文件
+src/backend/stderr_log.rs:169	[stderr] 被交了日志路径但接不上：{why}	保留	[不对外] 〔NT2 · S1〕后端流模式起来时的一行 tracing 日志：接不上的原因

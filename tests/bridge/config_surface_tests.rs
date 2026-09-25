@@ -546,10 +546,11 @@ fn remote_host_never_resolves_to_a_local_path() {
     // 静默降级——审计实测单独改一条 host 就是全绿。改 TOOLS 时要来改这个数。
     // 〔TL1 · 4C〕4 → 5：`panorama` 推给远端那台的那一份（`~/.cc-monitor/bin/cc-monitor-panorama`，`Remote`）。
     assert_eq!(
-        checked, 5,
-        "Remote 条目数变了（真实应为 5）——改 TOOLS 就要来确认这个数。\
+        checked, 6,
+        "Remote 条目数变了（真实应为 6）——改 TOOLS 就要来确认这个数。\
              ★ P4c（08-12）5→4：`~/.cc-bus/` 转 Either（`P4a` 把读面做成本机可用）；\
-             〔TL1〕4→5：代码全景组件推给远端那一份"
+             〔TL1〕4→5：代码全景组件推给远端那一份；\
+             〔GP1 · 第四波〕5→6：`ccm` 多一行旧版入口 `~/.local/bin/ccm`（认出是我们放的就删；合并时按两边增量相加）"
     );
 }
 
@@ -625,6 +626,9 @@ fn every_host_declaration_is_pinned() {
         // Claude Code 跑在哪台，这份记录就在哪台（`remote_history.rs` 真的从远端读它），
         // 标 `Client` 会让远端会话的用户在这一页上看到一句假话。
         ("claude-code", "~/.claude/projects/", Either),
+        // 〔GP1 · 第四波〕`设计/01 §6.7b` 迁移 ② ③：旧版放在远端 `~/.local/bin/ccm` 的那一份，认出是我们放的就删。
+        //   `Remote`：我们只往远端那一格推过它（本机那条入口从来在 `~/.cc-monitor/bin`）。
+        ("ccm", "~/.local/bin/ccm", Remote),
     ];
     let mut actual: Vec<(&str, &str, HostScope)> = TOOLS
         .iter()

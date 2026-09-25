@@ -2400,3 +2400,60 @@ fn the_open_terminal_command_equals_the_old_panels_byte_for_byte() {
     //   路径里自带的双引号会原样进单引号里 ⇒ 那一形由 `launch.rs` 拒、窗口出声，不在这里兜。
     assert!(!build_open_terminal_cmd("").contains('"'));
 }
+
+/// 〔GP1 · 第四波〕改权限那个框：没有运行时 / 没有通道 ⇒ 现值那一趟**当场**落「读不到」（框上说出来，不静默、不猜），
+/// 框照旧空着开。要求住址：`设计/60 §7` · `调研/第四波记录/GP1.md §5`。
+#[test]
+fn gp1_a_chmod_box_without_a_line_says_the_current_mode_is_unreadable() {
+    let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
+    assert_eq!(w.mode_probe.readout(), None, "还没摆框就有了现值");
+    assert!(w.begin_chmod(0), "权限框没摆出来");
+    assert_eq!(
+        w.mode_probe.readout(),
+        Some(crate::filewin::writeops::ModeReadout {
+            line: "读不到现在的权限".to_string(),
+            prefill: None,
+        })
+    );
+    assert_eq!(w.write_prompt().map(|p| p.text.as_str()), Some(""));
+}
+
+/// 〔GP1 · 第四波〕P2⁗（`设计/60 §7` · `GP1.md §5`）：现值那一趟**真上线**：挂一台合成后端（它按盘上真文件答 `files-stat`，`mode` 取真权限位），逐项问、按序交回；
+/// 不在的那一项 ⇒ `None`（读不到，不猜）。异源：期望的权限位是本测试自己 `set_permissions` 设下去的。
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn gp1_the_mode_probe_asks_files_stat_per_target_over_the_wire() {
+    use crate::filewin::find::testing::{wire_up, Declared, FakeBackend};
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = std::env::temp_dir().join(format!("ccm-gp1-modes-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::create_dir_all(&dir).expect("建夹具目录");
+    let a = dir.join("a.bin");
+    let b = dir.join("b.bin");
+    for (f, m) in [(&a, 0o640_u32), (&b, 0o600)] {
+        std::fs::write(f, b"x").expect("铺文件");
+        std::fs::set_permissions(f, std::fs::Permissions::from_mode(m)).expect("设权限");
+    }
+    let wired = wire_up(
+        "gp1-modes",
+        FakeBackend::new(&["files-stat"], Declared::default()),
+    )
+    .await;
+    let origin = crate::origin::Origin(wired.origin.clone());
+    let paths: Vec<String> = [&a, &b, &dir.join("gone.bin")]
+        .iter()
+        .map(|p| p.to_str().expect("ASCII").to_string())
+        .collect();
+    let got = crate::filewin::writeops::probe_modes(&wired.line, &origin, &paths).await;
+    assert_eq!(got, vec![Some(0o640), Some(0o600), None]);
+    let asked: Vec<String> = wired
+        .log
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|v| v["cmd"] == "files-stat")
+        .map(|v| v["args"]["path"].as_str().unwrap_or("").to_string())
+        .collect();
+    assert_eq!(asked, paths, "逐项各问一次、按序");
+    std::fs::remove_dir_all(&dir).ok();
+}
