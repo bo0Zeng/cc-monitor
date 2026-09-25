@@ -507,13 +507,14 @@ async fn uninstall_deletes_exactly_the_judged_paths_with_the_seen_texts_and_drop
             text: "k\n".into(),
         },
     ];
+    // take 里多给一个 keep.md（界面勾了），判定只放行 a / b ⇒ 删的必须是判定那一份，不是 take
     let out = uninstall_with(
         &ask,
         &door,
         &origin("dev"),
         &d,
         &seen,
-        &["a.md".into(), "b.md".into()],
+        &["a.md".into(), "b.md".into(), "keep.md".into()],
         &["b.md".into()],
     )
     .await
@@ -536,7 +537,7 @@ async fn uninstall_deletes_exactly_the_judged_paths_with_the_seen_texts_and_drop
         (
             "dev",
             UNINSTALL_PLAN,
-            json!({"dir": d, "take": ["a.md", "b.md"], "confirm": ["b.md"]})
+            json!({"dir": d, "take": ["a.md", "b.md", "keep.md"], "confirm": ["b.md"]})
         ),
         "交给判定的 take / confirm 原样"
     );

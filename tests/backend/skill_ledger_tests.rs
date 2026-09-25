@@ -200,7 +200,8 @@ fn an_unreadable_or_other_version_ledger_is_never_overwritten() {
     let root = d.join("skills");
     for body in [
         b"{not json".to_vec(),
-        br#"{"v":2,"installs":{},"more":true}"#.to_vec(),
+        // 形状本身读得懂、只是版本号不同 ⇒ 仍然不认（别让 `deny_unknown_fields` 替版本闸挡了这一刀）
+        br#"{"v":2,"installs":{}}"#.to_vec(),
         br#"{"v":1,"installs":{"/x":{"name":"x","files":{"a":{"digest":"0000000000000001","created":"yes"}}}}}"#.to_vec(),
     ] {
         std::fs::write(&file, &body).unwrap();
