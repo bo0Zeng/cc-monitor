@@ -716,7 +716,10 @@ async fn a_hole_the_tail_probe_cannot_see_is_caught_by_the_commit() {
         // 洞落在 `[have/4, have/4 + 1000)`：have ≥ 2 块时它整个在尾块 `[have − 块, have)` 之前 ⇒ 尾块对拍看不见它。
         assert!(have >= 2 * CHUNK, "夹具没造出够长的前缀（{have}）");
         let hole = have / 4..have / 4 + 1000;
-        assert!(hole.end <= have - CHUNK, "洞碰到了尾块，这条就判不出「尾块看不见」");
+        assert!(
+            hole.end <= have - CHUNK,
+            "洞碰到了尾块，这条就判不出「尾块看不见」"
+        );
         if corrupt {
             let mut g = fs.lock().unwrap();
             let e = g.files.get_mut(&part).unwrap();
