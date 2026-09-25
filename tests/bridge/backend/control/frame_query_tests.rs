@@ -243,20 +243,22 @@ const HELD_BACK: &[(&str, &str)] = &[
         "history-sessions",
         "同 `history-projects`：每一行并本机注解（星标 / 改名 / 隐藏，`remote_session_entry`）＋ 判活 —— 跨机 join",
     ),
+    // 〔C4c · 第四波 4B〕下面三行按主会话裁决重写：`history-read` / `history-subagents` **等后端二次拆包**，
+    //   `history-tail` 归 CF2（`subscribe`）。三行都仍有 monitor 侧发送点（判据照旧要求它们真有）。
     (
         "history-read",
-        "应答要过记录解析（`parse_line`，ts-rs 类型的来源）与可计行号（`LineNumberer`）—— 两样住 monitor crate，\
-         后端是独立 crate、不链接它 ⇒ 出成品 = 把 `messages.rs` / `parser.rs` 搬进两边共用的 crate（`00 §1.5.4` 的\
-         `backend-core`）。另两个发送点（实时 tab 的快照续点 · 按区间取正文）同样吃这两样",
+        "**等后端二次拆包**（主会话裁，4B 第六批）：应答要过记录解析（`parse_line`，ts-rs 类型的来源）与可计行号\
+         （`LineNumberer`），两样住 monitor crate；出成品要先把 `messages.rs` / `parser.rs` 搬进两边共用的 crate\
+         （`00 §1.5.4` 的 `backend-core`）—— 那一拆之前不迁，不在 TS 再写一份记录解析",
     ),
     (
         "history-subagents",
-        "列完候选还要挑一个（`choose_subagent`）、再读那份文件并过记录解析（`parse_line`）⇒ 同 `history-read`",
+        "**等后端二次拆包**：挑候选（`choose_subagent`）之后还要读那份文件、过记录解析（`parse_line`）⇒ 同 `history-read`",
     ),
     (
         "history-tail",
-        "**不是前端查询**：它只被实时 tab 的快照续点用（`ssh_source` 的流机器，monitor 内部），webview 从不问它 ——\
-         属于「流那半收口成 `subscribe`」（`设计/05 §8` 步 6），不属于 `call`",
+        "**归 CF2（`subscribe`）**：它不是前端查询，只被实时 tab 的快照续点用（`ssh_source` 的流机器）——\
+         会话流收口成 `subscribe`（`设计/05 §8` 步 6）时由 CF2 处置，不属于 `call`",
     ),
     // 〔C4a 与 SR1a 合并〕SR1a 同波搬上来的 `history-index` / `history-user-inputs` / `history-find` 三行
     // 〔C4b · 第四波 4B〕挪进了 [`CHANNELED`]（后端出成品）。
