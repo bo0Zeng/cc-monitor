@@ -2177,7 +2177,7 @@ shell 套件那一侧 `e2e_gate_registry_tests.rs::no_e2e_suite_isolates_with_tm
 ## 49. tmux 的**打印通道必须是 UTF-8**，按 TAB 切出来的段数**下溢必须出声**（`V121` 升格 · 用户 2026-09-25 拍板）
 
 **性质**：本仓每一处**按格式串读 tmux 打印通道**的调用点（`list-sessions -F` · `ls -F` · `display-message -p`），
-起的 tmux 客户端都必须是 UTF-8 客户端（`capture-pane -p` 实测吐原始字节、不在这个人群里；后端那一处照样带旗，由它自己的判据逐元素钉着）：
+起的 tmux 客户端都必须是 UTF-8 客户端（`capture-pane -p` 实测吐原始字节、不在这个人群里；后端那一处照样带旗，由 `readonly_guard.rs::the_argv_this_site_emits_is_read_only_element_by_element` 逐元素钉着 —— 那是邻居，不是本条的判据）：
 - 本机 argv 直传与跨 SSH 的命令串用**旗**（`UTF8_CLIENT_FLAG`，且**必须排在子命令之前**）；
 - `sh -c '<可能有多条分支的脚本>'` 用 **env**（`UTF8_CLIENT_ENV`，挂在起 `sh` 的那个 `Command` 上，一行盖住全部分支）；
 - 按 TAB 切的，切出的段数 **< 预期 N** ⇒ 出声 ＋ 这一行**不许当好数据**（`tab_underflow`）。
@@ -2192,7 +2192,6 @@ shell 套件那一侧 `e2e_gate_registry_tests.rs::no_e2e_suite_isolates_with_tm
 - 调用点带没带 UTF-8：`gate_tests.rs::both_tmux_call_sites_ask_for_a_utf8_client_before_the_subcommand` ·
   `watcher_tests.rs::every_sh_call_site_in_this_module_carries_the_utf8_env` ·
   `session_snapshot_tests.rs::the_one_list_sessions_call_asks_for_a_utf8_client_before_the_subcommand` ·
-  `readonly_guard.rs::the_argv_this_site_emits_is_read_only_element_by_element`（`capture-pane` 的 argv 逐元素，第一个元素就是那个旗）·
   monitor 跨 SSH 那一处 `tmux_tests.rs::the_surviving_cross_ssh_tmux_read_asks_for_a_utf8_client_before_the_subcommand`。
 - 下溢出声：`gate_tests.rs::the_underflow_predicate_catches_the_real_dirty_bytes` · `watcher_tests.rs::the_underflow_predicate_only_fires_downward` ·
   `session_snapshot_tests.rs::a_tab_starved_line_is_dropped_instead_of_becoming_a_session` · `tmux_tests.rs::a_dirty_line_underflows_and_an_overflowing_line_is_still_dropped_today`。

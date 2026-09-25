@@ -98,6 +98,7 @@ fn list_accounts_degrades_gracefully() {
 }
 
 // ---- 3. 非法 configDir 被丢弃，其余正常 ----
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；②形。
 #[test]
 fn unsafe_config_dirs_are_dropped() {
     let root = tmpdir("unsafe");
@@ -2037,6 +2038,8 @@ fn read_regular_capped_keeps_its_three_failures_distinguishable() {
 }
 
 /// ★ 欺骗字符**按来源分组**各取一个代表，任何一组从 `acct-core` 的内核里掉出去 ⇒ 红（码位表逐字搬自 monitor 那条）。
+///
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；②形（拒绝集那张表）。
 #[test]
 fn every_group_of_deceptive_characters_is_rejected_in_a_config_dir() {
     let groups: &[(char, &str)] = &[
