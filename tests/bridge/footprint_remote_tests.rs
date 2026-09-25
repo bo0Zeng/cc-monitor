@@ -14,14 +14,16 @@
 //! - 远端视角的人群：住 monitor 那台的那一族（`本机`）**一行都没有**；远端落点那一行**真查**
 //!   （答在 ⇒ 「在」、答不在 ⇒ 「缺」，不再是「本页不连 SSH」）；「本机或远端」那一行答不在 ⇒ 「未确定」（不说「缺」）。
 //!   两个方向都比同一份 `build_rows` 在本机视角下的产物（人群 = 本机视角去掉 `本机` 那一族，逐条相等）。
-//! - 路径过线形：`\` 换 `/`；远端 `PATH` 按 `:` 切、按本机规矩合回去。
+//! - 路径过线形：本机分隔符 `\`（只 Windows 上的 monitor 有）换 `/`，别的平台 `\` 原样过线；远端 `PATH` 按 `:` 切、按本机规矩合回去。
+//! - 〔W5-UI · `设计/70 §10 #6`「远端文件名里真带 `\` 的会被问错」〕POSIX 上的 monitor：名字里带 `\` 的家目录，问法与答法
+//!   与同一台换成不带 `\` 的家目录**逐条相等**（只差那一个名字）。
 //! - 应答解析：`null` 不进表（探针答 `None`）· `entries: null` ⇒ 列不动（不是空目录）· 形状不对报错。
 //! - 命令名与字段跨半边对拍（后端 `REGISTRY` 现抠）。
 //!
 //! # 买不到的
 //!
 //! - 真远端那一趟：后端那一半的行为判据住 `tests/backend/footprint_tests.rs`。
-//! - 远端文件名里真带 `\` 的那一种会被问错（模块头注如实登记）。
+//! - **Windows 上的 monitor** 对 POSIX 远端：名字里真带 `\` 的那一种仍会被问错（模块头注如实登记）。
 
 use super::*;
 use crate::config_surface::{SurfaceState, Vantage};
@@ -164,10 +166,15 @@ fn the_remote_vantage_drops_the_monitor_machine_rows_and_really_probes_the_rest(
 
 #[test]
 fn wire_paths_and_path_lists_are_posix_on_the_wire() {
-    assert_eq!(
-        wire_path(Path::new("/r/home\\.local/bin/ccm")),
-        "/r/home/.local/bin/ccm"
-    );
+    // 本机拼出来的分隔符才换：Windows 上的 monitor 拼出 `\`；别的平台上 `\` 只可能是名字里的，原样。
+    let joined = Path::new("/r/home").join(".local").join("bin").join("ccm");
+    assert_eq!(wire_path(&joined), "/r/home/.local/bin/ccm");
+    let with_backslash = wire_path(Path::new("/r/home\\.local/bin/ccm"));
+    if cfg!(windows) {
+        assert_eq!(with_backslash, "/r/home/.local/bin/ccm");
+    } else {
+        assert_eq!(with_backslash, "/r/home\\.local/bin/ccm");
+    }
     let native = native_path_list("/usr/bin::/bin").expect("合得回去");
     let parts: Vec<PathBuf> = std::env::split_paths(&native).collect();
     assert_eq!(
@@ -175,6 +182,58 @@ fn wire_paths_and_path_lists_are_posix_on_the_wire() {
         vec![PathBuf::from("/usr/bin"), PathBuf::from("/bin")]
     );
     assert_eq!(native_path_list(""), None, "空 PATH ⇒ 查不动，不是「没有」");
+}
+
+/// 〔W5-UI · `设计/70 §10 #6`〕POSIX 上的 monitor：远端家目录名字里真带 `\` ⇒ 问的、答的都是那个逐字名。
+///
+/// 两向相等：带 `\` 的家目录与同一台换成不带 `\` 的家目录，记账那一趟记下的路径**逐条对应**（只差那一个名字），
+/// 答题那一趟每一行的状态**逐行相等**。今天之前 `wire_path` 无条件把 `\` 换 `/` ⇒ 问的是 `/r/we/ird/…`，
+/// 答案表里按原名存的那一格查不到 ⇒ 每一行都成了「缺」。
+#[cfg(not(windows))]
+#[test]
+fn a_backslash_in_a_remote_name_is_asked_and_answered_verbatim() {
+    let named = |home: &str| RemoteEnv {
+        home: PathBuf::from(home),
+        agent_home: PathBuf::from(format!("{home}/.claude")),
+        ..env()
+    };
+    let (odd, plain) = (named("/r/we\\ird"), named("/r/weird"));
+    let (asked_odd, asked_plain) = (ask(&odd), ask(&plain));
+    let back = |set: &std::collections::BTreeSet<String>| -> std::collections::BTreeSet<String> {
+        set.iter()
+            .map(|p| p.replace("/r/we\\ird", "/r/weird"))
+            .collect()
+    };
+    assert!(
+        asked_odd.stat.iter().any(|p| p.starts_with("/r/we\\ird/")),
+        "记账那一趟没有一条落在带 `\\` 的家目录底下 —— 下面的相等是空真"
+    );
+    assert_eq!(
+        back(&asked_odd.stat),
+        asked_plain.stat,
+        "带 `\\` 的名字被问成了别的路径"
+    );
+    assert_eq!(back(&asked_odd.hooks), asked_plain.hooks);
+
+    // 状态里「为什么」那句会引到路径本身 ⇒ 比之前把那一个名字换回来（与上面同一条换法）。
+    let state = |e: &RemoteEnv, asked: &Asked| -> Vec<String> {
+        build(e, &answer_all(asked, Some(false)))
+            .0
+            .rows
+            .iter()
+            .map(|r| format!("{}|{}|{:?}", r.tool_id, r.path_declared, r.state))
+            .map(|row| row.replace("/r/we\\\\ird", "/r/weird"))
+            .collect()
+    };
+    let (got, want) = (state(&odd, &asked_odd), state(&plain, &asked_plain));
+    assert!(
+        want.iter().any(|row| row.contains("Present {")),
+        "对照那一台一行「在」都没有 —— 下面的相等是空真"
+    );
+    assert_eq!(
+        got, want,
+        "带 `\\` 的家目录，答到的状态与不带的那台不一样（答案查不到）"
+    );
 }
 
 #[test]
