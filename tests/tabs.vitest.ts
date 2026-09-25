@@ -224,7 +224,7 @@ import {
   findIdleTmux,
   isCwdFallbackMatch,
   claudeExited,
-  moveTabBlock,
+  moveTab,
   applyDropToCollections,
   collectionsEqual,
   commonDirName,
@@ -323,37 +323,22 @@ describe("TabManager 生命周期", () => {
     expect(home(tm).store.tabs.get("sk-late")!.state).toEqual(ENDED);
   });
 
-  // === Batch7-F24：bg 会话树状 ===
+  // === Batch7-F24：bg 会话 ⚙ 标题（〔BG1 · V125「删掉树」〕不再挂宿主排成树：落位 / 拖拽 / 集合
+  //     与普通 tab 相同那一组在本文件末尾「〔BG1〕」describe.each 里，两种 tab 各跑一遍） ===
 
-  it("bg tab 挂到同 cwd 交互宿主之后（先宿主后 bg）", () => {
+  it("bg tab 平铺：顺序 == 到达序（不挂到同 cwd 交互 tab 之后），标题 ⚙ ＋ 任务名", () => {
     tm.createSkeletonTab("host-a", "/proj/a", LOCAL_ORIGIN, "interactive", null);
     tm.createSkeletonTab("other", "/proj/b", LOCAL_ORIGIN, "interactive", null);
     tm.createSkeletonTab("bg-a1", "/proj/a", LOCAL_ORIGIN, "bg", "评估任务");
     const order = home(tm).store.orderedIds;
-    expect(order).toEqual(["host-a", "bg-a1", "other"]);
+    expect(order).toEqual(["host-a", "other", "bg-a1"]);
     const bg = home(tm).store.tabs.get("bg-a1")!;
     expect(bg.title).toBe("⚙ 评估任务");
   });
 
-  it("孤儿 bg 先到、宿主后到 → 重锚到宿主之后", () => {
-    tm.createSkeletonTab("bg-x1", "/proj/x", LOCAL_ORIGIN, "bg", "t1");
-    tm.createSkeletonTab("noise", "/proj/n", LOCAL_ORIGIN, "interactive", null);
-    tm.createSkeletonTab("host-x", "/proj/x", LOCAL_ORIGIN, "interactive", null);
-    expect(home(tm).store.orderedIds).toEqual(["noise", "host-x", "bg-x1"]);
-  });
-
-  it("同 cwd 第二个交互宿主不搬走第一个宿主已挂的 bg 子串（多宿主取第一个）", () => {
-    tm.createSkeletonTab("host-a1", "/proj/a", LOCAL_ORIGIN, "interactive", null);
-    tm.createSkeletonTab("bg-a1", "/proj/a", LOCAL_ORIGIN, "bg", "t1");
-    tm.createSkeletonTab("bg-a2", "/proj/a", LOCAL_ORIGIN, "bg", "t2");
-    tm.createSkeletonTab("host-a2", "/proj/a", LOCAL_ORIGIN, "interactive", null);
-    expect(home(tm).store.orderedIds).toEqual(["host-a1", "bg-a1", "bg-a2", "host-a2"]);
-  });
-
-  it("远端 bg 带 origin 前缀且不跨 origin 认宿主", () => {
+  it("远端 bg 标题带 origin 前缀", () => {
     tm.createSkeletonTab("h-local", "/p", LOCAL_ORIGIN, "interactive", null);
     tm.createSkeletonTab("bg-remote", "/p", "pi", "bg", "远端任务");
-    // origin 不同 → 不挂本地宿主，顶层追加
     expect(home(tm).store.orderedIds).toEqual(["h-local", "bg-remote"]);
     expect(home(tm).store.tabs.get("bg-remote")!.title).toBe("[pi] ⚙ 远端任务");
   });
@@ -1109,9 +1094,9 @@ describe("TabManager 生命周期", () => {
 
   // === v2.22.2:同 sid kind 冲突消解(bg-spare 谎报父 sid) ===
 
-  it("kind 升格:bg 骨架先到,interactive 宣告后到 → 升格为宿主并重锚孤儿 bg", () => {
-    // 场景还原(用户截图):bg-spare 的宣告先到,父会话被建成 ⚙ 挂到同 cwd 的
-    // 别的交互会话(Excel)之下;interactive 宣告后到必须升格纠正。
+  it("kind 升格:bg 骨架先到,interactive 宣告后到 → 升格(标题去 ⚙),位置不动", () => {
+    // 场景还原(用户截图):bg-spare 的宣告先到,父会话被建成 ⚙;interactive 宣告后到必须升格纠正。
+    // 〔BG1 · V125〕原先升格还会把它摘下来按宿主重新挂树;树删了 ⇒ 位置与 kind 无关、不动。
     tm.createSkeletonTab("excel", "/proj/research", LOCAL_ORIGIN, "interactive", null);
     tm.createSkeletonTab("parent", "/proj/research", LOCAL_ORIGIN, "bg", "迁移服务"); // 谎报形态先到
     tm.createSkeletonTab("fork-empty", "/proj/research", LOCAL_ORIGIN, "bg", "迁移服务"); // 空克隆
@@ -1122,9 +1107,7 @@ describe("TabManager 生命周期", () => {
     const p = home(tm).store.tabs.get("parent")!;
     expect(p.kind).toBe("interactive");
     expect(p.title).not.toContain("⚙");
-    // parent 升格为宿主:提出子树位、追加为交互 tab,孤儿 bg(fork-empty 原挂
-    // excel 子串)不被搬走——「多宿主取第一个」契约保持(excel 仍是先到宿主)
-    expect(home(tm).store.orderedIds).toEqual(["excel", "fork-empty", "parent"]);
+    expect(home(tm).store.orderedIds).toEqual(["excel", "parent", "fork-empty"]);
   });
 
   it("kind 不降格:interactive tab 后到 bg 宣告(spare 谎报)保持交互形态", () => {
@@ -3415,24 +3398,22 @@ describe("已结束的 tab 留在原位灰着（原「P7a-1 独立归档区」�
 // 而那是一条**竖栏** ⇒ 空闲的不是「横向」，是 **`clientY` 从没被用过**。
 // 重排走纵向，与撕离天然不争同一根轴。
 
-describe("P7a-2 moveTabBlock（纯）", () => {
-  it("★ P7a2-Y1：整块搬到某个 sid 之前 / 末尾，落位逐项对得上", () => {
+describe("P7a-2 moveTab（纯）", () => {
+  it("★ P7a2-Y1：搬到某个 sid 之前 / 末尾，落位逐项对得上", () => {
     const o = ["a", "b", "c", "d"];
-    expect(moveTabBlock(o, ["c"], "a")).toEqual(["c", "a", "b", "d"]);
-    expect(moveTabBlock(o, ["a"], "d")).toEqual(["b", "c", "a", "d"]);
-    expect(moveTabBlock(o, ["a"], null)).toEqual(["b", "c", "d", "a"]);
-    // 多元素的块保持内部相对序。
-    expect(moveTabBlock(o, ["b", "c"], "a")).toEqual(["b", "c", "a", "d"]);
+    expect(moveTab(o, "c", "a")).toEqual(["c", "a", "b", "d"]);
+    expect(moveTab(o, "a", "d")).toEqual(["b", "c", "a", "d"]);
+    expect(moveTab(o, "a", null)).toEqual(["b", "c", "d", "a"]);
+    // 〔BG1〕原先这里还有一格「多元素的块保持内部相对序」—— 块随 bg 树一起删了。
     // 不改原数组。
     expect(o).toEqual(["a", "b", "c", "d"]);
   });
 
-  it("★ P7a2-Y1b：落点在块内 ⇒ **原样返回**（拖到自己身上不是一次重排）", () => {
+  it("★ P7a2-Y1b：落点就是它自己 ⇒ **原样返回**（拖到自己身上不是一次重排）", () => {
     const o = ["a", "b", "c"];
-    expect(moveTabBlock(o, ["b"], "b")).toEqual(o);
-    expect(moveTabBlock(o, ["a", "b"], "b")).toEqual(o);
+    expect(moveTab(o, "b", "b")).toEqual(o);
     // 把它算成「挪到末尾」是错的 —— 那会让一次误触把 tab 甩到最后。
-    expect(moveTabBlock(o, ["b"], "b")).not.toEqual(["a", "c", "b"]);
+    expect(moveTab(o, "b", "b")).not.toEqual(["a", "c", "b"]);
   });
 });
 
@@ -3485,23 +3466,8 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
     expect(order()).toEqual(["c", "a", "b"]);
   });
 
-  it("★ P7a2-Y3：拖交互 tab 时，它的 bg 子串**跟着走**（不许把树拆散）", () => {
-    // 造一棵真的树：宿主 + 两个同 cwd 的 bg 子项（`placeInOrder` 会把它们锚在宿主之后）。
-    tm.ensureTab("host", "/proj/a", "p", 0, LOCAL_ORIGIN);
-    tm.createSkeletonTab("bg1", "/proj/a", LOCAL_ORIGIN, "bg", "t1");
-    tm.createSkeletonTab("bg2", "/proj/a", LOCAL_ORIGIN, "bg", "t2");
-    tm.ensureTab("other", "/proj/z", "p", 0, LOCAL_ORIGIN);
-    flushBar();
-    stubRects();
-    expect(order()).toEqual(["host", "bg1", "bg2", "other"]);
-    // 把 other 拖到最上面 —— 它没有子项，只有它自己动。
-    dragTo("other", 10);
-    expect(order()).toEqual(["other", "host", "bg1", "bg2"]);
-    stubRects();
-    // 再把 host 拖到最上面：**整串跟着走**，顺序不许被打散。
-    dragTo("host", 10);
-    expect(order()).toEqual(["host", "bg1", "bg2", "other"]);
-  });
+  // 〔BG1 · V125「删掉树」〕原「★ P7a2-Y3：拖交互 tab 时它的 bg 子串跟着走」一格删了 ——
+  //   现在反过来钉：拖同 cwd 的宿主**只有它自己动**（本文件末尾「〔BG1〕」那组的 ②，两种 tab 各跑）。
 
   it("★ P7a2-D：拖动时**落点看得见**，撕离那一路不指示，拖完必须清掉", () => {
     tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
@@ -4008,7 +3974,8 @@ describe("步 17·D ⓪ 量具自检：落点函数真的在分三种，不是�
     { sid: "b", top: 28, height: 28 },
     { sid: "c", top: 56, height: 28 },
   ];
-  const none = new Set<string>();
+  /** 被拖的那一个不在这组矩形里（〔BG1〕原先这里是「被拖的那一块」空集）。 */
+  const none = "（没有）";
 
   it("🔴 三种语义**都出得来**，而且各自出在该出的地方", () => {
     // 一格里三条分开断言：合成一条的话，只要有一种出不来，另两种也能让它看起来对。
@@ -4047,13 +4014,13 @@ describe("步 17·D ⓪ 量具自检：落点函数真的在分三种，不是�
     ).toEqual({ kind: "before", sid: "a" });
   });
 
-  it("被拖的那一块整体不参与落点（落到自己身上不是一次重排）", () => {
-    expect(pickDropTarget(rects, 5, new Set(["a"]), null), "a 被拖着，落点该轮到 b").toEqual({
+  it("被拖的那一个不参与落点（落到自己身上不是一次重排）", () => {
+    expect(pickDropTarget(rects, 5, "a", null), "a 被拖着，落点该轮到 b").toEqual({
       kind: "before",
       sid: "b",
     });
     expect(
-      pickDropTarget(rects, 40, new Set(["b"]), "b"),
+      pickDropTarget(rects, 40, "b", "b"),
       "🔴 停留攒在自己身上也不许成组（不然拖一下自己就多一个组）",
     ).toEqual({ kind: "before", sid: "c" });
   });
@@ -4067,10 +4034,10 @@ describe("步 17·D ⓪ 量具自检：落点函数真的在分三种，不是�
   });
 
   it("`tabUnderY` 正反两控：压在矩形里才算，边界按左闭右开", () => {
-    expect(tabUnderY(rects, 28, new Set()), "28 是 b 的上沿 ⇒ 算 b").toBe("b");
-    expect(tabUnderY(rects, 27.9, new Set()), "27.9 还在 a 里").toBe("a");
-    expect(tabUnderY(rects, 999, new Set()), "谁都没压着要能说「没有」").toBeNull();
-    expect(tabUnderY(rects, 5, new Set(["a"])), "被拖的那块要排除").toBeNull();
+    expect(tabUnderY(rects, 28, none), "28 是 b 的上沿 ⇒ 算 b").toBe("b");
+    expect(tabUnderY(rects, 27.9, none), "27.9 还在 a 里").toBe("a");
+    expect(tabUnderY(rects, 999, none), "谁都没压着要能说「没有」").toBeNull();
+    expect(tabUnderY(rects, 5, "a"), "被拖的那个要排除").toBeNull();
   });
 
   it("两个常数就是 `§D.4` 写的那两个数（改了要有人知道）", () => {
@@ -4109,7 +4076,7 @@ describe("步 17·D ② 归属跟着落点宿主走（`§D.7` 的「拖出组」
   const cols = (list: TabCollection[]): TabCollection[] => JSON.parse(JSON.stringify(list));
 
   it("🆕 `onto` 到一个**没有组**的 tab ⇒ 现建一个组，两个都进去", () => {
-    const next = applyDropToCollections([], ["a"], { kind: "onto", sid: "b" }, "proj", "gX");
+    const next = applyDropToCollections([], "a", { kind: "onto", sid: "b" }, "proj", "gX");
     expect(next, "建组 + 两个成员，顺序 = 目标在前、被拖的在后").toEqual([
       { id: "gX", name: "proj", members: ["b", "a"] },
     ]);
@@ -4117,18 +4084,16 @@ describe("步 17·D ② 归属跟着落点宿主走（`§D.7` 的「拖出组」
 
   it("`onto` 到一个**已经在组里**的 tab ⇒ 进那个组，不新建", () => {
     const base = cols([{ id: "g1", name: "白天", members: ["b"] }]);
-    const next = applyDropToCollections(base, ["a"], { kind: "onto", sid: "b" }, "proj", "gX");
+    const next = applyDropToCollections(base, "a", { kind: "onto", sid: "b" }, "proj", "gX");
     expect(next).toEqual([{ id: "g1", name: "白天", members: ["b", "a"] }]);
   });
 
-  it("整块一起走（交互 tab 连同它的 bg 子串）—— 不许把子树劈成两半", () => {
-    const next = applyDropToCollections([], ["a", "a-bg"], { kind: "onto", sid: "b" }, "n", "gX");
-    expect(next[0].members).toEqual(["b", "a", "a-bg"]);
-  });
+  // 〔BG1 · V125「删掉树」〕原「整块一起走（交互 tab 连同它的 bg 子串）」一格删了 —— 归属只跟着被拖的
+  //   那一个走（本文件末尾「〔BG1〕」那组的 ③ ④，两种 tab 各跑）。
 
   it("🔴 `before` 一个**散 tab** ⇒ 从原来的组里**移出**（`§D.7` 的拖出组）", () => {
     const base = cols([{ id: "g1", name: "白天", members: ["a", "b"] }]);
-    const next = applyDropToCollections(base, ["a"], { kind: "before", sid: "z" }, "n", "gX");
+    const next = applyDropToCollections(base, "a", { kind: "before", sid: "z" }, "n", "gX");
     expect(next, "落点宿主是散 tab 区 ⇒ a 不再属于 g1").toEqual([
       { id: "g1", name: "白天", members: ["b"] },
     ]);
@@ -4136,13 +4101,13 @@ describe("步 17·D ② 归属跟着落点宿主走（`§D.7` 的「拖出组」
 
   it("`before` 一个**组里的 tab** ⇒ 进那个组（同一条规则的另一侧）", () => {
     const base = cols([{ id: "g1", name: "白天", members: ["b"] }]);
-    const next = applyDropToCollections(base, ["a"], { kind: "before", sid: "b" }, "n", "gX");
+    const next = applyDropToCollections(base, "a", { kind: "before", sid: "b" }, "n", "gX");
     expect(next).toEqual([{ id: "g1", name: "白天", members: ["b", "a"] }]);
   });
 
   it("`end` ⇒ 移出（末尾就是散 tab 区）", () => {
     const base = cols([{ id: "g1", name: "白天", members: ["a"] }]);
-    expect(applyDropToCollections(base, ["a"], { kind: "end" }, "n", "gX")).toEqual([
+    expect(applyDropToCollections(base, "a", { kind: "end" }, "n", "gX")).toEqual([
       { id: "g1", name: "白天", members: [] },
     ]);
   });
@@ -4150,12 +4115,12 @@ describe("步 17·D ② 归属跟着落点宿主走（`§D.7` 的「拖出组」
   it("🔴 反面控：什么都不该变的两种情形，**一个字节都不许变**", () => {
     const base = cols([{ id: "g1", name: "白天", members: ["a"] }]);
     expect(
-      applyDropToCollections(base, ["a"], { kind: "onto", sid: "a" }, "n", "gX"),
+      applyDropToCollections(base, "a", { kind: "onto", sid: "a" }, "n", "gX"),
       "压在自己身上不是一次合并",
     ).toEqual(base);
     const flat = cols([{ id: "g1", name: "白天", members: ["z"] }]);
     expect(
-      applyDropToCollections(flat, ["a"], { kind: "before", sid: "b" }, "n", "gX"),
+      applyDropToCollections(flat, "a", { kind: "before", sid: "b" }, "n", "gX"),
       "两个都是散 tab ⇒ 归属这一维没有任何事发生",
     ).toEqual(flat);
   });
@@ -4166,7 +4131,7 @@ describe("步 17·D ② 归属跟着落点宿主走（`§D.7` 的「拖出组」
       name: `组 ${i + 1}`,
       members: [] as string[],
     }));
-    const next = applyDropToCollections(full, ["a"], { kind: "onto", sid: "b" }, "新", "gX");
+    const next = applyDropToCollections(full, "a", { kind: "onto", sid: "b" }, "新", "gX");
     expect(next, "满了还建 ⇒ a 会挂在一个 `createCollection` 根本没造出来的 id 上").toEqual(full);
   });
 
@@ -4427,8 +4392,7 @@ describe("步 17·C 顺序落盘：读回来那一半", () => {
     await tm.loadPinned();
     await tm.loadOrder();
     for (const sid of arriving) {
-      // 每个 sid 一个自己的 cwd：避开 `placeInOrder` 的树状锚定（bg 挂宿主后面），
-      // 这一组量的是「盘上那份顺序」，不是那棵树。
+      // 每个 sid 一个自己的 cwd（〔BG1〕原先是为了避开 bg 树状锚定；树删了之后留着无害）。
       tm.ensureTab(sid, `/proj/${sid}`, `/p/${sid}.jsonl`, 0, LOCAL_ORIGIN, "interactive", null);
     }
   };
@@ -5396,5 +5360,90 @@ describe("〔CF2〕前端账本的上界", () => {
     expect(w.pendingCount).toBe(PENDING_KEEP);
     expect(w.peek(1)[0].seq, "留下的不是 seq 最高的那些").toBe(PENDING_CAP * 2 - PENDING_KEEP);
     expect(w.belowState, "出过账了却还说「到顶了」—— 往上翻不会去取").toEqual({ kind: "maybe" });
+  });
+});
+
+// ==========================================================================
+// 〔BG1 · V125〕bg 会话平铺：拖拽 / 集合 / 落位对 bg tab 与普通 tab **行为相同**
+//
+// 守的要求：`设计/99 §1` V125〔选〕「删掉树」原话 ——「后台（bg）会话不再自动挂到宿主下排成树：
+//   删 `placeInTree` 树状挂载、`dragBlockOf` 拖拽例外、`.tab-bg` 那套；bg 会话就是普通 tab、平铺」；
+//   `设计/30 §7`「自动归组 / 自动固定 —— 手动建，不要自动，纯手动」。
+//
+// 形状：**同一组用例两种 tab 各跑**（`describe.each`）。「同 cwd 的那一颗」（`sub`）一跑是普通 tab、
+//   一跑是 bg；期望是**同一份手写表**（不从实现生成）。宿主 `host` 与 `sub` 同 `(cwd, origin)` ——
+//   正是旧树认「宿主 ＋ bg 子串」的那个布景，所以每一格在树还在时 bg 那一跑都会红（起步 `25616061` 现打）。
+// ⚠ 标题不在本组里：`⚙ 任务名` 标题是 V125 没点名的一样（BG1.md §5 问 1），两跑标题本来就不同。
+// ==========================================================================
+describe.each([
+  ["普通 tab", "interactive"],
+  ["bg tab", "bg"],
+])("〔BG1〕同 cwd 的那一颗是%s ⇒ 落位 / 拖拽 / 集合与另一跑逐字相同", (_label, subKind) => {
+  let tm: TabManager;
+  const order = (): string[] => home(tm).store.orderedIds;
+  const colsOf = (): TabCollection[] => home(tm).prefs.collections;
+  /** `host` 与 `sub` 同 cwd；`other` 另一个项目。三颗按 `arriving` 的次序宣告。 */
+  const arrive = (arriving: string[]): void => {
+    for (const sid of arriving) {
+      if (sid === "host") tm.createSkeletonTab("host", "/proj/a", LOCAL_ORIGIN, "interactive", null);
+      if (sid === "sub") tm.createSkeletonTab("sub", "/proj/a", LOCAL_ORIGIN, subKind, "任务");
+      if (sid === "other") tm.createSkeletonTab("other", "/proj/z", LOCAL_ORIGIN, "interactive", null);
+    }
+  };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    tm = makeTM();
+    home(tm).prefs.collectionsLoaded = true;
+  });
+
+  it("① 到达落位 == 到达序（不挂到同 cwd 那颗后面）", () => {
+    arrive(["host", "other", "sub"]);
+    expect(order()).toEqual(["host", "other", "sub"]);
+    tm = makeTM();
+    arrive(["sub", "other", "host"]);
+    expect(order(), "先到的那颗不被后到的同 cwd 那颗拉走").toEqual(["sub", "other", "host"]);
+  });
+
+  it("② 真拖拽：拖 host 到最下面 ⇒ 只有 host 动", () => {
+    arrive(["host", "sub", "other"]);
+    (tm as unknown as { refreshTabBar: () => void }).refreshTabBar();
+    const bar = document.body.firstElementChild as HTMLElement;
+    const roots = [...bar.children].filter((e) => e.classList.contains("tab")) as HTMLElement[];
+    roots.forEach((el, i) => {
+      el.getBoundingClientRect = () =>
+        ({ top: i * 40, height: 40, bottom: i * 40 + 40, left: 0, right: 100 }) as DOMRect;
+    });
+    expect(order(), "前置：三颗按到达序").toEqual(["host", "sub", "other"]);
+    roots[0].dispatchEvent(
+      new MouseEvent("mousedown", { button: 0, clientX: 10, clientY: 0, bubbles: true }),
+    );
+    document.dispatchEvent(
+      new MouseEvent("mousemove", { buttons: 1, clientX: 10, clientY: 500, bubbles: true }),
+    );
+    document.dispatchEvent(new MouseEvent("mouseup", { clientX: 10, clientY: 500, bubbles: true }));
+    expect(order()).toEqual(["sub", "other", "host"]);
+  });
+
+  it("③ 拖 host `onto` other 成组 ⇒ 组里只有这两颗", () => {
+    arrive(["host", "sub", "other"]);
+    home(tm).dragger.applyDrop("host", { kind: "onto", sid: "other" });
+    expect(colsOf().map((c) => c.members)).toEqual([["other", "host"]]);
+    expect(order()).toEqual(["sub", "host", "other"]);
+  });
+
+  it("④ host 与 sub 同组，把 host 拖出组 ⇒ sub 留在组里", () => {
+    arrive(["host", "sub", "other"]);
+    home(tm).prefs.collections = [{ id: "g1", name: "白天", members: ["host", "sub"] }];
+    home(tm).dragger.applyDrop("host", { kind: "end" });
+    expect(colsOf()).toEqual([{ id: "g1", name: "白天", members: ["sub"] }]);
+    expect(order()).toEqual(["sub", "other", "host"]);
+  });
+
+  it("⑤ 同 sid 后到一份 interactive 宣告（升格）⇒ 位置不动", () => {
+    arrive(["host", "sub", "other"]);
+    tm.createSkeletonTab("sub", "/proj/a", LOCAL_ORIGIN, "interactive", null);
+    expect(home(tm).store.tabs.get("sub")!.kind).toBe("interactive");
+    expect(order()).toEqual(["host", "sub", "other"]);
   });
 });

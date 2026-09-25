@@ -7013,7 +7013,7 @@
     },
     "settingsPanel.behavior.showHiddenTasks": {
       "kind": "control",
-      "zh": "显示后台任务会话；带 ⚙ 标识，挂在同项目会话之后，改了要重启才生效",
+      "zh": "显示后台任务会话；带 ⚙ 标识，改了要重启才生效",
       "args": []
     },
     "settingsPanel.behavior.autoFront": {

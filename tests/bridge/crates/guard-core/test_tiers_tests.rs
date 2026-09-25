@@ -242,6 +242,7 @@ const UNIT: &[&str] = &[
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
 const SCAN: &[&str] = &[
+    "tests/bg-flat.vitest.ts", // 〔BG1〕V125：tab 栏通用代码零 bg 分叉（扫 `src/tabs.ts` ＋ `src/tab-*.ts`）· CSS 零 `.tab-bg`
     "tests/account-availability-guard.vitest.ts",
     "tests/account-base-semantics.vitest.ts",
     "tests/account-chip.vitest.ts",
