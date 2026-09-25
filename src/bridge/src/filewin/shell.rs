@@ -71,7 +71,9 @@
 //!   它买的是「egui 收到这串事件之后认出来的是哪一行」——
 //!   逐条与那次现打的读数写在 [`super::rows`] 的 `paint_one_row` 头注里。
 //! - **Windows 上一次都没跑过。**
-//! - 预览 · 双栏 **仍然一个都没有**（`设计/60 §4 戊` 代价第 2 条）。
+//! - 〔FW34 2026-09-24〕**预览 · 双栏 · 标签页做了**，住 [`super::workspace`]（最外一层）与
+//!   [`super::preview`]；本文件的 [`FileWindow`] 照旧是「一个目录视图」，一个标签页就是一个它。
+//!   〔此前这一格写的是「预览 · 双栏仍然一个都没有」（`设计/60 §4 戊` 代价第 2 条）。〕
 //!   〔FW1+FW2 2026-09-24〕**多选与右键菜单做了**（还有键盘）：纯的那一份（选中态 · 键位 ·
 //!   「能做什么」那张表）住 [`super::select`]，接到窗口上的那几跳住本文件
 //!   [`FileWindow::apply_keys`] / [`FileWindow::apply_pick_click`] /
@@ -112,6 +114,12 @@ static WINDOWS_OPENED: AtomicU64 = AtomicU64::new(0);
 /// 要么这个数的语义被悄悄改成「请求过」而名字还叫「开过」。
 /// ⇒ 一个值装一件事：请求面用这个，线程面用上面那个。
 static OPEN_REQUESTED: AtomicU64 = AtomicU64::new(0);
+
+/// 〔FW2〕开过几次右键菜单 —— 每次开菜单换一个 egui id（理由住 [`MenuAt::serial`]）。
+///
+/// 🔴〔FW34〕**进程级，不是每个目录视图一个**：双栏时两栏同时画在一个 egui 上下文里，
+/// 各数各的话两栏的第一个菜单撞同一个 id ⇒ 在另一栏右键那一下「只关不开」（与序号本来要防的同一形）。
+static MENU_SERIAL: AtomicU64 = AtomicU64::new(0);
 
 /// 最近一个窗口在**第一帧**上复核字体的结果。`None` = 还没有任何窗口复核过。
 ///
@@ -435,8 +443,6 @@ pub struct FileWindow {
     key_scroll: Option<usize>,
     /// 〔FW2〕摆着的那个右键菜单（`None` = 没摆）。
     menu: Option<MenuAt>,
-    /// 〔FW2〕开过几次菜单 —— 每次开菜单换一个 egui id（理由住 [`MenuAt::serial`]）。
-    menus_opened: u64,
     /// 〔FW1+FW2〕键盘 / 菜单那一下**做不了**时说的那句话（`None` = 没话说）。
     ///
     /// ⚠ 刻意不写进 `listing.error`：那一格只在下一趟列目录时才清，
@@ -447,6 +453,13 @@ pub struct FileWindow {
     /// 〔FW34〕书签（一个窗口一份，所有标签页 / 两栏共用；逻辑住 [`super::bookmarks`]）。
     /// `None` ＝ 没接上（判据里直接建的窗口）⇒ 书签栏不画。生产那条开窗路恒是 `Some`。
     pub shelf: Option<super::bookmarks::Shelf>,
+    /// 〔FW34〕这个目录视图此刻**是不是焦点那一个**（双栏 / 标签页时只有一个是）。
+    ///
+    /// `false` ⇒ 不接键盘、不接拖入（[`Self::keys_blocked`] / [`Self::take_drops`]）。缺省 `true`：
+    /// 单独建出来的目录视图（判据里那几百个）就是唯一那一个。谁来改它：[`super::workspace`]。
+    pub focused: bool,
+    /// 〔FW34〕起过几摞写操作（与 `write_board.rounds()` 比 ⇒ 有没有还没回话的；关标签那一问用）。
+    writes_started: u64,
 }
 
 /// 〔FW2〕一个摆着的右键菜单：**在哪儿 · 列哪几项 · 对几项说话**。
@@ -535,10 +548,11 @@ impl FileWindow {
             type_ahead: TypeAhead::default(),
             key_scroll: None,
             menu: None,
-            menus_opened: 0,
             key_notice: None,
             new_file: None,
             shelf: None,
+            focused: true,
+            writes_started: 0,
         }
     }
 
@@ -919,7 +933,8 @@ impl FileWindow {
         //   「一次问完」就变成「答错了哪一个都不知道」。
         // ⚠〔第五刀〕写操作那一摞同理，而它的代价更大：那个框上「都别做」与
         //   上传那个框上「全都不覆盖」叠在一起，答错一个就是删错东西。
-        if self.modal_up() {
+        // 〔FW34〕不是焦点那一个 ⇒ 不接（两栏都接的话，拖一个文件进来两栏各传一次）。
+        if !self.focused || self.modal_up() {
             return;
         }
         let dropped: Vec<String> = ctx.input(|i| {
@@ -1048,6 +1063,17 @@ impl FileWindow {
     /// 这里只负责把「问谁 · 怎么问 · 怎么起」三个口接上去（同 [`Self::start_drop`]）。
     /// 而本函数接不上（**没运行时**）要**出声**，判据见 `shell_tests`。
     pub fn start_copy(&mut self, job: CopyJob, ctx: Option<egui::Context>) -> bool {
+        self.start_copy_via(job, ctx, false)
+    }
+
+    /// 〔FW34〕同 [`Self::start_copy`]，但目标在**另一个目录**（「复制到另一栏」）：
+    /// 三段一个字没变（探 → 一次问覆盖 → 才动手），只是动手那一下的参数换成跨目录那一形
+    /// （[`super::workspace::across_args`]）。起在**目标那一栏**上 ⇒ 问与结局画在那一侧。
+    pub fn start_copy_across(&mut self, job: CopyJob, ctx: Option<egui::Context>) -> bool {
+        self.start_copy_via(job, ctx, true)
+    }
+
+    fn start_copy_via(&mut self, job: CopyJob, ctx: Option<egui::Context>, across: bool) -> bool {
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
                 Some("复制要一个 tokio 运行时，这个窗口没拿到".into());
@@ -1080,7 +1106,11 @@ impl FileWindow {
                     //   后端这一趟取消不掉 ⇒ 不再走取消那道闸（理由住 `copy.rs` 头注）。
                     move |j, overwrite| async move {
                         run_board.begin(&j.name);
-                        super::copy::copy_remote(&line, &origin, &j, overwrite).await
+                        if across {
+                            super::workspace::copy_across(&line, &origin, &j, overwrite).await
+                        } else {
+                            super::copy::copy_remote(&line, &origin, &j, overwrite).await
+                        }
                     },
                 )
                 .await;
@@ -1254,6 +1284,7 @@ impl FileWindow {
         let origin = self.source.origin();
         let board = self.write_board.clone();
         board.attach(ctx);
+        self.writes_started += 1;
         h.spawn(async move {
             let ask_board = board.clone();
             let out = super::writeops::run_writes(
@@ -1868,6 +1899,57 @@ impl FileWindow {
         &self.selection
     }
 
+    /// 〔FW34〕选中的**恰好那一项**叫什么；`Err(n)` ＝ 选中了 `n` 项（`n ≠ 1`）。
+    /// O(1)：只问选中态，不扫列表（预览每帧都问它）。
+    pub fn picked_name(&self) -> Result<String, usize> {
+        match self.selection.len() {
+            1 => self.selection.names().pop().ok_or(0),
+            n => Err(n),
+        }
+    }
+
+    /// 〔FW34〕按名字找那一行（O(n)：只在「选中的那一项换了」时调，不是每帧）。
+    pub fn row_named(&self, name: &str) -> Option<Listed> {
+        self.listing
+            .rows
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|r| r.name == name)
+            .cloned()
+    }
+
+    /// 〔FW34〕这个目录视图**手上有没有活**（`None` ＝ 没有）—— 关标签页 / 收右栏之前问它。
+    ///
+    /// 有一问摆着、有一份文本开着、有东西在传 / 在复制 / 在写 / 在读写文本 ⇒ 说是哪一件。
+    /// 后台那几趟任务不随标签页走，关掉就再也没人把结局摆给你看 ⇒ 这时候不许关。
+    /// ⚠ 「新建空文件」那一趟不在里面（它借写操作的结果板、却不经 [`Self::start_writes`]，一趟不到一秒）。
+    pub fn busy_reason(&self) -> Option<String> {
+        if self.editing.is_some() {
+            return Some("有一份文本开着".into());
+        }
+        if self.modal_up() {
+            return Some("有一问还没答".into());
+        }
+        if let Some(p) = self.edits.opening().or_else(|| self.edits.saving()) {
+            return Some(format!("正在读写 {p}"));
+        }
+        if let Some(n) = self.copy_board.running() {
+            return Some(format!("正在复制 {n}"));
+        }
+        if let Some(n) = self.pull.in_flight() {
+            return Some(format!("正在下载 {n}"));
+        }
+        let up = self.board.cancels().in_flight_names();
+        if !up.is_empty() {
+            return Some(format!("正在上传 {}", up.join("、")));
+        }
+        if self.writes_started > self.write_board.rounds() {
+            return Some("有写操作还没回话".into());
+        }
+        None
+    }
+
     /// 键盘 / 菜单那一下做不了时说的那句话。
     pub fn key_notice(&self) -> Option<&str> {
         self.key_notice.as_deref()
@@ -1895,8 +1977,9 @@ impl FileWindow {
             || self.editing.is_some()
     }
 
-    /// 键盘这一帧该不该归列表。**四道闸**，任一成立就不接：
+    /// 键盘这一帧该不该归列表。**五道闸**，任一成立就不接：
     ///
+    /// 0. 〔FW34〕这个目录视图不是焦点那一个（双栏时另一栏、后台标签页）—— 不闸的话按一下 Delete 两栏各删一次；
     /// 1. 有模态框摆着（[`Self::modal_up`]）—— 键是给那个框的；
     /// 2. 右键菜单摆着 —— Esc / 点别处先把它收掉；
     /// 3. 画的是搜索命中那一摞 —— 那一摞交不出下标（`rows::HitTally` 头注那条），
@@ -1904,7 +1987,8 @@ impl FileWindow {
     /// 4. 有控件拿着键盘焦点（搜索框里正在打字、一颗按钮刚被 Tab 到）—— 字是给它的。
     ///    ⚠ 点一下列表里的行，焦点就交出去了（egui 点别处即交；行不可聚焦），键盘回到列表。
     pub fn keys_blocked(&self, ctx: &egui::Context) -> bool {
-        self.modal_up()
+        !self.focused
+            || self.modal_up()
             || self.menu.is_some()
             || self.showing_hits()
             || ctx.egui_wants_keyboard_input()
@@ -2104,13 +2188,12 @@ impl FileWindow {
             let picked: Vec<&super::source::Listed> = idx.iter().map(|&i| &rows[i]).collect();
             (select::actions_for(&picked), idx.len())
         };
-        self.menus_opened += 1;
         self.key_notice = None;
         self.menu = Some(MenuAt {
             at,
             actions,
             n,
-            serial: self.menus_opened,
+            serial: MENU_SERIAL.fetch_add(1, Ordering::SeqCst) + 1,
         });
         true
     }
@@ -2168,6 +2251,8 @@ impl FileWindow {
     /// 这正是本仓那条「判据不在执行链上就等于不存在」。
     ///
     /// ⇒ 从此 `eframe::App::ui` 只剩一句委派，判据直接喂本函数。
+    /// 〔FW34〕那一句委派今天住 [`super::workspace::Workspace`]（它才是 `eframe::App`）：
+    /// 每个标签页的正文就是这里，外面只多了标签栏 · 双栏 · 预览那一层。
     pub fn frame_body(&mut self, ui: &mut egui::Ui) {
         // 🔴 **第一帧**才复核得了字体 —— 之前碰 `fonts_mut` 会 panic，
         //    而本仓 release 是 `panic = "abort"`（理由逐条住 `fonts.rs §四`）。
@@ -2451,12 +2536,6 @@ impl FileWindow {
     }
 }
 
-impl eframe::App for FileWindow {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.frame_body(ui);
-    }
-}
-
 /// 那件事**是不是当场就失败了** —— 是（＝预算内就结束了）回 `true`。
 ///
 /// # 🔴 它补的是一个**静默成功**（本仓头号病形）
@@ -2577,7 +2656,8 @@ pub fn open_detached_seeded(
                 w.shelf = Some(super::bookmarks::Shelf::open(bookmarks, &w.source.origin()));
                 // 第一拍：读文件 ＋ `set_fonts`。**这里复核不了**（`fonts.rs §四`）。
                 w.font = FontState::Pending(fonts::install(&cc.egui_ctx));
-                Ok(Box::new(w) as Box<dyn eframe::App>)
+                // 〔FW34〕最外一层是 `Workspace`（标签页 ＋ 双栏 ＋ 预览），开窗那一个目录视图是它的第一个标签页。
+                Ok(Box::new(super::workspace::Workspace::new(w)) as Box<dyn eframe::App>)
             }),
         )
         .map_err(|e| format!("开窗失败: {e}"))
