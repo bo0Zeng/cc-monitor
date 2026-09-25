@@ -7444,6 +7444,381 @@
       "kind": "body",
       "zh": "未装",
       "args": []
+    },
+    "mcp.remove.failed": {
+      "kind": "error",
+      "zh": "删除失败",
+      "args": []
+    },
+    "mcp.remove.confirm": {
+      "kind": "body",
+      "zh": "从{where}项目 .mcp.json 删除 MCP server「{name}」？",
+      "args": ["where", "name"]
+    },
+    "mcp.who.remote": {
+      "kind": "body",
+      "zh": "远端 [{machine}]",
+      "args": ["machine"]
+    },
+    "mcp.who.local": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
+    },
+    "mcp.write.failed": {
+      "kind": "error",
+      "zh": "写入 .mcp.json 失败",
+      "args": []
+    },
+    "mcp.form.editing": {
+      "kind": "body",
+      "zh": "编辑中：{name}（改配置后保存覆盖；改名请删旧新增）",
+      "args": ["name"]
+    },
+    "mcp.form.badConfig": {
+      "kind": "error",
+      "zh": "配置无效",
+      "args": []
+    },
+    "mcp.form.noNameBody": {
+      "kind": "error",
+      "zh": "填一个 MCP server 名再保存。",
+      "args": []
+    },
+    "mcp.form.noName": {
+      "kind": "error",
+      "zh": "缺 server 名",
+      "args": []
+    },
+    "mcp.form.needDir": {
+      "kind": "body",
+      "zh": "先填项目目录并「读取」",
+      "args": []
+    },
+    "mcp.form.save": {
+      "kind": "action",
+      "zh": "添加/更新到 .mcp.json",
+      "args": []
+    },
+    "mcp.form.jsonHint": {
+      "kind": "control",
+      "zh": "{a}  或  {b}",
+      "args": ["a", "b"]
+    },
+    "mcp.form.name": {
+      "kind": "control",
+      "zh": "server 名",
+      "args": []
+    },
+    "mcp.form.cancelEdit": {
+      "kind": "action",
+      "zh": "取消编辑",
+      "args": []
+    },
+    "mcp.scope.delete": {
+      "kind": "action",
+      "zh": "删",
+      "args": []
+    },
+    "mcp.scope.editHint": {
+      "kind": "body",
+      "zh": "把这条填进下方表单改配置后保存（覆盖）。改名请删旧新增。",
+      "args": []
+    },
+    "mcp.scope.edit": {
+      "kind": "action",
+      "zh": "编辑",
+      "args": []
+    },
+    "mcp.scope.detailHint": {
+      "kind": "body",
+      "zh": "看完整配置 JSON + 来源文件",
+      "args": []
+    },
+    "mcp.scope.source": {
+      "kind": "body",
+      "zh": "来源：{sourcePath}",
+      "args": ["sourcePath"]
+    },
+    "mcp.scope.readOnly": {
+      "kind": "body",
+      "zh": " · 只读",
+      "args": []
+    },
+    "mcp.scope.readOnlyRemote": {
+      "kind": "body",
+      "zh": " · 只读（远端）",
+      "args": []
+    },
+    "mcp.catalog.registerNeedDir": {
+      "kind": "body",
+      "zh": "先填项目目录作注册目标",
+      "args": []
+    },
+    "mcp.catalog.register": {
+      "kind": "action",
+      "zh": "注册到此项目",
+      "args": []
+    },
+    "mcp.catalog.present": {
+      "kind": "body",
+      "zh": "✓ 已在本项目",
+      "args": []
+    },
+    "mcp.catalog.needDir": {
+      "kind": "body",
+      "zh": "注册到项目需先在上方填项目目录（作为注册目标）。",
+      "args": []
+    },
+    "mcp.catalog.target": {
+      "kind": "body",
+      "zh": "注册目标：{machine} 项目 {dir}",
+      "args": ["machine", "dir"]
+    },
+    "mcp.catalog.expanded": {
+      "kind": "action",
+      "zh": "▾",
+      "args": []
+    },
+    "mcp.catalog.collapsed": {
+      "kind": "action",
+      "zh": "▸",
+      "args": []
+    },
+    "mcp.catalog.clear": {
+      "kind": "action",
+      "zh": "清空库",
+      "args": []
+    },
+    "mcp.catalog.title": {
+      "kind": "title",
+      "zh": "库 · 见过的 MCP server {n} 个",
+      "args": ["n"]
+    },
+    "mcp.remote.reread": {
+      "kind": "action",
+      "zh": "重新读取",
+      "args": []
+    },
+    "mcp.remote.header": {
+      "kind": "body",
+      "zh": "跨机 user scope（机器全局）MCP · 只读。要管理远端项目级的 .mcp.json：在上方项目目录填/选远端项目路径。",
+      "args": []
+    },
+    "mcp.renderRemoteError.retry": {
+      "kind": "action",
+      "zh": "重试",
+      "args": []
+    },
+    "mcp.remote.failed": {
+      "kind": "error",
+      "zh": "读取远端 [{machine}] MCP 失败：{msg}",
+      "args": ["machine", "msg"]
+    },
+    "mcp.remote.empty": {
+      "kind": "body",
+      "zh": "远端 [{machine}] 没有 user scope 的 MCP 配置（或 ~/.claude.json 不在）。",
+      "args": ["machine"]
+    },
+    "mcp.remote.reading": {
+      "kind": "body",
+      "zh": "读取远端 [{machine}] 的 MCP 配置…（走 SSH，可能要几秒）",
+      "args": ["machine"]
+    },
+    "mcp.local.failed": {
+      "kind": "error",
+      "zh": "读取 MCP 配置失败",
+      "args": []
+    },
+    "mcp.local.reading": {
+      "kind": "body",
+      "zh": "读取本机的 MCP 配置…",
+      "args": []
+    },
+    "mcp.remoteProject.writable": {
+      "kind": "body",
+      "zh": "远端 [{machine}] 项目 {dir} · 可增 / 改 / 删（写远端的 .mcp.json）。",
+      "args": ["machine", "dir"]
+    },
+    "mcp.reloadRemoteProject.retry": {
+      "kind": "action",
+      "zh": "重试",
+      "args": []
+    },
+    "mcp.remoteProject.failed": {
+      "kind": "error",
+      "zh": "读取远端 [{machine}] 项目 .mcp.json 失败：{e}",
+      "args": ["machine", "e"]
+    },
+    "mcp.remoteProject.reading": {
+      "kind": "body",
+      "zh": "读取远端 [{machine}] 项目 {dir} 的 .mcp.json…（SSH）",
+      "args": ["machine", "dir"]
+    },
+    "mcp.machine.local": {
+      "kind": "control",
+      "zh": "本机",
+      "args": []
+    },
+    "mcp.machine.label": {
+      "kind": "control",
+      "zh": "机器：",
+      "args": []
+    },
+    "mcp.dirs.none": {
+      "kind": "body",
+      "zh": "这台机器还没有用过的项目目录 —— 上面可以手填任意路径。",
+      "args": []
+    },
+    "mcp.dirs.loading": {
+      "kind": "body",
+      "zh": "读取中…",
+      "args": []
+    },
+    "mcp.dirs.failed": {
+      "kind": "body",
+      "zh": "读不到这台机器的项目清单 —— 上面仍可手填任意路径。",
+      "args": []
+    },
+    "mcp.build.read": {
+      "kind": "action",
+      "zh": "读取",
+      "args": []
+    },
+    "mcp.build.projectDir": {
+      "kind": "control",
+      "zh": "项目目录：含 .mcp.json 的项目根",
+      "args": []
+    },
+    "mcp.build.intro": {
+      "kind": "body",
+      "zh": "读：跨 scope 展示 MCP 服务器（用户 / local / 项目）；配了远端可切「机器」跨机只读看远端 user scope。写：只增改删「本机项目 .mcp.json」——绝不动 ~/.claude.json；跨机器只经项目下面那一块「推 / 拉」。设置窗拿不到当前会话项目，请在下面填/选项目目录。",
+      "args": []
+    },
+    "mcp.scope.project": {
+      "kind": "title",
+      "zh": "项目 .mcp.json",
+      "args": []
+    },
+    "mcp.scope.local": {
+      "kind": "title",
+      "zh": "本项目(local)",
+      "args": []
+    },
+    "mcp.scope.user": {
+      "kind": "title",
+      "zh": "用户",
+      "args": []
+    },
+    "mcp.parse.notObject": {
+      "kind": "error",
+      "zh": "配置必须是 JSON 对象",
+      "args": []
+    },
+    "mcp.parse.badJson": {
+      "kind": "error",
+      "zh": "JSON 无效：{message}",
+      "args": ["message"]
+    },
+    "mcp.parse.empty": {
+      "kind": "error",
+      "zh": "配置为空",
+      "args": []
+    },
+    "mcp.serverSummary.unknown": {
+      "kind": "body",
+      "zh": "未知形态",
+      "args": []
+    },
+    "plugins.render.sep": {
+      "kind": "body",
+      "zh": " · ",
+      "args": []
+    },
+    "plugins.render.locationUnknown": {
+      "kind": "body",
+      "zh": "安装位置：未记",
+      "args": []
+    },
+    "plugins.render.location": {
+      "kind": "body",
+      "zh": "安装位置：{path}",
+      "args": ["path"]
+    },
+    "plugins.render.sourceUnknown": {
+      "kind": "body",
+      "zh": "来源：未记",
+      "args": []
+    },
+    "plugins.render.source": {
+      "kind": "body",
+      "zh": "来源：{source}",
+      "args": ["source"]
+    },
+    "plugins.render.emptyRegistry": {
+      "kind": "body",
+      "zh": "登记表在，但里面一个 marketplace 都没有。",
+      "args": []
+    },
+    "plugins.render.none": {
+      "kind": "body",
+      "zh": "这台机器没有登记任何 marketplace（~/.claude/plugins/known_marketplaces.json 不存在）。",
+      "args": []
+    },
+    "plugins.refresh.failed": {
+      "kind": "error",
+      "zh": "读不到 marketplace 登记表：{message}（这不等于「没有」）",
+      "args": ["message"]
+    },
+    "plugins.build.reread": {
+      "kind": "action",
+      "zh": "重新读取",
+      "args": []
+    },
+    "plugins.build.intro": {
+      "kind": "body",
+      "zh": "这一页列出这台机器上登记的 Claude Code marketplace，和每个 marketplace 声明的插件数。它回答的是「有哪些插件可以装」，不是「装了哪些 / 启用了哪些」—— 后者今天在盘上没有真相源，与其猜一个数字给你看，不如说清这一点。只读、按需读一次，不后台轮询。",
+      "args": []
+    },
+    "plugins.updated.date": {
+      "kind": "body",
+      "zh": "更新时间：{d}",
+      "args": ["d"]
+    },
+    "plugins.updated.raw": {
+      "kind": "body",
+      "zh": "更新时间：{lastUpdated}",
+      "args": ["lastUpdated"]
+    },
+    "plugins.updated.unknown": {
+      "kind": "body",
+      "zh": "更新时间：未记",
+      "args": []
+    },
+    "plugins.declared.count": {
+      "kind": "body",
+      "zh": "声明 {declaredPlugins} 个插件",
+      "args": ["declaredPlugins"]
+    },
+    "plugins.declared.unreadable": {
+      "kind": "body",
+      "zh": "读不到插件数：{why}",
+      "args": ["why"]
+    },
+    "plugins.declared.noReason": {
+      "kind": "body",
+      "zh": "原因未知",
+      "args": []
+    },
+    "plugins.fetchSurvey.oldBackend": {
+      "kind": "error",
+      "zh": "那台机器上的后端版本旧，还读不了插件市场。重装后端之后就有。",
+      "args": []
+    },
+    "plugins.bad.shape": {
+      "kind": "error",
+      "zh": "插件市场清单的形状对不上（后端与界面版本不一致？重装那台机器的后端试试）",
+      "args": []
     }
   }
 }
