@@ -45,6 +45,7 @@ import { hostOs } from "./settings/host-os";
 import { createUnknownKeysBar } from "./settings/unknown-keys-notice";
 import { openSettingsWindow } from "./settings/open-settings"; // ST1：点「设置」有反馈（不 import 设置面板）
 import { collectAccountRows, createEventRefresher } from "./session-accounts-poll";
+import { lastAccounts } from "./history-reads";
 import { TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
 import { getBehavior, setBehavior } from "./behavior";
@@ -244,10 +245,11 @@ window.addEventListener("DOMContentLoaded", async () => {
       // 由 cc-monitor 记在本机），live 探测不到时徽章兜底显「上次用本工具起」。失败 → 空表降级。
       let lastByS = new Map<string, string>();
       try {
-        const raw = await commands.list_last_accounts();
+        // 〔C4d〕问本机常驻后端（注解的读写者）。
+        const raw = await lastAccounts();
         lastByS = new Map(Object.entries(raw));
       } catch (e) {
-        console.warn("list_last_accounts failed:", e);
+        console.warn("history-last-accounts failed:", e);
       }
       if (mySeq !== refreshSeq) return; // I4：晚到的旧快照不覆盖新快照
       tabs.setSessionAccounts(rows, emailByName, lastByS, readyOrigins, currentByOrigin);

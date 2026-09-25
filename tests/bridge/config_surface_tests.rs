@@ -544,10 +544,12 @@ fn remote_host_never_resolves_to_a_local_path() {
     // 计数自检：一条 Remote 都没扫到 = 守卫空转
     // **等号而不是 `>=`**（T04 审计重要 5）：真实是 5 条，写 `>= 4` 恰好容忍一次
     // 静默降级——审计实测单独改一条 host 就是全绿。改 TOOLS 时要来改这个数。
+    // 〔TL1 · 4C〕4 → 5：`panorama` 推给远端那台的那一份（`~/.cc-monitor/bin/cc-monitor-panorama`，`Remote`）。
     assert_eq!(
-        checked, 4,
-        "Remote 条目数变了（真实应为 4）——改 TOOLS 就要来确认这个数。\
-             ★ P4c（08-12）5→4：`~/.cc-bus/` 转 Either（`P4a` 把读面做成本机可用）"
+        checked, 5,
+        "Remote 条目数变了（真实应为 5）——改 TOOLS 就要来确认这个数。\
+             ★ P4c（08-12）5→4：`~/.cc-bus/` 转 Either（`P4a` 把读面做成本机可用）；\
+             〔TL1〕4→5：代码全景组件推给远端那一份"
     );
 }
 
@@ -602,6 +604,11 @@ fn every_host_declaration_is_pinned() {
         ("backend", "$APP_DIR", Client),
         ("backend", "~/.cc-monitor/bin/cc-monitor-backend-*", Client),
         ("backend", "$BACKEND_PATH", Remote),
+        // 〔TL1 · 4C〕代码全景小程序（RM1f 起有落点的部署物）：两个载体、同一个相对落点、两台机器 ——
+        //    本机那份是 monitor 跑着的这台放的（`place_local`，`Client`）；远端那份推给那台（`push_to`，`Remote`）。
+        //    ⚠ 标 `Either` 会说假话：两份的来源与放法不同（本机原生 / 远端 musl），一台上有不等于另一台上有。
+        ("panorama", "~/.cc-monitor/bin/cc-monitor-panorama", Client),
+        ("panorama", "~/.cc-monitor/bin/cc-monitor-panorama", Remote),
         ("project-mcp", ".mcp.json", ProjectDir),
         // 〔AS1 · 第四波 4B〕同一份文件的第二个写入来源（推 / 拉：条目原样从另一台机器拷来）。
         //    `ProjectDir` 与上一行同一条理由：写在你选定的那个项目目录里，那个目录在哪台机器上就算哪台的。

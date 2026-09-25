@@ -113,7 +113,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "monitor→backend",
         "tests/bridge/apikey_remote_tests.rs",
         "src/backend/inbound.rs",
-        "〔RM1a〕账号层那份凭据文件按机器读写：monitor 这边发的两个命令名、解析的那几个字段 \
+        "〔RM1a〕上游选择那份凭据文件按机器读写：monitor 这边发的两个命令名、解析的那几个字段 \
          必须就是后端登记表里声明的那几个 —— 读它才能拿**后端声明的**字段造样本喂解析器\
          （本侧手抄一份就成了两侧同源的恒等）",
     ),
@@ -254,6 +254,16 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          monitor 的 `local_failure_kind` 凭「退出 2 ＋ stderr 行尾是 `unknown argument: <子命令>`」判老后端，\
          那一串的写侧是后端 `history_query::run` 的 `unknown argument: {other}` 与 `query error: {e}`。\
          失效方向**很安静**：后端改一个字，本机老后端又全落回「瞬时」、前端重试到上限才停，两侧各自全绿。",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/history_title_coverage.rs",
+        "src/backend/observe/history_query.rs",
+        "★〔C4d · 第四波 4B 新增〕**承载标题的记录一个不漏被标题抽取接住** —— \
+         `history::title_coverage::every_title_bearing_record_is_consumed_by_the_extractor`。人群（带 `*title` 字段的 \
+         `JsonlRecord` 变体与它的线上类型名）只住 monitor 的 `messages.rs`，而标题抽取那一段随本机历史清单搬进了后端 \
+         `analyze_session`（本机与远端同一个函数）⇒ 这条性质只能同时读两侧源码才验得了。失效方向同它立项时那一次：\
+         CC 再改一次标题记录的名字，后端那一臂接不住，会话列表上的标题静默消失，两侧各自全绿。",
     ),
     // ── backend → monitor（2 条）：backend 的判据去读 monitor ────────────────────
     (

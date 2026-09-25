@@ -30,18 +30,15 @@ import { isValidRbindToken } from "./launch-dimensions";
 // ⚠ 那两个文件（`launch-render-fallback.ts` / `session-backend.ts`）**没删**：
 // 它们今天是逐字节金标准（`payload-golden.json` / `tmux-outer-golden.json`）的**左边**，
 // 也就是「另一种语言的独立实现」；删它们等于把跨语言对拍降级成「Rust 没变」的冻结快照
-// —— 与 `launch-render-cli.ts` 同一条先例（复裁过两次：不划算，不删）。
+// —— 〔LR1〕`ccm …` 调用行那一份 TS 渲染器曾按同一条理由留着，U8c-3 已删
+// （它的夹具换成「生产请求 ＋ 手写期望」，见 `launch-cli-golden.ts` 头注）；这一族还没动。
 // 逐处住址与「还站不站在生产路上」两把尺子见 `launch_wire_f07_main_path_tests.rs` 的
 // `TS_FALLBACK_KEEPERS` / `TS_FALLBACK_REACH`，**本刀两张都重裁过**。
-// U8c-2c-2：`tryRenderCli` **不再是生产渲染器**（那一支已切到 Rust）——
-// 它降级为「只供 `launch-cli-golden.ts` 生成夹具」。
-// ⚠ 〔U8c-3-r2 08-14〕原写「删在 U8c-3」。**那个排期本身该被重问一次**：它今天是
-// `cli-golden.json` 的**唯一生成者**，而那份夹具是「ccm 调用行该长什么样」在本仓的
-// **独立说法**（Rust 侧 `ccm_invocation.rs` 的自测与实现同住一个文件，不是同一种独立）。
-// 删它 = 把跨语言对拍降级成「Rust 没变」的冻结快照 —— `ccm_invocation.rs` 的 P1 头注
-// 逐字预告过这个后果。⇒ 删它是**用一份独立说法换 ~500 行非生产代码**，
-// 而它今天零生产调用、零漂移风险（夹具字节比对钉着）。本轮复裁：**不划算，不删**。
-import type { CliRenderResult } from "./launch-render-cli";
+// 〔LR1 · U8c-3〕`ccm …` 调用行的 TS 渲染器（原 `launch-render-cli.ts`）已删 ——
+// 生产从 U8c-2c-2 起就只走 Rust（`renderCliViaBackend` → `render_ccm_launch`），
+// 它最后只剩「产夹具的 `out`」一个用途，而那一格改成了手写期望。
+/** `renderCliViaBackend` 的结果：`ok:false` 带**降级理由**，不是错误（§33）。 */
+type CliRenderResult = { ok: true; cmd: string } | { ok: false; reason: string };
 import type { CliRenderRequest, PayloadRenderRequest } from "./launch-cli-wire.ts";
 import type { CcmProbeResult } from "./ccm-probe.ts";
 import { sanitizeRemoteLauncher } from "./shell-quote.ts";
@@ -201,9 +198,8 @@ async function renderLaunchCommand(
   // 那是「静默丢一样东西」的形状：命令能跑、会话能起、只有 `↗` 从此拉不到窗口，
   // 而归因会指向别处（正是 `§8.5 ②`/`§6.2` 那四档猜要治的病）。
   //
-  // ⚠ TS 的 `RBIND_TOKEN_DIMENSION.cliFlags` 也返回 `null`（诚实放弃，判据在
-  // `tests/launch-render-cli.test.ts`），但 `tryRenderCli` **今天不是生产渲染器**
-  // ⇒ 那一处拦不住这里。**两处都要有**，这一处是站在生产路上的那一处。
+  // ⚠ 〔LR1 · U8c-3〕原来 TS 渲染器那一侧还有一处（令牌维度说不出 CLI ⇒ 放弃），
+  // 它随 TS 渲染器删了 —— 那一处本来就不在生产路上。**今天这里是唯一的一处。**
   //
   // ⚠ 判据依据的是**载荷里有没有这条 `EnvOp`**（不是「ctx 里有没有 rbindToken」）——
   // 判据必须读渲染器真吃的那个对象，否则「维度没把它推进 plan」这一类回归在这里是隐形的。
@@ -219,12 +215,12 @@ async function renderLaunchCommand(
   if (!behavior.forceLaunchPayloadRenderer && ctx.transport.kind === "ssh" && !payloadCarriesRbindToken) {
     const probe = await probeCcm(origin);
     // R04①：一次调用同时回答"能不能"与"渲染成什么"。拿不到 `ok:true` 就走兜底——
-    // 不存在"渲染出来了但悄悄丢了某个修饰"这个中间态（改造前 `renderCli` 对 `cliFlags` 返回
-    // `null` 是静默跳过的，安全性全靠调用方记得先问 `canRenderCli`）。
+    // 不存在"渲染出来了但悄悄丢了某个修饰"这个中间态（R04① 之前 TS 渲染器对说不出的维度
+    // 是静默跳过的，安全性全靠调用方记得先问一句「能不能渲」）。
     //
     // **U8c-2c-2：这一支已切到 Rust**（`backend::control::ccm_invocation::render_ccm_invocation`）。
     // 前端只发结构化请求，命令由后端渲染 —— 这是本工作区第一条真正切过去的渲染路径。
-    // TS 的 `tryRenderCli` **没删**，降级为「只供夹具对拍」（删在 U8c-3）。
+    // 〔LR1〕TS 那份 `tryRenderCli` 已删（U8c-3）。
     //
     // 🔴 〔步 22b·B 2026-09-20〕**降级那条路今天也在 Rust 里了。**
     // 这里原来写着两段：「兜底那支仍在 TS（`container: tmux` 时它要外层 tmux 命令）」
@@ -290,7 +286,7 @@ async function renderLaunchCommand(
 /** U8c-2c-2：把 `{ctx, plan, probe}` 摊成上线形状，交给 Rust 渲染 `ccm …` 调用行。
  *
  *  **`ok:false` 不是错误，是诚实降级**（§33）—— 调用方拿着 `reason` 去走载荷那条，
- *  与切换前 `tryRenderCli` 的语义逐字相同。
+ *  与切换前 TS 渲染器（已删）的语义逐字相同。
  *
  *  ⚠ IPC 本身失败（后端崩/参数被拒）与「渲染器说渲染不出来」是**两件事**：
  *  前者 catch 成一条带 `IPC` 字样的 reason，照样降级 —— 拉起功能永不因为渲染器选择而变砖。 */
@@ -319,8 +315,8 @@ async function renderCliViaBackend(
  *  「静默换一条路」永远长得和「本来就该走那条」一模一样，所以它需要一条自己的判据〕。
  *
  *  现在 `launch-cli-golden.ts` 用这同一个函数产夹具里的 `req`，Rust 侧拿**生产 wire 类型**
- *  反序列化它、跑**生产命令**、与 TS 渲染器的产物逐字节比 ⇒ 上面那三个变异各自会让
- *  `req` 变形 ⇒ Rust 产出变 ⇒ 与 `out` 不一致 ⇒ 红。 */
+ *  反序列化它、跑**生产命令**、与用例表里手写的 `out` 逐字节比（〔LR1〕原先比的是 TS 渲染器的
+ *  产物，它删了）⇒ 上面那三个变异各自会让 `req` 变形 ⇒ Rust 产出变 ⇒ 与 `out` 不一致 ⇒ 红。 */
 export function buildCliRenderRequest(
   ctx: LaunchContext,
   plan: LaunchPlan,

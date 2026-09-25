@@ -98,7 +98,7 @@ WAS_16: tuple[tuple[str, str], ...] = (
     ("tmux.rs", "capture_remote_pane"),
     ("tmux.rs", "list_remote_tmux"),
     ("ccm_probe.rs", "probe_ccm_cli"),
-    ("remote_history.rs", "run_list_query"),
+    # 〔C4d · 第四波 4B〕`("remote_history.rs", "run_list_query")` 那一行摘了：逐次拨号那条路删了。
     ("remote_history.rs", "stream_read_remote_session"),
 )
 

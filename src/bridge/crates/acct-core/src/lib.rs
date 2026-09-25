@@ -70,8 +70,8 @@ pub const AUTH_KIND_API_KEY: &str = "api-key";
 ///
 /// ⚠ **本数组只是「今天认识哪些字面量」，不是「将来只会有这两个」。**
 /// 加第三档的步骤：这里加一个常量 + `auth_ready` 里给它一条规则 +
-/// `src/bridge/src/accounts.rs::AuthKind` 加一个 variant（生成物会跟着变，TS 侧的
-/// `switch` 少一支就 `tsc` 红）。
+/// TS 侧 `src/accounts.ts` 的 `AuthKind` 联合加一支（〔C4d〕monitor 那份 Rust 枚举与生成物已退役；
+/// 后端成品与跨语言金样 `tests/__fixtures__/accounts.golden.json` 跟着变，TS 解码器不认就红）。
 pub const AUTH_KINDS: [&str; 2] = [AUTH_KIND_SUBSCRIPTION, AUTH_KIND_API_KEY];
 
 /// manifest 的 `authKind` 键 → 鉴权方式。**这是这条分类规则的唯一住址。**
@@ -137,7 +137,7 @@ pub fn apikey_account_id_of_dir(config_dir: &str) -> Option<String> {
 ///
 /// 「有行」说的是 **(agent, 账号) 这一对**〔条 49 · `设计/90 §1.2`〕：凭据文件里的行只属于
 /// `table_agent` 那一家（monitor 传 `payload::APIKEY_TABLE_AGENT`、后端传
-/// `accounts::apikey::CREDENTIALS_FILE_AGENT`，两处字面量由既有判据对拍）⇒ `agent` 不是那一家 ⇒ 空集。
+/// `accounts::upstream::CREDENTIALS_FILE_AGENT`，两处字面量由既有判据对拍）⇒ `agent` 不是那一家 ⇒ 空集。
 ///
 /// ⚠ 它答的是「表里有没有这一行」，**不是**「这个 key 能不能用」，也不是「这次拉起会不会真的注入」
 /// （那还要过「中转在不在跑」那一格）。

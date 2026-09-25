@@ -12,8 +12,6 @@ import {
   groupByScope,
   serverSummary,
   parseServerConfig,
-  stableStringify,
-  catalogKey,
   McpSection,
   type McpServerEntry,
 } from "../../src/settings/mcp-section";
@@ -121,23 +119,6 @@ describe("F87b-fix 编辑锁名", () => {
   });
 });
 
-describe("F89b catalog dedup 纯函数", () => {
-  it("stableStringify: 键序无关、递归", () => {
-    expect(stableStringify({ a: 1, b: 2 })).toBe(stableStringify({ b: 2, a: 1 }));
-    expect(stableStringify({ x: { p: 1, q: 2 } })).toBe(stableStringify({ x: { q: 2, p: 1 } }));
-    expect(stableStringify([1, { a: 1, b: 2 }])).toBe(stableStringify([1, { b: 2, a: 1 }]));
-    expect(stableStringify(null)).toBe("null");
-    expect(stableStringify("s")).toBe('"s"');
-  });
-  it("catalogKey: 同配置不同键序 → 同键；不同配置/名 → 异键", () => {
-    expect(catalogKey("s", { command: "x", args: ["-y"] })).toBe(
-      catalogKey("s", { args: ["-y"], command: "x" }),
-    );
-    expect(catalogKey("s", { command: "x" })).not.toBe(catalogKey("s", { command: "y" }));
-    expect(catalogKey("s1", { command: "x" })).not.toBe(catalogKey("s2", { command: "x" }));
-  });
-});
-
 // F89a：远端项目级 MCP——空/新远端项目仍须出加表单（否则无法建第一条 server；审计逮到的阻塞）。
 describe("F89a 远端项目管理", () => {
   const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -171,13 +152,14 @@ describe("F89a 远端项目管理", () => {
   });
 });
 
-describe("F89b 库 UI（累积 + 已在本项目 + 注册）", () => {
+// 〔TL1 · 4C〕「F89b 库」那两段（去重纯函数 · 累积 + 一键注册）随「库」一起退役：资产目录的家是后端（V113），
+// 装要经差异、对面不同要问盖不盖（AS1 / AS2 那一条）。退役本身由下一条钉住。
+describe("TL1 「库」退役", () => {
   const flush = () => new Promise((r) => setTimeout(r, 0));
-  it("跨项目累积；当前项目已有 → 标注；不在 → 注册钮写入", async () => {
+  it("读过几个项目之后，列表里没有「库」那一块、也没有一键注册的口", async () => {
     document.body.replaceChildren();
-    const writes: { projectDir?: string; name?: string }[] = [];
     vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
-      const a = args as { projectDir?: string; name?: string } | undefined;
+      const a = args as { projectDir?: string } | undefined;
       if (cmd === "read_mcp_servers") {
         if (a?.projectDir === "/p1")
           return [{ scope: "project", name: "a", server: { command: "x" }, sourcePath: "" }];
@@ -185,11 +167,7 @@ describe("F89b 库 UI（累积 + 已在本项目 + 注册）", () => {
           return [{ scope: "project", name: "b", server: { command: "y" }, sourcePath: "" }];
         return [];
       }
-      if (cmd === "write_project_mcp_server") {
-        writes.push({ projectDir: a?.projectDir, name: a?.name });
-        return undefined;
-      }
-      return []; // list_* / origins
+      return [];
     });
     const section = loaded(new McpSection());
     document.body.appendChild(section.element);
@@ -197,22 +175,17 @@ describe("F89b 库 UI（累积 + 已在本项目 + 注册）", () => {
     const dirInput = section.element.querySelector<HTMLInputElement>('input[placeholder^="项目目录"]')!;
     const readBtn = () =>
       [...section.element.querySelectorAll("button")].find((b) => b.textContent === "读取")!;
-    // 读 /p1 → 库 {a}；a 已在本项目 → 标注、无注册钮
-    dirInput.value = "/p1";
-    readBtn().click();
-    await flush();
-    expect(section.element.querySelector(".mcp-catalog")).not.toBeNull();
-    expect(section.element.querySelectorAll(".mcp-catalog-here").length).toBe(1); // a 已在本项目
-    expect(section.element.querySelectorAll(".mcp-catalog-reg").length).toBe(0);
-    // 读 /p2 → 库 {a,b}；b 已在 /p2 标注，a 不在 → 注册钮
-    dirInput.value = "/p2";
-    readBtn().click();
-    await flush();
-    const regBtns = section.element.querySelectorAll<HTMLButtonElement>(".mcp-catalog-reg");
-    expect(regBtns.length).toBe(1); // 只有 a 可注册
-    regBtns[0].click();
-    await flush();
-    expect(writes.some((w) => w.name === "a" && w.projectDir === "/p2")).toBe(true); // a 注册进 /p2
+    for (const d of ["/p1", "/p2"]) {
+      dirInput.value = d;
+      readBtn().click();
+      await flush();
+    }
+    // 正控：读到了 —— /p2 那一条真在列表里（不然下面的「没有」是空真）。
+    const names = [...section.element.querySelectorAll(".mcp-server-name")].map((e) => e.textContent);
+    expect(names).toEqual(["b"]);
+    // 从前 /p1 读到的 a 会留在「库」里、带一颗「注册到此项目」的钮。
+    expect(section.element.textContent).not.toContain("注册到此项目");
+    expect(section.element.textContent).not.toContain("见过的 MCP server");
   });
 });
 

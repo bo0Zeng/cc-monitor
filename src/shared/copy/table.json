@@ -452,6 +452,31 @@
       "zh": "这一版 cc-monitor 没有带 {os} / {arch} 的后端，所以装不到 {machine}。发布版带着它。",
       "args": ["machine", "os", "arch"]
     },
+    "panorama.refused.unsupportedMachine": {
+      "kind": "error",
+      "zh": "{machine} 是 {os} / {arch} 的机器，cc-monitor 今天不为这种机器准备代码全景组件。那台机器上看不了代码全景。",
+      "args": ["machine", "os", "arch"]
+    },
+    "panorama.refused.osUnknown": {
+      "kind": "error",
+      "zh": "问不出 {machine} 是什么系统，不知道该给它哪一份代码全景组件。查了什么：问过它，{why}。",
+      "args": ["machine", "why"]
+    },
+    "panorama.refused.archUnknown": {
+      "kind": "error",
+      "zh": "问不出 {machine} 是什么处理器架构，挑不出该给它的代码全景组件。查了什么：问过它，{why}。",
+      "args": ["machine", "why"]
+    },
+    "panorama.refused.notPromisedHere": {
+      "kind": "error",
+      "zh": "{machine} 是 {os} 机器，这一种的代码全景组件今天只在本机用得上。装到远程机器上还没有验证过，所以不装。",
+      "args": ["machine", "os"]
+    },
+    "panorama.refused.notCarried": {
+      "kind": "error",
+      "zh": "这一版 cc-monitor 没有带 {os} / {arch} 的代码全景组件，所以装不到 {machine}。发布版带着它。",
+      "args": ["machine", "os", "arch"]
+    },
     "assets.panel.hint": {
       "kind": "body",
       "zh": "这里列出别的机器上有、这台还没有或不一样的 skill 和 MCP。目录在各台之间自动对上，装要你点。",
@@ -4674,11 +4699,6 @@
       "zh": "○ {path} 还不存在（装的时候新建）",
       "args": ["path"]
     },
-    "machineAliases.rcStatus.installed": {
-      "kind": "body",
-      "zh": "✓ {path}：别名块已经装了{version}",
-      "args": ["path", "version"]
-    },
     "machineAliases.other.failed": {
       "kind": "error",
       "zh": "用不了这份：{e}",
@@ -4837,16 +4857,6 @@
       "zh": "同时装 cc 函数",
       "args": []
     },
-    "machineAliases.rc.writeHint": {
-      "kind": "body",
-      "zh": "写到 cc-monitor 自己那份别名文件；选了 shell 配置的话，再往里加一行 source。",
-      "args": []
-    },
-    "machineAliases.rc.write": {
-      "kind": "action",
-      "zh": "写入",
-      "args": []
-    },
     "machineAliases.rc.useOther": {
       "kind": "action",
       "zh": "用这份",
@@ -5000,31 +5010,6 @@
       "zh": "把登记终端窗口的那一小段装进你选的那份 $PROFILE；勾了「同时装 cc 函数」再加一个 cc 函数。只动 cc-monitor 那一小块，写前先备份、写后回读比对、不对就恢复。",
       "args": []
     },
-    "machineAliases.powershell.blockWhat": {
-      "kind": "body",
-      "zh": "登记终端窗口的那一小段",
-      "args": []
-    },
-    "machineAliases.powershell.nameHint": {
-      "kind": "control",
-      "zh": "名字，如 alphacc",
-      "args": []
-    },
-    "machineAliases.powershell.rcLabel": {
-      "kind": "control",
-      "zh": "这台机器的 PowerShell 配置，那一行加进哪份 $PROFILE：",
-      "args": []
-    },
-    "machineAliases.powershell.pasteActivation": {
-      "kind": "body",
-      "zh": "开一个新的 PowerShell 窗口。",
-      "args": []
-    },
-    "machineAliases.powershell.pasteTarget": {
-      "kind": "body",
-      "zh": "$PROFILE（PowerShell 启动时读的那份脚本）",
-      "args": []
-    },
     "machineAliases.posix.blockAfterInstall": {
       "kind": "body",
       "zh": "装好了。开一个新终端，或在当前终端 source 那份配置。",
@@ -5033,31 +5018,6 @@
     "machineAliases.posix.blockInstallTitle": {
       "kind": "body",
       "zh": "把 cc / cct 与「接上别名文件」那一行（src/shared/ccm-aliases.sh）装进你选的那份配置。只动 cc-monitor 那一小块，写前先备份、写后回读比对、不对就恢复。",
-      "args": []
-    },
-    "machineAliases.posix.blockWhat": {
-      "kind": "body",
-      "zh": "cc / cct 这一族",
-      "args": []
-    },
-    "machineAliases.posix.nameHint": {
-      "kind": "control",
-      "zh": "名字，如 alphacct",
-      "args": []
-    },
-    "machineAliases.posix.rcLabel": {
-      "kind": "control",
-      "zh": "这台机器的 shell 配置，那一行 source 加进哪份：",
-      "args": []
-    },
-    "machineAliases.posix.pasteActivation": {
-      "kind": "body",
-      "zh": "source 它，或开一个新终端。",
-      "args": []
-    },
-    "machineAliases.posix.pasteTarget": {
-      "kind": "body",
-      "zh": "~/.bashrc（或你实际用的 shell 配置文件）",
       "args": []
     },
     "machineStatus.facet.failIcon": {
@@ -7549,51 +7509,6 @@
       "kind": "body",
       "zh": " · 只读（远端）",
       "args": []
-    },
-    "mcp.catalog.registerNeedDir": {
-      "kind": "body",
-      "zh": "先填项目目录作注册目标",
-      "args": []
-    },
-    "mcp.catalog.register": {
-      "kind": "action",
-      "zh": "注册到此项目",
-      "args": []
-    },
-    "mcp.catalog.present": {
-      "kind": "body",
-      "zh": "✓ 已在本项目",
-      "args": []
-    },
-    "mcp.catalog.needDir": {
-      "kind": "body",
-      "zh": "注册到项目需先在上方填项目目录（作为注册目标）。",
-      "args": []
-    },
-    "mcp.catalog.target": {
-      "kind": "body",
-      "zh": "注册目标：{machine} 项目 {dir}",
-      "args": ["machine", "dir"]
-    },
-    "mcp.catalog.expanded": {
-      "kind": "action",
-      "zh": "▾",
-      "args": []
-    },
-    "mcp.catalog.collapsed": {
-      "kind": "action",
-      "zh": "▸",
-      "args": []
-    },
-    "mcp.catalog.clear": {
-      "kind": "action",
-      "zh": "清空库",
-      "args": []
-    },
-    "mcp.catalog.title": {
-      "kind": "title",
-      "zh": "库 · 见过的 MCP server {n} 个",
-      "args": ["n"]
     },
     "mcp.remote.reread": {
       "kind": "action",
@@ -11777,26 +11692,6 @@
       "zh": "这条记录不显示、不进搜索。多半是 Claude Code 加了新的记录类型",
       "args": []
     },
-    "rsAccountAliases.rc.missing": {
-      "kind": "error",
-      "zh": "读不到 {what}：文件不存在",
-      "args": ["what"]
-    },
-    "rsAccountAliases.install.nextStep": {
-      "kind": "body",
-      "zh": "新开一个终端就能用；当前终端要先执行一次 . {path}",
-      "args": ["path"]
-    },
-    "rsAccountAliases.install.sourceExists": {
-      "kind": "body",
-      "zh": "{rc} 里已经接上了这份文件，没有再动它。",
-      "args": ["rc"]
-    },
-    "rsAccountAliases.install.sourceAdded": {
-      "kind": "body",
-      "zh": "{rc} 里加了一行 source（要撤就把 cc-monitor 那一小块整块删掉）。",
-      "args": ["rc"]
-    },
     "rsAccountAliases.install.unchanged": {
       "kind": "body",
       "zh": "别名文件和盘上那份一模一样，没有重写。",
@@ -12869,11 +12764,6 @@
       "zh": "[{host}] 读写 API key 失败：{message}",
       "args": ["host", "message"]
     },
-    "rsApikeyRemote.call.tooOld": {
-      "kind": "error",
-      "zh": "[{host}] 的后端太旧，还不认这条命令。重装那台机器的后端就有了",
-      "args": ["host"]
-    },
     "rsApikeyRemote.wire.rowsNotArray": {
       "kind": "error",
       "zh": "[{host}] 的后端应答里 rows 不是字符串数组，两端版本对不上",
@@ -13232,35 +13122,10 @@
       "zh": "找不到家目录 —— 不知道把代码全景组件放到哪",
       "args": []
     },
-    "rsPanoramaBytes.local.noBuild": {
-      "kind": "error",
-      "zh": "这一版没有带给本机的代码全景组件。开发构建里一份都不带，发版产物才有",
-      "args": []
-    },
-    "rsPanoramaBytes.push.noBuild": {
-      "kind": "error",
-      "zh": "这一版没有带给 {os} / {arch} 的代码全景组件（只带 Linux x86_64 / aarch64；开发构建里一份都不带，发版产物才有）",
-      "args": ["os", "arch"]
-    },
-    "rsPanoramaBytes.push.noConfig": {
-      "kind": "error",
-      "zh": "找不到 {label} 的远端配置",
-      "args": ["label"]
-    },
     "rsPanoramaBytes.push.taskFailed": {
       "kind": "error",
       "zh": "放本机代码全景组件的任务没能跑完：{e}",
       "args": ["e"]
-    },
-    "rsPanoramaBytes.uname.failed": {
-      "kind": "error",
-      "zh": "问那台机器是什么系统没问成，退出码 {code}：{detail}",
-      "args": ["code", "detail"]
-    },
-    "rsPanoramaBytes.uname.badShape": {
-      "kind": "error",
-      "zh": "问那台机器是什么系统，答的不是「系统 架构」两段：{out}",
-      "args": ["out"]
     },
     "rsByteTable.key.unreadable": {
       "kind": "error",
@@ -13775,6 +13640,116 @@
     "historyActions.menu.resume": {
       "kind": "action",
       "zh": "在新终端 resume",
+      "args": []
+    },
+    "machineAliases.rcStatus.installedOutdated": {
+      "kind": "body",
+      "zh": "✓ {path}：别名块已经装了{version}。这是旧版的别名块，点「重装别名块」换成新版（新版会自动接上你的别名）",
+      "args": ["path", "version"]
+    },
+    "machineAliases.rcStatus.installed": {
+      "kind": "body",
+      "zh": "✓ {path}：别名块已经装了{version}",
+      "args": ["path", "version"]
+    },
+    "machineAliases.rc.writeHint": {
+      "kind": "body",
+      "zh": "写到 cc-monitor 自己那份别名文件；选了 shell 配置的话，看它接没接上（不往里写）。",
+      "args": []
+    },
+    "machineAliases.rc.write": {
+      "kind": "action",
+      "zh": "写入",
+      "args": []
+    },
+    "machineAliases.powershell.blockWhat": {
+      "kind": "body",
+      "zh": "登记终端窗口的那一小段",
+      "args": []
+    },
+    "machineAliases.powershell.nameHint": {
+      "kind": "control",
+      "zh": "名字，如 alphacc",
+      "args": []
+    },
+    "machineAliases.powershell.rcLabel": {
+      "kind": "control",
+      "zh": "这台机器的 PowerShell 配置，别名块装进哪份 $PROFILE：",
+      "args": []
+    },
+    "machineAliases.powershell.pasteActivation": {
+      "kind": "body",
+      "zh": "开一个新的 PowerShell 窗口。",
+      "args": []
+    },
+    "machineAliases.powershell.pasteTarget": {
+      "kind": "body",
+      "zh": "$PROFILE（PowerShell 启动时读的那份脚本）",
+      "args": []
+    },
+    "machineAliases.posix.blockWhat": {
+      "kind": "body",
+      "zh": "cc / cct 这一族",
+      "args": []
+    },
+    "machineAliases.posix.nameHint": {
+      "kind": "control",
+      "zh": "名字，如 alphacct",
+      "args": []
+    },
+    "machineAliases.posix.rcLabel": {
+      "kind": "control",
+      "zh": "这台机器的 shell 配置，别名块装进哪份：",
+      "args": []
+    },
+    "machineAliases.posix.pasteActivation": {
+      "kind": "body",
+      "zh": "source 它，或开一个新终端。",
+      "args": []
+    },
+    "machineAliases.posix.pasteTarget": {
+      "kind": "body",
+      "zh": "~/.bashrc（或你实际用的 shell 配置文件）",
+      "args": []
+    },
+    "rsAccountAliases.install.nextStep": {
+      "kind": "body",
+      "zh": "新开一个终端就能用；当前终端要先执行一次 . {path}",
+      "args": ["path"]
+    },
+    "rsAccountAliases.install.sourceMissing": {
+      "kind": "body",
+      "zh": "{rc} 还没接上这份文件：在下面给它装上别名块就接上了。不想装别名块的话，自己把这一行加进去：{line}",
+      "args": ["rc", "line"]
+    },
+    "rsAccountAliases.install.sourceExists": {
+      "kind": "body",
+      "zh": "{rc} 已经接上了这份文件。",
+      "args": ["rc"]
+    },
+    "rsApikeyRemote.call.tooOld": {
+      "kind": "error",
+      "zh": "[{host}] 的后端太旧，还不认这条命令。重装那台机器的后端就有了",
+      "args": ["host"]
+    },
+    "rsAssetSync.reach.internal": {
+      "kind": "error",
+      "zh": "本机后端登记那台远端时出了内部错误",
+      "args": []
+    },
+    "rsAssetSync.reach.said": {
+      "kind": "error",
+      "zh": "本机后端：{message}",
+      "args": ["message"]
+    },
+    "rsPanoramaBytes.push.noConfig": {
+      "kind": "error",
+      "zh": "找不到 {label} 的远端配置",
+      "args": ["label"]
+    },
+    "rsPanoramaBytes.local.machine": {
+      "kind": "body",
+      "zh": "本机",
       "args": []
     }
   }

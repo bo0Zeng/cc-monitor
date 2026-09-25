@@ -23,7 +23,7 @@ export interface LaunchPlanBuild {
 /** F05：触发条件仍是 `configDir` 单独非空（同 F03 原行为，`remote-launch.test.ts` 的老式
  *  直调路径只传 `configDir` 不传名字，必须继续正确触发兜底渲染器的 env 注入）；`name` 是
  *  可选增强——传了就线通进 IR 供 CLI 渲染器用，没传时 `LaunchAccount.name` 是 `undefined`，
- *  `ACCOUNT_DIMENSION.cliFlags` 会诚实地对这种情形返回 `null`（强制走兜底），而不是把整个
+ *  CLI 渲染器（Rust `ccm_invocation.rs` 的 `account` 维度）会诚实地对这种情形放弃（强制走兜底），而不是把整个
  *  账号状态错误地降级成 `base`（那会连兜底渲染器的 env 注入也漏掉，是真回归）。 */
 function accountOf(configDir?: string, name?: string): LaunchAccount {
   return configDir ? { kind: "account", name, configDir } : { kind: "base" };
@@ -174,7 +174,8 @@ export function planLauncher(
  * 只留一句 `void cwd;`，`tsc` 与 `npm test` **705 全绿**（改造前同一变异红 5 条，
  * 因为那时返回类型让这次调用在**类型层**是承重的；改成 `void` 恰恰把类型层强制降级成了
  * 一句谁都能顺手删的裸语句）。而它想验的东西**别处已经在验**：
- * `launch-render-cli.test.ts` 有 `ctxOf({ transport: { kind: "local" } })` → `buildLaunchPlan` 的用例。
+ * 当时 `launch-render-cli.test.ts` 有 `ctxOf({ transport: { kind: "local" } })` → `buildLaunchPlan` 的用例
+ * （〔LR1〕那份套件随 TS 渲染器删了；`transport:local` 下 `buildLaunchPlan` 照走，由 `tests/launch-requests.vitest.ts` 管）。
  * 生产侧它纯属浪费，且是 **fail-closed 风险**——将来任何对 `transport:local` 抛异常的新维度，
  * 都会让本地 resume 彻底拉不起来，而收益是零。
  *

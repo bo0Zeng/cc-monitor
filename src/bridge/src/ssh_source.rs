@@ -1335,7 +1335,7 @@ pub async fn connect_and_exec_cmd(
 ///
 /// `Channel::into_stream()` 只搬 `ChannelMsg::Data` —— **`ExtendedData`（= stderr）
 /// 与 `ExitStatus` 都被丢掉**（russh 0.61 `channels/io/mod.rs`）。所以既有的
-/// `run_list_query` 那条路只能看见 stdout：远端命令失败时它读到 0 行，
+/// `run_list_query` 那条路〔散文墓碑〕（逐次拨号，C4d 已删）只能看见 stdout：远端命令失败时它读到 0 行，
 /// 与「查询成功但结果为空」**在类型上不可区分**。
 ///
 /// 列举类查询忍得了（空结果本来就合法），但 `--fork-session` 忍不了 ——

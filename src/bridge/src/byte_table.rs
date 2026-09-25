@@ -98,26 +98,49 @@ pub(crate) enum Refusal {
 impl Refusal {
     /// 对用户说的那一句（`machine` = 机器名，本机说「本机」）。**Rust 侧唯一的出口**；
     /// 每一形的 key 都是字面量（`copy-table.vitest.ts` 按调用形状读它们，与文案表两向相等）。
-    pub(crate) fn say(&self, machine: &str) -> String {
-        match self {
-            Refusal::UnsupportedMachine { os, arch } => copy_text(
+    ///
+    /// 〔TL1 · 4C〕多收一个 `product`：全景推字节也走 [`choose`] 之后，同一种拒绝对两件产物要说两句话
+    /// （后端那几句里「它的会话不会自动接上」之类的后果，换成全景就是假话）⇒ 各一组 key（`deploy.refused.*` · `panorama.refused.*`）。
+    pub(crate) fn say(&self, product: Product, machine: &str) -> String {
+        match (product, self) {
+            (Product::Backend, Refusal::UnsupportedMachine { os, arch }) => copy_text(
                 "deploy.refused.unsupportedMachine",
                 &[("machine", machine), ("os", os), ("arch", arch)],
             ),
-            Refusal::OsUnknown { why } => copy_text(
+            (Product::Backend, Refusal::OsUnknown { why }) => copy_text(
                 "deploy.refused.osUnknown",
                 &[("machine", machine), ("why", why)],
             ),
-            Refusal::ArchUnknown { why } => copy_text(
+            (Product::Backend, Refusal::ArchUnknown { why }) => copy_text(
                 "deploy.refused.archUnknown",
                 &[("machine", machine), ("why", why)],
             ),
-            Refusal::NotPromisedHere { os } => copy_text(
+            (Product::Backend, Refusal::NotPromisedHere { os }) => copy_text(
                 "deploy.refused.notPromisedHere",
                 &[("machine", machine), ("os", os)],
             ),
-            Refusal::NotCarried { os, arch } => copy_text(
+            (Product::Backend, Refusal::NotCarried { os, arch }) => copy_text(
                 "deploy.refused.notCarried",
+                &[("machine", machine), ("os", os), ("arch", arch)],
+            ),
+            (Product::Panorama, Refusal::UnsupportedMachine { os, arch }) => copy_text(
+                "panorama.refused.unsupportedMachine",
+                &[("machine", machine), ("os", os), ("arch", arch)],
+            ),
+            (Product::Panorama, Refusal::OsUnknown { why }) => copy_text(
+                "panorama.refused.osUnknown",
+                &[("machine", machine), ("why", why)],
+            ),
+            (Product::Panorama, Refusal::ArchUnknown { why }) => copy_text(
+                "panorama.refused.archUnknown",
+                &[("machine", machine), ("why", why)],
+            ),
+            (Product::Panorama, Refusal::NotPromisedHere { os }) => copy_text(
+                "panorama.refused.notPromisedHere",
+                &[("machine", machine), ("os", os)],
+            ),
+            (Product::Panorama, Refusal::NotCarried { os, arch }) => copy_text(
+                "panorama.refused.notCarried",
                 &[("machine", machine), ("os", os), ("arch", arch)],
             ),
         }

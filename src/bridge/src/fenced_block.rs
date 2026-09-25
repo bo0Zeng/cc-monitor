@@ -83,7 +83,7 @@ pub fn find_pair(
 //
 // 立件时现打（`tests/evidence/MC1-AL1-摸底.md` 第四节）：配对判定早就只有 [`find_pair`] 一份，
 // 但「配对之后怎么拼」写了三份（`sftp::merge/strip_profile_block` · `profile_installer` 的
-// `replace_or_append_block/strip_block` · `account_aliases::ensure_rc_source_line` 里内联的那一段），
+// `replace_or_append_block/strip_block` · `account_aliases::ensure_rc_source_line` 里内联的那一段 —— 〔TL1〕那一跳后来整个退役了），〔散文墓碑〕
 // 「备份 → 原子写 → 回读比对 → 回滚」这个序列写了五个函数体（本机三处 ＋ 远端装/卸）。
 // `verified_write` 头注自己记着为什么远端那几处没收进去：「回滚是 `async` SFTP 操作，塞不进 `impl FnOnce()`」。
 //
@@ -430,18 +430,9 @@ pub const FENCE_SHAPES: &[FenceShape] = &[
         differs_in: "内容是**现渲**的（命令名与要不要带 cc 函数由界面给），另两套写的是仓里那份文件本身；\
                      而且它要保住 CRLF（fenced_block.rs::detect_eol，`Layout::PowerShell` 那一臂）",
     },
-    FenceShape {
-        id: "local-posix-source-line",
-        host: "本机 POSIX 的 ~/<用户选的那份 rc>",
-        what_goes_in: "**一行** source，指向 ~/.cc-monitor/aliases.sh（内容住在那份生成文件里）",
-        begin_marker: crate::account_aliases::RC_BEGIN,
-        install_site: "account_aliases.rs::ensure_rc_source_line",
-        uninstall_site: None,
-        pairing: "fenced_block.rs::find_pair",
-        differs_in: "🔴 唯一**没有卸口**的一套（K-R62 §0b 那张表的「卸」一栏逐字「部分」）；\
-                     也是唯一「围栏里只有一行、真内容在别处」的一套 —— 它刻意用另一对标记，\
-                     与别的套共用标记就会「装一个把另一个整块替换掉」",
-    },
+    // 〔TL1 · 4C〕墓碑：这里从前还有一行 `local-posix-source-line`（本机 rc 里包着「一行 source」的那一对围栏，
+    //   唯一**没有卸口**的一套）。那一步退役了（`设计/71 §6.1`「source 那一行只许一处装」：接上别名文件的那一行只住别名块里，
+    //   选了 rc 只查不装）⇒ 这一套不再存在，账降一行；「装得进去卸不掉」那一格随之清零。盘上已有的那一块不读不删。
     // ★★ 〔`K-R62` 09-11〕**本件新加的那条路，就是这一行。**
     FenceShape {
         id: "local-posix-block",

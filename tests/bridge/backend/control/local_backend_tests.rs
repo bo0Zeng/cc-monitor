@@ -2612,6 +2612,8 @@ fn the_exit_path_really_stops_the_local_backend() {
 /// 人群按「**那个二进制哪来的**」派生（内嵌目录 / `CCM_E2E_BACKEND` / `E2eSandbox::demand`），
 /// **两个文件一起扫**，不看任何属性。
 /// **本条留着**（它守的是一格更窄但仍然真的性质），但别把它读成「起真后端有人守了」。
+///
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §48.3`（测试里起真后端必须 fail-closed 地隔离用户 tmux）。
 #[test]
 fn every_real_backend_e2e_demands_a_private_tmux_dir() {
     const REAL: &str = "CCM_E2E_BACKEND";

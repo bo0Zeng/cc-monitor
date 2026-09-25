@@ -236,3 +236,249 @@ export function withAccountReads(
     return answer(cmd, (args ?? {}) as Record<string, unknown>);
   };
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+//  〔C4d · 第四波 4B〕历史清单与注解改走通道（问本机常驻后端）之后，判据那一侧的翻译
+// ════════════════════════════════════════════════════════════════════════════
+//
+// 它们从前是五条 Tauri 命令（`list_history_projects` / `list_remote_history_projects` / `stream_history_sessions_in_project` /
+// `update_history_metadata` / `list_last_accounts`〔散文墓碑〕），判据按命令名答话、回旧回包的形状。今天：
+//   - 本机项目清单 = 一发 `chan_call`（`<local>`，op `history-projects`，请求体不带 `origin`）；
+//   - 远端那一批 = 先问 `list_remote_mcp_origins`（哪几台）、再逐台一发 `chan_call`（`<local>`，op `history-projects`，带 `origin`）；
+//   - 展开一个项目 = 一发 `chan_call`（op `history-sessions`，`{project_dir, origin?}`，一次交全、不再逐条流）；
+//   - 改注解 / 上次账号表 / 删会话连带删注解 = `history-annotate` / `history-last-accounts` / `history-forget`。
+// ⇒ 本节把这几发译回「哪一问 ＋ 旧形参」，把判据手里那份旧回包译成**本机后端的成品字节**（或通道的失败）。
+// ⚠ 译法逐格照生产：请求体键名是 `src/history-reads.ts` 发的那几个，成品键名是后端 `history_join.rs` 出的那几个
+//   （跨语言金样 `tests/__fixtures__/history-products.golden.json` 钉着两侧）。旧回包里缺的格按旧消费侧的读法补齐（缺 ⇒ `null` / 缺省）。
+// ⚠ 「一次 fan-out」从一发 `list_remote_history_projects` 变成「一发 `list_remote_mcp_origins` ＋ 逐台 N 发」—— 计数时一次 fan-out
+//   按那一发 `list_remote_mcp_origins` 算（[`historyCalls`]）。
+
+/** 历史那几问各自的名字（判据里的叫法 = 旧命令名；`history_forget` 是新的，旧世界里它是删会话那条命令的一部分）。 */
+export type HistoryRead =
+  | "list_history_projects"
+  | "list_remote_history_projects"
+  | "stream_history_sessions_in_project"
+  | "update_history_metadata"
+  | "list_last_accounts"
+  | "history_forget";
+
+/** 一发 `invoke` 若是历史那几问之一 ⇒ `[哪一问, 旧形参的形状]`；否则 `null`。 */
+export function historyReadOf(
+  cmd: string,
+  args: unknown,
+): [HistoryRead, Record<string, unknown>] | null {
+  if (cmd === "list_remote_mcp_origins")
+    return ["list_remote_history_projects", {}];
+  if (cmd !== "chan_call") return null;
+  const a = args as ChanCallArgs;
+  switch (a.op) {
+    case "history-projects": {
+      const body = chanArgsJson(a) as Record<string, unknown>;
+      // 带 `origin` 的那几发是「远端那一批」的逐台问 —— 一次 fan-out 已经按 `list_remote_mcp_origins` 那一发算过了。
+      return body.origin === undefined ? ["list_history_projects", {}] : null;
+    }
+    case "history-sessions": {
+      const body = chanArgsJson(a) as Record<string, unknown>;
+      return [
+        "stream_history_sessions_in_project",
+        { origin: body.origin ?? "<local>", projectDir: body.project_dir },
+      ];
+    }
+    case "history-annotate": {
+      const body = chanArgsJson(a) as Record<string, unknown>;
+      return [
+        "update_history_metadata",
+        { sessionId: body.sid, patch: body.patch },
+      ];
+    }
+    case "history-last-accounts":
+      return ["list_last_accounts", {}];
+    case "history-forget": {
+      const body = chanArgsJson(a) as Record<string, unknown>;
+      return ["history_forget", { sessionId: body.sid }];
+    }
+  }
+  return null;
+}
+
+/** mock 过的 `invoke` 的调用记录里，历史某一问的那几发（参数是旧形参的形状）。 */
+export function historyCalls(
+  calls: ReadonlyArray<readonly unknown[]>,
+  which: HistoryRead,
+): Record<string, unknown>[] {
+  return calls
+    .map((c) => historyReadOf(c[0] as string, c[1]))
+    .filter(
+      (r): r is [HistoryRead, Record<string, unknown>] =>
+        r !== null && r[0] === which,
+    )
+    .map((r) => r[1]);
+}
+
+const nul = (v: unknown): unknown => (v === undefined ? null : v);
+
+/** 旧回包里的一个项目 ⇒ 成品里的一行（缺的格按旧消费侧的读法补齐）。 */
+function productProject(p: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    projectPath: p.projectPath ?? p.path ?? "",
+    projectName: p.projectName ?? p.name ?? "",
+    projectDir: p.projectDir ?? "",
+    sessionCount: p.sessionCount ?? 0,
+    starredCount: nul(p.starredCount),
+    hiddenCount: nul(p.hiddenCount),
+    lastActivity: p.lastActivity ?? p.updatedAt ?? 0,
+    hasLive: nul(p.hasLive),
+  };
+  if (typeof p.origin === "string") out.origin = p.origin;
+  return out;
+}
+
+/** 旧回包里的一条会话 ⇒ 成品里的一行。 */
+function productSession(e: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    sessionId: e.sessionId ?? "",
+    projectPath: e.projectPath ?? "",
+    projectName: e.projectName ?? "",
+    aiTitle: nul(e.aiTitle),
+    firstUserExcerpt: e.firstUserExcerpt ?? "",
+    startedAt: e.startedAt ?? 0,
+    updatedAt: e.updatedAt ?? 0,
+    jsonlPath: e.jsonlPath ?? "",
+    isLive: nul(e.isLive),
+    messageCountApprox: e.messageCountApprox ?? 0,
+    isBg: e.isBg ?? false,
+    starred: e.starred ?? false,
+    customTitle: nul(e.customTitle),
+    hidden: e.hidden ?? false,
+  };
+  if (
+    typeof e.forkedFromSessionId === "string" &&
+    typeof e.forkedFromMessageUuid === "string"
+  ) {
+    out.forkedFromSessionId = e.forkedFromSessionId;
+    out.forkedFromMessageUuid = e.forkedFromMessageUuid;
+  }
+  if (typeof e.origin === "string") out.origin = e.origin;
+  return out;
+}
+
+/** 旧回包那一发要是抛了 ⇒ 按「对端说不行」拒（同账号那一节的译法）。 */
+async function settled(res: unknown): Promise<unknown> {
+  try {
+    return await res;
+  } catch (e) {
+    throw refusedReply("failed", e instanceof Error ? e.message : String(e));
+  }
+}
+
+/**
+ * 包一层判据的 `invoke` 替身：历史那几问照旧按旧名字交给 `answer`（它回旧回包的形状），本层把新的那几发译过去、
+ * 把回包译回成品字节；其余一切原样交给 `answer`（可以与 [`withSessionReads`] / [`withAccountReads`] 叠着用）。
+ *
+ * 远端那一批：`list_remote_mcp_origins` 那一发时问一次旧的 `list_remote_history_projects`（`{projects, failedHosts}` 或抛），
+ * 把台名单交回去（项目里出现过的 origin ∪ `failedHosts`；整批抛了 ⇒ 一台占位名，逐台那一问一律拒）；
+ * 逐台那几发按这份记下来的结果答（`failedHosts` 里的那台 ⇒ 拒）。
+ */
+export function withHistoryReads(
+  answer: (cmd: string, args: Record<string, unknown>) => unknown,
+): (cmd: string, args?: unknown) => Promise<unknown> {
+  let remote:
+    { projects: Record<string, unknown>[]; failedHosts: string[] } | "failed" =
+    {
+      projects: [],
+      failedHosts: [],
+    };
+  return async (cmd, args) => {
+    if (cmd === "list_remote_mcp_origins") {
+      try {
+        const r = ((await answer("list_remote_history_projects", {})) ??
+          {}) as Record<string, unknown>;
+        remote = {
+          projects: (Array.isArray(r.projects) ? r.projects : []) as Record<
+            string,
+            unknown
+          >[],
+          failedHosts: (Array.isArray(r.failedHosts)
+            ? r.failedHosts
+            : []) as string[],
+        };
+      } catch {
+        remote = "failed";
+        return ["__every_host_failed__"];
+      }
+      const origins = new Set<string>();
+      for (const p of remote.projects)
+        if (typeof p.origin === "string") origins.add(p.origin);
+      for (const h of remote.failedHosts) origins.add(h);
+      return [...origins];
+    }
+    if (cmd === "chan_call") {
+      const a = args as ChanCallArgs;
+      const body = [
+        "history-projects",
+        "history-sessions",
+        "history-annotate",
+        "history-last-accounts",
+        "history-forget",
+      ].includes(a.op)
+        ? (chanArgsJson(a) as Record<string, unknown>)
+        : null;
+      if (body && a.op === "history-projects") {
+        if (typeof body.origin === "string") {
+          const o = body.origin;
+          if (remote === "failed" || remote.failedHosts.includes(o))
+            throw refusedReply("unreachable", `[${o}] 问不到`);
+          return chanReply({
+            rows: remote.projects
+              .filter((p) => p.origin === o)
+              .map(productProject),
+            notice: null,
+          });
+        }
+        const rows = ((await settled(answer("list_history_projects", {}))) ??
+          []) as Record<string, unknown>[];
+        return chanReply({ rows: rows.map(productProject), notice: null });
+      }
+      if (body && a.op === "history-sessions") {
+        const got: Record<string, unknown>[] = [];
+        const onEntry = {
+          onmessage: (e: Record<string, unknown>) => got.push(e),
+        };
+        await settled(
+          answer("stream_history_sessions_in_project", {
+            origin: body.origin ?? "<local>",
+            projectDir: body.project_dir,
+            onEntry,
+          }),
+        );
+        return chanReply({ rows: got.map(productSession), notice: null });
+      }
+      if (body && a.op === "history-annotate") {
+        const e = ((await settled(
+          answer("update_history_metadata", {
+            sessionId: body.sid,
+            patch: body.patch,
+          }),
+        )) ?? {}) as Record<string, unknown>;
+        return chanReply({
+          entry: {
+            starred: e.starred ?? false,
+            customTitle: nul(e.customTitle),
+            hidden: e.hidden ?? false,
+            updatedAt: e.updatedAt ?? 0,
+            lastAccount: nul(e.lastAccount),
+          },
+        });
+      }
+      if (body && a.op === "history-last-accounts") {
+        const m = (await settled(answer("list_last_accounts", {}))) ?? {};
+        return chanReply({ accounts: m });
+      }
+      if (body && a.op === "history-forget") {
+        await settled(answer("history_forget", { sessionId: body.sid }));
+        return chanReply({ removed: true });
+      }
+    }
+    return answer(cmd, (args ?? {}) as Record<string, unknown>);
+  };
+}
