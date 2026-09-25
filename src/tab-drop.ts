@@ -14,23 +14,24 @@ import {
 } from "./tab-collections";
 
 /**
- * P7a-2：把 `block`（被拖的 tab **连同它的 bg 子串**）整块挪到 `beforeSid` 之前。
+ * P7a-2：把被拖的那个 `sid` 挪到 `beforeSid` 之前。
  * `beforeSid === null` = 挪到末尾。**纯函数** —— 判据直接打在落位上，不必先造一次真拖拽。
  *
- * ⚠ 落点在块内 ⇒ **原样返回**（拖到自己身上不是一次重排，把它算成「挪到末尾」是错的）。
+ * ⚠ 落点就是它自己 ⇒ **原样返回**（拖到自己身上不是一次重排，把它算成「挪到末尾」是错的）。
+ * 〔BG1 · V125「删掉树」〕原先挪的是「一块」（被拖的交互 tab 连同它的 bg 子串）；
+ *   树删了 ⇒ 块的概念没了，一次只拖一个。
  */
-export function moveTabBlock(
+export function moveTab(
   order: readonly string[],
-  block: readonly string[],
+  sid: string,
   beforeSid: string | null,
 ): string[] {
-  const set = new Set(block);
-  if (beforeSid !== null && set.has(beforeSid)) return [...order];
-  const rest = order.filter((x) => !set.has(x));
-  if (beforeSid === null) return [...rest, ...block];
+  if (beforeSid === sid) return [...order];
+  const rest = order.filter((x) => x !== sid);
+  if (beforeSid === null) return [...rest, sid];
   const at = rest.indexOf(beforeSid);
-  if (at < 0) return [...rest, ...block];
-  return [...rest.slice(0, at), ...block, ...rest.slice(at)];
+  if (at < 0) return [...rest, sid];
+  return [...rest.slice(0, at), sid, ...rest.slice(at)];
 }
 
 // ===== 〔步 17·D · `设计/30 §D`〕Edge 式拖动合并成组 =====
@@ -68,15 +69,15 @@ export interface TabRect {
 /**
  * 指针**正压在**哪个 tab 上（`null` = 没压在任何一个上）。停留计时器靠它决定「还在不在同一个」。
  *
- * ⚠ 被拖的那一块要排除：压在自己身上不是一次合并。
+ * ⚠ 被拖的那一个（`dragged`）要排除：压在自己身上不是一次合并。
  */
 export function tabUnderY(
   rects: readonly TabRect[],
   clientY: number,
-  block: ReadonlySet<string>,
+  dragged: string,
 ): string | null {
   for (const r of rects) {
-    if (block.has(r.sid)) continue;
+    if (r.sid === dragged) continue;
     if (clientY >= r.top && clientY < r.top + r.height) return r.sid;
   }
   return null;
@@ -97,11 +98,11 @@ export function tabUnderY(
 export function pickDropTarget(
   rects: readonly TabRect[],
   clientY: number,
-  block: ReadonlySet<string>,
+  dragged: string,
   dwellSid: string | null,
 ): DropTarget {
-  const sorted = rects.filter((r) => !block.has(r.sid)).sort((a, b) => a.top - b.top);
-  if (dwellSid !== null && !block.has(dwellSid)) {
+  const sorted = rects.filter((r) => r.sid !== dragged).sort((a, b) => a.top - b.top);
+  if (dwellSid !== null && dwellSid !== dragged) {
     const r = sorted.find((x) => x.sid === dwellSid);
     if (r && clientY >= r.top && clientY < r.top + r.height) {
       return { kind: "onto", sid: dwellSid };
@@ -165,18 +166,19 @@ export function defaultGroupName(
  * 这里把它写成对称的一句话：**归属跟着落点宿主走**。
  * | 落点 | 宿主 | 后果 |
  * |---|---|---|
- * | `onto X` | X 所在的组；X 还没组 ⇒ 现建一个 | 整块**入组** |
+ * | `onto X` | X 所在的组；X 还没组 ⇒ 现建一个 | **入组** |
  * | `before X` | X 所在的组（X 是散 tab ⇒ 无宿主）| 入组 / **拖出组** |
  * | `end` | 无宿主（末尾就是散 tab 区）| **拖出组** |
  *
- * ⚠ 整块一起走（`block` = 被拖的交互 tab 连同它的 bg 子串）：
- *   把子树劈成「一半在组里一半在外面」比不能拖更坏（`dragBlockOf` 的头注同一条理由）。
+ * 〔BG1 · V125「删掉树」〕归属只跟着被拖的那一个走：原先这里收的是「一块」（交互 tab 连同它的
+ *   bg 子串整块入组 / 出组）—— 那是 bg 树借集合开的第二条分类路，与 `设计/30 §1` 不变量 3
+ *   「集合归属是唯一分类维」相违，随树一起删。
  * ⚠ 建组失败（到 32 个集合的上界 / 名字空）⇒ **原样返回，什么都不做** ——
  *   不许把 tab 塞进一个不存在的集合（`newCollectionId` 那条路已有同样的守卫）。
  */
 export function applyDropToCollections(
   collections: readonly TabCollection[],
-  block: readonly string[],
+  sid: string,
   target: DropTarget,
   newName: string,
   newId: string,
@@ -184,7 +186,7 @@ export function applyDropToCollections(
   let next: TabCollection[] = [...collections];
   let hostId: string | null = null;
   if (target.kind === "onto") {
-    if (block.includes(target.sid)) return next; // 压在自己身上不是一次合并
+    if (target.sid === sid) return next; // 压在自己身上不是一次合并
     const existing = collectionOf(next, target.sid);
     if (existing) {
       hostId = existing.id;
@@ -202,10 +204,7 @@ export function applyDropToCollections(
   } else if (target.kind === "before") {
     hostId = collectionOf(next, target.sid)?.id ?? null;
   }
-  for (const sid of block) {
-    next = hostId ? addMember(next, hostId, sid) : removeMember(next, sid);
-  }
-  return next;
+  return hostId ? addMember(next, hostId, sid) : removeMember(next, sid);
 }
 
 /**
