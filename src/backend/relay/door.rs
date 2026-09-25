@@ -74,10 +74,9 @@ impl std::fmt::Debug for Key {
     }
 }
 
-/// 钥匙的形状：恰好 `2 × KEY_BYTES` 个小写十六进制字符。
-pub(crate) fn key_shape_ok(s: &str) -> bool {
-    s.len() == 2 * KEY_BYTES && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
-}
+/// 钥匙的形状：恰好 `2 × KEY_BYTES` 个小写十六进制字符。〔US1〕唯一住址是共享 crate（`ccm` 认继承来的地址也用它）；
+/// 本模块铸的长度与它对得上由 `door_tests` 那条「铸出来的过形状闸」钉着。
+pub(crate) use relay_route_core::key_shape_ok;
 
 /// 这台机器上钥匙文件的路径：`HOME`，没有再退 `USERPROFILE`（同 `control::exit_policy::policy_path`）。
 /// 取值器是注入的 ⇒ 判据喂夹具家目录，不碰进程环境。
