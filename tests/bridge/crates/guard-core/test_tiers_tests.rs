@@ -552,6 +552,8 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/comm_boundary_registry_tests.rs",
     "tests/bridge/crates/creds-core/perm_tests.rs",
     "tests/bridge/creds_store_tests.rs",
+    // 〔GP1 · 第四波〕旧版 `~/.local/bin/ccm` 那一份：替身门在临时目录上真读真删。
+    "tests/bridge/ccm_legacy_tests.rs",
     "tests/bridge/data_paths_tests.rs",
     "tests/bridge/dial_home_registry_tests.rs",
     "tests/bridge/dial_host_tests.rs",

@@ -257,8 +257,14 @@ export function decodeRecord(v: unknown): RecordProbe {
  * **失败就抛**（不折成一个答案）：调用方（`tab-session-actions.ts::recordStillThere`）把「问不到」当「不知道」，
  * 与「不在」分开处置 —— 折成 `present:false` 会把一条接得上的 resume 拦掉。期限与上一个住址同值（30 秒）。
  */
-export async function probeSessionRecord(origin: Origin, sid: string): Promise<RecordProbe> {
-  const body = jsonBody({ sid });
+export async function probeSessionRecord(
+  origin: Origin,
+  sid: string,
+  configDir?: string,
+): Promise<RecordProbe> {
+  // 〔GP1 · 第四波〕带上这次 resume 要用的账号配置目录（`CLAUDE_CONFIG_DIR`）：会话起在那个账号根下时，
+  //   只查那台后端自己的家目录会答「不在」、误拦 resume（`设计/30 §8` 第 4 条）。基座（没有账号）⇒ 不带。
+  const body = jsonBody(configDir ? { sid, configDir } : { sid });
   const budget = budgetWithin(READ_BUDGET_MS);
   const reply = await chan.call(origin, "history-record", body, budget);
   return decodeRecord(readJson(reply));
