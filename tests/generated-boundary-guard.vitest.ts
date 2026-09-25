@@ -233,6 +233,7 @@ describe("C01 边界生成物", () => {
       "SkillInstallRow.ts", // 〔AS2〕skill「装到这台」的形状
       "SkillInstallSuspect.ts", // 〔AS2〕skill「装到这台」的形状
       "SkillTargetText.ts", // 〔AS2〕skill「装到这台」的形状
+      "SkillUninstallApplied.ts", // 〔SU1 · 第四波 4C〕skill 卸的结果（删了哪几个 ＋ 记录没摘成的原因）
       // 〔F7c 收尾 09-24〕"SftpEntry.ts" 走了（它的 Rust 源随池子那条列目录命令一起删了）。
       "Snippet.ts", //                C04d 批3
       "StartupFile.ts", //            〔AL1d · 4B〕启动文件候选（别名文件那一行 ＋ 别名块共用一份，原 `AccountAliasRc.ts`）

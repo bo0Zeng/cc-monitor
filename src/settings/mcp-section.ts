@@ -128,6 +128,8 @@ export function assetInstallApi(): AssetInstallApi {
     mcpApply: (a) => commands.mcp_sync_apply(a),
     skillPreview: (a) => commands.skill_install_preview(a),
     skillApply: (a) => commands.skill_install_apply(a),
+    // 〔SU1 · 第四波 4C · V116〕卸：同一件（③ 装 / 卸 skill）的前端落点仍只在本文件。
+    skillUninstall: (a) => commands.skill_uninstall_apply(a),
   };
 }
 

@@ -14,7 +14,12 @@
  *   钉在一张名单上（`tests/evidence/K-R117-ruler.py` 的 `R9a`，只许缩），本文件不给它加一份新落点。
  * - **来源那台够不到**（没连上）⇒ 说清、不装：目录里不带原文（MCP 的密钥值更不带），装的那一下要从来源那台现读。
  *
- * 纯函数（`decodeCatalog` · `reachOf` · `skillDefaultTake` · `skillApplyArgs` · `hereText` · `skillSuspectText`）零 DOM，node 可测。
+ * 〔SU1 · 第四波 4C · V116〕**卸**：用户裁「要，只删装时写进去的文件」（装完改过的先问）。这一块末尾多一小节
+ * 「从别的机器装来的 skill」：列这台后端记着的（帧命令 `skill-installs`），每条一颗「卸」→ 看（`skill-uninstall-plan`，
+ * 逐文件的态与「要不要问」都是这台后端答的）→ 勾 → 卸（`skill_uninstall_apply`，同样由宿主递进来）。只删文件，目录留着。
+ *
+ * 纯函数（`decodeCatalog` · `reachOf` · `skillDefaultTake` · `skillApplyArgs` · `hereText` · `skillSuspectText` ·
+ * `decodeInstalls` · `decodeUninstallPlan` · `uninstallDefaultTake` · `uninstallApplyArgs`）零 DOM，node 可测。
  */
 import { commands } from "../ipc/commands";
 import { chan } from "../ipc/chan";
@@ -36,6 +41,8 @@ export interface AssetInstallApi {
   mcpApply: typeof commands.mcp_sync_apply;
   skillPreview: typeof commands.skill_install_preview;
   skillApply: typeof commands.skill_install_apply;
+  /** 〔SU1〕卸：删经那台后端 `files-delete`（带 `expect`），删掉的从装记录里摘掉。 */
+  skillUninstall: typeof commands.skill_uninstall_apply;
 }
 
 /** 目录里别处的一条来源。 */
@@ -170,6 +177,94 @@ export function skillApplyArgs(rows: readonly SkillInstallRow[], checked: Readon
   return { take: picked.map((r) => r.path), overwrite: picked.filter((r) => r.state === "differs").map((r) => r.path) };
 }
 
+// ── 〔SU1〕卸：纯函数 ──────────────────────────────────────────────────────────
+
+/** 这台记着的一个「从别处装来的 skill」（后端 `skill-installs`，键名一字不差）。 */
+export interface SkillInstalled {
+  dir: string;
+  name: string;
+  files: number;
+}
+
+/** 卸时记录里的一个文件（后端 `skill-uninstall-plan` 的 `rows`）。 */
+export interface UninstallRow {
+  path: string;
+  state: string;
+  created: boolean;
+  deletable: boolean;
+  ask: boolean;
+}
+
+export interface UninstallPlan {
+  dir: string;
+  name: string;
+  rows: UninstallRow[];
+  /** 能删的那几份现有原文：卸的时候原样送回去当 CAS 期望。 */
+  seen: { path: string; text: string }[];
+}
+
+const unreadableReply = (what: string): never => {
+  console.warn(`[assets-section] skill 卸那两问的应答形状不对：${what}`);
+  throw new Error(copyText("assets.load.shape"));
+};
+
+/** `skill-installs` 的应答 ⇒ 列表。缺格 / 类型不对 ⇒ 抛（不猜成「什么都没装过」）。 */
+export function decodeInstalls(v: unknown): SkillInstalled[] {
+  const o = v as Record<string, unknown> | null;
+  if (!o || typeof o !== "object" || !Array.isArray(o.installs)) return unreadableReply("installs");
+  return o.installs.map((i) => {
+    const r = i as Record<string, unknown>;
+    if (typeof r?.dir !== "string" || typeof r.name !== "string" || typeof r.files !== "number") return unreadableReply("installs 那一格");
+    return { dir: r.dir, name: r.name, files: r.files };
+  });
+}
+
+/** `skill-uninstall-plan`（不带 `take`）的应答 ⇒ [`UninstallPlan`]。缺格就抛。 */
+export function decodeUninstallPlan(v: unknown): UninstallPlan {
+  const o = v as Record<string, unknown> | null;
+  if (!o || typeof o !== "object" || typeof o.dir !== "string" || typeof o.name !== "string" || !Array.isArray(o.rows) || !Array.isArray(o.seen)) {
+    return unreadableReply("顶层缺格");
+  }
+  const rows = o.rows.map((r): UninstallRow => {
+    const rr = r as Record<string, unknown>;
+    if (
+      typeof rr?.path !== "string" ||
+      typeof rr.state !== "string" ||
+      typeof rr.created !== "boolean" ||
+      typeof rr.deletable !== "boolean" ||
+      typeof rr.ask !== "boolean"
+    ) {
+      return unreadableReply("rows 那一格");
+    }
+    return { path: rr.path, state: rr.state, created: rr.created, deletable: rr.deletable, ask: rr.ask };
+  });
+  const seen = o.seen.map((s) => {
+    const ss = s as Record<string, unknown>;
+    if (typeof ss?.path !== "string" || typeof ss.text !== "string") return unreadableReply("seen 那一格");
+    return { path: ss.path, text: ss.text };
+  });
+  return { dir: o.dir, name: o.name, rows, seen };
+}
+
+/** 卸时一个文件的态 → 给人看的字。**键集 == 后端 `skill_install::UNINSTALL_STATES`**（vitest 从后端源码现抠、两向相等）。 */
+export const UNINSTALL_STATE_TEXT: Record<string, () => string> = {
+  intact: () => copyText("assets.uninstallState.intact"),
+  modified: () => copyText("assets.uninstallState.modified"),
+  gone: () => copyText("assets.uninstallState.gone"),
+  unreadable: () => copyText("assets.uninstallState.unreadable"),
+};
+
+/** 默认勾选：能删、且这台后端没说「要问」的。要问的（装完改过 / 装之前就在）**默认不勾** —— 删不删要用户自己说。 */
+export function uninstallDefaultTake(rows: readonly UninstallRow[]): Set<string> {
+  return new Set(rows.filter((r) => r.deletable && !r.ask).map((r) => r.path));
+}
+
+/** 勾选 → 交给后端的两张单子：`take` = 勾了的（能删的）；`confirm` = 勾了的里「要问」的那几个（勾它就是点名确认）。 */
+export function uninstallApplyArgs(rows: readonly UninstallRow[], checked: ReadonlySet<string>): { take: string[]; confirm: string[] } {
+  const picked = rows.filter((r) => r.deletable && checked.has(r.path));
+  return { take: picked.map((r) => r.path), confirm: picked.filter((r) => r.ask).map((r) => r.path) };
+}
+
 /** 读目录的期限：同步那一趟另算（`assets_sync` 在 monitor 那侧有自己的预算）。 */
 const CATALOG_BUDGET_MS = 30_000;
 
@@ -249,26 +344,34 @@ export class AssetsSection {
       // 同步没办成不挡「看这台的目录」：说一句，接着读（读到的是上一次对上时的样子）。
       syncError = e instanceof Error ? e.message : String(e);
     }
-    let cat: Catalog;
+    let cat: Catalog | null = null;
+    let catError: string | null = null;
     try {
       const budget = budgetWithin(CATALOG_BUDGET_MS);
       const body = jsonBody({});
       const reply = await chan.call(origin, "assets-catalog", body, budget);
       cat = decodeCatalog(readJson(reply));
     } catch (e) {
-      if (mine !== this.seq) return;
-      this.body.textContent = "";
-      this.body.appendChild(
-        el("div", "settings-hint", copyText("assets.load.failed", { reason: saidOf(e, copyText("assets.load.tooOld")) })),
-      );
-      return;
+      catError = saidOf(e, copyText("assets.load.tooOld"));
+    }
+    // 〔SU1〕这台记着的「从别处装来的 skill」：与目录各问各的（目录读不出来不挡卸）。
+    let installs: SkillInstalled[] | string;
+    try {
+      const budget = budgetWithin(CATALOG_BUDGET_MS);
+      const body = jsonBody({});
+      const reply = await chan.call(origin, "skill-installs", body, budget);
+      installs = decodeInstalls(readJson(reply));
+    } catch (e) {
+      installs = saidOf(e, copyText("assets.uninstall.tooOld"));
     }
     if (mine !== this.seq) return;
-    this.render(origin, cat, syncError);
+    this.body.textContent = "";
+    if (cat) this.render(origin, cat, syncError);
+    else this.body.appendChild(el("div", "settings-hint", copyText("assets.load.failed", { reason: catError ?? "" })));
+    this.body.appendChild(this.renderInstalled(origin, installs));
   }
 
   private render(origin: Origin, cat: Catalog, syncError: string | null): void {
-    this.body.textContent = "";
     if (syncError) this.body.appendChild(el("div", "settings-hint", copyText("assets.sync.failed", { reason: syncError })));
     for (const s of this.synced?.synced ?? []) {
       if (s.error) this.body.appendChild(el("div", "settings-hint", copyText("assets.sync.oneFailed", { machine: s.origin, reason: s.error })));
@@ -394,6 +497,76 @@ export class AssetsSection {
     out.appendChild(result);
   }
 
+  // ── 〔SU1〕从别的机器装来的 skill：卸 ────────────────────────────────────────
+
+  private renderInstalled(here: Origin, installs: SkillInstalled[] | string): HTMLElement {
+    const box = el("div", "assets-installed");
+    box.appendChild(el("div", "plugins-row-id", copyText("assets.uninstall.head")));
+    if (typeof installs === "string") {
+      box.appendChild(el("div", "settings-hint", copyText("assets.uninstall.loadFailed", { reason: installs })));
+      return box;
+    }
+    if (installs.length === 0) {
+      box.appendChild(el("div", "settings-hint", copyText("assets.uninstall.none")));
+      return box;
+    }
+    for (const i of installs) {
+      const row = el("div", "plugins-row assets-row");
+      row.appendChild(el("div", "plugins-row-id", i.name));
+      row.appendChild(el("div", "settings-hint plugins-row-meta", copyText("assets.uninstall.meta", { dir: i.dir, n: String(i.files) })));
+      const slot = el("div", "assets-install");
+      slot.appendChild(button(copyText("assets.uninstall.action"), () => void this.previewUninstall(slot, here, i.dir)));
+      row.appendChild(slot);
+      box.appendChild(row);
+    }
+    return box;
+  }
+
+  private async previewUninstall(slot: HTMLElement, to: Origin, dir: string): Promise<void> {
+    slot.textContent = copyText("assets.preview.loading");
+    let p: UninstallPlan;
+    try {
+      const budget = budgetWithin(CATALOG_BUDGET_MS);
+      const body = jsonBody({ dir });
+      const reply = await chan.call(to, "skill-uninstall-plan", body, budget);
+      p = decodeUninstallPlan(readJson(reply));
+    } catch (e) {
+      slot.textContent = copyText("assets.preview.failed", { reason: saidOf(e, copyText("assets.uninstall.tooOld")) });
+      return;
+    }
+    slot.textContent = "";
+    const toName = machineName(to);
+    slot.appendChild(el("div", "settings-hint", copyText("assets.uninstall.previewHead", { dir: p.dir })));
+    const checked = uninstallDefaultTake(p.rows);
+    for (const r of p.rows) {
+      const line = el("label", "settings-row");
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = checked.has(r.path);
+      cb.disabled = !r.deletable;
+      cb.addEventListener("change", () => (cb.checked ? checked.add(r.path) : checked.delete(r.path)));
+      const said = UNINSTALL_STATE_TEXT[r.state]?.() ?? r.state;
+      line.append(cb, document.createTextNode(`${r.path} · ${said}`));
+      slot.appendChild(line);
+      // 「装完改过」那一句就是那一行的态本身；装之前就在的（装时盖掉了原有那一份）另说一句：删了回不到装之前。
+      if (r.deletable && !r.created) slot.appendChild(el("div", "settings-hint settings-cc-profile-warn", copyText("assets.uninstall.askOverwrote")));
+    }
+    const result = el("div", "settings-hint");
+    slot.appendChild(
+      button(copyText("assets.uninstall.apply", { machine: toName }), async () => {
+        const { take, confirm } = uninstallApplyArgs(p.rows, checked);
+        try {
+          const done = await this.apiOf().skillUninstall({ to, dir: p.dir, seen: p.seen, take, confirm });
+          result.textContent = copyText("assets.uninstall.done", { n: String(done.deleted.length), dir: done.dir });
+          if (done.recordFailed) result.textContent += " " + done.recordFailed;
+        } catch (e) {
+          result.textContent = copyText("assets.uninstall.failed", { reason: e instanceof Error ? e.message : String(e) });
+        }
+      }),
+    );
+    slot.appendChild(result);
+  }
+
   // ── skill ────────────────────────────────────────────────────────────────
 
   private async previewSkill(slot: HTMLElement, from: Origin, to: Origin, name: string): Promise<void> {
@@ -431,6 +604,8 @@ export class AssetsSection {
           if (done.chmodFailed.length > 0) {
             result.textContent += " " + copyText("assets.apply.chmodFailed", { paths: done.chmodFailed.join("、") });
           }
+          // 〔SU1〕装好了但没记下来 ⇒ 这一趟装的卸不掉，照原话说（那句话是 monitor 说的）。
+          if (done.recordFailed) result.textContent += " " + done.recordFailed;
         } catch (e) {
           result.textContent = copyText("assets.apply.failed", { reason: e instanceof Error ? e.message : String(e) });
         }
