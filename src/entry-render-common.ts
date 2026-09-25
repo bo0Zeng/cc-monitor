@@ -7,6 +7,7 @@
  * 要求设置窗也加载代码块样式，与「设置窗里没有渲染栈」自相矛盾。拆开之后两条同时成立。
  */
 import { installExternalLinkDelegation } from "./entry-common";
+import { copyText } from "./copy-table";
 
 /**
  * 外链 + 代码块复制的全局 click 代理。主窗口与独立 viewer 窗口共用。
@@ -26,15 +27,15 @@ export function installGlobalClickDelegation(): void {
     void navigator.clipboard.writeText(text).then(
       () => {
         btn.classList.add("copied");
-        btn.textContent = "已复制";
+        btn.textContent = copyText("render.codeBlock.copied");
         window.setTimeout(() => {
           btn.classList.remove("copied");
-          btn.textContent = "复制";
+          btn.textContent = copyText("render.codeBlock.copy");
         }, 1200);
       },
       () => {
-        btn.textContent = "失败";
-        window.setTimeout(() => (btn.textContent = "复制"), 1200);
+        btn.textContent = copyText("render.codeBlock.failed");
+        window.setTimeout(() => (btn.textContent = copyText("render.codeBlock.copy")), 1200);
       },
     );
   });

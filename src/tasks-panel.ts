@@ -36,6 +36,7 @@ import type { Tab } from "./tab-model";
 // C02：改成从生成物 re-export（源：`src/bridge/src/tasks.rs` 的 `TaskEntry`）。
 // 保持 `export` 名字不变 ⇒ 别的模块的 import 一行都不用改。
 import type { TaskEntry } from "./generated/TaskEntry";
+import { copyText } from "./copy-table";
 // 本文件内部也用 `TaskEntry`（4 处），所以 import + re-export 都要有
 // ——与 events.ts 同一个坑，只写 `export type { … } from` 不会带进本地作用域。
 export type { TaskEntry };
@@ -79,7 +80,7 @@ export class TasksPanel {
 
     this.summaryArrow = document.createElement("span");
     this.summaryArrow.className = "status-tasks-arrow";
-    this.summaryArrow.textContent = "▶";
+    this.summaryArrow.textContent = copyText("tasksPanel.arrow.collapsed");
     this.summaryElement.appendChild(this.summaryArrow);
 
     this.summaryText = document.createElement("span");
@@ -97,13 +98,13 @@ export class TasksPanel {
     popHead.className = "tasks-popover-head";
     const popTitle = document.createElement("span");
     popTitle.className = "tasks-popover-title";
-    popTitle.textContent = "任务列表";
+    popTitle.textContent = copyText("tasksPanel.ctor.title");
     popHead.appendChild(popTitle);
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
     closeBtn.className = "tasks-popover-close";
-    closeBtn.textContent = "×";
-    closeBtn.title = "关闭";
+    closeBtn.textContent = copyText("tasksPanel.ctor.close");
+    closeBtn.title = copyText("tasksPanel.ctor.closeHint");
     closeBtn.addEventListener("click", () => this.setCollapsed(true));
     popHead.appendChild(closeBtn);
     this.popoverElement.appendChild(popHead);
@@ -249,7 +250,7 @@ export class TasksPanel {
 
   private applyCollapsedClass(): void {
     this.summaryElement.classList.toggle("expanded", !this.collapsed);
-    this.summaryArrow.textContent = this.collapsed ? "▶" : "▼";
+    this.summaryArrow.textContent = this.collapsed ? copyText("tasksPanel.arrow.collapsed") : copyText("tasksPanel.arrow.expanded");
     this.summaryElement.setAttribute(
       "aria-expanded",
       this.collapsed ? "false" : "true",
@@ -289,15 +290,15 @@ export async function fetchSessionTasks(
 function statusIcon(status: string): string {
   switch (status) {
     case "pending":
-      return "□";
+      return copyText("tasksPanel.status.pending");
     case "in_progress":
-      return "■";
+      return copyText("tasksPanel.status.inProgress");
     case "completed":
-      return "✓";
+      return copyText("tasksPanel.status.done");
     case "deleted":
-      return "✗";
+      return copyText("tasksPanel.status.failed");
     default:
-      return "•";
+      return copyText("tasksPanel.status.other");
   }
 }
 

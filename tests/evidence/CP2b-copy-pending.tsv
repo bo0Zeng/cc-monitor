@@ -1,0 +1,69 @@
+文件	理由
+src/backend/accounts/iso.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/accounts/upstream/creds.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/accounts/upstream/endpoint.rs	射程外：常驻端 crate（没有文案表读口）—— 〔US1〕新文件，常驻端这一族归 CP2c（w4/cp2c）
+src/backend/accounts/upstream/file_face.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/accounts/upstream/mod.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/accounts/upstream/table.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/agents/claudecode/assets.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/agents/claudecode/paths.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/asset_catalog.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/asset_sync.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/common/fs.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/common/session_snapshot.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/control/capture_pane.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/control/cc_bus.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/control/ccm/argv.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/control/ccm/mod.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/control/ccm/plan.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/control/cli_control.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/control/exit_policy.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/control/files_commit.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/control/files_write.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/control/gate.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/control/kill.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/control/launch.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/control/panorama.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/control/resolve_query.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/control/transfer.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/dial/connect.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/dial/link.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/dial/sftp.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/dial/uses.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/feature_face.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/files/mod.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/footprint.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/history_annotations.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/history_join.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/inbound.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/lib.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/listen.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/mcp_sync.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/observe/accounts_query.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/observe/history_query.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/observe/plugins_query.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/observe/tasks_query.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/observe/watcher.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/platform/detach.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/platform/pidwatch/mod.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/platform/ssh_agent.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/platform/stderr_fd.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/plugin/discover.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/plugin/invoke.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/plugin/probe.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/read_face.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/relay/door.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/relay/http1.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/relay/listen.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/relay/machine.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/relay/server.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/relay/upstream.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/remote_ask.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/skill_install.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/skill_ledger.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/stderr_log.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/backend/wire.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
+src/bridge/crates/creds-core/src/perm.rs	射程外：monitor 的子 crate，够不着 crate::copy_table
+src/bridge/crates/creds-core/src/store.rs	射程外：monitor 的子 crate，够不着 crate::copy_table
+src/bridge/crates/guard-core/src/lib.rs	射程外：monitor 的子 crate，够不着 crate::copy_table
+src/panorama-engine/main.rs	射程外：全景独立小程序（另一个可执行文件）

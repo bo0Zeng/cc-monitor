@@ -61,6 +61,7 @@ pub(crate) fn refuse(msg: impl std::fmt::Display) -> String {
     format!("{REFUSE_TAG} {msg}")
 }
 
+use crate::copy_table::copy_text;
 use std::fmt::Write as _;
 
 /// 两种 shell 共用的元字符黑名单。
@@ -130,11 +131,12 @@ pub fn config_dir_prefix_posix(account: Option<&Account>) -> Result<String, Stri
             let d = config_dir.trim();
             // 空串**不是**账号 0，是坏数据（空值 ≠ 未设 —— Z01 起整套设计的支点）。
             if d.is_empty() {
-                return Err(refuse("具名账号的 configDir 是空的（账号 0 请用 base）"));
+                return Err(refuse(&copy_text("rsPayload.configDir.emptyNamed", &[])));
             }
             if !config_dir_command_safe(d) {
-                return Err(refuse(format!(
-                    "拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {d:?}"
+                return Err(refuse(copy_text(
+                    "rsPayload.configDir.bad",
+                    &[("value", &format!("{:?}", d))],
                 )));
             }
             Ok(format!("export CLAUDE_CONFIG_DIR='{d}'; "))
@@ -272,11 +274,12 @@ fn render_env_ops(ops: &[EnvOp]) -> Result<String, String> {
             EnvOp::ExportConfigDir { value } => {
                 // ★ 与 `config_dir_prefix_posix` 同一道闸 —— 两个入口不许安全姿态相反。
                 if value.is_empty() {
-                    return Err(refuse("configDir 是空串（账号 0 请用 UnsetConfigDir）"));
+                    return Err(refuse(&copy_text("rsPayload.configDir.emptyString", &[])));
                 }
                 if !config_dir_command_safe(value) {
-                    return Err(refuse(format!(
-                        "拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {value:?}"
+                    return Err(refuse(copy_text(
+                        "rsPayload.configDir.bad",
+                        &[("value", &format!("{:?}", value))],
                     )));
                 }
                 let _ = write!(
@@ -297,8 +300,9 @@ fn render_env_ops(ops: &[EnvOp]) -> Result<String, String> {
                 //   前者把一次铸币 bug 变成「↗ 不明原因失效」，后者把一个未校验的串
                 //   送进远端 shell。理由见 `EnvOp::ExportRbindToken` 的文档注释。
                 if !rbind_token_shape_ok(value) {
-                    return Err(refuse(format!(
-                        "拒绝拼入命令：CCM_RBIND_TOKEN 形状不对 {value:?}（要 32 个小写十六进制字符）"
+                    return Err(refuse(copy_text(
+                        "rsPayload.rbindToken.bad",
+                        &[("value", &format!("{:?}", value))],
                     )));
                 }
                 let _ = write!(
@@ -309,8 +313,9 @@ fn render_env_ops(ops: &[EnvOp]) -> Result<String, String> {
             }
             EnvOp::ExportRelayBaseUrl { value } => {
                 if !relay_base_url_shape_ok(value) {
-                    return Err(refuse(format!(
-                        "拒绝拼入命令：中转地址形状不对 {value:?}（要 `http://127.0.0.1:<端口>/s|t/<三段>`）"
+                    return Err(refuse(copy_text(
+                        "rsPayload.relayUrl.bad",
+                        &[("value", &format!("{:?}", value))],
                     )));
                 }
                 out.push_str(&relay_env_prefix_posix(value));
@@ -318,7 +323,7 @@ fn render_env_ops(ops: &[EnvOp]) -> Result<String, String> {
             EnvOp::UnsetConfigDir => out.push_str(UNSET_CONFIG_DIR_PREFIX),
             EnvOp::UnsetNestedEnv { keys } => {
                 if keys.is_empty() {
-                    return Err(refuse("嵌套 env 键表是空的 ⇒ 会渲染出裸 `unset ; `"));
+                    return Err(refuse(&copy_text("rsPayload.nestedEnv.empty", &[])));
                 }
                 let _ = write!(out, "unset {}; ", keys.join(" "));
             }
@@ -378,11 +383,9 @@ fn apply_wraps(inner: String, wraps: &[WrapSpec]) -> String {
 pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
     for a in spec.args {
         if !arg_is_join_safe(a) {
-            return Err(refuse(format!(
-                "拒绝拼入命令：参数 {a:?} 不在放行集里 —— 载荷是 `join(\" \")` 拼的，\
-                 空白会让它裂成多个参数、shell 元字符会另起一条命令。\n\
-                 放行集是 `[A-Za-z0-9] + -_.:/=,@+`；**非 ASCII 也一律拒**（已知过严，\
-                 且与 `config_dir_command_safe` 放行中文不对称，见 `arg_is_join_safe` 头注）"
+            return Err(refuse(copy_text(
+                "rsPayload.arg.notSafe",
+                &[("arg", &format!("{:?}", a))],
             )));
         }
     }
@@ -407,17 +410,19 @@ pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
         .chars()
         .find(|c| matches!(c, ';' | '|' | '&' | '$' | '`' | '<' | '>' | '\n' | '\r'))
     {
-        return Err(refuse(format!(
-            "拒绝拼入命令：launcher {:?} 含注入字符 {c:?} —— 载荷会被键进会话执行，\n\
-             一个 `;` 或 `|` 就能另起一条命令。合法形态是命令名或路径（可带空格分段）。",
-            spec.launcher
+        return Err(refuse(copy_text(
+            "rsPayload.launcher.injection",
+            &[
+                ("launcher", &format!("{:?}", spec.launcher)),
+                ("c", &format!("{:?}", c)),
+            ],
         )));
     }
     let mut argv = vec![spec.launcher];
     argv.extend_from_slice(spec.args);
     let inner = argv.join(" ");
     let cd = match spec.cwd {
-        Some("") => return Err(refuse("cwd 是空串 —— 空值 ≠ 未设；不加 cd 请用 None")),
+        Some("") => return Err(refuse(&copy_text("rsPayload.cwd.empty", &[]))),
         Some(c) => format!("cd {} && ", shell_quote_core::posix_quote(c)),
         None => String::new(),
     };
@@ -510,7 +515,7 @@ impl<'a> TmuxTarget<'a> {
     fn check(&self) -> Result<(), String> {
         let v = self.value();
         if v.is_empty() {
-            return Err(refuse("tmux 会话名是空串 —— 空值 ≠ 未设"));
+            return Err(refuse(&copy_text("rsPayload.tmuxName.empty", &[])));
         }
         match self {
             // 裸拼进命令 ⇒ 白名单必须是 tmux 名字那一族，一个字符都不许多。
@@ -519,9 +524,9 @@ impl<'a> TmuxTarget<'a> {
                     .chars()
                     .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
                 {
-                    return Err(refuse(format!(
-                        "tmux 会话名 {v:?} 声明成 Raw（裸拼）却不在 `[A-Za-z0-9_-]` 里 ——\n\
-                         要么它该声明成 Quoted，要么上游铸名口漏了一道。"
+                    return Err(refuse(copy_text(
+                        "rsPayload.tmuxName.rawBad",
+                        &[("name", &format!("{:?}", v))],
                     )));
                 }
                 Ok(())
@@ -533,8 +538,9 @@ impl<'a> TmuxTarget<'a> {
                     .chars()
                     .find(|c| c.is_control() || acct_core::is_deceptive_char(*c))
                 {
-                    return Err(refuse(format!(
-                        "tmux 会话名 {v:?} 含控制符或视觉欺骗字符 {c:?} —— 拒绝拼进命令。"
+                    return Err(refuse(copy_text(
+                        "rsPayload.tmuxName.control",
+                        &[("name", &format!("{:?}", v)), ("c", &format!("{:?}", c))],
                     )));
                 }
                 Ok(())
@@ -598,14 +604,10 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
             //   ⇒ 一次 fail-closed 当场变 fail-open）。本件第一次跑就撞上了它。
             let p = match payload {
                 Some(p) => p,
-                None => {
-                    return Err(refuse(
-                        "create 那一格没带载荷 —— 会渲染出一条只建空会话再接进去的命令",
-                    ))
-                }
+                None => return Err(refuse(&copy_text("rsPayload.outer.createNoPayload", &[]))),
             };
             let cflag = match cwd {
-                Some("") => return Err(refuse("cwd 是空串 —— 空值 ≠ 未设；不带 -c 请用 None")),
+                Some("") => return Err(refuse(&copy_text("rsPayload.cwd.empty", &[]))),
                 Some(c) => format!(" -c {}", shell_quote_core::posix_quote(c)),
                 None => String::new(),
             };
@@ -617,8 +619,9 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
                 None => (String::new(), String::new()),
                 Some(s) => {
                     if !ccm_sid_safe(s) {
-                        return Err(refuse(format!(
-                            "@ccm_sid {s:?} 不在 `[A-Za-z0-9_-]` 里 —— 它是裸拼进命令的。"
+                        return Err(refuse(copy_text(
+                            "rsPayload.sessionMark.bad",
+                            &[("value", &format!("{:?}", s))],
                         )));
                     }
                     (
@@ -650,7 +653,7 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
             target.check()?;
             let p = match payload {
                 Some(p) => p,
-                None => return Err(refuse("send-into 那一格没带载荷 —— 那会把用户接进空 shell")),
+                None => return Err(refuse(&copy_text("rsPayload.outer.sendIntoNoPayload", &[]))),
             };
             let t = target.exact();
             Ok(format!(
@@ -663,10 +666,7 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
         TmuxOuter::Attach { target } => {
             target.check()?;
             if payload.is_some() {
-                return Err(refuse(
-                    "attach 那一格带了载荷 —— 它只把终端接进一个已经在跑的会话，\
-                     一个 agent 进程都不出生。带载荷说明调用方把格搞错了。",
-                ));
+                return Err(refuse(&copy_text("rsPayload.outer.attachWithPayload", &[])));
             }
             Ok(format!("tmux attach -t {}", target.exact()))
         }

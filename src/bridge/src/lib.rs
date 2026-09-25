@@ -214,6 +214,7 @@ mod tool_registry; // T01：受管工具声明（只声明，不改各工具行�
 mod utils;
 mod write_site_registry; // audit-0805 08-07：每个会写用户机器的落点都要申报（关掉 §5 4b 一半） // audit-0805 08-07：每处远端执行都要申报命令来历 // audit-0805 08-08：webview 能力清单 = 三张登记表的共同前提
 
+use crate::copy_table::copy_text;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{Emitter, Listener, Manager};
@@ -647,7 +648,7 @@ pub fn run() {
                                 if let Err(e) = app
                                     .notification()
                                     .builder()
-                                    .title("本机后端没起来")
+                                    .title(&copy_text("rsLib.run.localBackendDown", &[]))
                                     .body(&next_step)
                                     .show()
                                 {
@@ -1877,7 +1878,7 @@ async fn aliases_read(
 ) -> Result<account_aliases::AliasListing, String> {
     let bound = u32::try_from(bind_state.registration_count()).unwrap_or(u32::MAX);
     tokio::task::spawn_blocking(move || {
-        let home = dirs::home_dir().ok_or_else(|| "找不到 home 目录".to_string())?;
+        let home = dirs::home_dir().ok_or_else(|| copy_text("rsLib.aliases.noHome", &[]))?;
         account_aliases::read_in(&home, shell, rc_path.as_deref(), bound)
     })
     .await
@@ -2010,7 +2011,7 @@ async fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
     }
     let url = tauri::WebviewUrl::App("settings.html".into());
     tauri::WebviewWindowBuilder::new(&app, label, url)
-        .title("cc-monitor 设置")
+        .title(&copy_text("rsLib.settings.windowTitle", &[]))
         .inner_size(760.0, 820.0)
         // 与主窗口 backgroundColor 一致，合成间隙露底为主题深色而非 WebView2 默认白（同 viewer）
         .background_color(tauri::window::Color(0x2b, 0x2a, 0x27, 0xff))
@@ -2212,9 +2213,9 @@ async fn bring_terminal_to_front(
     let cache = cache.inner().clone();
     tokio::task::spawn_blocking(move || {
         let binding = cache.lookup(&session_id).ok_or_else(|| {
-            format!(
-                "session {session_id} 未绑定窗口。用 cc 命令启动 claude 才能拉前；\
-                 cc 集成的安装见设置面板。"
+            copy_text(
+                "rsLib.front.unbound",
+                &[("sessionId", &session_id.to_string())],
             )
         })?;
         bind::verify_binding(&binding)?;
@@ -2351,7 +2352,7 @@ fn get_log_file_info(
 async fn open_log_file(state: tauri::State<'_, Arc<logging::LoggingState>>) -> Result<(), String> {
     let path = state
         .current_log_file()
-        .ok_or_else(|| "没有 log 文件（log 文件未启用或还没产生）".to_string())?;
+        .ok_or_else(|| copy_text("rsLib.log.none", &[]))?;
     let path_str = path.to_string_lossy().into_owned();
     tokio::task::spawn_blocking(move || open_with_os(&path_str))
         .await

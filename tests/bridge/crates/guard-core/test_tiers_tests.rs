@@ -602,6 +602,8 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/utils_tests.rs",
     // 〔CF1 · 09-24〕`tests/bridge/watcher_tests.rs` 随 monitor 自己那套 jsonl watcher 一起删了（本机会话内容改走本机后端的 `line` 帧）。
     "tests/copy-verdicts-ledger.vitest.ts",
+    // 〔MG1 合 CP2b〕CP2b 待办表判据：起 python3 子进程跑 `CP2b-copy-pending.py --json` ⇒ 判别器判集成层（CP2b 分支上漏登记）。
+    "tests/copy/copy-pending.vitest.ts",
     "tests/eslint-baseline.vitest.ts",
     "tests/naming/account-vs-relay-naming.vitest.ts",
     "tests/node-suite-registry-guard.vitest.ts",

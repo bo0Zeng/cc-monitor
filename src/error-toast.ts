@@ -21,6 +21,7 @@
 
 import { listen } from "@tauri-apps/api/event";
 import { commands } from "./ipc/commands";
+import { copyText } from "./copy-table";
 
 interface MonitorErrorPayload {
   level: string;
@@ -40,7 +41,7 @@ export function bindErrorToast(): void {
 function showErrorToast(p: MonitorErrorPayload): void {
   appendToast({
     headline: `⚠ ${p.target || "monitor"}`,
-    body: p.message || "(无消息)",
+    body: p.message || copyText("errorToast.showErrorToast.noMessage"),
     level: "error",
     durationMs: 6000,
     onClick: () => {
@@ -48,7 +49,7 @@ function showErrorToast(p: MonitorErrorPayload): void {
         console.warn("open_log_file failed:", err);
       });
     },
-    title: "点击打开 log 文件查看完整堆栈",
+    title: copyText("errorToast.showErrorToast.openLogHint"),
   });
 }
 
@@ -69,7 +70,7 @@ export function showActionFailureToast(
     level,
     durationMs: opts.durationMs ?? 5000,
     onClick: opts.onClick,
-    title: opts.onClick ? "点击查看" : undefined,
+    title: opts.onClick ? copyText("errorToast.showActionFailureToast.clickHint") : undefined,
   });
 }
 

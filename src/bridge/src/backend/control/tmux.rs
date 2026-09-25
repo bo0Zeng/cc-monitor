@@ -9,6 +9,7 @@
 //! `\\t`),`parse_tmux_ls` 按真 TAB `split`。F60 抓屏曾续挂本模块（〔C4e〕已迁到界面 `src/tmux-control.ts`）;kill/rename
 //! 明确不做(见 MASTERPLAN 不做清单),F52 短路门未扩本模块。
 
+use crate::copy_table::copy_text;
 use crate::ssh_source;
 use serde::Serialize;
 use tokio::io::{AsyncReadExt, BufReader};
@@ -225,8 +226,12 @@ pub fn parse_tmux_ls(output: &str) -> Vec<TmuxSession> {
 /// → 返 `None`(前端隐藏 attach 项);有 tmux 但无会话 → `Some(空)`。
 #[tauri::command]
 pub async fn list_remote_tmux(origin: String) -> Result<Option<Vec<TmuxSession>>, String> {
-    let cfg = crate::load_remote_config_by_label(&origin)
-        .ok_or_else(|| format!("未找到远端配置: {origin:?}"))?;
+    let cfg = crate::load_remote_config_by_label(&origin).ok_or_else(|| {
+        copy_text(
+            "rsTmux.list.noConfig",
+            &[("origin", &format!("{:?}", origin))],
+        )
+    })?;
     // `tmux ls` 无会话时非零退出("no server running")→ `|| true` 吞掉,得空输出=空列表。
     // K-R12：`-u` 在子命令**之前**（`tmux ls -u -F` 是 rc=1 的响错）。见 `UTF8_CLIENT_FLAG`。
     let cmd = format!(
@@ -239,7 +244,7 @@ pub async fn list_remote_tmux(origin: String) -> Result<Option<Vec<TmuxSession>>
     reader
         .read_to_end(&mut buf)
         .await
-        .map_err(|e| format!("读 tmux 列表失败: {e}"))?;
+        .map_err(|e| copy_text("rsTmux.list.failed", &[("e", &e.to_string())]))?;
     let out = String::from_utf8_lossy(&buf);
     if out.trim() == "NO_TMUX" {
         return Ok(None);
@@ -255,11 +260,13 @@ pub async fn list_remote_tmux(origin: String) -> Result<Option<Vec<TmuxSession>>
         .lines()
         .find(|l| !l.trim().is_empty() && tmux_tab_underflow(l, TMUX_LS_FMT_FIELDS))
     {
-        return Err(format!(
-            "CCM_TMUX_UNPARSABLE tmux ls 有行切出 {} 段 < {TMUX_LS_FMT_FIELDS} —— \
-             远端 tmux 的打印通道被改写（K-R12：客户端不是 UTF-8 ⇒ TAB 与非 ASCII 变 `_`）。\
-             这一趟的会话列表**整份作废**，不当成「远端零会话」。原样回包：{bad:?}",
-            bad.split('\t').count()
+        return Err(copy_text(
+            "rsTmux.list.unparsable",
+            &[
+                ("split", &(bad.split('\t').count()).to_string()),
+                ("fields", &TMUX_LS_FMT_FIELDS.to_string()),
+                ("bad", &format!("{:?}", bad)),
+            ],
         ));
     }
     Ok(Some(parse_tmux_ls(&out)))
@@ -472,7 +479,10 @@ fn is_safe_tmux_target(target: &str) -> bool {
 /// 跨轨对拍锚点在用（下面那段写着为什么锚点还得留着）。
 fn gate1_reject_empty(target: &str) -> Result<(), String> {
     if !is_safe_tmux_target(target) {
-        return Err(format!("非法 tmux 目标（空）：{target:?}"));
+        return Err(copy_text(
+            "rsTmux.target.empty",
+            &[("target", &format!("{:?}", target))],
+        ));
     }
     Ok(())
 }

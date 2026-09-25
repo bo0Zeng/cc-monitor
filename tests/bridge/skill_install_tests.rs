@@ -145,7 +145,7 @@ async fn a_reply_that_breaks_the_contract_is_an_error_not_a_guess() {
         let e = preview_with(&ask, &origin("a"), &origin("b"), "demo")
             .await
             .expect_err("坏应答被收下");
-        assert_eq!(e, UNREADABLE_REPLY, "{bad}");
+        assert_eq!(e, *UNREADABLE_REPLY, "{bad}");
     }
 }
 
@@ -630,7 +630,7 @@ async fn an_uninstall_reply_that_breaks_the_contract_deletes_nothing() {
         let e = uninstall_with(&ask, &door, &origin("dev"), "/d", &[], &["a".into()], &[])
             .await
             .expect_err("坏应答被收下");
-        assert_eq!(e, UNREADABLE_REPLY, "{bad}");
+        assert_eq!(e, *UNREADABLE_REPLY, "{bad}");
     }
     assert!(door.deleted.borrow().is_empty());
     let _ = std::fs::remove_dir_all(&home);

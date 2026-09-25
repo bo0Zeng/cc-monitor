@@ -388,7 +388,7 @@ fn illegal_config_dir_never_reaches_the_command() {
         config_dir: "/a;rm -rf /",
     }))
     .unwrap_err();
-    assert!(e.contains("拒绝拼入命令"), "{e}");
+    assert!(e.contains("不能拼进命令"), "{e}");
 }
 
 #[test]
