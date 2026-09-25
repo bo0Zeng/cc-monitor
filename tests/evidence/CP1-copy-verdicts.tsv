@@ -347,7 +347,7 @@ src/bridge/src/fenced_block.rs:129	落盘走 SFTP（upload_atomic + 远端备份
 src/bridge/src/fenced_block.rs:133	本机 Windows 的 PowerShell profile	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:134	整块 PowerShell 代码（scripts/cc.ps1.tpl 渲染）	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:144	本机 POSIX 的 ~/<用户选的那份 rc>	保留	[不对外] FENCE_SHAPES 登记表字段
-src/bridge/src/fenced_block.rs:145	**一行** source，指向 ~/.cc-monitor/account-aliases.sh（内容住在那份生成文件里）	保留	[不对外] FENCE_SHAPES 登记表字段
+src/bridge/src/fenced_block.rs:418	**一行** source，指向 ~/.cc-monitor/aliases.sh（内容住在那份生成文件里）	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:150	🔴 唯一**没有卸口**的一套（K-R62 §0b 那张表的「卸」一栏逐字「部分」）；\n                     也是唯一「围栏里只有一行、真内容在别处」的一套 —— 它刻意用另一对标记，\n                     与别的套共用标记就会「装一个把另一个整块替换掉」	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:157	本机 POSIX 的 ~/<用户选的那份 rc>	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:158	整块别名 snippet —— **与 `remote-posix-block` 同一个常量**（sftp.rs::CCM_WRAPPER_SNIPPET）	保留	[不对外] FENCE_SHAPES 登记表字段
@@ -1196,3 +1196,4 @@ src/backend/control/files_write.rs:736	刚建出来的那份已删掉。	保留	
 src/backend/control/files_write.rs:737	恢复原文件也失败了，原文备份在 {}。	保留	[对外] 同上一族，逐字沿用已裁的那一句（占位符从 {b} 换成 {}，话不变）
 src/backend/control/files_write.rs:738	恢复原文件也失败了，请打开它看一眼。	保留	[对外] 同上一族，逐字沿用已裁的那一句
 src/backend/control/files_write.rs:739	刚建出来的那份没删掉，请手动删掉它。	保留	[对外] 同上一族，逐字沿用已裁的那一句；请人做的事他做得到，不中 §2.3
+src/backend/control/files_write.rs:631	{} 在盘上有 {on_disk} 字节，但读出来是空的（可能被 OneDrive 或杀毒软件锁着）。已取消，没改任何东西。	保留	[对外] 读改写的读 / 写两半在「盘上有字节却读到空」时停下（v1.7.9 事故那一道）。RW1 把它从 monitor 的本机读法搬到后端，话逐字沿用：说清看见了什么、可能是谁锁着、结果是一个字节没动

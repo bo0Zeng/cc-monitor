@@ -1253,6 +1253,8 @@ fn bytes_on_disk_but_read_empty_is_refused() {
 /// 把结果交给变换），写后回读也是它（同一份 fail-closed 读取，没有第二条 lossy 的路）。
 /// ⇒ 本条钉三件：`read` 走 `read_profile_text`、不走裸 `read_optional`；
 /// 两个命令都把 profile 交给 `SftpFile` ＋ `fenced_block::apply`（不在函数体里自己读）。
+/// 〔RW1 · 第四波 09-24〕后一半改了：两个命令的读改写经远端后端（`user_files::edit`），
+/// 喂给变换的那一次读是后端的 `files-peek`；`SftpFile::read` 那一半只剩 F08 的入口 shim 在用。
 #[test]
 fn profile_read_modify_write_goes_through_the_failsafe_reader() {
     // ⚠ 刻意不用裸 `contains`：`needle_anchor_registry` 那条递减棘轮治的正是「匹配单位比事实小」。
@@ -1298,11 +1300,15 @@ fn profile_read_modify_write_goes_through_the_failsafe_reader() {
             guard_core::contains_word(&cmd_body, transform),
             "{sig}: 找不到 {transform}——守卫失效了"
         );
-        guard_core::find_pinned(&cmd_body, "crate::fenced_block::apply(&rc,")
-            .unwrap_or_else(|e| panic!("{sig}: profile 没交给 fenced_block::apply（{e}）"));
+        // 〔RW1 · 第四波 09-24〕F10 按用户裁「按推荐改」：两个命令的读改写经**那台远端的后端**
+        //   （`user_files::edit` → `files-peek` / `files-put`），读那一次是后端的 `files-peek`
+        //   （「不存在」与「读不出来」分得开、盘上有字节却读到空 ⇒ 拒）。本条钉「交给 `user_files::edit`、
+        //   不碰 `SftpFile`、函数体里不自己读」三件。
+        guard_core::find_pinned(&cmd_body, "crate::user_files::edit(")
+            .unwrap_or_else(|e| panic!("{sig}: profile 没交给 user_files::edit（{e}）"));
         assert!(
-            guard_core::contains_word(&cmd_body, "SftpFile"),
-            "{sig}: profile 没交给 SftpFile"
+            !guard_core::contains_word(&cmd_body, "SftpFile"),
+            "{sig}: 又把 profile 交给 SFTP 那一路了 —— 用户文件只经后端写"
         );
         for reader_prim in ["read_optional", "read_profile_text"] {
             assert!(

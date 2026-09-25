@@ -1514,12 +1514,15 @@ fn claims() -> Vec<Claim> {
     let profile_install = || {
         ImplSite {
         addr: "profile_installer.rs::install_to_profile",
-        definition: "pub fn install_to_profile(\n    path: &PathBuf,\n    command_name: &str,\n    include_cc_function: bool,\n) -> Result<(), String> {",
+        // 〔RW1 · 第四波 09-24〕签名变了：落盘经「门」（生产 = 本机后端的文件管理那一面），本进程不写。
+        definition: "pub async fn install_to_profile(\n    door: &impl crate::user_files::Door,\n    path: &Path,\n    command_name: &str,\n    include_cc_function: bool,\n) -> Result<(), String> {",
     }
     };
-    let profile_uninstall = || ImplSite {
+    let profile_uninstall = || {
+        ImplSite {
         addr: "profile_installer.rs::uninstall_from_profile",
-        definition: "pub fn uninstall_from_profile(path: &PathBuf) -> Result<(), String> {",
+        definition: "pub async fn uninstall_from_profile(\n    door: &impl crate::user_files::Door,\n    path: &Path,\n) -> Result<(), String> {",
+    }
     };
     vec![
         Claim {

@@ -233,6 +233,15 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "文件窗口编辑器能打开的文本体量 ＝ 存盘那条请求行（`files-write-text`）序列化后的上限",
         "拒收+回错",
     ),
+    // 〔RW1 · 第四波 09-24〕用户文件读改写的写那一半（`files-put`）整份装一行请求 ⇒ 本侧先按真序列化出来的
+    //   那一行拒（多一个字节就不发），数就是后端入方向一行的上限（下面「对 R」钉相等）。
+    (
+        "src/bridge/src/user_files.rs",
+        "REQUEST_LINE_CAP",
+        1 << 20,
+        "`user_files` 发给后端的一条写面请求（`files-put` 新内容 ＋ 读到的那一份同装一行）序列化后的上限",
+        "拒收+回错",
+    ),
     (
         "src/bridge/src/ssh_source.rs",
         "SNAPSHOT_MAX_BYTES",
@@ -875,6 +884,14 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
         e1, e2,
         "窗口编辑上限与后端入方向一行上限漂开了（窗口 {e1} / 后端 {e2}）。\
              存盘那条请求整份装在一行里，本地那道拒（`editor::save_fits`）拿的就是这个数。"
+    );
+
+    // 对 R〔RW1 · 第四波 09-24〕：`user_files` 本侧那道拒用的就是后端入方向一行的上限 ⇒ 钉相等。
+    //   多给 ⇒ 本侧放行、后端整行丢弃；少给 ⇒ 写得回去的文件被本侧冤拒。
+    let r1 = by("src/bridge/src/user_files.rs", "REQUEST_LINE_CAP");
+    assert_eq!(
+        r1, e2,
+        "`user_files::REQUEST_LINE_CAP` 与后端入方向一行上限漂开了（monitor {r1} / 后端 {e2}）"
     );
 
     // 对 C：注释写的是「同**量级**」，而且**今天就不等** ⇒ 钉比值，不钉相等。

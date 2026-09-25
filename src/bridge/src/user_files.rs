@@ -1,0 +1,339 @@
+//! 〔RW1 · 第四波 · 2026-09-24〕**monitor 进程够用户文件的唯一开口 —— 它一个字节都不自己落盘。**
+//!
+//! 用户逐字：「现在只允许后端的文件管理部分写文件」；追问后裁「**只管用户的文件**」「**也管本机**」。
+//! ⇒ rc 里的别名块 · PowerShell `$PROFILE` · 项目 `.mcp.json` · skill 收件箱 · `~/.claude/skills/cc-bus/` ·
+//! 删历史会话，这些改动从此都经**那台机器上的后端**（`files-peek` / `files-put` / `files-rename` /
+//! `files-chmod` / `files-delete-session`），本机与远端**同一条路**，只差 origin。
+//!
+//! # 分工
+//!
+//! | 在哪 | 做什么 |
+//! |---|---|
+//! | 这里（monitor） | 读（经后端）· **算**新内容（各调用方的纯规划函数：`fenced_block::splice_in` 等）· 交给后端 |
+//! | 后端 `control/files_write.rs::put_text` | CAS · 相同不写 · 备份 · 暂存旁名换名上位 · 回读比对 · 回滚 —— **写的规则只有那一份** |
+//!
+//! 读与写之间隔着一次往返 ⇒ 交出去的时候**必须**带「我读到的是哪一份」（`expect`）；
+//! 盘上那份在这中间被别人改了 ⇒ 后端回 `stale`、一个字节不写，这里**重读重算**（有上限）。
+//!
+//! 🔴 `D11`：那台机器的后端没连上 ⇒ **明确报错，不回落**到直写。
+
+use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
+use crate::backend::control::inbound_client::client_for;
+
+/// 一次 `files-peek` 读回来的。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Peeked {
+    /// 读的是哪一份（后端解过链接的那一个，给人看）。
+    pub path: String,
+    /// `None` = 确定不存在（「读不出来」是 `Err`，不是这一形）。
+    pub text: Option<String>,
+}
+
+/// 一次 `files-put` 真写了之后的回执。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Landed {
+    pub path: String,
+    pub changed: bool,
+    pub created: bool,
+    pub backup: Option<String>,
+}
+
+/// 一次后端写没成：**`stale` 与别的分得开**（前者该重读重算，后者原话交给用户）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Refused {
+    Stale(String),
+    Other(String),
+}
+
+impl Refused {
+    pub(crate) fn said(self) -> String {
+        match self {
+            Refused::Stale(s) | Refused::Other(s) => s,
+        }
+    }
+}
+
+impl From<String> for Refused {
+    fn from(s: String) -> Self {
+        Refused::Other(s)
+    }
+}
+
+/// 「那台机器上的文件管理那一面」。生产只有 [`BackendDoor`] 一个实现；判据用内存 / 临时目录的替身。
+pub(crate) trait Door {
+    /// 这台机器在话里怎么称呼（「本机」/ 远端名）。
+    fn machine(&self) -> String;
+    /// 后端这个进程的 home（绝对路径）。
+    async fn home(&self) -> Result<String, String>;
+    async fn peek(&self, root: &str, rel: &str) -> Result<Peeked, String>;
+    async fn put(
+        &self,
+        root: &str,
+        rel: &str,
+        content: &str,
+        expect: Option<&str>,
+        backup: bool,
+        parents: bool,
+    ) -> Result<Landed, Refused>;
+    async fn rename(&self, root: &str, from: &str, to: &str) -> Result<(), String>;
+    async fn chmod(&self, root: &str, rel: &str, mode: u32) -> Result<(), String>;
+    async fn delete_session(&self, sid: &str) -> Result<String, String>;
+}
+
+/// 读改写一次最多重来几趟（`stale` 才重来：盘上那份在读与写之间被别人改了）。
+pub(crate) const EDIT_ATTEMPTS: usize = 3;
+
+/// 一次 [`edit`] 的结局。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Edited {
+    /// 规划说「没事可做」，或算出来与盘上逐字相同 ⇒ 一个字节没写。
+    Unchanged,
+    Written(Landed),
+}
+
+/// 🔴 **读 → 算 → 交**（写的规则不在这里，在后端）。
+///
+/// `plan` 拿到读到的全文（`None` = 不存在），回 `Some(新全文)` 或 `None`（没事可做）。
+/// 后端回 `stale` ⇒ 重读重算，最多 [`EDIT_ATTEMPTS`] 趟；`plan` 因此是 `FnMut`（每趟对新读到的那一份再算一遍）。
+pub(crate) async fn edit<D: Door>(
+    door: &D,
+    root: &str,
+    rel: &str,
+    backup: bool,
+    parents: bool,
+    mut plan: impl FnMut(Option<&str>) -> Result<Option<String>, String>,
+) -> Result<Edited, String> {
+    let mut last = String::new();
+    for _ in 0..EDIT_ATTEMPTS {
+        let got = door.peek(root, rel).await?;
+        let Some(next) = plan(got.text.as_deref())? else {
+            return Ok(Edited::Unchanged);
+        };
+        if got.text.as_deref() == Some(next.as_str()) {
+            return Ok(Edited::Unchanged);
+        }
+        match door
+            .put(root, rel, &next, got.text.as_deref(), backup, parents)
+            .await
+        {
+            Ok(landed) if landed.changed => return Ok(Edited::Written(landed)),
+            Ok(_) => return Ok(Edited::Unchanged),
+            Err(Refused::Stale(s)) => last = s,
+            Err(Refused::Other(s)) => return Err(s),
+        }
+    }
+    Err(format!(
+        "{last}（连着 {EDIT_ATTEMPTS} 趟都是读完之后盘上那份又变了，先停下 —— 过一会儿再点一次）"
+    ))
+}
+
+/// `abs` 在 `home` 底下的那一段（给 `root = home` 的那几处用：rc / profile）。
+///
+/// ⚠ 两边都是**字符串**：本机与远端同一种算法（远端路径在这台机器上没法 `canonicalize`）。
+/// 不在 home 底下 ⇒ 拒（与从前 `fence_path_under` 的「只能落在 home 之内」同一句承诺）。
+pub(crate) fn rel_under(home: &str, abs: &str) -> Result<String, String> {
+    let norm = |s: &str| s.replace('\\', "/");
+    let (h, a) = (norm(home), norm(abs));
+    let h = h.trim_end_matches('/');
+    let rest = a
+        .strip_prefix(h)
+        .and_then(|r| r.strip_prefix('/'))
+        .filter(|r| !r.is_empty())
+        .ok_or_else(|| format!("{abs} 不在 home（{home}）底下 —— 只改 home 里的文件"))?;
+    Ok(rest.to_string())
+}
+
+/// 后端入方向一行的上限（`src/backend/inbound.rs::MAX_LINE_BYTES` 的本侧镜像；两个 crate 引不到对方 ⇒
+/// `byte_cap_registry` 读两侧源码钉相等）。读改写的写那一半把新内容与读到的那一份装进同一行请求。
+pub(crate) const REQUEST_LINE_CAP: usize = 1 << 20;
+
+/// 后端那一侧一趟最多等多久。写面全是同步文件 I/O，秒级内完成；给足余量同时防卡死。
+const DOOR_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// 生产那一扇门：**经这台机器的后端**（`inbound_client::client_for(origin)`）。本机与远端同一份。
+pub(crate) struct BackendDoor {
+    pub origin: crate::origin::Origin,
+}
+
+impl BackendDoor {
+    pub(crate) fn new(origin: crate::origin::Origin) -> Self {
+        Self { origin }
+    }
+
+    /// 发一条写面命令，拿它的 `data`。失败翻成人话；**对端回 `stale` 单列**。
+    async fn ask(&self, cmd: &str, args: serde_json::Value) -> Result<serde_json::Value, Refused> {
+        let wire = self.origin.as_wire_str();
+        let who = crate::backend::control::cc_bus::machine_label(wire);
+        let Some(client) = client_for(wire) else {
+            let why = match no_channel(wire) {
+                Routed::NoChannel(s) | Routed::Refused(s) => s,
+                Routed::Done => String::new(),
+            };
+            return Err(Refused::Other(format!(
+                "{who} 的后端没连上，这一步要经它来写（{why}）—— 一个字节都没动。\
+                 先在设置里把这台机器的后端起起来再点一次"
+            )));
+        };
+        if !client.accepts(cmd) {
+            return Err(Refused::Other(
+                crate::backend::control::cc_bus::describe_backend_too_old_for(
+                    wire,
+                    cmd,
+                    "这一步没做",
+                ),
+            ));
+        }
+        // 请求一行装不装得下：后端一行上限 1 MiB（`inbound::MAX_LINE_BYTES`，本侧的镜像是
+        // [`REQUEST_LINE_CAP`]）。装不下当场说清，不发 —— 发了只会换来一句 `line_too_long`。
+        let line = crate::backend::control::inbound_client::encode_request("0", cmd, &args);
+        if line.len() > REQUEST_LINE_CAP {
+            return Err(Refused::Other(format!(
+                "这份文件太大，一趟装不下（请求一行 {} 字节，上限 {REQUEST_LINE_CAP}）—— 一个字节都没动",
+                line.len()
+            )));
+        }
+        let stale = std::cell::Cell::new(false);
+        match client.call(cmd, args, DOOR_TIMEOUT).await {
+            Ok(Some(v)) => Ok(v),
+            Ok(None) => Err(Refused::Other(format!(
+                "{who} 的后端对 `{cmd}` 回了一条空应答"
+            ))),
+            Err(e) => {
+                let said = match route_call_error(&e, |code, message| {
+                    if code == "stale" {
+                        stale.set(true);
+                    }
+                    format!("{who}：{message}")
+                }) {
+                    Routed::NoChannel(s) | Routed::Refused(s) => s,
+                    Routed::Done => String::new(),
+                };
+                if stale.get() {
+                    Err(Refused::Stale(said))
+                } else {
+                    Err(Refused::Other(said))
+                }
+            }
+        }
+    }
+}
+
+/// 后端交回来的路径（字符串或 `{"b16": …}`）→ 给人看的一行。
+fn path_text(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::String(s) => s.clone(),
+        other => other
+            .get("b16")
+            .and_then(serde_json::Value::as_str)
+            .and_then(|h| {
+                (0..h.len())
+                    .step_by(2)
+                    .map(|i| u8::from_str_radix(h.get(i..i + 2)?, 16).ok())
+                    .collect::<Option<Vec<u8>>>()
+            })
+            .map(|b| String::from_utf8_lossy(&b).into_owned())
+            .unwrap_or_default(),
+    }
+}
+
+impl Door for BackendDoor {
+    fn machine(&self) -> String {
+        crate::backend::control::cc_bus::machine_label(self.origin.as_wire_str())
+    }
+
+    async fn home(&self) -> Result<String, String> {
+        let v = self
+            .ask("files-home", serde_json::json!({}))
+            .await
+            .map_err(Refused::said)?;
+        let p = path_text(v.get("path").unwrap_or(&serde_json::Value::Null));
+        if p.is_empty() {
+            return Err(format!("{} 的后端没答出 home 在哪", self.machine()));
+        }
+        Ok(p)
+    }
+
+    async fn peek(&self, root: &str, rel: &str) -> Result<Peeked, String> {
+        let v = self
+            .ask(
+                "files-peek",
+                serde_json::json!({ "root": root, "rel": rel }),
+            )
+            .await
+            .map_err(Refused::said)?;
+        Ok(Peeked {
+            path: path_text(v.get("path").unwrap_or(&serde_json::Value::Null)),
+            text: v
+                .get("text")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string),
+        })
+    }
+
+    async fn put(
+        &self,
+        root: &str,
+        rel: &str,
+        content: &str,
+        expect: Option<&str>,
+        backup: bool,
+        parents: bool,
+    ) -> Result<Landed, Refused> {
+        let v = self
+            .ask(
+                "files-put",
+                serde_json::json!({
+                    "root": root,
+                    "rel": rel,
+                    "content": content,
+                    "expect": expect,
+                    "backup": backup,
+                    "parents": parents,
+                }),
+            )
+            .await?;
+        let flag = |k: &str| {
+            v.get(k)
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false)
+        };
+        Ok(Landed {
+            path: path_text(v.get("path").unwrap_or(&serde_json::Value::Null)),
+            changed: flag("changed"),
+            created: flag("created"),
+            backup: v.get("backup").filter(|b| !b.is_null()).map(path_text),
+        })
+    }
+
+    async fn rename(&self, root: &str, from: &str, to: &str) -> Result<(), String> {
+        self.ask(
+            "files-rename",
+            serde_json::json!({ "root": root, "from": from, "to": to }),
+        )
+        .await
+        .map(|_| ())
+        .map_err(Refused::said)
+    }
+
+    async fn chmod(&self, root: &str, rel: &str, mode: u32) -> Result<(), String> {
+        self.ask(
+            "files-chmod",
+            serde_json::json!({ "root": root, "rel": rel, "mode": mode }),
+        )
+        .await
+        .map(|_| ())
+        .map_err(Refused::said)
+    }
+
+    async fn delete_session(&self, sid: &str) -> Result<String, String> {
+        let v = self
+            .ask("files-delete-session", serde_json::json!({ "sid": sid }))
+            .await
+            .map_err(Refused::said)?;
+        Ok(path_text(v.get("path").unwrap_or(&serde_json::Value::Null)))
+    }
+}
+
+#[cfg(test)]
+#[path = "../../../tests/bridge/user_files_tests.rs"]
+pub(crate) mod tests;
