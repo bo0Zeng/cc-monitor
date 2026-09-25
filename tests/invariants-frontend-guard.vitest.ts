@@ -22,7 +22,7 @@
  * | **22.4** 精简模式 CSS 不塌 grid 行 | ✅ **已有人守** —— `tests/app-grid-claims.vitest.ts`，`viewer` 模式的隐式行数钉在 0 | **不在这里复制**（`D1`） |
  * | **22.5** 关窗要 `core:window:allow-close` | ✅ **已有人守** —— `tests/bridge/capability_registry_tests.rs::every_webview_permission_is_registered` 那条 `stale` 断言（`ALLOWED` 里登记过的权限必须还在 `capabilities/default.json` 里）。⚠ 那份文件的头注**逐字说 `§22` 那处讲的是「要加权限，不是不许加」** —— 它当时判的是「本条服务哪条要求」，而它顺带兑现的正是 `§22` 第 5 项 | **不在这里复制**（`D1`；且 `.rs` 不在本轮写区，只能登记） |
  * | **22.3/22.6** listen 先注册再 emit · 独立窗自调 `dispatcher.start()` | 🔴 **没人守** | ⇒ 本文件 ⑥ |
- * | **22.1/22.2** 开窗 IPC 必须 `async` · 定向事件 target-kind 对齐 | 🔴 **没人守，而本轮买不到** —— 前者是 Rust `async fn` 的性质、后者的另一半是 `emit_to(EventTarget::webview_window)`，**都住 `.rs`**（不在写区）。TS 那半（`windowScoped: true`）在 ⑥ 里钉了 | 如实登记，不假装覆盖 |
+ * | **22.1/22.2** 开窗 IPC 必须 `async` · 定向事件 target-kind 对齐 | ✅ **Rust 那半已有人守**〔S5 · 第四波〕—— `tests/bridge/lib_window_lifecycle_tests.rs::every_window_building_command_is_async`（建窗点集合两向相等 ＋ 每处 `async fn` ＋ 紧挨 `#[tauri::command]`）· `…::every_emit_to_targets_a_webview_window_not_a_bare_label`（`emit_to` 调用点两向相等 ＋ 目标由 `EventTarget::webview_window(` 绑定）。TS 那半（`windowScoped: true`）在 ⑥ 里钉了 | **不在这里复制**（`D1`） |
  *
  * ⇒ **`105` 那句「所以它们没人守」要改成「五条里有两条半今天真有人守，只是那些判据的
  * 散文里没点出它服务哪条条」。** 后半句才是 `105` 量到的东西（它量的是**指向**）。
@@ -419,7 +419,8 @@ describe("P21 ⑥ 条 22：独立窗口契约里 TS 这一侧的三项", () => {
       "条 22.2：定向投递（Rust `emit_to(EventTarget::webview_window(label))`）必须配前端\n" +
         "`getCurrentWebviewWindow().listen`，也就是 `bindEvents({ windowScoped: true })`。\n" +
         "模块级 `listen` 是 `Any` 监听，**命不中**定向发射 ⇒ 事件静默丢弃。\n" +
-        "⚠ 这一条只钉得住 TS 那半；Rust 侧 `emit_to` 的 target-kind 今天**没人守**（`.rs` 不在写区）。",
+        "⚠ 这一条只钉 TS 那半；Rust 侧 `emit_to` 的 target-kind 由\n" +
+        "`tests/bridge/lib_window_lifecycle_tests.rs::every_emit_to_targets_a_webview_window_not_a_bare_label` 钉。",
     ).toBe(true);
   });
 
