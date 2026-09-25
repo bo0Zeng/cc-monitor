@@ -100,6 +100,8 @@ type Plat = "posix" | "powershell";
 
 describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳 ＋ 读回口 ＋ 默认不动用户配置", (plat) => {
   let seen: Array<{ cmd: string; args?: unknown }>;
+  /** 〔W5-ALIAS〕预览那一发要不要失败。 */
+  let previewFails = false;
   let disk: Alias[];
   let problems: Array<{ name: string; message: string }>;
   /** 替身盘面：哪几份候选里装着别名块（装 / 卸会改它，读回口照它答）。 */
@@ -135,6 +137,23 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     oldAt = new Set();
     vi.resetModules();
     vi.doMock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn() }));
+    // 〔W5-ALIAS〕预览走通道（`chan.call(origin, "ccm-print", …)`）：替身把每一发记进同一本账（`chan:<op>`），
+    //   首开那几发的集合相等判据因此也看得见「展开时有没有偷问预览」。
+    previewFails = false;
+    vi.doMock("../../src/ipc/chan", () => ({
+      // `chan-caller.ts::saidOf` 按 `instanceof ChanError` 分流 —— 替身也得交出这个类（替身抛的是普通 Error）。
+      ChanError: class ChanError extends Error {},
+      chan: {
+        call: (origin: string, op: string, body: Uint8Array) => {
+          const args = JSON.parse(new TextDecoder().decode(body)) as { args: string[] };
+          seen.push({ cmd: `chan:${op}`, args: { origin, ...args } });
+          if (previewFails) return Promise.reject(new Error("后端没接住"));
+          return Promise.resolve(
+            new TextEncoder().encode(JSON.stringify({ line: `LINE ${args.args.join(" ")}` })),
+          );
+        },
+      },
+    }));
     vi.doMock("../../src/ipc/commands", () => ({
       commands: {
         local_ccm_entry_status: () => {
@@ -267,6 +286,37 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     el.dispatchEvent(new Event("toggle"));
     await open(el);
     expect(seen.length, "再展开又读了一遍").toBe(n);
+  });
+
+  it("〔W5-ALIAS · C〕点「预览」恰好问一次本机后端 `ccm-print`，交的就是这一条的参数，答的那一行原样上屏", async () => {
+    const el = await mount();
+    await open(el);
+    const before = seen.length;
+    const rows = [...el.querySelectorAll<HTMLElement>(".machine-aliases-row")];
+    const zRow = rows.find((r) => r.querySelector("code")?.textContent === "alphacc")!;
+    clickText(zRow, "预览");
+    await flush();
+    const asked = seen.slice(before);
+    expect(asked).toEqual([
+      { cmd: "chan:ccm-print", args: { origin: "<local>", args: ["--account", "z"] } },
+    ]);
+    const out = zRow.nextElementSibling as HTMLElement;
+    expect(out.classList.contains("machine-aliases-preview")).toBe(true);
+    expect(out.hidden).toBe(false);
+    expect(out.textContent).toContain("LINE --account z");
+    expect(out.textContent).toContain("alphacc");
+  });
+
+  it("〔W5-ALIAS · C〕预览没问成 ⇒ 那一条下面照实说「预览不了」＋ 原因，不静默", async () => {
+    const el = await mount();
+    await open(el);
+    previewFails = true;
+    const row = el.querySelector<HTMLElement>(".machine-aliases-row")!;
+    clickText(row, "预览");
+    await flush();
+    const out = row.nextElementSibling as HTMLElement;
+    expect(out.textContent).toContain("预览不了");
+    expect(out.textContent).toContain("后端没接住");
   });
 
   it("🔴 别名三条命令每一发都带着这个平台的 `shell`（平台是入参，不是组件自己猜的）", async () => {

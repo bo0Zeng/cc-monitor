@@ -1005,8 +1005,8 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
 /// **别名那几格能力的本机侧命令集合 == 注册表里以 `aliases_` 打头的命令集合**（两向）：
 /// 别名 / 别名块再长一条不叫 `aliases_*` 的本机命令 ⇒ 红；起了个 `aliases_*` 名字却归到别的能力 ⇒ 也红。
 /// ⚠ 能力 id 为什么是两格（清单 `alias.manage` ／ 块 `alias.block-*`，〔DP1〕从前叫 `ccm.*`）写在 `LEDGER` 那几行上：并成一格会把清单的远端欠账抹掉。
-/// ⚠ 远端那两条块命令（`install_remote_alias_block` / `uninstall_remote_alias_block`）不在左边：它们住 `sftp.rs`、
-///   经 SSH 那条路，不是本机命令面的一员 —— 本条只管本机这一族。
+/// ⚠ 远端那两条块命令（`install_remote_alias_block` / `uninstall_remote_alias_block`）不在左边：它们（〔W5-ALIAS〕今天住 `profile_installer.rs`）
+///   经那台远端的后端写，不是本机命令面的一员 —— 本条只管本机这一族。
 #[test]
 fn the_alias_capabilities_speak_through_one_command_family() {
     const ALIAS_CAPS: [&str; 4] = [

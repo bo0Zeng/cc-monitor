@@ -141,7 +141,10 @@ fn the_markers_are_shared_exactly_where_they_should_be() {
         }
     }
     // ③ 标记确实是那几个常量本身（指过去，不是抄一份长得一样的）。
-    assert_eq!(remote.begin_marker, crate::sftp::CCM_PROFILE_BEGIN);
+    assert_eq!(
+        remote.begin_marker,
+        crate::profile_installer::CCM_PROFILE_BEGIN
+    );
     assert_eq!(windows.begin_marker, crate::profile_installer::BEGIN_MARKER);
 }
 
@@ -248,8 +251,11 @@ fn a_shape_that_declares_no_uninstall_really_has_none() {
     }
     // ② 反向自检：扫描器在真树上认得出一个真的卸载实现（零命中 ⇒ 下面全是空真）。
     assert!(
-        crate::structural_scan::fn_names_starting_with(file_of("sftp.rs"), &["uninstall"])
-            .contains(&"uninstall_remote_alias_block".to_string()),
+        crate::structural_scan::fn_names_starting_with(
+            file_of("profile_installer.rs"),
+            &["uninstall"]
+        )
+        .contains(&"uninstall_remote_alias_block".to_string()),
         "扫描器在真树上零命中 —— 本条此刻无效，先查剥法别改断言"
     );
 
@@ -517,16 +523,9 @@ fn the_write_rule_has_exactly_one_home() {
             }
         }
     }
-    // `sftp.rs` 另有两条**部署**路（后端二进制 / cc-acct-iso）走 `verify_readback`（〔SR1b〕读回比对的判定），
-    // 那是按字节比的另一件事、不在本条人群里 ⇒ 只扫别名 / rc 那一段。
-    let sftp = read("sftp.rs");
-    let from = guard_core::find_pinned(&sftp, "pub(crate) const CCM_PROFILE_BEGIN")
-        .expect("远端 rc 那一段的起点锚不住");
-    for n in needles {
-        if sftp[from..].contains(n) {
-            hits.push(format!("sftp.rs（rc 那一段）: {n}"));
-        }
-    }
+    // 〔W5-ALIAS · 第五波先行〕远端 rc 那一段（别名块）从 `sftp.rs` 搬进了 `profile_installer.rs`，
+    //   上面那一轮已经把它扫在里面。`sftp.rs` 只剩**部署**路（后端二进制 / cc-acct-iso 走 `verify_readback`，
+    //   按字节比的另一件事、不在本条人群里）—— 它若又长回 rc 那一段，`sftp_tests.rs::the_alias_block_truth_no_longer_lives_in_sftp` 红。
     assert!(hits.is_empty(), "规则长出了第二个住址：{hits:?}");
     // 正控：人群不是空的 —— 规则真在 `fenced_block` 里，而且恰好一处。
     let home = read("fenced_block.rs");

@@ -1531,15 +1531,16 @@ fn claims() -> Vec<Claim> {
     vec![
         Claim {
             tool: "ccm",
-            home: Some(sftp()),
+            // 〔W5-ALIAS〕别名块那两条命令从 `sftp.rs` 搬进了别名域（`profile_installer.rs`）。
+            home: Some(profile()),
             install: Some(ImplSite {
                 // 〔MC1 · 2026-09-24〕改名：「装 ccm 助手」→ 装别名块（推入口那一半并进了部署后端）。
-                addr: "sftp.rs::install_remote_alias_block",
-                definition: "pub async fn install_remote_alias_block(\n    cfg: RemoteConfig,\n    profile: String,\n) -> Result<String, String> {",
+                addr: "profile_installer.rs::install_remote_alias_block",
+                definition: "pub async fn install_remote_alias_block(\n    cfg: crate::ssh_source::RemoteConfig,\n    profile: String,\n) -> Result<String, String> {",
             }),
             uninstall: Some(ImplSite {
-                addr: "sftp.rs::uninstall_remote_alias_block",
-                definition: "pub async fn uninstall_remote_alias_block(\n    cfg: RemoteConfig,\n    profile: String,\n) -> Result<String, String> {",
+                addr: "profile_installer.rs::uninstall_remote_alias_block",
+                definition: "pub async fn uninstall_remote_alias_block(\n    cfg: crate::ssh_source::RemoteConfig,\n    profile: String,\n) -> Result<String, String> {",
             }),
         },
         Claim {
