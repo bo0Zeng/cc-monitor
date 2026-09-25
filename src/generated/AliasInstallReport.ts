@@ -3,7 +3,7 @@
 /**
  * ② 那一跳的产物。
  */
-export type AliasInstallReport = { aliasPath: string, wroteAliasFile: boolean, wroteRc: boolean, 
+export type AliasInstallReport = { aliasPath: string, wroteAliasFile: boolean, 
 /**
  * 给人看的补充说明，一条一句。
  */

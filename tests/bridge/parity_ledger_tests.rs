@@ -396,7 +396,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
         Side::Remote,
     ),
     // 〔`A3` 第二波〕上面两条的本机对侧：问本机后端的 `--acct-iso-status` / `--acct-iso-shellinit`
-    // （住后端账号层 `accounts/iso.rs`），出参类型与远端那条逐字相同 ⇒ 两条能力从此对称，
+    // （住后端账号域 `accounts/iso.rs`），出参类型与远端那条逐字相同 ⇒ 两条能力从此对称，
     // `acct-iso.check` / `acct-iso.shellinit` 两笔 `ParityDebt` 结清（理由表那两行已删）。
     ("check_local_acct_iso", "acct-iso.check", Side::Local),
     (
@@ -718,7 +718,7 @@ const ORIGIN_TAKING_BOTH: &[(&str, &str)] = &[
     (
         "relay_endpoint_for_launch",
         "〔RL1 · 第四波〕这次拉起的中转地址按**那台机器**的事实答：本机两件事走起会话那一侧那条缝，\
-             远端问那台的账号层（`apikey-read`）与中转（`relay-status` / 用到才 `relay-ensure`）。命令体对 origin 不做远端假设 —— \
+             远端问那台的上游选择（`apikey-read`）与中转（`relay-status` / 用到才 `relay-ensure`）。命令体对 origin 不做远端假设 —— \
              分派住 `history::relay_endpoint_on`，判断只在 `payload::relay_endpoint_for` 一处。",
     ),
     (
@@ -735,7 +735,7 @@ const ORIGIN_TAKING_BOTH: &[(&str, &str)] = &[
     ),
     (
         "read_apikey_credentials_status",
-        "〔RM1a · 第四波〕那份凭据文件是账号层自己的状态，**每台机器一份**。本机读 monitor 自己那一份\
+        "〔RM1a · 第四波〕那份凭据文件是上游选择自己的状态，**每台机器一份**。本机读 monitor 自己那一份\
              （`creds_store`），远端问那台机器的后端（`apikey-read`）。命令体对 origin 不做远端假设 —— \
              分派住 `apikey_remote::status_on`，它只用 origin 决定「问哪台机器」。",
     ),

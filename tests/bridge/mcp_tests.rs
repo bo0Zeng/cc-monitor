@@ -205,6 +205,7 @@ fn project_dirs_from_sorted_and_tolerant() {
     assert!(project_dirs_from(&json!({ "projects": "bad" })).is_empty()); // 非对象
 }
 
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；②形（远端落点路径）。
 #[test]
 fn remote_mcp_path_guard_rejects_traversal_and_nonabsolute() {
     // F89a：远端写路径守卫——只接受 绝对 + 尾 /.mcp.json + 无 .. 的非裸路径。
