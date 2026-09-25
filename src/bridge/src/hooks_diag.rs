@@ -11,9 +11,9 @@
 //! 「装了但指向别的路径」，然后建议用户去修一个没坏的东西。判据必须对着真实盘面校准，
 //! 不能对着自己写的样板校准——这与 B03 那几个发现同源。
 
-/// 一个钩子的诊断结论。
 use crate::copy_table::copy_text;
 
+/// 一个钩子的诊断结论。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]

@@ -17,6 +17,8 @@
 //! 契约：**跳过坏行并计数，永不 panic、永不因坏行丢掉好行**。`skipped` 如实回报给 UI，
 //! 显示「N 条无法解析」而不是假装干净。
 
+use crate::copy_table::copy_text;
+
 /// cc-bus id 合法性。**照抄 `shared/ccm:358-362` 的判据，不另发明一套。**
 ///
 /// 关键的一条是 **拒绝前导 `-`**：写这段时我第一版用的是「只含 `[A-Za-z0-9_-]`」，
@@ -24,8 +26,6 @@
 /// 而 id 会被拼进命令行（`cc-send <id> …`、`tmux has-session -t =<id>`），
 /// `-` 开头会被下游当成选项解析。ccm 那边同样的理由写着
 /// `""|-*) die "非法 tmux 会话名（空或以 - 开头）"`。
-use crate::copy_table::copy_text;
-
 pub fn is_valid_bus_id(s: &str) -> bool {
     !s.is_empty()
         && !s.starts_with('-')
