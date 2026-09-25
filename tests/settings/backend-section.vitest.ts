@@ -36,6 +36,8 @@ let statusQueue: Record<string, unknown>[] = [];
  * 键名与后端 `exit_policy::wire` 逐格一致：`state` / `killOnExit`（`reason` / `path` 本区不用）。
  */
 let exitAnswer: Record<string, unknown> | null = null;
+/** 〔C4c〕下一次「交后端写」要回的失败（`null` = 照常写）。原先用 `spyOn(commands.set_backend_exit_policy)`，那条命令退役了。 */
+let failNextSet: Error | null = null;
 
 vi.mock("../../src/ipc/commands", () => ({
   commands: {
@@ -58,17 +60,34 @@ vi.mock("../../src/ipc/commands", () => ({
       calls.push({ name: "backend_machines", args: null });
       return Promise.resolve(["<local>", "甲机"]);
     },
-    backend_exit_policy: (a: unknown) => {
-      calls.push({ name: "backend_exit_policy", args: a });
-      return exitAnswer === null
-        ? Promise.reject(new Error("没有控制通道"))
-        : Promise.resolve(exitAnswer);
-    },
-    // 〔B2〕后端写完**读回**的那一份：这里就让「盘上」变成写进去的值，后续每一次现问都读到它。
-    set_backend_exit_policy: (a: { origin: string; kill: boolean }) => {
-      calls.push({ name: "set_backend_exit_policy", args: a });
-      exitAnswer = { state: "chosen", killOnExit: a.kill, reason: null, path: "x" };
-      return Promise.resolve(exitAnswer);
+    // 〔C4c · 第四波 4B〕「退出行为」两问改走通道：`chan_call`（op = `exit-policy-read` / `exit-policy-set`）。
+    //   这里把一发 `chan_call` 译回判据里的旧叫法（`backend_exit_policy` / `set_backend_exit_policy`），
+    //   回包译成后端那份字节（`ArrayBuffer`），问不到译成通道那一跳「没有控制通道」的线上形状。
+    chan_call: (a: { origin: string; op: string; payload: number[] }) => {
+      const body = JSON.parse(new TextDecoder().decode(Uint8Array.from(a.payload))) as Record<string, unknown>;
+      const bytes = (v: unknown) => {
+        const u = new TextEncoder().encode(JSON.stringify(v));
+        return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
+      };
+      const noChannel = { err: { Hop: { idx: 1, tag: "open", reach: "NotSent", why: "Unreachable" } }, body: [] };
+      if (a.op === "exit-policy-read") {
+        calls.push({ name: "backend_exit_policy", args: { origin: a.origin } });
+        return exitAnswer === null ? Promise.reject(noChannel) : bytes(exitAnswer);
+      }
+      if (a.op === "exit-policy-set") {
+        const kill = body.killOnExit as boolean;
+        calls.push({ name: "set_backend_exit_policy", args: { origin: a.origin, kill } });
+        if (failNextSet) {
+          const why = failNextSet.message;
+          failNextSet = null;
+          const refusal = Array.from(new TextEncoder().encode(JSON.stringify({ code: "write_failed", message: why })));
+          return Promise.reject({ err: "Refused", body: refusal });
+        }
+        // 〔B2〕后端写完**读回**的那一份：这里就让「盘上」变成写进去的值，后续每一次现问都读到它。
+        exitAnswer = { state: "chosen", killOnExit: kill, reason: null, path: "x" };
+        return bytes(exitAnswer);
+      }
+      return Promise.reject(new Error(`判据没料到的通道问法：${a.op}`));
     },
   },
 }));
@@ -121,6 +140,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 
 beforeEach(() => {
   calls.length = 0;
+  failNextSet = null;
   exitAnswer = { state: "absent", killOnExit: false, reason: null, path: "x" };
   status = { channel: true, pid: 42 };
   statusQueue = [];
@@ -352,10 +372,7 @@ describe("P2s backend 开关区", () => {
     const s = new BackendSection({ headless: true });
     await flush();
     await flush();
-    const mod = await import("../../src/ipc/commands");
-    const spy = vi
-      .spyOn(mod.commands, "set_backend_exit_policy")
-      .mockRejectedValueOnce(new Error("盘满了"));
+    failNextSet = new Error("盘满了");
     const box = s.element.querySelector<HTMLInputElement>(".backend-row-kill input")!;
     expect(box.checked).toBe(false);
     box.checked = true;
@@ -363,7 +380,6 @@ describe("P2s backend 开关区", () => {
     await flush();
     await flush();
     expect(box.checked, "存失败了勾还留在新位置 —— 界面在骗人").toBe(false);
-    spy.mockRestore();
   });
   it("★★ 〔B2 · E3〕「读不出来」是第四句，它不是「选了默认」—— 而且它不看 `killOnExit`", () => {
     for (const detached of [false, true]) {
