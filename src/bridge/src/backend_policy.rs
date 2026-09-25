@@ -88,15 +88,15 @@ pub const EXIT_COPY: &[(&str, &str)] = &[
 /// ★★ 最要紧的是 [`HEALTH_UNKNOWN`]：它买的是 `K-P3` `§0-1` 那一格 ——
 /// 今天不是「它没崩过」，是「**没有任何东西在记它崩没崩**」，而 `§0-1` 逐字写着
 /// 「这两句话差得很远，件计划里不许混用」。⇒ 读数的默认档是**答不出来**，不是绿灯。
-pub const HEALTH_UNKNOWN: &str =
-    "上次崩没崩：答不出来 —— 今天没有任何东西在跨 monitor 进程地记它崩没崩，而「答不出来」不等于「没崩过」";
-/// 记到过事、但一次崩溃都没有。`{misread}` 是**两侧共用的占位符**。
-pub const HEALTH_CLEAN: &str =
-    "这次 monitor 开着以来：它一次都没崩过（读坏了 {misread} 次不算它崩 —— 那是我们这一侧的读端）";
-/// 崩过。`{crashed}` / `{last}` 同上。
-pub const HEALTH_CRASHED: &str = "这次 monitor 开着以来：它崩过 {crashed} 次，最后一次是「{last}」";
-/// 崩过但那一行没留住 —— 也要说出口，不许拿空串糊过去。
-pub const HEALTH_LAST_MISSING: &str = "那一行没留下来";
+/// 〔第四波 ST2 · `设计/70 §2.3`〕格子里只写「— 无记录」；那条区分（为什么这不等于没崩过）
+/// 进 ⓘ，住 TS 那侧的 `HEALTH_UNKNOWN_WHY` —— 区分保留，换成界面状态（`§2.2`：不能一起扫掉）。
+pub const HEALTH_UNKNOWN: &str = "— 无记录";
+/// 记到过事、但一次崩溃都没有。〔ST2 · 步 6〕读坏了几次进界面的 `[详情]`，这一句不再带占位符。
+pub const HEALTH_CLEAN: &str = "没崩过（这次 monitor 开着以来）";
+/// 崩过。`{crashed}` / `{last}` 是**两侧共用的占位符**；`{last}` 填 [`last_brief`]（不是账行）。
+pub const HEALTH_CRASHED: &str = "⚠ 崩过 {crashed} 次 · 最后一次：{last}";
+/// 崩过但那一次没留住 —— 也要说出口，不许拿空串糊过去。
+pub const HEALTH_LAST_MISSING: &str = "没留下记录";
 
 /// `KP3C` 的那四条，顺序**与 TS 那侧逐条对齐**。
 pub const HEALTH_COPY: &[(&str, &str)] = &[
@@ -428,19 +428,23 @@ pub fn exit_status(d: &Death) -> String {
             Outcome::Signalled(sig) => format!("signal {sig}"),
             Outcome::NeverSpawned => "没有退出状态".to_string(),
         },
-        Death::Misread { .. } => "退出状态未知（是我们的读端出错，不是它报的）".to_string(),
+        Death::Misread { .. } => "退出状态未知（是 monitor 这一侧读坏了，不是它报的）".to_string(),
     }
 }
 
-/// 四条话。**两两不同**，且每一条各自点名自己那条证据与下一步。
+/// 四条话。**两两不同**，且每一条各自点名自己那条证据与该怎么办。
 ///
 /// ⚠ `KP3B` 的判定逐字是「四条文案**两两不同**」，不是「源码里出现了四个枚举名」。
-/// 所以这里每一条都带**它自己那次事故的住址与处置**，不是四个同义的短语。
+///
+/// 🔴 〔第四波 ST2 · `设计/70 §7` 第二刀 步 7〕**这四条只进日志，不进界面**，而且**不再产 markdown
+/// 与设计论证**。原来每条都带 `**下一步：…**`、「判据不可信的时候重起是放大器」这类写给开发文档的论证、
+/// 一处源码住址，外加「崩了」那一条把 exit 码说两遍（账行的 `退出状态=` 已经说过一遍）——
+/// 而那一整行经 `Health::last` 被拼进了设置面板（`70 §2.1` 五种病里占四种）。
+/// 今天：界面拿的是 [`last_brief`]（判定 ＋ 退出状态，一句短话）；这四条只随 [`ledger_line`] 落日志。
 pub fn death_copy(d: &Death) -> String {
     match d {
         Death::NeverStarted { reason, looked_at } => format!(
-            "从来没起来：{reason}（找过 {} 处：{}）。**下一步**在那句原因里，\
-             它是从起法那一侧原样转来的，本处不另写一份。",
+            "从来没起来：{reason}（找过 {} 处：{}）。原因是启动那一侧原样转来的，照它说的去补。",
             looked_at.len(),
             looked_at
                 .iter()
@@ -448,27 +452,26 @@ pub fn death_copy(d: &Death) -> String {
                 .collect::<Vec<_>>()
                 .join(" · ")
         ),
-        Death::Refused { code } => format!(
-            "被拒了：它自己 exit {code}，而且**一个字节都没说过** —— \
-             这一形与「崩了」在线上无法区分，2026-07-09 就是它变成死循环的\
-             （重连 ⇒ 发同一个参数 ⇒ 又 exit）。**下一步：别原样重连重发，先看它拒的是什么。**"
-        ),
-        Death::Crashed { how } => format!(
-            "崩了：说过话之后异常终止（{}）。**下一步：这一格才是自愈要治的那一格**，\
-             而重起归第二档 —— 判据不可信的时候重起是放大器。",
-            match how {
-                Outcome::Exited(code) => format!("exit {code}"),
-                Outcome::Signalled(sig) => format!("被信号 {sig} 打死"),
-                Outcome::NeverSpawned => "没有退出状态".to_string(),
-            }
-        ),
+        Death::Refused { .. } => "被拒了：它一个字节都没说就自己退出了。原样重连只会发同一个参数、\
+             再被拒一次，先看它拒的是什么。"
+            .to_string(),
+        Death::Crashed { .. } => "崩了：说过话之后异常终止。重起之前先看是不是每次都停在同一处，\
+             同一处反复崩时重起帮不上忙。"
+            .to_string(),
         Death::Misread { detail } => format!(
-            "读坏了：{detail} —— 这是**我们这一侧**的读端出错，\
-             **不算它崩了一次**。把它算进去就是「崩了 3 次」那条错误诊断的来历\
-             （`backend/control/local_backend.rs` 逐字：「一个错误的诊断」）。\
-             **下一步：重开这条读端，别去动那个进程。**"
+            "读坏了：{detail}。这是 monitor 这一侧读的时候出错，不算它崩了一次；\
+             重新接上它，别去动那个进程。"
         ),
     }
+}
+
+/// 界面上「最后一次」那一格：**判定 ＋ 退出状态**，一句短话（如「崩了，exit -1073741510」）。
+///
+/// 〔第四波 ST2 · 步 7〕它替掉的是原来直接进界面的整条 [`ledger_line`]：那是**日志行格式**
+///（`[死亡账] origin=… 判定=… 退出状态=… —— …`），`70 §2.4` 逐字禁它进界面。
+/// 细节（证据、该怎么办）留在日志那一行里，界面上要看就去「日志」。
+pub fn last_brief(d: &Death) -> String {
+    format!("{}，{}", death_kind(d), exit_status(d))
 }
 
 /// 账上那一行。
@@ -549,8 +552,10 @@ pub struct Health {
     pub refused: u32,
     pub never_started: u32,
     pub misread: u32,
-    /// 最后落在账上的那一行。
+    /// 最后落在账上的那一行（**日志行格式**，只给日志与判据用）。
     pub last: Option<String>,
+    /// 〔ST2 · 步 7〕最后那一次的**短摘要**（[`last_brief`]）—— 进界面的只有这一格。
+    pub last_brief: Option<String>,
 }
 
 impl Health {
@@ -632,6 +637,7 @@ pub fn record_death(
             Death::Misread { .. } => h.misread += 1,
         }
         h.last = Some(line.clone());
+        h.last_brief = Some(last_brief(&d));
     }
     Some(Recorded { line, sink_error })
 }
@@ -655,11 +661,14 @@ pub fn describe_health(h: &Health) -> String {
         return HEALTH_UNKNOWN.to_string();
     }
     if h.crashed == 0 {
-        return HEALTH_CLEAN.replace("{misread}", &h.misread.to_string());
+        return HEALTH_CLEAN.to_string();
     }
     HEALTH_CRASHED
         .replace("{crashed}", &h.crashed.to_string())
-        .replace("{last}", h.last.as_deref().unwrap_or(HEALTH_LAST_MISSING))
+        .replace(
+            "{last}",
+            h.last_brief.as_deref().unwrap_or(HEALTH_LAST_MISSING),
+        )
 }
 
 #[cfg(test)]

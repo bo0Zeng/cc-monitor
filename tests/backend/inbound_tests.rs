@@ -222,6 +222,83 @@ async fn an_oversized_line_is_rejected_without_killing_the_reader() {
     );
 }
 
+/// 〔F9c · 第四波〕🔴 **超长行的应答带回请求的 `id`**（`设计/60 §9c.2`：此前回空串，调用方熬满预算才超时）。
+///
+/// 真读循环、真超长行（行长 > [`MAX_LINE_BYTES`]）。四形：`id` 在第一个键 · `id` 排在一个
+/// 含假 `"id"` 的嵌套对象之后 · `id` 带转义 · 两条超长行挨着（第二条不许沾上第一条的 `id`）。
+/// 阴性对照：信封里没有 `id` ⇒ 仍回空串（抠不出就不编）。
+#[tokio::test]
+async fn an_oversized_line_answers_with_the_id_it_carried() {
+    let pad = "p".repeat(MAX_LINE_BYTES);
+    let lines = [
+        format!("{{\"id\":\"first\",\"cmd\":\"files-write-text\",\"args\":{{\"content\":\"{pad}\"}}}}\n"),
+        format!(
+            "{{\"cmd\":\"x\",\"args\":{{\"id\":\"inner\",\"n\":[1,{{\"id\":\"deeper\"}}]}},\"id\":\"outer\",\"pad\":\"{pad}\"}}\n"
+        ),
+        format!("{{\"id\":\"q\\\"uo\\\\te\",\"pad\":\"{pad}\"}}\n"),
+        format!("{{\"cmd\":\"no-id\",\"pad\":\"{pad}\"}}\n"),
+    ];
+    let out = one_line(&lines.concat()).await;
+    let got: Vec<(String, String)> = out
+        .iter()
+        .map(|l| {
+            let v: serde_json::Value = serde_json::from_str(l).expect("应答是一行 JSON");
+            (
+                v["id"].as_str().unwrap_or("<非字符串>").to_string(),
+                v["code"].as_str().unwrap_or("").to_string(),
+            )
+        })
+        .collect();
+    let want: Vec<(String, String)> = ["first", "outer", "q\"uo\\te", ""]
+        .iter()
+        .map(|id| (id.to_string(), "line_too_long".to_string()))
+        .collect();
+    assert_eq!(
+        got, want,
+        "超长行的应答没带回（或带错了）请求的 id —— 调用方会熬满自己的预算才超时"
+    );
+}
+
+/// 〔F9c〕[`sniff_id`] 的边：只看给它的那一段，顶层之外的 `id` 不认，形状不对就不编。
+#[test]
+fn the_id_sniffer_only_believes_a_top_level_string_id() {
+    let cases: &[(&str, Option<&str>)] = &[
+        (r#"{"id":"a"}"#, Some("a")),
+        (r#"  { "id" : "a b" , "cmd":"x"}"#, Some("a b")),
+        (
+            r#"{"cmd":"x","args":{"id":"inner"},"id":"outer"}"#,
+            Some("outer"),
+        ),
+        (
+            r#"{"n":-1.5e3,"t":true,"z":null,"s":"}\"{","id":"k"}"#,
+            Some("k"),
+        ),
+        (r#"{"id":"\u4e2d"}"#, Some("中")),
+        // 阴性：没有顶层 id · id 不是字符串 · 不是对象 · 段在 id 之前就断了
+        (r#"{"args":{"id":"inner"}}"#, None),
+        (r#"{"id":7}"#, None),
+        (r#"["id","a"]"#, None),
+        (r#"{"cmd":"xxxxxxxx"#, None),
+        (r#"{"id":"unterminated"#, None),
+        ("", None),
+    ];
+    for (head, want) in cases {
+        assert_eq!(
+            sniff_id(head.as_bytes()).as_deref(),
+            *want,
+            "嗅 {head:?} 嗅错了"
+        );
+    }
+    // 读循环只交给它行首 `ID_SNIFF_BYTES` 那么多：排在 id 前面的键把 id 挤出这一段 ⇒ 抠不出（回旧行为）。
+    let far = format!(r#"{{"pad":"{}","id":"late"}}"#, "p".repeat(ID_SNIFF_BYTES));
+    assert_eq!(sniff_id(&far.as_bytes()[..ID_SNIFF_BYTES]), None);
+    assert_eq!(
+        sniff_id(far.as_bytes()).as_deref(),
+        Some("late"),
+        "正控：给全了就认得"
+    );
+}
+
 /// ★ 喂一条**远超上限**的无换行流，进程内存不许跟着涨。
 ///
 /// 这条测的是 D 审计抓到的那件事：上限如果是「读完再判」，`line_too_long`
@@ -384,6 +461,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     for c in [
         "files-create",
         "files-commit-upload",
+        "files-stage-chunk",
+        "files-commit-text",
         "files-chmod",
         "files-delete",
         "files-mkdir",
@@ -411,6 +490,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 〔B2 · 条 66〕「退出行为」那两条：同步文件 I/O（读 / 原子写 `~/.cc-monitor` 下那一份）。
         "exit-policy-read",
         "exit-policy-set",
+        // 〔RM1b · 第四波〕功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
+        "plugins-marketplaces",
+        "tasks-list",
     ] {
         assert!(
             matches!(d(c), Disposition::SpawnBlocking(..)),
@@ -433,6 +515,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "capture-pane",
         "files-create",
         "files-commit-upload",
+        "files-stage-chunk",
+        "files-commit-text",
         "files-chmod",
         "files-delete",
         "files-mkdir",
@@ -457,6 +541,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "accounts-sessions",
         "exit-policy-read",
         "exit-policy-set",
+        "plugins-marketplaces",
+        "tasks-list",
     ];
     let missing: Vec<&&str> = COMMANDS.iter().filter(|c| !covered.contains(c)).collect();
     assert!(

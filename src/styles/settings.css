@@ -1030,14 +1030,6 @@ body.settings-window-mode .settings-panel {
   border-color: var(--border-strong);
 }
 
-.settings-footer {
-  display: flex;
-  gap: 8px;
-  padding: 10px 14px;
-  border-top: 1px solid var(--border-strong);
-  justify-content: flex-end;
-}
-
 .settings-btn-primary {
   background: var(--accent);
   border-color: var(--accent);
@@ -1368,17 +1360,6 @@ body.settings-window-mode .settings-panel {
   padding: 8px 6px;
   color: var(--text);
   width: 50%;
-}
-
-.kb-editor-tag-coming {
-  display: inline-block;
-  margin-left: 8px;
-  padding: 0 6px;
-  font-size: 11px;
-  background: var(--overlay-hover);
-  color: var(--text-faint);
-  border: 1px solid var(--border);
-  border-radius: 3px;
 }
 
 .kb-editor-chord {

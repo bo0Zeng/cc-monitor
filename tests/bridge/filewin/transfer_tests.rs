@@ -499,7 +499,7 @@ fn the_real_adapters_speak_only_through_the_channel() {
         "lease_transfer",
         "sftp_upload(",
         "sftp_download(",
-        "TRANSFER_LANE_CAP",
+        "SESSION_CHANNEL_CAP",
         "RemoteConfig",
         "tauri::",
     ] {
@@ -517,22 +517,25 @@ fn the_real_adapters_speak_only_through_the_channel() {
     );
 }
 
-/// 🔴 **闸的数值两份、钉相等。**
+/// 🔴 **一个窗口的一趟拖入占不满池子的通道闸。**
 ///
-/// 真正的车道闸在 monitor 的池里（`lease_transfer`，`设计/60 §5.4a` 的 `6 − 4 = 2`）。
-/// 〔F7c〕窗口进程不再 `use` 池里那个常量（它一个 `sftp_pool` 符号都不碰）⇒ 两边各写一份，
-/// 本条钉**相等**（两侧异源：窗口的常量 · 池子的常量）。
+/// 〔第四波 S4〕这一条原先钉「窗口起几件 == 池里的车道数」（两份副本 ＋ 相等）。车道闸随浏览离开
+/// SFTP 退役了，池里只剩一道通道闸（`SESSION_CHANNEL_CAP`）⇒ 窗口这个数不再是谁的副本，
+/// 它与池子之间剩下的关系是：**一个窗口的一趟拖入不该一口气要满整个通道预算**
+/// （第二个窗口 / 第二趟拖入还要能借到通道，否则它们整趟排在第一趟后面）。
+/// 窗口那个数本身仍钉死 4（改它要回来想清楚这条关系）。
 #[test]
-fn our_concurrency_cap_is_the_pools_own_lane_count() {
-    assert_eq!(
-        crate::sftp_pool::TRANSFER_LANE_CAP,
-        4,
-        "池里的车道数变了 —— 本层跟着它走，但这个数变了要回 `设计/60 §5.4a` 重读一遍理由"
-    );
+fn one_windows_burst_never_fills_the_pools_channel_gate() {
     assert_eq!(
         lanes(),
-        crate::sftp_pool::TRANSFER_LANE_CAP,
-        "窗口那一侧起几件与池里的车道数漂开了"
+        4,
+        "窗口一趟拖入同时起几件变了 —— 这个数改了要回来重读本条那段关系"
+    );
+    assert!(
+        lanes() < crate::sftp_pool::SESSION_CHANNEL_CAP,
+        "窗口一趟拖入同时起 {} 件，而池子的通道闸只有 {} 格 —— 一个窗口就能把通道预算要满",
+        lanes(),
+        crate::sftp_pool::SESSION_CHANNEL_CAP
     );
     // 窗口那一侧**只经这一个落点**拿那个数，不自己再写一份。
     let shell =
@@ -543,7 +546,7 @@ fn our_concurrency_cap_is_the_pools_own_lane_count() {
         "窗口那一侧起传输时用的不是 `transfer::lanes()`（或者用了两处）"
     );
     assert!(
-        !shell.contains("TRANSFER_LANE_CAP") && !shell.contains("WINDOW_TRANSFER_LANES"),
+        !shell.contains("SESSION_CHANNEL_CAP") && !shell.contains("WINDOW_TRANSFER_LANES"),
         "`shell.rs` 直接引了那个常量 —— 那就有两个地方在答「起几件」，而两个地方一定会漂"
     );
 }
@@ -1004,7 +1007,7 @@ async fn the_transfer_id_the_pool_gets_is_the_one_the_window_can_name() {
     assert_eq!(ids.len(), 3);
     assert_eq!(desk.minted(), 3, "造键的处数与真起过的趟数不等");
     // 🔴 **三个键互不相同** —— 同一个键会让两趟互相摘掉对方在池子里的登记
-    //    （`sftp_pool::register_cancel` 的注释逐字记着这一条）。
+    //    （从前池子那张取消登记表的注释逐字记着这一条；〔第四波 S4〕那张表已删，键照旧是本层在飞表的键）。
     let uniq: std::collections::BTreeSet<&String> = ids.iter().collect();
     assert_eq!(uniq.len(), 3, "造出了重复的 `transfer_id`：{ids:?}");
     // 收场之后表是空的；而**取消照旧送得出去**（送的是当时在飞的那几个，此刻 0 个）。

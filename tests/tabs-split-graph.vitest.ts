@@ -123,6 +123,7 @@ const DEPS: Record<string, readonly string[]> = {
   // ① 事实抽取：agent 工具名判定 · 写类工具的文件路径。
   "src/tab-session-facts.ts": ["src/cards/subagent.ts", "src/panorama/session-files.ts"],
   // ③ 实时流视图：渲染栈 ＋ 骨架 ＋ 大纲 ＋ 分叉按钮，经 ipc/commands 包装层要骨架索引与正文。
+  //   〔SE2〕大纲的界面从直接建 `UserInputPanel` 换成建查找面板（它里面挂着大纲）⇒ `user-input-panel` 只剩类型依赖。
   "src/tab-stream-view.ts": [
     "src/branch-button.ts",
     "src/branch-fold.ts",
@@ -134,8 +135,8 @@ const DEPS: Record<string, readonly string[]> = {
     "src/skeleton-view.ts",
     "src/stream.ts",
     "src/views/outline-source.ts",
+    "src/views/session-find.ts", // 〔SE2〕查找面板（搜索 ／ 大纲两个模式）
     "src/views/session-viewer.ts", // 只为 revealCard（方向别扭的那条，理由在 import 处）
-    "src/views/user-input-panel.ts",
   ],
   // ④ tab 栏视图：画按钮（账号徽章 · 状态灯 · 分组 · ↗ 的 OS 门），手势全交宿主。
   "src/tab-bar-view.ts": [
@@ -277,6 +278,18 @@ describe("〔U2〕tabs.ts 只剩组装根", () => {
       ),
     ].map((m) => m[1]);
     expect(decls).toEqual(["TabManager"]);
+  });
+
+  // 〔S4 · 第四波〕U2 拆完时 `TabManager` 上给旧判据留了二十来个同名 `protected` 转交（值住新家），
+  // 只为 `tabs.vitest.ts` 按旧私有名直读。判据已改成直指新家（那边的 `TMHomes`）⇒ 转交删光。
+  // 本格钉「不再长回来」：`protected` 在这个类里**只**有过这一种用途。
+  it("★ 〔S4〕TabManager 上零 `protected` 成员（给旧判据的转交不再长回来；同一谓词的正控）", () => {
+    const protectedMember = /^[ \t]+protected\s+(?:get\s+|set\s+|readonly\s+)?[A-Za-z_$][\w$]*/gm;
+    expect(
+      "  protected get tabs(): Map<string, Tab> {\n    protected barEl: HTMLElement,\n".match(protectedMember),
+      "正控：旧转交的两种写法（访问器 · 参数属性）必须各命中一处（否则谓词拼错了）",
+    ).toEqual(["  protected get tabs", "    protected barEl"]);
+    expect(code.match(protectedMember) ?? []).toEqual([]);
   });
 
   it("★ 导出面 == 拆之前的 import 面（逐名两向相等）", () => {

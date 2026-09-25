@@ -18,7 +18,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { FirstRunHint, FIRST_RUN_HINT_CLASS } from "../src/first-run-hint";
+import { FirstRunHint, FIRST_RUN_HINT_CLASS, FIRST_RUN_HINT_PREFIX } from "../src/first-run-hint";
 import { computeGaps, summarizeGaps } from "../src/settings/readiness";
 import { LOCAL_MACHINE_KEY, type MachineStatus } from "../src/settings/machine-status";
 
@@ -275,5 +275,33 @@ describe("NF3D4 · 没缺口时一个字都不多说", () => {
     // 断「树里没有这个节点」——`display:none` 的实现在这里红。
     expect(r.host.childElementCount).toBe(0);
     expect(r.host.querySelectorAll("*").length).toBe(0);
+  });
+});
+
+describe("〔第四波 ST2〕指路的措辞跟上改名：「诊断」，指向真存在的「设置 → 机器」", () => {
+  it("★ 前缀 == 设置面板机器列表页那一块的标题（读 remote-section.ts 对拍，不手抄第二份）", () => {
+    const src = readFileSync(join(srcDirOf(__dirname), "settings/remote-section.ts"), "utf8");
+    const m = /title\.textContent = "([^"]+)";\n\s+this\.gapsBox\.appendChild\(title\)/.exec(src);
+    expect(m, "remote-section.ts 里找不到那块的标题赋值 —— 形状改了就来改这条").not.toBeNull();
+    expect(FIRST_RUN_HINT_PREFIX).toBe(`${m![1]}：`);
+  });
+
+  it("★ 屏幕上那一行以「诊断：」开头；旧名「还差什么」、不存在的「设置 → 远端」一个都不许在", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const hint = new FirstRunHint(host, {
+      origins: () => ["（本机）"],
+      statusOf: () => ({}),
+      hostOs: () => "linux",
+      openList: vi.fn(),
+    });
+    hint.refresh();
+    const open = host.querySelector<HTMLElement>(`.${FIRST_RUN_HINT_CLASS}-open`);
+    expect(open, "全新用户也该有这条指路 —— 下面的否定断言在空节点上恒绿").not.toBeNull();
+    expect(open!.textContent!.startsWith(FIRST_RUN_HINT_PREFIX)).toBe(true);
+    const all = `${open!.textContent} ${open!.title}`;
+    expect(all).not.toContain("还差什么");
+    expect(all).not.toContain("设置 → 远端");
+    expect(open!.title).toContain("设置 → 机器");
   });
 });

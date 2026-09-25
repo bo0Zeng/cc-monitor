@@ -22,6 +22,8 @@
 import { commands } from "../ipc/commands";
 import { showActionFailureToast } from "../error-toast";
 import { withPending } from "./pending";
+import { getCurrentMachine, subscribeMachine } from "./machine-context";
+import { isLocalOrigin, isRemoteOrigin, type Origin } from "../ipc/origin";
 import type { DriftEntry } from "../generated/DriftEntry";
 import type { DriftFace } from "../generated/DriftFace";
 import type { DriftFaceReport } from "../generated/DriftFaceReport";
@@ -80,16 +82,40 @@ export function formatReport(report: DriftFaceReport[]): string {
   return `数据面漂移记账（本进程内，重启归零）\n\n${parts.join("\n\n")}`;
 }
 
+/**
+ * 〔第四波 ST2 · 协调方转主会话裁「漂移记账按机器分」〕远端那一栏那句话。
+ *
+ * 今天这本账是 monitor 进程内一本、**不分机器**（远端的记录也是在 monitor 里解析的，但写点不知道是哪台）。
+ * 按机器分要把 origin 一路带进写点（设计在 `调研/第四波记录/ST2.md §3`，写区外）。
+ * ⇒ 这一拍**只做本机**：远端那一栏不发 I/O，照实说读不到；本机那一栏照读，并说清里面也有远端来的。
+ */
+// ⚠ 不说「漂移记账」：那是我们给这本账起的名（`terms.json` 自造概念名那一族），块名对外叫「未识别的数据」。
+export const DRIFT_REMOTE_UNREADABLE =
+  "这台机器单独的那一份还读不到：这本账今天不分机器，都在本机那一栏里。";
+/** 本机那一栏那一句 —— 账不分机器，这一点必须当场说（否则会被当成「本机这台」的账）。 */
+export const DRIFT_LOCAL_MIXED =
+  "这本账是 monitor 这次运行的全部：从远端读来的记录也记在这里，今天还分不开是哪台机器。";
+
 export class DriftLedgerSection {
   readonly element: HTMLElement;
   private body!: HTMLElement;
   private copyBtn!: HTMLButtonElement;
   private last: DriftFaceReport[] = [];
+  /** 〔ST2〕本机那一整套（说明 / 工具条 / 账）—— 远端页上收起来。不挂类名（只管显隐）。 */
+  private localOnly!: HTMLElement;
+  /** 〔ST2〕远端页上那一句（`DRIFT_REMOTE_UNREADABLE`）。 */
+  private remoteNote!: HTMLElement;
+  /** 宿主放过第一发没有（放过之后切回本机才由订阅重读）。 */
+  private started = false;
 
   constructor() {
     this.element = this.build();
+    // 〔ST2〕跟着「当前在看哪台机器」走（它住机器子页的「足迹」栏，是 per-machine 那一批单例之一）。
+    subscribeMachine((origin) => this.onMachineChanged(origin));
+    this.applyMachine(getCurrentMachine());
     // 🔴 步 2（`70 §1.3 B` · `§10.4`）：**构造期不再发 I/O。**
-    // 这一块住「改动足迹」页，而落地页是「机器」⇒ 原来那句 `void this.refresh()`
+    // 这一块原住「改动足迹」页（〔ST2〕今天在每台机器子页的「足迹」栏里，跟 per-machine 那一批一起放），
+    // 而落地页是「机器」⇒ 原来那句 `void this.refresh()`
     // 是每次打开设置都白发的一趟 `drift_ledger_report`。
     // `§10.4` 那一行逐字点了它：判据 #3「非落地页零 I/O」今天正是被那三块
     // **外加 `drift-ledger`** 打破的。
@@ -100,20 +126,50 @@ export class DriftLedgerSection {
    * ⚠ **幂等由宿主保证**（`panel.ts::pagesLoaded`）。
    */
   loadNow(): void {
+    this.started = true;
+    // 〔ST2〕远端那一栏读不到 ⇒ 一发都不放（账不分机器，拿本机那本冒充它就是撒谎）。
+    if (isRemoteOrigin(getCurrentMachine())) return;
     void this.refresh();
+  }
+
+  private onMachineChanged(origin: Origin): void {
+    this.applyMachine(origin);
+    if (this.started && isLocalOrigin(origin)) void this.refresh();
+  }
+
+  /** 本机 ⇒ 摆那一整套；远端 ⇒ 收起来，只留那一句。只切两个节点（S30 ⑦：切不挂类的包装）。 */
+  private applyMachine(origin: Origin): void {
+    this.localOnly.hidden = isRemoteOrigin(origin);
+    this.remoteNote.hidden = isLocalOrigin(origin);
   }
 
   private build(): HTMLElement {
     const root = document.createElement("div");
     root.className = "settings-group settings-headless drift-ledger-section";
 
+    this.remoteNote = document.createElement("div");
+    this.remoteNote.className = "settings-hint";
+    this.remoteNote.dataset.driftRemote = "";
+    this.remoteNote.textContent = DRIFT_REMOTE_UNREADABLE;
+    root.appendChild(this.remoteNote);
+    this.localOnly = document.createElement("div");
+    root.appendChild(this.localOnly);
+    const host = this.localOnly;
+
     const hint = document.createElement("div");
     hint.className = "settings-hint";
+    // 〔ST2〕顶层「改动足迹」页删了，这一块搬到机器列表页 ⇒ 不再说「这一页」；
+    //   「只读、按需读一次，不后台轮询」是**我们的设计承诺**（`70 §10.1` 差项 3 同一种病）⇒ 拿掉。
+    //   「计数在本进程内，重启归零」留着 —— 头注逐字：这一点必须在页面上说，否则会被当成历史统计。
     hint.textContent =
-      "这一页列出 cc-monitor 在本次运行里遇到的、看不懂的东西。" +
-      "看不懂就降级是刻意的（对它们告警会刷屏），但降级本身不该是无声的 —— " +
-      "这一页就是那个声音。只读、按需读一次，不后台轮询；计数在本进程内，重启归零。";
-    root.appendChild(hint);
+      "cc-monitor 这次运行里遇到的、没认出来的数据（多半是 Claude Code 出了新格式）。" +
+      "没认出来的部分照常降级显示，这里把它们列出来。计数只算这次运行，重启 monitor 就归零。";
+    host.appendChild(hint);
+    const mixed = document.createElement("div");
+    mixed.className = "settings-hint";
+    mixed.dataset.driftMixed = "";
+    mixed.textContent = DRIFT_LOCAL_MIXED;
+    host.appendChild(mixed);
 
     const bar = document.createElement("div");
     bar.className = "settings-row";
@@ -133,11 +189,11 @@ export class DriftLedgerSection {
       void withPending(this.copyBtn, "复制中…", () => this.copy()),
     );
     bar.appendChild(this.copyBtn);
-    root.appendChild(bar);
+    host.appendChild(bar);
 
     this.body = document.createElement("div");
     this.body.className = "drift-ledger-body";
-    root.appendChild(this.body);
+    host.appendChild(this.body);
     return root;
   }
 

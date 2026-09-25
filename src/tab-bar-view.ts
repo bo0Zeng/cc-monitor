@@ -41,6 +41,17 @@ export interface TabButtonRefs {
    * 固定是右键菜单那一项的事；这里再放一个能点的东西就是同一个动作两个入口。
    */
   pinBadge: HTMLSpanElement;
+  /**
+   * 〔UP1 · `设计/30 §3` P7〕这颗按钮上次**画出去的样子**（class 开关 ＋ title ＋ 标题 ＋ 未读数拼成一串）。
+   * 一样 ⇒ `updateTabButton` 一个 DOM 都不写。按**输出**比而不是按输入比：输入散在 store 的好几张表里，
+   * 漏一个就是静默不刷；输出只有这几项。`null` = 还没画过。
+   */
+  drawn: string | null;
+  /**
+   * 〔UP1 · P2〕账号徽章上次画出去的样子：`""` = 藏着（`createTabButton` 建出来就是藏着的，所以初值是 `""`
+   * 而不是 `null` —— 新 tab 没有账号时一个 DOM 都不写）；否则是「账号名 · 幽灵态 · 提示」拼成的一串。
+   */
+  acctDrawn: string;
 }
 
 /** tab 栏上的手势要交给谁（全是回调）。 */
@@ -91,12 +102,104 @@ export class TabBarView {
   //   **留在原位灰着**（`.tab.archived` 那条 CSS 本来就有，`§A.3` 逐字「不用新写」）。
   //   用户 2026-09-19 逐字：「没有归档这个东西，不要归档，就是灰 tab。」
 
+  /**
+   * 〔UP1 · `设计/30 §3` P8〕按钮根 → sid。事件委托靠它从 `closest(".tab")` 找回 sid（不往 DOM 上加属性）。
+   * `WeakMap`：按钮被摘掉之后这一条跟着它一起被回收，不用另外清。
+   */
+  private readonly sidOf = new WeakMap<Element, string>();
+
   constructor(
     private readonly store: TabStore,
     private readonly prefs: TabBarPrefs,
     private readonly barEl: HTMLElement,
     private readonly host: TabBarViewHost,
-  ) {}
+  ) {
+    // 〔UP1 · `设计/30 §3` P8〕**事件委托**：整条栏只在 `barEl` 上挂三个监听器，不再每个 tab 挂 10 个
+    // （原先 📂 / ↗ / × 各 click ＋ mousedown，根上 click ＋ 两个 mousedown ＋ contextmenu）。
+    //
+    // 原先三颗子按钮上的 `stopPropagation` 有两层意思，这里都保住：
+    // ① 子按钮上按下**不起拖、不触发中键关** ⇒ mousedown 先看目标在不在子按钮里；
+    // ② 子按钮的 click / mousedown **不往上冒到 `document`** ⇒ 这里照样 `stopPropagation()`
+    //   （`barEl` 与按钮之间只隔组容器，组容器上没有 click / mousedown 监听）。
+    barEl.addEventListener("click", (e) => this.onBarClick(e));
+    barEl.addEventListener("mousedown", (e) => this.onBarMouseDown(e));
+    barEl.addEventListener("contextmenu", (e) => this.onBarContextMenu(e));
+  }
+
+  /** 这个事件落在哪颗 tab 按钮上、是不是落在它的某颗子按钮（📂 / ↗ / ×）上。不是 tab 按钮 ⇒ `null`。 */
+  private hitOf(e: Event): { sid: string; root: HTMLElement; sub: Element | null } | null {
+    const t = e.target as Element | null;
+    if (!t || typeof t.closest !== "function") return null;
+    const root = t.closest(".tab");
+    if (!root) return null;
+    const sid = this.sidOf.get(root);
+    if (sid === undefined) return null;
+    const sub = t.closest(".tab-cwd, .tab-focus, .tab-close");
+    return { sid, root: root as HTMLElement, sub: sub && root.contains(sub) ? sub : null };
+  }
+
+  private onBarClick(e: MouseEvent): void {
+    const hit = this.hitOf(e);
+    if (!hit) return;
+    const { sid, sub } = hit;
+    if (sub) {
+      e.stopPropagation();
+      if (sub.classList.contains("tab-cwd")) {
+        // 📂 打开工作目录（cwd）—— 系统默认文件管理器
+        void this.host.openTabCwd(sid);
+      } else if (sub.classList.contains("tab-focus")) {
+        // ↗ 拉对应终端窗口。〔第二波 T4 · LF1〕非 Windows 不渲（`terminal-front.ts`）——不渲就点不到。
+        const t = this.store.tabs.get(sid);
+        if (!t || t.status === "archived") return;
+        // Feature ②：远端 Tab → 后端唯一分派点（先启动令牌、后 ccm-rbind 标题退路）；
+        // 本地 Tab → 走原 sid_hwnd_cache 路径。
+        if (isRemoteOrigin(t.origin)) {
+          void this.host.bringRemoteTerminalToFront(sid);
+        } else {
+          void this.host.bringTerminalToFront(sid);
+        }
+      } else {
+        this.host.closeTab(sid);
+      }
+      return;
+    }
+    // 拖拽刚结束的那次 click 不切 Tab（drag-then-release ≠ 选中）。一次性消费。
+    if (this.host.takeSuppressedClick(sid)) return;
+    this.host.switchTo(sid);
+  }
+
+  private onBarMouseDown(e: MouseEvent): void {
+    const hit = this.hitOf(e);
+    if (!hit) return;
+    // 子动作按钮自己处理点击：吞掉 mousedown 避免在它们身上起 Tab 拖拽（也不触发下面的中键关）。
+    if (hit.sub) {
+      e.stopPropagation();
+      return;
+    }
+    if (e.button === 0) {
+      // 左键 mousedown：候选 Tab 撕离拖拽（越过阈值才真拖，否则仍是普通 click）。
+      // 〔步 17·A〕原先这里有一条「归档区里的 tab 不参与拖拽」的例外 ——
+      // 抽屉没了，那条例外自动不需要（`§A.3` 逐字「净收益」）。
+      this.host.beginDrag(e, hit.sid, hit.root);
+      return;
+    }
+    // 中键点击归档 Tab 也关闭（常见 UX）
+    if (e.button === 1) {
+      const t = this.store.tabs.get(hit.sid);
+      if (t?.status === "archived") {
+        e.preventDefault();
+        this.host.closeTab(hit.sid);
+      }
+    }
+  }
+
+  /** issue #10：右键菜单「在新窗口打开」（双屏 / 并排）。〔U2〕菜单里放哪几项住 `tab-menu.ts`。 */
+  private onBarContextMenu(e: MouseEvent): void {
+    const hit = this.hitOf(e);
+    if (!hit) return;
+    e.preventDefault();
+    this.host.openMenu(e, hit.sid);
+  }
 
   /**
    * 局部更新策略（避免每次 onLine 都 replaceChildren）：
@@ -141,9 +244,11 @@ export class TabBarView {
     // 而 `P7a3-Y2` 逐字写的是「未归组的照常**在后面**」。
     // 实现与自己的 DoD 措辞不符，是那种「读起来都对、跑起来是另一回事」的差错。
     // ⇒ 把 `barEl` 的起点定在最后一个组容器上（没有组则回到 `firstChild` 语义）。
-    const lastGroup = [...this.barEl.children]
-      .filter((e) => e.classList.contains("tab-group"))
-      .pop();
+    // 〔UP1 · `设计/30 §3` P6〕「最后一个组容器」不再把 `barEl.children` 物化成数组去找。
+    // 组容器只在建的那一刻 `appendChild` 到 `barEl` 末尾、之后从不挪（挪的只有 tab 按钮），
+    // 删的时候同时出 `groupEls` ⇒ **`groupEls` 的插入序就是组容器在 DOM 里的顺序**，最后一个就是它。
+    let lastGroup: HTMLElement | null = null;
+    for (const g of this.groupEls.values()) lastGroup = g.wrap;
     if (lastGroup) cursors.set(this.barEl, lastGroup);
     for (const sid of this.store.orderedIds) {
       const tab = this.store.tabs.get(sid);
@@ -232,7 +337,9 @@ export class TabBarView {
       g = { wrap, head, list };
       this.groupEls.set(col.id, g);
     }
-    (g.head.firstElementChild as HTMLElement).textContent = col.name;
+    // 〔UP1〕名字没变就不写 —— 这里每次整刷都走一遍，无条件写就是每个组每次一条 DOM 写。
+    const nameEl = g.head.firstElementChild as HTMLElement;
+    if (nameEl.textContent !== col.name) nameEl.textContent = col.name;
     return g.list;
   }
 
@@ -261,7 +368,12 @@ export class TabBarView {
    * §1"不做什么"——批量/一键对齐是组合层便利,不做等价替代,用户改走 flyout 逐会话操作）。
    */
   private updateAccountBadge(refs: TabButtonRefs, sid: string, tab: Tab): void {
+    // 〔UP1 · `设计/30 §3` P2〕先算出**要画成什么样**，与上次画出去的一样就一个 DOM 都不写。
+    // 原先每次整刷都 `textContent=""` ＋ 新建一个头像 span（3 次内联样式写）＋ 写 title ＋ 写 display，
+    // 20 个 tab 就是每次整刷 20 个新 span、20 个旧 span 变垃圾。
     const hide = (): void => {
+      if (refs.acctDrawn === "") return;
+      refs.acctDrawn = "";
       refs.acctBadge.textContent = "";
       refs.acctBadge.className = "tab-acct-badge";
       refs.acctBadge.style.display = "none";
@@ -275,20 +387,28 @@ export class TabBarView {
       this.store.accountLastByS,
     );
     if (!b || !b.account) return hide(); // 未知账号（源③）→ 退 hover；顺带把 b.account 窄化为 string
-    refs.acctBadge.textContent = "";
-    refs.acctBadge.className = "tab-acct-badge";
-    refs.acctBadge.appendChild(accountAvatarEl(b.account, { size: 14, ghost: b.source === "last" }));
+    const ghost = b.source === "last";
     const current = isRemoteOrigin(tab.origin)
       ? this.store.currentByOrigin.get(tab.origin) ?? null
       : null;
     const mismatch = detectAccountMismatch(b.account, current);
+    // 头像是 `(账号名, 幽灵态)` 的纯函数（`account-color.ts::accountAvatarEl`）；提示文字是
+    // `(b.tooltip, 不一致时的当前账号)` 的纯函数（下面那一行）⇒ 这几样就是全部输出。
+    const drawn = `${b.account}\u0000${ghost ? 1 : 0}\u0000${b.tooltip}\u0000${mismatch ? current : ""}`;
+    if (refs.acctDrawn === drawn) return;
+    refs.acctDrawn = drawn;
+    refs.acctBadge.textContent = "";
+    refs.acctBadge.className = "tab-acct-badge";
+    refs.acctBadge.appendChild(accountAvatarEl(b.account, { size: 14, ghost }));
     refs.acctBadge.title = mismatch ? `${b.tooltip} · 与当前账号「${current}」不一致` : b.tooltip;
     refs.acctBadge.style.display = "";
   }
 
   private createTabButton(sid: string): TabButtonRefs {
+    // 〔UP1 · P8〕按钮本身**一个监听器都不挂** —— 手势全在 `barEl` 上委托（见构造体）。
     const root = document.createElement("button");
     root.className = "tab";
+    this.sidOf.set(root, sid);
 
     const dot = document.createElement("span");
     dot.className = "live-dot";
@@ -322,98 +442,52 @@ export class TabBarView {
     cwdBtn.className = "tab-cwd";
     cwdBtn.textContent = "📂";
     cwdBtn.title = "打开工作目录 (E)";
-    cwdBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      void this.host.openTabCwd(sid);
-    });
-    // 子动作按钮自己处理点击：吞掉 mousedown 避免在它们身上起 Tab 拖拽。
-    cwdBtn.addEventListener("mousedown", (e) => e.stopPropagation());
     root.appendChild(cwdBtn);
 
     // ↗ 拉对应终端窗口（v1.7 用 sid_hwnd_cache）。〔第二波 T4 · LF1〕非 Windows 不渲（`terminal-front.ts`）。
-    const focusBtn = document.createElement("span");
-    focusBtn.className = "tab-focus";
-    focusBtn.textContent = "↗";
-    focusBtn.title = "调出对应终端 (`)";
-    focusBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const t = this.store.tabs.get(sid);
-      if (!t || t.status === "archived") return;
-      // Feature ②：远端 Tab → 后端唯一分派点（先启动令牌、后 ccm-rbind 标题退路）；
-      // 本地 Tab → 走原 sid_hwnd_cache 路径。
-      if (isRemoteOrigin(t.origin)) {
-        void this.host.bringRemoteTerminalToFront(sid);
-      } else {
-        void this.host.bringTerminalToFront(sid);
-      }
-    });
-    focusBtn.addEventListener("mousedown", (e) => e.stopPropagation());
-    if (terminalFrontAvailable()) root.appendChild(focusBtn);
+    if (terminalFrontAvailable()) {
+      const focusBtn = document.createElement("span");
+      focusBtn.className = "tab-focus";
+      focusBtn.textContent = "↗";
+      focusBtn.title = "调出对应终端 (`)";
+      root.appendChild(focusBtn);
+    }
 
     const closeBtn = document.createElement("span");
     closeBtn.className = "tab-close";
     closeBtn.textContent = "×";
     closeBtn.title = "关闭 Tab";
-    closeBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      this.host.closeTab(sid);
-    });
-    closeBtn.addEventListener("mousedown", (e) => e.stopPropagation());
     root.appendChild(closeBtn);
 
-    root.addEventListener("click", () => {
-      // 拖拽刚结束的那次 click 不切 Tab（drag-then-release ≠ 选中）。一次性消费。
-      if (this.host.takeSuppressedClick(sid)) return;
-      this.host.switchTo(sid);
-    });
-    // 左键 mousedown：候选 Tab 撕离拖拽（越过阈值才真拖，否则仍是普通 click）。
-    root.addEventListener("mousedown", (e) => {
-      if (e.button !== 0) return;
-      // 〔步 17·A〕原先这里有一条「归档区里的 tab 不参与拖拽」的例外 ——
-      // 抽屉没了，那条例外自动不需要（`§A.3` 逐字「净收益」）。
-      this.host.beginDrag(e, sid, root);
-    });
-    // 中键点击归档 Tab 也关闭（常见 UX）
-    root.addEventListener("mousedown", (e) => {
-      if (e.button !== 1) return;
-      const t = this.store.tabs.get(sid);
-      if (t?.status === "archived") {
-        e.preventDefault();
-        this.host.closeTab(sid);
-      }
-    });
-    // issue #10：右键菜单「在新窗口打开」（双屏 / 并排）。〔U2〕菜单里放哪几项住 `tab-menu.ts`。
-    root.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      this.host.openMenu(e, sid);
-    });
-
-    return { root, label, badge, acctBadge, cwdBtn, pinBadge };
+    return { root, label, badge, acctBadge, cwdBtn, pinBadge, drawn: null, acctDrawn: "" };
   }
 
   private updateTabButton(refs: TabButtonRefs, sid: string, tab: Tab): void {
-    refs.root.classList.toggle("active", sid === this.store.activeId);
-    refs.root.classList.toggle("archived", tab.status === "archived");
+    // 〔UP1 · `设计/30 §3` P7〕先把**要画成什么样**整个算出来，与上次画出去的比 —— 一样就一个 DOM 都不写。
+    //
+    // ⚠ 下面那几个 `classList.toggle(x, 布尔)` 状态没变时本来就不写（DOM 规范：`force` 与现状一致
+    //   直接返回，不跑 update steps、不排 mutation record）；**真在每次整刷里写 DOM 的是 `title`**
+    //   （属性赋值不管值变没变都写）。这一段早退省下的是那次写 ＋ 这一堆字符串拼接。
+    const active = sid === this.store.activeId;
+    const archived = tab.status === "archived";
     // 〔步 17·B〕固定：**只多一个 📌 角标，位置一个字不动**（`§B.3b`：没有「固定区」，
     // pin 管的是「别丢」不是「排前面」；位置由 `§C` 的顺序落盘管，两者不抢）。
-    refs.root.classList.toggle("pinned", tab.pinned);
-    refs.root.classList.toggle("has-cwd", !!tab.cwd);
+    const pinned = tab.pinned;
+    const hasCwd = !!tab.cwd;
     // FIX 5 / Feature ②（issue #15）：远端 Tab 的 cwd 是 Pi 上的路径，
     // 本地不存在，故 .remote 类只隐藏「打开工作目录」📂（CSS）。「调出终端」↗ 现在保留
     // 给远端 —— 点击走 bringRemoteTerminalToFront（后端按 ccm-rbind 拉本地 ssh 窗口）。
-    refs.root.classList.toggle("remote", isRemoteOrigin(tab.origin));
+    const remote = isRemoteOrigin(tab.origin);
     // Batch7-F24：bg 任务 tab——缩进 + ⌞ 前缀由 CSS 承担
-    refs.root.classList.toggle("tab-bg", tab.kind !== null && tab.kind !== "interactive");
+    const bg = tab.kind !== null && tab.kind !== "interactive";
     // issue #23 红绿灯：busy=绿（.live-dot 默认色）/ idle·shell=红 / waiting=黄。
     // activity 为 null（旧版 CC / 远端 v1）不加类 → 维持现状绿点。
     // F91：语义抽到 session-status.ts 供 tab-bar 与 mission-control grid 共用（逐字节等价）。
     const actStatus = tab.activity?.status ?? null;
     const lightClass = activityLightClass(actStatus);
-    refs.root.classList.toggle("act-idle", lightClass === "act-idle");
-    refs.root.classList.toggle("act-waiting", lightClass === "act-waiting");
     // audit-fixes F03.2：idle-tmux 灰灯（claude 退但 tmux 会话仍在）。与 archived 正交——
     // status 仍 live（灯不被 archived 隐藏），tmux-idle 把 .live-dot 覆写为灰、压过红绿黄。
-    refs.root.classList.toggle("tmux-idle", tab.tmuxIdle);
+    const tmuxIdle = tab.tmuxIdle;
     const titleParts: string[] = [];
     if (actStatus === "waiting" && tab.activity?.waitingFor) {
       titleParts.push(`等待操作：${tab.activity.waitingFor}`);
@@ -422,17 +496,44 @@ export class TabBarView {
     if (tab.forkedFromSessionId) {
       titleParts.push(`↳ 从 ${tab.forkedFromSessionId.slice(0, 8)} fork 而来`);
     }
-    refs.root.title = titleParts.join("\n");
-    const unread = tab.unread > 0 && sid !== this.store.activeId;
-    refs.root.classList.toggle("has-unread", unread);
+    const title = titleParts.join("\n");
+    const unread = tab.unread > 0 && !active;
+    // 未读数只在有未读时写（没未读时徽标由 CSS 藏，文字留着上一次的，与原来逐字相同）。
+    const unreadText = unread ? (tab.unread > 99 ? "99+" : String(tab.unread)) : "";
 
-    if (refs.label.textContent !== tab.title) {
-      refs.label.textContent = tab.title;
-    }
-    if (unread) {
-      const text = tab.unread > 99 ? "99+" : String(tab.unread);
-      if (refs.badge.textContent !== text) {
-        refs.badge.textContent = text;
+    const flags = [
+      active,
+      archived,
+      pinned,
+      hasCwd,
+      remote,
+      bg,
+      lightClass === "act-idle",
+      lightClass === "act-waiting",
+      tmuxIdle,
+      unread,
+    ]
+      .map((b) => (b ? "1" : "0"))
+      .join("");
+    const drawn = `${flags}\u0000${title}\u0000${tab.title}\u0000${unreadText}`;
+    if (refs.drawn !== drawn) {
+      refs.drawn = drawn;
+      refs.root.classList.toggle("active", active);
+      refs.root.classList.toggle("archived", archived);
+      refs.root.classList.toggle("pinned", pinned);
+      refs.root.classList.toggle("has-cwd", hasCwd);
+      refs.root.classList.toggle("remote", remote);
+      refs.root.classList.toggle("tab-bg", bg);
+      refs.root.classList.toggle("act-idle", lightClass === "act-idle");
+      refs.root.classList.toggle("act-waiting", lightClass === "act-waiting");
+      refs.root.classList.toggle("tmux-idle", tmuxIdle);
+      if (refs.root.title !== title) refs.root.title = title;
+      refs.root.classList.toggle("has-unread", unread);
+      if (refs.label.textContent !== tab.title) {
+        refs.label.textContent = tab.title;
+      }
+      if (unread && refs.badge.textContent !== unreadText) {
+        refs.badge.textContent = unreadText;
       }
     }
     this.updateAccountBadge(refs, sid, tab); // A3：账号徽章随 tab 更新一并刷新
