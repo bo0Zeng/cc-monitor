@@ -338,6 +338,28 @@ describe("〔CF2〕会话流：还 credit 与丢格", () => {
   });
 });
 
+// ★ S6〔CF2 · 第四波 4B〕：会话内容的旧路（两个广播事件 ＋ 独立窗口的定向重放命令）在前端生产段**零命中**。
+//
+// 要求住址：`设计/05 §8` 步 6「流那半收口成 `subscribe`」—— 旧路留着一处订阅，会话内容就有了第二个入口
+// （而且那个入口没有 credit、丢了也不报 `Gap`）。正控：同一识别器在合成代码上三针全中、在注释里不中。
+describe("〔CF2〕会话内容的旧路退役", () => {
+  const needles = [`"jsonl-${"line"}"`, `"jsonl-${"batch"}"`, `replay_session_${"to_window"}`];
+  const strip = (t: string): string =>
+    t
+      .split("\n")
+      .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+      .join("\n");
+  const hits = (t: string): string[] => needles.filter((n) => strip(t).includes(n));
+  it("★ S6：前端生产段零命中（正控三针全中；注释不算）", () => {
+    expect(hits(`listen("jsonl-${"line"}"); sub("jsonl-${"batch"}"); invoke("replay_session_${"to_window"}");`)).toHaveLength(3);
+    expect(hits(`// 原来的 "jsonl-${"line"}" 退役了`)).toEqual([]);
+    const files = productionTsFiles("src");
+    expect(files.length, "前端生产语料一份都没扫到 —— 本条零命中地绿").toBeGreaterThan(100);
+    const offenders = files.flatMap(({ file, text }) => hits(text).map((n) => `${file}: ${n}`));
+    expect(offenders, "会话内容的旧路又长回来了（该经 `chan.subscribe`，`events.ts` 的 `streams`）").toEqual([]);
+  });
+});
+
 // ★★ **`bindEvents` 的每一处调用都必须 `await`**〔audit-0805 08-08，Phase G 第 89 件〕。
 //
 // # 症状是实测过的，而没人钉着它
