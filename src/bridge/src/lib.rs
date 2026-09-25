@@ -60,6 +60,8 @@ mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生
                 // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
 mod apikey_remote; // 〔RM1a〕那份文件**按机器**读写：本机进 creds_store，远端交那台机器的后端
 mod backend; // P4a（§1.4b）：monitor 侧的后端边界 —— 读/控制两条能力线，宿主无关
+mod byte_table; // 〔DP1 · 第四波〕全仓唯一的取字节口：一台机器要哪一份可执行字节，按它的 (OS, arch) 查表（`设计/96 §7.1`）
+mod copy_table; // 〔DP1 · 第四波〕对外文案表的 Rust 读口（与前端 `copyText` 同一份 `src/shared/copy/table.json`）
 mod creds_store; // K-H2a：第三方 API key 那份文件的**写侧**（monitor 独占）+ 读侧只回掩码
 #[cfg(test)]
 mod guard_support; // 住址唯一源（仓根/源码树/测试树）——头注写着它为什么存在
@@ -72,7 +74,7 @@ mod mcp; // F87（#50+#51）：MCP 管理（读跨 scope 展示 / 写只项目 .
 mod mcp_sync; // 〔AS1 · 第四波 4B〕MCP 推 / 拉：只编排 I/O（读两边 · 请对面后端判 · 经对面后端写），判定住后端 `mcp-sync-plan`
 mod messages;
 // 〔RM1f · V108 后半句〕`mod panorama;`（进程内 per-repo 引擎池 ＋ 17 条本机全景命令）删了：本机也走本机后端 → 全景小程序（`panorama_call`），monitor 不再链 vendored 引擎。
-mod panorama_bytes; // 〔RM1c · 第四波〕全景小程序的字节从哪来：按 (OS, arch) 选内嵌的那一份（推上去归 F08 部署路 / SR1b）
+mod panorama_bytes; // 〔RM1c · 第四波〕全景小程序：推上去 · 本机放一份（〔DP1〕字节本身从 `byte_table` 取）
 mod panorama_call; // 〔RM1c · 第四波〕代码全景经那台机器的后端走（V108 选 B）：`panorama_call(origin, op, repo, args)`
 mod panorama_seam_registry; // P7c-2 第一刀：引擎住哪一侧要可换（整体 #[cfg(test)]）
 mod parser;
@@ -552,6 +554,8 @@ pub fn run() {
             // 本机后端的 `line` 帧（`local_lines` 头注）；后端一接上就开始宣告、发行 ⇒ 接住它们的那一头
             // 必须先在。原来 `EventReplay` 造在下面 watcher 那一段（本机 watcher 已删）。
             let replay = Arc::new(event_replay::EventReplay::new());
+            // 〔CF2 · 第四波 4B〕会话内容经通道 `subscribe` 交给 webview（`chan/webview.rs` 头注）：出口先装上。
+            replay.attach_sink(Arc::new(chan::webview::WebviewSink(app.handle().clone())));
             local_lines::install(app.handle().clone(), replay.clone());
 
             // F05a（定框 C7：没有 daemonless）：起并看住**本机后端进程**。
@@ -585,8 +589,8 @@ pub fn run() {
                 // 两样宿主知识在这里给（backend 层不认识它们）：
                 //   · 落点 `~/.cc-monitor/bin`：与远端自部署同一个目录，但**文件名带 build_id**
                 //     ⇒ 与远端那份结构上不可能撞（理由见 `extract_embedded_to` 头注的 D1 段）。
-                //   · 当前 arch：`sftp::backend_binary` 按它挑内嵌字节；缺内嵌（`cfg(embedded_backends)`
-                //     未置）时给 None，函数会诚实降级、不伪造理由。
+                //   · 这台机器的 (OS, arch)：`byte_table::choose` 按它挑内嵌字节；取不到时交进去那句拒绝的话，
+                //     函数把它接在「旁边没有」后面、不伪造理由。
                 use local_backend_host::StartOutcome;
                 match local_backend_host::start_local_backend() {
                     StartOutcome::Started(p) => {
@@ -1185,9 +1189,9 @@ pub fn run() {
                                 },
                             );
                         }
-                        replay
-                            .replay_and_mark_ready(&handle, priority_sid.as_deref())
-                            .await;
+                        // 〔CF2 · 第四波 4B〕重放不再是广播事件：主界面在发 `frontend-ready` 之前已经订好了各台机器的
+                        //   会话流（`chan.subscribe`），这里是它们的**就绪点** —— 按 credit 交完留存才往下走对账。
+                        replay.ready_point(priority_sid.as_deref()).await;
 
                         // issue #19：前端是纯事件增量模型——Tab 见行即建 live，只有一次性的
                         // session-ended 能归档。F5/HMR 重载后 replay 把 buffer 里**已结束**
@@ -1348,7 +1352,6 @@ pub fn run() {
             forget_session,
             // issue #10: 独立只读窗口（多窗口 / 双屏）
             open_session_in_new_window,
-            replay_session_to_window,
             // F82a(#56+#47): 设置独立窗口
             open_settings_window,
             bring_terminal_to_front,
@@ -1382,8 +1385,8 @@ pub fn run() {
             history::stream_read_session_jsonl,
             // 〔`设计/10` 骨架 · 子步 3〕`--read-session-from-offset` 在 monitor 侧的调用点（〔C4b〕骨架索引那一条改走通道）。
             session_skeleton::read_session_range,
+            session_skeleton::read_session_lines,
             // 〔U3b〕接上骨架的会话，重放缓冲只留尾巴（`设计/10` 步 8）
-            session_skeleton::replay_keep_tail_only,
             // F10：装 / 卸远端 rc 里的别名块（SFTP 写 profile，SS-H）。〔MC1〕从前叫「装/卸 ccm 助手」，
             // 推 `ccm` 入口那一半并进了下面的 `deploy_remote_backend`（`设计/71 §13.3`）。
             sftp::install_remote_alias_block,
@@ -1449,6 +1452,10 @@ pub fn run() {
             port_forward::list_forwards,
             // 〔C4a · 第四波〕**主界面说 `call` 的那一跳**（`设计/05 §3.3`）：webview ⇒ 通道 ⇒ 注入的后端句柄。
             chan::webview::chan_call,
+            // 〔CF2 · 第四波 4B〕会话内容经通道的 `subscribe`（本地撤单 · credit）。
+            chan::webview::chan_subscribe,
+            chan::webview::chan_want,
+            chan::webview::chan_stop,
             // issue #6: 历史全文搜索（〔C4a〕只剩本机索引；远端那半前端经通道说 `history-search`）
             search::search_history,
             search::get_search_index_status,
@@ -1985,11 +1992,16 @@ fn forget_session(
 async fn open_session_in_new_window(
     app: tauri::AppHandle,
     session_id: String,
+    origin: crate::origin::Origin,
     title: String,
     x: Option<f64>,
     y: Option<f64>,
 ) -> Result<(), String> {
     use tauri::Manager;
+    // 〔CF2 · 第四波 4B〕独立窗口自己订 `session-lines/<sid>`（`subscribe(origin, kind)`：origin 是唯一寻址键）
+    //   ⇒ 窗口要知道这个会话在哪台机器上；随 URL 交过去（百分号编码：本机那个 `<local>` 有尖括号）。
+    origin.route("open_session_in_new_window")?;
+    let origin_q = pct_encode(origin.as_wire_str());
     let label = format!("viewer-{session_id}");
     if let Some(w) = app.get_webview_window(&label) {
         let _ = w.unminimize();
@@ -1997,7 +2009,8 @@ async fn open_session_in_new_window(
         let _ = w.set_focus();
         return Ok(());
     }
-    let url = tauri::WebviewUrl::App(format!("viewer.html?viewer={session_id}").into());
+    let url =
+        tauri::WebviewUrl::App(format!("viewer.html?viewer={session_id}&origin={origin_q}").into());
     let mut builder = tauri::WebviewWindowBuilder::new(&app, &label, url)
         .title(if title.is_empty() {
             "cc-monitor"
@@ -2044,17 +2057,21 @@ async fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// issue #10：独立 viewer 窗口加载后调用 —— 后端把该 sid 的历史定向 emit 给本窗口。
-/// `window` 由 Tauri 注入 = 发起调用的窗口（即那个 viewer 窗口）。
-#[tauri::command]
-fn replay_session_to_window(
-    session_id: String,
-    window: tauri::WebviewWindow,
-    replay: tauri::State<'_, Arc<event_replay::EventReplay>>,
-) -> Result<(), String> {
-    replay.replay_session_to_window(&window, &session_id);
-    Ok(())
+/// 〔CF2〕URL 查询串里的一格：非「字母数字 `-` `_` `.` `~`」一律 `%XX`（RFC 3986 unreserved 之外全编）。
+fn pct_encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+            out.push(char::from(b));
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
 }
+
+// 〔CF2 · 第四波 4B〕独立窗口的定向重放（`replay_session_to_window`〔散文墓碑〕）退役：独立窗口自己订
+//   `session-lines/<sid>`（`src/entry-viewer.ts`），留存由那条订阅当场交。
 
 /// v2.4 (issue #2)：把 monitor 自己的主窗口拉到最前 + unminimize + 抢焦点。
 ///

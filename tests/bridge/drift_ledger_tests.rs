@@ -366,6 +366,12 @@ const FEEDERS: &[(&str, &str, Whose, &str)] = &[
     ),
     (
         "session_skeleton.rs",
+        "lines_page",
+        Whose::Given,
+        "〔CF2〕参数 `origin`（按行号取回那一段，行是那台后端给的）",
+    ),
+    (
+        "session_skeleton.rs",
         "range_payloads",
         Whose::Given,
         "参数 `origin`",

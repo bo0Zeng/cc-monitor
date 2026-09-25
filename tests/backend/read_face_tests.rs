@@ -18,6 +18,8 @@ const FAMILY: &[&str] = &[
     "accounts-trust",
     "history-index",
     "history-user-inputs",
+    // 〔CF2 · 第四波 4B〕按行号取回（异源是题面 CF2「后端给『从第 N 行起 k 行』的读口」，不是 `inbound.rs`）。
+    "history-lines",
     // 〔SR1a × SE2〕会话内查找。
     "history-find",
     // 〔C4d · 第四波 4B〕`history-projects` / `history-sessions` 出列：它们出成品（并注解 ＋ 判活 ＋ 远端那一跳），
@@ -536,6 +538,223 @@ fn history_record_answers_present_absent_and_refuses_a_bad_sid() {
         Err(("bad_args", _))
     ));
     std::fs::remove_dir_all(&home).ok();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  〔CF2 · 第四波 4B〕`history-lines`：按行号取回
+//
+//  要求住址：`设计/05 §3.3.4`「⇒ **级 3 是判据**：任何一个订阅侧缓冲都要有上界，满了必须落级 1 或级 2，
+//  **不许静默堆**」· `设计/99 §4.4`「无索引会话的重放缓冲上界（要先有不依赖索引的取回路）」——
+//  本族是那条「不依赖索引的取回路」，它取回来的行号必须与实时 `seq` 同一个空间，否则取回的正文落错位置。
+// ════════════════════════════════════════════════════════════════════════════
+
+/// 手写夹具：可计行、空行、全空白行、只有 BOM 的行、带 BOM 的行、CRLF、一行超长、torn 残尾。
+/// 行内容是结构占位（不采真会话正文）。
+fn lines_fixture() -> (String, Vec<String>) {
+    let big = format!("{{\"big\":\"{}\"}}", "x".repeat(200));
+    let body = format!(
+        "{{\"i\":0}}\n\n\u{feff}{{\"i\":1}}\n   \t\n\u{feff}\n{{\"i\":2}}\r\n{{\"i\":3}}\n{big}\n{{\"i\":5}}\n{{\"torn\":"
+    );
+    // **手写**的期望：可计行按出现顺序（不从被测函数派生）。
+    let want = vec![
+        "{\"i\":0}".to_string(),
+        "\u{feff}{\"i\":1}".to_string(),
+        "{\"i\":2}\r".to_string(),
+        "{\"i\":3}".to_string(),
+        big,
+        "{\"i\":5}".to_string(),
+    ];
+    (body, want)
+}
+
+/// ★ L1：任意 `[from, until)`（含越界、含 `until` 缺席）取回的 == 手写期望的那一段；
+/// `next == from + 条数`；`eof` 当且仅当读过了最后一个完整行。
+#[test]
+fn lines_by_number_match_the_hand_written_countable_rows() {
+    let (body, want) = lines_fixture();
+    let n = want.len() as u64;
+    for from in 0..=n + 1 {
+        for until in (from..=n + 2).map(Some).chain([None]) {
+            let got = crate::observe::history_query::read_lines_from(
+                std::io::Cursor::new(body.as_bytes()),
+                from,
+                until,
+                1 << 20,
+                1 << 20,
+            )
+            .unwrap();
+            let hi = until.unwrap_or(u64::MAX).min(n).max(from.min(n));
+            let exp: Vec<String> = want[(from.min(n) as usize)..(hi as usize)].to_vec();
+            assert_eq!(got.lines, exp, "[{from}, {until:?})");
+            assert_eq!(got.from, from);
+            assert_eq!(
+                got.next,
+                from + exp.len() as u64,
+                "[{from}, {until:?}) 的续点"
+            );
+            assert_eq!(
+                got.eof,
+                until.is_none_or(|u| u > n),
+                "[{from}, {until:?}) 的 eof"
+            );
+        }
+    }
+}
+
+/// ★ L1：一页装不下就停在行边界、至少交一行；按续点接着要，拼起来 == 全部可计行（逐条）。
+#[test]
+fn lines_by_number_page_on_row_boundaries_and_reassemble() {
+    let (body, want) = lines_fixture();
+    for page in [1usize, 7, 30, 250, 1 << 20] {
+        let mut got: Vec<String> = Vec::new();
+        let mut from = 0u64;
+        let mut rounds = 0;
+        loop {
+            let pg = crate::observe::history_query::read_lines_from(
+                std::io::Cursor::new(body.as_bytes()),
+                from,
+                None,
+                page,
+                1 << 20,
+            )
+            .unwrap();
+            assert!(
+                pg.eof || !pg.lines.is_empty(),
+                "page={page}：没到头却一行没交（死循环）"
+            );
+            got.extend(pg.lines);
+            from = pg.next;
+            rounds += 1;
+            assert!(rounds < 100, "page={page}：翻不完");
+            if pg.eof {
+                break;
+            }
+        }
+        assert_eq!(got, want, "page={page} 拼回来的不对");
+    }
+}
+
+/// ★ L1：要的那一段里有超长行 ⇒ `oversized_line`（不截半行）；只是**数过**它（不交）⇒ 照常答。
+#[test]
+fn lines_by_number_refuse_an_oversized_row_but_can_count_past_it() {
+    let (body, want) = lines_fixture();
+    let cap = 100; // 夹具那一行 > 200 字节
+    match crate::observe::history_query::read_lines_from(
+        std::io::Cursor::new(body.as_bytes()),
+        3,
+        Some(5),
+        1 << 20,
+        cap,
+    ) {
+        Err(("oversized_line", _)) => {}
+        other => panic!("超长行被交出去了：{other:?}"),
+    }
+    let after = crate::observe::history_query::read_lines_from(
+        std::io::Cursor::new(body.as_bytes()),
+        5,
+        None,
+        1 << 20,
+        cap,
+    )
+    .unwrap();
+    assert_eq!(after.lines, want[5..].to_vec());
+}
+
+/// ★ L1：同一份夹具的三个出口数的是**同一个**行号空间 —— `history-tail` 的 `total` ·
+/// `history-index` 的行数 · `history-lines` 从 0 取到底的条数，两两相等（三个扫描各写各的循环，只共用
+/// `line_counts` 那一个判定）；帧面那一臂的键集合恒等；围栏照旧。
+#[test]
+fn lines_by_number_share_the_seq_space_with_tail_and_index() {
+    let home = scratch("cf2-lines");
+    let dir = home.join("projects").join("-p");
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("s.jsonl");
+    let (body, want) = lines_fixture();
+    std::fs::write(&p, &body).unwrap();
+    let path = p.to_string_lossy().into_owned();
+    let tail = answer_at(
+        &home,
+        "history-tail",
+        &serde_json::json!({"path": path, "n": 2}),
+    )
+    .unwrap();
+    let index = answer_at(
+        &home,
+        "history-index",
+        &serde_json::json!({"path": path, "offset": 0}),
+    )
+    .unwrap();
+    let lines = answer_at(&home, "history-lines", &serde_json::json!({"path": path})).unwrap();
+    let mut keys: Vec<&String> = lines.as_object().unwrap().keys().collect();
+    keys.sort();
+    assert_eq!(keys, ["eof", "from", "lines", "next"], "成品形状变了");
+    let n = want.len() as u64;
+    assert_eq!(tail["total"].as_u64(), Some(n), "history-tail 的 total");
+    assert_eq!(
+        index["rows"].as_array().map(|r| r.len() as u64),
+        Some(n),
+        "history-index 的行数"
+    );
+    assert_eq!(
+        lines["lines"].as_array().map(|r| r.len() as u64),
+        Some(n),
+        "history-lines 的条数"
+    );
+    assert_eq!(lines["next"].as_u64(), Some(n));
+    assert_eq!(lines["eof"].as_bool(), Some(true));
+    let outside = home.join("outside.jsonl");
+    std::fs::write(&outside, "{}\n").unwrap();
+    match answer_at(
+        &home,
+        "history-lines",
+        &serde_json::json!({"path": outside.to_string_lossy()}),
+    ) {
+        Err((c, _)) => assert_eq!(c, "refused"),
+        Ok(v) => panic!("围栏外的文件被读了：{v}"),
+    }
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// ★ L1 跨 crate：`history-lines` 从 0 取到底，第 k 条的 uuid == 金标准第 k 行（`skeleton-seq-space.golden`，手算；
+/// monitor 那一侧 `LineNumberer` 与后端索引对的也是它）；条数 == `#count`（torn 残尾不交）。
+#[test]
+fn lines_by_number_match_the_shared_seq_space_golden() {
+    let data: &[u8] = include_bytes!("../__fixtures__/skeleton-seq-space.jsonl");
+    let golden = include_str!("../__fixtures__/skeleton-seq-space.golden");
+    let mut want: Vec<Option<String>> = Vec::new();
+    let mut count = None;
+    for l in golden.lines() {
+        if let Some(v) = l.strip_prefix("#count\t") {
+            count = v.parse::<usize>().ok();
+        } else if !l.starts_with('#') {
+            let (_, u) = l.split_once('\t').unwrap();
+            want.push((u != "-").then(|| u.to_string()));
+        }
+    }
+    assert!(
+        !want.is_empty(),
+        "金标准一行都没抽到 —— 下面的相等在空集上绿"
+    );
+    let pg = crate::observe::history_query::read_lines_from(
+        std::io::Cursor::new(data),
+        0,
+        None,
+        1 << 20,
+        1 << 20,
+    )
+    .unwrap();
+    let got: Vec<Option<String>> = pg
+        .lines
+        .iter()
+        .map(|l| {
+            serde_json::from_str::<serde_json::Value>(l.trim_start_matches('\u{feff}').trim())
+                .ok()
+                .and_then(|v| v.get("uuid").and_then(|u| u.as_str()).map(str::to_string))
+        })
+        .collect();
+    assert_eq!(got, want);
+    assert_eq!(Some(pg.lines.len()), count);
+    assert!(pg.eof);
 }
 
 /// 〔C4c · 第四波 4B〕账号那两条的入参闸：`accounts-list` 缺 `agent` ⇒ `bad_args`（不猜是哪一家 ——

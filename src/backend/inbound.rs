@@ -128,6 +128,8 @@ pub const COMMANDS: &[&str] = &[
     "history-forget",
     "history-index",
     "history-last-accounts",
+    // 〔CF2 · 第四波 4B〕按行号取回一段（不依赖骨架索引，`history_query::read_lines`）。
+    "history-lines",
     "history-projects",
     "history-read",
     // 〔U4b · 第四波〕这条会话的记录还在不在（resume 一跳先问，`设计/01 §6.2` 最后一条）。
@@ -1499,6 +1501,19 @@ pub const REGISTRY: &[CommandSpec] = &[
         doc_anchor: Some("#### `history-record`"),
         codes: &["bad_args"],
         fields: &["present", "root", "sid"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔CF2 · 第四波 4B〕按**行号**取回（没接骨架的会话丢掉的正文从这里要回来）。同族同档、同一个只读宿主。
+    CommandSpec {
+        name: "history-lines",
+        doc_anchor: Some("#### `history-lines`"),
+        codes: &["bad_args", "failed", "oversized_line", "refused"],
+        fields: &["eof", "from", "lines", "next", "path", "until"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::read_face::answer(&r.cmd, &r.args)

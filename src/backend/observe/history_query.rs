@@ -1162,6 +1162,113 @@ pub(crate) struct ReadPage {
     pub eof: bool,
 }
 
+/// 〔CF2 · 第四波 4B〕帧面按**行号**取回一段（`history-lines`）：第 `[from, until)` 个可计行的原文。
+///
+/// # 为什么要有它（`调研/第四波记录/CF2.md §1`）
+///
+/// 按字节取正文（[`read_page`]）要调用方先知道字节边界 —— 那只有骨架索引给得出。
+/// 没接骨架的会话（后台 tab · 老后端 · seq 对不上的）丢掉的正文就无处可回 ⇒ monitor 的重放缓冲
+/// 不敢设上界（`设计/05 §3.3.4` 级 3）。本函数是**不依赖索引**的那条取回路：调用方只说行号。
+///
+/// # 口径
+///
+/// - 「第几行」只有一个家：[`line_counts`]（BOM 与全空白不占号）＋ 没 `\n` 收尾的残尾不计 ——
+///   与 [`tail_plan`] 的 `total` · [`scan_session_index`] 的行号 · 实时 `line` 帧的 `seq` 同一个空间。
+/// - 只交**可计行**（空行在号外，交出去调用方也不会给它编号）；第 k 条就是第 `from + k` 行。
+/// - `until` 缺 ＝ 到最后一个完整行为止。
+///
+/// # 一帧装得下
+///
+/// 交出的原文累计达到 `page` 字节就停（至少交一行）；单行超过 `line_cap` ⇒ `oversized_line`
+/// （同 [`read_page`]：不截半行）。停在中途时 `eof == false`、`next < until`，调用方接着要。
+///
+/// # 代价（写清楚，`CF2.md §1.2`）
+///
+/// **O(第 `from` 行之前的字节)**：后端零状态，每次从文件头数。本机最大一份会话（111 MB / 4.2 万行）
+/// 热缓存从头数到尾 ≈ 22 ms；取回只在用户往上翻过了前端手里最老那一条时才发生，一次一批。
+/// 真撞上「弱设备上超大会话翻得卡」的读数时再加锚（`CF2.md §1.1` 候选 C），不先加。
+///
+/// 错误同 [`read_page`]：`refused` · `failed` · `oversized_line`。
+pub(crate) fn read_lines(
+    agent_home: &Path,
+    jsonl_path: &str,
+    from: u64,
+    until: Option<u64>,
+    page: usize,
+    line_cap: usize,
+) -> Result<LinesPage, (&'static str, String)> {
+    let target = validate_session_path(agent_home, jsonl_path).map_err(|e| ("refused", e))?;
+    let f = std::fs::File::open(&target).map_err(|e| ("failed", format!("open failed: {e}")))?;
+    read_lines_from(std::io::BufReader::new(f), from, until, page, line_cap)
+}
+
+/// [`read_lines`] 的内核：读 `r`（从文件头起）。**纯 I/O 泛型**，单测直接喂字节。
+pub(crate) fn read_lines_from<R: std::io::BufRead>(
+    mut r: R,
+    from: u64,
+    until: Option<u64>,
+    page: usize,
+    line_cap: usize,
+) -> Result<LinesPage, (&'static str, String)> {
+    let until = until.unwrap_or(u64::MAX);
+    let mut lines: Vec<String> = Vec::new();
+    let mut bytes: usize = 0;
+    let mut n: u64 = 0; // 下一个可计行的行号
+    let mut buf: Vec<u8> = Vec::new();
+    let eof = loop {
+        if n >= until {
+            break false;
+        }
+        buf.clear();
+        let read = r
+            .read_until(b'\n', &mut buf)
+            .map_err(|e| ("failed", format!("scan failed: {e}")))?;
+        if read == 0 || buf.last() != Some(&b'\n') {
+            break true; // 文件到头；torn 残尾不计（同 `tail_plan`）
+        }
+        let body = &buf[..buf.len() - 1];
+        if !line_counts(body) {
+            continue;
+        }
+        let at = n;
+        n += 1;
+        if at < from {
+            continue;
+        }
+        if body.len() > line_cap {
+            return Err((
+                "oversized_line",
+                format!("第 {at} 行超过 {line_cap} 字节，一帧装不下 —— 拒收，不截半行"),
+            ));
+        }
+        bytes += body.len();
+        lines.push(String::from_utf8_lossy(body).into_owned());
+        if bytes >= page {
+            break false;
+        }
+    };
+    let next = from + lines.len() as u64;
+    Ok(LinesPage {
+        from,
+        lines,
+        next,
+        eof,
+    })
+}
+
+/// [`read_lines`] 的一段。不变量：`next == from + lines.len()`。
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct LinesPage {
+    /// 第一条的行号（＝ 请求里的 `from`）。
+    pub from: u64,
+    /// 可计行的原文（不含行尾 `\n`；`\r` 与 BOM 原样留着，调用方剥）。
+    pub lines: Vec<String>,
+    /// 下一段从这一行起。
+    pub next: u64,
+    /// 读到了最后一个完整行之后（后面没有了）。
+    pub eof: bool,
+}
+
 /// 〔U4b · 第四波〕「这条会话的记录还在不在」—— `history-record` 帧命令的本体（`read_face` 是它的宿主）。
 ///
 /// `设计/01 §6.2` 最后一条逐字：「对方那份记录也没了 ⇒ 重开必失败，要诚实报错，不许静默变成『起了个新会话』」。

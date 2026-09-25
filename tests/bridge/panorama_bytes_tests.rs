@@ -2,21 +2,42 @@
 
 use super::*;
 
+/// 〔DP1〕键的解析与字节住 `byte_table`：本条判的是「全景这一类字节认哪几格」（Linux 两格 ＋ 〔RM1f〕Windows x86_64
+/// 那一格的原生产线），与「别的 OS / arch 答没有、不把一份 Linux ELF 推过去」。
 #[test]
-fn only_linux_and_the_two_known_arches_get_bytes() {
+fn only_the_panorama_cells_with_a_production_line_get_bytes() {
+    use crate::byte_table::{key_of, Arch, Key, Os, Product, LINES};
+    let linux = |arch| {
+        Some(Key {
+            os: Os::Linux,
+            arch,
+        })
+    };
     for (os, arch, want) in [
-        ("Linux", "x86_64", Some("x86_64")),
-        ("linux", "amd64", Some("x86_64")),
-        ("Linux", "aarch64", Some("aarch64")),
-        ("Linux", "arm64", Some("aarch64")),
-        // 远端是别的 OS：答「没有」，不把一份 Linux ELF 推过去。
+        ("Linux", "x86_64", linux(Arch::X86_64)),
+        ("linux", "amd64", linux(Arch::X86_64)),
+        ("Linux", "aarch64", linux(Arch::Aarch64)),
+        ("Linux", "arm64", linux(Arch::Aarch64)),
+        // 〔RM1f〕Windows x86_64 那一格有原生产线（`release.yml` 的 `Stage native panorama for self-extract`）。
+        (
+            "MINGW64_NT-10.0",
+            "x86_64",
+            Some(Key {
+                os: Os::Windows,
+                arch: Arch::X86_64,
+            }),
+        ),
+        // 别的 OS / arch：答「没有」，不把一份 Linux ELF 推过去。
         ("Darwin", "arm64", None),
-        ("MINGW64_NT-10.0", "x86_64", None),
+        ("MINGW64_NT-10.0", "arm64", None),
         // 没登记的 arch：答「没有」。
         ("Linux", "riscv64", None),
         ("Linux", "", None),
     ] {
-        assert_eq!(normalize_arch(os, arch), want, "{os} / {arch}");
+        let got = key_of(os, arch)
+            .ok()
+            .filter(|k| LINES.contains(&(Product::Panorama, *k)));
+        assert_eq!(got, want, "{os} / {arch}");
         if want.is_none() {
             assert!(
                 panorama_binary(os, arch).is_none(),
@@ -26,12 +47,14 @@ fn only_linux_and_the_two_known_arches_get_bytes() {
     }
 }
 
-/// ★ 选字节这一侧认的 arch == `build.rs::embed_panoramas` 放进 `OUT_DIR` 的那几个（两向集合相等，
-/// **异源**：一侧是 `normalize_arch` 的产出值域，一侧读 `build.rs` 源码里那个 `for arch in [...]`）。
+/// ★ 表里全景的 **Linux** 那几格 == `build.rs::embed_panoramas` 放进 `OUT_DIR` 的那几个 arch（两向集合相等，
+/// **异源**：一侧是 `byte_table::LINES` 里全景的 Linux 格子，一侧读 `build.rs` 源码里那个 `for arch in [...]`）。
+/// Windows 那一格是原生产线（`embed_native_panorama`，按 `TARGET`），不在 musl 那一步里 —— 它由 `byte_table_tests` 对 `release.yml` 判。
 ///
-/// 多一个 ⇒ 选得出一个名字、却没有那份字节；少一个 ⇒ 放进来的字节永远没人选。
+/// 多一格 ⇒ 表里有一格、却没有那份字节；少一格 ⇒ 放进来的字节永远没人选。
 #[test]
 fn the_arches_we_pick_are_exactly_the_ones_build_rs_embeds() {
+    use crate::byte_table::{key_of, Product, LINES};
     let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("build.rs");
     let src = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}：{e}"));
     let at = src
@@ -42,22 +65,22 @@ fn the_arches_we_pick_are_exactly_the_ones_build_rs_embeds() {
         .lines()
         .find(|l| l.trim_start().starts_with("for arch in ["))
         .expect("embed_panoramas 里找不到 `for arch in [...]`");
-    let mut embedded: Vec<String> = line
+    let embedded: std::collections::BTreeSet<_> = line
         .split('"')
         .skip(1)
         .step_by(2)
-        .map(str::to_string)
+        .map(|a| {
+            key_of("Linux", a)
+                .unwrap_or_else(|r| panic!("build.rs 的 arch `{a}` 表里认不出：{r:?}"))
+        })
         .collect();
-    embedded.sort();
-    let mut picked: Vec<String> = ["x86_64", "amd64", "aarch64", "arm64"]
+    let lines: std::collections::BTreeSet<_> = LINES
         .iter()
-        .filter_map(|a| normalize_arch("linux", a))
-        .map(str::to_string)
+        .filter(|(p, k)| *p == Product::Panorama && k.os == crate::byte_table::Os::Linux)
+        .map(|(_, k)| *k)
         .collect();
-    picked.sort();
-    picked.dedup();
     assert!(!embedded.is_empty(), "抠不到 arch —— 抽取坏了");
-    assert_eq!(picked, embedded);
+    assert_eq!(lines, embedded);
 }
 
 /// 字节在的那种构建（`embedded_panoramas`）：选出来的那一份真是那个 arch 的 ELF
@@ -239,7 +262,8 @@ fn the_native_panorama_landing_is_spelled_the_same_in_all_four_places() {
         landing, "native-backend/cc-monitor-panorama",
         "正控：抠得到"
     );
-    let bytes_src = guard_core::production_code(&read("src/bridge/src/panorama_bytes.rs"));
+    // 〔DP1 · 第四波〕消费侧那个 `include_bytes!` 搬进了 `byte_table.rs`（全仓唯一的取字节口）。
+    let bytes_src = guard_core::production_code(&read("src/bridge/src/byte_table.rs"));
     // 针在运行时拼（整串写死在本文件里，`cross_half_edge_registry` 会把它当成一处解析不出路径的内嵌）。
     let needle = format!("{}!(\"../{landing}\")", "include_bytes");
     assert!(

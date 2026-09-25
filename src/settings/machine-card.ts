@@ -571,7 +571,7 @@ export class MachineCard {
     this.backendUninstallButton = mkBtn(
       "卸载后端",
       "settings-btn-secondary",
-      "删除远端后端二进制和它旁边的 .build_id（机器仍启用的话，下次连接会自动装回）",
+      "删除远端后端（机器仍启用的话，下次连接会自动装回）",
       () => void this.onUninstallBackend(),
     );
     deployRow.appendChild(this.backendUninstallButton);
@@ -1070,7 +1070,7 @@ export class MachineCard {
     invalidateCcmProbeCache(cfg.label);
   }
 
-  /** F08c：点「卸载后端」——删远端后端二进制 + .build_id（二次确认）。 */
+  /** F08c：点「卸载后端」——删远端后端二进制（二次确认；〔DP1〕旁挂的版本标记退役了，不再删它）。 */
   private async onUninstallBackend(): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user || !cfg.backendPath) {
@@ -1079,7 +1079,7 @@ export class MachineCard {
     }
     if (
       !window.confirm(
-        `确认从 ${cfg.host} 删除后端？\n会删：${cfg.backendPath} 及同目录 .build_id。\n（若该机器仍勾选启用，下次连接会自动装回。）`,
+        `确认从 ${cfg.host} 删除后端？\n会删：${cfg.backendPath}\n（若该机器仍勾选启用，下次连接会自动装回。）`,
       )
     ) {
       return;

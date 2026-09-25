@@ -245,6 +245,13 @@ const ENTRIES: &[(&str, &str, &str)] = &[
         "一次性请求（`05 §3.3.0` 的 `Comms::call`）—— 期限由调用方给（`Budget`，绝对时刻）",
     ),
     (
+        "chan.subscribe",
+        "ts",
+        "〔CF2 · 第四波 4B〕**主界面**（webview）说 `subscribe` 的入口（`src/ipc/chan.ts` 的 `chan.subscribe`，会话内容流）。\
+         同 `chan.call` 那一行按全名收窄（TS 语料里另有与本通道无关的裸 `subscribe(`）。它**没有期限参数**\
+         （`05 §3.3.0`：订阅是长期意向）⇒ 只进调用点条数恒等，不进「显式给 `Budget`」那条。",
+    ),
+    (
         "subscribe",
         "rs",
         "订阅（`Comms::subscribe`）—— 〔F7c 09-24〕窗口恰好一处（`filewin/source.rs::watch`，传输进度流\
@@ -2448,11 +2455,14 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     // 〔C4d · 第四波 4B〕12 → 18：`history-reads.ts` 六处（`history-projects` 本机 · 逐台远端两处 · `history-sessions` ·
     //    `history-annotate` · `history-forget` · `history-last-accounts`）—— 历史清单与注解从 monitor 的五条 Tauri 命令改走通道，
     //    一律问本机常驻后端（远端那台由它去问）；每处显式给期限。
+    // 〔CF2 · 第四波 4B〕`chan.subscribe`（TS，主界面）恰好 1 处：`events.ts::bindEvents` 按 `streams` 订会话内容流
+    //    （主窗口每台机器一条、独立窗口一条，都经这一处）。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
             ("chan.call", 18usize),
+            ("chan.subscribe", 1usize),
             ("subscribe", 1usize)
         ]
         .into_iter()

@@ -39,6 +39,19 @@ export interface ProductionSource {
  * @param subdir 相对仓根，默认 `src`。
  */
 export function productionTsFiles(subdir = "src"): ProductionSource[] {
+  return collect(subdir, ".ts");
+}
+
+/**
+ * 〔DP1 · 第四波〕同一套遍历，收 `.rs`（文案表的 Rust 读口落地之后，`copy-table.vitest.ts` 的「引用」一侧要读它们）。
+ * Rust 这一侧的判据住在仓外的 `tests/bridge/` 等目录（经 `#[path]` 挂进来），`src/` 下的 `.rs` 就是生产段 ——
+ * 与 `.ts` 同一个用意：判据读不到自己。⚠ 不剥注释（同上，那是调用方的事）。
+ */
+export function productionRsFiles(subdir: string): ProductionSource[] {
+  return collect(subdir, ".rs");
+}
+
+function collect(subdir: string, ext: string): ProductionSource[] {
   const root = resolve(REPO_ROOT, subdir);
   const out: ProductionSource[] = [];
   const walk = (dir: string): void => {
@@ -48,7 +61,7 @@ export function productionTsFiles(subdir = "src"): ProductionSource[] {
         if (!SKIP_DIRS.has(e.name)) walk(full);
         continue;
       }
-      if (!e.name.endsWith(".ts")) continue;
+      if (!e.name.endsWith(ext)) continue;
       // ★ 就是这一行让判据读不到自己：测试文件不进人群。
       if (e.name.includes(".vitest.") || e.name.includes(".test.")) continue;
       out.push({

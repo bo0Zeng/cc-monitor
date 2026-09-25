@@ -170,7 +170,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   而 `build_id_guard` 的指纹只看 `main.rs` 的 `Some("--`（一次性子命令那一面）
 ///   ⇒ **加了整整一个命令面，一次 bump 都没被逼出来**。
 ///   ⚠ 后果不是纸面的：`sftp.rs::deploy_decision` 判**版本那一维**的唯一判据是 build_id 字符串
-///   （〔K-W4 09-04〕backend 部署路今天走 `deploy_decision_at`，另看「落点文件在不在」；stale 但文件在时仍只凭 build_id），
+///   （〔K-W4 09-04〕backend 部署路另看「落点文件在不在」；〔DP1 09-25〕今天读那份字节自报的身份戳；stale 但文件在时仍只凭 build_id），
 ///   报同一个 id ⇒ 判 `Skip` ⇒ 已部署的旧 backend **整个控制面静默不可用**。
 ///   本轮把通道面纳入指纹并 bump；**本条 bump 本身就是那笔欠账的偿付** ——
 ///   报 `p1v` 的远端从此会被判 stale 并重装。CLI 那一面**一字未改**。
@@ -463,7 +463,13 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p3i-assets-cancel**（2026-09-25，第四波 AS2 ＋ RM1f 合并那一拍）：子命令 ＋5 —— AS2 `assets-catalog` / `assets-catalog-merge` /
 /// `assets-sync` / `skill-read` / `skill-install-plan`（两个命令面）。
 /// ＋ 行为：RM1f `panorama` 改异步档、`cancel` 真撤（杀子进程组）· Windows 上找全景小程序认 `.exe` 后缀。
-pub const BUILD_ID: &str = "p3i-assets-cancel";
+///
+/// ★★★ **p3j-history-lines**（2026-09-25，第四波 CF2 合并那一拍）：子命令 ＋1 —— `history-lines`（按可计行号取原文，两个命令面）。
+///
+/// ★★★ **p3k-deploy-by-bytes**（2026-09-25，第四波 DP1 合并那一拍）：子命令集不变，**行为**变更 ——
+/// 下载失败留 `.part`（只清零字节的空 `.part`）· 上传失败先等完已发出的写再走 · 远端身份改由 monitor 读字节里的戳判（`.build_id` 退役）。
+/// 照 p1v 先例不加历史行。
+pub const BUILD_ID: &str = "p3k-deploy-by-bytes";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -662,6 +668,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     //   登记理由同上 —— `is_query_mode` 那道闸门读本表。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--history-find",
     "--history-index",
+    // 〔CF2 · 第四波 4B〕`history-lines`（按行号取回）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的，
+    //   BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    "--history-lines",
     "--history-projects",
     "--history-read",
     // 〔U4b · 第四波〕`history-record` 的 CLI 面（CLI 面从 `REGISTRY` 派生，`is_query_mode` 那道闸门读本表）。

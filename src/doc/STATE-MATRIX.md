@@ -33,7 +33,7 @@
 
 ### `Arc<EventReplay>`
 - `lib.rs::forget_session(session_id, replay: State<'_, Arc<EventReplay>>)`
-- `lib.rs::replay_session_to_window(session_id, window, replay: State<'_, Arc<EventReplay>>)` (issue #10：把该 sid 历史定向 emit 给独立 viewer 窗口)
+- `chan/webview.rs::chan_subscribe(webview, origin, kind, from, want, id, replay: State<'_, Arc<EventReplay>>)` · `chan_want` · `chan_stop`（〔CF2 · 第四波 4B〕会话内容经通道 `subscribe`：主窗口每台机器一条 `session-lines`，独立窗口一条 `session-lines/<sid>`；原来的定向重放命令〔散文墓碑〕退役）
 
 ### `Arc<BindRegistry>`
 - `lib.rs::aliases_read(shell, rc_path, bind_state: State<'_, Arc<BindRegistry>>)`（〔AL1d〕别名读回口带回握手终端数；接替了原「终端集成」的状态命令）
