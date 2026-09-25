@@ -696,24 +696,10 @@ src/settings/drift-ledger-section.ts:95	数据面漂移记账（{…} · 本进�
 src/settings/drift-ledger-section.ts:125	读取中…	保留	[对外] 按钮忙碌态
 src/settings/drift-ledger-section.ts:133	复制中…	保留	[对外] 按钮忙碌态
 src/settings/machine-status.ts:33	（本机）	保留	[不对外] LOCAL_MACHINE_KEY 是本机那一行的存储键（头注：刻意取一个用户填不出的名字防撞车），显示时 describeGap 等处换成「本机」
-src/settings/mcp-section.ts:74	(未知形态)	保留	[对外] MCP server 连接方式读不出时的占位
-src/settings/mcp-section.ts:112	用户	保留	[对外] 作用域名
-src/settings/mcp-section.ts:113	本项目(local)	保留	[对外] 作用域名；local 是 Claude Code 自己的 scope 名，用户在 claude mcp 命令里也这么叫
-src/settings/mcp-section.ts:114	项目 .mcp.json	保留	[对外] 作用域名；.mcp.json 是用户项目里的文件
-src/settings/mcp-section.ts:613	 · 只读（远端）	保留	[对外] 分组标题后缀
-src/settings/mcp-section.ts:614	 · 只读	保留	[对外] 分组标题后缀
-src/settings/mcp-section.ts:797	本机	保留	[对外] 确认框里的位置名
-src/settings/mcp-section.ts:797	远端 [{…}]	保留	[对外] 确认框里的位置名
 src/settings/panel.ts:174	「远端 (SSH)」—— monitor 通过 SSH 连到远端主机，由远端后端取代本地 	改·§2.4	[对外] 破折号起头，一句里塞了连接方式＋数据源替换＋行为不变 兼§2.1
 src/settings/panel.ts:175	jsonl-watcher 作为数据源（渲染 / Tab / 分支等行为完全相同）。\n\n	改·§2.1	[对外] 「jsonl-watcher 作为数据源」整句在讲实现，R1 jsonl 命中 新词:watcher →「远端会话和本机会话显示方式相同」
 src/settings/panel.ts:176	关闭（默认）时一切走本地，不受影响。启用 / 修改任意远端设置后需重启 monitor 才生效。	保留	[对外] 默认＋生效条件，用户可操作
 src/settings/panel.ts:177	配置不完整（缺 host / user / backendPath）时后端自动回退本地模式。	内部词→「缺主机、用户或后端路径」	[对外] 配置键名 backendPath 新词:backendPath
-src/settings/plugins-section.ts:41	（没说原因 —— 那是个 bug）	改·§2.2	[对外] 把我们的缺陷判断（「那是个 bug」）当文案说给用户，还带破折号 兼§2.4 →「（原因未知）」
-src/settings/plugins-section.ts:42	读不到插件数：{…}	保留	[对外] 结果＋原因
-src/settings/plugins-section.ts:44	声明 {…} 个插件	保留	[对外] 计数
-src/settings/plugins-section.ts:49	更新时间：未记	保留	[对外] 字段＋未知值
-src/settings/plugins-section.ts:51	更新时间：{…}	保留	[对外] 字段＋原值
-src/settings/plugins-section.ts:52	更新时间：{…}	保留	[对外] 字段＋本地化时间
 src/settings/plugins-section.ts:81	不是一个对象	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
 src/settings/plugins-section.ts:83	顶层的键是 {…}	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
 src/settings/plugins-section.ts:84	顶层两格的类型不对	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
