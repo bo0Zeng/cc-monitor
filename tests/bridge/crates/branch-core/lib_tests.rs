@@ -1,3 +1,9 @@
+//! # 要求住址：`INVARIANTS §1`（F62 与 G6 两段：建分支是复制祖先前缀成全新文件；入参 sid 先过白名单）
+//!
+//! 核原文：F62 段逐字「把 `[根…该消息]` 前缀**复制**成一个**全新** `<new-sid>.jsonl`（原生 `/branch` 的 `forkedFrom` 格式）」；
+//! G6 段第 3 条：sid 先过 `[A-Za-z0-9-]` 白名单，再只在 projects 目录下按文件名匹配。本族判这两句的纯判定半：
+//! `build_branch_records` 走祖先回溯、逐字段对齐原生 fork 形状、拒 sidechain 与未知 uuid；`is_plain_sid` 拒能拼出别的路径的 sid。〔JA1 点址 2026-09-24〕
+
 use super::{build_branch_records, is_plain_sid};
 
 /// `K-R88`：sid 的形状是**两侧共用的那一把闸**，且它先于任何 IO。

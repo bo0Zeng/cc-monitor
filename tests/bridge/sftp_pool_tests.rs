@@ -1,145 +1,375 @@
+//! 〔SR1b · 2026-09-24〕传输台**中继**（`sftp_pool.rs`）的判据：开单 / 起跑 / 停订 / 流断了 都原样转给本机常驻后端，
+//! 后端推上来的 `transfer` 帧翻成窗口认的那几格。
+//!
+//! 台架：一条内存管道两头 —— monitor 这头是**真的** `InboundClient` ＋ **真的**本机吸收点
+//! （`local_backend::absorb_local_frame`），登记成本机那条流；对面是一个会说传输四条的小假后端
+//! （记下每条请求，按用例的剧本回应答、塞帧）。后端那一半的真实现另有 `tests/backend/control/transfer_tests.rs`，
+//! 两半接在一起的真进程读数见 `tests/evidence/SR1b-sftp-loopback.py`。
+//!
+//! ⚠ 本机那条流是进程内全局登记 ⇒ 本文件的用例一律先拿 `local_origin_test_lock`。
+
 use super::*;
+use crate::backend::control::inbound_client::{
+    park, register, unregister, BackendHello, LOCAL_ORIGIN,
+};
+use crate::ssh_source::{parse_frame, InboundFrame};
+use futures::stream::StreamExt;
+use serde_json::Value;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+use tokio::sync::mpsc;
 
-// 🔴 **围栏那一族的判据已经不在本文件了**〔步 H2 09-21，用户裁「拆」〕。
-// `guard_write` 与 `is_protected_claude_data_path` 搬去了 `crate::claude_data_fence`，
-// 它们的判据跟着搬进 `tests/bridge/claude_data_fence_tests.rs`（两条原样保留、并各自
-// 补了相等断言那一半）。本文件从此只放**池子自己**那几件事：死连分类 · 下载落点的围栏（〔第四波 S4〕取消登记那一条随它测的表删了）。
-//
-// 〔F7c 收尾 09-24〕可编辑性（`decode_editable_guards`〔散文墓碑〕）· 有损名（`lossy_name_detection`〔散文墓碑〕）·
-// 排序（`list_dir_sort_dirs_first_then_lowercase`〔散文墓碑〕）· 改权限的线上形状
-// （`the_chmod_attrs_never_put_a_size_on_the_wire`〔散文墓碑〕· `the_chmod_mode_is_masked_down_to_permission_bits`〔散文墓碑〕）
-// 那五条随它们测的那几条池子命令一起走了：读文本 / 列目录 / 改权限今天是后端 `files-*`，
-// 各自的判据住后端那棵树（`设计/60 §13b`）。
-
-#[test]
-fn dead_conn_classification() {
-    assert!(looks_like_dead_conn("channel closed by peer"));
-    assert!(looks_like_dead_conn("Broken pipe (os error 32)"));
-    assert!(looks_like_dead_conn("connection reset"));
-    assert!(!looks_like_dead_conn("No such file or directory"));
-    assert!(!looks_like_dead_conn("permission denied"));
+/// 台架：真 client（登记成本机）＋ 真吸收点 ＋ 假后端。
+pub(crate) struct Rig {
+    pub(crate) client: Arc<InboundClient>,
+    seen: mpsc::UnboundedReceiver<Value>,
+    to_monitor: mpsc::UnboundedSender<String>,
 }
 
-// 〔第四波 S4〕这里原先是「取消登记按 `ptr_eq` 摘、不误删同 id 他人」那一条：它测的那张按 id 的取消表
-//   是老 Tauri 传输那一路的，最后一个用它的命令（零流量复制）退役时一起删了；传输台撤就是停订。
+impl Drop for Rig {
+    fn drop(&mut self) {
+        unregister(LOCAL_ORIGIN, &self.client);
+    }
+}
 
-// ═════════════════════════════════════════════════════════════════════════════
-// `设计/60 §5.4c`：`sftp_chmod` 发上线的那个 `SETSTAT` 包，**不许带 size**
-// ═════════════════════════════════════════════════════════════════════════════
-//
-// 🔴 **它治的是本仓真机上被咬过的那一口，不是一条假想的风险。**
-//
-// `sftp.rs::upload_atomic` 的尾注逐字记着：「在 OpenSSH sftp-server 上 setstat
-// （即便只设 permissions、`size=None`）会把刚 rename 好的文件**截断成 0 字节**」——
-// 后端因此变 0 字节不可 exec → 连接 EOF → marker 变空 → 无限重部署。
-// 那条注释因此逐字禁掉了「rename 之后 `set_metadata` 兜底 chmod」这一整个动作。
-//
-// 而 `设计/60 §5.4c` 裁定 `sftp_chmod` 时逐字写的是「协议侧没有障碍
-// （`russh_sftp::client::SftpSession::set_metadata` 现成）」—— **那句话没有提到这一口**。
-// ⇒ 落这条命令之前把它读到底（现打 `russh-sftp` 3.0.0 那份属性块序列化器；
-// ⚠ 住址刻意不写成「文件::符号」那一形 —— 它在依赖树里不在本仓，写成那一形会被
-//   `structural_scan` 当成一处本仓符号地址）：`SSH_FILEXFER_ATTR_SIZE`（`0x1`）
-// 这个标志位**只在 `size.is_some()` 时才置**，`size` 字段也只在那时才写进包里。
-// ⇒ 只要 `size` 是 `None`，线上那个包里既没有 SIZE 标志也没有 size 字段。
-//
-// ## 判法：**逐字节相等**，不是「不含某个子串」
-//
-// 序列化整个属性块，把**字节**与手写的期望逐字节比。这样三种改法都会红：
-// ① 有人给 `chmod_attrs` 补一个 `size: Some(..)`（那正是事故成因）；
-// ② 有人顺手加 uid/gid/atime/mtime（包变长、标志位变）；
-// ③ `russh-sftp` 升版改了线上编码（那时该回来重读一遍这一口，而不是静默放行）。
-//
-// ## ⚠ 它买不到什么（如实登记，不假装覆盖）
-//
-// 它买的是「**线上那个包的形状**」。它**买不到**「真机上 OpenSSH 收到这个包不会截断」——
-// 那要一趟真机，本仓今天没有（`sftp.rs` 那条注释所依据的 e2e 是当时跑的，今天复现不了）。
-// ⇒ 本条排除的是**本仓那次事故的成因**（把 size 一起送上去），不是一个更大的声称。
+/// `commands` = 假后端在 hello 里声明认的命令。开单那一条回 `{id, key}`，其余回 `ok`。
+pub(crate) fn rig(commands: &[&str]) -> Rig {
+    let (mon_w, be_r) = tokio::io::duplex(1 << 20);
+    let (be_w, mon_r) = tokio::io::duplex(1 << 20);
+    let hello = InboundFrame::Hello {
+        v: 1,
+        build_id: "t".into(),
+        host_arch: "x86_64".into(),
+        claude_dir: "/tmp".into(),
+        homes: vec![],
+        capabilities: vec![],
+        commands: commands.iter().map(|s| s.to_string()).collect(),
+    };
+    let witness = BackendHello::from_hello_frame(&hello).expect("是 hello");
+    let client = park(mon_w).into_client(witness);
+    register(LOCAL_ORIGIN, Arc::clone(&client));
+    let c2 = Arc::clone(&client);
+    tokio::spawn(async move {
+        let mut lines = tokio::io::BufReader::new(mon_r).lines();
+        while let Ok(Some(l)) = lines.next_line().await {
+            if let Some(f) = parse_frame(&l) {
+                crate::backend::control::local_backend::absorb_local_frame(f, Some(&c2));
+            }
+        }
+    });
+    let (to_monitor, mut outq) = mpsc::unbounded_channel::<String>();
+    tokio::spawn(async move {
+        let mut w = be_w;
+        while let Some(l) = outq.recv().await {
+            if w.write_all(format!("{l}\n").as_bytes()).await.is_err() {
+                break;
+            }
+        }
+    });
+    let (seen_tx, seen) = mpsc::unbounded_channel::<Value>();
+    let reply = to_monitor.clone();
+    tokio::spawn(async move {
+        let mut n = 0u32;
+        let mut lines = tokio::io::BufReader::new(be_r).lines();
+        while let Ok(Some(l)) = lines.next_line().await {
+            let v: Value = serde_json::from_str(&l).expect("请求不是 JSON");
+            let id = v["id"].as_str().unwrap_or_default().to_string();
+            let line = match v["cmd"].as_str() {
+                Some("transfer-upload") | Some("transfer-download") => {
+                    n += 1;
+                    format!(
+                        r#"{{"kind":"reply","id":{id:?},"ok":true,"data":{{"id":"xfer-{n}","key":"00112233445566778899aabbccddeeff"}}}}"#
+                    )
+                }
+                _ => format!(r#"{{"kind":"reply","id":{id:?},"ok":true}}"#),
+            };
+            let _ = reply.send(line);
+            let _ = seen_tx.send(v);
+        }
+    });
+    Rig {
+        client,
+        seen,
+        to_monitor,
+    }
+}
 
-// ════════════════════════════════════════════════════════════════════════
-// 🔴〔2026-09-21〕下载的**本机落点**也过那道围栏 —— 而这一格此前是空的
-// ════════════════════════════════════════════════════════════════════════
-//
-// # 洞是怎么活下来的：三张账首尾相接地推诿，链子末端一句假话
-//
-// | 站 | 它说什么 | 真假 |
-// |---|---|---|
-// | `remote_write_registry::NON_WRITING_COMMANDS` | 「写的是本机 ⇒ 不需要 Claude 数据围栏（那道围栏管的是**远端**那台机器上的文件）」 | 🔴 **假** —— `claude_data_fence` 头注写着 F03b 那一路用它判的正是一条**本机**路径 |
-// | `remote_write_registry::REMOTE_WRITES` | 「本机侧那个问题属 `write_site_registry` 的管辖面，不在本表」 | 转手 |
-// | `write_site_registry` | 「把远端文件落到**本地缓存**；写的**不是用户既有环境**」 | 🔴 **假** —— `local_path` 由用户在保存对话框里给，指哪写哪 |
-//
-// ⇒ 实况：把一个远端文件下载到 `~/.claude/projects/<proj>/<sid>.jsonl`，
-// `download_inner` 先写 `.part` 再 `rename`，**原子地盖掉**那条会话记录。
-// 老面板与原生窗口两条路都走它 ⇒ 围栏补在池子那一层，两条路一起修。
-//
-// ⚠ **这一摞不起任何连接**：`host` 是 `.invalid`（RFC 2606 保留域），DNS 就解不出来。
+impl Rig {
+    pub(crate) async fn next(&mut self, cmd: &str) -> Value {
+        loop {
+            let v = tokio::time::timeout(Duration::from_secs(5), self.seen.recv())
+                .await
+                .unwrap_or_else(|_| panic!("5s 没等到 `{cmd}`"))
+                .expect("假后端的请求口关了");
+            if v["cmd"] == cmd {
+                return v;
+            }
+        }
+    }
+    pub(crate) fn frame(&self, line: &str) {
+        let _ = self.to_monitor.send(line.to_string());
+    }
+}
 
-/// 🔴 踩线的本机落点 ⇒ 回的是**围栏那句话**，不是连接失败那句话。
-///
-/// # 为什么要判「是哪一句」而不只判「报错了」
-///
-/// 只判「报错了」买不到东西 ⇒ 判**码与那一句**，外加一条阴性对照（不踩线的开得了单）。判**那一句**才能分开两件事，
-/// 而那正是「围栏排在拨线之前」这条性质在行为侧的唯一抓手。
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_download_onto_a_live_session_file_is_refused_by_the_fence_not_by_the_network() {
-    let cfg = crate::ssh_source::RemoteConfig {
+pub(crate) const ALL: [&str; 4] = [
+    "transfer-upload",
+    "transfer-download",
+    "transfer-start",
+    "transfer-stop",
+];
+
+pub(crate) fn cfg(label: &str) -> RemoteConfig {
+    RemoteConfig {
         host: "example.invalid".into(),
-        label: "fence-dl".into(),
+        label: label.into(),
         port: 22,
         user: "nobody".into(),
-        key_path: None,
-        backend_path: "/nonexistent".into(),
+        key_path: Some("/k".into()),
+        backend_path: "/home/nobody/.cc-monitor/bin/cc-monitor-backend".into(),
         host_key_fingerprint: None,
         addresses: Vec::new(),
         jump: None,
-    };
-    // 夹具自证：这条路径**真的**被那道判定认作受保护（否则本条在量别的东西）。
+    }
+}
+
+/// 收一条快照流直到收场（或 10 s）。
+async fn drain(mut s: futures::stream::BoxStream<'static, Snap>) -> Vec<Snap> {
+    let mut out = Vec::new();
+    let r = tokio::time::timeout(Duration::from_secs(10), async {
+        while let Some(x) = s.next().await {
+            let over = x.end.is_some();
+            out.push(x);
+            if over {
+                break;
+            }
+        }
+    })
+    .await;
+    assert!(r.is_ok(), "10 s 内流没收场：{out:?}");
+    out
+}
+
+/// 🔴🔴 **M2：开单 → 订阅即起跑 → 帧 → 终局**，而且转给后端的是**本机**那条流、带着那台远端的拨号请求。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_upload_is_relayed_to_the_local_backend_and_its_frames_come_back_as_snaps() {
+    let _g = crate::backend::control::inbound_client::local_origin_test_lock();
+    let mut rig = rig(&ALL);
+    let v = transfer_call(
+        cfg("中继·上传"),
+        TRANSFER_UPLOAD,
+        &serde_json::json!({ "local_path": "/tmp/x.bin" }),
+    )
+    .await
+    .expect("开单");
+    assert_eq!(v["id"], "xfer-1");
+    assert_eq!(
+        v["key"].as_str().map(str::len),
+        Some(32),
+        "键没原样带回窗口"
+    );
+    let req = rig.next("transfer-upload").await;
+    assert_eq!(req["args"]["local_path"], "/tmp/x.bin");
+    assert_eq!(
+        req["args"]["dial"]["host"], "example.invalid",
+        "拨号请求不是那台远端的"
+    );
+    assert_eq!(
+        req["args"]["dial"]["key_path"], "/k",
+        "拨号请求只该带私钥路径（且要带）"
+    );
+
+    let origin = crate::origin::Origin("中继·上传".to_string());
+    let s = watch_ticket(&origin, "xfer-1").expect("订阅");
+    let start = rig.next("transfer-start").await;
+    assert_eq!(start["args"]["id"], "xfer-1");
+    rig.frame(r#"{"kind":"transfer","id":"xfer-1","got":10,"total":30}"#);
+    rig.frame(
+        r#"{"kind":"transfer","id":"xfer-1","got":30,"total":30,"end":{"state":"done","bytes":30}}"#,
+    );
+    let snaps = drain(s).await;
+    assert_eq!(
+        snaps.last(),
+        Some(&Snap {
+            got: 30,
+            total: 30,
+            end: Some(End::Done { bytes: 30 })
+        })
+    );
+    // 收场之后中继摘掉（再订阅 = 没有这一趟）。
+    assert_eq!(
+        watch_ticket(&origin, "xfer-1").err().map(|(c, _)| c),
+        Some("no-such-transfer")
+    );
+}
+
+/// 🔴 **停订就是撤**：流在收场之前被丢 ⇒ 后端收到 `transfer-stop {id}`。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dropping_the_stream_sends_a_stop_to_the_local_backend() {
+    let _g = crate::backend::control::inbound_client::local_origin_test_lock();
+    let mut rig = rig(&ALL);
+    transfer_call(
+        cfg("中继·撤"),
+        TRANSFER_UPLOAD,
+        &serde_json::json!({ "local_path": "/tmp/y.bin" }),
+    )
+    .await
+    .expect("开单");
+    let origin = crate::origin::Origin("中继·撤".to_string());
+    let mut s = watch_ticket(&origin, "xfer-1").expect("订阅");
+    rig.next("transfer-start").await;
+    let first = s.next().await.expect("第一格是此刻");
+    assert!(first.end.is_none());
+    drop(s);
+    let stop = rig.next("transfer-stop").await;
+    assert_eq!(stop["args"]["id"], "xfer-1");
+}
+
+/// 本机那条流断了 ⇒ 经它开的中继一律收场（`failed`，原因说清），不让看的人干等。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_dead_local_stream_ends_every_relay_it_opened() {
+    let _g = crate::backend::control::inbound_client::local_origin_test_lock();
+    let mut rig = rig(&ALL);
+    transfer_call(
+        cfg("中继·断"),
+        TRANSFER_DOWNLOAD,
+        &serde_json::json!({ "remote_path": "/srv/a", "local_path": "/tmp/ccm-sr1b-dl-target" }),
+    )
+    .await
+    .expect("开单");
+    let origin = crate::origin::Origin("中继·断".to_string());
+    let s = watch_ticket(&origin, "xfer-1").expect("订阅");
+    rig.next("transfer-start").await;
+    fail_owned_by(&rig.client, "本机后端的流断了（判据）");
+    let snaps = drain(s).await;
+    assert_eq!(
+        snaps.last().and_then(|x| x.end.clone()),
+        Some(End::Failed("本机后端的流断了（判据）".to_string()))
+    );
+}
+
+/// 订阅口的三种坏形：没有这一趟 · 不是这台机器的 · 第二次订阅 —— 原位说清楚。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn bad_subscriptions_say_why_in_place() {
+    let _g = crate::backend::control::inbound_client::local_origin_test_lock();
+    let mut rig = rig(&ALL);
+    transfer_call(
+        cfg("中继·坏"),
+        TRANSFER_UPLOAD,
+        &serde_json::json!({ "local_path": "/tmp/z.bin" }),
+    )
+    .await
+    .expect("开单");
+    let mine = crate::origin::Origin("中继·坏".to_string());
+    let other = crate::origin::Origin("别的机器".to_string());
+    assert_eq!(
+        watch_ticket(&mine, "xfer-404").err().map(|(c, _)| c),
+        Some("no-such-transfer")
+    );
+    assert_eq!(
+        watch_ticket(&other, "xfer-1").err().map(|(c, _)| c),
+        Some("no-such-transfer")
+    );
+    let s = watch_ticket(&mine, "xfer-1").expect("第一次订阅");
+    rig.next("transfer-start").await;
+    assert_eq!(
+        watch_ticket(&mine, "xfer-1").err().map(|(c, _)| c),
+        Some("already-watched")
+    );
+    drop(s);
+}
+
+/// 🔴 **M1**：本机后端在、但不认 `transfer-upload`（它比界面老）⇒ 报「太旧」，**一条请求都不发**（`D11`，不回落）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_old_local_backend_is_named_too_old_and_nothing_is_sent() {
+    let _g = crate::backend::control::inbound_client::local_origin_test_lock();
+    let mut rig = rig(&["ping"]);
+    let (code, e) = transfer_call(
+        cfg("中继·旧"),
+        TRANSFER_UPLOAD,
+        &serde_json::json!({ "local_path": "/tmp/q.bin" }),
+    )
+    .await
+    .expect_err("老后端不该开得了单");
+    assert_eq!(code, "backend_unavailable");
+    assert!(e.contains("太旧") && e.contains("transfer-upload"), "{e}");
+    assert!(rig.seen.try_recv().is_err(), "对老后端发了请求");
+}
+
+/// 🔴 **M1**：本机后端那条流不在 ⇒ 报「本机后端不在」（有界地等一会儿之后），不进程内开 SFTP。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn without_a_local_backend_the_transfer_is_refused_out_loud() {
+    let _g = crate::backend::control::inbound_client::local_origin_test_lock();
+    assert!(crate::backend::control::inbound_client::client_for(LOCAL_ORIGIN).is_none());
+    let (code, e) = transfer_call(
+        cfg("中继·无"),
+        TRANSFER_UPLOAD,
+        &serde_json::json!({ "local_path": "/tmp/q.bin" }),
+    )
+    .await
+    .expect_err("本机后端不在也开得了单？");
+    assert_eq!(code, "backend_unavailable");
+    assert!(e.contains("本机后端不在"), "{e}");
+}
+
+/// 🔴 踩线的本机落点 ⇒ 回的是**围栏那句话**，而且在转给后端**之前**（一条请求都不发）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_download_onto_a_live_session_file_is_refused_before_anything_is_sent() {
+    let _g = crate::backend::control::inbound_client::local_origin_test_lock();
+    let mut rig = rig(&ALL);
     let protected = "/home/u/.claude/projects/dash-proj/abc-123.jsonl";
     assert!(
         crate::claude_data_fence::is_protected_claude_data_path(protected),
         "夹具那条路径不被判定为受保护 —— 本条此刻在量别的东西"
     );
-
-    // 〔F7c 收尾 09-24〕老面板那条 Tauri 下载命令〔已删：`sftp_download`〕删了；今天下载只有一个入口 ——
-    //   传输台开单（窗口经通道说 `transfer-download`）。围栏在开单那一刻就过（起跑时 `download_inner` 前再过一次）。
-    let (code, e) = crate::sftp_pool::transfer_call(
-        cfg.clone(),
-        crate::sftp_pool::TRANSFER_DOWNLOAD,
+    let (code, _) = transfer_call(
+        cfg("中继·围栏"),
+        TRANSFER_DOWNLOAD,
         &serde_json::json!({ "remote_path": "/srv/whatever.txt", "local_path": protected }),
     )
     .await
-    .expect_err("往一条正被 Claude 打开的会话文件上下载，竟然开得了单");
+    .expect_err("往会话文件上下载竟然开得了单");
     assert_eq!(code, "refused");
-    assert!(
-        e.contains("拒绝写 Claude 数据源文件"),
-        "拒的不是围栏那一句 —— 那说明它先去拨线了，围栏（如果有）在后面：{e}"
-    );
-    assert!(
-        e.contains(protected),
-        "拒绝那句话没带上是哪条路径，用户不知道该改什么：{e}"
-    );
+    assert!(rig.seen.try_recv().is_err(), "围栏拒之前就发了请求");
+}
 
-    // 🔴 阴性对照：同一台机器、一条**不踩线**的落点 ⇒ 开得了单（开单不拨线：起跑挂在订阅上）。
-    // 少了它，上面那几比可以靠「恒回围栏那句话」全绿 —— 那时一次下载都做不成。
-    let ok_dest = std::env::temp_dir().join("ccm-fence-dl-control.txt");
-    let opened = crate::sftp_pool::transfer_call(
-        cfg,
-        crate::sftp_pool::TRANSFER_DOWNLOAD,
-        &serde_json::json!({
-            "remote_path": "/srv/whatever.txt",
-            "local_path": ok_dest.to_string_lossy(),
-        }),
+/// 解帧：后端 `wire_tests::transfer_frames_have_exactly_these_bytes` 那四形**逐字节**的线上串（异源：后端金标准）
+/// 都认得出；`end` 认不出 ⇒ 整帧 `None`（不猜一个结局）。
+#[test]
+fn transfer_frames_parse_exactly_as_the_backend_writes_them() {
+    let cases: [(&str, Option<End>); 4] = [
+        (
+            r#"{"kind":"transfer","id":"xfer-7","got":262144,"total":1000000}"#,
+            None,
+        ),
+        (
+            r#"{"kind":"transfer","id":"xfer-7","got":262144,"total":1000000,"end":{"state":"done","bytes":1000000}}"#,
+            Some(End::Done { bytes: 1_000_000 }),
+        ),
+        (
+            r#"{"kind":"transfer","id":"xfer-7","got":262144,"total":1000000,"end":{"state":"failed","why":"写暂存件失败"}}"#,
+            Some(End::Failed("写暂存件失败".into())),
+        ),
+        (
+            r#"{"kind":"transfer","id":"xfer-7","got":262144,"total":1000000,"end":{"state":"cancelled"}}"#,
+            Some(End::Cancelled),
+        ),
+    ];
+    for (line, want) in cases {
+        match parse_frame(line) {
+            Some(InboundFrame::Transfer {
+                id,
+                got,
+                total,
+                end,
+            }) => {
+                assert_eq!((id.as_str(), got, total), ("xfer-7", 262_144, 1_000_000));
+                assert_eq!(end, want, "{line}");
+            }
+            other => panic!("没认出传输帧：{line} ⇒ {other:?}"),
+        }
+    }
+    assert!(parse_frame(
+        r#"{"kind":"transfer","id":"x","got":1,"total":1,"end":{"state":"maybe"}}"#
     )
-    .await
-    .expect("一条不踩线的落点也被拒了 —— 那道判定的射程宽了");
-    assert!(
-        opened["id"]
-            .as_str()
-            .is_some_and(|i| i.starts_with("xfer-")),
-        "{opened}"
-    );
-    // 开单不起跑 ⇒ 那条路径**一个字节都不该落地**。
-    assert!(
-        !ok_dest.exists() && !std::path::Path::new(&format!("{}.part", ok_dest.display())).exists(),
-        "只开了单，盘上却出现了文件"
-    );
+    .is_none());
+    assert!(parse_frame(r#"{"kind":"transfer","id":"x","got":"1","total":1}"#).is_none());
 }

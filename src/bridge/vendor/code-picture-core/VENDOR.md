@@ -14,10 +14,26 @@ cc-monitor 仓内,CI 无需改 checkout、构建自洽。
 
 ## 来源
 - 上游仓:`/home/user/文档/project/self项目/code-picture/code-picture`
-- vendored commit:**`276b531`**(PN1b:图种注册表 + 统一出口 + 批注来源)
+- vendored commit:`43c5b73`(RM1d:批注 / 文档关联的写拆成「算」与「写盘」两层)
 - vendored 时间:2026-09-24
+- 取自上游分支 **`cc-monitor/rm1d`**(worktree `/home/user/cc-wt/up-rm1d`,只本地提交、不推 —— V79);
+  并进上游 `main` 由主会话做。`build.rs::check_vendor_freshness` 比的是 `pin..上游 HEAD`,这笔并进 main 之前
+  上游 HEAD(`276b531`)是 pin 的祖先 ⇒ 不报过期(看不见「副本领先上游 main」这一形 —— 记下,不改尺子)。
 - 沿革:`e6b9d64`(F18,07-10)→ `179a5b2`(F68 signature+DB迁移)→ `d8f1fe7`(F68 审计修)→
-  `d558e47`(F72 批注分家回仓)→ `276b531`(PN1b,09-24;中间 34 笔,见下)
+  `d558e47`(F72 批注分家回仓)→ `276b531`(PN1b,09-24;中间 34 笔,见下)→ `43c5b73`(RM1d,09-24,1 笔)
+
+## RM1d re-vendor 带进的变化(09-24,`276b531..43c5b73`,1 笔;用户 V110「引擎只算、文件管理来写」)
+
+- **新模块 `edits`**:批注 / 文档关联的写拆成三层 —— 纯的 `next_*`(给定现状 → 新内容)· 只读的 `plan_*(repo, …)`
+  (读现状 + 纯)· 写盘 `annotations::apply` / `docs::apply`。`plan_*` 回 `Planned { value, edit: Option<FileEdit> }`,
+  `FileEdit { rel, before, after, parents }`(`before` 当 CAS 期望、`after = None` 即删;有改动时 `before != after`)。
+- **消费方怎么用**:全景小程序(`src/panorama-engine`)只调 `plan_*`,把 `FileEdit` 原样交回;落盘由那台机器
+  后端的文件管理(`files-put` 带 `expect` / `files-delete`)做。`Engine` 的六个写方法签名行为不变(上游 MCP / 测试照旧用),
+  消费方生产段**零调用**(小程序的判据钉着)。
+- `Engine::refresh_doc_links`(公开):外面写了 `.md` 的 `covers:` 之后让索引跟上(只写索引)。
+- `annotation_id` 搬进 `edits` 公开;`annotations::{ANNOTATIONS_REL, rel_path, render, parse}`、
+  `docs::{guard_doc_rel, frontmatter_covers}` 公开 —— 存储格式仍只在上游定义一次。
+- 依赖差零。
 
 ## PN1b re-vendor 带进的变化(09-24,`d558e47..276b531`,34 笔)
 

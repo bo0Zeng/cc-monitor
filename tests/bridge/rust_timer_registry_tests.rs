@@ -139,14 +139,8 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     //      而且不是走「自动部署可靠了」那条路，是直接取消那一档。**
     //    ★ 这一条与 `watcher.rs` 那条（F11）同形：**退役的验收证据就是本表先红在
     //      「少一处 = 退役了」上，删掉登记才绿。** 不是靠人说「我改好了」。
-    (
-        // 〔C2 09-24〕住址 `src/ssh_source.rs` → `src/inproc_dial.rs`：进程内那一份竞速原样搬过去（只服务 SFTP）。
-        "src/inproc_dial.rs",
-        "throttle",
-        1,
-        "`RACE_STAGGER * i` —— 多端点竞速时按序号错开发起，避免同时打爆。\
-             **上界是端点个数**，不是周期。",
-    ),
+    // 〔SR1b · 2026-09-24〕`src/inproc_dial.rs` 那一行（`RACE_STAGGER * i`：进程内多端点竞速的错开起拨，C2 从 `ssh_source.rs`
+    //   原样搬去的那一份）摘了 —— 那份文件整份删了（界面进程零 SSH）。竞速今天住本机后端 `dial/connect.rs`（同时起拨：后端零定时器）。
     (
         "src/ssh_source.rs",
         "wait-for-condition",

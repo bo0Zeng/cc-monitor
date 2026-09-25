@@ -555,7 +555,7 @@ export class MachineCard {
     const deployHint = document.createElement("div");
     deployHint.className = "settings-hint remote-install-info";
     deployHint.textContent =
-      "把后端装到上面「backend 路径」那一格，终端里的 ccm 入口（~/.local/bin/ccm）一起放好。" +
+      "把后端装到上面「backend 路径」那一格，终端里的 ccm 入口（~/.cc-monitor/bin/ccm）一起放好。" +
       "启用这台机器之后，连上时也会自动装后端；这里是手动的那一下。";
     body.appendChild(deployHint);
     const deployRow = document.createElement("div");

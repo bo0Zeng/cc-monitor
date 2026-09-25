@@ -33,13 +33,13 @@
 # │ ⚠ **自述句只许住在这一段里。** `C5b` 会把这一段之外、头注里任何一句「本脚本跑 N 格 /
 # │   N 道门」判红；历史读数的唯一豁免是**在那一行**逐字带上 `〔量于 …〕`。
 # │
-# │ 〔自述·格数〕28 格
+# │ 〔自述·格数〕29 格
 # │ 〔自述·点名〕worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc ·
 # │   ccbus-twophase ·
 # │   platform · muslbuild ·
 # │   installface ·
 # │   fmt · fmt-backend ·
-# │   winchk · winchk-backend · cargo · comm-boundary · deadcode · generated · backend · tsc · npm ·
+# │   winchk · winchk-backend · cargo · comm-boundary · test-tiers · deadcode · generated · backend · tsc · npm ·
 # │   ccm tests/e2e/ccm-print-parity · ccm tests/e2e/ccm-rbind-title · ccm tests/e2e/ccm-cli ·
 # │   ccm tests/e2e/ccm-contract-parity ·
 # │   ccm tests/e2e/backend-rbind-token · ccm tests/e2e/rbind-token-endtoend
@@ -72,6 +72,10 @@
 # │   有唯一住址（该族自己那条三方相等 ＋ 模块头注那句，两处都是被判的），
 # │   散文里再抄一份必腐：它 09-20 立表时是 0 份，09-21 步 3 之后是非空，而这 6 处
 # │   自述**一条都不会红**（`gate-selfdesc` 的锚只钉裁词前缀）。
+# │ 〔自述·现物〕`test-tiers` 那一格没有独立的判据文件 —— 被测对象就是
+# │   `tests/bridge/crates/guard-core/test_tiers_tests.rs`（测试层分级：分区 ＋ 五层各一条反空真自检 ＋
+# │   `tests/benches/` 登记 ＋ 合成夹具自检，TQ1 09-24 第 29 格），判定（三方对拍 ＋ 两条逐字锚点）逐字写在
+# │   下面那一行 `run_gate test-tiers` 的内联脚本里。条数的唯一住址是那一行的 `pin`。
 # │ 〔自述·退役〕〔第四波 S4〕第 26 格 `f3-copy`（秤 F3 两向）连同它量的那条零流量复制一起退役：
 # │   窗口的复制早已走后端 `files-copy`（F7a），池子里只剩传输 ⇒ 29 格 → 28 格。
 # │ 〔自述·现物〕`gate-selfdesc` 那一格的判据本体：`tests/evidence/K-R80-gate-cell-coverage.py`
@@ -1547,8 +1551,13 @@ deadcode_t0=$(date +%s)
 #   同拍删的零流量复制一段（命令 · 核心 · 裸通道借据 · 老 Tauri 进度通道 · 取消登记表）**不带走也不带来**死代码：
 #   它们删之前在生产上都有调用方（那条命令），删之后整块不在了。
 # ⚠ 这个数是**现打**的（本工作树 `w4/s4`，`cargo check -p monitor --message-format=short | grep -c "never used"` = 34），不是 36−2 算的。
-run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 34，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
-         bash -c 'pin=34; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
+run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 35，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
+# 🔴 **2026-09-24（第四波 SR1b 合并）：34 → 35，现打，逐条记**：多的一条是 `dial_host.rs::RemoteFs::home`（`method home is never used`）。
+#    生产侧不读它（`open` 里只核「后端答出了起始目录」）；唯一的读者是真 sshd 那条 `#[ignore]` 读数用例
+#    （`sftp_tests::sr1b_loopback_deploy_and_transfer_through_the_resident_backend` 断言「起始目录就是 sshd 给的那个」）。
+#    ⚠ 没改成 `#[cfg(test)]`：那会把 `src/bridge/src` 的「测试专用支撑项」顶到 16（`structural_scan` 的只许降棘轮，上限 15）——
+#    两条纪律冲突时，动**允许说清理由再改的**这一个数，不动只许降的那一个。
+         bash -c 'pin=35; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
 n=$(printf "%s\n" "$out" | grep -c "never used"); \
 printf "%s\n" "$out" | tail -5; \
 if [ "$rc" -ne 0 ]; then printf "deadcode: cargo check 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \
@@ -1897,6 +1906,34 @@ if [ "$declared" -ne "$pin" ] || [ "$ran" -ne "$pin" ]; then printf "comm-bounda
 for t in "$meta" "$empty"; do n=$(printf "%s\n" "$out" | grep -c "comm_boundary_registry::tests::$t \.\.\. ok"); if [ "$n" -ne 1 ]; then printf "comm-boundary: 锚点 %s 在这趟跑过的名单里命中 %s 次（应当恰好 1 次）—— 它没跑，或者它改了名\n" "$t" "$n"; exit 1; fi; done; \
 printf "comm-boundary: %s passed（C1–C5 ＋ X1–X6 ＋ 锚 ＋ 余下五份 ＋ 传输面四份 ＋ 元判据；三方对拍 pin %s == 声明 %s == 真跑 %s）\n" "$ran" "$pin" "$declared" "$ran"'
 
+# ── `test-tiers`（TQ1 09-24，第 29 格）：测试层分级那一族**还在不在** ─────────────────────
+#
+# 同 `comm-boundary` 那一形，理由也同：那一族挂在 `guard-core` 的 lib 上
+# （`src/bridge/crates/guard-core/src/lib.rs` 末尾那一行 `mod test_tiers;`），
+# 那一行被摘掉时十二条一起消失，而 `cargo` 那一格只会合计小十二 ——「摘掉了」与「全绿」在终端上分不开。
+# 而这一族守的正是「别的判据有没有静默变空」⇒ 它自己静默变空是最贵的那一种。
+# 三方对拍：`pin`（写死在本行）· 那份文件里现打的 `#[test]` 条数 · `cargo` 真跑出来的 passed，三侧异源；
+# 两条锚点：分区那条（五层登记表的人群闸）· 真机层那条（`#[ignore]` 触发链）各在跑过的名单里恰好 1 次。
+# ⚠ 本格**不买**它们判得对（各条头注与 `调研/第四波记录/TQ1.md` 的死值验负责）。
+# ⚠ `benches/` 那条判据只判「秤有家、`cargo test` 会跑它的冒烟档」；**墙钟一个都不进本门禁**。
+# ★ 逐腿死值验（TQ1 09-24，还原一律 `shutil.copyfile` ＋ `touch` ＋ sha256 对账）：
+#   · `pin` 那条腿：`pin=12` → `11` ⇒ 当场红（三方对拍分叉）；
+#   · 「挂载」那条腿：`guard-core` 的 `lib.rs` 里 `mod test_tiers;` 那一行改成别的模块名 ⇒
+#     `cargo` 编得过、这一族零条跑 ⇒ 抠不出 passed ／ 真跑 0 ≠ pin ⇒ 红。
+run_gate test-tiers '判过的条数 = 测试层分级那一族（分区 ＋ 单元 / 扫描 / 集成 / e2e / 真机五层各一条反空真自检 ＋ `benches/` 登记 ＋ 五条合成夹具自检）这一趟真跑过的条数。**三方对拍**：本行钉的 12 · 那份文件里现打的 `#[test]` 条数 · `cargo test -p guard-core --lib test_tiers::` 真跑出来的 passed，三个数必须**相等** ＋ 两条逐字锚点（分区 · 真机层）各命中**恰好 1 次**。⚠ **本格存在的唯一理由**：那一族挂在 `guard-core` 的 lib 上，那一行 `mod` 被摘掉时十二条一起消失，而 `cargo` 那一格只会合计小一点。⚠ 本格买的是「测试层分级没有静默消失」，**不买**任何一层的判据判得对；⚠ 这 12 条**同时**算在 `cargo` 那一格的合计里 —— 两格都在，档位不叠加' \
+         bash -c 'pin=12; f=tests/bridge/crates/guard-core/test_tiers_tests.rs; \
+part=the_tiers_partition_the_test_files_on_disk; \
+real=real_machine_tier_every_ignored_test_is_registered_and_its_trigger_still_reaches_it; \
+[ -r "$f" ] || { printf "test-tiers: 那一族的判据本体 %s 盘上读不到 —— 住址改了就回来改本格，不许静默跳过\n" "$f"; exit 1; }; \
+declared=$(grep -cE "^[[:space:]]*#\[(tokio::)?test\]" "$f"); \
+out=$(cd src/bridge && cargo test -p guard-core --lib test_tiers:: 2>&1); rc=$?; \
+if [ "$rc" -ne 0 ]; then printf "%s\n" "$out" | tail -40; printf "test-tiers: cargo test 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \
+ran=$(printf "%s\n" "$out" | grep -oE "^test result: ok\. [0-9]+ passed" | grep -oE "[0-9]+" | head -1); \
+if [ -z "$ran" ]; then printf "%s\n" "$out" | tail -25; printf "test-tiers: 那趟输出里抠不出「test result: ok. N passed」—— 读法与 cargo 的输出面对不上，本格判不了（不许当成绿）\n"; exit 1; fi; \
+if [ "$declared" -ne "$pin" ] || [ "$ran" -ne "$pin" ]; then printf "test-tiers: 三方对拍分叉 —— 本行钉 %s · %s 里现打声明 %s 条 · cargo 真跑 %s 条；三个数必须相等。真加/删了一条判据，就回来改本行那个 pin（别去动另外两边）\n" "$pin" "$f" "$declared" "$ran"; exit 1; fi; \
+for t in "$part" "$real"; do n=$(printf "%s\n" "$out" | grep -c "test_tiers::$t \.\.\. ok"); if [ "$n" -ne 1 ]; then printf "test-tiers: 锚点 %s 在这趟跑过的名单里命中 %s 次（应当恰好 1 次）—— 它没跑，或者它改了名\n" "$t" "$n"; exit 1; fi; done; \
+printf "test-tiers: %s passed（分区 ＋ 五层自检 ＋ benches/ ＋ 合成夹具；三方对拍 pin %s == 声明 %s == 真跑 %s）\n" "$ran" "$pin" "$declared" "$ran"'
+
 # pb check 不打「passed」，单独判：它自己会打 `FAIL=<n> BROKEN=<n>`。
 #
 # ★★ `K-R10`（09-01）：**查哪个计划工作区，由调用方用环境变量 `PB_WS` 给** ——
@@ -2033,7 +2070,7 @@ if [ "${#fails[@]}" -eq 0 ]; then
   #   ⇒ 本拍把它接成真的一格（见下面 `run_gate gate-selfdesc`），不再靠人记得手跑。
     # 🔴 第二波 T4（09-24）：**27 → 29**，加的是令牌那两套 e2e（`backend-rbind-token` ·
   #   `rbind-token-endtoend`，见上面 `run_e2e` 那一段）—— 它们此前只被 shellcheck、不被执行。
-  echo "GATE: OK —— 28 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · platform · installface · fmt · fmt-backend · winchk · winchk-backend · muslbuild · cargo · comm-boundary · deadcode · generated · backend · tsc · npm · ccm-print-parity · ccm-rbind-title · ccm-cli · ccm-contract-parity · backend-rbind-token · rbind-token-endtoend），可以出货"
+  echo "GATE: OK —— 29 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · platform · installface · fmt · fmt-backend · winchk · winchk-backend · muslbuild · cargo · comm-boundary · test-tiers · deadcode · generated · backend · tsc · npm · ccm-print-parity · ccm-rbind-title · ccm-cli · ccm-contract-parity · backend-rbind-token · rbind-token-endtoend），可以出货"
   gate_print_blind
   exit 0
 fi

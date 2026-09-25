@@ -1,3 +1,9 @@
+//! # 要求住址：`INVARIANTS §6`（探活双重校验：PID ＋ procStart）
+//!
+//! 核原文：`INVARIANTS §6` 逐字「仅靠 STILL_ACTIVE 会把"旧 PID 已被无关进程占用"误判为活跃 session → 僵尸 Tab。」——
+//! 本族判 Linux 那一支同样做满两关：真进程判活、starttime 对不上即判死、`comm` 含空格或括号时字段不错位。
+//! ⚠ `§6` 正文只写了 Windows 的 API，「procStart 是平台原生的」这件事只住生产侧头注那张表（该给 `§6` 补一句平台中立的写法）。〔JA1 点址 2026-09-24〕
+
 use super::{is_process_alive, proc_stat_starttime};
 
 /// ★ 自己这个进程必须被判活，且 `procStart` 要与 `/proc` 对得上。

@@ -19,6 +19,8 @@ const FAMILY: &[&str] = &[
     "history-find",
     "history-projects",
     "history-read",
+    // 〔U4b · 第四波〕记录还在不在（resume 一跳先问；异源是题面 `U4b` G1，不是 `inbound.rs`）。
+    "history-record",
     "history-search",
     "history-sessions",
     "history-subagents",
@@ -536,4 +538,37 @@ fn the_three_products_match_the_cross_language_golden() {
         "帧面成品与跨语言金样不一致。现打：\n{}",
         serde_json::to_string_pretty(&got).unwrap()
     );
+}
+
+/// 〔U4b · 第四波 · B4〕`history-record`：在 ⇒ `present:true`；不在 ⇒ `present:false`（一个答案，不是错误）；
+/// 坏 sid ⇒ `bad_args`；`root` == 这棵夹具树的 `projects`。
+///
+/// 夹具只造结构（目录名 ＋ 占位行），不采真会话正文。符号链接那一格由 `branch_core::find_session_file`
+/// 自己的两侧判据管（本条不重验它）。
+#[test]
+fn history_record_answers_present_absent_and_refuses_a_bad_sid() {
+    let home = scratch("record");
+    session(&home, "-p", "aaaa-1111", 1, false);
+    let ask = |sid: &str| answer_at(&home, "history-record", &serde_json::json!({ "sid": sid }));
+    let root = home.join("projects").to_string_lossy().into_owned();
+    assert_eq!(
+        ask("aaaa-1111").unwrap(),
+        serde_json::json!({ "present": true, "root": root })
+    );
+    assert_eq!(
+        ask("bbbb-2222").unwrap(),
+        serde_json::json!({ "present": false, "root": root })
+    );
+    for bad in ["", "../x", "a/b", "a b"] {
+        match ask(bad) {
+            Err(("bad_args", _)) => {}
+            other => panic!("坏 sid {bad:?} 应当 bad_args，实得 {other:?}"),
+        }
+    }
+    // 缺 `sid` 也是 bad_args。
+    assert!(matches!(
+        answer_at(&home, "history-record", &serde_json::json!({})),
+        Err(("bad_args", _))
+    ));
+    std::fs::remove_dir_all(&home).ok();
 }

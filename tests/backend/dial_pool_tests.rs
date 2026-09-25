@@ -1,3 +1,10 @@
+//! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md`「链路四条」（按拨号身份复用 · 最后一条走了就断）
+//!
+//! 核原文：「链路四条」逐字「后端把到同一台远端的所有链路**复用在一条 SSH 连接上**（按拨号身份：
+//! `host · port · user · key_path · host_key_fingerprint · 竞速地址 · 跳板`；最后一条链路走了连接就断，没有空闲定时器）」
+//! —— 同身份复用 · 身份口径逐项 · 最后一个走了就收，是这一句的三半。
+//! 并发同身份只拨一次、`evict` 只摘自己、关了的不复用：契约里没有逐字，守的是 `设计/01 §4`「远端一台一条连接」不被破坏。〔JA1 点址 2026-09-24〕
+//!
 //! 〔SR1a〕连接池的记账判据（`dial/pool.rs`）—— 拿一个假连接喂池，**不起 SSH**。
 //!
 //! 真 SSH 上「同身份只握一次手」那一维由 `tests/evidence/SR1a-link-loopback.py`（真回环 sshd）读数给；
@@ -170,4 +177,49 @@ fn the_identity_ignores_what_a_link_uses_it_for() {
     ] {
         assert_ne!(with(extra), id0, "`{extra}` 该换一个连接身份");
     }
+}
+
+// ═══ 〔SR1b · 2026-09-24〕一条连接上的通道预算（`Budget`）══════════════════════════════
+
+/// 🔴 **B4**：通道闸 == `SESSION_CHANNEL_CAP`（第 9 条要排队）；传输车道 == `TRANSFER_LANE_CAP`
+/// （第 5 趟传输要排队，**而此时一条 capture 仍拿得到通道**）。读数取自闸本身，不取自常量（异源）。
+#[tokio::test]
+async fn the_budget_queues_the_ninth_channel_and_the_fifth_transfer_but_not_a_query_behind_them() {
+    // 题面里的数（`调研/第四波记录/SR1b.md §1.5`）：8 格通道、其中传输至多 4 格。
+    assert_eq!((SESSION_CHANNEL_CAP, TRANSFER_LANE_CAP), (8, 4));
+    let b = Arc::new(Budget::new());
+    assert_eq!(b.free(), (8, 4));
+
+    // 四趟传输占满车道（同时各占一格通道）。
+    let mut xfers = Vec::new();
+    for _ in 0..4 {
+        xfers.push(b.transfer().await.expect("前四趟传输该当场借到"));
+    }
+    assert_eq!(b.free(), (4, 0));
+    // 第五趟传输：排队（车道满），**而且不占通道格**（先过车道、再过通道闸）。
+    let b5 = Arc::clone(&b);
+    let fifth = tokio::spawn(async move { b5.transfer().await.map(|_| ()) });
+    for _ in 0..8 {
+        tokio::task::yield_now().await;
+    }
+    assert!(!fifth.is_finished(), "车道满了第五趟传输居然借到了");
+    assert_eq!(b.free(), (4, 0), "排队等车道的传输占了一格通道");
+    // 此刻一条查询（capture / 长流）照样拿得到。
+    let mut sessions = Vec::new();
+    for _ in 0..4 {
+        sessions.push(b.session().await.expect("传输满载时查询该拿得到通道"));
+    }
+    assert_eq!(b.free(), (0, 0));
+    // 第九条通道：排队。
+    let b9 = Arc::clone(&b);
+    let ninth = tokio::spawn(async move { b9.session().await.map(|_| ()) });
+    for _ in 0..8 {
+        tokio::task::yield_now().await;
+    }
+    assert!(!ninth.is_finished(), "8 格通道用满了第九条居然开得出来");
+    // 还一格通道 ⇒ 第九条走；还一格传输（车道 ＋ 通道）⇒ 第五趟走。
+    drop(sessions.pop());
+    ninth.await.unwrap().expect("还了一格之后第九条该拿到");
+    drop(xfers.pop());
+    fifth.await.unwrap().expect("还了一格车道之后第五趟该拿到");
 }

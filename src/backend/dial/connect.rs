@@ -1,8 +1,8 @@
 //! 连 → 校验 host key → 鉴权。**本 crate 里唯一与远端跑 SSH 传输层握手的地方**
 //! （`tests/backend/dial_tests.rs::the_dial_only_happens_under_dial_home` 钉着「只在 `dial/`」）。
 //!
-//! 搬自界面侧 `ssh_source` 的 `connect_session` / `race_connect` / `connect_via_jump` /
-//! `authenticate_via_agent` 与 `ClientHandler` —— 那几样在界面侧**删掉了**，这里是它们唯一的家。
+//! 搬自界面侧 `ssh_source` 的 `connect_session` / `race_connect` / `connect_via_jump`〔散文墓碑〕 /
+//! `authenticate_via_agent`〔散文墓碑〕 与 `ClientHandler` —— 那几样在界面侧**删掉了**，这里是它们唯一的家。
 //! 与原来相比只有两处不同，都写在 `mod.rs` 头注「边界」一节：竞速同时起拨（不错开）；
 //! ssh-agent 两个平台都有（界面侧原来只有 Windows）。
 
@@ -29,6 +29,8 @@ pub(crate) struct Linked {
     pub(crate) endpoint: String,
     /// 经跳板时跳板那条连接：**必须与目标连接同生命周期**（drop 它 ⇒ 隧道死 ⇒ 目标断）。
     pub(crate) _jump: Option<client::Handle<Checker>>,
+    /// 〔SR1b〕这条连接上的通道预算（`pool::Budget`）：长流 · 查询 · SFTP 同一条连接，同一道闸。
+    pub(crate) budget: super::pool::Budget,
 }
 
 /// host key 校验：给了期望值就严格比（比之前 `trim`），没给就 TOFU 接受并显眼 `warn`。
@@ -386,5 +388,6 @@ pub(crate) async fn establish(
         fingerprint,
         endpoint: label(&winner),
         _jump: jump,
+        budget: super::pool::Budget::new(),
     })
 }

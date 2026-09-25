@@ -155,7 +155,7 @@ fn monitor_entries(monitor_data_dir: &Path) -> Vec<DataPathInfo> {
             "主题 / 字体 / claudeDir override / 诊断开关",
             DataClass::Truth,
         ),
-        // 🔴 〔ST2 · `70 §10.2` 差项 4〕原文「cc 集成的 sid → 终端 HWND 持久绑定」—— `sid` / `HWND`
+        // 🔴 〔ST2 · `70 §6.2`〕原文「cc 集成的 sid → 终端 HWND 持久绑定」—— `sid` / `HWND`
         //   都在 `91 §4` R1 的词表里（我们这侧的词）。换成用户看得懂的说法。
         probe_file(
             monitor_data_dir.join("sid-hwnd-cache.json"),
