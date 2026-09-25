@@ -1305,6 +1305,10 @@ pub fn run() {
             aliases_render,
             aliases_read,
             aliases_install,
+            // 〔AL1d〕别名块（`cc` / `cct` · `__ccm_bind`）与清单同一族命令面（`AL1d.md §2.1`）。
+            aliases_block_render,
+            aliases_block_install,
+            aliases_block_remove,
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
             // B03 批一：cc-bus 驾驶舱（只读，按需 SSH cat，无轮询）
             backend::control::cc_bus::read_cc_bus_state,
@@ -1347,13 +1351,9 @@ pub fn run() {
             list_active_sessions,
             // v2.4 issue #2: 用户在终端输入时可选拉前 monitor 自身
             bring_monitor_to_front,
-            cc_integration_status,
-            cc_integration_preview,
-            cc_integration_scan_path,
-            cc_integration_install,
-            cc_integration_uninstall,
             // 🔴 `K-R135` / `R85`：用户级 PATH 那一格（现在状态 · 加 · 撤）。
-            //    `R87` 裁定它住 Tauri 命令 —— 与上面 `cc_integration_*` 同族
+            //    `R87` 裁定它住 Tauri 命令 —— 与别名块那几条同族（〔AL1d〕今天是 `aliases_block_*`，从前叫
+            //    `cc_integration_*`〔散文墓碑〕）
             //    （「往用户的 shell profile 里写」与「往用户级 PATH 里写一段」是同一族动作，
             //    而前者已经在这儿了；再给同一族动作另起一条路本身就违反 `K33`）。
             ccm_user_path_status,
@@ -1899,10 +1899,22 @@ fn aliases_render(
 
 /// 〔AL1〕读回口：这台机器上那份别名文件今天有哪几条（`设计/70 §3.1` 「列出现在有哪些命令」）。
 /// 〔AL1c〕按 `shell` 读那一种的文件（`aliases.sh` / `aliases.ps1`）与那一种的启动文件候选。
+/// 〔AL1d · 第四波 4B〕启动文件候选各带**别名块**的现状（从前要另问终端集成那两条：列 `$PROFILE` · 扫一份），
+/// 外加这台机器上完成了拉前握手的终端数（`BindRegistry`）。`rc_path` = 人另指的一份（过围栏后并进候选）。
+/// 读若干份文件 ⇒ `spawn_blocking`（同步命令会占住主线程）。
 #[tauri::command]
-fn aliases_read(shell: shell_dialect::Shell) -> Result<account_aliases::AliasListing, String> {
-    let home = dirs::home_dir().ok_or_else(|| "找不到 home 目录".to_string())?;
-    account_aliases::read_in(&home, shell)
+async fn aliases_read(
+    shell: shell_dialect::Shell,
+    rc_path: Option<String>,
+    bind_state: tauri::State<'_, Arc<bind::BindRegistry>>,
+) -> Result<account_aliases::AliasListing, String> {
+    let bound = u32::try_from(bind_state.registration_count()).unwrap_or(u32::MAX);
+    tokio::task::spawn_blocking(move || {
+        let home = dirs::home_dir().ok_or_else(|| "找不到 home 目录".to_string())?;
+        account_aliases::read_in(&home, shell, rc_path.as_deref(), bound)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
 /// 〔AL1〕第②跳：**唯一的副作用**。收的是清单不是代码 —— 写进 shell 的文本只由后端渲染
@@ -1918,6 +1930,35 @@ async fn aliases_install(
 ) -> Result<account_aliases::AliasInstallReport, String> {
     let door = user_files::BackendDoor::new(origin::Origin::local());
     account_aliases::install_in(&door, &aliases, rc_path.as_deref(), shell).await
+}
+
+/// 〔AL1d · 第四波 4B〕**别名块**的第①跳：纯 —— 块 → 代码（「装进一份空文件会写成什么」，BOM 除外）。
+/// 两种方言都答（从前的预览只会 PowerShell 那一块）；与装那一跳调同一个 `profile_installer::plan_install`。
+/// 收的是**目标文件**而不是 `shell`：方言由那份文件的扩展名定（与装那一跳同一个判法 `Shell::of_target`），
+/// 前端不替后端判方言。只看扩展名、一个字节都不读 ⇒ 不过围栏。
+/// `with_cc` 只对 PowerShell 有意义：要不要连 `function cc` 一起（不勾 = 只装 `__ccm_bind`，不抢用户自己的 `cc`）。
+#[tauri::command]
+fn aliases_block_render(rc_path: String, with_cc: bool) -> Result<String, String> {
+    let shell = shell_dialect::Shell::of_target(std::path::Path::new(&rc_path));
+    profile_installer::render_block(shell, with_cc)
+}
+
+/// 〔AL1d〕**别名块**的第②跳：装进人选的那份启动文件（方言按那份文件的扩展名定，`71 §4.4` 末段）。
+/// 幂等：已有块就整块替换。落盘经本机后端的文件管理那一面（`user_files::BackendDoor`），本进程不写。
+#[tauri::command]
+async fn aliases_block_install(rc_path: String, with_cc: bool) -> Result<(), String> {
+    let p = profile_installer::fence_profile_path(&rc_path)?;
+    let door = user_files::BackendDoor::new(origin::Origin::local());
+    profile_installer::install_to_profile(&door, &p, profile_installer::CC_FUNCTION_NAME, with_cc)
+        .await
+}
+
+/// 〔AL1d〕**别名块**卸掉（整块删，块外一个字节不动；围栏损坏 ⇒ 中止）。经本机后端写。
+#[tauri::command]
+async fn aliases_block_remove(rc_path: String) -> Result<(), String> {
+    let p = profile_installer::fence_profile_path(&rc_path)?;
+    let door = user_files::BackendDoor::new(origin::Origin::local());
+    profile_installer::uninstall_from_profile(&door, &p).await
 }
 
 #[tauri::command]
@@ -2225,27 +2266,12 @@ async fn bring_remote_terminal_to_front(
 }
 
 // === v1.7：PowerShell profile cc 集成 IPC ===
-
-#[derive(serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-struct CcStatusResponse {
-    profiles: Vec<profile_installer::ProfileScan>,
-    active_registrations: u32,
-    default_command_name: &'static str,
-    /// v1.7.0-1.7.1 错把 cc 块装到 profile.ps1（CurrentUserAllHosts，PS 不自动加载）
-    /// 的遗留文件列表。v1.7.2 起改装到 Microsoft.PowerShell_profile.ps1（默认 $PROFILE）。
-    /// UI 检测到非空时显示警告，引导用户清理。
-    legacy_profile_paths_with_block: Vec<LegacyProfileEntry>,
-}
-
-#[derive(serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-struct LegacyProfileEntry {
-    kind: profile_installer::ProfileKind,
-    path: String,
-}
+//
+// 〔AL1d · 第四波 4B〕这里原来是「终端集成」那五条命令（`cc_integration_*`〔散文墓碑〕：状态 · 扫一份 · 预览 · 装 · 卸）
+// 与它们的三个出参类型。它们办的是**别名块**（两种方言都办：`profile_installer::plan_install` 按扩展名分），
+// 装进的是别名文件那一行同一批启动文件 ⇒ 并进 `aliases_*` 同一族命令面（`调研/第四波记录/AL1d.md §2.1`）：
+// 状态 ＋ 扫一份 → `aliases_read`（候选各带块的现状）· 预览 → `aliases_block_render` · 装 / 卸 → `aliases_block_install` / `aliases_block_remove`。
+// 「v1.7.0-1.7.1 装错位置」那一段遗留扫描随之删了 —— 每份候选都带块的现状，块装在哪几份照实说。
 
 /// Batch13-F40:前端 perf 仪表落盘。webview 无 devtools(生产/CCM_NO_DEVTOOLS)时
 /// console 取证不能,前端把启动管线 timeline/建卡计数经此写进 monitor 日志。
@@ -2256,84 +2282,6 @@ fn frontend_perf_log(lines: String) {
         let capped: String = line.chars().take(2000).collect();
         tracing::info!(target: "fe_perf", "{capped}");
     }
-}
-
-/// 扫描两个 PS profile + 报告当前活跃注册数。前端打开设置面板时调用。
-#[tauri::command]
-async fn cc_integration_status(
-    command_name: Option<String>,
-    bind_state: tauri::State<'_, Arc<bind::BindRegistry>>,
-) -> Result<CcStatusResponse, String> {
-    let cmd = command_name.unwrap_or_else(|| "cc".to_string());
-    let bind_state = bind_state.inner().clone();
-    tokio::task::spawn_blocking(move || {
-        let profiles: Vec<_> = profile_installer::discover_profiles()
-            .into_iter()
-            .map(|(kind, path)| profile_installer::scan_profile(kind, &path, &cmd))
-            .collect();
-        let legacy = profile_installer::scan_legacy_profiles()
-            .into_iter()
-            .map(|(kind, path)| LegacyProfileEntry { kind, path })
-            .collect();
-        Ok(CcStatusResponse {
-            profiles,
-            active_registrations: bind_state.registration_count() as u32,
-            default_command_name: "cc",
-            legacy_profile_paths_with_block: legacy,
-        })
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking join error: {e}"))?
-}
-
-#[derive(serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-struct CcPreviewResponse {
-    code: String,
-}
-
-/// 返回将要写入 profile 的代码（含 BEGIN/END marker）。前端预览 modal 显示。
-///
-/// `include_cc_function` 控制是否生成完整 cc function（true）还是只装 helper（false）。
-#[tauri::command]
-fn cc_integration_preview(
-    command_name: String,
-    include_cc_function: bool,
-) -> Result<CcPreviewResponse, String> {
-    Ok(CcPreviewResponse {
-        code: profile_installer::render_cc_code(&command_name, include_cc_function),
-    })
-}
-
-/// 安装 cc function 到指定 path（前端自己组装路径——版本下拉 + 可编辑覆盖）。
-/// idempotent；已有 ccm 块则原地替换。
-///
-/// `include_cc_function = false` 时只装 `__ccm_bind` helper，避免覆盖用户已有的 cc。
-#[tauri::command]
-async fn cc_integration_install(
-    path: String,
-    command_name: String,
-    include_cc_function: bool,
-) -> Result<(), String> {
-    // 〔RW1 · 第四波 09-24〕落盘经本机后端的文件管理那一面（`user_files::BackendDoor`），本进程不写。
-    let p = profile_installer::fence_profile_path(&path)?;
-    let door = user_files::BackendDoor::new(origin::Origin::local());
-    profile_installer::install_to_profile(&door, &p, &command_name, include_cc_function).await
-}
-
-/// 扫单个 path 的安装状态（前端用户改了路径后调）。
-#[tauri::command]
-async fn cc_integration_scan_path(
-    path: String,
-    command_name: String,
-) -> Result<profile_installer::ProfileScan, String> {
-    tokio::task::spawn_blocking(move || {
-        let p = profile_installer::fence_profile_path(&path)?;
-        Ok(profile_installer::scan_path(&p, &command_name))
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
 /// 读 auto-launch.json：UI 显示当前 toggle 状态 + 记录的 exe 路径。
@@ -2348,15 +2296,6 @@ fn cc_get_auto_launch() -> Result<auto_launch::AutoLaunchConfig, String> {
 fn cc_set_auto_launch(enabled: bool) -> Result<(), String> {
     let dir = auto_launch::data_dir().ok_or("no data dir")?;
     auto_launch::set_enabled(&dir, enabled)
-}
-
-/// 卸载 cc function（删除 BEGIN/END 块；用户其他内容不动）。
-#[tauri::command]
-async fn cc_integration_uninstall(path: String) -> Result<(), String> {
-    // 〔RW1 · 第四波 09-24〕同 `cc_integration_install`：经本机后端写。
-    let p = profile_installer::fence_profile_path(&path)?;
-    let door = user_files::BackendDoor::new(origin::Origin::local());
-    profile_installer::uninstall_from_profile(&door, &p).await
 }
 
 // ===== 🔴 `K-R135`（`R85` / `R87` / `R88`）：用户级 PATH 那一格 =====

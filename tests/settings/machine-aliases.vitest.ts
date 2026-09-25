@@ -102,16 +102,20 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
   let seen: Array<{ cmd: string; args?: unknown }>;
   let disk: Alias[];
   let problems: Array<{ name: string; message: string }>;
+  /** 替身盘面：哪几份候选里装着别名块（装 / 卸会改它，读回口照它答）。 */
+  let blockAt: Set<string>;
 
-  const scan = (path: string) => ({
-    kind: "Custom",
+  /** 〔AL1d〕一份候选（别名文件那一行与别名块共用）；`block` 是后端那一次扫描带回来的别名块现状。 */
+  const cand = (path: string, over: { exists?: boolean; present?: boolean; hint?: string } = {}) => ({
     path,
-    exists: true,
-    has_ccm_block: false,
-    ccm_block_version: null,
-    conflicting_functions: [],
-    manual_cleanup_hint: "",
-    size_bytes: 1,
+    sourced: false,
+    exists: over.exists ?? true,
+    block: {
+      present: over.present ?? false,
+      version: null,
+      conflictingFunctions: [],
+      manualCleanupHint: over.hint ?? "",
+    },
   });
 
   beforeEach(() => {
@@ -121,6 +125,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
       { name: "betacc", args: ["--account", "b"] },
     ];
     problems = [];
+    blockAt = new Set();
     vi.resetModules();
     vi.doMock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn() }));
     vi.doMock("../../src/ipc/commands", () => ({
@@ -129,17 +134,22 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
           seen.push({ cmd: "local_ccm_entry_status" });
           return Promise.resolve({ message: "" });
         },
-        aliases_read: (a: { shell: Plat }) => {
+        aliases_read: (a: { shell: Plat; rcPath?: string | null }) => {
           seen.push({ cmd: "aliases_read", args: a });
+          if (a.rcPath === "/etc/x") return Promise.reject("refuse profile path: 只能落在 home 之内");
+          const other = a.rcPath ? `/h/${a.rcPath.replace(/^~\//, "")}` : null;
           return Promise.resolve({
             aliasPath: "/h/.cc-monitor/aliases.x",
             exists: true,
             aliases: disk.map((x) => ({ ...x, args: [...x.args] })),
             unparsed: ["alias x=ls（不是 `名字() { … }` 的形状）"],
             rcCandidates: [
-              { path: "/h/rc-a", sourced: false, exists: true },
-              { path: "/h/rc-b", sourced: false, exists: false },
+              cand("/h/rc-a", { present: blockAt.has("/h/rc-a"), hint: "第 3 行 ccm" }),
+              cand("/h/rc-b", { exists: false, present: blockAt.has("/h/rc-b") }),
+              ...(other ? [cand(other, { present: blockAt.has(other) })] : []),
             ],
+            boundTerminals: 2,
+            otherRc: other,
           });
         },
         aliases_render: (a: { aliases: Alias[]; shell: Plat }) => {
@@ -161,24 +171,19 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
             notes: ["新开一个终端就能用"],
           });
         },
-        cc_integration_scan_path: (a: { path: string }) => {
-          seen.push({ cmd: "cc_integration_scan_path", args: a });
-          return Promise.resolve(scan(a.path));
-        },
-        cc_integration_install: (a: unknown) => {
-          seen.push({ cmd: "cc_integration_install", args: a });
+        aliases_block_install: (a: { rcPath: string; withCc: boolean }) => {
+          seen.push({ cmd: "aliases_block_install", args: a });
+          blockAt.add(a.rcPath);
           return Promise.resolve();
         },
-        cc_integration_status: () => {
-          seen.push({ cmd: "cc_integration_status" });
-          return Promise.resolve({
-            profiles: [scan("C:\\Users\\u\\Documents\\WindowsPowerShell\\Microsoft.PowerShell_profile.ps1")].map(
-              (p) => ({ ...p, kind: "Ps51" }),
-            ),
-            active_registrations: 2,
-            default_command_name: "cc",
-            legacy_profile_paths_with_block: [],
-          });
+        aliases_block_remove: (a: { rcPath: string }) => {
+          seen.push({ cmd: "aliases_block_remove", args: a });
+          blockAt.delete(a.rcPath);
+          return Promise.resolve();
+        },
+        aliases_block_render: (a: { rcPath: string; withCc: boolean }) => {
+          seen.push({ cmd: "aliases_block_render", args: a });
+          return Promise.resolve(`# 块 → ${a.rcPath}`);
         },
         cc_get_auto_launch: () => {
           seen.push({ cmd: "cc_get_auto_launch" });
@@ -232,17 +237,13 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     b.click();
   };
 
-  /** 首开那几发：两个平台共有的读回 ＋ 渲染，再加各自那一格（POSIX：本机 ccm；PowerShell：终端集成 ＋ 用户级 PATH）。 */
+  /**
+   * 首开那几发：两个平台共有的读回 ＋ 渲染，再加各自那一格（POSIX：本机 ccm；PowerShell：自动打开 monitor ＋ 用户级 PATH）。
+   * 〔AL1d〕PowerShell 那一侧**不再有**「终端集成」的状态 / 扫一份两发：别名块的现状随读回口的候选一起到。
+   */
   const FIRST_OPEN: Record<Plat, string[]> = {
     posix: ["aliases_read", "aliases_render", "local_ccm_entry_status"],
-    powershell: [
-      "aliases_read",
-      "aliases_render",
-      "cc_integration_status",
-      "cc_integration_scan_path",
-      "cc_get_auto_launch",
-      "ccm_user_path_status",
-    ],
+    powershell: ["aliases_read", "aliases_render", "cc_get_auto_launch", "ccm_user_path_status"],
   };
 
   it("★ 构造零 I/O；第一次展开**恰好**那几发，再展开一发都不多", async () => {
@@ -351,50 +352,143 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     expect(tmux.value).toBe("none");
   });
 
+  // ── 〔AL1d · 第四波 4B〕别名块：两种 shell 同一块、同一个选择器、同一族命令（`aliases_block_*`）──────────
+  const pick = async (el: HTMLElement, path: string): Promise<void> => {
+    const sel = el.querySelector<HTMLSelectElement>(".ccm-acct-alias-rc")!;
+    sel.value = path;
+    sel.dispatchEvent(new Event("change"));
+    await flush();
+  };
+  const rcBlock = (el: HTMLElement): HTMLElement => el.querySelector<HTMLElement>(".ccm-rc-block")!;
+
+  it("★ 这台机器上启动文件的选择器**恰好一个**（别名文件那一行与别名块共用）；没有版本预设那一族", async () => {
+    const el = await mount();
+    await open(el);
+    const pickers = [...el.querySelectorAll<HTMLSelectElement>("select")].filter((s) =>
+      [...s.options].some((o) => o.textContent === "不动我的 shell 配置"),
+    );
+    expect(pickers.length).toBe(1);
+    // 从前 PowerShell 那一块自己推 `$PROFILE`（CurrentHost / AllHosts 预设 ＋ TS 换文件名）—— 今天候选只来自读回口。
+    const values = [...el.querySelectorAll("option")].map((o) => (o as HTMLOptionElement).value);
+    expect(values.filter((v) => /^Ps(51|7)-/.test(v))).toEqual([]);
+    expect(values.filter((v) => v.startsWith("/h/"))).toEqual(["/h/rc-a", "/h/rc-b"]);
+  });
+
+  it("别名块：默认那一档整块藏着；选了一份**不发 IPC**（现状随候选到）；装 / 卸带的就是选中那份，装完重读、清单不动", async () => {
+    const el = await mount();
+    await open(el);
+    expect(rcBlock(el).hidden).toBe(true);
+    // 表单里先加一条还没写入的 —— 装 / 卸别名块不许把它冲掉。
+    el.querySelector<HTMLInputElement>('input[title="在终端里敲的那个词"]')!.value = "mine";
+    clickText(el, "加进清单");
+    await flush();
+    const n = seen.length;
+    await pick(el, "/h/rc-a");
+    expect(seen.length, "选一份就发了 IPC —— 现状该随读回口的候选一起到").toBe(n);
+    expect(rcBlock(el).hidden).toBe(false);
+    expect(el.querySelector(".ccm-rc-block-status")!.textContent).toContain("还没有别名块");
+    expect(el.querySelector<HTMLElement>(".ccm-rc-block-legacy")!.hidden).toBe(false);
+    clickText(el, "装别名块");
+    await flush();
+    expect(seen.find((c) => c.cmd === "aliases_block_install")!.args).toEqual({
+      rcPath: "/h/rc-a",
+      withCc: false,
+    });
+    expect(seen.slice(n).filter((c) => c.cmd === "aliases_read").length, "装完没重读").toBe(1);
+    expect(el.querySelector(".ccm-rc-block-status")!.textContent).toContain("已经装了");
+    expect([...el.querySelectorAll(".machine-aliases-row code")].map((c) => c.textContent)).toEqual([
+      "alphacc",
+      "betacc",
+      "mine",
+    ]);
+    clickText(el, "卸载别名块");
+    await flush();
+    expect(seen.find((c) => c.cmd === "aliases_block_remove")!.args).toEqual({ rcPath: "/h/rc-a" });
+    expect(el.querySelector(".ccm-rc-block-status")!.textContent).toContain("还没有别名块");
+  });
+
+  it("预览别名块：交给后端的是选中那份文件（方言由后端按扩展名定，前端不判）", async () => {
+    const el = await mount();
+    await open(el);
+    await pick(el, "/h/rc-b");
+    expect(el.querySelector(".ccm-rc-block-status")!.textContent).toContain("还不存在");
+    clickText(el, "预览别名块");
+    await flush();
+    expect(seen.find((c) => c.cmd === "aliases_block_render")!.args).toEqual({
+      rcPath: "/h/rc-b",
+      withCc: false,
+    });
+    expect(document.querySelector(".settings-cc-modal-code")!.textContent).toBe("# 块 → /h/rc-b");
+  });
+
+  it("块还装在别的候选里 ⇒ 照实说出来（从前只查 PowerShell 的 `profile.ps1` 两份，今天每份候选都带块的现状）", async () => {
+    blockAt.add("/h/rc-b");
+    const el = await mount();
+    await open(el);
+    await pick(el, "/h/rc-a");
+    const elsewhere = el.querySelector<HTMLElement>(".settings-cc-legacy-warn")!;
+    expect(elsewhere.hidden).toBe(false);
+    expect(elsewhere.textContent).toContain("/h/rc-b");
+    const labels = [...el.querySelectorAll<HTMLOptionElement>(".ccm-acct-alias-rc option")].map((o) => o.textContent);
+    expect(labels).toContain("/h/rc-b（已装别名块；还不存在，写入时新建）");
+  });
+
+  it("其它文件：交给读回口过围栏、并进候选并选中；过不了围栏 ⇒ 原话上屏、候选不动", async () => {
+    const el = await mount();
+    await open(el);
+    const other = el.querySelector<HTMLInputElement>(".ccm-rc-other")!;
+    other.value = "/etc/x";
+    clickText(el, "用这份");
+    await flush();
+    expect(el.textContent).toContain("refuse profile path");
+    expect(el.querySelector<HTMLSelectElement>(".ccm-acct-alias-rc")!.value).toBe("");
+    other.value = "~/.config/x.rc";
+    clickText(el, "用这份");
+    await flush();
+    const sel = el.querySelector<HTMLSelectElement>(".ccm-acct-alias-rc")!;
+    expect(sel.value).toBe("/h/.config/x.rc");
+    expect(rcBlock(el).hidden).toBe(false);
+    // 之后每次读回都带着它（写入后重读、装完重读 …）。
+    clickText(el, "装别名块");
+    await flush();
+    const last = [...seen].reverse().find((c) => c.cmd === "aliases_read")!.args as { rcPath: string };
+    expect(last.rcPath).toBe("~/.config/x.rc");
+  });
+
   if (plat === "posix") {
-    it("POSIX 别名块：默认那一档不扫；选了那份 rc 才扫、装的就是那一份、而且不抢 cc 函数名", async () => {
+    it("POSIX：没有「同时装 cc 函数」那一问（`cc` 自带 `declare -f` 让着你）；没有用户级 PATH 那一格", async () => {
       const el = await mount();
       await open(el);
-      expect(seen.some((c) => c.cmd === "cc_integration_scan_path")).toBe(false);
-      expect(el.querySelector<HTMLElement>(".ccm-rc-block")!.hidden).toBe(true);
-      const sel = el.querySelector<HTMLSelectElement>(".ccm-acct-alias-rc")!;
-      sel.value = "/h/rc-a";
-      sel.dispatchEvent(new Event("change"));
-      await flush();
-      expect(el.querySelector<HTMLElement>(".ccm-rc-block")!.hidden).toBe(false);
-      clickText(el, "装别名块");
-      await flush();
-      expect(seen.find((c) => c.cmd === "cc_integration_install")!.args).toEqual({
-        path: "/h/rc-a",
-        commandName: "cc",
-        includeCcFunction: false,
-      });
+      await pick(el, "/h/rc-a");
+      expect(el.querySelector<HTMLElement>(".ccm-rc-withcc")!.hidden).toBe(true);
       expect(el.querySelector(".ccm-user-path-block"), "POSIX 上不该有用户级 PATH 那一格").toBeNull();
+      expect(el.textContent).not.toContain("PowerShell 集成");
     });
   } else {
-    it("PowerShell 别名块 = 终端集成（原 `cc_integration.ts`）＋ 用户级 PATH：展开才建、只建一份；POSIX 那一块不出现", async () => {
+    it("PowerShell：握手数 ＋ 自动打开 monitor ＋ 用户级 PATH 展开才建、只建一份；「同时装 cc 函数」勾了就带着装", async () => {
       const el = await mount();
       expect(el.querySelector(".ccm-user-path-block"), "还没展开就建了").toBeNull();
       await open(el);
       expect(el.textContent).toContain("PowerShell 集成");
-      expect(el.querySelector(".settings-cc-profile-status")).toBeTruthy();
+      expect(el.querySelector(".settings-cc-stat-value")!.textContent, "握手数该来自读回口").toBe("2");
       expect(el.querySelector(".ccm-user-path-block")).toBeTruthy();
-      const sel = el.querySelector<HTMLSelectElement>(".ccm-acct-alias-rc")!;
-      sel.value = "/h/rc-a";
-      sel.dispatchEvent(new Event("change"));
-      await flush();
-      expect(el.querySelector<HTMLElement>(".ccm-rc-block")!.hidden, "POSIX 的 cc / cct 块出现在 PowerShell 上").toBe(true);
       el.open = false;
       el.dispatchEvent(new Event("toggle"));
       await open(el);
       expect(el.querySelectorAll(".ccm-user-path-block").length).toBe(1);
-      expect(el.querySelectorAll(".settings-cc-profile-status").length).toBe(1);
-      // 终端集成那一块「安装」装的是它选中的 $PROFILE，带着 cc 这个命令名。
-      clickText(el, "安装");
+      expect(el.querySelectorAll(".settings-cc-autolaunch").length).toBe(1);
+      await pick(el, "/h/rc-a");
+      const withCc = el.querySelector<HTMLElement>(".ccm-rc-withcc")!;
+      expect(withCc.hidden).toBe(false);
+      expect(withCc.textContent).toContain("同时装 cc 函数");
+      const box = withCc.querySelector<HTMLInputElement>("input")!;
+      box.checked = true;
+      box.dispatchEvent(new Event("change"));
+      clickText(el, "装别名块");
       await flush();
-      expect(seen.find((c) => c.cmd === "cc_integration_install")!.args).toMatchObject({
-        path: "C:\\Users\\u\\Documents\\WindowsPowerShell\\Microsoft.PowerShell_profile.ps1",
-        commandName: "cc",
+      expect(seen.find((c) => c.cmd === "aliases_block_install")!.args).toEqual({
+        rcPath: "/h/rc-a",
+        withCc: true,
       });
     });
   }

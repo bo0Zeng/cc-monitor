@@ -303,11 +303,14 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
     ), "§3-3 第一行：后端写区 `sftp.rs`，收 4 条 —— 括号里逐字「`daemon.deploy`×2 ＋ "
        "`ccm.install`/`ccm.uninstall` 的远端半」。现打这四条的住址恰好都在 `sftp.rs`")),
     ("S2", ("①-本机半", (
-        "cc_integration_install",
-        "cc_integration_preview",
-        "cc_integration_scan_path",
-        "cc_integration_status",
-        "cc_integration_uninstall",
+        # 〔AL1d · 第四波 4B〕别名块那三条并进 `aliases_*` 同一族命令面（`调研/第四波记录/AL1d.md §2.1`），
+        #   能力 id 不动（`ccm.install` / `ccm.uninstall` / `ccm.install-ui`，理由见账本那几行）⇒ 归处不动（S2）。
+        #   本条红时逐字「别改表去凑」—— 核过了，是「有人改了命令名」那一种（就是本路），改表是跟上真相。
+        "aliases_block_install",
+        "aliases_block_remove",
+        "aliases_block_render",
+        # 〔AL1d〕`cc_integration_install` / `_preview` / `_scan_path` / `_status` / `_uninstall` 五条退役：
+        #   装 / 卸 / 预览接给上面三条；状态与扫一份并进 `aliases_read`（它归 S4，能力 `alias.manage`）。
         "ccm_user_path_add",
         "ccm_user_path_remove",
         "ccm_user_path_status",

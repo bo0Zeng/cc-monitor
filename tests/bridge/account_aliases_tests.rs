@@ -180,7 +180,7 @@ fn the_rc_source_line_is_added_once_and_keeps_user_content() {
     assert_eq!(twice.matches(&line).count(), 1, "那一行出现了两次：{twice}");
 
     // 顺带：候选表能认出「已经 source 过了」
-    let me = rc_candidates_in(&h.0, P)
+    let me = rc_candidates_in(&h.0, P, None)
         .into_iter()
         .find(|c| c.path == rc.display().to_string())
         .expect("候选里该有 .bashrc");
@@ -218,7 +218,7 @@ fn an_rc_that_already_sources_it_via_home_var_is_recognized() {
     assert_eq!(std::fs::read(&rc).expect("读回"), before, "rc 必须逐字未变");
 
     // 候选表也要认得出来（界面上那一项会显「已经 source 过了」）。
-    let me = rc_candidates_in(&h.0, P)
+    let me = rc_candidates_in(&h.0, P, None)
         .into_iter()
         .find(|c| c.path == rc.display().to_string())
         .expect("候选里该有 .bashrc");
@@ -265,7 +265,7 @@ fn an_rc_with_the_old_file_name_is_rewritten_to_the_new_shape_on_next_install() 
         "alphacc() { ccm --account z \"$@\"; }\n",
     )
     .expect("铺旧文件");
-    let listing = read_in(&h.0, P).expect("读回");
+    let listing = read_in(&h.0, P, None, 0).expect("读回");
     assert!(
         !listing.exists && listing.aliases.is_empty(),
         "读回口去读了旧名：{:?}",
@@ -484,7 +484,7 @@ fn what_is_installed_reads_back_as_the_same_list() {
     assert!(rep.wrote_alias_file);
     let on_disk = std::fs::read_to_string(alias_file_in(&h.0, P)).unwrap();
     assert_eq!(on_disk, render(&list, P).code, "落盘的不是预览的那一份");
-    let back = read_in(&h.0, P).expect("读回");
+    let back = read_in(&h.0, P, None, 0).expect("读回");
     assert!(
         back.exists && back.unparsed.is_empty(),
         "{:?}",
@@ -517,7 +517,7 @@ fn the_reader_takes_the_old_file_and_names_what_it_cannot_parse() {
          # === cc-monitor account aliases END ===\n",
     )
     .unwrap();
-    let back = read_in(&h.0, P).unwrap();
+    let back = read_in(&h.0, P, None, 0).unwrap();
     assert_eq!(
         back.aliases,
         vec![
@@ -534,7 +534,7 @@ fn the_reader_takes_the_old_file_and_names_what_it_cannot_parse() {
     assert!(back.unparsed[1].contains("--print"), "{:?}", back.unparsed);
     // 文件不在 ≠ 读失败。
     let empty = tmp_home("none");
-    let l = read_in(&empty.0, P).unwrap();
+    let l = read_in(&empty.0, P, None, 0).unwrap();
     assert!(!l.exists && l.aliases.is_empty());
 }
 
@@ -820,7 +820,7 @@ fn the_powershell_arm_writes_and_reads_back_the_same_list() {
     assert!(pinned(&prof, &line), "source 那一行没进去：{prof}");
     let body = crate::shell_dialect::strip_bom(&prof);
     assert!(pinned(body, RC_BEGIN) && pinned(body, RC_END), "{prof}");
-    let back = read_in(&h.0, PS).expect("读回");
+    let back = read_in(&h.0, PS, None, 0).expect("读回");
     assert!(
         back.exists && back.unparsed.is_empty(),
         "{:?}",
@@ -844,7 +844,7 @@ fn the_powershell_arm_writes_and_reads_back_the_same_list() {
     assert!(!again.wrote_alias_file && !again.wrote_rc, "{again:?}");
     assert_eq!(std::fs::read_to_string(&profile).unwrap(), prof);
     // POSIX 那份是另一个文件：没写过就是不在。
-    let posix = read_in(&h.0, P).unwrap();
+    let posix = read_in(&h.0, P, None, 0).unwrap();
     assert!(!posix.exists && posix.aliases.is_empty());
 }
 
@@ -864,4 +864,60 @@ fn a_damaged_fence_in_the_powershell_profile_is_left_alone() {
     .expect_err("围栏损坏该中止");
     assert!(e.contains("找不到配对的 END"), "{e}");
     assert_eq!(std::fs::read_to_string(&profile).unwrap(), original);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 〔AL1d · 第四波 4B〕别名块与别名文件那一行共用一份候选、一次扫描（`调研/第四波记录/AL1d.md §2.1`）
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// 🔴 **P3**：别名块的现状**随候选走**，不另起一扫 —— 往某一份候选里装了块，读回口报「块在」的候选集合
+/// **恰好**就是那一份（两向：装了的那份报在；没装的一份都不报在）。两种方言各走一遍。
+///
+/// 替身门落在临时 home：PowerShell 的候选（`startup_files`）在临时 home 底下退回 `home/Documents`，
+/// 结构上碰不到真实家目录；写经 `profile_installer::install_to_profile`（生产那一跳同一个函数）。
+#[test]
+fn the_block_state_rides_on_the_candidates_it_was_installed_into() {
+    let h = tmp_home("block-cands");
+    // POSIX：两份在盘上的 rc，装进后一份。
+    std::fs::write(h.0.join(".bashrc"), "# mine\n").unwrap();
+    std::fs::write(h.0.join(".zshrc"), "# mine\n").unwrap();
+    let zsh = h.0.join(".zshrc");
+    run(crate::profile_installer::install_to_profile(&door(&h), &zsh, "cc", false)).expect("装进 .zshrc");
+    let got: Vec<String> = rc_candidates_in(&h.0, P, None)
+        .into_iter()
+        .filter(|c| c.block.present)
+        .map(|c| c.path)
+        .collect();
+    assert_eq!(got, vec![zsh.display().to_string()], "POSIX：报「块在」的不是恰好装过的那一份");
+
+    // PowerShell：PS 7 的目录在 ⇒ 四份候选；装进 PS 7 的 AllHosts 那一份（它从前被当成「装错了的遗留」）。
+    let ps7 = h.0.join("Documents/PowerShell");
+    std::fs::create_dir_all(&ps7).unwrap();
+    let cands = rc_candidates_in(&h.0, Shell::PowerShell, None);
+    assert_eq!(cands.len(), 4, "PS 7 目录在时该列四份：{cands:?}");
+    let target = std::path::PathBuf::from(&cands[3].path);
+    run(crate::profile_installer::install_to_profile(&door(&h), &target, "cc", true)).expect("装进 $PROFILE");
+    let after = rc_candidates_in(&h.0, Shell::PowerShell, None);
+    let present: Vec<&str> = after.iter().filter(|c| c.block.present).map(|c| c.path.as_str()).collect();
+    assert_eq!(present, vec![target.display().to_string().as_str()]);
+    let hit = after.iter().find(|c| c.block.present).unwrap();
+    assert!(hit.exists && hit.block.version.is_some(), "PowerShell 那一对围栏带版本串：{hit:?}");
+    // 同一次读：别名文件那一行没装过 ⇒ `sourced` 仍是假（两件事各答各的，不串）。
+    assert!(!hit.sourced, "{hit:?}");
+}
+
+/// 🔴 **P6**（读回口那一半）：人另指的「其它文件」过围栏 —— 跑出 home 的一律拒、原话带「refuse profile path」；
+/// home 之内的并进候选、带回过了围栏之后的绝对路径（界面拿它认出刚指的是哪一份）。
+#[test]
+fn another_startup_file_goes_through_the_fence_before_it_is_read() {
+    let h = tmp_home("other-rc");
+    for bad in ["/etc/profile", "relative.rc", "~/../x.rc"] {
+        let e = read_in(&h.0, P, Some(bad), 0).expect_err(bad);
+        assert!(e.starts_with("refuse profile path"), "{bad}：{e}");
+    }
+    let ok = read_in(&h.0, P, Some("~/.config/x.rc"), 7).expect("home 之内的放行");
+    let want = h.0.join(".config/x.rc").display().to_string();
+    assert_eq!(ok.other_rc.as_deref(), Some(want.as_str()));
+    assert!(ok.rc_candidates.iter().any(|c| c.path == want && !c.exists));
+    assert_eq!(ok.bound_terminals, 7, "握手数原样带回（调用方给的）");
 }
