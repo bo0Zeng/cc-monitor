@@ -9,10 +9,21 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { setDiag, restartHint, getDiag } = vi.hoisted(() => ({
+const { setDiag, restartHint, getDiag, logInfo, opened } = vi.hoisted(() => ({
   setDiag: vi.fn(),
   restartHint: { value: "none" as "none" | "needs_restart" },
   getDiag: { fail: null as Error | null },
+  // 〔NT2 · S1〕`get_log_file_info` 的应答（生成物 `LogFileInfo` 的形状）。
+  logInfo: {
+    value: {
+      dir: "/d/logs",
+      current_file: "/d/logs/monitor.2026-09-25.log",
+      current_size_bytes: 10,
+      all_files: [] as unknown[],
+      backend_stderr: [] as { path: string; size_bytes: number; modified_ms: number }[],
+    },
+  },
+  opened: vi.fn(),
 }));
 
 vi.mock("../../src/ipc/commands", () => ({
@@ -28,11 +39,11 @@ vi.mock("../../src/ipc/commands", () => ({
         error_toast: true,
         max_files: 3,
       }),
-    get_log_file_info: () => Promise.resolve({ path: "/tmp/x.log", size: 0 }),
+    get_log_file_info: () => Promise.resolve(logInfo.value),
   },
 }));
 vi.mock("../../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
-vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn() }));
+vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: opened }));
 
 import { DiagnosticsSection } from "../../src/settings/diagnostics-section";
 import {
@@ -122,5 +133,52 @@ describe("日志分节：读不到当前设置 ⇒ 说出来，并且三个控�
     [...sec.element.querySelectorAll("button")].find((b) => b.textContent === "刷新信息")!.click();
     await new Promise((r) => setTimeout(r, 0));
     expect(controls(sec.element).every((c) => c.disabled)).toBe(true);
+  });
+});
+
+// 〔NT2 · S1〕守的要求（住址，纪律 19）：`设计/15 §4.7 S1`「本机 · 脱离常驻载体 | null | **仍开**」·
+//   主会话 4C 第二批裁（逐字）「脱离载体的常驻后端 stderr 落本机日志文件（有上限、滚动），设置页『日志』里看得到」。
+describe("日志分节：本机后端的输出（NT2 · S1）", () => {
+  beforeEach(() => {
+    getDiag.fail = null;
+    opened.mockClear();
+    document.body.replaceChildren();
+  });
+  const row = (el: HTMLElement) =>
+    [...el.querySelectorAll(".settings-row")].find((r) =>
+      r.textContent?.startsWith("本机后端的输出"),
+    )!;
+
+  it("★ 有那份文件：显示路径与大小，「打开」打开的恰是它（新在前的第一份）", async () => {
+    logInfo.value.backend_stderr = [
+      { path: "/d/logs/backend/stderr.log", size_bytes: 2048, modified_ms: 2 },
+      { path: "/d/logs/backend/stderr.old.log", size_bytes: 9, modified_ms: 1 },
+    ];
+    const sec = new DiagnosticsSection();
+    sec.loadNow();
+    await new Promise((r) => setTimeout(r, 0));
+    const r = row(sec.element);
+    expect(r, "找不到那一行 —— 下面是空真").toBeTruthy();
+    expect(r.textContent).toContain("/d/logs/backend/stderr.log");
+    expect(r.textContent).not.toContain("stderr.old.log");
+    const btn = r.querySelector("button")!;
+    expect(btn.disabled).toBe(false);
+    btn.click();
+    await new Promise((r2) => setTimeout(r2, 0));
+    expect(opened).toHaveBeenCalledWith("/d/logs/backend/stderr.log");
+  });
+
+  it("★ 另一向：没有那份文件 ⇒ 说清为什么没有，「打开」灰着、点不出东西", async () => {
+    logInfo.value.backend_stderr = [];
+    const sec = new DiagnosticsSection();
+    sec.loadNow();
+    await new Promise((r) => setTimeout(r, 0));
+    const r = row(sec.element);
+    expect(r.textContent).toContain("还没有");
+    const btn = r.querySelector("button")!;
+    expect(btn.disabled).toBe(true);
+    btn.click();
+    await new Promise((r2) => setTimeout(r2, 0));
+    expect(opened).not.toHaveBeenCalled();
   });
 });

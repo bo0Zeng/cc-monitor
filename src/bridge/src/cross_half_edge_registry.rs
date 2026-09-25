@@ -187,6 +187,14 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
+        "tests/bridge/logging_tests.rs",
+        "src/backend/stderr_log.rs",
+        "〔NT2 · S1〕**跨 crate 字面量对拍**：宿主交给脱离常驻那条载体的 `CCM_BACKEND_STDERR_LOG` 与后端读的那一个，\
+         两边各声明一份；漂了**不会报错** —— 后端当作「没交」、stderr 照旧进 `/dev/null`，设置页那一行永远是「还没有」。\
+         ⇒ 只能同时读两侧的源码才验得了（形状同下一行 `CCM_LISTEN_PORT` 那一条）。",
+    ),
+    (
+        "monitor→backend",
         "tests/bridge/local_backend_host_tests.rs",
         "src/backend/listen.rs",
         "★〔`K-P1` 08-26〕**跨 crate 字面量对拍**：常驻监听口那两个 env 名\

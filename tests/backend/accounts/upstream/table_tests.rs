@@ -357,10 +357,10 @@ fn every_auth_style_other_than_the_default_gets_announced() {
 // ════════════════════════════════════════════════════════════════════════════
 //
 // 期望值一律**手写字面量**（`"claude-code"` · `"CCM_AGENT_UPSTREAM_CLAUDE_CODE"` · 那条官方 URL 的主机名），
-// 不拿被测的 `CREDENTIALS_FILE_AGENT` / `AGENT_UPSTREAMS` 去算 —— 拿被测常量写期望值再拿它去读，
+// 不拿被测的 `CREDENTIALS_FILE_AGENT` / 适配层那一格（`agents::Adapter::upstream`，〔NT2 · V25〕）去算 —— 拿被测常量写期望值再拿它去读，
 // 两侧同源，恒真。
 
-use super::super::{decide, Upstreams, AGENT_UPSTREAMS};
+use super::super::{decide, Upstreams};
 use crate::relay::{Destination, Mode, RouteKey};
 
 /// 问一次生产段那张决策表，把答案压成一个好比对的形状。
@@ -518,27 +518,72 @@ fn each_agents_env_knob_overrides_only_that_agents_default() {
     assert!(got.of("codex").is_none());
 }
 
-/// ★ 那张每家一行的表**自己的形状**：家名不重 · 旋钮不重 · 凭据文件那一家在表里。
+/// ★ 每家一行的默认上游**自己的形状**：家名不重 · 旋钮不重 · 凭据文件那一家登记了。
+/// 〔NT2 · V25〕那一格住适配层（`agents::Adapter::upstream`），这里读的是上游选择读它的那个唯一入口。
 ///
-/// ⚠ 这是一条**构造期**断言（表是一个 `const`），它买的是「加第二家时不会把旋钮抄成同一个」。
+/// ⚠ 这是一条**构造期**断言（注册表是一个 `const`），它买的是「加第二家时不会把旋钮抄成同一个」。
 #[test]
 fn the_per_agent_upstream_table_has_no_duplicate_agent_or_knob_and_holds_the_credentials_file_agent(
 ) {
-    let agents: std::collections::BTreeSet<&str> =
-        AGENT_UPSTREAMS.iter().map(|a| a.agent).collect();
-    let knobs: std::collections::BTreeSet<&str> = AGENT_UPSTREAMS.iter().map(|a| a.env).collect();
+    let rows: Vec<_> = crate::agents::default_upstreams().collect();
+    let agents: std::collections::BTreeSet<&str> = rows.iter().map(|a| a.route_id).collect();
+    let knobs: std::collections::BTreeSet<&str> = rows.iter().map(|a| a.env).collect();
     assert!(
-        !AGENT_UPSTREAMS.is_empty(),
-        "表是空的 ⇒ 每一家都未登记，下面几条空转"
+        !rows.is_empty(),
+        "一家都没登记 ⇒ 每一家都未登记，下面几条空转"
     );
-    assert_eq!(agents.len(), AGENT_UPSTREAMS.len(), "同一家登记了两行");
+    assert_eq!(agents.len(), rows.len(), "同一家登记了两行");
     assert_eq!(
         knobs.len(),
-        AGENT_UPSTREAMS.len(),
+        rows.len(),
         "两家共用一个环境旋钮 ⇒ 盖一家等于盖两家"
     );
     assert!(
         agents.contains("claude-code"),
-        "凭据文件那一家（手写 `claude-code`）不在表里 ⇒ 文件里的行没有默认上游可取"
+        "凭据文件那一家（手写 `claude-code`）没登记 ⇒ 文件里的行没有默认上游可取"
+    );
+}
+
+/// 〔NT2 · V25〕V1 ★ **上游选择的默认上游只来自适配层那一格**（两向集合相等）：
+/// 上游选择装出来的「登记了默认上游的家」== 适配层注册表里 `upstream` 那一格填了的家（按路由名）；
+/// 适配层里那一格没填的每一家（按注册表逐家问）在上游选择里都查不到。
+///
+/// 守的要求（住址，纪律 19）：用户 V25（`99 §1`，逐字）「**写死, 跟着适配层**」· 主会话 4C 第二批裁（逐字）
+/// 「每家 agent 的默认上游挪回 `agents::Adapter` 上那一格，上游选择只查它」· `设计/20 §3.1`「⚠ 住址今天是上游选择那一张表 ……
+/// 与原话『跟着适配层』的住处不是同一格，待主会话对齐」。设计：`调研/第四波记录/NT2.md §3`。
+/// 异源：左边是上游选择**运行期装出来的表**，右边是适配层注册表（不经 `default_upstreams` 那个入口，直接逐家读 `REGISTRY`）。
+/// 另一半（「上游选择里没有第二个默认上游的来源」—— URL 字面量与旧表名的处数）住 `relay::table_guard`。
+#[test]
+fn the_default_upstreams_come_from_the_adapter_cell_and_nowhere_else() {
+    let got = upstreams_without_env();
+    let from_selection: std::collections::BTreeSet<&str> = got.by_agent.keys().copied().collect();
+    let from_adapter: std::collections::BTreeSet<&str> = crate::agents::REGISTRY
+        .iter()
+        .filter_map(|a| a.upstream.as_ref().map(|u| u.route_id))
+        .collect();
+    assert!(
+        !from_adapter.is_empty(),
+        "适配层一家都没填 —— 下面那条相等空转"
+    );
+    assert_eq!(
+        from_selection, from_adapter,
+        "上游选择登记了默认上游的家 ≠ 适配层那一格填了的家 —— 默认上游又有了第二个家"
+    );
+    for a in crate::agents::REGISTRY {
+        if let Some(u) = a.upstream.as_ref() {
+            assert_eq!(
+                got.of(u.route_id).map(|b| b.host_header()),
+                crate::relay::Base::parse(u.fallback)
+                    .ok()
+                    .map(|b| b.host_header()),
+                "`{}` 的默认上游不是适配层那一格写的那个",
+                u.route_id
+            );
+        }
+    }
+    // 手写的那一格（异源于上面的逐家读）：codex 没填 ⇒ 查不到。
+    assert!(
+        got.of("codex").is_none(),
+        "codex 没在适配层登记，上游选择却查得到"
     );
 }

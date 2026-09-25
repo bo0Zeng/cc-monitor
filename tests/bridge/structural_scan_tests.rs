@@ -4237,7 +4237,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/settings/backend-section.ts", 1),
         // 〔RN1 · 第四波 4C · V114〕改名「上游选择」、模块 `apikey` → `upstream`：两处讲旧叫法来历的注释各挂一块
         //   （旧叫法本身不是 snake_case 死名，不进 `TOMBSTONED`；命名判据 `account-vs-relay-naming` 的 V114 那张表按这块标记放行这两行）。
-        ("src/backend/accounts/upstream/mod.rs", 1),
+        // 〔NT2 · V25〕+1：上游选择自己那张每 agent 默认上游表（`AGENT_UPSTREAMS`）搬回适配层，原处留一块说去向。
+        ("src/backend/accounts/upstream/mod.rs", 2),
         ("src/backend/relay/mod.rs", 1),
         ("src/bridge/src/ssh_source.rs", 1), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         ("src/bridge/src/subagent.rs", 1), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
