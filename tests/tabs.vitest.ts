@@ -2313,8 +2313,8 @@ describe("K-P5g：tmux 定位不到时，那句提示真的由读回来的身份
   it("★★ 带着身份 token ⇒ 提示换了一条，且 token 一个字节都没进提示", async () => {
     const TOKEN = "0198f0d2-1111-4222-8333-444455556666";
     const [title, body] = await restartAndCatchToast(TOKEN);
-    expect(title).toBe("无法换号重启：tmux 标记丢了");
-    expect(body).toContain("带着本工具铸的身份标记");
+    expect(title).toBe("无法换号重启：找不到这个会话所在的终端");
+    expect(body).toContain("带着 cc-monitor 起会话时留下的身份标记");
     expect(body).not.toContain("或无法精确定位");
     // 🔴 死值验的落点：把生产段那一行改回写死的老文案（不读 `sessionAccountsByS`），
     //    本条当场红；而 `K-P5f` 已经买到的「读到了」那一族一条都不会红。
