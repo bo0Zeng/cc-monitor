@@ -613,7 +613,9 @@ impl ShellDialect for PowerShell {
     /// 撞上它们的别名定义了也敲不到。要问得真准得起一个 PowerShell 跑 `Get-Command`，本机没有（W1 那一族）⇒
     /// 如实不查，不编一份内建别名清单出来。
     fn name_taken(&self, name: &str) -> Option<String> {
-        let block = crate::profile_installer::render_cc_code("cc", true);
+        // 只问模板里定义了哪几个函数 —— 与数据目录无关，喂一个占位目录。
+        let block =
+            crate::profile_installer::render_cc_code("cc", true, std::path::Path::new("/_"));
         let ours = block.lines().any(|l| {
             l.trim_start()
                 .strip_prefix("function ")
