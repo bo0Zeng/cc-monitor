@@ -390,7 +390,13 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p2t-commit-upload-dial-v2**（2026-09-24，第三波收尾）：子命令 ＋2（F7c `files-commit-upload`，两个命令面）
 /// ＋ C2 行为：`--dial` 成为界面进程拨 SSH 的唯一代理（stream / capture / forward 三种用法、ack v2、ssh-agent 鉴权）。
-pub const BUILD_ID: &str = "p2t-commit-upload-dial-v2";
+///
+/// ★★★ **p2u-stage-find-tasks**（2026-09-24，第四波 4A 第一批合并那一拍）：子命令 ＋5 ——
+/// F9c `files-stage-chunk` / `files-commit-text`（大文件分块进暂存区、后端读回拼接提交）· SE2 `find-in-session` ·
+/// RM1b `tasks-list` / `plugins-marketplaces`（两个命令面都动）。
+/// ＋ 行为：FW5 递归删非空目录（逐条目过围栏）与批量改权限 · F9c 超长请求行的应答从前 4 KiB 抠回 `id` ·
+/// S4 冷启动首建索引的读数进 `files.index.status`。
+pub const BUILD_ID: &str = "p2u-stage-find-tasks";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
