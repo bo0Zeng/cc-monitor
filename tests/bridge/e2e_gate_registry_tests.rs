@@ -336,6 +336,33 @@ fn the_harness_no_longer_teaches_a_bare_pattern_kill() {
     );
 }
 
+/// 〔RL1 · V107〕E1：收孤儿那把刀**认得出 `--relay` 并且只列不收**。
+///
+/// 中转并进本机常驻后端之后，本机再没有独立的 `--relay` 进程；盘上还会出现的 `--relay` 只剩远端
+/// `relay-ensure` 起的那一个 —— 它**刻意脱离**（`PPID == 1` 是设计）。按旧判据它会被当孤儿收掉，
+/// 而那台机器若也被别人当远端用，收掉它就断了别人的会话。
+/// ① 剥注释后的可执行段里那条分支**恰好一处**；② 它排在「孤儿」那一判（`ppid == 1`）**之前**
+///（排在后面 = 先被当孤儿收了）。
+/// ⚠ 文本判据，如实登记：真进程那一趟是一次读数（`调研/第四波记录/RL1.md` 落地读数里「收孤儿那一格」），不进门禁。
+#[test]
+fn the_orphan_reaper_lists_but_never_collects_a_relay() {
+    let src = strip_comments(&read_e2e("reap-orphan-backends.sh"));
+    let arm = guard_core::find_pinned(&src, r#"*" --relay "*) echo"#)
+        .unwrap_or_else(|e| panic!("收孤儿那把刀里认 `--relay` 的那条分支：{e}"));
+    let skip = guard_core::find_pinned(&src[arm..], "continue ;;")
+        .unwrap_or_else(|e| panic!("认出 `--relay` 之后没有恰好一处 `continue`（= 没跳过）：{e}"));
+    assert!(
+        skip < 200,
+        "`--relay` 那条分支的 `continue` 离得太远（{skip} 字节）—— 它可能不是那一支的"
+    );
+    let orphan = guard_core::find_pinned(&src, r#"elif [ "${ppid:-0}" = "1" ]; then"#)
+        .unwrap_or_else(|e| panic!("孤儿那一判：{e}"));
+    assert!(
+        arm < orphan,
+        "认 `--relay` 那条分支排在孤儿那一判之后 —— 脱离的中转会先被当孤儿收掉"
+    );
+}
+
 /// ★★ `C7i` 红线：**没有任何 e2e 套件靠 `TMUX_TMPDIR` 做隔离**〔`P0e` 08-12〕。
 ///
 /// # 红线逐字

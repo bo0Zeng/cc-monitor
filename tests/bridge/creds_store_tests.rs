@@ -25,16 +25,16 @@ fn the_two_sides_resolve_the_same_file() {
     // 两侧读写的就是两份文件，而症状是「界面上配好了，账号层说没配」。
     //
     // ⇒ 今天买断这一格的**不是**路径算法，是**把路径显式传过去**：
-    // `local_backend_host::start_local_relay` 用 `CCM_APIKEY_CREDENTIALS` 把
-    // **本函数算出来的这一个**交给中转。
+    // 〔RL1〕起本机后端时用 `CCM_APIKEY_CREDENTIALS` 把**本函数算出来的这一个**交给它
+    // （中转与账号层住在那个进程里，`local_backend_host::relay_host_envs`）。
     //
     // 🔴 `D6 阻-1` 回修（08-29）：这里先前是两条「`local_backend_host.rs` 的生产段里有没有
     // `crate::creds_store::resolve_path()` / `"CCM_APIKEY_CREDENTIALS".into()` 这两段文本」——
     // **同一族的病**（文本留住、行为摘掉：把那两段文本留在一处用不到的地方，
     // 真正交出去的换成别的路径 ⇒ 两条照绿）。
-    // ⇒ 换成读 `local_backend_host::relay_child_envs()` **产出来的那一份**：
+    // ⇒ 换成读 `local_backend_host::relay_host_envs()` **产出来的那一份**：
     // 那一格的值必须逐字节等于本函数算出来的路径。
-    let envs = crate::local_backend_host::relay_child_envs();
+    let envs = crate::local_backend_host::relay_host_envs();
     assert_eq!(
         envs.iter()
             .find(|(k, _)| k == "CCM_APIKEY_CREDENTIALS")

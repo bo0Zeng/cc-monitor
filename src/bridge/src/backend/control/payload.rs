@@ -196,6 +196,16 @@ pub enum EnvOp<'a> {
     ExportRbindToken {
         value: &'a str,
     },
+    /// 〔RL1 · 第四波〕中转地址 `ANTHROPIC_BASE_URL`：远端（与本机「就地 resume」那一格）拉起时，
+    /// 值由 [`relay_endpoint_for`] 那个唯一判断口答出、经 tauri `relay_endpoint_for_launch` 交给前端、再原样放进载荷。
+    ///
+    /// ⚠ 形状校验在 [`render_env_ops`] 里、**fail-closed**（[`relay_base_url_shape_ok`]）：只收
+    /// [`relay_base_url_in`] 产得出的那一形。渲错了的症状是「claude 每一发都连不上」，与网络故障同形 ——
+    /// 与启动期令牌那一格同一条理由（静默的错不许渲）。渲染只经 [`relay_env_prefix_posix`]
+    /// （本文件唯一产出那句 `export` 的地方，判据数着）。
+    ExportRelayBaseUrl {
+        value: &'a str,
+    },
     UnsetConfigDir,
     /// 嵌套会话标记全套。键表由调用方给（TS 侧来自 `AGENT_PROFILE.nestedEnvVars`）——
     /// **这是唯一一处键表不写死在本 crate 里的地方**，因为它是 per-agent 的画像数据。
@@ -296,6 +306,14 @@ fn render_env_ops(ops: &[EnvOp]) -> Result<String, String> {
                     "export CCM_RBIND_TOKEN={}; ",
                     shell_quote_core::posix_quote(value)
                 );
+            }
+            EnvOp::ExportRelayBaseUrl { value } => {
+                if !relay_base_url_shape_ok(value) {
+                    return Err(refuse(format!(
+                        "拒绝拼入命令：中转地址形状不对 {value:?}（要 `http://127.0.0.1:<端口>/s|t/<三段>`）"
+                    )));
+                }
+                out.push_str(&relay_env_prefix_posix(value));
             }
             EnvOp::UnsetConfigDir => out.push_str(UNSET_CONFIG_DIR_PREFIX),
             EnvOp::UnsetNestedEnv { keys } => {
@@ -709,14 +727,15 @@ impl RouteMode {
     }
 }
 
-/// 本机中转的端口。**monitor 这一侧是权威** —— 起中转时以 `CCM_RELAY_PORT`
-/// 显式交给子进程（`local_backend_host::start_local_relay`），注入侧用同一个常量拼 URL。
+/// 本机中转的端口。**monitor 这一侧是权威** —— 起本机后端时以 `CCM_RELAY_PORT`
+/// 显式交给它（`local_backend_host::relay_host_envs`；〔RL1 · V107〕中转住本机常驻后端进程里），注入侧用同一个常量拼 URL。
 ///
 /// ⚠ 它与 `src/backend/relay/server.rs::DEFAULT_PORT` 是**同一个数字的两处写法**，
-/// 而两处**今天不由任何东西对拍**。之所以不疼：起中转那条路**显式传** `CCM_RELAY_PORT`
-/// ⇒ 子进程用的是这里这个值，backend 那个默认值在这条路上根本不参与。
+/// 而两处**今天不由任何东西对拍**。之所以不疼：起本机后端那条路**显式传** `CCM_RELAY_PORT`
+/// ⇒ 后端里的中转 bind 的是这里这个值（进程内那一形**没有缺省值**），backend 那个默认值只属于独立 `--relay`
+/// （远端 `relay-ensure` 起它时同样显式传这里这个值）。
 /// **端口通告面本件不做**（`§0e` 裁五，跟进件 `己1-f26`）——
-/// ⇒ 「同机两个 monitor」这一形今天是：第二个中转绑不上、**退 2 并出声**，不静默。
+/// ⇒ 口被别的东西占着这一形今天是：本机后端里的中转绑不上、**出声、后端照常**（`relay::listen::host`），不静默。
 pub const RELAY_PORT: u16 = 8788;
 
 /// 一段路由键里允许的字符 —— **与 `src/backend/relay/route.rs::segment_is_safe`
@@ -798,6 +817,30 @@ pub fn relay_base_url_in(
         "http://127.0.0.1:{port}{}",
         relay_route_path_in(mode, agent, account, key)?
     ))
+}
+
+/// 〔RL1〕[`relay_base_url_in`] 那一形的**校验口**：`http://127.0.0.1:<1–65535>` ＋ `/s/` 或 `/t/` ＋ 恰好三段、
+/// 每段过 [`relay_segment_is_safe`]。别的一律不收（`localhost` · `https` · 带查询串 · 尾斜杠 · 少段多段）。
+///
+/// ⚠ 它是构造口的**逆**，不是第二份构造规则：判据拿构造口的产物喂它（必须全收），再喂一排坏形（必须全拒）。
+pub fn relay_base_url_shape_ok(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("http://127.0.0.1:") else {
+        return false;
+    };
+    let Some((port, path)) = rest.split_once('/') else {
+        return false;
+    };
+    let port_ok = !port.is_empty()
+        && port.bytes().all(|b| b.is_ascii_digit())
+        && port.parse::<u16>().is_ok_and(|p| p != 0);
+    let Some(segs) = path
+        .strip_prefix(RELAY_ROUTE_PREFIX.trim_start_matches('/'))
+        .or_else(|| path.strip_prefix(RELAY_PASSTHROUGH_PREFIX.trim_start_matches('/')))
+    else {
+        return false;
+    };
+    let parts: Vec<&str> = segs.split('/').collect();
+    port_ok && parts.len() == 3 && parts.iter().all(|p| relay_segment_is_safe(p))
 }
 
 /// 跨半边对拍用的那一行样例。**backend 侧的判据 `include_str!` 本文件、拿它去 `parse`。**
