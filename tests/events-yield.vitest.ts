@@ -48,16 +48,18 @@ vi.mock("../src/ipc/commands", () => ({
   commands: new Proxy({}, { get: () => vi.fn().mockResolvedValue(undefined) }),
 }));
 
-import { bindEvents } from "../src/events";
+// 〔CF2 · 第四波 4B〕会话内容从通道 `subscribe` 来：换成桩，按句柄的形状灌（`test-support/chan-stream-fake.ts`）。
+vi.mock("../src/ipc/chan", async () => (await import("./test-support/chan-stream-fake.ts")).chanStreamModule);
 
-const line = (seq: number): { payload: unknown } => ({
-  payload: {
-    session_id: "s",
-    cwd: "/p",
-    path: "/p/s.jsonl",
-    seq,
-    message: { type: "assistant", uuid: `u-${seq}` },
-  },
+import { bindEvents } from "../src/events";
+import { streamFake } from "./test-support/chan-stream-fake.ts";
+
+const line = (seq: number): unknown => ({
+  session_id: "s",
+  cwd: "/p",
+  path: "/p/s.jsonl",
+  seq,
+  message: { type: "assistant", uuid: `u-${seq}` },
 });
 
 /** 每问一次时钟就走 `stepMs` —— 让预算在同步循环里真的会到期。 */
@@ -90,19 +92,19 @@ async function bind(): Promise<{ onLine: ReturnType<typeof vi.fn> }> {
     onSessionEnded: vi.fn(),
     onBatchStart: vi.fn(),
     onBatchEnd: vi.fn(),
-  } as never);
+  } as never, { streams: [{ origin: "<local>", kind: "session-lines" }] });
   return { onLine };
 }
 
-/** 灌 n 条 jsonl-line（同步入队，drain 还没跑）。 */
+/** 灌 n 条逐行来的实时格（同步入队，drain 还没跑）。 */
 function feed(n: number): void {
-  const cb = subs.get("jsonl-line");
-  expect(cb, "没订到 jsonl-line —— 本文件会零命中地绿").toBeTruthy();
-  for (let i = 0; i < n; i++) cb!(line(i));
+  expect(streamFake.subscriptions.length, "没订到会话流 —— 本文件会零命中地绿").toBe(1);
+  for (let i = 0; i < n; i++) streamFake.lines([line(i)]);
 }
 
 beforeEach(() => {
   subs.clear();
+  streamFake.reset();
   vi.useFakeTimers();
   // ⚠ 把 `MessageChannel` 探没 —— 这几格要的是**决定性**的 drain 自链。
   //   （正向那一格自己把它装回来。）
