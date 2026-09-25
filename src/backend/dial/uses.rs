@@ -78,16 +78,28 @@ impl Lease {
         })
     }
 
-    /// 开一条 session channel。**复用来的连接上开失败 ⇒ 从池里摘掉、重拨一次**
-    /// （同一机制换一条新连接；新拨的那条再失败就如实报）。
-    async fn session_channel(
+    /// 这一趟手里那条连接（调用方要把它攥到通道用完为止 —— 句柄一 drop 整条连接就断）。
+    pub(crate) fn linked(&self) -> &Arc<Linked> {
+        &self.linked
+    }
+
+    /// 开一条 session channel，**先过这条连接的通道预算**（〔SR1b〕`pool::Budget`：长流 · 查询 · SFTP
+    /// 同一条连接、同一道闸；`lane` = 这一格是不是传输）。借到的那一格随返回的 [`pool::Permit`] 走，
+    /// 调用方攥到通道用完为止。
+    ///
+    /// **复用来的连接上开失败 ⇒ 从池里摘掉、重拨一次**（同一机制换一条新连接；新拨的那条再失败就如实报）。
+    /// 重拨之后预算按**新那条**连接记（旧那一格随失败一起还掉）。
+    pub(crate) async fn session_channel(
         &mut self,
         req: &DialRequest,
         stages: &StageSink,
-    ) -> Result<russh::Channel<russh::client::Msg>, String> {
+        lane: Lane,
+    ) -> Result<(russh::Channel<russh::client::Msg>, pool::Permit), String> {
+        let permit = lane.take(&self.linked).await?;
         match self.linked.session.channel_open_session().await {
-            Ok(c) => Ok(c),
+            Ok(c) => Ok((c, permit)),
             Err(e) => {
+                drop(permit);
                 let Some(key) = self.key.clone().filter(|_| self.reused) else {
                     return Err(format!("打开 session channel 失败: {e}"));
                 };
@@ -99,13 +111,41 @@ impl Lease {
                     .map_err(|(e, _)| e)?;
                 self.linked = linked;
                 self.reused = false;
-                self.linked
+                let permit = lane.take(&self.linked).await?;
+                let c = self
+                    .linked
                     .session
                     .channel_open_session()
                     .await
-                    .map_err(|e| format!("打开 session channel 失败: {e}"))
+                    .map_err(|e| format!("打开 session channel 失败: {e}"))?;
+                Ok((c, permit))
             }
         }
+    }
+}
+
+/// 一条 session 通道占哪一种格（`pool::Budget` 的两道闸）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Lane {
+    /// 长流 · capture · files 链路：只过通道闸。
+    Session,
+    /// 传输：先过传输车道、再过通道闸。
+    Transfer,
+}
+
+impl Lane {
+    async fn take(self, linked: &Linked) -> Result<pool::Permit, String> {
+        let p = match self {
+            Lane::Session => linked.budget.session().await,
+            Lane::Transfer => linked.budget.transfer().await,
+        }?;
+        let (s, t) = linked.budget.free();
+        tracing::debug!(
+            "dial: {} 上借了一格{}（通道还剩 {s}、传输车道还剩 {t}）",
+            linked.endpoint,
+            if self == Lane::Transfer { "传输" } else { "" }
+        );
+        Ok(p)
     }
 }
 
@@ -151,7 +191,8 @@ async fn serve<R, W>(
 {
     match req.use_ {
         Use::Stream => {
-            let channel = match lease.session_channel(req, stages).await {
+            // `_permit`：这条长流占着这条连接的一格通道，直到本臂返回（`pool::Budget`）。
+            let (channel, _permit) = match lease.session_channel(req, stages, Lane::Session).await {
                 Ok(c) => c,
                 Err(e) => {
                     let fp = lease.linked.fingerprint.clone();
@@ -201,13 +242,14 @@ async fn serve<R, W>(
                 .await;
                 return;
             };
-            let mut channel = match lease.session_channel(req, stages).await {
-                Ok(c) => c,
-                Err(e) => {
-                    let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
-                    return;
-                }
-            };
+            let (mut channel, _permit) =
+                match lease.session_channel(req, stages, Lane::Session).await {
+                    Ok(c) => c,
+                    Err(e) => {
+                        let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
+                        return;
+                    }
+                };
             if let Err(e) = exec(&channel, req.command.as_bytes().to_vec()).await {
                 let _ = write_stages_then_ack(
                     out,
@@ -261,6 +303,24 @@ async fn serve<R, W>(
                 return;
             }
             forward(Arc::clone(&lease.linked), listener, spec, &mut input, out).await
+        }
+        Use::Files => {
+            // 〔SR1b〕sftp 子系统开好了才回 ack：「远端没开 sftp」要落在 ack 那一行里，不是第一条应答里。
+            let fp = lease.linked.fingerprint.clone();
+            let session = match super::sftp::open(lease, req, stages, Lane::Session).await {
+                Ok(s) => s,
+                Err(e) => {
+                    let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
+                    return;
+                }
+            };
+            if write_stages_then_ack(out, stages, &ok_ack(&lease.linked))
+                .await
+                .is_err()
+            {
+                return;
+            }
+            super::sftp::serve_files(&session, &mut input, out).await;
         }
     }
 }

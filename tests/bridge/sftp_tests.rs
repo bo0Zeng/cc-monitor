@@ -980,7 +980,7 @@ fn the_probe_shell_really_goes_through_the_pure_interpreter() {
     // 反向自检：**真取到体了**。取不到（空串）时下面那条 `!contains` 会恒真地全绿，
     // 这一格就从守卫变成假绿源 ⇒ 先用一条正向断言把空串挡在外面。
     assert!(
-        code.contains(SIG) && code.contains("sftp"),
+        code.contains(SIG) && code.contains("fs.stat("),
         "取到的不是 probe_target_binary 的体（拿到 {} 字节）",
         code.len()
     );
@@ -1087,38 +1087,47 @@ fn remote_merge_boundary_semantics_after_migration() {
 
 // ===== T04 审计① 上传读回判据（此前这条路完全没有读回）=====
 
+// 〔SR1b · 2026-09-24〕读回那一趟住本机后端（它交回**比对的事实**：读回长度 · 首个差异，读不回 ⇒ `None`；
+//   那一侧怎么算由后端 `dial_sftp_tests` 的部署那一趟判）。这里判的是**判定与话**：拿事实喂 `verify_readback`。
+
 #[test]
 fn upload_verify_catches_same_length_corruption() {
     let want = b"#!/bin/sh\nexec ccm \"$@\"\n";
     // 等长但一字节不同——**只比长度是查不出来的**，而此前连长度都没比
-    let mut bad = want.to_vec();
-    let k = bad.len() / 2;
-    bad[k] ^= 0x01;
-    let e = verify_uploaded_bytes("/r/x", want, Some(&bad)).unwrap_err();
+    let k = (want.len() / 2) as u64;
+    let e = verify_readback(
+        "/r/x",
+        want.len() as u64,
+        Some((want.len() as u64, Some(k))),
+    )
+    .unwrap_err();
     assert!(e.contains("长度相同"), "{e}");
-    assert!(e.contains("首个差异在第"), "要指出位置：{e}");
+    assert!(
+        e.contains(&format!("首个差异在第 {k} 字节")),
+        "要指出位置：{e}"
+    );
     // **关键**：措辞必须说清标记没写，否则用户不知道下次会重试
     assert!(e.contains("未写入版本标记"), "{e}");
 }
 
 #[test]
 fn upload_verify_catches_truncation_and_unreadable() {
-    let want = b"0123456789";
-    let e = verify_uploaded_bytes("/r/x", want, Some(b"01234")).unwrap_err();
+    let e = verify_readback("/r/x", 10, Some((5, Some(5)))).unwrap_err();
     assert!(e.contains("长度不匹配"), "{e}");
     assert!(e.contains("期望 10 字节"), "{e}");
     // 读不回来 ≠ 写对了
-    let e2 = verify_uploaded_bytes("/r/x", want, None).unwrap_err();
+    let e2 = verify_readback("/r/x", 10, None).unwrap_err();
     assert!(e2.contains("读不回"), "{e2}");
     assert!(e2.contains("未写入版本标记"), "{e2}");
 }
 
 #[test]
 fn upload_verify_passes_on_exact_bytes() {
-    // 二进制（含 NUL 与非 UTF-8）也要过——backend 是可执行文件，String 路线走不通
-    let bin = &[0x7f, b'E', b'L', b'F', 0x00, 0xff, 0xfe];
-    assert!(verify_uploaded_bytes("/r/d", bin, Some(bin)).is_ok());
-    assert!(verify_uploaded_bytes("/r/d", b"", Some(b"")).is_ok());
+    // 二进制（含 NUL 与非 UTF-8）也要过——判定只看事实，不碰字节本身
+    assert!(verify_readback("/r/d", 7, Some((7, None))).is_ok());
+    assert!(verify_readback("/r/d", 0, Some((0, None))).is_ok());
+    // 反向：长度对上了而差异在 ⇒ 不许放行（这一格是「只比长度」那一形的阴性对照）
+    assert!(verify_readback("/r/d", 7, Some((7, Some(0)))).is_err());
 }
 
 /// Phase G 阻塞①：**「读不出来」绝不能变成「文件是空的」**。
@@ -1192,7 +1201,7 @@ fn bytes_on_disk_but_read_empty_is_refused() {
 /// 本条就去截「函数开头到 `merge/strip_profile_block` 之间」那一段；那一段的订正史
 /// （初版扫整个体撞上写后回读 · 收窄后又撞上 CLI 那一次读）说的是同一条：
 /// **禁的必须是「喂给变换的那一次读取」的确切形态**。
-/// 今天那一次读取只有一个住址 —— `SftpFile` 的 `read`（序列 `fenced_block::apply` 先调它、
+/// 今天那一次读取只有一个住址 —— `RemoteFile`（〔SR1b〕从前叫 `SftpFile`〔散文墓碑〕）的 `read`（序列 `fenced_block::apply` 先调它、
 /// 把结果交给变换），写后回读也是它（同一份 fail-closed 读取，没有第二条 lossy 的路）。
 /// ⇒ 本条钉三件：`read` 走 `read_profile_text`、不走裸 `read_optional`；
 /// 两个命令都把 profile 交给 `SftpFile` ＋ `fenced_block::apply`（不在函数体里自己读）。
@@ -1219,12 +1228,12 @@ fn profile_read_modify_write_goes_through_the_failsafe_reader() {
     );
     guard_core::find_pinned(
         &reader,
-        "read_profile_text(self.sftp, &self.path, &self.what)",
+        "read_profile_text(self.fs, &self.path, &self.what)",
     )
-    .unwrap_or_else(|e| panic!("SftpFile::read 没走 fail-safe 读取器（{e}）：{reader}"));
+    .unwrap_or_else(|e| panic!("RemoteFile::read 没走 fail-safe 读取器（{e}）：{reader}"));
     assert!(
-        !guard_core::contains_word(&reader, "read_optional"),
-        "SftpFile::read 又直接拿 read_optional 读了——那会把「读不出来」当成空文件，\
+        !guard_core::contains_word(&reader, "read_marker"),
+        "RemoteFile::read 又直接拿 read_marker 读了——那会把「读不出来」当成空文件，\
              于是跳过备份 + 整份覆盖 / 谎报无需卸载"
     );
     let mut checked = 0usize;
@@ -1250,13 +1259,13 @@ fn profile_read_modify_write_goes_through_the_failsafe_reader() {
         guard_core::find_pinned(&cmd_body, "crate::user_files::edit(")
             .unwrap_or_else(|e| panic!("{sig}: profile 没交给 user_files::edit（{e}）"));
         assert!(
-            !guard_core::contains_word(&cmd_body, "SftpFile"),
+            !guard_core::contains_word(&cmd_body, "RemoteFile"),
             "{sig}: 又把 profile 交给 SFTP 那一路了 —— 用户文件只经后端写"
         );
-        for reader_prim in ["read_optional", "read_profile_text"] {
+        for reader_prim in ["read_marker", "read_profile_text"] {
             assert!(
                 !guard_core::contains_word(&cmd_body, reader_prim),
-                "{sig}: 又在函数体里自己读 profile 了（{reader_prim}）—— 读取只许有 SftpFile::read 那一个住址"
+                "{sig}: 又在函数体里自己读 profile 了（{reader_prim}）—— 读取只许有 RemoteFile::read 那一个住址"
             );
         }
         checked += 1;
@@ -1309,19 +1318,19 @@ fn deploy_paths_use_verified_upload_for_content() {
             .filter(|l| !l.trim_start().starts_with("//"))
             .collect::<Vec<_>>()
             .join("\n");
-        // 反向自检：真取到函数体了
+        // 反向自检：真取到函数体了。〔SR1b〕上传经本机后端（`upload_verified` 读回比对 · `put_marker` 只写标记）。
         assert!(
-            code.contains("upload_atomic"),
+            code.contains("upload_verified("),
             "{what}: 取到的体里没有上传，守卫在空转"
         );
-        verified_total += code.matches("upload_atomic_verified(").count();
+        verified_total += code.matches("upload_verified(").count();
         for l in code.lines() {
-            if !l.contains("upload_atomic(") {
+            if !(l.contains("put_marker(") || l.contains("fs.put(")) {
                 continue;
             }
             assert!(
                 l.contains("marker"),
-                "{what}: 内容上传仍走裸 upload_atomic —— {}",
+                "{what}: 内容上传没走读回比对（`upload_verified`）—— {}",
                 l.trim()
             );
         }
@@ -1365,112 +1374,8 @@ fn safe_backend_path_accepts_convention_rejects_suspicious() {
     )); // 含 ..
 }
 
-/// ★★〔步 23b · 2026-09-19〕**SFTP 那条依赖真的换成了 `russh-sftp` 3.x，而且钉住了。**
-///
-/// `设计/60 §6.5.3` 现打核过 5 个候选（crates.io / GitHub / docs.rs 三处 API），
-/// 结论逐字是「选定的库是 **`russh-sftp` 3.0.0**」。而本仓此前钉的是 `russh-sftp = "2"`
-/// —— 本件把它抬到 `"3"`，本条判据就是那一刀的钉子。
-///
-/// # 为什么要一条判据，而不是「改完就算」
-///
-/// `Cargo.toml` 里的一个版本区间**掉回去是无声的**：一次 `cargo update` 的误操作、
-/// 一次 merge 取错边，都能把 `"3"` 变回 `"2"` 而全仓一条不红 ——
-/// 而 `§6.5.3` 那张候选表里全部的论证（传输泛型 `new<S>` · `tokio` 没开 `net` feature
-/// 所以它结构上开不了 socket · 扩展集）都是**对着 3.0.0** 做的。
-///
-/// # 量法：**两侧各读一遍，再互相对账**
-///
-/// 只钉声明面（`Cargo.toml`），锁定面掉了无声；只钉锁定面，声明面放宽了也无声。
-/// ⇒ 两侧都现打抠出来，各自要求**恰好命中一次**（抽取器坏了会零命中地绿），
-/// 再断言两边的主版本号相等。
-///
-/// # 🔴 它买到的与**买不到**的（逐字，不许含糊）
-///
-/// - **买到**：盘上这两份文本都说「3.x」，且互相对得上。加上 `cargo test` 本身
-///   （本条判据要跑起来，整棵树就得先用这一版**编过**），
-///   ⇒ 「3.x 编得过、API 形状对得上」这件事是**本条所在的这一趟**顺带证明的。
-/// - 🔴 **买不到：「连上一台真远端跑过一次 SFTP」。** 本仓**没有真远端** ——
-///   本条只读盘上两份文本，**一个字节都没过网**。`设计/60 §7` 那条「未实测」照旧成立。
-/// - 🔴 **买不到：3.x 与 2.x 的行为差异有没有被消化。**（比如 3.0.0 给
-///   `read` / `write` 各补了一次收尾、`io::ErrorKind::TimedOut` 现在会映射成超时错。）
-///   那几条要真跑才量得出来，本条**不出声**。
-/// - 🔴 **买不到：许可。** `russh-sftp` 3.0.0 是 Apache-2.0（本件现打核过它那份
-///   `Cargo.toml` 与 `LICENSE`），但**本条判据不读许可** —— 它只读版本号。
-///
-/// # ⚠ 死值验的覆盖面，如实登记（09-19 现打）
-///
-/// **声明面那条断言死值验过**：把 `russh-sftp = "3"` 改回 `"2"` ＋ `cargo update --precise 2.3.0`
-/// ⇒ 本条当场红，报「声明面掉版本了」。逐字节还原后 sha256 对上。
-///
-/// 🔴 **锁定面那两条（包块版本 · 两侧主版本对账）没能单独死值验**，理由写清楚：
-/// 门禁跑的是 `--locked`，**声明面与锁定面不一致时 cargo 自己就先失败了**
-/// ⇒ 构造不出「声明面还是 3、锁定面掉到 2」这个状态。
-/// ⇒ 那两条今天是**加固**，不是被验过的牙。**别把它们读成「验过了」。**
-#[test]
-fn the_sftp_dependency_is_really_on_russh_sftp_three() {
-    const CRATE: &str = "russh-sftp";
-    // ── 声明面：`src/bridge/Cargo.toml` 里那一行 ──────────────────────
-    let manifest = include_str!("../../src/bridge/Cargo.toml");
-    let declared: Vec<&str> = manifest
-        .lines()
-        .filter_map(|l| l.strip_prefix(&format!("{CRATE} = ")))
-        .collect();
-    assert_eq!(
-        declared.len(),
-        1,
-        "在 `src/bridge/Cargo.toml` 里抠到 {} 行 `{CRATE} = …`（要恰好 1 行）—— \
-         抽取器坏了或者那条依赖没了，本条会零命中地绿",
-        declared.len()
-    );
-    let declared = declared[0].trim().trim_matches('"');
-    assert!(
-        declared.starts_with('3'),
-        "声明面掉版本了：`{CRATE} = {declared}` —— `设计/60 §6.5.3` 选定的是 **3.0.0**，\
-         那张候选表里全部的论证都是对着 3.x 做的"
-    );
-
-    // ── 锁定面：`src/bridge/Cargo.lock` 里那个包块 ────────────────────
-    let lock = include_str!("../../src/bridge/Cargo.lock");
-    let name_line = format!("name = \"{CRATE}\"");
-    let locked: Vec<&str> = lock
-        .split(&name_line)
-        .skip(1)
-        .filter_map(|after| {
-            after
-                .lines()
-                .find_map(|l| l.strip_prefix("version = "))
-                .map(|v| v.trim().trim_matches('"'))
-        })
-        .collect();
-    assert_eq!(
-        locked.len(),
-        1,
-        "在 `src/bridge/Cargo.lock` 里抠到 {} 个 `{CRATE}` 包块（要恰好 1 个）：{locked:?} —— \
-         两份说明两个版本同时在树上，那正是 `lockfile_conflict_guard` 那一族要治的病",
-        locked.len()
-    );
-    let locked = locked[0];
-    assert!(
-        locked.starts_with("3."),
-        "锁定面掉版本了：lock 里是 `{CRATE} {locked}`，而声明面写着 `{declared}` —— \
-         声明放宽 / lock 没跟上，两者任一单独看都像没事"
-    );
-
-    // ── 两侧对账：主版本号必须相等 ──────────────────────────────────
-    let major = |v: &str| {
-        v.trim_start_matches(['^', '=', '~'])
-            .split('.')
-            .next()
-            .unwrap_or("")
-            .to_string()
-    };
-    assert_eq!(
-        major(declared),
-        major(locked),
-        "声明面（{declared}）与锁定面（{locked}）的主版本对不上 —— \
-         只钉一侧的话，另一侧掉下去是无声的"
-    );
-}
+// 〔SR1b · 2026-09-24〕`the_sftp_dependency_is_really_on_russh_sftp_three` 搬去了后端（`tests/backend/dial_sftp_tests.rs`）：
+//   `russh-sftp` 出了界面清单（界面进程零 SFTP），今天只在 `src/backend/Cargo.toml` 里 —— 判据跟着依赖走，读后端那份清单与 lock。
 
 /// 🔴 〔MC1 · 2026-09-24〕`设计/71 §13.3` ①：**「部署后端」只有一个动作** —— 后端本体 ＋ `ccm` 入口。
 ///
@@ -1478,7 +1383,7 @@ fn the_sftp_dependency_is_really_on_russh_sftp_three() {
 /// 全文件生产段里推入口的原语（`ccm_entry_shim(`）**恰好一处**、就住 `put_ccm_entry` 里 ——
 /// 装别名块那条（`install_remote_alias_block`）**零命中**（从前它一次做两件事，`71 §13.1` 那个 ① ②）。
 ///
-/// 死值验：把 `deploy_remote_backend` 里那一句 `put_ccm_entry(sftp, &path)` 摘掉 ⇒ 第一条红。
+/// 死值验：把 `deploy_remote_backend` 里那一句 `put_ccm_entry(&fs, &path)` 摘掉 ⇒ 第一条红。
 #[test]
 fn deploying_the_backend_also_puts_the_ccm_entry_and_nothing_else_does() {
     let prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
@@ -1490,7 +1395,7 @@ fn deploying_the_backend_also_puts_the_ccm_entry_and_nothing_else_does() {
         prod[i..j].to_string()
     };
     let deploy = body_of("pub async fn deploy_remote_backend(");
-    guard_core::find_pinned(&deploy, "put_ccm_entry(sftp, &path)")
+    guard_core::find_pinned(&deploy, "put_ccm_entry(&fs, &path)")
         .unwrap_or_else(|e| panic!("部署后端没有连同 ccm 入口一起放（{e}）"));
     let block = body_of("pub async fn install_remote_alias_block(");
     for prim in ["ccm_entry_shim", "put_ccm_entry", "CCM_CLI_REMOTE_PATH"] {
@@ -1504,4 +1409,170 @@ fn deploying_the_backend_also_puts_the_ccm_entry_and_nothing_else_does() {
         .unwrap_or_else(|e| panic!("put_ccm_entry 里推的不是那三行入口（{e}）"));
     guard_core::find_pinned(&prod, "ccm_entry_shim(")
         .unwrap_or_else(|e| panic!("推入口的原语不是恰好一处（{e}）"));
+}
+
+/// 〔SR1b · 2026-09-24〕**界面那一侧对着真后端 ＋ 真 sshd**：部署那几问经 `RemoteFs`（`files` 链路）、
+/// 传输经中继（`sftp_pool::transfer_call` / `watch_ticket`），全程界面进程零 SSH。
+///
+/// 只由 `tests/evidence/SR1b-sftp-loopback.py --monitor` 带 `SR1B_LOOPBACK`
+/// （`{host,port,user,key_path,backend,home,rhome,up,dl_remote,dl_local}`）来跑；那台 sshd 的 sftp 起始目录是临时的 `rhome`，
+/// 写不到真 home。买到：部署判定三形（缺 ⇒ 部署 · 装完 ⇒ 跳过 · 截成 0 字节 ⇒ 重部署）· 入口一次写 / 一次不动 ·
+/// 卸载按钮删两份 · 两个写根之外 ⇒ 后端围栏拒、原话带回 · 上传 / 下载经中继走完、帧翻成 `Snap` 终局。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "要真 sshd ＋ 真后端二进制：由 tests/evidence/SR1b-sftp-loopback.py --monitor 带环境变量来跑"]
+async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
+    use futures::StreamExt;
+    let _local = crate::backend::control::inbound_client::local_origin_test_lock();
+    let raw = std::env::var("SR1B_LOOPBACK").expect("没有 SR1B_LOOPBACK —— 这条只该由读数脚本来跑");
+    let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    let s = |k: &str| v[k].as_str().unwrap().to_string();
+    let home = s("home");
+    let rhome = s("rhome");
+    let mut child = std::process::Command::new(s("backend"))
+        .env("HOME", &home)
+        .env("TMUX_TMPDIR", &home)
+        .env_remove("TMUX")
+        .env_remove("CCM_LISTEN_PORT")
+        .env_remove("CCM_LISTEN_TOKEN")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("起不了后端");
+    let (stdin, stdout) = (child.stdin.take().unwrap(), child.stdout.take().unwrap());
+    std::thread::spawn(move || {
+        crate::backend::control::local_backend::local_stdio_consumer(stdin, stdout)
+    });
+    let backend_path = format!("{rhome}/.cc-monitor/bin/cc-monitor-backend");
+    let cfg = crate::ssh_source::RemoteConfig {
+        host: s("host"),
+        label: "sr1b-loopback".into(),
+        port: v["port"].as_u64().unwrap() as u16,
+        user: s("user"),
+        key_path: Some(s("key_path")),
+        backend_path: backend_path.clone(),
+        host_key_fingerprint: None,
+        addresses: vec![],
+        jump: None,
+    };
+    // ① 部署那几问（判定函数原样，执行经后端）
+    let fs = RemoteFs::open(&cfg).await.expect("开不了 files 链路");
+    assert_eq!(fs.home(), rhome, "起始目录不是 sshd 给的那个");
+    let marker = marker_path(&backend_path);
+    let bytes: Vec<u8> = (0..3_000_000u32).map(|i| (i * 7 % 251) as u8).collect();
+    let decide = |id: Option<Vec<u8>>, t| {
+        deploy_decision_at(
+            id.map(|b| String::from_utf8_lossy(&b).trim().to_string())
+                .as_deref(),
+            "sr1b-id",
+            t,
+        )
+    };
+    let t0 = probe_target_binary(&fs, &backend_path).await.unwrap();
+    let d0 = decide(read_marker(&fs, &marker).await.unwrap(), t0);
+    assert!(
+        matches!(d0, DeployAction::Deploy(_)),
+        "落点缺 ⇒ 该部署：{d0:?}"
+    );
+    fs.mkdirs(remote_parent(&backend_path)).await.unwrap();
+    upload_verified(&fs, &backend_path, &bytes, 0o700)
+        .await
+        .expect("上传 ＋ 读回");
+    put_marker(&fs, &marker, b"sr1b-id", 0o600).await.unwrap();
+    let t1 = probe_target_binary(&fs, &backend_path).await.unwrap();
+    let d1 = decide(read_marker(&fs, &marker).await.unwrap(), t1);
+    assert_eq!(d1, DeployAction::Skip, "装完 ⇒ 该跳过");
+    assert_eq!(
+        std::fs::read(&backend_path).unwrap(),
+        bytes,
+        "盘上那份不是送去的字节"
+    );
+    std::fs::write(&backend_path, b"").unwrap();
+    let t2 = probe_target_binary(&fs, &backend_path).await.unwrap();
+    let d2 = decide(read_marker(&fs, &marker).await.unwrap(), t2);
+    assert!(
+        matches!(d2, DeployAction::Deploy(_)),
+        "截成 0 字节 ⇒ 该重部署：{d2:?}"
+    );
+    upload_verified(&fs, &backend_path, &bytes, 0o700)
+        .await
+        .unwrap();
+    // ② 入口：第一次写、第二次不动
+    let e1 = put_ccm_entry(&fs, &backend_path).await.unwrap();
+    let e2 = put_ccm_entry(&fs, &backend_path).await.unwrap();
+    assert!(
+        matches!(e1, crate::fenced_block::Applied::Written { .. }),
+        "{e1:?}"
+    );
+    assert!(
+        matches!(e2, crate::fenced_block::Applied::Unchanged),
+        "{e2:?}"
+    );
+    assert!(std::path::Path::new(&format!("{rhome}/.cc-monitor/bin/ccm")).is_file());
+    // ③ 两个写根之外 ⇒ 后端围栏拒、原话带回、盘上零改动
+    let outside = format!("{rhome}/.cc-monitor/elsewhere/cc-monitor-backend");
+    let e = upload_verified(&fs, &outside, b"x", 0o700)
+        .await
+        .unwrap_err();
+    assert!(
+        e.contains("~/.cc-monitor/bin/"),
+        "拒绝的话没说只许哪两处：{e}"
+    );
+    assert!(!std::path::Path::new(&outside).exists());
+    drop(fs);
+    // ④ 卸载按钮（真命令）：删后端 ＋ 标记两份
+    let msg = uninstall_remote_backend(cfg.clone()).await.expect("卸载");
+    assert!(msg.starts_with("已删除 2 个文件"), "{msg}");
+    assert!(!std::path::Path::new(&backend_path).exists());
+    // ⑤ 上传经中继：开单 → 订阅即起跑 → 终局 Done，暂存件逐字节等于本机那份
+    let origin = crate::origin::Origin(cfg.origin_label());
+    let up = s("up");
+    let r = crate::sftp_pool::transfer_call(
+        cfg.clone(),
+        crate::sftp_pool::TRANSFER_UPLOAD,
+        &serde_json::json!({ "local_path": up }),
+    )
+    .await
+    .expect("开单（上传）");
+    let (id, key) = (r["id"].as_str().unwrap(), r["key"].as_str().unwrap());
+    let last = crate::sftp_pool::watch_ticket(&origin, id)
+        .expect("订阅")
+        .collect::<Vec<_>>()
+        .await
+        .pop()
+        .unwrap();
+    let want = std::fs::read(&up).unwrap();
+    assert_eq!(
+        last.end,
+        Some(crate::sftp_pool::End::Done {
+            bytes: want.len() as u64
+        })
+    );
+    let staged = std::fs::read(format!("{rhome}/.cc-monitor/staging/{key}.part")).unwrap();
+    assert!(staged == want, "暂存件不是本机那份的字节");
+    // ⑥ 下载经中继
+    let dl_local = s("dl_local");
+    let r = crate::sftp_pool::transfer_call(
+        cfg.clone(),
+        crate::sftp_pool::TRANSFER_DOWNLOAD,
+        &serde_json::json!({ "remote_path": s("dl_remote"), "local_path": dl_local }),
+    )
+    .await
+    .expect("开单（下载）");
+    let last = crate::sftp_pool::watch_ticket(&origin, r["id"].as_str().unwrap())
+        .expect("订阅")
+        .collect::<Vec<_>>()
+        .await
+        .pop()
+        .unwrap();
+    assert!(
+        matches!(last.end, Some(crate::sftp_pool::End::Done { .. })),
+        "{last:?}"
+    );
+    assert!(
+        std::fs::read(&dl_local).unwrap() == std::fs::read(s("dl_remote")).unwrap(),
+        "下载落地的字节不对"
+    );
+    let _ = child.kill();
+    let _ = child.wait();
+    println!("SR1B-LOOPBACK-MONITOR ok");
 }

@@ -364,6 +364,15 @@ mod tests {
          `<key>.<seq>.chunk`（暂存区不在就先过围栏再建目录）· 读回拼起来交写面 `overwrite_text` 原地覆盖（不添动词）· \
          删这一键的块（先过以暂存区为根的围栏）。线上入口只有 `inbound.rs` 那三条 \
          `files-commit-upload` / `files-stage-chunk` / `files-commit-text`（`COMMIT_COMMANDS`）",
+    ), (
+        // 〔SR1b · 第四波 · 2026-09-24〕用户 V89「SFTP 进本机常驻后端」：传输台搬进本机后端，下载的**本机落点**
+        //   （用户选的路径）那一下写从 monitor 搬到这里 —— 同一句用户裁决（「只允许后端的文件管理部分写文件」）。
+        "control/transfer.rs",
+        "传输台（`设计/60 §4.2`）：下载的本机落点 —— `O_EXCL` 新建 `<落点>.part`（旧的尾块对不上先删）· \
+         续传时接着写那一份（不截断、不新建）· 传完改名上位 · 失败删 `.part`。每一处先过写面那道围栏 \
+         （`files_write::fenced_target`，根 = 落点的父目录，借用、不抄）。远端暂存区那一半一行都不在这里 \
+         （经 `dial/sftp.rs` 的写原语，只许两处）。线上入口只有 `inbound.rs` 那四条 `transfer-*` 硬臂 \
+         （`transfer_command_names`）",
     )];
 
     /// 第三层模块**能用**的改动动词（`fs::` 之后那个词）。**闭集**。
@@ -390,7 +399,15 @@ mod tests {
     ///   它是**读**；刻意不进全局只读表，理由同 `symlink_metadata`（不替全后端放一个读动词）。
     ///   ⚠ **改动动词闭集（[`MUTATING_FACE_VERBS`]）一个没加**：递归删由「删文件」「删空目录」
     ///   两个既有动词逐条拼出，那个一步递归删的库函数照旧在 [`MUTATING_FACE_STILL_FORBIDDEN`] 上。
-    const MUTATING_FACE_AUX: &[&str] = &["MetadataExt", "Permissions", "symlink_metadata"];
+    ///   〔SR1b · 第四波 · **3 → 4**〕`File::from_std` —— 把**已经过了围栏、已经开好**的那个 std 句柄换成异步句柄
+    ///   （传输台的下载落点：开那一下在同步函数里过围栏，写那一路是异步的）。它不开任何东西、不改任何东西；
+    ///   刻意不进全局只读表，理由同上（不替全后端放一个词）。
+    const MUTATING_FACE_AUX: &[&str] = &[
+        "File::from_std",
+        "MetadataExt",
+        "Permissions",
+        "symlink_metadata",
+    ];
 
     /// 第三层模块**仍然不许**出现的东西。
     ///
@@ -1281,6 +1298,68 @@ mod tests {
         }
     }
 
+    /// `dispatch` 的分派臂里够得到写面的那几条，回 `(切出的臂数, 那几条臂模式里的命令名)`。
+    ///
+    /// 一条臂 = 从一行以 `"名字"` 开头（或 `| "名字"` 续行）、且这一段里出现 `=>` 的那一行起，到下一条臂之前。
+    /// 纯函数；切法与判定由 `the_dispatch_arm_judge_reads_or_patterns_and_bodies` 逐形喂样本。
+    pub(super) fn dispatch_arms_reaching(
+        prod: &str,
+        needles: &[String],
+    ) -> (usize, std::collections::BTreeSet<String>) {
+        // ⚠ 取址走 `guard_core::find_pinned`（恰好一处 ＋ 两侧有边界），不走语料上的裸 `find`（`needle_anchor_registry`）。
+        let Ok(start) = guard_core::find_pinned(prod, "fn dispatch(") else {
+            return (0, Default::default());
+        };
+        // 函数体到第一行顶格的 `}` 为止（逐行判相等，不按子串切）。
+        let mut body_len = 0usize;
+        for src_row in prod[start..].split_inclusive('\n') {
+            body_len += src_row.len();
+            if src_row.trim_end() == "}" {
+                break;
+            }
+        }
+        let body = &prod[start..start + body_len];
+        // 臂头：一行（去缩进后）以 `"` 起头、且在本行里出现 `=>`。
+        let mut heads: Vec<usize> = Vec::new();
+        let mut at = 0usize;
+        for src_row in body.split_inclusive('\n') {
+            let head_text = src_row.trim_start();
+            if head_text.starts_with('"') && guard_core::contains_word(head_text, "=>") {
+                heads.push(at);
+            }
+            at += src_row.len();
+        }
+        let mut names = std::collections::BTreeSet::new();
+        for (i, h) in heads.iter().enumerate() {
+            let end = heads.get(i + 1).copied().unwrap_or(body.len());
+            let arm = &body[*h..end];
+            if !needles.iter().any(|n| arm.contains(n.as_str())) {
+                continue;
+            }
+            let pattern = arm.split_once("=>").map(|(p, _)| p).unwrap_or("");
+            for (k, piece) in pattern.split('"').enumerate() {
+                if k % 2 == 1 {
+                    names.insert(piece.to_string());
+                }
+            }
+        }
+        (heads.len(), names)
+    }
+
+    /// 硬臂那一半的切法**逐形喂样本**：一臂一名 · 或模式一臂多名 · 臂体换行 · 不够得到写面的臂不算。
+    #[test]
+    fn the_dispatch_arm_judge_reads_or_patterns_and_bodies() {
+        let needles = vec!["transfer::".to_string()];
+        let sample = "fn dispatch(req: R) -> D {\n    match req.cmd.as_str() {\n        \"a\" => x(),\n        \"t-up\" | \"t-down\" => {\n            D::Reply(crate::control::transfer::Desk::answer_wire(q))\n        }\n        \"b\" => y(),\n        other => z(other),\n    }\n}\n";
+        let (arms, names) = dispatch_arms_reaching(sample, &needles);
+        assert_eq!(arms, 3, "臂头没切对");
+        assert_eq!(
+            names.into_iter().collect::<Vec<_>>(),
+            ["t-down", "t-up"],
+            "或模式那一臂的名字没取全 / 多取了别的臂"
+        );
+    }
+
     /// 🔴🔴 **第三层判据 ④ 的另一半：那扇门里，够得到写面的命令恰好是写面登记的那几条。**
     ///
     /// 上一条只判「哪份**文件**引用得到」—— `inbound.rs` 里任何一条命令都在那份文件里，
@@ -1322,11 +1401,22 @@ mod tests {
             chunks >= 15,
             "只切出 {chunks} 块 `CommandSpec` —— 切法坏了，本条在空转"
         );
-        // 两侧异源照旧：一侧源码文本，一侧是两个第三层模块**各自**的常量表的并。
+        // 〔SR1b · 第四波〕**硬臂那一半**：`Run::Builtin` 的命令不在 `CommandSpec` 块里带处理器，
+        //   它们的处理住 `dispatch` 的分派臂 ⇒ 按「一条臂 = 从 `"名字" … =>` 那一行起、到下一条臂之前」切块，
+        //   臂里引用了写面的，取它模式里的**全部**名字（或模式 `"a" | "b" =>` 一臂多名）。
+        //   不补这一半，传输台那四条硬臂够得到写面而本条看不见 —— 与上面那半同一个问题，换了一种写法。
+        let (arms, arm_names) = dispatch_arms_reaching(&prod, &needles);
+        assert!(
+            arms >= 5,
+            "`dispatch` 里只切出 {arms} 条臂 —— 切法坏了，硬臂那一半在空转"
+        );
+        reaching.extend(arm_names);
+        // 两侧异源照旧：一侧源码文本，一侧是第三层模块**各自**的常量表的并。
         let want: std::collections::BTreeSet<String> =
             crate::control::files_write::manage_command_names()
                 .into_iter()
                 .chain(crate::control::files_commit::commit_command_names())
+                .chain(crate::control::transfer::transfer_command_names())
                 .map(str::to_string)
                 .collect();
         assert!(
@@ -3452,6 +3542,14 @@ mod error_envelope_registry {
              写出去那一下在 `main.rs::emit_answer`（账号层的输出受中转日志白名单管，查询输出不是日志）。",
         ),
         (
+            "dial/sftp.rs",
+            "serde_json::json!({ \"code\": code, \"message\": message })",
+            "〔SR1b〕部署链路（`use:\"files\"`）一问一答的失败应答",
+            "它**不是 CLI 出口**，是一条链路上的一行应答（monitor 那侧 `dial_host::RemoteFs` 读它）；\
+             与 CLI 信封同一对键是刻意的（读的人少记一种形状），但它住 `dial/`、成功那一形是别的键 \
+             ⇒ 收进 `control/` 那几份出口要先让 `dial/` 反向引 `control/`，不划算。",
+        ),
+        (
             "observe/history_query.rs",
             "\"invalid_args\"",
             "`--list-subagents` 的用法错",
@@ -3847,6 +3945,17 @@ mod g6_dependency_signoff {
              host key 校验由 `dial::DialHandler` 自己在内存里比指纹，\
              但那是**用法**上的签字，不是对它源码的读数。\
              ⇒ 要升到 `已量·未见写面` 得真去扫它那棵树，本轮没做",
+        ),
+        (
+            "russh-sftp",
+            DEPS,
+            MEASURED_WRITES_ON_PURPOSE,
+            "〔SR1b · 2026-09-24〕SFTP 客户端：用户 V89「SFTP 进本机常驻后端，只写暂存区」（＋ F08 自部署目录）。\
+             **本机**写面现打 0 处（3.0.0 源码里 `std::fs` 只出现在 `protocol/open.rs` 一个 `From<OpenFlags> for \
+             fs::OpenOptions` 的转换里 —— 造选项、不开文件；它的 `tokio` 没开 `fs` / `net`）；\
+             **远端**写面就是它的本职（`SSH_FXP_OPEN` 带写标志 · `REMOVE` · `RENAME` · `MKDIR` …）⇒ 就是要它写。\
+             谁划边界：只许 `dial/sftp.rs` 一份文件持有它的会话、写根 == 暂存区与部署目录、每处先过 `fenced_remote`。\
+             边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_roots_are_exactly_staging_and_bin`",
         ),
         (
             "search-core",
@@ -4254,11 +4363,14 @@ mod g6_dependency_signoff {
             .filter(|(_, _, v, _)| *v == MEASURED_WRITES_ON_PURPOSE)
             .map(|(n, ..)| *n)
             .collect();
+        // 〔SR1b · 2026-09-24〕+`russh-sftp`（V89：SFTP 进本机常驻后端）。它的前提不是一个 feature，
+        //   是「只许一份文件持有它的会话、写根 == 两处」—— 那一条由它签字里点名的边界判据钉（远端写那一层），
+        //   本条只钉 `creds-core` 那一条的前提（feature 开着）。
         assert_eq!(
             purposeful,
-            vec![GATED_CRATE],
+            vec![GATED_CRATE, "russh-sftp"],
             "「就是要它写」那一档的成员变了：{purposeful:?}\n\
-             本条只钉得住 `{GATED_CRATE}` 那一条的前提（feature 开着）。"
+             本条只钉得住 `{GATED_CRATE}` 那一条的前提（feature 开着）；新来的成员要在签字里点名它自己的边界判据。"
         );
         // 针**运行时拼**：清单的注释里逐字写着这个词，而下面只看那一行、不看注释。
         let feature = format!("har{}", "den");
@@ -4479,11 +4591,42 @@ mod g6_dependency_signoff {
             "`{MEASURED_WRITES}` / `{MEASURED_WRITES_ON_PURPOSE}` 这两档今天一条成员都没有 —— 上面那条零命中断言从此没有对照，\
              它是「真干净」还是「尺子瞎了」分不出来了。回来重挑对照。"
         );
+        // 〔SR1b · 2026-09-24〕对照只取**仓内**那几条：`russh-sftp`（第四档，外部 crate）的源码不在树里，
+        //   本尺子够不着 —— 它的写面由签字里点名的边界判据在**用法**一侧钉（只许 `dial/sftp.rs` 一份持有）。
+        //   够不着的只许是这一形：第四档、名字落在远端写协议词表上；别的形照旧红。
         let (scannable, out_of_reach) = split_by_reachability(&with_surface);
+        let external_ok: Vec<&str> = SIGNED
+            .iter()
+            .filter(|(n, _, v, why)| {
+                *v == MEASURED_WRITES_ON_PURPOSE
+                    && why.contains(BOUNDARY_TAG)
+                    && super::remote_write_layer::REMOTE_WRITE_PROTOCOL_WORDS
+                        .iter()
+                        .any(|(w, _)| n.contains(w))
+            })
+            .map(|(n, ..)| *n)
+            .collect();
+        let stray: Vec<&String> = out_of_reach
+            .iter()
+            .filter(|line| {
+                !(line.contains("没有 `path =`")
+                    && external_ok
+                        .iter()
+                        .any(|n| line.trim_start().starts_with(&format!("{n}："))))
+            })
+            .collect();
         assert!(
-            out_of_reach.is_empty(),
+            stray.is_empty(),
             "对照那一档里有本尺子够不着的条目：\n{}",
-            out_of_reach.join("\n")
+            stray
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        assert!(
+            !scannable.is_empty(),
+            "有写面的那两档里一棵仓内 crate 都没有了 —— 对照没了，回来重挑"
         );
         for (name, rel, dir) in &scannable {
             let hits = write_surface_hits(dir, &ruler);
@@ -4668,7 +4811,7 @@ mod g6_dependency_signoff {
                 sftp_crate.as_str(),
                 DEPS,
                 *allowed,
-                "它的写面被一个没开的 feature 关着 / 边界判据：`the_backend_tree_has_no_remote_write_today_and_the_scan_face_is_not_empty`",
+                "它的写面被一个没开的 feature 关着 / 边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_roots_are_exactly_staging_and_bin`",
             )];
             assert!(
                 capability_supplier_misfits(&fake).is_empty(),
@@ -4738,7 +4881,7 @@ mod remote_write_layer {
     //!
     //! # 它守的性质 · 它扫的人群（两行，各只许有一句 —— 同本文件顶上 `KG62` 那对）
     //!
-    //! - **它守的性质是**：backend **进程自身**不许改动**别人机器上**的用户既有数据。
+    //! - **它守的性质是**：backend **进程自身**不许改动**别人机器上**的用户既有数据 —— 〔SR1b · V89〕远端写只许住 `dial/sftp.rs` 一份、只许落在 `~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/`（我们自己的目录）、每一处先过 `fenced_remote`。
     //!   （本机那一半由默认层与只读白名单守；本层守的是**远端**那一半。）
     //! - **它扫的人群是**：本 crate `src/` 递归全部 `.rs` 的生产段源码文本里，
     //!   **把一条远端通道变成文件系统的那一步**（[`REMOTE_CAPABILITY_ANCHORS`]）
@@ -4792,8 +4935,8 @@ mod remote_write_layer {
             FAMILY_SUBSYSTEM,
             "在 SSH 连接上开一个**子系统** —— `ssh-connection` 协议里这是**唯一**一个动作，\
              而 SFTP 就是一个子系统名。换一份 crate、换一套方法名，这一步躲不掉；\
-             反过来，backend 今天**没有任何理由**去开子系统（它那条 `--dial` 臂开的是 \
-             session channel，不是子系统）⇒ 这一条今天在树上恒零，出现即越线。",
+             〔SR1b · V89〕backend 今天**只在一处**开子系统（`dial/sftp.rs`，SFTP 住本机常驻后端）\
+             ⇒ 这一条在那一份之外恒零，出现在第二份即越线（`REMOTE_WRITE_MODULE`）。",
         ),
         (
             FAMILY_SUBSYSTEM,
@@ -5194,9 +5337,113 @@ mod remote_write_layer {
         }
     }
 
-    /// ★★ 正题：**整棵后端树的生产段，今天一处远端写都没有** —— 而这个零不是空转。
+    // ═══ 〔SR1b · 2026-09-24〕V89 之后的正题：**远端写只住一份文件、只许落两处** ═══════════════
+    //
+    // 用户 V89（`99 §1`）逐字「SFTP 怎么进单一常驻后端」一题选「**进本机常驻后端，只写暂存区**」；
+    // F08（自部署）按构造只能在本机后端做 ⇒ 第二处是部署目录。`INVARIANTS §41.6` 的 V89 订正写的就是这三条：
+    // 〔墓碑 —— 此前这里是 `the_backend_tree_has_no_remote_write_today_and_the_scan_face_is_not_empty`〔散文墓碑〕：
+    //  「整棵后端树的生产段，今天一处远端写都没有」，报错里写着「先把 `KU31` 裁掉，裁『许』之后要的是
+    //  一张逐条登记的白名单（写什么 · 路径由谁定 · 哪一道围栏拦着），不是把本层删掉」。V89 裁了；
+    //  下面就是那张白名单 —— 一份文件、两处落点、每个动词前一道围栏，本层的两张网一根针没拔。〕
+
+    /// ★ **远端写的唯一住址**：`(仓库相对路径, why —— 它写什么、路径由谁定、哪一道围栏拦着)`。
+    const REMOTE_WRITE_MODULE: (&str, &str) = (
+        "dial/sftp.rs",
+        "SFTP 住本机常驻后端（V89）：暂存区的上传件（`control/transfer.rs` 经它写）· \
+         自部署的后端二进制 / `.build_id` / `ccm` 入口 / cc-acct-iso（部署链路 `use:\"files\"` 经它写）。\
+         路径由 monitor 给、由本文件的 `fenced_remote` 判：词法（只许两个根）＋ 父目录解链接仍在根下 ＋ \
+         开写前 `lstat` 拒链接",
+    );
+
+    /// 🔴 **写根的期望值：取自 V89 题面**（「只许往远端 `~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/`（部署）写」），
+    /// **不取自被判文件的常量**（两侧同源 = 恒真）。
+    const EXPECTED_WRITE_ROOTS: [&str; 2] = [".cc-monitor/staging", ".cc-monitor/bin"];
+
+    /// 被判文件里写根那一行的锚（运行时拼，免得本文件自己也命中）。
+    fn roots_anchor() -> String {
+        format!("const REMOTE_WRITE_{}: [&str; 2] =", "ROOTS")
+    }
+
+    /// 围栏调用的针（远端那一道）。
+    fn fence_needle() -> String {
+        format!("fenced_{}(", "remote")
+    }
+
+    /// 「开写」那一形的针：协议打开标志里会改东西的那三位（`SSH_FXF_CREAT` / `WRITE` / `TRUNC`）。
+    fn write_open_needles() -> Vec<String> {
+        ["CREATE", "WRITE", "TRUNCATE"]
+            .iter()
+            .map(|f| format!("Open{}::{f}", "Flags"))
+            .collect()
+    }
+
+    /// 从一行 `… = ["a", "b"];` 里抠出双引号里的串（纯函数）。
+    fn quoted(line: &str) -> Vec<String> {
+        line.split('"')
+            .enumerate()
+            .filter(|(i, _)| i % 2 == 1)
+            .map(|(_, t)| t.to_string())
+            .collect()
+    }
+
+    /// 按**顶格**函数头切块，回 `(函数名, 块)`。认 `fn` / `pub fn` / `pub(crate) fn` / `async fn` 及其组合
+    /// （本文件 `tests::fn_chunks` 只认前两形，而被判文件里全是 `pub(crate) async fn`）。
+    pub(super) fn fn_blocks(prod: &str) -> Vec<(String, String)> {
+        let mut out: Vec<(String, String)> = Vec::new();
+        let mut cur: Option<(String, String)> = None;
+        for src_row in prod.split_inclusive('\n') {
+            let at_col0 = !src_row.starts_with(' ') && !src_row.starts_with('\t');
+            let words: Vec<&str> = src_row.split_whitespace().collect();
+            let fn_at = words.iter().position(|w| *w == "fn");
+            let head = at_col0
+                && fn_at.is_some_and(|k| {
+                    words[..k]
+                        .iter()
+                        .all(|w| *w == "pub" || *w == "async" || w.starts_with("pub("))
+                });
+            if head {
+                if let Some(done) = cur.take() {
+                    out.push(done);
+                }
+                let name: String = words[fn_at.unwrap_or(0) + 1]
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .collect();
+                cur = Some((name, String::new()));
+            }
+            if let Some((_, body)) = cur.as_mut() {
+                body.push_str(src_row);
+            }
+        }
+        if let Some(done) = cur.take() {
+            out.push(done);
+        }
+        out
+    }
+
+    /// 判据 ③ 的纯函数那一半：一个函数块里**第一个远端改动**（动词网 ∪ 开写标志）之前有没有围栏调用。
+    /// 回没过围栏的那几处 `函数名 → 那个改动`。
+    pub(super) fn unfenced_remote_mutations(prod: &str) -> Vec<String> {
+        let mut muts = verb_needles();
+        muts.extend(write_open_needles());
+        let fence = fence_needle();
+        let mut bad = Vec::new();
+        for (name, body) in fn_blocks(prod) {
+            let first = muts
+                .iter()
+                .filter_map(|m| body.find(m.as_str()).map(|k| (k, m.clone())))
+                .min_by_key(|(k, _)| *k);
+            let Some((mk, which)) = first else { continue };
+            if !body.find(fence.as_str()).is_some_and(|fk| fk < mk) {
+                bad.push(format!("{name}  →  {which}"));
+            }
+        }
+        bad
+    }
+
+    /// ★★ 正题 ①②：**远端写只住一份文件**（两向相等），**它声明的写根 == 题面那两处**（相等，异源）。
     #[test]
-    fn the_backend_tree_has_no_remote_write_today_and_the_scan_face_is_not_empty() {
+    fn the_remote_write_lives_in_exactly_one_file_and_its_roots_are_exactly_staging_and_bin() {
         let tree = production_tree();
         let bytes: usize = tree.iter().map(|(_, c)| c.len()).sum();
         assert!(
@@ -5208,44 +5455,142 @@ mod remote_write_layer {
             bytes >= TREE_BYTE_FLOOR,
             "扫描面只有 {bytes} 字节（地板 {TREE_BYTE_FLOOR}）—— 每一份都被剥空了，本条在空转"
         );
-        let mut hit: Vec<String> = Vec::new();
-        for (rel, prod) in &tree {
-            if let Some((needle, family)) = violates_remote_write_layer(prod) {
-                hit.push(format!("  src/{rel} 含 `{needle}`（{family}）"));
-            }
-        }
+        let found: std::collections::BTreeSet<String> = tree
+            .iter()
+            .filter(|(_, prod)| violates_remote_write_layer(prod).is_some())
+            .map(|(rel, _)| rel.clone())
+            .collect();
+        let want: std::collections::BTreeSet<String> =
+            [REMOTE_WRITE_MODULE.0.to_string()].into_iter().collect();
+        assert_eq!(
+            found,
+            want,
+            "\n命中远端写能力网 / 动词网的后端文件，与登记的那一份对不上。\n  \
+             盘上有、表里没有（🔴 **远端写长到了第二份文件里**）：{:?}\n  \
+             表里有、盘上没有（那一份搬走了 / 不写了 ⇒ 同轮改登记）：{:?}\n\n\
+             用户 V89：SFTP 进本机常驻后端、只写暂存区（＋ 自部署目录）。写原语只许住一份文件、\
+             每个都先过那一道围栏 —— 第二份文件里的远端写就是一个没人审过的洞。",
+            found.difference(&want).collect::<Vec<_>>(),
+            want.difference(&found).collect::<Vec<_>>()
+        );
         assert!(
-            hit.is_empty(),
-            "backend 生产段里有 {} 处**远端写**：\n{}\n\n\
-             红线 I7 守的性质是「backend 进程自身不许改动用户既有数据」，\
-             而**别人机器上的数据也是用户既有数据** —— 本层就是那一半。\n\
-             ⇒ 真要让后端去写远端，那不是改这条判据的事：\n\
-             ① 先把「远端 rc 能不能替用户写」那一问裁掉（`ROADMAP.md#KU31`，今天还没裁）；\n\
-             ② 裁「许」之后，这里要的是**一张逐条登记的白名单**（形状照 \
-             `WRITE_WHITELIST_MODULES`：写什么 · 路径由谁定 · 哪一道围栏拦着），\
-             不是把本层删掉。",
-            hit.len(),
-            hit.join("\n")
+            REMOTE_WRITE_MODULE.1.trim().chars().count() >= 30,
+            "远端写的住址没写清它写什么"
+        );
+        let prod = tree
+            .iter()
+            .find(|(rel, _)| rel == REMOTE_WRITE_MODULE.0)
+            .map(|(_, p)| p.as_str())
+            .expect("上面刚判过它在");
+        let anchor = roots_anchor();
+        let rows: Vec<&str> = prod
+            .lines()
+            .filter(|l| l.contains(anchor.as_str()))
+            .collect();
+        assert_eq!(
+            rows.len(),
+            1,
+            "写根那一行在 `{}` 里应当恰好一处（锚 `{anchor}`），实得 {}",
+            REMOTE_WRITE_MODULE.0,
+            rows.len()
+        );
+        let got: std::collections::BTreeSet<String> = quoted(rows[0]).into_iter().collect();
+        let want_roots: std::collections::BTreeSet<String> =
+            EXPECTED_WRITE_ROOTS.iter().map(|r| r.to_string()).collect();
+        assert_eq!(
+            got, want_roots,
+            "远端写根与 V89 题面那两处对不上 —— 多一处 = 写能力扩散；少一处 = 暂存区或部署落不下去"
         );
         println!(
-            "K-R79：本趟扫 {} 份生产段源文件 / {bytes} 字节，能力网 {} 针 ＋ 动词网 {} 针，远端写命中 0",
+            "SR1b：本趟扫 {} 份生产段源文件 / {bytes} 字节，远端写只在 {:?}，写根 {:?}",
             tree.len(),
-            capability_needles().len(),
-            verb_needles().len()
+            found,
+            got
+        );
+    }
+
+    /// ★★ 正题 ③：**那一份文件里，每个含远端改动的函数，第一个改动之前先过 `fenced_remote`**
+    /// （形状照第三层 ③ `unfenced_mutations`；漏判面同它：判顺序，判不了「动的就是判过的那一个」——
+    /// 那一半靠 `dial_sftp_tests` 的行为判据：合成服务端改动表的根集合 == 两处、越界零改动）。
+    #[test]
+    fn every_remote_mutation_in_that_file_is_fenced_first() {
+        let tree = production_tree();
+        let prod = tree
+            .iter()
+            .find(|(rel, _)| rel == REMOTE_WRITE_MODULE.0)
+            .map(|(_, p)| p.clone())
+            .unwrap_or_else(|| panic!("`{}` 不在盘上", REMOTE_WRITE_MODULE.0));
+        // 反空真：被判文件里真有改动、真有函数块（否则下面那个空表在空人群上成立）。
+        let blocks = fn_blocks(&prod);
+        let mutating = blocks
+            .iter()
+            .filter(|(_, b)| {
+                verb_needles()
+                    .iter()
+                    .chain(write_open_needles().iter())
+                    .any(|m| b.contains(m.as_str()))
+            })
+            .count();
+        assert!(
+            blocks.len() >= 10 && mutating >= 3,
+            "只切出 {} 个函数块、其中 {mutating} 个含远端改动 —— 切法坏了，本条在空转",
+            blocks.len()
+        );
+        let bad = unfenced_remote_mutations(&prod);
+        assert!(
+            bad.is_empty(),
+            "`{}` 里有远端改动没先过围栏：\n  {}\n\n\
+             每一处远端改动之前必须先有一次 `fenced_remote(` —— 那是「只许两处」在调用点上的形状。",
+            REMOTE_WRITE_MODULE.0,
+            bad.join("\n  ")
+        );
+    }
+
+    /// 判据 ③ 的切法与判定**逐形喂样本**（两向）：三种函数头都切得出；先动后判 ⇒ 红；先判后动 ⇒ 不红。
+    #[test]
+    fn the_fenced_first_judge_bites_on_samples() {
+        let verb = verb_needles()[0].clone();
+        let fence = fence_needle();
+        let flag = write_open_needles()[1].clone();
+        let sample = format!(
+            "pub(crate) async fn good(s: &S) {{\n    let r = {fence}s, p).await?;\n    s.sftp{verb}r).await;\n}}\n\
+             async fn bad(s: &S) {{\n    s.sftp{verb}p).await;\n    let _ = {fence}s, p);\n}}\n\
+             pub fn bad_open(s: &S) {{\n    s.open(p, {flag});\n}}\n\
+             fn reads_only(s: &S) {{\n    s.read(p);\n}}\n"
+        );
+        let names: Vec<String> = fn_blocks(&sample).into_iter().map(|(n, _)| n).collect();
+        assert_eq!(
+            names,
+            ["good", "bad", "bad_open", "reads_only"],
+            "切法认不全三种函数头"
+        );
+        let bad = unfenced_remote_mutations(&sample);
+        assert_eq!(bad.len(), 2, "判定没咬住那两处：{bad:?}");
+        assert!(
+            bad[0].starts_with("bad ") && bad[1].starts_with("bad_open "),
+            "{bad:?}"
+        );
+        assert_eq!(
+            quoted("pub(crate) const X: [&str; 2] = [\".a/b\", \".c/d\"];"),
+            [".a/b", ".c/d"]
         );
     }
 
     /// ★ 动词网是**超集** —— 它今天在这棵树上的误红处数，是一个要现打的读数，不是一句话。
     ///
-    /// 上面那条把两张网合起来断言「0 处」；本条把**动词网单独**拎出来再数一遍，
-    /// 是因为两者说的不是同一件事：合起来那个 0 里，动词网那一半有可能靠
+    /// 上面那条把两张网合起来判「只在一份文件里」；本条把**动词网单独**拎出来、在**那一份之外**再数一遍，
+    /// 是因为两者说的不是同一件事：合起来那个结论里，动词网那一半有可能靠
     /// 「本机恰好没有同名方法」撑着，而那是**今天的巧合**，不是本层的性质。
     /// ⇒ 哪天它红了，先读这条的报错：**它多半不是一次越线，是一次同名误伤**。
+    /// 〔SR1b〕登记的那一份（`dial/sftp.rs`）里的动词是真的远端写，不算误伤 ⇒ 不在本条人群里。
     #[test]
     fn the_verb_net_has_no_false_positive_on_this_tree_today() {
         let tree = production_tree();
         let mut hit: Vec<String> = Vec::new();
         for (rel, prod) in &tree {
+            if rel == REMOTE_WRITE_MODULE.0 {
+                continue;
+            }
             for needle in verb_needles() {
                 let n = prod.matches(needle.as_str()).count();
                 if n > 0 {
@@ -5257,12 +5602,13 @@ mod remote_write_layer {
             hit.is_empty(),
             "动词网在本机代码上命中了 {} 处：\n{}\n\n\
              ⚠ **先判是哪一种**：\n\
-             ① 真的长出了远端写 ⇒ 走上面那条判据的报错里写的两步；\n\
+             ① 真的长出了远端写 ⇒ 它只许住 `{}`、先过那一道围栏；\n\
              ② 本机某个方法**恰好同名**（动词网是超集，头注逐字写着这件事）\
              ⇒ 那要么给这一处一条**逐条登记的例外**（写清它写的是本机的什么），\
              要么把动词网那一条换成更窄的形状。**不许直接把那一条从表上删掉。**",
             hit.len(),
-            hit.join("\n")
+            hit.join("\n"),
+            REMOTE_WRITE_MODULE.0
         );
     }
 

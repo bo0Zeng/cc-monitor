@@ -353,6 +353,16 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
             },
             "link_end",
         ),
+        // 〔SR1b〕传输进度 / 终局（逐字节形状另由 `transfer_frames_have_exactly_these_bytes` 钉）。
+        (
+            Frame::Transfer {
+                id: "xfer-1".into(),
+                got: 0,
+                total: 0,
+                end: None,
+            },
+            "transfer",
+        ),
         (Frame::SessionsReplayed, "sessions_replayed"),
     ];
 
@@ -429,6 +439,40 @@ fn link_frames_have_exactly_these_bytes() {
     ];
     for (f, want) in cases {
         assert_eq!(to_line(&f).unwrap(), want);
+    }
+}
+
+/// 〔SR1b〕★ B8：`transfer` 帧的**逐字节**金标准（四形：进行中 · 传完 · 失败 · 撤）；`end` 缺席时不上线；
+/// 它丢了不可恢复（终局丢了，看的人永远等下去）。
+#[test]
+fn transfer_frames_have_exactly_these_bytes() {
+    let f = |end: Option<crate::wire::TransferEnd>| Frame::Transfer {
+        id: "xfer-7".into(),
+        got: 262144,
+        total: 1000000,
+        end,
+    };
+    let cases = [
+        (
+            f(None),
+            "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000}\n",
+        ),
+        (
+            f(Some(crate::wire::TransferEnd::Done { bytes: 1000000 })),
+            "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"done\",\"bytes\":1000000}}\n",
+        ),
+        (
+            f(Some(crate::wire::TransferEnd::Failed { why: "写暂存件失败".into() })),
+            "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"failed\",\"why\":\"写暂存件失败\"}}\n",
+        ),
+        (
+            f(Some(crate::wire::TransferEnd::Cancelled)),
+            "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"cancelled\"}}\n",
+        ),
+    ];
+    for (frame, want) in cases {
+        assert_eq!(to_line(&frame).unwrap(), want);
+        assert!(!frame.loss_is_recoverable(), "传输帧被判成丢了可恢复");
     }
 }
 
