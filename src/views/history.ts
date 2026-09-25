@@ -57,6 +57,7 @@ import {
 import { getBehavior } from "../behavior";
 import { LS_KEYS, safeGetJson, safeSetJson, safeRemove } from "../local-storage";
 import { formatTimestampSmart } from "../format";
+import { copyText } from "../copy-table";
 import {
   shouldRefetchRemote,
   HISTORY_REMOTE_TTL_MS,
@@ -107,7 +108,6 @@ import {
 import type { Hit as SearchHit } from "../generated/Hit";
 import type { SearchResponse } from "../generated/SearchResponse";
 import type { SessionHits as SearchSessionHits } from "../generated/SessionHits";
-import { copyText } from "../copy-table";
 
 interface SessionTreeNode {
   entry: HistorySessionEntry;
@@ -1318,7 +1318,7 @@ export class HistoryView {
     // `K-R92`：只在**算过了**的时候才说话。「不知道」这一档不出 chip ——
     // ⚠ 界面怎么把「不知道」显示出来（例如一个 `?` 徽标）是 `K-R66` 的面，本件不做；
     // 本件只保证这里不会拿一个没人查过的值去说「没有星标」「没有活会话」。
-    if (isKnown(proj.hasLive) && proj.hasLive) chips.push("● live");
+    if (isKnown(proj.hasLive) && proj.hasLive) chips.push(`● ${copyText("sessionState.live.name")}`);
     if (isKnown(proj.starredCount) && proj.starredCount > 0)
       chips.push(`★ ${proj.starredCount}`);
     if (this.showHidden && isKnown(proj.hiddenCount) && proj.hiddenCount > 0)
@@ -2058,11 +2058,10 @@ export class HistoryView {
     const meta = document.createElement("div");
     meta.className = "history-meta";
     meta.append(
-      // ⚠ `K-R92` 现打如实记：`isLive` 是三态（`null` = 这条路答不出），而这一格仍旧
-      // 把「不知道」显示成 `archived`。**这是本件刻意没做的那一半** —— 界面怎么把
-      // 「不知道」显示出来是 `K-R66` 的面（件文件 `§0b` 逐字：本件只到数据层）。
-      // 判据只判**排序与加减**不许把它当 0，显示这一格不在射程里；写在这里免得它变成暗账。
-      makeChip(e.isLive ? "live" : "archived", e.isLive ? "history-live" : ""),
+      // `isLive` 是三态（`null` = 这条路答不出，`K-R92`）。三态各一个词，全从 `sessionState.*` 取
+      // （`设计/30 §3.5.2`：说到会话状态的字只住那里；`§3.5.7a`：说不清不许说成已结束）。
+      // 〔AR1〕此前这一格显示英文 `live` / `archived`，而且把「不知道」也显示成 `archived`。
+      makeChip(livenessWord(e.isLive), e.isLive === true ? "history-live" : ""),
       makeChip(copyText("history.entry.messages", { count: e.messageCountApprox })),
       makeChip(formatTimestampSmart(e.updatedAt)),
     );
@@ -2242,3 +2241,11 @@ function loadPersistedRemoteCache(): RemoteSourceCache<HistoryProject> | null {
   return { projects, loadedAt: 0 };
 }
 
+/**
+ * 〔AR1〕历史条目的活性三态 → 说给用户的那个词（`设计/30 §3.5.2` · `§3.5.7a`）。
+ * `null` = 这条路答不出 ⇒「说不清」，不许落成「已结束」。
+ */
+function livenessWord(isLive: boolean | null): string {
+  if (isLive === null) return copyText("sessionState.unseen.name");
+  return isLive ? copyText("sessionState.live.name") : copyText("sessionState.ended.name");
+}

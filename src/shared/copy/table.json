@@ -152,6 +152,11 @@
       "zh": "{reason}\n在这台机器的 bash 里执行：\n{cmd}",
       "args": ["reason", "cmd"]
     },
+    "sessionState.live.name": {
+      "kind": "body",
+      "zh": "运行中",
+      "args": []
+    },
     "sessionState.ended.name": {
       "kind": "body",
       "zh": "已结束",
