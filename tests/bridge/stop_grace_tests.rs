@@ -174,6 +174,29 @@ fn s3_every_force_kill_goes_through_the_graceful_wait() {
             .any(|c| *c < at && seg[*c..at].matches("STOP_POLL").count() == 0);
         assert!(inside, "`{needle}` 不在交给 stop_gracefully 的那几个闭包里");
     }
+    // 顺序：自己起的那一支交进去的**第一个**闭包（「请它收尾」）是 SIGTERM；接管那一支先 `kill_adopted`（核身份 ＋ SIGTERM）
+    // 再进 `stop_gracefully`，交进去的第一个闭包是空动作（请求已经发过了）。⇒ 把强杀挪到第一格（「停」＝直接 SIGKILL 那一形）会红。
+    let first_arg = |c: usize| {
+        let rest = seg[c + "stop_gracefully(".len()..].trim_start();
+        rest[..rest.find(",\n").expect("第一个实参的尾")].to_string()
+    };
+    assert_eq!(
+        first_arg(calls[0]),
+        "|| signal_term(pid)",
+        "自己起的那一支第一步不是 SIGTERM"
+    );
+    assert_eq!(
+        first_arg(calls[1]),
+        "|| Ok(())",
+        "接管那一支交进去的第一步变了"
+    );
+    let adopted_term = seg
+        .find("kill_adopted(pid, &bin)")
+        .expect("接管那一支先核身份发 SIGTERM");
+    assert!(
+        calls[0] < adopted_term && adopted_term < calls[1],
+        "kill_adopted 不在接管那一支的等之前"
+    );
     // 正控：数法认得出一处裸 `.kill()`。
     assert_eq!("let _ = c.kill();".matches(".kill()").count(), 1);
 }
