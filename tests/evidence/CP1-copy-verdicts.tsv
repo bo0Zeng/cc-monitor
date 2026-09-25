@@ -1201,3 +1201,6 @@ src/settings/config-surface-section.ts:255	「答不出来」不等于「它没�
 src/settings/config-surface-section.ts:448	这台机器（{…}）的足迹还查不了：要那台机器上的后端来答，它这一版还答不了。	保留	[对外] 远端足迹栏回声对不上时那一句（ST2，用户 09-24 裁远端也有真栏；读口归 RM1a）
 src/settings/panel.ts:1128	足迹	保留	[对外] 机器子页「足迹」那一块的块名（ST2 起经 loadableBlock 建）
 src/first-run-hint.ts:68	诊断：	保留	[对外] 主窗口状态栏那条指路的前缀，与机器列表页「诊断」块同一个词（ST2：原「还差什么：」）
+src/settings/drift-ledger-section.ts:93	这台机器单独的那一份还读不到：这本账今天不分机器，都在本机那一栏里。	保留	[对外] 远端机器「足迹」栏里「未识别的数据」那一句（ST2：账不分机器，只做本机；指向本机那一栏）
+src/settings/drift-ledger-section.ts:96	这本账是 monitor 这次运行的全部：从远端读来的记录也记在这里，今天还分不开是哪台机器。	保留	[对外] 本机「未识别的数据」那一句：账不分机器，当场说清（否则会被当成本机这台的账）
+src/settings/panel.ts:1140	未识别的数据	保留	[对外] 机器子页「足迹」栏里那一块的块名（原顶层「改动足迹」页的漂移记账）

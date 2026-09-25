@@ -81,6 +81,7 @@ const LANDING_IPC = ["load_config", "backend_machines", "backend_status"] as con
  */
 const LOCAL_PAGE_IPC = [
   "config_surface_report", // 足迹（步 14a）
+  "drift_ledger_report", // 〔ST2〕未识别的数据（原顶层「改动足迹」那一块；只有本机那一栏读）
   "load_config", // 账号：先读远端清单（落地页也读它 —— 这里量的是「新增」那一段）
   "list_local_accounts", // 账号（本机那一支）
   "cc_integration_status", // 终端集成（Windows）

@@ -139,20 +139,13 @@ const APP_PAGE_IPC_ON_REOPEN = [
 ] as const;
 
 /**
- * 登记表 ③：**展开「未识别的数据」**才该出现的那一发。
- * 〔ST2〕顶层「改动足迹」页删了，漂移记账并进机器列表页，是个默认收起的 `<details>`。
+ * 登记表 ③：「未识别的数据」那一发（原顶层「改动足迹」页的漂移记账）。
+ * 〔ST2〕顶层页删了，那一块住**每台机器子页的「足迹」栏**，只有本机那一栏读 ⇒ 并进登记表 ④。
  */
 const FOOTPRINT_IPC = ["drift_ledger_report"] as const;
 
-/** 〔ST2〕展开机器列表页上那块「未识别的数据」。 */
-function expandDrift(): void {
-  const box = document.querySelector<HTMLDetailsElement>("[data-drift-ledger]")!;
-  box.open = true;
-  box.dispatchEvent(new Event("toggle"));
-}
-
 /** 登记表 ④：点进某台机器的子页才该出现的那一发（步 14a 之后「足迹」住那儿）。 */
-const MACHINE_PAGE_IPC = ["config_surface_report"] as const;
+const MACHINE_PAGE_IPC = ["config_surface_report", ...FOOTPRINT_IPC] as const;
 
 /** 〔ST2 · 步 15〕「应用」下两个子页各自的那几发（原来合在「应用」一页里）。 */
 const LOGS_PAGE_IPC = ["get_diagnostics_config", "get_log_file_info"] as const;
@@ -234,33 +227,13 @@ describe("`70 §8` 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () 
     expect(since(mark)).toEqual([]);
   });
 
-  it("〔ST2〕展开「未识别的数据」⇒ 恰好多出漂移记账那一发；再合上再展开 ⇒ 一发不多", async () => {
-    new SettingsPanel({ windowMode: true });
-    await tick();
-    const mark = ipc.calls.length;
-    expandDrift();
-    await tick();
-    expect(since(mark)).toEqual(uniq([...FOOTPRINT_IPC]));
-    const mark2 = ipc.calls.length;
-    const box = document.querySelector<HTMLDetailsElement>("[data-drift-ledger]")!;
-    box.open = false;
-    box.dispatchEvent(new Event("toggle"));
-    expandDrift();
-    await tick();
-    expect(since(mark2), "展开第二次又读了一趟 —— 收起 / 展开不是刷新").toEqual([]);
-  });
-
   it("🔴 步 14a：「足迹」那一发跟着**机器子页**走", async () => {
     new SettingsPanel({ windowMode: true });
     await tick();
     // 〔ST2〕顶层「改动足迹」页已删 —— 连那颗导航按钮都不该有。
     expect(document.querySelector("#settings-tab-footprint")).toBeNull();
-    let mark = ipc.calls.length;
-    expandDrift();
-    await tick();
-    expect(since(mark)).not.toContain("config_surface_report");
-    // 点进本机页才发。
-    mark = ipc.calls.length;
+    // 点进本机页才发（足迹 ＋ 未识别的数据，〔ST2〕两块同栏）。
+    const mark = ipc.calls.length;
     document
       .querySelector<HTMLButtonElement>('#settings-tab-machine\\:（本机）')!
       .click();

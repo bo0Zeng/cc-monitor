@@ -1131,6 +1131,14 @@ export class SettingsPanel {
         // 〔ST2〕字段 `footprintSection` 删了：它唯一的读者（每台机器页各放一发）随上面那次合批一起没了。
         ...this.loadableBlock("足迹", () => new ConfigSurfaceSection()),
       },
+      // 〔ST2 · 协调方转主会话裁「改动足迹并进机器页、漂移记账按机器分」〕原顶层「改动足迹」页剩下的那一块。
+      //   与足迹同栏：两块答的都是「这台机器上发生了什么」。今天只有本机那一栏读得到（账不分机器），
+      //   远端那一栏如实说读不到 —— 形状与理由在 `drift-ledger-section.ts` 的 `DRIFT_*` 头注。
+      {
+        appliesTo: "both",
+        tab: "footprint",
+        ...this.loadableBlock("未识别的数据", () => new DriftLedgerSection()),
+      },
     ];
     for (const b of this.perMachineBlocks) this.perMachineSlot.appendChild(b.el);
     // ★ 兜底落点：先挂在列表页上。
@@ -1180,17 +1188,8 @@ export class SettingsPanel {
     });
 
     // 🔴 〔第四波 ST2 · 用户 09-24 裁「并进机器页，删掉顶层页」〕**顶层「改动足迹」页没了。**
-    //   它原来的第一块（足迹）步 14a 已搬进每台机器的子页；剩下的这一块（漂移记账）搬到这里 ——
-    //   机器列表页的「诊断」那一族：它今天是**整个 monitor 进程一本账**、本机与远端的记录混在一起
-    //   （`drift_ledger::record` 的四个写点都不知道是哪台机器），按 `§5.3` 判据 1 属列表页（跨机器）。
-    //   ⚠ **按机器分那一半没做**：要把 origin 一路带进那四个写点（`parser.rs` / `session_map.rs` /
-    //   `ssh_source.rs`），全在本路写区外 —— 报备在 `调研/第四波记录/ST2.md §2`。
-    //   ⚠ I/O：它是个默认收起的 `<details>`，**第一次展开才读账**（与机器页「别名」同一个形状）——
-    //   落地页那一趟的 IPC 一发都不多（`§8` #3）。
-    //   位置：紧跟机器列表那一块、排在 per-machine 兜底落点之前（那两个平时藏着）。
-    this.perMachineFallbackHint.before(
-      this.safeBlock("未识别的数据", () => this.buildDriftBlock()),
-    );
+    //   它剩下的那一块（漂移记账）在**每台机器子页的「足迹」栏**里（per-machine 那一批，见上面
+    //   `perMachineBlocks` 最后一格）。按机器分那一半的设计在 `调研/第四波记录/ST2.md §3`（写区外）。
 
     // S6：cc-bus 驾驶舱**已搬出设置**，成为顶层运营视图（入口 = 命令面板）。
     // S2 当初把它临时单列成一页，正是为了这一刻只删这一段注册 —— 兑现了。
@@ -1216,25 +1215,6 @@ export class SettingsPanel {
 
     body.appendChild(router.element);
     return body;
-  }
-
-  /**
-   * 〔ST2〕漂移记账那一块：默认收起，**第一次展开**才读一次账（之后由它自己的「重新读取」按钮读）。
-   */
-  private buildDriftBlock(): HTMLElement {
-    const drift = new DriftLedgerSection();
-    const box = document.createElement("details");
-    box.dataset.driftLedger = "collapsed";
-    const sum = document.createElement("summary");
-    sum.textContent = "展开看这次运行里没认出来的数据";
-    box.append(sum, drift.element);
-    let loaded = false;
-    box.addEventListener("toggle", () => {
-      if (!box.open || loaded) return;
-      loaded = true;
-      drift.loadNow();
-    });
-    return box;
   }
 
   /**
