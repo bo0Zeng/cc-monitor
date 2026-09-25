@@ -237,6 +237,22 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     invalidateAccountsCache(); // fetchAccounts 有模块级缓存,别泄漏进同文件其它测试
   });
 
+  // 〔C4d · 第四波 4B〕BACKLOG E35：「留空恢复默认」要真的清掉标题 —— 清空传**空串**（缺格 / `null` 在后端 patch 里都是「不改」）。
+  //   守的要求：主会话 09-25 裁（`调研/第四波记录/C4d.md`「主会话裁」第 2 条）注解读写者换成本机常驻后端，patch 语义逐格照搬
+  //   monitor 那一份（`null` = 不改）⇒ 界面这一侧要传对的那一个值。
+  it("重命名留空 ⇒ 交的是空串（清掉），不是 null（后端当「不改」）", async () => {
+    const promptSpy = vi.spyOn(window, "prompt").mockReturnValue("   ");
+    const view = new HistoryView();
+    const row = buildRow(view, entry({ customTitle: "旧名" }), proj());
+    row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
+    menuItem("重命名")!.click();
+    await Promise.resolve();
+    const call = historyCalls(invokeMock.mock.calls, "update_history_metadata")[0];
+    expect(call, "重命名一发都没出去").toBeTruthy();
+    expect(call!.patch).toEqual({ customTitle: "" });
+    promptSpy.mockRestore();
+  });
+
   it("菜单 star 与 inline star 走同一 run（都触发 update_history_metadata）", async () => {
     const view = new HistoryView();
     const row = buildRow(view, entry({ starred: false }), proj());
