@@ -17,6 +17,7 @@
 //! ⚠ 那里还记着两条别在这里重复、但**必须一起读**的：DPAPI 那条「拷走也解不开」的性质**今天没有**，
 //! 以及**远端那一侧不许从 SFTP 的 mode 参数拿机密性**。
 
+use crate::copy_table::copy_text;
 use creds_core::perm::{self, Verdict};
 use creds_core::store;
 use std::path::PathBuf;
@@ -92,7 +93,10 @@ pub(crate) fn read_status_at(path: &std::path::Path) -> Result<ApikeyCredentials
                 masked: String::new(),
                 path: path.display().to_string(),
                 notice: notice_of(&verdict),
-                problem: Some(format!("读不动这份文件：{e}")),
+                problem: Some(copy_text(
+                    "rsCredsStore.status.unreadable",
+                    &[("e", &e.to_string())],
+                )),
             })
         }
     };
@@ -123,7 +127,10 @@ pub(crate) fn read_status_at(path: &std::path::Path) -> Result<ApikeyCredentials
 fn notice_of(v: &Verdict) -> Option<String> {
     match v {
         Verdict::OwnerOnly => None,
-        Verdict::TooWide { how, fix } => Some(format!("{how}。怎么修：{fix}")),
+        Verdict::TooWide { how, fix } => Some(copy_text(
+            "rsCredsStore.notice.howFix",
+            &[("how", &how.to_string()), ("fix", &fix.to_string())],
+        )),
         Verdict::Undetermined { why } => Some(why.clone()),
     }
 }

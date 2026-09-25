@@ -97,6 +97,56 @@
 //! 的文档正在痛批固定 needle。现在审计那条手法被钉成了常驻测试
 //! （`the_scan_catches_the_audits_own_single_use_field`，直接变异**真文件**）。
 
+use crate::copy_table::copy_text;
+
+/// 〔CP2b · 4C〕表里给人看的那一句 —— **取文函数**，不是字面量。
+///
+/// 常量表里调不了函数 ⇒ 放一个不捕获的闭包（`Text(|| copy_text("key", &[]))`），用到时才取文；
+/// 话本身住 `src/shared/copy/table.json`。包一层而不是裸放 `Text`，是为了让
+/// 比较 / 打印 / 序列化都按「取出来的那句话」走：fn 指针的相等比的是地址（编译器不保证唯一），
+/// 也序列化不了。
+#[derive(Clone, Copy)]
+pub struct Text(pub fn() -> String);
+
+impl Text {
+    /// 取出那句话。
+    pub fn get(&self) -> String {
+        (self.0)()
+    }
+}
+
+impl std::fmt::Display for Text {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.get())
+    }
+}
+
+impl std::fmt::Debug for Text {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&self.get(), f)
+    }
+}
+
+impl PartialEq for Text {
+    fn eq(&self, other: &Self) -> bool {
+        self.get() == other.get()
+    }
+}
+
+impl Eq for Text {}
+
+impl std::hash::Hash for Text {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.get().hash(state);
+    }
+}
+
+impl serde::Serialize for Text {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&self.get())
+    }
+}
+
 /// 内容的来源。**每个变体的使用者数现算**（`TOOLS` 是唯一一份），不写死在这里〔`13b`〕。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub enum ToolSource {
@@ -118,7 +168,7 @@ pub enum ToolSource {
     /// 〔`K-R60` 09-11 加〕上面五个变体都预设「这东西的内容出自本仓」，
     /// 而 app 最吃重的那一项（Claude Code 自己写的会话记录）根本不出自本仓。
     /// 没有这一格，它就只能靠**不进表**来表示 —— 而那正是本件在治的病。
-    NotOurs { who: &'static str },
+    NotOurs { who: Text },
 }
 
 /// 装到哪。**变体数与使用者数现算**，不写死在这里〔`13b`〕。
@@ -162,10 +212,7 @@ pub enum ToolDestination {
     ///
     /// `token` 是申报路径里用的占位符（形如 `$BACKEND_PATH`，与 `$PROFILE` 同一套写法，
     /// 因此仍满足 `path` 的 ASCII-graphic 判据）；`what` 是给用户看的「去哪儿改」。
-    UserConfiguredPath {
-        token: &'static str,
-        what: &'static str,
-    },
+    UserConfiguredPath { token: &'static str, what: Text },
     /// **我们不装它** —— 这一格回答的不是「装到哪」，而是「它本来在哪」。
     ///
     /// 〔`K-R60` 09-11 加〕别的五个变体都在回答「我们把它放到哪儿去」。
@@ -173,7 +220,7 @@ pub enum ToolDestination {
     /// 而「声明一个不存在的落点比不声明更坏」这句话本模块自己写过。
     /// ⇒ 显式承认「这不是我们的落点」。
     /// 判据 `installable_tools_declare_where_they_land` 钉住：用了这一格就不许 `installable: true`。
-    NotInstalledByUs { whose: &'static str },
+    NotInstalledByUs { whose: Text },
 }
 
 /// 这个文件在**哪台机器**上。
@@ -262,7 +309,7 @@ pub struct TouchedFile {
     /// 而审计正是从那个口子进来的（塞 `pub needs_sudo: bool`，492 全绿零 warning）。
     /// 现在 `declared_fields_of` 参数化了，`TouchedFile` 与 `ToolSpec` 走同一条纪律
     /// （`touched_file_fields_follow_the_same_discipline`）。
-    pub note: Option<&'static str>,
+    pub note: Option<Text>,
     /// 这个文件在哪台机器上。见 [`HostScope`]——**不加它，审计页在 Windows 上会说假话**。
     pub host: HostScope,
     /// 我们对它做什么。**这决定了 T02 审计页里那一行的措辞与危险程度。**
@@ -286,7 +333,8 @@ pub enum TouchEffect {
     /// 这一档是 T02 审计的阻塞项逼出来的：`~/.cc-bus/` 原先声明成 [`Self::ReadOnly`]，
     /// 于是审计页渲染出「只读（诊断用），我们不写」——**假话**。
     /// cc-monitor 的 cc-bus 驾驶舱有两个按钮走的是
-    /// `cc_bus::cc_bus_send`（远端跑 `cc-send`）与 `cc_bus::cc_bus_spawn`（跑 `cc-spawn`），
+    /// `cc_bus::cc_bus_send`（远端跑 `cc-send`）与 `cc_bus::cc_bus_spawn`（跑 `cc-spawn`）〔散文墓碑〕
+    /// （〔C4e〕今天是界面经通道直接说那台后端的 `bus-send` / `bus-spawn`，后端照旧调那两份脚本 —— 这一档的理由不变），
     /// 而 `cc-bus-lib.sh:221` 是 `printf '%s\n' "$line" >> "$inbox"`、
     /// `cc-spawn:141` 追加 `spawned.tsv`、`cc-register:25` 换掉 `agents.tsv`。
     /// 「我们只是调了别人的命令」不改变**用户的文件因为在我们这儿点了一下而变了**这件事。
@@ -345,7 +393,7 @@ pub struct Carrier {
     ///
     /// ⚠ 它不是 `note`：`note` 说的是「这个**文件**是怎么回事」，
     /// 这一格说的是「这**一份产物**是怎么回事」。
-    pub what: &'static str,
+    pub what: Text,
     pub source: ToolSource,
     pub destination: ToolDestination,
     pub touches: &'static [TouchedFile],
@@ -354,11 +402,13 @@ pub struct Carrier {
 /// 一个受管工具的完整声明。
 ///
 /// **所有字段必须是 `const`-可构造的声明式数据**（无函数指针、无 `dyn`、无 `String`）。
+/// 〔CP2b · 4C〕唯一的例外是给人看的那几格：[`Text`] 里包一个**不捕获的取文闭包**（话住文案表，
+/// 常量里调不了函数）。它不做探测、不读环境，取出来的永远是表里那一句 —— 上面那条边界没破。
 /// 这不是风格偏好，是上面那条「探测机制不进来」边界的落地形式。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ToolSpec {
     pub id: &'static str,
-    pub display_name: &'static str,
+    pub display_name: Text,
     /// 能不能装/升。
     ///
     /// 🔴 **这一格是「app 装的」与「app 只查」两档的分界线**（`K-R60`）：
@@ -409,7 +459,7 @@ impl ToolSpec {
 pub const TOOLS: &[ToolSpec] = &[
     ToolSpec {
         id: "ccm",
-        display_name: "ccm 统一启动器（后端本体的一次性模式）",
+        display_name: Text(|| copy_text("rsToolRegistry.tools.ccmName", &[])),
         // 🔴 〔`K-R48` 第二拍 09-11〕`repo_path` 原来指 `shared/ccm`（那份 1592 行 bash）。
         //    〔用@09-11 `K33`〕「不要有什么 bash 脚本，不要有什么单独的 ccm」⇒ 那个文件删了。
         //    ⇒ 指到那个**入口**的来源：`local_backend::ccm_entry_shim` 现造的三行 `exec` 串
@@ -435,7 +485,7 @@ pub const TOOLS: &[ToolSpec] = &[
         uninstallable: true,
         carriers: &[
             Carrier {
-                what: "远端那台机器上的那条 `ccm` —— 三行 `exec` 的 shim，把 argv 转给那台机器上已经部署好的后端",
+                what: Text(|| copy_text("rsToolRegistry.tools.ccmRemoteWhat", &[])),
                 source: ToolSource::EmbeddedText {
                     repo_path: "src/bridge/src/backend/control/local_backend.rs::ccm_entry_shim",
                 },
@@ -451,17 +501,18 @@ pub const TOOLS: &[ToolSpec] = &[
                     },
                     TouchedFile {
                         path: "~/.bashrc",
-                        note: Some("或用户在部署向导里选的其它 profile"),
+                        note: Some(Text(|| {
+                            copy_text("rsToolRegistry.tools.ccmRemoteProfileNote", &[])
+                        })),
                         host: HostScope::Remote,
                         effect: TouchEffect::FencedBlock,
                     },
                     // 〔GP1 · 第四波〕`设计/01 §6.7b` 迁移 ② ③：旧版入口落在这儿（09-11 前是 bash 启动器、之后是三行 shim）。
                     TouchedFile {
                         path: "~/.local/bin/ccm",
-                        note: Some(
-                            "旧版 cc-monitor 放的入口（今天入口在 ~/.cc-monitor/bin/ccm）：部署后端时、连上那台时各看一眼，\
-                             认出是 cc-monitor 放的就删，认不出的不动",
-                        ),
+                        note: Some(Text(|| {
+                            copy_text("rsToolRegistry.tools.ccmLegacyNote", &[])
+                        })),
                         host: HostScope::Remote,
                         effect: TouchEffect::RetiredLegacy,
                     },
@@ -474,9 +525,10 @@ pub const TOOLS: &[ToolSpec] = &[
             //    落点刻意**不是** `~/.local/bin`：那是用户那份旧的住的地方，
             //    `K34` 逐字「原本的配置**要手动删除**」。
             Carrier {
-                what: "本机（monitor 跑着的这台）上的那条 `ccm` —— **后端二进制自己的改名副本**，不是壳、不是第二份实现",
+                what: Text(|| copy_text("rsToolRegistry.tools.ccmLocalWhat", &[])),
                 source: ToolSource::EmbeddedBinary {
-                    repo_path: "src/bridge/src/backend/control/local_backend.rs::install_local_ccm_entry",
+                    repo_path:
+                        "src/bridge/src/backend/control/local_backend.rs::install_local_ccm_entry",
                 },
                 destination: ToolDestination::LocalHomeRelative(".cc-monitor/bin/ccm*"),
                 touches: &[TouchedFile {
@@ -487,12 +539,7 @@ pub const TOOLS: &[ToolSpec] = &[
                     // 头注禁的「对能用的安装报假警报」。两边由
                     // `the_declared_local_ccm_path_really_matches_the_name_we_install` 对拍。
                     path: "~/.cc-monitor/bin/ccm*",
-                    note: Some(
-                        "🔴 `K-R69`：**本机那条 `ccm` 入口** —— 后端二进制自己的改名副本\
-                         （`control::ccm::intercept` 认 `argv[0]` 的 basename）。\
-                         放在 monitor 自己的目录里，**刻意不碰你 `~/.local/bin` 下那份旧的** —— \
-                         那一份要不要删由你自己定（`K34` 逐字：原本的配置要手动删除）",
-                    ),
+                    note: Some(Text(|| copy_text("rsToolRegistry.tools.ccmLocalNote", &[]))),
                     host: HostScope::Client,
                     effect: TouchEffect::OwnedFile,
                 }],
@@ -501,7 +548,7 @@ pub const TOOLS: &[ToolSpec] = &[
     },
     ToolSpec {
         id: "cc-bus",
-        display_name: "cc-bus 多实例消息总线",
+        display_name: Text(|| copy_text("rsToolRegistry.tools.ccBusName", &[])),
         // ★★ **不是「实现一下就能翻 true」——落点被只读铁律排除**〔PS1 重摸底 08-12〕。
         //
         // 原注释只写「部署尚未实现（B01 只做了"搬进仓固化为基线"）」，那是**浅一层**的理由，
@@ -538,110 +585,107 @@ pub const TOOLS: &[ToolSpec] = &[
         // 一个载体（仓内目录整份铺过去）—— `cc-bus` 不是「同一份字节两处使用」那一族，
         // 这里一条 `Carrier` 就够；载体这一维只在真有几份的那几条上才多。
         carriers: &[Carrier {
-            what: "仓里那份 `src/shared/cc-bus`（整目录），装到 Claude Code 那台机器的 skills 下",
+            what: Text(|| copy_text("rsToolRegistry.tools.ccBusWhat", &[])),
             source: ToolSource::RepoDir {
                 repo_path: "src/shared/cc-bus",
             },
             destination: ToolDestination::LocalHomeRelative(".claude/skills/cc-bus"),
             touches: &[
-            TouchedFile {
-                // 🔴 **这一条是 `K-R60` 补的，而它是被上面那次翻字段逼出来的。**
-                // `installable_tools_declare_where_they_land` 要求「装得了就必须申报装到哪」；
-                // 字段一直是 `false` ⇒ 这条判据一直**跳过** cc-bus ⇒ 部署真正写的那个目录
-                // （`deploy_local_cc_bus` 往 `<claude_dir>/skills/cc-bus/` 铺 17 个文件）
-                // **在这一页上一行都没有**。翻成 `true` 的当场它就红了。
-                // ⇒ 一处假申报盖住的不止它自己那一格。
-                path: "~/.claude/skills/cc-bus",
-                host: HostScope::Either,
-                note: Some(
-                    "部署真正写的那个目录（整目录铺、覆盖前改名备份）；\
-                     装的口只有本机那一个（deploy_local_cc_bus），而 cc-bus 本身跟着 Claude Code 走",
-                ),
-                effect: TouchEffect::OwnedFile,
-            },
-            TouchedFile {
-                path: "~/.claude/settings.json",
-                host: HostScope::Either,
-                note: Some("只碰 hooks 段，且我们不写——只生成待贴文本"),
-                effect: TouchEffect::GenerateOnly,
-            },
-            TouchedFile {
-                path: "~/.local/bin/cc-*",
-                host: HostScope::Either,
-                note: Some(
-                    "cc-bus 自己的安装脚本软链的 11 条命令——**不是 cc-monitor 建的**，                     我们只在钩子诊断时查 cc-register / cc-bus-stop-hook 存不存在。                     注意本页这个 glob 还会数到 cc-acct-iso 的同前缀软链，所以计数偏大 1",
-                ),
-                effect: TouchEffect::ReadOnly,
-            },
-            TouchedFile {
-                path: "~/.cc-bus/",
-                // ★★ **P4c 订正（08-12）：这段理由整个过期了，而过期的是 `P4a` 那一刀造成的。**
-                //
-                // 原文（T04 审计阻塞 2）写「`cc_bus.rs` 的全部 5 个 IPC……都以 `origin` 入参走
-                // `cfg_of` → ssh 远端 exec，**一条本机读取路径都没有**；驾驶舱的 origin 下拉
-                // 来自 `list_remote_mcp_origins`，连"本机"这一档都没有」。
-                //
-                // 两句今天都不成立：`P4a`（08-12）把**读面三条**做成了本机可用
-                // （同一条命令串，只是不包进 ssh），并给驾驶舱的下拉**加了「本机」那一档**。
-                //
-                // ⇒ 改 `Either`。原文担心的那个「用新的假阳性换掉旧的假阴性」今天不成立了：
-                // 本机确实会被读（`P4a`），所以说「本机存在」不再是冒充。
-                // ⚠ 但 `IndirectWrite` 那句仍要留神：**写**面（`cc_bus_send`/`_spawn`/
-                // `_broadcast`/`_kill`）至今**只动远端**（`refuse_local_write`），
-                // 所以 note 里把「读」与「写」分开说，别让人以为本机那个也会被写。
-                host: HostScope::Either,
-                note: Some(
-                    "运行期状态：inbox / 名册 / 队列 / 日志。驾驶舱**读**它（P4a 起本机也读）；\
-                     但**写**面（发消息 / 派活 / 广播 / 收掉）至今只动**远端**那份 —— 本机没有对侧",
-                ),
-                effect: TouchEffect::IndirectWrite,
-            },
+                TouchedFile {
+                    // 🔴 **这一条是 `K-R60` 补的，而它是被上面那次翻字段逼出来的。**
+                    // `installable_tools_declare_where_they_land` 要求「装得了就必须申报装到哪」；
+                    // 字段一直是 `false` ⇒ 这条判据一直**跳过** cc-bus ⇒ 部署真正写的那个目录
+                    // （`deploy_local_cc_bus` 往 `<claude_dir>/skills/cc-bus/` 铺 17 个文件）
+                    // **在这一页上一行都没有**。翻成 `true` 的当场它就红了。
+                    // ⇒ 一处假申报盖住的不止它自己那一格。
+                    path: "~/.claude/skills/cc-bus",
+                    host: HostScope::Either,
+                    note: Some(Text(|| copy_text("rsToolRegistry.tools.ccBusDirNote", &[]))),
+                    effect: TouchEffect::OwnedFile,
+                },
+                TouchedFile {
+                    path: "~/.claude/settings.json",
+                    host: HostScope::Either,
+                    note: Some(Text(|| {
+                        copy_text("rsToolRegistry.tools.ccBusHooksNote", &[])
+                    })),
+                    effect: TouchEffect::GenerateOnly,
+                },
+                TouchedFile {
+                    path: "~/.local/bin/cc-*",
+                    host: HostScope::Either,
+                    note: Some(Text(|| copy_text("rsToolRegistry.tools.ccBusBinNote", &[]))),
+                    effect: TouchEffect::ReadOnly,
+                },
+                TouchedFile {
+                    path: "~/.cc-bus/",
+                    // ★★ **P4c 订正（08-12）：这段理由整个过期了，而过期的是 `P4a` 那一刀造成的。**
+                    //
+                    // 原文（T04 审计阻塞 2）写「`cc_bus.rs` 的全部 5 个 IPC……都以 `origin` 入参走
+                    // `cfg_of` → ssh 远端 exec，**一条本机读取路径都没有**；驾驶舱的 origin 下拉
+                    // 来自 `list_remote_mcp_origins`，连"本机"这一档都没有」。
+                    //
+                    // 两句今天都不成立：`P4a`（08-12）把**读面三条**做成了本机可用
+                    // （同一条命令串，只是不包进 ssh），并给驾驶舱的下拉**加了「本机」那一档**。
+                    //
+                    // ⇒ 改 `Either`。原文担心的那个「用新的假阳性换掉旧的假阴性」今天不成立了：
+                    // 本机确实会被读（`P4a`），所以说「本机存在」不再是冒充。
+                    // ⚠ 但 `IndirectWrite` 那句仍要留神：**写**面（`cc_bus_send`/`_spawn`/〔散文墓碑〕
+                    // `_broadcast`/`_kill`）至今**只动远端**（`refuse_local_write`），
+                    // 〔C4e 订正〕这半句早已不成立（P4f / BS1b 起写面本机也走后端，〔C4e〕起由界面经通道直接说，本机与远端同一条路）；
+                    // 所以 note 里把「读」与「写」分开说，别让人以为本机那个也会被写。
+                    host: HostScope::Either,
+                    note: Some(Text(|| {
+                        copy_text("rsToolRegistry.tools.ccBusStateNote", &[])
+                    })),
+                    effect: TouchEffect::IndirectWrite,
+                },
             ],
         }],
     },
     ToolSpec {
         id: "cc-acct-iso",
-        display_name: "cc-acct-iso 多账号隔离",
+        display_name: Text(|| copy_text("rsToolRegistry.tools.acctIsoName", &[])),
         installable: true,
         uninstallable: false,
         carriers: &[Carrier {
-            what: "vendored 那一份（带 `.vendor_id` 指纹），部署到远端你自己填的那个目录",
+            what: Text(|| copy_text("rsToolRegistry.tools.acctIsoWhat", &[])),
             source: ToolSource::Vendored {
                 repo_path: "src/bridge/vendor/cc-acct-iso",
                 fingerprint_file: ".vendor_id",
             },
             destination: ToolDestination::UserConfiguredPath {
                 token: "$ACCT_ISO_DEST",
-                what: "部署时在账号页填的「部署目录」",
+                what: Text(|| copy_text("rsToolRegistry.tools.acctIsoDestWhat", &[])),
             },
             touches: &[
-            TouchedFile {
-                path: "$ACCT_ISO_DEST",
-                host: HostScope::Remote,
-                note: Some(
-                    "远端，部署目录由你在账号页填的那个值决定（deploy_remote_acct_iso 的 dest_dir）",
-                ),
-                effect: TouchEffect::OwnedFile,
-            },
-            TouchedFile {
-                path: "~/.claude-alt/",
-                // **`Either`**——这一条我改了两次，第二次也不对（T04 审计重要 2）。
-                //
-                // 第一版标 `Client`：错，`accounts.rs` 的账号库列举全是
-                // `list_remote_accounts(origin)` 与「某会话属哪个账号」那一条（〔C4a〕今天经通道 `accounts-sessions`），走 ssh exec。
-                // 第二版改 `Remote`：也不对——本机 `CLAUDE_CONFIG_DIR` 会**指进这个目录**
-                // （这台机器上就是 `~/.claude-alt/z`），`hooks_diag::claude_config_dir` 与
-                // `config_surface` 自己都在读它，`ConfigSurfaceReport.claude_config_dir` 更是
-                // 直接把它打印出来。于是同一页会**自相矛盾**：顶部写着解析基准是
-                // `<用户家目录>/.claude-alt/<账号>`，而这一行写着「位置：远端」。
-                //
-                // 按 `Either` 的定义（"Claude Code 跑在哪台，这东西就在哪台"）它本就是两端皆可。
-                host: HostScope::Either,
-                note: Some(
-                    "账号库：列举走远端 ssh；本机 CLAUDE_CONFIG_DIR 也可能指进来（两端都可能有）",
-                ),
-                effect: TouchEffect::ReadOnly,
-            },
+                TouchedFile {
+                    path: "$ACCT_ISO_DEST",
+                    host: HostScope::Remote,
+                    note: Some(Text(|| {
+                        copy_text("rsToolRegistry.tools.acctIsoDestNote", &[])
+                    })),
+                    effect: TouchEffect::OwnedFile,
+                },
+                TouchedFile {
+                    path: "~/.claude-alt/",
+                    // **`Either`**——这一条我改了两次，第二次也不对（T04 审计重要 2）。
+                    //
+                    // 第一版标 `Client`：错，`accounts.rs` 的账号库列举全是
+                    // `list_remote_accounts(origin)` 与「某会话属哪个账号」那一条（〔C4a〕今天经通道 `accounts-sessions`），走 ssh exec。
+                    // 第二版改 `Remote`：也不对——本机 `CLAUDE_CONFIG_DIR` 会**指进这个目录**
+                    // （这台机器上就是 `~/.claude-alt/z`），`hooks_diag::claude_config_dir` 与
+                    // `config_surface` 自己都在读它，`ConfigSurfaceReport.claude_config_dir` 更是
+                    // 直接把它打印出来。于是同一页会**自相矛盾**：顶部写着解析基准是
+                    // `<用户家目录>/.claude-alt/<账号>`，而这一行写着「位置：远端」。
+                    //
+                    // 按 `Either` 的定义（"Claude Code 跑在哪台，这东西就在哪台"）它本就是两端皆可。
+                    host: HostScope::Either,
+                    note: Some(Text(|| {
+                        copy_text("rsToolRegistry.tools.acctIsoVaultNote", &[])
+                    })),
+                    effect: TouchEffect::ReadOnly,
+                },
             ],
         }],
     },
@@ -658,7 +702,7 @@ pub const TOOLS: &[ToolSpec] = &[
     // **名字塑造了发版流水线的形状**。⚠ 发版那一步归 `K-R42`，本件只把名字与闭集说对。
     ToolSpec {
         id: "backend",
-        display_name: "cc-monitor 后端（一份实现，本机与远端各跑一份）",
+        display_name: Text(|| copy_text("rsToolRegistry.tools.backendName", &[])),
         installable: true,
         // 🔴 〔`K-R63` 09-11〕**这一格原先是 `false`，而它是一处假申报** —— 本件那条新性质
         // 落地的当场把它逮出来的（不是人看出来的）。卸载实现一直在：
@@ -676,7 +720,7 @@ pub const TOOLS: &[ToolSpec] = &[
         //   （另一个 job / musl target）—— **那正是 `K25` 裁的形状，不是缺陷**。
         carriers: &[
             Carrier {
-                what: "安装包放在 app 可执行文件旁边的那一份（`tauri.sidecar.conf.json` 的 `externalBin`）—— 解析次序里**第一个**被采用的就是它（`local_backend::resolve_beside_this_exe`）",
+                what: Text(|| copy_text("rsToolRegistry.tools.backendBesideWhat", &[])),
                 source: ToolSource::EmbeddedBinary {
                     repo_path: "src/bridge/binaries/cc-monitor-backend",
                 },
@@ -686,54 +730,52 @@ pub const TOOLS: &[ToolSpec] = &[
                 // 然后言之凿凿地报「缺失」。
                 destination: ToolDestination::UserConfiguredPath {
                     token: "$APP_DIR",
-                    what: "装机时安装向导里选的那个安装目录（local_backend 与 cc-monitor 主程序同目录）",
+                    what: Text(|| copy_text("rsToolRegistry.tools.backendBesideDestWhat", &[])),
                 },
                 touches: &[TouchedFile {
                     path: "$APP_DIR",
                     host: HostScope::Client,
-                    note: Some(
-                        "本机，随安装包落盘；文件名带 target triple（`cc-monitor-backend-<triple>`，\
-                         Windows 上再带 `.exe`）—— 名字的真相源是 `local_backend::resolve_with`",
-                    ),
+                    note: Some(Text(|| {
+                        copy_text("rsToolRegistry.tools.backendBesideNote", &[])
+                    })),
                     effect: TouchEffect::OwnedFile,
                 }],
             },
             Carrier {
-                what: "这一份产物**自己带着**、旁边没有本机后端时自释放出来的那一份（`build.rs::embed_native_backend` ⇒ `byte_table.rs` 的 `include_bytes!`）",
+                what: Text(|| copy_text("rsToolRegistry.tools.backendEmbeddedWhat", &[])),
                 source: ToolSource::EmbeddedBinary {
                     repo_path: "src/bridge/native-backend/cc-monitor-native",
                 },
                 // 落点带 build_id（`local_backend::local_extract_name`）—— 那不是命名品味：
                 // 远端自部署落的也是这个目录，两边对同一个文件名有不同期望就会互判 stale、
                 // 无限重装。glob 只在末段、只有一个 `*`（`resolve_local_home` 的两条校验）。
-                destination: ToolDestination::LocalHomeRelative(".cc-monitor/bin/cc-monitor-backend-*"),
+                destination: ToolDestination::LocalHomeRelative(
+                    ".cc-monitor/bin/cc-monitor-backend-*",
+                ),
                 touches: &[TouchedFile {
                     path: "~/.cc-monitor/bin/cc-monitor-backend-*",
                     host: HostScope::Client,
-                    note: Some(
-                        "本机自释放出来的那份后端，文件名带 build_id（`local_extract_name`）——\
-                         同一个 build_id 不会重复写；**旧版本不回收**，那笔债记在 `local_extract_name` 头注",
-                    ),
+                    note: Some(Text(|| {
+                        copy_text("rsToolRegistry.tools.backendEmbeddedNote", &[])
+                    })),
                     effect: TouchEffect::OwnedFile,
                 }],
             },
             Carrier {
-                what: "推给远端那台机器、在**那台机器上当本地后端**跑的那一份（`embedded-backends/`，交叉编译的 musl 二进制）",
+                what: Text(|| copy_text("rsToolRegistry.tools.backendRemoteWhat", &[])),
                 source: ToolSource::EmbeddedBinary {
                     repo_path: "embedded-backends",
                 },
                 destination: ToolDestination::UserConfiguredPath {
                     token: "$BACKEND_PATH",
-                    what: "每个远端连接的「backend 路径」配置项",
+                    what: Text(|| copy_text("rsToolRegistry.tools.backendRemoteDestWhat", &[])),
                 },
                 touches: &[TouchedFile {
                     path: "$BACKEND_PATH",
                     host: HostScope::Remote,
-                    note: Some(
-                        "路径由该连接的「backend 路径」配置项决定——**不是**固定的 ~/.local/bin/ccm-backend。\
-                         ⚠ 它在那台机器上就是**那台机器的本地后端**（`K36`），\
-                         「远端」说的是「相对这台 monitor」，不是它的身份",
-                    ),
+                    note: Some(Text(|| {
+                        copy_text("rsToolRegistry.tools.backendRemoteNote", &[])
+                    })),
                     effect: TouchEffect::OwnedFile,
                 }],
             },
@@ -747,38 +789,41 @@ pub const TOOLS: &[ToolSpec] = &[
     //   〔墓碑 —— 这之前它住 [`NOT_MANAGED`]，理由是「vendored 进 monitor 二进制、没有落点」；那个身份 RM1f 起没了，见那一条。〕
     ToolSpec {
         id: "panorama",
-        display_name: "代码全景组件（只装全景引擎的小程序，本机与远端各放一份）",
+        display_name: Text(|| copy_text("rsToolRegistry.tools.panoramaName", &[])),
         installable: true,
         uninstallable: false,
         carriers: &[
             Carrier {
-                what: "放在本机的那一份：这一份产物按本机系统带着的原生小程序（Linux 上没带原生的就用 musl 那份），本机后端第一次答「没装」时放下来（`panorama_bytes::place_local`）",
+                what: Text(|| copy_text("rsToolRegistry.tools.panoramaLocalWhat", &[])),
                 source: ToolSource::EmbeddedBinary {
                     repo_path: "src/bridge/native-backend/cc-monitor-panorama",
                 },
-                destination: ToolDestination::LocalHomeRelative(".cc-monitor/bin/cc-monitor-panorama"),
+                destination: ToolDestination::LocalHomeRelative(
+                    ".cc-monitor/bin/cc-monitor-panorama",
+                ),
                 touches: &[TouchedFile {
                     path: "~/.cc-monitor/bin/cc-monitor-panorama",
                     host: HostScope::Client,
-                    note: Some(
-                        "本机后端找它的第二个候选（后端 `control/panorama.rs::fixed_candidates`）；Windows 上文件名带 `.exe`。\
-                         字节与盘上那份逐字节相同就不重写（`local_backend::place_local_panorama`）",
-                    ),
+                    note: Some(Text(|| {
+                        copy_text("rsToolRegistry.tools.panoramaLocalNote", &[])
+                    })),
                     effect: TouchEffect::OwnedFile,
                 }],
             },
             Carrier {
-                what: "推给远端那台机器的那一份（`embedded-backends/` 里交叉编译的 musl 小程序，按那台的系统与架构挑），那台后端答「没装 / 太旧」时推过去（`panorama_bytes::push_to`）",
+                what: Text(|| copy_text("rsToolRegistry.tools.panoramaRemoteWhat", &[])),
                 source: ToolSource::EmbeddedBinary {
                     repo_path: "embedded-backends",
                 },
-                destination: ToolDestination::RemoteHomeRelative(".cc-monitor/bin/cc-monitor-panorama"),
+                destination: ToolDestination::RemoteHomeRelative(
+                    ".cc-monitor/bin/cc-monitor-panorama",
+                ),
                 touches: &[TouchedFile {
                     path: "~/.cc-monitor/bin/cc-monitor-panorama",
                     host: HostScope::Remote,
-                    note: Some(
-                        "只推给开过远端代码全景的机器；经那台的本机常驻后端文件链路写，写完读回逐字节比对（`sftp::upload_verified`）",
-                    ),
+                    note: Some(Text(|| {
+                        copy_text("rsToolRegistry.tools.panoramaRemoteNote", &[])
+                    })),
                     effect: TouchEffect::OwnedFile,
                 }],
             },
@@ -786,18 +831,20 @@ pub const TOOLS: &[ToolSpec] = &[
     },
     ToolSpec {
         id: "project-mcp",
-        display_name: "项目 MCP 配置",
+        display_name: Text(|| copy_text("rsToolRegistry.tools.projectMcpName", &[])),
         installable: true,
         uninstallable: true,
         carriers: &[
             Carrier {
-                what: "现场生成的一段 JSON，写进你选定的那个项目目录",
+                what: Text(|| copy_text("rsToolRegistry.tools.projectMcpWhat", &[])),
                 source: ToolSource::Generated,
                 destination: ToolDestination::ProjectRelative(".mcp.json"),
                 touches: &[TouchedFile {
                     path: ".mcp.json",
                     host: HostScope::ProjectDir,
-                    note: Some("相对你选定的项目目录"),
+                    note: Some(Text(|| {
+                        copy_text("rsToolRegistry.tools.projectMcpNote", &[])
+                    })),
                     effect: TouchEffect::OwnedFile,
                 }],
             },
@@ -807,14 +854,14 @@ pub const TOOLS: &[ToolSpec] = &[
             //   那一页说得出「有些条目是从别的机器搬来的」（`96 §4`：每个写点都要在足迹里可见）。
             //   远端那台的足迹栏按那台机器问（RM1a），这一格的 `host` 与上一格同是项目目录 —— 在哪台上就算哪台的。
             Carrier {
-                what: "推 / 拉：另一台机器那份 .mcp.json 里你勾的条目，原样合进这台机器上你选定的项目目录",
+                what: Text(|| copy_text("rsToolRegistry.tools.mcpSyncWhat", &[])),
                 source: ToolSource::Generated,
                 destination: ToolDestination::ProjectRelative(".mcp.json"),
                 touches: &[TouchedFile {
                     path: ".mcp.json",
                     host: HostScope::ProjectDir,
                     // 〔AS2 · 4B〕资产目录那一块的「装到这台」（MCP）走的就是这一格（同一条命令 `mcp_sync_apply`，只勾那一条）。
-                    note: Some("相对你在推 / 拉那一块（或资产目录的「装到这台」）里选定的项目目录；只加 / 盖你勾的那几条，别的条目不动"),
+                    note: Some(Text(|| copy_text("rsToolRegistry.tools.mcpSyncNote", &[]))),
                     effect: TouchEffect::OwnedFile,
                 }],
             },
@@ -823,26 +870,37 @@ pub const TOOLS: &[ToolSpec] = &[
     // 〔AS2 · 第四波 4B · V113〕**skill「装到这台」**：资产目录里别的机器有的 skill，用户点了才装到这台 ——
     //   文件原样从来源那台拷来（V112），写经这台后端 `files-put`（带 `expect`，`skill_install.rs`）。
     //   `96 §4`：每个写点都要在足迹里可见。落点由用户点的那一条决定（这台 skills 下以那个名字为名的目录）⇒ 占位符，不猜。
-    //   `uninstallable: false`：没有「卸掉装来的 skill」这条口，如实声明。
+    //   〔SU1 · 第四波 4C · V116〕`uninstallable: true`：用户裁「要，只删装时写进去的文件」—— 装的时候那台后端记下写了哪几个
+    //   （第二条 touch：那台后端自己的装记录），卸口 `skill_install.rs::skill_uninstall_apply` 只删记着的那几个（装完改过的先问）。
+    //   〔墓碑 —— AS2 那一版这里是 `uninstallable: false`（「没有卸掉装来的 skill 这条口，如实声明」）。〕
     ToolSpec {
         id: "skill-install",
-        display_name: "从别的机器装来的 skill",
+        display_name: Text(|| copy_text("rsToolRegistry.tools.skillInstallName", &[])),
         installable: true,
-        uninstallable: false,
+        uninstallable: true,
         carriers: &[Carrier {
-            what: "资产目录里你点了「装到这台」的那个 skill：另一台机器上那个 skill 目录里的文件（你勾的那几个），原样写进这台",
+            what: Text(|| copy_text("rsToolRegistry.tools.skillInstallWhat", &[])),
             source: ToolSource::Generated,
             // 落在 skills 目录下（以那个 skill 为名的那一个子目录；名字由你点的那一条定）—— 与 cc-bus 那一格同一个根。
             destination: ToolDestination::LocalHomeRelative(".claude/skills"),
-            touches: &[TouchedFile {
-                path: "~/.claude/skills",
-                host: HostScope::Either,
-                note: Some(
-                    "装到哪台就写哪台，只写 skills 下以你点的那个 skill 为名的那一个目录；\
-                     只写你勾的那几个文件（不同的要你点了「盖」才盖），别的文件不动",
-                ),
-                effect: TouchEffect::OwnedFile,
-            }],
+            touches: &[
+                TouchedFile {
+                    path: "~/.claude/skills",
+                    host: HostScope::Either,
+                    note: Some(Text(|| {
+                        copy_text("rsToolRegistry.tools.skillInstallNote", &[])
+                    })),
+                    effect: TouchEffect::OwnedFile,
+                },
+                TouchedFile {
+                    path: "~/.cc-monitor/skill-installs.json",
+                    host: HostScope::Either,
+                    note: Some(Text(|| {
+                        copy_text("rsToolRegistry.tools.skillInstallsLedgerNote", &[])
+                    })),
+                    effect: TouchEffect::OwnedFile,
+                },
+            ],
         }],
     },
     // ═══ 〔`K-R62` 09-11〕**从第三档升上来的第一项** ═══
@@ -859,11 +917,11 @@ pub const TOOLS: &[ToolSpec] = &[
     // 档没升 = 活没做完 —— 这一格从此有人数着。
     ToolSpec {
         id: "posix-rc-aliases",
-        display_name: "POSIX rc 里的 ccm 别名块（cc / cct / alphacc …）",
+        display_name: Text(|| copy_text("rsToolRegistry.tools.posixAliasesName", &[])),
         installable: true,
         uninstallable: true,
         carriers: &[Carrier {
-            what: "仓里那份别名脚本（`src/shared/ccm-aliases.sh`），合进你自己选的那份 rc",
+            what: Text(|| copy_text("rsToolRegistry.tools.posixAliasesWhat", &[])),
             // 装进去的内容**就是仓里那份文件**（`sftp::CCM_WRAPPER_SNIPPET` 是它的
             // `include_str!`）。远端那条 `ccm` 用的是同一份 —— 那正是本件不许出现第二份的东西。
             source: ToolSource::EmbeddedText {
@@ -876,32 +934,33 @@ pub const TOOLS: &[ToolSpec] = &[
             // （`account_aliases` 的 `§0e`）。
             destination: ToolDestination::UserConfiguredPath {
                 token: "$POSIX_RC",
-                what: "「按账号生成命令」那一块里那个 rc 下拉 —— 从盘上真实存在的 .bashrc / .zshrc / .bash_profile / .profile 里由你自己选",
+                what: Text(|| copy_text("rsToolRegistry.tools.posixAliasesRcWhat", &[])),
             },
             touches: &[TouchedFile {
                 path: "$POSIX_RC",
                 host: HostScope::Client,
-                note: Some(
-                    "本机（cc-monitor 跑着的这台）的那份 shell rc，具体哪一份由界面上的人选。\
-                     围栏与内容都与远端那个口共用一份 —— 本机与远端装进 rc 的是同一个东西（K15 / K36）",
-                ),
+                note: Some(Text(|| {
+                    copy_text("rsToolRegistry.tools.posixAliasesNote", &[])
+                })),
                 effect: TouchEffect::FencedBlock,
             }],
         }],
     },
     ToolSpec {
         id: "powershell-profile",
-        display_name: "PowerShell 集成",
+        display_name: Text(|| copy_text("rsToolRegistry.tools.powershellName", &[])),
         installable: true,
         uninstallable: true,
         carriers: &[Carrier {
-            what: "现场生成的那段 PowerShell 围栏块，合进用户的 `$PROFILE`",
+            what: Text(|| copy_text("rsToolRegistry.tools.powershellWhat", &[])),
             source: ToolSource::Generated,
             destination: ToolDestination::UserShellProfile,
             touches: &[TouchedFile {
                 path: "$PROFILE",
                 host: HostScope::Client,
-                note: Some("Windows 客户端侧，具体路径由 PowerShell 决定"),
+                note: Some(Text(|| {
+                    copy_text("rsToolRegistry.tools.powershellNote", &[])
+                })),
                 effect: TouchEffect::FencedBlock,
             }],
         }],
@@ -924,24 +983,23 @@ pub const TOOLS: &[ToolSpec] = &[
     //   模块头注那句话本轮已改。`NOT_MANAGED`（刻意不收的）语义不变。
     ToolSpec {
         id: "claude-code",
-        display_name: "Claude Code 的会话记录",
+        display_name: Text(|| copy_text("rsToolRegistry.tools.sessionRecordsName", &[])),
         installable: false,
         uninstallable: false,
         carriers: &[Carrier {
-            what: "别人的产物 —— Claude Code 自己建、自己写的那份会话记录，我们只读",
+            what: Text(|| copy_text("rsToolRegistry.tools.sessionRecordsWhat", &[])),
             source: ToolSource::NotOurs {
-                who: "Claude Code 自己建、自己写",
+                who: Text(|| copy_text("rsToolRegistry.tools.sessionRecordsWho", &[])),
             },
             destination: ToolDestination::NotInstalledByUs {
-                whose: "Claude Code 的数据根（`adapter/claude_code.rs` 的 CLAUDE_LAYOUT.sessions_subdir）",
+                whose: Text(|| copy_text("rsToolRegistry.tools.sessionRecordsWhose", &[])),
             },
             touches: &[TouchedFile {
                 path: "~/.claude/projects/",
                 host: HostScope::Either,
-                note: Some(
-                    "历史面与搜索索引的全部输入（每个项目一个目录、每个会话一份 jsonl）——\
-                     我们只读；装不了，也不该我们装",
-                ),
+                note: Some(Text(|| {
+                    copy_text("rsToolRegistry.tools.sessionRecordsNote", &[])
+                })),
                 effect: TouchEffect::ReadOnly,
             }],
         }],
@@ -1084,11 +1142,15 @@ impl Provisioning {
     ];
 
     /// 给人看的措辞。定在这里，UI 与诊断文本不再各写一遍。
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> String {
         match self {
-            Provisioning::AppShips => "app 自带",
-            Provisioning::UserProvides => "你自己装",
-            Provisioning::NotAnInstall => "不是装出来的",
+            Provisioning::AppShips => copy_text("rsToolRegistry.provisioning.appShips", &[]),
+            Provisioning::UserProvides => {
+                copy_text("rsToolRegistry.provisioning.userProvides", &[])
+            }
+            Provisioning::NotAnInstall => {
+                copy_text("rsToolRegistry.provisioning.notAnInstall", &[])
+            }
         }
     }
 
@@ -1176,12 +1238,16 @@ impl EnvTier {
     ];
 
     /// 给人看的档名。措辞定在这里，UI 与诊断文本不再各写一遍。
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> String {
         match self {
-            EnvTier::AppInstalls => "app 装的",
-            EnvTier::AppShipsNoInstallerYet => "app 该自带 —— 今天还没有装口",
-            EnvTier::UserInstallsWePrompt => "你自己装 —— 缺了我们提示你",
-            EnvTier::AppOnlyChecks => "app 只查",
+            EnvTier::AppInstalls => copy_text("rsToolRegistry.envTier.appInstalls", &[]),
+            EnvTier::AppShipsNoInstallerYet => {
+                copy_text("rsToolRegistry.envTier.appShipsNoInstallerYet", &[])
+            }
+            EnvTier::UserInstallsWePrompt => {
+                copy_text("rsToolRegistry.envTier.userInstallsWePrompt", &[])
+            }
+            EnvTier::AppOnlyChecks => copy_text("rsToolRegistry.envTier.appOnlyChecks", &[]),
         }
     }
 
@@ -1215,7 +1281,7 @@ impl EnvTier {
 /// 后者是设计判断。本表只收后者，所以每一条的 `why` 要给**代码里的住址**，不是一句形容。
 pub struct UnmanagedEnv {
     pub id: &'static str,
-    pub display_name: &'static str,
+    pub display_name: Text,
     /// 🔴 〔`K-R65`〕**「谁该装」** —— 这一格取代了原来那个手填的 `tier`。
     ///
     /// 原文逐字：「`tier: EnvTier`／这一项属于哪一档。**必须写出来** —— 第三档就是靠这一格
@@ -1229,10 +1295,17 @@ pub struct UnmanagedEnv {
     pub named: &'static str,
     /// 它在哪台机器上（与 [`TouchedFile::host`] 同一套语义）。
     pub host: HostScope,
-    /// **app 在哪儿用到它** —— 结尾必须是一个 `<相对 src 的路径>.rs::<符号>` 形态的住址。
+    /// **app 在哪儿用到它** —— 给人看的那一句（住文案表，这里放取它的函数）。
+    ///
+    /// 〔CP2b · 4C〕它原先一格装两件事：给人看的话 ＋ 结尾一个 `<相对 src 的路径>.rs::<符号>` 代码住址。
+    /// 这一格会上配置面（`config_surface` 的 `note`），而界面文字不露源码住址（`设计/91 §2.1`）
+    /// ⇒ 拆成两格：话在这里，住址在 [`Self::site`]。
+    pub why: Text,
+    /// **那个判断长在哪段代码上** —— 必须是一个 `<相对 src 的路径>.rs::<符号>` 形态的住址。
     /// 判据只判「**有没有**住址」；那个住址今天解析不解析得到，由 `structural_scan` 里
     /// 那条扫全仓代码住址的判据管（它会报「找不到这个符号 / 符号搬家了」）。
-    pub why: &'static str,
+    /// 〔CP2b〕从 `why` 的结尾拆出来的那一半 —— 不上界面。
+    pub site: &'static str,
 }
 
 /// 手写那一半**怎么查**。
@@ -1263,7 +1336,7 @@ pub enum EnvProbe {
     ///
     /// ⚠ 填这一支之前先问一遍：是真的查不动，还是**懒得查**？后者写在这里就是
     /// 拿「查不动」当「不查」的遮羞布 —— 那正是本件在治的病。
-    CannotProbe { why: &'static str },
+    CannotProbe { why: Text },
 }
 
 /// 闭集里手写的那一半。
@@ -1274,96 +1347,99 @@ pub enum EnvProbe {
 pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
     UnmanagedEnv {
         id: "claude-cli",
-        display_name: "Claude Code 的可执行文件",
+        display_name: Text(|| copy_text("rsToolRegistry.env.agentCliName", &[])),
         who: Provisioning::UserProvides,
         probe: EnvProbe::OnPath,
         named: "claude",
         host: HostScope::Either,
-        why: "起会话时拿它当启动器直接用；装不装、在哪个版本，app 一概不问 —— \
-              adapter/claude_code.rs::default_launcher",
+        why: Text(|| copy_text("rsToolRegistry.env.agentCliWhy", &[])),
+        site: "adapter/claude_code.rs::default_launcher",
     },
     UnmanagedEnv {
         id: "tmux",
-        display_name: "tmux（会话容器）",
+        display_name: Text(|| copy_text("rsToolRegistry.env.tmuxName", &[])),
         who: Provisioning::UserProvides,
         probe: EnvProbe::OnPath,
         named: "tmux",
         host: HostScope::Either,
-        why: "tmux 容器那条起法要它；缺了只在回绝里报一句能力名 —— \
-              backend/control/ccm_invocation.rs::Refusal",
+        why: Text(|| copy_text("rsToolRegistry.env.tmuxWhy", &[])),
+        site: "backend/control/ccm_invocation.rs::Refusal",
     },
     UnmanagedEnv {
         id: "terminal-exit",
-        display_name: "POSIX 终端出口",
+        display_name: Text(|| copy_text("rsToolRegistry.env.terminalExitName", &[])),
         who: Provisioning::UserProvides,
         probe: EnvProbe::OnPath,
         named: "xdg-terminal-exec",
         host: HostScope::Client,
-        why: "POSIX 上开一个会话窗口只认这一个规范化出口，表里今天就它一项 —— \
-              launch.rs::TERMINAL_EXITS",
+        why: Text(|| copy_text("rsToolRegistry.env.terminalExitWhy", &[])),
+        site: "launch.rs::TERMINAL_EXITS",
     },
     UnmanagedEnv {
         id: "git",
-        display_name: "git",
+        display_name: Text(|| "git".to_string()),
         who: Provisioning::UserProvides,
         probe: EnvProbe::OnPath,
         named: "git",
         host: HostScope::Client,
-        why: "认 skill 所在的工作树与主检出要跑它 —— skill_host_tests.rs::git_common_dir",
+        why: Text(|| copy_text("rsToolRegistry.env.gitWhy", &[])),
+        site: "skill_host_tests.rs::git_common_dir",
     },
     UnmanagedEnv {
         id: "ssh",
-        display_name: "ssh 客户端（含密钥与主机配置）",
+        display_name: Text(|| copy_text("rsToolRegistry.env.sshName", &[])),
         who: Provisioning::UserProvides,
         probe: EnvProbe::OnPath,
         named: "ssh",
         host: HostScope::Client,
-        why: "远端一整侧都经它；app 只探它在不在 PATH 上，装不了 —— \
-              launch.rs::ssh_client_available",
+        why: Text(|| copy_text("rsToolRegistry.env.sshWhy", &[])),
+        site: "launch.rs::ssh_client_available",
     },
     UnmanagedEnv {
         id: "pgrep",
-        display_name: "pgrep",
+        display_name: Text(|| "pgrep".to_string()),
         who: Provisioning::UserProvides,
         probe: EnvProbe::OnPath,
         named: "pgrep",
         host: HostScope::Either,
-        why: "数 cc-bus 的 agent 在不在用它 —— cc_bus_tests.rs::count_now",
+        why: Text(|| copy_text("rsToolRegistry.env.pgrepWhy", &[])),
+        site: "cc_bus_tests.rs::count_now",
     },
     UnmanagedEnv {
         id: "xdg-open",
-        display_name: "xdg-open",
+        display_name: Text(|| "xdg-open".to_string()),
         who: Provisioning::UserProvides,
         probe: EnvProbe::OnPath,
         named: "xdg-open",
         host: HostScope::Client,
-        why: "开链接 / 开日志目录走它 —— lib.rs::open_with_os",
+        why: Text(|| copy_text("rsToolRegistry.env.xdgOpenWhy", &[])),
+        site: "lib.rs::open_with_os",
     },
     UnmanagedEnv {
         id: "login-shell",
-        display_name: "bash 登录 shell",
+        display_name: Text(|| copy_text("rsToolRegistry.env.loginShellName", &[])),
         who: Provisioning::UserProvides,
         probe: EnvProbe::OnPath,
         named: "bash",
         host: HostScope::Either,
-        why: "探 ccm 能力时要一个登录 shell 把用户的 rc 读进来 —— ccm_probe.rs::probe_with",
+        why: Text(|| copy_text("rsToolRegistry.env.loginShellWhy", &[])),
+        site: "ccm_probe.rs::probe_with",
     },
     UnmanagedEnv {
         id: "mcp-server",
-        display_name: "MCP server 本体（`.mcp.json` 里那个 command）",
+        display_name: Text(|| copy_text("rsToolRegistry.env.mcpServerName", &[])),
         who: Provisioning::UserProvides,
         // 🔴 **这一条是「查不动」而不是「不查」的活体** —— 它不是懒：
         // 那个 command 是**用户在 `.mcp.json` 里写的一行**，本页连是哪个项目都不知道
         // （`project-mcp` 的落点是 `ProjectRelative`）⇒ 名字本身就是个占位符，
         // 拿 `$MCP_COMMAND` 去 `PATH` 上找只会恒答「没有」，那是一句**自信的错答案**。
         probe: EnvProbe::CannotProbe {
-            why: "这个名字由你项目里的 `.mcp.json` 那行 command 决定，而本页不猜是哪个项目 —— \
-                  要查得先选定项目再读那份配置",
+            why: Text(|| copy_text("rsToolRegistry.env.mcpServerCannotProbe", &[])),
         },
         named: "$MCP_COMMAND",
         host: HostScope::ProjectDir,
-        why: "我们写得了那份配置，**被它指到的可执行本体不装也不查** —— \
-              mcp.rs::write_project_mcp_server",
+        why: Text(|| copy_text("rsToolRegistry.env.mcpServerWhy", &[])),
+        site: "mcp.rs::write_project_mcp_server",
     },
     // ═══ 🔴 〔`K-R65` 09-11〕**这一条是 `KR65D2` 的题面本身** ═══
     //
@@ -1375,15 +1451,15 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
     // 「这个状态申报不出来」。
     UnmanagedEnv {
         id: "cc-acct-iso-local",
-        display_name: "cc-acct-iso 本机那份",
+        display_name: Text(|| copy_text("rsToolRegistry.env.acctIsoLocalName", &[])),
         who: Provisioning::AppShips,
         // 零装口**不等于**零查口 —— 它是一条实打实的 `~/` 路径，查得动。
         // 〔`K-R60` 那句「本机侧零装口、零查口」里的后半句，正是本件要改掉的行为。〕
         probe: EnvProbe::HomePath,
         named: "~/.local/bin/cc-acct-iso",
         host: HostScope::Client,
-        why: "本机侧零装口（`K38` 裁了该由 app 装，实现还欠着）；有装口的只有远端那半 —— \
-              acct_iso_deploy.rs::check_remote_acct_iso",
+        why: Text(|| copy_text("rsToolRegistry.env.acctIsoLocalWhy", &[])),
+        site: "acct_iso_deploy.rs::check_remote_acct_iso",
     },
     // ═══ 🔴 〔`K-R65` 09-11〕**第三样「随产品分发的东西」—— 它此前一张表都没进** ═══
     //
@@ -1443,12 +1519,15 @@ pub enum EnvBacking {
 /// 闭集里的一项。
 pub struct EnvEntry {
     pub id: &'static str,
-    pub display_name: &'static str,
+    pub display_name: String,
     /// **谁该装**（`K38`）。「app 自带」这个人群就是 `who == AppShips` 的那几项。
     pub who: Provisioning,
     /// **档** —— 由 `who` ×「今天有没有装口」两格**派生**（[`EnvTier::of`]），不是手填的。
     pub tier: EnvTier,
-    pub why: &'static str,
+    /// 给人看的那一句（〔CP2b〕取过文的）。
+    pub why: String,
+    /// 代码住址（〔CP2b〕从 `why` 拆出来的那一半，见 [`UnmanagedEnv::site`]）。
+    pub site: &'static str,
     pub backing: EnvBacking,
 }
 
@@ -1478,24 +1557,25 @@ pub fn environment() -> Vec<EnvEntry> {
             let who = Provisioning::of_tool(t);
             EnvEntry {
                 id: t.id,
-                display_name: t.display_name,
+                display_name: t.display_name.get(),
                 who,
                 tier: EnvTier::of(who, t.installable),
-                why: "有 ToolSpec ⇒ 「谁该装」由 destination 派生、「今天有没有装口」读 \
-                      installable —— tool_registry.rs::environment",
+                why: copy_text("rsToolRegistry.environment.managedWhy", &[]),
+                site: "tool_registry.rs::environment",
                 backing: EnvBacking::Managed(t),
             }
         })
         .collect();
     out.extend(UNMANAGED_ENV.iter().map(|u| EnvEntry {
         id: u.id,
-        display_name: u.display_name,
+        display_name: u.display_name.get(),
         who: u.who,
         // 🔴 **第二格是 `false` 而不是一个字段** —— 手写那一半没有 `ToolSpec`，
         // 也就没有落点、没有 `touches`、没有装 / 卸实现可对拍 ⇒ 「今天有没有装口」
         // 这个问题在这一半上**有唯一答案**，不该再开一个能填错的格子。
         tier: EnvTier::of(u.who, false),
-        why: u.why,
+        why: u.why.get(),
+        site: u.site,
         backing: EnvBacking::Named {
             named: u.named,
             host: u.host,

@@ -2,6 +2,7 @@
 // UI 模块里、被 tabs/account-chip/cards/main/port-forward 等非 UI 模块依赖）。本模块**纯数据**：
 // config.json `remote` 段的类型 + 读写 CRUD + 反查/筛选纯函数，无 DOM、无 UI 依赖。行为与抽出前逐字节等价。
 import { loadConfig, saveConfig } from "./config";
+import { copyText } from "./copy-table";
 
 /**
  * 单台远端机器配置（config.json `remote.hosts[]` 的元素）。**key 必须与 Rust reader 一致**。
@@ -75,7 +76,7 @@ export interface RemoteConfig {
  * 从前旧的单对象写法（`remote: { enabled, host, … }`）会被悄悄当成 1 台；那一支删了。
  */
 export const REMOTE_CONFIG_UNRECOGNIZED =
-  "远端配置认不出：config.json 的 remote 段没有 hosts 列表（旧的单台写法不再认），这里一台都不显示；在这里重新添加机器，会按新写法存下来";
+  copyText("remoteConfig.remoteConfigUnrecognized.unrecognized");
 
 /**
  * F83（#39）:可打开文件窗口的远端主机——`host` 与 `user` 都非空（`file-window.ts::openFileWindow` 的前置，

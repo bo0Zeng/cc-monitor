@@ -16,6 +16,7 @@ import { decodeAccountsList, decodeTrust } from "./accounts-decode";
 import type { AccountsState, SessionAccount } from "./accounts";
 import type { ApikeyRoutingView } from "./apikey-routing-view";
 import { getDefaultName } from "./account-prefs";
+import { copyText } from "./copy-table";
 
 const ACCOUNTS_TTL_MS = 30_000; // 账号列表极少变（迁移/登录才变），缓存久一点省 SSH
 const SESSION_ACCOUNTS_TTL_MS = 8_000; // 会话账号归属随起停变，照 tabs.ts tmuxCache 的 8s
@@ -64,7 +65,7 @@ export async function fetchAccounts(origin: Origin, force = false): Promise<Acco
     state = {
       origin,
       available: false,
-      error: saidOf(e, ACCOUNTS_OLD_BACKEND),
+      error: saidOf(e, accountsOldBackend()),
       meta: null,
       accounts: [],
       defaultName: null,
@@ -84,7 +85,8 @@ const ACCOUNTS_BUDGET_MS = 30_000;
 const TRUST_BUDGET_MS = 30_000;
 
 /** 那台后端比「账号清单上帧面」还老（不认这条命令）时的那句话。含「过旧」⇒ [`deriveUi`] 落「需更新」那一档。 */
-const ACCOUNTS_OLD_BACKEND = "那台机器的后端版本过旧，还不认账号清单这一问 —— 重装那台机器的后端就有了";
+// 〔CP2b〕取值器、用到时才取文（模块顶层不留取文口调用 —— 顶层调用会让 Rollup 挪 chunk）。
+const accountsOldBackend = (): string => copyText("accounts.oldBackend.accounts");
 
 /**
  * 这次起会话的是哪一家（适配器 id，后端并 apikey 表时认它）。**值从后端来**：生成物里的 `ACTIVE_AGENT`
@@ -238,7 +240,7 @@ export async function checkTrust(
       available: false,
       trusted: false,
       known: false,
-      error: saidOf(e, "那台机器的后端版本过旧，还不认信任预检这一问 —— 重装那台机器的后端就有了"),
+      error: saidOf(e, copyText("accounts.oldBackend.trust")),
     };
   }
 }

@@ -45,11 +45,13 @@ import { sanitizeRemoteLauncher } from "./shell-quote.ts";
 import { probeCcm } from "./ccm-probe";
 import { getBehavior } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
+import { sendInto, type SendIntoOutcome } from "./tmux-control";
 import { AGENT_PROFILE } from "./agent-profile";
 // 〔FE1〕起新会话的名字只从一个家取：`tmux-name-mint.ts`（列名单 ＋ 铸名 ＋ 「列不出 ⇒ 不起」）。
 import { mintFreshTmuxName, refuseUnmintable } from "./tmux-name-mint";
 import { LOCAL_LAUNCH_ACCOUNT_WIRE as ACCOUNT_WIRE } from "./generated/launch-render-facts";
 import type { LaunchContext, LaunchPlan } from "./launch-plan";
+import { copyText } from "./copy-table";
 
 /** P1：Rust 侧 `payload::refuse()` 给业务拒绝打的标。**跨语言双写点** ——
  *  Rust 那侧是 `backend::control::payload::REFUSE_TAG`，两处必须逐字一致。
@@ -119,8 +121,7 @@ export function mintRbindToken(): string {
   const c: Crypto | undefined = globalThis.crypto;
   if (!c || typeof c.getRandomValues !== "function") {
     throw new Error(
-      "拒绝铸造启动期令牌：本宿主没有 CSPRNG（crypto.getRandomValues 不在）。" +
-        "刻意不回落 Math.random —— 那会让「令牌不可猜」这条性质静默失效（设计/80 §8.6 ③）。",
+      copyText("remoteLaunchRun.token.noRandom"),
     );
   }
   const bytes = new Uint8Array(RBIND_TOKEN_ENTROPY_BYTES);
@@ -128,7 +129,7 @@ export function mintRbindToken(): string {
   const token = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
   if (!isValidRbindToken(token)) {
     // 与维度侧**同一条形状**（不在这里写第二份正则）。
-    throw new Error(`铸币口产出了形状不对的令牌（内部错误）: ${JSON.stringify(token)}`);
+    throw new Error(copyText("remoteLaunchRun.token.badShape", { token: JSON.stringify(token) }));
   }
   return token;
 }
@@ -249,7 +250,7 @@ async function renderLaunchCommand(
     } catch (e) {
       // 后端拒了（非法 configDir / 会裂的 arg）⇒ **不静默用 TS 版糊过去**：
       // 那等于把一次 fail-closed 变成 fail-open。原样抛给调用方的 catch（它会 toast）。
-      throw new Error(`后端拒绝渲染载荷：${String(e)}`);
+      throw new Error(copyText("remoteLaunchRun.render.payloadRefused", { e: String(e) }));
     }
   }
   // ★★★ `设计/90 §4 E` 收官那一刀〔步 22b·B 2026-09-20〕：**外层 tmux 那三格也走后端了。**
@@ -280,7 +281,7 @@ async function renderLaunchCommand(
   } catch (e) {
     // 同上一格：带 `REFUSE:` 标的是坏输入（换条路渲染只会糊过去），不带标的是通道异常；
     // 两者在这一格的处置**相同** —— 因为这里已经没有第二条路了。
-    throw new Error(`后端拒绝渲染外层 tmux 命令：${String(e)}`);
+    throw new Error(copyText("remoteLaunchRun.render.outerRefused", { e: String(e) }));
   }
 }
 
@@ -301,9 +302,9 @@ async function renderCliViaBackend(
     const res = await commands.render_ccm_launch({ req });
     return res.ok && res.cmd !== null
       ? { ok: true, cmd: res.cmd }
-      : { ok: false, reason: res.reason ?? "后端未给降级理由" };
+      : { ok: false, reason: res.reason ?? copyText("remoteLaunchRun.renderCli.noReason") };
   } catch (e) {
-    return { ok: false, reason: `IPC 渲染失败，走兜底：${String(e)}` };
+    return { ok: false, reason: copyText("remoteLaunchRun.renderCli.fallback", { e: String(e) }) };
   }
 }
 
@@ -378,7 +379,7 @@ export function buildCliRenderRequest(
 export function buildTmuxOuterRenderRequest(plan: LaunchPlan): PayloadRenderRequest {
   const base = buildPayloadRenderRequest(plan);
   if (plan.action.kind === "attach") {
-    if (plan.container.kind !== "tmux") throw new Error("attach 必须是 tmux 容器");
+    if (plan.container.kind !== "tmux") throw new Error("bug: attach needs a tmux container"); // 〔CP2b〕程序员错误，刻意英文（不是对外文案，同 copy-table.ts 的两条抛错）
     return {
       ...base,
       env: [],
@@ -393,9 +394,9 @@ export function buildTmuxOuterRenderRequest(plan: LaunchPlan): PayloadRenderRequ
       },
     };
   }
-  if (plan.container.kind !== "tmux") throw new Error("这三格必须是 tmux 容器");
+  if (plan.container.kind !== "tmux") throw new Error("bug: these launch shapes need a tmux container");
   if (plan.container.mode === "attach-only") {
-    throw new Error("不可达：attach-only 应由 action.kind==='attach' 那一格处理");
+    throw new Error("unreachable: attach-only is handled by the action.kind === 'attach' branch");
   }
   return {
     ...base,
@@ -488,14 +489,14 @@ async function invokeLaunchOrCopyFallback(
     const byDesign = String(err).includes(POSIX_NO_WINDOW_MARKER);
     const headline = byDesign
       ? copied
-        ? "本机不开终端窗口，命令已复制"
-        : "本机不开终端窗口，请手动复制以下命令"
+        ? copyText("remoteLaunchRun.copyFallback.noWindowCopied")
+        : copyText("remoteLaunchRun.copyFallback.noWindowManual")
       : copied
         ? toasts.failureCopied
         : toasts.failureNotCopied;
     // ★ 本机没有 ssh 那一跳，文案不能照抄远端那句〔08-12〕。
     const where =
-      origin === LOCAL_ORIGIN ? "在你自己的 bash 里执行：" : `到远端 [${origin}] 的 ssh 终端粘贴执行：`;
+      origin === LOCAL_ORIGIN ? copyText("remoteLaunchRun.copyFallback.runLocal") : copyText("remoteLaunchRun.copyFallback.runRemote", { machine: origin });
     showActionFailureToast(
       headline,
       `${String(err)}\n${where}\n${cmd}`,
@@ -524,14 +525,14 @@ export async function runRemoteResume(
     cmd = await renderLaunchCommand(origin, ctx, plan);
     token = rbindTokenOf(plan);
   } catch (err) {
-    showActionFailureToast("无法构造 resume 命令", String(err));
+    showActionFailureToast(copyText("remoteLaunchRun.resume.buildFailed"), String(err));
     return false;
   }
   return invokeLaunchOrCopyFallback(origin, cmd, {
-    success: "已拉起远端 resume",
-    successDetail: `新终端窗口正在连接 [${origin}] 并 resume 该会话。`,
-    failureCopied: "拉起失败，已复制 resume 命令",
-    failureNotCopied: "拉起失败，请手动复制以下命令",
+    success: copyText("remoteLaunchRun.resume.started"),
+    successDetail: copyText("remoteLaunchRun.resume.startedBody", { machine: origin }),
+    failureCopied: copyText("remoteLaunchRun.resume.failedCopied"),
+    failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
   }, token);
 }
 
@@ -561,14 +562,14 @@ export async function runRemoteResumeTmux(
     cmd = await renderLaunchCommand(origin, ctx, plan);
     token = rbindTokenOf(plan);
   } catch (err) {
-    showActionFailureToast("无法构造 tmux resume 命令", String(err));
+    showActionFailureToast(copyText("remoteLaunchRun.resumeTmux.buildFailed"), String(err));
     return false;
   }
   return invokeLaunchOrCopyFallback(origin, cmd, {
-    success: "已拉起 tmux resume",
-    successDetail: `新终端窗口正在连接 [${origin}] 并在 tmux 会话里 resume 该会话。`,
-    failureCopied: "拉起失败，已复制 tmux resume 命令",
-    failureNotCopied: "拉起失败，请手动复制以下命令",
+    success: copyText("remoteLaunchRun.resumeTmux.started"),
+    successDetail: copyText("remoteLaunchRun.resumeTmux.startedBody", { machine: origin }),
+    failureCopied: copyText("remoteLaunchRun.resumeTmux.failedCopied"),
+    failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
   }, token);
 }
 
@@ -589,8 +590,8 @@ export async function runRemoteResumeTmux(
  *    ⇒ monitor 侧超时 ⇒ 回落 ⇒ **载荷第二次被键入**，而这次落进一个**已经在跑 claude 的 pane**
  *    ⇒ 那条 `env … claude --resume …` 被当成 **prompt 提交**、写进对话历史、**不可撤销**。
  *
- *  ⇒ 分流判定**不在这里**，它住 Rust 侧的 `backend/control/backend_route.rs`（与 `kill`/`send-keys`
- *  共用一份），这里只读它翻出来的 `mayFallBack`。
+ *  ⇒ 分流判定**不在这里**：〔C4e〕它住 `ipc/chan-caller.ts::provablyNotSent`（`tmux-control.ts::sendInto` 调它），
+ *  与 Rust 侧 `backend/control/backend_route.rs::route_call_error` 同一条规则、跨语言金样钉着两份；这里只读它的三态结局。
  *
  *  ⚠ **`"refused"` 要 toast**（改了原来那条「绝不 toast」的纪律）：回落是用户看不出区别的，
  *  所以不该吵；而**拒绝**意味着这次就地 resume 没做成，用户必须知道 —— 否则他会以为成功了。
@@ -604,25 +605,12 @@ export async function runRemoteResumeTmux(
  *  **同样的坏输入在回落那条路上照样被拒**，不再有「换条路糊过去」这个出口。
  *  ⚠ 诚实边界：本条说的是「两条路的拒绝口径同源」，**不是**「回落那一跳不会重做」——
  *  重做安不安全仍由 `mayFallBack` 那条判定（F14）负责，一个字没动。 */
-async function sendIntoViaBackend(
-  origin: string,
-  name: string,
-  plan: LaunchPlan,
-): Promise<{ verdict: "typed" | "fallback" | "refused"; reason?: string }> {
+async function sendIntoViaBackend(origin: string, name: string, plan: LaunchPlan): Promise<SendIntoOutcome> {
+  let payload: string;
   try {
-    const payload = await commands.render_launch_payload({
+    payload = await commands.render_launch_payload({
       req: buildPayloadRenderRequest(plan),
     });
-    const res = await commands.backend_send_into({ req: { origin, name, payload } });
-    if (res.typed) return { verdict: "typed" };
-    const reason = res.reason ?? "backend 未给理由";
-    if (res.mayFallBack) {
-      console.debug(`[F14] send-into 回落到整串（证明没发出去）：${reason}`);
-      return { verdict: "fallback", reason };
-    }
-    // ★ 不许回落：backend 说过话，或我们无法证明它没执行。
-    console.debug(`[F14] send-into 被拒，**不回落**：${reason}`);
-    return { verdict: "refused", reason };
   } catch (e) {
     // ★★ P1：这里原来把**两件事**混成一件，注释是这么写的 ——
     //   「两者都在后端那一跳之前 ⇒ 能证明什么都没发出去 ⇒ 可回落」
@@ -637,7 +625,7 @@ async function sendIntoViaBackend(
     // 分法：Rust 的**业务拒绝**都经 `payload::refuse()` 打了 `REFUSE:` 标
     //（那侧有判据 `every_business_rejection_is_tagged` 钉住「一条都不许裸写」）。
     // 带标 ⇒ 坏输入，换条路渲染只会把坏输入糊过去 ⇒ **refused，不回落**。
-    // 不带标 ⇒ IPC/序列化异常 ⇒ 通道问题，与载荷本身无关 ⇒ 照旧 fallback。
+    // 不带标 ⇒ IPC/序列化异常 ⇒ 还没到后端那一跳，与载荷本身无关 ⇒ 照旧 fallback。
     //
     // ⚠ 诚实边界：这是**字符串约定不是类型**（全仓 70 个 tauri command 的错误都是 `String`，
     // 本件不在这里开第一个结构化的口 —— 那是 `U6`）。手写一个带同样前缀的普通错误串会被误判。
@@ -646,9 +634,16 @@ async function sendIntoViaBackend(
       console.debug(`[P1] send-into 载荷渲染被拒，**不回落**（同一道闸只会再拒一次）：${raw}`);
       return { verdict: "refused", reason: raw };
     }
-    console.debug(`[F14] send-into 回落到整串（通道异常，尚未发出）：${raw}`);
+    console.debug(`[F14] send-into 回落到整串（载荷渲染那一跳异常，还没发往后端）：${raw}`);
     return { verdict: "fallback", reason: raw };
   }
+  // 〔C4e · 第四波 4C〕键入那一跳经 `tmux-control.ts::sendInto` 直接问那台机器的后端（`launch{mode:"send-into"}`）；
+  //   此前是 monitor 的 `backend_send_into`〔散文墓碑〕。「能不能回落」那条判定（F14）随之搬到 `ipc/chan-caller.ts::provablyNotSent`，
+  //   与 Rust `backend_route::route_call_error` 同一条规则、跨语言金样钉着两份。
+  const sent = await sendInto(origin, name, payload);
+  if (sent.verdict === "fallback") console.debug(`[F14] send-into 回落到整串（证明没发出去）：${sent.reason}`);
+  if (sent.verdict === "refused") console.debug(`[F14] send-into 被拒，**不回落**：${sent.reason}`);
+  return sent;
 }
 
 /** F03：往一个**已存在的空 tmux**（idle-tmux：claude 已退、只剩交互 shell 的 `<sid8>-cc`）就地
@@ -684,7 +679,7 @@ export async function runRemoteResumeIntoExistingTmux(
       // ★ F14：**不许回落**。那条整串没有 §34 的门 ⇒ 回落等于用一条无门的路把
       //   「被门拒绝」或「可能已经键入过」重做一遍（后者会把载荷第二次提交给正在跑的 claude）。
       //   ⇒ 就地失败，并且**要让用户看见** —— 这次就地 resume 没做成。
-      showActionFailureToast("就地 resume 未执行", sent.reason ?? "远端拒绝，且无法确认是否已执行");
+      showActionFailureToast(copyText("remoteLaunchRun.inPlace.notRun"), sent.reason ?? copyText("remoteLaunchRun.inPlace.refusedUnsure"));
       return false;
     }
     if (sent.verdict === "typed") {
@@ -695,16 +690,16 @@ export async function runRemoteResumeIntoExistingTmux(
       cmd = await renderLaunchCommand(origin, ctx, plan);
     }
   } catch (err) {
-    showActionFailureToast("无法构造就地 resume 命令", String(err));
+    showActionFailureToast(copyText("remoteLaunchRun.inPlace.buildFailed"), String(err));
     return false;
   }
   return invokeLaunchOrCopyFallback(origin, cmd, {
-    success: "已在原 tmux 就地 resume",
+    success: copyText("remoteLaunchRun.inPlace.done"),
     successDetail: viaBackend
-      ? `远端后端已在 tmux 会话「${name}」里就地 resume（复用、不新建），新终端窗口正在连接 [${origin}] 接上它。`
-      : `新终端窗口正在连接 [${origin}] 并在原 tmux 会话「${name}」里 resume 该会话（复用、不新建）。`,
-    failureCopied: "拉起失败，已复制就地 resume 命令",
-    failureNotCopied: "拉起失败，请手动复制以下命令",
+      ? copyText("remoteLaunchRun.inPlace.doneByBackend", { name, machine: origin })
+      : copyText("remoteLaunchRun.inPlace.doneBody", { machine: origin, name }),
+    failureCopied: copyText("remoteLaunchRun.inPlace.failedCopied"),
+    failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
   }, token);
 }
 
@@ -717,7 +712,7 @@ export async function runRemoteResumeIntoExistingTmux(
  * # 与远端那条的差别只有两处，其余逐字共用
  *
  * ① **载荷那半共用**：同一个 `planResumeIntoExistingTmux` + 同一个 `sendIntoViaBackend`
- *    + 同一条 `backend_send_into`（它 `client_for(&origin)`，**本来就传输无关**）。
+ *    + 同一条 `tmux-control.ts::sendInto`（〔C4e〕经通道问那台机器的后端，**本来就传输无关**；此前是 monitor 的 `backend_send_into`〔散文墓碑〕）。
  *    这就是 `C1`「差别只允许出现在传输这一跳」的样子。
  * ② **attach 那半本机做不到，而且是结构性的**：`launch_remote_terminal` 只会
  *    `ssh + PowerShell`，而 POSIX 本机 `launch.rs` 逐字「**不开 GUI 终端窗口**」——
@@ -745,7 +740,7 @@ export async function runLocalResumeIntoExistingTmux(
     //   「就地 resume」不经 `launch_local`，先前这里的 apikey 号**不走**中转 —— `01 §2.5` 入口纪律的一个漏口。
     plan = await withRelayEndpoint(LOCAL_ORIGIN, ctx, bare);
   } catch (err) {
-    showActionFailureToast("无法构造就地 resume 命令", String(err));
+    showActionFailureToast(copyText("remoteLaunchRun.inPlace.buildFailed"), String(err));
     return false;
   }
   const sent = await sendIntoViaBackend(LOCAL_ORIGIN, name, plan);
@@ -753,9 +748,8 @@ export async function runLocalResumeIntoExistingTmux(
     // `fallback` 与 `refused` 在本机是**同一种处置** —— 见头注：本机没有第二条路，
     // 而造一条就是 `C1` 排除的那件事。两者的 `reason` 都原样交给用户。
     showActionFailureToast(
-      "就地 resume 未执行",
-      `${sent.reason ?? "本机后端通道不在，无法确认是否已执行"}\n` +
-        "（本机没有第二条路可回落 —— 造一条就会长出第二套控制语义）",
+      copyText("remoteLaunchRun.inPlace.notRun"),
+      sent.reason ?? copyText("remoteLaunchRun.inPlaceLocal.noBackend"),
     );
     return false;
   }
@@ -798,19 +792,17 @@ export async function runLocalResumeIntoExistingTmux(
     attachCmd = await commands.render_local_attach({ tmuxName: name });
   } catch (err) {
     showActionFailureToast(
-      "已就地 resume，但接终端那一句渲不出来",
-      `${String(err)}\n` +
-        "（接终端那一句归本机后端产，前端不再自己拼一条。" +
-        "刚才载荷已经键进去了，会话本身没事。）",
+      copyText("remoteLaunchRun.inPlaceLocal.attachFailed"),
+      copyText("remoteLaunchRun.inPlaceLocal.attachFailedBody", { err: String(err) }),
     );
     // ★ 与下面那条同一个道理：**就地 resume 已经成了**，attach 这一跳的成败不改变它。
     return true;
   }
   await invokeLaunchOrCopyFallback(LOCAL_ORIGIN, attachCmd, {
-    success: "已就地 resume",
-    successDetail: `本机 tmux 会话「${name}」里已就地 resume（复用、不新建），终端窗口正在接上它。`,
-    failureCopied: "已就地 resume，attach 命令已复制",
-    failureNotCopied: "已就地 resume，请手动复制 attach 命令",
+    success: copyText("remoteLaunchRun.inPlaceLocal.done"),
+    successDetail: copyText("remoteLaunchRun.inPlaceLocal.doneBody", { name }),
+    failureCopied: copyText("remoteLaunchRun.inPlaceLocal.copied"),
+    failureNotCopied: copyText("remoteLaunchRun.inPlaceLocal.manual"),
   }, rbindTokenOf(plan));
   // ★ 就地 resume 本身已经成了（`typed`）——**attach 开不开得了窗口不改变这个结论**。
   //   返回 `false` 会让调用方以为这次 resume 没做成，那是把两件事混成一件。
@@ -866,14 +858,14 @@ export async function runRemoteLauncher(
     cmd = await renderLaunchCommand(origin, ctx, plan);
     token = rbindTokenOf(plan);
   } catch (err) {
-    showActionFailureToast("无法构造 launcher 命令", String(err));
+    showActionFailureToast(copyText("remoteLaunchRun.launcher.buildFailed"), String(err));
     return;
   }
   await invokeLaunchOrCopyFallback(origin, cmd, {
-    success: "已拉起「开新 Claude」",
-    successDetail: `新终端窗口正在连接 [${origin}] 并在 tmux 会话「${tmuxName}」里启动 Claude。`,
-    failureCopied: "拉起失败，已复制命令",
-    failureNotCopied: "拉起失败，请手动复制以下命令",
+    success: copyText("remoteLaunchRun.launcher.started"),
+    successDetail: copyText("remoteLaunchRun.launcher.startedBody", { machine: origin, name: tmuxName }),
+    failureCopied: copyText("remoteLaunchRun.launcher.failedCopied"),
+    failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
   }, token);
 }
 
@@ -885,13 +877,13 @@ export async function runRemoteAttach(origin: string, name: string): Promise<voi
     const { ctx, plan } = planAttach(name);
     cmd = await renderLaunchCommand(origin, ctx, plan);
   } catch (err) {
-    showActionFailureToast("无法构造 attach 命令", String(err));
+    showActionFailureToast(copyText("remoteLaunchRun.attach.buildFailed"), String(err));
     return;
   }
   await invokeLaunchOrCopyFallback(origin, cmd, {
-    success: "已拉起 tmux attach",
-    successDetail: `新终端窗口正在连接 [${origin}] 并 attach 到 tmux 会话「${name}」。`,
-    failureCopied: "拉起失败，已复制 attach 命令",
-    failureNotCopied: "拉起失败，请手动复制以下命令",
+    success: copyText("remoteLaunchRun.attach.started"),
+    successDetail: copyText("remoteLaunchRun.attach.startedBody", { machine: origin, name }),
+    failureCopied: copyText("remoteLaunchRun.attach.failedCopied"),
+    failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
   }, null); // `attach` 不铸币（`planAttach` 不收 `mods`）⇒ 新窗口不做令牌握手
 }

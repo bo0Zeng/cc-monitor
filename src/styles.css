@@ -128,10 +128,11 @@
  * （全仓唯一读者就是本段 CSS）⇒ 删监听 + 媒体查询是等价替换。
  *
  * ⚠ **为什么前缀是 `body:not(.viewer-mode)` 而不是干脆去掉**（踩过的坑，别改回去）：
- * 去掉 `body.tabbar-collapsed` 会让每条选择器**少一个类**，而下面三条靠那一个类
+ * 去掉 `body.tabbar-collapsed` 会让每条选择器**少一个类**，而下面两条靠那一个类
  * 才压得过后文同族规则 —— `.tab`（本文件 `.tab{}` 在更后面）、
- * `.tab.tab-bg::before`（同特异度、在更后面）、`.tab.ended .live-dot`（〔U4〕原名 `.tab.archived`）
- * （`.tab.act-idle .live-dot` 同特异度、在更后面）⇒ 直接去掉会让这三条**当场失效**。
+ * `.tab.ended .live-dot`（〔U4〕原名 `.tab.archived`）
+ * （`.tab.act-idle .live-dot` 同特异度、在更后面）⇒ 直接去掉会让这两条**当场失效**。
+ * （〔BG1 · V125「删掉树」〕原先还有第三条 —— bg tab 的 `⌞` 前缀，随 bg 树的样式一起删了。）
  * `:not(.viewer-mode)` 同样算一个类 ⇒ 特异度逐条与改前**完全相同**；
  * 而语义上也正好：viewer 窗口里 `#tab-bar` 本就 `display:none`，折叠样式是空跑。
  * 死值验（两个真引擎 × 7 格 computed，改前「挂类/不挂类」5 格有差异）见
@@ -157,10 +158,6 @@
        死值验：两个真引擎里摘掉 `!important` 前后 computed 逐格相同（读数见
        `tests/evidence/S21-css-readings.md` §步8）。 */
     display: none;
-  }
-  body:not(.viewer-mode) .tab.tab-bg::before {
-    position: static;
-    margin-right: 2px;
   }
   /* 折叠态已结束的 tab 只剩空行（常态下灯被隐藏、靠斜体标题辨认）→ 给暗色点当占位标识 */
   body:not(.viewer-mode) .tab.ended .live-dot {
@@ -997,21 +994,6 @@
   margin-top: 4px;
   color: var(--text-faint);
   font-style: italic;
-}
-
-/* === Batch7-F24：bg 后台任务 tab（⚙ 标题 + 树状缩进） === */
-.tab.tab-bg {
-  font-size: calc(var(--font-size-small) * 0.92);
-  opacity: 0.88;
-  padding-left: 18px;
-  position: relative;
-}
-
-.tab.tab-bg::before {
-  content: "⌞";
-  position: absolute;
-  left: 5px;
-  color: var(--text-faint);
 }
 
 /* === issue #21：交互等待卡（AskUserQuestion / ExitPlanMode）——默认展开可见 === */

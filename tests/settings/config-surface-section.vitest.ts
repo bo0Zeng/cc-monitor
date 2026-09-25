@@ -126,7 +126,7 @@ describe("describeSurfaceState", () => {
 describe("describeUndo", () => {
   it("不可卸载的工具不得暗示可以撤", () => {
     const t = describeUndo(row({ uninstallable: false, installable: true }));
-    expect(t).not.toContain("可按围栏");
+    expect(t).not.toContain("可按片段");
     expect(t).toContain("手动");
   });
   // 🔴 〔`K-R65`〕上一版这一条逐字断的是「尚未支持部署」，而那句话是**两头下注**的
@@ -143,8 +143,8 @@ describe("describeUndo", () => {
     expect(owed).toBe("暂无撤销：还没有安装入口");
     expect(owed).not.toContain("不该");
     expect(owed).not.toMatch(/该由 cc-monitor 自带|还没写/);
-    // 「你自己装」那一档要说清是你自己装
-    expect(theirs).toContain("你自己装");
+    // 「你自己装」那一档要说清是你自己装（〔CP2b〕CP1 裁 §2.2 之后说「需自行安装」）
+    expect(theirs).toContain("自行安装");
     // 三档措辞两两不同 —— 一句话涵盖三档就等于没有档
     expect(new Set([owed, theirs, notOurs]).size).toBe(3);
   });
@@ -152,10 +152,10 @@ describe("describeUndo", () => {
     const t = describeUndo(
       row({ uninstallable: false, tier: "BrandNewTier" as never }),
     );
-    expect(t).toContain("还不认识");
+    expect(t).toContain("撤销方式未知");
   });
   it("可卸载的才给撤销说法", () => {
-    expect(describeUndo(row({ uninstallable: true }))).toContain("可按围栏");
+    expect(describeUndo(row({ uninstallable: true }))).toContain("可按片段");
   });
 });
 
@@ -290,7 +290,7 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
     expect(p.firstChild?.nodeValue).toBe(`${GAP_HEAD.unknown} —— 这一项本机查不动（见上面的原因）`);
     const why = p.querySelector<HTMLElement>("[aria-label]");
     expect(why, "区分的后半被一起扫掉了（§2.2：只换位置，不删义）").not.toBeNull();
-    expect(why!.getAttribute("aria-label")).toBe(UNKNOWN_IS_NOT_ABSENT);
+    expect(why!.getAttribute("aria-label")).toBe(UNKNOWN_IS_NOT_ABSENT());
     // 「缺」那一档不挂这个 ⓘ（它说的就是确认没有）。
     invokeMock.mockResolvedValue(report({ rows: [prompted({ state: { kind: "absent" } })] }));
     const s2 = new ConfigSurfaceSection();
@@ -310,7 +310,7 @@ describe("formatReportText", () => {
     expect(txt).toContain("本页不猜项目目录");
     expect(txt).toContain("优先级最高");
     // 读不到时不许说成"不含"
-    expect(txt).toContain("读不到，不猜");
+    expect(txt).toContain("读不到");
   });
 
   it("note 会被带进文本（否则用户看不懂 cc-* 是什么）", () => {
@@ -529,7 +529,7 @@ describe("〔ST2 · 用户 09-24 裁「远端也有真栏」〕足迹按机器�
     expect(box.hidden).toBe(false);
     const why = box.querySelector<HTMLElement>("[aria-label]");
     expect(s.element.textContent).toContain("这台机器（devbox）的足迹还查不了");
-    expect(why?.getAttribute("aria-label")).toBe(REMOTE_UNANSWERED_WHY);
+    expect(why?.getAttribute("aria-label")).toBe(REMOTE_UNANSWERED_WHY());
   });
 
   it("★★ 回声对上（报告说它答的就是 devbox）⇒ 远端页画表；`$PROFILE` 备份那一格不问（只答本机）", async () => {

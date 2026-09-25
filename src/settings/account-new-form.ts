@@ -34,6 +34,7 @@
 import { buildAcctIsoCmd, validateAcctName } from "./acct-deploy";
 // 〔AL1〕`suggestAliasName` 随别名那一块搬进了 `machine-aliases.ts`（机器页「别名」）。
 import { suggestAliasName } from "./machine-aliases";
+import { copyText } from "../copy-table";
 
 /** 接入方式 —— `§4.4` 那个岔口的两支。 */
 export type AccountAccess = "subscription" | "apikey";
@@ -58,7 +59,7 @@ export function checkBaseUrl(raw: string): { ok: true; value: string | undefined
   try {
     u = new URL(s);
   } catch {
-    return { ok: false, reason: "Base URL 要写成 https://主机[:端口][/路径]，留空就用默认上游" };
+    return { ok: false, reason: copyText("accountNewForm.baseUrl.shape") };
   }
   if (u.protocol === "https:") return { ok: true, value: s };
   if (u.protocol === "http:") {
@@ -66,30 +67,59 @@ export function checkBaseUrl(raw: string): { ok: true; value: string | undefined
     const loopback = h === "localhost" || h === "::1" || /^127(\.\d{1,3}){3}$/.test(h);
     return loopback
       ? { ok: true, value: s }
-      : { ok: false, reason: "明文 http 只许连本机回环（127.0.0.1 / localhost）：要不就换 https" };
+      : { ok: false, reason: copyText("accountNewForm.baseUrl.plainHttp") };
   }
-  return { ok: false, reason: "Base URL 只认 https://（或连本机回环的 http://）" };
+  return { ok: false, reason: copyText("accountNewForm.baseUrl.scheme") };
 }
 
 /** 表单上给用户看的字。集中在一处，判据按这张表逐条对（不在断言里手抄第二份）。 */
+// 〔CP2b〕取值器（getter）：用到时才取文 —— 模块顶层不留取文口调用（顶层有调用会让 Rollup 把这份挪进主窗也加载的共享 chunk）。
 export const NEW_ACCOUNT_COPY = {
-  title: "新建账号",
-  namePlaceholder: "账号名，如 b",
-  accessLabel: "接入方式",
-  subscription: "订阅",
-  subscriptionHint: "创建后弹出终端，在那个终端里用这个号 /login。",
-  apikey: "第三方 apikey",
-  apikeyHint:
-    "创建后弹出终端建好账号目录；这个号出现在下面的账号列表里时（终端跑完点「刷新」），" +
-    "这把 key 自动写进 apikey 表。在那之前 key 只留在这个窗口里，关掉 monitor 就没了。",
-  keyPlaceholder: "粘贴 API key",
-  baseUrlPlaceholder: "Base URL，留空用默认上游",
-  advanced: "高级：从旧凭据快照导入（免重登）",
-  credPlaceholder: "旧凭据快照路径",
-  previewHead: "将在终端里运行：",
-  previewEmpty: "（填好账号名后显示将运行的命令）",
-  cancel: "清空",
-  create: "创建",
+  get title() {
+    return copyText("accountNewForm.form.title");
+  },
+  get namePlaceholder() {
+    return copyText("accountNewForm.form.nameHint");
+  },
+  get accessLabel() {
+    return copyText("accountNewForm.form.accessMode");
+  },
+  get subscription() {
+    return copyText("accountNewForm.form.subscription");
+  },
+  get subscriptionHint() {
+    return copyText("accountNewForm.form.subscriptionHint");
+  },
+  get apikey() {
+    return copyText("accountNewForm.form.apikey");
+  },
+  get apikeyHint() {
+    return copyText("accountNewForm.form.apikeyHint");
+  },
+  get keyPlaceholder() {
+    return copyText("accountNewForm.form.key");
+  },
+  get baseUrlPlaceholder() {
+    return copyText("accountNewForm.form.baseUrl");
+  },
+  get advanced() {
+    return copyText("accountNewForm.form.advanced");
+  },
+  get credPlaceholder() {
+    return copyText("accountNewForm.form.snapshot");
+  },
+  get previewHead() {
+    return copyText("accountNewForm.form.willRun");
+  },
+  get previewEmpty() {
+    return copyText("accountNewForm.form.willRunEmpty");
+  },
+  get cancel() {
+    return copyText("accountNewForm.form.clear");
+  },
+  get create() {
+    return copyText("accountNewForm.form.create");
+  },
 } as const;
 
 let formSeq = 0;
@@ -97,7 +127,7 @@ let formSeq = 0;
 /** 命令名那一行。规则只有一个住址（`suggestAliasName`），这里不抄第二份。 */
 export function aliasHintFor(name: string): string {
   const alias = suggestAliasName(name);
-  return alias ? `这个号的命令名会是 ${alias}` : "";
+  return alias ? copyText("accountNewForm.aliasHintFor.aliasHint", { alias }) : "";
 }
 
 /**

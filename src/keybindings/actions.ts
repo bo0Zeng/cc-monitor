@@ -20,6 +20,8 @@
  * 对得上 `e.code === "Comma"`，而 `e.key === ","` 在那个布局压根触发不了。
  */
 
+import { copyText } from "../copy-table";
+
 export type Category = "Tab" | "Term" | "App" | "Beh" | "Panel" | "Acct";
 
 export interface Action {
@@ -55,22 +57,22 @@ export interface Action {
 // 用户仍可在「设置 → 快捷键」编辑器里改成任意组合键。
 export const ACTIONS: ReadonlyArray<Action> = [
   // ===== Tab =====
-  { id: "tab.next", label: "切到下一个 Tab", category: "Tab", default: "BracketRight", available: true },
-  { id: "tab.prev", label: "切到上一个 Tab", category: "Tab", default: "BracketLeft", available: true },
-  { id: "tab.jump-1", label: "跳到第 1 个 Tab", category: "Tab", default: "Digit1", available: true },
-  { id: "tab.jump-2", label: "跳到第 2 个 Tab", category: "Tab", default: "Digit2", available: true },
-  { id: "tab.jump-3", label: "跳到第 3 个 Tab", category: "Tab", default: "Digit3", available: true },
-  { id: "tab.jump-4", label: "跳到第 4 个 Tab", category: "Tab", default: "Digit4", available: true },
-  { id: "tab.jump-5", label: "跳到第 5 个 Tab", category: "Tab", default: "Digit5", available: true },
-  { id: "tab.jump-6", label: "跳到第 6 个 Tab", category: "Tab", default: "Digit6", available: true },
-  { id: "tab.jump-7", label: "跳到第 7 个 Tab", category: "Tab", default: "Digit7", available: true },
-  { id: "tab.jump-8", label: "跳到第 8 个 Tab", category: "Tab", default: "Digit8", available: true },
-  { id: "tab.jump-9", label: "跳到第 9 个 Tab", category: "Tab", default: "Digit9", available: true },
-  { id: "tab.close-archived", label: "关闭已结束的 Tab", category: "Tab", default: "KeyW", available: true },
-  { id: "tab.open-cwd", label: "打开当前 Tab 的工作目录", category: "Tab", default: "KeyE", available: true },
+  { id: "tab.next", label: copyText("keybindingActions.tab.next"), category: "Tab", default: "BracketRight", available: true },
+  { id: "tab.prev", label: copyText("keybindingActions.tab.prev"), category: "Tab", default: "BracketLeft", available: true },
+  { id: "tab.jump-1", label: copyText("keybindingActions.tab.jump1"), category: "Tab", default: "Digit1", available: true },
+  { id: "tab.jump-2", label: copyText("keybindingActions.tab.jump2"), category: "Tab", default: "Digit2", available: true },
+  { id: "tab.jump-3", label: copyText("keybindingActions.tab.jump3"), category: "Tab", default: "Digit3", available: true },
+  { id: "tab.jump-4", label: copyText("keybindingActions.tab.jump4"), category: "Tab", default: "Digit4", available: true },
+  { id: "tab.jump-5", label: copyText("keybindingActions.tab.jump5"), category: "Tab", default: "Digit5", available: true },
+  { id: "tab.jump-6", label: copyText("keybindingActions.tab.jump6"), category: "Tab", default: "Digit6", available: true },
+  { id: "tab.jump-7", label: copyText("keybindingActions.tab.jump7"), category: "Tab", default: "Digit7", available: true },
+  { id: "tab.jump-8", label: copyText("keybindingActions.tab.jump8"), category: "Tab", default: "Digit8", available: true },
+  { id: "tab.jump-9", label: copyText("keybindingActions.tab.jump9"), category: "Tab", default: "Digit9", available: true },
+  { id: "tab.close-archived", label: copyText("sessionState.closeEnded.shortcut"), category: "Tab", default: "KeyW", available: true },
+  { id: "tab.open-cwd", label: copyText("keybindingActions.tab.openCwd"), category: "Tab", default: "KeyE", available: true },
   {
     id: "tab.pop-out",
-    label: "在新窗口打开当前 Tab",
+    label: copyText("keybindingActions.tab.openInWindow"),
     category: "Tab",
     default: "KeyN",
     available: true,
@@ -80,31 +82,31 @@ export const ACTIONS: ReadonlyArray<Action> = [
   // ⚠ 只搜当前 tab 这一份会话；跨全部会话的全文搜索在历史浏览器里（它没有独立快捷键，`app.search-history` 那个预留位已删）。
   {
     id: "session.find",
-    label: "在当前会话里查找",
+    label: copyText("keybindingActions.session.find"),
     category: "Tab",
     default: "Ctrl+KeyF",
     available: true,
   },
 
   // ===== Terminal =====
-  { id: "terminal.bring-front", label: "把对应终端窗口拉到前台", category: "Term", default: "Backquote", available: true },
+  { id: "terminal.bring-front", label: copyText("keybindingActions.terminal.front"), category: "Term", default: "Backquote", available: true },
 
   // ===== App =====
-  { id: "app.open-settings", label: "打开设置面板", category: "App", default: "Comma", available: true },
-  { id: "app.toggle-history", label: "打开 / 关闭历史浏览器", category: "App", default: "KeyH", available: true },
-  { id: "app.toggle-panorama", label: "打开 / 关闭代码全景", category: "App", default: "KeyG", available: true },
+  { id: "app.open-settings", label: copyText("keybindingActions.app.settings"), category: "App", default: "Comma", available: true },
+  { id: "app.toggle-history", label: copyText("keybindingActions.app.history"), category: "App", default: "KeyH", available: true },
+  { id: "app.toggle-panorama", label: copyText("keybindingActions.app.panorama"), category: "App", default: "KeyG", available: true },
   // F84（#57）：命令栏。唯一默认带 Ctrl 的 chord（palette 惯例；单键 K 会在只读主视图误触发，
   // 且 palette 要在任意上下文唤起，故用组合键——经核实 Ctrl+KeyK 全表空闲、零冲突）。
-  { id: "app.open-command-bar", label: "打开命令栏（命令面板）", category: "App", default: "Ctrl+KeyK", available: true },
+  { id: "app.open-command-bar", label: copyText("keybindingActions.app.commandBar"), category: "App", default: "Ctrl+KeyK", available: true },
   // 〔第四波 S4〕这里原先是 `app.search-history`〔散文墓碑〕：历史浏览器全文搜索的**预留位**（`default: null`、
   //   `available: false`，编辑器里灰着一行「未上线」）。它从没上线过，而全文搜索本身早就能用（H 打开历史后切「全文」）
   //   ⇒ 用不上的预留位不留，真要给它一个快捷键时再加。它是清单里唯一一条未上线的，
   //   只为它存在的 `comingSoon` 说明字段与编辑器那枚「未上线（…）」标签一起删了。
-  { id: "app.minimize", label: "最小化主窗口", category: "App", default: "KeyM", available: true },
-  { id: "app.toggle-fullscreen", label: "切换真全屏（borderless 覆盖任务栏）", category: "App", default: "F11", available: true },
+  { id: "app.minimize", label: copyText("keybindingActions.app.minimize"), category: "App", default: "KeyM", available: true },
+  { id: "app.toggle-fullscreen", label: copyText("keybindingActions.app.fullscreen"), category: "App", default: "F11", available: true },
   {
     id: "overlay.close",
-    label: "关闭弹层 / 历史 / 设置",
+    label: copyText("keybindingActions.app.closeOverlay"),
     category: "App",
     default: "Escape",
     available: true,
@@ -116,18 +118,18 @@ export const ACTIONS: ReadonlyArray<Action> = [
   // 不做等价替代，用户改走 tab 右键的 Restart flyout 逐会话操作。
   {
     id: "account.switch-default",
-    label: "打开账号菜单（切当前账号）",
+    label: copyText("keybindingActions.account.menu"),
     category: "Acct",
     default: null,
     available: true,
   },
 
   // ===== Behavior toggles =====
-  { id: "behavior.toggle-auto-follow", label: "切换「自动跟随用户输入」", category: "Beh", default: null, available: true },
-  { id: "behavior.toggle-bring-monitor", label: "切换「自动拉前 monitor」", category: "Beh", default: null, available: true },
+  { id: "behavior.toggle-auto-follow", label: copyText("keybindingActions.behavior.autoFollow"), category: "Beh", default: null, available: true },
+  { id: "behavior.toggle-bring-monitor", label: copyText("keybindingActions.behavior.autoFront"), category: "Beh", default: null, available: true },
 
   // ===== Panel =====
-  { id: "panel.toggle-tasks", label: "Task 面板开 / 关", category: "Panel", default: "KeyT", available: true },
+  { id: "panel.toggle-tasks", label: copyText("keybindingActions.panel.tasks"), category: "Panel", default: "KeyT", available: true },
 ] as const;
 
 /** 全部已注册 action 的 id 联合类型；调用方 `bind(id, ...)` 时 TS 检查拼写 */
@@ -151,12 +153,12 @@ export function groupByCategory(): Map<Category, Action[]> {
 
 /** Category → 表头标签 */
 export const CATEGORY_LABEL: Record<Category, string> = {
-  Tab: "标签页",
-  Term: "终端",
-  App: "应用",
-  Beh: "行为",
-  Panel: "面板",
-  Acct: "账号",
+  Tab: copyText("keybindingActions.category.tab"),
+  Term: copyText("keybindingActions.category.terminal"),
+  App: copyText("keybindingActions.category.app"),
+  Beh: copyText("keybindingActions.category.behavior"),
+  Panel: copyText("keybindingActions.category.panel"),
+  Acct: copyText("keybindingActions.category.account"),
 };
 
 /**

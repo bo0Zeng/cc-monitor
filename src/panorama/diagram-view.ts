@@ -21,6 +21,7 @@ import { clipForDiagram, type IndexStamp } from "./agent-clip";
 import { honestyLine } from "./diagram-honesty";
 import { legendFor, rendererFor, type NodePick } from "./diagram-render";
 import type { DiagramKindInfo, DiagramRequest, PanoramaDiagram } from "./types";
+import { copyText } from "../copy-table";
 
 /** 宿主（`PanoramaView`）要提供的东西。 */
 export interface DiagramHost {
@@ -80,7 +81,7 @@ export class DiagramPane {
     this.select = document.createElement("select");
     this.select.className = "panorama-diagram-select";
     this.select.dataset.pano = "diagram-kind";
-    this.select.title = "选一种图；需要符号的图要先点一个符号";
+    this.select.title = copyText("diagramView.picker.hint");
     this.select.addEventListener("change", () => void this.setKind(this.select.value));
 
     this.bar = document.createElement("div");
@@ -121,7 +122,7 @@ export class DiagramPane {
       this.kinds = Array.isArray(got) ? got : null;
       this.kindsOrigin = origin;
     } catch (e) {
-      this.host.toast("读不到图种清单", String(e));
+      this.host.toast(copyText("diagramView.kinds.failed"), String(e));
       this.kinds = null;
     }
     this.renderOptions();
@@ -163,7 +164,7 @@ export class DiagramPane {
     const needsSymbol = info.params.includes("symbol");
     const symbol = this.host.selectedSymbol();
     if (needsSymbol && !symbol) {
-      this.showNote(`「${info.title}」要以一个符号为中心：先在搜索或文件详情里点一个符号。`);
+      this.showNote(copyText("diagramView.redraw.needSymbol", { title: info.title }));
       return;
     }
     const req: DiagramRequest = {};
@@ -172,7 +173,7 @@ export class DiagramPane {
     if (info.params.includes("certain_only")) req.certain_only = this.knobs.certain_only;
     if (info.params.includes("exclude_tests")) req.exclude_tests = this.knobs.exclude_tests;
     const mine = ++this.seq;
-    this.showNote("画图中…");
+    this.showNote(copyText("diagramView.redraw.drawing"));
     try {
       const [view, stamp] = await Promise.all([api.diagram(repo, info.id, req), this.host.stamp(repo)]);
       if (mine !== this.seq || !api.sameRepo(this.host.repo(), repo) || this.current !== info.id) return;
@@ -182,7 +183,7 @@ export class DiagramPane {
       if (mine !== this.seq) return;
       this.last = null;
       this.clearDrawing();
-      this.showNote(`画不出这张图：${String(e)}`);
+      this.showNote(copyText("diagramView.redraw.failed", { e: String(e) }));
     }
   }
 
@@ -197,14 +198,14 @@ export class DiagramPane {
     this.select.replaceChildren();
     const bubble = document.createElement("option");
     bubble.value = BUBBLE_VIEW;
-    bubble.textContent = "气泡全景";
+    bubble.textContent = copyText("diagramView.picker.bubble");
     this.select.appendChild(bubble);
     const hasSymbol = !!this.host.selectedSymbol();
     for (const k of this.kinds ?? []) {
       const o = document.createElement("option");
       o.value = k.id;
       const blocked = k.params.includes("symbol") && !hasSymbol;
-      o.textContent = blocked ? `${k.title}（先点一个符号）` : k.title;
+      o.textContent = blocked ? copyText("diagramView.picker.blocked", { title: k.title }) : k.title;
       o.title = k.summary;
       o.disabled = blocked && keep !== k.id;
       this.select.appendChild(o);
@@ -228,10 +229,10 @@ export class DiagramPane {
       this.knobEls.set(key, wrap);
       this.bar.appendChild(wrap);
     };
-    check("certain_only", "只看确定的连接", "全靠名字凑、一条确定的都没有的连接不画；滤掉多少写在图下面");
-    check("exclude_tests", "排除测试", "架构讲的是产品的结构；排掉多少写在图下面");
+    check("certain_only", copyText("diagramView.knobs.certainOnly"), copyText("diagramView.knobs.certainOnlyHint"));
+    check("exclude_tests", copyText("diagramView.knobs.excludeTests"), copyText("diagramView.knobs.excludeTestsHint"));
     const nodes = document.createElement("label");
-    nodes.title = "最多画几个节点；没画的写在图下面";
+    nodes.title = copyText("diagramView.knobs.maxNodesHint");
     const num = document.createElement("input");
     num.type = "number";
     num.min = "1";
@@ -244,14 +245,14 @@ export class DiagramPane {
       this.knobs.max_nodes = n;
       void this.redraw();
     });
-    nodes.append(document.createTextNode("节点上限 "), num);
+    nodes.append(document.createTextNode(copyText("diagramView.knobs.maxNodes")), num);
     this.knobEls.set("max_nodes", nodes);
     this.bar.appendChild(nodes);
     this.bar.appendChild(
-      this.host.copyButton("复制给 agent", "diagram-copy-agent", () => this.clipText()),
+      this.host.copyButton(copyText("panorama.copyButton.agent"), "diagram-copy-agent", () => this.clipText()),
     );
     this.bar.appendChild(
-      this.host.copyButton("复制 Mermaid", "diagram-copy-mermaid", () => this.last?.view.mermaid ?? ""),
+      this.host.copyButton(copyText("diagramView.knobs.copyMermaid"), "diagram-copy-mermaid", () => this.last?.view.mermaid ?? ""),
     );
   }
 
@@ -294,7 +295,7 @@ export class DiagramPane {
     const render = rendererFor(shape);
     if (!render) {
       this.showNote(
-        `这一版还画不出这种形状的图（shape=${shape}）。可以点「复制 Mermaid」拿到上游画好的文本。`,
+        copyText("diagramView.paint.unsupported", { shape }),
       );
       return;
     }
@@ -319,7 +320,7 @@ export class DiagramPane {
         const n = pick.node;
         this.host.showList(
           n.label,
-          `${info.title} · ${n.files} 个文件 · ${n.size} 个符号`,
+          copyText("diagramView.node.cluster", { title: info.title, files: n.files, n: n.size }),
           n.member_files.map((f) => ({ label: f, onClick: () => this.host.openFile(f, n.label) })),
         );
         return;
@@ -337,9 +338,9 @@ export class DiagramPane {
         }));
         if (t.symbol) {
           const sym = t.symbol;
-          items.unshift({ label: `${t.name}（类型本身）`, title: sym, onClick: () => this.host.openSymbol(sym) });
+          items.unshift({ label: copyText("diagramView.node.typeSelf", { name: t.name }), title: sym, onClick: () => this.host.openSymbol(sym) });
         }
-        this.host.showList(t.name, `${t.fields.length} 个字段 · ${t.methods.length} 个方法`, items);
+        this.host.showList(t.name, copyText("diagramView.node.typeMembers", { fields: t.fields.length, methods: t.methods.length }), items);
         return;
       }
     }

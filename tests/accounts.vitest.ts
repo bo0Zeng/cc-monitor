@@ -381,8 +381,8 @@ describe("modelByAccount config 读写（F07）", () => {
   // MODEL_DIMENSION.apply() 才发现——那样会让该账号往后每一次会话拉起都统一失败。
   it("非法模型名（含 shell 元字符/空格）→ throw，不落盘", async () => {
     loadCfg.mockResolvedValue({ accounts: {} });
-    await expect(setModelForAccount("z", "opus; rm -rf /")).rejects.toThrow(/非法模型名/);
-    await expect(setModelForAccount("z", "Claude Opus 4.5")).rejects.toThrow(/非法模型名/); // 空格非法
+    await expect(setModelForAccount("z", "opus; rm -rf /")).rejects.toThrow(/模型名不合法/);
+    await expect(setModelForAccount("z", "Claude Opus 4.5")).rejects.toThrow(/模型名不合法/); // 空格非法
     expect(saveCfg).not.toHaveBeenCalled();
   });
   it("清除（null）不受校验约束——恒允许", async () => {
@@ -1021,7 +1021,7 @@ describe("K-A1 KA6a：api-key 号的 UI 文案不许说「已登录」", () => {
 
   it("★ 徽章写「api-key（未配置端点）」而不是「已登录」", () => {
     const b = accountStatusBadge(apiKey());
-    expect(b.text).toBe("api-key（未配置端点）");
+    expect(b.text).toBe("API key（未配置端点）");
     expect(b.text).not.toContain("已登录");
     expect(b.warn).toBe(true);
     // hover 要把「选得中、起得来、但请求发不出去」这件事说清（不是一句「不可用」）。
@@ -1033,7 +1033,7 @@ describe("K-A1 KA6a：api-key 号的 UI 文案不许说「已登录」", () => {
     const b = accountStatusBadge(
       acct({ name: "api", loggedIn: true, authKind: "api-key", authReady: true }),
     );
-    expect(b.text).toBe("api-key（未配置端点）");
+    expect(b.text).toBe("API key（未配置端点）");
   });
 
   it("「去登录」按钮对 api-key 号也是假话 ⇒ 换成「打开终端」", () => {
@@ -1045,7 +1045,7 @@ describe("K-A1 KA6a：api-key 号的 UI 文案不许说「已登录」", () => {
     expect(accountStatusBadge(acct({})).text).toBe("已登录");
     expect(accountStatusBadge(acct({})).warn).toBe(false);
     expect(accountStatusBadge(acct({ loggedIn: false })).text).toBe("未登录");
-    expect(accountStatusBadge(acct({ mode: "in-place" })).text).toBe("逃生口");
+    expect(accountStatusBadge(acct({ mode: "in-place" })).text).toBe("不支持切换");
     expect(accountLoginActionLabel(acct({})).label).toBe("登录终端");
     expect(accountLoginActionLabel(acct({ loggedIn: false })).label).toBe("去登录");
   });
@@ -1054,7 +1054,7 @@ describe("K-A1 KA6a：api-key 号的 UI 文案不许说「已登录」", () => {
     const b = accountStatusBadge(
       acct({ mode: "in-place", authKind: "api-key", authReady: true }),
     );
-    expect(b.text).toBe("逃生口");
+    expect(b.text).toBe("不支持切换");
   });
 });
 
@@ -1069,7 +1069,7 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
 
   it("★ 本机 · 表里有这一行 · 中转在跑 ⇒ 「经本机中转」，且不再是警示态", () => {
     const b = accountStatusBadge(apiKey(), { scope: "local", hasRow: true, running: true });
-    expect(b.text).toBe("api-key（经本机中转）");
+    expect(b.text).toBe("API key（经本机中转）");
     expect(b.warn).toBe(false);
     // 它保证的是哪一截，必须写在 hover 里 —— 不许暗示「这个 key 一定能用」。
     expect(b.title).toContain("ANTHROPIC_BASE_URL");
@@ -1078,7 +1078,7 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
 
   it("★ 本机 · 表里有这一行 · 中转没跑 ⇒ 「中转未运行」，且说明会被当场拒", () => {
     const b = accountStatusBadge(apiKey(), { scope: "local", hasRow: true, running: false });
-    expect(b.text).toBe("api-key（中转未运行）");
+    expect(b.text).toBe("API key（中转未运行）");
     expect(b.warn).toBe(true);
     // `KH2B2`②：这一条**不许**被说成静默失败 —— 起会话那一侧会当场拒。
     expect(b.title).toContain("当场拒");
@@ -1086,7 +1086,7 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
 
   it("★ 本机 · 表里没有这一行 ⇒ 仍是「未配置端点」，而且说得出**为什么**", () => {
     const b = accountStatusBadge(apiKey(), { scope: "local", hasRow: false, running: true });
-    expect(b.text).toBe("api-key（未配置端点）");
+    expect(b.text).toBe("API key（未配置端点）");
     expect(b.title).toContain("没有这个账号的一行");
     // 阴性对照：它**不许**说成「远端不做」那一条（那是另一个成因，处置也不同）。
     expect(b.title).not.toContain("远端");
@@ -1094,7 +1094,7 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
 
   it("★ 远端那一半 ⇒ 文案要指名是**远端**（`§0e` 裁四：本件明写不做）", () => {
     const b = accountStatusBadge(apiKey(), { scope: "remote" });
-    expect(b.text).toBe("api-key（未配置端点）");
+    expect(b.text).toBe("API key（未配置端点）");
     expect(b.title).toContain("远端");
     expect(b.title).toContain("本机");
     // 阴性对照：不许拿本机那条「表里没有这一行」去解释远端。
@@ -1103,9 +1103,9 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
 
   it("★ 调用方没说是哪一半 ⇒ **不替它下判断**，只把两条前置说清", () => {
     const b = accountStatusBadge(apiKey());
-    expect(b.text).toBe("api-key（未配置端点）");
+    expect(b.text).toBe("API key（未配置端点）");
     expect(b.title).toContain("两件事都成立");
-    expect(b.title).toContain("不替它下判断");
+    expect(b.title).toContain("无法判断端点是否已配置");
     // ⚠ 这一档**不许**断言「表里没有这一行」——那是它看不见的事实。
     expect(b.title).not.toContain("没有这个账号的一行");
   });
@@ -1160,15 +1160,15 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
       acct({ name, configDir: dir, loggedIn: false, authKind: "api-key", authReady: true });
     const a = withDir("acct-a", "/h/.claude-alt/acct-a");
     const b = withDir("acct-b", "/h/.claude-alt/acct-b");
-    expect(accountStatusBadge(a, localApikeyEndpointStateFor(a, routing)).text).toBe("api-key（经本机中转）");
+    expect(accountStatusBadge(a, localApikeyEndpointStateFor(a, routing)).text).toBe("API key（经本机中转）");
     expect(accountStatusBadge(b, localApikeyEndpointStateFor(b, routing)).text).toBe(
-      "api-key（未配置端点）",
+      "API key（未配置端点）",
     );
     // 非空对照：同一条产出方、只把 `running` 翻过来 ⇒ 第三档真的分得开。
     invokeMock.mockResolvedValue({ routed: ["/h/.claude-alt/acct-a"], running: false });
     const stopped = await fetchLocalApikeyRouting(["/h/.claude-alt/acct-a"]);
     expect(accountStatusBadge(a, localApikeyEndpointStateFor(a, stopped)).text).toBe(
-      "api-key（中转未运行）",
+      "API key（中转未运行）",
     );
   });
 
@@ -1179,20 +1179,20 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
 
     // ① 表里有这一行 + 中转在跑 ⇒ 「经本机中转」。
     const a = withDir("acct-a", "/h/.claude-alt/acct-a");
-    expect(accountStatusBadge(a, localApikeyEndpointStateFor(a, routing)).text).toBe("api-key（经本机中转）");
+    expect(accountStatusBadge(a, localApikeyEndpointStateFor(a, routing)).text).toBe("API key（经本机中转）");
     // ② 表里没有这一行 ⇒ 仍是「未配置端点」，而且说得出为什么。
     const b = withDir("acct-b", "/h/.claude-alt/acct-b");
     const bb = accountStatusBadge(b, localApikeyEndpointStateFor(b, routing));
-    expect(bb.text).toBe("api-key（未配置端点）");
+    expect(bb.text).toBe("API key（未配置端点）");
     expect(bb.title).toContain("没有这个账号的一行");
     // ③ 同一个账号、只把「中转在不在跑」翻过来 ⇒ 第三档（非空对照：两档真的分得开）。
     const stopped = { routed: ["/h/.claude-alt/acct-a"], running: false };
-    expect(accountStatusBadge(a, localApikeyEndpointStateFor(a, stopped)).text).toBe("api-key（中转未运行）");
+    expect(accountStatusBadge(a, localApikeyEndpointStateFor(a, stopped)).text).toBe("API key（中转未运行）");
     // ④ 账号 0（没有 configDir）⇒ 推不出 id ⇒ **不表态**，回落到缺席那一档。
     const zero = withDir("0", null);
     expect(localApikeyEndpointStateFor(zero, routing)).toBeUndefined();
     expect(accountStatusBadge(zero, localApikeyEndpointStateFor(zero, routing)).title).toContain(
-      "不替它下判断",
+      "无法判断端点是否已配置",
     );
   });
 
@@ -1200,7 +1200,7 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
     for (const st of [undefined, { scope: "remote" } as const, { scope: "local", hasRow: true, running: true } as const]) {
       expect(accountStatusBadge(acct({}), st).text).toBe("已登录");
       expect(accountStatusBadge(acct({ loggedIn: false }), st).text).toBe("未登录");
-      expect(accountStatusBadge(acct({ mode: "in-place" }), st).text).toBe("逃生口");
+      expect(accountStatusBadge(acct({ mode: "in-place" }), st).text).toBe("不支持切换");
     }
   });
 });
@@ -1397,7 +1397,7 @@ describe("K-P5g：换号重启定位不到 tmux 时，用身份 token 决定说�
     // `launchId` 是继承型环境变量，父会话已退出时那个继承值仍会被报出来
     //（`K-P5f` 已把这一格单独登记）。⇒ 文案**不许**写成「一定是本工具直接拉起的」。
     const m = restartLocateFailureMessage(row({ launchId: TOKEN }));
-    expect(m.body).toContain("带着本工具铸的身份标记");
+    expect(m.body).toContain("带着 cc-monitor 起会话时留下的身份标记");
     expect(m.body).not.toContain("一定是本工具");
   });
 });
