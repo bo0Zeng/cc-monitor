@@ -804,7 +804,7 @@ export class TabStreamView {
   private fetchBelow(tab: Tab): void {
     const range = tab.window.belowRange(TabStreamView.FILL_BATCH);
     if (!range || !tab.parentPath) return;
-    tab.window.markFetchingBelow();
+    tab.window.markFetchingBelow(range.until);
     this.updateSentinel(tab);
     void commands
       .read_session_lines({
