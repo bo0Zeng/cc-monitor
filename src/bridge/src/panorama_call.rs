@@ -25,8 +25,8 @@ use crate::origin::Origin;
 use serde_json::{json, Value};
 use std::time::Duration;
 
-/// 建索引那一档的 op（后端给子进程 900 s）。
-pub(crate) const BUILD_OPS: &[&str] = &["index", "reindex"];
+/// 建索引那一档的 op（后端给子进程 900 s）。〔RM1d〕`refresh_doc_links` 写的也是索引。
+pub(crate) const BUILD_OPS: &[&str] = &["index", "reindex", "refresh_doc_links"];
 
 /// 建索引那一档：后端给子进程 900 s，再留 60 s 给回程。
 const BUILD_BUDGET: Duration = Duration::from_secs(960);

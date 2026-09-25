@@ -94,7 +94,17 @@ describe("全景 IPC 按机器分路（RM1c）", () => {
       expect(s[0].args.repo, name).toBe(name === "diagramKinds" ? null : "/srv/proj");
       ops.push(String(s[0].args.op));
     }
-    expect(ops.sort()).toEqual(backendOps());
+    // 〔RM1d 子步 3/7 过渡〕「算」那 7 个 op 后端已认得、前端要到子步 4 才发 —— 子步 4 换成由写入口录下来。
+    const NOT_YET_SENT = [
+      "plan_add_annotation",
+      "plan_approve_annotation",
+      "plan_propose_annotation",
+      "plan_remove_annotation",
+      "plan_remove_doc_link",
+      "plan_write_doc_link",
+      "refresh_doc_links",
+    ];
+    expect([...ops, ...NOT_YET_SENT].sort()).toEqual(backendOps());
   });
 
   it("A2 远端写：一个请求都不发，当场拒，话就是 REMOTE_WRITE_REFUSED", async () => {
