@@ -1308,6 +1308,20 @@ describe("audit-fixes F01 follow-resume pin 现读磁盘（修 B1 内存脏读�
 
   // F04：tmux 后端的基座逃生口，与直连对称（两后端一致）。useBase → 不跟随、不读 pin、不注入。
   // 变异锚点：resumeTabTmux 的 follow 去掉 `useBase ?` → 又读 pin → list_last_accounts 被 invoke → 红。
+  // 〔FE1〕`设计/01 §5` D4：全新 resume 那一支要铸名，而 tmux 名单**没问到**（`list_remote_tmux` reject）
+  //   不是「零会话」—— 先前 `?? null` 把两者压成一个、空集铸名（#76 的形状）。⇒ 不起、出声。
+  //   正控就是上下那两条：名单回空表 ⇒ 照起、名字 = 基名 `proj-cc`。
+  it("★ 〔FE1〕tmux 全新 resume：名单没问到 ⇒ 不起、出声（不拿空集铸名）", async () => {
+    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
+      cmd === "list_remote_tmux" ? Promise.reject(new Error("ssh 抖动")) : Promise.resolve(undefined),
+    ));
+    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
+    tm.archiveTab("r1");
+    await home(tm).actions.resumeTabTmux("r1", undefined, true);
+    expect(runRemoteResumeTmux, "名单没问到还起了 —— 名字没避让").not.toHaveBeenCalled();
+    expect(vi.mocked(showActionFailureToast).mock.calls.map((c) => c[0])).toContain("没有起会话");
+  });
+
   it("用基座 resume（tmux，useBase）→ 不读 pin、不注入（起全新 tmux resume，cd undefined）", async () => {
     // list_remote_tmux 回空表 → 无活会话/无 idle → 走 ② 全新 resume。
     tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");

@@ -482,19 +482,19 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
   it("★ 每一处起本机会话的调用都带 `account`（人群 = 现打出来的那几处）", () => {
     const sites = localLaunchCallSites();
     // 抽取器自检：一处都没扫到 = 正则坏了，下面整条在空转。
-    expect(sites.length, "一处本机起会话的调用都没扫到 —— 抽取器坏了").toBeGreaterThan(3);
+    expect(sites.length, "一处本机起会话的调用都没扫到 —— 抽取器坏了").toBeGreaterThan(0);
     // ⚠ 分母写下来：这是**现打**的处数，不是「所有起会话的路」。
     //   多一条新主路 ⇒ 这个数变 ⇒ 红一次，逼人回来看要不要传账号。
     expect(
       sites.length,
-      `起本机会话的调用点从 5 变成了 ${sites.length}：\n${sites.map((s) => s.file).join("\n")}`,
-    ).toBe(5); // 〔`A3` 第二波〕4 → 5：`account-restart-local.ts`（本机换号重启的 resume 那一跳；账号是用户点的那个，带着）
+      `起本机会话的调用点从 2 变成了 ${sites.length}：\n${sites.map((s) => s.file).join("\n")}`,
+    ).toBe(2); // 〔FE1〕5 → 2：四处 `resume_history_session`（tab 栏 · 历史页 · 分叉 · 换号重启）收成 `local-resume.ts` 一处；另一处是历史页起新会话的 `new_local_session` // 〔`A3` 第二波〕4 → 5：`account-restart-local.ts`（本机换号重启的 resume 那一跳；账号是用户点的那个，带着）
     const missing = sites.filter((s) => !/\baccount\s*:/.test(s.text)).map((s) => s.file);
     expect(
       missing,
       "这些主路没把账号说出来 ⇒ ① 起会话落到 shell rc 那个默认号上（静默串号）；\n" +
         "② 中转那一格拼不出路由键（没有账号 id ⇒ 不注入）。\n" +
-        "取值口只有一个：`accounts.ts::localLaunchAccountSync`。",
+        "取值口只有一个：`accounts.ts::localLaunchAccountSync`（跟随）/ `explicitLocalAccountWire`（用户显式选的）。",
     ).toEqual([]);
   });
 
@@ -522,9 +522,9 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
     // 抽取器自检：分成两族之后任一族空掉 = 上面那个正则坏了，下面在空转。
     expect(
       resumeSites.length,
-      `\`resume_history_session\` 的调用点从 4 变成了 ${resumeSites.length}：\n` +
+      `\`resume_history_session\` 的调用点从 1 变成了 ${resumeSites.length}：\n` +
         resumeSites.map((s) => s.file).join("\n"),
-    ).toBe(4); // 〔`A3` 第二波〕3 → 4：`account-restart-local.ts`（带 `tmuxName` —— 复用被 kill 让出来的旧名）
+    ).toBe(1); // 〔FE1〕4 → 1：本机 resume 的编排只剩 `local-resume.ts` 一份（它的「只此一家」由 `tests/launch-orchestration-single-home.vitest.ts` K2 两向钉） // 〔`A3` 第二波〕3 → 4：`account-restart-local.ts`（带 `tmuxName` —— 复用被 kill 让出来的旧名）
     expect(
       sites.length - resumeSites.length,
       "`new_local_session` 的调用点数变了 —— 它今天没有 `tmux_name` 参数位（Rust 侧签名里就没有），" +
@@ -537,37 +537,28 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
         "如实降级回旧路 ⇒ 起出来的会话**不在具名 tmux 容器里**，于是 `list_local_tmux`\n" +
         "那一族（右键「杀死会话（kill tmux …）」/「就地 resume（复用空 tmux …）」）对它\n" +
         "一条都给不出来。名字只许过 `remote-launch.ts::mintTmuxName`（全仓唯一铸造口），\n" +
-        "算法口住 `ipc/local-tmux-name.ts`。",
+        "算法口住 `tmux-name-mint.ts`（〔FE1〕原 `ipc/local-tmux-name.ts` 并进去了）。",
     ).toEqual([]);
   });
 
   it("★ 铸名只有一个算法口（不许哪条路自己现查一遍 `list_local_tmux` 再拼）", () => {
-    // ⚠ **分母 3，今天 2/3 走口、1/3 内联** —— `src/tabs.ts` 那条 tab 栏 resume 自己
-    //   写着同样的六行，而 `src/tabs.ts` 不在 `K-R46` 的写区 ⇒ 收不进来，如实钉住现状。
-    //   这个 1 只许变小、不许变大：多一条内联的就红。
-    const inline: string[] = [];
+    // 〔FE1〕先前这里钉着「1 处内联」（tab 栏那条 resume 自己写着六行，`K-R46` 收不进来）；
+    //   本机远端的「列名单 → 铸名」收进 `tmux-name-mint.ts` 之后，调 `mintSessionTmuxName(` 的生产文件恰好是它一个。
+    //   ⚠ 两向：`tmux-name-mint.ts` 不在名单里（它不调了）⇒ 也红（正控：这条不是零命中地绿）。
+    const callers: string[] = [];
     for (const f of walk(resolve(REPO_ROOT, "src"), ".ts")) {
       if (f.includes(".test.") || f.includes(".vitest.")) continue;
-      if (f.endsWith("/ipc/local-tmux-name.ts")) continue; // 算法口本体（本机那一半；FE1 子步 2 并进 `tmux-name-mint.ts`）
-      if (f.endsWith("/tmux-name-mint.ts")) continue; // 〔FE1〕铸名的家（本机远端同一个）
       if (f.endsWith("/remote-launch.ts")) continue; // `mintSessionTmuxName` 的定义处
       const code = stripComments(readFileSync(f, "utf8"), "ts");
       // ⚠ 用**整个标识符**做匹配单位（`\b` + 收尾括号），不是裸子串 —— 那正是
-      //   `scanning-guard-registry.vitest.ts` 那条递减棘轮盯的东西。
-      //   第一版在这里对语料变量做了一次裸的存在性子串判断，门禁当场把上限 8 顶到 9。
-      //   ⚠⚠ **连这条注释都不许把那个写法逐字抄下来** —— 那个棘轮扫的是**原始源码**、
-      //     不剥注释，散文里写一遍就照样被数进去（本轮实测：改成正则之后仍红 1 处，
-      //     红的就是这句注释里那份逐字副本）。本文件 `:440` 那条头注记的是同一族病。
-      if (/\bmintSessionTmuxName\s*\(/.test(code)) inline.push(f.slice(REPO_ROOT.length + 1));
+      //   `scanning-guard-registry.vitest.ts` 那条递减棘轮盯的东西（散文里逐字抄一遍都会被数进去）。
+      if (/\bmintSessionTmuxName\s*\(/.test(code)) callers.push(f.slice(REPO_ROOT.length + 1));
     }
-    inline.sort();
-    // 〔U2 · 第三波〕那条 tab 栏 resume 随会话动作整块搬进了 `src/tab-session-actions.ts`，
-    //   六行内联逐字随行 ⇒ 名单里的住址换了，条数仍是 1（没收掉，也没多）。
+    callers.sort();
     expect(
-      inline,
-      "本机铸名自己写了一遍的地方变了。算法口是 `src/ipc/local-tmux-name.ts`；\n" +
-        "`src/tab-session-actions.ts`（原 `src/tabs.ts` 那条 tab 栏 resume）是 `K-R46` 收不进来的那一处，收掉它要另立一件。",
-    ).toEqual(["src/tab-session-actions.ts"]);
+      callers,
+      "铸名的家变了。起会话的 tmux 名只许经 `src/tmux-name-mint.ts`（列名单 ＋ 避让 ＋ 列不出就不铸）。",
+    ).toEqual(["src/tmux-name-mint.ts"]);
   });
 
   it("★★ 本机 resume 那两条也往 pin 里写（`D3 阻-2`：写入口先前结构上只走远端）", () => {
@@ -577,7 +568,8 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
     // ⇒ 本机的 `list_last_accounts` **恒空** ⇒ 取值口那条「pin 优先」在本机永远走不到，
     //   而那正是「参数位有、值恒空」那一形的另一半。
     // 〔U2〕tab 栏那条本机 resume 从 `src/tabs.ts` 搬到了 `src/tab-session-actions.ts`（逐字随行）。
-    for (const f of ["src/tab-session-actions.ts", "src/views/history.ts"]) {
+    // 〔FE1〕那两条（tab 栏 · 历史页）的编排收进了 `local-resume.ts`（跟随那一态记 pin）。
+    for (const f of ["src/local-resume.ts"]) {
       const code = stripComments(readFileSync(resolve(REPO_ROOT, f), "utf8"), "ts");
       expect(
         (code.match(/recordLocalLaunchAccount\(/g) ?? []).length,
@@ -623,7 +615,8 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
     // 三条主路走那个唯一取值口；fork 那条是**用户在小窗里显式选的**，
     // 它有自己的语义（选了账号 0 就要显式 `base`），所以不走这个口 —— 如实记，不强求。
     // 〔U2〕tab 栏那条本机 resume 从 `src/tabs.ts` 搬到了 `src/tab-session-actions.ts`（逐字随行）。
-    for (const f of ["src/tab-session-actions.ts", "src/views/history.ts"]) {
+    // 〔FE1〕tab 栏 · 历史页那两条的编排收进了 `local-resume.ts`（跟随那一态走这个口）。
+    for (const f of ["src/local-resume.ts"]) {
       const code = readFileSync(resolve(REPO_ROOT, f), "utf8");
       expect(
         (code.match(/localLaunchAccountSync\(/g) ?? []).length,
@@ -635,9 +628,10 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
       );
     }
     // 阴性对照：`fork-flow.ts` 那条**刻意**不走它（它是用户显式选的那一格）。
+    // 〔FE1〕它交的是 `{ kind: "explicit", … }`，载荷形状（账号 0 ⇒ `base`）由 `accounts.ts::explicitLocalAccountWire` 用生成物的键产。
     const fork = readFileSync(resolve(REPO_ROOT, "src/fork-flow.ts"), "utf8");
     expect(fork).not.toContain("localLaunchAccountSync");
-    expect(fork).toContain('{ kind: "base" }');
+    expect(fork).toContain('kind: "explicit"');
   });
 });
 

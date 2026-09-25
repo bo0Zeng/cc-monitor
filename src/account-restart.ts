@@ -16,7 +16,9 @@ import { fetchAccounts, accountConfigDir, recordLastAccount, checkTrust, getMode
 import { showActionFailureToast } from "./error-toast";
 // 〔`A3` 第二波〕本机那一侧：`origin` 是 backend 的 `<local>`（〔C4b〕账号面那个第二种写法已退役，只剩这一个）。
 import { LOCAL_ORIGIN } from "./backend-policy";
-import { runLocalRestartResume } from "./account-restart-local";
+// 〔FE1〕本机那一跳走 resume 编排的唯一一份（原 `account-restart-local.ts` 并进去了）。
+import { resumeLocalSession } from "./local-resume";
+import { copyText } from "./copy-table";
 
 export interface RestartWithAccountOpts {
   origin: string;
@@ -190,11 +192,26 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   //
   // 〔`A3` 第二波〕**本机那一跳**：编排上面五步两侧逐字共用（`tmux_send_keys` / `kill_remote_tmux`
   // 都按 origin 分流、`<local>` 走得通；账号清单与信任预检也按 origin 分流到本机后端），
-  // 只有「resume」这一跳两侧起法不同 —— 见 `account-restart-local.ts` 头注那张表。
-  // ⚠ 本机那一跳**交不了模型偏好**（本机载荷里没有那一格），所以这里不去查它。
+  // 只有「resume」这一跳两侧起法不同：
+  //
+  // | | 远端 | 本机 |
+  // |---|---|---|
+  // | 起法 | `runRemoteResumeTmux`（渲一条 ssh 命令、开终端，失败回退剪贴板） | `local-resume.ts::resumeLocalSession`（本机后端直接起，**没有剪贴板那条回退**） |
+  // | 账号怎么交 | `LaunchModifiers.configDir / accountName` | 载荷上的 `account`（用户点的那个具名号：目录 ＋ 名字，`K-R53`） |
+  // | tmux 名 | 复用被 kill 让出来的旧名 | 同左 |
+  // | 模型偏好 | 交（`modelOverride`） | **交不了** —— 本机那条的载荷里没有模型这一格（如实登记，不假装），所以这里不去查它 |
+  //
+  // ⚠ 账号**不走**跟随（`follow`）：换号重启的正题恰恰是换成另一个号，跟随会把用户的选择丢了。
   const isLocal = origin === LOCAL_ORIGIN;
   const launched = isLocal
-    ? await runLocalRestartResume({ sessionId, cwd, launcher, tmuxName, configDir, accountName })
+    ? await resumeLocalSession({
+        sid: sessionId,
+        cwd,
+        account: { kind: "explicit", configDir, name: accountName },
+        tmuxName,
+        launcher,
+        failureTitle: copyText("localResume.restart.failed"),
+      })
     : await runRemoteResumeTmux(origin, sessionId, cwd, launcher, tmuxName, {
         configDir,
         accountName,

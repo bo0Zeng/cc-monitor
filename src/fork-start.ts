@@ -65,7 +65,7 @@ export interface ForkStartDeps {
      *    ⇒ 如实交 `null`，后端诚实短路回旧路，**不许在任何一侧从目录名反推**。
      */
     accountName: string | null;
-  }) => Promise<void>;
+  }) => Promise<boolean>;
   /**
    * 起远端。**返回「真的拉起来了吗」** —— 远端那两条路（`runRemoteResume*`）失败时
    * 自己弹 toast + 回退剪贴板并 `return false`，**不抛**。丢掉这个布尔就等于把失败
@@ -158,13 +158,14 @@ export async function startForkedSession(
   if (isLocalOrigin(input.origin)) {
     // 本机：G3b-1 给 `resume_history_session` 加的 `configDir` 走这里。
     // 本机路径不管 tmux（那是 PowerShell/POSIX 拉起器自己的事）。
-    await deps.startLocal({
+    // 〔FE1〕与远端同形：失败时它已经出过声、回 `false` ⇒ `failed`（调用方不再叠成功提示）。
+    const launched = await deps.startLocal({
       sessionId: input.newSessionId,
       cwd,
       configDir,
       accountName,
     });
-    return "started";
+    return launched ? "started" : "failed";
   }
 
   // 远端：tmux 名**必须与原会话不同**，否则 ccm 会 attach 进原窗口。
