@@ -1586,6 +1586,13 @@ fn every_symbol_address_in_the_sources_still_resolves() {
         ),
         ("foo", "**示例占位符**：同上，讲口径时举的例子"),
         (
+            "discover_profiles",
+            "〔AL1d · 第四波 4B〕**历史句**：`tool_registry.rs` 里 `posix-rc-aliases` 那块墓碑**逐字引用**当年那一行 \
+                 `why:`（「原文逐字：…」），那一行点的就是 `profile_installer.rs` 里这个函数。它今天删了 —— \
+                 `$PROFILE` 在哪只剩 `shell_dialect.rs` 一处答（`调研/第四波记录/AL1d.md §2.3`）。\
+                 改写那段引文等于篡改原文（同上面 `resolve_claude_dir` 那条）。",
+        ),
+        (
             "build_usage_probe_cmd",
             "★〔`K-R104` 09-13〕**历史句**：`payload.rs` 与 `doc_claim_registry.rs` 里\
                  那几句逐字讲的就是「用量探针那条外层 tmux 串**已经退役**」——\
@@ -2899,6 +2906,16 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "write_account_aliases",
             1,
         ),
+        // 〔AL1d · 第四波 4B〕「终端集成」那五条命令并进 `aliases_*` 同一族命令面（`调研/第四波记录/AL1d.md §2.1`）；
+        //   `$PROFILE` 第二份认法 ＋ 它的遗留扫描随「候选只有一份来历」删了（`§2.3`）。散文留着说它们去了哪。
+        ("src/bridge/src/profile_installer.rs", "legacy_profile_paths", 1),
+        ("src/bridge/src/profile_installer.rs", "scan_legacy_profiles", 3),
+        ("tests/bridge/parity_ledger_tests.rs", "cc_integration_preview", 1),
+        ("tests/bridge/parity_ledger_tests.rs", "cc_integration_status", 1),
+        ("tests/bridge/profile_installer_tests.rs", "cc_integration_install", 1),
+        ("tests/bridge/profile_installer_tests.rs", "cc_integration_scan_path", 1),
+        ("tests/bridge/profile_installer_tests.rs", "cc_integration_uninstall", 1),
+        ("tests/bridge/profile_installer_tests.rs", "scan_legacy_profiles", 1),
         // 〔MC1 · 2026-09-24〕远端「装/卸 ccm 助手」两条命令改名成 `install_remote_alias_block` /
         //    `uninstall_remote_alias_block`（推入口那一半并进 `deploy_remote_backend`，`设计/71 §13.3`）。
         ("src/bridge/README.md", "install_remote_ccm_helper", 2),
@@ -3696,7 +3713,7 @@ fn every_prose_tombstone_mark_is_registered() {
         //   （住址并进 FW5 那一行，〔合并〕两边各 +1）。
         // 〔RW1 · 第四波 09-24〕Windows ACL 那条判据从 monitor 搬去后端：两头各一块墓碑。
         ("tests/backend/control/files_write_tests.rs", 1),
-        ("tests/bridge/profile_installer_tests.rs", 1),
+        ("tests/bridge/profile_installer_tests.rs", 5), // 〔AL1d〕1 → 5（`ProfileKind::Custom` · 「终端集成」三条命令名两行 · `scan_legacy_profiles`，逐处挂墓碑）
         // 〔C2 · 2026-09-24〕拨号归后端那一拍：`inproc_dial.rs` 那块（端口转发用的 russh 句柄别名删了）·
         // `ssh_source_dial_move_judge.rs` 三块（回落表那条判据 · 请求行那条 · 解析两处那条，随拨号搬家删掉）。
         ("src/bridge/src/inproc_dial.rs", 1),
@@ -3707,7 +3724,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/evidence/C2-dial-loopback.py", 1),
         // 〔MC1〕+3：模块头注 ＋ 装 / 卸两条命令头注里各一块（`…_ccm_helper` 改名成 `…_alias_block`）。
         ("src/bridge/src/sftp.rs", 9), // 〔F7c 收尾 09-24〕4 → 6（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑） // 〔RW1〕+3：F11 那条 SFTP 直删与它的结构守卫（段头一块两个名字 ＋ 模块头注一处）
-        ("src/bridge/src/profile_installer.rs", 5), // 〔AL1〕+1：`AccountAliasReport` 那一句 · 〔RW1〕+3：本机原子写原语 `atomic_write_string` / `atomic_replace_path` 删了（原住址一块 ＋ BOM 那段两句）
+        ("src/bridge/src/profile_installer.rs", 11), // 〔AL1d〕5 → 11（`ProfileKind` / `ProfileScan` · `$PROFILE` 两份认法与遗留扫描 · 扫一份那两个 · 「终端集成」命令名 · 模块头表那一格，逐处挂墓碑） // 〔AL1〕+1：`AccountAliasReport` 那一句 · 〔RW1〕+3：本机原子写原语 `atomic_write_string` / `atomic_replace_path` 删了（原住址一块 ＋ BOM 那段两句）
         ("src/bridge/src/verified_write.rs", 3),    // 〔RW1〕+1：`verify_and_rollback` 零调用方删了
         ("tests/bridge/verified_write_tests.rs", 1), // 〔RW1〕那三条回滚判据随它走了
         ("tests/bridge/remote_write_registry_tests.rs", 8), // 〔F7c 收尾 09-24〕1 → 7（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔RW1〕+1：F11 那条 SFTP 直删
@@ -3744,7 +3761,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/filewin/fonts.rs", 2), // 〔F9c 第四波 09-24〕0 → 2（探针来路里那两句「存不回去」的函数名随只读一档删了）
         ("src/bridge/src/history.rs", 5), // 〔RW1〕+1：本机删会话那道路径守卫整段搬去后端 // 〔RW1〕+3：本机分叉的实现（`branch_impl` / `write_branch_file` / `read_jsonl_values`）交给后端
         ("src/bridge/src/launch.rs", 1),
-        ("src/bridge/src/lib.rs", 2), // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
+        ("src/bridge/src/lib.rs", 4), // 〔AL1d〕2 → 4（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句） // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("src/bridge/src/local_backend_host.rs", 1),
         ("src/bridge/src/local_origin_registry.rs", 1),
         ("src/bridge/src/spawn_managed.rs", 2),
@@ -3790,7 +3807,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/filewin/source_tests.rs", 2), // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         // 〔AL1 · 2026-09-24〕+5：`write_account_aliases` 退役那一行 ＋ 增量账里它那一行 ＋ 合并主线时
         //   三个计数旁的增量注（`EXPECTED_LOCAL_OR_BOTH` · `LEDGER.len()` · 增量账）。
-        ("tests/bridge/parity_ledger_tests.rs", 12), // 〔C4a · 第四波〕11 → 12（E79 那条本机会话账号命令退役，账本那一行挂墓碑） // 〔F7c 收尾 09-24〕10 → 11（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
+        ("tests/bridge/parity_ledger_tests.rs", 14), // 〔AL1d〕12 → 14（「终端集成」退役的两行 LEDGER 注释挂墓碑） // 〔C4a · 第四波〕11 → 12（E79 那条本机会话账号命令退役，账本那一行挂墓碑） // 〔F7c 收尾 09-24〕10 → 11（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("tests/bridge/plugin_class_registry_tests.rs", 2),
         ("tests/bridge/polling_registry_tests.rs", 1),
         // 〔AL1 · 2026-09-24〕+1：`rollback_note_matches_what_actually_happened` 搬走的那块墓碑。

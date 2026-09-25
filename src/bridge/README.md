@@ -82,7 +82,7 @@ src/bridge/
 | **watcher.rs** (v2.4 重构 + v2.6 seq) | notify_debouncer_mini 递归监听 projects；ActiveFilter 过滤死 session；**同步全量初始扫**完成后设 `initial_scan_done: AtomicBool`；**一次 process_file 读完一个文件后把所有行作为一批同步调 on_batch**。**v2.6 加 `seqs: HashMap<PathBuf, u64>`** 给每行分配 per-file 单调 seq → 前端 RecordTimeline 按 seq 排序 | `spawn_watcher(root, active, on_batch: BatchHandler) → WatcherHandle { force_rescan_tx, initial_scan_done }` |
 | **session_map.rs** | 读 sessions/<PID>.json + Win32 进程探活 + 心跳清死 session；**procStart 可选** —— Claude Code 偶发漏写时降级仅 STILL_ACTIVE 判活（详 INVARIANTS § 18）。**v2.6 procStart 比较走 `utils::NetTicks::parse_str` typed API**（newtype 单位隔离） | `SessionMap::load_with_changes() / is_session_active()` |
 | **bind.rs** | cc 集成的核心：监听 `ps-await/`、PS 改窗口标题、EnumWindows 找 marker、写 `ps-registry/`、`SidHwndCache` 持久化 sid↔hwnd、`bring_terminal_to_front` | `BindRegistry::spawn() / SidHwndCache::load() / bring_terminal_to_front` |
-| **profile_installer.rs** | PowerShell profile 解析 + cc-monitor BEGIN/END 块插入 / 卸载 / 扫描 / 冲突检测 | `discover_profiles() / install_to_profile / scan_profile / render_cc_code` |
+| **profile_installer.rs** | 别名块（POSIX `cc` / `cct` · PowerShell `__ccm_bind` ＋ 可选 `cc`）的渲染 / 插入 / 卸载 / 现状 / 冲突检测；〔AL1d〕`$PROFILE` 在哪不归它（只有 `shell_dialect.rs` 答） | `block_state / render_block / install_to_profile / uninstall_from_profile / render_cc_code` |
 | **auto_launch.rs** | "用 cc 启动 claude 时自动开 monitor" 开关持久化（模块级函数，非 impl 方法） | `auto_launch::{load, save, get_config, set_enabled, update_monitor_path_on_startup}` |
 | **subagent.rs** | 父 session 的 Agent tool_use 关联 `<parent>/subagents/agent-*.jsonl` | IPC `load_subagent` |
 | **adapter.rs** + **adapter/claude_code.rs** (F-MA) | agent 适配层：把 cc-monitor 对「Claude Code 具体形态」的假设（会话目录布局 / 记录解析 / 活性 / resume 命令）收敛到 `AgentAdapter` 后，`claude_code.rs` 是第一个实例（**零行为变化**）。第一刀只抽浅耦合点（会话源布局等字面量），不碰记录模型（`JsonlRecord` 暂当规范模型） | `SessionLayout / AgentAdapter`（增量长 trait） |
@@ -184,11 +184,10 @@ src/bridge/
 | `list_session_activity` (issue #23) | — | `SessionActivityPayload[]` | 启动/F5 后拉一次红绿灯快照（增量走 `session-activity` 事件，双路收敛） |
 | `list_active_sessions` (Batch5-F18) | — | `ActiveSessionPayload[] {session_id, cwd}` | frontend-ready 前拉一次本地活跃清单建骨架 Tab（按 (cwd,sid) 排序防 tab 栏洗牌；远端骨架走 `remote-session-added` 事件） |
 | `bring_monitor_to_front` (v2.4.0 issue #2) | — | `()` | watcher 反推用户在终端输入时，可选拉前 monitor 自身窗口（unminimize + show + set_focus） |
-| `cc_integration_status` | `{ commandName }` | `CcStatusResponse` | 设置面板打开 PowerShell 集成区 |
-| `cc_integration_scan_path` | `{ path, commandName }` | `ProfileScan` | 用户改路径 / 重新扫描 |
-| `cc_integration_preview` | `{ commandName, includeCcFunction }` | `{ code }` | [预览代码] 按钮 |
-| `cc_integration_install` | `{ path, commandName, includeCcFunction }` | `()` | [安装] 按钮（写入 BEGIN/END 块） |
-| `cc_integration_uninstall` | `{ path }` | `()` | [卸载] 按钮（删除 BEGIN/END 块） |
+| `aliases_read` (〔AL1d〕并进了原「终端集成」的状态 / 扫一份) | `{ shell, rcPath? }` | `AliasListing` | 展开「别名」：清单 ＋ 启动文件候选（各带别名块现状）＋ 握手终端数 |
+| `aliases_block_render` | `{ rcPath, withCc }` | `string` | [预览别名块] 按钮（方言按那份文件的扩展名定） |
+| `aliases_block_install` | `{ rcPath, withCc }` | `()` | [装别名块] 按钮（写入 BEGIN/END 块，经本机后端） |
+| `aliases_block_remove` | `{ rcPath }` | `()` | [卸载别名块] 按钮（删除 BEGIN/END 块，经本机后端） |
 | `cc_get_auto_launch` | — | `AutoLaunchConfig` | 设置面板加载 auto-launch 状态 |
 | `cc_set_auto_launch` | `{ enabled }` | `()` | 用户勾选/取消 auto-launch |
 | `get_diagnostics_config` (v2.0.0+) | — | `DiagnosticsConfig` | 设置面板「诊断」区拉当前配置 |

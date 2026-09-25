@@ -22,4 +22,8 @@ rcCandidates: Array<StartupFile>,
  * 〔AL1d〕这台机器上已经跟 monitor 完成拉前握手的终端数（PowerShell 别名块里 `__ccm_bind` 的产物）。
  * 它不是盘上的事实（住 monitor 进程里的 `BindRegistry`）⇒ 由调用方给，本模块不认它。
  */
-boundTerminals: number, };
+boundTerminals: number, 
+/**
+ * 〔AL1d〕人另指的那一份（`read_in` 的 `extra_rc`）过了围栏之后的绝对路径 —— 界面拿它在候选里认出「刚指的是哪一份」。
+ */
+otherRc: string | null, };

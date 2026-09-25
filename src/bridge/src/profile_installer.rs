@@ -19,7 +19,7 @@
 //! | 面 | 本机 Windows | 本机 POSIX（本件之前） | 远端 POSIX |
 //! |---|---|---|---|
 //! | 装「别名块」 | [`install_to_profile`] | 🔴 **零口** | `sftp::install_remote_ccm_helper`〔散文墓碑〕（〔MC1〕今天 `sftp::install_remote_alias_block`） |
-//! | 查「你 rc 里那几行是旧的」 | [`scan_legacy_profiles`] | 🔴 **零口** | —— |
+//! | 查「你 rc 里那几行是旧的」 | `scan_legacy_profiles`〔散文墓碑〕（〔AL1d〕删了：每份候选各带块的现状） | 🔴 **零口** | —— |
 //!
 //! 补法有两条硬边界，两条都是**这件事的一半价值**：
 //!
@@ -33,12 +33,12 @@
 //!    产品自己不动手。理由不是保守，是**做不到**：那些行没有围栏，边界只有人知道
 //!    （`K-R57` 现打：用户机器上 10 个真使用者全是裸行）。
 //!
-//! ⚠ **方言不是「猜路径」。** 路径始终由界面上的人选（`ProfileKind::Custom` 一直是产品特性）。
+//! ⚠ **方言不是「猜路径」。** 路径始终由界面上的人选（「其它文件」一直是产品特性）。
 //! `shell_dialect.rs::Shell::of_target` 回答的是**另一个问题**：人选定了这份文件之后，往里写哪种语言。
 //! 把 `function cc { … }` 写进 `~/.bashrc` 在任何情形下都不是对的答案 ——
 //! 而本件之前这条路**只会**写 PowerShell。
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::path::{Path, PathBuf};
 
 use crate::shell_dialect::Shell;
@@ -74,7 +74,15 @@ pub struct BlockState {
     pub version: Option<String>,
     /// 块外已有的同名函数（与 [`CC_FUNCTION_NAME`] 同名）。
     pub conflicting_functions: Vec<String>,
-    /// POSIX rc 里围栏之外那几行裸 `ccm` 的逐行指名（[`render_manual_cleanup_hint`]）；没有 / PowerShell ⇒ 空串。
+    /// 🔴 〔`K-R62`〕**「你 rc 里这几行是旧的」那段话。** 空串 = 没有要清的。
+    ///
+    /// 它是 [`render_manual_cleanup_hint`] 的产物：**逐行指名**（行号 + 原文）
+    /// 加一段给用户自己动手的说明。**产品一个字节都不删**（`K31` + 用户逐字
+    /// 「原本的配置要手动删除」）—— 那些行没有围栏，边界只有人知道。
+    ///
+    /// ⚠ **只对 [`Shell::Posix`] 有内容**：它找的是**根本没有围栏的裸行**。
+    /// 「整块装在了别的哪份里」是另一件事，今天由每份候选各自的 [`BlockState::present`] 照实答
+    /// （〔AL1d〕从前 PowerShell 那一侧另有一段只查 `profile.ps1` 两份的遗留扫描，随候选收成一份删了）。
     pub manual_cleanup_hint: String,
 }
 
@@ -107,47 +115,9 @@ pub fn render_block(shell: Shell, with_cc: bool) -> Result<String, String> {
     plan_install(shell, "", CC_FUNCTION_NAME, with_cc, "预览")
 }
 
-/// PowerShell profile 类型标签。v1.7.2 起 UI 只用作显示提示，实际安装传 path。
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-pub enum ProfileKind {
-    /// Windows PowerShell 5.1（Windows 自带）→ Microsoft.PowerShell_profile.ps1
-    Ps51,
-    /// PowerShell 7.x（独立安装）→ Microsoft.PowerShell_profile.ps1
-    Ps7,
-    /// 用户自定义路径
-    Custom,
-}
-
-#[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-pub struct ProfileScan {
-    pub kind: ProfileKind,
-    pub path: String,
-    pub exists: bool,
-    /// 是否含 cc-monitor BEGIN/END 块
-    pub has_ccm_block: bool,
-    /// 块中的版本字符串（"v1" 等）
-    pub ccm_block_version: Option<String>,
-    /// 已有同名 function（非 ccm 块内的）
-    pub conflicting_functions: Vec<String>,
-    /// 🔴 〔`K-R62`〕**「你 rc 里这几行是旧的」那段话。** 空串 = 没有要清的。
-    ///
-    /// 它是 [`render_manual_cleanup_hint`] 的产物：**逐行指名**（行号 + 原文）
-    /// 加一段给用户自己动手的说明。**产品一个字节都不删**（`K31` + 用户逐字
-    /// 「原本的配置要手动删除」）—— 那些行没有围栏，边界只有人知道。
-    ///
-    /// ⚠ **只对 [`Shell::Posix`] 有内容**；PowerShell 那一侧的遗留由
-    /// [`scan_legacy_profiles`] 按**围栏**答（那是另一件事：它找的是**装错位置的整块**，
-    /// 这一格找的是**根本没有围栏的裸行**）。
-    pub manual_cleanup_hint: String,
-    // **C03 大整数策略**：量纲是**字节数**——2^53-1 B ≈ **8 PB**。
-    // PowerShell profile 是文本脚本，不可能接近它 ⇒ f64 精度足够。同 `SftpEntry.size` 那条论证。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub size_bytes: u64,
-}
+// 〔AL1d · 第四波 4B〕这里原来是 `ProfileKind`（PS 5.1 / PS 7 / 自定义 三个标签）与 `ProfileScan`〔散文墓碑〕
+// （一份 profile 的扫描结果，给终端集成那两条命令出参）。今天候选只有一份来历（`shell_dialect::ShellDialect::startup_files`），
+// 扫描结果是 `account_aliases::StartupFile` ＋ 上面的 [`BlockState`]；「哪一份是 PS 5.1 的」这个标签没有消费者了。
 
 // ═══════════════════════════════════════════════════════════════════════════
 // `K-R62`：本机 POSIX 那一半 —— **装**（借远端那一份）与**查**（够得着裸行）
@@ -286,9 +256,9 @@ fn fence_marker(line: &str) -> Option<bool> {
 
 /// 🔴 `KR62D2` 的正题：**扫一份 POSIX rc 里围栏之外的裸行。**
 ///
-/// # 为什么不是「给 `scan_legacy_profiles` 的路径表加两行」
+/// # 为什么不是「给 `scan_legacy_profiles`〔散文墓碑〕的路径表加两行」
 ///
-/// 那个函数认的是 [`find_block_version`]（**围栏**）。而 `K-R57` 现打用户本机：
+/// 那个函数（〔AL1d〕已删）认的是 [`find_block_version`]（**围栏**）。而 `K-R57` 现打用户本机：
 /// `~/.bashrc` 三种围栏**全部零命中**，那 14 行 ccm 相关**全是裸写的**
 /// ⇒ **加路径解决不了「够不着裸行」**，只会让读数看起来像做完了。
 /// ⇒ 这里换的是**判法**：按行走、跳过我们自己的围栏段、按**词**认 `ccm`。
@@ -392,31 +362,20 @@ pub fn render_manual_cleanup_hint(what: &str, hits: &[LegacyRcLine]) -> String {
     out
 }
 
-/// 解析当前用户实际安装的 PS profile 路径。
-///
-/// **关键**：用 `Microsoft.PowerShell_profile.ps1`（`$PROFILE` 默认指向，即
-/// CurrentUserCurrentHost）而非 `profile.ps1`（CurrentUserAllHosts，对所有
-/// host 包括 ISE / VSCode 集成 terminal 生效，但绝大多数用户不用这个）。
-///
-/// v1.7.0-1.7.1 错用 `profile.ps1` → PowerShell 启动时根本不读那个文件 →
-/// cc 集成形同虚设。v1.7.2 修正到默认 `$PROFILE`。
-///
-/// **自动识别**：
-///   - PS 5.1 永远显示（Windows 自带）
-///   - PS 7.x 只在 `Documents/PowerShell/` 目录存在时显示（说明用户装过且至少跑过一次）
 /// **路径围栏：profile 只能落在用户 home 之内**〔audit-0805 08-08，Phase G 第 86 件〕。
 ///
 /// # 为什么需要它
 ///
-/// 三条 `cc_integration_*` 命令收的是 **webview 给的字符串**（前端那一格是用户可输入的
-/// 文本框），此前**原样** `PathBuf::from` 就交给了安装器：`install` 往那里写、
-/// 文件不存在还会创建；`uninstall` 会重写它；`scan_path` 是任意路径的存在性/大小探针。
+/// 那三条命令（〔AL1d〕今天是 `aliases_block_install` / `aliases_block_remove` ＋ `aliases_read` 的「其它文件」；
+/// 从前叫 `cc_integration_*`〔散文墓碑〕）收的是 **webview 给的字符串**（前端那一格是用户可输入的
+/// 文本框），此前**原样** `PathBuf::from` 就交给了安装器：装往那里写、
+/// 文件不存在还会创建；卸会重写它；扫是任意路径的存在性探针。
 /// 而**远端**那条同名功能一直有围栏（`sftp.rs`：「profile 只能是 home 下的文件名」）。
 ///
 /// # 为什么是「home 之内」而不是「home 下的裸文件名」
 ///
-/// [`discover_profiles`] 自己就会返回 `~/WindowsPowerShell/…ps1` 这种**子目录**里的路径，
-/// 而 [`ProfileKind::Custom`] 是产品特性（用户可以指 `~/.config/fish/config.fish`）。
+/// `$PROFILE` 的候选（`shell_dialect.rs` 的 PowerShell 那一臂）本来就是 `~/Documents/WindowsPowerShell/…ps1` 这种**子目录**里的路径，
+/// 而「其它文件」是产品特性（用户可以指 `~/.config/fish/config.fish`）。
 /// ⇒ 围栏只挡「跑出 home」这一类，**不缩小功能**。
 ///
 /// 三条规则：① `~` / `~/x` 先展开（用户会手打这种）；② 必须是绝对路径；
@@ -473,104 +432,11 @@ pub fn fence_path_under(home: &std::path::Path, raw: &str) -> Result<PathBuf, St
     Ok(expanded)
 }
 
-pub fn discover_profiles() -> Vec<(ProfileKind, PathBuf)> {
-    let Some(home) = dirs::document_dir() else {
-        return Vec::new();
-    };
-    let mut out = Vec::new();
-    out.push((
-        ProfileKind::Ps51,
-        home.join("WindowsPowerShell")
-            .join("Microsoft.PowerShell_profile.ps1"),
-    ));
-    let ps7_dir = home.join("PowerShell");
-    if ps7_dir.exists() {
-        out.push((
-            ProfileKind::Ps7,
-            ps7_dir.join("Microsoft.PowerShell_profile.ps1"),
-        ));
-    }
-    out
-}
-
-/// v1.7.0-1.7.1 错位 profile 路径（已废弃，仅用于检测是否有遗留块需要清理）。
-fn legacy_profile_paths() -> Vec<(ProfileKind, PathBuf)> {
-    let Some(home) = dirs::document_dir() else {
-        return Vec::new();
-    };
-    vec![
-        (
-            ProfileKind::Ps51,
-            home.join("WindowsPowerShell").join("profile.ps1"),
-        ),
-        (
-            ProfileKind::Ps7,
-            home.join("PowerShell").join("profile.ps1"),
-        ),
-    ]
-}
-
-/// 扫所有 v1.7.0-1.7.1 错位 profile 文件，看哪些含 cc-monitor 块（需要用户手动清理）。
-pub fn scan_legacy_profiles() -> Vec<(ProfileKind, String)> {
-    let mut out = Vec::new();
-    for (kind, path) in legacy_profile_paths() {
-        if !path.exists() {
-            continue;
-        }
-        let Ok(raw) = std::fs::read_to_string(&path) else {
-            continue;
-        };
-        // 〔`K-R132`〕同 `scan_profile`：剥 BOM 再判围栏。
-        let (has_block, _) = find_block_version(strip_bom(&raw));
-        if has_block {
-            out.push((kind, path.to_string_lossy().into_owned()));
-        }
-    }
-    out
-}
-
-/// 扫描任意路径的 profile 文件（v1.7.2 用户自定义路径用）。kind 字段标 Custom。
-pub fn scan_path(path: &PathBuf, command_name: &str) -> ProfileScan {
-    scan_profile(ProfileKind::Custom, path, command_name)
-}
-
-/// 扫描一个 profile 文件：是否存在 / 是否含 ccm 块 / 检测命令名冲突 /
-/// 〔`K-R62`〕POSIX rc 上那几行**围栏之外的裸行**。
-///
-/// 🔴 **只读。** 它一个字节都不写 —— `K31`（只能做产品，不能动机器）在这一条上尤其硬：
-/// 「查」这一半的全部产物是文字（[`ProfileScan::manual_cleanup_hint`]），动手的是用户。
-pub fn scan_profile(kind: ProfileKind, path: &PathBuf, command_name: &str) -> ProfileScan {
-    let path_str = path.to_string_lossy().into_owned();
-    if !path.exists() {
-        return ProfileScan {
-            kind,
-            path: path_str,
-            exists: false,
-            has_ccm_block: false,
-            ccm_block_version: None,
-            conflicting_functions: Vec::new(),
-            manual_cleanup_hint: String::new(),
-            size_bytes: 0,
-        };
-    }
-    let raw = std::fs::read_to_string(path).unwrap_or_default();
-    // `size_bytes` 报的是**盘上那份**的大小（含 BOM）—— 它是给人看「这文件多大」的，
-    // 不是内容判定的输入。
-    let size_bytes = raw.len() as u64;
-    // 〔AL1d〕判内容那一半只有一份：[`block_state`]（BOM 在它里面剥）。
-    let _ = command_name;
-    let b = block_state(path, &raw);
-    ProfileScan {
-        kind,
-        path: path_str,
-        exists: true,
-        has_ccm_block: b.present,
-        ccm_block_version: b.version,
-        conflicting_functions: b.conflicting_functions,
-        manual_cleanup_hint: b.manual_cleanup_hint,
-        size_bytes,
-    }
-}
+// 〔AL1d · 第四波 4B〕这里原来住着 `$PROFILE` 的两份认法 ＋ 一段扫描：`discover_profiles` · `legacy_profile_paths` · `scan_legacy_profiles`〔散文墓碑〕
+// （前者认 PS 5.1 / 7 的 `Microsoft.PowerShell_profile.ps1`；后者把同目录的 `profile.ps1` 当成「v1.7.0-1.7.1 装错的位置」），
+// 以及扫一份的 `scan_path` / `scan_profile`〔散文墓碑〕。`$PROFILE` 在哪今天**只有** `shell_dialect.rs` 的 PowerShell 那一臂答（四份都列：
+// `profile.ps1` 是合法的 AllHosts 位置，不是「装错了」—— 从前两处认法正是在这一格上互相矛盾，`调研/第四波记录/AL1d.md §1.3`）；
+// 扫一份的判内容那一半是上面的 [`block_state`]，读盘那一次在 `account_aliases::rc_candidates_in`。
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 🔴 `K-R132`：**装上了、能跑、用户敲不到** —— 这一段就是那条缺陷的修法

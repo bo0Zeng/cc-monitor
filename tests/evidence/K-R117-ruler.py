@@ -308,11 +308,8 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         "aliases_block_install",
         "aliases_block_remove",
         "aliases_block_render",
-        "cc_integration_install",
-        "cc_integration_preview",
-        "cc_integration_scan_path",
-        "cc_integration_status",
-        "cc_integration_uninstall",
+        # 〔AL1d〕`cc_integration_install` / `_preview` / `_scan_path` / `_status` / `_uninstall` 五条退役：
+        #   装 / 卸 / 预览接给上面三条；状态与扫一份并进 `aliases_read`（它归 S4，能力 `alias.manage`）。
         "ccm_user_path_add",
         "ccm_user_path_remove",
         "ccm_user_path_status",
