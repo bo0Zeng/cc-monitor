@@ -1382,3 +1382,4 @@ src/settings/assets-section.ts:103	rows 那一格	保留	[不对外] 〔AS2〕�
 src/settings/assets-section.ts:109	from 那一格	保留	[不对外] 〔AS2〕同上一行
 src/settings/assets-section.ts:116	problems 那一格	保留	[不对外] 〔AS2〕同上一行
 src/settings/panel.ts:1103	资产目录	保留	[对外] 〔AS2〕机器页「工具」栏一块的标题（名词短语）
+src/bridge/src/byte_table.rs:474	它的回答不是 UTF-8 编码，多半是 Windows 的 PowerShell 或 cmd 在说没有 uname 这个命令	保留	[对外] 部署 / 全景拒绝 osUnknown 那句的 {why} 半句（接在「查了什么：问过它，」后面）；远端回话不是 UTF-8 时不照抄乱码（WIN1 · RT1 F4，真 Win11 上 PowerShell 按 GBK 报错）。PowerShell / cmd 是 R1b 限用词、用户自己也这么叫；uname 是那台机器上的命令名，与同句「它答「…」」那一支同语境
