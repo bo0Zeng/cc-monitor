@@ -118,11 +118,15 @@ export const overview = (at: RepoAt, budget?: number): Promise<Overview> =>
  * `symbols===0` = 从未索引 = 未启用本仓分析 → `"enable-gate"`（显式手势才扫描，绝不自动扫）；
  * 否则（`symbols>0`，用户此前已启用）→ `"load"`（直接加载现有 overview，stale 靠手动「刷新」）。
  * 抽成纯函数是为了单测钉死「默认关」不被回归成开面板即自动扫描（D20 违规）。
+ *
+ * 〔RM1f〕`indexedAt === null` 也算「从未建完」：建索引被撤掉的那一趟会在索引里留下**一部分**符号
+ * （真后端 × 真小程序现打：撤在 1.5 s 时 `symbols: 5622, indexedAt: null, stale: true`），
+ * 只看 `symbols` 的话下次打开会被当成「已启用、陈旧」而**自动**重建 —— 用户刚撤掉的那一趟又自己跑起来了。
  */
 export function panoramaLoadDecision(
-  st: Pick<PanoramaStatus, "symbols">,
+  st: Pick<PanoramaStatus, "symbols" | "indexedAt">,
 ): "enable-gate" | "load" {
-  return st.symbols === 0 ? "enable-gate" : "load";
+  return st.symbols === 0 || st.indexedAt === null ? "enable-gate" : "load";
 }
 
 /** 单符号详情（符号 + 直接 callers/callees + 关联文档）。symbol 用全限定 id。 */

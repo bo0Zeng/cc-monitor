@@ -35,6 +35,9 @@ use std::path::{Path, PathBuf};
 /// 〔那份头注与它的 `g6_reach::counterexample_b…` 已**同轮摘登记**，改成过去时；
 ///  那条反例从**活体**退成了**合成**，差别写在它自己的头注里。〕
 ///
+/// 〔RM1f〕**Windows 那一臂今天有了真实现**（[`windows_launchable_name`]：只认 `.exe`，理由在它的头注）；
+/// 其余非 unix 平台仍是下面这段说的保守 `false`。〔下面三段是 `K-R52` 那一拍的原话，留作来历。〕
+///
 /// # 改成 `false` 是「保守方向」，不是 Windows 实现
 ///
 /// `fallback_guard` 头注列的三个诚实取值里，`false` 那一条的括号写着
@@ -58,10 +61,35 @@ pub(crate) fn is_executable(p: &Path) -> bool {
         use std::os::unix::fs::PermissionsExt;
         md.permissions().mode() & 0o111 != 0
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        windows_launchable_name(p)
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         false
     }
+}
+
+/// 〔RM1f〕Windows 上「这个普通文件能不能被当程序起」—— **只认 `.exe`**（大小写不敏感）。
+///
+/// # 为什么今天要它（上面 `K-R52` 那段「本件不写，已走上报口交回 PM」的那一次产品决策）
+///
+/// 用户 09-24 V108：代码全景「之后本机也走这条路、monitor 摘内嵌引擎」⇒ Windows **本机**的全景
+/// 从那一刻起就是「本机后端 → 插件口 → `cc-monitor-panorama.exe`」。这一臂仍是恒 `false` 的话，
+/// Windows 本机的全景从「能用」（monitor 进程内那一份）变成「这台机器上还没装代码全景组件」。
+///
+/// # 为什么只认 `.exe`、不读 `PATHEXT`
+///
+/// `PATHEXT` 那一整套（`.bat` / `.cmd` / `.com` …）是「在 `PATH` 上按名字找命令」的规矩，
+/// 而今天经这一口起的东西都是**固定候选**、名字里就带着 `.exe`（全景小程序；cc-bus 那一族在 Windows 上
+/// 本来就不在 —— `C12`「windows 不要 tmux」）。`.bat` / `.cmd` 要经 `cmd.exe` 解释才起得来，
+/// 插件口是 argv 直传、不过 shell 的 ⇒ 认它们等于认一个起不来的东西。**如实写：这不是完整的 Windows 语义。**
+///
+/// 纯函数（不碰盘、不带平台门），在哪个平台上都能测；只有 Windows 那一臂用它。
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn windows_launchable_name(p: &Path) -> bool {
+    p.extension().is_some_and(|e| e.eq_ignore_ascii_case("exe"))
 }
 
 /// 在 `PATH` 上找一个可执行文件（不看固定候选）。
