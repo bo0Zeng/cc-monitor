@@ -5052,6 +5052,32 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
     expect(asks().length).toBe(2);
   });
 
+  it("★ L3：问回来的那一段全是不显示的记录（floor 不动）⇒ 下一问接着往下、不原地重问；问到第 0 行为止、之后再踢也不问", async () => {
+    // 后端答：那一段一条可显示的都没有（seq 里本来就有不显示的记录占的号）
+    vi.mocked(invoke).mockImplementation(((cmd: string, a?: { from: number; until: number }) =>
+      Promise.resolve(
+        cmd === "read_session_lines" ? { from: a!.from, next: a!.until, eof: false, payloads: [] } : undefined,
+      )) as never);
+    tm.onLine(mk("head", 1));
+    tm.onLine(mk("nd", 450)); // floor = 450
+    const t = home(tm).store.tabs.get("nd")!;
+    tm.switchTo("nd");
+    await settle();
+    expect(
+      asks().map((a) => [(a as { from: number }).from, (a as { until: number }).until]),
+      "floor 不动时按 floor 原地重问 ⇒ 无限循环；这里要的是一问接一问往下，到 0 为止",
+    ).toEqual([
+      [250, 450],
+      [50, 250],
+      [0, 50],
+    ]);
+    expect(t.window.floorSeq, "一条可显示的都没取回来，floor 不该动").toBe(450);
+    expect(t.window.belowState).toEqual({ kind: "none" });
+    home(tm).view.activate(t);
+    await settle();
+    expect(asks().length, "到顶了还在问").toBe(3);
+  });
+
   it("★ L3：问不动（老后端 / 断了）⇒ 哨兵说原因、不自动重问；切走再切回来才再问一次", async () => {
     vi.mocked(invoke).mockImplementation(((cmd: string) =>
       cmd === "read_session_lines"

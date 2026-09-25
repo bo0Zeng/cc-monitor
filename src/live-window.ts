@@ -80,6 +80,18 @@ export class TailWindow {
   private dirty = false;
   /** 〔CF2〕账本之下还有没有（见 {@link BelowState}） */
   private below: BelowState = { kind: "maybe" };
+  /**
+   * 〔CF2〕按行号往下已经问到了第几行（上一问的 `from`）：下一问的上界是它与 floor 里小的那个。
+   * **不能只看 floor**：问回来的那一段若全是不显示的记录，floor 不动 ⇒ 按 floor 算的下一问原地重问，
+   * 而这一问又是在上一问的回调里同步发起的 ⇒ 一个不让出的无限循环（死值验 K5 首刀现打：vitest worker OOM）。
+   * `null` = 没问过，或账本出过账（那些行要重新问，从 floor 起算）。
+   */
+  private askedDownTo: number | null = null;
+  /**
+   * 〔CF2〕上一问的上界。下一问的上界必须**严格更小**，否则不问 —— 兜住「上界没往下走」的任何一种写法
+   * （那一形在这里是一个同步发起的无限循环，不是慢一点）。与 {@link askedDownTo} 同时复位。
+   */
+  private lastUntil: number | null = null;
 
   get floorSeq(): number | null {
     return this.floor;
@@ -92,7 +104,7 @@ export class TailWindow {
 
   /**
    * 〔CF2〕该不该按行号往下问：账本空了、渲染窗口最老那一条不是第 0 行、还没问到顶、此刻没在问、上次没失败。
-   * 问的区间是 `[max(0, floor − batch), floor)`（{@link belowRange}）。
+   * 问的区间是 `[max(0, 上界 − batch), 上界)`，上界 = min(floor, 上一问的 from)（{@link belowRange}）。
    */
   get wantsBelow(): boolean {
     return (
@@ -100,20 +112,24 @@ export class TailWindow {
     );
   }
 
-  /** 〔CF2〕要问的那一段 `[from, until)`（`until` = 渲染窗口最老那一条）。没得问 ⇒ `null`。 */
+  /** 〔CF2〕要问的那一段 `[from, until)`（`until` = min(渲染窗口最老那一条, 上一问的 from)）。没得问 ⇒ `null`。 */
   belowRange(batch: number): { from: number; until: number } | null {
     if (!this.wantsBelow || this.floor === null) return null;
-    return { from: Math.max(0, this.floor - Math.max(1, batch)), until: this.floor };
+    const until = Math.min(this.floor, this.askedDownTo ?? this.floor);
+    if (until <= 0 || (this.lastUntil !== null && until >= this.lastUntil)) return null;
+    return { from: Math.max(0, until - Math.max(1, batch)), until };
   }
 
-  /** 〔CF2〕开始问。 */
-  markFetchingBelow(): void {
+  /** 〔CF2〕开始问 `[…, until)`。 */
+  markFetchingBelow(until: number): void {
     this.below = { kind: "fetching" };
+    this.lastUntil = until;
   }
 
   /** 〔CF2〕问回来了：问的是从第 `from` 行起 ⇒ `from == 0` 就到顶了，否则还可能有。 */
   markFetchedBelow(from: number): void {
     this.below = from <= 0 ? { kind: "none" } : { kind: "maybe" };
+    this.askedDownTo = from;
   }
 
   /** 〔CF2〕问不动。 */
@@ -123,7 +139,10 @@ export class TailWindow {
 
   /** 〔CF2〕失败过的，允许再问一次（切走再切回来时调；其余状态原样）。 */
   retryBelow(): void {
-    if (this.below.kind === "failed") this.below = { kind: "maybe" };
+    if (this.below.kind === "failed") {
+      this.below = { kind: "maybe" };
+      this.lastUntil = null; // 失败的那一问没取回东西：再问同一段是本意
+    }
   }
 
   /**
@@ -135,6 +154,8 @@ export class TailWindow {
     const n = this.pending.length;
     this.pending = [];
     this.dirty = false;
+    this.askedDownTo = null;
+    this.lastUntil = null;
     if (this.below.kind === "none" || this.below.kind === "failed") this.below = { kind: "maybe" };
     return n;
   }
@@ -160,6 +181,8 @@ export class TailWindow {
     this.pending.push(p);
     if (this.pending.length > PENDING_CAP) {
       this.keepHighest(PENDING_KEEP);
+      this.askedDownTo = null; // 出账的那些要重新问（从 floor 起算）
+      this.lastUntil = null;
       if (this.below.kind === "none") this.below = { kind: "maybe" };
     }
   }
