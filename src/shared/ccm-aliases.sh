@@ -33,4 +33,4 @@ fi
 # 这一行让那份文件自动接上：**它是 cc-monitor 自己的文件**（不在你的 rc 里、随时可删），
 # 没生成过就什么都不做。所以你这份 shell 配置**只会被写这一次**。
 # 写成 if/fi 而不是 `[ -r … ] && . …`：后者在文件不存在时整行返回 1，而这是本片段的最后一行。
-if [ -r "$HOME/.cc-monitor/account-aliases.sh" ]; then . "$HOME/.cc-monitor/account-aliases.sh"; fi
+if [ -r "$HOME/.cc-monitor/aliases.sh" ]; then . "$HOME/.cc-monitor/aliases.sh"; fi

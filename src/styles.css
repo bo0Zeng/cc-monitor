@@ -130,7 +130,7 @@
  * ⚠ **为什么前缀是 `body:not(.viewer-mode)` 而不是干脆去掉**（踩过的坑，别改回去）：
  * 去掉 `body.tabbar-collapsed` 会让每条选择器**少一个类**，而下面三条靠那一个类
  * 才压得过后文同族规则 —— `.tab`（本文件 `.tab{}` 在更后面）、
- * `.tab.tab-bg::before`（同特异度、在更后面）、`.tab.archived .live-dot`
+ * `.tab.tab-bg::before`（同特异度、在更后面）、`.tab.ended .live-dot`（〔U4〕原名 `.tab.archived`）
  * （`.tab.act-idle .live-dot` 同特异度、在更后面）⇒ 直接去掉会让这三条**当场失效**。
  * `:not(.viewer-mode)` 同样算一个类 ⇒ 特异度逐条与改前**完全相同**；
  * 而语义上也正好：viewer 窗口里 `#tab-bar` 本就 `display:none`，折叠样式是空跑。
@@ -162,8 +162,8 @@
     position: static;
     margin-right: 2px;
   }
-  /* 折叠态归档 tab 只剩空行（常态下灯被隐藏、靠斜体标题辨认）→ 给灰点当占位标识 */
-  body:not(.viewer-mode) .tab.archived .live-dot {
+  /* 折叠态已结束的 tab 只剩空行（常态下灯被隐藏、靠斜体标题辨认）→ 给暗色点当占位标识 */
+  body:not(.viewer-mode) .tab.ended .live-dot {
     display: block;
     background: var(--text-faint);
   }
@@ -256,17 +256,17 @@
   background: var(--overlay-hover);
 }
 
-/* 归档 */
-.tab.archived {
+/* 已结束（〔U4〕原名 .archived；会话状态的两轴与呈现住 tab-session-state.ts） */
+.tab.ended {
   opacity: 0.55;
 }
 
-.tab.archived .tab-title {
+.tab.ended .tab-title {
   color: var(--text-2);
   font-style: italic;
 }
 
-.tab.archived .tab-title::after {
+.tab.ended .tab-title::after {
   content: " ·";
   color: var(--text-2);
   margin-left: 2px;
@@ -282,9 +282,9 @@
   display: inline-flex;
 }
 
-.tab.archived .live-dot,
-.tab.archived .tab-focus,
-.tab.archived .tab-cwd {
+.tab.ended .live-dot,
+.tab.ended .tab-focus,
+.tab.ended .tab-cwd {
   display: none;
 }
 
@@ -307,7 +307,7 @@
   opacity: 0.85;
 }
 
-.tab:not(.archived) .tab-close {
+.tab:not(.ended) .tab-close {
   display: none;
 }
 
@@ -343,10 +343,10 @@
   animation: act-waiting-pulse 1.2s ease-in-out infinite;
 }
 
-/* audit-fixes F03.2：idle-tmux 第三态灰灯——claude 退出但 tmux 会话仍在（可 attach 复用）。
-   status 仍 live（不被 .archived 隐藏），此规则覆写 .live-dot 为灰、压过红绿黄。放在 act-* 之后
+/* audit-fixes F03.2：可重连——claude 退出但 tmux 会话仍在（可 attach 回去）。〔U4〕原名 .tmux-idle。
+   灯不被 .ended 隐藏，此规则覆写 .live-dot 为暗色、压过红绿黄。放在 act-* 之后
    =同特异性靠源序取胜；animation:none 停掉 waiting 呼吸。 */
-.tab.tmux-idle .live-dot {
+.tab.reconnectable .live-dot {
   background: var(--text-faint);
   animation: none;
 }
@@ -362,8 +362,8 @@
   animation: act-waiting-pulse 1.2s ease-in-out infinite;
 }
 
-/* audit-fixes F03.2：grid cell 的 idle-tmux 灰灯（同 tab-bar，覆写红绿黄、停呼吸）。 */
-.live-dot.tmux-idle {
+/* audit-fixes F03.2：grid cell 的可重连暗色灯（同 tab-bar，覆写红绿黄、停呼吸）。 */
+.live-dot.reconnectable {
   background: var(--text-faint);
   animation: none;
 }
@@ -666,7 +666,10 @@
   opacity: 0.7;
 }
 
-.viewer-branch-btn:hover {
+/* 〔UC2 合并 · 第四波〕原先只有 `.viewer-branch-btn:hover`（0-2-0），永远输给上面那条 `.has-branch-btn:hover .viewer-branch-btn`
+   （0-3-0）——按钮是卡片的直接子元素，悬停按钮必然也悬停卡片 ⇒ 悬停时到不了 1。补一个同特异度、写在后面的选择器。 */
+.viewer-branch-btn:hover,
+.has-branch-btn .viewer-branch-btn:hover {
   opacity: 1;
   color: var(--text);
   background: var(--overlay-hover);
@@ -714,22 +717,10 @@
   margin-left: auto;
 }
 
-/* user 内容用 sans 字体跟 assistant 的 serif 区分角色 */
-.card-user .card-body {
-  font-family: var(--font-base);
-  font-size: var(--font-size-base);
-  line-height: 1.55;
-}
-
 /* assistant 消息：full-width、无背景、无色条 */
 .card-assistant {
   background: transparent;
   padding: 0;
-}
-
-/* user 卡里不显示 "用户·HH:MM" header；只靠右对齐区分 */
-.card-user .card-header {
-  display: none;
 }
 
 .card-header {
@@ -739,6 +730,11 @@
   font-size: var(--font-size-xs);
   color: var(--text-faint);
   margin-bottom: 4px;
+}
+
+/* user 卡里不显示 "用户·HH:MM" header；只靠右对齐区分 */
+.card-user .card-header {
+  display: none;
 }
 
 .card-header .role {
@@ -764,6 +760,13 @@
   line-height: var(--line-height-prose);
   /* 长无断点串(URL/贴的日志)强制可断,防撑宽(同 .block-body 既有约定) */
   overflow-wrap: anywhere;
+}
+
+/* user 内容用 sans 字体跟 assistant 的 serif 区分角色 */
+.card-user .card-body {
+  font-family: var(--font-base);
+  font-size: var(--font-size-base);
+  line-height: 1.55;
 }
 
 .card-body .katex-display {
@@ -1687,16 +1690,16 @@
     background 0.12s;
 }
 
-.status-first-run-open:hover,
-.status-first-run-dismiss:hover {
-  color: var(--text, #d6cfc6);
-  background: var(--field-bg);
-}
-
 .status-first-run-dismiss {
   padding: 1px 6px;
   border-left: 1px solid var(--border, #3a342e);
   line-height: 1;
+}
+
+.status-first-run-open:hover,
+.status-first-run-dismiss:hover {
+  color: var(--text, #d6cfc6);
+  background: var(--field-bg);
 }
 
 /* === G6：分叉起会话前的追问小窗 ===
@@ -2193,15 +2196,15 @@
   padding: 2px 8px;
 }
 
-.user-inputs-toggle:hover:not(:disabled) {
-  color: var(--text);
-  background: var(--overlay-hover);
-}
-
 /* 0 条 ⇒ `disabled`（JS 那侧已有这个行为，这里只是让它看起来也像禁用）。 */
 .user-inputs-toggle:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.user-inputs-toggle:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--overlay-hover);
 }
 
 /* === 〔SE2 · `设计/10 §2.2b ④`〕实时 tab 的会话内查找面板（搜索 / 大纲两个模式） ===

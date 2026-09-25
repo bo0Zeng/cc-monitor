@@ -61,7 +61,7 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
     (
         "history.rs",
         Face::Facade,
-        7,
+        4,
         "会话记录根 ×3（`records_dir`）+「这个文件是不是会话记录」×4（`has_record_ext`）\
              ⇒ 全树最重的一处，而它一根针都不在件计划 `§0` 的四把尺子里。\
              🔴 〔`K-R97` 09-12〕**11 → 8，棘轮往下拧了 3**：`list_history_projects` 改问本机\
@@ -71,7 +71,12 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
              🔴 〔`K-R88` 09-13〕**8 → 7**：建分支那条路的源守卫（收路径 → canonicalize → \
              `has_record_ext`）整个不在了 —— 入参收成 sid，找那份文件走两侧共用的\
              `branch_core::find_session_file`。⚠ 同样**不是「收进接口了」**：\
-             那一格是**搬进共享 crate**，桌面侧从此不自己问「这个文件是不是会话记录」",
+             那一格是**搬进共享 crate**，桌面侧从此不自己问「这个文件是不是会话记录」。\
+             🔴 〔RW1 · 第四波 09-24〕**7 → 5**：本机删会话那道路径守卫（`records_dir` ×1 ＋ `has_record_ext` ×1）\
+             整个不在了 —— 删会话改成后端一条只收 sid 的命令（`files-delete-session`），落点由后端按 sid 找。\
+             ⚠ 同样**不是「收进接口了」**：那一格是**整段搬去后端**，桌面侧从此不问这件事。\
+             🔴 〔RW1 · 第四波 09-24〕**5 → 4**：本机分叉那一支取记录根（`records_dir` ×1）也走了 ——\
+             本机分叉改成 exec 本机后端 `--fork-session`，与远端同一条子命令",
     ),
     (
         "history.rs",
@@ -151,7 +156,11 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
 /// 🔴 〔RM1b · 第四波〕**35 → 34**：`tasks.rs` 那张门面脸（1 处）随任务列表改走后端摘掉。
 /// ⚠ 如实写：这一格是**搬走**不是**收进接口** —— 读任务目录那一步搬去了后端，
 /// 而后端侧那把尺子（`agent_locality_guard`）今天没数它（住址理由在 `observe/tasks_query.rs` 头注）。
-const COUPLING_BASELINE: usize = 34;
+///
+/// 🔴 〔RW1 · 第四波 09-24〕**−3**：`history.rs` 的门面那张脸 7 → 4 —— 本机删会话那道路径守卫（−2）与本机分叉那一支取记录根（−1）
+/// 整段搬去后端（详见那条登记）。⚠ 与 `K-R97` 同形：**不是「收进接口了」**，是桌面侧不再问这件事。
+/// 〔合并〕RM1b −1 与 RW1 −3 两边各自减，35 → 31。
+const COUPLING_BASELINE: usize = 31;
 
 /// **抹除 kind 的门面**：`adapter.rs` 里那几个「替调用者把 agent 写死」的自由函数。
 ///

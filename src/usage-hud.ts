@@ -10,6 +10,7 @@
 
 import { contextPercent, normalizeModel, type ContextLimitOverrides } from "./views/context-limit";
 import { loadConfig } from "./config";
+import s from "./usage-hud.module.css";
 
 export class UsageHud {
   /** 挂 status-bar 的 chip。 */
@@ -24,8 +25,8 @@ export class UsageHud {
     const btn = document.createElement("button");
     btn.type = "button";
     // 复用 status-bar chip 基类（同 agents-panel 的 "status-tasks status-agents" 范式），
-    // usage-hud-chip 只叠 delta（tabular-nums + .is-high 预警）。
-    btn.className = "status-tasks usage-hud-chip";
+    // 本组件自己的 delta（tabular-nums + 高位预警）住 `usage-hud.module.css`（CSS Modules，类名哈希）。
+    btn.className = `status-tasks ${s.chip}`;
     btn.style.display = "none"; // 无活跃会话/无 usage 时隐藏
     // `设计/50`：它当初点开的跨会话聚合视图已退役 ⇒ chip 变**纯只读**，不再挂任何监听。
     // 元素仍是 <button>（`.status-tasks` 那套 chip 样式建在 button 上），只把光标改回默认，
@@ -66,7 +67,7 @@ export class UsageHud {
     const btn = this.summaryElement;
     if (this.promptTokens == null) {
       btn.style.display = "none";
-      btn.classList.remove("is-high"); // 隐藏时清干净状态，防下次 show 前残留
+      btn.classList.remove(s.high); // 隐藏时清干净状态，防下次 show 前残留
       return;
     }
     btn.style.display = "";
@@ -75,12 +76,12 @@ export class UsageHud {
     if (pct == null) {
       btn.textContent = "ctx ?";
       btn.title = `活跃会话 context 占用：模型「${normalizeModel(this.model)}」上限未知（${tok} tokens）`;
-      btn.classList.remove("is-high");
+      btn.classList.remove(s.high);
       return;
     }
     const rounded = Math.round(pct);
     btn.textContent = `ctx ${rounded}%`;
     btn.title = `活跃会话 context 占用 ≈ ${rounded}%（${normalizeModel(this.model)}，最新一轮 ${tok} tokens ÷ 模型上限）。近似值。`;
-    btn.classList.toggle("is-high", rounded >= 80); // 逼近自动 compact 时预警
+    btn.classList.toggle(s.high, rounded >= 80); // 逼近自动 compact 时预警
   }
 }

@@ -816,3 +816,126 @@ fn presence_still_has_exactly_two_states() {
              答了就把这条判据与 `skill_host` 头注那段一起改掉。"
     );
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// 〔RW1 · 第四波 · 2026-09-24〕收件箱经那台机器的后端读写（本机 ＋ 远端同一条路）
+// ══════════════════════════════════════════════════════════════════════════
+//
+// 买到的：远端可编辑集合的逐字判定（两向）· 远端版发现 / 实例 / 可编辑集合与本机同一套规则 ·
+// 写带 CAS 期望、打开之后被改过 ⇒ 一个字节不写并说清。替身门落在临时目录上。
+// 买不到的：真远端（远端后端的围栏：解链接 / 不许落进会话文件 —— 那一半的判据在后端 `files_write_tests.rs`）。
+
+fn uf_run<T>(f: impl std::future::Future<Output = T>) -> T {
+    futures::executor::block_on(f)
+}
+
+#[test]
+fn the_remote_editable_set_is_judged_verbatim_both_ways() {
+    let pb = SKILLS
+        .iter()
+        .find(|s| !s.editable.is_empty())
+        .expect("至少一个 skill 声明了可编辑文件");
+    let cwd = "/home/u/proj";
+    for f in pb.editable {
+        let want = format!("{cwd}/{}/{f}", pb.artifacts.root);
+        assert_eq!(
+            remote_editable_rel(pb, cwd, &want).expect("声明算出来的那一条该放行"),
+            format!("{}/{f}", pb.artifacts.root)
+        );
+        for bad in [
+            format!("{cwd}/{}/../{f}", pb.artifacts.root),
+            format!("{cwd}/{}/x/{f}", pb.artifacts.root),
+            format!("{cwd}//{}/{f}", pb.artifacts.root),
+            format!("/etc/{f}"),
+        ] {
+            assert!(
+                remote_editable_rel(pb, cwd, &bad).is_err(),
+                "{bad} 不是声明算出来的那一条，竟然放行了"
+            );
+        }
+    }
+    let none = SKILLS
+        .iter()
+        .find(|s| s.editable.is_empty())
+        .expect("有一个空集合的");
+    assert!(remote_editable_rel(none, cwd, &format!("{cwd}/x")).is_err());
+}
+
+#[test]
+fn the_remote_view_uses_the_same_rules_as_the_local_one() {
+    let home = crate::user_files::tests::temp_home("skill-rv");
+    let cwd = home.join("proj");
+    let spec = SKILLS
+        .iter()
+        .find(|s| !s.editable.is_empty())
+        .expect("有可编辑的 skill");
+    let root = cwd.join(spec.artifacts.root);
+    std::fs::create_dir_all(root.join("w1")).expect("建实例目录");
+    std::fs::create_dir_all(root.join("hooks")).expect("建非实例目录");
+    std::fs::write(root.join("w1").join(spec.artifacts.instance_marker), "x").expect("铺标记");
+    let door = crate::user_files::tests::DiskDoor::new(&home);
+    door.listings.borrow_mut().insert(
+        root.display().to_string(),
+        vec![("w1".to_string(), true), ("hooks".to_string(), true)],
+    );
+    let views = uf_run(remote_views(&door, &cwd.display().to_string())).expect("远端视图");
+    let v = views
+        .iter()
+        .find(|v| v.id == spec.id)
+        .expect("那个 skill 在");
+    assert_eq!(
+        v.instances,
+        vec!["w1".to_string()],
+        "实例按标记文件认，`hooks/` 不算"
+    );
+    assert_eq!(
+        v.editable,
+        spec.editable
+            .iter()
+            .map(|f| format!("{}/{f}", root.display()))
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        v.missing_reason
+            .as_deref()
+            .is_some_and(|r| r.contains(spec.id)),
+        "替身 home 里没装这个 skill ⇒ 缺席原因要带身份：{:?}",
+        v.missing_reason
+    );
+    std::fs::remove_dir_all(&home).ok();
+}
+
+#[test]
+fn saving_after_the_agent_touched_the_inbox_writes_nothing_and_says_why() {
+    let home = crate::user_files::tests::temp_home("skill-cas");
+    let root = home.display().to_string();
+    std::fs::write(home.join("INBOX.txt"), "a\nb\n").expect("铺收件箱");
+    let door = crate::user_files::tests::DiskDoor::new(&home);
+    let loaded = uf_run(read_editable(&door, &root, "INBOX.txt")).expect("读");
+    assert_eq!(loaded, "a\nb\n");
+    // agent 在人改的时候处置了一条。
+    std::fs::write(home.join("INBOX.txt"), "b\n").expect("agent 改");
+    let e = uf_run(write_editable(
+        &door,
+        &root,
+        "INBOX.txt",
+        "a\nb\nc\n",
+        &loaded,
+    ))
+    .expect_err("打开之后被改过 ⇒ 不写");
+    assert!(e.contains("打开之后被改过"), "{e}");
+    assert_eq!(
+        std::fs::read_to_string(home.join("INBOX.txt")).expect("读回"),
+        "b\n",
+        "agent 的处置被冲掉了"
+    );
+    // 期望对得上 ⇒ 写成；读不到 ⇒ 说清「必须已存在」。
+    uf_run(write_editable(&door, &root, "INBOX.txt", "b\nc\n", "b\n")).expect("对上了就写");
+    assert_eq!(
+        std::fs::read_to_string(home.join("INBOX.txt")).expect("读回"),
+        "b\nc\n"
+    );
+    let e = uf_run(read_editable(&door, &root, "nope.txt")).expect_err("不存在该拒");
+    assert!(e.contains("必须已存在"), "{e}");
+    std::fs::remove_dir_all(&home).ok();
+}

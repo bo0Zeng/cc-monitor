@@ -42,14 +42,9 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              （backend 侧自己也有 canonicalize 前缀校验）—— 那是纵深防御，同 `remote_branch.rs` \
              那句「两个 id 已过白名单，仍照常 shell_quote」。",
     ),
-    (
-        "src/history.rs",
-        "write",
-        4,
-        "写操作**恰好也读 dir 来定位文件**：`delete_history_session`(621/622) · \
-             `create_branch_session`(744/745)。⚠ **不属读面** —— 删会话 **backend 侧无对侧**\
-             （14 条一次性子命令里没有删）；分叉走 `--fork-session`。",
-    ),
+    // 〔RW1 · 第四波 09-24〕这里原来有 `src/history.rs` 的 `write` 一行（写操作恰好也读 dir 来定位文件：
+    //   `delete_history_session` · `create_branch_session`，4 处）。两件都改经后端（删会话 `files-delete-session`
+    //   只收 sid · 本机分叉 exec 本机后端 `--fork-session`），本进程不再解析 dir 来定位要写的那一份 ⇒ 4 → 0，摘行。
     (
         "src/history.rs",
         "payload",
@@ -114,8 +109,10 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/cc_bus_deploy.rs",
         "write",
-        13,
-        "`PS1` 的部署：`fenced_dest` 解析 `<claude_dir>/skills` 并做 realpath 围栏、\
+        14,
+        "〔RW1 · 第四波 09-24〕**13 → 14**：部署改经本机后端写之后，`deploy_into` 收一个 `claude_dir` 参数并把它交给后端当根\
+             （多一处 `claude_dir` 引用）；本进程一个字节不写，写那一跳住后端 `files-put` / `files-rename` / `files-chmod`。\n\
+             `PS1` 的部署：`fenced_dest` 解析 `<claude_dir>/skills` 并做 realpath 围栏、\
              `deploy_into`/`deploy_local_cc_bus` 取 dir 再往下写。\
              ⚠ **不属读面** —— 它是**写**操作（本仓第一处往 `<claude_dir>` 写的，\
              `U10b` 裁定后的第 7 条例外），恰好也要解析 dir 来定位落点，与 `history.rs` 那条 \
@@ -220,8 +217,10 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/skill_host.rs",
         "non-read",
-        5,
-        "★ **devbench F02 新增，且这条登记本身逮到了一个真缺陷** ——\
+        7,
+        "〔RW1 · 第四波 09-24〕**5 → 7**：远端版 `remote_views` 里一处 `claude_dir` 局部变量 ＋ 它的一次使用\
+             （远端配置根按 `<后端的 home>/.claude` 算，问的是**那台机器的后端**，本机零读）。\n\
+             ★ **devbench F02 新增，且这条登记本身逮到了一个真缺陷** ——\
              不是「记上账」那么简单，值得写清楚：\n\
              五处命中（**F03 从 3 涨到 5**：新增 IPC 层的 `views()` 里一处\
              `paths::resolve_claude_dir()` 调用 + 一处 `claude_dir` 局部变量）：\
@@ -363,17 +362,12 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
     (
         "lib.rs",
         "aliases_read",
-        "`~/.cc-monitor/account-aliases.sh`（读回口：那份别名文件今天有哪几条）",
+        "`~/.cc-monitor/aliases.sh`（读回口：那份别名文件今天有哪几条）",
         "只读。monitor 自己的目录，用 `home_dir()` 只为「每个用户各一份」；\
              `home_dir()` 在这里而不在 `account_aliases.rs` 里 —— 那边把 `home` 当参数收，测试拿临时目录当 home。",
     ),
-    (
-        "lib.rs",
-        "aliases_install",
-        "`~/.cc-monitor/account-aliases.sh`，以及**用户自己选的**那份 rc",
-        "**两个落点，性质不同**：① monitor 自己的那份别名文件；② 用户**自己选**的那份 rc 里一行 source —— 有围栏（`profile_installer::fence_path_under`，只许落在 home 之内，路径由界面上的人从盘上真实存在的那几份里选）。\
-             写侧今天只有一个序列 `fenced_block::apply`，本机原语登记在 `write_site_registry` 的 `fenced_block.rs` 三行。",
-    ),
+    // 〔RW1 · 第四波 09-24〕这里原来还有 `lib.rs::aliases_install` 一行（它自己 `home_dir()`、再交本进程落盘）。
+    //   写改走本机后端之后，home 由后端答（`user_files::Door::home`），这一条不再伸手进用户 home ⇒ 摘行。
     (
         "ccm_probe.rs",
         "local_ccm_entry_status",

@@ -183,7 +183,9 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              `cargo check --lib --target x86_64-pc-windows-msvc` ⇒ \
              `failed to find tool \"lib.exe\"`（monitor 有 C 依赖，交叉编译要 MSVC 工具链），\
              而后端侧同一条能过 ⇒ **平台代码该住后端侧，不该在 monitor 侧再抽一层**\
-             （原设计那样做是在造第二份实现，已否）。",
+             （原设计那样做是在造第二份实现，已否）。\
+             〔WN1 · 09-24〕U4b 的 Windows 臂已写（`pidwatch/win32.rs`，只到编得过 ＋ 源码对拍）\
+             ⇒ F12 不再被挡，见 `the_windows_pidwatch_has_landed_so_f12_is_unblocked`。",
     ),
 ];
 
@@ -416,7 +418,8 @@ fn every_ticker_names_its_event_source_and_owner() {
              ⚠ **别把它读成「自动部署终于可靠了」**（那是这条登记当年自己写的退役条件）：\
              实际走的是另一条路 —— **那一档整个取消**。\n\
              · 剩下的 `session_map.rs` 那条退役归 **F12**，被 `unified-backend` 的 **U4b** 挡着\
-             （backend 侧 Windows 判活是诚实空壳，而本条治的 bug 恰恰是 Windows 场景）。"
+             （backend 侧 Windows 判活是诚实空壳，而本条治的 bug 恰恰是 Windows 场景）。\
+             〔WN1 · 09-24：那个空壳的 Windows 格已由 `pidwatch/win32.rs` 接走 ⇒ F12 可以开工〕。"
     );
 }
 
@@ -456,23 +459,50 @@ fn every_ticker_names_its_event_source_and_owner() {
 /// 本条按「`on_dead` 有没有被调用」判。若 U4b 换个文件落地
 /// （比如新开 `windows.rs` + 改 `mod.rs` 的 `cfg`），本条**看不见** ——
 /// 那时 `mod.rs` 的 `cfg` 会变，而本条不读它。⇒ 它是个闹钟，不是围栏。
+///
+/// # 🔴 〔WN1 · 09-24〕**闹钟响过了，而且正是上面那句预言的形状**
+///
+/// U4b 落在一份新文件里（`pidwatch/win32.rs` ＋ `mod.rs` 的 `cfg` 改成 Windows 走它），
+/// `fallback.rs` 一个字的行为都没变 ⇒ 旧版本条会**继续绿**、一声不响 —— 头注自己写的那个盲区。
+/// ⇒ 本条改成盯**新的事实**：Windows 那一格路由到 `win32.rs`，而那份文件真的会调 `on_dead`。
+/// 它从「等 U4b 的闹钟」变成「U4b 别退回去的围栏」；**F12 从这一拍起可以开工**
+/// （上面「要做的两件事」照旧：把 `pidwatch` 抽成两侧共用的 crate · `session_map.rs` 删 2s 心跳 ——
+/// 那不在 WN1 的写区，已报主会话）。
+/// ⚠ 别把「F12 可以开工」读成「Windows 上判活验过了」：`win32.rs` 只买到编得过 ＋ 与 `linux.rs`
+/// 的源码对拍，真机零读数（WN1 不碰 Win11 虚拟机）。F12 删心跳之前，那一格值得先买一次真机读数。
 #[test]
-fn the_windows_pidwatch_is_still_an_honest_no_op() {
+fn the_windows_pidwatch_has_landed_so_f12_is_unblocked() {
     let root = crate::guard_support::repo_root();
-    let p = root.join("src/backend/platform/pidwatch/fallback.rs");
-    let raw = std::fs::read_to_string(&p).unwrap_or_else(|e| {
+    let read = |rel: &str| {
+        let p = root.join(rel);
+        std::fs::read_to_string(&p).unwrap_or_else(|e| {
+            panic!(
+                "{} 读不到：{e} —— Windows 那一格的看守搬家了？回去读 F12。",
+                p.display()
+            )
+        })
+    };
+    let router = guard_core::production_code(&read("src/backend/platform/pidwatch/mod.rs"));
+    guard_core::pin_line(&router, "pub(crate) use win32::watch_pid_until_exit;").unwrap_or_else(|e| {
         panic!(
-            "{} 读不到：{e}\n                 ★ 文件搬走/删掉本身就可能意味着 U4b 落地了 —— 回去读 F12。",
-            p.display()
+            "{e}\n⇒ Windows 那一格不再路由到 `pidwatch/win32.rs` —— U4b 退回去了（或者搬了家）。\n\
+             F12 若已按「Windows 有死亡事件」删掉 `session_map.rs` 的 2s 心跳，那条心跳治的 bug 会回来：\n\
+             关终端窗口 ⇒ `claude.exe` 被强杀 ⇒ pidfile 不会被删 ⇒ 死 Tab 永远 live。"
         )
     });
-    let prod = guard_core::production_code(&raw);
-    // ★ 判的是**行为**不是名字：空壳的定义是「`on_dead` 永远不会被调用」。
-    // 拼出来的，免得命中本条自己的说明。
+    let win32 = guard_core::production_code(&read("src/backend/platform/pidwatch/win32.rs"));
+    // ★ 判的是**行为**不是名字（上一版的教训）：那条腿的定义是「`on_dead` 会被调用」。
     let called = format!("on_{}()", "dead");
     assert!(
-        !prod.contains(&called),
-        "★ **U4b 落地了** —— backend 的非 Linux pidwatch 不再是空壳。\n\n             那意味着 **F12 可以开工了**：`session_map.rs` 那条 2s 心跳等的\n             「进程死了但 pidfile 还在」现在有真事件源了。\n\n             要做的两件事：\n             ① 把 `pidwatch` 抽成两侧共用的 crate（今天它住在 backend crate 里，\n                而 backend crate 刻意不在 workspace 里、有独立 lockfile）；\n             ② `session_map.rs` 改用它，删掉 `recv_timeout(2s)` 那条心跳，\n                并把上面 `REGISTERED` 里 `src/session_map.rs` 那条**删掉**\n                （`the_ticker_count_is_pinned` 会红在「少一条」上 —— 那是退役的验收证据）。\n\n             ⚠ 顺带读一下：Windows **轮询**判活本仓早就有（`session_map.rs` 的 `cfg(windows)` 支，\n             `OpenProcess` + `GetExitCodeProcess` + `GetProcessTimes` 比 procStart）——\n             身份校验那一半可以直接搬，别重写。"
+        win32.contains(&called),
+        "`pidwatch/win32.rs` 的生产段里一次 `on_dead` 都不调了 —— Windows 那条死亡事件的腿又没了。"
+    );
+    // 空壳那一份照旧是空壳（它今天只管既非 Linux 也非 Windows 的平台）。
+    let fallback = guard_core::production_code(&read("src/backend/platform/pidwatch/fallback.rs"));
+    assert!(
+        !fallback.contains(&called),
+        "`pidwatch/fallback.rs` 开始调 `on_dead` 了 —— 它是没有看守那几个平台的诚实空壳，\n\
+         「立刻调 `on_dead`」是它头注列为最坏的那个选项（活进程被判死）。"
     );
 }
 

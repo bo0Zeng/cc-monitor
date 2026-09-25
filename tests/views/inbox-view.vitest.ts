@@ -49,21 +49,29 @@ const SRC = readFileSync(`${REPO_ROOT}/src/views/inbox-view.ts`, "utf8");
  * 会在 import 求值期跑，那时下面这些 `const` 还没初始化；套一层箭头函数把解引用推迟到调用时。
  * （形状照 `pane-preview.vitest.ts`。）
  */
-const listSkills = vi.fn<(args: { cwd: string }) => Promise<SkillView[]>>();
+// 〔RW1 · 第四波 09-24〕三条都吃 `origin`（本机 = `"<local>"`）；写多带一格 `expected`（打开时读到的那一份）。
+type WriteArgs = {
+  origin: string;
+  cwd: string;
+  skillId: string;
+  path: string;
+  content: string;
+  expected: string;
+};
+const listSkills = vi.fn<(args: { origin: string; cwd: string }) => Promise<SkillView[]>>();
 const readSkillFile =
-  vi.fn<(args: { cwd: string; skillId: string; path: string }) => Promise<string>>();
-const writeSkillFile =
-  vi.fn<(args: { cwd: string; skillId: string; path: string; content: string }) => Promise<void>>();
+  vi.fn<(args: { origin: string; cwd: string; skillId: string; path: string }) => Promise<string>>();
+const writeSkillFile = vi.fn<(args: WriteArgs) => Promise<void>>();
 const toast = vi.fn();
 const pushed: unknown[] = [];
 const popped: unknown[] = [];
 
 vi.mock("../../src/ipc/commands", () => ({
   commands: {
-    list_skills: (a: { cwd: string }) => listSkills(a),
-    read_skill_file: (a: { cwd: string; skillId: string; path: string }) => readSkillFile(a),
-    write_skill_file: (a: { cwd: string; skillId: string; path: string; content: string }) =>
-      writeSkillFile(a),
+    list_skills: (a: { origin: string; cwd: string }) => listSkills(a),
+    read_skill_file: (a: { origin: string; cwd: string; skillId: string; path: string }) =>
+      readSkillFile(a),
+    write_skill_file: (a: WriteArgs) => writeSkillFile(a),
   },
 }));
 vi.mock("../../src/error-toast", () => ({
@@ -160,7 +168,7 @@ const pathText = () => document.querySelector(".inbox-path")?.textContent ?? "";
 const textareaEl = () => document.querySelector<HTMLTextAreaElement>(".inbox-text")!;
 const saveEl = () => document.querySelector<HTMLButtonElement>(".inbox-save")!;
 
-/** 本地会话（有 cwd、`origin === null`）—— 唯一能开收件箱的那一形。 */
+/** 本地会话（有 cwd、`origin` 是 `LOCAL_ORIGIN`）。〔RW1〕远端会话今天也开得了（见最后那几条）。 */
 const localRepo = () => ({ cwd: "/home/u/proj", origin: LOCAL_ORIGIN });
 
 beforeEach(() => {
@@ -214,6 +222,7 @@ describe("F03b 收件箱 overlay：真渲染", () => {
 
     // ★ 路径**一个字节都没加工**（前端不做路径判断的运行时那一半：拼过一次就再也对不上后端）。
     expect(readSkillFile).toHaveBeenCalledWith({
+      origin: "<local>",
       cwd: "/home/u/proj",
       skillId: "cc-bus",
       path: "/home/u/proj/.pb/INBOX.md",
@@ -274,12 +283,23 @@ describe("F03b 收件箱 overlay：真渲染", () => {
     await settle();
 
     expect(writeSkillFile).toHaveBeenCalledWith({
+      origin: "<local>",
       cwd: "/home/u/proj",
       skillId: "cc-bus",
       path: "/home/u/proj/.pb/INBOX.md",
       content: "人刚敲进去的一条",
+      // 〔RW1〕CAS 期望 = 打开时读到的那一份（agent 在这之后改过 ⇒ 后端一个字节不写）。
+      expected: "旧的",
     });
     expect(statusText()).toBe("已保存（后端已读回逐字节比对）");
+
+    // 存成功之后，下一次保存的期望换成刚存进去的那一份（否则第二次保存必然被当成「被人改过」）。
+    textareaEl().value = "第二次";
+    saveEl().click();
+    await settle();
+    expect(writeSkillFile).toHaveBeenLastCalledWith(
+      expect.objectContaining({ content: "第二次", expected: "人刚敲进去的一条" }),
+    );
   });
 
   it("写面围栏拒绝：理由原样进 toast，且按钮必须重新可用（否则那个面板从此点不动）", async () => {
@@ -301,25 +321,29 @@ describe("F03b 收件箱 overlay：真渲染", () => {
     expect(saveEl().disabled).toBe(false);
   });
 
-  it("远端会话：不建面板、不发一次 IPC，toast 里带着**是哪台机器**（诚实降级）", async () => {
+  it("〔RW1〕远端会话：照样开面板，三条 IPC 都带那台机器的 origin（读写经那台机器的后端）", async () => {
+    listSkills.mockResolvedValue([skill("pb", { editable: ["/remote/proj/.pb/INBOX.md"] })]);
+    readSkillFile.mockResolvedValue("远端那一份");
     const v = new InboxView(() => ({ cwd: "/remote/proj", origin: "box-7" }));
     await v.open();
 
-    expect(overlayEl()).toBeNull();
-    expect(listSkills).not.toHaveBeenCalled();
-    expect(pushed).toHaveLength(0);
-    expect(toast).toHaveBeenCalledWith(
-      "收件箱仅支持本地会话",
-      expect.stringContaining("box-7"),
+    expect(overlayEl()).not.toBeNull();
+    expect(listSkills).toHaveBeenCalledWith({ origin: "box-7", cwd: "/remote/proj" });
+    expect(readSkillFile).toHaveBeenCalledWith(expect.objectContaining({ origin: "box-7" }));
+    textareaEl().value = "改一条";
+    saveEl().click();
+    await settle();
+    expect(writeSkillFile).toHaveBeenCalledWith(
+      expect.objectContaining({ origin: "box-7", content: "改一条", expected: "远端那一份" }),
     );
   });
 
-  it("当前 tab 没有工作目录：另一句话（两种缺席不许糊成同一句）", async () => {
+  it("当前 tab 没有工作目录：说清为什么，不建面板", async () => {
     const v = new InboxView(() => null);
     await v.open();
 
     expect(overlayEl()).toBeNull();
-    expect(toast).toHaveBeenCalledWith("收件箱仅支持本地会话", "当前 tab 没有工作目录。");
+    expect(toast).toHaveBeenCalledWith("打不开收件箱", "当前 tab 没有工作目录。");
   });
 
   it("open / close 进出 overlay 栈；Esc 关掉并**吃掉**这次按键（不许穿透到下一层）", async () => {

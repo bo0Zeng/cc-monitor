@@ -12,35 +12,9 @@ fn probe_cfg() -> crate::ssh_source::RemoteConfig {
     }
 }
 
-/// ★★ **删远端文件的入口真的过了围栏吗**〔audit-0805 08-08，Phase G 第 53 件〕。
-///
-/// 本文件有三条 `is_safe_remote_*` 围栏，各自都有直接的行为判据 ——
-/// **但主语是围栏本身**。08-08 实测：把 `uninstall_remote_backend` 与
-/// `remove_remote_file` 里那三处 `if !is_safe_…` 全部短路，
-/// **全仓 984 条判据一条不红**。而那两条路紧接着是
-/// `sftp.remove_file(...)` —— **删用户远端机器上的文件**。
-/// 与 F47（本机删除路）/ F48（建分支路）同一族，这次在远端。
-///
-/// # 这条能跑真路
-///
-/// 第一道围栏在 `connect_sftp` **之前**：喂一个非法远端路径 ⇒ 应当在
-/// **零网络**的情况下被拒。围栏没接上的话，它会往下走去连一个不存在的主机，
-/// 报的是连接错 —— 两句话分得开。
-///
-/// ⚠ 第二道围栏（`canonicalize` **之后**那处）跑不了真路：要到那一步得先连上。
-/// 那半只能靠源码判，已写在下面并如实标注。
-#[tokio::test]
-async fn the_remote_delete_entry_point_actually_goes_through_the_fence() {
-    let cfg = probe_cfg();
-    let err = remove_remote_file(&cfg, "/etc/passwd")
-        .await
-        .expect_err("非法远端路径竟然没被拒 —— 围栏没接上");
-    assert!(
-        err.contains("refuse") || err.contains("jsonl"),
-        "拒绝了，但不是围栏拒的（错误：{err}）—— \
-             说明它已经越过围栏去连主机了，而下一步是 `sftp.remove_file`。"
-    );
-}
+// 〔RW1 · 第四波 09-24〕这里原来是「删远端文件的入口真的过了围栏吗」（喂 `/etc/passwd` 给 SFTP 直删、
+//   要求零网络就被结构守卫拒）。F11 改经远端后端删（`files-delete-session`，只收 sid）之后，
+//   那条 SFTP 直删与它的守卫一起走了；「只收 sid · 落点由后端按 sid 找」的判据住后端。
 
 /// ★ 第二道围栏（canonicalize 之后）与卸载路的围栏：**源码层**判据。
 ///
@@ -52,7 +26,7 @@ fn both_remote_path_sinks_still_ask_their_fence() {
     let prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
     for (f, fence) in [
         ("uninstall_remote_backend", "is_safe_remote_backend_path"),
-        ("remove_remote_file", "is_safe_remote_jsonl"),
+        // 〔RW1 · 第四波 09-24〕`remove_remote_file` 那一行随 F11 改经后端删走了。
     ] {
         let at = prod
             .find(&format!("fn {f}"))
@@ -1020,39 +994,8 @@ fn the_probe_shell_really_goes_through_the_pure_interpreter() {
     );
 }
 
-#[test]
-fn is_safe_remote_jsonl_guard() {
-    // 合法：projects/<单层目录>/<sid>.jsonl
-    assert!(is_safe_remote_jsonl(
-        "/home/pi/.claude/projects/proj/abc-123.jsonl"
-    ));
-    // 兼容 CLAUDE_CONFIG_DIR 自定义目录（不硬编码 .claude）
-    assert!(is_safe_remote_jsonl(
-        "/opt/claude-data/projects/-home-pi-x/sid.jsonl"
-    ));
-    // 非 .jsonl → 拒
-    assert!(!is_safe_remote_jsonl(
-        "/home/pi/.claude/projects/proj/note.txt"
-    ));
-    assert!(!is_safe_remote_jsonl(
-        "/home/pi/.claude/projects/proj/abc.json"
-    ));
-    // 不在 projects/ → 拒
-    assert!(!is_safe_remote_jsonl("/home/pi/.ssh/id_ed25519.jsonl"));
-    assert!(!is_safe_remote_jsonl("/etc/passwd.jsonl"));
-    // 含 .. 上跳 → 拒
-    assert!(!is_safe_remote_jsonl(
-        "/home/pi/.claude/projects/../../../etc/x.jsonl"
-    ));
-    // 审计 S-1：projects 下直接放 jsonl（无中间目录层）→ 拒
-    assert!(!is_safe_remote_jsonl("/tmp/projects/x.jsonl"));
-    // 层级过深（≠ <dir>/<sid>.jsonl）→ 拒
-    assert!(!is_safe_remote_jsonl("/a/projects/b/c/x.jsonl"));
-    // 文件名只是 ".jsonl" → 拒
-    assert!(!is_safe_remote_jsonl("/x/projects/dir/.jsonl"));
-    // 空中间目录段 → 拒
-    assert!(!is_safe_remote_jsonl("/x/projects//abc.jsonl"));
-}
+// 〔RW1 · 第四波 09-24〕这里原来是远端删会话那道结构守卫的单元判据；守卫随 SFTP 直删一起走了，
+//   「哪几份才许删」那一问的判据住后端（`session_file_for_delete` 的删会话那一族）。
 
 #[test]
 fn remote_parent_and_marker() {
@@ -1253,6 +1196,8 @@ fn bytes_on_disk_but_read_empty_is_refused() {
 /// 把结果交给变换），写后回读也是它（同一份 fail-closed 读取，没有第二条 lossy 的路）。
 /// ⇒ 本条钉三件：`read` 走 `read_profile_text`、不走裸 `read_optional`；
 /// 两个命令都把 profile 交给 `SftpFile` ＋ `fenced_block::apply`（不在函数体里自己读）。
+/// 〔RW1 · 第四波 09-24〕后一半改了：两个命令的读改写经远端后端（`user_files::edit`），
+/// 喂给变换的那一次读是后端的 `files-peek`；`SftpFile::read` 那一半只剩 F08 的入口 shim 在用。
 #[test]
 fn profile_read_modify_write_goes_through_the_failsafe_reader() {
     // ⚠ 刻意不用裸 `contains`：`needle_anchor_registry` 那条递减棘轮治的正是「匹配单位比事实小」。
@@ -1298,11 +1243,15 @@ fn profile_read_modify_write_goes_through_the_failsafe_reader() {
             guard_core::contains_word(&cmd_body, transform),
             "{sig}: 找不到 {transform}——守卫失效了"
         );
-        guard_core::find_pinned(&cmd_body, "crate::fenced_block::apply(&rc,")
-            .unwrap_or_else(|e| panic!("{sig}: profile 没交给 fenced_block::apply（{e}）"));
+        // 〔RW1 · 第四波 09-24〕F10 按用户裁「按推荐改」：两个命令的读改写经**那台远端的后端**
+        //   （`user_files::edit` → `files-peek` / `files-put`），读那一次是后端的 `files-peek`
+        //   （「不存在」与「读不出来」分得开、盘上有字节却读到空 ⇒ 拒）。本条钉「交给 `user_files::edit`、
+        //   不碰 `SftpFile`、函数体里不自己读」三件。
+        guard_core::find_pinned(&cmd_body, "crate::user_files::edit(")
+            .unwrap_or_else(|e| panic!("{sig}: profile 没交给 user_files::edit（{e}）"));
         assert!(
-            guard_core::contains_word(&cmd_body, "SftpFile"),
-            "{sig}: profile 没交给 SftpFile"
+            !guard_core::contains_word(&cmd_body, "SftpFile"),
+            "{sig}: 又把 profile 交给 SFTP 那一路了 —— 用户文件只经后端写"
         );
         for reader_prim in ["read_optional", "read_profile_text"] {
             assert!(

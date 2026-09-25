@@ -2,7 +2,7 @@
  * 〔U2 · 拆 `tabs.ts` ① · `设计/01 §1.5`「一个 store，一个 router」〕**会话状态账**。
  *
  * tab 集合 · 顺序（连同盘上那份顺序意图）· 当前 tab · 是否在重放批里 · 早于 tab 到达的信号暂存
- * （归档 / 灰灯 / 红绿灯）· 不可 attach 的 sid · 账号快照 · 任务快照 —— **收进一处**；
+ * （已结束 / 可重连 / 红绿灯）· 不可 attach 的 sid · 账号快照 · 任务快照 —— **收进一处**；
  * 「tab 集合变了」这件事**只有一份订阅**（`subscribe` / `notify`），宿主（状态栏、空态）挂在这上面。
  *
  * 零 DOM、零 IPC：它只存东西、只做「新 tab 落在哪一格」这类纯顺序运算。谁什么时候改它、
@@ -12,6 +12,7 @@
 import type { SessionAccount } from "./accounts";
 import type { TaskEntry } from "./tasks-panel";
 import type { Tab, TabsSummary } from "./tab-model";
+import { isLive } from "./tab-session-state";
 
 export class TabStore {
   readonly tabs = new Map<string, Tab>();
@@ -104,15 +105,16 @@ export class TabStore {
     };
   }
 
-  /** 此刻的数量摘要（总数 · live · archived）。 */
+  /**
+   * 此刻的数量摘要（总数 · 活 · 死）。〔U4〕按**活性**一轴分：可重连的会话 claude 已经没了 ⇒ 算死
+   * （改两轴之前它借着 `status: live` 被算进「活跃」，状态栏的「活跃 N」多数了它）。
+   */
   summary(): TabsSummary {
     let live = 0;
-    let archived = 0;
     for (const t of this.tabs.values()) {
-      if (t.status === "archived") archived += 1;
-      else live += 1;
+      if (isLive(t.state)) live += 1;
     }
-    return { total: this.tabs.size, live, archived };
+    return { total: this.tabs.size, live, dead: this.tabs.size - live };
   }
 
   /** 通知全部订阅者。没人订阅就连摘要都不算（原先 `notifyChanged` 的早退，照旧）。 */

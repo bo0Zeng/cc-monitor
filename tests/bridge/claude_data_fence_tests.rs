@@ -205,16 +205,10 @@ const LAYOUT_READERS: &[(&str, &str, &str)] = &[
         "paths::is_protected_session_file：**同一个判定**在后端那个 crate 里的逐字副本",
         "用户 2026-09-23 逐字裁「文件管理器该不该能改 `~/.claude` 里的东西. **可以.**」         ⇒ `设计/60 §8.7` 那道「两道栅栏宽窄不同」按**丙**（统一成同一个判定）裁，         统一到**窄的那一档** —— 后端写侧此前问的是 `paths::is_inside_tree`         （拒**整棵 `~/.claude*` 树**），今天问的是本行这一份。         🔴 **为什么它不是第二份判定**：两个 crate 之间**没有共享落点** ——         `src/backend` 刻意不在 monitor 那个 workspace 里（它有自己的 `Cargo.lock`，         那条隔离是真架构约束，见它 `Cargo.toml` 头注），而新立一个共享 crate 会动         门禁那句 `run_gate_sum cargo 9`，并且 `设计/60 §8.8` 记着上一次         「把围栏搬成共享 crate」**当天就被撤回**。         ⇒ 处置：函数体**逐字节相同**，并由          [`the_backend_copy_of_this_fence_is_byte_identical`] 钉成相等断言；         后端那棵树里还有一份同形的（`files_write_tests` 里那条），两侧各自跑得起来。         ⚠ 两侧刻意**不同名**：同名会让下面那条「`pub fn is_protected_claude_data_path`         全仓恰好一次」的断言红，而那条断言是对的。",
     ),
-    (
-        "src/bridge/src/sftp.rs",
-        "sftp::is_safe_remote_jsonl：**方向相反**的那一道",
-        "它的正题恰恰是「**只许**删 `projects/**/*.jsonl`」——\
-         `INVARIANTS §1` 例外 3（历史浏览器删远端会话，用户显式 + 二次确认）。\
-         🔴 **两道方向相反，不许互相替代、不许合并**：合成一个之后，\
-         「哪些路径不许写」与「哪些路径才许删」会共用一个真相，\
-         而它们要的恰好是补集。`remote_write_registry_tests` 的 `REMOTE_WRITES` 表里\
-         `remove_remote_file` 那一行逐字记着这件事。",
-    ),
+    // 〔RW1 · 第四波 09-24〕这里原来有 `sftp.rs` 那一行（远端删会话那道结构守卫，**方向相反**：「只许删
+    //   `projects/**/*.jsonl`」）。F11 改经远端后端删（`files-delete-session`，只收 sid）之后那道守卫随 SFTP 直删走了；
+    //   方向相反的那一问今天住后端 `src/backend/agents/claudecode/paths.rs::session_file_for_delete_in`
+    //   —— 与上一行同一份文件（「只许删恰是 `<项目>/<sid>.jsonl` 的那一份」），两道照旧不许合并。
 ];
 
 /// 🔴🔴 **两个 crate 里那两份判定的函数体，逐字节相同。**〔波 5 ㈢ · 2026-09-23〕

@@ -437,8 +437,12 @@ mod tests {
         "create(true)",
     ];
 
-    /// 围栏调用的针。**本层模块的围栏入口只有这两个**（其余两道被它们串着）。
-    const FENCE_CALLS: &[&str] = &["fenced_target(", "fenced_existing("];
+    /// 围栏调用的针。**本层模块的围栏入口只有这两个**（其余两道被它们串着）——
+    /// 〔RW1 · 第四波 09-24〕外加**删历史会话那一条自己的围栏** `fenced_session_file(`：
+    /// 它是会话文件围栏**唯一的例外**（只收 sid、落点由适配层按 sid 找），
+    /// 所以它**只许出现一处调用**（[`the_session_file_exception_lives_in_exactly_one_place`]）——
+    /// 拿它去给别的改动「过围栏」、把例外借给第二个函数，那一条当场红。
+    const FENCE_CALLS: &[&str] = &["fenced_target(", "fenced_existing(", "fenced_session_file("];
 
     /// 目录列举的针。
     const LISTING_CALL: &str = "read_dir(";
@@ -1428,6 +1432,94 @@ mod tests {
             reaching.difference(&want).collect::<Vec<_>>(),
             want.difference(&reaching).collect::<Vec<_>>()
         );
+    }
+
+    /// 🔴🔴 **〔RW1 · 第四波 09-24〕删历史会话是会话文件围栏唯一的例外 —— 它恰好住一处。**
+    ///
+    /// 用户裁「只允许后端的文件管理部分写文件」「也管本机」之后，删历史会话（本机此前是 monitor
+    /// 进程直删、远端此前是 SFTP 直删）改成后端**一条明确的命令** `files-delete-session`。
+    /// 写面其余每一条都被会话文件围栏挡在那几份文件外面；**只有这一条**能删会话文件，而且**只收 sid**。
+    ///
+    /// 四件，各一刀（两侧异源：一侧是后端**源码文本**，一侧是写面的**常量表**与**真跑一趟**）：
+    ///
+    /// 1. 例外那根围栏针 `fenced_session_file(` 在后端生产树里**恰好一处调用**（不算它自己的定义），
+    ///    而且那一处住在 `delete_session_with` 的函数体里；
+    /// 2. 适配层那个「按 sid 找要删的那一份」的入口，后端生产树里**只有**写面模块引用它；
+    /// 3. 写面登记里那条命令的 `args` **恰好是** `["sid"]`；
+    /// 4. 真跑：多给一个 `path` ⇒ `bad_args`（「只收 sid」是行为，不只是登记）。
+    #[test]
+    fn the_session_file_exception_lives_in_exactly_one_place() {
+        let root = crate::guard_support::src_root();
+        let call = format!("fenced_session_file{}", "(");
+        let def = format!("fn {call}");
+        let locate = format!("session_file_for_delete{}", "");
+        let mut calls: Vec<(String, String)> = Vec::new();
+        let mut locators: std::collections::BTreeSet<String> = Default::default();
+        let mut scanned = 0usize;
+        for path in core_files() {
+            if path.file_name().and_then(|n| n.to_str()) == Some("readonly_guard.rs") {
+                continue;
+            }
+            scanned += 1;
+            let rel = path
+                .strip_prefix(&root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let src = std::fs::read_to_string(&path).expect("read rs file");
+            let prod = guard_core::production_code(&src);
+            let mut cur_fn = String::new();
+            for row in prod.lines() {
+                let t = row.trim_start();
+                if let Some(rest) = t
+                    .strip_prefix("pub fn ")
+                    .or_else(|| t.strip_prefix("fn "))
+                    .or_else(|| t.strip_prefix("pub(crate) fn "))
+                {
+                    cur_fn = rest
+                        .chars()
+                        .take_while(|c| c.is_alphanumeric() || *c == '_')
+                        .collect();
+                }
+                if row.contains(call.as_str()) && !row.contains(def.as_str()) {
+                    calls.push((rel.clone(), cur_fn.clone()));
+                }
+            }
+            if prod.contains(locate.as_str()) && rel != "agents/claudecode/paths.rs" {
+                locators.insert(rel);
+            }
+        }
+        assert!(scanned >= 60, "只扫到 {scanned} 份后端源文件 —— 遍历坏了");
+        assert_eq!(
+            calls,
+            vec![(
+                "control/files_write.rs".to_string(),
+                "delete_session_with".to_string()
+            )],
+            "\n会话文件围栏的例外（`{call}`）必须**恰好一处调用**、住 `delete_session_with`。\n\
+             多出来的每一处都是把「能删会话文件」借给了第二个函数。"
+        );
+        assert_eq!(
+            locators.into_iter().collect::<Vec<_>>(),
+            vec!["control/files_write.rs".to_string()],
+            "「按 sid 找要删的那一份」只许写面模块引用 —— 别的面拿到它就等于拿到了删会话的落点"
+        );
+        let spec = crate::control::files_write::MANAGE_COMMANDS
+            .iter()
+            .find(|c| c.name == "files-delete-session")
+            .expect("写面登记里没有 `files-delete-session` —— 删历史会话那条路断了");
+        assert_eq!(
+            spec.args,
+            &["sid"],
+            "删历史会话那条命令**只收 sid** —— 多一个入参就多一种表达「另一份文件」的办法"
+        );
+        match crate::control::files_write::answer_wire(
+            "files-delete-session",
+            &serde_json::json!({"sid": "abc", "path": "/tmp/x.jsonl"}),
+        ) {
+            Err((code, _)) => assert_eq!(code, "bad_args", "多给一个 `path` 该回 bad_args"),
+            Ok(v) => panic!("🔴 多给了一个 `path`，删会话那条竟然答了：{v}"),
+        }
     }
 
     /// ★ 第三层登记的每一条都**真的在盘上、真的在改**（幽灵检查，照白名单那条同形）。

@@ -66,32 +66,17 @@ const SITES: &[(&str, &str, usize, &str, &str)] = &[
         "用户文件（`atomic_write_json` 的所有调用方，如 auto-launch.json）",
         "必须保留 dst 原有 ACL。dst 不存在时 fallback 到 rename（首次写，新文件本来就继承父目录 ACL）。",
     ),
-    (
-        "profile_installer.rs",
-        "ReplaceFileW",
-        1,
-        "用户文件（PowerShell profile；`mcp.rs` 也复用它写 MCP 配置）",
-        "同上，且**ACL 真的被保留**这一条由同文件 `cfg(test)` 里那条真机 `icacls` 断言钉着 —— \
-             那是本族唯一一条能证明「语义选对了」的判据，别删。",
-    ),
+    // 〔RW1 · 第四波 09-24〕这里原来有 `profile_installer.rs` 的 `ReplaceFileW` 一行（PowerShell profile ·
+    //   `.mcp.json` 的本机写）。用户文件改经后端写之后那份原语零调用方、删了 ⇒ 摘行。
+    //   「替换保住 explicit ACE」这条性质住到了后端 `files_write.rs::swap_in` 的 `cfg(windows)` 那一支。
     // ── 〔audit-0805 08-06〕补上 `rename` 那一半（§4 规则原话里第一个被禁的写法）
-    (
-        "profile_installer.rs",
-        "rename",
-        2,
-        "**用户文件**（PowerShell profile）—— 但这两处**就是正确路径本身**",
-        "581：Windows 上 `dst` 不存在时 `ReplaceFileW` 会失败，首次安装直接 rename\
-             （新文件 ACL 继承父目录，没有 explicit ACE 可保留）；599：`cfg(not(windows))` 分支，\
-             POSIX 没有 §4 要防的那个 ACL 丢失问题。⇒ 登记它们不是因为它们错，\
-             而是因为**它们与「别处随手 rename 一个用户文件」在文本上一模一样** —— \
-             没有登记表就分不出哪一处是深思熟虑、哪一处是图省事。",
-    ),
+    // 〔RW1 · 第四波 09-24〕`profile_installer.rs` 的 `rename` 两处（Windows 首装分支 ＋ POSIX 分支）随那份原语一起走了。
     (
         "utils.rs",
         "rename",
         2,
         "**用户文件**（`atomic_replace_path` 的第二份副本）",
-        "与 profile_installer 那两处逐行同形（Windows 首装分支 + POSIX 分支）。\
+        "与从前 profile_installer 那两处逐行同形（Windows 首装分支 + POSIX 分支；〔RW1〕那两处今天已删）。\
              ⚠ 副本是**刻意**的（模块头注论证过不建统一写入器：两类文件的正确行为本来就不同），\
              但刻意复制的代价就是**两处都得被看住** —— 这正是登记表存在的理由。",
     ),
