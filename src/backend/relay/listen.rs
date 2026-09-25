@@ -29,6 +29,7 @@
 
 use super::server::{self, Relay, DEFAULT_PORT, INFLIGHT_CONNECTIONS, LOOPBACK};
 use super::{door, tee::TeeSink, Startup};
+use copy_core::copy_text;
 use std::net::{SocketAddr, TcpListener};
 use std::sync::atomic::Ordering::SeqCst;
 use std::sync::Arc;
@@ -273,13 +274,16 @@ fn prepare(
     //   那句为什么，今天是真的印出去了（上游选择装表时）。
     let Some(ready) = startup.check(get) else {
         eprintln!("[relay] bad upstream base url");
-        return Err("上游基址认不出（上游选择拒了启动配置）".to_string());
+        return Err(copy_text("beRelayListen.prepare.badUpstream", &[]));
     };
     let listener = match listen(port) {
         Ok(l) => l,
         Err(e) => {
             eprintln!("[relay] cannot bind loopback port {port}: {e}");
-            return Err(format!("绑不上回环口 {port}：{e}"));
+            return Err(copy_text(
+                "beRelayListen.prepare.bindFailed",
+                &[("port", &port.to_string()), ("e", &e.to_string())],
+            ));
         }
     };
     // 〔RK1 · `INVARIANTS §48.1a`〕**绑上口之后、说「在听」之前**拿钥匙（读回，或铸一把落盘）：
@@ -288,13 +292,16 @@ fn prepare(
     //   拿不到 ⇒ **不起**（有口没钥匙 = 不设防的口；`listener` 在这里 drop，口当场放掉）。
     //   ⚠ 报错里只有路径与原因，**永远没有钥匙值**（`door::Key` 不派生 `Debug`）。
     let door = match door::key_path(get)
-        .ok_or_else(|| "家目录解析不出来（HOME / USERPROFILE 都没有）".to_string())
+        .ok_or_else(|| copy_text("beRelayListen.key.noHome", &[]))
         .and_then(|p| door::ensure_key(&p))
     {
         Ok(k) => k,
         Err(e) => {
             eprintln!("[relay] refusing to listen without a relay key: {e}");
-            return Err(format!("拿不到中转钥匙（{e}）⇒ 拒绝起一个不设防的口"));
+            return Err(copy_text(
+                "beRelayListen.key.unavailable",
+                &[("e", &e.to_string())],
+            ));
         }
     };
     match listener.local_addr() {

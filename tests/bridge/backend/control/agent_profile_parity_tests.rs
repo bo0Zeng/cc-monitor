@@ -195,8 +195,13 @@ fn ccm_still_refuses_codex_resume_so_the_gap_is_still_real() {
         "`resume_flag` 对 codex 不再返回空 —— **这多半是好事**：\n\
              ccm 可能支持了 codex 的 subcommand 形 resume ⇒ 回 F06 把夹具的 ccm 那一轨补上真对拍。"
     );
+    // 〔CP2c〕那句话进了文案表（`beArgv.validate.noResume`）⇒ 判「源码在那一格取这句」＋「这句说的是不支持 resume」。
+    // ⚠ 不能再判 `ccm.contains("不支持 resume")`：句子搬走之后它只剩 `resume_flag` 的文档注释里那半句，
+    //   判据会靠一行注释恒绿（抽表那一拍现打撞见的）。
     assert!(
-        ccm.contains("不支持 resume"),
+        ccm.contains("\"beArgv.validate.noResume\"")
+            && crate::copy_table::copy_text("beArgv.validate.noResume", &[("agent", "codex")])
+                .contains("不支持 resume"),
         "`control/ccm/` 里那句「不支持 resume」的 die 不见了 —— 同上，前提变了，回 F06 重裁。"
     );
 }

@@ -15649,6 +15649,1045 @@
       "kind": "error",
       "zh": "打开本机后端的输出失败",
       "args": []
+    },
+    "beContract.malformed.say": {
+      "kind": "error",
+      "zh": "请求格式不对：{detail}",
+      "args": ["detail"]
+    },
+    "beArgv.validate.noResume": {
+      "kind": "error",
+      "zh": "{agent} 不支持 resume",
+      "args": ["agent"]
+    },
+    "beArgv.validate.badSize": {
+      "kind": "error",
+      "zh": "非法 --tmux-size: '{size}'（要 <宽>x<高>，如 220x50，且均为正整数）",
+      "args": ["size"]
+    },
+    "beArgv.validate.noteNeedsRegister": {
+      "kind": "error",
+      "zh": "--bus-note 需要配合 --bus-register（不登记的话这行备注没有去处）",
+      "args": []
+    },
+    "beArgv.validate.registerNeedsDetach": {
+      "kind": "error",
+      "zh": "--bus-register 需要配合 --detach",
+      "args": []
+    },
+    "beArgv.validate.nameAndBase": {
+      "kind": "error",
+      "zh": "--tmux=<名> 与 --tmux-base=<基名> 互斥",
+      "args": []
+    },
+    "beArgv.validate.sizeNeedsTmux": {
+      "kind": "error",
+      "zh": "--tmux-size 需要配合 --tmux",
+      "args": []
+    },
+    "beArgv.validate.detachNeedsTmux": {
+      "kind": "error",
+      "zh": "--detach 只能和 --tmux 一起用",
+      "args": []
+    },
+    "beArgv.validate.accountAndBase": {
+      "kind": "error",
+      "zh": "--account 与 --base 互斥",
+      "args": []
+    },
+    "beArgv.validate.unknownAgent": {
+      "kind": "error",
+      "zh": "未知 agent: {agent}（支持 {known}）",
+      "args": ["agent", "known"]
+    },
+    "beArgv.parse.extraPositional": {
+      "kind": "error",
+      "zh": "多余的位置参数: {other}（动作只能是 new/resume/attach 且必须在最前）",
+      "args": ["other"]
+    },
+    "beArgv.parse.unknownOption": {
+      "kind": "error",
+      "zh": "未知选项: {other}（用 --help 看用法）",
+      "args": ["other"]
+    },
+    "beArgv.parse.attachNeedsName": {
+      "kind": "error",
+      "zh": "attach 需要 <会话名>",
+      "args": []
+    },
+    "beArgv.parse.resumeNeedsId": {
+      "kind": "error",
+      "zh": "resume 需要 <会话ID>",
+      "args": []
+    },
+    "beArgv.needVal.looksMissing": {
+      "kind": "error",
+      "zh": "{name} 需要一个值，但拿到的是 '{v}'（像是漏了参数）",
+      "args": ["name", "v"]
+    },
+    "beArgv.needVal.missing": {
+      "kind": "error",
+      "zh": "{name} 需要一个值",
+      "args": ["name"]
+    },
+    "beCcm.execDirect.noLauncher": {
+      "kind": "error",
+      "zh": "没有可执行的启动器",
+      "args": []
+    },
+    "beCcm.execDirect.noCwd": {
+      "kind": "error",
+      "zh": "无法进入目录: {cwd}",
+      "args": ["cwd"]
+    },
+    "bePlan.build.inTmuxNoName": {
+      "kind": "error",
+      "zh": "已经在 tmux 里又没给会话名时会就地起，--detach 和 --tmux-size 用不上。请用 --tmux=<名> 指定会话名。",
+      "args": []
+    },
+    "bePlan.build.attachSize": {
+      "kind": "error",
+      "zh": "attach 不支持 --tmux-size（接回的会话保持它自己的尺寸）",
+      "args": []
+    },
+    "bePlan.build.attachDetach": {
+      "kind": "error",
+      "zh": "attach 与 --detach 不能一起用（attach 就是接进去）",
+      "args": []
+    },
+    "bePlan.resolveAccount.defaultMissing": {
+      "kind": "error",
+      "zh": "默认账号 '{name}' 的目录不存在。用 --base 不带账号起，或用 --account <名> 指定一个。",
+      "args": ["name"]
+    },
+    "bePlan.resolveAccount.unavailable": {
+      "kind": "error",
+      "zh": "账号 '{account}' 不可用（不在 {manifestPath}，或其目录不存在）。可用: {names}",
+      "args": ["account", "manifestPath", "names"]
+    },
+    "bePlan.validateTmuxName.control": {
+      "kind": "error",
+      "zh": "非法 tmux 会话名（含控制字符）: '{name}'",
+      "args": ["name"]
+    },
+    "bePlan.validateTmuxName.targetSyntax": {
+      "kind": "error",
+      "zh": "非法 tmux 会话名（不能含 * ? . : =）: '{name}'",
+      "args": ["name"]
+    },
+    "bePlan.validateTmuxName.emptyOrDash": {
+      "kind": "error",
+      "zh": "非法 tmux 会话名（空或以 - 开头）: '{name}'",
+      "args": ["name"]
+    },
+    "beCcm.nameTaken.say": {
+      "kind": "error",
+      "zh": "ccm: tmux 会话名 {name} 已被占用，没有接进去。换个名字再起。",
+      "args": ["name"]
+    },
+    "beCcm.selfCheckFailed.say": {
+      "kind": "error",
+      "zh": "ccm: 会话 {name} 里的命令起不来，原因见上一行。没有接进去，也没有登记；会话还在，可以进去看。",
+      "args": ["name"]
+    },
+    "beCcm.usage.body": {
+      "kind": "body",
+      "zh": "用法：ccm [new|resume <会话ID>|attach <会话名>] [选项…] [-- 透传给 agent 的参数…]\n\n动作（位置参数，必须在最前；不给就是 new）\n  new                起一个新会话\n  resume <会话ID>    接着某个会话往下跑\n  attach <会话名>    不起 agent，直接接回一个 tmux 会话\n\n选项\n  --resume <会话ID>  与 resume <会话ID> 等价\n  --tmux[=<名>]      在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --tmux=<名> 互斥）\n  --tmux-size <W>xH  新建 tmux 会话的宽高（要带 --tmux）\n  --detach           建完就返回，不接进去（要带 --tmux）\n  --bus-register     把新会话登记上 cc-bus（要带 --detach）\n  --bus-note <备注>  给上面那条登记带一行备注\n  --account <名>     用这个账号起（与 --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --cwd <目录>       工作目录；不给就是当前目录\n  --agent <名>       claude | codex\n  --model <名>       指定模型（设 ANTHROPIC_MODEL）\n  --launcher <命令>  换掉默认的启动命令\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --print            不跑，印出等价的一行 shell 命令\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --version          印版本号\n  --help, -h         这一段\n",
+      "args": [],
+      "waive": {
+        "C-L3": "--help 正文是逐行的选项表，每行一处括号是那一行的补充",
+        "C-T1": "--ccm-sid 是用户在终端里敲的真实旗标名"
+      }
+    },
+    "beCcm.whyShell.ccmEnv": {
+      "kind": "body",
+      "zh": "设了环境变量 CCM_ENV，它得交给 sh 解释",
+      "args": []
+    },
+    "beCcm.whyShell.resolved": {
+      "kind": "body",
+      "zh": "要接着跑的那条命令得交给 sh 拆开",
+      "args": []
+    },
+    "beCcm.whyShell.busId": {
+      "kind": "body",
+      "zh": "在 tmux 里起 codex 要先用 sh 问一次会话名",
+      "args": []
+    },
+    "beCcm.whyShell.attach": {
+      "kind": "body",
+      "zh": "接回 tmux 会话走的是一条 shell 命令",
+      "args": []
+    },
+    "beCcm.whyShell.containerTail": {
+      "kind": "body",
+      "zh": "起完 tmux 会话之后的收尾是一段 shell 命令",
+      "args": []
+    },
+    "beCcm.execShell.needsSh": {
+      "kind": "error",
+      "zh": "这次要用 sh 执行（{why}）",
+      "args": ["why"]
+    },
+    "beCcm.directSidNoCarrier.say": {
+      "kind": "body",
+      "zh": "ccm: 没带 --tmux 时 --ccm-sid 不生效，要靠环境变量 CCM_RBIND_TOKEN，而现在没有它。会话照常起，但 cc-monitor 切不到它的终端窗口。",
+      "args": [],
+      "waive": {
+        "C-T1": "--ccm-sid 是用户在终端里敲的真实旗标名"
+      }
+    },
+    "beCcm.execOrSpawn.failed": {
+      "kind": "error",
+      "zh": "ccm: 起不来 —— {subject}：{e}",
+      "args": ["subject", "e"]
+    },
+    "beCcm.execute.launchFailed": {
+      "kind": "error",
+      "zh": "ccm: 起不来 —— {kind}: {message}",
+      "args": ["kind", "message"]
+    },
+    "bePlan.names.unreadable": {
+      "kind": "body",
+      "zh": "(账号清单读不懂：文件在，但不是合法 JSON)",
+      "args": [],
+      "waive": {
+        "C-L4": "拼在「可用:」后面、代替账号名单的占位"
+      }
+    },
+    "bePlan.names.none": {
+      "kind": "body",
+      "zh": "(无账号库)",
+      "args": [],
+      "waive": {
+        "C-L4": "拼在「可用:」后面、代替账号名单的占位"
+      }
+    },
+    "beDiscover.notInstalledMessage.noPlaces": {
+      "kind": "body",
+      "zh": "<没有可查的固定位置，HOME 也没设>",
+      "args": []
+    },
+    "beDiscover.notInstalledMessage.notFound": {
+      "kind": "error",
+      "zh": "找不到 {name}：查过 {places}，以及 PATH 上的 {pathDirs} 个目录。{hint}",
+      "args": ["name", "places", "pathDirs", "hint"]
+    },
+    "beInvoke.runAbortable.waitFailed": {
+      "kind": "error",
+      "zh": "等 {bin} 退出时出错：{e}",
+      "args": ["bin", "e"]
+    },
+    "beInvoke.notRun.failed": {
+      "kind": "error",
+      "zh": "起不来 {bin}：{e}",
+      "args": ["bin", "e"]
+    },
+    "beProbe.parse.emptyOutput": {
+      "kind": "error",
+      "zh": "它什么都没答",
+      "args": []
+    },
+    "beProbe.message.versionUnknown": {
+      "kind": "body",
+      "zh": "没报",
+      "args": []
+    },
+    "beProbe.message.missingAbility": {
+      "kind": "error",
+      "zh": "{plugin} 这一版不支持「{token}」（版本 {version}），换一份新的就行。",
+      "args": ["plugin", "token", "version"]
+    },
+    "beProbe.message.wrongProgram": {
+      "kind": "error",
+      "zh": "找错了程序：找到的 {want} 报的是 {saw}，多半是 PATH 上有个同名的无关命令。",
+      "args": ["want", "saw"]
+    },
+    "beDetach.detach.notUnix": {
+      "kind": "error",
+      "zh": "这台机器不是 Unix，没法让它脱离当前进程单独跑。没有起。",
+      "args": []
+    },
+    "bePidwatch.noDeathEventsHere.say": {
+      "kind": "body",
+      "zh": "后端在这个系统上意外退出时没人发现。它也不会自动重启：只有 Linux 和 Windows 上看得住它。",
+      "args": []
+    },
+    "beSshAgent.connect.unsupported": {
+      "kind": "error",
+      "zh": "这个系统上不知道怎么连 SSH agent",
+      "args": []
+    },
+    "beSshAgent.connect.pipe": {
+      "kind": "error",
+      "zh": "连不上 {pipe}：{e}。SSH agent 在运行吗？",
+      "args": ["pipe", "e"]
+    },
+    "beSshAgent.connect.authSock": {
+      "kind": "error",
+      "zh": "连不上 SSH_AUTH_SOCK 指向的 SSH agent：{e}。它在运行吗？环境变量设了吗？",
+      "args": ["e"]
+    },
+    "beSshAgent.connect.givenSocket": {
+      "kind": "error",
+      "zh": "连不上 SSH agent（{path}）：{e}。它在运行吗？",
+      "args": ["path", "e"]
+    },
+    "beFs.readRegularCapped.tooBig": {
+      "kind": "error",
+      "zh": "超过 {cap} 字节上限",
+      "args": ["cap"]
+    },
+    "beFs.readRegularCapped.tooBigSized": {
+      "kind": "error",
+      "zh": "超过 {cap} 字节上限（文件 {size} 字节）",
+      "args": ["cap", "size"]
+    },
+    "beFs.readRegularCapped.notRegular": {
+      "kind": "error",
+      "zh": "不是普通文件（可能是 FIFO、设备或目录）",
+      "args": []
+    },
+    "beSessionSnapshot.probeTmux.noTmux": {
+      "kind": "error",
+      "zh": "起不来 tmux：{e}。这台机器装了 tmux 吗？",
+      "args": ["e"]
+    },
+    "beHistoryQuery.readLinesFrom.lineTooLong": {
+      "kind": "error",
+      "zh": "会话记录第 {at} 行超过 {lineCap} 字节，读不了",
+      "args": ["at", "lineCap"]
+    },
+    "beHistoryQuery.readPage.lineTooLong": {
+      "kind": "error",
+      "zh": "会话记录里有一行超过 {lineCap} 字节，读不了（从偏移 {offset} 起）",
+      "args": ["lineCap", "offset"]
+    },
+    "bePluginsQuery.surveyMarketplacesIn.noInstallLocation": {
+      "kind": "error",
+      "zh": "known_marketplaces.json 没记这个市场装在哪，数不了",
+      "args": []
+    },
+    "bePluginsQuery.countDeclaredPlugins.noPlugins": {
+      "kind": "error",
+      "zh": "插件市场清单里没有插件列表",
+      "args": []
+    },
+    "bePluginsQuery.countDeclaredPlugins.unparsable": {
+      "kind": "error",
+      "zh": "插件市场清单读不懂：{e}",
+      "args": ["e"]
+    },
+    "bePluginsQuery.countDeclaredPlugins.noManifest": {
+      "kind": "error",
+      "zh": "插件市场目录里没有 {manifest}",
+      "args": ["manifest"]
+    },
+    "bePluginsQuery.parseKnownMarketplaces.notObject": {
+      "kind": "error",
+      "zh": "known_marketplaces.json 的顶层不是一个对象",
+      "args": []
+    },
+    "bePluginsQuery.parseKnownMarketplaces.unparsable": {
+      "kind": "error",
+      "zh": "known_marketplaces.json 读不懂：{e}",
+      "args": ["e"]
+    },
+    "bePluginsQuery.readCapped.unreadable": {
+      "kind": "error",
+      "zh": "读不到 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "bePluginsQuery.readCapped.tooBig": {
+      "kind": "error",
+      "zh": "{path} 有 {size} 字节，超过上限 {cap}，没有读",
+      "args": ["path", "size", "cap"]
+    },
+    "beFeatureFace.answerAt.tooLarge": {
+      "kind": "error",
+      "zh": "结果太大（{size} 字节，上限 {cap}），没有返回",
+      "args": ["size", "cap"]
+    },
+    "beExitPolicy.answerSet.noHome": {
+      "kind": "error",
+      "zh": "找不到家目录（HOME 和 USERPROFILE 都没设），没有写",
+      "args": []
+    },
+    "beExitPolicy.writeAt.renameFailed": {
+      "kind": "error",
+      "zh": "把 {tmp} 挪到 {path} 失败：{e}",
+      "args": ["tmp", "path", "e"]
+    },
+    "beExitPolicy.writeAt.tmpWriteFailed": {
+      "kind": "error",
+      "zh": "写不了临时文件 {tmp}：{e}",
+      "args": ["tmp", "e"]
+    },
+    "beExitPolicy.writeAt.tmpCreateFailed": {
+      "kind": "error",
+      "zh": "建不了临时文件 {tmp}：{e}",
+      "args": ["tmp", "e"]
+    },
+    "beExitPolicy.writeAt.mkdirFailed": {
+      "kind": "error",
+      "zh": "建不了目录 {dir}：{e}",
+      "args": ["dir", "e"]
+    },
+    "beExitPolicy.writeAt.noParent": {
+      "kind": "error",
+      "zh": "{path} 没有父目录",
+      "args": ["path"]
+    },
+    "beResolveQuery.resolve.unsafeLauncher": {
+      "kind": "error",
+      "zh": "启动命令里有 shell 特殊字符或控制字符，没有用它：{base}",
+      "args": ["base"]
+    },
+    "beResolveQuery.resolve.badSessionId": {
+      "kind": "error",
+      "zh": "会话ID 不合法（只许字母、数字、_ 和 -，最长 128）：{id}",
+      "args": ["id"]
+    },
+    "beHistoryAnnotations.lastAccountsOf.unknown": {
+      "kind": "error",
+      "zh": "这台后端不知道星标和改名记在哪。它不是 cc-monitor 起的那一个。",
+      "args": []
+    },
+    "beHistoryAnnotations.needPath.unknown": {
+      "kind": "error",
+      "zh": "这台后端不知道星标和改名记在哪，没有写。它不是 cc-monitor 起的那一个。",
+      "args": []
+    },
+    "beHistoryAnnotations.writeAt.renameFailed": {
+      "kind": "error",
+      "zh": "把 {tmp} 挪到 {path} 失败：{e}",
+      "args": ["tmp", "path", "e"]
+    },
+    "beHistoryAnnotations.writeAt.tmpWriteFailed": {
+      "kind": "error",
+      "zh": "写不了临时文件 {tmp}：{e}",
+      "args": ["tmp", "e"]
+    },
+    "beHistoryAnnotations.writeAt.tmpCreateFailed": {
+      "kind": "error",
+      "zh": "建不了临时文件 {tmp}：{e}",
+      "args": ["tmp", "e"]
+    },
+    "beHistoryAnnotations.writeAt.mkdirFailed": {
+      "kind": "error",
+      "zh": "建不了目录 {dir}：{e}",
+      "args": ["dir", "e"]
+    },
+    "beHistoryAnnotations.writeAt.noParent": {
+      "kind": "error",
+      "zh": "{path} 没有父目录",
+      "args": ["path"]
+    },
+    "beHistoryAnnotations.readForWrite.notObject": {
+      "kind": "error",
+      "zh": "星标和改名的记录文件 {path} 的顶层不是对象，没有覆盖它",
+      "args": ["path"]
+    },
+    "beHistoryAnnotations.parse.unparsable": {
+      "kind": "error",
+      "zh": "星标和改名的记录文件 {path} 读不懂，没有覆盖它：{e}",
+      "args": ["path", "e"]
+    },
+    "beHistoryAnnotations.readRaw.unreadable": {
+      "kind": "error",
+      "zh": "读不了星标和改名的记录文件 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beHistoryJoin.blocking.unfinished": {
+      "kind": "error",
+      "zh": "本机查询没跑完：{e}",
+      "args": ["e"]
+    },
+    "beHistoryJoin.localSessionsWith.unknownProject": {
+      "kind": "error",
+      "zh": "这台后端没有 {kind} 的历史，认不出项目 {project}",
+      "args": ["kind", "project"]
+    },
+    "beHistoryJoin.capped.tooLarge": {
+      "kind": "error",
+      "zh": "清单太大（{n} 字节，上限 {cap}），没有返回。",
+      "args": ["n", "cap"]
+    },
+    "beHistoryJoin.annotations.unparsable": {
+      "kind": "error",
+      "zh": "星标 / 改名 / 隐藏的记录读不懂，这一次没有并上：{why}",
+      "args": ["why"]
+    },
+    "beHistoryJoin.annotations.unknown": {
+      "kind": "error",
+      "zh": "这台后端不知道星标、改名和隐藏记在哪。它不是 cc-monitor 起的那一个。",
+      "args": []
+    },
+    "beRemoteAsk.run.tooLarge": {
+      "kind": "error",
+      "zh": "那台的目录超过 {max} 字节，没有收",
+      "args": ["max"]
+    },
+    "beRemoteAsk.run.failed": {
+      "kind": "error",
+      "zh": "那台的后端没办成：{said}",
+      "args": ["said"]
+    },
+    "beRemoteAsk.run.tooOld": {
+      "kind": "error",
+      "zh": "那台的后端太旧，不认资产目录。",
+      "args": []
+    },
+    "beRemoteAsk.run.resultUnreadable": {
+      "kind": "error",
+      "zh": "那台交回的结果读不懂：{e}",
+      "args": ["e"]
+    },
+    "beRemoteAsk.run.droppedBeforeResult": {
+      "kind": "error",
+      "zh": "那台跑完没交结果就断了",
+      "args": []
+    },
+    "beRemoteAsk.run.noReason": {
+      "kind": "body",
+      "zh": "没说为什么",
+      "args": []
+    },
+    "beRemoteAsk.run.unreachable": {
+      "kind": "error",
+      "zh": "连不上那台：{why}",
+      "args": ["why"]
+    },
+    "beRemoteAsk.run.droppedBeforeReady": {
+      "kind": "error",
+      "zh": "连接还没接通就断了",
+      "args": []
+    },
+    "beRemoteAsk.cappedLine.tooLong": {
+      "kind": "error",
+      "zh": "那台回的一行超过 {cap} 字节，没有收",
+      "args": ["cap"]
+    },
+    "beRemoteAsk.cappedLine.readFailed": {
+      "kind": "error",
+      "zh": "连接读不下去了：{e}",
+      "args": ["e"]
+    },
+    "beRemoteAsk.unreachableMessage.say": {
+      "kind": "error",
+      "zh": "本机后端还不知道怎么连到 [{machine}]。那台还没连上，或本机后端刚重启过，下次连上就好了。",
+      "args": ["machine"]
+    },
+    "beRemoteAsk.register.full": {
+      "kind": "error",
+      "zh": "记得住的远端机器已经满了（{max} 台）",
+      "args": ["max"]
+    },
+    "beAssetSync.syncOne.unparsable": {
+      "kind": "error",
+      "zh": "对面答的目录读不懂：{e}",
+      "args": ["e"]
+    },
+    "beAssetSync.foldBlocking.failed": {
+      "kind": "error",
+      "zh": "本机目录（{c}）：{m}",
+      "args": ["c", "m"]
+    },
+    "beAssetSync.foldBlocking.unfinished": {
+      "kind": "error",
+      "zh": "本机目录那一趟没跑完：{e}",
+      "args": ["e"]
+    },
+    "beAssetSync.pushPlan.tooLarge": {
+      "kind": "error",
+      "zh": "机器 {id} 的目录太大（{len} 字节，一趟最多 {max}），这一台没推过去",
+      "args": ["id", "len", "max"]
+    },
+    "beMcpSync.answerWith.targetSide": {
+      "kind": "body",
+      "zh": "要写进去的那一份",
+      "args": []
+    },
+    "beMcpSync.answerWith.sourceSide": {
+      "kind": "body",
+      "zh": "拷出来的那一份",
+      "args": []
+    },
+    "beMcpSync.plan.conflictUnconfirmed": {
+      "kind": "error",
+      "zh": "「{n}」两边不一样，还没说要不要盖掉对面那一条。这一趟一条都没写。",
+      "args": ["n"]
+    },
+    "beMcpSync.plan.notInSource": {
+      "kind": "error",
+      "zh": "「{n}」不在拷出来的那一份里。这一趟一条都没写。",
+      "args": ["n"]
+    },
+    "beMcpSync.plan.overwriteUnchecked": {
+      "kind": "error",
+      "zh": "「{n}」说了要盖，却没勾它，两张单子对不上。这一趟一条都没写。",
+      "args": ["n"]
+    },
+    "beMcpSync.serversOf.serversNotObject": {
+      "kind": "error",
+      "zh": "{side}里的 MCP 服务器那一段不是一个对象，没拿它比，也没动它",
+      "args": ["side"]
+    },
+    "beMcpSync.serversOf.notObject": {
+      "kind": "error",
+      "zh": "{side}的最外层不是一个对象，没拿它比，也没动它",
+      "args": ["side"]
+    },
+    "beMcpSync.serversOf.badJson": {
+      "kind": "error",
+      "zh": "{side}不是合法的 JSON（{e}），没拿它比，也没动它",
+      "args": ["side", "e"]
+    },
+    "beReadFace.tooLarge.say": {
+      "kind": "error",
+      "zh": "结果太大（至少 {size} 字节，上限 {cap}），没有返回",
+      "args": ["size", "cap"]
+    },
+    "beInbound.spawnHandler.crashed": {
+      "kind": "error",
+      "zh": "后端内部出错，这条命令没做完。后端还在运行。",
+      "args": []
+    },
+    "beInbound.dispatch.unknown": {
+      "kind": "error",
+      "zh": "这台后端不认得 {other} 这个操作，可能版本太旧",
+      "args": ["other"]
+    },
+    "beInbound.dispatch.unhandled": {
+      "kind": "error",
+      "zh": "后端内部出错，没处理 {other} 这条命令",
+      "args": ["other"]
+    },
+    "beInbound.dispatch.cannotCancel": {
+      "kind": "error",
+      "zh": "这条命令已经开始做了，停不下来。等它做完。",
+      "args": []
+    },
+    "beInbound.handleLine.internal": {
+      "kind": "error",
+      "zh": "后端内部出错，这条命令没做完：{e}",
+      "args": ["e"]
+    },
+    "beAccountsQuery.trustProductAt.unparsable": {
+      "kind": "error",
+      "zh": "读不懂信任状态：{e}",
+      "args": ["e"]
+    },
+    "beAccountsQuery.accountTrustZero.noHome": {
+      "kind": "error",
+      "zh": "找不到家目录，定位不了默认账号的配置文件",
+      "args": []
+    },
+    "beAccountsQuery.accountTrust.notListed": {
+      "kind": "error",
+      "zh": "这个配置目录不在账号清单里，没有读",
+      "args": []
+    },
+    "beAccountsQuery.accountTrust.unsafeDir": {
+      "kind": "error",
+      "zh": "账号的配置目录含不安全字符，或不是绝对路径",
+      "args": []
+    },
+    "beAccountsQuery.loadManifest.noVersion": {
+      "kind": "error",
+      "zh": "账号清单缺版本号",
+      "args": []
+    },
+    "beAccountsQuery.loadManifest.badVersion": {
+      "kind": "error",
+      "zh": "账号清单的格式版本 {v} 这台后端不认（只认 1）",
+      "args": ["v"]
+    },
+    "beAccountsQuery.loadManifest.badJson": {
+      "kind": "error",
+      "zh": "账号清单不是合法 JSON：{e}",
+      "args": ["e"]
+    },
+    "beAccountsQuery.loadManifest.unreadable": {
+      "kind": "error",
+      "zh": "账号清单读不了（{path}）：{e}",
+      "args": ["path", "e"]
+    },
+    "beTasksQuery.sessionTaskLines.unreadable": {
+      "kind": "error",
+      "zh": "读不了任务目录 {dir}：{e}",
+      "args": ["dir", "e"]
+    },
+    "bePanorama.classify.failed": {
+      "kind": "error",
+      "zh": "代码全景「{op}」没做成（{how}）：{message}",
+      "args": ["op", "how", "message"]
+    },
+    "bePanorama.classify.timedOut": {
+      "kind": "error",
+      "zh": "代码全景「{op}」超过 {deadline} 秒没做完，已经停掉",
+      "args": ["op", "deadline"]
+    },
+    "bePanorama.classify.tooLarge": {
+      "kind": "error",
+      "zh": "代码全景「{op}」的结果太大（{size} 字节，上限 {cap}），没有返回",
+      "args": ["op", "size", "cap"]
+    },
+    "bePanorama.describeExit.signal": {
+      "kind": "body",
+      "zh": "被中途终止",
+      "args": []
+    },
+    "bePanorama.describeExit.code": {
+      "kind": "body",
+      "zh": "异常退出，码 {c}",
+      "args": ["c"]
+    },
+    "bePanorama.notRun.spawnFailed": {
+      "kind": "error",
+      "zh": "代码全景组件没能启动：{m}",
+      "args": ["m"]
+    },
+    "bePanorama.notRun.tooManyFiles": {
+      "kind": "error",
+      "zh": "这次要查的文件太多，一次传不过去，少选几个再试",
+      "args": []
+    },
+    "bePanorama.answerWith.probeFailed": {
+      "kind": "error",
+      "zh": "{bin} 没答上它会做什么（{how}）：{detail}",
+      "args": ["bin", "how", "detail"]
+    },
+    "bePanorama.answer.noHome": {
+      "kind": "error",
+      "zh": "这台机器上找不到家目录（HOME 和 USERPROFILE 都没设），不知道把索引放哪",
+      "args": []
+    },
+    "bePanorama.notInstalledHint.say": {
+      "kind": "error",
+      "zh": "这台机器上还没装代码全景组件。",
+      "args": []
+    },
+    "beAccountsQuery.listProductAt.noDefault": {
+      "kind": "body",
+      "zh": "这台机器的账号清单里缺默认账号。重新部署 cc-acct-iso 后可以补上。",
+      "args": []
+    },
+    "bePanorama.classify.badReply": {
+      "kind": "error",
+      "zh": "代码全景「{op}」说做完了，但交回的结果读不懂：{said}",
+      "args": ["op", "said"]
+    },
+    "beHttp1.readExactBody.shortBody": {
+      "kind": "error",
+      "zh": "请求体比 Content-Length 说的短",
+      "args": []
+    },
+    "beRelayListen.prepare.bindFailed": {
+      "kind": "error",
+      "zh": "占不到本机端口 {port}：{e}",
+      "args": ["port", "e"]
+    },
+    "beRelayListen.prepare.badUpstream": {
+      "kind": "error",
+      "zh": "上游地址认不出，中转没有起来",
+      "args": []
+    },
+    "beMachine.start.spawnFailed": {
+      "kind": "error",
+      "zh": "起不来 {program}：{e}",
+      "args": ["program", "e"]
+    },
+    "beMachine.answerEnsure.noSelf": {
+      "kind": "error",
+      "zh": "找不到后端程序自己：{e}",
+      "args": ["e"]
+    },
+    "beRelayUpstream.normalizePrefix.doubleSlash": {
+      "kind": "error",
+      "zh": "base_url 的路径前缀以 // 开头，那在请求里会被读成另一个主机名",
+      "args": []
+    },
+    "beRelayUpstream.parse.hasQuery": {
+      "kind": "error",
+      "zh": "base_url 里带了查询串或 # 片段。基址只能是「协议 + 主机 + 可选的路径前缀」",
+      "args": []
+    },
+    "beRelayUpstream.parse.noHost": {
+      "kind": "error",
+      "zh": "base_url 里没有主机名",
+      "args": []
+    },
+    "beRelayUpstream.parse.badPort": {
+      "kind": "error",
+      "zh": "base_url 的端口读不懂（要 0-65535 的十进制数）",
+      "args": []
+    },
+    "beRelayUpstream.parse.badScheme": {
+      "kind": "error",
+      "zh": "base_url 的协议不认得（只认 https:// 和 http://）",
+      "args": []
+    },
+    "beRelayUpstream.parse.notUrl": {
+      "kind": "error",
+      "zh": "base_url 不是一个网址（要以 https:// 或 http:// 开头）",
+      "args": []
+    },
+    "beIso.shellinitOutcome.argsTooLong": {
+      "kind": "error",
+      "zh": "{tool} shellinit 没能起来：参数过长",
+      "args": ["tool"]
+    },
+    "beIso.shellinitOutcome.noOutput": {
+      "kind": "error",
+      "zh": "{tool} shellinit 什么都没输出（退出码 {exit}）：{detail}",
+      "args": ["tool", "exit", "detail"]
+    },
+    "beIso.shellinitOutcome.timedOut": {
+      "kind": "error",
+      "zh": "{tool} shellinit 超过 {secs} 秒没有返回",
+      "args": ["tool", "secs"]
+    },
+    "beIso.locate.notInstalled": {
+      "kind": "error",
+      "zh": "这台机器上还没装 cc-acct-iso。",
+      "args": []
+    },
+    "beUpstreamCreds.load.unreadable": {
+      "kind": "error",
+      "zh": "读不了凭据文件：{e}",
+      "args": ["e"]
+    },
+    "beUpstreamTable.noteAuthStyleNoAuth.say": {
+      "kind": "body",
+      "zh": "这一条一个鉴权头都不发，客户端自带的那份也不转发。这是给不校验凭据的本地部署用的。",
+      "args": []
+    },
+    "beUpstreamTable.noteAuthStyleXApiKey.say": {
+      "kind": "body",
+      "zh": "这一条用 x-api-key 头把 key 交给上游，不是默认那种。客户端自带的鉴权头会被丢掉。",
+      "args": [],
+      "waive": {
+        "C-T1": "x-api-key 是 HTTP 头的真名，用户在凭据文件里写的就是它"
+      }
+    },
+    "beUpstreamTable.noteAuthStyleBearer.say": {
+      "kind": "body",
+      "zh": "这一条用 Authorization: Bearer 头把 key 交给上游，而客户端自带的鉴权头会被丢掉",
+      "args": []
+    },
+    "beUpstreamTable.notePathPrefix.say": {
+      "kind": "body",
+      "zh": "base_url 带了路径前缀：上游收到的是「前缀 + 客户端自己的路径」。前缀若与客户端路径的头一段重了，上游会看到重复的那一段，中转不替你合并。",
+      "args": []
+    },
+    "beUpstreamTable.whyNoAuthWithKey.say": {
+      "kind": "error",
+      "zh": "这一条的 auth_style 说不发鉴权头，同一条却配了 api_key。两句话相反，删掉其中一句。",
+      "args": [],
+      "waive": {
+        "C-T1": "api_key 是用户手编凭据文件里的字段名"
+      }
+    },
+    "beUpstreamTable.whyAuthStyleUnknown.say": {
+      "kind": "error",
+      "zh": "auth_style 写的值不认得，认得的几个见下一行",
+      "args": []
+    },
+    "beUpstreamTable.whyPlaintextOffLoopback.say": {
+      "kind": "error",
+      "zh": "base_url 是明文 http，而主机不是本机。那会把这一行的 key 明着发上网线；要么换 https，要么把上游放到本机上。",
+      "args": []
+    },
+    "beUpstreamTable.whyIdUnusable.say": {
+      "kind": "error",
+      "zh": "账号 id 用不进请求地址（只许字母、数字、- 和 _，最长 128 字节）",
+      "args": []
+    },
+    "beUpstream.decide.noRow": {
+      "kind": "error",
+      "zh": "这个账号在凭据文件里没有配置",
+      "args": []
+    },
+    "beUpstream.decide.agentNotRegistered": {
+      "kind": "error",
+      "zh": "这个 agent 没有登记上游",
+      "args": []
+    },
+    "beServer.words.cantConnect": {
+      "kind": "body",
+      "zh": "连不上",
+      "args": []
+    },
+    "beServer.words.closedBeforeAnswer": {
+      "kind": "body",
+      "zh": "没回应就断开了",
+      "args": []
+    },
+    "beServer.words.noAnswer": {
+      "kind": "body",
+      "zh": "没有回应",
+      "args": []
+    },
+    "beServer.words.notHttp": {
+      "kind": "body",
+      "zh": "回的不是 HTTP 响应",
+      "args": []
+    },
+    "beServer.words.onlyInterim": {
+      "kind": "body",
+      "zh": "一直不给最终响应",
+      "args": []
+    },
+    "beServer.words.hopConnect": {
+      "kind": "body",
+      "zh": "建立连接",
+      "args": []
+    },
+    "beServer.words.hopWait": {
+      "kind": "body",
+      "zh": "等响应",
+      "args": []
+    },
+    "beServer.words.hopRead": {
+      "kind": "body",
+      "zh": "读响应",
+      "args": []
+    },
+    "beServer.sentence.say": {
+      "kind": "error",
+      "zh": "上游 {host}:{port} {result}。卡在{hop}这一步。",
+      "args": ["host", "port", "result", "hop"]
+    },
+    "credsPerm.windowsProbe.toText": {
+      "kind": "error",
+      "zh": "它的访问权限转不成文字",
+      "args": []
+    },
+    "credsPerm.windowsProbe.unreadable": {
+      "kind": "error",
+      "zh": "读不到它的访问权限（Windows 错误码 {rc}）",
+      "args": ["rc"]
+    },
+    "credsPerm.windowsSetOwnerOnlyDacl.failed": {
+      "kind": "error",
+      "zh": "设不了只给本人读的访问权限（Windows 错误码 {rc}）",
+      "args": ["rc"]
+    },
+    "credsPerm.windowsSetOwnerOnlyDacl.noList": {
+      "kind": "error",
+      "zh": "设不了只给本人读的访问权限",
+      "args": []
+    },
+    "credsPerm.windowsSetOwnerOnlyDacl.parse": {
+      "kind": "error",
+      "zh": "设不了只给本人读的访问权限：{e}",
+      "args": ["e"]
+    },
+    "credsPerm.currentUserSid.notUtf16": {
+      "kind": "error",
+      "zh": "当前用户的身份不是合法文字：{e}",
+      "args": ["e"]
+    },
+    "credsPerm.currentUserSid.toText": {
+      "kind": "error",
+      "zh": "当前用户的身份转不成文字：{e}",
+      "args": ["e"]
+    },
+    "credsPerm.currentUserSid.noUser": {
+      "kind": "error",
+      "zh": "取不到当前用户的身份：{e}",
+      "args": ["e"]
+    },
+    "credsPerm.currentUserSid.noToken": {
+      "kind": "error",
+      "zh": "读不了当前用户的身份：{e}",
+      "args": ["e"]
+    },
+    "credsPerm.createPrivate.unsupported": {
+      "kind": "error",
+      "zh": "这个系统上不知道怎么建只给本人读的文件（{path}），没做到。",
+      "args": ["path"]
+    },
+    "credsPerm.makePrivate.unsupported": {
+      "kind": "error",
+      "zh": "这个系统上不知道怎么把 {path} 收成只给本人读，没做到。",
+      "args": ["path"]
+    },
+    "credsPerm.makePrivate.failed": {
+      "kind": "error",
+      "zh": "把凭据文件收成只给本人读失败：{e}",
+      "args": ["e"]
+    },
+    "credsPerm.probe.unsupported": {
+      "kind": "error",
+      "zh": "这个平台上不知道怎么量文件权限",
+      "args": []
+    },
+    "credsPerm.probe.notHardened": {
+      "kind": "error",
+      "zh": "这一份构建读不了 Windows 的文件权限",
+      "args": []
+    },
+    "credsPerm.probe.noMetadata": {
+      "kind": "error",
+      "zh": "读不到它的元数据：{e}",
+      "args": ["e"]
+    },
+    "credsPerm.judge.undetermined": {
+      "kind": "error",
+      "zh": "查不出这份文件的权限（{why}）。这不等于它没问题，请自己确认一次只有你读得到它。",
+      "args": ["why"]
+    },
+    "credsPerm.judge.fixWindows": {
+      "kind": "body",
+      "zh": "在资源管理器的「属性 → 安全」里删掉 Everyone / Users 这类条目。或者让程序重写一次它。",
+      "args": []
+    },
+    "credsPerm.judge.tooWideWindows": {
+      "kind": "body",
+      "zh": "这份文件的权限列表里有对所有人开放的条目：{who}",
+      "args": ["who"]
+    },
+    "credsPerm.judge.fixUnix": {
+      "kind": "body",
+      "zh": "跑 chmod 600 <这份文件>，或者让程序重写一次它",
+      "args": []
+    },
+    "credsPerm.judge.tooWideUnix": {
+      "kind": "body",
+      "zh": "同机器上的别人也读得到它（权限 {mode}，本人之外还开着 {extra}）",
+      "args": ["mode", "extra"]
+    },
+    "beAssetSync.report.errorSep": {
+      "kind": "body",
+      "zh": "；",
+      "args": []
+    },
+    "beDiscover.notInstalledMessage.placesSep": {
+      "kind": "body",
+      "zh": " · ",
+      "args": []
+    },
+    "beRelayListen.key.noHome": {
+      "kind": "error",
+      "zh": "家目录解析不出来（HOME / USERPROFILE 都没有）",
+      "args": []
+    },
+    "beRelayListen.key.unavailable": {
+      "kind": "error",
+      "zh": "拿不到中转钥匙（{e}），不起这个口：没有钥匙的口谁都能用",
+      "args": ["e"]
+    },
+    "beMachine.occupant.noKeyFile": {
+      "kind": "error",
+      "zh": "{port} 口上有别的程序在听。这台机器上也没有中转钥匙，多半是升级前起的旧中转。请在那台机器上结束占着这个口的进程再试。",
+      "args": ["port"]
+    },
+    "beMachine.occupant.notOurs": {
+      "kind": "error",
+      "zh": "{port} 口上有别的程序在听，不是这台机器上的中转。多半是升级前起的旧中转，请在那台机器上结束占着这个口的进程再试。",
+      "args": ["port"]
     }
   }
 }
