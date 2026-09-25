@@ -105,7 +105,7 @@ describe("F41 runRemoteResume", () => {
     });
     expect(writeText).not.toHaveBeenCalled();
     expect(toastMock).toHaveBeenCalledTimes(1);
-    expect(toastMock.mock.calls[0][0]).toBe("已拉起远端 resume");
+    expect(toastMock.mock.calls[0][0]).toBe("已在远端 resume");
   });
 
   // ★ U8a-2c-pre 的**接缝判据**。没有它，「把兜底 none 那格切回 TS」这个变异全绿 ——
@@ -137,9 +137,9 @@ describe("F41 runRemoteResume", () => {
     stubClipboard(vi.fn().mockResolvedValue(undefined));
     const ok = await runRemoteResume("devbox", "sid-10", "/w", "");
     expect(ok).toBe(false);
-    // 走的是「无法构造 resume 命令」那条，不是「拉起失败」—— 且**没有**发起拉起。
-    expect(toastMock.mock.calls[0][0]).toBe("无法构造 resume 命令");
-    expect(toastMock.mock.calls[0][1]).toContain("后端拒绝渲染载荷");
+    // 走的是「生成不了 resume 命令」那条，不是「拉起失败」—— 且**没有**发起拉起。
+    expect(toastMock.mock.calls[0][0]).toBe("生成不了 resume 命令");
+    expect(toastMock.mock.calls[0][1]).toContain("后端生成不了启动命令");
     expect(invokeMock.mock.calls.map((c) => c[0])).not.toContain("launch_remote_terminal");
   });
 
@@ -364,7 +364,7 @@ describe("F41 runRemoteResume", () => {
     invokeMock.mockClear();
     await runRemoteResume("devbox", "--evil", "/p", "");
     expect(invokeMock).not.toHaveBeenCalled();
-    expect(toastMock.mock.calls[0][0]).toBe("无法构造 resume 命令");
+    expect(toastMock.mock.calls[0][0]).toBe("生成不了 resume 命令");
   });
 });
 
@@ -377,11 +377,11 @@ describe("F52/F03/F53/F51 其余 4 个 executor：toast 文案 smoke test", () =
     vi.clearAllMocks();
   });
 
-  it("runRemoteResumeTmux 成功 → toast「已拉起 tmux resume」+ 返回 true", async () => {
+  it("runRemoteResumeTmux 成功 → toast「已在 tmux 里 resume」+ 返回 true", async () => {
     mockInvoke(() => Promise.resolve(undefined));
     const ok = await runRemoteResumeTmux("devbox", "sid-1", "/p", "", "cc-sid1");
     expect(ok).toBe(true);
-    expect(toastMock.mock.calls[0][0]).toBe("已拉起 tmux resume");
+    expect(toastMock.mock.calls[0][0]).toBe("已在 tmux 里 resume");
   });
   it("runRemoteResumeTmux 失败 → toast「拉起失败，已复制 tmux resume 命令」+ 返回 false", async () => {
     mockInvoke(() => Promise.reject("boom"));
@@ -391,11 +391,11 @@ describe("F52/F03/F53/F51 其余 4 个 executor：toast 文案 smoke test", () =
     expect(toastMock.mock.calls[0][0]).toBe("拉起失败，已复制 tmux resume 命令");
   });
 
-  it("runRemoteResumeIntoExistingTmux 成功 → toast「已在原 tmux 就地 resume」+ 返回 true", async () => {
+  it("runRemoteResumeIntoExistingTmux 成功 → toast「已在原来的 tmux 里就地 resume」+ 返回 true", async () => {
     mockInvoke(() => Promise.resolve(undefined));
     const ok = await runRemoteResumeIntoExistingTmux("devbox", "sid-1", "cc-sid1", "");
     expect(ok).toBe(true);
-    expect(toastMock.mock.calls[0][0]).toBe("已在原 tmux 就地 resume");
+    expect(toastMock.mock.calls[0][0]).toBe("已在原来的 tmux 里就地 resume");
     expect(toastMock.mock.calls[0][1]).toContain("cc-sid1");
   });
   it("runRemoteResumeIntoExistingTmux 失败 → toast「拉起失败，已复制就地 resume 命令」+ 返回 false", async () => {
@@ -485,7 +485,7 @@ describe("K-R109 本机 attach 那一句问后端要", () => {
     //    发起了就说明它去拼了一条串，而那正是 §31 最终形态第①条禁的事。
     expect(invokeMock.mock.calls.map((c) => c[0])).not.toContain("launch_remote_terminal");
     expect(writeText).not.toHaveBeenCalled();
-    expect(String(toastMock.mock.calls[0][0])).toContain("渲不出来");
+    expect(String(toastMock.mock.calls[0][0])).toContain("生成不了接终端的命令");
     expect(String(toastMock.mock.calls[0][1])).toContain("本机没装 ccm");
   });
 });
@@ -735,8 +735,8 @@ describe("W22B 外层 tmux 三格的生产切换 —— 那道闸的判据", () 
     // ★★ 最要紧的一格：**没有第二条路**。回落到 TS 座 = 把 Rust 那排门整排变成 fail-open。
     expect(launched, `后端拒了却还是拉起了：${launched.join(" | ")}`).toEqual([]);
     expect(writeText, "把一条被拒的命令复制给用户，等于让他手动执行那一条").not.toHaveBeenCalled();
-    expect(String(toastMock.mock.calls[0][0])).toContain("无法构造 tmux resume 命令");
-    expect(String(toastMock.mock.calls[0][1])).toContain("后端拒绝渲染外层 tmux 命令");
+    expect(String(toastMock.mock.calls[0][0])).toContain("生成不了 tmux resume 命令");
+    expect(String(toastMock.mock.calls[0][1])).toContain("后端生成不了 tmux 命令");
   });
 
   it("★★ 通道异常（不带 REFUSE 标）⇒ 同样诚实失败 —— 这一格已经没有第二条路了", async () => {
@@ -748,7 +748,7 @@ describe("W22B 外层 tmux 三格的生产切换 —— 那道闸的判据", () 
     await runRemoteAttach("devbox", "w5-cc");
     expect(launched).toEqual([]);
     expect(writeText).not.toHaveBeenCalled();
-    expect(String(toastMock.mock.calls[0][0])).toContain("无法构造 attach 命令");
+    expect(String(toastMock.mock.calls[0][0])).toContain("生成不了 attach 命令");
   });
 });
 
@@ -948,14 +948,14 @@ describe("设计/80 §8.7 步 3：启动期令牌的铸币口", () => {
     const real = globalThis.crypto;
     try {
       Object.defineProperty(globalThis, "crypto", { value: undefined, configurable: true });
-      expect(() => mintRbindToken()).toThrow(/CSPRNG/);
+      expect(() => mintRbindToken()).toThrow(/安全随机数/);
     } finally {
       Object.defineProperty(globalThis, "crypto", { value: real, configurable: true });
     }
     // 第二形：`crypto` 在但那个方法不在（老 jsdom / 裁过的 webview）。
     try {
       Object.defineProperty(globalThis, "crypto", { value: {}, configurable: true });
-      expect(() => mintRbindToken()).toThrow(/CSPRNG/);
+      expect(() => mintRbindToken()).toThrow(/安全随机数/);
     } finally {
       Object.defineProperty(globalThis, "crypto", { value: real, configurable: true });
     }
@@ -1205,7 +1205,7 @@ describe("RL1 中转地址进远端载荷", () => {
     const ok = await runRemoteResume("devbox", "sid-x1", "/w", "");
     expect(ok).toBe(false);
     expect(launched).toEqual([]);
-    expect(toastMock.mock.calls[0][0]).toBe("无法构造 resume 命令");
+    expect(toastMock.mock.calls[0][0]).toBe("生成不了 resume 命令");
     expect(String(toastMock.mock.calls[0][1])).toContain(WHY);
   });
 

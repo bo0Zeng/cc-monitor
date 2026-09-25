@@ -146,7 +146,7 @@ export class TabSessionActions {
           : {}),
       });
     } catch (e) {
-      showActionFailureToast("打开新窗口失败", String(e));
+      showActionFailureToast(copyText("tabSessionActions.openInWindow.failed"), String(e));
     }
   }
 
@@ -193,7 +193,7 @@ export class TabSessionActions {
     showActionFailureToast(
       copyText("sessionState.recordGone.title"),
       copyText("sessionState.recordGone.body", {
-        who: isLocalOrigin(tab.origin) ? "本机" : `远端 [${tab.origin}]`,
+        who: isLocalOrigin(tab.origin) ? copyText("tabSessionActions.who.local") : copyText("tabSessionActions.who.remote", { machine: tab.origin }),
         root: probe.root,
         sid: tab.sessionId,
       }),
@@ -238,8 +238,8 @@ export class TabSessionActions {
           // 落基座（对齐 history.ts:1502；此前 resumeTab 缺此回调，用户明点的"用账号 X resume"被无声吞掉）。
           onUnselectable: (n) =>
             showActionFailureToast(
-              "账号不可用",
-              `账号「${n}」当前不可选（未登录 / 非隔离 / 目录缺失），改用该会话上次的账号 / 当前账号 resume。`,
+              copyText("tabSessionActions.unselectable.title"),
+              copyText("tabSessionActions.unselectable.body", { name: n }),
               { level: "info", durationMs: 6000 },
             ),
           // account-ux U3:未显式选号 → 跟随(lastAccount sticky → 当前账号 → 基座)。显式选号维持 A4。
@@ -257,7 +257,7 @@ export class TabSessionActions {
       // catch，headline 对齐远端 `runRemoteResume` 的"无法构造 resume 命令"/"拉起失败"两分）。
       validateLocalLaunch({ kind: "resume", sid }, tab.cwd ?? "");
     } catch (err) {
-      showActionFailureToast("无法构造 resume 命令", String(err));
+      showActionFailureToast(copyText("tabSessionActions.resume.buildFailed"), String(err));
       return;
     }
     // ★★ P3t-Y2b：本机 resume 也进 tmux（POSIX；Windows 那侧后端不读这个名字，`C12`）。
@@ -313,7 +313,7 @@ export class TabSessionActions {
       //   在本机永远走不到。⚠ 不等待（多一拍会撞那两条只放行一个微任务的 DOM 判据）。
       recordLocalLaunchAccount(sid, localLaunchAccountNameSync(sid));
     } catch (err) {
-      showActionFailureToast("恢复失败", String(err));
+      showActionFailureToast(copyText("tabSessionActions.resume.failed"), String(err));
     }
   }
 
@@ -365,8 +365,8 @@ export class TabSessionActions {
     if (matches.length > 0) {
       if (matches.length > 1) {
         showActionFailureToast(
-          "检测到多个同身份会话",
-          `该会话身份（sid）同时活在 ${matches.length} 个 tmux 里，本次接入其中一个（${matches[0].name}）；建议手动到终端核实其余会话是否需要清理。`,
+          copyText("tabSessionActions.dupes.title"),
+          copyText("tabSessionActions.dupes.body", { n: matches.length, name: matches[0].name }),
           { level: "info", durationMs: 8000 },
         );
       }
@@ -402,8 +402,8 @@ export class TabSessionActions {
           // F09：显式选号解析不到 → 提示而非静默落基座（对齐 resumeTab 的同类回调）。
           onUnselectable: (n) =>
             showActionFailureToast(
-              "账号不可用",
-              `账号「${n}」当前不可选（未登录 / 非隔离 / 目录缺失），改用该会话上次的账号 / 当前账号 resume。`,
+              copyText("tabSessionActions.unselectable.title"),
+              copyText("tabSessionActions.unselectable.body", { name: n }),
               { level: "info", durationMs: 6000 },
             ),
           // F04:useBase/显式选号 = 不跟随、不注入（与直连版 resumeTab 的基座逃生口对称，两后端
@@ -439,8 +439,8 @@ export class TabSessionActions {
         // F09：同上——显式选号解析不到时提示而非静默落基座。
         onUnselectable: (n) =>
           showActionFailureToast(
-            "账号不可用",
-            `账号「${n}」当前不可选（未登录 / 非隔离 / 目录缺失），改用该会话上次的账号 / 当前账号 resume。`,
+            copyText("tabSessionActions.unselectable.title"),
+            copyText("tabSessionActions.unselectable.body", { name: n }),
             { level: "info", durationMs: 6000 },
           ),
         // audit-fixes F01(修 B1):pin 现读磁盘,不读内存镜像 accountLastByS（见 readSessionPin）。
@@ -577,8 +577,8 @@ export class TabSessionActions {
       // 10 秒退出等待窗口），用户大概率以为没点中、再点一次——给个明确提示，别让破坏性操作的
       // in-flight 防抖对用户完全不可见。
       showActionFailureToast(
-        "正在重启中",
-        "该会话上一次换号重启还没完成，请稍候再试。",
+        copyText("tabSessionActions.restart.busyTitle"),
+        copyText("tabSessionActions.restart.busy"),
         { level: "info", durationMs: 4000 },
       );
       return false;
@@ -614,8 +614,8 @@ export class TabSessionActions {
     const matches = findClaudeTmuxMatches(sessions, sid);
     if (matches.length > 1) {
       showActionFailureToast(
-        "换号重启拒绝",
-        `该会话身份（sid）同时活在 ${matches.length} 个 tmux 里，无法安全判定该重启哪一个——请到终端手动核实后再试。`,
+        copyText("tabSessionActions.restart.refusedTitle"),
+        copyText("tabSessionActions.restart.dupes", { n: matches.length }),
         { level: "info", durationMs: 8000 },
       );
       return false;
@@ -670,7 +670,7 @@ export class TabSessionActions {
   ): void {
     const caveat = viaCwd
       ? // 〔U2 · 按 `terms.json` ＋ CP1 台账改词〕不说标记、不派「重装 ccm 助手」；「可能杀到别的 Claude」这条后果必须留着。
-        `\n\n⚠ 认不出这是哪个会话：「${tmuxName}」是按工作目录匹配到的，可能是同目录里另一个正在运行的 Claude。`
+        copyText("tabSessionActions.kill.cwdCaveat", { name: tmuxName })
       : "";
     // 可重连的 tab：claude 已退、只剩空 shell，文案别再说"正在运行的 Claude"；
     // 杀掉这个残留 tmux → tab 变成已结束 → 即可 Resume（给可重连一个出口，治 UX 审计 #1）。
@@ -679,30 +679,30 @@ export class TabSessionActions {
     // 这不是措辞洁癖：一个说「将终止**远端**……」的确认框，用在本机会话上是**在说假话**，
     // 而它恰好是个不可恢复的破坏性动作的最后一道人工闸。
     const isLocal = origin === LOCAL_ORIGIN;
-    const where = isLocal ? "本机" : "远端";
+    const where = isLocal ? copyText("tabSessionActions.who.local") : copyText("tabSessionActions.who.remoteShort");
     const body = opts?.idle
       ? copyText("sessionState.killIdle.confirm")
-      : `将终止${where}这个 tmux 会话里正在运行的 Claude，未保存的交互会中断。`;
+      : copyText("tabSessionActions.kill.body", { where });
     // auto-e2e F-E4：可注入 confirm seam（对齐 account-restart.ts 的 `opts.confirm ?? window.confirm`）。
     // 默认（不传 opts）走 `window.confirm`，交互零变化——headless e2e/DEV 才注入 ()=>true/false。
     const confirmFn = opts?.confirm ?? ((m: string) => window.confirm(m));
     const ok = confirmFn(
-      `杀死会话「${tmuxName}」（机器 ${isLocal ? "本机" : origin}）？\n\n${body}\n此操作不可恢复。${caveat}`,
+      copyText("tabSessionActions.kill.confirm", { name: tmuxName, machine: isLocal ? copyText("tabSessionActions.who.local") : origin, body, caveat }),
     );
     if (!ok) return;
     void (async () => {
       try {
         await commands.kill_remote_tmux({ origin, target: tmuxName });
-        const who = isLocal ? "本机" : `远端 [${origin}]`;
+        const who = isLocal ? copyText("tabSessionActions.who.local") : copyText("tabSessionActions.who.remote", { machine: origin });
         showActionFailureToast(
-          "已杀死会话",
+          copyText("tabSessionActions.kill.done"),
           opts?.idle
             ? copyText("sessionState.killIdle.done", { who, name: tmuxName })
             : copyText("sessionState.killLive.done", { who, name: tmuxName }),
           { level: "info", durationMs: 6000 },
         );
       } catch (err) {
-        showActionFailureToast("杀死会话失败", String(err));
+        showActionFailureToast(copyText("tabSessionActions.kill.failed"), String(err));
       }
     })();
   }
@@ -721,11 +721,11 @@ export class TabSessionActions {
       }
       // 找到但缺 host/user = 配置不完整；没找到 = 未配置——分开措辞（审计建议）。
       const why = host
-        ? "该机的远端配置缺 host / user（在设置 → 连接 补全后可用）"
-        : "未找到该机的远端配置（在设置 → 连接 添加后可用）";
+        ? copyText("tabSessionActions.openCwd.incomplete")
+        : copyText("tabSessionActions.openCwd.noConfig");
       showActionFailureToast(
-        "远端目录无法本地打开",
-        `该会话在远端机器 [${tab.origin}]，工作目录 ${tab.cwd} 不在本机；${why}。`,
+        copyText("tabSessionActions.openCwd.title"),
+        copyText("tabSessionActions.openCwd.body", { machine: tab.origin, cwd: tab.cwd, why }),
         { level: "info" },
       );
       return;
@@ -753,14 +753,14 @@ export function bringTerminalToFront(sessionId: string): Promise<void> {
     commands.bring_terminal_to_front({ sessionId }),
     new Promise<never>((_, reject) =>
       window.setTimeout(
-        () => reject(new Error("切到终端窗口超时")),
+        () => reject(new Error(copyText("tabSessionActions.front.timeout"))),
         timeoutMs,
       ),
     ),
   ]).catch((e) => {
     console.warn(`bring_terminal_to_front ${sessionId} failed:`, e);
     // P4.5: 改走统一 toast stack（去掉单例 #bring-terminal-toast 的"先到先被覆盖"问题）。
-    showActionFailureToast("切到终端窗口失败", String(e?.message ?? e));
+    showActionFailureToast(copyText("tabSessionActions.front.failed"), String(e?.message ?? e));
   });
 }
 
@@ -786,13 +786,13 @@ export function bringRemoteTerminalToFront(sessionId: string): Promise<void> {
     commands.bring_remote_terminal_to_front({ sessionId }),
     new Promise<never>((_, reject) =>
       window.setTimeout(
-        () => reject(new Error("切到终端窗口超时")),
+        () => reject(new Error(copyText("tabSessionActions.front.timeout"))),
         timeoutMs,
       ),
     ),
   ]).catch((e) => {
     console.warn(`bring_remote_terminal_to_front ${sessionId} failed:`, e);
-    showActionFailureToast("切到终端窗口失败", String(e?.message ?? e));
+    showActionFailureToast(copyText("tabSessionActions.front.failed"), String(e?.message ?? e));
   });
 }
 
