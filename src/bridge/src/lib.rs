@@ -69,6 +69,7 @@ mod local_backend_host; // P2s（C8）：本机后端的生命周期（起/停/�
 mod local_origin_registry;
 mod logging;
 mod mcp; // F87（#50+#51）：MCP 管理（读跨 scope 展示 / 写只项目 .mcp.json，SS-14）
+mod mcp_sync; // 〔AS1 · 第四波 4B〕MCP 推 / 拉：只编排 I/O（读两边 · 请对面后端判 · 经对面后端写），判定住后端 `mcp-sync-plan`
 mod messages;
 mod panorama;
 mod panorama_bytes; // 〔RM1c · 第四波〕全景小程序的字节从哪来：按 (OS, arch) 选内嵌的那一份（推上去归 F08 部署路 / SR1b）
@@ -1336,6 +1337,9 @@ pub fn run() {
             mcp::list_mcp_project_dirs,
             mcp::write_project_mcp_server,
             mcp::remove_project_mcp_server,
+            // 〔AS1 · 第四波 4B〕MCP 推 / 拉（`设计/96` 的 B）：看差异 ＋ 写，两条都吃 origin（本机远端同一条路）。
+            mcp_sync::mcp_sync_preview,
+            mcp_sync::mcp_sync_apply,
             subagent::load_subagent,
             forget_session,
             // issue #10: 独立只读窗口（多窗口 / 双屏）
