@@ -716,6 +716,7 @@ src/remote-health.ts:31	⚠ 远端管道拥塞	内部词→连接（管道）	[�
 src/remote-health.ts:33	⚠ 远端后端版本不符	保留	[对外] toast 标题；「后端」是 91 §3.1 定的对外词
 src/remote-health.ts:35	远端降级模式	保留	[对外] toast 标题
 src/remote-health.ts:37	⚠ 远端历史快照拉取失败	保留	[对外] toast 标题；「历史快照」可懂
+src/remote-health.ts:40	⚠ 远端后端没装上	保留	[对外] toast 标题（〔DP1〕连接前自动部署没成）；先说结果，正文是那句原因；「后端」是 91 §3.1 定的对外词
 src/remote-health.ts:39	⚠ 远端提示	保留	[对外] toast 兜底标题
 src/remote-launch-run.ts:338	刻意不替你挑终端模拟器	保留	[不对外] 对后端错误串做 includes 的匹配锚点（那句话本身由后端产、另行裁）
 src/remote-launch-run.ts:363	本机不开终端窗口，命令已复制	保留	[对外] toast 标题，先说结果

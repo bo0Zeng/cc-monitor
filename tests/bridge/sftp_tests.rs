@@ -1590,3 +1590,79 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     let _ = child.wait();
     println!("SR1B-LOOPBACK-MONITOR ok");
 }
+
+// ═══ 〔DP1 · 第四波〕自动部署不再静默 ═══════════════════════════════════════════════════
+//
+// 要求住址：`设计/96 §7.1.4`，逐字：「拒绝是一个会到达用户的结论，不是一行 `debug` 日志」·
+// 「**返回类型上不许有『成功』这一支**：拒绝要与『部署成功』在类型上分得开，界面才显示得出来」。
+
+/// 切出生产段里一个函数的体（到列 0 的 `}` 为止）。
+fn dp1_body(prod: &str, sig: &str) -> String {
+    let at =
+        guard_core::find_pinned(prod, sig).unwrap_or_else(|e| panic!("{sig} 不是恰好一处：{e}"));
+    let rest = &prod[at..];
+    let end = rest.find("\n}\n").unwrap_or(rest.len());
+    rest[..end].to_string()
+}
+
+/// 本条要逮的两种「静默」写法：`Ok(None)`（没部署也算成功）与 `debug!`（只留一行没人看的日志）。
+fn dp1_silent_forms(body: &str) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    if body.contains("Ok(None)") {
+        out.push("Ok(None)");
+    }
+    if body.contains("tracing::debug!") || body.contains(" debug!(") {
+        out.push("debug!");
+    }
+    out
+}
+
+/// D1：`ensure_backend_deployed` 的返回类型是 `Result<String, DeployError>`（没有「没部署也算成功」那一支），
+/// 体内零 `Ok(None)` · 零 `debug!`；表拒绝恰好交成 `DeployError::Refused` 一处。
+#[test]
+fn the_auto_deploy_never_refuses_silently() {
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
+    let body = dp1_body(&prod, "pub async fn ensure_backend_deployed(");
+    let sig = body.lines().next().unwrap_or_default();
+    assert!(
+        sig.contains("-> Result<String, DeployError>"),
+        "返回类型变了：{sig} —— `Option` 回来就是「没部署也算成功」那一支回来了"
+    );
+    assert_eq!(
+        dp1_silent_forms(&body),
+        Vec::<&str>::new(),
+        "体内又有了静默的拒绝：\n{body}"
+    );
+    guard_core::find_pinned(&body, "Err(DeployError::Refused(").unwrap_or_else(|e| {
+        panic!("表拒绝没有恰好一处交成 `DeployError::Refused`（{e}）：\n{body}")
+    });
+    // 正控：两种静默写法都认得出来。
+    assert_eq!(
+        dp1_silent_forms("x => return Ok(None),\n tracing::debug!(\"跳过\");"),
+        vec!["Ok(None)", "debug!"]
+    );
+}
+
+/// D2：调用方拿到 `Err` ⇒ 经远端健康通道恰发一条 `kind = "deploy"`（不阻断，照旧接着试连已有后端）。
+#[test]
+fn a_failed_auto_deploy_reaches_the_screen_through_remote_health() {
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/ssh_source.rs"));
+    let at = guard_core::find_pinned(&prod, "crate::sftp::ensure_backend_deployed(cfg).await")
+        .unwrap_or_else(|e| panic!("调用处不是恰好一处：{e}"));
+    let rest = &prod[at..];
+    let err_at = rest.find("Err(e) =>").expect("找不到 Err 那一支");
+    let arm = &rest[err_at..];
+    let arm = &arm[..arm.find("\n        }\n").unwrap_or(arm.len())];
+    guard_core::find_pinned(arm, "kind: \"deploy\"")
+        .unwrap_or_else(|e| panic!("Err 那一支没有恰好一条 `kind: \"deploy\"`（{e}）：\n{arm}"));
+    guard_core::find_pinned(arm, "app.emit(crate::bridge::events::REMOTE_HEALTH")
+        .unwrap_or_else(|e| panic!("Err 那一支没有恰好一次发到远端健康通道（{e}）：\n{arm}"));
+    assert!(
+        arm.contains("e.say(&host_label)"),
+        "发出去的不是那句话本身：\n{arm}"
+    );
+    assert!(
+        arm.contains("None"),
+        "Err 那一支不再「不阻断、按没确认处理」：\n{arm}"
+    );
+}

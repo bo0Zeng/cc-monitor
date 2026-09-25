@@ -35,6 +35,9 @@ function headlineFor(kind: string): string {
       return "远端降级模式";
     case "snapshot":
       return "⚠ 远端历史快照拉取失败";
+    // 〔DP1 · 第四波〕连接前那一步自动部署没成（那台机器不要这份后端 / 这一版没带 / 装不上），正文是那句原因。
+    case "deploy":
+      return "⚠ 远端后端没装上";
     default:
       return "⚠ 远端提示";
   }
