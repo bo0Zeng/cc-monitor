@@ -453,10 +453,18 @@ fn code_picture_lives_in_its_own_program_and_neither_in_the_monitor_nor_the_back
         "只遍历到 {} 个 monitor 源文件 —— 遍历坏了，本条此刻是空转的",
         monitor_files.len()
     );
-    let word = format!("code{}picture", '_');
+    // 〔RM1f 死值验 K15b 逼出来的〕两根针都要：`contains_word` 把 `_` 当词内字符，只拿 `code_picture`
+    // 认不出 `code_picture_core`（真正的导入形）—— 首刀往 monitor 生产段塞一行 `"code_picture_core"`，本条照绿。
+    let words = [
+        format!("code{}picture", '_'),
+        format!("code{u}picture{u}core", u = '_'),
+    ];
     let in_monitor: Vec<String> = monitor_files
         .iter()
-        .filter(|(_, src)| guard_core::contains_word(&guard_core::production_code(src), &word))
+        .filter(|(_, src)| {
+            let prod = guard_core::production_code(src);
+            words.iter().any(|w| guard_core::contains_word(&prod, w))
+        })
         .map(|(p, _)| p.to_string_lossy().replace('\\', "/"))
         .collect();
     assert!(
