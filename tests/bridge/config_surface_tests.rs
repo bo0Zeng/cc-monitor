@@ -29,6 +29,7 @@ fn env_with<'a>(home: &'a Path, fs: &'a FsProbe<'a>, path_env: Option<&'a str>) 
         is_dir: &no_dir,
         fs,
         path_env,
+        vantage: Vantage::Monitor,
     }
 }
 
@@ -1209,7 +1210,14 @@ fn settings_scopes_include_local_and_admit_project_is_unchecked() {
             Some("{}".to_string())
         }
     };
-    let s = build_settings_scopes(&home(), None, &no_dir, &read, &f);
+    // 〔RM1a〕第四个参数换成「有没有钩子字样」：本机那条路读原文、交 `hooks_in_text` 判（与生产那一臂同一个函数）。
+    let s = build_settings_scopes(
+        &home(),
+        None,
+        &no_dir,
+        &|p| hooks_in_text(read(p).as_deref()),
+        &f,
+    );
     assert_eq!(s.len(), 3);
     // E67①：**按「路径分量」比，不按斜杠比**。原来写的是
     // `s[0].path.ends_with("/.claude/settings.json")`，在 Windows 上恒假 ——
@@ -1237,7 +1245,13 @@ fn settings_scopes_include_local_and_admit_project_is_unchecked() {
 /// 读不到文件时 `has_cc_bus_hooks` 必须是 `None`（**不猜 false**）。
 #[test]
 fn unreadable_settings_does_not_claim_absence_of_hooks() {
-    let s = build_settings_scopes(&home(), None, &no_dir, &|_| None, &empty_probe());
+    let s = build_settings_scopes(
+        &home(),
+        None,
+        &no_dir,
+        &|_| hooks_in_text(None),
+        &empty_probe(),
+    );
     assert_eq!(s[0].has_cc_bus_hooks, None);
     assert_eq!(s[1].has_cc_bus_hooks, None);
 }

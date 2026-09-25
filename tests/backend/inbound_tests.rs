@@ -417,6 +417,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 〔RM1a · 第四波〕中转那两条：回环连一次 / 起一个进程。
         "relay-ensure",
         "relay-status",
+        // 〔RM1a · 第四波〕足迹那一条：一批 stat / 读几份小文件。
+        "footprint-probe",
     ] {
         assert!(
             matches!(d(c), Disposition::SpawnBlocking(..)),
@@ -467,6 +469,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "apikey-read",
         "relay-ensure",
         "relay-status",
+        "footprint-probe",
     ];
     let missing: Vec<&&str> = COMMANDS.iter().filter(|c| !covered.contains(c)).collect();
     assert!(

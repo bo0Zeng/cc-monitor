@@ -35,6 +35,7 @@ pub mod common; // U2：两边都要、又不含平台原语的纯工具（§0.5
 pub mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux server / 发信号），或产出改变世界的计划
 pub mod dial; // K-P6b：`--dial` 代理进程 —— backend 那条长连接流的 SSH 握手住这里（**只此一处**，判据在它自己的测块）
 pub mod files; // 步 24f：`files-read` 这一族（**只读**）—— 常驻文件名索引 ＋ 四条只读能力（`设计/96 §2.9`）
+pub mod footprint; // 〔RM1a · 第四波〕「足迹」的这台机器那一半：帧面 `footprint-probe`（只读路径事实，判定住 monitor）
 #[cfg(test)]
 mod guard_support; // U-1：各条源码扫描型守卫共用的「只留生产段」剥法（仅测试构建）
 pub mod inbound; // U6b-1：流连接上的入方向（信封 / 分派 / 取消）
@@ -503,6 +504,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 入参只有端口，从 stdin 读。同上：加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
     "--relay-ensure",
     "--relay-status",
+    // 〔RM1a · 第四波〕「足迹」的这台机器那一半（`inbound::REGISTRY` 的 `footprint-probe`）派生的 CLI 面。只读。
+    "--footprint-probe",
     "--backend-probe",
     // K-P6b：拨号代理。**常驻**（起来就一直搬字节，不返回），配置走**环境变量**
     // `CCM_DIAL_REQUEST`，**argv 与 stdin 都不走** —— argv 在同机任何用户的 `ps` 里都

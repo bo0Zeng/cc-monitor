@@ -1464,6 +1464,27 @@ monitor **从不**对本机那条连接发 `relay-ensure`（本机那一个有�
 
 ⚠ **CLI 面也有它们**（`--relay-status` / `--relay-ensure`），入参从 stdin 读。
 
+#### `footprint-probe`：「足迹」的这台机器那一半（RM1a · 第四波，2026-09-24，**只读**）
+
+设置里「足迹」那一块（cc-monitor 在这台机器上碰过哪些文件）的远端那一半：**判定只住 monitor**
+（`config_surface::build_rows`：哪一行属于哪个工具、存在 / 缺失 / 查不动怎么分），后端只交**路径事实**。
+monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~/…`），再把解出来的路径一次问完。
+
+```text
+→ {"id":"f1","cmd":"footprint-probe","args":{"stat":["/home/u/.local/bin/ccm"],"hooks":{"paths":["/home/u/.claude/settings.json"],"needles":["cc-register"]}}}
+← {"kind":"reply","id":"f1","ok":true,"data":{"env":{"home":"/home/u","path":"/usr/bin:/bin","agentHome":"/home/u/.claude","agentHomeIsDir":true},"stat":{"/home/u/.local/bin/ccm":{"kind":"file","size":1234}},"hooks":{"/home/u/.claude/settings.json":true}}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `stat` | ↔ | 入：一组**绝对**路径（最多 256 条）。出：逐条 `{kind:"file",size}` / `{kind:"dir",size:0,entries:[一层文件名]}` / `null`（不在或读不动）。目录名字超过 4096 个 / 列不动 ⇒ `entries:null` ＋ `notice`（**不截断**） |
+| `hooks` | ↔ | 入：`{paths, needles}`（一组绝对路径 · 最多 16 个非空字样）。出：逐条文件**有没有**任何一个字样（`true`/`false`），读不动 / 超过 1 MiB / 不是文件 ⇒ `null`。**文件内容一个字节都不回** |
+| `notices` | ← | `hooks` 里答 `null` 的那几条各自为什么（不在 / 太大 / 读不动）。`stat` 里列不动的目录那一格自带 `notice` |
+| `env` | ← | 这个**后端进程**看到的 `home`（`HOME`，没有再退 `USERPROFILE`）· `path`（`PATH`）· `agentHome`（agent 的家目录，同帧面其余几条的出处）· `agentHomeIsDir`。⚠ 用户交互 shell 的 rc 改过的环境这里看不见 |
+
+**错误码**：`bad_args`（不是数组 / 相对路径 / 给了路径没给字样）· `too_large`（超过条数上限）。
+⚠ **CLI 面也有它**（`--footprint-probe`），入参从 stdin 读。
+
 #### 只读查询面（`C1`，2026-09-24）—— **八条一次性查询搬上这条长连接**
 
 出处 `设计/15 §3.2` 层 1 ＋ `设计/99 §4.19.2 ⑥`。这八条此前**只有**一次性子命令那一面：monitor 每问一次就新拨一条 SSH（握手 ＋ 鉴权 ＋ exec），账号那两条还被一个 10 秒的轮询按台数翻倍。现在它们也在帧面上 —— **跑的是 CLI 那一臂同一个函数**，只是输出从 stdout 换成应答里的 `data`。

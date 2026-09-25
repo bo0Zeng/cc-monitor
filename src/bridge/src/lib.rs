@@ -41,7 +41,8 @@ mod codex_record; // Phase 2 · F2a：Codex rollout 记录防御式分类器（k
 mod config;
 mod config_surface; // T02：配置面审计视图（遍历 tool_registry，只读、不轮询）
 mod data_paths;
-// U-CC1：数据面漂移记账 —— 把「CC 变了」从不可观测变成看一眼就知道。只记账，零行为变化。
+mod footprint_remote; // 〔RM1a〕「足迹」的远端那一栏：问那台后端要路径事实（footprint-probe），判定走同一份 build_rows
+                      // U-CC1：数据面漂移记账 —— 把「CC 变了」从不可观测变成看一眼就知道。只记账，零行为变化。
 mod drift_ledger;
 mod event_replay;
 mod fenced_block; // T04 第二步：围栏块配对判定（本机+远端 profile 共用最强那一档）
