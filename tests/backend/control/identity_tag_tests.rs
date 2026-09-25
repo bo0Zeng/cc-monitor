@@ -40,16 +40,45 @@ fn only_percent_digits_is_a_pane_id() {
     }
 }
 
-/// 一个不存在的 pid 拿不到 `TMUX_PANE` ⇒ 走「不在 tmux 里」，**不会**去猜一个会话。
+/// 一个不存在的 pid 拿不到 `TMUX_PANE` ⇒ **不会**去猜一个会话。
 ///
-/// ⚠ 本条**不起 tmux**：`pane_of` 在 `gate::probe` 之前返回 `None`。
+/// ⚠ 本条**不起 tmux**：`pane_of` 在 `gate::probe` 之前就给出结局。
+///
+/// 〔U4b · 第四波〕结局从 `NotInTmux` 改成 `PaneUnknown`：PID 0 的环境是**读不到**，不是「读到了、
+/// 没设 `TMUX_PANE`」。前者说「不知道」，后者说「不在 tmux 里」—— 容器那一格（`session_added.container`）
+/// 不许把前者报成 `"none"`。打标行为不变（两支都不打）。
 #[test]
 fn a_pid_without_tmux_pane_never_reaches_tmux() {
     // PID 0 在 Linux 上不是一个可读的 `/proc` 目录 ⇒ 读不到环境。
     assert_eq!(
         tag(0, "9d66c46d-bf88-4f99-877e-455555555555"),
-        Outcome::NotInTmux
+        Outcome::PaneUnknown
     );
+}
+
+/// 〔U4b〕**「不在 tmux 里」那一格真能出来**：本测试进程自己的环境读得到；把 `TMUX_PANE` 摘掉的子进程
+/// ⇒ `NotInTmux`（容器 `"none"` 的唯一来源）。与上一条合起来，两格两向各有一个活例。
+#[test]
+fn a_readable_env_without_tmux_pane_is_not_in_tmux() {
+    let mut child = std::process::Command::new("sleep")
+        .arg("5")
+        .env_remove("TMUX_PANE")
+        .env_remove("TMUX")
+        .spawn()
+        .expect("起得来 sleep");
+    // 等它 exec 完（exec 窗口里环境读回 0 字节 ⇒ `Unreadable`，那是另一格）。
+    let pid = child.id();
+    let mut got = Outcome::PaneUnknown;
+    for _ in 0..50 {
+        got = tag(pid, "9d66c46d-bf88-4f99-877e-455555555555");
+        if got != Outcome::PaneUnknown {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+    assert_eq!(got, Outcome::NotInTmux);
 }
 
 /// sid 不合法时**连环境都不读**（顺序也是判据的一部分：先 fail closed 再做 IO）。
@@ -358,4 +387,26 @@ fn the_token_value_never_reaches_a_log_macro() {
          （`rbind_token_of` 里那句 warn 就是那么写的）。",
         offenders.join("\n")
     );
+}
+
+/// 〔U4b · 第四波 · B1〕打标结局 → 容器：**七个结局逐格 == 手写表**（`U4b.md §1.1` 那张）。
+///
+/// 期望是手写的，不从实现生成。要守的方向是「不知道不许报成 `none`」：
+/// 四个「不知道」的结局里任何一个被改成 `Some(None)`，界面就会对一条其实在 tmux 里的会话说
+/// 「不在 tmux 会话里：程序退了只能 resume」。
+#[test]
+fn container_maps_every_tag_outcome_to_the_hand_written_table() {
+    use crate::wire::SessionContainer;
+    let table: Vec<(Outcome, Option<SessionContainer>)> = vec![
+        (Outcome::Tagged("$1".into()), Some(SessionContainer::Tmux)),
+        (Outcome::AlreadyCurrent, Some(SessionContainer::Tmux)),
+        (Outcome::NotInTmux, Some(SessionContainer::None)),
+        (Outcome::PaneUnknown, None),
+        (Outcome::NoSuchPane, None),
+        (Outcome::RejectedSid, None),
+        (Outcome::Failed("x".into()), None),
+    ];
+    for (outcome, want) in &table {
+        assert_eq!(outcome.container(), *want, "结局 {outcome:?}");
+    }
 }

@@ -34,6 +34,26 @@ impl RemovalCause {
     }
 }
 
+/// 〔U4b · 第四波〕[`Frame::SessionAdded`] 的 `container`：**这条活着的会话住在什么容器里**。
+///
+/// `设计/30 §3.5.6`：可恢复性（死了之后能不能接回去）由容器类型决定 —— 在 tmux 里的，claude 退了
+/// 终端还在（「可重连」）；不在的，只能 resume（「已结束」）。死的那一刻 monitor 会现查一次 tmux，
+/// 但**活着的时候**这一格此前没人报（`第四波记录/U4.md §0.1` G3）⇒ 前端只能写「没报」。
+///
+/// 判定住 `observe::watcher::container_of`（喂它的是 `control::identity_tag::tag` 那一次探测的结局，
+/// 不多起进程）。**判不了就不写这个字段**（缺席 ≠ `none`）：环境读不到、pane 不在默认 socket 上、
+/// 探测失败、非 Linux —— 都是「不知道」。
+///
+/// 线上两个字面量 `"tmux"` / `"none"` 与 monitor `ssh_source::parse_frame` 逐字一致。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionContainer {
+    /// 这个 claude 进程在一个 tmux pane 里（`TMUX_PANE` 核过形状、tmux 认得那个 pane）。
+    Tmux,
+    /// 环境读得到、没有 `TMUX_PANE` ⇒ 不在任何 tmux 里。
+    None,
+}
+
 /// 一条**丢了就不可恢复**的帧的身份〔audit-0805 F03〕。
 ///
 /// `Overflow` 原来只说「丢了 N 条」。对**内容帧**那没问题（行还在远端 jsonl 里，
@@ -330,6 +350,12 @@ pub enum Frame {
         /// **不是**「↗ 已经不依赖 tmux 了」。别把这两句读成一句。
         #[serde(skip_serializing_if = "Option::is_none")]
         rbind_token: Option<String>,
+        /// 〔U4b · 第四波，additive〕这条会话住在什么容器里（见 [`SessionContainer`]）。
+        ///
+        /// **判不了 ⇒ 不上线**（`skip_serializing_if`）：旧客户端、以及判不了的会话，收到的字节
+        /// 与本字段加进来之前一字不差。缺席的意思是「不知道」，**不是** `none`。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        container: Option<SessionContainer>,
     },
     /// Batch9-F27：会话 status 变化（pidfile modify diff；CC 仅状态转换时重写，
     /// 天然稀疏）。远端红绿灯数据源；旧 monitor 未知 kind 忽略（additive）。

@@ -1916,7 +1916,10 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     state.active_sids.insert(sid.clone());
     // `U-NP④`：身份打标（`@ccm_sid`）—— 接 `shared/ccm` 那条每秒轮询的班，见
     // `control::identity_tag`（跨层边已登记进 `layering_guard`）。放在冒名检查**之后**。
-    crate::control::identity_tag::tag(pid, &sid);
+    //
+    // 〔U4b · 第四波〕这一次探测的**结局**不再丢：它同时就是「这条会话住在什么容器里」的答案
+    // （`identity_tag::Outcome::container`，随下面的 `session_added` 报出去）—— 零新进程、零新节拍。
+    let container = crate::control::identity_tag::tag(pid, &sid).container();
     // P2：给这个进程实例挂 pidfd 看守（取代原先每 2s 一遍的判活扫描）。
     // `start` 就是上面 verdict 用过的那次 /proc 读，不再多读一次。
     arm_pid_watcher(&key_for_watch, pid, start, state);
@@ -1977,6 +1980,8 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         } else {
             None
         },
+        // 〔U4b〕判不了 ⇒ `None` ⇒ 不上线（与本字段加进来之前逐字节相同）。
+        container,
     });
     if !state.tail_only {
         for p in &jsonls {

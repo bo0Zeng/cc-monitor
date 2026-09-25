@@ -2559,6 +2559,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         status: None,
         waiting_for: None,
         rbind_token: None,
+        container: None,
     });
     sink.send(Frame::SessionAdded {
         sid: "b".into(),
@@ -2573,6 +2574,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         status: None,
         waiting_for: None,
         rbind_token: None,
+        container: None,
     });
     assert_eq!(
         sink.dropped, 0,
@@ -2593,6 +2595,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         status: None,
         waiting_for: None,
         rbind_token: None,
+        container: None,
     });
     sink.send(Frame::SessionAdded {
         sid: "d".into(),
@@ -2607,6 +2610,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         status: None,
         waiting_for: None,
         rbind_token: None,
+        container: None,
     });
     sink.send(Frame::SessionAdded {
         sid: "e".into(),
@@ -2621,6 +2625,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         status: None,
         waiting_for: None,
         rbind_token: None,
+        container: None,
     });
     assert_eq!(sink.dropped, 3);
 
@@ -2658,6 +2663,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         status: None,
         waiting_for: None,
         rbind_token: None,
+        container: None,
     });
     assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { .. })));
 }
