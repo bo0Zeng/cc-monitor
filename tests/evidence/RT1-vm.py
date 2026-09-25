@@ -93,7 +93,17 @@ def main() -> None:
     elif cmd == "job":
         print(job(sys.stdin.read(), float(a[1]) if len(a) > 1 else 120))
     elif cmd == "push":
-        scp(a[1], f"{HOST}:{a[2]}")
+        src = a[1]
+        if src.endswith(".ps1"):
+            # PS 5.1 读无 BOM 的 .ps1 按 ANSI 解：中文注释会吞掉换行（现打踩过：Add-Type 源码整段被吞）。
+            data = open(src, "rb").read()
+            if not data.startswith(b"\xef\xbb\xbf"):
+                import tempfile
+                fd, tmp = tempfile.mkstemp(suffix=".ps1")
+                os.write(fd, b"\xef\xbb\xbf" + data)
+                os.close(fd)
+                src = tmp
+        scp(src, f"{HOST}:{a[2]}")
     elif cmd == "pull":
         scp(f"{HOST}:{a[1]}", a[2])
     elif cmd == "shot":

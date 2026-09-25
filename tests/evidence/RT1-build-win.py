@@ -8,12 +8,16 @@
 铺进 `src/bridge/native-backend/` 并旁挂 `.target`），差别只有一处：re-embed 取「本机 host triple」，
 这里钉死 `x86_64-pc-windows-gnu`（本机是 Linux）。
 
-⚠ monitor 本体用 **dev profile**：`--release` 在 `-gnu` 交叉链接 `monitor_lib.dll`（`[lib]` 的 cdylib 那一格）
-时现打 `ld: error: export ordinal too large: 125946`（2026-09-25，RT1 读数 §0.2）—— dev profile 链得过
-（`真相源/106 §1.3` 同一条路）。发版的 Windows 那一格走 `windows-latest` 原生构建，不受这条影响。
+⚠ monitor 本体两处与 `cargo build` 裸跑不同，都照发版那一条补上：
+  · `--features tauri/custom-protocol`：`cargo tauri build` 替你加的那一格；不加 ⇒ exe 去连 `devUrl`
+    （`localhost:24174`），窗口里是一张「拒绝连接」页（2026-09-25 现打过一次）。
+  · 🔴 `[lib] crate-type` **临时**收成 `["rlib"]`（编完 `finally` 里原样拷回并 touch）：`-gnu` 交叉链接
+    `monitor_lib.dll`（cdylib 那一格）现打 `ld: error: export ordinal too large`（release 125946 / dev 241784，
+    PE 导出表上限 65535）——**两个 profile 都链不过**。exe 链的是 rlib，那个 dll 不进部署（`真相源/106 §4.1`）。
+    发版的 Windows 那一格走 `windows-latest` 原生构建，不受这条影响；门禁 `winchk` 只 `cargo check`，看不见它。
 
 产物（全在 .build/ 与 src/bridge/native-backend/ 下，两处都被 gitignore）：
-  .build/bridge/x86_64-pc-windows-gnu/debug/{monitor.exe,cc-monitor-filewin.exe,WebView2Loader.dll}
+  .build/bridge/x86_64-pc-windows-gnu/release/{monitor.exe,cc-monitor-filewin.exe,WebView2Loader.dll}
   .build/backend/x86_64-pc-windows-gnu/release/cc-monitor-backend.exe
   .build/panorama/x86_64-pc-windows-gnu/release/cc-monitor-panorama.exe
   以及两个替身（不是 cargo target，rustc 直编）：claude.exe · rt1-bench.exe → .build/rt1/
@@ -42,7 +46,17 @@ def main():
         shutil.copyfile(os.path.join(ROOT, src), os.path.join(NATIVE, name))
         with open(os.path.join(NATIVE, name + ".target"), "w") as f:
             f.write(T + "\n")
-    run(["cargo", "build", "--locked", "-p", "monitor", "--target", T], os.path.join(ROOT, "src", "bridge"))
+    toml = os.path.join(ROOT, "src", "bridge", "Cargo.toml")
+    orig = open(toml, "rb").read()
+    anchor = b'crate-type = ["staticlib", "cdylib", "rlib"]'
+    assert orig.count(anchor) == 1, "crate-type 锚串不是恰好 1 处"
+    try:
+        open(toml, "wb").write(orig.replace(anchor, b'crate-type = ["rlib"]'))
+        run(["cargo", "build", "--release", "--locked", "-p", "monitor", "--target", T,
+             "--features", "tauri/custom-protocol"], os.path.join(ROOT, "src", "bridge"))
+    finally:
+        open(toml, "wb").write(orig)
+        os.utime(toml)
     out = os.path.join(ROOT, ".build", "rt1")
     os.makedirs(out, exist_ok=True)
     for src, exe in (("RT1-fake-claude.rs", "claude.exe"), ("RT1-relay-bench.rs", "rt1-bench.exe")):
