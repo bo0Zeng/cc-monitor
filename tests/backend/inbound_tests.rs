@@ -420,7 +420,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
              而且 `cancel` 会对它撒谎（abort 对 spawn_blocking 是空操作）"
     );
     // 纯计算的两条留在普通 spawn 上（它们能在 await 点被真取消）。
-    for c in ["ping", "resolve"] {
+    // 〔AS2 · 第四波 4B〕`assets-sync`：等拨号 / 等远端 capture —— 真异步，也在普通 spawn 上。
+    for c in ["ping", "resolve", "assets-sync"] {
         assert!(
             matches!(d(c), Disposition::Spawn(..)),
             "`{c}` 不该在阻塞档上 —— 那会让它白白变成不可取消"
@@ -522,6 +523,12 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "relay-status",
         // 〔RM1a · 第四波〕足迹那一条：一批 stat / 读几份小文件。
         "footprint-probe",
+        // 〔AS2 · 第四波 4B〕资产目录两条：扫盘 ＋ 原子写目录文件。
+        "assets-catalog",
+        "assets-catalog-merge",
+        // 〔AS2〕skill「装到这台」两条：走目录 ＋ 读原文 ＋ stat。
+        "skill-read",
+        "skill-install-plan",
         // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话：同步文件 I/O（围栏 ＋ 读 / 写满换名 / 删）。
         "files-peek",
         "files-put",
@@ -541,6 +548,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "kill",
         "ping",
         "resolve",
+        "assets-sync",
         "cancel",
         "link-open",
         "link-data",
@@ -593,6 +601,11 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "relay-ensure",
         "relay-status",
         "footprint-probe",
+        // 〔AS2 · 第四波 4B〕资产目录两条，阻塞档。
+        "assets-catalog",
+        "assets-catalog-merge",
+        "skill-read",
+        "skill-install-plan",
         // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话：同步文件 I/O，阻塞档。
         "files-peek",
         "files-put",

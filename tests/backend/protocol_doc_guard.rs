@@ -112,6 +112,13 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "control/cli_control.rs",
         include_str!("../../src/backend/control/cli_control.rs"),
     ),
+    // 〔AS2 · 第四波 4B〕本机常驻后端经 capture 在远端跑 `--assets-catalog` / `--assets-catalog-merge`
+    // （`asset_sync::PULL_FLAG` / `PUSH_FLAG`）—— 它不分派，是**发**这两个子命令的一方；
+    // 派生的文件集按「生产段里出现 `"--`」把它扫了进来。登记，那两个字面量随之受对拍约束。
+    (
+        "asset_sync.rs",
+        include_str!("../../src/backend/asset_sync.rs"),
+    ),
     (
         "observe/history_query.rs",
         include_str!("../../src/backend/observe/history_query.rs"),

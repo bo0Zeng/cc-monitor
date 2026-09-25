@@ -76,6 +76,11 @@ vi.mock("../../src/settings/mcp-section", () => ({
 vi.mock("../../src/settings/plugins-section", () => ({
   PluginsSection: class { element = document.createElement("div"); },
 }));
+// 〔AS2 · 4B〕资产目录那一块同上替身掉：本文件量的是「足迹」那一发跟不跟着机器子页走，
+//   这一块自己的延后加载归 `panel-per-machine-deferred-io.vitest.ts`（那边逐发登记了它）。
+vi.mock("../../src/settings/assets-section", () => ({
+  AssetsSection: class { element = document.createElement("div"); },
+}));
 vi.mock("../../src/settings/cc-bus-hooks-section", () => ({
   CcBusHooksSection: class { element = document.createElement("div"); },
 }));

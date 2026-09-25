@@ -606,6 +606,8 @@ fn every_host_declaration_is_pinned() {
         // 〔AS1 · 第四波 4B〕同一份文件的第二个写入来源（推 / 拉：条目原样从另一台机器拷来）。
         //    `ProjectDir` 与上一行同一条理由：写在你选定的那个项目目录里，那个目录在哪台机器上就算哪台的。
         ("project-mcp", ".mcp.json", ProjectDir),
+        // 〔AS2 · 第四波 4B〕资产目录里「装到这台」的 skill：装到哪台就写哪台（本机页与远端页都能装）⇒ `Either`。
+        ("skill-install", "~/.claude/skills", Either),
         ("powershell-profile", "$PROFILE", Client),
         // 〔`K-R62` 09-11〕本机 POSIX 那一格补上之后升进 `TOOLS` 的那一条。
         // `Client`：它写的是 **cc-monitor 跑着的这台**的 rc（远端那份 rc 归 `ccm` 那两行）。
