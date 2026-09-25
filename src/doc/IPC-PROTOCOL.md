@@ -411,6 +411,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | `sessions_replayed` | —（无载荷） | **〔U4b · 第四波〕这台机器的活会话清单报完了**：`watch_loop` 的 Phase 1（同步扫 `sessions/`、对每个活 pidfile 发一帧 `session_added`）走完那一刻发**一次**，排在 Phase 1 所有帧之后、Phase 2 任何帧之前（同一个 sink、同一条线程）；`sessions/` 不在也照发（清单是空的，也是说完了）。**为什么要它**：客户端手里有一条「固定」的会话条目而这台还没报过它时，得分清「这台还没说完」（显示**说不清**）与「说完了、里面没有它」（显示**已结束**）—— `设计/30 §3.5.7a` 那张表的判据，此前线上没有任何东西分得开。丢了不可恢复（`overflow.lost` 带身份、subject 无）：客户端停在「说不清」，不会被说成已结束。monitor 收到发前端 `origin-sessions-listed {origin}`（与 `remote-session-added` 同一条线程、同序）|
 | `link_data` | `link`, `data` | **〔SR1a〕一条链路的下行字节**（`data` = base64，标准字母表带补位；解码后 ≤ 32 KiB）。只在客户端开了链路（`link-open`）之后才出现；链路上的字节与 C2 拨号代理的 stdout 逐字节同形。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的「链路四条」 |
 | `link_end` | `link`, `error?` | **〔SR1a〕这条链路不会再有字节了**，后端已忘掉这个 id。`error` 缺席 = 正常收尾；在 = 非正常收尾的人话。拨不通**不**走这里（那是链路字节里那一行失败的 ack） |
+| `transfer` | `id`, `got`, `total`, `end?` | **〔SR1b〕一趟传输此刻的样子**（`transfer-start` 之后才出现）：每一帧是整份快照（`got` / `total` 字节），不是增量 ⇒ 后端按变更合并、堵住时只合并不堆积。带 `end` 的那一帧是这一趟的**最后一帧**：`{"state":"done","bytes"}` · `{"state":"failed","why"}` · `{"state":"cancelled"}`。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的「传输四条」 |
 
 ### 入方向：流连接上的命令信封（U6b-1）
 
@@ -1920,11 +1921,16 @@ key_path · host_key_fingerprint · 竞速地址 · 跳板`；最后一条链路
 | `args` | `{"link":"<不透明 id，客户端给、客户端负责唯一>","window":<初始信用，字节；必须在 [32 KiB, 16 MiB] 之内，否则 `invalid_args`>,"dial":{DialRequest}}` |
 | `data` | 无（登记上、任务起了就回 `ok` —— **不等拨通**：拨通与否在链路字节里那一行 ack） |
 
-`dial` 就是 C2 那份蛇形键请求：`host · port · user · key_path · host_key_fingerprint · command · endpoints · jump · use（stream｜capture｜forward）·
+`dial` 就是 C2 那份蛇形键请求：`host · port · user · key_path · host_key_fingerprint · command · endpoints · jump · use（stream｜capture｜forward｜files）·
 capture{max_bytes,abort_marker} · forward{local_port,remote_host,remote_port} · stages · probe`，外加 **`agent_sock`**（Unix：客户端此刻的
 `SSH_AUTH_SOCK` —— 常驻后端活得比任何一个客户端都长，它自己身上那份可能早就不指向活的 agent；缺席 = 用后端自己的环境）。
 `probe` / `stages` 的链路**不进连接池**（测试连接要看的就是一次真拨号）。
-`use:"subsystem"` **留口不开**（SFTP 进常驻后端是 SR1b 的事）⇒ 回 `unsupported_use`。
+〔SR1b · 2026-09-24〕`use:"files"`：在池里那条连接上开 sftp 子系统（`dial/sftp.rs`），ack 之后**一问一答** ——
+上行每一行一个请求 `{"op":…}`，下行每一行一个应答；`op` ∈ `home` · `stat{path}` · `read{path,max}` · `put{path,size,mode,verify}`（该行之后紧跟 `size` 个原始字节，
+上限 64 MiB）· `remove{path}` · `mkdirs{path}`。失败那一形 `{"code","message"}`，`code` ∈ `fenced`（远端写围栏拒）· `io` · `too_big` · `bad_request` · `unknown_op`。
+🔴 **写只许两处**：远端 `~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/`（用户 V89；`INVARIANTS §41.6` 的 SR1b 订正）。读不受限。
+它服务自部署（F08 后端二进制 · `.build_id` · `ccm` 入口 · cc-acct-iso），业务判定在 monitor（`dial_host::RemoteFs`）。
+`use:"subsystem"`（把原始 SFTP 字节交给客户端）**不开** ⇒ 回 `unsupported_use`：SFTP 协议住后端，客户端只有 `files` 与 `transfer-*` 两条路。
 错误 code：`invalid_args` · `unsupported_use` · `duplicate_link` · `too_many_links`（每连接 256 条）。
 
 #### `link-data`：往链路里送一块上行字节
@@ -1956,6 +1962,52 @@ monitor 的做法：链路的读者每读走半个窗口就还一次（`link_mux
 那条链路的拨号 / 服务 / 两台泵一起收掉；关一条不存在的链路是幂等的（同 `cancel`）。错误 code：`invalid_args`。
 它就是 C2 那一版「界面走了、子进程的管子断了」：`stream` 的对拷就地停、`forward` 放掉本机口并收掉在飞的隧道；
 那条 SSH 连接**不跟着断**（别的链路可能还在用它 —— 最后一条走了它才断）。monitor 侧的链路句柄被丢时自动发这一条。
+
+#### 传输四条（〔SR1b〕2026-09-24）—— **传输台住本机常驻后端，SFTP 与其它 SSH 同一条连接**
+
+用户 V89「SFTP 进本机常驻后端，只写暂存区」：传输台从界面进程搬进本机常驻后端（`设计/60 §4.6`）；
+窗口那一侧的 `call(transfer-upload | transfer-download)` / `subscribe(transfer/<id>)` 一个字不变，monitor 只做中继。
+**上传只写远端暂存区** `~/.cc-monitor/staging/<key>.part`（落进用户目录由远端后端 `files-commit-upload` 做）；**下载远端只读**，
+本机落点 `<落点>.part` ＋ 改名上位（本机那一下写是文件管理那一面的写，先过会话文件围栏）。
+存亡规矩：**撤** ⇒ 上传删暂存件、下载留 `.part`；**失败** ⇒ 上传留暂存件、下载删 `.part`；续传两侧都先对尾块。
+票表**每条流连接一张**：连接没了（monitor 走了）⇒ 在册的一律撤。四条都是 `Run::Builtin`，**只在帧面**。
+一条连接上的通道预算按连接记：session 通道 8 格（长流 · 查询 · sftp 同一道闸），其中传输至多 4 格（排队，不报错）。
+
+#### `transfer-upload`：开单（上传）
+
+| 方向 | 形状 |
+|---|---|
+| `args` | `{"dial":{DialRequest，同 link-open},"local_path":"<本机一份普通文件的路径>"}` |
+| `data` | `{"id":"xfer-<n>","key":"<32 位十六进制>"}` —— `key` = 暂存件的键（本机路径 · 大小 · 修改时间派生；同一份文件重拖一次同一个键 ⇒ 续传），提交时交给远端后端 |
+
+**不起跑**。错误 code：`bad_args` · `io_failed`（读不到本机文件）· `busy`（同一个键已有一张票在册）· `too_many_transfers`（每连接 64 张）。
+
+#### `transfer-download`：开单（下载）
+
+| 方向 | 形状 |
+|---|---|
+| `args` | `{"dial":{…},"remote_path":"<远端路径>","local_path":"<本机落点，绝对路径>"}` |
+| `data` | `{"id":"xfer-<n>"}` |
+
+本机落点**当场**过会话文件围栏（出声早），起跑时再过一次。错误 code：`bad_args` · `refused`（围栏拒）· `too_many_transfers`。
+
+#### `transfer-start`：起跑
+
+| 方向 | 形状 |
+|---|---|
+| `args` | `{"id"}` |
+| `data` | 无。之后进度与终局走出方向 `transfer` 帧（第一帧是此刻；带 `end` 的是最后一帧），终局之后票摘掉 |
+
+错误 code：`bad_args` · `no_such_transfer` · `already_started`（一趟只起跑一次）。
+
+#### `transfer-stop`：撤
+
+| 方向 | 形状 |
+|---|---|
+| `args` | `{"id"}` |
+| `data` | 无（撤一张不在册的票是幂等的，同 `cancel`） |
+
+没起跑的票当场摘掉；起跑了的由它自己收场（上传删暂存件 / 下载留 `.part`），终局帧 `cancelled`。错误 code：`bad_args`。
 
 ### argv 三分（U6b-2）
 
@@ -2329,10 +2381,14 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
   界面侧拿链路的唯一入口是宿主 `dial_host.rs`，读应答的是通信层成员 `ssh_link.rs`。
   **唯一的例外是 SFTP**（`sftp.rs`，第三波 `F7c` 独占）：仍用 `inproc_dial.rs` 那一份进程内拨号，
   理由（池预算 · 红线 I7）写在 `设计/05 §13.5`。
+  〔SR1b · 2026-09-24 订正〕**这个例外没了**：用户 V89 把 SFTP 放进本机常驻后端（`dial/sftp.rs`，与其它 SSH 同一条连接），
+  `inproc_dial.rs` 整份删了，界面进程**零 SSH**（`russh` / `russh-sftp` 出了 monitor 的清单）。传输走入方向「传输四条」，
+  部署走链路 `use:"files"`（见「链路」那一节）；远端写只许 `~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/`。
 - **两条回落都删了**（`D11`「后端是给定的，不要退路」）：拿不到代理二进制 ⇒ **报**；没配 `keyPath` ⇒ 代理自己走 ssh-agent。
 - 请求只**加**了可选字段（v1 那六个一个没改）：`endpoints`（竞速顺序）· `jump`（跳板那一台）·
   `use`（`stream` 缺省 · `capture` · `forward`）· `capture{max_bytes,abort_marker}` · `forward{local_port,remote_host,remote_port}` ·
   `stages` · `probe`。**SFTP 子系统不在 `use` 里**（后端的远端写那一层把它判作远端写能力）。
+  〔SR1b 订正〕`use` 多了 `files`（受限远端文件一问一答，写只许两处）；原始 SFTP 字节（`use:"subsystem"`）照旧不开。
 - 应答：`stages=true` 时 ack 之前先有若干行 `{"stage":{"kind":…}}`（与 `ConnectStage` 同形）；ack 多了
   `endpoint`（竞速胜者）· `v`（`2`）· `uses`（认得的用法）—— **界面据 `uses` 认出老代理并出声**，不去解它的字节；
   `capture` 在 ack 之后回一行 `{"stdout","stderr","exit_status"}`；`forward` 每接一条连接回一行 `{"accepted":n}`，stdin EOF 即收工。
@@ -2528,6 +2584,9 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 > ⚠ **本节其余部分是 `K-R48` 第二拍之后的存量馊话，上面那条对账够不着**：
 > `shared/ccm` 这个文件已经删了，`sftp.rs` 的 `CCM_CLI_SCRIPT` 也已经没了
 > （那里现在是一块墓碑）。`K-R58` 不动它 —— 写在这里，免得被读成「这一节核过了」。
+>
+> 〔SR1b · 2026-09-24〕远端那份入口（三行 shim，转给后端的 `ccm` 子命令）今天落在 **`~/.cc-monitor/bin/ccm`**
+> （部署后端按钮经本机常驻后端的 `files` 链路放，远端写只许 `~/.cc-monitor/{staging,bin}`）；更早放在 `~/.local/bin/ccm` 的那份不删、照旧能用。
 
 ### 注册流程（远端 shell → 本地 HWND 缓存）
 

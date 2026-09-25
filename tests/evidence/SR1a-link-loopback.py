@@ -198,7 +198,8 @@ def main():
         ls = be.lines("c1")
         ok = len(ls) == 2
         ack, res = (json.loads(ls[0]), json.loads(ls[1])) if ok else ({}, {})
-        check("链路上恰好两行：ack（v=2 · uses）＋ 结果", ok and ack.get("ok") and ack.get("v") == 2 and ack.get("uses") == ["stream", "capture", "forward"], ls)
+        # 〔SR1b · 2026-09-24〕uses 多了 files（部署那几问的链路，写只许 ~/.cc-monitor/{staging,bin}）。
+        check("链路上恰好两行：ack（v=2 · uses）＋ 结果", ok and ack.get("ok") and ack.get("v") == 2 and ack.get("uses") == ["stream", "capture", "forward", "files"], ls)
         check("stdout/stderr/退出码", (res.get("stdout"), res.get("stderr"), res.get("exit_status")) == ("out\n", "err\n", 7), res)
         check("收尾：link_end 无 error", be.ends.get("c1", "missing") is None, be.ends.get("c1"))
 

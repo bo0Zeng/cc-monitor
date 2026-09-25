@@ -1478,6 +1478,9 @@ pub const EMITS: &[&str] = &[
     // 只在 monitor 开了链路之后才出现；旧 monitor / 仓外 aterm 不认这两个 kind ⇒ 忽略（additive）。
     "link_data",
     "link_end",
+    // 〔SR1b〕一趟传输的进度与终局（`control/transfer.rs` 的转发任务真发，登记 = 承诺真发）。
+    // 只在客户端 `transfer-start` 之后才出现；旧客户端不认 ⇒ 忽略（additive）。
+    "transfer",
 ];
 
 /// ① 流模式 flag：出现即剥离并置位，**不影响模式判定**。

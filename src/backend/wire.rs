@@ -524,6 +524,32 @@ pub enum Frame {
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
     },
+
+    /// 〔SR1b · 2026-09-24〕**一趟传输此刻的样子**（`control/transfer.rs`，`transfer-start` 之后才出现）。
+    ///
+    /// 每一帧都是一整份快照（`got` / `total`），不是增量 ⇒ 转发任务按 `watch` 合并掉中间几格不丢信息；
+    /// 带 `end` 的那一帧是这一趟的最后一帧（`done{bytes}` · `failed{why}` · `cancelled`）。
+    /// 🔴 **不丢**：走应答那条独立通道（终局丢了，客户端那一侧的看的人就永远等下去）。
+    /// 旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    Transfer {
+        id: String,
+        got: u64,
+        total: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        end: Option<TransferEnd>,
+    },
+}
+
+/// 〔SR1b〕一趟传输怎么收场的（[`Frame::Transfer`] 的 `end`）。
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum TransferEnd {
+    /// 传完了。
+    Done { bytes: u64 },
+    /// 失败（带下层原话）。上传那一路的暂存件**留着**给续传；下载那一路的 `.part` 删了。
+    Failed { why: String },
+    /// 撤了（`transfer-stop` / 本机流断了）。上传那一路的暂存件已删；下载那一路的 `.part` 留着。
+    Cancelled,
 }
 
 impl Frame {
@@ -581,6 +607,8 @@ impl Frame {
             // 与上面两个同理，它们**不走**会丢帧的那条通道（走应答通道、阻塞发送）。
             Frame::LinkData { .. } => false,
             Frame::LinkEnd { .. } => false,
+            // 〔SR1b〕传输的进度 / 终局：丢了终局那一帧，看的人永远等下去；也走应答通道。
+            Frame::Transfer { .. } => false,
         }
     }
 
@@ -604,6 +632,7 @@ impl Frame {
             Frame::SessionsReplayed => ("sessions_replayed", None),
             Frame::LinkData { link, .. } => ("link_data", Some(link.clone())),
             Frame::LinkEnd { link, .. } => ("link_end", Some(link.clone())),
+            Frame::Transfer { id, .. } => ("transfer", Some(id.clone())),
         };
         LostFrame { kind, subject }
     }

@@ -1,8 +1,8 @@
-//! SS-D：统一 SFTP 会话层（issue #29 自动部署 F08；F11 用户数据写 / F10 profile 写已复用）。
+//! SS-D：远端**自部署**的业务那一半（issue #29 自动部署 F08 · 手动安装 / 卸载 · `ccm` 入口）＋ 别名块的规划。
 //!
-//! 复用 `ssh_source::connect_session` 的全套 host-key 指纹校验 + publickey/agent 鉴权，
-//! 在一条已鉴权的 russh 连接上 `request_subsystem("sftp")` 起 SFTP 子系统（russh-sftp，
-//! transport-agnostic，吃 channel 的 AsyncRead+AsyncWrite 流）。
+//! 〔SR1b〕执行那一半（SFTP）不在本模块：经本机常驻后端的 `files` 链路（见下「本模块手里已经没有 SFTP 了」）。
+//! 〔墓碑 —— 从前这里逐字「复用 `ssh_source::connect_session` 的全套 host-key 指纹校验 + publickey/agent 鉴权，
+//!  在一条已鉴权的 russh 连接上开 SFTP 子系统」—— 那条进程内拨号随 SR1b 删了。〕
 //!
 //! ## 只读铁律豁免（INVARIANT §1 / 账本 SS-G）—— 穷举登记见 `src/doc/INVARIANTS.md §1`
 //! cc-monitor 对远端的写入均**用户显式触发**，各自独立路径守卫、绝不混用：
@@ -20,239 +20,51 @@
 //!   （[`merge_profile_block`] / [`strip_profile_block`]）。
 //! - **F50**：`pubkey::push_public_key` 经 SSH-exec 追加公钥到远端 `~/.ssh/authorized_keys`（不在本模块，登记于此备查）。
 //!
-//! `upload_atomic`（F89a 审计后加固）：tmp 用 **EXCLUDE** 创建（防 symlink 预置 clobber）+ 旧目标先备份到
-//! `.bak` 再 rename（失败可恢复、成功即清），不留垃圾。
+//! 原子写（EXCL 临时件 → 旧目标先**改名成 `.bak`**（不是删）→ 上位 → 清 `.bak`）与它的来历住后端
+//! `dial/sftp.rs::put_atomic`（F89a 审计后加固 · DN-7 订正「删旧」那句 · setstat 截断事故）。
 //!
-//! ## 原子写
-//! russh-sftp 无 `posix-rename@openssh.com` 扩展，标准 SFTP `rename` 不覆盖已存在目标。
-//! 故 [`upload_atomic`] 用「写 `<path>.tmp` → 旧目标 **rename 成 `.bak`** → rename tmp→目标
-//! → 清 `.bak`」近似原子（单写者、低频部署场景足够）。
+//! # 〔SR1b · 2026-09-24〕**本模块手里已经没有 SFTP 了**
 //!
-//! **是备份不是删除**：F89a 审计改的就是这一点 —— 「先删旧」一旦后续 rename 失败就**丢原件**，
-//! 而先备份则最坏情况下原内容仍在 `.bak` 里。（本节此前仍写着「删旧」，2026-07-31 随 DN-7 一并订正。）
+//! 用户 V89「SFTP 进本机常驻后端，只写暂存区」：SFTP 客户端住本机常驻后端（`src/backend/dial/sftp.rs`，
+//! 与其它 SSH 同一条连接），**远端写只许两处**（`~/.cc-monitor/staging/` · `~/.cc-monitor/bin/`）。本模块留下的是
+//! **部署的业务判定**（版本门控 · 落点四态 · 读回判定 · 入口的序列），执行经 [`crate::dial_host::RemoteFs`]
+//! （本机后端那条 `files` 链路的一问一答）。〔墓碑 —— 从前本模块自己开 SFTP：`connect_sftp`〔散文墓碑〕在一条
+//! 进程内拨的 russh 连接上开子系统，`upload_atomic`〔散文墓碑〕在这里跑「EXCL 临时件 → 旧的改名 `.bak` → 上位」。
+//! 那段序列与它的两条事故教训（先备份不删旧 · **绝不** rename 之后 setstat 兜底 chmod）逐字搬去了后端
+//! `dial/sftp.rs::put_atomic` 的头注。〕
+//! ⇒ 落点变了一格：`ccm` 入口从 `~/.local/bin/ccm` 挪到 **`~/.cc-monitor/bin/ccm`**（两个写根之内；也正是
+//! `设计/01 §6.7b` 用户 09-18 拍的落点；自带别名块把 `~/.cc-monitor/bin` 加进 PATH）。
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use russh::client;
-use russh_sftp::client::SftpSession;
-use russh_sftp::protocol::{FileAttributes, OpenFlags};
-use tokio::io::AsyncWriteExt;
+use crate::dial_host::{Readback, RemoteFs};
+use crate::ssh_source::RemoteConfig;
 
-use crate::ssh_source::{connect_session, ClientHandler, RemoteConfig};
-
-/// 一条 SFTP 连接：持有底层 russh `Handle`（**必须与 SFTP 会话同生命周期**——Handle 一 drop
-/// 整条 SSH 连接就断）+ SFTP 会话本身。
-pub struct SftpConn {
-    /// 保活：底层 SSH 连接句柄。**它同时是 [`SftpConn::open_sftp_channel`] 另起通道的出处**
-    /// （步 23b 之前这个字段叫 `_session`、逐字写着「仅持有不直接用」；
-    /// 那句话随多通道那一路落地而不再成立，下划线一起去掉）。
-    /// 绝不能提前 drop。
-    session: client::Handle<ClientHandler>,
-    pub sftp: SftpSession,
-}
-
-/// 在一条**已鉴权**的 SSH 连接上开一个 sftp 子系统通道，把它的字节流交出来。
-///
-/// ★ **两处共用这一段**，刻意不各抄一遍：`connect_sftp`（第 1 条通道）·
-/// [`SftpConn::open_sftp_channel`]（池借第 2、3、… 条）。〔第四波 S4〕从前还有第三处
-/// （复制那一路的裸通道），随 `sftp_copy` 退役删了。抄几遍的话，「远端 sshd 没开 sftp」
-/// 这句诊断会长出几份不同的措辞，而用户看到哪一份取决于他点了哪个按钮。
-///
-/// ⚠ **每调一次就占远端一格 `MaxSessions`**（`man 5 sshd_config` 逐字：
-/// 「the maximum number of open shell, login or **subsystem (e.g. sftp)** sessions
-/// permitted per network connection … The default is 10」；本机 `OpenSSH_10.2p1`
-/// 现打 `sshd -T` 印 `maxsessions 10`）⇒ 谁来调它要自己守预算，
-/// 见 [`crate::sftp_pool::SESSION_CHANNEL_CAP`]。
-async fn open_sftp_stream(
-    session: &client::Handle<ClientHandler>,
-) -> Result<russh::ChannelStream<client::Msg>, String> {
-    let channel = session
-        .channel_open_session()
-        .await
-        .map_err(|e| format!("打开 SFTP channel 失败: {e}"))?;
-    channel
-        .request_subsystem(true, "sftp")
-        .await
-        .map_err(|e| format!("请求 sftp 子系统失败（远端 sshd 未开 sftp?）: {e}"))?;
-    Ok(channel.into_stream())
-}
-
-/// 打开到远端的 SFTP 会话（复用 connect_session 全套指纹/鉴权）。
-pub async fn connect_sftp(cfg: &RemoteConfig) -> Result<SftpConn, String> {
-    let (session, _fp) = connect_session(cfg, None, None).await?;
-    let stream = open_sftp_stream(&session).await?;
-    let sftp = SftpSession::new(stream)
-        .await
-        .map_err(|e| format!("初始化 sftp 会话失败: {e}"))?;
-    Ok(SftpConn { session, sftp })
-}
-
-// 〔第四波 S4〕步 23b 那一段（`copy-data` 的消息体布局与七刀突变读数 · 裸会话 · 协商到的支持度）
-//   随 `sftp_copy` 退役删了：窗口的复制走后端 `files-copy`，这一侧不再发这条扩展。
-
-impl SftpConn {
-    /// 在**同一条已鉴权的 SSH 连接**上另起一个 sftp 子系统通道，拿一个**高层**会话。
-    ///
-    /// ★ 这是 `设计/60 §2 档③` 第一条（「边传边浏览」）的整个技术内容：
-    /// SFTP 协议本来就允许一条 SSH 连接上并存多个子系统会话、每个会话里多个未完成请求，
-    /// 缺的只是**我们**去开第二条。此前 `sftp_pool` 一个 origin 只有 `connect_sftp`
-    /// 建的那一条，外加一把 per-origin 锁把所有操作串起来。
-    ///
-    /// ⚠ **它不自带预算** —— 每调一次占远端一格 `MaxSessions`（见 [`open_sftp_stream`]）。
-    /// 预算由调用方守：[`crate::sftp_pool::ChannelSet`] 是今天唯一的调用方，
-    /// 上限 [`crate::sftp_pool::SESSION_CHANNEL_CAP`]。
-    ///
-    /// ⚠ **代价如实记**：每条新通道要一趟
-    /// `channel_open_session` ＋ 一趟 `request_subsystem` ＋ 一趟 `SSH_FXP_INIT` 握手。
-    /// 那是**三个往返**，所以池子要复用通道而不是每次操作开一条。
-    pub async fn open_sftp_channel(&self) -> Result<SftpSession, String> {
-        let stream = open_sftp_stream(&self.session).await?;
-        SftpSession::new(stream)
-            .await
-            .map_err(|e| format!("初始化 sftp 会话失败: {e}"))
-    }
-}
-
-/// 原子上传 `bytes` 到 `remote_path`，权限 `mode`（八进制如 0o700）。
-///
-/// 流程：写 `<remote_path>.tmp`（**EXCLUDE** 创建，防 symlink 预置 clobber）
-/// → 旧目标 **rename 成 `.bak`（不是删掉）** → rename tmp→目标 → 成功后清 `.bak`。
-/// 中途失败时旧内容仍在 `.bak` 里可恢复。
-///
-/// `mode` **只在 open-create 的 attrs 里设一次**。
-///
-/// ⚠ **rename 之后绝不 `set_metadata` 兜底 chmod** —— 真机 e2e 实证：OpenSSH sftp-server 上
-/// setstat（即便只设 permissions、`size=None`）会把刚 rename 好的文件**截断成 0 字节**，
-/// backend 因此不可 exec → 连接 EOF → marker 变空 → 无限重部署。理由详见函数末尾那段注释。
-///
-/// （2026-07-31 修：本注释此前写的是「删旧 → rename」+「rename 后 set_metadata 兜底」，
-/// **两句都与函数体相反**，而且照它实现正好复活上面那个把后端变砖的 bug。
-/// 由 aterm 侧交叉核对时发现〔DN-7〕。）
-///
-/// ⚠ **〔2026-09-20 现打订正〕上面那句括号「即便只设 permissions、`size=None`」是推断，
-/// 不是实测 —— 今天复现不出来。** 在真 `OpenSSH_10.2p1` 的 sftp-server 上，
-/// 对**刚 rename 好**的文件做 permissions-only 的 SETSTAT（`sftp> chmod 700`）：
-/// 前后都是 16 字节、权限确实改成了 700，**没有截断**。
-/// ⇒ 那次事故的真因**另有其物**，最可能是当年线上那个属性块**真的带了 size**
-/// （`russh-sftp` 3.0.0 现打：`SSH_FILEXFER_ATTR_SIZE` 只在 `size.is_some()` 时才置）。
-///
-/// 🔴 **但本函数这条禁令不放宽，一个字不改**，三条理由：
-/// ① 事故是真的（后端真的被截成 0 字节），只是归因可能错了 —— **归因错不等于事故假**；
-/// ② 今天这一趟只量了**一个**服务端版本，而这条路要跑在用户每一台被观测机器上；
-/// ③ 部署路上多一次不必要的 setstat，收益是零、风险是变砖。
-/// ⇒ 订正的是**那句括号的证据等级**（推断 → 今天复现不出来），**不是这条禁令**。
-///
-/// ⚠ 与池子那条改权限命令的关系〔F7c 收尾 09-24：`sftp_chmod`〔散文墓碑〕已删，改权限今天是后端 `files-chmod`〕：
-/// 那条命令**要**改权限，是它的本职；它当时靠「属性块逐字节不带 size」那条判据挡住这一形
-/// （`the_chmod_attrs_never_put_a_size_on_the_wire`〔散文墓碑〕，随它一起删了）。
-/// **两者不矛盾**：这里禁的是部署路上「顺手兜底」，那里做的是用户点了「改权限」。
-pub async fn upload_atomic(
-    sftp: &SftpSession,
-    remote_path: &str,
-    bytes: &[u8],
-    mode: u32,
-) -> Result<(), String> {
-    let tmp = format!("{remote_path}.tmp");
-    let attrs = FileAttributes {
-        permissions: Some(mode),
-        ..Default::default()
-    };
-    // 安全（F89a 审计·重要）：先删可能残留/被预置的 tmp（remove_file 删链本身、不写穿 target），
-    // 再用 **EXCLUDE**（SSH_FXF_EXCL）创建——若删后被抢先重放 symlink，EXCLUDE 令 open 失败而非跟随，
-    // 杜绝「tmp 是 symlink → CREATE|TRUNCATE 跟随截断、越写到 `.mcp.json` 之外的用户文件」的 clobber 逃逸。
-    let _ = sftp.remove_file(tmp.clone()).await; // best-effort 清残留/预置（不存在则忽略）
-    let mut file = sftp
-        .open_with_flags_and_attributes(
-            tmp.clone(),
-            OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE,
-            attrs,
-        )
-        .await
-        .map_err(|e| format!("创建 {tmp} 失败: {e}"))?;
-    file.write_all(bytes)
-        .await
-        .map_err(|e| format!("写 {tmp} 失败: {e}"))?;
-    // russh-sftp 的 `write_all` 只把 WRITE 包入队（write_nowait），ack 只在 `flush`/`shutdown`
-    // 的 poll_drain_writes 里 drain。用 `flush()`（**始终** drain，不像 sync_all 在服务器无
-    // `fsync@openssh` 时 noop 不 drain）+ **传播错误**，确保数据真正落服务器、失败不静默。
-    file.flush()
-        .await
-        .map_err(|e| format!("flush {tmp} 失败（写未确认）: {e}"))?;
-    file.shutdown()
-        .await
-        .map_err(|e| format!("关闭 {tmp} 失败: {e}"))?;
-    drop(file);
-
-    // 数据安全（F89a 审计·重要）：russh-sftp `rename` 不覆盖 → 旧目标**先 rename 成 `.bak`（不 delete）**，
-    // 再 rename tmp→目标；tmp→目标失败时旧内容仍在 `.bak`（可恢复），不像「先删旧」失败即丢原件。
-    // 成功后即删 `.bak`（不留垃圾——大文件如后端二进制不堆备份）。
-    let bak = if sftp
-        .try_exists(remote_path.to_string())
-        .await
-        .unwrap_or(false)
-    {
-        let b = format!("{remote_path}.bak");
-        let _ = sftp.remove_file(b.clone()).await; // 清旧 bak（rename 不覆盖）
-        sftp.rename(remote_path.to_string(), b.clone())
-            .await
-            .map_err(|e| format!("备份旧文件 {remote_path} → {b} 失败: {e}"))?;
-        Some(b)
-    } else {
-        None
-    };
-    sftp.rename(tmp.clone(), remote_path.to_string())
-        .await
-        .map_err(|e| format!("rename {tmp} → {remote_path} 失败: {e}"))?;
-    if let Some(b) = bak {
-        let _ = sftp.remove_file(b).await; // 成功替换 → 清备份
-    }
-    // **绝不**在这里 `set_metadata(permissions)` 兜底 chmod —— 真机 e2e 诊断确证：在 OpenSSH
-    // sftp-server 上 setstat（即便只设 permissions、size=None）会把刚 rename 好的文件**截断成
-    // 0 字节**（tmp 写后 size 正确、rename 直后 size 正确，唯独 set_metadata 之后变 0）。backend
-    // 因此变 0 字节不可 exec → 连接 EOF，marker 变空 → 无限重部署。权限已在 open-create 的 attrs
-    // 里设好（OpenSSH 按 SSH_FXP_OPEN attrs 建文件：0o700 可执行 / 0o600）、rename 保留权限，无需
-    // 也不能再 set_metadata。
-    Ok(())
-}
-
-/// 读远端文件，不存在 / 读失败 → None。
 /// 判定一次远端上传的读回结果。**纯函数，可测**——远端往返塞不进单测，
 /// 但"读回的字节该不该判通过"这条判据可以，而它正是此前完全缺失的那一环。
 ///
-/// 按字节而不是按字符串：`deploy_remote_backend` 上传的是**可执行二进制**，
-/// `String::from_utf8` 会失败。这也是没直接复用 `verified_write::verify_readback`
-/// （它是 `&str`）的原因——判据同源（逐字节相同才算通过），载体不同。
-pub fn verify_uploaded_bytes(
-    path: &str,
-    expected: &[u8],
-    actual: Option<&[u8]>,
-) -> Result<(), String> {
-    let Some(actual) = actual else {
+/// 按字节而不是按字符串：`deploy_remote_backend` 上传的是**可执行二进制**。
+/// 〔SR1b〕读回那一趟住本机后端（它就在远端文件旁边，不必把 MB 级的字节再拉回界面），
+/// 它交回的是**比对的事实**（读回长度 · 首个差异的偏移，读不回 ⇒ `None`）；判不判通过、话怎么说仍住这里。
+pub fn verify_readback(path: &str, expected_len: u64, readback: Readback) -> Result<(), String> {
+    let Some((got_len, first_diff)) = readback else {
         return Err(format!(
             "上传后读不回 {path}——无法确认写对了。已中止，未写入版本标记（下次会重新部署）。"
         ));
     };
-    if actual == expected {
-        return Ok(());
-    }
-    if actual.len() == expected.len() {
-        let at = expected
-            .iter()
-            .zip(actual)
-            .position(|(a, b)| a != b)
-            .unwrap_or(0);
+    if got_len == expected_len {
+        let Some(at) = first_diff else {
+            return Ok(());
+        };
         return Err(format!(
-            "上传后校验失败：{path} 长度相同（{} 字节）但内容不同，首个差异在第 {at} 字节。\
+            "上传后校验失败：{path} 长度相同（{expected_len} 字节）但内容不同，首个差异在第 {at} 字节。\
              这类损坏（传输截断后补齐 / 编码变形）只比长度是查不出来的。\
-             已中止，未写入版本标记（下次会重新部署）。",
-            expected.len()
+             已中止，未写入版本标记（下次会重新部署）。"
         ));
     }
     Err(format!(
-        "上传后校验失败：{path} 长度不匹配（期望 {} 字节，读回 {} 字节）。\
-         已中止，未写入版本标记（下次会重新部署）。",
-        expected.len(),
-        actual.len()
+        "上传后校验失败：{path} 长度不匹配（期望 {expected_len} 字节，读回 {got_len} 字节）。\
+         已中止，未写入版本标记（下次会重新部署）。"
     ))
 }
 
@@ -260,10 +72,9 @@ pub fn verify_uploaded_bytes(
 ///
 /// ## 为什么这个函数此前不存在（T04 审计①）
 ///
-/// `deploy_remote_backend` 与 `deploy_remote_acct_iso` 的**全部** `upload_atomic`
+/// `deploy_remote_backend` 与 `deploy_remote_acct_iso` 的**全部**上传
 /// ——1 个后端可执行二进制 + 6 个远端脚本（含 0755 的 `cc-acct-iso` / `lib.sh` /
-/// install.sh）——写完**直接写版本标记**，中间没有任何读回。`upload_atomic` 自己
-/// 只做 flush/shutdown/rename，不读回（实测 `grep -c` = 0）。
+/// install.sh）——写完**直接写版本标记**，中间没有任何读回。
 ///
 /// 而 T04 第二步我论证「备份→写→读回比对→回滚这个范式已共享（5 处），所以不用抽」
 /// ——**那 5 处全在 profile/CLI 那条线上，压根没覆盖这两条 deploy 路**。
@@ -272,20 +83,34 @@ pub fn verify_uploaded_bytes(
 /// 后果具体：传输损坏的后端二进制照样被写上正确的 `.build_id` 标记 →
 /// 下次 `deploy_decision` 判「已是最新，跳过」→ **坏二进制永久驻留**，
 /// 而用户看到的是部署成功。标记写在校验之后，就断了这条链。
-pub(crate) async fn upload_atomic_verified(
-    sftp: &SftpSession,
+/// 〔SR1b〕上传与读回都经本机后端（`RemoteFs::put`，`verify` 那一格）；判定照旧是 [`verify_readback`]。
+pub(crate) async fn upload_verified(
+    fs: &RemoteFs,
     remote_path: &str,
     bytes: &[u8],
     mode: u32,
 ) -> Result<(), String> {
-    upload_atomic(sftp, remote_path, bytes, mode).await?;
-    let back = read_optional(sftp, remote_path).await;
-    verify_uploaded_bytes(remote_path, bytes, back.as_deref())
+    let back = fs.put(remote_path, bytes, mode, true).await?;
+    verify_readback(remote_path, bytes.len() as u64, back)
 }
 
-pub(crate) async fn read_optional(sftp: &SftpSession, path: &str) -> Option<Vec<u8>> {
-    sftp.read(path.to_string()).await.ok()
+/// 版本标记那一类小文件：读回来的字节；读不出 ⇒ `None`（标记不在，下一步就是部署）。
+pub(crate) async fn read_marker(fs: &RemoteFs, path: &str) -> Result<Option<Vec<u8>>, String> {
+    Ok(fs.read(path, MARKER_READ_MAX).await?.0)
 }
+
+/// 写版本标记：**不读回**（它是「校验通过」的凭证，只在内容那一份读回对了之后才写；它自己坏了下次重部署就是了）。
+pub(crate) async fn put_marker(
+    fs: &RemoteFs,
+    path: &str,
+    bytes: &[u8],
+    mode: u32,
+) -> Result<(), String> {
+    fs.put(path, bytes, mode, false).await.map(|_| ())
+}
+
+/// 标记 / 入口这类小文件一次最多读多少（它们都是几十字节；超了是那台机器上的东西不对）。
+const MARKER_READ_MAX: u64 = 64 * 1024;
 
 /// **远端 profile 的读取结论**（Phase G 审阅修复）：把 `read_optional` 的 `Option<Vec<u8>>`
 /// 拆成三态，取代原先的 `read_optional(..).map(from_utf8_lossy).unwrap_or_default()`。
@@ -303,7 +128,7 @@ pub(crate) async fn read_optional(sftp: &SftpSession, path: &str) -> Option<Vec<
 /// 2. **`from_utf8_lossy` 在有损字符串空间里做读-改-写**。非 UTF-8 字节（GBK 注释、
 ///    latin-1 人名、误粘的 `\xa0`）变 U+FFFD → **备份写的是已经有损的那份**，原字节
 ///    从此不可恢复；而读回校验拿同样有损的两份比对，**逐字节相同、校验通过**，
-///    整套「备份 + 读回 + 回滚」为这次损坏出具合格证。`verify_uploaded_bytes` 的头注
+///    整套「备份 + 读回 + 回滚」为这次损坏出具合格证。[`verify_readback`] 的头注
 ///    自己写着"按字节而不是按字符串"，那条纪律只落到了后端二进制那条路。
 ///
 /// 修法与本机侧对齐成 **fail-safe**：说不清就 `Err` 中止、不动原文件。
@@ -349,39 +174,15 @@ pub(crate) fn interpret_profile_read(
 // 在 `fenced_block::apply` 里收了：原本不存在的文件写坏了就 `Store::delete_created`，措辞由
 // `fenced_block::undo_note` 按**真发生了的事**说，本机远端同一份。
 
-/// [`interpret_profile_read`] 的异步取样：read 成功就直接判，**只在需要时**才补问
-/// `try_exists`（区分"真不存在"与"读不出来"）/ `metadata`（区分"真空文件"与"有字节读到空"），
-/// 不为常见路径多加往返。
+/// [`interpret_profile_read`] 的取样：〔SR1b〕一问（`RemoteFs::read`）带回三样 —— 字节 ·
+/// 读不出时补问的「在不在」· 读到空时补问的大小（后端**只在需要时**补问，不为常见路径多加往返）。
 async fn read_profile_text(
-    sftp: &SftpSession,
+    fs: &RemoteFs,
     path: &str,
     what: &str,
 ) -> Result<Option<String>, String> {
-    let bytes = read_optional(sftp, path).await;
-    let (exists, size) = match &bytes {
-        Some(b) if b.is_empty() => (
-            None,
-            sftp.metadata(path.to_string())
-                .await
-                .ok()
-                .and_then(|m| m.size),
-        ),
-        Some(_) => (None, None),
-        None => (sftp.try_exists(path.to_string()).await.ok(), None),
-    };
+    let (bytes, exists, size) = fs.read(path, MARKER_READ_MAX).await?;
     interpret_profile_read(what, bytes.as_deref(), exists, size)
-}
-
-/// mkdir -p：逐级创建 `dir`（绝对或相对），已存在则跳过，创建失败容忍（并发/权限留给上传报错）。
-pub(crate) async fn ensure_dir_all(sftp: &SftpSession, dir: &str) {
-    let mut cur = String::new();
-    for comp in dir.split('/').filter(|c| !c.is_empty()) {
-        cur.push('/');
-        cur.push_str(comp);
-        if !sftp.try_exists(cur.clone()).await.unwrap_or(false) {
-            let _ = sftp.create_dir(cur.clone()).await;
-        }
-    }
 }
 
 /// 内嵌的后端二进制（F08b 由 `include_bytes!` 填充）。`build_id` 与
@@ -438,7 +239,7 @@ pub enum TargetBinary {
     Present,
     /// stat **明确说**它不在。
     Missing,
-    /// stat 说它在，但是 **0 字节** —— 不是假想形态：本模块 `upload_atomic` 里
+    /// stat 说它在，但是 **0 字节** —— 不是假想形态：原子上传那一段（今天住后端 `dial/sftp.rs::put_atomic`）里
     /// 「绝不 set_metadata」那条注释记的就是真机 e2e 实测把后端截成 0 字节、
     /// 不可 exec 的那次事故。`try_exists` 会把它算成「在」。
     Empty,
@@ -480,7 +281,7 @@ fn marker_phrase(remote_build_id: Option<&str>, expected: &str) -> String {
 /// ⚠ **本条没实测过的部分**：上面那句是从源码摘的逐字串（住址在 `ssh_source.rs` 里
 /// `未回 hello` 那一处），**不是**真机跑出来的截图 —— 本轮不碰真远端。
 ///
-/// 本模块此前只断掉了这条链的**上传那一段**（`upload_atomic_verified` 的头注：
+/// 本模块此前只断掉了这条链的**上传那一段**（[`upload_verified`] 的头注：
 /// 「标记写在校验之后，就断了这条链」）—— 那管的是「我们自己传坏了」，
 /// **管不到部署成功之后那个文件再出事**。这里补的是后半段。
 ///
@@ -570,20 +371,11 @@ pub(crate) fn interpret_target_probe(
 /// 见 [`read_profile_text`] / [`interpret_profile_read`]；本函数只取样，
 /// 四态怎么映射住 [`interpret_target_probe`]。
 ///
-/// `metadata` 失败才补问 `try_exists`：要区分「明确不在」与「问不出来」，
-/// 而这两者在 `metadata` 的 `Err` 里长得一模一样。
-async fn probe_target_binary(sftp: &SftpSession, path: &str) -> TargetBinary {
-    let metadata_size = sftp
-        .metadata(path.to_string())
-        .await
-        .ok()
-        .map(|attrs| attrs.size);
-    let exists = match metadata_size {
-        // `metadata` 成功就够判了，不多问一次。
-        Some(_) => None,
-        None => sftp.try_exists(path.to_string()).await.ok(),
-    };
-    interpret_target_probe(metadata_size, exists)
+/// `metadata` 失败才补问 `try_exists`（〔SR1b〕这一问住后端 `stat`，一趟带回两样）：要区分「明确不在」与
+/// 「问不出来」，而这两者在 `metadata` 的 `Err` 里长得一模一样。链路本身坏了（问都没问出去）⇒ `Err`，不是 `Unknown`。
+async fn probe_target_binary(fs: &RemoteFs, path: &str) -> Result<TargetBinary, String> {
+    let (metadata_size, exists) = fs.stat(path).await?;
+    Ok(interpret_target_probe(metadata_size, exists))
 }
 
 /// 探测远端 CPU 架构（`uname -m`）以选对应的内嵌后端二进制（F08b）。一次性 exec。
@@ -656,15 +448,16 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<Option<String
         );
         return Ok(None);
     }
-    let conn = connect_sftp(cfg).await?;
-    let sftp = &conn.sftp;
+    // 〔SR1b〕经本机常驻后端那条 `files` 链路（写只许 `~/.cc-monitor/bin/` 与暂存区；`backend_path` 不在
+    //   `~/.cc-monitor/bin/` 下 ⇒ 后端围栏拒，这里原话往上报 —— 调用方对 Err 只 warn，手动部署的后端照旧能连）。
+    let fs = RemoteFs::open(cfg).await?;
 
     let marker = marker_path(&cfg.backend_path);
-    let remote_id = read_optional(sftp, &marker)
-        .await
+    let remote_id = read_marker(&fs, &marker)
+        .await?
         .map(|b| String::from_utf8_lossy(&b).trim().to_string());
     // K-W4 §0c：标记是目录级的，光凭它判 Skip 会在「标记还在、二进制没了」时静默跳过。
-    let target = probe_target_binary(sftp, &cfg.backend_path).await;
+    let target = probe_target_binary(&fs, &cfg.backend_path).await?;
 
     match deploy_decision_at(remote_id.as_deref(), bin.build_id, target) {
         DeployAction::Skip => {
@@ -680,9 +473,9 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<Option<String
                 cfg.origin_label(),
                 cfg.backend_path
             );
-            ensure_dir_all(sftp, remote_parent(&cfg.backend_path)).await;
-            upload_atomic_verified(sftp, &cfg.backend_path, bin.bytes, 0o700).await?;
-            upload_atomic(sftp, &marker, bin.build_id.as_bytes(), 0o600).await?;
+            fs.mkdirs(remote_parent(&cfg.backend_path)).await?;
+            upload_verified(&fs, &cfg.backend_path, bin.bytes, 0o700).await?;
+            put_marker(&fs, &marker, bin.build_id.as_bytes(), 0o600).await?;
             tracing::info!(
                 "远端 [{}] backend 部署完成：{}",
                 cfg.origin_label(),
@@ -815,24 +608,24 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
             "本 monitor 构建未内嵌 {arch} 架构的后端，无法一键安装。请用内嵌了该架构的发布版，或手动把后端放到 {path}。"
         ));
     };
-    let conn = connect_sftp(&cfg).await?;
-    let sftp = &conn.sftp;
+    // 〔SR1b〕经本机常驻后端那条 `files` 链路；`path` 不在 `~/.cc-monitor/bin/` 下 ⇒ 后端围栏拒、原话带回。
+    let fs = RemoteFs::open(&cfg).await?;
     let marker = marker_path(&path);
-    let remote_id = read_optional(sftp, &marker)
-        .await
+    let remote_id = read_marker(&fs, &marker)
+        .await?
         .map(|b| String::from_utf8_lossy(&b).trim().to_string());
     // K-W4 §0c：手动「安装后端」按钮此前也只看标记 —— 落点文件被删/截断时，
     // 它会对着一个不存在的文件回「已是最新，无需重装」。同一条病，同一处修法。
-    let target = probe_target_binary(sftp, &path).await;
+    let target = probe_target_binary(&fs, &path).await?;
     let backend_msg = match deploy_decision_at(remote_id.as_deref(), bin.build_id, target) {
         DeployAction::Skip => format!(
             "远端已是最新后端（{}，{arch}）：{path}，无需重装。",
             bin.build_id
         ),
         DeployAction::Deploy(reason) => {
-            ensure_dir_all(sftp, remote_parent(&path)).await;
-            upload_atomic_verified(sftp, &path, bin.bytes, 0o700).await?;
-            upload_atomic(sftp, &marker, bin.build_id.as_bytes(), 0o600).await?;
+            fs.mkdirs(remote_parent(&path)).await?;
+            upload_verified(&fs, &path, bin.bytes, 0o700).await?;
+            put_marker(&fs, &marker, bin.build_id.as_bytes(), 0o600).await?;
             tracing::info!(
                 "远端 [{}] 手动部署后端完成：{}",
                 cfg.origin_label(),
@@ -847,11 +640,12 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
     // 〔MC1 · 2026-09-24〕`设计/71 §13.3` ①：**部署后端只有一个动作** —— 后端本体 ＋ `ccm` 入口
     //   一起放（从前入口住「装 ccm 启动器」那颗按钮里，要点两次）。后端先、入口后：入口转发给后端，
     //   后端没就位时放入口等于给一条当场报错的命令。**只在这颗按钮上放**，连接时的自动部署
-    //   （[`ensure_backend_deployed`]）不碰 `~/.local/bin` —— 那是用户点了才发生的事。
-    let entry = match put_ccm_entry(sftp, &path).await? {
+    //   （[`ensure_backend_deployed`]）不碰入口 —— 那是用户点了才发生的事。
+    //   〔SR1b〕入口落在 `~/.cc-monitor/bin/ccm`（两个写根之内；`设计/01 §6.7b` 的落点）。
+    let entry = match put_ccm_entry(&fs, &path).await? {
         crate::fenced_block::Applied::Unchanged => "终端里的 ccm 入口已就位。",
         crate::fenced_block::Applied::Written { .. } => {
-            "终端里的 ccm 入口已放好（~/.local/bin/ccm）。"
+            "终端里的 ccm 入口已放好（~/.cc-monitor/bin/ccm；装了别名块的终端里直接能用）。"
         }
     };
     Ok(format!("{backend_msg}{entry}"))
@@ -871,12 +665,12 @@ pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, Strin
             "拒绝删除可疑后端路径（须为含 cc-monitor 的绝对路径、无 ..）: {path}"
         ));
     }
-    let conn = connect_sftp(&cfg).await?;
-    let sftp = &conn.sftp;
+    // 〔SR1b〕经本机常驻后端那条 `files` 链路删（写只许 `~/.cc-monitor/bin/` 与暂存区 —— 围栏拒 ⇒ 原话带回）。
+    let fs = RemoteFs::open(&cfg).await?;
     let marker = marker_path(&path);
     let mut removed = Vec::new();
     for f in [path.clone(), marker.clone()] {
-        if sftp.remove_file(f.clone()).await.is_ok() {
+        if fs.remove(&f).await? {
             removed.push(f);
         }
     }
@@ -995,7 +789,12 @@ fn _kr48d1_tombstone() {}
 use crate::backend::control::local_backend::ccm_entry_shim;
 
 /// CLI 在远端的落点（SFTP 相对路径 = home 相对）。
-const CCM_CLI_REMOTE_PATH: &str = ".local/bin/ccm";
+///
+/// 〔SR1b · 2026-09-24〕`.local/bin/ccm` → **`.cc-monitor/bin/ccm`**：远端写只许两处（V89），入口是部署物，
+/// 落进部署那一根；这也正是 `设计/01 §6.7b`（用户 09-18「落点选 `~/.cc-monitor/bin`，两边尽量同形」）的落点，
+/// 本机那一条早就在那儿。PATH：自带别名块（`src/shared/ccm-aliases.sh`）把 `~/.cc-monitor/bin` 排进去。
+/// ⚠ 旧的 `~/.local/bin/ccm` **不删也不再更新**（那一格在两个写根之外）：它指的是同一个后端，照旧能用。
+const CCM_CLI_REMOTE_PATH: &str = ".cc-monitor/bin/ccm";
 
 /// 纯函数：把 `snippet` 合进 profile 内容的 BEGIN/END 块（可单测）。
 /// - 已有**配对**块（BEGIN 后能找到 END）→ **整块替换**（幂等：`merge(merge(x))==merge(x)`）。
@@ -1058,29 +857,29 @@ pub fn strip_profile_block(existing: &str, what: &str) -> Result<String, String>
 }
 
 /// 〔AL1 · 2026-09-24〕远端那一份原语（`fenced_block::Store`）。**规则不住这里** ——
-/// 「读 → 备份 → 原子替换 → 回读比对 → 回滚」那一个序列是 `fenced_block::apply`。
-/// 这里只回答「这台远端上怎么做这四件事」。
-/// 〔RW1 · 第四波 09-24〕它**只剩 F08 部署物那一个用户**（[`put_ccm_entry`]：`~/.local/bin/ccm` 那三行入口）；
-/// 远端 rc 的别名块改经那台远端的后端写（[`install_remote_alias_block`] / [`uninstall_remote_alias_block`]）。
+/// 「读 → 备份 → 原子替换 → 回读比对 → 回滚」那一个序列是 `fenced_block::apply`，
+/// 本机那一份原语是 `fenced_block::LocalFile`。这里只回答「这台远端上怎么做这四件事」。
 ///
-/// 路径是 SFTP 会话起点（远端 home）下的相对路径。读走 [`read_profile_text`]（fail-closed：
+/// 路径是远端 home 下的相对路径。读走 [`read_profile_text`]（fail-closed：
 /// 读不出 / 非 UTF-8 / 有字节却读到空 一律 `Err`，理由在 [`interpret_profile_read`] 头注）。
-pub(crate) struct SftpFile<'a> {
-    pub sftp: &'a SftpSession,
+/// 〔SR1b〕四件事都经本机常驻后端那条 `files` 链路（[`RemoteFs`]）；写只许两处 ⇒ 今天唯一的用户
+/// （`ccm` 入口，`~/.cc-monitor/bin/ccm`）落在部署那一根里。〔墓碑 —— 从前它叫 `SftpFile`〔散文墓碑〕、手里拿一条 SFTP 会话。〕
+pub(crate) struct RemoteFile<'a> {
+    pub fs: &'a RemoteFs,
     pub path: String,
-    /// 新写入时的权限位（rc 是 `0o644`，可执行的入口是 `0o755`）。
+    /// 新写入时的权限位（可执行的入口是 `0o755`）。
     pub mode: u32,
-    /// 给人看的名字（报错用），如「远端 ~/.bashrc」。
+    /// 给人看的名字（报错用），如「远端 ~/.cc-monitor/bin/ccm」。
     pub what: String,
 }
 
-impl crate::fenced_block::Store for SftpFile<'_> {
+impl crate::fenced_block::Store for RemoteFile<'_> {
     fn label(&self) -> String {
         self.what.clone()
     }
 
     async fn read(&self) -> Result<Option<String>, String> {
-        read_profile_text(self.sftp, &self.path, &self.what).await
+        read_profile_text(self.fs, &self.path, &self.what).await
     }
 
     async fn save_backup(&self, original: &str) -> Result<String, String> {
@@ -1089,30 +888,25 @@ impl crate::fenced_block::Store for SftpFile<'_> {
             .map(|d| d.as_millis())
             .unwrap_or(0);
         let backup = format!("{}.ccm-backup-{ms}", self.path);
-        upload_atomic(self.sftp, &backup, original.as_bytes(), 0o600).await?;
+        self.fs
+            .put(&backup, original.as_bytes(), 0o600, false)
+            .await?;
         Ok(backup)
     }
 
     async fn put_atomic(&self, content: &str) -> Result<(), String> {
-        // 上级目录逐级建（相对 home）。已存在时 `create_dir` 会失败 —— 容忍，
-        // 真正的失败由下面那一次上传报出来。
-        let comps: Vec<&str> = self.path.split('/').filter(|c| !c.is_empty()).collect();
-        let mut cur = String::new();
-        for comp in comps.iter().take(comps.len().saturating_sub(1)) {
-            if !cur.is_empty() {
-                cur.push('/');
-            }
-            cur.push_str(comp);
-            let _ = self.sftp.create_dir(cur.clone()).await;
+        // 上级目录逐级建（相对 home；每一级都过后端那道围栏）。
+        if let Some((parent, _)) = self.path.rsplit_once('/') {
+            self.fs.mkdirs(parent).await?;
         }
-        upload_atomic(self.sftp, &self.path, content.as_bytes(), self.mode).await
+        self.fs
+            .put(&self.path, content.as_bytes(), self.mode, false)
+            .await
+            .map(|_| ())
     }
 
     async fn delete_created(&self) -> Result<(), String> {
-        self.sftp
-            .remove_file(self.path.clone())
-            .await
-            .map_err(|e| e.to_string())
+        self.fs.remove(&self.path).await.map(|_| ())
     }
 }
 
@@ -1217,7 +1011,7 @@ pub async fn install_remote_alias_block(
     ))
 }
 
-/// 〔MC1 · 2026-09-24〕把 `ccm` 入口放到远端 `~/.local/bin/ccm`（[`deploy_remote_backend`] 的后半）。
+/// 〔MC1 · 2026-09-24〕把 `ccm` 入口放到远端（〔SR1b〕`~/.cc-monitor/bin/ccm`，[`deploy_remote_backend`] 的后半）。
 ///
 /// 🔴 **它仍是那三行 shim**（[`ccm_entry_shim`]）。`设计/01 §6.7b` 的目标是「`ccm` 就是后端
 /// 二进制本身、落 `~/.cc-monitor/bin/ccm`、没有 shim」—— 那一步卡在写区外：monitor 起远端后端的
@@ -1226,11 +1020,11 @@ pub async fn install_remote_alias_block(
 /// 「在当前目录起一个 agent」。改哪一侧都在本路写区外（摸底住 `tests/evidence/MC1-AL1-摸底.md`）。
 /// ⇒ 本拍只做**界面与动作的归一**：装后端与放入口是**一个按钮、一次调用**，不再分成两颗。
 async fn put_ccm_entry(
-    sftp: &SftpSession,
+    fs: &RemoteFs,
     backend_path: &str,
 ) -> Result<crate::fenced_block::Applied, String> {
-    let entry = SftpFile {
-        sftp,
+    let entry = RemoteFile {
+        fs,
         path: CCM_CLI_REMOTE_PATH.to_string(),
         mode: 0o755,
         what: format!("远端 ~/{CCM_CLI_REMOTE_PATH}"),

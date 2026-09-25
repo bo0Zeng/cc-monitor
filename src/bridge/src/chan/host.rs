@@ -188,8 +188,9 @@ impl Backends for InboundBackends {
         left: Duration,
         _cancel: CancelToken,
     ) -> BoxFuture<'static, Result<Body, CallError>> {
-        // 🔴〔F7c · 第三波 09-24〕**传输台那两条开单命令不去后端**：SFTP 连接住 monitor
-        //    （`设计/60 §13.2 ①`），它们由本进程的传输台答。其余一切照旧去 `inbound_client`。
+        // 🔴〔F7c · 第三波 09-24〕**传输台那两条开单命令不按 `origin` 去那台机器的后端**：
+        //    〔SR1b〕传输台住**本机**常驻后端（SFTP 与其它 SSH 同一条连接），由中继 `sftp_pool.rs` 转过去；
+        //    其余一切照旧按 `origin` 去 `inbound_client`。
         if crate::sftp_pool::is_transfer_op(&op.0) {
             return Box::pin(transfer_open(origin, op, payload));
         }
@@ -285,7 +286,7 @@ async fn transfer_open(origin: Origin, op: Op, payload: Body) -> Result<Body, Ca
     };
     match crate::sftp_pool::transfer_call(cfg, &op.0, &args).await {
         Ok(v) => Ok(Body(serde_json::to_vec(&v).unwrap_or_default())),
-        Err((code, message)) => Err(refused(code, message)),
+        Err((code, message)) => Err(refused(&code, message)),
     }
 }
 
