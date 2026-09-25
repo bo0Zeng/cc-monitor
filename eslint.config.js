@@ -68,7 +68,9 @@ export default tseslint.config(
     // 也就是说：39 个告警永远不会被任何人看到，而它们一个真问题都不是。
     //
     // ⇒ 补上 globals（node + wdio 的 mocha 风格全局），并把 `npm run lint` 放开到 `eslint .`。
-    // 补完实测：全仓 7 个，与 `eslint src` 的基线**一致** —— 基线数字不变，覆盖面变大。
+    // 补完实测：全仓当时是 7 个，与 `eslint src` 的基线**一致** —— 基线数字不变，覆盖面变大。
+    // 〔AL1d · 第四波 4B · 09-24〕今天全仓 3 个：`src/settings/machine-aliases.ts` 里那四处空 catch（原「终端集成」
+    //   记住上次选择的 localStorage 写）随那段代码删了（`tests/eslint-baseline.vitest.ts` 的基线常量同拍 7 → 3）。
     files: ["tests/e2e/**/*.mjs"],
     languageOptions: {
       globals: {
@@ -101,10 +103,10 @@ export default tseslint.config(
     //
     // ⚠ 时间线是这条的全部要害（`git log` 实测，不是推的）：
     // E83 在 **07-31**（`a02f340`）把 `npm run lint` 从 `eslint src` 放开到 `eslint .`，
-    // 当场实测「全仓 7 个，与 `eslint src` 的基线一致」；而 `tests/scripts/assert-coverage-floors.mjs`
+    // 当场实测「全仓当时是 7 个，与 `eslint src` 的基线一致」；而 `tests/scripts/assert-coverage-floors.mjs`
     // 是 **08-06**（`cab8a75`）才新建的 —— **晚 6 天**。它一进来就带 7 条 `no-undef`
     // （`console`/`process`，纯缺一段 globals），基线**从 7 静默变成 14**，
-    // 而 `eslint.config.js` 与 `ci.yml` 里那两句「全仓实测仍是 7 项」**没人回来改**。
+    // 而 `eslint.config.js` 与 `ci.yml` 里那两句「全仓实测（当时）仍是 7 项」**没人回来改**。
     //
     // ⇒ 这不是「E83 修漏了」，是**修法本身的形状问题**：`ignores` 是仓级的（全集），
     // 而 globals 是**按目录枚举**的（`src/**`、`tests/e2e/**`）—— 于是每新增一个带脚本的目录，

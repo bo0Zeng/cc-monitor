@@ -37,7 +37,7 @@
 - `chan/webview.rs::chan_subscribe(webview, origin, kind, from, want, id, replay: State<'_, Arc<EventReplay>>)` · `chan_want` · `chan_stop`（〔CF2 · 第四波 4B〕会话内容经通道 `subscribe`：主窗口每台机器一条 `session-lines`，独立窗口一条 `session-lines/<sid>`；原来的定向重放命令〔散文墓碑〕退役）
 
 ### `Arc<BindRegistry>`
-- `lib.rs::cc_integration_status(command_name, bind_state: State<'_, Arc<BindRegistry>>)`
+- `lib.rs::aliases_read(shell, rc_path, bind_state: State<'_, Arc<BindRegistry>>)`（〔AL1d〕别名读回口带回握手终端数；接替了原「终端集成」的状态命令）
 
 ### `Arc<SidHwndCache>`
 - `lib.rs::bring_terminal_to_front(session_id, cache: State<'_, Arc<SidHwndCache>>)`
@@ -61,7 +61,7 @@
 - `config::load_config / save_config`（用 `paths::resolve_config_path`）
 - `launch::launch_remote_terminal`（B14-F41；用 `lib::load_remote_config_by_label` 读配置文件）
 - `subagent::load_subagent`
-- `cc_integration_preview / scan_path / install / uninstall`（path 参数直接进）
+- `aliases_block_render / aliases_block_install / aliases_block_remove`（`rc_path` 参数直接进；装 / 卸经本机后端写）
 - `cc_get_auto_launch / cc_set_auto_launch`（用 `paths::resolve_monitor_data_dir`）
 - `history::stream_read_session_jsonl / delete_history_session / create_branch_session / update_history_metadata / resume_history_session`（v2.6 删了非流式 `read_session_jsonl`；F62 `create_branch_session` 用 `paths::resolve_claude_dir`，无 State）
 - `tasks::get_session_tasks` (v2.3 issue #11)：用 `paths::resolve_claude_dir().join("tasks")`，session_id 参数直接拼路径；watcher 线程独立 spawn 不通过 State 共享
@@ -107,7 +107,7 @@ grep -rn 'bind_registry.clone()\|BindRegistry' src/
 grep -rn 'app.manage(bind_registry' src/
 
 # 4. 找前端 invoke 依赖
-cd .. && grep -rn 'invoke<.*"cc_integration_status"\|"bring_terminal_to_front"' src/
+cd .. && grep -rn 'invoke<.*"aliases_read"\|"bring_terminal_to_front"' src/
 
 # 5. 删完跑：
 cd src/bridge && cargo check && cargo test --all

@@ -124,3 +124,35 @@ fn find_latest_log_picks_newest_mtime() {
 
     let _ = std::fs::remove_dir_all(&tmp);
 }
+
+/// 〔S5 · 第四波〕要求住址：D4（不许把「读不出」静默当成空）· D7（失败要说清原因）——
+/// 主会话转来的 JA1 读数逐字「遇坏 config.json 会退成 `{}` 再整份写回，用户手填的内容被覆盖、没有判据守」。
+///
+/// 一份读不懂的 config.json（少一个逗号）⇒ `Err`、**盘上字节一个不动**、话里点名那份文件并说为什么没存。
+/// 对照：合法的那份照常写（上面 `write_diagnostics_preserves_other_fields`）。
+#[test]
+fn a_config_we_cannot_parse_is_left_alone_not_overwritten() {
+    let tmp = std::env::temp_dir().join(format!("ccm-log-test3-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    let broken = "{\"claudeDir\":\"/x\" \"theme\":{}}"; // 少一个逗号
+    let cfg_path = tmp.join("config.json");
+    std::fs::write(&cfg_path, broken).unwrap();
+
+    let err = write_diagnostics_to_config(&tmp, &DiagnosticsConfig::default())
+        .expect_err("读不懂的 config.json 被当成空的写回去了");
+    assert_eq!(
+        std::fs::read_to_string(&cfg_path).unwrap(),
+        broken,
+        "读不懂的那份被改了 —— 用户手填的内容没了"
+    );
+    assert!(
+        !tmp.join("config.json.tmp").exists(),
+        "临时文件都写出来了 —— 「不写」要在写之前就停"
+    );
+    assert!(
+        err.contains("config.json") && err.contains("读不懂") && err.contains("没有存"),
+        "那句话没说清是哪份文件、为什么没存：{err}"
+    );
+    let _ = std::fs::remove_dir_all(&tmp);
+}

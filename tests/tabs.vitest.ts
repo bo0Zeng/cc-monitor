@@ -194,7 +194,7 @@ vi.mock("../src/account-restart", () => ({
 }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { sessionReadCalls, withSessionReads } from "./test-support/chan-fake";
+import { accountReadCalls, sessionReadCalls, withAccountReads, withSessionReads } from "./test-support/chan-fake";
 import { restartWithAccount } from "../src/account-restart";
 import { invalidateAccountsCache } from "../src/accounts";
 import { showActionFailureToast } from "../src/error-toast";
@@ -1183,7 +1183,7 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
     invalidateAccountsCache();
     tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
     tm.archiveTab("r1");
-    vi.mocked(invoke).mockImplementation((cmd: string) =>
+    vi.mocked(invoke).mockImplementation(withAccountReads((cmd: string) =>
       cmd === "list_remote_accounts"
         ? Promise.resolve({
             available: true,
@@ -1192,7 +1192,7 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
             accounts: [{ name: "z", email: "z@x.edu", configDir: "/h/.claude-accts/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true }],
           })
         : Promise.resolve(undefined),
-    );
+    ));
     await home(tm).actions.resumeTab("r1", "z");
     expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", { configDir: "/h/.claude-accts/z", accountName: "z", modelOverride: undefined });
     expect(showActionFailureToast).not.toHaveBeenCalledWith("账号不可用", expect.anything(), expect.anything());
@@ -1379,7 +1379,7 @@ describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
   // 证明 an 真的被转传，不只是 accounts.vitest 单独测过 resolveAccount 自己的决策逻辑。
   it("跟随解析命中当前账号 → runRemoteResumeTmux 收到真实 configDir + accountName", async () => {
     invalidateAccountsCache(); // 同上：防陈旧缓存命中挡住下面的自定义 mock
-    vi.mocked(invoke).mockImplementation((cmd: string) => {
+    vi.mocked(invoke).mockImplementation(withAccountReads((cmd: string) => {
       if (cmd === "list_remote_tmux") {
         return Promise.resolve([
           { name: "cc-other12", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "other" },
@@ -1395,7 +1395,7 @@ describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
       }
       if (cmd === "list_last_accounts") return Promise.resolve({}); // 无既有 pin → 落 current
       return Promise.resolve(undefined);
-    });
+    }));
     tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
     tm.archiveTab("r1");
     await home(tm).actions.resumeTabTmux("r1");
@@ -1413,7 +1413,7 @@ describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
   // 从未被真实模型字符串验证过。补一条同上但账号 z 配了模型偏好的集成测试。
   it("F07：跟随解析命中当前账号且该账号配了模型偏好 → runRemoteResumeTmux 收到真实 modelOverride", async () => {
     invalidateAccountsCache();
-    vi.mocked(invoke).mockImplementation((cmd: string) => {
+    vi.mocked(invoke).mockImplementation(withAccountReads((cmd: string) => {
       if (cmd === "list_remote_tmux") {
         return Promise.resolve([
           { name: "cc-other12", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "other" },
@@ -1430,7 +1430,7 @@ describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
       if (cmd === "list_last_accounts") return Promise.resolve({}); // 无既有 pin → 落 current
       if (cmd === "load_config") return Promise.resolve({ accounts: { modelByAccount: { z: "opus" } } });
       return Promise.resolve(undefined);
-    });
+    }));
     tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
     tm.archiveTab("r1");
     await home(tm).actions.resumeTabTmux("r1");
@@ -1833,7 +1833,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
 
   it("F09：账号数据就绪后（恰好 1 个可选账号）→ Resume flyout 追加「不指定账号（用远端 ~/.claude 那套凭据，不跟随当前账号）」，不追加具名账号", async () => {
     invalidateAccountsCache(); // 防陈旧缓存命中挡住下面的自定义 mock
-    vi.mocked(invoke).mockImplementation((cmd: string) =>
+    vi.mocked(invoke).mockImplementation(withAccountReads((cmd: string) =>
       cmd === "list_remote_accounts"
         ? Promise.resolve({
             available: true,
@@ -1842,7 +1842,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
             accounts: [{ name: "z", email: "z@x.edu", configDir: "/h/.claude-accts/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true }],
           })
         : Promise.resolve(undefined),
-    );
+    ));
     tm.ensureTab("r1", "/home/pi/proj", "p", 0, "aya");
     tm.archiveTab("r1");
     rightClick("r1");
@@ -1861,7 +1861,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
 
   it("F09：≥2 可选账号 → Resume flyout 含每个具名账号，账号×容器真正正交（此前实现缺口已补）", async () => {
     invalidateAccountsCache();
-    vi.mocked(invoke).mockImplementation((cmd: string) =>
+    vi.mocked(invoke).mockImplementation(withAccountReads((cmd: string) =>
       cmd === "list_remote_accounts"
         ? Promise.resolve({
             available: true,
@@ -1873,7 +1873,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
             ],
           })
         : Promise.resolve(undefined),
-    );
+    ));
     tm.ensureTab("r1", "/home/pi/proj", "p", 0, "aya");
     tm.archiveTab("r1");
     rightClick("r1");
@@ -1910,7 +1910,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
   };
 
   const twoAccounts = (extraName?: string) =>
-    vi.mocked(invoke).mockImplementation((cmd: string) =>
+    vi.mocked(invoke).mockImplementation(withAccountReads((cmd: string) =>
       cmd === "list_remote_accounts"
         ? Promise.resolve({
             available: true,
@@ -1922,7 +1922,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
             ],
           })
         : Promise.resolve(undefined),
-    );
+    ));
 
   const openArchivedMenu = async (): Promise<void> => {
     tm.ensureTab("r1", "/home/pi/proj", "p", 0, "aya");
@@ -2005,11 +2005,11 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
 
   it("R05：0 可选账号 → 不渲染分隔线（`length > 0` 那道闸；审计变异 M7 曾存活）", async () => {
     invalidateAccountsCache();
-    vi.mocked(invoke).mockImplementation((cmd: string) =>
+    vi.mocked(invoke).mockImplementation(withAccountReads((cmd: string) =>
       cmd === "list_remote_accounts"
         ? Promise.resolve({ available: false, error: null, meta: null, accounts: [] })
         : Promise.resolve(undefined),
-    );
+    ));
     await openArchivedMenu();
     expect(document.body.querySelectorAll(".tab-context-menu-divider").length).toBe(0);
     invalidateAccountsCache();
@@ -2026,9 +2026,9 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     try {
       let resolveAccounts!: (v: unknown) => void;
       const pending = new Promise((r) => (resolveAccounts = r));
-      vi.mocked(invoke).mockImplementation((cmd: string) =>
+      vi.mocked(invoke).mockImplementation(withAccountReads((cmd: string) =>
         cmd === "list_remote_accounts" ? pending : Promise.resolve(undefined),
-      );
+      ));
       tm.ensureTab("r1", "/home/pi/proj", "p", 0, "aya");
       tm.archiveTab("r1");
       rightClick("r1");
@@ -2139,7 +2139,7 @@ describe("F09 活会话右键：Restart 一级项 + flyout（换号重启，无�
   });
 
   it("<2 可选账号 → 不出现「Restart」（同旧版阈值，不加噪）", async () => {
-    vi.mocked(invoke).mockImplementation((cmd: string) =>
+    vi.mocked(invoke).mockImplementation(withAccountReads((cmd: string) =>
       cmd === "list_remote_accounts"
         ? Promise.resolve({
             available: true,
@@ -2148,7 +2148,7 @@ describe("F09 活会话右键：Restart 一级项 + flyout（换号重启，无�
             accounts: [{ name: "z", email: "z@x", configDir: "/h/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true }],
           })
         : Promise.resolve(undefined),
-    );
+    ));
     tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
     rightClick("m1");
     await flushMicro();
@@ -2157,7 +2157,7 @@ describe("F09 活会话右键：Restart 一级项 + flyout（换号重启，无�
   });
 
   it("≥2 可选账号 → 「Restart」一级项 + 每账号 flyout（直接重启/先压缩再重启），无 tmux/直连子选择", async () => {
-    vi.mocked(invoke).mockImplementation((cmd: string) => {
+    vi.mocked(invoke).mockImplementation(withAccountReads((cmd: string) => {
       if (cmd === "list_remote_accounts") {
         return Promise.resolve({
           available: true,
@@ -2171,7 +2171,7 @@ describe("F09 活会话右键：Restart 一级项 + flyout（换号重启，无�
       }
       if (cmd === "list_remote_tmux") return Promise.resolve([sess()]);
       return Promise.resolve(undefined);
-    });
+    }));
     tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
     rightClick("m1");
     await flushMicro();
@@ -2196,7 +2196,7 @@ describe("F09 活会话右键：Restart 一级项 + flyout（换号重启，无�
   // F09 Phase D 审计（UX，重要）：⇄ 按钮删除前，重启中的会话至少有"⇄ 立刻置灰"这个视觉信号；
   // 现在菜单是唯一入口，若不禁用，点了会静默命中 in-flight 守卫——菜单应提前呈现"当前不可点"。
   it("该会话正在重启中 → Restart 一级项禁用（不是点了才知道不可用）", async () => {
-    vi.mocked(invoke).mockImplementation((cmd: string) => {
+    vi.mocked(invoke).mockImplementation(withAccountReads((cmd: string) => {
       if (cmd === "list_remote_accounts") {
         return Promise.resolve({
           available: true,
@@ -2210,7 +2210,7 @@ describe("F09 活会话右键：Restart 一级项 + flyout（换号重启，无�
       }
       if (cmd === "list_remote_tmux") return Promise.resolve([sess()]);
       return Promise.resolve(undefined);
-    });
+    }));
     tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
     home(tm).actions.restartingSids.add("m1");
     rightClick("m1");
@@ -2260,7 +2260,7 @@ describe("K-P5g：tmux 定位不到时，那句提示真的由读回来的身份
 
   /** 走完「右键 → Restart → 直接重启」，回那次 toast 的 `[title, body]`。 */
   const restartAndCatchToast = async (launchId: string | null): Promise<[string, string]> => {
-    vi.mocked(invoke).mockImplementation((cmd: string) => {
+    vi.mocked(invoke).mockImplementation(withAccountReads((cmd: string) => {
       if (cmd === "list_remote_accounts") {
         return Promise.resolve({
           available: true,
@@ -2275,7 +2275,7 @@ describe("K-P5g：tmux 定位不到时，那句提示真的由读回来的身份
       // ★ 关键前提：tmux 里**精确命中不到**这条 sid ⇒ 走 `!live` 那条拒绝分支。
       if (cmd === "list_remote_tmux") return Promise.resolve([]);
       return Promise.resolve(undefined);
-    });
+    }));
     tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
     // 这就是那一格的**唯一入口**：backend 的 `--session-accounts` 出参经 main.ts 喂进来。
     tm.setSessionAccounts([ROW(launchId)], new Map());
@@ -2848,11 +2848,11 @@ describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
     document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
     invalidateAccountsCache();
     tm = makeTM();
-    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) => {
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation(withAccountReads((cmd: string) => {
       if (cmd === "list_local_accounts") return Promise.resolve(TWO_LOCAL);
       if (cmd === "list_local_tmux") return Promise.resolve([localSess()]);
       return Promise.resolve(undefined);
-    });
+    }));
   });
 
   it("本机活会话 ≥2 可选账号 → 出现「Restart」，点了走 `<local>`；账号清单问的是本机后端", async () => {
@@ -2862,9 +2862,11 @@ describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
     await flushMicro();
     await flushMicro();
     expect(menuItems().map((b) => b.textContent)).toContain("Restart（换号重启）");
-    // 账号清单那一跳问的是**本机**（`list_local_accounts`），不是拿 `<local>` 去问远端。
-    expect(invokedCmds()).toContain("list_local_accounts");
-    expect(invokedCmds()).not.toContain("list_remote_accounts");
+    // 账号清单那一跳问的是**本机**，不是拿 `<local>` 去问远端。
+    // 〔C4c〕经通道问 `<local>` 那条长连接的 `accounts-list`（`accountReadCalls` 把一发 `chan_call` 译回旧叫法）。
+    const calls = (invoke as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    expect(accountReadCalls(calls, "list_local_accounts")).toHaveLength(1);
+    expect(accountReadCalls(calls, "list_remote_accounts")).toHaveLength(0);
     menuItems().find((b) => b.textContent === "直接重启")?.click();
     await flushMicro();
     expect(restartSpy).toHaveBeenCalledWith(
@@ -2878,7 +2880,9 @@ describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
     rightClick("l1");
     await flushMicro();
     await flushMicro();
-    expect(invokedCmds()).not.toContain("list_local_accounts");
+    expect(
+      accountReadCalls((invoke as unknown as ReturnType<typeof vi.fn>).mock.calls, "list_local_accounts"),
+    ).toHaveLength(0);
     expect(menuItems().map((b) => b.textContent)).not.toContain("Restart（换号重启）");
   });
 
@@ -4836,7 +4840,7 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
 describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走", () => {
   let tm: TabManager;
   let disk: Record<string, unknown>;
-  /** `probe_session_record` 的桩答案：`undefined` = 抛错（问不到）。 */
+  /** 记录那一问的桩答案：`undefined` = 抛错（问不到）。〔C4c〕它经通道问 `history-record`，`withSessionReads` 译回旧叫法。 */
   let probe: { present: boolean; root: string } | undefined;
   const tabOf = (sid: string): Tab => home(tm).store.tabs.get(sid)!;
   const btn = (): HTMLElement => document.querySelector<HTMLElement>(".tab")!;
@@ -4846,7 +4850,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     localStorage.clear();
     disk = {};
     probe = { present: true, root: "/h/.claude/projects" };
-    vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {
+    vi.mocked(invoke).mockImplementation(withSessionReads((cmd: string, args?: unknown) => {
       if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
       if (cmd === "save_config") {
         disk = JSON.parse(JSON.stringify((args as { value: unknown }).value));
@@ -4855,7 +4859,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
       if (cmd === "probe_session_record")
         return probe ? Promise.resolve(probe) : Promise.reject(new Error("没有控制通道"));
       return Promise.resolve(undefined);
-    });
+    }));
     tm = makeTM();
   });
 

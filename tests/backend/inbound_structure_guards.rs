@@ -177,6 +177,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "history-tail"
                 | "accounts-list"
                 | "accounts-sessions"
+                | "accounts-trust" // 〔C4c〕信任预检：读 manifest ＋ `.claude.json`，同档
                 // 〔B2 · 条 66〕「退出行为」那两条：同步文件 I/O（读一份小文件 / 原子写一份），
                 // 不许占 tokio worker。开跑之后打不断 ⇒ `cancel` 命中回 `not_cancellable`。
                 | "exit-policy-read"
@@ -194,6 +195,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "relay-status"
                 // 〔RM1a · 第四波〕足迹那一条：一批 stat / 读几份小文件，同步文件 I/O。
                 | "footprint-probe"
+                // 〔AS1 · 第四波 4B〕MCP 同步的判定：对可疑路径逐条 stat、在 PATH 上找名字（同步文件 I/O）。
+                | "mcp-sync-plan"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_));
         assert_eq!(
@@ -273,6 +276,7 @@ fn every_registered_command_declares_its_run_kind() {
         "history-tail",
         "accounts-list",
         "accounts-sessions",
+        "accounts-trust", // 〔C4c〕
         "exit-policy-read",
         "exit-policy-set",
         "plugins-marketplaces",
@@ -287,6 +291,8 @@ fn every_registered_command_declares_its_run_kind() {
         "files-peek",
         "files-put",
         "files-delete-session",
+        // 〔AS1 · 第四波 4B〕MCP 同步的判定（阻塞档，理由在上面 `expected_blocking`）。
+        "mcp-sync-plan",
         // 〔SR1b〕传输四条：内建（硬臂）。
         "transfer-upload",
         "transfer-download",

@@ -183,11 +183,9 @@ impl crate::event_replay::ItemSink for WebviewSink {
             sub,
             items: items.into_iter().map(webview_item).collect(),
         };
-        if let Err(e) = self.0.emit_to(
-            tauri::EventTarget::webview_window(label.to_string()),
-            ITEMS_EVENT,
-            &d,
-        ) {
+        // 目标必须是 `EventTarget::webview_window`（`INVARIANTS §22` 第 2 条：裸串目标命不中窗口作用域的监听）。
+        let target = tauri::EventTarget::webview_window(label.to_string());
+        if let Err(e) = self.0.emit_to(target, ITEMS_EVENT, &d) {
             tracing::warn!("通道：交格给 [{label}] 第 {sub} 条订阅失败：{e}");
         }
     }

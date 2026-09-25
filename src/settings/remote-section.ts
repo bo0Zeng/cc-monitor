@@ -9,8 +9,8 @@
  *   enabled (bool) / hosts[] 内每台：label (string, 可选默认 host) / host / port (默认 22) /
  *   user / keyPath (可选) / backendPath / hostKeyFingerprint (可选)
  *
- * **向后兼容**：旧的单对象 `remote: { enabled, host, ... }`（无 `hosts` 键）读取时归一成
- * 1 台（label 默认 = host）；保存时升级写成 `hosts` 数组。
+ * 〔S5 · V41〕旧的单对象 `remote: { enabled, host, ... }`（无 `hosts` 键）**不再认**：一台都不显示，
+ * 机器列表顶上说「远端配置认不出：…」（`remote-config.ts::REMOTE_CONFIG_UNRECOGNIZED`）。
  *
  * 设计（对齐 behavior.ts / diagnostics-section.ts 范式）：
  * - 读写走 config.ts 的 loadConfig / saveConfig（schema-agnostic 透传）。
@@ -245,6 +245,8 @@ export class RemoteSection {
   private machinesContainer!: HTMLElement;
   private emptyHint!: HTMLElement;
   private banner!: HTMLElement;
+  /** 〔S5 · V41〕`remote` 段认不出时那一句（常驻，不像 banner 会被下一次动作冲掉）。 */
+  private unrecognizedNote!: HTMLElement;
   private importSelect!: HTMLSelectElement;
   private importHint!: HTMLElement;
 
@@ -285,6 +287,12 @@ export class RemoteSection {
       this.enabledCheckbox.checked = this.original.enabled;
       this.enabledCheckbox.disabled = false;
       this.rebuildCards(this.original.hosts);
+      this.unrecognizedNote.textContent = this.original.unrecognized ?? "";
+      // ⚠ 用类不用 `hidden`：`.settings-banner-show` 的 `display: block` 盖得过 `hidden` 属性。
+      this.unrecognizedNote.classList.toggle(
+        "settings-banner-show",
+        this.original.unrecognized !== undefined,
+      );
       this.hideBanner();
       void this.populateAliases();
     } catch (e) {
@@ -717,6 +725,12 @@ export class RemoteSection {
     this.banner = document.createElement("div");
     this.banner.className = "settings-banner";
     group.appendChild(this.banner);
+
+    // 〔S5 · V41〕紧跟在 banner 后面、仍在工具条与列表之上。⚠ 排在 banner **之后**：
+    //   `pending-and-block-errors.vitest.ts` 按「这一块第一个 `.settings-banner`」找动作结果那一条。
+    this.unrecognizedNote = document.createElement("div");
+    this.unrecognizedNote.className = "settings-banner remote-config-unrecognized";
+    group.appendChild(this.unrecognizedNote);
 
     // ★ S4b-3b：**一条工具条**（主计划 §2.3 那张图逐字给的顺序）：
     //   + 添加 · 从 ssh config 导入 · 批量导入 · 端口转发 · [x] 启用远端模式
@@ -1218,7 +1232,7 @@ export class RemoteSection {
   }
 }
 
-// === config.json 读写（多机，向后兼容旧单对象）===
+// === config.json 读写（多机）===
 
 /** 把一个任意 JSON 对象规整成 RemoteHostConfig（缺失/类型不对走默认）。 */
 // F12：`coerceAddresses` / `coerceHost` / `readRemoteConfig` / `findHostByOrigin` /

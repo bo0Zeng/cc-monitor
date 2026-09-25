@@ -479,7 +479,14 @@ fn write_diagnostics_to_config(
     let mut v: serde_json::Value = if cfg_path.exists() {
         let raw = std::fs::read_to_string(&cfg_path)
             .map_err(|e| format!("read {}: {e}", cfg_path.display()))?;
-        serde_json::from_str(&raw).unwrap_or_else(|_| serde_json::json!({}))
+        // 〔S5 · 第四波 · D4 / D7〕读不懂 ⇒ **不写**，说清为什么。从前这里退成 `{}` 再整份写回 ——
+        //   用户手填的那份（哪怕只是少了一个逗号）连同里面别的设置被静默盖成只剩 `diagnostics` 一格。
+        serde_json::from_str(&raw).map_err(|e| {
+            format!(
+                "{} 读不懂（{e}），诊断设置没有存：写回去会把这份文件里别的设置一起盖掉，先把它改成合法的 JSON",
+                cfg_path.display()
+            )
+        })?
     } else {
         std::fs::create_dir_all(monitor_data_dir)
             .map_err(|e| format!("mkdir {}: {e}", monitor_data_dir.display()))?;

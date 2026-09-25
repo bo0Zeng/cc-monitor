@@ -245,3 +245,130 @@ fn powershell_knows_the_names_its_own_block_defines() {
         .name_taken("zzz_no_such_command_anywhere")
         .is_none());
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 〔AL1d · 第四波 4B〕P1：`$PROFILE` 在哪，全仓只有一个住址（`调研/第四波记录/AL1d.md §2.3`）
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// 「`$PROFILE` 在哪」的三个记号。**运行时拼**：本文件自己不许被自己数到（本文件不在 `src/` 下，这是第二道保险）。
+fn profile_needles() -> [String; 3] {
+    [
+        format!("Microsoft.{}_profile.ps1", "PowerShell"),
+        format!("{}.ps1", "profile"),
+        format!("Windows{}", "PowerShell"),
+    ]
+}
+
+/// 一段**生产代码**（注释已剥）里某个记号出现几处。`profile.ps1` 按词边界数 ——
+/// 它是 `Microsoft.PowerShell_profile.ps1` 的后缀，裸 `matches` 会把一处数成两处。
+fn needle_hits(code: &str, needle: &str) -> usize {
+    let word = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    code.match_indices(needle)
+        .filter(|(i, _)| !code[..*i].chars().next_back().is_some_and(word))
+        .count()
+}
+
+/// 人群 = `src/` 全树的 `.rs` / `.ts`（生产段：Rust 剥测试模块与注释，TS 剥注释）。
+/// 回：`(仓根相对路径, 记号) → 处数`，只收非零的。
+fn profile_location_census(
+    files: &[(String, String)],
+) -> std::collections::BTreeMap<(String, String), usize> {
+    let mut out = std::collections::BTreeMap::new();
+    for (rel, src) in files {
+        let code = if rel.ends_with(".rs") {
+            guard_core::production_code(src)
+        } else {
+            guard_core::strip_comment_lines(src)
+        };
+        for n in profile_needles() {
+            let k = needle_hits(&code, &n);
+            if k > 0 {
+                out.insert((rel.clone(), n), k);
+            }
+        }
+    }
+    out
+}
+
+/// 🔴 **P1**：`$PROFILE` 的文件名 / 目录名在全仓生产代码里**只住 `shell_dialect.rs`**，而且每个恰好一处。
+///
+/// 从前五处认法（终端集成两份发现表 · TS 换文件名推 AllHosts · 数据页探备份目录那张表 · 这里），
+/// 其中一处把 `profile.ps1` 当「装错了的遗留」、这里把它当合法候选 —— 同一个事实三种说法（`AL1d.md §1.3`）。
+///
+/// 形状：`(文件, 记号) → 处数` 的**整张表相等**（两向：别处多出一处 ⇒ 红；这里那一处没了 / 挪走了 ⇒ 也红）。
+/// ⚠ 买不到的：换一种写法认同一个位置（比如拼出 `"Windows" + "PowerShell"`、或问 PowerShell 自己 `$PROFILE`）
+/// 这把尺子看不见 —— 它数的是字面记号，不是语义。
+#[test]
+fn the_profile_location_has_exactly_one_home() {
+    // 表名 `SITES`：`scanning_guard_registry::TABLE_DECLS` 那条纪律（扫描面 ＋ 常量表型判据的表名闭集）。
+    const SITES: &[(&str, usize, usize)] = &[
+        // (住址, 记号在 `profile_needles()` 里的下标, 处数)
+        ("src/bridge/src/shell_dialect.rs", 0, 1),
+        ("src/bridge/src/shell_dialect.rs", 1, 1),
+        ("src/bridge/src/shell_dialect.rs", 2, 1),
+    ];
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let root = root.canonicalize().expect("仓根");
+    let files: Vec<(String, String)> =
+        guard_core::scan_tree_excluding(&root.join("src"), &["rs", "ts"], &[])
+            .into_iter()
+            .map(|(p, s)| {
+                let rel = p
+                    .strip_prefix(&root)
+                    .unwrap_or(&p)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                (rel, s)
+            })
+            .collect();
+    // 抽取器自检：人群塌了 ⇒ 本条零命中地绿。
+    assert!(
+        files.len() > 500
+            && files
+                .iter()
+                .any(|(r, _)| r == "src/bridge/src/data_paths.rs"),
+        "`src/` 只扫到 {} 份，或者没扫到 data_paths.rs —— 遍历坏了",
+        files.len()
+    );
+    let needles = profile_needles();
+    let want: std::collections::BTreeMap<(String, String), usize> = SITES
+        .iter()
+        .map(|(f, i, n)| ((f.to_string(), needles[*i].clone()), *n))
+        .collect();
+    assert_eq!(
+        profile_location_census(&files),
+        want,
+        "`$PROFILE` 在哪（`Microsoft.PowerShell_profile.ps1` · `profile.ps1` · `WindowsPowerShell`）\n\
+         今天该只有 `shell_dialect.rs` 的 PowerShell 那一臂（`startup_files`）答。多出来的那一处要么改问它，\n\
+         要么说清为什么这是另一个事实 —— 别往 `SITES` 里加一行了事（那就是第二个住址）。"
+    );
+}
+
+/// P1 的正控：同一把尺子在合成语料上**数得出**旧写法、**不数**注释、`profile.ps1` 不被 `…_profile.ps1` 重复数。
+#[test]
+fn the_profile_location_census_sees_the_old_shapes() {
+    let n = profile_needles();
+    let old_discover = format!(
+        "fn discover() -> PathBuf {{\n    home.join(\"{}\").join(\"{}\")\n}}\n// 注释里的 {} 不算\n",
+        n[2], n[0], n[1]
+    );
+    let old_ts = format!("const p = swap(x, \"{}\");\n/** {} */\n", n[1], n[2]);
+    let got = profile_location_census(&[
+        ("src/bridge/src/data_paths.rs".into(), old_discover),
+        ("src/settings/x.ts".into(), old_ts),
+    ]);
+    let want: std::collections::BTreeMap<(String, String), usize> = [
+        (
+            ("src/bridge/src/data_paths.rs".to_string(), n[0].clone()),
+            1,
+        ),
+        (
+            ("src/bridge/src/data_paths.rs".to_string(), n[2].clone()),
+            1,
+        ),
+        (("src/settings/x.ts".to_string(), n[1].clone()), 1),
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(got, want);
+}
