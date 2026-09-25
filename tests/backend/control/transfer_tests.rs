@@ -411,6 +411,35 @@ async fn a_download_cut_off_midway_keeps_its_part_and_the_retry_resumes_from_its
     assert!(!tmp.path("f.bin.part").exists(), "上位之后 `.part` 还在");
 }
 
+/// 〔FW1 · 第四波〕**续传不多读一个预读窗**（`设计/60 §7` 第 8 条「一次续传多读一个预读窗口」· DP1 报备 9）。
+///
+/// 判据是字节数的相等（台架自己记、异源）：重拖那一趟服务端交出去的读字节 **恰好** == 从探针起点到末尾的长度
+/// （`total − (have − 探针)`）—— 每个字节只交一次。探针之后 seek 一下（哪怕 seek 回原地）⇒ russh-sftp 的读缓冲被扔掉、
+/// 从 `have` 起那一截再要一遍 ⇒ 多出「第一读的量 − 探针」那么多（真 sshd 上是 228 352 字节）⇒ 红。
+/// ⚠ 源要比第一读的量（服务端最大包）长得多，前缀也要比探针长：否则两种写法交出去的一样多、分不开。
+#[tokio::test]
+async fn a_resumed_download_asks_for_every_byte_from_the_probe_on_exactly_once() {
+    let fs = rig::home(false, false);
+    let body = rig::corpus(3_000_000);
+    remote_file(&fs, "srv/g.bin", body.clone());
+    let s = rig::session_on(fs.clone()).await;
+    let tmp = Tmp::dir("dl-no-reseek");
+    let have = 700_000usize;
+    tmp.file("g.bin.part", &body[..have]);
+    let local = tmp.path("g.bin").to_string_lossy().into_owned();
+    fs.lock().unwrap().served_bytes = 0;
+    download_to_local(&s, "srv/g.bin", &local, &Cancel::default(), &no_progress)
+        .await
+        .expect("续传该成");
+    let probe = (have as u64).min(CHUNK as u64);
+    assert_eq!(
+        fs.lock().unwrap().served_bytes,
+        body.len() as u64 - (have as u64 - probe),
+        "续传那一趟有字节被要了两遍（探针之后又 seek 了一次，读缓冲被扔掉）"
+    );
+    assert_eq!(std::fs::read(&local).unwrap(), body, "落地不是源的字节");
+}
+
 /// 🔴 **B6**〔FN1 · V119 翻面〕：本机落点是一份 Claude 会话记录的形状 ⇒ **照样开得出单**。
 ///
 /// 从前这一格叫「落点是会话数据 ⇒ 围栏拒」。用户「文件管理器全部都可以改. 不需要任何围栏」⇒

@@ -51,6 +51,8 @@ pub(crate) struct Fs {
     pub(crate) yield_per_write: usize,
     /// 〔DP1〕每一次 `READ` 的偏移（下载续传那一格判「前缀没有被重新读一遍」）。
     pub(crate) read_offsets: Vec<u64>,
+    /// 〔FW1〕服务端**交出去**的读字节数（逐条 `READ` 应答里 `data` 的长度之和）—— 「同一段字节有没有被要了两遍」。
+    pub(crate) served_bytes: u64,
 }
 
 impl Fs {
@@ -248,10 +250,9 @@ impl russh_sftp::server::Handler for Server {
                 return Err(StatusCode::Eof);
             }
             let end = (start + len as usize).min(e.bytes.len());
-            Ok(Data {
-                id,
-                data: e.bytes[start..end].to_vec(),
-            })
+            let data = e.bytes[start..end].to_vec();
+            fs.served_bytes += data.len() as u64;
+            Ok(Data { id, data })
         }
     }
 
