@@ -179,6 +179,9 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   都经 `remote_relay.rs::call` 这一口。与上一条**分开两个文件**是刻意的（「账号就账号, 中转就中转」），
     //   理由与形状逐字同上一条。
     ("remote_relay.rs", Verdict::UsesRouter),
+    // ★ 〔RM1a · 第四波〕「足迹」的远端那一栏：问那台机器的后端要路径事实（`footprint-probe`），
+    //   经 `footprint_remote.rs::call` 这一口；形状与理由逐字同上两条。
+    ("footprint_remote.rs", Verdict::UsesRouter),
 ];
 
 /// 分流器的**两个出口**：分层结果（`05` 形状）与从它收拢出来的旧三态。

@@ -109,6 +109,7 @@ pub const COMMANDS: &[&str] = &[
     "files-rename",
     "files-stat",
     "files-write-text",
+    "footprint-probe",
     "history-projects",
     "history-read",
     "history-search",
@@ -663,6 +664,20 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::relay::answer_ensure(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔RM1a · 第四波〕「足迹」的这台机器那一半：只交**路径事实**（环境 · stat · 有没有某几个字样），
+    //   哪一行属于哪个工具、存在 / 缺失 / 查不动怎么分，**只住 monitor 的 `config_surface`**。只读，阻塞档。
+    CommandSpec {
+        name: "footprint-probe",
+        doc_anchor: Some("#### `footprint-probe`"),
+        codes: &["bad_args", "too_large"],
+        fields: &["env", "hooks", "notices", "stat"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::footprint::answer(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),

@@ -107,6 +107,44 @@ pub fn resolve_touched_path(
     cfg_dir_env: Option<&Path>,
     is_dir: &dyn Fn(&Path) -> bool,
 ) -> Result<PathResolution, String> {
+    resolve_touched_path_from(
+        Vantage::Monitor,
+        declared,
+        dest,
+        host,
+        home,
+        cfg_dir_env,
+        is_dir,
+    )
+}
+
+/// 〔RM1a · 第四波〕**从哪台机器上看**这张表 —— 「足迹」per-origin 那一维。
+///
+/// | 取值 | `home` / `cfg_dir_env` / 探针是谁的 | 远端落点（`HostScope::Remote`）| monitor 那台的落点（`HostScope::Client`）|
+/// |---|---|---|---|
+/// | [`Vantage::Monitor`] | monitor 所在那台（原样）| 「远端路径，本页不连 SSH」（原样）| 真查 |
+/// | [`Vantage::Remote`] | **那台远端**（它的后端 `footprint-probe` 答）| 真查（它就在这台上）| **不进表**（它不在这台上，`build_rows` 按人群滤掉）|
+///
+/// `Either` 两边都「真查，但查不到 ≠ 不存在」（它也可能装在另一台上）。
+/// ⚠ 判定只有这一份：两种视角走同一个 [`build_rows`]，差的只是探针从哪来、`Client` 那一族在不在人群里。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Vantage {
+    /// monitor 所在那台。
+    Monitor,
+    /// 某台远端（探针是它的后端答的）。
+    Remote,
+}
+
+/// [`resolve_touched_path`] 带视角的那一版。
+pub fn resolve_touched_path_from(
+    vantage: Vantage,
+    declared: &str,
+    dest: &ToolDestination,
+    host: HostScope,
+    home: &Path,
+    cfg_dir_env: Option<&Path>,
+    is_dir: &dyn Fn(&Path) -> bool,
+) -> Result<PathResolution, String> {
     // **先把散文挡在门外。** 这条是被自己的反向自检抓出来加的：
     // `~/.local/bin/cc-*（12 条软链）` 原先能"成功"解析成
     // `LocalGlob { prefix: "cc-", suffix: "（12 条软链）" }`——glob 分支把散文吞进了 suffix，
@@ -139,8 +177,8 @@ pub fn resolve_touched_path(
     // （更正我自己上一版注释里说过头的一句：我写"`UserConfiguredPath` 的占位符校验
     //  变成死代码"——不对。那条 `Err` 分支在更早一步就已经改成了"不是占位符就按本机路径解析"，
     //  本来就没有可被跳过的校验。真正被短路掉的是上面那两条。）
-    let by_dest = resolve_by_destination(declared, dest, home, cfg_dir_env, is_dir)?;
-    Ok(project_onto_host(by_dest, host, declared))
+    let by_dest = resolve_by_destination(vantage, declared, dest, home, cfg_dir_env, is_dir)?;
+    Ok(project_onto_host(vantage, by_dest, host, declared))
 }
 
 /// `host` 只改写**本机可解析**的那两种结果，其余原样透传。
@@ -148,7 +186,17 @@ pub fn resolve_touched_path(
 /// 为什么不是"host 说远端就一律返回 Remote"：`UserConfiguredPath` 解析出的
 /// `NeedsUserConfig { what }` 比 `Remote` **信息更多**（它告诉用户去哪儿看那个值），
 /// 覆盖掉是降级。
-fn project_onto_host(by_dest: PathResolution, host: HostScope, declared: &str) -> PathResolution {
+fn project_onto_host(
+    vantage: Vantage,
+    by_dest: PathResolution,
+    host: HostScope,
+    declared: &str,
+) -> PathResolution {
+    // 〔RM1a〕从远端那台看：`Remote` 落点**就在这台上**，本机解析的结果原样留下（探针是这台的后端）。
+    //   `Client` 那一族在这个视角下不进人群（`build_rows` 滤掉），走不到这里；`Either` 与下面同一条。
+    if vantage == Vantage::Remote && host == HostScope::Remote {
+        return by_dest;
+    }
     match (host, by_dest) {
         // 远端：本机**不许**替它回答"路径在不在"（T03 阻塞 3 的根因）。
         //
@@ -172,6 +220,7 @@ fn project_onto_host(by_dest: PathResolution, host: HostScope, declared: &str) -
 }
 
 fn resolve_by_destination(
+    vantage: Vantage,
     declared: &str,
     dest: &ToolDestination,
     home: &Path,
@@ -209,7 +258,11 @@ fn resolve_by_destination(
                 resolve_local_home(declared, home, cfg_dir_env, is_dir)
             }
         }
-        ToolDestination::RemoteHomeRelative(_) => Ok(PathResolution::Remote(declared.to_string())),
+        // 〔RM1a〕从远端那台看，「远端家目录相对」就是**这台**的家目录相对 ⇒ 照本机路径解析（`home` 是那台的）。
+        ToolDestination::RemoteHomeRelative(_) => match vantage {
+            Vantage::Monitor => Ok(PathResolution::Remote(declared.to_string())),
+            Vantage::Remote => resolve_local_home(declared, home, cfg_dir_env, is_dir),
+        },
         // 🔴 〔`K-R81` 09-12〕`BothHomeRelative` 那一臂删了 —— 墓碑住 `tool_registry::Carrier`
         //    的头注。一句话：那个变体是为「一个 `destination` 装不下两个落点」造的，
         //    而载体这一维立起来之后那个前提没了（`ccm` 现在是两个载体，
@@ -481,9 +534,18 @@ fn row(
         cfg_dir_env,
         is_dir,
         fs,
+        vantage,
         ..
     } = *env;
-    let resolved = resolve_touched_path(f.path, &c.destination, f.host, home, cfg_dir_env, is_dir);
+    let resolved = resolve_touched_path_from(
+        vantage,
+        f.path,
+        &c.destination,
+        f.host,
+        home,
+        cfg_dir_env,
+        is_dir,
+    );
     let (path_resolved, state) = match &resolved {
         Ok(r) => {
             let shown = match r {
@@ -550,6 +612,8 @@ pub struct SurfaceEnv<'a> {
     /// 这条纪律不是新写的：`hooks_diag::resolves_on_path` 的头注记着它在生产平台上
     /// 曾经「既没取到、又给了一个确定的否定答案」。
     pub path_env: Option<&'a str>,
+    /// 〔RM1a〕从哪台机器上看（见 [`Vantage`]）。探针与上面几样必须是**同一台**的。
+    pub vantage: Vantage,
 }
 
 /// 清单里**没有 `ToolSpec`** 的那一项，在这一页上长什么样。
@@ -688,6 +752,9 @@ fn observe_unmanaged(
 /// 拿前者当后者用是**分母对不上**。
 /// 钉住它的是 `the_view_population_is_exactly_the_closed_set`。
 pub fn build_rows(env: &SurfaceEnv) -> Vec<SurfaceRow> {
+    // 〔RM1a〕从远端那台看：住 monitor 所在那台的那一族（`HostScope::Client`）**不在这台上** ⇒ 不进人群。
+    //   不是「查不到」，是「这一格不属于这台机器」—— 画成一行「未确定」反而是在说一句关于这台的假话。
+    let here = |h: HostScope| env.vantage == Vantage::Monitor || h != HostScope::Client;
     crate::tool_registry::environment()
         .iter()
         .flat_map(|e| match e.backing {
@@ -696,11 +763,13 @@ pub fn build_rows(env: &SurfaceEnv) -> Vec<SurfaceRow> {
             //    行数不变（touch 总数没变过），变的是**每一行知道自己属于哪一份产物**。
             EnvBacking::Managed(t) => t
                 .carrier_touches()
+                .filter(|(_, f)| here(f.host))
                 .map(|(c, f)| row(e, t, c, f, env))
                 .collect::<Vec<_>>(),
-            EnvBacking::Named { named, host, probe } => {
+            EnvBacking::Named { named, host, probe } if here(host) => {
                 vec![unmanaged_row(e, named, host, probe, env)]
             }
+            EnvBacking::Named { .. } => Vec::new(),
         })
         .collect()
 }
@@ -729,19 +798,16 @@ pub struct SettingsScope {
 /// 两页对同一文件给出不同话是**设计如此**：一页说"有字样"，一页说"装没装"。
 /// 真机核实过当前两页不矛盾（`~/.claude/settings.json` 里 2 处命中都在
 /// `hooks.*.command` 里），但假阳性面是真实的，措辞必须先把这一点讲明。
-const HOOK_PROGRAMS: [&str; 2] = ["cc-register", "cc-bus-stop-hook"];
+pub(crate) const HOOK_PROGRAMS: [&str; 2] = ["cc-register", "cc-bus-stop-hook"];
 
 fn scope_row(
     scope: &'static str,
     path: PathBuf,
     precedence_note: &'static str,
-    read: &dyn Fn(&Path) -> Option<String>,
+    has_hooks: &dyn Fn(&Path) -> Option<bool>,
     fs: &FsProbe,
 ) -> SettingsScope {
-    let raw = read(&path);
-    let has = raw
-        .as_deref()
-        .map(|s| HOOK_PROGRAMS.iter().any(|p| s.contains(p)));
+    let has = has_hooks(&path);
     SettingsScope {
         scope,
         path: path.to_string_lossy().into_owned(),
@@ -751,12 +817,22 @@ fn scope_row(
     }
 }
 
+/// 一份 settings 的原文里有没有那两个钩子程序的字样。读不到（`None`）⇒ `None`（**不猜**）。
+///
+/// 〔RM1a〕抽出来：本机那条路读原文、在这里判；远端那条路把 [`HOOK_PROGRAMS`] 交给那台的后端
+/// （`footprint-probe` 的 `hooks.needles`），原文不过线 —— 字样表只有这一份。
+pub fn hooks_in_text(raw: Option<&str>) -> Option<bool> {
+    raw.map(|s| HOOK_PROGRAMS.iter().any(|p| s.contains(p)))
+}
+
 /// 列出**用户级**的两个 settings 作用域，并把「项目级没查」如实写成一行。
+///
+/// 〔RM1a〕第四个参数从「读原文」换成「有没有钩子字样」：远端那条路原文不过线（见 [`hooks_in_text`]）。
 pub fn build_settings_scopes(
     home: &Path,
     cfg_dir_env: Option<&Path>,
     is_dir: &dyn Fn(&Path) -> bool,
-    read: &dyn Fn(&Path) -> Option<String>,
+    has_hooks: &dyn Fn(&Path) -> Option<bool>,
     fs: &FsProbe,
 ) -> Vec<SettingsScope> {
     let cfg = crate::hooks_diag::claude_config_dir(cfg_dir_env, home, is_dir);
@@ -765,14 +841,14 @@ pub fn build_settings_scopes(
             "用户级",
             cfg.join("settings.json"),
             "钩子诊断读的就是这一份；本页只做字样粗匹配，装没装看「cc-bus 钩子」页",
-            read,
+            has_hooks,
             fs,
         ),
         scope_row(
             "用户级 local",
             cfg.join("settings.local.json"),
             "优先级高于上一行；这里定义的钩子同样生效",
-            read,
+            has_hooks,
             fs,
         ),
         SettingsScope {
@@ -803,8 +879,21 @@ pub struct ConfigSurfaceReport {
 }
 
 /// 扫一次配置面。**只读、一次性**（不新增轮询）。
+///
+/// 〔RM1a · 第四波〕**收 `origin`**：本机照旧在本进程里扫（下面那一段，一字未改）；
+/// 远端问那台机器的后端要路径事实（`footprint_remote::report_of`），判定走同一个 [`build_rows`]。
 #[tauri::command]
-pub async fn config_surface_report() -> Result<ConfigSurfaceReport, String> {
+pub async fn config_surface_report(
+    origin: crate::origin::Origin,
+) -> Result<ConfigSurfaceReport, String> {
+    match origin.route("config_surface_report")? {
+        crate::origin::Route::Local => local_report().await,
+        crate::origin::Route::Remote(host) => crate::footprint_remote::report_of(host).await,
+    }
+}
+
+/// 本机那一臂（原 `config_surface_report` 的体，一字未改）。
+async fn local_report() -> Result<ConfigSurfaceReport, String> {
     tokio::task::spawn_blocking(|| {
         let home = dirs::home_dir().ok_or_else(|| "取不到 HOME".to_string())?;
         let cfg_env = std::env::var_os("CLAUDE_CONFIG_DIR").map(PathBuf::from);
@@ -821,7 +910,7 @@ pub async fn config_surface_report() -> Result<ConfigSurfaceReport, String> {
                     .collect::<Vec<_>>()
             })
         };
-        let read = |p: &Path| std::fs::read_to_string(p).ok();
+        let has_hooks = |p: &Path| hooks_in_text(std::fs::read_to_string(p).ok().as_deref());
         let fs = FsProbe {
             meta: &meta,
             list: &list,
@@ -835,11 +924,18 @@ pub async fn config_surface_report() -> Result<ConfigSurfaceReport, String> {
             is_dir: &is_dir,
             fs: &fs,
             path_env: path_env.as_deref(),
+            vantage: Vantage::Monitor,
         };
         let cfg_dir = crate::hooks_diag::claude_config_dir(cfg_env.as_deref(), &home, &is_dir);
         Ok(ConfigSurfaceReport {
             rows: build_rows(&surface_env),
-            settings_scopes: build_settings_scopes(&home, cfg_env.as_deref(), &is_dir, &read, &fs),
+            settings_scopes: build_settings_scopes(
+                &home,
+                cfg_env.as_deref(),
+                &is_dir,
+                &has_hooks,
+                &fs,
+            ),
             claude_config_dir: cfg_dir.to_string_lossy().into_owned(),
             home: home.to_string_lossy().into_owned(),
         })

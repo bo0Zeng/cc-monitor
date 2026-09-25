@@ -174,6 +174,8 @@ fn every_registered_command_declares_its_run_kind() {
                 // 〔RM1a · 第四波〕中转那两条：回环连一次 / 起一个进程，同步阻塞。
                 | "relay-ensure"
                 | "relay-status"
+                // 〔RM1a · 第四波〕足迹那一条：一批 stat / 读几份小文件，同步文件 I/O。
+                | "footprint-probe"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_));
         assert_eq!(
@@ -234,6 +236,7 @@ fn every_registered_command_declares_its_run_kind() {
         "apikey-read",
         "relay-ensure",
         "relay-status",
+        "footprint-probe",
     ];
     let missing: Vec<&str> = super::REGISTRY
         .iter()

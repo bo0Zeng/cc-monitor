@@ -189,6 +189,11 @@ mod tests {
              那个数的唯一住址是 `files::CAPABILITIES`（被两向对拍钉着）。同 `comm-boundary` \
              那一格 09-21 的处置：**不是把数改对，是把抄来的第二份摘掉**。",
         ),
+        (
+            "footprint",
+            "〔RM1a · 第四波〕「足迹」的这台机器那一半：帧面 `footprint-probe` —— 这台机器的环境 · 一批路径的 stat · \
+             一批文件里有没有某几个字样。它归 backend-core 是因为那些事实**只在那台机器上**；判定仍只住 monitor。**零写盘**",
+        ),
         ("guard_support", "各条源码扫描型守卫共用的剥法与住址"),
         ("inbound", "流连接上的入方向（信封 / 分派 / 取消）"),
         ("listen", "常驻监听口的纯判定（接受循环在 main.rs）"),

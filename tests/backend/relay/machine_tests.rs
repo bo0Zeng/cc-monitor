@@ -68,7 +68,10 @@ fn listening_sees_a_bound_port_and_stops_seeing_it_once_released() {
             "口已经放掉、也没人拿走（我自己绑得上），却说有人在听"
         );
     }
-    assert!(conclusive >= 1, "五趟都撞上别人拿走那个口 —— 负向那一半一次都没量成");
+    assert!(
+        conclusive >= 1,
+        "五趟都撞上别人拿走那个口 —— 负向那一半一次都没量成"
+    );
 }
 
 #[test]

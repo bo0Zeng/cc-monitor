@@ -785,8 +785,13 @@ export const commands = {
   list_remote_tmux: (args: { origin: string }) =>
     invoke<TmuxSession[] | null>("list_remote_tmux", args),
 
-  /** 一次配置面审计（只读、一次性，不新增轮询）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
-  config_surface_report: () => invoke<ConfigSurfaceReport>("config_surface_report"),
+  /**
+   * 一次「足迹」（原「配置面审计」）：只读、一次性，不新增轮询。返回值字段被真消费 ⇒ 生成物（桶③）。
+   * 〔RM1a · 第四波〕**收 `origin`**：本机照旧在 monitor 进程里扫；远端问那台机器的后端要路径事实
+   * （`footprint-probe`），判定走同一份 `build_rows`。远端那一栏的界面归 ST2 接。
+   */
+  config_surface_report: (args: { origin: Origin }) =>
+    invoke<ConfigSurfaceReport>("config_surface_report", args),
   // U-CC1：数据面漂移记账（只读、按需一次，不轮询）。
   drift_ledger_report: () => invoke<DriftFaceReport[]>("drift_ledger_report"),
   // P8a：Claude Code 的 marketplace 面（只读、按需一次，不轮询）。

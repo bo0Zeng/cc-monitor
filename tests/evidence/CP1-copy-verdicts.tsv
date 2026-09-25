@@ -331,6 +331,13 @@ src/backend/accounts/apikey/file_face.rs:178	{how}。怎么修：{fix}	保留	[�
 src/bridge/src/apikey_remote.rs:152	读写第三方 API key 时出了内部错误，没有拿到结果	保留	[可达存疑] 〔RM1a〕分流器 Done 那一臂的兜底（本族走不到）；说的是用户做的事（读写 API key）＋结果，短，同 backend_policy.rs 那一句的形
 src/bridge/src/remote_relay.rs:66	本机的中转由 monitor 自己看着（起本机后端时一起起），不在这里另起一个	保留	[可达存疑] 〔RM1a〕`relay_ensure` 对本机的拒绝（今天界面上没有调用方）；说的是结果＋原因，短。「中转」是层 1 的正名（terms.json）
 src/bridge/src/remote_relay.rs:115	问中转时出了内部错误，没有拿到结果	保留	[可达存疑] 〔RM1a〕分流器 Done 那一臂的兜底（本族走不到）；同 backend_policy.rs 那一句的形
+src/backend/footprint.rs:104	列不动（没权限？）	保留	[不对外] 〔RM1a〕`footprint-probe` 应答里目录那一格的 notice，monitor 今天不读它（界面没有它的格子），过线是为了能查
+src/backend/footprint.rs:113	名字超过 {MAX_ENTRIES} 个，没列（不截断：截断的清单会被当成完整的）	保留	[不对外] 同上，目录名字超上限时那一格的 notice
+src/backend/footprint.rs:125	不是一份普通文件	保留	[不对外] 同上，`notices` 里查字样答 null 的原因
+src/backend/footprint.rs:127	{} 字节，超过 {MAX_HOOK_FILE_BYTES}，没读	保留	[不对外] 同上
+src/backend/footprint.rs:131	读不到：{:?}	保留	[不对外] 同上
+src/backend/footprint.rs:138	读不动：{:?}	保留	[不对外] 同上
+src/bridge/src/footprint_remote.rs:271	查这台机器的足迹时出了内部错误，没有拿到结果	保留	[可达存疑] 〔RM1a〕分流器 Done 那一臂的兜底（本族走不到）；同 backend_policy.rs 那一句的形；「足迹」是正名（用户裁）
 src/bridge/src/data_paths.rs:114	主题 / 字体 / claudeDir override / 诊断开关	内部词→「Claude 配置目录」（claudeDir override）	[对外] 设置「数据」页里 config.json 的说明；claudeDir override 是配置键名 新词:claudeDir
 src/bridge/src/data_paths.rs:119	cc 集成的 sid → 终端 HWND 持久绑定	内部词→「会话与终端窗口的对应记录」（sid / HWND）	[对外] 设置「数据」页说明（ui-copy-discipline BACKEND_SIDE_DEBT 点名：R1 硬命中 sid、HWND）
 src/bridge/src/data_paths.rs:124	auto-launch monitor 开关 + 当前 monitor exe 路径	内部词→「开机自启开关和程序路径」	[对外] 设置「数据」页说明；auto-launch / exe 中英混写 新词:auto-launch

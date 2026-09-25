@@ -19,6 +19,7 @@
 // **绝不显示成"缺失"**。远端路径、相对项目目录的 `.mcp.json`、Windows 侧 `$PROFILE`
 // 本机都查不到，把它们画成红叉就是对能用的安装报假警报——B04 审计已经抓过一次同型病。
 import { commands } from "../ipc/commands";
+import { LOCAL_ORIGIN as BACKEND_LOCAL_ORIGIN } from "../backend-policy";
 import { showActionFailureToast } from "../error-toast";
 
 // C04d 批 2：**四个线上类型全部改用生成物**（`config_surface.rs` 是源）。
@@ -398,7 +399,8 @@ export class ConfigSurfaceSection {
   async refresh(): Promise<void> {
     this.body.replaceChildren(makeSkeleton("footprint", "正在扫这台机器上的足迹…"));
     try {
-      const r = await commands.config_surface_report();
+      // 〔RM1a〕命令收了 origin；这一块今天只在本机那一页发（远端那一栏归 ST2 接，见 `applyOriginGate`）。
+      const r = await commands.config_surface_report({ origin: BACKEND_LOCAL_ORIGIN });
       // **校验自己 IPC 的返回形状**（B03 的真 bug：`invoke` 可能 resolve 成 undefined，
       // 于后续 `.length` 当场抛，把整个 section 挂掉）。
       if (!r || !Array.isArray(r.rows) || !Array.isArray(r.settings_scopes)) {
