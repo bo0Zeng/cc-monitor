@@ -85,7 +85,7 @@ src/bridge/
 | **auto_launch.rs** | "用 cc 启动 claude 时自动开 monitor" 开关持久化（模块级函数，非 impl 方法） | `auto_launch::{load, save, get_config, set_enabled, update_monitor_path_on_startup}` |
 | **subagent.rs** | 父 session 的 Agent tool_use 关联 `<parent>/subagents/agent-*.jsonl` | IPC `load_subagent` |
 | **adapter.rs** + **adapter/claude_code.rs** (F-MA) | agent 适配层：把 cc-monitor 对「Claude Code 具体形态」的假设（会话目录布局 / 记录解析 / 活性 / resume 命令）收敛到 `AgentAdapter` 后，`claude_code.rs` 是第一个实例（**零行为变化**）。第一刀只抽浅耦合点（会话源布局等字面量），不碰记录模型（`JsonlRecord` 暂当规范模型） | `SessionLayout / AgentAdapter`（增量长 trait） |
-| **event_replay.rs** (v2.4.2 大小分流，v2.6 状态机简化，Batch5 async 化+分组) | 内存 buffer + frontend-ready 时切块 emit；`on_line_batch_awaited`（〔CF1〕唯一入口）按 batch 大小分流：< 50 行走 `jsonl-line` 单条 live emit，>= 50 行（如 /resume 灌历史、远端 snapshot 攒批）走 `jsonl-batch` 切块 emit——**Batch5-F17 起大批块序列 spawn 到 async_runtime**（spawn 返回≠emit 完成，顺序敏感调用方用 `on_line_batch_awaited`，INVARIANTS §10）。**v2.6 删了 `replaying` flag + catch-up tail 路径** —— chunked emit 期间 watcher 真新行直接 emit，前端 RecordTimeline 按 seq 自动排到正确位置；切块统一 CHUNK_SIZE=600 末块先发；**Batch5-F19：`replay_and_mark_ready(priority_sid)` 按 session 分组、上次所在 tab 的块先发（chunk 全局连续编号保 batch-start 哨兵）** | `EventReplay::on_line_batch() / on_line_batch_awaited() / replay_and_mark_ready(priority_sid)（async）/ forget() / buffered_{local,remote}_session_ids()（#19/#20 重放后对账）` |
+| **event_replay.rs**（〔CF2 · 第四波 4B〕会话流的句柄 ＋ 重放缓冲） | 内存 buffer（**每个会话只留 seq 最高的 600 条**，摊还余量 150；丢掉的前端按字节 / 按行号取回）＋ 会话流订阅表：`on_line_batch_awaited`（〔CF1〕唯一入口）进缓冲并**当场**交进各条已过就绪点的订阅（< 50 行逐行一格；≥ 50 行切块、带 `batch` 边界、块间 tokio sleep，交完才返回 —— 行先于随后的归档）；有 credit 才交，没有就丢、原位报 `Gap`；`ready_point(priority_sid)`（frontend-ready 那个任务里）按 credit 交留存（不丢，等 `want`），优先会话的块先发 | `EventReplay::on_line_batch_awaited() / ready_point(priority_sid)（async）/ subscribe() / want() / stop() / origin_seen() / forget() / buffered_{local,remote}_session_ids()（#19/#20 重放后对账）` |
 | **history.rs** | 历史浏览器后端：两级 IPC + metadata + 物理删除 + resume；v2.2 (issue #12) 全部 async + spawn_blocking + Channel 流式 IPC | IPC `list_history_projects / stream_history_sessions_in_project / stream_read_session_jsonl / delete / update_metadata / resume` |
 | **launch.rs** (B14-F41) | 终端拉起单一入口：`launch_powershell_window`（从 `history.rs::resume_impl` 抽出，wt.exe Plan A → `CREATE_NEW_CONSOLE` Plan B，`-NoExit -EncodedCommand` 不带 `-NoProfile`）+ `build_remote_ssh_ps_command`（`ssh -t … "bash -lic '<cmd>'"`）+ `launch_remote_terminal`；本地 resume 与远端族 F41 resume / F51 attach / F52 tmux / F53 launcher 共用此单一入口；命令为 async（`spawn_blocking` 起窗）。三层引号/注入防线各自独立 | `launch_powershell_window() / build_remote_ssh_ps_command() / launch_remote_terminal()` + IPC `launch_remote_terminal` |
 | **search.rs** (issue #6) | 历史全文搜索：后台线程扫 projects/**/*.jsonl 建内存索引（按 session 分组 + 原文/小写副本两份）；默认搜 user/assistant 文本，`include_tools` 附加 tool_use/result/thinking；CLI 注入噪声按 INVARIANT § 20 剥掉；两级匹配（lc.contains 粗筛 + find_ci 精定位 snippet）+ 文本截断封顶。`Arc<SearchIndex>` State | IPC `search_history / get_search_index_status / rebuild_search_index` |
@@ -103,7 +103,7 @@ src/bridge/
 | **data_paths.rs** (v2.3.0 issue #3 A) | 透明化展示：枚举 monitor 所有持久路径（config / sid-hwnd-cache / auto-launch / history-metadata / ps-await / ps-registry / logs）+ WebView2 UserDataFolder（用 `app_local_data_dir().join("EBWebView")` 推断）+ PowerShell profile 备份目录。stat 不递归算大小，避免大目录卡 IPC | `collect()` + IPC `get_data_paths` |
 | **config.rs** | monitor 自己的 config.json R/W（Windows MoveFileExW 原子） | IPC `load_config / save_config` |
 | **logging.rs** (v2.0.0+) | tracing init（在 `tauri::Builder` 之前）+ 滚动 log 文件 + EnvFilter reload Handle + ErrorEmitterLayer（拦 ERROR emit `monitor-error` 给前端弹 toast）+ DiagnosticsConfig R/W | `init() / install_error_emitter() / update_config() / log_file_info()` + 5 个 IPC |
-| **bridge.rs** | 事件 / payload 常量与 schema。**v2.6 `JsonlLinePayload` 加 `seq: u64`** 字段（后端给的 per-file 行号，前端 RecordTimeline 按 seq 排到 DOM） | `events::JSONL_LINE / JSONL_BATCH / SESSION_ENDED / TASKS_UPDATE / SESSION_ACTIVITY`，`JsonlLinePayload { session_id, cwd, path, seq, origin?, message } / SessionEndedPayload / TasksUpdatePayload / SessionActivityPayload` |
+| **bridge.rs** | 事件 / payload 常量与 schema。**v2.6 `JsonlLinePayload` 加 `seq: u64`** 字段（后端给的 per-file 行号，前端 RecordTimeline 按 seq 排到 DOM）。〔CF2〕会话内容不再是事件：流里一格的体是 `SessionStreamFrame`（`{"line": …}` / `{"batch": "start"｜"end"}`） | `events::SESSION_ENDED / TASKS_UPDATE / SESSION_ACTIVITY …`，`JsonlLinePayload { session_id, cwd, path, seq, origin?, message } / SessionStreamFrame / SessionEndedPayload / TasksUpdatePayload / SessionActivityPayload` |
 | **utils.rs** ⭐ v2.6 大归并 | 跨模块共享 helper：`days_from_civil` (日期换算) / `NetTicks` + `FileTime` newtype (procStart 单位隔离) / `parse_iso8601_ms` + `systime_to_ms` + `now_ms` (时间换算，归并 history/subagent/bind 三处) / `scan_dir_jsons<T, K, F>` (泛型目录扫，归并 session_map+bind 两处) / `atomic_write_json<T>` (Windows ReplaceFileW + dst-not-exist rename fallback) / **v2.8.1** `powershell_encoded_command` (命令 → UTF-16LE base64，给 resume 的 `-EncodedCommand` 用，穿 wt/cmd 不被引号/`;` 切碎，零依赖) | (pub items 完整列表见模块 doc 注释) |
 
 ## IPC 清单
@@ -134,7 +134,7 @@ src/bridge/
 | `load_subagent` | `{ parentJsonlPath, description, toolUseTimestamp }` | `SubagentLoadResult` | 用户展开 Task 折叠卡 |
 | `forget_session` | `{ sessionId }` | `()` | 用户关闭 archived Tab |
 | `open_session_in_new_window` (issue #10) | `{ sessionId, title }` | `()` | Tab 右键「在新窗口打开」/ Ctrl+Shift+N，建 `viewer-<sid>` 独立只读窗口 |
-| `replay_session_to_window` (issue #10) | `{ sessionId }` (window 注入) | `()` | 独立窗口加载后调，把该 sid 历史定向 emit 给本窗口 |
+| `chan_subscribe` / `chan_want` / `chan_stop`（〔CF2〕） | `{ origin, kind, from, want, id }` / `{ id, more }` / `{ id }`（webview 注入） | `()` | 通道 `subscribe` 在 Tauri IPC 那一跳：会话内容流（`session-lines` / `session-lines/<sid>`），交格走事件 `chan-items`；经 `src/ipc/chan.ts` 用 |
 | `list_history_projects` | — | `HistoryProject[]` | 历史浏览器打开 |
 | `stream_history_sessions_in_project` | `{ projectDir, onEntry }` | `u32` (count) | 项目组展开（流式 Channel；v2.2 取代非流式版） |
 | `stream_read_session_jsonl` | `{ origin, jsonlPath, onChunk }` | `u32` (count) | 点击历史会话进入只读视图（流式 Channel）。〔步 12·C 09-20〕**本机与远端合成了一条**，`origin` 是它的参数（`设计/00 §2.5 ①`）。旧的远端命令名**已退役、不留别名** |
@@ -195,8 +195,7 @@ src/bridge/
 
 | 常量 | 事件名 | payload | 时机 |
 |---|---|---|---|
-| `JSONL_LINE` | `jsonl-line` | `JsonlLinePayload` | 后端帧里的一行解析后实时单条 emit |
-| `JSONL_BATCH` | `jsonl-batch` | `Vec<JsonlLinePayload>` | event_replay 启动重放时一次性发整个 history Vec |
+| （`chan/webview.rs::ITEMS_EVENT`） | `chan-items` | `{ sub, items }` | 〔CF2〕会话流的交格（原 `jsonl-line` / `jsonl-batch` 两个事件退役）；定向发给订阅所在的 webview |
 | `SESSION_ENDED` | `session-ended` | `SessionEndedPayload` | sessions/<PID>.json 被删（session 退出） |
 | `SESSION_STARTED` (resume 复活) | `session-started` | `SessionStartedPayload {session_id}` | 本地会话重新变活（sessions/<PID>.json 新增 **且 PID 探活通过**）时 emit——session-ended 的对称面；前端 `tabs.reviveTab` 复活已归档本地 Tab（`/resume` 免 F5）。`is_session_active` 门控避免崩溃残留旧 PID.json 误复活 |
 | `TASKS_UPDATE` (v2.3.0 issue #11) | `task-update` | `TasksUpdatePayload {sessionId, tasks}` | tasks/<sid>/ 内任何文件变更（debounce 100ms + dedup by sid） |

@@ -33,15 +33,36 @@
 //! 失败时回 `{ err, body }`：`err` 是 [`super::wire::err_to_wire`] 给的**线上形状**（回环那条同一份），
 //! `body` 是 `Refused` 那份不透明体。TS 那侧按它解回 `§3.3.1` 的三层。
 //!
+//! # 〔CF2 · 第四波 4B〕`subscribe` 那一半
+//!
+//! ```text
+//! webview (src/ipc/chan.ts)  ── chan_subscribe(origin, kind, from, want, id) ──▶ 本文件 ──▶ 注入的句柄（event_replay·rs）
+//!   events.ts 的流          ◀── Tauri 事件 `chan-items` {sub, items} ─────────── WebviewSink（emit_to 那个 webview）
+//!                            ── chan_want(id, more) / chan_stop(id) ────────────▶
+//! ```
+//!
+//! - **传输选 Tauri 事件，不选 `tauri::ipc::Channel`**（`调研/第四波记录/CF2.md §3.2`）：前端那一条 queue 的顺序
+//!   （行 · `session-ended` · 宣告 …）靠「同一个 webview 上按 emit 先后执行」；`Channel` 的大消息走「先存、再让 JS
+//!   `fetch` 回来」，会被之后 `eval` 出去的起停事件超车（Tauri 2.11.6 `ipc/channel.rs`）。
+//! - **编号由 webview 那一侧给**（每页从 1 起）：格可能先于 `chan_subscribe` 的应答到达，
+//!   编号先登记在 TS 那侧才不丢。同一个 `(webview, 编号)` 再订一次 ⇒ 旧的那条作废（页面重载）。
+//! - **体在这一跳是文本**：Tauri 事件是 JSON，二进制过不来；体原样按 UTF-8 装成字符串（不解析、不改写），
+//!   不是 UTF-8 ⇒ 那一格换成 `Closed{Ours(Broken)}`（句柄坏了，不猜）。
+//! - 句柄只有一种：会话内容（`kind` 前缀 `session-lines`，[`crate::event_replay::SESSION_LINES_KIND`]）。
+//!   认不出的 `kind` 由句柄原位回 `Closed{Peer(no-such-stream)}`，不装作订阅成功。
+//!
 //! # 买不到
 //!
 //! - **不买对端撤活**：TS 那侧本地撤单是立即的（`Ours{Cancelled}`），而这一跳照跑到「还剩多少」为止
 //!   —— 与回环那条同一条边界（`host.rs` 头注）。补它要一条「撤单」命令 ＋ 在飞编号表，本拍不开。
-//! - **不买 `subscribe`**：webview 这一侧本拍零条流（登记在 `调研/第四波记录/C4a.md` §5.4）。
+//! - **webview 这一跳的 `subscribe` 没有续传**（`from` 给了就原位说用法错）与**回环那条上没有会话流**
+//!   （进程外前端今天不订会话内容；`host.rs::InboundBackends::subscribe` 对它照旧回「没有这条流」）。
 
 use super::host::InboundBackends;
 use super::router::{self, Backends};
-use super::wire::{err_to_wire, Body, CallError, CancelToken, Op, OursFault, WireErr};
+use super::wire::{
+    err_to_wire, Body, By, CallError, CancelToken, Cursor, HopFault, Item, Op, OursFault, WireErr,
+};
 use serde::Serialize;
 use std::time::Duration;
 
@@ -96,6 +117,119 @@ pub async fn chan_call(
         Ok(body) => Ok(tauri::ipc::Response::new(body.0)),
         Err(e) => Err(fail(e)),
     }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  〔CF2 · 第四波 4B〕`subscribe`
+// ════════════════════════════════════════════════════════════════════════════
+
+/// 交给 webview 的事件名（`src/ipc/chan.ts` 按窗口作用域听它）。
+pub const ITEMS_EVENT: &str = "chan-items";
+
+/// 流里一格在 webview 这一跳上的样子（`src/ipc/chan.ts::decodeItem` 按它解；跨语言金样
+/// `tests/__fixtures__/chan-webview-items.golden.json`）。体是文本（见模块头注）。
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(tag = "t", rename_all = "snake_case")]
+pub(crate) enum WebviewItem {
+    Frame { seq: u64, body: String },
+    Gap { from_seq: u64, to_seq: u64 },
+    Unseen { idx: u8, tag: String, why: HopFault },
+    Seen { from: Option<Vec<u8>> },
+    ClosedByPeer { body: String },
+    ClosedByOurs { why: OursFault },
+}
+
+/// 一次投递：哪条订阅 ＋ 一串格。
+#[derive(Debug, Serialize)]
+pub(crate) struct Delivery {
+    pub sub: u64,
+    pub items: Vec<WebviewItem>,
+}
+
+/// `Item` ⇒ webview 这一跳的格。体不是 UTF-8 ⇒ `Closed{Ours(Broken)}`（**穷尽**，`X1` 同一条纪律）。
+pub(crate) fn webview_item(i: Item) -> WebviewItem {
+    let broken = WebviewItem::ClosedByOurs {
+        why: OursFault::Broken,
+    };
+    match i {
+        Item::Frame { seq, body } => match String::from_utf8(body.0) {
+            Ok(body) => WebviewItem::Frame { seq, body },
+            Err(_) => broken,
+        },
+        Item::Gap { from_seq, to_seq } => WebviewItem::Gap { from_seq, to_seq },
+        Item::Unseen { at, why } => WebviewItem::Unseen {
+            idx: at.idx,
+            tag: at.tag.to_string(),
+            why,
+        },
+        Item::Seen { from } => WebviewItem::Seen {
+            from: from.map(|c: Cursor| c.0),
+        },
+        Item::Closed { by: By::Peer(b) } => match String::from_utf8(b.0) {
+            Ok(body) => WebviewItem::ClosedByPeer { body },
+            Err(_) => broken,
+        },
+        Item::Closed { by: By::Ours(why) } => WebviewItem::ClosedByOurs { why },
+    }
+}
+
+/// 生产的出口：`emit_to` 那个 webview（窗口作用域），与起停事件同一条投递队列。
+pub struct WebviewSink(pub tauri::AppHandle);
+
+impl crate::event_replay::ItemSink for WebviewSink {
+    fn deliver(&self, label: &str, sub: u64, items: Vec<Item>) {
+        use tauri::Emitter;
+        let d = Delivery {
+            sub,
+            items: items.into_iter().map(webview_item).collect(),
+        };
+        // 目标必须是 `EventTarget::webview_window`（`INVARIANTS §22` 第 2 条：裸串目标命不中窗口作用域的监听）。
+        let target = tauri::EventTarget::webview_window(label.to_string());
+        if let Err(e) = self.0.emit_to(target, ITEMS_EVENT, &d) {
+            tracing::warn!("通道：交格给 [{label}] 第 {sub} 条订阅失败：{e}");
+        }
+    }
+}
+
+/// 主界面说 `subscribe` 的那一条命令。**不回错**（`05 §3.3.5`）：说不了的在流里原位说。
+/// `id` 由 webview 那一侧给（见模块头注）；`from` 是不透明游标（本句柄不支持，原位说用法错）。
+#[tauri::command]
+pub fn chan_subscribe(
+    webview: tauri::Webview,
+    origin: crate::origin::Origin,
+    kind: String,
+    from: Option<Vec<u8>>,
+    want: u32,
+    id: u64,
+    replay: tauri::State<'_, std::sync::Arc<crate::event_replay::EventReplay>>,
+) {
+    // 空白名：`route` 那道闸拒 ⇒ 交给句柄一个空名，它原位回 `Closed{Ours(Misuse)}`（同 `chan_call` 那一格）。
+    let origin = match origin.route("chan_subscribe") {
+        Ok(_) => origin,
+        Err(_) => crate::origin::Origin(String::new()),
+    };
+    replay.subscribe(webview.label(), id, &origin, &kind, from.map(Cursor), want);
+}
+
+/// 订阅方的 credit（累加）。
+#[tauri::command]
+pub fn chan_want(
+    webview: tauri::Webview,
+    id: u64,
+    more: u32,
+    replay: tauri::State<'_, std::sync::Arc<crate::event_replay::EventReplay>>,
+) {
+    replay.want(webview.label(), id, more);
+}
+
+/// 撤订阅（本地撤单）。
+#[tauri::command]
+pub fn chan_stop(
+    webview: tauri::Webview,
+    id: u64,
+    replay: tauri::State<'_, std::sync::Arc<crate::event_replay::EventReplay>>,
+) {
+    replay.stop(webview.label(), id);
 }
 
 #[cfg(test)]

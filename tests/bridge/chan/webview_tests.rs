@@ -239,3 +239,86 @@ fn a_blank_origin_never_reaches_a_backend() {
     }
     let _ = OursFault::Misuse; // 挡下时回的那一层（见 `chan_call`）
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+//  〔CF2 · 第四波 4B〕`subscribe` 那一半：流里的格在 webview 这一跳上的样子
+//
+//  要求住址：`设计/05 §3.3.4`（`Item` 五个变体；「`Gap` 必须在流里的原位」）· `§3.3.0`「载荷是不透明字节」。
+// ════════════════════════════════════════════════════════════════════════════
+
+/// 金标准住址：TS 那侧（`tests/ipc/chan.vitest.ts`）读**同一份文件**解回 `Item` —— 两侧不各写一份字面量。
+const ITEMS_GOLDEN: &str = "tests/__fixtures__/chan-webview-items.golden.json";
+
+/// ★ S5（Rust 那一半）：每个 `Item` 变体交回 webview 的形状 == 金标准（体按 UTF-8 原样成字符串，不解析）。
+#[test]
+fn the_item_shapes_equal_the_golden_file_the_ts_side_decodes() {
+    use super::{webview_item, Delivery};
+    use crate::chan::wire::By;
+    let items = vec![
+        Item::Frame {
+            seq: 7,
+            body: Body(br#"{"line":{"x":1}}"#.to_vec()),
+        },
+        Item::Gap {
+            from_seq: 8,
+            to_seq: 12,
+        },
+        Item::Unseen {
+            at: HopId {
+                idx: 1,
+                tag: "open",
+            },
+            why: HopFault::Unreachable,
+        },
+        Item::Seen { from: None },
+        Item::Seen {
+            from: Some(Cursor(vec![1, 2])),
+        },
+        Item::Closed {
+            by: By::Peer(Body(br#"{"code":"no-such-stream"}"#.to_vec())),
+        },
+        Item::Closed {
+            by: By::Ours(OursFault::Broken),
+        },
+    ];
+    let got = serde_json::to_value(Delivery {
+        sub: 3,
+        items: items.into_iter().map(webview_item).collect(),
+    })
+    .expect("可序列化");
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let want: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join(ITEMS_GOLDEN))
+            .unwrap_or_else(|e| panic!("读不到 {ITEMS_GOLDEN}：{e}")),
+    )
+    .expect("金标准不是 JSON");
+    assert_eq!(
+        got,
+        want,
+        "交回 webview 的格与金标准不同 —— TS 那侧按金标准解，两边会各说各的。现打：\n{}",
+        serde_json::to_string_pretty(&got).unwrap()
+    );
+}
+
+/// ★ S5：体不是 UTF-8（这一跳是文本，过不来）⇒ 那一格换成 `Closed{Ours(Broken)}`，不猜、不有损替换。
+#[test]
+fn a_body_that_is_not_utf8_becomes_broken_not_lossy() {
+    use super::{webview_item, WebviewItem};
+    use crate::chan::wire::By;
+    for i in [
+        Item::Frame {
+            seq: 0,
+            body: Body(vec![0xff, 0xfe]),
+        },
+        Item::Closed {
+            by: By::Peer(Body(vec![0xc3])),
+        },
+    ] {
+        assert_eq!(
+            webview_item(i),
+            WebviewItem::ClosedByOurs {
+                why: OursFault::Broken
+            }
+        );
+    }
+}

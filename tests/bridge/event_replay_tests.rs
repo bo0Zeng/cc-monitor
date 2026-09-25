@@ -171,7 +171,10 @@ fn build_chunks_preserves_input_order_within_chunks() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 〔U3b · `设计/10` 步 8〕两档容量：接上骨架的会话只留尾巴；其余不设上限。
+// 〔CF2 · 第四波 4B〕一档容量：**每个**会话只留尾巴（原〔U3b〕两档：接上骨架的留尾巴、其余不设上限）。
+//
+// 要求住址：`设计/05 §3.3.4`「⇒ **级 3 是判据**：任何一个订阅侧缓冲都要有上界，满了必须落级 1 或级 2，
+// **不许静默堆**」。丢掉的正文前端按字节（骨架）或按行号（`read_session_lines`）要得回来 ⇒ 这一档是级 2。
 // ═══════════════════════════════════════════════════════════════════════
 
 fn seqs_of(replay: &EventReplay, sid: &str) -> Vec<u64> {
@@ -187,41 +190,10 @@ fn seqs_of(replay: &EventReplay, sid: &str) -> Vec<u64> {
     v
 }
 
+/// ★ R1：**不登记任何东西**的会话也有上界 —— 长到 `KEEP + SLACK` 不修，再来一条修回 `KEEP`（摊还）；读数跟着走。
 #[test]
-fn sessions_without_a_skeleton_are_never_trimmed() {
+fn every_session_is_trimmed_back_to_keep_after_the_slack() {
     let replay = EventReplay::new();
-    let batch: Vec<_> = (0..REPLAY_TAIL_KEEP * 3)
-        .map(|i| payload("free", i))
-        .collect();
-    push_and_trim(&mut replay.inner.lock(), &batch);
-    assert_eq!(seqs_of(&replay, "free").len(), REPLAY_TAIL_KEEP * 3);
-    assert_eq!(replay.stats().trimmed_total, 0);
-}
-
-/// 🔴 按 seq 留尾巴，不按到达序：远端快照是尾部优先（尾块先到、头块后到）。
-#[test]
-fn keep_tail_only_keeps_the_highest_seqs_even_when_the_tail_arrived_first() {
-    let replay = EventReplay::new();
-    let n = REPLAY_TAIL_KEEP * 2;
-    let tail_first: Vec<_> = (REPLAY_TAIL_KEEP..n)
-        .chain(0..REPLAY_TAIL_KEEP)
-        .map(|i| payload("s", i))
-        .collect();
-    push_and_trim(&mut replay.inner.lock(), &tail_first);
-    push_and_trim(&mut replay.inner.lock(), &[payload("other", 0)]);
-    let dropped = replay.keep_tail_only("s");
-    assert_eq!(dropped, REPLAY_TAIL_KEEP);
-    let want: Vec<u64> = (REPLAY_TAIL_KEEP as u64..n as u64).collect();
-    assert_eq!(seqs_of(&replay, "s"), want);
-    assert_eq!(seqs_of(&replay, "other"), vec![0], "别的会话一条不动");
-    assert_eq!(replay.keep_tail_only("s"), 0, "幂等");
-}
-
-/// 登记之后：长到 `KEEP + SLACK` 不修，再来一条修回 `KEEP`（摊还）；读数跟着走。
-#[test]
-fn live_growth_is_trimmed_back_to_keep_after_the_slack() {
-    let replay = EventReplay::new();
-    replay.keep_tail_only("s"); // 空会话登记：计数 0
     let upto = REPLAY_TAIL_KEEP + TRIM_SLACK;
     let batch: Vec<_> = (0..upto).map(|i| payload("s", i)).collect();
     push_and_trim(&mut replay.inner.lock(), &batch);
@@ -235,23 +207,463 @@ fn live_growth_is_trimmed_back_to_keep_after_the_slack() {
         replay.stats(),
         ReplayStats {
             history_len: REPLAY_TAIL_KEEP,
-            tail_only_sessions: 1,
+            sessions: 1,
             trimmed_total: (TRIM_SLACK + 1) as u64,
         }
     );
 }
 
+/// ★ R1：长到多长都不越过 `KEEP + SLACK`（原来「没骨架的会话」这里是 `KEEP × 3` 条原样留着）。
 #[test]
-fn forget_also_drops_the_tail_only_registration() {
+fn no_session_ever_holds_more_than_keep_plus_slack() {
     let replay = EventReplay::new();
-    replay.keep_tail_only("s");
-    replay.forget("s");
-    assert_eq!(replay.stats().tail_only_sessions, 0);
+    for i in 0..REPLAY_TAIL_KEEP * 5 {
+        push_and_trim(&mut replay.inner.lock(), &[payload("free", i)]);
+        assert!(
+            seqs_of(&replay, "free").len() <= REPLAY_TAIL_KEEP + TRIM_SLACK,
+            "第 {i} 行之后越界"
+        );
+    }
+    assert!(replay.stats().trimmed_total > 0);
+}
+
+/// 🔴 R1：按 seq 留尾巴，不按到达序：快照是尾部优先（尾块先到、头块后到）⇒ 留下的恰是 seq 最高的那些；
+/// 修剪之后才到的头段（seq 低于最低留存）**不进缓冲**；别的会话一条不动。
+#[test]
+fn the_highest_seqs_are_kept_even_when_the_tail_arrived_first() {
+    let replay = EventReplay::new();
+    let n = REPLAY_TAIL_KEEP * 2;
+    let tail_first: Vec<_> = (REPLAY_TAIL_KEEP..n)
+        .chain(0..REPLAY_TAIL_KEEP)
+        .map(|i| payload("s", i))
+        .collect();
+    push_and_trim(&mut replay.inner.lock(), &[payload("other", 0)]);
+    // 逐行进（修剪在每一次进账的末尾判；一批之内会暂时越过上界，越过的量 ≤ 那一批的条数）
+    for p in &tail_first {
+        push_and_trim(&mut replay.inner.lock(), std::slice::from_ref(p));
+    }
+    let want: Vec<u64> = (REPLAY_TAIL_KEEP as u64..n as u64).collect();
+    assert_eq!(seqs_of(&replay, "s"), want);
+    assert_eq!(seqs_of(&replay, "other"), vec![0], "别的会话一条不动");
+    // 头段前 `SLACK + 1` 条进过缓冲、随那次修剪丢掉；其余 `KEEP − SLACK − 1` 条到的时候已在最低留存之下，没进过。
+    assert_eq!(replay.stats().trimmed_total, (TRIM_SLACK + 1) as u64);
+    // 最低留存之上的新行照进（实时追加）
+    push_and_trim(&mut replay.inner.lock(), &[payload("s", n)]);
+    assert_eq!(seqs_of(&replay, "s").last().copied(), Some(n as u64));
+}
+
+/// R1：`forget` 连同那个会话的账一起抹掉（之后同名会话从头计数、没有最低留存）。
+#[test]
+fn forget_also_drops_the_session_accounting() {
+    let replay = EventReplay::new();
     let batch: Vec<_> = (0..REPLAY_TAIL_KEEP * 2).map(|i| payload("s", i)).collect();
     push_and_trim(&mut replay.inner.lock(), &batch);
+    assert_eq!(replay.stats().sessions, 1);
+    replay.forget("s");
+    assert_eq!(replay.stats().sessions, 0);
+    assert!(seqs_of(&replay, "s").is_empty());
+    push_and_trim(&mut replay.inner.lock(), &[payload("s", 0)]);
     assert_eq!(
-        seqs_of(&replay, "s").len(),
-        REPLAY_TAIL_KEEP * 2,
-        "忘掉之后回到不设上限那一档"
+        seqs_of(&replay, "s"),
+        vec![0],
+        "忘掉之后低 seq 的行照进（最低留存跟着忘了）"
     );
+}
+
+/// 两档那一套的名字：它们在任何一份生产代码里出现 = 分档（或那条登记命令）长回来了。
+/// 运行时拼，免得本文件自己的散文命中自己（本文件不在扫描面里，但 `include_str` 之类将来可能把它拉进来）。
+/// ⚠ 那张表的字段名（裸的 `tail_only`）**不进**针表：流模式旗标 `--tail-only` 在 `ssh_source.rs` 里也叫这个名字，
+/// 与重放缓冲无关（首跑现打：它是唯一一处命中）。那张表删掉之后编译器就管着它。
+fn two_tier_needles() -> [String; 2] {
+    [
+        format!("keep_tail{}", "_only"),
+        format!("replay_keep{}", "_tail_only"),
+    ]
+}
+
+fn two_tier_hits(prod: &str) -> Vec<String> {
+    two_tier_needles()
+        .into_iter()
+        .filter(|n| guard_core::contains_word(prod, n))
+        .collect()
+}
+
+/// ★ R2：分档那一套（登记「只留尾巴」的方法、那张表、那条 Tauri 命令）在 monitor Rust 生产段与前端 TS 生产段**零命中**；
+/// 正控：同一识别器在一段合成代码上两针全中、在「那条退役了」那种注释里不中（剥生产段真的在跑）。
+#[test]
+fn the_two_tier_registration_leaves_no_trace_in_production() {
+    let synthetic = format!(
+        "fn a() {{ replay.{}(\"s\"); }}\ninvoke(\"{}\")\n",
+        two_tier_needles()[0],
+        two_tier_needles()[1]
+    );
+    assert_eq!(
+        two_tier_hits(&guard_core::production_code(&synthetic)).len(),
+        2,
+        "识别器空转"
+    );
+    assert!(
+        two_tier_hits(&guard_core::production_code(&format!(
+            "// 那条（`{}`〔散文{}〕）退役了\n",
+            two_tier_needles()[1],
+            "墓碑"
+        )))
+        .is_empty(),
+        "注释里的墓碑被当成了生产代码 —— 剥生产段没在跑"
+    );
+    let root = crate::guard_support::repo_root();
+    let generated = root.join("src").join("generated"); // ts-rs 生成物不是手写的生产代码
+    let mut scanned = 0usize;
+    let mut offenders = Vec::new();
+    for (sub, ext) in [("src/bridge/src", "rs"), ("src", "ts")] {
+        for (p, text) in guard_core::scan_tree_excluding(&root.join(sub), &[ext], &[]) {
+            let rel = p
+                .strip_prefix(&root)
+                .unwrap_or(&p)
+                .to_string_lossy()
+                .replace('\\', "/");
+            if p.starts_with(&generated) {
+                continue;
+            }
+            scanned += 1;
+            let hits = two_tier_hits(&guard_core::production_code(&text));
+            if !hits.is_empty() {
+                offenders.push(format!("{rel}：{hits:?}"));
+            }
+        }
+    }
+    assert!(scanned > 200, "只扫到 {scanned} 份 —— 扫描面坏了");
+    assert!(
+        offenders.is_empty(),
+        "重放缓冲的「两档」又长回来了（`设计/05 §3.3.4`：每个订阅侧缓冲都要有上界，不许按「有没有登记」分档）：\n{}",
+        offenders.join("\n")
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 〔CF2 · 第四波 4B〕会话内容流的句柄（`subscribe` · credit · `Gap` · `Unseen`/`Seen` · 就绪点）
+//
+// 要求住址：`设计/05 §3.3.4`「**回推优先 · 推不动才丢 · 丢必须说**」「`Gap` 必须在流里的原位」·
+// `§3.3.5`「`call` 会失败、`subscribe` 不会」· `§8` 步 6「流那半收口成 `subscribe`」。
+// 期望一律手写（位置、条数、格的种类），不从被测的计划函数派生。
+// ═══════════════════════════════════════════════════════════════════════
+
+use crate::chan::wire::{Body as WBody, By as WBy, HopFault as WHop, Item as WItem};
+
+/// 记录器：`(webview, 订阅, 一次投递的格)`。
+#[derive(Default)]
+struct Rec(std::sync::Mutex<Vec<(String, u64, Vec<WItem>)>>);
+
+impl ItemSink for Rec {
+    fn deliver(&self, label: &str, sub: u64, items: Vec<WItem>) {
+        self.0.lock().unwrap().push((label.to_string(), sub, items));
+    }
+}
+
+impl Rec {
+    fn all(&self) -> Vec<WItem> {
+        self.0
+            .lock()
+            .unwrap()
+            .iter()
+            .flat_map(|(_, _, i)| i.clone())
+            .collect()
+    }
+    fn clear(&self) {
+        self.0.lock().unwrap().clear();
+    }
+}
+
+/// 一格的体读回来：`("line", seq)` / `("start", 0)` / `("end", 0)`。
+fn what(i: &WItem) -> (&'static str, u64, u64) {
+    match i {
+        WItem::Frame { seq, body } => {
+            let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
+            if let Some(l) = v.get("line") {
+                ("line", *seq, l["seq"].as_u64().unwrap())
+            } else {
+                match v["batch"].as_str().unwrap() {
+                    "start" => ("start", *seq, 0),
+                    _ => ("end", *seq, 0),
+                }
+            }
+        }
+        WItem::Gap { from_seq, to_seq } => ("gap", *from_seq, *to_seq),
+        WItem::Unseen { .. } => ("unseen", 0, 0),
+        WItem::Seen { .. } => ("seen", 0, 0),
+        WItem::Closed { .. } => ("closed", 0, 0),
+    }
+}
+
+fn hub() -> (Arc<EventReplay>, Arc<Rec>) {
+    let r = Arc::new(EventReplay::new());
+    let rec = Arc::new(Rec::default());
+    r.attach_sink(rec.clone());
+    (r, rec)
+}
+
+fn local() -> crate::origin::Origin {
+    crate::origin::Origin::local()
+}
+
+fn lines(sid: &str, seqs: std::ops::Range<usize>) -> Vec<JsonlLinePayload> {
+    seqs.map(|i| payload(sid, i)).collect()
+}
+
+/// ★ S1：实时那一份 —— 有 credit 当场交、没 credit 就丢（位置照占）；丢了之后**下一次交出去之前**原位给 `Gap`；
+/// `want` 回来、手里有没说的丢失 ⇒ 当场给 `Gap`；`Gap` 与 `Unseen` 不占 credit。
+#[tokio::test]
+async fn live_frames_go_out_with_credit_and_drops_are_said_in_place() {
+    let (r, rec) = hub();
+    r.origin_seen(&local(), true);
+    r.subscribe("w", 1, &local(), "session-lines", None, 2);
+    r.ready_point(None).await; // 留存为空 ⇒ 只是过就绪点
+    rec.clear();
+    r.on_line_batch_awaited(lines("s", 0..3)).await; // credit 2 ⇒ 交 0、1，丢 2
+    assert_eq!(
+        rec.all().iter().map(what).collect::<Vec<_>>(),
+        vec![("line", 0, 0), ("line", 1, 1)]
+    );
+    rec.clear();
+    r.on_line_batch_awaited(lines("s", 3..4)).await; // credit 0 ⇒ 丢，位置 3
+    assert!(rec.all().is_empty(), "没 credit 却交了");
+    r.want("w", 1, 5); // 有 credit 了 ⇒ 当场说丢在哪：位置 [2, 4)
+    assert_eq!(
+        rec.all().iter().map(what).collect::<Vec<_>>(),
+        vec![("gap", 2, 4)]
+    );
+    rec.clear();
+    r.on_line_batch_awaited(lines("s", 4..5)).await;
+    assert_eq!(
+        rec.all().iter().map(what).collect::<Vec<_>>(),
+        vec![("line", 4, 4)]
+    );
+    // credit：5 − 1（Gap 不占）＝ 4 ⇒ 再来 4 行都交、第 5 行丢
+    rec.clear();
+    r.on_line_batch_awaited(lines("s", 5..10)).await;
+    assert_eq!(rec.all().len(), 4, "Gap 占了 credit");
+}
+
+/// ★ S1：一次攒出 ≥ 50 行 ⇒ 成批交：首块 `start` 开头、每块 `end` 收尾，末块先发（最新一段先到）。
+#[tokio::test]
+async fn a_bulk_increment_goes_out_as_a_batch_with_edges() {
+    let (r, rec) = hub();
+    r.origin_seen(&local(), true);
+    r.subscribe("w", 1, &local(), "session-lines", None, 10_000);
+    r.ready_point(None).await;
+    rec.clear();
+    r.on_line_batch_awaited(lines("s", 0..700)).await;
+    let got: Vec<_> = rec.all().iter().map(what).collect();
+    assert_eq!(got.len(), 700 + 3, "700 行 ＋ 首块 start ＋ 两块各一个 end");
+    assert_eq!(got[0].0, "start");
+    assert_eq!(
+        got[1],
+        ("line", 1, 100),
+        "末块先发：第一块是最新的 600 行（100..700）"
+    );
+    assert_eq!(got[601].0, "end");
+    assert_eq!(got[602], ("line", 602, 0));
+    assert_eq!(got[702].0, "end");
+    // 位置连续
+    for (k, g) in got.iter().enumerate() {
+        assert_eq!(g.1, k as u64, "第 {k} 格的位置");
+    }
+}
+
+/// ★ S2：就绪点之前一格都不交（实时的行也不交，只进留存）；就绪点按 credit 交留存（不够就等 `want`，**不丢**），
+/// 交完才返回；过了就绪点的 webview 再订整台机器 ⇒ 当场交。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_ready_point_replays_retained_lines_by_credit_and_waits_for_want() {
+    let (r, rec) = hub();
+    r.origin_seen(&local(), true);
+    r.subscribe("main", 1, &local(), "session-lines", None, 3);
+    r.on_line_batch_awaited(lines("s", 0..5)).await;
+    assert!(rec.all().is_empty(), "就绪点之前交了格");
+    let r2 = r.clone();
+    let done = tokio::spawn(async move { r2.ready_point(None).await });
+    // 等它交掉 credit 那 3 格、停下来等 want
+    for _ in 0..200 {
+        if rec.all().len() >= 3 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert_eq!(
+        rec.all().iter().map(what).collect::<Vec<_>>(),
+        vec![("start", 0, 0), ("line", 1, 0), ("line", 2, 1)]
+    );
+    assert!(
+        !done.is_finished(),
+        "credit 用完了还没等 —— 那就是丢了或越过了 credit"
+    );
+    r.want("main", 1, 100);
+    done.await.unwrap();
+    assert_eq!(
+        rec.all().iter().map(what).collect::<Vec<_>>(),
+        vec![
+            ("start", 0, 0),
+            ("line", 1, 0),
+            ("line", 2, 1),
+            ("line", 3, 2),
+            ("line", 4, 3),
+            ("line", 5, 4),
+            ("end", 6, 0)
+        ]
+    );
+    // 过了就绪点：同一个 webview 再订一条（另一台机器的整台流）⇒ 当场交它的留存
+    let mut remote = payload("rs", 0);
+    remote.origin = Some("box".to_string());
+    r.on_line_batch_awaited(vec![remote]).await;
+    rec.clear();
+    let boxo = crate::origin::Origin("box".to_string());
+    r.origin_seen(&boxo, true);
+    r.subscribe("main", 2, &boxo, "session-lines", None, 10);
+    for _ in 0..200 {
+        if rec.all().iter().any(|i| what(i).0 == "end") {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert_eq!(
+        rec.all().iter().map(what).collect::<Vec<_>>(),
+        vec![("start", 0, 0), ("line", 1, 0), ("end", 2, 0)]
+    );
+}
+
+/// ★ S3：`session-lines/<sid>` 只交那一个会话（当场交留存、之后只交它的实时行）；别的机器的行一格都不交。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_session_scoped_subscription_only_gets_its_own_session() {
+    let (r, rec) = hub();
+    r.origin_seen(&local(), true);
+    let mut far = payload("b", 9);
+    far.origin = Some("box".to_string()); // 同名会话、别的机器
+    let mut early = lines("a", 0..2);
+    early.extend(lines("b", 0..2));
+    early.push(far.clone());
+    r.on_line_batch_awaited(early).await;
+    r.subscribe("viewer-b", 1, &local(), "session-lines/b", None, 100);
+    for _ in 0..200 {
+        if rec.all().iter().any(|i| what(i).0 == "end") {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert_eq!(
+        rec.all().iter().map(what).collect::<Vec<_>>(),
+        vec![
+            ("start", 0, 0),
+            ("line", 1, 0),
+            ("line", 2, 1),
+            ("end", 3, 0)
+        ]
+    );
+    rec.clear();
+    let mut mix = lines("a", 2..3);
+    mix.extend(lines("b", 2..3));
+    mix.push(far);
+    r.on_line_batch_awaited(mix).await;
+    assert_eq!(
+        rec.all().iter().map(what).collect::<Vec<_>>(),
+        vec![("line", 4, 2)]
+    );
+}
+
+/// ★ S4：说不了的原位说（`subscribe` 不失败）：`from` 给了 ⇒ `Closed{Peer(bad_args)}`；认不出的 `kind` ⇒
+/// `Closed{Peer(no-such-stream)}`；空白名 ⇒ `Closed{Ours(Misuse)}` —— 三者都不登记（之后的行一格都不交）。
+/// 那台此刻看不见 ⇒ 第一格 `Unseen{1 open Unreachable}`；看得见 / 又看不见各原位说一次，状态没变不重复说。
+#[tokio::test]
+async fn what_cannot_be_served_is_said_in_place_and_unseen_is_not_the_end() {
+    let (r, rec) = hub();
+    r.subscribe(
+        "w",
+        1,
+        &local(),
+        "session-lines",
+        Some(crate::chan::wire::Cursor(vec![1])),
+        9,
+    );
+    r.subscribe("w", 2, &local(), "nope", None, 9);
+    r.subscribe(
+        "w",
+        3,
+        &crate::origin::Origin(" ".into()),
+        "session-lines",
+        None,
+        9,
+    );
+    let got = rec.0.lock().unwrap().clone();
+    let peer_code = |i: &WItem| match i {
+        WItem::Closed {
+            by: WBy::Peer(WBody(b)),
+        } => serde_json::from_slice::<serde_json::Value>(b).unwrap()["code"]
+            .as_str()
+            .unwrap()
+            .to_string(),
+        WItem::Closed { by: WBy::Ours(f) } => format!("ours:{f:?}"),
+        other => panic!("不是 Closed：{other:?}"),
+    };
+    assert_eq!(
+        got.iter()
+            .map(|(_, id, i)| (*id, peer_code(&i[0])))
+            .collect::<Vec<_>>(),
+        vec![
+            (1, "bad_args".to_string()),
+            (2, "no-such-stream".to_string()),
+            (3, "ours:Misuse".to_string())
+        ]
+    );
+    r.ready_point(None).await;
+    rec.clear();
+    r.on_line_batch_awaited(lines("s", 0..1)).await;
+    assert!(rec.all().is_empty(), "没登记成的订阅收到了行");
+
+    r.subscribe("w", 4, &local(), "session-lines", None, 9);
+    assert!(matches!(
+        rec.all()[..],
+        [WItem::Unseen { at, why: WHop::Unreachable }] if at.idx == 1 && at.tag == "open"
+    ));
+    rec.clear();
+    r.origin_seen(&local(), true);
+    r.origin_seen(&local(), true); // 没变 ⇒ 不重复说
+    r.origin_seen(&local(), false);
+    let seen: Vec<_> = rec.all().iter().map(what).map(|w| w.0).collect();
+    assert_eq!(seen, vec!["seen", "unseen"]);
+    assert!(matches!(
+        rec.all()[1],
+        WItem::Unseen { at, why: WHop::Dropped } if at.tag == "read"
+    ));
+}
+
+/// S4：撤了就一格都不交（在等 credit 的重放也随之停）；同一个 `(webview, 编号)` 再订一次 ⇒ 旧的那条作废。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn stop_and_resubscribe_leave_no_orphans() {
+    let (r, rec) = hub();
+    r.origin_seen(&local(), true);
+    r.on_line_batch_awaited(lines("s", 0..4)).await;
+    r.subscribe("main", 1, &local(), "session-lines", None, 1);
+    let r2 = r.clone();
+    let done = tokio::spawn(async move { r2.ready_point(None).await });
+    for _ in 0..200 {
+        if !rec.all().is_empty() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    r.stop("main", 1);
+    done.await.unwrap(); // 等 credit 的重放随撤而停，不挂着
+    rec.clear();
+    r.want("main", 1, 10);
+    r.on_line_batch_awaited(lines("s", 4..5)).await;
+    assert!(rec.all().is_empty(), "撤了之后还在交");
+    // 重订同一个编号：新的那条从位置 0 起，旧的那条不再收
+    r.subscribe("main", 1, &local(), "session-lines", None, 10);
+    for _ in 0..200 {
+        if rec.all().iter().any(|i| what(i).0 == "end") {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    let got: Vec<_> = rec.all().iter().map(what).collect();
+    assert_eq!(got.first(), Some(&("start", 0, 0)), "新订阅不是从位置 0 起");
+    assert_eq!(r.inner.lock().subs.len(), 1, "旧的那条还挂着");
 }

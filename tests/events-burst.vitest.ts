@@ -28,18 +28,21 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
   }),
 }));
 vi.mock("../src/ipc/commands", () => ({ commands: new Proxy({}, { get: () => vi.fn() }) }));
+// 〔CF2 · 第四波 4B〕会话内容从通道 `subscribe` 来：换成桩，按句柄的形状灌（`test-support/chan-stream-fake.ts`）。
+vi.mock("../src/ipc/chan", async () => (await import("./test-support/chan-stream-fake.ts")).chanStreamModule);
 
 import { bindEvents } from "../src/events";
+import { streamFake } from "./test-support/chan-stream-fake.ts";
 
-function line(seq: number): { payload: unknown } {
+const STREAMS = { streams: [{ origin: "<local>", kind: "session-lines" }] };
+
+function line(seq: number): unknown {
   return {
-    payload: {
-      session_id: "s",
-      cwd: "/p",
-      path: "/p/s.jsonl",
-      seq,
-      message: { type: "assistant", uuid: `u-${seq}` },
-    },
+    session_id: "s",
+    cwd: "/p",
+    path: "/p/s.jsonl",
+    seq,
+    message: { type: "assistant", uuid: `u-${seq}` },
   };
 }
 
@@ -49,6 +52,7 @@ const warned: string[] = [];
 describe("events.ts 的突发哨兵（audit-0805 F17：这 135 条语句此前 0% 执行）", () => {
   beforeEach(() => {
     subs.clear();
+    streamFake.reset();
     warned.length = 0;
     // 假定时器：让那个 300ms grace 定时器**归本文件管**，而不是归机器忙不忙管。
     vi.useFakeTimers();
@@ -83,14 +87,13 @@ describe("events.ts 的突发哨兵（audit-0805 F17：这 135 条语句此前 0
       onSessionEnded: vi.fn(),
       onBatchStart,
       onBatchEnd: vi.fn(),
-    } as never);
+    } as never, STREAMS);
 
-    const cb = subs.get("jsonl-line");
     // 抽取器自检：没订上就什么都没测。
-    expect(cb, "没订到 jsonl-line —— 本条会零命中地绿（检查 listen 的 mock）").toBeTruthy();
+    expect(streamFake.subscriptions.length, "没订到会话流 —— 本条会零命中地绿").toBe(1);
 
-    // 同步连灌 60 条：drain 是 setTimeout(…,0) 排的，同步循环内不会被消费 ⇒ 队列真的堆起来。
-    for (let i = 0; i < 60; i++) cb!(line(i));
+    // 同步连灌 60 条（逐行来的实时格）：drain 是 setTimeout(…,0) 排的，同步循环内不会被消费 ⇒ 队列真的堆起来。
+    for (let i = 0; i < 60; i++) streamFake.lines([line(i)]);
 
     await vi.advanceTimersByTimeAsync(50);
     expect(
@@ -118,11 +121,10 @@ describe("events.ts 的突发哨兵（audit-0805 F17：这 135 条语句此前 0
       onSessionEnded: vi.fn(),
       onBatchStart: vi.fn(),
       onBatchEnd: vi.fn(),
-    } as never);
+    } as never, STREAMS);
 
-    const cb = subs.get("jsonl-line");
-    expect(cb, "没订到 jsonl-line —— 本条会零命中地绿（检查 listen 的 mock）").toBeTruthy();
-    for (let i = 0; i < 60; i++) cb!(line(i));
+    expect(streamFake.subscriptions.length, "没订到会话流 —— 本条会零命中地绿").toBe(1);
+    for (let i = 0; i < 60; i++) streamFake.lines([line(i)]);
 
     // 前提①：把**所有**挂起的定时器跑完（drain 链 + 那个 grace 定时器）。
     // 这一句要是抛了，抛的就是那条 flaky 本体 —— 而它现在带着本条的名字。

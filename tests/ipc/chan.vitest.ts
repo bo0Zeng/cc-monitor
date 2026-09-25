@@ -10,6 +10,16 @@
  * | 解不出来的拒绝一律 `ours/Broken`，不猜 | 「解不出」那一条 |
  * | 成员本身不解释载荷：生产段零 `JSON.parse` / `JSON.stringify`（正控：调用方那一侧的同一个识别器命中） | 最后一条 |
  *
+ * 〔CF2 · 第四波 4B〕`subscribe` 那一半（`设计/05 §3.3.4` · `§3.3.5`，末尾「S5」那一组）：
+ *
+ * | 性质 | 判据 |
+ * |---|---|
+ * | 每种格按 monitor 交回的线上形状解回 —— 与 Rust 那侧打的**同一份金标准**对拍 | 「S5 金标准」 |
+ * | 编号本侧给、先记 sink 再登记；不认识的编号 / 撤了之后到的格一格都不交 | 「S5 编号」 |
+ * | `want` / `stop` 各恰好一次 IPC（撤了之后 `want` 不再发） | 「S5 往回说」 |
+ * | 解不出的一格 ⇒ 交 `closed{ours: Broken}` 并撤掉，不猜 | 「S5 解不出」 |
+ * | 登记那一跳失败 ⇒ 原位 `closed{ours: Broken}`，`subscribe` 本身不抛（`§3.3.5`） | 「S5 不失败」 |
+ *
  * 买不到：真 Tauri IPC 那一跳（要一个活的 webview）—— 这里 mock 的是 `invoke`，
  * 它之后的那一跳由 Rust 侧 `tests/bridge/chan/webview_tests.rs` 用合成句柄 ＋ 真 `router::settle` 量。
  */
@@ -23,9 +33,19 @@ vi.mock("@tauri-apps/api/core", () => ({
     onmessage: ((v: unknown) => void) | null = null;
   },
 }));
+// 〔CF2〕交格事件按窗口作用域听：记下那个回调，判据往里投递。
+const itemsListeners: Array<(e: { payload: unknown }) => void> = [];
+vi.mock("@tauri-apps/api/webviewWindow", () => ({
+  getCurrentWebviewWindow: () => ({
+    listen: vi.fn((event: string, cb: (e: { payload: unknown }) => void) => {
+      if (event === "chan-items") itemsListeners.push(cb);
+      return Promise.resolve(() => {});
+    }),
+  }),
+}));
 
 import { invoke } from "@tauri-apps/api/core";
-import { ChanError, chan, decodeFail, remaining, type CallError } from "../../src/ipc/chan";
+import { ChanError, chan, decodeFail, decodeItem, remaining, type CallError, type Item } from "../../src/ipc/chan";
 import { budgetWithin } from "../../src/ipc/chan-caller";
 import { REPO_ROOT } from "../test-support/repo-root";
 import { stripComments } from "../test-support/strip-comments";
@@ -136,5 +156,105 @@ describe("〔C4a〕webview 通道客户端", () => {
     const jsonUses = (c: string): number => (c.match(/\bJSON\.(?:parse|stringify)\s*\(/g) ?? []).length;
     expect(jsonUses(code("src/ipc/chan-caller.ts")), "正控：调用方那一侧恰好两处（`jsonBody` 的 stringify · `readJson` 的 parse）").toBe(2);
     expect(jsonUses(code("src/ipc/chan.ts")), "通道成员自己解释了载荷 —— `设计/05 §2`：载荷是不透明字节").toBe(0);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  〔CF2 · 第四波 4B〕`subscribe` 那一半
+//
+//  要求住址：`设计/05 §3.3.4`（`Item` 五个变体；「丢必须说」「`Gap` 必须在流里的原位」）·
+//  `§3.3.5`「`call` 会失败、`subscribe` 不会」。
+// ════════════════════════════════════════════════════════════════════════════
+
+/** 往交格事件里投一次（`{sub, items}`）。 */
+function deliver(sub: number, items: unknown[]): void {
+  expect(itemsListeners.length, "交格事件没人听 —— 本组会零命中地绿").toBeGreaterThan(0);
+  for (const l of itemsListeners) l({ payload: { sub, items } });
+}
+
+/** 取最近一次 `chan_subscribe` 用的编号（本侧给的）。 */
+function lastSubId(): number {
+  const calls = invokeMock.mock.calls.filter((c) => c[0] === "chan_subscribe");
+  expect(calls.length, "没登记到 monitor").toBeGreaterThan(0);
+  return (calls[calls.length - 1][1] as { id: number }).id;
+}
+
+describe("〔CF2〕webview 通道客户端 · subscribe", () => {
+  it("★★ S5 金标准：Rust 造的那七种格，TS 逐个解回 `§3.3.4` 的 `Item`", () => {
+    const golden = JSON.parse(
+      readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/chan-webview-items.golden.json"), "utf8"),
+    ) as { sub: number; items: unknown[] };
+    expect(golden.items.length, "金标准的格数变了 —— 两侧要同拍改").toBe(7);
+    const want: Item[] = [
+      { t: "frame", seq: 7, body: '{"line":{"x":1}}' },
+      { t: "gap", fromSeq: 8, toSeq: 12 },
+      { t: "unseen", at: { idx: 1, tag: "open" }, why: "Unreachable" },
+      { t: "seen", from: null },
+      { t: "seen", from: Uint8Array.from([1, 2]) },
+      { t: "closed", by: { peer: '{"code":"no-such-stream"}' } },
+      { t: "closed", by: { ours: "Broken" } },
+    ];
+    expect(golden.items.map(decodeItem)).toEqual(want);
+    // 解不出的：认不出的标签 · 缺字段 · 倒着的 gap · 越界字节
+    for (const bad of [
+      { t: "frame", seq: 1 },
+      { t: "frame", seq: -1, body: "" },
+      { t: "gap", from_seq: 5, to_seq: 3 },
+      { t: "unseen", idx: 1, tag: "sleep", why: "Dropped" },
+      { t: "seen", from: [256] },
+      { t: "closed_by_ours", why: "Tired" },
+      { t: "nope" },
+      null,
+    ]) {
+      expect(decodeItem(bad), JSON.stringify(bad)).toBeNull();
+    }
+  });
+
+  it("★ S5 编号 · 往回说：先记 sink 再登记；本编号的格交给它、别的编号不交；want / stop 各恰好一次 IPC", async () => {
+    invokeMock.mockResolvedValue(undefined);
+    const got: Item[][] = [];
+    const sub = await chan.subscribe("<local>", "session-lines", null, 5, (items) => got.push(items));
+    const id = lastSubId();
+    expect(invokeMock.mock.calls.filter((c) => c[0] === "chan_subscribe")[0][1]).toEqual({
+      origin: "<local>",
+      kind: "session-lines",
+      from: null,
+      want: 5,
+      id,
+    });
+    deliver(id, [{ t: "frame", seq: 0, body: "x" }]);
+    deliver(id + 1000, [{ t: "frame", seq: 0, body: "别人的" }]);
+    expect(got).toEqual([[{ t: "frame", seq: 0, body: "x" }]]);
+    sub.want(3);
+    expect(invokeMock.mock.calls.filter((c) => c[0] === "chan_want")).toEqual([
+      ["chan_want", { id, more: 3 }],
+    ]);
+    sub.stop();
+    sub.stop();
+    sub.want(9);
+    expect(invokeMock.mock.calls.filter((c) => c[0] === "chan_stop")).toEqual([["chan_stop", { id }]]);
+    expect(invokeMock.mock.calls.filter((c) => c[0] === "chan_want").length, "撤了之后还在报 credit").toBe(1);
+    deliver(id, [{ t: "frame", seq: 1, body: "y" }]);
+    expect(got.length, "撤了之后还在交格（本地撤单是立即的）").toBe(1);
+  });
+
+  it("★ S5 解不出：一格解不出 ⇒ 前面解得出的照交、末尾补 `closed{ours: Broken}`，并撤掉这条", async () => {
+    invokeMock.mockResolvedValue(undefined);
+    const got: Item[][] = [];
+    await chan.subscribe("box", "session-lines", null, 5, (items) => got.push(items));
+    const id = lastSubId();
+    deliver(id, [{ t: "frame", seq: 0, body: "a" }, { t: "what" }, { t: "frame", seq: 1, body: "b" }]);
+    expect(got).toEqual([[{ t: "frame", seq: 0, body: "a" }, { t: "closed", by: { ours: "Broken" } }]]);
+    expect(invokeMock.mock.calls.filter((c) => c[0] === "chan_stop")).toEqual([["chan_stop", { id }]]);
+    deliver(id, [{ t: "frame", seq: 2, body: "c" }]);
+    expect(got.length).toBe(1);
+  });
+
+  it("★ S5 不失败：登记那一跳抛了 ⇒ 原位交 `closed{ours: Broken}`，`subscribe` 本身照常返回", async () => {
+    invokeMock.mockRejectedValue(new Error("ipc down"));
+    const got: Item[][] = [];
+    const sub = await chan.subscribe("<local>", "session-lines", null, 5, (items) => got.push(items));
+    expect(got).toEqual([[{ t: "closed", by: { ours: "Broken" } }]]);
+    expect(typeof sub.want).toBe("function");
   });
 });

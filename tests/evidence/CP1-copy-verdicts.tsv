@@ -1338,6 +1338,11 @@ src/settings/machine-aliases.ts:728	{…}失败：{…}	保留	[对外] 〔AL1d�
 src/settings/machine-aliases.ts:744	将装进 {…} 的别名块	保留	[对外] 〔AL1d〕预览浮层标题：装进哪份文件
 src/bridge/src/panorama_call.rs:263	代码全景这一问出了内部错误，没有拿到结果	保留	[可达存疑] 〔RM1e〕分流器 Done 那一臂的兜底（本族走不到）；同 backend_policy.rs / apikey_remote.rs 那一句的形
 src/bridge/src/panorama_call.rs:305	{who} 的代码全景没答上来（{code}）：{message}	保留	[对外] 〔RM1e〕那台机器的全景失败原话：{who} 是「本机」或机器名，{code} 是后端的错误码（not_installed / unsupported / timed_out …，同 frame_query 那一句「查询失败（code）」的形，用户据此能跟着报错走），{message} 是后端那句人话
+src/tab-stream-view.ts:967	↑ 更早的消息 · 上翻加载	保留	[对外] 〔CF2〕实时 tab 顶端哨兵：账本空了、下面可能还有，上翻会按行号去取；与既有「↑ 还有 N 条更早消息 · 上翻加载」同一口吻
+src/tab-stream-view.ts:969	↑ 正在取更早的消息…	保留	[对外] 〔CF2〕同一哨兵，取着的那一刻
+src/tab-stream-view.ts:971	↑ 更早的消息这次没取回来：{…}	保留	[对外] 〔CF2〕同一哨兵，取失败：冒号后是那次调用的原因（monitor 那一侧已有的说法，如「那台后端还不认这条查询 —— 重装就有了」），不自动重试，切走再切回来再取一次
+src/bridge/src/event_replay.rs:512	没有叫 `{kind}` 的流	保留	[不对外] 〔CF2〕会话流句柄对认不出的流标签原位回的 Closed{Peer} 体（`{code,message}` 信封）；前端只记进控制台（events.ts 的 closed 那一支），不上界面
+src/bridge/src/event_replay.rs:520	会话内容流不支持从某一格续看（页面重载就是一条新的订阅）	保留	[不对外] 〔CF2〕同上：给了 from 游标时原位回的 Closed{Peer(bad_args)} 体；生产调用方恒给 null，只进控制台
 src/bridge/src/panorama_call.rs:293	已取消（后端那一趟已经停下）	保留	[可达存疑] 〔RM1f〕撤票那一问交回的话：界面自己撤的（`AbortSignal` 已拨下）⇒ `api.ts` 换成 `PanoramaCancelled` 类型、视图说它自己的「已取消建立索引」；只有别的调用方拿票撤了才会原话见人，句子本身不带内部名
 src/bridge/src/panorama_call.rs:440	本机还没有这一版的代码全景组件，正在把它放好（一两秒）。放好之后这一问会自己接着答。	保留	[对外] 〔RM1f〕远端健康通道 toast 正文（`kind = panorama-install`，本机那一台）：本机后端答「没装 / 太旧」时 monitor 把小程序放进 `~/.cc-monitor/bin/` 之前说一声；说的是人看得懂的事，不带内部名
 src/bridge/src/panorama_call.rs:445	{who} 上还没有这一版的代码全景组件，正在把它装上去（约 20 MB，慢链路上要等一会儿）。装好之后这一问会自己接着答。	保留	[对外] 〔RM1f〕远端健康通道 toast 正文（`kind = panorama-install`，远端那一台）：推字节是同步等的，不说的话界面上只有那一问在转圈；`{who}` 是机器名（`machine_label`），不是内部串
