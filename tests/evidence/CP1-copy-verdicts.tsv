@@ -122,7 +122,7 @@ src/backend/lib.rs:706	`split_stream_flags` 是对 argv 的**纯函数**（`reta
 src/backend/lib.rs:715	四个 target 上**这一面都做得到**（起会话 · 认账号 · 选模型 · 传 cwd \n                       那几条在直路上是**原生动作**：`set_var` / `set_current_dir` / \n                       `Command::new` ＋ `#[cfg(not(unix))]` 那条「起它 · 等它 · 透传退出码」\n                       的回退，一步都不经 shell）。⚠ **但不是每一条都做得到** —— \n                       tmux 那一族 6 条在 Windows 上做不到，逐条登记在 `TARGET_GAPS`。\n                       〔2026-09-21 改判：上一版这一栏写的是「四个 target 都编得过」，\n                        而用户把本轴从「编得过」改成了「做得到」⇒ 那句依据不再回答本轴的问题。\n                        「编得过」仍然是真的（两处平台分叉各带 `#[cfg(not(unix))]` 回退分支），\n                        但它归第 1 层那个跨 target 编译门禁。〕\n                       🔴 **〔`P19` 09-22 订正一句账〕** \n                       上一版括号里那句「**不依赖任何 Unix 专有设施**」，\n                        在写下的那一刻对 `codex` 那一支就是假的。\n                        〔⚠ 这句被订正的原话**刻意在源码里连着写**：本轮差点栽在自己的 grep 上 —— \n                         初稿把它断在了 Unix 与「专有设施」之间（Rust 的续行反斜杠），\n                         于是拿「Unix 空格 专有」当针去 grep 全仓**零命中**，\n                         而零命中看起来和「这句话仓里没有」一模一样。\n                         下一个人要找这笔账，靠的就是它在源码里连着。〕\n                        `control/ccm/mod.rs::exec_direct` 从前只要 `needs_bus_id(agent)` 为真\n                        就把**整条**改走 `sh -c`，而它对 codex 恒真 ⇒ 真机现打 \n                        `--agent codex --launcher hostname` → `EXIT=4 program not found`\n                        （`真相源/106 §3.3`；同一个 launcher 在 `--agent claude` 那趟 `EXIT=0`）。\n                        `P19` 把那道闸收窄成「那段配方**真有事可做**时」—— 配方整段裹在 \n                        `if [ -n "${TMUX:-}" ]` 里，`$TMUX` 空则它一个字不做 ⇒ \n                        Windows 上（`$TMUX` 恒空）直路不再请 shell 进来，**那句话才开始成立**。\n                        ⚠ **今天仍然非得要 POSIX shell 的两条，它们不在上面那四条里，逐条写明**：\n                        ① `CCM_ENV` 非空（那是一段任意 shell，只有 shell 解释得了）；\n                        ② `resume` 且后端答出一整条命令串（要 shell 拆词：`set -f; exec $cmd`）。\n                        两条都**不假装做得到** —— 只是从今天起说得出口（`no_shell:` ＋ 逐条归因，\n                        `D7`）。\n                        🚫 **这一栏买不到的那一维（别读成已验证）**：\n                        `cargo check --all-targets --target x86_64-pc-windows-gnu` ＋ \n                        `needs_shell` 那张判定表买到的是「**源码里没有那条 Unix 依赖了**」；\n                        「在真 Win11 上 `--agent codex` 真的 `EXIT=0`」**没买到** —— \n                        那要那台独占的 Win11 虚拟机，`P19` 一个字节都没去动它。\n                        能接上的只有一条推理（写出来，别当读数）：claude 那一支的 `EXIT=0` 是 \n                        09-21 真机现打的，而 codex 今天走的是**同一段原生代码、动作还更少**\n                        （`nested_env("codex")` 是空的）。	保留	[不对外] CAPABILITY_FACES 的 target_basis 字段，capability_ledger() 只读 family 与 declares，本字段生产段无读者，是判据/文档用的论证
 src/backend/lib.rs:1157	帧面每一条命令四个 target 上**都编得进去**（`inbound::REGISTRY` 零平台 `cfg`）；\n                       做不做得到按它**自己声明的码**分：`codes` 里有 `no_tmux` 的，在平台确证没有 tmux 的 \n                       target 上做不到 —— 与生产里填 `hello.unavailable` 的是同一个函数（`unavailable_from`）。	保留	[不对外] COMMAND_FACES 的 target_basis 字段（PR1），同 CAPABILITY_FACES 那几条：生产段无读者，是判据/文档用的论证
 src/backend/lib.rs:1167	`SUBCOMMANDS` 四个 target 上逐字同一张表；经 `cli_control::spec_for` 派生到 \n                       `REGISTRY` 的那几条，做不做得到跟着帧面那一条走。CLI 独有的那几条**没有任何逐 target \n                       声明**（例：`--tmux-notify` 在 Windows 上没人会调它，但声明里说不出来）⇒ 判成处处都在。	保留	[不对外] COMMAND_FACES 的 target_basis 字段（PR1），同 CAPABILITY_FACES 那几条：生产段无读者，是判据/文档用的论证
-src/backend/platform/pidwatch/mod.rs:131	本平台没有「进程死了会有人被叫醒」这条腿：pidfd 看守未实现（真形态是 \n     OpenProcess + WaitForSingleObject，属 U4b）⇒ 后端崩了不会有任何东西发现它，\n     也不会有任何一行账记下来。自愈在本平台上结构性不成立 —— 这是如实降级，不是漏洞。	改·§2.2	[可达存疑] 今天 #[allow(dead_code)]、self_healing_caveat() 没有调用方；但它的设计用途就是「说出口」给用户（KP3D），接线那天即对外。满纸内部推理：「这条腿」「pidfd 看守」「OpenProcess + WaitForSingleObject」「属 U4b」「一行账」「如实降级，不是漏洞」 兼§2.1 兼§2.5 新词:腿 新词:如实降级 新词:U4b 新词:pidfd →「在这个平台上，后端意外退出后不会自动重启」
+src/backend/platform/pidwatch/mod.rs:160	本平台没有「进程死了会有人被叫醒」这条腿：进程看守只在 Linux（pidfd）与 \n     Windows（进程句柄）上有 ⇒ 后端崩了不会有任何东西发现它，\n     也不会有任何一行账记下来。自愈在本平台上结构性不成立 —— 这是如实降级，不是漏洞。	改·§2.2	[可达存疑] 今天 #[allow(dead_code)]、self_healing_caveat() 没有调用方；但它的设计用途就是「说出口」给用户（KP3D），接线那天即对外。满纸内部推理：「这条腿」「pidfd」「进程句柄」「一行账」「如实降级，不是漏洞」 兼§2.1 兼§2.5 新词:腿 新词:如实降级 新词:pidfd →「在这个平台上，后端意外退出后不会自动重启」〔WN1 09-24：原文随 Windows 有了进程看守而改，裁词不变；U4b 那个内部编号已不在原文里〕
 src/backend/plugin/discover.rs:89	找不到 `{name}`：查过 {}，以及 PATH 上的 {path_dirs} 个目录。{hint}	保留	[可达存疑] 插件（cc-bus 等）找不到时的报错，回到设置页对应区；先说结果，「PATH 上的 N 个目录」是用户认得的
 src/backend/plugin/discover.rs:91	<没有可查的固定位置：HOME 也没有>	保留	[可达存疑] 同上一句里的占位碎片；可读
 src/backend/plugin/invoke.rs:96	被起的那个东西还要去找别的命令；本层找插件本体也走它	保留	[不对外] INHERITED_ENV_KEYS 的理由列，invoke.rs:203 以 `_why` 丢弃，只读第 0 列（环境变量名）
@@ -338,7 +338,7 @@ src/bridge/src/fenced_block.rs:129	落盘走 SFTP（upload_atomic + 远端备份
 src/bridge/src/fenced_block.rs:133	本机 Windows 的 PowerShell profile	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:134	整块 PowerShell 代码（scripts/cc.ps1.tpl 渲染）	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:144	本机 POSIX 的 ~/<用户选的那份 rc>	保留	[不对外] FENCE_SHAPES 登记表字段
-src/bridge/src/fenced_block.rs:145	**一行** source，指向 ~/.cc-monitor/account-aliases.sh（内容住在那份生成文件里）	保留	[不对外] FENCE_SHAPES 登记表字段
+src/bridge/src/fenced_block.rs:418	**一行** source，指向 ~/.cc-monitor/aliases.sh（内容住在那份生成文件里）	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:150	🔴 唯一**没有卸口**的一套（K-R62 §0b 那张表的「卸」一栏逐字「部分」）；\n                     也是唯一「围栏里只有一行、真内容在别处」的一套 —— 它刻意用另一对标记，\n                     与别的套共用标记就会「装一个把另一个整块替换掉」	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:157	本机 POSIX 的 ~/<用户选的那份 rc>	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:158	整块别名 snippet —— **与 `remote-posix-block` 同一个常量**（sftp.rs::CCM_WRAPPER_SNIPPET）	保留	[不对外] FENCE_SHAPES 登记表字段
@@ -914,15 +914,12 @@ src/tab-menu.ts:512	先在【旧账号】上 /compact（命中旧缓存更省）
 src/tab-session-actions.ts:634	\n\n⚠ 认不出这是哪个会话：「{…}」是按工作目录匹配到的，可能是同目录里另一个正在运行的 Claude。	保留	[对外] 〔U2 09-24 按本行原裁词改过〕破坏性确认框里的串味警告：不再说 @ccm_sid / 「ccm 助手」、不再派「重装」的活（原 改·§2.1 兼§2.3 兼§2.4 三处都去掉）；「可能杀到同目录另一个正在运行的 Claude」这条后果是确认框的要点，留着
 src/tab-session-actions.ts:636	本机	保留	[对外] 位置词碎片
 src/tab-session-actions.ts:636	远端	保留	[对外] 位置词碎片
-src/tab-session-actions.ts:638	该会话里 Claude 已退出（只剩空 tmux shell）；kill 掉这个残留会话。杀掉后 tab 转归档、可 Resume（若是该机唯一会话，可能要等下次重连对账才归档）。	改·§2.4	[对外] 确认框正文：两处括号补充＋三件事（已退出、要 kill、之后会怎样）一段说完；「重连对账」是内部机制名 兼§2.1 新词:对账 →「Claude 已退出，只剩空终端。结束它后这个标签页会转为归档，可以 Resume。」
 src/tab-session-actions.ts:639	将终止{…}这个 tmux 会话里正在运行的 Claude，未保存的交互会中断。	保留	[对外] 确认框正文，说清后果；tmux 会话在 R1b 语境内
 src/tab-session-actions.ts:644	杀死会话「{…}」（机器 {…}）？\n\n{…}\n此操作不可恢复。{…}	保留	[对外] 破坏性确认框，先问、再说后果、再说不可恢复
 src/tab-session-actions.ts:650	本机	保留	[对外] 位置词碎片
 src/tab-session-actions.ts:650	远端 [{…}]	保留	[对外] 位置词碎片
 src/tab-session-actions.ts:678	该机的远端配置缺 host / user（在设置 → 连接 补全后可用）	保留	[对外] toast 原因，括号里给出去哪补，可操作
 src/tab-session-actions.ts:679	未找到该机的远端配置（在设置 → 连接 添加后可用）	保留	[对外] toast 原因，括号里给出去哪加，可操作
-src/tab-menu.ts:112	取消后：这个会话变灰之后，关掉 app 再打开就没了	内部词→结束（变灰）	[对外] 菜单项 title；「变灰」正是设计/30 §3.5.2 禁的指代不明状态词 →「取消后：会话结束后关掉 app，它就不在了」
-src/tab-menu.ts:113	固定后：关掉 app 再打开它还在（灰着，可 resume）。位置不变 —— pin 管的是「别丢」，不是「排前面」	内部词→可重连（灰着）	[对外] 菜单项 title；「灰着」是 R1 禁用词 兼§2.4（括号＋破折号＋「pin 管的是别丢不是排前面」的解释腔）→「固定后：关掉 app 再打开它还在，可 resume。」
 src/tab-bar-view.ts:416	等待操作：{…}	保留	[对外] 标签页 tooltip
 src/tab-bar-view.ts:420	↳ 从 {…} fork 而来	保留	[对外] 标签页 tooltip；fork 是 CC 用户认得的词
 src/tab-session-actions.ts:716	切到终端窗口超时	保留	[对外] 〔S4 09-24 按本行原裁词改过〕↗ 拉前超时的 Error，被 catch 后成「切到终端窗口失败」toast 的正文；原句 invoke / Win32 / 毫秒数与括号里的内部猜测都去掉（原 改·§2.1），只说发生了什么
@@ -1099,8 +1096,8 @@ src/bridge/src/local_accounts.rs:525	本机后端没有返回信任状态	保留
 src/bridge/src/local_accounts.rs:528	本机后端不在，查不出这个账号是否信任过该目录：{reason}	保留	[可达存疑] 同上一行的消费者；说清是哪一种失败（后端不在）＋ 带上找过哪些路径
 src/bridge/src/local_accounts.rs:531	本机后端的信任查询失败（退出码 {code:?}）：{}	保留	[可达存疑] 同上；退出码与后端原话原样带出，便于排查 兼§2.1（退出码是实现细节，但它在消费者那里不渲染）
 src/bridge/src/local_accounts.rs:553	本机信任查询没能跑完：{e}	保留	[可达存疑] 同上；阻塞线程池 join 失败的兜底（几乎不可达）
-src/accounts.ts:787	本机归档后的 Resume 沿用这条会话上次的账号，换号只对本工具在 tmux 里起的会话做得到。	保留	[对外] 换号重启定位失败时本机那一支的补救句（A3 第二波）；说清本机能做什么、做不到什么；tmux 属 R1b「用户自己也这么叫」
-src/accounts.ts:788	可先归档后用右键「把此会话切到账号 X」。	保留	[对外] 换号重启定位失败时远端那一支的补救句（原文逐字，A3 第二波只是把它抽成一个变量、本机那支换一句）
+src/accounts.ts:785	本机会话结束后，Resume 沿用它上次的账号；换号只对本工具在 tmux 里起的会话做得到。	保留	[对外] 换号重启定位失败时本机那一支的补救句（A3 第二波）；〔U4〕「归档后」换成「会话结束后」（设计/30 §3.5.2：会话状态只说已结束 / 可重连）；tmux 属 R1b「用户自己也这么叫」
+src/accounts.ts:786	可以等它结束后，用右键「把此会话切到账号 X」。	保留	[对外] 换号重启定位失败时远端那一支的补救句；〔U4〕「先归档」换成「等它结束」：归档不是用户能做的动作，能做的是等会话结束（设计/30 §3.5.2）
 src/backend/accounts/iso.rs:64	这台机器上还没装 cc-acct-iso。	保留	[可达存疑] 本机「找不到 cc-acct-iso」那句话的尾巴（前半「查过哪些地方」由 plugin::discover 拼）；进 --acct-iso-status 的 looked 与 --acct-iso-shellinit 的 not_installed 信封，短而直接
 src/backend/control/cc_bus.rs:782	已 spawn:	保留	[不对外] 在 cc-spawn 回显里认新会话名字的匹配串（spawned_id_of），只决定回值里的 id，不是展示文本
 src/bridge/src/backend/control/cc_bus.rs:1483	已派生 {id}\n{said}	保留	[对外] 设置页 cc-bus 区派生成功的回执：新会话名 ＋ cc-spawn 自己的回显，无病
@@ -1292,6 +1289,16 @@ src/settings/panel.ts:1545	Claude 数据目录	保留	[对外] 落盘失败 / �
 src/settings/panel.ts:1733	外观	保留	[对外] 落盘失败时说是哪一格（ST2 步 9）
 src/settings/panel.ts:1763	外观	保留	[对外] 落盘失败时说是哪一格（ST2 步 9）
 src/settings/account-new-form.ts:86	Base URL，留空用默认上游	保留	[对外] 加账号表单 apikey 那一支的 Base URL 输入框占位（ST2 · 70 §4.4 线框里那一格）
+src/backend/control/files_write.rs:724	回读 {} 字节，与写进去的 {} 字节不一致	保留	[对外] files-put 写后校验失败那句的中段（RW1：用户文件的写规则从 monitor 的 fenced_block::apply 搬来后端），两个数都是用户看得懂的字节数
+src/backend/control/files_write.rs:728	写完读不回来（{e}）	保留	[对外] 同上一族；读回失败时带系统原话，短
+src/backend/control/files_write.rs:735	原文件已恢复。	保留	[对外] 同上一族，逐字沿用 fenced_block::undo_note 已裁「保留」的那一句（RW1 把写规则搬到后端，话一个字没换）
+src/backend/control/files_write.rs:736	刚建出来的那份已删掉。	保留	[对外] 同上一族，逐字沿用已裁的那一句
+src/backend/control/files_write.rs:737	恢复原文件也失败了，原文备份在 {}。	保留	[对外] 同上一族，逐字沿用已裁的那一句（占位符从 {b} 换成 {}，话不变）
+src/backend/control/files_write.rs:738	恢复原文件也失败了，请打开它看一眼。	保留	[对外] 同上一族，逐字沿用已裁的那一句
+src/backend/control/files_write.rs:739	刚建出来的那份没删掉，请手动删掉它。	保留	[对外] 同上一族，逐字沿用已裁的那一句；请人做的事他做得到，不中 §2.3
+src/backend/control/files_write.rs:631	{} 在盘上有 {on_disk} 字节，但读出来是空的（可能被 OneDrive 或杀毒软件锁着）。已取消，没改任何东西。	保留	[对外] 读改写的读 / 写两半在「盘上有字节却读到空」时停下（v1.7.9 事故那一道）。RW1 把它从 monitor 的本机读法搬到后端，话逐字沿用：说清看见了什么、可能是谁锁着、结果是一个字节没动
+src/bridge/src/remote_branch.rs:201	源会话 id	保留	[对外] 同 :167 那一行（〔RW1〕本机分叉那一支 create_local_branch_session 的同一句 fail-fast）
+src/bridge/src/remote_branch.rs:202	消息 uuid	内部词→「消息 ID」	[对外] 同 :168 那一行（〔RW1〕本机那一支的同一句；裁法随那一行一起落）
 src/backend/control/panorama.rs:94	这台机器上还没装代码全景组件。	保留	[可达存疑] 〔RM1c〕作为 {hint} 拼进 discover::not_installed_message 的尾巴（前半句说查过哪儿），经 `panorama` 帧命令的 not_installed 回到全景页的失败提示；刻意不说「重装后端就有了」—— 推字节那一步还没接，那会是一句假的出路
 src/backend/control/panorama.rs:213	这次要查的文件太多，一次传不过去，少选几个再试	保留	[可达存疑] 〔RM1c〕too_large：参数塞不进一次命令调用（多半是高亮会话改动时文件太多），回到全景页失败提示；说的是人能做的事
 src/backend/control/panorama.rs:217	代码全景组件没能启动：{m}	保留	[可达存疑] 〔RM1c〕起进程失败的 failed 回帧；路径只进后端日志（warn!），给人的这句不带内部住址

@@ -837,32 +837,23 @@ pub(crate) async fn stream_read_remote_session(
     Ok(total)
 }
 
-/// 删除一个远端历史会话的 jsonl（issue 未拆，F11）。**只读铁律豁免（SS-G）**：用户
-/// 显式删除 + 前端二次确认 + `sftp::remove_remote_file` 双重路径守卫。删除后清本地元数据。
+/// 删除一个远端历史会话的 jsonl（issue 未拆，F11）—— [`crate::history::delete_history_session`] 的远端那一支。
 ///
-/// 🔴 **〔步 12·C 2026-09-20〕它不再是一条 Tauri 命令。**
-/// 上线的那一条是 [`crate::history::delete_history_session`]，本函数是它的远端那一支。
-///
-/// ⚠ **合并时逮到的一处真差别，如实记下来**：清本地元数据那一步，本机侧用的是
-/// **前端送来的** `session_id`，而这一侧是从 `jsonl_path` 里 `jsonl_stem` **算出来**的。
-/// 合并之后签名只剩一个 `session_id`（前端两条路本来都送得出），而**这一侧仍然自己算**
-/// —— 刻意的：远端那条路的守卫（`remove_remote_file`）只认路径，让它去信一个
-/// 可以与路径**不一致**的 sid，等于多开一个「删 A 的文件、清 B 的注解」的口。
+/// 🔴 **〔RW1 · 第四波 · 2026-09-24〕F11 按用户裁「按推荐改」：经那台远端的后端删**
+/// （`files-delete-session`，只收 sid；落点由远端后端按 sid 在它自己的记录树里找）。
+/// 从前那一道 SFTP 直删 ＋ 双重路径守卫（`sftp::remove_remote_file`〔散文墓碑〕）整条走了；
+/// 「删 A 的文件、清 B 的注解」那个口由 [`crate::history::delete_via_backend`] 的一致性闸在两侧同时防。
 pub(crate) async fn delete_remote_history_session(
     host: &str,
+    session_id: String,
     jsonl_path: String,
 ) -> Result<(), String> {
-    let cfg = require_cfg_by_label(host)?;
-    crate::sftp::remove_remote_file(&cfg, &jsonl_path).await?;
-    // 清本地元数据（注解按 sid = jsonl 文件名 stem）。
-    if let Some(sid) = jsonl_stem(&jsonl_path) {
-        crate::history::remove_metadata_entry(&sid);
-    }
-    Ok(())
+    let door = crate::user_files::BackendDoor::new(crate::origin::Origin(host.to_string()));
+    crate::history::delete_via_backend(&door, &session_id, &jsonl_path).await
 }
 
 /// 远端 POSIX 路径取文件名 stem（去目录、去 `.jsonl`）。非 jsonl / 无文件名 → None。
-fn jsonl_stem(path: &str) -> Option<String> {
+pub(crate) fn jsonl_stem(path: &str) -> Option<String> {
     let name = path.rsplit('/').next()?;
     name.strip_suffix(".jsonl").map(str::to_string)
 }

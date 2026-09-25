@@ -249,13 +249,24 @@ const OUTWARD: &[(&str, Kind)] = &[
         "agents::claudecode::paths::is_protected_session_path",
         Kind::Fence,
     ),
+    // 〔RW1 · 第四波 09-24〕同一道围栏的**另一面**：删历史会话那一条（会话文件围栏唯一的例外）
+    //   的落点由适配层按 sid 找 —— 「哪一份算会话、它在哪」仍是适配层的知识，写面只调用。
+    (
+        "agents::claudecode::paths::session_file_for_delete",
+        Kind::Fence,
+    ),
     // ── 汇总层的 target 轴（用户那三样之外，条数钉死）─────────────────
     ("TARGETS", Kind::LedgerAxis),
     ("Target", Kind::LedgerAxis),
 ];
 
-/// 围栏那一类**只许**是这一个符号（不是「`agents::` 底下随便什么」）。
-const THE_FENCE: &str = "agents::claudecode::paths::is_protected_session_path";
+/// 围栏那一类**只许**是这两个符号（不是「`agents::` 底下随便什么」）：
+/// 写面「不许碰会话文件」那一问 ＋ 〔RW1 · 第四波 09-24〕删历史会话那一条「要删的是哪一份」那一问。
+/// 两个都是会话文件围栏的知识，住适配层；多出第三个 ⇒ 红。
+const THE_FENCES: &[&str] = &[
+    "agents::claudecode::paths::is_protected_session_path",
+    "agents::claudecode::paths::session_file_for_delete",
+];
 
 /// ★★ 模块够到外面的每一条边都在表里，表里也不留死行；而且**只有**那三类。
 #[test]
@@ -369,7 +380,7 @@ fn the_only_edge_outside_the_three_allowed_kinds_is_the_target_axis() {
         let ok = match kind {
             Kind::Platform => has_prefix(path, "platform::"),
             Kind::Common => has_prefix(path, "common::"),
-            Kind::Fence => *path == THE_FENCE,
+            Kind::Fence => THE_FENCES.contains(path),
             Kind::LedgerAxis => *path == "Target" || *path == "TARGETS",
         };
         assert!(

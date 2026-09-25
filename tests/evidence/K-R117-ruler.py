@@ -242,20 +242,12 @@ SITE_ARCHIVE = {
         B1, "R64+K26", "放的就是「后端二进制自己的改名副本」"),
     "build.rs::embed_daemons": (
         B1, "K33", "把内嵌后端复制进 `OUT_DIR` —— 装后端那条链的构建期一环"),
-    # 〔AL1 · 2026-09-24〕`install_to_profile` / `uninstall_from_profile` 两行走了：它们今天
-    #   一个 `fs::` 都没有（`WRITE_SITES` 也随之摘掉），「备份 → 原子写 → 回读 → 回滚」收成了
-    #   `fenced_block::apply` 一份（`设计/71 §12.5`），真落盘那一跳是下面这一行。
-    "fenced_block.rs::put_atomic": (
-        B2, "K33", "今天真写用户 profile / rc 的那一跳（别名块 · PowerShell 块 · 那一行 source · "
-                   "monitor 自己那份别名文件）；② 的目标形状是改成只生成待贴片段"),
-    "profile_installer.rs::atomic_write_string": (
-        B2, "K33", "上面那一跳的原语"),
-    "profile_installer.rs::atomic_replace_path": (
-        B2, "K33", "跨设备回退的 rename，同一条落盘链"),
-    "cc_bus_deploy.rs::deploy_into": (
-        B3, "K34", "写 `<claude_dir>/skills/cc-bus/`"),
-    "mcp.rs::write_json_atomic": (
-        B3, "K34", "写项目级 MCP 配置，是 `mcp.write` 的真落点"),
+    # 〔墓碑 · 第四波 RW1〕`fenced_block.rs::put_atomic` · `profile_installer.rs::atomic_write_string` /
+    #   `atomic_replace_path` · `cc_bus_deploy.rs::deploy_into` · `mcp.rs::write_json_atomic` 五行走了：
+    #   用户裁「只允许后端的文件管理部分写用户文件，也管本机」⇒ 别名块 / $PROFILE / 那一行 source · cc-bus skill 部署 ·
+    #   项目 .mcp.json 的落盘全改成经那台机器的后端（`files-put` / `files-peek`，monitor 只剩 `user_files.rs` 一个开口、
+    #   它自己一个 `fs::` 写都没有）⇒ 这五处在 monitor 侧 `WRITE_SITES` 里已不存在。归处（② / ③）不变，
+    #   只是真落点换到了后端写面（`control/files_write.rs`），不在本表人群里。
 }
 
 # `§0b` 里点名、而 `WRITE_SITES` 的 tool id 是 `None` 的那几行 —— 单列，别混进「带 id」那个数。

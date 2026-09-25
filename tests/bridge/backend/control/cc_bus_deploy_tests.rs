@@ -6,6 +6,14 @@ impl Drop for TmpDir {
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
+/// 〔RW1 · 第四波 09-24〕部署经「门」（生产 = 本机后端的文件管理那一面）；判据用落在临时目录上的替身门。
+/// 写的规则（围栏 · 原子替换 · 回读）住后端，由 `files_write_tests.rs` 判；这里判「装了什么、备份没有、可执行位」。
+fn door(p: &Path) -> crate::user_files::tests::DiskDoor {
+    crate::user_files::tests::DiskDoor::new(p)
+}
+fn run<T>(f: impl std::future::Future<Output = T>) -> T {
+    futures::executor::block_on(f)
+}
 fn tmpdir(tag: &str) -> TmpDir {
     let p = std::env::temp_dir().join(format!(
         "ps1-{tag}-{}-{:?}",
@@ -61,7 +69,7 @@ fn the_three_install_states_are_distinguishable() {
         CcBusInstallState::NotInstalled
     );
     // ② 装了、且是这一版
-    deploy_into(&t.0).expect("部署");
+    run(deploy_into(&door(&t.0), &t.0)).expect("部署");
     assert_eq!(install_state_in(&t.0).unwrap(), CcBusInstallState::UpToDate);
     // ③ 装了、但不是这一版 —— **带着差了几个**，不是一句「不一致」
     let dest = t.0.join("skills/cc-bus");
@@ -141,12 +149,12 @@ fn every_script_in_the_repo_is_embedded_for_deployment() {
 #[test]
 fn deploying_twice_writes_nothing_the_second_time() {
     let t = tmpdir("idem");
-    let first = deploy_into(&t.0).expect("首次部署");
+    let first = run(deploy_into(&door(&t.0), &t.0)).expect("首次部署");
     assert_eq!(first.written as usize, FILES.len());
     assert_eq!(first.unchanged, 0);
     assert_eq!(first.backup, None, "之前没装过，不该有备份");
 
-    let second = deploy_into(&t.0).expect("再次部署");
+    let second = run(deploy_into(&door(&t.0), &t.0)).expect("再次部署");
     assert_eq!(second.written, 0, "幂等：内容一致就不该再写");
     assert_eq!(second.unchanged as usize, FILES.len());
     assert_eq!(
@@ -159,12 +167,12 @@ fn deploying_twice_writes_nothing_the_second_time() {
 #[test]
 fn an_overwrite_leaves_a_restorable_backup() {
     let t = tmpdir("bak");
-    deploy_into(&t.0).expect("首次");
+    run(deploy_into(&door(&t.0), &t.0)).expect("首次");
     let dest = t.0.join("skills/cc-bus");
     // 弄脏一个文件，模拟「已装的是旧版」。
     std::fs::write(dest.join("SKILL.md"), b"old version").unwrap();
 
-    let r = deploy_into(&t.0).expect("覆盖");
+    let r = run(deploy_into(&door(&t.0), &t.0)).expect("覆盖");
     assert!(r.written > 0);
     let bak = r.backup.expect("覆盖必须留备份");
     let bak = Path::new(&bak);
@@ -183,7 +191,7 @@ fn a_symlinked_skills_dir_is_refused() {
     let t = tmpdir("fence");
     let outside = tmpdir("outside");
     std::os::unix::fs::symlink(&outside.0, t.0.join("skills")).unwrap();
-    let err = deploy_into(&t.0).expect_err("软链出去必须拒收");
+    let err = run(deploy_into(&door(&t.0), &t.0)).expect_err("软链出去必须拒收");
     assert!(err.contains("拒绝"), "{err}");
     assert!(
         !outside.0.join("cc-bus").exists(),
@@ -346,7 +354,7 @@ fn windows_precheck_is_wired_to_the_real_probe() {
 #[test]
 fn the_three_states_count_precisely_and_ignore_extra_files() {
     let d = tmpdir("ps2-counts");
-    deploy_into(&d.0).unwrap();
+    run(deploy_into(&door(&d.0), &d.0)).unwrap();
     let dest = d.0.join("skills/cc-bus");
     assert_eq!(install_state_in(&d.0).unwrap(), CcBusInstallState::UpToDate);
 
@@ -361,7 +369,7 @@ fn the_three_states_count_precisely_and_ignore_extra_files() {
         "改了两个文件就该报 2 —— 按钮上写的是「更新（差 N 个）」，N 错了跟状态错了一样骗人"
     );
 
-    deploy_into(&d.0).unwrap();
+    run(deploy_into(&door(&d.0), &d.0)).unwrap();
     std::fs::write(dest.join("scripts/cc-legacy-thing"), b"old script").unwrap();
     assert_eq!(
         install_state_in(&d.0).unwrap(),
@@ -396,7 +404,7 @@ fn a_regular_file_at_the_destination_is_not_installed_and_gets_backed_up() {
         CcBusInstallState::NotInstalled,
         "落点是**文件**时说成「已装/最新」就是骗人 —— 那颗按钮会写着已是最新，而盘上没有 cc-bus"
     );
-    let r = deploy_into(&d.0).expect("装");
+    let r = run(deploy_into(&door(&d.0), &d.0)).expect("装");
     assert!(r.written > 0, "该装的一个都没装");
     let bak = r
         .backup
@@ -429,7 +437,7 @@ fn an_unwritable_skills_dir_fails_loudly() {
     let skills = d.0.join("skills");
     std::fs::create_dir_all(&skills).unwrap();
     std::fs::set_permissions(&skills, std::fs::Permissions::from_mode(0o555)).unwrap();
-    let r = deploy_into(&d.0);
+    let r = run(deploy_into(&door(&d.0), &d.0));
     // 先恢复权限再断言 —— 否则失败时 `TmpDir::drop` 删不掉，留一地垃圾。
     std::fs::set_permissions(&skills, std::fs::Permissions::from_mode(0o755)).unwrap();
     let e = r.expect_err("`skills/` 不可写时必须报错，不许返回「写了 0 个」的 Ok");
@@ -449,7 +457,7 @@ fn an_unwritable_skills_dir_fails_loudly() {
 fn deployed_scripts_are_executable() {
     use std::os::unix::fs::PermissionsExt;
     let t = tmpdir("exec");
-    deploy_into(&t.0).expect("部署");
+    run(deploy_into(&door(&t.0), &t.0)).expect("部署");
     for rel in ["scripts/cc-send", "examples/cc-keepalive"] {
         let p = t.0.join("skills/cc-bus").join(rel);
         let mode = std::fs::metadata(&p).unwrap().permissions().mode();

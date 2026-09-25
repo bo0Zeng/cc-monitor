@@ -3,6 +3,8 @@
 
 import { describe, it, expect } from "vitest";
 import { UsageHud } from "../src/usage-hud";
+// 〔UC2〕高位预警的类名来自组件自己的 CSS Module（构建时哈希）—— 断言也经同一个导入取名，不写字面量。
+import s from "../src/usage-hud.module.css";
 
 describe("UsageHud (F88b #52)", () => {
   it("已知模型 → ctx N%，可见", () => {
@@ -11,7 +13,7 @@ describe("UsageHud (F88b #52)", () => {
     hud.setActive("claude-opus-4-8", 100_000);
     expect(hud.summaryElement.textContent).toBe("ctx 50%");
     expect(hud.summaryElement.style.display).toBe("");
-    expect(hud.summaryElement.classList.contains("is-high")).toBe(false);
+    expect(hud.summaryElement.classList.contains(s.high)).toBe(false);
   });
 
   it("[1m] 变体上限 1M → 正确 %", () => {
@@ -26,16 +28,16 @@ describe("UsageHud (F88b #52)", () => {
     hud.setActive("gpt-4", 100_000);
     expect(hud.summaryElement.textContent).toBe("ctx ?");
     expect(hud.summaryElement.style.display).toBe("");
-    expect(hud.summaryElement.classList.contains("is-high")).toBe(false);
+    expect(hud.summaryElement.classList.contains(s.high)).toBe(false);
   });
 
   it("promptTokens=null（无带 usage 记录）→ 隐藏，且清 is-high", () => {
     const hud = new UsageHud();
     hud.setActive("claude-sonnet-5", 170_000); // 先 85% → is-high
-    expect(hud.summaryElement.classList.contains("is-high")).toBe(true);
+    expect(hud.summaryElement.classList.contains(s.high)).toBe(true);
     hud.setActive(null, null); // 再切到无 usage 会话
     expect(hud.summaryElement.style.display).toBe("none");
-    expect(hud.summaryElement.classList.contains("is-high")).toBe(false); // 隐藏时清干净
+    expect(hud.summaryElement.classList.contains(s.high)).toBe(false); // 隐藏时清干净
   });
 
   it("≥80% → is-high 高亮（逼近上限预警）", () => {
@@ -43,7 +45,7 @@ describe("UsageHud (F88b #52)", () => {
     // 170k / 200k = 85%
     hud.setActive("claude-sonnet-5", 170_000);
     expect(hud.summaryElement.textContent).toBe("ctx 85%");
-    expect(hud.summaryElement.classList.contains("is-high")).toBe(true);
+    expect(hud.summaryElement.classList.contains(s.high)).toBe(true);
   });
 
   it("model=null 但有 token → ctx ?（上限未知）", () => {

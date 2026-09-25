@@ -16,6 +16,17 @@ impl Drop for TmpHome {
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
+/// 〔RW1 · 第四波 09-24〕落盘经「门」（生产 = 本机后端的文件管理那一面）；判据用落在临时目录上的替身门。
+/// 写的规则（备份 · 原子替换 · 回读 · 回滚）不在这里判 —— 那一份住后端（`files_write_tests.rs`）。
+fn door(h: &TmpHome) -> crate::user_files::tests::DiskDoor {
+    crate::user_files::tests::DiskDoor::new(&h.0)
+}
+fn hs(h: &TmpHome) -> String {
+    h.0.display().to_string()
+}
+fn run<T>(f: impl std::future::Future<Output = T>) -> T {
+    futures::executor::block_on(f)
+}
 fn tmp_home(tag: &str) -> TmpHome {
     let d = std::env::temp_dir().join(format!(
         "ccm-alias-{tag}-{}-{}",
@@ -87,14 +98,18 @@ fn rewriting_drops_the_alias_you_deleted() {
         al("alphacc", &["--account", "z"]),
         al("betacc", &["--account", "b"]),
     ];
-    assert!(install_in(&h.0, &two, None).unwrap().wrote_alias_file);
+    assert!(
+        run(install_in(&door(&h), &two, None))
+            .unwrap()
+            .wrote_alias_file
+    );
     let p = alias_file_in(&h.0);
     let after = std::fs::read_to_string(&p).unwrap();
     for a in &two {
         assert!(pinned(&after, &render_line(a)), "{after}");
     }
     let one = vec![al("alphacc", &["--account", "z"])];
-    install_in(&h.0, &one, None).unwrap();
+    run(install_in(&door(&h), &one, None)).unwrap();
     let after = std::fs::read_to_string(&p).unwrap();
     assert!(
         pinned(&after, &render_line(&one[0])),
@@ -114,7 +129,7 @@ fn duplicate_names_are_refused() {
         al("alphacc", &["--account", "z"]),
         al("alphacc", &["--account", "b"]),
     ];
-    assert!(install_in(&h.0, &two, None).is_err());
+    assert!(run(install_in(&door(&h), &two, None)).is_err());
     assert!(!alias_file_in(&h.0).exists());
 }
 
@@ -126,7 +141,13 @@ fn the_rc_source_line_is_added_once_and_keeps_user_content() {
     std::fs::write(&rc, "export PATH=$PATH:/opt/bin\nalias ll='ls -l'\n").expect("写 rc");
     let line = source_line(&alias_file_in(&h.0));
 
-    let added = ensure_rc_source_line(&h.0, &rc.display().to_string(), &line).expect("第一次装");
+    let added = run(ensure_rc_source_line(
+        &door(&h),
+        &hs(&h),
+        &rc.display().to_string(),
+        &line,
+    ))
+    .expect("第一次装");
     assert!(added, "第一次该真写");
     let after = std::fs::read_to_string(&rc).expect("读回");
     assert!(
@@ -139,7 +160,13 @@ fn the_rc_source_line_is_added_once_and_keeps_user_content() {
         "{after}"
     );
 
-    let again = ensure_rc_source_line(&h.0, &rc.display().to_string(), &line).expect("第二次");
+    let again = run(ensure_rc_source_line(
+        &door(&h),
+        &hs(&h),
+        &rc.display().to_string(),
+        &line,
+    ))
+    .expect("第二次");
     assert!(!again, "★ 第二次又写了一遍 —— 那正是「重复追加」那条病");
     let twice = std::fs::read_to_string(&rc).expect("读回");
     assert_eq!(twice.matches(&line).count(), 1, "那一行出现了两次：{twice}");
@@ -163,12 +190,19 @@ fn an_rc_that_already_sources_it_via_home_var_is_recognized() {
     let h = tmp_home("homevar");
     let rc = h.0.join(".bashrc");
     // 逐字取自 `src/shared/ccm-aliases.sh` 的最后一行（`$HOME` 没展开）。
-    let ccm_block = "if [ -r \"$HOME/.cc-monitor/account-aliases.sh\" ]; then . \"$HOME/.cc-monitor/account-aliases.sh\"; fi\n";
+    let ccm_block =
+        "if [ -r \"$HOME/.cc-monitor/aliases.sh\" ]; then . \"$HOME/.cc-monitor/aliases.sh\"; fi\n";
     std::fs::write(&rc, format!("# mine\n{ccm_block}")).expect("写 rc");
     let before = std::fs::read(&rc).expect("读原文");
 
     let line = source_line(&alias_file_in(&h.0));
-    let added = ensure_rc_source_line(&h.0, &rc.display().to_string(), &line).expect("不该报错");
+    let added = run(ensure_rc_source_line(
+        &door(&h),
+        &hs(&h),
+        &rc.display().to_string(),
+        &line,
+    ))
+    .expect("不该报错");
     assert!(
         !added,
         "★ 已经 source 过了还要再加一行 —— 那正是「重复追加」那条病"
@@ -183,10 +217,58 @@ fn an_rc_that_already_sources_it_via_home_var_is_recognized() {
     assert!(me.sourced, "候选表没认出 `$HOME` 那一形：{me:?}");
 }
 
+/// 🔴〔RW1 · 第四波 09-24〕别名文件改名 `account-aliases.sh` → `aliases.sh`，**不留兼容**（主会话裁）：
+/// 装过旧那一段的 rc，下一次「安装」就被**整块改写**成指向新名字的那一行（同一对围栏），
+/// 用户自己的内容一行不动；旧那一行不留、旧名不读。
+#[test]
+fn an_rc_with_the_old_file_name_is_rewritten_to_the_new_shape_on_next_install() {
+    let h = tmp_home("rename");
+    let rc = h.0.join(".bashrc");
+    let old_line = source_line(&h.0.join(".cc-monitor/account-aliases.sh"));
+    std::fs::write(
+        &rc,
+        format!("# mine\n{RC_BEGIN}\n{old_line}\n{RC_END}\n# tail\n"),
+    )
+    .expect("铺装过旧名的 rc");
+    let line = source_line(&alias_file_in(&h.0));
+    let added = run(ensure_rc_source_line(
+        &door(&h),
+        &hs(&h),
+        &rc.display().to_string(),
+        &line,
+    ))
+    .expect("改写");
+    assert!(added, "旧那一段该被改写");
+    let after = std::fs::read_to_string(&rc).expect("读回");
+    assert!(pinned(&after, &line), "新那一行没进去：{after}");
+    assert!(
+        !after.contains("account-aliases.sh"),
+        "旧名还留在 rc 里：{after}"
+    );
+    assert!(
+        pinned(&after, "# mine") && pinned(&after, "# tail"),
+        "用户内容被动了：{after}"
+    );
+    assert_eq!(after.matches(RC_BEGIN).count(), 1, "围栏成了两对：{after}");
+    // 读回口只认新名：旧文件在盘上也不读（不留读旧名的分支）。
+    std::fs::create_dir_all(h.0.join(".cc-monitor")).expect("建目录");
+    std::fs::write(
+        h.0.join(".cc-monitor/account-aliases.sh"),
+        "alphacc() { ccm --account z \"$@\"; }\n",
+    )
+    .expect("铺旧文件");
+    let listing = read_in(&h.0).expect("读回");
+    assert!(
+        !listing.exists && listing.aliases.is_empty(),
+        "读回口去读了旧名：{:?}",
+        listing.aliases
+    );
+}
+
 /// 那一行在文件不存在时**必须返回 0** —— 它是 `ccm-aliases.sh` 的最后一行。
 #[test]
 fn the_source_line_is_a_no_op_when_the_file_is_absent() {
-    let line = source_line(Path::new("/nowhere/account-aliases.sh"));
+    let line = source_line(Path::new("/nowhere/aliases.sh"));
     assert!(
         line.starts_with("if ") && line.ends_with("; fi"),
         "写成了 `&&` 那一形 ⇒ 文件不存在时整行返回 1，而它是那份片段的最后一行：{line}"
@@ -209,8 +291,13 @@ fn a_damaged_fence_leaves_the_rc_byte_identical() {
     std::fs::write(&rc, &original).expect("写 rc");
     let before = std::fs::read(&rc).expect("读原文");
     let line = source_line(&alias_file_in(&h.0));
-    let e =
-        ensure_rc_source_line(&h.0, &rc.display().to_string(), &line).expect_err("围栏损坏该中止");
+    let e = run(ensure_rc_source_line(
+        &door(&h),
+        &hs(&h),
+        &rc.display().to_string(),
+        &line,
+    ))
+    .expect_err("围栏损坏该中止");
     assert!(e.contains("找不到配对的 END"), "理由要说得清：{e}");
     assert_eq!(
         std::fs::read(&rc).expect("读回"),
@@ -227,12 +314,17 @@ fn a_damaged_fence_leaves_the_rc_byte_identical() {
 fn the_rc_path_cannot_escape_home() {
     let h = tmp_home("fence");
     for bad in ["/etc/profile", "/tmp/x.rc", ".bashrc"] {
-        let e = ensure_rc_source_line(&h.0, bad, "# x").expect_err("该被围栏拒");
+        let e = run(ensure_rc_source_line(&door(&h), &hs(&h), bad, "# x")).expect_err("该被围栏拒");
         assert!(e.starts_with("refuse profile path"), "{bad}：{e}");
     }
     // 正例：home 之内那一份真的过得去（文件不存在 ⇒ 停在「读不到」，而不是停在围栏上）。
-    let e = ensure_rc_source_line(&h.0, &h.0.join(".zshrc").display().to_string(), "# x")
-        .expect_err("文件还不存在，这一步该停在读那一步");
+    let e = run(ensure_rc_source_line(
+        &door(&h),
+        &hs(&h),
+        &h.0.join(".zshrc").display().to_string(),
+        "# x",
+    ))
+    .expect_err("文件还不存在，这一步该停在读那一步");
     assert!(
         !e.starts_with("refuse profile path"),
         "围栏把 home 之内的路径也拒了 —— 那会让那个按钮永远写不成：{e}"
@@ -377,7 +469,7 @@ fn what_is_installed_reads_back_as_the_same_list() {
             &["--cwd", "/x y", "--agent", "codex", "--", "--foo"],
         ),
     ];
-    let rep = install_in(&h.0, &list, None).expect("写");
+    let rep = run(install_in(&door(&h), &list, None)).expect("写");
     assert!(rep.wrote_alias_file);
     let on_disk = std::fs::read_to_string(alias_file_in(&h.0)).unwrap();
     assert_eq!(on_disk, render(&list).code, "落盘的不是预览的那一份");
@@ -389,7 +481,11 @@ fn what_is_installed_reads_back_as_the_same_list() {
     );
     assert_eq!(back.aliases, list);
     // 再写一次同一份 ⇒ 一个字节都不写。
-    assert!(!install_in(&h.0, &list, None).unwrap().wrote_alias_file);
+    assert!(
+        !run(install_in(&door(&h), &list, None))
+            .unwrap()
+            .wrote_alias_file
+    );
 }
 
 /// 读回口认得盘上那份**旧的**（v1 头、值带引号、从前 `"${CCM:-…}"` 那种调用词），
@@ -463,7 +559,7 @@ fn every_combination_rule_stops_a_bad_alias_and_nothing_is_written() {
     let h = tmp_home("bad");
     let mut list = good.to_vec();
     list.push(bad[1].clone());
-    let e = install_in(&h.0, &list, None).unwrap_err();
+    let e = run(install_in(&door(&h), &list, None)).unwrap_err();
     assert!(e.contains("一条都没写"), "{e}");
     assert!(!alias_file_in(&h.0).exists(), "有一条不合格却写了");
     // 重名也是一条问题。

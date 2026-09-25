@@ -2493,6 +2493,9 @@ fn parse_starttime_malformed_returns_none() {
 /// **本轮不加门**：`cargo check` 只编不跑，DoD ① 不受影响；而 U4b 一旦在真机上跑
 /// `cargo test`，这会是第一个红 —— 那正是应该有人看一眼的时刻，加门会把它藏起来。
 /// Phase D 审计的问题 9-3 已把它写进 U4b 的清单。
+///
+/// 〔WN1 · 09-24〕`pid_alive` 有了 Windows 臂（`platform/win_proc.rs`）⇒ 上面那句「在 Windows 上会 panic」
+/// 不再成立；本条在真 Windows 上 `cargo test` 会走 `OpenProcess` 自己那个 pid。那一趟没人跑过（没有真机读数）。
 #[test]
 fn session_alive_self_is_alive_in_existence_only_mode() {
     // Cross-platform: the current process is alive, and with no captured
