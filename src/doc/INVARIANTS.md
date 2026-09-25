@@ -27,6 +27,8 @@
    交给**那台机器的后端**一条明确的命令 `files-delete-session`：**只收 sid**，落点由后端按 sid 在它自己的记录树里找
    （`agents::claudecode::paths::session_file_for_delete`：解到底必须恰是 `projects/<项目>/<sid>.jsonl`，链接出界不跟），
    删之前再过一次它自己的围栏（`files_write::fenced_session_file`）。它是后端文件管理写面里**会话文件围栏唯一的例外**（§41.6 第三层）。
+   〔FN1 · 第四波 4C · 2026-09-25 · 用户 V119「文件管理器全部都可以改. 不需要任何围栏」〕文件管理写面的会话文件围栏拿掉了，
+   「唯一的例外」这个说法随之作废；这一条本身（只收 sid、自己那一道、二次确认）一个字没动。
    monitor 这一侧只剩一道一致性闸：界面给的 sid 必须恰是那一行文件名的 stem，对不上一个请求都不发。
    〔RW1 · 第四波 2026-09-24：用户裁「只允许后端的文件管理部分写文件」也管本机 ⇒ 从前本机 `fs::remove_file` ＋ `validate_delete_target`〔散文墓碑〕
    与远端 SFTP 直删两条路合成这一条。〕
@@ -53,6 +55,10 @@ monitor 进程**一个字节都不直接写用户文件**。rc / `$PROFILE` / �
 **为什么不能松动**：cc-monitor 的核心价值主张是 "看 claude 的输出不破坏它"。一旦允许 monitor 在用户数据上**非显式**写，用户对 "数据源 = 我自己的命令痕迹" 的信任就崩了。上述豁免要么是**非用户数据**（自部署 bin），要么是**用户显式动作**（删除 / metadata），且各带独立 realpath 白名单。
 
 **F47 SFTP 文件面板不在本约管辖内（澄清，非例外/非松动）**：Batch14-F47 起 cc-monitor 挂了一个**用户亲自驱动的通用 SFTP 文件传输面板**（浏览/上传/下载/改名/删除任意用户文件）。它是**独立文件传输功能**，与本约「monitor 作为监视器只读 Claude 数据源」**正交**——它写的是用户浏览到的普通文件，不是 Claude 的 jsonl/pidfile，且每次写都是面板内一次直接用户手势（绝无自动/后台写）。**防误伤守卫**（`claude_data_fence::is_protected_claude_data_path` —— 〔步 H2 2026-09-21，用户裁「拆」〕它已从 `sftp_pool` 搬成**独立一族**，本段与下面 F03b 段共用它这**一个**判定；判定的射程一个字没动）:SFTP 写命令**拒碰** `~/.claude/projects/**/*.jsonl` 与 `~/.claude/sessions/*.json`（往正被 Claude 打开的会话文件写会损坏会话；要管这些用历史浏览器）。SFTP 面板走独立 utility 连接池，与数据源流连接分离。
+> **〔订正 · FN1 · 第四波 4C · 2026-09-25 · 用户 V119〕** 用户原话「**文件管理器全部都可以改. 不需要任何围栏**」。这一段里的「防误伤守卫」**对文件管理器不再成立**：
+> 今天的文件面板就是原生文件窗口 ＋ 后端文件管理写面（`files-*`），会话文件 · 项目目录 · subagent · tasks 都能改名 / 删 / 改权限 / 覆盖；
+> 窗口的本地预判、传输台开下载单那一判、后端写面那一问都删了。「每次写都是一次直接用户手势、绝无自动/后台写」**照旧成立**（那是这一段的正题，不是围栏）。
+> `claude_data_fence::is_protected_claude_data_path` 今天只剩下面 F03b 那一个用户（守它的判据：`claude_data_fence_tests::the_file_manager_no_longer_asks_the_fence_and_only_the_inbox_editor_does`）。
 
 **F03b 收件箱编辑不在本约管辖内（澄清，非例外/非松动）**〔RW1 · 第四波 2026-09-24：本机 ＋ 远端项目都能编辑（用户裁），读写经那台机器的后端（`files-peek` / `files-put`，写带打开时读到的那一份当 CAS 期望，agent 改过 ⇒ 一个字节不写）；下文 `verified_write` 那一跳已并进后端规则〕：devbench-F03b 起 cc-monitor 挂了一个**收件箱编辑面板**（读写用户自己项目里的 `.claude/planned-build/INBOX.txt` —— planned-build skill 的「结构化注入」进件口）。**口径与 F47 逐条对齐**：它写的是**用户自己项目的普通文本文件**，不是 Claude 的 jsonl/pidfile；每次写都是**面板内一次直接用户手势**（点「保存」，绝无自动/后台写）。**围栏三道**（`skill_host::resolve_editable`）：① 路径 `canonicalize` **之后**做**集合判定**，集合来自声明表 `skill_host::SKILLS` 的 `editable`（**不是一串 `if`**，也不是判字符串——`..` 与符号链接都已解开）② 过 `claude_data_fence::is_protected_claude_data_path`（**纵深**：即使声明写歪也不许碰 Claude 数据；与上面 F47 段**同一个**判定，住址见那一段）③ 目标**必须已存在**（本功能是「编辑收件箱」不是「创建任意文件」）。写本身走 `verified_write::verify_and_rollback`（备份 → 写 → 读回**逐字节**比对 → 不符即回滚），**没有自造第四份写入实现**。⇒ 写面严格等于「声明里那几个真实文件」，今天恰好一个文件名。⚠ **远端项目的收件箱不在此列**：`parity_ledger` 里 `skill.inbox` 记 `Undecided`——「要不要能编辑」没人裁定过，且远端版的第①道（`canonicalize`）在那边不成立。
 
@@ -1811,9 +1817,9 @@ no-op（真机反向实测：写错 starttime 时探针存活，不误伤无关�
 > | 白名单层 | `control/fork_write.rs` | 只许 `O_EXCL` 新建（同上表） |
 > | **第三层（文件管理写面）** | **恰好两个模块**：`control/files_write.rs`（写面）· `control/files_commit.rs`（上传的提交，F7c 09-24：SFTP 只写暂存区 `~/.cc-monitor/staging/`，挪进用户目标的那一下在这里） | 改动动词是**闭集**（建目录 · 删文件 · 删空目录 · 改名 · 改权限 · 覆盖写；〔FW5〕递归删不是新动词，由计划趟逐条目过围栏 ＋ 删文件 / 删空目录拼成）· **每一处改动之前先过围栏** · **只从文件管理面来**（后端里引用得到这两个模块的文件 == `{inbound.rs}`，够得到它们的命令 == 两张命令表登记的那几条之并）。〔RW1 · 第四波 09-24〕**用户文件的读改写**也在这一层：`files-peek`（读那一半，与写同一道围栏）· `files-put`（CAS ＋ 备份 ＋ 原子替换 ＋ 回读 ＋ 回滚，由 `O_EXCL` 新建 ＋ 写 ＋ 改名 ＋ 改权限拼成，**闭集一个动词没加**，规则见 §4）；以及**会话文件围栏唯一的例外** `files-delete-session`（见下一段） |
 >
-> ⇒ 本节的**措辞**因此改为：**后端只有文件管理那一面可以改动用户的文件，且每一处先过会话文件围栏；
+> ⇒ 本节的**措辞**因此改为（〔FN1 · V119〕这句已再改，见下面「订正 · FN1」那一段）：**后端只有文件管理那一面可以改动用户的文件，且每一处先过会话文件围栏；
 > 其余后端代码仍不许写，`fork_write` 仍只许 `O_EXCL` 新建。**
-> 围栏（`is_session_record_file`，〔FN1〕今天已不是写侧围栏，见本节末尾 V119 那一段）只拦正在用的会话记录（`projects/<proj>/<sid>.jsonl`、`sessions/<x>.json`），
+> 围栏（`is_session_record_file`，〔FN1〕今天已不是写侧围栏，见下面「订正 · FN1」那一段）只拦正在用的会话记录（`projects/<proj>/<sid>.jsonl`、`sessions/<x>.json`），
 > `~/.claude` 里的 skills / 配置 / 账号库**可以改**——这是用户那条裁决的原意，不是放松。
 > ⚠ TOCTOU 未闭合（判定与动手之间有窗；改名「目标已在就拒」是先看再改）—— 如实登记，不当成已解。
 >
@@ -1828,7 +1834,27 @@ no-op（真机反向实测：写错 starttime 时探针存活，不误伤无关�
 > 这根围栏针在后端生产树里**恰好一处调用**（`readonly_guard::the_session_file_exception_lives_in_exactly_one_place`：
 > 一处调用 · 定位器只写面引用 · `args == ["sid"]` · 多给 `path` 真的回 `bad_args`）—— 例外借给第二个函数当场红。
 > ⇒ 本节措辞再收一句：**用户的文件只有文件管理那一面能改，每一处先过会话文件围栏；唯一的例外是删历史会话那一条，
-> 它只收 sid、只删恰是那一形的那一份。**
+> 它只收 sid、只删恰是那一形的那一份。**（〔FN1 · V119〕这句已再改，见下面「订正 · FN1」那一段）
+
+> **〔订正 · FN1 · 第四波 4C · 2026-09-25 · 用户 V119「文件管理器全部都可以改. 不需要任何围栏」〕第三层拿掉会话文件围栏。**
+> 文件管理器（后端文件管理写面 ＋ 文件窗口）**不再有任何 Claude 数据围栏**：会话文件（`projects/<proj>/<sid>.jsonl` · `sessions/<x>.json`）、
+> 项目目录、subagent 记录、tasks 都能新建 · 改名 · 删 · 改权限 · 覆盖 · 复制 · 读改写；递归删不再因树里藏着一份会话文件就整趟拒。
+> **拿掉的是「不许改这些东西」的限制；保留的是路径解析的正确性**（`files_write::resolve_in_root`：`rel` 逐段只许普通段、拼出来仍在 `root` 下 ＋
+> 父目录解链接后仍在根下；跟链接的动词用 `resolve_existing_in_root`：解到底仍在根下）—— 那不限制改什么，只保证改的就是 `root ＋ rel` 那一格。
+>
+> ⇒ 第三层那一格的判据 ③ 改成：**每一处改动之前先过路径解析**（针 `readonly_guard::RESOLVE_CALLS`，形状一个字没变）。
+> ⇒ 本节措辞今天读成：**用户的文件只有文件管理那一面能改，每一处先过路径解析；那一面不问数据是谁的。**
+> 删历史会话（`files-delete-session`）不是文件管理器，它那一道（只收 sid、必须**是**一份会话记录、`fenced_session_file` 恰好一处调用）一个字节没动；
+> 「唯一的例外」这个说法作废（没有被它例外的围栏了）。
+>
+> | 判据 | 钉什么 |
+> |---|---|
+> | `readonly_guard::the_file_manager_face_never_asks_the_session_shape` | 后端生产树里问会话形状（`is_session_record_*`）的 `(文件, 函数)` == 删会话那一条要的三处（两向，带合成正控）；写面哪个函数再伸手问 ⇒ 红 |
+> | `claude_data_fence_tests::the_file_manager_no_longer_asks_the_fence_and_only_the_inbox_editor_does` | monitor 侧调那道判定的生产文件 == `{skill_host.rs}`（F03b 收件箱纵深，不是文件管理器）；文件窗口 / 传输台零命中 |
+> | `files_write_tests`（行为） | 会话文件那一侧逐动词**做得成**、盘上逐字节核；阴性换成「链接指到根外 ⇒ `refused`、根外一个字节没动」 |
+> | `filewin::shell_tests::a_real_click_on_delete_walks_the_whole_chain_even_on_a_session_file` | 真点会话文件那一行的「删除」⇒ 问一次 ⇒ 答做 ⇒ 后端真收到 `files-delete` |
+>
+> ⚠ 后端那份会话形状判定改名 `is_session_record_file` / `is_session_record_path`（「protected」在后端从此是假的），与桥那一侧仍逐字节相同。
 
 > **〔订正 · B2 · 2026-09-24 · 用户裁「只允许后端的文件管理部分写文件」管的是**用户的文件**〕** 第四层：
 > | 层 | 范围 | 判据 |
