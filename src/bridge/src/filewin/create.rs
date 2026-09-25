@@ -153,7 +153,7 @@ impl FileWindow {
             return false;
         };
         let Some(line) = self.line.clone() else {
-            *self.listing.error.lock().unwrap() = Some(NO_LINE.into());
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
             return false;
         };
         let origin = self.source.origin();

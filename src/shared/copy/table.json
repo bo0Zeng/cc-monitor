@@ -9168,6 +9168,656 @@
       "kind": "error",
       "zh": "上传后读不回 {path}，无法确认写对了。",
       "args": ["path"]
+    },
+    "rsFilewinShell.window.openFailed": {
+      "kind": "error",
+      "zh": "文件窗口打开失败：{e}",
+      "args": ["e"]
+    },
+    "rsFilewinShell.window.title": {
+      "kind": "title",
+      "zh": "cc-monitor 文件 · {source}",
+      "args": ["source"]
+    },
+    "rsFilewinShell.search.running": {
+      "kind": "body",
+      "zh": "正在搜…",
+      "args": []
+    },
+    "rsFilewinShell.search.rebuild": {
+      "kind": "action",
+      "zh": "重建索引",
+      "args": []
+    },
+    "rsFilewinShell.search.hint": {
+      "kind": "control",
+      "zh": "文件名里的一段",
+      "args": []
+    },
+    "rsFilewinShell.search.label": {
+      "kind": "control",
+      "zh": "搜索",
+      "args": []
+    },
+    "rsFilewinShell.frame.truncated": {
+      "kind": "body",
+      "zh": "这个目录条目太多，只拿到了前 {n} 条。没看见的文件不代表它不在。",
+      "args": ["n"]
+    },
+    "rsFilewinShell.frame.selected": {
+      "kind": "body",
+      "zh": "已选 {n} 项",
+      "args": ["n"]
+    },
+    "rsFilewinShell.frame.listing": {
+      "kind": "body",
+      "zh": "正在列…",
+      "args": []
+    },
+    "rsFilewinShell.frame.sort": {
+      "kind": "control",
+      "zh": "排序：{by}",
+      "args": ["by"]
+    },
+    "rsFilewinShell.frame.terminal": {
+      "kind": "action",
+      "zh": "在此打开终端",
+      "args": []
+    },
+    "rsFilewinShell.frame.refresh": {
+      "kind": "action",
+      "zh": "刷新",
+      "args": []
+    },
+    "rsFilewinShell.frame.up": {
+      "kind": "action",
+      "zh": "⬆ 上一级",
+      "args": []
+    },
+    "rsFilewinShell.intent.noPrefix": {
+      "kind": "body",
+      "zh": "没有以「{prefix}」开头的项",
+      "args": ["prefix"]
+    },
+    "rsFilewinShell.busy.writes": {
+      "kind": "body",
+      "zh": "有写操作还没回话",
+      "args": []
+    },
+    "rsFilewinShell.busy.listSep": {
+      "kind": "body",
+      "zh": "、",
+      "args": []
+    },
+    "rsFilewinShell.busy.uploading": {
+      "kind": "body",
+      "zh": "正在上传 {names}",
+      "args": ["names"]
+    },
+    "rsFilewinShell.busy.downloading": {
+      "kind": "body",
+      "zh": "正在下载 {n}",
+      "args": ["n"]
+    },
+    "rsFilewinShell.busy.copying": {
+      "kind": "body",
+      "zh": "正在复制 {n}",
+      "args": ["n"]
+    },
+    "rsFilewinShell.busy.io": {
+      "kind": "body",
+      "zh": "正在读写 {path}",
+      "args": ["path"]
+    },
+    "rsFilewinShell.busy.pendingAsk": {
+      "kind": "body",
+      "zh": "有一问还没答",
+      "args": []
+    },
+    "rsFilewinShell.busy.editorOpen": {
+      "kind": "body",
+      "zh": "有一份文本开着",
+      "args": []
+    },
+    "rsFilewinShell.write.cancel": {
+      "kind": "action",
+      "zh": "取消",
+      "args": []
+    },
+    "rsFilewinShell.write.ok": {
+      "kind": "action",
+      "zh": "确定",
+      "args": []
+    },
+    "rsFilewinShell.write.sameDirOnly": {
+      "kind": "body",
+      "zh": "⚠ 只在这一个目录里，不许带 /。",
+      "args": []
+    },
+    "rsFilewinShell.pull.cancel": {
+      "kind": "action",
+      "zh": "取消",
+      "args": []
+    },
+    "rsFilewinShell.pull.overwrite": {
+      "kind": "action",
+      "zh": "盖掉",
+      "args": []
+    },
+    "rsFilewinShell.pull.overwriteWarn": {
+      "kind": "body",
+      "zh": "盖掉它就没有备份了，不可撤销。",
+      "args": []
+    },
+    "rsFilewinShell.pull.exists": {
+      "kind": "body",
+      "zh": "那儿已经有东西了",
+      "args": []
+    },
+    "rsFilewinShell.pull.ok": {
+      "kind": "action",
+      "zh": "确定",
+      "args": []
+    },
+    "rsFilewinShell.pull.dirHint": {
+      "kind": "body",
+      "zh": "⚠ 以 / 结尾就当成目录，原名接在后面。",
+      "args": []
+    },
+    "rsFilewinShell.pull.askWhere": {
+      "kind": "body",
+      "zh": "把「{name}」存到哪儿？",
+      "args": ["name"]
+    },
+    "rsFilewinShell.pull.failed": {
+      "kind": "error",
+      "zh": "拖到 {dest} 没成：{why}",
+      "args": ["dest", "why"]
+    },
+    "rsFilewinShell.pull.done": {
+      "kind": "body",
+      "zh": "已存到 {dest}（{size}）",
+      "args": ["dest", "size"]
+    },
+    "rsFilewinShell.pull.progress": {
+      "kind": "body",
+      "zh": "正在拖出 {name}：{got} / {total}",
+      "args": ["name", "got", "total"]
+    },
+    "rsFilewinShell.editor.close": {
+      "kind": "action",
+      "zh": "关闭",
+      "args": []
+    },
+    "rsFilewinShell.editor.save": {
+      "kind": "action",
+      "zh": "保存",
+      "args": []
+    },
+    "rsFilewinShell.editor.saveFailed": {
+      "kind": "error",
+      "zh": "存不回去：{why}",
+      "args": ["why"]
+    },
+    "rsFilewinShell.editor.saved": {
+      "kind": "body",
+      "zh": "已存",
+      "args": []
+    },
+    "rsFilewinShell.editor.overLimit": {
+      "kind": "error",
+      "zh": "已经超过 {limit} 的上限 {n} 字节 —— 存不回去",
+      "args": ["limit", "n"]
+    },
+    "rsFilewinShell.editor.keep": {
+      "kind": "action",
+      "zh": "先别关",
+      "args": []
+    },
+    "rsFilewinShell.editor.discard": {
+      "kind": "action",
+      "zh": "丢掉，关",
+      "args": []
+    },
+    "rsFilewinShell.editor.unsavedWarn": {
+      "kind": "body",
+      "zh": "关掉就丢掉你敲的那些东西了 —— 远端那份还是旧的。",
+      "args": []
+    },
+    "rsFilewinShell.editor.unsaved": {
+      "kind": "body",
+      "zh": "{name} 改了还没存",
+      "args": ["name"]
+    },
+    "rsFilewinShell.editor.saving": {
+      "kind": "body",
+      "zh": "正在存 {path}…",
+      "args": ["path"]
+    },
+    "rsFilewinShell.editor.reading": {
+      "kind": "body",
+      "zh": "正在读 {path}…",
+      "args": ["path"]
+    },
+    "rsFilewinShell.save.noRuntime": {
+      "kind": "error",
+      "zh": "存远端文本启动不了，请重开这个窗口",
+      "args": []
+    },
+    "rsFilewinShell.edit.tooBig": {
+      "kind": "error",
+      "zh": "改完 {n} 字节，超过上限 {limit}，存不回去",
+      "args": ["n", "limit"]
+    },
+    "rsFilewinShell.edit.readFailed": {
+      "kind": "error",
+      "zh": "{path} 读不出来：{why}",
+      "args": ["path", "why"]
+    },
+    "rsFilewinShell.edit.noRuntime": {
+      "kind": "error",
+      "zh": "读远端文本启动不了，请重开这个窗口",
+      "args": []
+    },
+    "rsFilewinShell.edit.refused": {
+      "kind": "error",
+      "zh": "{name} 改不了：{why}",
+      "args": ["name", "why"]
+    },
+    "rsFilewinShell.pull.noRuntime": {
+      "kind": "error",
+      "zh": "往外拖启动不了，请重开这个窗口",
+      "args": []
+    },
+    "rsFilewinShell.writes.noRuntime": {
+      "kind": "error",
+      "zh": "这几件写操作启动不了，请重开这个窗口",
+      "args": []
+    },
+    "rsFilewinShell.copyUi.cancel": {
+      "kind": "action",
+      "zh": "取消",
+      "args": []
+    },
+    "rsFilewinShell.copyUi.sameDirOnly": {
+      "kind": "body",
+      "zh": "⚠ 只在同一个目录里改名，名字里不许带 /。",
+      "args": []
+    },
+    "rsFilewinShell.copyUi.heading": {
+      "kind": "body",
+      "zh": "复制 {name} 为：",
+      "args": ["name"]
+    },
+    "rsFilewinShell.copy.noRuntime": {
+      "kind": "error",
+      "zh": "复制启动不了，请重开这个窗口",
+      "args": []
+    },
+    "rsFilewinShell.copy.badName": {
+      "kind": "error",
+      "zh": "「{name}」不能用作新名字：不能为空、不能含 /、不能与原名相同",
+      "args": ["name"]
+    },
+    "rsFilewinShell.drop.noNames": {
+      "kind": "error",
+      "zh": "拖进来的 {n} 个东西一个都认不出名字",
+      "args": ["n"]
+    },
+    "rsFilewinShell.upload.noRuntime": {
+      "kind": "error",
+      "zh": "上传启动不了，请重开这个窗口",
+      "args": []
+    },
+    "rsFilewinShell.search.noRuntime": {
+      "kind": "error",
+      "zh": "搜索启动不了，请重开这个窗口",
+      "args": []
+    },
+    "rsFilewinShell.reveal.gone": {
+      "kind": "error",
+      "zh": "这个目录里没有 {want} —— 它可能刚被删掉或改了名",
+      "args": ["want"]
+    },
+    "rsFilewinShell.terminal.failed": {
+      "kind": "error",
+      "zh": "终端没打开：{why}",
+      "args": ["why"]
+    },
+    "rsFilewinShell.terminal.noRuntime": {
+      "kind": "error",
+      "zh": "终端开不了，请重开这个窗口",
+      "args": []
+    },
+    "rsFilewinShell.reload.noRuntime": {
+      "kind": "error",
+      "zh": "远端目录打不开，请重开这个窗口",
+      "args": []
+    },
+    "rsFilewinShell.menuEmpty.message": {
+      "kind": "body",
+      "zh": "对选中的这几项没有能做的事",
+      "args": []
+    },
+    "rsFilewinShell.noLine.message": {
+      "kind": "error",
+      "zh": "这个窗口没连上后端，请重开窗口",
+      "args": []
+    },
+    "rsFilewinSource.said.badReply": {
+      "kind": "error",
+      "zh": "后端返回的内容读不懂",
+      "args": []
+    },
+    "rsFilewinSource.said.internal": {
+      "kind": "error",
+      "zh": "内部错误，请重开窗口",
+      "args": []
+    },
+    "rsFilewinSource.said.cancelled": {
+      "kind": "error",
+      "zh": "已取消",
+      "args": []
+    },
+    "rsFilewinSource.said.hopFault": {
+      "kind": "error",
+      "zh": "没走通：{leg}那一段{what}，{did}",
+      "args": ["leg", "what", "did"]
+    },
+    "rsFilewinSource.said.legHost": {
+      "kind": "body",
+      "zh": "主程序到后端",
+      "args": []
+    },
+    "rsFilewinSource.said.legWindow": {
+      "kind": "body",
+      "zh": "窗口到主程序",
+      "args": []
+    },
+    "rsFilewinSource.said.mayHaveRun": {
+      "kind": "body",
+      "zh": "对面可能已经做了",
+      "args": []
+    },
+    "rsFilewinSource.said.notSent": {
+      "kind": "body",
+      "zh": "这一趟没发出去",
+      "args": []
+    },
+    "rsFilewinSource.said.timeout": {
+      "kind": "body",
+      "zh": "超时了",
+      "args": []
+    },
+    "rsFilewinSource.said.broken": {
+      "kind": "body",
+      "zh": "断了",
+      "args": []
+    },
+    "rsFilewinSource.said.unreachable": {
+      "kind": "body",
+      "zh": "连不上",
+      "args": []
+    },
+    "rsFilewinSource.said.unknownCmd": {
+      "kind": "error",
+      "zh": "那台机器上的后端版本旧了，不支持这个操作",
+      "args": []
+    },
+    "rsFilewinSource.said.refused": {
+      "kind": "error",
+      "zh": "被拒：{detail}",
+      "args": ["detail"]
+    },
+    "rsFilewinSource.watch.localBreak": {
+      "kind": "error",
+      "zh": "这一趟传输在本侧断了：{why}",
+      "args": ["why"]
+    },
+    "rsFilewinSource.watch.hostGone": {
+      "kind": "error",
+      "zh": "窗口到主程序那一段断了，这一趟传输也就撤了",
+      "args": []
+    },
+    "rsFilewinSource.watch.cutShort": {
+      "kind": "error",
+      "zh": "这一趟传输没说完就断了",
+      "args": []
+    },
+    "rsFilewinSource.ask.empty": {
+      "kind": "error",
+      "zh": "后端回了一条空回答，和约定的不一样",
+      "args": []
+    },
+    "rsFilewinSource.ask.unreadable": {
+      "kind": "error",
+      "zh": "后端的回答读不懂：{e}",
+      "args": ["e"]
+    },
+    "rsFilewinSource.ask.badArgs": {
+      "kind": "error",
+      "zh": "请求的参数拼不出来：{e}",
+      "args": ["e"]
+    },
+    "rsFilewinSource.ls.badEntry": {
+      "kind": "error",
+      "zh": "第 {i} 条：{e}",
+      "args": ["i", "e"]
+    },
+    "rsFilewinSource.ls.notArray": {
+      "kind": "error",
+      "zh": "文件列表的 entries 不是一个数组",
+      "args": []
+    },
+    "rsFilewinSource.path.badShape": {
+      "kind": "error",
+      "zh": "path 字段的格式不对：只认字符串或 b16 编码的对象",
+      "args": []
+    },
+    "rsFilewinSource.ls.noPath": {
+      "kind": "error",
+      "zh": "文件列表里有一条没有 path 字段",
+      "args": []
+    },
+    "rsFilewinSource.home.notUtf8": {
+      "kind": "error",
+      "zh": "那台机器的 home 目录不是合法 UTF-8，窗口的路径是字符串，找不到它",
+      "args": []
+    },
+    "rsFilewinSource.home.noPath": {
+      "kind": "error",
+      "zh": "问 home 目录的回答里没有 path 字段",
+      "args": []
+    },
+    "rsFilewinSource.home.relative": {
+      "kind": "error",
+      "zh": "远端的 home 目录是一条相对路径 {path}，起点必须是绝对路径",
+      "args": ["path"]
+    },
+    "rsFilewinSource.home.empty": {
+      "kind": "error",
+      "zh": "远端的 home 目录是空路径，没有起点可以打开窗口",
+      "args": []
+    },
+    "rsFilewinSource.local.readDirFailed": {
+      "kind": "error",
+      "zh": "读目录失败：{e}",
+      "args": ["e"]
+    },
+    "rsFilewinSource.sort.type": {
+      "kind": "control",
+      "zh": "类型",
+      "args": []
+    },
+    "rsFilewinSource.sort.size": {
+      "kind": "control",
+      "zh": "大小",
+      "args": []
+    },
+    "rsFilewinSource.sort.name": {
+      "kind": "control",
+      "zh": "名称",
+      "args": []
+    },
+    "rsFilewinWriteops.result.done": {
+      "kind": "body",
+      "zh": "上一摞 {ok} 件做完、{skipped} 件跳过",
+      "args": ["ok", "skipped"]
+    },
+    "rsFilewinWriteops.result.failedSep": {
+      "kind": "body",
+      "zh": "；",
+      "args": []
+    },
+    "rsFilewinWriteops.result.failed": {
+      "kind": "body",
+      "zh": "上一摞 {n} 件没做成：{failed}",
+      "args": ["n", "failed"]
+    },
+    "rsFilewinWriteops.confirm.doNone": {
+      "kind": "action",
+      "zh": "都别做",
+      "args": []
+    },
+    "rsFilewinWriteops.confirm.doChecked": {
+      "kind": "action",
+      "zh": "做勾上的",
+      "args": []
+    },
+    "rsFilewinWriteops.confirm.warn": {
+      "kind": "body",
+      "zh": "⚠ 这一问只出现一次：勾完点确认。删除不可撤销。",
+      "args": []
+    },
+    "rsFilewinWriteops.confirm.ask": {
+      "kind": "body",
+      "zh": "这 {n} 件要做吗？",
+      "args": ["n"]
+    },
+    "rsFilewinWriteops.mode.outOfRange": {
+      "kind": "error",
+      "zh": "「{text}」超出权限位的范围（最大 7777）—— 文件类型位不许在这儿改",
+      "args": ["text"]
+    },
+    "rsFilewinWriteops.mode.notOctal": {
+      "kind": "error",
+      "zh": "「{text}」不是一个八进制数 —— 比如 644 或 755",
+      "args": ["text"]
+    },
+    "rsFilewinWriteops.mode.empty": {
+      "kind": "error",
+      "zh": "权限位是空的 —— 八进制，比如 644",
+      "args": []
+    },
+    "rsFilewinWriteops.name.isDir": {
+      "kind": "error",
+      "zh": "「{name}」不是一个名字，它是目录本身",
+      "args": ["name"]
+    },
+    "rsFilewinWriteops.name.hasSlash": {
+      "kind": "error",
+      "zh": "「{name}」里带 / —— 这个框只改名字，不许在这儿写出一条别的路径",
+      "args": ["name"]
+    },
+    "rsFilewinWriteops.name.empty": {
+      "kind": "error",
+      "zh": "名字是空的",
+      "args": []
+    },
+    "rsFilewinWriteops.toOps.nothingToChmod": {
+      "kind": "error",
+      "zh": "没有要改权限的项",
+      "args": []
+    },
+    "rsFilewinWriteops.toOps.sameName": {
+      "kind": "error",
+      "zh": "「{name}」就是它现在的名字 —— 改名没有要改的东西",
+      "args": ["name"]
+    },
+    "rsFilewinWriteops.toOp.notOne": {
+      "kind": "error",
+      "zh": "这个框一次出 {n} 件，不是一件",
+      "args": ["n"]
+    },
+    "rsFilewinWriteops.heading.chmodOne": {
+      "kind": "body",
+      "zh": "把 {name} 的权限改成（八进制）：",
+      "args": ["name"]
+    },
+    "rsFilewinWriteops.heading.chmodMany": {
+      "kind": "body",
+      "zh": "把这 {n} 项的权限改成（八进制）：",
+      "args": ["n"]
+    },
+    "rsFilewinWriteops.heading.rename": {
+      "kind": "body",
+      "zh": "把 {name} 改名为：",
+      "args": ["name"]
+    },
+    "rsFilewinWriteops.heading.mkdir": {
+      "kind": "body",
+      "zh": "在这个目录里新建一个目录，叫：",
+      "args": []
+    },
+    "rsFilewinWriteops.remote.renameSameDir": {
+      "kind": "error",
+      "zh": "{op} 只能在同一个目录里改名",
+      "args": ["op"]
+    },
+    "rsFilewinWriteops.fence.notice": {
+      "kind": "body",
+      "zh": "{fencePrefix}{op} —— {path} 是 Claude 的会话数据，动它会弄坏正在跑的那场会话。要管这些用历史浏览器。",
+      "args": ["fencePrefix", "op", "path"]
+    },
+    "rsFilewinWriteops.fence.prefix": {
+      "kind": "body",
+      "zh": "⚠ 挡住了：",
+      "args": []
+    },
+    "rsFilewinWriteops.op.chmod": {
+      "kind": "body",
+      "zh": "改权限 {path} → {mode}",
+      "args": ["path", "mode"]
+    },
+    "rsFilewinWriteops.op.rename": {
+      "kind": "body",
+      "zh": "改名 {from} → {to}",
+      "args": ["from", "to"]
+    },
+    "rsFilewinWriteops.op.rm": {
+      "kind": "body",
+      "zh": "删除文件 {path}",
+      "args": ["path"]
+    },
+    "rsFilewinWriteops.op.rmdir": {
+      "kind": "body",
+      "zh": "删除目录 {path}（连同里面全部内容）",
+      "args": ["path"]
+    },
+    "rsFilewinWriteops.op.mkdir": {
+      "kind": "body",
+      "zh": "新建目录 {path}",
+      "args": ["path"]
+    },
+    "rsFilewinWriteops.label.chmod": {
+      "kind": "action",
+      "zh": "权限",
+      "args": []
+    },
+    "rsFilewinWriteops.label.delete": {
+      "kind": "action",
+      "zh": "删除",
+      "args": []
+    },
+    "rsFilewinWriteops.label.rename": {
+      "kind": "action",
+      "zh": "改名",
+      "args": []
+    },
+    "rsFilewinWriteops.label.mkdir": {
+      "kind": "action",
+      "zh": "新建目录",
+      "args": []
     }
   }
 }

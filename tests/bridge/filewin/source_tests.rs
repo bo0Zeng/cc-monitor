@@ -690,7 +690,7 @@ fn sorting_by_type_matches_the_old_panel() {
 #[test]
 fn the_sort_menu_is_the_three_old_panel_choices_and_defaults_to_name() {
     assert_eq!(SortBy::default(), SortBy::Name);
-    let labels: Vec<&str> = SortBy::ALL.iter().map(|b| b.label()).collect();
+    let labels: Vec<String> = SortBy::ALL.iter().map(|b| b.label()).collect();
     assert_eq!(labels, ["名称", "大小", "类型"]);
 }
 
@@ -984,8 +984,8 @@ fn each_layer_of_a_channel_failure_says_something_different() {
             why: PeerFault::Unsupported
         }
     )
-    .contains("files-chmod"));
-    // 本侧三种互不相同。
+    .contains("不支持这个操作")); // 〔CP2b · CP1 裁〕不再点内部命令名，说「版本旧了，不支持这个操作」
+                                  // 本侧三种互不相同。
     let ours: std::collections::BTreeSet<String> =
         [OursFault::Cancelled, OursFault::Misuse, OursFault::Broken]
             .into_iter()

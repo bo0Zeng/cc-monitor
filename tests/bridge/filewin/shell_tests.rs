@@ -398,7 +398,7 @@ fn an_impossible_new_name_keeps_the_box_up_and_says_why() {
     assert!(!w.confirm_copy(None), "没有运行时却说起得来");
     let e = w.listing.error.lock().unwrap().clone().unwrap();
     assert!(
-        e.contains("运行时"),
+        e.contains("启动不了"),
         "合法名字被当成不合法挡了：{e} —— 那上面那几条买的就不是「名字」这一维"
     );
     // 取消把框收掉。
@@ -1159,7 +1159,7 @@ fn a_delete_click_goes_straight_to_the_batch_and_says_so_when_it_cannot_run() {
         .unwrap()
         .clone()
         .expect("一次删除被吞了，屏幕上一句话都没有");
-    assert!(e.contains("运行时"), "报的不是「没有运行时」：{e}");
+    assert!(e.contains("启动不了"), "报的不是「没有运行时」：{e}");
 }
 
 /// 有损名 · 越界下标 —— **两档都不接**（第二道闸，防「按钮没了、调用还在」）。
@@ -1199,7 +1199,7 @@ fn an_impossible_input_keeps_the_write_box_up_and_says_why() {
     assert!(!w.confirm_write(None), "没有运行时却说起得来");
     let e = w.listing.error.lock().unwrap().clone().unwrap();
     assert!(
-        e.contains("运行时"),
+        e.contains("启动不了"),
         "合法名字被当成不合法挡了：{e} —— 那上面那几条买的就不是「输入」这一维"
     );
     w.cancel_write();
@@ -1413,12 +1413,13 @@ async fn a_real_click_on_delete_walks_the_whole_chain_and_the_fence_stops_it() {
         Vec::new(),
         |ui| w.frame_body(ui),
     );
-    let buttons = crate::filewin::copy::testing::rects_of(&painted, DELETE_LABEL);
+    let buttons = crate::filewin::copy::testing::rects_of(&painted, DELETE_LABEL.as_str());
     assert_eq!(
         buttons.len(),
         1,
-        "这一帧上没有那颗「{DELETE_LABEL}」—— 行上那三颗写按钮没画出来，\
-         或者 `frame_body` 走的是命中那一支"
+        "这一帧上没有那颗「{}」—— 行上那三颗写按钮没画出来，\
+         或者 `frame_body` 走的是命中那一支",
+        DELETE_LABEL.as_str()
     );
     let pos = buttons[0].center();
 
@@ -1456,7 +1457,7 @@ async fn a_real_click_on_delete_walks_the_whole_chain_and_the_fence_stops_it() {
          围栏那一段要么被绕过了，要么它没看这条路径"
     );
     assert!(
-        out.blocked[0].starts_with(FENCE_PREFIX) && out.blocked[0].contains(jsonl),
+        out.blocked[0].starts_with(FENCE_PREFIX.as_str()) && out.blocked[0].contains(jsonl),
         "被挡那句话不对：{}",
         out.blocked[0]
     );

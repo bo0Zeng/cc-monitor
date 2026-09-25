@@ -401,9 +401,9 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Listed, revealed: bool, mark: Ma
         //   **刻意不是同一个函数**：目录能改名/删除/改权限，但不能零流量复制。
         let (rename, delete, chmod) = if is_writable(r) {
             (
-                Some(ui.small_button(RENAME_LABEL)),
-                Some(ui.small_button(DELETE_LABEL)),
-                Some(ui.small_button(CHMOD_LABEL)),
+                Some(ui.small_button(RENAME_LABEL.as_str())),
+                Some(ui.small_button(DELETE_LABEL.as_str())),
+                Some(ui.small_button(CHMOD_LABEL.as_str())),
             )
         } else {
             (None, None, None)
