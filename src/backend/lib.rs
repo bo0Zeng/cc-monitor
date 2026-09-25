@@ -413,7 +413,12 @@ pub const PROTO_VERSION: u32 = 1;
 /// `files-peek` / `files-put`（读改写，CAS）· `files-delete-session`（只收 sid 的会话文件围栏例外），两个命令面都动。
 /// ＋ 行为：后端开始写**用户**文件（别名 / `$PROFILE` / `.mcp.json` / skill `INBOX.txt` / cc-bus skill 部署），
 /// 本机分叉与删历史会话改走后端 —— 旧后端不认这三条 ⇒ 这些按钮在旧后端上会明确报错，所以必须判 stale。
-pub const BUILD_ID: &str = "p2x-user-files-put";
+///
+/// ★★★ **p2y-win-proc**（2026-09-24，第四波 WN1 合并那一拍）：子命令集不变，**行为**变更 ——
+/// Windows 上的判活（`pid_alive` / `proc_starttime`）与进程看守从 `unimplemented!()` / 空壳换成真实现
+/// （`platform/win_proc.rs` · `pidwatch/win32.rs`）。旧后端在 Windows 本机见到第一个会话就 panic ⇒ 必须判 stale。
+/// 照 p1v 先例不往 `SUBCOMMAND_HISTORY` 加行。
+pub const BUILD_ID: &str = "p2y-win-proc";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
