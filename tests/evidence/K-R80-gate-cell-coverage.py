@@ -341,6 +341,23 @@ cell(
     },
 )
 
+# ── WIN1（第四波 4D）：第 30 格 `winlink` ───────────────────────────────────
+# 守的要求：用户裁决 V115 那一趟 RT1 的 F1（`RT1.md §8`）—— `winchk` 只 `check`、不链接，
+# 而 `-gnu` 交叉链接 `monitor_lib.dll` 当场 `export ordinal too large`。本格真链两个二进制。
+cell(
+    "winlink",
+    anchor="run_gate winlink '不是数出来的数",
+    cwd="src/bridge/",
+    cmd="cargo build --locked -p monitor --bins --target x86_64-pc-windows-gnu",
+    **{
+        "src/bridge/": (PART, "`-p monitor` 的两个二进制（`monitor` · `cc-monitor-filewin`）在 Windows target 上"
+                             "**真链接**一趟（dev）。⚠ 只链不跑；test 档不链（那一半是 `winchk` 的 `check`）；"
+                             "`-gnu` 不是 `-msvc`"),
+        VENDOR: (PART, "作为 `monitor` 的依赖被编、被链。⚠ 按依赖关系推的，按「未验」读"),
+        "src/backend/": blind("另一个 workspace；它在 Windows 上编不编得过归 `winchk-backend`，链接这一维本格不管"),
+    },
+)
+
 # ── `K-R122`（09-14）：第 18 格 `ci-e2e-prereq` ───────────────────────────────
 # `KR122D1` ③④：`K-R119` 那趟云端五条红里有**两条**是「job 的前置没跟上产品变化」——
 # 而本脚本自己在跑四套 ccm e2e 之前有一步 build，CI 那两个 job 没有 ⇒ 两边的「绿」同形。
@@ -1349,6 +1366,10 @@ invoke("winchk-backend", ELSEWHERE,
        "`backend` 那个 job 有一条 `-msvc` 跨 target check（`真相源/92 §2.1.1` 的 `C3`）。"
        "⚠ 同上：本格 `-gnu`、云端 `-msvc`",
        anchor="cargo check --all-targets --target x86_64-pc-windows-msvc")
+invoke("winlink", NOWHERE,
+       "`ci.yml` 的 Windows 那个 job（`rust`，`windows-latest`）只跑 clippy 与 `cargo test`（链的是测试二进制，"
+       "不链 `monitor.exe`）；真产 exe 的是 `release.yml`（`-msvc` 原生，不在 CI 上）⇒ "
+       "「`-gnu` 上两个二进制链得起来」这一维云端零覆盖，只有本机这一格")
 for _s in ("backend-rbind-token", "rbind-token-endtoend"):
     invoke("ccm tests/e2e/" + _s, NOWHERE,
            "〔第二波 T4 09-24〕`ci.yml` 里这一套**只在 shellcheck 人群里**，没有 `assert-pass-floor.sh` 调用行 —— "
@@ -1846,7 +1867,7 @@ def main():
     #   ⇒ 下面那条 `missing` 把「登记里有、这张表没点到」当场印出来，不让它再静默。
     order = [c for c in ("worktree-clean", "hooks", "copy2", "shellcheck", "ci-e2e-prereq", "release-gate",
                          "gate-selfdesc", "platform",
-                         "installface", "fmt", "fmt-backend", "winchk", "winchk-backend",
+                         "installface", "fmt", "fmt-backend", "winchk", "winchk-backend", "winlink",
                          "muslbuild", "cargo", "comm-boundary", "test-tiers", "deadcode", "generated", "backend", "tsc", "npm")
              if c in REGISTRY] + sorted(c for c in REGISTRY if c.startswith("ccm tests/e2e/"))
     missing = sorted(set(REGISTRY) - set(order))
