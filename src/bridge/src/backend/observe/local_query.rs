@@ -29,6 +29,7 @@
 //! 下面那条判据钉住**每一个调用方都已经从「未退役」账上下来了** ——
 //! 一个文件既在调后端、又还记在账上，就是「切了后端但棘轮没动」的假账。
 
+use crate::copy_table::copy_text;
 use std::path::PathBuf;
 
 /// 一次本机查询的结局。**三态**，理由见模块头注。
@@ -88,7 +89,16 @@ pub(crate) fn run_query(
         match crate::backend::control::local_backend::resolve_beside_this_exe(target_triple) {
             crate::backend::control::local_backend::Resolved::Found(p) => p,
             crate::backend::control::local_backend::Resolved::Missing { reason, looked_at } => {
-                return QueryOutcome::NoBackend(format!("{reason}；找过 {looked_at:?}"));
+                // 〔CP2b〕照 CP1 台账改：路径列表不再用 Debug 格式（带引号与方括号）上屏，逐条用顿号连。
+                let list = looked_at
+                    .iter()
+                    .map(|p| p.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(&copy_text("rsLocalQuery.noBackend.listSep", &[]));
+                return QueryOutcome::NoBackend(copy_text(
+                    "rsLocalQuery.noBackend.lookedAt",
+                    &[("reason", &reason), ("list", &list)],
+                ));
             }
         };
     let mut cmd = std::process::Command::new(&bin);
@@ -101,7 +111,10 @@ pub(crate) fn run_query(
         ),
         // 起不来（权限 / 文件损坏 / 架构不符）也算「后端不在」——对调用方的意义相同：
         // 今天这台机器上没有可用的对侧。
-        Err(e) => QueryOutcome::NoBackend(format!("起 {} 失败：{e}", bin.display())),
+        Err(e) => QueryOutcome::NoBackend(copy_text(
+            "rsLocalQuery.noBackend.spawnFailed",
+            &[("bin", &(bin.display()).to_string()), ("e", &e.to_string())],
+        )),
     }
 }
 

@@ -5070,7 +5070,7 @@ fn an_apikey_row_whose_machine_cannot_start_a_relay_refuses_the_launch() {
         remote_relay_refusal(
             "rl1-host-dead",
             Some("acct-a"),
-            crate::remote_relay::RELAY_NOT_STARTED
+            &crate::remote_relay::RELAY_NOT_STARTED
         )
     );
     assert_eq!(

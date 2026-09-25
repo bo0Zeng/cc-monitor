@@ -25,7 +25,7 @@ fn own_production() -> String {
 fn the_local_arm_never_starts_a_second_relay() {
     let err =
         tauri::async_runtime::block_on(ensure_on(&Origin::local())).expect_err("本机也起了一个");
-    assert_eq!(err, LOCAL_HAS_ITS_OWN);
+    assert_eq!(err, *LOCAL_HAS_ITS_OWN);
     // 结构半：`ensure_on` 本机那一臂那一行里没有发送口。
     let src = own_production();
     let at =

@@ -152,8 +152,6 @@ src/bridge/src/backend/control/ccm_invocation.rs:77	维度 {dim} 需要远端 cc
 src/bridge/src/backend/control/inbound_client.rs:439	（错误应答 code={} message={}）	保留	[不对外] 只拼进 tracing::warn!（本文件 :444），日志
 src/bridge/src/backend/control/local_backend.rs:600	 …〔这一行超过单行上界，在此切开，下一条接着它〕	保留	[不对外] STDERR_CUT_MARK 只贴进 monitor 自己的滚动日志（logging.rs）
 src/bridge/src/backend/control/local_backend.rs:1226	#!/bin/sh\n# cc-monitor: {CCM_ENTRY_WORD} = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec {} {CCM_ENTRY_WORD} "$@"\n	保留	[不对外] 远端 ~/.local/bin/ccm 那个 shim 的文件内容（shebang ＋ 一行注释 ＋ 一行 exec），不上屏；〔MC1〕CCM_SELF 那一行删了
-src/bridge/src/backend/observe/local_query.rs:91	{reason}；找过 {looked_at:?}	改·§2.1	[对外] QueryOutcome::NoBackend 经 subagent.rs:126「本机后端不在：{reason}」等回前端；{looked_at:?} 是 Rust Debug 格式的路径列表 →「…；找过：a、b」
-src/bridge/src/backend/observe/local_query.rs:104	起 {} 失败：{e}	保留	[对外] 经 NoBackend 回前端；「起 X 失败：原因」简短，无病
 src/bridge/src/backend_policy.rs:53	monitor 退出时会结束它	保留	[对外] 设置页后端卡片上「退出时会怎样」那一句（TS 侧 backend-policy.ts 同文对拍）；短、说后果
 src/bridge/src/backend_policy.rs:56	monitor 退出后它继续跑，无人监护：崩了不会自动重起；下次开 monitor 会接上它，接不上才起一个新的	保留	[对外] 同上 EXIT_UNATTENDED；分号分开的三个后果都是用户要知道的，无破折号/括号（「无人监护」偏书面，CP2 可顺手换「没人看着」之类）
 src/bridge/src/backend_policy.rs:58	monitor 不主动结束它；它仍会在 monitor 退出后很快自行退出	保留	[对外] 同上 EXIT_SELF_DIES，短
@@ -176,12 +174,7 @@ src/bridge/src/ccm_probe.rs:388	说不出你 PATH 上那个 `ccm` 是谁 —— 
 src/bridge/src/ccm_probe.rs:398	探不到（没有一个答得出 `--ccm-probe` 的 ccm）	改·§2.1	[对外] 括号里露出内部探针参数 --ccm-probe →「没找到」
 src/bridge/src/ccm_probe.rs:401	version={} · {} 项能力	保留	[对外] ccm 名片「version=… · N 项能力」；半机读形但短，版本号是用户要核对的（CP2 可改「版本 …」）
 src/bridge/src/ccm_probe.rs:402	(没报版本)	保留	[对外] 版本缺席占位，短
-src/bridge/src/creds_store.rs:101	读不动这份文件：{e}	保留	[对外] 凭据文件读失败，结果＋原因，短
-src/bridge/src/creds_store.rs:132	{how}。怎么修：{fix}	保留	[对外] 骨架「{how}。怎么修：{fix}」，干净；病在灌进来的 how/fix 本身（见 perm.rs）
 src/backend/accounts/apikey/file_face.rs:178	{how}。怎么修：{fix}	保留	[对外] 〔RM1a〕远端那台机器上那份凭据文件的权限提醒（`apikey-read` 的 notice，回到设置页那一块）；骨架与 creds_store.rs 那一句同文、干净，病在灌进来的 how/fix 本身（见 perm.rs）
-src/bridge/src/apikey_remote.rs:152	读写第三方 API key 时出了内部错误，没有拿到结果	保留	[可达存疑] 〔RM1a〕分流器 Done 那一臂的兜底（本族走不到）；说的是用户做的事（读写 API key）＋结果，短，同 backend_policy.rs 那一句的形
-src/bridge/src/remote_relay.rs:68	本机的中转住在本机后端进程里（随它起、随它按「退出行为」留或退），不在这里另起一个	保留	[可达存疑] 〔RL1 · V107〕`ensure_on` 对本机的拒绝（界面零调用方，本机那一臂只在内部走到）；说的是结果＋原因。「中转」是层 1 的正名（terms.json）
-src/bridge/src/remote_relay.rs:115	问中转时出了内部错误，没有拿到结果	保留	[可达存疑] 〔RM1a〕分流器 Done 那一臂的兜底（本族走不到）；同 backend_policy.rs 那一句的形
 src/backend/footprint.rs:104	列不动（没权限？）	保留	[不对外] 〔RM1a〕`footprint-probe` 应答里目录那一格的 notice，monitor 今天不读它（界面没有它的格子），过线是为了能查
 src/backend/footprint.rs:113	名字超过 {MAX_ENTRIES} 个，没列（不截断：截断的清单会被当成完整的）	保留	[不对外] 同上，目录名字超上限时那一格的 notice
 src/backend/footprint.rs:125	不是一份普通文件	保留	[不对外] 同上，`notices` 里查字样答 null 的原因
@@ -189,15 +182,6 @@ src/backend/footprint.rs:127	{} 字节，超过 {MAX_HOOK_FILE_BYTES}，没读	�
 src/backend/footprint.rs:131	读不到：{:?}	保留	[不对外] 同上
 src/backend/footprint.rs:138	读不动：{:?}	保留	[不对外] 同上
 src/bridge/src/footprint_remote.rs:271	查这台机器的足迹时出了内部错误，没有拿到结果	保留	[可达存疑] 〔RM1a〕分流器 Done 那一臂的兜底（本族走不到）；同 backend_policy.rs 那一句的形；「足迹」是正名（用户裁）
-src/bridge/src/data_paths.rs:114	主题 / 字体 / claudeDir override / 诊断开关	内部词→「Claude 配置目录」（claudeDir override）	[对外] 设置「数据」页里 config.json 的说明；claudeDir override 是配置键名 新词:claudeDir
-src/bridge/src/data_paths.rs:124	auto-launch monitor 开关 + 当前 monitor exe 路径	内部词→「开机自启开关和程序路径」	[对外] 设置「数据」页说明；auto-launch / exe 中英混写 新词:auto-launch
-src/bridge/src/data_paths.rs:129	历史浏览器：star / 重命名 / 隐藏	内部词→「收藏」（star）	[对外] 设置「数据」页说明；star 是内部字段名
-src/bridge/src/data_paths.rs:134	cc 集成短期 IPC：PS 通知 monitor 找窗口（写时存在，握手后被删）	改·§2.1	[对外] 设置「数据」页说明：「cc 集成短期 IPC：PS 通知 monitor 找窗口（写时存在，握手后被删）」整句在讲实现 兼§2.4 新词:握手 新词:PS →「终端集成用的临时文件，用完即删」
-src/bridge/src/data_paths.rs:139	cc 集成短期 IPC：monitor 把绑定结果告诉 PS（PS 进程同寿）	改·§2.1	[对外] 同上 ps-registry 说明：IPC / PS 进程同寿 都是实现细节 新词:同寿 →「终端集成用的临时文件，随终端关闭删除」
-src/bridge/src/data_paths.rs:144	诊断日志（按天滚动，保留 3 天）	保留	[对外] 设置「数据」页说明，短
-src/bridge/src/data_paths.rs:204	WebView2 cache / localStorage / IndexedDB / cookies。由 WebView2 Runtime 管理。	保留	[对外] 设置「数据」页里 EBWebView 目录的说明；WebView2 是用户盘上真实存在、目录名就是它的外部组件，属 R1b 限用（localStorage/IndexedDB 可在 CP2 收成「网页缓存」）
-src/bridge/src/data_paths.rs:223	PowerShell profile 备份目录	保留	[对外] 设置「数据」页条目名，PowerShell profile 是用户自己的叫法
-src/bridge/src/data_paths.rs:224	v1.7.10+ 装 cc 集成时自动备份到 <profile>.ccm-backup-<时间戳>	保留	[对外] 设置「数据」页说明，告诉用户备份文件名规则，可核对（「v1.7.10+」可删）
 src/bridge/src/fenced_block.rs:123	远端 POSIX 的 ~/<用户选的那份 rc>	保留	[不对外] FENCE_SHAPES：只被 #[cfg(test)] 判据读的登记表（pub const 但生产代码无读者）
 src/bridge/src/fenced_block.rs:124	整块别名 snippet（src/shared/ccm-aliases.sh）	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:129	落盘走 SFTP（upload_atomic + 远端备份），本机那两套走本地原子替换	保留	[不对外] FENCE_SHAPES 登记表字段
@@ -400,10 +384,7 @@ src/bridge/src/backend_policy.rs:93	— 无记录	保留	[对外] 设置页后�
 src/bridge/src/backend_policy.rs:95	没崩过（这次 monitor 开着以来）	保留	[对外] 健康格第二档；括号里是范围不是说明（按 body 档）
 src/bridge/src/backend_policy.rs:97	⚠ 崩过 {crashed} 次 · 最后一次：{last}	保留	[对外] 健康格第三档（70 §2.3 线框）；{last} 由后端 last_brief 填（判定 ＋ 退出状态），不再是整条账行
 src/bridge/src/backend_policy.rs:99	没留下记录	保留	[对外] {last} 缺席时的兜底，短
-src/bridge/src/data_paths.rs:163	每个会话在哪个终端窗口里（cc 集成用来拉前终端）	保留	[对外] 数据位置 sid-hwnd-cache.json 那一行说明（ST2：原文的 sid / HWND 换成用户的话，70 §10.2 差项 4）
 src/bridge/src/history.rs:2360	apikey 端点改写不可用：账号 {account:?} 在 [{host}] 的 apikey 表里有一行，\n         但那台机器上的中转起不来（{why}）——\n\n         这一发要是照旧起出去，claude 那边会报一个与网络故障同形的连接失败。\n\n         ⇒ 重装那台机器的后端再试，或把该账号那一行从那台机器的凭据文件里去掉。	保留	[对外] 〔RL1〕远端 apikey 号的中转起不来 ⇒ 拒绝起会话（toast「无法构造…」的第二行）；说的是结果＋原因＋下一步，点名那台机器。「中转」层 1 正名、「apikey 端点改写」层 2 正名（terms.json）
-src/bridge/src/remote_relay.rs:82	那台的后端没有起中转（口上没人在听，它也没起进程）	保留	[对外] 〔RL1〕上一句里「为什么」那一格：relay-ensure 回 started:false
-src/bridge/src/remote_relay.rs:85	那台的后端起了一个中转，但等了一会儿它还没在那个口上听	保留	[对外] 〔RL1〕上一句里「为什么」那一格：起了进程、有界地等完了口上仍没人
 src/backend/control/files_write.rs:724	回读 {} 字节，与写进去的 {} 字节不一致	保留	[对外] files-put 写后校验失败那句的中段（RW1：用户文件的写规则从 monitor 的 fenced_block::apply 搬来后端），两个数都是用户看得懂的字节数
 src/backend/control/files_write.rs:728	写完读不回来（{e}）	保留	[对外] 同上一族；读回失败时带系统原话，短
 src/backend/control/files_write.rs:735	原文件已恢复。	保留	[对外] 同上一族，逐字沿用 fenced_block::undo_note 已裁「保留」的那一句（RW1 把写规则搬到后端，话一个字没换）

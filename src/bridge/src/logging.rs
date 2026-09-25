@@ -50,6 +50,7 @@
 //! - tracing 全局 dispatcher 一旦 init 不能再换 → 必须在 `tauri::Builder` 之前调用
 //! - WorkerGuard drop 才会 flush 缓冲 → 必须挂在 state 上（与 app 同生命周期）
 
+use crate::copy_table::copy_text;
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -482,9 +483,12 @@ fn write_diagnostics_to_config(
         // 〔S5 · 第四波 · D4 / D7〕读不懂 ⇒ **不写**，说清为什么。从前这里退成 `{}` 再整份写回 ——
         //   用户手填的那份（哪怕只是少了一个逗号）连同里面别的设置被静默盖成只剩 `diagnostics` 一格。
         serde_json::from_str(&raw).map_err(|e| {
-            format!(
-                "{} 读不懂（{e}），诊断设置没有存：写回去会把这份文件里别的设置一起盖掉，先把它改成合法的 JSON",
-                cfg_path.display()
+            copy_text(
+                "rsLogging.diagnostics.badConfig",
+                &[
+                    ("path", &(cfg_path.display()).to_string()),
+                    ("e", &e.to_string()),
+                ],
             )
         })?
     } else {
