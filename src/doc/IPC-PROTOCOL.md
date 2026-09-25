@@ -1845,9 +1845,68 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 | `rows` | ← | 每个路径一行 `{path, state, suspects, blocked}`：`state` 闭集同 `mcp-sync-plan`；`suspects` 只在 `new` / `differs` 上有 `{kind, value, there}` —— `kind` 闭集 `executable`（有执行位或 `#!` 开头）· `binary`（来源读不出原文）· `abs-path`（文本里的绝对路径，`there` 闭集同 `mcp-sync-plan`）· `command-missing`（`#!/usr/bin/env X` 的 `X` 在这台后端的 `PATH` 上找不到）；`blocked` = 这台上那一份盖不了的原因（不是文本等），否则 `null` |
 | `target` | ← | 这一趟拷的那几个路径在这台上现有的原文 `[{path, text}]` —— 写的时候当 CAS 期望 |
 | `write` | ← | 没给 `take` ⇒ `null`；给了 ⇒ 真要写的路径（排序） |
+| `ledger` | ← | 〔SU1 · 4C · V116〕没给 `take` ⇒ `null`；给了 ⇒ `{<path>: {digest, created}}`，恰是 `write` 那几个：`digest` = 来源那一份原文的摘要（FNV-1a 64，16 位小写十六进制），`created` = 这台上原来没有（`new`）。调用方写完把**真写成了的那几个**原样交 `skill-install-record`（`op: "add"`） |
 
 **错误码**：`bad_args`（名字 / 路径不对 · `take` 里有不在 `source` 里的 · `take` 了来源读不出原文的那一个）· `bad_file`（`take` 了这台上盖不了的那一个）· `needs_consent`（同 `mcp-sync-plan`）· `too_large` · `io_failed`。
 ⚠ **CLI 面也有它**（`--skill-install-plan`），入参从 stdin 读。
+
+#### `skill-install-record`：skill 装记录的写口（SU1 · 第四波 4C，2026-09-25，**写后端自有状态**）
+
+V116「要，只删装时写进去的文件」：装的时候记下写了哪几个文件，卸只删这些。记录住这台后端自己的 `~/.cc-monitor/skill-installs.json`（第四层；一个用户文件都不写）。
+
+```text
+→ {"id":"r1","cmd":"skill-install-record","args":{"op":"add","name":"demo","files":{"SKILL.md":{"digest":"8c3e…","created":true}}}}
+← {"kind":"reply","id":"r1","ok":true,"data":{"dir":"/home/u/.claude/skills/demo","name":"demo","changed":true,"remaining":1}}
+→ {"id":"r2","cmd":"skill-install-record","args":{"op":"drop","dir":"/home/u/.claude/skills/demo","paths":["SKILL.md"]}}
+← {"kind":"reply","id":"r2","ok":true,"data":{"dir":"/home/u/.claude/skills/demo","name":"demo","changed":true,"remaining":0}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `op` | → | `add`（装完记）或 `drop`（卸掉 / 已经不在的摘掉） |
+| `name` | → | `add`：skill 的目录名。**目录由这台后端按 `skill 根 / name` 自己算**，不收调用方给的路径 |
+| `files` | → | `add`：`{<相对路径>: {digest, created}}` —— `skill-install-plan` 答的 `ledger` 里真写成了的那几个。同一目录再装一次：新路径加进来、已记的换新摘要、`created` 取第一次的 |
+| `dir` | ↔ | `drop` 的入参：记录里那个 skill 目录；应答里是这一条记录的目录 |
+| `paths` | → | `drop`：要摘的相对路径（不在记录里 ⇒ `bad_args`，一个字节不动）；摘到零个 ⇒ 整条记录摘掉 |
+| `changed` / `remaining` | ← | 记录变没变（没变不写）/ 这一条还剩几个文件 |
+
+**错误码**：`bad_args` · `not_found`（`drop` 的目录没记着）· `ledger_unreadable`（记录读不懂 / 另一个版本写的 —— **不覆盖**）· `too_large`（一趟超过 512 个）· `io_failed`。
+⚠ **CLI 面也有它**（`--skill-install-record`），入参从 stdin 读。
+
+#### `skill-installs`：这台记着的、从别的机器装来的 skill（SU1 · 第四波 4C，2026-09-25，**只读**）
+
+```text
+→ {"id":"r3","cmd":"skill-installs"}
+← {"kind":"reply","id":"r3","ok":true,"data":{"installs":[{"dir":"/home/u/.claude/skills/demo","name":"demo","files":3}]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `installs` | ← | 每条 `{dir, name, files}`（`files` = 记着的文件数）。还没装过 ⇒ `[]` |
+
+**错误码**：`ledger_unreadable`（读不懂 ≠ 没装过）· `io_failed`。
+⚠ **CLI 面也有它**（`--skill-installs`），不收输入。
+
+#### `skill-uninstall-plan`：在被卸的那一台判卸哪几个（SU1 · 第四波 4C，2026-09-25，**只读**）
+
+只卸记录里那几个文件（V116）。一个字节都不写：删经调用方 → 那台后端 `files-delete`（`root` = `dir`，`rel` = 路径，`expect` = 这里回的 `seen` 里那一份）；删完把删掉的 ＋ `forget` 交 `skill-install-record`（`op: "drop"`）。
+
+```text
+→ {"id":"r4","cmd":"skill-uninstall-plan","args":{"dir":"/home/u/.claude/skills/demo"}}
+← {"kind":"reply","id":"r4","ok":true,"data":{"dir":"…/demo","name":"demo","rows":[{"path":"SKILL.md","state":"modified","created":true,"deletable":true,"ask":true}],"seen":[{"path":"SKILL.md","text":"…"}],"delete":null,"forget":null}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `dir` | ↔ | 记录里那个 skill 目录（`skill-installs` 给的） |
+| `take` / `confirm` | → | 可缺席。给了 `take` 才答 `delete`；`ask` 为真的那几个要在 `confirm` 里点名，不然整趟拒（`needs_consent`）；`confirm` 必须 ⊆ `take` |
+| `name` | ← | 装时那个 skill 名（给人看） |
+| `rows` | ← | 记录里每个文件一行 `{path, state, created, deletable, ask}`：`state` 闭集 `intact`（在、摘要 == 装时那一份）· `modified`（装完被改过）· `gone`（已经不在）· `unreadable`（不是普通文件 / 不是文本，没法按原文删）；`deletable` = `intact` 或 `modified`；`ask` = 能删且（`modified` 或装之前就在 —— `created: false`，删了回不到装之前那一份） |
+| `seen` | ← | 能删的那几份现有原文 `[{path, text}]` —— 删的时候当 CAS 期望 |
+| `delete` / `forget` | ← | 没给 `take` ⇒ `null`；给了 ⇒ 真要删的（排序）/ 已经不在、要从记录里摘的 |
+
+**错误码**：`bad_args`（`take` 里有不在记录里的 / 删不了的 · 两张单子对不上）· `needs_consent` · `not_found`（这台没记着这个目录）· `ledger_unreadable` · `io_failed`。
+⚠ **CLI 面也有它**（`--skill-uninstall-plan`），入参从 stdin 读。
 
 #### 只读查询面（`C1`，2026-09-24）—— **八条一次性查询搬上这条长连接**
 

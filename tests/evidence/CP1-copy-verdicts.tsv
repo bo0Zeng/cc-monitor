@@ -1396,3 +1396,23 @@ src/backend/stderr_log.rs:51	[stderr-log] 上一份挪成 {}（每份上限 {CAP
 src/backend/stderr_log.rs:163	[stderr] 没被交日志路径 ⇒ stderr 原样	保留	[不对外] 〔NT2 · S1〕后端流模式起来时的一行 tracing 日志（没被交路径 ⇒ stderr 不动）
 src/backend/stderr_log.rs:165	[stderr] 本进程的输出落在 {}（每份上限 {} 字节，留一份旧的）	保留	[不对外] 〔NT2 · S1〕后端流模式起来时的一行 tracing 日志：诊断落在哪份文件
 src/backend/stderr_log.rs:169	[stderr] 被交了日志路径但接不上：{why}	保留	[不对外] 〔NT2 · S1〕后端流模式起来时的一行 tracing 日志：接不上的原因
+src/backend/skill_ledger.rs:121	读 {} 失败：{e}	保留	[可达存疑] 〔SU1〕skill 装记录那份文件读不出来（权限 / 超上限）⇒ ledger_unreadable 的 message，机器页「从别的机器装来的 skill」那一小节照原话列；不覆盖那份文件
+src/backend/skill_ledger.rs:129	{} 是另一个版本的后端写的（格式 {v}，这个后端只认 {FORMAT_V}），没有动它	保留	[可达存疑] 〔SU1〕装记录是更新 / 更旧版本的后端写的 ⇒ 不认、不覆盖；同资产目录那一句的形
+src/backend/skill_ledger.rs:136	{} 不是这个后端认得的 skill 装记录：{e}	保留	[可达存疑] 〔SU1〕装记录写坏了 ⇒ 不猜成「什么都没装过」、不覆盖；原话回机器页
+src/bridge/src/skill_install.rs:168	卸不了 skill，一个字节都没动	保留	[可达存疑] 〔SU1〕那台后端太旧、不认 skill-uninstall-plan ⇒ 拼进 describe_backend_too_old_for 那一句的尾巴
+src/bridge/src/skill_install.rs:170	装不了 skill，一个字节都没动	保留	[可达存疑] 〔AS2〕那台后端太旧、不认 skill 装那几条 ⇒ 拼进 describe_backend_too_old_for 那一句的尾巴（SU1 把它挪进一个 if 臂之后普查才看得见）
+src/bridge/src/skill_install.rs:347	「{path}」不在拷出来的那一份里 —— 两端对不上，停下了	保留	[可达存疑] 〔AS2〕装：后端判的「写哪几个」里有一个不在界面送回来的来源那一份里（两端版本 / 契约对不上）⇒ 停下，回机器页
+src/bridge/src/skill_install.rs:352	「{path}」没有原文 —— 两端对不上，停下了	保留	[可达存疑] 〔AS2〕装：同上一行，那一个在来源那台读不出原文却被判成要写
+src/bridge/src/skill_install.rs:366	那一份在你看差异之后又被改过了，重新看一次差异再决定	保留	[可达存疑] 〔AS2〕装：CAS stale ⇒ 停下的原因，拼进「…时停下了：{why}」那一句
+src/bridge/src/skill_install.rs:415	装好了，但「{p}」这台没说该怎么记 —— 这一趟装的文件卸不掉。	保留	[可达存疑] 〔SU1〕装成了，但那台后端判的 ledger 里缺这一个（多半两边版本不一样）⇒ 如实说这一趟装的卸不掉（V116 卸只认记着的）
+src/bridge/src/skill_install.rs:430	装好了，但没记下来（{e}）—— 这一趟装的文件卸不掉。	保留	[可达存疑] 〔SU1〕装成了，记装记录那一问失败 ⇒ 装不回滚，只说清后果：卸不掉
+src/bridge/src/skill_install.rs:465	「{path}」你看的时候没有它的原文 —— 两端对不上，停下了	保留	[可达存疑] 〔SU1〕卸：后端判的「删哪几个」里有一个界面送回来的 seen 里没有（契约对不上）⇒ 不删、停下
+src/bridge/src/skill_install.rs:475	那一份在你看过之后又被改过了（或已经不在了），重新看一次再决定	保留	[可达存疑] 〔SU1〕卸：files-delete 的 CAS stale ⇒ 停下的原因，拼进「删「…」时停下了：{why}」那一句
+src/bridge/src/skill_install.rs:499	删掉的没从装记录里摘掉（{e}）—— 下次看它们会显示「已经不在」。	保留	[可达存疑] 〔SU1〕卸：文件删了、摘记录那一问失败 ⇒ 说清后果（下次看显示「已经不在」，再卸一次就摘掉）
+src/bridge/src/skill_install.rs:517	一个都还没删	保留	[可达存疑] 〔SU1〕卸到一半停下那句话的后半（碎片，拼进下一行那一句）；同装那一侧「一个都还没写」
+src/bridge/src/skill_install.rs:519	前面已经删了 {}	保留	[可达存疑] 〔SU1〕同上一行：卸到一半停下时列出已经删了的那几个（碎片）
+src/bridge/src/skill_install.rs:521	{machine} 上删「{at}」时停下了：{why}。{done}。	保留	[可达存疑] 〔SU1〕卸到一半停下（stale / 删口拒）：说清停在哪个文件、为什么、前面删了哪几个 ⇒ 回机器页「资产目录」那一块
+src/settings/assets-section.ts:217	installs 那一格	保留	[不对外] 〔SU1〕console.warn 里标应答哪一格形状不对（给开发者看），用户看到的是 assets.load.shape
+src/settings/assets-section.ts:226	顶层缺格	保留	[不对外] 〔SU1〕同上一行
+src/settings/assets-section.ts:237	rows 那一格	保留	[不对外] 〔SU1〕同上一行
+src/settings/assets-section.ts:243	seen 那一格	保留	[不对外] 〔SU1〕同上一行

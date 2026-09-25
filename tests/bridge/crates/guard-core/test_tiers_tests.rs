@@ -535,6 +535,8 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/relay/server_tests.rs",
     "tests/backend/relay/wire_golden.rs",
     // 〔NT2 · S1〕L2 真起子进程（re-exec 本测试二进制，fd 2 真被换走）
+    // 〔MG1 合 SU1〕skill 装记录：临时家目录里真写 / 读 / 摘 `~/.cc-monitor/skill-installs.json` ⇒ 判别器判集成层。
+    "tests/backend/skill_ledger_tests.rs",
     "tests/backend/stderr_log_tests.rs",
     "tests/backend/wire_tests.rs",
     "tests/bridge/account_aliases_tests.rs",

@@ -159,7 +159,12 @@ pub const COMMANDS: &[&str] = &[
     "resolve",
     // 〔AS2〕skill「装到这台」：来源那台读 · 要被写的那一台判（都只读；写经 `files-put`）。
     "skill-install-plan",
+    // 〔SU1 · 第四波 4C · V116〕skill 装记录（第四层）：装完记下写了哪几个 · 卸掉的摘掉。
+    "skill-install-record",
+    // 〔SU1〕这台记着的、从别处装来的 skill · 卸的判定（都只读；删经 `files-delete` 带 `expect`）。
+    "skill-installs",
     "skill-read",
+    "skill-uninstall-plan",
     "tasks-list",
     // 〔SR1b〕传输四条（`control/transfer.rs`）：传输台住本机常驻后端，SFTP 跟其它 SSH 同一条连接。
     "transfer-download",
@@ -1053,10 +1058,74 @@ pub const REGISTRY: &[CommandSpec] = &[
             "take",
             "target",
             "write",
+            // 〔SU1〕给了 `take` 才有：真要写的那几个的摘要 ＋ 装之前在不在（装完原样交回 `skill-install-record`）。
+            "ledger",
         ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::skill_install::answer_plan(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔SU1 · 第四波 4C · V116〕**skill 卸**（「要，只删装时写进去的文件」）：
+    //   `skill-install-record` 是装记录 `~/.cc-monitor/skill-installs.json` 的写口（第四层；装完记 `add` · 卸掉的摘 `drop`），
+    //   `skill-installs` 列这台记着的 · `skill-uninstall-plan` 在被卸的那一台判（逐文件四态 ＋ 要不要问 ＋ 删哪几个）。
+    //   后两条只读；删经 `files-delete`（CAS）。三条都是阻塞档（读写一份小文件 · 逐个读盘比摘要）。
+    CommandSpec {
+        name: "skill-install-record",
+        doc_anchor: Some("#### `skill-install-record`"),
+        codes: &[
+            "bad_args",
+            "io_failed",
+            "ledger_unreadable",
+            "not_found",
+            "too_large",
+        ],
+        fields: &[
+            "changed",
+            "dir",
+            "files",
+            "name",
+            "op",
+            "paths",
+            "remaining",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::skill_ledger::answer_record(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "skill-installs",
+        doc_anchor: Some("#### `skill-installs`"),
+        codes: &["io_failed", "ledger_unreadable"],
+        fields: &["installs"],
+        takes_input: false,
+        run: Run::Blocking(|r| {
+            crate::skill_install::answer_installs(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "skill-uninstall-plan",
+        doc_anchor: Some("#### `skill-uninstall-plan`"),
+        codes: &[
+            "bad_args",
+            "io_failed",
+            "ledger_unreadable",
+            "needs_consent",
+            "not_found",
+        ],
+        fields: &[
+            "confirm", "delete", "dir", "forget", "name", "rows", "seen", "take",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::skill_install::answer_uninstall_plan(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),

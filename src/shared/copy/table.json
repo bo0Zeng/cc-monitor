@@ -696,6 +696,81 @@
       "kind": "body",
       "zh": "留意：{value}",
       "args": ["value"]
+    },
+    "assets.uninstall.head": {
+      "kind": "title",
+      "zh": "从别的机器装来的 skill",
+      "args": []
+    },
+    "assets.uninstall.none": {
+      "kind": "body",
+      "zh": "这台还没有从别的机器装来的 skill。",
+      "args": []
+    },
+    "assets.uninstall.loadFailed": {
+      "kind": "error",
+      "zh": "读不出这台的装记录：{reason}",
+      "args": ["reason"]
+    },
+    "assets.uninstall.tooOld": {
+      "kind": "error",
+      "zh": "这台机器上的后端版本旧。重装后端之后才能卸从别处装来的 skill。",
+      "args": []
+    },
+    "assets.uninstall.meta": {
+      "kind": "body",
+      "zh": "{dir} · 装时写进去 {n} 个文件",
+      "args": ["dir", "n"]
+    },
+    "assets.uninstall.action": {
+      "kind": "action",
+      "zh": "卸",
+      "args": []
+    },
+    "assets.uninstall.previewHead": {
+      "kind": "body",
+      "zh": "只删装时写进 {dir} 的这几个文件，目录本身留着：",
+      "args": ["dir"]
+    },
+    "assets.uninstallState.intact": {
+      "kind": "body",
+      "zh": "和装的时候一样",
+      "args": []
+    },
+    "assets.uninstallState.modified": {
+      "kind": "body",
+      "zh": "装完之后被改过，勾上才删",
+      "args": []
+    },
+    "assets.uninstallState.gone": {
+      "kind": "body",
+      "zh": "已经不在了",
+      "args": []
+    },
+    "assets.uninstallState.unreadable": {
+      "kind": "body",
+      "zh": "现在不是一份能比对的文本，不删",
+      "args": []
+    },
+    "assets.uninstall.askOverwrote": {
+      "kind": "body",
+      "zh": "装之前这里就有一份，装的时候被盖掉了。删掉它也回不到装之前那一份。",
+      "args": []
+    },
+    "assets.uninstall.apply": {
+      "kind": "action",
+      "zh": "在 {machine} 上删掉勾了的",
+      "args": ["machine"]
+    },
+    "assets.uninstall.done": {
+      "kind": "body",
+      "zh": "删了 {n} 个文件，目录 {dir} 还在。",
+      "args": ["n", "dir"]
+    },
+    "assets.uninstall.failed": {
+      "kind": "error",
+      "zh": "没卸成：{reason}",
+      "args": ["reason"]
     }
   }
 }
