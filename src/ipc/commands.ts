@@ -68,7 +68,7 @@ import { invoke, type Channel } from "@tauri-apps/api/core";
  * **必须手动同步**，由 Rust 侧 `the_ts_status_type_matches_this_struct` **双向**对拍
  *（Rust 的字段名从结构体源码派生、TS 的从本接口体派生，**两边条数相等**，多一个少一个都红）。
  */
-import type { ApikeyRoutingView, RawAccountsResult, TrustResult } from "../accounts";
+import type { ApikeyRoutingView } from "../accounts";
 
 export interface ApikeyCredentialsStatus {
   /** 配了没配。 */
@@ -126,7 +126,6 @@ import type { BranchResult } from "../generated/BranchResult";
 //   判据 `tests/ipc/commands.vitest.ts` 末尾「TS 侧 origin 去 null」那一节，全 TS ＋ 生成物）；
 //   〔C4b〕生成物 `RemoteHealthPayload.origin` 那最后一处也改成了 `string`（那一节的 `PENDING` 从此为空）。
 import type { Origin } from "../generated/Origin";
-import type { SessionRecordProbe } from "../generated/SessionRecordProbe";
 import type { CcBusMessage } from "../generated/CcBusMessage";
 import type { CcBusState } from "../generated/CcBusState";
 import type { ConnectStage } from "../generated/ConnectStage";
@@ -677,13 +676,8 @@ export const commands = {
     tmuxName?: string | null;
   }) => invoke<void>("resume_history_session", args),
 
-  /**
-   * 〔U4b · 第四波〕**resume 之前问：这条会话的记录还在那台机器上吗**（`设计/01 §6.2` 最后一条）。
-   * 判定住那台的后端（`history-record`，只收 sid）；本机与远端同一个口。**问不到 ⇒ reject**：
-   * 调用方当「不知道」，**不当「不在」**。返回值字段被真消费 ⇒ 生成物（桶③）。
-   */
-  probe_session_record: (args: { origin: Origin; sessionId: string }) =>
-    invoke<SessionRecordProbe>("probe_session_record", args),
+  // 〔C4c · 第四波 4B〕「resume 之前问记录还在不在」那一条退役：界面经通道直接问后端 `history-record`
+  //   （`src/session-reads.ts::probeSessionRecord`，成品 `{present, root}`）。
 
   /** **本机今天有哪些 tmux 会话** —— 与远端 `list_remote_tmux` 同形（本机没有 SSH 那一跳）。
    *
@@ -939,21 +933,9 @@ export const commands = {
    */
   load_config: () => invoke<Record<string, unknown>>("load_config"),
 
-  /**
-   * 〔B2 · 条 66〕问那台机器的后端：「退出行为」那个值现在是什么（值住那台机器上，`设计/01 §3.3b`）。
-   * Rust 那边是后端回的不透明 JSON（`state` / `killOnExit` / `reason` / `path`）⇒ **桶②**，
-   * 形状由 `settings/backend-section.ts` 的 `readExitAnswer` 逐格取、缺一格就当问不到。
-   * `origin` 本机是 `"<local>"`（见 `backend-policy.ts` 的 `LOCAL_ORIGIN`，两侧有判据对拍）。
-   */
-  backend_exit_policy: (args: { origin: string }) =>
-    invoke<Record<string, unknown>>("backend_exit_policy", args),
-
-  /**
-   * 〔B2 · 条 66〕交那台机器的后端去写那个值；回**写完读回来的那一份**（同上一条的形状）⇒ **桶②**。
-   * 前端从不碰那份文件 —— 这条命令就是前端改它的唯一一条路（`§3.3b ③`）。
-   */
-  set_backend_exit_policy: (args: { origin: string; kill: boolean }) =>
-    invoke<Record<string, unknown>>("set_backend_exit_policy", args),
+  // 〔C4c · 第四波 4B〕「退出行为」那两条（〔B2 · 条 66〕问 / 交写，monitor 只转 ＋ 原样交回）退役：
+  //   设置页经通道直接说后端 `exit-policy-read` / `exit-policy-set`（`settings/backend-section.ts::askExitPolicy` /
+  //   `putExitPolicy`），形状仍由 `readExitAnswer` 收。
 
   /**
    * P2s（C8）：这台机的后端现在什么状态。Rust 那边是不透明 JSON（同 `load_config` 那处的
@@ -1138,21 +1120,9 @@ export const commands = {
   /** 把监控窗口拉到最前。**桶①**。 */
   bring_monitor_to_front: () => invoke<void>("bring_monitor_to_front"),
 
-  /** 某台远端的账号清单。**桶③**（手写形状 `RawAccountsResult`，住 `accounts.ts`，理由见那里）。 */
-  list_remote_accounts: (args: { origin: Origin }) =>
-    invoke<RawAccountsResult>("list_remote_accounts", args),
-
-  /** 本机账号清单（问本机后端 `--list-accounts`）。**桶③**，同上。 */
-  list_local_accounts: () => invoke<RawAccountsResult>("list_local_accounts"),
-
   // 〔C4a · 子步 3〕远端那条「某会话跑在哪个账号下」退役（子步 2 刚收进来，子步 3 连同本机那条一起改走通道）。
-
-  /**
-   * 换号前的目录信任预检。**桶③**（手写 `TrustResult`，住 `accounts.ts`）。
-   * `configDir: null` = 问账号 0（后端走 `--account-trust-zero`）—— **绝不传空串**（Z01）。
-   */
-  check_account_trust: (args: { origin: Origin; configDir: string | null; cwd: string }) =>
-    invoke<TrustResult>("check_account_trust", args),
+  // 〔C4c · 第四波 4B〕账号清单两条（远端 / 本机）与换号前的信任预检退役：前端经通道直接说帧命令
+  //   `accounts-list` / `accounts-trust`（`src/accounts.ts::fetchAccounts` / `checkTrust`），后端出成品。
 
   /** issue #23：红绿灯快照（启动 / F5 后拉一次做初始收敛）。**桶③**（生成物）。 */
   list_session_activity: () => invoke<SessionActivityPayload[]>("list_session_activity"),

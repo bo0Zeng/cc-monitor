@@ -21,11 +21,13 @@ import { ChanError } from "../src/ipc/chan";
 import {
   decodeFind,
   decodeIndex,
+  decodeRecord,
   decodeUserInputs,
   failureOf,
   findInSession,
   FIND_LIMIT,
   listUserInputs,
+  probeSessionRecord,
   readSessionIndex,
 } from "../src/session-reads";
 import { REPO_ROOT } from "./test-support/repo-root";
@@ -145,5 +147,39 @@ describe("〔C4b〕会话读面三问：经通道说对的帧命令", () => {
     await expect(chan.call("aya", "history-index", new Uint8Array(), { until: performance.now() + 1000 })).rejects.toBeInstanceOf(
       ChanError,
     );
+  });
+});
+
+// 〔C4c · 第四波 4B〕第四问：resume 之前问记录还在不在（`history-record`）。要求住址：`设计/01 §6.2` 最后一条
+//   「对方那份记录也没了 ⇒ 重开必失败，要诚实报错，不许静默变成『起了个新会话』」· `设计/05 §8` 步 5。
+describe("〔C4c〕记录还在不在：经通道问 `history-record`", () => {
+  it("★★ 帧命令与请求体（只收 sid）；本机也走同一条路；成品原样交回", async () => {
+    invokeMock.mockResolvedValueOnce(chanReply({ present: false, root: "/h/.claude/projects" }));
+    expect(await probeSessionRecord("<local>", "s-1")).toEqual({ present: false, root: "/h/.claude/projects" });
+    const a = invokeMock.mock.calls[0][1] as ChanCallArgs;
+    expect([invokeMock.mock.calls[0][0], a.origin, a.op, chanArgsJson(a)]).toEqual([
+      "chan_call",
+      "<local>",
+      "history-record",
+      { sid: "s-1" },
+    ]);
+  });
+  it("★★ 缺一格 / 多一格 / 类型不对 ⇒ 抛 —— **绝不**读成「不在」（`present:false` 会把接得上的 resume 拦掉）", () => {
+    for (const bad of [
+      { root: "/r" },
+      { present: false },
+      { present: "no", root: "/r" },
+      { present: false, root: "/r", extra: 1 },
+      { lines: [] },
+    ]) {
+      expect(() => decodeRecord(bad), JSON.stringify(bad)).toThrow();
+    }
+    expect(decodeRecord({ present: true, root: "/r" })).toEqual({ present: true, root: "/r" });
+  });
+  it("★ 问不到（没有控制通道 / 后端不认）⇒ 抛（调用方当「不知道」），不折成一个答案", async () => {
+    invokeMock.mockRejectedValueOnce(NO_CHANNEL);
+    await expect(probeSessionRecord("aya", "s-1")).rejects.toBeInstanceOf(ChanError);
+    invokeMock.mockRejectedValueOnce(UNSUPPORTED);
+    await expect(probeSessionRecord("aya", "s-1")).rejects.toBeInstanceOf(ChanError);
   });
 });

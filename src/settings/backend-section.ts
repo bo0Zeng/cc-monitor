@@ -23,8 +23,10 @@
  *
  * # 〔B2 · 条 66〕那个勾的值**问后端要、交后端写**
  *
- * 值住后端所在那台机器上（`设计/01 §3.3b`）。本文件画勾之前问一次（`backend_exit_policy`），
- * 改勾就发一条后端命令（`set_backend_exit_policy`），**画的是后端写完读回来的那一份**。
+ * 值住后端所在那台机器上（`设计/01 §3.3b`）。本文件画勾之前问一次（后端 `exit-policy-read`），
+ * 改勾就发一条后端命令（`exit-policy-set`），**画的是后端写完读回来的那一份**。
+ * 〔C4c · 第四波 4B〕两问**经通道直接问那台机器的后端**（[`askExitPolicy`] / [`putExitPolicy`]）：此前是两条 Tauri 命令
+ * （`backend_exit_policy` / `set_backend_exit_policy`〔散文墓碑〕），monitor 那一跳只在转 ＋ 原样交回 —— 解释本来就在这里（`readExitAnswer`）。
  * 问不到（没连上 / 旧后端不认那条命令）⇒ 勾**禁用**、那一行不说话 —— 我们不知道那台机器上是什么，
  * 就不替它说一句；更不许拿一个本地缺省值画一个看起来能用的勾。
  * 理由是实测过的失效形态：现行那条判据 `readFileSync` 的**只有一个文件**、只剥整行注释
@@ -33,6 +35,9 @@
  */
 
 import { commands } from "../ipc/commands";
+import { chan } from "../ipc/chan";
+import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
+import type { Origin } from "../ipc/origin";
 
 /** 起/停之后轮询状态的次数与间隔 —— 命令是「发出去就返回」的，不轮询看到的是操作前的状态。 */
 const SETTLE_TRIES = 30;
@@ -69,6 +74,38 @@ function readExitAnswer(raw: unknown): ExitAnswer | null {
     v.state === "chosen" || v.state === "absent" || v.state === "unreadable" ? v.state : null;
   if (policy === null || typeof v.killOnExit !== "boolean") return null;
   return { policy, killOnExit: v.killOnExit };
+}
+
+/** 「退出行为」那两问的期限：10 秒 —— 与它们上一个住址（monitor `backend_policy::EXIT_POLICY_BUDGET`）同值。 */
+const EXIT_POLICY_BUDGET_MS = 10_000;
+
+/** 那台后端比「退出行为」搬过去还老（不认这两条命令）时的那句话。 */
+const EXIT_POLICY_OLD_BACKEND =
+  "那台机器的后端还不认「退出行为」这一问 —— 重装那台机器的后端就有了";
+
+/**
+ * 〔C4c · 第四波 4B〕问那台机器（本机也一样）「退出行为」那个值：后端 `exit-policy-read`，经通道。
+ * 回后端那份原样（交给 [`readExitAnswer`] 收）。**失败就抛**（一句人话，通道那一层的说法住 `chan-caller.ts::saidOf`）。
+ */
+async function askExitPolicy(origin: Origin): Promise<unknown> {
+  try {
+    const body = jsonBody({});
+    const budget = budgetWithin(EXIT_POLICY_BUDGET_MS);
+    return readJson(await chan.call(origin, "exit-policy-read", body, budget));
+  } catch (e) {
+    throw new Error(saidOf(e, EXIT_POLICY_OLD_BACKEND));
+  }
+}
+
+/** 〔C4c〕交那台机器写那个值：后端 `exit-policy-set`，经通道；回**写完读回来**的那一份。失败就抛。 */
+async function putExitPolicy(origin: Origin, kill: boolean): Promise<unknown> {
+  try {
+    const body = jsonBody({ killOnExit: kill });
+    const budget = budgetWithin(EXIT_POLICY_BUDGET_MS);
+    return readJson(await chan.call(origin, "exit-policy-set", body, budget));
+  } catch (e) {
+    throw new Error(saidOf(e, EXIT_POLICY_OLD_BACKEND));
+  }
 }
 
 /**
@@ -484,7 +521,7 @@ export class BackendSection {
     const want = box.checked;
     try {
       // 〔B2〕交后端写（那个值住那台机器上），**画的是它写完读回来的那一份**。
-      const back = readExitAnswer(await commands.set_backend_exit_policy({ origin, kill: want }));
+      const back = readExitAnswer(await putExitPolicy(origin, want));
       if (back === null) throw new Error("后端写完回来的那一份形状不对 —— 两端契约对不上");
       // 勾变了 ⇒ 那句「退出时会发生什么」也变了。**同一拍重画**，
       // 否则屏上那句话描述的是上一次的状态（与 A4 那条「画的是操作前的快照」同族）。
@@ -492,7 +529,7 @@ export class BackendSection {
     } catch (e) {
       // 存不下就**把勾回退**——否则屏上写着 A 而实际是 B，比报错更坏。
       box.checked = !want;
-      showActionFailureToast("保存后端策略失败", String(e));
+      showActionFailureToast("保存后端策略失败", e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -511,7 +548,7 @@ export class BackendSection {
       // 〔B2〕那个值问那台机器的后端要（**每次现问**，不用上一次的）；问不到就是 `null`。
       let answer: ExitAnswer | null;
       try {
-        answer = readExitAnswer(await commands.backend_exit_policy({ origin }));
+        answer = readExitAnswer(await askExitPolicy(origin));
       } catch (e) {
         console.warn(`[B2] ${origin} 的退出策略问不到：${String(e)}`);
         answer = null;

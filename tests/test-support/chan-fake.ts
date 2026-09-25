@@ -52,12 +52,14 @@ export function chanArgsJson(args: ChanCallArgs): unknown {
 //   （跨语言金样 `tests/__fixtures__/session-reads.golden.json` 钉着两侧）。
 
 /** 三问各自的名字（判据里的叫法 = 旧命令名，只为让断言读起来是「哪一问」）。 */
-export type SessionRead = "read_session_index" | "list_user_inputs" | "find_in_session";
+export type SessionRead = "read_session_index" | "list_user_inputs" | "find_in_session" | "probe_session_record";
 
 const READ_OPS: Record<string, SessionRead> = {
   "history-index": "read_session_index",
   "history-user-inputs": "list_user_inputs",
   "history-find": "find_in_session",
+  // 〔C4c · 第四波 4B〕第四问：resume 之前问记录还在不在（旧命令 `probe_session_record`）。
+  "history-record": "probe_session_record",
 };
 
 /** 一发 `chan_call` 若是这三问之一 ⇒ `[哪一问, 那一问的参数（旧形参的形状）]`；否则 `null`。 */
@@ -75,6 +77,8 @@ export function sessionReadOf(cmd: string, args: unknown): [SessionRead, Record<
       return [which, { origin, jsonlPath: body.path, fromOffset: body.from }];
     case "find_in_session":
       return [which, { origin, jsonlPath: body.path, query: body.query, includeTools: body.include_tools }];
+    case "probe_session_record":
+      return [which, { origin, sessionId: body.sid }];
   }
 }
 
@@ -103,6 +107,8 @@ export function refusedReply(code: string, message: string): { err: string; body
 export async function sessionReadReply(which: SessionRead, res: unknown): Promise<ArrayBuffer | undefined> {
   const r = (await res) as Record<string, unknown> | undefined;
   if (r === undefined) return undefined;
+  // 〔C4c〕记录那一问的旧回包本来就是成品的形状（`{present, root}`，没有 `available` 那一格）。
+  if (which === "probe_session_record") return chanReply({ present: r.present, root: r.root });
   if (r.available === false) {
     const reason = String(r.reason ?? "");
     if (r.failure === "oldBackend") throw UNSUPPORTED;
@@ -116,6 +122,7 @@ export async function sessionReadReply(which: SessionRead, res: unknown): Promis
     case "find_in_session":
       return chanReply({ total: r.total, hits: r.hits });
   }
+  return undefined;
 }
 
 /**
@@ -128,6 +135,104 @@ export function withSessionReads(
   return async (cmd, args) => {
     const read = sessionReadOf(cmd, args);
     if (read) return sessionReadReply(read[0], answer(read[0], read[1]));
+    return answer(cmd, (args ?? {}) as Record<string, unknown>);
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  〔C4c · 第四波 4B〕账号那两问（清单 · 信任预检）改走通道之后，判据那一侧的翻译
+// ════════════════════════════════════════════════════════════════════════════
+//
+// 它们从前是三条 Tauri 命令（`list_remote_accounts` / `list_local_accounts` / `check_account_trust`〔散文墓碑〕），
+// 判据按命令名答话、回旧回包的形状（`{available, error, meta, accounts, notice}` / `{available, trusted, known, error}`）。
+// 今天它们是一发 `chan_call`（op = `accounts-list` / `accounts-trust`）⇒ 本节把一发 `chan_call` 译回「哪一问 ＋ 旧形参」，
+// 把判据手里那份旧回包译成**后端的成品字节**（或通道的失败）。
+// ⚠ 译法逐格照生产：请求体键名是 `src/accounts.ts` 发的那几个，成品键名是后端 `observe/accounts_query.rs::list_product`
+//   出的那几个（跨语言金样 `tests/__fixtures__/accounts.golden.json` 钉着两侧）。
+// ⚠ 旧回包里「老后端」那几种缺格（账号缺 `authKind` / `authReady`、`meta: null`）在成品里不存在 ⇒ 按旧消费侧的回落补齐：
+//   `authKind` 缺 ⇒ 订阅 · `authReady` 缺 ⇒ `loggedIn`（`accountReady` 那条旧回落）· `meta: null` ⇒ 没启用（`deriveUi` 那一档）。
+
+/** 账号那两问各自的名字（判据里的叫法 = 旧命令名，只为让断言读起来是「哪一问」）。 */
+export type AccountRead = "list_remote_accounts" | "list_local_accounts" | "check_account_trust";
+
+/** 一发 `chan_call` 若是账号那两问之一 ⇒ `[哪一问, 那一问的参数（旧形参的形状）]`；否则 `null`。 */
+export function accountReadOf(cmd: string, args: unknown): [AccountRead, Record<string, unknown>] | null {
+  if (cmd !== "chan_call") return null;
+  const a = args as ChanCallArgs;
+  if (a.op === "accounts-list") {
+    return a.origin === "<local>" ? ["list_local_accounts", {}] : ["list_remote_accounts", { origin: a.origin }];
+  }
+  if (a.op === "accounts-trust") {
+    const body = chanArgsJson(a) as Record<string, unknown>;
+    return ["check_account_trust", { origin: a.origin, configDir: body.configDir, cwd: body.cwd }];
+  }
+  return null;
+}
+
+/** mock 过的 `invoke` 的调用记录里，某一问的那几发（参数是旧形参的形状）。 */
+export function accountReadCalls(calls: ReadonlyArray<readonly unknown[]>, which: AccountRead): Record<string, unknown>[] {
+  return calls
+    .map((c) => accountReadOf(c[0] as string, c[1]))
+    .filter((r): r is [AccountRead, Record<string, unknown>] => r !== null && r[0] === which)
+    .map((r) => r[1]);
+}
+
+const ACCOUNT_KEYS = ["name", "email", "configDir", "isDefault", "mode", "exists", "loggedIn"] as const;
+
+/** 旧回包里的一个账号 ⇒ 成品里的一个账号（缺的两格按旧消费侧的回落补齐，多余的键丢掉）。 */
+function productAccount(a: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of ACCOUNT_KEYS) out[k] = a[k];
+  out.email = a.email ?? "";
+  out.configDir = a.configDir ?? null;
+  out.isDefault = a.isDefault ?? false;
+  out.mode = a.mode ?? "isolated";
+  out.exists = a.exists ?? true;
+  out.loggedIn = a.loggedIn ?? false;
+  out.authKind = a.authKind ?? "subscription";
+  out.authReady = a.authReady ?? out.loggedIn;
+  return out;
+}
+
+/**
+ * 判据手里那份旧回包 ⇒ 通道那一跳的结局。`available:false` ⇒ 对端说不行（`failed`，原因原样带上）；
+ * 回包本身是一次拒绝（旧判据用 `mockRejectedValue` 表示「invoke 抛了」）⇒ 同样按对端说不行；
+ * 回包是 `undefined` ⇒ 原样 `undefined`（让「形状不对」那一格照样可测）。
+ */
+export async function accountReadReply(which: AccountRead, res: unknown): Promise<ArrayBuffer | undefined> {
+  let r: Record<string, unknown> | undefined;
+  try {
+    r = (await res) as Record<string, unknown> | undefined;
+  } catch (e) {
+    throw refusedReply("failed", e instanceof Error ? e.message : String(e));
+  }
+  if (r === undefined) return undefined;
+  if (r.available === false) throw refusedReply("failed", String(r.error ?? ""));
+  if (which === "check_account_trust") return chanReply({ trusted: r.trusted ?? false, known: r.known ?? false });
+  const accounts = Array.isArray(r.accounts) ? (r.accounts as Record<string, unknown>[]).map(productAccount) : [];
+  const m = r.meta as Record<string, unknown> | null | undefined;
+  const meta = {
+    enabled: m?.enabled ?? false,
+    acctsDir: m?.acctsDir ?? "",
+    manifestPath: m?.manifestPath ?? "",
+    updatedAt: m?.updatedAt ?? null,
+    sharedStore: m?.sharedStore ?? null,
+    count: m?.count ?? accounts.length,
+    error: m?.error ?? null,
+  };
+  return chanReply({ meta, accounts, notice: r.notice ?? null });
+}
+
+/**
+ * 包一层判据的 `invoke` 替身：账号那两问照旧按旧名字交给 `answer`（它回旧回包的形状），本层把一发 `chan_call`
+ * 译过去、把回包译回成品字节；其余一切原样交给 `answer`（可以与 [`withSessionReads`] 叠着用）。
+ */
+export function withAccountReads(
+  answer: (cmd: string, args: Record<string, unknown>) => unknown,
+): (cmd: string, args?: unknown) => Promise<unknown> {
+  return async (cmd, args) => {
+    const read = accountReadOf(cmd, args);
+    if (read) return accountReadReply(read[0], answer(read[0], read[1]));
     return answer(cmd, (args ?? {}) as Record<string, unknown>);
   };
 }
