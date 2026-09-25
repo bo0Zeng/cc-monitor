@@ -881,12 +881,8 @@ export const commands = {
   read_session_lines: (args: { origin: Origin; jsonlPath: string; from: number; until?: number }) =>
     invoke<SessionLinesPage>("read_session_lines", args),
 
-  /**
-   * 〔U3b · `设计/10` 步 8〕这个会话**接上了骨架** ⇒ monitor 的重放缓冲只留尾巴（F5 之后也只重放尾巴，
-   * 其余按偏移要回来）。返回这次丢掉的条数。**只许在骨架接上之后调**（唯一调用点：`tabs.ts` 的骨架接入）。
-   */
-  replay_keep_tail_only: (args: { sessionId: string }) =>
-    invoke<number>("replay_keep_tail_only", args),
+  // 〔CF2 · 第四波 4B〕「接上骨架 ⇒ 重放缓冲只留尾巴」那一条（`replay_keep_tail_only`〔散文墓碑〕）退役：
+  //   重放缓冲对每个会话都只留尾巴，前端不再登记。
 
   // 〔C4b · 第四波 4B〕大纲清单与会话内查找那两条（`list_user_inputs` / `find_in_session`〔散文墓碑〕）退役：
   //   经通道直接说帧命令 `history-user-inputs` / `history-find`，后端出成品（`src/session-reads.ts`）。

@@ -239,27 +239,8 @@ pub(crate) fn lines_page(
     }
 }
 
-/// 〔U3b · `设计/10` 步 8〕前端对这个会话**接上了骨架** ⇒ monitor 的重放缓冲里它只留尾巴
-/// （`event_replay·rs::REPLAY_TAIL_KEEP`，依据写在那个常量的头注里）。返回这次丢掉的条数。
-///
-/// 只能由**接上骨架之后**的前端调：丢掉的正文从此只能按偏移要回来（`read_session_range`）；
-/// 没骨架的会话调了它，F5 之后上翻到头就没了。前端唯一调用点在 `tabs.ts` 的骨架接入那一处。
-/// 不吃 origin：重放缓冲在 monitor 本机，按 sid 找（同 `forget_session`）。
-#[tauri::command]
-pub fn replay_keep_tail_only(
-    session_id: String,
-    replay: tauri::State<'_, std::sync::Arc<crate::event_replay::EventReplay>>,
-) -> Result<u32, String> {
-    let dropped = replay.keep_tail_only(&session_id);
-    let st = replay.stats();
-    tracing::info!(
-        "[replay] {session_id} 接上骨架 ⇒ 只留尾巴（这次丢 {dropped}）；history 总长 {} · 只留尾巴的会话 {} · 累计修剪 {}",
-        st.history_len,
-        st.tail_only_sessions,
-        st.trimmed_total
-    );
-    Ok(u32::try_from(dropped).unwrap_or(u32::MAX))
-}
+// 〔CF2 · 第四波 4B〕「接上骨架 ⇒ 重放缓冲只留尾巴」那条命令（`replay_keep_tail_only`〔散文墓碑〕）退役：
+//   重放缓冲不再分档，**每个**会话都只留尾巴（`event_replay·rs` 头注「容量」），前端不必再去登记。
 
 #[cfg(test)]
 #[path = "../../../tests/bridge/session_skeleton_tests.rs"]
