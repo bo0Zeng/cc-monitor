@@ -141,7 +141,14 @@ fn argv_routing_covers_the_shapes_the_repo_actually_sends() {
     //   这里改成反向：那三个子命令**不再被认**（认得就说明 monitor 里又长出了一条发它们的路）。
     for gone in [
         &["--read-session-from-offset", "--index", "/p/s.jsonl", "7"][..],
-        &["--find-in-session", "--limit", "500", "--query", "q", "/p/s.jsonl"][..],
+        &[
+            "--find-in-session",
+            "--limit",
+            "500",
+            "--query",
+            "q",
+            "/p/s.jsonl",
+        ][..],
         &["--list-user-inputs", "--from", "42", "/p/s.jsonl"][..],
     ] {
         assert!(
