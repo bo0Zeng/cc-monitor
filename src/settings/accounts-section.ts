@@ -25,13 +25,13 @@ import {
   fetchLocalApikeyRouting,
   localApikeyEndpointStateFor,
   type ApikeyEndpointState,
-  type ApikeyRoutingView,
   getModelForAccount,
   setModelForAccount,
   invalidateAccountsCache,
   type AccountsState,
   type Account,
 } from "../accounts";
+import type { ApikeyRoutingView } from "../apikey-routing-view";
 import { accountAvatarEl } from "../account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "../remote-config";
 import { showActionFailureToast } from "../error-toast";

@@ -68,7 +68,8 @@ import { invoke, type Channel } from "@tauri-apps/api/core";
  * **必须手动同步**，由 Rust 侧 `the_ts_status_type_matches_this_struct` **双向**对拍
  *（Rust 的字段名从结构体源码派生、TS 的从本接口体派生，**两边条数相等**，多一个少一个都红）。
  */
-import type { ApikeyRoutingView } from "../accounts";
+// 〔FE1〕线上形状住零 import 的叶子（先前住 `accounts.ts`，通信层为一个类型回头依赖账号域 ⇒ 七模块类型环）。
+import type { ApikeyRoutingView } from "../apikey-routing-view";
 
 export interface ApikeyCredentialsStatus {
   /** 配了没配。 */
@@ -500,7 +501,7 @@ export const commands = {
    * 〔RM1a · 第四波〕**收 `origin`**：两件事都问**那台机器**（远端由那台的后端答：
    * 表里有哪几行 `apikey-read` · 口上有没有人在听 `relay-status`）。先前「只答本机」的理由是
    * 「本机这一侧在结构上答不了远端那台」—— 今天远端那台自己答。
-   * ⚠ 返回类型是**手写镜像**（`ApikeyRoutingView` 住 `src/accounts.ts`），
+   * ⚠ 返回类型是**手写镜像**（`ApikeyRoutingView` 住 `src/apikey-routing-view.ts`），
    * 与 Rust 的 `ApikeyRouting` **手动同步、今天没有判据对拍** —— 如实记，别读成有人守。
    */
   apikey_routing_for: (args: { origin: Origin; configDirs: string[] }) =>
