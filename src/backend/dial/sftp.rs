@@ -154,7 +154,8 @@ async fn take_parked(req: &DialRequest) -> Option<Session> {
     if req.probe || req.stages {
         return None;
     }
-    for linked in pool::ssh().transfer_candidates(&pool::identity(req)) {
+    let key = pool::identity(req);
+    for linked in pool::ssh().transfer_candidates(&key) {
         let parked = linked
             .idle_sftp
             .lock()
@@ -163,7 +164,11 @@ async fn take_parked(req: &DialRequest) -> Option<Session> {
         let Some(p) = parked else {
             continue;
         };
-        match p.sftp.canonicalize(".").await {
+        // 验活这一问被打断（撤了 / 界面走了）⇒ 摘掉这条连接（`pool::Watch`：黑洞上它会一直等下去）。
+        let watch = pool::Watch::new(pool::ssh(), &key, &linked);
+        let alive = p.sftp.canonicalize(".").await;
+        watch.done();
+        match alive {
             Ok(h) if h == p.home => {
                 tracing::info!("dial: {} 上复用了一条停着的 sftp 会话", linked.endpoint);
                 return Some(Session {

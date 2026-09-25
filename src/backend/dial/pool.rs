@@ -348,6 +348,48 @@ impl<C: Conn> Pool<C> {
     }
 }
 
+/// 〔NT1 · 2026-09-24〕**在一条池里的连接上等远端回话（开通道 / 验活），被打断就摘掉它。**
+///
+/// 弱网现打（`NT1-net-loopback.py` ⑧）：路径断成黑洞（换网 / NAT 表过期 —— 没有 RST，TCP 看着还活着）之后，
+/// 这条连接要等 keepalive 连错三次（30 s × 3）才判死；在那之前**每一条**新链路都放到它上面、在开通道那一步干等，
+/// 直到界面的握手期限（45 s）到点把链路关掉 —— 然后下一条又放上去再等一轮。
+/// ⇒ 等回话那一段挂一个 [`Watch`]：**没等到就被丢了**（链路被关 ⇒ 任务被 abort ⇒ 它的 `Drop` 跑）⇒ 从族里摘掉这条连接
+/// （摘掉 ≠ 关掉：还攥着它的用户照用到走；新的放置不再落到它上面、下一条就拨新的）。等到了 ⇒ [`Watch::done`] 解除。
+/// 事件驱动（被丢 = 事件），零定时器。代价：链路在开通道那一步被正常关掉（用户点了取消）也会摘一次 —— 多一次握手，不坏事。
+pub(crate) struct Watch<'a, C: Conn> {
+    pool: &'a Pool<C>,
+    key: &'a str,
+    conn: &'a Arc<C>,
+    armed: bool,
+}
+
+impl<'a, C: Conn> Watch<'a, C> {
+    pub(crate) fn new(pool: &'a Pool<C>, key: &'a str, conn: &'a Arc<C>) -> Self {
+        Watch {
+            pool,
+            key,
+            conn,
+            armed: true,
+        }
+    }
+
+    /// 等到了回话：解除。
+    pub(crate) fn done(mut self) {
+        self.armed = false;
+    }
+}
+
+impl<C: Conn> Drop for Watch<'_, C> {
+    fn drop(&mut self) {
+        if self.armed {
+            tracing::warn!(
+                "dial: 在这条连接上等远端回话时被打断了（链路被关）—— 当它可能是黑洞，从族里摘掉"
+            );
+            self.pool.evict(self.key, self.conn);
+        }
+    }
+}
+
 // ═══ 〔SR1b · 2026-09-24〕**一条连接上的通道预算** ═══════════════════════════════════════
 //
 // SFTP 进本机常驻后端之后，一台远端的长流 · 一次性查询 · SFTP **同一条 SSH 连接**（本池的复用）⇒
