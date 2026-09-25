@@ -1665,7 +1665,7 @@ Linux 本地是 POSIX + tmux + `ccm`，跟远端那条路**只差一跳 ssh**。
 | claude 进程退出 / 被强杀 | pidfile inotify **+ `pidfd`**（绑进程实例本身） | **~18ms**（P2 端到端） | `WatchEvent::PidDied` |
 | 杀掉某 origin **仅剩的**会话（server 随之退出） | tmux server 的 `pidfd` | **27ms**；跨 cgroup 整锅 SIGKILL **30ms** | `WatchEvent::TmuxServerGone` |
 | server 复活 | socket **所在目录**的 inotify `IN_CREATE` | **153ms**（含 `DEBOUNCE_MS` 100ms） | `WatchEvent::TmuxObserved` |
-| **多个会话里杀掉其中一个** | tmux `session-created/closed/renamed[50]` hook → `--tmux-notify` → SIGUSR1 | **126ms**（**对照组：拆掉 hook = 5042ms**） | `WatchEvent::Poke` |
+| **多个会话里杀掉其中一个** | tmux `session-created/closed/renamed[<槽>]` hook → `--tmux-notify` → SIGUSR1（〔HX2 · D-b〕槽在段 `[50, 100)` 里**每个后端实例一格**、起时清死槽；从前是固定 `[50]`） | **126ms**（**对照组：拆掉 hook = 5042ms**） | `WatchEvent::Poke` |
 
 四路全部汇进 `watcher.rs` 的**同一个 mpsc channel**（`WatchEvent`），`watch_loop` 阻塞在
 **无超时** `recv()` 上。
@@ -2200,7 +2200,7 @@ monitor 那一半 `payload_tests.rs::the_rendered_relay_export_carries_no_key_an
 **拿不到就炸，不许降级裸跑**。人群按「那个二进制从哪来」派生，不按测试属性（`#[ignore]` 是可以不写的）。
 只 `env_remove("TMUX")` 不算（`TMUX` 一空就回落到默认 socket，**正是**用户那台）；靠 `TMUX_TMPDIR` 不算（`$TMUX` 一有值就压过它）。
 
-**为什么不能松动**：后端一上来就**无条件**往它连得到的 tmux server 装三条全局 hook（固定槽位 `[50]`，没有关掉的开关）⇒ 不隔离就是去改用户真实 tmux 的状态。
+**为什么不能松动**：后端一上来就**无条件**往它连得到的 tmux server 装三条全局 hook（〔HX2〕今天是段 `[50, 100)` 里自己那一格，并摘掉段内的死槽；从前是固定槽位 `[50]`；没有关掉的开关）⇒ 不隔离就是去改用户真实 tmux 的状态。
 
 **谁在守**：`local_backend_host_tests.rs::every_test_that_starts_the_real_backend_demands_a_private_tmux`（正题：人群按二进制来历派生，两个文件一起扫）·
 `local_backend_host_tests.rs::the_one_shim_gate_really_fails_closed`（那个口在默认门禁里真跑一遍：缺变量必炸、有值原样交出）·

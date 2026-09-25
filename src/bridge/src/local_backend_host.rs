@@ -144,7 +144,9 @@ pub const NO_DETACH_ENV: &str = "CCM_NO_DETACH";
 ///
 /// 为什么不固定一个口：**同一台机上两个用户各有各的 backend**，固定口必然撞；
 /// 而撞了之后的处置（见 [`probe_listen_port`]）是**出声并拒绝**，不是换个口再起一个
-/// —— 换口 = 每台机 N 个后端互相盖 tmux hook 的 `[50]` 槽位，比今天更糟。
+/// —— 换口 = 每台机 N 个后端（中转口与全部 SSH 各 N 份），比今天更糟。
+/// 〔HX2〕从前这里还有一条「互相盖 tmux hook 的 `[50]` 槽位」：今天 hook 按实例一格（`control/tmux_hook.rs`），那一条不成立了；
+/// 不换口的理由剩上面那一条，照样够。
 const PORT_BASE: u16 = 49152;
 const PORT_SPAN: u32 = 16384;
 
