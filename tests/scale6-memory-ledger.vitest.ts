@@ -45,9 +45,13 @@ import { resolve } from "node:path";
 // 〔SE1〕大纲清单问后端要 ⇒ `list_user_inputs` 由台子里的替身回答（其余命令照旧回 undefined）
 vi.mock("@tauri-apps/api/core", async () => {
   const rig = await import("./test-support/session-viewer-rig");
+  const { withSessionReads } = await import("./test-support/chan-fake");
   return {
-    invoke: vi.fn(async (cmd: string, args: { fromOffset: number }) =>
-      cmd === "list_user_inputs" ? rig.answerListUserInputs(args) : undefined,
+    // 〔C4b〕会话读面三问改走通道（`withSessionReads` 译 `chan_call` ⇄ 旧名字 ＋ 旧回包）。
+    invoke: vi.fn(
+      withSessionReads(async (cmd: string, args: Record<string, unknown>) =>
+        cmd === "list_user_inputs" ? rig.answerListUserInputs(args as { fromOffset: number }) : undefined,
+      ),
     ),
   };
 });

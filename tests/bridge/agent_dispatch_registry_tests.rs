@@ -30,18 +30,15 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
     (
         "adapter.rs",
         Face::Active,
-        6,
-        "接口自己那 6 个**门面**的实现体（`records_dir` / `liveness_dir` / `tasks_dir` / \
-             `has_record_ext` / `is_skipped_path` / `session_id_from_path`）—— 每一个都替调用者\
+        5,
+        "接口自己那 5 个**门面**的实现体（`records_dir` / `liveness_dir` / `tasks_dir` / \
+             `has_record_ext` / `session_id_from_path`）—— 每一个都替调用者\
              把 kind 写死。⚠ 它们**不是**适配层的实现，是给通用层用的门面，\
-             退役方式与通用层那几处一样是「把 kind 穿进来」（各自已有 `*_for` / `*_with` 兄弟）",
+             退役方式与通用层那几处一样是「把 kind 穿进来」（各自已有 `*_for` / `*_with` 兄弟）。\
+             〔CF1 · 第四波 09-24〕**6 → 5**：「这个路径要不要跳过」那一个门面随它唯一的读者（monitor 自己那套 jsonl watcher）删了",
     ),
-    (
-        "adapter.rs",
-        Face::Facade,
-        1,
-        "`is_record_file` 把两个抹除 kind 的门面**再合成一个门面** —— 同一处耦合，换了层皮",
-    ),
+    // 〔CF1 · 第四波 09-24〕`adapter.rs` 的 `Facade` 那一行（1 处：「是不是顶层会话记录文件」把两个门面再合成一个）摘了 ——
+    //   它与它合成的那个跳过段门面，唯一的调用方都是 monitor 自己那套 jsonl watcher，随它一起删了。
     (
         "adapter.rs",
         Face::KindLiteral,
@@ -94,8 +91,10 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
     (
         "lib.rs",
         Face::Facade,
-        3,
-        "setup 里一次性拼出 records / liveness / tasks 三个目录 ⇒ 整条发现链的起点在这里定死",
+        2,
+        "setup 里一次性拼出 liveness / tasks 两个目录 ⇒ 整条发现链的起点在这里定死。\
+             〔CF1 · 第四波 09-24〕**3 → 2**：records 那一处随本机 jsonl watcher 一起删了（本机会话内容改走本机后端的 `line` 帧）。\
+             ⚠ 与 RM1b / RW1 同形：**不是「收进接口了」**，是桌面侧不再问这件事",
     ),
     (
         "search.rs",
@@ -107,14 +106,8 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
     ),
     // 〔RM1b · 第四波〕`tasks.rs` 那一处门面（1 处，「任务追踪目录（`tasks_dir`）」）摘了：
     //   任务列表整段改问那台机器的后端，monitor 这一侧不再自己解析任务目录。
-    (
-        "watcher.rs",
-        Face::Facade,
-        5,
-        "流式 watcher 的过滤器：是不是记录文件 ×3 + 从路径取 sid ×2。\
-             ⚠ 本文件里另有一个**同名**自由函数 `active(&session_id)` 判会话活性，\
-             与适配层无关 —— 针带闭括号正是为了不把它数进来（见模块头注第 2 道处置）",
-    ),
+    // 〔CF1 · 第四波 09-24〕`watcher.rs` 那一行（门面 5 处：「是不是记录文件 ×3 ＋ 从路径取 sid ×2」）摘了：
+    //   monitor 自己那套 jsonl watcher 整个删了，本机会话内容改走本机后端的 `line` 帧（后端那一份早就在做同一件事）。
     // ── 第四张脸：方向相反，登记但不上棘轮 ──────────────────────────
     (
         "adapter.rs",
@@ -160,7 +153,11 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
 /// 🔴 〔RW1 · 第四波 09-24〕**−3**：`history.rs` 的门面那张脸 7 → 4 —— 本机删会话那道路径守卫（−2）与本机分叉那一支取记录根（−1）
 /// 整段搬去后端（详见那条登记）。⚠ 与 `K-R97` 同形：**不是「收进接口了」**，是桌面侧不再问这件事。
 /// 〔合并〕RM1b −1 与 RW1 −3 两边各自减，35 → 31。
-const COUPLING_BASELINE: usize = 31;
+///
+/// 🔴 〔CF1 · 第四波 09-24〕**31 → 23**：`watcher.rs` 那张门面脸（5 处）整份删了，`lib.rs` 门面 3 → 2（records 那一处），
+/// `adapter.rs` 的 `Active` 6 → 5、`Facade` 1 → 0（只有那条 watcher 用的两个门面一起删了）。
+/// ⚠ 同样**不是「收进接口了」**：本机会话内容改走本机后端的 `line` 帧，桌面侧从此不自己 watch、不自己判记录文件。
+const COUPLING_BASELINE: usize = 23;
 
 /// **抹除 kind 的门面**：`adapter.rs` 里那几个「替调用者把 agent 写死」的自由函数。
 ///
@@ -171,18 +168,14 @@ const COUPLING_BASELINE: usize = 31;
 /// [`every_registered_facade_really_erases_the_kind`]：每一条必须真在 `adapter.rs` 里、
 /// 且那个函数**真的**经 `active()` 取适配器。
 ///
-/// ⚠ `is_record_file` 自己不调 `active()`，它调另外两个门面 —— 单独一行说明，
+/// ⚠ 门面也可以自己不调 `active()`、而是调另外的门面（CF1 之前有过一个：「是不是顶层会话记录文件」）—— 单独一行说明，
 /// 那条判据按「调 `active()` **或** 调另一个已登记门面」放行它。
 const KIND_ERASING_FACADES: &[(&str, &str)] = &[
     ("records_dir", "会话记录目录（`<root>/projects`）"),
     ("liveness_dir", "活性 pidfile 目录（`<root>/sessions`）"),
     ("tasks_dir", "任务追踪目录（`<root>/tasks`）"),
     ("has_record_ext", "「这个扩展名是不是会话记录」（`jsonl`）"),
-    ("is_skipped_path", "「这个路径要不要跳过」（`subagents`）"),
-    (
-        "is_record_file",
-        "上面两个的合成 —— **它自己不调 `active()`**，靠两个门面间接抹除",
-    ),
+    // 〔CF1 · 第四波 09-24〕「这个路径要不要跳过」与「上面两个的合成」那两个门面随 monitor 的 jsonl watcher 一起删了。
     (
         "session_id_from_path",
         "从记录文件路径取 sid（Claude = file_stem）",
@@ -434,7 +427,7 @@ fn every_registered_facade_really_erases_the_kind() {
             "门面 `{name}` 在 `adapter.rs` 里找不到（找的是 `{define}`）—— \
                  它被改名 / 挪走 / 删了，而**本表没跟着改** ⇒ 那一根针从此恒零命中。"
         );
-        // 它的实现体真的抹 kind：调 `active()`，或调另一个已登记门面（`is_record_file` 那形）。
+        // 它的实现体真的抹 kind：调 `active()`，或调另一个已登记门面（「合成门面」那形）。
         let body = body_of(&adapter, &define);
         let via_active = guard_core::contains_word(&body, &needle_active());
         let via_peer = KIND_ERASING_FACADES

@@ -717,6 +717,7 @@ src/remote-launch-run.ts:338	刻意不替你挑终端模拟器	保留	[不对外
 src/remote-launch-run.ts:363	本机不开终端窗口，命令已复制	保留	[对外] toast 标题，先说结果
 src/remote-launch-run.ts:364	本机不开终端窗口，请手动复制以下命令	保留	[对外] toast 标题；「手动复制」是用户当场能做且有效的事
 src/remote-launch-run.ts:484	backend 未给理由	内部词→后端（backend）	[可达存疑] 作为 refused/fallback 的 reason 返回、可能进 toast；英文 backend →「后端没说明原因」
+src/remote-config.ts:78	远端配置认不出：config.json 的 remote 段没有 hosts 列表（旧的单台写法不再认），这里一台都不显示；在这里重新添加机器，会按新写法存下来	保留	[对外] 〔S5 · V41 · 主会话裁〕设置页机器列表顶上那一句（remote 段认不出时常驻）；先说发生了什么、再说后果和能做什么；config.json / remote / hosts 是用户手改那份文件时真会看见的名字，括号补的是原因
 src/render.ts:79	<button type="button" class="code-copy" data-copy>复制</button>	保留	[对外] 代码块复制按钮
 src/render.ts:107	<button type="button" class="code-copy" data-copy>复制</button>	保留	[对外] 代码块复制按钮
 src/settings/accounts-section.ts:588	将在远端「{…}」的终端里运行：\n\n{…}\n\n	保留	[对外] 危险操作的 confirm 首段：说清在哪台机器跑什么命令，先说结果
@@ -884,6 +885,12 @@ src/settings/plugins-section.ts:44	声明 {…} 个插件	保留	[对外] 计数
 src/settings/plugins-section.ts:49	更新时间：未记	保留	[对外] 字段＋未知值
 src/settings/plugins-section.ts:51	更新时间：{…}	保留	[对外] 字段＋原值
 src/settings/plugins-section.ts:52	更新时间：{…}	保留	[对外] 字段＋本地化时间
+src/settings/plugins-section.ts:81	不是一个对象	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
+src/settings/plugins-section.ts:83	顶层的键是 {…}	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
+src/settings/plugins-section.ts:84	顶层两格的类型不对	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
+src/settings/plugins-section.ts:87	第 {…} 条不是对象	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
+src/settings/plugins-section.ts:89	第 {…} 条的键是 {…}	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
+src/settings/plugins-section.ts:93	第 {…} 条有一格类型不对	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
 src/settings/readiness.ts:48	缺	保留	[对外] 缺口标头，已刻意与「未测过」分开
 src/settings/readiness.ts:50	未测过	保留	[对外] 缺口标头
 src/settings/readiness.ts:207	{…} 项确认缺	保留	[对外] 缺口计数
@@ -994,10 +1001,8 @@ src/bridge/src/chan/wire.rs:218	第 {} 跳卡在 `{}`：{why:?}（发出去了�
 src/bridge/src/chan/wire.rs:221	对端答「不行」：{why:?}	改·§2.1	[可达存疑] 同上；{why:?} 把枚举名原样上屏
 src/bridge/src/chan/wire.rs:222	本侧：{why:?}	改·§2.1	[可达存疑] 同上；「本侧」＋ 枚举名
 src/bridge/src/chan/wire.rs:306	Key(<不打印>)	保留	[不对外] Key 的 Debug，刻意不打印内容
-src/bridge/src/session_skeleton.rs:67	对面后端不认 --index（老版本，需要重装后端才有骨架索引）	保留	[不对外] 只进 console.info（tabs.ts 骨架未接的原因），界面行为逐字不变
-src/bridge/src/session_skeleton.rs:69	索引输出被截断：实到 {got} 行，尾行声称 {claimed:?} —— 不当全量用	保留	[不对外] 同上，只进 console.info
-src/bridge/src/session_outline.rs:74	这台机器上的后端版本旧，还列不出大纲（重装后端之后就有）	保留	[对外] 〔SE1〕大纲开关灰掉时挂在提示上（前缀「大纲暂时用不了：」）；说清原因与出路，用词是术语表的「后端」
-src/bridge/src/session_outline.rs:76	大纲清单传到一半断了（只收到 {got} 条），这次先不显示	保留	[对外] 〔SE1〕同上一条（输出被截断，不当全量用）
+src/session-reads.ts:222	这台机器上的后端版本旧，还不能在会话里查找（重装后端之后就有）	保留	[对外] 〔C4b〕查找面板「搜索」那一行状态（查不了时）；逐字搬自 monitor 那一份（`session_find.rs` 已删），说清原因与出路，用词是术语表的「后端」
+src/session-reads.ts:251	这台机器上的后端版本旧，还给不出骨架索引（重装后端之后就有）	保留	[不对外] 〔C4b〕只进 console.info（骨架未接的原因），界面行为是退回尾部窗口；替掉 monitor 那一句「对面后端不认 --index」
 src/backend/relay/server.rs:450	连不上	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半，短、先说结果
 src/backend/relay/server.rs:450	建立连接	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；哪一跳那半，用户读得懂的动作名
 src/backend/relay/server.rs:451	没回应就断开了	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半
@@ -1231,8 +1236,6 @@ src/bridge/src/link_mux.rs:51	链路命令出了内部错误	改·§2.1	[可达�
 src/bridge/src/link_mux.rs:133	本机后端在链路 {link} 上发了 {now} 字节却没等信用（窗口 {LINK_WINDOW_BYTES}）—— 协议对不上，链路已断开	改·§2.1	[可达存疑] 〔SR1a〕对端不守流控时读那条连接的一方拿到的错，会变成连接错误；整句讲流控实现 →「本机后端版本不对，这条远端连接断了；重开 monitor 后再试」 兼§2.4 新词:链路
 src/bridge/src/backend/control/local_backend.rs:1667	本机后端的流断了（stdio 载体）	改·§2.1	[可达存疑] 〔SR1a〕本机后端那条连接断了时，经它开的远端连接一起结束的原因，会变成那几条连接的错误；「流」「载体」是实现词 →「和本机后端的连接断了」
 src/bridge/src/local_backend_host.rs:923	本机后端的流断了（常驻载体）	改·§2.1	[可达存疑] 〔SR1a〕同上一行（常驻那条载体）→「和本机后端的连接断了」
-src/bridge/src/session_find.rs:79	这台机器上的后端版本旧，还不能在会话里查找（重装后端之后就有）	保留	[对外] 〔SE2〕查找面板「搜索」那一行状态（查不了时）；说清原因与出路，用词是术语表的「后端」，与大纲那句同形
-src/bridge/src/session_find.rs:82	查找结果传到一半断了（只收到 {got} 条），这次先不显示	保留	[对外] 〔SE2〕同上一条（输出被截断，不当全量用）
 src/views/session-find.ts:52	搜索	保留	[对外] 〔SE2〕查找面板的模式标签；两个字、动词作名词，与「大纲」并列
 src/views/session-find.ts:53	在这个会话里找，按 Enter	保留	[对外] 〔SE2〕查找输入框的占位字；说清范围（这个会话）与怎么触发（Enter 才搜，不边打边搜）
 src/views/session-find.ts:54	含工具内容	保留	[对外] 〔SE2〕复选框标签；与历史浏览器全文搜索那个勾逐字同名（同一个口径开关）
@@ -1326,6 +1329,7 @@ src/backend/control/panorama.rs:217	代码全景组件没能启动：{m}	保留	
 src/backend/control/panorama.rs:224	异常退出，码 {c}	保留	[可达存疑] 〔RM1c〕拼进「全景 `op` 没做成（…）：诊断」的括号里；码留着是给排查用的唯一线索
 src/backend/control/panorama.rs:225	被中途终止	保留	[可达存疑] 〔RM1c〕同上一行的另一支（被信号打断），不写「信号」这个内部词
 src/panorama-engine/main.rs:368	读不出盘上那一份：{e}	保留	[可达存疑] 〔RM1d〕全景小程序算批注 / 文档关联的新内容时读现状失败（权限 / 编码 / 是个目录，不是「不存在」）⇒ failed 经后端回到全景页写入口的失败提示；{e} 是系统那句原话，给人判是哪一种；绝不当成不存在去覆盖
-src/bridge/src/panorama_call.rs:140	{} 在算完之后变了	保留	[对外] 〔RM1d〕全景写批注 / 文档关联时，删之前核「盘上还是算的那一份」没对上 ⇒ 记下这一句重算；连着几趟都对不上时它是那条失败提示的前半句（后半句说连着几趟、先停下）。{} 是那份文件在那台机器上的路径，人据此知道是哪一份被别人改了
 src/panorama/api.ts:57	{…}（远端 {…}）	保留	[对外] 〔RM1c〕远端仓的标签：路径 ＋ 机器名（「复制给 agent」的住址行也用它，97 §6 ④）
 src/views/panorama.ts:318	 · 远端 {…}	保留	[对外] 〔RM1c〕全景标题里远端仓的机器名那一段（同一个路径在两台机器上是两个仓）
+src/bridge/src/panorama_call.rs:263	代码全景这一问出了内部错误，没有拿到结果	保留	[可达存疑] 〔RM1e〕分流器 Done 那一臂的兜底（本族走不到）；同 backend_policy.rs / apikey_remote.rs 那一句的形
+src/bridge/src/panorama_call.rs:305	{who} 的代码全景没答上来（{code}）：{message}	保留	[对外] 〔RM1e〕那台机器的全景失败原话：{who} 是「本机」或机器名，{code} 是后端的错误码（not_installed / unsupported / timed_out …，同 frame_query 那一句「查询失败（code）」的形，用户据此能跟着报错走），{message} 是后端那句人话

@@ -326,33 +326,9 @@ pub(crate) fn route_argv(argv: &[&str]) -> Option<ArgvRoute> {
             json!({"parent": parent}),
         )),
         ["--list-accounts"] => Some(ArgvRoute::Lines("accounts-list", json!({}))),
-        // 〔SR1a〕`session_skeleton::index_argv` 那一形（选项在前）。
-        ["--read-session-from-offset", "--index", path, off] => {
-            let off = off.parse::<u64>().ok()?;
-            Some(ArgvRoute::Lines(
-                "history-index",
-                json!({"path": path, "offset": off}),
-            ))
-        }
-        // 〔SR1a × SE2〕`session_find::find_argv` 那两形（选项在前，`--include-tools` 可有可无）。
-        ["--find-in-session", "--limit", n, "--query", q, path] => Some(ArgvRoute::Lines(
-            "history-find",
-            json!({"path": path, "query": q, "limit": n.parse::<u64>().ok()?, "include_tools": false}),
-        )),
-        ["--find-in-session", "--include-tools", "--limit", n, "--query", q, path] => {
-            Some(ArgvRoute::Lines(
-                "history-find",
-                json!({"path": path, "query": q, "limit": n.parse::<u64>().ok()?, "include_tools": true}),
-            ))
-        }
-        // 〔SR1a〕`session_outline::user_inputs_argv` 那一形（选项在前）。
-        ["--list-user-inputs", "--from", from, path] => {
-            let from = from.parse::<u64>().ok()?;
-            Some(ArgvRoute::Lines(
-                "history-user-inputs",
-                json!({"path": path, "from": from}),
-            ))
-        }
+        // 〔C4b · 第四波 4B〕骨架索引 · 会话内查找 · 大纲清单三形删了（原是 SR1a / SE2 加的三臂）：
+        //   界面经通道直接说 `history-index` / `history-find` / `history-user-inputs`，后端出成品，
+        //   monitor 这一侧再没有任何一条路发它们（`frame_query_tests` 那条「迁过去的只走通道」钉着）。
         // 〔C4a · 第四波〕`--session-accounts` 那一形删了：「会话 ↔ 账号」前端经通道直接说 `accounts-sessions`，
         //   monitor 这一侧再没有任何一条路发它（`frame_query_tests` 那条「迁过去的只走通道」钉着）。
         ["--read-session", path] => Some(ArgvRoute::Read {

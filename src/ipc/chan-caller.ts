@@ -10,7 +10,7 @@
  *
  * ⚠ 本文件**不是**通信层成员（它造期限、解释载荷）；也不认识任何一条具体命令 —— 那是各调用方的事。
  */
-import type { Budget } from "./chan";
+import { ChanError, type Budget } from "./chan";
 
 /**
  * 造一个期限：从现在起 `ms` 毫秒（`performance.now()` 钟面的绝对时刻）。
@@ -46,4 +46,42 @@ export function linesOf(body: Uint8Array): string[] {
     .filter((r): r is string => typeof r === "string")
     .map((r) => r.trim())
     .filter((r) => r !== "");
+}
+
+/** 对端「不行」的那份体（后端的拒绝信封 `{code, message}`）⇒ `(code, message)`；解不出 ⇒ `null`。 */
+export function refusalOf(body: Uint8Array): { code: string; message: string } | null {
+  try {
+    const v = readJson(body);
+    if (v !== null && typeof v === "object") {
+      const { code, message } = v as { code?: unknown; message?: unknown };
+      if (typeof code === "string" && typeof message === "string") return { code, message };
+    }
+  } catch {
+    // 体不是 JSON ⇒ 当成没说原因
+  }
+  return null;
+}
+
+/**
+ * 〔C4b · 第四波 4B〕一次经通道的查询失败了 ⇒ 给人看的那句话（`设计/05 §3.3.2`「说法归调用方」）。
+ *
+ * 各调用方共用这一份「按层说」，只各自给出「那台后端比这条查询老」时那句话（它们说的功能不同）。
+ * 不是 `ChanError` 的（调用方自己抛的，如应答形状不对）原样用它的 `message`。
+ */
+export function saidOf(e: unknown, oldBackendSays: string): string {
+  if (!(e instanceof ChanError)) return e instanceof Error ? e.message : String(e);
+  const err = e.error;
+  switch (err.layer) {
+    case "peer": {
+      if (err.why === "unsupported") return oldBackendSays;
+      const r = refusalOf(err.body);
+      return r ? `那台机器的后端没有答出来（${r.code}）：${r.message}` : "那台机器的后端没有答出来";
+    }
+    case "hop":
+      return err.why === "Overrun"
+        ? "等那台机器的后端答复超时了，这次先不显示"
+        : "现在够不着那台机器的后端（连接不在或断了），这次先不显示";
+    case "ours":
+      return err.why === "Cancelled" ? "这次查询已撤回" : "查询没有完成（本程序内部出错）";
+  }
 }
