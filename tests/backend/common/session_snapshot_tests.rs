@@ -1,3 +1,9 @@
+//! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md` 的 `bus-list` 节（`live` 要现问 tmux，一次列全部）
+//!
+//! 核原文：`bus-list` 节逐字「`live` / `ccm_sid` 由后端 **去问 tmux**（一次 `list-sessions` 列全部，不是每个成员探一次）」——
+//! 本族判问一次必重探、焐的陈值不外交、全模块只有一处起 tmux。
+//! ⚠ 铸名避让那一半（问一次就刷新的已占用名单）只在决策记录 R52 里，设计篇与红线族都没写成要求 —— 这一半住址偏弱。〔JA1 点址 2026-09-24〕
+
 use super::*;
 
 fn row(name: &str, sid: &str) -> SessionRow {

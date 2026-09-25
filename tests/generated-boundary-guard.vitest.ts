@@ -198,6 +198,7 @@ describe("C01 边界生成物", () => {
       "MarketplaceSurvey.ts",
       "McpServerEntry.ts", // C04d 批5b（`scope: String` 比手写的三值 union **宽**——那才是线上真相）
       "Origin.ts", // 步 12：`Origin` 的线上形状（`null | string` —— 两个变体、三个线上值，见 `src/bridge/src/origin.rs` 头注）
+      "OriginSessionsListedPayload.ts", // 〔U4b〕某台机器的活会话清单报完了（`origin-sessions-listed`）
       "OutlineFailure.ts", // SE1 回修：大纲要不到的种类（结构性 / 瞬时由前端据它分）
       "PanoramaStatus.ts", // C04d 批7（**panorama 一族唯一能生成的**——其余 10 个住 vendored，受 SS-10 铁律阻塞）
       "PathCcmVerdict.ts", // `K-R69`：PATH 上那个 `ccm` 与我们那一份的关系（四态，没有兜底档）
@@ -217,10 +218,12 @@ describe("C01 边界生成物", () => {
       // 〔C4a · 第四波〕"SessionAccount.ts" / "SessionAccountsResult.ts" 走了：它们的 Rust 源（`accounts.rs` 那两个类型）
       //   随「会话 ↔ 账号」改走通道一起删了，逐行解释与它的类型只住 `src/accounts.ts`（`parseSessionAccountLines`）。
       "SessionActivityPayload.ts", // C02
+      "SessionContainerPayload.ts", // 〔U4b〕活会话住在什么容器里（`session-container`）
       "SessionEndedPayload.ts", //    C02
       "SessionHits.ts", // C04d 批6c
       "SessionIdlePayload.ts", //     C02
       "SessionIndexResult.ts", //     `设计/10` 骨架 · 子步 3
+      "SessionRecordProbe.ts", //     〔U4b〕resume 之前问记录还在不在的答案
       "SessionStartedPayload.ts", //  C02
       "SettingsScope.ts", //          C04d 批2（ConfigSurfaceReport 的传递依赖）
       "Shell.ts", //                  〔AL1c · 4B〕别名三条命令的 shell 方言入参（`shell_dialect.rs`）
@@ -615,7 +618,9 @@ describe("C02 事件名钉死", () => {
     // Rust listen）。后者由 C02 Phase D 审计 I3 补上：C02 给它上了类型，却把名字漏在门禁外。
     // 〔C1 · 2026-09-24〕11 → 12：`REMOTE_BACKEND_READY`（"remote-backend-ready"）——某台远端长连接
     // 握手完成。前端 `main.ts` 订阅它，替掉那个 10 秒账号轮询（改事件驱动）。
-    expect(pairs.length, `期望恰好 12 个事件名常量，实得 ${pairs.length}`).toBe(12);
+    // 〔U4b · 第四波〕12 → 14：`SESSION_CONTAINER`（"session-container"，活会话的容器）·
+    // `ORIGIN_SESSIONS_LISTED`（"origin-sessions-listed"，某台的活会话清单报完了）。两条都由 `events.ts` 订阅。
+    expect(pairs.length, `期望恰好 14 个事件名常量，实得 ${pairs.length}`).toBe(14);
 
     // 每个字面量必须在 TS 侧真的被订阅/emit（剥注释后再找，防散文里提过就算）
     const tsFiles = ["src/events.ts", "src/main.ts", "src/remote-health.ts"];

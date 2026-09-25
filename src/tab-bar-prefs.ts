@@ -19,7 +19,7 @@ import {
   type PinnedTab,
 } from "./tab-bar-state";
 import type { Tab } from "./tab-model";
-import { ENDED, isLive } from "./tab-session-state";
+import { ENDED, UNSEEN, isLive } from "./tab-session-state";
 import { copyText } from "./copy-table";
 import type { TabStore } from "./tab-store";
 import type { Origin } from "./ipc/origin";
@@ -129,7 +129,8 @@ export class TabBarPrefs {
    * ```
    * 读 tabBar.pinned[] → 逐条 createSkeletonTab(sid, cwd, origin, kind, name)
    *   ├ 标 pinned = true
-   *   ├ 标 state = ENDED（没有活进程；后端 replay 随后宣告它活着 ⇒ 事件流会改回活）
+   *   ├ 标 state = UNSEEN（说不清；那台报完清单 ⇒ 已结束 / 活，见 `TabManager.markOriginSeen`）
+   *   │   〔U4b〕那台已经报完了 ⇒ 直接 ENDED（没有活进程；后端 replay 随后宣告它活着 ⇒ 事件流会改回活）
    *   └ 标题直接用存下来的那份（不等读文件）
    * ```
    * 🔴 **不读内容** —— `99 §2.5 P3` 已裁定「已结束的会话点进去不能看内容，只能 resume」。
@@ -150,7 +151,10 @@ export class TabBarPrefs {
         if (!t) continue;
         // 没有活进程 ⇒ 灰着。`archiveTab` 那条路要求 tab 已在事件流里，这里是**凭空造**，
         // 所以直接置位；两者最终形态一致（`.tab.archived` 那条 CSS 本来就有）。
-        t.state = ENDED;
+        // 〔U4b · 说不清〕那台机器还没把活会话清单报完 ⇒ **说不清**，不是已结束（`设计/30 §3.5.7a`：
+        //   `Unseen` 不许被显示成已结束）；报完了（`markOriginSeen` 已经来过）⇒ 已结束 —— 它若活着，
+        //   清单里就会有它、tab 早被建成活的了（上面那个 `existed` 分支）。
+        t.state = this.store.seenOrigins.has(p.origin) ? ENDED : UNSEEN;
         t.activity = null;
         t.parentPath = p.jsonlPath; // `§B.5`：复活的必需品（resume 与「有没有记录」都靠它）
         t.title = p.title; // 骨架期就显示正确标题，不等读文件
