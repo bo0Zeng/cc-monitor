@@ -15360,6 +15360,16 @@
       "zh": "端口 {port} 上已经有程序，但接不上它：{why}。不会再起第二个，也不会换端口。要重来，先把那个进程停掉",
       "args": ["port", "why"]
     },
+    "rsLocalBackendHost.start.busy": {
+      "kind": "error",
+      "zh": "端口 {port} 上的本机后端正被另一个 cc-monitor 连着，这一个接不上",
+      "args": ["port"]
+    },
+    "rsLocalBackendHost.start.busyNotice": {
+      "kind": "error",
+      "zh": "本机后端正被另一个 cc-monitor 连着，这一个没有接上。关掉另一个 cc-monitor 再打开这一个。",
+      "args": []
+    },
     "rsLocalBackendHost.start.refusedNotice": {
       "kind": "error",
       "zh": "本机后端没有启动：端口 {port} 上已有的后端接不上（{why}）。下一步：结束那个进程再重开 cc-monitor，它的进程号记在 {pidPath}。",

@@ -1127,6 +1127,17 @@ fn start_detached(
                 looked_at: vec![pid_path(&dir, port), token_path(&dir)],
             });
         }
+        // 〔HX1 · E §E4〕另一个 monitor 正连着 ⇒ 说真原因（不说版本、不叫人停那个后端）。同样到用户眼前（`重-2`）。
+        Adopt::Busy => {
+            note_start_refusal(copy_text("rsLocalBackendHost.start.busyNotice", &[]));
+            return DetachOutcome::Done(StartOutcome::Failed {
+                reason: copy_text(
+                    "rsLocalBackendHost.start.busy",
+                    &[("port", &port.to_string())],
+                ),
+                looked_at: vec![pid_path(&dir, port)],
+            });
+        }
         Adopt::None => {}
     }
 
@@ -1204,6 +1215,10 @@ enum Adopt {
     Attached,
     /// 有东西，但接不上。**出声**，绝不静默复用、也绝不换个口再起一个。
     Refused(String),
+    /// 〔HX1 · E §E4〕是**我们的**后端，但那一条流一直被占着（重试用尽仍是 `stream-busy`）⇒
+    /// 另一个 monitor 正连着它。与 [`Adopt::Refused`] 分开是因为**下一步不同**：那个后端里住着另一个 monitor 的
+    /// 中转与全部 SSH，叫人「结束那个进程」是在叫人砸别人正在用的东西（审计原话：归因错）。
+    Busy,
 }
 
 /// 认已有实例并接上它。
@@ -1227,6 +1242,10 @@ fn probe_and_attach_after_spawn(port: u16, home: &str, token: &str) -> Result<()
     match adopt_with(port, home, token, true) {
         Adopt::Attached => Ok(()),
         Adopt::Refused(why) => Err(why),
+        Adopt::Busy => Err(copy_text(
+            "rsLocalBackendHost.start.busy",
+            &[("port", &port.to_string())],
+        )),
         Adopt::None => Err(copy_text(
             "rsLocalBackendHost.afterSpawn.neverListened",
             &[("port", &port.to_string())],
@@ -1236,6 +1255,8 @@ fn probe_and_attach_after_spawn(port: u16, home: &str, token: &str) -> Result<()
 
 fn adopt_with(port: u16, home: &str, token: &str, wait_for_bind: bool) -> Adopt {
     let mut last = copy_text("rsLocalBackendHost.adopt.nobody", &[]);
+    // 〔HX1〕最后一次失败是不是「流被占着」—— 等满了还是它 ⇒ 真原因是另一个 monitor 连着（[`Adopt::Busy`]）。
+    let mut last_busy = false;
     for _ in 0..LISTEN_WAIT_TRIES {
         match probe_listen_port(port, home) {
             Probe::Stranger(why) => return Adopt::Refused(why),
@@ -1247,6 +1268,7 @@ fn adopt_with(port: u16, home: &str, token: &str, wait_for_bind: bool) -> Adopt 
                     "rsLocalBackendHost.adopt.notYet",
                     &[("port", &port.to_string())],
                 );
+                last_busy = false;
             }
             Probe::Ours(sock, hello) => match send_attach(&sock, token) {
                 Ok(()) => {
@@ -1255,11 +1277,17 @@ fn adopt_with(port: u16, home: &str, token: &str, wait_for_bind: bool) -> Adopt 
                         Err(e) => Adopt::Refused(e),
                     }
                 }
-                Err(AttachErr::Busy(m)) => last = m,
+                Err(AttachErr::Busy(m)) => {
+                    last = m;
+                    last_busy = true;
+                }
                 Err(e) => return Adopt::Refused(e.message().to_string()),
             },
         }
         std::thread::sleep(std::time::Duration::from_millis(LISTEN_WAIT_INTERVAL_MS));
+    }
+    if last_busy {
+        return Adopt::Busy;
     }
     Adopt::Refused(copy_text(
         "rsLocalBackendHost.adopt.waited",
