@@ -1696,3 +1696,21 @@ fn a_failed_auto_deploy_reaches_the_screen_through_remote_health() {
         "Err 那一支不再「不阻断、按没确认处理」：\n{arm}"
     );
 }
+
+/// 〔DP1 · 第四波〕读回比对不对 ⇒ **当场删掉传坏的那一份**（旁挂标记退役后，断链那一环就是这一删）。
+///
+/// 要求住址：`设计/96 §7.2.3` 部署决策的对照物是那份字节自报的身份 ⇒ 一份传坏却恰好还带着对的戳的字节，
+/// 下次会被判「已是这一版」—— 删掉它，下次就是「落点没有 ⇒ 装」。
+/// 形态判据（`upload_verified` 要经真 `RemoteFs`，单测起不了那条链路；行为那一半在回环 sshd 读数里没有现成的坏读回可造）：
+/// 读回判定的 `Err` 那一支里恰好一次 `fs.remove(remote_path)`，且排在 `fs.put(` 之后。
+#[test]
+fn a_bad_readback_removes_the_upload_it_just_made() {
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
+    let body = dp1_body(&prod, "pub(crate) async fn upload_verified(");
+    let put = guard_core::find_pinned(&body, "fs.put(remote_path").expect("上传那一问不在了");
+    let bad = guard_core::find_pinned(&body, "let Err(bad) = verify_readback(")
+        .expect("读回判定那一支不在了");
+    let rm = guard_core::find_pinned(&body, "fs.remove(remote_path)")
+        .unwrap_or_else(|e| panic!("读回不对那一支没有恰好一次删掉那一份（{e}）：\n{body}"));
+    assert!(put < bad && bad < rm, "次序不是「传 → 判 → 删」：\n{body}");
+}
