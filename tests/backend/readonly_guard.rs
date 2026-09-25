@@ -4011,7 +4011,9 @@ mod g6_dependency_signoff {
              **我没有扫过它的源码** —— backend 侧这条路不传 known_hosts 路径、\
              host key 校验由 `dial::DialHandler` 自己在内存里比指纹，\
              但那是**用法**上的签字，不是对它源码的读数。\
-             ⇒ 要升到 `已量·未见写面` 得真去扫它那棵树，本轮没做",
+             ⇒ 要升到 `已量·未见写面` 得真去扫它那棵树，本轮没做。\
+             〔CZ1 · 2026-09-25〕今天链的是仓内补过的副本（`[patch.crates-io]` → `src/bridge/vendor/russh`，只改了 \
+             `compression.rs` 解压收尾那一段、没碰任何 IO）⇒ 源码进了树、**可以**量了，但本档仍是「未量」：本轮没扫它的写面",
         ),
         (
             "russh-sftp",
@@ -4043,6 +4045,14 @@ mod g6_dependency_signoff {
             DEPS,
             UNMEASURED,
             "JSON 编解码；同 `serde`，只在内存里把字节变成结构体、再变回去",
+        ),
+        (
+            "sha2",
+            DEV_DEPS,
+            UNMEASURED,
+            "〔CZ1 · 2026-09-25〕只给 vendored russh 副本算指纹（`dial_compress_tests` 的 V1：盘上每一份 == `VENDOR.md` 登记的 sha256）。\
+             **只在测试期链接**，不进发布二进制；版本是 russh 那棵树早已锁着的 `0.11.0`（不新增包）。纯内存摘要 —— 它不开文件，\
+             读副本的是判据自己（经 `guard_core::scan_tree_excluding`）",
         ),
         (
             "shell-quote-core",
