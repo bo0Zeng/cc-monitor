@@ -1,4 +1,4 @@
-//! 〔RM1a · 第四波〕`accounts/apikey/file_face.rs` 的判据 —— 这台机器上那份凭据文件的帧面读写口。
+//! 〔RM1a · 第四波〕`accounts/upstream/file_face.rs` 的判据 —— 这台机器上那份凭据文件的帧面读写口。
 //!
 //! # 买到的（全在本机临时目录上真读真写，不是源码扫描）
 //!

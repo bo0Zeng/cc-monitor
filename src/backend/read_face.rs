@@ -93,13 +93,13 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
         //   并的是**这台机器自己**那份表（与 `apikey-read` · 中转里的账号层同一个出处）—— 远端从此第一次并上它自己的表。
         "accounts-list" => {
             let agent = str_arg(args, "agent")?;
-            let rows = crate::accounts::apikey::file_face::rows_at(
-                &crate::accounts::apikey::file_face::machine_path(),
+            let rows = crate::accounts::upstream::file_face::rows_at(
+                &crate::accounts::upstream::file_face::machine_path(),
             );
             let v = accounts_query::list_product(
                 &rows,
                 agent,
-                crate::accounts::apikey::CREDENTIALS_FILE_AGENT,
+                crate::accounts::upstream::CREDENTIALS_FILE_AGENT,
             );
             let size = v.to_string().len();
             if size > LINES_CAP_BYTES {

@@ -705,11 +705,11 @@ mod tests {
     const RELAY_EXPORTS: &[(&str, &str)] = &[
         (
             "listen::host",
-            "〔RL1 · V107〕流模式常驻后端**进程内**起中转的层 1 入口；层 2 那只手由 `accounts::apikey::host_relay` 递进来",
+            "〔RL1 · V107〕流模式常驻后端**进程内**起中转的层 1 入口；层 2 那只手由 `accounts::upstream::host_relay` 递进来",
         ),
         (
             "listen::run",
-            "`--relay` 那一臂的层 1 入口；层 2 那只手由 `accounts::apikey::run_relay` 递进来",
+            "`--relay` 那一臂的层 1 入口；层 2 那只手由 `accounts::upstream::run_relay` 递进来",
         ),
         (
             "machine::answer_ensure",
@@ -791,7 +791,7 @@ mod tests {
     /// 中转对外**只有一个口**：`relay/mod.rs` 里那一行 `pub(crate) use server::run;`。
     /// 谁绕过它去引 `crate::relay::server` / `crate::relay::upstream`，
     /// 中转的内部结构就变成了公共契约 —— 之后 `upstream.rs` 想换个形状都得先问一圈。
-    /// （路由表是账号层的，住 `accounts::apikey::table`，不在 `relay/` 里。）
+    /// （路由表是账号层的，住 `accounts::upstream::table`，不在 `relay/` 里。）
     ///
     /// # ⚠ 这一支够不到哪儿（如实登记，别读成「全体没有」）
     ///

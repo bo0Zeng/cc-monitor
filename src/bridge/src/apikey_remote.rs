@@ -9,7 +9,7 @@
 //! | origin | 谁读写那份文件 |
 //! |---|---|
 //! | 本机 | monitor 自己（`creds_store`，既有、一个字节没动）|
-//! | 某台远端 | 那台机器的后端（帧面 `apikey-key-set` / `apikey-read`，`src/backend/accounts/apikey/file_face.rs`）|
+//! | 某台远端 | 那台机器的后端（帧面 `apikey-key-set` / `apikey-read`，`src/backend/accounts/upstream/file_face.rs`）|
 //!
 //! ⇒ **每台机器上这份文件的程序写者恰好一个**。本机那一臂**只进 `creds_store`**，从不把
 //! `apikey-key-set` 发给本机后端（判据：`the_local_arm_never_sends_the_key_to_a_backend`）。

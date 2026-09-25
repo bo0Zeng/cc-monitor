@@ -1515,7 +1515,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 
 - **每台机器上的程序写者恰好一个**：monitor 所在那台是 monitor 自己；其余每台是那台的后端（本节两条）。
   monitor **从不**把 `apikey-key-set` 发给本机那条连接。
-- **路径**与那台机器上 `--relay` 进程的账号层**同一个出处**（`accounts::apikey::creds::resolve_path` ＋ 同一个家目录）。
+- **路径**与那台机器上 `--relay` 进程的账号层**同一个出处**（`accounts::upstream::creds::resolve_path` ＋ 同一个家目录）。
 - 🔴 **明文只在 `apikey-key-set` 的 `args.key` 里**：不进 argv、不进 env、不进任何日志；两条的应答都只有**掩码**。
 - 两条都**不起中转**；中转那两条（`relay-*`）也**不碰凭据**。
 
@@ -2372,7 +2372,7 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 
 - **只监听 `127.0.0.1`**，不对外暴露；端口默认 `8788`，`CCM_RELAY_PORT` 可盖。
 - 〔RL1 · V107〕**进程内那一形**：流模式（`--tail-only` 等，stdio 或常驻监听口两条载体一样）的后端**被交了** `CCM_RELAY_PORT`
-  ⇒ 在本进程里起同一个中转（层 1 ＋ 层 2 同一份代码，`relay::listen::host` ＋ `accounts::apikey::host_relay`），接受循环跑一条专属线程，
+  ⇒ 在本进程里起同一个中转（层 1 ＋ 层 2 同一份代码，`relay::listen::host` ＋ `accounts::upstream::host_relay`），接受循环跑一条专属线程，
   随进程生死（常驻后端按「退出行为」留或退，中转一起）。与上面独立那一形的差别只有三格：**端口没有缺省值**（认不出 ⇒ 不开）·
   **tee 丢弃**（stdout 是 wire）· **起不来不退出**（出声，后端照常服务）。没交端口 ⇒ 不开（远端经 SSH exec 起的流模式后端就是这一格）。
   凭据文件路径同样由 `CCM_APIKEY_CREDENTIALS` 交（monitor 起本机后端时交，与它自己写的那份同一个路径）。

@@ -36,7 +36,7 @@ pub const KEY_FIELD: &str = "api_key";
 /// 形状：`{"accounts": {"<账号 id>": {"api_key": "…", "base_url": "…"}}}`。
 /// `<账号 id>` 会**原样**变成路由键里那一段（`/s/<agent>/<账号 id>/<key>/…`）
 /// ⇒ 它必须是路由段放得下的字符；放不下的那一条**永远匹配不上**，
-/// 由账号层装表时出声（`accounts::apikey::table::build` 那条「这一行进不了表」）。
+/// 由账号层装表时出声（`accounts::upstream::table::build` 那条「这一行进不了表」）。
 pub const ACCOUNTS_FIELD: &str = "accounts";
 
 /// 一条账号的**上游端点**住哪个字段。缺席 / 空串 ⇒ 用这个 agent 的默认上游（账号层 `AGENT_UPSTREAMS`）。
@@ -116,7 +116,7 @@ pub fn path_under_claude_home(home: &std::path::Path) -> std::path::PathBuf {
 ///
 /// 那个闭集只有一个住址（[`AuthStyle::ALL`]）。在这里再抄一份，加第四个成员的那天
 /// 这份模板会**静默变旧**，而它是随产物发到用户机器上的那一份。
-/// ⇒ 模板只点名字段，合法值由账号层装表时**现算**印出来（`accounts::apikey::creds::announce`）。
+/// ⇒ 模板只点名字段，合法值由账号层装表时**现算**印出来（`accounts::upstream::creds::announce`）。
 pub const TEMPLATE: &str = r#"{
   "_note": "把第三方 API key 填进 api_key。这份文件可以直接用编辑器改，改完下次读就生效；也可以整份换成另一份 JSON（导入）。本文件之外的键不会被程序动。",
   "_note_accounts": "多账号写进 accounts：每条一个 id（会原样出现在中转的路由键里，只许字母数字与 - _），每条可带 api_key、base_url 与 auth_style。base_url 留空就用这个 agent 的默认上游，写全路径（含网关前缀）也认；api_key 留空就原样转发客户端自己那份鉴权头。例：\"accounts\": { \"my-account\": { \"api_key\": \"sk-...\", \"base_url\": \"https://api.example.com\" } }",
@@ -306,7 +306,7 @@ pub fn read_auth_style(doc: &Map<String, Value>) -> AuthStyleSetting {
 }
 
 /// 表里的一条。**上游与 key 在这里还是分开的两个值** ——
-/// 把它们焊成一个不可分解的值是**账号层**的活（`accounts::apikey::table` 的 `Row`）。
+/// 把它们焊成一个不可分解的值是**账号层**的活（`accounts::upstream::table` 的 `Row`）。
 ///
 /// ⚠ **刻意不 `derive(Debug)`**：同 `relay::server::Relay` 那条（`KS1` 的第二道）。
 /// `SecretKey` 自己的 `Debug` 是遮蔽形，但**少一个能顺手印整条的入口就少一个出口**。

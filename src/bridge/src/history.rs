@@ -1949,7 +1949,7 @@ pub(crate) fn apikey_rows() -> Vec<String> {
 ///
 /// # ⚠ 它与中转那侧的人群**不完全一致**，差在哪要写清楚
 ///
-/// 账号层装表时会把两类行**丢出表**（`accounts::apikey::table::build`）：① 账号 id 当不了路由段；
+/// 账号层装表时会把两类行**丢出表**（`accounts::upstream::table::build`）：① 账号 id 当不了路由段；
 /// ② `base_url` 解析不了。本函数**只筛得掉第 ①** 类（`payload::relay_segment_is_safe`
 /// 与 `route::segment_is_safe` 是同一条规则，由 `payload.rs` 那边的头注登记着）。
 /// **第 ② 类筛不掉** —— 那要一份 `Base::parse`，而它住后端那一侧、monitor 够不着

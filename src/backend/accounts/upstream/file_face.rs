@@ -261,5 +261,5 @@ fn write_at(
 }
 
 #[cfg(test)]
-#[path = "../../../../tests/backend/accounts/apikey/file_face_tests.rs"]
+#[path = "../../../../tests/backend/accounts/upstream/file_face_tests.rs"]
 mod tests;

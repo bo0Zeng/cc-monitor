@@ -94,7 +94,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     fresh: "CCM_APIKEY_CREDENTIALS",
     freshRe: ident("CCM_APIKEY_CREDENTIALS"),
     kind: "环境变量",
-    why: "盖的是 apikey 凭据文件的路径 —— 读它的是层 2（`accounts::apikey::creds`），层 1 一个字节都不读",
+    why: "盖的是 apikey 凭据文件的路径 —— 读它的是层 2（`accounts::upstream::creds`），层 1 一个字节都不读",
     state: "done",
   },
   {
@@ -112,7 +112,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     fresh: "CCM_AGENT_UPSTREAM_CLAUDE_CODE",
     freshRe: ident("CCM_AGENT_UPSTREAM_CLAUDE_CODE"),
     kind: "环境变量",
-    why: "层 2 每 agent 默认上游表（`accounts::apikey::AGENT_UPSTREAMS`）里 claude-code 那一行的旋钮；层 1 没有默认上游",
+    why: "层 2 每 agent 默认上游表（`accounts::upstream::AGENT_UPSTREAMS`）里 claude-code 那一行的旋钮；层 1 没有默认上游",
     state: "done",
   },
   // ── 命令面（前端 ↔ monitor；不上后端的线）─────────────────────────────────────
@@ -229,19 +229,19 @@ export const ACCOUNT_NAMES: AccountName[] = [
   {
     old: "relay::table",
     re: ident("relay::table"),
-    fresh: "accounts::apikey::table",
-    freshRe: ident("accounts::apikey::table"),
+    fresh: "accounts::upstream::table",
+    freshRe: ident("accounts::upstream::table"),
     kind: "过期住址",
-    why: "路由表住 `src/backend/accounts/apikey/table.rs`",
+    why: "路由表住 `src/backend/accounts/upstream/table.rs`",
     state: "done",
   },
   {
     old: "relay::creds",
     re: ident("relay::creds"),
-    fresh: "accounts::apikey::creds",
-    freshRe: ident("accounts::apikey::creds"),
+    fresh: "accounts::upstream::creds",
+    freshRe: ident("accounts::upstream::creds"),
     kind: "过期住址",
-    why: "读凭据文件住 `src/backend/accounts/apikey/creds.rs`（`relay::creds_guard` 是另一个名字，不在此列）",
+    why: "读凭据文件住 `src/backend/accounts/upstream/creds.rs`（`relay::creds_guard` 是另一个名字，不在此列）",
     state: "done",
   },
   // ── 判据名 ─────────────────────────────────────────────────────────────────
@@ -365,7 +365,7 @@ export function notScanned(path: string): boolean {
 /** 扫描面必须含的锚文件（自定位）。 */
 const ANCHORS = [
   "src/backend/relay/mod.rs",
-  "src/backend/accounts/apikey/mod.rs",
+  "src/backend/accounts/upstream/mod.rs",
   "src/bridge/src/backend/control/payload.rs",
   "src/accounts.ts",
   "src/doc/IPC-PROTOCOL.md",

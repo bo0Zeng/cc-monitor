@@ -1,7 +1,7 @@
 //! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md` 的 `apikey-key-set` / `apikey-read` 两节（改一个键不许吃掉人手编的内容）
 //!
 //! 核原文：`apikey-key-set` 节逐字「别的行与未知键一个不动」·「`bad_file`（现有文件解析不了 ⇒ **不覆盖**，人手编的内容不许被抹掉）」；
-//! `apikey-read` 节逐字「解析不了不退化成「没配」」。两个写者（后端 `accounts/apikey/file_face.rs` 与 monitor `creds_store.rs::write_key_at`）
+//! `apikey-read` 节逐字「解析不了不退化成「没配」」。两个写者（后端 `accounts/upstream/file_face.rs` 与 monitor `creds_store.rs::write_key_at`）
 //! 共用本模块的纯逻辑兑现这几句 —— 本族判的就是那份共用逻辑。手编 JSON 原样即用、模板自带字段名那几条守 `设计/05 §4.4`
 //! 逐字「只放一个凭据文件、一次界面都不开，中转就能用那把 key」。
 //! ⚠ 落盘键序（按名 · 递归 · 数组保序）与 `auth_style` 往返那几条今天没有逐字原文。

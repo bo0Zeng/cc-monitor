@@ -406,7 +406,7 @@ pub(super) fn run_reading(
 /// 喂给哪个位）住 `run_reading`，那里有判据钉着。**别往里加逻辑**：加进来的就又没判据了
 /// —— 本函数这一行今天是**判不了**的那一格，登记住址件文件 §8.18.3。
 pub(crate) fn run(home: &std::path::Path, _args: &[String], startup: &dyn Startup) -> i32 {
-    // ★ 层 2 那只手是**调用方递进来的**（`accounts::apikey::run_relay`，`--relay` 的装配口）——
+    // ★ 层 2 那只手是**调用方递进来的**（`accounts::upstream::run_relay`，`--relay` 的装配口）——
     //   本层**叫不出**它的名字。先前这里写死 `super::accounts::Boot`：层 2 搬出 `relay/` 那一拍删的。
     run_reading(&|k| std::env::var(k).ok(), home, &|p, get, h| {
         run_with(p, get, h, startup)

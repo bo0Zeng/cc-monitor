@@ -1,6 +1,6 @@
 //! 层 2 · **账号层**（apikey 端点改写那一块）：`resolve` 那张决策表的**唯一住址**（`设计/20 §3.1`）。
 //!
-//! 〔`A3` 第二波 · 2026-09-24〕从 `accounts/` 挪进子目录 `accounts/apikey/`：`accounts/` 是账号**域**，
+//! 〔`A3` 第二波 · 2026-09-24〕从 `accounts/` 挪进子目录 `accounts/upstream/`：`accounts/` 是账号**域**，
 //! 它下面「挂在 `--relay` 进程上当层 2 的这一块」与「账号隔离工具的查询」（`accounts/iso.rs`）是两件事，
 //! 不共用一张登记表（用户「账号就账号, 中转就中转」）。两块互不引用，由
 //! `account_layer_guard::the_two_halves_of_the_account_domain_do_not_reference_each_other` 钉着。
@@ -54,7 +54,7 @@ pub(crate) mod creds; // `K-H2a`：从哪儿拿 key（**只读**）+ 读之前�
                       // 账号层自己的状态文件，不是用户文件 ⇒ `readonly_guard` 第四层登记它，只从 `inbound.rs` 进来。
                       // ⚠ 它**不在** `--relay` 那条启动路径上：中转进程里的账号层仍然只读（`creds`），写只在流模式的帧面上发生。
 pub(crate) mod file_face;
-mod policy; // 热重载（`20 §4`：`accounts/policy.rs`；今天住 `accounts/apikey/policy.rs`）
+mod policy; // 热重载（`20 §4`：`accounts/policy.rs`；今天住 `accounts/upstream/policy.rs`）
 pub(crate) mod table; // `K-H2`：路由表 —— 账号段 → **上游与 key 焊死的一个值**
 
 pub(crate) use policy::Reload;

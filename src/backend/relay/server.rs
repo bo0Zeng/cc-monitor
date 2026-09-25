@@ -23,7 +23,7 @@
 //!
 //! | 登记 | 它钉着什么 |
 //! |---|---|
-//! | `tests/bridge/creds_store_tests.rs::PLAINTEXT_EXIT_SITES` | 〔R3 订正〕**今天已不钉本文件**：`expose_for_auth_header(` 恰好 1 处、住 `src/backend/accounts/apikey/mod.rs`（层 2 算好头材料交下来，本层碰不到明文）|
+//! | `tests/bridge/creds_store_tests.rs::PLAINTEXT_EXIT_SITES` | 〔R3 订正〕**今天已不钉本文件**：`expose_for_auth_header(` 恰好 1 处、住 `src/backend/accounts/upstream/mod.rs`（层 2 算好头材料交下来，本层碰不到明文）|
 //! | `tests/bridge/byte_cap_registry_tests.rs` | `HEAD_CAP` / `BODY_CAP` / `TEE_DECODE_CAP` 三条的住址栏都是这个路径 |
 //! | `tests/bridge/structural_scan_tests.rs` | `("src/backend/relay/server.rs", "handle_alloc_error", 1)` |
 //!
@@ -48,7 +48,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 // ⚠ 上游的环境旋钮与默认值**先搬去层 2**（`20 §4`「常量跟着职责走」），**再被条 59 整删**成
-//   每 agent 一行的表（`accounts::apikey::AGENT_UPSTREAMS`）。层 1 里**没有任何可以回落的默认上游**
+//   每 agent 一行的表（`accounts::upstream::AGENT_UPSTREAMS`）。层 1 里**没有任何可以回落的默认上游**
 //   —— 这一句由 `table_guard::layer_one_has_no_default_upstream_to_fall_back_to`
 //   的**两向相等断言**钉着（层 1 零处 ＋ 层 2 恰好登记那几处），不是一条散文。
 
@@ -598,7 +598,7 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
                 relay.upstream_deadline,
             ),
             // 剥掉下游 auth，按这一行自己的说法写（`key` 为 `None` ＝ 什么都不写，
-            // 那是 `AuthSwap::write == None` 那一档，理由整段住 `accounts::apikey::dispatch_auth`）。
+            // 那是 `AuthSwap::write == None` 那一档，理由整段住 `accounts::upstream::dispatch_auth`）。
             // ★★ 上游与 key 取自**同一个变体**，不是两个各自取的值。
             Destination::Substitute { upstream, auth } => send_upstream(
                 upstream,
@@ -766,7 +766,7 @@ fn pump<R: Read, W: Write>(
 /// **今天盘上的真话，逐条重写**：
 /// 1. **配了 key ⇒ 换头**：下游那份 `Authorization` 被**丢掉**，换上**层 2 交下来的那一格头**
 ///    （层 2 按这一行的 key 算好的；本层手里没有 key）。〔R3 订正〕取明文的那一行今天住
-///    `accounts::apikey`（先前住本文件），它是 `expose_for_auth_header` 在**整个后端生产段里唯一**的调用点
+///    `accounts::upstream`（先前住本文件），它是 `expose_for_auth_header` 在**整个后端生产段里唯一**的调用点
 ///    （`KS2`，由 `creds_guard::the_plaintext_leaves_the_type_at_exactly_one_place_in_this_crate` 相等断言钉住）。
 /// 2. **这一行没配 key ⇒ 原样转发**（`K-H1` 甲半那个形状，一个字节不动）。
 ///
@@ -800,7 +800,7 @@ fn pump<R: Read, W: Write>(
 /// 并把后者登记成射程外、说那是 `K-H2` 正文的活。**`K-H2` 已签收，那一格没人接。**
 ///
 /// **今天盘上的真话**：
-/// 1. **换哪个头由那一行的 `auth_style` 定**（见 `accounts::apikey::auth_header_of`，`P16` 搬去层 2 了）——
+/// 1. **换哪个头由那一行的 `auth_style` 定**（见 `accounts::upstream::auth_header_of`，`P16` 搬去层 2 了）——
 ///    〔用 09-04〕逐字要「api做成通用的」⇒ 只押一种鉴权头 = 只接得上一半的上游，
 ///    而押错的症状是 **401**，与「key 打错了」同形。
 /// 2. **这一行有自己的 key 时，客户端那份鉴权头一律不转发** ——
@@ -834,7 +834,7 @@ fn render_upstream_request(
     //      而同源那件事**更紧了一格**：先前是「一个变体的两个字段」，今天是
     //      「一个变体的**一个**字段」⇒ 连「从同一个变体里取两个、但取错搭配」都写不出来。
     //
-    //  `auth` 的三态与它们各自的字节，整张表住 `accounts::apikey::dispatch_auth` 的头注：
+    //  `auth` 的三态与它们各自的字节，整张表住 `accounts::upstream::dispatch_auth` 的头注：
     //    `None`                            ⇒ 下游那份鉴权头**原样转发**
     //    `Some(AuthSwap{ write: Some(_) })` ⇒ 丢掉 `clear` 那几份，写层 2 算好的那一条
     //    `Some(AuthSwap{ write: None })`    ⇒ 丢掉 `clear` 那几份，**一个头都不写**
@@ -851,7 +851,7 @@ fn render_upstream_request(
     // ★ 这一趟要不要把客户端自带的鉴权头收掉 —— **答案就是「层 2 答的是不是 `Substitute`」**。
     //   ⚠⚠ 这一行先前是个复合条件 `(key.is_some() && auth_header_of(style).is_some())
     //      || style == NoAuth`，头注逐字警告过「两个条件都要，缺一格就漏一形」。
-    //      那个判断**整条搬进层 2 的那一个 `match`** 了（`accounts::apikey::dispatch_auth`），
+    //      那个判断**整条搬进层 2 的那一个 `match`** 了（`accounts::upstream::dispatch_auth`），
     //      层 1 这边因此再也没有第二处可以判错 —— 少一处能判错的地方，不是少一条判断。
     //   ⚠ 〔`P16`〕**丢哪几个头**也跟着搬走了（`AuthSwap::clear`）：层 1 从此
     //      连那份名单都没有 ⇒ 它也不可能自己凑一份缩水的。
@@ -873,7 +873,7 @@ fn render_upstream_request(
     }
     // ★★ **层 1 只照写。** 头名与**完整**头值都是层 2 算好的（`AuthSwap::write`）——
     //    层 1 不知道那个串里有没有前缀、是不是一把 key，它只看见一个串。
-    //    ⚠⚠ 〔`P16` 2026-09-22〕把明文取出来的那一句**搬去层 2 了**（`accounts::apikey::dispatch_auth`）。
+    //    ⚠⚠ 〔`P16` 2026-09-22〕把明文取出来的那一句**搬去层 2 了**（`accounts::upstream::dispatch_auth`）。
     //      搬的是住址不是处数：`creds_guard` 那条「恰好 1 处」的相等断言一个字节没动
     //      （它扫整个 crate，不写死文件名），`PLAINTEXT_EXIT_SITES` 只改了住址栏。
     //      ⇒ 层 1 从此**碰不到明文**，这是 `C2` 买到的一格实质东西，不只是类型好看。
@@ -891,8 +891,8 @@ fn render_upstream_request(
 ///
 /// | 搬走的 | 新家 | 为什么不能留在这一层 |
 /// |---|---|---|
-/// | `const AUTH_HEADER_NAMES`（换头前先丢掉哪几个头） | `accounts::apikey::headers_to_clear()`，**由映射派生**，不再是手写名单 | 它与那个映射之间原本靠一条判据焊着，而映射按 `C2` 必须去层 2 ⇒ 焊缝会**跨层**，而缺焊的症状是同名鉴权头出现两次、上游谁赢没有定义 |
-/// | `fn auth_header_of`（`AuthStyle` → `(头名, 前缀)`） | `accounts::apikey::auth_header_of` | 它的入参是 `creds_core::store::AuthStyle` ⇒ 按 `C2`（不许依赖业务 crate）它**不可能**住这一层 |
+/// | `const AUTH_HEADER_NAMES`（换头前先丢掉哪几个头） | `accounts::upstream::headers_to_clear()`，**由映射派生**，不再是手写名单 | 它与那个映射之间原本靠一条判据焊着，而映射按 `C2` 必须去层 2 ⇒ 焊缝会**跨层**，而缺焊的症状是同名鉴权头出现两次、上游谁赢没有定义 |
+/// | `fn auth_header_of`（`AuthStyle` → `(头名, 前缀)`） | `accounts::upstream::auth_header_of` | 它的入参是 `creds_core::store::AuthStyle` ⇒ 按 `C2`（不许依赖业务 crate）它**不可能**住这一层 |
 ///
 /// ⚠ **不许在这一层重建任何一个。** 层 1 今天连「有哪几个鉴权头」都不知道 ——
 /// 那正是 `P16` 买到的东西：它拿到 `AuthSwap` 就照丢照写，没有第二处可以判错、

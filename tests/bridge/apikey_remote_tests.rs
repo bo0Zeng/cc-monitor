@@ -13,7 +13,7 @@
 //! # 买不到的
 //!
 //! - 真远端那一趟（真 SSH、真后端进程写真文件）：本仓测试不起远端；后端那一半的行为判据住
-//!   `tests/backend/accounts/apikey/file_face_tests.rs`，两半之间的线上字节没有金标准。
+//!   `tests/backend/accounts/upstream/file_face_tests.rs`，两半之间的线上字节没有金标准。
 
 use super::*;
 

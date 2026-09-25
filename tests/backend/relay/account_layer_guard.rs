@@ -20,7 +20,7 @@
 //! 留一张空表等于给「往里加一行」留了一个看起来合法的口子。
 //! ⇒ 今天谁让层 1 认识层 2 一样东西、或往 `relay/` 下放回一份层 2 文件，本条当场红，
 //!   而改法只有一条：**把那件事交给层 2**（请求路径走 `Destinations`，启动路径走 `Startup`/`Ready`，
-//!   进程装配在 `accounts::apikey::run_relay`）。
+//!   进程装配在 `accounts::upstream::run_relay`）。
 //!
 //! # 买不到什么（照实写）
 //!
@@ -44,7 +44,7 @@ pub(super) mod tests {
     const RELAY_DIR: &str = "relay";
 
     /// ㈠ 层 2 那棵树里的文件（相对**层 2 的根**）。**相等，不是地板**。
-    // 〔`A3` 第二波〕根从 `accounts/` 收窄到 `accounts/apikey/`（现推，不是写死）；
+    // 〔`A3` 第二波〕根从 `accounts/` 收窄到 `accounts/upstream/`（现推，不是写死）；
     // 账号隔离工具的查询（`accounts/iso.rs`）**不是**层 2，不进本表 —— 它登记在 [`ACCOUNT_DOMAIN_OTHER_FILES`]。
     // 〔RM1a · 第四波〕+`file_face.rs`：这台机器上那份凭据文件的帧面读写口（`apikey-key-set` / `apikey-read`）。
     // 它是层 2 自己的状态、同一份文件、同一套格式 ⇒ 住层 2 这棵树；它用到层 1 的只有 `segment_is_safe`
@@ -69,7 +69,7 @@ pub(super) mod tests {
     /// |---|---|
     /// | `Destinations` · `Destination` · `AuthSwap` · `Mode` · `RouteKey` | 请求路径上那一问一答（`设计/20 §2`）|
     /// | `Startup` · `Ready` | 启动路径上那两步（起监听前验配置 · 起监听后交出 `Destinations`）|
-    /// | `run` | `--relay` 进程的装配（`accounts::apikey::run_relay` 把 `Boot` 递进层 1 的入口）。依赖方向只许层 2 → 层 1，所以装配住这一侧 |
+    /// | `run` | `--relay` 进程的装配（`accounts::upstream::run_relay` 把 `Boot` 递进层 1 的入口）。依赖方向只许层 2 → 层 1，所以装配住这一侧 |
     /// | `Base` | 一行的上游是什么 —— 层 1 的**传输原语**，层 2 解析它、焊进行里、原样交回 |
     /// | `segment_is_safe` | 「这个账号 id 当得了路由段吗」与层 1 切键用的是**同一个谓词**（`route.rs` 头注逐字论证过为什么不许各写一份）|
     ///
@@ -146,6 +146,13 @@ pub(super) mod tests {
         account_layer_root(&crate_production())
     }
 
+    /// 层 2 根目录的最后一段（`accounts/upstream/` ⇒ `upstream`）：它自己的模块名，现推不写死。
+    fn module_name_of_root(root: &str) -> String {
+        module_of_dir(root)
+            .pop()
+            .unwrap_or_else(|| panic!("层 2 根 `{root}` 推不出模块名"))
+    }
+
     fn module_of_dir(dir: &str) -> Vec<String> {
         dir.trim_end_matches('/')
             .split('/')
@@ -205,8 +212,10 @@ pub(super) mod tests {
     fn layer_two_vocabulary(layer_two: &[&(String, String)]) -> BTreeSet<String> {
         let mut out: BTreeSet<String> = BTreeSet::new();
         out.insert("accounts".to_string());
-        // 〔`A3` 第二波〕层 2 今天住 `accounts/apikey/` ⇒ 它自己的模块名也是层 2 的名字。
-        out.insert("apikey".to_string());
+        // 〔RN1 · V114〕这里原先还硬插层 2 自己的模块名（`apikey`）。模块改名 `upstream` 之后它与中转自己的
+        //   `relay::upstream`（传输原语 `Base`）同名 ⇒ 在 ㈢ 里当场假红，**不再插**。射程不变窄：中转要点名
+        //   层 2，路径必经 `accounts`（上一行）；「`use` 进来再以裸模块名用」那一写法的 `use` 行本身也带 `accounts`。
+        //   账号域内部那条（iso ↔ 层 2）仍要这个名字 ⇒ 由那条判据自己从根目录现推、单独加（[`module_name_of_root`]）。
         for (_, prod) in layer_two {
             for line in prod.lines() {
                 let t = guard_core::strip_visibility(line.trim_start());
@@ -415,7 +424,7 @@ pub(super) mod tests {
         // 自己的生产段里被**同一把尺子**数到 —— 数不到就是尺子瞎了，下面的零命中是空真。
         let unseen: Vec<&String> = vocab
             .iter()
-            .filter(|w| *w != "accounts" && *w != "apikey")
+            .filter(|w| *w != "accounts")
             .filter(|w| !layer_two.iter().any(|(_, prod)| count_word(prod, w) > 0))
             .collect();
         assert!(
@@ -435,7 +444,7 @@ pub(super) mod tests {
             named.is_empty(),
             "🔴 中转层（`relay/` 的生产段）点名了账号层：\n  {}\n\
              **别加例外** —— 把那件事交给层 2：请求路径走 `Destinations`，启动路径走 `Startup`/`Ready`，\
-             进程装配在 `accounts::apikey::run_relay`。",
+             进程装配在 `accounts::upstream::run_relay`。",
             named.join("\n  ")
         );
 
@@ -525,7 +534,7 @@ pub(super) mod tests {
         out
     }
 
-    /// ★★ 「账号就账号, 中转就中转」在账号域**内部**的那一半：给中转当层 2 的 `apikey/`
+    /// ★★ 「账号就账号, 中转就中转」在账号域**内部**的那一半：给中转当层 2 的 `upstream/`
     /// 与账号隔离工具的查询（`iso`）**两向零引用**。
     ///
     /// | 格 | 断言 | 反空真 |
@@ -602,9 +611,11 @@ pub(super) mod tests {
         // 两块的名字。`accounts` 是域名，两块都住在它底下 ⇒ 不作判据词（路径那一半已经分得开）。
         let mut l2_vocab = layer_two_vocabulary(&layer_two);
         l2_vocab.remove("accounts");
+        // 层 2 自己的模块名（盘上现推）：iso 一侧不许点它。中转那条（㈢）不收它 —— 见 `layer_two_vocabulary` 头注。
+        let l2_mod_name = module_name_of_root(&l2_root);
+        l2_vocab.insert(l2_mod_name.clone());
         let mut iso_vocab = layer_two_vocabulary(&others);
         iso_vocab.remove("accounts");
-        iso_vocab.remove("apikey");
         let iso_mods: Vec<Vec<String>> =
             others.iter().map(|(rel, _)| module_of_file(rel)).collect();
         for (rel, _) in &others {
@@ -613,7 +624,7 @@ pub(super) mod tests {
             }
         }
         assert!(
-            l2_vocab.contains("apikey")
+            l2_vocab.contains(&l2_mod_name)
                 && l2_vocab.contains("Accounts")
                 && iso_vocab.contains("iso"),
             "词表推空了：层 2 {l2_vocab:?} · iso {iso_vocab:?}"
@@ -622,10 +633,10 @@ pub(super) mod tests {
         // 正控：同一个 `cross_refs` 对合成文本必须命中（两个方向各一刀）。
         let fake_iso = (
             "accounts/iso.rs".to_string(),
-            "use crate::accounts::apikey::Accounts;\n".to_string(),
+            "use crate::accounts::upstream::Accounts;\n".to_string(),
         );
         let fake_l2 = (
-            "accounts/apikey/mod.rs".to_string(),
+            "accounts/upstream/mod.rs".to_string(),
             "fn f() { super::super::iso::answer(&[]); }\n".to_string(),
         );
         assert!(

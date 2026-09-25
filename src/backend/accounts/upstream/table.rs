@@ -435,5 +435,5 @@ pub(crate) fn build(
 }
 
 #[cfg(test)]
-#[path = "../../../../tests/backend/accounts/apikey/table_tests.rs"]
+#[path = "../../../../tests/backend/accounts/upstream/table_tests.rs"]
 mod tests;

@@ -39,8 +39,8 @@ use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, UPSTREAM_DEADLINE};
 use super::server::Relay;
 use super::tee::TeeSink;
 use super::upstream::Base;
-use crate::accounts::apikey::table::RoutingTable;
-use crate::accounts::apikey::Accounts;
+use crate::accounts::upstream::table::RoutingTable;
+use crate::accounts::upstream::Accounts;
 use creds_core::store::AuthStyle;
 use creds_core::SecretKey;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -225,8 +225,8 @@ const GOLDEN: &[Golden] = &[
     // ⑥ 直通模式 ＋ 表里**没有这一行** ⇒ **502**，一个字节都不到上游。
     //    🔴 `20 §3.1` 第 4 行逐字「不许回落到某一个写死的常量」：那一格要「按 `seg1`
     //    取该 agent 的默认上游」。那张每 agent 一行的表（条 59）今天落了
-    //    （`accounts::apikey::AGENT_UPSTREAMS`），而本格的 `seg1`（`GOLDEN_AGENT`）**不在表里**
-    //    ⇒ 未登记 ⇒ 502。理由整段住 `accounts::apikey::decide`；登记过的那一半由
+    //    （`accounts::upstream::AGENT_UPSTREAMS`），而本格的 `seg1`（`GOLDEN_AGENT`）**不在表里**
+    //    ⇒ 未登记 ⇒ 502。理由整段住 `accounts::upstream::decide`；登记过的那一半由
     //    `table_tests` 那条「登记过的走自己那一行、未登记的拒」量（不经网络）。
     //    ⚠ 它与 ③ 的 404 **刻意不同码**：404 答的是「代入模式要求表里有这一行」，
     //    502 答的是「这个 agent 没有登记上游」——两件事，两个码。
@@ -368,7 +368,7 @@ fn spawn_relay(up: SocketAddr) -> (SocketAddr, TeeTap) {
     let relay = Arc::new(Relay::new(
         Arc::new(Accounts::new(
             table,
-            crate::accounts::apikey::Upstreams::from_env(&|_| None).expect("内置默认"),
+            crate::accounts::upstream::Upstreams::from_env(&|_| None).expect("内置默认"),
         )),
         TeeSink::new(Box::new(Sink(Arc::clone(&buf), tick))),
         DOWNSTREAM_DEADLINE,
