@@ -1,7 +1,7 @@
 // F12：远端配置**数据层**（从 settings/remote-section.ts 抽出，治分层倒挂——数据层原住在 1801 行
 // UI 模块里、被 tabs/account-chip/cards/main/port-forward 等非 UI 模块依赖）。本模块**纯数据**：
 // config.json `remote` 段的类型 + 读写 CRUD + 反查/筛选纯函数，无 DOM、无 UI 依赖。行为与抽出前逐字节等价。
-import { loadConfig, saveConfig } from "./config";
+import { loadConfig, patchConfigFrom, setAt, type ConfigEdit } from "./config";
 
 /**
  * 单台远端机器配置（config.json `remote.hosts[]` 的元素）。**key 必须与 Rust reader 一致**。
@@ -139,28 +139,32 @@ function coerceHost(obj: Record<string, unknown>): RemoteHostConfig {
  */
 export async function readRemoteConfig(): Promise<RemoteConfig> {
   try {
-    const cfg = (await loadConfig()) as Record<string, unknown>;
-    const r = cfg.remote;
-    if (r === null || typeof r !== "object") {
-      return { enabled: false, hosts: [] };
-    }
-    const obj = r as Record<string, unknown>;
-    const enabled = typeof obj.enabled === "boolean" ? obj.enabled : false;
-
-    if (!Array.isArray(obj.hosts)) {
-      return { enabled, hosts: [], unrecognized: REMOTE_CONFIG_UNRECOGNIZED };
-    }
-    const raw = obj.hosts.filter(
-      (h): h is Record<string, unknown> => h !== null && typeof h === "object",
-    );
-    return {
-      enabled,
-      hosts: raw.map(coerceHost),
-    };
+    return remoteConfigOf((await loadConfig()) as Record<string, unknown>);
   } catch (e) {
     console.warn("readRemoteConfig failed:", e);
     return { enabled: false, hosts: [] };
   }
+}
+
+/** 一份已读到的 config → `RemoteConfig`（纯函数）。读盘失败不归它管 —— 那是调用方的事（见 [`patchRemoteConfig`]）。 */
+function remoteConfigOf(cfg: Record<string, unknown>): RemoteConfig {
+  const r = cfg.remote;
+  if (r === null || typeof r !== "object") {
+    return { enabled: false, hosts: [] };
+  }
+  const obj = r as Record<string, unknown>;
+  const enabled = typeof obj.enabled === "boolean" ? obj.enabled : false;
+
+  if (!Array.isArray(obj.hosts)) {
+    return { enabled, hosts: [], unrecognized: REMOTE_CONFIG_UNRECOGNIZED };
+  }
+  const raw = obj.hosts.filter(
+    (h): h is Record<string, unknown> => h !== null && typeof h === "object",
+  );
+  return {
+    enabled,
+    hosts: raw.map(coerceHost),
+  };
 }
 
 /**
@@ -231,23 +235,21 @@ function serializeHost(h: RemoteHostConfig): Record<string, unknown> {
 }
 
 /**
- * 把 RemoteConfig MERGE 进 config.json 顶层的 `remote` 键，不动其他字段。
+ * RemoteConfig → config.json 顶层 `remote` 键的那一条补丁（只动这一个键）。
  * 写成 `{ enabled, hosts: [...] }`（认不出的那一段整个换掉）；key 是 camelCase，与 Rust
  * `lib.rs::load_remote_configs` 读的键严格一致。
  *
- * ★ S1 起这是**数据层内部的「序列化 + 落盘」单一出口**，`remote` 键的盘上形状只有
+ * ★ S1 起这是**数据层内部的「序列化」单一出口**，`remote` 键的盘上形状只有
  * 这里知道。**刻意不 export**：它是整表覆盖语义，一旦调用方手上只有部分机器
  *（S2 把机器拆成一页一台之后就是这样）就会把其余的静默删光。
  * 不导出 = 这条footgun 在**类型层面不可达**，不靠「记得别用它」这种纪律。
  * 对外只有 [`patchRemoteConfig`]（局部合并，安全性质来自构造）。
  */
-async function writeRemoteConfig(next: RemoteConfig): Promise<void> {
-  const cfg = (await loadConfig()) as Record<string, unknown>;
-  cfg.remote = {
+function remoteEdit(next: RemoteConfig): ConfigEdit {
+  return setAt(["remote"], {
     enabled: next.enabled,
     hosts: next.hosts.map(serializeHost),
-  };
-  await saveConfig(cfg);
+  });
 }
 
 /** S1：一台机器在盘上的定位键 = 它的 origin（与 [`findHostByOrigin`] 同口径）。 */
@@ -343,10 +345,12 @@ export function applyRemoteHostsPatch(
 /**
  * S1：[`applyRemoteHostsPatch`] 的 IO 包装 —— read-modify-write。
  * UI 侧唯一的写入口。
+ *
+ * 〔CFG1〕读与写在本窗口的配置写队列里连着做（`config.ts::patchConfigFrom`），且**读失败就抛**：
+ * 从前这里走 `readRemoteConfig`（读失败回空表），读失败那一次会把空表写回去 ⇒ 所有机器没了。
  */
 export async function patchRemoteConfig(
   patch: RemoteHostsPatch,
 ): Promise<void> {
-  const cur = await readRemoteConfig();
-  await writeRemoteConfig(applyRemoteHostsPatch(cur, patch));
+  await patchConfigFrom((cfg) => [remoteEdit(applyRemoteHostsPatch(remoteConfigOf(cfg), patch))]);
 }

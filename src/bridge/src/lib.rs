@@ -1295,7 +1295,7 @@ pub fn run() {
             backend::control::backend_control::backend_start,
             backend::control::backend_control::backend_stop,
             config::load_config,
-            config::save_config,
+            config::patch_config,
             // K-H2a：apikey 表那把 key。**读那条永远只回掩码**（`KS6`）；
             // 写那条是「界面」这个第二写者，它与人手编是同一份文件的两个写者（`KS10`）。
             read_apikey_credentials_status,

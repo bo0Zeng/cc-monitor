@@ -18,7 +18,7 @@
  * - 未知 id → 静默丢（用户从老版本升级或手动改坏 config）
  */
 
-import { loadConfig, saveConfig } from "../config";
+import { loadConfig, patchConfig, setAt } from "../config";
 import { findAction } from "./actions";
 
 const KEY = "keybindings";
@@ -43,9 +43,7 @@ export async function getKeybindings(): Promise<Record<string, string | null>> {
   }
 }
 
-/** 全量保存覆盖。merge 进 config 顶层不动其他字段。 */
+/** 全量保存覆盖 `keybindings` 这一个键（`null` = 解绑，原样存），不碰其他键（〔CFG1〕按键补丁）。 */
 export async function setKeybindings(value: Record<string, string | null>): Promise<void> {
-  const cfg = (await loadConfig()) as Record<string, unknown>;
-  cfg[KEY] = value;
-  await saveConfig(cfg);
+  await patchConfig([setAt([KEY], value)]);
 }

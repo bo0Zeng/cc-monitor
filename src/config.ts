@@ -1,5 +1,11 @@
-// config.json 读写桥：直通 Rust `load_config` / `save_config`（schema-agnostic，
+// config.json 读写桥：读直通 Rust `load_config`；写只有 `patch_config` 一个口（schema-agnostic，
 // 后端按 serde_json::Value 透传，所有字段语义收敛在前端各模块）。
+//
+// 🔴 〔CFG1 · 4D〕**写只交「改哪几条路径」，不交整份。** 从前 9 个模块各自「读整份 → 改自己的键 →
+// `saveConfig(整份)`」，主窗（tab 栏）与设置窗是两个 realm，两次读-改-写一交错，后写的整份就把先写的键
+// 盖掉（E §E1：拖放同拍发分组 ＋ 顺序，分组那次没落盘）。现在 [`patchConfig`] 只交 [`ConfigEdit`]，
+// Rust `config.rs::patch_config_at` 在一把进程级锁里现读盘、逐条应用 ⇒ 谁写的键谁的值留在盘上
+// （`设计/30 §4`「各自只写自己那个键」）。判据：`tests/config-lost-update.vitest.ts` · `tests/bridge/config_tests.rs`。
 //
 // 🔴 〔`设计/99 §2.5 P12` 2026-09-21〕**「未知键静默忽略」在这里止住。**
 //
@@ -12,6 +18,9 @@
 // 由 `settings/unknown-keys-notice.ts` 画成一条**常驻**提示条（`INVARIANTS §12`：
 // 状态性警告不许只活在 hover / 日志里）。
 import { commands } from "./ipc/commands";
+import type { ConfigEdit } from "./generated/ConfigEdit";
+
+export type { ConfigEdit };
 
 export type Config = Record<string, unknown>;
 
@@ -27,7 +36,7 @@ export type Config = Record<string, unknown>;
  * ⚠ 射程：只管**顶层**。子对象里的键（`remote.hosts[].keyPath`、`theme.bg` …）
  * 由各自的主人自己解释，本表一个都不认、也不该认。
  */
-export const CONFIG_KEY_OWNERS: Readonly<Record<string, string>> = {
+export const CONFIG_KEY_OWNERS = {
   // src/theme.ts
   theme: "src/theme.ts",
   // src/paths.ts
@@ -57,10 +66,16 @@ export const CONFIG_KEY_OWNERS: Readonly<Record<string, string>> = {
   resumeCommandRemotePresets: "src/behavior.ts",
   notifyTurnEnd: "src/behavior.ts",
   forceLaunchPayloadRenderer: "src/behavior.ts",
-};
+  // src/bridge/src/logging.rs —— **Rust 写的**顶层键（设置页「诊断」经 `set_diagnostics_config`）。
+  // 〔CFG1〕从前漏登记：用户存过一次诊断设置，「认不出的键」提示条就把 `diagnostics` 点名（假警报）。
+  diagnostics: "src/bridge/src/logging.rs",
+} as const satisfies Readonly<Record<string, string>>;
+
+/** config.json 的顶层键。写口的路径首段只收这些 ⇒ 写一个没登记的顶层键**编不过**。 */
+export type ConfigKey = keyof typeof CONFIG_KEY_OWNERS;
 
 /** [`CONFIG_KEY_OWNERS`] 的键集合。判据与运行期共用同一份，不另抄第二份。 */
-export const KNOWN_CONFIG_KEYS: readonly string[] = Object.keys(CONFIG_KEY_OWNERS);
+export const KNOWN_CONFIG_KEYS = Object.keys(CONFIG_KEY_OWNERS) as readonly ConfigKey[];
 
 /**
  * 一份配置里有哪些 app 不认识的顶层键 —— **纯函数**，好让判据直接打在这里。
@@ -73,7 +88,7 @@ export const KNOWN_CONFIG_KEYS: readonly string[] = Object.keys(CONFIG_KEY_OWNER
  */
 export function unknownKeysIn(cfg: unknown): string[] {
   if (!cfg || typeof cfg !== "object" || Array.isArray(cfg)) return [];
-  const known = new Set(KNOWN_CONFIG_KEYS);
+  const known = new Set<string>(KNOWN_CONFIG_KEYS);
   return Object.keys(cfg as Record<string, unknown>).filter((k) => !known.has(k));
 }
 
@@ -107,6 +122,47 @@ export async function loadConfig(): Promise<Config> {
   return cfg;
 }
 
-export async function saveConfig(value: Config): Promise<void> {
-  await commands.save_config({ value });
+/** 路径首段是登记过的顶层键，其后是逐层子键。 */
+export type ConfigPath = readonly [ConfigKey, ...string[]];
+
+/** 一条「把这个路径设成这个值」。值必须能 JSON 化；`undefined` 是写者的错（线上会整条丢字段）⇒ 抛。 */
+export function setAt(path: ConfigPath, value: unknown): ConfigEdit {
+  if (value === undefined) throw new Error(`setAt(${path.join(".")}): value is undefined`);
+  return { op: "set", path: [...path], value };
+}
+
+/** 一条「删掉这个路径」。路上就没有 ⇒ Rust 那边什么都不做。 */
+export function removeAt(path: ConfigPath): ConfigEdit {
+  return { op: "remove", path: [...path] };
+}
+
+/**
+ * 本 realm 的写队列：同一个窗口里先发的写先落盘，不靠 IPC 到达顺序
+ *（同一模块连发两次同一个键，盘上必是后发的那次）。失败不堵后面的写。
+ */
+let queue: Promise<unknown> = Promise.resolve();
+
+function enqueue<T>(job: () => Promise<T>): Promise<T> {
+  const run = queue.then(job, job);
+  queue = run.catch(() => undefined);
+  return run;
+}
+
+/** 🔴 **写 config.json 的唯一口。** 只交改哪几条路径。 */
+export function patchConfig(edits: readonly ConfigEdit[]): Promise<void> {
+  const copy = [...edits];
+  return enqueue(() => commands.patch_config({ edits: copy }));
+}
+
+/**
+ * 要先看旧值才算得出新值的写者用这个（`remote` 段按机器增删改）：在本 realm 的写队列里**现读** →
+ * `build(cfg)` 出补丁 → 写。读失败 ⇒ 抛（**不**当空配置再写回 —— 那会把别的机器写没）。
+ */
+export function patchConfigFrom(
+  build: (cfg: Config) => readonly ConfigEdit[],
+): Promise<void> {
+  return enqueue(async () => {
+    const edits = build(await loadConfig());
+    if (edits.length > 0) await commands.patch_config({ edits: [...edits] });
+  });
 }

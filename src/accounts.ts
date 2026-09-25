@@ -9,7 +9,7 @@
 // **不注入 env（A4）、不重启会话（A5）、不碰本地账号（A7）**。全程走 A2 的
 // available:false 降级：未迁移 / 旧后端一律安静隐藏账号 UI，不报错。
 import { commands } from "./ipc/commands";
-import { loadConfig, saveConfig } from "./config";
+import { loadConfig, patchConfig, removeAt, setAt } from "./config";
 import { isValidModelName } from "./shell-quote";
 import type { LaunchModifiers } from "./launch-plan";
 // 🔴 `K-R95`（定框 `K28`：前端不许自己发明对外行为）：本机拉起载荷里「哪个号」那一格的
@@ -1024,20 +1024,11 @@ export async function getDefaultName(): Promise<string | null> {
   return null;
 }
 
-/** 写本机默认账号名。null = 清除（回退跟随 manifest）。枚举全字段写回，防静默丢失。 */
+/** 写本机默认账号名。null = 清除（回退跟随 manifest）。只动 `accounts.defaultName` 这一条路径（〔CFG1〕）。 */
 export async function setDefaultName(name: string | null): Promise<void> {
-  const cfg = (await loadConfig()) as Record<string, unknown>;
-  const prev =
-    cfg[CFG_KEY] && typeof cfg[CFG_KEY] === "object"
-      ? (cfg[CFG_KEY] as Record<string, unknown>)
-      : {};
-  cfg[CFG_KEY] = {
-    ...prev,
-    defaultName: name ?? undefined,
-  };
-  // undefined 键会被 serde_json 序列化时忽略——等效于删除
-  if (name === null) delete (cfg[CFG_KEY] as Record<string, unknown>).defaultName;
-  await saveConfig(cfg);
+  await patchConfig([
+    name === null ? removeAt([CFG_KEY, "defaultName"]) : setAt([CFG_KEY, "defaultName"], name),
+  ]);
 }
 
 const MODEL_MAP_KEY = "modelByAccount";
@@ -1072,20 +1063,9 @@ export async function setModelForAccount(name: string, model: string | null): Pr
   if (model && !isValidModelName(model)) {
     throw new Error(`非法模型名（拒绝保存）: ${JSON.stringify(model)}`);
   }
-  const cfg = (await loadConfig()) as Record<string, unknown>;
-  const prev =
-    cfg[CFG_KEY] && typeof cfg[CFG_KEY] === "object"
-      ? (cfg[CFG_KEY] as Record<string, unknown>)
-      : {};
-  const prevMap =
-    prev[MODEL_MAP_KEY] && typeof prev[MODEL_MAP_KEY] === "object"
-      ? (prev[MODEL_MAP_KEY] as Record<string, string>)
-      : {};
-  const nextMap = { ...prevMap };
-  if (model) nextMap[name] = model;
-  else delete nextMap[name];
-  cfg[CFG_KEY] = { ...prev, [MODEL_MAP_KEY]: nextMap };
-  await saveConfig(cfg);
+  // 〔CFG1〕只动 `accounts.modelByAccount.<name>` 这一条路径：别的账号、`defaultName` 都不经这里。
+  const path = [CFG_KEY, MODEL_MAP_KEY, name] as const;
+  await patchConfig([model ? setAt(path, model) : removeAt(path)]);
 }
 
 // ------------------------------------------------------------ 带缓存的取数
