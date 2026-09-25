@@ -24,7 +24,7 @@
 **买到**：一个每趟现算、可复算的四元组（①②③ ＋ 三层都没有）。
 **买不到**：
   · 「有住址」不等于**住址对**。本尺子只认形状（`条 N` / `§N` / `F47` / `D1` /
-    `铁律` / `INVARIANTS`），一个指错地方的住址它照样算命中 ——
+    `铁律` / `INVARIANTS` / 用户裁决 `V51`），一个指错地方的住址它照样算命中 ——
     指得对不对要人逐条核原文（`设计/99 §4.10`/`§4.11` 就是那个动作）。
   · **③ 命中的指导力随族的大小衰减**：一个 80 条判据共用一个模块头注的文件，
     那个住址对其中任一条的指导力接近零。本尺子不度量这件事，只把族的大小印出来。
@@ -41,7 +41,10 @@
 import io, os, re, subprocess, sys
 
 # 住址形状的**唯一住址**。改这里就是改口径。
-PAT = re.compile(r'INVARIANTS|条 ?\d+|§\d+|\bF\d+[a-z]?\b|铁律|\bD\d+\b')
+# 〔JA1 2026-09-24〕加 `V\d{2,3}`（用户裁决总表 `设计/99 §1.1` 的 V01–V108）：题面把「用户裁决 V 号」
+# 列为合法住址，而此前这里不认它。只收两到三位 —— 仓里 `V1` / `V2` / `V7-2` 这种一位的是别的东西
+# （变异编号 · 进程版本 · 审计条目），现打过。这一刀单独一拍落，它自己买的命中数记在 `第四波记录/JA1.md §1`。
+PAT = re.compile(r'INVARIANTS|条 ?\d+|§\d+|\bF\d+[a-z]?\b|铁律|\bD\d+\b|\bV\d{2,3}\b')
 TESTATTR = re.compile(r'#\[(?:tokio::)?test\b')
 FN = re.compile(r'\s*(?:async\s+)?fn\s+([a-zA-Z0-9_]+)')
 
@@ -140,8 +143,14 @@ def main():
     print("⚠ 与 `105` 那个 82% 的对照：`105` 只算 ①（且它的分母含 TS）")
     print("   本尺子 ① 这一层的「点不出」= %.0f%%" % (100.0 * (tot - tally["own"]) / tot))
     print()
-    print("三层都点不出，最集中的 10 份（括号里是那一族总条数 —— ③ 的指导力随它衰减）：")
-    for f, n in sorted(none_by_file.items(), key=lambda kv: -kv[1])[:10]:
+    # 〔JA1〕族数也印出来：`110 §4.12.1` 那个「59 族」当初是手数的，没有住址 ⇒ 第二天就没法对拍。
+    # `--all` 印全部族（逐族核住址要全量），默认仍只印前 10。
+    everything = "--all" in sys.argv[1:]
+    print("三层都点不出的族：%d 族" % len(none_by_file))
+    print("三层都点不出，%s（括号里是那一族总条数 —— ③ 的指导力随它衰减）："
+          % ("全部" if everything else "最集中的 10 份"))
+    ranked = sorted(none_by_file.items(), key=lambda kv: (-kv[1], kv[0]))
+    for f, n in (ranked if everything else ranked[:10]):
         print("  %4d 条 / 族内 %-4d  %s" % (n, size_by_file[f], f))
 
 
