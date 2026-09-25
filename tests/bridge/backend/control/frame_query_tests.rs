@@ -182,34 +182,40 @@ const CHANNELED: &[(&str, &str)] = &[
 
 /// 还留在 monitor 侧发送的那几条 —— `(帧命令, 为什么今天不迁)`。**不是豁免清单**：
 /// 下面那条判据要求它们**真的**还有 monitor 侧发送点（没了 ⇒ 这一行的理由已经馊了）。
+///
+/// 〔C4b · 第四波 4B〕逐行重裁过（`调研/第四波记录/C4b.md §1`）：判准照旧是「业务解释只有一个家」，
+/// 正路是「解释挪进后端、直接出成品」。九行里三行做到了（挪进了 [`CHANNELED`]）；下面六行**逐条写清卡在哪**。
 const HELD_BACK: &[(&str, &str)] = &[
     (
         "accounts-list",
-        "行格式的解析（`accounts::parse_accounts_lines`）本机与远端共用，本机那侧还要并 apikey 表\
-         （规则住 `acct-core`）⇒ 只迁远端 = 两个解析器；连本机一起迁 = apikey 合并规则在 TS 再写一份",
+        "行解析与降级说明挪得进后端，卡在**本机那一侧要并 apikey 表**：并的规则（`history::apikey_routed_subset`）\
+         与「这次起会话的是哪一家 agent」住 monitor 起会话那一侧；挪进后端 = 规则搬进 `acct-core`、agent 随请求带过去、\
+         本机后端读它自己那份凭据文件（V107：账号层住本机常驻后端）—— 是账号层的一次搬家，不是本拍能顺手做的",
     ),
     (
         "history-projects",
-        "每一行要并**本机元数据**（星标 / 隐藏计数，`history_project_from_row`，本机那条路也吃同一份）\
-         ＋ 本机侧的 codex 合成项目与判活 ⇒ 迁过去就是一行解释两个家",
+        "每一行要并**本机**的注解（星标 / 隐藏计数，`history-metadata.json` 住 monitor 数据目录）＋ 本机判活（`SessionMap`）\
+         ＋ 本机合成的 codex 项目 —— 远端的行要并的是**本机**这一份：跨两台机器的 join，那台的后端出不了成品。\
+         出路是注解本身搬进本机常驻后端、由它去问远端那台（设计题，交主会话）",
     ),
     (
         "history-sessions",
-        "每一行要并本机元数据（星标 / 改名 / 隐藏，`remote_session_entry`）⇒ 前端要一条新的读元数据口，\
-         而那份行解释今天只有 Rust 一份 —— 本拍不开新读口",
+        "同 `history-projects`：每一行并本机注解（星标 / 改名 / 隐藏，`remote_session_entry`）＋ 判活 —— 跨机 join",
     ),
     (
         "history-read",
-        "应答要过记录解析（`parse_line`，ts-rs 类型的来源）与可计行号（`LineNumberer`），\
-         本机那条路共用同一份 ⇒ TS 再写一份记录解析不可接受",
+        "应答要过记录解析（`parse_line`，ts-rs 类型的来源）与可计行号（`LineNumberer`）—— 两样住 monitor crate，\
+         后端是独立 crate、不链接它 ⇒ 出成品 = 把 `messages.rs` / `parser.rs` 搬进两边共用的 crate（`00 §1.5.4` 的\
+         `backend-core`）。另两个发送点（实时 tab 的快照续点 · 按区间取正文）同样吃这两样",
     ),
     (
         "history-subagents",
-        "列完候选还要挑一个（`choose_subagent`）、再读那份文件并过记录解析（`parse_line`）⇒ 同上",
+        "列完候选还要挑一个（`choose_subagent`）、再读那份文件并过记录解析（`parse_line`）⇒ 同 `history-read`",
     ),
     (
         "history-tail",
-        "**不是前端查询**：它只被实时 tab 的快照续点用（`ssh_source` 的流机器，monitor 内部），webview 从不问它",
+        "**不是前端查询**：它只被实时 tab 的快照续点用（`ssh_source` 的流机器，monitor 内部），webview 从不问它 ——\
+         属于「流那半收口成 `subscribe`」（`设计/05 §8` 步 6），不属于 `call`",
     ),
     // 〔C4a 与 SR1a 合并〕SR1a 同波搬上来的 `history-index` / `history-user-inputs` / `history-find` 三行
     // 〔C4b · 第四波 4B〕挪进了 [`CHANNELED`]（后端出成品）。
