@@ -53,6 +53,8 @@
 //!   `claude_data_fence_tests::THE_SHAPES_THIS_FENCE_DOES_NOT_COVER` 里
 //!   —— 那张表是**读数**，不是待办：往里加一类就是扩射程，要用户拍。
 
+use crate::copy_table::copy_text;
+
 /// F47 / F03b 防误伤守卫：该路径是否 Claude 数据源文件（jsonl / pidfile）。
 ///
 /// 写命令拒碰这些——往正被 Claude 打开的会话文件写会损坏会话；要管这些用历史浏览器
@@ -86,8 +88,9 @@ pub fn is_protected_claude_data_path(path: &str) -> bool {
 /// 因为窗口那一层要自己说话；但**判定与拒绝**这一对不许再分）。
 pub fn guard_write(path: &str) -> Result<(), String> {
     if is_protected_claude_data_path(path) {
-        return Err(format!(
-            "拒绝写 Claude 数据源文件({path})——管理会话文件请用历史浏览器"
+        return Err(copy_text(
+            "rsClaudeDataFence.guard.protectedData",
+            &[("path", &path.to_string())],
         ));
     }
     Ok(())

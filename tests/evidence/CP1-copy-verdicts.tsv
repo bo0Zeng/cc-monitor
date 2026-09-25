@@ -136,10 +136,6 @@ src/bridge/crates/creds-core/src/store.rs:149	凭据文件的顶层不是一个 
 src/bridge/crates/guard-core/src/lib.rs:902	{}#块{i}	保留	[不对外] 判据内核里的违规清单条目（坏块住址），只进断言失败信息
 src/bridge/crates/guard-core/src/lib.rs:1070	{who} · 生产段第 {} 行 · 逐字 `{cand}`	保留	[不对外] 判据内核 offenders 清单条目，只进断言失败信息
 src/bridge/crates/guard-core/src/lib.rs:1201	{who} · 第 {}–{} 行这一段：`{{` {opens} 个 / `}}` {closes} 个	保留	[不对外] 判据内核 offenders 清单条目，只进断言失败信息
-src/bridge/src/acct_iso_deploy.rs:190	远端已是最新 cc-acct-iso（{}）：{dest}，无需重装。	保留	[对外] 部署结果；cc-acct-iso 是用户在设置页里点名部署、在终端里自己敲的命令名，属限用而非禁用
-src/bridge/src/acct_iso_deploy.rs:266	已软链到 ~/.local/bin，命令可用。	保留	[对外] 部署结果，短
-src/bridge/src/acct_iso_deploy.rs:268	已软链到 ~/.local/bin，但它可能不在你终端的 PATH——在终端里 `export PATH="$HOME/.local/bin:$PATH"`。	保留	[对外] PATH 提示可操作且确是用户自己终端的事；破折号接具体命令
-src/bridge/src/acct_iso_deploy.rs:277	已部署 cc-acct-iso（{}）到 {dest}（{reason}）。{path_hint}	保留	[对外] 部署结果，插值拼接，清楚
 src/bridge/src/backend/control/backend_control.rs:163	已起：{}	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）
 src/bridge/src/backend/control/backend_control.rs:164	本机后端已经在跑（C8①：每台机只许一个）	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）；措辞里带设计条目号 C8①，将来若上界面要删 新词:C8①（设计条目号）
 src/bridge/src/backend/control/backend_control.rs:184	{origin} 的流已经在跑（C8①：每台机只许一个）	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）；措辞里带设计条目号 C8① 新词:C8①（设计条目号）
@@ -173,8 +169,6 @@ src/bridge/src/backend_policy.rs:400	[死亡账] origin={origin} 判定={} 退�
 src/bridge/src/backend_policy.rs:504	脱离路：`attach_stream` 的流断了 ⇒ `reap_detached` 那条收尸线程 `wait()` 回来那一拍	保留	[不对外] DEATH_RECORD_SITES：判据用的登记表（记录点住址＋说明），生产代码不读
 src/bridge/src/backend_policy.rs:509	监护路：backend 那个 `on_event` **闭包**收到 `Exited` 那一拍。\n         它抽成一个返回闭包的函数，只为让 `KP3W3` 那三只假后端能跑**同一个闭包**\n         —— 内联的闭包测试够不着，那条行为判据就只能退回读源码	保留	[不对外] DEATH_RECORD_SITES 登记表说明
 src/bridge/src/backend_policy.rs:516	起不来：`start_local_backend` 返回 `StartOutcome::Failed` 那一个出口	保留	[不对外] DEATH_RECORD_SITES 登记表说明
-src/bridge/src/cc_bus_deploy.rs:347	本机探不到 `ccm` —— 装出去的 `cc-spawn` 会报「找不到 ccm」。	保留	[对外] cc-bus 部署前的预检警告（不是注入给 agent 的文本）；先说结果再说后果，ccm 是用户终端里的命令名属限用（「探不到」偏口语，CP2 可换「找不到」）
-src/bridge/src/cc_bus_deploy.rs:358	本机 ccm 缺能力 {missing:?} ⇒ 装出去的 `cc-spawn` 会以「ccm 版本太旧」退出。\n         请把 `shared/ccm` 同步过去（顺序：ccm 先、cc-bus 后）。	改·§2.3	[对外] 部署预检：让用户去「把 shared/ccm 同步过去（顺序：ccm 先、cc-bus 后）」——派维护活 兼§2.1（源码目录 shared/ccm、{missing:?} 调试格式直出）→「本机 ccm 版本太旧，cc-bus 装上后用不了」
 src/bridge/src/ccm_probe.rs:370	（还没装下来）	保留	[对外] 位置缺席时的占位，短
 src/bridge/src/ccm_probe.rs:374	🔴 你 PATH 上那个 `ccm` **不是** cc-monitor 装的这一份。\n\n             · 它自报：{}\n\n             · 我们这一份：{ours_card}（在 {where_ours}）\n\n             ⇒ 你在终端里敲 `ccm`（以及任何调 `ccm` 的别名）走到的是**它**，不是我们这一份。\n\n             产品**不动它**：要不要删、什么时候删，由你自己定。想让终端认我们这一份，\n\n             要么把它挪开、要么让上面那个目录排在 PATH 前面、要么用下面生成的那条命令\n\n             （它显式指向我们这一份，不靠 PATH 撞运气）。	改·§2.4	[对外] PATH 上 ccm 冲突的说明：🔴＋多处 markdown **＋ 八行；内容（三条出路、产品不动它）是用户该知道的，要的是删 markdown、压短 →「PATH 上的 ccm 不是 cc-monitor 装的那份，终端里敲 ccm 会用到它」
 src/bridge/src/ccm_probe.rs:384	你 PATH 上没有 `ccm`。我们这一份在 {where_ours}（{ours_card}）——\n\n             下面生成的那条命令会显式指向它，不需要你改 PATH。	保留	[对外] 结果＋可操作的一句；破折号接的是「不需要你改 PATH」的直接后果
@@ -268,9 +262,6 @@ src/bridge/src/remote_history.rs:244	远端会话的活状态本机答不了（S
 src/bridge/src/remote_history.rs:633	远端项目列表	保留	[不对外] log_unknown_reasons 的日志标签
 src/bridge/src/chan/host.rs:325	传输进度不支持从某一格续看	保留	[可达存疑] 传输进度流带了续传游标时原位回的那句（窗口的 source::watch 从不带，只有协议用错才会看到）；短、无内部词
 src/bridge/src/sftp_pool.rs:1560	这一趟传输的状态丢了	保留	[可达存疑] 传输台的快照流发送端没了才走到（发送端在票里、票在守卫里，按构造到不了）；窗口若收到会原样画在失败那一行；短、无内部词
-src/bridge/src/skill_host.rs:147	planned-build 今天不在 tool_registry 那张表里（那张表收哪几条，\n             唯一住址是 `tool_registry::TOOLS`）。把它变成可装归 devbench F06。	改·§2.1	[对外] skill 不支持安装的说明（源码注释自己写着「这一句是用户看得见的」）：露出 tool_registry::TOOLS 源码住址与内部工单 devbench F06 兼§2.2 →「planned-build 暂不支持在这里安装」
-src/bridge/src/skill_host.rs:213	在场	保留	[对外] skill 存在性的短状态（「在场」偏书面，CP2 可换「已找到」）
-src/bridge/src/skill_host.rs:215	{skill} 的前提没满足：找不到 {}	保留	[对外] 缺前提的说明，先说结果再给路径
 src/bridge/src/ssh_link.rs:103	拨号代理一个字节都没回就走了（它自己的 stderr 上有原因）	改·§2.1	[可达存疑] 〔C2〕拨号代理没回应答时的报错，原样进连接失败提示；「拨号代理」「stderr」是实现词 →「本机后端没能替你连上远端（它自己的日志里有原因）」 新词:拨号代理
 src/bridge/src/ssh_link.rs:105	拨号代理拨不通: {why}	改·§2.1	[可达存疑] 〔C2〕代理 ack 说拨不通，{why} 是 SSH 那一层的原因；「拨号代理」是实现词 →「连不上：{why}」 新词:拨号代理
 src/bridge/src/ssh_link.rs:108	本机后端太旧（拨号应答 v{v}，不认 `{wanted}`）—— 重装本机后端后再试	改·§2.1	[对外] 〔C2〕代理比界面老时的提示；「拨号应答 v{v}」「`{wanted}`」是协议细节 →「本机后端版本太旧，重装后再试」
@@ -304,8 +295,6 @@ src/bridge/src/tool_registry.rs:1078	你自己装 —— 缺了我们提示你	�
 src/bridge/src/tool_registry.rs:1079	app 只查	保留	[对外] 环境档名，短
 src/bridge/src/tool_registry.rs:1425	**不是「装到别处的工具」，所以不属本表的语义** —— 它是 **vendored 进 cc-monitor \n         二进制**的 crate（`src/bridge/vendor/code-picture-core`），`panorama.rs` 直接 \n         `use Engine` 调它画图。没有 `destination`、没有安装动作、卸载它等于重新编译 monitor。\n\n         🔴 **〔RM1f 09-25〕上面这一句过期了**：monitor 摘掉了内嵌引擎（V108 后半句），今天它是只装引擎的\n         **独立小程序** `cc-monitor-panorama`（`src/panorama-engine`），随 monitor 的字节带着，本机放到\n         `~/.cc-monitor/bin/`（`panorama_bytes::place_local`）、远端推到那台的 `~/.cc-monitor/bin/`（`push_to`）——\n         那是**有落点**的部署物。它该不该像 `backend` 那样进 `TOOLS`（两个载体、两个落点），**已报备、本件没改**；\n         在那之前本条的「不属本表」只对「vendored 进二进制」那个旧身份成立。\n\n         ⚠ 它另有一个身份是 **MCP server（code-picture 的 Agent head，给 Claude 用）**，\n         那一个确实「装到别处」—— 但**装它走已有的 `project-mcp` 机制**（往 `.mcp.json` 加一个 \n         server 条目），是**用法**不是新工具。仓里今天对那个 MCP head 零实现（`mcp.rs` / \n         `config_surface.rs` 里 `code-picture` 零命中）。\n\n         ⇒ 真要做「一键装 code-picture 的 MCP」属 **issue #51 第 1 部分**，\n         用户 08-10 明说「cc-bus 和 code-picture 后面再增强，现在先不做」。\n\n         🔴 **〔条 67 · 2026-09-18〕这个名字曾经有第三个身份，现在没有了**：\n         `src/backend/sidecars/codepicture/` 那一层的**独立进程**（2 008 行）已整棵删除\n         （用户逐字「不在现在设计里的全部删掉」），环境闭集里那条 `code-picture-sidecar` 同拍摘了。\n         ⇒ **本条现在回到只有两个身份**：vendored 进二进制的 crate（就是本条说的这一份）\n         ＋ MCP server 那个头。⚠ `K-R65` 当初补那一句买到的道理**仍然成立**：\n         一个名字可以同时是好几样东西，写「表上没有它」的同一拍要把那张表改对（纪律 ⑲）。	保留	[不对外] NOT_MANAGED：只被判据读的「刻意不收」登记表理由（生产代码无读者） 〔RM1f：正文补了一段「上面这一句过期了」—— monitor 摘了内嵌引擎，它今天是有落点的独立小程序；裁词不变〕
 src/bridge/src/tool_registry.rs:1441	**不由 cc-monitor 安装** —— 它是用户自己装在 `<claude_dir>/skills/planned-build/` 的 \n         skill，cc-monitor 只**读它的产物**（计划文件）并允许编辑那个收件箱。\n\n         ⇒ 它在 `skill_host::SKILLS` 里（接入的 skill），**不在**本表里（受管工具）。\n         ★ 这两个集合**有交集但不是同一张表**（今天交集只有 `cc-bus`）——\n         devbench 的账本 L4 原写「同一张表的两个视图」是**错的**，已订正。\n\n         它的 `SkillSpec.install` 如实记 `NotSupported` 并说明归 F06。	保留	[不对外] NOT_MANAGED 登记表理由
-src/bridge/src/verified_write.rs:54	长度相同（{} 字节）但内容不同，首个差异在第 {} 字节。\n             这类损坏（字节翻转 / 编码变形 / CRLF↔LF 等长替换）只比长度是查不出来的。	改·§2.2	[可达存疑] 写后校验失败的报错：第二句「这类损坏…只比长度是查不出来的」是在为校验手段辩护 兼§2.4（括号列举）→「写入后校验不一致：第 {at} 字节起内容不同」
-src/bridge/src/verified_write.rs:61	长度不匹配：期望 {} 字节，实际 {} 字节。	保留	[可达存疑] 写后校验失败，短而可核对
 src/events.ts:585	[perf] === 启动管线 timeline (前端 performance.now ms · window={…}) ===	保留	[不对外] 启动管线 perf timeline 行，经 console.info / frontend_perf_log 进开发者日志
 src/events.ts:589	[perf]   first jsonl-batch in   T+{…} (+{…}) ← 后端 replay 完成	保留	[不对外] perf timeline 开发者日志行
 src/events.ts:591	[perf]   batch payloads drained T+{…} (+{…}) ← drain 全部 {…} 条	保留	[不对外] perf timeline 开发者日志行
@@ -374,14 +363,6 @@ src/accounts.ts:785	本机会话结束后，Resume 沿用它上次的账号；�
 src/accounts.ts:786	可以等它结束后，用右键「把此会话切到账号 X」。	保留	[对外] 换号重启定位失败时远端那一支的补救句；〔U4〕「先归档」换成「等它结束」：归档不是用户能做的动作，能做的是等会话结束（设计/30 §3.5.2）
 src/backend/accounts/iso.rs:64	这台机器上还没装 cc-acct-iso。	保留	[可达存疑] 本机「找不到 cc-acct-iso」那句话的尾巴（前半「查过哪些地方」由 plugin::discover 拼）；进 --acct-iso-status 的 looked 与 --acct-iso-shellinit 的 not_installed 信封，短而直接
 src/backend/control/cc_bus.rs:782	已 spawn:	保留	[不对外] 在 cc-spawn 回显里认新会话名字的匹配串（spawned_id_of），只决定回值里的 id，不是展示文本
-src/bridge/src/cc_bus_deploy.rs:434	这里查的是 cc-monitor 自己装的那一份 ccm。cc-spawn 实际调用的是 PATH 上的 ccm，\n                       在 Windows 上查不到那一个是哪一份。	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么
-src/bridge/src/cc_bus_deploy.rs:438	本机还没有 cc-monitor 装的 ccm（应在 ~/.cc-monitor/bin/），查不了装出去的 cc-spawn 能不能用。\n             cc-spawn 启动时需要 ccm 支持：{needs}，缺一项就会退出。请先在设置页装好本机后端，再装 cc-bus。	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么
-src/bridge/src/cc_bus_deploy.rs:444	问了 cc-monitor 装的 ccm（{at}），它没有回答版本信息，查不了它能不能用。\n             cc-spawn 启动时需要 ccm 支持：{needs}。	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么
-src/bridge/src/cc_bus_deploy.rs:453	未知	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；ccm 没报版本时的占位词，短
-src/bridge/src/cc_bus_deploy.rs:458	它还缺少：{}，cc-spawn 会因此退出。	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么
-src/bridge/src/cc_bus_deploy.rs:461	cc-monitor 装的 ccm（{at}）不是这一版：它的版本是 {build}，这一版需要 {want_build}。\n             {lack}请在设置页重装本机后端，再装 cc-bus。\n{path_caveat}	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么
-src/bridge/src/cc_bus_deploy.rs:467	cc-monitor 装的 ccm（{at}）版本对，但缺少：{}，cc-spawn 会因此退出。请在设置页重装本机后端。\n{path_caveat}	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么
-src/bridge/src/cc_bus_deploy.rs:471	cc-monitor 装的 ccm（{at}）是这一版，cc-spawn 需要的 {needs} 都支持。\n{path_caveat}	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么
 src/backend/read_face.rs:149	结果超过 {LINES_CAP_BYTES} 字节上限，没有返回（至少 {size} 字节）	保留	[可达存疑] 帧面只读查询（history-*/accounts-*）按行应答超上限时的命令级报错，monitor 原样带进「远端查询失败」那句；平白说出上限与没返回，无内部词、无论证
 src/bridge/src/backend/control/frame_query.rs:93	查询出了内部错误，没有拿到结果	保留	[可达存疑] 只读查询分流器落到「已完成」那一档时的兜底话（按构造走不到）；平白说出了事、没拿到结果，无内部词
 src/backend-policy.ts:74	那台机器上的退出策略读不出来，按默认（不结束）办 —— 这不等于有人这么选过	保留	[对外] 〔B2 · 条 66〕EXIT_UNREADABLE：措辞是 `设计/01 §3.3b ⑤` 逐字定下的那一句；说清会怎样（按默认不结束）与它不是什么（不是谁选的），与 HEALTH_UNKNOWN 同形
@@ -491,16 +472,11 @@ src/backend/asset_catalog.rs:532	{} 是更新版本的后端写的（格式 {}�
 src/backend/asset_catalog.rs:536	{} 不是这个后端认得的目录：{e}	保留	[可达存疑] 〔AS2〕目录文件读得出但认不得 ⇒ catalog_unreadable、不覆盖
 src/backend/asset_sync.rs:162	机器 {id} 的目录太大（{len} 字节，一趟最多 {PUSH_MAX_BYTES}），这一台没推过去	保留	[可达存疑] 〔AS2〕同步时某一台的快照超过一趟能推的上限 ⇒ 那一台不推，进 assets-sync 那一行的 error；{id} 是目录里的机器 id
 src/backend/asset_sync.rs:203	对面答的目录认不出来：{e}	保留	[可达存疑] 〔AS2〕同步时远端答回来的目录不是 JSON ⇒ 那一趟不并不推，进 assets-sync 那一行的 error
-src/bridge/src/asset_sync.rs:76	本机后端答的同步结果认不出来，多半是两边版本不一样。	保留	[可达存疑] 〔AS2〕monitor 读本机后端 assets-sync 应答对不上契约 ⇒ 不猜默认值，原话回机器页；同 AS1 mcp_sync 那一句的形
 src/backend/skill_install.rs:88	不是文本文件	保留	[可达存疑] 〔AS2〕skill 里某个文件为什么读不出原文（含 NUL 字节）⇒ skill-read 的 files[].why / 这台那一份的 blocked，机器页「资产」那一块照原话列：这一个装不过去
 src/backend/skill_install.rs:91	不是 UTF-8 文本	保留	[可达存疑] 〔AS2〕同上一行：不是 UTF-8 ⇒ 装不过去（写口只收文本）
 src/backend/skill_install.rs:355	不是普通文件	保留	[可达存疑] 〔AS2〕这台 skill 目录里那一处是指向目录的链接 / 特殊文件 ⇒ 盖不了，进那一行的 blocked
 src/backend/skill_install.rs:356	不是普通文件	保留	[可达存疑] 〔AS2〕这台 skill 目录里那一处是指向目录的链接 / 特殊文件 ⇒ 盖不了，进那一行的 blocked
 src/backend/skill_install.rs:363	来源那台读不出原文	保留	[不对外] 〔AS2〕skill-install-plan 内部比较用的占位值（进 JSON 值相等比较，不上线也不给人看）
-src/bridge/src/skill_install.rs:159	后端答的内容认不出来，多半是两边版本不一样。这一趟什么都没写。	保留	[可达存疑] 〔AS2〕skill 装那一趟后端应答对不上契约 ⇒ 不猜默认值，原话回机器页；同 AS1 mcp_sync 那一句的形
-src/bridge/src/skill_install.rs:259	一个都还没写	保留	[可达存疑] 〔AS2〕skill 写到一半停下时那句话的后半（碎片，拼进下一行那一句）
-src/bridge/src/skill_install.rs:261	前面已经写了 {}	保留	[可达存疑] 〔AS2〕同上一行：写到一半停下时列出已经写了的那几个（碎片）
-src/bridge/src/skill_install.rs:263	{machine} 上写「{at}」时停下了：{why}。{done}。	保留	[可达存疑] 〔AS2〕skill 写到一半停下（stale / 写口拒）：说清停在哪个文件、为什么、前面写了哪几个 ⇒ 回机器页「资产目录」那一块
 src/settings/assets-section.ts:89	不是对象	保留	[不对外] 〔AS2〕assets-section 解码失败时进 console.warn 的诊断（界面上只说 assets.load.shape 那一句）
 src/settings/assets-section.ts:92	顶层缺格	保留	[不对外] 〔AS2〕同上一行
 src/settings/assets-section.ts:97	machines 那一格	保留	[不对外] 〔AS2〕同上一行
@@ -510,8 +486,6 @@ src/settings/assets-section.ts:116	problems 那一格	保留	[不对外] 〔AS2�
 src/backend/asset_sync.rs:120	；	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：列表分隔符（join），换语言时跟着换
 src/backend/plugin/discover.rs:121	 · 	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：列表分隔符（join），换语言时跟着换
 src/bridge/src/backend_policy.rs:452	 · 	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：列表分隔符（join），换语言时跟着换
-src/bridge/src/cc_bus_deploy.rs:471	、	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：列表分隔符（join），换语言时跟着换
-src/bridge/src/skill_install.rs:261	、	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：列表分隔符（join），换语言时跟着换
 src/bridge/src/filewin/fonts.rs:305	启持支格求码误象返	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔CP2b〕全量抽表那一拍 ＋9 −3 之后的现文）
 src/bridge/src/filewin/fonts.rs:303	·—…→⚠⬆、。「」一上下不与东丢两个中串为主也了些交亮代以件份会传位住作你侧保做儿先全八关内再写几出列刚删别到制刷前剩动勾化历原去参发取口只叫可台史合同名后吗含命和哪器回围在场坏型备复外多	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔CP2b〕全量抽表之后的现文）
 src/bridge/src/filewin/fonts.rs:304	大太失如字存它完定容对小少尔就尾屏已布带帧并序建开弄引当录往径必态成或截打扫把拒拖拼拿按挡换据掉排接搜摞撤操改数敲整文断新旧时是更最有本机权条来样根框次正此段比没法洞浏消点版物状现	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔CP2b〕全量抽表之后的现文）

@@ -24,6 +24,7 @@
 //!
 //! - 🔴 真远端 / 真 Windows：判据用替身门 ＋ 替身后端；Windows 那一台上 `files-chmod` 恒失败 ⇒ 执行位落进 `chmodFailed`（不算整趟失败）。
 
+use crate::copy_table::copy_text;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -127,36 +128,50 @@ impl Ask for BackendAsk {
                 Routed::NoChannel(s) | Routed::Refused(s) => s,
                 Routed::Done => String::new(),
             };
-            return Err(format!("{who} 的后端没连上（{why}）—— 一个字节都没动"));
+            return Err(copy_text(
+                "rsSkillInstall.ask.backendDown",
+                &[("who", &who.to_string()), ("why", &why.to_string())],
+            ));
         };
         if !client.accepts(cmd) {
             return Err(
                 crate::backend::control::cc_bus::describe_backend_too_old_for(
                     wire,
                     cmd,
-                    "装不了 skill，一个字节都没动",
+                    &copy_text("rsSkillInstall.ask.failed", &[]),
                 ),
             );
         }
         let line = encode_request("0", cmd, &args);
         if line.len() > REQUEST_LINE_CAP {
-            return Err(format!(
-                "这个 skill 的文本合起来太大，一趟装不下（请求一行 {} 字节，上限 {REQUEST_LINE_CAP}）—— 一个字节都没动",
-                line.len()
+            return Err(copy_text(
+                "rsSkillInstall.ask.tooBig",
+                &[
+                    ("bytes", &(line.len()).to_string()),
+                    ("cap", &REQUEST_LINE_CAP.to_string()),
+                ],
             ));
         }
         let data = client.call(cmd, args, BUDGET).await.map_err(|e| {
             match route_call_error(&e, |_code, message| format!("{who}：{message}")) {
                 Routed::NoChannel(s) | Routed::Refused(s) => s,
-                Routed::Done => format!("{who}：装 skill 时出了内部错误，没有拿到结果"),
+                Routed::Done => {
+                    copy_text("rsSkillInstall.ask.internal", &[("who", &who.to_string())])
+                }
             }
         })?;
-        data.ok_or_else(|| format!("{who} 的后端对 `{cmd}` 回了一条空应答"))
+        data.ok_or_else(|| {
+            copy_text(
+                "rsSkillInstall.ask.emptyReply",
+                &[("who", &who.to_string())],
+            )
+        })
     }
 }
 
 /// 后端应答认不出来时的那句话（多半是两边版本不一样）。**不猜默认值**。
-const UNREADABLE_REPLY: &str = "后端答的内容认不出来，多半是两边版本不一样。这一趟什么都没写。";
+static UNREADABLE_REPLY: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsSkillInstall.reply.unreadable", &[]));
 
 fn broken() -> String {
     UNREADABLE_REPLY.to_string()
@@ -256,11 +271,25 @@ pub(crate) async fn preview_with(
 /// 写到一半停下时的那句话：说清停在哪、前面写了哪几个。
 fn stopped_said(machine: &str, at: &str, why: &str, written: &[String]) -> String {
     let done = if written.is_empty() {
-        "一个都还没写".to_string()
+        copy_text("rsSkillInstall.stopped.none", &[])
     } else {
-        format!("前面已经写了 {}", written.join("、"))
+        copy_text(
+            "rsSkillInstall.stopped.some",
+            &[(
+                "list",
+                &(written.join(&copy_text("rsSkillInstall.stopped.listSep", &[]))).to_string(),
+            )],
+        )
     };
-    format!("{machine} 上写「{at}」时停下了：{why}。{done}。")
+    copy_text(
+        "rsSkillInstall.stopped.at",
+        &[
+            ("machine", &machine.to_string()),
+            ("at", &at.to_string()),
+            ("why", &why.to_string()),
+            ("done", &done.to_string()),
+        ],
+    )
 }
 
 /// 写（可测的那一半）。
@@ -300,14 +329,18 @@ pub(crate) async fn apply_with(
     let mut written = Vec::new();
     let mut chmod_failed = Vec::new();
     for path in &write {
-        let file = source
-            .iter()
-            .find(|f| &f.path == path)
-            .ok_or_else(|| format!("「{path}」不在拷出来的那一份里 —— 两端对不上，停下了"))?;
-        let text = file
-            .text
-            .as_deref()
-            .ok_or_else(|| format!("「{path}」没有原文 —— 两端对不上，停下了"))?;
+        let file = source.iter().find(|f| &f.path == path).ok_or_else(|| {
+            copy_text(
+                "rsSkillInstall.apply.notInCopy",
+                &[("path", &path.to_string())],
+            )
+        })?;
+        let text = file.text.as_deref().ok_or_else(|| {
+            copy_text(
+                "rsSkillInstall.apply.noOriginal",
+                &[("path", &path.to_string())],
+            )
+        })?;
         let expect = target
             .iter()
             .find(|t| &t.path == path)
@@ -319,7 +352,7 @@ pub(crate) async fn apply_with(
                 return Err(stopped_said(
                     &door.machine(),
                     path,
-                    "那一份在你看差异之后又被改过了，重新看一次差异再决定",
+                    &copy_text("rsSkillInstall.apply.stale", &[]),
                     &written,
                 ))
             }
@@ -344,7 +377,7 @@ pub async fn skill_install_preview(
     name: String,
 ) -> Result<SkillInstallPreview, String> {
     if from == to {
-        return Err("来源与要装的是同一台 —— 换一台机器".to_string());
+        return Err(copy_text("rsSkillInstall.preview.sameMachine", &[]));
     }
     preview_with(&BackendAsk, &from, &to, &name).await
 }
