@@ -264,7 +264,8 @@ fn render_cc_code_with_function() {
     assert!(out.contains("function ccm"));
     assert!(out.contains("__ccm_bind"));
     assert!(!out.contains("{{CC_FUNCTION_BLOCK}}"));
-    assert!(out.contains("BEGIN v2"));
+    // 〔TL1 · 4C〕v2 → v3：块结尾多了接上别名文件那一行（`71 §6.1`）。
+    assert!(out.contains("BEGIN v3"));
     assert!(out.contains("cc-monitor END"));
 }
 
@@ -278,7 +279,7 @@ fn render_cc_code_helper_only() {
     // 但**同一种写法只该有一个答案**，不留一处等着下次踩。
     assert!(!guard_core::contains_word(&out, "function cc"));
     assert!(!out.contains("{{CC_FUNCTION_BLOCK}}"));
-    assert!(out.contains("BEGIN v2"));
+    assert!(out.contains("BEGIN v3"));
 }
 
 #[test]
@@ -319,6 +320,33 @@ fn find_block_version_v1() {
     let (present, ver) = find_block_version(content);
     assert!(present);
     assert_eq!(ver, Some("v1".to_string()));
+}
+
+/// ★〔TL1 · 4C〕**旧版别名块认得出来**：PowerShell 那一对块头版本串 ≠ 这一版模板的那个 ⇒ `outdated`（界面据此说「重装一次」）；
+/// 刚装的那一份（同一个 `render_cc_code`）不旧；POSIX 那一对没有版本串 ⇒ 恒不旧；块不在 ⇒ 不旧。
+/// 两侧异源：「这一版」从模板文件现读（`current_block_version`），「旧的」是手写的 v2 块。
+#[test]
+fn an_older_powershell_block_is_flagged_and_a_fresh_one_is_not() {
+    let cur = current_block_version().expect("模板第一行读不出版本串");
+    assert_eq!(
+        cur, "v3",
+        "模板版本串变了就来改这里（并想清楚：旧块的人要不要重装）"
+    );
+    let ps = std::path::Path::new("/h/p.ps1");
+    let old = "# === cc-monitor BEGIN v2 ===\nfunction __ccm_bind {}\n# === cc-monitor END ===\n";
+    let b = block_state(ps, old);
+    assert!(b.present && b.outdated, "{b:?}");
+    let fresh = render_cc_code("cc", false);
+    let b = block_state(ps, &fresh);
+    assert!(b.present && !b.outdated, "刚渲染的那一份被判成旧的：{b:?}");
+    assert!(!block_state(ps, "# nothing\n").outdated, "块不在也报旧");
+    let rc = std::path::Path::new("/h/.bashrc");
+    let posix = plan_install(Shell::Posix, "", "cc", false, "t").expect("装");
+    let b = block_state(rc, &posix);
+    assert!(
+        b.present && !b.outdated,
+        "POSIX 那一对没有版本串，不该报旧：{b:?}"
+    );
 }
 
 #[test]
