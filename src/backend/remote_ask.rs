@@ -143,7 +143,7 @@ pub fn command_line(backend: &str, argv: &[&str]) -> String {
 /// 够不到那台时给的那句话（不猜、不回落）。
 pub(crate) fn unreachable_message(machine: &str) -> String {
     format!(
-        "本机后端还不知道怎么够到 [{machine}]：那台的流还没连上，或本机后端重启过（下次那台连上就有了）"
+        "本机后端还不知道怎么连到 [{machine}]：那台还没连上，或本机后端刚重启过（那台下次连上就好了）"
     )
 }
 

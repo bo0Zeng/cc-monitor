@@ -425,7 +425,7 @@
       "tier": "禁",
       "say": "账号清单（~/.claude-accts/accounts.json）；版本不对时说「账号清单格式版本」。",
       "scan": { "re": "\\bmanifest\\b", "flags": "i" },
-      "ledger": ["manifest", "schema"],
+      "ledger": ["manifest"],
       "source": "设计/91 §7.3"
     },
     {

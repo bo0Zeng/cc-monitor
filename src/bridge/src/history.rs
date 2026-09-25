@@ -1221,8 +1221,9 @@ fn validate_config_dir_posix(dir: &str) -> Result<(), String> {
 /// PowerShell 侧校验。**与 POSIX 那条的唯一实质差别是「什么算绝对路径」** ——
 /// Phase G 审计抓出的一个真 bug：原来两边共用「必须 `/` 开头 + 禁 `\`」，
 /// 于是 Windows 上一个真实账号目录（`C:\Users\z\.claude-accts\z`）**必被拒**，
-/// 「本机分叉时选一个具名账号」在主平台上 100% 失败。判据照抄 `local_accounts::looks_absolute`
-/// （那个函数的头注写明：照搬 `starts_with('/')` 会把每个 Windows 账号判成不安全）。
+/// 「本机分叉时选一个具名账号」在主平台上 100% 失败。判据照抄当年的 `local_accounts::looks_absolute`〔散文墓碑〕
+/// （〔C4d〕那份参照实现已删；同一课今天住后端 `accounts_query.rs::is_safe_config_dir` 的「平台形式」那一半：
+/// 照搬 `starts_with('/')` 会把每个 Windows 账号判成不安全）。
 #[cfg(any(windows, test))]
 fn validate_config_dir_ps(dir: &str) -> Result<(), String> {
     let b = dir.as_bytes();

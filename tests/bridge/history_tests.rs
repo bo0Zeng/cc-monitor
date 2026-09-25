@@ -1960,7 +1960,7 @@ fn account_prefix_is_prepended_posix_and_ps() {
 /// 100% 失败（`fork-flow.ts` 是全仓唯一给 `resume_history_session` 传 `configDir` 的
 /// 调用点，所以这个洞是分叉专属的、别处测不到）。
 ///
-/// 判据照抄 `local_accounts::looks_absolute` —— 那个函数的头注已经写明这一课。
+/// 判据照抄当年的 `local_accounts::looks_absolute`〔散文墓碑〕（〔C4d〕已删；同一课今天住后端 `is_safe_config_dir`）。
 /// 而**旧测试全喂 POSIX 路径**（`/home/u/.claude-accts/z`），所以它们测不出来。
 #[test]
 fn windows_account_dirs_are_accepted_by_the_ps_side() {
