@@ -527,6 +527,18 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
         ),
     )
     .unwrap();
+    // 断言失败时也要把两个子进程收掉（否则后端握着继承来的 stderr，外层 cargo 要等到 `sleep 600` 自己退才收工）。
+    struct Reap(Vec<u32>);
+    impl Drop for Reap {
+        fn drop(&mut self) {
+            for pid in &self.0 {
+                let _ = std::process::Command::new("kill")
+                    .arg(pid.to_string())
+                    .status();
+            }
+        }
+    }
+    let mut reap = Reap(vec![pid]);
     let mut child = std::process::Command::new(&bin)
         .args(crate::backend::control::local_backend::LOCAL_STREAM_ARGS)
         .env("HOME", &home)
@@ -539,6 +551,7 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
         .stdout(std::process::Stdio::piped())
         .spawn()
         .expect("起不了后端");
+    reap.0.push(child.id());
     let (stdin, stdout) = (child.stdin.take().unwrap(), child.stdout.take().unwrap());
     let reader = std::thread::spawn(move || {
         crate::backend::control::local_backend::local_stdio_consumer(stdin, stdout)
@@ -580,18 +593,40 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
         .unwrap();
     writeln!(f, "{appended}").unwrap();
     drop(f);
+    // ⚠ 后端先宣告（Phase 1 同步扫、prime 游标）、**之后**才挂上 `projects/` 的 watch ⇒ 恰好落在这两步之间的
+    //   一次写不会有事件，要等下一次写才被读出来（游标已 prime，不丢，只是晚到 —— 首跑实打到过一次 20 s 空等）。
+    //   真会话会一直写，这里照做：每 2 s 没等到就再补一行**空白行**（不计行号、不改编号）催一次事件。
+    let wait_line = |rx: &mut tokio::sync::mpsc::Receiver<LocalItem>| {
+        rt.block_on(async {
+            tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+                .await
+                .ok()
+                .map(|x| x.expect("通道断了"))
+        })
+    };
+    let mut nudges = 0;
     let (seq, raw) = loop {
-        match next(&mut rx) {
-            LocalItem::Frame(InboundFrame::Line {
+        match wait_line(&mut rx) {
+            Some(LocalItem::Frame(InboundFrame::Line {
                 session_id,
                 seq,
                 raw,
                 ..
-            }) if session_id == sid => break (seq, raw),
-            _ => continue,
+            })) if session_id == sid => break (seq, raw),
+            Some(_) => continue,
+            None => {
+                nudges += 1;
+                assert!(nudges <= 10, "补了 10 次事件还没等到新行");
+                let mut f = std::fs::OpenOptions::new()
+                    .append(true)
+                    .open(&jsonl)
+                    .unwrap();
+                writeln!(f, "  ").unwrap();
+            }
         }
     };
     assert_eq!((seq, raw.as_str()), (2, appended));
+    println!("CF1-LOCAL-LINES nudges={nudges}");
     // ③ 后端没了 ⇒ 读循环收尾送「流结束」。
     let _ = child.kill();
     let _ = child.wait();
