@@ -5,7 +5,8 @@
 // 依赖经 import（vitest 可 vi.mock）；confirm / awaitCompact 两个交互点可注入，便于纯逻辑单测。
 //
 // **为何另起、不复用 A4 的 `withAccount`**（D 架构审计裁定，防下轮重新纠结）：两者语义天然不兼容——
-//   ① 不可选账号时：withAccount **降级默认起**；restart **中止**（破坏性重启绝不能退化用默认号）。
+//   ① 不可选账号时：restart **中止**（破坏性重启绝不能退化用默认号）。〔FE1 · D-h〕withAccount 今天同样不起
+//      （先前是「降级默认起」），但它的出口是「说清 ＋ 给一个显式选择再起」，restart 这里没有那一步。
 //   ② 记 lastAccount 条件：withAccount run 后**无条件**记；restart **仅 kill+resume 全成后**才记
 //      （kill 失败提前 return、绝不记，见 §5.2 + vitest ④）。硬合需给 withAccount 加 abort-vs-degrade /
 //      条件记账 / run 前置 compact&kill 钩子三个开关，复杂度净增、收益为负。二者已共用 accounts.ts

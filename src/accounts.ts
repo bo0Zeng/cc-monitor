@@ -28,6 +28,8 @@ import { ACTIVE_AGENT, lookupAgentProfile } from "./agent-profile";
 import { decodeAccountsList, decodeTrust } from "./accounts-decode";
 // 〔C4d〕上次账号那一份注解归本机常驻后端（`history-last-accounts` / `history-annotate`）。
 import { annotate, lastAccounts } from "./history-reads";
+import { showActionFailureToast } from "./error-toast";
+import { copyText } from "./copy-table";
 
 // ---- 账号的形状：〔C4d · 第四波 4B〕从生成物改回手写，形状由后端成品 ＋ 跨语言金样定 ----
 //
@@ -352,6 +354,55 @@ export function localLaunchAccountNameSync(sid: string | null): string | null {
   }
   const cur = currentWorkingAccount(snap.state);
   return cur && isSelectable(cur) ? cur.name : null;
+}
+
+/**
+ * 〔FE1 · D-h〕本机 resume 跟随那一态的**三种答案**（取名字那半的规则不变，只是把「说不出」拆开）：
+ *
+ * | 答案 | 什么时候 | 调用方怎么办 |
+ * |---|---|---|
+ * | `named` | pin 可选 / 没 pin 而当前号可选 | 带这个号起 |
+ * | `silent` | 快照还冷 / 没 pin 也没可选的当前号 / 那个号没有 `configDir` | 缺席（逐字节旧行为，见上面那条诚实边界） |
+ * | `pinGone` | **有 pin，而那个号选不了** | **不起**，说清、给「用当前账号」的显式选择（`accounts.ts::refuseUnavailableAccount`） |
+ *
+ * 🔴 `pinGone` 先前落进 `silent`：载荷不带账号 ⇒ 落 shell rc 里的默认号，**不说一个字**（E7 的本机那一形）。
+ * `设计/01 §6.2`「「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」。
+ */
+export type LocalFollowPlan =
+  | { kind: "named"; name: string; wire: LocalLaunchAccountWire }
+  | { kind: "silent" }
+  /**
+   * `alternative`：当前可选的号（名字 ＋ 目录）；`null` = 没有 ⇒ 给的选择是「不指定账号」。
+   * `listKnown: false` = 账号清单读不到（`available:false`）⇒ 说不清当前号是谁，选择只给「不指定账号」。
+   */
+  | {
+      kind: "pinGone";
+      pin: string;
+      listKnown: boolean;
+      alternative: { name: string; configDir: string } | null;
+    };
+
+export function localFollowPlan(sid: string): LocalFollowPlan {
+  const snap = localLaunchSnapshot;
+  if (!snap) return { kind: "silent" };
+  const pin = snap.pins[sid];
+  if (pin) {
+    const hit = snap.state.accounts.find((a) => a.name === pin);
+    if (!hit || !isSelectable(hit)) {
+      if (!snap.state.available) return { kind: "pinGone", pin, listKnown: false, alternative: null };
+      const alt = alternativeAccountOf(snap.state, pin);
+      const altAcct = alt === null ? undefined : snap.state.accounts.find((a) => a.name === alt);
+      return {
+        kind: "pinGone",
+        pin,
+        listKnown: true,
+        alternative: altAcct?.configDir ? { name: altAcct.name, configDir: altAcct.configDir } : null,
+      };
+    }
+  }
+  const wire = localLaunchAccountSync(sid);
+  const name = localLaunchAccountNameSync(sid);
+  return wire && name ? { kind: "named", name, wire } : { kind: "silent" };
 }
 
 /**
@@ -1439,7 +1490,11 @@ export async function recordLastAccount(sessionId: string, account: string): Pro
 export type AccountResolution =
   | { kind: "account"; name: string; configDir: string }
   | { kind: "base" }
-  | { kind: "unavailable"; requestedName?: string };
+  /**
+   * 要的那个号选不了 ⇒ **不起**（D-h）。`pinned` = 这个号是会话自己的 pin（跟随那一支），
+   * 不是用户这一次点的。
+   */
+  | { kind: "unavailable"; requestedName?: string; pinned?: boolean };
 
 /**
  * F05：纯函数——从 `withAccount` 原内联逻辑抽出（显式选号 / 跟随解析两分支），决策逻辑本身
@@ -1462,6 +1517,14 @@ export function resolveAccount(
   if (opts.follow) {
     const current = currentWorkingAccount(state)?.name ?? null;
     const priorPin = opts.follow.lastAccount ?? null;
+    // 🔴 D-h（主会话 4D 裁，照 `设计/01 §6.2`「「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」）：
+    //   会话有 pin、而 pin 那个号选不了 ⇒ **不下沉**，回 `unavailable`（调用方不起、说清、给「用当前账号」的显式选择）。
+    //   先前这里下沉到当前号 / 基座、不说一个字（E7）—— 用另一个号的订阅或 key 续了这场会话。
+    //   没有 pin 的会话照旧 当前号 → 基座（没有「原账号」，谈不上换号）。
+    if (priorPin) {
+      const a = state.accounts.find((x) => x.name === priorPin);
+      if (!a || !isSelectable(a)) return { kind: "unavailable", requestedName: priorPin, pinned: true };
+    }
     const followName = resolveFollowAccount(state, { lastAccount: priorPin, current });
     if (followName) {
       const configDir = accountConfigDir(state, followName);
@@ -1482,12 +1545,13 @@ export function resolveAccount(
  * **R03**：这三者不再是三个位置参数，统一收进 `LaunchModifiers` 一次交给 `run`。
  *
  *   - `accountName == null` **且无 `opts.follow`** → 默认起：`run({ 三字段皆 undefined })`（不注入、不记账、不 fetch，A4 逐字节旧行为）。
- *   - `accountName == null` **且有 `opts.follow`**（account-ux U2 opt-in 跟随）→ `fetchAccounts` 后
- *     经 `resolveFollowAccount`（lastAccount → 当前账号 → null）解析：命中则注入其 configDir +（给了
- *     sessionId 时）记 lastAccount（会话账号 sticky 自增强）；解析不到 → `run({ 三字段皆 undefined })` 落基座。
- *     **下沉静默不 `onUnselectable`**（用户没显式点号，不该弹提示）。
+ *   - `accountName == null` **且有 `opts.follow`**（account-ux U2 opt-in 跟随）→ `fetchAccounts` 后：
+ *       · 会话**有 pin、而那个号选不了**（或账号清单读不到）⇒ 〔FE1 · D-h〕**不起**，[`refuseUnavailableAccount`]
+ *         说清、给「用当前账号」的显式选择（先前这里静默下沉到当前号 / 基座 —— E7）；
+ *       · 否则经 `resolveFollowAccount`（lastAccount → 当前账号 → null）解析：命中则注入其 configDir +（给了
+ *         sessionId 时）记 lastAccount（会话账号 sticky 自增强）；解析不到（没 pin、也没可选的当前号）→ `run({ 三字段皆 undefined })` 落基座。
  *   - `accountName` 非空 → `fetchAccounts` 解析 configDir：
- *       · 解析不到（不可选 / 账号库不可用）→ `onUnselectable(name)`（调用方 toast）后**退化为默认起**；
+ *       · 解析不到（不可选 / 账号库不可用）⇒ 〔FE1 · D-h〕**不起**，同上说清 ＋ 显式选择（先前：调用方 toast 后**退化为默认起**）；
  *       · 解析到 → `run({ configDir, accountName, modelOverride })`；再在**给了 sessionId 时**记 lastAccount（源②，新会话无 sid 不记）。
  * `run` 内部的拉起失败由 run 自己处理（runRemote* 有复制命令回退）；本编排只统一 resolve/record 口径。
  */
@@ -1505,7 +1569,6 @@ export async function withAccount(
   run: (mods: LaunchModifiers) => Promise<void>,
   opts: {
     sessionId?: string;
-    onUnselectable?: (name: string) => void;
     /** account-ux U2:仅当 accountName===null 时生效——启用「跟随」解析(lastAccount→当前账号→基座)。 */
     follow?: { lastAccount?: string | null };
   } = {},
@@ -1515,14 +1578,32 @@ export async function withAccount(
     try {
       state = await fetchAccounts(origin);
     } catch {
-      state = undefined; // 账号库拿不到 → 落 base（fetchAccounts 通常不抛，防御性兜底）
+      state = undefined; // 账号库拿不到（fetchAccounts 通常不抛，防御性兜底）
     }
   }
+  const priorPin = opts.follow?.lastAccount ?? null;
   const resolution: AccountResolution = state
     ? resolveAccount(state, { explicit: accountName, follow: opts.follow })
     : accountName
       ? { kind: "unavailable", requestedName: accountName }
-      : { kind: "base" };
+      : priorPin
+        ? { kind: "unavailable", requestedName: priorPin, pinned: true }
+        : { kind: "base" };
+  // 🔴 D-h：要的那个号选不了 ⇒ **不起**，说清是哪个号、给一个显式选择（点了就以显式选号再走一次，A4 语义记 pin）。
+  //   先前：显式点号 ⇒ 提示后按基座起（提示说的「改用上次的账号 / 当前账号」与做的也不一致）；
+  //   跟随 ⇒ 下沉、不说（E7）。两形都是「不静默换号」要拦的（`设计/01 §6.2` ＋ D4）。
+  if (resolution.kind === "unavailable") {
+    refuseUnavailableAccount({
+      machine: origin,
+      name: resolution.requestedName ?? "",
+      pinned: resolution.pinned === true,
+      // 账号清单读不到（`available:false` / 抛）⇒ 说不清「当前账号」是谁 ⇒ 给的选择只剩「不指定账号」。
+      listKnown: state?.available === true,
+      alternative: state?.available ? alternativeAccountOf(state, resolution.requestedName ?? "") : null,
+      choose: (alt) => withAccount(origin, alt, run, { sessionId: opts.sessionId }),
+    });
+    return;
+  }
 
   let configDir: string | undefined;
   let recordName: string | null = null; // 成功注入后要记的账号名(显式=accountName / 跟随=解析名)
@@ -1536,11 +1617,8 @@ export async function withAccount(
       // sticky)、或**解析结果==既有 pin**(no-op)时才记账;既有 pin 存在但不可选、下沉到
       // current → **不记账**,保住原 pin(守「粘性优先」不变量,避免 history/tab 默认 resume
       // 把会话账号悄悄翻成当前账号)。
-      const priorPin = opts.follow?.lastAccount ?? null;
       recordName = !priorPin || resolution.name === priorPin ? resolution.name : null;
     }
-  } else if (resolution.kind === "unavailable" && accountName) {
-    opts.onUnselectable?.(accountName);
   }
   const modelOverride =
     resolution.kind === "account" ? await getModelForAccount(resolution.name) : undefined;
@@ -1552,4 +1630,50 @@ export async function withAccount(
   if (recordName && configDir && opts.sessionId) {
     void recordLastAccount(opts.sessionId, recordName);
   }
+}
+
+/**
+ * 〔FE1 · D-h〕要的那个号选不了时，给用户的那个**显式选择**：当前账号（可选、且不是要的那个）；
+ * 没有这样的号 ⇒ `null` = 「不指定账号」（落 `~/.claude` 那一份登录）。
+ */
+export function alternativeAccountOf(state: AccountsState, requested: string): string | null {
+  const cur = currentWorkingAccount(state);
+  return cur && isSelectable(cur) && cur.name !== requested ? cur.name : null;
+}
+
+/**
+ * 〔FE1 · D-h〕**账号选不了 ⇒ 不起、说清、给「用当前账号」的显式选择** —— 本机远端同一句话、同一个出口。
+ *
+ * 守的要求：主会话 4D 裁 D-h（「选不了原账号时 resume ⇒ 照 `01 §6.2` / D4：不静默换号，拒并说清、给「用当前账号」的显式选择」）；
+ * `设计/01 §6.2`「「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」；
+ * `设计/80 §9.6`「**显式反馈优于静默隐藏**」。
+ *
+ * @param listKnown 账号清单读到了没有；没读到 ⇒ 说「读不到清单」，选择只给「不指定账号」（说不清当前号是谁）。
+ * @param alternative `string` = 当前账号的名字；`null` = 「不指定账号」。
+ * @param choose 用户点了那个选择 ⇒ 以**显式**选号再起一次（`null` = 不指定账号）。
+ */
+export function refuseUnavailableAccount(r: {
+  machine: string;
+  name: string;
+  pinned: boolean;
+  listKnown: boolean;
+  alternative: string | null;
+  choose: (alternative: string | null) => void | Promise<unknown>;
+}): void {
+  const machine = isLocalOrigin(r.machine) ? copyText("accountPick.machine.local") : r.machine;
+  const body = !r.listKnown
+    ? copyText("accountPick.refused.listUnknown", { machine, name: r.name })
+    : r.pinned
+        ? r.alternative === null
+          ? copyText("accountPick.refused.pinGoneToBase", { name: r.name })
+          : copyText("accountPick.refused.pinGoneToCurrent", { name: r.name, current: r.alternative })
+        : r.alternative === null
+          ? copyText("accountPick.refused.explicitGoneToBase", { name: r.name })
+          : copyText("accountPick.refused.explicitGoneToCurrent", { name: r.name, current: r.alternative });
+  const alt = r.listKnown ? r.alternative : null;
+  showActionFailureToast(copyText("accountPick.refused.title"), body, {
+    level: "error",
+    durationMs: 15000,
+    onClick: () => void r.choose(alt),
+  });
 }

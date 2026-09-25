@@ -1642,7 +1642,7 @@ export class HistoryView {
           rowLastAccount = undefined;
         }
       }
-      // A4：带账号 resume 统一走 withAccount（resolve configDir → 不可选则 toast 降级默认 → record 源②）。
+      // A4：带账号 resume 统一走 withAccount（resolve configDir → 不可选则不起、说清〔FE1 · D-h〕→ record 源②）。
       await withAccount(
         origin,
         ctx.account ?? null,
@@ -1658,12 +1658,7 @@ export class HistoryView {
         },
         {
           sessionId: ctx.sessionId,
-          onUnselectable: (n) =>
-            showActionFailureToast(
-              "账号不可用",
-              `账号「${n}」当前不可选（未登录 / 非隔离 / 目录缺失），改用该会话上次的账号 / 当前账号 resume。`,
-              { level: "info", durationMs: 6000 },
-            ),
+          // 〔FE1 · D-h〕要的号选不了 ⇒ `withAccount` 自己不起、说清、给显式选择（先前这里的提示完按基座起）。
           follow: ctx.account ? undefined : { lastAccount: rowLastAccount },
         },
       );

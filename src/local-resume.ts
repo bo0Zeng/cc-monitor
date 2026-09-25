@@ -30,10 +30,10 @@ import { commands } from "./ipc/commands";
 import { LOCAL_ORIGIN } from "./ipc/origin";
 import {
   explicitLocalAccountWire,
-  localLaunchAccountNameSync,
-  localLaunchAccountSync,
+  localFollowPlan,
   primeLocalLaunchAccounts,
   recordLocalLaunchAccount,
+  refuseUnavailableAccount,
   type LocalAccountWire,
 } from "./accounts";
 import { validateLocalLaunch } from "./launch-requests";
@@ -79,6 +79,28 @@ export async function resumeLocalSession(req: LocalResumeRequest): Promise<boole
     showActionFailureToast(copyText("localResume.build.failed"), String(err));
     return false;
   }
+  // 🔴 〔FE1 · D-h〕跟随时，这条会话的 pin 那个号选不了 ⇒ **不起**：说清、给「用当前账号」的显式选择
+  //   （点了就以**显式**选号再起一次，起成了记 pin —— 与远端 `withAccount` 显式那一支同语义）。
+  //   先前这一形落成「缺席」⇒ 落 shell rc 里的默认号，不说一个字（E7 的本机那一形）。
+  const plan = req.account.kind === "follow" ? localFollowPlan(req.sid) : null;
+  if (plan?.kind === "pinGone") {
+    const alt = plan.alternative;
+    refuseUnavailableAccount({
+      machine: LOCAL_ORIGIN,
+      name: plan.pin,
+      pinned: true,
+      listKnown: plan.listKnown,
+      alternative: alt?.name ?? null,
+      choose: async () => {
+        const ok = await resumeLocalSession({
+          ...req,
+          account: { kind: "explicit", configDir: alt?.configDir ?? null, name: alt?.name ?? null },
+        });
+        if (ok && alt) recordLocalLaunchAccount(req.sid, alt.name);
+      },
+    });
+    return false;
+  }
   try {
     const launcher = req.launcher ?? (await getBehavior()).resumeCommandLocal;
     // ★★ `K-R46`：名字要算出来传下去 —— 后端**故意**拒绝自己铸名（`history.rs` 的 `NO_TMUX_NAME`），
@@ -86,7 +108,9 @@ export async function resumeLocalSession(req: LocalResumeRequest): Promise<boole
     const tmuxName = req.tmuxName ?? mintFromListing(req.cwd, await readTmuxListing(LOCAL_ORIGIN));
     const accountWire: LocalAccountWire | undefined =
       req.account.kind === "follow"
-        ? localLaunchAccountSync(req.sid)
+        ? plan?.kind === "named"
+          ? plan.wire
+          : undefined
         : explicitLocalAccountWire(req.account.configDir, req.account.name);
     await commands.resume_history_session({
       sessionId: req.sid,
@@ -97,9 +121,7 @@ export async function resumeLocalSession(req: LocalResumeRequest): Promise<boole
     });
     // `D3 阻-2`：本机这条路也往 pin 里写（跟随那一态；显式那一态由调用方按自己的语义记 ——
     //   换号重启只在 kill ＋ resume 全成之后才记，分叉是新会话、不记）。⚠ 不等待。
-    if (req.account.kind === "follow") {
-      recordLocalLaunchAccount(req.sid, localLaunchAccountNameSync(req.sid));
-    }
+    if (plan?.kind === "named") recordLocalLaunchAccount(req.sid, plan.name);
     return true;
   } catch (err) {
     showActionFailureToast(req.failureTitle ?? copyText("localResume.launch.failed"), String(err), {

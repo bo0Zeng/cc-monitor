@@ -1162,21 +1162,26 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
     expect(invoke).not.toHaveBeenCalledWith("resume_history_session", expect.anything());
   });
 
-  it("A4/F07：resumeTab 带账号名但账号库不可用 → 退化默认 + **onUnselectable toast（不静默吞）**", async () => {
+  // 〔FE1 · D-h〕先前这一条钉的是「退化默认 ＋ 提示」—— 提示完**按基座起**（提示说的「改用上次的账号 / 当前账号」与做的还不一致）。
+  //   今天：**不起**，提示说清读不到清单，点了才以「不指定账号」起（`设计/01 §6.2` ＋ D4）。
+  it("★ 〔FE1 · D-h〕resumeTab 带账号名但账号库不可用 → **不起**、一条提示；点了才以「不指定账号」起", async () => {
     tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
     tm.archiveTab("r1");
-    // tabs.vitest 的 invoke 默认返 undefined → fetchAccounts 视作不可用 → withAccount 退化默认。
-    // （accounts.vitest 的 withAccount 套件覆盖了"resolveAccount 自己的决策逻辑"，
-    // 但不覆盖"tabs.ts 的 run 回调是否真把 accountName 转传给了 runRemoteResume"这条
-    // 集成层接线——F05 Phase D 审计发现的真实覆盖缺口，下面新增一条测试补上。）
+    // tabs.vitest 的 invoke 默认返 undefined → fetchAccounts 视作不可用。
     await home(tm).actions.resumeTab("r1", "z");
-    expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", { configDir: undefined, accountName: undefined, modelOverride: undefined });
+    expect(runRemoteResume, "要的号说不清还起了 —— 静默换号").not.toHaveBeenCalled();
     expect(historyCalls(vi.mocked(invoke).mock.calls, "update_history_metadata")).toHaveLength(0);
-    // F07：显式选号解析不到 → 提示，别静默落基座（对齐 history.ts）。变异锚点：删 onUnselectable 回调 → 此测红。
-    expect(showActionFailureToast).toHaveBeenCalledWith(
-      "账号不可用",
-      expect.stringContaining("账号「z」当前不可选"),
-      expect.anything(),
+    const calls = vi.mocked(showActionFailureToast).mock.calls;
+    const hit = calls.find((c) => c[0] === "账号现在选不了，没有起会话");
+    expect(hit, "没有说清为什么没起").toBeTruthy();
+    expect(hit![1]).toContain("「z」");
+    hit![2]!.onClick!();
+    await vi.waitFor(() =>
+      expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", {
+        configDir: undefined,
+        accountName: undefined,
+        modelOverride: undefined,
+      }),
     );
   });
 
