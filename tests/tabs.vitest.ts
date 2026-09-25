@@ -3558,38 +3558,43 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
   });
 
   /**
-   * ★ 6d（条 54）：**拖到一半，tab 不许自己跳位置。**
+   * ★ 6d（条 54 · `设计/30 §6 #4`）：**拖到一半，tab 不许自己跳位置。**
+   *
+   * `设计/30 §6 #4` 原文：「拖拽进行中注入一次活动事件 ⇒ 松手之前 `#tab-bar` 子节点顺序一次都不变；
+   * 松手后那一次重画必须补上（守卫是推迟不是丢弃）。住 `tests/tabs.vitest.ts`「6d」。」
    *
    * # 机制（已核实，不是推测）
    *
-   * `refreshTabBar` 全身**没有任何 `this.drag` 守卫**，而它挂在活动路上：
-   * `updateActivity` / `archiveTab` / `ensureTab` 末尾都无条件调它。
-   * ⇒ 拖到一半来一条活动事件，第 4 段那个「排序」循环就照 `orderedIds` 重排一次 DOM，
+   * `refreshTabBar` 挂在活动路上：`updateActivity` / `archiveTab` / `ensureTab` 末尾都无条件调它。
+   * 拖到一半来一条活动事件，第 4 段那个「排序」循环就照 `orderedIds` 重排一次 DOM，
    * **指针底下的那个 tab 当场被换掉** —— 用户松手落到的不是他瞄的那一格。
    *
-   * # 🔴 为什么注入的是「会话结束」而不是一条 `updateActivity`
+   * # 🔴 为什么注入的是「一个按盘上顺序该落在中间的新 tab 到了」
    *
-   * 反空真自检（`设计/01 §7.4`「扫到空集时要红，不是绿」）：
-   * 一条**不改 `orderedIds`、不改归档归属**的 `updateActivity`，
-   * 走完 `refreshTabBar` 之后 `refs.root === targetNext` 恒成立 ⇒ 一次 `insertBefore` 都不会发生
-   * ⇒ 那样写出来的判据**拿掉守卫也是绿的**，等于没买。
-   * 真会动 DOM 顺序的活动事件有两类，这里取第一类（第二类见下一格）：
-   *   ① **会话跑完 ⇒ 归档** —— 归档抽屉是 `barEl` 的**兄弟**（`ensureArchiveUi`），
-   *      那个 tab 会整个**离开** `#tab-bar`，它下面的全部上移一格；
-   *   ② **新会话/新 bg 宣告** —— `placeInOrder` 把 bg 锚在宿主之后 ⇒ 从**中间**插进去。
+   * 反空真自检（`设计/01 §7.4`「扫到空集时要红，不是绿」）：注入的事件必须**真的改 `orderedIds` 的中间位置**，
+   * 否则拿掉守卫 DOM 也不动，判据等于没买。
+   * 〔AR1 重锚〕上一版注入的是「会话结束」，理由是「归档抽屉是 `barEl` 的兄弟，那个 tab 会整个离开 `#tab-bar`」。
+   *   抽屉删了（`设计/30 §A`）⇒ 会话结束今天**只改那颗按钮的 class、不改顺序**，那一版咬住的只剩
+   *   「拖拽中零 DOM 写」（`barSnap` 连 `className` 一起比），不再是它自称的「跳位置」。
+   * ⇒ 换成今天真会从中间插进去的那一路：盘上那份顺序（`savedOrder`）给新到的 `d` 留了 `a` 与 `b` 之间那一格，
+   *   `ensureTab("d")` → `TabStore.placeInOrder` → `applySavedOrder` 把它放回那一格。这一路与 bg 树无关。
+   *   下面第一条断言就是反空真前置：拖拽中**模型已经变了**（`d` 在第二位），而 DOM 一次都没动。
    *
    * # 判据钉的是「顺序一次都不变」，不是「最终顺序对不对」
    *
    * 最终顺序在 `mouseup` 之后本来就会对（那时重画照样发生）。
    * 坏的是**拖拽窗口之内**那一次重排 —— 所以快照要在 `mouseup` 之前比。
    */
-  it("★ 6d：拖拽进行中来一条活动事件 ⇒ mouseup 之前 #tab-bar 子节点顺序一次都不变", () => {
+  it("★ 6d：拖拽进行中来一个该落在中间的新 tab ⇒ mouseup 之前 #tab-bar 子节点顺序一次都不变", () => {
     tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN); // 首个 tab ⇒ 它是 active（`switchTo(_, "auto")`）
     tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
     tm.ensureTab("c", "/c3", "p", 0, LOCAL_ORIGIN);
+    // 盘上那份顺序：`d` 还没到，它的那一格在 `a` 与 `b` 之间（`applySavedOrder` 头注：没到的留在 `savedOrder` 里等它）。
+    home(tm).store.savedOrder = ["a", "d", "b", "c"];
     flushBar();
     stubRects();
-    // 主栏子节点的「长相顺序」。用 textContent 而不是下标 —— 少一个、换一个都要能看出来。
+    expect(order(), "前置：d 没到之前顺序照旧").toEqual(["a", "b", "c"]);
+    // 主栏子节点的「长相顺序」。用 textContent 而不是下标 —— 少一个、换一个、多一个都要能看出来。
     const barSnap = (): string =>
       [...bar.children].map((e) => `${e.className}#${e.textContent ?? ""}`).join(" | ");
 
@@ -3604,8 +3609,14 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
     const during = barSnap();
     expect(during, "前置：三个 tab 都还在主栏里").toContain("tab ");
 
-    // ⬇ 拖拽进行中注入一次活动事件：b（**不是 active、在被拖的 c 上面**）的会话跑完了。
-    tm.archiveTab("b");
+    // ⬇ 拖拽进行中注入一次活动事件：新会话 d 宣告到了，盘上顺序把它放在 a 与 b 之间。
+    tm.ensureTab("d", "/c4", "p", 0, LOCAL_ORIGIN);
+    expect(order(), "反空真前置：模型真的从中间插进去了（拿掉守卫时 DOM 会跟着动）").toEqual([
+      "a",
+      "d",
+      "b",
+      "c",
+    ]);
 
     expect(barSnap(), "拖拽中 tab 不许自己跳位置：松手前 #tab-bar 的子节点顺序一次都不许变").toBe(
       during,
@@ -3615,18 +3626,54 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
     document.dispatchEvent(
       new MouseEvent("mouseup", { clientX: 10, clientY: 10, bubbles: true }),
     );
-    expect(barSnap(), "松手后归档那一格要落实，否则守卫就成了静默丢刷新").not.toBe(during);
-    // 🔴 〔步 17·A · 2026-09-19〕后置断言换了，**本条的正题一个字没动**。
-    //   原来这里断言「b 已搬进归档抽屉」。抽屉整个删了（用户逐字「没有归档这个东西」，
-    //   `设计/30 §A`「已定：删归档抽屉」）⇒ 新行为是**留在原位灰着**。
-    //   本条买的仍是条 54：**拖拽进行中 tab 不自己跳位置**；变的只是「松手后落实成什么」。
+    expect(barSnap(), "松手后 d 那一格要落实，否则守卫就成了静默丢刷新").not.toBe(during);
+    expect(order(), "拖动本身的结果照常落实（c 到 a 之前），d 留在盘上给它的那一格").toEqual([
+      "c",
+      "a",
+      "d",
+      "b",
+    ]);
     const barTabs = [...bar.children].filter((e) => e.classList.contains("tab"));
-    expect(barTabs.length, "三个 tab 必须都还在主栏里 —— 归档不再把谁搬走").toBe(3);
+    expect(barTabs.length, "四个 tab 都在主栏里").toBe(4);
+  });
+
+  /**
+   * ★ 6d 下半（`设计/30 §6 #4`「松手后那一次重画必须补上（守卫是推迟不是丢弃）」）。
+   *
+   * 〔AR1〕上一格松手落在别的 tab 上 ⇒ `applyDrop` 自己就会整刷一次，**盖住了**「推迟的那一次补没补」
+   *   （死值验现打：删掉 `teardownDrag` 里补刷那一句，上一格照样绿）。
+   * ⇒ 这一格走撕窗口那一路（`armed`）：它**不碰顺序、不刷栏**（`P7a2-Y2`），松手后唯一的刷新
+   *   只能来自 `teardownDrag` 补的那一次。补丢了 ⇒ 拖拽中到的 d 永远不出现在栏里。
+   */
+  it("★ 6d 下半：拖出右缘撕窗口 ⇒ 拖拽中被挡下的那次重画在松手时补上（d 出现在它那一格）", () => {
+    tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("c", "/c3", "p", 0, LOCAL_ORIGIN);
+    home(tm).store.savedOrder = ["a", "d", "b", "c"];
+    flushBar();
+    stubRects();
+    const barTabText = (): string[] =>
+      [...bar.children].filter((e) => e.classList.contains("tab")).map((e) => e.textContent ?? "");
+    const roots = [...bar.children].filter((e) => e.classList.contains("tab")) as HTMLElement[];
+    roots[2].dispatchEvent(
+      new MouseEvent("mousedown", { button: 0, clientX: 10, clientY: 0, bubbles: true }),
+    );
+    // clientX 远超 barRight+16 ⇒ armed
+    document.dispatchEvent(
+      new MouseEvent("mousemove", { buttons: 1, clientX: 9999, clientY: 100, bubbles: true }),
+    );
+    const during = barTabText();
+    tm.ensureTab("d", "/c4", "p", 0, LOCAL_ORIGIN);
+    expect(barTabText(), "拖拽中被挡下：d 还没进栏").toEqual(during);
+    expect(during.some((t) => t.includes("c4")), "前置：d 此刻不在栏里（否则下面那条恒真）").toBe(false);
+    document.dispatchEvent(
+      new MouseEvent("mouseup", { clientX: 9999, clientY: 100, bubbles: true }),
+    );
+    expect(order(), "撕窗口那一路不改顺序；d 在盘上给它的那一格").toEqual(["a", "d", "b", "c"]);
     expect(
-      barTabs.filter((e) => e.classList.contains("ended")).length,
-      "b 已结束 ⇒ 原位变淡（`.tab.ended`，〔U4〕原名 `.tab.archived`），而不是消失进另一个容器",
-    ).toBe(1);
-    expect(order(), "拖动本身的结果照常落实").toEqual(["c", "a", "b"]);
+      barTabText().map((t) => (t.match(/c\d/) ?? [""])[0]),
+      "推迟不是丢弃：松手后栏里按 orderedIds 摆出 d",
+    ).toEqual(["c1", "c4", "c2", "c3"]);
   });
 });
 
