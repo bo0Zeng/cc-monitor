@@ -193,7 +193,7 @@ esac"#;
     // 别的码：failed ＋ 码 ＋ 诊断。
     let (c, m) = code_of(json!({"op": "node", "args": {"symbol": "x"}}));
     assert_eq!(c, "failed");
-    assert!(m.contains("退出码 7") && m.contains("boom"), "{m}");
+    assert!(m.contains("码 7") && m.contains("boom"), "{m}");
     // 码 0 但那一行不是 ok 应答：不许当成功。
     assert_eq!(
         code_of(json!({"op": "search", "args": {"query": "a"}})).0,
@@ -249,7 +249,7 @@ fn a_timeout_and_an_oversized_answer_are_said_as_such() {
     );
     assert_eq!(
         classify("status", 1, done(None, Vec::new())).unwrap_err(),
-        ("failed", "全景 `status` 没做成（被信号打断）：".to_string())
+        ("failed", "全景 `status` 没做成（被中途终止）：".to_string())
     );
     // 成功那一格：`data` 原样装进 `result`（`null` 也是一个答案：「没有这个符号」）。
     assert_eq!(

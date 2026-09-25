@@ -15,6 +15,8 @@
  * **买不到**：图没有缩放 / 拖拽；调用子图每次重画都向后端要一张新图，不做增量。
  */
 import * as api from "./api";
+import type { RepoAt } from "./api";
+import { LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { clipForDiagram, type IndexStamp } from "./agent-clip";
 import { honestyLine } from "./diagram-honesty";
 import { legendFor, rendererFor, type NodePick } from "./diagram-render";
@@ -22,8 +24,8 @@ import type { DiagramKindInfo, DiagramRequest, PanoramaDiagram } from "./types";
 
 /** 宿主（`PanoramaView`）要提供的东西。 */
 export interface DiagramHost {
-  /** 当前看的本地仓；`null` = 没有可看的仓（远端 / 无会话）。 */
-  repo(): string | null;
+  /** 当前看的仓（哪台机器上的哪个路径）；`null` = 没有可看的仓（无会话）。 */
+  repo(): RepoAt | null;
   selectedSymbol(): string | null;
   selectedFile(): string | null;
   /** 调用子图下钻：把这个符号设为选中（宿主顺带开它的详情）。 */
@@ -34,7 +36,7 @@ export interface DiagramHost {
   openFile(file: string, group: string): void;
   openSymbol(id: string): void;
   /** 索引读数（CP7）。 */
-  stamp(repo: string): Promise<IndexStamp | null>;
+  stamp(repo: RepoAt): Promise<IndexStamp | null>;
   /** 复制按钮（宿主统一实现剪贴板与反馈）。 */
   copyButton(label: string, key: string, make: () => string): HTMLButtonElement;
   /** 失败提示。 */
@@ -60,10 +62,12 @@ export class DiagramPane {
   readonly overlay: HTMLElement;
 
   private kinds: DiagramKindInfo[] | null = null;
+  /** 〔RM1c〕上面那份注册表是哪台机器的。 */
+  private kindsOrigin: Origin = LOCAL_ORIGIN;
   private current = BUBBLE_VIEW;
   private knobs: Knobs = { certain_only: true, exclude_tests: true, max_nodes: 12 };
   private seq = 0;
-  private last: { info: DiagramKindInfo; view: PanoramaDiagram; stamp: IndexStamp | null; repo: string } | null =
+  private last: { info: DiagramKindInfo; view: PanoramaDiagram; stamp: IndexStamp | null; repo: RepoAt } | null =
     null;
 
   private canvasEl: HTMLElement;
@@ -105,12 +109,17 @@ export class DiagramPane {
     return this.current;
   }
 
-  /** 取一次注册表（打开全景时调；取过就不再取 —— 它编在二进制里，不会变）。 */
+  /**
+   * 取一次注册表（打开全景时调；同一台机器取过就不再取 —— 它编在那台的全景程序里，不会变）。
+   * 〔RM1c〕按机器取：本机那份编在 monitor 里，远端那份问那台机器上的全景程序（两台版本可以不同）。
+   */
   async ensureKinds(): Promise<void> {
-    if (this.kinds) return;
+    const origin: Origin = this.host.repo()?.origin ?? LOCAL_ORIGIN;
+    if (this.kinds && this.kindsOrigin === origin) return;
     try {
-      const got = await api.diagramKinds();
+      const got = await api.diagramKinds(origin);
       this.kinds = Array.isArray(got) ? got : null;
+      this.kindsOrigin = origin;
     } catch (e) {
       this.host.toast("读不到图种清单", String(e));
       this.kinds = null;
@@ -127,10 +136,12 @@ export class DiagramPane {
     }
   }
 
-  /** 仓变了：回到气泡视图（上一张图属于上一个仓）。 */
+  /** 仓变了：回到气泡视图（上一张图属于上一个仓）；换了机器就按新机器重取注册表。 */
   repoChanged(): void {
     this.last = null;
     void this.setKind(BUBBLE_VIEW);
+    const origin: Origin = this.host.repo()?.origin ?? LOCAL_ORIGIN;
+    if (this.kinds && this.kindsOrigin !== origin) void this.ensureKinds();
   }
 
   /** 切图。`BUBBLE_VIEW` = 回到气泡全景。 */
@@ -164,7 +175,7 @@ export class DiagramPane {
     this.showNote("画图中…");
     try {
       const [view, stamp] = await Promise.all([api.diagram(repo, info.id, req), this.host.stamp(repo)]);
-      if (mine !== this.seq || this.host.repo() !== repo || this.current !== info.id) return;
+      if (mine !== this.seq || !api.sameRepo(this.host.repo(), repo) || this.current !== info.id) return;
       this.last = { info, view, stamp, repo };
       this.paint(view, info);
     } catch (e) {
@@ -255,7 +266,7 @@ export class DiagramPane {
     const body = l.view.diagram.body;
     const center = "center" in body && typeof body.center === "string" ? body.center : null;
     return clipForDiagram(
-      { repo: l.repo, stamp: l.stamp },
+      { repo: api.repoLabel(l.repo), stamp: l.stamp },
       { id: l.info.id, title: l.info.title },
       honestyLine(l.view.diagram.honesty),
       l.view.mermaid,

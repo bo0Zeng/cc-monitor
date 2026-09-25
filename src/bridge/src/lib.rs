@@ -71,6 +71,7 @@ mod logging;
 mod mcp; // F87（#50+#51）：MCP 管理（读跨 scope 展示 / 写只项目 .mcp.json，SS-14）
 mod messages;
 mod panorama;
+mod panorama_call; // 〔RM1c · 第四波〕代码全景经那台机器的后端走（V108 选 B）：`panorama_call(origin, op, repo, args)`
 mod panorama_seam_registry; // P7c-2 第一刀：引擎住哪一侧要可换（整体 #[cfg(test)]）
 mod parser;
 mod paths;
@@ -1479,6 +1480,7 @@ pub fn run() {
             panorama::panorama_remove_doc_link,
             panorama::panorama_diagram_kinds,
             panorama::panorama_diagram,
+            panorama_call::panorama_call,
             port_forward::start_forward,
             port_forward::stop_forward,
             port_forward::list_forwards,

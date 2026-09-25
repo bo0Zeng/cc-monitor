@@ -57,7 +57,7 @@ describe("F71 点文件列符号 + 文档漂移", () => {
     vi.mocked(api.symbolsInFile).mockResolvedValue([sym("lib.rs#alpha", "alpha"), sym("lib.rs#beta", "beta")]);
     probe(v).openFileDetail(bubble("lib.rs"));
     await flush();
-    expect(api.symbolsInFile).toHaveBeenCalledWith("/repo", "lib.rs");
+    expect(api.symbolsInFile).toHaveBeenCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" }, "lib.rs");
     const rows = probe(v).sidebarEl.querySelectorAll(".panorama-sym-row");
     expect(rows.length).toBe(2);
     expect(rows[0].textContent).toContain("alpha");
@@ -70,7 +70,7 @@ describe("F71 点文件列符号 + 文档漂移", () => {
     await flush();
     (probe(v).sidebarEl.querySelector(".panorama-sym-row") as HTMLButtonElement).click();
     await flush();
-    expect(api.node).toHaveBeenCalledWith("/repo", "lib.rs#alpha");
+    expect(api.node).toHaveBeenCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" }, "lib.rs#alpha");
   });
 
   it("文件无符号 → 提示，不列行", async () => {
@@ -89,7 +89,7 @@ describe("F71 点文件列符号 + 文档漂移", () => {
     vi.mocked(api.drift).mockResolvedValue(items);
     await probe(v).showDrift();
     await flush();
-    expect(api.drift).toHaveBeenCalledWith("/repo");
+    expect(api.drift).toHaveBeenCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" });
     const rows = probe(v).sidebarEl.querySelectorAll(".panorama-drift-row");
     expect(rows.length).toBe(2);
     expect(probe(v).sidebarEl.textContent).toContain("文件不存在");

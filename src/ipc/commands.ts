@@ -411,6 +411,13 @@ export const commands = {
   aliases_install: (args: { aliases: Alias[]; rcPath?: string | null }) =>
     invoke<AliasInstallReport>("aliases_install", args),
 
+  /**
+   * 〔RM1c · 第四波〕代码全景**经那台机器的后端**走（V108 选 B）：发帧命令 `panorama`，拿回 `result`。
+   * `result` 的形状随 `op` 而定（与本机那几条逐字同形）⇒ 这里是 `unknown`，由 `panorama/api.ts` 按 op 收窄。
+   */
+  panorama_call: (args: { origin: Origin; op: string; repo: string | null; args: unknown }) =>
+    invoke<unknown>("panorama_call", args),
+
   /** 某符号的被调者边。`depth` 是 `u32` ⇒ `number`。 */
   panorama_callees: (args: { repo: string; symbol: string; depth: number }) =>
     invoke<Edge[]>("panorama_callees", args),
