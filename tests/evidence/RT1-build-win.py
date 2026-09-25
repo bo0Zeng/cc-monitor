@@ -57,6 +57,9 @@ def main():
     finally:
         open(toml, "wb").write(orig)
         os.utime(toml)
+        # 铺进去的是 **Windows** 字节（`.target` = windows-gnu）：留着 ⇒ 本机 Linux 构建在
+        # `build.rs::embed_native_backend` 的 ① 号校验上当场 panic（2026-09-25 现打过一次）。用完即撤。
+        shutil.rmtree(NATIVE, ignore_errors=True)
     out = os.path.join(ROOT, ".build", "rt1")
     os.makedirs(out, exist_ok=True)
     for src, exe in (("RT1-fake-claude.rs", "claude.exe"), ("RT1-relay-bench.rs", "rt1-bench.exe")):
