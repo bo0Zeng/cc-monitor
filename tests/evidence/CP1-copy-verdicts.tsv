@@ -369,8 +369,8 @@ src/bridge/src/filewin/copy.rs:478	别覆盖	保留	[对外] 按钮（action 档
 src/bridge/src/filewin/copy.rs:450	正在那台机器上复制 {name} …	保留	[对外] 复制在跑时那一行状态（〔F7a〕后端那一趟没有进度、取消不掉，只说「在跑」与在哪儿跑）
 src/bridge/src/filewin/download.rs:56	下载	保留	[对外] 按钮字面
 src/bridge/src/filewin/download.rs:196	内部状态不对：现在问的不是落点	改·§2.1	[对外] DestVerdict::Rejected 经 shell.rs:1124 画在对话框上；整句讲内部状态机 新词:落点 →「出错了，请重新选择保存位置」
-src/bridge/src/filewin/editor.rs:197	这份存回去要发 {} 字节，后端一次最多收 {} 字节，多了 {} 字节，没有发出去。\n         引号、反斜杠和控制字符在发送时会变长，删掉至少这么多再存。	保留	[对外] 存盘前本地拒掉那句（F9 续）：说实际多大、上限多少、多了多少、没发出去，再给一条用户做得到的办法
-src/bridge/src/filewin/editor.rs:208	只读：这份存回去要发 {} 字节，后端一次最多收 {} 字节。可以看、可以复制，不能改。	保留	[对外] 打开时就判定存不回、进只读那句（F9 续）：原因＋能做什么、不能做什么
+src/bridge/src/filewin/editor.rs:253	这份有 {len} 字节，超过 {MAX_EDIT_BYTES} 字节的上限，多了 {} 字节，没有发出去。	保留	[对外] 存盘前本地拒掉那句（F9c：敲过 8 MiB 上限）：实际多大、上限多少、多了多少、没发出去，一句一个事实
+src/bridge/src/filewin/editor.rs:260	存到第 {} 段（共 {total} 段）时断了：{why}	保留	[对外] 分块存盘送到一半没成那句（F9c）：断在哪一段、共几段，后面接对端原话；落进编辑面「存不回去：」那一格
 src/bridge/src/filewin/editor.rs:128	编辑	保留	[对外] 按钮字面
 src/bridge/src/filewin/editor.rs:136	这是一个目录	保留	[对外] 不能编辑的原因，短
 src/bridge/src/filewin/editor.rs:140	这个名字不是合法 UTF-8，寻址不到真字节	改·§2.1	[对外] why_not_editable 进 listing.error；「寻址不到真字节」讲实现 →「文件名含非 UTF-8 字符，不能在这里编辑」
@@ -401,7 +401,7 @@ src/bridge/src/filewin/fonts.rs:256	够大太失契如字存它完定容对寻�
 src/bridge/src/filewin/fonts.rs:257	用的监盖目相看真着确秒称程空窗端符第答管类索约级组终经结给绝编者而能节范落行表被西要覆见览解认许话该说请读负败走起超趟跑路跳身载辑输过运还这进远连送通道那部都里重销错闭问限除非面须首高（），：；？📁📄🔗	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
 src/bridge/src/filewin/fonts.rs:257	共向式幕横模滚长	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
 src/bridge/src/filewin/fonts.rs:258	事任何头选项	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
-src/bridge/src/filewin/fonts.rs:271	么反变号控收斜杠至	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
+src/bridge/src/filewin/fonts.rs:293	变收	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔F9c 与 FW34 合并〕F9c 删掉的 9 个字里仍被 preview / workspace 用着的两个）
 src/bridge/src/filewin/fonts.rs:277	×★☆书加懂找移签	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕书签栏那几个字）
 src/bridge/src/filewin/fonts.rs:287	●＋双另右好己底忙恰标栏自页	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕标签页 ＋ 双栏那几个字）
 src/bridge/src/filewin/fonts.rs:288	处搬板留老	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕搬家那一跳两句的字）

@@ -413,8 +413,6 @@ pub struct Doc {
     pin: Option<Vec2>,
     laid: Vec<Laid>,
     tally: Tally,
-    /// 🔴〔F9 续〕只读（打开时就判定存不回，[`Pane::read_only`]）⇒ 全文的三个改写口一个都不开。
-    read_only: bool,
 }
 
 fn fingerprint(text: &str) -> (usize, usize) {
@@ -447,7 +445,6 @@ impl Doc {
             pin: Some(Vec2::ZERO),
             laid: Vec::new(),
             tally: Tally::default(),
-            read_only: false,
         }
     }
 
@@ -492,9 +489,6 @@ impl Doc {
 
     /// 🔴 **全文唯一的改写口**：换掉 `[range)`，行结构增量跟上，记一步撤销。
     fn replace(&mut self, text: &mut String, range: Range<usize>, with: &str, typing: bool) {
-        if self.read_only {
-            return;
-        }
         let before = (self.cur, self.anc);
         let removed = text[range.clone()].to_string();
         text.replace_range(range.clone(), with);
@@ -538,9 +532,6 @@ impl Doc {
     }
 
     fn undo(&mut self, text: &mut String) {
-        if self.read_only {
-            return;
-        }
         let Some(s) = self.undo.pop() else { return };
         let r = s.at..s.at + s.inserted.len();
         text.replace_range(r, &s.removed);
@@ -552,9 +543,6 @@ impl Doc {
     }
 
     fn redo(&mut self, text: &mut String) {
-        if self.read_only {
-            return;
-        }
         let Some(s) = self.redo.pop() else { return };
         let r = s.at..s.at + s.removed.len();
         text.replace_range(r, &s.inserted);
@@ -1171,10 +1159,6 @@ fn carried_cursor(ctx: &egui::Context, text: &str) -> usize {
 /// 只多了一个显式 id（切进大文件模式时接光标用）。
 pub fn show(ui: &mut Ui, pane: Option<&mut Pane>) {
     let Some(p) = pane else { return };
-    // 🔴〔F9 续〕打开那一刻就判定存不回 ⇒ 顶上一直摆着那句话，两支都只读。
-    if let Some(why) = &p.read_only {
-        ui.colored_label(egui::Color32::from_rgb(0xFF, 0xA5, 0x00), why);
-    }
     let slot = p.big.clone();
     let mut g = slot.lock();
     if g.is_none() {
@@ -1184,21 +1168,7 @@ pub fn show(ui: &mut Ui, pane: Option<&mut Pane>) {
         }
     }
     match g.as_mut() {
-        Some(doc) => {
-            doc.read_only = p.read_only.is_some();
-            doc.ui(ui, &mut p.text);
-        }
-        None if p.read_only.is_some() => {
-            // `&str` 这一形 `TextBuffer` 不可改：能选、能复制，敲键不落字。
-            let mut view: &str = &p.text;
-            ui.add(
-                egui::TextEdit::multiline(&mut view)
-                    .id(Id::new(NORMAL_ID))
-                    .desired_rows(VIEW_ROWS)
-                    .desired_width(f32::INFINITY)
-                    .code_editor(),
-            );
-        }
+        Some(doc) => doc.ui(ui, &mut p.text),
         None => {
             ui.add(
                 egui::TextEdit::multiline(&mut p.text)

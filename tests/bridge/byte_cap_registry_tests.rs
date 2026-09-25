@@ -45,6 +45,10 @@ const ALLOWED_SEMANTICS: &[&str] = &[
     // 致命错误去重连，而超长行只是这一行坏了）；而只写日志的话用户看到的是
     // 「这条会话少了一行」且无从得知为什么。⇒ 两者都不够，需要一个新名字。
     "丢弃+带身份报告",
+    // ⚠ 第九种，**论证后**加〔F9c · 第四波 09-24〕：窗口存盘时一条请求行的上限（`editor::SAVE_LINE_CAP`，
+    // 与后端入方向一行同值）。越过它**不拒、不截、不丢**：整份切成几块、每块一行、逐块送进暂存区，
+    // 后端读回拼起来 —— 用户的字节一个不少。它与「拒收+回错」的分界就在这里：越界的那一份**照样存成了**。
+    "分块（不丢数据）",
 ];
 
 /// 扫到了但**不是体量上限**的，逐条写清为什么排除。
@@ -149,6 +153,12 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              住 `relay/tee.rs::TeeSink::write_line`，**不是**本表管的那种「用户数据被截断」。",
     ),
     (
+        "ID_SNIFF_BYTES",
+        "〔F9c · 第四波〕**一段嗅探窗口**，不是上限：后端读循环遇到超长行（整行丢弃）时，只看行首这么多字节\
+             去抠信封的 `id`、好让 `line_too_long` 带回请求方的 id（`inbound·rs::sniff_id`）。\
+             越过它什么都不丢、不截 —— `id` 不在这一段里就回空串，即改动之前的行为。",
+    ),
+    (
         "REQUEST_ID_ROOM",
         "〔F9 续 09-24〕**一个字段最长多少字节**（请求行里 `id` 那一格的位子），不是上限：\
              窗口量存盘那一行时按最长的 id 算，只会比真发的那一行长、不会短。\
@@ -165,7 +175,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
         "BIG_TOTAL_BYTES",
         "同上，全文那一维的门槛（全文超过它进大文件模式）。〔F9 续〕按真敲键重打读数后 1 MiB → 256 KiB；\
-             编辑上限同拍抬到 1 MiB（`editor::MAX_EDIT_BYTES`）⇒ 这一条从此**在打开时就会开火**。",
+             编辑上限同拍抬到 1 MiB（`editor::MAX_EDIT_BYTES`；〔F9c〕再抬到 8 MiB）⇒ 这一条从此**在打开时就会开火**。",
     ),
     (
         "FRAME_BUDGET_US",
@@ -229,15 +239,15 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     // 〔F7c 收尾 09-24〕池子那一份同值的 `MAX_EDIT_BYTES`（「SFTP 在线编辑的文件体量」）随那条读文本命令一起走了。
     // 〔F7a · 第三波 09-24〕文件窗口编辑器的上限**搬回窗口**（它答「文本控件打字卡不卡」，
     //   是窗口的偏好）：每趟经 `max_bytes` 送给后端 `files-read-text`，后端按它整趟拒、不截断。
-    // 🔴〔F9 续 09-24〕256 KiB → **1 MiB**，而且它从此答的是「**存不存得回去**」：存盘把整份内容
-    //   装在一条请求行里，后端入方向一行上限就是 `inbound.rs::MAX_LINE_BYTES`（本表下面那一行）
-    //   ⇒ 本常量**就是**那个数（两 crate 引不到对方 ⇒ 对 E 读两侧源码钉相等）。一个数两处用：
-    //   打开前按大小拒 · 存之前按真序列化出来的那一行拒（`editor::save_fits`，多一个字节就不发）。
+    // 🔴〔F9 续 09-24〕256 KiB → 1 MiB（那时存盘整份装一行，上限钉成后端入方向一行）。
+    // 🔴〔F9c · 第四波 09-24〕1 MiB → **8 MiB**：装不进一行的分块走暂存区（下面 `SAVE_LINE_CAP` 那一行），
+    //   能存多大改由后端 `files-commit-text` 的天花板定，而它就是 `files/mod.rs::READ_TEXT_MAX_BYTES`
+    //   （存得回的要读得回来）⇒ 对 E 改钉这一对。
     (
         "src/bridge/src/filewin/editor.rs",
         "MAX_EDIT_BYTES",
-        1 << 20,
-        "文件窗口编辑器能打开的文本体量 ＝ 存盘那条请求行（`files-write-text`）序列化后的上限",
+        8 * 1024 * 1024,
+        "文件窗口编辑器能打开、能存回的文本体量 ＝ 后端 `files-read-text` / `files-commit-text` 的天花板",
         "拒收+回错",
     ),
     // 〔FW34 · 第四波 09-24〕预览自己的上限（**刻意不借编辑上限**：预览跟着光标走，↑↓ 一路按下去
@@ -249,6 +259,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         64 * 1024,
         "文件窗口预览一份文本的体量（每挪一次光标一趟）",
         "拒收+回错",
+    ),
+    // 〔F9c · 第四波 09-24〕存盘时一条请求行最多多长 ＝ 后端入方向一行（对 F 读两侧源码钉相等）。
+    (
+        "src/bridge/src/filewin/editor.rs",
+        "SAVE_LINE_CAP",
+        1 << 20,
+        "窗口存盘时一条请求行（`files-write-text` 整份 / `files-stage-chunk` 一块）序列化后的长度",
+        "分块（不丢数据）",
     ),
     (
         "src/bridge/src/ssh_source.rs",
@@ -874,15 +892,26 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
     // 它断言两侧生产段**都不许**再出现 `const MAIN_CAP` / `const TOOL_CAP` 之类的定义。
     // ⇒ 这两个数搬回任何一侧，当场红。
 
-    // 对 E〔F9 续 09-24〕：窗口的编辑上限**就是**后端入方向一行的上限（存盘整份装一行）⇒ 钉相等。
-    //   窗口多给一个字节 ⇒ 本地放行、后端整行丢弃（回不带 id 的错、窗口熬满写预算才超时）；
-    //   窗口少给 ⇒ 存得回的文件被本地冤拒。两个方向都是错。
+    // 对 E〔F9 续 09-24 立；F9c 第四波改钉〕：窗口的编辑上限**就是**后端读 / 提交存盘的天花板 ⇒ 钉相等。
+    //   窗口多给 ⇒ 打得开、改得了，存的时候后端 `files-commit-text` 拒（`bytes` 越过天花板）、读的时候
+    //   `files-read-text` 拒 `max_bytes`；窗口少给 ⇒ 存得回的文件被本地冤拒。两个方向都是错。
+    //   〔F9c〕上一版这一对钉的是「编辑上限 == 后端入方向一行」（那时存盘整份装一行）；那一对换成下面的对 F。
     let e1 = by("src/bridge/src/filewin/editor.rs", "MAX_EDIT_BYTES");
-    let e2 = by("src/backend/inbound.rs", "MAX_LINE_BYTES");
+    let e2 = by("src/backend/files/mod.rs", "READ_TEXT_MAX_BYTES");
     assert_eq!(
         e1, e2,
-        "窗口编辑上限与后端入方向一行上限漂开了（窗口 {e1} / 后端 {e2}）。\
-             存盘那条请求整份装在一行里，本地那道拒（`editor::save_fits`）拿的就是这个数。"
+        "窗口编辑上限与后端读 / 提交存盘的天花板漂开了（窗口 {e1} / 后端 {e2}）。\
+             存得回的要读得回来：`files-read-text` 的 `max_bytes` 与 `files-commit-text` 的 `bytes` 都按它拒。"
+    );
+
+    // 对 F〔F9c · 第四波〕：窗口存盘时一行的上限 ＝ 后端入方向一行的上限 ⇒ 钉相等。
+    //   窗口多给一个字节 ⇒ 后端整行丢弃（`line_too_long`）；少给 ⇒ 只是多切几块（不错，但两份数漂了就该有人看）。
+    let f1 = by("src/bridge/src/filewin/editor.rs", "SAVE_LINE_CAP");
+    let f2 = by("src/backend/inbound.rs", "MAX_LINE_BYTES");
+    assert_eq!(
+        f1, f2,
+        "窗口存盘一行的上限与后端入方向一行上限漂开了（窗口 {f1} / 后端 {f2}）。\
+             分块那一支按它切（`editor::plan_chunks`），每块那一行都得装进后端的一行。"
     );
 
     // 对 C：注释写的是「同**量级**」，而且**今天就不等** ⇒ 钉比值，不钉相等。
