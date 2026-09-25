@@ -413,7 +413,8 @@ pub fn observe(res: &PathResolution, fs: &FsProbe) -> SurfaceState {
         // 所以那边该指路而不是耸肩。
         PathResolution::WindowsProfile => SurfaceState::Undetermined {
             why: if cfg!(target_os = "windows") {
-                "路径由 PowerShell 决定；准确状态见「终端集成」页（那里会读 $PROFILE 并查围栏块）"
+                // 〔DP1 · 第四波〕从前这句指「终端集成」页 —— AL1c 起那一页就没有了，今天在「本机 → 工具 → 别名」。
+                "路径由 PowerShell 决定；准确状态见「本机 → 工具 → 别名」（那里会读 $PROFILE 并查 cc-monitor 加的那一段）"
                     .into()
             } else {
                 "不适用：本机不是 Windows，没有 PowerShell $PROFILE 这个东西".to_string()
