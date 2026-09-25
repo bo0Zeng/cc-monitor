@@ -381,8 +381,12 @@ cell(
     cwd="remote-daemon-proto/",
     cmd="cargo check --all-targets --target x86_64-pc-windows-gnu",
     **{
-        "tests/evidence/": ("部", "〔现打 09-19〕**这棵树里有一条活的 `[[bench]]`** —— `src/backend/Cargo.toml` 的 `path = '../../tests/evidence/S7-history-read.rs'`，本格带 `--all-targets` ⇒ 它**被跨目标编译**。★ 有现物：步 8 改名把这一份漏了（`CARGO_BIN_EXE_cc-monitor-remote`），宿主 `cargo test` 全绿，**只有本格红**。⚠ 这棵树其余 383 份（读数 `.md` ／ 一次性量具 `.py`）本格一份不碰"),
-        "tests/": ("部", "〔现打 09-19〕本格带 `--all-targets` ⇒ test target 也编 ⇒ 盖 `tests/backend/` 那 75 份。★ 这条有现物：步 8 改名漏了 `tests/evidence/S7-history-read.rs` 里的 `CARGO_BIN_EXE_cc-monitor-remote`，宿主 `cargo test` 全绿，**只有本格红**"),
+        "tests/evidence/": blind("〔TQ1 09-24〕这棵树里原有的那一条活 `[[bench]]`（秤 7）搬去了 `tests/benches/`（bench 源码的唯一住址）"
+                                 "⇒ 这棵树今天没有一份被本格编译；它的读数 `.md` ／ 一次性量具 `.py` 本格一份不碰。"
+                                 "（09-19 的现物照记：步 8 改名漏了那份 bench 里的 `CARGO_BIN_EXE_cc-monitor-remote`，宿主 `cargo test` 全绿，**只有本格红**）"),
+        "tests/": ("部", "〔现打 09-19〕本格带 `--all-targets` ⇒ test target 也编 ⇒ 盖 `tests/backend/` 那 75 份；"
+                         "〔TQ1 09-24〕bench target 也编 ⇒ 盖 `tests/benches/` 下 `[[bench]]` 指着的那份（秤 7）。"
+                         "★ 这条有现物：步 8 改名漏了秤 7 里的 `CARGO_BIN_EXE_cc-monitor-remote`，宿主 `cargo test` 全绿，**只有本格红**"),
         "src/backend/": (PART, "唯一成员 `cc-monitor-remote` 的**生产段 ＋ test 档**"
                                        "（`--all-targets` 是承重的：云端那 10 个错一个都不在生产段）"
                                        "在 Windows target 上**编得过**。"
