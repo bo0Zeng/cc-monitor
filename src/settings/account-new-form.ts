@@ -46,9 +46,9 @@ export type NewAccountRequest =
 /**
  * 〔第四波 ST2 · `70 §4.4` 线框里那一格〕Base URL 的**表单侧**形状关：留空合法（= 默认上游）；
  * 要写就得是 `https://…`，或者连本机回环的 `http://…`（明文 http 发出去的是那把 key ——
- * 账号层装表时的同一条规矩，`apikey/table.rs` 那句「base_url 是明文 http 而主机不是本机回环」）。
+ * 上游选择装表时的同一条规矩，`upstream/table.rs` 那句「base_url 是明文 http 而主机不是本机回环」）。
  *
- * ⚠ 这是**提前说**，不是唯一的关：后端写口还有一道形状关，账号层装表时还会再判一次并出声。
+ * ⚠ 这是**提前说**，不是唯一的关：后端写口还有一道形状关，上游选择装表时还会再判一次并出声。
  * 这里只为让「创建」在填错时是灰的，不让用户建完号才发现端点没配上。
  */
 export function checkBaseUrl(raw: string): { ok: true; value: string | undefined } | { ok: false; reason: string } {

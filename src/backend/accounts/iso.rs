@@ -5,7 +5,7 @@
 //! | `--acct-iso-status` | 装没装、装在哪 | monitor 经 SSH 跑 `PATH="$HOME/.local/bin:$PATH" command -v cc-acct-iso` |
 //! | `--acct-iso-shellinit` | `cc-acct-iso shellinit` 吐的那段 rc 片段（原样） | monitor 经 SSH 跑 `cc-acct-iso shellinit` |
 //!
-//! # 为什么住账号层、不住 `observe/`
+//! # 为什么住账号域、不住 `observe/`
 //!
 //! 用户逐字：「**中转层不要有账号, 账号就账号中转就中转**」—— 账号的事归本层（`accounts/`），
 //! 不往 `relay/` 里塞。而 `observe/` 是**只读层、不起进程**（`layering_guard` 那条
@@ -117,7 +117,7 @@ pub(crate) fn shellinit_outcome(
 
 /// 一次查询的**答案**：退出码 ＋ 要写到 stdout / stderr 的字节。
 ///
-/// ⚠ **本层不自己 `print`**：`accounts/` 同时是 `--relay` 进程的层 2，它的每一条日志都在
+/// ⚠ **本层不自己 `print`**：`accounts/` 里的上游选择同时挂在 `--relay` 进程上，它的每一条日志都在
 /// `relay::creds_guard` 的白名单底下（前缀 `[apikey]`、插值逐项登记 —— 防 key 漏进日志）。
 /// 查询的输出不是日志、也不该带那个前缀 ⇒ 这里只**产出**答案，写出去的那一下归进程入口
 /// （`main.rs` 的 `emit_answer`，与 `std::process::exit` 同一处）。
