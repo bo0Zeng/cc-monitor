@@ -234,11 +234,20 @@ const RBIND_TOKEN_ENV: &str = "CCM_RBIND_TOKEN";
 ///
 /// ⚠ 与 [`pane_of`] 的 `trim` 刻意不同：pane id 是 tmux 注的、历史上见过带空白的读法；
 /// 令牌是**我们自己注的**，我们知道它长什么样，没有任何理由去宽容它。
-fn token_is_safe(token: &str) -> bool {
+pub(crate) fn token_is_safe(token: &str) -> bool {
     token.len() == 32
         && token
             .bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// 〔S5 · 第四波〕令牌那个变量名，给 `ccm` 直路读**自己**的环境用（`control/ccm/plan.rs::Env::from_process`）。
+///
+/// ⚠ 刻意是一个函数、不把上面那行 `const` 改成 `pub(crate)`：那一行的写法被桥侧
+/// `payload_tests.rs::the_launch_token_env_var_has_the_same_name_on_both_halves` 按行首逐字认。
+/// 名字仍然只住那一行 —— 这里只是把它借出去，不是第二份。
+pub(crate) fn rbind_token_env() -> &'static str {
+    RBIND_TOKEN_ENV
 }
 
 /// **把 `pid` 那个进程的启动期令牌读出来**（`CCM_RBIND_TOKEN`），核过形状才回。
