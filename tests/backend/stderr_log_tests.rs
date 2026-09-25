@@ -10,10 +10,13 @@
 //!
 //! # 判据
 //!
-//! - L1 滚动（真文件）：累计超上限 ⇒ 盘上恰好两份、当前那份 ≤ 上限、旧那份逐字节是上一段；起来时已有当前那份 ⇒ 它变成旧的；
-//!   写不进去（目录不在）⇒ 字节记丢、不 panic。期望由写进去的字节现算（异源：不看实现怎么切）。
-//! - L2 生产接线（真子进程 ＋ 真 fd 2）：子进程走 `install_from_env`（`main.rs` 真调的那一个），之后它 `eprintln!` 的、`tracing` 写的、
-//!   **它起的子进程**写 stderr 的，全落进那份文件；它自己的 stderr 管子上**一个字节都没有**（fd 真被换走了）。没交路径 ⇒ 零文件（另一向）。
+//! - L1 滚动（真文件 ＋ 记账替身当 fd 2）：每写一段之前看一眼（与 `tracing` 写者同一个口 `check`）⇒ 盘上恰好两份、
+//!   旧 ＋ 当前（去掉说明行）是写入流的尾巴、有说明行；起来时已有当前那份 ⇒ 它变成旧的（两向）；建不了 ⇒ `Err`、fd 不碰。
+//!   期望不照实现的切法算（异源：只判性质）。
+//! - L2 生产接线（真子进程 ＋ 真 fd 2）：子进程走 `install_from_env`（`main.rs` 真调的那一个），之后 `eprintln!` 的、
+//!   **它起的子进程**写 stderr 的，全落进那份文件；写满上限之后经 `stderr_writer`（`main.rs` 装给 `tracing` 的那一个）真滚一次；
+//!   然后**立刻 `exit(7)`** —— 前面的话一个字都不丢（先前「管子 ＋ 读线程」那一版就丢在这一格）；
+//!   它自己原来那根 stderr 管子上这几行一行都没有（fd 真被换走了）。没交路径 ⇒ 零文件（另一向）。
 //!
 //! # 买不到
 //!
@@ -53,20 +56,54 @@ fn body_of(bytes: Vec<u8>) -> (bool, Vec<u8>) {
     }
 }
 
-/// L1 ★ 滚动：上限 200、逐块写 9 块 × 30 字节（每块内容不同）⇒ 盘上恰好两份（`.log` 里）、每份 ≤ 上限；
-/// 旧 ＋ 当前（去掉说明行）拼起来是写进去的字节流的**尾巴**、当前那份以最后一块收尾；当前那份第一行说清旧的挪去了哪、再早的丢了。
-/// 期望不照实现的切法算（异源）：只判「没丢尾、没乱序、有说明、没超限」这几条性质。
+/// 记账替身：「fd 2」指着哪份文件；写经它落到那份上。
+#[derive(Default)]
+struct FakeFd2 {
+    at: Option<std::fs::File>,
+    pointed: usize,
+}
+
+impl Target for FakeFd2 {
+    fn len(&self) -> Option<u64> {
+        self.at
+            .as_ref()
+            .and_then(|f| f.metadata().ok())
+            .map(|m| m.len())
+    }
+    fn point_at(&mut self, f: &std::fs::File) -> Result<(), String> {
+        self.at = Some(f.try_clone().map_err(|e| e.to_string())?);
+        self.pointed += 1;
+        Ok(())
+    }
+}
+
+fn put(r: &mut Roller<FakeFd2>, bytes: &[u8]) {
+    use std::io::Write;
+    r.check();
+    let mut f = r
+        .target
+        .at
+        .as_ref()
+        .expect("还没指向任何文件")
+        .try_clone()
+        .unwrap();
+    f.write_all(bytes).unwrap();
+}
+
+/// L1 ★ 滚动：上限 200、每写一段之前看一眼（`tracing` 写者同一个口）、写 9 段 × 30 字节（每段内容不同）⇒
+/// 盘上恰好两份（`.log` 里）；旧 ＋ 当前（去掉说明行）是写进去那一串的**尾巴**、当前那份以最后一段收尾；
+/// 当前那份第一行说清旧的挪去了哪、再早的丢了。期望不照实现的切法算（异源）：只判这几条性质。
 #[test]
 fn it_rolls_at_the_cap_and_keeps_exactly_one_old_file() {
     let d = tmp_dir("roll");
     let cur = d.join("stderr.log");
     let cap = 200u64;
-    let mut r = Roller::start(cur.clone(), cap);
+    let mut r = Roller::start(cur.clone(), cap, FakeFd2::default()).expect("起不来");
     let chunks: Vec<Vec<u8>> = (0..9u8).map(|i| vec![b'a' + i; 30]).collect();
     for c in &chunks {
-        r.write(c);
+        put(&mut r, c);
     }
-    assert_eq!(r.dropped(), 0, "一个字节都不该丢");
+    assert!(r.target.pointed >= 2, "一次都没滚");
     assert_eq!(
         log_names(&d),
         vec!["stderr.log".to_string(), "stderr.old.log".to_string()],
@@ -74,9 +111,10 @@ fn it_rolls_at_the_cap_and_keeps_exactly_one_old_file() {
     );
     let cur_raw = std::fs::read(&cur).unwrap();
     let old_raw = std::fs::read(old_path_of(&cur)).unwrap();
+    // 检查在写之前 ⇒ 一份最多超出上限一段。
     assert!(
-        cur_raw.len() as u64 <= cap && old_raw.len() as u64 <= cap,
-        "有一份超了上限"
+        cur_raw.len() as u64 <= cap + 30 && old_raw.len() as u64 <= cap + 30,
+        "有一份超出上限不止一段"
     );
     let (noted, cur_body) = body_of(cur_raw.clone());
     assert!(noted, "滚过之后当前那份第一行没有说明");
@@ -93,7 +131,7 @@ fn it_rolls_at_the_cap_and_keeps_exactly_one_old_file() {
         all.ends_with(&tail),
         "旧 ＋ 当前不是写进去那一串的尾巴（丢了中间 / 乱了序）"
     );
-    assert!(cur_body.ends_with(&chunks[8]), "当前那份没以最后一块收尾");
+    assert!(cur_body.ends_with(&chunks[8]), "当前那份没以最后一段收尾");
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -105,8 +143,8 @@ fn a_restart_moves_the_last_run_aside() {
     let cur = d.join("stderr.log");
     std::fs::write(old_path_of(&cur), b"older").unwrap();
     std::fs::write(&cur, b"last run").unwrap();
-    let mut r = Roller::start(cur.clone(), 1000);
-    r.write(b"this run");
+    let mut r = Roller::start(cur.clone(), 1000, FakeFd2::default()).expect("起不来");
+    put(&mut r, b"this run");
     let (noted, body) = body_of(std::fs::read(&cur).unwrap());
     assert!(noted, "挪了上一次那份却没说");
     assert_eq!(body, b"this run");
@@ -114,26 +152,21 @@ fn a_restart_moves_the_last_run_aside() {
     assert_eq!(log_names(&d).len(), 2);
     let d2 = tmp_dir("fresh");
     let cur2 = d2.join("stderr.log");
-    let mut r2 = Roller::start(cur2.clone(), 1000);
-    r2.write(b"first");
+    let mut r2 = Roller::start(cur2.clone(), 1000, FakeFd2::default()).expect("起不来");
+    put(&mut r2, b"first");
     assert_eq!(std::fs::read(&cur2).unwrap(), b"first");
     assert_eq!(log_names(&d2), vec!["stderr.log".to_string()]);
     let _ = std::fs::remove_dir_all(&d);
     let _ = std::fs::remove_dir_all(&d2);
 }
 
-/// L1 另一向：写不进去（目录不在）⇒ 字节记丢、不 panic、`pump` 照样把源读到底。
+/// L1 另一向：建不了（目录不在）⇒ `Err`，「fd 2」一次都没被指走（输出原样，不指向一个不存在的东西）。
 #[test]
-fn an_unwritable_target_drops_bytes_but_keeps_draining() {
+fn an_unwritable_target_fails_without_touching_the_output() {
     let d = tmp_dir("gone");
     let cur = d.join("no-such-dir").join("stderr.log");
-    let src = std::io::Cursor::new(vec![b'x'; 50_000]);
-    let r = pump(src, Roller::start(cur.clone(), 1 << 20));
-    assert_eq!(
-        r.dropped(),
-        50_000,
-        "读到的字节没有全部记丢 —— 源没被读到底，或者假装写进去了"
-    );
+    let got = Roller::start(cur.clone(), 1 << 20, FakeFd2::default());
+    assert!(got.is_err(), "目录不在却起来了");
     assert!(!cur.exists());
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -158,15 +191,19 @@ const CHILD_MARK: &str = "CCM_NT2_STDERR_CHILD";
 const CHILD_TEST_NAME: &str = "stderr_log::tests::stderr_log_child_entry_point";
 const DONE: &str = "nt2-child-done";
 
-/// 子进程入口（不是判据 ⇒ `#[ignore]`）：装上（与 `main.rs` 同一个写口）→ 三种方式写 stderr → 等它们落盘 → 退出。
+const AFTER_ROLL: &str = "nt2-after-roll";
+
+/// 子进程入口（不是判据 ⇒ `#[ignore]`）：装上（与 `main.rs` 同一个写口）→ 两种方式写 stderr → 写满上限、经 `stderr_writer`
+/// 真滚一次 → 再写一行 → **立刻 `exit(7)`**（不等、不收尾：前面的话必须已经在盘上）。
 #[test]
 #[ignore = "子进程入口：只在被父判据用 CCM_NT2_STDERR_CHILD 拉起时才跑"]
 fn stderr_log_child_entry_point() {
+    use std::io::Write;
     if std::env::var(CHILD_MARK).is_err() {
         return;
     }
     let got = install_from_env(&|k| std::env::var(k).ok());
-    let Installed::Logging(path) = got else {
+    let Installed::Logging(_) = got else {
         panic!("子进程没装上：{got:?}");
     };
     eprintln!("nt2-eprintln-line");
@@ -177,14 +214,14 @@ fn stderr_log_child_entry_point() {
         .expect("起 sh");
     assert!(st.success());
     eprintln!("{DONE}");
-    // 等读线程把这几行落盘（测试段，不在零定时器的人群里）。
-    for _ in 0..200 {
-        if std::fs::read_to_string(&path).is_ok_and(|s| s.contains(DONE)) {
-            return;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(25));
+    // 写过上限（一块一块，不经 `tracing`），再经 `tracing` 那个写者 ⇒ 这一下必须真滚。
+    let block = vec![b'.'; 64 * 1024];
+    let mut e = std::io::stderr();
+    for _ in 0..=(CAP_BYTES / block.len() as u64) {
+        e.write_all(&block).unwrap();
     }
-    panic!("5 秒内那几行没落进 {}", path.display());
+    writeln!(stderr_writer(), "{AFTER_ROLL}").unwrap();
+    std::process::exit(7);
 }
 
 fn run_child(env_path: Option<&Path>) -> (std::process::ExitStatus, String) {
@@ -212,25 +249,42 @@ fn run_child(env_path: Option<&Path>) -> (std::process::ExitStatus, String) {
     )
 }
 
-/// L2 ★ 生产接线：三种写 stderr 的（`eprintln!` · 继承 stderr 的孙进程 · 标记行）全落进文件，
-/// 而子进程自己的 stderr 管子上**这几行一行都没有**（fd 2 真被换走了，不是「写了两份」）。
+/// L2 ★ 生产接线：两种写 stderr 的（`eprintln!` · 继承 stderr 的孙进程）与标记行全落盘、写满之后经 `tracing` 那个写者真滚了一次
+/// （旧那份装着前面那几行、当前那份以说明行开头、装着滚之后那一行），子进程 `exit(7)` 之前的话一个字都没丢；
+/// 而子进程原来那根 stderr 管子上这几行一行都没有（fd 2 真被换走了，不是「写了两份」）。
 #[test]
 fn the_production_wiring_lands_every_stderr_writer_in_the_file() {
     let d = tmp_dir("child");
     let cur = d.join("stderr.log");
     let (st, pipe) = run_child(Some(&cur));
-    assert!(
-        st.success(),
-        "子进程没正常收工：{st:?}\n它的 stderr：{pipe}"
+    assert_eq!(
+        st.code(),
+        Some(7),
+        "子进程不是按预期 exit(7) 收的：{st:?}\n它的 stderr：{pipe}"
     );
-    let file = std::fs::read_to_string(&cur).expect("那份文件没建出来");
+    assert_eq!(
+        log_names(&d),
+        vec!["stderr.log".to_string(), "stderr.old.log".to_string()],
+        "没滚出恰好两份"
+    );
+    let old = std::fs::read_to_string(old_path_of(&cur)).expect("旧那份不在");
     for line in ["nt2-eprintln-line", "nt2-grandchild-line", DONE] {
-        assert!(file.contains(line), "`{line}` 没落进文件：{file:?}");
+        assert!(old.contains(line), "`{line}` 没落进（滚之前那一份）文件");
         assert!(
             !pipe.contains(line),
             "`{line}` 还出现在原来那根 stderr 上 —— fd 2 没被换走"
         );
     }
+    let now = std::fs::read_to_string(&cur).expect("当前那份不在");
+    assert_eq!(
+        guard_core::find_pinned(&now, "[stderr-log] 上一份挪成 "),
+        Ok(0),
+        "滚之后那份没以说明行开头（或说明行不止一处）"
+    );
+    assert!(
+        now.contains(AFTER_ROLL),
+        "滚之后那一行（紧跟着就 exit 了）没落盘 —— 进程退出前的话丢了：{now:?}"
+    );
     let _ = std::fs::remove_dir_all(&d);
 }
 

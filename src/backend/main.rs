@@ -101,7 +101,8 @@ async fn main() {
 
     // Log to stderr so it never corrupts the stdout wire stream.
     tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
+        // 〔NT2 · S1〕仍是 stderr；写每一行之前看一眼要不要滚（没被交诊断文件路径时它就是 `std::io::stderr`）。
+        .with_writer(stderr_log::stderr_writer)
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),

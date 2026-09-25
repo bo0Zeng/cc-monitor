@@ -11,34 +11,36 @@
 //!
 //! - **谁决定写不写、写哪**：宿主交 [`ENV`]（monitor 只在起**脱离**那条载体时交：路径 `<monitor 数据目录>/logs/backend/stderr.log`，
 //!   那一层目录由它建好）。没交 ⇒ 什么都不做（stdio 载体的 stderr 已经进 monitor 滚动日志；远端经 SSH exec 起的流模式没人交）。
-//! - **接**：fd 2 换成一根管子的写端（`platform::stderr_pipe`），一条线程阻塞读管子（内核事件，零定时器）、写进文件。
-//!   ⇒ 本进程此后一切写 stderr 的（`tracing` · `eprintln!` · panic · 继承 stderr 的子进程）都落盘。
-//! - **上限 ＋ 滚动**：每份 ≤ [`CAP_BYTES`]；这一块写进去会超 ⇒ 当前那份原子挪成旧的（盖掉上一份旧的）、`O_EXCL` 新建一份当前的。
-//!   盘上恒 ≤ 两份。起来那一刻已有当前那份（上一次常驻留下的）⇒ 先挪成旧的 —— 上一次的最后一段留着看。
-//! - **写不进去不拖垮后端**：建不了 / 写失败 ⇒ 照旧把管子读空（丢字节、记数、下一块再试着新建），
-//!   绝不让写 stderr 的那一方堵在一根满了的管子上。读线程不 `panic`。
+//! - **接**：`O_EXCL` 新建那份文件，fd 2 直接指过去（`platform::stderr_fd`）⇒ 本进程此后一切写 stderr 的
+//!   （`tracing` · `eprintln!` · panic · 继承 stderr 的子进程）都**同步**落盘 —— 进程 `exit` 那一刻前面的话一个字都不丢。
+//!   〔先前那一版是「管子 ＋ 读线程」：真二进制现打，`exit(4)` 之前那句「监听口配置不成立」没来得及被读线程搬进文件 ——
+//!   丢的恰是最该留下的那一句（起不来的原因）。换成直指文件，没有线程、没有搬运。〕
+//! - **上限 ＋ 滚动**：`tracing` 每写一行之前看一眼 fd 2 那份多长（[`stderr_writer`]，`main.rs` 装给 `tracing` 的写者）；
+//!   过了 [`CAP_BYTES`] ⇒ 当前那份原子挪成旧的（盖掉上一份旧的）、`O_EXCL` 新建一份、fd 2 换过去，新那份第一行说清
+//!   「上一份挪去了哪、再早的那一份丢了」。盘上恒 ≤ 两份。起来那一刻已有当前那份（上一次常驻留下的）⇒ 先挪成旧的。
+//!   ⚠ 上限按 `tracing` 行检查：两行之间 `eprintln!` / 子进程写的那些不触发检查 ⇒ 一份可以略超上限（超出的量 = 两次
+//!   `tracing` 行之间别人写的字节），不会无界 —— 下一行 `tracing` 就滚。
+//! - **换不过去不拖垮后端**：建不了文件 / 换不了 fd ⇒ stderr 原样（脱离那条载体上就是 null），照常服务。
 //!
 //! # 后端自有状态（`readonly_guard` 第四层）
 //!
 //! 这两份文件是**后端自己的**诊断输出，不是用户数据；路径由宿主交（与 `CCM_HISTORY_METADATA` 同一个先例）。
-//! 动词只用第四层的闭集：`O_EXCL` 新建 · 原子挪（不建目录、不截断、不追加）。写口 [`install_from_env`] 只从 `main.rs` 进。
+//! 动词只用第四层的闭集：`O_EXCL` 新建 · 原子挪（不建目录、不截断、不追加）。本模块的对外口只从 `main.rs` 进。
 //!
 //! # 买不到（如实）
 //!
-//! - 进程被 `SIGKILL` / abort 的那一刻还在管子里的几行落不了盘。
 //! - 远端后端的 stderr（`15 §S1` 表后两行）：本件不接。
+//! - 真 Windows：非 unix 臂回 `Failed`。
 
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 /// 宿主交的那一格：当前那份文件的**完整路径**。缺席 / 空白 ⇒ 不接。
 pub const ENV: &str = "CCM_BACKEND_STDERR_LOG";
 
-/// 每份的字节上限（当前那份 ＋ 旧的那份 ⇒ 盘上 ≤ 两倍）。
+/// 每份的字节上限（当前那份 ＋ 旧的那份 ⇒ 盘上 ≈ 两倍；按 `tracing` 行检查，见模块头注）。
 pub const CAP_BYTES: u64 = 4 << 20;
-
-/// 一次从管子里读多少。
-const CHUNK: usize = 16 * 1024;
 
 /// 当前那份的路径 ⇒ 旧的那份的路径（`stderr.log` ⇒ `stderr.old.log`）。
 pub(crate) fn old_path_of(cur: &Path) -> PathBuf {
@@ -53,107 +55,85 @@ pub(crate) fn roll_note(old: &Path) -> String {
     )
 }
 
-/// 写那两份文件的那一半（纯文件 I/O，判据直接喂它字节）。
-pub(crate) struct Roller {
+/// fd 2 那一头（生产 = 本进程真的 fd 2；判据用一个记账替身）。
+pub(crate) trait Target: Send {
+    /// 此刻那份多长（问不到 ⇒ `None`，不滚）。
+    fn len(&self) -> Option<u64>;
+    /// 此后的输出改落 `f` 那份。
+    fn point_at(&mut self, f: &std::fs::File) -> Result<(), String>;
+}
+
+/// 生产那一头：本进程的 fd 2。
+pub(crate) struct Fd2;
+
+impl Target for Fd2 {
+    fn len(&self) -> Option<u64> {
+        crate::platform::stderr_fd::stderr_len()
+    }
+    fn point_at(&mut self, f: &std::fs::File) -> Result<(), String> {
+        crate::platform::stderr_fd::point_stderr_at(f)
+    }
+}
+
+/// 管那两份文件、决定什么时候滚的那一半。
+pub(crate) struct Roller<T: Target> {
     cur: PathBuf,
     old: PathBuf,
     cap: u64,
-    file: Option<std::fs::File>,
-    written: u64,
-    /// 写不进去而丢掉的字节（只增）。
-    dropped: u64,
+    target: T,
 }
 
-impl Roller {
-    /// 起：已有当前那份 ⇒ 挪成旧的；新建一份当前的。建不了也照样回一个（之后每一块都再试一次）。
-    pub(crate) fn start(cur: PathBuf, cap: u64) -> Roller {
+impl<T: Target> Roller<T> {
+    /// 起：已有当前那份 ⇒ 挪成旧的；新建一份当前的、把输出指过去。建不了 / 指不过去 ⇒ `Err`（输出原样）。
+    pub(crate) fn start(cur: PathBuf, cap: u64, target: T) -> Result<Roller<T>, String> {
         let old = old_path_of(&cur);
         let mut r = Roller {
             cur,
             old,
             cap,
-            file: None,
-            written: 0,
-            dropped: 0,
+            target,
         };
-        r.roll();
-        r
+        r.fresh()?;
+        Ok(r)
     }
 
-    /// 当前那份挪成旧的（不在就不挪），再 `O_EXCL` 新建一份当前的。
-    /// 真挪了一份 ⇒ 新那份的第一行说清「上一份挪去了哪、再早的那一份丢了」（丢要带身份，不静默）。
-    fn roll(&mut self) {
-        self.file = None;
-        self.written = 0;
+    /// 当前那份挪成旧的（不在就不挪），`O_EXCL` 新建一份当前的；真挪了一份 ⇒ 新那份第一行说清；把输出指过去。
+    fn fresh(&mut self) -> Result<(), String> {
         let moved = match std::fs::rename(&self.cur, &self.old) {
             Ok(()) => true,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
-            // 挪不动 ⇒ 新建也会撞上它（O_EXCL），这一块丢掉，下一块再试
-            Err(_) => return,
+            Err(e) => return Err(format!("挪不动上一份（{}）：{e}", self.cur.display())),
         };
-        self.file = std::fs::OpenOptions::new()
+        let mut f = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&self.cur)
-            .ok();
+            .map_err(|e| format!("建不了 {}：{e}", self.cur.display()))?;
         if moved {
-            let note = roll_note(&self.old);
-            if let Some(f) = self.file.as_mut() {
-                if f.write_all(note.as_bytes()).is_ok() {
-                    self.written = note.len() as u64;
-                }
-            }
+            let _ = f.write_all(roll_note(&self.old).as_bytes());
         }
+        self.target.point_at(&f)
     }
 
-    /// 写一块。这一块写进去会超上限（且当前那份不是空的）⇒ 先滚。
-    pub(crate) fn write(&mut self, chunk: &[u8]) {
-        if chunk.is_empty() {
-            return;
-        }
-        if self.file.is_none() || (self.written > 0 && self.written + chunk.len() as u64 > self.cap)
-        {
-            self.roll();
-        }
-        let ok = match self.file.as_mut() {
-            Some(f) => f.write_all(chunk).is_ok(),
-            None => false,
-        };
-        if ok {
-            self.written += chunk.len() as u64;
-        } else {
-            self.file = None;
-            self.dropped += chunk.len() as u64;
-        }
-    }
-
-    /// 丢掉的字节数（判据用）。
-    pub(crate) fn dropped(&self) -> u64 {
-        self.dropped
-    }
-}
-
-/// 把 `from` 读到底，一块一块交给 `roller`。读出错（`Interrupted` 之外）或 EOF 才返回。
-pub(crate) fn pump<R: Read>(mut from: R, mut roller: Roller) -> Roller {
-    let mut buf = vec![0u8; CHUNK];
-    loop {
-        match from.read(&mut buf) {
-            Ok(0) => return roller,
-            Ok(n) => roller.write(&buf[..n]),
-            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
-            Err(_) => return roller,
+    /// 看一眼：过了上限就滚。滚不成 ⇒ 输出留在原来那份上（下一次再试）。
+    pub(crate) fn check(&mut self) {
+        if self.target.len().is_some_and(|n| n > self.cap) {
+            let _ = self.fresh();
         }
     }
 }
 
-/// 装上之后的结局（给宿主那一句日志；它本身也会落进那份文件）。
+/// 装上之后那一个（本进程一份）。`None` = 没装（没被交路径 / 装不上）。
+static ACTIVE: Mutex<Option<Roller<Fd2>>> = Mutex::new(None);
+
+/// 装上之后的结局（给宿主那一句日志；装上了的话它本身落进那份文件）。
 #[derive(Debug, PartialEq, Eq)]
 pub enum Installed {
     /// 没被交路径 ⇒ stderr 原样不动。
     NotAsked,
     /// 接好了：此后 stderr 落在这份文件里。
     Logging(PathBuf),
-    /// 被交了路径但接不上（非 unix / 建不了管子）⇒ stderr 原样不动。
+    /// 被交了路径但接不上 ⇒ stderr 原样不动。
     Failed(String),
 }
 
@@ -171,34 +151,30 @@ impl Installed {
     }
 }
 
-/// **写口**：宿主交了 [`ENV`] ⇒ 把 fd 2 接进管子、起读线程落盘。只从 `main.rs` 流模式那一处进（第四层那扇门）。
+/// 宿主交了 [`ENV`] ⇒ 把 fd 2 指到那份文件上。只从 `main.rs` 流模式那一处进（第四层那扇门）。
 pub fn install_from_env(get: &dyn Fn(&str) -> Option<String>) -> Installed {
     let Some(path) = get(ENV).filter(|v| !v.trim().is_empty()) else {
         return Installed::NotAsked;
     };
     let cur = PathBuf::from(path);
-    // 次序是承重的：**先有读的人，再换 fd**。反过来的话，线程起不来那一刻 fd 2 已经指着一根没人读的管子，
-    // 写满 64 KiB 之后本进程每一个写 stderr 的都会堵住。
-    let (hand, take) = std::sync::mpsc::sync_channel::<std::io::PipeReader>(1);
-    let target = cur.clone();
-    let spawned = std::thread::Builder::new()
-        .name("stderr-log".into())
-        .spawn(move || {
-            // 交不来读端（换 fd 失败）⇒ 发送端被丢 ⇒ 这里拿到 `Err`，线程就此收工。
-            if let Ok(rd) = take.recv() {
-                pump(rd, Roller::start(target, CAP_BYTES));
-            }
-        });
-    if let Err(e) = spawned {
-        return Installed::Failed(format!("起不了读线程：{e}"));
-    }
-    match crate::platform::stderr_pipe::capture_stderr() {
-        Ok(rd) => {
-            let _ = hand.send(rd);
+    match Roller::start(cur.clone(), CAP_BYTES, Fd2) {
+        Ok(r) => {
+            *ACTIVE.lock().unwrap_or_else(|e| e.into_inner()) = Some(r);
             Installed::Logging(cur)
         }
         Err(e) => Installed::Failed(e),
     }
+}
+
+/// `tracing` 的写者（`main.rs` 装给它）：每写一行之前看一眼要不要滚，然后照旧写 stderr。
+/// 没装 ⇒ 就是 `std::io::stderr()`。别的线程正在滚 ⇒ 这一行不等它（`try_lock`），下一行再看。
+pub fn stderr_writer() -> std::io::Stderr {
+    if let Ok(mut g) = ACTIVE.try_lock() {
+        if let Some(r) = g.as_mut() {
+            r.check();
+        }
+    }
+    std::io::stderr()
 }
 
 #[cfg(test)]
