@@ -1641,9 +1641,19 @@ fn the_block_preview_is_byte_for_byte_what_an_install_writes() {
             let td = tmpdir("block-preview");
             let p = td.0.join(name);
             let preview = render_block(shell, with_cc).expect("渲染");
-            run(install_to_profile(&door_at(&p), &p, CC_FUNCTION_NAME, with_cc)).expect("装进空文件");
+            run(install_to_profile(
+                &door_at(&p),
+                &p,
+                CC_FUNCTION_NAME,
+                with_cc,
+            ))
+            .expect("装进空文件");
             let disk = std::fs::read_to_string(&p).expect("读回");
-            assert_eq!(strip_bom(&disk), preview, "{shell:?} with_cc={with_cc}：预览与写下的不是同一份");
+            assert_eq!(
+                strip_bom(&disk),
+                preview,
+                "{shell:?} with_cc={with_cc}：预览与写下的不是同一份"
+            );
             // 反空真：两边都是空串也「逐字相等」—— 预览必须真是一块围栏（首行就是那个方言的 BEGIN）。
             let fence = match shell {
                 Shell::PowerShell => BEGIN_MARKER,
@@ -1656,6 +1666,12 @@ fn the_block_preview_is_byte_for_byte_what_an_install_writes() {
         }
     }
     // POSIX 那一块不理 `with_cc`（`cc` 自带 `declare -f` 让着用户）；PowerShell 那一块理。
-    assert_eq!(render_block(Shell::Posix, false), render_block(Shell::Posix, true));
-    assert_ne!(render_block(Shell::PowerShell, false), render_block(Shell::PowerShell, true));
+    assert_eq!(
+        render_block(Shell::Posix, false),
+        render_block(Shell::Posix, true)
+    );
+    assert_ne!(
+        render_block(Shell::PowerShell, false),
+        render_block(Shell::PowerShell, true)
+    );
 }

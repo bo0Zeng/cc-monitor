@@ -98,10 +98,9 @@ pub fn block_state(path: &Path, raw: &str) -> BlockState {
         conflicting_functions: find_conflicting_functions(flavor, content, CC_FUNCTION_NAME),
         manual_cleanup_hint: match flavor {
             Shell::PowerShell => String::new(),
-            Shell::Posix => render_manual_cleanup_hint(
-                &path.to_string_lossy(),
-                &scan_legacy_rc_lines(content),
-            ),
+            Shell::Posix => {
+                render_manual_cleanup_hint(&path.to_string_lossy(), &scan_legacy_rc_lines(content))
+            }
         },
     }
 }

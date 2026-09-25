@@ -1038,7 +1038,12 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
 ///   经 SSH 那条路，不是本机命令面的一员 —— 本条只管本机这一族。
 #[test]
 fn the_alias_capabilities_speak_through_one_command_family() {
-    const ALIAS_CAPS: [&str; 4] = ["alias.manage", "ccm.install", "ccm.uninstall", "ccm.install-ui"];
+    const ALIAS_CAPS: [&str; 4] = [
+        "alias.manage",
+        "ccm.install",
+        "ccm.uninstall",
+        "ccm.install-ui",
+    ];
     let by_ledger: BTreeSet<String> = LEDGER
         .iter()
         .filter(|(_, cap, side)| ALIAS_CAPS.contains(cap) && *side != Side::Remote)
@@ -1050,7 +1055,11 @@ fn the_alias_capabilities_speak_through_one_command_family() {
         .filter(|c| c.split('_').next() == Some("aliases"))
         .collect();
     // 反空真：右边空了（注册表解析坏了）左边也空 ⇒ 两边相等地绿。
-    assert!(by_name.len() >= 2, "`generate_handler!` 里只解析出 {} 条 `aliases_*`", by_name.len());
+    assert!(
+        by_name.len() >= 2,
+        "`generate_handler!` 里只解析出 {} 条 `aliases_*`",
+        by_name.len()
+    );
     assert_eq!(
         by_ledger, by_name,
         "别名的本机命令面不是一族了：左边是本表里别名那几格能力的本机侧命令，右边是注册表里叫 `aliases_*` 的命令"

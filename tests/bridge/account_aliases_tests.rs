@@ -882,13 +882,23 @@ fn the_block_state_rides_on_the_candidates_it_was_installed_into() {
     std::fs::write(h.0.join(".bashrc"), "# mine\n").unwrap();
     std::fs::write(h.0.join(".zshrc"), "# mine\n").unwrap();
     let zsh = h.0.join(".zshrc");
-    run(crate::profile_installer::install_to_profile(&door(&h), &zsh, "cc", false)).expect("装进 .zshrc");
+    run(crate::profile_installer::install_to_profile(
+        &door(&h),
+        &zsh,
+        "cc",
+        false,
+    ))
+    .expect("装进 .zshrc");
     let got: Vec<String> = rc_candidates_in(&h.0, P, None)
         .into_iter()
         .filter(|c| c.block.present)
         .map(|c| c.path)
         .collect();
-    assert_eq!(got, vec![zsh.display().to_string()], "POSIX：报「块在」的不是恰好装过的那一份");
+    assert_eq!(
+        got,
+        vec![zsh.display().to_string()],
+        "POSIX：报「块在」的不是恰好装过的那一份"
+    );
 
     // PowerShell：PS 7 的目录在 ⇒ 四份候选；装进 PS 7 的 AllHosts 那一份（它从前被当成「装错了的遗留」）。
     let ps7 = h.0.join("Documents/PowerShell");
@@ -896,12 +906,25 @@ fn the_block_state_rides_on_the_candidates_it_was_installed_into() {
     let cands = rc_candidates_in(&h.0, Shell::PowerShell, None);
     assert_eq!(cands.len(), 4, "PS 7 目录在时该列四份：{cands:?}");
     let target = std::path::PathBuf::from(&cands[3].path);
-    run(crate::profile_installer::install_to_profile(&door(&h), &target, "cc", true)).expect("装进 $PROFILE");
+    run(crate::profile_installer::install_to_profile(
+        &door(&h),
+        &target,
+        "cc",
+        true,
+    ))
+    .expect("装进 $PROFILE");
     let after = rc_candidates_in(&h.0, Shell::PowerShell, None);
-    let present: Vec<&str> = after.iter().filter(|c| c.block.present).map(|c| c.path.as_str()).collect();
+    let present: Vec<&str> = after
+        .iter()
+        .filter(|c| c.block.present)
+        .map(|c| c.path.as_str())
+        .collect();
     assert_eq!(present, vec![target.display().to_string().as_str()]);
     let hit = after.iter().find(|c| c.block.present).unwrap();
-    assert!(hit.exists && hit.block.version.is_some(), "PowerShell 那一对围栏带版本串：{hit:?}");
+    assert!(
+        hit.exists && hit.block.version.is_some(),
+        "PowerShell 那一对围栏带版本串：{hit:?}"
+    );
     // 同一次读：别名文件那一行没装过 ⇒ `sourced` 仍是假（两件事各答各的，不串）。
     assert!(!hit.sourced, "{hit:?}");
 }

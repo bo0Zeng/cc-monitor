@@ -1054,18 +1054,16 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "ccm-sid",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "**被接受、零效果、而且不出声** —— 这一条比别的几条更该单记。\
-              `--ccm-sid` 解析进 `Opts` 之后只在**容器（tmux）那条路**上被消费\
-              （`Container.ccm_sid` → `tmux set-option @ccm_sid_expect`），\
-              而 `Plan::Direct` 里**根本没有这个字段**（现打 0 次）⇒ Windows 上只有直路，\
-              于是这个旗标进得来、什么都不做、一个字不说。真机现打：`--print` 带与不带 \
-              `--ccm-sid` 输出**逐字节相等**。\
-              🔴 而它的三个兄弟旗标（`--detach` / `--tmux-size` / `--bus-register`）**都有闸**，\
-              只有它没有 ⇒ 这不只是 Windows 的缺口，是那一排校验漏了一格。\
-              ⚠ **刻意不在这里顺手加闸**：`--ccm-sid` 是一条**已声明的启动维度**\
-              （`launch-dimensions.ts` 的 `cliFlags` ＋ `launch-cli-golden.ts` 那张 `ALL_CAPS` \
-              金标准矩阵）⇒ 加闸会动到那张矩阵的契约，那是设计题不是一行修复。\
-              **将来**：先裁「这个旗标在没有 tmux 时该报错还是该有直路语义」，再改。",
+        why: "〔S5 · 第四波 09-24〕**直路语义已定，Windows 上仍欠在读侧。** \
+              从前：`--ccm-sid` 只在容器（tmux）那条路上被消费（`Container.ccm_sid` → \
+              `tmux set-option @ccm_sid_expect`），直路上被接受、零效果、不出声。\
+              主会话裁：**不报错**（报错 ＝ 让它依赖 tmux，撞 V63），直路语义走启动期令牌 \
+              （`control/ccm/plan.rs::DirectIdentity`：有合格的 `CCM_RBIND_TOKEN` ⇒ 由它承载；\
+              没有 ⇒ 说一句、照常起）。\
+              🔴 **而令牌那条路的读侧在 Windows 上不通**：后端从 agent 进程的环境里读令牌 \
+              （`identity_tag::rbind_token_of` → `platform::proc::proc_env_var`），非 Linux 恒 `Unreadable` \
+              （`WN1.md §1` 件 E：要读对方 PEB，未做）⇒ 令牌注进去了也读不回来 ⇒ 这一格在 Windows 上仍是欠账。\
+              **将来**：件 E（Windows 上读别的进程的环境）落地那一拍，这一行跟着删；在那之前暂时不做。",
     },
     // ── 🔴 〔散文墓碑〕〔`P19` 09-22〕**`agent` 那一条豁免删了，原话留在这里** ──────
     //
