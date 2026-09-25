@@ -18,15 +18,15 @@
 //!
 //! | 面 | 本机 Windows | 本机 POSIX（本件之前） | 远端 POSIX |
 //! |---|---|---|---|
-//! | 装「别名块」 | [`install_to_profile`] | 🔴 **零口** | `sftp::install_remote_ccm_helper`〔散文墓碑〕（〔MC1〕今天 `sftp::install_remote_alias_block`） |
+//! | 装「别名块」 | [`install_to_profile`] | 🔴 **零口** | `sftp::install_remote_ccm_helper`〔散文墓碑〕（〔MC1〕`install_remote_alias_block`；〔W5-ALIAS〕今天与下面几样一起住本模块尾部） |
 //! | 查「你 rc 里那几行是旧的」 | `scan_legacy_profiles`〔散文墓碑〕（〔AL1d〕删了：每份候选各带块的现状） | 🔴 **零口** | —— |
 //!
 //! 补法有两条硬边界，两条都是**这件事的一半价值**：
 //!
 //! 1. **不许变成第四套。** 装进本机 rc 的内容与远端那个口来自**同一个常量**
-//!    （`sftp::CCM_WRAPPER_SNIPPET`），合块与剥块走**同一份实现**
-//!    （`sftp::merge_profile_block` / `sftp::strip_profile_block`），围栏是**同一对标记**
-//!    （`sftp::CCM_PROFILE_BEGIN` / `..._END`）。本模块**一个字节的 snippet 都不生成**，
+//!    （[`CCM_WRAPPER_SNIPPET`]），合块与剥块走**同一份实现**
+//!    （[`merge_profile_block`] / [`strip_profile_block`]），围栏是**同一对标记**
+//!    （[`CCM_PROFILE_BEGIN`] / `..._END`）。〔W5-ALIAS〕这几样从前住 `sftp.rs`，今天住本模块尾部。本模块**一个字节的 snippet 都不生成**，
 //!    也**没有第二套 merge/strip** —— 见 [`plan_install`] / [`plan_uninstall`]。
 //! 2. **一个字节都不许删用户的行**（`K31` + 用户逐字「原本的配置要手动删除」）。
 //!    「查」这一半的产物是 [`render_manual_cleanup_hint`]：**逐行指名 + 一段让他自己动手的提示**，
@@ -143,8 +143,8 @@ pub fn render_block(shell: Shell, with_cc: bool) -> Result<String, String> {
 /// 纯函数：**装**完之后这份文件该长什么样。落盘那一跳在 [`install_to_profile`]。
 ///
 /// 🔴 **`Posix` 那一臂是 `KR62D1` 的正题**：它一个字节的 snippet 都不生成、
-/// 也没有第二套 merge —— 内容是 `sftp::CCM_WRAPPER_SNIPPET`（= `src/shared/ccm-aliases.sh`
-/// 本身），合块是 `sftp::merge_profile_block`，围栏是 `sftp::CCM_PROFILE_BEGIN/END`。
+/// 也没有第二套 merge —— 内容是 [`CCM_WRAPPER_SNIPPET`]（= `src/shared/ccm-aliases.sh`
+/// 本身），合块是 [`merge_profile_block`]，围栏是 [`CCM_PROFILE_BEGIN`] / `_END`。
 /// ⇒ 本机与远端装进 rc 的**是同一份东西**（`K15` / `K36`），
 /// 而不是「同一件事的第四个形状」（`K-R62 §0c` 那三套）。
 ///
@@ -163,9 +163,7 @@ pub fn plan_install(
             let code = render_cc_code(command_name, include_cc_function);
             replace_or_append_block(existing, &code, what)
         }
-        Shell::Posix => {
-            crate::sftp::merge_profile_block(existing, crate::sftp::CCM_WRAPPER_SNIPPET, what)
-        }
+        Shell::Posix => merge_profile_block(existing, CCM_WRAPPER_SNIPPET, what),
     }
 }
 
@@ -173,7 +171,7 @@ pub fn plan_install(
 pub fn plan_uninstall(flavor: Shell, existing: &str, what: &str) -> Result<String, String> {
     match flavor {
         Shell::PowerShell => strip_block(existing, what),
-        Shell::Posix => crate::sftp::strip_profile_block(existing, what),
+        Shell::Posix => strip_profile_block(existing, what),
     }
 }
 
@@ -188,9 +186,10 @@ fn block_presence(flavor: Shell, content: &str) -> (bool, Option<String>) {
         // 只看有没有一行以 BEGIN 打头（**悬空的 BEGIN 也算在**——否则界面会说「未安装」
         // 且藏起卸载按钮，而点安装却报行号，那正是 T04 审计③ 治过的那一形）。
         Shell::Posix => (
-            content
-                .lines()
-                .any(|l| l.trim_start().starts_with(crate::sftp::CCM_PROFILE_BEGIN)),
+            content.lines().any(|l| {
+                l.trim_start()
+                    .starts_with(crate::profile_installer::CCM_PROFILE_BEGIN)
+            }),
             None,
         ),
     }
@@ -275,7 +274,7 @@ fn fence_marker(line: &str) -> Option<bool> {
 /// - 它认的是「**提到 ccm**」，不是「**这一行是旧的**」。一个在自己函数里调 `ccm` 的用户
 ///   （`src/shared/ccm-aliases.sh` 头注逐字鼓励这么做）也会被指名 —— 所以产物是
 ///   [`render_manual_cleanup_hint`] 那种「你自己定」的措辞，**不是** 「请删除」。
-/// - 形状按 `名字() {` 认函数（同 `sftp::builtin_alias_names` 那一形）。
+/// - 形状按 `名字() {` 认函数（同 [`builtin_alias_names`] 那一形）。
 ///   `function cc { … }` 这一写法会落进 [`LegacyRcKind::Other`] —— **漏的是分类，不是那一行**，
 ///   它仍然被指名。
 pub fn scan_legacy_rc_lines(content: &str) -> Vec<LegacyRcLine> {
@@ -307,7 +306,7 @@ pub fn scan_legacy_rc_lines(content: &str) -> Vec<LegacyRcLine> {
     out
 }
 
-/// `名字() {` ⇒ `Some("名字")`。形状与 `sftp::builtin_alias_names` 认的那一形逐字相同。
+/// `名字() {` ⇒ `Some("名字")`。形状与 [`builtin_alias_names`] 认的那一形逐字相同。
 fn function_name_of(l: &str) -> Option<String> {
     let (name, rest) = l.split_once("()")?;
     if !rest.trim_start().starts_with('{') {
@@ -323,13 +322,13 @@ fn function_name_of(l: &str) -> Option<String> {
 /// **产品一个字节都不删**（`K31` + 用户逐字「原本的配置要手动删除」）。
 /// 措辞刻意不是「请删除」：见 [`scan_legacy_rc_lines`] 的诚实边界那一节。
 ///
-/// 「哪几行会把我们装的那块遮蔽掉」现算自 `sftp::builtin_alias_names()`
+/// 「哪几行会把我们装的那块遮蔽掉」现算自 [`builtin_alias_names`]
 /// （= `src/shared/ccm-aliases.sh` 本身），**这里不抄一份名字清单**。
 pub fn render_manual_cleanup_hint(what: &str, hits: &[LegacyRcLine]) -> String {
     if hits.is_empty() {
         return String::new();
     }
-    let builtin = crate::sftp::builtin_alias_names();
+    let builtin = builtin_alias_names();
     let mut shadowed = 0usize;
     let mut body = String::new();
     for h in hits {
@@ -1124,6 +1123,242 @@ fn sanitize_command_name(name: &str) -> String {
 // 用户裁「只允许后端的文件管理部分写文件」也管本机 ⇒ `$PROFILE` / rc / 别名文件 / 项目 `.mcp.json`
 // 全改经后端写（`user_files`），三件零调用方 ⇒ 走。「Windows 上替换要保住 explicit ACE」那条性质
 // 跟着写搬到了后端（`control/files_write.rs::swap_in` 的 `cfg(windows)` 那一支）。
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 〔W5-ALIAS · 第五波先行〕**别名块的真相**：从 `sftp.rs` 搬来（那份文件已经不做 SFTP，B §2 第 12 条）
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// 搬的是：POSIX rc 里那一对围栏 · 块的内容（`src/shared/ccm-aliases.sh`）· 自带的名字 · 合 / 剥 ·
+// 远端装 / 卸那两条命令。一个字节的行为没变，只换住址 —— 本模块本来就是「别名块」那一族
+// （[`plan_install`] / [`block_state`] / [`render_block`] / [`install_to_profile`]），从前反过来借 `sftp::` 的东西。
+
+// F10：远端 cc/bash 集成——一键把 ccm wrapper 装进远端 ~/.bashrc（SS-H）。
+// 写 ~/.bashrc 不是 Claude 数据（不触 INVARIANT §1），与本地 PowerShell profile 安装同性质。
+
+/// 远端 ccm 块的 BEGIN/END 标记（镜像本地 profile_installer 的 `# === cc-monitor BEGIN/END`）。
+/// 重装时整块替换、卸载时整块删；用户在块外的内容绝不动。
+///
+/// ⚠ `K-R62` 起是 `pub(crate)`：**本机 POSIX 那条路装的是同一个块**
+/// （`profile_installer::plan_install` 的 `PosixRc` 臂走 [`merge_profile_block`]）。
+/// 在那边抄一对同样的字符串就是第二个住址 —— 而「同一件事有两个住址」正是
+/// `KR62D1` 那条「不许变成第四套」要挡的东西。名字里的 `remote` 是历史，
+/// 今天它的意思是「**POSIX rc 里那一对围栏**」，本机远端共用。
+pub(crate) const CCM_PROFILE_BEGIN: &str = "# === cc-monitor remote ccm BEGIN ===";
+pub(crate) const CCM_PROFILE_END: &str = "# === cc-monitor remote ccm END ===";
+
+/// 远端 ↗ 拉前用的 `ccm` wrapper（**后端拥有**，install 写它而非前端传入——见审计 S-1：
+/// 写进 ~/.bashrc 的是被 shell **执行**的代码，绝不能让前端注入任意 bash）。
+///
+/// **必须与前端 `remote-section.ts::CCM_WRAPPER_SNIPPET`（面板展示/手动复制用）逐字一致。**
+/// **单一来源**：`src/shared/ccm-aliases.sh`——前端 `remote-section.ts` 经 `?raw` import
+/// 同一文件（修复历史漂移：Batch7 重构时只改了前端展示版，装进远端的还是老版）。
+///
+/// **F02 起本块只剩「别名层」**；`K-R48` 第二拍起它指向的那个 `ccm` 是 `local_backend::ccm_entry_shim`
+/// （三行入口，转给后端本体），不再是一份 bash 实现。
+/// 理由：shell 函数**优先于 PATH**，装成函数则与用户已有同名函数硬冲突且必然被遮蔽（实测）；
+/// 且远端是 zsh/fish 时 `.bashrc` 根本不被 source，函数形态拿不到（审计 D2）。
+/// ⚠ `K-R49` 起它是 `pub(crate)`：`account_aliases::collision_note` 要问
+/// 「`cc` / `cct` 这几个名字是不是已经被自带的别名块占了」，
+/// 而那个答案**只有这份文件说了算** —— 在那边抄一份名字清单就是第二个住址。
+/// 〔`K-R58` 09-11：`cch` 从这份文件里删了 ⇒ 它**不再**被当作「已被占用」，
+/// 用户可以自己定义一个 `cch`。**多一格自由，不是回归。**〕
+pub(crate) const CCM_WRAPPER_SNIPPET: &str = include_str!("../../shared/ccm-aliases.sh");
+
+/// 自带别名块里**今天定义了哪几个名字** —— 现算，不写死（`13b`：闭集只许有一个住址，
+/// 那个住址就是 `src/shared/ccm-aliases.sh` 自己）。
+///
+/// `account_aliases` 的撞名判据与本文件的文档对账判据都拿它当人群，
+/// 于是「删/加一个别名」这件事**不需要同时去改两份名单**（改漏一份正是 `KR58D1`
+/// 的失效方向）。
+///
+/// 🔴 〔`K-R62` 09-11〕**它从 `#[cfg(test)]` 转正了**，因为多了一个生产使用者：
+/// `profile_installer::render_manual_cleanup_hint` 要回答「你 rc 里那几行裸的
+/// `cc()` / `cct()`，会不会把我们装的那一块遮蔽掉」—— 那个答案**只有这份文件说了算**，
+/// 在提示文案里抄一份名字清单就是第二个住址。转正**没有放宽任何东西**：
+/// 它仍然现算自 [`CCM_WRAPPER_SNIPPET`]，一个字节的名单都没写死。
+///
+/// ⚠ **它认的形状写死在这里**：`<名>() {`（`()` 与 `{` 之间允许空白）。
+/// 注释行里那两条示例（`#   zcc()  { … }`）靠「名字只许 `[A-Za-z0-9_]`」被剔掉 ——
+/// 换一种写法（`function cc {`）它会**漏**，而漏出来的形状是「人群变空」，
+/// 调用处一律先断 `!is_empty()`，不让它静默变成空真。
+pub(crate) fn builtin_alias_names() -> Vec<&'static str> {
+    let mut v: Vec<&'static str> = CCM_WRAPPER_SNIPPET
+        .lines()
+        .filter_map(|l| {
+            let (name, rest) = l.split_once("()")?;
+            if !rest.trim_start().starts_with('{') {
+                return None;
+            }
+            let name = name.trim();
+            (!name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+                .then_some(name)
+        })
+        .collect();
+    v.sort_unstable();
+    v.dedup();
+    v
+}
+
+/// 纯函数：把 `snippet` 合进 profile 内容的 BEGIN/END 块（可单测）。
+/// - 已有**配对**块（BEGIN 后能找到 END）→ **整块替换**（幂等：`merge(merge(x))==merge(x)`）。
+/// - 无 BEGIN → **追加**（块外内容原样保留）。
+/// - **有 BEGIN 但其后无 END（损坏/截断/上次安装中断）→ `Err` 中止**（审计 B1：绝不用独立
+///   `find` 误配前面的 END 而吞掉用户内容；宁可报错让用户手修，也不破坏文件）。
+pub fn merge_profile_block(existing: &str, snippet: &str, what: &str) -> Result<String, String> {
+    // **T04 第二步：配对判定改走 `fenced_block::find_pair`，与本机 profile 共用同一条规则。**
+    //
+    // **更正我原话「判定本身是对的…判定没变」——被实测证伪，9 个边界里 3 个变了**
+    // （T04 审计②，它把旧 byte-find 实现逐字复制成 `old_merge` 并列对拍）：
+    //   1. **行内 marker**（用户 profile 里有 `echo "…BEGIN…"` / `echo "…END…"`）：
+    //      旧实现会**切断那个 echo 行、并把第二个 echo 行整行吃掉** —— 远端侧一个
+    //      **我未申报就修掉了的数据丢失**。新实现按行 `trim_start().starts_with` 判，改成追加。
+    //   2. **BEGIN 与 END 同一行**：旧能正确替换该行 → 新直接 Err（`find_pair` 认到 BEGIN
+    //      就 `continue`，同行的 END 被跳过）。**这是退化**，虽符合"宁可报错"但当时未文档化未测试。
+    //   3. **缩进 marker**：旧"保留 BEGIN 行缩进、丢 END 缩进"（不自洽）→ 新统一归一到列 0。
+    // 三条现在都有测试锁死（见 `remote_merge_boundary_semantics_after_migration`）。
+    //
+    // 原实现是自己 `find(BEGIN)` 再在其后 `find(END)`——
+    // 但本机侧漏了同一道保护，于是两侧对"围栏损坏"处置不一致、本机那边会**吃掉用户内容**。
+    // 现在两侧同一个函数，判定不可能再漂移。
+    // 〔AL1 · 2026-09-24〕配对之后怎么拼，**也只剩一份**：`fenced_block::splice_in`（`71 §12.5`）。
+    //   本函数只答「POSIX rc 里这一块长什么样」（方言的内容与围栏），不再自己切行拼接。
+    let block = format!(
+        "{CCM_PROFILE_BEGIN}\n{}\n{CCM_PROFILE_END}\n",
+        snippet.trim()
+    );
+    crate::fenced_block::splice_in(
+        existing,
+        CCM_PROFILE_BEGIN,
+        CCM_PROFILE_END,
+        &block,
+        what,
+        crate::fenced_block::Layout::Posix,
+    )
+}
+
+/// 纯函数：从 profile 内容删掉 cc-monitor 的 BEGIN/END 块（可单测）。
+/// - 有**配对**块（BEGIN 后找得到 END）→ 整块删，块前后用户内容原样保留。
+/// - 无 BEGIN，或 BEGIN 后无 END（损坏）→ **原样返回**（宁可不删也不破坏文件）。
+pub fn strip_profile_block(existing: &str, what: &str) -> Result<String, String> {
+    // **T04 审计阻塞：这里原先没迁移，于是「卸」那半边被我从"两侧一致"改成了"两侧不一致"。**
+    // 原实现在悬空 BEGIN 时 `return existing.to_string()` → 调用方判 `stripped == existing`
+    // → 打印「远端 {profile} 里没有 ccm 块，无需卸载」。**那正是我在同一个 commit 里
+    // 定义为 bug 的形态**，而且比本机那边更糟：它主动告诉用户"没问题"。
+    //
+    // 更要紧的是这是我**新造的漂移**：`af21ffb~1` 时两侧卸载都"原样返回"（一致），
+    // `af21ffb` 之后本机 Err、远端静默 no-op（不一致）。我 commit 里那句
+    // 「两侧不可能再漂移」**只对 install 半边成立，对 uninstall 半边方向相反**。
+    // 现在两侧的装与卸四条路全走 `find_pair`。
+    // 〔AL1〕拼接走 `fenced_block::splice_out`（与装那一半同一份，`71 §12.5`）。
+    crate::fenced_block::splice_out(
+        existing,
+        CCM_PROFILE_BEGIN,
+        CCM_PROFILE_END,
+        what,
+        crate::fenced_block::Layout::Posix,
+    )
+}
+
+/// `profile` 只许是远端 home 下的一个文件名。空 ⇒ `.bashrc`。
+fn remote_profile_name(profile: &str) -> Result<String, String> {
+    let p = profile.trim();
+    let p = if p.is_empty() { ".bashrc" } else { p };
+    if p.contains('/') || p.contains('\\') || p.contains("..") {
+        return Err("profile 只能是 home 下的文件名（如 .bashrc / .zshrc）".to_string());
+    }
+    Ok(p.to_string())
+}
+
+/// 〔MC1 · 2026-09-24〕**别名块**卸载（机器页 ②「别名」里的「卸载别名块」）：从远端 rc 删 BEGIN/END 块。
+///
+/// 从前它叫 `uninstall_remote_ccm_helper`〔散文墓碑〕、按钮叫「卸载 ccm」——「ccm 助手」这个词
+/// 盖着两件事（`设计/71 §13.1`：① 推入口 ② 写别名块），而这一条只做过 ②。用户 2026-09-17 逐字
+/// 「装/卸 ccm 助手是假的，删掉这个东西」⇒ 名字跟着它真做的事走。
+/// 〔RW1〕读改写经那台远端的后端（`files-peek` / `files-put`）：没有块 ⇒ 一个字节都不写；否则
+/// **先备份**（`.ccm-backup-<ms>-<序号>`）→ 写 → **读回逐字比对**，不符则回滚（规则住后端）。
+#[tauri::command]
+pub async fn uninstall_remote_alias_block(
+    cfg: crate::ssh_source::RemoteConfig,
+    profile: String,
+) -> Result<String, String> {
+    let profile = remote_profile_name(&profile)?;
+    // 〔RW1 · 第四波 09-24〕F10 按推荐改：**经那台远端的后端**写（`user_files`），不再 SFTP 直写 rc。
+    //   备份 · 原子替换 · 回读 · 回滚那一份规则住后端（`files-put`），与本机同一条路、只差 origin。
+    let door = crate::user_files::BackendDoor::new(crate::origin::Origin(cfg.origin_label()));
+    let home = crate::user_files::Door::home(&door).await?;
+    let what = format!("远端 ~/{profile}");
+    let mut missing = false;
+    let done =
+        crate::user_files::edit(
+            &door,
+            &home,
+            &profile,
+            true,
+            false,
+            |existing| match existing {
+                None => {
+                    missing = true;
+                    Ok(None)
+                }
+                Some(t) => strip_profile_block(t, &what).map(Some),
+            },
+        )
+        .await?;
+    let crate::user_files::Edited::Written(landed) = done else {
+        return Ok(if missing {
+            format!("远端 {profile} 不存在，没有别名块可卸载。")
+        } else {
+            format!("远端 {profile} 里没有别名块，不用卸载。")
+        });
+    };
+    tracing::info!("远端 [{}] 已卸载别名块（{profile}）", cfg.origin_label());
+    Ok(match landed.backup {
+        Some(b) => format!("已从远端 {profile} 删掉别名块（原文件备份在 {b}）。"),
+        None => format!("已从远端 {profile} 删掉别名块。"),
+    })
+}
+
+/// 〔MC1 · 2026-09-24〕**别名块**装进远端 rc（机器页 ②「别名」里的「装别名块」）。
+///
+/// 从前它叫 `install_remote_ccm_helper`〔散文墓碑〕，一次做两件事：① 推 `ccm` 入口到
+/// `~/.local/bin/ccm` ② 把别名块合进 rc。`设计/71 §13.3`：① 并进「部署后端」（本文件
+/// `sftp::deploy_remote_backend`），② 并进「别名」⇒ 本函数只剩 ②。
+///
+/// `profile` 默认 `.bashrc`（相对远端后端的 home；拒 `/`、`\`、`..` 防写 home 外）。
+/// 写入的 snippet 是**后端拥有**的 [`CCM_WRAPPER_SNIPPET`]（审计 S-1：不接受前端传入可执行
+/// bash）。〔RW1〕读改写经那台远端的后端（与本机同一条路）：相同则不写；否则
+/// 备份 → 原子写 → 读回逐字比对 → 不符回滚。别名块引用 `ccm` —— 那条入口由「部署后端」放。
+///
+/// 注：〔RW1〕替换沿用原文件的权限位（从前 SFTP 那一路统一写 `0o644`，`chmod 600` 的 rc 会被归一 —— 那一形没了）；
+/// rc 是一条链接（dotfiles 仓）⇒ 改的是真文件，链接留着。
+#[tauri::command]
+pub async fn install_remote_alias_block(
+    cfg: crate::ssh_source::RemoteConfig,
+    profile: String,
+) -> Result<String, String> {
+    let profile = remote_profile_name(&profile)?;
+    // 〔RW1 · 第四波 09-24〕F10 按推荐改：经那台远端的后端写（同 `uninstall_remote_alias_block`）。
+    // 损坏块 ⇒ `merge_profile_block` 回 `Err`，不动原文件。
+    let door = crate::user_files::BackendDoor::new(crate::origin::Origin(cfg.origin_label()));
+    let home = crate::user_files::Door::home(&door).await?;
+    let what = format!("远端 ~/{profile}");
+    let done = crate::user_files::edit(&door, &home, &profile, true, false, |existing| {
+        merge_profile_block(existing.unwrap_or(""), CCM_WRAPPER_SNIPPET, &what).map(Some)
+    })
+    .await?;
+    let crate::user_files::Edited::Written(landed) = done else {
+        return Ok(format!("{profile} 里的别名块已是最新，没有改动。"));
+    };
+    let backup_note = landed
+        .backup
+        .map(|b| format!("（原文件备份在 {b}）"))
+        .unwrap_or_default();
+    tracing::info!("远端 [{}] 已装别名块到 {profile}", cfg.origin_label());
+    Ok(format!(
+        "别名块已写进 {profile}{backup_note}。重连 ssh 之后，终端里就有 cc / cct，\
+         以及「别名」里生成的那几条。"
+    ))
+}
 
 #[cfg(test)]
 #[path = "../../../tests/bridge/profile_installer_tests.rs"]

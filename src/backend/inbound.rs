@@ -98,6 +98,8 @@ pub const COMMANDS: &[&str] = &[
     "bus-state",
     "cancel",
     "capture-pane",
+    // 〔W5-ALIAS · 第五波先行〕别名预览：一条别名的预置参数 → `ccm --print` 那一行（`设计/71 §2.3`）。
+    "ccm-print",
     "exit-policy-read",
     "exit-policy-set",
     "files-browse",
@@ -783,6 +785,21 @@ pub const REGISTRY: &[CommandSpec] = &[
     //   ⚠ `exit-policy-read` **没有错误码**：「读不出来」是一个**状态**（`state: "unreadable"` ＋ `reason`），
     //     不是一次失败 —— 调用方要的就是那一句「读不出来，按默认办」（`§3.3b ⑤`）。
     //   ⚠ CLI 面同样是派生的必然（`cli_control::cli_exposed`），理由同下面 `files-create` 那一段。
+    // 〔W5-ALIAS · 第五波先行〕**别名预览**（`设计/71 §2.3`「生成器旁边显示这条别名实际会执行什么，是真验证，
+    //   不是前端拼串」）：与 `ccm --print` 同一个计划函数，环境是「这台机器家目录里的一个新终端」。
+    //   只读（不起进程、不写盘），阻塞档（读账号库 manifest ＋ 问会话快照）。
+    CommandSpec {
+        name: "ccm-print",
+        doc_anchor: Some("#### `ccm-print`"),
+        codes: &["bad_args", "refused"],
+        fields: &["args", "line"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::ccm::answer_print(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     CommandSpec {
         name: "exit-policy-read",
         doc_anchor: Some("#### `exit-policy-read`"),

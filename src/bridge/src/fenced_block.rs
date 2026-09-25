@@ -19,7 +19,7 @@
 //!
 //! 两侧对「有 BEGIN 但找不到配对的 END」（上次安装中断 / 用户手改坏）处置**不一致**：
 //!
-//! - 远端（`sftp::merge_profile_block`）：**Err 中止**。这是 F10 审计 B1 专门加的——
+//! - 远端（`profile_installer::merge_profile_block`，〔W5-ALIAS〕从前住 `sftp.rs`）：**Err 中止**。这是 F10 审计 B1 专门加的——
 //!   原话「绝不用独立 `find` 误配前面的 END 而吞掉用户内容；宁可报错让用户手修，
 //!   也不破坏文件」。
 //! - 本机（`profile_installer::find_block_range`〔散文墓碑〕）：返回 `None` → 走**追加**分支。
@@ -395,9 +395,9 @@ pub const FENCE_SHAPES: &[FenceShape] = &[
         id: "remote-posix-block",
         host: "远端 POSIX 的 ~/<用户选的那份 rc>",
         what_goes_in: "整块别名 snippet（src/shared/ccm-aliases.sh）",
-        begin_marker: crate::sftp::CCM_PROFILE_BEGIN,
-        install_site: "sftp.rs::install_remote_alias_block",
-        uninstall_site: Some("sftp.rs::uninstall_remote_alias_block"),
+        begin_marker: crate::profile_installer::CCM_PROFILE_BEGIN,
+        install_site: "profile_installer.rs::install_remote_alias_block",
+        uninstall_site: Some("profile_installer.rs::uninstall_remote_alias_block"),
         pairing: "fenced_block.rs::find_pair",
         differs_in: "落盘走 SFTP（upload_atomic + 远端备份），本机那两套走本地原子替换",
     },
@@ -419,9 +419,9 @@ pub const FENCE_SHAPES: &[FenceShape] = &[
     FenceShape {
         id: "local-posix-block",
         host: "本机 POSIX 的 ~/<用户选的那份 rc>",
-        what_goes_in: "整块别名 snippet —— **与 `remote-posix-block` 同一个常量**（sftp.rs::CCM_WRAPPER_SNIPPET）",
+        what_goes_in: "整块别名 snippet —— **与 `remote-posix-block` 同一个常量**（profile_installer.rs::CCM_WRAPPER_SNIPPET）",
         // 与远端那一套**同一个常量**：本机与远端装进 rc 的是同一个东西（`K15` / `K36`）。
-        begin_marker: crate::sftp::CCM_PROFILE_BEGIN,
+        begin_marker: crate::profile_installer::CCM_PROFILE_BEGIN,
         // 🔴 **落盘那一跳与 `local-windows-ps` 是同一处** —— 这一行的 `install_site`
         //    与它逐字相同，不是笔误：补这一格没有多出第四台安装器，多出来的只是
         //    那一台安装器的第二种方言（分岔在 profile_installer.rs::plan_install）。

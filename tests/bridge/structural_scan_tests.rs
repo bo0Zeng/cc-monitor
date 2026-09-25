@@ -3078,13 +3078,20 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "install_remote_ccm_helper",
             1,
         ),
+        // 〔W5-ALIAS · 第五波先行〕别名块两条命令连同头注从 `sftp.rs` 搬进 `profile_installer.rs`：
+        //    头注里那两块墓碑（`install_remote_ccm_helper` · `uninstall_remote_ccm_helper` 各一）跟着搬 ⇒
+        //    `profile_installer.rs` 的 `install_…` 1 → 2、`uninstall_…` 0 → 1；`sftp.rs` 的 `install_…` 2 → 1、`uninstall_…` 1 → 0（行删）。
         (
             "src/bridge/src/profile_installer.rs",
             "install_remote_ccm_helper",
+            2,
+        ),
+        (
+            "src/bridge/src/profile_installer.rs",
+            "uninstall_remote_ccm_helper",
             1,
         ),
-        ("src/bridge/src/sftp.rs", "install_remote_ccm_helper", 2),
-        ("src/bridge/src/sftp.rs", "uninstall_remote_ccm_helper", 1),
+        ("src/bridge/src/sftp.rs", "install_remote_ccm_helper", 1),
         // 〔MC1 · 2026-09-24〕`CCM_SELF` 删掉（`设计/01 §6.7b`）⇒ 钉「shim 必须传它」的那条判据改成
         //    「shim 一个环境变量都不设」（`remote_shim_sets_no_environment_of_its_own`）。
         (
@@ -4037,8 +4044,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/backend/main_argv_table_guard.rs", 1),
         ("tests/evidence/C2-dial-loopback.py", 1),
         // 〔MC1〕+3：模块头注 ＋ 装 / 卸两条命令头注里各一块（`…_ccm_helper` 改名成 `…_alias_block`）。
-        ("src/bridge/src/sftp.rs", 10), // 〔SR1b〕9 → 10（进 3 出 2）：执行那一半（SFTP）搬进本机后端 —— 模块头注两块（开会话 · 原子上传）＋ `SftpFile` 改名一块进；原子上传那段头注的两块随函数搬去后端 `dial/sftp.rs`
-        ("src/bridge/src/profile_installer.rs", 11), // 〔AL1d〕5 → 11（`ProfileKind` / `ProfileScan` · `$PROFILE` 两份认法与遗留扫描 · 扫一份那两个 · 「终端集成」命令名 · 模块头表那一格，逐处挂墓碑） // 〔AL1〕+1：`AccountAliasReport` 那一句 · 〔RW1〕+3：本机原子写原语 `atomic_write_string` / `atomic_replace_path` 删了（原住址一块 ＋ BOM 那段两句）
+        ("src/bridge/src/sftp.rs", 8), // 〔W5-ALIAS〕10 → 8：别名块两条命令的头注（两块墓碑）随命令搬去 `profile_installer.rs` // 〔SR1b〕9 → 10（进 3 出 2）：执行那一半（SFTP）搬进本机后端 —— 模块头注两块（开会话 · 原子上传）＋ `SftpFile` 改名一块进；原子上传那段头注的两块随函数搬去后端 `dial/sftp.rs`
+        ("src/bridge/src/profile_installer.rs", 13), // 〔W5-ALIAS〕11 → 13：从 `sftp.rs` 搬来别名块两条命令，头注里两块墓碑跟着来 // 〔AL1d〕5 → 11（`ProfileKind` / `ProfileScan` · `$PROFILE` 两份认法与遗留扫描 · 扫一份那两个 · 「终端集成」命令名 · 模块头表那一格，逐处挂墓碑） // 〔AL1〕+1：`AccountAliasReport` 那一句 · 〔RW1〕+3：本机原子写原语 `atomic_write_string` / `atomic_replace_path` 删了（原住址一块 ＋ BOM 那段两句）
         ("src/bridge/src/verified_write.rs", 3), // 〔RW1〕+1：`verify_and_rollback` 零调用方删了
         ("tests/bridge/verified_write_tests.rs", 1), // 〔RW1〕那三条回滚判据随它走了
         // 〔SR1b〕+2：传输台那三行摘掉时留的墓碑（暂存区上传 · 本机下载落地两个旧名）。

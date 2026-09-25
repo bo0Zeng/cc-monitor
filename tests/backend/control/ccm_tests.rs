@@ -648,3 +648,132 @@ fn exec_direct_really_reads_the_identity_cell() {
         "那一句不在 `exec_direct` 的第一行 —— 要在走 `sh -c` 那条岔路之前说（两条路都得出声）"
     );
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// 〔W5-ALIAS · 第五波先行〕帧命令 `ccm-print`：别名预览（`设计/71 §2.3`）
+// 住址：`设计/71 §2.3`「`ccm --print` 不跑、吐出等价的一行 shell ⇒ 生成器旁边显示**这条别名实际会执行什么**，
+// 是真验证，不是前端拼串」。
+// ═══════════════════════════════════════════════════════════════════════
+
+/// **C1：预览与 `ccm --print` 是同一个计划函数。**
+///
+/// 源码那一半：`run` 与 [`answer_print`] 都经 [`plan_of`]（`plan::build(` 全文件恰好一处由
+/// `the_name_avoidance_has_exactly_one_source_and_the_plan_settles_it` 钉着），预览那一处交的是预览环境、不继承账号。
+/// 行为那一半（异源）：同一组参数，`answer_print` 的 `line` == 手搭一份「家目录里的新终端」环境、
+/// 直接走 `argv::parse` → `plan::build` → `plan::render` 的产物（直路 · 容器路 · 显式不带账号三形）。
+#[test]
+fn the_alias_preview_is_the_same_plan_as_ccm_print() {
+    let prod = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/control/ccm/mod.rs"
+    ));
+    for pin in [
+        "plan_of(&o, env, true)",
+        "plan_of(&o, Env::for_preview(), false)",
+    ] {
+        guard_core::find_pinned(&prod, pin).unwrap_or_else(|e| {
+            panic!("`{pin}` 不是恰好一处（{e}）—— 预览与 `--print` 不再走同一个计划函数")
+        });
+    }
+    let home = std::env::var("HOME").unwrap_or_default();
+    for args in [
+        vec!["--cwd", "/p", "--agent", "claude"],
+        vec!["--tmux=w5alias-preview-probe", "--cwd", "/p"],
+        vec!["--base", "--model", "m", "--cwd", "/q"],
+    ] {
+        let got = answer_print(&serde_json::json!({ "args": args }))
+            .unwrap_or_else(|e| panic!("{args:?} 预览被拒：{e:?}"));
+        let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        let o = match argv::parse(&a).expect("该解析得动") {
+            Parsed::Opts(o) => o,
+            other => panic!("{other:?}"),
+        };
+        let pick =
+            |k: &str, d: String| std::env::var(k).ok().filter(|v| !v.is_empty()).unwrap_or(d);
+        let e = Env {
+            home: home.clone(),
+            pwd: home.clone(),
+            accts_manifest: pick(
+                "CCM_ACCTS_MANIFEST",
+                format!("{home}/{}", argv::Defaults::ACCTS_MANIFEST_REL),
+            ),
+            ccm_env: pick("CCM_ENV", argv::Defaults::ENV.to_string()),
+            account_env: crate::agents::account_env_of(&o.agent)
+                .unwrap_or_default()
+                .to_string(),
+            self_argv: vec!["ccm".into()],
+            no_pretrust: std::env::var("CCM_NO_PRETRUST").as_deref() == Ok("1"),
+            bus_scripts: plan::discover_bus_scripts(),
+            ..Default::default()
+        };
+        // 账号表照这台机器的真值（预览要的就是这一点：「这台机器上敲这条别名」）—— 读法与真跑同一个 `AccountTable::load`。
+        let table = if needs_account_table(&o, &e) {
+            AccountTable::load(&e.accts_manifest)
+        } else {
+            AccountTable::default()
+        };
+        let plan = plan::build(&o, &e, &table, None).expect("该算得出计划");
+        assert_eq!(
+            got["line"].as_str().expect("line"),
+            plan::render(&plan, None),
+            "{args:?}：预览与同一语境下的 `--print` 不是同一行"
+        );
+    }
+}
+
+/// **C2：预览的语境逐格写死**（「从这台机器家目录里的一个新终端敲这条别名」）。各格一刀：
+/// 叫的是 `ccm` · cwd = home · 不在 tmux 里 · 没有继承来的中转地址 / 启动号 / 令牌 / 账号目录。
+#[test]
+fn the_alias_preview_speaks_for_a_fresh_terminal_at_home() {
+    let e = Env::for_preview();
+    assert_eq!(
+        e.self_argv,
+        vec![SUBCOMMAND_WORD.to_string()],
+        "别名叫的是 `ccm`"
+    );
+    assert_eq!(e.pwd, e.home, "不给 --cwd 的别名在家目录里敲");
+    assert!(e.tmux.is_none(), "新终端不在 tmux 里");
+    assert!(e.inherited_config_dir.is_none(), "账号目录变量不继承");
+    assert!(
+        e.anthropic_base_url.is_none() && e.ccm_launch_id.is_none() && e.launch_token.is_none(),
+        "常驻后端进程身上的中转地址 / 启动号 / 令牌不是那个终端的"
+    );
+    // 行为：不给 --cwd ⇒ 落在家目录；容器路内层叫回的是 `ccm`。
+    let line = |args: &[&str]| -> String {
+        answer_print(&serde_json::json!({ "args": args })).expect("该答得出")["line"]
+            .as_str()
+            .expect("line")
+            .to_string()
+    };
+    let home = std::env::var("HOME").unwrap_or_default();
+    assert!(
+        line(&["--agent", "claude"]).contains(&plan::qarg(&home)),
+        "不给 --cwd 却没落在家目录"
+    );
+    let boxed = line(&["--tmux=w5alias-preview-probe", "--cwd", "/p"]);
+    assert!(
+        boxed.contains("'ccm' '--cwd'"),
+        "容器路内层没有叫回 `ccm`：{boxed}"
+    );
+}
+
+/// `ccm-print` 的两种拒：形状不对 ⇒ `bad_args`；ccm 自己拒 / 不起会话的那一形 ⇒ `refused`，原话带回。
+#[test]
+fn the_alias_preview_refuses_in_the_words_of_ccm() {
+    let code = |v: serde_json::Value| answer_print(&v).map(|_| "ok").unwrap_or_else(|(c, _)| c);
+    assert_eq!(code(serde_json::json!({})), "bad_args");
+    assert_eq!(code(serde_json::json!({ "args": [1] })), "bad_args");
+    assert_eq!(
+        code(serde_json::json!({ "args": vec!["x"; PRINT_MAX_WORDS + 1] })),
+        "bad_args"
+    );
+    assert_eq!(code(serde_json::json!({ "args": ["--help"] })), "refused");
+    let (c, said) = answer_print(&serde_json::json!({ "args": ["--no-such-flag"] }))
+        .expect_err("未知旗标该被拒");
+    assert_eq!(c, "refused");
+    let want = match argv::parse(&["--no-such-flag".to_string()]) {
+        Err(argv::Die(m)) => m,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(said, want, "拒的那句不是 ccm 自己的原话");
+    assert_eq!(code(serde_json::json!({ "args": ["--cwd", "/p"] })), "ok");
+}

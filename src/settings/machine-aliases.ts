@@ -35,6 +35,9 @@
  *   原 `cc_integration.ts` 整块搬进来）＋ 用户级 PATH 那一格。
  */
 import { commands } from "../ipc/commands";
+import { chan } from "../ipc/chan";
+import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
+import { LOCAL_ORIGIN } from "../ipc/origin";
 import { showActionFailureToast } from "../error-toast"; // `K-R135`：用户级 PATH 那一格的失败要出声
 import { buildPasteBlock } from "../paste-block";
 import { ACTIVE_AGENT, listAgents } from "../agent-profile";
@@ -107,8 +110,54 @@ export function suggestAliasName(account: string): string {
   return /^[0-9]/.test(withCc) ? `_${withCc}` : withCc;
 }
 
+/** 〔W5-ALIAS〕问一次预览（`ccm-print`）最多等多久：读一份账号库 ＋ 问一次会话快照，秒级内。 */
+const PREVIEW_BUDGET_MS = 10_000;
+
+/**
+ * 〔W5-ALIAS · 第五波先行〕**一条别名实际会执行什么**（`设计/71 §2.3`「`ccm --print` 不跑、吐出等价的一行 shell
+ * ⇒ 生成器旁边显示这条别名实际会执行什么，是真验证，不是前端拼串」）。
+ *
+ * 问这台机器的后端（帧命令 `ccm-print`，经通道 `chan.call`）—— 与终端里 `ccm --print` 同一个计划函数；
+ * 语境是「家目录里的一个新终端」（后端那一侧写死，`control/ccm/plan.rs::Env::for_preview`）。
+ * 本文件一个字节的 shell 都不拼：`line` 原样上屏。点了才问（不在首开的那几发里）。
+ */
+export async function previewAlias(a: Alias): Promise<string> {
+  try {
+    const budget = budgetWithin(PREVIEW_BUDGET_MS);
+    const body = jsonBody({ args: a.args });
+    const reply = await chan.call(LOCAL_ORIGIN, "ccm-print", body, budget);
+    const got = readJson(reply) as { line?: unknown };
+    return `从家目录的一个新终端里敲 ${a.name} 时会执行：\n${typeof got.line === "string" ? got.line : ""}`;
+  } catch (e) {
+    return `预览不了：${saidOf(e, "这台机器的后端还不认识预览，重启一次 cc-monitor 换上新后端再试")}`;
+  }
+}
+
 /** tmux 那一维的四个取值（`71 §4` 第一档）。 */
 export type TmuxMode = "none" | "auto" | "named" | "base";
+
+/**
+ * 〔W5-ALIAS · 第五波先行〕tmux 四选各自**撞名时会怎样**（`设计/71 §8 #9`：表单上那四个选项只有名字，没有一句说撞了会怎样）。
+ *
+ * 规则不在这里：取名与退让住后端 `control/ccm/plan.rs::build`（`next_free_name`，`--print` 与真跑同一个名字）。
+ * 这里只把那三条取名路的态度说成人话 —— `stepsAside` 那一格与后端逐条对拍
+ * （`tests/settings/machine-aliases-naming.vitest.ts` 读后端原文，两向相等），说明里「依次试」出现 ⇔ 它为真。
+ */
+export const TMUX_NAMING: Record<TmuxMode, { stepsAside: boolean | null; text: string }> = {
+  none: { stepsAside: null, text: "不进 tmux：就在当前终端里起。" },
+  auto: {
+    stepsAside: true,
+    text: "自动取名：名字取自工作目录（目录名-cc），已经被占了就依次试 -2、-3 …；已经在 tmux 里敲它，就直接在当前窗格起。",
+  },
+  named: {
+    stepsAside: false,
+    text: "用指定的名字：就用这个名；已经被占了就报错退出，不改名。",
+  },
+  base: {
+    stepsAside: true,
+    text: "以某个名字为底：先试这个名，已经被占了就依次试 -2、-3 …",
+  },
+};
 
 /** 表单那一侧的样子。**只是编辑界面** —— 合不合格由后端 `account_aliases::check_alias` 判。 */
 export interface AliasForm {
@@ -310,6 +359,9 @@ export function buildAliasManager(opts: {
     ...listAgents().map((a): [string, string] => [a, `agent：${a}`]),
   ]);
   grid.append(nameIn, cwdIn, acctSel, tmuxSel, tmuxNameIn, agentSel);
+  // 〔W5-ALIAS〕选了哪种 tmux，下面一句说清撞名时会怎样（`TMUX_NAMING`）。
+  for (const o of [...tmuxSel.options]) o.title = TMUX_NAMING[o.value as TmuxMode].text;
+  const tmuxHint = el("div", "settings-hint machine-aliases-tmux-naming");
 
   const adv = el("details", "ccm-alias-gen");
   adv.appendChild(el("summary", "", "更多参数"));
@@ -336,7 +388,7 @@ export function buildAliasManager(opts: {
   const perAcctBtn = button("为每个账号加一条", "settings-btn-secondary", () => void onPerAccount());
   perAcctBtn.title = "一次性的：每个还没有别名的账号加一条「<名>cc → --account <名>」。以后加了账号不会自动多一条。";
   formRow.append(saveBtn, clearBtn, perAcctBtn);
-  wrap.append(grid, adv, formRow);
+  wrap.append(grid, tmuxHint, adv, formRow);
 
   // ── 渲染结果（第①跳）────────────────────────────────────────────────────
   const problemsBox = el("div", "settings-hint machine-aliases-problems");
@@ -475,6 +527,7 @@ export function buildAliasManager(opts: {
   }
   const syncEnabled = (): void => {
     const inTmux = tmuxSel.value !== "none";
+    tmuxHint.textContent = TMUX_NAMING[tmuxSel.value as TmuxMode].text;
     tmuxNameIn.disabled = !(tmuxSel.value === "named" || tmuxSel.value === "base");
     sizeIn.disabled = !inTmux;
     detachCk.disabled = !inTmux;
@@ -520,7 +573,18 @@ export function buildAliasManager(opts: {
     list.forEach((a, i) => {
       const row = el("div", "settings-row machine-aliases-row");
       row.append(el("code", "", a.name), el("span", "settings-hint", describeArgs(a.args)));
+      // 〔W5-ALIAS〕「实际会执行什么」那一行：点「预览」才问后端（`previewAlias`），答案挂在这一条下面。
+      const previewOut = document.createElement("pre");
+      previewOut.className = "machine-aliases-preview";
+      previewOut.hidden = true;
       row.append(
+        button("预览", "settings-btn-secondary", () => {
+          previewOut.hidden = false;
+          previewOut.textContent = "正在问这台机器的后端…";
+          void previewAlias(a).then((t) => {
+            previewOut.textContent = t;
+          });
+        }),
         button("改", "settings-btn-secondary", () => fillForm(aliasToForm(a), i)),
         button("删", "settings-btn-secondary", () => {
           list = list.filter((_, j) => j !== i);
@@ -528,7 +592,7 @@ export function buildAliasManager(opts: {
           void changed();
         }),
       );
-      listBox.appendChild(row);
+      listBox.append(row, previewOut);
     });
   };
 

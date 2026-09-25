@@ -450,6 +450,7 @@ const SCAN: &[&str] = &[
     "tests/settings/data-section.vitest.ts",
     "tests/settings/facet-producer-guard.vitest.ts",
     "tests/settings/assets-section.vitest.ts", // 〔AS2〕
+    "tests/settings/machine-aliases-naming.vitest.ts", // 〔W5-ALIAS〕读后端 `plan.rs` 原文对拍撞名退让
     "tests/settings/mcp-sync.vitest.ts",       // 〔AS1〕
     "tests/settings/open-settings.vitest.ts",
     "tests/settings/plugins-section.vitest.ts",

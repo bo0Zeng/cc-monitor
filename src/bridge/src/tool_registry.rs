@@ -836,8 +836,8 @@ pub const TOOLS: &[ToolSpec] = &[
     // 它昨天还住在 [`UNMANAGED_ENV`]（`app 假设它在`），`why` 那一格逐字写着
     // 「加与删两侧都只造 PowerShell 那两条 profile 路径，POSIX rc 一条都不扫」。
     // 本件把那句话变成了假的：`profile_installer::plan_install` 的 `PosixRc` 臂把那个
-    // 别名块装进用户**选定**的 rc（内容与远端那个口来自同一个常量 `sftp::CCM_WRAPPER_SNIPPET`，
-    // 合块与剥块都借 `sftp::merge_profile_block` / `sftp::strip_profile_block`），
+    // 别名块装进用户**选定**的 rc（内容与远端那个口来自同一个常量 `profile_installer::CCM_WRAPPER_SNIPPET`，
+    // 合块与剥块都走 `profile_installer::merge_profile_block` / `strip_profile_block`），
     // `profile_installer::plan_uninstall` 卸得掉，`profile_installer::scan_profile` 查得出。
     //
     // 🔴 **升档本身是一条可验的性质**，不是一句话：`installable: true` ⇒ [`environment`]
@@ -850,7 +850,7 @@ pub const TOOLS: &[ToolSpec] = &[
         uninstallable: true,
         carriers: &[Carrier {
             what: "仓里那份别名脚本（`src/shared/ccm-aliases.sh`），合进你自己选的那份 rc",
-            // 装进去的内容**就是仓里那份文件**（`sftp::CCM_WRAPPER_SNIPPET` 是它的
+            // 装进去的内容**就是仓里那份文件**（`profile_installer::CCM_WRAPPER_SNIPPET` 是它的
             // `include_str!`）。远端那条 `ccm` 用的是同一份 —— 那正是本件不许出现第二份的东西。
             source: ToolSource::EmbeddedText {
                 repo_path: "src/shared/ccm-aliases.sh",
