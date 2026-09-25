@@ -191,6 +191,9 @@ const SENDERS: &[(&str, Verdict)] = &[
     // ★ 〔RM1a · 第四波〕「足迹」的远端那一栏：问那台机器的后端要路径事实（`footprint-probe`），
     //   经 `footprint_remote.rs::call` 这一口；形状与理由逐字同上两条。
     ("footprint_remote.rs", Verdict::UsesRouter),
+    // ★ 〔AS1 · 第四波 4B〕MCP 推 / 拉：请**要被写的那一台**的后端判（`mcp-sync-plan`），经 `mcp_sync.rs::BackendJudge::plan`
+    //   这一口；读 / 写那两跳走 `user_files.rs::BackendDoor`（已登记）。形状与理由逐字同上几条。
+    ("mcp_sync.rs", Verdict::UsesRouter),
     // ★ 〔RW1 · 第四波 · 2026-09-24〕**第十一个发送端** —— 用户文件的读改写 ＋ 删历史会话
     //   （`user_files.rs::BackendDoor`：`files-home` / `files-peek` / `files-put` / `files-rename` /
     //   `files-chmod` / `files-delete-session`）。用户裁「只允许后端的文件管理部分写文件」也管本机

@@ -186,6 +186,8 @@ import type { SearchIndexStatus } from "../generated/SearchIndexStatus";
 import type { SearchResponse } from "../generated/SearchResponse";
 import type { LogFileInfo } from "../generated/LogFileInfo";
 import type { McpServerEntry } from "../generated/McpServerEntry";
+import type { McpSyncApplied } from "../generated/McpSyncApplied";
+import type { McpSyncPreview } from "../generated/McpSyncPreview";
 import type { RestartHint } from "../generated/RestartHint";
 import type { SessionActivityPayload } from "../generated/SessionActivityPayload";
 import type { SubagentLoadResult } from "../generated/SubagentLoadResult";
@@ -1136,6 +1138,25 @@ export const commands = {
     name: string;
     server: unknown;
   }) => invoke<void>("write_project_mcp_server", args),
+
+  /**
+   * 〔AS1 · 第四波 4B〕MCP 推 / 拉（`设计/96` 的 B）：看差异。`from` 那台 `fromDir` 的 `.mcp.json` 拷到
+   * `to` 那台 `toDir` 会发生什么 —— 判定由 `to` 那台的后端做（`mcp-sync-plan`）。两台都是 `Origin`，本机逐字 `LOCAL_ORIGIN`。
+   */
+  mcp_sync_preview: (args: { from: Origin; fromDir: string; to: Origin; toDir: string }) =>
+    invoke<McpSyncPreview>("mcp_sync_preview", args),
+  /**
+   * 〔AS1〕写：把勾的那几条原样合进 `to` 那台那份（`overwrite` = 对面不同、用户说了要盖的那几条）。
+   * `sourceText` / `targetText` 原样送回看差异时拿到的那两份（后者是 CAS 期望：对面在那之后变了 ⇒ 一个字节不写）。
+   */
+  mcp_sync_apply: (args: {
+    to: Origin;
+    toDir: string;
+    sourceText: string;
+    targetText: string | null;
+    take: string[];
+    overwrite: string[];
+  }) => invoke<McpSyncApplied>("mcp_sync_apply", args),
 
   // ════════════════════════════════════════════════════════════════════════
   // 〔C4a · 子步 2〕**最后十条**：原先在 `tab-session-actions.ts`（tab 层）与 `accounts.ts`

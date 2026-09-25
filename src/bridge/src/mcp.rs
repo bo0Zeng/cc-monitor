@@ -294,7 +294,11 @@ fn mcp_json_path(project_dir: &str) -> Result<PathBuf, String> {
 }
 
 /// **纯核心**（F89a 抽出，本机/远端复用、可测）：把一条 server upsert 进 `.mcp.json` Value。名空拒。
-fn upsert_mcp_server_value(root: &mut Value, name: String, server: Value) -> Result<(), String> {
+pub(crate) fn upsert_mcp_server_value(
+    root: &mut Value,
+    name: String,
+    server: Value,
+) -> Result<(), String> {
     if name.trim().is_empty() {
         return Err("server 名为空".into());
     }
@@ -361,27 +365,58 @@ async fn edit_project_mcp(
     target: &str,
     mut change: impl FnMut(&mut Value) -> Result<bool, String>,
 ) -> Result<(), String> {
-    // 落点由两个出口之一给（[`mcp_json_path`] / [`remote_mcp_json_path`]），这里只把它切成「根 ＋ 那一段」交给后端。
-    let (root, rel) = target
-        .rsplit_once(['/', '\\'])
-        .filter(|(r, n)| !r.is_empty() && !n.is_empty())
-        .ok_or_else(|| format!("拒绝写：{target} 切不出项目目录"))?;
-    let what = target.to_string();
+    let (root, rel) = split_target(target)?;
     crate::user_files::edit(door, root, rel, false, false, |existing| {
-        let mut v = match existing {
-            None => serde_json::json!({ "mcpServers": {} }),
-            Some(t) => serde_json::from_str(t.trim_start_matches('\u{feff}'))
-                .map_err(|e| format!("{what} 解析失败（拒绝覆盖）: {e}"))?,
-        };
-        if !change(&mut v)? {
-            return Ok(None);
-        }
-        serde_json::to_string_pretty(&v)
-            .map(Some)
-            .map_err(|e| e.to_string())
+        plan_project_mcp(target, existing, &mut change)
     })
     .await
     .map(|_| ())
+}
+
+/// 落点由两个出口之一给（[`mcp_json_path`] / [`remote_mcp_json_path`]），这里只把它切成「根 ＋ 那一段」交给后端。
+///
+/// 〔AS1 · 第四波 4B〕从 [`edit_project_mcp`] 里原样抽出来（行为逐字不变）：推 / 拉（`mcp_sync.rs`）用同一把刀切。
+pub(crate) fn split_target(target: &str) -> Result<(&str, &str), String> {
+    target
+        .rsplit_once(['/', '\\'])
+        .filter(|(r, n)| !r.is_empty() && !n.is_empty())
+        .ok_or_else(|| format!("拒绝写：{target} 切不出项目目录"))
+}
+
+/// 🔴 **`.mcp.json` 的原文怎么变成新原文 —— 只有这一处**（纯）：不存在 ⇒ 从骨架算起；已存在但解析失败 ⇒
+/// **拒绝覆盖**；`change` 回 `false` ⇒ 没事可做（`None`）。
+///
+/// 〔AS1 · 第四波 4B〕从 [`edit_project_mcp`] 的规划闭包里原样抽出来（行为逐字不变）：单条「添加 / 更新 / 删」
+/// 与推 / 拉（`mcp_sync.rs`）走同一份 —— 推 / 拉合进去的每一条也是 [`upsert_mcp_server_value`]。
+pub(crate) fn plan_project_mcp(
+    what: &str,
+    existing: Option<&str>,
+    change: &mut impl FnMut(&mut Value) -> Result<bool, String>,
+) -> Result<Option<String>, String> {
+    let mut v = match existing {
+        None => serde_json::json!({ "mcpServers": {} }),
+        Some(t) => serde_json::from_str(t.trim_start_matches('\u{feff}'))
+            .map_err(|e| format!("{what} 解析失败（拒绝覆盖）: {e}"))?,
+    };
+    if !change(&mut v)? {
+        return Ok(None);
+    }
+    serde_json::to_string_pretty(&v)
+        .map(Some)
+        .map_err(|e| e.to_string())
+}
+
+/// 〔AS1 · 第四波 4B〕按 origin 取项目 `.mcp.json` 的落点 —— 两个出口（[`mcp_json_path`] / [`remote_mcp_json_path`]）
+/// 照旧是仅有的两个，这里只按「本机 / 远端」挑一个（与两条写命令里的挑法同形）。推 / 拉用。
+pub(crate) fn project_mcp_target(
+    origin: &Origin,
+    command: &str,
+    project_dir: &str,
+) -> Result<String, String> {
+    match origin.route(command)? {
+        Route::Local => Ok(mcp_json_path(project_dir)?.to_string_lossy().into_owned()),
+        Route::Remote(_) => remote_mcp_json_path(project_dir),
+    }
 }
 
 /// F87 写命令：增 / 改项目 `.mcp.json` 里一条 MCP server。**只碰 `<dir>/.mcp.json`。**
