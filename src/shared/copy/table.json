@@ -696,6 +696,26 @@
       "kind": "body",
       "zh": "留意：{value}",
       "args": ["value"]
+    },
+    "tmuxMint.unknown.notAsked": {
+      "kind": "error",
+      "zh": "没问到那台机器上已有哪些 tmux 会话",
+      "args": []
+    },
+    "tmuxMint.unknown.localNotYet": {
+      "kind": "error",
+      "zh": "本机后端还没报过这台机器上已有哪些 tmux 会话",
+      "args": []
+    },
+    "tmuxMint.refused.title": {
+      "kind": "error",
+      "zh": "没有起会话",
+      "args": []
+    },
+    "tmuxMint.refused.body": {
+      "kind": "error",
+      "zh": "问不出 {machine} 上已有哪些 tmux 会话。新会话的名字可能撞上已有的、接进别的会话里，所以这次没有起。原因：{reason}",
+      "args": ["machine", "reason"]
     }
   }
 }

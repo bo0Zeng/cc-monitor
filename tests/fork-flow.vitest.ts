@@ -119,7 +119,8 @@ describe("deriveForkSource", () => {
     const f = deriveForkSource(null, null, "s1", "/p");
     expect(f.source.sourceIsLive).toBe(false);
     expect(f.source.liveConfigDir).toBeUndefined();
-    expect(f.takenTmuxNames).toEqual([]);
+    // 〔FE1〕名单没取到 = `null`，**不是**空表（空表 = 「一个都没占」，拿它铸名就是不避让，#76 的形状）。
+    expect(f.takenTmuxNames).toBeNull();
     expect(f.source.sourceCwd, "cwd 来自 jsonl，与远端可达性无关").toBe("/p");
   });
 });

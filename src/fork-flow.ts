@@ -35,6 +35,7 @@ import {
   type SessionAccount,
 } from "./accounts";
 import { findClaudeTmuxMatches, type TmuxSession } from "./tmux-sessions";
+import { readTmuxListing } from "./tmux-name-mint";
 import { askForkLaunch, type ForkAccountOption } from "./fork-ask";
 import { startForkedSession, type ForkStartDeps, type ForkStartOutcome } from "./fork-start";
 import type { ForkLaunchInput } from "./fork-launch";
@@ -60,8 +61,12 @@ export interface ForkSourceFacts {
   source: ForkLaunchInput;
   /** 源会话所在 tmux 名（新名要避开它）。 */
   sourceTmuxName: string | null;
-  /** 远端已占用的全部 tmux 名（新名要避开它们）。 */
-  takenTmuxNames: string[];
+  /**
+   * 远端已占用的全部 tmux 名（新名要避开它们）。
+   * 〔FE1〕**`null` = 名单没问到**（不是「一个都没占」）⇒ 选了 tmux 就不起、说清（`fork-start.ts`）。
+   * 先前这里 `?? []`：远端不可达时拿空集铸 `-fork-cc`，与 #76 同形。
+   */
+  takenTmuxNames: string[] | null;
 }
 
 /**
@@ -94,7 +99,8 @@ export function deriveForkSource(
       liveTmuxName: tmuxName,
     },
     sourceTmuxName: tmuxName,
-    takenTmuxNames: sessions?.map((s) => s.name) ?? [],
+    // 〔FE1〕`null` / `undefined` = 名单没取到 ⇒ `null`，不压成空集（见字段头注）。
+    takenTmuxNames: sessions ? sessions.map((s) => s.name) : null,
   };
 }
 
@@ -128,11 +134,18 @@ export async function collectForkSource(
       takenTmuxNames: [],
     };
   }
-  const [rows, sessions] = await Promise.all([
+  // 〔FE1〕tmux 名单只经 `tmux-name-mint.ts::readTmuxListing` 取（本机远端同一个家）：
+  //   没问到 ⇒ `unknown` ⇒ 这里交 `null`；远端没装 tmux ⇒ 一张确定的空表。
+  const [rows, listing] = await Promise.all([
     fetchSessionAccounts(origin).catch(() => [] as SessionAccount[]),
-    commands.list_remote_tmux({ origin }).catch(() => null),
+    readTmuxListing(origin),
   ]);
-  return deriveForkSource(rows, sessions, sid, cwd);
+  return deriveForkSource(
+    rows,
+    listing.kind === "known" ? [...listing.sessions] : null,
+    sid,
+    cwd,
+  );
 }
 
 /**

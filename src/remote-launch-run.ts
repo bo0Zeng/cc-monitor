@@ -46,7 +46,8 @@ import { probeCcm } from "./ccm-probe";
 import { getBehavior } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
 import { AGENT_PROFILE } from "./agent-profile";
-import { deriveTmuxName, mintTmuxName } from "./remote-launch";
+// 〔FE1〕起新会话的名字只从一个家取：`tmux-name-mint.ts`（列名单 ＋ 铸名 ＋ 「列不出 ⇒ 不起」）。
+import { mintFreshTmuxName, refuseUnmintable } from "./tmux-name-mint";
 import { LOCAL_LAUNCH_ACCOUNT_WIRE as ACCOUNT_WIRE } from "./generated/launch-render-facts";
 import type { LaunchContext, LaunchPlan } from "./launch-plan";
 
@@ -829,32 +830,21 @@ export async function runNewSessionRemote(
   command: string,
   mods: LaunchModifiers = {}, // R03：正交修饰 bag（configDir/accountName/modelOverride），见 launch-plan.ts
 ): Promise<void> {
-  // ★★ **默认名必须过铸名口**（F13）—— 08-12 补上，此前这里直接拿 `deriveTmuxName(cwd)`
-  // 当最终名。`deriveTmuxName` 只产**基名建议**（它自己的头注逐字这么写），最终名一律过
-  // `mintTmuxName`，那是全仓唯一带撞名避让的铸造口。
+  // ★★ **默认名必须过铸名口**（F13）：同一个 cwd 点两次「起新会话」派生出同一个名字 ⇒ 撞上远端
+  // `create-or-attach` 的幂等闸 ⇒ **静默接进第一个会话，而用户以为开了新的**（issue #76 那一族）。
   //
-  // 不过它会怎样：同一个 cwd 点两次「起新会话」⇒ 派生出**同一个名字** ⇒ 撞上远端
-  // `create-or-attach` 的幂等闸（`tmux new-session … 2>/dev/null && send-keys` 里那个 `&&`
-  // 短路）⇒ **静默接进第一个会话，而用户以为开了新的** = issue #76 那一族。
-  //
-  // ⚠ **同一个坑仓里修过一次**：`settings/machine-card.ts:941` 的「开新 Claude」逐字记着
-  // 「此前直接拿 `deriveTmuxName(cwd)` 当最终名，**不查撞名**」并已改为过铸造口。
-  // 而全仓 `deriveTmuxName` 的生产调用点**只有两个** —— 那次修了一个、漏了这一个。
-  // ⇒ 「修过了」不等于「这一族修完了」：按**症状**修会漏，按**调用点人群**修才不会。
-  //
-  // 拿不到会话列表 ⇒ 用空集合**诚实降级**（与改之前逐字同行为，不更差），
-  // 不因为查询失败挡住起会话。这一格照抄那处先例。
-  let taken: ReadonlySet<string> = new Set();
-  try {
-    const sessions = await commands.list_remote_tmux({ origin });
-    taken = new Set((sessions ?? []).map((x) => x.name));
-  } catch {
-    // 诚实降级：列不出来就不避让
+  // 〔FE1〕「列名单 → 铸名」收进 `tmux-name-mint.ts`（本机远端同一个家）。这里先前是
+  // `settings/machine-card.ts` 那段的逐字副本，**列不出名单就拿空集铸名**（「诚实降级：列不出来就不避让」）——
+  // 那正是 #76 的形状，而本机那一侧早就写着「绝不退化成空集」。⇒ 列不出 ⇒ 不起、说清。
+  const minted = await mintFreshTmuxName(origin, cwd);
+  if (!minted.ok) {
+    refuseUnmintable(origin, minted.why);
+    return;
   }
   await runRemoteLauncher(
     origin,
     cwd,
-    mintTmuxName(deriveTmuxName(cwd), taken),
+    minted.name,
     command || AGENT_PROFILE.defaultLauncher,
     mods,
   );

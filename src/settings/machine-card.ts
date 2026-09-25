@@ -25,8 +25,10 @@ import { parseAddressLines } from "../remote-config";
 // E80：`ConnectStage` 直连生成物，不再绕道 `remote-section`（那条绕道是 import 环的一半）。
 import type { ConnectStage } from "../generated/ConnectStage";
 import { AGENT_PROFILE } from "../agent-profile";
-// F13：默认名要过铸名口（`mintTmuxName`），`deriveTmuxName` 只产**基名建议**。
-import { deriveTmuxName, mintTmuxName } from "../remote-launch";
+// F13：`deriveTmuxName` 只产**基名建议**（这里只拿它当输入框的占位提示）；最终名过铸名口。
+import { deriveTmuxName } from "../remote-launch";
+// 〔FE1〕铸名口（列名单 ＋ 避让 ＋ 「列不出 ⇒ 不起」）本机远端同一个家。
+import { mintFreshTmuxName, refuseUnmintable } from "../tmux-name-mint";
 import {
   fetchAccounts,
   isSelectable,
@@ -955,25 +957,22 @@ export class MachineCard {
       void (async () => {
       const cwd = cwdInput.value.trim();
       // F13（用户 2026-08-03：「为什么会撞名? 要撞名检查」）：**默认名必须过铸名口。**
-      //
-      // 摸底实测的缺陷：这里此前直接拿 `deriveTmuxName(cwd)` 当最终名，**不查撞名**
-      // ⇒ 同一个 cwd 点两次「开始」会产出同名，撞上远端 `create-or-attach` 的幂等闸
+      // 同一个 cwd 点两次「开始」会派生出同名 ⇒ 撞上远端 `create-or-attach` 的幂等闸
       // ⇒ **静默接进第一个会话，而用户以为开了新的**（issue #76 那一族）。
       //
       // 用户显式填的名字**不动**（那是他的意思，撞了也是他要的复用）；
-      // 只有**我们替他派生**的那个默认名才过 `mintTmuxName` 避让。
-      // 拿不到会话列表（远端不可达等）⇒ 用空集合**诚实降级**：与改之前逐字同行为，不更差。
+      // 只有**我们替他派生**的那个默认名才过铸名口。
+      // 〔FE1〕铸名收进 `tmux-name-mint.ts`（与 `remote-launch-run.ts::runNewSessionRemote` 先前是逐字副本）；
+      // 先前「列不出名单 ⇒ 空集铸名、不避让」正是 #76 的形状 ⇒ 列不出就不起、说清。
       const typed = nameInput.value.trim();
       let name = typed;
       if (!name) {
-        let taken: ReadonlySet<string> = new Set();
-        try {
-          const sessions = await commands.list_remote_tmux({ origin });
-          taken = new Set((sessions ?? []).map((s) => s.name));
-        } catch {
-          // 诚实降级：列不出来就不避让（等于改之前的行为），不因为查询失败挡住启动
+        const minted = await mintFreshTmuxName(origin, cwd);
+        if (!minted.ok) {
+          refuseUnmintable(origin, minted.why);
+          return;
         }
-        name = mintTmuxName(deriveTmuxName(cwd), taken);
+        name = minted.name;
       }
       const command = cmdInput.value.trim() || AGENT_PROFILE.defaultLauncher;
       const accName = acctSelect.value; // "" = 不指定

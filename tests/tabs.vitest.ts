@@ -1265,7 +1265,12 @@ describe("audit-fixes F01 follow-resume pin 现读磁盘（修 B1 内存脏读�
     // 内存镜像里种一个**陈旧**值,证明 resume 不依赖它;磁盘(list_last_accounts)才是真相源。
     tm.setSessionAccounts([], new Map(), new Map([["r1", "STALE"]]));
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_last_accounts" ? Promise.resolve({ r1: "z" }) : Promise.resolve(undefined),
+      cmd === "list_last_accounts"
+        ? Promise.resolve({ r1: "z" })
+        // 〔FE1〕零会话 = 空表（线上真形状）；`undefined` 线上不存在，铸名会把它读成「没问到」而不起。
+        : cmd === "list_remote_tmux"
+          ? Promise.resolve([])
+          : Promise.resolve(undefined),
     ));
   });
 
@@ -1304,7 +1309,7 @@ describe("audit-fixes F01 follow-resume pin 现读磁盘（修 B1 内存脏读�
   // F04：tmux 后端的基座逃生口，与直连对称（两后端一致）。useBase → 不跟随、不读 pin、不注入。
   // 变异锚点：resumeTabTmux 的 follow 去掉 `useBase ?` → 又读 pin → list_last_accounts 被 invoke → 红。
   it("用基座 resume（tmux，useBase）→ 不读 pin、不注入（起全新 tmux resume，cd undefined）", async () => {
-    // 默认 invoke 返 undefined → list_remote_tmux 无活会话/无 idle → 走 ② 全新 resume。
+    // list_remote_tmux 回空表 → 无活会话/无 idle → 走 ② 全新 resume。
     tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
     tm.archiveTab("r1");
     await home(tm).actions.resumeTabTmux("r1", undefined, true);
@@ -1928,7 +1933,11 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
               { name: extraName ?? "b", email: "b@x", configDir: `/h/${extraName ?? "b"}`, isDefault: false, mode: "isolated", exists: true, loggedIn: true },
             ],
           })
-        : Promise.resolve(undefined),
+        // 〔FE1〕`list_remote_tmux` 回真实线上形状（零会话 = 空表）。先前落进 `undefined`（线上不存在的值），
+        //   铸名那一格把它读成「没问到」⇒ 不起 —— 桩要说一个真答案，别让它碰巧走通。
+        : cmd === "list_remote_tmux"
+          ? Promise.resolve([])
+          : Promise.resolve(undefined),
     )));
 
   const openArchivedMenu = async (): Promise<void> => {

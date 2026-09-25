@@ -276,11 +276,14 @@ describe("F41 runRemoteResume", () => {
     expect(sent).not.toMatch(/[^-]proj-cc[^-0-9]/);
   });
 
-  it("列不出会话（远端不可达）→ 诚实降级用基名，不因为查询失败挡住起会话", async () => {
+  // 〔FE1〕这一条先前钉的是**缺陷**：「列不出会话 ⇒ 诚实降级用基名」—— 空集铸名 = 不避让 = #76 的形状，
+  //   而本机那一侧早写着「绝不退化成空集」。住址 `设计/01 §5` D4「一条都不许静默忽略」。
+  //   ⇒ 没问到 ⇒ 不起、出声；正控：远端**没装 tmux**（`null`，确定答案）⇒ 照起、用基名。
+  const newSessionRig = (listing: () => Promise<unknown>): string[] => {
     const remoteCmds: string[] = [];
     invokeMock.mockImplementation((cmd: string, args?: unknown) => {
       if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
-      if (cmd === "list_remote_tmux") return Promise.reject("ssh 抖动");
+      if (cmd === "list_remote_tmux") return listing();
       if (cmd === "render_launch_payload")
         return Promise.resolve(renderLaunchPayloadStub((args as { req: PayloadRenderRequest }).req));
       if (cmd === "launch_remote_terminal") {
@@ -290,6 +293,22 @@ describe("F41 runRemoteResume", () => {
       return Promise.resolve(undefined);
     });
     stubClipboard(vi.fn().mockResolvedValue(undefined));
+    return remoteCmds;
+  };
+
+  it("★ 〔FE1〕列不出会话（远端不可达）→ 不起、出声，不拿空集铸名", async () => {
+    const remoteCmds = newSessionRig(() => Promise.reject("ssh 抖动"));
+    await runNewSessionRemote("aya", "/home/u/proj", "");
+    expect(remoteCmds, "没问到名单还起了 —— 名字没避让，可能接进已有会话（#76）").toEqual([]);
+    expect(invokeMock.mock.calls.some((c) => c[0] === "launch_remote_terminal")).toBe(false);
+    expect(toastMock).toHaveBeenCalledTimes(1);
+    expect(toastMock.mock.calls[0][0]).toBe("没有起会话");
+    expect(toastMock.mock.calls[0][1]).toContain("aya");
+    expect(toastMock.mock.calls[0][1]).toContain("ssh 抖动");
+  });
+
+  it("正控：远端没装 tmux（确定答案 `null`）→ 照起、用基名", async () => {
+    const remoteCmds = newSessionRig(() => Promise.resolve(null));
     await runNewSessionRemote("aya", "/home/u/proj", "");
     expect(remoteCmds.join("\n")).toContain("proj-cc");
   });
