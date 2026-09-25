@@ -888,6 +888,12 @@ src/settings/plugins-section.ts:44	声明 {…} 个插件	保留	[对外] 计数
 src/settings/plugins-section.ts:49	更新时间：未记	保留	[对外] 字段＋未知值
 src/settings/plugins-section.ts:51	更新时间：{…}	保留	[对外] 字段＋原值
 src/settings/plugins-section.ts:52	更新时间：{…}	保留	[对外] 字段＋本地化时间
+src/settings/plugins-section.ts:81	不是一个对象	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
+src/settings/plugins-section.ts:83	顶层的键是 {…}	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
+src/settings/plugins-section.ts:84	顶层两格的类型不对	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
+src/settings/plugins-section.ts:87	第 {…} 条不是对象	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
+src/settings/plugins-section.ts:89	第 {…} 条的键是 {…}	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
+src/settings/plugins-section.ts:93	第 {…} 条有一格类型不对	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
 src/settings/readiness.ts:48	缺	保留	[对外] 缺口标头，已刻意与「未测过」分开
 src/settings/readiness.ts:50	未测过	保留	[对外] 缺口标头
 src/settings/readiness.ts:207	{…} 项确认缺	保留	[对外] 缺口计数

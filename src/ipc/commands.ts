@@ -137,7 +137,6 @@ import type { CcmProbeResult } from "../generated/CcmProbeResult";
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
 import type { DriftLedgerReport } from "../generated/DriftLedgerReport";
-import type { MarketplaceSurvey } from "../generated/MarketplaceSurvey";
 import type { CcBusDeployReport } from "../generated/CcBusDeployReport";
 import type { CcBusInstallState } from "../generated/CcBusInstallState";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
@@ -807,12 +806,8 @@ export const commands = {
   // 〔ST3〕按机器分：问哪台答哪台，回包带回 `origin`（界面按回声判）。monitor 自己的命令，不经后端。
   drift_ledger_report: (args: { origin: Origin }) =>
     invoke<DriftLedgerReport>("drift_ledger_report", args),
-  // P8a：Claude Code 的 marketplace 面（只读、按需一次，不轮询）。
-  // ⚠ 它回答的是「有哪些 marketplace / 它**声明**了多少插件」，
-  // **不是**「装了/启用了哪些插件」—— 后者今天在盘上没有真相源（待决 `U10d`）。
-  // 〔RM1b · 第四波〕收 `origin`：问那台机器的后端 `plugins-marketplaces`（本机逐字 `LOCAL_ORIGIN`）。
-  list_plugin_marketplaces: (args: { origin: Origin }) =>
-    invoke<MarketplaceSurvey>("list_plugin_marketplaces", args),
+  // 〔C4b · 第四波 4B〕P8a 的 marketplace 面（`list_plugin_marketplaces`〔散文墓碑〕）退役：经通道直接说帧命令
+  //   `plugins-marketplaces`，后端出成品（`src/settings/plugins-section.ts::fetchSurvey`）。
   // PS1：把内嵌的 cc-bus 装到 `<claude_dir>/skills/cc-bus/`。
   // ⚠ **只读铁律的第 7 条例外**（`U10b` 用@08-13 裁「开」）⇒ 它是本仓**唯一**往
   // `<claude_dir>` 写的口子，必须由**用户显式点击**触发，绝不放进任何自动路径。
