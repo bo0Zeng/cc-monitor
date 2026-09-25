@@ -6,6 +6,7 @@ fn main() {
     check_vendor_freshness();
     check_acct_iso_vendor_freshness();
     embed_backends();
+    embed_panoramas();
     embed_native_backend();
     tauri_build::build()
 }
@@ -619,6 +620,45 @@ fn embed_backends() {
     }
     if all {
         println!("cargo:rustc-cfg=embedded_backends");
+    }
+}
+
+/// 〔RM1c · 第四波〕把交叉编译好的**全景小程序**（`src/panorama-engine`，只装代码全景引擎的
+/// 独立二进制，用户 09-24 V108 选 B）两个 musl arch 复制进 OUT_DIR，置 `embedded_panoramas` cfg；
+/// 任一缺失 ⇒ 不置 cfg ＋ **可见的** warning（`panorama_bytes::panorama_binary` 返回 `None`，
+/// 远端全景那一台就只能报「这台机器上还没装」）。
+///
+/// # 与 [`embed_backends`] 同一个落点、同一条配方，**不同的一件事**
+///
+/// - 落点同是 [`EMBEDDED_BACKENDS_DIR`]（远端部署产物那一类；已被 gitignore 挡着），
+///   文件名 `cc-monitor-panorama-<arch>`。产它的同样只有两条路：发版那趟 `release.yml` 的
+///   `Cross-compile panorama for both musl targets`，本机那趟 [`REEMBED_CMD`]（配方逐字同源）。
+/// - **没有身份戳、没有半 bump 守卫**：它不随 `BUILD_ID` 走（后端的协议面与它无关），
+///   「这份字节与源码是不是同一代」由 [`REEMBED_CMD`] 的 `--check` 真起一趟 `--probe`、
+///   比它报的能力表与源码那张 op 表来答（能跑的那个 arch）。
+/// - ⚠ **缺席不 panic**：它是「只传给开过远端全景的机器」的可选件，缺了只是远端全景那一格关着，
+///   不是「装出去就无限重装」那种坏。
+fn embed_panoramas() {
+    println!("cargo:rustc-check-cfg=cfg(embedded_panoramas)");
+    let out = std::env::var("OUT_DIR").expect("OUT_DIR");
+    let dir = Path::new(EMBEDDED_BACKENDS_DIR);
+    let mut all = true;
+    for arch in ["x86_64", "aarch64"] {
+        let src = dir.join(format!("cc-monitor-panorama-{arch}"));
+        println!("cargo:rerun-if-changed={}", src.display());
+        if src.exists() {
+            let dst = Path::new(&out).join(format!("panorama-{arch}"));
+            std::fs::copy(&src, &dst).expect("copy embedded panorama binary");
+        } else {
+            println!(
+                "cargo:warning=缺少内嵌全景小程序 {arch}（{}）——远端代码全景那一格将没有字节可推（embedded_panoramas cfg 不置）。要它就跑 `{REEMBED_CMD}`",
+                src.display()
+            );
+            all = false;
+        }
+    }
+    if all {
+        println!("cargo:rustc-cfg=embedded_panoramas");
     }
 }
 

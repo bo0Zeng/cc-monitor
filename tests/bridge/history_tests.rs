@@ -3170,7 +3170,7 @@ fn only_an_account_that_has_a_row_in_the_apikey_table_gets_the_base_url_prefix()
 /// # 它买不到什么
 ///
 /// 它不管那几个取值口**自己答得对不对**（那是 [`apikey_rows_at`] 那条读真文件的判据、
-/// 与 `local_backend_host::relay_running_really_reads_the_handle_table` 的活），
+/// 与 `local_backend_host::relay_running_really_asks_the_loopback_port`〔RL1 接替读句柄表那一条〕 的活），
 /// 也不管**生产上插进那条缝的是不是它们**（那是下一条判据按函数地址对拍的活）。
 /// **三条合起来才等于「这条线真的在问那几件事」。**
 #[test]
@@ -4747,4 +4747,304 @@ fn the_launch_side_asks_the_all_sessions_switch_and_uses_its_answer() {
         "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/t/claude-code/0/sid-1'; "
     );
     assert_eq!(relay_prefix_for_launch(&action, None).unwrap(), "");
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 〔RL1 · 第四波〕R1：`relay_endpoint_on` —— 远端「用到才起」＋ 注入地址；判断只在 `payload::relay_endpoint_for`
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// 台架：一条内存管道两头 —— monitor 这头是**真的** `InboundClient`（`park → into_client`），登记在一个
+// 假主机名下；对面是一个**照脚本答**的假后端（记下每条请求的 `cmd`，按脚本回 `data`）。
+// 异源在哪：期望的地址不抄字面量，由构造口 `payload::relay_base_url_in` 现算前缀；
+// 「发了哪几条命令、什么顺序」数的是假后端那一侧收到的（不是被测函数自己说的）。
+
+mod relay_endpoint_rig {
+    use crate::backend::control::inbound_client::{
+        park, register, unregister, BackendHello, InboundClient,
+    };
+    use crate::ssh_source::{parse_frame, InboundFrame};
+    use serde_json::Value;
+    use std::collections::VecDeque;
+    use std::sync::{Arc, Mutex};
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+
+    pub(super) struct Rig {
+        pub(super) host: String,
+        pub(super) seen: Arc<Mutex<Vec<String>>>,
+        client: Arc<InboundClient>,
+    }
+
+    impl Drop for Rig {
+        fn drop(&mut self) {
+            unregister(&self.host, &self.client);
+        }
+    }
+
+    /// `script`：每条命令按顺序答的 `data`（答完了还来 ⇒ 回 `ok:false`，让多发的那一条当场现形）。
+    pub(super) fn rig(host: &str, script: Vec<(&'static str, Value)>) -> Rig {
+        let (mon_w, be_r) = tokio::io::duplex(1 << 16);
+        let (be_w, mon_r) = tokio::io::duplex(1 << 16);
+        let hello = InboundFrame::Hello {
+            v: 1,
+            build_id: "t".into(),
+            host_arch: "x86_64".into(),
+            claude_dir: "/tmp".into(),
+            homes: vec![],
+            capabilities: vec![],
+            commands: ["apikey-read", "relay-status", "relay-ensure"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        };
+        let client =
+            park(mon_w).into_client(BackendHello::from_hello_frame(&hello).expect("hello"));
+        let c2 = Arc::clone(&client);
+        tauri::async_runtime::spawn(async move {
+            let mut lines = tokio::io::BufReader::new(mon_r).lines();
+            while let Ok(Some(l)) = lines.next_line().await {
+                if let Some(f) = parse_frame(&l) {
+                    crate::backend::control::local_backend::absorb_local_frame(f, Some(&c2));
+                }
+            }
+        });
+        let seen = Arc::new(Mutex::new(Vec::<String>::new()));
+        let seen2 = Arc::clone(&seen);
+        let mut plan: VecDeque<(&'static str, Value)> = script.into();
+        tauri::async_runtime::spawn(async move {
+            let mut w = be_w;
+            let mut lines = tokio::io::BufReader::new(be_r).lines();
+            while let Ok(Some(l)) = lines.next_line().await {
+                let v: Value = serde_json::from_str(&l).expect("请求不是 JSON");
+                let id = v["id"].as_str().unwrap_or_default().to_string();
+                let cmd = v["cmd"].as_str().unwrap_or_default().to_string();
+                seen2.lock().expect("lock").push(cmd.clone());
+                let line = match plan.front() {
+                    Some((c, _)) if *c == cmd => {
+                        let (_, data) = plan.pop_front().expect("刚看过");
+                        serde_json::json!({"kind":"reply","id":id,"ok":true,"data":data})
+                            .to_string()
+                    }
+                    _ => serde_json::json!({"kind":"reply","id":id,"ok":false,
+                        "error":{"code":"unscripted","message":format!("脚本里下一条不是 {cmd}")}})
+                    .to_string(),
+                };
+                if w.write_all(format!("{line}\n").as_bytes()).await.is_err() {
+                    break;
+                }
+            }
+        });
+        register(host, Arc::clone(&client));
+        Rig {
+            host: host.to_string(),
+            seen,
+            client,
+        }
+    }
+}
+
+fn rl1_rows_json(rows: &[&str]) -> serde_json::Value {
+    serde_json::json!({"configured": !rows.is_empty(), "masked": "", "path": "/x", "notice": null, "problem": null, "rows": rows})
+}
+
+fn rl1_named(id: &str) -> LaunchAccount {
+    LaunchAccount::Named {
+        config_dir: format!("/home/u/.claude-alt/{id}"),
+        name: None,
+    }
+}
+
+fn rl1_facts(all_sessions: fn() -> bool) -> InjectFactsGuard {
+    fn no_rows() -> Vec<String> {
+        Vec::new()
+    }
+    fn down() -> bool {
+        false
+    }
+    fn not_win() -> bool {
+        false
+    }
+    override_inject_facts(InjectFactSources {
+        rows: no_rows,
+        running: down,
+        windows: not_win,
+        all_sessions,
+    })
+}
+
+fn rl1_off() -> bool {
+    false
+}
+fn rl1_on() -> bool {
+    true
+}
+
+/// R1 ①：**不注入的那几格一条中转命令都不发**（用到才起）：表里没这一行、全量开关关着 ⇒ `None`，
+/// 假后端只收到 `apikey-read` 一条。
+#[test]
+fn a_launch_that_needs_no_relay_sends_no_relay_command() {
+    let _f = rl1_facts(rl1_off);
+    let rig = relay_endpoint_rig::rig(
+        "rl1-host-none",
+        vec![("apikey-read", rl1_rows_json(&["other"]))],
+    );
+    let got = tauri::async_runtime::block_on(relay_endpoint_on(
+        &crate::origin::Origin(rig.host.clone()),
+        Some(&rl1_named("acct-a")),
+        None,
+    ));
+    assert_eq!(got, Ok(None));
+    assert_eq!(
+        *rig.seen.lock().expect("lock"),
+        vec!["apikey-read"],
+        "不注入却发了中转命令"
+    );
+}
+
+/// R1 ②：apikey 行在、那台口上已有人 ⇒ 注入 `/s/` 地址；**不起第二个**（零条 `relay-ensure`）。
+#[test]
+fn an_apikey_row_on_a_listening_machine_gets_the_substitute_url_without_an_ensure() {
+    let _f = rl1_facts(rl1_off);
+    let rig = relay_endpoint_rig::rig(
+        "rl1-host-up",
+        vec![
+            ("apikey-read", rl1_rows_json(&["acct-a"])),
+            (
+                "relay-status",
+                serde_json::json!({"port": 8788, "listening": true}),
+            ),
+        ],
+    );
+    let got = tauri::async_runtime::block_on(relay_endpoint_on(
+        &crate::origin::Origin(rig.host.clone()),
+        Some(&rl1_named("acct-a")),
+        Some("11111111-2222-3333-4444-555555555555"),
+    ))
+    .expect("不该拒");
+    let want = crate::backend::control::payload::relay_base_url_in(
+        crate::backend::control::payload::RouteMode::Substitute,
+        crate::backend::control::payload::RELAY_PORT,
+        launch_agent_id(),
+        "acct-a",
+        "11111111-2222-3333-4444-555555555555",
+    )
+    .expect("构造口");
+    assert_eq!(got.as_deref(), Some(want.as_str()));
+    assert_eq!(
+        *rig.seen.lock().expect("lock"),
+        vec!["apikey-read", "relay-status"]
+    );
+}
+
+/// R1 ③：口上没人 ⇒ `relay-ensure` 起一个 ⇒ **有界地**再问 ⇒ 在了就注入。顺序逐条相等。
+#[test]
+fn a_silent_machine_gets_its_relay_started_and_waited_for_before_the_url_is_handed_out() {
+    let _f = rl1_facts(rl1_off);
+    let rig = relay_endpoint_rig::rig(
+        "rl1-host-start",
+        vec![
+            ("apikey-read", rl1_rows_json(&["acct-a"])),
+            (
+                "relay-status",
+                serde_json::json!({"port": 8788, "listening": false}),
+            ),
+            (
+                "relay-ensure",
+                serde_json::json!({"port": 8788, "listening": false, "started": true}),
+            ),
+            (
+                "relay-status",
+                serde_json::json!({"port": 8788, "listening": false}),
+            ),
+            (
+                "relay-status",
+                serde_json::json!({"port": 8788, "listening": true}),
+            ),
+        ],
+    );
+    let got = tauri::async_runtime::block_on(relay_endpoint_on(
+        &crate::origin::Origin(rig.host.clone()),
+        Some(&rl1_named("acct-a")),
+        None,
+    ))
+    .expect("不该拒");
+    assert!(got.is_some_and(|u| crate::backend::control::payload::relay_base_url_shape_ok(&u)));
+    assert_eq!(
+        *rig.seen.lock().expect("lock"),
+        vec![
+            "apikey-read",
+            "relay-status",
+            "relay-ensure",
+            "relay-status",
+            "relay-status"
+        ]
+    );
+}
+
+/// R1 ④：apikey 行在、那台的中转起不来 ⇒ **拒绝起会话**（「非它不可」），说法点名那台机器。
+#[test]
+fn an_apikey_row_whose_machine_cannot_start_a_relay_refuses_the_launch() {
+    let _f = rl1_facts(rl1_off);
+    let rig = relay_endpoint_rig::rig(
+        "rl1-host-dead",
+        vec![
+            ("apikey-read", rl1_rows_json(&["acct-a"])),
+            (
+                "relay-status",
+                serde_json::json!({"port": 8788, "listening": false}),
+            ),
+            (
+                "relay-ensure",
+                serde_json::json!({"port": 8788, "listening": false, "started": false}),
+            ),
+        ],
+    );
+    let err = tauri::async_runtime::block_on(relay_endpoint_on(
+        &crate::origin::Origin(rig.host.clone()),
+        Some(&rl1_named("acct-a")),
+        None,
+    ))
+    .expect_err("中转起不来还放行了一个 apikey 号");
+    assert_eq!(
+        err,
+        remote_relay_refusal(
+            "rl1-host-dead",
+            Some("acct-a"),
+            crate::remote_relay::RELAY_NOT_STARTED
+        )
+    );
+    assert_eq!(
+        *rig.seen.lock().expect("lock"),
+        vec!["apikey-read", "relay-status", "relay-ensure"],
+        "`started:false` 之后还在等 —— 那是空等"
+    );
+}
+
+/// R1 ⑤：`/t/` 那一格（全量开关开、表里无行）中转起不来 ⇒ **照旧直连**（`None`），不拒 —— 「有它更好」。
+#[test]
+fn a_passthrough_launch_whose_relay_cannot_start_goes_direct_instead_of_failing() {
+    let _f = rl1_facts(rl1_on);
+    let rig = relay_endpoint_rig::rig(
+        "rl1-host-t",
+        vec![
+            ("apikey-read", rl1_rows_json(&[])),
+            (
+                "relay-status",
+                serde_json::json!({"port": 8788, "listening": false}),
+            ),
+            (
+                "relay-ensure",
+                serde_json::json!({"port": 8788, "listening": false, "started": false}),
+            ),
+        ],
+    );
+    let got = tauri::async_runtime::block_on(relay_endpoint_on(
+        &crate::origin::Origin(rig.host.clone()),
+        Some(&LaunchAccount::Base),
+        None,
+    ));
+    assert_eq!(got, Ok(None));
+    assert_eq!(
+        *rig.seen.lock().expect("lock"),
+        vec!["apikey-read", "relay-status", "relay-ensure"]
+    );
 }

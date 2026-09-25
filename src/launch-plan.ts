@@ -117,6 +117,7 @@ export type EnvOp =
   | { kind: "export-config-dir"; value: string }
   | { kind: "export-model"; value: string } // F07：每账号默认模型（ANTHROPIC_MODEL）
   | { kind: "export-rbind-token"; value: string } // 设计/80 §8：启动期令牌（CCM_RBIND_TOKEN）
+  | { kind: "export-relay-base-url"; value: string } // 〔RL1〕中转地址（ANTHROPIC_BASE_URL）：值只由后端 `relay_endpoint_for_launch` 答，前端原样放进来
   | { kind: "unset-config-dir" } // 账号维度的"显式基座"：清 CLAUDE_CONFIG_DIR
   | { kind: "unset-nested-env" }; // 嵌套会话标记全套（键表由 AGENT_PROFILE.nestedEnvVars 定）
 

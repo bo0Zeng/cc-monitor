@@ -1,3 +1,12 @@
+//! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md`「账号层那份凭据文件在「这台机器」上的读写」节（本机这一份的写者就是 monitor）
+//!
+//! 核原文：该节逐字「**每台机器上的程序写者恰好一个**：monitor 所在那台是 monitor 自己」·「**路径**与那台机器上 `--relay`
+//! 进程的账号层**同一个出处**」；`apikey-key-set` 节 `baseUrl` 行逐字「给了就先过与本机那一侧**同一条**形状关」。
+//! 本族判 monitor 这个本机写者：与后端算同一份文件并显式交出去、真写盘不吃人手编内容、出生即只给本人、Base URL 形状错整次不写。
+//! 明文出口跨三棵树逐处计数那几条守 `设计/20 §6` 第 4 行逐字「明文只有一个出口」（原文点一个，判据登记两个 —— 原文比判据窄）。
+//! ⚠ 「本机写者也照后端那套写法写」是从契约推出来的，不是明文；「key 不进 `config.json`」与 TS 状态类型对拍那几条没有逐字原文。
+//! 与 `crates/creds-core/store_tests.rs` 不重复：那族判纯函数，本族判真写盘那一跳。〔JA1 点址 2026-09-24〕
+
 use super::*;
 
 /// ★★ **跨 crate 契约对拍**：monitor 与后端算出来的是**同一份文件**。
@@ -25,16 +34,16 @@ fn the_two_sides_resolve_the_same_file() {
     // 两侧读写的就是两份文件，而症状是「界面上配好了，账号层说没配」。
     //
     // ⇒ 今天买断这一格的**不是**路径算法，是**把路径显式传过去**：
-    // `local_backend_host::start_local_relay` 用 `CCM_APIKEY_CREDENTIALS` 把
-    // **本函数算出来的这一个**交给中转。
+    // 〔RL1〕起本机后端时用 `CCM_APIKEY_CREDENTIALS` 把**本函数算出来的这一个**交给它
+    // （中转与账号层住在那个进程里，`local_backend_host::relay_host_envs`）。
     //
     // 🔴 `D6 阻-1` 回修（08-29）：这里先前是两条「`local_backend_host.rs` 的生产段里有没有
     // `crate::creds_store::resolve_path()` / `"CCM_APIKEY_CREDENTIALS".into()` 这两段文本」——
     // **同一族的病**（文本留住、行为摘掉：把那两段文本留在一处用不到的地方，
     // 真正交出去的换成别的路径 ⇒ 两条照绿）。
-    // ⇒ 换成读 `local_backend_host::relay_child_envs()` **产出来的那一份**：
+    // ⇒ 换成读 `local_backend_host::relay_host_envs()` **产出来的那一份**：
     // 那一格的值必须逐字节等于本函数算出来的路径。
-    let envs = crate::local_backend_host::relay_child_envs();
+    let envs = crate::local_backend_host::relay_host_envs();
     assert_eq!(
         envs.iter()
             .find(|(k, _)| k == "CCM_APIKEY_CREDENTIALS")

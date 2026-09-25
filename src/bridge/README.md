@@ -54,6 +54,7 @@ src/bridge/
     ├── search.rs      # issue #6 历史全文搜索：后台建内存索引 + substring 查询（含远端结果合并）
     ├── mcp.rs         # F87 MCP 管理：跨 scope 宽容读 / 只写项目 .mcp.json（SS-14 读写分界）
     ├── panorama.rs    # Batch15 code-picture 代码全景后端：per-repo Engine 池（索引落 monitor 数据目录）+ 全景查询/批注命令族
+    ├── panorama_call.rs # 〔RM1c〕远端仓的全景：按 origin 问那台后端的 `panorama` 帧命令（后端经插件口起独立全景小程序）
     ├── ssh_source.rs  # russh 远端数据源：连接/鉴权/指纹校验 + 后端流帧解析 + 版本协商 + ssh-config 导入 + 测试连接 + B14-F59 daemonless 降级读取(纯 tail 轮询)
     ├── remote_history.rs # 远端历史浏览 + 远端全文搜索查询（一次性 exec 后端子命令，多机 fan-out）
     ├── sftp.rs        # SS-D 统一 SFTP 写层：后端自动部署 (#29) + 远端历史删除 (F11) + ccm 安装 (F10)
@@ -148,6 +149,8 @@ src/bridge/
 | `push_public_key` (B14-F50) | `{ cfg, pubKeyPath? }` | `PushResult {outcome,pubPath}` | 公钥推送 authorized_keys;pubKeyPath 空则取 `{keyPath}.pub`;`sanitize_public_key`(单行防注入)+ `grep -qxF` 去重,返回 added/already |
 | `list_remote_tmux` (B14-F51) | `{ origin }` | `TmuxSession[] \| null` | tab 右键 attach 反查;`command -v tmux` 无 → `null`(隐藏 attach);否则 `tmux ls -F`(真 TAB)解析成会话列表;走 exec 通道 |
 | `capture_remote_pane` (B14-F60) | `{ origin, target }` | `String` | tab 右键「预览远端 tmux 画面」;`tmux capture-pane -p -t <会话>` 抓当前屏只读快照;`command -v tmux` 门控 + `NO_PANE` 哨兵(会话不存在),`classify_capture_output` 纯函数判;走 exec 通道 target 经 `shell_quote` |
+| `panorama_call` (RM1c) | `{ origin, op, repo, args }` | `unknown`（形状随 op，与本机那几条同形） | 远端仓的全景：按 origin 问那台机器的后端 `panorama` |
+| `panorama_edit` (RM1d) | `{ origin, repo, op, args }` | `unknown`（id / 在不在 / `null`，随 op） | 批注 / 文档关联的写（本机远端同一条，V110「引擎只算、文件管理来写」）：`op` ∈ 人写 / 提议 / 批准 / 删批注 · 写 / 删文档关联；那台机器算出新内容，落盘经那台机器后端的 `files-put`（带 CAS）/ `files-delete` |
 | `panorama_index` (Batch15-P1) | `{ repo }` | `IndexStats` | 用户显式点「建立索引」：tree-sitter 全仓扫描，落 monitor 数据目录 `panorama/` |
 | `panorama_reindex` (Batch15) | `{ repo }` | `IndexStats` | 「重新索引」按钮 |
 | `panorama_status` (Batch15) | `{ repo }` | `PanoramaStatus` | 打开全景视图查索引就绪 / `indexedAt` |
@@ -162,13 +165,7 @@ src/bridge/
 | `panorama_touching` (Batch15-P3/F70) | `{ repo, files }` | `String[]` (符号 id) | 从 jsonl Edit/Write 拿「本轮改了哪些文件」→ 全景图高亮命中节点 |
 | `panorama_symbols_in_file` (Batch15) | `{ repo, file }` | `Symbol[]` | 某文件内符号列表 |
 | `panorama_drift` (Batch15) | `{ repo }` | `DriftItem[]` | 文档 ↔ 代码漂移对账 |
-| `panorama_add_annotation` (Batch15) | `{ repo, file, symbol?, body, author }` | `String` (id) | 加一条批注 |
-| `panorama_propose_annotation` (Batch15) | `{ repo, file, symbol?, body, author }` | `String` (id) | 提议批注（待审核） |
-| `panorama_approve_annotation` (Batch15) | `{ repo, id }` | `bool` | 批准一条待审批注 |
-| `panorama_remove_annotation` (Batch15) | `{ repo, id }` | `bool` | 删一条批注 |
 | `panorama_list_annotations` (Batch15) | `{ repo }` | `Annotation[]` | 列全部批注 |
-| `panorama_write_doc_link` (Batch15) | `{ repo, doc, target }` | `()` | 写一条文档 ↔ 符号链接 |
-| `panorama_remove_doc_link` (Batch15) | `{ repo, doc, target }` | `bool` | 删一条文档链接 |
 | `panorama_diagram_kinds` (PN1b) | — | `DiagramKindInfo[]` | 图种注册表原样透出（id · 人读名 · 认哪些参数 · 形状），选图下拉从它现读 |
 | `panorama_diagram` (PN1b) | `{ repo, kind, request }` | `{ diagram, mermaid }` | 画一张图：上游 `Diagram`（按形状分变体 ＋ 公共诚实信号）原样透出，另附 Mermaid 渲染；认不出的 kind 报错 |
 | `start_forward` (B14-F58) | `{ spec: {origin,localPort,remoteHost,remotePort} }` | `String`(id) | 启动本地端口转发:校验→connect_session→bind 127.0.0.1:localPort→accept 循环隧道 direct-tcpip;返回转发 id |

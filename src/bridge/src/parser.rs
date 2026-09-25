@@ -25,7 +25,14 @@ use crate::messages::JsonlRecord;
 /// - `Ok(Some(_))`：认识的类型；**或** F63 抢救出的 `Unrecognized`（留原文+身份）。
 /// - `Err(_)`：原文**连合法 JSON 都不是**（半截行 / 语法坏）——没身份可救，
 ///   caller 决定容错策略。**`Unknown` 绝不出这个出口**（护栏见测试）。
-pub fn parse_line(raw: &str) -> Result<Option<JsonlRecord>, serde_json::Error> {
+///
+/// 〔ST3〕`origin` = 这一行是从哪台机器读来的。**只用于记账**（看不懂的东西记在那台名下），
+/// 解析本身与它无关。没有缺省：缺省记在本机名下 = 远端的记录悄悄记成本机的。
+/// 每个调用方记在哪台，登记在 `drift_ledger_tests.rs::FEEDERS`（两向相等）。
+pub fn parse_line(
+    origin: &crate::origin::Origin,
+    raw: &str,
+) -> Result<Option<JsonlRecord>, serde_json::Error> {
     let trimmed = raw.trim_start_matches('\u{feff}').trim();
     if trimmed.is_empty() {
         return Ok(None);
@@ -38,6 +45,7 @@ pub fn parse_line(raw: &str) -> Result<Option<JsonlRecord>, serde_json::Error> {
             // U-CC1：**记一笔，不 warn**。刻意不 warn 那个决定是对的（实测 20,526 条 `mode`
             // 会刷屏），但「刻意不 warn」不等于「刻意不可观测」—— 见 `drift_ledger` 头注。
             crate::drift_ledger::record(
+                origin,
                 crate::drift_ledger::DriftFace::UnknownRecordType,
                 v.get("type")
                     .and_then(serde_json::Value::as_str)
@@ -58,6 +66,7 @@ pub fn parse_line(raw: &str) -> Result<Option<JsonlRecord>, serde_json::Error> {
                 // U-CC1：这一类**值得警惕**（多半是 CC 改了已知类型的形状）。
                 // 键按 `type` 分组，这样诊断面能直接告诉你「是哪个类型变了」。
                 crate::drift_ledger::record(
+                    origin,
                     crate::drift_ledger::DriftFace::KnownTypeParseFailed,
                     v.get("type")
                         .and_then(serde_json::Value::as_str)
@@ -76,12 +85,15 @@ pub fn parse_line(raw: &str) -> Result<Option<JsonlRecord>, serde_json::Error> {
 /// 零回归）；Codex 走 `serde_json` + [`crate::codex_record::to_jsonl_record`]（消息映射进 `JsonlRecord`、
 /// event/token_count 等落 `Unrecognized` 保 raw）。契约同 [`parse_line`]：空行 `Ok(None)`、认识
 /// `Ok(Some)`、连 JSON 都不是 `Err`。发现层枚举时已知 kind（见 `adapter::records_roots`/`kind_of_path`）。
+///
+/// 〔ST3〕`origin` 只给 Claude 那一臂记账用（同 [`parse_line`]）。
 pub fn parse_for_kind(
     kind: crate::adapter::AgentKind,
+    origin: &crate::origin::Origin,
     raw: &str,
 ) -> Result<Option<JsonlRecord>, serde_json::Error> {
     match kind {
-        crate::adapter::AgentKind::ClaudeCode => parse_line(raw),
+        crate::adapter::AgentKind::ClaudeCode => parse_line(origin, raw),
         crate::adapter::AgentKind::Codex => {
             let trimmed = raw.trim_start_matches('\u{feff}').trim();
             if trimmed.is_empty() {

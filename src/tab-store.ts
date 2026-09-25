@@ -89,6 +89,16 @@ export class TabStore {
    * issue #23：红绿灯信号早于 Tab 建出来时暂存（同 pendingArchive 的时序竞争模式：
    * session-activity 同步派发，而建 Tab 的行走异步 queue/drain）。ensureTab 时落实。
    */
+  /**
+   * 〔U4b · 第四波 · G3〕容器事实（`session-container`）早于 Tab 建出时暂存。ensureTab 建 Tab 时落实
+   * （建出来就是活的；早到的死亡信号优先 —— 那时容器一格由死的那一刻的裁决说了算）。
+   */
+  readonly pendingContainer = new Map<string, "tmux" | "none">();
+  /**
+   * 〔U4b · 第四波 · 说不清〕已经把活会话清单报完了的机器（`origin-sessions-listed` / 本机 `list_active_sessions`）。
+   * 固定复活时据它分：报完了 ⇒ 已结束（它不在清单里，不然 tab 早就被建成活的了）；没报完 ⇒ 说不清。
+   */
+  readonly seenOrigins = new Set<string>();
   readonly pendingActivity = new Map<
     string,
     { status: string; waitingFor: string | null }

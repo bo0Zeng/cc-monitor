@@ -316,7 +316,10 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   //    改了 buildBody（后端四格寄居、应用下挂三个子页、漂移记账那块）。住址与语义一字未动，只是行号跟着挪；
   //    三处照旧由脚本按「`b.el.hidden =` / 两处 `perMachineFallbackHint.hidden =`」现打。
   // 〔合并 C4a〕这一批行号随 C4a 在同文件里加的 import（origin 判定那一行）各挪一两行，住址与语义一字未动。
-  "src/settings/panel.ts:802":
+  // 〔AL1c · 4B〕`802 → 792` / `1306 → 1288` / `1319 → 1301`：又漂了一次 ——「终端集成」一块并进「别名」，
+  //    `panel.ts` 上游删了它的 import / OS 门常量 / 挂载那几行与「不适用」替身。三处照旧是 `b.el` 与两处
+  //    `perMachineFallbackHint`，语义一字未动。
+  "src/settings/panel.ts:792":
     "`b.el` —— `b` 来自 `this.perMachineBlocks` 数组，元素由各 section 自己建，跨文件",
   // 🔴 〔步 20 · `设计/70 §1.3 C`〕兜底态那块提示的显隐。它的类名是
   //    `skeleton.ts::makeSkeleton` 挂上去的（`settings-hint`），**跨文件** ——
@@ -324,21 +327,16 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   //    ⚠ 顺带说清它安不安全：`settings-hint` 在 `src/styles.css` 里**没有 display 规则**
   //      ⇒ UA 的 `[hidden] { display: none }` 不会被压过，那两句不是空写。
   //      这一条是**人工核过的**，不是这把尺子判的 —— 所以它在登记表里，不在绿里。
-  "src/settings/panel.ts:1306":
+  "src/settings/panel.ts:1288":
     "`this.perMachineFallbackHint` —— 类名由 `skeleton.ts::makeSkeleton` 挂，跨文件",
-  "src/settings/panel.ts:1319":
+  "src/settings/panel.ts:1301":
     "`this.perMachineFallbackHint` —— 同上（兜底态亮出来那一支）",
   // 🔴 〔步 20 · `设计/70 §10.1`〕「足迹」那一块里，本机那一整套的显隐包装。
   //    它**刻意不挂任何类**：只负责显隐、不要样式。挂了类就得在 CSS 里给它写规则
   //    （`css-ledger` 的两条棘轮会要求），而那条规则会是一句纯装饰。
   //    ⇒ 没有类 ⇒ 不可能有「自己身上的裸 display」⇒ 这一格在构造上就是安全的。
-  // 〔第四波 ST2〕漂移记账按机器分（这一拍只做本机）：本机那一整套的包装（不挂类名）与远端那一句
-  //    （`settings-hint`，在 `build()` 里挂的，跨方法 ⇒ 这把尺子推不出来；`settings-hint` 没有 display 规则，
-  //    `[hidden]` 不会被压过 —— 与上面 `perMachineFallbackHint` 那两处同一个人工核法）。
-  "src/settings/drift-ledger-section.ts:142":
-    "本机那一整套的显隐包装，刻意不挂类名（远端那一栏收起来）",
-  "src/settings/drift-ledger-section.ts:143":
-    "远端那一句（类名 `settings-hint` 在 build() 里挂，跨方法；该类无 display 规则）",
+  // 〔第四波 ST2〕漂移记账按机器分（这一拍只做本机）那两处（本机那一整套的包装 · 远端那一句）
+  //    〔ST3〕随账按机器分一起退场：本机与远端同一套 DOM，这一块不再切任何显隐 ⇒ 两行删掉。
   // 〔第四波 ST2〕远端也有真栏之后，这个包装本机与远端都用；显隐切两处：`applyOriginGate`（摆出来）
   //    与 `showUnanswered`（远端那台答不了时收起来）。同一个包装、同一个理由。
   // 〔合并 RM1a〕440/447 → 436/443：`readFootprint` 去掉那一道 `as unknown as`（命令签名本来就收 `{ origin }`），上移 4 行。

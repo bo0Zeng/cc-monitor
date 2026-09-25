@@ -177,6 +177,12 @@ async fn main() {
     // 「错误 exit2 + stderr 纯 {code,message} JSON」，客户端可整段 JSON-parse stderr）。
     tracing::info!("agent_home = {}", agent_home.display());
 
+    // 〔RL1 · V107〕**中转（层 1）＋ 账号层（层 2）住本机常驻后端这个进程**：宿主交了端口才开
+    //   （monitor 起本机后端时交；远端经 SSH exec 起的流模式没人交 ⇒ 不开，远端中转另有住处）。
+    //   放在选载体之前：两条载体（stdio / 常驻监听口）一样要。起不来只出声、不拖垮后端
+    //   —— 理由与形状住 `relay::listen::host` 的头注。中转线程随本进程生、随本进程死。
+    tracing::info!("{}", accounts::apikey::host_relay(&agent_home));
+
     // ★★ `K-P1`：**同一个流模式，两种载体**。
     //
     // 「脱离宿主」本身不难（`launch.rs` 里三份现成的范例）；难的是**脱离之后还怎么跟它对话**

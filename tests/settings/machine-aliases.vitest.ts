@@ -93,36 +93,56 @@ describe("表单 ↔ 一条别名（纯函数）", () => {
   });
 });
 
-describe("buildAliasManager：两跳 ＋ 读回口 ＋ 默认不动用户配置", () => {
+// 〔AL1c · 第四波 4B〕两套合一（`设计/71 §7` W5）：从前 POSIX 一套、Windows 那一块（`cc_integration.ts`）
+// 零单测、在面板测试里全被替身掉。今天是**一份组件、平台是入参** ⇒ 同一套断言对两个平台各跑一遍，
+// 平台那几格（tmux 能力 · 别名块是哪一种 · 首开发哪几发）各有各的期望。
+type Plat = "posix" | "powershell";
+
+describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳 ＋ 读回口 ＋ 默认不动用户配置", (plat) => {
   let seen: Array<{ cmd: string; args?: unknown }>;
   let disk: Alias[];
   let problems: Array<{ name: string; message: string }>;
+
+  const scan = (path: string) => ({
+    kind: "Custom",
+    path,
+    exists: true,
+    has_ccm_block: false,
+    ccm_block_version: null,
+    conflicting_functions: [],
+    manual_cleanup_hint: "",
+    size_bytes: 1,
+  });
 
   beforeEach(() => {
     seen = [];
     disk = [
       { name: "alphacc", args: ["--account", "z"] },
-      { name: "alphacct", args: ["--tmux", "--account", "z"] },
+      { name: "betacc", args: ["--account", "b"] },
     ];
     problems = [];
     vi.resetModules();
+    vi.doMock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn() }));
     vi.doMock("../../src/ipc/commands", () => ({
       commands: {
         local_ccm_entry_status: () => {
           seen.push({ cmd: "local_ccm_entry_status" });
           return Promise.resolve({ message: "" });
         },
-        aliases_read: () => {
-          seen.push({ cmd: "aliases_read" });
+        aliases_read: (a: { shell: Plat }) => {
+          seen.push({ cmd: "aliases_read", args: a });
           return Promise.resolve({
-            aliasPath: "/h/.cc-monitor/account-aliases.sh",
+            aliasPath: "/h/.cc-monitor/aliases.x",
             exists: true,
-            aliases: disk.map((a) => ({ ...a, args: [...a.args] })),
+            aliases: disk.map((x) => ({ ...x, args: [...x.args] })),
             unparsed: ["alias x=ls（不是 `名字() { … }` 的形状）"],
-            rcCandidates: [{ path: "/h/.bashrc", sourced: false }],
+            rcCandidates: [
+              { path: "/h/rc-a", sourced: false, exists: true },
+              { path: "/h/rc-b", sourced: false, exists: false },
+            ],
           });
         },
-        aliases_render: (a: { aliases: Alias[] }) => {
+        aliases_render: (a: { aliases: Alias[]; shell: Plat }) => {
           seen.push({ cmd: "aliases_render", args: a });
           return Promise.resolve({
             code: a.aliases.map((x) => `#${x.name}`).join("\n"),
@@ -131,11 +151,11 @@ describe("buildAliasManager：两跳 ＋ 读回口 ＋ 默认不动用户配置"
             collisions: [],
           });
         },
-        aliases_install: (a: { aliases: Alias[]; rcPath: string | null }) => {
+        aliases_install: (a: { aliases: Alias[]; rcPath: string | null; shell: Plat }) => {
           seen.push({ cmd: "aliases_install", args: a });
           disk = a.aliases;
           return Promise.resolve({
-            aliasPath: "/h/.cc-monitor/account-aliases.sh",
+            aliasPath: "/h/.cc-monitor/aliases.x",
             wroteAliasFile: true,
             wroteRc: false,
             notes: ["新开一个终端就能用"],
@@ -143,20 +163,26 @@ describe("buildAliasManager：两跳 ＋ 读回口 ＋ 默认不动用户配置"
         },
         cc_integration_scan_path: (a: { path: string }) => {
           seen.push({ cmd: "cc_integration_scan_path", args: a });
-          return Promise.resolve({
-            kind: "Custom",
-            path: a.path,
-            exists: true,
-            has_ccm_block: false,
-            ccm_block_version: null,
-            conflicting_functions: [],
-            manual_cleanup_hint: "",
-            size_bytes: 1,
-          });
+          return Promise.resolve(scan(a.path));
         },
         cc_integration_install: (a: unknown) => {
           seen.push({ cmd: "cc_integration_install", args: a });
           return Promise.resolve();
+        },
+        cc_integration_status: () => {
+          seen.push({ cmd: "cc_integration_status" });
+          return Promise.resolve({
+            profiles: [scan("C:\\Users\\u\\Documents\\WindowsPowerShell\\Microsoft.PowerShell_profile.ps1")].map(
+              (p) => ({ ...p, kind: "Ps51" }),
+            ),
+            active_registrations: 2,
+            default_command_name: "cc",
+            legacy_profile_paths_with_block: [],
+          });
+        },
+        cc_get_auto_launch: () => {
+          seen.push({ cmd: "cc_get_auto_launch" });
+          return Promise.resolve({ auto_launch_enabled: false, monitor_exe_path: null });
         },
         ccm_user_path_status: () => {
           seen.push({ cmd: "ccm_user_path_status" });
@@ -173,17 +199,16 @@ describe("buildAliasManager：两跳 ＋ 读回口 ＋ 默认不动用户配置"
     }));
   });
 
-  afterEach(async () => {
-    const { __setHostOsForTests } = await import("../../src/settings/host-os");
-    __setHostOsForTests(null);
+  afterEach(() => {
     document.body.replaceChildren();
   });
 
-  async function mount(os: "linux" | "windows" = "linux"): Promise<HTMLDetailsElement> {
-    const { __setHostOsForTests } = await import("../../src/settings/host-os");
-    __setHostOsForTests(os);
+  async function mount(): Promise<HTMLDetailsElement> {
     const m = await import("../../src/settings/machine-aliases");
-    const el = m.buildAliasManager({ loadAccounts: async () => ["z", "b", "0"] }) as HTMLDetailsElement;
+    const el = m.buildAliasManager({
+      platform: plat,
+      loadAccounts: async () => ["z", "b", "0"],
+    }) as HTMLDetailsElement;
     document.body.appendChild(el);
     await flush();
     return el;
@@ -207,13 +232,24 @@ describe("buildAliasManager：两跳 ＋ 读回口 ＋ 默认不动用户配置"
     b.click();
   };
 
-  it("★ 构造零 I/O；第一次展开**恰好**三发（本机 ccm 那一格 · 读回 · 渲染），再展开一发都不多", async () => {
+  /** 首开那几发：两个平台共有的读回 ＋ 渲染，再加各自那一格（POSIX：本机 ccm；PowerShell：终端集成 ＋ 用户级 PATH）。 */
+  const FIRST_OPEN: Record<Plat, string[]> = {
+    posix: ["aliases_read", "aliases_render", "local_ccm_entry_status"],
+    powershell: [
+      "aliases_read",
+      "aliases_render",
+      "cc_integration_status",
+      "cc_integration_scan_path",
+      "cc_get_auto_launch",
+      "ccm_user_path_status",
+    ],
+  };
+
+  it("★ 构造零 I/O；第一次展开**恰好**那几发，再展开一发都不多", async () => {
     const el = await mount();
     expect(seen, "还没展开就发了 IPC").toEqual([]);
     await open(el);
-    expect(seen.map((c) => c.cmd).sort()).toEqual(
-      ["aliases_read", "aliases_render", "local_ccm_entry_status"].sort(),
-    );
+    expect(seen.map((c) => c.cmd).sort()).toEqual([...FIRST_OPEN[plat]].sort());
     const n = seen.length;
     el.open = false;
     el.dispatchEvent(new Event("toggle"));
@@ -221,23 +257,35 @@ describe("buildAliasManager：两跳 ＋ 读回口 ＋ 默认不动用户配置"
     expect(seen.length, "再展开又读了一遍").toBe(n);
   });
 
+  it("🔴 别名三条命令每一发都带着这个平台的 `shell`（平台是入参，不是组件自己猜的）", async () => {
+    const el = await mount();
+    await open(el);
+    clickText(el, "写入");
+    await flush();
+    const aliasCalls = seen.filter((c) => c.cmd.startsWith("aliases_"));
+    expect(aliasCalls.map((c) => c.cmd).sort()).toEqual(
+      ["aliases_install", "aliases_read", "aliases_read", "aliases_render", "aliases_render"].sort(),
+    );
+    for (const c of aliasCalls) expect((c.args as { shell: Plat }).shell, c.cmd).toBe(plat);
+  });
+
   it("清单从盘上那份开始；认不出的那一行原样说出来（写入时它会被去掉）", async () => {
     const el = await mount();
     await open(el);
     const rows = [...el.querySelectorAll(".machine-aliases-row code")].map((c) => c.textContent);
-    expect(rows).toEqual(["alphacc", "alphacct"]);
+    expect(rows).toEqual(["alphacc", "betacc"]);
     expect(el.querySelector(".machine-aliases-status")!.textContent).toContain("alias x=ls");
-    expect(lastRendered()).toEqual(["alphacc", "alphacct"]);
+    expect(lastRendered()).toEqual(["alphacc", "betacc"]);
   });
 
   it("表单「加进清单」⇒ 问后端要一次代码（第①跳），清单里多一条", async () => {
     const el = await mount();
     await open(el);
-    const name = el.querySelector<HTMLInputElement>('input[placeholder="名字，如 alphacct"]')!;
+    const name = el.querySelector<HTMLInputElement>('input[title="在终端里敲的那个词"]')!;
     name.value = "mine";
     clickText(el, "加进清单");
     await flush();
-    expect(lastRendered()).toEqual(["alphacc", "alphacct", "mine"]);
+    expect(lastRendered()).toEqual(["alphacc", "betacc", "mine"]);
   });
 
   it("「删」⇒ 那一条从清单里走了，并重新渲染", async () => {
@@ -246,15 +294,15 @@ describe("buildAliasManager：两跳 ＋ 读回口 ＋ 默认不动用户配置"
     const first = el.querySelector<HTMLElement>(".machine-aliases-row")!;
     clickText(first, "删");
     await flush();
-    expect(lastRendered()).toEqual(["alphacct"]);
+    expect(lastRendered()).toEqual(["betacc"]);
   });
 
-  it("「为每个账号加一条」只补没有的，不重复（`alphacc` 已在），全非法的名字跳过", async () => {
+  it("「为每个账号加一条」只补没有的，不重复（`alphacc` / `betacc` 已在），全非法的名字跳过", async () => {
     const el = await mount();
     await open(el);
     clickText(el, "为每个账号加一条");
     await flush();
-    expect(lastRendered()).toEqual(["alphacc", "alphacct", "betacc", "_0cc"]);
+    expect(lastRendered()).toEqual(["alphacc", "betacc", "_0cc"]);
   });
 
   it("有不合格的 ⇒ 写入按钮不给点，问题一条条上屏", async () => {
@@ -268,7 +316,7 @@ describe("buildAliasManager：两跳 ＋ 读回口 ＋ 默认不动用户配置"
     expect(el.querySelector(".machine-aliases-problems")!.textContent).toContain("只能选一个");
   });
 
-  it("🔴 「写入」（第②跳）带的是当前清单，而 rc 默认是 null —— 界面不替人选 shell 配置；写完重读盘", async () => {
+  it("🔴 「写入」（第②跳）带的是当前清单，而启动文件默认是 null —— 界面不替人选；写完重读盘", async () => {
     const el = await mount();
     await open(el);
     const reads = seen.filter((c) => c.cmd === "aliases_read").length;
@@ -279,43 +327,92 @@ describe("buildAliasManager：两跳 ＋ 读回口 ＋ 默认不动用户配置"
       rcPath: string | null;
     };
     expect(inst.rcPath).toBeNull();
-    expect(inst.aliases.map((a) => a.name)).toEqual(["alphacc", "alphacct"]);
+    expect(inst.aliases.map((a) => a.name)).toEqual(["alphacc", "betacc"]);
     expect(seen.filter((c) => c.cmd === "aliases_read").length).toBe(reads + 1);
     expect(el.querySelector(".ccm-acct-alias-out")!.textContent).toContain("已写入");
   });
 
-  it("别名块：默认那一档不扫；选了那份 rc 才扫、装的就是那一份、而且不抢 cc 函数名", async () => {
+  it("启动文件下拉：默认「不动」；还不在盘上的那一份说清「写入时新建」", async () => {
     const el = await mount();
     await open(el);
-    expect(seen.some((c) => c.cmd === "cc_integration_scan_path")).toBe(false);
-    expect(el.querySelector<HTMLElement>(".ccm-rc-block")!.hidden).toBe(true);
     const sel = el.querySelector<HTMLSelectElement>(".ccm-acct-alias-rc")!;
-    sel.value = "/h/.bashrc";
-    sel.dispatchEvent(new Event("change"));
-    await flush();
-    expect(el.querySelector<HTMLElement>(".ccm-rc-block")!.hidden).toBe(false);
-    clickText(el, "装别名块");
-    await flush();
-    expect(seen.find((c) => c.cmd === "cc_integration_install")!.args).toEqual({
-      path: "/h/.bashrc",
-      commandName: "cc",
-      includeCcFunction: false,
-    });
+    expect(sel.value).toBe("");
+    const labels = [...sel.options].map((o) => o.textContent);
+    expect(labels).toContain("/h/rc-a");
+    expect(labels).toContain("/h/rc-b（还不存在，写入时新建）");
   });
 
-  it("Windows 本机 ⇒ 一句说明、没有别名表单；构造零 I/O，展开才建「用户级 PATH」那一格（`K-R135`）", async () => {
-    const el = await mount("windows");
-    expect(seen, "还没展开就发了 IPC").toEqual([]);
-    await open(el);
-    expect(el.querySelector(".machine-aliases-list"), "Windows 上不该有 POSIX 别名清单").toBeNull();
-    expect(el.textContent).toContain("PowerShell 写法的别名还没做");
-    // 那一格就是 Windows 上「让终端找到 ccm」的那条路；它的读数只问这一发。
-    expect(seen.map((c) => c.cmd)).toEqual(["ccm_user_path_status"]);
-    expect(el.querySelector(".ccm-user-path-block")).toBeTruthy();
-    // 再展开不再建第二份。
-    el.open = false;
-    el.dispatchEvent(new Event("toggle"));
-    await open(el);
-    expect(el.querySelectorAll(".ccm-user-path-block").length).toBe(1);
+  it("tmux 那几格：POSIX 可选；PowerShell（Windows 没有 tmux）整组不给选", async () => {
+    const el = await mount();
+    const tmux = [...el.querySelectorAll<HTMLSelectElement>("select")].find((s) =>
+      [...s.options].some((o) => o.value === "auto"),
+    )!;
+    expect(tmux.disabled).toBe(plat === "powershell");
+    expect(tmux.value).toBe("none");
+  });
+
+  if (plat === "posix") {
+    it("POSIX 别名块：默认那一档不扫；选了那份 rc 才扫、装的就是那一份、而且不抢 cc 函数名", async () => {
+      const el = await mount();
+      await open(el);
+      expect(seen.some((c) => c.cmd === "cc_integration_scan_path")).toBe(false);
+      expect(el.querySelector<HTMLElement>(".ccm-rc-block")!.hidden).toBe(true);
+      const sel = el.querySelector<HTMLSelectElement>(".ccm-acct-alias-rc")!;
+      sel.value = "/h/rc-a";
+      sel.dispatchEvent(new Event("change"));
+      await flush();
+      expect(el.querySelector<HTMLElement>(".ccm-rc-block")!.hidden).toBe(false);
+      clickText(el, "装别名块");
+      await flush();
+      expect(seen.find((c) => c.cmd === "cc_integration_install")!.args).toEqual({
+        path: "/h/rc-a",
+        commandName: "cc",
+        includeCcFunction: false,
+      });
+      expect(el.querySelector(".ccm-user-path-block"), "POSIX 上不该有用户级 PATH 那一格").toBeNull();
+    });
+  } else {
+    it("PowerShell 别名块 = 终端集成（原 `cc_integration.ts`）＋ 用户级 PATH：展开才建、只建一份；POSIX 那一块不出现", async () => {
+      const el = await mount();
+      expect(el.querySelector(".ccm-user-path-block"), "还没展开就建了").toBeNull();
+      await open(el);
+      expect(el.textContent).toContain("PowerShell 集成");
+      expect(el.querySelector(".settings-cc-profile-status")).toBeTruthy();
+      expect(el.querySelector(".ccm-user-path-block")).toBeTruthy();
+      const sel = el.querySelector<HTMLSelectElement>(".ccm-acct-alias-rc")!;
+      sel.value = "/h/rc-a";
+      sel.dispatchEvent(new Event("change"));
+      await flush();
+      expect(el.querySelector<HTMLElement>(".ccm-rc-block")!.hidden, "POSIX 的 cc / cct 块出现在 PowerShell 上").toBe(true);
+      el.open = false;
+      el.dispatchEvent(new Event("toggle"));
+      await open(el);
+      expect(el.querySelectorAll(".ccm-user-path-block").length).toBe(1);
+      expect(el.querySelectorAll(".settings-cc-profile-status").length).toBe(1);
+      // 终端集成那一块「安装」装的是它选中的 $PROFILE，带着 cc 这个命令名。
+      clickText(el, "安装");
+      await flush();
+      expect(seen.find((c) => c.cmd === "cc_integration_install")!.args).toMatchObject({
+        path: "C:\\Users\\u\\Documents\\WindowsPowerShell\\Microsoft.PowerShell_profile.ps1",
+        commandName: "cc",
+      });
+    });
+  }
+});
+
+describe("localShell：本机用哪种方言", () => {
+  afterEach(async () => {
+    const { __setHostOsForTests } = await import("../../src/settings/host-os");
+    __setHostOsForTests(null);
+  });
+  it("Windows ⇒ powershell；其余（含测不出）⇒ posix", async () => {
+    vi.resetModules();
+    const { __setHostOsForTests } = await import("../../src/settings/host-os");
+    const { localShell } = await import("../../src/settings/machine-aliases");
+    const want = { windows: "powershell", linux: "posix", macos: "posix", unknown: "posix" } as const;
+    for (const [os, sh] of Object.entries(want)) {
+      __setHostOsForTests(os as "windows" | "linux" | "macos" | "unknown");
+      expect(localShell(), os).toBe(sh);
+    }
   });
 });

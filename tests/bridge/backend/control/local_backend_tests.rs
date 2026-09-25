@@ -2959,8 +2959,8 @@ fn wait_section() -> String {
         "../../../../src/bridge/src/backend/control/local_backend.rs"
     ));
     let at = prod
-        .find("pub fn supervise(")
-        .expect("找不到 `supervise` —— 改名了就把下面三条一起改");
+        .find("pub fn supervise_with_stdio(")
+        .expect("找不到 `supervise_with_stdio` —— 改名了就把下面三条一起改");
     prod[at..].to_string()
 }
 
@@ -3276,5 +3276,143 @@ fn the_shared_stripper_keeps_the_exit_arm_this_guard_must_scan() {
         "local_backend_tests · lib.rs",
         include_str!("../../../../src/bridge/src/lib.rs"),
         &["RunEvent::Exit", "LOCAL_BACKEND"],
+    );
+}
+
+/// 〔RL1 · V107〕生产那个 `stdio=None` 薄壳（唯一客户是 monitor 另起的本机中转）随中转并进常驻后端删了；
+/// 本文件四条判据要的正是「不接消费者」那一形 ⇒ 在测试段里留一个同形的转交，生产段不再有它。
+#[allow(clippy::too_many_arguments)]
+fn supervise(
+    bin: PathBuf,
+    args: Vec<String>,
+    envs: Vec<(String, String)>,
+    limits: CrashLimits,
+    now_ms: Arc<dyn Fn() -> u64 + Send + Sync>,
+    on_event: Arc<dyn Fn(SuperviseEvent) + Send + Sync>,
+    spawn: Arc<crate::spawn_managed::ManagedSpawn>,
+) -> SuperviseHandle {
+    supervise_with_stdio(bin, args, envs, limits, now_ms, on_event, None, spawn)
+}
+
+// ── 〔U4b · 第四波 · M3〕本机收割（可重连 → 已结束的产出者）──────────────────────
+
+/// `tmux ls` 原文一行（`TMUX_LS_FMT`：name\tpath\tcommand\tattached\twindows\t@ccm_sid）。
+fn u4b_row(name: &str, sid: &str) -> String {
+    format!("{name}\t/p\tbash\t0\t1\t{sid}\n")
+}
+
+/// `TmuxSessionClosed`：**先摘后退** —— 摘掉的是那个名字逐字相等的一行（不做前缀匹配），
+/// 交出来的是那一行上挂着的 sid；查无此名 ⇒ 原文不变、sid 为空。
+#[test]
+fn a_closed_local_tmux_session_is_removed_before_its_sid_is_handed_back() {
+    let raw = format!("{}{}", u4b_row("cc-a", "sid-a"), u4b_row("cc-ab", "sid-ab"));
+    let (rest, sid) = local_tmux_closed(&raw, "cc-a");
+    assert_eq!(sid.as_deref(), Some("sid-a"));
+    assert_eq!(
+        rest,
+        u4b_row("cc-ab", "sid-ab"),
+        "摘掉的只能是 `cc-a` 那一行（`cc-ab` 不许被误伤）"
+    );
+    let (same, none) = local_tmux_closed(&raw, "cc-zz");
+    assert_eq!((same.as_str(), none), (raw.as_str(), None));
+}
+
+/// `TmuxSessions`：idle 的 sid 从有效观测里消失 ⇒ **去抖两拍**才退（`RETIRE_MISS_THRESHOLD`）；
+/// 还在的不退；不在 idle 集里的（活会话）**永远不归这里退**；观测无效（旧后端的空串）不累计。
+#[test]
+fn the_local_reaper_retires_only_idle_sids_after_the_debounce() {
+    use std::collections::HashSet;
+    let mut st = crate::tmux_reconcile::ReconcileState::default();
+    let idle: HashSet<String> = ["sid-idle".to_string()].into();
+    let with_idle = format!(
+        "{}{}",
+        u4b_row("cc-i", "sid-idle"),
+        u4b_row("cc-l", "sid-live")
+    );
+    let without = u4b_row("cc-l", "sid-live");
+    // 还在 ⇒ 不退。
+    assert!(local_idle_retirements(&mut st, &with_idle, None, &idle).is_empty());
+    // 第一拍缺席 ⇒ 还不退。
+    assert!(local_idle_retirements(&mut st, &without, None, &idle).is_empty());
+    // 观测无效（旧后端空串、无 observation）⇒ 这一拍不算。
+    assert!(local_idle_retirements(&mut st, "", None, &idle).is_empty());
+    // 第二拍缺席 ⇒ 退，且只退 idle 那一条。
+    assert_eq!(
+        local_idle_retirements(&mut st, &without, None, &idle),
+        vec!["sid-idle".to_string()]
+    );
+    // 已退过 ⇒ 不重发。
+    assert!(local_idle_retirements(&mut st, &without, None, &idle).is_empty());
+    // 活会话从原文里消失：idle 集里没有它 ⇒ 这里一拍都不退（它的死活归本地 watcher 的 pidfile）。
+    let mut st2 = crate::tmux_reconcile::ReconcileState::default();
+    let empty: HashSet<String> = HashSet::new();
+    for _ in 0..3 {
+        assert!(local_idle_retirements(&mut st2, "", Some("zero_sessions"), &empty).is_empty());
+    }
+}
+
+/// 〔U4b · 第四波 · G3〕本机那条流上的 `session_added` 把容器事实交给 `session_facts`（与远端流同一个口）：
+/// 真走 `absorb_local_frame`，读账本（本测试专用的 sid，不与别的测试相撞）。判不了 ⇒ 账本里忘掉它。
+#[test]
+fn the_local_stream_hands_session_added_containers_to_session_facts() {
+    let frame = |c: &str| {
+        crate::ssh_source::parse_frame(&format!(
+            r#"{{"kind":"session_added","sid":"u4b-absorb-1"{c}}}"#
+        ))
+        .expect("session_added 要解得出")
+    };
+    let mine = || -> Vec<(String, crate::session_facts::Container)> {
+        crate::session_facts::containers_snapshot()
+            .into_iter()
+            .filter(|(s, _)| s == "u4b-absorb-1")
+            .collect()
+    };
+    absorb_local_frame(frame(r#","container":"tmux""#), None);
+    assert_eq!(
+        mine(),
+        vec![(
+            "u4b-absorb-1".to_string(),
+            crate::session_facts::Container::Tmux
+        )]
+    );
+    absorb_local_frame(frame(""), None);
+    assert_eq!(mine(), vec![], "判不了 ⇒ 忘掉，旧值不许粘着");
+}
+
+/// 〔U4b · 第四波 · G2〕**接线判据**：本机 removed 臂真的走 `classify_removed`、且只查本机那一格；
+/// 两个 emitter 的 removed 臂都忘容器；出口装在 setup 里、`LocalIdleGone` 那一臂真落 `clear_idle` ＋ `SESSION_ENDED`。
+///
+/// 那几段住在 `lib.rs` 的 setup 闭包里（拿着 `AppHandle`，单测进不去）⇒ 行为判据够不着，只能读源码数调用点。
+/// 两向：`classify_removed(` 恰 2 处（本机 ＋ 远端）· `find_local_tmux_origin_for_sid(` 恰 1 处 ·
+/// `find_tmux_origin_for_sid(` 恰 1 处（远端那一臂；本机若退回它就是跨 origin 猜）· `session_facts::forget(` 恰 2 处。
+#[test]
+fn the_local_emitter_classifies_removals_against_the_local_slot_only() {
+    let lib = guard_core::production_code(include_str!("../../../../src/bridge/src/lib.rs"));
+    let n = |needle: &str| lib.matches(needle).count();
+    assert_eq!(n("ssh_source::classify_removed("), 2, "本机 ＋ 远端各一处");
+    assert_eq!(
+        n("ssh_source::find_local_tmux_origin_for_sid("),
+        1,
+        "本机那一臂只查 <local>"
+    );
+    assert_eq!(
+        n("ssh_source::find_tmux_origin_for_sid("),
+        1,
+        "跨 origin 的查法只许远端那一臂用"
+    );
+    assert_eq!(
+        n("crate::session_facts::forget("),
+        2,
+        "两个 removed 臂都忘容器"
+    );
+    let sink_at = lib
+        .find("crate::session_facts::Fact::LocalIdleGone { sid } =>")
+        .expect("出口里没有本机收割那一臂");
+    let arm = &lib[sink_at..];
+    let arm = &arm[..arm.find("});").expect("出口闭包没收尾")];
+    assert!(
+        arm.contains("ssh_source::clear_idle(&sid)")
+            && arm.contains("bridge::events::SESSION_ENDED"),
+        "本机收割那一臂要清 idle 账本并发已结束：\n{arm}"
     );
 }

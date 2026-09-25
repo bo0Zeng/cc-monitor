@@ -321,7 +321,9 @@ fn is_interactive(_sid: &String, info: &mut SessionInfo) -> bool {
     // 今天一声不吭 ⇒ CC 加了新 kind 时没有任何信号。只记账，**不改行为**。
     if let Some(k) = info.kind.as_deref() {
         if k != "interactive" && k != "bg" {
+            // 〔ST3〕pidfile 只在本机 `~/.claude/sessions` 里扫 ⇒ 记在本机名下。
             crate::drift_ledger::record(
+                &crate::origin::Origin::local(),
                 crate::drift_ledger::DriftFace::UnknownSessionKind,
                 k,
                 None,
@@ -372,10 +374,8 @@ fn diff_sessions(
     // P3 刀 1 已经让本机 tmux 进了那张表（`7226093`）⇒ **那个巧合已经没了**，
     // 今天挡住 `/branch` 灰点的就是本函数这一支。
     //
-    // ⚠ 但**它今天还没有真消费者**：`lib.rs` 的本地 emitter 逐字写着「本地路径没有
-    // idle-tmux 灰点，cause 在这里无分支意义，取 sid 即可」——它丢掉 `cause` 无条件
-    // emit `SESSION_ENDED`。⇒ 真正挡住灰点的仍是「本地 emitter 不分流」。
-    // 本支要等有人给那个 emitter 接上 `classify_removed` 才第一次生效（P3 §6 的 D1）。
+    // 〔U4b · 第四波〕本机 emitter 已接上 `classify_removed`（`lib.rs`），本支从此有真消费者：
+    // 本机的「可重连 / 已结束」按它分流（P3 §6 的 D1 兑现）。
     //
     // ⚠ **要正面证据才敢说「同一条命」**：`procStart` 缺席（实测某些启动路径不写它）时
     // **退回 `Gone`**，不拿「pid 相同」单独一条就断言。pid 是会被复用的；

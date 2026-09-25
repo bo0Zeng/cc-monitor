@@ -1,3 +1,10 @@
+//! # 要求住址：`INVARIANTS §18`（pidfile 宽容解析）＋ `INVARIANTS §26`（bg 门在数据层）＋ `INVARIANTS §24bis`（Superseded）
+//!
+//! 核原文：`INVARIANTS §18` 逐字「procStart 字段在 v2.6 后端按 `Option<String>` 反序列化」—— 缺字段不丢会话那几条判它；
+//! `§26` 逐字「**kind 缺失恒视为交互**」·「bg 门在数据层生效」—— 数据层过滤那几条判它；`§24bis` 逐字 Superseded =
+//! 同一个 pidfile「原地换了 sid」—— 只凭正面身份证据判 Superseded 那一条判它；未登记的 kind 记进本机名下对 `§18.1`。
+//! ⚠ 四块没有逐字住址：「变化才发」· 按 (cwd, sid) 排序 · 同 sid 的 kind 冲突消解 · 心跳分支不重读目录。〔JA1 点址 2026-09-24〕
+
 /// ★★ **心跳分支不许重读文件**〔audit-0805 08-08，Phase G 第 57 件，E12〕。
 ///
 /// `diff_sessions` 的头注逐字写着「scan → 本函数，是状态变化的**唯一检出点**
@@ -377,4 +384,30 @@ fn parse_session_info_without_proc_start() {
     assert_eq!(info.pid, 22832);
     assert_eq!(info.session_id, "2bb6394f-xx");
     assert!(info.proc_start.is_none());
+}
+
+fn st3_booked(o: &crate::origin::Origin, face: crate::drift_ledger::DriftFace, key: &str) -> bool {
+    crate::drift_ledger::snapshot(o)
+        .into_iter()
+        .any(|f| f.face == face && f.entries.iter().any(|e| e.key == key))
+}
+
+/// 〔ST3〕★ 接缝：未登记的会话 kind 记在**本机**名下（pidfile 只在本机扫），不在别台名下。
+#[test]
+fn an_unknown_session_kind_is_booked_under_the_local_machine() {
+    use crate::drift_ledger::DriftFace;
+    let raw = r#"{"pid":9,"sessionId":"s9","cwd":"/x","kind":"st3-kind-probe"}"#;
+    let mut info: SessionInfo = serde_json::from_str(raw).unwrap();
+    assert!(
+        !is_interactive(&String::new(), &mut info),
+        "行为变了：未登记的 kind 应当当后台"
+    );
+    assert!(
+        st3_booked(
+            &crate::origin::Origin::local(),
+            DriftFace::UnknownSessionKind,
+            "st3-kind-probe"
+        ),
+        "未登记的 kind 没记在本机名下"
+    );
 }

@@ -772,6 +772,13 @@ fn every_comment_stripping_transformer_is_registered() {
             "同 cc_bus：本文件自用。⚠ 与共享原语重复，登记为待收口",
         ),
         (
+            // 〔AL1c · 第四波 4B〕两种方言的读回口（同名两份 `impl`，按文件名去重成一行）。
+            "shell_dialect.rs::parse_file",
+            "**别的注释语法，而且语料是我们自己生成的那份别名文件**：POSIX sh 与 PowerShell 的注释都是 `#`，\
+                 共享原语 `strip_comment_lines` 只认 `//` / `*` / `/*`（Rust/JS）。只跳**整行** `#`（生成文件的头注），\
+                 行里的 `#` 是参数值的一部分、原样保留。与 `e2e_gate_registry_tests.rs::strip_comments` 同一个缺口（共享原语没有「注释前缀」参数）",
+        ),
+        (
             "tmux_hook_tests.rs::prod_code",
             "backend 侧本地剥法（跨 crate 够不着 monitor 的 `guard_core`）",
         ),
@@ -2519,8 +2526,12 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_two_inputs_at_the_call_site_are_still_the_two_take_points",
             1,
         ),
-        ("tests/bridge/panorama_tests.rs", "guard_doc_rel", 1),
-        ("src/bridge/src/panorama.rs", "symbols_in_file", 3),
+        // 〔RM1d · 第四波〕`tests/bridge/panorama_tests.rs` 那 1 处 `guard_doc_rel` 的存量行**摘了**：
+        //   那条判据改判上游「算」那一层（`edits::plan_*_doc_link` 过 `guard_doc_rel`），测试段代码里
+        //   有了这个名字（按名字切函数体），它不再「只活在散文里」。
+        // 〔RM1c · 第四波〕`src/bridge/src/panorama.rs` 那 3 处 `symbols_in_file` 的存量行**摘了**：
+        //   独立全景小程序（`src/panorama-engine/main.rs`）的 op 表里有了这个名字（代码侧活了），
+        //   那几句散文从此不再「只活在散文里」。
         (
             // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
             "tests/bridge/panorama_seam_registry_tests.rs",
@@ -2714,6 +2725,13 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "tests/backend/readonly_guard.rs",
             "the_backend_tree_has_no_remote_write_today_and_the_scan_face_is_not_empty",
+            1,
+        ),
+        // 🔴 〔RL1 · 第四波 · 2026-09-24〕中转并进本机常驻后端（V107），monitor 另起中转那一族删了；
+        //    层 1 名字登记表里那一行注释逐字记着「哪两个名字被谁接替」⇒ 第②条出路。
+        (
+            "tests/naming/account-vs-relay-naming.vitest.ts",
+            "start_local_relay",
             1,
         ),
         // 〔SR1a · 2026-09-24〕`--dial` 那条分派臂删了，守它「接得到」的判据随入口换成链路四条而改名。
@@ -3684,6 +3702,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/dial/sftp.rs", 1),
         // 〔SR1b · 2026-09-24〕creds-core 头注里「远端那一侧」那段：原子上传与读回比对的住址搬了，两处旧名挂墓碑。
         ("src/bridge/crates/creds-core/src/lib.rs", 2),
+        // 〔RL1 · 第四波 · 2026-09-24〕中转并进本机常驻后端，monitor 另起中转那一族删了；层 1 名字表那一行注释挂一块。
+        ("tests/naming/account-vs-relay-naming.vitest.ts", 1),
         // 〔C4a · 第四波 · 2026-09-24〕「会话 ↔ 账号」与远端全文搜索改走通道，Rust 那几份删了，留下的三处病史各挂一块：
         ("src/backend/observe/search_query.rs", 1), // 合并那一份（`K-R100` 病史）
         ("src/bridge/src/remote_history.rs", 2), // 远端全文搜索那份 fan-out ·〔合并 RW1〕+1：F11 改经远端后端删，远端那一支的头注一块
@@ -3738,7 +3758,9 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔AL1 · 2026-09-24〕别名改由后端渲染那一拍：本模块头注里 TS 那个旧生成器（`buildAliasLine`）·
         // 测试里「形状围栏」那一条（`validate_alias_line`）· 生成物表里退役的 `AccountAliasReport.ts` ·
         // 延后 I/O 登记表里退役的 `write_account_aliases`，各一块。
-        ("src/bridge/src/account_aliases.rs", 2), // 〔AL1〕+1：`ccmInvocation` 那一句
+        // 〔AL1c · 4B〕2 → 1、`shell_dialect.rs` 0 → 1：`ccmInvocation` 那一句随 POSIX 读回（`parse_line`）搬进方言模块，墓碑跟着搬，总数不变。
+        ("src/bridge/src/account_aliases.rs", 1), // 〔AL1〕+1：`ccmInvocation` 那一句（〔AL1c〕搬走了，剩 `buildAliasLine` 那一块）
+        ("src/bridge/src/shell_dialect.rs", 1),
         ("tests/bridge/account_aliases_tests.rs", 1),
         ("tests/generated-boundary-guard.vitest.ts", 1),
         ("tests/settings/panel-deferred-io.vitest.ts", 1),

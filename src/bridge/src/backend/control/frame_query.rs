@@ -50,6 +50,15 @@ pub(crate) const MOVED: &[(&str, &str)] = &[
     ("--find-in-session", "history-find"),
 ];
 
+/// 〔U4b · 第四波〕**生在帧面上**的只读查询：交给后端只读宿主（`read_face::answer`），但**没有**
+/// 一个被它替掉的逐次拨号子命令（与 [`MOVED`] 那几条的来历不同）。判据的一侧：
+/// `MOVED` 右列 ∪ 本表 == 后端真登记给只读宿主的那几条。
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) const BORN_ON_FRAME: &[&str] = &[
+    // resume 之前问「这条会话的记录还在不在」（[`record`]）。
+    "history-record",
+];
+
 /// 仍然逐次拨号的一次性查询 —— `(子命令, 为什么今天还拨)`。**只有它们**过得了拨号那条路。
 pub(crate) const STILL_DIALED: &[(&str, &str)] = &[
     (
@@ -74,7 +83,15 @@ const LINES_BUDGET: Duration = Duration::from_secs(30);
 const PAGE_BUDGET: Duration = Duration::from_secs(60);
 
 /// 发一条帧命令，拿 `data`。
-async fn call(origin: &Origin, cmd: &str, args: Value, budget: Duration) -> Result<Value, String> {
+///
+/// 〔RM1c · 第四波〕开成 `pub(crate)`：代码全景（`panorama_call.rs`）要一个**期限由调用方给**的出口
+/// （建索引是分钟级，`lines` 那一档的 30 s 不够）。**不新增发送端** —— 仍是这一处、仍走同一个分流器。
+pub(crate) async fn call(
+    origin: &Origin,
+    cmd: &str,
+    args: Value,
+    budget: Duration,
+) -> Result<Value, String> {
     let origin = origin.as_wire_str();
     let Some(client) = inbound_client::client_for(origin) else {
         return Err(said(no_channel(origin)));
@@ -155,6 +172,45 @@ pub(crate) async fn tail(origin: &Origin, path: &str, n: u64) -> Result<TailPlan
         ));
     }
     Ok(plan)
+}
+
+/// 〔U4b · 第四波 · G1〕`history-record` 的答案：这条会话的记录在那台机器的记录树里找不找得到。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RecordProbe {
+    pub present: bool,
+    /// 查的那棵记录树的根（报错时说清查了什么）。
+    pub root: String,
+}
+
+/// 〔U4b · 第四波 · G1〕问那台机器（本机 `<local>` 与远端同一个口）：这条会话的记录还在不在。
+///
+/// resume 一跳在开终端之前问（`设计/01 §6.2` 最后一条）。问不到（没有通道 / 后端太旧不认这条 / 超时）
+/// ⇒ `Err` —— 调用方当「不知道」，**不当「不在」**。
+pub(crate) async fn record(origin: &Origin, sid: &str) -> Result<RecordProbe, String> {
+    let data = call(
+        origin,
+        "history-record",
+        json!({ "sid": sid }),
+        LINES_BUDGET,
+    )
+    .await?;
+    parse_record(origin, &data)
+}
+
+/// [`record`] 的应答解释（纯函数）。两个字段缺一个都是契约对不上 —— **绝不**把缺字段读成「不在」。
+pub(crate) fn parse_record(origin: &Origin, data: &Value) -> Result<RecordProbe, String> {
+    let origin = origin.as_wire_str();
+    let present = data.get("present").and_then(Value::as_bool);
+    let root = data.get("root").and_then(Value::as_str);
+    match (present, root) {
+        (Some(present), Some(root)) => Ok(RecordProbe {
+            present,
+            root: root.to_string(),
+        }),
+        _ => Err(format!(
+            "[{origin}] `history-record` 的应答缺 `present`/`root` —— 两端契约对不上"
+        )),
+    }
 }
 
 /// `history-read` 的一页。

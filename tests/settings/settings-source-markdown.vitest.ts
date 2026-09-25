@@ -110,7 +110,7 @@ describe("ST1：设置窗屏幕上的字符串里零 markdown 星号", () => {
       "src/settings/account-new-form.ts",
       "src/settings/mcp-section.ts",
       "src/settings/plugins-section.ts",
-      "src/settings/cc_integration.ts",
+      "src/settings/machine-aliases.ts", // 〔AL1c〕原 `cc_integration.ts` 并进了它
       "src/settings/remote-section.ts",
       "src/accounts.ts",
     ]) {

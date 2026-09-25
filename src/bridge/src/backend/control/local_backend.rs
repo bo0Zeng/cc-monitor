@@ -81,7 +81,7 @@
 //! · ③ 放不放得下来（[`extraction_failure_reason`]）。09-10 那一形的病根就是把三件事说成一件。
 //!
 //! 真进程行为由 `tests/e2e/local-backend-supervise.sh` 验：它**显式**把二进制路径喂给
-//! [`supervise`]，并强制私有 tmux 隔离，绝不碰用户真实 tmux server。
+//! [`supervise_with_stdio`]，并强制私有 tmux 隔离，绝不碰用户真实 tmux server。
 //! ⚠ 〔`P0e` 08-12〕隔离**换过机制**：原来靠私有 `TMUX_TMPDIR`，而 `$TMUX` 一有值就压过它
 //! （08-11 就是这么打没用户 9 个真实会话的）⇒ `C7i` 逐字禁掉那条路。
 //! 现在给后端一条**前面挂着 shim 的 PATH**（`tests/e2e/tmux-shim.sh`），它 shell out 的 tmux
@@ -670,19 +670,9 @@ pub(crate) fn drain_child_stderr_into_log(err: std::process::ChildStderr, pid: u
     }
 }
 
-pub fn supervise(
-    bin: PathBuf,
-    args: Vec<String>,
-    envs: Vec<(String, String)>,
-    limits: CrashLimits,
-    now_ms: Arc<dyn Fn() -> u64 + Send + Sync>,
-    on_event: Arc<dyn Fn(SuperviseEvent) + Send + Sync>,
-    spawn: Arc<crate::spawn_managed::ManagedSpawn>,
-) -> SuperviseHandle {
-    supervise_with_stdio(bin, args, envs, limits, now_ms, on_event, None, spawn)
-}
-
-/// 见 [`StdioSink`]。`stdio` 为 `None` 时与 [`supervise`] 逐字等价。
+/// 见 [`StdioSink`]。`stdio` 为 `None` ⇒ 不接消费者（stdin 恒 `null`）。
+/// 〔RL1 · V107〕先前还有一个 `stdio=None` 的薄壳入口，它唯一的生产客户是 monitor 另起的本机中转；
+/// 中转并进本机常驻后端之后那个薄壳没了客户，随之删掉 —— 生产上只剩这一个入口。
 #[allow(clippy::too_many_arguments)]
 pub fn supervise_with_stdio(
     bin: PathBuf,
@@ -1003,7 +993,7 @@ pub fn resolve_beside_this_exe(target_triple: &str) -> Resolved {
 /// # 它不做什么
 ///
 /// **不校验写完的字节是不是真能跑** —— `deploy_decision` 只回答「要不要装」，不回答「装完对不对」。
-/// 起不起得来由监护层（[`supervise`]）的崩溃计数说话。
+/// 起不起得来由监护层（[`supervise_with_stdio`]）的崩溃计数说话。
 /// 本机释放的**文件名**（唯一真相源）。
 ///
 /// ⚠ 抽成函数不是为了好看：判据 `the_local_extract_path_is_build_id_scoped` 要断言这条命名规则，
@@ -1494,11 +1484,51 @@ pub(crate) fn absorb_local_frame(
         // ⚠ 收它有前置：本地 sid 进这张表之后，`/branch` 会走 `(Some(origin), …)`
         // ⇒ 必须先有「本地也判得出 `Superseded`」（P3 刀 0）。没有刀 0 就收帧 =
         // 把「永远消不掉的灰点」那个 bug 请回来。
-        InboundFrame::TmuxSessions { raw, .. } => {
+        //
+        // 〔U4b · 第四波 · G2〕本机也有「可重连」了（`lib.rs` 本机那一臂改走 `classify_removed`）⇒
+        //   「可重连 → 已结束」要有产出者，与远端 `stream_loop` 的收帧收割器同一个判定（`reconcile_step`）。
+        //   结论交 `session_facts::retire_local_idle`（写 idle 账本只许在 `lib.rs`）。
+        InboundFrame::TmuxSessions { raw, observation } => {
+            let origin = crate::backend::control::inbound_client::LOCAL_ORIGIN;
+            let idle = crate::ssh_source::snapshot_idle_for_origin(origin);
+            let retire = {
+                let mut st = local_reaper_state()
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                local_idle_retirements(&mut st, &raw, observation.as_deref(), &idle)
+            };
             crate::ssh_source::record_tmux_raw(
                 crate::backend::control::inbound_client::LOCAL_ORIGIN,
                 raw,
             );
+            let n_retire = retire.len();
+            if n_retire > 0 {
+                tracing::info!("tmux-reconcile(本机): retire {n_retire} 条可重连会话（本机 tmux 里已不见它们）");
+                crate::session_facts::retire_local_idle(retire);
+            }
+        }
+        // 〔U4b · 第四波 · G2〕本机 tmux 会话关了（正向死亡帧）—— 此前这一帧在本机这条流上被直接丢掉。
+        //   与远端同序：**先把那一行从账本摘掉，再退** —— 否则 claude 随后退出时 `classify_removed`
+        //   仍看得见它 ⇒ 判成可重连（`#60` 现象 2 的本机版）。那条会话若已是可重连 ⇒ 立刻落已结束。
+        InboundFrame::TmuxSessionClosed { name } => {
+            let origin = crate::backend::control::inbound_client::LOCAL_ORIGIN;
+            if let Some(raw) = crate::ssh_source::tmux_raw_for(origin) {
+                let (rest, sid) = local_tmux_closed(&raw, &name);
+                crate::ssh_source::record_tmux_raw(
+                    crate::backend::control::inbound_client::LOCAL_ORIGIN,
+                    rest,
+                );
+                let idle_now = crate::ssh_source::snapshot_idle_for_origin(origin);
+                if let Some(sid) = sid.filter(|s| idle_now.contains(s)) {
+                    tracing::info!("本机 tmux 会话 {name} 关闭 ⇒ 可重连的 sid={sid} 落已结束");
+                    crate::session_facts::retire_local_idle(vec![sid]);
+                }
+            }
+        }
+        // 〔U4b · 第四波 · G3〕本机活会话的容器事实：与远端流同一个口（`session_facts`）、同一个事件。
+        //   本机会话的其余事实（起停、行）照旧走本地 watcher —— 这条流上只取容器这一格。
+        InboundFrame::SessionAdded { sid, container, .. } => {
+            crate::session_facts::note_container(&sid, container);
         }
         InboundFrame::Reply {
             id,
@@ -1530,6 +1560,50 @@ pub(crate) fn absorb_local_frame(
         // 其余帧（会话 / 行 / hello …）本机这条流今天不消费（本机会话走本地 watcher）。
         _ => {}
     }
+}
+
+/// 〔U4b · 第四波 · G2〕本机收割器的对账状态（跨帧累计缺失计数）。一份常驻：本机只有一条后端流，
+/// 流断了重连后 idle 集没变，计数接着累计是对的（与远端「每连接一份」不同：远端断连有 flush 兜底归档）。
+fn local_reaper_state() -> &'static std::sync::Mutex<crate::tmux_reconcile::ReconcileState> {
+    static STATE: std::sync::OnceLock<std::sync::Mutex<crate::tmux_reconcile::ReconcileState>> =
+        std::sync::OnceLock::new();
+    STATE.get_or_init(Default::default)
+}
+
+/// 〔U4b · 第四波 · G2〕**本机收割的纯决策**：这一帧 `tmux ls` 之后，哪些本机「可重连」该落到已结束。
+///
+/// 与远端 `stream_loop` 的 `TmuxSessions` 臂同一个判定：观测无效（`Skip`）⇒ 本帧不算；有效 ⇒
+/// `reconcile_step`（去抖 `RETIRE_MISS_THRESHOLD` 拍）。`tracked` 与 `pre_bound` 都是**本机 idle 集**：
+/// 本机活会话的死活由本地 watcher 的 pidfile 判，不归这里管（远端 `tracked` 里的 `announced` 在本机没有对应物）；
+/// idle sid 的 `@ccm_sid` 在原文里出现过 = 铁证绑过 tmux ⇒ 直接播种 `ever_bound`（同远端那条 D 审计②）。
+pub(crate) fn local_idle_retirements(
+    state: &mut crate::tmux_reconcile::ReconcileState,
+    raw: &str,
+    observation: Option<&str>,
+    idle: &std::collections::HashSet<String>,
+) -> Vec<String> {
+    match crate::backend::control::tmux::classify_tmux_observation(raw, observation) {
+        crate::backend::control::tmux::TmuxObservation::Backend(backend) => {
+            crate::tmux_reconcile::reconcile_step(
+                state,
+                idle,
+                &backend,
+                idle,
+                crate::tmux_reconcile::RETIRE_MISS_THRESHOLD,
+            )
+        }
+        crate::backend::control::tmux::TmuxObservation::Skip(_) => Vec::new(),
+    }
+}
+
+/// 〔U4b · 第四波 · G2〕本机 tmux 会话 `name` 关了：摘掉那一行后的原文 ＋ 那一行上挂着的 sid（纯函数）。
+/// 按名字**逐字相等**找（`remove_tmux_line` 同一条纪律：不做前缀匹配）。
+pub(crate) fn local_tmux_closed(raw: &str, name: &str) -> (String, Option<String>) {
+    let sid = crate::backend::control::tmux::parse_tmux_ls(raw)
+        .into_iter()
+        .find(|e| e.name == name)
+        .and_then(|e| e.sid);
+    (crate::ssh_source::remove_tmux_line(raw, name), sid)
 }
 
 /// # 诚实边界 10a + 10e：通道**通了**，但没人往里发命令，也没验命令真能执行
@@ -1863,6 +1937,8 @@ pub fn start_or_extract(
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
     on_event: Arc<dyn Fn(SuperviseEvent) + Send + Sync>,
     spawn: Arc<crate::spawn_managed::ManagedSpawn>,
+    // 〔RL1 · V107〕交给后端的环境（中转端口 ＋ 凭据路径）由**宿主**给 —— 本层不认识中转，只原样转交。
+    envs: Vec<(String, String)>,
 ) -> (Resolved, Option<SuperviseHandle>) {
     let resolved = resolve_or_extract(target_triple, extract_dir, embedded, make_executable);
     let Resolved::Found(bin) = resolved else {
@@ -1874,7 +1950,7 @@ pub fn start_or_extract(
     let h = supervise_with_stdio(
         bin.clone(),
         vec!["--tail-only".into()],
-        Vec::new(),
+        envs,
         CrashLimits::default(),
         Arc::new(|| {
             std::time::SystemTime::now()

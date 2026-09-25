@@ -63,6 +63,15 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              没上限就等于「点一次恢复永远转圈」。退役归：std 有了 `wait_timeout` 之后（今天没有）。",
     ),
     (
+        "src/remote_relay.rs",
+        "wait-for-condition",
+        1,
+        "〔RL1 09-24〕`listening_or_started` 的 10×200ms（≤2 s）：远端 `relay-ensure` 起了一个脱离的中转、\
+             后端**不等它 bind**（后端零定时器）⇒ 这里等**那台回环口上有人在听**这个一次性条件，\
+             每次醒来问一趟 `relay-status`，有次数上限，等不到就如实答「没在听」（apikey 行那一格拒绝起会话，\
+             `/t/` 那一格照旧直连）。不是节拍器：只在「这次拉起要注入、那台口上没人」时跑一次。",
+    ),
+    (
         "src/dial_host.rs",
         "wait-for-condition",
         1,

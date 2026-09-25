@@ -81,6 +81,10 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
           ⚠ 〔`K-R70` 09-12 订正本行后半句〕它**不再读旁边那份 `.build_id` 清单** —— \
           身份改从二进制字节里扫（`CC_MONITOR_BUILD_STAMP`），\
           由 `sftp_tests.rs::the_embedded_identity_comes_from_the_bytes_not_from_a_label` 守着"),
+    ("build.rs", "embed_panoramas", None,
+     "〔RM1c · 第四波〕把 `embedded-backends/cc-monitor-panorama-<arch>`（只装代码全景引擎的独立小程序，\
+          两个 musl arch）复制进 `OUT_DIR`，供 `panorama_bytes.rs` 的 `include_bytes!` 内嵌。\
+          同上一行：写的是 cargo 自己的构建目录，不碰用户环境、不是安装动作"),
     // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来有 `skill_host.rs::write_skill_file` 一行（项目里的
     //    `.claude/planned-build/INBOX.txt`，本进程 `fs::write` ＋ `verified_write` 回读回滚）。用户裁「远端（和本机，
     //    同一条路）的 `INBOX.txt` 能编辑、经那台机器后端的文件管理那一面写」⇒ 读写都改经后端（`files-peek` /
@@ -417,6 +421,8 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
         Lands::OwnDeployment,
     ),
     ("build.rs", "embed_backends", Lands::BuildOutput),
+    // 〔合并 RM1c〕全景小程序的内嵌字节：同上一行，往 `OUT_DIR` 放构建产物。
+    ("build.rs", "embed_panoramas", Lands::BuildOutput),
     ("bind.rs", "spawn", Lands::OwnState),
     ("bind.rs", "process_await_file", Lands::OwnState),
     ("bind.rs", "cleanup_dead", Lands::OwnState),
