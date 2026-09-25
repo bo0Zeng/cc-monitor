@@ -283,6 +283,13 @@ fn every_non_literal_include_is_registered_with_a_reason() {
              不是对面那一半的**源码** ⇒ 不属两半编译期互咬。\
              ⚠ 但它确实是一条编译期边：`OUT_DIR` 里没有那个文件就编不过 —— \
              那条边由 `build.rs` 与 `shared_crate_registry` 的 CI 步骤那侧管。",
+    ), (
+        "src/bridge/src/panorama_bytes.rs",
+        2,
+        "〔RM1c · 第四波〕`include_bytes!(concat!(env!(\"OUT_DIR\"), \"/panorama-<arch>\"))` —— \
+             同上一行的形状：读的是 `build.rs::embed_panoramas` 放进 `OUT_DIR` 的**产物**\
+             （内嵌的全景小程序两个 musl arch），不是对面那一半的源码 ⇒ 不属两半编译期互咬。\
+             只在 `embedded_panoramas` cfg 下编译（字节缺席时这两处不进构建）。",
     )];
     let mut found: Vec<(String, usize)> = Vec::new();
     let mut total_invocations = 0usize;

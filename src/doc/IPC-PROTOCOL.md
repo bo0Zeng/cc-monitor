@@ -1821,6 +1821,28 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 - 读的是 `<home>/plugins/known_marketplaces.json` 与 `<各落点>/.claude-plugin/marketplace.json`；它回答「有哪些 marketplace、从哪来、**声明**了几个插件」，**不是**「装了 / 启用了哪些」。
 - 三条出口分开：文件不在 ⇒ `file_absent: true`（诚实的空）；读 / 解析失败 ⇒ `failed`；某一条数不出 ⇒ 那一条 `declared_plugins: null` ＋ `declared_error` 理由，整张表照出。
 
+#### `panorama`：代码全景（〔RM1c〕第四波，用户 09-24 V108 选 B）
+
+后端**不链**全景引擎：它经插件通用调用口（找它 → `--probe` 问它会不会这个 op → 传 argv 起它，期限走 `timeout` 前缀）起那个只装引擎的独立小程序 `cc-monitor-panorama`，解析发生在被起的那个进程里；索引落**这台机器上后端自己的数据目录**（`~/.cc-monitor/panorama/`），不落进被分析的仓。本机与远端同一条命令。
+
+```text
+→ {"id":"g1","cmd":"panorama","args":{"op":"overview","repo":"/home/me/proj","args":{"budget":4000}}}
+← {"kind":"reply","id":"g1","ok":true,"data":{"result":{…}}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `op` | → | **只说查询语义**：`status` · `index` · `reindex` · `overview` · `node` · `subgraph` · `callers` · `callees` · `impact` · `search` · `docs_for` · `touching` · `symbols_in_file` · `drift` · `list_annotations` · `diagram_kinds` · `diagram`（存储 / grammar / 解析开关一个都不上线，`protocol_doc_guard` 钉着） |
+| `repo` | → | 被分析的仓在**这台机器上**的绝对路径（`diagram_kinds` 不要） |
+| `args` | → | 这个 op 自己的参数（JSON 对象；拼错的字段名被拒，不静默忽略） |
+| `result` | ← | 小程序应答里的 `data` **原样**（形状与 monitor 进程内那套全景命令逐字相同；`node` 查不到是 `null`） |
+
+- CLI 面同样自动派生（`--panorama`，stdin 一段 JSON = 上面那个 `args`），已进 `SUBCOMMANDS`。
+- 期限：`index` / `reindex` 900 秒，其余 60 秒 —— 给**子进程**的（后端零定时器）。客户端那一侧的等待要比它长。
+- 错误码：`bad_args`（op 不在词表 / 参数不合形，小程序自己那句话原样带回）· `not_installed`（这台没有那个小程序，或找到的那个身份行对不上；整句说清查过哪儿）· `unsupported`（装的那份不会这个 op，点名缺的那一个）· `timed_out`（说清是哪一档期限）· `too_large`（参数塞不进一次命令调用，或结果超过 32 MiB）· `failed`（仓打不开 / 引擎报错 / 被信号打断，带诊断）。
+- **只读**（第一拍）：写用户文件的那几样（批注、文档关联）不在词表里 —— 远端仓的那些文件是远端的用户文件，写面归后端文件管理那一面。
+- 阻塞档（起一个进程、等它退出；建索引可到分钟级）⇒ `cancel` 命中回 `not_cancellable`。
+
 #### `history-find`：会话内查找（〔SR1a × SE2〕2026-09-24 上帧面）
 
 ```text

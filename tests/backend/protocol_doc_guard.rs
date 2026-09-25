@@ -150,6 +150,12 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "control/tmux_hook.rs",
         include_str!("../../src/backend/control/tmux_hook.rs"),
     ),
+    // 〔RM1c · 第四波〕代码全景的适配层：它持有发给独立小程序的旗标字面量（`--probe` / `--store` …）
+    // ⇒ 派生的文件集把它扫了进来。那几个都是**子进程旗标**，登记在 [`CHILD_PROCESS_FLAGS`]。
+    (
+        "control/panorama.rs",
+        include_str!("../../src/backend/control/panorama.rs"),
+    ),
 ];
 
 /// 🔴 **终端命令面**的文件 —— 它们持有 `--旗标` 字面量，但那些**不是 wire 子命令**。
@@ -203,13 +209,24 @@ const TERMINAL_SURFACE_FILES: &[(&str, &str)] = &[(
 ///
 /// 🔴 **不许**把旗标拼成运行期字符串（`format!("--{}", "tool")`）来躲 [`dispatched_subcommands`] ——
 /// 那是把扫描面静默挖空；正路就是登记在这里、让 ①② 接住。
-pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[(
-    "control/cc_bus.rs",
-    "src/shared/cc-bus/scripts/cc-spawn",
-    &["--account", "--base", "--tool"],
-    "`bus-spawn` 转调 `cc-spawn` 时的旗标（`control/cc_bus.rs::spawn_argv`）。\
-     它们是 cc-spawn 的命令面：后端 argv 从不认它们，线上契约里也没有它们的位置。",
-)];
+pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
+    (
+        "control/cc_bus.rs",
+        "src/shared/cc-bus/scripts/cc-spawn",
+        &["--account", "--base", "--tool"],
+        "`bus-spawn` 转调 `cc-spawn` 时的旗标（`control/cc_bus.rs::spawn_argv`）。\
+         它们是 cc-spawn 的命令面：后端 argv 从不认它们，线上契约里也没有它们的位置。",
+    ),
+    // 〔RM1c · 第四波〕子进程是一个 **Rust 程序**（不是 shell 脚本）⇒ ② 那一侧改读它生产段里的
+    // `"--x"` 字面量（同一把 [`dashdash_literals`]），见接盘判据里按扩展名分的那一支。
+    (
+        "control/panorama.rs",
+        "src/panorama-engine/main.rs",
+        &["--args", "--probe", "--repo", "--store"],
+        "`panorama` 起只装引擎的独立小程序时的旗标（`control/panorama.rs::answer_with`）。\
+         它们是那个小程序的命令面：后端 argv 从不认它们，线上契约里 op 与参数走 `args` 载荷。",
+    ),
+];
 
 /// 子进程认、而后端**刻意不发**的旗标 —— 每条带理由（②那一向的另一半）。
 pub(crate) const CHILD_FLAGS_NOT_SENT: &[(&str, &str, &str)] = &[(
@@ -281,13 +298,87 @@ mod tests {
 
     const DOC: &str = include_str!("../../src/doc/IPC-PROTOCOL.md");
 
+    /// 〔RM1c〕签过字的**查询语义**白名单（全景 op 词表的另一侧，手写 —— 加一个就是签一次字）。
+    const QUERY_SEMANTICS: &[&str] = &[
+        "status",
+        "index",
+        "reindex",
+        "overview",
+        "node",
+        "subgraph",
+        "callers",
+        "callees",
+        "impact",
+        "search",
+        "docs_for",
+        "touching",
+        "symbols_in_file",
+        "drift",
+        "list_annotations",
+        "diagram_kinds",
+        "diagram",
+    ];
+
+    /// 生产段里含「全景」那个词的字符串字面量（去重）。
+    fn panorama_literals(prod: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut rest = prod;
+        while let Some(i) = rest.find('"') {
+            let after = &rest[i + 1..];
+            let Some(j) = after.find('"') else { break };
+            let lit = &after[..j];
+            if lit.contains("panorama") && !out.iter().any(|o| o == lit) {
+                out.push(lit.to_string());
+            }
+            rest = &after[j + 1..];
+        }
+        out
+    }
+
+    /// 适配层 `OPS` 表里的 op 名（`("<op>", <期限>)` 那一形）。
+    fn adapter_ops(prod: &str) -> Vec<String> {
+        let at = prod
+            .find("const OPS: &[(&str, u64)] = &[")
+            .expect("适配层的 op 表改了写法 —— 本条跟着改");
+        let body = &prod[at..at + prod[at..].find("];").expect("op 表没收尾")];
+        body.lines()
+            .filter_map(|l| {
+                let rest = l.trim().strip_prefix("(\"")?;
+                Some(rest[..rest.find('"')?].to_string())
+            })
+            .collect()
+    }
+
+    /// 两把抽取尺子的正控（合成夹具必须抽得出来，否则 ① 的相等断言会被一把瞎尺子喂成空）。
+    #[test]
+    fn the_two_panorama_rulers_see_synthetic_samples() {
+        assert_eq!(
+            panorama_literals(
+                "x(\"panorama\"); y(\"panorama-extra\"); z(\"other\"); w(\"panorama\")"
+            ),
+            vec!["panorama".to_string(), "panorama-extra".to_string()]
+        );
+        assert_eq!(
+            adapter_ops(
+                "pub(crate) const OPS: &[(&str, u64)] = &[\n    (\"a\", 1),\n    (\"b_c\", X),\n];"
+            ),
+            vec!["a".to_string(), "b_c".to_string()]
+        );
+    }
+
     /// ★★ `P7c-2`〔用@08-13 的解耦约束〕：**全景协议只许暴露查询语义。**
     ///
-    /// # 这条今天是**前提触发器**，不是空真
+    /// # ① 〔RM1c · 第四波〕前提触发器**已经响过、翻面了**：「零全景」→「只许查询语义」
     ///
-    /// backend 今天**没有**全景（`code-picture-core` 在后端侧命中 0）。本条断言的正是
-    /// 这个前提：一旦有人把全景接进 wire，下面那个计数会变、本条**当场红** ——
-    /// 红了不是坏事，是让那个人**先读完这段话**再往下写。
+    /// 翻面之前本条断言的是「协议面零 `panorama` / 零 `code_picture`」—— 一个等人来读这段话的
+    /// 前提触发器。09-24 用户选 B（`99 §1` V108）：后端经插件口起只装引擎的独立小程序，
+    /// 协议上多了一条 `panorama` 命令。触发器按设计响了，照它的要求读完了下面那段话，然后翻面：
+    /// · 引擎名 `code_picture` 在协议面**仍零命中**（后端不认识引擎；插件是谁不上线）；
+    /// · 全景在协议面**只以一条命令名**出现（`inbound.rs` 里含这个词的字符串字面量 == 命令名 ＋ 它的文档小节标题，
+    ///   `wire.rs` 仍零命中 —— 出方向没有全景专用的帧）；
+    /// · 它的 op 词表（运行时从适配层 `control/panorama.rs` 的 `OPS` 抽）== 下面手写的
+    ///   **查询语义白名单**（两向相等）。加一个 op = 回来在这张白名单上签一次字。
+    /// ② 禁词表**一字不动**，射程从「协议面两个文件」扩到**适配层**（op 词表与它拼的 argv 都住那里）。
     ///
     /// # 那段话（用户 08-13 逐字给的约束，量完之后收窄成一句可验的）
     ///
@@ -315,16 +406,40 @@ mod tests {
             guard_core::production_code(inbound),
             guard_core::production_code(wire)
         );
-        // ① 前提：今天后端里没有全景。它变了就该回来读上面那段。
-        for absent in ["code_picture", "panorama"] {
-            assert!(
-                !prod.contains(absent),
-                "backend 的协议面出现了 {absent:?} —— 全景接进来了。\n             \
-                 ⇒ 请先读本判据的头注（`P7c-2` 的解耦约束），再把下面 ② 那张禁词表核一遍。"
-            );
-        }
+        // ①〔RM1c 翻面〕引擎名不上线；全景只以一条命令名出现；op 词表 == 查询语义白名单。
+        assert!(
+            !prod.contains("code_picture"),
+            "backend 的协议面出现了引擎名 —— 后端不认识引擎，插件是谁不上线（`C21` / V108）。"
+        );
+        let mut lits = panorama_literals(&guard_core::production_code(inbound));
+        lits.sort();
+        assert_eq!(
+            lits,
+            // 命令名本身 ＋ 它在协议文档里那一小节的标题（`doc_anchor`，给人查的住址，不是第二条命令）。
+            vec!["#### `panorama`".to_string(), "panorama".to_string()],
+            "`inbound.rs` 里含「全景」那个词的字符串字面量不再恰好是那一条命令名 —— \
+             全景在协议面只许以一条命令出现，op 走载荷（请先读本判据的头注）。"
+        );
+        assert!(
+            !guard_core::production_code(wire).contains("panorama"),
+            "`wire.rs` 出现了全景 —— 出方向没有全景专用的帧（查询一问一答，走 `reply`）。"
+        );
+        let adapter =
+            guard_core::production_code(include_str!("../../src/backend/control/panorama.rs"));
+        let mut ops = adapter_ops(&adapter);
+        ops.sort();
+        let mut signed: Vec<String> = QUERY_SEMANTICS.iter().map(|s| s.to_string()).collect();
+        signed.sort();
+        assert_eq!(
+            ops, signed,
+            "全景 op 词表与这里签过字的查询语义白名单对不上。\n\
+             ⇒ 加一个 op 之前先回答：它是**查询语义**（overview/node/callers/…），\
+             还是存储 / grammar / 解析开关？后者不许上线（`P7c-2`）。"
+        );
         // ② 无论今天还是以后：**存储与 grammar 细节一个都不许上线**。
         //    今天这条是真的在跑（它扫的是现有协议面），不是等以后才生效。
+        //    〔RM1c〕射程扩到适配层：op 词表与它拼给小程序的 argv 都住那里。
+        let prod = format!("{prod}{adapter}");
         for leaked in [
             "sqlite",
             "rusqlite",
@@ -716,38 +831,12 @@ mod tests {
             // ② 子进程旗标循环里认的 == 登记的 ∪ 刻意不发的（两向）
             let script = std::fs::read_to_string(repo.join(child))
                 .unwrap_or_else(|e| panic!("读不到子进程脚本 {child}：{e} —— 判不了，不许当成绿"));
-            let mut accepts: Vec<String> = Vec::new();
-            let mut in_loop = false;
-            // ⚠ 块界用**整行相等**（与 `pin_line` 同一口径），不用前缀匹配：
-            //   前缀 needle 在语料上会被撑大而照样绿（`needle_anchor_registry` 那条棘轮管的就是它）。
-            // ⚠ 变量名刻意不叫 `line` / `t`：那条棘轮按**文件内变量名**认语料，
-            //   同名会把本文件别处的无关匹配一起卷进去（现打：卷进过 2 处）。
-            for sline in script.lines() {
-                let st = sline.trim();
-                if st == "while true; do" {
-                    in_loop = true;
-                    continue;
-                }
-                if in_loop && st == "done" {
-                    break;
-                }
-                if !in_loop {
-                    continue;
-                }
-                // case 臂的模式段：`--xxx)` 之前那一截，形如两个连字符 ＋ `[A-Za-z0-9-]+`
-                let arm: String = st.chars().take_while(|c| *c != ')').collect();
-                let dashes = arm.chars().take(2).filter(|c| *c == '-').count();
-                if arm.chars().count() > 2
-                    && dashes == 2
-                    && arm
-                        .chars()
-                        .skip(2)
-                        .all(|c| c.is_ascii_alphanumeric() || c == '-')
-                    && st.chars().count() > arm.chars().count()
-                {
-                    accepts.push(arm);
-                }
-            }
+            // 〔RM1c〕子进程是 Rust 程序 ⇒ 它认的旗标 = 它生产段里的 `"--x"` 字面量（同一把尺子）。
+            let mut accepts: Vec<String> = if child.ends_with(".rs") {
+                dashdash_literals(&script)
+            } else {
+                shell_loop_flags(&script)
+            };
             accepts.sort();
             accepts.dedup();
             let mut want: Vec<String> = reg.clone();
@@ -760,12 +849,49 @@ mod tests {
             want.sort();
             assert_eq!(
                 accepts, want,
-                "\n`{child}` 旗标循环里认的旗标，与「后端发的 ∪ 刻意不发的」对不上。\n\
+                "\n`{child}` 认的旗标，与「后端发的 ∪ 刻意不发的」对不上。\n\
                  左边多 ⇒ 子进程新认了一个旗标、这边没表态（发不发都要写一句）；\n\
                  右边多 ⇒ 后端发了一个子进程**不认**的旗标（它会被当成位置参数吃掉，\
                  `cc-spawn` 那条的后果是「目录不存在：--xxx」）。"
             );
         }
+    }
+
+    /// shell 子进程那一形：`while true; do … done` 旗标循环里 `case` 臂认的旗标。〔BS1b；RM1c 抽成函数〕
+    fn shell_loop_flags(script: &str) -> Vec<String> {
+        let mut accepts: Vec<String> = Vec::new();
+        let mut in_loop = false;
+        // ⚠ 块界用**整行相等**（与 `pin_line` 同一口径），不用前缀匹配：
+        //   前缀 needle 在语料上会被撑大而照样绿（`needle_anchor_registry` 那条棘轮管的就是它）。
+        // ⚠ 变量名刻意不叫 `line` / `t`：那条棘轮按**文件内变量名**认语料，
+        //   同名会把本文件别处的无关匹配一起卷进去（现打：卷进过 2 处）。
+        for sline in script.lines() {
+            let st = sline.trim();
+            if st == "while true; do" {
+                in_loop = true;
+                continue;
+            }
+            if in_loop && st == "done" {
+                break;
+            }
+            if !in_loop {
+                continue;
+            }
+            // case 臂的模式段：`--xxx)` 之前那一截，形如两个连字符 ＋ `[A-Za-z0-9-]+`
+            let arm: String = st.chars().take_while(|c| *c != ')').collect();
+            let dashes = arm.chars().take(2).filter(|c| *c == '-').count();
+            if arm.chars().count() > 2
+                && dashes == 2
+                && arm
+                    .chars()
+                    .skip(2)
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-')
+                && st.chars().count() > arm.chars().count()
+            {
+                accepts.push(arm);
+            }
+        }
+        accepts
     }
 
     /// 🔴 [`TERMINAL_SURFACE_FILES`] 里的每一份，都必须**真的**被它声称的那条判据接住。

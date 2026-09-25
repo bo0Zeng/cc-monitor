@@ -49,6 +49,9 @@
 //!   起进程（转调本机的 cc-bus 命令，argv 直传不过 shell），**一处**，已登记进
 //!   `readonly_guard::ALLOWED`。⚠ 它**不读** cc-bus 的任何数据文件 ——
 //!   用户 08-13 明说「后面我可能要改ccbus」⇒ 只把它的**命令**当接口。
+//! - [`panorama`]（RM1c · 第四波，V108）：**代码全景** —— 经插件通用调用口起那个只装引擎的
+//!   独立小程序（`cc-monitor-panorama`），后端自己一行引擎都不链。起进程走 `plugin::invoke::run`
+//!   （起进程点一处不增）；被起的那个进程只写**索引**（落后端自己的数据目录，不是用户文件）。
 //! - [`resolve_query`]：产出 `CommandPlan`（「这个会话该怎么起」）。
 //!   名字里有 `query` 但它不是观测 —— 账本 S14 明写它是 backend 的**计划面**。
 //!   按「读 / 改变世界」这条线分，产计划属于控制的前半。
@@ -72,5 +75,6 @@ pub(crate) mod gate;
 pub(crate) mod identity_tag;
 pub(crate) mod kill;
 pub(crate) mod launch;
+pub(crate) mod panorama;
 pub mod resolve_query;
 pub mod tmux_hook;

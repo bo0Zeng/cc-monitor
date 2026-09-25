@@ -207,6 +207,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("mcp.list-project-dirs", (NA, "—", "列项目目录 —— 读")),
     ("mcp.read", (NA, "—", "读 MCP 配置")),
     ("panorama.code-graph", (NA, "—", "代码全景（sidecar 的**用**，不是装它）")),
+    ("panorama.annotate", (NA, "—", "〔RM1c〕代码全景的批注 / 文档关联那几条写 —— 用户在图上做的标注，不是产品往用户环境里装东西")),
     ("plugins.marketplaces", (NA, "—", "列插件市场 —— 只读枚举")),
     ("port-forward", (NA, "—", "端口转发")),
     ("apikey.routing", (NA, "—", "问这几个本机账号在 apikey 表里有没有行（＋本机中转在不在跑）")),

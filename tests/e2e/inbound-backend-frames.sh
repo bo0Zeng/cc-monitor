@@ -102,7 +102,8 @@ fi
 HELLO="$(head -1 "$OUT")"
 # F04a：新增 kill（第一条破坏性入方向命令）—— 这一行与后端的 `inbound::COMMANDS`
 # 由 monitor 侧 `the_e2e_command_list_matches_the_backend_command_table` 逐项钉住，两处要一起动。
-for c in ping cancel resolve launch kill; do
+# 〔RM1c · 第四波〕新增 panorama（代码全景：后端经插件口起独立小程序）。
+for c in ping cancel resolve launch kill panorama; do
   if printf '%s' "$HELLO" | grep -qF "\"$c\""; then ok "hello.commands 声明了 $c"; else
     bad "hello 里没有 $c：$HELLO"
   fi

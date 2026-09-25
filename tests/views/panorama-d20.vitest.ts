@@ -54,7 +54,7 @@ describe("F69 PanoramaView.load —— D20 默认关的真接线守卫", () => {
     expect(api.index).not.toHaveBeenCalled();
     msgBtn(view)!.click();
     await flush();
-    expect(api.index).toHaveBeenCalledWith("/repo");
+    expect(api.index).toHaveBeenCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" });
   });
 
   it("symbols>0 且非陈旧 → 直接加载 overview，不 index（不 enable-gate、不自动重扫）", async () => {
@@ -63,7 +63,7 @@ describe("F69 PanoramaView.load —— D20 默认关的真接线守卫", () => {
     void callLoad(view, "/repo"); // 不 await（overview 挂起、load 不会 resolve）
     await flush();
     expect(api.index).not.toHaveBeenCalled();
-    expect(api.overview).toHaveBeenCalledWith("/repo");
+    expect(api.overview).toHaveBeenCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" });
   });
 
   it("symbols>0 且陈旧 → 自动重建（已启用仓保鲜，属正常运行、非新 opt-in）", async () => {
@@ -72,6 +72,6 @@ describe("F69 PanoramaView.load —— D20 默认关的真接线守卫", () => {
     vi.mocked(api.overview).mockReturnValue(pending<Overview>());
     void callLoad(view, "/repo");
     await flush();
-    expect(api.index).toHaveBeenCalledWith("/repo");
+    expect(api.index).toHaveBeenCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" });
   });
 });
