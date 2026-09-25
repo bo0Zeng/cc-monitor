@@ -617,6 +617,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     //   登记理由同上 —— `is_query_mode` 那道闸门读本表。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--history-find",
     "--history-index",
+    // 〔CF2 · 第四波 4B〕`history-lines`（按行号取回）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的，
+    //   BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    "--history-lines",
     "--history-projects",
     "--history-read",
     // 〔U4b · 第四波〕`history-record` 的 CLI 面（CLI 面从 `REGISTRY` 派生，`is_query_mode` 那道闸门读本表）。

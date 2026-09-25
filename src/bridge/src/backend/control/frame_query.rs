@@ -57,6 +57,8 @@ pub(crate) const MOVED: &[(&str, &str)] = &[
 pub(crate) const BORN_ON_FRAME: &[&str] = &[
     // resume 之前问「这条会话的记录还在不在」（[`record`]）。
     "history-record",
+    // 〔CF2 · 第四波 4B〕按行号取回一段（没接骨架的会话丢掉的正文从这里要回来）。
+    "history-lines",
 ];
 
 /// 仍然逐次拨号的一次性查询 —— `(子命令, 为什么今天还拨)`。**只有它们**过得了拨号那条路。
