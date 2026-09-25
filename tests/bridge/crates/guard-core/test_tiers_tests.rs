@@ -292,7 +292,6 @@ const SCAN: &[&str] = &[
     "tests/backend/relay/bind_guard.rs",
     "tests/backend/relay/creds_guard.rs",
     "tests/backend/relay/framer_tests.rs",
-    "tests/backend/relay/nodelay_guard.rs",
     "tests/backend/relay/route_tests.rs",
     "tests/backend/relay/table_guard.rs",
     "tests/backend/single_stream_guard.rs",
