@@ -35,6 +35,8 @@ pub(crate) struct Linked {
     pub(crate) _jump: Option<client::Handle<Checker>>,
     /// 〔SR1b〕这条连接上的通道预算（`pool::Budget`）：长流 · 查询 · SFTP 同一条连接，同一道闸。
     pub(crate) budget: super::pool::Budget,
+    /// 〔NT1〕这条连接托着的别的连接（主连接托着批量连接：长流在它就在，主连接没了随之释放 —— `pool.rs`）。
+    pub(crate) held: Mutex<Vec<Arc<Linked>>>,
 }
 
 /// host key 校验：给了期望值就严格比（比之前 `trim`），没给就 TOFU 接受并显眼 `warn`。
@@ -490,6 +492,7 @@ pub(crate) async fn establish(
         endpoint: label(&winner),
         _jump: jump,
         budget: super::pool::Budget::new(),
+        held: Mutex::new(Vec::new()),
     })
 }
 

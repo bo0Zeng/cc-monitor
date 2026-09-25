@@ -1,9 +1,13 @@
 //! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md`「链路四条」（按拨号身份复用 · 最后一条走了就断）
 //!
-//! 核原文：「链路四条」逐字「后端把到同一台远端的所有链路**复用在一条 SSH 连接上**（按拨号身份：
-//! `host · port · user · key_path · host_key_fingerprint · 竞速地址 · 跳板`；最后一条链路走了连接就断，没有空闲定时器）」
-//! —— 同身份复用 · 身份口径逐项 · 最后一个走了就收，是这一句的三半。
+//! 核原文：「链路四条」逐字「后端把到同一台远端的所有链路**复用在同一族 SSH 连接上**（按拨号身份：
+//! `host · port · user · key_path · host_key_fingerprint · 竞速地址 · 跳板`；〔NT1〕默认一条、按需多开至多 3 条；最后一条链路走了连接就断，没有空闲定时器）」
+//! —— 同身份复用 · 身份口径逐项 · 按需多开封顶 · 最后一个走了就收，是这一句的四半（〔NT1〕那一句原是「复用在一条 SSH 连接上」）。
 //! 并发同身份只拨一次、`evict` 只摘自己、关了的不复用：契约里没有逐字，守的是 `设计/01 §4`「远端一台一条连接」不被破坏。〔JA1 点址 2026-09-24〕
+//!
+//! 〔NT1 · 2026-09-24〕加一处要求住址：用户裁决 `V23`（`设计/99 §1`）逐字「今天每台机器只有一条连接可以看情况多开. 智能一点.
+//! 这是属于 ssh 优化的部分. 智能多开链接\压缩等等」；`设计/15 §3.2` 第 3 条「复用成一条连接后撞 `MaxSessions` ⇒ **必须有每连接通道上限**」。
+//! 下面 NT1 那一段（P1–P7）钉的是「什么信号下多开 · 封顶 · 按事件收」，全是**次数 / 条数的相等断言**，不用墙钟。
 //!
 //! 〔SR1a〕连接池的记账判据（`dial/pool.rs`）—— 拿一个假连接喂池，**不起 SSH**。
 //!
@@ -15,23 +19,33 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 struct Fake {
     closed: AtomicBool,
+    budget: Budget,
+    held: Mutex<Vec<Arc<Fake>>>,
 }
 
 impl Conn for Fake {
     fn is_closed(&self) -> bool {
         self.closed.load(Ordering::SeqCst)
     }
+    fn budget(&self) -> &Budget {
+        &self.budget
+    }
+    fn adopt(&self, other: Arc<Self>) {
+        self.held.lock().unwrap().push(other);
+    }
 }
 
 fn fake() -> Fake {
     Fake {
         closed: AtomicBool::new(false),
+        budget: Budget::new(),
+        held: Mutex::new(Vec::new()),
     }
 }
 
-/// 拨号计数器 ＋ 一次拨号。
-async fn get(pool: &Pool<Fake>, key: &str, dials: &AtomicUsize) -> (Arc<Fake>, bool) {
-    pool.get(key, || async {
+/// 拨号计数器 ＋ 一次放置。
+async fn place(pool: &Pool<Fake>, key: &str, lane: Lane, dials: &AtomicUsize) -> Placed<Fake> {
+    pool.place(key, lane, || async {
         dials.fetch_add(1, Ordering::SeqCst);
         Ok::<Fake, String>(fake())
     })
@@ -39,35 +53,46 @@ async fn get(pool: &Pool<Fake>, key: &str, dials: &AtomicUsize) -> (Arc<Fake>, b
     .expect("假拨号不会失败")
 }
 
+/// 让出几轮，给别的任务一个机会（判「它还在等」用：等 = 没完成，不是墙钟）。
+async fn settle() {
+    for _ in 0..16 {
+        tokio::task::yield_now().await;
+    }
+}
+
 /// ★ L2 的池那一半：同身份两次 ⇒ 拨一次、第二次是复用、拿到的是**同一个**对象；换身份 ⇒ 再拨一次。
 #[tokio::test]
 async fn the_same_identity_is_dialed_once_and_shared() {
     let pool: Pool<Fake> = Pool::new();
     let dials = AtomicUsize::new(0);
-    let (a, a_reused) = get(&pool, "k1", &dials).await;
-    let (b, b_reused) = get(&pool, "k1", &dials).await;
+    let a = place(&pool, "k1", Lane::Query, &dials).await;
+    let b = place(&pool, "k1", Lane::Query, &dials).await;
     assert_eq!(dials.load(Ordering::SeqCst), 1, "同身份拨了不止一次");
-    assert!(!a_reused && b_reused, "第一次该是新拨、第二次该是复用");
-    assert!(Arc::ptr_eq(&a, &b), "复用拿到的不是同一条连接");
-    let (c, c_reused) = get(&pool, "k2", &dials).await;
+    assert_eq!(
+        (a.how, b.how),
+        (How::Fresh, How::Reused),
+        "第一次该是新拨、第二次该是复用"
+    );
+    assert!(Arc::ptr_eq(&a.conn, &b.conn), "复用拿到的不是同一条连接");
+    let c = place(&pool, "k2", Lane::Query, &dials).await;
     assert_eq!(dials.load(Ordering::SeqCst), 2, "换了身份却没另拨");
-    assert!(!c_reused && !Arc::ptr_eq(&a, &c));
+    assert!(c.how == How::Fresh && !Arc::ptr_eq(&a.conn, &c.conn));
     assert_eq!(pool.live(), 2);
 }
 
-/// ★ L3 的池那一半：最后一个用它的走了 ⇒ 池里那一格升不起来，下一次是新拨（没有「空闲多久再关」）。
+/// ★ L3 的池那一半：最后一个用它的走了 ⇒ 族里那一条升不起来，下一次是新拨（没有「空闲多久再关」）。
 #[tokio::test]
 async fn the_last_user_leaving_drops_the_connection() {
     let pool: Pool<Fake> = Pool::new();
     let dials = AtomicUsize::new(0);
-    let (a, _) = get(&pool, "k", &dials).await;
-    let (b, _) = get(&pool, "k", &dials).await;
+    let a = place(&pool, "k", Lane::Query, &dials).await;
+    let b = place(&pool, "k", Lane::Query, &dials).await;
     drop(a);
     assert_eq!(pool.live(), 1, "还有人拿着，它不该被收");
     drop(b);
     assert_eq!(pool.live(), 0, "最后一个用它的走了，池里还当它活着");
-    let (_c, reused) = get(&pool, "k", &dials).await;
-    assert!(!reused, "收掉之后居然还是复用");
+    let c = place(&pool, "k", Lane::Query, &dials).await;
+    assert_eq!(c.how, How::Fresh, "收掉之后居然还是复用");
     assert_eq!(dials.load(Ordering::SeqCst), 2);
 }
 
@@ -76,32 +101,36 @@ async fn the_last_user_leaving_drops_the_connection() {
 async fn a_closed_connection_is_not_reused() {
     let pool: Pool<Fake> = Pool::new();
     let dials = AtomicUsize::new(0);
-    let (a, _) = get(&pool, "k", &dials).await;
-    a.closed.store(true, Ordering::SeqCst);
-    let (b, reused) = get(&pool, "k", &dials).await;
-    assert!(!reused && !Arc::ptr_eq(&a, &b), "关了的连接被复用了");
+    let a = place(&pool, "k", Lane::Query, &dials).await;
+    a.conn.closed.store(true, Ordering::SeqCst);
+    let b = place(&pool, "k", Lane::Query, &dials).await;
+    assert!(
+        b.how == How::Fresh && !Arc::ptr_eq(&a.conn, &b.conn),
+        "关了的连接被复用了"
+    );
     assert_eq!(dials.load(Ordering::SeqCst), 2);
 }
 
-/// `evict` 只摘还指着**它**的那一格：别人换上的新连接不许被一次过期的摘除带走。
+/// `evict` 只摘指名的那一条：别人换上的新连接不许被一次过期的摘除带走。摘掉 ≠ 关掉：手里还拿着的照样活着。
 #[tokio::test]
 async fn evict_only_takes_out_the_one_it_names() {
     let pool: Pool<Fake> = Pool::new();
     let dials = AtomicUsize::new(0);
-    let (a, _) = get(&pool, "k", &dials).await;
-    pool.evict("k", &a);
-    let (b, reused) = get(&pool, "k", &dials).await;
-    assert!(!reused, "摘掉之后还是复用");
+    let a = place(&pool, "k", Lane::Query, &dials).await;
+    pool.evict("k", &a.conn);
+    let b = place(&pool, "k", Lane::Query, &dials).await;
+    assert_eq!(b.how, How::Fresh, "摘掉之后还是复用");
+    assert!(!a.conn.is_closed(), "摘掉 ≠ 关掉：手里还拿着它的照样能用");
     // 再拿旧的那条去摘 ⇒ 不许动新的。
-    pool.evict("k", &a);
-    let (c, reused2) = get(&pool, "k", &dials).await;
+    pool.evict("k", &a.conn);
+    let c = place(&pool, "k", Lane::Query, &dials).await;
     assert!(
-        reused2 && Arc::ptr_eq(&b, &c),
+        c.how == How::Reused && Arc::ptr_eq(&b.conn, &c.conn),
         "一次过期的摘除把新连接带走了"
     );
 }
 
-/// 同身份并发来拨 ⇒ 串行、只拨一次（第二个等第一个拨完、复用）。
+/// ★ P6：同身份并发冷启动 ⇒ 串行、只拨一次（第二个等第一个拨完、复用）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn concurrent_opens_of_one_identity_dial_once() {
     let pool: Arc<Pool<Fake>> = Arc::new(Pool::new());
@@ -111,22 +140,28 @@ async fn concurrent_opens_of_one_identity_dial_once() {
     let d1 = Arc::clone(&dials);
     // 第一个：拨号卡在闸上，直到第二个已经在排队。
     let first = tokio::spawn(async move {
-        p1.get("k", || async move {
-            d1.fetch_add(1, Ordering::SeqCst);
-            let _ = gate_rx.await;
-            Ok::<Fake, String>(fake())
+        let mut gate = Some(gate_rx);
+        p1.place("k", Lane::Stream, move || {
+            let d1 = Arc::clone(&d1);
+            let g = gate.take();
+            async move {
+                d1.fetch_add(1, Ordering::SeqCst);
+                if let Some(g) = g {
+                    let _ = g.await;
+                }
+                Ok::<Fake, String>(fake())
+            }
         })
         .await
-        .map(|(c, _)| c)
     });
-    // 让第一个先拿到那一格的锁。
+    // 让第一个先拿到拨号锁。
     while dials.load(Ordering::SeqCst) == 0 {
         tokio::task::yield_now().await;
     }
     let p2 = Arc::clone(&pool);
     let d2 = Arc::clone(&dials);
     let second = tokio::spawn(async move {
-        p2.get("k", || async move {
+        p2.place("k", Lane::Query, || async {
             d2.fetch_add(1, Ordering::SeqCst);
             Ok::<Fake, String>(fake())
         })
@@ -134,13 +169,13 @@ async fn concurrent_opens_of_one_identity_dial_once() {
     });
     let _ = gate_tx.send(());
     let a = first.await.unwrap().unwrap();
-    let (b, reused) = second.await.unwrap().unwrap();
+    let b = second.await.unwrap().unwrap();
     assert_eq!(
         dials.load(Ordering::SeqCst),
         1,
         "同身份并发来拨，拨了不止一次"
     );
-    assert!(reused && Arc::ptr_eq(&a, &b));
+    assert!(b.how == How::Reused && Arc::ptr_eq(&a.conn, &b.conn));
 }
 
 /// 身份：决定「连到哪、以谁的身份」的那几项在里面；用法 / 命令 / 阶段 / agent 套接字**不在**。
@@ -181,45 +216,197 @@ fn the_identity_ignores_what_a_link_uses_it_for() {
 
 // ═══ 〔SR1b · 2026-09-24〕一条连接上的通道预算（`Budget`）══════════════════════════════
 
-/// 🔴 **B4**：通道闸 == `SESSION_CHANNEL_CAP`（第 9 条要排队）；传输车道 == `TRANSFER_LANE_CAP`
-/// （第 5 趟传输要排队，**而此时一条 capture 仍拿得到通道**）。读数取自闸本身，不取自常量（异源）。
-#[tokio::test]
-async fn the_budget_queues_the_ninth_channel_and_the_fifth_transfer_but_not_a_query_behind_them() {
+/// 🔴 **B4**：通道闸 == `SESSION_CHANNEL_CAP`（第 9 条借不到）；传输车道 == `TRANSFER_LANE_CAP`
+/// （第 5 趟传输借不到，**而且不占通道格**；此时一条 capture 仍借得到）。读数取自闸本身，不取自常量（异源）。
+/// 〔NT1〕闸只答「借得到 / 借不到」（`try_take`），等由族那一层做 —— 等的那一半在下面 P3。
+#[test]
+fn the_budget_refuses_the_ninth_channel_and_the_fifth_transfer_but_not_a_query_behind_them() {
     // 题面里的数（`调研/第四波记录/SR1b.md §1.5`）：8 格通道、其中传输至多 4 格。
     assert_eq!((SESSION_CHANNEL_CAP, TRANSFER_LANE_CAP), (8, 4));
-    let b = Arc::new(Budget::new());
-    assert_eq!(b.free(), (8, 4));
-
-    // 四趟传输占满车道（同时各占一格通道）。
-    let mut xfers = Vec::new();
-    for _ in 0..4 {
-        xfers.push(b.transfer().await.expect("前四趟传输该当场借到"));
-    }
-    assert_eq!(b.free(), (4, 0));
-    // 第五趟传输：排队（车道满），**而且不占通道格**（先过车道、再过通道闸）。
-    let b5 = Arc::clone(&b);
-    let fifth = tokio::spawn(async move { b5.transfer().await.map(|_| ()) });
-    for _ in 0..8 {
-        tokio::task::yield_now().await;
-    }
-    assert!(!fifth.is_finished(), "车道满了第五趟传输居然借到了");
-    assert_eq!(b.free(), (4, 0), "排队等车道的传输占了一格通道");
-    // 此刻一条查询（capture / 长流）照样拿得到。
-    let mut sessions = Vec::new();
-    for _ in 0..4 {
-        sessions.push(b.session().await.expect("传输满载时查询该拿得到通道"));
-    }
-    assert_eq!(b.free(), (0, 0));
-    // 第九条通道：排队。
-    let b9 = Arc::clone(&b);
-    let ninth = tokio::spawn(async move { b9.session().await.map(|_| ()) });
-    for _ in 0..8 {
-        tokio::task::yield_now().await;
-    }
-    assert!(!ninth.is_finished(), "8 格通道用满了第九条居然开得出来");
-    // 还一格通道 ⇒ 第九条走；还一格传输（车道 ＋ 通道）⇒ 第五趟走。
+    let b = Budget::new();
+    assert_eq!(b.free(), (8, 4, 8));
+    let mut xfers: Vec<Permit> = (0..4)
+        .map(|_| b.try_take(Lane::Transfer).expect("前四趟传输该借到"))
+        .collect();
+    assert_eq!(b.free(), (4, 0, 8));
+    assert!(
+        b.try_take(Lane::Transfer).is_none(),
+        "车道满了第五趟传输居然借到了"
+    );
+    assert_eq!(b.free(), (4, 0, 8), "借不到车道的传输占了一格通道");
+    let mut sessions: Vec<Permit> = (0..4)
+        .map(|_| b.try_take(Lane::Query).expect("传输满载时查询该借得到通道"))
+        .collect();
+    assert_eq!(b.free(), (0, 0, 8));
+    assert!(
+        b.try_take(Lane::Query).is_none(),
+        "8 格通道用满了第九条居然借到了"
+    );
+    assert!(b.try_take(Lane::Tunnel).is_none(), "隧道不借格");
     drop(sessions.pop());
-    ninth.await.unwrap().expect("还了一格之后第九条该拿到");
+    assert!(b.try_take(Lane::Query).is_some(), "还了一格之后该借得到");
     drop(xfers.pop());
-    fifth.await.unwrap().expect("还了一格车道之后第五趟该拿到");
+    assert!(
+        b.try_take(Lane::Transfer).is_some(),
+        "还了一格车道之后第五趟该借到"
+    );
+}
+
+/// 长流数：借 `Stream` 那一格 +1、还掉 −1；别的道不动它。
+#[test]
+fn the_stream_count_follows_stream_permits_only() {
+    let b = Budget::new();
+    let s1 = b.try_take(Lane::Stream).unwrap();
+    let _q = b.try_take(Lane::Query).unwrap();
+    let _t = b.try_take(Lane::Transfer).unwrap();
+    assert_eq!(b.streams(), 1);
+    let s2 = b.try_take(Lane::Stream).unwrap();
+    assert_eq!(b.streams(), 2);
+    drop(s1);
+    drop(s2);
+    assert_eq!(b.streams(), 0);
+}
+
+// ═══ 〔NT1 · 2026-09-24〕**按需智能多开**（`NT1.md §2`）════════════════════════════════════
+
+/// ★ P1 ＋ P5（收）：主连接上**有长流** ⇒ 一趟传输 ⇒ 多开一条批量连接（拨号次数 == 2、`Extra(Bulk)`、落在第 2 条）；
+/// 随后一条查询落回主连接。传输走了 ⇒ 批量连接**还活着**（被主连接托着，下一趟传输复用它、不再拨）；
+/// 长流也走了 ⇒ 两条都没了（`live == 0`）。
+#[tokio::test]
+async fn a_transfer_next_to_a_stream_gets_its_own_connection_held_by_the_primary() {
+    let pool: Pool<Fake> = Pool::new();
+    let dials = AtomicUsize::new(0);
+    let stream = place(&pool, "k", Lane::Stream, &dials).await;
+    let xfer = place(&pool, "k", Lane::Transfer, &dials).await;
+    assert_eq!(
+        dials.load(Ordering::SeqCst),
+        2,
+        "主连接上有长流，传输却没有分道"
+    );
+    assert_eq!(xfer.how, How::Extra(Why::Bulk));
+    assert!(!Arc::ptr_eq(&stream.conn, &xfer.conn));
+    let q = place(&pool, "k", Lane::Query, &dials).await;
+    assert!(
+        q.how == How::Reused && Arc::ptr_eq(&q.conn, &stream.conn),
+        "查询该落回主连接（最老的有空格的那条）"
+    );
+    let bulk = Arc::downgrade(&xfer.conn);
+    drop(xfer);
+    drop(q);
+    assert_eq!(pool.live(), 2, "批量连接没人用了，但它该被主连接托着");
+    let again = place(&pool, "k", Lane::Transfer, &dials).await;
+    assert!(
+        again.how == How::Reused && Arc::ptr_eq(&again.conn, &bulk.upgrade().unwrap()),
+        "第二趟传输该复用托着的那条批量连接"
+    );
+    assert_eq!(dials.load(Ordering::SeqCst), 2);
+    drop(again);
+    drop(stream);
+    assert_eq!(
+        pool.live(),
+        0,
+        "长流走了（主连接没了），托着的批量连接该随之没了"
+    );
+    assert!(bulk.upgrade().is_none());
+}
+
+/// ★ P2（P1 的另一向）：主连接上**没有长流** ⇒ 传输就落在主连接上，不多花一次握手。
+#[tokio::test]
+async fn a_transfer_without_a_stream_stays_on_the_primary() {
+    let pool: Pool<Fake> = Pool::new();
+    let dials = AtomicUsize::new(0);
+    let q = place(&pool, "k", Lane::Query, &dials).await;
+    let x = place(&pool, "k", Lane::Transfer, &dials).await;
+    assert_eq!(dials.load(Ordering::SeqCst), 1);
+    assert!(x.how == How::Reused && Arc::ptr_eq(&q.conn, &x.conn));
+}
+
+/// ★ P3：交互把主连接的 8 格占满 ⇒ 第 9 条多开一条（`Extra(Full)`）；三条都满（封顶）⇒ 第 25 条**不拨、等**；
+/// 还回一格 ⇒ 等着的那一条恰好拿到，拨号次数仍 == 3。
+/// 单线程运行时：等着的那一条只在本任务让出时跑 ⇒ `settle()` 之后它必然已经走到「等」那一步（不靠墙钟）。
+#[tokio::test]
+async fn a_full_family_dials_up_to_the_cap_then_waits_for_a_slot() {
+    assert_eq!(MAX_CONNECTIONS_PER_HOST, 3);
+    let pool: Arc<Pool<Fake>> = Arc::new(Pool::new());
+    let dials = Arc::new(AtomicUsize::new(0));
+    let mut held = Vec::new();
+    for _ in 0..SESSION_CHANNEL_CAP {
+        held.push(place(&pool, "k", Lane::Query, &dials).await);
+    }
+    assert_eq!(dials.load(Ordering::SeqCst), 1);
+    let ninth = place(&pool, "k", Lane::Query, &dials).await;
+    assert_eq!(ninth.how, How::Extra(Why::Full));
+    assert_eq!(dials.load(Ordering::SeqCst), 2);
+    held.push(ninth);
+    while held.len() < MAX_CONNECTIONS_PER_HOST * SESSION_CHANNEL_CAP {
+        held.push(place(&pool, "k", Lane::Query, &dials).await);
+    }
+    assert_eq!(dials.load(Ordering::SeqCst), MAX_CONNECTIONS_PER_HOST);
+    let p = Arc::clone(&pool);
+    let d = Arc::clone(&dials);
+    let waiter = tokio::spawn(async move { place(&p, "k", Lane::Query, &d).await.how });
+    settle().await;
+    assert!(!waiter.is_finished(), "封顶了还放下了（多开了第 4 条？）");
+    assert_eq!(
+        dials.load(Ordering::SeqCst),
+        MAX_CONNECTIONS_PER_HOST,
+        "封顶了还在拨"
+    );
+    drop(held.pop());
+    assert_eq!(
+        waiter.await.unwrap(),
+        How::Reused,
+        "还回一格之后等着的那一条该拿到它"
+    );
+    assert_eq!(dials.load(Ordering::SeqCst), MAX_CONNECTIONS_PER_HOST);
+}
+
+/// ★ P4：远端回拒（`MaxSessions`）⇒ 那条连接学到上限 == 此刻在用的格数、空格 == 0、**不摘**（长流还在上面）；
+/// 下一条查询落到新连接上（`Extra(Full)`）；在用的那格还回来之后照常可借（上限就是那个数）。
+#[tokio::test]
+async fn a_remote_refusal_teaches_the_connection_its_cap_without_evicting_it() {
+    let pool: Pool<Fake> = Pool::new();
+    let dials = AtomicUsize::new(0);
+    let stream = place(&pool, "k", Lane::Stream, &dials).await;
+    let q1 = place(&pool, "k", Lane::Query, &dials).await;
+    // 第三条被远端拒了：调用方先还掉被拒那一格，再报给闸。
+    let refused = place(&pool, "k", Lane::Query, &dials).await;
+    drop(refused);
+    assert_eq!(
+        stream.conn.budget().refused(),
+        2,
+        "学到的上限该是被拒那一刻在用的格数（长流 ＋ 一条查询）"
+    );
+    assert_eq!(stream.conn.budget().free(), (0, 4, 2));
+    let q2 = place(&pool, "k", Lane::Query, &dials).await;
+    assert_eq!(q2.how, How::Extra(Why::Full), "学到上限之后该落到新连接上");
+    assert!(!Arc::ptr_eq(&q2.conn, &stream.conn));
+    assert!(!stream.conn.is_closed(), "回拒不是连接死了，不许摘 / 关它");
+    drop(q1);
+    assert_eq!(
+        stream.conn.budget().free().0,
+        1,
+        "在用的那格还回来之后照常可借"
+    );
+}
+
+/// ★ P7：主连接有长流、批量连接已在而它的车道满了 ⇒ 第 5 趟传输**等**，不再多开第二条批量。
+#[tokio::test]
+async fn a_second_bulk_connection_is_never_dialed() {
+    let pool: Arc<Pool<Fake>> = Arc::new(Pool::new());
+    let dials = Arc::new(AtomicUsize::new(0));
+    let _stream = place(&pool, "k", Lane::Stream, &dials).await;
+    let mut xfers = Vec::new();
+    for _ in 0..TRANSFER_LANE_CAP {
+        xfers.push(place(&pool, "k", Lane::Transfer, &dials).await);
+    }
+    assert_eq!(dials.load(Ordering::SeqCst), 2);
+    let p = Arc::clone(&pool);
+    let d = Arc::clone(&dials);
+    let fifth = tokio::spawn(async move { place(&p, "k", Lane::Transfer, &d).await.how });
+    settle().await;
+    assert!(!fifth.is_finished(), "批量连接的车道满了，第 5 趟却放下了");
+    assert_eq!(dials.load(Ordering::SeqCst), 2, "多开了第二条批量连接");
+    drop(xfers.pop());
+    assert_eq!(fifth.await.unwrap(), How::Reused);
 }

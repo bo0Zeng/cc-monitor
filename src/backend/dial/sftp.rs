@@ -84,9 +84,8 @@ pub(crate) async fn open(
     lease: &mut Lease,
     req: &DialRequest,
     stages: &StageSink,
-    lane: Lane,
 ) -> Result<Session, String> {
-    let (channel, permit) = lease.session_channel(req, stages, lane).await?;
+    let (channel, permit) = lease.session_channel(req, stages).await?;
     subsystem(&channel)
         .await
         .map_err(|e| format!("请求 sftp 子系统失败（远端 sshd 没开 sftp？）: {e}"))?;
@@ -111,8 +110,10 @@ impl Dial {
 pub(crate) async fn open_for_transfer(d: &Dial) -> Result<Session, String> {
     let req = &d.0;
     let stages = StageSink::new(false);
-    let mut lease = Lease::take(req, &stages).await.map_err(|(e, _)| e)?;
-    open(&mut lease, req, &stages, Lane::Transfer).await
+    let mut lease = Lease::take(req, &stages, Lane::Transfer)
+        .await
+        .map_err(|(e, _)| e)?;
+    open(&mut lease, req, &stages).await
 }
 
 impl Session {

@@ -38,43 +38,91 @@ fn exec(
     Box::pin(channel.exec(true, cmd))
 }
 
-/// 这一趟手里的那条 SSH 连接：池里复用的，或者这一趟新拨的。
+/// 一条 session 通道（或一条隧道）走哪一道 —— 〔NT1〕住 `pool.rs`（放置要按它判），这里转一手。
+pub(crate) use super::pool::Lane;
+
+/// 一份拨号请求的用法 ⇒ 它在池里走哪一道。
+pub(crate) fn lane_of(u: Use) -> Lane {
+    match u {
+        Use::Stream => Lane::Stream,
+        Use::Capture | Use::Files => Lane::Query,
+        Use::Forward => Lane::Tunnel,
+    }
+}
+
+/// 这一趟手里的那条 SSH 连接：池里放置来的（复用 / 新拨 / 多开），或者这一趟就地拨的（测试连接）。
 pub(crate) struct Lease {
     /// 池里的身份；`None` = 不进池（测试连接那一形：它要看的就是一次真拨号的阶段）。
     key: Option<String>,
     linked: Arc<Linked>,
-    /// 这条是复用来的（不是这一趟拨的）。只有复用来的，开 channel 失败才值得重拨一次。
+    /// 这一趟走哪一道（换连接重放时照同一道放）。
+    lane: Lane,
+    /// 放置时借到的那一格（隧道没有）。开出通道之后随通道交给调用方。
+    permit: Option<pool::Permit>,
+    /// 这条是复用来的（不是这一趟拨的）。只有复用来的，开 channel 失败（连接死了那一形）才值得重拨一次。
     reused: bool,
 }
 
+/// 开 session 通道失败的这一形是不是「**远端说满了**」（`MaxSessions`：OpenSSH 回 `administratively prohibited`，
+/// sshd 日志原话 `no more sessions`；`resource shortage` 同一类）—— 连接本身好好的，只是这条连接上不能再多开。
+fn refused_by_remote(e: &russh::Error) -> bool {
+    matches!(
+        e,
+        russh::Error::ChannelOpenFailure(
+            russh::ChannelOpenFailure::AdministrativelyProhibited
+                | russh::ChannelOpenFailure::ResourceShortage
+        )
+    )
+}
+
 impl Lease {
-    /// 拿一条连接。`probe` / `stages` ⇒ 不进池、就地拨；其余按身份复用。
+    /// 拿一条连接。`probe` / `stages` ⇒ 不进池、就地拨；其余按身份在池里放置（`pool::Pool::place`：复用 / 按需多开）。
     pub(crate) async fn take(
         req: &DialRequest,
         stages: &StageSink,
+        lane: Lane,
     ) -> Result<Lease, (String, Option<String>)> {
         if req.probe || req.stages {
-            let linked = connect::establish(req, stages).await?;
+            let linked = Arc::new(connect::establish(req, stages).await?);
+            let permit = linked.budget.try_take(lane);
             return Ok(Lease {
                 key: None,
-                linked: Arc::new(linked),
+                linked,
+                lane,
+                permit,
                 reused: false,
             });
         }
-        let key = pool::identity(req);
-        let (linked, reused) = pool::ssh()
-            .get(&key, || connect::establish(req, stages))
+        Self::place(req, stages, pool::identity(req), lane).await
+    }
+
+    async fn place(
+        req: &DialRequest,
+        stages: &StageSink,
+        key: String,
+        lane: Lane,
+    ) -> Result<Lease, (String, Option<String>)> {
+        let placed = pool::ssh()
+            .place(&key, lane, || connect::establish(req, stages))
             .await?;
+        let (s, t, cap) = placed.conn.budget.free();
         tracing::info!(
-            "dial: {} {} 的那条 SSH 连接（池里此刻 {} 条）",
-            if reused { "复用" } else { "新拨了" },
-            linked.endpoint,
+            "dial: {} {} 的 SSH 连接（{lane:?}；这条通道剩 {s}/{cap}、车道剩 {t}；池里此刻 {} 条）",
+            match placed.how {
+                pool::How::Reused => "复用",
+                pool::How::Fresh => "新拨了",
+                pool::How::Extra(pool::Why::Full) => "通道都满了，多开了一条到",
+                pool::How::Extra(pool::Why::Bulk) => "传输分道，多开了一条批量连接到",
+            },
+            placed.conn.endpoint,
             pool::ssh().live()
         );
         Ok(Lease {
             key: Some(key),
-            linked,
-            reused,
+            linked: placed.conn,
+            lane,
+            permit: placed.permit,
+            reused: placed.how == pool::How::Reused,
         })
     }
 
@@ -83,69 +131,55 @@ impl Lease {
         &self.linked
     }
 
-    /// 开一条 session channel，**先过这条连接的通道预算**（〔SR1b〕`pool::Budget`：长流 · 查询 · SFTP
-    /// 同一条连接、同一道闸；`lane` = 这一格是不是传输）。借到的那一格随返回的 [`pool::Permit`] 走，
-    /// 调用方攥到通道用完为止。
+    /// 开一条 session channel。那一格**放置时已经借好了**（`pool::Budget`：长流 · 查询 · SFTP 同一条连接、同一道闸），
+    /// 随返回的 [`pool::Permit`] 走，调用方攥到通道用完为止。
     ///
-    /// **复用来的连接上开失败 ⇒ 从池里摘掉、重拨一次**（同一机制换一条新连接；新拨的那条再失败就如实报）。
-    /// 重拨之后预算按**新那条**连接记（旧那一格随失败一起还掉）。
+    /// 开失败分两形：
+    /// - **远端说满了**（`MaxSessions`）⇒ 〔NT1〕这条连接学到上限（`Budget::refused`：空格当场作废）、**不摘它**
+    ///   （长流还在它上面），照同一道重新放置 —— 通常落到一条新连接上（`Why::Full`）；学到的上限是 0 ⇒ 报错（远端根本不给开）。
+    /// - **连接死了**（其余）⇒ 复用来的才摘掉、重拨一次（同一机制换一条新连接）；新拨的那条再失败就如实报。
     pub(crate) async fn session_channel(
         &mut self,
         req: &DialRequest,
         stages: &StageSink,
-        lane: Lane,
     ) -> Result<(russh::Channel<russh::client::Msg>, pool::Permit), String> {
-        let permit = lane.take(&self.linked).await?;
-        match self.linked.session.channel_open_session().await {
-            Ok(c) => Ok((c, permit)),
-            Err(e) => {
-                drop(permit);
-                let Some(key) = self.key.clone().filter(|_| self.reused) else {
-                    return Err(format!("打开 session channel 失败: {e}"));
-                };
+        for _ in 0..=pool::MAX_CONNECTIONS_PER_HOST {
+            let Some(permit) = self.permit.take() else {
+                return Err(format!(
+                    "这一道（{:?}）没借到通道格，开不了 session 通道",
+                    self.lane
+                ));
+            };
+            let e = match self.linked.session.channel_open_session().await {
+                Ok(c) => return Ok((c, permit)),
+                Err(e) => e,
+            };
+            drop(permit);
+            let Some(key) = self.key.clone() else {
+                return Err(format!("打开 session channel 失败: {e}"));
+            };
+            if refused_by_remote(&e) && !self.linked.session.is_closed() {
+                let cap = self.linked.budget.refused();
+                tracing::warn!(
+                    "dial: 远端回拒了 {} 上的一条 session 通道（{e}）—— 这条连接学到上限 {cap}，换一格放",
+                    self.linked.endpoint
+                );
+                if cap == 0 {
+                    return Err(format!(
+                        "远端不给开 session 通道（{e}；这条连接上一格都开不出来 —— sshd 的 MaxSessions 是 0？）"
+                    ));
+                }
+            } else if self.reused {
                 tracing::warn!("dial: 复用的连接上开 channel 失败（{e}）—— 摘掉它、重拨一次");
                 pool::ssh().evict(&key, &self.linked);
-                let (linked, _) = pool::ssh()
-                    .get(&key, || connect::establish(req, stages))
-                    .await
-                    .map_err(|(e, _)| e)?;
-                self.linked = linked;
-                self.reused = false;
-                let permit = lane.take(&self.linked).await?;
-                let c = self
-                    .linked
-                    .session
-                    .channel_open_session()
-                    .await
-                    .map_err(|e| format!("打开 session channel 失败: {e}"))?;
-                Ok((c, permit))
+            } else {
+                return Err(format!("打开 session channel 失败: {e}"));
             }
+            *self = Self::place(req, stages, key, self.lane)
+                .await
+                .map_err(|(e, _)| e)?;
         }
-    }
-}
-
-/// 一条 session 通道占哪一种格（`pool::Budget` 的两道闸）。
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Lane {
-    /// 长流 · capture · files 链路：只过通道闸。
-    Session,
-    /// 传输：先过传输车道、再过通道闸。
-    Transfer,
-}
-
-impl Lane {
-    async fn take(self, linked: &Linked) -> Result<pool::Permit, String> {
-        let p = match self {
-            Lane::Session => linked.budget.session().await,
-            Lane::Transfer => linked.budget.transfer().await,
-        }?;
-        let (s, t) = linked.budget.free();
-        tracing::debug!(
-            "dial: {} 上借了一格{}（通道还剩 {s}、传输车道还剩 {t}）",
-            linked.endpoint,
-            if self == Lane::Transfer { "传输" } else { "" }
-        );
-        Ok(p)
+        Err("换了几条连接都开不出 session 通道".to_string())
     }
 }
 
@@ -166,7 +200,7 @@ where
     W: AsyncWrite + Unpin + Send,
 {
     async move {
-        let mut lease = match Lease::take(req, stages).await {
+        let mut lease = match Lease::take(req, stages, lane_of(req.use_)).await {
             Ok(l) => l,
             Err((e, fp)) => {
                 tracing::error!("dial: 拨号失败: {e}");
@@ -192,7 +226,7 @@ async fn serve<R, W>(
     match req.use_ {
         Use::Stream => {
             // `_permit`：这条长流占着这条连接的一格通道，直到本臂返回（`pool::Budget`）。
-            let (channel, _permit) = match lease.session_channel(req, stages, Lane::Session).await {
+            let (channel, _permit) = match lease.session_channel(req, stages).await {
                 Ok(c) => c,
                 Err(e) => {
                     let fp = lease.linked.fingerprint.clone();
@@ -242,14 +276,13 @@ async fn serve<R, W>(
                 .await;
                 return;
             };
-            let (mut channel, _permit) =
-                match lease.session_channel(req, stages, Lane::Session).await {
-                    Ok(c) => c,
-                    Err(e) => {
-                        let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
-                        return;
-                    }
-                };
+            let (mut channel, _permit) = match lease.session_channel(req, stages).await {
+                Ok(c) => c,
+                Err(e) => {
+                    let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
+                    return;
+                }
+            };
             if let Err(e) = exec(&channel, req.command.as_bytes().to_vec()).await {
                 let _ = write_stages_then_ack(
                     out,
@@ -307,7 +340,7 @@ async fn serve<R, W>(
         Use::Files => {
             // 〔SR1b〕sftp 子系统开好了才回 ack：「远端没开 sftp」要落在 ack 那一行里，不是第一条应答里。
             let fp = lease.linked.fingerprint.clone();
-            let session = match super::sftp::open(lease, req, stages, Lane::Session).await {
+            let session = match super::sftp::open(lease, req, stages).await {
                 Ok(s) => s,
                 Err(e) => {
                     let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
