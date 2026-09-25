@@ -50,6 +50,12 @@ path = "main.rs"
 
 # ── 秤 7（`调研/设计/17 §6` 表第 7 行）：`benches/` 从零立的第一条 ───────────────
 #
+# 〔TQ1 2026-09-24〕源码从 `tests/evidence/` 搬进 `tests/benches/`（bench 源码的唯一住址；
+# 量具与历史读数那棵树的规矩是「不许改」，而这一份真的在编译）。
+# `test = true`：`cargo test` 也编它、跑它 —— 不带 `--bench` 时它走**冒烟档**（小语料、每格一次、
+# 出字节与期望逐字节相等，**不计时**），于是门禁 `backend` 那一格顺带证明「这把秤跑得起来」；
+# 读数照旧只由 `cargo bench --bench s7_history_read` 出，墙钟不进任何判据。
+#
 # `harness = false`：不写 `[[bench]]` 的话 cargo 会套 libtest 的 bench harness，
 # 那个要 `#![feature(test)]`（nightly）。本仓是 stable + **断网**（`~/.cargo` 里没有
 # criterion 的 `.crate`，`--offline` 解析不动）⇒ 自带 `fn main()` + `std::time::Instant`。
@@ -62,14 +68,15 @@ path = "main.rs"
 # ⇒ 只要这个文件落在 `src/backend/` 下面任何一层，`backend_production_code_has_no_periodic_wakeups`
 # 当场红，而那条守卫住 `tests/backend/`、不在本件的写区里。
 # 同理还有 `readonly_guard::every_fs_call_in_backend_production_is_read_only` 那张只读白名单。
-# ⇒ 源码放 `tests/evidence/`（它**不在** `code_roots()` 的两棵树里 —— 那两棵是
+# ⇒ 源码放 `tests/benches/`（它**不在** `code_roots()` 的两棵树里 —— 那两棵是
 #   `src/backend/` 与 `tests/backend/`），住址由本节的 `path` 指过去。
 #   这与 `.cargo/config.toml` 把 `target-dir` 挪出源码树是**同一条理由的第二例**：
 #   「源码树上多一个 `.rs`」对这个仓来说从来不是中性的。
 [[bench]]
 name = "s7_history_read"
-path = "../../tests/evidence/S7-history-read.rs"
+path = "../../tests/benches/s7_history_read.rs"
 harness = false
+test = true
 
 [dependencies]
 # Versions pinned to whatever ../bridge/Cargo.lock already resolved so the
