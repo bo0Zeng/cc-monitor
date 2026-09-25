@@ -161,13 +161,15 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/mcp.rs",
         "reader",
-        8,
+        6,
         "读 `.claude.json` 里的 MCP 服务器声明。退役归 F10 本体。\
              ⚠ 08-06 从 2 改到 7：`.claude.json` 的**三个候选路径**（项目 / 上级 / 家目录）\
              与本地·远端两个来源标签此前都不在针里 —— 也就是说这条读面的**大部分**没被数到。\
              ⚠ 〔devbench F10b，08-10〕7 → 8，多出来的**不是新读点**：是给远端读加超限拒收时\
              那句错误文案里提到了 `.claude.json`。★ 与上一条〔F10b-2 订正分类〕同一个口径问题 ——\
-             `hits()` 数的是「提到那几个词的行」，**提示文案也算**。⇒ 这一格**不算工作量增加**。",
+             `hits()` 数的是「提到那几个词的行」，**提示文案也算**。⇒ 这一格**不算工作量增加**。\
+             〔CP2b · 第四波 09-25〕**8 → 6**：同一口径反过来 —— 读远端 `.claude.json` 失败 / 超限的两句报错\
+             搬进文案表（`rsMcp.remote.*`），本文件少了两行「提到」。读点一个没少，**不算退役**。",
     ),
     (
         "src/adapter/claude_code.rs",
@@ -178,17 +180,21 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/config_surface.rs",
         "reader",
-        3,
-        "T02 配置面审计视图（只读、不轮询）。退役归 F10 本体。",
+        2,
+        "T02 配置面审计视图（只读、不轮询）。退役归 F10 本体。\
+             〔CP2b · 第四波 09-25〕**3 → 2**：项目级作用域那句展示文案（`<项目目录>/.claude/settings.json …`）\
+             搬进文案表（`rsConfigSurface.scope.projectPath`）。读点没少，**不算退役**。",
     ),
     (
         "src/hooks_diag.rs",
         "reader",
-        7,
+        4,
         "hooks 诊断读 settings。退役归 F10 本体。\
              ⚠ 08-06 从 1 改到 7：原先只数到 `CLAUDE_CONFIG_DIR` 那一行，\
              而**真正读盘的那几行**（`~/.claude/settings.json` 的三条失败诊断文案 · \
-             `home.join(\".claude\")` 兜底路径 · 远端探测串 · 来源标签）全在针外。",
+             `home.join(\".claude\")` 兜底路径 · 远端探测串 · 来源标签）全在针外。\
+             〔CP2b · 第四波 09-25〕**7 → 4**：那三条失败诊断**文案**搬进文案表（`rsHooksDiag.diagnose.*`）；\
+             读盘那几行一个没少，**不算退役**。",
     ),
     // 🔴 〔`K-R48` 第二拍 09-11〕原来这里有一行 `src/ccm_cli_contract.rs`（`non-read` 1 处：
     //    契约清单里出现过 `CLAUDE_CONFIG_DIR` 这个变量名）。本拍把那个模块从 2773 行砍到

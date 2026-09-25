@@ -11293,6 +11293,489 @@
       "kind": "error",
       "zh": "接入那一格带了要运行的内容（env / args / launcher）。它不起任何 agent 进程，这几项会被丢掉；请求格式不对，拒绝。",
       "args": []
+    },
+    "rsConfigSurface.local.noHome": {
+      "kind": "error",
+      "zh": "取不到 HOME",
+      "args": []
+    },
+    "rsConfigSurface.scope.projectNote": {
+      "kind": "body",
+      "zh": "优先级最高",
+      "args": []
+    },
+    "rsConfigSurface.scope.projectNotChecked": {
+      "kind": "error",
+      "zh": "本页不猜项目目录，所以没查。若钩子定义在项目级，上面那两行「没装」的结论可能是错的",
+      "args": []
+    },
+    "rsConfigSurface.scope.projectPath": {
+      "kind": "body",
+      "zh": "<项目目录>/.claude/settings.json 与 settings.local.json",
+      "args": []
+    },
+    "rsConfigSurface.scope.project": {
+      "kind": "body",
+      "zh": "项目级",
+      "args": []
+    },
+    "rsConfigSurface.scope.userLocalNote": {
+      "kind": "body",
+      "zh": "优先级高于上一行；这里定义的钩子同样生效",
+      "args": []
+    },
+    "rsConfigSurface.scope.userLocal": {
+      "kind": "body",
+      "zh": "用户级 local",
+      "args": []
+    },
+    "rsConfigSurface.scope.userNote": {
+      "kind": "body",
+      "zh": "钩子诊断读的就是这一份；是否已装以「cc-bus 钩子」页为准",
+      "args": []
+    },
+    "rsConfigSurface.scope.user": {
+      "kind": "body",
+      "zh": "用户级",
+      "args": []
+    },
+    "rsConfigSurface.probe.cannot": {
+      "kind": "error",
+      "zh": "查不动：{why}",
+      "args": ["why"]
+    },
+    "rsConfigSurface.home.unresolvable": {
+      "kind": "error",
+      "zh": "登记的名字解析不成本机路径：{msg}",
+      "args": ["msg"]
+    },
+    "rsConfigSurface.onPath.present": {
+      "kind": "body",
+      "zh": "PATH 上有 {named}",
+      "args": ["named"]
+    },
+    "rsConfigSurface.onPath.resolved": {
+      "kind": "body",
+      "zh": "PATH 上找得到 {named}",
+      "args": ["named"]
+    },
+    "rsConfigSurface.onPath.noPath": {
+      "kind": "error",
+      "zh": "查不动：读不到 PATH，或者它是空的，没法回答 {named} 在不在。这不是说它不存在",
+      "args": ["named"]
+    },
+    "rsConfigSurface.unmanaged.checkOnlyEffect": {
+      "kind": "body",
+      "zh": "cc-monitor 查得到它在不在，但装不了",
+      "args": []
+    },
+    "rsConfigSurface.unmanaged.checkOnlySource": {
+      "kind": "body",
+      "zh": "不由 cc-monitor 提供",
+      "args": []
+    },
+    "rsConfigSurface.unmanaged.owedEffect": {
+      "kind": "body",
+      "zh": "安装入口还没写；本页仍会检查它是否存在",
+      "args": []
+    },
+    "rsConfigSurface.unmanaged.owedSource": {
+      "kind": "body",
+      "zh": "应随 cc-monitor 一起安装，暂未提供",
+      "args": []
+    },
+    "rsConfigSurface.unmanaged.promptEffect": {
+      "kind": "body",
+      "zh": "cc-monitor 不装它，只查它在不在；缺了这一行会告诉你，去装上就好",
+      "args": []
+    },
+    "rsConfigSurface.unmanaged.promptSource": {
+      "kind": "body",
+      "zh": "不由 cc-monitor 提供 —— 这是通用工具，请你自己装",
+      "args": []
+    },
+    "rsConfigSurface.unmanaged.appInstallsEffect": {
+      "kind": "body",
+      "zh": "登记信息有误，这一行显示得不准",
+      "args": []
+    },
+    "rsConfigSurface.unmanaged.appInstallsSource": {
+      "kind": "body",
+      "zh": "安装信息缺失，这是程序内部错误",
+      "args": []
+    },
+    "rsConfigSurface.row.declMismatch": {
+      "kind": "error",
+      "zh": "登记的路径与安装位置对不上：{e}",
+      "args": ["e"]
+    },
+    "rsConfigSurface.effect.indirectWrite": {
+      "kind": "body",
+      "zh": "cc-monitor 不直接写它；但你在 cc-monitor 里的操作会让它被写（由被调用的命令追加内容）",
+      "args": []
+    },
+    "rsConfigSurface.effect.generateOnly": {
+      "kind": "body",
+      "zh": "只生成待贴文本，由你自己粘贴——cc-monitor 不写这个文件",
+      "args": []
+    },
+    "rsConfigSurface.effect.ownedFile": {
+      "kind": "body",
+      "zh": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
+      "args": []
+    },
+    "rsConfigSurface.effect.fencedBlock": {
+      "kind": "body",
+      "zh": "插入或更新一段带标记的内容；卸载时只删这一段",
+      "args": []
+    },
+    "rsConfigSurface.effect.readOnly": {
+      "kind": "body",
+      "zh": "只读（诊断用），cc-monitor 不写",
+      "args": []
+    },
+    "rsConfigSurface.host.projectDir": {
+      "kind": "body",
+      "zh": "项目目录",
+      "args": []
+    },
+    "rsConfigSurface.host.either": {
+      "kind": "body",
+      "zh": "本机或远端",
+      "args": []
+    },
+    "rsConfigSurface.host.remote": {
+      "kind": "body",
+      "zh": "远端",
+      "args": []
+    },
+    "rsConfigSurface.host.client": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
+    },
+    "rsConfigSurface.source.notOurs": {
+      "kind": "body",
+      "zh": "不由 cc-monitor 提供：{who}",
+      "args": ["who"]
+    },
+    "rsConfigSurface.source.generated": {
+      "kind": "body",
+      "zh": "由 cc-monitor 现场生成的文本",
+      "args": []
+    },
+    "rsConfigSurface.source.embeddedBinary": {
+      "kind": "body",
+      "zh": "随 cc-monitor 一起安装的程序",
+      "args": []
+    },
+    "rsConfigSurface.source.vendored": {
+      "kind": "body",
+      "zh": "随 cc-monitor 一起安装的第三方组件",
+      "args": []
+    },
+    "rsConfigSurface.source.repoDir": {
+      "kind": "body",
+      "zh": "随 cc-monitor 一起安装",
+      "args": []
+    },
+    "rsConfigSurface.source.embeddedText": {
+      "kind": "body",
+      "zh": "随 cc-monitor 一起安装",
+      "args": []
+    },
+    "rsConfigSurface.observe.profileNotWindows": {
+      "kind": "error",
+      "zh": "不适用：本机不是 Windows，没有 PowerShell $PROFILE 这个东西",
+      "args": []
+    },
+    "rsConfigSurface.observe.profileWindows": {
+      "kind": "error",
+      "zh": "路径由 PowerShell 决定；准确状态见「本机 → 工具 → 别名」（那里会读 $PROFILE 并查 cc-monitor 加的那一段）",
+      "args": []
+    },
+    "rsConfigSurface.observe.projectDir": {
+      "kind": "error",
+      "zh": "相对项目目录（{path}）——要先选定项目才知道查哪里",
+      "args": ["path"]
+    },
+    "rsConfigSurface.observe.remote": {
+      "kind": "error",
+      "zh": "远端路径（{path}）——本页不连 SSH，请到部署向导里查",
+      "args": ["path"]
+    },
+    "rsConfigSurface.observe.needsConfig": {
+      "kind": "error",
+      "zh": "路径由配置决定（{what}）——本页不猜它当前是什么值",
+      "args": ["what"]
+    },
+    "rsConfigSurface.observe.eitherUndetermined": {
+      "kind": "error",
+      "zh": "{why}；而且这套东西装在 Claude Code 跑的那台上，很可能是某个远端——本页不连 SSH。",
+      "args": ["why"]
+    },
+    "rsConfigSurface.observe.eitherPresent": {
+      "kind": "body",
+      "zh": "本机存在（{detail}）",
+      "args": ["detail"]
+    },
+    "rsConfigSurface.observe.eitherAbsent": {
+      "kind": "error",
+      "zh": "本机没找到（{target}）。这套东西装在 Claude Code 跑的那台上，很可能是某个远端；本页不连 SSH，远端状态请到对应页面查。",
+      "args": ["target"]
+    },
+    "rsConfigSurface.observe.globCount": {
+      "kind": "body",
+      "zh": "{count} 项匹配",
+      "args": ["count"]
+    },
+    "rsConfigSurface.observe.globDirUnlistable": {
+      "kind": "error",
+      "zh": "列不出目录 {dir}（不存在或无权限）",
+      "args": ["dir"]
+    },
+    "rsConfigSurface.observe.fileSize": {
+      "kind": "body",
+      "zh": "文件，{bytes} 字节",
+      "args": ["bytes"]
+    },
+    "rsConfigSurface.observe.dirUnlistable": {
+      "kind": "error",
+      "zh": "目录存在但列不出内容（权限？）",
+      "args": []
+    },
+    "rsConfigSurface.observe.dirCount": {
+      "kind": "body",
+      "zh": "目录，{count} 项",
+      "args": ["count"]
+    },
+    "rsConfigSurface.home.multiStar": {
+      "kind": "error",
+      "zh": "只支持一个 *，实得 {declared}",
+      "args": ["declared"]
+    },
+    "rsConfigSurface.home.globNotLast": {
+      "kind": "error",
+      "zh": "glob 只允许在最后一段，实得 {declared}",
+      "args": ["declared"]
+    },
+    "rsConfigSurface.home.empty": {
+      "kind": "error",
+      "zh": "登记的路径解析后为空：{declared}",
+      "args": ["declared"]
+    },
+    "rsConfigSurface.home.notTilde": {
+      "kind": "error",
+      "zh": "本机路径必须以 ~/ 开头，实得 {declared}",
+      "args": ["declared"]
+    },
+    "rsConfigSurface.declared.projectMismatch": {
+      "kind": "error",
+      "zh": "应在项目目录下，登记的路径却是 {declared}，不是相对路径",
+      "args": ["declared"]
+    },
+    "rsConfigSurface.declared.profileMismatch": {
+      "kind": "error",
+      "zh": "安装位置是 PowerShell 配置文件，登记的路径却是 {declared}（应为 \"$PROFILE\"）",
+      "args": ["declared"]
+    },
+    "rsConfigSurface.declared.badChar": {
+      "kind": "error",
+      "zh": "登记的路径里有不能解析的字符 {bad}（{declared}）。说明请写在备注里，路径栏只放路径。",
+      "args": ["bad", "declared"]
+    },
+    "rsMcp.target.pathNoProjectDir": {
+      "kind": "error",
+      "zh": "{path} 切不出项目目录",
+      "args": ["path"]
+    },
+    "rsMcp.remote.notConfigured": {
+      "kind": "error",
+      "zh": "远端「{machine}」未配置或未启用",
+      "args": ["machine"]
+    },
+    "rsMcp.plan.parseFailed": {
+      "kind": "error",
+      "zh": "{what} 解析失败（拒绝覆盖）：{e}",
+      "args": ["what", "e"]
+    },
+    "rsMcp.target.noProjectDir": {
+      "kind": "error",
+      "zh": "拒绝写：{target} 切不出项目目录",
+      "args": ["target"]
+    },
+    "rsMcp.remote.pathIllegal": {
+      "kind": "error",
+      "zh": "拒绝写非法远端路径：{path}",
+      "args": ["path"]
+    },
+    "rsMcp.remote.pathNotAbsolute": {
+      "kind": "error",
+      "zh": "远端项目目录须为绝对路径",
+      "args": []
+    },
+    "rsMcp.mcpJson.rootNotObject": {
+      "kind": "error",
+      "zh": ".mcp.json 根不是对象",
+      "args": []
+    },
+    "rsMcp.mcpJson.serversNotObject": {
+      "kind": "error",
+      "zh": ".mcp.json 里的 mcpServers 不是对象",
+      "args": [],
+      "waive": {
+        "C-T1": "mcpServers 是用户自己那份 .mcp.json 里的键名，指路要用原名"
+      }
+    },
+    "rsMcp.upsert.emptyName": {
+      "kind": "error",
+      "zh": "MCP 服务名为空",
+      "args": []
+    },
+    "rsMcp.path.notAbsolute": {
+      "kind": "error",
+      "zh": "项目目录须为绝对路径（实得 {dir}）",
+      "args": ["dir"]
+    },
+    "rsMcp.path.emptyDir": {
+      "kind": "error",
+      "zh": "项目目录为空，拒绝写",
+      "args": []
+    },
+    "rsMcp.remote.timeout": {
+      "kind": "error",
+      "zh": "远端「{machine}」读取超时（30 秒）",
+      "args": ["machine"]
+    },
+    "rsMcp.remote.tooBig": {
+      "kind": "error",
+      "zh": "远端 ~/.claude.json 超过 {cap} 字节上限，拒收。截断的 JSON 不能拿去解析。",
+      "args": ["cap"]
+    },
+    "rsMcp.remote.readFailed": {
+      "kind": "error",
+      "zh": "读取远端 ~/.claude.json 失败：{e}",
+      "args": ["e"]
+    },
+    "rsMcpSync.preview.sameFile": {
+      "kind": "error",
+      "zh": "两边是同一份文件 —— 换一台机器或换一个项目目录",
+      "args": []
+    },
+    "rsMcpSync.apply.notInCopy": {
+      "kind": "error",
+      "zh": "「{name}」不在拷出来的那一份里 —— 两端对不上，一个字节都没写",
+      "args": ["name"]
+    },
+    "rsMcpSync.stale.changed": {
+      "kind": "error",
+      "zh": "{machine} 上那份配置在你看差异之后又被改过了。这一趟一个字节都没写，重新看一次差异再决定。",
+      "args": ["machine"]
+    },
+    "rsMcpSync.preview.missing": {
+      "kind": "error",
+      "zh": "{from} 上没有 {path} —— 没有可以拷过去的条目",
+      "args": ["from", "path"]
+    },
+    "rsMcpSync.reply.unreadable": {
+      "kind": "error",
+      "zh": "对面的后端答的内容认不出来，多半是两边版本不一样。这一趟什么都没写。",
+      "args": []
+    },
+    "rsMcpSync.plan.emptyReply": {
+      "kind": "error",
+      "zh": "{who} 的后端回了一条空应答",
+      "args": ["who"]
+    },
+    "rsMcpSync.plan.internal": {
+      "kind": "error",
+      "zh": "{who}：比对时出了内部错误，没有拿到结果",
+      "args": ["who"]
+    },
+    "rsMcpSync.plan.tooBig": {
+      "kind": "error",
+      "zh": "两份配置合起来太大，一趟装不下。这一趟要 {bytes} 字节，上限 {cap}，一个字节都没动。",
+      "args": ["bytes", "cap"]
+    },
+    "rsMcpSync.plan.cannotCompare": {
+      "kind": "error",
+      "zh": "没法比对，一个字节都没动",
+      "args": []
+    },
+    "rsMcpSync.plan.backendDown": {
+      "kind": "error",
+      "zh": "{who} 的后端没连上，比对要经它来做（{why}）—— 一个字节都没动",
+      "args": ["who", "why"]
+    },
+    "rsHooksDiag.remote.timeout": {
+      "kind": "error",
+      "zh": "远端「{machine}」读取超时（30 秒）",
+      "args": ["machine"]
+    },
+    "rsHooksDiag.remote.tooBig": {
+      "kind": "error",
+      "zh": "远端 settings.json 超过 {cap} 字节上限，拒收。截断的 JSON 不能拿去解析。",
+      "args": ["cap"]
+    },
+    "rsHooksDiag.remote.readFailed": {
+      "kind": "error",
+      "zh": "读远端 settings.json 失败：{e}",
+      "args": ["e"]
+    },
+    "rsHooksDiag.remote.notConfigured": {
+      "kind": "error",
+      "zh": "远端「{machine}」未配置或未启用",
+      "args": ["machine"]
+    },
+    "rsHooksDiag.local.noHome": {
+      "kind": "body",
+      "zh": "取不到 HOME",
+      "args": []
+    },
+    "rsHooksDiag.snippet.bareMissing": {
+      "kind": "body",
+      "zh": "这两个命令不在 PATH 上，照这段贴会用不了。改选「$HOME 显式路径」，或把它们所在目录加进 PATH。",
+      "args": []
+    },
+    "rsHooksDiag.snippet.homeMissing": {
+      "kind": "body",
+      "zh": "$HOME/.local/bin/ 下没有 cc-bus 的两个命令，照这段贴会用不了。改选「裸命令」，或先装 cc-bus。",
+      "args": []
+    },
+    "rsHooksDiag.diagnose.notObject": {
+      "kind": "body",
+      "zh": "~/.claude/settings.json 顶层不是对象",
+      "args": []
+    },
+    "rsHooksDiag.diagnose.badJson": {
+      "kind": "body",
+      "zh": "~/.claude/settings.json 不是合法 JSON —— 未改动它，请先自行修复",
+      "args": []
+    },
+    "rsHooksDiag.diagnose.noSettings": {
+      "kind": "body",
+      "zh": "没读到 ~/.claude/settings.json（文件不存在或读取失败）",
+      "args": []
+    },
+    "rsDriftLedger.consequence.unknownBackendToken": {
+      "kind": "body",
+      "zh": "该能力不会被使用（保守缺省）。多半是远端后端比 monitor 新",
+      "args": []
+    },
+    "rsDriftLedger.consequence.unknownSessionKind": {
+      "kind": "body",
+      "zh": "该会话被当作后台：关掉「显示后台会话」就完全看不见它",
+      "args": []
+    },
+    "rsDriftLedger.consequence.knownTypeParse": {
+      "kind": "body",
+      "zh": "Claude Code 可能改了某类记录的格式；这些记录只能按原文显示",
+      "args": []
+    },
+    "rsDriftLedger.consequence.unknownRecord": {
+      "kind": "body",
+      "zh": "这条记录不显示、不进搜索。多半是 Claude Code 加了新的记录类型",
+      "args": []
     }
   }
 }

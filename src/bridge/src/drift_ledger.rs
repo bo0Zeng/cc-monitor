@@ -54,6 +54,7 @@
 //! 读口 [`drift_ledger_report`] 按 origin 答，**只答那一台**。设计与逐写点读数在
 //! `调研/第四波记录/ST3.md`。
 
+use crate::copy_table::copy_text;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
@@ -82,19 +83,19 @@ pub enum DriftFace {
 
 impl DriftFace {
     /// 给人看的一句话：**这个面看不懂东西时会发生什么**。诊断面直接显示它。
-    pub fn consequence(self) -> &'static str {
+    pub fn consequence(self) -> String {
         match self {
             DriftFace::UnknownRecordType => {
-                "这条记录不显示、不进搜索、不计费；链路仍完整（抢救保 uuid）。多半是 CC 加了新记录类型"
+                copy_text("rsDriftLedger.consequence.unknownRecord", &[])
             }
             DriftFace::KnownTypeParseFailed => {
-                "**值得警惕**：CC 很可能改了某个已知类型的字段形状。记录被抢救成原文，但结构信息丢了"
+                copy_text("rsDriftLedger.consequence.knownTypeParse", &[])
             }
             DriftFace::UnknownSessionKind => {
-                "该会话被当作后台（bg）：关掉「显示后台会话」就完全看不见它"
+                copy_text("rsDriftLedger.consequence.unknownSessionKind", &[])
             }
             DriftFace::UnknownBackendToken => {
-                "该能力不会被使用（保守缺省）。多半是远端后端比 monitor 新"
+                copy_text("rsDriftLedger.consequence.unknownBackendToken", &[])
             }
         }
     }
@@ -124,7 +125,7 @@ pub struct DriftEntry {
 pub struct DriftFaceReport {
     pub face: DriftFace,
     /// 这个面「看不懂时会发生什么」（`DriftFace::consequence`）。
-    pub consequence: &'static str,
+    pub consequence: String,
     /// 按 `count` 降序、同数按键名升序。
     pub entries: Vec<DriftEntry>,
     /// 该面是否已经溢出（键数触顶）。溢出后新键并进 `<overflow>`。

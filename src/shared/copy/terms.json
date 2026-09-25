@@ -86,7 +86,7 @@
       "word": "SSH",
       "tier": "限用",
       "tally": { "re": "\\bssh\\b", "flags": "i" },
-      "inTable": 24,
+      "inTable": 27,
       "meaning": "连远端用的 ssh。",
       "context": "讲连接、主机、密钥、主机指纹时许说。",
       "source": "设计/91 §4 R1b"
@@ -104,7 +104,7 @@
       "word": "PowerShell",
       "tier": "限用",
       "tally": { "re": "powershell", "flags": "i" },
-      "inTable": 16,
+      "inTable": 19,
       "meaning": "Windows 上的 shell。",
       "context": "讲终端集成、$PROFILE 时许说；不许缩写成 PS。",
       "source": "设计/91 §4 R1b"
@@ -135,7 +135,7 @@
       "word": "Claude Code",
       "tier": "限用",
       "tally": { "re": "claude\\s*code", "flags": "i" },
-      "inTable": 7,
+      "inTable": 11,
       "meaning": "Anthropic 的命令行工具；命令名 claude。",
       "context": "产品名，许说。讲它的 hooks、settings.json 等它自己的概念时许用它的原名。",
       "source": "外部产品名"
@@ -144,7 +144,7 @@
       "word": "hook",
       "tier": "限用",
       "tally": { "re": "\\bhook\\b|钩子", "flags": "i" },
-      "inTable": 11,
+      "inTable": 14,
       "meaning": "Claude Code 自己的 hooks 配置（settings.json 里的 hooks 段）。",
       "context": "只在讲 Claude Code 的 hooks 配置时许说（中文「钩子」同义）。讲我们内部的回调、tmux-hook 之类不许说。",
       "source": "普查 R1 候选（K-T68 面④附）",
@@ -157,8 +157,7 @@
       "inTable": 9,
       "meaning": "ssh 首次连接时让你确认的那串 SHA256。",
       "context": "讲主机密钥、首次连接确认时许说。别处（例如 vendored 组件的「指纹文件」）是内部的版本指纹，不许说。",
-      "source": "CP1 台账新词「指纹」",
-      "ledger": ["指纹"]
+      "source": "CP1 台账新词「指纹」"
     },
     {
       "word": "@ccm_sid",
@@ -457,7 +456,7 @@
       "say": "不说实现，说结果：watcher →「自动刷新」· invoke / spawn / dispatch →「启动」「执行」· panic →「程序出错」· rollback →「还原」· flock →「锁」· uuid →「ID」· vendored / 编译期内嵌 →「随 cc-monitor 一起安装」· sftp-server →「远端的 SFTP 服务」· 其余（pidfd · tokio 运行时 · Win32 · SessionMap · ToolSpec · CLI 渲染器 · SFTP 句柄 · copy-data）→ 不说。",
       "scan": { "re": "\\b(?:watcher|invoke|spawn|dispatch|panic|tokio|pidfd|rollback|flock|uuid|vendored|Win32|SessionMap|ToolSpec|copy-data|sftp-server)\\b|CLI\\s*渲染器|SFTP\\s*句柄|编译期内嵌|交叉编译内嵌", "flags": "i" },
       "examples": ["tokio运行时", "watcher", "SFTP句柄"],
-      "ledger": ["watcher", "dispatch", "panic", "pidfd", "flock", "uuid", "vendored", "SessionMap", "ToolSpec", "CLI渲染器", "编译期内嵌", "交叉编译内嵌"],
+      "ledger": ["watcher", "dispatch", "panic", "pidfd", "flock", "uuid", "SessionMap", "CLI渲染器"],
       "source": "设计/91 §7.3（英文我方名）· CP1 台账"
     },
     {
@@ -476,7 +475,7 @@
       "scan": { "re": "\\b[a-z]+(?:[A-Z][a-z0-9]*)+\\b|\\b(?:ADDED|ALREADY|Exact|Heuristic|DynamicGuess|bad_args|bad_path|accounts-meta|agents\\.tsv|__ccm_bind|auto-launch|touches|localStorage|UserDataFolder)\\b|\\.?build_id\\b", "flags": "" },
       "examples": ["backendPath", "cliFlags", "__ccm_bind", ".build_id", "ADDED"],
       "counterExamples": ["API key", "Claude Code"],
-      "ledger": ["backendPath", "claudeDir", "cliFlags", "auto-launch", "touches", "build_id"],
+      "ledger": ["backendPath", "claudeDir", "cliFlags", "auto-launch", "build_id"],
       "source": "设计/91 §7.3（配置键名直出）· CP1 台账",
       "note": "label / jump / kind 是普通英文单词，正则认不出它们是配置键 ⇒ 这三个只靠人工 review。"
     },
@@ -550,7 +549,6 @@
       "tier": "禁",
       "say": "「安装位置」或直接写路径。",
       "scan": { "re": "落点", "flags": "" },
-      "ledger": ["落点"],
       "source": "设计/91 §7.3"
     },
     {
@@ -616,7 +614,7 @@
       "say": "说它做的事，不说我们给它起的名：数据面漂移记账 · 诚实降级 / 如实降级 · 平价预言机 · 分流器 · 原语 · 身份配方 · 身份行 · 装口 · 抢救 · 铸 · 申报 · 意图标 · 开窗预算 · 浏览名单 · 拉起器 · 起法 · 同寿 · 避让 · 一次性模式 · 双向绑定 · 反推。",
       "scan": { "re": "数据面漂移记账|诚实降级|如实降级|平价预言机|分流器|原语|身份配方|身份行|装口|抢救|铸|申报|意图标|开窗预算|浏览名单|拉起器|起法|同寿|一次性模式|双向绑定|反推", "flags": "" },
       "examples": ["诚实降级", "开窗预算"],
-      "ledger": ["诚实降级", "如实降级", "平价预言机", "身份配方", "身份行", "装口", "抢救", "铸", "申报", "意图标", "拉起器", "同寿", "避让", "一次性模式"],
+      "ledger": ["诚实降级", "如实降级", "平价预言机", "身份配方", "身份行", "装口", "铸", "意图标", "拉起器", "同寿", "避让", "一次性模式"],
       "source": "设计/91 §2.5 · §7.3",
       "note": "「避让」是普通词，不扫。"
     },

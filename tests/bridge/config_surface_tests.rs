@@ -705,7 +705,7 @@ fn host_is_not_a_function_of_destination() {
 fn host_labels_are_distinct_and_truthful() {
     use HostScope::*;
     let all = [Client, Remote, Either, ProjectDir];
-    let labels: Vec<&str> = all.iter().map(|h| host_label(*h)).collect();
+    let labels: Vec<String> = all.iter().map(|h| host_label(*h)).collect();
     // 四个标签互不相同——相同就说明该合并了
     let uniq: std::collections::HashSet<_> = labels.iter().collect();
     assert_eq!(uniq.len(), 4, "四个 host 标签必须互不相同，实得 {labels:?}");
@@ -1162,7 +1162,9 @@ fn every_row_carries_its_tier_and_the_owed_one_never_reads_as_not_ours() {
     assert!(!owed.is_empty(), "这一页上一行「欠装口」都没有 —— 先查闭集");
     for r in &owed {
         assert!(
-            r.source_label.contains("该由 cc-monitor 自带"),
+            // 〔CP2b〕措辞照 CP1 台账改成「应随 cc-monitor 一起安装，暂未提供」（去掉内部编号 K38 与「装口」）；
+            // 两半仍都在：「应随 cc-monitor」＝该我们带，「暂未提供」＝还欠着。
+            r.source_label.contains("应随 cc-monitor 一起安装") && r.source_label.contains("暂未提供"),
             "`{}` 的「从哪来」没说清这是我们该自带的东西，实得 {:?}",
             r.tool_id,
             r.source_label
@@ -1243,7 +1245,7 @@ fn rows_carry_the_host_label() {
         assert!(!r.host_label.is_empty(), "{} 缺 host 标签", r.path_declared);
     }
     // 四档措辞各不相同，且能看出"哪台"
-    let labels: std::collections::HashSet<_> = rows.iter().map(|r| r.host_label).collect();
+    let labels: std::collections::HashSet<_> = rows.iter().map(|r| r.host_label.as_str()).collect();
     assert!(
         labels.len() >= 3,
         "至少三种 host 出现在表里，实得 {labels:?}"
@@ -1482,6 +1484,8 @@ fn this_module_only_reads() {
     assert_eq!(
         uses_lines,
         vec![
+            // 〔CP2b〕文案表的取文口：只读编译期内嵌的那张表，不碰 fs。
+            "use crate::copy_table::copy_text;",
             "use crate::tool_registry::{",
             "use std::path::{Path, PathBuf};",
         ],

@@ -22,6 +22,7 @@
 //!
 //! 本模块不写任何用户文件（红线），也**不新增轮询**（红线）——一次按需扫完就返回。
 
+use crate::copy_table::copy_text;
 use crate::tool_registry::{
     Carrier, EnvBacking, EnvEntry, EnvProbe, EnvTier, HostScope, ToolDestination, ToolSource,
     ToolSpec, TouchEffect, TouchedFile, TOOLS,
@@ -139,9 +140,12 @@ pub fn resolve_touched_path(
     // **已知代价如实写明**：真含空格或非 ASCII 的路径也会被拒——那种情况得显式加支持，
     // 而不是靠这条判据放水，因为放水就等于把散文一起放进来。
     if let Some(bad) = declared.chars().find(|c| !c.is_ascii_graphic()) {
-        return Err(format!(
-            "申报路径含非 ASCII-graphic 字符 {bad:?}（{declared:?}）——\
-             给人看的说明请放 `note` 字段，`path` 只放机器可解析的路径"
+        return Err(copy_text(
+            "rsConfigSurface.declared.badChar",
+            &[
+                ("bad", &format!("{:?}", bad)),
+                ("declared", &format!("{:?}", declared)),
+            ],
         ));
     }
     // **顺序要紧：先按 `destination` 全量校验，再用 `host` 做投影。**
@@ -215,15 +219,17 @@ fn resolve_by_destination(
                 Ok(PathResolution::WindowsProfile)
             } else {
                 // 落点是"用户选的 profile"却申报了别的路径 → 声明自相矛盾，宁可报错
-                Err(format!(
-                    "落点是 UserShellProfile，申报路径却是 {declared:?}（期望 \"$PROFILE\"）"
+                Err(copy_text(
+                    "rsConfigSurface.declared.profileMismatch",
+                    &[("declared", &format!("{:?}", declared))],
                 ))
             }
         }
         ToolDestination::ProjectRelative(_) => {
             if declared.starts_with('~') || declared.starts_with('/') {
-                return Err(format!(
-                    "落点是 ProjectRelative，申报路径却是绝对/家目录形态 {declared:?}"
+                return Err(copy_text(
+                    "rsConfigSurface.declared.projectMismatch",
+                    &[("declared", &format!("{:?}", declared))],
                 ));
             }
             Ok(PathResolution::NeedsProjectDir(declared.to_string()))
@@ -270,9 +276,12 @@ fn resolve_local_home(
     cfg_dir_env: Option<&Path>,
     is_dir: &dyn Fn(&Path) -> bool,
 ) -> Result<PathResolution, String> {
-    let rest = declared
-        .strip_prefix("~/")
-        .ok_or_else(|| format!("本机路径必须以 `~/` 开头，实得 {declared:?}"))?;
+    let rest = declared.strip_prefix("~/").ok_or_else(|| {
+        copy_text(
+            "rsConfigSurface.home.notTilde",
+            &[("declared", &format!("{:?}", declared))],
+        )
+    })?;
     // `~/.claude/…` 的真实基准目录是 `CLAUDE_CONFIG_DIR`（若它确实是个目录）
     let (base, rel) = match rest.strip_prefix(".claude/") {
         Some(r) => (
@@ -283,7 +292,10 @@ fn resolve_local_home(
     };
     let rel = rel.trim_end_matches('/');
     if rel.is_empty() {
-        return Err(format!("申报路径解析后为空：{declared:?}"));
+        return Err(copy_text(
+            "rsConfigSurface.home.empty",
+            &[("declared", &format!("{:?}", declared))],
+        ));
     }
     // glob 只允许出现在**最后一段**，且只允许一个 `*`
     let (dir_part, last) = match rel.rsplit_once('/') {
@@ -291,11 +303,17 @@ fn resolve_local_home(
         None => (None, rel),
     };
     if dir_part.is_some_and(|d| d.contains('*')) {
-        return Err(format!("glob 只允许在最后一段，实得 {declared:?}"));
+        return Err(copy_text(
+            "rsConfigSurface.home.globNotLast",
+            &[("declared", &format!("{:?}", declared))],
+        ));
     }
     if let Some((prefix, suffix)) = last.split_once('*') {
         if suffix.contains('*') {
-            return Err(format!("只支持一个 `*`，实得 {declared:?}"));
+            return Err(copy_text(
+                "rsConfigSurface.home.multiStar",
+                &[("declared", &format!("{:?}", declared))],
+            ));
         }
         let dir = match dir_part {
             Some(d) => base.join(d),
@@ -333,15 +351,21 @@ pub fn observe(res: &PathResolution, fs: &FsProbe) -> SurfaceState {
             None => SurfaceState::Absent,
             Some((true, _)) => match (fs.list)(p) {
                 Some(v) => SurfaceState::Present {
-                    detail: format!("目录，{} 项", v.len()),
+                    detail: copy_text(
+                        "rsConfigSurface.observe.dirCount",
+                        &[("count", &(v.len()).to_string())],
+                    ),
                 },
                 // 目录在但列不了（权限）——**不能说成"空目录"**
                 None => SurfaceState::Undetermined {
-                    why: "目录存在但列不出内容（权限？）".into(),
+                    why: copy_text("rsConfigSurface.observe.dirUnlistable", &[]).into(),
                 },
             },
             Some((false, n)) => SurfaceState::Present {
-                detail: format!("文件，{n} 字节"),
+                detail: copy_text(
+                    "rsConfigSurface.observe.fileSize",
+                    &[("bytes", &n.to_string())],
+                ),
             },
         },
         PathResolution::LocalGlob {
@@ -350,7 +374,10 @@ pub fn observe(res: &PathResolution, fs: &FsProbe) -> SurfaceState {
             suffix,
         } => match (fs.list)(dir) {
             None => SurfaceState::Undetermined {
-                why: format!("列不出目录 {}（不存在或无权限）", dir.display()),
+                why: copy_text(
+                    "rsConfigSurface.observe.globDirUnlistable",
+                    &[("dir", &(dir.display()).to_string())],
+                ),
             },
             Some(names) => {
                 let n = names
@@ -365,7 +392,10 @@ pub fn observe(res: &PathResolution, fs: &FsProbe) -> SurfaceState {
                     SurfaceState::Absent
                 } else {
                     SurfaceState::Present {
-                        detail: format!("{n} 项匹配"),
+                        detail: copy_text(
+                            "rsConfigSurface.observe.globCount",
+                            &[("count", &n.to_string())],
+                        ),
                     }
                 }
             }
@@ -378,33 +408,44 @@ pub fn observe(res: &PathResolution, fs: &FsProbe) -> SurfaceState {
         // glob 被拍成字面 `cc-*` 去 stat，计数分支永远走不到——审计阻塞 1）。
         PathResolution::EitherHost(inner) => match observe(inner, fs) {
             SurfaceState::Absent => SurfaceState::Undetermined {
-                why: format!(
-                    "本机没找到（{}）——但这套东西装在 Claude Code 跑的那台上，\
-                     很可能是某个远端。远端状态请到对应页面按连接查（本页不连 SSH）。",
-                    describe_target(inner)
+                why: copy_text(
+                    "rsConfigSurface.observe.eitherAbsent",
+                    &[("target", &(describe_target(inner)).to_string())],
                 ),
             },
             SurfaceState::Present { detail } => SurfaceState::Present {
-                detail: format!("本机存在（{detail}）"),
+                detail: copy_text(
+                    "rsConfigSurface.observe.eitherPresent",
+                    &[("detail", &detail.to_string())],
+                ),
             },
             // 内层本来就"不确定"（比如目录列不出来）时，**追加**而不是替换那条理由——
             // 两件事都要说：本机为什么查不了 + 它也可能根本不在本机。
             // （第二个探针一加就红在这里：原先 `other => other` 把 Either 的提示整个吞了。）
             SurfaceState::Undetermined { why } => SurfaceState::Undetermined {
-                why: format!(
-                    "{why}；而且这套东西装在 Claude Code 跑的那台上，很可能是某个远端\
-                     ——本页不连 SSH。"
+                why: copy_text(
+                    "rsConfigSurface.observe.eitherUndetermined",
+                    &[("why", &why.to_string())],
                 ),
             },
         },
         PathResolution::NeedsUserConfig { what } => SurfaceState::Undetermined {
-            why: format!("路径由配置决定（{what}）——本页不猜它当前是什么值"),
+            why: copy_text(
+                "rsConfigSurface.observe.needsConfig",
+                &[("what", &what.to_string())],
+            ),
         },
         PathResolution::Remote(p) => SurfaceState::Undetermined {
-            why: format!("远端路径（{p}）——本页不连 SSH，请到部署向导里查"),
+            why: copy_text(
+                "rsConfigSurface.observe.remote",
+                &[("path", &p.to_string())],
+            ),
         },
         PathResolution::NeedsProjectDir(p) => SurfaceState::Undetermined {
-            why: format!("相对项目目录（{p}）——要先选定项目才知道查哪里"),
+            why: copy_text(
+                "rsConfigSurface.observe.projectDir",
+                &[("path", &p.to_string())],
+            ),
         },
         // **「不适用」和「查不到」不是一回事**（T02 审计重要 7）。原文一律说
         // 「Windows 侧 $PROFILE，本机无从解析」，在 Linux 上这暗示"可能有东西、只是查不到"
@@ -414,10 +455,9 @@ pub fn observe(res: &PathResolution, fs: &FsProbe) -> SurfaceState {
         PathResolution::WindowsProfile => SurfaceState::Undetermined {
             why: if cfg!(target_os = "windows") {
                 // 〔DP1 · 第四波〕从前这句指「终端集成」页 —— AL1c 起那一页就没有了，今天在「本机 → 工具 → 别名」。
-                "路径由 PowerShell 决定；准确状态见「本机 → 工具 → 别名」（那里会读 $PROFILE 并查 cc-monitor 加的那一段）"
-                    .into()
+                copy_text("rsConfigSurface.observe.profileWindows", &[]).into()
             } else {
-                "不适用：本机不是 Windows，没有 PowerShell $PROFILE 这个东西".to_string()
+                copy_text("rsConfigSurface.observe.profileNotWindows", &[])
             },
         },
     }
@@ -426,23 +466,25 @@ pub fn observe(res: &PathResolution, fs: &FsProbe) -> SurfaceState {
 /// 「这东西从哪来」。用上 `ToolSpec::source`。
 pub fn source_label(s: &ToolSource) -> String {
     match s {
-        ToolSource::EmbeddedText { repo_path } => format!("仓内文件（编译期内嵌）：{repo_path}"),
-        ToolSource::RepoDir { repo_path } => format!("仓内目录：{repo_path}"),
-        ToolSource::Vendored {
-            repo_path,
-            fingerprint_file,
-        } => format!("vendored + 指纹：{repo_path}（{fingerprint_file}）"),
-        ToolSource::EmbeddedBinary { repo_path } => format!("交叉编译内嵌的二进制：{repo_path}"),
-        ToolSource::Generated => "由 cc-monitor 现场生成的文本".to_string(),
+        ToolSource::EmbeddedText { .. } => copy_text("rsConfigSurface.source.embeddedText", &[]),
+        ToolSource::RepoDir { .. } => copy_text("rsConfigSurface.source.repoDir", &[]),
+        ToolSource::Vendored { .. } => copy_text("rsConfigSurface.source.vendored", &[]),
+        ToolSource::EmbeddedBinary { .. } => {
+            copy_text("rsConfigSurface.source.embeddedBinary", &[])
+        }
+        ToolSource::Generated => copy_text("rsConfigSurface.source.generated", &[]),
         // 〔`K-R60`〕装不了的那一档：措辞必须**先说清不是我们的**，
         // 否则用户会以为这一行也是 cc-monitor 放上去的。
-        ToolSource::NotOurs { who } => format!("不由 cc-monitor 提供：{who}"),
+        ToolSource::NotOurs { who } => copy_text(
+            "rsConfigSurface.source.notOurs",
+            &[("who", &who.to_string())],
+        ),
     }
 }
 
 /// 「在哪台机器上」。**必须上屏**——否则用户看 `$PROFILE` 与 `~/.local/bin/ccm`
 /// 分不出说的是哪台机器，而这一页的全部价值是可信告知。
-pub fn host_label(h: HostScope) -> &'static str {
+pub fn host_label(h: HostScope) -> String {
     // **短标签，挂在路径行上当徽章**（T04 审计重要 8）。原先是独立一行长句，
     // 而审计核实 10 行里 9 行是**冗余**的——「现状」那一列早就写着
     // 「远端路径（…）——本页不连 SSH」/「装在 Claude Code 跑的那台上」/「相对项目目录」。
@@ -451,24 +493,22 @@ pub fn host_label(h: HostScope) -> &'static str {
     // 也顺便更正我 commit 里那句"用户看 $PROFILE 与 ~/.local/bin/ccm 分不出哪台"
     // ——只有一半成立，ccm 那行的 why 早就写着"远端"。
     match h {
-        HostScope::Client => "本机",
-        HostScope::Remote => "远端",
-        HostScope::Either => "本机或远端",
-        HostScope::ProjectDir => "项目目录",
+        HostScope::Client => copy_text("rsConfigSurface.host.client", &[]),
+        HostScope::Remote => copy_text("rsConfigSurface.host.remote", &[]),
+        HostScope::Either => copy_text("rsConfigSurface.host.either", &[]),
+        HostScope::ProjectDir => copy_text("rsConfigSurface.host.projectDir", &[]),
     }
 }
 
 /// 「我们对它做什么」。措辞直接决定用户的危险感知，所以定在后端、UI 不再各写一遍。
-pub fn effect_label(e: TouchEffect) -> &'static str {
+pub fn effect_label(e: TouchEffect) -> String {
     match e {
-        TouchEffect::ReadOnly => "只读（诊断用），我们不写",
-        TouchEffect::FencedBlock => "插入/更新一个有围栏的块；卸载时按围栏精确剥离",
-        TouchEffect::OwnedFile => "整个文件由 cc-monitor 拥有，部署时整体覆盖",
-        TouchEffect::GenerateOnly => "只生成待贴文本，由你自己粘贴——我们不写这个文件",
+        TouchEffect::ReadOnly => copy_text("rsConfigSurface.effect.readOnly", &[]),
+        TouchEffect::FencedBlock => copy_text("rsConfigSurface.effect.fencedBlock", &[]),
+        TouchEffect::OwnedFile => copy_text("rsConfigSurface.effect.ownedFile", &[]),
+        TouchEffect::GenerateOnly => copy_text("rsConfigSurface.effect.generateOnly", &[]),
         // 措辞必须把「谁动的手」说清：不是 cc-monitor 直接写，但**是你在 cc-monitor 里点的**
-        TouchEffect::IndirectWrite => {
-            "我们不直接写它；但你在 cc-monitor 里的操作会让它被写（由被调用的命令追加内容）"
-        }
+        TouchEffect::IndirectWrite => copy_text("rsConfigSurface.effect.indirectWrite", &[]),
     }
 }
 
@@ -491,8 +531,8 @@ pub struct SurfaceRow {
     /// 解析出的本机路径（远端 / 项目相对 / `$PROFILE` 一律 `None`）。
     pub path_resolved: Option<String>,
     pub note: Option<&'static str>,
-    pub host_label: &'static str,
-    pub effect_label: &'static str,
+    pub host_label: String,
+    pub effect_label: String,
     pub state: SurfaceState,
     pub installable: bool,
     pub uninstallable: bool,
@@ -555,7 +595,7 @@ fn row(
         Err(e) => (
             None,
             SurfaceState::Undetermined {
-                why: format!("申报路径与落点不自洽：{e}"),
+                why: copy_text("rsConfigSurface.row.declMismatch", &[("e", &e.to_string())]),
             },
         ),
     };
@@ -630,23 +670,23 @@ fn unmanaged_row(
     // 逼人回答它在这一页上该显示什么（同本模块 `PathResolution` 那条既定做法）。
     let (source_label, effect_label) = match e.tier {
         EnvTier::AppInstalls => (
-            "申报自相矛盾：声明「app 装的」，却没有一条 ToolSpec 说得出装到哪".to_string(),
-            "装得了就该有落点与 touches —— 这一行的申报是坏的",
+            copy_text("rsConfigSurface.unmanaged.appInstallsSource", &[]),
+            copy_text("rsConfigSurface.unmanaged.appInstallsEffect", &[]),
         ),
         // 🔴 `K38` 裁的那一档：**我们不装，但我们看；缺了我们说。**
         EnvTier::UserInstallsWePrompt => (
-            "不由 cc-monitor 提供 —— 这是通用工具，请你自己装".to_string(),
-            "我们不装它，只查它在不在；缺了这一行会告诉你，去装上就好",
+            copy_text("rsConfigSurface.unmanaged.promptSource", &[]),
+            copy_text("rsConfigSurface.unmanaged.promptEffect", &[]),
         ),
         // 🔴 `KR65D2` 的那一格：**该我们装，而装口还欠着。** 措辞必须两半都说 ——
         // 只说「装不了」会被读成「不该我们装」，那正是 `K38` 反对的那句话。
         EnvTier::AppShipsNoInstallerYet => (
-            "该由 cc-monitor 自带（K38：app 独有的东西）—— 而今天还没有装口".to_string(),
-            "这一项该我们装，但安装入口还没写；本页照样去查它在不在，缺了也别当成「不该我们装」",
+            copy_text("rsConfigSurface.unmanaged.owedSource", &[]),
+            copy_text("rsConfigSurface.unmanaged.owedEffect", &[]),
         ),
         EnvTier::AppOnlyChecks => (
-            "不由 cc-monitor 提供".to_string(),
-            "我们查得到它在不在，但装不了",
+            copy_text("rsConfigSurface.unmanaged.checkOnlySource", &[]),
+            copy_text("rsConfigSurface.unmanaged.checkOnlyEffect", &[]),
         ),
     };
     let (path_resolved, state) = observe_unmanaged(named, probe, env);
@@ -686,18 +726,24 @@ fn observe_unmanaged(
                 None => (
                     None,
                     SurfaceState::Undetermined {
-                        why: format!(
-                            "查不动：读不到 PATH（或它是空的），没法回答 `{named}` 在不在。\
-                             这**不是**说它不存在"
+                        why: copy_text(
+                            "rsConfigSurface.onPath.noPath",
+                            &[("named", &named.to_string())],
                         ),
                     },
                 ),
                 // **查了、确认没有** —— 这一格才是「缺」，前端据此劝人去装。
                 Some(false) => (None, SurfaceState::Absent),
                 Some(true) => (
-                    Some(format!("PATH 上找得到 `{named}`")),
+                    Some(copy_text(
+                        "rsConfigSurface.onPath.resolved",
+                        &[("named", &named.to_string())],
+                    )),
                     SurfaceState::Present {
-                        detail: format!("PATH 上有 `{named}`"),
+                        detail: copy_text(
+                            "rsConfigSurface.onPath.present",
+                            &[("named", &named.to_string())],
+                        ),
                     },
                 ),
             }
@@ -711,7 +757,10 @@ fn observe_unmanaged(
                 Err(msg) => (
                     None,
                     SurfaceState::Undetermined {
-                        why: format!("申报的名字解析不成本机路径：{msg}"),
+                        why: copy_text(
+                            "rsConfigSurface.home.unresolvable",
+                            &[("msg", &msg.to_string())],
+                        ),
                     },
                 ),
             }
@@ -720,7 +769,7 @@ fn observe_unmanaged(
         EnvProbe::CannotProbe { why } => (
             None,
             SurfaceState::Undetermined {
-                why: format!("查不动：{why}"),
+                why: copy_text("rsConfigSurface.probe.cannot", &[("why", &why.to_string())]),
             },
         ),
     }
@@ -764,12 +813,12 @@ pub fn build_rows(env: &SurfaceEnv) -> Vec<SurfaceRow> {
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 pub struct SettingsScope {
-    pub scope: &'static str,
+    pub scope: String,
     pub path: String,
     pub state: SurfaceState,
     /// 文件里有没有 cc-bus 那两个钩子程序的字样。读不到 → `None`（**不猜**）。
     pub has_cc_bus_hooks: Option<bool>,
-    pub precedence_note: &'static str,
+    pub precedence_note: String,
 }
 
 /// cc-bus 钩子在 settings 里的两个程序名。**这是全文粗匹配，不是解析**——
@@ -784,19 +833,19 @@ pub struct SettingsScope {
 pub(crate) const HOOK_PROGRAMS: [&str; 2] = ["cc-register", "cc-bus-stop-hook"];
 
 fn scope_row(
-    scope: &'static str,
+    scope: &str,
     path: PathBuf,
-    precedence_note: &'static str,
+    precedence_note: &str,
     has_hooks: &dyn Fn(&Path) -> Option<bool>,
     fs: &FsProbe,
 ) -> SettingsScope {
     let has = has_hooks(&path);
     SettingsScope {
-        scope,
+        scope: scope.to_string(),
         path: path.to_string_lossy().into_owned(),
         state: observe(&PathResolution::Local(path.clone()), fs),
         has_cc_bus_hooks: has,
-        precedence_note,
+        precedence_note: precedence_note.to_string(),
     }
 }
 
@@ -821,30 +870,28 @@ pub fn build_settings_scopes(
     let cfg = crate::hooks_diag::claude_config_dir(cfg_dir_env, home, is_dir);
     vec![
         scope_row(
-            "用户级",
+            &copy_text("rsConfigSurface.scope.user", &[]),
             cfg.join("settings.json"),
-            "钩子诊断读的就是这一份；本页只做字样粗匹配，装没装看「cc-bus 钩子」页",
+            &copy_text("rsConfigSurface.scope.userNote", &[]),
             has_hooks,
             fs,
         ),
         scope_row(
-            "用户级 local",
+            &copy_text("rsConfigSurface.scope.userLocal", &[]),
             cfg.join("settings.local.json"),
-            "优先级高于上一行；这里定义的钩子同样生效",
+            &copy_text("rsConfigSurface.scope.userLocalNote", &[]),
             has_hooks,
             fs,
         ),
         SettingsScope {
-            scope: "项目级",
-            path: "<项目目录>/.claude/settings.json 与 settings.local.json".into(),
+            scope: copy_text("rsConfigSurface.scope.project", &[]),
+            path: copy_text("rsConfigSurface.scope.projectPath", &[]).into(),
             // **明说没查**，不假装查过（B04 登记项）
             state: SurfaceState::Undetermined {
-                why: "本页不猜项目目录，所以没查。若钩子定义在项目级，\
-                      上面那两行「没装」的结论可能是错的"
-                    .into(),
+                why: copy_text("rsConfigSurface.scope.projectNotChecked", &[]).into(),
             },
             has_cc_bus_hooks: None,
-            precedence_note: "优先级最高",
+            precedence_note: copy_text("rsConfigSurface.scope.projectNote", &[]),
         },
     ]
 }
@@ -881,7 +928,8 @@ pub async fn config_surface_report(
 /// 本机那一臂（原 `config_surface_report` 的体，一字未改）。
 async fn local_report() -> Result<ConfigSurfaceReport, String> {
     tokio::task::spawn_blocking(|| {
-        let home = dirs::home_dir().ok_or_else(|| "取不到 HOME".to_string())?;
+        let home =
+            dirs::home_dir().ok_or_else(|| copy_text("rsConfigSurface.local.noHome", &[]))?;
         let cfg_env = std::env::var_os("CLAUDE_CONFIG_DIR").map(PathBuf::from);
         let is_dir = |p: &Path| p.is_dir();
         let meta = |p: &Path| {
