@@ -903,9 +903,10 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "files-delete",
         doc_anchor: Some("#### `files-delete`"),
-        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
         // 〔FW5〕`recursive`（入）· `removed`（出）：显式才删整棵树，逐条目过围栏。
-        fields: &["path", "recursive", "rel", "removed", "root"],
+        // 〔RM1e〕`expect`（入）：给了 ⇒ 盘上逐字节等于它才删一份普通文件，否则 `stale`。
+        fields: &["expect", "path", "recursive", "rel", "removed", "root"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args)

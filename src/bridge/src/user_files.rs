@@ -84,8 +84,9 @@ pub(crate) trait Door {
     ) -> Result<Landed, Refused>;
     async fn rename(&self, root: &str, from: &str, to: &str) -> Result<(), String>;
     /// 〔RM1d〕删**一个文件**（`files-delete`，非递归；落点同一道围栏）。今天唯一的用户：全景删批注侧车。
-    /// ⚠ 没有 CAS（后端这条命令不收 `expect`）—— 调用方要「删的是读到的那一份」就先 [`Door::peek`] 核一遍。
-    async fn delete(&self, root: &str, rel: &str) -> Result<(), String>;
+    /// 〔RM1e〕带 CAS：`expect` = 读到的那一份，盘上逐字节等于它才删；不等 / 已经不在 ⇒ [`Refused::Stale`]，一个字节不动。
+    /// 〔墓碑 —— RM1d 那一版这里写着「没有 CAS（后端这条命令不收 `expect`），调用方先 `peek` 核一遍」。〕
+    async fn delete(&self, root: &str, rel: &str, expect: &str) -> Result<(), Refused>;
     async fn chmod(&self, root: &str, rel: &str, mode: u32) -> Result<(), String>;
     async fn delete_session(&self, sid: &str) -> Result<String, String>;
     /// 一个路径**在不在**（`files-stat`）：在 ⇒ `Some(kind)`；对端答「读不到」⇒ `None`。
@@ -329,14 +330,13 @@ impl Door for BackendDoor {
         .map_err(Refused::said)
     }
 
-    async fn delete(&self, root: &str, rel: &str) -> Result<(), String> {
+    async fn delete(&self, root: &str, rel: &str, expect: &str) -> Result<(), Refused> {
         self.ask(
             "files-delete",
-            serde_json::json!({ "root": root, "rel": rel }),
+            serde_json::json!({ "root": root, "rel": rel, "expect": expect }),
         )
         .await
         .map(|_| ())
-        .map_err(Refused::said)
     }
 
     async fn chmod(&self, root: &str, rel: &str, mode: u32) -> Result<(), String> {
