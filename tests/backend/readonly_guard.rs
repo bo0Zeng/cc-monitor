@@ -206,7 +206,13 @@ mod tests {
             "〔AS2 · 第四波 4B · V113〕资产目录的自动同步：帧面 `assets-sync` —— 本机常驻后端沿池里那条 SSH \
              在远端跑两条一次性子命令（拉 `--assets-catalog` · 推 `--assets-catalog-merge`）。它归 backend-core 是因为\
              SSH 连接只住本机常驻后端（`dial/`）。**零写盘**：本机目录的写口（`asset_catalog::answer_merge`）由 \
-             `inbound.rs` 递进来，本模块不直呼它（第四层 ④）",
+             `inbound.rs` 递进来，本模块不直呼它（第四层 ④）。〔C4d〕跑远端那一跳与可达表搬去了 `remote_ask`",
+        ),
+        (
+            "remote_ask",
+            "〔C4d · 第四波 4B〕本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 内存可达表，\
+             帧面 `remote-reach`。它归 backend-core 是因为 SSH 连接只住本机常驻后端（`dial/`）。**零写盘**：\
+             可达表只在本进程内存里",
         ),
         (
             "feature_face",

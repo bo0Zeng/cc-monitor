@@ -1721,6 +1721,28 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 ⚠ **CLI 面也有它**（`--assets-sync`，入参从 stdin 读；按派生规则「非内建即上 CLI」），但一次性进程没有常驻那一个的连接池与可达表：
 它自己新拨一条 SSH、只对给的那一台做一趟，扇出恒为零台 —— 真正的用法是常驻后端的帧面。
 
+#### `remote-reach`：本机后端的可达表登记（C4d · 第四波 4B，2026-09-25）
+
+「本机后端问远端后端」那一跳（`设计/01 §3.5`；实现住后端 `remote_ask.rs`，全后端只此一处）要先知道「怎么够到那台」。
+monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交一次：拨号请求 ＋ 那台后端的路径。本机后端记进**内存**可达表（后端重启就空，下次那台连上再填），**只登记、不拨号**。
+之后的两路都查这张表：资产目录同步（`assets-sync`）· 历史跨机 join（`history-projects` / `history-sessions` 带 `origin`）。
+老远端也登记：历史那一路问它的是 `--list-projects` / `--list-sessions` 这种老子命令。
+
+```text
+→ {"id":"r1","cmd":"remote-reach","args":{"origin":"dev","dial":{"host":"10.0.0.2","port":22,"user":"u","key_path":"~/.ssh/id_ed25519"},"backend":"/home/u/.cc-monitor/bin/ccm"}}
+← {"kind":"reply","id":"r1","ok":true,"data":{"origin":"dev","reach":[{"origin":"dev","machine":null}]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `origin` | → | 那台的名字（monitor 的 origin 名，本后端只当不透明的键用） |
+| `dial` | → | 那台的拨号请求（同 `link-open` 的 `dial`；只有路径，没有私钥本体）。用时会把 `use` 改成 `capture` |
+| `backend` | → | 那台上后端的路径 |
+| `reach` | ← | 登记之后的可达表 `[{origin, machine}]`（同 `assets-sync` 的那一格） |
+
+**错误码**：`bad_args`（缺 `origin` / `origin` 空串 · 缺 `dial` / `backend` · 可达表满）。
+⚠ **CLI 面也有它**（`--remote-reach`，入参从 stdin 读），但一次性进程的可达表随进程退出就空 —— 真正的用法是常驻后端的帧面。
+
 #### `skill-read`：读来源那台上的一个 skill（AS2 · 第四波 4B，2026-09-25，**只读**）
 
 「装要用户点」（V113）那一步的读半边：在**来源那台**跑，交出 `<skill 根>/<名>/` 下每个文件的原文（V112「内容，原样拷过去」）。

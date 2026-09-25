@@ -423,7 +423,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     // 〔AS2 · 第四波 4B〕`assets-sync`：等拨号 / 等远端 capture —— 真异步，也在普通 spawn 上。
     // 〔RM1f〕`panorama` 起进程，但**异步等**（`plugin::invoke::run_abortable`）⇒ 同在这一档：
     //   不占 worker（等的是子进程退出，不是一段同步计算），`cancel` 命中时 future 被丢、子进程组被杀。
-    for c in ["ping", "resolve", "assets-sync", "panorama"] {
+    // 〔C4d · 第四波 4B〕`remote-reach`：纯内存登记（一把锁、插一行），同 `ping` 在普通 spawn 上。
+    for c in ["ping", "resolve", "assets-sync", "panorama", "remote-reach"] {
         assert!(
             matches!(d(c), Disposition::Spawn(..)),
             "`{c}` 不该在阻塞档上 —— 那会让它白白变成不可取消"
@@ -551,6 +552,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "ping",
         "resolve",
         "assets-sync",
+        // 〔C4d · 第四波 4B〕可达表登记（纯内存，普通 spawn）。
+        "remote-reach",
         "cancel",
         "link-open",
         "link-data",
