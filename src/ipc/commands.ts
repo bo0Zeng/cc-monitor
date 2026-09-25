@@ -377,9 +377,18 @@ export const commands = {
    * （`history::apikey_account_id_of_dir`）从 `configDir` 推 —— 起会话那一侧调的是同一个函数。
    * 前端**一个字都不许自己推那个 id**（`split('/').pop()` 那一形）：那是在长第二份规则，
    * 漂开的那天症状是「设置里说走 apikey 端点改写、起会话时没走」，而两边看起来都没错。
+   *
+   * 〔RM1a · 第四波〕**收 `origin`**：key 落在会话跑的**那台机器**上 —— 本机进 monitor 自己那一份，
+   * 远端交那台机器的后端写（`apikey-key-set`）。先前远端账号页配的 key 落在本机，远端会话用不上。
    */
   // 〔第四波 ST2〕`baseUrl`：加账号表单 apikey 那一支的 Base URL（`设计/70 §4.4`）；缺席 = 用默认上游。
-  write_apikey_credentials_key: (args: { key: string; configDir: string; baseUrl?: string | null }) =>
+  // 〔RM1a〕`origin`：key 与 Base URL 一起落在那台机器上（本机进 monitor 那一份，远端交那台的后端）。
+  write_apikey_credentials_key: (args: {
+    origin: Origin;
+    key: string;
+    configDir: string;
+    baseUrl?: string | null;
+  }) =>
     invoke<void>("write_apikey_credentials_key", args),
 
   write_skill_file: (args: { cwd: string; skillId: string; path: string; content: string }) =>
@@ -588,21 +597,30 @@ export const commands = {
   /** 读本机 MCP server 清单（user/local/project 三档）。Rust 签名**无 `Result` 包装**。 */
   /**
    * `K-H2a` `KS6`：读 apikey 表那把 key 的状态。**返回里永远只有掩码。**
+   * 〔RM1a〕收 `origin`：远端读的是**那台机器上**那一份（问那台的后端 `apikey-read`）。
    */
-  read_apikey_credentials_status: () =>
-    invoke<ApikeyCredentialsStatus>("read_apikey_credentials_status"),
+  read_apikey_credentials_status: (args: { origin: Origin }) =>
+    invoke<ApikeyCredentialsStatus>("read_apikey_credentials_status", args),
 
   /**
-   * `K-H2b` `KH2B7`：问「这几个**本机** configDir 在 apikey 表里有没有行（走不走 apikey 端点改写）」。
+   * `K-H2b` `KH2B7`：问「这几个 configDir 在 apikey 表里有没有行 · 中转在不在」。
    *
-   * ⚠ **只答本机**，而且那不是欠账：中转是**每台机器自己的一个进程**、注入的是**回环**地址
-   * （自指）⇒ 本机这一侧**在结构上答不了远端那台**。命令面的登记
-   * （`parity_ledger` 的 `apikey.routing`，`NaturallyAsymmetric`）写着同一条理由。
+   * 〔RM1a · 第四波〕**收 `origin`**：两件事都问**那台机器**（远端由那台的后端答：
+   * 表里有哪几行 `apikey-read` · 口上有没有人在听 `relay-status`）。先前「只答本机」的理由是
+   * 「本机这一侧在结构上答不了远端那台」—— 今天远端那台自己答。
    * ⚠ 返回类型是**手写镜像**（`ApikeyRoutingView` 住 `src/accounts.ts`），
    * 与 Rust 的 `ApikeyRouting` **手动同步、今天没有判据对拍** —— 如实记，别读成有人守。
    */
-  apikey_routing_for: (args: { configDirs: string[] }) =>
+  apikey_routing_for: (args: { origin: Origin; configDirs: string[] }) =>
     invoke<ApikeyRoutingView>("apikey_routing_for", args),
+
+  /**
+   * 〔RM1a · 第四波〕让**那台远端机器**上有一个中转（层 1）在跑：口上没人听就由那台的后端起一个。
+   * **本机拒**（本机那一个由 monitor 监护）。⚠ 今天界面上没有调用方 —— 自动触发点（远端链路握手完成 /
+   * 起远端会话）不在 RM1a 写区，交主会话接。
+   */
+  relay_ensure: (args: { origin: Origin }) =>
+    invoke<{ listening: boolean; started: boolean }>("relay_ensure", args),
 
   read_mcp_servers: (args: { projectDir: string | null }) =>
     invoke<McpServerEntry[]>("read_mcp_servers", args),
@@ -758,8 +776,13 @@ export const commands = {
   list_remote_tmux: (args: { origin: string }) =>
     invoke<TmuxSession[] | null>("list_remote_tmux", args),
 
-  /** 一次配置面审计（只读、一次性，不新增轮询）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
-  config_surface_report: () => invoke<ConfigSurfaceReport>("config_surface_report"),
+  /**
+   * 一次「足迹」（原「配置面审计」）：只读、一次性，不新增轮询。返回值字段被真消费 ⇒ 生成物（桶③）。
+   * 〔RM1a · 第四波〕**收 `origin`**：本机照旧在 monitor 进程里扫；远端问那台机器的后端要路径事实
+   * （`footprint-probe`），判定走同一份 `build_rows`。远端那一栏的界面归 ST2 接。
+   */
+  config_surface_report: (args: { origin: Origin }) =>
+    invoke<ConfigSurfaceReport>("config_surface_report", args),
   // U-CC1：数据面漂移记账（只读、按需一次，不轮询）。
   drift_ledger_report: () => invoke<DriftFaceReport[]>("drift_ledger_report"),
   // P8a：Claude Code 的 marketplace 面（只读、按需一次，不轮询）。

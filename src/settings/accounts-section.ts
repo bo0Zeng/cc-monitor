@@ -211,9 +211,14 @@ export class AccountsSection {
   /**
    * A2：表单上选了「第三方 apikey」、终端已拉起、但这个号**还没出现在列表里**的那几把 key（名 → key）。
    * 只住内存，不落盘、不进 DOM；放弃 / 写成 / 写不成都会把它删掉。
+   *
+   * 〔RM1a〕每一把**记着它是给哪台机器建的**：key 从此写进那台机器上的那一份表，
+   * 而这一页会换机器 —— 不记的话，远端 A 上建的号若与本机某个号同名，key 会被写到本机去。
+   * ⇒ 只在**同一台**机器的列表里出现时才写。
    */
   // 〔第四波 ST2〕值多带一格 Base URL（表单 apikey 那一支的第二格；缺席 = 默认上游）。
-  private readonly pendingKeys = new Map<string, { key: string; baseUrl?: string }>();
+  // 〔RM1a〕再带一格 origin：建它的那台机器（见上）。两格一起跟着那把 key 走到那台机器上。
+  private readonly pendingKeys = new Map<string, { key: string; origin: Origin; baseUrl?: string }>();
   private pendingBox: HTMLElement | null = null;
 
   constructor() {
@@ -1130,8 +1135,10 @@ export class AccountsSection {
     };
     const launched =
       where === "local" ? await this.launchLocalStep(step) : await this.launchStep(step);
-    if (launched && req.access === "apikey")
-      this.pendingKeys.set(req.name, { key: req.key, baseUrl: req.baseUrl });
+    if (launched && req.access === "apikey") {
+      const origin = where === "local" ? BACKEND_LOCAL_ORIGIN : this.machineOrigin();
+      this.pendingKeys.set(req.name, { key: req.key, origin, baseUrl: req.baseUrl });
+    }
     this.renderPendingKeys();
   }
 
@@ -1172,7 +1179,9 @@ export class AccountsSection {
    * ⚠ 出现了但没有 configDir（账号 0 那种）⇒ 配了也不会被用上：丢掉 key 并说出来，不假装写成了。
    */
   private async flushPendingKeys(accounts: Account[]): Promise<void> {
-    for (const [name, { key, baseUrl }] of [...this.pendingKeys]) {
+    for (const [name, { key, origin, baseUrl }] of [...this.pendingKeys]) {
+      // 〔RM1a〕只在建它的那台机器的列表里认领（见 `pendingKeys` 头注）。
+      if (origin !== this.machineOrigin()) continue;
       const a = accounts.find((x) => x.name === name);
       if (!a) continue;
       this.pendingKeys.delete(name);
@@ -1189,6 +1198,14 @@ export class AccountsSection {
     this.renderPendingKeys();
   }
 
+  /**
+   * 这一页此刻显的是哪台机器 —— apikey 那几条命令按它定目标（本机逐字送 `"<local>"`）。
+   * 〔RM1a〕先前那三条命令不收 origin，远端页配的 key 落在本机。
+   */
+  private machineOrigin(): Origin {
+    return this.origin ?? BACKEND_LOCAL_ORIGIN;
+  }
+
   /** 唯一那一处把 key 交给后端的地方（行上的「保存」与表单的「建好后写」都走它）。 */
   private async writeApikey(
     key: string,
@@ -1198,7 +1215,12 @@ export class AccountsSection {
     baseUrl?: string,
   ): Promise<void> {
     try {
-      await commands.write_apikey_credentials_key({ key, configDir, ...(baseUrl === undefined ? {} : { baseUrl }) });
+      await commands.write_apikey_credentials_key({
+        origin: this.machineOrigin(),
+        key,
+        configDir,
+        ...(baseUrl === undefined ? {} : { baseUrl }),
+      });
       showActionFailureToast("已写入 apikey", `${name} 的 apikey 已写进 apikey 表。`, {
         level: "info",
         durationMs: 3000,
@@ -1222,11 +1244,10 @@ export class AccountsSection {
    *    那只影响状态那一行的措辞，而配 key 本身是这一格存在的理由。
    * ② **没有 `configDir` 的账号（账号 0）不给这一格**：起会话那一侧对它逐字回 `None`
    *    （`apikey_account_id` 头注：「说不出 id 就不注入」）⇒ 给它配一把 key 是配了也不生效。
-   * ③ ⚠⚠ **如实记一条今天没买到的**：这一页显的是 `this.origin` 那台机器的账号，
-   *    而 `read_apikey_credentials_status` / `write_apikey_credentials_key` / `apikey_routing_for`
-   *    **全是本机**的（那三条命令自己的头注逐字都写着「只答本机」）。
-   *    在 `cc-acct-iso` 的布局下两边的目录末段名同名 ⇒ 实际用起来对得上，
-   *    但**这一格没有任何东西钉着**。这是 `K-H2a` 起就有的形状，本轮没有把它变好也没有变坏。
+   * ③ 〔RM1a · 第四波〕这一页显的是 `this.origin` 那台机器的账号，读写那份文件的两条命令
+   *    （`read_apikey_credentials_status` / `write_apikey_credentials_key`）**按同一台机器**去
+   *    （[`machineOrigin`]）—— 远端页读写的是那台机器上那一份，不再是本机的。
+   *    「有没有行」（`apikey_routing_for`）同样问这一页那台机器（远端由那台的后端答 `apikey-read`）。
    */
   private async readApikeyState(
     accounts: Account[],
@@ -1234,7 +1255,10 @@ export class AccountsSection {
     const dirs = accounts.map((a) => a.configDir).filter((d): d is string => !!d);
     let routed: string[] = [];
     try {
-      routed = dirs.length ? (await fetchLocalApikeyRouting(dirs)).routed : [];
+      // 〔RM1a〕问**这一页那台机器**（远端由那台的后端答），不再问本机。
+      routed = dirs.length
+        ? (await commands.apikey_routing_for({ origin: this.machineOrigin(), configDirs: dirs })).routed
+        : [];
     } catch {
       // 口径①：这一格失败只让状态那一行说「还没有它那一行」，不挡配 key。
     }
@@ -1243,7 +1267,9 @@ export class AccountsSection {
       .map((a) => ({ name: a.name, configDir: a.configDir, routed: routed.includes(a.configDir) }));
     let fileBlock: HTMLElement;
     try {
-      fileBlock = renderApikeyFileBlock(await commands.read_apikey_credentials_status());
+      fileBlock = renderApikeyFileBlock(
+        await commands.read_apikey_credentials_status({ origin: this.machineOrigin() }),
+      );
     } catch (e) {
       fileBlock = document.createElement("div");
       fileBlock.className = "apikey-file-problem";

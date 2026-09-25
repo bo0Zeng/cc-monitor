@@ -46,7 +46,16 @@ pub(super) mod tests {
     /// ㈠ 层 2 那棵树里的文件（相对**层 2 的根**）。**相等，不是地板**。
     // 〔`A3` 第二波〕根从 `accounts/` 收窄到 `accounts/apikey/`（现推，不是写死）；
     // 账号隔离工具的查询（`accounts/iso.rs`）**不是**层 2，不进本表 —— 它登记在 [`ACCOUNT_DOMAIN_OTHER_FILES`]。
-    const ACCOUNT_LAYER_FILES: &[&str] = &["creds.rs", "mod.rs", "policy.rs", "table.rs"];
+    // 〔RM1a · 第四波〕+`file_face.rs`：这台机器上那份凭据文件的帧面读写口（`apikey-key-set` / `apikey-read`）。
+    // 它是层 2 自己的状态、同一份文件、同一套格式 ⇒ 住层 2 这棵树；它用到层 1 的只有 `segment_is_safe`
+    // （已在 [`CONTRACT`] 里），接口面一项没变宽。
+    const ACCOUNT_LAYER_FILES: &[&str] = &[
+        "creds.rs",
+        "file_face.rs",
+        "mod.rs",
+        "policy.rs",
+        "table.rs",
+    ];
 
     /// 〔`A3` 第二波〕账号**域**里、层 2 **之外**的那几份（相对账号域根）。
     ///

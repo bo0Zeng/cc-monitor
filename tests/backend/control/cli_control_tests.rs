@@ -218,6 +218,9 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         // 〔F7a · 第三波 09-24〕`files-home`：问这台机器的 home，无入参、有输出字段 `path`。
         "files-home",
         "exit-policy-read",
+        // 〔RM1a · 第四波〕`apikey-read`：这台机器上那份凭据文件的状态，无入参。
+        // 同族 `apikey-key-set` 要输入（`account` / `key`，key 从 stdin 进），不在表里。
+        "apikey-read",
         "files-index-status",
         "history-projects",
         "ping",

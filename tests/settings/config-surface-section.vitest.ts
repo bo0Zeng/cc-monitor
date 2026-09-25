@@ -76,6 +76,8 @@ function report(over: Partial<ConfigSurfaceReport> = {}): ConfigSurfaceReport {
     ],
     claude_config_dir: "/h/.claude",
     home: "/h",
+    // 〔RM1a 合并〕报告带回它答的是哪台（生成物里 `origin` 是必填的）；夹具默认是本机那一份。
+    origin: "<local>",
     ...over,
   };
 }

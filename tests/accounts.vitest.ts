@@ -1118,7 +1118,9 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
     invokeMock.mockResolvedValue({ routed: ["/h/.claude-accts/acct-a"], running: true });
     const got = await fetchLocalApikeyRouting(["/h/.claude-accts/acct-a", "/h/.claude-accts/acct-b"]);
     // 命令名打错在生产上是**运行时** `invoke` reject（不是编译错）⇒ 在这里钉死它。
+    // 〔RM1a〕那条命令收了 origin；`fetchLocalApikeyRouting` 照旧只问本机（逐字送后端那个本机串）。
     expect(invokeMock).toHaveBeenCalledWith("apikey_routing_for", {
+      origin: "<local>",
       configDirs: ["/h/.claude-accts/acct-a", "/h/.claude-accts/acct-b"],
     });
     expect(got).toEqual({ routed: ["/h/.claude-accts/acct-a"], running: true });

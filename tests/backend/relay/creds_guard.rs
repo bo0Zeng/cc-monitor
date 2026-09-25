@@ -245,35 +245,25 @@ mod tests {
             .collect()
     }
 
-    /// ★★★ **`K-H2a` 裁四那句话的判据**〔`E` 阻-2 回修，08-27〕：
-    /// **本 crate 不许打开 `creds-core` 的 `harden` feature。**
+    /// ★★★ **`K-H2a` 裁四那句话的判据** —— 〔RM1a · 第四波〕裁四**收窄**之后，本条改钉收窄后的那一句。
     ///
-    /// # 它守的是一句**承重**的话，而那句话此前零判据
+    /// # 那句话怎么变的
     ///
-    /// 本件对外声称的形状逐字是：「『backend 写不了这份文件』是**编译器**兜的，
-    /// 不是一条判据兜的」——`creds_core::perm::make_private` 与 `create_private` 都挂在
-    /// `harden` 上，backend 不开它 ⇒ 那两个函数在本 crate 里**根本不存在**。
+    /// 原话：「本 crate 不许打开 `creds-core` 的 `harden` feature」—— 那时「backend 写不了这份文件」
+    /// 是**编译器**兜的（`make_private` / `create_private` 都挂在 `harden` 上，不开就不存在）。
+    /// 远端那台机器上的 key 只能由那台的后端写（账号层自己的状态文件，`调研/第四波记录/RM1a.md §1`）
+    /// ⇒ feature 开了。编译器那一格没了，**两条判据接住**：
     ///
-    /// ⚠ 而「不开」这件事本身，此前**只是 manifest 上的一行约定**。
-    /// `E` 阶段实打：给 `src/backend/Cargo.toml` 那一行加上 `features = ["harden"]`
-    /// ⇒ **backend 474 passed / 0 failed，一条都没红**（我自己复打确认，读数逐字相同），
-    /// 顺带依赖树 **96 → 101**、`windows*` 条目 **21 → 26**。
-    /// ⇒ 五轮买来的那格「性质由编译器买」，整个挂在这一行上，而没人看着它。
+    /// 1. **本条**：`harden` 在本 crate 那份 manifest 里只从**一处声明**进来 —— `creds-core` 那一行
+    ///    （不许从 `[features]` 段、`default-features`、第二条重复声明里悄悄多开一路）。
+    /// 2. `readonly_guard::g6_dependency_signoff::the_credentials_write_half_is_reached_only_from_the_account_file_face`：
+    ///    写半边在本 crate 生产段里的引用处 == 第四层登记的那一份（两向相等）。
     ///
-    /// # 人群 = **整个 crate 的 manifest**，不是某一行
+    /// ⚠ **非空对照照旧承重**：同一把尺子量 monitor 那份 manifest ⇒ 必须**数得到** `harden`。
     ///
-    /// 只断言「`creds-core` 那一行不含 `harden`」是不够的：`harden` 也可能从
-    /// `[features]` 段、`default-features`、或另一条重复的依赖声明里进来。
-    /// ⇒ 本条断言 **`harden` 这个词在本 crate 的整份 `Cargo.toml` 里出现 0 次**。
-    ///
-    /// ⚠ **非空对照是承重的**：同一把尺子量 monitor 那份 manifest ⇒ 必须**数得到** `harden`
-    /// （monitor 是唯一该开它的一侧）。没有这一格，「0 次」可能只是因为尺子瞎了。
-    ///
-    /// ⚠ 它**认不出**什么：`--features harden` 从**命令行**传进来（`cargo test -p … --features`）。
-    /// 那条路不经 manifest，本条看不见；今天没有任何脚本这么跑后端（`gate.sh` 里
-    /// backend 那道门逐字是 `cd src/backend && cargo test`，零 `--features`）。
+    /// ⚠ 它**认不出**什么：`--features harden` 从**命令行**传进来（那条路不经 manifest）。
     #[test]
-    fn this_crate_never_turns_on_the_write_half_of_the_credentials_crate() {
+    fn this_crate_turns_on_the_write_half_of_the_credentials_crate_in_exactly_one_declaration() {
         let mine = std::fs::read_to_string(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"),
         )
@@ -286,34 +276,33 @@ mod tests {
             "本 crate 的 manifest 里 `creds-core` 的声明不是恰好一条 —— 取法坏了或有人加了第二条"
         );
 
-        // ⚠ **剥掉 `#` 注释行再数** —— 这一步是判据第一跑逼出来的：
-        //   本 crate 的 manifest 里有**我自己写的两行注释**逐字提到 `harden`
-        //   （「刻意不开 `harden`」「不开 `harden` ⇒ Windows 上读不了 DACL」）
-        //   ⇒ 第一版实测「出现 2 次，应当 0 次」。
-        //   ★ 那两行注释**恰恰是该留的**（它们解释了为什么不开），
-        //     所以要动的是人群不是被守对象：**判据只该看生效的声明，不该看解释它的话。**
+        // ⚠ **剥掉 `#` 注释行再数**：manifest 里有几行注释逐字提到这个词（解释为什么开），
+        //   判据只该看生效的声明，不该看解释它的话。
         let mine = guard_core::strip_hash_comment_lines(&mine);
-        let n = mine.matches("harden").count();
+        let feature = format!("har{}", "den");
+        let lines: Vec<&str> = mine.lines().filter(|l| l.contains(&feature)).collect();
         assert_eq!(
-            n, 0,
-            "本 crate 的 `Cargo.toml` 里出现了 `harden` {n} 次，应当 **0** 次。\n\
-             ⚠ `K-H2a` 裁四：backend **只许读**那份凭据文件，不许写。\n\
-             `creds_core::perm::{{make_private, create_private}}` 都挂在 `harden` 上 ——\n\
-             一旦打开，「backend 写不了这份文件」就从**编译器兜的**退回成**没人兜的**。\n\
-             （`E` 阶段实打：打开它之后 backend 474 passed，一条都没红。）"
+            lines.len(),
+            1,
+            "本 crate 的 `Cargo.toml` 里生效的 `{feature}` 出现在 {} 行，应当**恰好 1** 行（`creds-core` 那一行）：{lines:?}\n\
+             ⚠ 裁四收窄后：backend 只有账号域那一份写这份文件；多一处声明 = 多一条没人看着的路。",
+            lines.len()
+        );
+        assert!(
+            lines[0].trim_start().starts_with("creds-core = {"),
+            "开 `{feature}` 的那一行不是 `creds-core` 的依赖声明：{}",
+            lines[0]
         );
 
-        // ★ 非空对照：同一把尺子量 monitor 那份 manifest，**必须数得到** `harden`。
-        //   没有这一格，上面那个 0 可能只是因为尺子瞎了。
+        // ★ 非空对照：同一把尺子量 monitor 那份 manifest，**必须数得到**。
         let theirs = std::fs::read_to_string(
             crate::guard_support::repo_root().join("src/bridge/Cargo.toml"),
         )
         .expect("读不到 monitor 的 Cargo.toml");
         let theirs = guard_core::strip_hash_comment_lines(&theirs);
         assert!(
-            theirs.matches("harden").count() >= 1,
-            "非空对照失败：monitor 那份 manifest 里也数不到 `harden` —— \
-             这把尺子是瞎的，上面那条「0 次」证不了什么"
+            theirs.lines().any(|l| l.contains(&feature)),
+            "非空对照失败：monitor 那份 manifest 里也数不到 `{feature}` —— 这把尺子是瞎的"
         );
     }
 
@@ -478,12 +467,15 @@ mod tests {
              ⚠ 它**不许**回到层 1：那会让 `creds-core` 的类型重新爬上层 1 的类型面（`C2`）。",
             header_sites[0]
         );
-        // ★ 另一半：**落盘那个出口在本 crate 里应当一次都没有**（`K-H2a` 裁四：backend 只读）。
+        // ★ 另一半：**落盘那个明文出口在本 crate 里应当一次都没有**。
+        //   〔RM1a〕裁四收窄后本 crate 有了一个写凭据文件的模块（`accounts/apikey/file_face.rs`），
+        //   但它**不自己取明文**：拼落盘文本走 `creds_core::store::merge_account_key`，
+        //   明文出口（`expose_for_persisting`）仍只在 `creds-core` 里那一处 ⇒ 本 crate 这边照旧 0。
         assert_eq!(
             persist_sites.len(),
             0,
-            "backend 里出现了「把 key 写回文件」的出口：{persist_sites:?}\n\
-             裁四逐字：backend 只许读那份文件，不许写。",
+            "backend 里出现了「自己取明文写回文件」的出口：{persist_sites:?}\n\
+             写凭据文件只许经 `creds_core::store` 的纯函数拼，本 crate 不许自己取明文。",
         );
     }
 

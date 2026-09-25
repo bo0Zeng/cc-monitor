@@ -342,7 +342,8 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "config_surface.rs",
-        "config_surface_report",
+        // 〔RM1a〕命令收了 origin 之后，本机那一臂的体搬进 `local_report`（一字未改）；远端那一臂不碰本机 home。
+        "local_report",
         "配置面清单的根",
         "只读诊断页；落点由本模块的 claude 棘轮数着",
     ),

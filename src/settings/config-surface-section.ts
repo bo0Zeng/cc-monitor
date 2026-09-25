@@ -234,15 +234,11 @@ export function formatReportText(r: ConfigSurfaceReport): string {
  *   （`§10.1` 逐字要防的那一形）。⇒ 远端那一台：报告里的 `origin` 与所问**相等**才算数，
  *   否则当作「这台还答不了」；本机：没带 `origin`（旧读口）或带的是本机，才算数。
  *
- * ⚠ 这里经 `as unknown as` 调：今天包装层那条的签名是零参数的，RM1a 改签名之后这一句不用动。
- *   合并时若 RM1a 的参数形状不是 `{ origin }`，改这一处（主会话的活，报告里写着）。
+ * 〔RM1a 合并〕包装层那条的签名就是 `{ origin }`，报告里的 `origin` 由后端那一侧填（本机 `"<local>"`、远端那台的名字）。
  */
 export async function readFootprint(origin: Origin): Promise<ConfigSurfaceReport> {
-  const ask = commands.config_surface_report as unknown as (a: {
-    origin: Origin;
-  }) => Promise<ConfigSurfaceReport>;
-  // 〔C4a〕共用 store 里本机就是 `LOCAL_ORIGIN`（不再是 `null`）⇒ 原样过线。
-  return ask({ origin });
+  // 〔C4a × RM1a〕共用 store 里本机就是 `LOCAL_ORIGIN`（不再是 `null`）⇒ 原样过线；命令签名本来就收 `{ origin }`。
+  return commands.config_surface_report({ origin });
 }
 
 /** 这份报告是不是**所问那台**的答复（见 `readFootprint` 的头注）。 */
