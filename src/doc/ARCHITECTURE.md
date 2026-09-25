@@ -31,12 +31,12 @@
    ┌───────────────────────────────────────────────────────────────────┐
    │                          Rust 后端 (Tauri)                         │
    │                                                                    │
-   │   watcher.rs ─batch handler─► parser.rs ────► messages::JsonlRecord│
-   │       │ (同步同线程调用)                       │                   │
-   │       ▼ active filter                          ▼                   │
-   │   session_map.rs (PID 探活)        event_replay::on_line_batch     │
+   │   本机后端 line 帧 ─local_lines─► LineIntake ─► messages::JsonlRecord│
+   │       │ (与远端同一个收口，CF1)                 │                   │
+   │       ▼                                        ▼                   │
+   │   session_map.rs (PID 探活)    event_replay::on_line_batch_awaited │
    │       │                                       │  按大小分流（每行带 │
-   │       │                                       │  watcher 给的 seq）│
+   │       │                                       │  后端给的行号 seq）│
    │       │                                       │  小→jsonl-line     │
    │       │                                       │  大→jsonl-batch    │
    │       ▼                                       ▼   (切块 chunk_i/N) │
@@ -79,11 +79,11 @@
 
 **关键路径**：
 
-- **watcher batch 同步 + seq 分配**（v2.4 重构 + v2.6 加 seq）：`spawn_watcher` 接 `on_batch: BatchHandler` 回调；一次 `process_file` 把读到的所有行收集成 `Vec<JsonlLine>` **同步**调 `on_batch`，**没有 mpsc 中间层、没有 async drain task**。lib.rs 里 closure 在 watcher 线程内 parse + `replay.on_line_batch(handle, payloads)`。v2.6 加 `seqs: HashMap<PathBuf, u64>` 给每行分配 per-file 单调 seq → `JsonlLinePayload.seq` 透传到前端，**前端 RecordTimeline 按 seq 排序，后端 emit 顺序不再影响视觉**。
-- **大小分流 emit**（v2.4.2，v2.6 chunked emit 简化，Batch5-F17 async 化）：`event_replay::on_line_batch` 按 batch 大小分流：
+- **内容流：本机与远端同一条帧路**（〔CF1 · 2026-09-24〕`设计/00 §2.5 ②`）：monitor 不再自己 watch jsonl —— 本机会话的行是本机常驻后端（`--tail-only --with-bg`）的 `line` 帧，两条本机读循环经 `local_lines` 交给 `ssh_source::consume_local`，与远端 `stream_loop` 用**同一个** `LineIntake`（攒批 ＋ 静默窗 ＋ 旁路快照 ＋ 续点）→ `flush_lines` → `batch_to_payloads` → `on_line_batch_awaited`。seq 是后端给的行号（与快照同一个空间）→ `JsonlLinePayload.seq` 透传到前端，**前端 RecordTimeline 按 seq 排序，后端 emit 顺序不再影响视觉**。（v2.4 的「monitor 自己的 watcher 同步回调」那一套随 CF1 删了。）
+- **大小分流 emit**（v2.4.2，v2.6 chunked emit 简化，Batch5-F17 async 化）：`event_replay::on_line_batch_awaited` 按 batch 大小分流：
   - `payloads.len() < 50`（用户日常敲键 1~N 行）→ 逐条 `emit("jsonl-line")` live 路径
-  - `payloads.len() >= 50`（`claude --resume` 灌历史 / 远端 snapshot 攒批 / 大量追加）→ 切块走 `emit("jsonl-batch")`，前端进入 batch 模式（lazy hljs）。v2.6 简化：删 head/older 区分，统一按 `CHUNK_SIZE=600` 末块先发，前端按 seq 自动排到正确位置。**Batch5-F17**：大批块序列 spawn 到 async_runtime（块间 tokio sleep）——spawn 返回≠emit 完成，顺序敏感调用方（ssh_source 攒批 flush，行须先于断连归档）用 `on_line_batch_awaited`（INVARIANTS § 10）；前端 events.ts 另有突发检测兜底（jsonl-line 积压 >50 主动进 batch 模式）
-- **启动序**（v2.4 修首次启动乱序；Batch5-F18/F19 骨架+优先级）：前端 DOMContentLoaded 后先 invoke `list_active_sessions` 把本地活跃会话**骨架 tab** 全部建出（远端骨架走 `remote-session-added` 事件），再按 localStorage 记忆选 active（上次所在 tab），然后 `emit("frontend-ready", {prioritySid})`。后端 listener 在 async task 里 spin-wait（10ms poll，10s timeout）等 watcher 同步全量扫置位的 `initial_scan_done` → `replay_and_mark_ready(priority_sid)` **按 session 分组**切块 emit（prioritySid 的块先发、组内末块先发、chunk 全局连续编号保 batch-start 哨兵）→ mark ready → **按活跃集对账补发 `session-ended`**（#19 本地用 session_map / #20 远端用 remote_active；前端把 session-ended 与行同队列同序处理，归档落在全部重放行之后，INVARIANTS § 24）。v2.6 简化：**删了 `replaying` flag + catch-up tail 路径**，chunked emit 期间 watcher 真新行直接走 jsonl-line live emit，前端 timeline 按 seq 自动放到正确位置
+  - `payloads.len() >= 50`（`claude --resume` 灌历史 / 远端 snapshot 攒批 / 大量追加）→ 切块走 `emit("jsonl-batch")`，前端进入 batch 模式（lazy hljs）。v2.6 简化：删 head/older 区分，统一按 `CHUNK_SIZE=600` 末块先发，前端按 seq 自动排到正确位置。**Batch5-F17**：大批块序列在调用方任务里发完才返回（块间 tokio sleep，INVARIANTS § 10）——行须先于断连归档；〔CF1〕原先那个 spawn 出去的孪生只供本机 watcher 用，随它删了；前端 events.ts 另有突发检测兜底（jsonl-line 积压 >50 主动进 batch 模式）
+- **启动序**（v2.4 修首次启动乱序；Batch5-F18/F19 骨架+优先级）：前端 DOMContentLoaded 后先 invoke `list_active_sessions` 把本地活跃会话**骨架 tab** 全部建出（远端骨架走 `remote-session-added` 事件），再按 localStorage 记忆选 active（上次所在 tab），然后 `emit("frontend-ready", {prioritySid})`。后端 listener 在 async task 里直接 `replay_and_mark_ready(priority_sid)`（〔CF1〕原先那段「10ms 一拍等本机 watcher 首扫完成」随 watcher 删了；没到的行 ready 之后照样实时发） **按 session 分组**切块 emit（prioritySid 的块先发、组内末块先发、chunk 全局连续编号保 batch-start 哨兵）→ mark ready → **按活跃集对账补发 `session-ended`**（#19 本地用 session_map / #20 远端用 remote_active；前端把 session-ended 与行同队列同序处理，归档落在全部重放行之后，INVARIANTS § 24）。v2.6 简化：**删了 `replaying` flag + catch-up tail 路径**，chunked emit 期间新到的行直接走 jsonl-line live emit，前端 timeline 按 seq 自动放到正确位置
 - **前端按 seq 排序**（v2.6 B 重构）：`RecordTimeline.insert(seq, element)` 用 binary search 找位置 → `stream.insertNode(element, anchor)` 同步处理 stickToBottom 贴底。**消除了** PayloadSource batch/live / inPrependMode / pendingPrependFragment 等 5 个 flag。tool-group 合并改后处理算法：插入时 `timeline.peekPrev(seq)` 看左邻居，是 tool-group 就 `addToToolGroup`，否则建新 group 入 timeline（详 render-stream-record.ts）
 - **active session 自动同步**（v2.4 issue #2）：tabs.ts `onLine` 透传 payload 给 `renderStreamRecord`；sink.onRealUserInput 仅在 `result.kind === "card" && message.type === "user"` 触发（v2.6 删 source 参数后用 message.type 判定）→ TabManager.userActive 检查 `autoFollowUserActive` toggle + 5s `manualOverrideUntil` → `switchTo(sid, "auto")` + 可选 `invoke("bring_monitor_to_front")`
 - **cc 集成绑定**：PS 跑 `__ccm_bind` 写 `ps-await/<PID>.json` + 改窗口标题为 marker → `bind.rs` 监听 + EnumWindows → 写 `ps-registry/<PID>.json` + 删 await → PS 检测到删除恢复标题
@@ -326,7 +326,7 @@ monitor 与外部进程的所有通信都在 `~/.claude/work/` 下：
 
 | 路径 | 写入方 | 读取方 | 用途 |
 |---|---|---|---|
-| `<claude_dir>/projects/<encoded-cwd>/<sid>.jsonl` | Claude Code CLI | monitor `watcher.rs` / `history.rs` | session 消息流，monitor 实时增量 + 历史浏览 |
+| `<claude_dir>/projects/<encoded-cwd>/<sid>.jsonl` | Claude Code CLI | 本机后端（`line` 帧，CF1 起）/ monitor `history.rs` | session 消息流，monitor 实时增量 + 历史浏览 |
 | `<claude_dir>/sessions/<PID>.json` | Claude Code CLI | monitor `session_map.rs` | 活跃 session 探活（PID + procStart 双校验；procStart 缺失时自动降级仅 STILL_ACTIVE，详 INVARIANTS § 18） |
 | `<claude_dir>/tasks/<sid>/<id>.json` (v2.3) | Claude Code CLI (`TaskCreate`/`TaskUpdate`/`TaskStop` 工具) | monitor `tasks.rs` | Tab task 面板数据源；附 `.lock` / `.highwatermark` 控制文件需忽略 |
 
@@ -365,7 +365,7 @@ replay 时一次性发整个 Vec<JsonlLinePayload>，前端 push 进同一 queue
 
 **为什么**：旧内容逐条插到贴底视口上方会让浏览器逐帧重排 + 重做 scroll anchoring，HiDPI/高刷屏分数像素下 ±0.5px 高频抖动（deferMode 时代实测 66→1 帧）；F40a 让**启动重放**的上方插入为 0，且 9.4k 条重放只建 ~尾块+150×tabs 张卡（建卡是重放期最大成本——markdown/DOMPurify/pretext 全免）。历史方案 deferMode/`flushDeferred`/`attachBatch` 已退役。大增量批（>600 行切块落已渲染 tab）的老块由 F40b `midBatchBuffer` 缓冲、批末一次挂载。
 
-〔2026-09-24 · `设计/10` 骨架〕**上面「尾部优先收纳」与下面「上翻补批」只对没接上骨架的 tab 逐字成立**（单洞后缀）。拿得到索引（`read_session_index` = 后端 `--read-session-from-offset --index`）的 tab 与历史查看器接上 `SkeletonView`：没物化的 seq 区间由**占位**顶住（高 = 索引里宽度无关料的第一级粗估）⇒ 一接上滚动条就是全会话的；每次滚动只物化与视口 ±0.5 屏相交的那段；已渲染集 = 尾后缀 ∪ 岛。接上之后正文不再驻留：`TailWindow` 只留 200 条、`EventReplay.history` 对该会话只留尾巴 600 条，其余按偏移取回（`read_session_range`）。不变量全文在 INVARIANTS § 21 第 3b 条。
+〔2026-09-24 · `设计/10` 骨架〕**上面「尾部优先收纳」与下面「上翻补批」只对没接上骨架的 tab 逐字成立**（单洞后缀）。拿得到索引（〔C4b〕界面经通道说帧命令 `history-index`，后端出成品；CLI 那一臂是 `--read-session-from-offset --index`）的 tab 与历史查看器接上 `SkeletonView`：没物化的 seq 区间由**占位**顶住（高 = 索引里宽度无关料的第一级粗估）⇒ 一接上滚动条就是全会话的；每次滚动只物化与视口 ±0.5 屏相交的那段；已渲染集 = 尾后缀 ∪ 岛。接上之后正文不再驻留：`TailWindow` 只留 200 条、`EventReplay.history` 对该会话只留尾巴 600 条，其余按偏移取回（`read_session_range`）。不变量全文在 INVARIANTS § 21 第 3b 条。
 
 F40b 上翻补批：active tab 滚到顶部 800px 内自动从 `TailWindow` 弹 200 条/批渲染（`unwrapAll`→`batchInsert`→reconcile(空组壳连根摘并出账)→`rebuildNow`→同步手动补偿 scrollTop），顶端 `.stream-more-above` 哨兵显示剩余条数；选区进行中暂缓；不可滚+账本有余的 tab 在 switchTo 时踢一次 fill 自链（INVARIANTS § 21.3）。
 
@@ -374,7 +374,7 @@ F40b 上翻补批：active tab 滚到顶部 800px 内自动从 `TailWindow` 弹 
 
 **为什么不另写 viewer 渲染器**：再写一套渲染会与主管线漂移（SessionViewer 漏 pendingToolResults 是历史教训）。复用 TabManager 零功能差。
 
-**历史 + 实时一致性**：独立窗口订阅 `jsonl-line`（按 sid 过滤）拿实时增量；历史经 `replay_session_to_window` 从 event_replay buffer **定向 emit 给本窗口**——两者都是 watcher 的 **per-file seq 空间**，混进同一 RecordTimeline 顺序天然正确，重叠由前端 `seen` set 去重。**不发 frontend-ready**（那会触发对所有窗口的全量 replay）。仅活跃 session 在 buffer；archived 走前端一次性文件读。capability 必须含 `viewer-*`（见 capabilities/default.json）。
+**历史 + 实时一致性**：独立窗口订阅 `jsonl-line`（按 sid 过滤）拿实时增量；历史经 `replay_session_to_window` 从 event_replay buffer **定向 emit 给本窗口**——两者都是后端给的 **per-file 行号 seq 空间**，混进同一 RecordTimeline 顺序天然正确，重叠由前端 `seen` set 去重。**不发 frontend-ready**（那会触发对所有窗口的全量 replay）。仅活跃 session 在 buffer；archived 走前端一次性文件读。capability 必须含 `viewer-*`（见 capabilities/default.json）。
 
 **踩过的坑（INVARIANT § 22，含 F82a 新增两条）**：见 §22 全六条。摘要：① 开窗命令必须 `async`（否则主线程自死锁）；② 定向事件 target-kind 对齐（viewer；settings 用广播↔模块级 listen 的 Any↔Any 同步）；③ 异步 listen 先注册再 emit；④ 精简模式别塌 grid 行（viewer 只定义剩余 item 行数；settings 直接隐藏 grid 容器 `#app` 整块）；⑤ **关窗要 `core:window:allow-close` 能力**（`core:window:default` 不含，getCurrentWindow().close() 否则被 ACL 静默拒）；⑥ **复用 dispatcher 的独立窗口必须自调 `dispatcher.start()`+`applyOverrides`**（否则窗内快捷键录制收不到键、Esc 关不了嵌套 overlay；别手搓 window Esc 会双关窗）。
 

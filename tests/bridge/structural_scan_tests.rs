@@ -2687,6 +2687,25 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// `tool_registry`（→ `tool_registry_environment_tests.rs`）。
     /// 另有**真新增的一条**（退役判据留下的墓碑），挂在本表末尾、单独写了理由。
     const TOMBSTONED: &[(&str, &str, usize)] = &[
+        // 🔴 〔C4b · 第四波 4B〕插件市场那条命令改走通道，monitor `plugins.rs` 连同它的形状收口删了；
+        //    收口搬到了界面那一侧（`decodeSurvey`），那一节的标题逐字记着它从哪搬来 ⇒ 第②条出路。
+        (
+            "tests/settings/plugins-section.vitest.ts",
+            "parse_survey_lines",
+            1,
+        ),
+        // 🔴 〔C4b · 第四波 4B〕`accounts.ts` 那个 `"__local__"` 合进 `LOCAL_ORIGIN`（`设计/00 §2.5 ①`），
+        //    钉「两者刻意不同」的那条判据随之改成钉合了之后的形状；TS 那一节点它旧名讲来历 ⇒ 第②条出路。
+        (
+            "tests/ipc/commands.vitest.ts",
+            "the_two_same_named_local_origin_constants_stay_deliberately_different",
+            1,
+        ),
+        (
+            "tests/bridge/backend_policy_tests.rs",
+            "the_two_same_named_local_origin_constants_stay_deliberately_different",
+            1,
+        ),
         // 〔SR1b 子步 3 · 2026-09-24〕界面进程零 SSH：`inproc_dial.rs`（SFTP 那一份拨号）整份删了 ⇒ 从界面侧搬去后端的
         //   几个旧函数名（跳板 · agent 鉴权）全仓只剩散文；`sftp_move_ledger`（SFTP 14 处拨号的挡路石底账）随事做完退役。
         ("src/backend/dial/connect.rs", "connect_via_jump", 1),
@@ -3786,7 +3805,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/filewin/fonts.rs", 2), // 〔F9c 第四波 09-24〕0 → 2（探针来路里那两句「存不回去」的函数名随只读一档删了）
         ("src/bridge/src/history.rs", 5), // 〔RW1〕+1：本机删会话那道路径守卫整段搬去后端 // 〔RW1〕+3：本机分叉的实现（`branch_impl` / `write_branch_file` / `read_jsonl_values`）交给后端
         ("src/bridge/src/launch.rs", 1),
-        ("src/bridge/src/lib.rs", 3), // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔SR1b 子步 3〕+1：`sftp_move_ledger` 退役
+        ("src/bridge/src/lib.rs", 4), // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔SR1b 子步 3〕+1：`sftp_move_ledger` 退役 · 〔C4b〕+1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4）
         ("src/bridge/src/local_backend_host.rs", 1),
         ("src/bridge/src/local_origin_registry.rs", 1),
         ("src/bridge/src/spawn_managed.rs", 2),
@@ -3848,7 +3867,18 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/tool_registry_environment_tests.rs", 1),
         ("tests/evidence/K-R20-C-deadname-census.py", 1),
         ("tests/evidence/S29-legacy-compat-census.py", 11),
-        ("tests/ipc/commands.vitest.ts", 4), // 〔AL1〕+2：K-R49 增量账里 `write_account_aliases` 那两行
+        ("tests/ipc/commands.vitest.ts", 5), // 〔AL1〕+2：K-R49 增量账里 `write_account_aliases` 那两行 // 〔C4b〕+1：「刻意不同」那条判据合并后改名，本机只有一个表示那一节点它旧名
+        // 〔C4b · 第四波 4B〕`"__local__"` 合进 `LOCAL_ORIGIN`，「两个同名常量刻意不同」那条判据改成钉合了之后的形状，旧名挂一块。
+        ("tests/bridge/backend_policy_tests.rs", 1),
+        // 〔C4b · 第四波 4B〕会话读面三条 Tauri 命令（骨架索引 · 大纲清单 · 会话内查找）退役、改走通道：
+        //   点它们旧名的来历段各挂一块（包装层两段 · 新住址头注 · 骨架模块头注 · 判据替身头注）。
+        ("src/bridge/src/session_skeleton.rs", 1),
+        ("src/bridge/src/snapshot_resume.rs", 1),
+        ("src/ipc/commands.ts", 3), // 会话读面两段 ＋ 插件市场一段
+        ("src/session-reads.ts", 1),
+        ("src/settings/plugins-section.ts", 1),
+        ("tests/settings/plugins-section.vitest.ts", 1),
+        ("tests/test-support/chan-fake.ts", 1),
         // 〔F7c 收尾 09-24〕SFTP 那一族收到只剩传输：删掉的命令 / 函数 / 判据名在这几份里逐处挂了墓碑。
         ("src/bridge/src/filewin/mod.rs", 2),
         ("src/bridge/src/filewin/transfer.rs", 4),

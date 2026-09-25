@@ -28,6 +28,7 @@ import {
 import type { McpSyncRow } from "../../src/generated/McpSyncRow";
 import type { McpSyncPreview } from "../../src/generated/McpSyncPreview";
 import { LOCAL_ORIGIN } from "../../src/ipc/origin";
+import { commands } from "../../src/ipc/commands";
 import { REPO_ROOT } from "../test-support/repo-root";
 
 const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -155,7 +156,12 @@ describe("〔AS1〕面板：看差异 → 勾 → 写", () => {
     here = { origin: LOCAL_ORIGIN, dir: "/p" },
     onWrote = vi.fn(),
   ) {
-    const panel = new McpSyncPanel(() => here, onWrote);
+    const panel = new McpSyncPanel(() => here, onWrote, {
+      machines: () => commands.list_remote_mcp_origins(),
+      dirs: (a) => commands.list_mcp_project_dirs(a),
+      preview: (a) => commands.mcp_sync_preview(a),
+      apply: (a) => commands.mcp_sync_apply(a),
+    });
     document.body.replaceChildren(panel.element);
     panel.reset();
     await settle();

@@ -190,9 +190,10 @@ fn stale_means_plan_again_not_write_anyway() {
     std::fs::remove_dir_all(&h).ok();
 }
 
-/// ★ 删（`after = null`）：盘上还是算的那一份 ⇒ 删；已经变了 ⇒ 不删、重算。
+/// ★ 删（`after = null`）：交给门的 `expect` 就是计划的 `before`；门回 `stale`（盘上不是那一份）⇒ 不删、重算；
+/// 〔RM1e〕**删前零 `peek`** —— CAS 在写口（后端 `files-delete` 的 `expect`）闭合，不再先核一趟再删。
 #[test]
-fn delete_checks_the_disk_still_holds_what_was_planned() {
+fn delete_hands_the_planned_bytes_to_the_door_as_expect() {
     let h = temp_home("pc-del");
     let repo = h.display().to_string();
     std::fs::write(h.join("a.json"), "old").unwrap();
@@ -206,9 +207,17 @@ fn delete_checks_the_disk_still_holds_what_was_planned() {
     assert_eq!(
         *plans.asked.borrow(),
         2,
-        "盘上不是计划里那一份 ⇒ 先重算，不删"
+        "门说盘上不是计划里那一份 ⇒ 重算，不硬删"
     );
-    assert_eq!(door.deleted.borrow().as_slice(), &["a.json".to_string()]);
+    assert_eq!(
+        door.deleted.borrow().as_slice(),
+        &[
+            ("a.json".to_string(), "stale-view".to_string()),
+            ("a.json".to_string(), "old".to_string()),
+        ],
+        "每一次删都带着那一份计划的 before 交给门"
+    );
+    assert_eq!(*door.peeked.borrow(), 0, "删那一支又先 peek 了一趟");
     assert!(!h.join("a.json").exists());
     std::fs::remove_dir_all(&h).ok();
 }
@@ -300,4 +309,224 @@ fn the_edit_table_matches_the_backend_plan_ops() {
     ours.sort();
     assert!(theirs.len() >= 6, "后端那一侧只抽到 {theirs:?}");
     assert_eq!(ours, theirs, "写那几种的「算」op 两边对不上");
+}
+
+// ── 〔RM1e〕没装 / 太旧 ⇒ 推字节再问一次（`ask_or_push`）──────────────────────────────
+//
+// 要求住址：用户 09-24 **V108**（`设计/99 §1`）逐字「一个只装全景引擎的独立小程序，随后端部署、
+// **只传给开过远端全景的机器**」；推的形状与触发点见 `调研/第四波记录/RM1c.md §4 ①`、`RM1e.md §1.1`。
+
+/// 问的替身：按顺序一份一份交，记下被问了几次。
+struct Answers {
+    queue: RefCell<Vec<Result<Value, Asked>>>,
+    asked: RefCell<usize>,
+}
+impl Answers {
+    fn new(mut v: Vec<Result<Value, Asked>>) -> Self {
+        v.reverse();
+        Answers {
+            queue: RefCell::new(v),
+            asked: RefCell::new(0),
+        }
+    }
+    fn next(&self) -> impl std::future::Future<Output = Result<Value, Asked>> {
+        *self.asked.borrow_mut() += 1;
+        let a = self.queue.borrow_mut().pop().expect("被多问了一次");
+        std::future::ready(a)
+    }
+}
+
+fn coded(code: &str) -> Result<Value, Asked> {
+    Err(Asked {
+        code: Some(code.to_string()),
+        said: format!("对端说 {code}"),
+    })
+}
+
+/// ★ 「缺 / 旧」⇒ **恰推一次、恰再问一次**、交回第二问的结果；其余失败 ⇒ **零推**、原话带回。
+#[test]
+fn only_missing_or_old_bytes_trigger_exactly_one_push_and_one_retry() {
+    // 期望取自题面（`RM1c.md §4 ①`「远端 `panorama` 回 `not_installed`（或 `unsupported` = 旧版，缺某个 op）时」），
+    // 不取自 [`PUSH_ON`] —— 拿被测的表去驱动判它的用例，两侧同源恒真（死值验 K1 首刀就是这样没砍中的）。
+    for code in ["not_installed", "unsupported"] {
+        let asks = Answers::new(vec![coded(code), Ok(json!({"ok": 1}))]);
+        let pushed = RefCell::new(0usize);
+        let got = futures::executor::block_on(ask_or_push(
+            || asks.next(),
+            || {
+                *pushed.borrow_mut() += 1;
+                std::future::ready(Ok(()))
+            },
+        ));
+        assert_eq!(got, Ok(json!({"ok": 1})), "{code}");
+        assert_eq!((*pushed.borrow(), *asks.asked.borrow()), (1, 2), "{code}");
+    }
+    // 其余码与「没发出去」（没有码）：一次都不推，只问一次。
+    let others = [
+        coded("failed"),
+        coded("bad_args"),
+        coded("timed_out"),
+        coded("too_large"),
+        Err(Asked {
+            code: None,
+            said: "没有控制通道".into(),
+        }),
+        Ok(json!(null)),
+    ];
+    for first in others {
+        let want = first.clone().map_err(|a| a.said);
+        let asks = Answers::new(vec![first]);
+        let pushed = RefCell::new(0usize);
+        let got = futures::executor::block_on(ask_or_push(
+            || asks.next(),
+            || {
+                *pushed.borrow_mut() += 1;
+                std::future::ready(Ok(()))
+            },
+        ));
+        assert_eq!(got, want);
+        assert_eq!((*pushed.borrow(), *asks.asked.borrow()), (0, 1));
+    }
+}
+
+/// ★ 推完仍说「缺 / 旧」⇒ 如实报、**不循环**（推 1 次、问 2 次）；推失败 ⇒ 原话 ＋ 推失败那句都在、不再问。
+#[test]
+fn a_push_that_does_not_help_or_fails_is_said_not_looped() {
+    let asks = Answers::new(vec![coded("unsupported"), coded("unsupported")]);
+    let pushed = RefCell::new(0usize);
+    let e = futures::executor::block_on(ask_or_push(
+        || asks.next(),
+        || {
+            *pushed.borrow_mut() += 1;
+            std::future::ready(Ok(()))
+        },
+    ))
+    .unwrap_err();
+    assert_eq!((*pushed.borrow(), *asks.asked.borrow()), (1, 2));
+    assert!(
+        e.contains("已经把这一版") && e.contains("对端说 unsupported"),
+        "{e}"
+    );
+
+    let asks = Answers::new(vec![coded("not_installed")]);
+    let e = futures::executor::block_on(ask_or_push(
+        || asks.next(),
+        || std::future::ready(Err("围栏拒了".to_string())),
+    ))
+    .unwrap_err();
+    assert_eq!(*asks.asked.borrow(), 1, "推没成就不再问");
+    assert!(
+        e.contains("对端说 not_installed") && e.contains("围栏拒了"),
+        "{e}"
+    );
+}
+
+/// 后端适配层 `answer_with` 里某一条语句（从 `start` 起到 `end` 止）映射出来的码：`("<码>"` 那几处。
+fn codes_in_statement(prod: &str, start: &str, end: &str) -> Vec<String> {
+    let at = prod
+        .find(start)
+        .unwrap_or_else(|| panic!("后端适配层里找不到 `{start}` —— 改了写法，本条跟着改"));
+    let stmt = &prod[at..at + prod[at..].find(end).expect("语句没收尾")];
+    let mut out = Vec::new();
+    let mut rest = stmt;
+    while let Some(i) = rest.find('(') {
+        rest = &rest[i + 1..];
+        let Some(lit) = rest.strip_prefix('"') else {
+            continue;
+        };
+        let Some(j) = lit.find('"') else { break };
+        let w = &lit[..j];
+        if !w.is_empty() && w.chars().all(|c| c.is_ascii_lowercase() || c == '_') {
+            out.push(w.to_string());
+        }
+    }
+    out
+}
+
+/// ★ [`PUSH_ON`] == 后端适配层把「① 找不到 / ② 问了不是它 · 缺能力」映射出来的码（两向集合相等）。
+///
+/// 异源：一侧是本文件的常量，另一侧运行时读 `src/backend/control/panorama.rs` 生产段里
+/// `discover::find(…)` 与 `probe::negotiate(…)` 那两条语句。那边多一个「缺字节」的码而这边不推 ⇒ 红；
+/// 这边多推一个与字节无关的码（如 `failed`）⇒ 红。
+#[test]
+fn push_on_equals_the_codes_the_backend_gives_for_missing_or_old_bytes() {
+    let p = crate::guard_support::repo_src_root().join("backend/control/panorama.rs");
+    let prod = guard_core::production_code(&std::fs::read_to_string(&p).expect("读后端适配层"));
+    let mut theirs = codes_in_statement(&prod, "plugin::discover::find(", ";");
+    theirs.extend(codes_in_statement(
+        &prod,
+        "plugin::probe::negotiate(",
+        "})?;",
+    ));
+    theirs.sort();
+    theirs.dedup();
+    assert!(theirs.len() >= 2, "后端那一侧只抽到 {theirs:?} —— 抽取坏了");
+    let mut ours: Vec<String> = PUSH_ON.iter().map(|s| s.to_string()).collect();
+    ours.sort();
+    assert_eq!(ours, theirs, "「缺 / 旧 ⇒ 推」的码两边对不上");
+}
+
+/// 一段源码里第一个 `json!({ … })` 的键（`"k":` 那几处）。
+/// 调用方先把 `seg` 切到**那一次调用**为止（里面恰好一个 `json!({ … })`）。
+fn json_keys(seg: &str) -> Vec<String> {
+    let at = guard_core::find_pinned(seg, "json!({")
+        .unwrap_or_else(|e| panic!("那一次调用里的 json!({{ 不是恰好一处：{e}"));
+    let end = guard_core::find_pinned(seg, "})")
+        .unwrap_or_else(|e| panic!("那一次调用里的 }}) 不是恰好一处：{e}"));
+    let body = &seg[at..end];
+    let mut out = Vec::new();
+    let mut rest = body;
+    while let Some(i) = rest.find('"') {
+        rest = &rest[i + 1..];
+        let Some(j) = rest.find('"') else { break };
+        let (w, after) = (&rest[..j], &rest[j + 1..]);
+        if after.trim_start().starts_with(':') {
+            out.push(w.to_string());
+        }
+        rest = after;
+    }
+    out.sort();
+    out
+}
+
+/// ★〔RM1e〕删批注的 CAS 真的**上了线**：monitor 那扇门发 `files-delete` 时带的键 == 后端 `MANAGE_COMMANDS`
+/// 里 `files-delete` 声明的参数 − `recursive`（门只删一份文件，从不删整棵树）。
+///
+/// 异源：一侧读 `user_files.rs` 生产段（`BackendDoor::delete` 那一处 `.ask`），一侧读后端 `files_write.rs`。
+/// 门上漏发 `expect`（CAS 在线上就没了，替身门照样绿）⇒ 这里红；后端再加一个参数 ⇒ 这里红、逼人看一眼。
+#[test]
+fn the_door_sends_expect_with_every_delete() {
+    let root = crate::guard_support::repo_src_root();
+    let door = guard_core::production_code(
+        &std::fs::read_to_string(root.join("bridge/src/user_files.rs")).expect("读门"),
+    );
+    let at = guard_core::find_pinned(&door, "\"files-delete\",")
+        .unwrap_or_else(|e| panic!("门上 files-delete 那一问不是恰好一处：{e}"));
+    let call = &door[at..];
+    let call = &call[..call
+        .lines()
+        .take_while(|l| !l.contains(".await"))
+        .map(|l| l.len() + 1)
+        .sum::<usize>()];
+    let ours = json_keys(call);
+    let back = guard_core::production_code(
+        &std::fs::read_to_string(root.join("backend/control/files_write.rs")).expect("读后端写面"),
+    );
+    let at = guard_core::find_pinned(&back, "name: \"files-delete\",")
+        .unwrap_or_else(|e| panic!("后端写面 files-delete 那一条不是恰好一处：{e}"));
+    let line = back[at..]
+        .lines()
+        .map(str::trim_start)
+        .find(|l| l.starts_with("args: &["))
+        .expect("那一条没有 args");
+    let mut theirs: Vec<String> = line
+        .split('"')
+        .skip(1)
+        .step_by(2)
+        .filter(|a| *a != "recursive")
+        .map(str::to_string)
+        .collect();
+    theirs.sort();
+    assert!(theirs.len() >= 3, "后端那一侧只抽到 {theirs:?} —— 抽取坏了");
+    assert_eq!(ours, theirs, "门发 files-delete 的键与后端声明的对不上");
 }

@@ -144,6 +144,13 @@ export class McpSection {
   private readonly sync = new McpSyncPanel(
     () => ({ origin: this.origin, dir: this.currentDir() }),
     () => void this.refresh(),
+    // 四条命令从这里递进去（本分节是「装 MCP」那一件在前端的落点，面板自己不另立一份）。
+    {
+      machines: () => commands.list_remote_mcp_origins(),
+      dirs: (a) => commands.list_mcp_project_dirs(a),
+      preview: (a) => commands.mcp_sync_preview(a),
+      apply: (a) => commands.mcp_sync_apply(a),
+    },
   );
 
   constructor() {

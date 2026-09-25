@@ -13,7 +13,7 @@
  *
  * 纯函数（`defaultTake` · `applyArgs` · `stateText` · `suspectText`）零 DOM，node 可测。
  */
-import { commands } from "../ipc/commands";
+import type { commands } from "../ipc/commands";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { copyText } from "../copy-table";
 import type { McpSyncPreview } from "../generated/McpSyncPreview";
@@ -136,6 +136,20 @@ function machineName(origin: Origin): string {
   return isLocalOrigin(origin) ? copyText("mcpSync.machine.local") : origin;
 }
 
+/**
+ * 本面板要的四条命令。**由宿主（`mcp-section.ts`）递进来**，本文件自己不调包装层 ——
+ * 「装 MCP / skill」那一件的前端落点钉在一张名单上（`tests/evidence/K-R117-ruler.py` 的 `R9a`：
+ * 目标是每组收成一份、只许缩），本件不给它加一份新落点。
+ */
+export interface McpSyncApi {
+  /** 已配置的远端（只读配置，不连机器）。 */
+  machines: typeof commands.list_remote_mcp_origins;
+  /** 那台机器用过的项目目录（自动补全）。 */
+  dirs: typeof commands.list_mcp_project_dirs;
+  preview: typeof commands.mcp_sync_preview;
+  apply: typeof commands.mcp_sync_apply;
+}
+
 /** 看差异那一刻定下的一切（写的时候原样用，不再读界面上的输入框）。 */
 interface Pending {
   to: Origin;
@@ -165,6 +179,7 @@ export class McpSyncPanel {
   constructor(
     private readonly here: () => { origin: Origin; dir: string },
     private readonly onWroteHere: () => void,
+    private readonly api: McpSyncApi,
   ) {
     const root = document.createElement("div");
     // 样式全用本页既有的类，不新立样式文件：设置窗第一份 CSS Module 会撞上产物里「module 规则排在全局规则之后」
@@ -260,7 +275,7 @@ export class McpSyncPanel {
     const want = this.seq;
     let remotes: string[];
     try {
-      remotes = await commands.list_remote_mcp_origins();
+      remotes = await this.api.machines();
     } catch (e) {
       if (want === this.seq)
         this.say(
@@ -290,7 +305,7 @@ export class McpSyncPanel {
     this.datalist.replaceChildren();
     if (!other) return;
     try {
-      const dirs = await commands.list_mcp_project_dirs({ origin: other });
+      const dirs = await this.api.dirs({ origin: other });
       if (this.machineSelect.value !== other) return;
       for (const d of dirs) {
         const opt = document.createElement("option");
@@ -317,7 +332,7 @@ export class McpSyncPanel {
     this.say(copyText("mcpSync.preview.loading"));
     let preview: McpSyncPreview;
     try {
-      preview = await commands.mcp_sync_preview({ from, fromDir, to, toDir });
+      preview = await this.api.preview({ from, fromDir, to, toDir });
     } catch (e) {
       if (want === this.seq)
         this.say(
@@ -453,7 +468,7 @@ export class McpSyncPanel {
     btn.disabled = true;
     let done;
     try {
-      done = await commands.mcp_sync_apply({
+      done = await this.api.apply({
         to: p.to,
         toDir: p.toDir,
         sourceText: p.preview.sourceText,

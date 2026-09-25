@@ -39,7 +39,7 @@ src/bridge/
     ├── paths.rs       # CLAUDE_CONFIG_DIR 三级解析
     ├── messages.rs    # JsonlRecord enum (覆盖全部 type)
     ├── parser.rs      # 按行解析 + BOM
-    ├── watcher.rs     # 递归监听 ~/.claude/projects + 活跃过滤
+    ├── local_lines.rs # 本机会话内容的入口通道（本机后端的 line 帧 → 与远端同一个 LineIntake，CF1）
     ├── session_map.rs # 直读 ~/.claude/sessions/<PID>.json + 进程探活
     ├── bind.rs        # cc 集成绑定：ps-await/ps-registry 文件 IPC + EnumWindows 找 marker + SidHwndCache + bring_terminal_to_front
     ├── profile_installer.rs # PowerShell profile 块插入/卸载 + 命令冲突扫描
@@ -78,15 +78,15 @@ src/bridge/
 | **lib.rs** | Tauri Builder + setup() + IPC handler 注册 + single-instance plugin (issue #9) + 启动清洗嵌套 CLAUDECODE/CLAUDE_CODE_* 标记 (#24) | `pub fn run()` |
 | **paths.rs** | 解析 `.claude` 数据目录（三级回退） | `resolve_claude_dir() / resolve_monitor_data_dir() / resolve_config_path()` |
 | **messages.rs** | `JsonlRecord` enum + `ApiMessage` + `ContentBlock` | `JsonlRecord::is_displayable()` |
-| **parser.rs** | 单行 JSONL → JsonlRecord | `parse_line(raw)` |
-| **watcher.rs** (v2.4 重构 + v2.6 seq) | notify_debouncer_mini 递归监听 projects；ActiveFilter 过滤死 session；**同步全量初始扫**完成后设 `initial_scan_done: AtomicBool`；**一次 process_file 读完一个文件后把所有行作为一批同步调 on_batch**。**v2.6 加 `seqs: HashMap<PathBuf, u64>`** 给每行分配 per-file 单调 seq → 前端 RecordTimeline 按 seq 排序 | `spawn_watcher(root, active, on_batch: BatchHandler) → WatcherHandle { force_rescan_tx, initial_scan_done }` |
+| **parser.rs** | 单行 JSONL → JsonlRecord | `parse_line(origin, raw)` |
+| **local_lines.rs** (CF1) | 本机会话内容的入口通道：本机两条读循环（常驻 TCP · stdio 监护）把本机后端发来的内容帧（`line` / `session_added` / `session_removed`）送进来，交给 `ssh_source::consume_local`，再进与远端同一个 `LineIntake`（攒批 ＋ 静默窗 ＋ 旁路快照 ＋ 续点）。有界通道 ⇒ 消费者跟不上时读循环停读、后端写阻塞（背压，不丢）。原先 monitor 自己那套 jsonl watcher（第二套游标与 seq）随 CF1 删了 | `install / deliver / deliver_blocking / stream_ended` |
 | **session_map.rs** | 读 sessions/<PID>.json + Win32 进程探活 + 心跳清死 session；**procStart 可选** —— Claude Code 偶发漏写时降级仅 STILL_ACTIVE 判活（详 INVARIANTS § 18）。**v2.6 procStart 比较走 `utils::NetTicks::parse_str` typed API**（newtype 单位隔离） | `SessionMap::load_with_changes() / is_session_active()` |
 | **bind.rs** | cc 集成的核心：监听 `ps-await/`、PS 改窗口标题、EnumWindows 找 marker、写 `ps-registry/`、`SidHwndCache` 持久化 sid↔hwnd、`bring_terminal_to_front` | `BindRegistry::spawn() / SidHwndCache::load() / bring_terminal_to_front` |
 | **profile_installer.rs** | PowerShell profile 解析 + cc-monitor BEGIN/END 块插入 / 卸载 / 扫描 / 冲突检测 | `discover_profiles() / install_to_profile / scan_profile / render_cc_code` |
 | **auto_launch.rs** | "用 cc 启动 claude 时自动开 monitor" 开关持久化（模块级函数，非 impl 方法） | `auto_launch::{load, save, get_config, set_enabled, update_monitor_path_on_startup}` |
 | **subagent.rs** | 父 session 的 Agent tool_use 关联 `<parent>/subagents/agent-*.jsonl` | IPC `load_subagent` |
 | **adapter.rs** + **adapter/claude_code.rs** (F-MA) | agent 适配层：把 cc-monitor 对「Claude Code 具体形态」的假设（会话目录布局 / 记录解析 / 活性 / resume 命令）收敛到 `AgentAdapter` 后，`claude_code.rs` 是第一个实例（**零行为变化**）。第一刀只抽浅耦合点（会话源布局等字面量），不碰记录模型（`JsonlRecord` 暂当规范模型） | `SessionLayout / AgentAdapter`（增量长 trait） |
-| **event_replay.rs** (v2.4.2 大小分流，v2.6 状态机简化，Batch5 async 化+分组) | 内存 buffer + frontend-ready 时切块 emit；`on_line_batch` 按 batch 大小分流：< 50 行走 `jsonl-line` 单条 live emit，>= 50 行（如 /resume 灌历史、远端 snapshot 攒批）走 `jsonl-batch` 切块 emit——**Batch5-F17 起大批块序列 spawn 到 async_runtime**（spawn 返回≠emit 完成，顺序敏感调用方用 `on_line_batch_awaited`，INVARIANTS §10）。**v2.6 删了 `replaying` flag + catch-up tail 路径** —— chunked emit 期间 watcher 真新行直接 emit，前端 RecordTimeline 按 seq 自动排到正确位置；切块统一 CHUNK_SIZE=600 末块先发；**Batch5-F19：`replay_and_mark_ready(priority_sid)` 按 session 分组、上次所在 tab 的块先发（chunk 全局连续编号保 batch-start 哨兵）** | `EventReplay::on_line_batch() / on_line_batch_awaited() / replay_and_mark_ready(priority_sid)（async）/ forget() / buffered_{local,remote}_session_ids()（#19/#20 重放后对账）` |
+| **event_replay.rs** (v2.4.2 大小分流，v2.6 状态机简化，Batch5 async 化+分组) | 内存 buffer + frontend-ready 时切块 emit；`on_line_batch_awaited`（〔CF1〕唯一入口）按 batch 大小分流：< 50 行走 `jsonl-line` 单条 live emit，>= 50 行（如 /resume 灌历史、远端 snapshot 攒批）走 `jsonl-batch` 切块 emit——**Batch5-F17 起大批块序列 spawn 到 async_runtime**（spawn 返回≠emit 完成，顺序敏感调用方用 `on_line_batch_awaited`，INVARIANTS §10）。**v2.6 删了 `replaying` flag + catch-up tail 路径** —— chunked emit 期间 watcher 真新行直接 emit，前端 RecordTimeline 按 seq 自动排到正确位置；切块统一 CHUNK_SIZE=600 末块先发；**Batch5-F19：`replay_and_mark_ready(priority_sid)` 按 session 分组、上次所在 tab 的块先发（chunk 全局连续编号保 batch-start 哨兵）** | `EventReplay::on_line_batch() / on_line_batch_awaited() / replay_and_mark_ready(priority_sid)（async）/ forget() / buffered_{local,remote}_session_ids()（#19/#20 重放后对账）` |
 | **history.rs** | 历史浏览器后端：两级 IPC + metadata + 物理删除 + resume；v2.2 (issue #12) 全部 async + spawn_blocking + Channel 流式 IPC | IPC `list_history_projects / stream_history_sessions_in_project / stream_read_session_jsonl / delete / update_metadata / resume` |
 | **launch.rs** (B14-F41) | 终端拉起单一入口：`launch_powershell_window`（从 `history.rs::resume_impl` 抽出，wt.exe Plan A → `CREATE_NEW_CONSOLE` Plan B，`-NoExit -EncodedCommand` 不带 `-NoProfile`）+ `build_remote_ssh_ps_command`（`ssh -t … "bash -lic '<cmd>'"`）+ `launch_remote_terminal`；本地 resume 与远端族 F41 resume / F51 attach / F52 tmux / F53 launcher 共用此单一入口；命令为 async（`spawn_blocking` 起窗）。三层引号/注入防线各自独立 | `launch_powershell_window() / build_remote_ssh_ps_command() / launch_remote_terminal()` + IPC `launch_remote_terminal` |
 | **search.rs** (issue #6) | 历史全文搜索：后台线程扫 projects/**/*.jsonl 建内存索引（按 session 分组 + 原文/小写副本两份）；默认搜 user/assistant 文本，`include_tools` 附加 tool_use/result/thinking；CLI 注入噪声按 INVARIANT § 20 剥掉；两级匹配（lc.contains 粗筛 + find_ci 精定位 snippet）+ 文本截断封顶。`Arc<SearchIndex>` State | IPC `search_history / get_search_index_status / rebuild_search_index` |
@@ -94,7 +94,7 @@ src/bridge/
 | **panorama.rs** (Batch15-P1) | code-picture 代码全景后端：引 vendored `code-picture-core` 的 `Engine`（不走 MCP，直调库）；**per-repo Engine 模块-static 池**（非 Tauri State、不进 STATE-MATRIX，照 sftp_pool），命令 async + spawn_blocking + `Mutex` 独占（Engine 非 Sync）；索引仅用户显式「建立索引」才建，落 monitor 数据目录 `panorama/`（不写用户仓） | `panorama_{index,reindex,status,overview,node,subgraph,callers,callees,impact,search,docs_for,touching,symbols_in_file,drift}` + 批注/doc-link 命令 |
 | **sftp_pool.rs** (B14-F47/F49) | SFTP 文件面板后端:per-host utility 连接池(与后端流分离)+ 浏览/传输/写命令 + 小文件编辑(F49:`decode_editable` 三防护 + `sftp_read_text_for_edit`〔散文墓碑〕/`sftp_write_text`);防误伤守卫**已搬走** —— 见下面 `claude_data_fence.rs` 那一行(池子这边只剩一行 `pub use`) | `with_sftp() / sftp_list_dir / sftp_download / sftp_upload / ...`(11 命令) |
 | **claude_data_fence.rs** (步 H2) | **哪些路径是 Claude 自己的数据,不许我们写** —— 一个判定 ＋ 它的拒绝,别无他物(零 IO / 零 async ⇒ 「被挡住」在一台没有连接的机器上判得动)。`INVARIANTS §1` 底下 **F47**(SFTP 面板 / 原生文件窗口)与 **F03b**(收件箱编辑的纵深②)两段澄清共用它这**一个**判定;〔用户 2026-09-21 逐字裁「拆」,`设计/99 §2 Q2`〕从 `sftp_pool.rs` 搬出,**判定的射程一个字没动**。⚠ 方向相反的那一道从前是 `sftp.rs` 里的 `is_safe_remote_jsonl`〔散文墓碑〕(〔RW1 · 第四波 09-24〕随 F11 改经远端后端删走了,今天住后端 `session_file_for_delete`;下面是原话:「只许删 projects 下的 jsonl」),**两道不许互相替代** | `is_protected_claude_data_path() / guard_write()` |
-| **ssh_source.rs** (issue #15) | russh 远端数据源：`connect_session` 全套 host-key 指纹校验 + publickey/agent 鉴权；`run` 长连接 exec 后端把流帧（`InboundFrame`）走与本地 watcher 相同出口；hello 带 `build_id` 做版本协商（#33）；`Overflow` 帧 → remote-health 提示（#32）；ssh-config 导入 + 测试连接。**B14-F56 跳板**：`RemoteConfig.jump`（另一主机 label）有值时 `connect_via_jump`——connect_session(跳板)→ `channel_open_direct_tcpip` → `connect_stream` 跑目标 SSH（隧道上验目标指纹）；跳板 session 存 `jump_holders` 保活；fail-closed（环/查无/连不上 → Err）。**B14-F59 daemonless 降级**：`RemoteConfig.daemonless=true`（per-host 开关）时 `run()` 顶层二选一走 `daemonless_stream_loop`（不连后端，持久会话上 `exec_on_session` 跑 `find`+`tail -c +offset` 轮询读 jsonl，`drain_complete_lines`/`plan_file_read` 复刻 watcher 增量语义、复用 `flush_lines` 下游），default-false 时后端路径 `stream_loop` 一行不动；能力子集经 `degraded` remote-health 如实提示 | `run() / stream_loop() / daemonless_stream_loop() / connect_session() / connect_via_jump() / connect_and_exec_cmd() / parse_frame()` + IPC `list_ssh_host_aliases / resolve_ssh_host / test_remote_connection` |
+| **ssh_source.rs** (issue #15) | russh 远端数据源：`connect_session` 全套 host-key 指纹校验 + publickey/agent 鉴权；`run` 长连接 exec 后端把流帧（`InboundFrame`）的内容那一半交 `LineIntake`（〔CF1〕本机那条流 `consume_local` 用同一个）；hello 带 `build_id` 做版本协商（#33）；`Overflow` 帧 → remote-health 提示（#32）；ssh-config 导入 + 测试连接。**B14-F56 跳板**：`RemoteConfig.jump`（另一主机 label）有值时 `connect_via_jump`——connect_session(跳板)→ `channel_open_direct_tcpip` → `connect_stream` 跑目标 SSH（隧道上验目标指纹）；跳板 session 存 `jump_holders` 保活；fail-closed（环/查无/连不上 → Err）。**B14-F59 daemonless 降级**：`RemoteConfig.daemonless=true`（per-host 开关）时 `run()` 顶层二选一走 `daemonless_stream_loop`（不连后端，持久会话上 `exec_on_session` 跑 `find`+`tail -c +offset` 轮询读 jsonl，`drain_complete_lines`/`plan_file_read` 复刻 watcher 增量语义、复用 `flush_lines` 下游），default-false 时后端路径 `stream_loop` 一行不动；能力子集经 `degraded` remote-health 如实提示 | `run() / stream_loop() / daemonless_stream_loop() / connect_session() / connect_via_jump() / connect_and_exec_cmd() / parse_frame()` + IPC `list_ssh_host_aliases / resolve_ssh_host / test_remote_connection` |
 | **remote_history.rs** (issue #16/#28/#30) | 远端历史浏览（〔C4a〕远端全文搜索已搬去前端 `views/history-search.ts`，经通道说 `history-search`）+ 当年的远端全文搜索：每条查询走独立 SSH 连接一次性 exec `<backend> --list-projects/--list-sessions/--read-session/--search`，多机 fan-out；旧后端（首行 hello）检测降级提示；条目级元数据按 sid 合并本地。〔`设计/50`：原先还有一条**远端用量聚合**（`--usage` / `aggregate_remote_usage_all`），随用量 ② 轴整轴退役〕 | `search_remote_all()` + IPC `list_remote_history_projects`；另有三条**不再是 IPC** 的远端分支函数（`stream_remote_history_sessions` / `stream_read_remote_session` / `delete_remote_history_session`）——〔步 12·C 09-20〕它们并进了本机那三条同名命令，`origin` 成了参数 |  〔散文墓碑〕
 | **pubkey.rs** (B14-F50) | 公钥一键推送 authorized_keys（aterm N2）：`sanitize_public_key`（单一非空行防注入 + 类型校验）+ `build_authorized_keys_cmd`（`printf`/`grep -qxF`/`chmod 700/600` + ADDED/ALREADY）+ `parse_push_outcome`；复用 `connect_and_exec_cmd`（只消费不改形）+ `shell_quote`。三纯函数单测 | `sanitize_public_key() / build_authorized_keys_cmd() / parse_push_outcome()` + IPC `push_public_key` |
 | **port_forward.rs** (B14-F58) | 本地端口转发(-L)管理台后端:每转发一条独立 `connect_session`（继承竞速/跳板）+ 本地 `TcpListener` + accept 循环,每连接开 `channel_open_direct_tcpip` + `copy_bidirectional`；session 存 `Arc` 注册表保活（russh Handle 不 Clone）；停 = abort accept + **`session.disconnect` 主动断连**（仅 drop 关不掉连接:Handle::drop no-op + 在飞连接持 sender clone,D 审计实证）。v1 即席不持久化 | `start_forward()/stop_forward()/list_forwards()` + 同名 IPC |
@@ -105,7 +105,7 @@ src/bridge/
 | **data_paths.rs** (v2.3.0 issue #3 A) | 透明化展示：枚举 monitor 所有持久路径（config / sid-hwnd-cache / auto-launch / history-metadata / ps-await / ps-registry / logs）+ WebView2 UserDataFolder（用 `app_local_data_dir().join("EBWebView")` 推断）+ PowerShell profile 备份目录。stat 不递归算大小，避免大目录卡 IPC | `collect()` + IPC `get_data_paths` |
 | **config.rs** | monitor 自己的 config.json R/W（Windows MoveFileExW 原子） | IPC `load_config / save_config` |
 | **logging.rs** (v2.0.0+) | tracing init（在 `tauri::Builder` 之前）+ 滚动 log 文件 + EnvFilter reload Handle + ErrorEmitterLayer（拦 ERROR emit `monitor-error` 给前端弹 toast）+ DiagnosticsConfig R/W | `init() / install_error_emitter() / update_config() / log_file_info()` + 5 个 IPC |
-| **bridge.rs** | 事件 / payload 常量与 schema。**v2.6 `JsonlLinePayload` 加 `seq: u64`** 字段（watcher per-file 单调，前端 RecordTimeline 按 seq 排到 DOM） | `events::JSONL_LINE / JSONL_BATCH / SESSION_ENDED / TASKS_UPDATE / SESSION_ACTIVITY`，`JsonlLinePayload { session_id, cwd, path, seq, origin?, message } / SessionEndedPayload / TasksUpdatePayload / SessionActivityPayload` |
+| **bridge.rs** | 事件 / payload 常量与 schema。**v2.6 `JsonlLinePayload` 加 `seq: u64`** 字段（后端给的 per-file 行号，前端 RecordTimeline 按 seq 排到 DOM） | `events::JSONL_LINE / JSONL_BATCH / SESSION_ENDED / TASKS_UPDATE / SESSION_ACTIVITY`，`JsonlLinePayload { session_id, cwd, path, seq, origin?, message } / SessionEndedPayload / TasksUpdatePayload / SessionActivityPayload` |
 | **utils.rs** ⭐ v2.6 大归并 | 跨模块共享 helper：`days_from_civil` (日期换算) / `NetTicks` + `FileTime` newtype (procStart 单位隔离) / `parse_iso8601_ms` + `systime_to_ms` + `now_ms` (时间换算，归并 history/subagent/bind 三处) / `scan_dir_jsons<T, K, F>` (泛型目录扫，归并 session_map+bind 两处) / `atomic_write_json<T>` (Windows ReplaceFileW + dst-not-exist rename fallback) / **v2.8.1** `powershell_encoded_command` (命令 → UTF-16LE base64，给 resume 的 `-EncodedCommand` 用，穿 wt/cmd 不被引号/`;` 切碎，零依赖) | (pub items 完整列表见模块 doc 注释) |
 
 ## IPC 清单
@@ -214,7 +214,7 @@ src/bridge/
 
 | 常量 | 事件名 | payload | 时机 |
 |---|---|---|---|
-| `JSONL_LINE` | `jsonl-line` | `JsonlLinePayload` | watcher 解析到一行后实时单条 emit |
+| `JSONL_LINE` | `jsonl-line` | `JsonlLinePayload` | 后端帧里的一行解析后实时单条 emit |
 | `JSONL_BATCH` | `jsonl-batch` | `Vec<JsonlLinePayload>` | event_replay 启动重放时一次性发整个 history Vec |
 | `SESSION_ENDED` | `session-ended` | `SessionEndedPayload` | sessions/<PID>.json 被删（session 退出） |
 | `SESSION_STARTED` (resume 复活) | `session-started` | `SessionStartedPayload {session_id}` | 本地会话重新变活（sessions/<PID>.json 新增 **且 PID 探活通过**）时 emit——session-ended 的对称面；前端 `tabs.reviveTab` 复活已归档本地 Tab（`/resume` 免 F5）。`is_session_active` 门控避免崩溃残留旧 PID.json 误复活 |
@@ -254,11 +254,10 @@ src/bridge/
 
 ## 关键设计选择 + 理由
 
-### `watcher.rs::path_key()` 用小写归一
-Windows 路径大小写不敏感而 `PathBuf::eq` 是字节级比较，notify 偶发以不同大小写回放同文件导致重复 emit。归一到 lowercase 一次性解决。
-
-### `force_rescan_tx` 通道兜底竞态
-jsonl 行先于 `sessions/<PID>.json` 落地时，`active_filter` 返 false → `process_file` early return 但 offset 不变 → 下次扫描也不会重读。session-added 信号通过 force_rescan_tx 显式触发一次重扫，把 early return 漏掉的那段补上。
+### 本机会话内容不再由 monitor 自己 watch（CF1 · 2026-09-24）
+这里原来记着 monitor 那套 jsonl watcher 的两条设计选择：Windows 路径小写归一（今天住后端 `platform/paths.rs` 的 `path_key`），
+与「行先于 pidfile 落地 ⇒ 会话出现时强制重扫一次」那条兜底通道。本机内容改走本机后端的 `line` 帧之后两条都随它删了：
+后端宣告会话时先把游标 prime 到当前行数、历史走旁路快照（与远端同一套），那个竞态不在了。
 
 ### `config.rs::atomic_replace` 用 `MoveFileExW(MOVEFILE_REPLACE_EXISTING)`
 `std::fs::rename` 在 Windows 上 dst 存在时失败（POSIX rename atomic overwrite 行为在 Windows 上没有）。MoveFileExW 是 Windows 原生原子替换 API，专门设计来实现"覆盖现有文件"语义。
