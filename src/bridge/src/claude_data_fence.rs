@@ -41,8 +41,9 @@
 //!
 //! # ⚠ 它**不**管什么（只登记，不扩射程）
 //!
-//! - **方向相反的那一道不在这儿**：`sftp::is_safe_remote_jsonl` 的正题恰恰是
-//!   「**只许**删 `projects/**/*.jsonl`」（`§1` 例外 3，历史浏览器删远端会话）。
+//! - **方向相反的那一道不在这儿**：从前是 `sftp` 里的 `is_safe_remote_jsonl`〔散文墓碑〕，
+//!   〔RW1 · 第四波 09-24〕今天住后端 `agents::claudecode::paths::session_file_for_delete_in`，正题恰恰是
+//!   「**只许**删恰是 `projects/<proj>/<sid>.jsonl` 的那一份」（`§1` 例外 3，历史浏览器删会话）。
 //!   两道都读 Claude 的目录结构、方向相反，**别互相替代、也别合并**。
 //!   「全仓还有谁在读这个结构」由 `claude_data_fence_tests` 的
 //!   `the_protected_path_judgement_has_exactly_one_home` 钉成相等断言。
@@ -56,7 +57,7 @@
 ///
 /// 写命令拒碰这些——往正被 Claude 打开的会话文件写会损坏会话；要管这些用历史浏览器
 /// （`§1` 例外 3 的 `remote_history::delete_remote_history_session`，带二次确认），
-/// 不走文件面板。**结构判定**（与 `sftp::is_safe_remote_jsonl` 同风格，batch20 起
+/// 不走文件面板。**结构判定**（与从前那道 `is_safe_remote_jsonl`〔散文墓碑〕同风格，batch20 起
 /// 不靠 `.claude` 字面，闭 `CLAUDE_CONFIG_DIR` 缺口）。
 pub fn is_protected_claude_data_path(path: &str) -> bool {
     let p = path.replace('\\', "/");

@@ -7,13 +7,17 @@
 //! ## 只读铁律豁免（INVARIANT §1 / 账本 SS-G）—— 穷举登记见 `src/doc/INVARIANTS.md §1`
 //! cc-monitor 对远端的写入均**用户显式触发**，各自独立路径守卫、绝不混用：
 //! - **F08**：自部署后端二进制到 `~/.cc-monitor/bin/`（非用户数据、幂等、版本门控）。
-//! - **F11**：用户**主动**删除远端会话 jsonl（`remove_remote_file`，`is_safe_remote_jsonl` + `canonicalize`）。
-//! - **F89a**：用户**显式**增/改/删远端**项目** `.mcp.json`（`mcp::write_remote_mcp_server` 等，字符串守卫
-//!   `is_safe_remote_mcp_json`：绝对 + 尾 `/.mcp.json` + 无 `..` + 非裸；经本模块 `upload_atomic` 原子写）。
+//! - **F11**：用户**主动**删除远端会话 jsonl。〔RW1 · 第四波 09-24〕**已不在本模块**：经远端后端的
+//!   `files-delete-session`（只收 sid）删，从前那道 SFTP 直删与它的结构守卫〔散文墓碑〕走了。
+//! - **F89a**：用户**显式**增/改/删远端**项目** `.mcp.json`（字符串守卫 `is_safe_remote_mcp_json`：
+//!   绝对 + 尾 `/.mcp.json` + 无 `..` + 非裸）。〔RW1 · 第四波 09-24〕**写已不在本模块**：
+//!   经远端后端（`mcp::write_project_mcp_server` → `user_files`），不再 SFTP 直写。
 //!   **SS-14**：写面**只** `.mcp.json`，非 Claude 会话数据。
 //! - **F10**：别名块装/卸——**本模块 [`install_remote_alias_block`]/[`uninstall_remote_alias_block`] 写远端 `~/.bashrc`**
 //!   （〔MC1〕从前这一对叫 `install_remote_ccm_helper`〔散文墓碑〕/ `uninstall_…`，推入口那一半并进了 [`deploy_remote_backend`]）
 //!   （BEGIN/END 块 + 备份 + 写后校验回滚）；本机 profile 写在 `profile_installer`。（batch20 审计修：原「非远端」措辞误——本模块确写远端 `~/.bashrc`。）
+//!   〔RW1 · 第四波 09-24〕**落盘已不在本模块**：两条命令经远端后端读改写（`user_files`），本模块只剩规划那一半
+//!   （[`merge_profile_block`] / [`strip_profile_block`]）。
 //! - **F50**：`pubkey::push_public_key` 经 SSH-exec 追加公钥到远端 `~/.ssh/authorized_keys`（不在本模块，登记于此备查）。
 //!
 //! `upload_atomic`（F89a 审计后加固）：tmp 用 **EXCLUDE** 创建（防 symlink 预置 clobber）+ 旧目标先备份到
@@ -891,70 +895,12 @@ pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, Strin
 }
 
 // ============================================================================
-// F11：远端用户数据写（删除远端历史 jsonl）。SS-G item 3 的唯一 SFTP 用户数据写。
+// F11：远端用户数据写（删除远端历史 jsonl）。
+// 〔RW1 · 第四波 · 2026-09-24〕**这一段整个搬走了**：F11 按用户裁「按推荐改」经那台远端的后端删
+// （`files-delete-session`，只收 sid —— 会话文件围栏唯一的例外，落点由远端后端按 sid 在它自己的记录树里找），
+// 从前这里那道结构守卫 `is_safe_remote_jsonl`〔散文墓碑〕与 SFTP 直删 `remove_remote_file`〔散文墓碑〕零调用方 ⇒ 删了。
+// 「哪几份才许删」那一问的住址从此是 `src/backend/agents/claudecode/paths.rs::session_file_for_delete`。
 // ============================================================================
-
-/// 远端历史 jsonl 删除路径的安全守卫（纯函数，可单测）。
-///
-/// 仅允许删除**远端 claude_dir 下符合会话 jsonl 结构的文件**。会话 jsonl 的真实结构恒为
-/// `<claude_dir>/projects/<encoded_cwd 单层目录>/<sid>.jsonl`，故要求：
-/// - 不含 `..`（防上跳）；
-/// - 最后一个 `/projects/` 之后**正好是 `<一层目录>/<name>.jsonl`**（split 后恰 2 段、
-///   首段非空非 `.`、末段以 `.jsonl` 结尾且不只是 `.jsonl`）。
-///
-/// 这比裸 `contains("/projects/")` 强：挡住 `/tmp/projects/x.jsonl`（projects 下直接放
-/// jsonl）、`/a/projects/b/c/x.jsonl`（层级不符）这类伪造路径；且**不硬编码 `.claude`**，
-/// 兼容 `CLAUDE_CONFIG_DIR` 自定义目录（审计 S-1：`/.claude/projects/` 会误伤自定义目录）。
-///
-/// 残留（审计登记，后续加固）：完全锚定需远端后端上报的 `claude_dir`（一次性删除连接
-/// 无 hello）。但威胁仅「**已被攻陷的 backend** 喂伪造路径」——而被攻陷后端本就能在远端
-/// 任意删文件，monitor 删一个 `projects/*.jsonl` 不增加其能力（非提权）；叠加用户**二次确认**，
-/// 残留风险为纵深防御层面。
-pub fn is_safe_remote_jsonl(path: &str) -> bool {
-    if path.contains("..") || !path.ends_with(".jsonl") {
-        return false;
-    }
-    let Some(idx) = path.rfind("/projects/") else {
-        return false;
-    };
-    let rest = &path[idx + "/projects/".len()..];
-    let parts: Vec<&str> = rest.split('/').collect();
-    parts.len() == 2
-        && !parts[0].is_empty()
-        && parts[0] != "."
-        && parts[1].len() > ".jsonl".len()
-        && parts[1].ends_with(".jsonl")
-}
-
-/// 删除远端文件（issue 未拆，F11）：**仅**用于用户主动删除远端历史 jsonl。
-///
-/// 双重守卫：① 入参先过 [`is_safe_remote_jsonl`]；② SFTP `canonicalize`（realpath，解 symlink）
-/// 后**再**校验 canonical 仍含 `/projects/` 且以 `.jsonl` 结尾——挡住 projects/ 内指向外部的
-/// symlink 逃逸。只读铁律豁免（SS-G）：仅此一处对远端 `~/.claude/` 的写，且用户显式触发。
-pub async fn remove_remote_file(cfg: &RemoteConfig, remote_path: &str) -> Result<(), String> {
-    if !is_safe_remote_jsonl(remote_path) {
-        return Err(format!(
-            "拒绝删除非法远端路径（须为 projects/ 下 .jsonl）: {remote_path}"
-        ));
-    }
-    let conn = connect_sftp(cfg).await?;
-    let sftp = &conn.sftp;
-    // realpath 解析 symlink 后二次校验，防 projects/ 内 symlink 指向外部文件。
-    let canon = sftp
-        .canonicalize(remote_path.to_string())
-        .await
-        .map_err(|e| format!("解析远端路径失败: {e}"))?;
-    if !is_safe_remote_jsonl(&canon) {
-        return Err(format!(
-            "拒绝删除：canonical 路径越出 projects/ 或非 jsonl: {canon}"
-        ));
-    }
-    sftp.remove_file(canon.clone())
-        .await
-        .map_err(|e| format!("删除远端文件失败: {e}"))?;
-    tracing::info!("远端 [{}] 已删除历史会话: {canon}", cfg.origin_label());
-    Ok(())
-}
 
 // ============================================================================
 // F10：远端 cc/bash 集成——一键把 ccm wrapper 装进远端 ~/.bashrc（SS-H）。
@@ -1112,8 +1058,10 @@ pub fn strip_profile_block(existing: &str, what: &str) -> Result<String, String>
 }
 
 /// 〔AL1 · 2026-09-24〕远端那一份原语（`fenced_block::Store`）。**规则不住这里** ——
-/// 「读 → 备份 → 原子替换 → 回读比对 → 回滚」那一个序列是 `fenced_block::apply`，
-/// 本机那一份原语是 `fenced_block::LocalFile`。这里只回答「这台远端上怎么做这四件事」。
+/// 「读 → 备份 → 原子替换 → 回读比对 → 回滚」那一个序列是 `fenced_block::apply`。
+/// 这里只回答「这台远端上怎么做这四件事」。
+/// 〔RW1 · 第四波 09-24〕它**只剩 F08 部署物那一个用户**（[`put_ccm_entry`]：`~/.local/bin/ccm` 那三行入口）；
+/// 远端 rc 的别名块改经那台远端的后端写（[`install_remote_alias_block`] / [`uninstall_remote_alias_block`]）。
 ///
 /// 路径是 SFTP 会话起点（远端 home）下的相对路径。读走 [`read_profile_text`]（fail-closed：
 /// 读不出 / 非 UTF-8 / 有字节却读到空 一律 `Err`，理由在 [`interpret_profile_read`] 头注）。
@@ -1183,32 +1131,37 @@ fn remote_profile_name(profile: &str) -> Result<String, String> {
 /// 从前它叫 `uninstall_remote_ccm_helper`〔散文墓碑〕、按钮叫「卸载 ccm」——「ccm 助手」这个词
 /// 盖着两件事（`设计/71 §13.1`：① 推入口 ② 写别名块），而这一条只做过 ②。用户 2026-09-17 逐字
 /// 「装/卸 ccm 助手是假的，删掉这个东西」⇒ 名字跟着它真做的事走。
-/// 序列走 `fenced_block::apply`（与本机同一份）：没有块 ⇒ 一个字节都不写；否则
-/// **先备份**（`.ccm-backup-<ms>`）→ 写 → **读回逐字比对**，不符则回滚。
+/// 〔RW1〕读改写经那台远端的后端（`files-peek` / `files-put`）：没有块 ⇒ 一个字节都不写；否则
+/// **先备份**（`.ccm-backup-<ms>-<序号>`）→ 写 → **读回逐字比对**，不符则回滚（规则住后端）。
 #[tauri::command]
 pub async fn uninstall_remote_alias_block(
     cfg: RemoteConfig,
     profile: String,
 ) -> Result<String, String> {
     let profile = remote_profile_name(&profile)?;
-    let conn = connect_sftp(&cfg).await?;
+    // 〔RW1 · 第四波 09-24〕F10 按推荐改：**经那台远端的后端**写（`user_files`），不再 SFTP 直写 rc。
+    //   备份 · 原子替换 · 回读 · 回滚那一份规则住后端（`files-put`），与本机同一条路、只差 origin。
+    let door = crate::user_files::BackendDoor::new(crate::origin::Origin(cfg.origin_label()));
+    let home = crate::user_files::Door::home(&door).await?;
     let what = format!("远端 ~/{profile}");
-    let rc = SftpFile {
-        sftp: &conn.sftp,
-        path: profile.clone(),
-        mode: 0o644,
-        what: what.clone(),
-    };
     let mut missing = false;
-    let applied = crate::fenced_block::apply(&rc, true, |existing| match existing {
-        None => {
-            missing = true;
-            Ok(None)
-        }
-        Some(t) => strip_profile_block(t, &what).map(Some),
-    })
-    .await?;
-    let crate::fenced_block::Applied::Written { backup, .. } = applied else {
+    let done =
+        crate::user_files::edit(
+            &door,
+            &home,
+            &profile,
+            true,
+            false,
+            |existing| match existing {
+                None => {
+                    missing = true;
+                    Ok(None)
+                }
+                Some(t) => strip_profile_block(t, &what).map(Some),
+            },
+        )
+        .await?;
+    let crate::user_files::Edited::Written(landed) = done else {
         return Ok(if missing {
             format!("远端 {profile} 不存在，没有别名块可卸载。")
         } else {
@@ -1216,7 +1169,7 @@ pub async fn uninstall_remote_alias_block(
         });
     };
     tracing::info!("远端 [{}] 已卸载别名块（{profile}）", cfg.origin_label());
-    Ok(match backup {
+    Ok(match landed.backup {
         Some(b) => format!("已从远端 {profile} 删掉别名块（原文件备份在 {b}）。"),
         None => format!("已从远端 {profile} 删掉别名块。"),
     })
@@ -1228,35 +1181,33 @@ pub async fn uninstall_remote_alias_block(
 /// `~/.local/bin/ccm` ② 把别名块合进 rc。`设计/71 §13.3`：① 并进「部署后端」（本文件
 /// [`deploy_remote_backend`]），② 并进「别名」⇒ 本函数只剩 ②。
 ///
-/// `profile` 默认 `.bashrc`（SFTP 相对路径解析到 home；拒 `/`、`\`、`..` 防写 home 外）。
+/// `profile` 默认 `.bashrc`（相对远端后端的 home；拒 `/`、`\`、`..` 防写 home 外）。
 /// 写入的 snippet 是**后端拥有**的 [`CCM_WRAPPER_SNIPPET`]（审计 S-1：不接受前端传入可执行
-/// bash）。写走 `fenced_block::apply`（与本机同一个序列）：相同则不写；否则
+/// bash）。〔RW1〕读改写经那台远端的后端（与本机同一条路）：相同则不写；否则
 /// 备份 → 原子写 → 读回逐字比对 → 不符回滚。别名块引用 `ccm` —— 那条入口由「部署后端」放。
 ///
-/// 注：profile 统一写 `0o644`（.bashrc 惯例）；若用户原本 `chmod 600`，重装会归一到 644。
+/// 注：〔RW1〕替换沿用原文件的权限位（从前 SFTP 那一路统一写 `0o644`，`chmod 600` 的 rc 会被归一 —— 那一形没了）；
+/// rc 是一条链接（dotfiles 仓）⇒ 改的是真文件，链接留着。
 #[tauri::command]
 pub async fn install_remote_alias_block(
     cfg: RemoteConfig,
     profile: String,
 ) -> Result<String, String> {
     let profile = remote_profile_name(&profile)?;
-    let conn = connect_sftp(&cfg).await?;
+    // 〔RW1 · 第四波 09-24〕F10 按推荐改：经那台远端的后端写（同 `uninstall_remote_alias_block`）。
     // 损坏块 ⇒ `merge_profile_block` 回 `Err`，不动原文件。
+    let door = crate::user_files::BackendDoor::new(crate::origin::Origin(cfg.origin_label()));
+    let home = crate::user_files::Door::home(&door).await?;
     let what = format!("远端 ~/{profile}");
-    let rc = SftpFile {
-        sftp: &conn.sftp,
-        path: profile.clone(),
-        mode: 0o644,
-        what: what.clone(),
-    };
-    let applied = crate::fenced_block::apply(&rc, true, |existing| {
+    let done = crate::user_files::edit(&door, &home, &profile, true, false, |existing| {
         merge_profile_block(existing.unwrap_or(""), CCM_WRAPPER_SNIPPET, &what).map(Some)
     })
     .await?;
-    let crate::fenced_block::Applied::Written { backup, .. } = applied else {
+    let crate::user_files::Edited::Written(landed) = done else {
         return Ok(format!("{profile} 里的别名块已是最新，没有改动。"));
     };
-    let backup_note = backup
+    let backup_note = landed
+        .backup
         .map(|b| format!("（原文件备份在 {b}）"))
         .unwrap_or_default();
     tracing::info!("远端 [{}] 已装别名块到 {profile}", cfg.origin_label());

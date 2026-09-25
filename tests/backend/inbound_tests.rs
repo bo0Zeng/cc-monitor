@@ -516,6 +516,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "relay-status",
         // 〔RM1a · 第四波〕足迹那一条：一批 stat / 读几份小文件。
         "footprint-probe",
+        // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话：同步文件 I/O（围栏 ＋ 读 / 写满换名 / 删）。
+        "files-peek",
+        "files-put",
+        "files-delete-session",
     ] {
         assert!(
             matches!(d(c), Disposition::SpawnBlocking(..)),
@@ -578,6 +582,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "relay-ensure",
         "relay-status",
         "footprint-probe",
+        // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话：同步文件 I/O，阻塞档。
+        "files-peek",
+        "files-put",
+        "files-delete-session",
     ];
     let missing: Vec<&&str> = COMMANDS.iter().filter(|c| !covered.contains(c)).collect();
     assert!(

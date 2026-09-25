@@ -141,3 +141,39 @@ fn backend_path_with_space_is_quoted() {
         "{c}"
     );
 }
+
+// ── 〔RW1 · 第四波 09-24〕本机那一支：exec 本机后端 `--fork-session`，结果与远端同一份解释 ──
+
+#[test]
+fn the_local_fork_outcome_folds_into_the_same_shape_as_the_remote_one() {
+    use crate::backend::observe::local_query::QueryOutcome;
+    // 成功：stdout 一行结果 JSON ⇒ 与远端同一份解析。
+    let ok = local_fork_exec(QueryOutcome::Ok(
+        "{\"sessionId\":\"new\",\"jsonlPath\":\"/p/new.jsonl\"}\n".to_string(),
+    ))
+    .expect("三态折叠");
+    let r = interpret_fork_exec(&ok).expect("成功那一形");
+    assert_eq!(r.session_id, "new");
+    // 失败：退出码 ＋ stderr 信封 ⇒ 带原因的人话，不许被读成成功。
+    let bad = local_fork_exec(QueryOutcome::Failed {
+        code: Some(2),
+        stderr: "{\"code\":\"fork_failed\",\"message\":\"refuse branch: session ccc not found\"}\n"
+            .to_string(),
+    })
+    .expect("三态折叠");
+    let e = interpret_fork_exec(&bad).expect_err("失败那一形");
+    assert!(e.contains("not found"), "{e}");
+    // 没有退出码（被信号杀了）⇒ 不许当 0。
+    let killed = local_fork_exec(QueryOutcome::Failed {
+        code: None,
+        stderr: String::new(),
+    })
+    .expect("三态折叠");
+    assert!(interpret_fork_exec(&killed).is_err());
+    // 本机后端不在 ⇒ 明确说，不回落到本进程写（D11）。
+    let e = local_fork_exec(QueryOutcome::NoBackend("旁边没有".into())).expect_err("不在");
+    assert!(
+        e.contains("本机后端不在") && e.contains("一个字节都没动"),
+        "{e}"
+    );
+}

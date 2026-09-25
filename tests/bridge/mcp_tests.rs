@@ -115,50 +115,83 @@ fn collect_tolerant_missing_and_bad_shapes() {
     assert_eq!(out[0].scope, "user");
 }
 
+/// 〔RW1 · 第四波 09-24〕写经「门」（生产 = 那台机器的后端）；判据用落在临时目录上的替身门，
+/// 判「算出来写了什么 / 只碰 `.mcp.json` / 坏文件拒覆盖 / 删在无文件时不建」。写的规则住后端。
+fn run<T>(f: impl std::future::Future<Output = T>) -> T {
+    futures::executor::block_on(f)
+}
+
 #[test]
 fn write_and_remove_only_touch_mcp_json() {
-    let tmp = std::env::temp_dir().join(format!("ccm-mcp-test-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&tmp);
-    std::fs::create_dir_all(&tmp).unwrap();
-    let dir = tmp.to_string_lossy().into_owned();
+    let tmp = crate::user_files::tests::temp_home("mcp");
+    let door = crate::user_files::tests::DiskDoor::new(&tmp);
+    let dir = mcp_json_path(&tmp.to_string_lossy())
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
     // 放一个假 .claude.json 在临时目录，断言写后它不变
     let fake_claude = tmp.join(".claude.json");
     std::fs::write(&fake_claude, "{\"mcpServers\":{\"keep\":{}}}").unwrap();
 
-    // 写：建骨架 + 加条目（测同步 _impl；命令是 async 薄封装）
-    write_project_mcp_server_impl(dir.clone(), "srv".into(), json!({ "command": "c" })).unwrap();
+    // 写：建骨架 + 加条目
+    run(edit_project_mcp(&door, &dir, |v| {
+        upsert_mcp_server_value(v, "srv".into(), json!({ "command": "c" })).map(|()| true)
+    }))
+    .unwrap();
     let mcp = tmp.join(".mcp.json");
     assert!(mcp.is_file());
     let v: Value = serde_json::from_str(&std::fs::read_to_string(&mcp).unwrap()).unwrap();
     assert_eq!(v["mcpServers"]["srv"]["command"], json!("c"));
-    // .claude.json 一字未动
+    // .claude.json 一字未动；交给后端的只有 `.mcp.json` 那一格，且不要备份（住在用户仓里）
     assert_eq!(
         std::fs::read_to_string(&fake_claude).unwrap(),
         "{\"mcpServers\":{\"keep\":{}}}"
     );
+    assert!(door
+        .puts
+        .borrow()
+        .iter()
+        .all(|c| c.rel == ".mcp.json" && !c.backup));
 
     // 删
-    remove_project_mcp_server_impl(dir.clone(), "srv".into()).unwrap();
+    run(edit_project_mcp(&door, &dir, |v| {
+        remove_mcp_server_value(v, "srv")
+    }))
+    .unwrap();
     let v2: Value = serde_json::from_str(&std::fs::read_to_string(&mcp).unwrap()).unwrap();
     assert!(v2["mcpServers"].get("srv").is_none());
+
+    // 删在「无文件」时不建（删一条本来就不在的 ⇒ 一个字节不写）；坏 JSON 拒覆盖、一个字节不动
+    std::fs::remove_file(&mcp).unwrap();
+    run(edit_project_mcp(&door, &dir, |v| {
+        remove_mcp_server_value(v, "srv")
+    }))
+    .unwrap();
+    assert!(!mcp.exists(), "删一条不存在的 server 建出了 .mcp.json");
+    std::fs::write(&mcp, "{ not json").unwrap();
+    let e = run(edit_project_mcp(&door, &dir, |v| {
+        upsert_mcp_server_value(v, "x".into(), json!({})).map(|()| true)
+    }))
+    .unwrap_err();
+    assert!(e.contains("拒绝覆盖"), "{e}");
+    assert_eq!(std::fs::read_to_string(&mcp).unwrap(), "{ not json");
 
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
 #[test]
-fn write_rejects_empty_project_dir_and_nonexistent() {
-    assert!(write_project_mcp_server_impl("  ".into(), "n".into(), json!({})).is_err());
+fn the_local_exit_refuses_empty_and_relative_project_dirs() {
+    assert!(mcp_json_path("  ").is_err());
     assert!(mcp_json_path("").is_err());
-    // 项目目录不存在 → 拒写（不 create_dir_all typo 路径）
-    let ghost = std::env::temp_dir().join(format!("ccm-mcp-ghost-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&ghost);
-    let r = write_project_mcp_server_impl(
-        ghost.to_string_lossy().into_owned(),
-        "n".into(),
-        json!({ "command": "c" }),
+    assert!(
+        mcp_json_path("relative/proj").is_err(),
+        "相对路径交给后端会指到别处"
     );
-    assert!(r.is_err(), "不存在的项目目录应拒写");
-    assert!(!ghost.exists(), "拒写后不该建出 typo 目录");
+    let abs = std::env::temp_dir();
+    assert_eq!(
+        mcp_json_path(&abs.to_string_lossy()).unwrap(),
+        abs.join(".mcp.json")
+    );
 }
 
 #[test]

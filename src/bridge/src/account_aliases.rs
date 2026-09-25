@@ -18,22 +18,24 @@
 //! 2. **删不掉**：删了一条，那一行还在；
 //! 3. **弄坏的代价是「shell 起不来」** —— 而那正是用户用来救火的东西。
 //!
-//! ⇒ 落点是 [`alias_file_in`]（`~/.cc-monitor/account-aliases.sh`，**monitor 自己的目录**），
+//! ⇒ 落点是 [`alias_file_in`]（`~/.cc-monitor/aliases.sh`，**monitor 自己的目录**），
 //! **整份重写**：幂等、删一条当场消失、删掉整份文件也只是少几个命令，shell 照常起得来。
-//! （文件名里的 `account` 是历史：改名要动每个人 rc 里那一行 source，`71 §9.2` 那道迁移题本路没做。）
+//! 〔RW1 · 第四波 09-24〕文件名从 `account-aliases.sh` 改成 `aliases.sh`（`71 §9.2` 那道迁移题按主会话裁结案：
+//! **不留兼容** —— 不留转发件、不读旧名）。已经装过的 rc 那一段，下一次点「安装」就被改写成指向新名字的那一行
+//! （同一对围栏，整块替换）；旧文件留在盘上，本模块不读、不写、不删。
 //!
 //! # 用户的 shell 配置里最多只多**一行** `source`，而且多数人连这一行都不用加
 //!
 //! `src/shared/ccm-aliases.sh`（别名块）自带一行 `if [ -r … ]; then . …; fi` 指向这份文件 ⇒
 //! 装了别名块的人什么都不用做。没装的人可以让 [`install_in`] 把那一行写进**他自己指定**的那份 rc
 //! —— 路径由界面上的人选，本模块**不猜**（`.bashrc` / `.zshrc` / fish 写法不同）。
-//! 围栏 ＋ 备份 ＋ 原子替换 ＋ 写后回读 ＋ 回滚 走 `fenced_block::apply` —— 与别名块、
-//! PowerShell profile、远端 rc **同一份规则**（`71 §12.5`）。
+//! 〔RW1 · 第四波 09-24〕两处写（那份文件 ＋ rc 里那一行）**都不在本进程落盘**：经本机后端的文件管理
+//! 那一面（`user_files::edit` → `files-peek` / `files-put`），备份 · 原子替换 · 回读 · 回滚那一份规则住后端。
 
 use std::path::{Path, PathBuf};
 
 /// 生成文件在 home 下的相对路径。**monitor 自己的目录**，不是用户环境的一部分。
-pub const ALIAS_FILE_REL: &str = ".cc-monitor/account-aliases.sh";
+pub const ALIAS_FILE_REL: &str = ".cc-monitor/aliases.sh";
 
 /// 写进用户 rc 的那一行所在的围栏。**刻意与 `profile_installer` 的
 /// `# === cc-monitor BEGIN` 不同前缀** —— 后者装的是 PowerShell 的 `cc` 块，
@@ -163,7 +165,7 @@ pub fn render_file(lines: &[String]) -> String {
 //
 // 命令面是两跳（`71 §12.6`）：
 //   ① [`render`] —— **纯**：清单 → 代码（＋ 每条的问题 ＋ 撞名提示）。预览、复制都只调这一跳；
-//   ② [`install_in`] —— **唯一的副作用**：同一份渲染落进 `~/.cc-monitor/account-aliases.sh`，
+//   ② [`install_in`] —— **唯一的副作用**：同一份渲染落进 `~/.cc-monitor/aliases.sh`（经本机后端），
 //      可选地往用户选的 rc 里装一行 `source`。它收的是**清单**不是代码 —— 写进 shell 的文本
 //      只由本模块产出（审计 S-1：绝不让前端注入可执行的 shell），而「写的就是预览的那一份」
 //      由两跳调同一个 [`render`] 保证。
@@ -443,8 +445,11 @@ pub fn read_in(home: &Path) -> Result<AliasListing, String> {
 
 /// ② **唯一的副作用**：把 [`render`] 的产物整份写进别名文件，可选地把一行 `source` 装进 `rc`。
 /// 有一条不合格 ⇒ **整批不写**（写一半的别名文件是最坏的结局：它 source 得进去，少了的没人发现）。
-pub fn install_in(
-    home: &Path,
+///
+/// 〔RW1 · 第四波 09-24〕两处写都经 `door`（生产 = 本机后端的文件管理那一面）；home 也问它
+/// （写落在后端认的那个 home 底下，两边的 home 不许各算各的）。
+pub async fn install_in<D: crate::user_files::Door>(
+    door: &D,
     aliases: &[Alias],
     rc: Option<&str>,
 ) -> Result<AliasInstallReport, String> {
@@ -461,15 +466,16 @@ pub fn install_in(
             why.join("；")
         ));
     }
-    let path = alias_file_in(home);
-    let wrote_alias_file = write_alias_file(&path, &r.code)?;
+    let home = door.home().await?;
+    let path = alias_file_in(Path::new(&home));
+    let wrote_alias_file = write_alias_file(door, &home, &r.code).await?;
     let mut notes = Vec::new();
     if !wrote_alias_file {
         notes.push("别名文件和盘上那份一模一样，没有重写。".to_string());
     }
     let mut wrote_rc = false;
     if let Some(rc_raw) = rc {
-        if ensure_rc_source_line(home, rc_raw, &source_line(&path))? {
+        if ensure_rc_source_line(door, &home, rc_raw, &source_line(&path)).await? {
             wrote_rc = true;
             notes.push(format!(
                 "{rc_raw} 里加了一行 source（要撤就把 cc-monitor 那一小块整块删掉）。"
@@ -547,30 +553,39 @@ pub fn rc_candidates_in(home: &Path) -> Vec<AccountAliasRc> {
 
 /// 把生成文件写下去。**内容一致就一个字节都不写。**
 ///
-/// 〔AL1 · 2026-09-24〕序列走 `fenced_block::apply`（与 rc / profile / 远端那几处同一份，`71 §12.5`）。
-/// 生成文件是**我们自己**的东西 ⇒ 不留备份文件；写坏了回滚成原来那份，原来没有就删掉
-/// —— 一个半截的它比没有它更坏（source 时会报语法错）。
-fn write_alias_file(path: &Path, content: &str) -> Result<bool, String> {
-    let applied = crate::fenced_block::apply_local(path, false, |_| Ok(Some(content.to_string())))?;
-    Ok(matches!(
-        applied,
-        crate::fenced_block::Applied::Written { .. }
-    ))
+/// 〔RW1 · 第四波 09-24〕经 `door`（本机后端）写：生成文件是**我们自己**的东西 ⇒ 不留备份文件；
+/// `~/.cc-monitor` 还不在就逐级补（`parents`）。回读 · 回滚那一份规则住后端。
+async fn write_alias_file<D: crate::user_files::Door>(
+    door: &D,
+    home: &str,
+    content: &str,
+) -> Result<bool, String> {
+    let done = crate::user_files::edit(door, home, ALIAS_FILE_REL, false, true, |_| {
+        Ok(Some(content.to_string()))
+    })
+    .await?;
+    Ok(matches!(done, crate::user_files::Edited::Written(_)))
 }
 
 /// 把那一行 `source` 装进用户指定的 rc。**已经有了就一个字节都不写。**
 ///
 /// 🔴 三道，一道都不省：① 路径过 `profile_installer::fence_path_under`（只许落在 home 之内）；
 /// ② 围栏损坏（有 BEGIN 没 END）**中止**，绝不用后面那个 END 去配对、吃掉中间的用户代码；
-/// ③ 写之前先备份、写完回读逐字比对、不符回滚。〔AL1〕② 是 `fenced_block::splice_in`，
-/// ③ 是 `fenced_block::apply` —— 与 rc 别名块、PowerShell profile、远端 rc 同一份规则。
-fn ensure_rc_source_line(home: &Path, rc_raw: &str, line: &str) -> Result<bool, String> {
+/// ③ 写之前先备份、写完回读逐字比对、不符回滚。② 是 `fenced_block::splice_in`；
+/// ③ 〔RW1〕在后端（`files-put` 的 `backup: true`），与 rc 别名块、PowerShell profile、远端 rc 同一份规则。
+async fn ensure_rc_source_line<D: crate::user_files::Door>(
+    door: &D,
+    home: &str,
+    rc_raw: &str,
+    line: &str,
+) -> Result<bool, String> {
     // ⚠ 围栏是 `profile_installer` 那一份，**不在这里长第二道** —— `home` 当参数传进去，
-    //   于是这条路测得了（临时目录当 home），而生产侧传的是 `dirs::home_dir()`。
-    let path = crate::profile_installer::fence_path_under(home, rc_raw)?;
+    //   于是这条路测得了（临时目录当 home），而生产侧传的是后端答的 home。
+    let path = crate::profile_installer::fence_path_under(Path::new(home), rc_raw)?;
+    let rel = crate::user_files::rel_under(home, &path.display().to_string())?;
     let what = path.display().to_string();
     let block = format!("{RC_BEGIN}\n{line}\n{RC_END}\n");
-    let applied = crate::fenced_block::apply_local(&path, true, |existing| {
+    let done = crate::user_files::edit(door, home, &rel, true, false, |existing| {
         let Some(existing) = existing else {
             return Err(format!("读不到 {what}：文件不存在"));
         };
@@ -581,6 +596,7 @@ fn ensure_rc_source_line(home: &Path, rc_raw: &str, line: &str) -> Result<bool, 
         // **一个已经装了 ccm 别名块的人会被判成「还没 source 过」，于是又被追加一行** ——
         // 那正是本件开头列的第一条病（重复追加）。
         // 按相对路径认，两种写法都认得出来。
+        // ⚠ 〔RW1〕改名之后旧那一段（指着 `account-aliases.sh`）认不出来 ⇒ 走下面的整块替换，改写成新形状。
         if existing.contains(ALIAS_FILE_REL) {
             return Ok(None);
         }
@@ -593,11 +609,9 @@ fn ensure_rc_source_line(home: &Path, rc_raw: &str, line: &str) -> Result<bool, 
             crate::fenced_block::Layout::Posix,
         )
         .map(Some)
-    })?;
-    Ok(matches!(
-        applied,
-        crate::fenced_block::Applied::Written { .. }
-    ))
+    })
+    .await?;
+    Ok(matches!(done, crate::user_files::Edited::Written(_)))
 }
 
 #[cfg(test)]
