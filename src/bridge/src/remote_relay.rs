@@ -1,14 +1,16 @@
 //! 〔RM1a · 第四波〕中转（层 1）**按机器**：那台机器上的 `--relay` 进程在不在 · 起一个 —— monitor 侧的分派与发送口。
 //!
-//! # 两台机器，两个监护者
+//! # 两台机器，中转各住哪
 //!
 //! | origin | 中转谁起、谁答「在不在」 |
 //! |---|---|
-//! | 本机 | monitor 自己：起本机后端那一刻顺手监护一个（`local_backend_host::start_local_relay`）；「在不在」走起会话那一侧**同一条缝**（`history::inject_facts`）|
+//! | 本机 | 〔RL1 · V107〕**本机常驻后端进程里**（monitor 起后端时交端口，`local_backend_host::relay_host_envs`）；「在不在」走起会话那一侧**同一条缝**（`history::inject_facts` → 回环上连一次那个口）|
 //! | 某台远端 | 那台机器的后端：帧面 `relay-status`（口上有没有人在听）· `relay-ensure`（没有就起一个脱离的）|
 //!
-//! ⇒ monitor **从不**对本机发 `relay-ensure`：本机那一个有监护者，第二个去抢口只会让监护者的那一个
-//! 起不来、三次之后放弃 —— 那之后本机的 api-key 号起会话全被拒（判据：`the_local_arm_never_starts_a_second_relay`）。
+//! ⇒ monitor **从不**对本机发 `relay-ensure`：本机那一个住在常驻后端里，第二个去抢口只会让后端里那一个
+//! 下次起不来（判据：`the_local_arm_never_starts_a_second_relay`）。
+//! ⚠ 远端**不**并进远端后端：远端后端随 SSH 退，远端会话活在 tmux 里、比 SSH 长 ⇒ 远端中转必须是脱离的那一个
+//! （`调研/第四波记录/RL1.md §1.2`）。
 //!
 //! # 🔴 本模块一个账号层的名字都没有
 //!
@@ -43,7 +45,7 @@ pub(crate) struct RelayEnsured {
     pub(crate) started: bool,
 }
 
-/// 那台机器上的中转在不在。本机：monitor 起过它而且没停过（缝里那个取值口）；远端：那个口上有没有人在听。
+/// 那台机器上的中转在不在（两台都是「那个口上有没有人在听」）。本机：缝里那个取值口；远端：`relay-status`。
 pub(crate) async fn running_on(origin: &Origin) -> Result<bool, String> {
     match origin.route("relay_running_on")? {
         Route::Local => Ok((crate::history::inject_facts().running)()),
@@ -53,7 +55,7 @@ pub(crate) async fn running_on(origin: &Origin) -> Result<bool, String> {
     }
 }
 
-/// 让那台机器上有一个中转在跑。**本机拒**（本机那一个由 monitor 监护）。
+/// 让那台机器上有一个中转在跑。**本机拒**（本机那一个住在本机常驻后端里）。
 pub(crate) async fn ensure_on(origin: &Origin) -> Result<RelayEnsured, String> {
     match origin.route("relay_ensure")? {
         Route::Local => Err(LOCAL_HAS_ITS_OWN.to_string()),
@@ -61,9 +63,9 @@ pub(crate) async fn ensure_on(origin: &Origin) -> Result<RelayEnsured, String> {
     }
 }
 
-/// 本机那一臂的说法：本机的中转有监护者，不经这条路起。
+/// 本机那一臂的说法：本机的中转住在本机常驻后端里，不经这条路起。
 pub(crate) const LOCAL_HAS_ITS_OWN: &str =
-    "本机的中转由 monitor 自己看着（起本机后端时一起起），不在这里另起一个";
+    "本机的中转住在本机后端进程里（随它起、随它按「退出行为」留或退），不在这里另起一个";
 
 /// 两条命令共用的入参：只有端口。
 fn port_args() -> Value {

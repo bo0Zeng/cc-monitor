@@ -310,7 +310,7 @@ src/bridge/src/creds_store.rs:101	读不动这份文件：{e}	保留	[对外] �
 src/bridge/src/creds_store.rs:132	{how}。怎么修：{fix}	保留	[对外] 骨架「{how}。怎么修：{fix}」，干净；病在灌进来的 how/fix 本身（见 perm.rs）
 src/backend/accounts/apikey/file_face.rs:178	{how}。怎么修：{fix}	保留	[对外] 〔RM1a〕远端那台机器上那份凭据文件的权限提醒（`apikey-read` 的 notice，回到设置页那一块）；骨架与 creds_store.rs 那一句同文、干净，病在灌进来的 how/fix 本身（见 perm.rs）
 src/bridge/src/apikey_remote.rs:152	读写第三方 API key 时出了内部错误，没有拿到结果	保留	[可达存疑] 〔RM1a〕分流器 Done 那一臂的兜底（本族走不到）；说的是用户做的事（读写 API key）＋结果，短，同 backend_policy.rs 那一句的形
-src/bridge/src/remote_relay.rs:66	本机的中转由 monitor 自己看着（起本机后端时一起起），不在这里另起一个	保留	[可达存疑] 〔RM1a〕`relay_ensure` 对本机的拒绝（今天界面上没有调用方）；说的是结果＋原因，短。「中转」是层 1 的正名（terms.json）
+src/bridge/src/remote_relay.rs:68	本机的中转住在本机后端进程里（随它起、随它按「退出行为」留或退），不在这里另起一个	保留	[可达存疑] 〔RL1 · V107〕`ensure_on` 对本机的拒绝（界面零调用方，本机那一臂只在内部走到）；说的是结果＋原因。「中转」是层 1 的正名（terms.json）
 src/bridge/src/remote_relay.rs:115	问中转时出了内部错误，没有拿到结果	保留	[可达存疑] 〔RM1a〕分流器 Done 那一臂的兜底（本族走不到）；同 backend_policy.rs 那一句的形
 src/backend/footprint.rs:104	列不动（没权限？）	保留	[不对外] 〔RM1a〕`footprint-probe` 应答里目录那一格的 notice，monitor 今天不读它（界面没有它的格子），过线是为了能查
 src/backend/footprint.rs:113	名字超过 {MAX_ENTRIES} 个，没列（不截断：截断的清单会被当成完整的）	保留	[不对外] 同上，目录名字超上限时那一格的 notice
@@ -1229,6 +1229,12 @@ src/backend/dial/link.rs:352	链路的信用闸被关了	改·§2.1	[可达存�
 src/backend/dial/link.rs:359	读链路下行失败：{e}	改·§2.1	[可达存疑] 〔SR1a〕`link_end` 的 error，同上 →「和远端的连接断了：{e}」 新词:链路
 src/backend/dial/link.rs:365	链路的信用记账对不上（不该发生）	改·§2.1	[可达存疑] 〔SR1a〕`link_end` 的 error，本程序 bug 才出现 →「和远端的连接断了（本程序出错）」 兼§2.2 新词:链路
 src/backend/dial/link.rs:399	这条链路的上行已经收工：{e}	改·§2.1	[可达存疑] 〔SR1a〕`link-data` 写进链路失败（远端那头已经走了），会变成那条连接的写错误 →「和远端的连接已经断了」 新词:链路
+src/backend/relay/listen.rs:315	[relay] 没被交中转端口 ⇒ 本进程不开中转	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
+src/backend/relay/listen.rs:316	[relay] 中转住本进程，听 {a}	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
+src/backend/relay/listen.rs:319	[relay] 被交了中转端口却起不来（后端照常服务）：{reason}	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
+src/backend/relay/listen.rs:352	{ENV_PORT}={raw:?} 不是端口号（{e}）	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
+src/backend/relay/listen.rs:361	读不出绑到的地址：{e}	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
+src/backend/relay/listen.rs:372	起不来接受线程：{e}	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
 src/bridge/src/link_mux.rs:48	本机后端拒了（{code}）：{message}	改·§2.1	[可达存疑] 〔SR1a〕链路命令被后端拒时的外壳，{code} 是协议错误码 →「本机后端拒绝了这次连接：{message}」
 src/bridge/src/link_mux.rs:51	链路命令出了内部错误	改·§2.1	[可达存疑] 〔SR1a〕分流器三态里走不到的那一格的兜底说法 →「连接出错了（本程序出错）」 新词:链路
 src/bridge/src/link_mux.rs:133	本机后端在链路 {link} 上发了 {now} 字节却没等信用（窗口 {LINK_WINDOW_BYTES}）—— 协议对不上，链路已断开	改·§2.1	[可达存疑] 〔SR1a〕对端不守流控时读那条连接的一方拿到的错，会变成连接错误；整句讲流控实现 →「本机后端版本不对，这条远端连接断了；重开 monitor 后再试」 兼§2.4 新词:链路

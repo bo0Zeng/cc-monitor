@@ -3584,7 +3584,7 @@ fn only_an_account_that_has_a_row_in_the_apikey_table_gets_the_base_url_prefix()
 /// # 它买不到什么
 ///
 /// 它不管那几个取值口**自己答得对不对**（那是 [`apikey_rows_at`] 那条读真文件的判据、
-/// 与 `local_backend_host::relay_running_really_reads_the_handle_table` 的活），
+/// 与 `local_backend_host::relay_running_really_asks_the_loopback_port`〔RL1 接替读句柄表那一条〕 的活），
 /// 也不管**生产上插进那条缝的是不是它们**（那是下一条判据按函数地址对拍的活）。
 /// **三条合起来才等于「这条线真的在问那几件事」。**
 #[test]

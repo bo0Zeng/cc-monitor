@@ -709,14 +709,15 @@ impl RouteMode {
     }
 }
 
-/// 本机中转的端口。**monitor 这一侧是权威** —— 起中转时以 `CCM_RELAY_PORT`
-/// 显式交给子进程（`local_backend_host::start_local_relay`），注入侧用同一个常量拼 URL。
+/// 本机中转的端口。**monitor 这一侧是权威** —— 起本机后端时以 `CCM_RELAY_PORT`
+/// 显式交给它（`local_backend_host::relay_host_envs`；〔RL1 · V107〕中转住本机常驻后端进程里），注入侧用同一个常量拼 URL。
 ///
 /// ⚠ 它与 `src/backend/relay/server.rs::DEFAULT_PORT` 是**同一个数字的两处写法**，
-/// 而两处**今天不由任何东西对拍**。之所以不疼：起中转那条路**显式传** `CCM_RELAY_PORT`
-/// ⇒ 子进程用的是这里这个值，backend 那个默认值在这条路上根本不参与。
+/// 而两处**今天不由任何东西对拍**。之所以不疼：起本机后端那条路**显式传** `CCM_RELAY_PORT`
+/// ⇒ 后端里的中转 bind 的是这里这个值（进程内那一形**没有缺省值**），backend 那个默认值只属于独立 `--relay`
+/// （远端 `relay-ensure` 起它时同样显式传这里这个值）。
 /// **端口通告面本件不做**（`§0e` 裁五，跟进件 `己1-f26`）——
-/// ⇒ 「同机两个 monitor」这一形今天是：第二个中转绑不上、**退 2 并出声**，不静默。
+/// ⇒ 口被别的东西占着这一形今天是：本机后端里的中转绑不上、**出声、后端照常**（`relay::listen::host`），不静默。
 pub const RELAY_PORT: u16 = 8788;
 
 /// 一段路由键里允许的字符 —— **与 `src/backend/relay/route.rs::segment_is_safe`

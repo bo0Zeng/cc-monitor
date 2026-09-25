@@ -2959,8 +2959,8 @@ fn wait_section() -> String {
         "../../../../src/bridge/src/backend/control/local_backend.rs"
     ));
     let at = prod
-        .find("pub fn supervise(")
-        .expect("找不到 `supervise` —— 改名了就把下面三条一起改");
+        .find("pub fn supervise_with_stdio(")
+        .expect("找不到 `supervise_with_stdio` —— 改名了就把下面三条一起改");
     prod[at..].to_string()
 }
 
@@ -3277,4 +3277,19 @@ fn the_shared_stripper_keeps_the_exit_arm_this_guard_must_scan() {
         include_str!("../../../../src/bridge/src/lib.rs"),
         &["RunEvent::Exit", "LOCAL_BACKEND"],
     );
+}
+
+/// 〔RL1 · V107〕生产那个 `stdio=None` 薄壳（唯一客户是 monitor 另起的本机中转）随中转并进常驻后端删了；
+/// 本文件四条判据要的正是「不接消费者」那一形 ⇒ 在测试段里留一个同形的转交，生产段不再有它。
+#[allow(clippy::too_many_arguments)]
+fn supervise(
+    bin: PathBuf,
+    args: Vec<String>,
+    envs: Vec<(String, String)>,
+    limits: CrashLimits,
+    now_ms: Arc<dyn Fn() -> u64 + Send + Sync>,
+    on_event: Arc<dyn Fn(SuperviseEvent) + Send + Sync>,
+    spawn: Arc<crate::spawn_managed::ManagedSpawn>,
+) -> SuperviseHandle {
+    supervise_with_stdio(bin, args, envs, limits, now_ms, on_event, None, spawn)
 }

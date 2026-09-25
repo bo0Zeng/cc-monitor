@@ -502,7 +502,7 @@ const ASYMMETRY_REASONS: &[(&str, Asym, &str)] = &[
     //   那台机器自己的 `creds_core::perm` 管，不靠 SFTP 的 mode 参数，那一行点名的两条要求都照做了）。
     // 〔RM1a · 第四波〕`apikey.routing` 那一行（`NaturallyAsymmetric`：「本机这一侧在结构上答不了远端那台」）**删掉**：
     //   那一行自己写着出路 ——「远端那台要答同一个问题，得由跑在那台上的 backend 自己答」—— 今天就是这么答的。
-    ("relay.machine", Asym::NaturallyAsymmetric, "〔RM1a · 第四波〕「让那台机器上有一个中转在跑」**只对远端**：本机那一个由 monitor 自己监护（起本机后端那一刻一起起，`local_backend_host::start_local_relay`），这条命令若也对本机起一个，第二个会去抢同一个口 —— 抢赢了，监护者那一个起不来、三次之后放弃，本机的 api-key 号起会话从此全被拒。⇒ 不是「本机还没做」，是本机**已经有另一个监护者**，这条命令在本机那一侧**不该存在**。远端那台没有 monitor，那台上唯一住着的是它的后端 ⇒ 由后端起（`relay-ensure`）。"),
+    ("relay.machine", Asym::NaturallyAsymmetric, "〔RM1a · 第四波〕「让那台机器上有一个中转在跑」**只对远端**：本机那一个〔RL1 · V107〕住在本机常驻后端进程里（起本机后端时交端口，`local_backend_host::relay_host_envs`），这条命令若也对本机起一个，第二个会去抢同一个口 —— 抢赢了，后端里那一个下次起不来。⇒ 不是「本机还没做」，是本机**已经有它的住处**，这条命令在本机那一侧**不该存在**。远端那台的后端随 SSH 退、远端会话活得比 SSH 长 ⇒ 由那台后端起一个脱离的（`relay-ensure`）。"),
     ("alias.manage", Asym::ParityDebt, "〔AL1 · 2026-09-24〕`设计/71`：别名 ＝ 名字 ＋ 一组 ccm 参数，命令面两跳（`aliases_render` 纯 · `aliases_install` 唯一副作用）＋ 读回口 `aliases_read`，今天**只有本机这一侧**。⚠ 欠的是什么要写准：①「渲染」这一跳**不欠** —— 它是纯函数，本机算出来的 POSIX 文本拿去远端手贴一样能用（远端机器页上就是这么给的）；② 欠的是「**写**」与「**读回**」两跳在远端的那一半。`71 §12.6.3` 给的路是**叫远端后端自己写**（远端的 `startup_files()` 由它自己的 platform 答）—— 那是把写挪进后端（`src/backend` 只读铁律那一族），本路停下报备、没做；**不走** monitor 侧 SFTP 再长一条写路（那正是 `71 §12.5` 要收掉的第三份）。"),
     ("port-forward", Asym::NaturallyAsymmetric, "§40 天然不对称白名单第 2 条：本地没有「转发到自己」这个需求。"),
     ("search.index", Asym::NaturallyAsymmetric, "远端**不建索引**：`search_history` 对远端是实时 SSH fan-out（其头注自陈「本地内存索引查询与远端 fan-out 并发」）。索引是本机侧的实现细节，不是一项对外能力。"),
