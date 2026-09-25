@@ -328,7 +328,7 @@
   border-color: var(--text-2);
 }
 
-.grid-monitor-cell.archived {
+.grid-monitor-cell.ended {
   opacity: 0.55;
 }
 

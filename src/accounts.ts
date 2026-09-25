@@ -782,8 +782,8 @@ export function restartLocateFailureMessage(
   // （走 `localLaunchAccountSync`，沿用这条会话上次的号），「把此会话切到账号 X」在本机不存在。
   // 对本机说那句话，是在指一条走不通的路。
   const tail = opts.local
-    ? "本机归档后的 Resume 沿用这条会话上次的账号，换号只对本工具在 tmux 里起的会话做得到。"
-    : "可先归档后用右键「把此会话切到账号 X」。";
+    ? "本机会话结束后，Resume 沿用它上次的账号；换号只对本工具在 tmux 里起的会话做得到。"
+    : "可以等它结束后，用右键「把此会话切到账号 X」。";
   if (carriesOurLaunchMark) {
     return {
       title: "无法换号重启：tmux 标记丢了",

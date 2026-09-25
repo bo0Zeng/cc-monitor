@@ -21,7 +21,7 @@ import {
   type GridSessionSnapshot,
   type SessionPeek,
 } from "../session-status";
-import { isLive, isResumeOnly } from "../tab-session-state";
+import { isLive, isResumeOnly, stateView } from "../tab-session-state";
 
 /** grid 数据源（TabManager 的只读子集——便于测试注入桩）。 */
 export interface GridSource {
@@ -479,7 +479,8 @@ export class GridMonitorView {
         : selected.waitingFor
           ? `${selected.activityStatus}（等待：${selected.waitingFor}）`
           : selected.activityStatus;
-    addFact("状态", isResumeOnly(selected.state) ? `已归档 · ${act}` : act);
+    // 〔U4〕活着 ⇒ 活动状态；死了 ⇒ 状态名（已结束 / 可重连）。原先是「已归档 · <活动>」，死会话的活动是陈旧的。
+    addFact("状态", stateView(selected.state).name ?? act);
     if (peek?.model) addFact("模型", peek.model);
     this.peekEl.appendChild(facts);
 
@@ -566,14 +567,14 @@ export class GridMonitorView {
   private updateCell(refs: CellRefs, s: GridSessionSnapshot): void {
     const { cell } = refs;
     // `toggle(x, 布尔)` 状态没变时不写 DOM（规范：force 与现状一致直接返回）。
-    cell.classList.toggle("archived", isResumeOnly(s.state));
+    const view = stateView(s.state); // 〔U4〕类与灯只从两轴派生（与 tab 栏同一份）
+    cell.classList.toggle("ended", view.ended);
     cell.classList.toggle("cell-bg", s.kind !== null && s.kind !== "interactive");
     cell.classList.toggle("is-selected", s.sessionId === this.selectedId); // F91b 选中高亮
 
-    // 红绿灯点。audit-fixes F03.2：idle-tmux 灰灯覆写红绿黄（.live-dot.tmux-idle，同 tab-bar 语义）。
+    // 红绿灯点。audit-fixes F03.2：可重连的暗色灯覆写红绿黄（.live-dot.reconnectable，同 tab-bar 语义）。
     const light = activityLightClass(s.activityStatus);
-    const reconnectable = s.state.recoverability === "attachable";
-    const dotClass = `live-dot${light ? ` ${light}` : ""}${reconnectable ? " tmux-idle" : ""}`;
+    const dotClass = `live-dot${light ? ` ${light}` : ""}${view.reconnectable ? " reconnectable" : ""}`;
     if (refs.dot.className !== dotClass) refs.dot.className = dotClass;
     if (refs.name.textContent !== s.title) refs.name.textContent = s.title;
 

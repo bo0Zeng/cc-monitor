@@ -565,8 +565,20 @@ describe("TabManager 生命周期", () => {
     const btn = () => document.querySelector<HTMLElement>(".tab")!;
     tm.markTmuxIdle("gi1");
     expect(tab.state).toEqual(RECONNECTABLE);
-    expect(btn().classList.contains("tmux-idle")).toBe(true);
-    expect(btn().classList.contains("archived")).toBe(false);
+    expect(btn().classList.contains("reconnectable")).toBe(true);
+    expect(btn().classList.contains("ended")).toBe(false);
+  });
+
+  it("〔U4〕tab 的 tooltip 第一行说状态（只从两轴派生）；死了的会话不再挂陈旧的「等待操作」", () => {
+    tm.ensureTab("tt1", "/x", "p", 0, "pi");
+    const btn = () => document.querySelector<HTMLElement>(".tab")!;
+    tm.updateActivity("tt1", "waiting", "permission prompt");
+    expect(btn().title, "活着：不说状态，只说在等什么").toBe("等待操作：permission prompt");
+    tm.markTmuxIdle("tt1"); // 活动信号还留着（可重连不清它），但 claude 已经没了
+    expect(btn().title).toBe("程序退了，终端还在 —— 可以接回去");
+    tm.archiveTab("tt1");
+    expect(btn().title).toBe("这个会话已结束");
+    expect([btn().classList.contains("ended"), btn().classList.contains("reconnectable")]).toEqual([true, false]);
   });
 
   it("F03.2 收到活动信号回到活（claude 复活）——activity 值不变也回且重绘", () => {
@@ -578,7 +590,7 @@ describe("TabManager 生命周期", () => {
     // 同值 busy 再来一次（activity 无变化）——仍须回到活、类须去掉（早退前转移的守护）
     tm.updateActivity("gi2", "busy", null);
     expect(tab.state).toEqual(LIVE);
-    expect(btn().classList.contains("tmux-idle")).toBe(false);
+    expect(btn().classList.contains("reconnectable")).toBe(false);
   });
 
   it("F03.2 远端复活（主信号）：可重连的 tab 又收后端重宣告/行 → ensureTab 回到活", () => {
@@ -3550,8 +3562,8 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
     const barTabs = [...bar.children].filter((e) => e.classList.contains("tab"));
     expect(barTabs.length, "三个 tab 必须都还在主栏里 —— 归档不再把谁搬走").toBe(3);
     expect(
-      barTabs.filter((e) => e.classList.contains("archived")).length,
-      "b 已结束 ⇒ 原位灰着（`.tab.archived`），而不是消失进另一个容器",
+      barTabs.filter((e) => e.classList.contains("ended")).length,
+      "b 已结束 ⇒ 原位变淡（`.tab.ended`，〔U4〕原名 `.tab.archived`），而不是消失进另一个容器",
     ).toBe(1);
     expect(order(), "拖动本身的结果照常落实").toEqual(["c", "a", "b"]);
   });

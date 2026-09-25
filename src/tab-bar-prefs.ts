@@ -20,6 +20,7 @@ import {
 } from "./tab-bar-state";
 import type { Tab } from "./tab-model";
 import { ENDED, isLive } from "./tab-session-state";
+import { copyText } from "./copy-table";
 import type { TabStore } from "./tab-store";
 import type { Origin } from "./ipc/origin";
 
@@ -176,11 +177,15 @@ export class TabBarPrefs {
     const box = document.createElement("div");
     box.className = "pin-revived-hint";
     const head = document.createElement("strong");
-    head.textContent = degraded ? "这个会话没有留下记录" : "📌 固定下来的已结束会话";
+    // 〔U4〕说到会话状态的字住文案表 `sessionState.*`（与 tab 的状态名 / 提示句同一处）。
+    //   原句里的「jsonl 路径」「前端」是内部词（`设计/91 §4` R1），一并去掉。
+    head.textContent = degraded
+      ? copyText("sessionState.pinnedEmpty.head")
+      : copyText("sessionState.pinned.head");
     const body = document.createElement("p");
     body.textContent = degraded
-      ? "固定它的时候它还没写下任何一行，前端没有它的 jsonl 路径 —— 没有可以接回去的东西。右键 × 可以把它去掉。"
-      : "内容不在本地缓存里（已结束的会话只能 resume，不能回看）。resume 成功后 Claude 会续写同一份记录，这个 tab 会自己亮起来。";
+      ? copyText("sessionState.pinnedEmpty.body")
+      : copyText("sessionState.pinned.body");
     box.append(head, body);
     if (!degraded) {
       const btn = document.createElement("button");

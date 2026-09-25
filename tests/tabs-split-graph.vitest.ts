@@ -119,8 +119,8 @@ const DEPS: Record<string, readonly string[]> = {
   "src/tab-drop.ts": ["src/tab-collections.ts"],
   // ① store：只存东西、只做顺序运算、只有一份订阅。〔U4〕摘要按活性分 ⇒ 要 `isLive` 那一个谓词。
   "src/tab-store.ts": ["src/tab-session-state.ts"],
-  // ① 〔U4〕会话状态的两个轴：形状 ＋ 转移 ＋ 谓词。纯的，零依赖。
-  "src/tab-session-state.ts": [],
+  // ① 〔U4〕会话状态的两个轴：形状 ＋ 转移 ＋ 谓词 ＋ 呈现。呈现的字只经文案表取（`sessionState.*`）。
+  "src/tab-session-state.ts": ["src/copy-table.ts"],
   // ② 路由：只写「上次的 tab」那一格 localStorage。〔U4〕已结束的不自动跟随 ⇒ `isResumeOnly`。
   "src/tab-router.ts": ["src/local-storage.ts", "src/tab-session-state.ts"],
   // ① 事实抽取：agent 工具名判定 · 写类工具的文件路径。
@@ -156,11 +156,18 @@ const DEPS: Record<string, readonly string[]> = {
   "src/tab-bar-drag.ts": ["src/tab-collections.ts", "src/tab-drop.ts"],
   // ④ 落盘偏好：集合 / 固定 / 顺序的盘上那一层。
   //   〔U4〕固定复活出来的是「已结束」· 落盘的「最后活动时刻」按活性判。
-  "src/tab-bar-prefs.ts": ["src/tab-bar-state.ts", "src/tab-collections.ts", "src/tab-session-state.ts"],
+  //   〔U4〕固定复活的空态文字住文案表（说到会话状态的字一处定）。
+  "src/tab-bar-prefs.ts": [
+    "src/copy-table.ts",
+    "src/tab-bar-state.ts",
+    "src/tab-collections.ts",
+    "src/tab-session-state.ts",
+  ],
   // ⑤ 菜单放哪几项：账号 flyout · tmux 判据 · attach / 预览 · 菜单控件 · 会话动作。
   "src/tab-menu.ts": [
     "src/agent-profile.ts",
     "src/behavior.ts",
+    "src/copy-table.ts", // 〔U4〕固定那一项的两句提示（说到会话状态）住文案表
     "src/error-toast.ts",
     "src/ipc/origin.ts", // 〔C4a〕本机 / 远端各给哪几项（原先是 backend-policy 的 LOCAL_ORIGIN ＋ 各处 `=== null`）
     "src/launch-menu.ts",
@@ -181,6 +188,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/account-restart.ts",
     "src/accounts.ts",
     "src/behavior.ts",
+    "src/copy-table.ts", // 〔U4〕杀空 tmux / 杀会话的确认与回执（说到会话状态）住文案表
     "src/error-toast.ts",
     "src/file-window.ts", // F78：远端会话「打开工作目录」（〔F7b〕老 SFTP 面板删了，改开文件窗口）
     "src/ipc/commands.ts",

@@ -15,8 +15,12 @@
  * 2. **转移**：五种事件怎么改它（`nextState`）—— 事件从哪来（只远端 / 只本机）那道门留在 `TabManager`。
  * 3. **行为谓词**：× 能不能关、↗ 能不能拉前、算不算活跃……每一处旧判断换成这里的一个谓词。
  *
+ * 4. **呈现**：CSS 类开关 · 状态名 · 提示句（`stateView`）—— 界面上说到会话状态的字只从两轴派生，文字住文案表
+ *    `src/shared/copy/table.json` 的 `sessionState.*`（`设计/30 §3.5.2` 那张表：已结束 / 可重连）。
+ *
  * 缺的格（要后端补，不在前端猜）记在 `调研/第四波记录/U4.md §0.1`：G1 记录没了 · G2 本机容器还在 · G3 活会话的容器类型。
  */
+import { copyText } from "./copy-table";
 
 /** 活性：进程在不在。 */
 export type Liveness = "live" | "dead";
@@ -100,4 +104,40 @@ export function hasTerminal(s: SessionState): boolean {
 /** 活性 == 活。状态栏「活跃 N」· 固定条目的「最后活动时刻」· 机器总览的活跃会话数用它。 */
 export function isLive(s: SessionState): boolean {
   return s.liveness === "live";
+}
+
+/**
+ * 一个状态在界面上长什么样（`U4.md §1.2` 那张表）。**这是说会话状态的字的唯一出处**：
+ * tab 栏的类与 tooltip、机器总览的类 / 灯 / 「状态」一格都从这里取。
+ */
+export interface StateView {
+  /** `.ended`：已结束（整颗变淡、标题斜体、灯 / ↗ / 📂 隐藏、× 露出来）。 */
+  ended: boolean;
+  /** `.reconnectable`：可重连（灯换成暗色、停呼吸）。 */
+  reconnectable: boolean;
+  /** 状态名（「已结束」「可重连」）；活着 ⇒ `null`（活着不另说状态，灯自己说）。 */
+  name: string | null;
+  /** 提示句（`设计/30 §3.5.2`「说给用户的话」一列）；活着 ⇒ `null`。 */
+  tooltip: string | null;
+}
+
+export function stateView(s: SessionState): StateView {
+  if (s.liveness === "live") return { ended: false, reconnectable: false, name: null, tooltip: null };
+  // 死了：按可恢复性分两格。`switch` 穷尽 —— 后端补上 `gone`（G1）之后这里编译期就会要第三格。
+  switch (s.recoverability) {
+    case "resumable":
+      return {
+        ended: true,
+        reconnectable: false,
+        name: copyText("sessionState.ended.name"),
+        tooltip: copyText("sessionState.ended.tooltip"),
+      };
+    case "attachable":
+      return {
+        ended: false,
+        reconnectable: true,
+        name: copyText("sessionState.reconnectable.name"),
+        tooltip: copyText("sessionState.reconnectable.tooltip"),
+      };
+  }
 }

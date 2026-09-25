@@ -4,6 +4,8 @@
  *
  * 设计与判据编号见 `调研/第四波记录/U4.md §2`。本文件管：
  * - S1 转移表：3 态 × 5 事件 = 15 格，逐格相等。**期望手写自设计表**（`U4.md §1.1`），不从实现生成。
+ * - S2 呈现表：3 态 → {类开关 · 状态名 · 提示句}。期望串是本文件里的字面量（抄自 `设计/30 §3.5.2` 那张表），
+ *   被测串从文案表 `src/shared/copy/table.json` 取 —— 两份语料。
  */
 import { describe, expect, it } from "vitest";
 
@@ -15,6 +17,7 @@ import {
   isLive,
   isResumeOnly,
   nextState,
+  stateView,
   type SessionState,
   type StateEvent,
 } from "../src/tab-session-state";
@@ -72,5 +75,23 @@ describe("S1 转移表（3 态 × 5 事件，逐格 == `U4.md §1.1`）", () => 
       hasTerminal: [true, true, false],
       isLive: [true, false, false],
     });
+  });
+});
+
+describe("S2 呈现表（3 态 → 类 · 状态名 · 提示句 == `设计/30 §3.5.2`）", () => {
+  it("★ 三个态逐格相等", () => {
+    expect([LIVE, RECONNECTABLE, ENDED].map(stateView)).toEqual([
+      { ended: false, reconnectable: false, name: null, tooltip: null },
+      { ended: false, reconnectable: true, name: "可重连", tooltip: "程序退了，终端还在 —— 可以接回去" },
+      { ended: true, reconnectable: false, name: "已结束", tooltip: "这个会话已结束" },
+    ]);
+  });
+
+  it("★ 两个类互斥（`30 §3.5.1`：两套灰在 CSS 上互斥）且只在死了的时候出现", () => {
+    for (const s of [LIVE, RECONNECTABLE, ENDED]) {
+      const v = stateView(s);
+      expect(v.ended && v.reconnectable, `${nameOf(s)}：两个类同时亮`).toBe(false);
+      expect(v.ended || v.reconnectable, `${nameOf(s)}：类亮不亮 == 死没死`).toBe(s.liveness === "dead");
+    }
   });
 });
