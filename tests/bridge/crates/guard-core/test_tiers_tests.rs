@@ -2438,3 +2438,89 @@ fn the_test_fn_splitter_sees_ignores_on_both_sides_and_inline_mods() {
         Some("")
     );
 }
+
+// ───────────────────────────── `benches/`：量具的家 ─────────────────────────────
+
+/// bench 源码的唯一住址（仓根相对）。
+const BENCHES: &str = "tests/benches/";
+
+/// 一份 `Cargo.toml` 里每个 `[[bench]]` 块：`(path 字面量, test = true 没有)`。
+fn bench_blocks(manifest: &str) -> Vec<(Option<String>, bool)> {
+    let mut out: Vec<(Option<String>, bool)> = Vec::new();
+    let mut open = false;
+    for row in crate::strip_hash_comment_lines(manifest).lines() {
+        let t = row.trim();
+        if t.starts_with('[') {
+            open = t == "[[bench]]";
+            if open {
+                out.push((None, false));
+            }
+            continue;
+        }
+        if !open {
+            continue;
+        }
+        let Some((k, v)) = t.split_once('=') else {
+            continue;
+        };
+        let last = out.last_mut().expect("块已开");
+        match k.trim() {
+            "path" => last.0 = Some(v.trim().trim_matches('"').to_string()),
+            "test" => last.1 = v.trim() == "true",
+            _ => {}
+        }
+    }
+    out
+}
+
+/// B：`[[bench]]` 的源码集合 == `tests/benches/*.rs` 盘上集合（两向）；每条都标 `test = true`
+/// （⇒ `cargo test` 走它的冒烟档 ⇒ 门禁那一格证明它跑得起来）；墙钟不进任何判据。
+#[test]
+fn every_bench_lives_in_the_benches_home_and_runs_under_cargo_test() {
+    let root = repo();
+    let mut declared: BTreeSet<String> = BTreeSet::new();
+    let mut bad = Vec::new();
+    let manifests: Vec<String> = crate::files_by_extension(&root.join("src"), "toml")
+        .into_iter()
+        .filter(|r| r.ends_with("Cargo.toml") && !under(r, "bridge/vendor/"))
+        .collect();
+    for m in &manifests {
+        let dir = root.join("src").join(m);
+        let dir = dir.parent().expect("清单有父目录").to_path_buf();
+        let manifest_text =
+            std::fs::read_to_string(root.join("src").join(m)).expect("读 Cargo.toml");
+        for (path, test) in bench_blocks(&manifest_text) {
+            let Some(path) = path else {
+                bad.push(format!("  `src/{m}` 有一个 `[[bench]]` 没写 `path` —— 它的源码落在清单旁的 `benches/` 里，那不是本仓的家"));
+                continue;
+            };
+            let rel = rel_of(&root, &normalize(&dir.join(&path)));
+            if !test {
+                bad.push(format!("  `src/{m}` 的 `[[bench]]`（`{rel}`）没标 `test = true` ⇒ `cargo test` 不跑它的冒烟档，坏了没人知道"));
+            }
+            declared.insert(rel);
+        }
+    }
+    let on_disk: BTreeSet<String> = crate::files_by_extension(&root.join(BENCHES), "rs")
+        .into_iter()
+        .map(|r| format!("{BENCHES}{r}"))
+        .collect();
+    for f in set_diff(&declared, &on_disk) {
+        bad.push(format!(
+            "  `[[bench]]` 指向 `{f}`，它不在 `{BENCHES}` 下（或盘上没有）"
+        ));
+    }
+    for f in set_diff(&on_disk, &declared) {
+        bad.push(format!(
+            "  `{f}` 在 `{BENCHES}` 下，却没有任何 `[[bench]]` 指它 —— 它不编译，是死文件"
+        ));
+    }
+    assert!(
+        !manifests.is_empty() && !on_disk.is_empty() && bad.is_empty(),
+        "`benches/`（清单 {} 份 · 盘上 {} 份 · 声明 {} 条）：\n{}",
+        manifests.len(),
+        on_disk.len(),
+        declared.len(),
+        bad.join("\n")
+    );
+}
