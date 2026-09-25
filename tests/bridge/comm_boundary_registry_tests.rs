@@ -2571,14 +2571,13 @@ const TRANSPORT_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
     ),
     (
         "src/bridge/src/sftp_pool.rs",
-        &["C1", "C4"],
-        &["开文件", "以选项开"],
-        "`C1` 在公开面上（〔第四波 S4〕其中那处**搬走实现之后留下的再导出**已经删了 —— \
-         `设计/05 §8.1.4` 逐字「**搬实现不等于收回公开面**」，收回它的就是那一拍）。\
-         `C4` 那两个判词打开的是**用户按下的那次传输的本地那一头**（载荷，不是 `C4` 句子点名的\
-         凭据/配置/路由表/期限值）⇒ **那道设计题今天没拍**，判词见 \
-         `c4_nothing_inside_the_boundary_reads_disk_or_environment` 头注 ⑤。\
-         〔第四波 S4〕`X4` 那一处（老 Tauri 进度通道把进度静默丢掉）随最后一条用它的命令删了。",
+        &["X2"],
+        &[],
+        "〔SR1b · 2026-09-24〕**传输本体整段搬进了本机常驻后端**（SFTP 客户端 `dial/sftp.rs`、传输台 `control/transfer.rs`），\
+         这份只剩中继：开单 / 起跑 / 撤原样转给本机后端，`transfer` 帧翻成窗口那几格。\
+         〔墓碑 —— 从前咬它的是 `C1`（公开面上的传输业务词）与 `C4` 两个判词「开文件」「以选项开」（用户那次传输的本地那一头）；\
+         两样都跟着传输本体走了。〕今天只剩 `X2`：它给本机后端那几条**就地记账**命令的应答定了一个期限值（`CALL_BUDGET`）—— \
+         期限值归宿主（`05 §3.3.2`），而它**就是**宿主那一侧的中继，不是传输面候选 ⇒ 不圈，照实登记。",
     ),
     (
         "src/bridge/src/pubkey.rs",
@@ -2875,7 +2874,9 @@ fn the_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_prose_na
 fn the_transport_candidates_left_outside_are_blocked_by_exactly_the_criteria_the_prose_names() {
     // 〔C2 · 2026-09-24〕`C4` 判词处数 5 → **4**：少的是 `ssh_source.rs` 的「读环境OS」——
     //   拨号代理二进制的解析（`CCM_DIAL_PROXY`）随拨号搬去了宿主 `dial_host.rs`（不是成员，那一处本来就归它）。
-    assert_left_outside(TRANSPORT_LEFT_OUTSIDE, "面 A 的传输面那四份候选", 4, 4);
+    // 〔SR1b · 2026-09-24〕`C4` 判词处数 4 → **2**：少的是 `sftp_pool.rs` 的「开文件」「以选项开」——
+    //   用户那次传输的本地那一头随传输台搬进了本机常驻后端（`control/transfer.rs`）。份数仍是 4（它还是候选，只剩 `X2`）。
+    assert_left_outside(TRANSPORT_LEFT_OUTSIDE, "面 A 的传输面那四份候选", 4, 2);
 }
 
 // ════════════════════════════════════════════════════════════════════════════

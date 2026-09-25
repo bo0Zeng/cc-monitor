@@ -134,6 +134,11 @@ pub const COMMANDS: &[&str] = &[
     "relay-status",
     "resolve",
     "tasks-list",
+    // 〔SR1b〕传输四条（`control/transfer.rs`）：传输台住本机常驻后端，SFTP 跟其它 SSH 同一条连接。
+    "transfer-download",
+    "transfer-start",
+    "transfer-stop",
+    "transfer-upload",
 ];
 
 /// 在跑的命令登记表：`id` → 取消句柄。
@@ -170,6 +175,9 @@ where
         // 〔SR1a〕本连接的链路表：随本读循环一起死 ⇒ monitor 走了，它开的链路一条不留
         // （`dial::link::Table` 的 `Drop`）。
         let links = crate::dial::link::Table::new(replies.clone());
+        // 〔SR1b〕本连接的传输票表：同上，随本读循环一起死 ⇒ monitor 走了，它开的传输一律撤
+        // （`control::transfer::Desk` 的 `Drop`）。
+        let xfers = crate::control::transfer::Desk::new(replies.clone());
         let mut rd = BufReader::new(stdin);
         let mut buf: Vec<u8> = Vec::new();
         // 本行是否已经超限。超限之后**只丢字节、不再往 buf 里塞**（O(1) 内存）。
@@ -220,7 +228,7 @@ where
                 .await;
                 overflowed = false;
             } else {
-                handle_line(&buf, &replies, &running, &links).await;
+                handle_line(&buf, &replies, &running, &links, &xfers).await;
             }
             buf.clear();
         }
@@ -341,6 +349,7 @@ async fn handle_line(
     replies: &mpsc::Sender<Frame>,
     running: &Running,
     links: &crate::dial::link::Table,
+    xfers: &crate::control::transfer::Desk,
 ) {
     if raw.is_empty() {
         return; // 空行（含 CRLF 的裸 \r 之后）静默跳过
@@ -353,7 +362,7 @@ async fn handle_line(
             return;
         }
     };
-    match dispatch(req, replies, running, links) {
+    match dispatch(req, replies, running, links, xfers) {
         Disposition::Done => {}
         Disposition::Reply(f) => send(replies, f).await,
         Disposition::Spawn(req, run) => {
@@ -428,6 +437,7 @@ fn dispatch(
     replies: &mpsc::Sender<Frame>,
     running: &Running,
     links: &crate::dial::link::Table,
+    xfers: &crate::control::transfer::Desk,
 ) -> Disposition {
     match req.cmd.as_str() {
         // 〔SR1a〕链路四条：要碰**本连接的链路表**与应答通道 ⇒ 与 `cancel` 同一档（硬臂、就地做完）。
@@ -440,6 +450,13 @@ fn dispatch(
         },
         "link-credit" => Disposition::Reply(links.credit(&req.id, &req.args)),
         "link-close" => Disposition::Reply(links.close(&req.id, &req.args)),
+        // 〔SR1b〕传输四条：要碰**本连接的票表**与应答通道（进度帧走应答通道）⇒ 同一档硬臂。
+        //   开单 / 起跑 / 撤都是就地做完的记账（起跑那一下 `spawn` 两个任务，不 await）。
+        "transfer-upload" | "transfer-download" | "transfer-start" | "transfer-stop" => {
+            Disposition::Reply(crate::control::transfer::Desk::answer_wire(
+                xfers, &req.cmd, &req.id, &req.args,
+            ))
+        }
         "cancel" => {
             let target = req
                 .args
@@ -1400,6 +1417,40 @@ pub const REGISTRY: &[CommandSpec] = &[
         doc_anchor: Some("#### `link-close`"),
         codes: &["invalid_args"],
         fields: &["link"],
+        takes_input: true,
+        run: Run::Builtin,
+    },
+    // 〔SR1b · 2026-09-24〕**传输四条** —— 用户 V89「SFTP 进本机常驻后端，只写暂存区」：传输台从 monitor 搬进
+    // 本机常驻后端（`设计/60 §4.6`）。四条都是 `Run::Builtin`：要碰本连接的票表与应答通道 ⇒ **只在帧面**。
+    CommandSpec {
+        name: "transfer-upload",
+        doc_anchor: Some("#### `transfer-upload`"),
+        codes: &["bad_args", "io_failed", "busy", "too_many_transfers"],
+        fields: &["dial", "id", "key", "local_path"],
+        takes_input: true,
+        run: Run::Builtin,
+    },
+    CommandSpec {
+        name: "transfer-download",
+        doc_anchor: Some("#### `transfer-download`"),
+        codes: &["bad_args", "refused", "too_many_transfers"],
+        fields: &["dial", "id", "local_path", "remote_path"],
+        takes_input: true,
+        run: Run::Builtin,
+    },
+    CommandSpec {
+        name: "transfer-start",
+        doc_anchor: Some("#### `transfer-start`"),
+        codes: &["bad_args", "no_such_transfer", "already_started"],
+        fields: &["id"],
+        takes_input: true,
+        run: Run::Builtin,
+    },
+    CommandSpec {
+        name: "transfer-stop",
+        doc_anchor: Some("#### `transfer-stop`"),
+        codes: &["bad_args"],
+        fields: &["id"],
         takes_input: true,
         run: Run::Builtin,
     },

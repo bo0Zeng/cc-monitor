@@ -256,6 +256,15 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
+        "tests/bridge/filewin/transfer_tests.rs",
+        "src/backend/dial/pool.rs",
+        "★〔SR1b 09-24 新增〕**窗口一趟拖入起几件，与本机后端那条连接的传输车道 / 通道闸对得上** —— \
+         `filewin::transfer::tests::one_windows_burst_fits_the_transfer_lane_and_never_fills_the_connection`。\
+         两个数住两棵依赖树（窗口的 `WINDOW_TRANSFER_LANES` · 后端的 `TRANSFER_LANE_CAP` / `SESSION_CHANNEL_CAP`）；\
+         失效方向：窗口起的件数超过车道 ⇒ 多挂的订阅只是白排队；够着整条连接的通道闸 ⇒ 一个窗口把会话与查询饿死。",
+    ),
+    (
+        "monitor→backend",
         "tests/bridge/subagent_tests.rs",
         "src/backend/observe/history_query.rs",
         "★〔C2 · SE1 欠账 09-24 新增〕**「老后端」那一档的认法两侧同形** —— \

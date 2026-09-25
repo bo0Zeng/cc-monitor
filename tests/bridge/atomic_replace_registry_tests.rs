@@ -119,17 +119,8 @@ const SITES: &[(&str, &str, usize, &str, &str)] = &[
              §4 讲的是 Windows 本机 ACL/ADS 保留，而这两处走的是 SFTP 协议、写的是远端文件系统\
              ⇒ **不属本机原子替换那条分工**。登记它是为了让下一个人不必再判一次。",
     ),
-    (
-        "sftp_pool.rs",
-        "rename",
-        1,
-        "**monitor 自己的**下载落盘",
-        "`download_inner`：下载先写 `<local>.part` 再 rename 落地（半成品不冒充成品，失败即删）。\
-             〔F7c 收尾 09-24〕4 → 2：老上传核心与改名命令那两处远端 rename 随它们一起走了\
-             （上传今天只写暂存区，落进目标的那一下在后端 `files-commit-upload`，不在这里）。\
-             〔第四波 S4〕2 → 1：零流量复制的核心（先写 `<to>.part` 再 rename 上位的那一处远端 rename）\
-             随它的命令退役删了 ⇒ 本行不再混类，只剩本机下载落盘这一处。",
-    ),
+    // 〔SR1b · 2026-09-24〕`sftp_pool.rs [rename]`（`download_inner`：下载先写 `<local>.part` 再 rename 落地）这一行摘了 ——
+    //   下载的本机落点随传输台搬进了本机常驻后端（`control/transfer.rs`，第三层文件管理写面），monitor 这一侧零 rename。
 ];
 
 fn src_root() -> PathBuf {

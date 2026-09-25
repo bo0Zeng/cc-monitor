@@ -410,6 +410,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | `accounts_changed` | —（无载荷） | **〔SR1a · `设计/05 §13.6 ③`〕这台机器上的账号清单变了**（watcher 盯账号 manifest 所在目录，一批文件事件里 manifest 动了几次都只发一帧）。客户端收到就重拉一次账号清单（`accounts-list`）—— 清单本身不在帧里，唯一出口仍是那条查询。manifest 所在目录起步时不在 / 后来被删掉重建 ⇒ 这一路听不见（已知边界，代价只是不推帧）。monitor 收到发前端既有的 `remote-backend-ready`（带 `reason: "accounts_changed"`），账号表与 chip 随之重取 |
 | `link_data` | `link`, `data` | **〔SR1a〕一条链路的下行字节**（`data` = base64，标准字母表带补位；解码后 ≤ 32 KiB）。只在客户端开了链路（`link-open`）之后才出现；链路上的字节与 C2 拨号代理的 stdout 逐字节同形。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的「链路四条」 |
 | `link_end` | `link`, `error?` | **〔SR1a〕这条链路不会再有字节了**，后端已忘掉这个 id。`error` 缺席 = 正常收尾；在 = 非正常收尾的人话。拨不通**不**走这里（那是链路字节里那一行失败的 ack） |
+| `transfer` | `id`, `got`, `total`, `end?` | **〔SR1b〕一趟传输此刻的样子**（`transfer-start` 之后才出现）：每一帧是整份快照（`got` / `total` 字节），不是增量 ⇒ 后端按变更合并、堵住时只合并不堆积。带 `end` 的那一帧是这一趟的**最后一帧**：`{"state":"done","bytes"}` · `{"state":"failed","why"}` · `{"state":"cancelled"}`。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的「传输四条」 |
 
 ### 入方向：流连接上的命令信封（U6b-1）
 
@@ -1849,6 +1850,52 @@ monitor 的做法：链路的读者每读走半个窗口就还一次（`link_mux
 那条链路的拨号 / 服务 / 两台泵一起收掉；关一条不存在的链路是幂等的（同 `cancel`）。错误 code：`invalid_args`。
 它就是 C2 那一版「界面走了、子进程的管子断了」：`stream` 的对拷就地停、`forward` 放掉本机口并收掉在飞的隧道；
 那条 SSH 连接**不跟着断**（别的链路可能还在用它 —— 最后一条走了它才断）。monitor 侧的链路句柄被丢时自动发这一条。
+
+#### 传输四条（〔SR1b〕2026-09-24）—— **传输台住本机常驻后端，SFTP 与其它 SSH 同一条连接**
+
+用户 V89「SFTP 进本机常驻后端，只写暂存区」：传输台从界面进程搬进本机常驻后端（`设计/60 §4.6`）；
+窗口那一侧的 `call(transfer-upload | transfer-download)` / `subscribe(transfer/<id>)` 一个字不变，monitor 只做中继。
+**上传只写远端暂存区** `~/.cc-monitor/staging/<key>.part`（落进用户目录由远端后端 `files-commit-upload` 做）；**下载远端只读**，
+本机落点 `<落点>.part` ＋ 改名上位（本机那一下写是文件管理那一面的写，先过会话文件围栏）。
+存亡规矩：**撤** ⇒ 上传删暂存件、下载留 `.part`；**失败** ⇒ 上传留暂存件、下载删 `.part`；续传两侧都先对尾块。
+票表**每条流连接一张**：连接没了（monitor 走了）⇒ 在册的一律撤。四条都是 `Run::Builtin`，**只在帧面**。
+一条连接上的通道预算按连接记：session 通道 8 格（长流 · 查询 · sftp 同一道闸），其中传输至多 4 格（排队，不报错）。
+
+#### `transfer-upload`：开单（上传）
+
+| 方向 | 形状 |
+|---|---|
+| `args` | `{"dial":{DialRequest，同 link-open},"local_path":"<本机一份普通文件的路径>"}` |
+| `data` | `{"id":"xfer-<n>","key":"<32 位十六进制>"}` —— `key` = 暂存件的键（本机路径 · 大小 · 修改时间派生；同一份文件重拖一次同一个键 ⇒ 续传），提交时交给远端后端 |
+
+**不起跑**。错误 code：`bad_args` · `io_failed`（读不到本机文件）· `busy`（同一个键已有一张票在册）· `too_many_transfers`（每连接 64 张）。
+
+#### `transfer-download`：开单（下载）
+
+| 方向 | 形状 |
+|---|---|
+| `args` | `{"dial":{…},"remote_path":"<远端路径>","local_path":"<本机落点，绝对路径>"}` |
+| `data` | `{"id":"xfer-<n>"}` |
+
+本机落点**当场**过会话文件围栏（出声早），起跑时再过一次。错误 code：`bad_args` · `refused`（围栏拒）· `too_many_transfers`。
+
+#### `transfer-start`：起跑
+
+| 方向 | 形状 |
+|---|---|
+| `args` | `{"id"}` |
+| `data` | 无。之后进度与终局走出方向 `transfer` 帧（第一帧是此刻；带 `end` 的是最后一帧），终局之后票摘掉 |
+
+错误 code：`bad_args` · `no_such_transfer` · `already_started`（一趟只起跑一次）。
+
+#### `transfer-stop`：撤
+
+| 方向 | 形状 |
+|---|---|
+| `args` | `{"id"}` |
+| `data` | 无（撤一张不在册的票是幂等的，同 `cancel`） |
+
+没起跑的票当场摘掉；起跑了的由它自己收场（上传删暂存件 / 下载留 `.part`），终局帧 `cancelled`。错误 code：`bad_args`。
 
 ### argv 三分（U6b-2）
 

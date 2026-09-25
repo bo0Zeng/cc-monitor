@@ -364,6 +364,15 @@ mod tests {
          `<key>.<seq>.chunk`（暂存区不在就先过围栏再建目录）· 读回拼起来交写面 `overwrite_text` 原地覆盖（不添动词）· \
          删这一键的块（先过以暂存区为根的围栏）。线上入口只有 `inbound.rs` 那三条 \
          `files-commit-upload` / `files-stage-chunk` / `files-commit-text`（`COMMIT_COMMANDS`）",
+    ), (
+        // 〔SR1b · 第四波 · 2026-09-24〕用户 V89「SFTP 进本机常驻后端」：传输台搬进本机后端，下载的**本机落点**
+        //   （用户选的路径）那一下写从 monitor 搬到这里 —— 同一句用户裁决（「只允许后端的文件管理部分写文件」）。
+        "control/transfer.rs",
+        "传输台（`设计/60 §4.2`）：下载的本机落点 —— `O_EXCL` 新建 `<落点>.part`（旧的尾块对不上先删）· \
+         续传时接着写那一份（不截断、不新建）· 传完改名上位 · 失败删 `.part`。每一处先过写面那道围栏 \
+         （`files_write::fenced_target`，根 = 落点的父目录，借用、不抄）。远端暂存区那一半一行都不在这里 \
+         （经 `dial/sftp.rs` 的写原语，只许两处）。线上入口只有 `inbound.rs` 那四条 `transfer-*` 硬臂 \
+         （`transfer_command_names`）",
     )];
 
     /// 第三层模块**能用**的改动动词（`fs::` 之后那个词）。**闭集**。
@@ -390,7 +399,15 @@ mod tests {
     ///   它是**读**；刻意不进全局只读表，理由同 `symlink_metadata`（不替全后端放一个读动词）。
     ///   ⚠ **改动动词闭集（[`MUTATING_FACE_VERBS`]）一个没加**：递归删由「删文件」「删空目录」
     ///   两个既有动词逐条拼出，那个一步递归删的库函数照旧在 [`MUTATING_FACE_STILL_FORBIDDEN`] 上。
-    const MUTATING_FACE_AUX: &[&str] = &["MetadataExt", "Permissions", "symlink_metadata"];
+    ///   〔SR1b · 第四波 · **3 → 4**〕`File::from_std` —— 把**已经过了围栏、已经开好**的那个 std 句柄换成异步句柄
+    ///   （传输台的下载落点：开那一下在同步函数里过围栏，写那一路是异步的）。它不开任何东西、不改任何东西；
+    ///   刻意不进全局只读表，理由同上（不替全后端放一个词）。
+    const MUTATING_FACE_AUX: &[&str] = &[
+        "File::from_std",
+        "MetadataExt",
+        "Permissions",
+        "symlink_metadata",
+    ];
 
     /// 第三层模块**仍然不许**出现的东西。
     ///
@@ -1277,6 +1294,68 @@ mod tests {
         }
     }
 
+    /// `dispatch` 的分派臂里够得到写面的那几条，回 `(切出的臂数, 那几条臂模式里的命令名)`。
+    ///
+    /// 一条臂 = 从一行以 `"名字"` 开头（或 `| "名字"` 续行）、且这一段里出现 `=>` 的那一行起，到下一条臂之前。
+    /// 纯函数；切法与判定由 `the_dispatch_arm_judge_reads_or_patterns_and_bodies` 逐形喂样本。
+    pub(super) fn dispatch_arms_reaching(
+        prod: &str,
+        needles: &[String],
+    ) -> (usize, std::collections::BTreeSet<String>) {
+        // ⚠ 取址走 `guard_core::find_pinned`（恰好一处 ＋ 两侧有边界），不走语料上的裸 `find`（`needle_anchor_registry`）。
+        let Ok(start) = guard_core::find_pinned(prod, "fn dispatch(") else {
+            return (0, Default::default());
+        };
+        // 函数体到第一行顶格的 `}` 为止（逐行判相等，不按子串切）。
+        let mut body_len = 0usize;
+        for row in prod[start..].split_inclusive('\n') {
+            body_len += row.len();
+            if row.trim_end() == "}" {
+                break;
+            }
+        }
+        let body = &prod[start..start + body_len];
+        // 臂头：一行（去缩进后）以 `"` 起头、且在本行里出现 `=>`。
+        let mut heads: Vec<usize> = Vec::new();
+        let mut at = 0usize;
+        for row in body.split_inclusive('\n') {
+            let head_text = row.trim_start();
+            if head_text.starts_with('"') && guard_core::contains_word(head_text, "=>") {
+                heads.push(at);
+            }
+            at += row.len();
+        }
+        let mut names = std::collections::BTreeSet::new();
+        for (i, h) in heads.iter().enumerate() {
+            let end = heads.get(i + 1).copied().unwrap_or(body.len());
+            let arm = &body[*h..end];
+            if !needles.iter().any(|n| arm.contains(n.as_str())) {
+                continue;
+            }
+            let pattern = arm.split_once("=>").map(|(p, _)| p).unwrap_or("");
+            for (k, piece) in pattern.split('"').enumerate() {
+                if k % 2 == 1 {
+                    names.insert(piece.to_string());
+                }
+            }
+        }
+        (heads.len(), names)
+    }
+
+    /// 硬臂那一半的切法**逐形喂样本**：一臂一名 · 或模式一臂多名 · 臂体换行 · 不够得到写面的臂不算。
+    #[test]
+    fn the_dispatch_arm_judge_reads_or_patterns_and_bodies() {
+        let needles = vec!["transfer::".to_string()];
+        let sample = "fn dispatch(req: R) -> D {\n    match req.cmd.as_str() {\n        \"a\" => x(),\n        \"t-up\" | \"t-down\" => {\n            D::Reply(crate::control::transfer::Desk::answer_wire(q))\n        }\n        \"b\" => y(),\n        other => z(other),\n    }\n}\n";
+        let (arms, names) = dispatch_arms_reaching(sample, &needles);
+        assert_eq!(arms, 3, "臂头没切对");
+        assert_eq!(
+            names.into_iter().collect::<Vec<_>>(),
+            ["t-down", "t-up"],
+            "或模式那一臂的名字没取全 / 多取了别的臂"
+        );
+    }
+
     /// 🔴🔴 **第三层判据 ④ 的另一半：那扇门里，够得到写面的命令恰好是写面登记的那几条。**
     ///
     /// 上一条只判「哪份**文件**引用得到」—— `inbound.rs` 里任何一条命令都在那份文件里，
@@ -1318,11 +1397,22 @@ mod tests {
             chunks >= 15,
             "只切出 {chunks} 块 `CommandSpec` —— 切法坏了，本条在空转"
         );
-        // 两侧异源照旧：一侧源码文本，一侧是两个第三层模块**各自**的常量表的并。
+        // 〔SR1b · 第四波〕**硬臂那一半**：`Run::Builtin` 的命令不在 `CommandSpec` 块里带处理器，
+        //   它们的处理住 `dispatch` 的分派臂 ⇒ 按「一条臂 = 从 `"名字" … =>` 那一行起、到下一条臂之前」切块，
+        //   臂里引用了写面的，取它模式里的**全部**名字（或模式 `"a" | "b" =>` 一臂多名）。
+        //   不补这一半，传输台那四条硬臂够得到写面而本条看不见 —— 与上面那半同一个问题，换了一种写法。
+        let (arms, arm_names) = dispatch_arms_reaching(&prod, &needles);
+        assert!(
+            arms >= 5,
+            "`dispatch` 里只切出 {arms} 条臂 —— 切法坏了，硬臂那一半在空转"
+        );
+        reaching.extend(arm_names);
+        // 两侧异源照旧：一侧源码文本，一侧是第三层模块**各自**的常量表的并。
         let want: std::collections::BTreeSet<String> =
             crate::control::files_write::manage_command_names()
                 .into_iter()
                 .chain(crate::control::files_commit::commit_command_names())
+                .chain(crate::control::transfer::transfer_command_names())
                 .map(str::to_string)
                 .collect();
         assert!(

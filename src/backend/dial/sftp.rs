@@ -94,6 +94,27 @@ pub(crate) async fn open(
     Session::over(channel.into_stream(), Box::new(keep)).await
 }
 
+/// 一份拨号请求（传输台开单时读进来、起跑时拿它开会话）。包一层是为了让传输台**只经本文件**够到拨号：
+/// 它手里不必有 `DialRequest` 这个类型（文件管理那一面的外向边钉在 `module_boundary_guard::OUTWARD`）。
+#[derive(Clone)]
+pub(crate) struct Dial(DialRequest);
+
+impl Dial {
+    pub(crate) fn parse(v: &serde_json::Value) -> Result<Dial, String> {
+        super::parse_request_value(v)
+            .map(Dial)
+            .map_err(|e| format!("拨号请求读不动：{e}"))
+    }
+}
+
+/// 传输那一趟的会话：拿池里那条连接（同身份复用）→ 过**传输车道**开一条 sftp 通道。
+pub(crate) async fn open_for_transfer(d: &Dial) -> Result<Session, String> {
+    let req = &d.0;
+    let stages = StageSink::new(false);
+    let mut lease = Lease::take(req, &stages).await.map_err(|(e, _)| e)?;
+    open(&mut lease, req, &stages, Lane::Transfer).await
+}
+
 impl Session {
     /// 在一条**已经是 sftp 子系统**的字节流上起会话：`SSH_FXP_INIT` ＋ 问一次起始目录的真路径。
     /// `keep` 是要与会话同生死的东西（预算那一格 ＋ 底层连接）。

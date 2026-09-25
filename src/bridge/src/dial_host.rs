@@ -58,15 +58,20 @@ fn ack_line_cap() -> u64 {
 
 /// 本机后端那条流上的入方向客户端（有界地等它出现）。**找不到就报，不回落**（`D11`）。
 async fn local_channel() -> Result<Arc<InboundClient>, String> {
+    local_backend_accepting("link-open").await
+}
+
+/// 〔SR1b〕同上，但问的是**哪一条命令**：本机后端那条流在、且认 `cmd` ⇒ 回它的客户端。
+/// 不在 ⇒ 报「本机后端不在」；不认 ⇒ 报「本机后端太旧」。传输台的中继（`sftp_pool.rs`）也从这里拿。
+pub(crate) async fn local_backend_accepting(cmd: &str) -> Result<Arc<InboundClient>, String> {
     let local = inbound_client::LOCAL_ORIGIN;
     for attempt in 0..LOCAL_WAIT_TRIES {
         if let Some(c) = inbound_client::client_for(local) {
-            if !c.accepts("link-open") {
-                return Err(
-                    "本机后端太旧：它不认 `link-open`（远端的 SSH 从这一版起由本机后端来拨）—— \
+            if !c.accepts(cmd) {
+                return Err(format!(
+                    "本机后端太旧：它不认 `{cmd}`（远端的 SSH 与 SFTP 从这一版起由本机后端来做）—— \
                      停掉旧的本机后端、重开 monitor"
-                        .to_string(),
-                );
+                ));
             }
             return Ok(c);
         }
@@ -146,6 +151,12 @@ pub(crate) fn request(
         obj.extend(more);
     }
     Ok(req)
+}
+
+/// 〔SR1b〕传输台那一趟的拨号请求（本机后端开单时读进去、起跑时拿它开 sftp 会话）。
+/// 用法写 `files`（SFTP 那一族）；后端的传输台只读身份与鉴权那几项，用法不看。
+pub(crate) fn transfer_dial(cfg: &RemoteConfig) -> Result<serde_json::Value, String> {
+    request(cfg, "files", serde_json::json!({}))
 }
 
 /// 一条**开在本机后端里**的链路（〔SR1a〕C2 那一版是一个 `--dial` 子进程的两根管子）。

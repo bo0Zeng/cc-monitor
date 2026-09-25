@@ -39,6 +39,9 @@ pub(crate) struct Fs {
     /// 第 N 次（0 起）`WRITE` 之后开始回 `FAILURE`（「失败留」那一格要一个中途真坏的形状）。
     pub(crate) fail_write_after: Option<usize>,
     write_calls: usize,
+    /// 第 N 次（0 起）`READ` 之后开始回 `FAILURE`（下载「中途坏了」那一形）。
+    pub(crate) fail_read_after: Option<usize>,
+    read_calls: usize,
     /// 每一次 `WRITE` 的偏移（续传那一格判「从哪儿接上的」）。
     pub(crate) write_offsets: Vec<u64>,
 }
@@ -225,7 +228,11 @@ impl russh_sftp::server::Handler for Server {
     ) -> impl std::future::Future<Output = Result<Data, Self::Error>> + Send {
         let fs = self.fs.clone();
         async move {
-            let fs = fs.lock().unwrap();
+            let mut fs = fs.lock().unwrap();
+            fs.read_calls += 1;
+            if fs.fail_read_after.is_some_and(|n| fs.read_calls > n) {
+                return Err(StatusCode::Failure);
+            }
             let path = fs.handles.get(&handle).ok_or(StatusCode::Failure)?;
             let e = fs.files.get(path).ok_or(StatusCode::NoSuchFile)?;
             let start = offset as usize;
