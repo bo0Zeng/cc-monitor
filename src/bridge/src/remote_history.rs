@@ -794,7 +794,10 @@ pub(crate) async fn stream_read_remote_session(
             // 〔合并 C1＋U3b〕C1 把读法换成帧面分页之后，原先按首行认「老后端 hello」那一格由帧面的
             //   能力协商接管（旧后端不认 `history-read` ⇒ 发之前就说「后端还不认」，不会拿到 hello 行）。
             let Some((seq, rec)) =
-                crate::session_skeleton::numbered_displayable(&mut numberer, line, parse_line)
+                // 〔ST3〕看不懂的行记在这台远端名下。
+                crate::session_skeleton::numbered_displayable(&mut numberer, line, |b| {
+                    parse_line(&wire_origin, b)
+                })
             else {
                 continue;
             };

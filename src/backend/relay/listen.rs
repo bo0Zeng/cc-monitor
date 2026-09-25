@@ -248,19 +248,38 @@ pub(super) fn run_with(
     startup: &dyn Startup,
 ) -> i32 {
     let port = resolve_port(port_env);
+    let Ok((listener, relay)) = prepare(port, get, home, startup, TeeSink::to_stdout()) else {
+        return 2;
+    };
+    serve(listener, relay);
+    0
+}
+
+/// `--relay` 与流模式进程内（[`host`]）**共用的那一段**：层 2 认启动配置 → 绑回环 → 报地址 → 装表 → 造 `Relay`。
+///
+/// 〔RL1〕从 [`run_with`] 里原样抽出来 —— 两条入口若各写一遍，那几句 `[relay]` 日志就是两份、
+/// 顺序（「起监听之后才印凭据路径」）也是两份，迟早漂。失败时**该说的那一句已经说了**，
+/// 调用方只决定「退 2」还是「不拖垮宿主」。
+fn prepare(
+    port: u16,
+    get: &dyn Fn(&str) -> Option<String>,
+    home: &std::path::Path,
+    startup: &dyn Startup,
+    tee: TeeSink,
+) -> Result<(TcpListener, Arc<Relay>), String> {
     // ⚠ `K-R1`：层 2 认不出时**为什么**认不出，这里拿不到 —— 如实登记为射程外：
-    //   这一支只印一句 `[relay] bad upstream base url` 就退 2，而改那句报文要同拍改
+    //   这一支只印一句 `[relay] bad upstream base url`，而改那句报文要同拍改
     //   `creds_guard::LOG_SITES` 那张表 ⇒ 另一拍。★ 而**每一行**账号的 `base_url`
     //   那句为什么，今天是真的印出去了（层 2 装表时）。
     let Some(ready) = startup.check(get) else {
         eprintln!("[relay] bad upstream base url");
-        return 2;
+        return Err("上游基址认不出（层 2 拒了启动配置）".to_string());
     };
     let listener = match listen(port) {
         Ok(l) => l,
         Err(e) => {
             eprintln!("[relay] cannot bind loopback port {port}: {e}");
-            return 2;
+            return Err(format!("绑不上回环口 {port}：{e}"));
         }
     };
     match listener.local_addr() {
@@ -270,14 +289,89 @@ pub(super) fn run_with(
     // ⚠ 顺序：**起监听之后、进接受循环之前**。放在起监听之前的话，
     //   端口起不来那条支会先把凭据路径印出来，而那时它还不相干。
     let dest = ready.into_destinations(get, home, &mut std::io::stderr());
-    let relay = Relay::new(
-        dest,
-        TeeSink::to_stdout(),
-        DOWNSTREAM_DEADLINE,
-        UPSTREAM_DEADLINE,
-    );
-    serve(listener, Arc::new(relay));
-    0
+    let relay = Relay::new(dest, tee, DOWNSTREAM_DEADLINE, UPSTREAM_DEADLINE);
+    Ok((listener, Arc::new(relay)))
+}
+
+/// 〔RL1 · V107〕流模式后端里**进程内**起中转的结局。
+///
+/// ⚠ 与 `--relay` 那一形（[`run_with`]）刻意不同的一格：那里中转就是整个进程，起不来就退 2；
+/// 这里中转只是常驻后端的一个面 ⇒ 起不来**出声、不拖垮后端**（持有全部 SSH 的那个进程
+/// 不许因为「端口被占」或「上游配置认不出」而倒下）。
+#[derive(Debug)]
+pub(crate) enum Hosted {
+    /// 没被交端口 ⇒ 这个进程**不开**中转。远端经 SSH exec 起的流模式后端就是这一格
+    /// （远端中转是 `relay-ensure` 起的脱离 `--relay`，理由见 `machine.rs` 头注）。
+    NotAsked,
+    /// 在听：回环 ＋ 这个地址。
+    Listening(SocketAddr),
+    /// 交了端口却起不来。串是给人看的那句「为什么」（`[relay]` 前缀那一句已印过）。
+    Failed(String),
+}
+
+impl std::fmt::Display for Hosted {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Hosted::NotAsked => f.write_str("[relay] 没被交中转端口 ⇒ 本进程不开中转"),
+            Hosted::Listening(a) => write!(f, "[relay] 中转住本进程，听 {a}"),
+            Hosted::Failed(reason) => write!(
+                f,
+                "[relay] 被交了中转端口却起不来（后端照常服务）：{reason}"
+            ),
+        }
+    }
+}
+
+/// 〔RL1 · V107〕**在本进程里起中转**：交了端口（[`ENV_PORT`]）才起，接受循环跑在一条专属线程上。
+///
+/// # 为什么是「交了端口才起」而不是「流模式一律起」
+///
+/// 流模式后端有两类：本机常驻那一个（monitor 起它时交端口）与远端经 SSH exec 起的那一个
+/// （没人交）。后者**必须不起**：它随那条 SSH 一起退，而远端会话活在 tmux 里、比 SSH 长 ——
+/// 中转住在它里面，断一次线，已经注入了中转地址的远端会话就每一发都连不上。
+///
+/// # 与 [`run_with`] 共用的与不共用的
+///
+/// 共用：层 2 那两步（`check` → `into_destinations`）· [`listen`]（回环）· [`serve`] · 两个期限值。
+/// 不共用：① 端口**没有缺省值**（交了一个认不出的串 ⇒ `Failed`，不悄悄退回 `DEFAULT_PORT` ——
+/// 注入侧拼的是它交出来的那个数，两边对不上就是一个查不出来的连接失败）；
+/// ② tee 落 [`TeeSink::discard`]：本进程的 stdout 在 stdio 载体上**就是 wire**（一行一帧），
+/// 在脱离载体上是 null —— 哪一条都不是 tee 的落点；③ 起不来不退出（见 [`Hosted`]）。
+pub(crate) fn host(
+    get: &dyn Fn(&str) -> Option<String>,
+    home: &std::path::Path,
+    startup: &dyn Startup,
+) -> Hosted {
+    let Some(raw) = get(ENV_PORT).filter(|s| !s.trim().is_empty()) else {
+        return Hosted::NotAsked;
+    };
+    let port = match raw.trim().parse::<u16>() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("[relay] not hosted: CCM_RELAY_PORT is not a port number: {e}");
+            return Hosted::Failed(format!("{ENV_PORT}={raw:?} 不是端口号（{e}）"));
+        }
+    };
+    let (listener, relay) = match prepare(port, get, home, startup, TeeSink::discard()) {
+        Ok(x) => x,
+        Err(why) => return Hosted::Failed(why),
+    };
+    let addr = match listener.local_addr() {
+        Ok(a) => a,
+        Err(e) => return Hosted::Failed(format!("读不出绑到的地址：{e}")),
+    };
+    // 接受循环**阻塞在 `accept()` 上**（内核事件，不是定时器）；线程随进程生、随进程死 ——
+    // 常驻后端按「退出行为」退的那一刻，中转一起走（`设计/01 §3.3b`，V107）。
+    match std::thread::Builder::new()
+        .name("ccm-relay-accept".to_string())
+        .spawn(move || serve(listener, relay))
+    {
+        Ok(_) => Hosted::Listening(addr),
+        Err(e) => {
+            eprintln!("[relay] cannot spawn accept thread: {e}");
+            Hosted::Failed(format!("起不来接受线程：{e}"))
+        }
+    }
 }
 
 /// `run()` 的**接线面**：哪个环境变量喂给哪个配置位。取值器与执行体都是**注入的**
@@ -318,3 +412,7 @@ pub(crate) fn run(home: &std::path::Path, _args: &[String], startup: &dyn Startu
         run_with(p, get, h, startup)
     })
 }
+
+#[cfg(test)]
+#[path = "../../../tests/backend/relay/host_tests.rs"]
+mod host_tests; // 〔RL1〕进程内中转：`host` 的四种结局 ＋ 生产接线在真子进程里 stdout 零 tee

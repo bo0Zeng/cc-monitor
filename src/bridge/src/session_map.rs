@@ -321,7 +321,9 @@ fn is_interactive(_sid: &String, info: &mut SessionInfo) -> bool {
     // 今天一声不吭 ⇒ CC 加了新 kind 时没有任何信号。只记账，**不改行为**。
     if let Some(k) = info.kind.as_deref() {
         if k != "interactive" && k != "bg" {
+            // 〔ST3〕pidfile 只在本机 `~/.claude/sessions` 里扫 ⇒ 记在本机名下。
             crate::drift_ledger::record(
+                &crate::origin::Origin::local(),
                 crate::drift_ledger::DriftFace::UnknownSessionKind,
                 k,
                 None,

@@ -1130,8 +1130,8 @@ export class SettingsPanel {
         ...this.loadableBlock("足迹", () => new ConfigSurfaceSection()),
       },
       // 〔ST2 · 协调方转主会话裁「改动足迹并进机器页、漂移记账按机器分」〕原顶层「改动足迹」页剩下的那一块。
-      //   与足迹同栏：两块答的都是「这台机器上发生了什么」。今天只有本机那一栏读得到（账不分机器），
-      //   远端那一栏如实说读不到 —— 形状与理由在 `drift-ledger-section.ts` 的 `DRIFT_*` 头注。
+      //   与足迹同栏：两块答的都是「这台机器上发生了什么」。〔ST3〕账按机器分了：每台问自己那一本、
+      //   回声对上才画（形状与理由在 `drift-ledger-section.ts` 头注「按机器分」一节）。
       {
         appliesTo: "both",
         tab: "footprint",

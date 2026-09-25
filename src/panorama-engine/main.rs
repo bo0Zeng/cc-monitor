@@ -1,0 +1,458 @@
+//! 〔RM1c · 第四波〕`cc-monitor-panorama` —— 只装代码全景引擎的**独立小程序**（用户 09-24 V108 选 B）。
+//!
+//! # 它是什么、谁起它
+//!
+//! vendored `code-picture-core` ＋ 一问一答的 JSON CLI。起它的是**那台机器上的后端**，经插件
+//! 通用调用口（找它 → 问它会什么 → 传 argv 起它，期限走 `timeout` 前缀）按需起；
+//! 后端本体仍零 code-picture（`C21` / `95 §0` 照旧）。索引落后端交给它的那个目录
+//! （那台机器上后端自己的数据目录），**不落进被分析的仓**。
+//!
+//! # 线上契约（1 exec = 1 请求 = 1 行应答）
+//!
+//! - `cc-monitor-panorama --probe` ⇒ 插件口那套 `key=value` 方言：首行 `name=`（身份）·
+//!   `version=`（只进诊断）· `capabilities=`（逗号列表 = [`OPS`] 的名字，集合语义）。
+//! - `cc-monitor-panorama <op> [--repo <仓>] [--store <索引根>] [--args <JSON>]` ⇒ stdout **恰一行**：
+//!   成功 `{"ok":true,"data":…}`（退出码 0）；失败 `{"ok":false,"code":…,"message":…}`，
+//!   退出码 [`EXIT_BAD_ARGS`]（调用方给错了东西）/ [`EXIT_FAILED`]（仓打不开 / 引擎报错）。
+//!   失败那句话同时写 stderr 一行（调用口摘诊断时 stderr 优先）。
+//! - ⚠ **退出码的语义只在这里定义一次**；起它的那一侧（后端适配层）自己持一张码 → 语义码的表，
+//!   插件口本身不翻码（那条纪律住 `src/backend/plugin/mod.rs` 头注）。
+//!
+//! # 第一拍**只读**（写用户文件的那几样一样都不出）
+//!
+//! 批注增 / 提 / 批 / 删与文档关联写 / 删，写的是**被分析仓里的文件**（`<仓>/.codepicture/annotations/`、
+//! 文档的 frontmatter）。远端仓的这些文件是远端的用户文件，而用户 09-24 裁「只允许后端的
+//! 文件管理部分写用户文件」⇒ 那几样要等后端写面那一路（RW1）接上，**不在本程序里开第二条写路**。
+//! 判据：`tests::the_program_never_calls_an_engine_method_that_writes_user_files`（零命中 ＋ 正控）。
+//! 唯一的写是**索引**：落 `--store` 给的目录（后端自己的数据目录），不是用户文件。
+//!
+//! # 应答形状与 monitor 进程内那 23 条命令**逐字同形**
+//!
+//! 引擎直出的类型原样透出（snake_case，同 monitor `panorama.rs`）；`status` 那三格是本仓自己的
+//! DTO，沿用 monitor `PanoramaStatus` 的 camelCase（`stale` / `indexedAt` / `symbols`）；
+//! `diagram` = `{diagram, mermaid}`（同 monitor `PanoramaDiagram`）。
+//! ⇒ 前端「按形状渲染」那一层本机与远端同一份，不为远端另写一套。
+
+use code_picture_core::diagram::{self, DiagramKind, DiagramRequest};
+use code_picture_core::{model, Engine, EngineOpts};
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
+use serde_json::{json, Value};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+
+/// 身份行的值（`--probe` 首行 `name=` 后面那个）。起它的那一侧逐字比对。
+pub const NAME: &str = "cc-monitor-panorama";
+
+/// 能力探测旗标（插件口那套方言）。
+pub const PROBE_FLAG: &str = "--probe";
+
+/// 调用方给错了东西：未知 op / 缺仓 / 参数 JSON 不合形 / 多了不认识的旗标。
+pub const EXIT_BAD_ARGS: i32 = 2;
+/// 给的东西形状对，但做不成：仓打不开 / 引擎报错 / 索引根建不出来。
+pub const EXIT_FAILED: i32 = 3;
+
+/// 一个 op 要不要一个仓、要哪一档锁。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Need {
+    /// 不碰仓、不碰索引（今天只有图种注册表 —— 它编在二进制里）。
+    Nothing,
+    /// 读：要仓与索引根，**共享**锁（多个读可以并行）。
+    Read,
+    /// 建索引：要仓与索引根，**独占**锁（同一个索引根上同一时刻只许一个在写）。
+    Build,
+}
+
+/// ★ **op 表 —— 本程序会什么的唯一住址**。`--probe` 报的能力由它派生；
+/// 分派臂与它两向相等（判据从源码抽臂，异源）；后端适配层那张 op → 期限表与它两向相等
+/// （后端判据运行时读本文件，异源）。
+///
+/// ⚠ 词表只说**查询语义**（`protocol_doc_guard` 那条 `P7c-2` 约束：不暴露存储、grammar、解析开关）。
+pub const OPS: &[(&str, Need)] = &[
+    ("status", Need::Read),
+    ("index", Need::Build),
+    ("reindex", Need::Build),
+    ("overview", Need::Read),
+    ("node", Need::Read),
+    ("subgraph", Need::Read),
+    ("callers", Need::Read),
+    ("callees", Need::Read),
+    ("impact", Need::Read),
+    ("search", Need::Read),
+    ("docs_for", Need::Read),
+    ("touching", Need::Read),
+    ("symbols_in_file", Need::Read),
+    ("drift", Need::Read),
+    ("list_annotations", Need::Read),
+    ("diagram_kinds", Need::Nothing),
+    ("diagram", Need::Read),
+];
+
+/// 失败的两类（与两个退出码一一对应）。
+#[derive(Debug, PartialEq, Eq)]
+pub enum Fail {
+    BadArgs(String),
+    Failed(String),
+}
+
+impl Fail {
+    fn code(&self) -> &'static str {
+        match self {
+            Fail::BadArgs(_) => "bad_args",
+            Fail::Failed(_) => "failed",
+        }
+    }
+    fn exit(&self) -> i32 {
+        match self {
+            Fail::BadArgs(_) => EXIT_BAD_ARGS,
+            Fail::Failed(_) => EXIT_FAILED,
+        }
+    }
+    fn message(&self) -> &str {
+        match self {
+            Fail::BadArgs(m) | Fail::Failed(m) => m,
+        }
+    }
+}
+
+/// 解析完的一次调用。
+#[derive(Debug, PartialEq)]
+pub enum Parsed {
+    Probe,
+    Call {
+        op: String,
+        repo: Option<PathBuf>,
+        store: Option<PathBuf>,
+        args: Value,
+    },
+}
+
+/// argv（不含程序名）→ 一次调用。**不认识的旗标就拒**，不静默忽略。
+pub fn parse_argv(argv: &[String]) -> Result<Parsed, Fail> {
+    let Some(first) = argv.first() else {
+        return Err(Fail::BadArgs(format!(
+            "缺 op：用法 `{NAME} <op> [--repo <仓>] [--store <索引根>] [--args <JSON>]` 或 `{NAME} {PROBE_FLAG}`"
+        )));
+    };
+    if first == PROBE_FLAG {
+        if argv.len() > 1 {
+            return Err(Fail::BadArgs(format!("`{PROBE_FLAG}` 不带参数")));
+        }
+        return Ok(Parsed::Probe);
+    }
+    let op = first.clone();
+    let (mut repo, mut store, mut args) = (None, None, None);
+    let mut it = argv[1..].iter();
+    while let Some(flag) = it.next() {
+        let Some(val) = it.next() else {
+            return Err(Fail::BadArgs(format!("`{flag}` 后面缺值")));
+        };
+        let slot = match flag.as_str() {
+            "--repo" => &mut repo,
+            "--store" => &mut store,
+            "--args" => &mut args,
+            other => return Err(Fail::BadArgs(format!("不认识的旗标 `{other}`"))),
+        };
+        if slot.is_some() {
+            return Err(Fail::BadArgs(format!("`{flag}` 给了两次")));
+        }
+        *slot = Some(val.clone());
+    }
+    let args = match args {
+        None => json!({}),
+        Some(s) => serde_json::from_str::<Value>(&s)
+            .map_err(|e| Fail::BadArgs(format!("`--args` 不是 JSON：{e}")))?,
+    };
+    Ok(Parsed::Call {
+        op,
+        repo: repo.map(PathBuf::from),
+        store: store.map(PathBuf::from),
+        args,
+    })
+}
+
+/// `--probe` 的全文（插件口方言，首行是身份）。
+pub fn probe_text() -> String {
+    let caps: Vec<&str> = OPS.iter().map(|(n, _)| *n).collect();
+    format!(
+        "name={NAME}\nversion={}\ncapabilities={}\n",
+        env!("CARGO_PKG_VERSION"),
+        caps.join(",")
+    )
+}
+
+/// 按 op 表跑一次：找 op → 备仓与索引根 → 上锁 → 开引擎 → 分派。
+pub fn run(
+    op: &str,
+    repo: Option<&Path>,
+    store: Option<&Path>,
+    args: Value,
+) -> Result<Value, Fail> {
+    let Some((_, need)) = OPS.iter().find(|(n, _)| *n == op) else {
+        return Err(Fail::BadArgs(format!(
+            "不认识的 op `{op}`（本程序会的：{}）",
+            OPS.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(" · ")
+        )));
+    };
+    if *need == Need::Nothing {
+        return dispatch_registry(op, args);
+    }
+    let repo = repo.ok_or_else(|| Fail::BadArgs(format!("op `{op}` 要一个仓（`--repo`）")))?;
+    let store =
+        store.ok_or_else(|| Fail::BadArgs(format!("op `{op}` 要一个索引根（`--store`）")))?;
+    if !repo.is_absolute() {
+        return Err(Fail::BadArgs(format!(
+            "仓路径必须是绝对路径：`{}`",
+            repo.display()
+        )));
+    }
+    let canon = std::fs::canonicalize(repo)
+        .map_err(|e| Fail::Failed(format!("仓路径无效（{}）：{e}", repo.display())))?;
+    if !canon.is_dir() {
+        return Err(Fail::Failed(format!(
+            "仓路径不是目录：`{}`",
+            repo.display()
+        )));
+    }
+    std::fs::create_dir_all(store)
+        .map_err(|e| Fail::Failed(format!("建不出索引根 `{}`：{e}", store.display())))?;
+    let _guard = lock_store(store, *need)?;
+    let mut engine = Engine::open(
+        &canon,
+        EngineOpts {
+            store_dir: Some(store.to_path_buf()),
+        },
+    )
+    .map_err(|e| Fail::Failed(format!("打开全景引擎失败（{}）：{e}", repo.display())))?;
+    dispatch(op, &mut engine, args)
+}
+
+/// 索引根上的一把文件锁：建索引独占、读共享。
+///
+/// 病：monitor 进程内那一版靠**进程内**互斥锁防「两条连接对同一索引库并发写」（`panorama.rs`
+/// 头注那条真事故）。换成一问一答的独立进程之后，并发的两次调用是**两个进程** ⇒ 进程内的锁
+/// 管不到，只能靠文件锁。锁随 `File` drop 释放（进程退出也释放，内核兜底）。
+fn lock_store(store: &Path, need: Need) -> Result<std::fs::File, Fail> {
+    let path = store.join(".lock");
+    let f = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&path)
+        .map_err(|e| Fail::Failed(format!("开不了索引根的锁文件 `{}`：{e}", path.display())))?;
+    let got = match need {
+        Need::Build => f.lock(),
+        _ => f.lock_shared(),
+    };
+    got.map_err(|e| Fail::Failed(format!("锁不上索引根 `{}`：{e}", path.display())))?;
+    Ok(f)
+}
+
+/// 按 op 取参数：**多一个不认识的字段就拒**（拼错的字段名不许被静默忽略）。
+fn take<T: DeserializeOwned>(op: &str, args: Value) -> Result<T, Fail> {
+    serde_json::from_value(args).map_err(|e| Fail::BadArgs(format!("op `{op}` 的参数不合形：{e}")))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NoArgs {}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OverviewArgs {
+    budget: Option<usize>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SymbolArgs {
+    symbol: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SymbolDepthArgs {
+    symbol: String,
+    depth: u32,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SearchArgs {
+    query: String,
+    limit: Option<usize>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TouchingArgs {
+    files: Vec<String>,
+    /// 1-based `[start, end]`；空 ⇒ 整文件所有符号（同 monitor `panorama_touching`）。
+    ranges: Vec<(usize, usize)>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FileArgs {
+    file: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DiagramArgs {
+    kind: String,
+    request: DiagramRequest,
+}
+
+/// 序列化成线上的值（引擎直出的类型原样透出）。
+fn out<T: serde::Serialize>(v: T) -> Result<Value, Fail> {
+    serde_json::to_value(v).map_err(|e| Fail::Failed(format!("序列化应答失败：{e}")))
+}
+
+/// 不碰仓的那几个 op。
+fn dispatch_registry(op: &str, args: Value) -> Result<Value, Fail> {
+    match op {
+        "diagram_kinds" => {
+            take::<NoArgs>(op, args)?;
+            out(diagram::kinds())
+        }
+        other => Err(Fail::BadArgs(format!("op `{other}` 要一个仓"))),
+    }
+}
+
+/// 在开好的引擎上跑一个 op。**这里只有读引擎的方法与建索引**（写用户文件的那几样不在，见头注）。
+fn dispatch(op: &str, e: &mut Engine, args: Value) -> Result<Value, Fail> {
+    match op {
+        "status" => {
+            take::<NoArgs>(op, args)?;
+            Ok(json!({
+                "stale": e.is_stale(),
+                "indexedAt": e.indexed_at(),
+                "symbols": e.symbol_count(),
+            }))
+        }
+        "index" => {
+            take::<NoArgs>(op, args)?;
+            out(e.index().map_err(|x| Fail::Failed(x.to_string()))?)
+        }
+        "reindex" => {
+            take::<NoArgs>(op, args)?;
+            out(e.reindex().map_err(|x| Fail::Failed(x.to_string()))?)
+        }
+        "overview" => {
+            let a: OverviewArgs = take(op, args)?;
+            out(e.overview(model::TokenBudget(a.budget.unwrap_or(4000))))
+        }
+        "node" => {
+            let a: SymbolArgs = take(op, args)?;
+            out(e.node(&a.symbol))
+        }
+        "subgraph" => {
+            let a: SymbolDepthArgs = take(op, args)?;
+            out(e.subgraph(&a.symbol, a.depth))
+        }
+        "callers" => {
+            let a: SymbolDepthArgs = take(op, args)?;
+            out(e.callers(&a.symbol, a.depth))
+        }
+        "callees" => {
+            let a: SymbolDepthArgs = take(op, args)?;
+            out(e.callees(&a.symbol, a.depth))
+        }
+        "impact" => {
+            let a: SymbolArgs = take(op, args)?;
+            out(e.impact(&a.symbol))
+        }
+        "search" => {
+            let a: SearchArgs = take(op, args)?;
+            out(e.search(&a.query, a.limit.unwrap_or(30)))
+        }
+        "docs_for" => {
+            let a: SymbolArgs = take(op, args)?;
+            out(e.docs_for(&a.symbol))
+        }
+        "touching" => {
+            let a: TouchingArgs = take(op, args)?;
+            let files: Vec<PathBuf> = a.files.into_iter().map(PathBuf::from).collect();
+            let ranges: Vec<model::LineRange> = a
+                .ranges
+                .into_iter()
+                .map(|(start, end)| model::LineRange { start, end })
+                .collect();
+            out(e.symbols_touching(&files, &ranges))
+        }
+        "symbols_in_file" => {
+            // 同 monitor `collect_symbols_in_file`：core 没有公开的按文件查询口 ⇒
+            // `symbols_touching`（ranges 空 = 整文件）＋ 逐 id `find_symbol`。
+            let a: FileArgs = take(op, args)?;
+            let ids = e.symbols_touching(&[PathBuf::from(&a.file)], &[]);
+            let syms: Vec<model::Symbol> = ids.iter().filter_map(|id| e.find_symbol(id)).collect();
+            out(syms)
+        }
+        "drift" => {
+            take::<NoArgs>(op, args)?;
+            out(e.drift())
+        }
+        "list_annotations" => {
+            take::<NoArgs>(op, args)?;
+            out(e.list_annotations())
+        }
+        "diagram" => {
+            let a: DiagramArgs = take(op, args)?;
+            let kind = DiagramKind::from_id(&a.kind).map_err(|x| Fail::BadArgs(x.to_string()))?;
+            let d = e
+                .draw(kind, &a.request)
+                .map_err(|x| Fail::Failed(x.to_string()))?;
+            Ok(json!({ "mermaid": diagram::to_mermaid(&d), "diagram": out(d)? }))
+        }
+        other => Err(Fail::BadArgs(format!("op `{other}` 不在分派里"))),
+    }
+}
+
+/// 一次调用 → (stdout 那一行, stderr 那一行（可空）, 退出码)。纯函数外壳，好测。
+pub fn answer(argv: &[String]) -> (String, String, i32) {
+    let parsed = match parse_argv(argv) {
+        Ok(p) => p,
+        Err(f) => return fail_line(&f),
+    };
+    match parsed {
+        Parsed::Probe => (probe_text(), String::new(), 0),
+        Parsed::Call {
+            op,
+            repo,
+            store,
+            args,
+        } => match run(&op, repo.as_deref(), store.as_deref(), args) {
+            Ok(data) => (
+                format!("{}\n", json!({ "ok": true, "data": data })),
+                String::new(),
+                0,
+            ),
+            Err(f) => fail_line(&f),
+        },
+    }
+}
+
+fn fail_line(f: &Fail) -> (String, String, i32) {
+    (
+        format!(
+            "{}\n",
+            json!({ "ok": false, "code": f.code(), "message": f.message() })
+        ),
+        format!("{}\n", f.message()),
+        f.exit(),
+    )
+}
+
+fn main() {
+    let argv: Vec<String> = std::env::args().skip(1).collect();
+    let (stdout, stderr, code) = answer(&argv);
+    // 写不出去（管道已关）就只剩退出码能说话 —— 不 panic，照原码退。
+    let _ = std::io::stdout().write_all(stdout.as_bytes());
+    let _ = std::io::stderr().write_all(stderr.as_bytes());
+    std::process::exit(code);
+}
+
+#[cfg(test)]
+#[path = "../../tests/panorama-engine/cli_tests.rs"]
+mod tests;

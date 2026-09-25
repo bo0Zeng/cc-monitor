@@ -58,7 +58,7 @@ describe("formatReport", () => {
   ];
 
   it("列出键、计数、后果与首见样例", () => {
-    const t = formatReport(report);
+    const t = formatReport(report, LOCAL_ORIGIN);
     expect(t).toContain("mode");
     expect(t).toContain("20526 条记录");
     expect(t).toContain("后果：");
@@ -68,14 +68,21 @@ describe("formatReport", () => {
   });
 
   it("触顶时说出来", () => {
-    const t = formatReport([{ ...report[0], overflowed: true }]);
+    const t = formatReport([{ ...report[0], overflowed: true }], LOCAL_ORIGIN);
     expect(t).toContain("已触顶");
   });
 
   it("空报告说的是「本次运行期间没有」，不是「没有」", () => {
     // 计数重启归零 —— 措辞不许暗示这是历史结论。
-    const t = formatReport([]);
+    const t = formatReport([], LOCAL_ORIGIN);
     expect(t).toContain("本次运行");
+  });
+
+  it("〔ST3〕首行说是哪台机器的（贴进 issue 时分得清）：本机叫「本机」，远端用它的名字", () => {
+    expect(formatReport(report, "aya").split("\n")[0]).toContain("aya");
+    expect(formatReport([], "aya")).toContain("aya");
+    expect(formatReport(report, LOCAL_ORIGIN).split("\n")[0]).toContain("本机");
+    expect(formatReport(report, LOCAL_ORIGIN)).not.toContain(LOCAL_ORIGIN);
   });
 });
 
@@ -113,15 +120,18 @@ describe("DriftLedgerSection（DOM）", () => {
   it("有漂移时把键、计数、后果都渲染出来", async () => {
     vi.doMock("../../src/ipc/commands", () => ({
       commands: {
-        drift_ledger_report: () =>
-          Promise.resolve([
-            {
-              face: "unknown_record_type",
-              consequence: "不显示、不进搜索、不计费",
-              overflowed: false,
-              entries: [{ key: "fork-context-ref", count: 5, first_sample: '{"type":"x"}' }],
-            },
-          ] satisfies DriftFaceReport[]),
+        drift_ledger_report: ({ origin }: { origin: string }) =>
+          Promise.resolve({
+            origin,
+            faces: [
+              {
+                face: "unknown_record_type",
+                consequence: "不显示、不进搜索、不计费",
+                overflowed: false,
+                entries: [{ key: "fork-context-ref", count: 5, first_sample: '{"type":"x"}' }],
+              },
+            ] satisfies DriftFaceReport[],
+          }),
       },
     }));
     const { DriftLedgerSection } = await import("../../src/settings/drift-ledger-section");
@@ -138,24 +148,37 @@ describe("DriftLedgerSection（DOM）", () => {
   });
 });
 
-describe("〔ST2 · 漂移记账按机器分：这一拍只做本机〕", () => {
+describe("〔ST3 · 未识别的数据按机器分：每台问自己那一本〕", () => {
   beforeEach(() => {
     vi.resetModules();
     document.body.innerHTML = "";
   });
 
-  async function mount(): Promise<{
+  type Reply = { origin: string; faces: DriftFaceReport[] };
+  /** 每台机器各一份账（键带机器名，画出来一眼看得出是谁的）。 */
+  const bookOf = (origin: string): Reply => ({
+    origin,
+    faces: [
+      {
+        face: "unknown_record_type",
+        consequence: "后果",
+        overflowed: false,
+        entries: [{ key: `key-of-${origin}`, count: 1, first_sample: null }],
+      },
+    ],
+  });
+
+  async function mount(answer: (origin: string) => Promise<Reply> = (o) => Promise.resolve(bookOf(o))): Promise<{
     calls: string[];
     s: InstanceType<typeof import("../../src/settings/drift-ledger-section").DriftLedgerSection>;
-    mod: typeof import("../../src/settings/drift-ledger-section");
     ctx: typeof import("../../src/settings/machine-context");
   }> {
     const calls: string[] = [];
     vi.doMock("../../src/ipc/commands", () => ({
       commands: {
-        drift_ledger_report: () => {
-          calls.push("drift_ledger_report");
-          return Promise.resolve([]);
+        drift_ledger_report: ({ origin }: { origin: string }) => {
+          calls.push(origin);
+          return answer(origin);
         },
       },
     }));
@@ -164,44 +187,90 @@ describe("〔ST2 · 漂移记账按机器分：这一拍只做本机〕", () => 
     const mod = await import("../../src/settings/drift-ledger-section");
     const s = new mod.DriftLedgerSection();
     document.body.appendChild(s.element);
-    return { calls, s, mod, ctx };
+    return { calls, s, ctx };
   }
   const flush = () => new Promise((r) => setTimeout(r, 0));
+  const text = (el: HTMLElement) => el.textContent ?? "";
 
-  it("★★ 远端那一栏：一发都不放，照实说读不到；本机那一整套收起来", async () => {
-    const { calls, s, mod, ctx } = await mount();
-    ctx.setCurrentMachine("aya");
-    s.loadNow();
-    await flush();
-    expect(calls, "远端那一栏去读了那本不分机器的账 —— 那是拿本机的账冒充它").toEqual([]);
-    const note = s.element.querySelector<HTMLElement>("[data-drift-remote]")!;
-    expect(note.hidden).toBe(false);
-    expect(note.textContent).toBe(mod.DRIFT_REMOTE_UNREADABLE);
-    expect(s.element.querySelector<HTMLElement>("[data-drift-mixed]")!.closest("[hidden]")).not.toBeNull();
-  });
-
-  it("★★ 本机那一栏：读一发，并当场说清「这本账里也有远端来的」", async () => {
-    const { calls, s, mod } = await mount();
-    s.loadNow();
-    await flush();
-    expect(calls).toEqual(["drift_ledger_report"]);
-    expect(s.element.querySelector<HTMLElement>("[data-drift-remote]")!.hidden).toBe(true);
-    const mixed = s.element.querySelector<HTMLElement>("[data-drift-mixed]")!;
-    expect(mixed.closest("[hidden]"), "本机那一栏把「账不分机器」那句藏起来了").toBeNull();
-    expect(mixed.textContent).toBe(mod.DRIFT_LOCAL_MIXED);
-  });
-
-  it("★ 切机器跟着换：远端 → 本机（放过第一发之后）⇒ 读一发；本机 → 远端 ⇒ 不读", async () => {
+  it("★★ 远端那一栏：按这台去问、恰好一发，画出的是这台那一份", async () => {
     const { calls, s, ctx } = await mount();
     ctx.setCurrentMachine("aya");
     s.loadNow();
     await flush();
-    expect(calls).toEqual([]);
-    ctx.setCurrentMachine(LOCAL_ORIGIN);
+    expect(calls, "远端那一栏没按这台去问").toEqual(["aya"]);
+    expect(text(s.element)).toContain("key-of-aya");
+    expect(text(s.element)).not.toContain(`key-of-${LOCAL_ORIGIN}`);
+  });
+
+  it("★★ 本机那一栏：按本机去问、恰好一发，只画本机那一份", async () => {
+    const { calls, s } = await mount();
+    s.loadNow();
     await flush();
-    expect(calls).toEqual(["drift_ledger_report"]);
+    expect(calls).toEqual([LOCAL_ORIGIN]);
+    expect(text(s.element)).toContain(`key-of-${LOCAL_ORIGIN}`);
+    expect(text(s.element)).not.toContain("key-of-aya");
+  });
+
+  it("★ 两句「这本账今天不分机器」零命中（本机页、远端页都没有）", async () => {
+    const { s, ctx } = await mount();
+    s.loadNow();
+    await flush();
+    const local = text(s.element);
     ctx.setCurrentMachine("aya");
     await flush();
-    expect(calls, "切到远端又读了一趟").toEqual(["drift_ledger_report"]);
+    const remote = text(s.element);
+    for (const t of [local, remote]) {
+      expect(t).not.toMatch(/不分机器|分不开是哪台|单独的那一份还读不到/);
+    }
+    // 正控：同一次扫描读得到真内容（不是整块空着才「零命中」）。
+    expect(local).toContain(`key-of-${LOCAL_ORIGIN}`);
+    expect(remote).toContain("key-of-aya");
+  });
+
+  it("★ 切机器跟着换：远端 → 本机 → 远端，每切一次按新那台问一发", async () => {
+    const { calls, s, ctx } = await mount();
+    ctx.setCurrentMachine("aya");
+    s.loadNow();
+    await flush();
+    ctx.setCurrentMachine(LOCAL_ORIGIN);
+    await flush();
+    ctx.setCurrentMachine("gpd");
+    await flush();
+    expect(calls).toEqual(["aya", LOCAL_ORIGIN, "gpd"]);
+    expect(text(s.element)).toContain("key-of-gpd");
+    expect(text(s.element)).not.toContain(`key-of-${LOCAL_ORIGIN}`);
+  });
+
+  it("★ 放过第一发之前切机器不读（第一发归宿主）", async () => {
+    const { calls, ctx } = await mount();
+    ctx.setCurrentMachine("aya");
+    await flush();
+    expect(calls).toEqual([]);
+  });
+
+  it("★★ 回声对不上 ⇒ 不画，说读不到（拿另一台的账冒充这台）", async () => {
+    const { s, ctx } = await mount(() => Promise.resolve(bookOf(LOCAL_ORIGIN)));
+    ctx.setCurrentMachine("aya");
+    s.loadNow();
+    await flush();
+    expect(text(s.element)).not.toContain(`key-of-${LOCAL_ORIGIN}`);
+    expect(text(s.element)).toContain("读不到");
+    expect(text(s.element)).toContain("这不等于");
+  });
+
+  it("★ 晚到的那一份不盖掉当前这台（先问本机、切到 aya，本机那份后到）", async () => {
+    let releaseLocal!: () => void;
+    const { s, ctx } = await mount((o) =>
+      o === LOCAL_ORIGIN
+        ? new Promise<Reply>((r) => (releaseLocal = () => r(bookOf(o))))
+        : Promise.resolve(bookOf(o)),
+    );
+    s.loadNow();
+    ctx.setCurrentMachine("aya");
+    await flush();
+    releaseLocal();
+    await flush();
+    expect(text(s.element)).toContain("key-of-aya");
+    expect(text(s.element), "本机晚到的那一份盖掉了 aya").not.toContain(`key-of-${LOCAL_ORIGIN}`);
   });
 });

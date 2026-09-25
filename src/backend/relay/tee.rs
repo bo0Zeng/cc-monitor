@@ -203,6 +203,15 @@ impl TeeSink {
         Self::new(Box::new(std::io::stdout()))
     }
 
+    /// 〔RL1 · V107〕**丢弃**落点：常驻后端进程内那一份中转用它（`listen::host`）。
+    ///
+    /// 那个进程的 stdout 在 stdio 载体上**就是 wire**（一行一帧，`wire.rs` 头注）—— tee 行写进去当场污染协议；
+    /// 在脱离载体上是 null。两条都不是 tee 的落点。tee 今天**零消费者**（本文件头注现打过）⇒ 丢弃不丢任何人的东西；
+    /// 第一个真消费者出现时，它要的是一条专属通道，不是抢 stdout。
+    pub(crate) fn discard() -> Self {
+        Self::new(Box::new(std::io::sink()))
+    }
+
     /// 一个响应开头写一行 meta，返回这一响应的序号。
     ///
     /// ⚠ `K-H2` 加了 `account` 这一格 —— 路由键有三段，tee 行就该有三格。

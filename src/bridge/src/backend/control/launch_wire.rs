@@ -313,6 +313,11 @@ pub enum WireEnvOp {
     ExportRbindToken {
         value: String,
     },
+    /// 〔RL1〕中转地址。与 TS `launch-cli-wire.ts::WireEnvOp` 同名同序；形状由
+    /// [`super::payload::render_env_ops`] fail-closed 拒（带 `REFUSE:` 标）。
+    ExportRelayBaseUrl {
+        value: String,
+    },
     UnsetConfigDir,
     UnsetNestedEnv,
 }
@@ -372,6 +377,9 @@ pub fn render_launch_payload(req: PayloadRenderRequest) -> Result<String, String
             WireEnvOp::ExportModel { value } => super::payload::EnvOp::ExportModel { value },
             WireEnvOp::ExportRbindToken { value } => {
                 super::payload::EnvOp::ExportRbindToken { value }
+            }
+            WireEnvOp::ExportRelayBaseUrl { value } => {
+                super::payload::EnvOp::ExportRelayBaseUrl { value }
             }
             WireEnvOp::UnsetConfigDir => super::payload::EnvOp::UnsetConfigDir,
             WireEnvOp::UnsetNestedEnv => super::payload::EnvOp::UnsetNestedEnv { keys: &nested },

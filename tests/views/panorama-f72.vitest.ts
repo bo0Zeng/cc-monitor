@@ -70,7 +70,7 @@ describe("F72 批注 + doc-link 写 UI（节点详情面板）", () => {
     ta.value = "这个函数要注意 X";
     btnByText(v, "添加批注").click();
     await flush();
-    expect(api.addAnnotation).toHaveBeenCalledWith("/repo", "src/lib.rs", "f", "这个函数要注意 X", "me");
+    expect(api.addAnnotation).toHaveBeenCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" }, "src/lib.rs", "f", "这个函数要注意 X", "me");
   });
 
   it("空批注不提交", async () => {
@@ -89,7 +89,7 @@ describe("F72 批注 + doc-link 写 UI（节点详情面板）", () => {
     );
     btnByText(v, "删除").click();
     await flush();
-    expect(api.removeAnnotation).toHaveBeenCalledWith("/repo", "aaa");
+    expect(api.removeAnnotation).toHaveBeenCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" }, "aaa");
   });
 
   it("symbolSegForAnnotation：镜像 core split_sym_id（截 @行号消歧，否则同名多符号静默丢失）", () => {
@@ -112,7 +112,7 @@ describe("F72 批注 + doc-link 写 UI（节点详情面板）", () => {
     ta.value = "重载函数的批注";
     btnByText(v, "添加批注").click();
     await flush();
-    expect(api.addAnnotation).toHaveBeenCalledWith("/repo", "src/lib.rs", "f", "重载函数的批注", "me");
+    expect(api.addAnnotation).toHaveBeenCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" }, "src/lib.rs", "f", "重载函数的批注", "me");
   });
 
   it("关联文档 → api.writeDocLink(repo, doc, 符号全 id)", async () => {
@@ -124,6 +124,6 @@ describe("F72 批注 + doc-link 写 UI（节点详情面板）", () => {
     input.value = "docs/f.md";
     btnByText(v, "关联").click();
     await flush();
-    expect(api.writeDocLink).toHaveBeenCalledWith("/repo", "docs/f.md", "src/lib.rs#f");
+    expect(api.writeDocLink).toHaveBeenCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" }, "docs/f.md", "src/lib.rs#f");
   });
 });

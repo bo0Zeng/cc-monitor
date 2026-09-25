@@ -69,7 +69,7 @@ describe("F70 pendingHighlight 跨仓守卫 + 高亮世代隔离", () => {
     probe(v).pendingHighlight = { repo: "/C", files: ["/C/y.ts"] };
     probe(v).applyOverview(ov(), "/C");
     await flush();
-    expect(api.touching).toHaveBeenCalledWith("/C", ["/C/y.ts"], []);
+    expect(api.touching).toHaveBeenCalledWith({ origin: LOCAL_ORIGIN, path: "/C" }, ["/C/y.ts"], []);
     expect(probe(v).pendingHighlight).toBeNull();
   });
 

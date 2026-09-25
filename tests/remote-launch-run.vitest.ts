@@ -17,6 +17,8 @@ import {
   runRemoteResumeIntoExistingTmux,
   runRemoteLauncher,
   runRemoteAttach, POSIX_NO_WINDOW_MARKER,
+  // 〔RL1〕拉起之前问中转地址的那一口（attach 那一道闸直接量它）。
+  withRelayEndpoint,
   // 🔴 `设计/80 §8.7` 步 3：全仓唯一的启动期令牌铸币口。
   mintRbindToken,
   // 🔴 `K-R109` `KR109D3`：wire 上那两态同形，是「兜底那条路走得到」的第一环。
@@ -63,6 +65,7 @@ const OUTER_FROM_BACKEND = "<backend-rendered-outer-line>";
  */
 function mockInvoke(launchTerminal: () => Promise<unknown>): void {
   invokeMock.mockImplementation((cmd: string, args?: unknown) => {
+    if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
     if (cmd === "probe_ccm_cli") {
       return Promise.resolve({ installed: false, version: null, capabilities: [] });
     }
@@ -125,6 +128,7 @@ describe("F41 runRemoteResume", () => {
   // 变成 fail-open（后端拒的正是非法 configDir / 会裂的 arg 那一类）。
   it("★ 后端拒绝渲染载荷 → 报错，绝不静默回退到 TS 渲染器", async () => {
     invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
       if (cmd === "probe_ccm_cli")
         return Promise.resolve({ installed: false, version: null, capabilities: [] });
       if (cmd === "render_launch_payload") return Promise.reject("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR");
@@ -146,6 +150,7 @@ describe("F41 runRemoteResume", () => {
   // 被那个 catch 变成 fail-open。分法 = Rust 侧 `payload::refuse()` 打的 `REFUSE:` 标。
   it("★ P1：载荷渲染被拒（带 REFUSE 标）→ refused，不回落到兜底渲染器", async () => {
     invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
       if (cmd === "probe_ccm_cli")
         return Promise.resolve({ installed: false, version: null, capabilities: [] });
       // Rust 侧 `refuse()` 的产物形态：`REFUSE: <人读原因>`
@@ -168,6 +173,7 @@ describe("F41 runRemoteResume", () => {
   //（`C1` 逐字排除「给本地单写一套控制逻辑」）。
   it("P3 刀3 本机：backend 回报可回落 → 仍然诚实失败，绝不另找一条路重做", async () => {
     invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
       if (cmd === "render_launch_payload") return Promise.resolve("payload");
       // `mayFallBack: true` = 证明没发出去。远端据此回落；**本机不许**。
       if (cmd === "backend_send_into")
@@ -189,6 +195,7 @@ describe("F41 runRemoteResume", () => {
   //   两侧分档由后端那句 `POSIX_NO_TERMINAL_WINDOW` 决定，前端不自己再写一份。
   it("P3 刀3 本机 typed + Linux（后端不开窗口）→ 仍算成功，命令交给用户在自己 bash 里跑", async () => {
     invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
       if (cmd === "render_launch_payload") return Promise.resolve("payload");
       if (cmd === "backend_send_into") return Promise.resolve({ typed: true, reason: null, mayFallBack: false });
       // 🔴 `K-R109`：attach 那一句**归本机后端产**（`R61` 裁定三）⇒ 这里是它的替身。
@@ -219,6 +226,7 @@ describe("F41 runRemoteResume", () => {
 
   it("P3 刀3 本机 typed + Windows（wt + PowerShell 起来了）→ 不复制、不弹既定设计文案", async () => {
     invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
       if (cmd === "render_launch_payload") return Promise.resolve("payload");
       if (cmd === "backend_send_into") return Promise.resolve({ typed: true, reason: null, mayFallBack: false });
       if (cmd === "render_local_attach") return Promise.resolve(LOCAL_ATTACH_FROM_BACKEND);
@@ -243,6 +251,7 @@ describe("F41 runRemoteResume", () => {
   it("同 cwd 已有会话 → 起新会话的名字让到 -2，不撞进幂等闸", async () => {
     const cmds: string[] = [];
     invokeMock.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
       cmds.push(cmd);
       if (cmd === "list_remote_tmux")
         return Promise.resolve([
@@ -270,6 +279,7 @@ describe("F41 runRemoteResume", () => {
   it("列不出会话（远端不可达）→ 诚实降级用基名，不因为查询失败挡住起会话", async () => {
     const remoteCmds: string[] = [];
     invokeMock.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
       if (cmd === "list_remote_tmux") return Promise.reject("ssh 抖动");
       if (cmd === "render_launch_payload")
         return Promise.resolve(renderLaunchPayloadStub((args as { req: PayloadRenderRequest }).req));
@@ -286,6 +296,7 @@ describe("F41 runRemoteResume", () => {
 
   it("★ P1 对照：IPC 异常（无 REFUSE 标）→ 仍然回落，行为逐字不变", async () => {
     invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
       if (cmd === "probe_ccm_cli")
         return Promise.resolve({ installed: false, version: null, capabilities: [] });
       // 通道问题，与载荷本身无关 ⇒ 重做是安全的、且兜底那条路能成
@@ -434,6 +445,7 @@ describe("K-R109 本机 attach 那一句问后端要", () => {
 
   it("KR109D2 ★ 就地 resume 之后，attach 那一句是**问后端要**的，参数是那个会话名", async () => {
     invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
       if (cmd === "render_launch_payload") return Promise.resolve("payload");
       if (cmd === "backend_send_into")
         return Promise.resolve({ typed: true, reason: null, mayFallBack: false });
@@ -455,6 +467,7 @@ describe("K-R109 本机 attach 那一句问后端要", () => {
 
   it("KR109D2 ★ 后端渲不出来 ⇒ **诚实失败**，不许回落到前端自己拼一条 tmux attach", async () => {
     invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
       if (cmd === "render_launch_payload") return Promise.resolve("payload");
       if (cmd === "backend_send_into")
         return Promise.resolve({ typed: true, reason: null, mayFallBack: false });
@@ -558,6 +571,7 @@ describe("KR109D3 探不到那一态今天真走得到 —— 判 A 的机检形
     const rendered: string[] = [];
     const reqs: PayloadRenderRequest[] = [];
     invokeMock.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
       // 探测**出错** ⇒ `ccm-probe.ts` 回 `{state:"unknown"}`（它不进缓存，下次会重探）。
       if (cmd === "probe_ccm_cli") return Promise.reject("ssh 抖了一下");
       // 后端照 wire 上那两态办事：拿不到能力集 ⇒ 诚实降级（**不是错误**）。
@@ -644,6 +658,7 @@ describe("W22B 外层 tmux 三格的生产切换 —— 那道闸的判据", () 
     const reqs: PayloadRenderRequest[] = [];
     const launched: string[] = [];
     invokeMock.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
       if (cmd === "probe_ccm_cli")
         return Promise.resolve({ installed: false, version: null, capabilities: [] });
       if (cmd === "render_ccm_launch")
@@ -763,6 +778,7 @@ describe("设计/80 §8 步 1：带启动期令牌 ⇒ 生产不走 ccm 调用�
     const cmds: string[] = [];
     const launched: string[] = [];
     invokeMock.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
       cmds.push(cmd);
       if (cmd === "probe_ccm_cli")
         return Promise.resolve({
@@ -866,6 +882,7 @@ describe("设计/80 §8.7 步 3：启动期令牌的铸币口", () => {
   function routeLaunch(): { launched: string[] } {
     const launched: string[] = [];
     invokeMock.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
       if (cmd === "probe_ccm_cli") return Promise.resolve({ installed: false, version: null, capabilities: [] });
       if (cmd === "render_launch_payload")
         return Promise.resolve(renderLaunchPayloadStub((args as { req: PayloadRenderRequest }).req));
@@ -985,6 +1002,7 @@ describe("设计/80 §8.7 步 3：启动期令牌的铸币口", () => {
     const rendered: (string | null)[] = [];
     const handed: (string | null | undefined)[] = [];
     invokeMock.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
       if (cmd === "probe_ccm_cli") return Promise.resolve({ installed: false, version: null, capabilities: [] });
       if (cmd === "render_launch_payload") {
         const req = (args as { req: PayloadRenderRequest }).req;
@@ -1061,5 +1079,143 @@ describe("设计/80 §8.7 步 3：启动期令牌的铸币口", () => {
     expect(ok, "空令牌被静默补成了一个新铸的 —— 那会把一次铸币 bug 藏起来（Z01 的支点）").toBe(false);
     expect(launched, "空令牌居然拉起来了").toHaveLength(0);
     expect(toastMock).toHaveBeenCalled();
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 〔RL1 · 第四波〕R3：拉起之前问一次中转地址，拿到就进载荷；`null` 逐字节不变；attach 不问；拒了就不拉起
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// 异源在哪：地址是桩（「后端」）给的，断言它**原样**出现在交给 `render_launch_payload` 的请求里、
+// 并经那份唯一的渲染镜像落进交出去的串；`null` 那一格拿**同一次调用关掉问询**的产物逐字节对拍。
+describe("RL1 中转地址进远端载荷", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const URL_FROM_BACKEND = "http://127.0.0.1:8788/s/claude-code/acct-a/11111111-2222-3333-4444-555555555555";
+
+  function route(relay: (args: unknown) => Promise<unknown>): {
+    asked: unknown[];
+    reqs: PayloadRenderRequest[];
+    launched: string[];
+  } {
+    const asked: unknown[] = [];
+    const reqs: PayloadRenderRequest[] = [];
+    const launched: string[] = [];
+    invokeMock.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "relay_endpoint_for_launch") {
+        asked.push(args);
+        return relay(args);
+      }
+      if (cmd === "probe_ccm_cli")
+        return Promise.resolve({ installed: false, version: null, capabilities: [] });
+      if (cmd === "render_launch_payload") {
+        const req = (args as { req: PayloadRenderRequest }).req;
+        reqs.push(req);
+        return Promise.resolve(renderLaunchPayloadStub(req));
+      }
+      if (cmd === "backend_send_into")
+        return Promise.resolve({ typed: false, reason: "拿不到控制通道", mayFallBack: true });
+      if (cmd === "launch_remote_terminal") {
+        launched.push((args as { remoteCmd: string }).remoteCmd);
+        return Promise.resolve(undefined);
+      }
+      return Promise.resolve(undefined);
+    });
+    return { asked, reqs, launched };
+  }
+
+  const relayOps = (r: PayloadRenderRequest) => r.env.filter((op) => op.kind === "export-relay-base-url");
+
+  it("★ 四条远端起 agent 的路：后端给了地址 ⇒ 每一份载荷请求里恰好一条、值原样，交出去的串里有那句 export", async () => {
+    const paths: [string, () => Promise<unknown>][] = [
+      ["resume", () => runRemoteResume("aya", "sid-r1", "/w", "")],
+      ["resume-tmux", () => runRemoteResumeTmux("aya", "sid-r2", "/w", "claude", "r2-cc")],
+      ["resume-into", () => runRemoteResumeIntoExistingTmux("aya", "sid-r3", "r3-cc", "claude")],
+      ["launcher", () => runRemoteLauncher("aya", "/w", "r4-cc", "claude")],
+    ];
+    for (const [what, go] of paths) {
+      vi.clearAllMocks();
+      const { asked, reqs, launched } = route(() => Promise.resolve(URL_FROM_BACKEND));
+      stubClipboard(vi.fn().mockResolvedValue(undefined));
+      await go();
+      expect(asked, `${what}：没问中转地址`).toHaveLength(1);
+      expect((asked[0] as { origin: string }).origin, what).toBe("aya");
+      expect(reqs.length, `${what}：没走载荷渲染`).toBeGreaterThan(0);
+      for (const r of reqs) {
+        expect(relayOps(r), `${what}：载荷里不是恰好一条中转地址`).toEqual([
+          { kind: "export-relay-base-url", value: URL_FROM_BACKEND },
+        ]);
+      }
+      // tmux 那几格整条载荷被再 quote 一层塞进外层命令 ⇒ 只认「那个变量名 ＋ 那一串地址」都在。
+      expect(launched.join("\n"), what).toContain("export ANTHROPIC_BASE_URL=");
+      expect(launched.join("\n"), what).toContain(URL_FROM_BACKEND);
+    }
+  });
+
+  it("★ resume 交 sid、开新交 null；没选账号 ⇒ 账号那一格是 base（键名取生成物）", async () => {
+    const { asked } = route(() => Promise.resolve(null));
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    await runRemoteResume("aya", "sid-s1", "/w", "");
+    await runRemoteLauncher("aya", "/w", "s2-cc", "claude");
+    expect(asked).toEqual([
+      { origin: "aya", account: { kind: "base" }, sid: "sid-s1" },
+      { origin: "aya", account: { kind: "base" }, sid: null },
+    ]);
+  });
+
+  it("★ 具名账号 ⇒ 账号那一格带目录与名字", async () => {
+    const { asked } = route(() => Promise.resolve(null));
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    await runRemoteResume("aya", "sid-n1", "/w", "", { configDir: "/home/u/.claude-accts/acct-a", accountName: "acct-a" });
+    expect(asked).toEqual([
+      {
+        origin: "aya",
+        account: { kind: "named", configDir: "/home/u/.claude-accts/acct-a", name: "acct-a" },
+        sid: "sid-n1",
+      },
+    ]);
+  });
+
+  it("★ 后端说不注入（null）⇒ 载荷请求里零条中转地址", async () => {
+    const { reqs } = route(() => Promise.resolve(null));
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    await runRemoteResumeTmux("aya", "sid-z1", "/w", "claude", "z1-cc");
+    expect(reqs.length).toBeGreaterThan(0);
+    for (const r of reqs) expect(relayOps(r)).toEqual([]);
+  });
+
+  it("★ attach 一个 agent 都不起 ⇒ 不问中转地址（执行器那一层 ＋ `withRelayEndpoint` 自己那一道闸）", async () => {
+    const { asked } = route(() => Promise.resolve(URL_FROM_BACKEND));
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    await runRemoteAttach("aya", "a1-cc");
+    expect(asked).toEqual([]);
+    // 执行器今天不经它，但它是导出的口 —— 拿 attach 的 plan 直接喂，闸本身要挡得住（死值验 T2 第一版只量到上面那半）。
+    const { ctx, plan } = planAttach("a2-cc");
+    const out = await withRelayEndpoint("aya", ctx, plan);
+    expect(asked).toEqual([]);
+    expect(out).toBe(plan);
+  });
+
+  it("★ 后端拒了（apikey 号的中转起不来）⇒ 不拉起、toast 带那句理由", async () => {
+    const WHY = "apikey 端点改写不可用：账号 \"acct-a\" 在 [aya] 的 apikey 表里有一行";
+    const { launched } = route(() => Promise.reject(WHY));
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    const ok = await runRemoteResume("aya", "sid-x1", "/w", "");
+    expect(ok).toBe(false);
+    expect(launched).toEqual([]);
+    expect(toastMock.mock.calls[0][0]).toBe("无法构造 resume 命令");
+    expect(String(toastMock.mock.calls[0][1])).toContain(WHY);
+  });
+
+  it("★ 本机「就地 resume」也问（origin = 本机），拿到的地址进键入的那份载荷", async () => {
+    const { asked, reqs } = route(() => Promise.resolve(URL_FROM_BACKEND));
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    await runLocalResumeIntoExistingTmux("sid-l9", "l9-cc", "");
+    expect(asked).toHaveLength(1);
+    expect((asked[0] as { origin: string }).origin).toBe("<local>");
+    expect(reqs).toHaveLength(1);
+    expect(relayOps(reqs[0])).toEqual([{ kind: "export-relay-base-url", value: URL_FROM_BACKEND }]);
   });
 });

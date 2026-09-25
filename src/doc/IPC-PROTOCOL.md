@@ -1556,9 +1556,10 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 
 #### 中转（层 1）在「这台机器」上的进程（RM1a · 第四波，2026-09-24）
 
-本机的中转由 monitor 起本机后端时顺手监护；**远端那台机器上的中转由那台的后端起**（下面两条）。
+〔RL1 · V107〕本机的中转住**本机常驻后端进程里**（monitor 起本机后端时交 `CCM_RELAY_PORT`，见 `--relay` 那一条下的「进程内」一格）；
+**远端那台机器上的中转由那台的后端起**（下面两条）—— 远端后端随 SSH 退、远端会话活得比 SSH 长，中转必须是脱离的那一个。
 两条都**只收端口**，一个凭据 / 账号的名字都不经过它们（账号层那份文件由上面 `apikey-*` 两条管）。
-monitor **从不**对本机那条连接发 `relay-ensure`（本机那一个有监护者，不许再起第二个去抢口）。
+monitor **从不**对本机那条连接发 `relay-ensure`（本机那一个就在本机后端进程里，不许再起第二个去抢口）。
 
 起出来的 `--relay` 继承后端的环境，它里面的账号层与后端账号域那份写口按同一个函数、同一个家目录出处解凭据路径
 ⇒ 两边是同一份文件，不必在这两条命令里传路径。
@@ -1820,6 +1821,28 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 - 读的是 `<home>/plugins/known_marketplaces.json` 与 `<各落点>/.claude-plugin/marketplace.json`；它回答「有哪些 marketplace、从哪来、**声明**了几个插件」，**不是**「装了 / 启用了哪些」。
 - 三条出口分开：文件不在 ⇒ `file_absent: true`（诚实的空）；读 / 解析失败 ⇒ `failed`；某一条数不出 ⇒ 那一条 `declared_plugins: null` ＋ `declared_error` 理由，整张表照出。
 
+#### `panorama`：代码全景（〔RM1c〕第四波，用户 09-24 V108 选 B）
+
+后端**不链**全景引擎：它经插件通用调用口（找它 → `--probe` 问它会不会这个 op → 传 argv 起它，期限走 `timeout` 前缀）起那个只装引擎的独立小程序 `cc-monitor-panorama`，解析发生在被起的那个进程里；索引落**这台机器上后端自己的数据目录**（`~/.cc-monitor/panorama/`），不落进被分析的仓。本机与远端同一条命令。
+
+```text
+→ {"id":"g1","cmd":"panorama","args":{"op":"overview","repo":"/home/me/proj","args":{"budget":4000}}}
+← {"kind":"reply","id":"g1","ok":true,"data":{"result":{…}}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `op` | → | **只说查询语义**：`status` · `index` · `reindex` · `overview` · `node` · `subgraph` · `callers` · `callees` · `impact` · `search` · `docs_for` · `touching` · `symbols_in_file` · `drift` · `list_annotations` · `diagram_kinds` · `diagram`（存储 / grammar / 解析开关一个都不上线，`protocol_doc_guard` 钉着） |
+| `repo` | → | 被分析的仓在**这台机器上**的绝对路径（`diagram_kinds` 不要） |
+| `args` | → | 这个 op 自己的参数（JSON 对象；拼错的字段名被拒，不静默忽略） |
+| `result` | ← | 小程序应答里的 `data` **原样**（形状与 monitor 进程内那套全景命令逐字相同；`node` 查不到是 `null`） |
+
+- CLI 面同样自动派生（`--panorama`，stdin 一段 JSON = 上面那个 `args`），已进 `SUBCOMMANDS`。
+- 期限：`index` / `reindex` 900 秒，其余 60 秒 —— 给**子进程**的（后端零定时器）。客户端那一侧的等待要比它长。
+- 错误码：`bad_args`（op 不在词表 / 参数不合形，小程序自己那句话原样带回）· `not_installed`（这台没有那个小程序，或找到的那个身份行对不上；整句说清查过哪儿）· `unsupported`（装的那份不会这个 op，点名缺的那一个）· `timed_out`（说清是哪一档期限）· `too_large`（参数塞不进一次命令调用，或结果超过 32 MiB）· `failed`（仓打不开 / 引擎报错 / 被信号打断，带诊断）。
+- **只读**（第一拍）：写用户文件的那几样（批注、文档关联）不在词表里 —— 远端仓的那些文件是远端的用户文件，写面归后端文件管理那一面。
+- 阻塞档（起一个进程、等它退出；建索引可到分钟级）⇒ `cancel` 命中回 `not_cancellable`。
+
 #### `history-find`：会话内查找（〔SR1a × SE2〕2026-09-24 上帧面）
 
 ```text
@@ -2073,6 +2096,11 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 不是一次性查询，而是一个**常驻**进程，起来就不返回。
 
 - **只监听 `127.0.0.1`**，不对外暴露；端口默认 `8788`，`CCM_RELAY_PORT` 可盖。
+- 〔RL1 · V107〕**进程内那一形**：流模式（`--tail-only` 等，stdio 或常驻监听口两条载体一样）的后端**被交了** `CCM_RELAY_PORT`
+  ⇒ 在本进程里起同一个中转（层 1 ＋ 层 2 同一份代码，`relay::listen::host` ＋ `accounts::apikey::host_relay`），接受循环跑一条专属线程，
+  随进程生死（常驻后端按「退出行为」留或退，中转一起）。与上面独立那一形的差别只有三格：**端口没有缺省值**（认不出 ⇒ 不开）·
+  **tee 丢弃**（stdout 是 wire）· **起不来不退出**（出声，后端照常服务）。没交端口 ⇒ 不开（远端经 SSH exec 起的流模式后端就是这一格）。
+  凭据文件路径同样由 `CCM_APIKEY_CREDENTIALS` 交（monitor 起本机后端时交，与它自己写的那份同一个路径）。
 - 默认上游**每个 agent 一行**〔条 59 / 条 60，2026-09-24 订正；先前这里写的是一个**进程级**的上游默认
   （`https://api.anthropic.com`，由一个进程级环境变量盖）—— 已整删〕。它是**账号层（层 2）**的表，不是中转的配置：
   今天只登记了 `claude-code`（默认 `https://api.anthropic.com`，`CCM_AGENT_UPSTREAM_CLAUDE_CODE` 只盖这一家；
