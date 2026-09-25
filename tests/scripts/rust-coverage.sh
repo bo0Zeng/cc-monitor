@@ -43,6 +43,11 @@ which_side="${1:-both}"
 profdata_bin="${LLVM_PROFDATA:-llvm-profdata}"
 cov_bin="${LLVM_COV:-llvm-cov}"
 
+# 🔴 **断网**：发行版的 llvm 带 debuginfod，而 Ubuntu 默认给了 `DEBUGINFOD_URLS=https://debuginfod.ubuntu.com`
+#   ⇒ `llvm-cov report` 会去那个服务器取调试信息，在断网 / 沙箱里**挂着不动**（TQ1 落地那趟现打：
+#   开着一个 socket、`poll` 睡着、CPU 两秒，报告一个字节都没写）。本脚本不许联网 ⇒ 清掉它。
+export DEBUGINFOD_URLS=
+
 for t in "$profdata_bin" "$cov_bin"; do
   command -v "$t" >/dev/null 2>&1 || {
     echo "rust-coverage: 找不到 \`$t\`（系统 llvm 包）。本脚本不装任何东西 —— 装好或用 LLVM_PROFDATA / LLVM_COV 指过去" >&2
