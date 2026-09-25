@@ -127,7 +127,7 @@ import json, sys
 d = json.load(open(sys.argv[1]))["data"][0]
 t = d["totals"]["lines"]
 files = len(d["files"])
-print(f"{t[\"covered\"]}/{t[\"count\"]} 行（{t[\"percent\"]:.1f}%）· 生产源文件 {files} 份")
+print("%d/%d 行（%.1f%%）· 生产源文件 %d 份" % (t["covered"], t["count"], t["percent"], files))
 ' "$out/summary.json")
   echo "RUST-COVERAGE $side $line · .profraw ${raws} 份 · 目标文件 ${#objs[@]} 个 · 表 $out/report.txt"
 }
