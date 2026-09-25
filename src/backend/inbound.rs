@@ -1817,7 +1817,16 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "resolve",
         doc_anchor: Some("#### `resolve`"),
-        codes: &["bad_request", "serialize_failed"],
+        // 〔V126 · TL2〕原来只列两个，而 `resolve_from_json` 还会回 `invalid_session_id` /
+        // `unsafe_launch_candidate`（B2 两道校验）⇒ 登记表比真回的少两个。补齐；
+        // 与跨仓承诺的码全集两向相等由 `resolve_query_tests.rs` 〔V126〕那一族钉着
+        //（`stdin_read_failed` 只有一次性那条会出，不在这里）。
+        codes: &[
+            "bad_request",
+            "invalid_session_id",
+            "unsafe_launch_candidate",
+            "serialize_failed",
+        ],
         fields: &[],
         takes_input: true,
         run: Run::Async(|r| {

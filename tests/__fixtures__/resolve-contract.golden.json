@@ -1,0 +1,76 @@
+{
+  "_note": "〔V126〕resolve / --resolve 给仓外 aterm 的跨仓承诺的冻结金样（契约冻结 2026-07-18，daemon-协议-v1 §3）。改任何一格 = 跨仓契约变更：同轮改代码 + 本文件 + IPC-PROTOCOL §10「resolve」跨仓承诺小节 + bump BUILD_ID。判据：tests/backend/control/resolve_query_tests.rs 里带〔V126〕的那一族。",
+  "frozen": "2026-07-18",
+  "consumer": "aterm",
+  "request_fields": [
+    "sessionId",
+    "launchCandidates",
+    "claudeDir",
+    "fallbackCwd",
+    "alreadyInTmux",
+    "agentKind"
+  ],
+  "plan_fields": [
+    "command",
+    "mode",
+    "capabilities",
+    "sessionName",
+    "launchLabel",
+    "substitutedFrom"
+  ],
+  "capabilities": [
+    "supportsSendKeys",
+    "supportsCapture",
+    "supportsMultiClient",
+    "supportsMultiWindow"
+  ],
+  "modes": [
+    "PtyInject",
+    "ExecOnce"
+  ],
+  "error_envelope": [
+    "code",
+    "message"
+  ],
+  "error_exit": 2,
+  "error_codes": [
+    "stdin_read_failed",
+    "bad_request",
+    "invalid_session_id",
+    "unsafe_launch_candidate",
+    "serialize_failed"
+  ],
+  "oneshot_only_codes": [
+    "stdin_read_failed"
+  ],
+  "samples": [
+    {
+      "request": "{\"sessionId\":\"0123456789abcdef\",\"launchCandidates\":[\"claude --model opus\"],\"claudeDir\":\"/home/u/.claude\",\"fallbackCwd\":\"/tmp\",\"alreadyInTmux\":true}",
+      "product": "{\"command\":\"claude --model opus --resume 0123456789abcdef\",\"mode\":\"PtyInject\",\"capabilities\":{\"supportsSendKeys\":true,\"supportsCapture\":true,\"supportsMultiClient\":true,\"supportsMultiWindow\":true},\"sessionName\":\"cc-01234567\"}"
+    },
+    {
+      "request": "{\"sessionId\":\"abc-DEF_12\",\"launchCandidates\":[null,\"  \"],\"agentKind\":\"codex\"}",
+      "product": "{\"command\":\"codex resume abc-DEF_12\",\"mode\":\"PtyInject\",\"capabilities\":{\"supportsSendKeys\":true,\"supportsCapture\":true,\"supportsMultiClient\":true,\"supportsMultiWindow\":true},\"sessionName\":\"cx-abc-DEF_\"}"
+    },
+    {
+      "request": "{\"sessionId\":\"s1\"}",
+      "product": "{\"command\":\"claude --resume s1\",\"mode\":\"PtyInject\",\"capabilities\":{\"supportsSendKeys\":true,\"supportsCapture\":true,\"supportsMultiClient\":true,\"supportsMultiWindow\":true},\"sessionName\":\"cc-s1\"}"
+    },
+    {
+      "request": "{\"sessionId\":\"a;b\"}",
+      "error": "invalid_session_id"
+    },
+    {
+      "request": "{\"sessionId\":\"ok\",\"launchCandidates\":[\"claude; rm\"]}",
+      "error": "unsafe_launch_candidate"
+    },
+    {
+      "request": "not json",
+      "error": "bad_request"
+    },
+    {
+      "request": "{\"launchCandidates\":[]}",
+      "error": "bad_request"
+    }
+  ]
+}
