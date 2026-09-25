@@ -140,7 +140,8 @@ fn find_latest_log_picks_newest_mtime() {
 /// 对照：合法的那份照常写（上面 `write_diagnostics_preserves_other_fields`）。
 #[test]
 fn a_config_we_cannot_parse_is_left_alone_not_overwritten() {
-    let tmp = std::env::temp_dir().join(format!("ccm-log-test3-{}", std::process::id()));
+    // 〔NT2〕先前与 `find_latest_log_picks_newest_mtime` 共用 `ccm-log-test3-<pid>` 这一个目录 ⇒ 两条并行时互删对方的文件（时好时坏）。
+    let tmp = std::env::temp_dir().join(format!("ccm-log-test3b-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
     let broken = "{\"claudeDir\":\"/x\" \"theme\":{}}"; // 少一个逗号
@@ -163,4 +164,122 @@ fn a_config_we_cannot_parse_is_left_alone_not_overwritten() {
         "那句话没说清是哪份文件、为什么没存：{err}"
     );
     let _ = std::fs::remove_dir_all(&tmp);
+}
+
+// ═══ 〔NT2 · S1〕本机后端（脱离那条载体）的 stderr 诊断文件 ═══════════════════════════════════════
+//
+// 守的要求（住址，纪律 19）：`设计/15 §4.7 S1`（逐字）「**本机 · 脱离常驻载体**（Linux 缺省；全部 SSH 与中转都在它里面）|
+// null（`StderrSink::Null`）| **仍开**」· 主会话 4C 第二批裁（逐字）「脱离载体的常驻后端 stderr 落本机日志文件（有上限、滚动），
+// 设置页『日志』里看得到」。设计：`调研/第四波记录/NT2.md §2`。
+
+/// L4 ★ 设置页读到的那一族：后端那个子目录里的普通文件，新在前；目录不在 ⇒ 空（不报错）。
+/// 另一向：日志目录顶层只收 `.log`，后端那个子目录不混进 monitor 自己的「当前文件」。
+#[test]
+fn the_backend_stderr_files_are_listed_newest_first_and_kept_apart_from_ours() {
+    let root = std::env::temp_dir().join(format!("nt2-logging-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let cur = backend_stderr_log_path(&root);
+    let dir = cur.parent().unwrap().to_path_buf();
+    assert!(
+        list_log_entries(&dir, None).is_empty(),
+        "目录不在时应当是空"
+    );
+    std::fs::create_dir_all(&dir).unwrap();
+    let old = dir.join("stderr.old.log");
+    std::fs::write(&old, b"old").unwrap();
+    std::fs::write(&cur, b"current!").unwrap();
+    // 让 mtime 分得开：把旧的那份的 mtime 拨回去一小时。
+    let f = std::fs::File::options().write(true).open(&old).unwrap();
+    f.set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(3600))
+        .unwrap();
+    drop(f);
+    let got: Vec<(String, u64)> = list_log_entries(&dir, None)
+        .into_iter()
+        .map(|e| (e.path, e.size_bytes))
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            (cur.to_string_lossy().into_owned(), 8),
+            (old.to_string_lossy().into_owned(), 3)
+        ]
+    );
+    // 顶层按 `.log` 收：子目录不算一份文件。
+    std::fs::write(root.join("logs").join("monitor.2026-09-25.log"), b"m").unwrap();
+    let top = list_log_entries(&root.join("logs"), Some(LOG_FILE_SUFFIX));
+    assert_eq!(top.len(), 1, "顶层混进了后端那一族：{top:?}");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// 交给后端的那个变量名 == 后端读的那个（异源：从后端源码里现抠 `pub const ENV`）；路径就是设置页读的那一份（同一个函数）。
+/// 接线（文本，如实登记：按行为量要真起脱离后端）：`spawn_detached` 交它恰好一处，被监护那条的 `relay_host_envs` 不交。
+#[test]
+fn the_detached_backend_is_handed_its_stderr_log_path_and_only_that_carrier_is() {
+    let backend = include_str!("../../src/backend/stderr_log.rs");
+    guard_core::pin_line(backend, "pub const ENV: &str = \"CCM_BACKEND_STDERR_LOG\";")
+        .unwrap_or_else(|e| panic!("后端读的变量名变了（或不是恰好一处）：{e}"));
+    assert_eq!(BACKEND_STDERR_LOG_ENV, "CCM_BACKEND_STDERR_LOG");
+    let host =
+        guard_core::production_code(include_str!("../../src/bridge/src/local_backend_host.rs"));
+    assert_eq!(
+        host.matches("crate::logging::BACKEND_STDERR_LOG_ENV")
+            .count(),
+        1,
+        "交这一格不是恰好一处"
+    );
+    let at = guard_core::find_pinned(
+        &host,
+        "fn spawn_detached(\n    bin: &std::path::Path,\n    port: u16,",
+    )
+    .unwrap_or_else(|e| panic!("切不出 Linux 那条 spawn_detached：{e}"));
+    let (body, _) = host[at..].split_once("\n}\n").expect("切不出函数体");
+    assert!(
+        body.contains("crate::logging::BACKEND_STDERR_LOG_ENV")
+            && body.contains("crate::logging::backend_stderr_log_path(&d)"),
+        "脱离那条载体没交诊断文件路径（或路径不是那一个函数算的）"
+    );
+    assert!(
+        !crate::local_backend_host::relay_host_envs()
+            .iter()
+            .any(|(k, _)| k == BACKEND_STDERR_LOG_ENV),
+        "两条载体共用那份环境里也交了 —— 被监护那条的 stderr 会分成两处"
+    );
+}
+
+/// L4 ★ 设置页真读的那一口（`LoggingState::log_file_info`）：后端那份文件在 ⇒ `backend_stderr` 里有它、且不混进 monitor 自己的
+/// `current_file`；那层目录不在 ⇒ 空（另一向）。状态由本测试就地造（不装全局 tracing）。
+#[test]
+fn log_file_info_reports_the_backend_stderr_file_from_the_same_path_it_was_handed() {
+    let root = std::env::temp_dir().join(format!("nt2-logging-info-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let (_layer, reload_handle) = reload::Layer::new(EnvFilter::new("info"));
+    let state = LoggingState {
+        cfg: RwLock::new(DiagnosticsConfig::default()),
+        reload_handle,
+        log_dir: root.join(LOG_DIR_NAME),
+        monitor_data_dir: root.clone(),
+        error_emit_fn: Arc::new(RwLock::new(None)),
+        error_emit_enabled: Arc::new(AtomicBool::new(false)),
+        _guard: Mutex::new(None),
+    };
+    assert!(
+        state.log_file_info().backend_stderr.is_empty(),
+        "目录不在时应当是空"
+    );
+    let cur = backend_stderr_log_path(&root);
+    std::fs::create_dir_all(cur.parent().unwrap()).unwrap();
+    std::fs::write(&cur, b"backend said").unwrap();
+    let info = state.log_file_info();
+    assert_eq!(
+        info.backend_stderr
+            .iter()
+            .map(|e| (e.path.clone(), e.size_bytes))
+            .collect::<Vec<_>>(),
+        vec![(cur.to_string_lossy().into_owned(), 12)]
+    );
+    assert_eq!(
+        info.current_file, None,
+        "后端那一份混进了 monitor 自己的当前文件"
+    );
+    let _ = std::fs::remove_dir_all(&root);
 }
