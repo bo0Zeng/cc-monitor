@@ -24,7 +24,7 @@ sftp 子系统起始目录钉在临时目录 —— 同 `SR1b-sftp-loopback.py`�
   ② 预算满：长流 ＋ 8 条重叠的 capture（每条连接的通道闸 8 格）⇒ 全部跑通、鉴权 **恰好 2**
   ③ 远端 MaxSessions=2（乙台）：长流 ＋ 3 条重叠的 capture ⇒ 全部跑通（被拒的那一条挪到新连接上）、鉴权 **恰好 2**；sshd 的拒绝原话
   ④ 压缩（回环）：sshd 日志里我们这几条连接的协商结果全是 `compression: none`（回环不开，判准只有 `connect.rs::compression_for`）
-  ⑦ 断线续传现打：下载中途断线 ⇒ 读终局与 `.part`（只印）；上传中途断线 ⇒ failed、暂存件留着；重传 ⇒ sftp-server 记下的写入 == 总长 − 已有
+  ⑦ 断线续传现打：下载中途断线 ⇒ 读终局与 `.part`（〔DP1〕判：`.part` 留着且是源的前缀、重拖落地逐字节对、没有从 0 起）；上传中途断线 ⇒ failed、暂存件留着；重传 ⇒ sftp-server 记下的写入 == 总长 − 已有
   ⑧ 黑洞：已有 TCP 变黑洞之后，第一条新链路在开通道那一步被吞、被关掉 ⇒ 第二条**拨新的**、跑通（新鉴权恰好 1 次；基线：第二条也被吞）
   ⑥（`--compress`）强制压 vs 不压（真 sshd）：sshd 日志按先后 `none` · `zlib@openssh.com`；今天 russh 0.61 的 zlib 解压有缺陷（闸
      `connect.rs::RUSSH_ZLIB_SOUND` 关着）⇒ 压的那趟卡在第一条通道上、收不全 —— 这一格就是闸为什么关着的真 sshd 读数
@@ -299,6 +299,17 @@ class Sshd:
     def auths(self):
         return self.text().count("Accepted publickey")
 
+    def read_bytes(self, path):
+        """〔DP1〕sftp-server 记下的、关掉 `path` 那一次的读出字节数（最后一次）。"""
+        n = None
+        if not os.path.exists(self.sftp_log):
+            return None
+        with open(self.sftp_log, errors="replace") as fh:
+            for ln in fh.read().splitlines():
+                if f'close "{path}"' in ln and " bytes read " in ln:
+                    n = int(ln.split(" bytes read ", 1)[1].split()[0])
+        return n
+
     def written(self, path):
         """sftp-server 记下的、关掉 `path` 那一次的写入字节数（最后一次）。"""
         n = None
@@ -481,6 +492,27 @@ def main():
             px7.cut()
             last = be.end_of(xid, 300)
             print(f"  read 下载中途断线 ⇒ 终局 {last and last['end']} · .part 还在：{os.path.exists(dl7 + '.part')}（〔DP1〕失败也留 .part —— 弱网上断线就是失败；NT1 现打时是 False，DP1 之后该是 True）")
+            # 〔DP1〕判据（字节数相等）：留下的 .part 是源的前缀；重拖同一份（不经整形代理）⇒ 落地逐字节 == 源，
+            #   且 sftp-server 记下的这一趟读出字节 == 总长 − 已有 ＋ 尾块对拍那一块（前缀没被重新读）。
+            part7 = dl7 + ".part"
+            have7 = os.path.getsize(part7) if os.path.exists(part7) else 0
+            with open(big, "rb") as fh:
+                src7 = fh.read()
+            with open(part7, "rb") as fh:
+                pre7 = fh.read()
+            check("断线之后 .part 留着、是源的前缀（长度 > 0）", have7 > 0 and src7[:have7] == pre7, have7)
+            xid = be.download(dial(a), big, dl7)
+            last = be.end_of(xid, 300)
+            with open(dl7, "rb") as fh:
+                got7 = fh.read()
+            check("重拖同一份 ⇒ done、落地逐字节 == 源、.part 不留", last and last["end"].get("state") == "done" and got7 == src7 and not os.path.exists(part7), last and last["end"])
+            rb = a.read_bytes(big)
+            probe = min(have7, 32 * 1024)
+            waste = (rb or 0) - (len(src7) - have7 + probe)
+            print(f"  read 重拖：sftp-server 记下的读出 {rb} 字节（总长 {len(src7)} − 已有 {have7} ＋ 尾块 {probe} = {len(src7) - have7 + probe}；"
+                  f"多出 {waste} 字节 = 尾块对拍那一读在同一个句柄上触发的预读，定位到续传起点时被丢掉重读 —— 一次续传一个预读窗口，不随文件长）")
+            # 只读数据的一份读数（不是门禁判据）：sftp-server 的计数含客户端预读，算不出「恰好」那个数 ⇒ 判「没从 0 起」这一向。
+            check("重拖没有从 0 起（读出 < 总长，且 ≥ 总长 − 已有）", rb is not None and len(src7) - have7 <= rb < len(src7), rb)
             up7 = os.path.join(d, "up7.bin")
             with open(up7, "wb") as fh:
                 fh.write(os.urandom(8 * 1024 * 1024))

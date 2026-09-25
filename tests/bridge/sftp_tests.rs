@@ -1486,6 +1486,23 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     bytes.splice(1_000_000..1_000_000, stamp.bytes());
     let decide =
         |id: RemoteIdentity| identity_decision(&id, "sr1b-id", "sr1b-loopback", &backend_path);
+    // 〔DP1〕读数脚本 ② 在这个落点上留下了一份 3 MB 的随机字节（没有身份戳）⇒ 那台 sshd 上真扫一次：
+    //   显式失败、一个字节都不写（盘上那份原样）；出路是机器页「卸载后端」—— 这里就用那颗按钮的真命令删掉它。
+    let leftover = std::fs::read(&backend_path).expect("读数脚本 ② 留下的那份不在 —— 台架变了");
+    let d_pre = decide(remote_identity(&cfg, &fs, &backend_path).await.unwrap());
+    assert!(
+        matches!(&d_pre, Err(e) if e.contains("不说自己是哪一版")),
+        "无戳的旧文件 ⇒ 该显式失败：{d_pre:?}"
+    );
+    assert_eq!(
+        std::fs::read(&backend_path).unwrap(),
+        leftover,
+        "判定之后盘上那份变了"
+    );
+    let msg = uninstall_remote_backend(cfg.clone())
+        .await
+        .expect("卸载（出路）");
+    assert!(msg.starts_with(&format!("已删除 {backend_path}")), "{msg}");
     let d0 = decide(remote_identity(&cfg, &fs, &backend_path).await.unwrap());
     assert!(
         matches!(d0, Ok(DeployAction::Deploy(_))),
