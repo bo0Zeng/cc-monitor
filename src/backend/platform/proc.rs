@@ -8,21 +8,37 @@
 //! 恒返回 `true`，是个已登记的静默错误地雷 …… Windows 今天编不过（12 个错）」——
 //! 而**这三条事实全部被 U4a 证伪**，且它就在被改的那个函数上方几行。
 //!
-//! **现状**：`pid_alive` 的非 Linux 分支是 `unimplemented!()`（U4a 把静默说谎换成大声未实现）；
-//! Windows 跨 target check **RC=0 且已进 CI**。真语义（`OpenProcess` + 退出码）留 U4b。
+//! **现状**〔WN1 · 09-24 改写〕：判活三件（`pid_alive` / `proc_starttime` / `start_epoch_from_ticks`）
+//! 有了 **Windows 臂**（U4b 那一半：`OpenProcess` ＋ 退出码 ＋ `GetProcessTimes`，Win32 读法只住
+//! `platform/win_proc.rs`）；其余平台（macOS 等）仍是 U4a 那个大声的 `unimplemented!()` / `None`。
+//! `proc_env_var` / `proc_cmdline` 在 Windows 上仍是「读不到」（读别的进程的环境与命令行要读对方
+//! PEB，未公开结构，交叉编译验不了语义 ⇒ 本轮不做，登记在 `第四波记录/WN1.md` 件 E）。
+//! 🚫 Windows 臂**只买到编得过**（`winchk-backend`）＋ 纯换算那一半在 Linux 上的对拍；真机零读数。
 //! `platform/fallback_guard.rs` 钉住这一族：fallback 分支不许凭空返回「成功」值。
 
 /// Whether `pid` currently exists as a process on this host (existence only).
 ///
 /// Linux (the backend's real target): `/proc/<pid>` existence. This is the
 /// add-time gate; the reuse-proof check is [`session_alive`].
+///
+/// Windows〔WN1 · U4b〕：开得到句柄且退出码是 `STILL_ACTIVE` ⇒ 在；**「拒绝访问」也算在**
+/// （与 Linux 同契约：`/proc/<pid>` 对别的用户的进程照样存在 —— 这里问的是存在性，不是权限）；
+/// 开得到句柄但这一刻问不出退出码 ⇒ 按「读不到不判死」算在（`liveness.rs` 那条纪律）；
+/// 其余开不出来 ⇒ 不在。
 pub(crate) fn pid_alive(pid: u32) -> bool {
     #[cfg(target_os = "linux")]
     {
         std::path::Path::new(&format!("/proc/{pid}")).exists()
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(windows)]
     {
+        super::win_proc::exists(pid)
+    }
+    #[cfg(not(any(target_os = "linux", windows)))]
+    {
+        // 〔WN1 · 09-24〕Windows 那一格已由上面的 `#[cfg(windows)]` 臂接走；本臂今天只剩
+        // 没有承诺的平台（macOS 等，`01 §7` 表 B）。下面这段是 U4a 的原话，照留。
+        //
         // ★ U4a（2026-08-01）：**从「静默说谎」改成「大声未实现」。**
         //
         // 这里原本是 `let _ = pid; true`，注释写「treat as alive so the cross-platform
@@ -41,7 +57,7 @@ pub(crate) fn pid_alive(pid: u32) -> bool {
         // - 它给 U4b 留了一个**编译器/运行时帮你找**的落点，而不是一个「看起来能用」的假实现。
         let _ = pid;
         unimplemented!(
-            "pid_alive 在本平台未实现（U4b：OpenProcess + 退出码）。\
+            "pid_alive 在本平台未实现（Linux 读 /proc、Windows 走 platform/win_proc.rs，这里两样都没有）。\
              此前这里恒返回一个乐观的存活值 —— 那会让会话永不归档且毫无信号，是比 panic 坏得多的失败模式。（措辞刻意避开那个布尔字面量：`platform/fallback_guard.rs` 连字符串一起扫，写出来会把那条护栏自己打红 —— 同 §41.4 第 1 条纪律。）"
         )
     }
@@ -206,17 +222,25 @@ pub(crate) fn proc_env_var(pid: u32, name: &str) -> EnvRead {
 /// The PID's procStart (start time), used to defend against PID reuse (#34).
 ///
 /// Linux: the `starttime` field (jiffies since boot) from `/proc/<pid>/stat`.
-/// Non-Linux: `None`（「不知道」的诚实表达）。U4b 换 Win32 实现 —— **注意它不在 U4a 的处置面上**，
-/// `/proc` 读取一族里 `proc_starttime` / `proc_cmdline` / `proc_claude_config_dir` /
-/// `start_epoch_from_ticks` 四个今天在 Windows 上全部静默返回 `None`。方向保守所以不是雷，
-/// 但**没有它们 U4b 的判活只有半条腿**（Phase D 审计指出 U4b 清单漏了这四个）。
+/// Windows〔WN1 · U4b〕：`GetProcessTimes` 的创建时刻，**FILETIME 原值**（UTC、100ns、自 1601）。
+/// ⚠ **单位是平台原生的，与 Linux 的 jiffies 不可互比** —— 本值只拿来与**同一个读法**读出来的
+/// 另一次比相等（`#34` 基线 · `pidwatch` 开句柄后的复核），或经 [`start_epoch_from_ticks`] 换成秒。
+/// ⚠ 于是 `watcher.rs::add_time_verdict` 的「与 pidfile 里的 `procStart` 逐值相等」那一支在 Windows 上
+/// **按构造不会命中**（claude 在 Windows 上写的是 .NET 本地 ticks，`src/bridge/src/utils.rs::NetTicks`），
+/// 那一趟落到它自己的兜底启发式（「进程起得比 pidfile 晚 ⇒ 冒名」）—— 保守方向，登记在
+/// `第四波记录/WN1.md`；把两种单位对上是那个判定自己的事（`observe/`），不在翻译官这一层。
+/// 其余平台：`None`（「不知道」的诚实表达）。`proc_cmdline` 在 Windows 上仍是 `None`（要读 PEB）。
 pub(crate) fn proc_starttime(pid: u32) -> Option<u64> {
     #[cfg(target_os = "linux")]
     {
         let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
         parse_starttime_from_stat(&stat)
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(windows)]
+    {
+        super::win_proc::start_filetime(pid)
+    }
+    #[cfg(not(any(target_os = "linux", windows)))]
     {
         let _ = pid;
         None
@@ -245,6 +269,9 @@ pub(crate) const USER_HZ: u64 = 100;
 /// moves it. A cached value taken before a backwards step would leave a
 /// constant offset that mis-kills every future real session with no self-heal
 /// (F20 audit I-1). Session-add is rare; one small /proc read is free.
+///
+/// Windows〔WN1 · U4b〕：`ticks` 是 [`proc_starttime`] 那一臂交的 FILETIME 原值 ⇒
+/// 纯换算（[`unix_secs_from_filetime`]），不读任何东西、不碰时区。
 pub(crate) fn start_epoch_from_ticks(ticks: Option<u64>) -> Option<u64> {
     #[cfg(target_os = "linux")]
     {
@@ -253,11 +280,34 @@ pub(crate) fn start_epoch_from_ticks(ticks: Option<u64>) -> Option<u64> {
             .and_then(|s| parse_btime(&s))?;
         Some(btime + ticks? / USER_HZ)
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(windows)]
+    {
+        unix_secs_from_filetime(ticks?)
+    }
+    #[cfg(not(any(target_os = "linux", windows)))]
     {
         let _ = ticks;
         None
     }
+}
+
+/// FILETIME（100ns、自 1601-01-01 UTC）与 Unix 纪元之间差的 100ns 个数（369 年，含 89 个闰日）。
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) const FILETIME_TICKS_BEFORE_UNIX_EPOCH: u64 = 116_444_736_000_000_000;
+
+/// 每秒多少个 FILETIME 刻度（100ns 一格）。
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) const FILETIME_TICKS_PER_SEC: u64 = 10_000_000;
+
+/// FILETIME 原值 → Unix 纪元秒（向下取整，与 Linux 臂 `ticks / USER_HZ` 同一种取整）。
+/// 早于 1970 的值 ⇒ `None`（不是一个会话进程能有的起始时刻；不给它编一个 0）。
+///
+/// 纯函数，放在 cfg 外 ⇒ **在 Linux 上就测得到**（照 [`parse_btime`] 那条先例）。
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn unix_secs_from_filetime(filetime: u64) -> Option<u64> {
+    filetime
+        .checked_sub(FILETIME_TICKS_BEFORE_UNIX_EPOCH)
+        .map(|t| t / FILETIME_TICKS_PER_SEC)
 }
 
 /// `/proc/<pid>/cmdline`, NUL separators turned into spaces, lossily decoded.

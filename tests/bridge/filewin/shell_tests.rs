@@ -968,34 +968,112 @@ fn opening_a_window_again_is_a_new_process_and_it_really_comes_up() {
     }
 }
 
-/// 🔴 **进程 DPI 归属：`any_thread_hook` 的 Windows 分支必须把 winit 关掉。**
+/// 🔴 **进程 DPI 归属〔WN1 · 09-24 改写〕：窗口进程里没有 Tauri ⇒ winit 自己设 DPI。**
 ///
 /// 论证与四格现打读数住 `shell.rs` 头注（2026-09-20，本机那台 Win11 虚拟机的真桌面）。
-/// 那四格里承重的是两对：
-/// - 「没有 `tao`、`dpi_aware=true`」⇒ `UNAWARE` → `PER_MONITOR_AWARE_V2`
-///   ⇒ **winit 自己确实会设进程级那块状态**（「两个主人」不是推测）；
-/// - 「没有 `tao`、`dpi_aware=false`」⇒ 全程 `UNAWARE`
-///   ⇒ **这个开关是活的**，关掉之后 winit 真的不去碰它。
+/// 承重的是「起 `tao` = 否」那两行：
+/// - `dpi_aware=true` ⇒ `UNAWARE` → `PER_MONITOR_AWARE_V2`；
+/// - `dpi_aware=false` ⇒ **全程 `UNAWARE`**（没有别人替它设 ⇒ 高 DPI 下整窗发糊）。
 ///
-/// ⚠ **这条只扫得动源码，扫不动行为** —— Windows 那个分支在本机（Linux）
-/// 被 `cfg` 掉了，`cargo test` 永远执行不到它。能进执行链的只有「那一句在不在」。
-/// ⇒ 所以它钉**两侧**：`false` 要在，且不许有人把它改回 `true`
-/// （只钉「含 `with_dpi_aware`」的话，改成 `true` 不会红 —— 那就是一把恒绿的尺）。
+/// 从前本条钉的是 `false`，理由是「同进程里 Tauri 先设了」。那个前提在第十三刀
+/// （窗口进程独立）之后没了 —— 而旧判据只钉**值**、不钉**前提**，于是它一直绿着守一个错值。
+/// ⇒ 这一版两半、两侧异源：
+///
+/// ① **值**：那一句是 `with_dpi_aware(builder, true)`，恰好一行（`pin_line`）；`false` 零命中。
+/// ② **前提**：这个 hook 在生产上只经一条链被用到 ——
+///    `win_main.rs`（窗口进程入口）→ `proc::child_main` → `shell::open_detached_seeded` → `any_thread_hook`，
+///    每个符号的「生产段里提到它的文件」集合与期望**两向相等**；且链上两份文件的生产段里
+///    一个 `tauri` / `tao` 都没有。哪天有人在 monitor 进程里开这个窗口（集合多一个文件），
+///    ② 先红 —— 逼他回来重答「这个进程的 DPI 归谁」，而不是让 ① 静静地守着一个过期的值。
+///
+/// ⚠ **诚实边界**：Windows 分支在本机被 `cfg` 掉，`cargo test` 执行不到它 ⇒ ① 只能读源码；
+/// 「那一句在真 Windows 上真的把进程设成 V2」要真机（本路不碰 Win11 虚拟机，买不到）。
 #[test]
-fn the_windows_branch_hands_process_dpi_to_tauri() {
+fn the_window_process_owns_its_dpi_because_no_tauri_lives_there() {
     let shell =
         guard_core::production_code(include_str!("../../../src/bridge/src/filewin/shell.rs"));
-    assert_eq!(
-        shell.matches("with_dpi_aware(builder, false)").count(),
-        1,
-        "`any_thread_hook` 的 Windows 分支没有把 winit 的 DPI 设置关掉 —— \
-         那个进程里就又有两个人在设 `SetProcessDpiAwarenessContext` 了"
-    );
+    // ① 值。
+    guard_core::pin_line(
+        &shell,
+        "EventLoopBuilderExtWindows::with_dpi_aware(builder, true);",
+    )
+    .unwrap_or_else(|e| {
+        panic!(
+            "{e}\n⇒ `any_thread_hook` 的 Windows 分支不再把 DPI 交给 winit 自己设。\n\
+             窗口进程里没有 Tauri ⇒ 那一格若是 `false`，四格读数第 2 行说它全程 `UNAWARE`。"
+        )
+    });
     assert!(
-        !shell.contains("with_dpi_aware(builder, true)"),
-        "有人把它改回 `true` 了 —— 现打读数说这一句是活的开关，\
-         改回 `true` 就是把「两个主人」那条风险重新请回来"
+        !shell.contains("with_dpi_aware(builder, false)"),
+        "`with_dpi_aware(builder, false)` 回来了 —— 那是同进程时代的处置（Tauri 先设）。\n\
+         窗口进程独立之后它让整个窗口 DPI 不感知。真要改回去，先让 ② 那条前提变真。"
     );
+
+    // ② 前提：谁在生产段里提到这条链上的每一个符号。
+    let src_root = crate::guard_support::crate_src_root();
+    let files: Vec<(String, String)> = guard_core::scan_tree_excluding(&src_root, &["rs"], &[])
+        .into_iter()
+        .map(|(p, raw)| {
+            let rel = p
+                .strip_prefix(&src_root)
+                .expect("扫出来的文件都在 src 底下")
+                .to_string_lossy()
+                .replace('\\', "/");
+            (rel, guard_core::production_code(&raw))
+        })
+        .collect();
+    // 反空真：整棵树扫塌了的话，下面每个集合都会是空集而「与期望相等」只会在期望也空时成立 ——
+    // 期望全非空，所以塌了会红；这一行只是让红的时候说人话。
+    assert!(
+        files.len() > 50,
+        "只扫到 {} 份 `.rs` —— 扫描坏了，本条此刻在空转",
+        files.len()
+    );
+    let mentioned_by = |sym: &str| -> std::collections::BTreeSet<String> {
+        files
+            .iter()
+            .filter(|(_, prod)| guard_core::contains_word(prod, sym))
+            .map(|(rel, _)| rel.clone())
+            .collect()
+    };
+    let set = |xs: &[&str]| -> std::collections::BTreeSet<String> {
+        xs.iter().map(|s| s.to_string()).collect()
+    };
+    for (sym, want) in [
+        ("any_thread_hook", set(&["filewin/shell.rs"])),
+        (
+            "open_detached_seeded",
+            set(&["filewin/shell.rs", "filewin/proc.rs"]),
+        ),
+        ("open_detached", set(&["filewin/shell.rs"])),
+        (
+            "child_main",
+            set(&["filewin/proc.rs", "filewin/win_main.rs"]),
+        ),
+    ] {
+        assert_eq!(
+            mentioned_by(sym),
+            want,
+            "生产段里提到 `{sym}` 的文件集合变了。\n\
+             这条链是「文件窗口只在它自己的进程里开」的全部证据 —— 而 `any_thread_hook` 那一句\n\
+             `with_dpi_aware(builder, true)` 正是建在这条前提上的（这个进程里没有 Tauri 替它设 DPI）。\n\
+             多了一个文件 ⇒ 多半是有人在别的进程里开这个窗口：先回去重答「那个进程的 DPI 归谁」。"
+        );
+    }
+    for rel in ["filewin/proc.rs", "filewin/win_main.rs"] {
+        let window_proc_prod = &files
+            .iter()
+            .find(|(r, _)| r == rel)
+            .unwrap_or_else(|| panic!("`{rel}` 不在扫描结果里 —— 搬家了？"))
+            .1;
+        for word in ["tauri", "tao"] {
+            assert!(
+                !guard_core::contains_word(window_proc_prod, word),
+                "`{rel}` 的生产段里出现了 `{word}` —— 窗口进程里有了 Tauri / tao，\n\
+                 那 `any_thread_hook` 就又回到了「一个进程两个 DPI 主人」那一格（`shell.rs` 头注四格表下半）。"
+            );
+        }
+    }
 }
 
 // ════════════════════════════════════════════════════════════════════════
