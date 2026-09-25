@@ -170,6 +170,9 @@ fn write_at(path: &Path, kill: bool) -> Result<(), String> {
             return Err(format!("建 {} 失败：{e}", dir.display()));
         }
     }
+    // 〔HX2〕第四层同一条规矩：写之前拿那个目录的跨进程锁（`platform/lock.rs`）。这一份没有读—改—写（整份一格），
+    //   锁在这里只为「每一份第四层写口都在锁里写」这条规矩没有例外（`readonly_guard` 第四层 ⑥）。
+    let _lock = crate::platform::lock::hold(dir)?;
     let tmp = dir.join(format!("{FILE_NAME}.{}.tmp", std::process::id()));
     let result = (|| {
         let mut f = std::fs::OpenOptions::new()

@@ -1242,6 +1242,50 @@ mod tests {
         }
     }
 
+    /// 🔴 〔HX2 · 第四波 4D〕**第四层判据 ⑥：每一份都在跨进程锁里写 —— 人群两向相等。**
+    ///
+    /// 要求住址：题面 HX2 逐字「后端自有状态文件跨进程锁（`flock` 一类，Windows 对应）」；审计 `E-compat.md` §E6 · E14 · §3.1
+    /// （第四层读—改—写只有进程内锁 ⇒ 两个后端进程同时写，后写的整份盖掉先写的；资产目录首建生出幽灵机器；skill 装记录丢了补不回来）。
+    ///
+    /// 生产段里拿 `platform::lock::hold` 那把锁的后端文件 == 第四层登记的模块（两向；每份**恰好一处**）。
+    /// 同波别的路给第四层加一份（SU1 的 `skill_ledger.rs`）而没在写之前拿锁 ⇒ 这一条红（它本来就该红）。
+    /// ⚠ 判不了「锁拿在读之前」（数据流）—— 那一半靠各模块自己的行为判据（资产目录首建那一条）。
+    #[test]
+    fn hx2_every_own_state_module_writes_under_the_cross_process_lock() {
+        let root = crate::guard_support::src_root();
+        let needle = "platform::lock::hold(";
+        let mut holders: std::collections::BTreeMap<String, usize> = Default::default();
+        for path in core_files() {
+            let rel = path
+                .strip_prefix(&root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let src = std::fs::read_to_string(&path).expect("read rs file");
+            let n = guard_core::production_code(&src).matches(needle).count();
+            if n > 0 {
+                holders.insert(rel, n);
+            }
+        }
+        let want: std::collections::BTreeSet<String> = OWN_STATE_MODULES
+            .iter()
+            .map(|(p, _)| p.to_string())
+            .collect();
+        let got: std::collections::BTreeSet<String> = holders.keys().cloned().collect();
+        assert_eq!(
+            got, want,
+            "拿跨进程锁的模块 ≠ 第四层登记的模块。\n\
+             少了 ⇒ 那一份的读—改—写没有跨进程锁（两个后端进程同时写，后写的整份盖掉先写的）；\n\
+             多了 ⇒ 第四层之外有人拿这把锁（它只为后端自有状态文件存在）。"
+        );
+        for (m, n) in &holders {
+            assert_eq!(
+                *n, 1,
+                "`{m}` 里拿了 {n} 处锁 —— 每份一处（写口一个，锁一处）"
+            );
+        }
+    }
+
     /// 一根写口针在后端生产树里的引用处 == 登记的那扇门（零命中守卫的本体）。
     fn own_state_door_matches(root: &std::path::Path, needle: &str, door: &str) {
         let mut scanned = 0usize;
