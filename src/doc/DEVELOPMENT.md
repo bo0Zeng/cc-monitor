@@ -175,7 +175,7 @@ $env:RUST_LOG = "monitor=debug,tauri=warn"; ...
 ### Tab 不出现
 - 跑 `claude` 后 `~/.claude/sessions/` 应该有新 `<PID>.json` 文件
 - 没有：claude 启动有问题
-- 有但 Tab 不出现：dev console 看 `jsonl-line` / `jsonl-batch` 事件是否到前端
+- 有但 Tab 不出现：dev console 看会话流的交格（〔CF2〕`chan-items` 事件；`[events] 会话流 …` 那几行说看不见 / 丢格 / 关了）是否到前端
 
 ### cc 集成握手不成功
 - `~/.claude/claudecode-frontend/ps-await/<PID>.json` 写了又被删 → monitor 收到了

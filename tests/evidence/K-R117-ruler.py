@@ -204,6 +204,9 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("comm.face-a.call", (NA, "—",
                           "〔C4a〕通信层面 A 在 Tauri IPC 那一跳的命令（`chan_call`）—— 只搬不透明字节，"
                           "装什么、查什么装态都不是它的事")),
+    ("comm.face-a.subscribe", (NA, "—",
+                               "〔CF2〕通信层面 A 在 Tauri IPC 那一跳的订阅（`chan_subscribe` / `chan_want` / `chan_stop`）—— 只搬不透明的流格，"
+                               "装什么、查什么装态都不是它的事")),
     ("history.branch", (NA, "—", "会话历史")),
     ("history.delete", (NA, "—", "会话历史")),
     ("history.list-projects", (NA, "—", "会话历史")),

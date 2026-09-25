@@ -460,7 +460,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p3i-assets-cancel**（2026-09-25，第四波 AS2 ＋ RM1f 合并那一拍）：子命令 ＋5 —— AS2 `assets-catalog` / `assets-catalog-merge` /
 /// `assets-sync` / `skill-read` / `skill-install-plan`（两个命令面）。
 /// ＋ 行为：RM1f `panorama` 改异步档、`cancel` 真撤（杀子进程组）· Windows 上找全景小程序认 `.exe` 后缀。
-pub const BUILD_ID: &str = "p3i-assets-cancel";
+///
+/// ★★★ **p3j-history-lines**（2026-09-25，第四波 CF2 合并那一拍）：子命令 ＋1 —— `history-lines`（按可计行号取原文，两个命令面）。
+pub const BUILD_ID: &str = "p3j-history-lines";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -651,6 +653,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     //   登记理由同上 —— `is_query_mode` 那道闸门读本表。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--history-find",
     "--history-index",
+    // 〔CF2 · 第四波 4B〕`history-lines`（按行号取回）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的，
+    //   BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    "--history-lines",
     "--history-projects",
     "--history-read",
     // 〔U4b · 第四波〕`history-record` 的 CLI 面（CLI 面从 `REGISTRY` 派生，`is_query_mode` 那道闸门读本表）。
