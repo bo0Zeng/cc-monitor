@@ -149,6 +149,11 @@ fn every_registered_command_declares_its_run_kind() {
                 | "files-rename"
                 | "files-write-text"
                 | "files-copy"
+                // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话：同步文件 I/O（围栏的 `canonicalize`
+                // ＋ 读 / 暂存旁名写满 ＋ 换名 / 删），同写面其余几条一档。
+                | "files-peek"
+                | "files-put"
+                | "files-delete-session"
                 | "files-ls"
                 | "files-stat"
                 | "files-find"
@@ -265,6 +270,10 @@ fn every_registered_command_declares_its_run_kind() {
         "relay-ensure",
         "relay-status",
         "footprint-probe",
+        // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话（阻塞档，理由在上面 `expected_blocking`）。
+        "files-peek",
+        "files-put",
+        "files-delete-session",
     ];
     let missing: Vec<&str> = super::REGISTRY
         .iter()

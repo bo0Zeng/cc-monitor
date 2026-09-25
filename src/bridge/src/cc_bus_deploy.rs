@@ -170,66 +170,105 @@ pub struct CcBusDeployReport {
 ///
 /// ⚠ 它**不是**「拼出来的路径正好等于它」，而是**canonicalize 之后**再比：
 /// 符号链接、`..`、大小写差异都得先归一，否则围栏是纸的。
-/// ⚠ 父目录（`<claude_dir>/skills`）可能还不存在 ⇒ canonicalize 那一层，再拼最后一段。
+/// 〔RW1 · 第四波 09-24〕它从此**只读**：`<claude_dir>/skills` 若已在，解到底必须仍在 `claude_dir` 底下；
+/// 还不在 ⇒ 由后端在写的时候逐级建（`files-put` 的 `parents`，每一级各过后端那道围栏）。
+/// 从前这里先 `mkdir -p` 再判 —— 那一步写已经随「用户文件只经后端写」搬走了。
+/// ⚠ 后端那道围栏（根 = `claude_dir`，解完链接不许跑出根）是**同一件事的第二道**：这里判的是「人话报错」，
+///   后端判的是「写不出去」。
 fn fenced_dest(claude_dir: &Path) -> Result<PathBuf, String> {
     let skills = claude_dir.join("skills");
-    std::fs::create_dir_all(&skills).map_err(|e| format!("建 {} 失败：{e}", skills.display()))?;
-    let real = skills
-        .canonicalize()
-        .map_err(|e| format!("解析 {} 失败：{e}", skills.display()))?;
-    let claude_real = claude_dir
-        .canonicalize()
-        .map_err(|e| format!("解析 {} 失败：{e}", claude_dir.display()))?;
-    // 归一之后 `skills` 必须仍在 claude_dir 底下 —— 挡「skills 是个指向别处的软链」。
-    if !real.starts_with(&claude_real) {
-        return Err(format!(
-            "拒绝：`{}` 归一之后落在 `{}` 之外（软链？）—— 只读铁律的第 7 条例外**只**放行 \
-             `<claude_dir>/skills/cc-bus`",
-            real.display(),
-            claude_real.display()
-        ));
+    if skills.exists() {
+        let real = skills
+            .canonicalize()
+            .map_err(|e| format!("解析 {} 失败：{e}", skills.display()))?;
+        let claude_real = claude_dir
+            .canonicalize()
+            .map_err(|e| format!("解析 {} 失败：{e}", claude_dir.display()))?;
+        // 归一之后 `skills` 必须仍在 claude_dir 底下 —— 挡「skills 是个指向别处的软链」。
+        if !real.starts_with(&claude_real) {
+            return Err(format!(
+                "拒绝：`{}` 归一之后落在 `{}` 之外（软链？）—— 只读铁律的第 7 条例外**只**放行 \
+                 `<claude_dir>/skills/cc-bus`",
+                real.display(),
+                claude_real.display()
+            ));
+        }
     }
-    Ok(real.join("cc-bus"))
+    Ok(skills.join("cc-bus"))
 }
 
-/// ★ **幂等**：逐文件比内容，一致就跳过。
-fn same_content(path: &Path, bytes: &[u8]) -> bool {
-    std::fs::read(path).map(|got| got == bytes).unwrap_or(false)
+/// 落点相对 `claude_dir` 的那一段（交给后端当 `rel`）。
+fn dest_rel(rel: &str) -> String {
+    format!("skills/cc-bus/{rel}")
 }
 
-/// ★ **可撤销**：覆盖前把整个目录改名成 `cc-bus.bak-<时间戳>`。
+/// ★ **幂等**：逐文件比内容，一致就跳过（经门读：读的就是后端要写的那一份）。
+async fn same_content(
+    door: &impl crate::user_files::Door,
+    root: &str,
+    rel: &str,
+    bytes: &[u8],
+) -> Result<bool, String> {
+    Ok(door
+        .peek(root, &dest_rel(rel))
+        .await?
+        .text
+        .as_deref()
+        .map(str::as_bytes)
+        == Some(bytes))
+}
+
+/// ★ **可撤销**：覆盖前把整个目录改名成 `cc-bus.bak-<时间戳>`（经后端的 `files-rename`）。
 ///
 /// ⚠ 用**改名**不是拷贝：改名是原子的，且不会在中途留下半份备份。
 /// ⚠ 已经一致（幂等命中全部文件）时**不备份** —— 每点一次就多一份垃圾备份，
 /// 那会让「可撤销」变成「攒垃圾」。
-fn backup_existing(dest: &Path) -> Result<Option<PathBuf>, String> {
-    if !dest.exists() {
+async fn backup_existing(
+    door: &impl crate::user_files::Door,
+    root: &str,
+    dest: &Path,
+) -> Result<Option<PathBuf>, String> {
+    if door.stat_kind(&dest.display().to_string()).await?.is_none() {
         return Ok(None);
     }
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let bak = dest.with_file_name(format!("cc-bus.bak-{ts}"));
-    std::fs::rename(dest, &bak).map_err(|e| {
-        format!(
-            "备份 {} → {} 失败：{e}（**没动原目录**）",
-            dest.display(),
-            bak.display()
-        )
-    })?;
-    Ok(Some(bak))
+    let bak_name = format!("cc-bus.bak-{ts}");
+    door.rename(root, "skills/cc-bus", &format!("skills/{bak_name}"))
+        .await
+        .map_err(|e| {
+            format!(
+                "备份 {} → {bak_name} 失败：{e}（**没动原目录**）",
+                dest.display()
+            )
+        })?;
+    Ok(Some(dest.with_file_name(bak_name)))
 }
 
-/// 部署到指定 `claude_dir`（可注入，供判据用真目录跑）。
-pub fn deploy_into(claude_dir: &Path) -> Result<CcBusDeployReport, String> {
+/// 部署到指定 `claude_dir`（可注入，供判据用替身门跑）。
+///
+/// 〔RW1 · 第四波 09-24〕用户裁「只允许后端的文件管理部分写文件」也管本机 ⇒ 本机这一趟
+/// **一个字节都不在本进程落**：读（幂等判定）· 改名（备份）· 写（`parents` 逐级建）· 改权限（可执行位）
+/// 全经本机后端的文件管理那一面。
+pub async fn deploy_into(
+    door: &impl crate::user_files::Door,
+    claude_dir: &Path,
+) -> Result<CcBusDeployReport, String> {
     let dest = fenced_dest(claude_dir)?;
+    let root = claude_dir.display().to_string();
 
     // 先算幂等：全都一致就**什么都不做**（不备份、不写）。
-    let all_same = dest.is_dir()
-        && FILES
-            .iter()
-            .all(|(rel, bytes)| same_content(&dest.join(rel), bytes));
+    let mut all_same = door.stat_kind(&dest.display().to_string()).await? == Some("dir".into());
+    if all_same {
+        for (rel, bytes) in FILES {
+            if !same_content(door, &root, rel, bytes).await? {
+                all_same = false;
+                break;
+            }
+        }
+    }
     if all_same {
         return Ok(CcBusDeployReport {
             dest: dest.display().to_string(),
@@ -240,20 +279,21 @@ pub fn deploy_into(claude_dir: &Path) -> Result<CcBusDeployReport, String> {
         });
     }
 
-    let backup = backup_existing(&dest)?;
+    let backup = backup_existing(door, &root, &dest).await?;
     let mut written = 0u32;
     for (rel, bytes) in FILES {
-        let p = dest.join(rel);
-        if let Some(parent) = p.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("建 {} 失败：{e}", parent.display()))?;
-        }
-        std::fs::write(&p, bytes).map_err(|e| format!("写 {} 失败：{e}", p.display()))?;
+        let text = std::str::from_utf8(bytes)
+            .map_err(|_| format!("内嵌的 {rel} 不是 UTF-8 —— 这一件装不了（后端写面只收文本）"))?;
+        door.put(&root, &dest_rel(rel), text, None, false, true)
+            .await
+            .map_err(crate::user_files::Refused::said)?;
         // `scripts/` 下的都要可执行 —— 装完不能跑等于没装。
         // 〔保活 09-24〕`examples/` 里带 shebang 的那一份（`cc-keepalive`，给 cron 直接调）同理；
         //   按「字节以 `#!` 开头」认，不按文件名列 —— 列名单会在下一个示例脚本进来时漏。
-        if rel.starts_with("scripts/") || bytes.starts_with(b"#!") {
-            crate::platform_fs::make_executable(&p)?;
+        // ⚠ Windows 上没有可执行位（从前 `platform_fs::make_executable` 在那边就是空操作），
+        //   后端的改权限在那边如实回失败 ⇒ 这一步只在 unix 上发。
+        if !cfg!(windows) && (rel.starts_with("scripts/") || bytes.starts_with(b"#!")) {
+            door.chmod(&root, &dest_rel(rel), 0o755).await?;
         }
         written += 1;
     }
@@ -303,7 +343,7 @@ pub fn install_state_in(claude_dir: &Path) -> Result<CcBusInstallState, String> 
         let p = dest.join(rel);
         if !p.exists() {
             missing += 1;
-        } else if !same_content(&p, bytes) {
+        } else if std::fs::read(&p).map(|got| got != *bytes).unwrap_or(true) {
             differing += 1;
         }
     }
@@ -487,7 +527,9 @@ pub async fn deploy_local_cc_bus() -> Result<CcBusDeployReport, String> {
     if let Some(w) = &warning {
         tracing::warn!("{w}");
     }
-    let mut report = deploy_into(&claude_dir)?;
+    // 〔RW1〕落盘经本机后端的文件管理那一面（`user_files::BackendDoor`），本进程不写。
+    let door = crate::user_files::BackendDoor::new(crate::origin::Origin::local());
+    let mut report = deploy_into(&door, &claude_dir).await?;
     report.warning = warning;
     Ok(report)
 }

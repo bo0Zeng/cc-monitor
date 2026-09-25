@@ -9,6 +9,7 @@
  */
 
 import type { Origin } from "./generated/Origin";
+import type { SessionState } from "./tab-session-state";
 
 /** tab/cell 上叠的活动灯类名。空串 = 不叠类（维持默认绿点：busy 或未知 activity）。 */
 export type ActivityLightClass = "" | "act-idle" | "act-waiting";
@@ -37,10 +38,12 @@ export interface GridSessionSnapshot {
   origin: Origin;
   /** 项目根 / 启动目录（最早记录的 cwd）；null = 尚未拿到。 */
   cwd: string | null;
-  status: "live" | "archived";
-  /** audit-fixes F03.2：idle-tmux（claude 退但 tmux 会话仍在，可 attach 复用）。与 status 正交
-   *  （status 仍 live），驱动 cell 灰灯，与 tab-bar 一致。 */
-  tmuxIdle: boolean;
+  /**
+   * 〔U4〕会话状态的两个轴（活性 × 可恢复性），与 tab 栏**同一份**（`Tab.state` 原样交出）；
+   * cell 的类 / 灯 / 排序 / 摘要都经 `tab-session-state.ts` 的谓词读，不在这里另判。
+   * 原先是 `status: "live" | "archived"` ＋ `tmuxIdle: boolean`（可重连的会话在前者里是 live）。
+   */
+  state: SessionState;
   /** Claude 的 status 字段原值（busy/idle/shell/waiting）；null = 未知。 */
   activityStatus: string | null;
   /** waiting 时的子类（permission prompt / dialog open …）；否则 null。 */

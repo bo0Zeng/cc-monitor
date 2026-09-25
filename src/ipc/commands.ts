@@ -353,18 +353,22 @@ export const commands = {
    * `missingReason` 非 null 时是**带身份的**缺席原因（哪个 skill 的哪条前提没满足）——
    * UI 要原样显示它，不许退化成「不可用」（定框 C6）。
    */
-  list_skills: (args: { cwd: string }) => invoke<SkillView[]>("list_skills", args),
+  // 〔RW1 · 第四波 09-24〕三条都吃 `origin`（本机 = `"<local>"`）：远端项目的收件箱也能编辑，
+  //   读写都经那台机器的后端（本机同一条路）。
+  list_skills: (args: { origin: Origin; cwd: string }) =>
+    invoke<SkillView[]>("list_skills", args),
 
   /** devbench F03：读一个 skill 的可编辑文件（读也过写面围栏，免得变成任意文件读取口）。 */
-  read_skill_file: (args: { cwd: string; skillId: string; path: string }) =>
+  read_skill_file: (args: { origin: Origin; cwd: string; skillId: string; path: string }) =>
     invoke<string>("read_skill_file", args),
 
   /**
    * devbench F03：写一个 skill 的可编辑文件。
    *
    * 后端三道围栏（路径 canonicalize 后做集合判定 · 过 Claude 数据保护守卫 · 目标必须已存在）
-   * + `verified_write` 的读回逐字节比对与回滚。**前端不做安全判断**，也不该做 ——
-   * 判定的真相源只有 `skill_host::resolve_editable` 一处。
+   * + 〔RW1〕经那台机器后端的文件管理那一面写（回读逐字节比对与回滚住后端）。**前端不做安全判断** ——
+   * 判定的真相源只有 `skill_host::resolve_editable` / `remote_editable_rel`。
+   * `expected` = 打开时读到的那一份（CAS：盘上那份在这之后被改过 ⇒ 一个字节不写）。
    */
   /**
    * `K-H2a` `KS10`：从界面配一把 key。
@@ -391,8 +395,14 @@ export const commands = {
   }) =>
     invoke<void>("write_apikey_credentials_key", args),
 
-  write_skill_file: (args: { cwd: string; skillId: string; path: string; content: string }) =>
-    invoke<void>("write_skill_file", args),
+  write_skill_file: (args: {
+    origin: Origin;
+    cwd: string;
+    skillId: string;
+    path: string;
+    content: string;
+    expected: string;
+  }) => invoke<void>("write_skill_file", args),
 
   /**
    * 〔AL1 · 2026-09-24〕`设计/71 §12.6` 第①跳：**纯** —— 清单 → 代码（＋ 每条的问题 ＋ 撞名提示）。
@@ -767,8 +777,8 @@ export const commands = {
    * 删历史会话。**桶①**。
    *
    * 🔴 **〔步 12·C〕`delete_remote_history_session` 已退役，两条收成这一条。**
-   * 本机那一侧带 projects 目录内的路径守卫，远端那一侧走 `sftp::remove_remote_file`
-   * 的双重守卫 —— **同一个动作、两种介质**，不是两件能力。
+   * 〔RW1 · 第四波〕两侧都经那台机器的后端删（`files-delete-session`，只收 sid）；
+   * `jsonlPath` 是一致性闸的另一半：`sessionId` 必须恰是那份文件名的 stem。
    */
   delete_history_session: (args: {
     origin: Origin;

@@ -96,8 +96,9 @@ const TRIAGE_DEBT: &[(&str, &str)] = &[
     ("mcp.rs", "list_remote_mcp_project_dirs"),
     ("mcp.rs", "read_remote_mcp_servers"),
     ("mcp.rs", "read_remote_project_mcp"),
-    ("mcp.rs", "remove_remote_mcp_server"),
-    ("mcp.rs", "write_remote_mcp_server"),
+    // 〔RW1 · 第四波 09-24〕`mcp.rs` 远端写 / 删两个分支（`write_remote_mcp_server` / `remove_remote_mcp_server`）
+    //   从这里还掉了：它们不再去查远端配置，改经那台机器的后端写（门开在 origin 上，`<local>` 与远端同一条路）。
+    //   **表只许变短，这一次它真的短了。**
     // 〔C2 09-24〕住址 `port_forward.rs::start_forward` → `dial_host.rs::forward`：查配置搬进了宿主
     //   （端口转发那一份进了通信层，读配置是宿主的事）。欠的那笔债一格没变 —— 本机那条路今天仍没有端口转发。
     ("dial_host.rs", "forward"),

@@ -69,6 +69,10 @@ fn the_embedded_bytes_are_the_right_arch() {
     for (arch, machine) in [("x86_64", 62u16), ("aarch64", 183u16)] {
         let b = panorama_binary("Linux", arch).expect("cfg 置了却选不出字节");
         assert_eq!(&b[..4], b"\x7fELF", "{arch} 那份不是 ELF");
-        assert_eq!(u16::from_le_bytes([b[18], b[19]]), machine, "{arch} 那份的 e_machine 不对");
+        assert_eq!(
+            u16::from_le_bytes([b[18], b[19]]),
+            machine,
+            "{arch} 那份的 e_machine 不对"
+        );
     }
 }

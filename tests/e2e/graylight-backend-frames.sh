@@ -6,7 +6,7 @@
 #   (kill fake-claude 进程,tmux 会话留活)
 #   SessionRemoved(sid)             —— backend 2s 判活轮询发现 claude 死
 #   TmuxSessions.raw 仍含 @ccm_sid   —— **关键**:claude 死但 tmux 还在 → monitor emitter 据此走
-#                                       Idle(灰)而非 Archive(前端半场:markTmuxIdle→tmuxIdle=1)
+#                                       Idle(灰)而非 Archive(前端半场:markTmuxIdle→可重连)
 #   (tmux kill-session)
 #   TmuxSessions.raw 不再含 sid      —— @ccm_sid 没了 → monitor 归档触发边沿(archived)
 # 前端 emitter→灰灯半场由单测(tabs.vitest.ts)+ 全链 GUI 跑覆盖;本脚本钉住后端边沿。

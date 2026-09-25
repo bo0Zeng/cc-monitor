@@ -150,6 +150,16 @@ fn tmpdir(tag: &str) -> TmpDir {
     TmpDir(d)
 }
 
+/// 〔RW1 · 第四波 09-24〕profile 的读写经「门」（生产 = 本机后端的文件管理那一面）。
+/// 判据用落在临时目录上的替身门，home = 那份文件所在的目录；写的规则（备份 · 原子替换 · 回读 · 回滚）
+/// 住后端，由 `files_write_tests.rs` 判。
+fn door_at(p: &std::path::Path) -> crate::user_files::tests::DiskDoor {
+    crate::user_files::tests::DiskDoor::new(p.parent().expect("有父目录"))
+}
+fn run<T>(f: impl std::future::Future<Output = T>) -> T {
+    futures::executor::block_on(f)
+}
+
 /// **围栏损坏时一个字节都不许写** —— 真行为断言（T07 审计① 换掉的那条安慰剂）。
 ///
 /// ## 上一版是安慰剂，两个变异实证
@@ -177,8 +187,14 @@ fn damaged_fence_leaves_the_file_byte_identical() {
     let before = std::fs::read(&path).expect("读原文");
 
     for (what, r) in [
-        ("install", install_to_profile(&path, "cc", true)),
-        ("uninstall", uninstall_from_profile(&path)),
+        (
+            "install",
+            run(install_to_profile(&door_at(&path), &path, "cc", true)),
+        ),
+        (
+            "uninstall",
+            run(uninstall_from_profile(&door_at(&path), &path)),
+        ),
     ] {
         // Ok 是 `()`；意外成功会被下面的字节断言 + 「应因围栏损坏中止」两条同时抓住
         let e = match r {
@@ -214,7 +230,7 @@ fn intact_fence_actually_writes() {
     let path = td.0.join("Microsoft.PowerShell_profile.ps1");
     std::fs::write(&path, "# mine\n").expect("写样本");
     let before = std::fs::read_to_string(&path).unwrap();
-    install_to_profile(&path, "cc", true).expect("围栏完好时应写成");
+    run(install_to_profile(&door_at(&path), &path, "cc", true)).expect("围栏完好时应写成");
     let after = std::fs::read_to_string(&path).unwrap();
     assert_ne!(after, before, "围栏完好时必须真写进去");
     assert!(after.contains("# mine"), "块外内容要保留：{after}");
@@ -441,7 +457,8 @@ fn install_preserves_existing_user_content() {
     let user_content = "# my profile\nSet-Alias g git\nfunction prompt { 'PS> ' }\n";
     std::fs::write(&p, user_content).unwrap();
 
-    install_to_profile(&p, "cc", false).unwrap();
+    let door = door_at(&p);
+    run(install_to_profile(&door, &p, "cc", false)).unwrap();
 
     let after = std::fs::read_to_string(&p).unwrap();
     assert!(
@@ -452,18 +469,16 @@ fn install_preserves_existing_user_content() {
     assert!(after.contains("# === cc-monitor BEGIN"));
     assert!(!after.is_empty());
 
-    // 备份文件应该存在
+    // 〔RW1 · 第四波 09-24〕备份由后端做（`files-put` 的 `backup: true`，判据在 `files_write_tests.rs`）；
+    //   这一侧钉的是「要了备份」—— 用户的 profile 不许在没有备份的情况下被改。
+    let calls = door.puts.borrow();
+    assert!(
+        !calls.is_empty() && calls.iter().all(|c| c.backup),
+        "改用户的 profile 必须要后端留一份备份：{calls:?}"
+    );
+    drop(calls);
     let parent = p.parent().unwrap();
     let stem = p.file_name().unwrap().to_string_lossy().to_string();
-    let has_backup = std::fs::read_dir(parent)
-        .unwrap()
-        .filter_map(|e| e.ok())
-        .any(|e| {
-            e.file_name()
-                .to_string_lossy()
-                .starts_with(&format!("{stem}.ccm-backup-"))
-        });
-    assert!(has_backup, "应该生成 .ccm-backup-<ts> 备份文件");
 
     // 清理
     let _ = std::fs::remove_file(&p);
@@ -480,7 +495,7 @@ fn install_to_nonexistent_path_creates_file() {
     let p = tmp_profile();
     // 不预先创建
     assert!(!p.exists());
-    install_to_profile(&p, "cc", true).unwrap();
+    run(install_to_profile(&door_at(&p), &p, "cc", true)).unwrap();
     let content = std::fs::read_to_string(&p).unwrap();
     // ★ **带边界**〔audit-0805 F24 存量清账〕：`contains("function cc")` 是**正向事实钉**，
     // 而 `function ccm` 也含有它 —— 安装器若改成生成 `function ccm`（同文件 `:727` 就有
@@ -499,9 +514,9 @@ fn reinstall_replaces_block_keeps_user_content() {
     let p = tmp_profile();
     std::fs::write(&p, "Set-Alias g git\n").unwrap();
 
-    install_to_profile(&p, "cc", false).unwrap();
+    run(install_to_profile(&door_at(&p), &p, "cc", false)).unwrap();
     // 第二次装：之前的块应该被原地替换，用户内容仍在
-    install_to_profile(&p, "cc", true).unwrap();
+    run(install_to_profile(&door_at(&p), &p, "cc", true)).unwrap();
 
     let after = std::fs::read_to_string(&p).unwrap();
     assert!(after.contains("Set-Alias g git"));
@@ -520,72 +535,17 @@ fn reinstall_replaces_block_keeps_user_content() {
     }
 }
 
-/// v1.7.10：验证 install_to_profile 保留 dst 上的 explicit ACE。
-///
-/// 复现 v1.7.9 zbl 事故场景：原 profile 上有 explicit ACE（用户自己加的或
-/// 系统给的），如果 atomic_replace 用 MoveFileExW / rename，explicit ACE
-/// 会被 tmp 文件的"继承父目录" ACL 覆盖丢失。用 ReplaceFileW 应该保留。
-///
-/// 用 icacls 给文件加 `Everyone:(R)` explicit ACE，install 后跑 icacls
-/// 看这条 ACE 是否还在。
-#[cfg(windows)]
-#[test]
-fn install_preserves_explicit_acl_entries() {
-    let p = tmp_profile();
-    std::fs::write(&p, "Set-Alias g git\n").unwrap();
-
-    // 给文件加 explicit Everyone:(R) ACE
-    let add = std::process::Command::new("icacls")
-        .arg(&p)
-        .arg("/grant")
-        .arg("Everyone:(R)")
-        .output();
-    let add = match add {
-        Ok(o) if o.status.success() => o,
-        _ => {
-            // icacls 不可用（测试环境少见）—— 跳过
-            let _ = std::fs::remove_file(&p);
-            return;
-        }
-    };
-    assert!(add.status.success(), "icacls /grant failed: {:?}", add);
-
-    // 跑 install
-    install_to_profile(&p, "cc", false).unwrap();
-
-    // 看 explicit ACE 还在不在（icacls 输出里不带 (I) 标记的那条）
-    let out = std::process::Command::new("icacls")
-        .arg(&p)
-        .output()
-        .expect("icacls run");
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    // 期望看到 Everyone:(R) 不带 (I) 前缀 —— 是 explicit ACE
-    let has_explicit_everyone = stdout
-        .lines()
-        .any(|line| line.contains("Everyone:(R)") && !line.contains("(I)(R)"));
-    assert!(
-        has_explicit_everyone,
-        "explicit Everyone:(R) ACE 应该被 ReplaceFileW 保留！icacls 输出:\n{stdout}"
-    );
-
-    let _ = std::fs::remove_file(&p);
-    let parent = p.parent().unwrap();
-    let stem = p.file_name().unwrap().to_string_lossy().to_string();
-    for entry in std::fs::read_dir(parent).unwrap().filter_map(|e| e.ok()) {
-        let n = entry.file_name().to_string_lossy().to_string();
-        if n.starts_with(&format!("{stem}.ccm-backup-")) {
-            let _ = std::fs::remove_file(entry.path());
-        }
-    }
-}
+// 〔RW1 · 第四波 09-24〕这里原来是 `install_preserves_explicit_acl_entries`〔散文墓碑〕（Windows：v1.7.10
+// `ReplaceFileW` 保住 explicit ACE）。写从本进程搬到了后端（用户裁「只允许后端的文件管理部分写文件」也管本机），
+// 那条性质跟着搬：`tests/backend/control/files_write_tests.rs::put_keeps_explicit_acl_entries_on_windows`。
 
 #[test]
 fn uninstall_strips_block_keeps_user_content() {
     let p = tmp_profile();
     let user = "# mine\nSet-Alias g git\n";
     std::fs::write(&p, user).unwrap();
-    install_to_profile(&p, "cc", true).unwrap();
-    uninstall_from_profile(&p).unwrap();
+    run(install_to_profile(&door_at(&p), &p, "cc", true)).unwrap();
+    run(uninstall_from_profile(&door_at(&p), &p)).unwrap();
 
     let after = std::fs::read_to_string(&p).unwrap();
     assert!(after.contains("Set-Alias g git"));
@@ -728,7 +688,7 @@ fn installing_into_a_posix_rc_keeps_every_user_line() {
     let td = tmpdir("posix-install");
     let p = td.0.join(".bashrc");
     std::fs::write(&p, BARE_RC).expect("写夹具");
-    install_to_profile(&p, "cc", true).expect("装进 POSIX rc");
+    run(install_to_profile(&door_at(&p), &p, "cc", true)).expect("装进 POSIX rc");
     let after = std::fs::read_to_string(&p).expect("读回");
     for line in BARE_RC.lines() {
         assert!(
@@ -741,7 +701,7 @@ fn installing_into_a_posix_rc_keeps_every_user_line() {
         assert!(pinned(&after, line), "别名块少了一行：{line:?}");
     }
     // 幂等：再装一次一个字节都不变。
-    install_to_profile(&p, "cc", true).expect("再装一次");
+    run(install_to_profile(&door_at(&p), &p, "cc", true)).expect("再装一次");
     assert_eq!(
         std::fs::read_to_string(&p).expect("读回"),
         after,
@@ -754,7 +714,7 @@ fn installing_into_a_posix_rc_keeps_every_user_line() {
         "装完却扫不出块 —— 界面会说「未安装」且藏起卸载按钮"
     );
     // 卸得干净，用户的行还在。
-    uninstall_from_profile(&p).expect("卸");
+    run(uninstall_from_profile(&door_at(&p), &p)).expect("卸");
     let stripped = std::fs::read_to_string(&p).expect("读回");
     assert!(
         !stripped.contains("cc-monitor remote ccm"),
@@ -1609,7 +1569,7 @@ fn the_powershell_profile_lands_with_a_bom_and_the_posix_rc_never_does() {
     // ── PowerShell 那一支：有 BOM，而且装两趟只有一个 ────────────────
     let ps = td.0.join("Microsoft.PowerShell_profile.ps1");
     std::fs::write(&ps, "# 我自己的一行\nWrite-Host hi\n").expect("写夹具");
-    install_to_profile(&ps, "cc", true).expect("装第一趟");
+    run(install_to_profile(&door_at(&ps), &ps, "cc", true)).expect("装第一趟");
     let b1 = std::fs::read(&ps).expect("读回");
     assert_eq!(
         &b1[..3],
@@ -1617,7 +1577,7 @@ fn the_powershell_profile_lands_with_a_bom_and_the_posix_rc_never_does() {
         "PowerShell profile 落盘没有 BOM —— PS 5.1 会按 ANSI 代码页解它，\
              而那条路在真机上**吃掉过一整行可执行代码**（见本判据头注）"
     );
-    install_to_profile(&ps, "cc", true).expect("装第二趟");
+    run(install_to_profile(&door_at(&ps), &ps, "cc", true)).expect("装第二趟");
     let b2 = std::fs::read(&ps).expect("读回");
     assert_eq!(
         b2, b1,
@@ -1633,7 +1593,7 @@ fn the_powershell_profile_lands_with_a_bom_and_the_posix_rc_never_does() {
     assert!(pinned(strip_bom(&text), "# 我自己的一行"), "用户内容丢了");
     assert!(pinned(&text, "Write-Host hi"), "用户内容丢了");
     // 卸干净之后 BOM 还在、块没了、用户内容还在。
-    uninstall_from_profile(&ps).expect("卸");
+    run(uninstall_from_profile(&door_at(&ps), &ps)).expect("卸");
     let after = std::fs::read_to_string(&ps).expect("读回");
     assert!(!after.contains(BEGIN_MARKER), "卸了之后围栏还在：\n{after}");
     assert!(pinned(&after, "Write-Host hi"), "卸载吃掉了用户内容");
@@ -1641,7 +1601,7 @@ fn the_powershell_profile_lands_with_a_bom_and_the_posix_rc_never_does() {
     // ── POSIX 那一支：一个 BOM 都不许有 ──────────────────────────────
     let rc = td.0.join(".bashrc");
     std::fs::write(&rc, BARE_RC).expect("写夹具");
-    install_to_profile(&rc, "cc", true).expect("装 rc");
+    run(install_to_profile(&door_at(&rc), &rc, "cc", true)).expect("装 rc");
     let rb = std::fs::read(&rc).expect("读回");
     assert_ne!(
         &rb[..3],

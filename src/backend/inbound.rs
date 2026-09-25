@@ -100,12 +100,15 @@ pub const COMMANDS: &[&str] = &[
     "files-copy",
     "files-create",
     "files-delete",
+    "files-delete-session",
     "files-find",
     "files-home",
     "files-index-rebuild",
     "files-index-status",
     "files-ls",
     "files-mkdir",
+    "files-peek",
+    "files-put",
     "files-read-text",
     "files-rename",
     "files-stage-chunk",
@@ -930,6 +933,58 @@ pub const REGISTRY: &[CommandSpec] = &[
         doc_anchor: Some("#### `files-write-text`"),
         codes: &["bad_args", "bad_path", "io_failed", "refused"],
         fields: &["bytes", "content", "path", "rel", "root"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::files_write::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // ── 〔RW1 · 第四波 · 2026-09-24〕用户文件的读改写 ＋ 删历史会话 ─────────────────────────
+    //
+    // 🔴 用户裁「只允许后端的文件管理部分写文件」**只管用户的文件、本机也管** ⇒ monitor 进程
+    //   不再直接写用户文件；本机与远端都经这三条（`call(origin, …)`，同一条路）。处理器同住
+    //   `control/files_write.rs`（第三层），本文件照旧是那一层唯一的门。阻塞档（同步文件 I/O）。
+    //   `files-delete-session` 是会话文件围栏**唯一的例外**，只收 sid（理由住那个模块的 `delete_session`）。
+    CommandSpec {
+        name: "files-peek",
+        doc_anchor: Some("#### `files-peek`"),
+        codes: &[
+            "bad_args",
+            "bad_path",
+            "io_failed",
+            "not_text",
+            "refused",
+            "too_large",
+        ],
+        fields: &["exists", "path", "rel", "root", "text"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::files_write::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "files-put",
+        doc_anchor: Some("#### `files-put`"),
+        codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
+        fields: &[
+            "backup", "bytes", "changed", "content", "created", "expect", "parents", "path", "rel",
+            "root",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::files_write::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "files-delete-session",
+        doc_anchor: Some("#### `files-delete-session`"),
+        codes: &["bad_args", "io_failed", "refused"],
+        fields: &["path", "sid"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args)

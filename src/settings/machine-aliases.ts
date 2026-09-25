@@ -14,7 +14,7 @@
  * # 两跳（`71 §12.6`）—— 本文件一个字节的 shell 文本都不自己拼
  *
  * ① `aliases_render`（纯）：清单 → 代码 ＋ 每条的问题 ＋ 撞名提示。预览与「复制去手贴」只调它；
- * ② `aliases_install`（唯一的副作用）：同一份渲染落进 `~/.cc-monitor/account-aliases.sh`，
+ * ② `aliases_install`（唯一的副作用）：同一份渲染落进 `~/.cc-monitor/aliases.sh`（〔RW1〕经本机后端写），
  *    可选地往用户**自己选**的那份 rc 装一行 `source`。
  * 读回口 `aliases_read`：打开这一块时先读盘上那份，清单从它开始编辑。
  *

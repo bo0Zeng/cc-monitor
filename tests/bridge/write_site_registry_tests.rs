@@ -19,6 +19,10 @@ const WRITE_CALLS: &[&str] = &[
     // 代价是这个 needle 稍宽（会命中 `fs::rename_xxx` 之类），今天全树无此形态。
     "fs::rename",
     "File::create(",
+    // 〔RW1 · 第四波 09-24〕**补一根针**：`OpenOptions` 开写（`O_EXCL` 新建 / 追加）。
+    //   现打时这张表漏了它 —— 本机分叉那一处（`history.rs` 在 `~/.claude/projects/` 下 `O_EXCL` 写新会话）
+    //   就是经它落盘的，**两张写点登记表都没看见**。那一处已经交给后端（`--fork-session`），这根针防它换个名字回来。
+    "fs::OpenOptions::new(",
 ];
 
 /// 每个落点的申报：`(文件, 函数, 属于哪个已声明工具, 说法)`。
@@ -62,25 +66,12 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
           「你 PATH 上那个不是我们装的这一份」（`ccm_probe::classify_path_ccm`）。\
           写法与 `extract_embedded_to` 同一套（`.partial` + 置可执行位 + `rename`），\
           唯一调用点是 `local_backend::resolve_or_extract` ⇒ 两条生产路共用这一处。"),
-    // ── PS1：把内嵌的 cc-bus 装到 `<claude_dir>/skills/cc-bus/`。**这是安装动作**。
-    ("cc_bus_deploy.rs", "deploy_into", Some("cc-bus"),
-     "写 `<claude_dir>/skills/cc-bus/` 的 17 个文件（内嵌自 `src/shared/cc-bus/`）。\
-          ⚠ 这是本仓**第一处往 `<claude_dir>` 写的地方** —— 只读铁律原本禁它，\
-          `U10b`〔用@08-13〕裁「开」之后写成 `INVARIANTS` 的**第 7 条例外**，四个配套一条不省：\
-          ① **用户显式动作**（只由设置页按钮调，绝不在启动/后台路径上跑）；\
-          ② **独立 realpath 白名单**（`fenced_dest`：canonicalize 后必须仍在 claude_dir 下，\
-             挡「skills 是指向别处的软链」）；\
-          ③ **幂等**（逐文件比内容，一致就一个字节都不写、也不留备份）；\
-          ④ **可撤销**（覆盖前把旧目录整个 rename 成 `cc-bus.bak-<ts>`）。",
-    ),
-    ("cc_bus_deploy.rs", "fenced_dest", None,
-     "`mkdir -p <claude_dir>/skills` —— 只为**建出围栏要归一的那一层**（`canonicalize` 需要\
-          路径真实存在）。**不是安装动作**：它一个内容文件都不写；真正的安装在 `deploy_into`。\
-          ⚠ 它同时是那道围栏本身：归一之后必须仍在 `claude_dir` 下，否则**拒收**。"),
-    ("cc_bus_deploy.rs", "backup_existing", None,
-     "把已装的 `cc-bus` 整个 `rename` 成 `cc-bus.bak-<ts>`。**不是安装动作**，是它的\
-          **可撤销**那一格（`U10b` 第 7 条例外的四个配套之一）。\
-          ⚠ 只在**内容确有变化**时才做：全一致时不备份，否则每点一次就多一份垃圾备份。"),
+    // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来有 `cc_bus_deploy.rs` 的三行（`deploy_into` 装 17 个文件 ·
+    //    `fenced_dest` 先 `mkdir -p skills` · `backup_existing` 整目录改名成 `.bak-<ts>`，`U10b` 第 7 条例外那四个配套的落点）。
+    //    用户裁「只允许后端的文件管理部分写文件」也管本机 ⇒ 三件都改经本机后端（`files-put` 带 `parents` /
+    //    `files-rename` / `files-chmod`），本进程一个字节不落 ⇒ 三行摘掉。四个配套一条没省：
+    //    显式动作（只由那个按钮调）· realpath 围栏（`fenced_dest` 只读判 ＋ 后端围栏再判）· 幂等（逐文件经后端读回比）·
+    //    可撤销（整目录改名，经后端）。
     // ── 构建期写盘：**不碰用户既有环境**，只往 `OUT_DIR` 放构建产物。
     // 单列在这里是因为它此前**整个在扫描面之外**（08-08 并入），
     // 而它确实在开发者机器上写文件 —— 「不是安装动作」得由人说出来，不是靠没人看见。
@@ -94,48 +85,20 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
      "〔RM1c · 第四波〕把 `embedded-backends/cc-monitor-panorama-<arch>`（只装代码全景引擎的独立小程序，\
           两个 musl arch）复制进 `OUT_DIR`，供 `panorama_bytes.rs` 的 `include_bytes!` 内嵌。\
           同上一行：写的是 cargo 自己的构建目录，不碰用户环境、不是安装动作"),
-    // ── devbench F03：skill 接入面的收件箱写入。**不是安装动作**。
-    ("skill_host.rs", "write_skill_file", None,
-     "写用户**自己项目里**的 `.claude/planned-build/INBOX.txt`（planned-build skill 的\
-          「结构化注入」进件口）。**不碰 Claude 的数据、不碰用户环境、不装任何东西。**\n\
-          分界沿用 `src/doc/INVARIANTS.md` `§1` 那条 F47 澄清的口径：用户亲自驱动、\
-          每次写都是面板内一次直接手势、写的不是 Claude 的 jsonl/pidfile。\n\
-          三道围栏（`skill_host::resolve_editable`）：① 路径 `canonicalize` **之后**\
-          做集合判定（集合来自声明表的 `editable`，不是一串 if）② 过\
-          `claude_data_fence::is_protected_claude_data_path` 纵深〔步 H2 09-21：\
-          这道判定已从 `sftp_pool` 搬成独立一族，F47 与 F03b 两段澄清共用它这一个〕\
-          ③ 目标必须**已存在**\
-          （本功能是「编辑收件箱」不是「创建任意文件」）。\n\
-          写本身走 `verified_write::verify_and_rollback`（备份 → 写 → 读回逐字节比对 →\
-          不符即回滚），**没有自造第四份写入实现** —— 那个模块头注记着本仓曾有 4 处\
-          独立实现且校验强度不一致（两处只比长度）。"),
-    // ── 🔴 〔AL1 · 2026-09-24〕`设计/71 §12.5`：**「装一块东西进一份文件」的规则收成了一份。**
-    //    从前这里有四行：`account_aliases.rs::write_alias_file` / `::ensure_rc_source_line` ·
-    //    `profile_installer.rs::install_to_profile` / `::uninstall_from_profile` —— 四个函数体
-    //    各写一遍「备份 → 原子写 → 回读 → 回滚」。今天它们一行 `fs::` 都没有了，
-    //    全部经 `fenced_block::apply`（序列）落到下面这三个本机原语上 ⇒ 写盘这一跳只剩三处。
-    //    它们各自**写什么**（生成文件 / rc 里那一行 source / ccm 别名块 / PowerShell 块）
-    //    住在各自的 `plan` 闭包里，一个字节的落盘都不自己做。
-    ("fenced_block.rs", "put_atomic", Some("ccm"),
-     "`LocalFile` 的原子替换：`mkdir -p` 上级目录 ＋ `profile_installer::atomic_write_string`。\
-          它是本机这几件事**唯一**的落盘漏斗：ccm 别名块装/卸进用户选的 rc · PowerShell profile 的 cc 块 · \
-          `~/.cc-monitor/account-aliases.sh`（monitor 自己那份生成文件，整份重写）· rc 里那一行 source。\
-          点名 `ccm` 是因为前两件是那个工具的安装/卸载动作；后两件不装任何工具。\
-          路径由调用方给，围栏在调用方（`profile_installer::fence_path_under`：只许落在 home 之内，\
-          那份 rc 由界面上的人选）。回滚也走它：把内存里那份原文原样写回。"),
-    ("fenced_block.rs", "save_backup", None,
-     "给用户那份 rc / profile 另存一份原文（`<名>.ccm-backup-<ms>`，`fs::copy` 连权限位一起拷）。\
-          **不是安装动作**，是安装的可撤销那一格。只给**用户的、非空的**文件存；\
-          我们自己那份生成文件不存（回滚用内存里的原文）。"),
-    ("fenced_block.rs", "delete_created", None,
-     "只在一种情形下删：**这份文件原本不存在、是这一次新建的，而写完读回来不对** ⇒ 删掉刚建的那份\
-          （半截的 rc 比没有它更坏）。不是安装动作。"),
-    ("profile_installer.rs", "atomic_write_string", Some("ccm"),
-     "临时文件 + rename 的原语（〔AL1〕本机 ccm 那几件今天都经 `fenced_block.rs::put_atomic` 调它；另一个直调者是 `mcp.rs::write_json_atomic`）"),
-    ("profile_installer.rs", "atomic_replace_path", Some("ccm"),
-     "跨设备回退的 rename。⚠ 这是**四份平台原语副本之一**，四份都已登记在 `atomic_replace_registry`（承接 C10）——本条不重复判它，只记它是个写点"),
-    ("mcp.rs", "write_json_atomic", Some("project-mcp"),
-     "写项目级 MCP 服务器配置（`TOOLS` 里 `project-mcp` 那条的真落点）"),
+    // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来有 `skill_host.rs::write_skill_file` 一行（项目里的
+    //    `.claude/planned-build/INBOX.txt`，本进程 `fs::write` ＋ `verified_write` 回读回滚）。用户裁「远端（和本机，
+    //    同一条路）的 `INBOX.txt` 能编辑、经那台机器后端的文件管理那一面写」⇒ 读写都改经后端（`files-peek` /
+    //    `files-put`，带 CAS 期望），本进程一个字节不落 ⇒ 摘行。三道围栏（`resolve_editable`）仍在 monitor，决定能不能碰。
+    // ── 🔴 〔RW1 · 第四波 · 2026-09-24〕这里原来有三行 `fenced_block.rs` 的本机原语
+    //    （`put_atomic` / `save_backup` / `delete_created`，那时是本机 rc · `$PROFILE` · 别名文件 · rc 里那一行
+    //    source 的唯一落盘漏斗）。用户裁「只允许后端的文件管理部分写文件」**也管本机** ⇒ 那几件改经本机后端
+    //    （`user_files::edit` → `files-peek` / `files-put`），本进程**一个字节都不落** ⇒ 三行随原语一起走了。
+    //    写的规则（备份 · 原子替换 · 回读 · 回滚）从此只住后端 `control/files_write.rs::put_text`。
+    // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来还有三行：`profile_installer.rs` 的 `atomic_write_string`〔散文墓碑〕 /
+    //    `atomic_replace_path`（本机用户文件的原子写原语，申报成 `ccm` 的安装动作）与 `mcp.rs` 的
+    //    `write_json_atomic`（`project-mcp` 那条的真落点）。`$PROFILE` / rc / 项目 `.mcp.json` 全改经后端写
+    //    （`user_files` → `files-put`），三件零调用方、删了 ⇒ 三行随之走。那两个工具的装 / 卸动作今天在后端落盘，
+    //    本表（monitor 进程的写盘人群）里**不再有它们** —— 那正是用户那一裁要的形状。
     // ── 不是安装动作：写的是 monitor 自己的东西
     ("bind.rs", "spawn", None, "monitor 自己的运行时目录/落地文件"),
     ("bind.rs", "process_await_file", None, "monitor 自己的等待文件"),
@@ -178,13 +141,10 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
           它**不是**真相源（真相源永远是「那个口连不连得上」），只在**停**那一步用，\
           且用之前还要过一道 `/proc/<pid>/exe` 的身份核对。\
           没有它，接管来的那个实例按不动「停」——那时按钮就成了一句骗人的话"),
-    // ── 既不是安装、也不是「monitor 自己的」：**删用户数据**
-    ("history.rs", "delete_history_session", None,
-     "★ 删的是用户 `~/.claude/projects/**` 下的会话文件（用户主动发起）。\
-          它不是安装动作，但也不是 monitor 自己的东西。⚠ **08-07 订正**：本行原写「围栏由 \
-          `validate_delete_target` 与它自己的判据守着」—— 那句只对一半：围栏函数有五条穿越 \
-          防护判据，但**没有任何东西钉住那条路真的过了围栏**（实测跳过围栏，全仓 978 条不红）。 \
-          现由 `history_tests.rs::the_delete_entry_point_actually_goes_through_the_fence` 端到端钉住"),
+    // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来有 `history.rs::delete_history_session` 一行（**删用户数据**：
+    //    本进程 `fs::remove_file` 删 `~/.claude/projects/**` 下的会话文件）。用户裁「只允许后端的文件管理部分写文件」
+    //    也管本机 ⇒ 删历史会话改成后端一条只收 sid 的命令（`files-delete-session`，会话文件围栏唯一的例外），
+    //    本进程一个字节不删 ⇒ 摘行。那条「入口真的过了围栏」的端到端判据随之换成后端那一族与本侧的一致性闸判据。
 ];
 
 /// 一行 `use ... fs ...` 该放行还是该拦。`Ok(())` = 放行。
@@ -407,9 +367,244 @@ fn every_write_site_is_declared_and_installers_name_a_real_tool() {
         );
     }
     // 常驻自检：一条安装动作都没有时，上面那个循环空转，而它看起来照样绿。
-    assert!(
-        checked >= 3,
-        "申报表里只有 {checked} 条「安装动作」（08-07 实测 5）—— \
+    // 〔RW1 · 第四波 09-24〕5 → 1（地板改成相等）：`ccm` 的三行（`fenced_block.rs::put_atomic` 与
+    //   `profile_installer.rs` 两个原语）· `project-mcp` 的一行 · `cc-bus` 的一行（`cc_bus_deploy.rs::deploy_into`）
+    //   随「用户文件改经后端写」走了，剩 `local_backend.rs::install_local_ccm_entry`（`ccm`，写的是我们自己的目录）。
+    assert_eq!(
+        checked, 1,
+        "申报表里的「安装动作」条数变了（实得 {checked}）—— \
              要么真收口了（那很好，把这个数调下来），要么有人把它们改成了 `None` 绕过对拍。"
+    );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// 🔴 〔RW1 · 第四波 · 2026-09-24〕**monitor 进程不直接写用户文件** —— 零命中，带正控
+// ══════════════════════════════════════════════════════════════════════════
+//
+// 用户逐字：「现在只允许后端的文件管理部分写文件」；追问后裁「**只管用户的文件**」「**也管本机**」。
+// ⇒ monitor 进程（本表的人群）里剩下的每一个写盘落点，都必须落在**不是用户文件**的那几类里；
+//   用户文件（rc · `$PROFILE` · 项目 `.mcp.json` · skill 收件箱 · `~/.claude/skills/cc-bus` · 会话记录）
+//   一律经那台机器的后端（`user_files` → `files-peek` / `files-put` / `files-rename` / `files-chmod` /
+//   `files-delete-session`，本机分叉 `--fork-session`）。
+//
+// 两道，各治一形：
+//   ① **分类闭集**（人的答案）：`WRITE_SITES` 里每一个落点在 [`SITE_CLASS`] 里恰好一行，类别是闭集，
+//      **闭集里没有「用户文件」这一档** —— 新落点要么证明它不是用户文件，要么指名谁来收（待收）。两向相等。
+//   ② **零命中**（机器的答案）：搬走写盘的那几份文件，生产段里一个写原语都不许再有（带正控：往一份副本里塞一处，必须数得出来）。
+
+/// 一个写盘落点写的是什么。**闭集，而且刻意没有「用户文件」这一档。**
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Lands {
+    /// monitor 自己的状态 / 缓存 / 日志 / 凭据（`~/.cc-monitor/`、monitor 数据目录）。
+    OwnState,
+    /// 我们自己的部署物（放在我们自己的目录里的二进制 / 入口）。
+    OwnDeployment,
+    /// cargo 的构建目录。
+    BuildOutput,
+    /// **是**用户文件，但有主、在别的路收：`(谁来收, 为什么不在本路)`。
+    Pending(&'static str),
+}
+
+/// ① 的人的答案：`(文件, 函数, 写的是什么)`。与 `WRITE_SITES` 的键**两向相等**。
+const SITE_CLASS: &[(&str, &str, Lands)] = &[
+    (
+        "local_backend.rs",
+        "extract_embedded_to",
+        Lands::OwnDeployment,
+    ),
+    (
+        "local_backend.rs",
+        "sweep_stale_partials",
+        Lands::OwnDeployment,
+    ),
+    (
+        "local_backend.rs",
+        "install_local_ccm_entry",
+        Lands::OwnDeployment,
+    ),
+    ("build.rs", "embed_backends", Lands::BuildOutput),
+    // 〔合并 RM1c〕全景小程序的内嵌字节：同上一行，往 `OUT_DIR` 放构建产物。
+    ("build.rs", "embed_panoramas", Lands::BuildOutput),
+    ("bind.rs", "spawn", Lands::OwnState),
+    ("bind.rs", "process_await_file", Lands::OwnState),
+    ("bind.rs", "cleanup_dead", Lands::OwnState),
+    ("config.rs", "save_config", Lands::OwnState),
+    ("creds_store.rs", "write_key_at", Lands::OwnState),
+    ("config.rs", "atomic_replace", Lands::OwnState),
+    ("lib.rs", "open_log_dir", Lands::OwnState),
+    ("logging.rs", "build_rolling_appender", Lands::OwnState),
+    ("logging.rs", "write_diagnostics_to_config", Lands::OwnState),
+    ("logging.rs", "atomic_replace", Lands::OwnState),
+    ("session_map.rs", "run_watcher", Lands::OwnState),
+    // 🔴 下载落到**用户选的本机路径** —— 真是用户文件。它住 `sftp_pool.rs`（S4 的写区），
+    //    SFTP 整体进常驻后端是 4B 的 `SR1b`（「SFTP 连接由本机常驻后端管……落进用户目录仍只经后端文件管理提交」）。
+    (
+        "sftp_pool.rs",
+        "download_inner",
+        Lands::Pending("SR1b：SFTP 进本机常驻后端，下载的落地改由本机后端的文件管理那一面提交"),
+    ),
+    // 通用原语：它自己不定落点，调用方各自申报（今天的调用方全是 monitor 自己的状态文件，
+    // 下面第 ② 道把「搬走写盘的那几份文件」里调它也算成一处写）。
+    ("utils.rs", "atomic_write_json", Lands::OwnState),
+    ("utils.rs", "atomic_replace_path", Lands::OwnState),
+    (
+        "local_backend_host.rs",
+        "ensure_listen_token",
+        Lands::OwnState,
+    ),
+    ("local_backend_host.rs", "write_listen_pid", Lands::OwnState),
+    // 〔合并 FW34〕文件窗口书签的锁旁件（`<monitor 数据目录>/filewin-bookmarks.json.lock`）——
+    //   书签是 monitor 自己的状态（FW34 头注逐字「不是用户文件 ⇒ 不走后端写面」）。
+    ("bookmarks.rs", "lock_store", Lands::OwnState),
+];
+
+/// ① 的判定（抽出来好喂正控）：两边的键两向对不上的那几条。
+fn class_mismatch(
+    sites: &[(&str, &str)],
+    classes: &[(&str, &str, Lands)],
+) -> (Vec<String>, Vec<String>) {
+    let unclassified = sites
+        .iter()
+        .filter(|(f, n)| !classes.iter().any(|(cf, cn, _)| cf == f && cn == n))
+        .map(|(f, n)| format!("{f}::{n}"))
+        .collect();
+    let ghosts = classes
+        .iter()
+        .filter(|(cf, cn, _)| !sites.iter().any(|(f, n)| f == cf && n == cn))
+        .map(|(f, n, _)| format!("{f}::{n}"))
+        .collect();
+    (unclassified, ghosts)
+}
+
+#[test]
+fn every_monitor_write_site_lands_outside_the_users_files() {
+    let sites: Vec<(&str, &str)> = WRITE_SITES.iter().map(|(f, n, _, _)| (*f, *n)).collect();
+    assert!(!sites.is_empty(), "写点表空了 —— 下面那条相等在空集上成立");
+    let (unclassified, ghosts) = class_mismatch(&sites, SITE_CLASS);
+    assert!(
+        unclassified.is_empty() && ghosts.is_empty(),
+        "monitor 的写盘落点与「它写的是什么」那张分类表对不上。\n  \
+         没分类的（🔴 新落点先回答它是不是用户文件）：{unclassified:?}\n  \
+         分类表里的幽灵（落点没了，同轮摘行）：{ghosts:?}\n\n\
+         用户逐字「现在只允许后端的文件管理部分写文件」「只管用户的文件」「也管本机」。\n\
+         ⇒ 分类是闭集，**没有「用户文件」这一档**：用户文件经那台机器的后端写（`user_files`）；\n\
+         真是用户文件又一时搬不走的，记 `Pending` 并指名谁来收。"
+    );
+    for (f, n, c) in SITE_CLASS {
+        if let Lands::Pending(owner) = c {
+            assert!(
+                owner.chars().count() >= 10,
+                "`{f}::{n}` 记成待收，却没写清谁来收、为什么不在本路"
+            );
+        }
+    }
+    // 正控：多一处没分类的落点 ⇒ 这把尺子真的数得出来。
+    let mut poisoned = sites.clone();
+    poisoned.push(("account_aliases.rs", "write_alias_file"));
+    let (u, _) = class_mismatch(&poisoned, SITE_CLASS);
+    assert_eq!(
+        u,
+        vec!["account_aliases.rs::write_alias_file".to_string()],
+        "正控没过 —— 本条空转"
+    );
+}
+
+/// ② 的人群：用户文件的写从这些文件里搬走了（`RW1` 的七个子步逐份交给后端）。
+const MOVED_OUT: &[&str] = &[
+    "account_aliases.rs",
+    "profile_installer.rs",
+    "fenced_block.rs",
+    "mcp.rs",
+    "skill_host.rs",
+    "cc_bus_deploy.rs",
+    "history.rs",
+    "remote_history.rs",
+    "remote_branch.rs",
+    "user_files.rs",
+];
+
+/// ② 的针：本机写原语（`WRITE_CALLS`）＋ 委托出去的写（通用原子写 / 旧的回读回滚写入器）＋ SFTP 上传原语。
+/// **运行时拼**（写成字面量会被别的判据当成靶子，见 `remote_write_registry_tests::write_prims` 头注）。
+/// ⚠ SFTP 会话上的 `.rename(` / `.remove_file(` 那一族**不在这里**：持 SFTP 会话的文件由
+///   `remote_write_registry` 逐处申报（它的人群就是「拿得到会话的那几份」），本条再数一遍只会与
+///   `Door::rename` 这种经后端的调用撞名。
+fn moved_out_needles() -> Vec<String> {
+    let mut v: Vec<String> = WRITE_CALLS.iter().map(|s| s.to_string()).collect();
+    // ⚠ 名字也**运行时拼**：其中两个是已删的旧名（挂着墓碑），写成字面量会让死名普查把它们当成活名。
+    for (a, b) in [
+        ("atomic_write_", "json"),
+        ("atomic_write_", "string"),
+        ("upload_", "atomic"),
+        ("verify_and_", "rollback"),
+    ] {
+        v.push(format!("{a}{b}("));
+    }
+    v
+}
+
+/// ② 里**逐行登记的例外**：搬走写盘的那几份文件里，还在写 **monitor 自己的**状态文件的那几行。
+/// `(文件, 那一行逐字, 写的是什么)`。整行相等，不是子串；每一行必须恰好出现一次（幽灵检查）。
+const OWN_STATE_LINES: &[(&str, &str, &str)] = &[(
+    "history.rs",
+    "crate::utils::atomic_write_json(&path, m).map_err(|e| e.to_string())",
+    "`history-metadata.json`（标星 / 改名 / 隐藏这些**monitor 本机的注解**，按 sid 存在 monitor 数据目录里）",
+)];
+
+fn moved_out_hits(file: &str, prod: &str) -> Vec<String> {
+    let needles = moved_out_needles();
+    prod.lines()
+        .map(str::trim)
+        .filter(|l| needles.iter().any(|n| l.contains(n.as_str())))
+        .filter(|l| {
+            !OWN_STATE_LINES
+                .iter()
+                .any(|(f, line, _)| *f == file && l == line)
+        })
+        .map(str::to_string)
+        .collect()
+}
+
+#[test]
+fn the_files_that_used_to_write_users_files_write_nothing_now() {
+    let root = src_root();
+    let mut scanned = 0usize;
+    let mut offenders: Vec<String> = Vec::new();
+    for f in MOVED_OUT {
+        let raw = std::fs::read_to_string(root.join(f))
+            .unwrap_or_else(|e| panic!("读不到 {f}：{e} —— 搬家了就把名单一起改"));
+        let prod = guard_core::production_code(&raw);
+        guard_core::assert_no_test_code(f, &prod);
+        scanned += 1;
+        for hit in moved_out_hits(f, &prod) {
+            offenders.push(format!("  {f}: {hit}"));
+        }
+        for (lf, line, what) in OWN_STATE_LINES {
+            if lf == f {
+                assert_eq!(
+                    prod.lines().filter(|l| l.trim() == *line).count(),
+                    1,
+                    "登记的自有状态写（{what}）在 `{f}` 里不是恰好一行 —— 改了就同轮改登记"
+                );
+            }
+        }
+    }
+    assert_eq!(scanned, MOVED_OUT.len());
+    assert!(
+        offenders.is_empty(),
+        "这些文件的写已经交给那台机器的后端了，生产段却又长出了写原语：\n{}\n\n\
+         用户逐字「现在只允许后端的文件管理部分写文件」（也管本机）。\n\
+         ⇒ 改用 `user_files::edit` / `Door`（`files-peek` / `files-put` …），别在 monitor 进程里落盘。",
+        offenders.join("\n")
+    );
+    // 正控：往一份真源码的副本里塞一处直写，必须被数出来（不许在空人群上恒绿）。
+    let raw = std::fs::read_to_string(root.join("account_aliases.rs")).expect("读");
+    let poisoned = format!(
+        "{}\nfn sneaky(p: &std::path::Path) {{ let _ = std::fs::write(p, b\"x\"); }}\n",
+        guard_core::production_code(&raw)
+    );
+    assert_eq!(
+        moved_out_hits("account_aliases.rs", &poisoned).len(),
+        1,
+        "正控没过 —— 针或剥法坏了，本条空转"
     );
 }

@@ -1,6 +1,8 @@
 //! G6（branch-anywhere）：**远端分叉** —— monitor 侧。
 //!
-//! 本地分叉在 `history::create_branch_session`（读本机 jsonl、写本机新文件）。
+//! 本地分叉从前在 `history::create_branch_session`（读本机 jsonl、写本机新文件）；
+//! 〔RW1 · 第四波 09-24〕今天本机那一支也在本模块（[`create_local_branch_session`]：exec 本机后端 `--fork-session`），
+//! 与远端同一条子命令、同一份结果解释 —— 差别只剩「在哪台机器上起那个后端」。
 //! 远端会话的 jsonl 在**另一台机器上**，monitor 够不着 —— 所以远端这条路是
 //! 「经 ssh 让后端自己在那台机器上分叉」，monitor 只收结果。
 //!
@@ -183,6 +185,59 @@ pub(crate) async fn create_remote_branch_session(
         res.session_id
     );
     Ok(res)
+}
+
+/// 〔RW1 · 第四波 · 2026-09-24〕**本机那一支**：exec 本机后端的 `--fork-session`（与远端同一条子命令、
+/// 同一份结果解释 [`interpret_fork_exec`]），本进程一个字节不写。
+///
+/// 用户裁「只允许后端的文件管理部分写文件」**也管本机** ⇒ 本机分叉从前在 monitor 进程里 `O_EXCL` 写新会话
+/// （`history::write_branch_file`〔散文墓碑〕）；分叉出来的是 `~/.claude/projects/` 下的新会话 —— 用户数据树 ——
+/// ⇒ 改成与远端同一条路：活儿交给那台机器上的后端（`control/fork_write.rs`，白名单层早就在），monitor 只收结果。
+/// ⚠ 本机后端不在 ⇒ 明确说，不回落到本进程写（`D11`）。
+pub(crate) async fn create_local_branch_session(
+    source_session_id: &str,
+    message_uuid: &str,
+) -> Result<BranchResult, String> {
+    validate_fork_id("源会话 id", source_session_id)?;
+    validate_fork_id("消息 uuid", message_uuid)?;
+    let (sid, uuid) = (source_session_id.to_string(), message_uuid.to_string());
+    let outcome = tokio::task::spawn_blocking(move || {
+        crate::backend::observe::local_query::run_query(
+            env!("CCM_TARGET_TRIPLE"),
+            &["--fork-session", &sid, &uuid],
+            &*crate::spawn_managed::local_backend_one_shot_query(),
+        )
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join: {e}"))?;
+    let res = interpret_fork_exec(&local_fork_exec(outcome)?)?;
+    tracing::info!(
+        "branch: 本机后端分叉 {source_session_id}@{message_uuid} → {}",
+        res.session_id
+    );
+    Ok(res)
+}
+
+/// 本机那一趟的三态 → 与远端那一趟同形的 [`RemoteExec`]（好让结果只有一份解释）。纯函数，可直测。
+fn local_fork_exec(
+    outcome: crate::backend::observe::local_query::QueryOutcome,
+) -> Result<RemoteExec, String> {
+    use crate::backend::observe::local_query::QueryOutcome;
+    match outcome {
+        QueryOutcome::Ok(stdout) => Ok(RemoteExec {
+            stdout,
+            stderr: String::new(),
+            exit_status: Some(0),
+        }),
+        QueryOutcome::Failed { code, stderr } => Ok(RemoteExec {
+            stdout: String::new(),
+            stderr,
+            exit_status: code.and_then(|c| u32::try_from(c).ok()),
+        }),
+        QueryOutcome::NoBackend(why) => Err(format!(
+            "本机后端不在，分叉要经它来写 —— 一个字节都没动（{why}）"
+        )),
+    }
 }
 
 #[cfg(test)]

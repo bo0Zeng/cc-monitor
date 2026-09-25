@@ -114,8 +114,9 @@ pub fn is_inside_tree(home: &Path, target: &Path) -> bool {
 /// 两侧任何一处改动、另一处不跟，当场红。判据两棵树各一份：
 /// `tests/backend/agents_tests.rs` 与 `tests/bridge/claude_data_fence_tests.rs`。
 ///
-/// ⚠ **方向相反的那一道不在这儿，也不许合并**：`sftp::is_safe_remote_jsonl` 的正题恰恰是
-/// 「**只许**删 `projects/**/*.jsonl`」（`INVARIANTS §1` 例外 3，历史浏览器删远端会话）。
+/// ⚠ **方向相反的那一道不在这儿，也不许合并**：从前是桥那一侧的 `is_safe_remote_jsonl`〔散文墓碑〕，
+/// 〔RW1 · 第四波 09-24〕今天是本文件的 [`session_file_for_delete_in`]，正题恰恰是
+/// 「**只许**删恰是 `projects/<proj>/<sid>.jsonl` 的那一份」（`INVARIANTS §1` 例外 3，历史浏览器删会话）。
 /// 两道都读 Claude 的目录结构、方向相反，合成一个之后「哪些不许写」与「哪些才许删」
 /// 会共用一个真相，而它们要的恰好是补集。
 ///
@@ -155,4 +156,67 @@ pub fn is_protected_session_file(path: &str) -> bool {
 /// 在这一问里不可知。⇒ 判定的语料是**字符串**，这条围栏从此与那一事实对齐。
 pub fn is_protected_session_path(target: &Path) -> bool {
     is_protected_session_file(&target.to_string_lossy())
+}
+
+/// 〔RW1 · 第四波 · 2026-09-24〕「删除历史会话」那一条**要删的那一份在哪** —— 只收 sid。
+///
+/// 用户裁「只允许后端的文件管理部分写文件」「也管本机」⇒ 删历史会话（本机那一支此前是 monitor
+/// 进程直删，远端那一支是 SFTP 直删）改成后端**一条明确的命令**。那条命令是
+/// 会话文件围栏**唯一的例外**（别的写一律不许碰这几份文件），所以它**不收路径**：
+/// 落点由这里按 sid 在本机记录树里找，调用方连表达「另一份文件」的办法都没有。
+///
+/// 三关，各治一形：
+///
+/// 1. 找：`branch_core::find_session_file`（与分叉那条同一份；sid 形状不合法**先于任何 IO** 就拒，
+///    符号链接不算命中）。
+/// 2. **解到底再判一次**：真路径必须在记录树（也解到底）底下、恰好 `<proj>/<sid>.jsonl` 两段 ——
+///    子代理那种更深的文件、一条指出去的链接，都在这一关被拒。
+/// 3. 解完的那一份**必须是**会话文件围栏认得的形状（[`is_protected_session_path`] 答真）——
+///    这是「例外」的定义：它删的恰恰是围栏保护的那一类，别的一样都删不到。
+///
+/// `home` 由调用方给：生产侧是 [`resolve_home`]（见 [`session_file_for_delete`]），
+/// 判据拿临时目录当 home，不碰真实配置根，也不改测试进程的环境变量。
+pub fn session_file_for_delete_in(home: &Path, sid: &str) -> Result<PathBuf, String> {
+    let root = projects_root(home);
+    let found =
+        branch_core::find_session_file(&root, sid).map_err(|e| format!("删不了会话 {sid}：{e}"))?;
+    let real_root = std::fs::canonicalize(&root).map_err(|e| {
+        format!(
+            "删不了会话 {sid}：记录树解析不了（{}：{e}）",
+            root.display()
+        )
+    })?;
+    let real = std::fs::canonicalize(&found).map_err(|e| {
+        format!(
+            "删不了会话 {sid}：那份文件解析不了（{}：{e}）",
+            found.display()
+        )
+    })?;
+    let rel = real.strip_prefix(&real_root).map_err(|_| {
+        format!(
+            "删不了会话 {sid}：解完链接之后那份文件不在记录树里（{} 不在 {} 里）",
+            real.display(),
+            real_root.display()
+        )
+    })?;
+    let want = format!("{sid}.jsonl");
+    let segs: Vec<&std::ffi::OsStr> = rel.iter().collect();
+    if segs.len() != 2 || segs[1] != std::ffi::OsStr::new(&want) {
+        return Err(format!(
+            "删不了会话 {sid}：只删 `<项目>/{want}` 这一形（找到的是 {}）",
+            rel.display()
+        ));
+    }
+    if !is_protected_session_path(&real) {
+        return Err(format!(
+            "删不了会话 {sid}：{} 不是一份会话记录的形状",
+            real.display()
+        ));
+    }
+    Ok(real)
+}
+
+/// [`session_file_for_delete_in`] 的生产入口：根取本机后端此刻的配置根（[`resolve_home`]）。
+pub fn session_file_for_delete(sid: &str) -> Result<PathBuf, String> {
+    session_file_for_delete_in(&resolve_home(), sid)
 }
