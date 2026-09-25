@@ -31,8 +31,6 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::fenced_block::Layout;
-
 /// 「这是哪种 shell 的方言」—— **唯一一个**回答这一问的枚举。
 ///
 /// 〔AL1c〕它取代了 `profile_installer` 里那个只给别名块用的方言枚举（那一族的旧名见本仓 `git log`）：
@@ -76,8 +74,8 @@ pub type Parsed = Result<(String, Vec<String>), String>;
 /// 🔴 **`71 §4.4` 那组接口。** 每个方法都只回答「这个 shell 里怎么写 / 怎么读 / 文件在哪」；
 /// 任何「合不合格」的判断都不许写进实现里（那是通用层的，两边一模一样）。
 pub trait ShellDialect: Sync {
-    /// 围栏块的排版（`fenced_block::Layout`）：规则不分方言，分方言的只有排版。
-    fn layout(&self) -> Layout;
+    // 〔TL1 · 4C〕墓碑：这里从前有一格「围栏块的排版」—— 唯一的读者是代装 rc 那一行的那一跳（退役，`71 §6.1`）。
+    //   别名块那一侧的排版按目标文件扩展名走 `profile_installer` 那一份，不经这里。
 
     /// 落盘前的编码。PowerShell 加 BOM（`K-R132`：PS 5.1 把无 BOM 的 `.ps1` 按 ANSI 代码页解，
     /// 中文注释会吞掉下一行）；POSIX 一个字节都不加（`.bashrc` 开头多三个字节 ⇒ `sh` 把它当命令）。
@@ -87,18 +85,19 @@ pub trait ShellDialect: Sync {
     /// PowerShell 剥 BOM；POSIX 原样（用户 rc 开头那三个字节不是我们的，写回去也原样留着）。
     fn decode_from_disk<'a>(&self, raw: &'a str) -> &'a str;
 
-    /// shell 启动时会执行的那几份文件（界面「source 那一行加进哪份」的候选），按优先级。
+    /// shell 启动时会执行的那几份文件（界面「别名块装进哪份」的候选），按优先级。
     /// 「列不列一份还不存在的文件」是读法，由实现答（POSIX 只列在的 · PowerShell 的 `$PROFILE` 常常要装时才建）。
     fn startup_files(&self, home: &Path) -> Vec<PathBuf>;
 
-    /// 用户选的那份启动文件还不在时，装 source 那一行要不要把它新建出来。
-    /// POSIX 不建（候选只列在的；不在 = 你不用这种 shell）；PowerShell 建（`$PROFILE` 通常就是装的那一下才有）。
-    fn creates_missing_startup_file(&self) -> bool;
+    // 〔TL1 · 4C〕墓碑：这里从前有一格「用户选的那份启动文件还不在时，装 source 那一行要不要新建它」——
+    //   代装那一行的那一跳退役了（`71 §6.1`：source 那一行只住别名块里），这一格零调用方 ⇒ 删。
+    //   （别名块自己那一侧建不建 `$PROFILE`，归 `profile_installer` 那一份规则。）
 
     /// 我们自己那份别名文件在 home 下的相对路径（`/` 分隔，交给后端的 `rel` 就是它）。
     fn our_alias_file_rel(&self) -> &'static str;
 
     /// 「执行我们那份文件」在这个 shell 里怎么写（**一行**）。文件不在时必须是空操作。
+    /// 〔TL1 · 4C〕今天只给人看（选的那份启动文件没接上时，报告里给出这一行、由人自己决定贴不贴）；自动接上那一行住别名块里。
     fn source_line(&self, our_file: &str) -> String;
 
     /// 这份启动文件是不是已经接上了我们那份（任何一种写法都认，别按整行比 —— 见 POSIX 那一臂的注释）。
@@ -266,10 +265,6 @@ impl Posix {
 }
 
 impl ShellDialect for Posix {
-    fn layout(&self) -> Layout {
-        Layout::Posix
-    }
-
     fn encode_for_disk(&self, content: &str) -> String {
         content.to_string()
     }
@@ -284,10 +279,6 @@ impl ShellDialect for Posix {
             .map(|n| home.join(n))
             .filter(|p| p.is_file())
             .collect()
-    }
-
-    fn creates_missing_startup_file(&self) -> bool {
-        false
     }
 
     fn our_alias_file_rel(&self) -> &'static str {
@@ -468,10 +459,6 @@ impl PowerShell {
 }
 
 impl ShellDialect for PowerShell {
-    fn layout(&self) -> Layout {
-        Layout::PowerShell
-    }
-
     fn encode_for_disk(&self, content: &str) -> String {
         format!("{UTF8_BOM}{content}")
     }
@@ -504,10 +491,6 @@ impl ShellDialect for PowerShell {
             }
         }
         out
-    }
-
-    fn creates_missing_startup_file(&self) -> bool {
-        true
     }
 
     fn our_alias_file_rel(&self) -> &'static str {

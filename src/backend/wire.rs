@@ -770,12 +770,13 @@ pub async fn write_and_flush_hello<W: tokio::io::AsyncWrite + Unpin>(
 
 /// Per-file monotonic sequence counter.
 ///
-/// Faithful port of the per-file seq semantics in
-/// `../bridge/src/watcher.rs` (process_file): the counter is keyed by file
-/// path, returns the current value then increments by 1 (so the first line of
-/// a file gets seq 0, then 1, 2, ...), is monotonic across calls, and is never
-/// reset — there is no truncation handling here, the counter only ever climbs
-/// for a given path within the process.
+/// The counter is keyed by file path, returns the current value then increments
+/// by 1 (so the first line of a file gets seq 0, then 1, 2, ...), is monotonic
+/// across calls, and is never reset — there is no truncation handling here, the
+/// counter only ever climbs for a given path within the process.
+///
+/// 〔TL1 · 4C〕从前这里写「逐字移植自 monitor 那份 jsonl 读者的 seq 语义」—— 那份读者 CF1 删了，
+/// 今天全仓 seq 只有这一个生成器（本机会话也走本机后端的 `line` 帧，`设计/00 §2.5 ②`）。
 #[derive(Debug)]
 pub struct SeqCounter {
     next: HashMap<String, u64>,

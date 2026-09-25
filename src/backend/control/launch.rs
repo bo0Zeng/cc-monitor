@@ -42,7 +42,7 @@
 //! # ★ `send-into` 是一等模式（#76 防线的形态迁移）
 //!
 //! `shared/ccm` 的 `--tmux` 只有幂等 create-or-attach 一种形态，**没有**「就地复用已存在的
-//! idle tmux、不新建」。所以 monitor 的 CLI 渲染器 `launch-render-cli.ts` 对 `send-into`
+//! idle tmux、不新建」。所以 monitor 的 CLI 渲染器（今天是 `ccm_invocation.rs`；TS 那份 LR1 已删）对 `send-into`
 //! **诚实放弃、强制走兜底**（那条注释逐字写着「这条是防 #76 复发的关键」）。
 //!
 //! backend 直接调 tmux 之后那个表达力缺口消失：[`Mode::SendInto`] 是一等模式。

@@ -16,7 +16,7 @@
 #
 # C7d：**绝不起真 claude**。launcher 指向 tests/e2e/fake-claude。
 #
-# 跑法：bash tests/e2e/p3t-local-tmux.sh
+# 跑法：bash tests/e2e/p3t-local-tmux.sh（或 `npm run test:p3t-local-tmux`；CI 里经 `assert-pass-floor.sh` 带地板跑，见 `ci.yml` 的 `e2e-tmux-rust`）
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
@@ -223,5 +223,6 @@ fi
 
 kill "$LAUNCH_PID" 2>/dev/null
 echo
-echo "PASS=$PASS FAIL=$FAIL"
+# 〔TL1 · 4C〕收尾行换成 `assert-pass-floor.sh` 认的那一形（它只认「合计 PASS=<n>」）—— 本套接回执行链（`ci.yml` 地板一行）。
+echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="
 [ "$FAIL" -eq 0 ] || exit 1

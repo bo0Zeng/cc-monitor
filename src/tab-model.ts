@@ -139,11 +139,11 @@ export interface Tab {
     }
   >;
   /**
-   * 按 seq 去重集合。一个 Tab == 一个 jsonl path == 一个 seq 空间（本地 watcher 的
-   * per-path seqs / 远端后端的 per-process SeqCounter）。SSH 重连后新后端会从
-   * seq 0 重发整个会话 → 命中即丢，避免 Tab 内容翻倍。本地 seq 全程唯一 → 永不命中（no-op）。
+   * 按 seq 去重集合。一个 Tab == 一个 jsonl path == 一个 seq 空间（那台机器后端的 per-process SeqCounter；
+   * 〔TL1 · 4C〕CF1 起本机会话也走本机后端，从前「本地 watcher 的 per-path seqs」那一份没了）。重连后新后端会从
+   * seq 0 重发整个会话 → 命中即丢，避免 Tab 内容翻倍（本机后端重连也一样，从前「本地 seq 全程唯一 → 永不命中」不再成立）。
    *
-   * 注意：本集合**只防同 seq 重投**。本地 watcher 截断重读是**换新 seq** 重投整个
+   * 注意：本集合**只防同 seq 重投**。后端的 jsonl 读者截断重读是**换新 seq** 重投整个
    * 文件、此处放行（at-least-once 投递，INVARIANTS § 25）——uuid 级幂等由下面的
    * processedUuids（#26）+ computeMainBranch 入口去重 + BranchFolder.seenUuids
    * （#25）分层兜住。closeTab 时 clear。

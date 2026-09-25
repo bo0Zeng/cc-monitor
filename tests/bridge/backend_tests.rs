@@ -259,7 +259,7 @@ fn platform_hits(prod: &str) -> Vec<String> {
 /// 挡路的**不是 monitor 的代码**（252 个 `.rmeta` 已经产出），
 /// 是某个 C 依赖的 build script 要 `lib.exe`（MSVC 的库工具），Linux 上没有。
 /// ⇒ monitor 侧「两个平台都编得过」这条性质**本来**由 CI 的两个 OS 各自原生编承担：
-/// `rust` job 在 windows-latest 跑 `cargo test --workspace --exclude code-picture-core` ·
+/// `rust` job 在 windows-latest 跑 `cargo test --workspace` ·
 /// `linux-app-build` job 在 ubuntu-latest 跑 `cargo build`。
 ///
 /// ⚠ **「本来」两个字是 08-06 补的，它现在不成立**：`ci.yml` 只在 `push` / `pull_request`
