@@ -39,7 +39,7 @@ pub const KEY_FIELD: &str = "api_key";
 /// 由上游选择装表时出声（`accounts::upstream::table::build` 那条「这一行进不了表」）。
 pub const ACCOUNTS_FIELD: &str = "accounts";
 
-/// 一条账号的**上游端点**住哪个字段。缺席 / 空串 ⇒ 用这个 agent 的默认上游（上游选择 `AGENT_UPSTREAMS`）。
+/// 一条账号的**上游端点**住哪个字段。缺席 / 空串 ⇒ 用这个 agent 的默认上游（适配层 `agents::Adapter::upstream`，〔NT2 · V25〕）。
 ///
 /// ⚠ 它**不是**「回落」：`base_url` 缺席说的是「这一行用默认端点」，
 /// 而「这一行根本不在表里」说的是**404**。两件事不许混 —— 见 `K-H2` `KH2`。
@@ -313,7 +313,7 @@ pub fn read_auth_style(doc: &Map<String, Value>) -> AuthStyleSetting {
 pub struct AccountEntry {
     /// 路由键里那一段账号 id。
     pub id: String,
-    /// 这一行的上游端点；`None` = 用这个 agent 的默认上游（上游选择 `AGENT_UPSTREAMS`）。
+    /// 这一行的上游端点；`None` = 用这个 agent 的默认上游（适配层 `agents::Adapter::upstream`，〔NT2 · V25〕）。
     pub base_url: Option<String>,
     /// 这一行的 key；`None` = **原样转发下游那份鉴权头**（订阅制那一档是合法状态）。
     pub key: Option<SecretKey>,
