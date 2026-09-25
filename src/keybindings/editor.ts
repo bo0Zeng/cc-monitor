@@ -41,6 +41,8 @@ import { setKeybindings } from "./store";
 // F82a：键位改动落盘后广播，主窗口跨窗热应用（事件名在中立模块，避免与 settings/panel 循环）。
 import { emit } from "@tauri-apps/api/event";
 import { SETTINGS_APPLIED_EVENT } from "../settings/events";
+import { showActionFailureToast } from "../error-toast";
+import { copyText } from "../copy-table";
 
 export class KeybindingsEditor implements OverlayHandle {
   private overlay: HTMLElement;
@@ -352,6 +354,8 @@ export class KeybindingsEditor implements OverlayHandle {
       void emit(SETTINGS_APPLIED_EVENT);
     } catch (e) {
       console.warn("[keybindings] persist failed:", e);
+      // 〔CFG1 · 4D〕从前只记日志：这次改的键位眼下生效、重启就回去，界面一句不说（E §3.3）。
+      showActionFailureToast(copyText("keybindings.persist.failed"), String(e));
     }
   }
 }

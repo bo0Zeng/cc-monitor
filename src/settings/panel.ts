@@ -37,6 +37,8 @@ import { createRestartBar, markRestartNeeded } from "./restart-notice";
 import { createUnknownKeysBar } from "./unknown-keys-notice"; // 🔴 P12：未知键要出声
 import { setCurrentMachine } from "./machine-context";
 import { LOCAL_ORIGIN } from "../ipc/origin";
+import { showActionFailureToast } from "../error-toast"; // 〔CFG1〕行为设置落盘失败出声
+import { copyText } from "../copy-table";
 import {
   LOCAL_MACHINE_PAGE_ID,
   MACHINE_PAGE_PREFIX,
@@ -541,6 +543,8 @@ export class SettingsPanel {
       this.broadcastApplied(); // 窗口模式：广播让主窗口 applyBehavior
     } catch (e) {
       console.warn("save behavior failed:", e);
+      // 〔CFG1 · 4D〕从前只记日志：勾选框已经翻了、盘上没变，界面一句不说（E §3.3）。
+      showActionFailureToast(copyText("settings.behavior.saveFailed"), String(e));
     }
   }
 

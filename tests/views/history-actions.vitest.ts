@@ -49,6 +49,8 @@ import {
 } from "../../src/accounts";
 import { historyCalls, isChanCall, linesReply, withAccountReads, withHistoryReads } from "../test-support/chan-fake";
 import { LOCAL_ORIGIN } from "../../src/ipc/origin";
+import { showActionFailureToast } from "../../src/error-toast";
+import { copyText } from "../../src/copy-table";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const runNewRemote = runNewSessionRemote as unknown as ReturnType<typeof vi.fn>;
@@ -88,6 +90,32 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     const call = historyCalls(invokeMock.mock.calls, "update_history_metadata")[0];
     expect(call).toBeTruthy();
     expect(call!).toMatchObject({ sessionId: "s1", patch: { starred: true } });
+  });
+
+  // 〔CFG1 · 4D〕星标 / 改名 / 隐藏写失败要出声（E §3.3：从前只 `console.warn`，点了什么都没变、也不说）。
+  //   守的要求：`INVARIANTS §12`「关键失败必须 …… 状态栏 toast」。期望标题从文案表取（表是对外文案的唯一来源）。
+  it("〔CFG1〕星标 / 改名 / 隐藏写失败 ⇒ 各恰好一条 toast、标题是表里那句", async () => {
+    const toast = vi.mocked(showActionFailureToast);
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "chan_call") throw new Error("盘写不进去");
+      return undefined;
+    });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(window, "prompt").mockReturnValue("新标题");
+    const view = new HistoryView();
+    for (const [label, key] of [
+      ["标星", "history.star.failed"],
+      ["重命名", "history.rename.failed"],
+      ["隐藏", "history.hide.failed"],
+    ] as const) {
+      toast.mockClear();
+      document.body.replaceChildren();
+      const row = buildRow(view, entry(), proj());
+      row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
+      menuItem(label)!.click();
+      await new Promise((r) => setTimeout(r, 0));
+      expect(toast.mock.calls.map((a) => a[0]), label).toEqual([copyText(key)]);
+    }
   });
 
   it("右键条目 → 菜单出全套动作（本地）", () => {
