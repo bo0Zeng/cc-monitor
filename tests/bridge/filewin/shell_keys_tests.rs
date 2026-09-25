@@ -865,7 +865,8 @@ struct KeyProbeApp {
 #[cfg(not(windows))]
 impl eframe::App for KeyProbeApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        // 🔴 与 `impl eframe::App for FileWindow` 那一句委派逐字同形 —— 被测对象是同一个。
+        // 🔴 与 `Workspace` 里每个标签页那一句委派（`t.pane.frame_body(ui)`）同形 —— 被测对象是同一个。
+        //    〔FW34〕从前这里对的是 `FileWindow` 自己的 `eframe::App` 实现；那一层挪到了 `workspace.rs`。
         self.w.frame_body(ui);
         let ctx = ui.ctx().clone();
         let mut p = self.shared.lock().unwrap();

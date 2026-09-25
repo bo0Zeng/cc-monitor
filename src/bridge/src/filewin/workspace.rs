@@ -1,0 +1,510 @@
+//! 〔FW34 · 第四波 2026-09-24〕窗口的最外一层：**标签页 ＋ 双栏 ＋ 复制到另一栏**。
+//!
+//! 设计住 `调研/第四波记录/FW34.md` 第三节；这里只留落地要知道的。
+//!
+//! # 一、形状：`FileWindow` 不拆，它就是一个标签页
+//!
+//! ```text
+//! Workspace
+//!   sides: [Side; 1 或 2]      一栏 / 两栏
+//!   focus: 栏号               键盘 · 拖入 · 预览 · 「复制到另一栏」的源，都跟它
+//! Side  { tabs: [Tab], active }
+//! Tab   { id, pane: FileWindow }   // 一个目录视图的全部状态，一个字段没搬
+//! ```
+//!
+//! ⇒ 从前几百条判据全在 `FileWindow` 上，这一刀一条不动；`eframe::App` 从 `FileWindow` 挪到这里。
+//! 同一个窗口里所有标签页 / 两栏看的都是**同一台机器**（同一个 `Source`、同一条通道）：换机器就开另一个窗口。
+//!
+//! # 二、焦点那道闸（为什么非有不可）
+//!
+//! 两栏同时画 ⇒ 两个 `frame_body` 都会去接这一帧的按键与拖入。不闸的话按一下 Delete 两边各删一次、
+//! 拖一个文件进来两边各传一次。⇒ 只有焦点那一栏的那个标签 `focused = true`（[`Workspace::sync_focus`]），
+//! 其余一律 `false`（`FileWindow::keys_blocked` / `take_drops` 多问的就是它）。
+//! 在哪一栏里按下鼠标，焦点就给哪一栏（这一帧按下、下一帧生效）。
+//!
+//! # 三、关标签 / 收右栏的规矩
+//!
+//! 那个标签手上**有活**（有一问摆着、有东西在传 / 在复制 / 在写 / 在读写文本）⇒ 不关，说是哪一件
+//! （`FileWindow::busy_reason`）。后台那几趟任务不随标签走，关掉就再也没人把结局摆给你看。
+//! 关**整个窗口**照旧不问（用户裁「窗口生命周期就是销毁」）。
+//!
+//! # ⚠ 买不到什么
+//!
+//! - 真窗口真画在屏幕上（要图形会话）；判据跑的是生产那个 [`Workspace::frame`]，读这一帧画出来的字。
+//! - 真的**拖**一行到另一栏：行上那块命中矩形是 `Sense::click()`（`rows.rs`，不在本路写区）
+//!   ⇒ 这一刀只做按钮「复制到另一栏」，拖的手势登记为欠账。
+//! - 后台标签（不在任何一栏上）的「一问」要切回去才看得见；标签名前那个「●」就是为这个。
+
+use super::copy::{is_copyable, CopyJob};
+use super::shell::FileWindow;
+use super::source::Listed;
+
+/// 一个标签页：一个目录视图。
+pub struct Tab {
+    /// 这个标签的 egui 身份（不随下标移位：关掉左边那个，右边这个的滚动位置不串）。
+    pub id: u64,
+    pub pane: FileWindow,
+}
+
+/// 一栏：一排标签页，当前显示第几个。
+pub struct Side {
+    pub tabs: Vec<Tab>,
+    pub active: usize,
+}
+
+/// 窗口的最外一层。
+pub struct Workspace {
+    sides: Vec<Side>,
+    focus: usize,
+    next_id: u64,
+    /// 上一件「做不了」时说的那句话（`None` ＝ 没话说）。下一次点工具条 / 标签栏就清。
+    notice: Option<String>,
+}
+
+/// 工具条上那几颗 —— **唯一住址**（判据按同一个常量去找它画出来的字）。
+pub const SPLIT_LABEL: &str = "双栏";
+pub const COPY_ACROSS_LABEL: &str = "复制到另一栏";
+pub const NEW_TAB_LABEL: &str = "＋";
+pub const CLOSE_TAB_LABEL: &str = "×";
+/// 后台标签手上有事等你（有一问摆着 / 有活在跑）时，标签名前那个记号。
+pub const BUSY_MARK: &str = "● ";
+
+impl Workspace {
+    /// 从开窗那一个标签页起步（它身上已经挂好了通道 · 运行时 · 书签 · 字体）。
+    pub fn new(first: FileWindow) -> Self {
+        let mut w = Self {
+            sides: vec![Side {
+                tabs: vec![Tab { id: 0, pane: first }],
+                active: 0,
+            }],
+            focus: 0,
+            next_id: 1,
+            notice: None,
+        };
+        w.sync_focus();
+        w
+    }
+
+    /// 几栏（1 或 2）。
+    pub fn sides(&self) -> usize {
+        self.sides.len()
+    }
+
+    /// 第 `side` 栏有几个标签页。
+    pub fn tabs_on(&self, side: usize) -> usize {
+        self.sides[side].tabs.len()
+    }
+
+    /// 第 `side` 栏当前显示第几个标签页。
+    pub fn active_on(&self, side: usize) -> usize {
+        self.sides[side].active
+    }
+
+    /// 焦点在第几栏。
+    pub fn focus(&self) -> usize {
+        self.focus
+    }
+
+    /// 第 `side` 栏正显示的那个目录视图。
+    pub fn pane_on(&self, side: usize) -> &FileWindow {
+        let s = &self.sides[side];
+        &s.tabs[s.active].pane
+    }
+
+    /// 同上，可改。
+    pub fn pane_on_mut(&mut self, side: usize) -> &mut FileWindow {
+        let s = &mut self.sides[side];
+        &mut s.tabs[s.active].pane
+    }
+
+    /// 第 `side` 栏第 `i` 个标签页（判据用：后台标签也看得到）。
+    pub fn tab(&self, side: usize, i: usize) -> &FileWindow {
+        &self.sides[side].tabs[i].pane
+    }
+
+    /// 上一件做不了时那句话。
+    pub fn notice(&self) -> Option<&str> {
+        self.notice.as_deref()
+    }
+
+    /// 焦点只给焦点那一栏的那个标签，其余一律关掉（本模块头注 §二）。
+    fn sync_focus(&mut self) {
+        for (k, s) in self.sides.iter_mut().enumerate() {
+            for (i, t) in s.tabs.iter_mut().enumerate() {
+                t.pane.focused = k == self.focus && i == s.active;
+            }
+        }
+    }
+
+    /// 把焦点给第 `side` 栏。
+    pub fn focus_side(&mut self, side: usize) {
+        if side < self.sides.len() {
+            self.focus = side;
+            self.sync_focus();
+        }
+    }
+
+    /// 照 `like` 那个目录视图的样子起一个新的，落在 `cwd`：同一台机器、同一条通道、同一份书签、
+    /// 同一个字体结论（字体装在整个窗口上，不是装在某一个标签上）。**建完就列一趟目录。**
+    fn spawn_pane(like: &FileWindow, cwd: String) -> FileWindow {
+        let mut p = FileWindow::seeded(
+            like.source.clone(),
+            cwd,
+            like.rt.clone(),
+            Vec::<Listed>::new(),
+        );
+        if let Some(line) = like.line.clone() {
+            p.attach_line(line);
+        }
+        p.shelf = like.shelf.clone();
+        p.font = like.font.clone();
+        p.reload();
+        p
+    }
+
+    fn mint_id(&mut self) -> u64 {
+        let id = self.next_id;
+        self.next_id += 1;
+        id
+    }
+
+    /// 在第 `side` 栏开一个新标签页，落在这一栏当前的目录上，并切过去。
+    pub fn open_tab(&mut self, side: usize) -> bool {
+        if side >= self.sides.len() {
+            return false;
+        }
+        let cwd = self.pane_on(side).cwd.clone();
+        let pane = Self::spawn_pane(self.pane_on(side), cwd);
+        self.add_tab(side, pane)
+    }
+
+    /// 把一个建好的目录视图作为新标签页挂到第 `side` 栏，并切过去（焦点随之给这一栏）。
+    pub fn add_tab(&mut self, side: usize, pane: FileWindow) -> bool {
+        if side >= self.sides.len() {
+            return false;
+        }
+        let id = self.mint_id();
+        let s = &mut self.sides[side];
+        s.tabs.push(Tab { id, pane });
+        s.active = s.tabs.len() - 1;
+        self.focus = side;
+        self.notice = None;
+        self.sync_focus();
+        true
+    }
+
+    /// 把一个建好的目录视图挂成右栏（只在一栏时；焦点给它）。回值 ＝ 真的挂上了。
+    pub fn add_side(&mut self, pane: FileWindow) -> bool {
+        if self.sides.len() != 1 {
+            return false;
+        }
+        let id = self.mint_id();
+        self.sides.push(Side {
+            tabs: vec![Tab { id, pane }],
+            active: 0,
+        });
+        self.focus = 1;
+        self.notice = None;
+        self.sync_focus();
+        true
+    }
+
+    /// 切到第 `side` 栏第 `i` 个标签页（焦点随之给这一栏）。
+    pub fn select_tab(&mut self, side: usize, i: usize) -> bool {
+        if side >= self.sides.len() || i >= self.sides[side].tabs.len() {
+            return false;
+        }
+        self.sides[side].active = i;
+        self.focus = side;
+        self.notice = None;
+        self.sync_focus();
+        true
+    }
+
+    /// 关掉第 `side` 栏第 `i` 个标签页。**一栏最后一个不关**（要关就关窗口 / 收掉这一栏）；
+    /// **手上有活的不关**，出声说是哪一件。
+    pub fn close_tab(&mut self, side: usize, i: usize) -> bool {
+        if side >= self.sides.len() || i >= self.sides[side].tabs.len() {
+            return false;
+        }
+        if self.sides[side].tabs.len() == 1 {
+            self.notice = Some("这是这一栏最后一个标签页".into());
+            return false;
+        }
+        if let Some(why) = self.sides[side].tabs[i].pane.busy_reason() {
+            self.notice = Some(format!("这个标签页还没忙完（{why}），先别关"));
+            return false;
+        }
+        let s = &mut self.sides[side];
+        s.tabs.remove(i);
+        if s.active > i || s.active >= s.tabs.len() {
+            s.active = s.active.saturating_sub(1);
+        }
+        self.notice = None;
+        self.sync_focus();
+        true
+    }
+
+    /// 开 / 收双栏。开 ⇒ 右边长出一栏（一个标签页，落在焦点那一栏的目录上），焦点给它；
+    /// 收 ⇒ 右栏整栏收掉（里面有哪个标签手上有活就不收，出声）。回值 ＝ 真的变了。
+    pub fn set_split(&mut self, on: bool) -> bool {
+        match (on, self.sides.len()) {
+            (true, 1) => {
+                let cwd = self.pane_on(self.focus).cwd.clone();
+                let pane = Self::spawn_pane(self.pane_on(self.focus), cwd);
+                return self.add_side(pane);
+            }
+            (false, 2) => {
+                if let Some(why) = self.sides[1].tabs.iter().find_map(|t| t.pane.busy_reason()) {
+                    self.notice = Some(format!("右栏还没忙完（{why}），先别收"));
+                    return false;
+                }
+                self.sides.pop();
+                self.focus = 0;
+            }
+            _ => return false,
+        }
+        self.notice = None;
+        self.sync_focus();
+        true
+    }
+
+    /// 🔴 **复制到另一栏**：焦点那一栏选中的恰好一个文件 → 另一栏当前目录、同名。
+    ///
+    /// 走现成那条复制流水线（先探目标 → 已在就问一次覆盖 → 才动手；后端 `files-copy`，围栏在后端），
+    /// 只是参数换成跨目录那一形（[`across_args`]），**起在目标那一栏上**
+    /// ⇒ 问与结局画在目标那一侧，跑完那一栏重列目录。回值 ＝ 真的起来了。
+    pub fn copy_to_other(&mut self, ctx: Option<egui::Context>) -> bool {
+        if self.sides.len() != 2 {
+            self.notice = Some("要先开双栏".into());
+            return false;
+        }
+        let from = self.pane_on(self.focus);
+        let name = match from.picked_name() {
+            Ok(n) => n,
+            Err(n) => {
+                self.notice = Some(format!("要选中恰好一个文件（现在选中了 {n} 项）"));
+                return false;
+            }
+        };
+        let Some(row) = from.row_named(&name) else {
+            self.notice = Some(format!("列表里已经没有 {name} 了"));
+            return false;
+        };
+        if !is_copyable(&row) {
+            self.notice = Some(format!(
+                "{name} 复制不了：只能复制文件（名字要是合法 UTF-8）"
+            ));
+            return false;
+        }
+        let other = 1 - self.focus;
+        let dest_dir = self.pane_on(other).cwd.clone();
+        if dest_dir == from.cwd {
+            self.notice = Some("两栏是同一个目录，复制过去就是它自己".into());
+            return false;
+        }
+        let job = CopyJob {
+            from: row.path.clone(),
+            to: super::writeops::join_remote(&dest_dir, &name),
+            name,
+        };
+        self.notice = None;
+        self.pane_on_mut(other).start_copy_across(job, ctx)
+    }
+
+    /// 标签上写什么：当前目录的最后一段（根就写 `/`）；手上有事的前面加「●」。
+    pub fn tab_title(pane: &FileWindow) -> String {
+        let tail = super::source::remote_basename(&pane.cwd);
+        let tail = if tail.is_empty() { "/" } else { tail };
+        let mark = if pane.busy_reason().is_some() {
+            BUSY_MARK
+        } else {
+            ""
+        };
+        format!("{mark}{tail}")
+    }
+
+    /// 🔴 **每一帧的正文**（`eframe::App::ui` 只剩一句委派，判据直接喂它 —— 同 `FileWindow::frame_body`）。
+    pub fn frame(&mut self, ui: &mut egui::Ui) {
+        // ── 工具条：双栏 · 复制到另一栏 ──
+        let mut split: Option<bool> = None;
+        let mut across = false;
+        ui.horizontal(|ui| {
+            let two = self.sides.len() == 2;
+            if ui.selectable_label(two, SPLIT_LABEL).clicked() {
+                split = Some(!two);
+            }
+            if two && ui.button(COPY_ACROSS_LABEL).clicked() {
+                across = true;
+            }
+            if let Some(n) = &self.notice {
+                ui.colored_label(egui::Color32::from_rgb(0xFF, 0xA5, 0x00), n);
+            }
+        });
+        if let Some(on) = split {
+            self.set_split(on);
+        }
+        if across {
+            let ctx = ui.ctx().clone();
+            self.copy_to_other(Some(ctx));
+        }
+        // ── 一栏 / 两栏 ──
+        let whole = ui.available_rect_before_wrap();
+        let n = self.sides.len();
+        let gap = ui.spacing().item_spacing.x;
+        let w = (whole.width() - gap * (n as f32 - 1.0)) / n as f32;
+        let pressed_at = ui.input(|i| {
+            (i.pointer.primary_pressed() || i.pointer.secondary_pressed())
+                .then(|| i.pointer.interact_pos())
+                .flatten()
+        });
+        let mut focus_to: Option<usize> = None;
+        for k in 0..n {
+            let rect = egui::Rect::from_min_size(
+                egui::pos2(whole.left() + k as f32 * (w + gap), whole.top()),
+                egui::vec2(w, whole.height()),
+            );
+            if pressed_at.is_some_and(|p| rect.contains(p)) {
+                focus_to = Some(k);
+            }
+            ui.scope_builder(
+                egui::UiBuilder::new()
+                    .id_salt(("filewin-side", k))
+                    .max_rect(rect)
+                    .layout(egui::Layout::top_down(egui::Align::LEFT)),
+                |ui| self.side_ui(ui, k),
+            );
+        }
+        ui.allocate_rect(whole, egui::Sense::hover());
+        if let Some(k) = focus_to {
+            if k != self.focus {
+                self.focus_side(k);
+            }
+        }
+    }
+
+    /// 一栏：标签栏 ＋ 当前那个标签页的正文。
+    fn side_ui(&mut self, ui: &mut egui::Ui, k: usize) {
+        let mut pick: Option<usize> = None;
+        let mut close: Option<usize> = None;
+        let mut new_tab = false;
+        ui.horizontal_wrapped(|ui| {
+            let s = &self.sides[k];
+            let many = s.tabs.len() > 1;
+            for (i, t) in s.tabs.iter().enumerate() {
+                if ui
+                    .selectable_label(i == s.active, Self::tab_title(&t.pane))
+                    .on_hover_text(&t.pane.cwd)
+                    .clicked()
+                {
+                    pick = Some(i);
+                }
+                if many
+                    && ui
+                        .small_button(CLOSE_TAB_LABEL)
+                        .on_hover_text("关掉这个标签页")
+                        .clicked()
+                {
+                    close = Some(i);
+                }
+            }
+            if ui
+                .small_button(NEW_TAB_LABEL)
+                .on_hover_text("新标签页")
+                .clicked()
+            {
+                new_tab = true;
+            }
+        });
+        if let Some(i) = pick {
+            self.select_tab(k, i);
+        }
+        if let Some(i) = close {
+            self.close_tab(k, i);
+        }
+        if new_tab {
+            self.open_tab(k);
+        }
+        let s = &mut self.sides[k];
+        let t = &mut s.tabs[s.active];
+        ui.push_id(("filewin-tab", t.id), |ui| t.pane.frame_body(ui));
+    }
+}
+
+/// 两个目录的最长公共前缀。都只在根下相交 ⇒ `/`。
+///
+/// ⚠ **自己一刀都不切**：拿 [`super::source::breadcrumbs`]（远端路径那一族切法的唯一住址，只认 `/`）
+/// 各切一摞前缀，取两摞共有的最长那一个 ⇒ 不多出第四份切法
+/// （`source_tests::every_place_that_splits_a_remote_path_is_declared` 钉着那张表）。
+pub fn common_dir(a: &str, b: &str) -> String {
+    let theirs: Vec<String> = super::source::breadcrumbs(b)
+        .into_iter()
+        .map(|(_, full)| full)
+        .collect();
+    super::source::breadcrumbs(a)
+        .into_iter()
+        .map(|(_, full)| full)
+        .take_while(|f| theirs.contains(f))
+        .last()
+        .unwrap_or_else(|| "/".to_string())
+}
+
+/// 跨目录那一形的 `files-copy` 参数：`root` ＝ 两个父目录的公共前缀，`from` / `to` ＝ 各自相对它的那一段。
+///
+/// ⚠ 同目录那一形（「复制为」那个框）走的是 `copy::copy_args`，它**刻意拒**跨目录（防「当前目录」与
+///   「那一行的路径」写法不一致时拼到别处去）—— 这里是另一件事（用户明说「放到另一栏那个目录」），
+///   所以另起一个，不去放宽那一道。后端的 `from` / `to` 本来就收多段相对路径（逐段过词法围栏）。
+pub fn across_args(job: &CopyJob, overwrite: bool) -> Result<serde_json::Value, String> {
+    let root = common_dir(
+        &super::source::parent_dir(&job.from),
+        &super::source::parent_dir(&job.to),
+    );
+    let rel = |p: &str| -> Result<String, String> {
+        p.strip_prefix(root.as_str())
+            .map(|r| r.trim_start_matches('/').to_string())
+            .filter(|r| !r.is_empty())
+            .ok_or_else(|| format!("{p} 不在 {root} 底下，复制不过去"))
+    };
+    Ok(serde_json::json!({
+        "root": root,
+        "from": rel(&job.from)?,
+        "to": rel(&job.to)?,
+        "overwrite": overwrite,
+    }))
+}
+
+/// 跨目录复制那一趟（经通道问后端 `files-copy`）。回复制了几个字节。
+pub async fn copy_across(
+    line: &super::source::Line,
+    origin: &super::source::Origin,
+    job: &CopyJob,
+    overwrite: bool,
+) -> Result<u64, String> {
+    let args = across_args(job, overwrite)?;
+    let d = super::source::ask(
+        line,
+        origin,
+        super::copy::CMD_COPY,
+        &args,
+        super::copy::COPY_BUDGET,
+    )
+    .await?;
+    d.get("bytes")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| {
+            format!(
+                "`{}` 的应答里没有 `bytes`，和约定的不一样",
+                super::copy::CMD_COPY
+            )
+        })
+}
+
+impl eframe::App for Workspace {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.frame(ui);
+    }
+}
+
+#[cfg(test)]
+#[path = "../../../../tests/bridge/filewin/workspace_tests.rs"]
+mod tests;

@@ -403,6 +403,8 @@ src/bridge/src/filewin/fonts.rs:257	共向式幕横模滚长	保留	[不对外] 
 src/bridge/src/filewin/fonts.rs:258	事任何头选项	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
 src/bridge/src/filewin/fonts.rs:271	么反变号控收斜杠至	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
 src/bridge/src/filewin/fonts.rs:277	×★☆书加懂找移签	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕书签栏那几个字）
+src/bridge/src/filewin/fonts.rs:287	●＋双另右好己底忙恰标栏自页	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕标签页 ＋ 双栏那几个字）
+src/bridge/src/filewin/fonts.rs:288	处搬板留老	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕搬家那一跳两句的字）
 src/bridge/src/filewin/proc.rs:297	那个进程在开窗预算内就退了（{st}）	改·§2.1	[对外] open_in_new_process 的 Err 回给打开文件窗口的调用方；「开窗预算」是内部参数 新词:开窗预算 →「文件窗口没能打开（进程退出：{st}）」
 src/bridge/src/filewin/proc.rs:298	那个进程既没退也没在跑 —— 这一形说明上面那一跳的判法坏了	改·§2.2	[对外] 同上 Err；「这一形说明上面那一跳的判法坏了」是内部推理 →「文件窗口没能打开」
 src/bridge/src/filewin/proc.rs:299	问不到那个进程的死活：{e}	改·§2.1	[对外] 同上 Err；「问不到进程的死活」讲实现 →「文件窗口没能打开：{e}」
@@ -525,6 +527,13 @@ src/bridge/src/filewin/select.rs:512	「{}」对选中的这几项做不了	保�
 src/bridge/src/filewin/shell.rs:463	对选中的这几项没有能做的事	保留	[对外] 右键菜单一项都没有时摆的那一句（有损名那一档）
 src/bridge/src/filewin/shell.rs:1958	没有以「{prefix}」开头的项	保留	[对外] 打字跳转没找到时画在窗口上
 src/bridge/src/filewin/shell.rs:2233	已选 {n} 项	保留	[对外] 工具栏上的选中计数
+src/bridge/src/filewin/shell.rs:1929	有一份文本开着	保留	[对外] 〔FW34〕关标签页被拒时括号里那一格（「这个标签页还没忙完（…），先别关」）：说是哪一件
+src/bridge/src/filewin/shell.rs:1932	有一问还没答	保留	[对外] 〔FW34〕同上：那个标签页上有一个确认框 / 输入框摆着
+src/bridge/src/filewin/shell.rs:1935	正在读写 {p}	保留	[对外] 〔FW34〕同上：读 / 存一份文本在飞
+src/bridge/src/filewin/shell.rs:1938	正在复制 {n}	保留	[对外] 〔FW34〕同上：一趟复制在跑
+src/bridge/src/filewin/shell.rs:1941	正在下载 {n}	保留	[对外] 〔FW34〕同上：一趟下载在跑
+src/bridge/src/filewin/shell.rs:1945	正在上传 {}	保留	[对外] 〔FW34〕同上：列出在传的那几个名字
+src/bridge/src/filewin/shell.rs:1948	有写操作还没回话	保留	[对外] 〔FW34〕同上：删 / 改名 / 建目录 / 改权限那一摞还没回来
 src/bridge/src/history.rs:267	本机项目列表	保留	[不对外] log_unknown_reasons 的日志标签
 src/bridge/src/history.rs:1409	旧路产不出 attach —— 它只会拼一个拉起器，渲出来的是「另起一条 claude」而不是     「接进已有的那个」；产得出 attach 的只有 ccm 那条容器路〔`K-R106`，用@09-13     「归本机后端就好了啊」〕	改·§2.1	[可达存疑] OLD_PATH_CANNOT_ATTACH 作 Err 回前端：attach / 拉起器 / 容器路 / K-R106 全是内部说法 兼§2.2 兼§2.4 新词:拉起器 新词:容器路 →「这台机器接不回已有会话，只能新开一个」
 src/bridge/src/history.rs:1520	没有 tmux 会话名（前端未传）—— 名字只许由 `mintTmuxName` 铸	改·§2.1	[可达存疑] NO_TMUX_NAME 作 Err：露出前端函数名 mintTmuxName 与「只许由…铸」的内部纪律 兼§2.2 新词:铸 →「缺少会话名，无法启动」
@@ -1187,6 +1196,18 @@ src/bridge/src/filewin/bookmarks.rs:191	☆ 加书签	保留	[对外] 〔FW34〕
 src/bridge/src/filewin/bookmarks.rs:193	★ 取消书签	保留	[对外] 〔FW34〕同一颗按钮的另一态：当前目录已在书签里（实心星＝已加）
 src/bridge/src/filewin/bookmarks.rs:296	跳到这个目录	保留	[对外] 〔FW34〕书签那一条的悬停提示（老面板「跳到 <路径>」的对应物，路径就是按钮本身）
 src/bridge/src/filewin/bookmarks.rs:299	移出书签	保留	[对外] 〔FW34〕书签后面那颗「×」的悬停提示（老面板逐字同）
+src/bridge/src/filewin/workspace.rs:65	双栏	保留	[对外] 〔FW34〕工具条开关（按下 ＝ 两栏并排）
+src/bridge/src/filewin/workspace.rs:66	复制到另一栏	保留	[对外] 〔FW34〕工具条按钮：焦点那栏选中的文件复制进另一栏当前目录（双栏文件管理器的通称）
+src/bridge/src/filewin/workspace.rs:231	这是这一栏最后一个标签页	保留	[对外] 〔FW34〕关最后一个标签页被拒时那一句（只说事实；「要关就关窗口」不说，它自明）
+src/bridge/src/filewin/workspace.rs:235	这个标签页还没忙完（{why}），先别关	保留	[对外] 〔FW34〕关一个手上有活的标签页被拒：结果 ＋ 哪一件 ＋ 用户做得到的一步
+src/bridge/src/filewin/workspace.rs:259	右栏还没忙完（{why}），先别收	保留	[对外] 〔FW34〕收右栏被拒，同上一句的形
+src/bridge/src/filewin/workspace.rs:279	要先开双栏	保留	[对外] 〔FW34〕一栏时按「复制到另一栏」（按钮只在两栏时画，这一句是第二道闸出声）
+src/bridge/src/filewin/workspace.rs:286	要选中恰好一个文件（现在选中了 {n} 项）	保留	[对外] 〔FW34〕复制到另一栏：选中数不对
+src/bridge/src/filewin/workspace.rs:291	列表里已经没有 {name} 了	保留	[对外] 〔FW34〕复制到另一栏 / 预览：选中那一项刚被重列掉了
+src/bridge/src/filewin/workspace.rs:296	{name} 复制不了：只能复制文件（名字要是合法 UTF-8）	保留	[对外] 〔FW34〕复制到另一栏：选中的是目录或名字有损（与行上「复制」那颗按钮同一道判定 is_copyable）
+src/bridge/src/filewin/workspace.rs:303	两栏是同一个目录，复制过去就是它自己	保留	[对外] 〔FW34〕复制到另一栏：源与目标同目录
+src/bridge/src/filewin/workspace.rs:405	关掉这个标签页	保留	[对外] 〔FW34〕标签上「×」的悬停提示
+src/bridge/src/filewin/workspace.rs:413	新标签页	保留	[对外] 〔FW34〕标签栏「＋」的悬停提示
 src/backend-policy.ts:74	那台机器上的退出策略读不出来，按默认（不结束）办 —— 这不等于有人这么选过	保留	[对外] 〔B2 · 条 66〕EXIT_UNREADABLE：措辞是 `设计/01 §3.3b ⑤` 逐字定下的那一句；说清会怎样（按默认不结束）与它不是什么（不是谁选的），与 HEALTH_UNKNOWN 同形
 src/bridge/src/backend_policy.rs:70	那台机器上的退出策略读不出来，按默认（不结束）办 —— 这不等于有人这么选过	保留	[对外] 同上 EXIT_UNREADABLE 的 Rust 镜像，只为逐字对拍存在
 src/bridge/src/backend_policy.rs:161	问退出策略出了内部错误，没有拿到结果	保留	[可达存疑] 分流器三态里走不到的那一档（Done）的兜底话；真到了用户眼前也只说「没拿到」，不带实现词
