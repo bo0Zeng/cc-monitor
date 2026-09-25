@@ -1164,7 +1164,8 @@ fn every_row_carries_its_tier_and_the_owed_one_never_reads_as_not_ours() {
         assert!(
             // 〔CP2b〕措辞照 CP1 台账改成「应随 cc-monitor 一起安装，暂未提供」（去掉内部编号 K38 与「装口」）；
             // 两半仍都在：「应随 cc-monitor」＝该我们带，「暂未提供」＝还欠着。
-            r.source_label.contains("应随 cc-monitor 一起安装") && r.source_label.contains("暂未提供"),
+            r.source_label.contains("应随 cc-monitor 一起安装")
+                && r.source_label.contains("暂未提供"),
             "`{}` 的「从哪来」没说清这是我们该自带的东西，实得 {:?}",
             r.tool_id,
             r.source_label

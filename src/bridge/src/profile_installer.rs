@@ -38,6 +38,7 @@
 //! 把 `function cc { … }` 写进 `~/.bashrc` 在任何情形下都不是对的答案 ——
 //! 而本件之前这条路**只会**写 PowerShell。
 
+use crate::copy_table::copy_text;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -332,31 +333,39 @@ pub fn render_manual_cleanup_hint(what: &str, hits: &[LegacyRcLine]) -> String {
         if shadow {
             shadowed += 1;
         }
-        body.push_str(&format!(
-            "  第 {} 行  {}{}\n",
-            h.line_no,
-            h.text.trim_end(),
-            if shadow {
-                "     ← 会赢过我们那一块"
-            } else {
-                ""
-            }
+        body.push_str(&copy_text(
+            "rsProfileInstaller.hint.line",
+            &[
+                ("lineNo", &h.line_no.to_string()),
+                ("text", &(h.text.trim_end()).to_string()),
+                (
+                    "mark",
+                    &(if shadow {
+                        copy_text("rsProfileInstaller.hint.shadowMark", &[])
+                    } else {
+                        String::new()
+                    }),
+                ),
+            ],
         ));
     }
-    let mut out = format!(
-        "{what} 里有 {} 行提到 ccm，而它们都在 cc-monitor 的围栏之外。\n\
-         围栏删法够不着裸行 —— 边界在哪只有你知道，所以 cc-monitor 一个字节都不会碰它们。\n\
-         要不要删、删哪几行，由你自己定：\n\n{body}",
-        hits.len()
+    let mut out = copy_text(
+        "rsProfileInstaller.hint.head",
+        &[
+            ("what", &what.to_string()),
+            ("count", &(hits.len()).to_string()),
+            ("body", &body.to_string()),
+        ],
     );
     if shadowed > 0 {
-        out.push_str(&format!(
-            "\n标了「会赢过我们那一块」的那 {shadowed} 行：cc-monitor 装的别名块用 `declare -f` \
-             让着你已有的同名函数，而你这几行在它前面 —— 不删掉它们，装了那一块也不生效。\n"
+        out.push_str(&copy_text(
+            "rsProfileInstaller.hint.shadowNote",
+            &[("shadowed", &shadowed.to_string())],
         ));
     }
-    out.push_str(&format!(
-        "\n动手的地方：用你自己的编辑器打开 {what}，删掉你决定不要的那几行，再开一个新终端。\n"
+    out.push_str(&copy_text(
+        "rsProfileInstaller.hint.whereToEdit",
+        &[("what", &what.to_string())],
     ));
     out
 }
@@ -382,8 +391,7 @@ pub fn render_manual_cleanup_hint(what: &str, hits: &[LegacyRcLine]) -> String {
 /// 另外：父目录若已存在，用它的 canonical 形态再查一次前缀 —— 挡掉
 /// `~/link -> /etc` 这种**符号链接逃逸**（`install` 会跟着链接写过去）。
 pub fn fence_profile_path(raw: &str) -> Result<PathBuf, String> {
-    let home =
-        dirs::home_dir().ok_or_else(|| "找不到 home 目录 —— 拒绝写任何 profile".to_string())?;
+    let home = dirs::home_dir().ok_or_else(|| copy_text("rsProfileInstaller.fence.noHome", &[]))?;
     fence_path_under(&home, raw)
 }
 
@@ -403,27 +411,39 @@ pub fn fence_path_under(home: &std::path::Path, raw: &str) -> Result<PathBuf, St
         PathBuf::from(raw)
     };
     if !expanded.is_absolute() {
-        return Err(format!(
-            "refuse profile path: 必须是绝对路径（实得 {raw:?}）"
+        return Err(copy_text(
+            "rsProfileInstaller.fence.notAbsolute",
+            &[("raw", &format!("{:?}", raw))],
         ));
     }
     if expanded
         .components()
         .any(|c| matches!(c, std::path::Component::ParentDir))
     {
-        return Err(format!("refuse profile path: 不许含 `..`（实得 {raw:?}）"));
+        return Err(copy_text(
+            "rsProfileInstaller.fence.dotdot",
+            &[("raw", &format!("{:?}", raw))],
+        ));
     }
     if !expanded.starts_with(&home) {
-        return Err(format!(
-            "refuse profile path: 只能落在 home 之内（实得 {raw:?}，home 是 {home:?}）"
+        return Err(copy_text(
+            "rsProfileInstaller.fence.outsideHome",
+            &[
+                ("raw", &format!("{:?}", raw)),
+                ("home", &format!("{:?}", home)),
+            ],
         ));
     }
     // 符号链接逃逸：父目录已存在时用它的真身再查一次。
     if let Some(parent) = expanded.parent() {
         if let (Ok(real_parent), Ok(real_home)) = (parent.canonicalize(), home.canonicalize()) {
             if !real_parent.starts_with(&real_home) {
-                return Err(format!(
-                    "refuse profile path: 父目录经符号链接跑出了 home（{raw:?} → {real_parent:?}）"
+                return Err(copy_text(
+                    "rsProfileInstaller.fence.symlinkEscape",
+                    &[
+                        ("raw", &format!("{:?}", raw)),
+                        ("realParent", &format!("{:?}", real_parent)),
+                    ],
                 ));
             }
         }
@@ -786,12 +806,22 @@ fn run_user_path_powershell(script: &str) -> Result<String, String> {
         StderrSink::Captured,
     )
     .and_then(|c| c.wait_with_output())
-    .map_err(|e| format!("起不来 powershell.exe：{e}"))?;
+    .map_err(|e| {
+        copy_text(
+            "rsProfileInstaller.ps.spawnFailed",
+            &[("e", &e.to_string())],
+        )
+    })?;
     if !out.status.success() {
-        return Err(format!(
-            "powershell 退出码 {:?}；stderr：{}",
-            out.status.code(),
-            String::from_utf8_lossy(&out.stderr).trim()
+        return Err(copy_text(
+            "rsProfileInstaller.ps.exitCode",
+            &[
+                ("status", &format!("{:?}", out.status.code())),
+                (
+                    "detail",
+                    &(String::from_utf8_lossy(&out.stderr).trim()).to_string(),
+                ),
+            ],
         ));
     }
     Ok(String::from_utf8_lossy(&out.stdout).to_string())
@@ -799,7 +829,7 @@ fn run_user_path_powershell(script: &str) -> Result<String, String> {
 
 #[cfg(not(windows))]
 fn run_user_path_powershell(_script: &str) -> Result<String, String> {
-    Err("这台机器上没有「用户级 PATH」这一档 —— 它是 Windows 独有的".to_string())
+    Err(copy_text("rsProfileInstaller.userPath.notWindows", &[]))
 }
 
 /// `KR135D1` ①：**现在状态**。每调一次真跑一趟探针，**不缓存**。
@@ -819,11 +849,7 @@ pub fn user_path_status() -> UserPathStatus {
                 on_user_path: false,
                 add_command,
                 remove_command,
-                error: Some(
-                    "问不出本机 `ccm` 的 bin 目录 —— 它现算自 `tool_registry` 那张表里 \
-                     `ccm` 那条本机载体的落点。取不到 = 那张表被改坏了"
-                        .to_string(),
-                ),
+                error: Some(copy_text("rsProfileInstaller.userPath.noBinDir", &[])),
             };
         }
     };
@@ -865,7 +891,7 @@ pub fn user_path_status() -> UserPathStatus {
 /// `KR135D1` ②：**一个按钮加**。跑的就是 [`render_user_path_setup_command`] 那段字节。
 pub fn user_path_add() -> Result<(), String> {
     let script = render_user_path_setup_command()
-        .ok_or("问不出本机 `ccm` 的 bin 目录 —— 不发明一个目录往用户 PATH 上写")?;
+        .ok_or(&copy_text("rsProfileInstaller.userPath.addNoDir", &[]))?;
     run_user_path_powershell(&script).map(|_| ())
 }
 
@@ -873,7 +899,7 @@ pub fn user_path_add() -> Result<(), String> {
 /// —— **只摘自己那一格**（整格比，不碰用户 PATH 里别的东西）。
 pub fn user_path_remove() -> Result<(), String> {
     let script = render_user_path_removal_command()
-        .ok_or("问不出本机 `ccm` 的 bin 目录 —— 不拿一个猜出来的目录去改用户 PATH")?;
+        .ok_or(&copy_text("rsProfileInstaller.userPath.removeNoDir", &[]))?;
     run_user_path_powershell(&script).map(|_| ())
 }
 

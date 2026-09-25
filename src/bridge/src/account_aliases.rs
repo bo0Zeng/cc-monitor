@@ -40,6 +40,7 @@
 //! 三条命令各带一个 `shell`：同一份清单，POSIX 落 `~/.cc-monitor/aliases.sh`、PowerShell 落
 //! `~/.cc-monitor/aliases.ps1`，各自由那个 shell 的启动文件里一行 source 接上。
 
+use crate::copy_table::copy_text;
 use std::path::{Path, PathBuf};
 
 use crate::shell_dialect::Shell;
@@ -89,9 +90,9 @@ pub fn render_file(shell: Shell, lines: &[String]) -> String {
     let mut out = String::new();
     out.push_str(FILE_BEGIN);
     out.push('\n');
-    out.push_str(shell.dialect().file_header());
+    out.push_str(&shell.dialect().file_header());
     if lines.is_empty() {
-        out.push_str("# （当前一条别名都没有）\n");
+        out.push_str(&copy_text("rsAccountAliases.file.empty", &[]));
     }
     for l in lines {
         out.push_str(l);
@@ -244,7 +245,7 @@ pub fn check_alias(a: &Alias, shell: Shell) -> Result<(), String> {
     let d = shell.dialect();
     let caps = Caps::of(shell);
     if !d.name_is_valid(&a.name) {
-        return Err("名字只能用字母、数字、下划线，而且不能以数字开头".into());
+        return Err(copy_text("rsAccountAliases.check.badName", &[]).into());
     }
     let (mut account, mut base, mut tmux, mut tmux_named, mut tmux_base) =
         (false, false, false, false, false);
@@ -252,13 +253,13 @@ pub fn check_alias(a: &Alias, shell: Shell) -> Result<(), String> {
     let mut it = a.args.iter();
     while let Some(w) = it.next() {
         if w.chars().any(char::is_control) {
-            return Err("参数里有换行或控制字符".into());
+            return Err(copy_text("rsAccountAliases.check.controlChar", &[]).into());
         }
         d.arg_is_passable(w)?;
         if w == "--" {
             for x in it.by_ref() {
                 if x.chars().any(char::is_control) {
-                    return Err("参数里有换行或控制字符".into());
+                    return Err(copy_text("rsAccountAliases.check.controlChar", &[]).into());
                 }
                 d.arg_is_passable(x)?;
             }
@@ -267,32 +268,44 @@ pub fn check_alias(a: &Alias, shell: Shell) -> Result<(), String> {
         // 能力闸（`71 §4.6 ①`：「`cct` 在 Windows 上没有」从硬编码变成能力查询）。
         let head = w.split_once('=').map_or(w.as_str(), |(h, _)| h);
         if !caps.tmux && NEEDS_TMUX.contains(&head) {
-            return Err(format!(
-                "这台机器上没有 tmux —— {} 都用不了",
-                NEEDS_TMUX
-                    .iter()
-                    .map(|f| format!("`{f}`"))
-                    .collect::<Vec<_>>()
-                    .join(" / ")
+            return Err(copy_text(
+                "rsAccountAliases.check.noTmux",
+                &[(
+                    "flags",
+                    &(NEEDS_TMUX
+                        .iter()
+                        .map(|f| format!("`{f}`"))
+                        .collect::<Vec<_>>()
+                        .join(" / "))
+                    .to_string(),
+                )],
             ));
         }
         if let Some(n) = w.strip_prefix("--tmux=") {
             if n.is_empty() {
-                return Err("`--tmux=` 后面缺会话名".into());
+                return Err(copy_text("rsAccountAliases.check.tmuxNoName", &[]).into());
             }
             tmux = true;
             tmux_named = true;
             continue;
         }
         let Some((flag, takes)) = ALIAS_FLAGS.iter().find(|(f, _)| f == w) else {
-            return Err(format!("`{w}` 不能放进别名（只收 ccm 的修饰）"));
+            return Err(copy_text(
+                "rsAccountAliases.check.notAllowed",
+                &[("word", &w.to_string())],
+            ));
         };
         if *takes {
             match it.next() {
                 Some(v) if !v.is_empty() && !v.chars().any(char::is_control) => {
                     d.arg_is_passable(v)?
                 }
-                _ => return Err(format!("`{flag}` 后面缺一个值")),
+                _ => {
+                    return Err(copy_text(
+                        "rsAccountAliases.check.missingValue",
+                        &[("flag", &flag.to_string())],
+                    ))
+                }
             }
         }
         match *flag {
@@ -312,19 +325,19 @@ pub fn check_alias(a: &Alias, shell: Shell) -> Result<(), String> {
     }
     // V1–V4（`71 §5`，依据是 `ccm --help` 逐字）＋ 〔AL1c〕后端 `argv.rs` 那道「备注要有登记」的闸。
     if account && base {
-        return Err("`--account` 与 `--base` 只能选一个".into());
+        return Err(copy_text("rsAccountAliases.check.accountXorBase", &[]).into());
     }
     if tmux_named && tmux_base {
-        return Err("`--tmux=<名>` 与 `--tmux-base` 只能选一个".into());
+        return Err(copy_text("rsAccountAliases.check.tmuxXorBase", &[]).into());
     }
     if bus && !detach {
-        return Err("`--bus-register` 要和 `--detach` 一起用".into());
+        return Err(copy_text("rsAccountAliases.check.busNeedsDetach", &[]).into());
     }
     if note && !bus {
-        return Err("`--bus-note` 要和 `--bus-register` 一起用".into());
+        return Err(copy_text("rsAccountAliases.check.noteNeedsRegister", &[]).into());
     }
     if (size || detach) && !tmux {
-        return Err("`--tmux-size` 与 `--detach` 只在 tmux 里起的时候有意义".into());
+        return Err(copy_text("rsAccountAliases.check.sizeNeedsTmux", &[]).into());
     }
     Ok(())
 }
@@ -344,7 +357,7 @@ pub fn render(aliases: &[Alias], shell: Shell) -> AliasRender {
         if seen.iter().any(|s| d.same_name(s, &a.name)) {
             problems.push(AliasProblem {
                 name: a.name.clone(),
-                message: "同一个名字出现了两次 —— 后一条会盖掉前一条".into(),
+                message: copy_text("rsAccountAliases.render.duplicate", &[]).into(),
             });
             continue;
         }
@@ -387,7 +400,15 @@ pub fn read_in(
     let (exists, text) = match std::fs::read_to_string(&path) {
         Ok(t) => (true, t),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => (false, String::new()),
-        Err(e) => return Err(format!("读不了 {}：{e}", path.display())),
+        Err(e) => {
+            return Err(copy_text(
+                "rsAccountAliases.read.failed",
+                &[
+                    ("path", &(path.display()).to_string()),
+                    ("e", &e.to_string()),
+                ],
+            ))
+        }
     };
     let mut aliases = Vec::new();
     let mut unparsed = Vec::new();
@@ -433,10 +454,15 @@ pub async fn install_in<D: crate::user_files::Door>(
             .iter()
             .map(|p| format!("{}：{}", p.name, p.message))
             .collect();
-        return Err(format!(
-            "有 {} 条别名不合格，一条都没写：{}",
-            why.len(),
-            why.join("；")
+        return Err(copy_text(
+            "rsAccountAliases.install.invalid",
+            &[
+                ("count", &(why.len()).to_string()),
+                (
+                    "list",
+                    &(why.join(&copy_text("rsAccountAliases.install.listSep", &[]))).to_string(),
+                ),
+            ],
         ));
     }
     let home = door.home().await?;
@@ -444,23 +470,27 @@ pub async fn install_in<D: crate::user_files::Door>(
     let wrote_alias_file = write_alias_file(door, &home, shell, &r.code).await?;
     let mut notes = Vec::new();
     if !wrote_alias_file {
-        notes.push("别名文件和盘上那份一模一样，没有重写。".to_string());
+        notes.push(copy_text("rsAccountAliases.install.unchanged", &[]));
     }
     let mut wrote_rc = false;
     if let Some(rc_raw) = rc {
         let line = shell.dialect().source_line(&path.display().to_string());
         if ensure_rc_source_line(door, &home, rc_raw, &line).await? {
             wrote_rc = true;
-            notes.push(format!(
-                "{rc_raw} 里加了一行 source（要撤就把 cc-monitor 那一小块整块删掉）。"
+            notes.push(copy_text(
+                "rsAccountAliases.install.sourceAdded",
+                &[("rc", &rc_raw.to_string())],
             ));
         } else {
-            notes.push(format!("{rc_raw} 里已经接上了这份文件，没有再动它。"));
+            notes.push(copy_text(
+                "rsAccountAliases.install.sourceExists",
+                &[("rc", &rc_raw.to_string())],
+            ));
         }
     }
-    notes.push(format!(
-        "新开一个终端就能用；当前终端要先执行一次 . {}",
-        path.display()
+    notes.push(copy_text(
+        "rsAccountAliases.install.nextStep",
+        &[("path", &(path.display()).to_string())],
     ));
     Ok(AliasInstallReport {
         alias_path: path.display().to_string(),
@@ -551,7 +581,10 @@ async fn ensure_rc_source_line<D: crate::user_files::Door>(
     let create = d.creates_missing_startup_file();
     let done = crate::user_files::edit(door, home, &rel, true, create, |raw| {
         let Some(raw) = raw.or(create.then_some("")) else {
-            return Err(format!("读不到 {what}：文件不存在"));
+            return Err(copy_text(
+                "rsAccountAliases.rc.missing",
+                &[("what", &what.to_string())],
+            ));
         };
         let existing = d.decode_from_disk(raw);
         // 🔴 认的是「接上了我们那份文件」（方言按相对路径认），**不是那一整行** ——
