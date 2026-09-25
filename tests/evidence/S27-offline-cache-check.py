@@ -13,7 +13,7 @@ specified」—— **门禁红在「下不到包」这条与代码对不对毫�
 
 # 两个人群（都必须非空 —— 扫到 0 条当成失败，不是「没问题」）
 
-- **P1「今天」**：`src/bridge/Cargo.lock` ＋ `src/backend/Cargo.lock` 里
+- **P1「今天」**：`src/bridge/Cargo.lock` ＋ `src/backend/Cargo.lock` ＋ `src/panorama-engine/Cargo.lock`（〔RM1c〕）里
   **source 指向 crates.io** 的全部 `(name, version)` 去重并集。
   这是**今天**门禁断网构建要的全集。现打 672 条（2026-09-19）。
   ⚠ `path` 依赖（本仓自己那 19 个块）不在人群里 —— 它们不走 registry 缓存。
@@ -51,7 +51,14 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-LOCKS = [ROOT / "src" / "bridge" / "Cargo.lock", ROOT / "src" / "backend" / "Cargo.lock"]
+# 〔RM1c · 第四波〕第三份：只装全景引擎的独立小程序（`src/panorama-engine`）。
+# 它的 lock 由 monitor 那份播种后剪枝（同一批版本）⇒ 今天不新增任何 `(name, version)`，
+# 但它**是**一份断网构建要解析的 lock，不进人群的话哪天它自己升一个版本就没人点名。
+LOCKS = [
+    ROOT / "src" / "bridge" / "Cargo.lock",
+    ROOT / "src" / "backend" / "Cargo.lock",
+    ROOT / "src" / "panorama-engine" / "Cargo.lock",
+]
 MANIFEST = ROOT / "tests" / "evidence" / "S27-cache-manifest.md"
 
 # 反空真的地板。现打（2026-09-19）P1 = 672、P2 = 26。
@@ -130,7 +137,7 @@ def main() -> int:
 
     # ── 反空真：人群本身先立住，再谈缺不缺 ──────────────────────────────
     if len(p1) < P1_FLOOR:
-        fail.append(f"P1 只扫到 {len(p1)} 条（地板 {P1_FLOOR}）—— 两份 lock 或解析口径坏了，不是「没问题」")
+        fail.append(f"P1 只扫到 {len(p1)} 条（地板 {P1_FLOOR}）—— 几份 lock 或解析口径坏了，不是「没问题」")
     if len(p2) != P2_EXACT:
         fail.append(f"P2 扫到 {len(p2)} 条，表里应当恰好 {P2_EXACT} 条 —— manifest 被改过或解析口径坏了")
     if not dirs:
@@ -154,7 +161,7 @@ def main() -> int:
     }
 
     if m1:
-        fail.append(f"P1（今天两份 lock）缺 {len(m1)} 份 `.crate` —— 断网门禁会红在「下不到包」上")
+        fail.append(f"P1（今天那几份 lock）缺 {len(m1)} 份 `.crate` —— 断网门禁会红在「下不到包」上")
     if m2:
         fail.append(f"P2（23a 的 26 条）缺 {len(m2)} 份 `.crate` —— `russh-sftp` 一落地门禁当场断网失败")
 
@@ -164,7 +171,7 @@ def main() -> int:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:
         print(f"S27 断网缓存判据 · 缓存目录 {', '.join(map(str, dirs)) or '（无）'}")
-        print(f"  P1 今天两份 lock 的 crates.io 条目 : {len(p1) - len(m1)}/{len(p1)} 齐")
+        print(f"  P1 今天那几份 lock 的 crates.io 条目 : {len(p1) - len(m1)}/{len(p1)} 齐")
         print(f"  P2 23a 要新增的条目（manifest）    : {len(p2) - len(m2)}/{len(p2)} 齐")
         for n, v in m1:
             print(f"  🔴 P1 缺：{n} {v}", file=sys.stderr)
