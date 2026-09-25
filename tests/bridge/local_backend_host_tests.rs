@@ -4146,6 +4146,16 @@ fn hx1_a_busy_stream_is_told_as_another_monitor_not_as_a_version_mismatch() {
         guard_core::production_code(include_str!("../../src/bridge/src/local_backend_host.rs"));
     guard_core::find_pinned(&me, "if last_busy {\n        return Adopt::Busy;")
         .expect("等满之后按最后一次是否 busy 分臂");
+    let busy_arm = braced_block(&me, "Err(AttachErr::Busy(m)) => {", 20, 400);
+    assert!(
+        busy_arm.contains("last_busy = true;"),
+        "stream-busy 那一臂不再记「最后一次是 busy」：{busy_arm}"
+    );
+    assert_eq!(
+        me.matches("last_busy = true;").count(),
+        1,
+        "只有 stream-busy 那一臂能把它置真"
+    );
     let arm = braced_block(&me, "Adopt::Busy => {", 300, 3000);
     assert!(
         arm.contains("\"rsLocalBackendHost.start.busyNotice\"")
