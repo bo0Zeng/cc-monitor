@@ -462,7 +462,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// ＋ 行为：RM1f `panorama` 改异步档、`cancel` 真撤（杀子进程组）· Windows 上找全景小程序认 `.exe` 后缀。
 ///
 /// ★★★ **p3j-history-lines**（2026-09-25，第四波 CF2 合并那一拍）：子命令 ＋1 —— `history-lines`（按可计行号取原文，两个命令面）。
-pub const BUILD_ID: &str = "p3j-history-lines";
+///
+/// ★★★ **p3k-deploy-by-bytes**（2026-09-25，第四波 DP1 合并那一拍）：子命令集不变，**行为**变更 ——
+/// 下载失败留 `.part`（只清零字节的空 `.part`）· 上传失败先等完已发出的写再走 · 远端身份改由 monitor 读字节里的戳判（`.build_id` 退役）。
+/// 照 p1v 先例不加历史行。
+pub const BUILD_ID: &str = "p3k-deploy-by-bytes";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
