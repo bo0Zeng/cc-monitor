@@ -34,6 +34,9 @@
 //! 主计划已定「超时一律推给客户端」（backend 的零定时器铁律不改，登记表仍 1 条）。
 //! 所以 [`InboundClient::call`] 自带超时，且超时后**补发一条 `cancel`**，让后端别白跑 ——
 //! 这顺带让 U6b-1 写好的 `cancel` 命令第一次有真调用方。
+//! 〔RM1f〕**调用方放弃等待**（这个 future 被丢）与超时同一格：命令已入队、还没拿到结局就走人
+//! ⇒ 同一条 `cancel` 补发（`AbandonGuard`）。对后端的可取消档（`Run::Async`）这一条真能把活停下；
+//! 对阻塞档它照旧回 `not_cancellable`（那条应答落进已登记的 cancel id，不刷 warn）。
 
 use crate::ssh_source::InboundFrame;
 use serde::Serialize;
@@ -353,7 +356,20 @@ impl InboundClient {
                 return Err(CallError::Timeout { after: timeout });
             }
         }
-        match tokio::time::timeout_at(deadline, rx).await {
+        // 〔RM1f〕从这一刻起它**已经入队**、后端会去跑它 ⇒ 调用方在拿到结局之前走人（超时，或者这个
+        // future 被丢：`select!` 输了 / 任务被撤 / 界面点了「取消」）都要补发一条 `cancel`，让后端别白跑。
+        // 〔墓碑 —— RM1f 之前只有超时那一臂补发：调用方放弃等待（future 被丢）时一条都不发，
+        //  后端那条命令照跑到它自己的期限（建索引 900 s）。〕
+        let mut abandon = AbandonGuard {
+            client: self,
+            id: Some(id),
+        };
+        let outcome = tokio::time::timeout_at(deadline, rx).await;
+        if outcome.is_ok() {
+            // 拿到了结局（应答 / 已取消 / 断连）⇒ 没什么可撤的。
+            abandon.id = None;
+        }
+        match outcome {
             Ok(Ok(Outcome::Reply { ok: true, data, .. })) => Ok(data),
             Ok(Ok(Outcome::Reply { code, message, .. })) => Err(CallError::Remote {
                 code: code.unwrap_or_else(|| "unspecified".to_string()),
@@ -362,10 +378,8 @@ impl InboundClient {
             Ok(Ok(Outcome::Cancelled)) => Err(CallError::Cancelled),
             // 登记条目被摘掉/连接没了 ⇒ 发送端 drop。
             Ok(Err(_)) => Err(CallError::Disconnected),
-            Err(_elapsed) => {
-                self.fire_and_forget_cancel(&id);
-                Err(CallError::Timeout { after: timeout })
-            }
+            // 超时：`abandon` 还拿着 id ⇒ 它在本函数返回时补发那条 `cancel`（与「被丢」同一处，不发两次）。
+            Err(_elapsed) => Err(CallError::Timeout { after: timeout }),
         }
     }
 
@@ -524,6 +538,22 @@ impl InboundClient {
         if self.writes.try_send(WriteJob::Line(line)).is_err() {
             self.take_pending(&id);
             tracing::debug!("超时补发 cancel 未能入队（队列满或已断连）：target={target}");
+        }
+    }
+}
+
+/// 〔RM1f〕**已入队、还没拿到结局**的那一条命令：这个守卫被析构时（调用方超时 / future 被丢）
+/// 补发一条 `cancel{target: id}`（[`InboundClient::fire_and_forget_cancel`]，best-effort、不等应答）。
+/// 拿到结局的那一刻 `id` 被取走 ⇒ 不发。
+struct AbandonGuard<'a> {
+    client: &'a InboundClient,
+    id: Option<String>,
+}
+
+impl Drop for AbandonGuard<'_> {
+    fn drop(&mut self) {
+        if let Some(id) = self.id.take() {
+            self.client.fire_and_forget_cancel(&id);
         }
     }
 }

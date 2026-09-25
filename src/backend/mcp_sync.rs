@@ -95,7 +95,7 @@ pub(crate) enum There {
 }
 
 impl There {
-    fn wire(self) -> &'static str {
+    pub(crate) fn wire(self) -> &'static str {
         match self {
             There::Present => "present",
             There::Absent => "absent",
@@ -383,8 +383,8 @@ pub(crate) fn plan(
     Ok(write)
 }
 
-/// 一组条目名（可缺席）。给了就必须是字符串数组。
-fn names_arg(
+/// 一组条目名（可缺席）。给了就必须是字符串数组。〔AS2〕skill 装那一条复用它（`pub(crate)`，语义不变）。
+pub(crate) fn names_arg(
     v: Option<&Value>,
     key: &str,
 ) -> Result<Option<BTreeSet<String>>, (&'static str, String)> {

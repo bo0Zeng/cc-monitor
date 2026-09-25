@@ -35,6 +35,9 @@ function headlineFor(kind: string): string {
       return "远端降级模式";
     case "snapshot":
       return "⚠ 远端历史快照拉取失败";
+    // 〔RM1f〕推代码全景组件之前那一句（`panorama_call.rs::install_notice`）。不是故障，所以不带 ⚠。
+    case "panorama-install":
+      return "正在装代码全景组件";
     default:
       return "⚠ 远端提示";
   }

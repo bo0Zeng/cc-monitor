@@ -54,7 +54,8 @@ describe("F69 PanoramaView.load —— D20 默认关的真接线守卫", () => {
     expect(api.index).not.toHaveBeenCalled();
     msgBtn(view)!.click();
     await flush();
-    expect(api.index).toHaveBeenCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" });
+    // 〔RM1f〕第二个参数是撤单信号（这台撤不撤得掉由 `api.cancellable` 定），这里只钉「问的是哪个仓」。
+    expect(vi.mocked(api.index).mock.calls.map((c) => c[0])).toEqual([{ origin: LOCAL_ORIGIN, path: "/repo" }]);
   });
 
   it("symbols>0 且非陈旧 → 直接加载 overview，不 index（不 enable-gate、不自动重扫）", async () => {
@@ -72,6 +73,6 @@ describe("F69 PanoramaView.load —— D20 默认关的真接线守卫", () => {
     vi.mocked(api.overview).mockReturnValue(pending<Overview>());
     void callLoad(view, "/repo");
     await flush();
-    expect(api.index).toHaveBeenCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" });
+    expect(vi.mocked(api.index).mock.calls.map((c) => c[0])).toEqual([{ origin: LOCAL_ORIGIN, path: "/repo" }]);
   });
 });

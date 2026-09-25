@@ -420,7 +420,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
              而且 `cancel` 会对它撒谎（abort 对 spawn_blocking 是空操作）"
     );
     // 纯计算的两条留在普通 spawn 上（它们能在 await 点被真取消）。
-    for c in ["ping", "resolve"] {
+    // 〔AS2 · 第四波 4B〕`assets-sync`：等拨号 / 等远端 capture —— 真异步，也在普通 spawn 上。
+    // 〔RM1f〕`panorama` 起进程，但**异步等**（`plugin::invoke::run_abortable`）⇒ 同在这一档：
+    //   不占 worker（等的是子进程退出，不是一段同步计算），`cancel` 命中时 future 被丢、子进程组被杀。
+    for c in ["ping", "resolve", "assets-sync", "panorama"] {
         assert!(
             matches!(d(c), Disposition::Spawn(..)),
             "`{c}` 不该在阻塞档上 —— 那会让它白白变成不可取消"
@@ -513,8 +516,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 〔RM1b · 第四波〕功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
         "plugins-marketplaces",
         "tasks-list",
-        // 〔RM1c · 第四波〕代码全景：起一个进程、等它退出（建索引可到分钟级）。
-        "panorama",
+        // 〔RM1f〕`panorama` 从这里挪走了：起进程改走 `invoke::run_abortable`（异步等子进程），
+        //   上面「纯计算留在普通 spawn」那一格里单列它（可取消档）。
         // 〔RM1a · 第四波〕账号层那份凭据文件的两条：同步文件 I/O（读 / 原子写那一份）。
         "apikey-key-set",
         "apikey-read",
@@ -523,6 +526,12 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "relay-status",
         // 〔RM1a · 第四波〕足迹那一条：一批 stat / 读几份小文件。
         "footprint-probe",
+        // 〔AS2 · 第四波 4B〕资产目录两条：扫盘 ＋ 原子写目录文件。
+        "assets-catalog",
+        "assets-catalog-merge",
+        // 〔AS2〕skill「装到这台」两条：走目录 ＋ 读原文 ＋ stat。
+        "skill-read",
+        "skill-install-plan",
         // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话：同步文件 I/O（围栏 ＋ 读 / 写满换名 / 删）。
         "files-peek",
         "files-put",
@@ -542,6 +551,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "kill",
         "ping",
         "resolve",
+        "assets-sync",
         "cancel",
         "link-open",
         "link-data",
@@ -595,6 +605,11 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "relay-ensure",
         "relay-status",
         "footprint-probe",
+        // 〔AS2 · 第四波 4B〕资产目录两条，阻塞档。
+        "assets-catalog",
+        "assets-catalog-merge",
+        "skill-read",
+        "skill-install-plan",
         // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话：同步文件 I/O，阻塞档。
         "files-peek",
         "files-put",
@@ -858,4 +873,123 @@ async fn cancelling_an_unknown_id_is_idempotent_not_an_error() {
             .any(|l| l.contains("\"id\":\"c\"") && l.contains("\"ok\":true")),
         "{out:?}"
     );
+}
+
+/// ★〔RM1f · C3〕**`cancel` 打得断在飞的 `panorama`**：回 `cancelled`（不是 `not_cancellable`），
+/// 小程序那一组子进程没了。
+///
+/// 处理器走**真的** `control::panorama::answer_with`（找它 · 问它会什么 · 起它全是真进程：
+/// 一个说小程序那套方言的 sh 替身，`index` 那一问睡着、把自己的 pid 写进文件），
+/// 登记走真的 `spawn_handler`、`cancel` 走真的 `handle_line`。
+/// 档位那一格（`dispatch` 把 `panorama` 放进可取消档）由上面 `the_dispatch_table_puts_…` 钉。
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_cancel_really_stops_an_in_flight_panorama_index() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = std::env::temp_dir().join(format!("ccm-be-inbound-pano-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let pidf = dir.join("pid");
+    let bin = dir.join(crate::control::panorama::PLUGIN_NAME);
+    std::fs::write(
+        &bin,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = \"--probe\" ]; then printf 'name=cc-monitor-panorama\\nversion=t\\ncapabilities=index\\n'; exit 0; fi\n\
+             echo $$ > '{p}.tmp'; mv '{p}.tmp' '{p}'\nexec sleep 300\n",
+            p = pidf.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let (tx, mut rx) = chan();
+    let running: Running = Arc::new(Mutex::new(HashMap::new()));
+    let (fixed, store) = (vec![bin.clone()], dir.join("store"));
+    spawn_handler(
+        Request {
+            id: "pano".into(),
+            cmd: "panorama".into(),
+            args: serde_json::json!({"op": "index", "repo": "/r"}),
+        },
+        tx.clone(),
+        running.clone(),
+        move |r: Request| async move {
+            crate::control::panorama::answer_with(&fixed, &store, &r.args)
+                .await
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        },
+        true,
+    )
+    .await;
+    // 等替身把 pid 写出来（= 它真的在跑了）。
+    let mut pid = None;
+    for _ in 0..200 {
+        if let Ok(s) = std::fs::read_to_string(&pidf) {
+            pid = s.trim().parse::<u32>().ok();
+            if pid.is_some() {
+                break;
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    let pid = pid.expect("替身小程序 10 秒内没起来 —— 本条判不了");
+    let alive = |p: u32| {
+        std::fs::read_to_string(format!("/proc/{p}/stat")).is_ok_and(|s| {
+            s.rsplit_once(')')
+                .and_then(|(_, r)| r.split_whitespace().next())
+                .is_some_and(|st| st != "Z" && st != "X")
+        })
+    };
+    assert!(alive(pid), "正控：取消之前它在跑");
+
+    let links = crate::dial::link::Table::new(tx.clone());
+    let xfers = crate::control::transfer::Desk::new(tx.clone());
+    handle_line(
+        br#"{"id":"c1","cmd":"cancel","args":{"target":"pano"}}"#,
+        &tx,
+        &running,
+        &links,
+        &xfers,
+    )
+    .await;
+    let mut frames = Vec::new();
+    for _ in 0..2 {
+        frames.push(
+            tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+                .await
+                .expect("5 秒内没等到应答")
+                .expect("通道关了"),
+        );
+    }
+    assert!(
+        frames
+            .iter()
+            .any(|f| matches!(f, Frame::Cancelled { id } if id == "pano")),
+        "没有 `cancelled{{pano}}` 帧：{frames:?}"
+    );
+    assert!(
+        !frames.iter().any(|f| matches!(
+            f,
+            Frame::Reply { code: Some(c), .. } if c == "not_cancellable"
+        )),
+        "`panorama` 又回了 `not_cancellable`：{frames:?}"
+    );
+    let mut dead = false;
+    for _ in 0..100 {
+        if !alive(pid) {
+            dead = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    let _ = std::process::Command::new("kill")
+        .args(["-9", &pid.to_string()])
+        .stderr(std::process::Stdio::null())
+        .status();
+    assert!(
+        dead,
+        "`cancelled` 回了，小程序（{pid}）5 秒后还在跑 —— 那是一条撒谎的 `cancelled`"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }

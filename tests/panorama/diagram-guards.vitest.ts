@@ -7,8 +7,9 @@
 // 上游加一种形状 / 一格诚实信号 / 一个字段而本仓没跟 ⇒ 红；本仓多写一个上游没有的 ⇒ 也红。
 //
 // 🔴 被判对象零 mock：本文件不 mock 任何模块。
-// **买不到**：线上 JSON 真长这样 —— 那一半在 `tests/bridge/panorama_tests.rs` 的真引擎判据
-// （`the_diagram_commands_pass_the_upstream_through_untouched`）与上游自己的往返测试。
+// **买不到**：线上 JSON 真长这样 —— 那一半在全景小程序的真引擎判据（`tests/panorama-engine/cli_tests.rs`
+// 的 `every_op_runs_on_a_real_engine_over_a_synthetic_repo`）与上游自己的往返测试。
+// 〔RM1f：原先点的是 monitor 那条（`the_diagram_commands_pass_the_upstream_through_untouched`〔散文墓碑〕），随内嵌引擎删了。〕
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { RENDERERS, legendFor, renderCallGraph, renderClusters, renderTypeGraph, layoutCallGraph } from "../../src/panorama/diagram-render";
