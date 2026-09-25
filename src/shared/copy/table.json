@@ -6460,6 +6460,467 @@
       "kind": "title",
       "zh": "第三方 API key",
       "args": []
+    },
+    "settingsPanel.save.appearance": {
+      "kind": "body",
+      "zh": "外观",
+      "args": []
+    },
+    "settingsPanel.field.resetHint": {
+      "kind": "body",
+      "zh": "恢复「{label}」的默认值",
+      "args": ["label"]
+    },
+    "settingsPanel.field.reset": {
+      "kind": "action",
+      "zh": "↺",
+      "args": []
+    },
+    "settingsPanel.safeBlock.failed": {
+      "kind": "error",
+      "zh": "此区块加载失败：{e}",
+      "args": ["e"]
+    },
+    "settingsPanel.dataDir.resetHint": {
+      "kind": "body",
+      "zh": "清空 → 回退到 $CLAUDE_CONFIG_DIR 或 ~/.claude",
+      "args": []
+    },
+    "settingsPanel.dataDir.reset": {
+      "kind": "action",
+      "zh": "重置",
+      "args": []
+    },
+    "settingsPanel.dataDir.browse": {
+      "kind": "action",
+      "zh": "浏览…",
+      "args": []
+    },
+    "settingsPanel.save.claudeDir": {
+      "kind": "body",
+      "zh": "Claude 数据目录",
+      "args": []
+    },
+    "settingsPanel.dataDir.pathHint": {
+      "kind": "control",
+      "zh": "默认：~/.claude  或  $CLAUDE_CONFIG_DIR",
+      "args": []
+    },
+    "settingsPanel.dataDir.path": {
+      "kind": "control",
+      "zh": "目录路径",
+      "args": []
+    },
+    "settingsPanel.dataDir.title": {
+      "kind": "title",
+      "zh": "Claude 数据目录",
+      "args": []
+    },
+    "settingsPanel.keybindings.allDefault": {
+      "kind": "body",
+      "zh": "全部默认",
+      "args": []
+    },
+    "settingsPanel.keybindings.customized": {
+      "kind": "body",
+      "zh": "已自定义 {n} 项",
+      "args": ["n"]
+    },
+    "settingsPanel.keybindings.open": {
+      "kind": "action",
+      "zh": "打开快捷键编辑器",
+      "args": []
+    },
+    "settingsPanel.behavior.remoteResumeInfo": {
+      "kind": "body",
+      "zh": "远端 resume 或起会话时实际敲的启动器。\n推荐填 ccm（部署过后端就有），tmux 与账号由 cc-monitor 经参数控制。\n⚠ 别填 cct 这类自己建 tmux 的命令：它会另起一个 tmux，cc-monitor 设的账号环境变量落在那个 tmux 之外、被整个吃掉，「用账号 X resume」就不生效。\n留空 = claude。",
+      "args": []
+    },
+    "settingsPanel.behavior.remoteResumeHint": {
+      "kind": "control",
+      "zh": "默认：claude",
+      "args": []
+    },
+    "settingsPanel.behavior.remoteResume": {
+      "kind": "control",
+      "zh": "远端 resume 命令",
+      "args": []
+    },
+    "settingsPanel.behavior.localResumeInfo": {
+      "kind": "body",
+      "zh": "历史浏览器 ↺ 在本机新终端里 resume 会话用的命令。\n留空 = 自动检测 PowerShell 的 cc 函数，没有则用 claude。",
+      "args": []
+    },
+    "settingsPanel.behavior.localResumeHint": {
+      "kind": "control",
+      "zh": "默认：检测 cc，回退 claude",
+      "args": []
+    },
+    "settingsPanel.behavior.localResume": {
+      "kind": "control",
+      "zh": "本地 resume 命令",
+      "args": []
+    },
+    "settingsPanel.behavior.turnNotify": {
+      "kind": "control",
+      "zh": "Claude 完成一轮时发系统通知，只在窗口在后台时发",
+      "args": []
+    },
+    "settingsPanel.behavior.showHiddenTasks": {
+      "kind": "control",
+      "zh": "显示后台任务会话；带 ⚙ 标识，挂在同项目会话之后，改了要重启才生效",
+      "args": []
+    },
+    "settingsPanel.behavior.autoFront": {
+      "kind": "control",
+      "zh": "自动切 Tab 时同时把 monitor 窗口切到前台",
+      "args": []
+    },
+    "settingsPanel.behavior.autoFollow": {
+      "kind": "control",
+      "zh": "用户在终端里输入时自动切到对应 Tab",
+      "args": []
+    },
+    "settingsPanel.machines.unreadable": {
+      "kind": "body",
+      "zh": "这台机器上的机器列表没读出来",
+      "args": []
+    },
+    "settingsPanel.fallback.body": {
+      "kind": "body",
+      "zh": "{why}。下面这几块本该在每台机器自己的页面上，现在临时留在这里；它们都还能用，只是位置不对。",
+      "args": ["why"]
+    },
+    "settingsPanel.nav.machines": {
+      "kind": "title",
+      "zh": "机器",
+      "args": []
+    },
+    "settingsPanel.machines.buildFailed": {
+      "kind": "error",
+      "zh": "机器列表加载失败",
+      "args": []
+    },
+    "settingsPanel.machines.loading": {
+      "kind": "body",
+      "zh": "正在列这台机器上的账号 / 工具…",
+      "args": []
+    },
+    "settingsPanel.group.unknown": {
+      "kind": "title",
+      "zh": "未识别的数据",
+      "args": []
+    },
+    "settingsPanel.group.footprint": {
+      "kind": "title",
+      "zh": "足迹",
+      "args": []
+    },
+    "settingsPanel.group.ccBusHooks": {
+      "kind": "title",
+      "zh": "cc-bus 钩子",
+      "args": []
+    },
+    "settingsPanel.group.plugins": {
+      "kind": "title",
+      "zh": "插件（marketplace）",
+      "args": []
+    },
+    "settingsPanel.group.assets": {
+      "kind": "title",
+      "zh": "资产目录",
+      "args": []
+    },
+    "settingsPanel.group.aliases": {
+      "kind": "title",
+      "zh": "别名",
+      "args": []
+    },
+    "settingsPanel.group.accounts": {
+      "kind": "title",
+      "zh": "账号",
+      "args": []
+    },
+    "settingsPanel.group.remote": {
+      "kind": "title",
+      "zh": "远端连接",
+      "args": []
+    },
+    "settingsPanel.group.backend": {
+      "kind": "title",
+      "zh": "后端",
+      "args": []
+    },
+    "settingsPanel.group.dataPlaces": {
+      "kind": "title",
+      "zh": "数据位置",
+      "args": []
+    },
+    "settingsPanel.group.logs": {
+      "kind": "title",
+      "zh": "日志",
+      "args": []
+    },
+    "settingsPanel.appearance.reset": {
+      "kind": "action",
+      "zh": "恢复外观默认",
+      "args": []
+    },
+    "settingsPanel.group.colors": {
+      "kind": "title",
+      "zh": "颜色",
+      "args": []
+    },
+    "settingsPanel.group.fonts": {
+      "kind": "title",
+      "zh": "字体",
+      "args": []
+    },
+    "settingsPanel.nav.app": {
+      "kind": "title",
+      "zh": "应用",
+      "args": []
+    },
+    "settingsPanel.group.keybindings": {
+      "kind": "title",
+      "zh": "快捷键",
+      "args": []
+    },
+    "settingsPanel.group.behavior": {
+      "kind": "title",
+      "zh": "行为",
+      "args": []
+    },
+    "settingsPanel.machineTab.footprint": {
+      "kind": "title",
+      "zh": "足迹",
+      "args": []
+    },
+    "settingsPanel.machineTab.tools": {
+      "kind": "title",
+      "zh": "工具",
+      "args": []
+    },
+    "settingsPanel.machineTab.accounts": {
+      "kind": "title",
+      "zh": "账号",
+      "args": []
+    },
+    "settingsPanel.machineTab.components": {
+      "kind": "title",
+      "zh": "组件",
+      "args": []
+    },
+    "settingsPanel.machineTab.connection": {
+      "kind": "title",
+      "zh": "连接",
+      "args": []
+    },
+    "settingsPanel.header.closeHint": {
+      "kind": "body",
+      "zh": "关闭（ESC 也行）",
+      "args": []
+    },
+    "settingsPanel.header.close": {
+      "kind": "action",
+      "zh": "×",
+      "args": []
+    },
+    "settingsPanel.header.title": {
+      "kind": "title",
+      "zh": "设置",
+      "args": [],
+      "waive": {
+        "C-Y3": "这里的「设置」是名词（设置窗口的标题），不是祈使动词"
+      }
+    },
+    "settingsPanel.claudeDir.pickTitle": {
+      "kind": "body",
+      "zh": "选择 Claude 数据目录（含 projects 和 sessions 子目录）",
+      "args": []
+    },
+    "settingsPanel.appearance.resetConfirm": {
+      "kind": "body",
+      "zh": "确定要恢复全部外观默认？已保存的颜色和字体偏好会丢失。",
+      "args": []
+    },
+    "settingsPanel.save.failed": {
+      "kind": "error",
+      "zh": "{what}没存下：{e}",
+      "args": ["what", "e"]
+    },
+    "settingsPanel.claudeDir.updated": {
+      "kind": "body",
+      "zh": "Claude 数据目录已更新 —— 需要重启 monitor 才能生效",
+      "args": []
+    },
+    "settingsPanel.close.failed": {
+      "kind": "error",
+      "zh": "关不掉这个窗口：{e}",
+      "args": ["e"]
+    },
+    "settingsPanel.close.saveFailed": {
+      "kind": "error",
+      "zh": "保存失败：{e}",
+      "args": ["e"]
+    },
+    "settingsPanel.behavior.hiddenTasks": {
+      "kind": "control",
+      "zh": "显示后台任务会话",
+      "args": []
+    },
+    "settingsPanel.preset.removeHint": {
+      "kind": "body",
+      "zh": "从预设里移除 {cmd}",
+      "args": ["cmd"]
+    },
+    "settingsPanel.preset.inUse": {
+      "kind": "body",
+      "zh": "{cmd} 正在生效 —— 换成别的命令之后才能把它从预设里移除。",
+      "args": ["cmd"]
+    },
+    "settingsPanel.preset.remove": {
+      "kind": "action",
+      "zh": "×",
+      "args": []
+    },
+    "settingsPanel.open.partialFailed": {
+      "kind": "error",
+      "zh": "部分设置项加载失败：{e}",
+      "args": ["e"]
+    },
+    "settingsPanel.nav.dataPlaces": {
+      "kind": "title",
+      "zh": "数据位置",
+      "args": []
+    },
+    "settingsPanel.nav.logs": {
+      "kind": "title",
+      "zh": "日志",
+      "args": []
+    },
+    "settingsPanel.nav.appearance": {
+      "kind": "title",
+      "zh": "外观",
+      "args": []
+    },
+    "settingsPanel.info.machinesPage": {
+      "kind": "body",
+      "zh": "{remote}\n\n【别名】{aliases}",
+      "args": ["remote", "aliases"]
+    },
+    "settingsPanel.info.appPage": {
+      "kind": "body",
+      "zh": "【行为】{behavior}\n\n【快捷键】{keybindings}",
+      "args": ["behavior", "keybindings"]
+    },
+    "settingsPanel.info.dataPlaces": {
+      "kind": "body",
+      "zh": "「数据位置」：列出 monitor 自己写入的所有文件位置，比如 config.json、history-metadata.json 和界面数据。每项可点 [打开] 直接到文件管理器。只是展示，没有危险操作。",
+      "args": []
+    },
+    "settingsPanel.info.logs": {
+      "kind": "body",
+      "zh": "「日志」：让后端把细节写进日志文件。出问题时，拿得到一份能发给作者的记录。",
+      "args": []
+    },
+    "settingsPanel.info.appearance": {
+      "kind": "body",
+      "zh": "字体：正文、等宽、字号；颜色：背景、卡片、文字、成功、警告、错误。改了当场生效。",
+      "args": []
+    },
+    "settingsPanel.info.aliases": {
+      "kind": "body",
+      "zh": "「别名」是一个名字加一组 ccm 参数。在终端里敲这个名字，就等于敲 ccm 加上这组参数。Windows 上这一块还管终端集成：把 cc 命令写进 $PROFILE，让你敲 cc 而不是 claude 来启动 Claude Code，并把终端窗口登记给 monitor，Tab 上切到终端的按钮才能用。可以一键安装或卸载。",
+      "args": []
+    },
+    "settingsPanel.info.dataDir": {
+      "kind": "body",
+      "zh": "「Claude 数据目录」—— monitor 监听的 .claude 根目录（下含 projects/ 和 sessions/）。默认 ~/.claude 或 $CLAUDE_CONFIG_DIR。修改后需重启 monitor 生效。",
+      "args": []
+    },
+    "settingsPanel.info.keybindings": {
+      "kind": "body",
+      "zh": "自定义全部快捷键，约 17 项。包括 Tab 切换、终端切到前台、行为开关、弹层关闭等。\n\n改了当场生效，不用重启。点 [改] 后按下你想要的组合键；有冲突会先问要不要覆盖。",
+      "args": []
+    },
+    "settingsPanel.info.behavior": {
+      "kind": "body",
+      "zh": "自动跟随用户输入，并可把 monitor 窗口切到前台。\n\n「自动跟随」：你在 claude 里敲回车，monitor 就切到那个会话的 Tab。只跟真正的用户输入，不跟工具返回、也不跟 claude 的流式回复。你手动点 Tab 后 5 秒内不会被自动切走。\n\n「把 monitor 切到前台」默认关：monitor 在后台安静地切 Tab，不打断你正在用的其他窗口，比如浏览器或 IDE。开启后你在终端里输入时，monitor 会浮上来抢焦点。只在「自动跟随」开着时生效。",
+      "args": []
+    },
+    "settingsPanel.field.error": {
+      "kind": "control",
+      "zh": "错误",
+      "args": []
+    },
+    "settingsPanel.field.warn": {
+      "kind": "control",
+      "zh": "警告",
+      "args": []
+    },
+    "settingsPanel.field.success": {
+      "kind": "control",
+      "zh": "成功",
+      "args": []
+    },
+    "settingsPanel.field.text2": {
+      "kind": "control",
+      "zh": "次文本",
+      "args": []
+    },
+    "settingsPanel.field.text": {
+      "kind": "control",
+      "zh": "主文本",
+      "args": []
+    },
+    "settingsPanel.field.card": {
+      "kind": "control",
+      "zh": "卡片",
+      "args": []
+    },
+    "settingsPanel.field.bg2": {
+      "kind": "control",
+      "zh": "次背景",
+      "args": []
+    },
+    "settingsPanel.field.bg": {
+      "kind": "control",
+      "zh": "主背景",
+      "args": []
+    },
+    "settingsPanel.field.fontSize": {
+      "kind": "control",
+      "zh": "基础字号 (px)",
+      "args": []
+    },
+    "settingsPanel.field.fontMono": {
+      "kind": "control",
+      "zh": "等宽字体",
+      "args": []
+    },
+    "settingsPanel.field.fontBase": {
+      "kind": "control",
+      "zh": "正文字体",
+      "args": []
+    },
+    "settingsPanel.font.systemMono": {
+      "kind": "control",
+      "zh": "系统等宽",
+      "args": []
+    },
+    "settingsPanel.font.default": {
+      "kind": "control",
+      "zh": "默认（推荐）",
+      "args": [],
+      "waive": {
+        "C-L3": "「（推荐）」是选项旁的推荐标记，不是说明"
+      }
+    },
+    "settingsPanel.font.system": {
+      "kind": "control",
+      "zh": "系统默认",
+      "args": []
     }
   }
 }

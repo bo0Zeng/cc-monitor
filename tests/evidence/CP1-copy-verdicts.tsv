@@ -721,38 +721,10 @@ src/settings/mcp-section.ts:613	 · 只读（远端）	保留	[对外] 分组标
 src/settings/mcp-section.ts:614	 · 只读	保留	[对外] 分组标题后缀
 src/settings/mcp-section.ts:797	本机	保留	[对外] 确认框里的位置名
 src/settings/mcp-section.ts:797	远端 [{…}]	保留	[对外] 确认框里的位置名
-src/settings/panel.ts:149	自动跟随用户输入 + 拉前 monitor 窗口。\n\n	保留	[对外] ⓘ 说明首句，先说功能
-src/settings/panel.ts:150	「自动跟随」：watcher 反推—用户在 claude 里敲回车 → monitor 切到对应 session 的 Tab。	改·§2.1	[对外] 讲实现（「watcher 反推」）新词:watcher 新词:反推 →「在 claude 里按回车后，monitor 切到对应会话的 Tab。」
-src/settings/panel.ts:151	只跟「真用户输入」（不跟工具返回、不跟 claude 流式回复）。你手动点 Tab 后 5 秒内不会被自动切抢回。\n\n	保留	[对外] 括号里是真补充（哪些输入不跟），第二句是可感知的行为
-src/settings/panel.ts:152	「拉前 monitor」默认关：monitor 静静在后台切 Tab，不打断你正在用的其他窗口（浏览器/IDE）。	保留	[对外] 默认值＋行为，一句
-src/settings/panel.ts:153	开启后在终端输入时 monitor 浮上来抢焦。仅当「自动跟随」开启时生效。	保留	[对外] 开启后的行为＋前置条件
-src/settings/panel.ts:156	自定义全部快捷键：Tab 切换 / 终端拉前 / 行为开关 / 弹层关闭 等约 17 项。\n\n	保留	[对外] ⓘ 说明首句
-src/settings/panel.ts:157	改即生效，无需重启。点 [改] 后按下你想要的组合键。冲突会弹覆盖确认。	保留	[对外] 操作说明，短句
-src/settings/panel.ts:163	「Claude 数据目录」—— monitor 监听的 .claude 根目录（下含 projects/ 和 sessions/）。	保留	[对外] 术语定义：破折号引定义、括号列子目录，是用户在磁盘上看得见的目录
-src/settings/panel.ts:164	默认 ~/.claude 或 $CLAUDE_CONFIG_DIR。修改后需重启 monitor 生效。	保留	[对外] 默认值＋生效条件
-src/settings/panel.ts:167	Claude Code，自动跟 monitor 双向绑定（拉前终端按钮才能 work）。可一键安装/卸载。	改·§2.1	[对外] 「双向绑定」是实现机制，括号里夹英文 work 兼§2.4 新词:双向绑定 →「装好后『拉前终端』按钮才能用。可一键安装/卸载。」
 src/settings/panel.ts:174	「远端 (SSH)」—— monitor 通过 SSH 连到远端主机，由远端后端取代本地 	改·§2.4	[对外] 破折号起头，一句里塞了连接方式＋数据源替换＋行为不变 兼§2.1
 src/settings/panel.ts:175	jsonl-watcher 作为数据源（渲染 / Tab / 分支等行为完全相同）。\n\n	改·§2.1	[对外] 「jsonl-watcher 作为数据源」整句在讲实现，R1 jsonl 命中 新词:watcher →「远端会话和本机会话显示方式相同」
 src/settings/panel.ts:176	关闭（默认）时一切走本地，不受影响。启用 / 修改任意远端设置后需重启 monitor 才生效。	保留	[对外] 默认＋生效条件，用户可操作
 src/settings/panel.ts:177	配置不完整（缺 host / user / backendPath）时后端自动回退本地模式。	内部词→「缺主机、用户或后端路径」	[对外] 配置键名 backendPath 新词:backendPath
-src/settings/panel.ts:184	「数据位置」—— 透明展示 monitor 自身写入的所有持久化路径：config.json / history-metadata.json / 	内部词→「monitor 自己写入的所有文件位置」	[对外] 「持久化路径」是实现词 新词:持久化
-src/settings/panel.ts:185	WebView2 UserDataFolder / localStorage keys 等。每项可点 [打开] 直接到文件管理器。	内部词→去掉「localStorage keys」「UserDataFolder」	[对外] 浏览器存储键与 WebView2 的内部目录名，用户在界面上找不到对应物 新词:localStorage 新词:UserDataFolder
-src/settings/panel.ts:186	纯展示，无危险操作。	保留	[对外] 短句
-src/settings/panel.ts:194	\n\n【快捷键】	保留	[对外] tooltip 分节标题
-src/settings/panel.ts:524	显示后台任务会话	保留	[对外] 「需重启生效」条子上的设置名
-src/settings/panel.ts:576	Claude 数据目录	保留	[对外] 「需重启生效」条子上的设置名
-src/settings/panel.ts:604	选择 Claude 数据目录（含 projects 和 sessions 子目录）	保留	[对外] 目录选择框标题，括号是选对目录的必要提示
-src/settings/panel.ts:697	连接	保留	[对外] 页签名
-src/settings/panel.ts:698	组件	保留	[对外] 页签名
-src/settings/panel.ts:702	账号	保留	[对外] 页签名
-src/settings/panel.ts:703	工具	保留	[对外] 页签名
-src/settings/panel.ts:706	足迹	保留	[对外] 页签名
-src/settings/panel.ts:745	外观	保留	[对外] 折叠组标题
-src/settings/panel.ts:795	应用	保留	[对外] 页面名
-src/settings/panel.ts:989	正在列这台机器上的账号 / 工具…	保留	[对外] 加载骨架文案
-src/settings/panel.ts:998	机器列表这一块没能建起来	改·§2.1	[对外] 兜底提示的原因在讲界面构件没建起来（实现层失败），拼进兜底句后更长 →「机器列表加载失败」
-src/settings/panel.ts:1001	机器	保留	[对外] 页面名
-src/settings/panel.ts:1109	这台机器上的机器列表没读出来	保留	[对外] 兜底提示的原因，说结果
 src/settings/plugins-section.ts:41	（没说原因 —— 那是个 bug）	改·§2.2	[对外] 把我们的缺陷判断（「那是个 bug」）当文案说给用户，还带破折号 兼§2.4 →「（原因未知）」
 src/settings/plugins-section.ts:42	读不到插件数：{…}	保留	[对外] 结果＋原因
 src/settings/plugins-section.ts:44	声明 {…} 个插件	保留	[对外] 计数
@@ -808,9 +780,6 @@ src/backend/relay/server.rs:454	读响应	保留	[可达存疑] 中转（relay�
 src/backend/relay/server.rs:454	一直不给最终响应	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半（上游只回 1xx 中间响应的那一形）
 src/backend/relay/server.rs:472	上游 {}:{} {result}。卡在{hop}这一步。	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体（claude 那一侧可能原样显示）与 stderr 那一句的骨架（设计/20 §3.1a）；两句：先说谁出了什么结果，再说卡在哪一步，无内部词、无处方
 src/bridge/src/backend/control/backend_route.rs:207	{s} —— ⚠ 无法确认远端是否已经执行过这条命令，因此**不**再用另一条路重做一次；\n             请刷新会话列表后再决定	改·§2.4	[对外] markdown `**不**` ＋ 破折号 ＋ 发生了什么/我们不做什么/你该做什么 三合一 兼§2.2（另一条路） 新词:另一条路 →「不确定远端有没有执行。请刷新会话列表后再决定。」（F3 回修：分层判定之后 {e}→{s}，裁词照搬）
-src/settings/panel.ts:912	账号	保留	[对外] 设置面板里一块的标题（名词短语）；ST1 延后加载把它从 safeBlock( 挪进 loadableBlock(，文字没变
-src/settings/panel.ts:940	插件（marketplace）	保留	[对外] 设置面板里一块的标题（名词短语）；ST1 延后加载把它从 safeBlock( 挪进 loadableBlock(，文字没变
-src/settings/panel.ts:947	cc-bus 钩子	保留	[对外] 设置面板里一块的标题（名词短语）；ST1 延后加载把它从 safeBlock( 挪进 loadableBlock(，文字没变
 src/backend/accounts/apikey/creds.rs:86	读不动凭据文件：{e}	保留	[可达存疑] 中转进程里账号层（层 2）装表/重载时写到 stdout 的公告行（accounts::apikey::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；短、先说结果（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
 src/backend/accounts/apikey/table.rs:255	账号 id 当不了路由段（只许字母数字与 - _，最长 128 字节）	内部词→用在请求地址里（路由段）	[可达存疑] 中转进程里账号层（层 2）装表/重载时写到 stdout 的公告行（accounts::apikey::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；括号里的约束可操作 新词:路由段（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
 src/backend/accounts/apikey/table.rs:264	base_url 是明文 http 而主机不是本机回环 —— 那会把这一行的 key 明着发上网线。要么换 https，要么把上游放到本机回环上	保留	[可达存疑] 中转进程里账号层（层 2）装表/重载时写到 stdout 的公告行（accounts::apikey::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；字段名 base_url 是用户自己写的键，两句：结果＋两种修法，可操作（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
@@ -935,11 +904,6 @@ src/settings/data-section.ts:52	删了会丢	保留	[对外] 数据位置每行�
 src/settings/data-section.ts:54	可随手删	保留	[对外] 数据位置每行「缓存」那一格
 src/settings/data-section.ts:56	类别未知（{…}）	保留	[对外] 后端将来加第三类时的原样兜底（不整页炸、不假装认识）
 src/settings/data-section.ts:213	标着「可随手删」的下次用到时会重建；标着「删了会丢」的是你设过的东西。	保留	[对外] 数据位置卸载说明里补的一句：那一格怎么读
-src/settings/panel.ts:166	字体（正文 / 等宽 / 字号）+ 颜色（背景 / 卡片 / 文字 / 成功 / 警告 / 错误）。改了当场生效。	保留	[对外] 外观子页 ⓘ（ST2 步 15）：去掉了「10 个语义 token」与已撤的 user / assistant、「所以默认收起」（折叠组没了）
-src/settings/panel.ts:179	「日志」—— 让后端把细节写进日志文件，出问题时拿得到一份能发给作者的记录。	保留	[对外] 日志子页 ⓘ：术语定义＋用途，一句
-src/settings/panel.ts:188	【行为】	保留	[对外] 应用页 ⓘ 分节标题
-src/settings/panel.ts:205	日志	保留	[对外] 「应用」下的子页名（ST2 步 15，70 §6 #3 折叠组 → parentId 子项）
-src/settings/panel.ts:206	数据位置	保留	[对外] 「应用」下的子页名（ST2 步 15）
 src/settings/config-surface-section.ts:88	{…} —— 这一项本机查不动（见上面的原因）	保留	[对外] 足迹行上「未测过」那一档（ST2 · 70 §11.4 #3）：对冲的后半挪进 ⓘ，前半留在行上
 src/settings/config-surface-section.ts:95	查不动不等于它不在：只是这台机器上判断不了，不说明它没装。	保留	[对外] 「查不动」那一档的 ⓘ 正文 —— 那条区分（70 §2.2 不许扫掉）只换了位置
 src/settings/config-surface-section.ts:142	暂无撤销：还没有安装入口	保留	[对外] 足迹「能否撤」那一格，欠装口那一档（ST2 · 70 §11.4 #1）：一格状态，「还没有」语义保留（KR65D2）
@@ -947,13 +911,6 @@ src/settings/config-surface-section.ts:171	⚠ {…} 项还没有安装入口	�
 src/settings/config-surface-section.ts:183	== cc-monitor 足迹 ==	保留	[对外] 可复制诊断文本首行，跟块名统一（用户 09-24 裁「一起改」，70 §11.6 #4）
 src/settings/config-surface-section.ts:255	「答不出来」不等于「它没动过你的文件」。	保留	[对外] 远端足迹答不了那一句的 ⓘ（ST2 · 70 §11.4 #4：对冲后半挪进 ⓘ，区分保留）
 src/settings/config-surface-section.ts:448	这台机器（{…}）的足迹还查不了：要那台机器上的后端来答，它这一版还答不了。	保留	[对外] 远端足迹栏回声对不上时那一句（ST2，用户 09-24 裁远端也有真栏；读口归 RM1a）
-src/settings/panel.ts:1128	足迹	保留	[对外] 机器子页「足迹」那一块的块名（ST2 起经 loadableBlock 建）
-src/settings/panel.ts:1140	未识别的数据	保留	[对外] 机器子页「足迹」栏里那一块的块名（原顶层「改动足迹」页的漂移记账）
-src/settings/panel.ts:732	Claude 数据目录	保留	[对外] 落盘失败 / 重启条那一格的名字（ST2 步 9：全即时，每一格改了就落）
-src/settings/panel.ts:744	Claude 数据目录	保留	[对外] 落盘失败 / 重启条那一格的名字（ST2 步 9：全即时，每一格改了就落）
-src/settings/panel.ts:1545	Claude 数据目录	保留	[对外] 落盘失败 / 重启条那一格的名字（ST2 步 9：全即时，每一格改了就落）
-src/settings/panel.ts:1733	外观	保留	[对外] 落盘失败时说是哪一格（ST2 步 9）
-src/settings/panel.ts:1763	外观	保留	[对外] 落盘失败时说是哪一格（ST2 步 9）
 src/bridge/src/history.rs:2360	apikey 端点改写不可用：账号 {account:?} 在 [{host}] 的 apikey 表里有一行，\n         但那台机器上的中转起不来（{why}）——\n\n         这一发要是照旧起出去，claude 那边会报一个与网络故障同形的连接失败。\n\n         ⇒ 重装那台机器的后端再试，或把该账号那一行从那台机器的凭据文件里去掉。	保留	[对外] 〔RL1〕远端 apikey 号的中转起不来 ⇒ 拒绝起会话（toast「无法构造…」的第二行）；说的是结果＋原因＋下一步，点名那台机器。「中转」层 1 正名、「apikey 端点改写」层 2 正名（terms.json）
 src/bridge/src/remote_relay.rs:82	那台的后端没有起中转（口上没人在听，它也没起进程）	保留	[对外] 〔RL1〕上一句里「为什么」那一格：relay-ensure 回 started:false
 src/bridge/src/remote_relay.rs:85	那台的后端起了一个中转，但等了一会儿它还没在那个口上听	保留	[对外] 〔RL1〕上一句里「为什么」那一格：起了进程、有界地等完了口上仍没人
@@ -975,9 +932,6 @@ src/backend/control/transfer.rs:658	这一趟传输已经起跑了（{tid}）	�
 src/bridge/src/backend/control/local_backend.rs:1677	本机后端的流断了（stdio 载体）	改·§2.1	[可达存疑] 〔SR1b〕同 SR1a 那一行、同一句：本机那条流断了时经它开的传输也一起收场，原因显示在窗口传输那一行；裁法随那一行 →「和本机后端的连接断了」
 src/bridge/src/local_backend_host.rs:925	本机后端的流断了（常驻载体）	改·§2.1	[可达存疑] 〔SR1b〕同上（常驻那条载体）→「和本机后端的连接断了」
 src/bridge/src/sftp_pool.rs:235	本机后端的流断了	改·§2.1	[可达存疑] 〔SR1b〕起跑那一刻本机那条流已经没了：窗口传输那一行显示它；「流」是实现词 →「和本机后端的连接断了」
-src/settings/panel.ts:163	「别名」—— 一个名字加一组 ccm 参数，在终端里敲这个名字就等于敲 ccm 加上这组参数。	保留	[对外] 〔AL1c〕机器页 ⓘ 里「别名」一节的第一句：说清它是什么（终端集成并进来了，节名跟着改）
-src/settings/panel.ts:164	Windows 上这一块还管终端集成：把 cc 命令注入到 $PROFILE，让你打 `cc` 而不是 `claude` 启动 	改·§2.4	[对外] 〔AL1c〕原「终端集成」那一句前面加了一截「Windows 上这一块还管终端集成：」，余下逐字不变；与下一截拼成一句：破折号＋做什么＋为什么＋括号补充三合一 新词:注入
-src/settings/panel.ts:193	\n\n【别名】	保留	[对外] tooltip 分节标题（〔AL1c〕「终端集成」并进「别名」，节名跟着改）
 src/backend/control/panorama.rs:94	这台机器上还没装代码全景组件。	保留	[可达存疑] 〔RM1c〕作为 {hint} 拼进 discover::not_installed_message 的尾巴（前半句说查过哪儿），经 `panorama` 帧命令的 not_installed 回到全景页的失败提示；刻意不说「重装后端就有了」—— 推字节那一步还没接，那会是一句假的出路
 src/backend/control/panorama.rs:213	这次要查的文件太多，一次传不过去，少选几个再试	保留	[可达存疑] 〔RM1c〕too_large：参数塞不进一次命令调用（多半是高亮会话改动时文件太多），回到全景页失败提示；说的是人能做的事
 src/backend/control/panorama.rs:217	代码全景组件没能启动：{m}	保留	[可达存疑] 〔RM1c〕起进程失败的 failed 回帧；路径只进后端日志（warn!），给人的这句不带内部住址
@@ -1029,7 +983,6 @@ src/settings/assets-section.ts:97	machines 那一格	保留	[不对外] 〔AS2�
 src/settings/assets-section.ts:103	rows 那一格	保留	[不对外] 〔AS2〕同上一行
 src/settings/assets-section.ts:109	from 那一格	保留	[不对外] 〔AS2〕同上一行
 src/settings/assets-section.ts:116	problems 那一格	保留	[不对外] 〔AS2〕同上一行
-src/settings/panel.ts:1103	资产目录	保留	[对外] 〔AS2〕机器页「工具」栏一块的标题（名词短语）
 src/backend/asset_sync.rs:120	；	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：列表分隔符（join），换语言时跟着换
 src/backend/plugin/discover.rs:121	 · 	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：列表分隔符（join），换语言时跟着换
 src/bridge/src/backend/control/cc_bus.rs:1132	、	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：列表分隔符（join），换语言时跟着换
