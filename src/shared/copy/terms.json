@@ -104,7 +104,7 @@
       "word": "PowerShell",
       "tier": "限用",
       "tally": { "re": "powershell", "flags": "i" },
-      "inTable": 26,
+      "inTable": 27,
       "meaning": "Windows 上的 shell。",
       "context": "讲终端集成、$PROFILE 时许说；不许缩写成 PS。",
       "source": "设计/91 §4 R1b"
@@ -475,7 +475,7 @@
       "scan": { "re": "\\b[a-z]+(?:[A-Z][a-z0-9]*)+\\b|\\b(?:ADDED|ALREADY|Exact|Heuristic|DynamicGuess|bad_args|bad_path|accounts-meta|agents\\.tsv|__ccm_bind|auto-launch|touches|localStorage|UserDataFolder)\\b|\\.?build_id\\b", "flags": "" },
       "examples": ["backendPath", "cliFlags", "__ccm_bind", ".build_id", "ADDED"],
       "counterExamples": ["API key", "Claude Code"],
-      "ledger": ["backendPath", "claudeDir", "cliFlags", "auto-launch", "build_id"],
+      "ledger": ["backendPath", "cliFlags", "build_id"],
       "source": "设计/91 §7.3（配置键名直出）· CP1 台账",
       "note": "label / jump / kind 是普通英文单词，正则认不出它们是配置键 ⇒ 这三个只靠人工 review。"
     },
@@ -503,7 +503,6 @@
       "say": "PowerShell（不许缩写）。",
       "points": "PowerShell",
       "scan": { "re": "\\bPS\\b", "flags": "" },
-      "ledger": ["PS"],
       "source": "CP1 台账"
     },
     {
@@ -523,7 +522,7 @@
       "points": "后端",
       "scan": { "re": "首帧|帧面|hello\\s*帧|\\bhello\\b|\\back\\b|握手|应答形状|协议漂移|控制通道|控制面|入方向|能力声明|能力协商|能力\\s*token|读面|写面|读端|拨号任务|拨号代理|另一条路|路由段", "flags": "i" },
       "examples": ["握手时没报", "hello帧", "能力token", "拨号代理拨不通"],
-      "ledger": ["帧", "首帧", "帧面", "hello", "hello帧", "握手", "能力", "能力token", "控制通道", "控制面", "入方向命令", "口", "流", "链路", "腿", "路由段"],
+      "ledger": ["帧", "首帧", "帧面", "hello", "hello帧", "能力", "能力token", "控制通道", "控制面", "入方向命令", "口", "流", "链路", "腿", "路由段"],
       "source": "设计/91 §7.3（通道/协议行话）· CP1 台账",
       "note": "帧 / 口 / 流 / 通道 / 链路 / 管道 / 腿 / 能力 / 契约 / 载荷 / 应答 / 对侧 是单字或普通词，正则扫它们会把「流程」「端口」「能力」的正常用法一起扫掉 ⇒ 这几个只靠人工 review。〔第三波 C2 09-24〕台账里唯一标着「新词:ack」的那一行（拨号代理 ack 序列化失败的兜底 JSON）随拨号代理重写一起删了 ⇒ 本条不再认领 `ack`（ledger 两向相等那条判据要求如此）；`\\back\\b` 仍在 scan 里，词本身照旧归「后端」。"
     },
@@ -613,7 +612,7 @@
       "say": "说它做的事，不说我们给它起的名：数据面漂移记账 · 诚实降级 / 如实降级 · 平价预言机 · 分流器 · 原语 · 身份配方 · 身份行 · 装口 · 抢救 · 铸 · 申报 · 意图标 · 开窗预算 · 浏览名单 · 拉起器 · 起法 · 同寿 · 避让 · 一次性模式 · 双向绑定 · 反推。",
       "scan": { "re": "数据面漂移记账|诚实降级|如实降级|平价预言机|分流器|原语|身份配方|身份行|装口|抢救|铸|申报|意图标|开窗预算|浏览名单|拉起器|起法|同寿|一次性模式|双向绑定|反推", "flags": "" },
       "examples": ["诚实降级", "开窗预算"],
-      "ledger": ["诚实降级", "如实降级", "平价预言机", "身份配方", "身份行", "装口", "铸", "意图标", "拉起器", "同寿", "避让", "一次性模式"],
+      "ledger": ["诚实降级", "如实降级", "平价预言机", "身份配方", "身份行", "装口", "铸", "意图标", "拉起器", "避让", "一次性模式"],
       "source": "设计/91 §2.5 · §7.3",
       "note": "「避让」是普通词，不扫。"
     },

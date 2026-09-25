@@ -25,6 +25,7 @@
 //! ⚠ 那里还记着两条别在这里重复、但**必须一起读**的：DPAPI 那条「拷走也解不开」的性质**今天没有**，
 //! 以及**远端那一侧不许从 SFTP 的 mode 参数拿机密性**。
 
+use crate::copy_table::copy_text;
 use creds_core::perm::{self, Verdict};
 use creds_core::store;
 use creds_core::SecretKey;
@@ -101,7 +102,10 @@ pub(crate) fn read_status_at(path: &std::path::Path) -> Result<ApikeyCredentials
                 masked: String::new(),
                 path: path.display().to_string(),
                 notice: notice_of(&verdict),
-                problem: Some(format!("读不动这份文件：{e}")),
+                problem: Some(copy_text(
+                    "rsCredsStore.status.unreadable",
+                    &[("e", &e.to_string())],
+                )),
             })
         }
     };
@@ -132,7 +136,10 @@ pub(crate) fn read_status_at(path: &std::path::Path) -> Result<ApikeyCredentials
 fn notice_of(v: &Verdict) -> Option<String> {
     match v {
         Verdict::OwnerOnly => None,
-        Verdict::TooWide { how, fix } => Some(format!("{how}。怎么修：{fix}")),
+        Verdict::TooWide { how, fix } => Some(copy_text(
+            "rsCredsStore.notice.howFix",
+            &[("how", &how.to_string()), ("fix", &fix.to_string())],
+        )),
         Verdict::Undetermined { why } => Some(why.clone()),
     }
 }
@@ -236,9 +243,9 @@ pub(crate) fn write_key_at(
     // ★★ 「这是哪个账号」**全仓只有一份规则** —— 直接调起会话那一侧的那一个。
     //    这不是「两侧对拍」，是**共用一份实现**：漂开这件事在结构上不可表示。
     let id = crate::history::apikey_account_id_of_dir(config_dir).ok_or_else(|| {
-        format!(
-            "说不出这是哪个账号（configDir 是 {config_dir:?}）—— 这一格不许回落到顶层那一把：\
-             回落的症状是「以为配给了 A，其实写进了 default」，而 default 那一行谁都能命中。"
+        copy_text(
+            "rsCredsStore.write.noAccount",
+            &[("dir", &format!("{:?}", config_dir))],
         )
     })?;
     if let Some(parent) = path.parent() {
@@ -248,7 +255,15 @@ pub(crate) fn write_key_at(
     let current = match std::fs::read_to_string(path) {
         Ok(s) => store::parse(&s).map_err(|e| e.to_string())?,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => serde_json::Map::new(),
-        Err(e) => return Err(format!("读不动 {}：{e}", path.display())),
+        Err(e) => {
+            return Err(copy_text(
+                "rsCredsStore.write.unreadable",
+                &[
+                    ("path", &(path.display()).to_string()),
+                    ("e", &e.to_string()),
+                ],
+            ))
+        }
     };
     // ★★ `KH2C1`：落进 `accounts.<id>` 那一格，**不是顶层那一把**。
     //    `merge_account_key` 只改这一条，别的条与两层的未知键一个字节都不动。
@@ -275,12 +290,20 @@ pub(crate) fn write_key_at(
     let _ = std::fs::remove_file(&tmp);
     {
         use std::io::Write as _;
-        let mut f = creds_core::perm::create_private(&tmp)
-            .map_err(|e| format!("建 {} 失败: {e}", tmp.display()))?;
+        let mut f = creds_core::perm::create_private(&tmp).map_err(|e| {
+            copy_text(
+                "rsCredsStore.write.createFailed",
+                &[("tmp", &(tmp.display()).to_string()), ("e", &e.to_string())],
+            )
+        })?;
         f.write_all(text.as_bytes())
             .map_err(|e| format!("write {}: {e}", tmp.display()))?;
-        f.sync_all()
-            .map_err(|e| format!("落盘 {} 失败: {e}", tmp.display()))?;
+        f.sync_all().map_err(|e| {
+            copy_text(
+                "rsCredsStore.write.flushFailed",
+                &[("tmp", &(tmp.display()).to_string()), ("e", &e.to_string())],
+            )
+        })?;
     }
     // ★ 这一句今天是**纵深**，不是必需的那一道：上面已经保证了「出生即窄」。
     //   留着它的理由有两条：① 哪天有人把创建那步换回按 umask 建，这一句仍把窗口压到最短；

@@ -32,6 +32,7 @@
 
 use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
 use crate::backend::control::inbound_client;
+use crate::copy_table::copy_text;
 use crate::creds_store::ApikeyCredentialsStatus;
 use crate::origin::{Origin, Route};
 use serde_json::{json, Value};
@@ -72,9 +73,12 @@ async fn send_key(
     base_url: Option<String>,
 ) -> Result<(), String> {
     let account = crate::history::apikey_account_id_of_dir(config_dir).ok_or_else(|| {
-        format!(
-            "说不出这是哪个账号（configDir 是 {config_dir:?}）—— 不往 [{host}] 的表里写：\
-             写进去的那一行谁也命中不了"
+        copy_text(
+            "rsApikeyRemote.send.noAccount",
+            &[
+                ("dir", &format!("{:?}", config_dir)),
+                ("host", &host.to_string()),
+            ],
         )
     })?;
     call(
@@ -105,22 +109,30 @@ pub(crate) async fn rows_on(origin: &Origin) -> Result<Vec<String>, String> {
 
 /// `apikey-read` 的应答 → 界面那份状态。形状不对 ⇒ 报错（**不许**退化成「没配」）。
 pub(crate) fn status_from_wire(host: &str, d: &Value) -> Result<ApikeyCredentialsStatus, String> {
-    let bad =
-        |what: &str| format!("[{host}] `{CMD_READ}` 的应答形状不对：{what} —— 两端契约对不上");
+    let bad = |what: &str| {
+        copy_text(
+            "rsApikeyRemote.wire.badShape",
+            &[("host", &host.to_string()), ("what", &what.to_string())],
+        )
+    };
     let opt_str = |k: &str| -> Result<Option<String>, String> {
         match d.get(k) {
             None | Some(Value::Null) => Ok(None),
             Some(Value::String(s)) => Ok(Some(s.clone())),
-            Some(_) => Err(bad(&format!("`{k}` 不是字符串"))),
+            Some(_) => Err(bad(&copy_text(
+                "rsApikeyRemote.wire.notString",
+                &[("k", &k.to_string())],
+            ))),
         }
     };
     Ok(ApikeyCredentialsStatus {
         configured: d
             .get("configured")
             .and_then(Value::as_bool)
-            .ok_or_else(|| bad("缺 `configured`"))?,
-        masked: opt_str("masked")?.ok_or_else(|| bad("缺 `masked`"))?,
-        path: opt_str("path")?.ok_or_else(|| bad("缺 `path`"))?,
+            .ok_or_else(|| bad(&copy_text("rsApikeyRemote.wire.noConfigured", &[])))?,
+        masked: opt_str("masked")?
+            .ok_or_else(|| bad(&copy_text("rsApikeyRemote.wire.noMasked", &[])))?,
+        path: opt_str("path")?.ok_or_else(|| bad(&copy_text("rsApikeyRemote.wire.noPath", &[])))?,
         notice: opt_str("notice")?,
         problem: opt_str("problem")?,
     })
@@ -136,7 +148,10 @@ pub(crate) fn rows_from_wire(host: &str, d: &Value) -> Result<Vec<String>, Strin
                 .collect::<Option<Vec<_>>>()
         })
         .ok_or_else(|| {
-            format!("[{host}] `{CMD_READ}` 的应答里 `rows` 不是字符串数组 —— 两端契约对不上")
+            copy_text(
+                "rsApikeyRemote.wire.rowsNotArray",
+                &[("host", &host.to_string())],
+            )
         })
 }
 
@@ -146,24 +161,30 @@ async fn call(host: &str, cmd: &str, args: Value) -> Result<Value, String> {
         return Err(said(no_channel(host)));
     };
     if !client.accepts(cmd) {
-        return Err(format!(
-            "[{host}] 的后端还不认 `{cmd}` —— 账号层那份凭据文件按机器读写之后才有这条命令，\
-             重装那台机器的后端就有了"
+        return Err(copy_text(
+            "rsApikeyRemote.call.tooOld",
+            &[("host", &host.to_string())],
         ));
     }
     let data = client.call(cmd, args, BUDGET).await.map_err(|e| {
-        said(route_call_error(&e, |code, message| {
-            format!("[{host}] `{cmd}` 失败（{code}）：{message}")
+        said(route_call_error(&e, |_code, message| {
+            copy_text(
+                "rsApikeyRemote.call.failed",
+                &[
+                    ("host", &host.to_string()),
+                    ("message", &message.to_string()),
+                ],
+            )
         }))
     })?;
-    data.ok_or_else(|| format!("[{host}] `{cmd}` 的应答没有 data —— 两端契约对不上"))
+    data.ok_or_else(|| copy_text("rsApikeyRemote.call.noData", &[("host", &host.to_string())]))
 }
 
 /// 三态里给人看的那句话（同 `backend_policy::said`）。`Done` 在本族走不到。
 fn said(r: Routed) -> String {
     match r {
         Routed::NoChannel(s) | Routed::Refused(s) => s,
-        Routed::Done => "读写第三方 API key 时出了内部错误，没有拿到结果".to_string(),
+        Routed::Done => copy_text("rsApikeyRemote.call.internal", &[]),
     }
 }
 

@@ -12843,6 +12843,214 @@
       "kind": "error",
       "zh": "一台机器的名字；本机要写成 \"{local}\"",
       "args": ["local"]
+    },
+    "rsLocalQuery.noBackend.lookedAt": {
+      "kind": "error",
+      "zh": "{reason}；找过：{list}",
+      "args": ["reason", "list"]
+    },
+    "rsLocalQuery.noBackend.listSep": {
+      "kind": "body",
+      "zh": "、",
+      "args": []
+    },
+    "rsApikeyRemote.call.internal": {
+      "kind": "error",
+      "zh": "读写第三方 API key 时出了内部错误，没有拿到结果",
+      "args": []
+    },
+    "rsApikeyRemote.call.noData": {
+      "kind": "error",
+      "zh": "[{host}] 的后端应答里没有数据，两端版本对不上",
+      "args": ["host"]
+    },
+    "rsApikeyRemote.call.failed": {
+      "kind": "error",
+      "zh": "[{host}] 读写 API key 失败：{message}",
+      "args": ["host", "message"]
+    },
+    "rsApikeyRemote.call.tooOld": {
+      "kind": "error",
+      "zh": "[{host}] 的后端太旧，还不认这条命令。重装那台机器的后端就有了",
+      "args": ["host"]
+    },
+    "rsApikeyRemote.wire.rowsNotArray": {
+      "kind": "error",
+      "zh": "[{host}] 的后端应答里 rows 不是字符串数组，两端版本对不上",
+      "args": ["host"]
+    },
+    "rsApikeyRemote.wire.noPath": {
+      "kind": "error",
+      "zh": "缺 path",
+      "args": []
+    },
+    "rsApikeyRemote.wire.noMasked": {
+      "kind": "error",
+      "zh": "缺 masked",
+      "args": []
+    },
+    "rsApikeyRemote.wire.noConfigured": {
+      "kind": "error",
+      "zh": "缺 configured",
+      "args": []
+    },
+    "rsApikeyRemote.wire.notString": {
+      "kind": "error",
+      "zh": "{k} 不是字符串",
+      "args": ["k"]
+    },
+    "rsApikeyRemote.wire.badShape": {
+      "kind": "body",
+      "zh": "[{host}] 的后端回的内容不对：{what}。两端版本对不上",
+      "args": ["host", "what"]
+    },
+    "rsApikeyRemote.send.noAccount": {
+      "kind": "error",
+      "zh": "说不出这是哪个账号（配置目录是 {dir}），不往 [{host}] 的表里写。写进去的那一行谁也命中不了",
+      "args": ["dir", "host"]
+    },
+    "rsCredsStore.write.flushFailed": {
+      "kind": "error",
+      "zh": "落盘 {tmp} 失败：{e}",
+      "args": ["tmp", "e"]
+    },
+    "rsCredsStore.write.createFailed": {
+      "kind": "error",
+      "zh": "建 {tmp} 失败：{e}",
+      "args": ["tmp", "e"]
+    },
+    "rsCredsStore.write.unreadable": {
+      "kind": "error",
+      "zh": "读不动 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "rsCredsStore.write.noAccount": {
+      "kind": "error",
+      "zh": "说不出这是哪个账号（配置目录是 {dir}），不能写到默认那一格。写进默认那一行，谁都能命中它。",
+      "args": ["dir"]
+    },
+    "rsCredsStore.notice.howFix": {
+      "kind": "body",
+      "zh": "{how}。怎么修：{fix}",
+      "args": ["how", "fix"]
+    },
+    "rsCredsStore.status.unreadable": {
+      "kind": "error",
+      "zh": "读不动这份文件：{e}",
+      "args": ["e"]
+    },
+    "rsRemoteRelay.call.internal": {
+      "kind": "error",
+      "zh": "问中转时出了内部错误，没有拿到结果",
+      "args": []
+    },
+    "rsRemoteRelay.call.noData": {
+      "kind": "error",
+      "zh": "[{host}] 的后端应答里没有数据，两端版本对不上",
+      "args": ["host"]
+    },
+    "rsRemoteRelay.call.failed": {
+      "kind": "error",
+      "zh": "[{host}] 问中转失败：{message}",
+      "args": ["host", "message"]
+    },
+    "rsRemoteRelay.call.tooOld": {
+      "kind": "error",
+      "zh": "[{host}] 的后端太旧，还不认这条命令。重装那台机器的后端就有了",
+      "args": ["host"]
+    },
+    "rsRemoteRelay.wire.noField": {
+      "kind": "error",
+      "zh": "[{host}] 的后端应答里没有 {k} 这一项，两端版本对不上",
+      "args": ["host", "k"]
+    },
+    "rsRemoteRelay.wire.noListening": {
+      "kind": "error",
+      "zh": "[{host}] 的后端应答里没有 listening 这一项，两端版本对不上",
+      "args": ["host"]
+    },
+    "rsRemoteRelay.relay.neverListened": {
+      "kind": "body",
+      "zh": "那台的后端起了中转，但等了一会儿还没在那个口上听",
+      "args": []
+    },
+    "rsRemoteRelay.relay.notStarted": {
+      "kind": "body",
+      "zh": "那台的后端没有起中转（口上没人在听，它也没起进程）",
+      "args": []
+    },
+    "rsRemoteRelay.local.ownRelay": {
+      "kind": "body",
+      "zh": "本机的中转住在本机后端进程里，不在这里另起一个。它随本机后端起，按「退出行为」留或退",
+      "args": []
+    },
+    "rsDataPaths.backup.note": {
+      "kind": "body",
+      "zh": "v1.7.10+ 装 cc 集成时自动备份到 <profile>.ccm-backup-<时间戳>",
+      "args": []
+    },
+    "rsDataPaths.backup.title": {
+      "kind": "body",
+      "zh": "PowerShell profile 备份目录",
+      "args": []
+    },
+    "rsDataPaths.webview.dataDir": {
+      "kind": "body",
+      "zh": "WebView2 cache / localStorage / IndexedDB / cookies。由 WebView2 Runtime 管理。",
+      "args": [],
+      "waive": {
+        "C-T1": "说的是 WebView2 数据目录里放了什么，WebView2 / localStorage / IndexedDB 是产品与存储类型的原名，用户在资源管理器里看到的就是它们"
+      }
+    },
+    "rsDataPaths.monitor.logs": {
+      "kind": "body",
+      "zh": "诊断日志（按天滚动，保留 3 天）",
+      "args": []
+    },
+    "rsDataPaths.monitor.psRegistry": {
+      "kind": "body",
+      "zh": "终端集成用的临时文件，随终端关闭删除",
+      "args": []
+    },
+    "rsDataPaths.monitor.integrationSignal": {
+      "kind": "body",
+      "zh": "终端集成用的临时文件，用完即删",
+      "args": []
+    },
+    "rsDataPaths.monitor.historyMeta": {
+      "kind": "body",
+      "zh": "历史浏览器：收藏 / 重命名 / 隐藏",
+      "args": []
+    },
+    "rsDataPaths.monitor.autoLaunch": {
+      "kind": "body",
+      "zh": "开机自启开关和程序路径",
+      "args": []
+    },
+    "rsDataPaths.monitor.bindings": {
+      "kind": "body",
+      "zh": "每个会话在哪个终端窗口里。终端集成用它把窗口提到前面",
+      "args": []
+    },
+    "rsDataPaths.monitor.config": {
+      "kind": "body",
+      "zh": "主题 / 字体 / Claude 配置目录 / 诊断开关",
+      "args": []
+    },
+    "rsLogging.diagnostics.badConfig": {
+      "kind": "error",
+      "zh": "{path} 读不懂（{e}），诊断设置没有存。写回去会把这份文件里别的设置一起盖掉，先把它改成合法的 JSON",
+      "args": ["path", "e"]
+    },
+    "rsSessionSkeleton.precheck.badPath": {
+      "kind": "error",
+      "zh": "非法会话路径：{path}",
+      "args": ["path"]
+    },
+    "rsLocalQuery.noBackend.spawnFailed": {
+      "kind": "error",
+      "zh": "起 {bin} 失败：{e}",
+      "args": ["bin", "e"]
     }
   }
 }
