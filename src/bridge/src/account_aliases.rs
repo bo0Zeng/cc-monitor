@@ -21,36 +21,33 @@
 //! ⇒ 落点是 [`alias_file_in`]（`~/.cc-monitor/aliases.sh`，**monitor 自己的目录**），
 //! **整份重写**：幂等、删一条当场消失、删掉整份文件也只是少几个命令，shell 照常起得来。
 //! 〔RW1 · 第四波 09-24〕文件名从 `account-aliases.sh` 改成 `aliases.sh`（`71 §9.2` 那道迁移题按主会话裁结案：
-//! **不留兼容** —— 不留转发件、不读旧名）。已经装过的 rc 那一段，下一次点「安装」就被改写成指向新名字的那一行
-//! （同一对围栏，整块替换）；旧文件留在盘上，本模块不读、不写、不删。
+//! **不留兼容** —— 不留转发件、不读旧名）；旧文件留在盘上，本模块不读、不写、不删。
 //!
-//! # 用户的 shell 配置里最多只多**一行** `source`，而且多数人连这一行都不用加
+//! # 🔴 接上这份文件的那一行 source **只住别名块里**（`设计/71 §6.1`「source 那一行只许一处装」）
 //!
-//! `src/shared/ccm-aliases.sh`（别名块）自带一行 `if [ -r … ]; then . …; fi` 指向这份文件 ⇒
-//! 装了别名块的人什么都不用做。没装的人可以让 [`install_in`] 把那一行写进**他自己指定**的那份 rc
-//! —— 路径由界面上的人选，本模块**不猜**（`.bashrc` / `.zshrc` / fish 写法不同）。
-//! 〔RW1 · 第四波 09-24〕两处写（那份文件 ＋ rc 里那一行）**都不在本进程落盘**：经本机后端的文件管理
-//! 那一面（`user_files::edit` → `files-peek` / `files-put`），备份 · 原子替换 · 回读 · 回滚那一份规则住后端。
+//! 两种方言的别名块都自带那一行（POSIX：`src/shared/ccm-aliases.sh` 最后一行；PowerShell：`scripts/cc.ps1.tpl`
+//! 结尾那一行，〔TL1 · 4C〕补上 —— 从前那一侧不带，两边不对称），文件不在就什么都不做 ⇒ 装了别名块的人什么都不用做。
+//! 〔TL1 · 4C〕本模块**不再往 rc 里写那一行**：从前 [`install_in`] 会把它装进人指定的那份 rc（另一对围栏），
+//! 与别名块那一行是同一件事的第二个写处（`AL1d.md §5` 第 4 条）。今天那一步**降级成检查**：选了 rc 就看它接没接上，
+//! 没接上就说「装上别名块就接上了」并给出那一行、由人自己决定（提供检测，不代装）。
+//! 盘上已有的旧围栏那一块不读、不删、不写清理代码（两处 source 同一份文件是幂等的，只多点一次）。
+//! 别名文件的写**不在本进程落盘**：经本机后端的文件管理那一面（`user_files::edit` → `files-peek` / `files-put`），
+//! 备份 · 原子替换 · 回读 · 回滚那一份规则住后端。
 
 //!
 //! # 〔AL1c · 第四波 4B〕本模块是**通用层**：只持有结构与规则，不持有任何一种 shell 的文本
 //!
 //! 「这个 shell 怎么写 / 文件落在哪 / 名字怎么认」全在 `shell_dialect.rs`（`设计/71 §4.4`，POSIX 与 PowerShell
-//! 各一份实现）；这里留的是**判定的规则**（V1–V5 · 能力闸 · 重名 · 有一条不合格整批不写 · rc 里只加一行且幂等）。
+//! 各一份实现）；这里留的是**判定的规则**（V1–V5 · 能力闸 · 重名 · 有一条不合格整批不写）。
 //! 三条命令各带一个 `shell`：同一份清单，POSIX 落 `~/.cc-monitor/aliases.sh`、PowerShell 落
-//! `~/.cc-monitor/aliases.ps1`，各自由那个 shell 的启动文件里一行 source 接上。
+//! `~/.cc-monitor/aliases.ps1`，各自由那个 shell 的别名块里那一行 source 接上。
 
 use std::path::{Path, PathBuf};
 
 use crate::shell_dialect::Shell;
 
-/// 写进用户 rc / `$PROFILE` 的那一行所在的围栏。**刻意与 `profile_installer` 的
-/// `# === cc-monitor BEGIN` 不同前缀** —— 后者装的是 PowerShell 的 `cc` 块，
-/// 两者若共用标记，装一个就会把另一个整块替换掉。`#` 打头的行在 POSIX 与 PowerShell 里都是注释 ⇒ 两种方言共用这一对。
-/// ⚠ `K-R62` 起是 `pub(crate)`：同 `profile_installer::BEGIN_MARKER` 那条理由 ——
-/// `fenced_block::FENCE_SHAPES` 指它，不抄它。
-pub(crate) const RC_BEGIN: &str = "# === cc-monitor aliases BEGIN v1 ===";
-pub(crate) const RC_END: &str = "# === cc-monitor aliases END ===";
+// 〔TL1 · 4C〕墓碑：这里从前有一对**写进用户 rc / `$PROFILE`** 的围栏常量（`# === cc-monitor aliases BEGIN v1 ===` 那一对），
+//   包着 [`install_in`] 代装的那一行 source。那一步退役（`71 §6.1`），这对围栏随之删 —— 盘上已有的那一块不读不删。
 
 /// 生成文件自己的围栏（整份重写，所以它只是给人看的边界；两种方言共用，理由同上）。
 /// 〔AL1 · 2026-09-24〕v1 → v2：`71` 逐字「不要有 account alias 这种东西」—— 文件里只有**一类**别名。
@@ -180,7 +177,6 @@ pub struct AliasListing {
 pub struct AliasInstallReport {
     pub alias_path: String,
     pub wrote_alias_file: bool,
-    pub wrote_rc: bool,
     /// 给人看的补充说明，一条一句。
     pub notes: Vec<String>,
 }
@@ -415,7 +411,7 @@ pub fn read_in(
     })
 }
 
-/// ② **唯一的副作用**：把 [`render`] 的产物整份写进别名文件，可选地把一行 `source` 装进 `rc`。
+/// ② **唯一的副作用**：把 [`render`] 的产物整份写进别名文件。给了 `rc` ⇒ **只查**它接没接上（`71 §6.1`：不代装）。
 /// 有一条不合格 ⇒ **整批不写**（写一半的别名文件是最坏的结局：它 source 得进去，少了的没人发现）。
 ///
 /// 〔RW1 · 第四波 09-24〕两处写都经 `door`（生产 = 本机后端的文件管理那一面）；home 也问它
@@ -441,23 +437,25 @@ pub async fn install_in<D: crate::user_files::Door>(
     }
     let home = door.home().await?;
     let path = alias_file_in(Path::new(&home), shell);
+    // 先查 rc（只读）再写：rc 路径过不了围栏 ⇒ 整趟停下、一个字节不写（同「有一条不合格整批不写」）。
+    let rc_note = match rc {
+        None => None,
+        Some(rc_raw) if rc_sources_our_file(door, &home, rc_raw).await? => {
+            Some(format!("{rc_raw} 已经接上了这份文件。"))
+        }
+        Some(rc_raw) => {
+            let line = shell.dialect().source_line(&path.display().to_string());
+            Some(format!(
+                "{rc_raw} 还没接上这份文件：在下面给它装上别名块就接上了。不想装别名块的话，自己把这一行加进去：{line}"
+            ))
+        }
+    };
     let wrote_alias_file = write_alias_file(door, &home, shell, &r.code).await?;
     let mut notes = Vec::new();
     if !wrote_alias_file {
         notes.push("别名文件和盘上那份一模一样，没有重写。".to_string());
     }
-    let mut wrote_rc = false;
-    if let Some(rc_raw) = rc {
-        let line = shell.dialect().source_line(&path.display().to_string());
-        if ensure_rc_source_line(door, &home, rc_raw, &line).await? {
-            wrote_rc = true;
-            notes.push(format!(
-                "{rc_raw} 里加了一行 source（要撤就把 cc-monitor 那一小块整块删掉）。"
-            ));
-        } else {
-            notes.push(format!("{rc_raw} 里已经接上了这份文件，没有再动它。"));
-        }
-    }
+    notes.extend(rc_note);
     notes.push(format!(
         "新开一个终端就能用；当前终端要先执行一次 . {}",
         path.display()
@@ -465,7 +463,6 @@ pub async fn install_in<D: crate::user_files::Door>(
     Ok(AliasInstallReport {
         alias_path: path.display().to_string(),
         wrote_alias_file,
-        wrote_rc,
         notes,
     })
 }
@@ -526,45 +523,24 @@ async fn write_alias_file<D: crate::user_files::Door>(
     Ok(matches!(done, crate::user_files::Edited::Written(_)))
 }
 
-/// 把那一行 `source` 装进用户指定的启动文件。**已经有了就一个字节都不写。**
+/// 用户指定的那份启动文件**接没接上**我们那份别名文件。**只读**（〔TL1 · 4C〕从前这里是代装那一行的 `ensure_…` 一跳，退役）。
 ///
-/// 🔴 三道，一道都不省：① 路径过 `profile_installer::fence_path_under`（只许落在 home 之内）；
-/// ② 围栏损坏（有 BEGIN 没 END）**中止**，绝不用后面那个 END 去配对、吃掉中间的用户代码；
-/// ③ 写之前先备份、写完回读逐字比对、不符回滚。② 是 `fenced_block::splice_in`；
-/// ③ 〔RW1〕在后端（`files-put` 的 `backup: true`），与 rc 别名块、PowerShell profile、远端 rc 同一份规则。
-///
-/// 〔AL1c〕这份文件是哪种 shell 由**它自己**（扩展名）定，不由调用方说：`.ps1` ⇒ PowerShell 的排版与 BOM。
-/// 文件不在 ⇒ 由方言答建不建（PowerShell 的 `$PROFILE` 常常要这一下才有 ⇒ 建；POSIX ⇒ 停下说清）。
-async fn ensure_rc_source_line<D: crate::user_files::Door>(
+/// 路径过 `profile_installer::fence_path_under`（只许落在 home 之内 —— 同一道围栏，不另立一份）；读经 `door`
+/// （生产 = 本机后端 `files-peek`）。这份文件是哪种 shell 由**它自己**（扩展名）定；「接上了」由那种方言认
+/// （任何一种写法都认，别按整行比 —— POSIX 别名块那一行写的是 `$HOME/…`，没展开）。文件不在 ⇒ 没接上。
+async fn rc_sources_our_file<D: crate::user_files::Door>(
     door: &D,
     home: &str,
     rc_raw: &str,
-    line: &str,
 ) -> Result<bool, String> {
-    // ⚠ 围栏是 `profile_installer` 那一份，**不在这里长第二道** —— `home` 当参数传进去，
-    //   于是这条路测得了（临时目录当 home），而生产侧传的是后端答的 home。
     let path = crate::profile_installer::fence_path_under(Path::new(home), rc_raw)?;
     let rel = crate::user_files::rel_under(home, &path.display().to_string())?;
-    let what = path.display().to_string();
     let d = Shell::of_target(&path).dialect();
-    let block = format!("{RC_BEGIN}\n{line}\n{RC_END}\n");
-    let create = d.creates_missing_startup_file();
-    let done = crate::user_files::edit(door, home, &rel, true, create, |raw| {
-        let Some(raw) = raw.or(create.then_some("")) else {
-            return Err(format!("读不到 {what}：文件不存在"));
-        };
-        let existing = d.decode_from_disk(raw);
-        // 🔴 认的是「接上了我们那份文件」（方言按相对路径认），**不是那一整行** ——
-        // POSIX 那一侧栽过：片段里那一行写的是 `$HOME/…`（没展开），按整行比会把装过别名块的人判成
-        // 「还没 source 过」、又追加一行。改名之后旧那一段（指着旧文件名）认不出来 ⇒ 走下面的整块替换。
-        if d.sources_our_file(existing) {
-            return Ok(None);
-        }
-        crate::fenced_block::splice_in(existing, RC_BEGIN, RC_END, &block, &what, d.layout())
-            .map(|next| Some(d.encode_for_disk(&next)))
-    })
-    .await?;
-    Ok(matches!(done, crate::user_files::Edited::Written(_)))
+    let got = door.peek(home, &rel).await?;
+    Ok(got
+        .text
+        .as_deref()
+        .is_some_and(|raw| d.sources_our_file(d.decode_from_disk(raw))))
 }
 
 #[cfg(test)]

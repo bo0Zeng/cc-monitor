@@ -15,7 +15,7 @@
  *
  * ① `aliases_render`（纯）：清单 → 代码 ＋ 每条的问题 ＋ 撞名提示。预览与「复制去手贴」只调它；
  * ② `aliases_install`（唯一的副作用）：同一份渲染落进 `~/.cc-monitor/aliases.sh`（〔RW1〕经本机后端写），
- *    可选地往用户**自己选**的那份 rc 装一行 `source`。
+ *    选了 rc 就**只查**它接没接上（〔TL1 · 4C〕`71 §6.1`：接上那一行只住别名块里，不代装）。
  * 读回口 `aliases_read`：打开这一块时先读盘上那份，清单从它开始编辑。
  *
  * # 纪律（`launcher-diagnostics.ts` 头注那条，原样适用）
@@ -71,7 +71,7 @@ const PLATFORM_COPY: Record<
   posix: {
     pasteTarget: "~/.bashrc（或你实际用的 shell 配置文件）",
     pasteActivation: "source 它，或开一个新终端。",
-    rcLabel: "这台机器的 shell 配置（那一行 source 加进哪份）：",
+    rcLabel: "这台机器的 shell 配置（别名块装进哪份）：",
     nameHint: "名字，如 alphacct",
     blockWhat: "cc / cct 这一族",
     blockInstallTitle:
@@ -82,7 +82,7 @@ const PLATFORM_COPY: Record<
   powershell: {
     pasteTarget: "$PROFILE（PowerShell 启动时读的那份脚本）",
     pasteActivation: "开一个新的 PowerShell 窗口。",
-    rcLabel: "这台机器的 PowerShell 配置（那一行加进哪份 $PROFILE）：",
+    rcLabel: "这台机器的 PowerShell 配置（别名块装进哪份 $PROFILE）：",
     nameHint: "名字，如 alphacc",
     blockWhat: "拉前握手那一小段",
     blockInstallTitle:
@@ -360,8 +360,8 @@ export function buildAliasManager(opts: {
   wrap.appendChild(paste.element);
 
   // ── 写入（第②跳）────────────────────────────────────────────────────────
-  // 〔AL1d · 第四波 4B〕这个下拉是这台机器上**唯一**的启动文件选择器：别名文件那一行 source 装进哪份、
-  // 别名块装进哪份，都是它（从前 PowerShell 上另有一个版本预设下拉 ＋ 路径框，候选另有来历，`AL1d.md §1.2`）。
+  // 〔AL1d · 第四波 4B〕这个下拉是这台机器上**唯一**的启动文件选择器：别名块装进哪份、
+  // 「写入」时查哪份接没接上别名文件（〔TL1〕只查不写 —— 接上那一行只住别名块里），都是它（从前 PowerShell 上另有一个版本预设下拉 ＋ 路径框，候选另有来历，`AL1d.md §1.2`）。
   // 候选只来自读回口 `aliases_read`（`$PROFILE` 在哪由后端 `shell_dialect.rs` 一处答），本文件一个路径都不推。
   const rcSel = el("select", "ccm-acct-alias-rc");
   const rcRow = el("label", "settings-row");
@@ -375,7 +375,7 @@ export function buildAliasManager(opts: {
   const otherErr = el("div", "settings-hint");
   otherRow.append(otherIn, otherBtn, otherErr);
   const writeBtn = button("写入", "settings-btn-primary", () => void onWrite());
-  writeBtn.title = "写到 cc-monitor 自己那份别名文件；选了 shell 配置的话，再往里加一行 source。";
+  writeBtn.title = "写到 cc-monitor 自己那份别名文件；选了 shell 配置的话，看它接没接上（不往里写）。";
   const result = el("pre", "ccm-acct-alias-out");
   wrap.append(rcRow, otherRow, writeBtn, result);
 

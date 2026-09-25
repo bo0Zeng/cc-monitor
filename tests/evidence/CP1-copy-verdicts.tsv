@@ -153,8 +153,8 @@ src/bridge/crates/guard-core/src/lib.rs:1070	{who} · 生产段第 {} 行 · 逐
 src/bridge/crates/guard-core/src/lib.rs:1201	{who} · 第 {}–{} 行这一段：`{{` {opens} 个 / `}}` {closes} 个	保留	[不对外] 判据内核 offenders 清单条目，只进断言失败信息
 src/bridge/src/account_aliases.rs:239	# （当前一条别名都没有）\n	保留	[对外] 生成文件里清单为空时那一行注释，短
 src/bridge/src/account_aliases.rs:561	别名文件和盘上那份一模一样，没有重写。	保留	[对外] 写入结果的补充说明，先说结果
-src/bridge/src/account_aliases.rs:568	{rc_raw} 里加了一行 source（要撤就把 cc-monitor 那一小块整块删掉）。	保留	[对外] 写入结果：说清动了用户哪份文件、怎么撤；括号是撤法，不是论证
-src/bridge/src/account_aliases.rs:571	{rc_raw} 里已经接上了这份文件，没有再动它。	保留	[对外] 写入结果，短
+src/bridge/src/account_aliases.rs:449	{rc_raw} 还没接上这份文件：在下面给它装上别名块就接上了。不想装别名块的话，自己把这一行加进去：{line}	保留	[对外] 写入结果：〔TL1 · 71 §6.1〕选了 rc 只查不写 —— 先说结果（没接上），再给两条出路（装别名块 · 自己贴那一行），不替人写
+src/bridge/src/account_aliases.rs:444	{rc_raw} 已经接上了这份文件。	保留	[对外] 写入结果，短（〔TL1〕选了 rc 只查不写，原「…没有再动它」那半句随之不再需要）
 src/bridge/src/account_aliases.rs:575	新开一个终端就能用；当前终端要先执行一次 . {}	保留	[对外] 生效方式，一句一件事
 src/bridge/src/mcp_sync.rs:169	对面的后端答的内容认不出来，多半是两边版本不一样。这一趟什么都没写。	保留	[对外] 〔AS1〕MCP 推 / 拉：对面后端的应答缺格 / 类型不对（多半版本不一样）时的那一句；先说结果，第二句说后果，不露命令名与字段名
 src/bridge/src/mcp_sync.rs:250	{machine} 上那份配置在你看差异之后又被改过了，这一趟一个字节都没写。重新看一次差异再决定。	保留	[对外] 〔AS1〕MCP 推 / 拉：写的那一刻对面那份已不是看差异时那一份（CAS 拒）；说清发生了什么、没写、下一步是用户做得了的「重新看一次差异」
@@ -342,9 +342,6 @@ src/bridge/src/fenced_block.rs:129	落盘走 SFTP（upload_atomic + 远端备份
 src/bridge/src/fenced_block.rs:133	本机 Windows 的 PowerShell profile	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:134	整块 PowerShell 代码（scripts/cc.ps1.tpl 渲染）	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:144	本机 POSIX 的 ~/<用户选的那份 rc>	保留	[不对外] FENCE_SHAPES 登记表字段
-src/bridge/src/fenced_block.rs:418	**一行** source，指向 ~/.cc-monitor/aliases.sh（内容住在那份生成文件里）	保留	[不对外] FENCE_SHAPES 登记表字段
-src/bridge/src/fenced_block.rs:150	🔴 唯一**没有卸口**的一套（K-R62 §0b 那张表的「卸」一栏逐字「部分」）；\n                     也是唯一「围栏里只有一行、真内容在别处」的一套 —— 它刻意用另一对标记，\n                     与别的套共用标记就会「装一个把另一个整块替换掉」	保留	[不对外] FENCE_SHAPES 登记表字段
-src/bridge/src/fenced_block.rs:157	本机 POSIX 的 ~/<用户选的那份 rc>	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:158	整块别名 snippet —— **与 `remote-posix-block` 同一个常量**（sftp.rs::CCM_WRAPPER_SNIPPET）	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:167	与 `remote-posix-block` **只差落盘那一跳**（本地原子替换 vs SFTP）：\n                     内容、围栏、合块与剥块的实现全共用；与 `local-windows-ps` 只差**方言**\n                     （分岔在 profile_installer.rs::plan_install / \n                     profile_installer.rs::plan_uninstall，落盘与备份回滚那一整套共用）。\n                     ⇒ 补这一格没有把三套变成四套。判据 \n                     profile_installer_tests.rs::the_local_posix_port_is_byte_for_byte_the_remote_one	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:271	原文件已恢复。	保留	[对外] 写失败 / 写后校验失败那句的后半句（fenced_block::undo_note），只说真发生了的事，短
@@ -1038,7 +1035,7 @@ src/settings/machine-aliases.ts:281	清空表单	保留	[对外] 按钮
 src/settings/machine-aliases.ts:282	为每个账号加一条	保留	[对外] 按钮（一次性的便利动作，title 里说清不会跟着账号表自动增删）
 src/settings/machine-aliases.ts:298	还没生成。	保留	[对外] 复制门的理由，短
 src/settings/machine-aliases.ts:300	清单里有不合格的，先改好。	保留	[对外] 复制门的理由；「先改好」是用户自己的清单、他改得了
-src/settings/machine-aliases.ts:311	这台机器的 shell 配置（那一行 source 加进哪份）：	保留	[对外] 下拉的标签（从 launcher-diagnostics.ts 原样搬来）；括号说清下拉决定什么
+src/settings/machine-aliases.ts:74	这台机器的 shell 配置（别名块装进哪份）：	保留	[对外] 下拉的标签（从 launcher-diagnostics.ts 原样搬来）；括号说清下拉决定什么 〔TL1：只决定别名块装进哪份，括号跟着改〕
 src/settings/machine-aliases.ts:312	写入	保留	[对外] 按钮
 src/settings/machine-aliases.ts:324	装别名块	保留	[对外] 按钮
 src/settings/machine-aliases.ts:325	装	保留	[对外] 动词碎片，拼成「装别名块中…」「装失败：…」
@@ -1303,7 +1300,7 @@ src/settings/machine-aliases.ts:67	~/.bashrc（或你实际用的 shell 配置�
 src/settings/machine-aliases.ts:68	source 它，或开一个新终端。	保留	[对外] 〔AL1c〕POSIX 手贴后的生效方式，原样搬进平台措辞表（文字没变）
 src/settings/machine-aliases.ts:73	$PROFILE（PowerShell 启动时读的那份脚本）	保留	[对外] 〔AL1c〕PowerShell 手贴的落点提示；$PROFILE / PowerShell 是用户自己也这么叫的词，括号里说清它是什么
 src/settings/machine-aliases.ts:74	开一个新的 PowerShell 窗口。	保留	[对外] 〔AL1c〕PowerShell 手贴后的生效方式，一句一件事
-src/settings/machine-aliases.ts:75	这台机器的 PowerShell 配置（那一行加进哪份 $PROFILE）：	保留	[对外] 〔AL1c〕下拉的标签，与 POSIX 那一句同形
+src/settings/machine-aliases.ts:85	这台机器的 PowerShell 配置（别名块装进哪份 $PROFILE）：	保留	[对外] 〔AL1c〕下拉的标签，与 POSIX 那一句同形 〔TL1：这个下拉今天只决定别名块装进哪份（接上别名文件那一行只住别名块里，71 §6.1），括号跟着改〕
 src/settings/machine-aliases.ts:76	名字，如 alphacc	保留	[对外] 〔AL1c〕名字输入框占位（PowerShell 上没有 tmux，例子不用 alphacct）
 src/settings/panel.ts:163	「别名」—— 一个名字加一组 ccm 参数，在终端里敲这个名字就等于敲 ccm 加上这组参数。	保留	[对外] 〔AL1c〕机器页 ⓘ 里「别名」一节的第一句：说清它是什么（终端集成并进来了，节名跟着改）
 src/settings/panel.ts:164	Windows 上这一块还管终端集成：把 cc 命令注入到 $PROFILE，让你打 `cc` 而不是 `claude` 启动 	改·§2.4	[对外] 〔AL1c〕原「终端集成」那一句前面加了一截「Windows 上这一块还管终端集成：」，余下逐字不变；与下一截拼成一句：破折号＋做什么＋为什么＋括号补充三合一 新词:注入
