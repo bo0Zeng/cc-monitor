@@ -292,6 +292,10 @@ pub enum TouchEffect {
     /// 「我们只是调了别人的命令」不改变**用户的文件因为在我们这儿点了一下而变了**这件事。
     /// 这一页的全部价值是可信告知，在自己的主张上失信比不做这一页更坏。
     IndirectWrite,
+    /// 〔GP1 · 第四波〕**cc-monitor 旧版放在这儿的那一份，今天要清掉**：认出是它放的（记号见 `ccm_legacy`）就删，
+    /// 认不出的一个字节都不动。它不是「拥有」（[`Self::OwnedFile`] 那句「部署时整体覆盖」对它是假话）——
+    /// 我们不再往这儿写，只在看见旧的那一份时收回它。`设计/01 §6.7b`「三件都要在足迹里有入口」。
+    RetiredLegacy,
 }
 
 /// **同一个东西的一种载体** —— 「它这一份怎么产出来、落到哪、碰哪些文件」。
@@ -450,6 +454,16 @@ pub const TOOLS: &[ToolSpec] = &[
                         note: Some("或用户在部署向导里选的其它 profile"),
                         host: HostScope::Remote,
                         effect: TouchEffect::FencedBlock,
+                    },
+                    // 〔GP1 · 第四波〕`设计/01 §6.7b` 迁移 ② ③：旧版入口落在这儿（09-11 前是 bash 启动器、之后是三行 shim）。
+                    TouchedFile {
+                        path: "~/.local/bin/ccm",
+                        note: Some(
+                            "旧版 cc-monitor 放的入口（今天入口在 ~/.cc-monitor/bin/ccm）：部署后端时、连上那台时各看一眼，\
+                             认出是 cc-monitor 放的就删，认不出的不动",
+                        ),
+                        host: HostScope::Remote,
+                        effect: TouchEffect::RetiredLegacy,
                     },
                 ],
             },
@@ -809,12 +823,14 @@ pub const TOOLS: &[ToolSpec] = &[
     // 〔AS2 · 第四波 4B · V113〕**skill「装到这台」**：资产目录里别的机器有的 skill，用户点了才装到这台 ——
     //   文件原样从来源那台拷来（V112），写经这台后端 `files-put`（带 `expect`，`skill_install.rs`）。
     //   `96 §4`：每个写点都要在足迹里可见。落点由用户点的那一条决定（这台 skills 下以那个名字为名的目录）⇒ 占位符，不猜。
-    //   `uninstallable: false`：没有「卸掉装来的 skill」这条口，如实声明。
+    //   〔SU1 · 第四波 4C · V116〕`uninstallable: true`：用户裁「要，只删装时写进去的文件」—— 装的时候那台后端记下写了哪几个
+    //   （第二条 touch：那台后端自己的装记录），卸口 `skill_install.rs::skill_uninstall_apply` 只删记着的那几个（装完改过的先问）。
+    //   〔墓碑 —— AS2 那一版这里是 `uninstallable: false`（「没有卸掉装来的 skill 这条口，如实声明」）。〕
     ToolSpec {
         id: "skill-install",
         display_name: "从别的机器装来的 skill",
         installable: true,
-        uninstallable: false,
+        uninstallable: true,
         carriers: &[Carrier {
             what: "资产目录里你点了「装到这台」的那个 skill：另一台机器上那个 skill 目录里的文件（你勾的那几个），原样写进这台",
             source: ToolSource::Generated,
@@ -825,7 +841,16 @@ pub const TOOLS: &[ToolSpec] = &[
                 host: HostScope::Either,
                 note: Some(
                     "装到哪台就写哪台，只写 skills 下以你点的那个 skill 为名的那一个目录；\
-                     只写你勾的那几个文件（不同的要你点了「盖」才盖），别的文件不动",
+                     只写你勾的那几个文件（不同的要你点了「盖」才盖），别的文件不动；\
+                     卸的时候只删装时写进去的那几个（装完你改过的、装之前就在的先问你），目录本身留着",
+                ),
+                effect: TouchEffect::OwnedFile,
+            }, TouchedFile {
+                path: "~/.cc-monitor/skill-installs.json",
+                host: HostScope::Either,
+                note: Some(
+                    "装到哪台就记在哪台：那台后端自己的装记录（每个装写进去的文件的摘要 ＋ 装之前在不在），卸只认这里记着的；\
+                     卸掉的从这里摘掉",
                 ),
                 effect: TouchEffect::OwnedFile,
             }],

@@ -111,10 +111,13 @@ branch-core = { path = "crates/branch-core" }
 codex-token-core = { path = "crates/codex-token-core" }
 acct-core = { path = "crates/acct-core" }
 # K-H2a：第三方 API key 的唯一住址（类型 / 落盘格式 / 权限判断），与远端后端共用。
-# ★ `features = ["harden"]` —— **monitor 是唯一会写这份文件的一侧**，所以只有这里开它。
-# backend 那侧刻意**不开**（`K-H2a` 裁四：backend 只许读；`readonly_guard.rs` 扫它的生产段
-# 断言不含任何文件系统变更调用，白名单恰好一个模块 `control/fork_write.rs`）。
-# ⇒ 「backend 写不了这份文件」是**编译器**兜的，不是一条判据兜的。
+# ★ `features = ["harden"]` —— 〔GP1 · 第四波〕monitor **不再写**这份文件（本机那一份的写者换成本机常驻后端，
+#   主会话 09-25 裁「每台机器一个写者 ＝ 那台的后端」），开它今天只为**读那一半**：Windows 上量 DACL
+#   （`perm::probe` 的 `all(windows, feature = "harden")` 那一臂；不开 ⇒ 本机 Windows 上界面那一格恒「读不了 DACL」）。
+#   写半边（`create_private` / `make_private`）在 monitor 生产段**零调用**，判据
+#   `creds_store_tests::gp1_the_monitor_never_reaches_the_credentials_write_half` 钉着（编译器兜不住了，由它兜）。
+# 〔墓碑 —— 从前这里写「monitor 是唯一会写这份文件的一侧，所以只有这里开它；backend 那侧刻意不开」：
+#   RM1a 起后端也开了（远端那一份由那台后端写），GP1 起 monitor 不写了。〕
 creds-core = { path = "crates/creds-core", features = ["harden"] }
 
 # P4c：**POSIX 单引号 quote 的唯一 Rust 实现**（P4b 之前叫 `launch-core`，那时它还持有

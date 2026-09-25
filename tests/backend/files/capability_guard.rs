@@ -1453,3 +1453,43 @@ fn home_is_given_when_the_environment_has_one_and_refused_otherwise() {
         assert!(p.starts_with('/'), "本机答出来的 home 不是绝对路径：{p}");
     }
 }
+
+// ══════════════════════ 〔GP1 · 第四波〕`files.stat` 送权限位 ══════════════════════
+//
+// 要求住址：`设计/60 §7`（文件窗口改权限时显示现值）· `调研/第四波记录/FW5.md §四`（窗口做不到、缺后端读口）·
+// `调研/第四波记录/GP1.md §5`（P1）。
+
+/// P1：`files.stat` 真回的键集 == 声明的 `fields`（两向，真调一次）；`mode` 就是那个文件此刻的低 12 位。
+/// 异源：期望值由测试自己用 `set_permissions` 设下去（`0o640` / `0o4755` 两个真能设的值，第二个带 setuid 位 ——
+/// 掩码若只取低 9 位就少了它）。
+#[cfg(unix)]
+#[test]
+fn gp1_stat_reports_the_declared_fields_and_the_real_mode_bits() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let _lock = resident_lock();
+    let d = f7a_dir("gp1-mode");
+    let f = d.join("m.txt");
+    std::fs::write(&f, b"x").expect("铺文件");
+    let declared: std::collections::BTreeSet<String> = CAPABILITIES
+        .iter()
+        .find(|c| c.name == "files.stat")
+        .expect("在表里")
+        .fields
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    for want in [0o640_u32, 0o4755] {
+        std::fs::set_permissions(&f, std::fs::Permissions::from_mode(want)).expect("设权限");
+        let v = answer("files.stat", &serde_json::json!({ "path": path_json(&f) }))
+            .expect("stat 一个在的文件不该失败");
+        let got: std::collections::BTreeSet<String> =
+            v.as_object().expect("对象").keys().cloned().collect();
+        assert_eq!(got, declared, "`files.stat` 真回的键与声明对不上");
+        assert_eq!(
+            v.get("mode").and_then(serde_json::Value::as_u64),
+            Some(u64::from(want)),
+            "`mode` 应当是 {want:o}，回的是 {v}"
+        );
+    }
+    std::fs::remove_dir_all(&d).ok();
+}

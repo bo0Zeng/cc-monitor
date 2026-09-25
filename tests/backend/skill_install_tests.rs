@@ -297,3 +297,288 @@ fn paths_in_the_source_are_fenced() {
     assert!(valid_rel("scripts/run.sh") && valid_rel("SKILL.md"));
     let _ = std::fs::remove_dir_all(&d);
 }
+
+// ═══════════════════════ 〔SU1 · 第四波 4C · V116〕记与卸 ═══════════════════════
+//
+// 守的要求（住址）：用户裁决 **V116**「要，只删装时写进去的文件」—— 原文「装的时候记下写了哪些文件，卸只删这些（装完用户自己改过的先问）」；
+// `调研/第四波记录/SU1.md §1.2`（记的是这台判过的那一份的摘要 ＋ 新旧）· `§1.3`（卸：逐文件四态 · 要问的两种 · 闸整趟拒）。
+// 买到：临时目录上真判 —— 装判定答的 `ledger` 恰是 `write` 那几个（两向）、摘要 == 来源原文的、`created` == 四态里的 `new` ·
+// 卸的四态逐行相等、闭集两向、`seen` 恰是能删的那几份的现有原文 · 闸（没点名 / 删不了 / 不在记录里 / 两张单子对不上）整趟拒 ·
+// 装判定 → 记 → 卸判定一趟串起来（跨模块：装时算的摘要卸时认得）。
+// 买不到：真 Windows（`symlink_metadata` / 链接那一形）· 真远端。
+
+fn ledger_with(d: &Path, name: &str, files: Value) -> (PathBuf, String) {
+    let file = d.join("state/skill-installs.json");
+    let root = d.join("skills");
+    crate::skill_ledger::record_at(
+        &file,
+        Some(&root),
+        &json!({"op": "add", "name": name, "files": files}),
+    )
+    .expect("记");
+    (file, root.join(name).display().to_string())
+}
+
+fn dg(t: &str) -> String {
+    crate::skill_ledger::digest_of(t)
+}
+
+#[test]
+fn the_install_plan_hands_back_what_to_record_for_exactly_what_it_will_write() {
+    let d = temp_dir("ledger-plan");
+    write(&d, "demo/diff.md", b"theirs\n");
+    write(&d, "demo/same.md", b"same\n");
+    let source = src(&[
+        ("diff.md", Some("mine\n"), false),
+        ("new.md", Some("new\n"), false),
+        ("same.md", Some("same\n"), false),
+    ]);
+    let look = answer_plan_with(
+        &no_facts(),
+        Some(&d),
+        &json!({"name": "demo", "source": source}),
+    )
+    .unwrap();
+    assert_eq!(look["ledger"], Value::Null, "没给 take 不答要记什么");
+    let v = answer_plan_with(
+        &no_facts(),
+        Some(&d),
+        &json!({"name": "demo", "source": source, "take": ["diff.md", "new.md", "same.md"], "overwrite": ["diff.md"]}),
+    )
+    .unwrap();
+    let keys: BTreeSet<String> = v["ledger"].as_object().unwrap().keys().cloned().collect();
+    let write: BTreeSet<String> = v["write"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p.as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(keys, write, "要记的恰是真要写的那几个（same 不写也不记）");
+    assert_eq!(
+        v["ledger"],
+        json!({
+            "diff.md": {"digest": dg("mine\n"), "created": false},
+            "new.md": {"digest": dg("new\n"), "created": true},
+        }),
+        "摘要是来源那一份原文的；盖掉原有的 ⇒ created=false，新建的 ⇒ true"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 盘上摆出四态各一（外加「装之前就在」与「装完用户自己加的」各一），逐行相等。
+fn uninstall_fixture(tag: &str) -> (PathBuf, PathBuf, String) {
+    let d = temp_dir(tag);
+    let (ledger, dir) = ledger_with(
+        &d,
+        "demo",
+        json!({
+            "intact.md": {"digest": dg("ours\n"), "created": true},
+            "overwrote.md": {"digest": dg("ours too\n"), "created": false},
+            "edited.md": {"digest": dg("ours\n"), "created": true},
+            "gone.md": {"digest": dg("x"), "created": true},
+            "blob": {"digest": dg("x"), "created": true},
+            "sub/linked.md": {"digest": dg("ours\n"), "created": true},
+        }),
+    );
+    write(&d, "skills/demo/intact.md", b"ours\n");
+    write(&d, "skills/demo/overwrote.md", b"ours too\n");
+    write(
+        &d,
+        "skills/demo/edited.md",
+        b"ours, then the user typed here\n",
+    );
+    write(&d, "skills/demo/blob", &[0u8, 1, 2]);
+    write(&d, "skills/demo/users-own.md", b"not from any install\n");
+    // 装写进去的是一份文件，装完那个路径被换成了一个目录 ⇒ 不按原文删它。
+    std::fs::create_dir_all(d.join("skills/demo/sub/linked.md")).unwrap();
+    (d, ledger, dir)
+}
+
+#[test]
+fn uninstall_judges_every_recorded_file_as_it_is_on_disk_now() {
+    let (d, ledger, dir) = uninstall_fixture("uninst-judge");
+    let v = answer_uninstall_plan_at(&ledger, &json!({"dir": dir})).expect("看");
+    let rows: Vec<(String, String, bool, bool, bool)> = v["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| {
+            (
+                r["path"].as_str().unwrap().into(),
+                r["state"].as_str().unwrap().into(),
+                r["created"].as_bool().unwrap(),
+                r["deletable"].as_bool().unwrap(),
+                r["ask"].as_bool().unwrap(),
+            )
+        })
+        .collect();
+    let row = |p: &str, s: &str, c: bool, del: bool, ask: bool| {
+        (p.to_string(), s.to_string(), c, del, ask)
+    };
+    assert_eq!(
+        rows,
+        vec![
+            row("blob", "unreadable", true, false, false),
+            row("edited.md", "modified", true, true, true),
+            row("gone.md", "gone", true, false, false),
+            row("intact.md", "intact", true, true, false),
+            row("overwrote.md", "intact", false, true, true),
+            row("sub/linked.md", "unreadable", true, false, false),
+        ],
+        "只列记着的（用户自己加的 users-own.md 不在）；换了种类 / 非文本的不按原文删；改过的与装前就在的要问"
+    );
+    assert_eq!(
+        v["seen"],
+        json!([
+            {"path": "edited.md", "text": "ours, then the user typed here\n"},
+            {"path": "intact.md", "text": "ours\n"},
+            {"path": "overwrote.md", "text": "ours too\n"},
+        ]),
+        "CAS 期望恰是能删的那几份的现有原文"
+    );
+    assert_eq!(
+        (v["delete"].clone(), v["forget"].clone()),
+        (Value::Null, Value::Null)
+    );
+    assert_eq!(v["name"], json!("demo"));
+    // 闭集两向：夹具打出来的态 == UNINSTALL_STATES
+    let got: BTreeSet<String> = rows.iter().map(|r| r.1.clone()).collect();
+    let closed: BTreeSet<String> = UNINSTALL_STATES.iter().map(|s| s.to_string()).collect();
+    assert_eq!(got, closed);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn the_uninstall_gate_refuses_the_whole_trip() {
+    let (d, ledger, dir) = uninstall_fixture("uninst-gate");
+    let ask = |take: Value, confirm: Value| {
+        answer_uninstall_plan_at(
+            &ledger,
+            &json!({"dir": dir, "take": take, "confirm": confirm}),
+        )
+    };
+    let code = |r: Answer| r.expect_err("该拒的被放行").0;
+    assert_eq!(
+        code(ask(json!(["intact.md", "edited.md"]), Value::Null)),
+        "needs_consent",
+        "改过的没点名"
+    );
+    assert_eq!(
+        code(ask(json!(["overwrote.md"]), Value::Null)),
+        "needs_consent",
+        "装之前就在的没点名"
+    );
+    assert_eq!(
+        code(ask(json!(["gone.md"]), Value::Null)),
+        "bad_args",
+        "已经不在的删不了"
+    );
+    assert_eq!(
+        code(ask(json!(["blob"]), Value::Null)),
+        "bad_args",
+        "读不出原文的删不了"
+    );
+    assert_eq!(
+        code(ask(json!(["users-own.md"]), Value::Null)),
+        "bad_args",
+        "不在记录里的不是装写进去的"
+    );
+    assert_eq!(
+        code(ask(json!(["intact.md"]), json!(["edited.md"]))),
+        "bad_args",
+        "点名了却没勾"
+    );
+    assert_eq!(
+        code(answer_uninstall_plan_at(
+            &ledger,
+            &json!({"dir": dir, "confirm": ["edited.md"]})
+        )),
+        "bad_args",
+        "给了 confirm 没给 take"
+    );
+    assert_eq!(
+        code(answer_uninstall_plan_at(
+            &ledger,
+            &json!({"dir": "/nowhere"})
+        )),
+        "not_found"
+    );
+    let ok = ask(
+        json!(["intact.md", "edited.md", "overwrote.md"]),
+        json!(["edited.md", "overwrote.md"]),
+    )
+    .expect("点名了就放行");
+    assert_eq!(
+        ok["delete"],
+        json!(["edited.md", "intact.md", "overwrote.md"])
+    );
+    assert_eq!(ok["forget"], json!(["gone.md"]), "已经不在的交回去摘掉");
+    let ok = ask(json!([]), Value::Null).expect("什么都不删也是一趟");
+    assert_eq!(
+        (ok["delete"].clone(), ok["forget"].clone()),
+        (json!([]), json!(["gone.md"]))
+    );
+    // 记录读不懂 ⇒ 说读不懂，不说「没装过」
+    std::fs::write(&ledger, b"{broken").unwrap();
+    assert_eq!(
+        code(answer_uninstall_plan_at(&ledger, &json!({"dir": dir}))),
+        "ledger_unreadable"
+    );
+    assert_eq!(code(answer_installs_at(&ledger)), "ledger_unreadable");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn installs_lists_what_the_ledger_holds() {
+    let d = temp_dir("installs");
+    let none = answer_installs_at(&d.join("absent.json")).unwrap();
+    assert_eq!(none, json!({"installs": []}), "还没装过 ⇒ 空");
+    let (ledger, dir) = ledger_with(
+        &d,
+        "demo",
+        json!({"a": {"digest": dg("a"), "created": true}, "b": {"digest": dg("b"), "created": false}}),
+    );
+    let v = answer_installs_at(&ledger).unwrap();
+    assert_eq!(
+        v,
+        json!({"installs": [{"dir": dir, "name": "demo", "files": 2}]})
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 一趟串起来：装判定答的 `ledger` 原样记下 → 盘上就是装写进去的那一份 → 卸判定说「原样」、`created` 与四态一致。
+#[test]
+fn what_the_install_plan_says_to_record_is_what_the_uninstall_plan_recognizes() {
+    let d = temp_dir("roundtrip");
+    let root = d.join("skills");
+    write(&d, "skills/demo/old.md", b"before the install\n");
+    let source = src(&[
+        ("old.md", Some("from the source\n"), false),
+        ("new.md", Some("brand new\n"), false),
+    ]);
+    let plan = answer_plan_with(
+        &no_facts(),
+        Some(&root),
+        &json!({"name": "demo", "source": source, "take": ["old.md", "new.md"], "overwrite": ["old.md"]}),
+    )
+    .unwrap();
+    // 替身「写」：照 write 把来源原文落盘（monitor 那一侧经 files-put 做的事）
+    write(&d, "skills/demo/old.md", b"from the source\n");
+    write(&d, "skills/demo/new.md", b"brand new\n");
+    let file = d.join("skill-installs.json");
+    crate::skill_ledger::record_at(
+        &file,
+        Some(&root),
+        &json!({"op": "add", "name": "demo", "files": plan["ledger"]}),
+    )
+    .unwrap();
+    let v = answer_uninstall_plan_at(&file, &json!({"dir": plan["dir"]})).unwrap();
+    assert_eq!(
+        v["rows"],
+        json!([
+            {"path": "new.md", "state": "intact", "created": true, "deletable": true, "ask": false},
+            {"path": "old.md", "state": "intact", "created": false, "deletable": true, "ask": true},
+        ])
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}

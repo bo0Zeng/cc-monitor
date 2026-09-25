@@ -326,7 +326,7 @@ const MONITOR_PAYLOAD_SRC: &str =
     include_str!("../../../src/bridge/src/backend/control/payload.rs");
 
 /// ★★★ 🔴 **跨半边对拍**〔`设计/20 §7` 步 4 · 条 59〕：monitor 注入闸认为「登记了默认上游」的那几家
-/// （`payload.rs::AGENTS_WITH_DEFAULT_UPSTREAM`）⇔ 后端 `accounts::upstream::AGENT_UPSTREAMS` 的 agent 列，**两向集合相等**。
+/// （`payload.rs::AGENTS_WITH_DEFAULT_UPSTREAM`）⇔ 后端适配层登记了默认上游的各家（`agents::Adapter::upstream` 的路由名，〔NT2 · V25〕），**两向集合相等**。
 ///
 /// 两侧**异源**：本侧是后端运行期那张表，那一侧是 monitor 源码里那一行的**字面量**（现抠，不是 `use`）。
 /// 漂开的两个方向各有各的症状：
@@ -353,9 +353,8 @@ fn the_agents_with_a_default_upstream_are_the_same_on_both_halves() {
             "抠出来的 {a:?} 不像一个路由段 —— 抽取器坏了"
         );
     }
-    let ours: std::collections::BTreeSet<String> = crate::accounts::upstream::AGENT_UPSTREAMS
-        .iter()
-        .map(|a| a.agent.to_string())
+    let ours: std::collections::BTreeSet<String> = crate::agents::default_upstreams()
+        .map(|a| a.route_id.to_string())
         .collect();
     assert_eq!(
         theirs, ours,

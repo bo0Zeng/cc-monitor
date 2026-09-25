@@ -111,6 +111,7 @@ const SWITCH_TO_AYA_IPC: readonly string[] = [
   // 〔AS2〕资产目录也跟着机器走：切到 devbox 由它自己的订阅重读（先 `assets_sync` 对 devbox 做一趟，再经通道问 devbox 的目录）。
   "assets_sync",
   "chan_call", // 〔AS2〕资产目录：经通道问 devbox 的目录（与插件那一发同名，带重数比）
+  "chan_call", // 〔SU1〕资产目录：再经通道问 devbox 记着的「从别处装来的 skill」（`skill-installs`，目录读没读成都问）
   "config_surface_report",
   // 〔ST3〕「未识别的数据」按机器分：切到 devbox 由它自己的订阅重读，按 devbox 去问，恰好一发。
   "drift_ledger_report",
@@ -131,6 +132,7 @@ const FIRST_VISIT_AYA_IPC: readonly string[] = [
   "chan_call", // 插件：〔C4b〕经通道说 `plugins-marketplaces`
   "assets_sync", // 〔AS2〕资产目录：对 devbox 做一趟同步
   "chan_call", // 〔AS2〕资产目录：经通道问 devbox 的目录（与插件那一发同名，带重数比）
+  "chan_call", // 〔SU1〕资产目录：再经通道问 devbox 记着的「从别处装来的 skill」（`skill-installs`）
   "list_remote_mcp_origins",
   "diagnose_local_cc_bus_hooks",
 ];
