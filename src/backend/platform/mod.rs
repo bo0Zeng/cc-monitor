@@ -46,6 +46,7 @@
 //! - [`pidwatch`]：`pidfd_open` + [`pidwatch::watch_pid_until_exit`]
 //! - [`signal`]：`send_sigusr1`（U3 从 `control/tmux_hook.rs` 下沉）· 〔RM1f〕`kill_group`（插件口可打断的那一形被丢时收掉整组子进程）
 //! - [`ssh_agent`]：连本机 ssh-agent（Unix 套接字 / Windows 命名管道）—— 〔C2〕拨号代理没配私钥路径时用
+//! - [`stderr_pipe`]：〔NT2 · S1〕把本进程的 fd 2 换成一根管子的写端、交回读端（脱离常驻的后端把 stderr 落盘，`crate::stderr_log`）
 //! - [`tcp_rtt`]：〔NT1〕一条已连上的 TCP 的往返时间（问内核 `TCP_INFO`，不掐表）—— 压缩判准要它（`dial/connect.rs::compression_for`）
 //! - [`detach`]：〔RM1a〕把要起的子进程放进自己的进程组（远端那台的中转不许随 SSH 断而没了）· 〔RM1f〕插件口可打断的那一形也用它（让「杀一组」有组可杀）
 //! - `win_proc`：〔WN1 · U4b〕Windows 上判活 / 起始时刻 / 等进程退出的 Win32 读法（`OpenProcess` 一族），
@@ -72,6 +73,7 @@ pub(crate) mod proc;
 pub(crate) mod shell;
 pub(crate) mod signal;
 pub(crate) mod ssh_agent;
+pub(crate) mod stderr_pipe;
 pub(crate) mod tcp_rtt;
 #[cfg(windows)]
 pub(crate) mod win_proc;
