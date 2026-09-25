@@ -1721,6 +1721,81 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 ⚠ **CLI 面也有它**（`--assets-sync`，入参从 stdin 读；按派生规则「非内建即上 CLI」），但一次性进程没有常驻那一个的连接池与可达表：
 它自己新拨一条 SSH、只对给的那一台做一趟，扇出恒为零台 —— 真正的用法是常驻后端的帧面。
 
+#### `history-annotate`：改一条历史注解（C4d · 第四波 4B，2026-09-25）
+
+历史注解（星标 / 改名 / 隐藏 / 上次用哪个号起这个会话）的**读写者是本机常驻后端**（主会话 09-25 裁：文件留在原处、同一路径，不迁移、一条不丢）。
+那份文件就是 monitor 从前读写的 `<monitor 数据目录>/history-metadata.json`：路径由 monitor 起本机后端时用环境变量 `CCM_HISTORY_METADATA` 显式交（没交 ⇒ `no_annotations`，不猜路径）。
+写是后端**自有状态**（`readonly_guard` 第四层）：先严格读一遍，读不懂 ⇒ `annotations_unreadable`、原文件一个字节不动；再在原文上只改那一条（其余条目与认不出的键原样留着）→ `O_EXCL` 临时文件 → 原子挪过去。
+
+```text
+→ {"id":"a1","cmd":"history-annotate","args":{"sid":"0f…","patch":{"starred":true}}}
+← {"kind":"reply","id":"a1","ok":true,"data":{"entry":{"starred":true,"customTitle":null,"hidden":false,"updatedAt":1727250000000,"lastAccount":null}}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `sid` | → | 会话 id |
+| `patch` | → | 要改的那几格：`starred` / `customTitle` / `hidden` / `lastAccount`（后两格也认蛇形 `custom_title` / `last_account`）。缺格或 `null` = 不改；标题 / 账号名给空白串 = 清空；多一格 ⇒ `bad_args` |
+| `entry` | ← | 改完的那一条：`starred` · `customTitle`（`null` = 没改过名）· `hidden` · `updatedAt`（毫秒，= 这一次）· `lastAccount`（`null` = 没记过） |
+
+**错误码**：`bad_args` · `no_annotations`（这个后端没被交路径）· `annotations_unreadable`（那份文件读不懂 / 读不动 —— 没有覆盖它）· `io_failed`。
+⚠ **CLI 面也有它**（`--history-annotate`，入参从 stdin 读）；一次性进程多半没被交路径 ⇒ `no_annotations`。
+
+#### `history-forget`：删一条历史注解（C4d · 第四波 4B，2026-09-25）
+
+删会话时连带（monitor 删完那份会话文件之后问本机后端）。写法同 `history-annotate`；那一条不在 ⇒ 不写。
+
+```text
+→ {"id":"f1","cmd":"history-forget","args":{"sid":"0f…"}}
+← {"kind":"reply","id":"f1","ok":true,"data":{"removed":true}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `sid` | → | 会话 id |
+| `removed` | ← | 真删了一条没有（`false` = 本来就没有这一条，文件没动） |
+
+**错误码**：同 `history-annotate`。
+⚠ **CLI 面也有它**（`--history-forget`，入参从 stdin 读）；一次性进程多半没被交路径 ⇒ `no_annotations`。
+
+#### `history-last-accounts`：sid → 上次用哪个号起（C4d · 第四波 4B，2026-09-25，**只读**）
+
+账号徽章的回落来源（「上次用本工具带账号起」）与带账号 resume 前的现读。只含真记过账号的那几条。
+
+```text
+→ {"id":"l1","cmd":"history-last-accounts","args":{}}
+← {"kind":"reply","id":"l1","ok":true,"data":{"accounts":{"0f…":"work"}}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `accounts` | ← | `{sid: 账号名}` |
+
+**错误码**：`no_annotations` · `annotations_unreadable`（读不懂不说成「一条都没有」）。
+⚠ **CLI 面也有它**（`--history-last-accounts`，不读 stdin）；一次性进程多半没被交路径 ⇒ `no_annotations`。
+
+#### `remote-reach`：本机后端的可达表登记（C4d · 第四波 4B，2026-09-25）
+
+「本机后端问远端后端」那一跳（`设计/01 §3.5`；实现住后端 `remote_ask.rs`，全后端只此一处）要先知道「怎么够到那台」。
+monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交一次：拨号请求 ＋ 那台后端的路径。本机后端记进**内存**可达表（后端重启就空，下次那台连上再填），**只登记、不拨号**。
+之后的两路都查这张表：资产目录同步（`assets-sync`）· 历史跨机 join（`history-projects` / `history-sessions` 带 `origin`）。
+老远端也登记：历史那一路问它的是 `--list-projects` / `--list-sessions` 这种老子命令。
+
+```text
+→ {"id":"r1","cmd":"remote-reach","args":{"origin":"dev","dial":{"host":"10.0.0.2","port":22,"user":"u","key_path":"~/.ssh/id_ed25519"},"backend":"/home/u/.cc-monitor/bin/ccm"}}
+← {"kind":"reply","id":"r1","ok":true,"data":{"origin":"dev","reach":[{"origin":"dev","machine":null}]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `origin` | → | 那台的名字（monitor 的 origin 名，本后端只当不透明的键用） |
+| `dial` | → | 那台的拨号请求（同 `link-open` 的 `dial`；只有路径，没有私钥本体）。用时会把 `use` 改成 `capture` |
+| `backend` | → | 那台上后端的路径 |
+| `reach` | ← | 登记之后的可达表 `[{origin, machine}]`（同 `assets-sync` 的那一格） |
+
+**错误码**：`bad_args`（缺 `origin` / `origin` 空串 · 缺 `dial` / `backend` · 可达表满）。
+⚠ **CLI 面也有它**（`--remote-reach`，入参从 stdin 读），但一次性进程的可达表随进程退出就空 —— 真正的用法是常驻后端的帧面。
+
 #### `skill-read`：读来源那台上的一个 skill（AS2 · 第四波 4B，2026-09-25，**只读**）
 
 「装要用户点」（V113）那一步的读半边：在**来源那台**跑，交出 `<skill 根>/<名>/` 下每个文件的原文（V112「内容，原样拷过去」）。
@@ -1784,28 +1859,41 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 - 八条全在阻塞档（做文件 I/O）⇒ `cancel` 命中回 `not_cancellable`。
 - 失败的 code 都是**命令级**的；读失败 `failed`，参数缺或类型不对 `bad_args`。
 
-#### `history-projects`：列全部项目（**不读 stdin**）
+#### `history-projects`：列全部项目（〔C4d · 第四波 4B〕**出成品**：并上注解 ＋ 判活，远端经本机后端问）
+
+历史跨机 join 的唯一的家是**本机常驻后端**（主会话 09-25 裁；实现 `history_join.rs`）。`origin` 缺席 = 这台机器：记录树里的项目（`--list-projects` 那一行）＋ 合成历史（Codex 按 cwd 分组，项目键 `codex:<cwd>`）＋ 这台后端自己判活（pidfile）；
+`origin` 给了 = 可达表里的那一台（`remote-reach` 登记的）：本机后端沿池里那条 SSH 在那台跑 `--list-projects`（CLI 老子命令，stdout 形状一个字节没变 ⇒ **那台的后端不必升级**），判活「不知道」。
+两支都并上**这台**的注解（`history-annotate` 那一份：星标数 / 隐藏数；读不到 ⇒ 两个数 `null`、`notice` 说为什么）。项目按「活的 → 有星标的 → 最近动过的」排。
 
 ```text
-→ {"id":"q1","cmd":"history-projects","args":{}}
-← {"kind":"reply","id":"q1","ok":true,"data":{"lines":["{\"dirName\":…}", …]}}
+→ {"id":"q1","cmd":"history-projects","args":{"origin":"dev"}}
+← {"kind":"reply","id":"q1","ok":true,"data":{"rows":[{"projectPath":"/home/u/proj","projectName":"proj","projectDir":"-home-u-proj","sessionCount":3,"starredCount":1,"hiddenCount":0,"lastActivity":1727250000000,"hasLive":null,"origin":"dev"}],"notice":null}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `lines` | ← | 每项目一行，形状同 `--list-projects`（含 `sessionIds`） |
+| `origin` | → | 可缺席：那台的名字（可达表的键）。缺席 = 这台 |
+| `rows` | ← | 每项目一行：`projectPath` · `projectName` · `projectDir`（懒加载的键，原样交回 `history-sessions`）· `sessionCount` · `starredCount` / `hiddenCount`（`null` = 不知道，**不是 0**）· `lastActivity`（毫秒）· `hasLive`（`null` = 这条路上答不了）· `origin`（远端那台才有） |
+| `notice` | ← | 注解没并上的那句话；`null` = 并上了 |
 
-#### `history-sessions`：列一个项目下的会话
+**错误码**：`bad_args`（`origin` 空串 / 不是串）· `failed`（这台的记录树读不动）· `unreachable`（可达表里没有那一台 / 那台问不出来 —— 带那台的名字与原因）· `too_large`。
+⚠ **CLI 面也有它**（`--history-projects`，入参从 stdin 读）；一次性进程的可达表是空的 ⇒ 只答得了这台。
+
+#### `history-sessions`：列一个项目下的会话（〔C4d · 第四波 4B〕**出成品**，同上）
 
 ```text
-→ {"id":"q2","cmd":"history-sessions","args":{"project_dir":"-home-u-proj"}}
-← {"kind":"reply","id":"q2","ok":true,"data":{"lines":["{\"sessionId\":…}", …]}}
+→ {"id":"q2","cmd":"history-sessions","args":{"project_dir":"-home-u-proj","origin":"dev"}}
+← {"kind":"reply","id":"q2","ok":true,"data":{"rows":[{"sessionId":"0f…","projectPath":"/home/u/proj","projectName":"proj","aiTitle":null,"firstUserExcerpt":"…","startedAt":1727250000000,"updatedAt":1727250001000,"jsonlPath":"/home/u/.claude/projects/-home-u-proj/0f….jsonl","isLive":null,"messageCountApprox":12,"isBg":false,"starred":false,"customTitle":null,"hidden":false,"origin":"dev"}],"notice":null}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `project_dir` | → | 项目目录名（不是路径；含分隔符 / `..` ⇒ `failed`） |
-| `lines` | ← | 每会话一行，形状同 `--list-sessions` |
+| `project_dir` | → | `history-projects` 给的那个项目键：记录树的项目目录名（不是路径；含分隔符 / `..` ⇒ `bad_args`），或合成历史的 `<kind>:<cwd>`（只在这台） |
+| `origin` | → | 同 `history-projects` |
+| `rows` | ← | 每会话一行：`sessionId` · `projectPath` · `projectName` · `aiTitle` · `firstUserExcerpt` · `startedAt` / `updatedAt`（毫秒）· `jsonlPath` · `isLive`（`null` = 答不了）· `messageCountApprox` · `isBg` · `starred` / `customTitle` / `hidden`（这台的注解）· `forkedFromSessionId` / `forkedFromMessageUuid`（`/branch` 分叉来的才有）· `origin`（远端那台才有） |
+| `notice` | ← | 同 `history-projects` |
+
+**错误码**：`bad_args` · `failed` · `unreachable` · `too_large`。⚠ 远端那一支在那台跑 `--list-sessions <project_dir>`。
 
 #### `history-search`：全文搜索
 

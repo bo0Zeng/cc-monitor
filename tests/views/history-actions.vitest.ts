@@ -47,7 +47,7 @@ import {
   __setLocalLaunchSnapshotForTests,
   type AccountsState,
 } from "../../src/accounts";
-import { isChanCall, linesReply, withAccountReads } from "../test-support/chan-fake";
+import { historyCalls, isChanCall, linesReply, withAccountReads, withHistoryReads } from "../test-support/chan-fake";
 import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -74,7 +74,8 @@ function menuItem(text: string): HTMLButtonElement | undefined {
 describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
   beforeEach(() => {
     invokeMock.mockReset();
-    invokeMock.mockResolvedValue({ starred: true, hidden: false, customTitle: null });
+    // 〔C4d〕改注解 / 上次账号那几问改走通道（问本机常驻后端）⇒ 经 chan-fake 译回旧名字再答。
+    invokeMock.mockImplementation(withHistoryReads(() => Promise.resolve({ starred: true, hidden: false, customTitle: null })));
     runNewRemote.mockClear();
     document.body.replaceChildren();
   });
@@ -84,9 +85,9 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     const row = buildRow(view, entry({ starred: false }), proj());
     row.querySelector<HTMLButtonElement>(".history-star")!.click();
     await Promise.resolve();
-    const call = invokeMock.mock.calls.find((c) => c[0] === "update_history_metadata");
+    const call = historyCalls(invokeMock.mock.calls, "update_history_metadata")[0];
     expect(call).toBeTruthy();
-    expect(call![1]).toMatchObject({ sessionId: "s1", patch: { starred: true } });
+    expect(call!).toMatchObject({ sessionId: "s1", patch: { starred: true } });
   });
 
   it("右键条目 → 菜单出全套动作（本地）", () => {
@@ -130,7 +131,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
       exists: true,
       loggedIn: true,
     };
-    invokeMock.mockImplementation(withAccountReads((cmd: string, args: unknown) => {
+    invokeMock.mockImplementation(withHistoryReads(withAccountReads((cmd: string, args: unknown) => {
       // ★ 会话真的跑起来了 —— 两条行里只有一条带着我们那个 token。
       //   〔C4a〕经通道问本机后端 `accounts-sessions`（原先是 E79 那条已退役的本机 Tauri 命令）。
       if (isChanCall(cmd, args, "accounts-sessions")) {
@@ -155,7 +156,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
         default:
           return Promise.resolve({});
       }
-    }));
+    })));
 
     // ⚠ **快照要先喂热**：`primeLocalLaunchAccounts` 是**不等待**地踢出去的
     //   （多等一拍会撞那两条只放行一个微任务的 DOM 判据，见 `localLaunchAccountSync` 头注），
@@ -189,9 +190,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     // ② 会话出现之后（生产上由 `main.ts` 的 `session-started` 事件触发这一跳），
     //    sid 被反查出来、pin 落到**那一条**上。
     await resolvePendingLocalLaunches();
-    const pin = invokeMock.mock.calls
-      .filter((c) => c[0] === "update_history_metadata")
-      .map((c) => c[1]);
+    const pin = historyCalls(invokeMock.mock.calls, "update_history_metadata");
     expect(pin, "反查出 sid 之后没有补写账号 pin").toHaveLength(1);
     // 🔴 判别格：落在 `sid-new` 上而不是 `sid-other` —— 这一格只有 token 说得出来。
     expect(pin[0]).toMatchObject({ sessionId: "sid-new", patch: { lastAccount: "acct-a" } });
@@ -218,7 +217,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     // fetchAccounts 有模块级缓存(30s TTL)——上一条用例已经用默认 mock 值给 "hostA" 缓存过一次
     // (不含 available 字段的错误响应)，不清掉这里会命中陈旧缓存、永远走不到下面的自定义 mock。
     invalidateAccountsCache();
-    invokeMock.mockImplementation(withAccountReads((cmd: string) => {
+    invokeMock.mockImplementation(withHistoryReads(withAccountReads((cmd: string) => {
       if (cmd === "list_remote_accounts") {
         return Promise.resolve({
           available: true,
@@ -228,7 +227,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
         });
       }
       return Promise.resolve(undefined);
-    }));
+    })));
     const view = new HistoryView();
     const row = buildRow(view, entry({ origin: "hostA" }), proj({ origin: "hostA" }));
     row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
@@ -238,15 +237,31 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     invalidateAccountsCache(); // fetchAccounts 有模块级缓存,别泄漏进同文件其它测试
   });
 
+  // 〔C4d · 第四波 4B〕BACKLOG E35：「留空恢复默认」要真的清掉标题 —— 清空传**空串**（缺格 / `null` 在后端 patch 里都是「不改」）。
+  //   守的要求：主会话 09-25 裁（`调研/第四波记录/C4d.md`「主会话裁」第 2 条）注解读写者换成本机常驻后端，patch 语义逐格照搬
+  //   monitor 那一份（`null` = 不改）⇒ 界面这一侧要传对的那一个值。
+  it("重命名留空 ⇒ 交的是空串（清掉），不是 null（后端当「不改」）", async () => {
+    const promptSpy = vi.spyOn(window, "prompt").mockReturnValue("   ");
+    const view = new HistoryView();
+    const row = buildRow(view, entry({ customTitle: "旧名" }), proj());
+    row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
+    menuItem("重命名")!.click();
+    await Promise.resolve();
+    const call = historyCalls(invokeMock.mock.calls, "update_history_metadata")[0];
+    expect(call, "重命名一发都没出去").toBeTruthy();
+    expect(call!.patch).toEqual({ customTitle: "" });
+    promptSpy.mockRestore();
+  });
+
   it("菜单 star 与 inline star 走同一 run（都触发 update_history_metadata）", async () => {
     const view = new HistoryView();
     const row = buildRow(view, entry({ starred: false }), proj());
     row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
     menuItem("标星")!.click();
     await Promise.resolve();
-    const call = invokeMock.mock.calls.find((c) => c[0] === "update_history_metadata");
+    const call = historyCalls(invokeMock.mock.calls, "update_history_metadata")[0];
     expect(call).toBeTruthy();
-    expect(call![1]).toMatchObject({ patch: { starred: true } });
+    expect(call!).toMatchObject({ patch: { starred: true } });
   });
 
   it("inline 删除（本地）二次确认 + invoke delete_history_session（回归护栏）", async () => {
@@ -359,7 +374,7 @@ describe("K-R46：历史页 resume 的 tmux 名（行为）", () => {
 
   /** 让 `list_local_tmux` 回一份本机 tmux 快照（`null` = 不知道）。 */
   function serveLocalTmux(names: string[] | null): void {
-    invokeMock.mockImplementation((cmd: string) => {
+    invokeMock.mockImplementation(withHistoryReads((cmd: string) => {
       if (cmd === "list_local_tmux") {
         return Promise.resolve(
           names === null
@@ -375,7 +390,7 @@ describe("K-R46：历史页 resume 的 tmux 名（行为）", () => {
         );
       }
       return Promise.resolve(undefined);
-    });
+    }));
   }
 
   async function clickResume(): Promise<void> {

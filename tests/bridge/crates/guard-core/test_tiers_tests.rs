@@ -56,6 +56,7 @@ use std::path::{Path, PathBuf};
 
 /// 单元层：不读仓内文本、不碰 OS 的测试文件。
 const UNIT: &[&str] = &[
+    "tests/bridge/local_accounts_tests.rs", // 〔C4d〕从 `INTEGRATION` 挪来（见那一行的墓碑）
     "tests/account-color.vitest.ts",
     "tests/account-commands.vitest.ts",
     "tests/account-restart.vitest.ts",
@@ -81,7 +82,7 @@ const UNIT: &[&str] = &[
     "tests/branch-button.vitest.ts",
     "tests/branch-fold-batching.vitest.ts",
     "tests/branching.test.ts",
-    "tests/bridge/accounts_tests.rs",
+    // 〔C4d〕`tests/bridge/accounts_tests.rs` 删了（随 `accounts.rs` 整份出列）。
     "tests/bridge/adapter/claude_code_tests.rs",
     "tests/bridge/adapter/codex_tests.rs",
     "tests/bridge/backend/control/launch_cli_parity_tests.rs",
@@ -247,6 +248,7 @@ const SCAN: &[&str] = &[
     "tests/account-base-semantics.vitest.ts",
     "tests/account-chip.vitest.ts",
     "tests/accounts-decode.vitest.ts", // 〔C4c〕读跨语言金样（`tests/__fixtures__/accounts.golden.json`）
+    "tests/history-reads.vitest.ts", // 〔C4d〕读跨语言金样（`tests/__fixtures__/history-products.golden.json`）
     "tests/agent-profile-parity.vitest.ts",
     "tests/app-grid-claims.vitest.ts",
     "tests/backend/agent_boundary_guard.rs",
@@ -378,7 +380,7 @@ const SCAN: &[&str] = &[
     "tests/bridge/profile_installer_handshake_doc_guard.rs",
     "tests/bridge/quote_singleton_guard_tests.rs",
     "tests/bridge/remote_history_f06_tests.rs",
-    "tests/bridge/remote_history_kr83_tests.rs",
+    // 〔C4d〕`tests/bridge/remote_history_kr83_tests.rs` 删了（`K-R83` 那三条随 join 搬进后端 `history_join_tests.rs`）。
     "tests/bridge/remote_relay_tests.rs",
     "tests/bridge/remote_write_registry_tests.rs",
     "tests/bridge/rust_timer_registry_tests.rs",
@@ -483,8 +485,12 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/agents/claudecode/assets_tests.rs", // 〔AS2〕
     "tests/backend/agents/fake_tests.rs",
     "tests/backend/agents_tests.rs",
-    "tests/backend/asset_catalog_tests.rs", // 〔AS2〕
-    "tests/backend/asset_sync_tests.rs",    // 〔AS2〕
+    "tests/backend/asset_catalog_tests.rs",        // 〔AS2〕
+    "tests/backend/asset_sync_tests.rs",           // 〔AS2〕
+    "tests/backend/agents/codex/history_tests.rs", // 〔C4d〕Codex 历史清单那一面（临时目录上的会话树）
+    "tests/backend/history_annotations_tests.rs",  // 〔C4d〕注解读写（夹具拷进临时目录真写真读）
+    "tests/backend/history_join_tests.rs", // 〔C4d〕历史跨机 join（临时目录上的记录树 ＋ 替身对面）
+    "tests/backend/remote_ask_tests.rs",   // 〔C4d〕问远端那一跳（真 sh 读回引号 ＋ 替身对面）
     "tests/backend/skill_install_tests.rs", // 〔AS2〕
     "tests/backend/common/fs_tests.rs",
     "tests/backend/control/capture_pane_tests.rs",
@@ -558,7 +564,8 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/filewin/xvfb_rig.rs",
     "tests/bridge/history_tests.rs",
     "tests/bridge/launch_tests.rs",
-    "tests/bridge/local_accounts_tests.rs",
+    // 〔C4d〕`tests/bridge/local_accounts_tests.rs` 挪进 `UNIT`：驱动本机 manifest 参照实现的那几条（临时目录真写真读）随实现删了，
+    //   剩下的 acct-iso 两问只喂纯函数、判别器判它是单元层。
     "tests/bridge/local_backend_host_tests.rs",
     "tests/bridge/local_lines_tests.rs",
     "tests/bridge/logging_tests.rs",

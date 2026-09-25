@@ -122,8 +122,12 @@ pub const COMMANDS: &[&str] = &[
     "files-stat",
     "files-write-text",
     "footprint-probe",
+    // 〔C4d · 第四波 4B〕历史注解（星标 / 改名 / 隐藏 / 上次账号）的读写者换成本机常驻后端（第四层；文件原地不动）。
+    "history-annotate",
     "history-find",
+    "history-forget",
     "history-index",
+    "history-last-accounts",
     // 〔CF2 · 第四波 4B〕按行号取回一段（不依赖骨架索引，`history_query::read_lines`）。
     "history-lines",
     "history-projects",
@@ -150,6 +154,8 @@ pub const COMMANDS: &[&str] = &[
     "plugins-marketplaces",
     "relay-ensure",
     "relay-status",
+    // 〔C4d · 第四波 4B〕本机后端的可达表：monitor 在每台远端流握手那一刻交「怎么够到那台」（只登记）。
+    "remote-reach",
     "resolve",
     // 〔AS2〕skill「装到这台」：来源那台读 · 要被写的那一台判（都只读；写经 `files-put`）。
     "skill-install-plan",
@@ -927,11 +933,87 @@ pub const REGISTRY: &[CommandSpec] = &[
             Box::pin(async move {
                 let fold: crate::asset_sync::Fold =
                     std::sync::Arc::new(crate::asset_catalog::answer_merge);
-                crate::asset_sync::answer(&r.args, fold, &crate::asset_sync::DialRemote)
+                crate::asset_sync::answer(&r.args, fold, &crate::remote_ask::DialRemote)
                     .await
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))
             })
+        }),
+    },
+    // 〔C4d · 第四波 4B〕**可达表登记**：monitor（宿主，只交事实）在每台远端流握手成功那一刻交「怎么够到那台」
+    //   （拨号请求 ＋ 那台后端的路径），本机后端记进内存可达表（`remote_ask`，后端重启就空）。**只登记，不拨号**：
+    //   之后「本机后端问远端后端」的两路（资产目录同步 · 历史跨机 join）都查这张表。老远端也登记（历史问它的是老子命令）。
+    CommandSpec {
+        name: "remote-reach",
+        doc_anchor: Some("#### `remote-reach`"),
+        codes: &["bad_args"],
+        fields: &["backend", "dial", "origin", "reach"],
+        takes_input: true,
+        // 纯内存（一把锁、插一行）⇒ 不进阻塞档，同 `ping` / `resolve`。
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::remote_ask::answer_reach(&r.args)
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
+    // 〔C4d · 第四波 4B〕**历史注解**（星标 / 改名 / 隐藏 / 上次用哪个号起）的读写者换成本机常驻后端 ——
+    //   主会话 09-25 裁「文件留在原处、同一路径，不迁移、一条不丢」：路径由 monitor 起本机后端时显式交（`CCM_HISTORY_METADATA`），
+    //   写是第四层（`history_annotations.rs`，读不懂就拒写、只改那一条、认不出的键原样留着）。三条都是阻塞档（读写一份小文件）。
+    CommandSpec {
+        name: "history-annotate",
+        doc_anchor: Some("#### `history-annotate`"),
+        codes: &[
+            "annotations_unreadable",
+            "bad_args",
+            "io_failed",
+            "no_annotations",
+        ],
+        fields: &[
+            "customTitle",
+            "entry",
+            "hidden",
+            "lastAccount",
+            "patch",
+            "sid",
+            "starred",
+            "updatedAt",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::history_annotations::answer_annotate(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "history-forget",
+        doc_anchor: Some("#### `history-forget`"),
+        codes: &[
+            "annotations_unreadable",
+            "bad_args",
+            "io_failed",
+            "no_annotations",
+        ],
+        fields: &["removed", "sid"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::history_annotations::answer_forget(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "history-last-accounts",
+        doc_anchor: Some("#### `history-last-accounts`"),
+        codes: &["annotations_unreadable", "no_annotations"],
+        fields: &["accounts"],
+        takes_input: false,
+        run: Run::Blocking(|r| {
+            crate::history_annotations::last_accounts(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     // 〔AS2 · 第四波 4B · V113〕**skill「装到这台」**：`skill-read` 在来源那台读出这个 skill 的全部文件（原文 ＋ 执行位）；
@@ -1342,28 +1424,37 @@ pub const REGISTRY: &[CommandSpec] = &[
     //
     // ⚠ 全在 `Run::Blocking`：它们都做文件 I/O（`history-search` 扫全库）。代价同 `files-*`：
     //   `cancel` 命中时回 `not_cancellable`（不撒谎）。
+    // 〔C4d · 第四波 4B〕这两条**出成品**：历史跨机 join 的唯一的家（`history_join.rs`）—— 这台（记录树 ＋ 合成历史 ＋ pidfile 判活）
+    //   或可达表里的那一台（`remote_ask` 问它的 CLI 老子命令 `--list-projects` / `--list-sessions`），并上这台的注解。
+    //   真异步（远端那一跳要等）；本机扫盘那一段挪到阻塞线程池（`history_join::blocking`）。
     CommandSpec {
         name: "history-projects",
         doc_anchor: Some("#### `history-projects`"),
-        codes: &["failed", "too_large"],
-        fields: &["lines"],
-        takes_input: false,
-        run: Run::Blocking(|r| {
-            crate::read_face::answer(&r.cmd, &r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
+        codes: &["bad_args", "failed", "too_large", "unreachable"],
+        fields: &["notice", "origin", "rows"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::history_join::answer_projects(r.args)
+                    .await
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
         }),
     },
     CommandSpec {
         name: "history-sessions",
         doc_anchor: Some("#### `history-sessions`"),
-        codes: &["bad_args", "failed", "too_large"],
-        fields: &["lines", "project_dir"],
+        codes: &["bad_args", "failed", "too_large", "unreachable"],
+        fields: &["notice", "origin", "project_dir", "rows"],
         takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::read_face::answer(&r.cmd, &r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::history_join::answer_sessions(r.args)
+                    .await
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
         }),
     },
     CommandSpec {

@@ -164,7 +164,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "files-home"
                 // 〔`C1` · 09-24〕只读查询面八条同为阻塞档：全做文件 I/O，
                 // `history-search` 扫全库、`history-tail` 扫整份会话 —— 不许占 tokio worker。
-                | "history-projects"
+                // 〔C4d · 第四波 4B〕`history-projects` / `history-sessions` 出列：出成品、远端那一支要等 ⇒ 真异步
+                //   （本机扫盘那段在 `history_join::blocking` 里自己挪到阻塞线程池）。
                 | "history-index"
                 | "history-user-inputs"
                 | "history-find"
@@ -172,7 +173,6 @@ fn every_registered_command_declares_its_run_kind() {
                 | "history-lines" // 〔CF2〕按行号取回：从文件头数，同档
                 | "history-record" // 〔U4b〕记录还在不在：一次目录枚举，同档
                 | "history-search"
-                | "history-sessions"
                 | "history-subagents"
                 | "history-tail"
                 | "accounts-list"
@@ -203,6 +203,10 @@ fn every_registered_command_declares_its_run_kind() {
                 // 〔AS2〕skill「装到这台」两条：走 skill 目录、读文件原文、stat 可疑路径（同步文件 I/O）。
                 | "skill-read"
                 | "skill-install-plan"
+                // 〔C4d · 第四波 4B〕历史注解三条：读 / 原子写一份小文件（同步文件 I/O）。
+                | "history-annotate"
+                | "history-forget"
+                | "history-last-accounts"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_));
         assert_eq!(
@@ -247,6 +251,8 @@ fn every_registered_command_declares_its_run_kind() {
         "resolve",
         // 〔AS2 · 第四波 4B〕资产目录的同步：真异步（拨号 / 等远端 capture），在 await 点可取消。
         "assets-sync",
+        // 〔C4d · 第四波 4B〕可达表登记：纯内存，普通 spawn。
+        "remote-reach",
         "bus-list",
         "bus-send",
         "bus-kill",
@@ -300,6 +306,10 @@ fn every_registered_command_declares_its_run_kind() {
         "assets-catalog-merge",
         "skill-read",
         "skill-install-plan",
+        // 〔C4d · 第四波 4B〕历史注解三条（阻塞档，理由在上面 `expected_blocking`）。
+        "history-annotate",
+        "history-forget",
+        "history-last-accounts",
         // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话（阻塞档，理由在上面 `expected_blocking`）。
         "files-peek",
         "files-put",

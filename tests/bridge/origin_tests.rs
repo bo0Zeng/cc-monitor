@@ -198,7 +198,7 @@ fn local_and_remote_are_exactly_complementary() {
 //    远端命令，签名从 `origin: String` 变成了 `host: &str`：
 //      · `remote_branch.rs::create_remote_branch_session`
 //      · `remote_history.rs::delete_remote_history_session`
-//      · `remote_history.rs::stream_remote_history_sessions`
+//      · `stream_remote_history_sessions`〔散文墓碑〕（〔C4d〕随远端会话清单搬进本机后端一起删了）
 //      · `remote_history.rs::stream_read_remote_session`
 //      · `mcp.rs::list_remote_mcp_project_dirs`
 //

@@ -365,10 +365,18 @@ fn both_paths_ask_the_backend_and_reuse_the_existing_subcommands() {
         prod.contains("local_query::{run_query, QueryOutcome}"),
         "本机那条没有走 `backend::observe::local_query` —— 它又在自己读盘了"
     );
-    // 远端那条仍走既有的 ssh 传输，没有另起炉灶。
+    // 远端那条只走长连接的帧命令（`frame_query::run_routed`），没有另起炉灶。
+    // 〔C4d · 第四波 4B〕原先这里钉「远端那条仍走既有的 ssh 传输」（逐次拨号那条路，今天删了）；
+    //   改钉「只有帧面那一出口、没有第二条拨号回落」—— 拨号那条路的函数名在生产段零命中另由
+    //   `frame_query_tests::the_dial_per_query_path_is_gone` 管。
+    assert_eq!(
+        prod.matches("frame_query::run_routed(").count(),
+        1,
+        "远端那条不再恰好经一处帧面出口 —— 要么没接上，要么又长出了第二条路"
+    );
     assert!(
-        prod.contains("run_list_query(cfg, &args)"),
-        "远端那条没走既有的 `run_list_query`"
+        !prod.contains("connect_and_exec_cmd"),
+        "远端那条又自己拨了一条 SSH（逐次拨号那条路 C4d 删了）"
     );
     // 本机/远端的分流仍只有一处，且只看 origin。
     assert_eq!(

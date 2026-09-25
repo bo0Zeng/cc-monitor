@@ -425,11 +425,13 @@ fn the_account_id_rule_is_not_reimplemented_on_the_write_side() {
                  而两边看起来都没错」。"
         );
     }
-    // 反空真：这把尺子**认得出**那一族针（不是恒 0）。它在**注入侧**那一份实现里有。
-    let launch = guard_core::production_code(include_str!("../../src/bridge/src/history.rs"));
+    // 反空真：这把尺子**认得出**那一族针（不是恒 0）。
+    // 〔C4d · 第四波 4B〕正控从 `history.rs` 挪到 `remote_history.rs`：前者那几处 `file_name(`（本机历史清单扫目录）
+    //   随清单搬进本机后端一起没了；后者 `jsonl_stem` 取文件名那一句是同一族针（`rsplit('/')`），今天真在。
+    let other = guard_core::production_code(include_str!("../../src/bridge/src/remote_history.rs"));
     assert!(
-        launch.contains("file_name("),
-        "同一把尺子在注入侧那份实现上也数出 0 —— 它恒 0，本条按红处理"
+        other.contains("rsplit('/')"),
+        "同一把尺子在 `remote_history.rs::jsonl_stem` 上也数出 0 —— 它恒 0，本条按红处理"
     );
 }
 
