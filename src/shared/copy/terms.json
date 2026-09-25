@@ -76,7 +76,7 @@
       "word": "tmux",
       "tier": "限用",
       "tally": { "re": "\\btmux\\b", "flags": "i" },
-      "inTable": 49,
+      "inTable": 50,
       "meaning": "用户机器上的终端复用程序。",
       "context": "讲用户自己能 attach / 看得见的 tmux 会话时许说（「tmux 会话」比「终端复用会话」清楚）。我们对 tmux 的用法（send-keys · capture-pane · @ccm_sid 这类会话标记）不许露，见禁档。",
       "source": "设计/91 §4 R1b（2026-09-18 裁定）",
@@ -86,7 +86,7 @@
       "word": "SSH",
       "tier": "限用",
       "tally": { "re": "\\bssh\\b", "flags": "i" },
-      "inTable": 10,
+      "inTable": 23,
       "meaning": "连远端用的 ssh。",
       "context": "讲连接、主机、密钥、主机指纹时许说。",
       "source": "设计/91 §4 R1b"
@@ -104,7 +104,7 @@
       "word": "PowerShell",
       "tier": "限用",
       "tally": { "re": "powershell", "flags": "i" },
-      "inTable": 13,
+      "inTable": 16,
       "meaning": "Windows 上的 shell。",
       "context": "讲终端集成、$PROFILE 时许说；不许缩写成 PS。",
       "source": "设计/91 §4 R1b"
@@ -113,7 +113,7 @@
       "word": "ccm",
       "tier": "限用",
       "tally": { "re": "(?<![\\w-])ccm(?![\\w-])", "flags": "i" },
-      "inTable": 13,
+      "inTable": 14,
       "meaning": "用户在 shell 里敲的那个命令；它就是后端程序本身（设计/01 §6.7b）。",
       "context": "只在讲「shell 里敲的命令」时许说（ccm 的参数、别名、写进 ~/.bashrc 的那一段）。讲「机器上装的那个程序」时说「后端」。「ccm 助手」「ccm wrapper」是我们起的名，禁。",
       "source": "设计/01 §6.7b · 设计/70 §5（MC1：「ccm 助手」删掉）· CP1 判不了之一（settings/machine-card.ts「卸载 ccm 中」）· 用户 09-24「继续叫卸载ccm」（99 §1 V80：原先那条 ask 结案删掉）",
@@ -144,7 +144,7 @@
       "word": "hook",
       "tier": "限用",
       "tally": { "re": "\\bhook\\b|钩子", "flags": "i" },
-      "inTable": 6,
+      "inTable": 11,
       "meaning": "Claude Code 自己的 hooks 配置（settings.json 里的 hooks 段）。",
       "context": "只在讲 Claude Code 的 hooks 配置时许说（中文「钩子」同义）。讲我们内部的回调、tmux-hook 之类不许说。",
       "source": "普查 R1 候选（K-T68 面④附）",
@@ -154,7 +154,7 @@
       "word": "SSH 主机指纹",
       "tier": "限用",
       "tally": { "re": "主机指纹", "flags": "i" },
-      "inTable": 8,
+      "inTable": 9,
       "meaning": "ssh 首次连接时让你确认的那串 SHA256。",
       "context": "讲主机密钥、首次连接确认时许说。别处（例如 vendored 组件的「指纹文件」）是内部的版本指纹，不许说。",
       "source": "CP1 台账新词「指纹」",
@@ -630,7 +630,7 @@
       "say": "按语境换：档 →「类别」· 面 →「类别」· 维度 →「选项」· 对账 →「核对」· 产物 →「文件」· 数据源 / 聚合 →「汇总」· 子命令 →「命令」· 监听 →「监视」· 持久化 →「保存」· 注入 →「写入」· 语义 / 调用方 → 不说。",
       "scan": null,
       "noScanWhy": "全是普通中文词，只有在我们的语境里才是行话；正则分不出「流程」和「流」、「能力」和「能力声明」那种区别 ⇒ 只靠人工 review（主观项）。",
-      "ledger": ["档", "面", "维度", "产物", "数据源", "聚合", "子命令", "监听", "持久化", "调用方"],
+      "ledger": ["面", "维度", "产物", "子命令", "监听", "持久化", "调用方"],
       "source": "CP1 台账"
     }
   ]

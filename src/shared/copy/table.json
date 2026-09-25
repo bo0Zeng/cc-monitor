@@ -4297,7 +4297,7 @@
       "zh": "集合名：",
       "args": []
     },
-    "tabDrop.defaultGroupName.defaultGroupName": {
+    "tabDrop.group.defaultName": {
       "kind": "body",
       "zh": "组 {n}",
       "args": ["n"]
@@ -7819,6 +7819,499 @@
       "kind": "error",
       "zh": "插件市场清单的形状对不上（后端与界面版本不一致？重装那台机器的后端试试）",
       "args": []
+    },
+    "remote.save.failed": {
+      "kind": "error",
+      "zh": "保存失败：{e}",
+      "args": ["e"]
+    },
+    "remote.save.done": {
+      "kind": "body",
+      "zh": "远端设置已更新。",
+      "args": []
+    },
+    "remote.save.what": {
+      "kind": "body",
+      "zh": "远端机器配置",
+      "args": []
+    },
+    "remote.save.fingerprintShape": {
+      "kind": "body",
+      "zh": "已保存。注意：某台主机指纹不是 SHA256: 开头的格式，请确认没粘错。",
+      "args": []
+    },
+    "remote.save.incomplete": {
+      "kind": "body",
+      "zh": "已保存。有 {n} 台的主机、用户或后端路径不完整，后端会跳过这些台；补全后重启 monitor 才会连。",
+      "args": ["n"]
+    },
+    "remote.wrapper.activation": {
+      "kind": "body",
+      "zh": "source 它，或在该远端开一个新的登录 shell。",
+      "args": []
+    },
+    "remote.wrapper.merge": {
+      "kind": "body",
+      "zh": "追加到文件末尾即可；里面是带 BEGIN / END 两行标记的一块，重复贴会有两份，先删掉旧的那一份。",
+      "args": []
+    },
+    "remote.wrapper.pasteTarget": {
+      "kind": "body",
+      "zh": "这台远端的 ~/.bashrc（或它实际用的 shell 配置文件）",
+      "args": []
+    },
+    "remote.wrapper.help": {
+      "kind": "body",
+      "zh": "用 ccm 起会话（而不是直接用 claude）。远端会周期性把 ssh 窗口标题设成一个带会话编号的标记，本地 monitor 扫到就绑定那个窗口；同时让 tmux 会话记下它是哪个会话，\n于是从终端起的会话 app 也认得出、能 attach、能换号重启。\n\n✅ 每台机器页的「组件」栏：「部署后端」放好 ccm 入口（~/.cc-monitor/bin/ccm），\n「装别名块」把别名块写进 ~/.bashrc，先备份、可以重装；下面片段就是那个别名块，\n可以手动复制：zsh 或自定义 profile 用得上；ccm 入口仍要用「部署后端」放。\n\n⚠ 限制：多个 ssh 会话若开在同一个 Windows Terminal 窗口的不同 tab 里，↗ 只能\n切到那个窗口、切不到具体 tab。建议每个远端会话单独开窗。",
+      "args": [],
+      "waive": {
+        "C-L3": "四段的帮助说明，括号分散在不同段里，每段至多一处"
+      }
+    },
+    "remote.wrapper.title": {
+      "kind": "title",
+      "zh": "远端 ↗ 切到终端窗口（可选）",
+      "args": []
+    },
+    "remote.batch.done": {
+      "kind": "body",
+      "zh": "批量导入完成：新增 {added} 台{skippedPart}。",
+      "args": ["added", "skippedPart"]
+    },
+    "remote.batch.skipped": {
+      "kind": "body",
+      "zh": "，跳过 {skipped} 台（同名已存在）",
+      "args": ["skipped"]
+    },
+    "remote.preview.import": {
+      "kind": "action",
+      "zh": "导入",
+      "args": []
+    },
+    "remote.preview.cancel": {
+      "kind": "action",
+      "zh": "取消",
+      "args": []
+    },
+    "remote.preview.splitToggle": {
+      "kind": "control",
+      "zh": "拆分",
+      "args": []
+    },
+    "remote.preview.split": {
+      "kind": "body",
+      "zh": "拆成 {n} 台独立机器：{src}",
+      "args": ["n", "src"]
+    },
+    "remote.preview.row": {
+      "kind": "body",
+      "zh": "{host}{addrHint} · {user}{jumpHint} · 来源：{src}",
+      "args": ["host", "addrHint", "user", "jumpHint", "src"]
+    },
+    "remote.preview.noUser": {
+      "kind": "body",
+      "zh": "无用户",
+      "args": []
+    },
+    "remote.preview.jump": {
+      "kind": "body",
+      "zh": " · 跳板 {jump}",
+      "args": ["jump"]
+    },
+    "remote.preview.addresses": {
+      "kind": "body",
+      "zh": " +{n} 备用地址",
+      "args": ["n"]
+    },
+    "remote.preview.title": {
+      "kind": "title",
+      "zh": "从 ~/.ssh/config 导入 · 检测到 {n} 台",
+      "args": ["n"]
+    },
+    "remote.batch.none": {
+      "kind": "body",
+      "zh": "~/.ssh/config 里没有可导入的主机。",
+      "args": []
+    },
+    "remote.batch.failed": {
+      "kind": "error",
+      "zh": "批量导入失败：{e}",
+      "args": ["e"]
+    },
+    "remote.import.failed": {
+      "kind": "error",
+      "zh": "导入别名「{alias}」失败：{e}",
+      "args": ["alias", "e"]
+    },
+    "remote.import.done": {
+      "kind": "body",
+      "zh": "已从别名「{alias}」导入为新机器。",
+      "args": ["alias"]
+    },
+    "remote.import.batchHint": {
+      "kind": "body",
+      "zh": "一次导入 ~/.ssh/config 全部主机；同密钥+同用户+同基名前缀的别名智能聚合成一台多地址主机（预览可拆分/勾选）",
+      "args": []
+    },
+    "remote.import.batch": {
+      "kind": "action",
+      "zh": "批量导入…",
+      "args": []
+    },
+    "remote.import.pick": {
+      "kind": "control",
+      "zh": "从 ssh config 导入…",
+      "args": []
+    },
+    "remote.import.hint": {
+      "kind": "body",
+      "zh": "选一个 ~/.ssh/config 里的主机别名，新增一台机器并自动填好。主机、端口、用户和私钥路径用 ssh -G 解析出来；仍可手动微调任意字段。",
+      "args": []
+    },
+    "remote.build.empty": {
+      "kind": "body",
+      "zh": "尚未添加远端机器。用上方工具条「+ 添加机器」，或从 ssh config 导入。",
+      "args": []
+    },
+    "remote.build.enableHint": {
+      "kind": "body",
+      "zh": "勾选后，monitor 启动时会额外用 SSH 连下列每台机器。远端会话和本机会话一起显示。\n⚠ 需重启 monitor 才生效。某台配置不完整时后端跳过那一台。列表为空就等于关闭。",
+      "args": []
+    },
+    "remote.build.enable": {
+      "kind": "control",
+      "zh": "启用远端模式",
+      "args": []
+    },
+    "remote.build.portForwardHint": {
+      "kind": "body",
+      "zh": "本地端口转发（-L）管理台。把远端机器或它内网里的端口映射到本机，走已配置的 SSH 连接。",
+      "args": []
+    },
+    "remote.build.portForward": {
+      "kind": "action",
+      "zh": "端口转发…",
+      "args": []
+    },
+    "remote.build.addMachine": {
+      "kind": "action",
+      "zh": "+ 添加机器",
+      "args": []
+    },
+    "remote.build.title": {
+      "kind": "title",
+      "zh": "远端 (SSH)",
+      "args": []
+    },
+    "remote.aliases.none": {
+      "kind": "body",
+      "zh": "未在 ~/.ssh/config 找到可导入的主机别名（也可点「添加机器」手动填写）。",
+      "args": []
+    },
+    "remote.aliases.pick": {
+      "kind": "control",
+      "zh": "选择一个主机别名，导入为新机器…",
+      "args": []
+    },
+    "remote.row.deleteHint": {
+      "kind": "body",
+      "zh": "从列表移除这台机器",
+      "args": []
+    },
+    "remote.row.delete": {
+      "kind": "action",
+      "zh": "删除",
+      "args": []
+    },
+    "remote.gaps.title": {
+      "kind": "title",
+      "zh": "诊断",
+      "args": []
+    },
+    "remote.cards.local": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
+    },
+    "remote.local.notStarted": {
+      "kind": "body",
+      "zh": "没起来",
+      "args": []
+    },
+    "remote.local.connected": {
+      "kind": "body",
+      "zh": "已连上",
+      "args": []
+    },
+    "remote.localRow.title": {
+      "kind": "title",
+      "zh": "本机",
+      "args": []
+    },
+    "remote.refresh.failed": {
+      "kind": "error",
+      "zh": "读远端配置失败：{e} —— 机器列表这一趟没读出来。",
+      "args": ["e"]
+    },
+    "remote.info.remote": {
+      "kind": "body",
+      "zh": "远端模式：monitor 通过 SSH 连到远端主机。远端会话与本机会话一起显示，远端 Tab 标题带 [机器名] 前缀。\n默认关闭。关闭或机器列表为空时一切走本地，不受影响。\n\n⚠ 启用 / 修改任意远端设置后，需重启 monitor 才生效。\n某台配置不完整（缺主机、用户或后端路径）时后端会跳过那一台。",
+      "args": []
+    },
+    "configSurface.copy.failedTitle": {
+      "kind": "error",
+      "zh": "复制诊断文本",
+      "args": []
+    },
+    "configSurface.copy.copyReport": {
+      "kind": "action",
+      "zh": "复制诊断文本",
+      "args": []
+    },
+    "configSurface.copy.done": {
+      "kind": "action",
+      "zh": "已复制",
+      "args": []
+    },
+    "configSurface.row.resolved": {
+      "kind": "body",
+      "zh": "解析为 {pathResolved}",
+      "args": ["pathResolved"]
+    },
+    "configSurface.report.noHook": {
+      "kind": "body",
+      "zh": "不含 cc-bus 钩子字样",
+      "args": []
+    },
+    "configSurface.report.hasHook": {
+      "kind": "body",
+      "zh": "含 cc-bus 钩子字样",
+      "args": []
+    },
+    "configSurface.render.hookUnreadable": {
+      "kind": "body",
+      "zh": "钩子字样：读不到",
+      "args": []
+    },
+    "configSurface.render.listSep": {
+      "kind": "body",
+      "zh": "、",
+      "args": []
+    },
+    "configSurface.render.owedHead": {
+      "kind": "title",
+      "zh": "哪 {n} 项",
+      "args": ["n"]
+    },
+    "configSurface.render.home": {
+      "kind": "body",
+      "zh": "HOME={home} · ~/.claude 解析为 {claudeConfigDir}",
+      "args": ["home", "claudeConfigDir"]
+    },
+    "configSurface.backups.intro": {
+      "kind": "body",
+      "zh": "装终端集成时，原来的 profile 先备份到同目录的 .ccm-backup-<时间戳>。想撤回就用它。",
+      "args": []
+    },
+    "configSurface.backups.title": {
+      "kind": "title",
+      "zh": "PowerShell profile 备份",
+      "args": []
+    },
+    "configSurface.backups.failed": {
+      "kind": "error",
+      "zh": "读不到 PowerShell profile 备份在哪：{e}",
+      "args": ["e"]
+    },
+    "configSurface.refresh.failedTitle": {
+      "kind": "error",
+      "zh": "扫描足迹",
+      "args": []
+    },
+    "configSurface.refresh.failed": {
+      "kind": "error",
+      "zh": "扫描失败：{e}",
+      "args": ["e"]
+    },
+    "configSurface.refresh.wrongMachine": {
+      "kind": "error",
+      "zh": "后端答的不是本机这一份",
+      "args": []
+    },
+    "configSurface.refresh.badShape": {
+      "kind": "error",
+      "zh": "后端返回的形状不对（rows / settings_scopes 不是数组）",
+      "args": []
+    },
+    "configSurface.refresh.scanningMachine": {
+      "kind": "body",
+      "zh": "正在扫这台机器上的足迹…",
+      "args": []
+    },
+    "configSurface.remote.unanswered": {
+      "kind": "body",
+      "zh": "这台机器（{machine}）的足迹还查不了。要那台机器上的后端来答，它这一版还答不了。",
+      "args": ["machine"]
+    },
+    "configSurface.scopes.intro": {
+      "kind": "body",
+      "zh": "钩子可以写在多个作用域里，优先级从低到高。钩子诊断读的是「用户级」那一份——所以如果你把钩子写在了别处，那边报的「未装」可能是错的。",
+      "args": []
+    },
+    "configSurface.scopes.title": {
+      "kind": "title",
+      "zh": "settings.json 的各作用域",
+      "args": []
+    },
+    "configSurface.build.copying": {
+      "kind": "body",
+      "zh": "复制中…",
+      "args": []
+    },
+    "configSurface.build.copyReport": {
+      "kind": "action",
+      "zh": "复制诊断文本",
+      "args": []
+    },
+    "configSurface.build.scanning": {
+      "kind": "body",
+      "zh": "扫描中…",
+      "args": []
+    },
+    "configSurface.build.rescan": {
+      "kind": "action",
+      "zh": "重新扫描",
+      "args": []
+    },
+    "configSurface.build.whyUndetermined": {
+      "kind": "body",
+      "zh": "这三类本机无从判断，报成「缺失」会是假警报。远端路径要 SSH（请到部署向导里查）；项目里的 .mcp.json 得先知道是哪个项目；Windows 的 $PROFILE 由 PowerShell 决定。",
+      "args": []
+    },
+    "configSurface.build.undetermined": {
+      "kind": "body",
+      "zh": "查不了的写成「未确定」并说明原因，不画成红叉。",
+      "args": []
+    },
+    "configSurface.build.readOnly": {
+      "kind": "body",
+      "zh": "只读：这一页不会写任何东西，也不在后台轮询。每次打开或点「重新扫描」才读一次。",
+      "args": []
+    },
+    "configSurface.build.intro": {
+      "kind": "body",
+      "zh": "cc-monitor 会碰你哪些文件、对它做什么、现在什么状态、还能不能撤。",
+      "args": []
+    },
+    "configSurface.remote.unansweredWhy": {
+      "kind": "body",
+      "zh": "「答不出来」不等于「它没动过你的文件」。",
+      "args": []
+    },
+    "configSurface.report.unreadable": {
+      "kind": "body",
+      "zh": "读不到",
+      "args": []
+    },
+    "configSurface.report.scopesHead": {
+      "kind": "body",
+      "zh": "== settings.json 的各作用域（会影响钩子诊断结论）==",
+      "args": []
+    },
+    "configSurface.report.state": {
+      "kind": "body",
+      "zh": "    现状: {text}",
+      "args": ["text"]
+    },
+    "configSurface.report.effect": {
+      "kind": "body",
+      "zh": "    cc-monitor 做什么: {effectLabel}",
+      "args": ["effectLabel"]
+    },
+    "configSurface.report.resolved": {
+      "kind": "body",
+      "zh": "    解析为: {pathResolved}",
+      "args": ["pathResolved"]
+    },
+    "configSurface.report.where": {
+      "kind": "body",
+      "zh": "    位置: {hostLabel}",
+      "args": ["hostLabel"]
+    },
+    "configSurface.report.claudeDir": {
+      "kind": "body",
+      "zh": "~/.claude 解析为={claudeConfigDir}",
+      "args": ["claudeConfigDir"]
+    },
+    "configSurface.report.head": {
+      "kind": "body",
+      "zh": "== cc-monitor 足迹 ==",
+      "args": []
+    },
+    "configSurface.summarizeOwedInstallers.owed": {
+      "kind": "body",
+      "zh": "⚠ {namesCount} 项还没有安装入口",
+      "args": ["namesCount"]
+    },
+    "configSurface.undo.unknownKind": {
+      "kind": "body",
+      "zh": "撤销方式未知，请按上面的路径手动处理",
+      "args": []
+    },
+    "configSurface.undo.notOurs": {
+      "kind": "body",
+      "zh": "不适用：cc-monitor 不管理这一项",
+      "args": []
+    },
+    "configSurface.undo.userInstalls": {
+      "kind": "body",
+      "zh": "不适用：这一项需自行安装",
+      "args": []
+    },
+    "configSurface.undo.noInstaller": {
+      "kind": "body",
+      "zh": "暂无撤销：还没有安装入口",
+      "args": []
+    },
+    "configSurface.undo.manual": {
+      "kind": "body",
+      "zh": "暂无自动撤销；如需清理请按上面的路径手动处理",
+      "args": []
+    },
+    "configSurface.undo.fenced": {
+      "kind": "body",
+      "zh": "可按片段或整文件撤销（在对应工具的部署入口里）",
+      "args": []
+    },
+    "configSurface.state.unknown": {
+      "kind": "body",
+      "zh": "未知状态（{kind}）",
+      "args": ["kind"]
+    },
+    "configSurface.state.undetermined": {
+      "kind": "body",
+      "zh": "未确定 —— {why}",
+      "args": ["why"]
+    },
+    "configSurface.state.absent": {
+      "kind": "body",
+      "zh": "不存在",
+      "args": []
+    },
+    "configSurface.gap.unknownIsNotAbsent": {
+      "kind": "body",
+      "zh": "查不动不等于它不在。只是这台机器上判断不了，不说明它没装。",
+      "args": []
+    },
+    "configSurface.install.unknown": {
+      "kind": "body",
+      "zh": "{unknown} —— 这一项本机查不动（见上面的原因）",
+      "args": ["unknown"]
+    },
+    "configSurface.install.prompt": {
+      "kind": "body",
+      "zh": "{missing} —— cc-monitor 不装这一项，请你自己装上 {path}",
+      "args": ["missing", "path"]
     }
   }
 }
