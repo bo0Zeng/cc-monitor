@@ -34,6 +34,26 @@ impl RemovalCause {
     }
 }
 
+/// 〔U4b · 第四波〕[`Frame::SessionAdded`] 的 `container`：**这条活着的会话住在什么容器里**。
+///
+/// `设计/30 §3.5.6`：可恢复性（死了之后能不能接回去）由容器类型决定 —— 在 tmux 里的，claude 退了
+/// 终端还在（「可重连」）；不在的，只能 resume（「已结束」）。死的那一刻 monitor 会现查一次 tmux，
+/// 但**活着的时候**这一格此前没人报（`第四波记录/U4.md §0.1` G3）⇒ 前端只能写「没报」。
+///
+/// 判定住 `observe::watcher::container_of`（喂它的是 `control::identity_tag::tag` 那一次探测的结局，
+/// 不多起进程）。**判不了就不写这个字段**（缺席 ≠ `none`）：环境读不到、pane 不在默认 socket 上、
+/// 探测失败、非 Linux —— 都是「不知道」。
+///
+/// 线上两个字面量 `"tmux"` / `"none"` 与 monitor `ssh_source::parse_frame` 逐字一致。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionContainer {
+    /// 这个 claude 进程在一个 tmux pane 里（`TMUX_PANE` 核过形状、tmux 认得那个 pane）。
+    Tmux,
+    /// 环境读得到、没有 `TMUX_PANE` ⇒ 不在任何 tmux 里。
+    None,
+}
+
 /// 一条**丢了就不可恢复**的帧的身份〔audit-0805 F03〕。
 ///
 /// `Overflow` 原来只说「丢了 N 条」。对**内容帧**那没问题（行还在远端 jsonl 里，
@@ -330,6 +350,12 @@ pub enum Frame {
         /// **不是**「↗ 已经不依赖 tmux 了」。别把这两句读成一句。
         #[serde(skip_serializing_if = "Option::is_none")]
         rbind_token: Option<String>,
+        /// 〔U4b · 第四波，additive〕这条会话住在什么容器里（见 [`SessionContainer`]）。
+        ///
+        /// **判不了 ⇒ 不上线**（`skip_serializing_if`）：旧客户端、以及判不了的会话，收到的字节
+        /// 与本字段加进来之前一字不差。缺席的意思是「不知道」，**不是** `none`。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        container: Option<SessionContainer>,
     },
     /// Batch9-F27：会话 status 变化（pidfile modify diff；CC 仅状态转换时重写，
     /// 天然稀疏）。远端红绿灯数据源；旧 monitor 未知 kind 忽略（additive）。
@@ -461,6 +487,18 @@ pub enum Frame {
     /// 一批文件事件里 manifest 动了几次都只发一帧。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
     AccountsChanged,
 
+    /// 〔U4b · 第四波〕**这台机器的活会话清单报完了**：`observe::watcher::watch_loop` 的 Phase 1
+    /// （同步扫 `sessions/`、对每个活 pidfile 发一帧 `session_added`）走完那一刻发**一次**。
+    ///
+    /// 它是 `设计/30 §3.5.7a` 那张表要的判据：客户端手里有一条「固定」的会话条目、而这台机器
+    /// 还没报过它 —— 是「这台还没说完」（显示**说不清**），还是「这台说完了、里面没有它」
+    /// （显示**已结束**）？此前线上没有任何东西分得开这两件事（Phase 1 结束没有标记），
+    /// 于是固定复活的 tab 一律被说成已结束（`第四波记录/U4.md §0.1` 末条）。
+    ///
+    /// 无载荷：清单本身就是它前面那些 `session_added`（同一条有序的流），别让同一份数据有两个出口。
+    /// 之后的增减照旧走 `session_added` / `session_removed`。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    SessionsReplayed,
+
     /// 〔SR1a · 2026-09-24〕**一条链路的下行字节**（`dial/link.rs`）。
     ///
     /// 用户裁「改成单一常驻后端」：本机只常驻一个后端，到各远端的 SSH 连接由它持有并复用；
@@ -536,6 +574,9 @@ impl Frame {
             Frame::Cancelled { .. } => false,
             // 〔SR1a〕一次状态变化的通知，没有「下一次必然重发」⇒ 保守（丢了客户端就一直拿着旧清单）。
             Frame::AccountsChanged => false,
+            // 〔U4b〕一次性的标记，没有「下一次必然重发」⇒ 丢了客户端就一直停在「说不清」
+            //   （保守的那一侧：不会把一条说不清的会话说成已结束）。按不可恢复报身份，客户端才知道要重连。
+            Frame::SessionsReplayed => false,
             // 〔SR1a〕链路字节：丢一块 = 那条链路上的数据坏了，别处没有第二份。
             // 与上面两个同理，它们**不走**会丢帧的那条通道（走应答通道、阻塞发送）。
             Frame::LinkData { .. } => false,
@@ -560,6 +601,7 @@ impl Frame {
             Frame::Reply { id, .. } => ("reply", Some(id.clone())),
             Frame::Cancelled { id } => ("cancelled", Some(id.clone())),
             Frame::AccountsChanged => ("accounts_changed", None),
+            Frame::SessionsReplayed => ("sessions_replayed", None),
             Frame::LinkData { link, .. } => ("link_data", Some(link.clone())),
             Frame::LinkEnd { link, .. } => ("link_end", Some(link.clone())),
         };

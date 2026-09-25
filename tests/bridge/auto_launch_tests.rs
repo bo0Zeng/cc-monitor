@@ -1,3 +1,10 @@
+//! # 要求住址：`INVARIANTS §2.1`（`auto-launch.json` 两个字段的类）＋ `设计/01 §5 D3`（诚实的默认 ＝ 不作为）
+//!
+//! 核原文：`INVARIANTS §2.1` 那一行逐字「`enabled`=真相；`monitor_exe_path`=派生」—— `auto_launch.rs::save` /
+//! `auto_launch.rs::load` 往返不丢这两格；`D3` 逐字「诚实的默认 ＝ 恒等 / 不作为 / 沿用调用者已有状态」—— 文件不在 ⇒ 不自启。
+//! ⚠ 住址偏弱：这项功能本身（cc 函数在 monitor 没跑时拉起它）在设计篇没有行为节。
+//! `roundtrip_serialize` 只测 serde 往返，被 `save_and_load_roundtrip` 整个盖住 ⇒ 列进 `JA1.md` 候选退役。〔JA1 点址 2026-09-24〕
+
 use super::*;
 use std::fs;
 

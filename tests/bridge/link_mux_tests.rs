@@ -1,3 +1,10 @@
+//! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md`「链路四条」（monitor 这一侧：还信用 · 关链路 · 解帧）
+//!
+//! 核原文：`link-credit` 小节逐字「monitor 的做法：链路的读者每读走半个窗口就还一次（`link_mux.rs`）」·
+//! `link-close` 小节逐字「monitor 侧的链路句柄被丢时自动发这一条」· `link_data` 行逐字
+//! 「`data` = base64，标准字母表带补位；解码后 ≤ 32 KiB」—— 本族判的正是这几句。
+//! 对端超窗当场判坏并出声：契约没写 monitor 怎么反应，那一半的要求是 `设计/01 §5 D4`（一条都不许静默忽略）。〔JA1 点址 2026-09-24〕
+//!
 //! 〔SR1a〕链路的 monitor 这一侧（`link_mux.rs`）的判据。
 //!
 //! 台架：一条内存管道两头 —— monitor 这头是**真的** `InboundClient`（经 `park → into_client`）＋
