@@ -33,13 +33,13 @@
 # │ ⚠ **自述句只许住在这一段里。** `C5b` 会把这一段之外、头注里任何一句「本脚本跑 N 格 /
 # │   N 道门」判红；历史读数的唯一豁免是**在那一行**逐字带上 `〔量于 …〕`。
 # │
-# │ 〔自述·格数〕29 格
+# │ 〔自述·格数〕28 格
 # │ 〔自述·点名〕worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc ·
 # │   ccbus-twophase ·
 # │   platform · muslbuild ·
 # │   installface ·
 # │   fmt · fmt-backend ·
-# │   winchk · winchk-backend · cargo · f3-copy · comm-boundary · deadcode · generated · backend · tsc · npm ·
+# │   winchk · winchk-backend · cargo · comm-boundary · deadcode · generated · backend · tsc · npm ·
 # │   ccm tests/e2e/ccm-print-parity · ccm tests/e2e/ccm-rbind-title · ccm tests/e2e/ccm-cli ·
 # │   ccm tests/e2e/ccm-contract-parity ·
 # │   ccm tests/e2e/backend-rbind-token · ccm tests/e2e/rbind-token-endtoend
@@ -64,21 +64,16 @@
 # │ 〔自述·现物〕`ccbus-twophase` 那一格的判据本体：`tests/evidence/W24C-ccbus-twophase-ruler.py`
 # │   （`w24c` 09-19 第 24 格）—— 它既读盘上那几份 shell，也在一次性 `CC_BUS_HOME` 里真跑；
 # │   死值验住 `tests/evidence/W24C-deathvalue.md`。
-# │ 〔自述·现物〕`f3-copy` 那一格没有独立的判据文件 —— 它的**被测对象**是
-# │   `src/bridge/src/sftp_pool.rs` 里那条 `copy_remote_path`，**判据本体**是
-# │   `tests/bridge/comm_boundary_registry_tests.rs`（通信层那一族，`13b` 步 1 09-20 第 27 格）：
-# │   `comm-boundary` 那一格没有独立的判据文件 —— 被测对象就是这一份（C1–C5 ＋ X1–X6
+# │ 〔自述·现物〕`comm-boundary` 那一格没有独立的判据文件 —— 被测对象就是
+# │   `tests/bridge/comm_boundary_registry_tests.rs`（通信层那一族，`13b` 步 1 09-20 第 27 格；C1–C5 ＋ X1–X6
 # │   ＋ 锚 ＋ 余下五份 ＋ 传输面四份 ＋ 元判据，17 条），判定（三方对拍 ＋ 元判据/「说得出今天是空的」两条逐字锚点）
 # │   逐字写在下面那一行 `run_gate comm-boundary` 的内联脚本里。
 # │   🔴 本格买的是「这一族还在不在」。⚠ **这里刻意不写人群有几份** —— 那个数
 # │   有唯一住址（该族自己那条三方相等 ＋ 模块头注那句，两处都是被判的），
 # │   散文里再抄一份必腐：它 09-20 立表时是 0 份，09-21 步 3 之后是非空，而这 6 处
 # │   自述**一条都不会红**（`gate-selfdesc` 的锚只钉裁词前缀）。
-# │   `tests/bridge/sftp_copy_f3_tests.rs`（秤 F3，`23b·B` 09-20 第 26 格）：
-# │   那份文件自带一台合成 SFTP 服务端 ＋ 一层按字节数包的计数流，两种人格各一个。
-# │   判定（三方对拍 ＋ 两个方向的逐字函数名）逐字写在下面那一行 `run_gate f3-copy`
-# │   的内联脚本里。⚠ 这 9 条**同时**算在 `cargo` 那一格的合计里 —— 两格都在，
-# │   档位不叠加（同 `tsc` 与 `npm` 那一对）。
+# │ 〔自述·退役〕〔第四波 S4〕第 26 格 `f3-copy`（秤 F3 两向）连同它量的那条零流量复制一起退役：
+# │   窗口的复制早已走后端 `files-copy`（F7a），池子里只剩传输 ⇒ 29 格 → 28 格。
 # │ 〔自述·现物〕`gate-selfdesc` 那一格的判据本体：`tests/evidence/K-R80-gate-cell-coverage.py`
 # │   （09-19 第 22 格）—— **被测对象就是本文件**。它默认读 `tests/scripts/gate.sh`，
 # │   也接一个路径参数（对着变异过的副本跑死值验时用）。
@@ -1546,8 +1541,14 @@ deadcode_t0=$(date +%s)
 #   **刻意没删**：秤 F4（`sftp_pool_f4_tests`）拿它俩量「传输占满车道时浏览还进得来」那条 `6 − 4 = 2` 的设计；
 #   而浏览今天整个走后端 `files-*`，SFTP 上已经没有浏览 ⇒ 车道闸「给浏览留格子」那条前提不在了。
 #   它俩连同 `TRANSFER_LANE_CAP` 的去留是一道设计题（要主会话裁），不是本拍顺手删的活。
-run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 36，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
-         bash -c 'pin=36; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
+# 🔴 **2026-09-24（第四波 S4 · SFTP 收尾，主会话授权动这个数）：36 → 34，现打，逐条记**：
+#   上一段那两条（`ChannelSet::lease` · `Leased::discard`）**本拍删了** —— 浏览离开 SFTP 之后车道闸没有要保护的东西，
+#   闸（`TRANSFER_LANE_CAP`）、浏览用的借法与它俩一起退役（`设计/99` 第三波留给第四波那一条）。
+#   同拍删的零流量复制一段（命令 · 核心 · 裸通道借据 · 老 Tauri 进度通道 · 取消登记表）**不带走也不带来**死代码：
+#   它们删之前在生产上都有调用方（那条命令），删之后整块不在了。
+# ⚠ 这个数是**现打**的（本工作树 `w4/s4`，`cargo check -p monitor --message-format=short | grep -c "never used"` = 34），不是 36−2 算的。
+run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 34，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
+         bash -c 'pin=34; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
 n=$(printf "%s\n" "$out" | grep -c "never used"); \
 printf "%s\n" "$out" | tail -5; \
 if [ "$rc" -ne 0 ]; then printf "deadcode: cargo check 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \
@@ -1835,44 +1836,14 @@ run_e2e ccm-contract-parity   45
 run_e2e backend-rbind-token   11
 run_e2e rbind-token-endtoend   9
 
-# ── `f3-copy`：**秤 F3 两向**独立成格（`23b·B` 落地，本拍第 26 格）────────────────
-#
-# 🔴 **题面：一台台架落在一个求和格里，就等于没有名字。**
-#   `tests/bridge/sftp_copy_f3_tests.rs`（1075 行）是设计 `17 §6.9` 那杆秤的本体 ——
-#   零流量复制的包计数对拍，**正反两个方向都钉**。它落地那天只靠 `#[path]` 挂进
-#   `monitor` 的 lib，于是被 `cargo` 那一格的**合计**吃掉了：
-#   那一格印的是 9 个包的求和，**这 9 条静默消失，合计只会小一点，而「小一点」和
-#   「有测试没跑」在终端上一模一样**（同一条道理 `run_gate_sum` 的头注为包数论证过一遍）。
-#
-# 🔴 **所以本格的绿不是「又跑了一遍」，是给那杆秤一个自己的名字与一个自己的相等断言。**
-#   `cargo` 那一格照旧把这 9 条算进它的合计 —— 两格都在，不叠加档位
-#   （同 `tsc` 与 `npm` 那一对：一格买行为、一格买另一维）。
-#
-# ★ 取法：**三方对拍**，三个数必须相等 ——
-#   ① 本行 `pin=9`（写死在这里，真加/删了测试就回来改它）
-#   ② 那份文件里现打的 `#[test]` / `#[tokio::test]` 条数（`declared`）
-#   ③ `cargo test` 那趟真跑出来的 `passed` 数（`ran`）
-#   三条失效路各自被哪一对差额逮到，逐条写在下面那条裁词里。
-# ★ 再加**两个方向的逐字锚点**：正向那条（零包）与反向那条（退路出声）的函数名
-#   各要求在「跑过的名单」里命中**恰好 1 次** —— 少一向、改一向的名，当场红。
-#   ⚠ 锚点比对的两侧**不同源**：名字写死在本文件里，命中数来自 `cargo` 的运行时输出。
-run_gate f3-copy '判过的条数 = 秤 F3 这一趟真跑过的测试条数。**三方对拍**：本行钉的 9 · 那份文件里现打的 `#[test]`/`#[tokio::test]` 条数 · `cargo test` 真跑出来的 passed 数，三个数必须**相等** ＋ 两个方向的逐字函数名各命中**恰好 1 次**。⚠ **反空真锚是那个三方相等**，不是「有数就算绿」：`#[path]` 挂载被摘 / 模块改名 / 过滤器打空 ⇒ ran 掉到 0 而另两个数还是 9；`#[ignore]` 一条 ⇒ 8 vs 9；真删一条测试 ⇒ declared 掉到 8 而 pin 还是 9。三条路都分叉。⚠ 本格买的是「那台合成 SFTP 台架上包计数对得上」，**不买**「真 OpenSSH 服务端上 copy-data 真的零流量」（无真机、本格不起任何网络、不装 sftp-server）；⚠ 这 9 条**同时**算在 `cargo` 那一格的合计里 —— 两格都在，档位不叠加：那一格买 workspace 合计，本格买「这 9 条没有静默消失」' \
-         bash -c 'pin=9; f=tests/bridge/sftp_copy_f3_tests.rs; \
-fwd=f3_forward_a_server_side_copy_costs_zero_client_read_write_packets; \
-rev=f3_reverse_a_server_without_copy_data_falls_back_loudly_and_pays_the_traffic; \
-[ -r "$f" ] || { printf "f3-copy: 秤 F3 的判据本体 %s 盘上读不到 —— 住址改了就回来改本格，不许静默跳过\n" "$f"; exit 1; }; \
-declared=$(grep -cE "^[[:space:]]*#\[(tokio::)?test\]" "$f"); \
-out=$(cd src/bridge && cargo test -p monitor --lib sftp_pool::copy_f3_tests:: 2>&1); rc=$?; \
-if [ "$rc" -ne 0 ]; then printf "%s\n" "$out" | tail -25; printf "f3-copy: cargo test 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \
-ran=$(printf "%s\n" "$out" | grep -oE "^test result: ok\. [0-9]+ passed" | grep -oE "[0-9]+" | head -1); \
-if [ -z "$ran" ]; then printf "%s\n" "$out" | tail -25; printf "f3-copy: 那趟输出里抠不出「test result: ok. N passed」—— 读法与 cargo 的输出面对不上，本格判不了（不许当成绿）\n"; exit 1; fi; \
-if [ "$declared" -ne "$pin" ] || [ "$ran" -ne "$pin" ]; then printf "f3-copy: 三方对拍分叉 —— 本行钉 %s · %s 里现打声明 %s 条 · cargo 真跑 %s 条；三个数必须相等。真加/删了一条测试，就回来改本行那个 pin（别去动另外两边）\n" "$pin" "$f" "$declared" "$ran"; exit 1; fi; \
-for t in "$fwd" "$rev"; do n=$(printf "%s\n" "$out" | grep -c "copy_f3_tests::$t \.\.\. ok"); if [ "$n" -ne 1 ]; then printf "f3-copy: 方向锚点 %s 在这趟跑过的名单里命中 %s 次（应当恰好 1 次）—— 秤 F3 那两向里有一向没跑，或它改了名\n" "$t" "$n"; exit 1; fi; done; \
-printf "f3-copy: %s passed（秤 F3 两向；三方对拍 pin %s == 声明 %s == 真跑 %s）\n" "$ran" "$pin" "$declared" "$ran"'
+# ── 〔第四波 S4〕这里原先是第 26 格 `f3-copy`（秤 F3 两向：零流量复制的包计数对拍，三方对拍 ＋ 两向锚点）。
+#   它量的那条池子命令与核心随浏览 / 复制离开 SFTP 一起退役（窗口的复制走后端 `files-copy`），
+#   判据本体那份台架文件一起删了 ⇒ 本格退役，29 格 → 28 格。它的形状（三方对拍 ＋ 写死的 pin）
+#   仍是下面 `comm-boundary` 那一格的取法，说明留在那一格里。
 
 # ── `comm-boundary`：通信层那十七条独立成格（`13b` 步 1 落地，本拍第 27 格）──────
 #
-# 🔴 **题面与 `f3-copy` 同形，但这一格更要紧 —— 因为那一族的人群可能是空集。**
+# 🔴 **题面与当年那一格 `f3-copy`（〔第四波 S4〕已退役）同形，但这一格更要紧 —— 因为那一族的人群可能是空集。**
 #   `tests/bridge/comm_boundary_registry_tests.rs`（1400 行）是 `设计/05 §2`/`§3.3.6`
 #   那 C1–C5 ＋ X1–X6 的本体。人群为空时，绿的理由是 `0 == 0` 而不是「扫不到」。
 #   ⚠ **本文件不写人群有几份** —— 见 `〔自述·现物〕` 那一段的理由。
@@ -1881,7 +1852,7 @@ printf "f3-copy: %s passed（秤 F3 两向；三方对拍 pin %s == 声明 %s ==
 #   🔴 一个人群为空的判据族，如果连「它自己还在不在」都没人看，那它买到的是零。
 #   立本格的那一路自己停下报备了这件事（写区不含本文件），这一拍补上。
 #
-# ★ 取法照 `f3-copy`：**三方对拍**（本行 `pin=17` · 那份文件现打的 `#[test]` 条数 ·
+# ★ 取法照当年那一格 `f3-copy`（〔第四波 S4〕已退役）：**三方对拍**（本行 `pin=17` · 那份文件现打的 `#[test]` 条数 ·
 #   `cargo test` 真跑出的 passed），三个数必须相等。
 # ★ 两个逐字锚点选的是**最承重的两条**，不是随便挑两个名字：
 #   ① `every_criterion_is_on_the_execution_chain` —— 元判据本身（判据清单 ↔ 真实 `#[test]`
@@ -2062,7 +2033,7 @@ if [ "${#fails[@]}" -eq 0 ]; then
   #   ⇒ 本拍把它接成真的一格（见下面 `run_gate gate-selfdesc`），不再靠人记得手跑。
     # 🔴 第二波 T4（09-24）：**27 → 29**，加的是令牌那两套 e2e（`backend-rbind-token` ·
   #   `rbind-token-endtoend`，见上面 `run_e2e` 那一段）—— 它们此前只被 shellcheck、不被执行。
-  echo "GATE: OK —— 29 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · platform · installface · fmt · fmt-backend · winchk · winchk-backend · muslbuild · cargo · f3-copy · comm-boundary · deadcode · generated · backend · tsc · npm · ccm-print-parity · ccm-rbind-title · ccm-cli · ccm-contract-parity · backend-rbind-token · rbind-token-endtoend），可以出货"
+  echo "GATE: OK —— 28 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · platform · installface · fmt · fmt-backend · winchk · winchk-backend · muslbuild · cargo · comm-boundary · deadcode · generated · backend · tsc · npm · ccm-print-parity · ccm-rbind-title · ccm-cli · ccm-contract-parity · backend-rbind-token · rbind-token-endtoend），可以出货"
   gate_print_blind
   exit 0
 fi

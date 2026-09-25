@@ -1,6 +1,6 @@
 [package]
 name = "cc-monitor-backend"
-# 🔴 K-R70（09-12）：本 crate 刻意不用 Cargo.toml 的版本 —— 真身份住 src/main.rs 的 BUILD_ID
+# 🔴 K-R70（09-12）：本 crate 刻意不用 Cargo.toml 的版本 —— 真身份住 lib.rs 的 BUILD_ID
 #
 # 这一行**不是忘了填**，也**不许**顺手换成一个「像样」的数字。
 #
@@ -13,15 +13,17 @@ name = "cc-monitor-backend"
 # · 那条「不参加」不是靠这段散文守着：`build_id_guard` 的
 #   `the_crate_version_is_deliberately_zero_and_the_real_identity_has_a_home`
 #   **在数它** —— 这一行一动、或真身份那一处住址坏掉，当场红。
-# · 真身份的住址（判据逐条核）：`src/main.rs` 的 `const BUILD_ID`
+# · 真身份的住址（判据逐条核）：`lib.rs` 的 `pub const BUILD_ID`（〔步 9 · 09-19〕从 `main.rs` 搬进库面）
 #   ＋ 由它编译期拼出来、扫得进二进制字节的 `CC_MONITOR_BUILD_STAMP`
 #   ＋ `--ccm-probe` 吐的 `build=` 那一行。
 version = "0.0.0"
 edition = "2021"
 
 # Standalone crate, intentionally NOT part of a workspace. There is no root
-# Cargo.toml: a workspace would pull this Linux-only backend into the Windows
-# CI `cargo test --all` and break the build. Build this natively on the target.
+# Cargo.toml: a workspace would couple this crate to the monitor's build and
+# `cargo test --all`, while the backend is built and shipped on its own (one
+# native binary per target platform, identity = `BUILD_ID`). Build this
+# natively on the target.
 #
 # F20（2026-08-04）：「standalone」到底 standalone 到什么程度 —— 实测答案，别再猜：
 #   · `cargo build`  **真的独立**。把两条 backend→monitor 的 `include_str!` 路径打断，

@@ -147,7 +147,9 @@ pub fn backend_status(origin: String) -> Result<serde_json::Value, String> {
             "refused": h.refused,
             "neverStarted": h.never_started,
             "misread": h.misread,
-            "last": h.last,
+            // 〔第四波 ST2 · `设计/70` 步 7〕进界面的是**短摘要**（判定 ＋ 退出状态），
+            //   不再是整条账行 —— 那是日志行格式，只落日志（`backend_policy::ledger_line`）。
+            "last": h.last_brief,
         }),
     }))
 }

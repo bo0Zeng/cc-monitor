@@ -219,6 +219,24 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
+        "tests/bridge/session_find_tests.rs",
+        "src/backend/observe/search_query.rs",
+        "★〔SE2 · `设计/10 §6 步 6` 09-24 新增〕**会话内查找的线上词两侧同形** —— \
+         `session_find::tests::the_wire_words_match_what_the_backend_source_writes`。\
+         头尾的 `kind`（`session_find` / `session_find_end`）、尾行的 `total`、行上的五个键与缺省上限， \
+         写侧是后端 `write_session_find`，读侧是 monitor 的 `parse_find_output` 与 `FindHit`。 \
+         失效方向**很安静**：后端改一个字，monitor 把每一次真查找都认成「老后端」而两侧各自的判据全绿。",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/session_find_tests.rs",
+        "src/backend/observe/history_query.rs",
+        "★〔SE2 09-24 新增〕上一条的**argv 那一半**：monitor 的 `find_argv` 发的子命令名与 \
+         `--query` / `--include-tools` / `--limit`，必须是后端 `history_query::run` 那条臂与 \
+         `parse_find_args` 真认的那几个字面量 —— 两处各写一份，只有同时读两侧才验得了。",
+    ),
+    (
+        "monitor→backend",
         "tests/bridge/dial_host_tests.rs",
         "src/backend/dial/mod.rs",
         "★〔C2 · `设计/05 §13` 09-24 新增〕**拨号请求的键两侧同形** —— \

@@ -4,7 +4,9 @@
  * 窗口模式下：
  * - 系统 X（close-requested）一律 `preventDefault`，交给面板判；**放行的动作是 `hide()`**，
  *   面板从不调 `close()` / `destroy()`（主窗销毁时由后端把本窗一起收掉 —— `lib.rs` 那条纯函数有自己的测试）。
- * - 有没保存的改动（外观 / Claude 数据目录）⇒ 先亮一条「保存并关闭 / 丢弃改动 / 继续编辑」，不静默丢。
+ * - 〔第四波 ST2 · `70 §6` #2 · 第二刀 步 9〕保存模型统一成**全即时**：外观 / Claude 数据目录改了就落
+ *   （`change`），页脚的「保存」「取消」与「未保存关窗拦截」那一条一起退场；关窗前还没触发 `change`
+ *   的那一格由关窗那一下顺手落掉 —— **不静默丢**这件事换了兑现方式，没有丢。
  * - 藏起来之后又拿到焦点（= 被 `open_settings_window` 重新 show）⇒ 重跑 `open()`（重读设置、回落地页）。
  *
  * 〔射程〕jsdom 里没有真窗口：量的是「面板对窗口 API 发了什么」，不是窗口真的藏没藏（那一维要真机）。
@@ -112,18 +114,19 @@ function nativeX(): boolean {
   win.closeRequested!({ preventDefault: () => (prevented = true) });
   return prevented;
 }
-const guard = () => document.querySelector<HTMLElement>("[data-close-guard]")!;
-const guardShown = () => guard().classList.contains("settings-banner-show");
-const btn = (t: string) =>
-  [...guard().querySelectorAll("button")].find((b) => b.textContent === t)!;
-/** 改一个颜色（外观要点保存才落盘 —— 这就是「未保存」）。 */
-function editColor(): void {
+/** 拖一下取色器（`input`：只预览，还没落盘）。 */
+function dragColor(): HTMLInputElement {
   const color = document.querySelector<HTMLInputElement>(".settings-panel input[type=color]")!;
   color.value = "#123456";
   color.dispatchEvent(new Event("input"));
+  return color;
+}
+/** 松手（`change`）。 */
+function releaseColor(color: HTMLInputElement): void {
+  color.dispatchEvent(new Event("change"));
 }
 
-describe("ST1：设置窗关窗 ＝ 隐藏；有未保存改动先拦", () => {
+describe("ST1：设置窗关窗 ＝ 隐藏；〔ST2〕全即时：改了就落，关窗不拦", () => {
   beforeEach(() => {
     document.body.replaceChildren();
     __resetMachineContextForTests();
@@ -140,50 +143,66 @@ describe("ST1：设置窗关窗 ＝ 隐藏；有未保存改动先拦", () => {
     expect(win.hide).toHaveBeenCalledTimes(1);
     expect(win.close).not.toHaveBeenCalled();
     expect(win.destroy).not.toHaveBeenCalled();
-    expect(guardShown()).toBe(false);
   });
 
-  it("改了颜色：系统 X ⇒ 不藏、亮出拦截条；「继续编辑」收起、窗口还在", async () => {
+  it("★★ 松手就落：取色器 `change` ⇒ 当场落盘那份改过的外观（不等「保存」）；拖的时候不写", async () => {
     const p = await mount();
-    editColor();
-    expect(p.isDirty(), "前提：改颜色要算未保存").toBe(true);
+    const color = dragColor();
+    expect(theme.save, "拖的时候（input ~60Hz）就在写盘").not.toHaveBeenCalled();
+    releaseColor(color);
+    for (let i = 0; i < 3; i++) await tick();
+    expect(theme.save).toHaveBeenCalledTimes(1);
+    expect(theme.save.mock.calls[0]).toEqual([expect.objectContaining({ bg: "#123456" })]);
+    expect(p.isDirty(), "落完之后还算「没落」").toBe(false);
+    // 没变就不写：再触发一次 change ⇒ 一发不多。
+    releaseColor(color);
+    for (let i = 0; i < 3; i++) await tick();
+    expect(theme.save).toHaveBeenCalledTimes(1);
+  });
+
+  it("★★ 拖了没松手就关窗 ⇒ 那一格顺手落掉再藏窗（不拦、不丢）", async () => {
+    const p = await mount();
+    dragColor();
+    expect(p.isDirty(), "前提：拖了没松手那一格还没落").toBe(true);
     expect(nativeX()).toBe(true);
-    expect(guardShown()).toBe(true);
-    expect(win.hide).not.toHaveBeenCalled();
-    btn("继续编辑").click();
-    expect(guardShown()).toBe(false);
-    expect(win.hide).not.toHaveBeenCalled();
-  });
-
-  it("「丢弃改动」⇒ 回滚外观、藏窗，不落盘", async () => {
-    await mount();
-    editColor();
-    nativeX();
-    btn("丢弃改动").click();
-    await tick();
-    expect(theme.apply).toHaveBeenCalledWith({});
-    expect(theme.save).not.toHaveBeenCalled();
-    expect(win.hide).toHaveBeenCalledTimes(1);
-  });
-
-  it("「保存并关闭」⇒ 落盘那份改过的外观、再藏窗", async () => {
-    await mount();
-    editColor();
-    nativeX();
-    btn("保存并关闭").click();
     for (let i = 0; i < 3; i++) await tick();
     expect(theme.save).toHaveBeenCalledTimes(1);
     expect(theme.save.mock.calls[0]).toEqual([expect.objectContaining({ bg: "#123456" })]);
     expect(win.hide).toHaveBeenCalledTimes(1);
+    expect(theme.apply, "关窗把改动回滚了 —— 全即时之后没有「丢弃」这回事").not.toHaveBeenCalledWith({});
   });
 
-  it("Claude 数据目录改了没存也算未保存", async () => {
+  it("★ Claude 数据目录：`change` 就落 ＋ 给重启条供货；Esc 与 X 同一条路（不再是「取消 = 回滚」）", async () => {
+    const paths = await import("../../src/paths");
+    const setDir = vi.mocked(paths.setClaudeDirOverride);
+    setDir.mockClear();
     const p = await mount();
     const dir = document.querySelector<HTMLInputElement>(".settings-input-wide")!;
     dir.value = "/elsewhere/.claude";
-    expect(p.isDirty()).toBe(true);
-    nativeX();
-    expect(guardShown()).toBe(true);
+    dir.dispatchEvent(new Event("change"));
+    for (let i = 0; i < 3; i++) await tick();
+    expect(setDir).toHaveBeenCalledWith("/elsewhere/.claude");
+    expect(document.querySelector(".settings-restart-bar")!.textContent).toContain("Claude 数据目录");
+    expect(p.isDirty()).toBe(false);
+    p.handleEsc();
+    await tick();
+    expect(win.hide).toHaveBeenCalledTimes(1);
+  });
+
+  it("★ 页脚「保存」「取消」与拦截条都没了；「恢复默认」在「外观」那一页上", async () => {
+    await mount();
+    const labels = [...document.querySelectorAll<HTMLButtonElement>(".settings-panel button")].map(
+      (b) => b.textContent,
+    );
+    expect(labels.length, "一颗按钮都没扫到 —— 下面的「没有」是空真").toBeGreaterThan(5);
+    for (const gone of ["保存", "取消", "保存并关闭", "丢弃改动", "继续编辑"]) {
+      expect(labels, `「${gone}」还在 —— 全即时之后它没有可做的事`).not.toContain(gone);
+    }
+    expect(document.querySelector("[data-close-guard]")).toBeNull();
+    const reset = [
+      ...document.querySelectorAll<HTMLButtonElement>('.settings-page[data-route-id="app-appearance"] button'),
+    ].find((b) => b.textContent === "恢复外观默认");
+    expect(reset, "「恢复默认」没跟到外观页").toBeDefined();
   });
 
   it("藏起来之后再拿到焦点（= 被重新 show）⇒ 重跑 open()：重读外观；没藏过的焦点不算", async () => {

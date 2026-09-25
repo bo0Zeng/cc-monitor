@@ -277,3 +277,55 @@ fn assert_no_residue(dir: &Path) {
     let tmp = dir.join(format!("{}.{}.tmp", store::FILE_NAME, std::process::id()));
     assert!(!tmp.exists(), "留下了临时文件：{}", tmp.display());
 }
+
+/// 〔ST2 × RM1a〕Base URL 跟着 key 写进**这台机器**那一份：给了 ⇒ 落进这一行、读回；
+/// 只配 key（缺席 / null / 空串）⇒ **已有端点原样留着**；形状不对 ⇒ 整次不写（key 也不落，文件逐字节不动）。
+#[test]
+fn base_url_is_written_with_the_key_and_left_alone_when_only_the_key_changes() {
+    let home = temp_dir("baseurl");
+    let f = file_in(&home);
+    std::fs::create_dir_all(&home).unwrap();
+    let got = answer_set_at(
+        &f,
+        &json!({"account": "work", "key": PLAIN, "baseUrl": " https://up.example.invalid/v1 "}),
+    )
+    .expect("带 Base URL 的写应当成功");
+    assert_eq!(
+        got["baseUrl"], "https://up.example.invalid/v1",
+        "读回的端点不对：{got}"
+    );
+    for only_key in [
+        json!({"account": "work", "key": "sk-SECOND-FIXTURE"}),
+        json!({"account": "work", "key": "sk-THIRD-FIXTURE", "baseUrl": null}),
+        json!({"account": "work", "key": "sk-FOURTH-FIXTURE", "baseUrl": "  "}),
+    ] {
+        let got = answer_set_at(&f, &only_key).expect("只配 key 应当成功");
+        assert_eq!(
+            got["baseUrl"], "https://up.example.invalid/v1",
+            "只配 key 把已有端点动了：{only_key}"
+        );
+    }
+    let before = std::fs::read(&f).unwrap();
+    for bad in ["ftp://x", "https://", "up.example.invalid", "https://a b"] {
+        let err = answer_set_at(
+            &f,
+            &json!({"account": "work", "key": PLAIN, "baseUrl": bad}),
+        )
+        .expect_err("坏形状还写了");
+        assert_eq!(err.0, "bad_args", "{bad:?} 应当是 bad_args，实得 {err:?}");
+        assert!(!err.1.contains(PLAIN), "报错里带着明文");
+    }
+    let err =
+        answer_set_at(&f, &json!({"account": "work", "key": PLAIN, "baseUrl": 3})).unwrap_err();
+    assert_eq!(err.0, "bad_args");
+    assert_eq!(std::fs::read(&f).unwrap(), before, "形状不对却动了文件");
+    // 与本机那一侧是**同一条**形状关（同一个函数），不是两份：拿同一组输入问它，结论一致。
+    for s in ["ftp://x", "https://", "https://ok.example"] {
+        assert_eq!(
+            store::check_base_url_shape(s).is_ok(),
+            s == "https://ok.example",
+            "{s:?} 的判法变了"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&home);
+}

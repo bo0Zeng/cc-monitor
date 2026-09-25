@@ -199,6 +199,8 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "files-index-status",
         "history-projects",
         "ping",
+        // 〔RM1b · 第四波〕问这台机器登记了哪些插件市场：无入参，输出 `lines`。
+        "plugins-marketplaces",
     ];
     let declared: Vec<&str> = REGISTRY
         .iter()

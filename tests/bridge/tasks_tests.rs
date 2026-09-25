@@ -1,130 +1,85 @@
+//! 〔RM1b · 第四波〕读任务文件那一段搬进了后端（`src/backend/observe/tasks_query.rs`，
+//! 它的判据在 `tests/backend/observe/tasks_query_tests.rs`：跳旁文件 · 按数字排 · 半截跳过 ·
+//! 目录不在 = 空 · 目录读不了 ≠ 空 · sid 围栏 · 超限跳过）。本文件只剩 monitor 这一侧的三件：
+//! 字段语义（`parse_task_lines`）· watcher 反推 sid · 线上 camelCase 契约。
+//! 夹具只造结构（占位字段），不采任何真会话正文。
+
 use super::*;
-use std::fs;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::PathBuf;
 
-/// 每个测试独占的临时目录。仓库约定不引 tempfile，用 process_id + 全局计数器
-/// 保证唯一性，TestDir::drop 时清理（cargo test 多线程并发跑也安全）。
-struct TestDir(PathBuf);
-
-impl TestDir {
-    fn new(tag: &str) -> Self {
-        static N: AtomicU64 = AtomicU64::new(0);
-        let n = N.fetch_add(1, Ordering::Relaxed);
-        let p =
-            std::env::temp_dir().join(format!("ccm-tasks-test-{}-{tag}-{n}", std::process::id(),));
-        let _ = fs::remove_dir_all(&p);
-        fs::create_dir_all(&p).unwrap();
-        TestDir(p)
-    }
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-impl Drop for TestDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, content: &str) {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).unwrap();
-    }
-    fs::write(path, content).unwrap();
+fn line(id: &str, status: &str) -> String {
+    format!(r#"{{"id":"{id}","subject":"s{id}","status":"{status}","blocks":[],"blockedBy":[]}}"#)
 }
 
 #[test]
-fn read_empty_session_returns_empty() {
-    let dir = TestDir::new("empty");
-    let got = read_session_tasks(dir.path(), "any-sid");
-    assert!(got.is_empty());
-}
-
-#[test]
-fn read_skips_lock_and_highwatermark_and_non_digit_names() {
-    let dir = TestDir::new("skip");
-    let sid = "abc";
-    let sdir = dir.path().join(sid);
-    fs::create_dir_all(&sdir).unwrap();
-    write(&sdir.join(".lock"), "");
-    write(&sdir.join(".highwatermark"), "5");
-    write(&sdir.join("notes.json"), "{}");
-    write(
-        &sdir.join("1.json"),
-        r#"{"id":"1","subject":"t1","status":"pending","blocks":[],"blockedBy":[]}"#,
-    );
-    let got = read_session_tasks(dir.path(), sid);
-    assert_eq!(got.len(), 1);
-    assert_eq!(got[0].id, "1");
-}
-
-#[test]
-fn read_sorts_by_numeric_id() {
-    let dir = TestDir::new("sort");
-    let sid = "s";
-    let sdir = dir.path().join(sid);
-    fs::create_dir_all(&sdir).unwrap();
-    for id in ["10", "2", "1"] {
-        write(
-            &sdir.join(format!("{id}.json")),
-            &format!(
-                r#"{{"id":"{id}","subject":"t{id}","status":"completed","blocks":[],"blockedBy":[]}}"#
-            ),
-        );
-    }
-    let got = read_session_tasks(dir.path(), sid);
+fn parse_keeps_the_backend_order_and_drops_lines_that_are_not_tasks() {
+    let lines = vec![
+        line("1", "completed"),
+        // 后端只保证「是一个对象」：缺 `subject` / `status` 的对象在这一侧挡下。
+        r#"{"id":"2"}"#.to_string(),
+        "not json".to_string(),
+        line("10", "pending"),
+    ];
+    let got = parse_task_lines(&lines);
     let ids: Vec<&str> = got.iter().map(|t| t.id.as_str()).collect();
-    assert_eq!(ids, vec!["1", "2", "10"]);
+    assert_eq!(ids, vec!["1", "10"]);
+    // 反向：一行都不是任务 ⇒ 空（不是 panic、不是错）。
+    assert!(parse_task_lines(&["[]".to_string()]).is_empty());
 }
 
 #[test]
-fn read_tolerates_partial_json_during_lock() {
-    let dir = TestDir::new("lock");
-    let sid = "s";
-    let sdir = dir.path().join(sid);
-    fs::create_dir_all(&sdir).unwrap();
-    // 半截 JSON（写者持锁中途读）
-    write(&sdir.join("3.json"), "{\"id\":\"3\",\"sub");
-    // 完整 JSON
-    write(
-        &sdir.join("4.json"),
-        r#"{"id":"4","subject":"ok","status":"in_progress","blocks":[],"blockedBy":[]}"#,
-    );
-    let got = read_session_tasks(dir.path(), sid);
-    assert_eq!(got.len(), 1);
-    assert_eq!(got[0].id, "4");
-}
-
-#[test]
-fn read_parses_optional_fields() {
-    let dir = TestDir::new("opt");
-    let sid = "s";
-    let sdir = dir.path().join(sid);
-    fs::create_dir_all(&sdir).unwrap();
-    write(
-        &sdir.join("1.json"),
-        r##"{
-                "id":"1",
-                "subject":"#1a 前端 priority queue",
-                "description":"按 session 分组 + 优先 active",
-                "activeForm":"实现 priority queue",
-                "status":"in_progress",
-                "blocks":["2"],
-                "blockedBy":["0"]
-            }"##,
-    );
-    let got = read_session_tasks(dir.path(), sid);
+fn parse_reads_the_optional_fields() {
+    let lines = vec![r##"{
+        "id":"1",
+        "subject":"占位 subject",
+        "description":"占位 description",
+        "activeForm":"占位 activeForm",
+        "status":"in_progress",
+        "blocks":["2"],
+        "blockedBy":["0"],
+        "unknownFutureField": true
+    }"##
+    .to_string()];
+    let got = parse_task_lines(&lines);
     assert_eq!(got.len(), 1);
     let t = &got[0];
-    assert_eq!(t.subject, "#1a 前端 priority queue");
-    assert_eq!(
-        t.description.as_deref(),
-        Some("按 session 分组 + 优先 active")
-    );
-    assert_eq!(t.active_form.as_deref(), Some("实现 priority queue"));
+    assert_eq!(t.subject, "占位 subject");
+    assert_eq!(t.description.as_deref(), Some("占位 description"));
+    assert_eq!(t.active_form.as_deref(), Some("占位 activeForm"));
     assert_eq!(t.status, "in_progress");
     assert_eq!(t.blocks, vec!["2"]);
     assert_eq!(t.blocked_by, vec!["0"]);
+}
+
+/// ★ 本机读实现真的退役了：生产段里一处 `read_dir` / `read_to_string` 都不许有
+/// （零命中 ＋ 正控：同一把尺子对搬家前那份逐字源码数得出来）。
+#[test]
+fn this_module_no_longer_reads_task_files_itself() {
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/tasks.rs"));
+    // 针运行时拼：字面量会让本文件自己变成「裸遍历目录」那一族扫描判据的语料。
+    let needles = [
+        format!("read_{}(", "dir"),
+        format!("read_to_{}(", "string"),
+        format!("fs::{}(", "read"),
+    ];
+    let hits: Vec<&String> = needles
+        .iter()
+        .filter(|n| prod.contains(n.as_str()))
+        .collect();
+    assert!(hits.is_empty(), "tasks.rs 生产段又自己读盘了：{hits:?}");
+    // 正控：搬家前那一段的形状，同一把尺子必须数得到。
+    let before = format!(
+        "let entries = match std::fs::read_{}(&session_dir) {{ let raw = match std::fs::read_to_{}(&path) {{",
+        "dir", "string"
+    );
+    assert!(
+        needles
+            .iter()
+            .filter(|n| before.contains(n.as_str()))
+            .count()
+            == 2,
+        "尺子瞎了"
+    );
 }
 
 #[test]

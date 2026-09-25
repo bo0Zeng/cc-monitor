@@ -1246,6 +1246,7 @@ fn linked_rows() -> Vec<Listed> {
         },
         link,
         mtime_secs: t,
+        raw_name: None,
     };
     vec![
         mk("to-elsewhere", false, true, Some(1_700_000_000)),

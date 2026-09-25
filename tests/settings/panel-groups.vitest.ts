@@ -42,7 +42,7 @@ vi.mock("../../src/settings/remote-section", () => ({
           id: string,
           title: string,
           el: HTMLElement,
-          parts?: { connection: HTMLElement; components: HTMLElement },
+          parts?: { connection: HTMLElement; components: HTMLElement; tools: HTMLElement },
         ) => void;
       };
     }) {
@@ -58,9 +58,14 @@ vi.mock("../../src/settings/remote-section", () => ({
         conn.textContent = "CONN";
         const comp = document.createElement("div");
         comp.textContent = "COMP";
+        // 〔ST2〕第三块：「工具」栏里那台机器自己的别名（与本机页同一个位置）。
+        const tools = document.createElement("div");
+        tools.textContent = "TOOLS";
+        tools.id = "stub-remote-aliases";
         opts?.pages?.addMachinePage("machine:devbox", "devbox", document.createElement("div"), {
           connection: conn,
           components: comp,
+          tools,
         });
       }, 0);
     }
@@ -68,7 +73,7 @@ vi.mock("../../src/settings/remote-section", () => ({
 }));
 vi.mock("../../src/settings/data-section", () => ({
   DataSection: class {
-    element = document.createElement("div");
+    element = Object.assign(document.createElement("div"), { id: "stub-data-section" });
     refresh = dataRefresh;
     // `设计/70 §1.3 B`（步 2）：真 DataSection 的第一发 I/O 由宿主在
     // 「这一页首次可见」时通过 `loadNow()` 放行 —— stub 必须履行同一份契约，
@@ -78,7 +83,7 @@ vi.mock("../../src/settings/data-section", () => ({
 }));
 vi.mock("../../src/settings/diagnostics-section", () => ({
   DiagnosticsSection: class {
-    element = document.createElement("div");
+    element = Object.assign(document.createElement("div"), { id: "stub-diagnostics-section" });
     loadNow = vi.fn();
   },
 }));
@@ -180,12 +185,14 @@ function navTitles(): string[] {
 }
 
 describe("S2 设置面板分页结构", () => {
-  it("导航 = 应用 / 机器 / 改动足迹 / cc-bus（按序）", () => {
+  it("导航 = 应用 / 机器（按序）", () => {
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
-    // S6 已把 cc-bus 驾驶舱移出设置（它是运营视图不是设置，§1-1）⇒ 顶层回到计划里的 3 个。
+    // S6 已把 cc-bus 驾驶舱移出设置（它是运营视图不是设置，§1-1）。
     // 它现在的入口是命令面板（不加第 7 个顶栏图标，理由见 views/cc-bus-view.ts 头注）。
-    expect(navTitles()).toEqual(["应用", "机器", "改动足迹"]);
+    // 🔴 〔ST2 · 用户 09-24 裁「并进机器页，删掉顶层页」〕「改动足迹」顶层页没了 ⇒ 顶层只剩两个。
+    // 〔ST2 · `70 §6` #3 · 步 15〕「应用」下挂三个子页（替掉原来的两个折叠组）。
+    expect(navTitles()).toEqual(["应用", "外观", "日志", "数据位置", "机器"]);
   });
 
   /** 等 RemoteSection 那边异步注册完本机页（真实实现是在 `refresh()` 里注册的）。 */
@@ -198,23 +205,27 @@ describe("S2 设置面板分页结构", () => {
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
     await tick();
-    expect(pageTitles("app")).toEqual([
-      "行为",
-      "快捷键",
-      "外观", // 折叠组
-      "字体",
-      "颜色",
-      "日志与数据", // 折叠组
-      "Claude 数据目录",
-      // `70 §10.3`：「诊断」**让名**给 `§5.3` 那个改名（否则面板里会有两个「诊断」）。
-      "日志",
-      // `70 §10.2`：同组里已经有一块叫「Claude 数据目录」，两个「数据」并排 ⇒ 改「数据位置」。
-      "数据位置",
-    ]);
+    // 🔴 〔ST2 · `70 §6` #3 · 步 15〕两个折叠组（外观 · 日志与数据）换成「应用」下的三个子页。
+    //   「日志」「数据位置」那两块各自独占一页 ⇒ 块不再自带标题（页头就是它的名字，§8 #11 不重名）。
+    expect(pageTitles("app")).toEqual(["行为", "快捷键"]);
+    expect(pageTitles("app-appearance")).toEqual(["字体", "颜色"]);
+    // `70 §10.3`：「诊断」**让名**给 `§5.3` 那个改名（否则面板里会有两个「诊断」）——今天是页名。
+    expect(pageTitles("app-logs")).toEqual([]);
+    expect(pageTitles("app-data")).toEqual(["Claude 数据目录"]);
+    // 那两块真的在它们各自那一页上（只是不带块标题）。
+    for (const [id, cls] of [
+      ["app-logs", "#stub-diagnostics-section"],
+      ["app-data", "#stub-data-section"],
+    ] as const) {
+      const page = document.querySelector<HTMLElement>(`.settings-page[data-route-id="${id}"]`)!;
+      expect(page.querySelector(cls), `${id} 页上没有它那一块`).not.toBeNull();
+    }
     // ★ S4b-2：那四块**已从列表页搬到机器详情页**。
-    // ★ P2s：「backend 开关」是这一页的新成员，且**排在「连接（远端）」之前** ——
-    // 它管的是每台机（含本机），而「连接（远端）」是远端专有的 SSH 配置面。
-    expect(pageTitles("machines")).toEqual(["backend 开关", "连接（远端）"]);
+    // 🔴 〔第四波 ST2 · `70 §5.3` · 步 14〕「backend 开关」**不再单独占一块**：它并进了机器列表那一行
+    //   （四格挂在「连接（远端）」那块的列表行上，钉在 `machine-list-backend-cells.vitest.ts`）。
+    //   ⇒ 列表页的块只剩一块（列表 ＋ 添加 ＋ 全局开关 ＋ 诊断都在它里面，`§8` #10）。
+    // 〔ST2〕顶层「改动足迹」删掉之后，漂移记账那一块并进**每台机器子页的「足迹」栏**（见下面本机页那张表）。
+    expect(pageTitles("machines")).toEqual(["连接（远端）"]);
     // 它们跟着「当前在看哪台机器」走；初始落在本机页上（与 machine-context 的初始值对齐）。
     expect(pageTitles("machine:（本机）")).toEqual([
       "账号",
@@ -228,10 +239,12 @@ describe("S2 设置面板分页结构", () => {
       "cc-bus 钩子",
       // 🔴 `70 §10.1`（步 14a）：「足迹」从顶层「改动足迹」页搬进来，是**新增的第五块**。
       "足迹",
+      // 〔ST2〕原顶层「改动足迹」页剩下的那一块，同栏。
+      "未识别的数据",
     ]);
-    // `70 §10.1`（步 14a）：「配置面审计」→ 改名「足迹」并搬进机器子页 ⇒ 这一页只剩一块。
-    // ⚠ `§10.5` #1 **判不了**：这个顶层页还留不留（剩下那块也没有 origin）——本件不定。
-    expect(pageTitles("footprint")).toEqual(["数据面漂移记账"]);
+    // `70 §10.1`（步 14a）：「配置面审计」→ 改名「足迹」并搬进机器子页。
+    // 🔴 〔ST2〕`§10.5` #1 用户裁了：顶层「改动足迹」页**删掉**，剩下那一块并进机器页。
+    expect(document.querySelector('.settings-page[data-route-id="footprint"]')).toBeNull();
     // cc-bus 已不在设置里（S6）—— 连页都不该存在。
     expect(
       document.querySelector('.settings-page[data-route-id="cc-bus"]'),
@@ -321,10 +334,13 @@ describe("S2 设置面板分页结构", () => {
     // 字段还在、契约还在，只是放行的时机换成了「这一页首次可见」。
     expect(dataRefresh, "落地页是「机器」⇒ 打开设置不许碰「应用」页的 I/O").not.toHaveBeenCalled();
     expect(dataLoadNow, "还没点进「应用」⇒ 连第一发都不许放").not.toHaveBeenCalled();
-    // 点进「应用」——这一刻才放行。**相等断言的反向锚**：上面那两条若因为
+    // 点进「数据位置」——这一刻才放行。**相等断言的反向锚**：上面那两条若因为
     // 字段被漏赋值（`this.dataSection` 是 undefined）而绿，这一条会红。
+    // 〔ST2 · 步 15〕它今天是「应用」下的子页（原来在「应用」页的折叠组里）。
     document.querySelector<HTMLButtonElement>("#settings-tab-app")!.click();
-    expect(dataLoadNow, "点进「应用」之后第一发必须真的放出去").toHaveBeenCalled();
+    expect(dataLoadNow, "点「应用」本身不该放数据位置那一发").not.toHaveBeenCalled();
+    document.querySelector<HTMLButtonElement>("#settings-tab-app-data")!.click();
+    expect(dataLoadNow, "点进「数据位置」之后第一发必须真的放出去").toHaveBeenCalled();
   });
 
   it("★ 本机页上不出现只对远端有意义的块（S4a 那个半截状态的解药）", async () => {
@@ -386,7 +402,6 @@ describe("S2 设置面板分页结构", () => {
     expect(sk!.getAttribute("aria-busy")).toBe("true");
     // 隔离没有因此被打破：那几块**都还在 DOM 里**，只是先藏着、等机器页来了就搬走。
     expect(pageTitles("machines")).toEqual([
-      "backend 开关",
       "连接（远端）",
       "账号",
       "终端集成",
@@ -395,6 +410,7 @@ describe("S2 设置面板分页结构", () => {
       "插件（marketplace）",
       "cc-bus 钩子",
       "足迹",
+      "未识别的数据",
     ]);
   });
 
@@ -465,6 +481,19 @@ describe("S2 设置面板分页结构", () => {
     expect(toolTitles).toContain("cc-bus 钩子");
     // 反向：账号**不该**也出现在工具栏里（搬 DOM 一处一份，不能有两份）
     expect(toolTitles).not.toContain("账号");
+    // 🔴 〔ST2 · 协调方转主会话裁：别名统一放「工具」栏〕这台机器自己的别名在「工具」栏**最前面**，
+    //   不在「组件」栏 —— 与本机页「工具 → 别名」同一个位置。
+    const tools = tabPage("tools");
+    expect(tools.querySelector("#stub-remote-aliases"), "远端的别名不在「工具」栏").not.toBeNull();
+    expect(tabPage("comp").querySelector("#stub-remote-aliases")).toBeNull();
+    const stub = tools.querySelector<HTMLElement>("#stub-remote-aliases")!;
+    expect(stub.parentElement!.firstElementChild, "别名不在「工具」栏最前面").toBe(stub);
+    // 本机那一格：「工具」里也有「别名」—— 两边同一个位置。
+    document.querySelector<HTMLButtonElement>("#settings-tab-machine\\:（本机）")!.click();
+    const localTitles = [
+      ...document.querySelectorAll('.settings-page[data-route-id="machine:（本机）"] .settings-group-title'),
+    ].map((e) => e.textContent);
+    expect(localTitles).toContain("别名");
   });
 
   it("★ S7：没有待生效改动时，重启条不出现（恒显示的警告 = 背景噪音）", async () => {

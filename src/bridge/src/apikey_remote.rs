@@ -43,18 +43,21 @@ pub(crate) const CMD_READ: &str = "apikey-read";
 /// 一趟往返的上限。远端要走一趟长连接，给宽一点（同 `backend_policy::EXIT_POLICY_BUDGET`）。
 const BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
 
-/// 配一把 key：本机进 `creds_store`，远端交那台机器的后端。
+/// 配一把 key（与可选的 Base URL）：本机进 `creds_store`，远端交那台机器的后端。
 ///
 /// ⚠ 明文 `key` 在本函数里**恰好两处**，一臂一处（两台机器、两个写者），逐处登记在
 /// `creds_store_tests::PLAINTEXT_HOPS`。
+/// 〔ST2 × RM1a〕`base_url` 跟着 key 走同一台机器：缺席 / 空 = 不碰那一格；形状关只在**写者**那一侧
+/// （本机 `creds_store` · 远端后端 `file_face`，两处调的是 `creds_core` 同一个函数），本函数不另判一遍。
 pub(crate) async fn write_key_on(
     origin: &Origin,
     config_dir: &str,
     key: String,
+    base_url: Option<String>,
 ) -> Result<(), String> {
     match origin.route("write_apikey_credentials_key")? {
-        Route::Local => crate::creds_store::write_key(config_dir, &key),
-        Route::Remote(host) => send_key(host, config_dir, key).await,
+        Route::Local => crate::creds_store::write_key(config_dir, &key, base_url.as_deref()),
+        Route::Remote(host) => send_key(host, config_dir, key, base_url).await,
     }
 }
 
@@ -62,7 +65,12 @@ pub(crate) async fn write_key_on(
 ///
 /// ⚠ 明文绑定在这里叫 `plain`（不叫 `key`）：`args` 里那个字段名逐字是 `"key"`，
 /// 同名的话「明文被碰了几次」那把按标识符数的尺子会把字段名也数进去。
-async fn send_key(host: &str, config_dir: &str, plain: String) -> Result<(), String> {
+async fn send_key(
+    host: &str,
+    config_dir: &str,
+    plain: String,
+    base_url: Option<String>,
+) -> Result<(), String> {
     let account = crate::history::apikey_account_id_of_dir(config_dir).ok_or_else(|| {
         format!(
             "说不出这是哪个账号（configDir 是 {config_dir:?}）—— 不往 [{host}] 的表里写：\
@@ -72,7 +80,7 @@ async fn send_key(host: &str, config_dir: &str, plain: String) -> Result<(), Str
     call(
         host,
         CMD_KEY_SET,
-        json!({ "account": account, "key": plain }),
+        json!({ "account": account, "key": plain, "baseUrl": base_url }),
     )
     .await?;
     Ok(())

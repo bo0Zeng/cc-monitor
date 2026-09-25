@@ -94,6 +94,7 @@ fn the_remote_arm_says_what_went_wrong_without_the_plaintext() {
         &host,
         "/home/u/.claude-alt/work",
         PLAIN.to_string(),
+        Some("https://up.example.invalid".to_string()),
     ))
     .expect_err("没有通道还说写成了");
     assert!(
@@ -103,7 +104,7 @@ fn the_remote_arm_says_what_went_wrong_without_the_plaintext() {
     assert!(!err.contains(PLAIN), "报错里带着明文：{err}");
 
     // 说不出账号 id ⇒ 连通道都不问就拒，话里同样不带明文。
-    let err = tauri::async_runtime::block_on(write_key_on(&host, "   ", PLAIN.to_string()))
+    let err = tauri::async_runtime::block_on(write_key_on(&host, "   ", PLAIN.to_string(), None))
         .expect_err("说不出账号 id 还说写成了");
     assert!(err.contains("说不出这是哪个账号"), "实得：{err}");
     assert!(!err.contains(PLAIN), "报错里带着明文：{err}");

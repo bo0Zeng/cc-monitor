@@ -202,8 +202,8 @@ pub fn show_file_rows(
                 tally.revealed_row = Some(i);
             }
             let mark = picked.map_or(Mark::default(), |s| Mark {
-                picked: s.is_picked(&r.name),
-                cursor: s.is_cursor(&r.name),
+                picked: s.is_picked(&super::select::pick_key(r)),
+                cursor: s.is_cursor(&super::select::pick_key(r)),
             });
             if mark.picked {
                 tally.picked_rows.push(i);
@@ -382,9 +382,9 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Listed, revealed: bool, mark: Ma
             ui.label(format_mtime(t));
         }
         if r.lossy_name {
-            // 非 UTF-8 名：SFTP 那侧寻址不到真字节 ⇒ 写操作要灰置。
-            // 这一档下面**六颗按钮一颗都不画**（`is_copyable` / `is_writable` /
-            // `is_downloadable` / `is_editable`）。
+            // 非 UTF-8 名：显示串寻址不到真字节。
+            // 〔FW5〕带着原始字节（后端 `files-ls` 送的）⇒ 三颗写按钮照画（改名 · 删除 · 权限走 b16）；
+            //   复制 / 下载 / 编辑那几颗用的是整条路径字符串，照旧不画（`is_copyable` / `is_downloadable` / `is_editable`）。
             ui.label("⚠");
         }
         // 〔第三刀〕「复制」——**只对能复制的那一档画**。`is_copyable` 是唯一住址，

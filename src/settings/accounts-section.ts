@@ -215,7 +215,9 @@ export class AccountsSection {
    * 而这一页会换机器 —— 不记的话，远端 A 上建的号若与本机某个号同名，key 会被写到本机去。
    * ⇒ 只在**同一台**机器的列表里出现时才写。
    */
-  private readonly pendingKeys = new Map<string, { key: string; origin: Origin }>();
+  // 〔第四波 ST2〕值多带一格 Base URL（表单 apikey 那一支的第二格；缺席 = 默认上游）。
+  // 〔RM1a〕再带一格 origin：建它的那台机器（见上）。两格一起跟着那把 key 走到那台机器上。
+  private readonly pendingKeys = new Map<string, { key: string; origin: Origin; baseUrl?: string }>();
   private pendingBox: HTMLElement | null = null;
 
   constructor() {
@@ -1134,7 +1136,7 @@ export class AccountsSection {
       where === "local" ? await this.launchLocalStep(step) : await this.launchStep(step);
     if (launched && req.access === "apikey") {
       const origin = where === "local" ? BACKEND_LOCAL_ORIGIN : this.machineOrigin();
-      this.pendingKeys.set(req.name, { key: req.key, origin });
+      this.pendingKeys.set(req.name, { key: req.key, origin, baseUrl: req.baseUrl });
     }
     this.renderPendingKeys();
   }
@@ -1176,7 +1178,7 @@ export class AccountsSection {
    * ⚠ 出现了但没有 configDir（账号 0 那种）⇒ 配了也不会被用上：丢掉 key 并说出来，不假装写成了。
    */
   private async flushPendingKeys(accounts: Account[]): Promise<void> {
-    for (const [name, { key, origin }] of [...this.pendingKeys]) {
+    for (const [name, { key, origin, baseUrl }] of [...this.pendingKeys]) {
       // 〔RM1a〕只在建它的那台机器的列表里认领（见 `pendingKeys` 头注）。
       if (origin !== this.machineOrigin()) continue;
       const a = accounts.find((x) => x.name === name);
@@ -1190,7 +1192,7 @@ export class AccountsSection {
         );
         continue;
       }
-      await this.writeApikey(key, a.configDir, name);
+      await this.writeApikey(key, a.configDir, name, baseUrl);
     }
     this.renderPendingKeys();
   }
@@ -1204,9 +1206,20 @@ export class AccountsSection {
   }
 
   /** 唯一那一处把 key 交给后端的地方（行上的「保存」与表单的「建好后写」都走它）。 */
-  private async writeApikey(key: string, configDir: string, name: string): Promise<void> {
+  private async writeApikey(
+    key: string,
+    configDir: string,
+    name: string,
+    // 〔ST2〕只有表单「建好后写」那一路带它；行上的「保存」只配 key（后端那一格不碰）。
+    baseUrl?: string,
+  ): Promise<void> {
     try {
-      await commands.write_apikey_credentials_key({ origin: this.machineOrigin(), key, configDir });
+      await commands.write_apikey_credentials_key({
+        origin: this.machineOrigin(),
+        key,
+        configDir,
+        ...(baseUrl === undefined ? {} : { baseUrl }),
+      });
       showActionFailureToast("已写入 apikey", `${name} 的 apikey 已写进 apikey 表。`, {
         level: "info",
         durationMs: 3000,

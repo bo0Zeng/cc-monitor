@@ -137,7 +137,7 @@ fn a_program_write_keeps_everything_the_human_put_there() {
     .expect("改夹具");
 
     // ④ 程序这时候才写。
-    write_key_at(&p, "/h/.claude-alt/acct-x", "NEW-KEY").expect("写");
+    write_key_at(&p, "/h/.claude-alt/acct-x", "NEW-KEY", None).expect("写");
 
     let back: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
@@ -203,7 +203,7 @@ fn a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style() {
     .expect("写夹具");
 
     // ② 界面按「保存」，走的是**生产段那条真实的写路**。
-    write_key_at(&p, "/h/.claude-alt/acct-x", "NEW-KEY").expect("写");
+    write_key_at(&p, "/h/.claude-alt/acct-x", "NEW-KEY", None).expect("写");
 
     let back: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
@@ -261,7 +261,13 @@ fn a_written_file_is_owner_only_and_a_widened_one_is_called_out() {
     let dir = tmpdir("perm");
     let p = dir.join("apikey-credentials.json");
 
-    write_key_at(&p, "/h/.claude-alt/acct-perm", "sk-ant-JUST-WRITTEN").expect("写");
+    write_key_at(
+        &p,
+        "/h/.claude-alt/acct-perm",
+        "sk-ant-JUST-WRITTEN",
+        None,
+    )
+    .expect("写");
     let mode = std::fs::metadata(&p).expect("stat").permissions().mode() & 0o777;
     assert_eq!(mode, 0o600, "写完没有收窄成只给本人（实测 {mode:04o}）");
     assert!(
@@ -351,7 +357,7 @@ fn what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for() {
         "文件还不存在就说这个号有行了 —— 这把尺子恒真，下面全是空真"
     );
 
-    write_key_at(&p, one, "KEY-FOR-ONE").expect("写");
+    write_key_at(&p, one, "KEY-FOR-ONE", None).expect("写");
 
     // ★ 正题：用**起会话那一侧**的取值口 + 它的判断读这份文件。
     let rows = crate::history::apikey_rows_at(&p);
@@ -455,7 +461,7 @@ fn the_write_side_no_longer_targets_the_legacy_top_level_slot() {
     // 行为那一维：全新文件写一次，顶层那一格不许被创建。
     let dir = tmpdir("legacy-slot");
     let p = dir.join("apikey-credentials.json");
-    write_key_at(&p, "/h/.claude-alt/acct-fresh", "KEY-FRESH").expect("写");
+    write_key_at(&p, "/h/.claude-alt/acct-fresh", "KEY-FRESH", None).expect("写");
     let back: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
     assert!(
@@ -480,7 +486,7 @@ fn a_config_dir_that_names_no_account_is_refused_instead_of_falling_back() {
     let dir = tmpdir("no-id");
     let p = dir.join("apikey-credentials.json");
     for bad in ["", "   ", "/"] {
-        let e = write_key_at(&p, bad, "KEY-SHOULD-NOT-LAND")
+        let e = write_key_at(&p, bad, "KEY-SHOULD-NOT-LAND", None)
             .expect_err("说不出账号却写成功了 —— 那一把落到哪儿了？");
         assert!(e.contains("说不出这是哪个账号"), "报错没说清原因：{e}");
     }
@@ -491,7 +497,7 @@ fn a_config_dir_that_names_no_account_is_refused_instead_of_falling_back() {
         std::fs::read_to_string(&p).unwrap_or_default()
     );
     // 非空对照：同一个入口喂一个说得出 id 的 configDir**是**写得进去的。
-    write_key_at(&p, "/h/.claude-alt/acct-ok", "KEY-OK").expect("写");
+    write_key_at(&p, "/h/.claude-alt/acct-ok", "KEY-OK", None).expect("写");
     assert!(p.exists());
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -902,15 +908,16 @@ const PLAINTEXT_HOPS: &[(&str, &str, &str, &[&str])] = &[
         "lib.rs",
         "fn write_apikey_credentials_key(",
         "key",
-        &["apikey_remote::write_key_on(&origin, &config_dir, key)"],
+        // 〔ST2 × RM1a〕Base URL（明文端点，不是凭据）跟着一起按机器走；明文 key 仍然只往下传这一次。
+        &["apikey_remote::write_key_on(&origin, &config_dir, key, base_url)"],
     ),
     (
         "apikey_remote.rs",
         "pub(crate) async fn write_key_on(",
         "key",
         &[
-            "crate::creds_store::write_key(config_dir, &key)",
-            "send_key(host, config_dir, key)",
+            "crate::creds_store::write_key(config_dir, &key, base_url.as_deref())",
+            "send_key(host, config_dir, key, base_url)",
         ],
     ),
     (
@@ -1049,4 +1056,94 @@ fn the_plaintext_argument_is_only_ever_handed_one_hop_further() {
             );
         }
     }
+}
+
+// ── 〔第四波 ST2 · `设计/70 §4.4`〕加账号表单 apikey 那一支的 Base URL ─────────────────
+
+fn st2_dir(tag: &str) -> std::path::PathBuf {
+    let d = std::env::temp_dir().join(format!("ccm-st2-baseurl-{}-{tag}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).expect("建临时目录");
+    d
+}
+
+/// ★★ 给了 Base URL ⇒ 落进**那个账号那一格**的 `base_url`（与 key 同一条），别的条、别的键一个不动；
+/// 没给 ⇒ 那一格不碰（已有的 `base_url` 原样留着 —— 只配 key 不许把端点洗掉）。
+#[test]
+fn the_base_url_lands_in_that_accounts_row_and_nothing_else_moves() {
+    let dir = st2_dir("lands");
+    let p = dir.join("apikey-credentials.json");
+    std::fs::write(
+        &p,
+        b"{\n  \"mine\": 1,\n  \"accounts\": {\n    \"other\": { \"api_key\": \"K-OTHER\", \"base_url\": \"https://other.example\" }\n  }\n}\n",
+    )
+    .expect("写夹具");
+    write_key_at(
+        &p,
+        "/h/.claude-alt/acct-x",
+        "K-X",
+        Some(" https://api.example.com/v1 "),
+    )
+    .expect("写");
+    let back: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
+    assert_eq!(back["accounts"]["acct-x"][store::KEY_FIELD], "K-X");
+    assert_eq!(
+        back["accounts"]["acct-x"][store::BASE_URL_FIELD],
+        "https://api.example.com/v1",
+        "Base URL 没落在那个账号那一格（或首尾空白没修掉）"
+    );
+    assert_eq!(
+        back["accounts"]["other"][store::BASE_URL_FIELD],
+        "https://other.example"
+    );
+    assert_eq!(back["accounts"]["other"][store::KEY_FIELD], "K-OTHER");
+    assert_eq!(back["mine"], 1);
+    // 再只配一次 key（不给 Base URL）⇒ 端点原样留着。
+    write_key_at(&p, "/h/.claude-alt/acct-x", "K-X2", None).expect("写");
+    let back: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
+    assert_eq!(back["accounts"]["acct-x"][store::KEY_FIELD], "K-X2");
+    assert_eq!(
+        back["accounts"]["acct-x"][store::BASE_URL_FIELD],
+        "https://api.example.com/v1",
+        "只配 key 把那一行的端点洗掉了"
+    );
+    // 空串 = 不碰（与 None 同）。
+    write_key_at(&p, "/h/.claude-alt/acct-x", "K-X3", Some("  ")).expect("写");
+    let back: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
+    assert_eq!(
+        back["accounts"]["acct-x"][store::BASE_URL_FIELD],
+        "https://api.example.com/v1"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// ★★ 形状不对的 Base URL ⇒ **整次写都不做**（key 也不落、文件不建）—— 半截写进去比报错更坏。
+#[test]
+fn a_malformed_base_url_writes_nothing_at_all() {
+    let dir = st2_dir("bad");
+    let p = dir.join("apikey-credentials.json");
+    for bad in [
+        "api.example.com",
+        "ftp://x",
+        "https://",
+        "https://a b.example",
+    ] {
+        let e = write_key_at(&p, "/h/.claude-alt/acct-x", "K-NO", Some(bad))
+            .expect_err(&format!("{bad:?} 被收下了"));
+        assert!(e.contains("Base URL"), "报错没说是哪一格：{e}");
+        assert!(!p.exists(), "{bad:?} 形状不对，文件却已经建出来了");
+    }
+    // 反向对照：形状对的 http 回环照收（明文 http 是不是只许回环由账号层判，本侧不另写一份）。
+    write_key_at(
+        &p,
+        "/h/.claude-alt/acct-x",
+        "K-OK",
+        Some("http://127.0.0.1:8080"),
+    )
+    .expect("写");
+    assert!(p.exists());
+    let _ = std::fs::remove_dir_all(&dir);
 }

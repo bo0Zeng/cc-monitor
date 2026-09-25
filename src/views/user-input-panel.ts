@@ -47,10 +47,17 @@ import type { UserInputEntry } from "../generated/UserInputEntry";
  * ⚠ 一个住址。两条路（历史查看器 / 实时窗口）共用这份界面，名字也只有这一份 ——
  * 改名那天两边一起改，不会有一边还叫旧名。
  */
-const OUTLINE_LABEL = "大纲";
+export const OUTLINE_LABEL = "大纲";
 
 /** 开关的 tooltip（`设计/10 §2.2b ③`）。一个住址：建开关与「要到清单」两处都用它。 */
 const OUTLINE_HINT = "按你的输入跳转";
+
+/**
+ * 「跳」的结局：真正落到的那张卡 / `null` = 落空。
+ * 〔SE2〕可以是 Promise：骨架接上之后，没物化的那段要先按偏移把正文取回来（异步）才建得出卡 ——
+ * 同步那一下去找必然落空（`tab-stream-view.ts::jumpTo` 的头注）。
+ */
+export type JumpResult = HTMLElement | null | Promise<HTMLElement | null>;
 
 /** 宿主要提供的两件事 —— 「怎么跳」和「跳空了怎么跟人解释」。 */
 export interface UserInputPanelHost {
@@ -60,9 +67,39 @@ export interface UserInputPanelHost {
    * 🔴 返回值就是落点读数：面板**不自己再查一遍 DOM 去猜跳没跳到** ——
    * 「先渲染再找」这一段只有宿主知道自己做没做，猜出来的读数会在两条路上各错一次。
    */
-  jumpTo(uuid: string): HTMLElement | null;
+  jumpTo(uuid: string): JumpResult;
   /** 跳空时挂在那一行上的一句人话。两条路的原因不同，所以由宿主给。 */
   readonly unjumpableHint: string;
+  /**
+   * 〔SE2〕给了 ⇒ **开合归宿主**：开关按钮点下去调它，本类从此不碰 `panel.hidden` 与 `aria-expanded`
+   * （实时 tab 把清单挂进查找面板的「大纲」模式，露不露由那块面板的模式决定）。
+   * 不给 ⇒ 照旧自己开合（历史查看器）。
+   */
+  openOutline?(): void;
+}
+
+/**
+ * 点一行之后**核一次落点**，把「跳不过去」的标记挂上或撤掉。大纲行与查找命中行**同一个住址**。
+ *
+ * 🔴 **两样都要撤**（`data-unjumpable` 与提示）—— 撤一样就是把「只加不减」从一个字段搬到另一个字段
+ * （本文件头注那段 PM 实测）。异步的落点（Promise）落定之后再核。
+ */
+export function markJump(row: HTMLElement, landed: JumpResult, okTitle: string, hint: string): void {
+  const apply = (el: HTMLElement | null): void => {
+    if (el) {
+      delete row.dataset.unjumpable;
+      row.title = okTitle;
+      return;
+    }
+    // 变灰**不在这里**：`styles.css` 的 `[data-unjumpable]`。呈现跟着标记走。
+    row.dataset.unjumpable = "1";
+    row.title = hint;
+  };
+  if (landed instanceof Promise) {
+    landed.then(apply, () => apply(null));
+  } else {
+    apply(landed);
+  }
 }
 
 export class UserInputPanel {
@@ -79,7 +116,9 @@ export class UserInputPanel {
     this.toggle.className = "user-inputs-toggle";
     // 标签只有两个字 ⇒ 用 tooltip 说清它是干什么的（`设计/10 §2.2b ③` 的「最终形状」）。
     this.toggle.title = OUTLINE_HINT;
-    this.toggle.addEventListener("click", () => this.toggleOpen());
+    this.toggle.addEventListener("click", () =>
+      host.openOutline ? host.openOutline() : this.toggleOpen(),
+    );
     this.panel = document.createElement("div");
     this.panel.className = "user-inputs";
     this.panel.hidden = true;
@@ -124,14 +163,16 @@ export class UserInputPanel {
     this.toggle.title = reason ? `大纲暂时用不了：${reason}` : "大纲暂时用不了";
   }
 
-  /** 清空并收起（换会话 / 关 tab）—— 旧会话的句子不许挂在新会话上。 */
+  /** 清空并收起（换会话 / 关 tab）—— 旧会话的句子不许挂在新会话上。开合归宿主时只清不收。 */
   clear(): void {
     this.panel.replaceChildren();
-    this.panel.hidden = true;
+    if (!this.host.openOutline) {
+      this.panel.hidden = true;
+      this.toggle.setAttribute("aria-expanded", "false");
+    }
     this.toggle.title = OUTLINE_HINT;
     this.toggle.textContent = OUTLINE_LABEL;
     this.toggle.disabled = true;
-    this.toggle.setAttribute("aria-expanded", "false");
   }
 
   /** 开关清单面板。`hidden` 而不是 `display` —— 与本仓其余处一致，也让判据好断。 */
@@ -163,15 +204,7 @@ export class UserInputPanel {
    * 或者「点了一下什么都没发生」，而没有任何东西说一句话。
    */
   private jump(entry: UserInputEntry, row: HTMLButtonElement): void {
-    if (this.host.jumpTo(entry.uuid)) {
-      // 🔴 **两样都要撤**。撤一样就是把「只加不减」从一个字段搬到另一个字段。
-      delete row.dataset.unjumpable;
-      row.title = entry.excerpt;
-      return;
-    }
-    // 变灰**不在这里**：`styles.css` 的 `.user-input-row[data-unjumpable]`。
-    // 呈现跟着标记走 ⇒ 上面那句 `delete` 一执行，灰也自动没了。
-    row.dataset.unjumpable = "1";
-    row.title = this.host.unjumpableHint;
+    // 〔SE2〕标记的加 / 撤搬进 [`markJump`]（查找命中行共用同一个住址）；两样都撤的纪律在那边。
+    markJump(row, this.host.jumpTo(entry.uuid), entry.excerpt, this.host.unjumpableHint);
   }
 }

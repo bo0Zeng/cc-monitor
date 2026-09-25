@@ -45,6 +45,10 @@ const ALLOWED_SEMANTICS: &[&str] = &[
     // 致命错误去重连，而超长行只是这一行坏了）；而只写日志的话用户看到的是
     // 「这条会话少了一行」且无从得知为什么。⇒ 两者都不够，需要一个新名字。
     "丢弃+带身份报告",
+    // ⚠ 第九种，**论证后**加〔F9c · 第四波 09-24〕：窗口存盘时一条请求行的上限（`editor::SAVE_LINE_CAP`，
+    // 与后端入方向一行同值）。越过它**不拒、不截、不丢**：整份切成几块、每块一行、逐块送进暂存区，
+    // 后端读回拼起来 —— 用户的字节一个不少。它与「拒收+回错」的分界就在这里：越界的那一份**照样存成了**。
+    "分块（不丢数据）",
 ];
 
 /// 扫到了但**不是体量上限**的，逐条写清为什么排除。
@@ -52,6 +56,13 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// ⚠ 排除表也会腐：下面第一条会检查每条排除**真的还扫得到**，
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
+    (
+        "TREE_ENTRY_CAP",
+        "〔FW5 · 第四波 09-24〕**条数**不是体量：一趟递归删最多动多少条（含目标自己，\
+             后端 `files_write·rs::plan_tree_within` 的计划趟）。超了**整趟拒、一个字节不动**\
+             （`refused`，话里带上限是多少）—— 不做半截。它管的是「一次手势删多少条」与计划表的内存，\
+             不限任何字节量。",
+    ),
     (
         "STAGING_STALE_SECS",
         "〔F7c · 第三波 09-24〕**时间**不是体量：暂存区里一份上传件多少秒没动过才算孤儿\
@@ -142,6 +153,12 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              住 `relay/tee.rs::TeeSink::write_line`，**不是**本表管的那种「用户数据被截断」。",
     ),
     (
+        "ID_SNIFF_BYTES",
+        "〔F9c · 第四波〕**一段嗅探窗口**，不是上限：后端读循环遇到超长行（整行丢弃）时，只看行首这么多字节\
+             去抠信封的 `id`、好让 `line_too_long` 带回请求方的 id（`inbound·rs::sniff_id`）。\
+             越过它什么都不丢、不截 —— `id` 不在这一段里就回空串，即改动之前的行为。",
+    ),
+    (
         "REQUEST_ID_ROOM",
         "〔F9 续 09-24〕**一个字段最长多少字节**（请求行里 `id` 那一格的位子），不是上限：\
              窗口量存盘那一行时按最长的 id 算，只会比真发的那一行长、不会短。\
@@ -158,7 +175,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
         "BIG_TOTAL_BYTES",
         "同上，全文那一维的门槛（全文超过它进大文件模式）。〔F9 续〕按真敲键重打读数后 1 MiB → 256 KiB；\
-             编辑上限同拍抬到 1 MiB（`editor::MAX_EDIT_BYTES`）⇒ 这一条从此**在打开时就会开火**。",
+             编辑上限同拍抬到 1 MiB（`editor::MAX_EDIT_BYTES`；〔F9c〕再抬到 8 MiB）⇒ 这一条从此**在打开时就会开火**。",
     ),
     (
         "FRAME_BUDGET_US",
@@ -177,20 +194,8 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
 const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     // ---- monitor 侧 ----
     // ---- P8a：插件面只读枚举 ----
-    (
-        "src/bridge/src/plugins.rs",
-        "KNOWN_MARKETPLACES_CAP",
-        4 * 1024 * 1024,
-        "读 marketplace 登记表（本机实测 206 字节）",
-        "硬报错",
-    ),
-    (
-        "src/bridge/src/plugins.rs",
-        "MARKETPLACE_MANIFEST_CAP",
-        32 * 1024 * 1024,
-        "读单个 marketplace 的 manifest（本机实测 161 KB / 声明 276 个插件）",
-        "降级+说清",
-    ),
+    // 〔RM1b · 第四波〕这两条随读实现搬去了后端（`src/backend/observe/plugins_query.rs`，登记在后端那一段），
+    //   monitor 这一侧不再有它们。
     (
         "src/bridge/src/local_accounts.rs",
         "MANIFEST_CAP",
@@ -222,16 +227,34 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     // 〔F7c 收尾 09-24〕池子那一份同值的 `MAX_EDIT_BYTES`（「SFTP 在线编辑的文件体量」）随那条读文本命令一起走了。
     // 〔F7a · 第三波 09-24〕文件窗口编辑器的上限**搬回窗口**（它答「文本控件打字卡不卡」，
     //   是窗口的偏好）：每趟经 `max_bytes` 送给后端 `files-read-text`，后端按它整趟拒、不截断。
-    // 🔴〔F9 续 09-24〕256 KiB → **1 MiB**，而且它从此答的是「**存不存得回去**」：存盘把整份内容
-    //   装在一条请求行里，后端入方向一行上限就是 `inbound.rs::MAX_LINE_BYTES`（本表下面那一行）
-    //   ⇒ 本常量**就是**那个数（两 crate 引不到对方 ⇒ 对 E 读两侧源码钉相等）。一个数两处用：
-    //   打开前按大小拒 · 存之前按真序列化出来的那一行拒（`editor::save_fits`，多一个字节就不发）。
+    // 🔴〔F9 续 09-24〕256 KiB → 1 MiB（那时存盘整份装一行，上限钉成后端入方向一行）。
+    // 🔴〔F9c · 第四波 09-24〕1 MiB → **8 MiB**：装不进一行的分块走暂存区（下面 `SAVE_LINE_CAP` 那一行），
+    //   能存多大改由后端 `files-commit-text` 的天花板定，而它就是 `files/mod.rs::READ_TEXT_MAX_BYTES`
+    //   （存得回的要读得回来）⇒ 对 E 改钉这一对。
     (
         "src/bridge/src/filewin/editor.rs",
         "MAX_EDIT_BYTES",
-        1 << 20,
-        "文件窗口编辑器能打开的文本体量 ＝ 存盘那条请求行（`files-write-text`）序列化后的上限",
+        8 * 1024 * 1024,
+        "文件窗口编辑器能打开、能存回的文本体量 ＝ 后端 `files-read-text` / `files-commit-text` 的天花板",
         "拒收+回错",
+    ),
+    // 〔FW34 · 第四波 09-24〕预览自己的上限（**刻意不借编辑上限**：预览跟着光标走，↑↓ 一路按下去
+    //   每一步都是一趟 `files-read-text`；编辑上限是「点了编辑」那一下的量）。
+    //   超了：**不读**，面板上说「有 N，预览只看 M 以内的文件」；不截一半来预览（截断的文本会被当成全文）。
+    (
+        "src/bridge/src/filewin/preview.rs",
+        "PREVIEW_MAX_BYTES",
+        64 * 1024,
+        "文件窗口预览一份文本的体量（每挪一次光标一趟）",
+        "拒收+回错",
+    ),
+    // 〔F9c · 第四波 09-24〕存盘时一条请求行最多多长 ＝ 后端入方向一行（对 F 读两侧源码钉相等）。
+    (
+        "src/bridge/src/filewin/editor.rs",
+        "SAVE_LINE_CAP",
+        1 << 20,
+        "窗口存盘时一条请求行（`files-write-text` 整份 / `files-stage-chunk` 一块）序列化后的长度",
+        "分块（不丢数据）",
     ),
     (
         "src/bridge/src/ssh_source.rs",
@@ -322,6 +345,15 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         4_000,
         "单条 tool 文本进索引的**字符**数（monitor 与后端同一份）",
         "索引截断（不丢数据）",
+    ),
+    (
+        "src/backend/observe/search_query.rs",
+        "FIND_MAX_LIMIT",
+        2000,
+        "〔SE2〕会话内查找（`--find-in-session`）一次最多**列**多少条命中（条数，不是字节）；\
+             `--limit` 要得再多也按它算。⚠ 只砍「列」不砍「数」：尾行的 `total` 恒为全量，\
+             面板据 `total > 条数` 说「只列了前 N 条」",
+        "截断+说清",
     ),
     // ── 〔devbench F10b〕以下七条此前**全都不在本表的扫描面里**。
     // 前六条是**内联字面量**（`.take(32 * 1024 * 1024)` 这种），本表头注把那一族
@@ -452,6 +484,30 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         32 << 20,
         "按行那六条帧查询（`history-projects` 等）整份输出",
         "拒收+回错",
+    ),
+    // 〔RM1b · 第四波〕插件市场枚举搬进后端（`plugins-marketplaces`）：两个上限原样随行
+    //   （量、值、超限语义都与搬家前 monitor 那两条逐字相同；monitor 那两条已随本机读实现退役摘掉）。
+    (
+        "src/backend/observe/plugins_query.rs",
+        "KNOWN_MARKETPLACES_CAP",
+        4 * 1024 * 1024,
+        "读 marketplace 登记表（`P8a` 本机实测 206 字节）",
+        "硬报错",
+    ),
+    (
+        "src/backend/observe/plugins_query.rs",
+        "MARKETPLACE_MANIFEST_CAP",
+        32 * 1024 * 1024,
+        "读单个 marketplace 的 manifest（`P8a` 本机实测 161 KB / 声明 276 个插件）",
+        "降级+说清",
+    ),
+    // 〔RM1b · 第四波〕任务列表搬进后端（`tasks-list`）：单个任务文件的读上限。
+    (
+        "src/backend/observe/tasks_query.rs",
+        "TASK_FILE_CAP_BYTES",
+        1 << 20,
+        "`tasks-list` 读单个任务文件（本机实测几百字节量级）",
+        "跳过+说清",
     ),
     // 〔RM1a · 第四波〕「足迹」的这台机器那一半（`footprint-probe`，只读）那两个数。
     (
@@ -872,15 +928,26 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
     // 它断言两侧生产段**都不许**再出现 `const MAIN_CAP` / `const TOOL_CAP` 之类的定义。
     // ⇒ 这两个数搬回任何一侧，当场红。
 
-    // 对 E〔F9 续 09-24〕：窗口的编辑上限**就是**后端入方向一行的上限（存盘整份装一行）⇒ 钉相等。
-    //   窗口多给一个字节 ⇒ 本地放行、后端整行丢弃（回不带 id 的错、窗口熬满写预算才超时）；
-    //   窗口少给 ⇒ 存得回的文件被本地冤拒。两个方向都是错。
+    // 对 E〔F9 续 09-24 立；F9c 第四波改钉〕：窗口的编辑上限**就是**后端读 / 提交存盘的天花板 ⇒ 钉相等。
+    //   窗口多给 ⇒ 打得开、改得了，存的时候后端 `files-commit-text` 拒（`bytes` 越过天花板）、读的时候
+    //   `files-read-text` 拒 `max_bytes`；窗口少给 ⇒ 存得回的文件被本地冤拒。两个方向都是错。
+    //   〔F9c〕上一版这一对钉的是「编辑上限 == 后端入方向一行」（那时存盘整份装一行）；那一对换成下面的对 F。
     let e1 = by("src/bridge/src/filewin/editor.rs", "MAX_EDIT_BYTES");
-    let e2 = by("src/backend/inbound.rs", "MAX_LINE_BYTES");
+    let e2 = by("src/backend/files/mod.rs", "READ_TEXT_MAX_BYTES");
     assert_eq!(
         e1, e2,
-        "窗口编辑上限与后端入方向一行上限漂开了（窗口 {e1} / 后端 {e2}）。\
-             存盘那条请求整份装在一行里，本地那道拒（`editor::save_fits`）拿的就是这个数。"
+        "窗口编辑上限与后端读 / 提交存盘的天花板漂开了（窗口 {e1} / 后端 {e2}）。\
+             存得回的要读得回来：`files-read-text` 的 `max_bytes` 与 `files-commit-text` 的 `bytes` 都按它拒。"
+    );
+
+    // 对 F〔F9c · 第四波〕：窗口存盘时一行的上限 ＝ 后端入方向一行的上限 ⇒ 钉相等。
+    //   窗口多给一个字节 ⇒ 后端整行丢弃（`line_too_long`）；少给 ⇒ 只是多切几块（不错，但两份数漂了就该有人看）。
+    let f1 = by("src/bridge/src/filewin/editor.rs", "SAVE_LINE_CAP");
+    let f2 = by("src/backend/inbound.rs", "MAX_LINE_BYTES");
+    assert_eq!(
+        f1, f2,
+        "窗口存盘一行的上限与后端入方向一行上限漂开了（窗口 {f1} / 后端 {f2}）。\
+             分块那一支按它切（`editor::plan_chunks`），每块那一行都得装进后端的一行。"
     );
 
     // 对 C：注释写的是「同**量级**」，而且**今天就不等** ⇒ 钉比值，不钉相等。
@@ -1005,6 +1072,8 @@ fn a_cap_registered_as_hard_error_is_not_swallowed_at_its_call_site() {
             //     落进了同一个窗口。⇒ 本条对「同一个 `match` 里有多条臂」这种形状
             //     **钉不住**，别读成「降级一定被说清了」；那一层今天靠站点自己的
             //     行为判据兜（`plugins.rs` 那两条当场红）。
+            //     〔RM1b · 第四波〕那个站点连同那两条行为判据随读实现搬去了后端
+            //     （`observe/plugins_query.rs` · `tests/backend/observe/plugins_query_tests.rs`），形状照旧。
             // 两种都靠人读诊断分辨。已登记进 `ROADMAP §5`。
             const WINDOW: usize = 10;
             let window = lines[i..(i + WINDOW).min(lines.len())].join("\n");
