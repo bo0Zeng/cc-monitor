@@ -34,6 +34,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { fetchAccounts } from "../../src/accounts";
 import { LOCAL_ORIGIN } from "../../src/backend-policy";
 import { __resetMachineContextForTests } from "../../src/settings/machine-context";
+import { answerAskDialog, askDialogText, noAskDialog } from "../test-support/ask-dialog-driver.ts";
 
 const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
 const mockFetchAccounts = fetchAccounts as unknown as ReturnType<typeof vi.fn>;
@@ -905,23 +906,24 @@ describe("P4c 广播与收掉", () => {
     const s = await boot();
     const input = s.element.querySelector<HTMLInputElement>(".cc-bus-broadcast-input")!;
     input.value = "全体注意";
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     mockInvoke.mockClear();
     (s.element.querySelector(".cc-bus-broadcast") as HTMLButtonElement).click();
     await flush();
-    expect(confirmSpy).toHaveBeenCalled();
     // 当前面板上是 2 个 agent ⇒ 文案里必须出现那个数字。
-    expect(String(confirmSpy.mock.calls[0][0])).toContain("2");
+    expect(askDialogText()).toContain("2");
+    expect(calls("cc_bus_broadcast"), "还没答就发了").toHaveLength(0);
+    await answerAskDialog(true);
     expect(calls("cc_bus_broadcast")[0][1]).toMatchObject({ origin: "devbox", text: "全体注意" });
   });
 
   it("★ P4c-Y3b：确认框点取消 ⇒ 一条都不发", async () => {
     const s = await boot();
     s.element.querySelector<HTMLInputElement>(".cc-bus-broadcast-input")!.value = "x";
-    vi.spyOn(window, "confirm").mockReturnValue(false);
     mockInvoke.mockClear();
     (s.element.querySelector(".cc-bus-broadcast") as HTMLButtonElement).click();
     await flush();
+    await answerAskDialog(false);
+    expect(noAskDialog()).toBe(true);
     expect(calls("cc_bus_broadcast")).toHaveLength(0);
   });
 });

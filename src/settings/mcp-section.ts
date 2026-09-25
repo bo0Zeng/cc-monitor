@@ -34,6 +34,7 @@ export type McpScope = "user" | "local" | "project";
 // `McpScope` 保留：它是 TS 侧的**域细化**，`groupByScope` 的返回类型用它是对的
 // （分组结果确实只有三档）。运行时**逐字节不变**。
 import type { McpServerEntry } from "../generated/McpServerEntry";
+import { askConfirm } from "../ask-dialog";
 
 export type { McpServerEntry };
 
@@ -752,7 +753,7 @@ export class McpSection {
     const startOrigin = this.origin;
     const where = isLocalOrigin(startOrigin) ? "本机" : `远端 [${startOrigin}]`;
     if (
-      !window.confirm(`从${where}项目 .mcp.json 删除 MCP server「${name}」？`)
+      !await askConfirm(`从${where}项目 .mcp.json 删除 MCP server「${name}」？`)
     )
       return;
     try {

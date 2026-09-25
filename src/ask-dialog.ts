@@ -42,6 +42,12 @@ export interface AskTextOptions {
   okLabel?: string;
 }
 
+/**
+ * 「问一句要不要做」的注入缝形状（`account-restart.ts` · `tab-session-actions.ts::killRemoteTmux` 用）。
+ * 允许同步答（测试 / e2e 注入 `() => true`），调用方一律 `await`。
+ */
+export type ConfirmFn = (message: string) => boolean | Promise<boolean>;
+
 /** 还没结算的那一个：新开之前按取消结算它。 */
 let pendingCancel: (() => void) | null = null;
 
@@ -71,7 +77,7 @@ function open<T>(
   if (field) {
     input = document.createElement("input");
     input.type = "text";
-    input.className = s.input;
+    input.className = s.field;
     input.value = field.initial;
     panel.appendChild(input);
   }

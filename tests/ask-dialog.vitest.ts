@@ -16,6 +16,7 @@
  * | 格 | 判什么 | 形态 |
  * |---|---|---|
  * | D1 | 生产 TS 里引用原生 `confirm` / `prompt`（裸调用，或 `window.` / `globalThis.` / `self.` 成员，调用或取值） | TS AST，**零命中**；正控：合成样本逐形各恰 1 处、近似形 0 处 |
+ * | D1b | 生产 TS 里每一处**调用** `askConfirm` / `askText` 都是 `await` 的操作数（没 `await` 的 Promise 恒真值 —— 正是原生替身那个病） | TS AST，未 await 的调用 **零命中**；正控同上；另钉「被调用的地方恰好是改过的那几份文件」两向相等 |
  * | D2 | `askConfirm` / `askText` 的结算语义 | 确定 / 取消 / 遮罩 / Esc（经真 `dispatcher`）/ Enter / 顶掉上一个 / 挂 body / 正文不解释 HTML |
  *
  * `alert` 不在 D1：它归 `INVARIANTS §12`，由 `tests/invariants-frontend-guard.vitest.ts` ① 守。
@@ -106,6 +107,67 @@ describe("D1 · 生产 TS 零处原生 confirm / prompt", () => {
       hits.map((h) => `${h.file}:${h.line}  ${h.text}`),
       "这些地方还在用原生弹窗 —— 真 app 里 window.confirm 返回 Promise（永远真值），等于没问；改用 src/ask-dialog.ts 的 askConfirm / askText",
     ).toEqual([]);
+  });
+});
+
+// ─────────────────────────────── D1b ───────────────────────────────
+
+const ASKS = new Set(["askConfirm", "askText"]);
+
+/** 一份源码里调用 `askConfirm` / `askText` 的地方：`[全部调用, 其中没被 await 的]`。 */
+function askCalls(file: string, text: string): { all: Hit[]; unawaited: Hit[] } {
+  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const all: Hit[] = [];
+  const unawaited: Hit[] = [];
+  const visit = (n: ts.Node): void => {
+    if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && ASKS.has(n.expression.text)) {
+      const { line } = sf.getLineAndCharacterOfPosition(n.getStart(sf));
+      const h = { file, line: line + 1, text: n.getText(sf).slice(0, 80) };
+      all.push(h);
+      let p: ts.Node = n.parent;
+      while (ts.isParenthesizedExpression(p)) p = p.parent;
+      if (!ts.isAwaitExpression(p)) unawaited.push(h);
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return { all, unawaited };
+}
+
+/** 本路改过、今天调用对话框的文件（期望手写，不从扫描结果派生）。 */
+const ASK_CALLERS = [
+  "src/keybindings/editor.ts",
+  "src/settings/accounts-section.ts",
+  "src/settings/cc-bus-section.ts",
+  "src/settings/machine-card.ts",
+  "src/settings/mcp-section.ts",
+  "src/settings/panel.ts",
+  "src/tab-menu.ts",
+  "src/views/history.ts",
+];
+
+describe("D1b · 对话框的答案一律 await", () => {
+  it("🔴 正控：没 await 的调用认得出，await 的（含括号、`!await`）不认", () => {
+    const bad = [`if (!askConfirm("a")) return;`, `const ok = askText("b");`, `void askConfirm("c");`];
+    for (const src of bad) expect(askCalls("p.ts", src).unawaited.length, src).toBe(1);
+    const good = [
+      `if (!(await askConfirm("a"))) return;`,
+      `const n = await askText("b", { initial: "x" });`,
+      `if (!await askConfirm("c")) return;`,
+      `const f = opts.confirm ?? askConfirm;`,
+    ];
+    for (const src of good) expect(askCalls("p.ts", src).unawaited, src).toEqual([]);
+    expect(askCalls("p.ts", `const f = opts.confirm ?? askConfirm;`).all, "取值不是调用").toEqual([]);
+  });
+
+  it("★ 生产 TS 里没 await 的对话框调用 == ∅；调用它的文件 == 手写清单（两向）", () => {
+    const files = productionTsFiles("src").filter((f) => f.file !== "src/ask-dialog.ts");
+    const per = files.map((f) => ({ file: f.file, ...askCalls(f.file, f.text) }));
+    expect(per.flatMap((p) => p.unawaited).map((h) => `${h.file}:${h.line}  ${h.text}`)).toEqual([]);
+    expect(
+      per.filter((p) => p.all.length > 0).map((p) => p.file).sort(),
+      "调用对话框的文件变了：新长的调用点要进这张清单（并确认它 await 了）",
+    ).toEqual([...ASK_CALLERS].sort());
   });
 });
 

@@ -57,6 +57,7 @@ import {
   deriveAcctIsoDir,
   type AcctIsoStep,
 } from "./acct-deploy";
+import { askConfirm } from "../ask-dialog";
 
 /**
  * apikey 那一格要显的**一个账号**。只带界面真正用得到的三样。
@@ -732,7 +733,7 @@ export class AccountsSection {
         `将在远端「${this.origin}」的终端里运行：\n\n${built.cmd}\n\n` +
         (opts.confirmExtra ? `${opts.confirmExtra}\n\n` : "") +
         `命令在你看得见的终端里执行、需你亲手确认；工具自带备份，可 rollback。继续？`;
-      if (!window.confirm(msg)) return false;
+      if (!await askConfirm(msg)) return false;
     }
     try {
       await commands.launch_remote_terminal({ origin: this.origin, remoteCmd: built.cmd });

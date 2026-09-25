@@ -61,6 +61,7 @@ import { KeybindingsEditor } from "../keybindings/editor";
 import { emit } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { SETTINGS_APPLIED_EVENT } from "./events";
+import { askConfirm } from "../ask-dialog";
 
 /**
  * 字段控件类型：
@@ -698,7 +699,7 @@ export class SettingsPanel {
 
   private async resetAll(): Promise<void> {
     if (
-      !window.confirm("确定要恢复全部外观默认？已保存的颜色和字体偏好会丢失。")
+      !await askConfirm("确定要恢复全部外观默认？已保存的颜色和字体偏好会丢失。")
     ) {
       return;
     }

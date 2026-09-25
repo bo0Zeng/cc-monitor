@@ -41,6 +41,7 @@ import { setKeybindings } from "./store";
 // F82a：键位改动落盘后广播，主窗口跨窗热应用（事件名在中立模块，避免与 settings/panel 循环）。
 import { emit } from "@tauri-apps/api/event";
 import { SETTINGS_APPLIED_EVENT } from "../settings/events";
+import { askConfirm } from "../ask-dialog";
 
 export class KeybindingsEditor implements OverlayHandle {
   private overlay: HTMLElement;
@@ -261,7 +262,7 @@ export class KeybindingsEditor implements OverlayHandle {
     if (chord === null) {
       // Esc 改 overlay.close 自己时：强警告
       if (id === "overlay.close") {
-        const ok = window.confirm(
+        const ok = await askConfirm(
           "你正在解绑「关闭弹层」的快捷键。解绑后所有弹层只能点 × 关闭，无法用键盘退出。\n\n" +
             "确定要继续吗？",
         );
@@ -279,7 +280,7 @@ export class KeybindingsEditor implements OverlayHandle {
     // overlay.close 改成非 Escape 时强警告
     if (id === "overlay.close" && chord !== "Escape") {
       const pretty = KeybindingDispatcher.prettyChord(chord);
-      const ok = window.confirm(
+      const ok = await askConfirm(
         `你正在把「关闭弹层」改成 ${pretty}。\n\n` +
           "改后按 Esc 不再自动关弹层，必须按新键或点 × 才能关。\n\n确定吗？",
       );
@@ -295,7 +296,7 @@ export class KeybindingsEditor implements OverlayHandle {
       const ownerAction = findAction(owner);
       const ownerLabel = ownerAction?.label ?? owner;
       const pretty = KeybindingDispatcher.prettyChord(chord);
-      const ok = window.confirm(
+      const ok = await askConfirm(
         `${pretty} 当前是「${ownerLabel}」。要覆盖吗？\n\n` +
           `「${ownerLabel}」会被解绑（变成「未绑定」）。`,
       );
@@ -326,7 +327,7 @@ export class KeybindingsEditor implements OverlayHandle {
   }
 
   private async onResetAll(): Promise<void> {
-    if (!window.confirm("确定恢复全部快捷键到默认？所有自定义会丢失。")) return;
+    if (!await askConfirm("确定恢复全部快捷键到默认？所有自定义会丢失。")) return;
     for (const a of ACTIONS) {
       dispatcher.setOverride(a.id as ActionId, "");
     }

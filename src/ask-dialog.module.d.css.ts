@@ -2,7 +2,7 @@
 declare const classes: {
   readonly backdrop: string;
   readonly buttons: string;
-  readonly input: string;
+  readonly field: string;
   readonly message: string;
   readonly panel: string;
 };

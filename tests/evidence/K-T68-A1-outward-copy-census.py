@@ -166,8 +166,10 @@ SINKS = [
          re=re.compile(r"\bshowErrorToast\s*\("), argkind={}, default_kind="body"),
 
     # ── 模态确认 / 浏览器原生对话框 ──────────────────────────────────────
+    # 〔W5-UI〕应用内对话框 `src/ask-dialog.ts` 接替了原生 `confirm` / `prompt`（真 app 里原生 `confirm` 是插件注入的
+    #   async 替身，恒真值）⇒ 出口换了住址，锚跟着认新名；原生那两形留着（生产里已零处，`tests/ask-dialog.vitest.ts` D1 钉）。
     dict(id="dialog.confirm", lang="ts", bucket="confirm", mode="call", kind="body",
-         re=re.compile(r"(?<![\w.])(?:window\.)?confirm\s*\(")),
+         re=re.compile(r"(?<![\w.])(?:window\.)?confirm\s*\(|\baskConfirm\s*\(")),
     dict(id="dialog.alert", lang="ts", bucket="confirm", mode="call", kind="body",
          re=re.compile(r"(?<![\w.])(?:window\.)?alert\s*\(")),
 
@@ -242,7 +244,7 @@ SINKS = [
 
     # ══ 第 2 层出口：**展示助手** ══════════════════════════════════════
     dict(id="show.prompt", lang="ts", bucket="confirm", mode="call", kind="body",
-         re=re.compile(r"(?<![\w.])(?:window\.)?prompt\s*\(")),
+         re=re.compile(r"(?<![\w.])(?:window\.)?prompt\s*\(|\baskText\s*\(")),
     dict(id="show.status", lang="ts", bucket="dom-text", mode="call", kind="body",
          re=re.compile(r"\.(?:showBanner|showLoading|showMessage|showResultText|"
                        r"renderSidebarStatus|info|note|showToast)\s*\(")),
