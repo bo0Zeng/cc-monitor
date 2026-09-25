@@ -48,8 +48,8 @@
 //! 5. 🔴 **所以这一改在今天的生产顺序下是零行为变化** —— 第 3 行与第 4 行**逐格相同**。
 //!    改掉的只有一件事：**这个进程里不再有第二个人去设那块全局状态**。
 //!
-//! ⇒ 于是 [`any_thread_hook`] 的 Windows 分支加了 `with_dpi_aware(false)`，
-//! 把「进程 DPI 归谁管」明确判给 Tauri。判据住 [`tests`]。
+//! ⇒ 于是 [`any_thread_hook`] 的 Windows 分支当时加了 `with_dpi_aware(false)`，
+//! 把「进程 DPI 归谁管」明确判给 Tauri。〔WN1 · 09-24：窗口进程独立之后翻回 `true`，见下一节。〕
 //!
 //! ⚠ **这一格虚拟机够用，可以说「验过了」** —— 它问的是**调用顺序与全局状态归属**，
 //! 是逻辑题，不是显卡题。⚠ 但**别把它读宽**：`设计/99 §4.0 G2a` 逐字记着
@@ -60,6 +60,23 @@
 //! WebView2 那侧的 DPI 行为会跟着变 —— 而本仓在 Windows DPI/WebView 上
 //! 已经吃过亏（`真相源/70` 那一族、以及 `F12 nudge` 那处 WebView2 bounds 修正）。
 //! 这一改正是把那个形状从「靠顺序碰巧对上」变成「只有一个人设它」。
+//!
+//! ## 🔴 〔WN1 · 2026-09-24〕上面那个处置的**前提没了**，开关翻回 `true`
+//!
+//! 上面整节的前提是「同一个进程里有 Tauri」。第十三刀之后这个窗口跑在**自己的进程**里
+//! （`cc-monitor-filewin`，躯体 `super::proc::child_main`，进程里一个 `tao` 事件循环都不建）
+//! ⇒ 那个进程落在四格表的**上半**（「起 `tao` = 否」），而 `false` 那一格是第 2 行：
+//! **全程 `UNAWARE`** —— 没有任何人再替它设 DPI，高 DPI 屏上整窗被系统按位图拉伸、发糊。
+//! ⇒ [`any_thread_hook`] 的 Windows 分支改成 `with_dpi_aware(builder, true)`（第 1 行 ⇒ V2，
+//! 与主窗口同一个值）。「一个进程里只有一个人设它」这条纪律**照旧成立**：这个进程里只有 winit。
+//!
+//! 判据两半、两侧异源（住 [`tests`]）：① 那一句的值是 `true`（`pin_line`，`false` 零命中）；
+//! ② **前提**：这个 hook 在生产上只经「窗口进程入口 → `child_main` → `open_detached_seeded`」
+//! 这一条链被用到，且 `child_main` 那个文件里一个 `tauri` / `tao` 都没有 —— 调用点集合两向相等。
+//! 哪天有人又在 monitor 进程里开这个窗口，② 先红，逼他回来重答「进程 DPI 归谁」。
+//!
+//! 🚫 **买不到**：真 Windows 上一趟都没跑（本路不碰 Win11 虚拟机）。这一改的依据是上面那张
+//! 09-20 的四格真机读数 ＋ 「窗口进程里没有 `tao`」这条源码事实，是逻辑题，不是新读数。
 //!
 //! # ⚠ 没做到的，写在这儿而不是藏着〔第二刀 2026-09-20 订正〕
 //!
@@ -156,11 +173,10 @@ pub fn any_thread_hook(builder: &mut eframe::EventLoopBuilder<eframe::UserEvent>
     {
         use winit::platform::windows::EventLoopBuilderExtWindows;
         EventLoopBuilderExtWindows::with_any_thread(builder, true);
-        // 🔴 **进程 DPI 归 Tauri 管** —— winit 不要再去设那块进程级状态。
-        // 四格现打读数与逐条论证住本模块头注（2026-09-20，真 Win11 桌面）。
-        // ⚠ 今天这一句是零行为变化（Tauri 必然先跑、已经设成 V2）；
-        //   它买的是「一个进程里只有一个人设它」。
-        EventLoopBuilderExtWindows::with_dpi_aware(builder, false);
+        // 🔴 〔WN1 · 09-24〕**进程 DPI 归这个窗口进程自己管** —— 这个进程里没有 Tauri。
+        // 从前是 `false`（「进程 DPI 归 Tauri 管」，同进程时代）；窗口进程独立之后那一格
+        // 让它全程 `UNAWARE`。四格读数与改回来的理由住本模块头注「WN1」那一节。
+        EventLoopBuilderExtWindows::with_dpi_aware(builder, true);
     }
     #[cfg(target_os = "macos")]
     {
@@ -2619,7 +2635,7 @@ pub fn open_detached(
 /// ① `with_any_thread(true)` 那条路是这个窗口**唯一被实地量过**的形态
 ///    （`真相源/99 §八` 那四趟读数、Xvfb 台架那一摞都是在它上面打的）。
 ///    换成「占 `main` 线程」是换一个**没有读数**的配置，而换了被测对象就要重打读数。
-/// ② 那个 hook 里还挂着 Windows 的进程 DPI 归属那一句（`with_dpi_aware(false)`），
+/// ② 那个 hook 里还挂着 Windows 的进程 DPI 归属那一句（〔WN1〕今天是 `with_dpi_aware(builder, true)`），
 ///    它有自己的判据。绕开 hook 就是把那一句一起绕开。
 /// ⇒ 保持不动：窗口进程的 `main` 只负责读种子、起运行时、`join` 这条线程。
 pub fn open_detached_seeded(
