@@ -1086,9 +1086,14 @@ fn tools_literal_data() -> String {
     // 从此永远数到 0 —— 字搬了家，尺子得跟着去新家量。
     let mut out = body.to_string();
     let mut rest = body;
-    let needle = "copy_text(\"";
+    let needle = "copy_text(";
     while let Some(at) = rest.find(needle) {
-        let tail = &rest[at + needle.len()..];
+        // `cargo fmt` 会把长调用拆行：`copy_text(` 与 key 之间可以隔着换行与缩进。
+        let tail = rest[at + needle.len()..].trim_start();
+        rest = tail;
+        let Some(tail) = tail.strip_prefix('"') else {
+            continue;
+        };
         let key = &tail[..tail.find('"').expect("取文口的 key 没收尾")];
         out.push('\n');
         out.push_str(&crate::copy_table::copy_text(key, &[]));
