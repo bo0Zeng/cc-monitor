@@ -662,7 +662,7 @@ fn xvfb_worker_opens_with_no_x_server_at_all() {
 /// 两者跑的是**同一个函数**（`open_detached_seeded`，那也是
 /// `filewin::proc::child_main` 唯一调的东西）⇒ 「窗口那一侧」是同一份代码；
 /// 不同的是**谁在托管它**。为什么不直接起那份 `[[bin]]`：门禁那一格逐字跑
-/// `cargo test --workspace --exclude code-picture-core --lib` ——**`--lib` 不构建 bin**
+/// `cargo test --workspace --lib` ——**`--lib` 不构建 bin**
 /// ⇒ 那份二进制在门禁里根本不存在，照它写的判据会在门禁上恒红。
 /// ⇒ 「那份 bin 真的托管了窗口进程的躯体」由 `proc_tests` 的源码型判据买，
 ///   「一趟一个进程、pid 互不相同」由 `proc_tests` 真起进程买（拿一个替身二进制），

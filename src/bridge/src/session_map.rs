@@ -34,10 +34,10 @@ use std::time::Duration;
 /// session 集合变化 —— 由 watcher 线程每次重扫 / 心跳后比对旧表得出。
 ///
 /// - `removed`：sessions/<PID>.json 被删 / 心跳探活失败 → lib.rs 推 session-ended 事件
-/// - `added`：sessions/<PID>.json 新增 → lib.rs 触发 jsonl-watcher 强制重扫该 session
-///   的 jsonl（修 Bug：若 jsonl 行先于 PID.json 到达，active() 被拒后 process_file
-///   early return 但不更新 offset，且不会再被自动重扫——导致 /resume 起的新 session
-///   在某些竞态下永远不出现 Tab。这里加 added → rescan 通道作为安全网）
+/// - `added`：sessions/<PID>.json 新增 → lib.rs 的 `session-changes-emitter` 线程试着把 sid 绑到终端窗口、
+///   清掉它的 idle 标记。〔TL1 · 4C〕这里从前还写着「触发 monitor 自己的 jsonl 读者强制重扫该 session」
+///   （治「jsonl 行先于 PID.json 到达」的竞态）—— 那个读者与那条重扫通道 CF1 删了：本机会话内容也走本机后端的
+///   `line` 帧，「会话一出现就把已有行流出来」今天由后端 `observe/watcher.rs` 在宣告那一刻做。
 /// S0：一个 sid **为什么**从活跃集里出去。
 ///
 /// 之所以要这个类型，而不是继续只传 sid：monitor 收到 removed 后要在「灰点（tmux 会话

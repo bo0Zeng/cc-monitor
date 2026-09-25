@@ -1,11 +1,11 @@
-//! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md`「账号层那份凭据文件在「这台机器」上的读写」节
+//! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md`「上游选择那份凭据文件在「这台机器」上的读写」节
 //!
-//! 核原文：该节逐字「**每台机器上的程序写者恰好一个**」·「**路径**与那台机器上 `--relay` 进程的账号层**同一个出处**」。
+//! 核原文：该节逐字「**每台机器上的程序写者恰好一个**」·「**路径**与那台机器上 `--relay` 进程的上游选择**同一个出处**」。
 //! 〔GP1 · 第四波〕主会话 09-25 裁那一个写者 ＝ **那台的后端**（本机 ＝ 本机常驻后端），monitor 不再写本机那一份
 //! （`调研/第四波记录/GP1.md §3`）。本族今天判 monitor 这一侧剩下的：与后端算同一份文件并显式交出去 ·
 //! 读侧三态与权限提醒 · 明文只往下传登记过的那几跳 · 写半边零调用 · 账号 id 只有一份规则 ·
 //! 写下的那一行正是起会话那一侧找的那一行（跨两半）。写路那几条性质（写的那一刻读盘 · 未知键一个不吃 ·
-//! 出生即只给本人 · Base URL 形状错整次不写）住后端那一份写口的判据（`tests/backend/accounts/apikey/file_face_tests.rs`）。
+//! 出生即只给本人 · Base URL 形状错整次不写）住后端那一份写口的判据（`tests/backend/accounts/upstream/file_face_tests.rs`）。
 //! 明文出口跨三棵树逐处计数那几条守 `设计/20 §6` 第 4 行逐字「明文只有一个出口」（原文点一个，判据登记两个 —— 原文比判据窄）。
 //! ⚠ 「key 不进 `config.json`」与 TS 状态类型对拍那几条没有逐字原文。
 //! 与 `crates/creds-core/store_tests.rs` 不重复：那族判纯函数。〔JA1 点址 2026-09-24〕
@@ -15,7 +15,7 @@ use super::*;
 /// ★★ **跨 crate 契约对拍**：monitor 与后端算出来的是**同一份文件**。
 ///
 /// 两边各写一份路径字面量的话，漂开的那天没有任何东西会说，
-/// 而症状是「界面上配好了，账号层说没配」——查不出来的那一类。
+/// 而症状是「界面上配好了，上游选择说没配」——查不出来的那一类。
 #[test]
 fn the_two_sides_resolve_the_same_file() {
     let home = dirs::home_dir().expect("这台机器得有 home");
@@ -34,11 +34,11 @@ fn the_two_sides_resolve_the_same_file() {
     // 钉不住「两侧的**根**会不会算到两个地方去」。而那正是阻-3 的病：
     // backend 侧的根走 `resolve_home()`，它**认 `CLAUDE_CONFIG_DIR`**；
     // monitor 这一侧**刻意不跟随**（本模块头注逐字）⇒ 中转一旦继承到那个变量，
-    // 两侧读写的就是两份文件，而症状是「界面上配好了，账号层说没配」。
+    // 两侧读写的就是两份文件，而症状是「界面上配好了，上游选择说没配」。
     //
     // ⇒ 今天买断这一格的**不是**路径算法，是**把路径显式传过去**：
     // 〔RL1〕起本机后端时用 `CCM_APIKEY_CREDENTIALS` 把**本函数算出来的这一个**交给它
-    // （中转与账号层住在那个进程里，`local_backend_host::relay_host_envs`）。
+    // （中转与上游选择住在那个进程里，`local_backend_host::relay_host_envs`）。
     //
     // 🔴 `D6 阻-1` 回修（08-29）：这里先前是两条「`local_backend_host.rs` 的生产段里有没有
     // `crate::creds_store::resolve_path()` / `"CCM_APIKEY_CREDENTIALS".into()` 这两段文本」——
@@ -354,7 +354,7 @@ const PLAINTEXT_EXIT_SITES: &[(&str, usize, &str)] = &[
     (
         "expose_for_auth_header(",
         1,
-        "src/backend/accounts/apikey/mod.rs",
+        "src/backend/accounts/upstream/mod.rs",
     ),
     (
         "expose_for_persisting(",
@@ -553,7 +553,7 @@ fn the_definition_table_and_the_call_site_table_name_the_same_exits() {
 ///
 /// monitor 仍开着 `harden`（Windows 上读 DACL 要它），编译器因此兜不住「monitor 写不了这份文件」—— 由本条兜：
 /// 人群 = `src/bridge/src` 下全部 `.rs` 的生产段（剥测试段与注释），针两根，**零命中**。
-/// 正控：同一把针在后端那一份写口（`src/backend/accounts/apikey/file_face.rs`）上数得到 —— 针没瞎。
+/// 正控：同一把针在后端那一份写口（`src/backend/accounts/upstream/file_face.rs`）上数得到 —— 针没瞎。
 /// 要求住址：主会话 09-25 裁「每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端」（`GP1.md §3`）。
 #[test]
 fn gp1_the_monitor_never_reaches_the_credentials_write_half() {
@@ -582,7 +582,7 @@ fn gp1_the_monitor_never_reaches_the_credentials_write_half() {
         "monitor 生产段够到了凭据文件的写半边 —— 本机那一份的写者是本机常驻后端，monitor 一个字节都不写：{hits:?}"
     );
     let face = guard_core::production_code(include_str!(
-        "../../src/backend/accounts/apikey/file_face.rs"
+        "../../src/backend/accounts/upstream/file_face.rs"
     ));
     assert!(
         needles.iter().any(|n| face.contains(n.as_str())),
