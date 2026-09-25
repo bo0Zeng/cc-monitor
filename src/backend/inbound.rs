@@ -93,6 +93,7 @@ pub const COMMANDS: &[&str] = &[
     "exit-policy-set",
     "files-browse",
     "files-chmod",
+    "files-commit-text",
     "files-commit-upload",
     "files-copy",
     "files-create",
@@ -105,6 +106,7 @@ pub const COMMANDS: &[&str] = &[
     "files-mkdir",
     "files-read-text",
     "files-rename",
+    "files-stage-chunk",
     "files-stat",
     "files-write-text",
     "history-projects",
@@ -154,6 +156,8 @@ where
         let mut buf: Vec<u8> = Vec::new();
         // 本行是否已经超限。超限之后**只丢字节、不再往 buf 里塞**（O(1) 内存）。
         let mut overflowed = false;
+        // 〔F9c · 第四波〕超限那一刻从行首抠出来的 `id`（抠不出 ⇒ 空串，见 [`sniff_id`]）。
+        let mut overflow_id = String::new();
         loop {
             let chunk = match rd.fill_buf().await {
                 Ok([]) => break, // 客户端关了写半边：正常寿终
@@ -170,6 +174,11 @@ where
             if !overflowed {
                 if buf.len() + take > MAX_LINE_BYTES {
                     overflowed = true;
+                    // 丢之前先看一眼行首（至多 `ID_SNIFF_BYTES`）：buf 此刻就是这一行的开头；
+                    // buf 若还是空的（一块就越线），行首就是这一块本身。
+                    let head: &[u8] = if buf.is_empty() { &chunk[..take] } else { &buf };
+                    overflow_id =
+                        sniff_id(&head[..head.len().min(ID_SNIFF_BYTES)]).unwrap_or_default();
                     buf.clear();
                     buf.shrink_to_fit();
                 } else {
@@ -185,7 +194,7 @@ where
                 send(
                     &replies,
                     err(
-                        "",
+                        &overflow_id,
                         "line_too_long",
                         &format!("单行超过上限 {MAX_LINE_BYTES} 字节，已整行丢弃"),
                     ),
@@ -198,6 +207,114 @@ where
             buf.clear();
         }
     })
+}
+
+/// 〔F9c · 第四波〕超长行只看行首这么多字节去找 `id`。
+///
+/// 整行已经不进内存（[`MAX_LINE_BYTES`] 头注那条「读的时候就生效」），这里多留的只有这一小段，
+/// 与行长无关。4 KiB 远够：monitor 发号最长 75 字节、且 `id` 是信封的第一个键
+/// （`inbound_client::encode_request` 的字段顺序）；排在它前面的键再长也只是「抠不出 ⇒ 空串」，回到旧行为。
+pub const ID_SNIFF_BYTES: usize = 4 * 1024;
+
+/// 〔F9c · 第四波〕从一行**开头的一段**里尽力抠出信封的 `id`（顶层对象里、值是字符串的那一个）。
+///
+/// 为什么要它：超长行整行丢弃，此前回的 `line_too_long` 带**空** `id` ⇒ 发这一行的调用方等不到
+/// 自己的应答，要熬满它自己的预算才超时，看到的是「超时」而不是真原因（`设计/60 §9c.2`）。
+///
+/// ⚠ 只认**顶层**的 `"id"`：排在前面的键值原样跳过（字符串 / 数 / 嵌套对象与数组都认得），
+/// 嵌套对象里的 `"id"` 不算。段不完整、形状不对、`id` 不是字符串 ⇒ `None`（调用方回空串，即旧行为）。
+/// ⚠ 它不是 JSON 解析器，也不校验这一行别处合不合法 —— 这一行本来就要被丢弃，只借它的 `id` 回话。
+fn sniff_id(head: &[u8]) -> Option<String> {
+    // 结构字节按值写（不写成字符字面量）：本仓有几条按文本扫源码的判据，引号与大括号的字面量会搅乱它们的配平。
+    const QUOTE: u8 = 0x22;
+    const BACKSLASH: u8 = 0x5C;
+    const OPEN_OBJ: u8 = 0x7B;
+    const CLOSE_OBJ: u8 = 0x7D;
+    const OPEN_ARR: u8 = 0x5B;
+    const CLOSE_ARR: u8 = 0x5D;
+    const COMMA: u8 = 0x2C;
+    const COLON: u8 = 0x3A;
+    let at = |k: usize| head.get(k).copied();
+    let ws = |mut i: usize| {
+        while head.get(i).is_some_and(u8::is_ascii_whitespace) {
+            i += 1;
+        }
+        i
+    };
+    // 一个字符串（`i` 指在开头那个引号上）⇒ 回收尾引号之后的位置。
+    let string_end = |i: usize| -> Option<usize> {
+        if at(i) != Some(QUOTE) {
+            return None;
+        }
+        let mut k = i + 1;
+        loop {
+            match at(k)? {
+                BACKSLASH => k += 2,
+                QUOTE => return Some(k + 1),
+                _ => k += 1,
+            }
+        }
+    };
+    // 跳过一个值 ⇒ 回它之后的位置。
+    let value_end = |i: usize| -> Option<usize> {
+        match at(i)? {
+            QUOTE => string_end(i),
+            OPEN_OBJ | OPEN_ARR => {
+                let mut depth = 0usize;
+                let mut k = i;
+                loop {
+                    match at(k)? {
+                        QUOTE => {
+                            k = string_end(k)?;
+                            continue;
+                        }
+                        OPEN_OBJ | OPEN_ARR => depth += 1,
+                        CLOSE_OBJ | CLOSE_ARR => {
+                            depth -= 1;
+                            if depth == 0 {
+                                return Some(k + 1);
+                            }
+                        }
+                        _ => {}
+                    }
+                    k += 1;
+                }
+            }
+            _ => {
+                let mut k = i;
+                while !matches!(at(k)?, COMMA | CLOSE_OBJ | CLOSE_ARR)
+                    && !head[k].is_ascii_whitespace()
+                {
+                    k += 1;
+                }
+                Some(k)
+            }
+        }
+    };
+    let mut i = ws(0);
+    if at(i) != Some(OPEN_OBJ) {
+        return None;
+    }
+    i += 1;
+    loop {
+        i = ws(i);
+        let key_end = string_end(i)?;
+        let key: String = serde_json::from_slice(&head[i..key_end]).ok()?;
+        i = ws(key_end);
+        if at(i) != Some(COLON) {
+            return None;
+        }
+        i = ws(i + 1);
+        if key == "id" {
+            let end = string_end(i)?;
+            return serde_json::from_slice(&head[i..end]).ok();
+        }
+        i = ws(value_end(i)?);
+        if at(i) != Some(COMMA) {
+            return None;
+        }
+        i += 1;
+    }
 }
 
 /// 处理一行。**任何失败都只回一条错误应答，绝不 panic、绝不结束读循环。**
@@ -713,6 +830,32 @@ pub const REGISTRY: &[CommandSpec] = &[
     //   把它挪进用户目标的**那一下**在这里 —— 用户逐字「现在只允许后端的文件管理部分写文件」。
     //   处理器住 `control/files_commit.rs`（`readonly_guard` 第三层第二个登记的模块），
     //   本文件照旧是那一层唯一的门。阻塞档：同步文件系统 I/O（围栏的 `canonicalize` ＋ 改名）。
+    // ── 〔F9c · 第四波〕存盘装不进一条请求行时：逐块进暂存区 ＋ 读回拼起来原地覆盖 ──────────
+    //   同住 `control/files_commit.rs`（第三层第二个模块），阻塞档理由同上一条。
+    CommandSpec {
+        name: "files-stage-chunk",
+        doc_anchor: Some("#### `files-stage-chunk`"),
+        codes: &["bad_args", "io_failed", "refused"],
+        fields: &["bytes", "content", "key", "seq"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::files_commit::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "files-commit-text",
+        doc_anchor: Some("#### `files-commit-text`"),
+        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        fields: &["bytes", "chunks", "key", "path", "rel", "root"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::files_commit::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     CommandSpec {
         name: "files-commit-upload",
         doc_anchor: Some("#### `files-commit-upload`"),

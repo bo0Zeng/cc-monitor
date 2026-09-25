@@ -140,6 +140,9 @@ fn every_registered_command_declares_its_run_kind() {
                 | "files-browse"
                 | "files-create"
                 | "files-commit-upload"
+                // 〔F9c · 第四波〕存盘的两步同档（同步文件 I/O ＋ 围栏的 `canonicalize`）。
+                | "files-stage-chunk"
+                | "files-commit-text"
                 | "files-chmod"
                 | "files-delete"
                 | "files-mkdir"
@@ -201,6 +204,8 @@ fn every_registered_command_declares_its_run_kind() {
         "files-browse",
         "files-create",
         "files-commit-upload",
+        "files-stage-chunk",
+        "files-commit-text",
         "files-chmod",
         "files-delete",
         "files-mkdir",

@@ -2676,6 +2676,10 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// `tool_registry`（→ `tool_registry_environment_tests.rs`）。
     /// 另有**真新增的一条**（退役判据留下的墓碑），挂在本表末尾、单独写了理由。
     const TOMBSTONED: &[(&str, &str, usize)] = &[
+        // 🔴 〔F9c · 第四波 · 2026-09-24〕存盘装不进一行的改走暂存区分块之后，「打开即只读」一档与它那两句话一起删了；
+        //    `fonts.rs` 的探针来路里逐字记着那两句当初带进来的九个字 ⇒ 第②条出路：贴墓碑 ＋ 记账。
+        ("src/bridge/src/filewin/fonts.rs", "too_big_to_save", 1),
+        ("src/bridge/src/filewin/fonts.rs", "read_only_notice", 1),
         // 🔴 〔C2 · 2026-09-24〕拨号搬进后端的拨号代理之后，界面侧 `K-P6b` 那一版的三条判据随它们守的东西一起删了：
         //    回落登记（回落删了，`D11`）· 请求行按蛇形键写（请求改由宿主 `dial_host` 造，判据搬去那边且改成与后端异源）·
         //    代理只从两处解析（解析多了「自释放那一份」一处）。留下的那几句说的正是「它们为什么不在了」⇒ 第②条出路。
@@ -3632,6 +3636,7 @@ fn every_prose_tombstone_mark_is_registered() {
         //   另三处各挂在一条**随功能一起走掉的判据**的名字上 ——
         //   那三个名字同时要进 `TOMBSTONED`，两张表单位不同，各记各的）。
         ("src/bridge/src/filewin/source.rs", 5), // 〔F7c 收尾 09-24〕4 → 5（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
+        ("src/bridge/src/filewin/fonts.rs", 2), // 〔F9c 第四波 09-24〕0 → 2（探针来路里那两句「存不回去」的函数名随只读一档删了）
         ("src/bridge/src/history.rs", 1),
         ("src/bridge/src/launch.rs", 1),
         ("src/bridge/src/lib.rs", 2), // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）

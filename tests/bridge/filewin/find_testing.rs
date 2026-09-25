@@ -221,6 +221,12 @@ pub struct FakeBackend {
     /// 它声明自己认得哪几条命令（`hello.commands`）。
     pub offered: Vec<String>,
     pub log: WireLog,
+    /// 〔F9c〕送进来的块（`(key, seq)` → 内容），`files-commit-text` 按块号读回拼起来。
+    chunks: std::collections::BTreeMap<(String, u64), String>,
+    /// 〔F9c〕最近一次提交成功拼出来的那一份（`(root/rel, 全文)`）—— 判据拿它与原文比。
+    pub committed: std::sync::Arc<std::sync::Mutex<Option<(String, String)>>>,
+    /// 〔F9c〕第几块（块号）起按「盘满」那一档拒（演「送到一半断了」）。
+    pub refuse_stage_at: Option<u64>,
 }
 
 impl FakeBackend {
@@ -230,6 +236,9 @@ impl FakeBackend {
             declared,
             offered: offered.iter().map(|s| s.to_string()).collect(),
             log: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            chunks: Default::default(),
+            committed: Default::default(),
+            refuse_stage_at: None,
         }
     }
 
@@ -505,6 +514,84 @@ impl FakeBackend {
                     None,
                     None,
                     Some(serde_json::json!({ "path": format!("{root}/{rel}"), "bytes": 0 })),
+                )
+            }
+            // 〔F9c〕存盘的两步：按后端 `control/files_commit.rs` 的契约演 —— 同一块只收一次；
+            //   提交按块号 `0..chunks` 读回拼起来、总长必须恰好等于 `bytes`，否则拒；不论成败删掉这一键的块。
+            "files-stage-chunk" => {
+                let key = args["key"].as_str().unwrap_or("").to_string();
+                let Some(seq) = args["seq"].as_u64() else {
+                    return (
+                        false,
+                        Some("bad_args".into()),
+                        Some("少了 `seq`".into()),
+                        None,
+                    );
+                };
+                let content = args["content"].as_str().unwrap_or("").to_string();
+                if content.is_empty() {
+                    return (false, Some("bad_args".into()), Some("空块".into()), None);
+                }
+                if self.refuse_stage_at.is_some_and(|at| seq >= at) {
+                    return (false, Some("io_failed".into()), Some("盘满了".into()), None);
+                }
+                if self.chunks.contains_key(&(key.clone(), seq)) {
+                    return (
+                        false,
+                        Some("io_failed".into()),
+                        Some("这一块已经在了".into()),
+                        None,
+                    );
+                }
+                let n = content.len();
+                self.chunks.insert((key, seq), content);
+                (true, None, None, Some(serde_json::json!({ "bytes": n })))
+            }
+            "files-commit-text" => {
+                let key = args["key"].as_str().unwrap_or("").to_string();
+                let (Some(chunks), Some(bytes)) = (args["chunks"].as_u64(), args["bytes"].as_u64())
+                else {
+                    return (
+                        false,
+                        Some("bad_args".into()),
+                        Some("少了块数或字节数".into()),
+                        None,
+                    );
+                };
+                let mut whole = String::new();
+                let mut missing = false;
+                for seq in 0..chunks {
+                    match self.chunks.get(&(key.clone(), seq)) {
+                        Some(c) => whole.push_str(c),
+                        None => missing = true,
+                    }
+                }
+                self.chunks.retain(|(k, _), _| k != &key);
+                if missing || whole.len() as u64 != bytes {
+                    return (
+                        false,
+                        Some("io_failed".into()),
+                        Some("块对不上".into()),
+                        None,
+                    );
+                }
+                let root = args["root"].as_str().unwrap_or("");
+                let rel = args["rel"].as_str().unwrap_or("");
+                if root.contains("refuse") {
+                    return (
+                        false,
+                        Some("refused".into()),
+                        Some("refuse write: 围栏".into()),
+                        None,
+                    );
+                }
+                let at = format!("{root}/{rel}");
+                *self.committed.lock().unwrap() = Some((at.clone(), whole));
+                (
+                    true,
+                    None,
+                    None,
+                    Some(serde_json::json!({ "path": at, "bytes": bytes })),
                 )
             }
             other => (
