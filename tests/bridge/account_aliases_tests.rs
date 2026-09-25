@@ -323,7 +323,7 @@ fn the_rc_path_cannot_escape_home() {
     let h = tmp_home("fence");
     for bad in ["/etc/profile", "/tmp/x.rc", ".bashrc"] {
         let e = run(ensure_rc_source_line(&door(&h), &hs(&h), bad, "# x")).expect_err("该被围栏拒");
-        assert!(e.starts_with("refuse profile path"), "{bad}：{e}");
+        assert!(e.starts_with("拒绝写这个配置文件"), "{bad}：{e}");
     }
     // 正例：home 之内那一份真的过得去（文件不存在 ⇒ 停在「读不到」，而不是停在围栏上）。
     let e = run(ensure_rc_source_line(
@@ -334,7 +334,7 @@ fn the_rc_path_cannot_escape_home() {
     ))
     .expect_err("文件还不存在，这一步该停在读那一步");
     assert!(
-        !e.starts_with("refuse profile path"),
+        !e.starts_with("拒绝写这个配置文件"),
         "围栏把 home 之内的路径也拒了 —— 那会让那个按钮永远写不成：{e}"
     );
 }
@@ -936,7 +936,7 @@ fn another_startup_file_goes_through_the_fence_before_it_is_read() {
     let h = tmp_home("other-rc");
     for bad in ["/etc/profile", "relative.rc", "~/../x.rc"] {
         let e = read_in(&h.0, P, Some(bad), 0).expect_err(bad);
-        assert!(e.starts_with("refuse profile path"), "{bad}：{e}");
+        assert!(e.starts_with("拒绝写这个配置文件"), "{bad}：{e}");
     }
     let ok = read_in(&h.0, P, Some("~/.config/x.rc"), 7).expect("home 之内的放行");
     let want = h.0.join(".config/x.rc").display().to_string();

@@ -60,7 +60,6 @@ src/backend/wire.rs	射程外：常驻端 crate（没有文案表读口；题面
 src/bridge/crates/creds-core/src/perm.rs	射程外：monitor 的子 crate，够不着 crate::copy_table
 src/bridge/crates/creds-core/src/store.rs	射程外：monitor 的子 crate，够不着 crate::copy_table
 src/bridge/crates/guard-core/src/lib.rs	射程外：monitor 的子 crate，够不着 crate::copy_table
-src/bridge/src/account_aliases.rs	未抽
 src/bridge/src/acct_iso_deploy.rs	未抽
 src/bridge/src/apikey_remote.rs	未抽
 src/bridge/src/asset_sync.rs	未抽
@@ -78,7 +77,6 @@ src/bridge/src/claude_data_fence.rs	未抽
 src/bridge/src/creds_store.rs	未抽
 src/bridge/src/data_paths.rs	未抽
 src/bridge/src/dial_host.rs	未抽
-src/bridge/src/fenced_block.rs	未抽
 src/bridge/src/footprint_remote.rs	未抽
 src/bridge/src/history.rs	C4d 在改这一带，留最后一批
 src/bridge/src/launch.rs	未抽
@@ -92,13 +90,11 @@ src/bridge/src/panorama_bytes.rs	未抽
 src/bridge/src/panorama_call.rs	未抽
 src/bridge/src/platform_fs.rs	未抽
 src/bridge/src/port_forward.rs	未抽
-src/bridge/src/profile_installer.rs	未抽
 src/bridge/src/remote_branch.rs	C4d 在改这一带，留最后一批
 src/bridge/src/remote_history.rs	C4d 在改这一带，留最后一批
 src/bridge/src/remote_relay.rs	未抽
 src/bridge/src/session_skeleton.rs	未抽
 src/bridge/src/sftp_pool.rs	未抽
-src/bridge/src/shell_dialect.rs	未抽
 src/bridge/src/skill_host.rs	未抽
 src/bridge/src/skill_install.rs	未抽
 src/bridge/src/ssh_link.rs	未抽

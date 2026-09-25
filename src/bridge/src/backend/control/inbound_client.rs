@@ -82,7 +82,7 @@ pub enum CallError {
 impl std::fmt::Display for CallError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CallError::Unsupported { cmd, offered } => {
+            CallError::Unsupported { .. } => {
                 write!(f, "{}", copy_text("rsInboundClient.error.unsupported", &[]))
             }
             CallError::TooManyPending => write!(

@@ -11776,6 +11776,357 @@
       "kind": "body",
       "zh": "这条记录不显示、不进搜索。多半是 Claude Code 加了新的记录类型",
       "args": []
+    },
+    "rsAccountAliases.rc.missing": {
+      "kind": "error",
+      "zh": "读不到 {what}：文件不存在",
+      "args": ["what"]
+    },
+    "rsAccountAliases.install.nextStep": {
+      "kind": "body",
+      "zh": "新开一个终端就能用；当前终端要先执行一次 . {path}",
+      "args": ["path"]
+    },
+    "rsAccountAliases.install.sourceExists": {
+      "kind": "body",
+      "zh": "{rc} 里已经接上了这份文件，没有再动它。",
+      "args": ["rc"]
+    },
+    "rsAccountAliases.install.sourceAdded": {
+      "kind": "body",
+      "zh": "{rc} 里加了一行 source（要撤就把 cc-monitor 那一小块整块删掉）。",
+      "args": ["rc"]
+    },
+    "rsAccountAliases.install.unchanged": {
+      "kind": "body",
+      "zh": "别名文件和盘上那份一模一样，没有重写。",
+      "args": []
+    },
+    "rsAccountAliases.install.listSep": {
+      "kind": "body",
+      "zh": "；",
+      "args": []
+    },
+    "rsAccountAliases.install.invalid": {
+      "kind": "error",
+      "zh": "有 {count} 条别名不合格，一条都没写：{list}",
+      "args": ["count", "list"]
+    },
+    "rsAccountAliases.read.failed": {
+      "kind": "error",
+      "zh": "读不了 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "rsAccountAliases.render.duplicate": {
+      "kind": "body",
+      "zh": "同一个名字出现了两次 —— 后一条会盖掉前一条",
+      "args": []
+    },
+    "rsAccountAliases.check.sizeNeedsTmux": {
+      "kind": "error",
+      "zh": "--tmux-size 与 --detach 只在 tmux 里起的时候有意义",
+      "args": []
+    },
+    "rsAccountAliases.check.noteNeedsRegister": {
+      "kind": "error",
+      "zh": "--bus-note 要和 --bus-register 一起用",
+      "args": []
+    },
+    "rsAccountAliases.check.busNeedsDetach": {
+      "kind": "error",
+      "zh": "--bus-register 要和 --detach 一起用",
+      "args": []
+    },
+    "rsAccountAliases.check.tmuxXorBase": {
+      "kind": "error",
+      "zh": "--tmux=<名> 与 --tmux-base 只能选一个",
+      "args": []
+    },
+    "rsAccountAliases.check.accountXorBase": {
+      "kind": "error",
+      "zh": "--account 与 --base 只能选一个",
+      "args": []
+    },
+    "rsAccountAliases.check.missingValue": {
+      "kind": "error",
+      "zh": "{flag} 后面缺一个值",
+      "args": ["flag"]
+    },
+    "rsAccountAliases.check.notAllowed": {
+      "kind": "error",
+      "zh": "{word} 不能放进别名（只收 ccm 的修饰）",
+      "args": ["word"]
+    },
+    "rsAccountAliases.check.tmuxNoName": {
+      "kind": "error",
+      "zh": "--tmux= 后面缺会话名",
+      "args": []
+    },
+    "rsAccountAliases.check.noTmux": {
+      "kind": "error",
+      "zh": "这台机器上没有 tmux —— {flags} 都用不了",
+      "args": ["flags"]
+    },
+    "rsAccountAliases.check.controlChar": {
+      "kind": "error",
+      "zh": "参数里有换行或控制字符",
+      "args": []
+    },
+    "rsAccountAliases.check.badName": {
+      "kind": "error",
+      "zh": "名字只能用字母、数字、下划线，而且不能以数字开头",
+      "args": []
+    },
+    "rsAccountAliases.file.empty": {
+      "kind": "body",
+      "zh": "# （当前一条别名都没有）\n",
+      "args": []
+    },
+    "rsShellDialect.ps.trailingBackslash": {
+      "kind": "error",
+      "zh": "PowerShell 传给 ccm 时，含空格又以反斜杠结尾的值会被改坏。去掉结尾的反斜杠",
+      "args": []
+    },
+    "rsShellDialect.ps.doubleQuote": {
+      "kind": "error",
+      "zh": "PowerShell 传给 ccm 时不转义双引号，值里不能有双引号",
+      "args": []
+    },
+    "rsShellDialect.ps.emptyArg": {
+      "kind": "error",
+      "zh": "PowerShell 传给 ccm 时会把空参数整个丢掉",
+      "args": []
+    },
+    "rsShellDialect.ps.nameTakenPath": {
+      "kind": "body",
+      "zh": "{name}：PATH 上已经有一个同名程序（{cand}）。装上之后在 PowerShell 里敲 {name}，打到的是这条别名，不再是那个程序",
+      "args": ["name", "cand"]
+    },
+    "rsShellDialect.ps.nameTakenIntegration": {
+      "kind": "body",
+      "zh": "{name}：cc-monitor 的终端集成块里已经有同名函数。两者都在 $PROFILE 里时，排在后面的那一个赢；确认这就是你要的",
+      "args": ["name"]
+    },
+    "rsShellDialect.ps.handEdited": {
+      "kind": "error",
+      "zh": "function {name}（函数体不是 cc-monitor 生成的那一形，可能被手改过）",
+      "args": ["name"]
+    },
+    "rsShellDialect.ps.noCcmCall": {
+      "kind": "error",
+      "zh": "函数里没有调用 ccm 的那一行",
+      "args": []
+    },
+    "rsShellDialect.ps.noClose": {
+      "kind": "error",
+      "zh": "{line}（这个函数没有收尾）",
+      "args": ["line"]
+    },
+    "rsShellDialect.ps.outsideFn": {
+      "kind": "error",
+      "zh": "{line}（不在任何一个函数里）",
+      "args": ["line"]
+    },
+    "rsShellDialect.ps.header": {
+      "kind": "body",
+      "zh": "# 这份文件由 cc-monitor 设置里「别名」那一块整份重写，别手改 —— 下一次写入会原样覆盖。\n# 每一个函数是一条别名：名字 ＋ 一组 ccm 参数，调用时再给的参数接在后面。\n# 写法是 PowerShell 函数，5.1 与 7 都 dot-source 得了。\n",
+      "args": [],
+      "waive": {
+        "C-L1": "写进用户 PowerShell 配置的头注释；首句是一整句警告，CP1 裁保留"
+      }
+    },
+    "rsShellDialect.ps.badCall": {
+      "kind": "error",
+      "zh": "调用那一行不是 & {word} … $RemainingArgs 的形状",
+      "args": ["word"]
+    },
+    "rsShellDialect.ps.missingSpace": {
+      "kind": "error",
+      "zh": "两个参数之间缺空格",
+      "args": []
+    },
+    "rsShellDialect.quote.unbalanced": {
+      "kind": "error",
+      "zh": "单引号没有配平",
+      "args": []
+    },
+    "rsShellDialect.ps.notQuoted": {
+      "kind": "error",
+      "zh": "参数不是单引号串",
+      "args": []
+    },
+    "rsShellDialect.posix.nameTakenPath": {
+      "kind": "body",
+      "zh": "{name}：PATH 上已经有一个同名程序（{cand}）。装上之后在终端敲 {name}，打到的是这条别名，不再是那个程序",
+      "args": ["name", "cand"]
+    },
+    "rsShellDialect.posix.nameTakenBuiltin": {
+      "kind": "body",
+      "zh": "{name} 与 cc-monitor 自带的命令同名，以你这条为准",
+      "args": ["name"]
+    },
+    "rsShellDialect.posix.header": {
+      "kind": "body",
+      "zh": "# 这份文件由 cc-monitor 设置里「别名」那一块整份重写，别手改 —— 下一次写入会原样覆盖。\n# 每一行是一条别名：名字 ＋ 一组 ccm 参数，调用时再给的参数接在后面。\n# 写法是 POSIX sh 函数，bash / zsh 都 source 得了；fish 不行。\n",
+      "args": [],
+      "waive": {
+        "C-L1": "写进用户 shell 文件的头注释；首句是一整句警告，CP1 裁保留"
+      }
+    },
+    "rsShellDialect.posix.notCcm": {
+      "kind": "error",
+      "zh": "调的不是 {word}",
+      "args": ["word"]
+    },
+    "rsShellDialect.posix.badShape": {
+      "kind": "error",
+      "zh": "不是 cc-monitor 写的那种函数形状",
+      "args": []
+    },
+    "rsShellDialect.posix.badTail": {
+      "kind": "error",
+      "zh": "结尾不是 cc-monitor 写的那种形状",
+      "args": []
+    },
+    "rsShellDialect.posix.backslash": {
+      "kind": "error",
+      "zh": "反斜杠只允许出现在 '\\'' 这一形里",
+      "args": []
+    },
+    "rsProfileInstaller.userPath.removeNoDir": {
+      "kind": "error",
+      "zh": "问不出本机 ccm 的安装目录，不会拿猜出来的目录去改用户 PATH",
+      "args": []
+    },
+    "rsProfileInstaller.userPath.addNoDir": {
+      "kind": "error",
+      "zh": "问不出本机 ccm 的安装目录，不会编一个目录往用户 PATH 上写",
+      "args": []
+    },
+    "rsProfileInstaller.userPath.noBinDir": {
+      "kind": "error",
+      "zh": "问不出本机 ccm 的安装目录，这是程序内部错误",
+      "args": []
+    },
+    "rsProfileInstaller.userPath.notWindows": {
+      "kind": "error",
+      "zh": "这台机器上没有「用户级 PATH」这一档 —— 它是 Windows 独有的",
+      "args": []
+    },
+    "rsProfileInstaller.ps.exitCode": {
+      "kind": "error",
+      "zh": "PowerShell 出错退出，退出码 {status}：{detail}",
+      "args": ["status", "detail"]
+    },
+    "rsProfileInstaller.ps.spawnFailed": {
+      "kind": "error",
+      "zh": "起不来 powershell.exe：{e}",
+      "args": ["e"]
+    },
+    "rsProfileInstaller.fence.symlinkEscape": {
+      "kind": "error",
+      "zh": "拒绝写这个配置文件：父目录经符号链接跑出了 home（{raw} → {realParent}）",
+      "args": ["raw", "realParent"]
+    },
+    "rsProfileInstaller.fence.outsideHome": {
+      "kind": "error",
+      "zh": "拒绝写这个配置文件：只能落在 home 之内（实得 {raw}，home 是 {home}）",
+      "args": ["raw", "home"]
+    },
+    "rsProfileInstaller.fence.dotdot": {
+      "kind": "error",
+      "zh": "拒绝写这个配置文件：不许含 ..（实得 {raw}）",
+      "args": ["raw"]
+    },
+    "rsProfileInstaller.fence.notAbsolute": {
+      "kind": "error",
+      "zh": "拒绝写这个配置文件：必须是绝对路径（实得 {raw}）",
+      "args": ["raw"]
+    },
+    "rsProfileInstaller.fence.noHome": {
+      "kind": "error",
+      "zh": "找不到 home 目录 —— 拒绝写任何 profile",
+      "args": []
+    },
+    "rsProfileInstaller.hint.whereToEdit": {
+      "kind": "body",
+      "zh": "\n动手的地方：用你自己的编辑器打开 {what}，删掉你决定不要的那几行，再开一个新终端。\n",
+      "args": ["what"]
+    },
+    "rsProfileInstaller.hint.shadowNote": {
+      "kind": "body",
+      "zh": "\n标了「会盖过」的 {shadowed} 行排在前面，不删掉它们，装上的那段不会生效。\n",
+      "args": ["shadowed"]
+    },
+    "rsProfileInstaller.hint.head": {
+      "kind": "body",
+      "zh": "{what} 里有 {count} 行提到 ccm，不在 cc-monitor 管理的那段里，cc-monitor 一个字节都不会碰它们。\n要不要删、删哪几行，由你自己定：\n\n{body}",
+      "args": ["what", "count", "body"]
+    },
+    "rsProfileInstaller.hint.shadowMark": {
+      "kind": "body",
+      "zh": "     ← 会盖过 cc-monitor 那一段",
+      "args": []
+    },
+    "rsProfileInstaller.hint.line": {
+      "kind": "body",
+      "zh": "  第 {lineNo} 行  {text}{mark}\n",
+      "args": ["lineNo", "text", "mark"]
+    },
+    "rsFencedBlock.verify.failed": {
+      "kind": "error",
+      "zh": "写后校验失败：{detail} {undo}",
+      "args": ["detail", "undo"]
+    },
+    "rsFencedBlock.verify.unreadable": {
+      "kind": "body",
+      "zh": "写完读不回来（{e}），确认不了写对了没有。",
+      "args": ["e"]
+    },
+    "rsFencedBlock.verify.missing": {
+      "kind": "body",
+      "zh": "写完读回来，文件不见了。",
+      "args": []
+    },
+    "rsFencedBlock.apply.writeFailed": {
+      "kind": "error",
+      "zh": "写 {label} 失败：{e}。{undo}",
+      "args": ["label", "e", "undo"]
+    },
+    "rsFencedBlock.apply.backupFailed": {
+      "kind": "error",
+      "zh": "备份 {label} 失败，原文件没动：{e}",
+      "args": ["label", "e"]
+    },
+    "rsFencedBlock.undo.createdLeft": {
+      "kind": "body",
+      "zh": "刚建出来的那份没删掉，请手动删掉它。",
+      "args": []
+    },
+    "rsFencedBlock.undo.restoreFailed": {
+      "kind": "body",
+      "zh": "恢复原文件也失败了，请打开它看一眼。",
+      "args": []
+    },
+    "rsFencedBlock.undo.restoreFailedBackup": {
+      "kind": "body",
+      "zh": "恢复原文件也失败了，原文备份在 {backup}。",
+      "args": ["backup"]
+    },
+    "rsFencedBlock.undo.createdRemoved": {
+      "kind": "body",
+      "zh": "刚建出来的那份已删掉。",
+      "args": []
+    },
+    "rsFencedBlock.undo.restored": {
+      "kind": "body",
+      "zh": "原文件已恢复。",
+      "args": []
+    },
+    "rsFencedBlock.pair.noEnd": {
+      "kind": "error",
+      "zh": "{what} 第 {line} 行有 cc-monitor BEGIN 标记，但其后找不到配对的 END。可能被手动改坏，或上次安装中断了。为避免误删你的内容，已中止；请手动修好该文件后重试。",
+      "args": ["what", "line"]
     }
   }
 }

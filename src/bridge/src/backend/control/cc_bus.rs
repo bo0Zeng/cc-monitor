@@ -1234,7 +1234,7 @@ pub(crate) fn machine_label(origin: &str) -> String {
 /// ⚠〔`K-R112` 09-13〕原来这一份只服务发消息（`what` / `outcome` 两处都写死）。
 /// 收掉 agent 改走原语之后要说同一句话 ⇒ **提参数，不抄第二份**：
 /// 抄一份的代价不是重复，是两份措辞会各自漂，而措辞正是用户唯一看得见的那一面。
-pub(crate) fn describe_no_channel_for(origin: &str, what: &str, outcome: &str) -> String {
+pub(crate) fn describe_no_channel_for(origin: &str, _what: &str, outcome: &str) -> String {
     copy_text(
         "rsCcBus.noChannel.for",
         &[
@@ -1261,7 +1261,7 @@ pub(crate) fn describe_no_channel(origin: &str, id: &str) -> String {
 /// 而「超时」「连接断了」是**问不出答案**的事。把它们压成同一句「发消息失败」，
 /// 就是本工作区最贵的那一形 —— **一个值装了两件事**：用户拿到它既不知道该升级，
 /// 也不知道该重试，只能两样都试一遍。
-pub(crate) fn describe_backend_too_old_for(origin: &str, cmd: &str, outcome: &str) -> String {
+pub(crate) fn describe_backend_too_old_for(origin: &str, _cmd: &str, outcome: &str) -> String {
     copy_text(
         "rsCcBus.tooOld.for",
         &[

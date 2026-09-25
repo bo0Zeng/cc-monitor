@@ -39,6 +39,8 @@
 //! 所以本模块取**两者中最强的那一档**（同 T01 对 `verified_write` 的做法：
 //! 四处实现里本机侧只比长度，统一到内容级比对）。
 
+use crate::copy_table::copy_text;
+
 /// 找配对的围栏块，返回**行下标**区间（含两端）。
 ///
 /// - `Ok(None)`：没有 BEGIN → 调用方追加。
@@ -68,11 +70,9 @@ pub fn find_pair(
     }
     match begin {
         None => Ok(None),
-        Some(b) => Err(format!(
-            "{what} 第 {} 行有 cc-monitor BEGIN 标记，但其后找不到配对的 END\
-             （可能被手动改坏 / 上次安装中断）。为避免误删你的内容，已中止\
-             ——请手动修好该文件后重试。",
-            b + 1
+        Some(b) => Err(copy_text(
+            "rsFencedBlock.pair.noEnd",
+            &[("what", &what.to_string()), ("line", &(b + 1).to_string())],
         )),
     }
 }
@@ -270,11 +270,14 @@ pub(crate) enum Applied {
 /// 文案却无条件说「已尝试回滚原文件」；本机那一侧没有备份时干脆什么都不说）。
 fn undo_note(existed: bool, undone: bool, backup: Option<&str>) -> String {
     match (existed, undone, backup) {
-        (true, true, _) => "原文件已恢复。".to_string(),
-        (false, true, _) => "刚建出来的那份已删掉。".to_string(),
-        (true, false, Some(b)) => format!("恢复原文件也失败了，原文备份在 {b}。"),
-        (true, false, None) => "恢复原文件也失败了，请打开它看一眼。".to_string(),
-        (false, false, _) => "刚建出来的那份没删掉，请手动删掉它。".to_string(),
+        (true, true, _) => copy_text("rsFencedBlock.undo.restored", &[]),
+        (false, true, _) => copy_text("rsFencedBlock.undo.createdRemoved", &[]),
+        (true, false, Some(b)) => copy_text(
+            "rsFencedBlock.undo.restoreFailedBackup",
+            &[("backup", &b.to_string())],
+        ),
+        (true, false, None) => copy_text("rsFencedBlock.undo.restoreFailed", &[]),
+        (false, false, _) => copy_text("rsFencedBlock.undo.createdLeft", &[]),
     }
 }
 
@@ -298,12 +301,14 @@ pub(crate) async fn apply<S: Store>(
     }
     let label = store.label();
     let backup = match original.as_deref() {
-        Some(o) if keep_backup && !o.is_empty() => Some(
-            store
-                .save_backup(o)
-                .await
-                .map_err(|e| format!("备份 {label} 失败，原文件没动：{e}"))?,
-        ),
+        Some(o) if keep_backup && !o.is_empty() => {
+            Some(store.save_backup(o).await.map_err(|e| {
+                copy_text(
+                    "rsFencedBlock.apply.backupFailed",
+                    &[("label", &label.to_string()), ("e", &e.to_string())],
+                )
+            })?)
+        }
         _ => None,
     };
     let existed = original.is_some();
@@ -315,25 +320,38 @@ pub(crate) async fn apply<S: Store>(
     };
     if let Err(e) = store.put_atomic(&next).await {
         let undone = undo().await;
-        return Err(format!(
-            "写 {label} 失败：{e}。{}",
-            undo_note(existed, undone, backup.as_deref())
+        return Err(copy_text(
+            "rsFencedBlock.apply.writeFailed",
+            &[
+                ("label", &label.to_string()),
+                ("e", &e.to_string()),
+                (
+                    "undo",
+                    &(undo_note(existed, undone, backup.as_deref())).to_string(),
+                ),
+            ],
         ));
     }
     let verdict = match store.read().await {
         Ok(Some(back)) => crate::verified_write::verify_readback(&next, &back),
         Ok(None) => crate::verified_write::WriteVerdict::Mismatch {
-            detail: "写完读回来，文件不见了。".to_string(),
+            detail: copy_text("rsFencedBlock.verify.missing", &[]),
         },
         Err(e) => crate::verified_write::WriteVerdict::Mismatch {
-            detail: format!("写完读不回来（{e}），确认不了写对了没有。"),
+            detail: copy_text("rsFencedBlock.verify.unreadable", &[("e", &e.to_string())]),
         },
     };
     if let crate::verified_write::WriteVerdict::Mismatch { detail } = verdict {
         let undone = undo().await;
-        return Err(format!(
-            "写后校验失败：{detail} {}",
-            undo_note(existed, undone, backup.as_deref())
+        return Err(copy_text(
+            "rsFencedBlock.verify.failed",
+            &[
+                ("detail", &detail.to_string()),
+                (
+                    "undo",
+                    &(undo_note(existed, undone, backup.as_deref())).to_string(),
+                ),
+            ],
         ));
     }
     Ok(Applied::Written {

@@ -29,6 +29,7 @@
 //! PowerShell 解析过**。它买到的只有：函数体逐字照 `scripts/cc.ps1.tpl` 里那个 `cc` 的形状（`K-R132` 真机上
 //! 那一形 `parse-errors=0`）· 黄金串 · 与 POSIX 臂同契约的对拍（同一份清单两边渲染再各自读回，得回同一份清单）。
 
+use crate::copy_table::copy_text;
 use std::path::{Path, PathBuf};
 
 use crate::fenced_block::Layout;
@@ -105,7 +106,7 @@ pub trait ShellDialect: Sync {
     fn sources_our_file(&self, text: &str) -> bool;
 
     /// 我们那份别名文件的头注（整段注释行，含结尾换行）。
-    fn file_header(&self) -> &'static str;
+    fn file_header(&self) -> String;
 
     /// 一条（通用层判过合格的）别名在这个 shell 里的写法：名字 ＋ 预置参数 ＋ 把调用时的参数原样接在后面。
     fn render_alias(&self, name: &str, argv: &[String]) -> String;
@@ -225,7 +226,7 @@ impl Posix {
                 '\\' if !in_q => {
                     // 只认 `'\''`：此刻引号刚被上一个 `'` 关掉，后面必须是 `'` 再 `'`。
                     if it.next() != Some('\'') || it.next() != Some('\'') {
-                        return Err("反斜杠只允许出现在 `'\\''` 这一形里".to_string());
+                        return Err(copy_text("rsShellDialect.posix.backslash", &[]));
                     }
                     cur.push('\'');
                     in_q = true;
@@ -238,7 +239,7 @@ impl Posix {
             }
         }
         if in_q {
-            return Err("单引号没有配平".to_string());
+            return Err(copy_text("rsShellDialect.quote.unbalanced", &[]));
         }
         if started {
             words.push(cur);
@@ -251,15 +252,18 @@ impl Posix {
     fn parse_line(line: &str) -> Parsed {
         let rest = line
             .strip_suffix(POSIX_FN_TAIL)
-            .ok_or("结尾不是 `\"$@\"; }`")?;
+            .ok_or(&copy_text("rsShellDialect.posix.badTail", &[]))?;
         let (name, body) = rest
             .split_once(POSIX_FN_HEAD)
-            .ok_or("不是 `名字() { … }` 的形状")?;
+            .ok_or(&copy_text("rsShellDialect.posix.badShape", &[]))?;
         let mut words = Self::split_words(body)?.into_iter();
         let head = words.next().unwrap_or_default();
         let word = crate::backend::control::local_backend::CCM_ENTRY_WORD;
         if head != word && !head.starts_with("\"${CCM:-") {
-            return Err(format!("调的不是 {word}"));
+            return Err(copy_text(
+                "rsShellDialect.posix.notCcm",
+                &[("word", &word.to_string())],
+            ));
         }
         Ok((name.to_string(), words.collect()))
     }
@@ -311,10 +315,8 @@ impl ShellDialect for Posix {
         text.contains(POSIX_ALIAS_FILE_REL)
     }
 
-    fn file_header(&self) -> &'static str {
-        "# 这份文件由 cc-monitor 设置里「别名」那一块整份重写，别手改 —— 下一次写入会原样覆盖。\n\
-         # 每一行是一条别名：名字 ＋ 一组 ccm 参数，调用时再给的参数接在后面。\n\
-         # 写法是 POSIX sh 函数，bash / zsh 都 source 得了；fish 不行。\n"
+    fn file_header(&self) -> String {
+        copy_text("rsShellDialect.posix.header", &[])
     }
 
     /// `名字() { ccm <参数…> "$@"; }`。`"$@"` 必须在最后 —— 那就是「参数附加器」的全部含义：
@@ -353,16 +355,18 @@ impl ShellDialect for Posix {
     ///    而自带那份别名只检查「有没有同名**函数**」、不检查程序。
     fn name_taken(&self, name: &str) -> Option<String> {
         if crate::sftp::builtin_alias_names().contains(&name) {
-            return Some(format!(
-                "`{name}`：cc-monitor 自带的别名块（src/shared/ccm-aliases.sh）里已经有同名函数 —— \
-                 那一份用 `declare -f` 让着你，所以你这条会赢；确认这就是你要的"
+            return Some(copy_text(
+                "rsShellDialect.posix.nameTakenBuiltin",
+                &[("name", &name.to_string())],
             ));
         }
         on_path(name, &[""]).map(|cand| {
-            format!(
-                "`{name}`：PATH 上已经有一个同名程序（{}）—— source 之后你在终端敲 `{name}` \
-                 打到的是这条别名，不再是那个程序",
-                cand.display()
+            copy_text(
+                "rsShellDialect.posix.nameTakenPath",
+                &[
+                    ("name", &name.to_string()),
+                    ("cand", &(cand.display()).to_string()),
+                ],
             )
         })
     }
@@ -430,12 +434,12 @@ impl PowerShell {
             }
             let Some(open) = it.next() else { break };
             if !PS_QUOTES.contains(&open) {
-                return Err("参数不是单引号串".to_string());
+                return Err(copy_text("rsShellDialect.ps.notQuoted", &[]));
             }
             let mut cur = String::new();
             loop {
                 match it.next() {
-                    None => return Err("单引号没有配平".to_string()),
+                    None => return Err(copy_text("rsShellDialect.quote.unbalanced", &[])),
                     Some(c) if PS_QUOTES.contains(&c) => {
                         if it.peek() == Some(&c) {
                             it.next();
@@ -448,7 +452,7 @@ impl PowerShell {
                 }
             }
             if !matches!(it.peek(), None | Some(' ')) {
-                return Err("两个参数之间缺空格".to_string());
+                return Err(copy_text("rsShellDialect.ps.missingSpace", &[]));
             }
             out.push(cur);
         }
@@ -462,7 +466,9 @@ impl PowerShell {
         let mid = line
             .strip_prefix(&head)
             .and_then(|r| r.strip_suffix(PS_TAIL))
-            .ok_or_else(|| format!("调用那一行不是 `& {word} … $RemainingArgs` 的形状"))?;
+            .ok_or_else(|| {
+                copy_text("rsShellDialect.ps.badCall", &[("word", &word.to_string())])
+            })?;
         Self::split_words(mid)
     }
 }
@@ -527,10 +533,8 @@ impl ShellDialect for PowerShell {
         t.contains(PS_ALIAS_FILE_REL) || t.contains(&PS_ALIAS_FILE_REL.replace('/', "\\"))
     }
 
-    fn file_header(&self) -> &'static str {
-        "# 这份文件由 cc-monitor 设置里「别名」那一块整份重写，别手改 —— 下一次写入会原样覆盖。\n\
-         # 每一个函数是一条别名：名字 ＋ 一组 ccm 参数，调用时再给的参数接在后面。\n\
-         # 写法是 PowerShell 函数，5.1 与 7 都 dot-source 得了。\n"
+    fn file_header(&self) -> String {
+        copy_text("rsShellDialect.ps.header", &[])
     }
 
     /// 与 `scripts/cc.ps1.tpl` 里的 `function cc` 逐字同形（只多了预置参数，握手那一行带守卫）。
@@ -568,8 +572,9 @@ impl ShellDialect for PowerShell {
                 .strip_prefix("function ")
                 .and_then(|r| r.strip_suffix(" {"))
             else {
-                out.push(Err(format!(
-                    "{l}（不在任何一个 `function 名字 {{ … }}` 里）"
+                out.push(Err(copy_text(
+                    "rsShellDialect.ps.outsideFn",
+                    &[("line", &l.to_string())],
                 )));
                 continue;
             };
@@ -583,13 +588,16 @@ impl ShellDialect for PowerShell {
                 body.push(b.trim_end());
             }
             if !closed {
-                out.push(Err(format!("{l}（这个函数没有收尾的 `}}`）")));
+                out.push(Err(copy_text(
+                    "rsShellDialect.ps.noClose",
+                    &[("line", &l.to_string())],
+                )));
                 continue;
             }
             let got = body
                 .iter()
                 .find(|b| b.trim_start().starts_with('&'))
-                .ok_or_else(|| "函数里没有调用 ccm 的那一行".to_string())
+                .ok_or_else(|| copy_text("rsShellDialect.ps.noCcmCall", &[]))
                 .and_then(|call| Self::parse_call(call));
             match got {
                 Ok(argv) => {
@@ -602,8 +610,9 @@ impl ShellDialect for PowerShell {
                     if again == seen {
                         out.push(Ok((name.to_string(), argv)));
                     } else {
-                        out.push(Err(format!(
-                            "function {name}（函数体不是 cc-monitor 生成的那一形，可能被手改过）"
+                        out.push(Err(copy_text(
+                            "rsShellDialect.ps.handEdited",
+                            &[("name", &name.to_string())],
                         )));
                     }
                 }
@@ -638,16 +647,18 @@ impl ShellDialect for PowerShell {
                 .is_some_and(|n| n.eq_ignore_ascii_case(name))
         });
         if ours {
-            return Some(format!(
-                "`{name}`：cc-monitor 的终端集成块里已经有同名函数 —— \
-                 两者都在 $PROFILE 里时，排在后面的那一个赢；确认这就是你要的"
+            return Some(copy_text(
+                "rsShellDialect.ps.nameTakenIntegration",
+                &[("name", &name.to_string())],
             ));
         }
         on_path(name, &["exe", "cmd", "bat", "ps1", "com"]).map(|cand| {
-            format!(
-                "`{name}`：PATH 上已经有一个同名程序（{}）—— 装上之后你在 PowerShell 里敲 `{name}` \
-                 打到的是这条别名，不再是那个程序",
-                cand.display()
+            copy_text(
+                "rsShellDialect.ps.nameTakenPath",
+                &[
+                    ("name", &name.to_string()),
+                    ("cand", &(cand.display()).to_string()),
+                ],
             )
         })
     }
@@ -657,16 +668,13 @@ impl ShellDialect for PowerShell {
     /// ⚠ 这三条是**文档读数**（PS 7.3 之前的 legacy 传参），没在真机上验（W1 买不到）。
     fn arg_is_passable(&self, word: &str) -> Result<(), String> {
         if word.is_empty() {
-            return Err("PowerShell 传给 ccm 时会把空参数整个丢掉".to_string());
+            return Err(copy_text("rsShellDialect.ps.emptyArg", &[]));
         }
         if word.contains('"') {
-            return Err("PowerShell 传给 ccm 时不转义双引号 —— 值里不能有 `\"`".to_string());
+            return Err(copy_text("rsShellDialect.ps.doubleQuote", &[]));
         }
         if word.chars().any(char::is_whitespace) && word.ends_with('\\') {
-            return Err(
-                "PowerShell 传给 ccm 时，含空格又以 `\\` 结尾的值会被改坏 —— 去掉结尾的 `\\`"
-                    .to_string(),
-            );
+            return Err(copy_text("rsShellDialect.ps.trailingBackslash", &[]));
         }
         Ok(())
     }

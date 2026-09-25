@@ -94,7 +94,7 @@ pub(crate) fn layer_call_error(e: &CallError, hop: u8) -> Layered {
     let at = |tag: &'static str| w::HopId { idx: hop, tag };
     let text = |s: String| Detail::Text(s);
     match e {
-        CallError::Unsupported { cmd, offered } => Layered {
+        CallError::Unsupported { .. } => Layered {
             error: w::CallError::Peer {
                 why: w::PeerFault::Unsupported,
             },
