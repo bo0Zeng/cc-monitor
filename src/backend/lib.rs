@@ -562,6 +562,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔F7a · 第三波 09-24〕同族第七、第八条（`设计/60 §13`）。登记理由与上面那几条逐字相同。
     "--files-home",
     "--files-read-text",
+    // 〔SE2 · `设计/10 §6 步 6`〕会话内查找（Ctrl+F）。**是新子命令** ⇒ `build_id_guard` 红是预期的，
+    // BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    "--find-in-session",
     "--fork-session",
     // 〔`C1`〕同上一段：`history-*` 六条帧命令的 CLI 面。
     "--history-projects",
@@ -1433,6 +1436,8 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     // 降级形状住 `observe::history_query::FromOffsetOpts` 的头注。
     "--index",
     "--limit",
+    // 〔SE2〕`--find-in-session` 的查询串（选项值，不是位置参数：查询本身可能以 `--` 起头）。
+    "--query",
     "--scope",
     "--until",
 ];

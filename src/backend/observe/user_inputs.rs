@@ -53,11 +53,19 @@ pub(crate) struct UserInputRow {
 }
 
 /// 一行 jsonl → 是用户输入就给一条 [`UserInputRow`]，不是 ⇒ `None`。**纯函数**。
-///
-/// 四条口径的**唯一住址**（见头注）。解析不出的行（半截 / 非 JSON）⇒ `None`。
+/// 解析不出的行（半截 / 非 JSON）⇒ `None`；判定本身在 [`user_input_of`]。
 pub(crate) fn user_input_row(line: &[u8]) -> Option<UserInputRow> {
     let text = String::from_utf8_lossy(line);
     let v: Value = serde_json::from_str(text.trim_start_matches('\u{feff}').trim()).ok()?;
+    user_input_of(&v)
+}
+
+/// 一条**已解析**的记录 → 是用户输入就给一条 [`UserInputRow`]。**四条口径的唯一住址**（见头注）。
+///
+/// 〔SE2〕从 [`user_input_row`] 里拆出来：骨架索引（`history_query::index_row`）已经解析过这一行，
+/// 顺带问一句「是不是用户输入」就不用再解析一遍 —— 首屏的「索引」与「大纲清单」由此合成一趟读
+/// （`设计/10 §9.5` 那条欠账）。**判定没有第二份**：两个出口都调这里。
+pub(crate) fn user_input_of(v: &Value) -> Option<UserInputRow> {
     if v.get("type").and_then(Value::as_str) != Some("user") {
         return None;
     }

@@ -1227,3 +1227,14 @@ src/backend/control/exit_policy.rs:109	{} 不是 JSON：{e}	保留	[不对外] �
 src/backend/control/exit_policy.rs:114	{} 里 `{KEY_KILL_ON_EXIT}` 不是布尔（实得 {other}）	保留	[不对外] 同上：`reason` 一格与日志，界面不显示
 src/backend/control/exit_policy.rs:118	{} 里没有 `{KEY_KILL_ON_EXIT}` 这一格	保留	[不对外] 同上：`reason` 一格与日志，界面不显示
 src/backend/control/exit_policy.rs:128	家目录解析不出来（HOME / USERPROFILE 都没有）	保留	[不对外] 同上：`reason` 一格与日志，界面不显示；环境变量名是排障要的原样
+src/bridge/src/backend/control/frame_query.rs:66	〔SE2〕会话内查找（Ctrl+F）：与上一行同一个处境 —— 新子命令、帧面没有对应命令；\n         用户按一次 Enter 才发一次，不在任何轮询上。上帧面另拍（同上一行）	保留	[不对外] frame_query::STILL_DIALED 登记表的理由栏，生产段只拿第一栏判放不放行，这一栏只被判据读
+src/bridge/src/session_find.rs:79	这台机器上的后端版本旧，还不能在会话里查找（重装后端之后就有）	保留	[对外] 〔SE2〕查找面板「搜索」那一行状态（查不了时）；说清原因与出路，用词是术语表的「后端」，与大纲那句同形
+src/bridge/src/session_find.rs:82	查找结果传到一半断了（只收到 {got} 条），这次先不显示	保留	[对外] 〔SE2〕同上一条（输出被截断，不当全量用）
+src/views/session-find.ts:52	搜索	保留	[对外] 〔SE2〕查找面板的模式标签；两个字、动词作名词，与「大纲」并列
+src/views/session-find.ts:53	在这个会话里找，按 Enter	保留	[对外] 〔SE2〕查找输入框的占位字；说清范围（这个会话）与怎么触发（Enter 才搜，不边打边搜）
+src/views/session-find.ts:54	含工具内容	保留	[对外] 〔SE2〕复选框标签；与历史浏览器全文搜索那个勾逐字同名（同一个口径开关）
+src/views/session-find.ts:55	默认只搜你的输入和 Claude 的回复；勾上之后也搜工具调用、工具输出与思考过程	保留	[对外] 〔SE2〕上一条的提示；说清勾与不勾的差别，无内部词
+src/views/session-find.ts:56	关闭（Esc）	保留	[对外] 〔SE2〕✕ 按钮的提示；带上快捷键
+src/views/session-find.ts:57	按 Enter 开始找	保留	[对外] 〔SE2〕搜索状态行的初始态
+src/views/session-find.ts:58	正在找…	保留	[对外] 〔SE2〕搜索状态行的在途态
+src/views/session-find.ts:59	没有找到	保留	[对外] 〔SE2〕搜索状态行的零命中态

@@ -1013,6 +1013,11 @@ export class TabManager {
     }
   }
 
+  /** 〔SE2〕快捷键 Ctrl+F（`session.find`）：当前 tab 的查找面板打开到「搜索」。实现在流视图。 */
+  openFind(): void {
+    this.view.openFind();
+  }
+
   /** 快捷键 Ctrl+Shift+E：打开当前活跃 Tab 的工作目录到系统文件管理器 */
   openActiveTabCwd(): void {
     if (!this.store.activeId) return;
