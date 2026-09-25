@@ -34,12 +34,14 @@
 //!    （`K-R57` 现打：用户机器上 10 个真使用者全是裸行）。
 //!
 //! ⚠ **方言不是「猜路径」。** 路径始终由界面上的人选（`ProfileKind::Custom` 一直是产品特性）。
-//! [`flavor_of`] 回答的是**另一个问题**：人选定了这份文件之后，往里写哪种语言。
+//! `shell_dialect.rs::Shell::of_target` 回答的是**另一个问题**：人选定了这份文件之后，往里写哪种语言。
 //! 把 `function cc { … }` 写进 `~/.bashrc` 在任何情形下都不是对的答案 ——
 //! 而本件之前这条路**只会**写 PowerShell。
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+
+use crate::shell_dialect::Shell;
 
 /// ⚠ `K-R62` 起是 `pub(crate)`：`fenced_block::FENCE_SHAPES` 那张账要**指**这一对，
 /// 而不是抄一份字面量过去（抄一份就是第二个住址）。
@@ -81,7 +83,7 @@ pub struct ProfileScan {
     /// 加一段给用户自己动手的说明。**产品一个字节都不删**（`K31` + 用户逐字
     /// 「原本的配置要手动删除」）—— 那些行没有围栏，边界只有人知道。
     ///
-    /// ⚠ **只对 [`ProfileFlavor::PosixRc`] 有内容**；PowerShell 那一侧的遗留由
+    /// ⚠ **只对 [`Shell::Posix`] 有内容**；PowerShell 那一侧的遗留由
     /// [`scan_legacy_profiles`] 按**围栏**答（那是另一件事：它找的是**装错位置的整块**，
     /// 这一格找的是**根本没有围栏的裸行**）。
     pub manual_cleanup_hint: String,
@@ -97,36 +99,17 @@ pub struct ProfileScan {
 
 /// 一份 profile 的**方言**：这份文件里该放哪种语言的内容、认哪一对围栏。
 ///
+/// 〔AL1c · 第四波 4B〕它从前是本模块自己的一个两值枚举 ＋ 一个按扩展名判的函数（旧名见 `git log`）；
+/// 今天是 `shell_dialect::Shell` —— 别名文件、别名块、source 那一行问的是**同一个问题**，
+/// 不许有两个枚举各答一半。认法没变：`Shell::of_target` 按**文件扩展名**判，不按 `cfg!(windows)`。
+///
 /// 🔴 **它不猜路径。** 路径始终由界面上的人选（`account_aliases` 的 `§0e` 那条理由
 /// 原样适用：`.bashrc` / `.zshrc` / fish 的 `config.fish` 写法不同，替人选一份是最坏的
 /// 那条路）。它回答的是**人选定之后**的那个问题：往这份文件里写哪种语言。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProfileFlavor {
-    /// PowerShell profile。围栏是本模块的 [`BEGIN_MARKER`]/[`END_MARKER`]，
-    /// 内容由 [`render_cc_code`] 按模板渲染。
-    PowerShell,
-    /// POSIX shell 的 rc（`.bashrc` / `.zshrc` / `.profile` …）。
-    /// 围栏与内容**都借远端那一份**，本模块一个字节都不自己造。
-    PosixRc,
-}
-
-/// 按**文件扩展名**定方言：`.ps1` ⇒ PowerShell，其余一律 POSIX rc。
-///
-/// ⚠ 为什么按扩展名而不是按 `cfg!(windows)`：**跑在哪台机器上**与**这份文件是什么**
-/// 是两件事。`ProfileKind::Custom` 允许用户指任意一份 home 内的文件，
-/// 而 PowerShell 的 profile 恒是 `.ps1`（`$PROFILE` 的四种取值全是）。
-/// 按 `cfg` 分还有一个更硬的毛病：**沙箱里跑不到 Windows 那一臂**
-/// （门禁在 Linux 上跑），于是两条臂里恒有一条没人验。
-pub fn flavor_of(path: &Path) -> ProfileFlavor {
-    match path.extension().and_then(|e| e.to_str()) {
-        Some(ext) if ext.eq_ignore_ascii_case("ps1") => ProfileFlavor::PowerShell,
-        _ => ProfileFlavor::PosixRc,
-    }
-}
 
 /// 纯函数：**装**完之后这份文件该长什么样。落盘那一跳在 [`install_to_profile`]。
 ///
-/// 🔴 **`PosixRc` 那一臂是 `KR62D1` 的正题**：它一个字节的 snippet 都不生成、
+/// 🔴 **`Posix` 那一臂是 `KR62D1` 的正题**：它一个字节的 snippet 都不生成、
 /// 也没有第二套 merge —— 内容是 `sftp::CCM_WRAPPER_SNIPPET`（= `src/shared/ccm-aliases.sh`
 /// 本身），合块是 `sftp::merge_profile_block`，围栏是 `sftp::CCM_PROFILE_BEGIN/END`。
 /// ⇒ 本机与远端装进 rc 的**是同一份东西**（`K15` / `K36`），
@@ -136,28 +119,28 @@ pub fn flavor_of(path: &Path) -> ProfileFlavor {
 /// POSIX 那一块的名字（`cc` / `cct`）住在 `src/shared/ccm-aliases.sh` 里，
 /// 那份文件自己用 `declare -f` 让着用户已有的同名函数 —— 由它说了算，不由这里的参数说了算。
 pub fn plan_install(
-    flavor: ProfileFlavor,
+    flavor: Shell,
     existing: &str,
     command_name: &str,
     include_cc_function: bool,
     what: &str,
 ) -> Result<String, String> {
     match flavor {
-        ProfileFlavor::PowerShell => {
+        Shell::PowerShell => {
             let code = render_cc_code(command_name, include_cc_function);
             replace_or_append_block(existing, &code, what)
         }
-        ProfileFlavor::PosixRc => {
+        Shell::Posix => {
             crate::sftp::merge_profile_block(existing, crate::sftp::CCM_WRAPPER_SNIPPET, what)
         }
     }
 }
 
 /// 纯函数：**卸**完之后这份文件该长什么样。同 [`plan_install`]，POSIX 那一臂借远端那一份。
-pub fn plan_uninstall(flavor: ProfileFlavor, existing: &str, what: &str) -> Result<String, String> {
+pub fn plan_uninstall(flavor: Shell, existing: &str, what: &str) -> Result<String, String> {
     match flavor {
-        ProfileFlavor::PowerShell => strip_block(existing, what),
-        ProfileFlavor::PosixRc => crate::sftp::strip_profile_block(existing, what),
+        Shell::PowerShell => strip_block(existing, what),
+        Shell::Posix => crate::sftp::strip_profile_block(existing, what),
     }
 }
 
@@ -165,13 +148,13 @@ pub fn plan_uninstall(flavor: ProfileFlavor, existing: &str, what: &str) -> Resu
 ///
 /// 两种方言认的是**两对不同的围栏**，一对都不许混：混了就是「装一个把另一个整块替换掉」
 /// （`account_aliases` 那对刻意不同前缀，理由同源）。
-fn block_presence(flavor: ProfileFlavor, content: &str) -> (bool, Option<String>) {
+fn block_presence(flavor: Shell, content: &str) -> (bool, Option<String>) {
     match flavor {
-        ProfileFlavor::PowerShell => find_block_version(content),
+        Shell::PowerShell => find_block_version(content),
         // POSIX 那一对没有版本后缀 ⇒ 恒 `None`。判「在不在」与 PowerShell 同口径：
         // 只看有没有一行以 BEGIN 打头（**悬空的 BEGIN 也算在**——否则界面会说「未安装」
         // 且藏起卸载按钮，而点安装却报行号，那正是 T04 审计③ 治过的那一形）。
-        ProfileFlavor::PosixRc => (
+        Shell::Posix => (
             content
                 .lines()
                 .any(|l| l.trim_start().starts_with(crate::sftp::CCM_PROFILE_BEGIN)),
@@ -514,7 +497,7 @@ pub fn scan_profile(kind: ProfileKind, path: &PathBuf, command_name: &str) -> Pr
             size_bytes: 0,
         };
     }
-    let flavor = flavor_of(path);
+    let flavor = Shell::of_target(path);
     let raw = std::fs::read_to_string(path).unwrap_or_default();
     // 〔`K-R132`〕BOM 剥在最靠近读的那一跳 —— 不剥，`find_block_version` 的
     // `strip_prefix(BEGIN_MARKER)` 会在第一行就对不上前缀 ⇒ 界面说「未安装」。
@@ -525,10 +508,8 @@ pub fn scan_profile(kind: ProfileKind, path: &PathBuf, command_name: &str) -> Pr
     let (block_present, block_version) = block_presence(flavor, &content);
     let conflicts = find_conflicting_functions(flavor, &content, command_name);
     let manual_cleanup_hint = match flavor {
-        ProfileFlavor::PowerShell => String::new(),
-        ProfileFlavor::PosixRc => {
-            render_manual_cleanup_hint(&path_str, &scan_legacy_rc_lines(&content))
-        }
+        Shell::PowerShell => String::new(),
+        Shell::Posix => render_manual_cleanup_hint(&path_str, &scan_legacy_rc_lines(&content)),
     };
     ProfileScan {
         kind,
@@ -624,28 +605,23 @@ pub fn scan_profile(kind: ProfileKind, path: &PathBuf, command_name: &str) -> Pr
 // ⇒ 分岔点放在**方言**这一层（[`encode_for_disk`] / [`strip_bom`]），与
 // 「写什么」那一处分岔（[`plan_install`]）同一条线。
 
-/// UTF-8 BOM。**闭集只有这一处住址**〔`13b`〕。
-const UTF8_BOM: &str = "\u{feff}";
+// 〔AL1c · 第四波 4B〕这里原来住着 BOM 常量与「读时剥 / 写时按方言加」那一对（`K-R132`），
+// 它们是**方言**的一格 ⇒ 搬去 `shell_dialect.rs`（`ShellDialect::encode_for_disk` / `::decode_from_disk`，
+// BOM 常量的唯一住址也跟过去了）。分岔点仍在方言这一层，与「写什么」那一处分岔（[`plan_install`]）同一条线。
 
 /// 读进来的那一份：把 BOM 剥掉再交给任何**判内容**的东西。
 ///
 /// 🔴 不剥会坏两件事：① `find_block_version` 按 `strip_prefix(BEGIN_MARKER)` 认围栏，
 /// 而 `\u{feff}# === cc-monitor BEGIN` 前缀对不上 ⇒ 界面说「未安装」、藏起卸载按钮，
 /// 点安装却报行号（那正是 T04 审计③ 治过的那一形）；② BOM 会被当成用户内容
-/// 原样写回文件中间。
+/// 原样写回文件中间。（这里**两种方言都剥**：它是「读」这一侧，宽进。）
 fn strip_bom(s: &str) -> &str {
-    s.strip_prefix(UTF8_BOM).unwrap_or(s)
+    crate::shell_dialect::strip_bom(s)
 }
 
-/// 落盘的那一份：PowerShell 方言加 BOM，POSIX rc **一个字节都不加**。
-///
-/// POSIX 那一侧为什么绝不能加：`.bashrc` 开头多三个字节，`sh` 会把它当成命令
-/// （`$'﻿': command not found`），而更坏的是 `#!/bin/sh` 这一形会整个失效。
-fn encode_for_disk(flavor: ProfileFlavor, content: &str) -> String {
-    match flavor {
-        ProfileFlavor::PowerShell => format!("{UTF8_BOM}{content}"),
-        ProfileFlavor::PosixRc => content.to_string(),
-    }
+/// 落盘的那一份：PowerShell 方言加 BOM，POSIX rc **一个字节都不加**（实现住方言那一格）。
+fn encode_for_disk(flavor: Shell, content: &str) -> String {
+    flavor.dialect().encode_for_disk(content)
 }
 
 /// 本机 `ccm` 入口所在目录的 **Windows 写法**（`%USERPROFILE%` 之下的相对路径）。
@@ -1024,7 +1000,7 @@ pub fn user_path_remove() -> Result<(), String> {
 /// ⚠ **`K-R132` 把「把 `cct` 从 Windows 文案里摘掉」随动到 `src/launcher-diagnostics.ts`
 /// 那一句上 —— 本轮现打，那个随动的前提是假的**：那一句只在 **POSIX rc** 那一臂印
 /// （它的下拉只遍历 `AccountAliasReport::rc_candidates`〔散文墓碑〕（〔AL1〕今天是 `AliasListing::rc_candidates`），而那张表现算自
-/// `account_aliases::RC_CANDIDATES`，**一份 PowerShell profile 都没有**），
+/// 那时 `account_aliases` 里那张 POSIX 候选表（〔AL1c〕今天住 `shell_dialect.rs` 的 POSIX 那一臂），**一份 PowerShell profile 都没有**），
 /// 而那一臂的 `cct` 是**真有**的（`src/shared/ccm-aliases.sh` 里就定义着）。
 /// PowerShell 那一臂是另一份文件（`src/settings/cc_integration.ts` 的 `renderScanResult`），
 /// 现打 `cct` **零命中**。⇒ **Windows 文案里今天一个 `cct` 都没有，没有东西要摘。**
@@ -1061,7 +1037,7 @@ pub async fn install_to_profile(
     command_name: &str,
     include_cc_function: bool,
 ) -> Result<(), String> {
-    let flavor = flavor_of(path);
+    let flavor = Shell::of_target(path);
     let what = path.display().to_string();
     let home = door.home().await?;
     let rel = crate::user_files::rel_under(&home, &what)?;
@@ -1082,7 +1058,7 @@ pub async fn uninstall_from_profile(
     door: &impl crate::user_files::Door,
     path: &Path,
 ) -> Result<(), String> {
-    let flavor = flavor_of(path);
+    let flavor = Shell::of_target(path);
     let what = path.display().to_string();
     let home = door.home().await?;
     let rel = crate::user_files::rel_under(&home, &what)?;
@@ -1120,11 +1096,7 @@ fn find_block_version(content: &str) -> (bool, Option<String>) {
 }
 
 /// 扫描 profile 找跟 command_name 同名的 function 定义（在 BEGIN/END 块外的）。
-fn find_conflicting_functions(
-    flavor: ProfileFlavor,
-    content: &str,
-    command_name: &str,
-) -> Vec<String> {
+fn find_conflicting_functions(flavor: Shell, content: &str, command_name: &str) -> Vec<String> {
     let safe = sanitize_command_name(command_name);
     let mut inside_ccm_block = false;
     let mut hits = Vec::new();
@@ -1144,7 +1116,7 @@ fn find_conflicting_functions(
         // 〔`K-R62`〕**两种方言的函数写法不同**：PowerShell 是 `function cc {`，
         // POSIX sh 是 `cc() {`。此前只认前一形 ⇒ 在 rc 上恒空，
         // 而「恒空」与「真的没冲突」在界面上一模一样。
-        if flavor == ProfileFlavor::PosixRc {
+        if flavor == Shell::Posix {
             if let Some(name) = function_name_of(l) {
                 if name.eq_ignore_ascii_case(&safe) {
                     hits.push(safe.clone());

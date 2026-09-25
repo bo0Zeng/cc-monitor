@@ -147,14 +147,17 @@ src/bridge/crates/creds-core/src/store.rs:149	凭据文件的顶层不是一个 
 src/bridge/crates/guard-core/src/lib.rs:902	{}#块{i}	保留	[不对外] 判据内核里的违规清单条目（坏块住址），只进断言失败信息
 src/bridge/crates/guard-core/src/lib.rs:1070	{who} · 生产段第 {} 行 · 逐字 `{cand}`	保留	[不对外] 判据内核 offenders 清单条目，只进断言失败信息
 src/bridge/crates/guard-core/src/lib.rs:1201	{who} · 第 {}–{} 行这一段：`{{` {opens} 个 / `}}` {closes} 个	保留	[不对外] 判据内核 offenders 清单条目，只进断言失败信息
-src/bridge/src/account_aliases.rs:262	`{name}`：cc-monitor 自带的别名块（src/shared/ccm-aliases.sh）里已经有同名函数 —— \n             那一份用 `declare -f` 让着你，所以你这条会赢；确认这就是你要的	改·§2.1	[对外] 别名冲突提示里露出源码住址 src/shared/ccm-aliases.sh 和实现细节 declare -f 兼§2.4 →「{name} 与 cc-monitor 自带的命令同名，以你这条为准」
-src/bridge/src/account_aliases.rs:271	`{name}`：PATH 上已经有一个同名程序（{}）—— source 之后你在终端敲 `{name}` \n                 打到的是这条别名，不再是那个程序	保留	[对外] PATH / source / 终端都是用户自己会这么叫的词；破折号后接的是后果，信息必要
-src/bridge/src/account_aliases.rs:234	# 这份文件由 cc-monitor 设置里「别名」那一块整份重写，别手改 —— 下一次写入会原样覆盖。\n\n         # 每一行是一条别名：名字 ＋ 一组 ccm 参数，调用时再给的参数接在后面。\n\n         # 写法是 POSIX sh 函数，bash / zsh 都 source 得了；fish 不行。\n	保留	[对外] 生成文件的头注（用户打开 ~/.cc-monitor/account-aliases.sh 会看到）：说清谁写的、别手改、一行一条、fish 不行，四句各一件事
 src/bridge/src/account_aliases.rs:239	# （当前一条别名都没有）\n	保留	[对外] 生成文件里清单为空时那一行注释，短
 src/bridge/src/account_aliases.rs:561	别名文件和盘上那份一模一样，没有重写。	保留	[对外] 写入结果的补充说明，先说结果
 src/bridge/src/account_aliases.rs:568	{rc_raw} 里加了一行 source（要撤就把 cc-monitor 那一小块整块删掉）。	保留	[对外] 写入结果：说清动了用户哪份文件、怎么撤；括号是撤法，不是论证
 src/bridge/src/account_aliases.rs:571	{rc_raw} 里已经接上了这份文件，没有再动它。	保留	[对外] 写入结果，短
 src/bridge/src/account_aliases.rs:575	新开一个终端就能用；当前终端要先执行一次 . {}	保留	[对外] 生效方式，一句一件事
+src/bridge/src/shell_dialect.rs:322	# 这份文件由 cc-monitor 设置里「别名」那一块整份重写，别手改 —— 下一次写入会原样覆盖。\n\n         # 每一行是一条别名：名字 ＋ 一组 ccm 参数，调用时再给的参数接在后面。\n\n         # 写法是 POSIX sh 函数，bash / zsh 都 source 得了；fish 不行。\n	保留	[对外] 生成文件的头注（用户打开 ~/.cc-monitor/account-aliases.sh 会看到）：说清谁写的、别手改、一行一条、fish 不行，四句各一件事
+src/bridge/src/shell_dialect.rs:364	`{name}`：cc-monitor 自带的别名块（src/shared/ccm-aliases.sh）里已经有同名函数 —— \n                 那一份用 `declare -f` 让着你，所以你这条会赢；确认这就是你要的	改·§2.1	[对外] 别名冲突提示里露出源码住址 src/shared/ccm-aliases.sh 和实现细节 declare -f 兼§2.4 →「{name} 与 cc-monitor 自带的命令同名，以你这条为准」
+src/bridge/src/shell_dialect.rs:370	`{name}`：PATH 上已经有一个同名程序（{}）—— source 之后你在终端敲 `{name}` \n                 打到的是这条别名，不再是那个程序	保留	[对外] PATH / source / 终端都是用户自己会这么叫的词；破折号后接的是后果，信息必要
+src/bridge/src/shell_dialect.rs:536	# 这份文件由 cc-monitor 设置里「别名」那一块整份重写，别手改 —— 下一次写入会原样覆盖。\n\n         # 每一个函数是一条别名：名字 ＋ 一组 ccm 参数，调用时再给的参数接在后面。\n\n         # 写法是 PowerShell 函数，5.1 与 7 都 dot-source 得了。\n	保留	[对外] 〔AL1c〕PowerShell 那份生成别名文件的头注，与 POSIX 那份同一口径（别手改 · 每个函数一条 · 哪几版能用）；PowerShell / dot-source 是用户自己也这么叫的词
+src/bridge/src/shell_dialect.rs:645	`{name}`：cc-monitor 的终端集成块里已经有同名函数 —— \n                 两者都在 $PROFILE 里时，排在后面的那一个赢；确认这就是你要的	保留	[对外] 〔AL1c〕PowerShell 撞名提示：说清撞了谁（终端集成块里的同名函数）与后果（后定义的赢），刻意不露模板文件名（POSIX 那一句露了 src/shared/ccm-aliases.sh，已被裁 改·§2.1）
+src/bridge/src/shell_dialect.rs:651	`{name}`：PATH 上已经有一个同名程序（{}）—— 装上之后你在 PowerShell 里敲 `{name}` \n                 打到的是这条别名，不再是那个程序	保留	[对外] 〔AL1c〕与 POSIX 那一句同形：PATH / PowerShell 是用户自己会这么叫的词；破折号后接的是后果，信息必要
 src/bridge/src/accounts.rs:212	远端后端版本较旧：它不认识账号 0（未设 CLAUDE_CONFIG_DIR 的那个默认登录），             列表里会少这一行。更新远端后端后即可看到。	保留	[对外] 先说结果（版本旧、少一行）再说怎么办；「更新远端后端」设置页里有这个动作；括号解释账号 0 是必要信息
 src/bridge/src/accounts.rs:218	远端 cc-acct-iso 版本较旧：它的 accounts.json 里没有账号 0（未设              CLAUDE_CONFIG_DIR 的那个默认登录）。在远端跑一次 'cc-acct-iso sync --apply'              （或重新部署 cc-acct-iso）即可补上。	改·§2.3	[对外] 让用户去远端手跑 'cc-acct-iso sync --apply' 或重新部署——内部维护活派给用户，且括号又给第二条路 兼§2.4 兼§2.1（accounts.json）→「远端账号表缺默认账号，重新部署账号隔离工具后可补上」
 src/bridge/src/accounts.rs:392	远端后端不支持账号查询（版本过旧）——请更新 backend	内部词→「后端」	[对外] 句尾「请更新 backend」中英混用，前半句已说「远端后端」；破折号可顺手去掉

@@ -772,6 +772,13 @@ fn every_comment_stripping_transformer_is_registered() {
             "同 cc_bus：本文件自用。⚠ 与共享原语重复，登记为待收口",
         ),
         (
+            // 〔AL1c · 第四波 4B〕两种方言的读回口（同名两份 `impl`，按文件名去重成一行）。
+            "shell_dialect.rs::parse_file",
+            "**别的注释语法，而且语料是我们自己生成的那份别名文件**：POSIX sh 与 PowerShell 的注释都是 `#`，\
+                 共享原语 `strip_comment_lines` 只认 `//` / `*` / `/*`（Rust/JS）。只跳**整行** `#`（生成文件的头注），\
+                 行里的 `#` 是参数值的一部分、原样保留。与 `e2e_gate_registry_tests.rs::strip_comments` 同一个缺口（共享原语没有「注释前缀」参数）",
+        ),
+        (
             "tmux_hook_tests.rs::prod_code",
             "backend 侧本地剥法（跨 crate 够不着 monitor 的 `guard_core`）",
         ),
@@ -3698,7 +3705,9 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔AL1 · 2026-09-24〕别名改由后端渲染那一拍：本模块头注里 TS 那个旧生成器（`buildAliasLine`）·
         // 测试里「形状围栏」那一条（`validate_alias_line`）· 生成物表里退役的 `AccountAliasReport.ts` ·
         // 延后 I/O 登记表里退役的 `write_account_aliases`，各一块。
-        ("src/bridge/src/account_aliases.rs", 2), // 〔AL1〕+1：`ccmInvocation` 那一句
+        // 〔AL1c · 4B〕2 → 1、`shell_dialect.rs` 0 → 1：`ccmInvocation` 那一句随 POSIX 读回（`parse_line`）搬进方言模块，墓碑跟着搬，总数不变。
+        ("src/bridge/src/account_aliases.rs", 1), // 〔AL1〕+1：`ccmInvocation` 那一句（〔AL1c〕搬走了，剩 `buildAliasLine` 那一块）
+        ("src/bridge/src/shell_dialect.rs", 1),
         ("tests/bridge/account_aliases_tests.rs", 1),
         ("tests/generated-boundary-guard.vitest.ts", 1),
         ("tests/settings/panel-deferred-io.vitest.ts", 1),

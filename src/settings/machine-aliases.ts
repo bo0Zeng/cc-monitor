@@ -435,7 +435,7 @@ export function buildAliasManager(opts: {
   const changed = async (): Promise<void> => {
     renderList();
     try {
-      rendered = await commands.aliases_render({ aliases: list });
+      rendered = await commands.aliases_render({ aliases: list, shell: "posix" });
     } catch (e) {
       rendered = null;
       problemsBox.textContent = `生成失败：${String(e)}`;
@@ -502,7 +502,7 @@ export function buildAliasManager(opts: {
       pathCcm.textContent = `问不到本机 ccm 这一格：${String(e)}`;
     }
     try {
-      const got = await commands.aliases_read();
+      const got = await commands.aliases_read({ shell: "posix" });
       list = got.aliases;
       const head = got.exists
         ? `${got.aliasPath}：${got.aliases.length} 条`
@@ -519,7 +519,11 @@ export function buildAliasManager(opts: {
   const onWrite = async (): Promise<void> => {
     writeBtn.disabled = true;
     try {
-      const r = await commands.aliases_install({ aliases: list, rcPath: rcSel.value || null });
+      const r = await commands.aliases_install({
+        aliases: list,
+        rcPath: rcSel.value || null,
+        shell: "posix",
+      });
       result.textContent = [r.wroteAliasFile ? `已写入 ${r.aliasPath}。` : "", ...r.notes]
         .filter(Boolean)
         .join("\n");
@@ -624,8 +628,8 @@ export function buildRemoteAliasPaste(): HTMLElement {
     loaded = true;
     void (async () => {
       try {
-        const got = await commands.aliases_read();
-        const r = await commands.aliases_render({ aliases: got.aliases });
+        const got = await commands.aliases_read({ shell: "posix" });
+        const r = await commands.aliases_render({ aliases: got.aliases, shell: "posix" });
         code = r.code;
         bad = r.problems.length ? "本机那份清单里有不合格的，先在「本机 → 工具 → 别名」里改好。" : "";
         status.textContent = `本机那份清单：${got.aliases.length} 条。`;

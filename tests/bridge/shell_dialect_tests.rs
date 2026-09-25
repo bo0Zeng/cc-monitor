@@ -1,0 +1,247 @@
+//! 〔AL1c · 第四波 4B〕`shell_dialect.rs` 的判据：`设计/71 §4.4` 那组接口在两种方言上逐项的**读法**。
+//!
+//! 规则（合不合格）不在这里判 —— 那一份住 `account_aliases`，判据在 `account_aliases_tests.rs`。
+//! 🔴 PowerShell 那一臂**一次都没被 PowerShell 解析过**（本机无 `pwsh`，Win11 虚拟机不许碰）：
+//! 这里只能钉黄金串与「与 POSIX 臂同契约」的对拍。
+
+use super::*;
+
+fn sv(xs: &[&str]) -> Vec<String> {
+    xs.iter().map(|s| s.to_string()).collect()
+}
+
+/// 同一份清单（带空格、单引号、弯引号、中文、`--tmux=`、`--` 透传），两个方言各钉逐字一份。
+fn sample() -> Vec<(&'static str, Vec<String>)> {
+    vec![
+        ("zcc", sv(&["--account", "z"])),
+        (
+            "convz",
+            sv(&["--tmux=w.1", "--account", "z", "--cwd", "/home/u/文档/c c"]),
+        ),
+        ("mo", sv(&["--model", "it's", "--", "--verbose"])),
+        ("curly", sv(&["--model", "a\u{2019}b"])),
+        ("bare", vec![]),
+    ]
+}
+
+/// 黄金串 · POSIX：与 AL1 那一版逐字一样（本路只搬了住址，一个字节都没改）。
+#[test]
+fn posix_golden() {
+    let got: Vec<String> = sample()
+        .iter()
+        .map(|(n, a)| Posix.render_alias(n, a))
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            r#"zcc() { ccm --account z "$@"; }"#.to_string(),
+            r#"convz() { ccm --tmux=w.1 --account z --cwd '/home/u/文档/c c' "$@"; }"#.to_string(),
+            r#"mo() { ccm --model 'it'\''s' -- --verbose "$@"; }"#.to_string(),
+            "curly() { ccm --model 'a\u{2019}b' \"$@\"; }".to_string(),
+            r#"bare() { ccm "$@"; }"#.to_string(),
+        ]
+    );
+    assert_eq!(
+        Posix.source_line("/h/.cc-monitor/aliases.sh"),
+        r#"if [ -r "/h/.cc-monitor/aliases.sh" ]; then . "/h/.cc-monitor/aliases.sh"; fi"#
+    );
+}
+
+/// 黄金串 · PowerShell：函数体与 `scripts/cc.ps1.tpl` 里的 `function cc` 逐字同形（那一形在 `K-R132` 真机上
+/// `parse-errors=0`），预置参数**每个都单引号**、四种引号字符都双写。
+#[test]
+fn powershell_golden() {
+    let got: Vec<String> = sample()
+        .iter()
+        .map(|(n, a)| PowerShell.render_alias(n, a))
+        .collect();
+    let body = |call: &str, name: &str| {
+        format!(
+            "function {name} {{\n    [CmdletBinding()] param(\n        [Parameter(ValueFromRemainingArguments = $true)] $RemainingArgs\n    )\n    if (Get-Command __ccm_bind -CommandType Function -ErrorAction SilentlyContinue) {{ __ccm_bind }}\n    & ccm{call} $RemainingArgs\n}}"
+        )
+    };
+    assert_eq!(
+        got,
+        vec![
+            body(" '--account' 'z'", "zcc"),
+            body(
+                " '--tmux=w.1' '--account' 'z' '--cwd' '/home/u/文档/c c'",
+                "convz"
+            ),
+            body(" '--model' 'it''s' '--' '--verbose'", "mo"),
+            body(" '--model' 'a\u{2019}\u{2019}b'", "curly"),
+            body("", "bare"),
+        ]
+    );
+    assert_eq!(
+        PowerShell.source_line(r"C:\Users\u\.cc-monitor/aliases.ps1"),
+        r"if (Test-Path -LiteralPath 'C:\Users\u\.cc-monitor/aliases.ps1') { . 'C:\Users\u\.cc-monitor/aliases.ps1' }"
+    );
+    // 与自带 `cc` 同形这一句**不是**抄来的：从那份模板现渲染一个 `cc`，逐行比骨架。
+    let cc = crate::profile_installer::render_cc_code("cc", true);
+    for fixed in [
+        "    [CmdletBinding()] param(",
+        "        [Parameter(ValueFromRemainingArguments = $true)] $RemainingArgs",
+        "    )",
+    ] {
+        assert!(
+            cc.lines().any(|l| l == fixed),
+            "别名函数的骨架与模板里的 `cc` 不再同形了：模板里没有 `{fixed}`"
+        );
+    }
+    assert!(
+        cc.lines().any(|l| l == "    & ccm $RemainingArgs"),
+        "模板里 `cc` 的调用那一行变了 —— 别名那一行的尾巴得跟着看"
+    );
+}
+
+/// 🔴 **与 POSIX 臂同契约的对拍**（PowerShell 真执行买不到时能买到的最强那一格）：
+/// 同一份清单，两个方言各自渲染 → 各自读回 → **两边都等于原清单**（两向：读回的不多一条、不少一条）。
+#[test]
+fn both_dialects_read_back_exactly_what_they_wrote() {
+    for d in [Shell::Posix.dialect(), Shell::PowerShell.dialect()] {
+        let text: String = sample()
+            .iter()
+            .map(|(n, a)| d.render_alias(n, a) + "\n")
+            .collect();
+        let back: Vec<(String, Vec<String>)> = d
+            .parse_file(&text)
+            .into_iter()
+            .map(|r| r.unwrap_or_else(|e| panic!("{:?} 读不回自己写的：{e}", d.shell())))
+            .collect();
+        let want: Vec<(String, Vec<String>)> = sample()
+            .into_iter()
+            .map(|(n, a)| (n.to_string(), a))
+            .collect();
+        assert_eq!(back, want, "{:?}", d.shell());
+    }
+}
+
+/// PowerShell 读回只认**生成的那一形**：函数体被手改过 ⇒ 整块算认不出（带原因），不猜。
+/// 块外的非注释行、没收尾的函数也都说出来，不静默丢。
+#[test]
+fn powershell_reader_names_what_it_cannot_take() {
+    let good = PowerShell.render_alias("zcc", &sv(&["--account", "z"]));
+    let edited = good.replace("__ccm_bind }", "__ccm_bind; Write-Host hi }");
+    let text = format!(
+        "\u{feff}# 注释\nSet-Alias x ls\n{good}\n{}\nfunction open {{\n",
+        edited.replace("zcc", "zcd")
+    );
+    let got = PowerShell.parse_file(PowerShell.decode_from_disk(&text));
+    assert_eq!(got.len(), 4, "{got:?}");
+    assert_eq!(got[1], Ok(("zcc".to_string(), sv(&["--account", "z"]))));
+    assert!(
+        matches!(&got[0], Err(e) if e.starts_with("Set-Alias x ls（")),
+        "{got:?}"
+    );
+    assert!(
+        matches!(&got[2], Err(e) if e.contains("zcd") && e.contains("手改")),
+        "{got:?}"
+    );
+    assert!(matches!(&got[3], Err(e) if e.contains("收尾")), "{got:?}");
+}
+
+/// 方言只看目标文件的扩展名（`.ps1` 大小写都认），不看宿主平台。
+#[test]
+fn the_dialect_comes_from_the_target_file() {
+    for ps in [
+        "/h/Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1",
+        "/h/x.PS1",
+    ] {
+        assert_eq!(Shell::of_target(Path::new(ps)), Shell::PowerShell, "{ps}");
+    }
+    for rc in ["/h/.bashrc", "/h/.zshrc", "/h/.profile", "/h/x.ps1.bak"] {
+        assert_eq!(Shell::of_target(Path::new(rc)), Shell::Posix, "{rc}");
+    }
+}
+
+/// BOM：PowerShell 写时加、读时剥；POSIX 两头都原样（用户 rc 开头那三个字节不是我们的）。
+#[test]
+fn only_powershell_gets_a_bom() {
+    let ps = PowerShell.encode_for_disk("# x\n");
+    assert!(ps.starts_with('\u{feff}') && ps.matches('\u{feff}').count() == 1);
+    assert_eq!(PowerShell.decode_from_disk(&ps), "# x\n");
+    assert_eq!(Posix.encode_for_disk("# x\n"), "# x\n");
+    assert_eq!(Posix.decode_from_disk("\u{feff}# x\n"), "\u{feff}# x\n");
+}
+
+/// 名字：两种方言同一个字符集；PowerShell 大小写不敏感（`Zcc` 与 `zcc` 是同一个函数）。
+#[test]
+fn names_are_portable_and_powershell_folds_case() {
+    for d in [Shell::Posix.dialect(), Shell::PowerShell.dialect()] {
+        for ok in ["zcc", "_x", "a1_b"] {
+            assert!(d.name_is_valid(ok), "{:?} {ok}", d.shell());
+        }
+        for bad in ["", "1a", "a-b", "a.b", "a b", "名字"] {
+            assert!(!d.name_is_valid(bad), "{:?} {bad}", d.shell());
+        }
+    }
+    assert!(PowerShell.same_name("Zcc", "zcc"));
+    assert!(!Posix.same_name("Zcc", "zcc"));
+}
+
+/// 值能不能原样到达 ccm：POSIX 恒能；PowerShell 拒空串、拒 `"`、拒「含空白且以 `\` 结尾」。
+#[test]
+fn powershell_refuses_values_it_would_mangle() {
+    for w in ["", "a\"b", "C:\\a b\\"] {
+        assert!(PowerShell.arg_is_passable(w).is_err(), "{w:?}");
+        assert!(Posix.arg_is_passable(w).is_ok(), "{w:?}");
+    }
+    for w in ["C:\\a\\", "it's", "a b", "--x=a.b"] {
+        assert!(PowerShell.arg_is_passable(w).is_ok(), "{w:?}");
+    }
+}
+
+/// 「接上了我们那份」：POSIX 认 `$HOME/…` 没展开那一形；PowerShell 两种分隔符、大小写都认。
+#[test]
+fn a_startup_file_that_already_sources_us_is_recognized() {
+    assert!(Posix.sources_our_file(
+        "if [ -r \"$HOME/.cc-monitor/aliases.sh\" ]; then . \"$HOME/.cc-monitor/aliases.sh\"; fi"
+    ));
+    assert!(!Posix.sources_our_file(". ~/.cc-monitor/account-aliases.sh"));
+    assert!(PowerShell.sources_our_file(r". 'C:\Users\U\.CC-MONITOR\Aliases.ps1'"));
+    assert!(PowerShell.sources_our_file(&PowerShell.source_line("/h/.cc-monitor/aliases.ps1")));
+    assert!(!PowerShell.sources_our_file(&Posix.source_line("/h/.cc-monitor/aliases.sh")));
+}
+
+/// 启动文件候选：POSIX 只列在的；PowerShell 的 5.1 两份恒列（不在也列），7 的两份只在它的目录在时列。
+#[test]
+fn startup_files_follow_each_shells_own_convention() {
+    let home = std::env::temp_dir().join(format!("ccm-dialect-{}", std::process::id()));
+    struct Rm(std::path::PathBuf);
+    impl Drop for Rm {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    let _rm = Rm(home.clone());
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(home.join(".zshrc"), "").unwrap();
+    assert_eq!(Posix.startup_files(&home), vec![home.join(".zshrc")]);
+    let docs = home.join("Documents");
+    assert_eq!(
+        PowerShell.startup_files(&home),
+        vec![
+            docs.join("WindowsPowerShell/Microsoft.PowerShell_profile.ps1"),
+            docs.join("WindowsPowerShell/profile.ps1"),
+        ]
+    );
+    std::fs::create_dir_all(docs.join("PowerShell")).unwrap();
+    assert_eq!(PowerShell.startup_files(&home).len(), 4);
+    assert!(PowerShell.creates_missing_startup_file());
+    assert!(!Posix.creates_missing_startup_file());
+}
+
+/// 撞名（只出声）：PowerShell 认终端集成模板里的函数（从模板现算，大小写不敏感）。
+#[test]
+fn powershell_knows_the_names_its_own_block_defines() {
+    for n in ["__ccm_bind", "CC"] {
+        let note = PowerShell
+            .name_taken(n)
+            .unwrap_or_else(|| panic!("`{n}` 在终端集成模板里就有，却一声不吭"));
+        assert!(note.contains("终端集成块"), "{note}");
+    }
+    assert!(PowerShell
+        .name_taken("zzz_no_such_command_anywhere")
+        .is_none());
+}

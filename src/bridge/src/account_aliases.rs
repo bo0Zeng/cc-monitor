@@ -32,32 +32,33 @@
 //! 〔RW1 · 第四波 09-24〕两处写（那份文件 ＋ rc 里那一行）**都不在本进程落盘**：经本机后端的文件管理
 //! 那一面（`user_files::edit` → `files-peek` / `files-put`），备份 · 原子替换 · 回读 · 回滚那一份规则住后端。
 
+//!
+//! # 〔AL1c · 第四波 4B〕本模块是**通用层**：只持有结构与规则，不持有任何一种 shell 的文本
+//!
+//! 「这个 shell 怎么写 / 文件落在哪 / 名字怎么认」全在 `shell_dialect.rs`（`设计/71 §4.4`，POSIX 与 PowerShell
+//! 各一份实现）；这里留的是**判定的规则**（V1–V5 · 能力闸 · 重名 · 有一条不合格整批不写 · rc 里只加一行且幂等）。
+//! 三条命令各带一个 `shell`：同一份清单，POSIX 落 `~/.cc-monitor/aliases.sh`、PowerShell 落
+//! `~/.cc-monitor/aliases.ps1`，各自由那个 shell 的启动文件里一行 source 接上。
+
 use std::path::{Path, PathBuf};
 
-/// 生成文件在 home 下的相对路径。**monitor 自己的目录**，不是用户环境的一部分。
-pub const ALIAS_FILE_REL: &str = ".cc-monitor/aliases.sh";
+use crate::shell_dialect::Shell;
 
-/// 写进用户 rc 的那一行所在的围栏。**刻意与 `profile_installer` 的
+/// 写进用户 rc / `$PROFILE` 的那一行所在的围栏。**刻意与 `profile_installer` 的
 /// `# === cc-monitor BEGIN` 不同前缀** —— 后者装的是 PowerShell 的 `cc` 块，
-/// 两者若共用标记，装一个就会把另一个整块替换掉。
+/// 两者若共用标记，装一个就会把另一个整块替换掉。`#` 打头的行在 POSIX 与 PowerShell 里都是注释 ⇒ 两种方言共用这一对。
 /// ⚠ `K-R62` 起是 `pub(crate)`：同 `profile_installer::BEGIN_MARKER` 那条理由 ——
 /// `fenced_block::FENCE_SHAPES` 指它，不抄它。
 pub(crate) const RC_BEGIN: &str = "# === cc-monitor aliases BEGIN v1 ===";
 pub(crate) const RC_END: &str = "# === cc-monitor aliases END ===";
 
-/// 生成文件自己的围栏（整份重写，所以它只是给人看的边界）。
+/// 生成文件自己的围栏（整份重写，所以它只是给人看的边界；两种方言共用，理由同上）。
 /// 〔AL1 · 2026-09-24〕v1 → v2：`71` 逐字「不要有 account alias 这种东西」—— 文件里只有**一类**别名。
 /// 读回（[`read_in`]）不认这两行（注释行一律跳过），所以盘上那份 v1 照样读得回来。
 const FILE_BEGIN: &str = "# === cc-monitor aliases BEGIN v2 ===";
 const FILE_END: &str = "# === cc-monitor aliases END ===";
 
-/// 界面上那个「要不要把这一行 `source` 加进去」的候选。**只列真实存在的那几份。**
-///
-/// ⚠ fish 的 `config.fish` **不在这里**，那不是遗漏：生成文件是 POSIX sh 的函数写法，
-/// fish 根本 `source` 不了它。少列一个候选好过让人点一下之后 shell 报一屏语法错。
-const RC_CANDIDATES: &[&str] = &[".bashrc", ".zshrc", ".bash_profile", ".profile"];
-
-/// 一份候选 rc 的状态。
+/// 一份候选启动文件（rc / `$PROFILE`）的状态。
 #[derive(Debug, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
@@ -65,85 +66,24 @@ const RC_CANDIDATES: &[&str] = &[".bashrc", ".zshrc", ".bash_profile", ".profile
 pub struct AccountAliasRc {
     /// 绝对路径。
     pub path: String,
-    /// 这份 rc 今天已经把生成文件 `source` 进去了吗（装过 ccm 别名块的人这一格就是 true）。
+    /// 这份文件今天已经把生成文件 `source` 进去了吗（装过 ccm 别名块的人这一格就是 true）。
     pub sourced: bool,
+    /// 〔AL1c〕这份文件在不在盘上。POSIX 只列在的（恒 true）；PowerShell 的 `$PROFILE` 常常要装的时候才建。
+    pub exists: bool,
 }
 
 /// 生成文件的绝对路径。`home` 由调用方给 —— 测试拿临时目录当 home，**绝不碰真实家目录**。
-pub fn alias_file_in(home: &Path) -> PathBuf {
-    home.join(ALIAS_FILE_REL)
+pub fn alias_file_in(home: &Path, shell: Shell) -> PathBuf {
+    home.join(shell.dialect().our_alias_file_rel())
 }
 
-/// 要加进 rc 的那**一行**。
-///
-/// `[ -r … ]` 那道是承重的：文件还没生成 / 被用户删掉时它是个 no-op，
-/// 而不是让用户每开一个终端就看见一行 `No such file or directory`。
-///
-/// ⚠ 写成 `if … then … fi` 而不是 `[ -r … ] && . …`，理由是**退出码**：
-/// 后者在文件不存在时整行返回 1，而这一行在 `src/shared/ccm-aliases.sh` 里是**最后一行**
-/// ⇒ `source` 那份片段会以非零收场。多数 rc 里无害，但「无害」不是理由 ——
-/// `if` 那一形恒返回 0，而它一个字都不难读。
-pub fn source_line(alias_path: &Path) -> String {
-    let p = alias_path.display();
-    format!("if [ -r \"{p}\" ]; then . \"{p}\"; fi")
-}
-
-/// 把中段按 POSIX 单引号规则切成词，顺便证明引号是配平的。
-///
-/// ⚠ 反斜杠**只**在 `'\''`（关引号 + 转义的引号 + 开引号）这一形里放行 ——
-/// 它是 `shell_quote_core::posix_quote` 唯一会产出的反斜杠（从前 TS 那个 `q()` 也是这一形）；别处出现一律拒。
-fn split_words(mid: &str) -> Result<Vec<String>, String> {
-    let mut words: Vec<String> = Vec::new();
-    let mut cur = String::new();
-    let mut started = false;
-    let mut in_q = false;
-    let mut it = mid.chars();
-    while let Some(c) = it.next() {
-        match c {
-            '\'' => {
-                in_q = !in_q;
-                started = true;
-            }
-            ' ' if !in_q => {
-                if started {
-                    words.push(std::mem::take(&mut cur));
-                    started = false;
-                }
-            }
-            '\\' if !in_q => {
-                // 只认 `'\''`：此刻引号刚被上一个 `'` 关掉，后面必须是 `'` 再 `'`。
-                if it.next() != Some('\'') || it.next() != Some('\'') {
-                    return Err("反斜杠只允许出现在 `'\\''` 这一形里".to_string());
-                }
-                cur.push('\'');
-                in_q = true;
-                started = true;
-            }
-            _ => {
-                cur.push(c);
-                started = true;
-            }
-        }
-    }
-    if in_q {
-        return Err("单引号没有配平".to_string());
-    }
-    if started {
-        words.push(cur);
-    }
-    Ok(words)
-}
-
-/// 整份生成文件的内容。**没有时间戳** —— 有了就永远比不出「内容没变」，每次都要写一遍。
-pub fn render_file(lines: &[String]) -> String {
+/// 整份生成文件的内容（**编码前**：BOM 那一层在落盘那一跳按方言加）。
+/// **没有时间戳** —— 有了就永远比不出「内容没变」，每次都要写一遍。
+pub fn render_file(shell: Shell, lines: &[String]) -> String {
     let mut out = String::new();
     out.push_str(FILE_BEGIN);
     out.push('\n');
-    out.push_str(
-        "# 这份文件由 cc-monitor 设置里「别名」那一块整份重写，别手改 —— 下一次写入会原样覆盖。\n\
-         # 每一行是一条别名：名字 ＋ 一组 ccm 参数，调用时再给的参数接在后面。\n\
-         # 写法是 POSIX sh 函数，bash / zsh 都 source 得了；fish 不行。\n",
-    );
+    out.push_str(shell.dialect().file_header());
     if lines.is_empty() {
         out.push_str("# （当前一条别名都没有）\n");
     }
@@ -165,13 +105,13 @@ pub fn render_file(lines: &[String]) -> String {
 //
 // 命令面是两跳（`71 §12.6`）：
 //   ① [`render`] —— **纯**：清单 → 代码（＋ 每条的问题 ＋ 撞名提示）。预览、复制都只调这一跳；
-//   ② [`install_in`] —— **唯一的副作用**：同一份渲染落进 `~/.cc-monitor/aliases.sh`（经本机后端），
-//      可选地往用户选的 rc 里装一行 `source`。它收的是**清单**不是代码 —— 写进 shell 的文本
-//      只由本模块产出（审计 S-1：绝不让前端注入可执行的 shell），而「写的就是预览的那一份」
+//   ② [`install_in`] —— **唯一的副作用**：同一份渲染落进我们自己那份别名文件（经那台机器的后端），
+//      可选地往用户选的启动文件里装一行 `source`。它收的是**清单**不是代码 —— 写进 shell 的文本
+//      只由 `shell_dialect` 产出（审计 S-1：绝不让前端注入可执行的 shell），而「写的就是预览的那一份」
 //      由两跳调同一个 [`render`] 保证。
-// 读回口：[`read_in`] 把盘上那份按行解析回清单（`70 §3.1` 那张「没有的」表第一条）。
+// 读回口：[`read_in`] 把盘上那份解析回清单（`70 §3.1` 那张「没有的」表第一条）。
 
-/// 一条别名。`args` 是原样的 ccm argv（`["--tmux", "--account", "z"]`），渲染时逐个按需加引号。
+/// 一条别名。`args` 是原样的 ccm argv（`["--tmux", "--account", "z"]`），渲染时由方言逐个按需加引号。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
@@ -195,9 +135,9 @@ pub struct AliasProblem {
 #[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct AliasRender {
-    /// 整份文件（写入那一跳原样落盘的就是它；手贴的人复制它或 `lines`）。
+    /// 整份文件（写入那一跳原样落盘的就是它 —— PowerShell 多一个 BOM；手贴的人复制它或 `lines`）。
     pub code: String,
-    /// 每条合格别名的那一行，按清单顺序。
+    /// 每条合格别名的写法，按清单顺序（POSIX 一行；PowerShell 一个函数块，含换行）。
     pub lines: Vec<String>,
     /// 不合格的那几条。**非空时 [`install_in`] 一个字节都不写**（fail-closed）。
     pub problems: Vec<AliasProblem>,
@@ -217,7 +157,7 @@ pub struct AliasListing {
     pub aliases: Vec<Alias>,
     /// 解析不回清单的那几行（原文 ＋ 原因）。**不静默丢**：写回去之前人得知道它们会没。
     pub unparsed: Vec<String>,
-    /// 这台机器上找得到的 shell 配置候选（「那一行 source 加进哪份」）。
+    /// 这台机器上这种 shell 的启动文件候选（「那一行 source 加进哪份」）。
     pub rc_candidates: Vec<AccountAliasRc>,
 }
 
@@ -255,32 +195,75 @@ pub(crate) const ALIAS_FLAGS: &[(&str, bool)] = &[
     ("--bus-note", true),
 ];
 
-/// 名字的规则（`71 §5` V5 前半）：POSIX shell 函数名。
-fn name_is_valid(name: &str) -> bool {
-    let mut cs = name.chars();
-    cs.next()
-        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
-        && cs.all(|c| c.is_ascii_alphanumeric() || c == '_')
+/// 〔AL1c〕**载体是 tmux 的那几个旗标**（`--tmux=<名>` 是 `--tmux` 的内联形，一并算）。
+/// 这台机器没有 tmux ⇒ 它们一个都不许进别名（生成出来就是一条当场 `no_tmux` 的别名）。
+///
+/// 🔴 它**不是**本模块自己的判断：事实源是后端 `control/ccm/mod.rs::CCM_TMUX_CARRIED`（靠 tmux 活着的 ccm 能力）。
+/// 判据 `account_aliases_tests.rs::the_tmux_gate_is_exactly_the_backends_tmux_carried_flags`
+/// 读后端原文、按「本表 == 那张表 ∩ [`ALIAS_FLAGS`]」两向相等钉着。
+pub(crate) const NEEDS_TMUX: &[&str] = &[
+    "--tmux",
+    "--tmux-base",
+    "--tmux-size",
+    "--detach",
+    "--bus-register",
+];
+
+/// 〔AL1c〕这台机器的**能力**（`设计/96`）—— 不是方言（`71 §4.4` 逐字：`has_tmux()` 不进那一族）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Caps {
+    /// 有没有 tmux（`--tmux` 那一族能不能用）。
+    pub tmux: bool,
 }
 
-/// 一条别名合不合格。**这些是「判定的规则」**（`71 §12.3` 第 6 格），与哪种 shell 无关。
-pub fn check_alias(a: &Alias) -> Result<(), String> {
-    if !name_is_valid(&a.name) {
+impl Caps {
+    /// 一种 shell 的目标机器上有什么。今天只有一个事实：**PowerShell 目标 ⇔ Windows ⇔ 没有 tmux**
+    /// （后端 `lib.rs::TARGET_GAPS` 里 `ccm-launcher` × Windows 那几行，用户 2026-09-21「windows 用 windows
+    /// 自己的后台服务，后面再做」）。POSIX 目标按「有」算：没装 tmux 的 Linux 由 ccm 在运行时报 `no_tmux`（今天就是这样）。
+    pub fn of(shell: Shell) -> Caps {
+        Caps {
+            tmux: shell == Shell::Posix,
+        }
+    }
+}
+
+/// 一条别名合不合格。**这些是「判定的规则」**（`71 §4.3` 第 6、7 格），与哪种 shell 无关；
+/// 方言只回答两个读法问题：名字的字符集、一个值能不能原样传到 ccm。
+pub fn check_alias(a: &Alias, shell: Shell) -> Result<(), String> {
+    let d = shell.dialect();
+    let caps = Caps::of(shell);
+    if !d.name_is_valid(&a.name) {
         return Err("名字只能用字母、数字、下划线，而且不能以数字开头".into());
     }
     let (mut account, mut base, mut tmux, mut tmux_named, mut tmux_base) =
         (false, false, false, false, false);
-    let (mut size, mut detach, mut bus) = (false, false, false);
+    let (mut size, mut detach, mut bus, mut note) = (false, false, false, false);
     let mut it = a.args.iter();
     while let Some(w) = it.next() {
         if w.chars().any(char::is_control) {
             return Err("参数里有换行或控制字符".into());
         }
+        d.arg_is_passable(w)?;
         if w == "--" {
-            if it.any(|x| x.chars().any(char::is_control)) {
-                return Err("参数里有换行或控制字符".into());
+            for x in it.by_ref() {
+                if x.chars().any(char::is_control) {
+                    return Err("参数里有换行或控制字符".into());
+                }
+                d.arg_is_passable(x)?;
             }
             break;
+        }
+        // 能力闸（`71 §4.6 ①`：「`cct` 在 Windows 上没有」从硬编码变成能力查询）。
+        let head = w.split_once('=').map_or(w.as_str(), |(h, _)| h);
+        if !caps.tmux && NEEDS_TMUX.contains(&head) {
+            return Err(format!(
+                "这台机器上没有 tmux —— {} 都用不了",
+                NEEDS_TMUX
+                    .iter()
+                    .map(|f| format!("`{f}`"))
+                    .collect::<Vec<_>>()
+                    .join(" / ")
+            ));
         }
         if let Some(n) = w.strip_prefix("--tmux=") {
             if n.is_empty() {
@@ -295,7 +278,9 @@ pub fn check_alias(a: &Alias) -> Result<(), String> {
         };
         if *takes {
             match it.next() {
-                Some(v) if !v.is_empty() && !v.chars().any(char::is_control) => {}
+                Some(v) if !v.is_empty() && !v.chars().any(char::is_control) => {
+                    d.arg_is_passable(v)?
+                }
                 _ => return Err(format!("`{flag}` 后面缺一个值")),
             }
         }
@@ -310,10 +295,11 @@ pub fn check_alias(a: &Alias) -> Result<(), String> {
             "--tmux-size" => size = true,
             "--detach" => detach = true,
             "--bus-register" => bus = true,
+            "--bus-note" => note = true,
             _ => {}
         }
     }
-    // V1–V4（`71 §5`，依据是 `ccm --help` 逐字）。
+    // V1–V4（`71 §5`，依据是 `ccm --help` 逐字）＋ 〔AL1c〕后端 `argv.rs` 那道「备注要有登记」的闸。
     if account && base {
         return Err("`--account` 与 `--base` 只能选一个".into());
     }
@@ -323,47 +309,28 @@ pub fn check_alias(a: &Alias) -> Result<(), String> {
     if bus && !detach {
         return Err("`--bus-register` 要和 `--detach` 一起用".into());
     }
+    if note && !bus {
+        return Err("`--bus-note` 要和 `--bus-register` 一起用".into());
+    }
     if (size || detach) && !tmux {
         return Err("`--tmux-size` 与 `--detach` 只在 tmux 里起的时候有意义".into());
     }
     Ok(())
 }
 
-/// 一个参数要不要加引号：只由「安全字符」组成的原样放，其余一律 POSIX 单引号
-/// （实现只有一份：`shell_quote_core::posix_quote`）。
-fn shell_word(w: &str) -> String {
-    let safe = !w.is_empty()
-        && w.chars().all(|c| {
-            c.is_ascii_alphanumeric()
-                || matches!(c, '_' | '-' | '.' | '/' | ':' | '@' | '%' | '+' | '=' | ',')
-        });
-    if safe {
-        w.to_string()
-    } else {
-        shell_quote_core::posix_quote(w)
-    }
+/// 一条（合格的）别名在这种 shell 里的写法（方言那一份的薄包装）。
+pub fn render_line(a: &Alias, shell: Shell) -> String {
+    shell.dialect().render_alias(&a.name, &a.args)
 }
 
-/// 一条（合格的）别名在 POSIX shell 里那一行：`名字() { ccm <参数…> "$@"; }`。
-/// `"$@"` 必须在最后 —— 那就是「参数附加器」的全部含义：调用时再给的参数接在后面、后者胜。
-pub fn render_line(a: &Alias) -> String {
-    let word = crate::backend::control::local_backend::CCM_ENTRY_WORD;
-    let mut out = format!("{}() {{ {word}", a.name);
-    for w in &a.args {
-        out.push(' ');
-        out.push_str(&shell_word(w));
-    }
-    out.push_str(" \"$@\"; }");
-    out
-}
-
-/// ① **纯**：清单 → 代码。一个字节都不写、一个文件都不读（撞名检查读的是自带片段与 `PATH`）。
-pub fn render(aliases: &[Alias]) -> AliasRender {
+/// ① **纯**：清单 → 代码。一个字节都不写、一个文件都不读（撞名检查读的是自带片段 / 模板与 `PATH`）。
+pub fn render(aliases: &[Alias], shell: Shell) -> AliasRender {
+    let d = shell.dialect();
     let mut lines = Vec::new();
     let mut problems = Vec::new();
     let mut seen: Vec<&str> = Vec::new();
     for a in aliases {
-        if seen.contains(&a.name.as_str()) {
+        if seen.iter().any(|s| d.same_name(s, &a.name)) {
             problems.push(AliasProblem {
                 name: a.name.clone(),
                 message: "同一个名字出现了两次 —— 后一条会盖掉前一条".into(),
@@ -371,8 +338,8 @@ pub fn render(aliases: &[Alias]) -> AliasRender {
             continue;
         }
         seen.push(&a.name);
-        match check_alias(a) {
-            Ok(()) => lines.push(render_line(a)),
+        match check_alias(a, shell) {
+            Ok(()) => lines.push(render_line(a, shell)),
             Err(message) => problems.push(AliasProblem {
                 name: a.name.clone(),
                 message,
@@ -381,43 +348,20 @@ pub fn render(aliases: &[Alias]) -> AliasRender {
     }
     let collisions = aliases
         .iter()
-        .filter(|a| name_is_valid(&a.name))
-        .filter_map(|a| collision_note(&a.name))
+        .filter(|a| d.name_is_valid(&a.name))
+        .filter_map(|a| collision_note(&a.name, shell))
         .collect();
     AliasRender {
-        code: render_file(&lines),
+        code: render_file(shell, &lines),
         lines,
         problems,
         collisions,
     }
 }
 
-/// 把生成文件里的一行解析回一条别名。认两种调用词：裸 `ccm`，以及从前那种
-/// `"${CCM:-<路径>}"`（`K-R69` 的 `ccmInvocation`〔散文墓碑〕吐过，那一格随 TS 生成器退役）—— 读回之后一律按裸 `ccm` 重写。
-fn parse_line(line: &str) -> Result<Alias, String> {
-    let rest = line
-        .strip_suffix(" \"$@\"; }")
-        .ok_or("结尾不是 `\"$@\"; }`")?;
-    let (name, body) = rest
-        .split_once("() { ")
-        .ok_or("不是 `名字() { … }` 的形状")?;
-    let mut words = split_words(body)?.into_iter();
-    let head = words.next().unwrap_or_default();
-    let word = crate::backend::control::local_backend::CCM_ENTRY_WORD;
-    if head != word && !head.starts_with("\"${CCM:-") {
-        return Err(format!("调的不是 {word}"));
-    }
-    let a = Alias {
-        name: name.to_string(),
-        args: words.collect(),
-    };
-    check_alias(&a)?;
-    Ok(a)
-}
-
 /// **读回口**：盘上那份别名文件 → 清单。只读。
-pub fn read_in(home: &Path) -> Result<AliasListing, String> {
-    let path = alias_file_in(home);
+pub fn read_in(home: &Path, shell: Shell) -> Result<AliasListing, String> {
+    let path = alias_file_in(home, shell);
     let (exists, text) = match std::fs::read_to_string(&path) {
         Ok(t) => (true, t),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => (false, String::new()),
@@ -425,13 +369,17 @@ pub fn read_in(home: &Path) -> Result<AliasListing, String> {
     };
     let mut aliases = Vec::new();
     let mut unparsed = Vec::new();
-    for l in text.lines().map(str::trim) {
-        if l.is_empty() || l.starts_with('#') {
-            continue;
-        }
-        match parse_line(l) {
-            Ok(a) => aliases.push(a),
-            Err(why) => unparsed.push(format!("{l}（{why}）")),
+    let d = shell.dialect();
+    for got in d.parse_file(d.decode_from_disk(&text)) {
+        match got {
+            Ok((name, args)) => {
+                let a = Alias { name, args };
+                match check_alias(&a, shell) {
+                    Ok(()) => aliases.push(a),
+                    Err(why) => unparsed.push(format!("{}（{why}）", render_line(&a, shell))),
+                }
+            }
+            Err(raw) => unparsed.push(raw),
         }
     }
     Ok(AliasListing {
@@ -439,7 +387,7 @@ pub fn read_in(home: &Path) -> Result<AliasListing, String> {
         exists,
         aliases,
         unparsed,
-        rc_candidates: rc_candidates_in(home),
+        rc_candidates: rc_candidates_in(home, shell),
     })
 }
 
@@ -452,8 +400,9 @@ pub async fn install_in<D: crate::user_files::Door>(
     door: &D,
     aliases: &[Alias],
     rc: Option<&str>,
+    shell: Shell,
 ) -> Result<AliasInstallReport, String> {
-    let r = render(aliases);
+    let r = render(aliases, shell);
     if !r.problems.is_empty() {
         let why: Vec<String> = r
             .problems
@@ -467,15 +416,16 @@ pub async fn install_in<D: crate::user_files::Door>(
         ));
     }
     let home = door.home().await?;
-    let path = alias_file_in(Path::new(&home));
-    let wrote_alias_file = write_alias_file(door, &home, &r.code).await?;
+    let path = alias_file_in(Path::new(&home), shell);
+    let wrote_alias_file = write_alias_file(door, &home, shell, &r.code).await?;
     let mut notes = Vec::new();
     if !wrote_alias_file {
         notes.push("别名文件和盘上那份一模一样，没有重写。".to_string());
     }
     let mut wrote_rc = false;
     if let Some(rc_raw) = rc {
-        if ensure_rc_source_line(door, &home, rc_raw, &source_line(&path)).await? {
+        let line = shell.dialect().source_line(&path.display().to_string());
+        if ensure_rc_source_line(door, &home, rc_raw, &line).await? {
             wrote_rc = true;
             notes.push(format!(
                 "{rc_raw} 里加了一行 source（要撤就把 cc-monitor 那一小块整块删掉）。"
@@ -496,56 +446,23 @@ pub async fn install_in<D: crate::user_files::Door>(
     })
 }
 
-/// 这个名字是不是已经被占了。**只出声、不拦** —— 见 `§0c 问三`。
-///
-/// 两条路各查一次，报出来的话里带住址，用户才知道自己在盖掉什么：
-/// ① `src/shared/ccm-aliases.sh` 里自带的那几个（今天是 `cc` / `cct`；`K-R58` 删掉了 `cch`）——
-///    **问的是那份文件本身**（`sftp::CCM_WRAPPER_SNIPPET` 就是它 `include_str!` 进来的），
-///    不在这里抄一份名字清单；
-/// ② `PATH` 上真有一个同名程序 —— 🔴 `cc` 在多数机器上是 C 编译器
-///    （`/usr/bin/cc`），而自带那份别名只检查「有没有同名**函数**」、不检查程序。
-///
-/// ⚠ **诚实边界**：② 查的是 monitor 这个进程的 `PATH`，不是用户登录 shell 的 `PATH`，
-/// 两者可以不同 ⇒ 它会漏报，不会误报成「有」。
-pub fn collision_note(name: &str) -> Option<String> {
-    if crate::sftp::CCM_WRAPPER_SNIPPET.contains(&format!("\n{name}()")) {
-        return Some(format!(
-            "`{name}`：cc-monitor 自带的别名块（src/shared/ccm-aliases.sh）里已经有同名函数 —— \
-             那一份用 `declare -f` 让着你，所以你这条会赢；确认这就是你要的"
-        ));
-    }
-    let path = std::env::var_os("PATH")?;
-    for dir in std::env::split_paths(&path) {
-        let cand = dir.join(name);
-        if cand.is_file() {
-            return Some(format!(
-                "`{name}`：PATH 上已经有一个同名程序（{}）—— source 之后你在终端敲 `{name}` \
-                 打到的是这条别名，不再是那个程序",
-                cand.display()
-            ));
-        }
-    }
-    None
+/// 这个名字是不是已经被占了。**只出声、不拦** —— 见 `§0c 问三`。怎么查由方言答（POSIX 查自带片段与 `PATH`；
+/// PowerShell 查终端集成模板与 `PATH` 上的 `.exe` / `.cmd` / …）。
+pub fn collision_note(name: &str, shell: Shell) -> Option<String> {
+    shell.dialect().name_taken(name)
 }
 
-/// 候选 rc 的现状。**只列盘上真实存在的那几份**，不存在的不列（不许猜一个出来）。
-pub fn rc_candidates_in(home: &Path) -> Vec<AccountAliasRc> {
-    // 🔴 认 [`ALIAS_FILE_REL`] 而不是展开后的绝对路径 —— 理由与
-    // [`ensure_rc_source_line`] 里那段红字是同一条：`src/shared/ccm-aliases.sh` 里那一行
-    // 写的是 `$HOME/.cc-monitor/…`（没展开）。按绝对路径认，装了 ccm 别名块的人
-    // 会被界面告知「还没 source 过」。
-    let needle = ALIAS_FILE_REL;
-    RC_CANDIDATES
-        .iter()
-        .map(|n| home.join(n))
-        .filter(|p| p.is_file())
+/// 候选启动文件的现状。列哪几份由方言答（POSIX 只列在的；PowerShell 的 `$PROFILE` 不在也列）。
+pub fn rc_candidates_in(home: &Path, shell: Shell) -> Vec<AccountAliasRc> {
+    let d = shell.dialect();
+    d.startup_files(home)
+        .into_iter()
         .map(|p| {
-            let sourced = std::fs::read_to_string(&p)
-                .map(|s| s.contains(needle))
-                .unwrap_or(false);
+            let text = std::fs::read_to_string(&p).ok();
             AccountAliasRc {
                 path: p.display().to_string(),
-                sourced,
+                sourced: text.as_deref().is_some_and(|s| d.sources_our_file(s)),
+                exists: text.is_some() || p.is_file(),
             }
         })
         .collect()
@@ -555,24 +472,31 @@ pub fn rc_candidates_in(home: &Path) -> Vec<AccountAliasRc> {
 ///
 /// 〔RW1 · 第四波 09-24〕经 `door`（本机后端）写：生成文件是**我们自己**的东西 ⇒ 不留备份文件；
 /// `~/.cc-monitor` 还不在就逐级补（`parents`）。回读 · 回滚那一份规则住后端。
+/// 〔AL1c〕落盘那一份按方言编码（PowerShell 加 BOM）。
 async fn write_alias_file<D: crate::user_files::Door>(
     door: &D,
     home: &str,
+    shell: Shell,
     content: &str,
 ) -> Result<bool, String> {
-    let done = crate::user_files::edit(door, home, ALIAS_FILE_REL, false, true, |_| {
-        Ok(Some(content.to_string()))
+    let d = shell.dialect();
+    let disk = d.encode_for_disk(content);
+    let done = crate::user_files::edit(door, home, d.our_alias_file_rel(), false, true, |_| {
+        Ok(Some(disk.clone()))
     })
     .await?;
     Ok(matches!(done, crate::user_files::Edited::Written(_)))
 }
 
-/// 把那一行 `source` 装进用户指定的 rc。**已经有了就一个字节都不写。**
+/// 把那一行 `source` 装进用户指定的启动文件。**已经有了就一个字节都不写。**
 ///
 /// 🔴 三道，一道都不省：① 路径过 `profile_installer::fence_path_under`（只许落在 home 之内）；
 /// ② 围栏损坏（有 BEGIN 没 END）**中止**，绝不用后面那个 END 去配对、吃掉中间的用户代码；
 /// ③ 写之前先备份、写完回读逐字比对、不符回滚。② 是 `fenced_block::splice_in`；
 /// ③ 〔RW1〕在后端（`files-put` 的 `backup: true`），与 rc 别名块、PowerShell profile、远端 rc 同一份规则。
+///
+/// 〔AL1c〕这份文件是哪种 shell 由**它自己**（扩展名）定，不由调用方说：`.ps1` ⇒ PowerShell 的排版与 BOM。
+/// 文件不在 ⇒ 由方言答建不建（PowerShell 的 `$PROFILE` 常常要这一下才有 ⇒ 建；POSIX ⇒ 停下说清）。
 async fn ensure_rc_source_line<D: crate::user_files::Door>(
     door: &D,
     home: &str,
@@ -584,31 +508,22 @@ async fn ensure_rc_source_line<D: crate::user_files::Door>(
     let path = crate::profile_installer::fence_path_under(Path::new(home), rc_raw)?;
     let rel = crate::user_files::rel_under(home, &path.display().to_string())?;
     let what = path.display().to_string();
+    let d = Shell::of_target(&path).dialect();
     let block = format!("{RC_BEGIN}\n{line}\n{RC_END}\n");
-    let done = crate::user_files::edit(door, home, &rel, true, false, |existing| {
-        let Some(existing) = existing else {
+    let create = d.creates_missing_startup_file();
+    let done = crate::user_files::edit(door, home, &rel, true, create, |raw| {
+        let Some(raw) = raw.or(create.then_some("")) else {
             return Err(format!("读不到 {what}：文件不存在"));
         };
-        // 🔴 认的是 [`ALIAS_FILE_REL`]，**不是那一整行**。
-        //
-        // 这一处栽过：`src/shared/ccm-aliases.sh` 里那一行写的是 `$HOME/.cc-monitor/…`（**没展开**），
-        // 而这里手上的 `line` 带的是展开后的绝对路径 ⇒ 按整行比，
-        // **一个已经装了 ccm 别名块的人会被判成「还没 source 过」，于是又被追加一行** ——
-        // 那正是本件开头列的第一条病（重复追加）。
-        // 按相对路径认，两种写法都认得出来。
-        // ⚠ 〔RW1〕改名之后旧那一段（指着 `account-aliases.sh`）认不出来 ⇒ 走下面的整块替换，改写成新形状。
-        if existing.contains(ALIAS_FILE_REL) {
+        let existing = d.decode_from_disk(raw);
+        // 🔴 认的是「接上了我们那份文件」（方言按相对路径认），**不是那一整行** ——
+        // POSIX 那一侧栽过：片段里那一行写的是 `$HOME/…`（没展开），按整行比会把装过别名块的人判成
+        // 「还没 source 过」、又追加一行。改名之后旧那一段（指着旧文件名）认不出来 ⇒ 走下面的整块替换。
+        if d.sources_our_file(existing) {
             return Ok(None);
         }
-        crate::fenced_block::splice_in(
-            existing,
-            RC_BEGIN,
-            RC_END,
-            &block,
-            &what,
-            crate::fenced_block::Layout::Posix,
-        )
-        .map(Some)
+        crate::fenced_block::splice_in(existing, RC_BEGIN, RC_END, &block, &what, d.layout())
+            .map(|next| Some(d.encode_for_disk(&next)))
     })
     .await?;
     Ok(matches!(done, crate::user_files::Edited::Written(_)))
