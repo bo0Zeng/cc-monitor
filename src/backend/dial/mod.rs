@@ -267,16 +267,10 @@ impl StageSink {
     }
 }
 
-/// 〔SR1a〕解析 `link-open` 的 `dial` 字段（C2 那一版从环境变量 `CCM_DIAL_REQUEST` 读同一份 JSON）。
+/// 〔SR1a〕解析 `link-open` 的 `dial` 字段（C2 那一版从环境变量读同一份 JSON）。
 /// **抽出来是为了判据够得着它** —— 判据不该去开一条真链路才能验「蛇形键读得动」。
 pub(crate) fn parse_request_value(v: &serde_json::Value) -> Result<DialRequest, serde_json::Error> {
     DialRequest::deserialize(v)
-}
-
-/// 判据用：从一行 JSON 文本读（与 [`parse_request_value`] 同一份反序列化）。
-#[cfg(test)]
-pub(crate) fn parse_request(raw: &str) -> Result<DialRequest, serde_json::Error> {
-    serde_json::from_str(raw.trim())
 }
 
 /// 写一行 JSON 并 flush。**必须 flush** —— 界面在有界读行上等着它。

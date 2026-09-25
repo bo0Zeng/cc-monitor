@@ -3605,8 +3605,10 @@ fn every_prose_tombstone_mark_is_registered() {
         // `ssh_source_dial_move_judge.rs` 三块（回落表那条判据 · 请求行那条 · 解析两处那条，随拨号搬家删掉）。
         ("src/bridge/src/inproc_dial.rs", 1),
         ("tests/bridge/ssh_source_dial_move_judge.rs", 3),
-        // 〔SR1a · 2026-09-24〕`--dial` 删了那一拍：守它的判据改名留的墓碑。
+        // 〔SR1a · 2026-09-24〕`--dial` 删了那一拍：守它的判据改名留的墓碑 · C2 那份读数脚本头上
+        //   那句「界面侧判据随之改名」（它点名的判据 SR1a 改了名，脚本本身只对 C2 那一版有效）。
         ("tests/backend/main_argv_table_guard.rs", 1),
+        ("tests/evidence/C2-dial-loopback.py", 1),
         // 〔MC1〕+3：模块头注 ＋ 装 / 卸两条命令头注里各一块（`…_ccm_helper` 改名成 `…_alias_block`）。
         ("src/bridge/src/sftp.rs", 6), // 〔F7c 收尾 09-24〕4 → 6（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("src/bridge/src/profile_installer.rs", 2), // 〔AL1〕+1：`AccountAliasReport` 那一句

@@ -2,6 +2,11 @@
 # ruff: noqa: E501
 """C2：**拨号代理（`<后端> --dial`）对着一台真 sshd 的现打**（`设计/05 §13`）。
 
+〔SR1a · 2026-09-24〕🔴 **本脚本只对 C2 那一版的后端有效**（BUILD_ID `p2t-commit-upload-dial-v2` 及之前）：
+`--dial` 子命令在 SR1a 删了（拨号挪进本机那一个常驻后端，经流上的 `link-*` 链路做），
+下面 `--monitor` 那一趟点名的界面侧判据也随之改名〔散文墓碑〕。**今天的读数脚本是 `tests/evidence/SR1a-link-loopback.py`**；
+本文件留着是因为 `IPC-PROTOCOL.md` §10 的 C2 段与 `设计/05 §13.10` 的读数出自它（那是当时的读数，不改）。
+
 跑法（仓根下，先 `cd src/backend && cargo build`）：
     python3 tests/evidence/C2-dial-loopback.py [--monitor] [后端二进制路径]
 

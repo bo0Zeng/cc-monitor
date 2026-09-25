@@ -1542,7 +1542,7 @@ key_path · host_key_fingerprint · 竞速地址 · 跳板`；最后一条链路
 
 | 方向 | 形状 |
 |---|---|
-| `args` | `{"link":"<不透明 id，客户端给、客户端负责唯一>","window":<初始信用，字节；缺省 1 MiB，夹在 [32 KiB, 16 MiB]>,"dial":{DialRequest}}` |
+| `args` | `{"link":"<不透明 id，客户端给、客户端负责唯一>","window":<初始信用，字节；必须在 [32 KiB, 16 MiB] 之内，否则 `invalid_args`>,"dial":{DialRequest}}` |
 | `data` | 无（登记上、任务起了就回 `ok` —— **不等拨通**：拨通与否在链路字节里那一行 ack） |
 
 `dial` 就是 C2 那份蛇形键请求：`host · port · user · key_path · host_key_fingerprint · command · endpoints · jump · use（stream｜capture｜forward）·
@@ -1569,7 +1569,7 @@ capture{max_bytes,abort_marker} · forward{local_port,remote_host,remote_port} �
 | `data` | 无 |
 
 monitor 的做法：链路的读者每读走半个窗口就还一次（`link_mux.rs`）⇒ 没人读的链路不还，后端的下行泵停在信号量上。
-累计信用夹在 16 MiB 以内（多还只让它自己的流控松一点，不撑爆）。错误 code：`invalid_args` · `no_such_link`。
+累计信用不许超过 16 MiB：还得比读走的多（不守约）⇒ `invalid_args`，不替它夹。错误 code：`invalid_args` · `no_such_link`。
 
 #### `link-close`：关一条链路
 

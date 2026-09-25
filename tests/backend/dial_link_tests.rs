@@ -1,6 +1,6 @@
 //! 〔SR1a〕链路表的判据（`dial/link.rs`）。
 //!
-//! 大部分格子拿 `install_for_tests` 喂一个**不拨号**的 `serve`（回声 / 造字节 / 永远挂着），
+//! 大部分格子拿 `Table::install`（生产 `open` 也走它）喂一个**不拨号**的 `serve`（回声 / 造字节 / 永远挂着），
 //! 钉的是链路自己的记账：顺序 · 流控 · 收尾 · 上限。最后几格走真的 `open`（真 russh，拨一个没人听的回环口），
 //! 钉「链路上的字节 == C2 拨号代理 stdout 的形状」。真 sshd 上的读数见 `tests/evidence/SR1a-link-loopback.py`。
 
@@ -61,10 +61,15 @@ async fn downstream_bytes_arrive_whole_and_in_order_then_the_link_ends() {
     let table = Table::new(tx);
     let want = pattern(3 * LINK_CHUNK_BYTES + 123);
     let payload = want.clone();
-    let r = table.install_for_tests("L", MAX_WINDOW, move |_up, mut down| async move {
-        use tokio::io::AsyncWriteExt;
-        down.write_all(&payload).await.unwrap();
-    });
+    let r = table.install(
+        "t",
+        "L".to_string(),
+        MAX_WINDOW,
+        move |_up, mut down| async move {
+            use tokio::io::AsyncWriteExt;
+            down.write_all(&payload).await.unwrap();
+        },
+    );
     assert!(matches!(r, Frame::Reply { ok: true, .. }));
     settle().await;
     let frames = drain(&mut rx);
@@ -98,10 +103,15 @@ async fn without_credit_exactly_one_window_goes_out() {
     let table = Table::new(tx);
     let window = 2 * LINK_CHUNK_BYTES as u64;
     let big = pattern(16 * LINK_CHUNK_BYTES);
-    let r = table.install_for_tests("W", window, move |_up, mut down| async move {
-        use tokio::io::AsyncWriteExt;
-        let _ = down.write_all(&big).await;
-    });
+    let r = table.install(
+        "t",
+        "W".to_string(),
+        window,
+        move |_up, mut down| async move {
+            use tokio::io::AsyncWriteExt;
+            let _ = down.write_all(&big).await;
+        },
+    );
     assert!(matches!(r, Frame::Reply { ok: true, .. }));
     settle().await;
     let first = drain(&mut rx);
@@ -130,16 +140,26 @@ async fn a_stalled_link_does_not_block_another() {
     let table = Table::new(tx);
     let window = LINK_CHUNK_BYTES as u64;
     let big = pattern(8 * LINK_CHUNK_BYTES);
-    table.install_for_tests("stuck", window, move |_up, mut down| async move {
-        use tokio::io::AsyncWriteExt;
-        let _ = down.write_all(&big).await;
-    });
+    table.install(
+        "t",
+        "stuck".to_string(),
+        window,
+        move |_up, mut down| async move {
+            use tokio::io::AsyncWriteExt;
+            let _ = down.write_all(&big).await;
+        },
+    );
     let want = pattern(5 * LINK_CHUNK_BYTES);
     let payload = want.clone();
-    table.install_for_tests("free", MAX_WINDOW, move |_up, mut down| async move {
-        use tokio::io::AsyncWriteExt;
-        down.write_all(&payload).await.unwrap();
-    });
+    table.install(
+        "t",
+        "free".to_string(),
+        MAX_WINDOW,
+        move |_up, mut down| async move {
+            use tokio::io::AsyncWriteExt;
+            down.write_all(&payload).await.unwrap();
+        },
+    );
     settle().await;
     let frames = drain(&mut rx);
     assert_eq!(bytes_of(&frames, "free"), want, "另一条链路被堵住了");
@@ -152,9 +172,14 @@ async fn a_stalled_link_does_not_block_another() {
 async fn upstream_blocks_are_written_in_order_and_acked_after_the_write() {
     let (tx, mut rx) = mpsc::channel::<Frame>(1024);
     let table = Table::new(tx);
-    table.install_for_tests("E", MAX_WINDOW, |mut up, mut down| async move {
-        let _ = tokio::io::copy(&mut up, &mut down).await;
-    });
+    table.install(
+        "t",
+        "E".to_string(),
+        MAX_WINDOW,
+        |mut up, mut down| async move {
+            let _ = tokio::io::copy(&mut up, &mut down).await;
+        },
+    );
     let chunks: Vec<Vec<u8>> = (0..3).map(|i| pattern(1000 + i)).collect();
     for (i, c) in chunks.iter().enumerate() {
         let r = table.data(
@@ -188,7 +213,7 @@ async fn upstream_blocks_are_written_in_order_and_acked_after_the_write() {
 async fn an_upstream_flood_is_refused_as_busy() {
     let (tx, _rx) = mpsc::channel::<Frame>(1024);
     let table = Table::new(tx);
-    table.install_for_tests("B", MAX_WINDOW, hang);
+    table.install("t", "B".to_string(), MAX_WINDOW, hang);
     let block = crate::wire::b64_encode(&[1u8; 8]);
     let codes: Vec<Option<String>> = (0..5)
         .map(|i| {
@@ -216,10 +241,15 @@ async fn close_aborts_the_link_and_is_idempotent() {
     let (tx, _rx) = mpsc::channel::<Frame>(16);
     let table = Table::new(tx);
     let (drop_tx, mut drop_rx) = mpsc::channel::<()>(1);
-    table.install_for_tests("C", MAX_WINDOW, move |up, down| async move {
-        let _keep = (up, down, DropSignal(drop_tx));
-        std::future::pending::<()>().await
-    });
+    table.install(
+        "t",
+        "C".to_string(),
+        MAX_WINDOW,
+        move |up, down| async move {
+            let _keep = (up, down, DropSignal(drop_tx));
+            std::future::pending::<()>().await
+        },
+    );
     settle().await;
     assert_eq!(table.len(), 1);
     let r = table.close("x", &serde_json::json!({"link": "C"}));
@@ -245,10 +275,15 @@ async fn dropping_the_table_aborts_every_link() {
     let (drop_tx, mut drop_rx) = mpsc::channel::<()>(1);
     for i in 0..3 {
         let d = drop_tx.clone();
-        table.install_for_tests(&format!("T{i}"), MAX_WINDOW, move |up, down| async move {
-            let _keep = (up, down, DropSignal(d));
-            std::future::pending::<()>().await
-        });
+        table.install(
+            "t",
+            format!("T{i}"),
+            MAX_WINDOW,
+            move |up, down| async move {
+                let _keep = (up, down, DropSignal(d));
+                std::future::pending::<()>().await
+            },
+        );
     }
     drop(drop_tx);
     settle().await;
@@ -289,6 +324,21 @@ async fn open_refuses_what_it_should_with_a_code() {
         code(table.open("a", &serde_json::json!({"link": "x", "dial": {"host": 1}}))),
         "invalid_args"
     );
+    // 窗口：缺席 / 小于一块 / 大于上限 ⇒ 拒收＋回错（不替对端夹）。
+    for w in [
+        serde_json::Value::Null,
+        serde_json::json!(LINK_CHUNK_BYTES - 1),
+        serde_json::json!(MAX_WINDOW + 1),
+    ] {
+        assert_eq!(
+            code(table.open(
+                "a",
+                &serde_json::json!({"link": "w", "window": w, "dial": dial})
+            )),
+            "invalid_args",
+            "窗口 {w} 该被拒"
+        );
+    }
     let mut sub = dial.clone();
     sub["use"] = "subsystem".into();
     assert_eq!(
@@ -297,19 +347,22 @@ async fn open_refuses_what_it_should_with_a_code() {
         "子系统那一口该回 unsupported_use（留口不开）"
     );
     assert_eq!(table.len(), 0);
-    table.install_for_tests("dup", MAX_WINDOW, hang);
+    table.install("t", "dup".to_string(), MAX_WINDOW, hang);
     assert_eq!(
-        code(table.open("a", &serde_json::json!({"link": "dup", "dial": dial}))),
+        code(table.open(
+            "a",
+            &serde_json::json!({"link": "dup", "window": MAX_WINDOW, "dial": dial})
+        )),
         "duplicate_link"
     );
     for i in 1..MAX_LINKS_PER_CONNECTION {
-        table.install_for_tests(&format!("n{i}"), MAX_WINDOW, hang);
+        table.install("t", format!("n{i}"), MAX_WINDOW, hang);
     }
     assert_eq!(table.len(), MAX_LINKS_PER_CONNECTION);
     assert_eq!(
         code(table.open(
             "a",
-            &serde_json::json!({"link": "one-too-many", "dial": dial})
+            &serde_json::json!({"link": "one-too-many", "window": MAX_WINDOW, "dial": dial})
         )),
         "too_many_links"
     );
@@ -317,6 +370,23 @@ async fn open_refuses_what_it_should_with_a_code() {
         code(table.credit("a", &serde_json::json!({"link": "nope", "bytes": 1}))),
         "no_such_link"
     );
+    // 累计信用超过上限 ⇒ 拒收＋回错；恰好到上限 ⇒ 收。（表是满的，先腾一格。）
+    table.close("a", &serde_json::json!({"link": "n1"}));
+    let r = table.install("t", "cr".to_string(), LINK_CHUNK_BYTES as u64, hang);
+    assert!(
+        matches!(r, Frame::Reply { ok: true, .. }),
+        "腾了一格还是装不上：{r:?}"
+    );
+    let room = MAX_WINDOW - LINK_CHUNK_BYTES as u64;
+    assert_eq!(
+        code(table.credit("a", &serde_json::json!({"link": "cr", "bytes": room + 1}))),
+        "invalid_args",
+        "多还一字节该被拒"
+    );
+    assert!(matches!(
+        table.credit("a", &serde_json::json!({"link": "cr", "bytes": room})),
+        Frame::Reply { ok: true, .. }
+    ));
     let d = table.data("a", &serde_json::json!({"link": "nope", "data": "AAAA"}));
     assert_eq!(d.map(code).as_deref(), Some("no_such_link"));
     let bad = table.data("a", &serde_json::json!({"link": "dup", "data": "A"}));

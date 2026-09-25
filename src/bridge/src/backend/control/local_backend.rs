@@ -1473,19 +1473,54 @@ fn read_capped_line_sync<R: std::io::BufRead>(
 /// 「backend **真的会发**这个帧」仍归后端侧 `EMITS "tmux_sessions"` 的登记
 /// （逐字「登记 = 承诺真发」）与协议文档守卫 —— 那一跳本判据**够不到**，
 /// 那条会起真 tmux 的实测因此**留着**（仍 `#[ignore]`），不是删掉了事。
-fn absorb_local_frame(frame: &crate::ssh_source::InboundFrame) {
-    // P3 刀 1：**本机的 tmux 帧也要收**。backend 的 `watch_loop` 周期跑本机 `tmux ls`
-    // 并推 `TmuxSessions` 帧。P2 写这个消费者时只需要通道，把非 hello 帧全丢了 ——
-    // 于是**本机 tmux 会话对 monitor 不可见，不是拿不到，是我们扔了**。
-    //
-    // ⚠ 收它有前置：本地 sid 进这张表之后，`/branch` 会走 `(Some(origin), …)`
-    // ⇒ 必须先有「本地也判得出 `Superseded`」（P3 刀 0）。没有刀 0 就收帧 =
-    // 把「永远消不掉的灰点」那个 bug 请回来。
-    if let crate::ssh_source::InboundFrame::TmuxSessions { raw, .. } = frame {
-        crate::ssh_source::record_tmux_raw(
-            crate::backend::control::inbound_client::LOCAL_ORIGIN,
-            raw.clone(),
-        );
+///
+/// 〔SR1a · 2026-09-24〕它从此是本机那条流上**所有**非 hello 帧的吸收点（两条读循环各调一次：
+/// 本文件的 [`local_stdio_consumer`] 与宿主的 `local_backend_host::attach_stream`）：
+/// - `reply` / `cancelled` ⇒ 交本机那条入方向客户端按 `id` 路由回请求方。
+///   ⚠ **此前本机两条读循环一条都不路由应答**（现打逐行读过）⇒ 在本机那条通道上发出去的入方向命令
+///   **只会等到超时**。开链路（`link-open`）要这条应答，所以这一格在这一拍补上。
+/// - `link_data` / `link_end` ⇒ 交 [`crate::link_mux`]（链路的 monitor 这一侧）。
+pub(crate) fn absorb_local_frame(
+    frame: crate::ssh_source::InboundFrame,
+    client: Option<&std::sync::Arc<crate::backend::control::inbound_client::InboundClient>>,
+) {
+    use crate::ssh_source::InboundFrame;
+    match frame {
+        // P3 刀 1：**本机的 tmux 帧也要收**。backend 的 `watch_loop` 周期跑本机 `tmux ls`
+        // 并推 `TmuxSessions` 帧。P2 写这个消费者时只需要通道，把非 hello 帧全丢了 ——
+        // 于是**本机 tmux 会话对 monitor 不可见，不是拿不到，是我们扔了**。
+        //
+        // ⚠ 收它有前置：本地 sid 进这张表之后，`/branch` 会走 `(Some(origin), …)`
+        // ⇒ 必须先有「本地也判得出 `Superseded`」（P3 刀 0）。没有刀 0 就收帧 =
+        // 把「永远消不掉的灰点」那个 bug 请回来。
+        InboundFrame::TmuxSessions { raw, .. } => {
+            crate::ssh_source::record_tmux_raw(
+                crate::backend::control::inbound_client::LOCAL_ORIGIN,
+                raw,
+            );
+        }
+        InboundFrame::Reply {
+            id,
+            ok,
+            code,
+            message,
+            data,
+        } => match client {
+            Some(c) => {
+                c.route_reply(&id, ok, code, message, data);
+            }
+            None => tracing::warn!("本机后端在 hello 之前就回了应答（id={id}）—— 协议倒错，丢掉"),
+        },
+        InboundFrame::Cancelled { id } => match client {
+            Some(c) => {
+                c.route_cancelled(&id);
+            }
+            None => tracing::warn!("本机后端在 hello 之前就回了 cancelled（id={id}）—— 丢掉"),
+        },
+        InboundFrame::LinkData { link, data } => crate::link_mux::deliver_data(&link, data),
+        InboundFrame::LinkEnd { link, error } => crate::link_mux::deliver_end(&link, error),
+        // 其余帧（会话 / 行 / hello …）本机这条流今天不消费（本机会话走本地 watcher）。
+        _ => {}
     }
 }
 
@@ -1591,16 +1626,16 @@ pub(crate) fn local_stdio_consumer(
         let Some(frame) = crate::ssh_source::parse_frame(&line) else {
             continue;
         };
-        // P3 刀 1：本机的 tmux 帧也要收。**理由与前置条件写在 `absorb_local_frame` 的头注上**
+        // 还没登记时先看它是不是 hello；不是 hello（或已经登记过了）⇒ 交吸收点。
+        // P3 刀 1 ＋〔SR1a〕应答与链路帧：**理由与前置条件写在 `absorb_local_frame` 的头注上**
         // ——〔08-12〕抽函数时这段散文一度**两处各一份**，那是第二份真相源，收敛掉。
-        absorb_local_frame(&frame);
-        // 下面只在**还没登记**时才找 hello；登记之后不再看它。
-        if parked.is_none() {
-            continue;
-        }
-        let Some(witness) =
+        let witness = if parked.is_some() {
             crate::backend::control::inbound_client::BackendHello::from_hello_frame(&frame)
-        else {
+        } else {
+            None
+        };
+        let Some(witness) = witness else {
+            absorb_local_frame(frame, registered.as_ref());
             continue;
         };
         // 日志取自**帧**而不是 client —— `InboundClient` 的 `commands` 是私有的，
@@ -1627,6 +1662,10 @@ pub(crate) fn local_stdio_consumer(
         );
     }
 
+    // 〔SR1a〕流没了 ⇒ 经它开的在飞链路全部带原因结束（不让调用方干等到超时）。
+    if let Some(mine) = registered.as_ref() {
+        crate::link_mux::fail_owned_by(mine, "本机后端的流断了（stdio 载体）");
+    }
     // ★ `K-P3b`：**「它跟我们说过话没有」的唯一变真处就是上面那一行 `registered = Some(client)`**
     //   —— 而那一行只在 `BackendHello::from_hello_frame` 给出见证之后才跑得到。
     //   ⇒ 这一维是**观测**，不是默认值：把它在这里读一次，别在别处猜。

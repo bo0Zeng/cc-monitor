@@ -93,8 +93,7 @@ impl<C: Conn> Pool<C> {
         }
     }
 
-    /// 此刻还活着（有人在用）的连接数。判据用。
-    #[cfg(test)]
+    /// 此刻还活着（有人在用）的连接数。
     pub(crate) fn live(&self) -> usize {
         let g = self.slots.lock().unwrap_or_else(|e| e.into_inner());
         g.values()
