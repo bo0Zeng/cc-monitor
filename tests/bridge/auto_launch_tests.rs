@@ -3,7 +3,8 @@
 //! 核原文：`INVARIANTS §2.1` 那一行逐字「`enabled`=真相；`monitor_exe_path`=派生」—— `auto_launch.rs::save` /
 //! `auto_launch.rs::load` 往返不丢这两格；`D3` 逐字「诚实的默认 ＝ 恒等 / 不作为 / 沿用调用者已有状态」—— 文件不在 ⇒ 不自启。
 //! ⚠ 住址偏弱：这项功能本身（cc 函数在 monitor 没跑时拉起它）在设计篇没有行为节。
-//! `roundtrip_serialize` 只测 serde 往返，被 `save_and_load_roundtrip` 整个盖住 ⇒ 列进 `JA1.md` 候选退役。〔JA1 点址 2026-09-24〕
+//! 〔JA1 点址 2026-09-24〕〔TL1 · 4C〕原先的 `roundtrip_serialize`（只测 serde 往返）退役：五刀里凡红它的，`save_and_load_roundtrip`
+//! 都红（它走的链是后者的子链）；两条都放过的一刀（字段改线上名）是 `cc.ps1.tpl` 那一侧的契约，本族本来就不管（读数在 `TL1.md` 件 1）。
 
 use super::*;
 use std::fs;
@@ -15,18 +16,6 @@ fn default_when_missing() {
     let cfg = load(&tmp);
     assert!(!cfg.auto_launch_enabled);
     assert!(cfg.monitor_exe_path.is_none());
-}
-
-#[test]
-fn roundtrip_serialize() {
-    let cfg = AutoLaunchConfig {
-        auto_launch_enabled: true,
-        monitor_exe_path: Some(r"C:\foo\monitor.exe".to_string()),
-    };
-    let s = serde_json::to_string(&cfg).unwrap();
-    let parsed: AutoLaunchConfig = serde_json::from_str(&s).unwrap();
-    assert!(parsed.auto_launch_enabled);
-    assert_eq!(parsed.monitor_exe_path.unwrap(), r"C:\foo\monitor.exe");
 }
 
 #[test]

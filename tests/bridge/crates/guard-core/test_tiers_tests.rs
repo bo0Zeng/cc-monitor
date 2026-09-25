@@ -63,7 +63,6 @@ const UNIT: &[&str] = &[
     "tests/backend-policy.vitest.ts",
     "tests/backend/accounts/apikey/table_tests.rs",
     "tests/backend/accounts/iso_tests.rs",
-    "tests/backend/agents/claudecode/liveness_tests.rs",
     "tests/backend/agents/claudecode/records_tests.rs",
     "tests/backend/agents/claudecode/resume_tests.rs",
     "tests/backend/agents/codex/parse_tests.rs",
