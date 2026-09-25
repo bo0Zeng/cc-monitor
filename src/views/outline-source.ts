@@ -7,7 +7,7 @@
  * 喂它的是 `toUserInputEntry`）—— **到达序不是对话序**（重放是尾块先到），monitor 起得晚
  * 清单就不全，每个 tab 各攒一份。历史查看器那边再拿同一份 TS 判定扫全量 payloads。
  * 两样都删了：「什么算一条用户输入」只住后端（`observe/user_inputs.rs`），
- * 两个宿主都经 `list_user_inputs` 来要（`IPC-PROTOCOL.md §10.4`）。
+ * 两个宿主都经同一处来要（〔C4b〕`session-reads.ts::listUserInputs` 经通道直接说帧命令 `history-user-inputs`，`IPC-PROTOCOL.md §10.4`）。
  *
  * # 形状
  *
@@ -17,7 +17,7 @@
  * - `refresh()`：从 `end` 接着要一截，追加到面板上。在途时再叫 ⇒ 这一趟回来后**只补一趟**（合并）。
  * - 增量要不到（后端报「越过 EOF」= 文件被截断/重写）或增量里冒出**已有的** uuid（被重写但更长）
  *   ⇒ 从 0 重要一份、整表换掉。
- * - 要不到清单：**只看 monitor 回的种类**（`OutlineFailure`），不解析原因文字 ——
+ * - 要不到清单：**只看回包里的种类**（`OutlineFailure`，分档只住 `session-reads.ts::failureOf`），不解析原因文字 ——
  *   · **结构性**（`oldBackend`：对面不认这条命令 / 回的形状不对）⇒ 再要一定还是这样 ⇒ 灰掉说原因、此后不再要；
  *   · **瞬时**（`transport` / `truncated`：进程或连接出错、超时、输出断在半路）⇒ **下一次触发时再要**
  *     （沿用现有触发点，不起定时器）；**连续** [`MAX_TRANSIENT_FAILURES`] 次都是瞬时 ⇒ 按结构性处理。
@@ -30,12 +30,14 @@
  * （渲染那边已有的 `onRealUserInput` 事件 —— 「刚刚发生了什么」留在流上，`设计/10 §2.2`）。
  * 查看器：加载完要一次。
  */
-import { commands } from "../ipc/commands";
 import type { Origin } from "../generated/Origin";
-import type { UserInputsResult } from "../generated/UserInputsResult";
-import type { OutlineFailure } from "../generated/OutlineFailure";
+import {
+  listUserInputs,
+  type OutlineFailure,
+  type UserInputEntry,
+  type UserInputsResult,
+} from "../session-reads";
 import type { UserInputPanel } from "./user-input-panel";
-import type { UserInputEntry } from "../generated/UserInputEntry";
 
 /** 这份清单问的是哪台机器上的哪份会话。拿不到（tab 还没收到路径）⇒ `null`，这一趟不要。 */
 export type OutlineWhere = () => { origin: Origin; jsonlPath: string } | null;
@@ -60,7 +62,7 @@ export interface OutlineSeed {
  *
  * 推断是**单向可靠**的（理由逐字在后端 `IndexRow::x` 的头注）：
  * - 有**至少一个** `x` ⇒ 对面是会出它的后端 ⇒ 每一条用户输入都带着（同一个判定逐行跑）⇒ 这就是全量清单；
- * - 一个都没有 ⇒ **分不清**「老后端」还是「真的零条」⇒ `null`，调用方照旧 `list_user_inputs(0)` 要一份。
+ * - 一个都没有 ⇒ **分不清**「老后端」还是「真的零条」⇒ `null`，调用方照旧从 0 要一份清单。
  * 索引要不到（`available: false`）同样 `null`。
  */
 export function outlineSeedFromIndex(res: {
@@ -159,8 +161,8 @@ export class OutlineSource {
   /**
    * 〔SE2〕**骨架索引在途：清单先不单独要，等它带回来。**
    *
-   * 宿主发 `read_session_index(0)` 的同一刻调它（`tab-stream-view.ts::requestSkeleton`）。`seed` 兑现成：
-   * - 一份清单 ⇒ 整表建好、续点接上它的 `end`（**这一趟没有 `list_user_inputs(0)`**）；
+   * 宿主发「从 0 起的骨架索引」的同一刻调它（`tab-stream-view.ts::requestSkeleton`）。`seed` 兑现成：
+   * - 一份清单 ⇒ 整表建好、续点接上它的 `end`（**这一趟不再单独要清单**）；
    * - `null` / 抛了（老后端 / 真的零条 / 索引失败）⇒ 照旧自己从 0 要一份。
    * 等的期间 `refresh()` 并进同一趟（沿用在途合并）。等完：没种上 ⇒ 补一趟从 0 的 `refresh()`；
    * 种上了 ⇒ 只有「等的期间真有新行进来（`markStale`）**而且**有人叫过」才补一趟增量 ——
@@ -223,12 +225,12 @@ export class OutlineSource {
     let res: UserInputsResult;
     let base = this.end;
     try {
-      res = await commands.list_user_inputs({ ...where, fromOffset: this.end });
+      res = await listUserInputs(where.origin, where.jsonlPath, this.end);
       if (gen !== this.gen) return;
       if (!res) throw new Error("没有回包");
       // 增量要不到（多半是越过 EOF = 截断/重写）或冒出已有的 uuid（重写但更长）⇒ 从 0 重要一份
       if (this.end > 0 && (!res.available || res.entries.some((e) => this.uuids.has(e.uuid)))) {
-        res = await commands.list_user_inputs({ ...where, fromOffset: 0 });
+        res = await listUserInputs(where.origin, where.jsonlPath, 0);
         if (gen !== this.gen) return;
         if (!res) throw new Error("没有回包");
         base = 0;

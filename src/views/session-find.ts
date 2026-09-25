@@ -32,8 +32,7 @@
  * - 查不了（老后端 / 本机后端不在 / 截断）⇒ 状态行说清原因（原因由 monitor 给，本类不猜）。
  */
 import { UserInputPanel, OUTLINE_LABEL, markJump, type JumpResult } from "./user-input-panel";
-import type { FindResult } from "../generated/FindResult";
-import type { FindHit } from "../generated/FindHit";
+import type { FindHit, FindResult } from "../session-reads";
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 
 /** 两个模式。 */

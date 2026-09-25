@@ -490,8 +490,8 @@ pub(crate) fn parse_from_offset_args(
 
 /// `--list-user-inputs [--from <offset>] <jsonl_path>` 的 argv：一个位置参数 ＋ 一个可选的 `--from`。
 ///
-/// 选项在位置参数前后都认；**monitor 一律写在前面**（`session_outline::user_inputs_argv`
-/// 有判据钉着，与骨架索引 `index_argv` 同一条纪律）。未知的 `--选项`、多余的位置参数都**报错**，
+/// 选项在位置参数前后都认；客户端写在前面（与骨架索引那一形同一条纪律；〔C4b〕monitor 不再经 argv 发它，
+/// 界面经帧命令 `history-user-inputs` 问）。未知的 `--选项`、多余的位置参数都**报错**，
 /// 不静默忽略 —— 静默忽略会让调用方拿到一份形状不对的输出还以为成功了。
 pub(crate) fn parse_user_inputs_args(rest: &[String]) -> Result<(u64, &String), String> {
     let mut from: u64 = 0;
@@ -542,6 +542,21 @@ pub(crate) fn list_user_inputs_into(
     from: u64,
     mut out: &mut dyn Write,
 ) -> Result<(), String> {
+    crate::observe::user_inputs::write_user_inputs(
+        open_user_inputs_at(agent_home, jsonl_path, from)?,
+        from,
+        &mut out,
+    )
+    .map_err(|e| format!("stream failed: {e}"))?;
+    Ok(())
+}
+
+/// 〔C4b · 第四波 4B〕大纲清单的打开口（围栏 ＋「起点越过文件尾 ⇒ 报错」＋ 定位）—— CLI 臂与帧面臂共用。
+pub(crate) fn open_user_inputs_at(
+    agent_home: &Path,
+    jsonl_path: &str,
+    from: u64,
+) -> Result<std::io::BufReader<std::fs::File>, String> {
     use std::io::{Seek, SeekFrom};
     let target = validate_session_path(agent_home, jsonl_path)?;
     let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
@@ -553,9 +568,7 @@ pub(crate) fn list_user_inputs_into(
     }
     f.seek(SeekFrom::Start(from))
         .map_err(|e| format!("seek failed: {e}"))?;
-    crate::observe::user_inputs::write_user_inputs(std::io::BufReader::new(f), from, &mut out)
-        .map_err(|e| format!("stream failed: {e}"))?;
-    Ok(())
+    Ok(std::io::BufReader::new(f))
 }
 
 /// `--find-in-session` 的 argv（〔SE2〕）。
@@ -571,7 +584,7 @@ pub(crate) struct FindArgs<'a> {
 ///
 /// 🔴 **查询串是 `--query` 的值，不是位置参数**：用户要找的就可能是 `--force` 这种以 `--` 起头的词，
 /// 作为位置参数它会被当成一个写错的选项。选项的值原样取下一个 token，不看它长什么样。
-/// 选项在位置参数前后都认；**monitor 一律写在前面**（`session_find::find_argv` 有判据钉着）。
+/// 选项在位置参数前后都认；客户端写在前面（〔C4b〕monitor 不再经 argv 发它，界面经帧命令 `history-find` 问）。
 /// 未知的 `--选项`、缺 `--query`、位置参数不是恰好一个 ⇒ **报错**（不静默忽略 —— `--search` 那种
 /// 「未知选项容错忽略」正是本命令不做成它的一个选项的理由之一，见 `IPC-PROTOCOL.md §10.5`）。
 /// `--limit` 超出封顶按封顶算（`FIND_MAX_LIMIT`）；0 ⇒ 只数不列。
@@ -642,10 +655,8 @@ pub(crate) fn find_in_session_into(
     limit: usize,
     mut out: &mut dyn Write,
 ) -> Result<(), String> {
-    let target = validate_session_path(agent_home, jsonl_path)?;
-    let f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
     crate::observe::search_query::write_session_find(
-        std::io::BufReader::new(f),
+        open_session_at(agent_home, jsonl_path, 0)?,
         query,
         include_tools,
         limit,
@@ -688,14 +699,29 @@ pub(crate) fn session_index_into(
     until: Option<u64>,
     mut out: &mut dyn Write,
 ) -> Result<(), String> {
+    write_session_index(
+        open_session_at(agent_home, jsonl_path, offset)?,
+        offset,
+        until,
+        &mut out,
+    )
+    .map_err(|e| format!("stream failed: {e}"))?;
+    Ok(())
+}
+
+/// 〔C4b · 第四波 4B〕过围栏、打开、定位到 `offset` —— 骨架索引与会话内查找的 CLI 臂和帧面臂共用这一处
+/// （帧面那一臂出成品，不经 `out`，见 `read_face.rs`）。
+pub(crate) fn open_session_at(
+    agent_home: &Path,
+    jsonl_path: &str,
+    offset: u64,
+) -> Result<std::io::BufReader<std::fs::File>, String> {
     use std::io::{Seek, SeekFrom};
     let target = validate_session_path(agent_home, jsonl_path)?;
     let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
     f.seek(SeekFrom::Start(offset))
         .map_err(|e| format!("seek failed: {e}"))?;
-    write_session_index(std::io::BufReader::new(f), offset, until, &mut out)
-        .map_err(|e| format!("stream failed: {e}"))?;
-    Ok(())
+    Ok(std::io::BufReader::new(f))
 }
 
 /// [`session_index`] 的内核：读 `r`（已定位在 `from`）逐行出索引。**纯 I/O 泛型**，单测直接喂字节。
@@ -703,7 +729,7 @@ pub(crate) fn session_index_into(
 /// `until`：只收**起点** `< until` 的行（起点在界内的那一行整行收，不劈半行）。
 /// 返回写出的行数（不含头尾）。
 pub(crate) fn write_session_index<R: std::io::BufRead, W: std::io::Write>(
-    mut r: R,
+    r: R,
     from: u64,
     until: Option<u64>,
     out: &mut W,
@@ -712,6 +738,26 @@ pub(crate) fn write_session_index<R: std::io::BufRead, W: std::io::Write>(
         out,
         "{{\"kind\":\"session_index\",\"v\":1,\"from\":{from}}}"
     )?;
+    let (count, end) = scan_session_index(r, from, until, |row| {
+        serde_json::to_writer(&mut *out, row)?;
+        out.write_all(b"\n")
+    })?;
+    writeln!(
+        out,
+        "{{\"kind\":\"session_index_end\",\"count\":{count},\"end\":{end}}}"
+    )?;
+    Ok(count)
+}
+
+/// 〔C4b · 第四波 4B〕[`write_session_index`] 的中段：每个可计行一条 [`IndexRow`] 交给 `on_row`，回 `(count, end)`。
+/// CLI 那一臂（写头尾三段）与帧面那一臂（`read_face.rs` 的 `history-index`，装成成品 `{from, end, rows}`）
+/// 跑的是**同一个**扫描；「这一行占不占 seq」仍只住 [`line_counts`]。
+pub(crate) fn scan_session_index<R: std::io::BufRead>(
+    mut r: R,
+    from: u64,
+    until: Option<u64>,
+    mut on_row: impl FnMut(&IndexRow) -> std::io::Result<()>,
+) -> std::io::Result<(u64, u64)> {
     let mut pos = from;
     let mut end = from;
     let mut count: u64 = 0;
@@ -732,16 +778,10 @@ pub(crate) fn write_session_index<R: std::io::BufRead, W: std::io::Write>(
         if !line_counts(body) {
             continue; // 空行不占 seq（判定只有 `line_counts` 一个住址）
         }
-        let row = index_row(body, start, read as u64);
-        serde_json::to_writer(&mut *out, &row)?;
-        out.write_all(b"\n")?;
+        on_row(&index_row(body, start, read as u64))?;
         count += 1;
     }
-    writeln!(
-        out,
-        "{{\"kind\":\"session_index_end\",\"count\":{count},\"end\":{end}}}"
-    )?;
-    Ok(count)
+    Ok((count, end))
 }
 
 /// 骨架索引的一行：**位置 ＋ 身份 ＋ 宽度无关料**（`设计/10 §1` 第一格 · `§2.5b 路 D`）。

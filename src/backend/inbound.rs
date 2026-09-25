@@ -1279,7 +1279,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "history-find",
         doc_anchor: Some("#### `history-find`"),
         codes: &["bad_args", "failed", "too_large"],
-        fields: &["include_tools", "limit", "lines", "path", "query"],
+        fields: &["hits", "include_tools", "limit", "path", "query", "total"], // 〔C4b〕应答出成品：`lines` ⇒ `total` / `hits`
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::read_face::answer(&r.cmd, &r.args)
@@ -1291,7 +1291,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "history-index",
         doc_anchor: Some("#### `history-index`"),
         codes: &["bad_args", "failed", "too_large"],
-        fields: &["lines", "offset", "path", "until"],
+        fields: &["end", "from", "offset", "path", "rows", "until"], // 〔C4b〕应答出成品：`lines` ⇒ `from` / `end` / `rows`
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::read_face::answer(&r.cmd, &r.args)
@@ -1303,7 +1303,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "history-user-inputs",
         doc_anchor: Some("#### `history-user-inputs`"),
         codes: &["bad_args", "failed", "too_large"],
-        fields: &["from", "lines", "path"],
+        fields: &["end", "entries", "from", "path"], // 〔C4b〕应答出成品：`lines` ⇒ `from` / `end` / `entries`
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::read_face::answer(&r.cmd, &r.args)

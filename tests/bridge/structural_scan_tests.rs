@@ -3819,6 +3819,13 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/ipc/commands.vitest.ts", 5), // 〔AL1〕+2：K-R49 增量账里 `write_account_aliases` 那两行 // 〔C4b〕+1：「刻意不同」那条判据合并后改名，本机只有一个表示那一节点它旧名
         // 〔C4b · 第四波 4B〕`"__local__"` 合进 `LOCAL_ORIGIN`，「两个同名常量刻意不同」那条判据改成钉合了之后的形状，旧名挂一块。
         ("tests/bridge/backend_policy_tests.rs", 1),
+        // 〔C4b · 第四波 4B〕会话读面三条 Tauri 命令（骨架索引 · 大纲清单 · 会话内查找）退役、改走通道：
+        //   点它们旧名的来历段各挂一块（包装层两段 · 新住址头注 · 骨架模块头注 · 判据替身头注）。
+        ("src/bridge/src/session_skeleton.rs", 1),
+        ("src/bridge/src/snapshot_resume.rs", 1),
+        ("src/ipc/commands.ts", 2),
+        ("src/session-reads.ts", 1),
+        ("tests/test-support/chan-fake.ts", 1),
         // 〔F7c 收尾 09-24〕SFTP 那一族收到只剩传输：删掉的命令 / 函数 / 判据名在这几份里逐处挂了墓碑。
         ("src/bridge/src/filewin/mod.rs", 2),
         ("src/bridge/src/filewin/transfer.rs", 4),

@@ -32,7 +32,7 @@ import {
 import { UnrenderedRanges } from "../render-window";
 // 〔U3b〕查看器接骨架：与实时 tab **同一个** `SkeletonView`（占位 ＋ 只物化可见区）。
 import { SkeletonView, ledgerFromIndex } from "../skeleton-view";
-import type { SessionIndexResult } from "../generated/SessionIndexResult";
+import { readSessionIndex, type SessionIndexResult } from "../session-reads";
 import { attachBranchButton } from "../branch-button";
 import { runForkFlow } from "../fork-flow"; // G6：分叉完把新会话起起来（E78 起连反馈也在里面）
 import type { BranchResult } from "../generated/BranchResult";
@@ -272,9 +272,8 @@ export class SessionViewer {
     };
     // 〔U3b〕骨架索引与正文**并行**要（索引是另一个后端进程，~0.1 s / 50 MB）；接骨架在首屏之后。
     const origin = opts.origin;
-    const indexP = commands
-      .read_session_index({ origin, jsonlPath: opts.jsonlPath, fromOffset: 0 })
-      .catch((e: unknown) => ({ available: false, reason: String(e), from: 0, end: 0, rows: [] }));
+    // 〔C4b〕经通道直接问那台后端（`session-reads.ts`）；要不到 ⇒ `available:false`，它自己不抛。
+    const indexP = readSessionIndex(origin, opts.jsonlPath, 0);
     const channel = new Channel<JsonlLinePayload[]>();
     channel.onmessage = (chunk) => {
       if (!this.stream || this.loadGeneration !== gen) return; // 已 dispose / 已换会话
