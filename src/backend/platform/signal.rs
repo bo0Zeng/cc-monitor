@@ -8,6 +8,46 @@
 //! **身份校验刻意留在调用方**（`tmux_hook`）：那是域判断（「这个 pid 是不是我那个后端」，
 //! 靠 starttime 比对），不是平台能力。本层只负责「把信号发出去」这一件事。
 
+/// 〔HX1〕**等一次停机信号**（unix：SIGTERM 或 SIGINT；别处：Ctrl-C）。从 `main.rs::shutdown_signal` 下沉 ——
+/// 那一段带平台 cfg，而流模式的收场（`inbound::exit_after_drain`）也要它（排空时再来一次 ⇒ 不等了）。
+///
+/// ★ **监听在调用的这一刻就登记好**，返回的 future 只负责等 —— 写成 `async fn` 的话，登记要等第一次被 poll，
+/// 建好之后、poll 之前到的那一次信号就漏了。
+/// 装不上某一个处理器 ⇒ 说出来，退到只等另一个（原 `main.rs` 那两支的行为逐字保留）。
+pub(crate) fn shutdown_listener() -> impl std::future::Future<Output = ()> + Send + 'static {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        let term = signal(SignalKind::terminate());
+        let int = signal(SignalKind::interrupt());
+        async move {
+            match (term, int) {
+                (Ok(mut t), Ok(mut i)) => {
+                    tokio::select! {
+                        _ = t.recv() => {}
+                        _ = i.recv() => {}
+                    }
+                }
+                (Ok(mut t), Err(e)) => {
+                    tracing::error!("failed to install SIGINT handler: {e}");
+                    let _ = t.recv().await;
+                }
+                (Err(e), _) => {
+                    tracing::error!("failed to install SIGTERM handler: {e}");
+                    // Fall back to Ctrl-C only so we still shut down on SIGINT.
+                    let _ = tokio::signal::ctrl_c().await;
+                }
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        async {
+            let _ = tokio::signal::ctrl_c().await;
+        }
+    }
+}
+
 /// 给 `pid` 发 `SIGUSR1`。返回是否发成功。
 ///
 /// **非 Unix 上恒返回 `false`** —— 与 `pid_alive` 那个「恒 true」的地雷不同，

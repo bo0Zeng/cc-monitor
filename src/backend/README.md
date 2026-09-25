@@ -57,14 +57,14 @@ src/
 
 ### 「唯一允许平台 cfg 的层」是**目标**，不是现状
 
-Phase D 审计逐条查过，**生产段还有 3 处平台原语在 `platform/` 之外**（U2 时是 4 处，U3 收掉 `tmux_hook` 那处），如实列在这里 —— 三处全在 `main.rs`，它是**组装根**，平台分支留在这里可辩护：
+Phase D 审计逐条查过，**生产段还有 2 处平台原语在 `platform/` 之外**（U2 时是 4 处，U3 收掉 `tmux_hook` 那处，HX1 收掉 `shutdown_signal` 那处），如实列在这里 —— 两处全在 `main.rs`，它是**组装根**，平台分支留在这里可辩护：
 
 | 位置 | 是什么 | 处置 |
 |---|---|---|
 | ~~`tmux_hook.rs` 的 `libc::kill`~~ | ~~`#[cfg(unix)]` + 发 SIGUSR1~~ | **U3 已收**进 `platform/signal.rs` |
 | `main.rs` SIGUSR1 处理器 | `#[cfg(unix)]` / `#[cfg(not(unix))]` 一对 | `main.rs` 是**组装根**，平台分支留在这里可辩护。但不能因此说「唯一」 |
 | `main.rs` USERPROFILE 回退 | `#[cfg(windows)]` | 同上 |
-| `main.rs::shutdown_signal` | 一对 cfg | 同上 |
+| ~~`main.rs::shutdown_signal`~~ | ~~一对 cfg~~ | **HX1 已收**进 `platform/signal.rs::shutdown_listener`（流模式的收场 `inbound::exit_after_drain` 也要它）〔散文墓碑〕 |
 
 > **刻意不写行号**：U3 只改了 `main.rs` 的 mod 块（净 −7 行），这张表里三处行号**当场全漂**，
 > 而 Phase D 审计是逐个数出来的。跨文件行号引用在这个仓已经栽过多次 —— 用符号名指。
