@@ -59,6 +59,7 @@ import { LOCAL_ORIGIN } from "../src/ipc/origin";
 import {
   accountReadCalls,
   chanArgsJson,
+  chanReply,
   isChanCall,
   linesReply,
   NO_CHANNEL,
@@ -1123,13 +1124,16 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
   // ⚠ **取数那一跳（`invoke`）今天还没接上**，卡点写在 `accounts.ts` 那段头注里
   // （`tests/ipc/commands.vitest.ts` 的两个钉死计数不在本件写区）。⇒ 本组买的是**规则**，
   // 不是「界面上真的显出来了」。
-  it("★ 产出方：问的是 `apikey_routing_for`，入参是那几个 configDir", async () => {
-    invokeMock.mockResolvedValue({ routed: ["/h/.claude-alt/acct-a"], running: true });
+  it("★ 产出方：经通道问 `apikey-routing`，入参是 agent ＋ 那几个 configDir（〔US1〕）", async () => {
+    invokeMock.mockResolvedValue(chanReply({ routed: ["/h/.claude-alt/acct-a"], running: true }));
     const got = await fetchLocalApikeyRouting(["/h/.claude-alt/acct-a", "/h/.claude-alt/acct-b"]);
-    // 命令名打错在生产上是**运行时** `invoke` reject（不是编译错）⇒ 在这里钉死它。
-    // 〔RM1a〕那条命令收了 origin；`fetchLocalApikeyRouting` 照旧只问本机（逐字送后端那个本机串）。
-    expect(invokeMock).toHaveBeenCalledWith("apikey_routing_for", {
-      origin: "<local>",
+    // 帧命令名打错在生产上是**运行时**那台后端回 unsupported（不是编译错）⇒ 在这里钉死它。
+    const calls = invokeMock.mock.calls;
+    expect(calls.map((c) => c[0])).toEqual(["chan_call"]);
+    const a = calls[0][1] as ChanCallArgs;
+    expect([a.origin, a.op]).toEqual(["<local>", "apikey-routing"]);
+    expect(chanArgsJson(a)).toEqual({
+      agent: "claude-code",
       configDirs: ["/h/.claude-alt/acct-a", "/h/.claude-alt/acct-b"],
     });
     expect(got).toEqual({ routed: ["/h/.claude-alt/acct-a"], running: true });
@@ -1138,7 +1142,7 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
   it("★★ 走真产出方 → 三档：读数从那条命令来，三个账号落到三个不同的徽章上", async () => {
     // ⚠ 与下面那条的差别就是**这一格**：这里的 routing 是 `fetchLocalApikeyRouting` 的返回值
     //（即那条命令的产物），不是判据手写的字面量 ⇒ 命令名 / 入参 / 字段名任一处坏掉，这里就散。
-    invokeMock.mockResolvedValue({ routed: ["/h/.claude-alt/acct-a"], running: true });
+    invokeMock.mockResolvedValue(chanReply({ routed: ["/h/.claude-alt/acct-a"], running: true }));
     const routing = await fetchLocalApikeyRouting([
       "/h/.claude-alt/acct-a",
       "/h/.claude-alt/acct-b",
@@ -1152,7 +1156,7 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
       "api-key（未配置端点）",
     );
     // 非空对照：同一条产出方、只把 `running` 翻过来 ⇒ 第三档真的分得开。
-    invokeMock.mockResolvedValue({ routed: ["/h/.claude-alt/acct-a"], running: false });
+    invokeMock.mockResolvedValue(chanReply({ routed: ["/h/.claude-alt/acct-a"], running: false }));
     const stopped = await fetchLocalApikeyRouting(["/h/.claude-alt/acct-a"]);
     expect(accountStatusBadge(a, localApikeyEndpointStateFor(a, stopped)).text).toBe(
       "api-key（中转未运行）",
