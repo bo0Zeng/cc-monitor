@@ -223,12 +223,8 @@ describe("`70 §2.4` 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源�
       btn?.click();
       await tick();
     }
-    // 〔ST2〕漂移记账并进机器列表页、默认收起 ⇒ 展开它，让它那几句也进被扫的 DOM。
-    const drift = document.querySelector<HTMLDetailsElement>("[data-drift-ledger]");
-    expect(drift, "机器列表页上没有「未识别的数据」那一块").not.toBeNull();
-    drift!.open = true;
-    drift!.dispatchEvent(new Event("toggle"));
-    await tick();
+    // 〔ST2〕漂移记账在本机子页的「足迹」栏里（per-machine 那一批）—— 走过本机子页它就在被扫的 DOM 里。
+    expect(document.querySelector(".drift-ledger-section"), "本机子页上没有「未识别的数据」那一块").not.toBeNull();
     const root = document.querySelector<HTMLElement>(".settings-panel")!;
     const copy = visibleCopy(root);
     // 量具自检：扫到的文字量要够大。零字节时下面那条「一条都不许命中」是空转。
