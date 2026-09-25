@@ -1813,7 +1813,7 @@ no-op（真机反向实测：写错 starttime 时探针存活，不误伤无关�
 >
 > ⇒ 本节的**措辞**因此改为：**后端只有文件管理那一面可以改动用户的文件，且每一处先过会话文件围栏；
 > 其余后端代码仍不许写，`fork_write` 仍只许 `O_EXCL` 新建。**
-> 围栏（`is_protected_session_file`）只拦正在用的会话记录（`projects/<proj>/<sid>.jsonl`、`sessions/<x>.json`），
+> 围栏（`is_session_record_file`，〔FN1〕今天已不是写侧围栏，见本节末尾 V119 那一段）只拦正在用的会话记录（`projects/<proj>/<sid>.jsonl`、`sessions/<x>.json`），
 > `~/.claude` 里的 skills / 配置 / 账号库**可以改**——这是用户那条裁决的原意，不是放松。
 > ⚠ TOCTOU 未闭合（判定与动手之间有窗；改名「目标已在就拒」是先看再改）—— 如实登记，不当成已解。
 >

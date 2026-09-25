@@ -202,7 +202,7 @@ const LAYOUT_READERS: &[(&str, &str, &str)] = &[
     (
         // 🔴 〔波 5 ㈢ · 2026-09-23〕后端那一侧的**逐字副本**。
         "src/backend/agents/claudecode/paths.rs",
-        "paths::is_protected_session_file：**同一个判定**在后端那个 crate 里的逐字副本",
+        "paths::is_session_record_file：**同一个判定**在后端那个 crate 里的逐字副本",
         "用户 2026-09-23 逐字裁「文件管理器该不该能改 `~/.claude` 里的东西. **可以.**」         ⇒ `设计/60 §8.7` 那道「两道栅栏宽窄不同」按**丙**（统一成同一个判定）裁，         统一到**窄的那一档** —— 后端写侧此前问的是 `paths::is_inside_tree`         （拒**整棵 `~/.claude*` 树**），今天问的是本行这一份。         🔴 **为什么它不是第二份判定**：两个 crate 之间**没有共享落点** ——         `src/backend` 刻意不在 monitor 那个 workspace 里（它有自己的 `Cargo.lock`，         那条隔离是真架构约束，见它 `Cargo.toml` 头注），而新立一个共享 crate 会动         门禁那句 `run_gate_sum cargo 9`，并且 `设计/60 §8.8` 记着上一次         「把围栏搬成共享 crate」**当天就被撤回**。         ⇒ 处置：函数体**逐字节相同**，并由          [`the_backend_copy_of_this_fence_is_byte_identical`] 钉成相等断言；         后端那棵树里还有一份同形的（`files_write_tests` 里那条），两侧各自跑得起来。         ⚠ 两侧刻意**不同名**：同名会让下面那条「`pub fn is_protected_claude_data_path`         全仓恰好一次」的断言红，而那条断言是对的。",
     ),
     // 〔RW1 · 第四波 09-24〕这里原来有 `sftp.rs` 那一行（远端删会话那道结构守卫，**方向相反**：「只许删
@@ -223,7 +223,7 @@ const LAYOUT_READERS: &[(&str, &str, &str)] = &[
 ///
 /// # 它钉的是函数体，不是函数名
 ///
-/// 两侧刻意不同名（`is_protected_claude_data_path` ↔ `is_protected_session_file`）——
+/// 两侧刻意不同名（`is_protected_claude_data_path` ↔ `is_session_record_file`）——
 /// 同名会让 [`the_protected_path_judgement_has_exactly_one_home`] 那条
 /// 「定义恰好一处」红，而那条断言是对的：桥这一侧的**住址**仍然只有一个。
 ///
@@ -256,7 +256,7 @@ fn the_backend_copy_of_this_fence_is_byte_identical() {
         &mine,
         &format!("pub fn is_protected_claude_{}_path(", "data"),
     );
-    let b = body(&theirs, &format!("pub fn is_protected_session_{}(", "file"));
+    let b = body(&theirs, &format!("pub fn is_session_record_{}(", "file"));
     // 反空真：抽出来的必须是真代码（`rfind` 是这段判定的骨架）。
     assert!(
         a.len() > 400 && a.contains("rfind"),

@@ -2959,6 +2959,18 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "is_safe_remote_jsonl",
             1,
         ),
+        // 〔FN1 · 第四波 4C · V119〕后端那份会话形状判定不再是写侧围栏，改名成它真在答的那一问（`is_session_record_*`）；
+        //   新名字的文档点两个旧名讲来历（同一行、同一块墓碑）。
+        (
+            "src/backend/agents/claudecode/paths.rs",
+            "is_protected_session_file",
+            1,
+        ),
+        (
+            "src/backend/agents/claudecode/paths.rs",
+            "is_protected_session_path",
+            1,
+        ),
         ("src/bridge/README.md", "is_safe_remote_jsonl", 1),
         (
             "src/bridge/src/claude_data_fence.rs",
@@ -3995,7 +4007,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔RW1 · 第四波 09-24〕本机分叉改成 exec 本机后端 `--fork-session`：本机那一支的头注一块。
         ("src/bridge/src/remote_branch.rs", 2), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         // 〔RW1 · 第四波 09-24〕远端删会话那道结构守卫随 F11 改经后端删走了：方向相反那一问的两处说明。
-        ("src/backend/agents/claudecode/paths.rs", 1),
+        ("src/backend/agents/claudecode/paths.rs", 2), // 〔FN1〕+1：会话形状判定改名（`is_session_record_*`），旧名挂一块
         ("src/bridge/src/claude_data_fence.rs", 2),
         ("tests/bridge/history_tests.rs", 11), // 〔RW1〕+2：本机分叉那几组判据换掉时留的块 ·〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑 ·〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
         // 〔RW1 · 第四波 09-24〕项目 `.mcp.json` 的本机写原语删了（改经后端写）。
