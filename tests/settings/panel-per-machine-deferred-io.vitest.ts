@@ -84,7 +84,7 @@ const LOCAL_PAGE_IPC = [
   "drift_ledger_report", // 〔ST2〕未识别的数据（原顶层「改动足迹」那一块）；〔ST3〕按这台去问
   "load_config", // 账号：先读远端清单（落地页也读它 —— 这里量的是「新增」那一段）
   "list_local_accounts", // 账号（本机那一支）
-  // 〔AL1c · 4B〕这里原来还有终端集成那两发（`cc_integration_status` / `cc_get_auto_launch`）：那块并进了「别名」
+  // 〔AL1c · 4B〕这里原来还有终端集成那两发（终端集成的状态那一发〔AL1d：今天并进 `aliases_read`〕/ `cc_get_auto_launch`）：那块并进了「别名」
   // （一个 `<details>`，**第一次展开**才建它、才发那两发）⇒ 子页可见时不再发，往后又延了一层。
   "read_mcp_servers", // MCP（本机）
   "list_mcp_project_dirs", // MCP 的项目候选

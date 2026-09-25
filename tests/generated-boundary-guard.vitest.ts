@@ -114,7 +114,7 @@ describe("C01 边界生成物", () => {
   it("派生 ts_rs::TS 的 Rust 源文件份数被钉住（自动发现的范围自检）", () => {
     // 这一条不是为了钉住某个数字，是为了让「新文件加了派生」这件事**红一次**
     // ——范围由 `tsDerivingSources()` 自动发现（不会漏），但**扩大范围要被看见**。
-    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(31); // **〔C4b · 第四波 4B〕`plugins.rs` 删了 −1（`MarketplaceSurvey` / `MarketplaceEntry` 两个生成物同拍出列，形状改住 `settings/plugins-section.ts`）** // **〔C4b · 第四波 4B〕`session_find.rs` / `session_outline.rs` 删了 −2、`session_skeleton.rs` 不再派生（`SessionIndexResult` 随骨架索引那条命令删了）−1** // **〔AL1c · 4B〕`shell_dialect.rs` +1**（`Shell`：别名三条命令的方言入参）； **〔SE2〕`session_find.rs` +1**（`FindResult` / `FindHit`）； **〔第四波 S4〕`sftp_pool.rs` −1**（`TransferProgress` 随池子最后那条命令删了，那份文件从此不派生任何 TS 类型）； **〔C2〕`ssh_link.rs` +1**（`ConnectStage` 从 `ssh_source.rs` 搬过去；`ssh_source.rs` 自己还派生别的几个，照旧在列）； **〔SE1〕`session_outline.rs` +1**（`UserInputsResult` / `UserInputEntry`）； **〔`设计/10` 骨架 · 子步 3〕`session_skeleton.rs` +1**（`SessionIndexResult`）； **〔步 12 · 09-20〕`origin.rs` +1**（`Origin` —— 「这一趟问的是哪台机器」的唯一类型；生成物 `Origin.ts` ＝ `null | string`，与今天 TS 侧逐字等价 ⇒ 零协议变更）；**`设计/50` −2（`usage.rs` 与 `account_usage.rs` 整删：`UsageTotals`/`SessionUsageRow`/`UsageBucket` 与 `AccountUsageProbeResult` 四个生成物同拍出列）** // G6 tmux.rs +1；E79 accounts.rs +1；**P8a plugins.rs +1**；**PS1 cc_bus_deploy.rs +1**；**K-R49 account_aliases.rs +1**；**K-R65 tool_registry.rs +1**（`EnvTier` 上线 ⇒ 那一页按档的**值**分档，不再靠措辞猜）
+    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(30); // **〔AL1d · 4B〕`lib.rs` −1**（「终端集成」五条命令退役，`CcStatusResponse` / `LegacyProfileEntry` / `CcPreviewResponse` 随之删了，`lib.rs` 从此不派生 TS 类型；合并主线 d07c6d14 按两边增量相加 31 − 1）； // **〔C4b · 第四波 4B〕`plugins.rs` 删了 −1（`MarketplaceSurvey` / `MarketplaceEntry` 两个生成物同拍出列，形状改住 `settings/plugins-section.ts`）** // **〔C4b · 第四波 4B〕`session_find.rs` / `session_outline.rs` 删了 −2、`session_skeleton.rs` 不再派生（`SessionIndexResult` 随骨架索引那条命令删了）−1** // **〔AL1c · 4B〕`shell_dialect.rs` +1**（`Shell`：别名三条命令的方言入参）； **〔SE2〕`session_find.rs` +1**（`FindResult` / `FindHit`）； **〔第四波 S4〕`sftp_pool.rs` −1**（`TransferProgress` 随池子最后那条命令删了，那份文件从此不派生任何 TS 类型）； **〔C2〕`ssh_link.rs` +1**（`ConnectStage` 从 `ssh_source.rs` 搬过去；`ssh_source.rs` 自己还派生别的几个，照旧在列）； **〔SE1〕`session_outline.rs` +1**（`UserInputsResult` / `UserInputEntry`）； **〔`设计/10` 骨架 · 子步 3〕`session_skeleton.rs` +1**（`SessionIndexResult`）； **〔步 12 · 09-20〕`origin.rs` +1**（`Origin` —— 「这一趟问的是哪台机器」的唯一类型；生成物 `Origin.ts` ＝ `null | string`，与今天 TS 侧逐字等价 ⇒ 零协议变更）；**`设计/50` −2（`usage.rs` 与 `account_usage.rs` 整删：`UsageTotals`/`SessionUsageRow`/`UsageBucket` 与 `AccountUsageProbeResult` 四个生成物同拍出列）** // G6 tmux.rs +1；E79 accounts.rs +1；**P8a plugins.rs +1**；**PS1 cc_bus_deploy.rs +1**；**K-R49 account_aliases.rs +1**；**K-R65 tool_registry.rs +1**（`EnvTier` 上线 ⇒ 那一页按档的**值**分档，不再靠措辞猜）
   });
 
   it("生成目录里只有生成物，且每个都带「不许手改」标记", () => {
@@ -128,7 +128,7 @@ describe("C01 边界生成物", () => {
       // **按字母序**（本条是 readdir + sort 的逐项对拍，不许按功能分组打乱顺序）。
       // 每项后面标它属于哪个功能，便于回溯。
       // K-R49：候选 rc（「那一行 source 加进哪份」）。〔AL1〕`AccountAliasReport.ts`〔散文墓碑〕随 `write_account_aliases` 退役。
-      "AccountAliasRc.ts",
+      // 〔AL1d · 4B〕`AccountAliasRc.ts` 改名 `StartupFile.ts`（候选各带别名块的现状 `BlockState.ts`，见下）。
       // P8a：marketplace 只读枚举的两个载荷。
       // ⚠ 顺序按目录名排序，别按加入时间摆。
       "AcctIsoStatus.ts", //          C04d 批3（**抓到漂移**：TS 原来只认 1/3 个字段）
@@ -145,6 +145,7 @@ describe("C01 边界生成物", () => {
       // 往一侧加字段没有任何门禁会红。
       "AuthKind.ts",
       "AutoLaunchConfig.ts", // C04d 批5a
+      "BlockState.ts", //             〔AL1d · 4B〕一份启动文件里别名块的现状（`StartupFile.block`）
       "BranchResult.ts", // C04d 批6a
       "CcBusAgent.ts", // C04d 批5a（CcBusState 的传递依赖）
       // PS1：本机部署 cc-bus 的结果（写了几个 / 跳过几个 / 备份在哪 —— 三种说法不合并）。
@@ -154,8 +155,7 @@ describe("C01 边界生成物", () => {
       "CcBusMessage.ts", // C04d 批5a
       "CcBusSpawned.ts", // C04d 批5a（CcBusState 的传递依赖）
       "CcBusState.ts", // C04d 批5a（`skipped: usize` → number，**ts-rs 对 usize 不回落 bigint**）
-      "CcPreviewResponse.ts", // C04d 批5a（**非 pub**，只作命令返回类型）
-      "CcStatusResponse.ts", // C04d 批5a（**非 pub**）
+      // 〔AL1d · 4B〕"CcPreviewResponse.ts" / "CcStatusResponse.ts" / "LegacyProfileEntry.ts" 走了（「终端集成」命令退役）。
       "CcmProbeResult.ts", //         C04d 批2（**线上形状**；TS 侧另有同名领域类型，留手写）
       "ConfigSurfaceReport.ts", //    C04d 批2
       "ConnTestResult.ts", // C04d 批5c
@@ -186,7 +186,6 @@ describe("C01 边界生成物", () => {
       "JsonlBatchPayload.ts", //      C04c
       "JsonlLinePayload.ts", //       C04c
       "JsonlRecord.ts", //            C04c（**线定义本身**：wire == serde_json::to_string(它)）
-      "LegacyProfileEntry.ts", // C04d 批5a（**非 pub**，CcStatusResponse 的传递依赖）
       "LocalCcmEntry.ts", // `K-R69`：本机那条 `ccm` 入口这一格（我们那一份 · PATH 上那一份 · 判词 · 那句话）
       "LogFileEntry.ts", // C04d 批4（LogFileInfo 的传递依赖）
       "LogFileInfo.ts", // C04d 批4（字节数 + 毫秒时间戳，两个量纲分开论证）
@@ -197,8 +196,7 @@ describe("C01 边界生成物", () => {
       "OriginSessionsListedPayload.ts", // 〔U4b〕某台机器的活会话清单报完了（`origin-sessions-listed`）
       "PanoramaStatus.ts", // C04d 批7（**panorama 一族唯一能生成的**——其余 10 个住 vendored，受 SS-10 铁律阻塞）
       "PathCcmVerdict.ts", // `K-R69`：PATH 上那个 `ccm` 与我们那一份的关系（四态，没有兜底档）
-      "ProfileKind.ts", // C04d 批5a（ProfileScan 的传递依赖）
-      "ProfileScan.ts", // C04d 批5a（`size_bytes: u64` 按字节数量纲论证）
+      // 〔AL1d · 4B〕"ProfileKind.ts" / "ProfileScan.ts" 走了：候选只有一份来历，扫描结果是 `StartupFile` ＋ `BlockState`。
       "PushResult.ts", // C04d 批5c（**我用 grep 漏掉的那个跨行调用点**）
       // K-A1：TS 侧 `Account` 从此是它的别名（原先是一份手抄 interface + 一句
       // 「对齐 A2 的返回结构」的注释）。
@@ -223,6 +221,7 @@ describe("C01 边界生成物", () => {
       "Shell.ts", //                  〔AL1c · 4B〕别名三条命令的 shell 方言入参（`shell_dialect.rs`）
       // 〔F7c 收尾 09-24〕"SftpEntry.ts" 走了（它的 Rust 源随池子那条列目录命令一起删了）。
       "Snippet.ts", //                C04d 批3
+      "StartupFile.ts", //            〔AL1d · 4B〕启动文件候选（别名文件那一行 ＋ 别名块共用一份，原 `AccountAliasRc.ts`）
       "SubagentLoadResult.ts", //     C04d 批2（**records: JsonlRecord[] 的传递依赖是 C04c 生成的**）
       "SurfaceRow.ts", //             C04d 批2（ConfigSurfaceReport 的传递依赖）
       "SurfaceState.ts", //           C04d 批2（serde(tag="kind") 内部标记枚举 → 判别联合）
@@ -316,6 +315,7 @@ describe("C01 边界生成物", () => {
         // **C04d 批 5 再放宽 `pub` 为可选**：`lib.rs` 里 `CcStatusResponse` /
         // `LegacyProfileEntry` / `CcPreviewResponse` 三个是**非 pub** 的（模块内可见即可，
         // 它们只作命令返回类型），但一样跨边界、一样该受这两条性质约束。
+        // 〔AL1d · 4B〕那三个今天随「终端集成」命令删了；放宽照留 —— 非 pub 的跨边界类型哪天再出现，这条仍接得住。
         // 范围必须等于性质的范围——「是不是 pub」与「会不会跨边界」无关。
         if (!/^(pub )?(struct|enum)\s+\w+/.test(lines[k])) continue;
         let top = k;
@@ -446,7 +446,7 @@ describe("C01 边界生成物", () => {
     //    （`UsageTotals` 的 `input`/`cache_creation`/`cache_read`/`output`）。
     //    ⚠ **这个数变小不是放宽**：它是「有多少个大整数字段被 `ts(type=…)` 策略盖住」，
     //    人群小了是因为被盖的对象少了，策略本身一个字没松。
-    expect(checked, `期望恰好 22 个大整数字段，实得 ${checked}`).toBe(17); // 〔C4b · 第四波 4B〕−5（`FindResult.total` · `UserInputsResult.from` / `.end` · `SessionIndexResult.from` / `.end`：随那三个回包类型删了）； // 〔SE2〕+1（`FindResult.total`：命中条数）； 〔第四波 S4〕−2（`TransferProgress.transferred` / `.total` 随那个类型删了）； 〔F7c 收尾 09-24〕−1（`SftpEntry.size` 随那个类型删了）； 〔SE1〕+2（`UserInputsResult.from` / `.end`：字节偏移）； 〔`设计/10` 骨架 · 子步 3〕+2（`SessionIndexResult.from` / `.end`：字节偏移）
+    expect(checked, `期望恰好 22 个大整数字段，实得 ${checked}`).toBe(16); // 〔AL1d · 4B〕−1（`ProfileScan.size_bytes` 随那个类型删了；合并主线 d07c6d14 按两边增量相加 17 − 1） // 〔C4b · 第四波 4B〕−5（`FindResult.total` · `UserInputsResult.from` / `.end` · `SessionIndexResult.from` / `.end`：随那三个回包类型删了）； // 〔SE2〕+1（`FindResult.total`：命中条数）； 〔第四波 S4〕−2（`TransferProgress.transferred` / `.total` 随那个类型删了）； 〔F7c 收尾 09-24〕−1（`SftpEntry.size` 随那个类型删了）； 〔SE1〕+2（`UserInputsResult.from` / `.end`：字节偏移）； 〔`设计/10` 骨架 · 子步 3〕+2（`SessionIndexResult.from` / `.end`：字节偏移）
   });
 
   it("`Option<大整数>` 配 ts(type) 时不许丢掉 `| null`（除非同时有 ts(optional)）", () => {

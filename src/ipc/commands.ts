@@ -129,8 +129,6 @@ import type { Origin } from "../generated/Origin";
 import type { SessionRecordProbe } from "../generated/SessionRecordProbe";
 import type { CcBusMessage } from "../generated/CcBusMessage";
 import type { CcBusState } from "../generated/CcBusState";
-import type { CcPreviewResponse } from "../generated/CcPreviewResponse";
-import type { CcStatusResponse } from "../generated/CcStatusResponse";
 import type { ConnectStage } from "../generated/ConnectStage";
 import type { ConnTestResult } from "../generated/ConnTestResult";
 import type { CcmProbeResult } from "../generated/CcmProbeResult";
@@ -175,7 +173,6 @@ import type { HooksReport } from "../generated/HooksReport";
 import type { ImportGroup } from "../generated/ImportGroup";
 import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
 import type { PanoramaStatus } from "../generated/PanoramaStatus";
-import type { ProfileScan } from "../generated/ProfileScan";
 import type { PushResult } from "../generated/PushResult";
 import type { RemoteProjectsResult } from "../generated/RemoteProjectsResult";
 import type { ResolvedHost } from "../generated/ResolvedHost";
@@ -244,28 +241,8 @@ export const commands = {
   /** 读 `cc_get_auto_launch`。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   cc_get_auto_launch: () => invoke<AutoLaunchConfig>("cc_get_auto_launch"),
 
-  /** PowerShell profile cc 集成：装。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  cc_integration_install: (args: {
-    path: string;
-    commandName: string;
-    includeCcFunction: boolean;
-  }) => invoke<void>("cc_integration_install", args),
-
-  /** 预览将写入 profile 的代码（含 BEGIN/END marker）。 */
-  cc_integration_preview: (args: { commandName: string; includeCcFunction: boolean }) =>
-    invoke<CcPreviewResponse>("cc_integration_preview", args),
-
-  /** 扫一个指定 profile 路径。 */
-  cc_integration_scan_path: (args: { path: string; commandName: string }) =>
-    invoke<ProfileScan>("cc_integration_scan_path", args),
-
-  /** PowerShell profile cc 集成的总状态。`commandName` 在 Rust 侧是 `Option<String>` ⇒ 可省。 */
-  cc_integration_status: (args?: { commandName?: string }) =>
-    invoke<CcStatusResponse>("cc_integration_status", args),
-
-  /** PowerShell profile cc 集成：卸。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  cc_integration_uninstall: (args: { path: string }) =>
-    invoke<void>("cc_integration_uninstall", args),
+  // 〔AL1d · 第四波 4B〕这里原来是「终端集成」那五条（`cc_integration_*`）：并进了 `aliases_*` 同一族命令面
+  //   （状态 ＋ 扫一份 → `aliases_read` · 预览 → `aliases_block_render` · 装 / 卸 → `aliases_block_install` / `aliases_block_remove`）。
 
   /** 写 `cc_set_auto_launch`。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   cc_set_auto_launch: (args: { enabled: boolean }) => invoke<void>("cc_set_auto_launch", args),
@@ -397,8 +374,12 @@ export const commands = {
   aliases_render: (args: { aliases: Alias[]; shell: Shell }) =>
     invoke<AliasRender>("aliases_render", args),
 
-  /** 〔AL1〕读回口：这台机器上那份别名文件今天有哪几条（认不出的行原文带原因列出来，不静默丢）。 */
-  aliases_read: (args: { shell: Shell }) => invoke<AliasListing>("aliases_read", args),
+  /**
+   * 〔AL1〕读回口：这台机器上那份别名文件今天有哪几条（认不出的行原文带原因列出来，不静默丢）。
+   * 〔AL1d〕启动文件候选各带别名块的现状 ＋ 完成拉前握手的终端数；`rcPath` = 人另指的一份（过围栏后并进候选）。
+   */
+  aliases_read: (args: { shell: Shell; rcPath?: string | null }) =>
+    invoke<AliasListing>("aliases_read", args),
 
   /**
    * 〔AL1〕第②跳：**唯一的副作用**。收的是清单，后端用第①跳同一个渲染落盘 ⇒ 写的就是预览的那一份。
@@ -406,6 +387,20 @@ export const commands = {
    */
   aliases_install: (args: { aliases: Alias[]; rcPath?: string | null; shell: Shell }) =>
     invoke<AliasInstallReport>("aliases_install", args),
+
+  /**
+   * 〔AL1d · 第四波 4B〕**别名块**（`cc` / `cct` · `__ccm_bind`）第①跳：纯 —— 块 → 代码（装进一份空文件会写成什么）。
+   * 两种方言都答，方言由 `rcPath` 那份文件的扩展名定（后端判，与装那一跳同一个判法）；`withCc` 只对 PowerShell 有意义。
+   */
+  aliases_block_render: (args: { rcPath: string; withCc: boolean }) =>
+    invoke<string>("aliases_block_render", args),
+
+  /** 〔AL1d〕别名块装进人选的那份启动文件（方言按那份文件的扩展名定）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
+  aliases_block_install: (args: { rcPath: string; withCc: boolean }) =>
+    invoke<void>("aliases_block_install", args),
+
+  /** 〔AL1d〕别名块卸掉（整块删，块外一个字节不动）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
+  aliases_block_remove: (args: { rcPath: string }) => invoke<void>("aliases_block_remove", args),
 
   /**
    * 〔RM1c · 第四波〕代码全景**经那台机器的后端**走（V108 选 B）：发帧命令 `panorama`，拿回 `result`。
