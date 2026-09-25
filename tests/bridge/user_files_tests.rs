@@ -29,8 +29,10 @@ pub(crate) struct DiskDoor {
     pub puts: RefCell<Vec<PutCall>>,
     /// 删会话那一条收到的 sid。
     pub deleted_sids: RefCell<Vec<String>>,
-    /// 〔RM1d〕`delete`（`files-delete`）收到的相对段。
-    pub deleted: RefCell<Vec<String>>,
+    /// 〔RM1d〕`delete`（`files-delete`）收到的相对段 ＋〔RM1e〕交过去的 `expect`。
+    pub deleted: RefCell<Vec<(String, String)>>,
+    /// 〔RM1e〕`peek` 被问了几次（删那一支不该再先 `peek`：CAS 在写口闭合）。
+    pub peeked: RefCell<usize>,
     /// `list_dir` 的答案，由判据**事先摆好**（替身不去遍历盘上的目录 ——
     /// `scanning_guard_registry` 不许测试段裸遍历目录）。键是目录的绝对路径。
     pub listings: RefCell<std::collections::BTreeMap<String, Vec<(String, bool)>>>,
@@ -44,6 +46,7 @@ impl DiskDoor {
             puts: RefCell::new(Vec::new()),
             deleted_sids: RefCell::new(Vec::new()),
             deleted: RefCell::new(Vec::new()),
+            peeked: RefCell::new(0),
             listings: RefCell::new(std::collections::BTreeMap::new()),
         }
     }
@@ -63,6 +66,7 @@ impl Door for DiskDoor {
     }
 
     async fn peek(&self, root: &str, rel: &str) -> Result<Peeked, String> {
+        *self.peeked.borrow_mut() += 1;
         let p = Self::at(root, rel);
         let text = if p.exists() {
             Some(
@@ -137,10 +141,20 @@ impl Door for DiskDoor {
         std::fs::rename(&a, &b).map_err(|e| e.to_string())
     }
 
-    async fn delete(&self, root: &str, rel: &str) -> Result<(), String> {
+    async fn delete(&self, root: &str, rel: &str, expect: &str) -> Result<(), Refused> {
         let p = Self::at(root, rel);
-        self.deleted.borrow_mut().push(rel.to_string());
-        std::fs::remove_file(&p).map_err(|e| format!("替身：删 {} 失败：{e}", p.display()))
+        self.deleted
+            .borrow_mut()
+            .push((rel.to_string(), expect.to_string()));
+        // 〔RM1e〕CAS 同后端 `files-delete` 的 `expect`：盘上 ≠ 读到的那一份 ⇒ stale，一个字节不动。
+        if std::fs::read_to_string(&p).ok().as_deref() != Some(expect) {
+            return Err(Refused::Stale(format!(
+                "替身：{} 在读过之后变了",
+                p.display()
+            )));
+        }
+        std::fs::remove_file(&p)
+            .map_err(|e| Refused::Other(format!("替身：删 {} 失败：{e}", p.display())))
     }
 
     async fn chmod(&self, root: &str, rel: &str, mode: u32) -> Result<(), String> {

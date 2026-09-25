@@ -57,6 +57,11 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "PUSH_MODE",
+        "〔RM1e 09-24〕**权限位**不是体量：全景小程序推到远端 `~/.cc-monitor/bin/` 时给的 unix 模式（`0o755`，\
+             `panorama_bytes·rs::push_to`）。",
+    ),
+    (
         "LINK_STEP",
         "〔SR1a 09-24〕**步长**不是体量：monitor 往链路里送上行字节时一次切多大（`link_mux·rs::LinkStream` 的 \
              `poll_write`）。多出来的留给调用方下一次写 —— **不丢、不截**，它不限任何总量。\
