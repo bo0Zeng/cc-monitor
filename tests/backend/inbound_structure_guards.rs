@@ -194,6 +194,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "relay-status"
                 // 〔RM1a · 第四波〕足迹那一条：一批 stat / 读几份小文件，同步文件 I/O。
                 | "footprint-probe"
+                // 〔AS1 · 第四波 4B〕MCP 同步的判定：对可疑路径逐条 stat、在 PATH 上找名字（同步文件 I/O）。
+                | "mcp-sync-plan"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_));
         assert_eq!(
@@ -287,6 +289,8 @@ fn every_registered_command_declares_its_run_kind() {
         "files-peek",
         "files-put",
         "files-delete-session",
+        // 〔AS1 · 第四波 4B〕MCP 同步的判定（阻塞档，理由在上面 `expected_blocking`）。
+        "mcp-sync-plan",
         // 〔SR1b〕传输四条：内建（硬臂）。
         "transfer-upload",
         "transfer-download",

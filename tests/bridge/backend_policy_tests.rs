@@ -1103,8 +1103,10 @@ fn what_reaches_the_settings_panel_carries_no_markdown_no_argument_no_log_format
 #[test]
 fn the_crash_reading_quotes_the_brief_not_the_ledger_line() {
     let origin = "st2-读数接短摘要-甲";
+    // 〔S5〕这里原来用 `-1073741510` 当「任意崩溃码」—— 那个码今天有自己的人话（见下一族判据），
+    //   换一个没有人话的码（Windows 访问越界 `0xC0000005`），本条要的仍是「裸码照实报」。
     let ev = DeathEvidence {
-        outcome: Outcome::Exited(-1073741510),
+        outcome: Outcome::Exited(-1073741819),
         handshake: Handshake::Spoke,
         reader: ReaderEnd::CleanEof,
         start_failure: None,
@@ -1121,7 +1123,7 @@ fn the_crash_reading_quotes_the_brief_not_the_ledger_line() {
     assert_eq!(h.last_brief.as_deref(), Some(last_brief(&d).as_str()));
     let said = describe_health(&h);
     assert!(
-        said.contains("exit -1073741510"),
+        said.contains("exit -1073741819"),
         "读数里没有退出状态：{said}"
     );
     assert_eq!(
@@ -1146,4 +1148,65 @@ fn the_status_json_hands_the_panel_the_brief() {
              整条账行（日志行格式）又会被拼进设置面板（`70 §2.1` #3）。"
         )
     });
+}
+
+// ── 〔S5 · 第四波 · `设计/00 §1.5.3`〕死亡账说人话：`0xC000013A` ─────────────────────────
+
+/// 被控制台事件杀死的那一种，那一格说**人话**，不说裸码。
+///
+/// ⚠ 两侧异源：码写成**字面量** `-1073741510`（`ExitStatus::code()` 在 Windows 上真给的那个 `i32`），
+/// 不从 [`STATUS_CONTROL_C_EXIT`] 推；那句话逐字抄 `00 §1.5.3`，不引用常量。
+/// 常量写错一位（或按数值换算成了别的数）⇒ 这里当场红。
+#[test]
+fn a_console_ctrl_kill_is_said_in_words_not_as_a_bare_code() {
+    const SAID: &str = "被控制台事件杀死 —— 可能是那个弹出的终端窗口被关了";
+    let crashed = Death::Crashed {
+        how: Outcome::Exited(-1073741510),
+    };
+    assert_eq!(last_brief(&crashed), format!("崩了，{SAID}"));
+    let refused = Death::Refused { code: -1073741510 };
+    assert_eq!(last_brief(&refused), format!("被拒了，{SAID}"));
+    for d in [&crashed, &refused] {
+        let brief = last_brief(d);
+        assert!(
+            !brief.contains("1073741510") && !brief.contains("exit "),
+            "说了人话还把裸码带上了：{brief}"
+        );
+        assert_eq!(
+            ui_copy_violations(&brief),
+            Vec::<&str>::new(),
+            "那句人话自己带了界面禁用的形状：{brief}"
+        );
+        // 日志那一行同一个来源：也说人话（日志里要看码，去 `exit_status` 的判定一处看）。
+        assert!(
+            ledger_line("o", d).contains(&format!("退出状态={SAID}")),
+            "日志那一行没跟上：{}",
+            ledger_line("o", d)
+        );
+    }
+}
+
+/// 邻格对照：**只认那一个码**。差一的码、POSIX 的码、信号，照旧是裸码 ——
+/// 防「一律换成人话」那种写法让上一条也绿。
+#[test]
+fn only_that_one_code_gets_words_the_neighbours_stay_bare() {
+    for code in [-1073741509, -1073741511, -1073741819, 1, 2, 255] {
+        let d = Death::Crashed {
+            how: Outcome::Exited(code),
+        };
+        assert_eq!(
+            exit_status(&d),
+            format!("exit {code}"),
+            "码 {code} 被说成了别的"
+        );
+        assert_eq!(
+            exit_status(&Death::Refused { code }),
+            format!("exit {code}"),
+            "被拒那一臂的码 {code} 被说成了别的"
+        );
+    }
+    let sig = Death::Crashed {
+        how: Outcome::Signalled(9),
+    };
+    assert_eq!(exit_status(&sig), "signal 9");
 }

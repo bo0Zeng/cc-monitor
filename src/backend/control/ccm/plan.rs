@@ -34,6 +34,9 @@ pub(crate) struct Env {
     pub(crate) inherited_config_dir: Option<String>,
     pub(crate) anthropic_base_url: Option<String>,
     pub(crate) ccm_launch_id: Option<String>,
+    /// 〔S5 · 第四波〕本进程环境里的启动期令牌（`CCM_RBIND_TOKEN`，变量名借自 `identity_tag`）。
+    /// 只有直路上 `--ccm-sid` 那一格看它（[`DirectIdentity`]）；形状不在这里判，原样装着。
+    pub(crate) launch_token: Option<String>,
     /// 起 agent 前要 eval 的机器级 env 串。
     pub(crate) ccm_env: String,
     // 🔴 `K-R58`：这里原来有一个 `workspace: String`（`$CCM_WORKSPACE`，`$HOME` 下裸敲时
@@ -91,6 +94,7 @@ impl Env {
             tmux: get("TMUX"),
             anthropic_base_url: get("ANTHROPIC_BASE_URL"),
             ccm_launch_id: get("CCM_LAUNCH_ID"),
+            launch_token: get(crate::control::identity_tag::rbind_token_env()),
             ccm_env: pick("CCM_ENV", Defaults::ENV.to_string()),
             accts_manifest: pick(
                 "CCM_ACCTS_MANIFEST",
@@ -379,6 +383,43 @@ pub(crate) struct Direct {
     pub(crate) passthru: Vec<String>,
     /// 这一趟有没有身份面（claude 有、codex 没有）。
     pub(crate) has_identity: bool,
+    /// 〔S5 · 第四波〕`--ccm-sid` 在直路上交给谁 —— 见 [`DirectIdentity`]。
+    pub(crate) identity: DirectIdentity,
+}
+
+/// 〔S5 · 第四波 · `99 §4.4` 那一行 · `WN1.md §3`〕**直路上 `--ccm-sid` 的语义 = 启动期令牌。**
+///
+/// 从前 `--ccm-sid` 进了 `Opts` 之后只有容器路消费（写 `@ccm_sid_expect`），直路上**被接受、零效果、不出声**
+/// （`lib.rs::TARGET_GAPS` 那一行逐字）。主会话裁：**不报错**（报错 ＝ 让它依赖 tmux，撞 V63
+/// 「`--ccm-sid` 不要依赖 tmux」），直路语义走已落地的启动期令牌那条路。
+///
+/// 为什么是令牌、不是再造一个变量：`--ccm-sid` 要的是「让拉前认得这个会话」，V63 之后这件事的载体
+/// 就是 `CCM_RBIND_TOKEN` —— 它在起 agent 的进程环境里 ⇒ `exec` 原样继承 ⇒ 后端从 agent 进程的
+/// environ 读回、连同 pidfile 里的**真** sid 报上 wire（`identity_tag.rs` 第二张面）。令牌那条路
+/// **不需要**调用方预告 sid。而「把 sid `export` 成一个新变量」没有任何读者（后端读别的进程环境的
+/// 只有两族、各两个键，`identity_tag_tests` / `accounts_query_tests` 钉着）⇒ 不造。
+///
+/// ⇒ 直路要做的只是**看一眼载体在不在**，不在就说一句（不报错、照常起）。`--print` 不看它
+/// （`INVARIANTS §33a` 铁律 2：不看宿主环境；令牌是继承的环境，不是命令文本）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DirectIdentity {
+    /// 没给 `--ccm-sid`。
+    NotAsked,
+    /// 给了，而且环境里有形状合格的令牌 ⇒ `exec` 会把它交给 agent，身份由它承载。
+    ByLaunchToken,
+    /// 给了，但环境里没有令牌（或形状过不了 `identity_tag::token_is_safe`）⇒ 拉前认不出这个会话。
+    NoCarrier,
+}
+
+/// 直路上 `--ccm-sid` 交给谁。形状判定只住 `identity_tag::token_is_safe` 一处。
+pub(crate) fn direct_identity(ccm_sid: &str, launch_token: Option<&str>) -> DirectIdentity {
+    if ccm_sid.is_empty() {
+        return DirectIdentity::NotAsked;
+    }
+    match launch_token {
+        Some(t) if crate::control::identity_tag::token_is_safe(t) => DirectIdentity::ByLaunchToken,
+        _ => DirectIdentity::NoCarrier,
+    }
 }
 
 /// POSIX argv 元素的**最省引号**写法：能裸写就裸写。
@@ -769,6 +810,7 @@ pub(crate) fn build(
         resolve_sid: (o.action == Action::Resume && !o.launcher_explicit).then(|| o.sid.clone()),
         passthru: o.passthru.clone(),
         has_identity: super::has_identity(&o.agent),
+        identity: direct_identity(&o.ccm_sid, env.launch_token.as_deref()),
     }))
 }
 

@@ -603,6 +603,9 @@ fn every_host_declaration_is_pinned() {
         ("backend", "~/.cc-monitor/bin/cc-monitor-backend-*", Client),
         ("backend", "$BACKEND_PATH", Remote),
         ("project-mcp", ".mcp.json", ProjectDir),
+        // 〔AS1 · 第四波 4B〕同一份文件的第二个写入来源（推 / 拉：条目原样从另一台机器拷来）。
+        //    `ProjectDir` 与上一行同一条理由：写在你选定的那个项目目录里，那个目录在哪台机器上就算哪台的。
+        ("project-mcp", ".mcp.json", ProjectDir),
         ("powershell-profile", "$PROFILE", Client),
         // 〔`K-R62` 09-11〕本机 POSIX 那一格补上之后升进 `TOOLS` 的那一条。
         // `Client`：它写的是 **cc-monitor 跑着的这台**的 rc（远端那份 rc 归 `ccm` 那两行）。
@@ -887,7 +890,12 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
             .iter()
             .map(|c| &c.destination)
             .collect::<Vec<_>>(),
-        vec![&ToolDestination::ProjectRelative(".mcp.json")]
+        // 〔AS1 · 第四波 4B〕两个载体（单条写 · 推 / 拉）落同一个文件：推 / 拉的落点也只经 `mcp.rs` 那两个出口
+        //    （`mcp.rs::project_mcp_target`；`mcp_sync_tests::the_landing_file_name_lives_only_in_mcp_rs` 钉它自己不拼文件名）。
+        vec![
+            &ToolDestination::ProjectRelative(".mcp.json"),
+            &ToolDestination::ProjectRelative(".mcp.json")
+        ]
     );
 
     // ③ 反向自检：确认上面读到的是真源码，不是空串

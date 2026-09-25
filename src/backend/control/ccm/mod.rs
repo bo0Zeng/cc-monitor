@@ -124,11 +124,11 @@ pub(crate) const CCM_TMUX_CARRIED: &[&str] = &[
     "attach",               // 实现就是 `tmux attach`
     "base-url-across-tmux", // 名字就是「跨 tmux 的边界」
     "bus-register",         // `argv.rs`：要 `--detach`，而 `--detach` 要 `--tmux`
-    "ccm-sid",              // 只在容器（tmux）那条路上被消费，`Plan::Direct` 里没有这个字段
-    "detach",               // 实现就是 `tmux detach`
-    "tmux",                 // 它本身
-    "tmux-base",            // tmux 的 `base-index`
-    "tmux-size",            // tmux 窗格尺寸
+    "ccm-sid", // 直路上由启动期令牌承载（`plan::DirectIdentity`），而 Windows 上后端读不到别的进程的环境
+    "detach",  // 实现就是 `tmux detach`
+    "tmux",    // 它本身
+    "tmux-base", // tmux 的 `base-index`
+    "tmux-size", // tmux 窗格尺寸
 ];
 
 /// 撞名时那句话的**唯一格式串**。
@@ -193,7 +193,7 @@ pub(crate) const USAGE: &str = "\
   --agent <名>       claude | codex
   --model <名>       export ANTHROPIC_MODEL
   --launcher <命令>  覆盖默认启动器
-  --ccm-sid <sid>    给这个会话打上意图标 @ccm_sid_expect
+  --ccm-sid <sid>    带 --tmux：给会话打意图标 @ccm_sid_expect；不带：会话靠 CCM_RBIND_TOKEN 认
   --print            不跑，吐出等价的一行 shell（平价预言机）
   --ccm-probe        吐出 name= / version= / self= / capabilities= / agents= / build= 六行
   --version          印版本号
@@ -597,7 +597,18 @@ pub(crate) const NO_SHELL: &str = "no_shell";
 ///
 /// 🔴 这几步必须发生在**调用者那个进程**里：env 要落在最终 `exec` 的那个 shell 上，
 /// 否则穿不过 tmux 的进程边界（旧 `cct` 正是死在这一步）。
+/// 〔S5〕直路上给了 `--ccm-sid` 却没有令牌时那一句（stderr，**不报错、照常起**）。
+pub(crate) const DIRECT_SID_NO_CARRIER: &str = "ccm: 没带 --tmux 时 --ccm-sid 不打标；这个会话要靠环境变量 CCM_RBIND_TOKEN 认，而现在没有它 —— 会话照常起，但 monitor 切不到它的终端窗口";
+
+/// 直路上 `--ccm-sid` 那一格要不要出声（[`plan::DirectIdentity`]）。只有「无载体」出声。
+pub(crate) fn direct_identity_note(d: &plan::Direct) -> Option<&'static str> {
+    (d.identity == plan::DirectIdentity::NoCarrier).then_some(DIRECT_SID_NO_CARRIER)
+}
+
 fn exec_direct(d: &plan::Direct, resolved: Option<&str>) -> i32 {
+    if let Some(note) = direct_identity_note(d) {
+        eprintln!("{note}");
+    }
     // 非得要 shell 的那几趟（判定与归因都只住 `needs_shell` 一处）⇒ 整条走 `sh -c`。
     if let Some(why) = needs_shell(d, resolved) {
         return exec_shell(&plan::render(&Plan::Direct(d.clone()), resolved), why);
