@@ -754,11 +754,37 @@ pub const TOOLS: &[ToolSpec] = &[
                 touches: &[TouchedFile {
                     path: ".mcp.json",
                     host: HostScope::ProjectDir,
-                    note: Some("相对你在推 / 拉那一块里选定的项目目录；只加 / 盖你勾的那几条，别的条目不动"),
+                    // 〔AS2 · 4B〕资产目录那一块的「装到这台」（MCP）走的就是这一格（同一条命令 `mcp_sync_apply`，只勾那一条）。
+                    note: Some("相对你在推 / 拉那一块（或资产目录的「装到这台」）里选定的项目目录；只加 / 盖你勾的那几条，别的条目不动"),
                     effect: TouchEffect::OwnedFile,
                 }],
             },
         ],
+    },
+    // 〔AS2 · 第四波 4B · V113〕**skill「装到这台」**：资产目录里别的机器有的 skill，用户点了才装到这台 ——
+    //   文件原样从来源那台拷来（V112），写经这台后端 `files-put`（带 `expect`，`skill_install.rs`）。
+    //   `96 §4`：每个写点都要在足迹里可见。落点由用户点的那一条决定（这台 skills 下以那个名字为名的目录）⇒ 占位符，不猜。
+    //   `uninstallable: false`：没有「卸掉装来的 skill」这条口，如实声明。
+    ToolSpec {
+        id: "skill-install",
+        display_name: "从别的机器装来的 skill",
+        installable: true,
+        uninstallable: false,
+        carriers: &[Carrier {
+            what: "资产目录里你点了「装到这台」的那个 skill：另一台机器上那个 skill 目录里的文件（你勾的那几个），原样写进这台",
+            source: ToolSource::Generated,
+            // 落在 skills 目录下（以那个 skill 为名的那一个子目录；名字由你点的那一条定）—— 与 cc-bus 那一格同一个根。
+            destination: ToolDestination::LocalHomeRelative(".claude/skills"),
+            touches: &[TouchedFile {
+                path: "~/.claude/skills",
+                host: HostScope::Either,
+                note: Some(
+                    "装到哪台就写哪台，只写 skills 下以你点的那个 skill 为名的那一个目录；\
+                     只写你勾的那几个文件（不同的要你点了「盖」才盖），别的文件不动",
+                ),
+                effect: TouchEffect::OwnedFile,
+            }],
+        }],
     },
     // ═══ 〔`K-R62` 09-11〕**从第三档升上来的第一项** ═══
     //
