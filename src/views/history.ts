@@ -107,6 +107,7 @@ import {
 import type { Hit as SearchHit } from "../generated/Hit";
 import type { SearchResponse } from "../generated/SearchResponse";
 import type { SessionHits as SearchSessionHits } from "../generated/SessionHits";
+import { askConfirm, askText } from "../ask-dialog";
 
 interface SessionTreeNode {
   entry: HistorySessionEntry;
@@ -1594,7 +1595,7 @@ export class HistoryView {
     const e = ctx.entry;
     if (!e) return;
     const cur = e.customTitle ?? e.aiTitle ?? "";
-    const next = window.prompt("自定义标题（留空恢复默认）", cur);
+    const next = await askText("自定义标题（留空恢复默认）", { initial: cur });
     if (next === null) return;
     try {
       // 〔C4d〕清空传**空串**（缺格 / `null` = 不改 —— 从前这里传 `null`，而 monitor 那份 patch 同样把 `null` 读成「不改」，
@@ -1775,11 +1776,11 @@ export class HistoryView {
     const label = e.customTitle ?? e.aiTitle ?? e.sessionId.slice(0, 8);
     if (e.origin) {
       // 远端删除更危险（删的是别人机器上的文件）→ 二次确认。〔RW1〕删那一下由那台机器的后端做。
-      const ok1 = window.confirm(
+      const ok1 = await askConfirm(
         `删除远端会话「${label}」（机器 ${e.origin}）？\n\n将由那台机器的后端物理删除这份会话记录，Claude Code 之后也无法 resume。\n此操作不可恢复。`,
       );
       if (!ok1) return;
-      const ok2 = window.confirm(
+      const ok2 = await askConfirm(
         `再次确认：永久删除远端 [${e.origin}] 的「${label}」？`,
       );
       if (!ok2) return;
@@ -1795,7 +1796,7 @@ export class HistoryView {
         return;
       }
     } else {
-      const ok = window.confirm(
+      const ok = await askConfirm(
         `物理删除会话「${label}」？\n\njsonl 文件会被直接删除，Claude Code 之后也无法 resume。\n此操作不可恢复。`,
       );
       if (!ok) return;

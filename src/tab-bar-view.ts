@@ -28,6 +28,8 @@ import { hasTerminal, isLive, isResumeOnly, stateView } from "./tab-session-stat
 import type { Tab } from "./tab-model";
 import type { TabStore } from "./tab-store";
 import type { TabBarPrefs } from "./tab-bar-prefs";
+import { dispatcher, type OverlayHandle } from "./keybindings/registry";
+import rs from "./tab-group-rename.module.css";
 
 /** TabButton 的 DOM 引用：refreshTabBar 局部更新依赖这些 ref 避免重新创建 button */
 export interface TabButtonRefs {
@@ -316,12 +318,7 @@ export class TabBarView {
       const name = document.createElement("button");
       name.type = "button";
       name.className = "tab-group-name";
-      name.addEventListener("click", () => {
-        const cur = this.prefs.collections.find((x) => x.id === col.id);
-        const next = window.prompt("集合名:", cur?.name ?? "");
-        if (next === null) return;
-        void this.prefs.commitCollections(renameCollection(this.prefs.collections, col.id, next));
-      });
+      name.addEventListener("click", () => this.beginGroupRename(col.id, name));
       const del = document.createElement("button");
       del.type = "button";
       del.className = "tab-group-del";
@@ -342,6 +339,58 @@ export class TabBarView {
     const nameEl = g.head.firstElementChild as HTMLElement;
     if (nameEl.textContent !== col.name) nameEl.textContent = col.name;
     return g.list;
+  }
+
+  /**
+   * P-extra（`设计/30 §3.3`）：组头**就地**改名 —— 名字那一格换成 `<input>`：Enter 提交 / Esc 取消 / blur 提交。
+   * 〔W5-UI〕原先是 `window.prompt`（原生阻塞弹窗，`真相源/05 I5`）。
+   *
+   * - 名字按钮只藏不摘（`hidden`），输入框插在它后面 ⇒ 整刷那条「名字没变就不写」照旧写在按钮上，不碰输入框。
+   * - Esc 走 overlay 栈（INVARIANTS「别手搓 window 级 Esc 监听」）：改名时 Esc 只取消改名，不连带关别的弹层；
+   *   输入框自己也认 Esc（`dispatcher` 没起的窗口 / 测试里照样能取消）—— 两路都进同一个只认一次的 `finish`。
+   * - 提交值 `trim` 后为空 ⇒ 当取消；与现名相同 ⇒ 不写（`renameCollection` 本身也把空名当不改）。
+   */
+  private beginGroupRename(id: string, name: HTMLElement): void {
+    if (name.hidden) return; // 已经在改
+    const cur = this.prefs.collections.find((x) => x.id === id);
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = rs.input;
+    input.value = cur?.name ?? "";
+    let done = false;
+    const overlay: OverlayHandle = {
+      handleEsc: () => {
+        finish(false);
+        return true;
+      },
+    };
+    const finish = (commit: boolean): void => {
+      if (done) return;
+      done = true;
+      dispatcher.popOverlay(overlay);
+      const next = input.value.trim();
+      input.remove();
+      name.hidden = false;
+      if (!commit || !next) return;
+      const now = this.prefs.collections.find((x) => x.id === id);
+      if (!now || now.name === next) return;
+      void this.prefs.commitCollections(renameCollection(this.prefs.collections, id, next));
+    };
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" && !ev.isComposing) {
+        ev.preventDefault();
+        finish(true);
+      } else if (ev.key === "Escape") {
+        ev.preventDefault();
+        finish(false);
+      }
+    });
+    input.addEventListener("blur", () => finish(true));
+    name.hidden = true;
+    name.after(input);
+    dispatcher.pushOverlay(overlay);
+    input.focus();
+    input.select();
   }
 
   /** A3：账号快照换了 ⇒ 所有 tab 的账号徽章就地重刷（原是 `setSessionAccounts` 末尾那个循环，逐字）。 */

@@ -10,6 +10,7 @@
 //      （kill 失败提前 return、绝不记，见 §5.2 + vitest ④）。硬合需给 withAccount 加 abort-vs-degrade /
 //      条件记账 / run 前置 compact&kill 钩子三个开关，复杂度净增、收益为负。二者已共用 accounts.ts
 //      **同一批原语**（fetchAccounts / accountConfigDir / recordLastAccount），无逻辑漂移。故维持分离。
+import { askConfirm, type ConfirmFn } from "./ask-dialog";
 import { commands } from "./ipc/commands";
 import { runRemoteResumeTmux } from "./remote-launch-run";
 import { fetchAccounts, accountConfigDir, recordLastAccount, checkTrust, getModelForAccount } from "./accounts";
@@ -38,7 +39,7 @@ export interface RestartWithAccountOpts {
   /** ③ 是否先在【旧账号】上 /compact（默认 false，用户拍板）。 */
   compactFirst: boolean;
   // —— 可注入点（默认走真实实现；测试注入 mock）——
-  confirm?: (message: string) => boolean;
+  confirm?: ConfirmFn;
   /** 等 compact 完成：resolve(true)=检测到完成 / resolve(false)=超时放弃。省略 → 有界延时兜底。 */
   awaitCompact?: () => Promise<boolean>;
   /**
@@ -92,7 +93,8 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   }
 
   // ② 破坏性二次确认。
-  const confirmFn = opts.confirm ?? ((m: string) => window.confirm(m));
+  // 〔W5-UI〕默认走应用内对话框：真 app 里 `window.confirm` 是插件注入的 async 替身（返回 Promise，恒真值）。
+  const confirmFn: ConfirmFn = opts.confirm ?? askConfirm;
   const msg =
     `用账号「${accountName}」重启此会话？\n\n` +
     `会中断当前回合：先请求会话优雅退出（最多等 ~10s），再结束旧进程（tmux 会话 ${tmuxName}），` +
@@ -101,7 +103,7 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
       ? "\n将先在【旧账号】上 /compact（命中旧缓存更省），可能耗时数分钟。"
       : "") +
     trustWarn;
-  if (!confirmFn(msg)) return false;
+  if (!(await confirmFn(msg))) return false;
 
   // ③ [可选] 在【旧账号】上 compact（换号前，命中旧缓存——§5.1）。失败/超时不阻断（§5.2）。
   if (opts.compactFirst) {

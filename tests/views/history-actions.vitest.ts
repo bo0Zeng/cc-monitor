@@ -49,6 +49,7 @@ import {
 } from "../../src/accounts";
 import { historyCalls, isChanCall, linesReply, withAccountReads, withHistoryReads } from "../test-support/chan-fake";
 import { LOCAL_ORIGIN } from "../../src/ipc/origin";
+import { answerAskDialog, answerAskText } from "../test-support/ask-dialog-driver.ts";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const runNewRemote = runNewSessionRemote as unknown as ReturnType<typeof vi.fn>;
@@ -241,16 +242,17 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
   //   守的要求：主会话 09-25 裁（`调研/第四波记录/C4d.md`「主会话裁」第 2 条）注解读写者换成本机常驻后端，patch 语义逐格照搬
   //   monitor 那一份（`null` = 不改）⇒ 界面这一侧要传对的那一个值。
   it("重命名留空 ⇒ 交的是空串（清掉），不是 null（后端当「不改」）", async () => {
-    const promptSpy = vi.spyOn(window, "prompt").mockReturnValue("   ");
     const view = new HistoryView();
     const row = buildRow(view, entry({ customTitle: "旧名" }), proj());
     row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
     menuItem("重命名")!.click();
     await Promise.resolve();
+    // 〔W5-UI〕问名字走应用内对话框（初值 = 现名）。
+    expect(document.querySelector<HTMLInputElement>('[role="dialog"] input')!.value).toBe("旧名");
+    await answerAskText("   ");
     const call = historyCalls(invokeMock.mock.calls, "update_history_metadata")[0];
     expect(call, "重命名一发都没出去").toBeTruthy();
     expect(call!.patch).toEqual({ customTitle: "" });
-    promptSpy.mockRestore();
   });
 
   it("菜单 star 与 inline star 走同一 run（都触发 update_history_metadata）", async () => {
@@ -265,13 +267,13 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
   });
 
   it("inline 删除（本地）二次确认 + invoke delete_history_session（回归护栏）", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     const view = new HistoryView();
     const row = buildRow(view, entry(), proj());
     // delete 是最后一个 .history-action-danger
     row.querySelector<HTMLButtonElement>(".history-action-danger")!.click();
     await Promise.resolve();
-    await Promise.resolve();
+    expect(invokeMock.mock.calls.some((c) => c[0] === "delete_history_session"), "还没答就删了").toBe(false);
+    await answerAskDialog(true);
     const call = invokeMock.mock.calls.find((c) => c[0] === "delete_history_session");
     expect(call).toBeTruthy();
     // 🔴 〔步 12·C 09-20〕`origin` 是**新加的必填项**，而且本机要逐字送 `"<local>"`。
@@ -282,7 +284,15 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
       (call![1] as { origin?: unknown }).origin,
       "本机删除没送 `<local>` —— Rust 侧 `Origin::route` 会拒（`null`/缺省都不是本机）",
     ).toBe("<local>");
-    confirmSpy.mockRestore();
+  });
+
+  it("〔W5-UI〕inline 删除（本地）确认框点取消 ⇒ 一发都不出去（答案是异步到的，与真 app 同形）", async () => {
+    const view = new HistoryView();
+    const row = buildRow(view, entry(), proj());
+    row.querySelector<HTMLButtonElement>(".history-action-danger")!.click();
+    await Promise.resolve();
+    await answerAskDialog(false);
+    expect(invokeMock.mock.calls.some((c) => c[0] === "delete_history_session")).toBe(false);
   });
 
   it("菜单开着按 Esc（经 handleEscape）→ 只关菜单，不误关整个历史视图", () => {
@@ -300,7 +310,6 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
   // 🔴 〔步 12·C 09-20〕标题里的命令名跟上：`delete_remote_history_session` 已退役，
   //    远端删除走的是**同一条** `delete_history_session`，只是 `origin` 是那台机器。
   it("删除远端项目最后一个会话 → delete_history_session(origin=hostA) + remoteCache 同步移除（F76 护栏）", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     const view = new HistoryView();
     // 远端项目、仅 1 个会话 → 删掉即空 → 触发 this.projects + remoteCache 同步移除
     const p = proj({ origin: "hostA", sessionCount: 1 });
@@ -311,10 +320,10 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     const row = buildRow(view, entry({ origin: "hostA" }), p);
     row.querySelector<HTMLButtonElement>(".history-action-danger")!.click();
     await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-    // 远端删除走 SFTP 命令 + 二次确认
-    expect(confirmSpy).toHaveBeenCalledTimes(2);
+    // 远端删除走 SFTP 命令 + 二次确认（两次都得答「确定」才删）
+    await answerAskDialog(true);
+    expect(invokeMock.mock.calls.some((c) => c[0] === "delete_history_session"), "只答了一次就删了").toBe(false);
+    await answerAskDialog(true);
     // 🔴 判的是「**带着那台机器的 origin** 调了那条命令」——只判命令名不够：
     //    合并之后本机与远端**同名**，光判名字的话「远端删除误走了本机那条路」不会红。
     const remoteCall = invokeMock.mock.calls.find(
@@ -335,7 +344,6 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     // F76 承重不变式：删空的远端项目从 remoteCache 同步移除，否则 TTL 内重开会拼回幽灵
     const cache = (view as unknown as { remoteCache: { projects: unknown[] } }).remoteCache;
     expect(cache.projects.length).toBe(0);
-    confirmSpy.mockRestore();
   });
 });
 

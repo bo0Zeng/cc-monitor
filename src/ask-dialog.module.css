@@ -33,7 +33,7 @@
     overflow-wrap: anywhere;
   }
 
-  .input {
+  .field {
     background: var(--bg-2);
     border: 1px solid var(--border);
     border-radius: 6px;

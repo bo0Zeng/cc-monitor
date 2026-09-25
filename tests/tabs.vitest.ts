@@ -236,6 +236,7 @@ import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, RECONNECTABLE, UNSE
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { REPO_ROOT } from "./test-support/repo-root.ts";
+import { answerAskDialog, askDialogText } from "./test-support/ask-dialog-driver.ts";
 import type { TabStore } from "../src/tab-store";
 import type { TabBarView } from "../src/tab-bar-view";
 import type { TabBarDrag } from "../src/tab-bar-drag";
@@ -2423,9 +2424,9 @@ describe("audit-fixes F03 findIdleTmux（sid 命中但 command≠claude 的空 t
   });
 });
 
-// auto-e2e F-E4：可注入 confirm seam（killRemoteTmux）——**行为等价**验证。默认（不传 opts）**必须**
-// 仍调 window.confirm、消息串不变（默认交互零变化，这是 seam 非行为改动）；注入 confirm 才旁路
-// （headless e2e / DEV）。DOM(jsdom) 层是该 TabManager 方法的诚实天花板。
+// auto-e2e F-E4：可注入 confirm seam（killRemoteTmux）。默认（不传 opts）走应用内对话框
+// （〔W5-UI〕真 app 里 `window.confirm` 是插件注入的 async 替身、恒真值 ⇒ 原先这里从来没问过）；
+// 注入 confirm 才旁路（headless e2e / DEV）。DOM(jsdom) 层是该 TabManager 方法的诚实天花板。
 describe("auto-e2e F-E4 可注入 confirm seam（killRemoteTmux 行为等价）", () => {
   let tm: TabManager;
   beforeEach(() => {
@@ -2439,10 +2440,15 @@ describe("auto-e2e F-E4 可注入 confirm seam（killRemoteTmux 行为等价）"
   const killCalls = (): unknown[] =>
     vi.mocked(invoke).mock.calls.filter((c) => c[0] === "kill_remote_tmux");
 
-  it("killRemoteTmux 默认（不传 opts）→ 仍调 window.confirm（默认交互零变化）", () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+  it("killRemoteTmux 默认（不传 opts）→ 弹应用内对话框；答之前不杀，答「取消」⇒ 不杀", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm");
     home(tm).actions.killRemoteTmux("hostA", "cc-abc", false);
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    await microFlush();
+    expect(askDialogText(), "没弹应用内对话框").toContain("杀死会话「cc-abc」");
+    expect(killCalls(), "还没答就杀了").toHaveLength(0);
+    await answerAskDialog(false);
+    expect(killCalls()).toHaveLength(0);
+    expect(confirmSpy, "还在用原生 window.confirm").not.toHaveBeenCalled();
     confirmSpy.mockRestore();
   });
 
@@ -2484,7 +2490,7 @@ describe("auto-e2e F-E4 可注入 confirm seam（killRemoteTmux 行为等价）"
   });
 
   // 护栏：live（非 idle）文案必须仍含"正在运行的 Claude"——防日后误改 live 文案不被测出。
-  it("killRemoteTmux 非 idle → 文案含'正在运行的 Claude'（live 路径护栏）", () => {
+  it("killRemoteTmux 非 idle → 文案含'正在运行的 Claude'（live 路径护栏）", async () => {
     const msgs: string[] = [];
     home(tm).actions.killRemoteTmux("hostA", "cc-live1234", false, {
       confirm: (m: string) => {
@@ -2492,6 +2498,7 @@ describe("auto-e2e F-E4 可注入 confirm seam（killRemoteTmux 行为等价）"
         return false;
       },
     });
+    await microFlush();
     expect(msgs).toHaveLength(1);
     expect(msgs[0]).toContain("正在运行的 Claude");
   });
@@ -2571,34 +2578,30 @@ describe("A5+ claudeExited（优雅退出检测：目标 sid 前台是否不再�
 describe("F79 杀死远端 tmux 会话（二次确认 + kill_remote_tmux）", () => {
   beforeEach(() => vi.clearAllMocks());
   it("二次确认通过 → invoke kill_remote_tmux（origin/target 正确，变灰由 #60-A 兜、不主动 archive）", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     const tm = home(makeTM()).actions;
     tm.killRemoteTmux("hostA", "cc-abc", false);
-    await Promise.resolve();
+    await answerAskDialog(true);
     const call = vi.mocked(invoke).mock.calls.find((c) => c[0] === "kill_remote_tmux");
     expect(call).toBeTruthy();
     expect(call![1]).toMatchObject({ origin: "hostA", target: "cc-abc" });
-    confirmSpy.mockRestore();
   });
-  it("二次确认取消 → 不 invoke", () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+  it("二次确认取消 → 不 invoke", async () => {
     const tm = home(makeTM()).actions;
     tm.killRemoteTmux("hostA", "cc-abc", false);
+    await answerAskDialog(false);
     expect(
       vi.mocked(invoke).mock.calls.some((c) => c[0] === "kill_remote_tmux"),
     ).toBe(false);
-    confirmSpy.mockRestore();
   });
-  it("F79 审计修复：cwd 回退命中（viaCwd）→ 二次确认加强 caveat（可能杀同目录别的会话）", () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+  it("F79 审计修复：cwd 回退命中（viaCwd）→ 二次确认加强 caveat（可能杀同目录别的会话）", async () => {
     const tm = home(makeTM()).actions;
     tm.killRemoteTmux("hostA", "cc-abc", true);
-    const msg = String(confirmSpy.mock.calls[0]?.[0] ?? "");
+    const msg = askDialogText();
+    await answerAskDialog(false);
     // 〔U2〕按术语表改词：`@ccm_sid` 是禁词（say：不说标记，说后果「认不出是哪个会话」），
     //   这一格随改词同拍改 —— 钉的仍是同一件事（回退命中 ⇒ 确认框里有串味警告）。
     expect(msg).toContain("认不出这是哪个会话"); // 未检测到身份标记
     expect(msg).toContain("同目录"); // 可能杀同目录别的 Claude
-    confirmSpy.mockRestore();
   });
 });
 
@@ -3679,6 +3682,81 @@ describe("P7a-3 集合分组渲染", () => {
     // 非成员直挂主栏（不是任何组的子孙）。
     const loose = [...bar.children].filter((e) => e.classList.contains("tab"));
     expect(loose).toHaveLength(1);
+  });
+
+  // ── 〔W5-UI〕P-extra 组头就地改名（`设计/30 §3.3` 逐字「组头就地 `<input>`：Enter 提交 / Esc 取消 / blur 提交」）──
+  describe("P-extra 组头就地改名", () => {
+    const renameWrites = (): TabCollection[][] =>
+      (home(tm).prefs.commitCollections as unknown as Mock).mock.calls.map((c) => c[0] as TabCollection[]);
+    let promptSpy: ReturnType<typeof vi.spyOn>;
+    const open = (): HTMLInputElement => {
+      tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
+      setCols([{ id: "g1", name: "白天", members: ["a"] }]);
+      flushBar();
+      home(tm).prefs.commitCollections = vi.fn().mockResolvedValue(undefined) as never;
+      bar.querySelector<HTMLElement>(".tab-group-name")!.click();
+      const input = bar.querySelector<HTMLInputElement>(".tab-group-head input")!;
+      expect(input, "组头没换成输入框").toBeTruthy();
+      return input;
+    };
+    const key = (el: HTMLElement, k: string): void => {
+      el.dispatchEvent(new KeyboardEvent("keydown", { key: k, code: k, bubbles: true }));
+    };
+    beforeEach(() => {
+      promptSpy = vi.spyOn(window, "prompt");
+    });
+    afterEach(() => {
+      expect(promptSpy, "还在弹原生 window.prompt").not.toHaveBeenCalled();
+      promptSpy.mockRestore();
+    });
+
+    it("点组头 ⇒ 就地输入框（初值 = 现名、聚焦、全选），名字按钮让位", () => {
+      const input = open();
+      expect(input.value).toBe("白天");
+      expect(document.activeElement).toBe(input);
+      expect([input.selectionStart, input.selectionEnd]).toEqual([0, 2]);
+      expect(bar.querySelector<HTMLElement>(".tab-group-name")!.hidden).toBe(true);
+      key(input, "Escape");
+    });
+
+    it("Enter 提交：恰写一次、写的是新名；输入框收起、名字按钮回来", () => {
+      const input = open();
+      input.value = "  夜里 ";
+      key(input, "Enter");
+      expect(renameWrites()).toHaveLength(1);
+      expect(renameWrites()[0].find((c) => c.id === "g1")!.name).toBe("夜里");
+      expect(bar.querySelector(".tab-group-head input")).toBeNull();
+      expect(bar.querySelector<HTMLElement>(".tab-group-name")!.hidden).toBe(false);
+    });
+
+    it("Esc 取消：零写、名字不变", () => {
+      const input = open();
+      input.value = "夜里";
+      key(input, "Escape");
+      expect(renameWrites()).toHaveLength(0);
+      expect(bar.querySelector(".tab-group-head input")).toBeNull();
+      expect(bar.querySelector(".tab-group-name")!.textContent).toBe("白天");
+    });
+
+    it("blur 提交", () => {
+      const input = open();
+      input.value = "傍晚";
+      input.blur();
+      expect(renameWrites()).toHaveLength(1);
+      expect(renameWrites()[0].find((c) => c.id === "g1")!.name).toBe("傍晚");
+    });
+
+    it("空名 / 与现名相同 ⇒ 不写（只认一次：Enter 之后的 blur 不再写）", () => {
+      let input = open();
+      input.value = "   ";
+      key(input, "Enter");
+      input = (bar.querySelector<HTMLElement>(".tab-group-name")!.click(),
+      bar.querySelector<HTMLInputElement>(".tab-group-head input")!);
+      input.value = "白天";
+      key(input, "Enter");
+      input.blur();
+      expect(renameWrites()).toHaveLength(0);
+    });
   });
 
   it("★★ P7a3-E：**没拉过集合的实例不许写集合** —— viewer 窗口会把用户已有的全冲掉", () => {

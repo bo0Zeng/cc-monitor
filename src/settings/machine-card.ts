@@ -36,6 +36,7 @@ import {
 import { runRemoteLauncher } from "../remote-launch-run";
 import type { ConnTestResult } from "../generated/ConnTestResult";
 import type { ResolvedHost } from "../generated/ResolvedHost";
+import { askConfirm } from "../ask-dialog";
 
 /** 一行：label（上）+ 宽文本 input（下）。change 触发 onChange。 */
 function buildTextRow(
@@ -414,7 +415,7 @@ export class MachineCard {
     resetFpBtn.textContent = "重置为 TOFU";
     resetFpBtn.title =
       "清除已固化的主机指纹，下次连接重新捕获（仅在你确知服务器合法换过 host key 时用）";
-    resetFpBtn.addEventListener("click", () => this.onResetFingerprint());
+    resetFpBtn.addEventListener("click", () => void this.onResetFingerprint());
     this.fingerprintInput.parentElement?.appendChild(resetFpBtn);
     const syncResetVisibility = (): void => {
       resetFpBtn.style.display = shouldShowResetFingerprint(
@@ -648,11 +649,11 @@ export class MachineCard {
    * 接受新主机密钥;若此刻正被中间人攻击,会信任攻击者的密钥。仅当确知服务器合法换过
    * host key 时才该重置。
    */
-  private onResetFingerprint(): void {
+  private async onResetFingerprint(): Promise<void> {
     const host =
       this.hostInput.value.trim() || this.labelInput.value.trim() || "该主机";
     if (
-      !window.confirm(
+      !await askConfirm(
         `确认重置 ${host} 的主机指纹？\n\n` +
           "清除后下次连接将以 TOFU 重新捕获并接受主机密钥。\n" +
           "⚠ 若此刻网络正被中间人攻击，重置会让 monitor 信任攻击者的密钥。\n" +
@@ -1078,7 +1079,7 @@ export class MachineCard {
       return;
     }
     if (
-      !window.confirm(
+      !await askConfirm(
         `确认从 ${cfg.host} 删除后端？\n会删：${cfg.backendPath}\n（若该机器仍勾选启用，下次连接会自动装回。）`,
       )
     ) {
@@ -1104,7 +1105,7 @@ export class MachineCard {
       return;
     }
     if (
-      !window.confirm(
+      !await askConfirm(
         `确认从 ${cfg.host} 的 ~/.bashrc 删掉别名块？\n（只删 cc-monitor 那一小块，块外内容不动，会先备份原文件。）`,
       )
     ) {

@@ -35,6 +35,7 @@ import { LOCAL_ORIGIN } from "../backend-policy";
 // ——**ts-rs 把它映射成 `number` 而不是 `bigint`**，所以 C03 那条大整数性质对它不适用。
 import type { CcBusAgent } from "../generated/CcBusAgent";
 import type { CcBusState } from "../generated/CcBusState";
+import { askConfirm } from "../ask-dialog";
 
 export class CcBusSection {
   readonly element: HTMLElement;
@@ -671,7 +672,7 @@ export class CcBusSection {
     const text = this.broadcastInput.value.trim();
     if (!text) return;
     const n = this.state?.agents.length ?? 0;
-    if (!window.confirm(`广播给 ${n} 个 agent？\n\n${text}`)) return;
+    if (!await askConfirm(`广播给 ${n} 个 agent？\n\n${text}`)) return;
     this.broadcastBtn.disabled = true;
     try {
       const out = await commands.cc_bus_broadcast({ origin, text });
