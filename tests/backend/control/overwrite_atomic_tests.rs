@@ -162,7 +162,7 @@ fn w3_a_placeholder_that_could_not_be_removed_is_named_in_the_refusal() {
     let err = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
     let note = crate::control::files_commit::placeholder_note(dest, &Err(err));
     assert!(
-        note.contains("/x/y/a.bin") && note.contains("0 字节占位") && note.contains("删不掉"),
+        note.contains("/x/y/a.bin") && note.contains("0 字节的空文件") && note.contains("没能删掉"),
         "{note}"
     );
     // 接线：提交那一支拿「撤占位」的真结局去问它（不是 `let _ =` 吞掉）。

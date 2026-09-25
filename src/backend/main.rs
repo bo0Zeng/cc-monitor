@@ -102,6 +102,9 @@ async fn main() {
     // Log to stderr so it never corrupts the stdout wire stream.
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
+        // 〔HX1 · NT2 问 3 ＋ RT1 F3〕只在 stderr 是终端（人在手跑）时上色：进 monitor 日志的管子、
+        //   进脱离载体那份 stderr 文件的，转义码原样落盘、而且让 monitor 那一侧认不出行首的级别字。
+        .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stderr()))
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
