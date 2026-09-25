@@ -7,7 +7,8 @@
 //! ## 只读铁律豁免（INVARIANT §1 / 账本 SS-G）—— 穷举登记见 `src/doc/INVARIANTS.md §1`
 //! cc-monitor 对远端的写入均**用户显式触发**，各自独立路径守卫、绝不混用：
 //! - **F08**：自部署后端二进制到 `~/.cc-monitor/bin/`（非用户数据、幂等、版本门控）。
-//! - **F11**：用户**主动**删除远端会话 jsonl（`remove_remote_file`，`is_safe_remote_jsonl` + `canonicalize`）。
+//! - **F11**：用户**主动**删除远端会话 jsonl。〔RW1 · 第四波 09-24〕**已不在本模块**：经远端后端的
+//!   `files-delete-session`（只收 sid）删，从前那道 SFTP 直删与它的结构守卫〔散文墓碑〕走了。
 //! - **F89a**：用户**显式**增/改/删远端**项目** `.mcp.json`（字符串守卫 `is_safe_remote_mcp_json`：
 //!   绝对 + 尾 `/.mcp.json` + 无 `..` + 非裸）。〔RW1 · 第四波 09-24〕**写已不在本模块**：
 //!   经远端后端（`mcp::write_project_mcp_server` → `user_files`），不再 SFTP 直写。
@@ -1014,70 +1015,12 @@ pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, Strin
 }
 
 // ============================================================================
-// F11：远端用户数据写（删除远端历史 jsonl）。SS-G item 3 的唯一 SFTP 用户数据写。
+// F11：远端用户数据写（删除远端历史 jsonl）。
+// 〔RW1 · 第四波 · 2026-09-24〕**这一段整个搬走了**：F11 按用户裁「按推荐改」经那台远端的后端删
+// （`files-delete-session`，只收 sid —— 会话文件围栏唯一的例外，落点由远端后端按 sid 在它自己的记录树里找），
+// 从前这里那道结构守卫 `is_safe_remote_jsonl`〔散文墓碑〕与 SFTP 直删 `remove_remote_file`〔散文墓碑〕零调用方 ⇒ 删了。
+// 「哪几份才许删」那一问的住址从此是 `src/backend/agents/claudecode/paths.rs::session_file_for_delete`。
 // ============================================================================
-
-/// 远端历史 jsonl 删除路径的安全守卫（纯函数，可单测）。
-///
-/// 仅允许删除**远端 claude_dir 下符合会话 jsonl 结构的文件**。会话 jsonl 的真实结构恒为
-/// `<claude_dir>/projects/<encoded_cwd 单层目录>/<sid>.jsonl`，故要求：
-/// - 不含 `..`（防上跳）；
-/// - 最后一个 `/projects/` 之后**正好是 `<一层目录>/<name>.jsonl`**（split 后恰 2 段、
-///   首段非空非 `.`、末段以 `.jsonl` 结尾且不只是 `.jsonl`）。
-///
-/// 这比裸 `contains("/projects/")` 强：挡住 `/tmp/projects/x.jsonl`（projects 下直接放
-/// jsonl）、`/a/projects/b/c/x.jsonl`（层级不符）这类伪造路径；且**不硬编码 `.claude`**，
-/// 兼容 `CLAUDE_CONFIG_DIR` 自定义目录（审计 S-1：`/.claude/projects/` 会误伤自定义目录）。
-///
-/// 残留（审计登记，后续加固）：完全锚定需远端后端上报的 `claude_dir`（一次性删除连接
-/// 无 hello）。但威胁仅「**已被攻陷的 backend** 喂伪造路径」——而被攻陷后端本就能在远端
-/// 任意删文件，monitor 删一个 `projects/*.jsonl` 不增加其能力（非提权）；叠加用户**二次确认**，
-/// 残留风险为纵深防御层面。
-pub fn is_safe_remote_jsonl(path: &str) -> bool {
-    if path.contains("..") || !path.ends_with(".jsonl") {
-        return false;
-    }
-    let Some(idx) = path.rfind("/projects/") else {
-        return false;
-    };
-    let rest = &path[idx + "/projects/".len()..];
-    let parts: Vec<&str> = rest.split('/').collect();
-    parts.len() == 2
-        && !parts[0].is_empty()
-        && parts[0] != "."
-        && parts[1].len() > ".jsonl".len()
-        && parts[1].ends_with(".jsonl")
-}
-
-/// 删除远端文件（issue 未拆，F11）：**仅**用于用户主动删除远端历史 jsonl。
-///
-/// 双重守卫：① 入参先过 [`is_safe_remote_jsonl`]；② SFTP `canonicalize`（realpath，解 symlink）
-/// 后**再**校验 canonical 仍含 `/projects/` 且以 `.jsonl` 结尾——挡住 projects/ 内指向外部的
-/// symlink 逃逸。只读铁律豁免（SS-G）：仅此一处对远端 `~/.claude/` 的写，且用户显式触发。
-pub async fn remove_remote_file(cfg: &RemoteConfig, remote_path: &str) -> Result<(), String> {
-    if !is_safe_remote_jsonl(remote_path) {
-        return Err(format!(
-            "拒绝删除非法远端路径（须为 projects/ 下 .jsonl）: {remote_path}"
-        ));
-    }
-    let conn = connect_sftp(cfg).await?;
-    let sftp = &conn.sftp;
-    // realpath 解析 symlink 后二次校验，防 projects/ 内 symlink 指向外部文件。
-    let canon = sftp
-        .canonicalize(remote_path.to_string())
-        .await
-        .map_err(|e| format!("解析远端路径失败: {e}"))?;
-    if !is_safe_remote_jsonl(&canon) {
-        return Err(format!(
-            "拒绝删除：canonical 路径越出 projects/ 或非 jsonl: {canon}"
-        ));
-    }
-    sftp.remove_file(canon.clone())
-        .await
-        .map_err(|e| format!("删除远端文件失败: {e}"))?;
-    tracing::info!("远端 [{}] 已删除历史会话: {canon}", cfg.origin_label());
-    Ok(())
-}
 
 // ============================================================================
 // F10：远端 cc/bash 集成——一键把 ccm wrapper 装进远端 ~/.bashrc（SS-H）。

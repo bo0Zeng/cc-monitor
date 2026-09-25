@@ -69,10 +69,11 @@ fn corpus() -> Vec<(&'static str, String)> {
 const DIAL_CENSUS: &[(&str, usize, &str)] = &[
     (
         "sftp.rs",
-        4,
+        3,
         "甲 2 条命令（`deploy_remote_backend` · `uninstall_remote_backend`）\
-             ＋ **派工单没归类的 2 处**：`ensure_backend_deployed`（连接流程里的自动部署）\
-             与 `remove_remote_file`（F11 删远端会话 jsonl）。\
+             ＋ **派工单没归类的 1 处**：`ensure_backend_deployed`（连接流程里的自动部署）。\
+             〔RW1 · 第四波 09-24〕**4 → 3**：原来派工单没归类的还有一处 —— F11 删远端会话 jsonl 那条 SFTP 直删 ——\
+             按用户裁改经远端后端删（`files-delete-session`），那一处随它删了。\
              〔RW1 · 第四波 09-24〕**6 → 4**：`install_remote_alias_block` / `uninstall_remote_alias_block` \
              （F10）按用户裁「按推荐改」改成经那台远端的后端写（`user_files` → `files-peek` / `files-put`），\
              不再拨 SFTP —— 上面「甲」那一格挡路石（铁律 I7）由用户 09-23/24 两裁解开（后端文件管理那一面可以改用户文件）",
@@ -328,10 +329,10 @@ fn census(corpus: &[(&str, String)]) -> Result<usize, String> {
 fn every_reading_this_ledger_quotes_is_derived_from_the_tree() {
     let total = census(&corpus()).expect("普查");
     assert_eq!(
-        total, 7,
-        "`connect_sftp` 的调用点合计应当是 7 处（4 份文件）—— 实得 {total}。\n\
-             ⚠ 〔RW1 · 第四波 09-24〕**11 → 7**：远端别名块装 / 卸两条（F10）与项目 `.mcp.json` 写 / 删两处（F89a）\n\
-             改经远端后端写，不再拨 SFTP。\n\
+        total, 6,
+        "`connect_sftp` 的调用点合计应当是 6 处（4 份文件）—— 实得 {total}。\n\
+             ⚠ 〔RW1 · 第四波 09-24〕**11 → 6**：远端别名块装 / 卸两条（F10）· 项目 `.mcp.json` 写 / 删两处（F89a）·\n\
+             删远端会话一处（F11）改经远端后端写，不再拨 SFTP。\n\
              ⚠ 派工单写的「9 处」现打是错的，来历见 `DIAL_CENSUS` 头注。\n\
              ⚠ 〔步 23b · 09-20〕**14 → 15**：零流量复制那一路的 `copy_inner` 自己拿池槽。\n\
              ⚠ 〔步 24 · 09-20〕**15 → 11**：多通道池落地，`sftp_pool.rs` 里那 5 处\n\

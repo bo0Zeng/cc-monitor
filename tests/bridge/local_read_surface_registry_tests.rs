@@ -45,10 +45,10 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/history.rs",
         "write",
-        4,
-        "写操作**恰好也读 dir 来定位文件**：`delete_history_session`(621/622) · \
-             `create_branch_session`(744/745)。⚠ **不属读面** —— 删会话 **backend 侧无对侧**\
-             （14 条一次性子命令里没有删）；分叉走 `--fork-session`。",
+        2,
+        "写操作**恰好也读 dir 来定位文件**：`create_branch_session`(744/745)。⚠ **不属读面** —— 分叉走 `--fork-session`。\
+             〔RW1 · 第四波 09-24〕**4 → 2**：`delete_history_session` 那两处走了 —— 删会话改成后端一条只收 sid 的命令\
+             （`files-delete-session`，落点由后端按 sid 找），本机不再解析 dir 来定位要删的那一份。",
     ),
     (
         "src/history.rs",

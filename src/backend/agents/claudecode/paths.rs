@@ -103,8 +103,9 @@ pub fn is_inside_tree(home: &Path, target: &Path) -> bool {
 /// 两侧任何一处改动、另一处不跟，当场红。判据两棵树各一份：
 /// `tests/backend/agents_tests.rs` 与 `tests/bridge/claude_data_fence_tests.rs`。
 ///
-/// ⚠ **方向相反的那一道不在这儿，也不许合并**：`sftp::is_safe_remote_jsonl` 的正题恰恰是
-/// 「**只许**删 `projects/**/*.jsonl`」（`INVARIANTS §1` 例外 3，历史浏览器删远端会话）。
+/// ⚠ **方向相反的那一道不在这儿，也不许合并**：从前是桥那一侧的 `is_safe_remote_jsonl`〔散文墓碑〕，
+/// 〔RW1 · 第四波 09-24〕今天是本文件的 [`session_file_for_delete_in`]，正题恰恰是
+/// 「**只许**删恰是 `projects/<proj>/<sid>.jsonl` 的那一份」（`INVARIANTS §1` 例外 3，历史浏览器删会话）。
 /// 两道都读 Claude 的目录结构、方向相反，合成一个之后「哪些不许写」与「哪些才许删」
 /// 会共用一个真相，而它们要的恰好是补集。
 ///

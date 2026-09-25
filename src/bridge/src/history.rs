@@ -750,57 +750,22 @@ pub async fn stream_read_session_jsonl(
     .map_err(|e| format!("spawn_blocking join: {e}"))?
 }
 
-/// 本地删除的路径守卫（Batch4-F15）：canonicalize 后校验，`..` 与 symlink 穿越都拒。
-///
-/// 旧实现只做 `PathBuf::starts_with`——那是纯组件前缀比较，不解析 `..` 不解
-/// symlink：`<projects>/../../x.jsonl` 能通过校验、由 OS 在 remove_file 时解析。
-/// 对照远端版 `sftp.rs::remove_remote_file`（canonicalize 双重守卫），本地反而
-/// 更弱。现在两边 canonicalize（Windows 上 canonicalize 产生 `\\?\` 前缀，
-/// 单边做必然不匹配），扩展名也在 canonical 路径上查（防 symlink 指向非 jsonl）。
-///
-/// 返回 canonical 后的删除目标；抽成纯函数以便注入 tempdir 直测。
-///
-/// 已接受取舍：canonicalize → remove_file 之间存在理论 TOCTOU 窗口（期间目录
-/// 组件被换成 symlink）。path-based API 固有限制；威胁模型是"前端传错路径"
-/// 而非恶意本地攻击者，与 sftp.rs 远端版（realpath → remove）同级，不做
-/// openat/O_NOFOLLOW 级加固。
-fn validate_delete_target(jsonl_path: &str, projects_dir: &Path) -> Result<PathBuf, String> {
-    let target = PathBuf::from(jsonl_path);
-    if !target.exists() {
-        return Err(format!("{} does not exist", target.display()));
-    }
-    let canon_target = target
-        .canonicalize()
-        .map_err(|e| format!("canonicalize {}: {e}", target.display()))?;
-    let canon_projects = projects_dir
-        .canonicalize()
-        .map_err(|e| format!("canonicalize {}: {e}", projects_dir.display()))?;
-    if !canon_target.starts_with(&canon_projects) {
-        return Err(format!(
-            "refuse delete: {} is outside {}",
-            canon_target.display(),
-            canon_projects.display()
-        ));
-    }
-    if !crate::adapter::has_record_ext(&canon_target) {
-        return Err("refuse delete: not a .jsonl file".into());
-    }
-    Ok(canon_target)
-}
+// 〔RW1 · 第四波 · 2026-09-24〕这里原来是本机删除的路径守卫 `validate_delete_target`〔散文墓碑〕（Batch4-F15：
+// canonicalize 两边、`..` 与 symlink 穿越都拒）与本进程那一次 `fs::remove_file`。用户裁「只允许后端的文件管理部分
+// 写文件」也管本机 ⇒ 删历史会话改成那台机器后端的**一条明确的命令** `files-delete-session`（会话文件围栏唯一的例外，
+// **只收 sid**），落点由后端按 sid 在它自己的记录树里找、解到底必须恰是 `<项目>/<sid>.jsonl`
+// （`src/backend/agents/claudecode/paths.rs::session_file_for_delete`）⇒ 那道路径守卫的活由后端干了，本机这一份零调用方、删了。
 
 /// 🔴 **〔步 12·C 2026-09-20〕本机 ＋ 远端两条删除合成了一条带 `origin` 的。**
 ///
 /// **凭什么说它们是同一件事**：两侧都是「用户显式删掉一份会话 jsonl，然后清掉本机
-/// 按 sid 存的那份注解」。后半句**本来就只有一份实现** —— [`remove_metadata_entry`]
-/// 的头注逐字写着「本地删除与远端删除（issue F11 `delete_remote_history_session`）
-/// **共用**」，因为注解是 monitor 本机的东西，**与会话本体在哪台机器上无关**。
-/// 前半句两侧各有一道路径守卫（本机 `validate_delete_target` canonicalize ＋ 围栏、
-/// 远端 `sftp::remove_remote_file` 双重守卫），那是「同一个动作在两种介质上的实现」，
-/// 不是两件能力。
+/// 按 sid 存的那份注解」。后半句**本来就只有一份实现**（[`remove_metadata_entry`]）。
 ///
-/// ⚠ **一处刻意保留的不对称**：远端那一支不信前端送来的 `session_id`，
-/// 自己从 `jsonl_path` 算 stem（理由写在 `remote_history::delete_remote_history_session`
-/// 那一行上）。合并**没有**把它抹平 —— 抹平会多开一个「删 A 的文件、清 B 的注解」的口。
+/// 🔴 **〔RW1 · 第四波 · 2026-09-24〕前半句也只剩一份了**：两侧都经那台机器的后端
+/// （[`delete_via_backend`] → `files-delete-session`，只收 sid），本机不再直删、远端不再 SFTP 直删。
+/// `jsonl_path` 仍然收：它是**一致性闸**的另一半 —— 前端送来的 `session_id` 必须恰是那份文件名的 stem，
+/// 对不上就一个字节不动（从前远端那一支「不信前端的 sid、自己从路径算」要防的「删 A 的文件、清 B 的注解」，
+/// 今天由这一闸在两侧同时防：删的是 sid 那一份，清的也是 sid 那一条，而 sid 必须就是界面上那一行的文件名）。
 #[tauri::command]
 pub async fn delete_history_session(
     origin: crate::origin::Origin,
@@ -808,18 +773,32 @@ pub async fn delete_history_session(
     jsonl_path: String,
 ) -> Result<(), String> {
     if let crate::origin::Route::Remote(host) = origin.route("delete_history_session")? {
-        return crate::remote_history::delete_remote_history_session(host, jsonl_path).await;
+        return crate::remote_history::delete_remote_history_session(host, session_id, jsonl_path)
+            .await;
     }
-    // 安全校验：必须在 claude_dir/projects 之下，避免前端传错路径误删别处文件
-    let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
-    let projects_dir = crate::adapter::records_dir(&claude_dir);
-    let target = validate_delete_target(&jsonl_path, &projects_dir)?;
+    let door = crate::user_files::BackendDoor::new(crate::origin::Origin::local());
+    delete_via_backend(&door, &session_id, &jsonl_path).await
+}
 
-    std::fs::remove_file(&target).map_err(|e| format!("remove {}: {e}", target.display()))?;
-    tracing::info!("history: deleted {}", target.display());
-
+/// 删一份历史会话（经门）＋ 清本机那条注解。**两侧共用这一份**（远端那一支只是门开在那台机器上）。
+pub(crate) async fn delete_via_backend(
+    door: &impl crate::user_files::Door,
+    session_id: &str,
+    jsonl_path: &str,
+) -> Result<(), String> {
+    match crate::remote_history::jsonl_stem(&jsonl_path.replace('\\', "/")) {
+        Some(stem) if stem == session_id => {}
+        other => {
+            return Err(format!(
+                "拒绝删除：界面给的会话 id（{session_id}）与那份文件的名字（{}）对不上 —— 一个字节都没动",
+                other.as_deref().unwrap_or("不是一份 .jsonl")
+            ))
+        }
+    }
+    let gone = door.delete_session(session_id).await?;
+    tracing::info!("history: {} 上删掉了 {gone}", door.machine());
     // 同步从 metadata 移除条目
-    remove_metadata_entry(&session_id);
+    remove_metadata_entry(session_id);
     Ok(())
 }
 
@@ -955,8 +934,8 @@ pub async fn create_branch_session(
     }
 }
 
-/// 建分支核心（可注入 projects_dir 直测，绕开 resolve_claude_dir 全局依赖——同 delete 的
-/// validate_delete_target 测法）。安全承诺全在这层：源零改动、只写新 sid、绝不覆盖。
+/// 建分支核心（可注入 projects_dir 直测，绕开 resolve_claude_dir 全局依赖）。
+/// 安全承诺全在这层：源零改动、只写新 sid、绝不覆盖。
 ///
 /// 「找那份源文件」**不在这里**：走 `branch_core::find_session_file`，与后端同一份（`K-R88`）。
 /// 本函数留下的是 monitor 侧特有的两样：读 jsonl 的口径、以及 `O_EXCL` 落盘。

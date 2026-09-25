@@ -129,13 +129,10 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
           它**不是**真相源（真相源永远是「那个口连不连得上」），只在**停**那一步用，\
           且用之前还要过一道 `/proc/<pid>/exe` 的身份核对。\
           没有它，接管来的那个实例按不动「停」——那时按钮就成了一句骗人的话"),
-    // ── 既不是安装、也不是「monitor 自己的」：**删用户数据**
-    ("history.rs", "delete_history_session", None,
-     "★ 删的是用户 `~/.claude/projects/**` 下的会话文件（用户主动发起）。\
-          它不是安装动作，但也不是 monitor 自己的东西。⚠ **08-07 订正**：本行原写「围栏由 \
-          `validate_delete_target` 与它自己的判据守着」—— 那句只对一半：围栏函数有五条穿越 \
-          防护判据，但**没有任何东西钉住那条路真的过了围栏**（实测跳过围栏，全仓 978 条不红）。 \
-          现由 `history_tests.rs::the_delete_entry_point_actually_goes_through_the_fence` 端到端钉住"),
+    // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来有 `history.rs::delete_history_session` 一行（**删用户数据**：
+    //    本进程 `fs::remove_file` 删 `~/.claude/projects/**` 下的会话文件）。用户裁「只允许后端的文件管理部分写文件」
+    //    也管本机 ⇒ 删历史会话改成后端一条只收 sid 的命令（`files-delete-session`，会话文件围栏唯一的例外），
+    //    本进程一个字节不删 ⇒ 摘行。那条「入口真的过了围栏」的端到端判据随之换成后端那一族与本侧的一致性闸判据。
 ];
 
 /// 一行 `use ... fs ...` 该放行还是该拦。`Ok(())` = 放行。

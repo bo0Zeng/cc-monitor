@@ -2806,6 +2806,25 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         // 〔RW1 · 第四波 09-24〕本机用户文件的原子写原语随「用户文件改经后端写」删了（`$PROFILE` / `.mcp.json`）。
         ("src/bridge/README.md", "atomic_write_string", 1),
+        // 〔RW1 · 第四波 09-24〕远端删会话那道结构守卫（F11 改经远端后端删，`files-delete-session` 只收 sid）。
+        (
+            "src/backend/agents/claudecode/paths.rs",
+            "is_safe_remote_jsonl",
+            1,
+        ),
+        ("src/bridge/README.md", "is_safe_remote_jsonl", 1),
+        (
+            "src/bridge/src/claude_data_fence.rs",
+            "is_safe_remote_jsonl",
+            2,
+        ),
+        ("src/bridge/src/sftp.rs", "is_safe_remote_jsonl", 1),
+        ("src/doc/INVARIANTS.md", "is_safe_remote_jsonl", 1),
+        (
+            "tests/bridge/comm_boundary_registry_tests.rs",
+            "is_safe_remote_jsonl",
+            1,
+        ),
         (
             "src/bridge/src/profile_installer.rs",
             "atomic_write_string",
@@ -3617,6 +3636,12 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔RW1 · 第四波 09-24〕1 → 4：本机原语 `LocalFile` 与它的同步门面 `apply_local` 随「用户文件改经后端写」
         //   整块走了，头注一处 ＋ 原住址一块墓碑（两个名字）= +3。
         ("src/bridge/src/fenced_block.rs", 4),
+        // 〔RW1 · 第四波 09-24〕F11 改经远端后端删：远端那一支的头注一块 · 本机那两组删除判据换掉时留的一块。
+        ("src/bridge/src/remote_history.rs", 1),
+        // 〔RW1 · 第四波 09-24〕远端删会话那道结构守卫随 F11 改经后端删走了：方向相反那一问的两处说明。
+        ("src/backend/agents/claudecode/paths.rs", 1),
+        ("src/bridge/src/claude_data_fence.rs", 2),
+        ("tests/bridge/history_tests.rs", 1),
         // 〔RW1 · 第四波 09-24〕项目 `.mcp.json` 的本机写原语删了（改经后端写）。
         ("src/bridge/src/mcp.rs", 1),
         // 〔RW1 · 第四波 09-24〕写点表摘掉那三行时留的一块。
@@ -3631,11 +3656,11 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/inproc_dial.rs", 1),
         ("tests/bridge/ssh_source_dial_move_judge.rs", 3),
         // 〔MC1〕+3：模块头注 ＋ 装 / 卸两条命令头注里各一块（`…_ccm_helper` 改名成 `…_alias_block`）。
-        ("src/bridge/src/sftp.rs", 6), // 〔F7c 收尾 09-24〕4 → 6（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
+        ("src/bridge/src/sftp.rs", 9), // 〔F7c 收尾 09-24〕4 → 6（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑） // 〔RW1〕+3：F11 那条 SFTP 直删与它的结构守卫（段头一块两个名字 ＋ 模块头注一处）
         ("src/bridge/src/profile_installer.rs", 5), // 〔AL1〕+1：`AccountAliasReport` 那一句 · 〔RW1〕+3：本机原子写原语 `atomic_write_string` / `atomic_replace_path` 删了（原住址一块 ＋ BOM 那段两句）
         ("src/bridge/src/verified_write.rs", 3),    // 〔RW1〕+1：`verify_and_rollback` 零调用方删了
         ("tests/bridge/verified_write_tests.rs", 1), // 〔RW1〕那三条回滚判据随它走了
-        ("tests/bridge/remote_write_registry_tests.rs", 7), // 〔F7c 收尾 09-24〕1 → 7（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
+        ("tests/bridge/remote_write_registry_tests.rs", 8), // 〔F7c 收尾 09-24〕1 → 7（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔RW1〕+1：F11 那条 SFTP 直删
         // 〔MC1 · 2026-09-24〕`CCM_SELF` 删了那一拍：shim 那条判据改名留的墓碑。
         ("tests/bridge/backend/control/local_backend_tests.rs", 1),
         // 〔AL1 · 2026-09-24〕别名改由后端渲染那一拍：本模块头注里 TS 那个旧生成器（`buildAliasLine`）·
@@ -3647,7 +3672,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/settings/panel-deferred-io.vitest.ts", 1),
         ("src/backend/wire.rs", 1),
         // 〔MC1 · 2026-09-24〕+2：`install_remote_ccm_helper` 改名那两行。
-        ("src/bridge/README.md", 7), // 〔F7c 收尾 09-24〕3 → 6（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔RW1〕6 → 7：`atomic_write_string` 那一节
+        ("src/bridge/README.md", 8), // 〔F7c 收尾 09-24〕3 → 6（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔RW1〕6 → 8：`atomic_write_string` 那一节 ＋ 远端删会话那道结构守卫
         ("src/bridge/build.rs", 1),
         ("src/bridge/crates/codex-token-core/src/lib.rs", 1),
         // 〔BS1b 09-24〕6 → 10：派生改走 `bus-spawn` 原语，删了 SSH 那条构造器与对 `<local>` 的公共拒绝
@@ -3664,7 +3689,7 @@ fn every_prose_tombstone_mark_is_registered() {
         //   另三处各挂在一条**随功能一起走掉的判据**的名字上 ——
         //   那三个名字同时要进 `TOMBSTONED`，两张表单位不同，各记各的）。
         ("src/bridge/src/filewin/source.rs", 5), // 〔F7c 收尾 09-24〕4 → 5（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
-        ("src/bridge/src/history.rs", 1),
+        ("src/bridge/src/history.rs", 2),        // 〔RW1〕+1：本机删会话那道路径守卫整段搬去后端
         ("src/bridge/src/launch.rs", 1),
         ("src/bridge/src/lib.rs", 2), // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("src/bridge/src/local_backend_host.rs", 1),
@@ -3672,7 +3697,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/spawn_managed.rs", 2),
         ("src/bridge/src/structural_scan.rs", 1),
         ("src/doc/ARCHITECTURE.md", 1),
-        ("src/doc/INVARIANTS.md", 4),
+        ("src/doc/INVARIANTS.md", 5), // 〔RW1〕+1：§1 例外 3 那道远端删会话守卫（写区外，只挂墓碑 ＋ 一句订正）
         ("src/doc/IPC-PROTOCOL.md", 4),
         // 〔AL1 · 2026-09-24〕+1：别名那一块搬走时留的墓碑（`buildAccountAliasBlock`）。
         ("src/settings/accounts-section.ts", 2),
@@ -3703,7 +3728,7 @@ fn every_prose_tombstone_mark_is_registered() {
         //   （「26 万字节排一帧 16.3 ms」是 debug 档 ＋ 全新 Context 的第一帧；release 是 2.5 ms）。
         //   按本表的口径它是墓碑：**不删那段话**，但挂上标记、登记在册。
         ("src/bridge/src/filewin/editor.rs", 3), // 〔F7c 收尾 09-24〕1 → 3（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
-        ("tests/bridge/comm_boundary_registry_tests.rs", 1),
+        ("tests/bridge/comm_boundary_registry_tests.rs", 3), // 〔RW1〕+2：sftp.rs 那一行的阻塞随 F11 清空 · 头注里那个公开名字
         ("tests/bridge/crates/guard-core/lib_tests.rs", 1),
         ("tests/bridge/doc_claim_registry_tests.rs", 1),
         ("tests/bridge/filewin/entry_tests.rs", 1),
