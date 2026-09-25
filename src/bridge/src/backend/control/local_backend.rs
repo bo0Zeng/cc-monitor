@@ -1023,7 +1023,7 @@ pub fn resolve_beside_this_exe(target_triple: &str) -> Resolved {
 /// ⚠ 非 Windows 上这个常量是**空串** ⇒ 名字与本行改动之前**逐字相同**，盘上已有的那份照旧命中。
 pub fn local_extract_name(build_id: &str) -> String {
     format!(
-        "cc-monitor-local-{build_id}{}",
+        "cc-monitor-backend-{build_id}{}",
         env!("CCM_TARGET_EXE_SUFFIX")
     )
 }
@@ -1051,7 +1051,7 @@ pub fn native_embedded_backend() -> Option<(&'static str, &'static [u8])> {
     let id = env!("BACKEND_NATIVE_ID");
     if id.is_empty() {
         // 走不到（`build.rs` 缺清单时当场 panic），但**不假设它走不到**：
-        // 空 build_id 会拼出 `cc-monitor-local-` 这样一个不带版本的落点，
+        // 空 build_id 会拼出 `cc-monitor-backend-` 这样一个不带版本的落点，
         // 那正是 D1 段花一整段论证要避开的「与远端那份撞在同一个名字上」。
         return None;
     }
