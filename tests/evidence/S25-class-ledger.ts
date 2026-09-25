@@ -511,6 +511,8 @@ export interface Ledger {
   cssClasses: SiteMap;
   /** 〔UC2〕`*.module.css` → 它的类名 → 住址（构建时哈希、只经 TS 导入对象用，不进全局命名空间）。 */
   moduleClasses: Map<string, SiteMap>;
+  /** 〔UC2〕`src/**\/*.d.<扩展名>.ts`（`allowArbitraryExtensions` 形的声明文件；今天只有 CSS Modules 的 `.d.css.ts`）。 */
+  arbitraryDecls: string[];
   /** 第三方 CSS 自己产出的类名 → 是哪份第三方 CSS。 */
   vendorClasses: Map<string, string>;
   /** 代码里**直接**出现的类名形 token → 住址。 */
@@ -551,7 +553,9 @@ export function buildLedger(root: string): Ledger {
   }
 
   // `x.d.ts` 与 `x.d.<扩展名>.ts`（后者是 `allowArbitraryExtensions` 下 CSS Modules 的逐文件类型）都是声明，不是代码。
-  const tsPaths = walk(srcDir, (p) => p.endsWith(".ts") && !/\.d(?:\.[\w-]+)?\.ts$/.test(p));
+  const allTs = walk(srcDir, (p) => p.endsWith(".ts"));
+  const tsPaths = allTs.filter((p) => !/\.d(?:\.[\w-]+)?\.ts$/.test(p));
+  const arbitraryDecls = allTs.filter((p) => /\.d\.[\w-]+\.ts$/.test(p));
   const codePaths = [...tsPaths, join(root, "index.html")];
   const sources = codePaths.map((p) => ({ rel: rel(p), text: readFileSync(p, "utf8") }));
 
@@ -599,6 +603,7 @@ export function buildLedger(root: string): Ledger {
     vendorSpecs: [...vendorSpecs],
     cssClasses,
     moduleClasses,
+    arbitraryDecls: arbitraryDecls.map(rel),
     vendorClasses,
     literals,
     constConcat,
