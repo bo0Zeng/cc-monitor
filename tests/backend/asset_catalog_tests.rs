@@ -275,7 +275,23 @@ fn skill_digest_sees_paths_and_content_and_the_summary_carries_no_content() {
     let c = skill_asset("demo", &s, Some("x"));
     assert_ne!(b.digest, c.digest, "换个名字，摘要必须变");
     std::fs::write(s.join("blob.bin"), [0u8, 159, 146, 150]).unwrap();
-    assert_eq!(skill_asset("demo", &s, None).summary["binary"], json!(true));
+    let with_blob = skill_asset("demo", &s, None);
+    assert_eq!(with_blob.summary["binary"], json!(true));
+    assert_eq!(with_blob.summary["truncated"], json!(false));
+    // 超上限的那一个：只按长度算，并且**说出是哪一个**（降级要说清）
+    std::fs::write(
+        s.join("huge.dat"),
+        vec![b'x'; SKILL_MAX_FILE_BYTES as usize + 1],
+    )
+    .unwrap();
+    let huge = skill_asset("demo", &s, None);
+    assert_eq!(huge.summary["truncated"], json!(true));
+    let notice = huge.summary["notice"].as_array().unwrap();
+    assert_eq!(notice.len(), 1, "{notice:?}");
+    assert!(
+        notice[0].as_str().unwrap().contains("huge.dat"),
+        "{notice:?}"
+    );
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -301,12 +317,12 @@ fn update_writes_only_when_changed_and_keeps_its_id() {
     assert_eq!(merged["changed"], json!(true));
     assert_eq!(merged["rows"][0]["name"], json!("z"));
     assert_eq!(merged["rows"][0]["state"], json!(HERE_MISSING));
-    // 目录里只剩那一份（临时文件没留下）
-    let left: Vec<String> = std::fs::read_dir(f.parent().unwrap())
+    // 临时文件没留下（按它的名字问一次，不遍历目录）
+    let tmp = f
+        .parent()
         .unwrap()
-        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
-        .collect();
-    assert_eq!(left, vec![FILE_NAME.to_string()]);
+        .join(format!("{FILE_NAME}.{}.tmp", std::process::id()));
+    assert!(!tmp.exists(), "临时文件留下了：{}", tmp.display());
     let _ = std::fs::remove_dir_all(&d);
 }
 

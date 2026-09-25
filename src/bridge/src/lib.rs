@@ -22,6 +22,7 @@ mod account_aliases; // K-R49：加了账号就给那条命令落盘——写的
 mod accounts; // A2：多账号（cc-acct-iso）只读查询——账号=一个 CLAUDE_CONFIG_DIR
 mod acct_iso_deploy; // F5：一键部署 vendored cc-acct-iso 到远端 + 存在性检测
 mod adapter;
+mod asset_sync; // 〔AS2 · 第四波 4B · V113〕资产目录同步：连上那一刻 / 看机器页前把「怎么够到那台」交给本机常驻后端 `assets-sync`（零判定）
 mod auto_launch;
 // 🔴 〔步 12 · 09-19〕`origin` 归一的地基：「这一趟问的是哪台机器」的唯一类型。
 mod backend_policy;
@@ -1332,6 +1333,8 @@ pub fn run() {
             mcp::list_mcp_project_dirs,
             mcp::write_project_mcp_server,
             mcp::remove_project_mcp_server,
+            // 〔AS2 · 第四波 4B · V113〕资产目录同步：看机器页前让本机常驻后端对那一台（本机那一页 = 每一台）做一趟。
+            asset_sync::assets_sync,
             subagent::load_subagent,
             forget_session,
             // issue #10: 独立只读窗口（多窗口 / 双屏）

@@ -1329,3 +1329,21 @@ src/panorama/api.ts:57	{…}（远端 {…}）	保留	[对外] 〔RM1c〕远端�
 src/views/panorama.ts:318	 · 远端 {…}	保留	[对外] 〔RM1c〕全景标题里远端仓的机器名那一段（同一个路径在两台机器上是两个仓）
 src/bridge/src/panorama_call.rs:263	代码全景这一问出了内部错误，没有拿到结果	保留	[可达存疑] 〔RM1e〕分流器 Done 那一臂的兜底（本族走不到）；同 backend_policy.rs / apikey_remote.rs 那一句的形
 src/bridge/src/panorama_call.rs:305	{who} 的代码全景没答上来（{code}）：{message}	保留	[对外] 〔RM1e〕那台机器的全景失败原话：{who} 是「本机」或机器名，{code} 是后端的错误码（not_installed / unsupported / timed_out …，同 frame_query 那一句「查询失败（code）」的形，用户据此能跟着报错走），{message} 是后端那句人话
+src/backend/agents/claudecode/assets.rs:58	家目录解析不出来，列不出项目（MCP 那一半没扫）	保留	[可达存疑] 〔AS2〕资产目录这一趟扫描的 problems 一行（机器页「资产」那一块照原话列出）：这台后端连家目录都解不出，项目级 MCP 没法列
+src/backend/agents/claudecode/assets.rs:70	列 {} 失败：{e}	保留	[可达存疑] 〔AS2〕资产目录扫描时列 skill 根目录失败；{} 是那个目录、{e} 是系统原话，进 problems
+src/backend/agents/claudecode/assets.rs:85	{} 的名字不是 UTF-8，没记	保留	[可达存疑] 〔AS2〕skill 目录名不是 UTF-8 ⇒ 不进目录，进 problems 说是哪一个
+src/backend/agents/claudecode/assets.rs:96	读 {} 失败：{e}（这个 skill 没取到说明）	保留	[可达存疑] 〔AS2〕SKILL.md 读不出来（超上限 / 权限）⇒ 这个 skill 照记、只是没有说明，进 problems
+src/backend/agents/claudecode/assets.rs:147	读 {} 失败：{e}（MCP 那一半没扫）	保留	[可达存疑] 〔AS2〕列项目那份 .claude.json 读不出来 ⇒ 项目级 MCP 那一半这次没扫，进 problems
+src/backend/agents/claudecode/assets.rs:165	看 {} 失败：{e}	保留	[可达存疑] 〔AS2〕stat 一份项目 .mcp.json 失败（不是「不存在」），进 problems
+src/backend/agents/claudecode/assets.rs:176	读 {} 失败：{e}	保留	[可达存疑] 〔AS2〕读一份项目 .mcp.json / 目录文件失败；{} 是那份文件、{e} 是原话。项目那一处进 problems，目录文件那一处回 catalog_unreadable
+src/backend/agents/claudecode/assets.rs:187	{} 里 `{SERVERS_KEY}` 不是对象，没记	保留	[可达存疑] 〔AS2〕那份 .mcp.json 的 server 表形状不对 ⇒ 不当空表，进 problems 说是哪一份
+src/backend/asset_catalog.rs:214	走目录时有一处读不出来：{e}	保留	[可达存疑] 〔AS2〕算一个 skill 的摘要时走目录遇到读不出来的一处；进这个条目 summary.notice（机器页展开时列）
+src/backend/asset_catalog.rs:222	文件超过 {SKILL_MAX_FILES} 个，后面的没进摘要	保留	[可达存疑] 〔AS2〕skill 文件太多 ⇒ 摘要只按前面那些算；进 summary.notice
+src/backend/asset_catalog.rs:238	{rel} 不是普通文件（指向目录的链接 / 特殊文件），没进摘要	保留	[可达存疑] 〔AS2〕skill 里有一处不是普通文件 ⇒ 没进摘要，说是哪一个；进 summary.notice
+src/backend/asset_catalog.rs:253	{rel} 只按长度算进摘要：{error}	保留	[可达存疑] 〔AS2〕skill 里一个文件超上限 / 读不出来 ⇒ 摘要只按长度算（降级），说是哪一个；进 summary.notice
+src/backend/asset_catalog.rs:527	读 {} 失败：{e}	保留	[可达存疑] 〔AS2〕读一份项目 .mcp.json / 目录文件失败；{} 是那份文件、{e} 是原话。项目那一处进 problems，目录文件那一处回 catalog_unreadable
+src/backend/asset_catalog.rs:532	{} 是更新版本的后端写的（格式 {}，这个后端只认 {FORMAT_V}），没有覆盖它	保留	[可达存疑] 〔AS2〕目录文件是更新的后端写的 ⇒ catalog_unreadable、不覆盖
+src/backend/asset_catalog.rs:536	{} 不是这个后端认得的目录：{e}	保留	[可达存疑] 〔AS2〕目录文件读得出但认不得 ⇒ catalog_unreadable、不覆盖
+src/backend/asset_sync.rs:162	机器 {id} 的目录太大（{len} 字节，一趟最多 {PUSH_MAX_BYTES}），这一台没推过去	保留	[可达存疑] 〔AS2〕同步时某一台的快照超过一趟能推的上限 ⇒ 那一台不推，进 assets-sync 那一行的 error；{id} 是目录里的机器 id
+src/backend/asset_sync.rs:203	对面答的目录认不出来：{e}	保留	[可达存疑] 〔AS2〕同步时远端答回来的目录不是 JSON ⇒ 那一趟不并不推，进 assets-sync 那一行的 error
+src/bridge/src/asset_sync.rs:76	本机后端答的同步结果认不出来，多半是两边版本不一样。	保留	[可达存疑] 〔AS2〕monitor 读本机后端 assets-sync 应答对不上契约 ⇒ 不猜默认值，原话回机器页；同 AS1 mcp_sync 那一句的形

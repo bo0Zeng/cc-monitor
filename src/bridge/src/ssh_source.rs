@@ -2910,6 +2910,11 @@ async fn stream_loop(
             ) {
                 tracing::warn!("remote-backend-ready emit failed: {e}");
             }
+            // 〔AS2 · V113〕连上那一刻：让本机常驻后端沿池里那条 SSH 同步资产目录（后台跑，零判定）。
+            let accepts = inbound
+                .as_ref()
+                .is_some_and(|c| c.accepts(crate::asset_sync::REMOTE_NEEDS));
+            crate::asset_sync::on_remote_ready(cfg, accepts);
         }
 
         match frame {

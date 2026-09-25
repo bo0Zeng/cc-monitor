@@ -303,6 +303,7 @@ const SCAN: &[&str] = &[
     "tests/bridge/agent_dispatch_registry_tests.rs",
     "tests/bridge/apikey_remote_tests.rs",
     "tests/bridge/arch_doc_shape_guard_tests.rs",
+    "tests/bridge/asset_sync_tests.rs", // 〔AS2〕
     "tests/bridge/atomic_replace_registry_tests.rs",
     "tests/bridge/backend/control/agent_profile_parity_tests.rs",
     "tests/bridge/backend/control/backend_control_tests.rs",
