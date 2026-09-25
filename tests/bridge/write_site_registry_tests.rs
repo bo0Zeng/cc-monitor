@@ -90,6 +90,10 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
           ⚠ 〔`K-R70` 09-12 订正本行后半句〕它**不再读旁边那份 `.build_id` 清单** —— \
           身份改从二进制字节里扫（`CC_MONITOR_BUILD_STAMP`），\
           由 `sftp_tests.rs::the_embedded_identity_comes_from_the_bytes_not_from_a_label` 守着"),
+    ("build.rs", "embed_panoramas", None,
+     "〔RM1c · 第四波〕把 `embedded-backends/cc-monitor-panorama-<arch>`（只装代码全景引擎的独立小程序，\
+          两个 musl arch）复制进 `OUT_DIR`，供 `panorama_bytes.rs` 的 `include_bytes!` 内嵌。\
+          同上一行：写的是 cargo 自己的构建目录，不碰用户环境、不是安装动作"),
     // ── devbench F03：skill 接入面的收件箱写入。**不是安装动作**。
     ("skill_host.rs", "write_skill_file", None,
      "写用户**自己项目里**的 `.claude/planned-build/INBOX.txt`（planned-build skill 的\
