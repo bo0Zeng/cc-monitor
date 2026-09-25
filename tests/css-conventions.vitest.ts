@@ -290,7 +290,7 @@ describe("S30 ⑥ transition 只许动白名单里那几个属性（设计/41 §
  */
 const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   // 〔SE2〕查找面板按模式切大纲清单的开合（大纲那一半的 `hidden` 从 `UserInputPanel` 自己手里交给了面板）。
-  "src/views/session-find.ts:236": // 〔C4b〕行号 −1：两条类型 import 并成一条（`../session-reads`）
+  "src/views/session-find.ts:237": // 〔C4b〕行号 −1：两条类型 import 并成一条（`../session-reads`）·〔CP2b〕+1：加了 copyText 的 import
     "`this.outline.panel` —— 大纲清单那块，由 `UserInputPanel` 建（类 `.user-inputs`；`styles.css` 里那条规则头注逐字「绝不许出现 display」）",
   "src/error-toast.ts:135":
     "`existing.countEl` —— `existing` 是从一张 Map 里取回来的旧 toast，它的 countEl 在别处建的",

@@ -163,7 +163,6 @@ src/cards/subagent.ts	未抽
 src/entry-render-common.ts	未抽
 src/entry-viewer.ts	未抽
 src/error-toast.ts	未抽
-src/events.ts	未抽
 src/file-window.ts	未抽
 src/first-run-hint.ts	未抽
 src/fork-ask.ts	未抽
@@ -232,16 +231,5 @@ src/tasks-panel.ts	未抽
 src/terminal-front.ts	未抽
 src/turn-notify.ts	未抽
 src/usage-hud.ts	未抽
-src/views/cc-bus-view.ts	未抽
-src/views/command-bar.ts	未抽
-src/views/grid-monitor.ts	未抽
 src/views/history-actions.ts	C4d 在改这一带，留最后一批
 src/views/history.ts	C4d 在改这一带，留最后一批
-src/views/inbox-view.ts	未抽
-src/views/outline-source.ts	未抽
-src/views/pane-preview.ts	未抽
-src/views/panorama.ts	未抽
-src/views/port-forward.ts	未抽
-src/views/session-find.ts	未抽
-src/views/session-viewer.ts	未抽
-src/views/user-input-panel.ts	未抽

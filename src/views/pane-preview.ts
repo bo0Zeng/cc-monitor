@@ -55,7 +55,7 @@ export async function openPanePreview(origin: string, target: string): Promise<v
   const closeBtn = document.createElement("button");
   closeBtn.type = "button";
   closeBtn.className = "pane-preview-btn";
-  closeBtn.textContent = "✕";
+  closeBtn.textContent = copyText("panePreview.head.closeIcon");
   closeBtn.title = copyText("panePreview.head.close");
   closeBtn.addEventListener("click", closePanePreview);
   head.appendChild(closeBtn);
