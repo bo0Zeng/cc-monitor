@@ -447,6 +447,11 @@
       "zh": "{machine} 是 {os} 机器，这一种的后端今天只在本机用得上。装到远程机器上还没有验证过，所以不装。",
       "args": ["machine", "os"]
     },
+    "deploy.refused.notPromisedLocal": {
+      "kind": "error",
+      "zh": "本机后端没有起：{machine} 是 {os} / {arch}，这一种今天不在承诺里。",
+      "args": ["machine", "os", "arch"]
+    },
     "deploy.refused.notCarried": {
       "kind": "error",
       "zh": "这一版 cc-monitor 没有带 {os} / {arch} 的后端，所以装不到 {machine}。发布版带着它。",
@@ -471,6 +476,11 @@
       "kind": "error",
       "zh": "{machine} 是 {os} 机器，这一种的代码全景组件今天只在本机用得上。装到远程机器上还没有验证过，所以不装。",
       "args": ["machine", "os"]
+    },
+    "panorama.refused.notPromisedLocal": {
+      "kind": "error",
+      "zh": "本机不放代码全景组件：{machine} 是 {os} / {arch}，这一种今天不在承诺里。",
+      "args": ["machine", "os", "arch"]
     },
     "panorama.refused.notCarried": {
       "kind": "error",
