@@ -400,38 +400,62 @@ async fn probe_target_binary(fs: &RemoteFs, path: &str) -> Result<TargetBinary, 
     Ok(interpret_target_probe(metadata_size, exists))
 }
 
+/// 〔DP1 · 第四波〕自动部署没成的两种说法 —— **类型上与「部署成功」分得开**（`设计/96 §7.1.4` 第 3 条：
+/// 「返回类型上不许有『成功』这一支」）。〔墓碑 —— 从前是 `Result<Option<String>, String>`：`Ok(None)` 就是
+/// 「没部署也算成功」那一支，路径含 `~` / 问不出 arch / 没这格字节 / 字节问不出身份全落在它上面、只留一行 `debug!`。〕
+#[derive(Debug)]
+pub enum DeployError {
+    /// 取字节那一步拒了（`byte_table::choose`：那台机器不要这份 / 这一版没带）。
+    Refused(crate::byte_table::Refusal),
+    /// 做了但没做成，或判清了不该做（配置、链路、那台上的东西不肯说自己是谁……）—— 一句说清楚的话。
+    Failed(String),
+}
+
+impl DeployError {
+    /// 对用户说的那一句（`machine` = 机器名）。
+    pub fn say(&self, machine: &str) -> String {
+        match self {
+            DeployError::Refused(r) => r.say(machine),
+            DeployError::Failed(why) => why.clone(),
+        }
+    }
+}
+
+impl From<String> for DeployError {
+    fn from(why: String) -> Self {
+        DeployError::Failed(why)
+    }
+}
+
 /// 连接前确保远端后端已（自动）部署到 `cfg.backend_path`（issue #29）。
 ///
-/// 流程：① S-2 守卫（backend_path 含 `~` → 跳过，SFTP 不展开 `~`）；② 〔DP1〕问远端是什么机器、查表选内嵌
-/// 二进制（[`remote_backend_binary`]）——表拒绝则说那句拒绝的话；
+/// 流程：① S-2 守卫（backend_path 含 `~` ⇒ 说清楚，SFTP 不展开 `~`）；② 〔DP1〕问远端是什么机器、查表选内嵌
+/// 二进制（[`remote_backend_binary`]）——表拒绝则 [`DeployError::Refused`]；
 /// ③ 开 SFTP、读版本标记、[`deploy_decision`]、需要则 mkdir -p + 原子上传 + 写标记。
 ///
-/// **best-effort**：调用方（ssh_source::run）对 Err 仅 warn 不阻断——手动部署的后端仍可连。
-/// 返回值（Batch7-F24）：`Ok(Some(build_id))` = 已**确认**远端后端版本
-/// （Deploy 成功或 Skip-版本相符）；`Ok(None)` = 无法确认（`~` 路径 / arch 探测失败 /
-/// 无内嵌二进制等 no-op 路径——手动部署的后端，版本未知）。调用方据此决定
-/// 是否传新版才认识的流模式参数（如 `--with-bg`）——未确认一律降级不传，
+/// **不阻断**：调用方（ssh_source::run）拿到 `Err` 仍接着试连已有后端（手动部署的后端照样能连），
+/// 但〔DP1〕那句话经远端健康通道（`kind = "deploy"`）发到界面上，不再只是一行日志（`设计/96 §7.1.4` 第 2 条）。
+/// 返回值：`Ok(build_id)` = 已**确认**远端后端就是手上这份字节（部署成功或已是这一版）。调用方据此决定
+/// 是否传新版才认识的流模式参数（如 `--with-bg`）——`Err` 一律降级不传，
 /// 避免旧后端把未知参数当一次性查询处理后退出（无 hello 死循环）。
-pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<Option<String>, String> {
+pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, DeployError> {
     // S-2（审计）：SFTP 无 shell 不展开 `~`，而 backend exec 路径会展开——backend_path 含 `~`
-    // 会两边错位。含 `~` 直接跳过自动部署（用户应填绝对路径），手动部署的后端仍可连。
+    // 会两边错位。含 `~` 不装（用户应填完整路径），手动部署的后端仍可连 —— 〔DP1〕但要说出来。
     if cfg.backend_path.contains('~') {
-        tracing::debug!(
-            "backend_path 含 ~（SFTP 不展开），跳过自动部署：{}",
-            cfg.backend_path
-        );
-        return Ok(None);
+        return Err(DeployError::Failed(format!(
+            "{} 的后端路径里有 ~，自动部署不认这种写法，没有装。在机器页把后端路径改成完整路径。",
+            cfg.origin_label()
+        )));
     }
-    // 〔DP1〕先问那台是什么机器、再查表；表拒绝 ⇒ 那句话（`byte_table::Refusal::say`）。
+    // 〔DP1〕先问那台是什么机器、再查表；表拒绝 ⇒ `Refused`（那句话由 `byte_table::Refusal::say` 说）。
     let bin = match remote_backend_binary(cfg).await {
         Ok(Ok(b)) => b,
-        Ok(Err(refusal)) => {
-            tracing::warn!("{}", refusal.say(&cfg.origin_label()));
-            return Ok(None);
-        }
+        Ok(Err(refusal)) => return Err(DeployError::Refused(refusal)),
         Err(e) => {
-            tracing::debug!("问远端是什么机器没问成，跳过自动部署: {e}");
-            return Ok(None);
+            return Err(DeployError::Failed(format!(
+                "问 {} 是什么机器没问成，没有装后端：{e}",
+                cfg.origin_label()
+            )))
         }
     };
     // 🔴 `K-R70`：**把这几 MB 字节推到别人机器上之前，先让它自己说一遍它是谁。**
@@ -447,11 +471,13 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<Option<String
     // 连续、拆不成立即数（backend 侧 `CC_MONITOR_BUILD_STAMP`）。
     if !bytes_carry_build_stamp(bin.bytes, bin.build_id) {
         tracing::warn!(
-            "内嵌后端的字节里问不出 `{}` 这个身份戳——按身份未知跳过自动部署\
+            "内嵌后端的字节里问不出 `{}` 这个身份戳——按身份未知不推\
              （这份字节不是这套源码编出来的，或它太旧、还没有身份戳；重跑 zigbuild 重铺）",
             bin.build_id
         );
-        return Ok(None);
+        return Err(DeployError::Failed(
+            "这一版 cc-monitor 带的后端说不出自己是哪一版，没有把它装上去。".to_string(),
+        ));
     }
     // 〔SR1b〕经本机常驻后端那条 `files` 链路（写只许 `~/.cc-monitor/bin/` 与暂存区；`backend_path` 不在
     //   `~/.cc-monitor/bin/` 下 ⇒ 后端围栏拒，这里原话往上报 —— 调用方对 Err 只 warn，手动部署的后端照旧能连）。
@@ -488,7 +514,7 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<Option<String
             );
         }
     }
-    Ok(Some(bin.build_id.to_string()))
+    Ok(bin.build_id.to_string())
 }
 
 /// 朴素子串搜索（8MB × 16B 一次性毫秒级；不为此引 memchr 依赖）。

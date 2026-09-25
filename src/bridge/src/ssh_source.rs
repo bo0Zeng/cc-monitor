@@ -2711,11 +2711,22 @@ async fn stream_loop(
         Some(EXPECTED_BACKEND_BUILD_ID.to_string())
     } else {
         match crate::sftp::ensure_backend_deployed(cfg).await {
-            Ok(c) => c,
+            Ok(c) => Some(c),
             Err(e) => {
+                // 〔DP1 · 第四波〕**不阻断**（手动部署的后端照样能连），但那句话要到界面上 ——
+                //   从前这里只 `warn!`、拒绝那几形更是 `debug!` ＋ `Ok(None)`，用户看到的是「什么都没发生」（`设计/96 §7.1.4`）。
+                let msg = e.say(&host_label);
                 tracing::warn!(
-                    "ssh_source [{host_label}] backend 自动部署失败（继续尝试连接已有后端）: {e}"
+                    "ssh_source [{host_label}] 后端没部署上（继续尝试连接已有后端）: {msg}"
                 );
+                let payload = crate::bridge::RemoteHealthPayload {
+                    origin: host_label.clone(),
+                    kind: "deploy".to_string(),
+                    message: msg,
+                };
+                if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
+                    tracing::warn!("ssh_source remote-health (deploy) emit failed: {e}");
+                }
                 None
             }
         }
