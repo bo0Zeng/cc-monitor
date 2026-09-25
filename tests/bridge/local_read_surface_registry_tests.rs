@@ -406,14 +406,7 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
              写侧两条登记在 `write_site_registry` 的 `local_backend_host.rs::ensure_listen_token` 与 \
              `local_backend_host.rs::write_listen_pid`",
     ),
-    (
-        "dial_host.rs",
-        "resolve_proxy_uncached",
-        "`~/.cc-monitor/bin`（本机后端自释放那一份的落点 —— 拨号代理就是它）",
-        "〔C2 09-24〕**不是伸手拿用户的东西**：与下面 `local_backend_host.rs::start_local_backend` 同一个目录、\
-             同一份解析（`local_backend::resolve_or_extract`）—— 开发树上找拨号代理要走到这一处（`D11`：找不到就报，\
-             不再进程内拨 SSH）。写侧同一条登记（`local_backend.rs::extract_embedded_to`）。",
-    ),
+    // 〔SR1a · 2026-09-24〕拨号代理的二进制解析那一行**摘了**：monitor 不再找 / 起拨号代理（拨号挪进本机常驻后端）。
     (
         "local_backend_host.rs",
         "start_local_backend",

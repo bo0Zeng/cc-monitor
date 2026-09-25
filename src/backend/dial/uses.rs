@@ -65,9 +65,12 @@ impl Lease {
         let (linked, reused) = pool::ssh()
             .get(&key, || connect::establish(req, stages))
             .await?;
-        if reused {
-            tracing::info!("dial: 复用到 {} 的那条 SSH 连接", linked.endpoint);
-        }
+        tracing::info!(
+            "dial: {} {} 的那条 SSH 连接（池里此刻 {} 条）",
+            if reused { "复用" } else { "新拨了" },
+            linked.endpoint,
+            pool::ssh().live()
+        );
         Ok(Lease {
             key: Some(key),
             linked,

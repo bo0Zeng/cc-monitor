@@ -1,103 +1,95 @@
-//! 〔C2 · `设计/05 §13.2`〕**拨号代理的宿主**：定位本机后端二进制 · 把一台远端的配置翻成一份拨号请求 ·
-//! 起 `<本机后端> --dial` 子进程 · 把它的两根管子交给通信层成员 [`crate::ssh_link`] 去读应答。
+//! 〔C2 · `设计/05 §13.2`〕**拨号的宿主**：把一台远端的配置翻成一份拨号请求 · 交给本机后端开一条链路 ·
+//! 把链路交给通信层成员 [`crate::ssh_link`] 去读应答。
+//!
+//! # 〔SR1a · 2026-09-24〕它不再起任何进程
+//!
+//! 用户裁「改成单一常驻后端」：本机只常驻一个后端，**所有 SSH 连接由它持有、按拨号身份复用**。
+//! 这里拿一条到远端的字节流 = 在 monitor 与本机后端之间**那条已有的流**上开一条链路
+//! （[`crate::link_mux`]，后端那一半在 `src/backend/dial/link.rs`）。
+//! 〔墓碑 —— C2 那一版的原话要点：「定位本机后端二进制 · 起 `<本机后端> --dial` 子进程 ·
+//!  把它的两根管子交给 `ssh_link`」「一条链路一个代理子进程」。那一套（二进制解析 · 两个环境变量 ·
+//!  起进程）在 SR1a 整段删了。〕
 //!
 //! # 它为什么不是通信层成员
 //!
-//! 它做的正是 `05 §2` 的 `C4`/`C5` 不许成员做的事：读环境变量与配置（`C4`）、起进程（`C5`）。
+//! 它做的正是 `05 §2` 的 `C4` 不许成员做的事：读配置、读环境变量（`SSH_AUTH_SOCK`）。
 //! 与 `chan/host.rs`（绑回环造钥匙）、`local_backend_host.rs`（起本机后端）同一类 —— **宿主**。
-//! 住顶层而不住 `backend/control/`：它要认目标平台（本机后端内嵌那一份是哪个 arch 的 Linux 二进制），
-//! 而 `backend/` 那一半不许认平台（`the_backend_half_stays_platform_agnostic`）—— 与 `local_backend_host.rs` 同一个理由。
+//! 住顶层而不住 `backend/control/`：`backend/` 那一半不许认平台（`the_backend_half_stays_platform_agnostic`），
+//! 而 agent 套接字那一格是 Unix 才有的事。
 //!
 //! # 🔴 没有退路（`D11`：「后端是给定的，不要退路」）
 //!
-//! 找不到本机后端二进制 ⇒ **报**，不再进程内拨 SSH。界面进程里的 `russh` 拨号除 SFTP 那一份
-//! （`F7c` 独占的 `sftp.rs`，登记在 `inproc_dial.rs`）外全删了 —— 这里就是界面拿到一条 SSH 链路的**唯一**入口。
-//!
-//! # 进程形态（认下来的代价，`05 §13.4`）
-//!
-//! 一条链路一个代理子进程：远端长流常驻一个；一次性 exec / 测试连接起一个短命的；端口转发一条一个。
-//! 子进程随 monitor 走（`Lifetime::JobKillOnClose`：丢掉句柄 = 收掉进程；Windows 上还有 Job 兜着）。
+//! 本机后端那条流不在 ⇒ 等一个有界的一会儿（它刚起、hello 还没到的那个窗口），还不在就**报** ——
+//! 不起代理进程、不进程内拨 SSH。本机后端不认 `link-open`（比界面老）⇒ **报「太旧」**。
+//! 界面进程里的 `russh` 拨号除 SFTP 那一份（SR1b 的事，登记在 `inproc_dial.rs`）外全删了 ——
+//! 这里就是界面拿到一条 SSH 链路的**唯一**入口。
 
-use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::io::BufReader;
 
+use crate::backend::control::inbound_client::{self, InboundClient};
+use crate::link_mux::LinkStream;
 use crate::ssh_link::{self, Ack, ConnectStage, LinkError};
 use crate::ssh_source::{RemoteConfig, RemoteExec};
 
-/// 拨号代理二进制的**显式住址**（环境变量名）。开发树上 `externalBin` 不注入 ⇒ exe 旁边恒空，
-/// 这个变量（或内嵌释放那一份）是开发树上的入口。
-pub(crate) const DIAL_PROXY_ENV: &str = "CCM_DIAL_PROXY";
-
-/// 装那份请求 JSON 的环境变量名 —— 与后端 `dial::REQUEST_ENV` 逐字相同（两侧各钉一半）。
-///
-/// **为什么走环境变量**：`argv` 在同机任何用户的 `ps` 里都看得见，`/proc/<pid>/environ` 只有本人读得到；
-/// 也不走 stdin 第一行 —— 子进程的 stdin **纯粹**是那条链路，一个字节带外数据都没有。
-pub(crate) const DIAL_REQUEST_ENV: &str = "CCM_DIAL_REQUEST";
-
 /// 等代理回 ack 的上限：握手看门狗（黑洞地址 TCP 连上后握手可以无限阻塞）。与界面侧原来那条
 /// `HANDSHAKE_DEADLINE` 同值。后端不许有 `timeout(`（`no_timer_guard`），⇒ 看门狗在这里执行：
-/// 到点丢掉子进程句柄 = 收掉代理进程 = 关掉它手里那些 socket。
+/// 到点丢掉链路 = `link-close` = 后端收掉那条链路的拨号任务（连同它手里那些 socket）。
 const ACK_DEADLINE: Duration = Duration::from_secs(45);
 
+/// 链路上每条入方向命令（`link-open` / `link-data` / `link-credit` / `link-close`）等应答的上限。
+/// `link-data` 的应答在那一块**写进 SSH channel 之后**才回 ⇒ 远端吃得慢时它会等；60 s 与
+/// `frame_query` 一页的期限同值。到点 ⇒ 那一次写报错，调用方按连接断了处置。
+const LINK_CALL_BUDGET: Duration = Duration::from_secs(60);
+
+/// 本机后端那条流还没登记时，等它多久：`LOCAL_WAIT_TRIES × LOCAL_WAIT_INTERVAL_MS` ≈ 3 s。
+/// **`wait-for-condition`**（登记在 `rust_timer_registry`）：等的是一次性条件（本机那条流的 hello 到了），
+/// 等到就走、等不到就如实报。对端就在本机，从起进程到 hello 是毫秒级。
+const LOCAL_WAIT_TRIES: u32 = 60;
+const LOCAL_WAIT_INTERVAL_MS: u64 = 50;
+
 /// ack 之前每一行（阶段 / ack）的字节上限。ack 正常 < 300 字节，64 KiB 是两个数量级以上的余量；
-/// 对端坏掉、或压根不是我们的代理时，一条没有换行的巨流不许变成无界堆分配。
+/// 对端坏掉、或压根不是我们的后端时，一条没有换行的巨流不许变成无界堆分配。
 fn ack_line_cap() -> u64 {
     64 * 1024
 }
 
-/// 解析拨号代理二进制。**只读、不写盘**。
-///
-/// 顺序：`CCM_DIAL_PROXY` → exe 旁（发版包）→ 本机后端自释放的那一份（开发构建内嵌时）。
-/// 三处都没有 ⇒ `Err`，调用方**原样报出去**（`D11`）。
-pub(crate) fn resolve_proxy() -> Result<PathBuf, String> {
-    // 找到一次就记住：每条一次性查询都要拿链路，而「自释放那一份」那条路顺手会放本机 `ccm` 入口
-    // （`resolve_or_extract` 的副作用）—— 那是一次写盘，不该每次查询都来一遍。找不到不记（下次再找，装好了就好了）。
-    static FOUND: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
-    if let Some(p) = FOUND.get() {
-        return Ok(p.clone());
+/// 本机后端那条流上的入方向客户端（有界地等它出现）。**找不到就报，不回落**（`D11`）。
+async fn local_channel() -> Result<Arc<InboundClient>, String> {
+    let local = inbound_client::LOCAL_ORIGIN;
+    for attempt in 0..LOCAL_WAIT_TRIES {
+        if let Some(c) = inbound_client::client_for(local) {
+            if !c.accepts("link-open") {
+                return Err(
+                    "本机后端太旧：它不认 `link-open`（远端的 SSH 从这一版起由本机后端来拨）—— \
+                     停掉旧的本机后端、重开 monitor"
+                        .to_string(),
+                );
+            }
+            return Ok(c);
+        }
+        if attempt + 1 < LOCAL_WAIT_TRIES {
+            tokio::time::sleep(Duration::from_millis(LOCAL_WAIT_INTERVAL_MS)).await;
+        }
     }
-    let p = resolve_proxy_uncached()?;
-    Ok(FOUND.get_or_init(|| p).clone())
+    Err(format!(
+        "本机后端不在，远端连不了（远端的 SSH 由本机后端来拨）：等了 {}ms 还没有本机后端那条流。\
+         到设置 → 后端里看本机后端的状态",
+        u64::from(LOCAL_WAIT_TRIES) * LOCAL_WAIT_INTERVAL_MS
+    ))
 }
 
-fn resolve_proxy_uncached() -> Result<PathBuf, String> {
-    use crate::backend::control::local_backend::{self, Resolved};
-    if let Some(raw) = std::env::var_os(DIAL_PROXY_ENV) {
-        let p = PathBuf::from(raw);
-        if p.is_file() {
-            return Ok(p);
-        }
-        return Err(format!(
-            "{DIAL_PROXY_ENV} 指向 {} —— 那不是一个文件（不猜别的路径）",
-            p.display()
-        ));
-    }
-    let triple = env!("CCM_TARGET_TRIPLE");
-    if let Resolved::Found(p) = local_backend::resolve_beside_this_exe(triple) {
-        return Ok(p);
-    }
-    // 开发构建：本机后端那条路（`local_backend_host::start_local_backend`）用的同一个落点与同一份解析。
-    let extract_dir = dirs::home_dir()
-        .map(|h| h.join(".cc-monitor").join("bin"))
-        .unwrap_or_else(|| PathBuf::from("/tmp/.cc-monitor/bin"));
-    let embedded = if cfg!(target_os = "linux") {
-        crate::sftp::backend_binary(std::env::consts::ARCH).map(|d| (d.build_id, d.bytes))
+/// 界面进程此刻的 ssh-agent 套接字（Unix）。常驻后端活得比界面长，它自己身上那份可能早就不指向活的 agent
+/// ⇒ 由界面交过去（后端 `DialRequest::agent_sock`）。Windows 上 agent 是固定的命名管道，不给。
+fn agent_sock() -> Option<String> {
+    if cfg!(unix) {
+        std::env::var("SSH_AUTH_SOCK")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
     } else {
         None
-    };
-    match local_backend::resolve_or_extract(
-        triple,
-        &extract_dir,
-        embedded,
-        &crate::platform_fs::make_executable,
-    ) {
-        Resolved::Found(p) => Ok(p),
-        Resolved::Missing { reason, looked_at } => Err(format!(
-            "本机后端不在，远端连不了（远端的 SSH 由本机后端来拨）：{reason}；找过 {looked_at:?}。\
-             开发树里设 {DIAL_PROXY_ENV} 指向一份 `cc-monitor-backend` 即可"
-        )),
     }
 }
 
@@ -139,6 +131,7 @@ pub(crate) fn request(
         "host_key_fingerprint": cfg.host_key_fingerprint,
         "endpoints": endpoints,
         "use": use_,
+        "agent_sock": agent_sock(),
     });
     if let Some(jump_label) = cfg.jump.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         if jump_label == origin {
@@ -155,16 +148,13 @@ pub(crate) fn request(
     Ok(req)
 }
 
-/// 一条**跑在拨号代理子进程里**的链路：读写两半都是那个子进程的管子。
+/// 一条**开在本机后端里**的链路（〔SR1a〕C2 那一版是一个 `--dial` 子进程的两根管子）。
 ///
-/// 丢掉这个结构 = 丢掉子进程句柄 = 代理被收掉（`Lifetime::JobKillOnClose`）。
+/// 丢掉这个结构 = 关链路（`link-close`）= 后端收掉它的拨号 / 服务任务；那条 SSH 连接**不跟着断**
+/// （同一台远端的别的链路可能还在用它）。
 pub struct DialStream {
-    _child: crate::spawn_managed::ManagedTokioChild,
-    /// `None` = 已经关了写半边（`shutdown` 把它丢了 ⇒ 子进程读到 EOF ⇒ 代理收工 —— 「界面走了」）。
-    /// ⚠ **必须真的丢掉**：tokio 的 `ChildStdin::poll_shutdown` 不关管子，只靠它「关写半边」代理永远看不见界面走了。
-    w: Option<tokio::process::ChildStdin>,
     /// ⚠ **必须是 `BufReader` 本体**：ack 那一行是按行读的，缓冲里很可能已经预读了后面的字节。
-    r: BufReader<tokio::process::ChildStdout>,
+    r: BufReader<LinkStream>,
 }
 
 impl tokio::io::AsyncRead for DialStream {
@@ -183,36 +173,24 @@ impl tokio::io::AsyncWrite for DialStream {
         cx: &mut std::task::Context<'_>,
         buf: &[u8],
     ) -> std::task::Poll<std::io::Result<usize>> {
-        match self.w.as_mut() {
-            Some(w) => tokio::io::AsyncWrite::poll_write(std::pin::Pin::new(w), cx, buf),
-            None => std::task::Poll::Ready(Err(std::io::Error::new(
-                std::io::ErrorKind::BrokenPipe,
-                "写半边已经关了",
-            ))),
-        }
+        tokio::io::AsyncWrite::poll_write(std::pin::Pin::new(self.r.get_mut()), cx, buf)
     }
     fn poll_flush(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
-        match self.w.as_mut() {
-            Some(w) => tokio::io::AsyncWrite::poll_flush(std::pin::Pin::new(w), cx),
-            None => std::task::Poll::Ready(Ok(())),
-        }
+        tokio::io::AsyncWrite::poll_flush(std::pin::Pin::new(self.r.get_mut()), cx)
     }
+    /// 关写半边 = 关链路（C2 那一版：丢掉子进程的 stdin ⇒ 代理收工）。
     fn poll_shutdown(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
-        if let Some(w) = self.w.as_mut() {
-            std::task::ready!(tokio::io::AsyncWrite::poll_flush(std::pin::Pin::new(w), cx))?;
-        }
-        self.w = None; // 丢掉 ⇒ 管子关 ⇒ 代理读到 EOF
-        std::task::Poll::Ready(Ok(()))
+        tokio::io::AsyncWrite::poll_shutdown(std::pin::Pin::new(self.r.get_mut()), cx)
     }
 }
 
-/// 起代理、交请求、在 [`ACK_DEADLINE`] 内读完握手。成功 ⇒ 链路 ＋ ack。
+/// 开链路、交请求、在 [`ACK_DEADLINE`] 内读完握手。成功 ⇒ 链路 ＋ ack。
 ///
 /// 失败回 `(说法, 看到过的指纹)` —— 测试连接要把指纹给用户看（TOFU 固化 / 失配时比对）。
 async fn open(
@@ -221,36 +199,14 @@ async fn open(
     want: &str,
     on_stage: &mut (dyn FnMut(ConnectStage) + Send),
 ) -> Result<(DialStream, Ack), (String, Option<String>)> {
-    let bin = resolve_proxy().map_err(|e| (e, None))?;
-    // ★ F05 下半的那条埋点跟着拨号搬到这里：量的是「起代理进程 ＋ TCP ＋ 握手 ＋ 指纹校验 ＋ 鉴权 ＋ 开通道」
-    //   —— 比原来多了一次进程创建，那正是 `设计/05 §13.4` 认下来的代价，这一行让它看得见。
+    let client = local_channel().await.map_err(|e| (e, None))?;
+    // ★ F05 下半的那条埋点跟着拨号搬到这里：量的是「开链路 ＋（池里没有时）TCP ＋ 握手 ＋ 指纹校验 ＋ 鉴权 ＋ 开通道」。
+    //   〔SR1a〕同一台远端已经有连接时，这个数只剩「开一条 channel」—— 复用的收益就在这一行里看得见。
     let t_handshake = std::time::Instant::now();
-    let mut c = tokio::process::Command::new(&bin);
-    c.arg("--dial")
-        .env(DIAL_REQUEST_ENV, req.to_string())
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped());
-    // ★★ 三条策略（`00 §1.5.2`）：
-    // · `Hidden` —— 拨号代理是个后台进程，绝不该在用户桌面上开窗。
-    // · `JobKillOnClose` —— 界面退出 = 句柄 drop = 代理跟着走；Windows 上还进一个
-    //   `KILL_ON_JOB_CLOSE` 的 Job ⇒ monitor 被强杀 / 崩溃时代理也跟着走。
-    // · `Inherit` —— 代理的诊断（拨号失败原因、TOFU 警告）跟着界面进程的 stderr 走同一个地方。
-    let mut child = crate::spawn_managed::spawn_managed_tokio(
-        &mut c,
-        crate::spawn_managed::ConsolePolicy::Hidden,
-        crate::spawn_managed::Lifetime::JobKillOnClose,
-        crate::spawn_managed::StderrSink::Inherit,
-    )
-    .map_err(|e| (format!("起拨号代理 {} 失败: {e}", bin.display()), None))?;
-    let w = child
-        .stdin
-        .take()
-        .ok_or_else(|| ("拨号代理没有 stdin 管子".to_string(), None))?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| ("拨号代理没有 stdout 管子".to_string(), None))?;
-    let mut r = BufReader::new(stdout);
+    let link = LinkStream::open(client, req.clone(), LINK_CALL_BUDGET)
+        .await
+        .map_err(|e| (e, None))?;
+    let mut r = BufReader::new(link);
     let shake = ssh_link::handshake(&mut r, want, ack_line_cap(), on_stage);
     let ack = match tokio::time::timeout(ACK_DEADLINE, shake).await {
         Ok(Ok(ack)) => ack,
@@ -258,7 +214,7 @@ async fn open(
             return Err((why, fingerprint));
         }
         Ok(Err(e)) => return Err((e.to_string(), None)),
-        // 到点：`child` 随本函数返回被丢掉 ⇒ 代理被收掉。
+        // 到点：`r`（链路）随本函数返回被丢掉 ⇒ `link-close` ⇒ 后端收掉这条链路的拨号。
         Err(_) => {
             return Err((
                 format!(
@@ -284,21 +240,13 @@ async fn open(
     }
     let origin = cfg.origin_label();
     tracing::info!(
-        "[perf] ssh_source [{origin}] SSH 握手+鉴权 {}ms（经拨号代理：起进程＋TCP＋握手＋指纹校验＋auth＋开通道；\
-         代理 {}；winner={:?}；指纹 {:?}）",
+        "[perf] ssh_source [{origin}] SSH 握手+鉴权 {}ms（经本机常驻后端的链路：开链路＋[池里没有时]TCP＋握手＋指纹校验＋auth＋开通道；\
+         winner={:?}；指纹 {:?}）",
         t_handshake.elapsed().as_millis(),
-        bin.display(),
         ack.endpoint,
         ack.fingerprint
     );
-    Ok((
-        DialStream {
-            _child: child,
-            w: Some(w),
-            r,
-        },
-        ack,
-    ))
+    Ok((DialStream { r }, ack))
 }
 
 /// **一条 exec 的字节流**：远端跑 `cmd`，读端是它的 stdout、写端是它的 stdin。
@@ -357,14 +305,14 @@ pub(crate) async fn probe(
     open(cfg, &req, "stream", on_stage).await
 }
 
-/// 一条**端口转发**：代理那一侧绑好了本机回环口（`127.0.0.1:local_port`），每接进一条连接开一条隧道。
-/// 丢掉它 = 代理被收掉 = 本地口释放、隧道全断。
+/// 一条**端口转发**：本机后端那一侧绑好了本机回环口（`127.0.0.1:local_port`），每接进一条连接开一条隧道。
+/// 丢掉它 = 关链路 = 本地口释放、隧道全断（那条 SSH 连接不跟着断，别的链路可能还在用）。
 pub struct ForwardLink {
     link: DialStream,
 }
 
 impl ForwardLink {
-    /// 等下一条「接进了第 n 条连接」。`None` = 代理收工了（远端断了 / 它自己退了）。
+    /// 等下一条「接进了第 n 条连接」。`None` = 链路收尾了（远端断了 / 后端那侧收工了）。
     pub(crate) async fn next_accepted(&mut self) -> Result<Option<u64>, String> {
         ssh_link::accepted(&mut self.link.r, ack_line_cap())
             .await

@@ -17,6 +17,11 @@
 
 use super::*;
 
+/// 从一行 JSON 文本读一份请求（与生产 `parse_request_value` 同一份反序列化）。
+fn parse_request(raw: &str) -> Result<DialRequest, serde_json::Error> {
+    parse_request_value(&serde_json::from_str(raw.trim())?)
+}
+
 /// 真正把字节交给 SSH 状态机的入口。**这三条就是判据的锚点。**
 ///
 /// 为什么是这三条：`connect` = 自己建 TCP 再跑传输层握手；`connect_stream` = 在别人给的

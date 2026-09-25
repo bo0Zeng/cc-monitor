@@ -53,6 +53,18 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "LINK_STEP",
+        "〔SR1a 09-24〕**步长**不是体量：monitor 往链路里送上行字节时一次切多大（`link_mux·rs::LinkStream` 的 \
+             `poll_write`）。多出来的留给调用方下一次写 —— **不丢、不截**，它不限任何总量。\
+             与后端那一块的上限（`dial/link·rs` 的 `LINK_CHUNK_BYTES`，本表 `CAPS` 里「拒收+回错」那一行）同一个数，\
+             跨 crate 对拍住 `link_mux_tests::the_chunk_cap_is_the_same_number_on_both_sides`。",
+    ),
+    (
+        "PIPE_BUFFER",
+        "〔SR1a 09-24〕**缓冲**不是体量：后端一条链路内部那两根内存管子（`tokio::io::duplex`）各自的缓冲。\
+             写满了写方**等**（背压），不丢、不截 —— 它不限任何总量，只决定一次能攒多少没被读走。",
+    ),
+    (
         "STAGING_STALE_SECS",
         "〔F7c · 第三波 09-24〕**时间**不是体量：暂存区里一份上传件多少秒没动过才算孤儿\
              （后端 `files_commit·rs::sweep_stale`，只在一次提交成功时顺手扫，不是节拍器）。\
@@ -420,6 +432,30 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         1 << 20,
         "入方向单行",
         "拒收+回错",
+    ),
+    // 〔SR1a 09-24〕链路（本机常驻后端替界面持有并复用 SSH 连接，`dial/link.rs` · `link_mux.rs`）。
+    (
+        "src/backend/dial/link.rs",
+        "LINK_CHUNK_BYTES",
+        32 * 1024,
+        "一块链路字节（`link-data` 上行一块 / `link_data` 下行一块，解码后）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/dial/link.rs",
+        "MAX_WINDOW",
+        16 * 1024 * 1024,
+        "一条链路手里的信用（= 在途下行字节）：`link-open` 的初始窗口与累计 `link-credit`",
+        "拒收+回错",
+    ),
+    (
+        "src/bridge/src/link_mux.rs",
+        "LINK_WINDOW_BYTES",
+        1 << 20,
+        "一条链路「后端发过来、还没还信用」的下行字节（对端守约时它就是界上的在途量）。\
+         超了 = 对端不守约 ⇒ **那条链路整条丢掉**，读端拿到一句带链路 id 的错（调用方据它按断线处置、\
+         用户看得见那条远端连接断了），同时 `warn!` 一行 —— 不涨内存，而且出声",
+        "丢弃+带身份报告",
     ),
     // 〔F7a · 第三波 09-24〕`files-read-text` 一趟最多肯交多少 —— **后端的天花板，不是编辑上限**
     //   （编辑上限是调用方的，每趟经 `max_bytes` 送过来）。推算：JSON 转义最坏 ×6 ⇒ 48 MiB，

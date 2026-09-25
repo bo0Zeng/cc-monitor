@@ -48,10 +48,8 @@ use crate::wire::{b64_decode, b64_encode, Frame};
 /// （monitor 读后端出方向 64 MiB，后端读入方向 1 MiB —— `inbound::MAX_LINE_BYTES`）。
 pub const LINK_CHUNK_BYTES: usize = 32 * 1024;
 
-/// `link-open` 没给 `window` 时的初始信用。
-pub const DEFAULT_WINDOW: u64 = 1 << 20;
-
-/// 信用的上限（初始窗口与累计还回来的都夹在这以内）。
+/// 一条链路手里的信用（= 在途字节）的上限：初始窗口与累计还回来的都不许超过它。
+/// **超了 ⇒ 拒收＋回错**（`invalid_args`）：对端不守约，不替它夹 —— 夹掉就是替它猜。
 pub const MAX_WINDOW: u64 = 16 << 20;
 
 /// 一条流连接上同时开着的链路数上限（有界资源：每条三个任务、两根管子）。
@@ -63,8 +61,8 @@ pub const MAX_LINK_ID_BYTES: usize = 128;
 /// 上行队列容量。monitor 那一侧同时只有一条在途，正常用法下这里最多 1 条 —— 满了就是对端不守约。
 const UPSTREAM_QUEUE: usize = 4;
 
-/// 两根内存管子各自的缓冲。
-const PIPE_BYTES: usize = 64 * 1024;
+/// 两根内存管子各自的缓冲（写满了写方等 —— 背压，不丢不截；它不限任何总量）。
+const PIPE_BUFFER: usize = 64 * 1024;
 
 /// 一条在开着的链路。
 struct Entry {
@@ -148,8 +146,7 @@ impl Table {
         }
     }
 
-    /// 此刻开着的链路数（判据用）。
-    #[cfg(test)]
+    /// 此刻开着的链路数。
     pub(crate) fn len(&self) -> usize {
         lock(&self.links).len()
     }
@@ -176,18 +173,33 @@ impl Table {
             Ok(r) => r,
             Err(e) => return err(id, "invalid_args", &format!("拨号请求读不动：{e}")),
         };
-        let window = match args.get("window") {
-            None | Some(serde_json::Value::Null) => DEFAULT_WINDOW,
-            Some(v) => match v.as_u64() {
-                Some(w) => w.clamp(LINK_CHUNK_BYTES as u64, MAX_WINDOW),
-                None => return err(id, "invalid_args", "`window` 必须是非负整数（字节）"),
-            },
+        let window = match args.get("window").and_then(serde_json::Value::as_u64) {
+            Some(w) if (LINK_CHUNK_BYTES as u64..=MAX_WINDOW).contains(&w) => w,
+            _ => {
+                return err(
+                    id,
+                    "invalid_args",
+                    &format!(
+                        "`window`（初始信用，字节）必须在 [{LINK_CHUNK_BYTES}, {MAX_WINDOW}] 之内"
+                    ),
+                )
+            }
         };
 
-        self.install(id, link, window, move |up_r, mut down_w| async move {
-            let stages = super::StageSink::new(req.stages);
-            super::uses::run(&req, &stages, up_r, &mut down_w).await;
-        })
+        let reply = self.install(
+            id,
+            link.clone(),
+            window,
+            move |up_r, mut down_w| async move {
+                let stages = super::StageSink::new(req.stages);
+                super::uses::run(&req, &stages, up_r, &mut down_w).await;
+            },
+        );
+        tracing::info!(
+            "dial: 开链路 {link}（窗口 {window} 字节；这条连接上此刻 {} 条）",
+            self.len()
+        );
+        reply
     }
 
     /// 登记一条链路、起三个任务。`serve` 拿上行读端与下行写端，干完就返回（返回 ⇒ 下行写端被丢 ⇒
@@ -210,8 +222,8 @@ impl Table {
             );
         }
 
-        let (down_w, down_r) = tokio::io::duplex(PIPE_BYTES);
-        let (up_w, up_r) = tokio::io::duplex(PIPE_BYTES);
+        let (down_w, down_r) = tokio::io::duplex(PIPE_BUFFER);
+        let (up_w, up_r) = tokio::io::duplex(PIPE_BUFFER);
         let credit = Arc::new(Semaphore::new(window as usize));
         let (up_tx, up_rx) = mpsc::channel::<(Vec<u8>, String)>(UPSTREAM_QUEUE);
 
@@ -240,16 +252,6 @@ impl Table {
             },
         );
         ok(id)
-    }
-
-    /// 判据用的入口：同 [`Self::install`]，链路 id 与窗口直接给。
-    #[cfg(test)]
-    pub(crate) fn install_for_tests<F, Fut>(&self, link: &str, window: u64, serve: F) -> Frame
-    where
-        F: FnOnce(tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut + Send + 'static,
-        Fut: std::future::Future<Output = ()> + Send + 'static,
-    {
-        self.install("t", link.to_string(), window, serve)
     }
 
     /// `link-data`：解码、进那条链路的上行队列。`None` = 应答由上行泵在写进管子之后发。
@@ -302,9 +304,16 @@ impl Table {
         let Some(e) = g.get(&link) else {
             return err(id, "no_such_link", "没有这条链路（已经结束了？）");
         };
-        // 夹在上限以内：对端多还（不守约）只会让它自己的流控松一点，不许把信号量撑爆。
-        let room = MAX_WINDOW.saturating_sub(e.credit.available_permits() as u64);
-        e.credit.add_permits(bytes.min(room) as usize);
+        // 累计信用不许超过上限：对端还的比它读走的多 = 不守约 ⇒ 拒收＋回错（不替它夹）。
+        let have = e.credit.available_permits() as u64;
+        if have.saturating_add(bytes) > MAX_WINDOW {
+            return err(
+                id,
+                "invalid_args",
+                &format!("还了 {bytes} 字节信用，累计会超过上限 {MAX_WINDOW}（手里已有 {have}）"),
+            );
+        }
+        e.credit.add_permits(bytes as usize);
         ok(id)
     }
 
@@ -321,7 +330,13 @@ impl Table {
     }
 }
 
-/// 下行泵：从下行管子读 → 扣信用 → 切块 base64 → `link_data`；EOF ⇒ `link_end`、从表里摘掉。
+/// 下行泵：先等到信用 → 按手里的信用读（至多一块）→ 扣掉读到的那么多 → base64 → `link_data`；
+/// EOF ⇒ `link_end`、从表里摘掉。
+///
+/// ★ **先等信用、再按信用读**，不是「先读一块、再等够一块的信用」：后者在窗口不是块长整数倍、
+/// 或者管子里一次只给出零碎几段时，会停在「差几字节凑不够一块」上 ⇒ 发出去的字节**小于**窗口，
+/// 而「不还信用时发出去的字节 == 窗口」正是这一层的判据（`dial_link_tests`）。
+/// 信号量只有本任务在扣（`link-credit` 只加）⇒ 算出来的「此刻有多少」只会变多，后面那一次 `try_acquire_many` 必成。
 async fn pump_down(
     link: String,
     mut from: tokio::io::DuplexStream,
@@ -331,14 +346,24 @@ async fn pump_down(
 ) {
     let mut buf = vec![0u8; LINK_CHUNK_BYTES];
     let error = loop {
-        let n = match from.read(&mut buf).await {
+        // ① 至少一字节的信用。
+        match credit.acquire().await {
+            Ok(p) => p.forget(),
+            Err(_) => break Some("链路的信用闸被关了".to_string()),
+        }
+        // ② 按手里的信用读，至多一块。
+        let allow = (1 + credit.available_permits()).min(LINK_CHUNK_BYTES);
+        let n = match from.read(&mut buf[..allow]).await {
             Ok(0) => break None,
             Ok(n) => n,
             Err(e) => break Some(format!("读链路下行失败：{e}")),
         };
-        match credit.acquire_many(n as u32).await {
-            Ok(p) => p.forget(),
-            Err(_) => break Some("链路的信用闸被关了".to_string()),
+        // ③ 扣掉读到的那么多（第一字节在 ① 里已经扣了）。
+        if n > 1 {
+            match credit.try_acquire_many((n - 1) as u32) {
+                Ok(p) => p.forget(),
+                Err(_) => break Some("链路的信用记账对不上（不该发生）".to_string()),
+            }
         }
         let frame = Frame::LinkData {
             link: link.clone(),

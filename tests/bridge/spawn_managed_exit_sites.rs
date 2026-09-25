@@ -151,15 +151,7 @@ const SITES: &[(&str, &str, &str, &str)] = &[
          而本件刚把我们自己那段从 profile 里删掉）· `-NonInteractive`（界面点一下不许挂住）\
          · `-Command <我们自己 render 出来的脚本>`。stdout 要 piped：它是返回值。",
     ),
-    (
-        // 〔C2 09-24〕住址从 `ssh_source.rs` 搬到 `dial_host.rs::open`（拨号代理的宿主，形状不变；原来那个函数名随之退役）。
-        "dial_host.rs",
-        "open",
-        "spawn_managed_tokio",
-        "tokio 那一侧（`ManagedTokioChild`）。argv 只有一个常量 flag，\
-         主机名/用户名/私钥路径**刻意走 env 不走 argv**（`argv` 是世界可读的，\
-         `/proc/<pid>/environ` 不是）—— 那一句 `.env(...)` 只能由这里写。",
-    ),
+    // 〔SR1a · 2026-09-24〕拨号代理宿主那一行**摘了**：它不再起 `--dial` 子进程（拨号挪进本机常驻后端，经流上的链路做）。
     (
         "ssh_source.rs",
         "resolve_ssh_host",
