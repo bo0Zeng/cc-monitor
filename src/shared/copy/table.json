@@ -426,6 +426,31 @@
       "kind": "error",
       "zh": "没写成：{reason}",
       "args": ["reason"]
+    },
+    "deploy.refused.unsupportedMachine": {
+      "kind": "error",
+      "zh": "{machine} 是 {os} / {arch} 的机器，cc-monitor 今天不为这种机器准备后端。它的会话不会自动接上。",
+      "args": ["machine", "os", "arch"]
+    },
+    "deploy.refused.osUnknown": {
+      "kind": "error",
+      "zh": "问不出 {machine} 是什么系统，不知道该给它哪一份后端。查了什么：问过它，{why}。",
+      "args": ["machine", "why"]
+    },
+    "deploy.refused.archUnknown": {
+      "kind": "error",
+      "zh": "问不出 {machine} 是什么处理器架构，不知道该给它哪一份后端。查了什么：问过它，{why}。",
+      "args": ["machine", "why"]
+    },
+    "deploy.refused.notPromisedHere": {
+      "kind": "error",
+      "zh": "{machine} 是 {os} 机器，这一种的后端今天只在本机用得上。装到远程机器上还没有验证过，所以不装。",
+      "args": ["machine", "os"]
+    },
+    "deploy.refused.notCarried": {
+      "kind": "error",
+      "zh": "这一版 cc-monitor 没有带 {os} / {arch} 的后端，所以装不到 {machine}。发布版带着它。",
+      "args": ["machine", "os", "arch"]
     }
   }
 }

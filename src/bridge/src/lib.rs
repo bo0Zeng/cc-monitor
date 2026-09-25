@@ -60,6 +60,8 @@ mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生
                 // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
 mod apikey_remote; // 〔RM1a〕那份文件**按机器**读写：本机进 creds_store，远端交那台机器的后端
 mod backend; // P4a（§1.4b）：monitor 侧的后端边界 —— 读/控制两条能力线，宿主无关
+mod byte_table; // 〔DP1 · 第四波〕全仓唯一的取字节口：一台机器要哪一份可执行字节，按它的 (OS, arch) 查表（`设计/96 §7.1`）
+mod copy_table; // 〔DP1 · 第四波〕对外文案表的 Rust 读口（与前端 `copyText` 同一份 `src/shared/copy/table.json`）
 mod creds_store; // K-H2a：第三方 API key 那份文件的**写侧**（monitor 独占）+ 读侧只回掩码
 #[cfg(test)]
 mod guard_support; // 住址唯一源（仓根/源码树/测试树）——头注写着它为什么存在
@@ -72,7 +74,7 @@ mod mcp; // F87（#50+#51）：MCP 管理（读跨 scope 展示 / 写只项目 .
 mod mcp_sync; // 〔AS1 · 第四波 4B〕MCP 推 / 拉：只编排 I/O（读两边 · 请对面后端判 · 经对面后端写），判定住后端 `mcp-sync-plan`
 mod messages;
 mod panorama;
-mod panorama_bytes; // 〔RM1c · 第四波〕全景小程序的字节从哪来：按 (OS, arch) 选内嵌的那一份（推上去归 F08 部署路 / SR1b）
+mod panorama_bytes; // 〔RM1c · 第四波〕全景小程序：推上去（〔DP1〕字节本身从 `byte_table` 取）
 mod panorama_call; // 〔RM1c · 第四波〕代码全景经那台机器的后端走（V108 选 B）：`panorama_call(origin, op, repo, args)`
 mod panorama_seam_registry; // P7c-2 第一刀：引擎住哪一侧要可换（整体 #[cfg(test)]）
 mod parser;
@@ -584,8 +586,8 @@ pub fn run() {
                 // 两样宿主知识在这里给（backend 层不认识它们）：
                 //   · 落点 `~/.cc-monitor/bin`：与远端自部署同一个目录，但**文件名带 build_id**
                 //     ⇒ 与远端那份结构上不可能撞（理由见 `extract_embedded_to` 头注的 D1 段）。
-                //   · 当前 arch：`sftp::backend_binary` 按它挑内嵌字节；缺内嵌（`cfg(embedded_backends)`
-                //     未置）时给 None，函数会诚实降级、不伪造理由。
+                //   · 这台机器的 (OS, arch)：`byte_table::choose` 按它挑内嵌字节；取不到时交进去那句拒绝的话，
+                //     函数把它接在「旁边没有」后面、不伪造理由。
                 use local_backend_host::StartOutcome;
                 match local_backend_host::start_local_backend() {
                     StartOutcome::Started(p) => {

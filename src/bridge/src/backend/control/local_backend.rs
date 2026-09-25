@@ -74,10 +74,11 @@
 //! 🔴 **`K-R42`（09-10 同日，上面那次读数之后）：上面那句「取决于哪一份产物」被这一件改小了。**
 //! 那次读数**没有被推翻**（它量的是 v3.7.0 的产物，那一版的裸 exe 确实是 0 个）——
 //! 变的是**它之后的机制**：本模块这条路今天多了第二个二进制来源
-//! （[`native_embedded_backend`]，`build.rs::embed_native_backend` 按 `TARGET` 嵌进来的），
+//! （`build.rs::embed_native_backend` 按 `TARGET` 嵌进来的那一份；〔DP1〕今天与其余几份一起由宿主经
+//! `byte_table::pick` 按这台机器的 (OS, arch) 取来，本层只收字节），
 //! 于是 [`resolve_with`] 的 `Missing` **不再等于「这台机器上没有本机后端」**，
 //! 它只等于「**旁边**没有」。裸 exe 那一支从此走的是「自己释放一份再起」。
-//! ⚠ 三句话别混：① 旁边有没有（[`resolve_with`]）· ② 这份产物带没带（[`native_embedded_backend`]）
+//! ⚠ 三句话别混：① 旁边有没有（[`resolve_with`]）· ② 这份产物带没带（宿主交进来的 `embedded`）
 //! · ③ 放不放得下来（[`extraction_failure_reason`]）。09-10 那一形的病根就是把三件事说成一件。
 //!
 //! 真进程行为由 `tests/e2e/local-backend-supervise.sh` 验：它**显式**把二进制路径喂给
@@ -1018,53 +1019,8 @@ pub fn local_extract_name(build_id: &str) -> String {
     )
 }
 
-/// `K-R42`：**这一份产物自己带着的本机后端**（`build.rs::embed_native_backend` 嵌进来的）。
-///
-/// # 它与「宿主注入的那份」是两件事，不是同一件的两个写法
-///
-/// `start_or_extract` 的 `embedded` 参数**是宿主知识**：`local_backend_host.rs` 那侧按
-/// **运行期 arch** 从 `sftp::backend_binary(ARCH)` 里挑，而那批是 **musl Linux** 二进制
-/// ⇒ 它那侧压着一道 `cfg!(target_os = "linux")` 的闸，非 Linux 一律给 `None`。
-/// **那道闸是对的**：往 Windows 上释放一个 Linux ELF 再报「已起」，是 08-11 补审逮到的
-/// 阻塞级缺陷。缺的从来不是「把闸拆掉」，是**一份 Windows 能跑的字节**。
-///
-/// 本函数就是那份字节，而它**不需要任何运行期判断**：`build.rs` 在编译期按 `TARGET`
-/// 选好了，选错的可能性结构上不存在 ⇒ 它不是宿主知识，是**这一份产物的自我认知**，
-/// 住在本层不违反「宿主知识留调用方」。
-/// 也因此本文件里**一处平台 `cfg` 都没有多**（`the_backend_half_stays_platform_agnostic` 照旧绿）。
-///
-/// # 返回 `None` 的含义
-///
-/// **这一份产物没内嵌本机后端**（开发构建、或发版那一步没铺）。诚实降级，不是错误。
-#[cfg(embedded_native_backend)]
-pub fn native_embedded_backend() -> Option<(&'static str, &'static [u8])> {
-    let id = env!("BACKEND_NATIVE_ID");
-    if id.is_empty() {
-        // 走不到（`build.rs` 缺清单时当场 panic），但**不假设它走不到**：
-        // 空 build_id 会拼出 `cc-monitor-backend-` 这样一个不带版本的落点，
-        // 那正是 D1 段花一整段论证要避开的「与远端那份撞在同一个名字上」。
-        return None;
-    }
-    // 🔴 **这条路径必须是字面量，不许拼**（`concat!(env!(..), ..)` 那种写法编得过，但
-    // `cross_half_edge_registry::every_non_literal_include_is_registered_with_a_reason`
-    // 默认拒绝解析不出路径的 `include_*!`，而它的登记表不在本件写区 —— 实测当场红）。
-    // ⇒ 名字定死在两处：这一行，与 `build.rs` 的 `NATIVE_BACKEND_DIR`/`NATIVE_BACKEND_FILE`。
-    //   两处同一个串由 `the_native_backend_path_is_spelled_the_same_on_both_sides` 对拍
-    //   （闭集本该只有一个住址，这一处是 `include_bytes!` 的语法逼出来的例外 ⇒ 用判据补上）。
-    // ⚠ 目录名**刻意不是** `embedded-backends`：那个串是 `local_backend_host.rs` 那条
-    //   「谁会起真后端」判据认来历用的，写进本文件的生产段会把整段代码拖进它的人群
-    //   （实测：多出一条 `local_backend.rs::default`，而它连测试都不是）。理由全文住 `build.rs`。
-    Some((
-        id,
-        include_bytes!("../../../native-backend/cc-monitor-native"),
-    ))
-}
-
-/// 没内嵌那一份时的同名壳 —— 头注在上面那一份上。
-#[cfg(not(embedded_native_backend))]
-pub fn native_embedded_backend() -> Option<(&'static str, &'static [u8])> {
-    None
-}
+// 〔DP1 · 第四波〕这里原来住着这一份产物按 `TARGET` 内嵌的本机后端那一槽（`K-R42`）。它搬进了 `src/bridge/src/byte_table.rs`：全仓只有一处按 (OS, arch) 取字节（`设计/96 §7.1.1b`），
+//   本层不再自己问「这份产物带没带」—— 宿主从那张表取来、经 `embedded` 交进来，本层只管释放。
 
 /// 陈旧 `.partial` 的年龄阈值。
 ///
@@ -1865,17 +1821,16 @@ fn local_stdio_consumer_guarded(
 /// ⚠ **这个顺序也是 P2z-Y1 的验收陷阱**：dev 构建里第一步恒命中 ⇒ 不把旁边那个挪开，
 /// 测到的是旧路径，而读数看起来和「释放成功」一模一样。
 ///
-/// `embedded` 由调用方给（`sftp::backend_binary(arch)` 的产物）—— 本模块不认识 `sftp`，
+/// `embedded` 由调用方给（〔DP1〕宿主经 `byte_table::choose` 按这台机器的 (OS, arch) 取来；取不到时是那句拒绝的话）—— 本模块不认识那张表，
 /// 也不认识「当前是什么 arch」，那都是宿主知识。`make_executable` 同理（`C10`）。
 ///
-/// # `K-R42`：`embedded` 给 `None` 时还有第二个来源
+/// # `embedded` 只有一个来源（〔DP1〕）
 ///
-/// 宿主那侧只在 Linux 上给字节（它挑的是 **musl** 二进制，见 [`native_embedded_backend`] 头注），
-/// 于是 09-10 干净 win11 上的读数是：**裸 `monitor.exe` 跑着 0 个本机后端进程**，
-/// 而同一个 exe 里那套「带着二进制、需要时落到盘上」的机制**一直都在，只服务远端**。
-/// ⇒ 这里补上 [`native_embedded_backend`]：宿主给不出时，问这一份产物自己带没带。
-/// **次序刻意是「宿主优先」** —— 那条路今天在 Linux 上是活的（安装包那份也走它），
-/// 本件不许让它退化；本层这份只在它交白卷时才说话。
+/// 〔墓碑 —— `K-R42` 那一版这里写着「`embedded` 给 `None` 时还有第二个来源」：宿主那侧只在 Linux 上给 musl 字节，
+///  本层在它交白卷时再问这一份产物按 `TARGET` 内嵌的那一份（那一槽今天住 `byte_table.rs`）。
+///  09-10 干净 win11 上的读数（**裸 `monitor.exe` 跑着 0 个本机后端进程**）就是那道「只在 Linux 上给」的闸造成的。〕
+/// 今天宿主按这台机器的 (OS, arch) 从 `byte_table` 那一张表里取（那张表里本机原生那一槽挂在这一份产物的 `TARGET` 上），
+/// 取不到时交进来的是**那句拒绝的话**（`Err`），本层把它接在「旁边没有」那句后面 —— 不再自己问第二处。
 ///
 /// # 🔴 `K-R43`：本函数**为什么是从 [`start_or_extract`] 里抽出来的**
 ///
@@ -1897,7 +1852,7 @@ fn local_stdio_consumer_guarded(
 pub fn resolve_or_extract(
     target_triple: &str,
     extract_dir: &Path,
-    embedded: Option<(&str, &[u8])>,
+    embedded: Result<(&str, &[u8]), String>,
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
 ) -> Resolved {
     // 🔴 `K-R69`：整段解析包进一个**带标号的块**，只为在返回之前多做一件事
@@ -1909,16 +1864,18 @@ pub fn resolve_or_extract(
         if matches!(beside, Resolved::Found(_)) {
             break 'resolve beside;
         }
-        // `K-R42`：宿主给不出就问这一份产物自己带没带（头注「第二个来源」那一段）。
-        // ⚠ 中间这个**带标注的局部**不是多余的：内嵌那份是 `&'static`，直接
-        // `embedded.or_else(native_embedded_backend)` 会把两边的生存期**往 `'static` 上**统一，
-        // 于是编译器要求调用方那个借来的 `embedded` 也活到 `'static`（实测 `E0521`）。
-        // 标注一下就让它按**短的那个**统一（`'static` 往下兼容，反过来不行）。
-        let carried: Option<(&str, &[u8])> = native_embedded_backend();
-        let Some((build_id, bytes)) = embedded.or(carried) else {
-            // 两个来源都空（`cfg(embedded_backends)` 与 `cfg(embedded_native_backend)` 都未置）⇒
-            // 诚实降级，把 `beside` 的 reason/looked_at 原样交回，别伪造一个新理由。
-            break 'resolve beside;
+        // 〔DP1〕宿主从那张表里取不到 ⇒ 它交进来的是那句拒绝的话：接在「旁边没有」后面，两件事都说。
+        let (build_id, bytes) = match embedded {
+            Ok(b) => b,
+            Err(why) => {
+                break 'resolve match beside {
+                    Resolved::Missing { reason, looked_at } => Resolved::Missing {
+                        reason: format!("{reason}\n{why}"),
+                        looked_at,
+                    },
+                    found @ Resolved::Found(_) => found,
+                };
+            }
         };
         match extract_embedded_to(extract_dir, build_id, bytes, make_executable) {
             Ok(p) => Resolved::Found(p),
@@ -1963,7 +1920,7 @@ pub fn resolve_or_extract(
 pub fn start_or_extract(
     target_triple: &str,
     extract_dir: &Path,
-    embedded: Option<(&str, &[u8])>,
+    embedded: Result<(&str, &[u8]), String>,
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
     on_event: Arc<dyn Fn(SuperviseEvent) + Send + Sync>,
     spawn: Arc<crate::spawn_managed::ManagedSpawn>,
