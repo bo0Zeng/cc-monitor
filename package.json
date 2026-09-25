@@ -49,6 +49,7 @@
     "gate": "bash tests/scripts/gate.sh",
     "verify:committed": "bash tests/scripts/verify-committed-state.sh",
     "test:backend-fork": "bash tests/e2e/backend-fork-session.sh",
+    "test:p3t-local-tmux": "bash tests/e2e/p3t-local-tmux.sh",
     "test:backend-sessions-rewatch": "bash tests/e2e/backend-sessions-rewatch.sh",
     "test:backend-tmux-late-server": "bash tests/e2e/backend-tmux-late-server.sh",
     "test:backend-gate2": "bash tests/e2e/backend-gate2-acceptance.sh",
