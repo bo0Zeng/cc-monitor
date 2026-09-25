@@ -114,8 +114,10 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/cc_bus_deploy.rs",
         "write",
-        13,
-        "`PS1` 的部署：`fenced_dest` 解析 `<claude_dir>/skills` 并做 realpath 围栏、\
+        14,
+        "〔RW1 · 第四波 09-24〕**13 → 14**：部署改经本机后端写之后，`deploy_into` 收一个 `claude_dir` 参数并把它交给后端当根\
+             （多一处 `claude_dir` 引用）；本进程一个字节不写，写那一跳住后端 `files-put` / `files-rename` / `files-chmod`。\n\
+             `PS1` 的部署：`fenced_dest` 解析 `<claude_dir>/skills` 并做 realpath 围栏、\
              `deploy_into`/`deploy_local_cc_bus` 取 dir 再往下写。\
              ⚠ **不属读面** —— 它是**写**操作（本仓第一处往 `<claude_dir>` 写的，\
              `U10b` 裁定后的第 7 条例外），恰好也要解析 dir 来定位落点，与 `history.rs` 那条 \
