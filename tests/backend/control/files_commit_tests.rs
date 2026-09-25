@@ -15,6 +15,7 @@
 //! - 真远端（同写面那一族：全在本机文件系统上）；跨盘（`EXDEV`）那一支本机造不出来 —— 没判。
 
 use super::*;
+use crate::control::files_write::overwrite_text;
 
 /// 一个本轮独占的临时目录（`tag` 区分用例，`pid` 区分并发跑的进程）。
 fn temp_dir(tag: &str) -> PathBuf {
@@ -329,11 +330,16 @@ fn send_chunk(home: &Path, key: &str, seq: u64, bytes: &[u8]) -> Answer {
 
 /// 经线上那一面提交。
 fn send_commit(home: &Path, key: &str, chunks: u64, bytes: u64, root: &Path, rel: &str) -> Answer {
+    // 〔FW1〕CAS 必给：交「此刻盘上那一份」的摘要（读不到就交一个全零串 —— 那一形由判据自己看码）。
+    let expect = std::fs::read(root.join(rel))
+        .map(|b| content_sha256(&b))
+        .unwrap_or_else(|_| "0".repeat(crate::control::files_write::SHA256_HEX_LEN));
     answer_commit_text_at(
         home,
         &serde_json::json!({
             "key": key, "chunks": chunks, "bytes": bytes,
             "root": root.to_string_lossy(), "rel": rel,
+            "expect": {"sha256": expect},
         }),
     )
 }
@@ -589,11 +595,15 @@ fn a_text_commit_goes_through_the_write_fence() {
     std::fs::create_dir_all(&proj).unwrap();
     let session = proj.join("s.jsonl");
     std::fs::write(&session, b"{}\n").unwrap();
-    for (i, rel) in ["../escape.txt", "nope.txt"].iter().enumerate() {
+    // 〔FW1 · 第四波 4D〕不存在的目标从前是 `refused`（解不到底）；带了 CAS 之后是 `stale`（「你打开的时候还在」）—— 逐格钉码。
+    for (i, (rel, code)) in [("../escape.txt", "refused"), ("nope.txt", "stale")]
+        .iter()
+        .enumerate()
+    {
         let key = format!("{:032x}", 0xa0 + i);
         send_chunk(&home, &key, 0, b"payload").unwrap();
         let e = send_commit(&home, &key, 1, 7, &root, rel).expect_err(rel);
-        assert!(e.0 == "refused" || e.0 == "io_failed", "{rel}：{e:?}");
+        assert_eq!(e.0, *code, "{rel}：{e:?}");
         assert!(chunks_left(&home, &key).is_empty(), "{rel}：块没删");
     }
     let key = format!("{:032x}", 0xaf);
@@ -660,4 +670,47 @@ fn the_sweep_also_collects_stale_chunks() {
     for (n, _) in &names[1..] {
         assert!(dir.join(n).exists(), "{n} 被扫了");
     }
+}
+
+/// 〔FW1 · 第四波 4D〕**分块那一支同一道 CAS**（主会话裁 D-c；两支存盘同一种结果）：盘上那份在读之后被改了 ⇒ `stale`，
+/// 目标一个字节没动、块照样删掉；拿「此刻那一份」的摘要 ⇒ 写成，应答交新摘要 == 写进去那份的。
+#[test]
+fn a_chunked_save_over_a_changed_file_is_stale_like_the_one_line_save() {
+    let (home, root) = bare_rig("fw1-commit-cas");
+    std::fs::write(root.join("t.txt"), b"old").unwrap();
+    let seen = content_sha256(b"old");
+    std::fs::write(root.join("t.txt"), b"old + someone else").unwrap();
+    let whole = body(3000, 7);
+    for (i, p) in whole.chunks(1000).enumerate() {
+        send_chunk(&home, KEY, i as u64, p).expect("送块");
+    }
+    let e = answer_commit_text_at(
+        &home,
+        &serde_json::json!({
+            "key": KEY, "chunks": 3, "bytes": 3000,
+            "root": root.to_string_lossy(), "rel": "t.txt",
+            "expect": {"sha256": seen},
+        }),
+    )
+    .expect_err("盘上已经变了，竟然提交成了");
+    assert_eq!(e.0, "stale", "{e:?}");
+    assert_eq!(
+        std::fs::read(root.join("t.txt")).unwrap(),
+        b"old + someone else"
+    );
+    assert!(chunks_left(&home, KEY).is_empty(), "stale 之后块没删");
+    for (i, p) in whole.chunks(1000).enumerate() {
+        send_chunk(&home, KEY, i as u64, p).expect("再送块");
+    }
+    let got =
+        send_commit(&home, KEY, 3, 3000, &root, "t.txt").expect("拿此刻那一份的摘要提交，该成");
+    assert_eq!(got["sha256"], content_sha256(&whole));
+    assert_eq!(std::fs::read(root.join("t.txt")).unwrap(), whole);
+    // 缺 `expect` ⇒ `bad_args`（没有「不问就盖」这一形）。
+    let e = answer_commit_text_at(
+        &home,
+        &serde_json::json!({"key": KEY, "chunks": 1, "bytes": 1, "root": root.to_string_lossy(), "rel": "t.txt"}),
+    )
+    .expect_err("没给 expect 竟然收了");
+    assert_eq!(e.0, "bad_args");
 }

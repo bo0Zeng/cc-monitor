@@ -1156,8 +1156,10 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "files-write-text",
         doc_anchor: Some("#### `files-write-text`"),
-        codes: &["bad_args", "bad_path", "io_failed", "refused"],
-        fields: &["bytes", "content", "path", "rel", "root"],
+        codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
+        fields: &[
+            "bytes", "content", "expect", "path", "rel", "root", "sha256",
+        ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args)
@@ -1240,8 +1242,10 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "files-commit-text",
         doc_anchor: Some("#### `files-commit-text`"),
-        codes: &["bad_args", "bad_path", "io_failed", "refused"],
-        fields: &["bytes", "chunks", "key", "path", "rel", "root"],
+        codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
+        fields: &[
+            "bytes", "chunks", "expect", "key", "path", "rel", "root", "sha256",
+        ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_commit::answer_wire(&r.cmd, &r.args)
@@ -1386,7 +1390,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             "too_large",
             "unreadable",
         ],
-        fields: &["bytes", "max_bytes", "path", "text"],
+        fields: &["bytes", "max_bytes", "path", "sha256", "text"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::files::answer_wire(&r.cmd, &r.args)

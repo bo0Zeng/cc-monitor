@@ -1102,7 +1102,7 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 
 ```text
 → {"id":"f7","cmd":"files-read-text","args":{"path":"/home/u/p/a.md","max_bytes":262144}}
-← {"kind":"reply","id":"f7","ok":true,"data":{"path":"/home/u/p/a.md","text":"# hi\n","bytes":5}}
+← {"kind":"reply","id":"f7","ok":true,"data":{"path":"/home/u/p/a.md","text":"# hi\n","bytes":5,"sha256":"<64 位小写十六进制>"}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -1111,6 +1111,7 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 | `max_bytes` | → | 🔴 **必须给**：编辑上限是**调用方**的（它答的是「这个文本控件打字卡不卡」）。只收 `1..=8388608`（后端一趟肯交的天花板 8 MiB）；超出 ⇒ `bad_args`，**不替调用方夹小** |
 | `text` | ← | 整份内容（合法 UTF-8） |
 | `bytes` | ← | 字节数 |
+| `sha256` | ← | 〔FW1 · 第四波 4D〕交出去的那份字节的 SHA-256（64 位小写十六进制）。编辑器存回去时原样交回当 `expect: {"sha256": …}`（`files-write-text` / `files-commit-text` 的 CAS）；算法只住后端，调用方当不透明令牌 |
 
 🔴 **超上限整趟拒，不截断**（截断过的文本存回去会写坏文件）。大小判两次：`stat` 出来超了 ⇒ 拒；
 真读的时候比 `stat` 时大（文件正在长）⇒ 同样拒 —— 最多只多读一个字节就知道，不会把一个刚变大的文件整个读进内存。
@@ -1290,18 +1291,23 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 #### `files-write-text`：覆盖写一份**已经在**的普通文件
 
 ```text
-→ {"id":"w6","cmd":"files-write-text","args":{"root":"/home/u/docs","rel":"a.md","content":"new text"}}
-← {"kind":"reply","id":"w6","ok":true,"data":{"path":"/home/u/docs/a.md","bytes":8}}
+→ {"id":"w6","cmd":"files-write-text","args":{"root":"/home/u/docs","rel":"a.md","content":"new text","expect":{"sha256":"<打开时 files-read-text 交的那个>"}}}
+← {"kind":"reply","id":"w6","ok":true,"data":{"path":"/home/u/docs/a.md","bytes":8,"sha256":"<写进去那份的>"}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `root` / `rel` | → | 目标根 ＋ 相对段。目标必须**已经在、且是普通文件**；新建请走 `files-create`（`O_EXCL`，两条路刻意分开） |
 | `content` | → | 字符串或 `{"b16":…}`。🔴 **必须给** —— 不给不默认成空（那等于把那份文件清空） |
+| `expect` | → | 〔FW1 · 第四波 4D · D-c〕🔴 **必须给**，恰好 `{"sha256": "<64 位小写十六进制>"}`：「我看的时候那一份」的摘要（`files-read-text` 交的那个）。盘上那份的摘要不等 ⇒ `stale`，一个字节不写；目标已经不在 ⇒ `stale`；缺了 / 形状不对 ⇒ `bad_args`。没有「不问就盖」这一形 |
 | `path` | ← | **解到底**的那个真路径（它跟链接，理由同 `files-chmod`） |
 | `bytes` | ← | 写进去了几个字节 |
+| `sha256` | ← | 〔FW1〕写进去那份的摘要 —— 调用方拿它当下一次存的 `expect`（连存两次不自撞） |
 
-⚠ 没有大小上限、没有「写之前那一版」的备份 —— 本面只做「写」这一件，编辑器的那些语义不在它里面。
+⚠ 没有大小上限、没有「写之前那一版」的备份 —— 本面只做「写」这一件。
+〔FW1〕CAS 用**摘要形**而不是 `files-put` / `files-delete` 那种逐字节形：编辑器存盘装不进一行时分块走（`files-commit-text`），
+逐字节的 `expect` 要么让一行的门槛减半、要么把原文也分块送一遍；摘要定长、两支同形。它仍是 CAS（比的是「我看的时候那一份」），只是换了表示。
+⚠ 比对与写之间仍有窗（TOCTOU）：CAS 缩小的是「读 → 写」那一整趟往返的窗。
 
 #### `files-commit-upload`：把暂存区里一份传完的上传件挪进目标（F7c，2026-09-24）
 
@@ -1349,8 +1355,8 @@ SFTP 缩成只做传输之后（`设计/60 §13`），上传**只写** `~/.cc-mo
 #### `files-commit-text`：按块读回、拼起来、原地覆盖（F9c · 第四波，2026-09-24）
 
 ```text
-→ {"id":"w9","cmd":"files-commit-text","args":{"key":"0123456789abcdef0123456789abcdef","chunks":3,"bytes":3000000,"root":"/home/u/docs","rel":"big.log"}}
-← {"kind":"reply","id":"w9","ok":true,"data":{"path":"/home/u/docs/big.log","bytes":3000000}}
+→ {"id":"w9","cmd":"files-commit-text","args":{"key":"0123456789abcdef0123456789abcdef","chunks":3,"bytes":3000000,"root":"/home/u/docs","rel":"big.log","expect":{"sha256":"…"}}}
+← {"kind":"reply","id":"w9","ok":true,"data":{"path":"/home/u/docs/big.log","bytes":3000000,"sha256":"…"}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -1359,8 +1365,10 @@ SFTP 缩成只做传输之后（`设计/60 §13`），上传**只写** `~/.cc-mo
 | `chunks` | → | 块数：读回 `0..chunks` 这几块。只收 `1..=bytes`（每块至少 1 字节） |
 | `bytes` | → | 拼起来**必须恰好**这么长；最多 8 MiB（`files-read-text` 一趟的天花板：存得回的要读得回来），超了 ⇒ `bad_args` |
 | `root` / `rel` | → | 目标，语义与 `files-write-text` **完全相同**：必须已经在、是普通文件；跟链接（解到底再判一次）；原地覆盖（权限位 / 属主不变） |
+| `expect` | → | 〔FW1〕🔴 **必须给**，与 `files-write-text` 的 `expect` 同形同义（摘要形 CAS）：盘上那份对不上 ⇒ `stale`，目标一个字节没动（块照样删掉） |
 | `path` | ← | 解到底的那个真路径 |
 | `bytes` | ← | 写进去的字节数 |
+| `sha256` | ← | 〔FW1〕写进去那份的摘要 |
 
 ⚠ 少一块 · 多出第 `chunks` 块 · 总长对不上 ⇒ `io_failed`，目标**一个字节没动**；某一块是链接或目录 ⇒ `refused`。
 ⚠ **不论成败**都删掉这一次的块；成功时顺手扫一遍暂存区的孤儿（`<key>.part` 与 `<key>.<seq>.chunk` 两种形状，7 天没动过的）。
@@ -1369,7 +1377,7 @@ SFTP 缩成只做传输之后（`设计/60 §13`），上传**只写** `~/.cc-mo
 #### `files-copy`：同根内复制一份普通文件（F7a · 第三波，2026-09-24）
 
 写面第七条。文件窗口的「复制」此前走 SFTP 那条零流量复制；现在经通道问后端 —— 复制发生在
-那台机器上、字节不过网，**「退回中转、花 2× 流量」那一形从此不存在**。
+那台机器上、字节不过网，**「退回经本机转发、花 2× 流量」那一形从此不存在**。
 
 ```text
 → {"id":"w7","cmd":"files-copy","args":{"root":"/home/u/docs","from":"a.md","to":"a.md.copy"}}

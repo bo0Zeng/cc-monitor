@@ -60,7 +60,8 @@
 //! 由 [`sweep_stale`] 按同一个期限收（它认得两种形状）。
 
 use crate::control::files_write::{
-    overwrite_text, resolve_in_root, Answer, ManageCommand, WriteRefusal,
+    content_sha256, overwrite_text_expecting, resolve_in_root, sha256_expect_of, Answer,
+    ManageCommand, WriteRefusal,
 };
 use std::path::{Path, PathBuf};
 
@@ -120,10 +121,11 @@ pub const COMMIT_COMMANDS: &[ManageCommand] = &[
     ManageCommand {
         name: "files-commit-text",
         what: "按块号读回 `0..chunks` 块、拼起来、总长必须等于 `bytes`，再原地覆盖目标（与 \
-               `files-write-text` 同一个原语：跟链接、只收已在的普通文件）；不论成败都删掉这些块",
-        args: &["bytes", "chunks", "key", "rel", "root"],
-        fields: &["bytes", "path"],
-        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+               `files-write-text` 同一个原语：跟链接、只收已在的普通文件）；〔FW1〕`expect: {sha256}` 必给，\
+               盘上那份对不上 ⇒ `stale`、一个字节不写；不论成败都删掉这些块",
+        args: &["bytes", "chunks", "expect", "key", "rel", "root"],
+        fields: &["bytes", "path", "sha256"],
+        codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
     },
 ];
 
@@ -354,9 +356,13 @@ pub fn commit_text(
     bytes: u64,
     root: &Path,
     rel: &str,
-) -> Result<(PathBuf, u64), WriteRefusal> {
-    let r = gather_chunks(home, key, chunks, bytes)
-        .and_then(|body| overwrite_text(root, rel, &body).map(|at| (at, body.len() as u64)));
+    expect_sha256: &str,
+) -> Result<(PathBuf, u64, String), WriteRefusal> {
+    // 〔FW1〕与 `files-write-text` 同一道 CAS（`overwrite_text_expecting`）：两支存盘同一种结果，含「盘上被改过 ⇒ stale」。
+    let r = gather_chunks(home, key, chunks, bytes).and_then(|body| {
+        overwrite_text_expecting(root, rel, &body, expect_sha256)
+            .map(|at| (at, body.len() as u64, content_sha256(&body)))
+    });
     drop_chunks(home, key);
     r
 }
@@ -539,7 +545,8 @@ fn answer_commit_text_at(home: &Path, args: &serde_json::Value) -> Answer {
             format!("`chunks` 是 {chunks}、`bytes` 是 {bytes} —— 每块至少 1 字节，块数只能在 1..=总长 之间"),
         ));
     }
-    let (landed, n) = commit_text(home, &key, chunks, bytes, &root, &rel)
+    let expect = sha256_expect_of(args)?;
+    let (landed, n, sha) = commit_text(home, &key, chunks, bytes, &root, &rel, &expect)
         .map_err(|e| (e.code(), e.message().to_string()))?;
     // 提交成功 ⇒ 顺手扫孤儿（同上传那一条的事件）。
     let now = std::time::SystemTime::now()
@@ -550,6 +557,7 @@ fn answer_commit_text_at(home: &Path, args: &serde_json::Value) -> Answer {
     Ok(serde_json::json!({
         "path": crate::files::raw::to_json(crate::files::raw::path_bytes(&landed)),
         "bytes": n,
+        "sha256": sha,
     }))
 }
 

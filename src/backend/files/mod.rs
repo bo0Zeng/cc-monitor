@@ -322,7 +322,7 @@ pub const CAPABILITIES: &[Capability] = &[
         impl_files: &["mod.rs", "raw.rs"],
         targets: TARGETS,
         args: &["max_bytes", "path"],
-        fields: &["bytes", "path", "text"],
+        fields: &["bytes", "path", "sha256", "text"],
         codes: &["bad_args", "bad_path", "not_text", "too_large", "unreadable"],
     },
     Capability {
@@ -731,6 +731,24 @@ fn answer_browse(args: &serde_json::Value) -> Answer {
 ///   ⇒ 调用方要的 `max_bytes` 超过它 ⇒ `bad_args`（说清天花板是多少），**不偷偷夹小**。
 pub const READ_TEXT_MAX_BYTES: usize = 8 * 1024 * 1024;
 
+/// 〔FW1 · 第四波 4D〕CAS 摘要形里十六进制串的长度（SHA-256 = 32 字节）。
+pub const SHA256_HEX_LEN: usize = 64;
+
+/// 〔FW1 · 第四波 4D〕一份字节的 SHA-256，64 位小写十六进制 —— **CAS 摘要形 `expect: {"sha256": …}` 的唯一算法住址**。
+///
+/// 读的那一趟（[`answer_read_text`]）对交出去的字节算它；写面（`control/files_write.rs::overwrite_text_expecting`）
+/// 拿它比「盘上此刻那一份」、写成之后对新内容再算一次交回去。住读族这一侧，是因为读族不许伸手进写面
+/// （写面只有 `inbound.rs` 一扇门），反过来写面借读族一个纯函数不开新门。
+pub fn content_sha256(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+    let d = ring::digest::digest(&ring::digest::SHA256, bytes);
+    let mut out = String::with_capacity(SHA256_HEX_LEN);
+    for b in d.as_ref() {
+        let _ = write!(out, "{b:02x}");
+    }
+    out
+}
+
 /// `files.read.text` —— 读一份文本。**超上限整趟拒，不截断**（截断过的文本存回去会写坏文件）。
 ///
 /// 三道拒，各有自己的码（调用方据此说三句不同的话，而不是一个灰按钮）：
@@ -801,6 +819,8 @@ fn answer_read_text(args: &serde_json::Value) -> Answer {
         ));
     }
     let n = buf.len();
+    // 〔FW1 · 第四波 4D〕交出去的那份字节的摘要：编辑器存回去时原样交回当 CAS 的 `expect`（算法住写面那一处）。
+    let sha256 = content_sha256(&buf);
     let text = String::from_utf8(buf).map_err(|e| {
         (
             "not_text",
@@ -814,6 +834,7 @@ fn answer_read_text(args: &serde_json::Value) -> Answer {
         "path": raw::to_json(raw::path_bytes(&path)),
         "text": text,
         "bytes": n,
+        "sha256": sha256,
     }))
 }
 
