@@ -19,6 +19,7 @@ import {
   type PinnedTab,
 } from "./tab-bar-state";
 import type { Tab } from "./tab-model";
+import { ENDED, isLive } from "./tab-session-state";
 import type { TabStore } from "./tab-store";
 import type { Origin } from "./ipc/origin";
 
@@ -127,15 +128,15 @@ export class TabBarPrefs {
    * ```
    * 读 tabBar.pinned[] → 逐条 createSkeletonTab(sid, cwd, origin, kind, name)
    *   ├ 标 pinned = true
-   *   ├ 标 status = "archived"（没有活进程；后端 replay 随后宣告它活着 ⇒ 事件流会改回 live）
+   *   ├ 标 state = ENDED（没有活进程；后端 replay 随后宣告它活着 ⇒ 事件流会改回活）
    *   └ 标题直接用存下来的那份（不等读文件）
    * ```
    * 🔴 **不读内容** —— `99 §2.5 P3` 已裁定「已结束的会话点进去不能看内容，只能 resume」。
-   *   `replay_session_to_window` 那条路对 archived 本来就走不通（它的头注逐字：
+   *   `replay_session_to_window` 那条路对已结束的会话本来就走不通（它的头注逐字：
    *   「仅活跃 session 的历史在 buffer 里」）。
    *
    * ⚠ **已经存在的 sid 不重建**（后端 replay 可能已经先宣告了它）—— 只补一个 `pinned = true`，
-   *   `status` 一个字不碰：那条会话真活着的时候，把它按回 archived 是一句假话。
+   *   `state` 一个字不碰：那条会话真活着的时候，把它按回已结束是一句假话。
    */
   async loadPinned(): Promise<void> {
     const list = await getPinned();
@@ -148,7 +149,7 @@ export class TabBarPrefs {
         if (!t) continue;
         // 没有活进程 ⇒ 灰着。`archiveTab` 那条路要求 tab 已在事件流里，这里是**凭空造**，
         // 所以直接置位；两者最终形态一致（`.tab.archived` 那条 CSS 本来就有）。
-        t.status = "archived";
+        t.state = ENDED;
         t.activity = null;
         t.parentPath = p.jsonlPath; // `§B.5`：复活的必需品（resume 与「有没有记录」都靠它）
         t.title = p.title; // 骨架期就显示正确标题，不等读文件
@@ -204,7 +205,7 @@ export class TabBarPrefs {
    * 把一个 tab 压成一条落盘记录。字段表逐条照 `§B.5`。
    *
    * ⚠ `lastActiveAt`：**live ⇒ 此刻**（「它现在还活着」是个真读数）；
-   *   **archived ⇒ 沿用盘上那份，没有就 `null`** —— 前端 `Tab` 上零时间戳字段（现打），
+   *   **死了（已结束 / 可重连）⇒ 沿用盘上那份，没有就 `null`** —— 前端 `Tab` 上零时间戳字段（现打），
    *   把它刷成 `Date.now()` 会让「最后活动时刻」变成「最后一次落盘时刻」，那是假话。
    */
   private pinRecordFor(tab: Tab): PinnedTab {
@@ -220,7 +221,8 @@ export class TabBarPrefs {
         this.store.accountLastByS.get(tab.sessionId) ??
         prev?.account ??
         null,
-      lastActiveAt: tab.status === "live" ? Date.now() : prev?.lastActiveAt ?? null,
+      // 〔U4〕按活性一轴判：可重连的 claude 已经没了 ⇒ 不是「此刻还活着」（改两轴之前它借着 `status: live` 被刷成此刻）。
+      lastActiveAt: isLive(tab.state) ? Date.now() : prev?.lastActiveAt ?? null,
       kind: tab.kind,
       name: tab.bgName,
       title: tab.title,

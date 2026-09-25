@@ -42,6 +42,7 @@ import {
 import type { BranchRecord } from "./branching";
 import { commands } from "./ipc/commands";
 import type { Tab } from "./tab-model";
+import { isResumeOnly } from "./tab-session-state";
 import type { TabStore } from "./tab-store";
 
 /** 〔U3b〕只问「这条是不是 meta」、不喂任何账的空 sink（骨架按偏移取回**见过**的行时用）。 */
@@ -341,13 +342,13 @@ export class TabStreamView {
         active.stream.scrollToBottom();
       }
     }
-    // D 审计 S-5:archived 死会话不进后台物化队列(纯浪费;switchTo 命中 virgin
+    // D 审计 S-5:已结束的死会话不进后台物化队列(纯浪费;switchTo 命中 virgin
     // 已有同步物化兜底)。
     this.materializeQueue = [...this.store.tabs.entries()]
       .filter(
         ([sid, t]) =>
           sid !== this.store.activeId &&
-          t.status !== "archived" &&
+          !isResumeOnly(t.state) &&
           t.window.floorSeq === null &&
           t.window.pendingCount > 0,
       )

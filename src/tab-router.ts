@@ -14,6 +14,7 @@
  * 条件与次序逐字不变，只是把「然后去切」换成「返回该切谁 / 放不放行」。
  */
 import { LS_KEYS, safeSet } from "./local-storage";
+import { isResumeOnly } from "./tab-session-state";
 import type { BehaviorConfig } from "./behavior";
 import type { TabStore } from "./tab-store";
 
@@ -97,7 +98,7 @@ export class TabRouter {
    *    在这里加 inBatch 守卫等价 v2.5 的 source==="live" 检查）
    * 1. autoFollowUserActive=false（设置面板关了）
    * 2. manualOverrideUntil > now（用户 5s 内手动点过 tab，明确意图保护）
-   * 3. sid 不存在 / 已 archive（防御）
+   * 3. sid 不存在 / 已结束（防御）
    * 4. sid 已经是 active ⇒ `front-only`（不切，但开了「拉前 monitor」也照拉）
    *
    * 通过 ⇒ `switch`（宿主调 switchTo(sid, "auto")，可选把 monitor 拉前）。
@@ -108,7 +109,7 @@ export class TabRouter {
     if (Date.now() < this.manualOverrideUntil) return "ignore";
     const tab = this.store.tabs.get(sessionId);
     if (!tab) return "ignore";
-    if (tab.status === "archived") return "ignore";
+    if (isResumeOnly(tab.state)) return "ignore";
     if (this.store.activeId === sessionId) return "front-only";
     return "switch";
   }

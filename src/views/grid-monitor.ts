@@ -21,6 +21,7 @@ import {
   type GridSessionSnapshot,
   type SessionPeek,
 } from "../session-status";
+import { isLive, isResumeOnly } from "../tab-session-state";
 
 /** grid 数据源（TabManager 的只读子集——便于测试注入桩）。 */
 export interface GridSource {
@@ -62,9 +63,9 @@ export function groupSessionsByOrigin(sessions: GridSessionSnapshot[]): OriginGr
  *  同档保持输入序（稳定）。纯函数——不改入参，返回新数组。 */
 export function sortSessionsInGroup(sessions: GridSessionSnapshot[]): GridSessionSnapshot[] {
   const rank = (s: GridSessionSnapshot): number => {
-    if (s.status === "archived") return 9;
-    // audit-fixes F03.2：idle-tmux（claude 退但 tmux 在）休眠但可复用——排活会话之后、归档之前。
-    if (s.tmuxIdle) return 8;
+    // 〔U4〕两轴：已结束（只能 resume）排最后；可重连（claude 退、tmux 在）排活会话之后、已结束之前。
+    if (isResumeOnly(s.state)) return 9;
+    if (s.state.liveness === "dead") return 8;
     switch (s.activityStatus) {
       case "waiting":
         return 0;
@@ -96,7 +97,7 @@ export function summarizeSessions(sessions: GridSessionSnapshot[]): GridSummary 
   let runningAgents = 0;
   for (const s of sessions) {
     origins.add(s.origin);
-    if (s.status === "live") liveSessions += 1;
+    if (isLive(s.state)) liveSessions += 1; // 〔U4〕按活性：可重连的不算活（原先借着 status: live 被算进来）
     runningAgents += s.runningAgents;
   }
   return { machines: origins.size, liveSessions, runningAgents };
@@ -116,7 +117,8 @@ function peekSignature(selected: GridSessionSnapshot | null, peek: SessionPeek |
     selected.title,
     selected.origin,
     selected.cwd,
-    selected.status,
+    selected.state.liveness, // 〔U4〕两轴都签：「状态」一格从两轴派生
+    selected.state.recoverability,
     selected.activityStatus,
     selected.waitingFor,
     peek?.model ?? null,
@@ -477,7 +479,7 @@ export class GridMonitorView {
         : selected.waitingFor
           ? `${selected.activityStatus}（等待：${selected.waitingFor}）`
           : selected.activityStatus;
-    addFact("状态", selected.status === "archived" ? `已归档 · ${act}` : act);
+    addFact("状态", isResumeOnly(selected.state) ? `已归档 · ${act}` : act);
     if (peek?.model) addFact("模型", peek.model);
     this.peekEl.appendChild(facts);
 
@@ -564,13 +566,14 @@ export class GridMonitorView {
   private updateCell(refs: CellRefs, s: GridSessionSnapshot): void {
     const { cell } = refs;
     // `toggle(x, 布尔)` 状态没变时不写 DOM（规范：force 与现状一致直接返回）。
-    cell.classList.toggle("archived", s.status === "archived");
+    cell.classList.toggle("archived", isResumeOnly(s.state));
     cell.classList.toggle("cell-bg", s.kind !== null && s.kind !== "interactive");
     cell.classList.toggle("is-selected", s.sessionId === this.selectedId); // F91b 选中高亮
 
     // 红绿灯点。audit-fixes F03.2：idle-tmux 灰灯覆写红绿黄（.live-dot.tmux-idle，同 tab-bar 语义）。
     const light = activityLightClass(s.activityStatus);
-    const dotClass = `live-dot${light ? ` ${light}` : ""}${s.tmuxIdle ? " tmux-idle" : ""}`;
+    const reconnectable = s.state.recoverability === "attachable";
+    const dotClass = `live-dot${light ? ` ${light}` : ""}${reconnectable ? " tmux-idle" : ""}`;
     if (refs.dot.className !== dotClass) refs.dot.className = dotClass;
     if (refs.name.textContent !== s.title) refs.name.textContent = s.title;
 
