@@ -487,6 +487,18 @@ pub enum Frame {
     /// 一批文件事件里 manifest 动了几次都只发一帧。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
     AccountsChanged,
 
+    /// 〔U4b · 第四波〕**这台机器的活会话清单报完了**：`observe::watcher::watch_loop` 的 Phase 1
+    /// （同步扫 `sessions/`、对每个活 pidfile 发一帧 `session_added`）走完那一刻发**一次**。
+    ///
+    /// 它是 `设计/30 §3.5.7a` 那张表要的判据：客户端手里有一条「固定」的会话条目、而这台机器
+    /// 还没报过它 —— 是「这台还没说完」（显示**说不清**），还是「这台说完了、里面没有它」
+    /// （显示**已结束**）？此前线上没有任何东西分得开这两件事（Phase 1 结束没有标记），
+    /// 于是固定复活的 tab 一律被说成已结束（`第四波记录/U4.md §0.1` 末条）。
+    ///
+    /// 无载荷：清单本身就是它前面那些 `session_added`（同一条有序的流），别让同一份数据有两个出口。
+    /// 之后的增减照旧走 `session_added` / `session_removed`。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    SessionsReplayed,
+
     /// 〔SR1a · 2026-09-24〕**一条链路的下行字节**（`dial/link.rs`）。
     ///
     /// 用户裁「改成单一常驻后端」：本机只常驻一个后端，到各远端的 SSH 连接由它持有并复用；
@@ -562,6 +574,9 @@ impl Frame {
             Frame::Cancelled { .. } => false,
             // 〔SR1a〕一次状态变化的通知，没有「下一次必然重发」⇒ 保守（丢了客户端就一直拿着旧清单）。
             Frame::AccountsChanged => false,
+            // 〔U4b〕一次性的标记，没有「下一次必然重发」⇒ 丢了客户端就一直停在「说不清」
+            //   （保守的那一侧：不会把一条说不清的会话说成已结束）。按不可恢复报身份，客户端才知道要重连。
+            Frame::SessionsReplayed => false,
             // 〔SR1a〕链路字节：丢一块 = 那条链路上的数据坏了，别处没有第二份。
             // 与上面两个同理，它们**不走**会丢帧的那条通道（走应答通道、阻塞发送）。
             Frame::LinkData { .. } => false,
@@ -586,6 +601,7 @@ impl Frame {
             Frame::Reply { id, .. } => ("reply", Some(id.clone())),
             Frame::Cancelled { id } => ("cancelled", Some(id.clone())),
             Frame::AccountsChanged => ("accounts_changed", None),
+            Frame::SessionsReplayed => ("sessions_replayed", None),
             Frame::LinkData { link, .. } => ("link_data", Some(link.clone())),
             Frame::LinkEnd { link, .. } => ("link_end", Some(link.clone())),
         };

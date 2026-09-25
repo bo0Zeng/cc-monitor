@@ -932,14 +932,7 @@ fn watch_loop(
     // on startup. We deliberately do NOT walk projects/ unconditionally — pulling
     // every historical jsonl as a Tab is the bug this fixes; browsing history is
     // the Ctrl+H history browser's job (Phase 1 for remote).
-    if sessions.is_dir() {
-        for entry in WalkDir::new(&sessions).into_iter().filter_map(Result::ok) {
-            let p = entry.path();
-            if is_session_json(p) {
-                process_session_added(p, &mut state, &mut sink);
-            }
-        }
-    }
+    initial_session_scan(&sessions, &mut state, &mut sink);
 
     // --- Phase 2: live watch. ---
     let mut debouncer = match new_debouncer(
@@ -1988,6 +1981,28 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
             process_jsonl(p, state, sink);
         }
     }
+}
+
+/// Phase 1 的本体：逐个活 pidfile 发 `session_added`，**然后**发一帧 `sessions_replayed`。
+///
+/// 〔U4b · 第四波〕从 `watch_loop` 里抽出来，为的是「清单报完了」那一帧的**位置**能被直接验
+/// （`watcher_tests::sessions_replayed_follows_every_initial_session_added_exactly_once`）——
+/// 起整条 `watch_loop` 要挂 inotify、探真机 tmux、装 hook，判据不许碰那些。
+///
+/// `sessions_replayed` **无条件发**：`sessions/` 不在 = 清单是空的，也是一个说完了的答案。
+/// 它排在本函数所有 `session_added` 之后；调用方在 Phase 2 起来之前调本函数（同一个 sink、同一条线程）
+/// ⇒ 客户端收到它时，这台机器此刻全部的活会话都已经报过了 —— 靠它把「固定、却没被报过」的会话
+/// 从「说不清」落到「已结束」（`设计/30 §3.5.7a`）。
+fn initial_session_scan(sessions: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
+    if sessions.is_dir() {
+        for entry in WalkDir::new(sessions).into_iter().filter_map(Result::ok) {
+            let p = entry.path();
+            if is_session_json(p) {
+                process_session_added(p, state, sink);
+            }
+        }
+    }
+    sink.send(Frame::SessionsReplayed);
 }
 
 /// A `sessions/<PID>.json` was deleted: look up the cached sid (the file is
