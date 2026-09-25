@@ -5,9 +5,11 @@
  *
  * 两型分离：`LaunchContext` = 调用方已解析好的具体意图（输入）；`LaunchPlan` = 维度注册表
  * 跑完派生（`env`/`args`/`identity`）之后、渲染就绪的结构（输出）。`buildLaunchPlan()` 是唯一
- * 桥梁——两个渲染器（`launch-render-fallback.ts`/`launch-render-cli.ts`）分别消费其中一种：
- * 兜底渲染器只吃 `LaunchPlan`（维度效果已摊平进文本原料，直接编译）；CLI 渲染器需要重新问
- * 维度一次"这在 CLI 词汇里怎么说"，故还需要 `LaunchContext`。
+ * 桥梁。生产的两份渲染器都在 Rust：载荷那份吃 `LaunchPlan` 摊成的上线请求
+ * （`remote-launch-run.ts::buildPayloadRenderRequest`），`ccm …` 调用行那份吃 `{ctx, plan, probe}`
+ * 摊成的上线请求（`buildCliRenderRequest`，它要 `LaunchContext` 里的账号名 / 模型 / ccmSid）。
+ * 〔LR1 · U8c-3〕原先 TS 这边也有一份 CLI 渲染器（`launch-render-cli.ts`，向维度现问
+ * 「这在 CLI 词汇里怎么说」），已删。
  *
  * **本次偏离 MASTERPLAN §2.5 草案的三处**（综合两版 Plan agent 方案后的取舍，理由见
  * `.claude/planned-build/unify-launch/features/F03-launch-plan-ir.md` §2）：
@@ -35,11 +37,12 @@ export type LaunchAction =
 
 /** F05：账号名已线通——`kind==="account"` 带 `configDir`（供兜底渲染器 `export
  *  CLAUDE_CONFIG_DIR=<dir>`，这个字段自 F03 起就有）与**可选**的 `name`（供
- *  `ACCOUNT_DIMENSION.cliFlags` 吐 `--account <名>`）。`name` 可选而非必需——
+ *  CLI 渲染器吐 `--account <名>`；〔LR1〕今天那一份在 Rust `ccm_invocation.rs`，经
+ *  `buildCliRenderRequest` 的 `account.name` 过线）。`name` 可选而非必需——
  *  `remote-launch.ts` 保留的老式 builder 直调路径（`remote-launch.test.ts` 的 15 个符号，
  *  只传 `configDir` 不传名字）必须继续能触发账号注入，不能因为"不知道名字"就整个降级成
  *  `base`（那会让兜底渲染器也漏注入，是真回归，不是诚实降级）。`name` 缺失时
- *  `cliFlags` 对这一路 `null`（无法说出 `--account`，老实强制走兜底），`apply()`（兜底渲染器
+ *  CLI 渲染器对这一路说不出 `--account`（老实强制走兜底），`apply()`（兜底渲染器
  *  路径）不受影响，因为它只需要 `configDir`。**只有两态**（`account`/`base`），不存在"未决定"
  *  的第三态——上游 `resolveAccount`/`accountConfigDir` 已经替调用方做过这个决定（F05 计划
  *  §2 第3条：CLI 语境下账号维度必须恒显式表态，不能有"两者都不传"的沉默态，否则重蹈
@@ -198,7 +201,7 @@ export interface LaunchModifiers {
   /** A4：账号目录，兜底渲染器据此 `export CLAUDE_CONFIG_DIR`。 */
   configDir?: string;
   /** F05：与 `configDir` 成对——CLI 渲染器据此吐 `--account <名>`；只有 `configDir` 没有名字时
-   *  `ACCOUNT_DIMENSION.cliFlags` 诚实返回 `null` 强制降级（见 `LaunchAccount` 头注）。 */
+   *  CLI 渲染器诚实降级（`Refusal::DimensionCannotSpeak`，见 `LaunchAccount` 头注）。 */
   accountName?: string;
   /** F07：该账号配置的默认模型偏好（本机 `config.json`）。 */
   modelOverride?: string;
@@ -234,29 +237,19 @@ export interface LaunchContext {
 
 /**
  * 维度注册表的唯一契约。`apply` 就地改 `plan`（`env`/`args`/`identity` 等派生字段），
- * 绝不拼字符串——字符串化是渲染器的事。`cliFlags` 返回 `null` = 该维度在当前 `ctx` 下无法
- * 用 CLI 语法表达 → 强制整条 plan 降级走兜底渲染器（`tryRenderCli` 消费这个信号，返回 `ok:false`）。
+ * 绝不拼字符串——字符串化是渲染器的事（今天两份渲染器都在 Rust）。
+ *
+ * 〔LR1 · U8c-3〕这里原来还有两个可选成员 `cliFlags`（「这个维度在 `ccm …` 调用行里怎么说，
+ * `null` = 说不出 ⇒ 整条降级」）与 `requiredCaps`（R04②：能力要求下放到维度）。
+ * 两者唯一的读者是 TS 那份 `ccm …` 渲染器，随它删了；同一件事今天只有一份：
+ * `src/bridge/src/backend/control/ccm_invocation.rs` 的维度表（`cli_flags` / `caps`，
+ * R04② 的「只向已触发的维度收集能力」原样在那边）。
  */
 export interface LaunchDimension {
   id: string;
   order: number;
   applies(ctx: LaunchContext): boolean;
   apply(plan: LaunchPlan, ctx: LaunchContext): void;
-  cliFlags?(ctx: LaunchContext): string[] | null;
-  /**
-   * **R04②：能力要求下放到维度本身。**
-   *
-   * 此前 CLI 渲染器里有两套并存的机制：一个静态的 `CLI_REQUIRED_CAPS` 列表（语义是
-   * "每一次调用都要求"，只对 `applies` 恒真的维度成立），外加一条给 `model` 的**针对性特判**
-   * （因为 `MODEL_DIMENSION.applies` 是条件式，塞进静态列表会误伤所有未配模型偏好的会话，
-   * 见 F08 计划 §3.2 与 `src/doc/INVARIANTS.md` §37）。
-   *
-   * 那条特判本身是对的，但它把"这个维度需要远端 ccm 支持什么"这件知识放在了**渲染器里**
-   * ——离维度定义很远，且下一个条件式维度的作者不会知道要去那里加一行。
-   * 改成由维度自己声明：渲染器只对**已触发**的维度收集 `requiredCaps`，
-   * 于是"条件式维度只在真触发时才要求能力"这件事变成**结构保证**而非渲染器里的特判。
-   */
-  requiredCaps?(ctx: LaunchContext): readonly string[];
 }
 
 export function buildLaunchPlan(ctx: LaunchContext): LaunchPlan {
