@@ -149,6 +149,14 @@ mod tests {
             "④ 骨架里「摘一行」：从 stdout 取第一行非空内容（那个插件的应答行）。\
              怎么读懂那一行是调用方的事，摘这件事不认识任何插件",
         ),
+        // 〔RM1f〕代码全景的适配层改走可打断的那一形（`panorama` 进了 `Run::Async` 档）。
+        (
+            "control",
+            "crate::plugin::invoke::run_abortable",
+            "③ 的另一种**等法**：同一处构造（程序 · argv · 环境白名单 · `timeout` 前缀一字不分叉），\
+             只是异步等 —— future 被丢 = 子进程那一组被杀。「什么时候该丢」是调用方的事（`cancel` 命中），\
+             杀谁、怎么杀是调用口的形状，不认识任何插件",
+        ),
         (
             "control",
             "crate::plugin::invoke::TIMED_OUT_CODE",

@@ -86,6 +86,11 @@ pub const COMMANDS: &[&str] = &[
     "accounts-trust",
     "apikey-key-set",
     "apikey-read",
+    // 〔AS2 · 第四波 4B · V113〕资产目录（后端自有状态，第四层）：现扫 ＋ 记 · 并进别处的整份。
+    "assets-catalog",
+    "assets-catalog-merge",
+    // 〔AS2〕本机常驻后端沿池里那条 SSH 拉 / 并 / 推远端的目录（事件触发：连上 · 看机器页）。
+    "assets-sync",
     "bus-kill",
     "bus-list",
     "bus-send",
@@ -146,6 +151,9 @@ pub const COMMANDS: &[&str] = &[
     "relay-ensure",
     "relay-status",
     "resolve",
+    // 〔AS2〕skill「装到这台」：来源那台读 · 要被写的那一台判（都只读；写经 `files-put`）。
+    "skill-install-plan",
+    "skill-read",
     "tasks-list",
     // 〔SR1b〕传输四条（`control/transfer.rs`）：传输台住本机常驻后端，SFTP 跟其它 SSH 同一条连接。
     "transfer-download",
@@ -877,6 +885,100 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // 〔AS2 · 第四波 4B · V113〕**资产目录**：这台现扫一次 skill 与项目级 MCP、记进后端自有的
+    //   `~/.cc-monitor/assets-catalog.json`（第四层，变了才写）、回整份目录 ＋「这台缺什么」的判定。
+    //   `-merge` 那条再把另一台后端的整份并进来（同一台取 `gen` 大的整份）。一个用户文件都不写。阻塞档（扫盘）。
+    CommandSpec {
+        name: "assets-catalog",
+        doc_anchor: Some("#### `assets-catalog`"),
+        codes: &["catalog_unreadable", "io_failed"],
+        fields: &["changed", "machines", "path", "problems", "rows", "self"],
+        takes_input: false,
+        run: Run::Blocking(|r| {
+            crate::asset_catalog::answer_catalog(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "assets-catalog-merge",
+        doc_anchor: Some("#### `assets-catalog-merge`"),
+        codes: &["bad_args", "catalog_unreadable", "io_failed"],
+        fields: &[
+            "catalog", "changed", "machines", "path", "problems", "rows", "self",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::asset_catalog::answer_merge(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔AS2〕**资产目录的自动同步**：本机常驻后端沿池里那条 SSH 连接（多开一个 exec 通道，零新连接）
+    //   拉远端的目录、并进本机、把远端缺的推过去。写口（`answer_merge`）由这扇门递进去 —— `asset_sync.rs`
+    //   自己不直呼它（`readonly_guard` 第四层 ④：写口只从 `inbound.rs` 进来）。真异步（拨号 / 等远端）。
+    CommandSpec {
+        name: "assets-sync",
+        doc_anchor: Some("#### `assets-sync`"),
+        codes: &["bad_args", "io_failed"],
+        fields: &["backend", "dial", "origin", "reach", "self", "synced"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                let fold: crate::asset_sync::Fold =
+                    std::sync::Arc::new(crate::asset_catalog::answer_merge);
+                crate::asset_sync::answer(&r.args, fold, &crate::asset_sync::DialRemote)
+                    .await
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
+    // 〔AS2 · 第四波 4B · V113〕**skill「装到这台」**：`skill-read` 在来源那台读出这个 skill 的全部文件（原文 ＋ 执行位）；
+    //   `skill-install-plan` 在要被写的那一台判 —— 差异四态与「不同的要显式说盖」那道闸原样用 AS1 的 `mcp_sync::{diff, plan}`，
+    //   可疑项（可执行 · 二进制 · 绝对路径 · `#!` 要的命令）带那台的事实。两条都只读；写经 `files-put`（CAS）。阻塞档（扫盘）。
+    CommandSpec {
+        name: "skill-read",
+        doc_anchor: Some("#### `skill-read`"),
+        codes: &["bad_args", "io_failed", "not_found", "too_large"],
+        fields: &["dir", "files", "name", "root", "skipped"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::skill_install::answer_read(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "skill-install-plan",
+        doc_anchor: Some("#### `skill-install-plan`"),
+        codes: &[
+            "bad_args",
+            "bad_file",
+            "io_failed",
+            "needs_consent",
+            "too_large",
+        ],
+        fields: &[
+            "base",
+            "dir",
+            "name",
+            "overwrite",
+            "prefix",
+            "root",
+            "rows",
+            "source",
+            "take",
+            "target",
+            "write",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::skill_install::answer_plan(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     CommandSpec {
         name: "files-create",
         doc_anchor: Some("#### `files-create`"),
@@ -1475,7 +1577,9 @@ pub const REGISTRY: &[CommandSpec] = &[
     // 后端**不链**引擎：经插件通用调用口起那个只装引擎的独立小程序（`control/panorama.rs`），
     // 解析发生在被起的那个进程里；索引落这台机器上后端自己的数据目录。
     // ⚠ 只说查询语义：`op` 只许 `control::panorama::OPS` 里的词（`protocol_doc_guard` 那条 `P7c-2` 约束）。
-    // ⚠ 阻塞档：起一个进程、等它退出（建索引可到分钟级）。`cancel` 命中回 `not_cancellable`（不撒谎）。
+    // 〔RM1f〕**异步档**：起进程走 `plugin::invoke::run_abortable`（异步等子进程）⇒ `cancel` 命中时
+    //   处理器 future 被丢、小程序那一组子进程被杀、回 `cancelled` —— 建索引（可到分钟级）打得断了。
+    //   〔墓碑 —— RM1c 那一版是阻塞档：「起一个进程、等它退出。`cancel` 命中回 `not_cancellable`（不撒谎）」。〕
     CommandSpec {
         name: "panorama",
         doc_anchor: Some("#### `panorama`"),
@@ -1489,7 +1593,9 @@ pub const REGISTRY: &[CommandSpec] = &[
         ],
         fields: &["args", "op", "repo", "result"],
         takes_input: true,
-        run: Run::Blocking(|r| crate::control::panorama::answer(&r.args).map(Some)),
+        run: Run::Async(|r| {
+            Box::pin(async move { crate::control::panorama::answer(&r.args).await.map(Some) })
+        }),
     },
     // F04a：**第一条破坏性命令。** 三道门在 `control/gate::admit_destructive`，
     // 对句柄下手不对名字。⚠ monitor 侧改走这条路是 **F04b**（定框 C6 的顺序）。

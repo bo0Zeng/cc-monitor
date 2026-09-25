@@ -649,6 +649,49 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "`footprint-probe` 查钩子字样时读的那份 settings 文件多大",
         "降级+说清",
     ),
+    // 〔AS2 · 第四波 4B〕资产目录那六个数（`agents/claudecode/assets.rs` · `asset_catalog.rs` · `asset_sync.rs`）。
+    (
+        "src/backend/agents/claudecode/assets.rs",
+        "MAX_PROJECT_MCP_BYTES",
+        4 * 1024 * 1024,
+        "资产目录扫描时读一份项目 `.mcp.json`",
+        "跳过+说清",
+    ),
+    (
+        "src/backend/agents/claudecode/assets.rs",
+        "SKILL_DOC_MAX_BYTES",
+        1024 * 1024,
+        "资产目录扫描时读一个 skill 的 `SKILL.md`（只为取 `description:`）—— 读它的函数把错交给调用方，调用方记进 `problems`",
+        "硬报错",
+    ),
+    (
+        "src/backend/asset_catalog.rs",
+        "CATALOG_MAX_BYTES",
+        16 * 1024 * 1024,
+        "后端自有的资产目录文件 `~/.cc-monitor/assets-catalog.json`（读不出来就不覆盖）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/asset_catalog.rs",
+        "SKILL_MAX_FILE_BYTES",
+        4 * 1024 * 1024,
+        "算一个 skill 的摘要时读其中一个文件（超了只记长度，`summary.truncated` 说出来）",
+        "降级+说清",
+    ),
+    (
+        "src/backend/asset_sync.rs",
+        "PULL_MAX_BYTES",
+        16 * 1024 * 1024,
+        "同步时从远端拉回来的那一份目录（capture 的 stdout）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/asset_sync.rs",
+        "PUSH_MAX_BYTES",
+        96 * 1024,
+        "同步时一趟推给远端的载荷（管进一条 `sh -c` 命令，受 `MAX_ARG_STRLEN` 限）；多台切块，单台超了不推、说出来",
+        "跳过+说清",
+    ),
     // ⚠〔`S3` 08-14〕这条**由本护栏当场逮出来的**：backend 的 Claude 知识搬进
     // `agents/claudecode/` 之后，常量跟着换了住址与名字，而本表按「文件+常量名」定位 ⇒
     // 两格同时红（「有上限没登记」+「登记的那个算不出值」）。**登记表的键随搬迁同轮改。**
@@ -1292,6 +1335,15 @@ fn a_cap_registered_as_hard_error_is_not_swallowed_at_its_call_site() {
 ///
 /// 只有一种正当情况：上限是**参数**，真值由调用方给（而调用方给的是具名常量）。
 const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
+    // 〔RM1f〕插件口可打断那一形（`run_abortable`）每条子进程流留 `keep ＋ 1` 字节，`keep` 是入参；
+    // 唯一调用方 `control/panorama.rs` 给的是具名常量 `read_face::LINES_CAP_BYTES`（已在 `CAPS` 里）。
+    // ⚠ 不是静默截断：多出来的照读照丢（子进程不被管道卡住），调用方见 `len() > keep` 回 `too_large` 明拒。
+    (
+        "src/backend/plugin/invoke.rs",
+        "keep.saturating_add(1)",
+        "`run_abortable` 的每条流上限是入参，调用方给 `read_face::LINES_CAP_BYTES`（已在 `CAPS` 里）；\
+             留 keep＋1、其余读掉丢弃，调用方按「超了」明拒（`too_large`）—— 不是截断后当完整的用。",
+    ),
     // 〔`C1` · 09-24〕`history_query::read_page` 的一页上限是入参；唯一调用点
     // （`read_face.rs`）给的是具名常量 `READ_PAGE_BYTES`（已在 `CAPS` 里）。
     // ⚠ 不是静默截断：读满一页就停、**回续点 `next`**，调用方循环到 `eof` —— 一个字节都不丢。

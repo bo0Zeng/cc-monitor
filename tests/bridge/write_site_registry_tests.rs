@@ -66,6 +66,12 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
           「你 PATH 上那个不是我们装的这一份」（`ccm_probe::classify_path_ccm`）。\
           写法与 `extract_embedded_to` 同一套（`.partial` + 置可执行位 + `rename`），\
           唯一调用点是 `local_backend::resolve_or_extract` ⇒ 两条生产路共用这一处。"),
+    // ── 〔RM1f〕**本机那一份代码全景小程序**。不是安装动作 —— 我们自己的部署物，放在我们自己的目录里。
+    ("local_backend.rs", "place_local_panorama", None,
+     "把这一份产物带着的代码全景小程序放到 `~/.cc-monitor/bin/cc-monitor-panorama[.exe]`（本机后端找它的第二个候选）。\
+          写法与 `extract_embedded_to` 同一套（`.partial` + 置可执行位 + `rename`）；盘上那份逐字节相等就零写。\
+          唯一调用点是 `panorama_bytes::place_local`（本机后端答「没装 / 装的太旧」时才走到，与推到远端同一个触发点）。\
+          不碰用户既有环境、不注册到任何用户配置里。"),
     // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来有 `cc_bus_deploy.rs` 的三行（`deploy_into` 装 17 个文件 ·
     //    `fenced_dest` 先 `mkdir -p skills` · `backup_existing` 整目录改名成 `.bak-<ts>`，`U10b` 第 7 条例外那四个配套的落点）。
     //    用户裁「只允许后端的文件管理部分写文件」也管本机 ⇒ 三件都改经本机后端（`files-put` 带 `parents` /
@@ -418,6 +424,12 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     (
         "local_backend.rs",
         "install_local_ccm_entry",
+        Lands::OwnDeployment,
+    ),
+    // 〔RM1f〕本机那一份代码全景小程序：同上，我们自己目录里的部署物。
+    (
+        "local_backend.rs",
+        "place_local_panorama",
         Lands::OwnDeployment,
     ),
     ("build.rs", "embed_backends", Lands::BuildOutput),

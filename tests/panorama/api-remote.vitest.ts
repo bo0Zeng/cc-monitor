@@ -7,7 +7,8 @@
 //     一侧是读 Rust 源码抽出来的）；
 //  ② 〔RM1d · V110〕六个**写**入口本机远端同一条：恰发一次 `panorama_edit`，origin / 仓原样，
 //     op 集合 == monitor `panorama_call.rs::EDITS` 第一列（两向，异源：读 Rust 源码）；
-//  ③ 本机仓的**读**照旧走进程内那几条命令（`panorama_call` 一次都不发）。
+//  ③ 〔RM1f · 本机对称〕本机仓的**读**与远端同一条：每个入口恰发一次 `panorama_call`，origin 是 `<local>`，
+//     op 与远端逐个相同（两侧并排跑）。〔改前这一格钉的是「本机照旧走进程内那几条命令，`panorama_call` 一次都不发」。〕
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -89,7 +90,8 @@ describe("全景 IPC 按机器分路（RM1c）", () => {
     const exported = Object.entries(api)
       .filter(([, v]) => typeof v === "function")
       .map(([k]) => k)
-      .filter((k) => !["panoramaLoadDecision", "repoLabel", "sameRepo"].includes(k))
+      // 〔RM1f〕`PanoramaCancelled`（错误类）不是发 IPC 的入口。
+      .filter((k) => !["panoramaLoadDecision", "repoLabel", "sameRepo", "PanoramaCancelled"].includes(k))
       .sort();
     expect(exported).toEqual([...Object.keys(READS), ...Object.keys(WRITES)].sort());
   });
@@ -129,20 +131,36 @@ describe("全景 IPC 按机器分路（RM1c）", () => {
     expect(sent()[0].args.args).toEqual({ file: "a.rs", symbol: null, body: "x", author: "me" });
   });
 
-  it("A3 本机读：照旧走进程内那几条命令，panorama_call 一次都不发", async () => {
-    for (const call of Object.values(READS)) await call(LOCAL);
-    const cmds = sent().map((s) => s.cmd);
-    expect(cmds).not.toContain("panorama_call");
-    expect(cmds.length).toBe(Object.keys(READS).length);
-    expect(sent().find((s) => s.cmd === "panorama_overview")?.args).toEqual({ repo: "/home/me/proj", budget: 2000 });
+  it("A3〔RM1f〕本机读：与远端同一条 —— 每个入口恰发一次 panorama_call（origin = <local>），op 与远端逐个相同", async () => {
+    const opsAt = async (at: typeof LOCAL): Promise<string[]> => {
+      const ops: string[] = [];
+      for (const [name, call] of Object.entries(READS)) {
+        vi.mocked(invoke).mockClear();
+        await call(at);
+        const s = sent();
+        expect(s.map((x) => x.cmd), name).toEqual(["panorama_call"]);
+        expect(s[0].args.origin, name).toBe(at.origin);
+        ops.push(String(s[0].args.op));
+      }
+      return ops;
+    };
+    const local = await opsAt(LOCAL);
+    const remote = await opsAt(REMOTE);
+    // 反空真：真的问过了（不是两边都空也「相等」）。
+    expect(local.length).toBe(Object.keys(READS).length);
+    expect(local).toEqual(remote);
+    // 进程内那十七条的名字一条都不再发。
+    const cmds = vi.mocked(invoke).mock.calls.map((c) => String(c[0]));
+    expect(cmds.filter((c) => c.startsWith("panorama_") && c !== "panorama_call")).toEqual([]);
   });
 
   it("A4 远端载荷原样带参数（op 自己的参数进 args，不摊开）", async () => {
     await api.overview(REMOTE, 1234);
     await api.search(REMOTE, "q");
     const s = sent();
-    expect(s[0].args).toEqual({ origin: "box1", op: "overview", repo: "/srv/proj", args: { budget: 1234 } });
-    expect(s[1].args).toEqual({ origin: "box1", op: "search", repo: "/srv/proj", args: { query: "q" } });
+    // 〔RM1f〕没给撤单手柄的一问不带票（`ticket: null`）。
+    expect(s[0].args).toEqual({ origin: "box1", op: "overview", repo: "/srv/proj", args: { budget: 1234 }, ticket: null });
+    expect(s[1].args).toEqual({ origin: "box1", op: "search", repo: "/srv/proj", args: { query: "q" }, ticket: null });
   });
 
   it("A5 住址带机器：本机就是路径，远端带上机器名；同一个路径换一台机器就是另一个仓", () => {

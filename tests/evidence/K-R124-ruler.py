@@ -155,6 +155,10 @@ COMPILE_STEPS = [
     ("build-windows", "Build local backend (native)",
      "runner host triple 的原生 `.exe`",
      "本机 Windows x86_64"),
+    # 〔RM1f〕本机原生的全景小程序（monitor 摘内嵌引擎之后本机全景经本机后端起它）：同一格平台的**第二件字节**。
+    ("build-windows", "Build local panorama (native)",
+     "runner host triple 的原生 `cc-monitor-panorama.exe`",
+     "本机 Windows x86_64（代码全景；Linux 本机用 musl 那两份，不另编）"),
     ("build-linux", "Build local backend (native)",
      "runner host triple 的原生 glibc 字节",
      "🟡 **本机 Linux 的第二份来源** —— `设计/96 §7.3` 逐字「哪一份该留、哪一份该删，"
@@ -174,6 +178,9 @@ BYTE_LINES = [
             ("build-windows", "Build local backend (native)"),
             ("build-windows", "Stage local backend for externalBin"),
             ("build-windows", "Stage native backend for self-extract"),
+            # 〔RM1f〕同一格的第二件字节：本机原生的全景小程序。
+            ("build-windows", "Build local panorama (native)"),
+            ("build-windows", "Stage native panorama for self-extract"),
         ],
         "into": "① Tauri `externalBin` ⇒ **只进安装包**（装完落在 exe 同目录）；"
                 "② `build.rs::embed_native_backend` 的 `include_bytes!` ⇒ **进 exe 本体**（`K-R42`）",

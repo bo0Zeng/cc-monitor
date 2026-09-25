@@ -22,6 +22,7 @@ mod account_aliases; // K-R49：加了账号就给那条命令落盘——写的
 mod accounts; // A2：多账号（cc-acct-iso）只读查询——账号=一个 CLAUDE_CONFIG_DIR
 mod acct_iso_deploy; // F5：一键部署 vendored cc-acct-iso 到远端 + 存在性检测
 mod adapter;
+mod asset_sync; // 〔AS2 · 第四波 4B · V113〕资产目录同步：连上那一刻 / 看机器页前把「怎么够到那台」交给本机常驻后端 `assets-sync`（零判定）
 mod auto_launch;
 // 🔴 〔步 12 · 09-19〕`origin` 归一的地基：「这一趟问的是哪台机器」的唯一类型。
 mod backend_policy;
@@ -71,7 +72,7 @@ mod logging;
 mod mcp; // F87（#50+#51）：MCP 管理（读跨 scope 展示 / 写只项目 .mcp.json，SS-14）
 mod mcp_sync; // 〔AS1 · 第四波 4B〕MCP 推 / 拉：只编排 I/O（读两边 · 请对面后端判 · 经对面后端写），判定住后端 `mcp-sync-plan`
 mod messages;
-mod panorama;
+// 〔RM1f · V108 后半句〕`mod panorama;`（进程内 per-repo 引擎池 ＋ 17 条本机全景命令）删了：本机也走本机后端 → 全景小程序（`panorama_call`），monitor 不再链 vendored 引擎。
 mod panorama_bytes; // 〔RM1c · 第四波〕全景小程序的字节从哪来：按 (OS, arch) 选内嵌的那一份（推上去归 F08 部署路 / SR1b）
 mod panorama_call; // 〔RM1c · 第四波〕代码全景经那台机器的后端走（V108 选 B）：`panorama_call(origin, op, repo, args)`
 mod panorama_seam_registry; // P7c-2 第一刀：引擎住哪一侧要可换（整体 #[cfg(test)]）
@@ -101,6 +102,7 @@ mod spawn_managed;
 // 就该删掉整个模块，而不是让它当装饰。
 mod sftp_pool;
 mod skill_host;
+mod skill_install; // 〔AS2 · 第四波 4B · V113〕skill「装到这台」：只编排 I/O（来源那台 skill-read → 被写那台 skill-install-plan 判 → files-put 带 expect），判定住后端
 mod user_files; // RW1（第四波）：monitor 够用户文件的唯一开口 —— 读·算·交给那台机器的后端，自己一个字节不落盘
 mod verified_write; // T01：统一的「备份→写→读回比对→回滚」；本机侧从长度比对升级为内容比对
                     // SS-D 统一 SFTP 写层（issue #29 自动部署 F08；后续 F11/F10 复用）。
@@ -1341,6 +1343,11 @@ pub fn run() {
             // 〔AS1 · 第四波 4B〕MCP 推 / 拉（`设计/96` 的 B）：看差异 ＋ 写，两条都吃 origin（本机远端同一条路）。
             mcp_sync::mcp_sync_preview,
             mcp_sync::mcp_sync_apply,
+            // 〔AS2 · 第四波 4B · V113〕资产目录同步：看机器页前让本机常驻后端对那一台（本机那一页 = 每一台）做一趟。
+            asset_sync::assets_sync,
+            // 〔AS2〕skill「装到这台」：看差异 ＋ 写（来源那台读、被写那台判、经被写那台后端 files-put 写）。
+            skill_install::skill_install_preview,
+            skill_install::skill_install_apply,
             subagent::load_subagent,
             forget_session,
             // issue #10: 独立只读窗口（多窗口 / 双屏）
@@ -1430,7 +1437,7 @@ pub fn run() {
             ccm_probe::probe_ccm_cli,
             // 🔴 `K-R69` / `KR69D2`：本机 `ccm` 这一格（我们那一份 · PATH 上那一份 · 判词）。
             ccm_probe::local_ccm_entry_status,
-            // Batch15-P1：code-picture 代码全景后端命令族（per-repo Engine 池,只读查询）
+            // 〔RM1f〕Batch15-P1 那一族本机全景命令（per-repo Engine 池）删了：本机远端同一条 `panorama_call`（见下）。
             // devbench F03：skill 接入面（列出 / 读 / 写那个「人手写的注入文件」）。
             // ⚠ 写走 `skill_host::resolve_editable` 的三道围栏 + `verified_write` 读回比对。
             skill_host::list_skills,
@@ -1438,25 +1445,10 @@ pub fn run() {
             skill_host::write_skill_file,
             cc_bus_deploy::deploy_local_cc_bus,
             cc_bus_deploy::cc_bus_install_state,
-            panorama::panorama_index,
-            panorama::panorama_reindex,
-            panorama::panorama_status,
-            panorama::panorama_overview,
-            panorama::panorama_node,
-            panorama::panorama_subgraph,
-            panorama::panorama_callers,
-            panorama::panorama_callees,
-            panorama::panorama_impact,
-            panorama::panorama_search,
-            panorama::panorama_docs_for,
-            panorama::panorama_touching,
-            panorama::panorama_symbols_in_file,
-            panorama::panorama_drift,
-            panorama::panorama_list_annotations,
-            panorama::panorama_diagram_kinds,
-            panorama::panorama_diagram,
             panorama_call::panorama_call,
             panorama_call::panorama_edit,
+            // 〔RM1f〕撤掉一问在飞的全景（建索引可以取消了）。
+            panorama_call::panorama_cancel,
             port_forward::start_forward,
             port_forward::stop_forward,
             port_forward::list_forwards,

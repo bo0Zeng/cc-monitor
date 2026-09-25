@@ -74,7 +74,6 @@ const UNIT: &[&str] = &[
     "tests/backend/observe/turn_detect_tests.rs",
     "tests/backend/observe/user_inputs_tests.rs",
     "tests/backend/platform/shell_tests.rs",
-    "tests/backend/plugin/invoke_tests.rs",
     "tests/backend/plugin/probe_tests.rs",
     "tests/backend/relay/http1_tests.rs",
     "tests/backend/relay/tee_tests.rs",
@@ -271,7 +270,6 @@ const SCAN: &[&str] = &[
     "tests/backend/files/module_boundary_guard.rs",
     "tests/backend/guard_support_tests.rs",
     "tests/backend/inbound_structure_guards.rs",
-    "tests/backend/inbound_tests.rs",
     "tests/backend/listen_tests.rs",
     "tests/backend/main_argv_table_guard.rs",
     "tests/backend/main_stream_flag_tests.rs",
@@ -303,6 +301,7 @@ const SCAN: &[&str] = &[
     "tests/bridge/agent_dispatch_registry_tests.rs",
     "tests/bridge/apikey_remote_tests.rs",
     "tests/bridge/arch_doc_shape_guard_tests.rs",
+    "tests/bridge/asset_sync_tests.rs", // 〔AS2〕
     "tests/bridge/atomic_replace_registry_tests.rs",
     "tests/bridge/backend/control/agent_profile_parity_tests.rs",
     "tests/bridge/backend/control/backend_control_tests.rs",
@@ -367,7 +366,6 @@ const SCAN: &[&str] = &[
     "tests/bridge/lockfile_conflict_guard_tests.rs",
     "tests/bridge/needle_anchor_registry_tests.rs",
     "tests/bridge/origin_tests.rs",
-    "tests/bridge/panorama_bytes_tests.rs",
     "tests/bridge/panorama_seam_registry_engine_port_scope.rs",
     "tests/bridge/panorama_seam_registry_tests.rs",
     "tests/bridge/parity_ledger_tests.rs",
@@ -451,7 +449,8 @@ const SCAN: &[&str] = &[
     "tests/settings/base-wording-guard.vitest.ts",
     "tests/settings/data-section.vitest.ts",
     "tests/settings/facet-producer-guard.vitest.ts",
-    "tests/settings/mcp-sync.vitest.ts", // 〔AS1〕
+    "tests/settings/assets-section.vitest.ts", // 〔AS2〕
+    "tests/settings/mcp-sync.vitest.ts",       // 〔AS1〕
     "tests/settings/open-settings.vitest.ts",
     "tests/settings/plugins-section.vitest.ts",
     "tests/settings/remote-section.vitest.ts",
@@ -479,8 +478,12 @@ const SCAN: &[&str] = &[
 const INTEGRATION: &[&str] = &[
     "tests/backend/accounts/apikey/creds_tests.rs",
     "tests/backend/accounts/apikey/file_face_tests.rs",
+    "tests/backend/agents/claudecode/assets_tests.rs", // 〔AS2〕
     "tests/backend/agents/fake_tests.rs",
     "tests/backend/agents_tests.rs",
+    "tests/backend/asset_catalog_tests.rs", // 〔AS2〕
+    "tests/backend/asset_sync_tests.rs",    // 〔AS2〕
+    "tests/backend/skill_install_tests.rs", // 〔AS2〕
     "tests/backend/common/fs_tests.rs",
     "tests/backend/control/capture_pane_tests.rs",
     "tests/backend/control/ccm/plan_tests.rs",
@@ -500,6 +503,8 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/files/raw_tests.rs",
     "tests/backend/files/scale_f2.rs",
     "tests/backend/footprint_tests.rs",
+    // 〔RM1f〕SCAN → 集成：多了一条真进程判据（`cancel` 真打断在飞的 `panorama`，替身小程序是真进程）
+    "tests/backend/inbound_tests.rs",
     "tests/backend/layering_guard.rs",
     "tests/backend/main_fourth_face_tests.rs",
     "tests/backend/mcp_sync_tests.rs", // 〔AS1〕
@@ -515,6 +520,8 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/observe/tasks_query_tests.rs",
     "tests/backend/observe/watcher_tests.rs",
     "tests/backend/plugin/discover_tests.rs",
+    // 〔RM1f〕单元 → 集成：`run_abortable` 两条判据真起进程（被丢 ⇒ 整组都没了 · 没被丢 ⇒ 与同步那一形同果）
+    "tests/backend/plugin/invoke_tests.rs",
     "tests/backend/plugin_walk_fixture.rs",
     "tests/backend/read_face_tests.rs",
     "tests/backend/relay/host_tests.rs",
@@ -553,10 +560,13 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/local_backend_host_tests.rs",
     "tests/bridge/local_lines_tests.rs",
     "tests/bridge/logging_tests.rs",
-    "tests/bridge/mcp_sync_tests.rs", // 〔AS1〕
+    "tests/bridge/mcp_sync_tests.rs",      // 〔AS1〕
+    "tests/bridge/skill_install_tests.rs", // 〔AS2〕
     "tests/bridge/mcp_tests.rs",
+    // 〔RM1f〕SCAN → 集成：本机那一份小程序的放法（临时目录真写 · 逐字节相等零写 · 字节变了重写）
+    "tests/bridge/panorama_bytes_tests.rs",
     "tests/bridge/panorama_call_tests.rs",
-    "tests/bridge/panorama_tests.rs",
+    // 〔RM1f〕`tests/bridge/panorama_tests.rs` 删了（monitor 的内嵌引擎连同它的判据一起删了）。
     "tests/bridge/profile_installer_tests.rs",
     "tests/bridge/pubkey_tests.rs",
     "tests/bridge/scanning_guard_registry_tests.rs",
