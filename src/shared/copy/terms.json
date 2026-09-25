@@ -479,7 +479,7 @@
       "scan": { "re": "\\b[a-z]+(?:[A-Z][a-z0-9]*)+\\b|\\b(?:ADDED|ALREADY|Exact|Heuristic|DynamicGuess|bad_args|bad_path|accounts-meta|agents\\.tsv|__ccm_bind|auto-launch|touches|localStorage|UserDataFolder)\\b|\\.?build_id\\b", "flags": "" },
       "examples": ["backendPath", "cliFlags", "__ccm_bind", ".build_id", "ADDED"],
       "counterExamples": ["API key", "Claude Code"],
-      "ledger": ["backendPath", "keyPath", "hostKeyFingerprint", "claudeDir", "cliFlags", "label", "jump", "kind", "ADDED", "ALREADY", "Exact/Heuristic/DynamicGuess", "错误码bad_args/bad_path", "agents.tsv", "__ccm_bind", "auto-launch", "touches", "localStorage", "UserDataFolder", "build_id"],
+      "ledger": ["backendPath", "keyPath", "hostKeyFingerprint", "claudeDir", "cliFlags", "label", "jump", "kind", "ADDED", "ALREADY", "错误码bad_args/bad_path", "agents.tsv", "__ccm_bind", "auto-launch", "touches", "localStorage", "UserDataFolder", "build_id"],
       "source": "设计/91 §7.3（配置键名直出）· CP1 台账",
       "note": "label / jump / kind 是普通英文单词，正则认不出它们是配置键 ⇒ 这三个只靠人工 review。"
     },

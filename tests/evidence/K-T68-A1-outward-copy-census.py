@@ -280,7 +280,8 @@ SINKS = [
     dict(id="show.prompt", lang="ts", bucket="confirm", mode="call", kind="body",
          re=re.compile(r"(?<![\w.])(?:window\.)?prompt\s*\(")),
     dict(id="show.status", lang="ts", bucket="dom-text", mode="call", kind="body",
-         re=re.compile(r"\.(?:showBanner|showLoading|showMessage|showResultText|"
+         # 〔CP2b〕`console.info(…)` 不是展示助手（定义 §二 第 2 条明写排除 console）—— 旧正则把它一起吃进了主集。
+         re=re.compile(r"(?<!console)\.(?:showBanner|showLoading|showMessage|showResultText|"
                        r"renderSidebarStatus|info|note|showToast)\s*\(")),
     dict(id="show.section", lang="ts", bucket="dom-text", mode="call", kind="title",
          re=re.compile(r"\.(?:safeBlock|buildGroup|edgeSection|sidebarHeader|cardHeader)\s*\(|"
