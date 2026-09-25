@@ -187,8 +187,9 @@ describe("T07 分区块隔离（真行为）", () => {
     // S2 后判据从「四个折叠组」换成「四页都在」：折叠组只剩两个（外观 / 日志与数据），
     // 而「一块坏不影响其余」这条性质现在体现在**页面结构完整**上。
     const pages = [...document.querySelectorAll(".settings-page")];
-    // S6 后顶层是 3 页（cc-bus 已移出设置）。
-    expect(pages.length, "三页都该在").toBe(3);
+    // S6 后顶层是 3 页（cc-bus 已移出设置）；〔ST2〕「改动足迹」并进机器页、「应用」下挂三个子页
+    // ⇒ 应用 ＋ 外观 / 日志 / 数据位置 ＋ 机器 = 5 页。
+    expect(pages.length, "五页都该在").toBe(5);
     expect(
       document.querySelector(".accounts-section-stub"),
       "账号块不受影响",
@@ -214,6 +215,11 @@ describe("T07 分区块隔离（真行为）", () => {
     expect(hint!.textContent).toContain("位置不对");
     // 「都还能用」——账号那块的真身还在 DOM 里，不是被兜底提示替掉了。
     expect(document.querySelector(".accounts-section-stub")).not.toBeNull();
+    // 〔ST2 · 步 14〕后端那几行本该挂在机器列表的行上 —— 列表没建起来 ⇒ 它们也退回列表页，不许无处安放。
+    for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 0));
+    const backendRows = page.querySelector<HTMLElement>(".backend-section");
+    expect(backendRows, "机器列表挂了，后端那几行跟着从界面上消失了").not.toBeNull();
+    expect(backendRows!.querySelector('.backend-row[data-origin="<local>"]')).not.toBeNull();
   });
 
   it("换一块抛（McpSection）→ 同样只坏那一块", async () => {

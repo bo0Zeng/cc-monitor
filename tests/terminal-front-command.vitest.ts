@@ -48,3 +48,24 @@ describe("〔U2〕命令面板的 ↗：非 Windows 不列", () => {
     ).toBe(1);
   });
 });
+
+/**
+ * 〔S4 · 第四波〕独立只读窗（`entry-viewer.ts`）顶栏那颗「↗ 终端」也过同一道门。
+ *
+ * 第三波 U2 只给 tab 上那颗和命令面板那一项加了门，viewer 顶栏那颗在非 Windows 上照样渲（每点必败）。
+ * ⚠ **文本**判据，理由同上一格：`entry-viewer.ts` 是入口模块，一 import 就挂 DOMContentLoaded、
+ * 装全局错误捕获，顶栏在 `bootstrapViewer` 闭包里建 —— 行为判据够不着。
+ * 它只买「那颗按钮挂进顶栏的那一处恰好一处、而且就在门后面」，买不到「真窗口里少了一颗按钮」。
+ */
+describe("〔S4〕viewer 顶栏的 ↗：与 tab 上那颗同一道门", () => {
+  it("★ 接线：termBtn 挂进顶栏恰好一处，且那一处就是门后面那一句", () => {
+    const code = stripComments(readFileSync(resolve(REPO_ROOT, "src/entry-viewer.ts"), "utf8"), "ts");
+    // 抽取器自检：顶栏真的读到了（隔壁那颗「目录」按钮在）。
+    expect(code).toContain("topbar.appendChild(cwdBtn);");
+    expect((code.match(/\.appendChild\(termBtn\)/g) ?? []).length, "termBtn 挂进去的份数").toBe(1);
+    expect(
+      (code.match(/if \(terminalFrontAvailable\(\)\) topbar\.appendChild\(termBtn\);/g) ?? []).length,
+      "termBtn 没有挂在 terminalFrontAvailable 门后面 —— 非 Windows 上它又会渲出来",
+    ).toBe(1);
+  });
+});

@@ -574,6 +574,151 @@ async fn the_freshness_numbers_the_backend_reports_really_reach_the_frame() {
     }
 }
 
+/// 等到那块板子挂上「冷启动首建正在走」。**带上限，绝不挂死**（同 [`testing::settle`]）。
+async fn until_first_build_shows(board: &SearchBoard, who: &str) -> u64 {
+    for _ in 0..600 {
+        if let Some(n) = board.first_build() {
+            return n;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    panic!("{who}：等了 3 秒板子上还没挂「首建正在走」—— 首建那一趟没挂上它");
+}
+
+/// 〔第四波 S4 · `设计/99 §2 Q5`〕**冷启动首建那一趟正在走时，帧上恰有「正在建索引（首次约 N 秒）」，
+/// 走完就没了；N 是后端报的那个数。**
+///
+/// 用户裁「单列一个数并在搜索界面显示」。三向钉：
+/// - **在**：合成后端把重走的应答扣住，这时跑一帧，帧上恰好一段 == [`first_build_line`]`(N)`；
+/// - **走**：放行、等答案落地，再跑一帧 —— 「正在建索引」零命中（挂上不摘 = 永远在「建」）；
+/// - **跟着后端变**：两组喂不同的 N（都**不是**后端今天声明的 10），跨组缺席 ——
+///   写死一个数只会在一组上碰巧对（同 [`the_freshness_numbers_the_backend_reports_really_reach_the_frame`]）。
+///
+/// ⚠ 按「措辞 ＋ 数」找，不按裸数字找（那一条的教训：`13247 字节` 里有 `13`）。
+#[tokio::test]
+async fn the_cold_first_build_line_is_on_the_frame_while_it_runs_and_gone_after() {
+    let groups = [("b1-cold-a", 37u64), ("b1-cold-b", 58u64)];
+    for (i, (tag, secs)) in groups.iter().enumerate() {
+        let other = groups[1 - i].1;
+        let tree = testing::plant(tag, 30, TREE_SEED).expect("造不出那棵树");
+        let root = tree.root.to_string_lossy().to_string();
+        let gate = std::sync::Arc::new(tokio::sync::Notify::new());
+        let declared = Declared {
+            cold_first_build_secs: *secs,
+            ..Declared::default()
+        };
+        let wired = testing::wire_up(
+            tag,
+            FakeBackend::new(COMMANDS, declared).holding_rebuild(gate.clone()),
+        )
+        .await;
+        let ctx = ctx_ready();
+        let mut w = testing::window_on(&wired, &root);
+        let before = w.search.rounds();
+        testing::type_into_search(&ctx, &mut w, NEEDLE);
+        let got = until_first_build_shows(&w.search, tag).await;
+        assert_eq!(got, *secs, "板子上挂的不是后端报的那个数");
+
+        // ── 在：重走还扣着 ──
+        let painted = testing::frame_text(&ctx, &mut w, Vec::new());
+        let want = first_build_line(*secs);
+        let hits: Vec<&String> = painted.iter().filter(|t| **t == want).collect();
+        assert_eq!(
+            hits.len(),
+            1,
+            "首建正在走，帧上该**恰好一段** {want:?}，这一帧画的是：{painted:?}"
+        );
+        // 🔴 **异源那一侧**：上面那条相等的两侧都过 `first_build_line` —— 它写死一个数，两侧一起写死
+        //    （死值验刀 K4 现打：把函数体写死成 10，上面那条照绿）。⇒ 再用**本文件自己拼**的措辞 ＋ 后端那个数找一遍。
+        let mine = format!("正在建索引（首次约 {secs} 秒）");
+        assert!(
+            painted.iter().any(|t| *t == mine),
+            "帧上没有 {mine:?} —— 画出来的不是后端报的那个数：{painted:?}"
+        );
+        let foreign = format!("首次约 {other} 秒");
+        assert!(
+            !painted.iter().any(|t| t.contains(foreign.as_str())),
+            "这一组帧上出现了另一组的数 {foreign:?} —— 那一行画的不是后端报的数：{painted:?}"
+        );
+        assert!(
+            !painted.iter().any(|t| t.contains("索引还没建过")),
+            "首建那一行该**顶替**新鲜度那一行，两句同时在：{painted:?}"
+        );
+
+        // ── 走：放行，等答案落地 ──
+        gate.notify_one();
+        testing::settle(&w.search, before, tag).await;
+        assert_eq!(
+            w.search.first_build(),
+            None,
+            "重走回来了，板子上还挂着「首建正在走」"
+        );
+        let after = testing::frame_text(&ctx, &mut w, Vec::new());
+        assert!(
+            !after.iter().any(|t| t.contains("正在建索引")),
+            "首建走完了，帧上还说「正在建索引」：{after:?}"
+        );
+        assert!(
+            after.iter().any(|t| t.contains("后端声明的重走周期")),
+            "首建走完之后新鲜度那一行该回来：{after:?}"
+        );
+        assert_eq!(
+            wired.count(CMD_INDEX_REBUILD),
+            1,
+            "首建那一趟只该发一条重走"
+        );
+    }
+}
+
+/// 🔴 **阴性对照**：不是首建（索引在、只是 `stale`）的那一趟重走，帧上**没有**「正在建索引」。
+///
+/// 没有这一条，上面那条可以靠「**每一趟**重走都挂」全绿 —— 而周期性重走是热的，
+/// 冷启动那个数套在它头上就是在说假话（`设计/99 §2 Q5`：两个数分开钉）。
+#[tokio::test]
+async fn a_warm_rewalk_never_claims_to_be_the_cold_first_build() {
+    let tree = testing::plant("warm", 30, TREE_SEED).expect("造不出那棵树");
+    let root = tree.root.to_string_lossy().to_string();
+    let gate = std::sync::Arc::new(tokio::sync::Notify::new());
+    let declared = Declared {
+        age_secs: 9_999,
+        stale: Some(true),
+        cold_first_build_secs: 37,
+        ..Declared::default()
+    };
+    let wired = testing::wire_up(
+        "b1-find-warm",
+        FakeBackend::new(COMMANDS, declared)
+            .preindexed(&tree.root)
+            .holding_rebuild(gate.clone()),
+    )
+    .await;
+    let ctx = ctx_ready();
+    let mut w = testing::window_on(&wired, &root);
+    let before = w.search.rounds();
+    testing::type_into_search(&ctx, &mut w, NEEDLE);
+    // 等到重走**真的发出去、而且还扣着**（线上记录先于应答进账）。
+    let mut seen = false;
+    for _ in 0..600 {
+        if wired.count(CMD_INDEX_REBUILD) == 1 {
+            seen = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert!(
+        seen,
+        "stale 那一趟没发重走 —— 本条的前提没成立，下面的零命中不作数"
+    );
+    let painted = testing::frame_text(&ctx, &mut w, Vec::new());
+    assert_eq!(w.search.first_build(), None, "热的重走挂上了「首建正在走」");
+    assert!(
+        !painted.iter().any(|t| t.contains("正在建索引")),
+        "热的重走在帧上说「正在建索引（首次…）」：{painted:?}"
+    );
+    gate.notify_one();
+    testing::settle(&w.search, before, "warm").await;
+}
+
 /// 🔴 **零命中型 ＋ 唯一住址**：重走周期那个数在客户端这一侧**一处都没有**，
 /// 而它在后端**恰好一处**。
 ///
@@ -710,6 +855,26 @@ fn no_rewalk_period_literal_lives_on_this_side() {
         "重走周期那个数的住址现打是 {homes:?}，而它只许有一个（`files/index.rs`）。\n\
          多一处 = `D2` 破了；少一处 = 它改名/搬家了，而这一侧那条零命中随之变成空转。"
     );
+    // 〔第四波 S4 · Q5〕冷启动首建那个数同形：后端恰好一个住址（它与周期**分开**住，各是各的常量）。
+    //   ⚠ 客户端侧那个值（今天 10）**不做**零命中扫描 —— `10` 这种裸数字满树都是、扫它是一把假尺子；
+    //   「界面上画的是后端报的那个数」由 `the_cold_first_build_line_is_on_the_frame_while_it_runs_and_gone_after`
+    //   喂两组数、跨组缺席买。
+    let cold_decl = format!("pub const {}", "COLD_FIRST_BUILD_SECS");
+    let cold_homes: Vec<String> = btree
+        .iter()
+        .filter(|(_, raw)| guard_core::production_code(raw).contains(&cold_decl))
+        .map(|(p, _)| {
+            p.file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
+                .to_string()
+        })
+        .collect();
+    assert_eq!(
+        cold_homes,
+        vec!["index.rs".to_string()],
+        "冷启动首建那个数的住址现打是 {cold_homes:?}，而它只许有一个（`files/index.rs`）"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -821,7 +986,7 @@ fn a_missing_field_is_a_loud_failure_not_a_silent_zero() {
         "index_missing": false, "entries": 5, "resident_bytes": 100,
         "unreadable_dirs": 0, "truncated": false, "age_secs": 7,
         "rewalk_interval_secs": 4242, "stale": false,
-        "browse_watches": 1, "browse_watch_cap": 64,
+        "browse_watches": 1, "browse_watch_cap": 64, "cold_first_build_secs": 47,
     });
     assert!(decode_status(&full).is_ok(), "完整那一份该解析得动");
     for k in STATUS_FIELDS {

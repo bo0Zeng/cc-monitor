@@ -434,3 +434,175 @@ describe("F91 GridMonitorView interval 生命周期", () => {
     }
   });
 });
+
+// ═══ 〔UP1 · `设计/10 §3.4` C2〕机器总览按行更新：1Hz 那一拍只写真变了的格子 ═══════════════════
+// 量具：`MutationObserver`（subtree ＋ attributes ＋ childList ＋ characterData）收到的记录条数，
+// `takeRecords()` 同步取。判据全是相等（设计与读数住 `调研/第四波记录/UP1.md §2`）。
+describe("UP1 机器总览按行更新", () => {
+  /** 三台机器、七个会话；`snapshotSessions` 每拍都返回**新对象**（与 `TabManager.snapshotSessions` 同形）。 */
+  const base = (): GridSessionSnapshot[] => [
+    snap({ sessionId: "l1", title: "本机一", cwd: "/w/a", activityStatus: "busy", runningAgents: 2, totalAgents: 3 }),
+    snap({ sessionId: "l2", title: "本机二", cwd: "/w/b", contextPct: 85, unread: 4 }),
+    snap({ sessionId: "l3", title: "本机三", status: "archived" }),
+    snap({ sessionId: "p1", title: "派一", origin: "pi", activityStatus: "waiting", waitingFor: "permission prompt" }),
+    snap({ sessionId: "p2", title: "派二", origin: "pi", tmuxIdle: true, kind: "bg" }),
+    snap({ sessionId: "n1", title: "诺一", origin: "nano", cwd: "/srv", unread: 120 }),
+    snap({ sessionId: "n2", title: "诺二", origin: "nano", contextPct: 12 }),
+  ];
+  const setup = (): {
+    view: GridMonitorView;
+    set: (f: (s: GridSessionSnapshot[]) => void) => void;
+    take: () => MutationRecord[];
+    cellOf: (sid: string) => HTMLElement;
+    done: () => void;
+  } => {
+    vi.useFakeTimers();
+    document.body.replaceChildren();
+    let mutate: (s: GridSessionSnapshot[]) => void = () => {};
+    const source = {
+      snapshotSessions: () => {
+        const s = base();
+        mutate(s);
+        return s;
+      },
+      switchTo: vi.fn(),
+    };
+    const view = new GridMonitorView(source);
+    view.open();
+    const root = document.querySelector(".grid-monitor")!;
+    const mo = new MutationObserver(() => {});
+    mo.observe(root, { subtree: true, attributes: true, childList: true, characterData: true });
+    return {
+      view,
+      set: (f) => {
+        mutate = f;
+      },
+      take: () => mo.takeRecords(),
+      cellOf: (sid) => document.querySelector<HTMLElement>(`.grid-monitor-cell[data-sid="${sid}"]`)!,
+      done: () => {
+        mo.disconnect();
+        view.close();
+        vi.useRealTimers();
+      },
+    };
+  };
+
+  it("快照没变的一拍 ⇒ 整块（摘要 ＋ 格子 ＋ peek）0 条 DOM 写；连跑 5 拍也是 0", () => {
+    const t = setup();
+    try {
+      expect(document.querySelectorAll(".grid-monitor-cell").length, "前置：七格都在").toBe(7);
+      expect(document.querySelectorAll(".grid-monitor-badge").length, "前置：徽标真画出来了").toBe(6);
+      t.take();
+      vi.advanceTimersByTime(5000);
+      expect(t.take().length).toBe(0);
+    } finally {
+      t.done();
+    }
+  });
+
+  it("只有一个会话的未读数变了 ⇒ 恰好 1 条记录，落在那一格上（两向：别的格子 0 条）", () => {
+    const t = setup();
+    try {
+      t.take();
+      t.set((s) => {
+        s[1].unread = 5;
+      });
+      vi.advanceTimersByTime(1000);
+      const recs = t.take();
+      expect(recs.length).toBe(1);
+      expect(recs[0].target).toBe(t.cellOf("l2"));
+      expect(t.cellOf("l2").querySelector(".badge-unread")?.textContent).toBe("5");
+    } finally {
+      t.done();
+    }
+  });
+
+  it("按行 ＝ 格子跨拍留着：换了几处内容、顺序也变了，七个格子仍是同七个 DOM 对象", () => {
+    const t = setup();
+    try {
+      const before = new Map(["l1", "l2", "l3", "p1", "p2", "n1", "n2"].map((sid) => [sid, t.cellOf(sid)]));
+      t.set((s) => {
+        s[1].activityStatus = "waiting"; // l2 排到本机组最前
+        s[1].waitingFor = "worker request";
+        s[3].activityStatus = "busy"; // p1 不再等
+        s[5].cwd = null; // n1 的 cwd 行摘掉
+        s[6].unread = 1;
+      });
+      vi.advanceTimersByTime(1000);
+      for (const [sid, el] of before) expect(t.cellOf(sid), sid).toBe(el);
+      const order = [...document.querySelectorAll<HTMLElement>(".grid-monitor-cell")].map((c) => c.dataset.sid);
+      expect(order).toEqual(["l2", "l1", "l3", "n1", "n2", "p1", "p2"]); // 远端组按名字升序：nano 在 pi 前
+      expect(t.cellOf("n1").querySelector(".grid-monitor-cell-cwd")).toBeNull();
+      expect(t.cellOf("p1").querySelector(".badge-waiting")).toBeNull();
+      expect(t.cellOf("l2").querySelector(".badge-waiting")?.textContent).toBe("等待：worker request");
+    } finally {
+      t.done();
+    }
+  });
+
+  it("每拍重建出来的样子 == 从零建出来的样子（差量更新不漂：同一份快照，两条路 DOM 逐字相等）", () => {
+    const t = setup();
+    try {
+      const steps: ((s: GridSessionSnapshot[]) => void)[] = [
+        (s) => {
+          s[0].runningAgents = 0;
+          s[2].status = "live";
+        },
+        (s) => {
+          s.splice(4, 1); // p2 没了
+          s[1].contextPct = null;
+          s.push(snap({ sessionId: "z1", title: "新机", origin: "zeta", cwd: "/z", unread: 2 }));
+        },
+        (s) => {
+          s.splice(3, 2); // pi 整组没了
+          s[0].title = "改名了";
+          s[0].cwd = null;
+        },
+        (s) => {
+          s.length = 0; // 空态
+        },
+        () => {}, // 从空态回来
+      ];
+      for (const f of steps) {
+        t.set(f);
+        vi.advanceTimersByTime(1000);
+        const incremental = document.querySelector(".grid-monitor-body")!.innerHTML;
+        const fresh = new GridMonitorView({
+          snapshotSessions: () => {
+            const s = base();
+            f(s);
+            return s;
+          },
+          switchTo: vi.fn(),
+        });
+        fresh.open();
+        const bodies = document.querySelectorAll(".grid-monitor-body");
+        expect(bodies.length).toBe(2);
+        expect(incremental).toBe(bodies[1].innerHTML);
+        fresh.close();
+      }
+    } finally {
+      t.done();
+    }
+  });
+
+  it("键盘焦点在一格上、别的格子在变 ⇒ 焦点不动；它自己被挪了位置 ⇒ 焦点跟着回到它", () => {
+    const t = setup();
+    try {
+      t.cellOf("n2").focus();
+      t.set((s) => {
+        s[0].unread = 9;
+      });
+      vi.advanceTimersByTime(1000);
+      expect(document.activeElement).toBe(t.cellOf("n2"));
+      t.set((s) => {
+        s[6].activityStatus = "waiting"; // n2 排到 nano 组最前（被 insertBefore 挪动）
+        s[6].waitingFor = "x";
+      });
+      vi.advanceTimersByTime(1000);
+      expect(document.activeElement).toBe(t.cellOf("n2"));
+    } finally {
+      t.done();
+    }
+  });
+});

@@ -14,6 +14,7 @@ import { commands } from "./ipc/commands";
 import { basename } from "./format"; // F09：复用已测纯函数（去 main.ts 内联 basename 盲区；〔F7b〕随老面板退役从 sftp/paths 搬来）
 import { bindEvents } from "./events";
 import { TabManager } from "./tabs";
+import { terminalFrontAvailable } from "./terminal-front";
 import { loadTheme } from "./theme";
 import { bindErrorToast } from "./error-toast";
 import { dispatcher } from "./keybindings/registry";
@@ -97,7 +98,9 @@ async function bootstrapViewer(sid: string): Promise<void> {
   termBtn.textContent = "↗ 终端";
   termBtn.title = "调出对应终端窗口 (`)";
   termBtn.addEventListener("click", () => tabs.bringActiveTerminalToFront());
-  topbar.appendChild(termBtn);
+  // 〔S4 · 第四波〕↗ 与 tab 上那颗同一道门（`terminal-front.ts`）：非 Windows 上最后一跳是桩、每点必败 ⇒ 不渲。
+  //   快捷键（下面的 `terminal.bring-front`）还够得到 `bringActiveTerminalToFront`，那里会说一句实话。
+  if (terminalFrontAvailable()) topbar.appendChild(termBtn);
   const cwdBtn = document.createElement("button");
   cwdBtn.type = "button";
   cwdBtn.className = "viewer-topbar-btn";
@@ -121,6 +124,7 @@ async function bootstrapViewer(sid: string): Promise<void> {
   });
   dispatcher.bind("terminal.bring-front", () => tabs.bringActiveTerminalToFront());
   dispatcher.bind("tab.open-cwd", () => tabs.openActiveTabCwd());
+  dispatcher.bind("session.find", () => tabs.openFind()); // 〔SE2〕独立窗口里的那一个 tab 也能 Ctrl+F
   dispatcher.applyOverrides(await getKeybindings());
   dispatcher.start();
 

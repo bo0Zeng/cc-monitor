@@ -30,7 +30,9 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { ipc } = vi.hoisted(() => ({ ipc: { calls: [] as string[] } }));
+const { ipc } = vi.hoisted(() => ({
+  ipc: { calls: [] as string[], replies: new Map<string, unknown>() },
+}));
 
 vi.mock("../../src/ipc/commands", () => ({
   commands: new Proxy(
@@ -38,6 +40,10 @@ vi.mock("../../src/ipc/commands", () => ({
     {
       get: (_t, name: string) => () => {
         ipc.calls.push(name);
+        // 〔ST2 · `70 §11.4` 末〕默认一律 reject（各块自有 catch）；给了答复的命令照答复回 ——
+        //   原来这里**只有** reject ⇒ 足迹那张表一行都不渲染 ⇒ `describeUndo` / `summarizeOwedInstallers`
+        //   的输出**从来没上过被扫的 DOM**（「判据不在执行链上就等于不存在」的一个活例）。
+        if (ipc.replies.has(name)) return Promise.resolve(ipc.replies.get(name));
         return Promise.reject(new Error(`[录音机] ${name} 没有真后端`));
       },
     },
@@ -128,6 +134,13 @@ const SHAPES: ReadonlyArray<{ name: string; re: RegExp; why: string }> = [
     re: /下一步：|放大器|本条不推翻|如实登记|判不了/g,
     why: "写给开发文档看的论证，不该出现在设置面板上（`70 §2.1` #2）",
   },
+  {
+    // 〔ST2 · `70 §11.4` 末那条射程缺口〕五种形状里原来**没有这一种** ⇒ 足迹那两句
+    //   「该由 cc-monitor 自带、而安装入口还没写」这把尺子一条都逮不到。
+    name: "欠账当产品文案",
+    re: /该由 cc-monitor 自带|入口还没写|还没写|我们欠/g,
+    why: "把我们还没做完的实现写成给用户看的话（`70 §11.4` #1 / #2）——要说的是状态（「还没有安装入口」），不是谁欠谁",
+  },
 ];
 
 /** 一段文本犯了哪几条。**判据与正控共用同一个函数** —— 两份实现会各自漂。 */
@@ -144,12 +157,11 @@ export function violationsOf(text: string): { shape: string; hit: string }[] {
  * 逐条：住址 → 它今天产的是哪一种形状。
  */
 const BACKEND_SIDE_DEBT: Readonly<Record<string, string>> = {
-  "src/bridge/src/backend_policy.rs::death_copy":
-    "产 `**下一步：…**`（markdown ＋ 设计论证 ＋ 同一个 exit 码说两遍）—— `70 §7` 第二刀 步 7",
-  "src/bridge/src/backend_policy.rs::ledger_line":
-    "整条日志行被 `「」` 包着拼进 `HEALTH_CRASHED` 的 `{last}` —— 同上",
-  "src/bridge/src/data_paths.rs":
-    "条目说明里有 `sid` / `HWND`（`91 §4` R1 硬命中）—— `70 §10.2` 差项 4",
+  // 〔第四波 ST2 · 步 7〕`backend_policy.rs::death_copy` / `::ledger_line` 两条**还清了**：
+  //   death_copy 不再产 markdown / 论证；界面上「最后一次」接的是 `last_brief`（判定 ＋ 退出状态），
+  //   账行只落日志。判据在 Rust 那侧：`backend_policy_tests.rs::what_reaches_the_settings_panel_carries_no_markdown_no_argument_no_log_format`。
+  // 〔第四波 ST2 · 子步 6〕`data_paths.rs` 那条（条目说明里的 `sid` / `HWND`）**还清了**，
+  //   判据在 Rust 那侧：`data_paths_tests.rs::no_entry_description_speaks_our_internal_words`。
 };
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -185,7 +197,8 @@ describe("`70 §2.4` 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源�
       "崩了：**下一步：这一格才是自愈要治的那一格**，而重起归第二档 —— 判据不可信的时候重起是放大器。\n" +
       "src/bridge/src/backend_policy.rs:371 里那句；monitor 是 GUI 应用（windows_subsystem=windows）。\n" +
       "所有后端 tracing 输出写到文件。\n" +
-      "「[死亡账] origin=<local> 判定=崩了 退出状态=exit -1073741510」";
+      "「[死亡账] origin=<local> 判定=崩了 退出状态=exit -1073741510」\n" +
+      "这一项该由 cc-monitor 自带，而安装入口还没写。";
     const shapes = new Set(violationsOf(sample).map((v) => v.shape));
     expect([...shapes].sort()).toEqual(SHAPES.map((s) => s.name).sort());
   });
@@ -202,14 +215,16 @@ describe("`70 §2.4` 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源�
     const p = new SettingsPanel({ windowMode: true });
     await p.open();
     await tick();
-    // 三个顶层页 + 本机子页都走一遍 —— 只看落地页等于只判了三分之一。
-    for (const id of ["app", "footprint", "machine:（本机）", "machines"]) {
+    // 两个顶层页 + 本机子页都走一遍（〔ST2〕顶层「改动足迹」已删）—— 只看落地页等于只判了一部分。
+    for (const id of ["app", "app-appearance", "app-logs", "app-data", "machine:（本机）", "machines"]) {
       const btn = document.querySelector<HTMLButtonElement>(
         `[id="settings-tab-${id}"]`,
       );
       btn?.click();
       await tick();
     }
+    // 〔ST2〕漂移记账在本机子页的「足迹」栏里（per-machine 那一批）—— 走过本机子页它就在被扫的 DOM 里。
+    expect(document.querySelector(".drift-ledger-section"), "本机子页上没有「未识别的数据」那一块").not.toBeNull();
     const root = document.querySelector<HTMLElement>(".settings-panel")!;
     const copy = visibleCopy(root);
     // 量具自检：扫到的文字量要够大。零字节时下面那条「一条都不许命中」是空转。
@@ -222,11 +237,56 @@ describe("`70 §2.4` 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源�
     ).toEqual([]);
   });
 
+  it("〔ST2〕足迹那张表**喂一份真 report** 再扫：四档各一行上屏，一条都不许命中", async () => {
+    const row = (tier: string, name: string, state: unknown) => ({
+      tool_id: name,
+      tool_name: name,
+      source_label: "来源",
+      path_declared: `~/${name}`,
+      path_resolved: `/h/${name}`,
+      host_label: "本机",
+      note: null,
+      effect_label: "它做什么",
+      state,
+      installable: tier === "AppInstalls",
+      uninstallable: false,
+      tier,
+    });
+    ipc.replies.set("config_surface_report", {
+      rows: [
+        row("AppInstalls", "甲", { kind: "present", detail: "文件，1 字节" }),
+        row("AppShipsNoInstallerYet", "乙", { kind: "absent" }),
+        row("UserInstallsWePrompt", "丙", { kind: "undetermined", why: "查不动" }),
+        row("AppOnlyChecks", "丁", { kind: "absent" }),
+      ],
+      settings_scopes: [],
+      claude_config_dir: "/h/.claude",
+      home: "/h",
+    });
+    try {
+      const p = new SettingsPanel({ windowMode: true });
+      await p.open();
+      await tick();
+      document.querySelector<HTMLButtonElement>('[id="settings-tab-machine:（本机）"]')?.click();
+      await tick();
+      await tick();
+      const rows = document.querySelectorAll(".config-surface-row");
+      expect(rows.length, "表一行都没上屏 ⇒ 下面的零命中是空转（原来就是这样空转的）").toBe(4);
+      const root = document.querySelector<HTMLElement>(".config-surface-section")!;
+      // 反空真：欠账那一档的状态话**真的在**被扫的文字里。
+      expect(visibleCopy(root)).toContain("还没有安装入口");
+      expect(violationsOf(visibleCopy(root)).map((v) => `${v.shape}: ${v.hit}`)).toEqual([]);
+    } finally {
+      ipc.replies.clear();
+    }
+  });
+
   it("后端那一侧的欠账**登记在案**（本条判不了，别把「没提」读成「治好了」）", () => {
     // 这一格不是断言代码，是断言**我们没有假装那几条已经没了**。
     // 它会在有人把登记清空时红 —— 那时要么债真还了（去 `src/bridge/` 核过再删），
     // 要么是有人把不方便的话删掉了。
-    expect(Object.keys(BACKEND_SIDE_DEBT).length).toBe(3);
+    // 〔ST2〕三条全还清 ⇒ 0。再有人往这里登记，就是又欠了一笔（要写清住址与理由）。
+    expect(Object.keys(BACKEND_SIDE_DEBT).length).toBe(0);
     for (const [addr, why] of Object.entries(BACKEND_SIDE_DEBT)) {
       expect(addr.startsWith("src/bridge/"), `${addr} 不在后端那一侧，登记错地方了`).toBe(true);
       expect(why.length, `${addr} 的理由是空的`).toBeGreaterThan(10);

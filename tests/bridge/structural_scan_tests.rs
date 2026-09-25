@@ -2683,6 +2683,10 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "merge_search_results",
             1,
         ),
+        // 🔴 〔F9c · 第四波 · 2026-09-24〕存盘装不进一行的改走暂存区分块之后，「打开即只读」一档与它那两句话一起删了；
+        //    `fonts.rs` 的探针来路里逐字记着那两句当初带进来的九个字 ⇒ 第②条出路：贴墓碑 ＋ 记账。
+        ("src/bridge/src/filewin/fonts.rs", "too_big_to_save", 1),
+        ("src/bridge/src/filewin/fonts.rs", "read_only_notice", 1),
         // 🔴 〔C2 · 2026-09-24〕拨号搬进后端的拨号代理之后，界面侧 `K-P6b` 那一版的三条判据随它们守的东西一起删了：
         //    回落登记（回落删了，`D11`）· 请求行按蛇形键写（请求改由宿主 `dial_host` 造，判据搬去那边且改成与后端异源）·
         //    代理只从两处解析（解析多了「自释放那一份」一处）。留下的那几句说的正是「它们为什么不在了」⇒ 第②条出路。
@@ -3300,7 +3304,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_chmod_attrs_never_put_a_size_on_the_wire",
             1,
         ),
-        ("src/bridge/src/sftp_pool.rs", "is_lossy_name", 1),
+        // 〔第四波 S4〕`sftp_pool.rs` 那一处（句柄有损判定的头注里点着从前那个判文件名的函数）随它所在的
+        //   零流量复制一段整块删了 ⇒ 这一行走了（被守的那件事整段退役，不是墓碑被人擦掉）。
         (
             "tests/bridge/filewin/boundary_tests.rs",
             "sftp_cancel_transfer",
@@ -3643,6 +3648,7 @@ fn every_prose_tombstone_mark_is_registered() {
         //   另三处各挂在一条**随功能一起走掉的判据**的名字上 ——
         //   那三个名字同时要进 `TOMBSTONED`，两张表单位不同，各记各的）。
         ("src/bridge/src/filewin/source.rs", 5), // 〔F7c 收尾 09-24〕4 → 5（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
+        ("src/bridge/src/filewin/fonts.rs", 2), // 〔F9c 第四波 09-24〕0 → 2（探针来路里那两句「存不回去」的函数名随只读一档删了）
         ("src/bridge/src/history.rs", 1),
         ("src/bridge/src/launch.rs", 1),
         ("src/bridge/src/lib.rs", 2), // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
@@ -3710,12 +3716,21 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/filewin/mod.rs", 2),
         ("src/bridge/src/filewin/transfer.rs", 4),
         ("src/bridge/src/filewin/writeops.rs", 1),
-        ("src/bridge/src/sftp_pool.rs", 1),
+        // 〔第四波 S4〕`sftp_pool.rs` 1 → 0（行删）：那块墓碑随零流量复制一段整块删了，理由同 `TOMBSTONED` 那一行。
         ("tests/bridge/filewin/boundary_tests.rs", 2),
         ("tests/bridge/filewin/transfer_tests.rs", 1),
         ("tests/bridge/sftp_family_registry_tests.rs", 2),
         ("tests/bridge/sftp_move_ledger_tests.rs", 1),
         ("tests/bridge/sftp_pool_tests.rs", 5),
+        // 〔FW5 · 第四波〕两处墓碑标记：写面相对段「只收 UTF-8」那句（围栏改按 `Path` 判之后作废）·
+        //   选中那张表里「批量改权限没做」那一格（做了）。
+        ("src/backend/control/files_write.rs", 1),
+        ("src/bridge/src/filewin/select.rs", 1),
+        // 〔第四波 S4〕快捷键预留位 `app.search-history` 删了（历史全文搜索从没独立快捷键、预留位不留）：
+        //   清单那一处 ＋ 清单头注一处 ＋ 编辑器那枚「未上线」标签的遗址一处，逐处挂了墓碑。
+        ("src/keybindings/actions.ts", 2),
+        ("src/keybindings/editor.ts", 1),
+        ("tests/keybindings/actions.vitest.ts", 1),
     ];
 
     /// **挂歪了 / 在谈这件机制本身**的那些行，逐份登记**行数**。

@@ -289,6 +289,9 @@ describe("S30 ⑥ transition 只许动白名单里那几个属性（设计/41 §
  * 但**多一处少一处都要有人看见** —— 多出来的多半是词法器又错位了。
  */
 const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
+  // 〔SE2〕查找面板按模式切大纲清单的开合（大纲那一半的 `hidden` 从 `UserInputPanel` 自己手里交给了面板）。
+  "src/views/session-find.ts:237":
+    "`this.outline.panel` —— 大纲清单那块，由 `UserInputPanel` 建（类 `.user-inputs`；`styles.css` 里那条规则头注逐字「绝不许出现 display」）",
   "src/error-toast.ts:135":
     "`existing.countEl` —— `existing` 是从一张 Map 里取回来的旧 toast，它的 countEl 在别处建的",
   // ⚠ 〔2026-09-19〕`606 → 614`：我在这份文件上方加了一段注释，**行号就漂了**。
@@ -309,7 +312,11 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   // ⚠ 〔AL1 合并 · 2026-09-24〕`791 → 788` / `1250 → 1259` / `1259 → 1268`：**又漂了一次**，原因同上 ——
   //    AL1 在 `panel.ts` 上游把 import 收成一行、per-machine 表里多挂「别名」一块、删「行为」组里那段别名挂载。
   //    三处逐处现打核过：仍是 `b.el` 与两处 `perMachineFallbackHint`，语义一字未动。
-  "src/settings/panel.ts:789":
+  // ⚠ 〔第四波 ST2 · 2026-09-24〕又漂了（多拍）：步 14 / 删顶层「改动足迹」/ 步 15 在 `panel.ts` 上游
+  //    改了 buildBody（后端四格寄居、应用下挂三个子页、漂移记账那块）。住址与语义一字未动，只是行号跟着挪；
+  //    三处照旧由脚本按「`b.el.hidden =` / 两处 `perMachineFallbackHint.hidden =`」现打。
+  // 〔合并 C4a〕这一批行号随 C4a 在同文件里加的 import（origin 判定那一行）各挪一两行，住址与语义一字未动。
+  "src/settings/panel.ts:802":
     "`b.el` —— `b` 来自 `this.perMachineBlocks` 数组，元素由各 section 自己建，跨文件",
   // 🔴 〔步 20 · `设计/70 §1.3 C`〕兜底态那块提示的显隐。它的类名是
   //    `skeleton.ts::makeSkeleton` 挂上去的（`settings-hint`），**跨文件** ——
@@ -317,16 +324,27 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   //    ⚠ 顺带说清它安不安全：`settings-hint` 在 `src/styles.css` 里**没有 display 规则**
   //      ⇒ UA 的 `[hidden] { display: none }` 不会被压过，那两句不是空写。
   //      这一条是**人工核过的**，不是这把尺子判的 —— 所以它在登记表里，不在绿里。
-  "src/settings/panel.ts:1260":
+  "src/settings/panel.ts:1306":
     "`this.perMachineFallbackHint` —— 类名由 `skeleton.ts::makeSkeleton` 挂，跨文件",
-  "src/settings/panel.ts:1269":
+  "src/settings/panel.ts:1319":
     "`this.perMachineFallbackHint` —— 同上（兜底态亮出来那一支）",
   // 🔴 〔步 20 · `设计/70 §10.1`〕「足迹」那一块里，本机那一整套的显隐包装。
   //    它**刻意不挂任何类**：只负责显隐、不要样式。挂了类就得在 CSS 里给它写规则
   //    （`css-ledger` 的两条棘轮会要求），而那条规则会是一句纯装饰。
   //    ⇒ 没有类 ⇒ 不可能有「自己身上的裸 display」⇒ 这一格在构造上就是安全的。
-  "src/settings/config-surface-section.ts:391":
-    "本机那一套的显隐包装，刻意不挂类名（没有类就不会有裸 display 压过 [hidden]）",
+  // 〔第四波 ST2〕漂移记账按机器分（这一拍只做本机）：本机那一整套的包装（不挂类名）与远端那一句
+  //    （`settings-hint`，在 `build()` 里挂的，跨方法 ⇒ 这把尺子推不出来；`settings-hint` 没有 display 规则，
+  //    `[hidden]` 不会被压过 —— 与上面 `perMachineFallbackHint` 那两处同一个人工核法）。
+  "src/settings/drift-ledger-section.ts:142":
+    "本机那一整套的显隐包装，刻意不挂类名（远端那一栏收起来）",
+  "src/settings/drift-ledger-section.ts:143":
+    "远端那一句（类名 `settings-hint` 在 build() 里挂，跨方法；该类无 display 规则）",
+  // 〔第四波 ST2〕远端也有真栏之后，这个包装本机与远端都用；显隐切两处：`applyOriginGate`（摆出来）
+  //    与 `showUnanswered`（远端那台答不了时收起来）。同一个包装、同一个理由。
+  "src/settings/config-surface-section.ts:440":
+    "那一整套的显隐包装（本机与远端都用），刻意不挂类名（没有类就不会有裸 display 压过 [hidden]）",
+  "src/settings/config-surface-section.ts:447":
+    "同一个包装，远端那台答不了时收起来（`showUnanswered`）",
   "src/views/history.ts:1635":
     "`e.hidden = updated.hidden` —— 这一处根本不是「切某个组件的显隐」，是在把一条会话记录的 `hidden` 字段往回写",
 } as const;

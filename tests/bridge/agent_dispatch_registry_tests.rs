@@ -100,12 +100,8 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
              ⚠ `search.rs` 的退役条件另有裁定（`K7` 乙块逐字：backend 侧没索引，迁它是拿性能换账面）\
              —— 但**耦合处数照样要数**，两件事",
     ),
-    (
-        "tasks.rs",
-        Face::Facade,
-        1,
-        "任务追踪目录（`tasks_dir`）—— 该 agent 没这个概念时返 `None`，而调用点按 Claude 兜底",
-    ),
+    // 〔RM1b · 第四波〕`tasks.rs` 那一处门面（1 处，「任务追踪目录（`tasks_dir`）」）摘了：
+    //   任务列表整段改问那台机器的后端，monitor 这一侧不再自己解析任务目录。
     (
         "watcher.rs",
         Face::Facade,
@@ -151,7 +147,11 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
 ///
 /// ⚠ 与后端侧那个 27 **不是同一把尺子，不许相加**（两侧机制不同：那边直呼
 /// `agents::<名>::`，这边走 trait + 门面）。要比较请各自报各自的尺子。
-const COUPLING_BASELINE: usize = 35;
+///
+/// 🔴 〔RM1b · 第四波〕**35 → 34**：`tasks.rs` 那张门面脸（1 处）随任务列表改走后端摘掉。
+/// ⚠ 如实写：这一格是**搬走**不是**收进接口** —— 读任务目录那一步搬去了后端，
+/// 而后端侧那把尺子（`agent_locality_guard`）今天没数它（住址理由在 `observe/tasks_query.rs` 头注）。
+const COUPLING_BASELINE: usize = 34;
 
 /// **抹除 kind 的门面**：`adapter.rs` 里那几个「替调用者把 agent 写死」的自由函数。
 ///

@@ -247,10 +247,17 @@ enum Kind {
     /// 「在此打开终端」—— **本机**动作（在用户面前这台机器上开一个窗口），后端在对面，够不着。
     /// 为什么它不归 `Spawn`：那是原语，这是一层编排（按 origin 读落盘的远端配置 ＋ 一条平台裁决）。
     Terminal,
+    /// 〔FW34 · 第四波 09-24〕**monitor 自己的状态文件**（书签那一份）的原子写。
+    /// 它不是欠账：书签不是用户文件（不归后端写面管），是这个程序自己存下的东西，
+    /// 与 `config.json` 同一族；写口只有 `bookmarks::mutate` 一处（上锁 → 现读 → 改 → 原子换）。
+    OwnState,
     /// monitor 那一侧：通道宿主（交接件 · 生产句柄）。
     Host,
     /// monitor 那一侧：起进程那个全仓唯一出口（`exec_site_registry` 管着）。
     Spawn,
+    /// 〔FW34 · 第四波 09-24〕monitor 那一侧：monitor 自己的数据目录 —— 书签文件住那儿，
+    /// 开窗时在这一侧算好全路径、放进种子交给窗口进程（窗口进程自己不找数据目录）。
+    DataDir,
     /// monitor 那一侧：那条命令的入参类型（那台机器的配置）。
     /// 〔F7a · 第三波 09-24〕这一类原先还装着「开窗前解 home」（走 SFTP，后端没有这一问）——
     /// 现在问后端 `files-home`，走的是 `Host` 那一类的同一个句柄 ⇒ 这一类只剩配置，改了名。
@@ -300,9 +307,15 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     //   `sftp_cancel_transfer`〔散文墓碑〕 随复制走后端（F7a，不可取消）一起走掉（`transfer::forward_cancel` 删了）。
     ("ssh_source::RemoteConfig", Kind::Transfer),
     // ── 本地预判围栏 ──
-    ("sftp_pool::is_protected_claude_data_path", Kind::Fence),
+    // 〔第四波 S4〕改指围栏本家（池子里那行转出住址删了）；仍是同一个函数、同一笔欠账。
+    (
+        "claude_data_fence::is_protected_claude_data_path",
+        Kind::Fence,
+    ),
     // ── 本机动作 ──
     ("launch::launch_remote_terminal", Kind::Terminal),
+    // ── monitor 自己的状态 ──
+    ("utils::atomic_write_json", Kind::OwnState),
 ];
 
 /// ★ **monitor 那一侧**（`entry.rs` ＋ [`MONITOR_FNS`]）够得到的 app 侧符号，逐条。
@@ -319,6 +332,7 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("spawn_managed::StderrSink", Kind::Spawn),
     ("spawn_managed::spawn_managed_cmd", Kind::Spawn),
     ("ssh_source::RemoteConfig", Kind::Config),
+    ("paths::resolve_monitor_data_dir", Kind::DataDir),
 ];
 
 /// 一段生产代码 → `(函数名, 那一块)`。函数外的行归 `""`。
@@ -497,9 +511,11 @@ fn every_declared_edge_falls_in_a_live_category() {
         (Transfer, WINDOW_SIDE),
         (Fence, WINDOW_SIDE),
         (Terminal, WINDOW_SIDE),
+        (OwnState, WINDOW_SIDE),
         (Host, MONITOR_SIDE),
         (Spawn, MONITOR_SIDE),
         (Config, MONITOR_SIDE),
+        (DataDir, MONITOR_SIDE),
     ] {
         let n = side.iter().filter(|(_, kk)| *kk == k).count();
         assert!(

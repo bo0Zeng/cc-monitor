@@ -6,6 +6,7 @@ import { describe, it, expect } from "vitest";
 import {
   renderNewAccountForm,
   aliasHintFor,
+  checkBaseUrl,
   NEW_ACCOUNT_COPY,
   type NewAccountRequest,
 } from "../../src/settings/account-new-form";
@@ -20,7 +21,8 @@ function form() {
   document.body.replaceChildren(el);
   const q = <T extends Element>(sel: string) => el.querySelector<T>(sel)!;
   const name = q<HTMLInputElement>("input.accounts-maint-name");
-  const key = q<HTMLInputElement>(".accounts-new-key input");
+  const key = q<HTMLInputElement>(".accounts-new-key input[type=password]");
+  const base = q<HTMLInputElement>('.accounts-new-key input[data-field="base-url"]');
   const cred = q<HTMLInputElement>(".accounts-new-adv input");
   const radio = (v: string) => q<HTMLInputElement>(`input[type=radio][value="${v}"]`);
   const btn = (t: string) => [...el.querySelectorAll("button")].find((b) => b.textContent === t)!;
@@ -32,7 +34,7 @@ function form() {
     radio(v).checked = true;
     radio(v).dispatchEvent(new Event("change"));
   };
-  return { el, seen, name, key, cred, radio, btn, type, pick };
+  return { el, seen, name, key, base, cred, radio, btn, type, pick };
 }
 
 describe("A2 新建账号表单", () => {
@@ -127,3 +129,43 @@ describe("A2 新建账号表单", () => {
     expect(f.el.querySelector("select")).toBeNull();
   });
 });
+
+describe("〔ST2 · `70 §4.4` 线框〕apikey 那一支的 Base URL", () => {
+  it("★ 形状关：留空合法（默认上游）· https 收 · 明文 http 只收本机回环 · 别的一律不收", () => {
+    expect(checkBaseUrl("  ")).toEqual({ ok: true, value: undefined });
+    expect(checkBaseUrl(" https://api.example.com/v1 ")).toEqual({ ok: true, value: "https://api.example.com/v1" });
+    for (const loop of ["http://127.0.0.1:8080", "http://localhost:3000/x", "http://[::1]:9"]) {
+      expect(checkBaseUrl(loop).ok, `${loop} 是本机回环，该收`).toBe(true);
+    }
+    for (const bad of ["http://api.example.com", "api.example.com", "ftp://x", "https://"]) {
+      expect(checkBaseUrl(bad).ok, `${bad} 不该收`).toBe(false);
+    }
+  });
+
+  it("★★ 表单：填了 ⇒ 交出去带 baseUrl；留空 ⇒ 请求里**没有**这一格；填错 ⇒「创建」灰着、说为什么、绕过也不交", () => {
+    const f = form();
+    f.pick("apikey");
+    f.type(f.name, "b");
+    f.type(f.key, "sk-x");
+    f.type(f.base, "http://api.example.com");
+    const create = f.btn(NEW_ACCOUNT_COPY.create) as HTMLButtonElement;
+    expect(create.disabled).toBe(true);
+    expect(f.el.querySelector(".accounts-maint-err")?.textContent).toContain("明文 http");
+    create.disabled = false;
+    create.click();
+    expect(f.seen, "形状不对的 Base URL 绕过 disabled 交出去了").toEqual([]);
+    f.type(f.base, "https://api.example.com");
+    expect(create.disabled).toBe(false);
+    create.click();
+    expect(f.seen).toEqual([{ name: "b", access: "apikey", key: "sk-x", baseUrl: "https://api.example.com" }]);
+    expect(f.base.value, "交完没清空").toBe("");
+    // 留空那一次：请求里没有 baseUrl 这一格（后端那一格不碰）。
+    f.pick("apikey");
+    f.type(f.name, "c");
+    f.type(f.key, "sk-y");
+    (f.btn(NEW_ACCOUNT_COPY.create) as HTMLButtonElement).click();
+    expect(f.seen[1]).toEqual({ name: "c", access: "apikey", key: "sk-y" });
+    expect("baseUrl" in f.seen[1]!).toBe(false);
+  });
+});
+

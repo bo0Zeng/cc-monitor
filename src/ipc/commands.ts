@@ -127,6 +127,7 @@ import type { BranchResult } from "../generated/BranchResult";
 import type { Origin } from "../generated/Origin";
 import type { SessionIndexResult } from "../generated/SessionIndexResult";
 import type { UserInputsResult } from "../generated/UserInputsResult";
+import type { FindResult } from "../generated/FindResult";
 import type { CcBusMessage } from "../generated/CcBusMessage";
 import type { CcBusState } from "../generated/CcBusState";
 import type { CcPreviewResponse } from "../generated/CcPreviewResponse";
@@ -175,7 +176,6 @@ import type { HistorySessionEntry } from "../generated/HistorySessionEntry";
 import type { HooksReport } from "../generated/HooksReport";
 import type { ImportGroup } from "../generated/ImportGroup";
 import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
-import type { TransferProgress } from "../generated/TransferProgress";
 import type { PanoramaStatus } from "../generated/PanoramaStatus";
 import type { ProfileScan } from "../generated/ProfileScan";
 import type { PushResult } from "../generated/PushResult";
@@ -378,7 +378,8 @@ export const commands = {
    * 前端**一个字都不许自己推那个 id**（`split('/').pop()` 那一形）：那是在长第二份规则，
    * 漂开的那天症状是「设置里说走 apikey 端点改写、起会话时没走」，而两边看起来都没错。
    */
-  write_apikey_credentials_key: (args: { key: string; configDir: string }) =>
+  // 〔第四波 ST2〕`baseUrl`：加账号表单 apikey 那一支的 Base URL（`设计/70 §4.4`）；缺席 = 用默认上游。
+  write_apikey_credentials_key: (args: { key: string; configDir: string; baseUrl?: string | null }) =>
     invoke<void>("write_apikey_credentials_key", args),
 
   write_skill_file: (args: { cwd: string; skillId: string; path: string; content: string }) =>
@@ -499,24 +500,7 @@ export const commands = {
   panorama_write_doc_link: (args: { repo: string; doc: string; target: string }) =>
     invoke<void>("panorama_write_doc_link", args),
 
-  /**
-   * 远端内部复制（步 23b）。Rust 返回 `Result<Option<String>, String>` ⇒ `string | null`
-   * （**原始类型**；不生成类型）。
-   *
-   * 🔴 **`null` 与非 `null` 是两条不同的路，调用方必须分开处理：**
-   * - `null` ⇒ 走了 `copy-data` 扩展，**服务端自己搬字节，一个文件字节都没经过这台机器**；
-   * - 一串话 ⇒ **退了路**（协商不到 / 服务端拒了），字节走了「远端 → 你的机器 → 远端」，
-   *   也就是 **2× 流量**。那串话是**给用户看的**，已经含了实际过网字节数。
-   *
-   * ⚠ 把返回值丢掉 = 静默退化成 2× 流量，`设计/60 §5` 第二段逐字禁止。
-   */
-  sftp_copy: (args: {
-    cfg: unknown;
-    from: string;
-    to: string;
-    transferId: string;
-    onProgress: Channel<TransferProgress>;
-  }) => invoke<string | null>("sftp_copy", args),
+  // 〔第四波 S4〕`sftp_copy`（远端内部复制，步 23b）的包装随那条命令退役删了：窗口的复制走后端 `files-copy`。
 
   // 〔F7c 收尾 09-24〕池子那十二条的包装一起走了（老面板删了、窗口改走通道；`设计/60 §13b`）：
   //   sftp_cancel_transfer · sftp_chmod · sftp_delete · sftp_download · sftp_list_dir · sftp_mkdir ·
@@ -704,7 +688,8 @@ export const commands = {
   local_ccm_entry_status: () => invoke<LocalCcmEntry>("local_ccm_entry_status"),
 
   /** 某会话的 TodoWrite 任务快照。`TaskEntry` C02 已生成 ⇒ **桶③**。 */
-  get_session_tasks: (args: { sessionId: string }) =>
+  // 〔RM1b · 第四波〕收 `origin`：问那台机器的后端 `tasks-list`（本机逐字 `LOCAL_ORIGIN`）。
+  get_session_tasks: (args: { origin: Origin; sessionId: string }) =>
     invoke<TaskEntry[]>("get_session_tasks", args),
 
   /** 在远端起一个终端跑给定命令。Rust 返回 `Result<(), String>` ⇒ **桶①**。
@@ -780,7 +765,9 @@ export const commands = {
   // P8a：Claude Code 的 marketplace 面（只读、按需一次，不轮询）。
   // ⚠ 它回答的是「有哪些 marketplace / 它**声明**了多少插件」，
   // **不是**「装了/启用了哪些插件」—— 后者今天在盘上没有真相源（待决 `U10d`）。
-  list_plugin_marketplaces: () => invoke<MarketplaceSurvey>("list_plugin_marketplaces"),
+  // 〔RM1b · 第四波〕收 `origin`：问那台机器的后端 `plugins-marketplaces`（本机逐字 `LOCAL_ORIGIN`）。
+  list_plugin_marketplaces: (args: { origin: Origin }) =>
+    invoke<MarketplaceSurvey>("list_plugin_marketplaces", args),
   // PS1：把内嵌的 cc-bus 装到 `<claude_dir>/skills/cc-bus/`。
   // ⚠ **只读铁律的第 7 条例外**（`U10b` 用@08-13 裁「开」）⇒ 它是本仓**唯一**往
   // `<claude_dir>` 写的口子，必须由**用户显式点击**触发，绝不放进任何自动路径。
@@ -882,6 +869,14 @@ export const commands = {
    */
   list_user_inputs: (args: { origin: Origin; jsonlPath: string; fromOffset: number }) =>
     invoke<UserInputsResult>("list_user_inputs", args),
+
+  /**
+   * 〔SE2 · `设计/10 §6 步 6`〕**会话内查找**（Ctrl+F）：在这一份会话里找 `query`，命中按文件序。
+   * 跑的是后端 `--find-in-session`（`IPC-PROTOCOL.md §10.5`；口径与全局搜索同一份）。
+   * `available: false` **不是错误**：老后端 / 本机后端不在 / 输出被截断 ⇒ 面板那一行状态说清原因。
+   */
+  find_in_session: (args: { origin: Origin; jsonlPath: string; query: string; includeTools: boolean }) =>
+    invoke<FindResult>("find_in_session", args),
 
   /**
    * 启动时先拉本地活跃会话建骨架 Tab。返回值字段被真消费 ⇒ 生成物（桶③）。
@@ -1031,6 +1026,12 @@ export const commands = {
      * - 两个都空 ⇒ 问远端 `realpath('.')`（第七刀）。
      */
     revealFile?: string | null;
+    /**
+     * 〔FW34〕〔待退役〕老 SFTP 面板留在 webview 里的目录书签（机器名 → 目录），开窗前并进
+     * 原生窗口的书签文件（Rust 侧 `filewin::entry::carry_legacy`）；并不进去整趟报错、不开窗。
+     * 没有旧书签就不带这一格。
+     */
+    carryBookmarks?: Record<string, string[]>;
   }) => invoke<number>("open_file_window", args),
 
   /** 开独立设置窗口（非浮层）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
