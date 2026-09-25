@@ -1,11 +1,5 @@
 文件	理由
-src/account-chip.ts	未抽
-src/account-commands.ts	未抽
-src/account-restart-local.ts	未抽
-src/accounts-decode.ts	未抽
 src/accounts.ts	C4d 在改这一带，留最后一批
-src/agent-profile.ts	未抽
-src/agents-panel.ts	未抽
 src/backend-policy.ts	未抽
 src/backend/accounts/apikey/creds.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
 src/backend/accounts/apikey/file_face.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
@@ -63,8 +57,6 @@ src/backend/relay/server.rs	射程外：常驻端 crate（没有文案表读口�
 src/backend/relay/upstream.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
 src/backend/skill_install.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
 src/backend/wire.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
-src/branch-button.ts	未抽
-src/branch-fold.ts	未抽
 src/bridge/crates/creds-core/src/perm.rs	射程外：monitor 的子 crate，够不着 crate::copy_table
 src/bridge/crates/creds-core/src/store.rs	射程外：monitor 的子 crate，够不着 crate::copy_table
 src/bridge/crates/guard-core/src/lib.rs	射程外：monitor 的子 crate，够不着 crate::copy_table
@@ -151,27 +143,7 @@ src/bridge/src/subagent.rs	C4d 在改这一带，留最后一批
 src/bridge/src/tool_registry.rs	C4d 在改这一带，留最后一批
 src/bridge/src/user_files.rs	未抽
 src/bridge/src/verified_write.rs	未抽
-src/entry-render-common.ts	未抽
-src/entry-viewer.ts	未抽
-src/error-toast.ts	未抽
-src/file-window.ts	未抽
-src/first-run-hint.ts	未抽
-src/fork-ask.ts	未抽
-src/fork-flow.ts	未抽
-src/fork-launch.ts	未抽
-src/format.ts	未抽
-src/launch-dimensions.ts	未抽
-src/launch-menu.ts	未抽
-src/launch-render-cli.ts	未抽
-src/launch-render-fallback.ts	未抽
-src/launch-requests.ts	未抽
-src/launcher-diagnostics.ts	未抽
 src/panorama-engine/main.rs	射程外：全景独立小程序（另一个可执行文件）
-src/paste-block.ts	未抽
-src/remote-config.ts	未抽
-src/remote-health.ts	未抽
-src/render.ts	未抽
-src/session-reads.ts	未抽
 src/settings/account-new-form.ts	未抽
 src/settings/accounts-section.ts	未抽
 src/settings/acct-deploy.ts	未抽
@@ -197,16 +169,6 @@ src/settings/remote-section.ts	未抽
 src/settings/restart-notice.ts	未抽
 src/settings/router.ts	未抽
 src/settings/unknown-keys-notice.ts	未抽
-src/shell-quote.ts	未抽
-src/skeleton-view.ts	未抽
-src/tab-bar-drag.ts	未抽
-src/tab-bar-prefs.ts	未抽
-src/tab-bar-view.ts	未抽
-src/tab-drop.ts	未抽
-src/tab-stream-view.ts	未抽
-src/tasks-panel.ts	未抽
-src/terminal-front.ts	未抽
-src/turn-notify.ts	未抽
-src/usage-hud.ts	未抽
 src/views/history-actions.ts	C4d 在改这一带，留最后一批
 src/views/history.ts	C4d 在改这一带，留最后一批
+src/launch-render-cli.ts	K-R95：两句 fallback 理由由 Rust ccm_invocation.rs 与 cli-golden.json 跨语言逐字节钉着 —— 随 Rust 那一侧（backend/control/ccm_invocation.rs）同拍进表

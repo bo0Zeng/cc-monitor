@@ -116,7 +116,8 @@ const DEPS: Record<string, readonly string[]> = {
   // ① 形状：只有类型。
   "src/tab-model.ts": [],
   // ④ 落点算术：纯函数，只认集合表的增删。
-  "src/tab-drop.ts": ["src/tab-collections.ts"],
+  //   〔CP2b〕默认组名「组 N」进了文案表 ⇒ 取文口。
+  "src/tab-drop.ts": ["src/copy-table.ts", "src/tab-collections.ts"],
   // ① store：只存东西、只做顺序运算、只有一份订阅。〔U4〕摘要按活性分 ⇒ 要 `isLive` 那一个谓词。
   "src/tab-store.ts": ["src/tab-session-state.ts"],
   // ① 〔U4〕会话状态的两个轴：形状 ＋ 转移 ＋ 谓词 ＋ 呈现。呈现的字只经文案表取（`sessionState.*`）。
@@ -131,6 +132,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/branch-button.ts",
     "src/branch-fold.ts",
     "src/cards/index.ts",
+    "src/copy-table.ts", // 〔CP2b〕上翻哨兵 · 查找失败那几句进了文案表
     "src/height-estimate.ts",
     "src/ipc/commands.ts",
     "src/record-timeline.ts",
@@ -147,6 +149,7 @@ const DEPS: Record<string, readonly string[]> = {
   "src/tab-bar-view.ts": [
     "src/account-color.ts",
     "src/accounts.ts",
+    "src/copy-table.ts", // 〔CP2b〕按钮上的图标 · 悬停提示 · 集合名提示进了文案表
     "src/ipc/origin.ts", // 〔C4a〕远端 tab 才挂 `.remote` / 走远端那条 ↗
     "src/session-status.ts",
     "src/tab-collections.ts",
@@ -154,7 +157,8 @@ const DEPS: Record<string, readonly string[]> = {
     "src/terminal-front.ts",
   ],
   // ④ 拖拽：落点算术 ＋ 建组时铸一个集合 id。
-  "src/tab-bar-drag.ts": ["src/tab-collections.ts", "src/tab-drop.ts"],
+  //   〔CP2b〕「松开 → 独立窗口」进了文案表 ⇒ 取文口。
+  "src/tab-bar-drag.ts": ["src/copy-table.ts", "src/tab-collections.ts", "src/tab-drop.ts"],
   // ④ 落盘偏好：集合 / 固定 / 顺序的盘上那一层。
   //   〔U4〕固定复活出来的是「已结束」· 落盘的「最后活动时刻」按活性判。
   //   〔U4〕固定复活的空态文字住文案表（说到会话状态的字一处定）。

@@ -86,12 +86,12 @@ describe("严格收：形状不对就抛，不补值", () => {
   for (const [why, v] of cases) {
     it(why, () => {
       // JSON 往返一次：`undefined` 那几格在线上就是「缺席」。
-      expect(() => decodeAccountsList(JSON.parse(JSON.stringify(v)))).toThrow(/两端契约对不上/);
+      expect(() => decodeAccountsList(JSON.parse(JSON.stringify(v)))).toThrow(/两边版本可能对不上/);
     });
   }
   it("信任预检：缺一格 / 多一格都抛", () => {
-    expect(() => decodeTrust({ trusted: true })).toThrow(/两端契约对不上/);
-    expect(() => decodeTrust({ trusted: true, known: false, error: null })).toThrow(/两端契约对不上/);
+    expect(() => decodeTrust({ trusted: true })).toThrow(/两边版本可能对不上/);
+    expect(() => decodeTrust({ trusted: true, known: false, error: null })).toThrow(/两边版本可能对不上/);
   });
 });
 
@@ -138,6 +138,6 @@ describe("失败：折成 available:false ＋ 一句人话，不抛", () => {
     invokeMock.mockResolvedValue(linesReply(['{"kind":"accounts-meta","enabled":true}']));
     const st = await fetchAccounts("devbox");
     expect(st.available).toBe(false);
-    expect(st.error).toMatch(/两端契约对不上/);
+    expect(st.error).toMatch(/两边版本可能对不上/);
   });
 });

@@ -381,7 +381,7 @@ export function buildCliRenderRequest(
 export function buildTmuxOuterRenderRequest(plan: LaunchPlan): PayloadRenderRequest {
   const base = buildPayloadRenderRequest(plan);
   if (plan.action.kind === "attach") {
-    if (plan.container.kind !== "tmux") throw new Error("programmer error: attach needs a tmux container"); // 〔CP2b〕程序员错误，刻意英文（不是对外文案，同 copy-table.ts 的两条抛错）
+    if (plan.container.kind !== "tmux") throw new Error("bug: attach needs a tmux container"); // 〔CP2b〕程序员错误，刻意英文（不是对外文案，同 copy-table.ts 的两条抛错）
     return {
       ...base,
       env: [],
@@ -396,7 +396,7 @@ export function buildTmuxOuterRenderRequest(plan: LaunchPlan): PayloadRenderRequ
       },
     };
   }
-  if (plan.container.kind !== "tmux") throw new Error("programmer error: these launch shapes need a tmux container");
+  if (plan.container.kind !== "tmux") throw new Error("bug: these launch shapes need a tmux container");
   if (plan.container.mode === "attach-only") {
     throw new Error("unreachable: attach-only is handled by the action.kind === 'attach' branch");
   }
