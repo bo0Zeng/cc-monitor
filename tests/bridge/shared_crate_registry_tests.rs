@@ -132,9 +132,10 @@ fn the_crate_scan_actually_finds_crates() {
 /// ⇒ 加/删共享 crate 时，这条判据**自动跟上**；漏改 `gate.sh` 的那个数就当场红，
 ///   而且报文直接说「去改 gate.sh 那个数」，不会像 `gate` 自己那样指错方向。
 ///
-/// ⚠ 它**认不出**什么：`--exclude` 那几项（今天只有 `code-picture-core`）如果被人加减，
-/// 包数也会变，而本条只按「共享 crate 数」算。那一格由 `gate.sh` 里那段头注的
-/// 论证（`C7` 逐字「vendor `code-picture-core` 不动」）看着，**没有判据**。
+/// 〔TL1 · 4C〕从前这里写「`--exclude` 那几项（当时只有 `code-picture-core`）被人加减，本条认不出」——
+/// 那条 `--exclude` 随 vendor 退出 workspace 删了（monitor 不再依赖它）。⚠ 本条**认不出** vendor 被拉回成员
+/// （它比的是 gate.sh 那个数与共享 crate 数，不数真成员）；认得出的是 `the_windows_cross_target_signal_covers_only_the_backend` ③
+/// （monitor 清单零 vendor 依赖）与门禁 `cargo` 那一格运行时的包数相等（死值验现打：加回依赖 ⇒ 成员 10）。
 #[test]
 fn the_gate_package_count_tracks_the_number_of_shared_crates() {
     let gate = fs::read_to_string(crate::guard_support::repo_root().join("tests/scripts/gate.sh"))
@@ -284,8 +285,8 @@ fn ci_actually_runs_the_three_converged_commands() {
     let ci = ci_yaml::live_lines();
     for needle in [
         "cargo fmt --all --check",
-        "cargo clippy --workspace --exclude code-picture-core --all-targets",
-        "cargo test --workspace --exclude code-picture-core",
+        "cargo clippy --workspace --all-targets",
+        "cargo test --workspace",
         // vendor 仍单独一步（红线：别误伤 vendor，它不进 `--workspace`）。
         "cargo test -p code-picture-core",
     ] {
@@ -316,7 +317,7 @@ fn ci_actually_runs_the_three_converged_commands() {
 /// 这条判据自己被变异抓过**两次**，每次都是同一族的「匹配到了别的地方」：
 ///
 /// 1. **整份 `contains` 会被别的 job 的子串盖住**：backend 那步是**裸** `cargo test`，
-///    而它是 monitor 那条 `cargo test --workspace --exclude code-picture-core` 的子串
+///    而它是 monitor 那条 `cargo test --workspace` 的子串
 ///    ⇒ 注释掉后端那步，整份 `contains("cargo test")` 照样命中（实测全文件 10 处命中）。
 ///    ⇒ 先切 job 块。
 /// 2. ★ **切了块还不够：needle 会匹配到步骤名那一行。** 第一版切了块、但用
@@ -571,7 +572,7 @@ fn every_ci_run_step_is_classified_as_local_or_unrunnable() {
         (
             "cargo test（整个 workspace，vendor 除外；Linux 执行面）",
             true,
-            "`cd src/bridge && cargo test --workspace --exclude code-picture-core` —— \
+            "`cd src/bridge && cargo test --workspace` —— \
                  与 `rust` job 那条**逐字同一条命令**，只是 runner 从 windows 换成 ubuntu。\
                  ⚠ 本地门禁 `gate.sh` 那格带 `--lib`（丢 doctest 与 bin 档）⇒ **本地跑得动，\
                  但本地今天跑的不是同一把尺子**；这一格买的正是 `15 §2.6` 漏洞 3 点名的\
