@@ -671,7 +671,10 @@ jobs:
           # **2026-09-24 BS1 合并那一拍棘到 80** —— 新增 `src/shared/cc-bus/examples/cc-keepalive`
           #   （保活调用方，W24C 尺子真跑它）。同拍加文件、同拍棘，`shell_lint_registry` 那条恒等判据当场红给的。
           # **80 = 上面 79 ＋ cc-bus/examples/cc-keepalive 1**（逐组现打同上）。
-          [ "$N" -ge 80 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 80）"; exit 1; }
+          # **2026-09-24 TQ1 棘到 81** —— 新增 `tests/scripts/rust-coverage.sh`（Rust 覆盖率量具，不进门禁）；
+          #   `tests/scripts/*.sh` 那组 4 → 5。同拍加文件、同拍棘。
+          # **81 = 上面 80 ＋ tests/scripts/rust-coverage.sh 1**。
+          [ "$N" -ge 81 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 81）"; exit 1; }
           # shellcheck disable=SC2086
           shellcheck --severity=error $FILES
 
