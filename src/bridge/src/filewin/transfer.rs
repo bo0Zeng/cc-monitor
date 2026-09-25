@@ -105,6 +105,7 @@
 //!   传输台那一侧「停订即撤」。〔F7c 收尾〕从前复制那一腿的池子取消（`forward_cancel`〔散文墓碑〕）
 //!   随复制走后端（F7a `files-copy`，不可取消）一起删了 ⇒ 窗口进程里一个 `sftp_pool` 符号都不剩。
 
+use crate::copy_table::copy_text;
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -278,14 +279,16 @@ where
 /// 🔴 **回 `Err` 而不是静默跳过**：静默跳过的话 `DropOutcome` 上
 /// 「取消了 3 件」与「传完了 3 件」分不开（`ok` 与 `skipped` 都装不下它），
 /// 而那正是这一格要买的读数。
-pub const CANCELLED: &str = "这一趟被取消了";
+pub static CANCELLED: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinTransfer.cancelled.message", &[]));
 
 /// 界面上那颗取消按钮的字面。**唯一住址**（判据按同一个常量去找它画出来的字）。
 ///
 /// ⚠ 刻意不叫「取消」两个字：那三个字在「复制为」那个框上已经有一颗
 /// （`super::shell::FileWindow::copy_ui` 里那颗，意思是「别复制了」），
 /// 而按内容找控件的判据分不开同名的两颗。
-pub const CANCEL_LABEL: &str = "取消传输";
+pub static CANCEL_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinTransfer.label.cancel", &[]));
 
 /// **取消台**：一摞传输的 `transfer_id` 登记 ＋ 那面「用户按过取消了」的旗。
 ///
@@ -454,11 +457,16 @@ pub const OPEN_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
 pub const COMMIT_BUDGET: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// 从开单的应答里取一个字符串字段（缺了 ⇒ 契约不符，照实说）。
-pub(crate) fn field(v: &serde_json::Value, cmd: &str, key: &str) -> Result<String, String> {
+pub(crate) fn field(v: &serde_json::Value, _cmd: &str, key: &str) -> Result<String, String> {
     v.get(key)
         .and_then(serde_json::Value::as_str)
         .map(str::to_string)
-        .ok_or_else(|| format!("`{cmd}` 的应答里没有 `{key}` —— 和约定的不一样"))
+        .ok_or_else(|| {
+            copy_text(
+                "rsFilewinTransfer.reply.missingField",
+                &[("key", &key.to_string())],
+            )
+        })
 }
 
 /// 真起一件上传 —— **开单 → 起跑并看 → 提交**，三步全经通道（`设计/60 §13.2`）。
@@ -650,8 +658,11 @@ impl DropBoard {
             let mut answer: Option<bool> = None;
             let mut changed = false;
             egui::Modal::new(egui::Id::new("filewin-overwrite")).show(ui.ctx(), |ui| {
-                ui.heading(format!("远端已经有这 {} 个，要覆盖吗？", asking.len()));
-                ui.label("⚠ 这一问只出现一次：勾完点确认，剩下的并行传。");
+                ui.heading(copy_text(
+                    "rsFilewinTransfer.ui.askOverwrite",
+                    &[("n", &(asking.len()).to_string())],
+                ));
+                ui.label(&copy_text("rsFilewinTransfer.ui.askOnce", &[]));
                 for (i, p) in asking.iter().enumerate() {
                     let mut t = ticks[i];
                     if ui.checkbox(&mut t, &p.name).changed() {
@@ -660,10 +671,16 @@ impl DropBoard {
                     }
                 }
                 ui.horizontal(|ui| {
-                    if ui.button("覆盖勾上的").clicked() {
+                    if ui
+                        .button(&copy_text("rsFilewinTransfer.ui.overwriteChecked", &[]))
+                        .clicked()
+                    {
                         answer = Some(true);
                     }
-                    if ui.button("全都不覆盖").clicked() {
+                    if ui
+                        .button(&copy_text("rsFilewinTransfer.ui.overwriteNone", &[]))
+                        .clicked()
+                    {
                         answer = Some(false);
                     }
                 });
@@ -687,11 +704,11 @@ impl DropBoard {
         //    有东西在飞才画 —— 一颗常驻的、按下去什么都不取消的按钮比没有更坏。
         if !self.desk.in_flight_ids().is_empty() {
             ui.horizontal(|ui| {
-                if ui.button(CANCEL_LABEL).clicked() {
+                if ui.button(CANCEL_LABEL.as_str()).clicked() {
                     self.desk.request();
                 }
                 if self.desk.is_cancelled() {
-                    ui.label("已经按过取消了，还没起的那几件不会再起");
+                    ui.label(&copy_text("rsFilewinTransfer.ui.cancelling", &[]));
                 }
             });
         }
@@ -699,18 +716,30 @@ impl DropBoard {
             if !o.failed.is_empty() {
                 ui.colored_label(
                     egui::Color32::RED,
-                    format!(
-                        "上一趟 {} 件失败：{}",
-                        o.failed.len(),
-                        o.failed
-                            .iter()
-                            .map(|(n, e)| format!("{n}（{e}）"))
-                            .collect::<Vec<_>>()
-                            .join("；")
+                    copy_text(
+                        "rsFilewinTransfer.ui.failed",
+                        &[
+                            ("n", &(o.failed.len()).to_string()),
+                            (
+                                "failed",
+                                &(o.failed
+                                    .iter()
+                                    .map(|(n, e)| format!("{n}（{e}）"))
+                                    .collect::<Vec<_>>()
+                                    .join(&copy_text("rsFilewinTransfer.ui.failedSep", &[])))
+                                .to_string(),
+                            ),
+                        ],
                     ),
                 );
             } else if o.ok > 0 || o.skipped > 0 {
-                ui.label(format!("上一趟 {} 件传完、{} 件跳过", o.ok, o.skipped));
+                ui.label(copy_text(
+                    "rsFilewinTransfer.ui.done",
+                    &[
+                        ("ok", &o.ok.to_string()),
+                        ("skipped", &o.skipped.to_string()),
+                    ],
+                ));
             }
         }
     }

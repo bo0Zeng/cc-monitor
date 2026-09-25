@@ -273,13 +273,14 @@ fn only_the_copyable_rows_get_a_copy_button_painted() {
 
     let want = rows.iter().filter(|r| is_copyable(r)).count();
     assert_eq!(want, 2, "语料自己变了：能复制的行数应当是 2");
-    let got = rects_of(&painted, COPY_LABEL);
+    let got = rects_of(&painted, COPY_LABEL.as_str());
     assert_eq!(
         got.len(),
         want,
         "画出来 {} 颗「{COPY_LABEL}」，而 `is_copyable` 说有 {want} 行能复制 —— \
          目录或有损名那两档上长出了一颗不该有的按钮（或者能复制的那几行少了一颗）",
-        got.len()
+        got.len(),
+        COPY_LABEL = COPY_LABEL.as_str()
     );
     // 反空真：它们在两行不同的位置上（不是同一颗被数了两遍）。
     assert!(got[0].center().y < got[1].center().y);
@@ -301,7 +302,7 @@ fn clicking_the_copy_button_comes_back_as_that_rows_index() {
     let _ = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.0, Vec::new());
     let (_, painted) = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.1, Vec::new());
 
-    let buttons = rects_of(&painted, COPY_LABEL);
+    let buttons = rects_of(&painted, COPY_LABEL.as_str());
     assert_eq!(buttons.len(), 2, "没找到那两颗按钮，下面按坐标点没意义");
 
     // 第二颗 = 第 2 行（`two.bin`；第 0 行是目录、第 1 行是 `one.bin`）。
@@ -320,7 +321,8 @@ fn clicking_the_copy_button_comes_back_as_that_rows_index() {
         Some(2),
         "点在第 2 行那颗「{COPY_LABEL}」上，`copy_clicked` 却是 {:?} —— \
          `None` 多半是整行那块命中矩形把按钮盖住了（它是后登记的，平手时它赢）",
-        hit.copy_clicked
+        hit.copy_clicked,
+        COPY_LABEL = COPY_LABEL.as_str()
     );
     // 点按钮**不许**同时被读成「双击进目录」。
     assert_eq!(hit.clicked, None, "点一颗按钮竟然还顺手进了目录");
@@ -539,7 +541,7 @@ fn xvfb_worker_real_pointer_events_on_a_row() {
     let _ = render_headless_with_events_and_text(&ctx, &rows, screen, 0.0, Vec::new());
     let (probe_tally, painted) =
         render_headless_with_events_and_text(&ctx, &rows, screen, 0.1, Vec::new());
-    let buttons = rects_of(&painted, COPY_LABEL);
+    let buttons = rects_of(&painted, COPY_LABEL.as_str());
     let names = rects_of(&painted, &rows[REAL_EVENT_ROW_FOR_DOUBLE_CLICK].name);
     xvfb::emit("b.buttons_found", buttons.len());
     xvfb::emit("b.names_found", names.len());
@@ -825,7 +827,8 @@ fn a_real_pointer_click_on_the_copy_button_comes_back_as_that_row() {
         "真鼠标点在第 {REAL_EVENT_ROW_FOR_COPY} 行那颗「{COPY_LABEL}」上，\
          认出来的却是 {:?} —— `none` 多半是整行那块命中矩形把按钮盖住了\
          （它是后登记的，平手时它赢）",
-        run.reading("b.copy_row")
+        run.reading("b.copy_row"),
+        COPY_LABEL = COPY_LABEL.as_str()
     );
     assert_eq!(
         run.reading("b.copy_clicks"),
@@ -1037,14 +1040,15 @@ fn only_the_writable_rows_get_the_three_write_buttons_painted() {
         assert!(got[1].center().y < got[2].center().y);
     }
     // 🔴 目录那一行：三颗写按钮**有**，而「复制」**没有**。两个判准真的不一样。
-    let copies = rects_of(&painted, COPY_LABEL);
+    let copies = rects_of(&painted, COPY_LABEL.as_str());
     assert_eq!(copies.len(), 2, "能复制的行数应当是 2");
     let renames = rects_of(&painted, RENAME_LABEL.as_str());
     assert!(
         renames[0].center().y < copies[0].center().y,
         "第 0 行（目录）上没有「{}」，或者它上面竟然有「{COPY_LABEL}」—— \
          目录能改名/删除/改权限，但 `copy-data` 吃的是文件句柄",
-        RENAME_LABEL.as_str()
+        RENAME_LABEL.as_str(),
+        COPY_LABEL = COPY_LABEL.as_str()
     );
 }
 

@@ -9818,6 +9818,676 @@
       "kind": "action",
       "zh": "新建目录",
       "args": []
+    },
+    "rsFilewinFind.ui.root": {
+      "kind": "body",
+      "zh": "索引走的那个根：{root}",
+      "args": ["root"]
+    },
+    "rsFilewinFind.round.findFailed": {
+      "kind": "error",
+      "zh": "搜索失败：{e}",
+      "args": ["e"]
+    },
+    "rsFilewinFind.round.rebuildFailed": {
+      "kind": "error",
+      "zh": "重建索引失败：{e}",
+      "args": ["e"]
+    },
+    "rsFilewinFind.round.statusFailed": {
+      "kind": "error",
+      "zh": "读不到索引状态：{e}",
+      "args": ["e"]
+    },
+    "rsFilewinFind.refusal.line": {
+      "kind": "error",
+      "zh": "{hint}（{code}）：{message}",
+      "args": ["hint", "code", "message"]
+    },
+    "rsFilewinFind.refusal.other": {
+      "kind": "error",
+      "zh": "后端拒了这一趟",
+      "args": []
+    },
+    "rsFilewinFind.refusal.cannotOpen": {
+      "kind": "error",
+      "zh": "这个目录后端打不开（权限，或者它不在那台机器上）",
+      "args": []
+    },
+    "rsFilewinFind.refusal.badPath": {
+      "kind": "error",
+      "zh": "这个路径后端不认",
+      "args": []
+    },
+    "rsFilewinFind.refusal.badArgs": {
+      "kind": "error",
+      "zh": "请求格式不对（内部错误）",
+      "args": []
+    },
+    "rsFilewinFind.hits.more": {
+      "kind": "body",
+      "zh": " · 只回送了 {hitsCount} 条，还有更多",
+      "args": ["hitsCount"]
+    },
+    "rsFilewinFind.hits.line": {
+      "kind": "body",
+      "zh": "命中 {totalHits} 条（这一趟扫了 {scanned} 条，索引 {indexAgeSecs} 秒前建的）",
+      "args": ["totalHits", "scanned", "indexAgeSecs"]
+    },
+    "rsFilewinFind.hits.noIndex": {
+      "kind": "body",
+      "zh": "这台机器上的索引还没建过 —— 那不是「没搜到」",
+      "args": []
+    },
+    "rsFilewinFind.firstBuild.line": {
+      "kind": "body",
+      "zh": "正在建索引（首次约 {coldFirstBuildSecs} 秒）",
+      "args": ["coldFirstBuildSecs"]
+    },
+    "rsFilewinFind.freshness.truncated": {
+      "kind": "body",
+      "zh": " · 上一次扫到条目上限没扫完，这份索引不完整",
+      "args": []
+    },
+    "rsFilewinFind.freshness.holes": {
+      "kind": "body",
+      "zh": " · 有 {unreadableDirs} 个目录读不进去，这份索引有洞",
+      "args": ["unreadableDirs"]
+    },
+    "rsFilewinFind.freshness.stale": {
+      "kind": "body",
+      "zh": " · 需要更新",
+      "args": []
+    },
+    "rsFilewinFind.freshness.line": {
+      "kind": "body",
+      "zh": "索引 {entries} 条 · {residentBytes} 字节 · {ageSecs} 秒前扫完 · 扫描间隔 {interval} 秒",
+      "args": ["entries", "residentBytes", "ageSecs", "interval"]
+    },
+    "rsFilewinFind.freshness.notBuilt": {
+      "kind": "body",
+      "zh": "索引还没建过",
+      "args": []
+    },
+    "rsFilewinFind.freshness.unknown": {
+      "kind": "body",
+      "zh": "索引：还没问过这台机器",
+      "args": []
+    },
+    "rsFilewinFind.rebuilt.badPath": {
+      "kind": "error",
+      "zh": "path 字段的格式不对",
+      "args": []
+    },
+    "rsFilewinFind.hits.notArray": {
+      "kind": "error",
+      "zh": "hits 不是一个数组",
+      "args": []
+    },
+    "rsFilewinFind.reply.notBool": {
+      "kind": "error",
+      "zh": "{k} 不是一个布尔值",
+      "args": ["k"]
+    },
+    "rsFilewinFind.reply.notU64": {
+      "kind": "error",
+      "zh": "{k} 不是一个非负整数",
+      "args": ["k"]
+    },
+    "rsFilewinFind.reply.missingField": {
+      "kind": "error",
+      "zh": "回答里少了 {k} 字段，两边版本可能对不上",
+      "args": ["k"]
+    },
+    "rsFilewinWorkspace.copyAcross.noBytes": {
+      "kind": "error",
+      "zh": "复制的回答里没有 bytes 字段，和约定的不一样",
+      "args": []
+    },
+    "rsFilewinWorkspace.acrossArgs.notUnder": {
+      "kind": "error",
+      "zh": "{path} 不在 {root} 底下，复制不过去",
+      "args": ["path", "root"]
+    },
+    "rsFilewinWorkspace.sideUi.newTabHint": {
+      "kind": "body",
+      "zh": "新标签页",
+      "args": []
+    },
+    "rsFilewinWorkspace.sideUi.closeHint": {
+      "kind": "body",
+      "zh": "关掉这个标签页",
+      "args": []
+    },
+    "rsFilewinWorkspace.copyToOther.sameDir": {
+      "kind": "error",
+      "zh": "两栏是同一个目录，复制过去就是它自己",
+      "args": []
+    },
+    "rsFilewinWorkspace.copyToOther.notFile": {
+      "kind": "error",
+      "zh": "{name} 复制不了：只能复制文件（名字要是合法 UTF-8）",
+      "args": ["name"]
+    },
+    "rsFilewinWorkspace.copyToOther.gone": {
+      "kind": "error",
+      "zh": "列表里已经没有 {name} 了",
+      "args": ["name"]
+    },
+    "rsFilewinWorkspace.copyToOther.needOne": {
+      "kind": "error",
+      "zh": "要选中恰好一个文件（现在选中了 {n} 项）",
+      "args": ["n"]
+    },
+    "rsFilewinWorkspace.copyToOther.needSplit": {
+      "kind": "error",
+      "zh": "要先开双栏",
+      "args": []
+    },
+    "rsFilewinWorkspace.setSplit.busy": {
+      "kind": "error",
+      "zh": "右栏还没忙完（{why}），先别收",
+      "args": ["why"]
+    },
+    "rsFilewinWorkspace.closeTab.busy": {
+      "kind": "error",
+      "zh": "这个标签页还没忙完（{why}），先别关",
+      "args": ["why"]
+    },
+    "rsFilewinWorkspace.closeTab.last": {
+      "kind": "error",
+      "zh": "这是这一栏最后一个标签页",
+      "args": []
+    },
+    "rsFilewinWorkspace.label.busyMark": {
+      "kind": "body",
+      "zh": "● ",
+      "args": []
+    },
+    "rsFilewinWorkspace.label.closeTab": {
+      "kind": "action",
+      "zh": "×",
+      "args": []
+    },
+    "rsFilewinWorkspace.label.newTab": {
+      "kind": "action",
+      "zh": "＋",
+      "args": []
+    },
+    "rsFilewinWorkspace.label.copyAcross": {
+      "kind": "action",
+      "zh": "复制到另一栏",
+      "args": []
+    },
+    "rsFilewinWorkspace.label.preview": {
+      "kind": "action",
+      "zh": "预览",
+      "args": []
+    },
+    "rsFilewinWorkspace.label.split": {
+      "kind": "action",
+      "zh": "双栏",
+      "args": []
+    },
+    "rsFilewinBookmarks.bar.removeHint": {
+      "kind": "body",
+      "zh": "移出书签",
+      "args": []
+    },
+    "rsFilewinBookmarks.bar.jumpHint": {
+      "kind": "body",
+      "zh": "跳到这个目录",
+      "args": []
+    },
+    "rsFilewinBookmarks.label.remove": {
+      "kind": "action",
+      "zh": "×",
+      "args": []
+    },
+    "rsFilewinBookmarks.label.drop": {
+      "kind": "action",
+      "zh": "★ 取消书签",
+      "args": []
+    },
+    "rsFilewinBookmarks.label.add": {
+      "kind": "action",
+      "zh": "☆ 加书签",
+      "args": []
+    },
+    "rsFilewinBookmarks.store.noDataDir": {
+      "kind": "error",
+      "zh": "书签存不了：找不到本程序的数据目录",
+      "args": []
+    },
+    "rsFilewinBookmarks.mutate.failed": {
+      "kind": "error",
+      "zh": "书签没存上：{e}",
+      "args": ["e"]
+    },
+    "rsFilewinBookmarks.store.failed": {
+      "kind": "error",
+      "zh": "书签存不了：{e}",
+      "args": ["e"]
+    },
+    "rsFilewinBookmarks.read.unreadable": {
+      "kind": "error",
+      "zh": "书签文件读不懂（{file}）：{e}",
+      "args": ["file", "e"]
+    },
+    "rsFilewinBookmarks.read.failed": {
+      "kind": "error",
+      "zh": "书签读不出来：{e}",
+      "args": ["e"]
+    },
+    "rsFilewinTransfer.ui.done": {
+      "kind": "body",
+      "zh": "上一趟 {ok} 件传完、{skipped} 件跳过",
+      "args": ["ok", "skipped"]
+    },
+    "rsFilewinTransfer.ui.failedSep": {
+      "kind": "body",
+      "zh": "；",
+      "args": []
+    },
+    "rsFilewinTransfer.ui.failed": {
+      "kind": "body",
+      "zh": "上一趟 {n} 件失败：{failed}",
+      "args": ["n", "failed"]
+    },
+    "rsFilewinTransfer.ui.cancelling": {
+      "kind": "body",
+      "zh": "已经按过取消了，还没起的那几件不会再起",
+      "args": []
+    },
+    "rsFilewinTransfer.ui.overwriteNone": {
+      "kind": "action",
+      "zh": "全都不覆盖",
+      "args": []
+    },
+    "rsFilewinTransfer.ui.overwriteChecked": {
+      "kind": "action",
+      "zh": "覆盖勾上的",
+      "args": []
+    },
+    "rsFilewinTransfer.ui.askOnce": {
+      "kind": "body",
+      "zh": "⚠ 这一问只出现一次：勾完点确认，剩下的并行传。",
+      "args": []
+    },
+    "rsFilewinTransfer.ui.askOverwrite": {
+      "kind": "body",
+      "zh": "远端已经有这 {n} 个，要覆盖吗？",
+      "args": ["n"]
+    },
+    "rsFilewinTransfer.reply.missingField": {
+      "kind": "error",
+      "zh": "回答里没有 {key} 字段，和约定的不一样",
+      "args": ["key"]
+    },
+    "rsFilewinTransfer.label.cancel": {
+      "kind": "action",
+      "zh": "取消传输",
+      "args": []
+    },
+    "rsFilewinTransfer.cancelled.message": {
+      "kind": "body",
+      "zh": "这一趟被取消了",
+      "args": []
+    },
+    "rsFilewinCopy.ui.copying": {
+      "kind": "body",
+      "zh": "正在那台机器上复制 {name} …",
+      "args": ["name"]
+    },
+    "rsFilewinCopy.ui.keep": {
+      "kind": "action",
+      "zh": "别覆盖",
+      "args": []
+    },
+    "rsFilewinCopy.ui.overwrite": {
+      "kind": "action",
+      "zh": "覆盖",
+      "args": []
+    },
+    "rsFilewinCopy.ui.askOverwrite": {
+      "kind": "body",
+      "zh": "远端已经有 {name} 了，要覆盖吗？",
+      "args": ["name"]
+    },
+    "rsFilewinCopy.remote.noBytes": {
+      "kind": "error",
+      "zh": "复制的回答里没有 bytes 字段，和约定的不一样",
+      "args": []
+    },
+    "rsFilewinCopy.args.notSameDir": {
+      "kind": "error",
+      "zh": "复制只在同一个目录里做：{from} 与 {to} 不在同一个目录",
+      "args": ["from", "to"]
+    },
+    "rsFilewinCopy.outcome.done": {
+      "kind": "body",
+      "zh": "复制完成：{bytes} 字节，在那台机器上复制的，没经过你这台机器",
+      "args": ["bytes"]
+    },
+    "rsFilewinCopy.outcome.failed": {
+      "kind": "error",
+      "zh": "复制失败：{e}",
+      "args": ["e"]
+    },
+    "rsFilewinCopy.outcome.skipped": {
+      "kind": "body",
+      "zh": "上一趟：没覆盖，一个字节都没动",
+      "args": []
+    },
+    "rsFilewinCopy.label.copy": {
+      "kind": "action",
+      "zh": "复制",
+      "args": []
+    },
+    "rsFilewinPreview.ui.reading": {
+      "kind": "body",
+      "zh": "正在读 {name}…",
+      "args": ["name"]
+    },
+    "rsFilewinPreview.ui.title": {
+      "kind": "title",
+      "zh": "预览",
+      "args": []
+    },
+    "rsFilewinPreview.decide.tooBig": {
+      "kind": "body",
+      "zh": "{name} 有 {size}，预览只看 {limit} 以内的文件（可以点「编辑」打开）",
+      "args": ["name", "size", "limit"]
+    },
+    "rsFilewinPreview.decide.badName": {
+      "kind": "body",
+      "zh": "{name} 的名字不是合法 UTF-8，读不到它",
+      "args": ["name"]
+    },
+    "rsFilewinPreview.decide.isDir": {
+      "kind": "body",
+      "zh": "{name} 是一个目录",
+      "args": ["name"]
+    },
+    "rsFilewinPreview.decide.gone": {
+      "kind": "body",
+      "zh": "列表里已经没有 {name} 了",
+      "args": ["name"]
+    },
+    "rsFilewinPreview.decide.many": {
+      "kind": "body",
+      "zh": "选中了 {n} 项，预览只看一个文件",
+      "args": ["n"]
+    },
+    "rsFilewinPreview.follow.failed": {
+      "kind": "error",
+      "zh": "读不出来：{why}",
+      "args": ["why"]
+    },
+    "rsFilewinPreview.follow.notText": {
+      "kind": "body",
+      "zh": "{name} 不是文本（含 NUL 字节、或不是 UTF-8），或者刚变大了，不预览",
+      "args": ["name"]
+    },
+    "rsFilewinPreview.pickOne.message": {
+      "kind": "body",
+      "zh": "选中一个文件，这里显示它的内容",
+      "args": []
+    },
+    "rsFilewinSelect.refusal.cannot": {
+      "kind": "error",
+      "zh": "「{label}」对选中的这几项做不了",
+      "args": ["label"]
+    },
+    "rsFilewinSelect.refusal.renameOne": {
+      "kind": "error",
+      "zh": "一次只能改一个名字，现在选中了 {n} 项",
+      "args": ["n"]
+    },
+    "rsFilewinSelect.refusal.openOne": {
+      "kind": "error",
+      "zh": "一次只能打开一项，现在选中了 {n} 项",
+      "args": ["n"]
+    },
+    "rsFilewinSelect.refusal.chmodBadNames": {
+      "kind": "error",
+      "zh": "选中的里有名字读不出来的，这几项改不了权限",
+      "args": []
+    },
+    "rsFilewinSelect.refusal.deleteBadNames": {
+      "kind": "error",
+      "zh": "选中的里有名字读不出来的，这几项删不了",
+      "args": []
+    },
+    "rsFilewinSelect.refusal.none": {
+      "kind": "error",
+      "zh": "还没有选中任何一项",
+      "args": []
+    },
+    "rsFilewinSelect.label.deleteMany": {
+      "kind": "action",
+      "zh": "删除这 {n} 项",
+      "args": ["n"]
+    },
+    "rsFilewinSelect.label.chmodMany": {
+      "kind": "action",
+      "zh": "改这 {n} 项的权限",
+      "args": ["n"]
+    },
+    "rsFilewinSelect.label.open": {
+      "kind": "action",
+      "zh": "打开",
+      "args": []
+    },
+    "rsFilewinEditor.reply.noText": {
+      "kind": "error",
+      "zh": "读文本的回答里没有 text 字段，和约定的不一样",
+      "args": []
+    },
+    "rsFilewinEditor.notText.notice": {
+      "kind": "error",
+      "zh": "{path} 不是文本文件（含 NUL 字节，或者不是 UTF-8），不能编辑。刚改过的话请刷新。",
+      "args": ["path"]
+    },
+    "rsFilewinEditor.notEditable.tooBig": {
+      "kind": "error",
+      "zh": "文件 {size}（{bytes} 字节）超过编辑上限 {limit}，多了 {over} 字节。超限就拒编，不截断：截断过的文本存回去会写坏文件。",
+      "args": ["size", "bytes", "limit", "over"]
+    },
+    "rsFilewinEditor.notEditable.badName": {
+      "kind": "error",
+      "zh": "文件名含非 UTF-8 字符，不能在这里编辑",
+      "args": []
+    },
+    "rsFilewinEditor.notEditable.dir": {
+      "kind": "error",
+      "zh": "这是一个目录",
+      "args": []
+    },
+    "rsFilewinEditor.label.edit": {
+      "kind": "action",
+      "zh": "编辑",
+      "args": []
+    },
+    "rsFilewinEditor.chunkFailed.notice": {
+      "kind": "error",
+      "zh": "存到第 {seq} 段（共 {total} 段）时断了：{why}",
+      "args": ["seq", "total", "why"]
+    },
+    "rsFilewinEditor.overCap.notice": {
+      "kind": "error",
+      "zh": "这份有 {len} 字节，超过 {limit} 字节的上限，多了 {over} 字节，没有发出去。",
+      "args": ["len", "limit", "over"]
+    },
+    "rsFilewinUpload.ui.cancel": {
+      "kind": "action",
+      "zh": "取消",
+      "args": []
+    },
+    "rsFilewinUpload.ui.ok": {
+      "kind": "action",
+      "zh": "确定",
+      "args": []
+    },
+    "rsFilewinUpload.ui.paths": {
+      "kind": "control",
+      "zh": "本机路径，一行一个",
+      "args": []
+    },
+    "rsFilewinUpload.ui.title": {
+      "kind": "title",
+      "zh": "把本机的文件传到这个目录",
+      "args": []
+    },
+    "rsFilewinUpload.judge.noName": {
+      "kind": "error",
+      "zh": "{path} 取不到名字",
+      "args": ["path"]
+    },
+    "rsFilewinUpload.judge.notLocalFile": {
+      "kind": "error",
+      "zh": "{path} 不是本机上的一份文件",
+      "args": ["path"]
+    },
+    "rsFilewinUpload.judge.empty": {
+      "kind": "error",
+      "zh": "要传的文件是空的",
+      "args": []
+    },
+    "rsFilewinUpload.label.upload": {
+      "kind": "action",
+      "zh": "上传",
+      "args": []
+    },
+    "rsFilewinEntry.ask.unreadable": {
+      "kind": "error",
+      "zh": "后端的回答读不懂：{e}",
+      "args": ["e"]
+    },
+    "rsFilewinEntry.ask.badArgs": {
+      "kind": "error",
+      "zh": "请求的参数拼不出来：{e}",
+      "args": ["e"]
+    },
+    "rsFilewinEntry.legacy.failed": {
+      "kind": "error",
+      "zh": "老面板的书签搬不过来（旧书签还留在原处）：{e}",
+      "args": ["e"]
+    },
+    "rsFilewinEntry.legacy.noDataDir": {
+      "kind": "error",
+      "zh": "老面板的书签搬不过来：找不到本程序的数据目录。旧书签还留在原处。",
+      "args": []
+    },
+    "rsFilewinEntry.open.failed": {
+      "kind": "error",
+      "zh": "文件窗口没起来：{why}",
+      "args": ["why"]
+    },
+    "rsFilewinEntry.open.noHost": {
+      "kind": "error",
+      "zh": "文件窗口连不上后端（主程序那一侧没准备好）",
+      "args": []
+    },
+    "rsFilewinEntry.plan.noTarget": {
+      "kind": "error",
+      "zh": "{target} 看不出要高亮哪个文件",
+      "args": ["target"]
+    },
+    "rsFilewinCreate.ui.cancel": {
+      "kind": "action",
+      "zh": "取消",
+      "args": []
+    },
+    "rsFilewinCreate.ui.ok": {
+      "kind": "action",
+      "zh": "确定",
+      "args": []
+    },
+    "rsFilewinCreate.ui.sameDirOnly": {
+      "kind": "body",
+      "zh": "⚠ 只在这一个目录里，不许带 /。已有同名的就不建，不会盖掉它。",
+      "args": []
+    },
+    "rsFilewinCreate.confirm.noRuntime": {
+      "kind": "error",
+      "zh": "新建不了，请重开这个窗口",
+      "args": []
+    },
+    "rsFilewinCreate.heading.newFile": {
+      "kind": "body",
+      "zh": "在这个目录里新建一个空文件，叫：",
+      "args": []
+    },
+    "rsFilewinCreate.label.newFile": {
+      "kind": "action",
+      "zh": "新建空文件",
+      "args": []
+    },
+    "rsFilewinBigfile.paint.lineLen": {
+      "kind": "body",
+      "zh": "这一行共 {n} 字",
+      "args": ["n"]
+    },
+    "rsFilewinBigfile.notice.longest": {
+      "kind": "body",
+      "zh": "大文件模式：最长一行 {longestLine} 字节。只排屏幕上的几行，长行不换行，可横向滚动。",
+      "args": ["longestLine"]
+    },
+    "rsFilewinBigfile.notice.size": {
+      "kind": "body",
+      "zh": "大文件模式：全文 {size}。只排屏幕上的几行，长行不换行，可横向滚动。",
+      "args": ["size"]
+    },
+    "rsFilewinBigfile.notice.both": {
+      "kind": "body",
+      "zh": "大文件模式：全文 {size}，最长一行 {longestLine} 字节。只排屏幕上的几行，长行不换行，可横向滚动。",
+      "args": ["size", "longestLine"]
+    },
+    "rsFilewinDownload.judge.wrongState": {
+      "kind": "error",
+      "zh": "出错了，请重新选择保存位置",
+      "args": []
+    },
+    "rsFilewinDownload.plan.noName": {
+      "kind": "error",
+      "zh": "{path} 看起来是个目录，可这一行没有名字能接上去",
+      "args": ["path"]
+    },
+    "rsFilewinDownload.plan.empty": {
+      "kind": "error",
+      "zh": "要存到哪儿？保存位置是空的",
+      "args": []
+    },
+    "rsFilewinDownload.label.download": {
+      "kind": "action",
+      "zh": "下载",
+      "args": []
+    },
+    "rsFilewinRows.icon.warn": {
+      "kind": "body",
+      "zh": "⚠",
+      "args": []
+    },
+    "rsFilewinRows.icon.file": {
+      "kind": "body",
+      "zh": "📄",
+      "args": []
+    },
+    "rsFilewinRows.icon.dir": {
+      "kind": "body",
+      "zh": "📁",
+      "args": []
+    },
+    "rsFilewinRows.icon.symlink": {
+      "kind": "body",
+      "zh": "🔗",
+      "args": []
+    },
+    "rsFilewinFind.decodeFind.badHit": {
+      "kind": "error",
+      "zh": "第 {i} 条命中的格式不对：只认字符串或 b16 编码的对象",
+      "args": ["i"]
     }
   }
 }

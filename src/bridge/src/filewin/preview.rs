@@ -23,6 +23,7 @@
 //! - 图片 / 二进制预览（后端只有读文本那一条；说「不是文本」）。
 //! - 真远端上一趟的时延读数（判据挂的是合成后端）。
 
+use crate::copy_table::copy_text;
 use std::sync::{Arc, Mutex};
 
 use super::shell::{FileWindow, NO_LINE};
@@ -71,7 +72,7 @@ impl Default for Preview {
         Self {
             key: None,
             want: None,
-            view: View::Idle(PICK_ONE.into()),
+            view: View::Idle(PICK_ONE.to_string()),
             inflight: false,
             fired: 0,
             slot: Arc::new(Mutex::new(None)),
@@ -80,7 +81,8 @@ impl Default for Preview {
 }
 
 /// 什么都没选时那一句。
-pub const PICK_ONE: &str = "选中一个文件，这里显示它的内容";
+pub static PICK_ONE: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinPreview.pickOne.message", &[]));
 
 /// 每一行的起点（第 0 行从 0 起；`\n` 之后是下一行）。
 pub fn line_starts(text: &str) -> Vec<usize> {
@@ -113,11 +115,14 @@ impl Preview {
                         path,
                         text,
                     },
-                    Ok(None) => View::Said(format!(
-                        "{} 不是文本（含 NUL 字节、或不是 UTF-8），或者刚变大了，不预览",
-                        super::source::remote_basename(&path)
+                    Ok(None) => View::Said(copy_text(
+                        "rsFilewinPreview.follow.notText",
+                        &[("name", &(super::source::remote_basename(&path)).to_string())],
                     )),
-                    Err(why) => View::Said(format!("读不出来：{why}")),
+                    Err(why) => View::Said(copy_text(
+                        "rsFilewinPreview.follow.failed",
+                        &[("why", &why.to_string())],
+                    )),
                 };
             }
         }
@@ -139,31 +144,49 @@ impl Preview {
         let name = match picked {
             Ok(n) => n,
             Err(0) => {
-                self.view = View::Idle(PICK_ONE.into());
+                self.view = View::Idle(PICK_ONE.to_string());
                 return;
             }
             Err(n) => {
-                self.view = View::Idle(format!("选中了 {n} 项，预览只看一个文件"));
+                self.view = View::Idle(copy_text(
+                    "rsFilewinPreview.decide.many",
+                    &[("n", &n.to_string())],
+                ));
                 return;
             }
         };
         let Some(r) = pane.row_named(&name) else {
-            self.view = View::Idle(format!("列表里已经没有 {name} 了"));
+            self.view = View::Idle(copy_text(
+                "rsFilewinPreview.decide.gone",
+                &[("name", &name.to_string())],
+            ));
             return;
         };
         if r.is_dir {
-            self.view = View::Idle(format!("{name} 是一个目录"));
+            self.view = View::Idle(copy_text(
+                "rsFilewinPreview.decide.isDir",
+                &[("name", &name.to_string())],
+            ));
             return;
         }
         if r.lossy_name {
-            self.view = View::Idle(format!("{name} 的名字不是合法 UTF-8，读不到它"));
+            self.view = View::Idle(copy_text(
+                "rsFilewinPreview.decide.badName",
+                &[("name", &name.to_string())],
+            ));
             return;
         }
         if r.size > PREVIEW_MAX_BYTES {
-            self.view = View::Idle(format!(
-                "{name} 有 {}，预览只看 {} 以内的文件（可以点「编辑」打开）",
-                super::rows::human_size(r.size),
-                super::rows::human_size(PREVIEW_MAX_BYTES)
+            self.view = View::Idle(copy_text(
+                "rsFilewinPreview.decide.tooBig",
+                &[
+                    ("name", &name.to_string()),
+                    ("size", &(super::rows::human_size(r.size)).to_string()),
+                    (
+                        "limit",
+                        &(super::rows::human_size(PREVIEW_MAX_BYTES)).to_string(),
+                    ),
+                ],
             ));
             return;
         }
@@ -203,7 +226,7 @@ impl Preview {
 
     /// 画这块面板。
     pub fn ui(&self, ui: &mut egui::Ui) {
-        ui.strong("预览");
+        ui.strong(&copy_text("rsFilewinPreview.ui.title", &[]));
         match &self.view {
             View::Idle(s) | View::Said(s) => {
                 ui.label(s);
@@ -211,7 +234,10 @@ impl Preview {
             View::Loading(p) => {
                 ui.horizontal(|ui| {
                     ui.spinner();
-                    ui.label(format!("正在读 {}…", super::source::remote_basename(p)));
+                    ui.label(copy_text(
+                        "rsFilewinPreview.ui.reading",
+                        &[("name", &(super::source::remote_basename(p)).to_string())],
+                    ));
                 });
             }
             View::Text { path, text, starts } => {

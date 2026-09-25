@@ -1174,7 +1174,7 @@ impl FileWindow {
             ui.text_edit_singleline(&mut p.new_name);
             ui.label(&copy_text("rsFilewinShell.copyUi.sameDirOnly", &[]));
             ui.horizontal(|ui| {
-                if ui.button(super::copy::COPY_LABEL).clicked() {
+                if ui.button(super::copy::COPY_LABEL.as_str()).clicked() {
                     go = true;
                 }
                 if ui
@@ -2440,11 +2440,11 @@ impl FileWindow {
                 mkdir = true;
             }
             // 〔F7b〕「新建空文件」—— 同样不针对某一行，所以同样在工具栏（逻辑住 `create.rs`）。
-            if ui.button(super::create::NEW_FILE_LABEL).clicked() {
+            if ui.button(super::create::NEW_FILE_LABEL.as_str()).clicked() {
                 new_file = true;
             }
             // 〔F7c〕「上传」—— 选完走拖入那一条（`upload.rs` 头注）。
-            if ui.button(super::upload::UPLOAD_LABEL).clicked() {
+            if ui.button(super::upload::UPLOAD_LABEL.as_str()).clicked() {
                 self.upload.open();
             }
             // 🔴〔补齐五项〕「在此打开终端」—— 旧面板表头上那颗。

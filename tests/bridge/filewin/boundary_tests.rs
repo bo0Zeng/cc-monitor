@@ -339,6 +339,8 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("spawn_managed::spawn_managed_cmd", Kind::Spawn),
     ("ssh_source::RemoteConfig", Kind::Config),
     ("paths::resolve_monitor_data_dir", Kind::DataDir),
+    // 〔CP2b〕monitor 那一侧（entry.rs）的报错也从文案表取。
+    ("copy_table::copy_text", Kind::Copy),
 ];
 
 /// 一段生产代码 → `(函数名, 那一块)`。函数外的行归 `""`。

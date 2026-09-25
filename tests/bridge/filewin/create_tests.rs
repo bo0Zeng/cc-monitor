@@ -55,11 +55,12 @@ async fn clicking_the_toolbar_button_puts_up_the_box() {
     let ctx = egui::Context::default();
     let _ = frame_with_rects(&ctx, &mut w, Vec::new());
     let painted = frame_with_rects(&ctx, &mut w, Vec::new());
-    let at = crate::filewin::copy::testing::rects_of(&painted, NEW_FILE_LABEL);
+    let at = crate::filewin::copy::testing::rects_of(&painted, NEW_FILE_LABEL.as_str());
     assert_eq!(
         at.len(),
         1,
-        "工具栏上「{NEW_FILE_LABEL}」该恰好一颗：{painted:?}"
+        "工具栏上「{NEW_FILE_LABEL}」该恰好一颗：{painted:?}",
+        NEW_FILE_LABEL = NEW_FILE_LABEL.as_str()
     );
     assert!(w.new_file_prompt().is_none(), "还没点，框就摆出来了");
     let _ = frame_with_rects(
@@ -75,7 +76,7 @@ async fn clicking_the_toolbar_button_puts_up_the_box() {
     // 框真的画出来了（它是一个模态，画在这一帧上）。
     let painted = frame_text(&ctx, &mut w, Vec::new());
     assert!(
-        painted.iter().any(|t| t == NewFilePrompt::heading()),
+        painted.iter().any(|t| *t == NewFilePrompt::heading()),
         "框那一行提示没画出来：{painted:?}"
     );
     // 阴性对照：点「新建目录」摆的是另一个框，不是这一个（两颗按钮没接反）。
