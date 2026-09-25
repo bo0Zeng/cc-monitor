@@ -463,3 +463,68 @@ fn push_on_equals_the_codes_the_backend_gives_for_missing_or_old_bytes() {
     ours.sort();
     assert_eq!(ours, theirs, "「缺 / 旧 ⇒ 推」的码两边对不上");
 }
+
+/// 一段源码里第一个 `json!({ … })` 的键（`"k":` 那几处）。
+/// 调用方先把 `seg` 切到**那一次调用**为止（里面恰好一个 `json!({ … })`）。
+fn json_keys(seg: &str) -> Vec<String> {
+    let at = guard_core::find_pinned(seg, "json!({")
+        .unwrap_or_else(|e| panic!("那一次调用里的 json!({{ 不是恰好一处：{e}"));
+    let end = guard_core::find_pinned(seg, "})")
+        .unwrap_or_else(|e| panic!("那一次调用里的 }}) 不是恰好一处：{e}"));
+    let body = &seg[at..end];
+    let mut out = Vec::new();
+    let mut rest = body;
+    while let Some(i) = rest.find('"') {
+        rest = &rest[i + 1..];
+        let Some(j) = rest.find('"') else { break };
+        let (w, after) = (&rest[..j], &rest[j + 1..]);
+        if after.trim_start().starts_with(':') {
+            out.push(w.to_string());
+        }
+        rest = after;
+    }
+    out.sort();
+    out
+}
+
+/// ★〔RM1e〕删批注的 CAS 真的**上了线**：monitor 那扇门发 `files-delete` 时带的键 == 后端 `MANAGE_COMMANDS`
+/// 里 `files-delete` 声明的参数 − `recursive`（门只删一份文件，从不删整棵树）。
+///
+/// 异源：一侧读 `user_files.rs` 生产段（`BackendDoor::delete` 那一处 `.ask`），一侧读后端 `files_write.rs`。
+/// 门上漏发 `expect`（CAS 在线上就没了，替身门照样绿）⇒ 这里红；后端再加一个参数 ⇒ 这里红、逼人看一眼。
+#[test]
+fn the_door_sends_expect_with_every_delete() {
+    let root = crate::guard_support::repo_src_root();
+    let door = guard_core::production_code(
+        &std::fs::read_to_string(root.join("bridge/src/user_files.rs")).expect("读门"),
+    );
+    let at = guard_core::find_pinned(&door, "\"files-delete\",")
+        .unwrap_or_else(|e| panic!("门上 files-delete 那一问不是恰好一处：{e}"));
+    let call = &door[at..];
+    let call = &call[..call
+        .lines()
+        .take_while(|l| !l.contains(".await"))
+        .map(|l| l.len() + 1)
+        .sum::<usize>()];
+    let ours = json_keys(call);
+    let back = guard_core::production_code(
+        &std::fs::read_to_string(root.join("backend/control/files_write.rs")).expect("读后端写面"),
+    );
+    let at = guard_core::find_pinned(&back, "name: \"files-delete\",")
+        .unwrap_or_else(|e| panic!("后端写面 files-delete 那一条不是恰好一处：{e}"));
+    let line = back[at..]
+        .lines()
+        .map(str::trim_start)
+        .find(|l| l.starts_with("args: &["))
+        .expect("那一条没有 args");
+    let mut theirs: Vec<String> = line
+        .split('"')
+        .skip(1)
+        .step_by(2)
+        .filter(|a| *a != "recursive")
+        .map(str::to_string)
+        .collect();
+    theirs.sort();
+    assert!(theirs.len() >= 3, "后端那一侧只抽到 {theirs:?} —— 抽取坏了");
+    assert_eq!(ours, theirs, "门发 files-delete 的键与后端声明的对不上");
+}
