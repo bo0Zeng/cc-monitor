@@ -73,6 +73,39 @@ pub const CLOSE_TAB_LABEL: &str = "×";
 /// 后台标签手上有事等你（有一问摆着 / 有活在跑）时，标签名前那个记号。
 pub const BUSY_MARK: &str = "● ";
 
+/// 〔W5-FILES · `设计/60 §6.2`〕标签页快捷键想干什么。**只是意图**，做不做由 [`Workspace::apply_tab_keys`] 过闸。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TabKey {
+    /// Ctrl+T（macOS ⌘T）＝ 焦点那一栏的「＋」。
+    New,
+    /// Ctrl+W（macOS ⌘W）＝ 焦点那一栏当前标签的「×」（关的是标签页，不是窗口）。
+    Close,
+}
+
+/// 这一帧的事件 → 标签页快捷键（按到达顺序，只认按下）。
+///
+/// ⚠ 与 `select::intents` 分住两处是**归属**，不是风格：列表的键归那个目录视图，标签页归工作区
+/// （一个目录视图不知道自己在哪一栏、有几个兄弟）。两张键位表不相交（`select` 那张里带 Ctrl 的只有 Ctrl+A），
+/// Ctrl 按着时 egui-winit 不发 `Text` ⇒ 也不会同时触发打字跳转。
+pub fn tab_keys(events: &[egui::Event]) -> Vec<TabKey> {
+    events
+        .iter()
+        .filter_map(|ev| match ev {
+            egui::Event::Key {
+                key,
+                pressed: true,
+                modifiers: m,
+                ..
+            } if m.command && !m.shift && !m.alt => match key {
+                egui::Key::T => Some(TabKey::New),
+                egui::Key::W => Some(TabKey::Close),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect()
+}
+
 impl Workspace {
     /// 从开窗那一个标签页起步（它身上已经挂好了通道 · 运行时 · 书签 · 字体）。
     pub fn new(first: FileWindow) -> Self {
@@ -274,6 +307,31 @@ impl Workspace {
         true
     }
 
+    /// 〔W5-FILES〕这一帧的 Ctrl+T / Ctrl+W。回值 ＝ 认出了几件（做不了的那几形由 `open_tab` / `close_tab` 出声）。
+    ///
+    /// 🔴 **闸与列表同一道**：焦点那一栏当前那个标签的 `keys_blocked`（`设计/60 §6.3` 四道闸 ——
+    /// 模态框 · 右键菜单 · 搜索命中那一摞 · 控件拿着键盘焦点）。不另立一道：分成两份的症状是
+    /// 「框开着，按 Ctrl+W 把框底下那个标签关了」。
+    pub fn apply_tab_keys(&mut self, ctx: &egui::Context) -> usize {
+        if self.pane_on(self.focus).keys_blocked(ctx) {
+            return 0;
+        }
+        let keys = ctx.input(|i| tab_keys(&i.events));
+        for k in &keys {
+            let side = self.focus;
+            match k {
+                TabKey::New => {
+                    self.open_tab(side);
+                }
+                TabKey::Close => {
+                    let i = self.active_on(side);
+                    self.close_tab(side, i);
+                }
+            }
+        }
+        keys.len()
+    }
+
     /// 开 / 关预览。关 ＝ 整块状态扔掉（在飞的那一趟回来没人收，无害）。
     pub fn set_preview(&mut self, on: bool) {
         self.preview = on.then(super::preview::Preview::default);
@@ -336,6 +394,9 @@ impl Workspace {
 
     /// 🔴 **每一帧的正文**（`eframe::App::ui` 只剩一句委派，判据直接喂它 —— 同 `FileWindow::frame_body`）。
     pub fn frame(&mut self, ui: &mut egui::Ui) {
+        // ── 〔W5-FILES〕标签页快捷键：先于两栏的正文（那里才是列表接键盘的地方）──
+        let ctx = ui.ctx().clone();
+        self.apply_tab_keys(&ctx);
         // ── 工具条：双栏 · 预览 · 复制到另一栏 ──
         let mut split: Option<bool> = None;
         let mut preview: Option<bool> = None;
