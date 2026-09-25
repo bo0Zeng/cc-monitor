@@ -413,6 +413,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-home",
         // 〔`C1` · 09-24〕只读查询面八条：全做文件 I/O（`history-search` 扫全库）。
         "history-projects",
+        "history-index",
+        "history-user-inputs",
         "history-read",
         "history-search",
         "history-sessions",
@@ -464,6 +466,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-read-text",
         "files-home",
         "history-projects",
+        "history-index",
+        "history-user-inputs",
         "history-read",
         "history-search",
         "history-sessions",

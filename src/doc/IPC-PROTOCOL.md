@@ -1505,6 +1505,39 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 
 客户端先读 `[split_at, end)`（最新 N 行）再读 `[0, split_at)`（回填），都走 `history-read` 带 `until`；与 `--read-session-tail` 一趟印出的两段**逐字节相同**（扫的是同一个函数）。
 
+#### `history-index`：会话骨架索引（〔SR1a〕2026-09-24 上帧面）
+
+```text
+→ {"id":"q9","cmd":"history-index","args":{"path":"/home/u/.claude/projects/-p/s.jsonl","offset":0}}
+← {"kind":"reply","id":"q9","ok":true,"data":{"lines":["{\"kind\":\"session_index\",\"v\":1,\"from\":0}","{\"o\":0,\"n\":812,…}","…","{\"kind\":\"session_index_end\",\"count\":1200,\"end\":5120088}"]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `path` | → | jsonl 路径（围栏同 `history-read`） |
+| `offset` | → | 从哪个字节起（缺省 0；续传带上次尾行的 `end`） |
+| `until` | → | 可选：只收起点 `< until` 的行 |
+| `lines` | ← | 与 `--read-session-from-offset --index` 的 stdout **逐行相同**（三段：头 · 每个可计行一行 · 尾；形状见 §10.3）—— 同一个函数的两个宿主 |
+
+**为什么上帧面**：它是**每开一个大会话就要一次**的查询（骨架），此前在远端走逐次拨号（`frame_query::STILL_DIALED` 那一行）。
+整份超过 32 MiB ⇒ `too_large`（不截断）；没有尾行这件事照 §10.3 的口径判「截断」。
+
+#### `history-user-inputs`：「你说过的话」清单（〔SR1a〕2026-09-24 上帧面）
+
+```text
+→ {"id":"q10","cmd":"history-user-inputs","args":{"path":"/home/u/.claude/projects/-p/s.jsonl","from":0}}
+← {"kind":"reply","id":"q10","ok":true,"data":{"lines":["{\"kind\":\"user_inputs\",\"v\":1,\"from\":0}","{\"uuid\":…,\"timestamp\":…,\"excerpt\":…}","{\"kind\":\"user_inputs_end\",\"count\":1,\"end\":5120088}"]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `path` | → | jsonl 路径（围栏同 `history-read`） |
+| `from` | → | 增量起点（缺省 0；传上次尾行的 `end`）。超过文件长度 ⇒ `failed`（文件被截断或重写过） |
+| `lines` | ← | 与 `--list-user-inputs` 的 stdout **逐行相同**（三段，口径见 §10.4）—— 同一个函数的两个宿主 |
+
+**为什么上帧面**：大纲同样是每开一个会话就要一次（此前远端走逐次拨号）。⚠ CLI 面随之自动多两条
+`--history-index` / `--history-user-inputs`（从 `REGISTRY` 派生，stdin 一段 JSON ＝ `args`，stdout 一行 JSON ＝ `data`）。
+
 #### `resolve`：一次性 exec 与流命令**并存**（U6b-3）
 
 ```text

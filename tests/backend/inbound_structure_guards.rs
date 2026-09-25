@@ -157,6 +157,8 @@ fn every_registered_command_declares_its_run_kind() {
                 // 〔`C1` · 09-24〕只读查询面八条同为阻塞档：全做文件 I/O，
                 // `history-search` 扫全库、`history-tail` 扫整份会话 —— 不许占 tokio worker。
                 | "history-projects"
+                | "history-index"
+                | "history-user-inputs"
                 | "history-read"
                 | "history-search"
                 | "history-sessions"
@@ -224,6 +226,8 @@ fn every_registered_command_declares_its_run_kind() {
         "files-read-text",
         "files-home",
         "history-projects",
+        "history-index",
+        "history-user-inputs",
         "history-read",
         "history-search",
         "history-sessions",

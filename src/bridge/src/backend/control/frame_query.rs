@@ -29,7 +29,7 @@ use crate::origin::Origin;
 use serde_json::{json, Value};
 use std::time::Duration;
 
-/// 题面那八条：CLI 子命令 → 帧命令。**判据的一侧**（另一侧从后端源码数，见测试）。
+/// 题面那八条 ＋〔SR1a〕两条：CLI 子命令 → 帧命令。**判据的一侧**（另一侧从后端源码数，见测试）。
 /// 生产段不读它 —— 它是判据的一侧（与 `inbound::CommandSpec` 那几栏同理），故精确 allow。
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) const MOVED: &[(&str, &str)] = &[
@@ -41,6 +41,11 @@ pub(crate) const MOVED: &[(&str, &str)] = &[
     ("--list-subagents", "history-subagents"),
     ("--list-accounts", "accounts-list"),
     ("--session-accounts", "accounts-sessions"),
+    // 〔SR1a · 09-24〕骨架索引与大纲清单：每开一个大会话就要一次（不是「点一次才发一次」）。
+    //   `--read-session-from-offset` 的另一形（`--until`，按区间取正文）早就走 `history-read` ——
+    //   两形都上了帧面，这个子命令从此一条拨号都不剩。
+    ("--read-session-from-offset", "history-index"),
+    ("--list-user-inputs", "history-user-inputs"),
 ];
 
 /// 仍然逐次拨号的一次性查询 —— `(子命令, 为什么今天还拨)`。**只有它们**过得了拨号那条路。
@@ -50,17 +55,9 @@ pub(crate) const STILL_DIALED: &[(&str, &str)] = &[
         "换号前的信任预检：不在题面八条里；用户点一次换号才发一次，不在任何轮询上",
     ),
     ("--account-trust-zero", "同上一行（账号 0 那一形）"),
-    (
-        "--read-session-from-offset",
-        "只剩 `--index` 那一形（会话骨架索引）：不在题面八条里、帧面没有对应命令。\
-         同一个子命令的 `--until` 那一形（按区间取正文）已经走 `history-read`，不在这里拨",
-    ),
-    (
-        "--list-user-inputs",
-        "〔C2 · 补第二波的集成缝〕会话大纲（SE1）：与本表同波落地，既不在题面八条里、帧面也没有对应命令 \
-         ⇒ 此前在这里被当场拒，远端大纲**每次**都拿到「这是本程序的 bug」。上帧面要加一条帧命令 \
-         （= 后端子命令面 ＋1，要 bump），另拍；今天先让它照旧拨",
-    ),
+    // 〔SR1a · 09-24〕`--read-session-from-offset`（`--index` 那一形）与 `--list-user-inputs` 两行**摘了**：
+    //   上了帧面（`history-index` / `history-user-inputs`，见 [`MOVED`]）。拨号 = 经本机常驻后端开一条 capture 链路，
+    //   同一台远端已经有长流时不再握手；但查询本身仍是一次性进程 —— 能走帧面的就走帧面。
 ];
 
 /// 拨号那条路放不放行这条子命令（`args` 的第一个 token）。
@@ -270,6 +267,22 @@ pub(crate) fn route_argv(argv: &[&str]) -> Option<ArgvRoute> {
             json!({"parent": parent}),
         )),
         ["--list-accounts"] => Some(ArgvRoute::Lines("accounts-list", json!({}))),
+        // 〔SR1a〕`session_skeleton::index_argv` 那一形（选项在前）。
+        ["--read-session-from-offset", "--index", path, off] => {
+            let off = off.parse::<u64>().ok()?;
+            Some(ArgvRoute::Lines(
+                "history-index",
+                json!({"path": path, "offset": off}),
+            ))
+        }
+        // 〔SR1a〕`session_outline::user_inputs_argv` 那一形（选项在前）。
+        ["--list-user-inputs", "--from", from, path] => {
+            let from = from.parse::<u64>().ok()?;
+            Some(ArgvRoute::Lines(
+                "history-user-inputs",
+                json!({"path": path, "from": from}),
+            ))
+        }
         ["--session-accounts"] => Some(ArgvRoute::Lines("accounts-sessions", json!({}))),
         ["--read-session", path] => Some(ArgvRoute::Read {
             path: path.to_string(),

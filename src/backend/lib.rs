@@ -539,12 +539,16 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--files-read-text",
     "--fork-session",
     // 〔`C1`〕同上一段：`history-*` 六条帧命令的 CLI 面。
+    // 〔SR1a〕+2：`history-index` / `history-user-inputs`（骨架索引与大纲清单上帧面）的 CLI 面，
+    //   登记理由同上 —— `is_query_mode` 那道闸门读本表。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--history-index",
     "--history-projects",
     "--history-read",
     "--history-search",
     "--history-sessions",
     "--history-subagents",
     "--history-tail",
+    "--history-user-inputs",
     "--kill",
     "--launch",
     "--list-accounts",
