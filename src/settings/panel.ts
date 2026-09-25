@@ -275,7 +275,7 @@ export class SettingsPanel {
   >();
   /** 当前编辑中的 theme（实时预览用） */
   private current: ThemeConfig = {};
-  /** 打开时的 theme 快照，取消时回滚 */
+  /** 盘上那一份（打开时读的，〔ST2 · 步 9〕之后每次落盘跟着更新）—— 判「还有没落的那一格」用。 */
   private original: ThemeConfig = {};
   private inputs = new Map<
     keyof ThemeConfig,
@@ -330,8 +330,8 @@ export class SettingsPanel {
    * （`01 §1.3` 那个「重新打开」事件，这里用窗口自己的 focus 事件代替，不动后端那条命令）。
    */
   private hiddenByUs = false;
-  /** ST1「未保存关窗拦截」（`70 §6` #1）：有没保存的改动时拦在关窗前的那一条。 */
-  private closeGuard!: HTMLElement;
+  // 〔ST2 · 第二刀 步 9〕原来这里有一格 `closeGuard`（ST1「未保存关窗拦截」那一条）。全即时之后没有「未保存」
+  //   这回事了，那一条随混合保存模型一起退场（关窗前还没落的那一格由 `requestClose` 顺手落掉）。
 
   // issue #5: 快捷键编辑器（lazy 构造，首次打开时建 DOM）
   private kbEditor?: KeybindingsEditor;
@@ -349,7 +349,8 @@ export class SettingsPanel {
 
   /** dispatcher overlay 接口 */
   handleEsc(): void {
-    if (this.isOpen) this.cancel();
+    // 〔第四波 ST2 · `70 §6` #2 · 第二刀 步 9〕全即时之后没有「取消 = 回滚」这回事：Esc 与 X 同一条路。
+    if (this.isOpen) this.requestClose();
   }
 
   /**
@@ -583,7 +584,12 @@ export class SettingsPanel {
     }
   }
 
-  /** 外观（主题）或 Claude 数据目录有没保存的改动 —— 其余各块都是即时写，没有「未保存」这回事。 */
+  /**
+   * 〔第四波 ST2 · `70 §6` #2 · 第二刀 步 9〕**还有没落盘的那一格没有。**
+   *
+   * 全即时之后每一格改了就落（外观：`change`；Claude 数据目录：`change`）。剩下的只有一个窗口：
+   * 输入框里改了、焦点还没离开（`change` 还没触发）就关窗 —— 那一格由 `requestClose` 顺手落掉。
+   */
   isDirty(): boolean {
     const norm = (t: ThemeConfig): string =>
       JSON.stringify(
@@ -598,21 +604,32 @@ export class SettingsPanel {
   }
 
   /**
-   * ST1「未保存关窗拦截」（`70 §6` #1 · `§8` #7）：系统 X 与页头 × 都走这里。
-   * 没改动 ⇒ 直接关；有改动 ⇒ 亮出那一条（保存并关闭 / 丢弃改动 / 继续编辑），**不静默丢**。
-   * 「取消」与 Esc 不走这里 —— 那两个本来就是明说的「丢弃并关闭」（`§6` #1 原文：它们会回滚）。
+   * 系统 X、页头 ×、Esc 都走这里。
+   *
+   * 🔴 〔ST2 · 第二刀 步 9〕原来有改动时亮一条「保存并关闭 / 丢弃改动 / 继续编辑」（ST1 · `§6` #1）——
+   *   那一条存在的前提是「外观要点保存」的混合模型（`§6` #2 逐字：「预览了没保存」就是 #1 的温床）。
+   *   全即时之后那个温床没了 ⇒ 拦截条退场；**不静默丢**这一格由「关之前顺手落掉」兑现。
    */
   requestClose(): void {
     if (!this.isDirty()) {
       this.close();
       return;
     }
-    // 显隐只走类（`.settings-banner` 自带 `display:none`，再用 `hidden` 切会撞 S30 ⑦）。
-    this.closeGuard.classList.add("settings-banner-show");
+    void this.flushPending()
+      .then(() => {
+        if (this.isOpen) this.close();
+      })
+      .catch((e: unknown) => {
+        // 落不下就不关：窗口留着、说出原因，用户的改动还在输入框里。
+        this.banner.textContent = `保存失败：${String(e)}`;
+        this.banner.classList.add("settings-banner-show");
+      });
   }
 
-  private hideCloseGuard(): void {
-    this.closeGuard.classList.remove("settings-banner-show");
+  /** 把还没触发 `change` 的那一格落掉（外观 ＋ Claude 数据目录，各自只在真的改了时写）。 */
+  private async flushPending(): Promise<void> {
+    await this.persistTheme();
+    await this.persistClaudeDir();
   }
 
   close(): void {
@@ -623,7 +640,6 @@ export class SettingsPanel {
     const active = document.activeElement;
     if (active instanceof HTMLElement && this.el.contains(active))
       active.blur();
-    this.hideCloseGuard();
     // 窗口模式：ST1「关窗改隐藏」—— 关闭 ＝ 把窗口藏起来（`01 §1.3`），面板状态照非窗口模式那样收好，
     // 下一次 show 出来由 focus 那一路重跑 `open()`（见 `installWindowLifecycle`）。
     if (this.windowMode) {
@@ -648,37 +664,44 @@ export class SettingsPanel {
     dispatcher.popOverlay(this);
   }
 
-  private cancel(): void {
-    applyTheme(this.original);
-    this.close();
-  }
-
   /** F82a：窗口模式下广播「设置已应用」，主窗口 listen 后重读并 applyTheme/applyBehavior。
    *  非窗口模式（主窗口内浮层）走 applyTheme/onBehaviorChange 同窗直接生效，无需广播。 */
   private broadcastApplied(): void {
     if (this.windowMode) void emit(SETTINGS_APPLIED_EVENT);
   }
 
-  private async save(): Promise<void> {
+  /**
+   * 〔ST2 · 第二刀 步 9〕外观改了就落：`input` 只做实时预览（拖取色器 ~60Hz，不逐帧写盘），
+   * `change`（松手 / 失焦 / 选中）才调这里。没变就不写。
+   */
+  private async persistTheme(): Promise<void> {
+    if (JSON.stringify(this.current) === JSON.stringify(this.original)) return;
     await saveTheme(this.current);
     this.original = { ...this.current };
     this.broadcastApplied(); // 主窗口重读主题并应用
+  }
 
-    // claudeDir：与 theme 字段独立保存。变了就提示重启
+  /**
+   * 〔ST2 · 第二刀 步 9〕Claude 数据目录改了就落（输入框 `change` / 浏览… / 重置）。
+   * 它要重启才生效 ⇒ 照旧给常驻条供货（E62）＋ 当场一条 banner。
+   */
+  private async persistClaudeDir(): Promise<void> {
     const nextDir = this.claudeDirInput.value.trim();
-    const dirChanged = nextDir !== this.claudeDirOriginal;
-    if (dirChanged) {
-      await setClaudeDirOverride(nextDir === "" ? null : nextDir);
-      this.claudeDirOriginal = nextDir;
-      // E62：给 S7 那条常驻条**供货**。这里的 banner 是一次性的（关窗即没），
-      // 而「还没生效」是个会一直为真到重启为止的状态 —— 两者不是一回事，都要有。
-      markRestartNeeded("Claude 数据目录");
-      this.banner.textContent =
-        "Claude 数据目录已更新 —— 需要重启 monitor 才能生效";
-      this.banner.classList.add("settings-banner-show");
-      return; // 不关面板，让用户看到提示
-    }
-    this.close();
+    if (nextDir === this.claudeDirOriginal) return;
+    await setClaudeDirOverride(nextDir === "" ? null : nextDir);
+    this.claudeDirOriginal = nextDir;
+    // E62：给 S7 那条常驻条**供货**。这里的 banner 是一次性的（关窗即没），
+    // 而「还没生效」是个会一直为真到重启为止的状态 —— 两者不是一回事，都要有。
+    markRestartNeeded("Claude 数据目录");
+    this.banner.textContent =
+      "Claude 数据目录已更新 —— 需要重启 monitor 才能生效";
+    this.banner.classList.add("settings-banner-show");
+  }
+
+  /** 落盘失败时说出来（全即时的每一格都走它，不许静默吞）。 */
+  private reportSaveFailure(what: string, e: unknown): void {
+    this.banner.textContent = `${what}没存下：${String(e)}`;
+    this.banner.classList.add("settings-banner-show");
   }
 
   private async resetAll(): Promise<void> {
@@ -704,6 +727,10 @@ export class SettingsPanel {
       });
       if (typeof selected === "string" && selected) {
         this.claudeDirInput.value = selected;
+        // 〔ST2 · 步 9〕选完就落（全即时）。
+        await this.persistClaudeDir().catch((e: unknown) =>
+          this.reportSaveFailure("Claude 数据目录", e),
+        );
       }
     } catch (e) {
       console.warn("dialog open failed:", e);
@@ -712,6 +739,10 @@ export class SettingsPanel {
 
   private resetClaudeDir(): void {
     this.claudeDirInput.value = "";
+    // 〔ST2 · 步 9〕重置也是改了就落。
+    void this.persistClaudeDir().catch((e: unknown) =>
+      this.reportSaveFailure("Claude 数据目录", e),
+    );
   }
 
   // === DOM 构建 ===
@@ -721,7 +752,6 @@ export class SettingsPanel {
     root.className = "settings-panel";
 
     root.appendChild(this.buildHeader());
-    root.appendChild(this.buildCloseGuard());
     // 🔴 P12：「配置里有 app 不认识的键」常驻条。**放在最上面、任何一页之前** ——
     // 它说的是「你写下的某个设置根本没生效」，比面板里任何一格都更该先被看见。
     // 同 S7 那条：它是状态不是事件，所以不属于任何一页，也刻意没有关闭按钮。
@@ -731,33 +761,11 @@ export class SettingsPanel {
     // 不是某一页的事（改远端配置和改诊断开关都会点亮它），所以不属于任何一页。
     // 空时整块不渲染；**刻意没有关闭按钮**（见 restart-notice.ts 头注）。
     root.appendChild(createRestartBar());
-    root.appendChild(this.buildFooter());
+    // 🔴 〔ST2 · `70 §6` #2 · 第二刀 步 9〕页脚（恢复默认 / 取消 / 保存）退场：**保存模型统一成全即时**。
+    //   原来外观要点「保存」才落、行为开关与各块自己即时写，界面上长得一样（`§6` #2 的病）。
+    //   「恢复默认」是外观的事，挪进「外观」子页；「取消」「保存」没了（改了就是改了）。
 
     return root;
-  }
-
-  /** ST1「未保存关窗拦截」那一条。平时藏着；`requestClose()` 发现有改动才亮。 */
-  private buildCloseGuard(): HTMLElement {
-    const bar = document.createElement("div");
-    bar.className = "settings-banner";
-    bar.dataset.closeGuard = "unsaved";
-    bar.append("外观或 Claude 数据目录有改动还没保存。");
-    const saveBtn = this.makeBtn("保存并关闭", "primary", () => {
-      void this.save()
-        .then(() => {
-          if (this.isOpen) this.close();
-        })
-        .catch((e: unknown) => {
-          this.hideCloseGuard();
-          this.banner.textContent = `保存失败：${String(e)}`;
-          this.banner.classList.add("settings-banner-show");
-        });
-    });
-    const dropBtn = this.makeBtn("丢弃改动", "secondary", () => this.cancel());
-    const stayBtn = this.makeBtn("继续编辑", "secondary", () => this.hideCloseGuard());
-    bar.append(saveBtn, dropBtn, stayBtn);
-    this.closeGuard = bar;
-    return bar;
   }
 
   private buildHeader(): HTMLElement {
@@ -890,6 +898,13 @@ export class SettingsPanel {
         FIELDS.filter((f) => f.group === "color"),
       ),
     );
+    // 〔ST2 · 步 9〕原页脚的「恢复默认」：它只管外观，搬到外观这一页。
+    const resetRow = document.createElement("div");
+    resetRow.className = "settings-row settings-row-end";
+    resetRow.appendChild(
+      this.makeBtn("恢复外观默认", "secondary", () => void this.resetAll()),
+    );
+    appearancePage.appendChild(resetRow);
     router.addRoute({
       ...APP_SUBPAGES.appearance,
       element: appearancePage,
@@ -1524,6 +1539,12 @@ export class SettingsPanel {
     this.claudeDirInput.type = "text";
     this.claudeDirInput.className = "settings-input settings-input-wide";
     this.claudeDirInput.placeholder = "默认：~/.claude  或  $CLAUDE_CONFIG_DIR";
+    // 〔ST2 · 步 9〕全即时：失焦 / 回车（`change`）就落。逐键写盘没意义（路径没打完是个半截串）。
+    this.claudeDirInput.addEventListener("change", () => {
+      void this.persistClaudeDir().catch((e: unknown) =>
+        this.reportSaveFailure("Claude 数据目录", e),
+      );
+    });
     row1.appendChild(this.claudeDirInput);
     group.appendChild(row1);
 
@@ -1708,6 +1729,8 @@ export class SettingsPanel {
     delete this.current[f.key];
     applyThemeToken(f.key, undefined);
     this.syncOneInput(f);
+    // 〔ST2 · 步 9〕单项恢复默认也是改了就落。
+    void this.persistTheme().catch((e: unknown) => this.reportSaveFailure("外观", e));
   }
 
   /** 把单个 token 当前值（如果覆盖了）或 :root 计算值写到对应 input */
@@ -1735,6 +1758,11 @@ export class SettingsPanel {
     }
   }
 
+  /** 〔ST2 · 步 9〕外观那一格落盘（失败说出来，不静默吞）。 */
+  private commitTheme(): void {
+    void this.persistTheme().catch((e: unknown) => this.reportSaveFailure("外观", e));
+  }
+
   private buildControl(f: FieldSpec): HTMLInputElement | HTMLSelectElement {
     if (f.type === "font-base" || f.type === "font-mono") {
       const sel = document.createElement("select");
@@ -1749,25 +1777,22 @@ export class SettingsPanel {
         if (p.value) opt.style.fontFamily = p.value;
         sel.appendChild(opt);
       }
-      sel.addEventListener("change", () => this.onFieldChange(f, sel));
+      sel.addEventListener("change", () => {
+        this.onFieldChange(f, sel);
+        this.commitTheme();
+      });
       return sel;
     }
     const input = document.createElement("input");
     input.type = f.type; // color / number / text
     input.className = "settings-input";
+    // 〔ST2 · 步 9〕`input` 只预览（拖取色器 ~60Hz，不逐帧写盘）；`change`（松手 / 失焦 / 回车）才落。
     input.addEventListener("input", () => this.onFieldChange(f, input));
+    input.addEventListener("change", () => {
+      this.onFieldChange(f, input);
+      this.commitTheme();
+    });
     return input;
-  }
-
-  private buildFooter(): HTMLElement {
-    const footer = document.createElement("div");
-    footer.className = "settings-footer";
-    footer.appendChild(
-      this.makeBtn("恢复默认", "secondary", () => this.resetAll()),
-    );
-    footer.appendChild(this.makeBtn("取消", "secondary", () => this.cancel()));
-    footer.appendChild(this.makeBtn("保存", "primary", () => this.save()));
-    return footer;
   }
 
   private makeBtn(

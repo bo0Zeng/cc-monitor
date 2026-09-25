@@ -216,6 +216,13 @@ const KNOWN_DEAD: readonly { name: string; why: string }[] = [
       "（同一把 bundle 尺子对活类 `paste-block-copy` 读出 1，所以它不是一把永远说 0 的坏尺子）。" +
       "⇒ 真死规则，交给 `src/styles.css` 的所有者删。删完把本条一起删掉。",
   },
+  {
+    name: "settings-footer",
+    why:
+      "〔第四波 ST2 · `设计/70 §6` #2 · 第二刀 步 9〕设置面板保存模型统一成全即时，页脚（恢复默认 / 取消 / 保存）退场，" +
+      "`panel.ts` 不再建它；「恢复默认」挪进「外观」子页。`src/styles/settings.css` 里 `.settings-footer` 那条规则随之成了死规则 ——" +
+      "那份 CSS 不在 ST2 的写区，交主会话合并时删；删完把本条一起删掉。",
+  },
 ];
 
 /**
