@@ -410,7 +410,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     let (tx, _rx) = mpsc::channel::<Frame>(4);
     let running: Running = Arc::new(Mutex::new(HashMap::new()));
     let links = crate::dial::link::Table::new(tx.clone());
-    let d = |cmd: &str| dispatch(req("x", cmd), &tx, &running, &links);
+    let xfers = crate::control::transfer::Desk::new(tx.clone());
+    let d = |cmd: &str| dispatch(req("x", cmd), &tx, &running, &links, &xfers);
 
     // `launch` 起进程、同步阻塞 ⇒ 必须是 SpawnBlocking（不占 tokio worker + 不可取消）。
     assert!(
@@ -496,6 +497,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "history-user-inputs",
         "history-find",
         "history-read",
+        "history-record", // 〔U4b〕
         "history-search",
         "history-sessions",
         "history-subagents",
@@ -571,6 +573,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "history-user-inputs",
         "history-find",
         "history-read",
+        "history-record", // 〔U4b〕
         "history-search",
         "history-sessions",
         "history-subagents",
@@ -593,6 +596,11 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-delete-session",
         // 〔AS1 · 第四波 4B〕MCP 同步的判定，阻塞档。
         "mcp-sync-plan",
+        // 〔SR1b〕传输四条：硬臂，就地记账（起跑那一下只 `spawn`、不 await）⇒ 不阻塞。
+        "transfer-upload",
+        "transfer-download",
+        "transfer-start",
+        "transfer-stop",
     ];
     let missing: Vec<&&str> = COMMANDS.iter().filter(|c| !covered.contains(c)).collect();
     assert!(
@@ -624,6 +632,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
     let (tx, _rx) = mpsc::channel::<Frame>(4);
     let running: Running = Arc::new(Mutex::new(HashMap::new()));
     let links = crate::dial::link::Table::new(tx.clone());
+    let xfers = crate::control::transfer::Desk::new(tx.clone());
     assert!(
         REGISTRY.len() >= 4,
         "注册表只有 {} 条 —— 本条在空转",
@@ -634,7 +643,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
         .map(|spec| spec.name)
         .filter(|name| {
             matches!(
-                dispatch(req("x", name), &tx, &running, &links),
+                dispatch(req("x", name), &tx, &running, &links, &xfers),
                 Disposition::Reply(Frame::Reply { code: Some(ref c), .. })
                     if c == "unknown_command"
             )
@@ -651,7 +660,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
     // ★ 反向自检：这把尺子真的会说「够不到」—— 不然上面那一批是空真。
     assert!(
         matches!(
-            dispatch(req("x", "no-such-command-kr104"), &tx, &running, &links),
+            dispatch(req("x", "no-such-command-kr104"), &tx, &running, &links, &xfers),
             Disposition::Reply(Frame::Reply { code: Some(ref c), .. }) if c == "unknown_command"
         ),
         "喂一个根本不存在的命令进去，本条居然认为它够得到 —— 那上面那一批证不了任何事"
@@ -684,11 +693,13 @@ async fn cancelling_a_blocking_command_says_not_cancellable_instead_of_lying() {
 
     // 对它发 cancel。
     let links = crate::dial::link::Table::new(tx.clone());
+    let xfers = crate::control::transfer::Desk::new(tx.clone());
     handle_line(
         br#"{"id":"c1","cmd":"cancel","args":{"target":"blk"}}"#,
         &tx,
         &running,
         &links,
+        &xfers,
     )
     .await;
 

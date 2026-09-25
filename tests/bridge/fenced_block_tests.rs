@@ -523,7 +523,7 @@ fn the_write_rule_has_exactly_one_home() {
             }
         }
     }
-    // `sftp.rs` 另有两条**部署**路（后端二进制 / cc-acct-iso）走 `verify_uploaded_bytes`，
+    // `sftp.rs` 另有两条**部署**路（后端二进制 / cc-acct-iso）走 `verify_readback`（〔SR1b〕读回比对的判定），
     // 那是按字节比的另一件事、不在本条人群里 ⇒ 只扫别名 / rc 那一段。
     let sftp = read("sftp.rs");
     let from = guard_core::find_pinned(&sftp, "pub(crate) const CCM_PROFILE_BEGIN")

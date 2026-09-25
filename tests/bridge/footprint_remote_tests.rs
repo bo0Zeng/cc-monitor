@@ -1,3 +1,10 @@
+//! # 要求住址：`设计/70 §6.1`（远端机器页的「足迹」栏在远端真去查，查不了说「未确定」不说「缺」）
+//!
+//! 核原文：`设计/70 §6.1` 逐字「**远端也有真栏**：后端加 per-origin 的足迹读口，这一栏在远端真去查」，红线逐字
+//! 「② 查不了的显示成「未确定 ＋ 为什么」，绝不显示成「缺失」」—— 远端视角人群、远端落点那一行真查、「本机或远端」答不在只说「未确定」。
+//! 两趟问法与命令名 / 字段跨半边对拍那几条守 `INVARIANTS §42` → `IPC-PROTOCOL.md` 的 `footprint-probe` 节逐字
+//! 「monitor 问两趟」。⚠ `设计/70 §8` 第 12 行「今天」列仍写红，已落后于 RM1a 的落地。〔JA1 点址 2026-09-24〕
+//!
 //! 〔RM1a · 第四波〕`footprint_remote.rs` 的判据 —— 「足迹」的远端那一栏（monitor 半）。
 //!
 //! # 买到的
@@ -121,21 +128,21 @@ fn the_remote_vantage_drops_the_monitor_machine_rows_and_really_probes_the_rest(
             .clone()
     };
     assert_eq!(
-        pick(&absent.rows, remote, "~/.local/bin/ccm"),
+        pick(&absent.rows, remote, "~/.cc-monitor/bin/ccm"),
         SurfaceState::Absent
     );
     assert!(matches!(
-        pick(&present.rows, remote, "~/.local/bin/ccm"),
+        pick(&present.rows, remote, "~/.cc-monitor/bin/ccm"),
         SurfaceState::Present { .. }
     ));
     let ccm = absent
         .rows
         .iter()
-        .find(|r| r.path_declared == "~/.local/bin/ccm")
+        .find(|r| r.path_declared == "~/.cc-monitor/bin/ccm")
         .unwrap();
     assert_eq!(
         ccm.path_resolved.as_deref(),
-        Some("/r/home/.local/bin/ccm"),
+        Some("/r/home/.cc-monitor/bin/ccm"),
         "解析用的不是那台的家目录"
     );
     // ③ 「本机或远端」答不在 ⇒ 未确定（也可能在另一台上），不说「缺」。

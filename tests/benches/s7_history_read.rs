@@ -31,6 +31,20 @@
 //!
 //! `K` 就是「`(size, mtime)` 缓存能省掉的那一块」。**判断值不值得做，看的是 K，不是总数。**
 //!
+//! # 两档：`cargo bench` 出读数，`cargo test` 只证明「跑得起来」〔TQ1 2026-09-24〕
+//!
+//! 本文件原住 `tests/evidence/S7-history-read.rs`（量具与历史读数那棵树，规矩是「不许改」），
+//! TQ1 把它搬进 `tests/benches/` —— bench 源码从此有一个家（`设计/99 §3`「度量能力」那一格）。
+//!
+//! - **`cargo bench --bench s7_history_read`**（cargo 给目标传 `--bench`）⇒ 下面那张读数表，照旧。
+//!   🔴 墙钟**不当判据**：这一档从不进门禁。
+//! - **`cargo test`**（`Cargo.toml` 里本目标标了 `test = true`，cargo 不传 `--bench`）⇒ [`smoke`]：
+//!   自造一份小语料、三条被测路径各经本秤自己的 [`measure`] / [`measure_piped`] 跑一次，
+//!   断言**出字节与从语料独立算出的期望逐字节相等**（异源：一边是真二进制的输出，
+//!   一边是本文件按行切原文算出来的）；一个耗时都不看。
+//!   ⇒ 门禁 `backend` 那一格的 `cargo test` 顺带跑它：秤坏了（被测 CLI 改了参数 / 输出形状、
+//!   `measure` 读不到字节、反空真自检不再拒空输入）当场红，而不是等下一次有人想量的时候才发现。
+//!
 //! # 它量不到什么（别把这份读数当全部）
 //!
 //! - **只是 Linux**。Windows 客户端上没量（`设计/17 §1` 自己也写着 Windows 那侧只跑 monitor）。
@@ -60,6 +74,11 @@ const REPS_BIG: usize = 9;
 const REPS_SMALL: usize = 25;
 
 fn main() {
+    // `cargo bench` 给 bench 目标传 `--bench`；`cargo test` 不传（它可能传过滤串，一概不认）。
+    if !std::env::args().skip(1).any(|a| a == "--bench") {
+        smoke();
+        return;
+    }
     let home = resolve_home();
     let sess = home.join("projects/s7-bench");
 
@@ -265,6 +284,121 @@ fn main() {
     }
 }
 
+/// 冒烟档（`cargo test` 跑它）：证明这把秤**跑得起来、量的是它自称的那件事**，不出任何耗时。
+///
+/// 语料：仓内那份已经合成过的 `tests/__fixtures__/scale2-height-records.jsonl`（`设计/17 §6.2`：
+/// 结构照真的、内容一律合成），原样放进一个一次性 agent home（后端的路径围栏要它落在
+/// `<home>/projects/` 下）。期望值**全部由本函数按行切原文算**，不问被测二进制：
+///
+/// | 被测入口 | 期望 |
+/// |---|---|
+/// | `--read-session <f>` | 整份原文 |
+/// | `--read-session-from-offset <f> <第 F 行的字节起点>` | 原文从那一行起到尾 |
+/// | `--read-session-from-offset <f> <文件长>`（进程地板那一格） | 空 |
+/// | `--read-session-tail <f> N` | `{"kind":"snapshot_meta","total":T,"tail_from":F}` 一行 ＋ 第 `[F,T)` 行 ＋ 第 `[0,F)` 行 |
+///
+/// 每一格都先经本秤自己的 [`measure`]（`reps = 1`）拿出字节数与期望比，取尾那一格再经 [`measure_piped`]
+/// 比一次，并直接比一次**逐字节**内容 —— 读数表里的「出字节」那一列就是这么来的。
+fn smoke() {
+    const N: usize = 10;
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/__fixtures__/scale2-height-records.jsonl");
+    let corpus = std::fs::read(&fixture).expect("读仓内合成语料 scale2-height-records.jsonl");
+    // 行（含换行符）。本语料每一行都完整、非空 —— 这是期望式成立的前提，先钉住它。
+    let lines: Vec<&[u8]> = corpus.split_inclusive(|b| *b == b'\n').collect();
+    assert!(
+        lines.len() > N && lines.iter().all(|l| l.ends_with(b"\n") && l.len() > 1),
+        "秤 7 冒烟：语料要多于 {N} 行、每行完整且非空（现 {} 行）—— 期望式的前提不成立",
+        lines.len()
+    );
+    let total = lines.len();
+    let tail_from = total - N;
+    let split_at: usize = lines[..tail_from].iter().map(|l| l.len()).sum();
+
+    let home = std::env::temp_dir().join(format!("s7-smoke-{}", std::process::id()));
+    let sess = home.join("projects/s7-bench");
+    std::fs::create_dir_all(&sess).expect("建一次性 agent home");
+    let f = sess.join("s7-smoke.jsonl");
+    std::fs::write(&f, &corpus).expect("放语料");
+    let empty = sess.join("s7-empty.jsonl");
+    std::fs::write(&empty, b"").expect("放空文件");
+
+    // 反空真：秤自己的输入检查真的会拒「不存在」与「空」。
+    assert!(check_input(&sess.join("s7-does-not-exist.jsonl"), 1).is_err());
+    assert!(check_input(&empty, 1).is_err());
+    assert_eq!(check_input(&f, 1), Ok(corpus.len() as u64));
+
+    let path = || f.clone().into_os_string();
+    let mut tail_expect =
+        format!("{{\"kind\":\"snapshot_meta\",\"total\":{total},\"tail_from\":{tail_from}}}\n")
+            .into_bytes();
+    for l in lines[tail_from..].iter().chain(&lines[..tail_from]) {
+        tail_expect.extend_from_slice(l);
+    }
+    let cases: [(&str, Vec<std::ffi::OsString>, &[u8]); 4] = [
+        ("copy", vec![o("--read-session"), path()], &corpus),
+        (
+            "offset",
+            vec![
+                o("--read-session-from-offset"),
+                path(),
+                split_at.to_string().into(),
+            ],
+            &corpus[split_at..],
+        ),
+        (
+            "floor",
+            vec![
+                o("--read-session-from-offset"),
+                path(),
+                corpus.len().to_string().into(),
+            ],
+            b"",
+        ),
+        (
+            "tail",
+            vec![o("--read-session-tail"), path(), N.to_string().into()],
+            &tail_expect,
+        ),
+    ];
+    for (label, args, want) in &cases {
+        let row = measure(label, &home, args, 1);
+        assert_eq!(
+            row.out_bytes,
+            want.len(),
+            "秤 7 冒烟：`{label}` 那一格经 measure() 取到 {} 字节，期望 {}",
+            row.out_bytes,
+            want.len()
+        );
+        let out = Command::new(BIN)
+            .env("CLAUDE_CONFIG_DIR", &home)
+            .args(args)
+            .stdin(Stdio::null())
+            .output()
+            .expect("spawn 被测二进制");
+        assert!(
+            out.status.success(),
+            "秤 7 冒烟：`{label}` 退出码 {:?}",
+            out.status.code()
+        );
+        assert!(
+            out.stdout == *want,
+            "秤 7 冒烟：`{label}` 那一格的出字节与从语料独立算出的期望**逐字节**不等"
+        );
+    }
+    let piped = measure_piped("tail〔管道〕", &home, &cases[3].1, 1);
+    assert_eq!(
+        piped.out_bytes,
+        tail_expect.len(),
+        "秤 7 冒烟：管道那一支取到的字节数不对"
+    );
+
+    std::fs::remove_dir_all(&home).expect("收一次性 agent home");
+    println!(
+        "秤 7 冒烟：4 格 × 真二进制 {total} 行语料，出字节与期望逐字节相等（N={N}，tail_from={tail_from}）—— 不计时"
+    );
+}
+
 /// 一格读数。
 struct Row {
     label: String,
@@ -420,7 +554,7 @@ fn resolve_home() -> PathBuf {
     if let Some(v) = std::env::var_os("S7_HOME") {
         return PathBuf::from(v);
     }
-    // 本文件住 `<repo>/tests/evidence/`，`CARGO_MANIFEST_DIR` 是 `<repo>/src/backend`。
+    // 本文件住 `<repo>/tests/benches/`，`CARGO_MANIFEST_DIR` 是 `<repo>/src/backend`。
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../.build/s7/home")
         .to_path_buf()

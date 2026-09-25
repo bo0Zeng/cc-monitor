@@ -104,8 +104,8 @@ const TRIAGE_DEBT: &[(&str, &str)] = &[
     ("dial_host.rs", "forward"),
     ("remote_branch.rs", "create_remote_branch_session"),
     ("remote_history.rs", "require_cfg_by_label"),
-    // 〔C2 09-24〕住址 `ssh_source.rs` → `inproc_dial.rs`：函数原样搬过去（只服务 SFTP），欠的那笔债一格没变。
-    ("inproc_dial.rs", "connect_via_jump"),
+    // 〔SR1b · 09-24〕`inproc_dial.rs` 那一行（跳板那一跳查配置，只服务 SFTP）**还掉了**：界面进程零 SSH，
+    //   那份文件整份删了 —— 跳板配置今天由宿主 `dial_host.rs::request` 查（上面 `forward` 那一行同一个家）。
     // 🔴 〔步 8 · 归属 2026-09-19〕住址从 `tmux.rs` 改成 `backend/control/tmux.rs` ——
     //    **文件真的挪了**（`lib.rs` 顶层 → `backend/control/`），欠的那笔债一格没变。
     ("backend/control/tmux.rs", "list_remote_tmux"),

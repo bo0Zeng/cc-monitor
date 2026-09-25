@@ -66,12 +66,12 @@ use std::path::{Path, PathBuf};
 
 /// 暂存区相对 `$HOME` 的那一段。
 ///
-/// 🔴 **桥那一侧有一份逐字相同的**（同名常量住 `sftp_pool.rs`，SFTP 往里写）。
-/// 两个 crate 没有共享落点（同 `is_protected_session_path` 那两份的理由，`设计/60 §11.4`），
-/// ⇒ 「两份逐字副本 ＋ 相等断言」：本侧的判据现读桥那一份源码，逐字节比。
+/// 〔SR1b · 2026-09-24〕往里写的那一侧（SFTP 传输台）**搬进了本 crate**（`dial/sftp.rs::STAGING_ROOT` ·
+/// `control/transfer.rs`）⇒ 从前「桥那一侧一份逐字副本 ＋ 相等断言」那一对收成**同一个 crate 里的两个名字**，
+/// 判据直接比（`dial_sftp_tests::the_declared_write_roots_are_exactly_staging_and_bin`）。
 pub const STAGING_DIR: &str = ".cc-monitor/staging";
 
-/// 暂存件的键长（十六进制位数）。桥那一侧造键时同一个数，判据逐字比。
+/// 暂存件的键长（十六进制位数）。造键的那一侧（`control/transfer.rs::staging_key`）同一个数（直接引用）。
 pub const KEY_LEN: usize = 32;
 
 /// 暂存件的后缀。

@@ -1,3 +1,9 @@
+//! # 要求住址：`INVARIANTS §36`（只绑本地 Windows 那条路：嵌套标记在进程启动时一次清掉）
+//!
+//! 核原文：`INVARIANTS §36`（本地 Windows 路径）逐字「这条攻击面已经在进程启动阶段一次性堵死：`src/bridge/src/lib.rs::run()` 里
+//! `scrub_env_vars(adapter::active().nested_env_to_scrub())` 是 Tauri `Builder` 构造之前就跑的第一批实质语句」
+//! —— 本族判 `lib.rs::scrub_env_vars` 只清列出且存在的、跳过不在的、不碰没列的。〔JA1 点址 2026-09-24〕
+
 use super::scrub_env_vars;
 
 /// issue #24：清掉存在的、跳过不存在的、不碰未列出的。

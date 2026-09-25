@@ -31,7 +31,7 @@ pub mod events {
     /// 不进 replay buffer（同 session-activity）——F5 靠 list_session_activity 快照收敛。
     pub const SESSION_STARTED: &str = "session-started";
     /// audit-fixes F03.2：远端 claude 退出但 tmux 会话尚在（idle-tmux 第三态）→ 前端渲**灰灯**、
-    /// **不归档**。**唯一由 remote-session-emitter emit**（emitter 收 backend-removed 时，若 sid 的
+    /// **不归档**。**由 remote-session-emitter emit**〔U4b · 第四波：本机 `session-changes-emitter` 也 emit —— 本机那一臂同样走 `classify_removed`，只查 `<local>` 那一格〕（emitter 收 backend-removed 时，若 sid 的
     /// `@ccm_sid` 仍出现在某 origin 的 `TmuxSessions` 帧里→判 idle）。不进 replay buffer（同
     /// session-activity/started）——F5 由 emitter 对账重发。idle 是 `remote_active` **之外**的态。
     pub const SESSION_IDLE: &str = "session-idle";
@@ -61,6 +61,18 @@ pub mod events {
     /// 前端的账号刷新（替掉那个 10 秒轮询）据此强制拉一次 —— 在这之前问只会拿到「没有控制通道」。
     /// 每次（重）连上各发一次；不进 replay buffer。
     pub const REMOTE_BACKEND_READY: &str = "remote-backend-ready";
+    /// 〔U4b · 第四波〕**这条活会话住在什么容器里**（`{session_id, container: "tmux" | "none"}`）。
+    ///
+    /// 来源是后端 `session_added.container`（打标那一次探测的结局）。本机那条流与远端流**同一个口**
+    /// （`session_facts::note_container`）、同一个事件 —— `INVARIANTS §40`：本机 ＝ 不走 ssh 的远端。
+    /// 判不了的不发（前端那一格保持「没报」）。不进 replay buffer：F5 由 `frontend-ready` 对账重发账本。
+    pub const SESSION_CONTAINER: &str = "session-container";
+    /// 〔U4b · 第四波〕**某台机器的活会话清单报完了**（`{origin}`）：后端 `sessions_replayed` 帧到达。
+    ///
+    /// 与那台的 `remote-session-added` 同一条线程、同序发出 ⇒ 前端收到它时，那台此刻全部的活会话都已经
+    /// 宣告过了。前端据此把这台「固定、却没被报过」的 tab 从**说不清**落到**已结束**（`设计/30 §3.5.7a`）。
+    /// 本机不走它：本机的清单是 `list_active_sessions`（前端起步就拉）。
+    pub const ORIGIN_SESSIONS_LISTED: &str = "origin-sessions-listed";
     // FOCUS_SWITCH 已删除：Win11 默认终端 (WindowsTerminal.exe) 是单进程多窗口架构，
     // OS GetForegroundWindow 只能拿到 WT 主进程 PID，无法区分 tab/window 内跑哪个
     // claude session。在 WT 默认环境下永远不工作；非 WT 终端可工作但不值为少数场景维护。
@@ -185,6 +197,25 @@ pub struct RemoteSessionAddedPayload {
     /// 骨架标题不再等首行——cwd 直接可用（偿还 F18 backlog）。
     pub cwd: Option<String>,
     pub name: Option<String>,
+}
+
+/// 〔U4b · 第四波〕`session-container` 的 payload。`container` 只有两个值：`"tmux"` / `"none"`
+/// （判不了的不发这个事件）。
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+pub struct SessionContainerPayload {
+    pub session_id: String,
+    pub container: String,
+}
+
+/// 〔U4b · 第四波〕`origin-sessions-listed` 的 payload：哪台机器的清单报完了。
+#[derive(Debug, Serialize, Clone)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+pub struct OriginSessionsListedPayload {
+    /// 用 `Origin`，不用裸字符串（`origin_tests::no_new_raw_string_origin_parameters` 那条棘轮）；线上逐字同一个字符串。
+    pub origin: crate::origin::Origin,
 }
 
 /// `frontend-ready` 事件的 payload（Batch5-F19）。前端 emit 时携带 localStorage

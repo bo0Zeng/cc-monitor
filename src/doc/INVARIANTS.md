@@ -570,7 +570,7 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 
 远端会话三态：**live**（claude 在跑）/ **idle-tmux**（claude 退出但 tmux 会话仍在 → 灰灯、可 attach 复用）/ **archived**（tmux 也没了）。承接 §24 单写者不变量，落地约束：
 
-1. **`REMOTE_IDLE` 是独立账本，唯一写者仍是 emitter**：`ssh_source.rs` 的 `REMOTE_IDLE`（origin → idle sid 集）与 `remote_active` **正交**——`mark_idle`/`clear_idle` 只由 `remote-session-emitter` 调（`run()` 的 removed/added 臂），其余路径（收割器、F5 对账）只 `snapshot_idle_*` 读。**绝不**给 `SessionChange` 加字段承载 idle（收割器仍只发 `{removed}`）。
+1. **`REMOTE_IDLE` 是独立账本，唯一写者仍是 emitter**：`ssh_source.rs` 的 `REMOTE_IDLE`（origin → idle sid 集）与 `remote_active` **正交**——`mark_idle`/`clear_idle` 只在 `lib.rs` 的会话 emitter 里调（〔U4b · 第四波〕远端那条 `remote-session-emitter` 的 removed/added 臂，外加本机 emitter 的 `classify_removed` 分流与 `session_facts` 出口 —— 都在 `lib.rs`，单写者判据照旧），其余路径（收割器、F5 对账）只 `snapshot_idle_*` 读。**绝不**给 `SessionChange` 加字段承载 idle（收割器仍只发 `{removed}`）。
 2. **emitter removed 臂据 tmux 存活分流**（`classify_removed` 纯函数 + `find_tmux_origin_for_sid`）——
    ★ **S0（2026-07-31）加了一道前置：`cause` 先于快照裁决**。后端现在在 `session_removed` 帧上
    带 `cause`（additive，`Gone` 不上线、缺省即 `Gone`）：`Superseded` = 同一个 pidfile **原地换了 sid**
@@ -1834,6 +1834,24 @@ no-op（真机反向实测：写错 starttime 时探针存活，不误伤无关�
 >
 > ⇒ 上面那段措辞改读成：**用户的文件只有文件管理那一面能改；后端自己的状态文件另立一档、恰好一份。** 两档互不借用。
 
+> **〔订正 · SR1b · 2026-09-24 · 用户 V89「SFTP 怎么进单一常驻后端」选「进本机常驻后端，只写暂存区」〕远端那一半改写。**
+> 此前 `readonly_guard::remote_write_layer` 判「后端生产段**一处远端写都没有**」：它把「在 SSH 连接上请求 sftp 子系统」
+> 判作远端文件传输能力（`KU31`「远端 rc 能不能替用户写」没裁）⇒ SFTP 只能留在界面进程（`inproc_dial.rs`）。
+> V89 裁了：SFTP 连接由本机常驻后端管、与其它 SSH 复用；**只往远端暂存区写**，落进用户目录仍只经远端后端 `files-commit-upload`；
+> F08 自部署（后端还不在时只能靠它放上去）一起进本机后端。⇒ 远端那一半的措辞改成：
+> **本机常驻后端可以请求 sftp 子系统，只许往远端 `~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/`（部署）写** —— 两处都是我们自己的目录，
+> 不是用户数据；`KU31` 那一问（替用户写远端 rc）**仍然是「不」**：别名块 / `.mcp.json` / 删会话走远端后端的文件管理面（RW1）。
+>
+> | 判据（`readonly_guard::remote_write_layer`） | 钉什么 |
+> |---|---|
+> | `the_remote_write_lives_in_exactly_one_file_and_its_roots_are_exactly_staging_and_bin` | 命中远端写能力网 / 动词网的后端文件 == `{dial/sftp.rs}`（两向）；它声明的写根 == `{.cc-monitor/staging, .cc-monitor/bin}`（期望取自 V89 题面，异源） |
+> | `every_remote_mutation_in_that_file_is_fenced_first` | 那一份里每个含远端改动（协议改动动词 ∪ 开写标志）的函数，第一个改动之前先有 `fenced_remote(`（形状照第三层 ③） |
+> | `dial_sftp_tests`（行为） | 合成 SFTP 服务端逐条记改动路径：一趟部署 ＋ 暂存区写跑完，改动落在的根 **== 两处**；越界四形（rc · `~/.local/bin` · `/etc` · `..`）一律 `fenced`、改动表零增长；根底下一条指到根外的目录链接照拒 |
+>
+> 围栏（`dial/sftp.rs::fenced_remote`）：绝对路径归一成相对 SFTP 起始目录；词法只许两个根（建目录另放行根自己与唯一的祖先 `.cc-monitor`）；
+> 父目录 `realpath` 之后仍在那个根的 `realpath` 之下；开写之前 `lstat` 拒链接。⚠ TOCTOU 同第三层，未闭合，如实登记。
+> 远端 exec 那个洞（`channel_open_session` ＋ 一条会写的 shell 命令）照旧是本层**认不出**的一格（`the_remote_exec_hole_is_a_registered_counterexample_and_still_passes`）。
+
 ### 41.5 兼容与部署
 
 - **wire 两处 additive，`PROTO_VERSION` 不 bump**：`TmuxSessions` 加 `observation`
@@ -1869,6 +1887,12 @@ no-op（真机反向实测：写错 starttime 时探针存活，不误伤无关�
 **没有机检，补完就会重新开始漂。**
 
 **谁在守**：`tests/backend/protocol_doc_guard.rs`（13 条）。
+
+**射程（〔JA1 · 第四波〕按标题「代码与它不许漂」读宽，主会话 2026-09-24 定）**：不只字段名与命令名落进哪一节 ——
+那份文档里的**行为句**（一条命令收什么、回什么、拒什么、失败时说什么、帧何时发）同样是契约。
+`protocol_doc_guard` 只机检名字那一半；行为那一半由各命令 / 帧自己那一族行为判据守
+（链路四条 · 凭据读写 · 搜索 · 足迹 · 插件 · 任务 · 会话快照 · 线上帧 ⋯⋯ 这些族的头注以本节为主住址，经它落到 IPC 那一节）。
+⚠ 行为句与判据之间没有机检的对拍 —— 行为句改了、判据没跟 ⇒ 靠头注里那条住址让人找得到。
 
 🔴 **为什么它要升格成条**（2026-09-22 `P20` 现打）：在此之前这条性质**只有一个工单号**
 （`U6a`，2026-08-02），`INVARIANTS` 里一条都没有。

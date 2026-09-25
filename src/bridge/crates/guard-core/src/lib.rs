@@ -1985,3 +1985,9 @@ pub fn pin_line(hay: &str, line: &str) -> Result<usize, String> {
 #[cfg(test)]
 #[path = "../../../../../tests/bridge/crates/guard-core/lib_tests.rs"]
 mod tests;
+
+/// 测试层分级（TQ1）：五层各一张登记表 ＋ 各一条反空真自检。人群是整个仓的测试树，
+/// 住在这里是因为它是「元层的元层」（`设计/15 §2.1` E），而且本 crate 跟着门禁 `cargo` 那一格跑。
+#[cfg(test)]
+#[path = "../../../../../tests/bridge/crates/guard-core/test_tiers_tests.rs"]
+mod test_tiers;
