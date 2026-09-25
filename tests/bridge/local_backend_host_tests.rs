@@ -46,86 +46,34 @@ fn the_strip_rule_this_file_leans_on_is_still_on_disk() {
     );
 }
 
-/// ★★★ `D1 阻-6` 刀 B 的反面：**`relay_running()` 真的在看那张表，不是一个常量。**
+/// 〔RL1 · V107〕M3：**`relay_running` 真的去连那个口**，不是一个常量、也不是一张内存表。
 ///
-/// `D1` 实测过：把它整个换成 `true`，**1221 passed / 0 failed** ——
-/// 「中转在不在跑」这个**取值口**当时一条判据都没有，而它一旦恒真，
-/// `KH2B2`② 那道「起不来就当场拒」的闸就整个失效，**而且全绿**。
+/// 先前它读 monitor 自己的句柄表（`真相源/70 §7b`：跨 monitor 重启认不出上一次那一个）。
+/// 中转住进本机常驻后端之后，monitor 手里没有句柄 ⇒ 判准换成「回环上那个口有没有人在听」
+/// （与远端 `relay-status` 同一个判准）。
 ///
-/// # ⚠ 它**不起真 backend**（红线）
-///
-/// 喂给监护器的是一条**不存在的路径** ⇒ `Command::spawn` 立刻失败、监护器发 `GaveUp`
-/// 就收工。⇒ 这一趟里**没有任何子进程真的跑起来**，本条量的是
-/// 「句柄在不在表里」这条状态机，不是「那个进程活没活」（后者见本函数头注的诚实边界）。
-///
-/// ⚠ 它动的是**进程内的全局** `LOCAL_RELAY` ⇒ 起完必须停掉，否则会影响同进程别的判据。
+/// ① 行为：本条自己开一个口 ⇒ `relay_listening_at` 答真；关掉 ⇒ 答假（异源：口是本条开的，不是被测函数开的）。
+/// ② 生产那一格问的是**注入侧那个常量**（`payload::RELAY_PORT`）：⚠ 这一格是**文本**，如实登记 ——
+///    按行为量要在判据里去碰 8788，而这台机器上用户自己的中转可能正听着它（红线：不碰用户的东西）。
+///    绕过形态：把 `RELAY_PORT` 换成另一个常量 ⇒ 本格红；在函数体里算出来扔掉、另问一个口 ⇒ 本格照绿。
 #[test]
-fn relay_running_really_reads_the_handle_table() {
-    // 前置：本条跑之前它必须是「没在跑」（否则下面第一条断言是空真）。
+fn relay_running_really_asks_the_loopback_port() {
+    let l = std::net::TcpListener::bind("127.0.0.1:0").expect("开一个口");
+    let port = l.local_addr().expect("地址").port();
+    assert!(relay_listening_at(port), "口上明明有人在听，它说没有");
+    drop(l);
     assert!(
-        !relay_running(),
-        "起手就说在跑 —— 要么这个取值口恒真，要么别的判据把句柄留在表里了"
-    );
-    let bogus = std::path::PathBuf::from("/nonexistent/ccm-relay-that-cannot-spawn");
-    assert!(
-        start_local_relay(bogus.clone()),
-        "第一次起应当报「起了一个新的」"
+        !relay_listening_at(port),
+        "口已经关了，它还说有人在听 —— 那是一个常量"
     );
 
-    // ★★ `D2 阻-6` 的那一半：**监护器放弃之后，这个取值口必须跟着说真话。**
-    //
-    // 那条二进制根本 spawn 不了 ⇒ 监护线程立刻 `GaveUp`。
-    // 在本轮之前，`GaveUp` **只写一行日志**，句柄留在表里 ⇒ `relay_running()` **恒真**
-    // ⇒ 起会话那一侧不再拒 ⇒ 那条 api-key 会话被静默地起成一条连不上中转的会话。
-    // ⚠ 〔订正：原话「而中转自己的 stderr 被监护器 null 掉了（那一行不在本件写区）
-    //   ⇒ **这一格是用户今天唯一看得见的说法**」—— `15 §5.1 A2` 之后**不成立了**，
-    //   那一行今天是 `piped()` 并接进滚动日志。〕
-    //   这一格守的仍然是**状态**那一半：日志里说了不等于 `relay_running()` 说了实话，
-    //   而「起会话那一侧拒不拒」只读后者。
-    let mut cleared = false;
-    for _ in 0..400 {
-        if !relay_running() {
-            cleared = true;
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(5));
-    }
-    assert!(
-        cleared,
-        "监护器放弃之后句柄还留在表里 —— `relay_running()` 从此恒真，\n\
-             而起会话那一侧那道「中转没起来就当场拒」的闸整个失效"
-    );
-    // 反面：表被真的清空了 ⇒ 还能再起一个（恒真的话这里会回 false）。
-    assert!(
-        start_local_relay(bogus),
-        "表没被清干净 —— 再起时被当成「已经在跑」"
-    );
-    stop_local_relay();
-    assert!(!relay_running(), "停掉之后它还说在跑");
-
-    // ⚠⚠ **另一半是源码形状，不是行为** —— `D6 阻-1` 把这一形判死了，而这一格
-    //   **今天换不掉**，如实登记（08-29）：
-    //
-    //   上面几条量的是「它会不会**从真变假**」（那一格是行为，`D2 阻-6` 的正题）；
-    //   量不出「它**恒假**」—— 要量恒假得让表里**稳定地**有一个句柄，而
-    //   ① `SuperviseHandle` 造不出替身（构造子不对外）；
-    //   ② 唯一能把句柄放进表的路是 `start_local_relay`，而它喂什么二进制都会被监护器
-    //      在毫秒级内 `GaveUp` 摘掉 ⇒ 「刚起完那一瞬 `relay_running()` 是真」这条断言**有竞态**；
-    //   ③ 喂一个**真活着**的进程就等于在判据里起一个常驻子进程（红线）。
-    //   ⇒ 这一格留着一条文本断言，**它的绕过形态**逐字：把 `LOCAL_RELAY` 这个词留在
-    //      这 200 字节窗口里（一个用不到的绑定就够）、把返回值换成常量 ⇒ 本格照绿。
-    //
-    //   ⚠ **失效方向要一起写**：`relay_running()` 恒假 ⇒ 每一次 api-key 号的拉起都被
-    //   **当场拒**（`KH2B2`② 那条出声的路）—— 是 fail-closed、有声的，
-    //   与「恒真」那一形（静默起成一条连不上中转的会话）**不同类**。恒真那一形有行为判据接着。
     let prod =
         guard_core::production_code(include_str!("../../src/bridge/src/local_backend_host.rs"));
-    let at = guard_core::find_pinned(&prod, "pub fn relay_running() -> bool {")
-        .expect("`relay_running` 不是恰好一处");
-    let body = &prod[at..at + 200.min(prod.len() - at)];
-    assert!(
-        body.contains("LOCAL_RELAY"),
-        "`relay_running` 不再读 `LOCAL_RELAY` —— 它成了一个常量"
+    let body = braced_block(&prod, "pub fn relay_running() -> bool", 0, 400);
+    assert_eq!(
+        body.trim_matches(|c: char| c == '{' || c == '}' || c.is_whitespace()),
+        "relay_listening_at(crate::backend::control::payload::RELAY_PORT)",
+        "`relay_running` 问的不再只是注入侧那个口"
     );
 }
 
@@ -146,112 +94,89 @@ fn relay_running_really_reads_the_handle_table() {
 //   而两轮的量法都是「量文本」。这一族已经连着五层了，出路是**不量文本**：
 //   两个事实走 `history.rs::InjectFactSources` 那条缝，判据喂替身、断言前缀随答案变。
 //
-// ⚠ 本文件上一条 `relay_running_really_reads_the_handle_table` **留着**，
-//   它买的是另一半（那个取值口自己真的读 `LOCAL_RELAY`），两者不重叠。
+// ⚠ 本文件上一条 `relay_running_really_asks_the_loopback_port`〔RL1 换掉了先前读句柄表那一条〕
+//   买的是另一半（那个取值口自己真的去连那个口），两者不重叠。
 
-/// ★★★ `K-H2b` `KH2B2`①：**中转有一个具名的启动方**，而且它在**起本机后端的那条路上**。
+/// 〔RL1 · V107〕M2：**两条载体起本机后端时交的是同一份环境，且恰好是中转那两格**。
 ///
-/// # 非空对照写在这里（这一条的分母）
-///
-/// 本件之前，全仓 `--relay` 的**生产调用点是 0** —— 中转是一条「有实现、没人起」的路。
-/// ⇒ 本条钉的就是那个 0 变成了 1，而且**不是随便哪儿的 1**：它必须落在
-/// `start_local_backend` 里、且排在 `start_detached` 那条**会 `return` 的**分支**之前**
-/// （接在它后面 = 走常驻那条路时中转不会被起，而那是生产上的主路）。
-///
-/// # 它买不到什么
-///
-/// 只买「接线在」，**不买「那个进程真的起来了」** —— 后者要真 spawn 一个 backend
-/// 二进制，而它 `#[cfg(embedded_backends)]` 门着、CI 上根本不铺（姊妹条
-/// `the_local_backend_host_can_be_stopped_and_started_again` 那条边界原样适用）。
-///
-/// # 🔴 本条里哪几格是**文本**，为什么今天只能是文本〔`D6` 回修，08-29，别读宽〕
-///
-/// `D6 阻-1` 把「窗口里有没有这段文本」这一形判死了，而本条**没有全换掉** ——
-/// 换掉了的与没换掉的逐格写在这里：
-///
-/// | 格 | 今天的量法 | 为什么 |
-/// |---|---|---|
-/// | argv 尾巴是 `--relay` | ✅ **行为**（读 [`relay_child_args`] 产出来的东西） | 抽成纯函数就够 |
-/// | 端口 == `payload::RELAY_PORT` | ✅ **行为**（读 [`relay_child_envs`]） | 同上 |
-/// | 凭据路径 == `creds_store::resolve_path()` | ✅ **行为**（读 [`relay_child_envs`]） | 同上 |
-/// | 起中转**落在** `start_local_backend` 里、在 `start_detached` **之前** | 🔴 **文本** | 这是一条**调用图**性质：按行为量要真跑 `start_local_backend`，而它 `#[cfg(embedded_backends)]` 门着、且吃**真实**的 `~/.cc-monitor/bin` ⇒ 红线（不许手工起真后端） |
-/// | `start_local_relay` 真的把那份 spec 交出去了 | 🔴 **文本** | 按行为量要在 `local_backend::supervise` 上开一条缝，而 `backend/control/local_backend.rs` **不在本件写区** |
-///
-/// ⇒ 那两格的**绕过形态**逐字：把 `relay_child_envs()` 的结果算出来扔掉、就地再拼一份
-/// （行为那三格照绿、文本这一格也照绿，因为那两个调用还在）。
-/// **登记，不假装钉住了。** 解锁条件 = 写区扩到 `backend/control/local_backend.rs`（一条 supervise 缝）。
+/// ① 行为：[`relay_host_envs`] 产出的键集 **两向相等** {`CCM_RELAY_PORT`, `CCM_APIKEY_CREDENTIALS`}；
+///    值取自注入侧常量与 monitor 写凭据那条路（异源：`payload::RELAY_PORT` · `creds_store::resolve_path`）。
+/// ② 接线：`start_local_backend` 里 `relay_host_envs()` **恰好算一次**、排在常驻那条会 `return` 的分支之前，
+///    常驻那条（`start_detached(…, &relay_envs)`）与被监护那条（`start_or_extract(…, relay_envs,)`）各交一次。
+///    ⚠ 这一格是**文本**，如实登记：按行为量要真跑 `start_local_backend`（吃真实的 `~/.cc-monitor`、起真后端 —— 红线）。
+///    绕过形态：交出去的换成就地另拼的一份、`relay_envs` 算出来扔掉 ⇒ 第 ② 格红（两处消费点各恰好一处）；
+///    就地另拼且**同时**留着那两处消费点的死用法 ⇒ 照绿。
 #[test]
-fn the_relay_has_a_named_starter_and_it_runs_before_the_detached_branch_returns() {
-    // ① 🔴 `D6 阻-1` 同族：**行为** —— 交给中转子进程的那份 argv 尾巴与环境，
-    //    量的是 `relay_child_args()` / `relay_child_envs()` **产出来的东西**，
-    //    不是「源码里有没有这几段文本」（那一形本件已被打穿两次：`D5` 的 `X1` · `D6` 的 `Y1`）。
+fn both_carriers_hand_the_backend_the_same_relay_envs() {
+    let envs = relay_host_envs();
+    let mut keys: Vec<&str> = envs.iter().map(|(k, _)| k.as_str()).collect();
+    keys.sort_unstable();
     assert_eq!(
-        relay_child_args(),
-        vec!["--relay".to_string()],
-        "交给中转子进程的 argv 尾巴不再是 `--relay` —— 起出来的不是中转"
+        keys,
+        vec!["CCM_APIKEY_CREDENTIALS", "CCM_RELAY_PORT"],
+        "交给本机后端的环境不是恰好中转那两格（多一格 = 夹带；少一格 = 端口或凭据路径靠后端自己猜）"
     );
-    let envs = relay_child_envs();
+    let get = |k: &str| envs.iter().find(|(kk, _)| kk == k).map(|(_, v)| v.clone());
     assert_eq!(
-        envs.iter()
-            .find(|(k, _)| k == "CCM_RELAY_PORT")
-            .map(|(_, v)| v.as_str()),
-        Some(crate::backend::control::payload::RELAY_PORT.to_string().as_str()),
-        "端口没显式交给子进程、或交的不是注入侧那个常量 —— 注入侧\
-             （`payload::RELAY_PORT`）与中转侧（backend 的 `DEFAULT_PORT`）就成了各读各的两份默认值。\
-             实得：{envs:?}"
+        get("CCM_RELAY_PORT"),
+        Some(crate::backend::control::payload::RELAY_PORT.to_string()),
+        "端口不是注入侧那个常量 —— 注入侧拼的 URL 会指向一个没人听的口"
     );
     assert_eq!(
-        envs.iter()
-            .find(|(k, _)| k == "CCM_APIKEY_CREDENTIALS")
-            .map(|(_, v)| v.clone()),
+        get("CCM_APIKEY_CREDENTIALS"),
         crate::creds_store::resolve_path().map(|p| p.display().to_string()),
-        "凭据路径不是从 monitor 写它的那条路（`creds_store::resolve_path`）来的 ——\
-             中转会去读 `CLAUDE_CONFIG_DIR` 底下那份，而 monitor 写的那份**不跟随**它：\
-             两侧读写的是两份文件，症状是一个静默的 404。实得：{envs:?}"
-    );
-    // 反空真：这把尺子分得出「少了一格」（不是恒相等）。
-    assert!(
-        envs.len() >= 2 && crate::creds_store::resolve_path().is_some(),
-        "这台机器上算不出凭据路径 ⇒ 上面那条相等断言退化成 `None == None`，本条按红处理"
+        "凭据路径不是 monitor 写它的那条路 —— 两侧读写两份文件，症状是一个静默的 404"
     );
 
-    let me = include_str!("../../src/bridge/src/local_backend_host.rs");
-    let prod = guard_core::production_code(me);
-    assert!(
-        prod.len() > 5_000,
-        "剥完只剩 {} 字节 —— 剥过头了",
-        prod.len()
-    );
-    // ② 它落在起本机后端那条路上，且**在常驻那条会 return 的分支之前**。
+    let prod =
+        guard_core::production_code(include_str!("../../src/bridge/src/local_backend_host.rs"));
     let at = guard_core::find_pinned(&prod, "pub fn start_local_backend()")
         .unwrap_or_else(|e| panic!("`start_local_backend` 不是恰好一处：{e}"));
     let body = &prod[at..];
-    let start = body
-        .find("start_local_relay(bin)")
-        .expect("`start_local_backend` 里没有那次起中转 —— 走这条路的机器上中转不会起");
-    let detached = body
-        .find("match start_detached(")
-        .expect("找不到常驻那条分支");
+    let made = guard_core::find_pinned(body, "let relay_envs = relay_host_envs();")
+        .unwrap_or_else(|e| panic!("`start_local_backend` 里没有恰好一处算那份环境：{e}"));
+    let detached = guard_core::find_pinned(
+        body,
+        "match start_detached(&|| resolve_backend_bin(&extract_dir, embedded), &relay_envs) {",
+    )
+    .unwrap_or_else(|e| panic!("常驻那条没交那份环境（或交了别的）：{e}"));
+    let supervised = guard_core::find_pinned(body, "relay_envs,\n")
+        .unwrap_or_else(|e| panic!("被监护那条没交那份环境：{e}"));
     assert!(
-        start < detached,
-        "★ 顺序反了：起中转排在 `start_detached` **之后**，而那条分支会 `return` \n\
-             ⇒ 走常驻那条路（生产主路）的机器上中转**根本不会被起**，\n\
-             而症状是「api-key 号的会话被起会话那一侧拒掉」，指不向这里。"
+        made < detached && detached < supervised,
+        "顺序：算({made}) < 常驻那条({detached}) < 被监护那条({supervised}) —— \
+         算在常驻分支之后 = 生产主路上后端拿不到中转端口"
     );
-    // ③ 上面第 ① 格量的是那份 spec **产得对不对**（行为）；这一格量的是
-    //    `start_local_relay` **真的把它交出去了**。
-    //    ⚠ 这一格今天**只能量文本**，如实登记（见本条头注最后一节）：
-    //      要按行为量得先在 `local_backend::supervise` 上开一条缝，而那个文件不在本件写区。
-    //    ⚠ 作用域是 `start_local_relay` 的函数体，**不是** `start_local_backend` 的
-    //      —— 第一版写错了作用域，被本条自己当场逮住（那也是「量具的作用域对不上事实」）。
-    let relay_at = guard_core::find_pinned(&prod, "pub fn start_local_relay(")
-        .unwrap_or_else(|e| panic!("`start_local_relay` 不是恰好一处：{e}"));
-    let relay_body = &prod[relay_at..relay_at + 1_200.min(prod.len() - relay_at)];
+}
+
+/// 〔RL1 · V107〕M1：**monitor 生产段里零处起中转**（`--relay` 零命中），正控取自后端那一处。
+///
+/// 本机中转住进常驻后端之后，monitor 这一半再没有任何理由在 argv 里写 `--relay`；
+/// 有一处 = 有人又在 monitor 里另起了第三个进程（`真相源/70` 那个孤儿的来路）。
+/// 正控：同一把尺子喂一段**合成的**起法（形状照后端 `relay/machine.rs` 远端 `relay-ensure` 那一处）数得到它 ⇒ 尺子不瞎。
+/// ⚠ 刻意不 `include_str!` 后端那份文件：那会多一条跨半边的编译期边（`cross_half_edge_registry`），为一条正控不值。
+#[test]
+fn the_monitor_half_starts_no_relay_process() {
+    let needle = format!("\"--{}\"", "relay");
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let files = guard_core::scan_tree_excluding(&root, &["rs"], &[]);
+    assert!(files.len() > 100, "只扫到 {} 份 —— 取法坏了", files.len());
+    let hits: Vec<String> = files
+        .iter()
+        .filter(|(_, raw)| guard_core::contains_word(&guard_core::production_code(raw), &needle))
+        .map(|(p, _)| p.display().to_string())
+        .collect();
+    assert_eq!(
+        hits,
+        Vec::<String>::new(),
+        "monitor 生产段里又出现了起中转的 argv"
+    );
+    let positive = guard_core::production_code(&format!(
+        "fn start(exe: &Path) {{\n    let pid = start(&exe, &[{needle}], port)?;\n}}\n"
+    ));
     assert!(
-        relay_body.contains("relay_child_args()") && relay_body.contains("relay_child_envs()"),
-        "起中转那一处不再把 `relay_child_args()` / `relay_child_envs()` 交出去 ——\n\
-             上面第 ① 格量的那份 spec 就成了一份没人用的摆设（端口与凭据路径又回到各读各的）。\n\
-             实得片段：{relay_body}"
+        guard_core::contains_word(&positive, &needle),
+        "正控失灵：合成的那一处起法也数不到 —— 尺子瞎了，上面那条零命中是空真"
     );
 }
 
@@ -1035,123 +960,43 @@ fn the_detach_landing_is_the_host_layer_and_the_injection_is_really_used() {
     );
 }
 
-/// ★★★ **退出路径要收的中转那一条** —— 而且这一条**量的是行为**。
+/// 〔RL1 · V107〕M4：**退出臂里零中转收法** —— 本机固定两个进程，中转随常驻后端按「退出行为」留或退。
 ///
-/// # 它治的是一个会骗人的开关
-///
-/// 「monitor 退出时结束它」这个勾，`D2 阻-5` 补上了第三个进程（**中转是另一个进程**）。
-/// 用户勾了、退出、它没被结束 —— 而界面上一个字都不会说。**一个说谎的开关比「做不到但说出来」更坏。**
-///
-/// # 上一版是文本判据，而 `D7` 的刀 `T13` 把它打穿过
-///
-/// 刀 `T13`（`if kill {` → `if kill && !kill {`，收口那段文本一字不动）⇒ 全绿，而**中转还在那儿听着那个口**。
-/// ⇒ 换成量行为：判据装一份**会记账的替身**，断言**两支**（勾了 ⇒ 恰好一次；没勾 ⇒ 零次），
-/// 第三格按**函数地址**对拍「生产上插进那条缝的就是那个口」。
-///
-/// # 〔B2 · 条 66〕原来这里数的是**两个**收口点（常驻 ＋ 中转），常驻那一个退役了
-///
-/// 那个值搬到后端所在那台机器上之后，常驻的后端**自己**在最后一个客户走的那一刻现读、自己退
-/// （后端 `control/exit_policy.rs` ＋ `main.rs` 流结束那一臂，判据住后端 `exit_policy_tests.rs`）。
-/// monitor 再替它决定一次 = 两个决策处。⇒ 缝里只剩中转，本条的替身也只剩一个。
-///
-/// # 它买不到什么
-///
-/// - **被监护那条起法**（`LOCAL_BACKEND` 的 `.stop()`）留在退出臂里，由
-///   `backend/control/local_backend_tests.rs::the_exit_path_really_stops_the_local_backend` 看着。
-/// - **`RunEvent::Exit` 那个闭包本身驱动不了** —— 那要真跑一次 tauri app。
-///   ⇒ 臂里那几行由 [`the_exit_arm_hands_the_relay_to_the_seam`] 的零命中守卫看着。
-/// - **退出那一刻现问本机后端**（`backend_policy::kill_on_exit_now`）问不问得到，要真起一个后端，
-///   本条量不到；它问不到时按缺省（不结束）办，由 `backend_policy_tests.rs::without_a_channel_nothing_is_made_up` 钉。
-#[test]
-fn the_exit_path_stops_the_relay_only_when_asked_to() {
-    use std::cell::Cell;
-    thread_local! {
-        static RELAY: Cell<u32> = const { Cell::new(0) };
-    }
-    fn spy_relay() -> bool {
-        RELAY.with(|c| c.set(c.get() + 1));
-        true
-    }
-    let count = || RELAY.with(Cell::get);
-    // ⚠ 归零写成闭包而不是 `fn`：`structural_scan` 那道闸把测试段里「无参无返回的
-    //   `fn 名()`」一律当成**忘了加 `#[test]` 的死判据**。
-    let zero = || RELAY.with(|c| c.set(0));
-
-    let spies = crate::ExitShutdownSinks { relay: spy_relay };
-
-    zero();
-    crate::shutdown_relay_on_exit(true, spies);
-    assert_eq!(
-        count(),
-        1,
-        "\n★★ **用户勾了「退出时结束它」，而中转没有被收掉。**\n\
-             这正是刀 `T13` 的形状：`if kill {{` → `if kill && !kill {{`，收口那段文本一字不动。"
-    );
-
-    zero();
-    crate::shutdown_relay_on_exit(false, spies);
-    assert_eq!(
-        count(),
-        0,
-        "\n★★ **用户没勾，而退出路上照样收了中转。**\n\
-             缺省**不杀**（`P2s` C8②③）；无条件收掉等于把这个勾变成一个装饰品。"
-    );
-
-    assert_eq!(
-        crate::PRODUCTION_EXIT_SHUTDOWN.relay as usize,
-        stop_relay_on_exit as usize,
-        "`PRODUCTION_EXIT_SHUTDOWN` 里插的不是中转那个收口 —— 上面两支量的是**替身**，\n\
-             这一格才是「生产上插进去的就是它」。"
-    );
-}
-
-/// ★★ 上一条的**射程边缘**：中转在退出臂里只剩**一行委托**，由本条看着。
-///
-/// ① 那条臂里那行委托**恰好一处**；
-/// ② `stop_local_backend(` / `stop_local_relay(` 在臂里**零命中**（有一个就说明有人又在臂里就地收东西了）——
-///    〔B2〕`stop_local_backend(` 这一针今天更承重：常驻那条后端**自己**决定退不退，臂里再收它就是第二个决策处；
-/// ③ 全文件里那条缝的**调用点恰好一个**（定义 1 + 调用 1 = 2 处），生产常量同理。
-///
+/// 先前这里是 `D7 阻-3` 那两条（替身记账量「勾了才收中转」＋ 臂里恰好一行委托）：monitor 另起的中转
+/// 自己感觉不到宿主离开，只能由退出臂收。中转并进本机后端之后那条缝与它的收口点一起删了 ⇒
+/// 本条钉「删干净了、没人在臂里另起炉灶」：
+/// ① 臂体里 `relay` 这个词（标识符边界）**零命中**；
+/// ② `lib.rs` 生产段里那条旧缝的三个名字**零命中**；
+/// ③ 正控：同一把尺子在臂体里数得到 `kill_on_exit_now(` 恰好一处（臂切对了，不是空块）。
 /// ⚠ **臂里那一处 `.stop()` 与那一处 `kill_on_exit_now(` 是刻意留着的**：被监护那条起法必须留在臂里，
-/// 而 `the_exit_path_really_stops_the_local_backend` 正是数它们的。
-/// ⚠ **它是文本判据，如实登记**：它量「有没有人在这条臂里另起炉灶」，不是「退出时真的收了东西」。
+/// 而 `backend/control/local_backend_tests.rs::the_exit_path_really_stops_the_local_backend` 正是数它们的。
+/// ⚠ 它是文本判据，如实登记：它量「有没有人在这条臂里另起炉灶」，不是「退出时后端里的中转真的走了」
+/// （后者随后端进程退出，由构造保证：中转线程住在那个进程里）。
 #[test]
-fn the_exit_arm_hands_the_relay_to_the_seam() {
+fn the_exit_arm_collects_no_relay() {
     let prod = guard_core::production_code(include_str!("../../src/bridge/src/lib.rs"));
     // ⚠ 找不到 `RunEvent::Exit` 就是整段钩子没了 —— 实测：删掉它，全仓判据一条不红。
     let body = braced_block(&prod, "RunEvent::Exit", 200, 3000);
     assert_eq!(
-        body.matches("shutdown_relay_on_exit(").count(),
-        1,
-        "退出臂里那条委托不是恰好一处 —— 零处 = 中转退出时不收；多处 = 有第二条退出路径"
+        body.split("kill_on_exit_now(").count(),
+        2,
+        "正控：退出臂里 `kill_on_exit_now(` 不是恰好一处 —— 臂切错了，下面的零命中是空真"
     );
-    for (needle, why) in [
-        (
-            "stop_local_backend(",
-            "〔B2〕常驻那条后端自己在最后一个客户走时现读、自己退 —— 臂里再收它就是第二个决策处",
-        ),
-        (
-            "stop_local_relay(",
-            "★ `D2 阻-5`：中转那条收口应当住 `stop_relay_on_exit`。\
-                 它就地写在臂里的那一版，正是刀 `T13` 打穿的那一版",
-        ),
+    assert!(
+        !guard_core::contains_word(body, "relay"),
+        "退出臂里又出现了 `relay` —— 有人又在这条臂里收中转了。\n\
+         中转住本机常驻后端进程里，随它按「退出行为」留或退（V107）；monitor 再收一次就是第二个决策处。\n实得臂体：{body}"
+    );
+    for gone in [
+        "ExitShutdownSinks",
+        "PRODUCTION_EXIT_SHUTDOWN",
+        "shutdown_relay_on_exit",
     ] {
         assert!(
-            !body.contains(needle),
-            "退出臂里出现了 `{needle}` —— 有人又开始在这条臂里就地收东西了。\n\
-                 说法：{why}\n实得臂体：{body}"
+            !guard_core::contains_word(&prod, gone),
+            "`lib.rs` 生产段里又出现了旧缝的名字 `{gone}` —— 退出臂那条收中转的缝回来了"
         );
     }
-    assert_eq!(
-        prod.matches("shutdown_relay_on_exit(").count(),
-        2,
-        "`lib.rs` 生产段里 `shutdown_relay_on_exit(` 不是 2 处（定义 1 + 调用点 1）"
-    );
-    assert_eq!(
-        prod.matches("PRODUCTION_EXIT_SHUTDOWN").count(),
-        2,
-        "`lib.rs` 生产段里 `PRODUCTION_EXIT_SHUTDOWN` 不是 2 处（定义 1 + 调用点 1）"
-    );
 }
 
 /// ★★ `KPY5`：**`detached` 的真相源只能是「起它的时候走没走那条路」。**
@@ -4106,7 +3951,7 @@ fn three_fake_backends_land_in_three_different_cells() {
 /// ★ 扫描面自检：共享剥法留住了本文件要扫的那几段，而便宜近似留不住。
 #[test]
 fn the_shared_stripper_keeps_the_exit_and_refusal_arms_this_guard_must_scan() {
-    // 本文件对 `lib.rs` 的两条判据取的针：`shutdown_relay_on_exit(`（〔B2〕缝改名后的那一个）·
+    // 本文件对 `lib.rs` 的两条判据取的针：`kill_on_exit_now(`（退出臂那一条的正控，〔RL1〕接替已删的旧缝名）·
     // `start_local_backend()`（568）· `take_start_refusal()`（602）—— 都在 59 之后。
     //
     // ⚠ 本文件另有一条 `the_strip_rule_this_file_leans_on_is_still_on_disk`，它是剥法的
@@ -4116,7 +3961,7 @@ fn the_shared_stripper_keeps_the_exit_and_refusal_arms_this_guard_must_scan() {
         "local_backend_host_tests · lib.rs",
         include_str!("../../src/bridge/src/lib.rs"),
         &[
-            "shutdown_relay_on_exit(",
+            "kill_on_exit_now(",
             "start_local_backend()",
             "take_start_refusal()",
         ],

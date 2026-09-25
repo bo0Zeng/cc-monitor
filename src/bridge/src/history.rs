@@ -2160,7 +2160,7 @@ fn relay_prefix_for(
 /// # 它买不到什么（如实写，别读宽）
 ///
 /// 本结构只管「**问不问**」与「**答案用不用**」。「那三个取值口自己答得对不对」由它们各自的
-/// 判据买（[`apikey_rows_at`] 那条读真文件的 · `local_backend_host::relay_running_really_reads_the_handle_table`）。
+/// 判据买（[`apikey_rows_at`] 那条读真文件的 · `local_backend_host::relay_running_really_asks_the_loopback_port`〔RL1 接替读句柄表那一条〕）。
 /// 而「生产上这条缝里插的**就是**那三个取值口」由 `the_production_relay_facts_are_those_two_take_points`
 /// 按**函数地址**对拍 —— 不是按文本。
 ///

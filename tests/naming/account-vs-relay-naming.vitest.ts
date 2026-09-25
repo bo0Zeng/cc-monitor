@@ -332,8 +332,9 @@ export const RELAY_NAMES: { name: string; re: RegExp; why: string }[] = [
   { name: "relay_env_prefix_posix", re: ident("relay_env_prefix_posix"), why: "把中转地址拼成命令前缀" },
   { name: "relay_prefix_for_launch", re: ident("relay_prefix_for_launch"), why: "起会话那一刻挑中转前缀的接线口" },
   { name: "relay_running", re: ident("relay_running"), why: "本机中转进程在不在跑" },
-  { name: "start_local_relay", re: ident("start_local_relay"), why: "起本机中转进程" },
-  { name: "LOCAL_RELAY", re: ident("LOCAL_RELAY"), why: "本机中转进程的监护句柄" },
+  // 〔RL1 · V107〕`start_local_relay` / `LOCAL_RELAY` 两条随「monitor 另起中转」那一族删掉，换成接替它们的两个层 1 名字。〔散文墓碑〕
+  { name: "relay_host_envs", re: ident("relay_host_envs"), why: "起本机后端时交给它的中转端口（与凭据路径 —— 那是账号层要读的，但交接这一步是为中转在那个进程里起来）" },
+  { name: "host_relay", re: ident("host_relay"), why: "常驻后端进程内起中转的装配口（层 1 的 host ＋ 层 2 那只手）" },
   { name: "RelayAsk", re: ident("RelayAsk"), why: "`relay_endpoint_for` 的入参" },
   { name: "relay_segment_is_safe", re: ident("relay_segment_is_safe"), why: "中转路由段的字符闸（层 1 线格式）" },
   { name: "RELAY_KEEPS_THE_OLD_PATH", re: ident("RELAY_KEEPS_THE_OLD_PATH"), why: "中转前缀在场时本机拉起走旧路的理由句" },
