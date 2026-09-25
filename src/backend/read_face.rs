@@ -111,23 +111,31 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
             }))
         }
         // 〔SR1a · 2026-09-24〕`frame_query::STILL_DIALED` 缩到只剩真该拨号的那两条：骨架索引与大纲清单
-        // 是**每开一个大会话就要一次**的查询，不是「点一次才发一次」。与 CLI 那一臂同一个函数。
+        // 是**每开一个大会话就要一次**的查询，不是「点一次才发一次」。与 CLI 那一臂同一个扫描。
+        // 〔C4b · 第四波 4B〕这三条**出成品**（不再是按行 `{"lines":[头, …, 尾]}`）：monitor 那一份「核头尾、剥行」
+        //   删了，界面经通道直接问、按形状收。头尾三段只属于 CLI 那一臂（stdout 要分帧才认得出截断）；
+        //   一帧应答是原子的 —— 装不下就是 `too_large` 明拒，没有「有头没尾」这一形。
         "history-index" => {
             let path = str_arg(args, "path")?;
             let offset = u64_arg(args, "offset")?.unwrap_or(0);
             let until = u64_arg(args, "until")?;
-            lines(|out| {
-                history_query::session_index_into(home, path, offset, until, out)
-                    .map_err(|e| ("failed", e))
-            })
+            let r =
+                history_query::open_session_at(home, path, offset).map_err(|e| ("failed", e))?;
+            let mut rows = CappedRows::default();
+            let scanned = history_query::scan_session_index(r, offset, until, |row| rows.push(row));
+            let (_, end) = rows.finish(scanned)?;
+            Ok(json!({ "from": offset, "end": end, "rows": rows.rows }))
         }
         "history-user-inputs" => {
             let path = str_arg(args, "path")?;
             let from = u64_arg(args, "from")?.unwrap_or(0);
-            lines(|out| {
-                history_query::list_user_inputs_into(home, path, from, out)
-                    .map_err(|e| ("failed", e))
-            })
+            let r =
+                history_query::open_user_inputs_at(home, path, from).map_err(|e| ("failed", e))?;
+            let mut rows = CappedRows::default();
+            let scanned =
+                crate::observe::user_inputs::scan_user_inputs(r, from, |row| rows.push(row));
+            let (_, end) = rows.finish(scanned)?;
+            Ok(json!({ "from": from, "end": end, "entries": rows.rows }))
         }
         // 〔SR1a × SE2 · 09-24〕会话内查找（Ctrl+F，SE2 的 `--find-in-session`）随骨架索引与大纲一起上帧面。
         // `limit` 超封顶按封顶算、缺席取缺省 —— 与 CLI 那一臂的 `parse_find_args` 同一对常量。
@@ -141,10 +149,12 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
                 .unwrap_or(false);
             let limit = u64_arg(args, "limit")?
                 .map_or(FIND_DEFAULT_LIMIT, |n| (n as usize).min(FIND_MAX_LIMIT));
-            lines(|out| {
-                history_query::find_in_session_into(home, path, query, include_tools, limit, out)
-                    .map_err(|e| ("failed", e))
-            })
+            let r = history_query::open_session_at(home, path, 0).map_err(|e| ("failed", e))?;
+            let mut hits = CappedRows::default();
+            let scanned =
+                search_query::scan_session_find(r, query, include_tools, limit, |h| hits.push(h));
+            let (_, total) = hits.finish(scanned)?;
+            Ok(json!({ "total": total, "hits": hits.rows }))
         }
         "history-tail" => {
             let path = str_arg(args, "path")?;
@@ -184,6 +194,36 @@ fn too_large(size: usize) -> (&'static str, String) {
         "too_large",
         format!("结果超过 {LINES_CAP_BYTES} 字节上限，没有返回（至少 {size} 字节）"),
     )
+}
+
+/// 〔C4b · 第四波 4B〕出成品那三条的收集器：逐条收成 JSON 值，整份（按序列化字节计）过 [`LINES_CAP_BYTES`]
+/// ⇒ 当场停下扫描、回 `too_large`（不截断：截断的清单会被当成完整的用）—— 与 [`CappedBuf`] 同一条纪律。
+#[derive(Default)]
+struct CappedRows {
+    rows: Vec<Value>,
+    seen: usize,
+    over: bool,
+}
+
+impl CappedRows {
+    fn push<T: serde::Serialize>(&mut self, row: &T) -> std::io::Result<()> {
+        let v = serde_json::to_value(row).map_err(std::io::Error::other)?;
+        self.seen += v.to_string().len() + 1;
+        if self.seen > LINES_CAP_BYTES {
+            self.over = true;
+            return Err(std::io::Error::other("reply cap reached"));
+        }
+        self.rows.push(v);
+        Ok(())
+    }
+
+    /// 扫描的结局 ⇒ 帧面的结局。超了上限的那一次停下，原因是「超了」，不是扫描函数报的那句 I/O 错。
+    fn finish<T>(&self, res: std::io::Result<T>) -> Result<T, (&'static str, String)> {
+        if self.over {
+            return Err(too_large(self.seen));
+        }
+        res.map_err(|e| ("failed", format!("stream failed: {e}")))
+    }
 }
 
 /// 有上限的内存出口。超了就报错（让查询函数停下），并记下「超了」—— 调用方据此回 `too_large`，

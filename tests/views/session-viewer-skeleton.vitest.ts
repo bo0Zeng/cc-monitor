@@ -18,6 +18,7 @@ vi.mock("@tauri-apps/api/core", async () => {
 vi.mock("../../src/fork-flow", () => ({ runForkFlow: vi.fn().mockResolvedValue(undefined) }));
 
 import { invoke } from "@tauri-apps/api/core";
+import { sessionReadCalls } from "../test-support/chan-fake";
 import {
   installViewerRig,
   expectLoaded,
@@ -80,9 +81,9 @@ describe("〔U3b〕查看器接骨架", () => {
   it("索引与正文并行要；尾巴 150 条之上画一块占位 [0, 尾巴第一条的 seq)", async () => {
     viewerRig.index = index();
     const v = await mount();
-    const calls = vi.mocked(invoke).mock.calls.map((c) => c[0]);
-    expect(calls).toContain("read_session_index");
-    expect(vi.mocked(invoke).mock.calls.find((c) => c[0] === "read_session_index")?.[1]).toEqual({
+    const idx = sessionReadCalls(vi.mocked(invoke).mock.calls, "read_session_index");
+    expect(idx.length).toBeGreaterThan(0);
+    expect(idx[0]).toEqual({
       origin: "<local>",
       jsonlPath: "/p/s1.jsonl",
       fromOffset: 0,

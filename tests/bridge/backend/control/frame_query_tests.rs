@@ -110,7 +110,7 @@ fn run_list_query_asks_before_it_dials() {
     assert!(ask < dial, "先拨号后问，问了等于没问");
 }
 
-/// ★ argv 分流认得本仓今天真在发的形状：区间取正文 · 骨架索引 · 大纲清单都走帧面。
+/// ★ argv 分流认得本仓今天真在发的形状：区间取正文走帧面（〔C4b〕索引 · 查找 · 大纲三形改走通道，不再认）。
 #[test]
 fn argv_routing_covers_the_shapes_the_repo_actually_sends() {
     let range = crate::session_skeleton::range_argv("/p/s.jsonl", 10, 99);
@@ -121,35 +121,17 @@ fn argv_routing_covers_the_shapes_the_repo_actually_sends() {
         }
         _ => panic!("按区间取正文那一形没走帧面"),
     }
-    // 〔SR1a〕索引与大纲两形：造 argv 的是生产那两个函数（异源），它们都得走帧面、带对参数。
-    let index = crate::session_skeleton::index_argv("/p/s.jsonl", 7);
-    let index: Vec<&str> = index.iter().map(String::as_str).collect();
-    match route_argv(&index) {
-        Some(ArgvRoute::Lines("history-index", args)) => {
-            assert_eq!(args, serde_json::json!({"path": "/p/s.jsonl", "offset": 7}))
-        }
-        _ => panic!("索引那一形没走帧面"),
-    }
-    for tools in [false, true] {
-        let find = crate::session_find::find_argv("/p/s.jsonl", "--force", tools);
-        let find: Vec<&str> = find.iter().map(String::as_str).collect();
-        match route_argv(&find) {
-            Some(ArgvRoute::Lines("history-find", args)) => {
-                assert_eq!(args["path"], "/p/s.jsonl");
-                assert_eq!(args["query"], "--force", "以 -- 起头的查询串要原样到");
-                assert_eq!(args["include_tools"], tools);
-                assert!(args["limit"].as_u64().is_some());
-            }
-            _ => panic!("查找那一形（include_tools={tools}）没走帧面"),
-        }
-    }
-    let outline = crate::session_outline::user_inputs_argv("/p/s.jsonl", 42);
-    let outline: Vec<&str> = outline.iter().map(String::as_str).collect();
-    match route_argv(&outline) {
-        Some(ArgvRoute::Lines("history-user-inputs", args)) => {
-            assert_eq!(args, serde_json::json!({"path": "/p/s.jsonl", "from": 42}))
-        }
-        _ => panic!("大纲那一形没走帧面"),
+    // 〔C4b · 第四波 4B〕索引 · 查找 · 大纲三形随那三条命令改走通道删了 —— 它们的 argv 造器一起删了，
+    //   这里改成反向：那三个子命令**不再被认**（认得就说明 monitor 里又长出了一条发它们的路）。
+    for gone in [
+        &["--read-session-from-offset", "--index", "/p/s.jsonl", "7"][..],
+        &["--find-in-session", "--limit", "500", "--query", "q", "/p/s.jsonl"][..],
+        &["--list-user-inputs", "--from", "42", "/p/s.jsonl"][..],
+    ] {
+        assert!(
+            route_argv(gone).is_none(),
+            "{gone:?} 又被分流认出来了 —— 那一条已经只走通道"
+        );
     }
     assert!(matches!(
         route_argv(&["--list-subagents", "/p/s.jsonl"]),
@@ -181,6 +163,20 @@ const CHANNELED: &[(&str, &str)] = &[
         "history-search",
         "远端那半迁：逐台 fan-out ＋ 补 origin ＋ 与本机索引合并三件事搬到 `src/views/history-search.ts`，\
          每件只有那一个家；本机索引仍是 monitor 进程内的（`search_history` 只剩本机）",
+    ),
+    // 〔C4b · 第四波 4B〕会话读面那三条：**解释挪进后端、直接出成品**（`read_face.rs`），monitor 那一份
+    //   「核头尾、剥行、失败分档」删了；界面经 `src/session-reads.ts` 问，本机与远端同一条路。
+    (
+        "history-index",
+        "后端出成品 `{from, end, rows}`；行本身前端不解释（`SkeletonFacts`）；monitor 那份核头尾删了",
+    ),
+    (
+        "history-user-inputs",
+        "后端出成品 `{from, end, entries}`；「什么算一条用户输入」只住后端，失败分档只住 `session-reads.ts::failureOf`",
+    ),
+    (
+        "history-find",
+        "后端出成品 `{total, hits}`；命中口径只住后端（`search_query` ＋ `search-core`），monitor 那份核头尾删了",
     ),
 ];
 
@@ -215,20 +211,8 @@ const HELD_BACK: &[(&str, &str)] = &[
         "history-tail",
         "**不是前端查询**：它只被实时 tab 的快照续点用（`ssh_source` 的流机器，monitor 内部），webview 从不问它",
     ),
-    // 〔C4a 与 SR1a 合并 · 第四波〕SR1a 同波把这三条搬上帧面（进了 `MOVED`），C4a 立本表时它们还在另一棵树上。
-    //   三条今天都由 monitor 侧经 `frame_query` 发，前端没经通道说 —— 迁不迁归 C4b，理由同上面那几条：
-    (
-        "history-index",
-        "骨架索引的应答要进 monitor 侧的骨架账（`session_skeleton` 的行号编排，本机那条路共用）⇒ 同 `history-read`",
-    ),
-    (
-        "history-user-inputs",
-        "大纲清单的应答要过 `session_outline` 的解析与分档（`QueryError` 三档），本机那条路共用 ⇒ TS 再写一份不可接受",
-    ),
-    (
-        "history-find",
-        "会话内查找的应答要过 `session_find::parse_find_output` 的头尾核验，本机那条路共用 ⇒ 同上",
-    ),
+    // 〔C4a 与 SR1a 合并〕SR1a 同波搬上来的 `history-index` / `history-user-inputs` / `history-find` 三行
+    // 〔C4b · 第四波 4B〕挪进了 [`CHANNELED`]（后端出成品）。
 ];
 
 /// monitor 生产段（`src/bridge/src/**/*.rs`，剥注释与 `#[cfg(test)]`）里，一条帧命令的字面量出现几次。

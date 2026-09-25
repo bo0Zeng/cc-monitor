@@ -194,6 +194,7 @@ vi.mock("../src/account-restart", () => ({
 }));
 
 import { invoke } from "@tauri-apps/api/core";
+import { sessionReadCalls, withSessionReads } from "./test-support/chan-fake";
 import { restartWithAccount } from "../src/account-restart";
 import { invalidateAccountsCache } from "../src/accounts";
 import { showActionFailureToast } from "../src/error-toast";
@@ -4572,7 +4573,9 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
       pl: 1,
     })),
   });
-  const indexCalls = () => vi.mocked(invoke).mock.calls.filter((c) => c[0] === "read_session_index");
+  // 〔C4b〕骨架索引改走通道：一发 `chan_call` 译回「哪一问 ＋ 旧形参」（`chan-fake.ts::sessionReadCalls`）。
+  const indexCalls = () =>
+    sessionReadCalls(vi.mocked(invoke).mock.calls, "read_session_index").map((a) => ["read_session_index", a]);
   const settle = () => new Promise((r) => setTimeout(r, 0));
 
   /** 重放形状：尾巴先到（钉 floor=200），老的 [0,200) 后到 ⇒ 全收纳。`skip` 里的 seq 不发（模拟迟到）。 */
@@ -4591,9 +4594,9 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
   }
 
   it("批结束：active tab 要一次索引（本机 origin 逐字 `<local>`、从 0 起），到了就接骨架、哨兵退场", async () => {
-    vi.mocked(invoke).mockImplementation((cmd: string) =>
+    vi.mocked(invoke).mockImplementation(withSessionReads((cmd: string) =>
       Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
-    );
+    ) as never);
     const t = replay("sk");
     expect(indexCalls()).toEqual([
       ["read_session_index", { origin: "<local>", jsonlPath: "/p/sk.jsonl", fromOffset: 0 }],
@@ -4611,13 +4614,13 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
   });
 
   it("老后端 / 本机后端不在（available:false）⇒ 不接，尾部窗口照旧（账本还在、哨兵还在）", async () => {
-    vi.mocked(invoke).mockImplementation((cmd: string) =>
+    vi.mocked(invoke).mockImplementation(withSessionReads((cmd: string) =>
       Promise.resolve(
         cmd === "read_session_index"
           ? { available: false, reason: "老后端", from: 0, end: 0, rows: [] }
           : undefined,
       ),
-    );
+    ) as never);
     const t = replay("old");
     await settle();
     expect(t.skeleton).toBeNull();
@@ -4627,9 +4630,9 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
   });
 
   it("🔴 seq 空间对不上（uuid 在索引里落在别的 seq）⇒ 不接 —— 不许硬对", async () => {
-    vi.mocked(invoke).mockImplementation((cmd: string) =>
+    vi.mocked(invoke).mockImplementation(withSessionReads((cmd: string) =>
       Promise.resolve(cmd === "read_session_index" ? idx(300, 7) : undefined),
-    );
+    ) as never);
     const t = replay("shift");
     await settle();
     expect(t.skeleton).toBeNull();
@@ -4637,9 +4640,9 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
   });
 
   it("门控：占位里的行收纳；岛（ensure 物化过的一段）里迟到的行就地建卡，不收纳", async () => {
-    vi.mocked(invoke).mockImplementation((cmd: string) =>
+    vi.mocked(invoke).mockImplementation(withSessionReads((cmd: string) =>
       Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
-    );
+    ) as never);
     const t = replay("gate", new Set([60, 150]));
     await settle();
     const sk = t.skeleton!;
@@ -4657,7 +4660,7 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
   });
 
   it("子步 5：物化到一段**还没到过**的行 ⇒ 按索引的字节边界要回来（从偏移读），走 onLine 全套建卡", async () => {
-    vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {
+    vi.mocked(invoke).mockImplementation(withSessionReads((cmd: string, args?: unknown) => {
       if (cmd === "read_session_index") return Promise.resolve(idx(300));
       if (cmd === "read_session_range") {
         const a = args as { seqBase: number; lineCount: number };
@@ -4666,7 +4669,7 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
         );
       }
       return Promise.resolve(undefined);
-    });
+    }) as never);
     const t = replay("miss", new Set([100, 101, 102, 150]));
     await settle();
     const { renderContentRecord } = await import("../src/render-stream-record");
@@ -4700,9 +4703,9 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
   });
 
   it("滚动：接上骨架后**每次**滚动都交给 fillVisible —— 不再只在离顶 800px 内才补（占位可以在中部）", async () => {
-    vi.mocked(invoke).mockImplementation((cmd: string) =>
+    vi.mocked(invoke).mockImplementation(withSessionReads((cmd: string) =>
       Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
-    );
+    ) as never);
     const t = replay("scroll");
     await settle();
     const spy = vi.spyOn(t.skeleton!, "fillVisible");
@@ -4712,7 +4715,7 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
   });
 
   it("〔U3b · 步 8〕接上骨架 ⇒ 前端账本只留离尾巴最近的 200 条、monitor 重放缓冲只留尾巴；丢掉的滚到时按偏移要回来、只建卡不重记账", async () => {
-    vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {
+    vi.mocked(invoke).mockImplementation(withSessionReads((cmd: string, args?: unknown) => {
       if (cmd === "read_session_index") return Promise.resolve(idx(1100));
       if (cmd === "read_session_range") {
         const a = args as { seqBase: number; lineCount: number };
@@ -4721,7 +4724,7 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
         );
       }
       return Promise.resolve(undefined);
-    });
+    }) as never);
     // 尾巴 [1000,1100) 先到（钉 floor=1000），[0,1000) 后到 ⇒ 全收纳
     tm.onLine(mk("big", 1000, "u1000"));
     const el = home(tm).store.tabs.get("big")!.streamEl;
@@ -4760,9 +4763,9 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
   });
 
   it("大纲跳转：点到还在占位里的一条 ⇒ 先按 uuid→seq 物化那一段再跳", async () => {
-    vi.mocked(invoke).mockImplementation((cmd: string) =>
+    vi.mocked(invoke).mockImplementation(withSessionReads((cmd: string) =>
       Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
-    );
+    ) as never);
     const t = replay("jump");
     await settle();
     expect(t.skeleton!.isPending(42)).toBe(true);
@@ -4777,7 +4780,7 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
   // 〔SE1〕数据源换成后端之后，这条路必须照旧通：行是后端清单给的（不是流上攒的），
   //   点**那一行**（不是直接调宿主）⇒ 先按 uuid→seq 物化再跳。
   it("🔴 SE1：大纲的行来自后端清单，点到还在占位里的那一行 ⇒ 先物化那一段再跳", async () => {
-    vi.mocked(invoke).mockImplementation((cmd: string) =>
+    vi.mocked(invoke).mockImplementation(withSessionReads((cmd: string) =>
       Promise.resolve(
         cmd === "read_session_index"
           ? idx(300)
@@ -4794,7 +4797,7 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
               }
             : undefined,
       ),
-    );
+    ) as never);
     const t = replay("jump2");
     await settle();
     await settle();

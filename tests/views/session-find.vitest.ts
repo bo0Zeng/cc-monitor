@@ -27,8 +27,10 @@ const stub = vi.hoisted(() => ({
 
 vi.mock("@tauri-apps/api/core", async () => {
   const rig = await import("../test-support/session-viewer-rig");
+  const { withSessionReads } = await import("../test-support/chan-fake");
   return {
-    invoke: vi.fn(async (cmd: string, args: Record<string, unknown>) => {
+    // 〔C4b〕三问改走通道：`withSessionReads` 把一发 `chan_call` 译回「哪一问 ＋ 旧形参」、把回包译成后端成品字节。
+    invoke: vi.fn(withSessionReads(async (cmd: string, args: Record<string, unknown>) => {
       if (cmd === "list_user_inputs") return rig.answerListUserInputs(args as { fromOffset: number });
       if (cmd === "find_in_session") return stub.finds.shift();
       if (cmd === "read_session_index" && stub.indexRows && args.fromOffset === 0) {
@@ -42,7 +44,7 @@ vi.mock("@tauri-apps/api/core", async () => {
         );
       }
       return undefined;
-    }),
+    })),
   };
 });
 vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn().mockResolvedValue(undefined) }));
@@ -65,6 +67,7 @@ vi.mock("../../src/account-restart", () => ({
 vi.mock("../../src/fork-flow", () => ({ runForkFlow: vi.fn().mockResolvedValue(undefined) }));
 
 import { invoke } from "@tauri-apps/api/core";
+import { sessionReadCalls } from "../test-support/chan-fake";
 import {
   installViewerRig,
   assistantLine,
@@ -76,7 +79,7 @@ import {
 import { TabManager, type Tab } from "../../src/tabs";
 import { SessionFindPanel, type SessionFindHost } from "../../src/views/session-find";
 import { dispatcher } from "../../src/keybindings/registry";
-import type { FindResult } from "../../src/generated/FindResult";
+import type { FindResult } from "../../src/session-reads";
 
 const hit = (uuid: string, matched = "needle", before = "a ", after = " b") => ({
   uuid,
@@ -263,8 +266,7 @@ let streamRootEl: HTMLElement;
 const feed = (p: RigPayload): void => tm.onLine(p as never);
 const peek = (sid: string): Tab => (tm as unknown as { store: { tabs: Map<string, Tab> } }).store.tabs.get(sid)!;
 const findOf = (sid = "s1"): HTMLElement => peek(sid).inputsEl;
-const findCalls = (): unknown[] =>
-  vi.mocked(invoke).mock.calls.filter((c) => c[0] === "find_in_session").map((c) => c[1]);
+const findCalls = (): unknown[] => sessionReadCalls(vi.mocked(invoke).mock.calls, "find_in_session");
 
 function liveSetup(): void {
   const barEl = document.createElement("div");

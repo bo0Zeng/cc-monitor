@@ -44,6 +44,7 @@ import {
 import { REPO_ROOT } from "../test-support/repo-root";
 import { SessionViewer } from "../../src/views/session-viewer";
 import { invoke } from "@tauri-apps/api/core";
+import { sessionReadCalls } from "../test-support/chan-fake";
 import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
 let rig: ViewerRigHandles;
@@ -105,8 +106,8 @@ describe("SE1 清单挂进查看器：后端给什么就列什么（查看器不
       ],
       ["u1", "u7"], // 后端说：主线用户输入是这两条（isMeta 那条它排掉了）
     );
-    const calls = vi.mocked(invoke).mock.calls.filter((c) => c[0] === "list_user_inputs");
-    expect(calls.map((c) => c[1])).toEqual([{ origin: "<local>", jsonlPath: "/p/s1.jsonl", fromOffset: 0 }]);
+    const calls = sessionReadCalls(vi.mocked(invoke).mock.calls, "list_user_inputs");
+    expect(calls).toEqual([{ origin: "<local>", jsonlPath: "/p/s1.jsonl", fromOffset: 0 }]);
     const rows = rowsOf(v);
     expect(rows.map((r) => r.dataset.inputUuid)).toEqual(["u1", "u7"]);
     expect(rows[0].textContent).toBe("1. 第一句");
@@ -128,7 +129,16 @@ describe("SE1 清单挂进查看器：后端给什么就列什么（查看器不
     await settleOutline();
     expect(rowsOf(v).length).toBe(0);
     expect(toggleOf(v).disabled).toBe(true);
-    expect(toggleOf(v).title).toContain("本机后端不在");
+    // 〔C4b〕「老后端」那一档今天是通道的「对端事前说不认」（`peer/unsupported`）—— 它不带原因，
+    //   那句话由 `session-reads.ts` 说（原因文字只在 `refused` 那一档原样带过来，下一格量它）。
+    expect(toggleOf(v).title).toContain("后端版本旧");
+    // 瞬时那一档（对端说「不行」）：原因原样带上。
+    const w = new SessionViewer(() => {});
+    document.body.appendChild(w.element);
+    outlineBackend.failure = "transport";
+    await w.load({ jsonlPath: "/p/s2.jsonl", displayTitle: "T", origin: LOCAL_ORIGIN, suppressBranch: true });
+    await settleOutline();
+    expect(toggleOf(w).title).toContain("本机后端不在");
   });
 
   it("面板默认收着，点开关才展开（默认收着 ⇒ 对既有布局零影响）", async () => {
