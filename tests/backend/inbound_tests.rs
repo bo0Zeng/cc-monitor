@@ -520,6 +520,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "relay-status",
         // 〔RM1a · 第四波〕足迹那一条：一批 stat / 读几份小文件。
         "footprint-probe",
+        // 〔AS2 · 第四波 4B〕资产目录两条：扫盘 ＋ 原子写目录文件。
+        "assets-catalog",
+        "assets-catalog-merge",
         // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话：同步文件 I/O（围栏 ＋ 读 / 写满换名 / 删）。
         "files-peek",
         "files-put",
@@ -588,6 +591,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "relay-ensure",
         "relay-status",
         "footprint-probe",
+        // 〔AS2 · 第四波 4B〕资产目录两条，阻塞档。
+        "assets-catalog",
+        "assets-catalog-merge",
         // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话：同步文件 I/O，阻塞档。
         "files-peek",
         "files-put",

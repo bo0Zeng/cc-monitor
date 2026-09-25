@@ -476,8 +476,10 @@ const SCAN: &[&str] = &[
 const INTEGRATION: &[&str] = &[
     "tests/backend/accounts/apikey/creds_tests.rs",
     "tests/backend/accounts/apikey/file_face_tests.rs",
+    "tests/backend/agents/claudecode/assets_tests.rs", // 〔AS2〕
     "tests/backend/agents/fake_tests.rs",
     "tests/backend/agents_tests.rs",
+    "tests/backend/asset_catalog_tests.rs", // 〔AS2〕
     "tests/backend/common/fs_tests.rs",
     "tests/backend/control/capture_pane_tests.rs",
     "tests/backend/control/ccm/plan_tests.rs",

@@ -336,6 +336,8 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         kind: AGENT_KIND,
         // 最小假 agent 没有账号维度 —— 它要证的是「通用层零改动」，不是账号。
         account_env: None,
+        // 〔AS2〕最小假 agent 没有资产面（它要证的是「通用层零改动」，不是资产）。
+        assets: None,
         home: home_fn,
     };
     let discovered = crate::agents::visible_among(std::slice::from_ref(&adapter));

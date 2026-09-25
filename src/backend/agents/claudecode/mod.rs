@@ -7,6 +7,7 @@
 //! | [`liveness`] | 判活时"这个 cmdline 看起来像不像 Claude" |
 //! | [`accounts`] | `.claude.json` 的信任判定（`projects[cwd].hasTrustDialogAccepted`） |
 //! | [`resume`] | resume 的命令形状与会话名前缀（与 [`super::codex::resume`] 对称） |
+//! | [`assets`] | 〔AS2〕资产布局：`skills/<名>/` · `SKILL.md` 的 `description:` · `.claude.json` 的 `projects` × `<项目>/.mcp.json` |
 //!
 //! # ⚠ 搬进来的是**知识**，不是**机器**
 //!
@@ -29,6 +30,7 @@
 //! 那是 `L2`（接口）的题，归 `S6`。清单在 `agent_locality_guard::ADAPTER_CALL_SITES`。
 
 pub(crate) mod accounts;
+pub(crate) mod assets;
 pub(crate) mod liveness;
 pub mod paths;
 pub(crate) mod records;
@@ -56,3 +58,6 @@ pub(crate) const AGENT_KIND: &str = "claude";
 pub(crate) fn home() -> Option<std::path::PathBuf> {
     Some(paths::resolve_home())
 }
+
+/// 〔AS2 · 第四波 4B〕本家的资产面（注册表 `Adapter.assets` 那一格）：skill 与项目级 MCP 的布局知识住 [`assets`]。
+pub(crate) const ASSETS: super::AssetFace = super::AssetFace { scan: assets::scan };
