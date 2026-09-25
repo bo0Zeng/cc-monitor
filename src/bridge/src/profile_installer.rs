@@ -51,6 +51,62 @@ pub(crate) const END_MARKER: &str = "# === cc-monitor END";
 /// cc function 模板源码（含 `{{COMMAND_NAME}}` placeholder）
 const CC_TEMPLATE: &str = include_str!("../scripts/cc.ps1.tpl");
 
+/// 别名块里那个 `cc` 函数的名字（PowerShell 那一臂由它渲染；POSIX 那一臂的名字住 `src/shared/ccm-aliases.sh`，
+/// 这里只拿它查「用户 rc 里有没有同名函数」）。
+///
+/// 〔AL1d · 第四波 4B〕从前是 `cc_integration_*` 三条命令的入参 `command_name`，而界面从来只传 `"cc"`
+/// （`设计/71 §7` 那张表：「界面写死 `CC_COMMAND_NAME = "cc"`」）⇒ 一个没人用的自由度，收成这一个常量。
+pub const CC_FUNCTION_NAME: &str = "cc";
+
+/// 一份启动文件（rc / `$PROFILE`）里**别名块**的现状。
+///
+/// 〔AL1d · 第四波 4B〕别名块与别名文件那一行 source 装进的是**同一批**启动文件，候选从前却有两份来历
+/// （`AL1d.md §1.2`）⇒ 今天只有一份：`account_aliases::StartupFile` 每份候选都带着这一格，
+/// 由 [`block_state`] 在读回口那一次扫描里一起算出来。
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct BlockState {
+    /// 这份文件里有没有 cc-monitor 的别名块（**悬空的 BEGIN 也算在**，见 `block_presence`）。
+    pub present: bool,
+    /// 块头上的版本串（PowerShell 那一对才有；POSIX 那一对恒 `None`）。
+    pub version: Option<String>,
+    /// 块外已有的同名函数（与 [`CC_FUNCTION_NAME`] 同名）。
+    pub conflicting_functions: Vec<String>,
+    /// POSIX rc 里围栏之外那几行裸 `ccm` 的逐行指名（[`render_manual_cleanup_hint`]）；没有 / PowerShell ⇒ 空串。
+    pub manual_cleanup_hint: String,
+}
+
+/// **只读、纯函数**：一份启动文件的正文（盘上原样，BOM 在这里剥）→ 别名块的现状。
+/// 方言按**这份文件自己**的扩展名定（`Shell::of_target`），不按调用方在问哪种 shell。
+pub fn block_state(path: &Path, raw: &str) -> BlockState {
+    let flavor = Shell::of_target(path);
+    let content = strip_bom(raw);
+    let (present, version) = block_presence(flavor, content);
+    BlockState {
+        present,
+        version,
+        conflicting_functions: find_conflicting_functions(flavor, content, CC_FUNCTION_NAME),
+        manual_cleanup_hint: match flavor {
+            Shell::PowerShell => String::new(),
+            Shell::Posix => render_manual_cleanup_hint(
+                &path.to_string_lossy(),
+                &scan_legacy_rc_lines(content),
+            ),
+        },
+    }
+}
+
+/// **纯**：别名块渲染成代码 —— 「往一份空文件里装一次，那份文件会变成什么」（BOM 那一层除外）。
+///
+/// 〔AL1d · 第四波 4B〕从前的预览只会 PowerShell 那一块（`render_cc_code`），POSIX 那一块没有预览。
+/// 今天两种方言都答，而且答的是**装那一跳调的同一个** [`plan_install`] —— 「预览的就是写的那一份」
+/// 由同一个函数保证，不是两份拼法对拍。`with_cc` 只对 PowerShell 那一臂有意义（同 [`plan_install`]）。
+pub fn render_block(shell: Shell, with_cc: bool) -> Result<String, String> {
+    plan_install(shell, "", CC_FUNCTION_NAME, with_cc, "预览")
+}
+
 /// PowerShell profile 类型标签。v1.7.2 起 UI 只用作显示提示，实际安装传 path。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -497,28 +553,21 @@ pub fn scan_profile(kind: ProfileKind, path: &PathBuf, command_name: &str) -> Pr
             size_bytes: 0,
         };
     }
-    let flavor = Shell::of_target(path);
     let raw = std::fs::read_to_string(path).unwrap_or_default();
-    // 〔`K-R132`〕BOM 剥在最靠近读的那一跳 —— 不剥，`find_block_version` 的
-    // `strip_prefix(BEGIN_MARKER)` 会在第一行就对不上前缀 ⇒ 界面说「未安装」。
-    let content = strip_bom(&raw).to_string();
     // `size_bytes` 报的是**盘上那份**的大小（含 BOM）—— 它是给人看「这文件多大」的，
     // 不是内容判定的输入。
     let size_bytes = raw.len() as u64;
-    let (block_present, block_version) = block_presence(flavor, &content);
-    let conflicts = find_conflicting_functions(flavor, &content, command_name);
-    let manual_cleanup_hint = match flavor {
-        Shell::PowerShell => String::new(),
-        Shell::Posix => render_manual_cleanup_hint(&path_str, &scan_legacy_rc_lines(&content)),
-    };
+    // 〔AL1d〕判内容那一半只有一份：[`block_state`]（BOM 在它里面剥）。
+    let _ = command_name;
+    let b = block_state(path, &raw);
     ProfileScan {
         kind,
         path: path_str,
         exists: true,
-        has_ccm_block: block_present,
-        ccm_block_version: block_version,
-        conflicting_functions: conflicts,
-        manual_cleanup_hint,
+        has_ccm_block: b.present,
+        ccm_block_version: b.version,
+        conflicting_functions: b.conflicting_functions,
+        manual_cleanup_hint: b.manual_cleanup_hint,
         size_bytes,
     }
 }

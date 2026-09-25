@@ -41,7 +41,7 @@ import { ACTIVE_AGENT, listAgents } from "../agent-profile";
 import type { Alias } from "../generated/Alias";
 import type { AliasRender } from "../generated/AliasRender";
 import type { ProfileScan } from "../generated/ProfileScan";
-import type { AccountAliasRc } from "../generated/AccountAliasRc";
+import type { StartupFile } from "../generated/StartupFile";
 import type { Shell } from "../generated/Shell";
 import type { LegacyProfileEntry } from "../generated/LegacyProfileEntry";
 import type { ProfileKind } from "../generated/ProfileKind";
@@ -519,7 +519,7 @@ export function buildAliasManager(opts: {
     void changed();
   };
 
-  const fillRcOptions = (cands: readonly AccountAliasRc[]): void => {
+  const fillRcOptions = (cands: readonly StartupFile[]): void => {
     const keep = rcSel.value;
     rcSel.textContent = "";
     const none = el("option", "", "不动我的 shell 配置");

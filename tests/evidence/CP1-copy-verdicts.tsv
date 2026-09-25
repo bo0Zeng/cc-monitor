@@ -1323,3 +1323,4 @@ src/backend/control/panorama.rs:225	被中途终止	保留	[可达存疑] 〔RM1
 src/panorama/api.ts:40	远端仓的批注和文档关联暂时只能看、不能改：这一版还不支持改远端机器上的这些文件。	保留	[对外] 〔RM1c〕远端仓上批注 / 文档关联写入口的替代说明（侧栏里一句 ＋ 被拒时的 toast）；说清能做什么、不能做什么，不讲实现
 src/panorama/api.ts:57	{…}（远端 {…}）	保留	[对外] 〔RM1c〕远端仓的标签：路径 ＋ 机器名（「复制给 agent」的住址行也用它，97 §6 ④）
 src/views/panorama.ts:318	 · 远端 {…}	保留	[对外] 〔RM1c〕全景标题里远端仓的机器名那一段（同一个路径在两台机器上是两个仓）
+src/bridge/src/profile_installer.rs:107	预览	保留	[不对外] 〔AL1d〕`render_block` 交给 `plan_install` 的 `what`（只进围栏损坏那一句报错，而对空文件渲染不会有围栏 ⇒ 到不了用户）

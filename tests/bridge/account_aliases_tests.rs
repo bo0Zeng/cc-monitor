@@ -180,7 +180,7 @@ fn the_rc_source_line_is_added_once_and_keeps_user_content() {
     assert_eq!(twice.matches(&line).count(), 1, "那一行出现了两次：{twice}");
 
     // 顺带：候选表能认出「已经 source 过了」
-    let me = rc_candidates_in(&h.0, P)
+    let me = rc_candidates_in(&h.0, P, None)
         .into_iter()
         .find(|c| c.path == rc.display().to_string())
         .expect("候选里该有 .bashrc");
@@ -218,7 +218,7 @@ fn an_rc_that_already_sources_it_via_home_var_is_recognized() {
     assert_eq!(std::fs::read(&rc).expect("读回"), before, "rc 必须逐字未变");
 
     // 候选表也要认得出来（界面上那一项会显「已经 source 过了」）。
-    let me = rc_candidates_in(&h.0, P)
+    let me = rc_candidates_in(&h.0, P, None)
         .into_iter()
         .find(|c| c.path == rc.display().to_string())
         .expect("候选里该有 .bashrc");
@@ -265,7 +265,7 @@ fn an_rc_with_the_old_file_name_is_rewritten_to_the_new_shape_on_next_install() 
         "zcc() { ccm --account z \"$@\"; }\n",
     )
     .expect("铺旧文件");
-    let listing = read_in(&h.0, P).expect("读回");
+    let listing = read_in(&h.0, P, None, 0).expect("读回");
     assert!(
         !listing.exists && listing.aliases.is_empty(),
         "读回口去读了旧名：{:?}",
@@ -484,7 +484,7 @@ fn what_is_installed_reads_back_as_the_same_list() {
     assert!(rep.wrote_alias_file);
     let on_disk = std::fs::read_to_string(alias_file_in(&h.0, P)).unwrap();
     assert_eq!(on_disk, render(&list, P).code, "落盘的不是预览的那一份");
-    let back = read_in(&h.0, P).expect("读回");
+    let back = read_in(&h.0, P, None, 0).expect("读回");
     assert!(
         back.exists && back.unparsed.is_empty(),
         "{:?}",
@@ -517,7 +517,7 @@ fn the_reader_takes_the_old_file_and_names_what_it_cannot_parse() {
          # === cc-monitor account aliases END ===\n",
     )
     .unwrap();
-    let back = read_in(&h.0, P).unwrap();
+    let back = read_in(&h.0, P, None, 0).unwrap();
     assert_eq!(
         back.aliases,
         vec![
@@ -534,7 +534,7 @@ fn the_reader_takes_the_old_file_and_names_what_it_cannot_parse() {
     assert!(back.unparsed[1].contains("--print"), "{:?}", back.unparsed);
     // 文件不在 ≠ 读失败。
     let empty = tmp_home("none");
-    let l = read_in(&empty.0, P).unwrap();
+    let l = read_in(&empty.0, P, None, 0).unwrap();
     assert!(!l.exists && l.aliases.is_empty());
 }
 
@@ -820,7 +820,7 @@ fn the_powershell_arm_writes_and_reads_back_the_same_list() {
     assert!(pinned(&prof, &line), "source 那一行没进去：{prof}");
     let body = crate::shell_dialect::strip_bom(&prof);
     assert!(pinned(body, RC_BEGIN) && pinned(body, RC_END), "{prof}");
-    let back = read_in(&h.0, PS).expect("读回");
+    let back = read_in(&h.0, PS, None, 0).expect("读回");
     assert!(
         back.exists && back.unparsed.is_empty(),
         "{:?}",
@@ -844,7 +844,7 @@ fn the_powershell_arm_writes_and_reads_back_the_same_list() {
     assert!(!again.wrote_alias_file && !again.wrote_rc, "{again:?}");
     assert_eq!(std::fs::read_to_string(&profile).unwrap(), prof);
     // POSIX 那份是另一个文件：没写过就是不在。
-    let posix = read_in(&h.0, P).unwrap();
+    let posix = read_in(&h.0, P, None, 0).unwrap();
     assert!(!posix.exists && posix.aliases.is_empty());
 }
 
