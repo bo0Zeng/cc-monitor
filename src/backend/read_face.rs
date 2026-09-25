@@ -110,6 +110,26 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
                 "eof": page.eof,
             }))
         }
+        // 〔CF2 · 第四波 4B〕按**行号**取回（不依赖骨架索引的那条取回路，`history_query::read_lines` 头注）。
+        "history-lines" => {
+            let path = str_arg(args, "path")?;
+            let from = u64_arg(args, "from")?.unwrap_or(0);
+            let until = u64_arg(args, "until")?;
+            let page = history_query::read_lines(
+                home,
+                path,
+                from,
+                until,
+                READ_PAGE_BYTES,
+                LINE_CAP_BYTES,
+            )?;
+            Ok(json!({
+                "from": page.from,
+                "next": page.next,
+                "eof": page.eof,
+                "lines": page.lines,
+            }))
+        }
         // 〔SR1a · 2026-09-24〕`frame_query::STILL_DIALED` 缩到只剩真该拨号的那两条：骨架索引与大纲清单
         // 是**每开一个大会话就要一次**的查询，不是「点一次才发一次」。与 CLI 那一臂同一个扫描。
         // 〔C4b · 第四波 4B〕这三条**出成品**（不再是按行 `{"lines":[头, …, 尾]}`）：monitor 那一份「核头尾、剥行」
