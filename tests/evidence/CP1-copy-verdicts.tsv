@@ -313,7 +313,7 @@ src/bridge/src/creds_store.rs:101	读不动这份文件：{e}	保留	[对外] �
 src/bridge/src/creds_store.rs:132	{how}。怎么修：{fix}	保留	[对外] 骨架「{how}。怎么修：{fix}」，干净；病在灌进来的 how/fix 本身（见 perm.rs）
 src/backend/accounts/apikey/file_face.rs:178	{how}。怎么修：{fix}	保留	[对外] 〔RM1a〕远端那台机器上那份凭据文件的权限提醒（`apikey-read` 的 notice，回到设置页那一块）；骨架与 creds_store.rs 那一句同文、干净，病在灌进来的 how/fix 本身（见 perm.rs）
 src/bridge/src/apikey_remote.rs:152	读写第三方 API key 时出了内部错误，没有拿到结果	保留	[可达存疑] 〔RM1a〕分流器 Done 那一臂的兜底（本族走不到）；说的是用户做的事（读写 API key）＋结果，短，同 backend_policy.rs 那一句的形
-src/bridge/src/remote_relay.rs:66	本机的中转由 monitor 自己看着（起本机后端时一起起），不在这里另起一个	保留	[可达存疑] 〔RM1a〕`relay_ensure` 对本机的拒绝（今天界面上没有调用方）；说的是结果＋原因，短。「中转」是层 1 的正名（terms.json）
+src/bridge/src/remote_relay.rs:68	本机的中转住在本机后端进程里（随它起、随它按「退出行为」留或退），不在这里另起一个	保留	[可达存疑] 〔RL1 · V107〕`ensure_on` 对本机的拒绝（界面零调用方，本机那一臂只在内部走到）；说的是结果＋原因。「中转」是层 1 的正名（terms.json）
 src/bridge/src/remote_relay.rs:115	问中转时出了内部错误，没有拿到结果	保留	[可达存疑] 〔RM1a〕分流器 Done 那一臂的兜底（本族走不到）；同 backend_policy.rs 那一句的形
 src/backend/footprint.rs:104	列不动（没权限？）	保留	[不对外] 〔RM1a〕`footprint-probe` 应答里目录那一格的 notice，monitor 今天不读它（界面没有它的格子），过线是为了能查
 src/backend/footprint.rs:113	名字超过 {MAX_ENTRIES} 个，没列（不截断：截断的清单会被当成完整的）	保留	[不对外] 同上，目录名字超上限时那一格的 notice
@@ -794,10 +794,11 @@ src/settings/drift-ledger-section.ts:55	次观测（每次重扫一次，不是�
 src/settings/drift-ledger-section.ts:57	次握手	内部词→「次连接」	[对外] 「握手」是协议实现词 新词:握手
 src/settings/drift-ledger-section.ts:59	次	保留	[对外] 计数单位
 src/settings/drift-ledger-section.ts:65	\n      首见：{…}	保留	[对外] 诊断文本字段
-src/settings/drift-ledger-section.ts:72	数据面漂移记账：本次运行期间没有遇到任何看不懂的东西。	内部词→「格式兼容记录」	[对外] 「数据面漂移记账」是自造概念名 兼§2.5 新词:数据面漂移记账 →「格式兼容记录：本次运行没有遇到无法识别的数据。」
+src/settings/drift-ledger-section.ts:80	本机	保留	[对外] 可复制诊断文本里那台机器的称呼（ST3：账按机器分，贴进 issue 时要分得清是哪台）
+src/settings/drift-ledger-section.ts:87	数据面漂移记账（{…}）：本次运行期间没有遇到任何看不懂的东西。	内部词→「格式兼容记录」	[对外] 「数据面漂移记账」是自造概念名 兼§2.5 新词:数据面漂移记账 →「格式兼容记录：本次运行没有遇到无法识别的数据。」〔ST3：首行多了「是哪台」，裁词照旧〕
 src/settings/drift-ledger-section.ts:75	{…}（{…} 种{…}）	保留	[对外] 小节标题＋计数
 src/settings/drift-ledger-section.ts:76	  后果：{…}	保留	[对外] 诊断文本字段
-src/settings/drift-ledger-section.ts:80	数据面漂移记账（本进程内，重启归零）\n\n{…}	内部词→「格式兼容记录」	[对外] 自造概念名＋「本进程内」实现词 兼§2.5 新词:数据面漂移记账 →「格式兼容记录（重启后清空）」
+src/settings/drift-ledger-section.ts:95	数据面漂移记账（{…} · 本进程内，重启归零）\n\n{…}	内部词→「格式兼容记录」	[对外] 自造概念名＋「本进程内」实现词 兼§2.5 新词:数据面漂移记账 →「格式兼容记录（重启后清空）」〔ST3：首行多了「是哪台」，裁词照旧〕
 src/settings/drift-ledger-section.ts:125	读取中…	保留	[对外] 按钮忙碌态
 src/settings/drift-ledger-section.ts:133	复制中…	保留	[对外] 按钮忙碌态
 src/settings/machine-card.ts:334	名称 (label，可选)	内部词→「名称（可选）」	[对外] 表单标签括号里挂的是配置文件键名 label，用户不需要 新词:label（配置键）
@@ -1222,6 +1223,12 @@ src/backend/dial/link.rs:352	链路的信用闸被关了	改·§2.1	[可达存�
 src/backend/dial/link.rs:359	读链路下行失败：{e}	改·§2.1	[可达存疑] 〔SR1a〕`link_end` 的 error，同上 →「和远端的连接断了：{e}」 新词:链路
 src/backend/dial/link.rs:365	链路的信用记账对不上（不该发生）	改·§2.1	[可达存疑] 〔SR1a〕`link_end` 的 error，本程序 bug 才出现 →「和远端的连接断了（本程序出错）」 兼§2.2 新词:链路
 src/backend/dial/link.rs:399	这条链路的上行已经收工：{e}	改·§2.1	[可达存疑] 〔SR1a〕`link-data` 写进链路失败（远端那头已经走了），会变成那条连接的写错误 →「和远端的连接已经断了」 新词:链路
+src/backend/relay/listen.rs:315	[relay] 没被交中转端口 ⇒ 本进程不开中转	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
+src/backend/relay/listen.rs:316	[relay] 中转住本进程，听 {a}	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
+src/backend/relay/listen.rs:319	[relay] 被交了中转端口却起不来（后端照常服务）：{reason}	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
+src/backend/relay/listen.rs:352	{ENV_PORT}={raw:?} 不是端口号（{e}）	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
+src/backend/relay/listen.rs:361	读不出绑到的地址：{e}	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
+src/backend/relay/listen.rs:372	起不来接受线程：{e}	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
 src/bridge/src/link_mux.rs:48	本机后端拒了（{code}）：{message}	改·§2.1	[可达存疑] 〔SR1a〕链路命令被后端拒时的外壳，{code} 是协议错误码 →「本机后端拒绝了这次连接：{message}」
 src/bridge/src/link_mux.rs:51	链路命令出了内部错误	改·§2.1	[可达存疑] 〔SR1a〕分流器三态里走不到的那一格的兜底说法 →「连接出错了（本程序出错）」 新词:链路
 src/bridge/src/link_mux.rs:133	本机后端在链路 {link} 上发了 {now} 字节却没等信用（窗口 {LINK_WINDOW_BYTES}）—— 协议对不上，链路已断开	改·§2.1	[可达存疑] 〔SR1a〕对端不守流控时读那条连接的一方拿到的错，会变成连接错误；整句讲流控实现 →「本机后端版本不对，这条远端连接断了；重开 monitor 后再试」 兼§2.4 新词:链路
@@ -1276,8 +1283,6 @@ src/settings/config-surface-section.ts:255	「答不出来」不等于「它没�
 src/settings/config-surface-section.ts:448	这台机器（{…}）的足迹还查不了：要那台机器上的后端来答，它这一版还答不了。	保留	[对外] 远端足迹栏回声对不上时那一句（ST2，用户 09-24 裁远端也有真栏；读口归 RM1a）
 src/settings/panel.ts:1128	足迹	保留	[对外] 机器子页「足迹」那一块的块名（ST2 起经 loadableBlock 建）
 src/first-run-hint.ts:68	诊断：	保留	[对外] 主窗口状态栏那条指路的前缀，与机器列表页「诊断」块同一个词（ST2：原「还差什么：」）
-src/settings/drift-ledger-section.ts:93	这台机器单独的那一份还读不到：这本账今天不分机器，都在本机那一栏里。	保留	[对外] 远端机器「足迹」栏里「未识别的数据」那一句（ST2：账不分机器，只做本机；指向本机那一栏）
-src/settings/drift-ledger-section.ts:96	这本账是 monitor 这次运行的全部：从远端读来的记录也记在这里，今天还分不开是哪台机器。	保留	[对外] 本机「未识别的数据」那一句：账不分机器，当场说清（否则会被当成本机这台的账）
 src/settings/panel.ts:1140	未识别的数据	保留	[对外] 机器子页「足迹」栏里那一块的块名（原顶层「改动足迹」页的漂移记账）
 src/settings/panel.ts:732	Claude 数据目录	保留	[对外] 落盘失败 / 重启条那一格的名字（ST2 步 9：全即时，每一格改了就落）
 src/settings/panel.ts:744	Claude 数据目录	保留	[对外] 落盘失败 / 重启条那一格的名字（ST2 步 9：全即时，每一格改了就落）
@@ -1285,6 +1290,9 @@ src/settings/panel.ts:1545	Claude 数据目录	保留	[对外] 落盘失败 / �
 src/settings/panel.ts:1733	外观	保留	[对外] 落盘失败时说是哪一格（ST2 步 9）
 src/settings/panel.ts:1763	外观	保留	[对外] 落盘失败时说是哪一格（ST2 步 9）
 src/settings/account-new-form.ts:86	Base URL，留空用默认上游	保留	[对外] 加账号表单 apikey 那一支的 Base URL 输入框占位（ST2 · 70 §4.4 线框里那一格）
+src/bridge/src/history.rs:2360	apikey 端点改写不可用：账号 {account:?} 在 [{host}] 的 apikey 表里有一行，\n         但那台机器上的中转起不来（{why}）——\n\n         这一发要是照旧起出去，claude 那边会报一个与网络故障同形的连接失败。\n\n         ⇒ 重装那台机器的后端再试，或把该账号那一行从那台机器的凭据文件里去掉。	保留	[对外] 〔RL1〕远端 apikey 号的中转起不来 ⇒ 拒绝起会话（toast「无法构造…」的第二行）；说的是结果＋原因＋下一步，点名那台机器。「中转」层 1 正名、「apikey 端点改写」层 2 正名（terms.json）
+src/bridge/src/remote_relay.rs:82	那台的后端没有起中转（口上没人在听，它也没起进程）	保留	[对外] 〔RL1〕上一句里「为什么」那一格：relay-ensure 回 started:false
+src/bridge/src/remote_relay.rs:85	那台的后端起了一个中转，但等了一会儿它还没在那个口上听	保留	[对外] 〔RL1〕上一句里「为什么」那一格：起了进程、有界地等完了口上仍没人
 src/backend/control/files_write.rs:724	回读 {} 字节，与写进去的 {} 字节不一致	保留	[对外] files-put 写后校验失败那句的中段（RW1：用户文件的写规则从 monitor 的 fenced_block::apply 搬来后端），两个数都是用户看得懂的字节数
 src/backend/control/files_write.rs:728	写完读不回来（{e}）	保留	[对外] 同上一族；读回失败时带系统原话，短
 src/backend/control/files_write.rs:735	原文件已恢复。	保留	[对外] 同上一族，逐字沿用 fenced_block::undo_note 已裁「保留」的那一句（RW1 把写规则搬到后端，话一个字没换）
@@ -1307,3 +1315,11 @@ src/settings/machine-aliases.ts:1415	下一步：[打开 profile]，在自己的
 src/settings/panel.ts:163	「别名」—— 一个名字加一组 ccm 参数，在终端里敲这个名字就等于敲 ccm 加上这组参数。	保留	[对外] 〔AL1c〕机器页 ⓘ 里「别名」一节的第一句：说清它是什么（终端集成并进来了，节名跟着改）
 src/settings/panel.ts:164	Windows 上这一块还管终端集成：把 cc 命令注入到 $PROFILE，让你打 `cc` 而不是 `claude` 启动 	改·§2.4	[对外] 〔AL1c〕原「终端集成」那一句前面加了一截「Windows 上这一块还管终端集成：」，余下逐字不变；与下一截拼成一句：破折号＋做什么＋为什么＋括号补充三合一 新词:注入
 src/settings/panel.ts:193	\n\n【别名】	保留	[对外] tooltip 分节标题（〔AL1c〕「终端集成」并进「别名」，节名跟着改）
+src/backend/control/panorama.rs:94	这台机器上还没装代码全景组件。	保留	[可达存疑] 〔RM1c〕作为 {hint} 拼进 discover::not_installed_message 的尾巴（前半句说查过哪儿），经 `panorama` 帧命令的 not_installed 回到全景页的失败提示；刻意不说「重装后端就有了」—— 推字节那一步还没接，那会是一句假的出路
+src/backend/control/panorama.rs:213	这次要查的文件太多，一次传不过去，少选几个再试	保留	[可达存疑] 〔RM1c〕too_large：参数塞不进一次命令调用（多半是高亮会话改动时文件太多），回到全景页失败提示；说的是人能做的事
+src/backend/control/panorama.rs:217	代码全景组件没能启动：{m}	保留	[可达存疑] 〔RM1c〕起进程失败的 failed 回帧；路径只进后端日志（warn!），给人的这句不带内部住址
+src/backend/control/panorama.rs:224	异常退出，码 {c}	保留	[可达存疑] 〔RM1c〕拼进「全景 `op` 没做成（…）：诊断」的括号里；码留着是给排查用的唯一线索
+src/backend/control/panorama.rs:225	被中途终止	保留	[可达存疑] 〔RM1c〕同上一行的另一支（被信号打断），不写「信号」这个内部词
+src/panorama/api.ts:40	远端仓的批注和文档关联暂时只能看、不能改：这一版还不支持改远端机器上的这些文件。	保留	[对外] 〔RM1c〕远端仓上批注 / 文档关联写入口的替代说明（侧栏里一句 ＋ 被拒时的 toast）；说清能做什么、不能做什么，不讲实现
+src/panorama/api.ts:57	{…}（远端 {…}）	保留	[对外] 〔RM1c〕远端仓的标签：路径 ＋ 机器名（「复制给 agent」的住址行也用它，97 §6 ④）
+src/views/panorama.ts:318	 · 远端 {…}	保留	[对外] 〔RM1c〕全景标题里远端仓的机器名那一段（同一个路径在两台机器上是两个仓）

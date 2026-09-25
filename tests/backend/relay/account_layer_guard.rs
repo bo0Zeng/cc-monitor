@@ -85,6 +85,8 @@ pub(super) mod tests {
         "Ready",
         "RouteKey",
         "Startup",
+        // 〔RL1 · V107〕常驻后端进程内起中转的层 1 入口；层 2 的 `host_relay` 把 `Boot` 递进去（与 `run` 同形）。
+        "host",
         "run",
         "segment_is_safe",
     ];

@@ -104,16 +104,141 @@ fn an_empty_key_is_labelled() {
 /// 全局那两个入口只是纯函数的薄壳 —— 至少走一次，别让它们成为未覆盖的分叉。
 #[test]
 fn the_global_entry_points_delegate_to_the_pure_ones() {
-    // 用一个**本测试专属**的键：全局账本会被别的测试写，只断言「我这条在」。
+    // 用一个**本测试专属**的键与机器名：全局账本会被别的测试写，只断言「我这条在」。
     let key = "u-cc1-delegation-probe";
-    record(DriftFace::UnknownBackendToken, key, Some("s"));
-    let found = snapshot()
+    let probe = Origin("st3-delegation-probe".into());
+    record(&probe, DriftFace::UnknownBackendToken, key, Some("s"));
+    let found = snapshot(&probe)
         .into_iter()
         .find(|f| f.face == DriftFace::UnknownBackendToken)
         .and_then(|f| f.entries.into_iter().find(|e| e.key == key));
     let e = found.expect("全局 record/snapshot 没接上纯函数");
     assert!(e.count >= 1);
     assert_eq!(e.first_sample.as_deref(), Some("s"));
+}
+
+// ── 〔ST3〕按机器分 ─────────────────────────────────────────────────────────
+
+use crate::origin::Origin;
+
+fn key_set(v: &[DriftFaceReport]) -> std::collections::BTreeSet<(DriftFace, String)> {
+    v.iter()
+        .flat_map(|f| f.entries.iter().map(move |e| (f.face, e.key.clone())))
+        .collect()
+}
+
+/// ★ J1：两台各记一笔 ⇒ 各自的快照**恰好**是自己那一笔（两向集合相等），没记过的那台 ⇒ 空。
+#[test]
+fn each_machine_sees_exactly_its_own_book() {
+    let mut book = Book::new();
+    let local = Origin::local();
+    let devbox = Origin("devbox".into());
+    record_in_book(
+        &mut book,
+        &local,
+        DriftFace::UnknownSessionKind,
+        "workflow",
+        None,
+    );
+    record_in_book(
+        &mut book,
+        &devbox,
+        DriftFace::UnknownRecordType,
+        "mode",
+        Some("{}"),
+    );
+    record_in_book(
+        &mut book,
+        &devbox,
+        DriftFace::UnknownBackendToken,
+        "capabilities:x",
+        None,
+    );
+    let want = |xs: &[(DriftFace, &str)]| -> std::collections::BTreeSet<(DriftFace, String)> {
+        xs.iter().map(|(f, k)| (*f, k.to_string())).collect()
+    };
+    assert_eq!(
+        key_set(&snapshot_in_book(&book, &local)),
+        want(&[(DriftFace::UnknownSessionKind, "workflow")]),
+        "本机那一本不是恰好本机那一笔"
+    );
+    assert_eq!(
+        key_set(&snapshot_in_book(&book, &devbox)),
+        want(&[
+            (DriftFace::UnknownRecordType, "mode"),
+            (DriftFace::UnknownBackendToken, "capabilities:x"),
+        ]),
+        "devbox 那一本不是恰好 devbox 那两笔"
+    );
+    assert!(
+        snapshot_in_book(&book, &Origin("laptop".into())).is_empty(),
+        "没记过的那台答出了东西 —— 拿别台的账冒充它"
+    );
+}
+
+/// 同一个键在两台上**各数各的**（计数与首见样例都不串台）。
+#[test]
+fn the_same_key_counts_separately_per_machine() {
+    let mut book = Book::new();
+    let local = Origin::local();
+    let devbox = Origin("devbox".into());
+    record_in_book(
+        &mut book,
+        &devbox,
+        DriftFace::UnknownRecordType,
+        "mode",
+        Some("devbox-1"),
+    );
+    record_in_book(
+        &mut book,
+        &devbox,
+        DriftFace::UnknownRecordType,
+        "mode",
+        Some("devbox-2"),
+    );
+    record_in_book(
+        &mut book,
+        &local,
+        DriftFace::UnknownRecordType,
+        "mode",
+        Some("local-1"),
+    );
+    let first = |o: &Origin| snapshot_in_book(&book, o)[0].entries[0].clone();
+    assert_eq!(
+        (first(&devbox).count, first(&devbox).first_sample.as_deref()),
+        (2, Some("devbox-1"))
+    );
+    assert_eq!(
+        (first(&local).count, first(&local).first_sample.as_deref()),
+        (1, Some("local-1"))
+    );
+}
+
+/// 有界是**每台每面**：一台触顶不挤占另一台。
+#[test]
+fn one_machine_overflowing_does_not_touch_another() {
+    let mut book = Book::new();
+    let devbox = Origin("devbox".into());
+    for i in 0..(MAX_KEYS + 3) {
+        record_in_book(
+            &mut book,
+            &devbox,
+            DriftFace::UnknownRecordType,
+            &format!("t{i}"),
+            None,
+        );
+    }
+    record_in_book(
+        &mut book,
+        &Origin::local(),
+        DriftFace::UnknownRecordType,
+        "fresh",
+        None,
+    );
+    assert!(snapshot_in_book(&book, &devbox)[0].overflowed);
+    let local = snapshot_in_book(&book, &Origin::local());
+    assert!(!local[0].overflowed, "devbox 触顶连带本机那一本也标了溢出");
+    assert_eq!(local[0].entries[0].key, "fresh");
 }
 
 /// ★ 每个面都必须说清楚「看不懂时会发生什么」—— 诊断面直接显示这句话。
@@ -146,5 +271,280 @@ fn every_face_states_its_consequence() {
         faces.len(),
         "`DriftFace` 有 {variants} 个变体，本条只覆盖了 {} 个 —— 新增面必须来这里写后果",
         faces.len()
+    );
+}
+
+/// 〔ST3〕读口：答的是所问那台、回包带回那台；空白名（「没说」）拒收，不许被当成某一台。
+#[test]
+fn the_read_side_answers_the_asked_machine_and_echoes_it() {
+    let probe = Origin("st3-read-probe".into());
+    record(&probe, DriftFace::UnknownRecordType, "st3-read-key", None);
+    let r = tauri::async_runtime::block_on(drift_ledger_report(probe.clone()))
+        .expect("读口拒了一台正常的机器");
+    assert_eq!(r.origin, probe, "回包没带回所问那台");
+    assert!(key_set(&r.faces).contains(&(DriftFace::UnknownRecordType, "st3-read-key".to_string())));
+    let other =
+        tauri::async_runtime::block_on(drift_ledger_report(Origin("st3-read-other".into())))
+            .unwrap();
+    assert!(other.faces.is_empty(), "问另一台却答出了探针那台的账");
+    let err = tauri::async_runtime::block_on(drift_ledger_report(Origin("  ".into())))
+        .expect_err("空白名被当成了某一台");
+    assert!(
+        err.contains("drift_ledger_report"),
+        "拒收的话没点名是哪条命令：{err}"
+    );
+}
+
+// ── 〔ST3〕J3：喂账调用点登记表 ──────────────────────────────────────────────
+//
+// 🔴 **它的人群**：`src/bridge/src` 生产段里，调了「喂账入口」的函数（`文件, 外层 fn`）。
+// 喂账入口 ＝ 直接写账的 `drift_ledger::record` ＋ 把 `origin` 一路交给它的那几个
+// （`parse_line` / `parse_for_kind` / `batch_to_payloads` / `range_payloads` / `note_unknown_capabilities`）。
+// 判法两条，都不是地板：
+//   ① 人群 == `FEEDERS` 的键（两向）：新长一个喂账点 ⇒ 红，必须来这里说清它记在哪台名下；
+//      删了一个 ⇒ 死条目 ⇒ 红。
+//   ② `Local` 那几行体里**有** `Origin::local()`；`Given` 那几行体里 `Origin::local()` **零命中** ——
+//      拦的是「远端那条路上写死本机」（改签名之后「没说」写不出来，剩下的就是这一形）。
+// ⚠ 同波别的路新写一处 `parse_line(…)`（或新调 `record`）⇒ 合并那一拍 ① 红：按它记在哪台补一行。
+
+/// 记在哪台名下、凭什么。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Whose {
+    /// 写死本机：它只碰本机的东西（理由写在 `FEEDERS` 那一行）。
+    Local,
+    /// 随调用方给的 origin（参数 / `route` 过的 / 那台的配置名），体里不许出现写死的本机。
+    Given,
+}
+
+/// `(文件, 外层 fn, 记在哪台, 理由)`。
+const FEEDERS: &[(&str, &str, Whose, &str)] = &[
+    (
+        "history.rs",
+        "analyze_jsonl",
+        Whose::Local,
+        "本机历史清单：只读本机 jsonl（远端清单由那台后端摘要，不经 monitor 逐行解析）",
+    ),
+    (
+        "history.rs",
+        "stream_read_session_jsonl",
+        Whose::Given,
+        "`route` 之后的本机那一支，交出去的是已分过的 `origin`",
+    ),
+    (
+        "lib.rs",
+        "batch_to_payloads",
+        Whose::Given,
+        "参数 `origin`：本机 watcher 与远端流共用的出口",
+    ),
+    (
+        "lib.rs",
+        "run",
+        Whose::Local,
+        "本机 jsonl watcher 那一批（只读本机 `~/.claude/projects`）",
+    ),
+    (
+        "parser.rs",
+        "parse_for_kind",
+        Whose::Given,
+        "参数 `origin`，原样交给 `parse_line`",
+    ),
+    (
+        "parser.rs",
+        "parse_line",
+        Whose::Given,
+        "参数 `origin`，原样交给 `record`",
+    ),
+    (
+        "remote_history.rs",
+        "stream_read_remote_session",
+        Whose::Given,
+        "那台的配置名（`cfg.origin_label()`）",
+    ),
+    (
+        "search.rs",
+        "build_one",
+        Whose::Local,
+        "本机搜索索引：只读本机 jsonl",
+    ),
+    (
+        "session_map.rs",
+        "is_interactive",
+        Whose::Local,
+        "pidfile 只在本机 `~/.claude/sessions` 扫",
+    ),
+    (
+        "session_skeleton.rs",
+        "range_payloads",
+        Whose::Given,
+        "参数 `origin`",
+    ),
+    (
+        "session_skeleton.rs",
+        "read_session_range",
+        Whose::Given,
+        "命令参数 `origin`",
+    ),
+    (
+        "ssh_source.rs",
+        "flush_lines",
+        Whose::Given,
+        "那台的 `host_label`",
+    ),
+    (
+        "ssh_source.rs",
+        "note_unknown_capabilities",
+        Whose::Given,
+        "参数 `origin`",
+    ),
+    (
+        "ssh_source.rs",
+        "stream_loop",
+        Whose::Given,
+        "hello 那一段：那台的 `host_label`",
+    ),
+    (
+        "subagent.rs",
+        "load_subagent",
+        Whose::Given,
+        "命令参数 `origin`（行是那台后端给的）",
+    ),
+];
+
+/// 喂账入口（调用形）。
+const FEED_ENTRIES: &[&str] = &[
+    "drift_ledger::record(",
+    "parse_line(",
+    "parse_for_kind(",
+    "batch_to_payloads(",
+    "range_payloads(",
+    "note_unknown_capabilities(",
+];
+
+/// 与签名那一行同缩进的收尾 `}` 在哪一行（rustfmt 保证）。
+fn fn_end(lines: &[&str], start: usize) -> usize {
+    let indent: String = lines[start].chars().take_while(|c| *c == ' ').collect();
+    let close = format!("{indent}}}");
+    (start..lines.len())
+        .find(|&k| lines[k] == close)
+        .unwrap_or(lines.len() - 1)
+}
+
+/// 某一行**所在**的函数：往回找 `fn <名>`，且它的体要把这一行包住
+/// （外层 fn 里先定义过一个嵌套 `fn drop` 之类、体已收尾的，不算 —— `ssh_source·rs::stream_loop` 现打过）。
+fn enclosing_fn_of(lines: &[&str], at: usize) -> Option<(String, usize)> {
+    for i in (0..=at).rev() {
+        let l = lines[i];
+        let rest = l
+            .split(" fn ")
+            .nth(1)
+            .or_else(|| l.trim_start().strip_prefix("fn "));
+        if let Some(rest) = rest {
+            let n: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            if !n.is_empty() && fn_end(lines, i) >= at {
+                return Some((n, i));
+            }
+        }
+    }
+    None
+}
+
+/// 函数体：从签名那一行起，到与它同缩进的 `}` 那一行。
+fn fn_body(lines: &[&str], start: usize) -> String {
+    lines[start..=fn_end(lines, start)].join("\n")
+}
+
+/// 从一份生产段里摘 (外层 fn, 体)：调了喂账入口的那些。`own_parse_line` = 这份文件自己定义了
+/// 一个同名的 `fn parse_line`（与 `parser·rs` 那个无关），那时裸 `parse_line(` 不算。
+fn feeders_in(prod: &str, own_parse_line: bool) -> Vec<(String, String)> {
+    let lines: Vec<&str> = prod.lines().collect();
+    let mut out: Vec<(String, String)> = Vec::new();
+    for (i, l) in lines.iter().enumerate() {
+        let hit = FEED_ENTRIES.iter().any(|needle| {
+            l.match_indices(needle).any(|(k, _)| {
+                let before = &l[..k];
+                let bare_parse_line = *needle == "parse_line(" && !before.ends_with("parser::");
+                let prev = before.chars().next_back();
+                !before.ends_with("fn ")
+                    && !prev.is_some_and(|c| c.is_alphanumeric() || c == '_')
+                    && !(own_parse_line && bare_parse_line)
+            })
+        });
+        if !hit {
+            continue;
+        }
+        let (name, at) = enclosing_fn_of(&lines, i).expect("喂账调用不在任何 fn 里 —— 抽取坏了");
+        if !out.iter().any(|(n, _)| *n == name) {
+            out.push((name, fn_body(&lines, at)));
+        }
+    }
+    out
+}
+
+#[test]
+fn every_ledger_feeder_is_registered_with_whose_book_it_writes() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut found: std::collections::BTreeMap<(String, String), String> = Default::default();
+    for (path, raw) in guard_core::scan_tree!(&root, &["rs"]) {
+        let prod = guard_core::production_code(&raw);
+        let file = path
+            .strip_prefix(&root)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        let own = file != "parser.rs" && prod.contains("fn parse_line(");
+        for (name, body) in feeders_in(&prod, own) {
+            found.insert((file.clone(), name), body);
+        }
+    }
+    let got: std::collections::BTreeSet<(String, String)> = found.keys().cloned().collect();
+    let want: std::collections::BTreeSet<(String, String)> = FEEDERS
+        .iter()
+        .map(|(f, n, _, _)| (f.to_string(), n.to_string()))
+        .collect();
+    assert_eq!(
+        got, want,
+        "**喂漂移账的调用点与 `FEEDERS` 两向对不上。**\n\
+         · 只在左边 ＝ 新长了一个喂账点：说清它记在哪台名下（`Local` 写死本机 / `Given` 随调用方），补一行；\n\
+         · 只在右边 ＝ 那个点没了（或改名）：删掉那一行。"
+    );
+    let local_ctor = "Origin::local()";
+    for (f, n, whose, why) in FEEDERS {
+        let body = &found[&(f.to_string(), n.to_string())];
+        match whose {
+            Whose::Local => assert!(
+                body.contains(local_ctor),
+                "`{f}::{n}` 登记为写死本机（{why}），体里却没有 `{local_ctor}` —— 登记过期了"
+            ),
+            Whose::Given => assert!(
+                !body.contains(local_ctor),
+                "`{f}::{n}` 登记为随调用方的 origin（{why}），体里却写死了 `{local_ctor}` —— \
+                 远端那条路上的行会被记成本机的"
+            ),
+        }
+    }
+}
+
+/// 阳性对照：抽取器认得出「新喂账点」「写死本机」「定义行不算」「别家同名 fn 不算」。
+#[test]
+fn the_feeder_scanner_sees_what_it_claims_to_see() {
+    let src = "fn a(o: &Origin) {\n    let _ = parse_line(o, x);\n}\n\
+               fn b() {\n    crate::parser::parse_line(&Origin::local(), x);\n}\n\
+               pub fn parse_line(raw: &str) -> R {\n    todo!()\n}\n\
+               fn c() {\n    let _ = numbered_parse_line(x);\n}\n";
+    let got = feeders_in(src, false);
+    let names: Vec<&str> = got.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(names, vec!["a", "b"], "定义行或子串被当成了调用：{names:?}");
+    assert!(
+        got[1].1.contains("Origin::local()") && !got[0].1.contains("Origin::local()"),
+        "体切错了"
+    );
+    // 别家同名：文件自己定义了 `fn parse_line` ⇒ 裸调用不算，带 `parser::` 前缀的仍算。
+    let own = feeders_in(src, true);
+    assert_eq!(
+        own.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+        vec!["b"]
     );
 }

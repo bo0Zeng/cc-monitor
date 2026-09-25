@@ -69,6 +69,9 @@ function renderInner(req: PayloadRenderRequest): string {
         // 它只模拟已登记的那两道，别的拒绝要验就直接 mock 一次 reject。
         case "export-rbind-token":
           return `export CCM_RBIND_TOKEN=${q(op.value)}; `;
+        // 〔RL1〕同上口径：桩不模拟 `relay_base_url_shape_ok` 那道形状闸。
+        case "export-relay-base-url":
+          return `export ANTHROPIC_BASE_URL=${q(op.value)}; `;
         case "unset-config-dir":
           return "unset CLAUDE_CONFIG_DIR; ";
         case "unset-nested-env":

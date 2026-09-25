@@ -73,6 +73,8 @@ function renderEnvOps(ops: EnvOp[]): string {
       // 它与 `export-config-dir` 那一格的 TS/Rust 姿态差异是同一件已登记的事
       // （`INVARIANTS §33b`：TS 座「不做校验/转义」，Rust 侧回 `Result`）。
       if (op.kind === "export-rbind-token") return `export CCM_RBIND_TOKEN=${posixQuote(op.value)}; `;
+      // 〔RL1〕中转地址。同上：本座不校验，形状闸在 Rust 渲染侧（`payload.rs::relay_base_url_shape_ok`）。
+      if (op.kind === "export-relay-base-url") return `export ANTHROPIC_BASE_URL=${posixQuote(op.value)}; `;
       // R04③：`unset` 侧收窄为无参变体后，键表由 kind 在这里查——不再由维度递自由字符串数组。
       // 输出逐字节不变（`unset CLAUDE_CONFIG_DIR; ` / `unset <嵌套env 全套>; `）。
       if (op.kind === "unset-config-dir") return UNSET_CONFIG_DIR_PREFIX;

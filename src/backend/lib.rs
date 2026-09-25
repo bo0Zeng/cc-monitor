@@ -418,7 +418,14 @@ pub const PROTO_VERSION: u32 = 1;
 /// Windows 上的判活（`pid_alive` / `proc_starttime`）与进程看守从 `unimplemented!()` / 空壳换成真实现
 /// （`platform/win_proc.rs` · `pidwatch/win32.rs`）。旧后端在 Windows 本机见到第一个会话就 panic ⇒ 必须判 stale。
 /// 照 p1v 先例不往 `SUBCOMMAND_HISTORY` 加行。
-pub const BUILD_ID: &str = "p2y-win-proc";
+///
+/// ★★★ **p2z-relay-in-resident**（2026-09-24，第四波 RL1 合并那一拍）：子命令集不变，**行为**变更 ——
+/// 流模式后端被交了 `CCM_RELAY_PORT` 就在本进程里起中转（V107：中转住本机常驻后端，monitor 不再单独起它）。
+/// 旧后端不开中转 ⇒ 本机 apikey 号起会话会被「中转没在跑」拒掉 ⇒ 必须判 stale。照 p1v 先例不加历史行。
+///
+/// ★★★ **p3a-panorama-engine**（2026-09-24，第四波 RM1c 合并那一拍）：子命令 ＋1 —— `panorama`（两个命令面）：
+/// 后端经插件口起独立全景小程序 `cc-monitor-panorama`，只说查询语义（V108）；后端本体仍零 code-picture。
+pub const BUILD_ID: &str = "p3a-panorama-engine";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -609,6 +616,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--list-user-inputs",
     "--list-projects",
     "--list-sessions",
+    // 〔RM1c · 第四波〕`panorama` 帧命令**自动派生**出来的 CLI 面（`cli_control::cli_exposed`），
+    // 登记理由同 `--tasks-list` 那一段：不在表里 ⇒ `is_query_mode` 当未知 flag ⇒ 静默进流模式。
+    // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    "--panorama",
     "--ping",
     // 〔RM1b · 第四波〕`plugins-marketplaces` 帧命令的 CLI 面（同 `--tasks-list` 那一段的理由）。
     "--plugins-marketplaces",

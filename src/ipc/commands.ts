@@ -139,7 +139,7 @@ import type { CcmProbeResult } from "../generated/CcmProbeResult";
 // `K-R69`：本机那条 `ccm` 入口这一格（我们那一份 · PATH 上那一份 · 判词 · 那句话）。
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
-import type { DriftFaceReport } from "../generated/DriftFaceReport";
+import type { DriftLedgerReport } from "../generated/DriftLedgerReport";
 import type { MarketplaceSurvey } from "../generated/MarketplaceSurvey";
 import type { CcBusDeployReport } from "../generated/CcBusDeployReport";
 import type { CcBusInstallState } from "../generated/CcBusInstallState";
@@ -423,6 +423,13 @@ export const commands = {
   aliases_install: (args: { aliases: Alias[]; rcPath?: string | null; shell: Shell }) =>
     invoke<AliasInstallReport>("aliases_install", args),
 
+  /**
+   * 〔RM1c · 第四波〕代码全景**经那台机器的后端**走（V108 选 B）：发帧命令 `panorama`，拿回 `result`。
+   * `result` 的形状随 `op` 而定（与本机那几条逐字同形）⇒ 这里是 `unknown`，由 `panorama/api.ts` 按 op 收窄。
+   */
+  panorama_call: (args: { origin: Origin; op: string; repo: string | null; args: unknown }) =>
+    invoke<unknown>("panorama_call", args),
+
   /** 某符号的被调者边。`depth` 是 `u32` ⇒ `number`。 */
   panorama_callees: (args: { repo: string; symbol: string; depth: number }) =>
     invoke<Edge[]>("panorama_callees", args),
@@ -627,12 +634,16 @@ export const commands = {
     invoke<ApikeyRoutingView>("apikey_routing_for", args),
 
   /**
-   * 〔RM1a · 第四波〕让**那台远端机器**上有一个中转（层 1）在跑：口上没人听就由那台的后端起一个。
-   * **本机拒**（本机那一个由 monitor 监护）。⚠ 今天界面上没有调用方 —— 自动触发点（远端链路握手完成 /
-   * 起远端会话）不在 RM1a 写区，交主会话接。
+   * 〔RL1 · 第四波〕这次拉起往 `ANTHROPIC_BASE_URL` 里写哪个中转地址（`null` = 不注入，照旧直连）。
+   * 远端那台**用到才起**它的中转；apikey 号的中转起不来 ⇒ reject（拒绝起会话，说得出是哪台）。
+   * 判断只在后端 `payload::relay_endpoint_for` 一处；前端拿到地址原样放进载荷（`export-relay-base-url`）。
+   * 它接替了 RM1a 那条零调用方的 `relay_ensure`。
    */
-  relay_ensure: (args: { origin: Origin }) =>
-    invoke<{ listening: boolean; started: boolean }>("relay_ensure", args),
+  relay_endpoint_for_launch: (args: {
+    origin: Origin;
+    account: { kind: "base" } | { kind: "named"; configDir: string; name?: string } | null;
+    sid: string | null;
+  }) => invoke<string | null>("relay_endpoint_for_launch", args),
 
   read_mcp_servers: (args: { projectDir: string | null }) =>
     invoke<McpServerEntry[]>("read_mcp_servers", args),
@@ -796,7 +807,9 @@ export const commands = {
   config_surface_report: (args: { origin: Origin }) =>
     invoke<ConfigSurfaceReport>("config_surface_report", args),
   // U-CC1：数据面漂移记账（只读、按需一次，不轮询）。
-  drift_ledger_report: () => invoke<DriftFaceReport[]>("drift_ledger_report"),
+  // 〔ST3〕按机器分：问哪台答哪台，回包带回 `origin`（界面按回声判）。monitor 自己的命令，不经后端。
+  drift_ledger_report: (args: { origin: Origin }) =>
+    invoke<DriftLedgerReport>("drift_ledger_report", args),
   // P8a：Claude Code 的 marketplace 面（只读、按需一次，不轮询）。
   // ⚠ 它回答的是「有哪些 marketplace / 它**声明**了多少插件」，
   // **不是**「装了/启用了哪些插件」—— 后者今天在盘上没有真相源（待决 `U10d`）。
