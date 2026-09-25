@@ -15,6 +15,7 @@
  * 分组 / 排序 / 汇总是纯函数，抽出可测。
  */
 import { dispatcher } from "../keybindings/registry";
+import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import {
   activityLightClass,
   type GridSessionSnapshot,
@@ -31,17 +32,17 @@ export interface GridSource {
 }
 
 export interface OriginGroup {
-  origin: string | null;
+  origin: Origin;
   label: string;
   sessions: GridSessionSnapshot[];
 }
 
-/** 按机器(origin)分组：本机（origin=null）组恒在最前，远端组按 label 升序。组内保持输入序。纯函数。 */
+/** 按机器(origin)分组：本机（`LOCAL_ORIGIN`）组恒在最前，远端组按 label 升序。组内保持输入序。纯函数。 */
 export function groupSessionsByOrigin(sessions: GridSessionSnapshot[]): OriginGroup[] {
   const local: GridSessionSnapshot[] = [];
   const remotes = new Map<string, GridSessionSnapshot[]>();
   for (const s of sessions) {
-    if (s.origin === null) {
+    if (isLocalOrigin(s.origin)) {
       local.push(s);
     } else {
       const arr = remotes.get(s.origin);
@@ -50,7 +51,7 @@ export function groupSessionsByOrigin(sessions: GridSessionSnapshot[]): OriginGr
     }
   }
   const groups: OriginGroup[] = [];
-  if (local.length > 0) groups.push({ origin: null, label: "本机", sessions: local });
+  if (local.length > 0) groups.push({ origin: LOCAL_ORIGIN, label: "本机", sessions: local });
   for (const origin of [...remotes.keys()].sort((a, b) => a.localeCompare(b))) {
     groups.push({ origin, label: origin, sessions: remotes.get(origin)! });
   }
@@ -90,7 +91,7 @@ export interface GridSummary {
 
 /** 顶部聚合摘要：机器数（distinct origin，本机算一台）/ 活会话数 / 运行中 agent 总数。纯函数。 */
 export function summarizeSessions(sessions: GridSessionSnapshot[]): GridSummary {
-  const origins = new Set<string | null>();
+  const origins = new Set<Origin>();
   let liveSessions = 0;
   let runningAgents = 0;
   for (const s of sessions) {
@@ -194,8 +195,9 @@ function renderBadges(s: GridSessionSnapshot, badges: HTMLElement): void {
   }
 }
 
-/** 组的留存键：本机组（origin=null）用一个不会与主机名撞的键。 */
-const groupKey = (origin: string | null): string => (origin === null ? "\u0000local" : origin);
+/** 组的留存键 —— 就是那台机器的 origin（〔合并 C4a〕本机是具名的 `LOCAL_ORIGIN`，与主机名撞不上：
+ *  `"<local>"` 在全仓只指本机，`Origin::route` 就按它分本机）。 */
+const groupKey = (origin: Origin): string => origin;
 
 export class GridMonitorView {
   private root: HTMLElement;
@@ -377,7 +379,7 @@ export class GridMonitorView {
   }
 
   /** 〔UP1〕某台机器的分组容器（没有就建一次）。 */
-  private groupFor(origin: string | null): GroupRefs {
+  private groupFor(origin: Origin): GroupRefs {
     const key = groupKey(origin);
     let g = this.groups.get(key);
     if (!g) {
@@ -424,7 +426,7 @@ export class GridMonitorView {
     title.className = "grid-monitor-peek-title";
     title.textContent = selected.title;
     head.appendChild(title);
-    if (selected.origin) {
+    if (isRemoteOrigin(selected.origin)) {
       const org = document.createElement("span");
       org.className = "grid-monitor-peek-origin";
       org.textContent = selected.origin;

@@ -31,8 +31,8 @@
 //! # 🔴 预算的花法：**最近优先**（`sort_by_recency`）
 //!
 //! 收口前 monitor 按 `updated_at` desc 花预算、backend 按 `WalkDir`（= `readdir`）
-//! 先走到的顺序花。**两侧的展示顺序都是 `updatedAt` desc**（`merge_search_results`
-//! 合并后重排、前端照序渲染）⇒ 预算顺序一旦与展示顺序不同，**缺 snippet 的正好是列表最上面
+//! 先走到的顺序花。**两侧的展示顺序都是 `updatedAt` desc**（合并后重排 ——
+//! 〔C4a〕合并今天住前端 `src/views/history-search.ts` 的 `mergeSearchResults`，同口径 —— 前端照序渲染）⇒ 预算顺序一旦与展示顺序不同，**缺 snippet 的正好是列表最上面
 //! 那几张卡**。理由与读数逐条写在 `sort_by_recency` 的文档注释里。
 
 use serde_json::Value;
@@ -133,8 +133,8 @@ impl SnippetBudget {
 ///
 /// # 为什么是「最近优先」，而不是「文件系统先走到的顺序」
 ///
-/// **不是偏好，是因为展示顺序已经定死了。** 合并后 `merge_search_results` 逐字
-/// `sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at))`，前端 `renderSearchResults`
+/// **不是偏好，是因为展示顺序已经定死了。** 合并那一步（〔C4a〕今天是前端 `history-search.ts` 的 `mergeSearchResults`）
+/// 按 `updatedAt` 倒序稳定排序，前端 `renderSearchResults`
 /// 照这个顺序渲染 ⇒ **预算顺序 ≠ 展示顺序时，缺 snippet 的正好是列表最上面那几张卡**。
 ///
 /// # 读数（09-13 实测，语料 = 本机 `~/.claude/projects` 169 个 jsonl / 49 个项目目录）

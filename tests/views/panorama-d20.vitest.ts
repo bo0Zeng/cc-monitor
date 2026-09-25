@@ -17,6 +17,7 @@ vi.mock("../../src/panorama/api", async (importOriginal) => {
 
 import * as api from "../../src/panorama/api";
 import { PanoramaView } from "../../src/views/panorama";
+import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 /** 永不 resolve 的 promise：让 load()/enableAndIndex 停在 overview await 前，避免触发 canvas draw。 */
@@ -34,7 +35,7 @@ describe("F69 PanoramaView.load —— D20 默认关的真接线守卫", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     document.body.replaceChildren();
-    view = new PanoramaView(() => ({ cwd: "/repo", origin: null }));
+    view = new PanoramaView(() => ({ cwd: "/repo", origin: LOCAL_ORIGIN }));
   });
 
   it("symbols===0 → 绝不自动调 api.index（不扫描），显示「建立索引」按钮", async () => {

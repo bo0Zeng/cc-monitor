@@ -24,6 +24,7 @@ import {
   setCurrentMachine,
   __resetMachineContextForTests,
 } from "../../src/settings/machine-context";
+import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
 const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
 
@@ -121,10 +122,11 @@ describe("S4a 跨分节机器同步", () => {
     busSel.dispatchEvent(new Event("change"));
     await settle();
 
-    setCurrentMachine(null);
+    setCurrentMachine(LOCAL_ORIGIN);
     await settle();
     expect(busSel.value).toBe("<local>"); // 跟着切到「本机」
-    expect(getCurrentMachine()).toBeNull(); // store 仍用 null 表示本机（换算只在一处）
+    // 〔C4a〕store 与选择器现在是同一个表示（本机 = `LOCAL_ORIGIN`），原先那处换算没有了。
+    expect(getCurrentMachine()).toBe(LOCAL_ORIGIN);
     // 〔BS1b 09-24 订正〕本机派生已走后端 `bus-spawn` 原语（本机、远端同一条路）⇒ 切到本机时派生按钮**不再**禁用。
     //   原来这里钉的是「写面在本机没有对侧 ⇒ 当场禁用」，那个前提被 BS1b 拆掉了（`refuse_local_write` 已删）。
     const spawn = bus.element.querySelector(".cc-bus-spawn-go") as HTMLButtonElement;
@@ -142,7 +144,7 @@ describe("S4a 跨分节机器同步", () => {
     selOf(bus.element, "cc-bus-origin").dispatchEvent(new Event("change"));
     await settle();
     expect(hooks.element.querySelector(".cc-bus-hooks-origin")?.textContent).toBe("nano");
-    setCurrentMachine(null);
+    setCurrentMachine(LOCAL_ORIGIN);
     await settle();
     const txt = hooks.element.querySelector(".cc-bus-hooks-origin")?.textContent ?? "";
     expect(txt).toContain("本机");

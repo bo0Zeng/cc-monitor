@@ -154,6 +154,11 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   ⇒ 登记成 `PureRouterNoFallbackDecision`，牙见那一档的判法：它连
     //   `inbound_client` 这个名字都不许碰 —— 碰了就说明它不再「只转交」了。
     ("router.rs", Verdict::PureRouterNoFallbackDecision),
+    // ★ 〔C4a · 第四波 · 2026-09-24〕**主界面那一跳的宿主**（`chan/webview.rs`）。发现阶段看见它，是因为
+    //   它生产段里有 `.call(` —— 那是**注入的** `Backends` 句柄（生产注入 `chan::host::InboundBackends`，
+    //   与 `entry.rs` 同一个），期限与撤单交给路由器那一份 `settle`。它不碰 inbound、不做回落判断，
+    //   牙与纯路由器那一档同一套。
+    ("webview.rs", Verdict::PureRouterNoFallbackDecision),
     // ★ 〔面 A 通道，2026-09-24〕**第八个发送端** —— 通道的生产句柄（`chan/host.rs`），
     //   外部前端经路由器转来的 `call` 在这里走 `inbound_client`。
     //   它要的不是三态而是 `05 §3.3.1` 的分层结果（层 × `reach` × `why`），

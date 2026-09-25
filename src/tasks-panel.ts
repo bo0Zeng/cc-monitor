@@ -30,8 +30,7 @@
 import { dispatcher } from "./keybindings/registry";
 import { commands } from "./ipc/commands";
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
-import { LOCAL_ORIGIN } from "./backend-policy";
-import type { Origin } from "./generated/Origin";
+import { isLocalOrigin, type Origin } from "./ipc/origin";
 import type { Tab } from "./tab-model";
 
 // C02：改成从生成物 re-export（源：`src/bridge/src/tasks.rs` 的 `TaskEntry`）。
@@ -143,7 +142,7 @@ export class TasksPanel {
    */
   async refreshIfRemote(sid: string): Promise<void> {
     const origin = originOfSession(sid);
-    if (origin === undefined || origin === LOCAL_ORIGIN) return;
+    if (origin === undefined || isLocalOrigin(origin)) return;
     const mine = ++this.refreshSeq;
     const tasks = await fetchSessionTasks(sid, origin);
     if (mine !== this.refreshSeq || this.activeSid !== sid) return;
@@ -270,15 +269,14 @@ export function originOfSession(sid: string): Origin | undefined {
  * 向那台机器的后端拉一次 task 快照（本机逐字 `LOCAL_ORIGIN`）。失败返空数组（panel 自然隐藏）。
  *
  * 〔RM1b〕第二个参数必填：本机与远端同一条路，差别只在问哪台。它收的是 **Tab 自己那一格**
- * （`Tab["origin"]`）而不是另写一份类型 —— 今天那一格还用 `null` 表示本机（C4a 正在把它收成
- * `LOCAL_ORIGIN`），这里就地换成线上那个具名值；那一格改完之后下面这个 `??` 自然失去作用，
- * 调用点（`tabs.ts::ensureTab`）一个字都不用再动。
+ * （`Tab["origin"]`）而不是另写一份类型。〔合并 C4a〕那一格已收成 `Origin`（本机 = `LOCAL_ORIGIN`），
+ * 原样过线 —— 上一版这里那个 `?? LOCAL_ORIGIN` 随之删了。
  */
 export async function fetchSessionTasks(
   sessionId: string,
   tabOrigin: Tab["origin"],
 ): Promise<TaskEntry[]> {
-  const origin: Origin = tabOrigin ?? LOCAL_ORIGIN;
+  const origin: Origin = tabOrigin;
   originBySid.set(sessionId, origin);
   try {
     return await commands.get_session_tasks({ origin, sessionId });

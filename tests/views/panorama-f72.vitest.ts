@@ -20,6 +20,7 @@ vi.mock("../../src/panorama/api", async (importOriginal) => {
 
 import * as api from "../../src/panorama/api";
 import { PanoramaView, symbolSegForAnnotation } from "../../src/views/panorama";
+import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 const pending = <T>(): Promise<T> => new Promise<T>(() => {});
@@ -55,7 +56,7 @@ describe("F72 批注 + doc-link 写 UI（节点详情面板）", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     document.body.replaceChildren();
-    v = new PanoramaView(() => ({ cwd: "/repo", origin: null }));
+    v = new PanoramaView(() => ({ cwd: "/repo", origin: LOCAL_ORIGIN }));
     probe(v).repo = "/repo";
     vi.mocked(api.node).mockReturnValue(pending()); // mutate 后的重取挂起，避免二次渲染
   });

@@ -1,0 +1,6 @@
+{
+  "hop": { "err": { "Hop": { "idx": 1, "tag": "wait", "reach": "Unknown", "why": "Overrun" } }, "body": [] },
+  "unsupported": { "err": "Unsupported", "body": [] },
+  "refused": { "err": "Refused", "body": [123, 34, 99, 111, 100, 101, 34, 58, 34, 110, 111, 34, 125] },
+  "ours": { "err": { "Ours": "Misuse" }, "body": [] }
+}

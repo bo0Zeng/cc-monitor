@@ -238,63 +238,6 @@ pub(crate) fn degraded_notice(meta: &AccountsMeta, accounts: &[RemoteAccount]) -
     None
 }
 
-/// `--session-accounts` 的一行：某个**正在跑**的会话属于哪个账号。
-///
-/// E79：加 ts-rs 导出 —— 前端此前手抄了一份同名 interface（`src/accounts.ts`），
-/// 而本机版查询（`list_local_session_accounts`）要经包装层返回它，正好把手抄那份换掉。
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub struct SessionAccount {
-    pub pid: u32,
-    pub session_id: Option<String>,
-    pub cwd: Option<String>,
-    pub config_dir: Option<String>,
-    /// configDir 反查 manifest 得到的账号名；查不到 = `None`（**不猜**）。
-    pub account: Option<String>,
-    /// 进程活着但没设 `CLAUDE_CONFIG_DIR`（迁移后不该出现）。
-    ///
-    /// 🔴 **它的语义钉死在 `CLAUDE_CONFIG_DIR` 这一个变量上**〔`K-P5f` `KP5FD4`〕：
-    /// `K-P5f` 给出参加了第二个环境变量（[`Self::launch_id`]），而这个布尔**没有**
-    /// 跟着拓宽 —— 「没设 `CCM_LAUNCH_ID`」不进这一格，那由 `launch_id: None` 自己表达。
-    /// 让一个布尔同时表示两个变量的缺席，正是「一个值装了两件事」那族病。
-    #[serde(default)]
-    pub bare: bool,
-    #[serde(default)]
-    pub alive: bool,
-    /// `K-P5f`：起会话方铸进这条会话进程环境的**身份 token**（`CCM_LAUNCH_ID`）。
-    ///
-    /// `None` = **不作数**，四种原因合并成一个 `None`（**不猜**，同 [`Self::account`]）：
-    /// ① 进程没设它；② 值的形状过不了白名单；③ 它同时落在别的活会话上
-    /// （继承来的，判不出谁是原主）；④ 进程已死（不读它的 environ）。
-    ///
-    /// ⚠ **additive**：老后端的出参里**没有这个键**，缺了必须读成 `None`，
-    /// **不许把老后端判成坏行**（那会让整条会话账号映射消失，症状是徽章整片没了，
-    /// 而没有任何地方说得出为什么）。判据 = `session_account_row_parses` 里那条
-    /// **逐字节没有 `launchId` 键**的老后端金样行。
-    ///
-    /// 🔴 **`#[serde(default)]` 在这一格上不是承重的，写清楚免得后人误读**〔`K-P5f` 第二拍死值验现打〕：
-    /// 把它删掉，上面那条金样行**照样绿**（serde 的 derive 对 `Option<T>` 本来就把
-    /// 「键缺席」当 `None`）。真正会翻掉 additive 的那一刀是**加一个非 `Option`、
-    /// 又没有 `default` 的字段** —— 实打过：临时加一个 `pub probe_required: bool`，
-    /// 两条金样当场红（`missing field \`probeRequired\``）。
-    /// ⇒ 这个属性留着是**声明意图**（与同结构体里 `bare` / `alive` 那两个 `bool` 一致），
-    /// 不是那条 additive 判据的牙。
-    #[serde(default)]
-    pub launch_id: Option<String>,
-}
-
-#[derive(serde::Serialize, Debug, Clone, Default)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub struct SessionAccountsResult {
-    pub available: bool,
-    pub error: Option<String>,
-    pub sessions: Vec<SessionAccount>,
-}
-
 /// `--account-trust` 结果：目标账号是否已信任某目录（换号 resume 前的预检）。
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
@@ -365,12 +308,6 @@ impl HasAvailability for AccountsResult {
         self.error = Some(msg);
     }
 }
-impl HasAvailability for SessionAccountsResult {
-    fn set_unavailable(&mut self, msg: String) {
-        self.available = false;
-        self.error = Some(msg);
-    }
-}
 impl HasAvailability for AccountTrustResult {
     fn set_unavailable(&mut self, msg: String) {
         self.available = false;
@@ -433,43 +370,11 @@ pub async fn list_remote_accounts(origin: String) -> Result<AccountsResult, Stri
     }
 }
 
-/// 某台远端上**正在跑**的会话各属于哪个账号（`/proc/<pid>/environ` 探测）。
-#[tauri::command]
-pub async fn list_remote_session_accounts(origin: String) -> Result<SessionAccountsResult, String> {
-    let cfg = match cfg_for(&origin)? {
-        Ok(c) => c,
-        Err(msg) => return Ok(unavailable(msg)),
-    };
-    // 〔`C1`〕走长连接的 `accounts-sessions` —— 此前 10 秒轮询每拍都为它拨一次 SSH。
-    match crate::backend::control::frame_query::lines(
-        &crate::origin::Origin(cfg.origin_label()),
-        "accounts-sessions",
-        serde_json::json!({}),
-    )
-    .await
-    {
-        Err(e) => {
-            tracing::warn!("远端 [{origin}] --session-accounts 失败: {e}");
-            Ok(unavailable(e))
-        }
-        Ok(lines) => {
-            let mut sessions = Vec::new();
-            for line in &lines {
-                match serde_json::from_str::<SessionAccount>(line) {
-                    Ok(s) => sessions.push(s),
-                    Err(e) => tracing::warn!("远端 [{origin}] session-accounts 行解析失败: {e}"),
-                }
-            }
-            // 零行是合法的（远端没有活会话）；无法与"旧 backend"区分，但该命令只用于
-            // 补充徽章，降级表现一致（没徽章），故不额外判定。
-            Ok(SessionAccountsResult {
-                available: true,
-                error: None,
-                sessions,
-            })
-        }
-    }
-}
+// 〔C4a · 第四波〕A2 那条「某台远端上正在跑的会话各属于哪个账号」的 Tauri 命令**退役**：
+//   本机那条（`local_accounts.rs` 里 E79 那条）一起退役，两条收成**一条路** ——
+//   前端经通道（`chan::webview::chan_call`）直接说帧命令 `accounts-sessions`，逐行解释只剩
+//   `src/accounts.ts::parseSessionAccountLines` 一处（`SessionAccount` / `SessionAccountsResult`
+//   这两个类型的家随之搬到那边，这里一并删掉）。
 
 /// 换号前预检：目标账号是否已信任该工作目录。
 /// `config_dir` 必须来自 `list_remote_accounts` 的返回值（backend 侧还会再校验一次）。

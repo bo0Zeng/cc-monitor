@@ -213,8 +213,8 @@ describe("C01 边界生成物", () => {
       "RestartHint.ts", // C04d 批4（只有 unit variant 的外部标记枚举 → 字面量联合）
       "SearchIndexStatus.ts", // C04d 批6c
       "SearchResponse.ts", // C04d 批6c
-      "SessionAccount.ts",
-      "SessionAccountsResult.ts",
+      // 〔C4a · 第四波〕"SessionAccount.ts" / "SessionAccountsResult.ts" 走了：它们的 Rust 源（`accounts.rs` 那两个类型）
+      //   随「会话 ↔ 账号」改走通道一起删了，逐行解释与它的类型只住 `src/accounts.ts`（`parseSessionAccountLines`）。
       "SessionActivityPayload.ts", // C02
       "SessionEndedPayload.ts", //    C02
       "SessionHits.ts", // C04d 批6c
@@ -540,7 +540,7 @@ describe("C01 边界生成物", () => {
     );
   });
 
-  it("直接 import invoke 的生产文件恰好 29 个（主计划 §0.1 成功标准 4 的度量）", () => {
+  it("直接 import invoke 的生产文件恰好 1 个 —— 包装层自己（主计划 §0.1 成功标准 4 的度量）", () => {
     const scanned = productionTsFiles();
     const hits = scanned.filter((f) =>
       /import\s*\{[^}]*\binvoke\b[^}]*\}\s*from\s*["']@tauri-apps\/api\/core["']/.test(code(read(f))),
@@ -566,10 +566,15 @@ describe("C01 边界生成物", () => {
     // 29 → 23 → 19 → 14 → 12 → 10 → 8 → 7 → 6 → 5 → 4 → **3**。
     // 〔U2 · 第三波〕名单里的 `tabs.ts` 换成了 `tab-session-actions.ts`：拆 `tabs.ts` 时把 tab 层的每一条
     //   `invoke` 收进那一份（tab 层唯一直呼 `invoke` 的一份），`tabs.ts` 与其余拆出来的几份一条都不直呼 ⇒ 仍是 3。
-    expect(hits.length, `期望恰好 3 个，实得 ${hits.length}`).toBe(3);
-    expect(hits.map((f) => f.replace(/\\/g, "/")), "包装层自己必须在名单里").toContain(
+    // ★★〔C4a · 第四波 · 子步 2〕**3 → 1**：`tab-session-actions.ts`（11 处）与 `accounts.ts`（5 处）
+    //   那 16 处裸 `invoke` 收进包装层（缺的十条命令补进 `commands.ts`，包装层 132 → 142 == Rust 命令数）。
+    //   `accounts.ts` 那条「跨工作区冲突协议」早已不在；`tabs.ts` 那条红线由 U2 拆分换成了 `tab-session-actions.ts`，
+    //   这一拍一起清掉。**名单逐字相等**（不是只问「包装层在不在」）：多出任何一个都是第二条路。
+    //   29 → … → 3 → **1**。
+    expect(hits.length, `期望恰好 1 个，实得 ${hits.length}`).toBe(1);
+    expect(hits.map((f) => f.replace(/\\/g, "/")), "名单只许是包装层自己").toEqual([
       "src/ipc/commands.ts",
-    );
+    ]);
   });
 
   it("生产代码不许 import `tests/test-support/`（那是守卫专用，进 bundle 就等于把测试代码发出去）", () => {

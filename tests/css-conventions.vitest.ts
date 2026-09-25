@@ -315,7 +315,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   // ⚠ 〔第四波 ST2 · 2026-09-24〕又漂了（多拍）：步 14 / 删顶层「改动足迹」/ 步 15 在 `panel.ts` 上游
   //    改了 buildBody（后端四格寄居、应用下挂三个子页、漂移记账那块）。住址与语义一字未动，只是行号跟着挪；
   //    三处照旧由脚本按「`b.el.hidden =` / 两处 `perMachineFallbackHint.hidden =`」现打。
-  "src/settings/panel.ts:801":
+  // 〔合并 C4a〕这一批行号随 C4a 在同文件里加的 import（origin 判定那一行）各挪一两行，住址与语义一字未动。
+  "src/settings/panel.ts:802":
     "`b.el` —— `b` 来自 `this.perMachineBlocks` 数组，元素由各 section 自己建，跨文件",
   // 🔴 〔步 20 · `设计/70 §1.3 C`〕兜底态那块提示的显隐。它的类名是
   //    `skeleton.ts::makeSkeleton` 挂上去的（`settings-hint`），**跨文件** ——
@@ -323,9 +324,9 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   //    ⚠ 顺带说清它安不安全：`settings-hint` 在 `src/styles.css` 里**没有 display 规则**
   //      ⇒ UA 的 `[hidden] { display: none }` 不会被压过，那两句不是空写。
   //      这一条是**人工核过的**，不是这把尺子判的 —— 所以它在登记表里，不在绿里。
-  "src/settings/panel.ts:1305":
+  "src/settings/panel.ts:1306":
     "`this.perMachineFallbackHint` —— 类名由 `skeleton.ts::makeSkeleton` 挂，跨文件",
-  "src/settings/panel.ts:1318":
+  "src/settings/panel.ts:1319":
     "`this.perMachineFallbackHint` —— 同上（兜底态亮出来那一支）",
   // 🔴 〔步 20 · `设计/70 §10.1`〕「足迹」那一块里，本机那一整套的显隐包装。
   //    它**刻意不挂任何类**：只负责显隐、不要样式。挂了类就得在 CSS 里给它写规则
@@ -334,17 +335,17 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   // 〔第四波 ST2〕漂移记账按机器分（这一拍只做本机）：本机那一整套的包装（不挂类名）与远端那一句
   //    （`settings-hint`，在 `build()` 里挂的，跨方法 ⇒ 这把尺子推不出来；`settings-hint` 没有 display 规则，
   //    `[hidden]` 不会被压过 —— 与上面 `perMachineFallbackHint` 那两处同一个人工核法）。
-  "src/settings/drift-ledger-section.ts:141":
-    "本机那一整套的显隐包装，刻意不挂类名（远端那一栏收起来）",
   "src/settings/drift-ledger-section.ts:142":
+    "本机那一整套的显隐包装，刻意不挂类名（远端那一栏收起来）",
+  "src/settings/drift-ledger-section.ts:143":
     "远端那一句（类名 `settings-hint` 在 build() 里挂，跨方法；该类无 display 规则）",
   // 〔第四波 ST2〕远端也有真栏之后，这个包装本机与远端都用；显隐切两处：`applyOriginGate`（摆出来）
   //    与 `showUnanswered`（远端那台答不了时收起来）。同一个包装、同一个理由。
-  "src/settings/config-surface-section.ts:438":
+  "src/settings/config-surface-section.ts:440":
     "那一整套的显隐包装（本机与远端都用），刻意不挂类名（没有类就不会有裸 display 压过 [hidden]）",
-  "src/settings/config-surface-section.ts:445":
+  "src/settings/config-surface-section.ts:447":
     "同一个包装，远端那台答不了时收起来（`showUnanswered`）",
-  "src/views/history.ts:1631":
+  "src/views/history.ts:1635":
     "`e.hidden = updated.hidden` —— 这一处根本不是「切某个组件的显隐」，是在把一条会话记录的 `hidden` 字段往回写",
 } as const;
 

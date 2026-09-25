@@ -221,7 +221,7 @@ impl LivenessOracle for SessionMapLiveness {
 /// 「后端不在」与「后端在但这条查询失败了」**分开报**：前者是今天这台机器上没有对侧
 /// （该提示装 / 该回落），后者是有对侧但它说了不），压成一个 `Err` 就是让上层猜。
 /// 本函数把两者都折成 `Err(带身份的一句话)` 交给前端 toast，**但话不一样** ——
-/// 与 `local_accounts::list_local_session_accounts` 那条路同形。
+/// 与 `local_accounts::list_local_accounts` 那条路同形（〔C4a〕原举的 E79 那条已退役）。
 pub(crate) fn local_projects_via<Q>(
     query: Q,
     metadata: &HistoryMetadata,

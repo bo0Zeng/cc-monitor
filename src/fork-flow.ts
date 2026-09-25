@@ -21,6 +21,7 @@
 import { commands } from "./ipc/commands";
 // `K-R46`：本机 tmux 名的唯一算法口（铸名过 `mintTmuxName` + 「不知道就不铸」）。
 import { mintLocalTmuxName } from "./ipc/local-tmux-name";
+import { isLocalOrigin, isRemoteOrigin, type Origin } from "./ipc/origin";
 import { showActionFailureToast } from "./error-toast";
 import { getBehavior } from "./behavior";
 import { resolveResumeCommand } from "./remote-config";
@@ -40,8 +41,8 @@ import type { ForkLaunchInput } from "./fork-launch";
 import { runRemoteResume, runRemoteResumeTmux } from "./remote-launch-run";
 
 export interface ForkFlowInput {
-  /** 远端 origin；`null` = 本机。 */
-  origin: string | null;
+  /** 哪台机器（本机 = `LOCAL_ORIGIN`）。 */
+  origin: Origin;
   /** 刚分叉出来的**新**会话 sid。 */
   newSessionId: string;
   /**
@@ -100,30 +101,25 @@ export function deriveForkSource(
 /**
  * 取源会话事实。取数失败一律降级成「不知道」（⇒ 弹窗问一次），**绝不**降级成一个具体值。
  *
- * **本机没有对侧探针**：backend 的 `--session-accounts` 是远端专属，本机侧至今没有
+ * ~~**本机没有对侧探针**~~（〔E79〕之后有了；〔C4a〕与远端同一条路）：backend 的 `--session-accounts` 是远端专属，本机侧至今没有
  * 「某 sid 现在跑在哪个账号下」的查询（`local_accounts.rs` 只枚举账号，不认会话）。
  * 所以本机一律按「查不出来」处理 —— 问一次，而不是拿当前账号顶替。
  */
 export async function collectForkSource(
-  origin: string | null,
+  origin: Origin,
   sid: string,
   cwd: string | null,
 ): Promise<ForkSourceFacts> {
-  if (origin === null) {
-    // E79：本机侧**现在有对侧探针了**（`list_local_session_accounts`，Linux 才有 ——
+  if (isLocalOrigin(origin)) {
+    // E79：本机侧**现在有对侧探针了**（`--session-accounts`，Linux 才有 ——
     // 要读 `/proc/<pid>/environ`）。此前这里硬编码「查不出来」，于是分叉一个**正跑着的**
     // 本机会话也要白弹一次追问小窗，而那个 pidfile 就在本机、monitor 明明够得着。
     //
-    // 平台答不出时（Windows）后端会明说 `available:false` ⇒ 这里照旧落「不知道」，
-    // 走追问那条路。**「查不出来」与「查了但没有」在这里是同一个结论，但理由不同**，
-    // 所以判据看的是 `available` 而不是 `sessions.length`。
-    let rows: SessionAccount[] = [];
-    try {
-      const r = await commands.list_local_session_accounts();
-      if (r.available) rows = r.sessions;
-    } catch {
-      /* 查不到就按「不知道」处理，不猜 */
-    }
+    // 平台答不出时（Windows）后端会明说答不出 ⇒ 这里照旧落「不知道」，走追问那条路。
+    // **「查不出来」与「查了但没有」在这里是同一个结论，但理由不同**（〔C4a〕两种都回空行集）。
+    // 〔C4a〕经通道问本机后端（与远端同一个 `fetchSessionAccounts`；`force`：分叉要此刻的读数）。
+    //   查不到 ⇒ 空行集 ⇒ 「不知道」，不猜。
+    const rows: SessionAccount[] = await fetchSessionAccounts(origin, true);
     // 本机这条路不进 tmux（`fork-start.ts` 已把 tmux 那一格摘掉），所以只用账号那一半。
     const facts = deriveForkSource(rows, null, sid, cwd);
     return {
@@ -143,9 +139,9 @@ export async function collectForkSource(
  * 列可选账号喂给追问小窗。查不到（账号功能没启用 / 远端不可达）→ **空清单**，
  * 小窗仍然弹、仍然能选「账号 0」—— 账号列不出来不该把整条分叉路堵死。
  */
-async function listForkAccounts(origin: string | null): Promise<ForkAccountOption[]> {
+async function listForkAccounts(origin: Origin): Promise<ForkAccountOption[]> {
   try {
-    const state = origin === null ? await fetchLocalAccounts() : await fetchAccounts(origin);
+    const state = isLocalOrigin(origin) ? await fetchLocalAccounts() : await fetchAccounts(origin);
     return state.accounts
       .filter((a: Account) => isSelectable(a) && a.configDir !== null)
       .map((a: Account) => ({ name: a.name, configDir: a.configDir }));
@@ -164,7 +160,7 @@ function productionDeps(input: ForkFlowInput): ForkStartDeps {
         accounts: await listForkAccounts(input.origin),
         // 远端会话惯例住在 tmux 里（断线能 attach 回来）；本机那条路根本不问 tmux
         // （`fork-start.ts` 已把这一格摘掉），所以这里给 false 也走不到。
-        defaultUseTmux: input.origin !== null,
+        defaultUseTmux: isRemoteOrigin(input.origin),
       }),
 
     startLocal: async (a) => {

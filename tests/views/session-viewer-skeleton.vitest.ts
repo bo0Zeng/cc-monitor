@@ -27,6 +27,7 @@ import {
 } from "../test-support/session-viewer-rig";
 import { SessionViewer } from "../../src/views/session-viewer";
 import { SKELETON_GAP_CLASS } from "../../src/skeleton-view";
+import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
 const ROWS = 1000;
 /** payload：偶数 seq 的 user 记录（`u{i}` 在第 i 条可显示记录上） */
@@ -60,6 +61,7 @@ async function mount(scrollToUuid?: string): Promise<SessionViewer> {
   await v.load({
     jsonlPath: "/p/s1.jsonl",
     displayTitle: "T",
+    origin: LOCAL_ORIGIN,
     suppressBranch: true,
     ...(scrollToUuid === undefined ? {} : { scrollToUuid }),
   });

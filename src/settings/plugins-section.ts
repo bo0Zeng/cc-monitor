@@ -32,7 +32,6 @@
 // 本节与 MCP 那节一样订阅 `machine-context`：切到哪台就问哪台（切换即重读一次，不轮询）。
 // 「这台机器」这几个字说的就是被选中的那一台 —— 本机页与远端页同一套话。
 import { commands } from "../ipc/commands";
-import { LOCAL_ORIGIN } from "../backend-policy";
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import type { MarketplaceEntry } from "../generated/MarketplaceEntry";
 import type { MarketplaceSurvey } from "../generated/MarketplaceSurvey";
@@ -130,7 +129,7 @@ export class PluginsSection {
     const mine = ++this.seq;
     let survey: MarketplaceSurvey;
     try {
-      survey = await commands.list_plugin_marketplaces({ origin: this.wanted ?? LOCAL_ORIGIN });
+      survey = await commands.list_plugin_marketplaces({ origin: this.wanted });
     } catch (e) {
       if (mine !== this.seq) return; // 迟到的失败也不许盖掉新结果
       // 读不到就说读不到 —— **不显示成「一个都没有」**（那是对用户撒谎）。

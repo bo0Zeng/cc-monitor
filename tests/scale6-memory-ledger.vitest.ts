@@ -100,13 +100,14 @@ import {
   type RigPayload,
 } from "./test-support/session-viewer-rig";
 import { TabManager, type Tab } from "../src/tabs";
+import { LOCAL_ORIGIN } from "../src/ipc/origin";
 
 const FIXTURE = resolve(__dirname, "__fixtures__/scale2-height-records.jsonl");
 
 function freshCtx(): RenderContext {
   return {
     parentPath: "/tmp/scale6/session.jsonl",
-    origin: null,
+    origin: LOCAL_ORIGIN,
     toolUseNames: new Map(),
     toolUseElements: new Map(),
     pendingToolResults: new Map(),

@@ -107,34 +107,7 @@ fn search_response_camel_case_contract() {
     }
 }
 
-// === #28 远端搜索合并 ===
-
-fn mk_session(sid: &str, updated: i64, hit_count: u32, origin: Option<&str>) -> SessionHits {
-    SessionHits {
-        session_id: sid.into(),
-        project_path: "/p".into(),
-        project_name: "p".into(),
-        jsonl_path: format!("/{sid}.jsonl"),
-        title: sid.into(),
-        updated_at: updated,
-        hit_count,
-        hits: vec![],
-        hits_truncated: false,
-        origin: origin.map(str::to_string),
-    }
-}
-
-fn resp(status: &str, total: u32, sessions: Vec<SessionHits>) -> SearchResponse {
-    SearchResponse {
-        status: status.into(),
-        total_hits: total,
-        session_count: sessions.len() as u32,
-        truncated: false,
-        indexed_sessions: 1,
-        indexed_messages: 1,
-        sessions,
-    }
-}
+// === #28 远端搜索 ===
 
 /// backend 的 `--search` 输出（camelCase，无 origin）能反序列化成 SessionHits。
 #[test]
@@ -150,37 +123,8 @@ fn session_hits_deserializes_from_backend_json() {
     );
 }
 
-/// 合并：拼接 + updatedAt desc 重排 + 总数相加；远端 origin 保留。
-#[test]
-fn merge_orders_and_sums() {
-    let local = resp("ready", 3, vec![mk_session("local-old", 100, 3, None)]);
-    let remote = vec![
-        mk_session("rem-new", 300, 2, Some("pi")),
-        mk_session("rem-mid", 200, 1, Some("wsl")),
-    ];
-    let merged = merge_search_results(local, remote);
-    assert_eq!(merged.status, "ready");
-    assert_eq!(merged.total_hits, 3 + 2 + 1);
-    assert_eq!(merged.session_count, 3);
-    // updatedAt desc：rem-new(300) > rem-mid(200) > local-old(100)
-    let ids: Vec<&str> = merged
-        .sessions
-        .iter()
-        .map(|s| s.session_id.as_str())
-        .collect();
-    assert_eq!(ids, vec!["rem-new", "rem-mid", "local-old"]);
-    assert_eq!(merged.sessions[0].origin.as_deref(), Some("pi"));
-    assert_eq!(merged.sessions[2].origin, None);
-}
-
-/// 无远端 → 原样返回本地（含 indexing 态不被改写）。
-#[test]
-fn merge_no_remote_returns_local_verbatim() {
-    let local = resp("indexing", 0, vec![]);
-    let merged = merge_search_results(local, vec![]);
-    assert_eq!(merged.status, "indexing");
-    assert_eq!(merged.session_count, 0);
-}
+// 〔C4a · 第四波〕合并那四条（拼接排序求和 · 无远端原样 · 远端截断不许丢 · 本机 indexing 有远端即 ready）
+//   随 `search.rs` 里那份合并搬去前端：`tests/views/history-search.vitest.ts` 逐条同形。
 
 // ── `K-R100` 的行为判据（本侧那一半；backend 侧有同形的三条）─────────────
 
@@ -262,25 +206,6 @@ fn truncation_is_stated_not_left_to_an_empty_array() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// `KR100D3` 的合并半：**远端截断不许在合并那一步被丢掉**。
-/// 收口前这里逐字 `truncated: local.truncated`。
-#[test]
-fn remote_truncation_survives_the_merge() {
-    let local = resp("ready", 1, vec![mk_session("loc", 100, 1, None)]);
-    assert!(!local.truncated);
-    let mut rem = mk_session("rem", 200, 12, Some("pi"));
-    rem.hits_truncated = true; // backend 说的：它被自己的 --limit 砍了
-    let merged = merge_search_results(local, vec![rem]);
-    assert!(
-        merged.truncated,
-        "远端截断在合并处被丢掉了 —— 那正是「远端截断界面一个字不说」的成因"
-    );
-    // 反空真：远端没截断时不许乱亮。
-    let local2 = resp("ready", 1, vec![mk_session("loc", 100, 1, None)]);
-    let merged2 = merge_search_results(local2, vec![mk_session("rem", 200, 1, Some("pi"))]);
-    assert!(!merged2.truncated);
-}
-
 /// `KR100D1` 第 ③ 刀（本侧那一半）：**改 `search_core` 一处，本侧真跑出来的东西跟着变**。
 ///
 /// 期望值取自 `search_core::SNIPPET_CTX`，实际值来自本文件的生产管线
@@ -312,15 +237,4 @@ fn the_snippet_window_comes_from_core() {
     );
     assert_eq!(h.after.chars().count(), ctx + 1);
     std::fs::remove_dir_all(&dir).ok();
-}
-
-/// 本地 indexing 但有远端结果 → status=ready（不丢远端）。
-#[test]
-fn merge_indexing_local_with_remote_is_ready() {
-    let local = resp("indexing", 0, vec![]);
-    let remote = vec![mk_session("rem", 50, 4, Some("pi"))];
-    let merged = merge_search_results(local, remote);
-    assert_eq!(merged.status, "ready");
-    assert_eq!(merged.total_hits, 4);
-    assert_eq!(merged.sessions.len(), 1);
 }

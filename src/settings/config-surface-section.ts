@@ -41,7 +41,7 @@ export type { ConfigSurfaceReport, EnvTier, SettingsScope, SurfaceRow, SurfaceSt
 import { GAP_HEAD, type GapKind } from "./readiness";
 import { makeInfoIcon } from "./info-icon";
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
-import { LOCAL_ORIGIN } from "../backend-policy";
+import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { holdSkeletonHeight, makeSkeleton } from "./skeleton";
 import { withPending } from "./pending";
 
@@ -237,17 +237,19 @@ export function formatReportText(r: ConfigSurfaceReport): string {
  * ⚠ 这里经 `as unknown as` 调：今天包装层那条的签名是零参数的，RM1a 改签名之后这一句不用动。
  *   合并时若 RM1a 的参数形状不是 `{ origin }`，改这一处（主会话的活，报告里写着）。
  */
-export async function readFootprint(origin: string | null): Promise<ConfigSurfaceReport> {
+export async function readFootprint(origin: Origin): Promise<ConfigSurfaceReport> {
   const ask = commands.config_surface_report as unknown as (a: {
-    origin: string;
+    origin: Origin;
   }) => Promise<ConfigSurfaceReport>;
-  return ask({ origin: origin ?? LOCAL_ORIGIN });
+  // 〔C4a〕共用 store 里本机就是 `LOCAL_ORIGIN`（不再是 `null`）⇒ 原样过线。
+  return ask({ origin });
 }
 
 /** 这份报告是不是**所问那台**的答复（见 `readFootprint` 的头注）。 */
-export function answersFor(r: ConfigSurfaceReport, origin: string | null): boolean {
+export function answersFor(r: ConfigSurfaceReport, origin: Origin): boolean {
   const said = (r as { origin?: unknown }).origin;
-  if (origin === null) return said === undefined || said === null || said === LOCAL_ORIGIN;
+  // 本机：旧读口不带 `origin`（缺省 / null 那是**线上**的旧形，不是 TS 侧的本机表示）或带的是本机，才算数。
+  if (isLocalOrigin(origin)) return said === undefined || said === null || said === LOCAL_ORIGIN;
   return said === origin;
 }
 
@@ -450,7 +452,7 @@ export class ConfigSurfaceSection {
     );
   }
 
-  private onMachineChanged(_origin: string | null): void {
+  private onMachineChanged(_origin: Origin): void {
     this.applyOriginGate();
     // 〔ST2〕切了机器 ⇒ 这一块讲的是另一台了 ⇒ 重读（只在已经放过第一发之后；第一发归宿主）。
     if (this.started) void this.refresh();
@@ -473,7 +475,7 @@ export class ConfigSurfaceSection {
         );
       }
       if (!answersFor(r, origin)) {
-        if (origin !== null) {
+        if (isRemoteOrigin(origin)) {
           this.showUnanswered(origin);
           return;
         }
@@ -483,7 +485,7 @@ export class ConfigSurfaceSection {
       this.copyBtn.disabled = false;
       this.render(r);
       // `$PROFILE` 备份只在本机那一页（`data_paths.rs` 只答本机）。
-      if (origin === null) await this.loadBackups();
+      if (isLocalOrigin(origin)) await this.loadBackups();
       else this.backups.replaceChildren();
     } catch (e) {
       if (my !== this.seq) return;

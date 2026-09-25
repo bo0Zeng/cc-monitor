@@ -47,6 +47,7 @@ import {
   __setLocalLaunchSnapshotForTests,
   type AccountsState,
 } from "../../src/accounts";
+import { isChanCall, linesReply } from "../test-support/chan-fake";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const runNewRemote = runNewSessionRemote as unknown as ReturnType<typeof vi.fn>;
@@ -128,7 +129,17 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
       exists: true,
       loggedIn: true,
     };
-    invokeMock.mockImplementation((cmd: string) => {
+    invokeMock.mockImplementation((cmd: string, args: unknown) => {
+      // ★ 会话真的跑起来了 —— 两条行里只有一条带着我们那个 token。
+      //   〔C4a〕经通道问本机后端 `accounts-sessions`（原先是 E79 那条已退役的本机 Tauri 命令）。
+      if (isChanCall(cmd, args, "accounts-sessions")) {
+        return Promise.resolve(
+          linesReply([
+            { pid: 1, sessionId: "sid-other", cwd: "/w", configDir: null, account: null, bare: false, alive: true, launchId: "别人的" },
+            { pid: 2, sessionId: "sid-new", cwd: "/p", configDir: null, account: null, bare: false, alive: true, launchId: TOKEN },
+          ]),
+        );
+      }
       switch (cmd) {
         // 账号快照（`localLaunchAccountNameSync` 要它才说得出账号名）。
         case "list_local_accounts":
@@ -140,16 +151,6 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
         // ★ 起会话这一跳**交回身份 token**（`KP5HD1` 那一格的前端这一侧）。
         case "new_local_session":
           return Promise.resolve(TOKEN);
-        // ★ 会话真的跑起来了 —— 两条行里只有一条带着我们那个 token。
-        case "list_local_session_accounts":
-          return Promise.resolve({
-            available: true,
-            error: null,
-            sessions: [
-              { pid: 1, sessionId: "sid-other", cwd: "/w", configDir: null, account: null, bare: false, alive: true, launchId: "别人的" },
-              { pid: 2, sessionId: "sid-new", cwd: "/p", configDir: null, account: null, bare: false, alive: true, launchId: TOKEN },
-            ],
-          });
         default:
           return Promise.resolve({});
       }
