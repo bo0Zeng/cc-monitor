@@ -1419,7 +1419,9 @@ pub const REGISTRY: &[CommandSpec] = &[
     // 后端**不链**引擎：经插件通用调用口起那个只装引擎的独立小程序（`control/panorama.rs`），
     // 解析发生在被起的那个进程里；索引落这台机器上后端自己的数据目录。
     // ⚠ 只说查询语义：`op` 只许 `control::panorama::OPS` 里的词（`protocol_doc_guard` 那条 `P7c-2` 约束）。
-    // ⚠ 阻塞档：起一个进程、等它退出（建索引可到分钟级）。`cancel` 命中回 `not_cancellable`（不撒谎）。
+    // 〔RM1f〕**异步档**：起进程走 `plugin::invoke::run_abortable`（异步等子进程）⇒ `cancel` 命中时
+    //   处理器 future 被丢、小程序那一组子进程被杀、回 `cancelled` —— 建索引（可到分钟级）打得断了。
+    //   〔墓碑 —— RM1c 那一版是阻塞档：「起一个进程、等它退出。`cancel` 命中回 `not_cancellable`（不撒谎）」。〕
     CommandSpec {
         name: "panorama",
         doc_anchor: Some("#### `panorama`"),
@@ -1433,7 +1435,9 @@ pub const REGISTRY: &[CommandSpec] = &[
         ],
         fields: &["args", "op", "repo", "result"],
         takes_input: true,
-        run: Run::Blocking(|r| crate::control::panorama::answer(&r.args).map(Some)),
+        run: Run::Async(|r| {
+            Box::pin(async move { crate::control::panorama::answer(&r.args).await.map(Some) })
+        }),
     },
     // F04a：**第一条破坏性命令。** 三道门在 `control/gate::admit_destructive`，
     // 对句柄下手不对名字。⚠ monitor 侧改走这条路是 **F04b**（定框 C6 的顺序）。

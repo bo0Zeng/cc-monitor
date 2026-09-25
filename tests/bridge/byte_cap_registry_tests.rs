@@ -1280,6 +1280,15 @@ fn a_cap_registered_as_hard_error_is_not_swallowed_at_its_call_site() {
 ///
 /// 只有一种正当情况：上限是**参数**，真值由调用方给（而调用方给的是具名常量）。
 const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
+    // 〔RM1f〕插件口可打断那一形（`run_abortable`）每条子进程流留 `keep ＋ 1` 字节，`keep` 是入参；
+    // 唯一调用方 `control/panorama.rs` 给的是具名常量 `read_face::LINES_CAP_BYTES`（已在 `CAPS` 里）。
+    // ⚠ 不是静默截断：多出来的照读照丢（子进程不被管道卡住），调用方见 `len() > keep` 回 `too_large` 明拒。
+    (
+        "src/backend/plugin/invoke.rs",
+        "keep.saturating_add(1)",
+        "`run_abortable` 的每条流上限是入参，调用方给 `read_face::LINES_CAP_BYTES`（已在 `CAPS` 里）；\
+             留 keep＋1、其余读掉丢弃，调用方按「超了」明拒（`too_large`）—— 不是截断后当完整的用。",
+    ),
     // 〔`C1` · 09-24〕`history_query::read_page` 的一页上限是入参；唯一调用点
     // （`read_face.rs`）给的是具名常量 `READ_PAGE_BYTES`（已在 `CAPS` 里）。
     // ⚠ 不是静默截断：读满一页就停、**回续点 `next`**，调用方循环到 `eof` —— 一个字节都不丢。

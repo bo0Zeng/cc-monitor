@@ -74,7 +74,6 @@ const UNIT: &[&str] = &[
     "tests/backend/observe/turn_detect_tests.rs",
     "tests/backend/observe/user_inputs_tests.rs",
     "tests/backend/platform/shell_tests.rs",
-    "tests/backend/plugin/invoke_tests.rs",
     "tests/backend/plugin/probe_tests.rs",
     "tests/backend/relay/http1_tests.rs",
     "tests/backend/relay/tee_tests.rs",
@@ -271,7 +270,6 @@ const SCAN: &[&str] = &[
     "tests/backend/files/module_boundary_guard.rs",
     "tests/backend/guard_support_tests.rs",
     "tests/backend/inbound_structure_guards.rs",
-    "tests/backend/inbound_tests.rs",
     "tests/backend/listen_tests.rs",
     "tests/backend/main_argv_table_guard.rs",
     "tests/backend/main_stream_flag_tests.rs",
@@ -496,6 +494,8 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/files/raw_tests.rs",
     "tests/backend/files/scale_f2.rs",
     "tests/backend/footprint_tests.rs",
+    // 〔RM1f〕SCAN → 集成：多了一条真进程判据（`cancel` 真打断在飞的 `panorama`，替身小程序是真进程）
+    "tests/backend/inbound_tests.rs",
     "tests/backend/layering_guard.rs",
     "tests/backend/main_fourth_face_tests.rs",
     "tests/backend/observe/accounts_query_tests.rs",
@@ -510,6 +510,8 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/observe/tasks_query_tests.rs",
     "tests/backend/observe/watcher_tests.rs",
     "tests/backend/plugin/discover_tests.rs",
+    // 〔RM1f〕单元 → 集成：`run_abortable` 两条判据真起进程（被丢 ⇒ 整组都没了 · 没被丢 ⇒ 与同步那一形同果）
+    "tests/backend/plugin/invoke_tests.rs",
     "tests/backend/plugin_walk_fixture.rs",
     "tests/backend/read_face_tests.rs",
     "tests/backend/relay/host_tests.rs",
