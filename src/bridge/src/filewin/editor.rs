@@ -653,9 +653,9 @@ pub fn opened_from_reply(
     let Some(text) = text_from_reply(r)? else {
         return Ok(None);
     };
-    let sha256 = sha.filter(|s| is_sha256_hex(s)).ok_or_else(|| {
-        copy_text("rsFilewinEditor.reply.noDigest", &[])
-    })?;
+    let sha256 = sha
+        .filter(|s| is_sha256_hex(s))
+        .ok_or_else(|| copy_text("rsFilewinEditor.reply.noDigest", &[]))?;
     Ok(Some(Opened { text, sha256 }))
 }
 
@@ -753,9 +753,7 @@ pub fn saved_from_reply(
                 sent: sent.to_string(),
                 sha256: s.to_string(),
             })
-            .ok_or_else(|| {
-                SaveError::Failed(copy_text("rsFilewinEditor.saved.noDigest", &[]))
-            }),
+            .ok_or_else(|| SaveError::Failed(copy_text("rsFilewinEditor.saved.noDigest", &[]))),
         Err(f) if f.code.as_deref() == Some("stale") => Err(SaveError::Stale(f.said)),
         Err(f) => Err(SaveError::Failed(f.said)),
     }
