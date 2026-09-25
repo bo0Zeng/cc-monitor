@@ -642,9 +642,6 @@ src/ipc/chan.ts:77	对端不认这个操作	保留	[不对外] 〔C4a〕同上�
 src/ipc/chan.ts:77	对端答「不行」	保留	[不对外] 〔C4a〕同上（`peer/refused` 那一档的日志句）
 src/ipc/chan.ts:79	本侧：{…}	保留	[不对外] 〔C4a〕同上（`ours` 那一档的日志句）
 src/remote-launch-run.ts:338	刻意不替你挑终端模拟器	保留	[不对外] 对后端错误串做 includes 的匹配锚点（那句话本身由后端产、另行裁）
-src/settings/accounts-section.ts:588	将在远端「{…}」的终端里运行：\n\n{…}\n\n	保留	[对外] 危险操作的 confirm 首段：说清在哪台机器跑什么命令，先说结果
-src/settings/accounts-section.ts:590	命令在你看得见的终端里执行、需你亲手确认；工具自带备份，可 rollback。继续？	改·§2.4	[对外] 一句塞三件事（在哪执行＋要你确认＋自带备份可撤）且夹英文 rollback 新词:rollback →「命令会在远端终端里执行，出错可撤回。继续？」
-src/settings/accounts-section.ts:1115	片段不完整（缺 BEGIN/END 围栏），先别贴 —— 在远端跑一次 `cc-acct-iso verify` 看是什么状况。	改·§2.4	[对外] 括号补充＋破折号＋处方三合一 兼§2.3 新词:围栏 →「片段不完整，别贴。」细节另起一句
 src/settings/backend-section.ts:151	本机	保留	[对外] 机器名「本机」
 src/settings/backend-section.ts:155	本机	保留	[对外] 机器名「本机」
 src/settings/cc-bus-hooks-section.ts:183	$HOME 显式路径（不依赖 PATH；要求它确实装在那儿）	保留	[对外] 下拉项：形态名＋一处括号说取舍，括号里是真取舍不是正文；PATH/$HOME 是用户自己的 shell 词

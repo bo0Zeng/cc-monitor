@@ -113,7 +113,7 @@
       "word": "ccm",
       "tier": "限用",
       "tally": { "re": "(?<![\\w-])ccm(?![\\w-])", "flags": "i" },
-      "inTable": 10,
+      "inTable": 11,
       "meaning": "用户在 shell 里敲的那个命令；它就是后端程序本身（设计/01 §6.7b）。",
       "context": "只在讲「shell 里敲的命令」时许说（ccm 的参数、别名、写进 ~/.bashrc 的那一段）。讲「机器上装的那个程序」时说「后端」。「ccm 助手」「ccm wrapper」是我们起的名，禁。",
       "source": "设计/01 §6.7b · 设计/70 §5（MC1：「ccm 助手」删掉）· CP1 判不了之一（settings/machine-card.ts「卸载 ccm 中」）· 用户 09-24「继续叫卸载ccm」（99 §1 V80：原先那条 ask 结案删掉）",
@@ -124,7 +124,7 @@
       "word": "in-place",
       "tier": "限用",
       "tally": { "re": "in-place", "flags": "i" },
-      "inTable": 0,
+      "inTable": 1,
       "meaning": "cc-acct-iso 用 `init --default-in-place` 建出来的那种账号：它的配置目录就是共享库 ~/.claude 本身。",
       "context": "只在说明「这个账号为什么不能按会话切换」时许说，并且说「in-place 账号」。依据：这种账号只有亲手敲过 --default-in-place 才会有（cc-monitor 自己从不建它；manifest 的 mode 字段由 cc-acct-iso 写），cc-acct-iso 自己的提示也叫它 in-place ⇒ 用户认得这个词。",
       "source": "CP1 判不了之二（accounts.ts「in-place 模式」）· src/bridge/vendor/cc-acct-iso/scripts/cc-acct-iso 的 init / verify 提示",
@@ -459,7 +459,7 @@
       "say": "不说实现，说结果：watcher →「自动刷新」· invoke / spawn / dispatch →「启动」「执行」· panic →「程序出错」· rollback →「还原」· flock →「锁」· uuid →「ID」· vendored / 编译期内嵌 →「随 cc-monitor 一起安装」· sftp-server →「远端的 SFTP 服务」· 其余（pidfd · tokio 运行时 · Win32 · SessionMap · ToolSpec · CLI 渲染器 · SFTP 句柄 · copy-data）→ 不说。",
       "scan": { "re": "\\b(?:watcher|invoke|spawn|dispatch|panic|tokio|pidfd|rollback|flock|uuid|vendored|Win32|SessionMap|ToolSpec|copy-data|sftp-server)\\b|CLI\\s*渲染器|SFTP\\s*句柄|编译期内嵌|交叉编译内嵌", "flags": "i" },
       "examples": ["tokio运行时", "watcher", "SFTP句柄"],
-      "ledger": ["watcher", "dispatch", "panic", "tokio运行时", "pidfd", "rollback", "flock", "uuid", "vendored", "SessionMap", "ToolSpec", "CLI渲染器", "编译期内嵌", "交叉编译内嵌"],
+      "ledger": ["watcher", "dispatch", "panic", "tokio运行时", "pidfd", "flock", "uuid", "vendored", "SessionMap", "ToolSpec", "CLI渲染器", "编译期内嵌", "交叉编译内嵌"],
       "source": "设计/91 §7.3（英文我方名）· CP1 台账"
     },
     {

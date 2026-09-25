@@ -5937,6 +5937,529 @@
       "kind": "error",
       "zh": "Base URL 要写成 https://主机[:端口][/路径]，留空就用默认上游",
       "args": []
+    },
+    "accounts.setDefault.failed": {
+      "kind": "error",
+      "zh": "设为当前账号失败",
+      "args": []
+    },
+    "accounts.setDefault.doneBody": {
+      "kind": "body",
+      "zh": "以后新会话 / resume 默认用 {name}；正在跑的会话不受影响。",
+      "args": ["name"]
+    },
+    "accounts.setDefault.done": {
+      "kind": "body",
+      "zh": "已设为当前账号",
+      "args": []
+    },
+    "accounts.copy.noClipboard": {
+      "kind": "error",
+      "zh": "剪贴板不可用",
+      "args": []
+    },
+    "accounts.copy.failed": {
+      "kind": "error",
+      "zh": "复制失败",
+      "args": []
+    },
+    "accounts.copy.done": {
+      "kind": "body",
+      "zh": "已复制",
+      "args": []
+    },
+    "accounts.row.baseNoDirBody": {
+      "kind": "body",
+      "zh": "起它就是不设 CLAUDE_CONFIG_DIR",
+      "args": []
+    },
+    "accounts.row.baseNoDir": {
+      "kind": "error",
+      "zh": "账号 0 没有配置目录",
+      "args": []
+    },
+    "accounts.row.copyPath": {
+      "kind": "action",
+      "zh": "复制路径",
+      "args": []
+    },
+    "accounts.row.setDefault": {
+      "kind": "action",
+      "zh": "设为当前账号",
+      "args": []
+    },
+    "accounts.model.failed": {
+      "kind": "error",
+      "zh": "保存模型偏好失败",
+      "args": []
+    },
+    "accounts.model.clearedBody": {
+      "kind": "body",
+      "zh": "{name} 恢复跟随账号自身默认模型。",
+      "args": ["name"]
+    },
+    "accounts.model.savedBody": {
+      "kind": "body",
+      "zh": "{name} 起会话默认用 {next}。",
+      "args": ["name", "next"]
+    },
+    "accounts.model.cleared": {
+      "kind": "body",
+      "zh": "已清除默认模型",
+      "args": []
+    },
+    "accounts.model.saved": {
+      "kind": "body",
+      "zh": "已保存默认模型",
+      "args": []
+    },
+    "accounts.row.modelHint": {
+      "kind": "body",
+      "zh": "这个账号起会话时默认使用的模型，如 opus 或 sonnet；留空就跟随账号自身的默认。只对 cc-monitor 发起的会话生效，终端里手敲 ccm 暂不认这条偏好。",
+      "args": []
+    },
+    "accounts.row.model": {
+      "kind": "control",
+      "zh": "默认模型",
+      "args": []
+    },
+    "accounts.row.baseHint": {
+      "kind": "body",
+      "zh": "账号 0：起它就是什么都不设。凭据在共享库（~/.claude），.claude.json 在 $HOME。",
+      "args": []
+    },
+    "accounts.row.baseDir": {
+      "kind": "body",
+      "zh": "不设 CLAUDE_CONFIG_DIR",
+      "args": []
+    },
+    "accounts.row.none": {
+      "kind": "body",
+      "zh": "—",
+      "args": []
+    },
+    "accounts.row.current": {
+      "kind": "body",
+      "zh": "当前账号",
+      "args": []
+    },
+    "accounts.row.currentIcon": {
+      "kind": "body",
+      "zh": "★",
+      "args": []
+    },
+    "accounts.rc.failed": {
+      "kind": "error",
+      "zh": "生成 rc 片段失败",
+      "args": []
+    },
+    "accounts.rc.incomplete": {
+      "kind": "error",
+      "zh": "片段不完整，先别贴。缺了 BEGIN / END 标记，在远端跑一次 cc-acct-iso verify 看看是什么状况。",
+      "args": []
+    },
+    "accounts.rc.activation": {
+      "kind": "body",
+      "zh": "source 它，或在这台远端开一个新的登录 shell（已经开着的 shell 不受影响）。",
+      "args": []
+    },
+    "accounts.rc.merge": {
+      "kind": "body",
+      "zh": "追加到文件末尾，并删掉你以前手写的 swap 式切号块。片段自带 BEGIN / END 两行标记，重新生成时替换两行之间那一段就行，别贴成两份。",
+      "args": []
+    },
+    "accounts.rc.target": {
+      "kind": "body",
+      "zh": "这台远端的 ~/.bashrc（zsh 用户贴 ~/.zshrc；它是登录 shell 的配置文件）",
+      "args": []
+    },
+    "accounts.rc.fetching": {
+      "kind": "action",
+      "zh": "抓取中…",
+      "args": []
+    },
+    "accounts.rc.noConfigBody": {
+      "kind": "error",
+      "zh": "请先在「远端」里配好它",
+      "args": []
+    },
+    "accounts.rc.noConfig": {
+      "kind": "error",
+      "zh": "拿不到这台远端的配置",
+      "args": []
+    },
+    "accounts.maintenance.rcHint": {
+      "kind": "body",
+      "zh": "抓远端 cc-acct-iso shellinit 的输出，给你一段可以贴的 rc 片段。贴了之后裸 claude 走默认账号，每个账号有 <名>cc 函数，账号 0 用 0cc。只读，不会替你写任何文件。",
+      "args": []
+    },
+    "accounts.maintenance.rc": {
+      "kind": "action",
+      "zh": "生成 rc 片段…",
+      "args": []
+    },
+    "accounts.maintenance.syncHint": {
+      "kind": "body",
+      "zh": "补齐或修复共享库软链、修权限、刷新账号清单里的邮箱。可以重复跑（幂等）。",
+      "args": []
+    },
+    "accounts.maintenance.sync": {
+      "kind": "action",
+      "zh": "补链 sync",
+      "args": []
+    },
+    "accounts.maintenance.verify": {
+      "kind": "action",
+      "zh": "自检 verify",
+      "args": []
+    },
+    "accounts.maintenance.title": {
+      "kind": "title",
+      "zh": "维护 · 自检 / 补链 / rc 片段",
+      "args": []
+    },
+    "accounts.readApikey.failed": {
+      "kind": "error",
+      "zh": "读不到第三方 API key 的状态：{e}",
+      "args": ["e"]
+    },
+    "accounts.writeApikey.failed": {
+      "kind": "error",
+      "zh": "保存第三方 API key",
+      "args": []
+    },
+    "accounts.writeApikey.doneBody": {
+      "kind": "body",
+      "zh": "{name} 的 API key 已写进 API key 表。",
+      "args": ["name"]
+    },
+    "accounts.writeApikey.done": {
+      "kind": "body",
+      "zh": "已写入 API key",
+      "args": []
+    },
+    "accounts.pending.noDir": {
+      "kind": "error",
+      "zh": "{name} 没有自己的账号目录，API key 表里配了也不会被用上。",
+      "args": ["name"]
+    },
+    "accounts.pending.notWritten": {
+      "kind": "error",
+      "zh": "API key 没写",
+      "args": []
+    },
+    "accounts.pending.drop": {
+      "kind": "action",
+      "zh": "放弃",
+      "args": []
+    },
+    "accounts.pending.waiting": {
+      "kind": "body",
+      "zh": "等 {name} 出现在账号列表里（终端跑完点「刷新」），就把它的 API key 写进去。",
+      "args": ["name"]
+    },
+    "accounts.table.bulkGone": {
+      "kind": "body",
+      "zh": "批量对齐已下线。请在会话右键菜单的「换号重启」里逐个切换账号。",
+      "args": []
+    },
+    "accounts.table.switchScope": {
+      "kind": "body",
+      "zh": "切换当前账号只改本机设置，不动远端、不碰凭据、不重启。未登录的账号可点它那行的「去登录」在终端里 /login。",
+      "args": []
+    },
+    "accounts.table.summary": {
+      "kind": "body",
+      "zh": "已启用 · {n} 个账号 · 账号清单 {path}{updated}",
+      "args": ["n", "path", "updated"]
+    },
+    "accounts.table.updatedAt": {
+      "kind": "body",
+      "zh": " · 更新于 {updatedAt}",
+      "args": ["updatedAt"]
+    },
+    "accounts.banner.pick": {
+      "kind": "body",
+      "zh": "下面选一个账号「设为当前账号」",
+      "args": []
+    },
+    "accounts.banner.unavailable": {
+      "kind": "body",
+      "zh": "这个账号现在不可用：没登录、是 in-place 账号，或目录缺失。先修好它，账号徽章与对齐才会生效。",
+      "args": []
+    },
+    "accounts.banner.scope": {
+      "kind": "body",
+      "zh": "新会话 · 没指定过账号的 resume 用它；正在跑的会话不受影响",
+      "args": []
+    },
+    "accounts.banner.none": {
+      "kind": "body",
+      "zh": "未设当前账号",
+      "args": []
+    },
+    "accounts.notEnabled.moveNote": {
+      "kind": "body",
+      "zh": "这会把现有默认账号的凭据与 .claude.json 搬进账号库、其余项建 symlink。",
+      "args": []
+    },
+    "accounts.sync.empty": {
+      "kind": "body",
+      "zh": "填入合法账号名后，这里显示将运行的命令",
+      "args": []
+    },
+    "accounts.sync.script": {
+      "kind": "body",
+      "zh": "# 预览计划（不写盘）\n{cmd}\n\n# 执行迁移\n{cmd2}\n\n# 打印 rc 片段\ncc-acct-iso shellinit",
+      "args": ["cmd", "cmd2"]
+    },
+    "accounts.notEnabled.steps": {
+      "kind": "body",
+      "zh": "<small>顺序：① 看计划，什么都不动 → ② 执行迁移 → ③ 自检 → ④ 把打印的片段贴进 <code>~/.bashrc</code>，工具不改你的 rc → 回来点「刷新」。第二个账号可在启用后用「加账号」导入。</small>",
+      "args": [],
+      "waive": {
+        "C-L1": "步骤清单，一步一格用箭头连着；拆成几句反而看不出次序"
+      }
+    },
+    "accounts.notEnabled.step4": {
+      "kind": "action",
+      "zh": "④ 打印 rc 片段",
+      "args": []
+    },
+    "accounts.notEnabled.step3": {
+      "kind": "action",
+      "zh": "③ 自检 verify",
+      "args": []
+    },
+    "accounts.notEnabled.step2": {
+      "kind": "action",
+      "zh": "② 执行迁移（--apply）",
+      "args": []
+    },
+    "accounts.notEnabled.step1": {
+      "kind": "action",
+      "zh": "① 预览计划（dry-run）",
+      "args": []
+    },
+    "accounts.notEnabled.copiedNext": {
+      "kind": "body",
+      "zh": "可粘到远端终端里跑。",
+      "args": []
+    },
+    "accounts.notEnabled.copied": {
+      "kind": "body",
+      "zh": "已复制命令",
+      "args": []
+    },
+    "accounts.notEnabled.copy": {
+      "kind": "action",
+      "zh": "复制命令",
+      "args": []
+    },
+    "accounts.notEnabled.defaultNameHint": {
+      "kind": "control",
+      "zh": "例如 z",
+      "args": []
+    },
+    "accounts.notEnabled.defaultName": {
+      "kind": "control",
+      "zh": "默认账号名，现有的默认账号会迁进来：",
+      "args": []
+    },
+    "accounts.notEnabled.intro": {
+      "kind": "body",
+      "zh": "在远端跑 cc-acct-iso 迁移管线就能启用。启用后各账号凭据独立，skills、记忆、历史、设置实时共享。<br>原因：{reason}<br>账号清单查找位置：<code>{path}</code>",
+      "args": ["reason", "path"]
+    },
+    "accounts.notEnabled.noPath": {
+      "kind": "body",
+      "zh": "—",
+      "args": []
+    },
+    "accounts.notEnabled.title": {
+      "kind": "body",
+      "zh": "该远端尚未启用多账号",
+      "args": []
+    },
+    "accounts.needsDeploy.failed": {
+      "kind": "error",
+      "zh": "部署 cc-acct-iso 失败",
+      "args": []
+    },
+    "accounts.needsDeploy.done": {
+      "kind": "body",
+      "zh": "已部署 cc-acct-iso",
+      "args": []
+    },
+    "accounts.needsDeploy.deploying": {
+      "kind": "action",
+      "zh": "部署中…",
+      "args": []
+    },
+    "accounts.needsDeploy.deploy": {
+      "kind": "action",
+      "zh": "一键部署 cc-acct-iso",
+      "args": []
+    },
+    "accounts.needsDeploy.intro": {
+      "kind": "body",
+      "zh": "多账号靠 cc-acct-iso：每账号一个隔离配置目录、数据共享。点下面一键把它部署到远端 {dest}（只软链到 ~/.local/bin，不改你的 ~/.bashrc）。装完再回来启用。",
+      "args": ["dest"]
+    },
+    "accounts.needsDeploy.noPath": {
+      "kind": "body",
+      "zh": "多账号靠 cc-acct-iso（每账号一个隔离配置目录、数据共享）。这台远端缺后端路径或用户名，自动推不出部署目录。请先在「连接」组填好用户和后端路径，再回来一键部署。",
+      "args": []
+    },
+    "accounts.needsDeploy.title": {
+      "kind": "body",
+      "zh": "该远端还没装多账号管线（cc-acct-iso）",
+      "args": []
+    },
+    "accounts.launchStep.failed": {
+      "kind": "error",
+      "zh": "拉起终端失败",
+      "args": []
+    },
+    "accounts.launchStep.launchedNext": {
+      "kind": "body",
+      "zh": "完成后点「刷新」更新账号列表。",
+      "args": []
+    },
+    "accounts.launchStep.launched": {
+      "kind": "body",
+      "zh": "已在终端里运行",
+      "args": []
+    },
+    "accounts.launchStep.confirm": {
+      "kind": "body",
+      "zh": "将在远端「{machine}」的终端里运行：\n\n{cmd}\n\n{extra}命令在你看得见的终端里执行、需你亲手确认；工具自带备份，可以还原。继续？",
+      "args": ["machine", "cmd", "extra"]
+    },
+    "accounts.launchStep.cmdInvalid": {
+      "kind": "error",
+      "zh": "命令无法生成",
+      "args": []
+    },
+    "accounts.status.enabled": {
+      "kind": "body",
+      "zh": "已启用",
+      "args": []
+    },
+    "accounts.status.count": {
+      "kind": "body",
+      "zh": "{n} 个",
+      "args": ["n"]
+    },
+    "accounts.status.disabled": {
+      "kind": "body",
+      "zh": "未启用",
+      "args": []
+    },
+    "accounts.status.read": {
+      "kind": "body",
+      "zh": "已读取",
+      "args": []
+    },
+    "accounts.local.noBackend": {
+      "kind": "body",
+      "zh": "后端不在",
+      "args": []
+    },
+    "accounts.local.unreadable": {
+      "kind": "body",
+      "zh": "读不动",
+      "args": []
+    },
+    "accounts.status.backendOldBody": {
+      "kind": "body",
+      "zh": "远端后端需要更新才能用多账号：{reason}",
+      "args": ["reason"]
+    },
+    "accounts.status.backendOld": {
+      "kind": "body",
+      "zh": "后端需更新",
+      "args": []
+    },
+    "accounts.status.pullFailedBody": {
+      "kind": "error",
+      "zh": "拉取账号失败：{e}",
+      "args": ["e"]
+    },
+    "accounts.status.pullFailed": {
+      "kind": "body",
+      "zh": "拉取失败",
+      "args": []
+    },
+    "accounts.reload.reading": {
+      "kind": "body",
+      "zh": "正在读 {machine} 的账号…",
+      "args": ["machine"]
+    },
+    "accounts.who.local": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
+    },
+    "accounts.ctor.refresh": {
+      "kind": "action",
+      "zh": "刷新",
+      "args": []
+    },
+    "accounts.apikeyEditor.save": {
+      "kind": "action",
+      "zh": "保存",
+      "args": []
+    },
+    "accounts.apikeyEditor.pasteHint": {
+      "kind": "control",
+      "zh": "粘贴 key",
+      "args": []
+    },
+    "accounts.apikeyEditor.replaceHint": {
+      "kind": "control",
+      "zh": "输入新的 key 以替换",
+      "args": []
+    },
+    "accounts.apikeyEditor.noRow": {
+      "kind": "body",
+      "zh": "{name}：API key 表里还没有它那一行，它的会话今天走官方直连。",
+      "args": ["name"]
+    },
+    "accounts.apikeyEditor.hasRow": {
+      "kind": "body",
+      "zh": "{name}：API key 表里已经有它那一行。再存一次会替换它那一把 key。",
+      "args": ["name"]
+    },
+    "accounts.apikeyEditor.add": {
+      "kind": "action",
+      "zh": "配 API key",
+      "args": []
+    },
+    "accounts.apikeyEditor.replace": {
+      "kind": "action",
+      "zh": "换 API key",
+      "args": []
+    },
+    "accounts.apikeyFile.legacyTop": {
+      "kind": "body",
+      "zh": "顶层那一把（历史格式）：已配置 {masked}。它照常还能用，但界面不再往那一格写。",
+      "args": ["masked"]
+    },
+    "accounts.apikeyFile.editHint": {
+      "kind": "body",
+      "zh": "这份文件是明文 JSON，可以直接用编辑器改，改完下次读就生效",
+      "args": []
+    },
+    "accounts.apikeyFile.path": {
+      "kind": "body",
+      "zh": "文件：{path}",
+      "args": ["path"]
+    },
+    "accounts.apikeyFile.title": {
+      "kind": "title",
+      "zh": "第三方 API key",
+      "args": []
     }
   }
 }
