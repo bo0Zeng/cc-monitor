@@ -2,10 +2,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-vi.mock("../src/config", () => ({ loadConfig: vi.fn(), saveConfig: vi.fn() }));
+// 〔CFG1〕config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`。
+vi.mock("../src/config", async (orig) => (await import("./config-patch-fake")).mockedConfigModule(orig));
 
 import { invoke } from "@tauri-apps/api/core";
-import { loadConfig, saveConfig } from "../src/config";
+import { loadConfig } from "../src/config";
+import { fakeCfg } from "./config-patch-fake";
 import {
   deriveUi,
   effectiveDefault,
@@ -70,7 +72,7 @@ import {
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const loadCfg = loadConfig as unknown as ReturnType<typeof vi.fn>;
-const saveCfg = saveConfig as unknown as ReturnType<typeof vi.fn>;
+const saveCfg = fakeCfg.saved;
 
 function acct(p: Partial<Account>): Account {
   return {

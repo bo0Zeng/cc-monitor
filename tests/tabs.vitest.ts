@@ -243,6 +243,7 @@ import type { TabBarPrefs } from "../src/tab-bar-prefs";
 import type { TabStreamView } from "../src/tab-stream-view";
 import type { TabSessionActions } from "../src/tab-session-actions";
 import { LOCAL_ORIGIN } from "../src/ipc/origin";
+import { applyConfigEdits, type Edit } from "./config-patch-fake";
 
 // 〔S4 · 第四波〕`TabManager` 拆开之后各样东西住各自的家（store · tab 栏视图 · 拖拽 · 落盘偏好 · 流视图 · 会话动作）。
 // 判据**直接指向新家**；`TabManager` 上不再为旧判据留同名转交。TS 的 `private` 只在编译期，运行时这几个字段就在实例上。仅测试用。
@@ -3756,7 +3757,7 @@ describe("P7a-3 集合分组渲染", () => {
 //   因为 `archived + pinned` 才是用户的主用例（固定住一个已经跑完的会话）。
 //
 // 🔴 反空真：这一组的 config 是**一份真的在内存里的盘**（走那个已经被 mock 的
-//   `invoke`，`load_config`/`save_config` 两条命令），所以「落盘了没有」是
+//   `invoke`，`load_config`/`patch_config` 两条命令），所以「落盘了没有」是
 //   **读盘对拍**，不是「有没有调过某个函数」。
 // ==========================================================================
 describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
@@ -3781,8 +3782,9 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
     //   判据买到的是那一段的形状（只动自己那个键 · 清洗 · 上界），不是一个 spy。
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string, args?: unknown) => {
       if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
-      if (cmd === "save_config") {
-        disk = JSON.parse(JSON.stringify((args as { value: unknown }).value));
+      if (cmd === "patch_config") {
+        // 〔CFG1〕写只交补丁；按与 Rust 写口同一份金样的语义应用（`tests/config-patch-fake.ts`）。
+        disk = JSON.parse(applyConfigEdits(JSON.stringify(disk), (args as { edits: Edit[] }).edits));
         return Promise.resolve(undefined);
       }
       return Promise.resolve(undefined);
@@ -4399,7 +4401,7 @@ describe("步 17·D ⑤ 停留 250ms 才成组（假手势打真事件链）", (
 //     **`alive` 两侧同源 ⇒ 恒真**（`01 §7.4` 点名的那一形）。
 //
 // 🔴 反空真：这一组的 config 是**一份真的在内存里的盘**（走已被 mock 的 `invoke`,
-//   `load_config`/`save_config`），所以「顺序落没落上」是**读盘对拍**，不是数调用次数。
+//   `load_config`/`patch_config`），所以「顺序落没落上」是**读盘对拍**，不是数调用次数。
 //   全部断言是**逐位相等**（`toEqual` 整张数组），没有「至少有几个 tab」那种地板。
 // ==========================================================================
 describe("步 17·C 顺序落盘：读回来那一半", () => {
@@ -4435,8 +4437,9 @@ describe("步 17·C 顺序落盘：读回来那一半", () => {
     disk = {};
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string, args?: unknown) => {
       if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
-      if (cmd === "save_config") {
-        disk = JSON.parse(JSON.stringify((args as { value: unknown }).value));
+      if (cmd === "patch_config") {
+        // 〔CFG1〕写只交补丁；按与 Rust 写口同一份金样的语义应用（`tests/config-patch-fake.ts`）。
+        disk = JSON.parse(applyConfigEdits(JSON.stringify(disk), (args as { edits: Edit[] }).edits));
         return Promise.resolve(undefined);
       }
       return Promise.resolve(undefined);
@@ -4859,8 +4862,9 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     probe = { present: true, root: "/h/.claude/projects" };
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string, args?: unknown) => {
       if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
-      if (cmd === "save_config") {
-        disk = JSON.parse(JSON.stringify((args as { value: unknown }).value));
+      if (cmd === "patch_config") {
+        // 〔CFG1〕写只交补丁；按与 Rust 写口同一份金样的语义应用（`tests/config-patch-fake.ts`）。
+        disk = JSON.parse(applyConfigEdits(JSON.stringify(disk), (args as { edits: Edit[] }).edits));
         return Promise.resolve(undefined);
       }
       if (cmd === "probe_session_record")

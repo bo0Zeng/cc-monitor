@@ -1,13 +1,28 @@
 //! 用户配置 R/W —— `~/.claude/work/config.json`。
 //!
-//! Rust 端不解释配置内容（schema 在前端定义），只负责原子读写 + 文件缺失时
-//! 给出最小骨架。前端 theme.ts / settings UI 通过 invoke 调到这里。
+//! Rust 端不解释配置内容（schema 在前端定义，顶层键的主人登记在 `src/config.ts::CONFIG_KEY_OWNERS`），
+//! 只负责读、**按键补丁**写 ＋ 文件缺失时给出最小骨架。
 //!
 //! 配置文件位置走 `paths::resolve_config_path` —— monitor 自己的设置永远在
 //! 默认 `~/.claude/work/` 下，不跟随 `claudeDir` 字段变化。
+//!
+//! 🔴 〔CFG1 · 4D〕**写 `config.json` 只有一个口：[`patch_config_at`]。** 整份替换那一形（旧 `save_config`）删了。
+//!
+//! 从前每个前端模块「读整份 → 改自己的键 → 整份写回」，主窗（tab 栏的分组 / 固定 / 顺序）与设置窗
+//! （行为 / 主题 / 快捷键 / 账号 / 远端）是同一进程里的两个 webview，两次读-改-写一交错，
+//! 后写的整份就把先写的键盖掉（E §E1：拖放同拍发分组 ＋ 顺序，分组那次没落盘）。
+//! 守的要求：`设计/30 §4`「各自只写自己那个键」· `设计/70 §287` 红线 ④「读不懂的 `config.json` 不写」。
+//!
+//! 现在前端只交「改哪几条路径」（[`ConfigEdit`]），这里在**一把进程级锁里现读盘、逐条应用、原子替换** ——
+//! 主窗 / 设置窗 / `logging.rs` 的诊断写口都走这一个函数，谁写的键谁的值留在盘上。
+//! 射程：锁是进程内的。两个 monitor 进程同写（Linux / macOS 今天没有单实例）仍在锁外；
+//! 那时每一次写仍是「锁内现读 ＋ 只改自己的路径」，丢更新的窗口缩到读与 rename 之间。
 
 use crate::paths;
-use serde_json::Value;
+use serde::Deserialize;
+use serde_json::{Map, Value};
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 #[tauri::command]
 pub fn load_config() -> Result<Value, String> {
@@ -20,17 +35,157 @@ pub fn load_config() -> Result<Value, String> {
     serde_json::from_str(&raw).map_err(|e| format!("parse {}: {e}", path.display()))
 }
 
-#[tauri::command]
-pub fn save_config(value: Value) -> Result<(), String> {
-    let path = paths::resolve_config_path().ok_or_else(|| "no home dir".to_string())?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("mkdir {}: {e}", parent.display()))?;
+/// 一条配置补丁。`path[0]` 是顶层键，其后是逐层子键。
+///
+/// - `set`：沿路径下行，中间段缺失或不是对象 ⇒ 换成 `{}`，末段整值替换（值里的 `null` 原样存 ——
+///   快捷键的「解绑」就是 `null`）。
+/// - `remove`：沿路径找，找不到 ⇒ 什么都不做。
+///
+/// 为什么不是 JSON Merge Patch（RFC 7396）：那个对子对象递归合并、`null` 表示删除；而 `keybindings` /
+/// `theme` / `remote` 要的是**整键替换**，`keybindings` 的值里还有合法的 `null`。路径形状让写者明说替换到哪一层。
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+#[serde(tag = "op", rename_all = "lowercase")]
+pub enum ConfigEdit {
+    Set {
+        path: Vec<String>,
+        #[cfg_attr(test, ts(type = "unknown"))]
+        value: Value,
+    },
+    Remove {
+        path: Vec<String>,
+    },
+}
+
+impl ConfigEdit {
+    fn path(&self) -> &[String] {
+        match self {
+            ConfigEdit::Set { path, .. } | ConfigEdit::Remove { path } => path,
+        }
     }
-    let pretty = serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?;
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, pretty).map_err(|e| format!("write {}: {e}", tmp.display()))?;
-    atomic_replace(&tmp, &path).map_err(|e| format!("replace → {}: {e}", path.display()))?;
+}
+
+/// [`patch_config_at`] 失败的三种。分开是为了让调用方各说各的话（`logging.rs` 那句「诊断设置没有存」原样保留）。
+#[derive(Debug)]
+pub(crate) enum ConfigWriteError {
+    /// 盘上那份读不懂 / 根不是对象 ⇒ **一个字节没写**（`设计/70 §287` 红线 ④）。
+    Unreadable {
+        path: PathBuf,
+        detail: String,
+    },
+    /// 补丁本身不成形（空路径 —— 那就是「整份替换」换了个名字）⇒ 整批拒，盘上一个字节不动。
+    BadEdit(String),
+    Io(String),
+}
+
+impl std::fmt::Display for ConfigWriteError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConfigWriteError::Unreadable { path, detail } => write!(
+                f,
+                "{} 读不懂（{detail}），这次的设置没有存：写回去会把这份文件里别的设置一起盖掉，先把它改成合法的 JSON",
+                path.display()
+            ),
+            ConfigWriteError::BadEdit(m) | ConfigWriteError::Io(m) => f.write_str(m),
+        }
+    }
+}
+
+/// 进程里所有写 `config.json` 的人共用这一把锁（主窗 / 设置窗的 IPC、`logging.rs` 的诊断写口）。
+static WRITE_LOCK: Mutex<()> = Mutex::new(());
+
+/// 前端写配置的唯一口：交一串 [`ConfigEdit`]，这里合并进盘上那份。
+#[tauri::command]
+pub fn patch_config(edits: Vec<ConfigEdit>) -> Result<(), String> {
+    let path = paths::resolve_config_path().ok_or_else(|| "no home dir".to_string())?;
+    patch_config_at(&path, &edits).map_err(|e| e.to_string())
+}
+
+/// 🔴 **`config.json` 唯一的写函数。** 锁内现读 → 逐条应用 → 带 pid 的临时件 → 原子替换。
+pub(crate) fn patch_config_at(path: &Path, edits: &[ConfigEdit]) -> Result<(), ConfigWriteError> {
+    // ① 先验全部：一条不成形 ⇒ 整批拒，连锁都不拿。
+    if let Some(bad) = edits.iter().find(|e| e.path().is_empty()) {
+        return Err(ConfigWriteError::BadEdit(format!(
+            "config patch refused: empty path ({bad:?})"
+        )));
+    }
+    if edits.is_empty() {
+        return Ok(());
+    }
+    // ② 串行化。锁中毒（别的写者 panic 了）不妨碍这一次：锁只护「读-改-写」这一段，没有要恢复的内存状态。
+    let _guard = WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+
+    // ③ 锁内现读。不存在 ⇒ 空对象；读不懂 / 根不是对象 ⇒ 不写。
+    let mut root: Map<String, Value> = if path.exists() {
+        let raw = std::fs::read_to_string(path)
+            .map_err(|e| ConfigWriteError::Io(format!("read {}: {e}", path.display())))?;
+        match serde_json::from_str::<Value>(&raw) {
+            Ok(Value::Object(m)) => m,
+            Ok(_) => {
+                return Err(ConfigWriteError::Unreadable {
+                    path: path.to_path_buf(),
+                    detail: "最外层不是一个对象".to_string(),
+                })
+            }
+            Err(e) => {
+                return Err(ConfigWriteError::Unreadable {
+                    path: path.to_path_buf(),
+                    detail: e.to_string(),
+                })
+            }
+        }
+    } else {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| ConfigWriteError::Io(format!("mkdir {}: {e}", parent.display())))?;
+        }
+        Map::new()
+    };
+
+    // ④ 逐条应用。
+    for e in edits {
+        apply_edit(&mut root, e);
+    }
+
+    // ⑤ 临时件带 pid：两个 monitor 进程不互删对方的临时件。
+    let pretty = serde_json::to_string_pretty(&Value::Object(root))
+        .map_err(|e| ConfigWriteError::Io(e.to_string()))?;
+    let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
+    std::fs::write(&tmp, pretty)
+        .map_err(|e| ConfigWriteError::Io(format!("write {}: {e}", tmp.display())))?;
+    atomic_replace(&tmp, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        ConfigWriteError::Io(format!("replace → {}: {e}", path.display()))
+    })?;
     Ok(())
+}
+
+fn apply_edit(root: &mut Map<String, Value>, edit: &ConfigEdit) {
+    let (last, parents) = edit.path().split_last().expect("空路径在 ① 已拒");
+    let mut cur = root;
+    match edit {
+        ConfigEdit::Set { value, .. } => {
+            for seg in parents {
+                let slot = cur.entry(seg.clone()).or_insert(Value::Null);
+                if !slot.is_object() {
+                    *slot = Value::Object(Map::new());
+                }
+                cur = slot.as_object_mut().expect("上一行保证是对象");
+            }
+            cur.insert(last.clone(), value.clone());
+        }
+        ConfigEdit::Remove { .. } => {
+            for seg in parents {
+                // 路上就没有（或不是对象）⇒ 要删的东西本来就不在；**不**顺手建出空段。
+                match cur.get_mut(seg).and_then(Value::as_object_mut) {
+                    Some(next) => cur = next,
+                    None => return,
+                }
+            }
+            cur.remove(last);
+        }
+    }
 }
 
 /// 把 src 原子替换到 dst。
@@ -78,3 +233,7 @@ pub(crate) fn atomic_replace(src: &std::path::Path, dst: &std::path::Path) -> st
 fn default_config() -> Value {
     serde_json::json!({})
 }
+
+#[cfg(test)]
+#[path = "../../../tests/bridge/config_tests.rs"]
+mod tests;

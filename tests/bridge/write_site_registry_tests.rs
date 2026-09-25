@@ -109,7 +109,7 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("bind.rs", "spawn", None, "monitor 自己的运行时目录/落地文件"),
     ("bind.rs", "process_await_file", None, "monitor 自己的等待文件"),
     ("bind.rs", "cleanup_dead", None, "清理 monitor 自己留下的死文件"),
-    ("config.rs", "save_config", None, "monitor 自己的配置文件"),
+    ("config.rs", "patch_config_at", None, "monitor 自己的配置文件（〔CFG1〕唯一写口：进程级锁内现读 ＋ 按键补丁；整份替换的 `save_config` 删了）"),
     // K-H2a：第三方 API key 那份文件。**monitor 自己的文件**（不是用户的、也不是某个工具的安装动作）。
     // ⚠ 它与人手编是同一份文件的两个写者 ⇒ 写的那一刻才读盘、未知键一个不吃、
     //   字段顺序按名字排、原子替换（复用 `config::atomic_replace`）、写完立刻收窄成只给本人。
@@ -117,8 +117,8 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("config.rs", "atomic_replace", None, "原子替换原语的本地副本（同上，归 `atomic_replace_registry` 判）"),
     ("lib.rs", "open_log_dir", None, "打开日志目录前确保它存在"),
     ("logging.rs", "build_rolling_appender", None, "monitor 自己的滚动日志"),
-    ("logging.rs", "write_diagnostics_to_config", None, "把诊断信息写进 monitor 自己的配置"),
-    ("logging.rs", "atomic_replace", None, "原子替换原语的本地副本（头注自陈是从 config.rs 复制的）"),
+    // 〔CFG1 · 4D〕`logging.rs` 那两行（`write_diagnostics_to_config` · `atomic_replace` 副本）摘了：诊断写口改经
+    //   `config::patch_config_at`，本文件零写盘。
     ("session_map.rs", "run_watcher", None, "monitor 自己的会话映射状态"),
     // 〔SR1b · 2026-09-24〕「下载落到用户选的本机路径」那一行摘了（连同它上面那段 09-21 的订正：「本地缓存」那句是假的、
     //    围栏补在开单那一刻）—— 落地那一下随传输台搬进了本机常驻后端（第三层文件管理写面 `control/transfer.rs`），
@@ -438,13 +438,12 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     ("bind.rs", "spawn", Lands::OwnState),
     ("bind.rs", "process_await_file", Lands::OwnState),
     ("bind.rs", "cleanup_dead", Lands::OwnState),
-    ("config.rs", "save_config", Lands::OwnState),
+    ("config.rs", "patch_config_at", Lands::OwnState),
     ("creds_store.rs", "write_key_at", Lands::OwnState),
     ("config.rs", "atomic_replace", Lands::OwnState),
     ("lib.rs", "open_log_dir", Lands::OwnState),
     ("logging.rs", "build_rolling_appender", Lands::OwnState),
-    ("logging.rs", "write_diagnostics_to_config", Lands::OwnState),
-    ("logging.rs", "atomic_replace", Lands::OwnState),
+    // 〔CFG1〕`logging.rs` 两行随写盘一起摘（见 `WRITE_SITES` 同处）。
     ("session_map.rs", "run_watcher", Lands::OwnState),
     // 〔SR1b · 2026-09-24〕「下载落到用户选的本机路径」那一行（指名 SR1b 的待收例外）**收了**：
     //    下载的落地随传输台搬进本机常驻后端（`control/transfer.rs`，第三层文件管理写面，先过会话文件围栏）。

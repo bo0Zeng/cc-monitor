@@ -140,7 +140,9 @@ fn find_latest_log_picks_newest_mtime() {
 /// 对照：合法的那份照常写（上面 `write_diagnostics_preserves_other_fields`）。
 #[test]
 fn a_config_we_cannot_parse_is_left_alone_not_overwritten() {
-    let tmp = std::env::temp_dir().join(format!("ccm-log-test3-{}", std::process::id()));
+    // 〔CFG1〕临时目录原来与 `find_latest_log_picks_newest_mtime` 同名（都是 `ccm-log-test3-<pid>`）：
+    //   两条并行跑时那条的 `remove_dir_all` 能在这条写坏文件之后、调写口之前把目录删掉 ⇒ 本条假红（现打踩到一次）。
+    let tmp = std::env::temp_dir().join(format!("ccm-log-test-unparsable-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
     let broken = "{\"claudeDir\":\"/x\" \"theme\":{}}"; // 少一个逗号
@@ -154,8 +156,10 @@ fn a_config_we_cannot_parse_is_left_alone_not_overwritten() {
         broken,
         "读不懂的那份被改了 —— 用户手填的内容没了"
     );
+    // 〔CFG1〕临时件名带 pid 了（`config.json.<pid>.tmp`，写口 `config::patch_config_at`）。
     assert!(
-        !tmp.join("config.json.tmp").exists(),
+        !tmp.join(format!("config.json.{}.tmp", std::process::id()))
+            .exists(),
         "临时文件都写出来了 —— 「不写」要在写之前就停"
     );
     assert!(

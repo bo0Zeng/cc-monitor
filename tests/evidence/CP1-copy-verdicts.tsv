@@ -1382,3 +1382,4 @@ src/settings/assets-section.ts:103	rows 那一格	保留	[不对外] 〔AS2〕�
 src/settings/assets-section.ts:109	from 那一格	保留	[不对外] 〔AS2〕同上一行
 src/settings/assets-section.ts:116	problems 那一格	保留	[不对外] 〔AS2〕同上一行
 src/settings/panel.ts:1103	资产目录	保留	[对外] 〔AS2〕机器页「工具」栏一块的标题（名词短语）
+src/bridge/src/config.rs:87	{} 读不懂（{detail}），这次的设置没有存：写回去会把这份文件里别的设置一起盖掉，先把它改成合法的 JSON	保留	[可达存疑] config.json 唯一写口（CFG1）拒写时的话，经设置页保存失败出声。与 logging.rs「诊断设置没有存」那句同形同裁：说清哪份文件、为什么一个字节没写（设计/70 §287 红线 ④）、用户自己能做的那一步
