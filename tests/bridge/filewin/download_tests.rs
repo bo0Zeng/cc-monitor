@@ -229,8 +229,8 @@ fn the_outcome_is_visible_before_the_round_counter_moves() {
 
 /// 失败那一支要把**下层那句原话**带着走（围栏的拒绝、连接失败、落地失败）。
 ///
-/// ⚠ 这一条与 `sftp_pool_tests::a_download_onto_a_live_session_file_is_refused_by_the_fence_not_by_the_network`
-/// 是两件事：那一条钉「池子真的拒」，本条钉「拒的那句话到得了这一格」。
+/// ⚠ 这一条与 `sftp_pool_tests::a_download_onto_a_live_session_file_is_refused_before_anything_is_sent`
+/// 是两件事：那一条钉「中继真的拒（在转给本机后端之前）」，本条钉「拒的那句话到得了这一格」。
 #[test]
 fn a_failure_carries_the_reason_it_was_given() {
     let b = DownloadBoard::default();

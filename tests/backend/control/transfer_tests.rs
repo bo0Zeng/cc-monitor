@@ -4,8 +4,8 @@
 //! 上传 / 下载两份本体的语料是一条 SFTP 会话（`Session::over` —— 生产那一个口），判据直接喂它；
 //! 票表（`Desk`）那一半判记账与帧，不起真 SSH（真 sshd 那一维在 `tests/evidence/SR1b-sftp-loopback.py`）。
 //!
-//! 来历：这几条的形状照 monitor 那一侧 F7c / 步 24 的判据（`sftp_staging_tests` · `sftp_pool_f4_tests` ·
-//! `sftp_pool_tests`）—— 传输本体搬过来了，判据跟着搬，被判的是后端这一份实现。
+//! 来历：这几条的形状照 monitor 那一侧 F7c（暂存区那一族）/ 步 24（秤 F4 · 续传）的判据 ——
+//! 传输本体搬过来了，判据跟着搬（monitor 那几份整份删了），被判的是后端这一份实现。
 
 use super::*;
 use crate::dial::sftp::rig::{self, Entry};

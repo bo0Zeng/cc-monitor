@@ -110,15 +110,9 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("logging.rs", "write_diagnostics_to_config", None, "把诊断信息写进 monitor 自己的配置"),
     ("logging.rs", "atomic_replace", None, "原子替换原语的本地副本（头注自陈是从 config.rs 复制的）"),
     ("session_map.rs", "run_watcher", None, "monitor 自己的会话映射状态"),
-    // 🔴〔订正 2026-09-21〕这一行原先逐字写着「把远端文件落到**本地缓存**；
-    //    写的**不是用户既有环境**」—— **两句都是假的**：`local_path` 由用户在保存
-    //    对话框（老面板）或那个落点框（原生窗口）里给，**用户指哪写哪**，那按定义
-    //    就是用户既有环境，不是缓存。
-    //    而它是一条**推诿链的末端**：`remote_write_registry` 的两张表各自把「本机落点
-    //    那一半」指到本表，本表这一行又说「不是用户既有环境」⇒ 没人守，洞活着。
-    //    ⇒ 围栏已补在 `sftp_pool::sftp_download` 第一行（`guard_write(&local_path)`）。
-    //    ⚠ 本表仍然只是**申报**，不是守卫 —— 别再把它当挡箭牌。
-    ("sftp_pool.rs", "download_inner", None, "把远端文件落到**用户选的本机路径**（保存对话框 / 落点框）；围栏在入口 `sftp_download` 第一行"),
+    // 〔SR1b · 2026-09-24〕「下载落到用户选的本机路径」那一行摘了（连同它上面那段 09-21 的订正：「本地缓存」那句是假的、
+    //    围栏补在开单那一刻）—— 落地那一下随传输台搬进了本机常驻后端（第三层文件管理写面 `control/transfer.rs`），
+    //    monitor 这一侧零写盘；开单时那道本机落点围栏照旧在中继里先判一次（`sftp_pool.rs::transfer_call`）。
     ("utils.rs", "atomic_write_json", None, "通用原子写原语，调用方各自申报"),
     // 〔FW34 · 第四波 09-24〕文件窗口的书签：锁旁件（空文件，只拿来上锁）＋ 它所在的目录。
     //   书签文件本身走上面那条原子写原语（`filewin/bookmarks.rs::mutate`）。
@@ -398,6 +392,10 @@ enum Lands {
     /// cargo 的构建目录。
     BuildOutput,
     /// **是**用户文件，但有主、在别的路收：`(谁来收, 为什么不在本路)`。
+    /// 〔SR1b · 2026-09-24〕今天**零成员**（唯一那一格 —— 下载落到用户选的本机路径 —— 被 SR1b 收了，落地搬进后端 `control/transfer.rs`）；
+    /// 这一档留着：它是「一时搬不走、指名谁来收」这个形态本身，下一格要落时有地方落（同 `backend_route` 那条
+    /// 「别因暂时没人用删判据形态」）。
+    #[allow(dead_code)]
     Pending(&'static str),
 }
 
@@ -430,13 +428,8 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     ("logging.rs", "write_diagnostics_to_config", Lands::OwnState),
     ("logging.rs", "atomic_replace", Lands::OwnState),
     ("session_map.rs", "run_watcher", Lands::OwnState),
-    // 🔴 下载落到**用户选的本机路径** —— 真是用户文件。它住 `sftp_pool.rs`（S4 的写区），
-    //    SFTP 整体进常驻后端是 4B 的 `SR1b`（「SFTP 连接由本机常驻后端管……落进用户目录仍只经后端文件管理提交」）。
-    (
-        "sftp_pool.rs",
-        "download_inner",
-        Lands::Pending("SR1b：SFTP 进本机常驻后端，下载的落地改由本机后端的文件管理那一面提交"),
-    ),
+    // 〔SR1b · 2026-09-24〕「下载落到用户选的本机路径」那一行（指名 SR1b 的待收例外）**收了**：
+    //    下载的落地随传输台搬进本机常驻后端（`control/transfer.rs`，第三层文件管理写面，先过会话文件围栏）。
     // 通用原语：它自己不定落点，调用方各自申报（今天的调用方全是 monitor 自己的状态文件，
     // 下面第 ② 道把「搬走写盘的那几份文件」里调它也算成一处写）。
     ("utils.rs", "atomic_write_json", Lands::OwnState),

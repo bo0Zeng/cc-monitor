@@ -4,7 +4,6 @@ use guard_core::production_code;
 //
 // 只读**本 crate 自己**那四份 + 仓内耐久文档，一条跨半边的边都不长。
 
-const POOL_SRC: &str = include_str!("../../src/bridge/src/sftp_pool.rs");
 const SFTP_SRC: &str = include_str!("../../src/bridge/src/sftp.rs");
 const MCP_SRC: &str = include_str!("../../src/bridge/src/mcp.rs");
 const ACCT_SRC: &str = include_str!("../../src/bridge/src/acct_iso_deploy.rs");
@@ -15,13 +14,15 @@ const PROFILE_SRC: &str = include_str!("../../src/bridge/src/profile_installer.r
 /// 剖分把它从 `profile_installer.rs` 搬到了这里。**那句话一个字节没改。**
 const PROFILE_TESTS_SRC: &str = include_str!("profile_installer_tests.rs");
 const LOCAL_BACKEND_SRC: &str = include_str!("../../src/bridge/src/local_backend_host.rs");
-const BACKEND_SRC: &str = include_str!("../../src/bridge/src/backend/mod.rs");
 
 /// 语料地板：低于这个字节数就判「语料没喂进来」，而不是「一处都没有」。
 ///
 /// 🔴 这条是下面 `an_empty_corpus_makes_the_census_red_by_itself` 的被测对象 ——
 /// 「一处都没扫到」与「根本没扫」在终端上一模一样，这条地板就是把它们分开的那一刀。
-const CORPUS_FLOOR_BYTES: usize = 60_000;
+/// 〔SR1b · 2026-09-24〕60 000 → 40 000：乙（`sftp_pool.rs`）整份出了语料 —— 传输台搬进了本机常驻后端，
+/// 那份文件只剩中继、一个 SFTP 会话都不拿（`sftp_family_registry_tests::the_relay_holds_no_sftp_at_all` 零命中）。
+/// 剩下三份的生产段现打 ≈ 47 KB，地板压在它之下留余量。
+const CORPUS_FLOOR_BYTES: usize = 40_000;
 
 /// 一份源码文本的生产段里，某个函数名的**调用点**处数 —— 剔掉定义行本身。
 ///
@@ -46,7 +47,6 @@ fn call_sites(code: &str, name: &str) -> usize {
 fn corpus() -> Vec<(&'static str, String)> {
     vec![
         ("sftp.rs", production_code(SFTP_SRC)),
-        ("sftp_pool.rs", production_code(POOL_SRC)),
         ("mcp.rs", production_code(MCP_SRC)),
         ("acct_iso_deploy.rs", production_code(ACCT_SRC)),
     ]
@@ -78,19 +78,9 @@ const DIAL_CENSUS: &[(&str, usize, &str)] = &[
              （F10）按用户裁「按推荐改」改成经那台远端的后端写（`user_files` → `files-peek` / `files-put`），\
              不再拨 SFTP —— 上面「甲」那一格挡路石（铁律 I7）由用户 09-23/24 两裁解开（后端文件管理那一面可以改用户文件）",
     ),
-    (
-        "sftp_pool.rs",
-        1,
-        "乙 —— 池化文件操作。🔴 **〔步 24 · 09-20〕5 → 1，降了 4 处，逐条记在这里**\
-             （本表要求「要么这一处真的长出来了，要么这张表已经腐了」—— 这一次是**第三种**：\
-             它们收敛了）。此前 5 处 = `with_sftp` 的「首次建」＋「死连重建」、`download_inner`、\
-             `upload_inner`、`sftp_copy` 各自拨一次；每一处都长着同一段\
-             「槽空就 `connect_sftp`」的代码。步 24 把池从\
-             「一 origin 一条连接 ＋ 一把独占锁」改成「一 origin 一条连接 ＋ 一池通道」之后，\
-             **所有借用都过 `OriginPool::conn`**，那一段只剩它一份。\
-             ⚠ **这不等于「乙离搬进后端更近了」**：拨号处数变少是**同一侧**的收敛，\
-             底下那条 SSH 连接、那个进程全局的池、那组信号量一样都没过界（见下面 `REGISTERED` 乙那三条）",
-    ),
+    // 〔SR1b · 2026-09-24〕乙（`sftp_pool.rs`，池化文件操作 → 传输台）那一行摘了：**1 → 0，而且这一次是真搬了** ——
+    //   SFTP 客户端、池（按连接记的预算）、传输台整段进了本机常驻后端（`dial/sftp.rs` · `control/transfer.rs`），
+    //   这份文件只剩中继，出了本表的人群。
     (
         "mcp.rs",
         1,
@@ -104,43 +94,6 @@ const DIAL_CENSUS: &[(&str, usize, &str)] = &[
     ),
 ];
 
-/// 乙今天的形状：`(几个 `#[tauri::command]`, 几处拨号)`。
-///
-/// 这两个数是 `KR78D2` 要的「读数」本体。
-///
-/// 🔴 **〔步 23b · 09-20〕`(11, 4)` → `(12, 5)`，涨的那一条逐条记在这里**（本表要求
-/// 「要么这一处真的长出来了（改表，并在件里交代），要么这张表已经腐了」）：
-/// 零流量复制那一路落地 ⇒ 多一条命令 `sftp_copy`、多一处拨号 `copy_inner`。
-/// ⚠ 它**没有**让乙更接近「搬进后端」—— 恰恰相反，`copy-data` 这条能力压根**搬不过去**：
-/// 它要的是一个**裸** SFTP 会话上的句柄，而 backend 那棵树连 `russh-sftp` 都没有
-/// （本表 `REGISTERED` 里那一条现打过）。这两个数往上走，是那条判词的又一份证据。
-///
-/// 🔴 **〔步 24 · 09-20〕`(12, 5)` → `(12, 1)`：命令数一条没变，拨号处数降了 4。**
-/// 命令数**必须**没变 —— 那是本拍的硬约束（不加新 Tauri 命令，只改既有命令的行为与连接池）。
-/// 拨号处降到 1 的来历逐条写在上面 `DIAL_CENSUS` 的 `sftp_pool.rs` 那一行。
-/// ⚠ **别把 1 读成「快搬完了」**：这个数量的是「有多少段代码自己去拨号」，
-/// 不是「有多少东西要过界」。过界面那三样（进度通道 · 进程全局池 · 死连重建）
-/// 一样都没少，而且池那一样**比此前更重了**（多了通道集与两组信号量）。
-///
-/// 🔴 **〔`设计/60 §5.4c` · 09-20〕`(12, 1)` → `(13, 1)`：多一条命令，拨号处数一处没动。**
-/// 多的那一条是 `sftp_chmod`（`SSH_FXP_SETSTAT` 改权限位）。
-/// **拨号处必须没动**：它走的是 `with_sftp`（从池里借），不自己 `connect_sftp` ——
-/// 那正是步 24 那一拍把「槽空就拨号」收敛成 `OriginPool::conn` 一处之后该有的样子，
-/// 新写的命令再也不该长出第二处拨号。这两个数一个涨一个不动，本身就是那件事的读数。
-/// ⚠ 同样**别把它读成「乙离搬进后端更近了」**：`SETSTAT` 和 `copy-data` 一样，
-/// 要的是一个**裸 SFTP 会话**，而 backend 那棵树连 `russh-sftp` 都没有。
-///
-/// 🔴 **〔F7c 收尾 · 09-24〕`(13, 1)` → `(1, 1)`：十二条命令走了，拨号处数一处没动。**
-/// 老面板删了、窗口改走通道（`设计/60 §13b`）⇒ 池子的 Tauri 命令只剩 `sftp_copy`
-/// （门禁 `f3-copy` 那一格还在量它的核心）。拨号仍然只有 `OriginPool::conn` 那一处 ——
-/// 传输台借的就是同一个池。⚠ 命令少了不等于「乙离搬进后端更近了」：传输台与暂存区上传
-/// 仍要一条 SFTP 会话（`设计/60 §8.4` 裁的是「保留SFTP」）。
-///
-/// 🔴 **〔第四波 S4〕`(1, 1)` → `(0, 1)`：最后一条命令（零流量复制）随门禁那一格退役删了，拨号处数一处没动。**
-/// 同一拍，过界那几样里的「进度通道」没了（它是那条命令用的 tauri channel）⇒ `REGISTERED` 乙那一半从三样变两样。
-/// ⚠ 照旧**别读成「乙离搬进后端更近了」**：池、死连驱逐、传输台都还在界面进程里（SFTP 进常驻后端是 4B 的 SR1b）。
-const POOL_SHAPE: (usize, usize) = (0, 1);
-
 // ── 登记表 ───────────────────────────────────────────────────────────────
 
 /// **本件的底账**：`(哪一半, 点名的那样东西, 逐字校验位, 它在挡什么)`。
@@ -151,46 +104,10 @@ const POOL_SHAPE: (usize, usize) = (0, 1);
 /// ⚠ 表名 `REGISTERED` 是 `scanning_guard_registry::TABLE_DECLS` 闭集里的成员之一，
 /// 刻意不起新名字（`DECISIONS.md#R33` 裁定一：新名字要同拍动那张闭集，而它不在本件写区）。
 const REGISTERED: &[(&str, &str, &str, &str)] = &[
-    // ── 乙：`KR78D2` 要的那几样（立表那天三样）──────────────────────────
-    // 〔第四波 S4〕「进度通道」那一样（`Channel<TransferProgress>`：tauri 的 IPC channel，后端那棵树没有 tauri）
-    //   随最后一条用它的命令一起删了 —— 那块挡路石**清掉了**，不是被挪走：传输台的进度今天走通道的
-    //   订阅流（`watch_ticket`），本来就是跨进程的形状。剩下两样照旧挡着。
-    (
-        "乙",
-        "per-origin 连接池",
-        "static POOL: std::sync::OnceLock<Mutex<HashMap<String, Arc<OriginPool>>>>",
-        "池是**进程全局**的 `OnceLock<Mutex<HashMap<String, …>>>`，靠界面进程活着才有意义。\
-             而今天界面 ↔ 本机后端**唯一**那条一次性传输是 \
-             `backend::observe::local_query::run_query` —— 它 **exec 一次子进程拿 stdout**。\
-             ⇒ 池搬过去会**活不过一次调用**：要么后端那侧先有一条常驻通道，\
-             要么池这件事整个重想。**这不是工作量问题，是形状问题。**\
-             〔🔴 步 24（09-20）订正，**上面那段判词一个字没改，因为它今天仍然成立**：\
-             变的是槽里装什么。校验位从 `HashMap<String, Slot>` 换成 \
-             `HashMap<String, Arc<OriginPool>>` —— `Slot`（`Arc<Mutex<Option<SftpConn>>>`，\
-             **一条通道 ＋ 一把独占锁**）整个退役，换成 `OriginPool`\
-             （一条连接 ＋ 一池 SFTP 通道 ＋ 两组信号量），因为 `设计/60 §2 档③` 第一行\
-             逐字点名「边传边浏览 ❌ ——**我们**单连接 ＋ 锁串行」。\
-             ⚠ **换校验位这件事本身要说清**（本表逐字禁「顺手把校验位改成新的原文」）：\
-             这不是它改了个名，是**那样东西被换掉了**，而换上来的东西**更搬不过去** ——\
-             此前过界要带走的是一条连接，现在还要带走一池通道与两个 `tokio::sync::Semaphore`，\
-             而信号量的语义（谁在排队等车道）在「exec 一次子进程」那种形状里根本无处安放。\
-             ⇒ 这条挡路石**没有变矮，变高了**。〕",
-    ),
-    (
-        "乙",
-        "死连接重建重试",
-        "evict_if_dead(&cfg.origin_label(), e).await",
-        "〔F7c 收尾 · 09-24〕**校验位换了，因为那样东西换了形状**（本表逐字禁「顺手把校验位改成新的原文」，\
-             所以说清）：原先钉的是 `with_sftp`〔散文墓碑〕里那条「像死连接就重建一次再试」的 match 臂；\
-             `with_sftp` 随那几条浏览 / 写命令一起删了（它们今天是后端 `files-*`），而传输**本来就不重试**\
-             （部分传输不静默从头来）。留下来的是这一半：失败像死连接 ⇒ 把那一格连接驱逐，下一趟干净重拨 ——\
-             它仍然是「没有池就没有『这条连接死了』这回事」那个状态的另一面，照旧要跟着池一起过界。\
-             以下是原判词：op 失败且像连接死亡 ⇒ 重建一次再试。校验位刻意钉**那条 match 臂**而不是那个函数名：\
-             函数名改掉是编译错（判据轮不到说话），而**把那条臂整条摘掉**编得过、\
-             只留一个 unused 警告 —— 那才是这条登记要拦的那一形。\
-             它与上一条是**同一个状态**的两面：没有池就没有「这条连接死了」这回事。\
-             ⇒ 两样必须一起过界，拆不开。",
-    ),
+    // ── 乙 ──〔SR1b · 2026-09-24〕「per-origin 连接池」「死连接重建重试」两行摘了：**挡路石没被绕开，是被拆掉了**。
+    //   那两行的判词是「池是进程全局的、靠界面进程活着才有意义；本机后端那条传输是 exec 一次拿 stdout，池搬过去活不过一次调用」。
+    //   两个前提 SR1a / SR1b 各拆一个：SR1a 立了本机**常驻**后端与那条常驻流（链路 · 连接池按拨号身份复用）；
+    //   SR1b 把传输台放上去，池换成按连接记的预算（`dial/pool.rs::Budget`），死连驱逐换成池里的 `is_closed()` ＋ 开通道失败摘掉重拨。
     // ── 甲：本件现打的四条挡路石 ─────────────────────────────────────
     (
         "甲",
@@ -321,8 +238,9 @@ fn census(corpus: &[(&str, String)]) -> Result<usize, String> {
 fn every_reading_this_ledger_quotes_is_derived_from_the_tree() {
     let total = census(&corpus()).expect("普查");
     assert_eq!(
-        total, 6,
-        "`connect_sftp` 的调用点合计应当是 6 处（4 份文件）—— 实得 {total}。\n\
+        total, 5,
+        "`connect_sftp` 的调用点合计应当是 5 处（3 份文件）—— 实得 {total}。\n\
+             ⚠ 〔SR1b · 09-24〕**6 → 5**：乙（`sftp_pool.rs`）那 1 处随传输台搬进了本机常驻后端。\n\
              ⚠ 〔RW1 · 第四波 09-24〕**11 → 6**：远端别名块装 / 卸两条（F10）· 项目 `.mcp.json` 写 / 删两处（F89a）·\n\
              删远端会话一处（F11）改经远端后端写，不再拨 SFTP。\n\
              ⚠ 派工单写的「9 处」现打是错的，来历见 `DIAL_CENSUS` 头注。\n\
@@ -342,88 +260,8 @@ fn an_empty_corpus_makes_the_census_red_by_itself() {
     assert!(e.contains("空转"), "空语料该报「在空转」，实得：{e}");
 }
 
-/// `KR78D2` 正题：乙今天几个命令、几处拨号 —— **两个数都从源码派生**。
-///
-/// 死值验（`M2`）：把 `POOL_SHAPE` 任一格改坏 ⇒ 本条红。
-#[test]
-fn the_pool_shape_this_ledger_registers_is_still_what_is_on_disk() {
-    let prod = production_code(POOL_SRC);
-    assert!(
-        prod.len() > 15_000,
-        "`sftp_pool.rs` 的生产段只剩 {} 字节 —— 剥法把它剥没了，下面两个数在空转。",
-        prod.len()
-    );
-    // needle 运行时拼：写成字面量的话本文件会掉进别人的人群里（同类自指陷阱本区踩过多次）。
-    let cmd_attr = format!("#[{}::command]", "tauri");
-    let (want_cmds, want_dials) = POOL_SHAPE;
-    assert_eq!(
-        prod.matches(cmd_attr.as_str()).count(),
-        want_cmds,
-        "乙今天的 `#[tauri::command]` 条数与登记的 {want_cmds} 对不上。"
-    );
-    assert_eq!(
-        call_sites(&prod, "connect_sftp"),
-        want_dials,
-        "乙今天的拨号处数与登记的 {want_dials} 对不上。"
-    );
-}
-
-/// `KR78D2` 正题：**要跟着过界的那几样东西，逐条点名，逐条在盘上。**
-///
-/// 〔第四波 S4〕函数与两条判据名字里的 three 是立表那天的数；「进度通道」那一样清掉之后今天是**两样**。
-///
-/// 死值验（`M3`）：把 `sftp_pool.rs` 里任一个校验位改名 ⇒ 本条红并点名是哪一样。
-/// **纯函数**（语料由调用方给）⇒ 阳性/阴性两个方向都切得动。
-/// 直接在真树上判的话，「采到了它、而它过了」与「压根没扫到」在输出上一模一样。
-fn three_things_present(prod: &str) -> Result<usize, String> {
-    let mine: Vec<&(&str, &str, &str, &str)> = REGISTERED
-        .iter()
-        .filter(|(half, ..)| *half == "乙")
-        .collect();
-    if mine.len() != 2 {
-        return Err(format!(
-            "乙那一半要点名的应当**恰好两样**（连接池 · 死连接重建；〔第四波 S4〕进度通道那一样清掉了），实得 {}。\n\
-                 少一样 = 这条登记不再说得出「挡着的是什么」；多一样 = 有人往里塞了别的东西。",
-            mine.len()
-        ));
-    }
-    for (_, what, pin, _) in &mine {
-        if pin.is_empty() || !prod.contains(pin) {
-            return Err(format!(
-                "乙那一半点名的「{what}」，它的逐字校验位在语料里找不到了：\n  {pin}\n\
-                     ⇒ 要么那样东西真的没了（那这条登记要重写，并交代乙的形状变了），\
-                     要么它改了名而登记没跟上。"
-            ));
-        }
-    }
-    Ok(mine.len())
-}
-
-#[test]
-fn each_of_the_three_things_that_must_cross_with_the_pool_is_still_on_disk() {
-    let prod = production_code(POOL_SRC);
-    assert_eq!(three_things_present(&prod), Ok(2));
-}
-
-/// **反向那半**：三样里少任意一样，判据必须红**并点名是哪一样**。
-///
-/// 语料是**合成的**（把真语料里那一样的校验位挖掉），所以这条不依赖任何人去动 `sftp_pool.rs`。
-#[test]
-fn a_pool_missing_any_one_of_the_three_is_caught_and_named() {
-    let prod = production_code(POOL_SRC);
-    for (_, what, pin, _) in REGISTERED.iter().filter(|(half, ..)| *half == "乙") {
-        let holed = prod.replace(pin, "«本条被合成语料挖掉了»");
-        assert_ne!(
-            holed, prod,
-            "挖不动「{what}」—— 那说明它本来就不在，本条在空转"
-        );
-        let e = three_things_present(&holed).expect_err(&format!("挖掉「{what}」之后判据必须红"));
-        assert!(
-            e.contains(what),
-            "判据红了却没点名是哪一样（挖掉的是「{what}」），实得：{e}"
-        );
-    }
-}
+// 〔SR1b · 2026-09-24〕乙那三条（形状 · 要跟着过界的几样在盘上 · 挖掉任一样必红）随乙整份出了语料摘了 ——
+//   它们守的是「乙还没过界、为什么」，而乙过界了（见 `REGISTERED` 乙那一段的墓碑）。
 
 /// `KR78D3`：记分牌上 `sftp.rs` 那一格**今天仍是「未搬」，而这张表说得出为什么**。
 ///
@@ -453,7 +291,6 @@ fn the_sftp_row_on_the_scoreboard_is_still_unmoved_and_this_ledger_says_why() {
         .map(|(f, _, _)| {
             let src = match *f {
                 "sftp.rs" => SFTP_SRC,
-                "sftp_pool.rs" => POOL_SRC,
                 "mcp.rs" => MCP_SRC,
                 other => panic!("`DIAL_CENSUS` 多出一份没有语料的文件：{other}"),
             };
@@ -468,7 +305,7 @@ fn the_sftp_row_on_the_scoreboard_is_still_unmoved_and_this_ledger_says_why() {
     assert!(
         !*moved,
         "记分牌把 `sftp.rs` 那一格标成「已搬」，而界面进程里还有 {others} 处 `connect_sftp` \
-             调用点（乙 `sftp_pool.rs` · 丙 `mcp.rs` · `sftp.rs` 自己那 6 处）。\n\
+             调用点（丙 `mcp.rs` · `sftp.rs` 自己那几处；〔SR1b〕乙已经过界）。\n\
              这两句话不可能同时为真。"
     );
 }
@@ -492,8 +329,6 @@ fn every_blocker_this_ledger_registers_is_still_quoted_verbatim_on_disk() {
 
     // 每条校验位该去哪一份语料里找 —— 表与语料的绑定写死，别让判据自己去猜。
     let where_to_look: &[(&str, &str)] = &[
-        ("per-origin 连接池", "sftp_pool.rs"),
-        ("死连接重建重试", "sftp_pool.rs"),
         ("backend 只读铁律 I7", "src/doc/INVARIANTS.md"),
         ("别名 snippet 只许有一个家", "profile_installer_tests.rs"),
         ("要部署的那份字节住在界面这一侧", "local_backend_host.rs"),
@@ -511,7 +346,6 @@ fn every_blocker_this_ledger_registers_is_still_quoted_verbatim_on_disk() {
             .find(|(_, w, ..)| w == what)
             .unwrap_or_else(|| panic!("`REGISTERED` 里找不到「{what}」这一行"));
         let hay = match *file {
-            "sftp_pool.rs" => production_code(POOL_SRC),
             "sftp.rs" => production_code(SFTP_SRC),
             "profile_installer.rs" => PROFILE_SRC.to_string(),
             "profile_installer_tests.rs" => PROFILE_TESTS_SRC.to_string(),
@@ -556,27 +390,5 @@ fn this_ledger_does_not_wind_up_an_alarm_clock() {
     assert_eq!(banned.len(), 4, "禁词表被掏空了，本条在空转。");
 }
 
-/// 「后端那侧到底有没有常驻通道」这句话，**本件引用的那一条今天还在**。
-///
-/// 乙那一行拿它当理由（池活不过一次 exec），所以它腐了乙那一行就假了。
-#[test]
-fn the_one_shot_shape_of_todays_local_backend_transport_is_still_what_this_ledger_claims() {
-    let prod = production_code(include_str!(
-        "../../src/bridge/src/backend/observe/local_query.rs"
-    ));
-    for pin in [
-        "std::process::Command::new(&bin)",
-        "pub(crate) fn run_query(",
-    ] {
-        assert!(
-            prod.contains(pin),
-            "`local_query.rs` 里找不到 `{pin}` —— 本登记里「后端那条传输是 exec 一次拿 stdout」\
-                 这句话失去了依据，乙那一行的理由要重写。"
-        );
-    }
-    // 顺带钉住：`backend/` 那道宿主无关守卫还在（乙那一行也引了它）。
-    assert!(
-        BACKEND_SRC.contains("the_backend_layer_stays_host_agnostic"),
-        "`backend/mod.rs` 里找不到那道宿主无关守卫 —— 乙那一行引的第二个理由也没了。"
-    );
-}
+// 〔SR1b · 2026-09-24〕「本机后端那条传输是 exec 一次拿 stdout」那一条（乙那一行的理由）摘了：
+//   乙过界了，而那句话本身也早不是全貌（SR1a 立了本机常驻后端那条常驻流）。

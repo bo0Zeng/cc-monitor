@@ -3398,27 +3398,9 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "sftp_read_text_for_edit",
             1,
         ),
-        (
-            "tests/bridge/sftp_pool_tests.rs",
-            "decode_editable_guards",
-            1,
-        ),
-        (
-            "tests/bridge/sftp_pool_tests.rs",
-            "list_dir_sort_dirs_first_then_lowercase",
-            1,
-        ),
-        ("tests/bridge/sftp_pool_tests.rs", "lossy_name_detection", 1),
-        (
-            "tests/bridge/sftp_pool_tests.rs",
-            "the_chmod_attrs_never_put_a_size_on_the_wire",
-            1,
-        ),
-        (
-            "tests/bridge/sftp_pool_tests.rs",
-            "the_chmod_mode_is_masked_down_to_permission_bits",
-            1,
-        ),
+        // 〔SR1b · 2026-09-24〕`tests/bridge/sftp_pool_tests.rs` 那五块墓碑（`decode_editable_guards` 等五个旧判据名）
+        //   随那份判据整份重写摘了：它守的**整根轴**（池子本体的 SFTP 判据）搬进了本机后端，
+        //   新文件判的是中继，没有一句还在说那几个旧判据 ⇒ 真该没有，不是删线索。
     ];
 
     let corpus = dead_name_corpus();
@@ -3699,7 +3681,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/profile_installer.rs", 5), // 〔AL1〕+1：`AccountAliasReport` 那一句 · 〔RW1〕+3：本机原子写原语 `atomic_write_string` / `atomic_replace_path` 删了（原住址一块 ＋ BOM 那段两句）
         ("src/bridge/src/verified_write.rs", 3),    // 〔RW1〕+1：`verify_and_rollback` 零调用方删了
         ("tests/bridge/verified_write_tests.rs", 1), // 〔RW1〕那三条回滚判据随它走了
-        ("tests/bridge/remote_write_registry_tests.rs", 8), // 〔F7c 收尾 09-24〕1 → 7（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔RW1〕+1：F11 那条 SFTP 直删
+        // 〔SR1b〕+2：传输台那三行摘掉时留的墓碑（暂存区上传 · 本机下载落地两个旧名）。
+        ("tests/bridge/remote_write_registry_tests.rs", 10), // 〔F7c 收尾 09-24〕1 → 7（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔RW1〕+1：F11 那条 SFTP 直删
         // 〔MC1 · 2026-09-24〕`CCM_SELF` 删了那一拍：shim 那条判据改名留的墓碑。
         ("tests/bridge/backend/control/local_backend_tests.rs", 1),
         // 〔AL1 · 2026-09-24〕别名改由后端渲染那一拍：本模块头注里 TS 那个旧生成器（`buildAliasLine`）·
@@ -3802,8 +3785,10 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/filewin/boundary_tests.rs", 2),
         ("tests/bridge/filewin/transfer_tests.rs", 1),
         ("tests/bridge/sftp_family_registry_tests.rs", 2),
-        ("tests/bridge/sftp_move_ledger_tests.rs", 1),
-        ("tests/bridge/sftp_pool_tests.rs", 5),
+        // 〔SR1b〕`sftp_move_ledger_tests.rs` 1 → 0（行删）：那块墓碑住乙「死连接重建」那一行里，乙整份过界、那一行摘了。
+        // 〔SR1b〕5 → 0（行删）：同上 `TOMBSTONED` 那段（整份重写，守的轴搬进了本机后端）。
+        // 〔SR1b〕`sftp_pool.rs` 0 → 3：模块头注那段墓碑（通道闸 · 暂存区上传 · 本机落地三样搬走了）。
+        ("src/bridge/src/sftp_pool.rs", 3),
         // 〔FW5 · 第四波〕两处墓碑标记：写面相对段「只收 UTF-8」那句（围栏改按 `Path` 判之后作废）·
         //   选中那张表里「批量改权限没做」那一格（做了）。〔合并 RW1〕+1：`hollow_read` 那一道从 monitor 搬来。
         ("src/backend/control/files_write.rs", 2),
