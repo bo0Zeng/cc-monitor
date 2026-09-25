@@ -2189,8 +2189,14 @@ fn negotiate_version(reported_v: u64, reported_build_id: &str) -> VersionVerdict
 fn version_warning(reported_v: u64, reported_build_id: &str, label: &str) -> Option<String> {
     match negotiate_version(reported_v, reported_build_id) {
         VersionVerdict::Ok => None,
+        // 〔HX2 · 主会话 D-b〕按新旧分两句（部署只升不降，`sftp::identity_decision`）：
+        //   那台旧 ⇒ 下次连上的部署预检会换掉它；那台不比这一版旧 ⇒ 这个 monitor 不会把它换回去。
+        //   〔墓碑 —— 从前一句话不分新旧：「…建议更新后端（后续将支持自动部署）」，自动部署早已落地。〕
+        VersionVerdict::StaleBuild { reported } if crate::sftp::is_newer(EXPECTED_BACKEND_BUILD_ID, &reported) => Some(format!(
+            "远端 [{label}] 上的后端是旧版 {reported}（这个 monitor 是 {EXPECTED_BACKEND_BUILD_ID}），下次连上时会自动换成这一版。"
+        )),
         VersionVerdict::StaleBuild { reported } => Some(format!(
-            "远端 [{label}] backend 版本 {reported} 与本机期望 {EXPECTED_BACKEND_BUILD_ID} 不一致，建议更新后端（后续将支持自动部署）。"
+            "远端 [{label}] 上的后端是 {reported}，不比这个 monitor（{EXPECTED_BACKEND_BUILD_ID}）旧 —— 多半是另一台更新过的 monitor 装的。这个 monitor 不会把它换回去；要一致，就把这个 monitor 也升级。"
         )),
         VersionVerdict::Incompatible { reported_v } => Some(format!(
             "远端 [{label}] backend 协议版本 v={reported_v} 与本机期望 v={EXPECTED_PROTO_V} 不兼容，渲染可能异常，请更新后端。"

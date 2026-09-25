@@ -614,7 +614,9 @@ src/bridge/src/ssh_source.rs:2219	远端 [{host_label}] 发来一行 {bytes} 字
 src/bridge/src/ssh_source.rs:2465	远端 [{host_label}] 管道拥塞，可能丢失约 {dropped} 条实时行；重开该会话可看完整历史。	保留	[对外] 健康提示，结果＋可行处方两句
 src/bridge/src/ssh_source.rs:2478	；受影响清单**不全**，建议刷新该来源	改·§2.4	[对外] 拼接段带 markdown ** 兼§2.3（「建议刷新」）→「；受影响的会话没列全」
 src/bridge/src/ssh_source.rs:2483	远端 [{host_label}] 管道拥塞，丢了约 {dropped} 条帧，其中 {} 条是**会话状态变化**{named}\n         —— 这部分**重开会话补不回来**，请手动刷新该来源{truncated_note}。	改·§2.1	[对外] 健康提示；「帧」是协议内部单位 兼§2.4（markdown ** ＋破折号）新词:帧 →「远端 [{host_label}] 连接拥塞，{} 个会话的状态可能没更新{named}。请刷新这台机器」
-src/bridge/src/ssh_source.rs:2887	远端 [{label}] backend 版本 {reported} 与本机期望 {EXPECTED_BACKEND_BUILD_ID} 不一致，建议更新后端（后续将支持自动部署）。	内部词→后端	[对外] 版本提示里英文 backend 兼§2.2（「后续将支持自动部署」是路线图承诺）兼§2.3 →「远端 [{label}] 的后端版本过旧，请在设置里更新」
+src/bridge/src/ssh_source.rs:2196	远端 [{label}] 上的后端是旧版 {reported}（这个 monitor 是 {EXPECTED_BACKEND_BUILD_ID}），下次连上时会自动换成这一版。	保留	[对外] 〔HX2 · D-b〕hello 版本提示「那台旧」那一句（替掉带英文 backend 与路线图承诺的旧句）：先说事实（哪台、哪一版），再说会发生什么（部署预检自动换）；monitor 是产品名
+src/bridge/src/ssh_source.rs:2199	远端 [{label}] 上的后端是 {reported}，不比这个 monitor（{EXPECTED_BACKEND_BUILD_ID}）旧 —— 多半是另一台更新过的 monitor 装的。这个 monitor 不会把它换回去；要一致，就把这个 monitor 也升级。	保留	[对外] 〔HX2 · D-b〕hello 版本提示「那台不比这一版旧」那一句：部署只升不降 ⇒ 说清为什么没换、用户做得了的一步（升级这个 monitor）；monitor 是产品名
+src/bridge/src/sftp.rs:716	{why}。要换成这一版：先在机器页点「卸载后端」删掉它，再部署。	保留	[对外] 〔HX2 · D-b〕手动「部署后端」遇到那台上是更新的一版：{why} 是 identity_decision 那句（哪台、两边各是哪一版、没换）；出路与「不说自己是哪一版」那一格同一句（卸载 = 明确授权覆盖）
 src/bridge/src/ssh_source.rs:2890	远端 [{label}] backend 协议版本 v={reported_v} 与本机期望 v={EXPECTED_PROTO_V} 不兼容，渲染可能异常，请更新后端。	内部词→后端	[对外] 版本提示里英文 backend 兼§2.1（v= 日志格式）→「远端 [{label}] 的后端版本不兼容，请在设置里更新」
 src/bridge/src/ssh_source.rs:4196	SSH 连接/鉴权失败：{e}	保留	[对外] 测试连接结果，SSH 是用户认得的词
 src/bridge/src/ssh_source.rs:4212	SSH 与后端均正常（含控制通道往返）。	内部词→删去「（含控制通道往返）」	[对外] 测试连接结果；「控制通道」是内部通道名 新词:控制通道
