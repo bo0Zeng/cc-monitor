@@ -1,6 +1,6 @@
 /// ★ 围栏本身的行为：**跑出 home 的一律拒绝，home 之内的照常放行**。
 ///
-/// ⚠ 正例那一半不是凑数：围栏收得太紧会**悄悄砍掉 `ProfileKind::Custom`**
+/// ⚠ 正例那一半不是凑数：围栏收得太紧会**悄悄砍掉「其它文件」**（〔AL1d〕从前叫 `ProfileKind::Custom`〔散文墓碑〕）
 /// （用户指 `~/.config/fish/config.fish` 这种），那是把一个洞换成一个回归。
 #[test]
 fn the_profile_fence_keeps_writes_inside_home() {
@@ -18,7 +18,7 @@ fn the_profile_fence_keeps_writes_inside_home() {
     ] {
         assert!(
             super::fence_profile_path(&ok).is_ok(),
-            "围栏拒了一个合法路径：{ok:?} —— 收太紧会砍掉 `ProfileKind::Custom` 这个特性"
+            "围栏拒了一个合法路径：{ok:?} —— 收太紧会砍掉「其它文件」这个特性"
         );
     }
     // 反例：绝对路径跑出 home · 相对路径 · `..` 逃逸
@@ -48,14 +48,18 @@ fn the_profile_fence_keeps_writes_inside_home() {
     }
 }
 
-/// ★★ **三条 `cc_integration_*` 命令都必须先过路径围栏**〔audit-0805 08-08，Phase G 第 86 件〕。
+/// ★★ **收启动文件路径的命令都必须先过路径围栏**〔audit-0805 08-08，Phase G 第 86 件〕。
+///
+/// 〔AL1d · 第四波 4B〕那三条从前叫 `cc_integration_install` / `_uninstall` / `_scan_path`〔散文墓碑〕，
+/// 今天是别名块的 `aliases_block_install` / `aliases_block_remove` ＋ 读回口 `aliases_read` 的「其它文件」
+/// （读回口的围栏在 `account_aliases::read_in` 里过：它拿临时目录当 home 才测得了，见下面第二段）。
 ///
 /// # 洞：本机这条路没有围栏，而远端那条有
 ///
 /// `cc_integration_install(path: String, command_name: String, …)` 把 webview 给的路径
 /// **原样** `PathBuf::from` 交给 [`install_to_profile`]（文件不存在就创建 —— 本文件
 /// 另有一条判据逐字叫 `install_to_nonexistent_path_creates_file`），
-/// `cc_integration_uninstall` 会**重写**那个文件，`cc_integration_scan_path` 是任意路径的
+/// `cc_integration_uninstall` 会**重写**那个文件，`cc_integration_scan_path` 是任意路径的〔散文墓碑〕
 /// **存在性/大小探针**。三条都不看路径。
 ///
 /// 而**远端**那条同名功能有围栏：`sftp.rs` 逐字「profile 只能是 home 下的文件名
@@ -66,9 +70,9 @@ fn the_profile_fence_keeps_writes_inside_home() {
 ///
 /// # 围栏取「在 home 之内」，不取「home 下的裸文件名」
 ///
-/// 远端那条可以严到「裸文件名」，本机不行：`discover_profiles()` 自己就会返回
-/// `~/WindowsPowerShell/Microsoft.PowerShell_profile.ps1` 这种**子目录**里的路径，
-/// 而 `ProfileKind::Custom` 是产品特性（用户可以指 `~/.config/fish/config.fish`）。
+/// 远端那条可以严到「裸文件名」，本机不行：`$PROFILE` 的候选（`shell_dialect.rs` 的 PowerShell 那一臂）
+/// 本来就是 `~/Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1` 这种**子目录**里的路径，
+/// 而「其它文件」是产品特性（用户可以指 `~/.config/fish/config.fish`）。
 /// ⇒ 围栏只挡「跑出 home」这一类，**不缩小功能**。
 #[test]
 fn every_profile_command_passes_through_the_fence() {
@@ -77,11 +81,7 @@ fn every_profile_command_passes_through_the_fence() {
     )
     .expect("读不到 lib.rs");
     let prod = guard_core::production_code(&lib);
-    const CMDS: &[&str] = &[
-        "cc_integration_install",
-        "cc_integration_uninstall",
-        "cc_integration_scan_path",
-    ];
+    const CMDS: &[&str] = &["aliases_block_install", "aliases_block_remove"];
     let fence = format!("{}_profile_path", "fence");
     for cmd in CMDS {
         let at = prod
@@ -115,7 +115,7 @@ fn every_profile_command_passes_through_the_fence() {
             body.contains(&fence),
             "`{cmd}` 没有过路径围栏 `{fence}`。\n\
                  ★ 它收的是 **webview 给的任意路径**：`install` 会往那里写（不存在就创建）、\n\
-                 `uninstall` 会重写它、`scan_path` 是存在性/大小探针。\n\
+                 卸会重写它、扫是存在性探针。\n\
                  ⚠ 远端那条同名功能**有**围栏（`sftp.rs`：「profile 只能是 home 下的文件名」）——\n\
                  同一形态在另一半有围栏、这一半没有，正是本区反复逮到的形状。\n\
                  实得这一段：{body:?}"
@@ -707,9 +707,9 @@ fn installing_into_a_posix_rc_keeps_every_user_line() {
         "第二次安装改了文件 —— 不幂等的安装器会在 rc 里堆出两份块"
     );
     // 扫得出「已装」，而且这一格此前在 POSIX 上恒 false。
-    let scan = scan_path(&p, "cc");
+    let scan = block_state(&p, &after);
     assert!(
-        scan.has_ccm_block,
+        scan.present,
         "装完却扫不出块 —— 界面会说「未安装」且藏起卸载按钮"
     );
     // 卸得干净，用户的行还在。
@@ -751,7 +751,7 @@ fn the_flavour_follows_the_file_not_the_machine() {
 ///
 /// **死值验**：把查法换回「只认围栏」⇒ 这一条当场红。
 /// 本条自带那把反向尺子（下面第一段）：**围栏那条路在同一份输入上恒空** ——
-/// 所以「只加两条路径给 `scan_legacy_profiles`」在这里不可能变绿。
+/// 所以「只加两条路径给 `scan_legacy_profiles`〔散文墓碑〕」在这里不可能变绿。
 #[test]
 fn bare_lines_with_no_fence_at_all_are_named_line_by_line() {
     // ① 反向尺子：围栏那条路在这份输入上**什么都看不见**。
@@ -903,9 +903,16 @@ fn scanning_a_rc_changes_not_a_single_byte_on_disk() {
     let before = std::fs::read(&p).expect("读");
     let before_n = std::fs::read_dir(&td.0).unwrap().count();
 
-    let scan = scan_path(&p, "cc");
+    // 〔AL1d〕扫一份今天走读回口那一趟（`account_aliases::rc_candidates_in`：读一次、算块的现状），
+    //   把这份 rc 当「其它文件」递进去 —— 那正是界面上扫它的那条路。
+    let cands = crate::account_aliases::rc_candidates_in(&td.0, Shell::Posix, Some(&p));
+    let scan = &cands
+        .iter()
+        .find(|c| c.path == p.display().to_string())
+        .expect("候选里该有这份 rc")
+        .block;
     assert!(!scan.manual_cleanup_hint.is_empty(), "扫出来的提示是空的");
-    assert!(!scan.has_ccm_block, "这份夹具里没有块");
+    assert!(!scan.present, "这份夹具里没有块");
     assert_eq!(
         scan.conflicting_functions,
         vec!["cc".to_string()],

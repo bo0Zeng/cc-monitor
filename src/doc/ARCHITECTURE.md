@@ -467,7 +467,7 @@ PS 端模板 `cc.ps1.tpl` 用 `[System.IO.File]::WriteAllText(... UTF8Encoding($
 **为什么**：v1.7.0-1.7.7 的 BOM 真凶就是因为 `windows_subsystem = "windows"` 无 stderr，`tracing::warn!("bind: parse ... failed")` 没人看见，cc 集成"装上没用"7 个版本无人察觉。issue #4 就是补这个结构性短板。
 
 ### Win32 sync 调用走 spawn_blocking
-`bring_terminal_to_front` / `cc_integration_*` 都走 `tokio::task::spawn_blocking`。
+`bring_terminal_to_front` / `aliases_read`（别名与别名块的读回，〔AL1d〕接替了原「终端集成」的状态 / 扫一份）都走 `tokio::task::spawn_blocking`。
 
 **为什么**：Win32 同步调用（`EnumWindows` / `SetForegroundWindow` / `ShellExecuteW` 等）可能阻塞数十 ms 到秒级；放到 Tauri 主 runtime 会卡死 IPC 派发。spawn_blocking 隔离到 blocking thread pool，前端再加 5s timeout 兜底。
 

@@ -21,6 +21,14 @@ version: string | null,
  */
 conflictingFunctions: Array<string>, 
 /**
- * POSIX rc 里围栏之外那几行裸 `ccm` 的逐行指名（[`render_manual_cleanup_hint`]）；没有 / PowerShell ⇒ 空串。
+ * 🔴 〔`K-R62`〕**「你 rc 里这几行是旧的」那段话。** 空串 = 没有要清的。
+ *
+ * 它是 [`render_manual_cleanup_hint`] 的产物：**逐行指名**（行号 + 原文）
+ * 加一段给用户自己动手的说明。**产品一个字节都不删**（`K31` + 用户逐字
+ * 「原本的配置要手动删除」）—— 那些行没有围栏，边界只有人知道。
+ *
+ * ⚠ **只对 [`Shell::Posix`] 有内容**：它找的是**根本没有围栏的裸行**。
+ * 「整块装在了别的哪份里」是另一件事，今天由每份候选各自的 [`BlockState::present`] 照实答
+ * （〔AL1d〕从前 PowerShell 那一侧另有一段只查 `profile.ps1` 两份的遗留扫描，随候选收成一份删了）。
  */
 manualCleanupHint: string, };
