@@ -644,27 +644,6 @@ src/ipc/chan.ts:79	本侧：{…}	保留	[不对外] 〔C4a〕同上（`ours` �
 src/remote-launch-run.ts:338	刻意不替你挑终端模拟器	保留	[不对外] 对后端错误串做 includes 的匹配锚点（那句话本身由后端产、另行裁）
 src/settings/backend-section.ts:151	本机	保留	[对外] 机器名「本机」
 src/settings/backend-section.ts:155	本机	保留	[对外] 机器名「本机」
-src/settings/config-surface-section.ts:83	{…} —— cc-monitor 不装这一项，请你自己装上 `{…}`	保留	[对外] 测过确认缺、且用户确实要自己装：这是已验证可行的提示，不是派内部维护活；反引号会原样显示，CP2 可顺手去掉
-src/settings/config-surface-section.ts:126	可按围栏/整文件撤销（在对应工具的部署入口里）	内部词→「按片段/整文件撤销」	[对外] 「围栏」是我们对受管片段的内部叫法 新词:围栏 兼§2.4
-src/settings/config-surface-section.ts:129	暂无自动撤销；如需清理请按上面的路径手动处理	保留	[对外] 没有自动撤销时用户确实只能手动处理，说得直接
-src/settings/config-surface-section.ts:135	cc-monitor 不装这一项（通用工具，请你自己装），也就无所谓撤销	改·§2.2	[对外] 设计论证当文案（为什么不装、所以无所谓撤）兼§2.4 →「不适用：这一项需自行安装」
-src/settings/config-surface-section.ts:137	cc-monitor 本来就不该装这一项（它不是我们的东西），也就无所谓撤销	改·§2.2	[对外] 设计论证当文案（本来就不该装、不是我们的东西）兼§2.4 →「不适用：cc-monitor 不管理这一项」
-src/settings/config-surface-section.ts:140	这一项的档本前端还不认识 —— 撤销请按上面的路径手动处理	改·§2.1	[对外] 在讲实现（「这一项的档本前端还不认识」）新词:档 兼§2.4 →「撤销方式未知，请按上面的路径手动处理」
-src/settings/config-surface-section.ts:166	~/.claude 解析为={…}	保留	[对外] 可复制诊断文本的字段行
-src/settings/config-surface-section.ts:176	    位置: {…}	保留	[对外] 可复制诊断文本的字段行
-src/settings/config-surface-section.ts:177	    解析为: {…}	保留	[对外] 可复制诊断文本的字段行
-src/settings/config-surface-section.ts:178	    我们做什么: {…}	保留	[对外] 可复制诊断文本的字段行
-src/settings/config-surface-section.ts:179	    现状: {…}	保留	[对外] 可复制诊断文本的字段行
-src/settings/config-surface-section.ts:191	== settings.json 的各作用域（会影响钩子诊断结论）==	保留	[对外] 可复制诊断文本的小节标题，括号一处说明用途
-src/settings/config-surface-section.ts:196	读不到，不猜	改·§2.2	[对外] 「不猜」是我们内部的纪律口号，不是给用户的信息 →「读不到」
-src/settings/config-surface-section.ts:198	含 cc-bus 钩子字样	保留	[对外] 状态片段
-src/settings/config-surface-section.ts:199	不含 cc-bus 钩子字样	保留	[对外] 状态片段
-src/settings/config-surface-section.ts:292	扫描中…	保留	[对外] 按钮忙碌态
-src/settings/config-surface-section.ts:301	复制中…	保留	[对外] 按钮忙碌态
-src/settings/config-surface-section.ts:399	正在扫这台机器上的足迹…	保留	[对外] 加载骨架文案
-src/settings/config-surface-section.ts:457	钩子字样：读不到，不猜	改·§2.2	[对外] 「不猜」是内部纪律口号 →「钩子字样：读不到」
-src/settings/config-surface-section.ts:459	含 cc-bus 钩子字样	保留	[对外] 状态片段
-src/settings/config-surface-section.ts:460	不含 cc-bus 钩子字样	保留	[对外] 状态片段
 src/settings/data-section.ts:117	正在读这台机器上的数据位置…	保留	[对外] 加载骨架文案
 src/settings/data-section.ts:143	monitor 持久化	内部词→「cc-monitor 自己的数据」	[对外] 卡片标题用了实现词「持久化」新词:持久化
 src/settings/data-section.ts:154	WebView2 用户数据	保留	[对外] 卡片标题；WebView2 是用户系统上真实存在、目录名里就带着的组件（R1b 语境）
@@ -706,16 +685,6 @@ src/settings/plugins-section.ts:84	顶层两格的类型不对	保留	[不对外
 src/settings/plugins-section.ts:87	第 {…} 条不是对象	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
 src/settings/plugins-section.ts:89	第 {…} 条的键是 {…}	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
 src/settings/plugins-section.ts:93	第 {…} 条有一格类型不对	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
-src/settings/remote-section.ts:83	远端模式：monitor 通过 SSH 连到一台或多台远端主机，由各台后端作为额外数据源\n	改·§2.1	[对外] 讲架构（「各台后端作为额外数据源」与下一截「与本地聚合」）新词:数据源 新词:聚合 →「monitor 通过 SSH 连到远端主机，远端会话与本机会话一起显示。」
-src/settings/remote-section.ts:84	与本地聚合（渲染、Tab、分支等行为完全相同；远端 Tab 标题带 [机器名] 前缀）。\n	改·§2.4	[对外] 与上一截同一句，跨行＋长括号补充，一句三合一 兼§2.1
-src/settings/remote-section.ts:85	关闭（默认）或机器列表为空时一切走本地，不受影响。\n\n	保留	[对外] 默认行为，一句
-src/settings/remote-section.ts:86	⚠ 启用 / 修改任意远端设置后，需重启 monitor 才生效。\n	保留	[对外] 生效条件，用户可操作
-src/settings/remote-section.ts:87	某台配置不完整（缺 host / user / backendPath）时后端会跳过该台。	内部词→「缺主机、用户或后端路径」	[对外] 配置键名 backendPath 新词:backendPath
-src/settings/remote-section.ts:376	本机	保留	[对外] 机器页名「本机」
-src/settings/remote-section.ts:880	 +{…} 备用地址	保留	[对外] 导入预览的计数片段
-src/settings/remote-section.ts:882	 · 跳板 {…}	保留	[对外] 导入预览片段
-src/settings/remote-section.ts:883	{…}{…} · {…}{…} · 来源: {…}	保留	[对外] 导入预览行骨架（· 分隔的字段）
-src/settings/remote-section.ts:1135	远端机器配置	保留	[对外] 「需重启生效」条子上的设置名
 src/views/history.ts:319	(未知项目)	保留	[对外] 历史浏览器项目名兜底
 src/views/history.ts:527	项目	保留	[对外] 模式切换按钮名
 src/views/history.ts:527	按项目名 / 标题过滤（本地，即时）	保留	[对外] 模式切换按钮 title，括号短而有用
@@ -873,13 +842,6 @@ src/settings/data-section.ts:52	删了会丢	保留	[对外] 数据位置每行�
 src/settings/data-section.ts:54	可随手删	保留	[对外] 数据位置每行「缓存」那一格
 src/settings/data-section.ts:56	类别未知（{…}）	保留	[对外] 后端将来加第三类时的原样兜底（不整页炸、不假装认识）
 src/settings/data-section.ts:213	标着「可随手删」的下次用到时会重建；标着「删了会丢」的是你设过的东西。	保留	[对外] 数据位置卸载说明里补的一句：那一格怎么读
-src/settings/config-surface-section.ts:88	{…} —— 这一项本机查不动（见上面的原因）	保留	[对外] 足迹行上「未测过」那一档（ST2 · 70 §11.4 #3）：对冲的后半挪进 ⓘ，前半留在行上
-src/settings/config-surface-section.ts:95	查不动不等于它不在：只是这台机器上判断不了，不说明它没装。	保留	[对外] 「查不动」那一档的 ⓘ 正文 —— 那条区分（70 §2.2 不许扫掉）只换了位置
-src/settings/config-surface-section.ts:142	暂无撤销：还没有安装入口	保留	[对外] 足迹「能否撤」那一格，欠装口那一档（ST2 · 70 §11.4 #1）：一格状态，「还没有」语义保留（KR65D2）
-src/settings/config-surface-section.ts:171	⚠ {…} 项还没有安装入口	保留	[对外] 足迹计数行（ST2 · 70 §11.4 #2）：数照旧数得出来（KR65D2），名单挪进展开
-src/settings/config-surface-section.ts:183	== cc-monitor 足迹 ==	保留	[对外] 可复制诊断文本首行，跟块名统一（用户 09-24 裁「一起改」，70 §11.6 #4）
-src/settings/config-surface-section.ts:255	「答不出来」不等于「它没动过你的文件」。	保留	[对外] 远端足迹答不了那一句的 ⓘ（ST2 · 70 §11.4 #4：对冲后半挪进 ⓘ，区分保留）
-src/settings/config-surface-section.ts:448	这台机器（{…}）的足迹还查不了：要那台机器上的后端来答，它这一版还答不了。	保留	[对外] 远端足迹栏回声对不上时那一句（ST2，用户 09-24 裁远端也有真栏；读口归 RM1a）
 src/bridge/src/history.rs:2360	apikey 端点改写不可用：账号 {account:?} 在 [{host}] 的 apikey 表里有一行，\n         但那台机器上的中转起不来（{why}）——\n\n         这一发要是照旧起出去，claude 那边会报一个与网络故障同形的连接失败。\n\n         ⇒ 重装那台机器的后端再试，或把该账号那一行从那台机器的凭据文件里去掉。	保留	[对外] 〔RL1〕远端 apikey 号的中转起不来 ⇒ 拒绝起会话（toast「无法构造…」的第二行）；说的是结果＋原因＋下一步，点名那台机器。「中转」层 1 正名、「apikey 端点改写」层 2 正名（terms.json）
 src/bridge/src/remote_relay.rs:82	那台的后端没有起中转（口上没人在听，它也没起进程）	保留	[对外] 〔RL1〕上一句里「为什么」那一格：relay-ensure 回 started:false
 src/bridge/src/remote_relay.rs:85	那台的后端起了一个中转，但等了一会儿它还没在那个口上听	保留	[对外] 〔RL1〕上一句里「为什么」那一格：起了进程、有界地等完了口上仍没人

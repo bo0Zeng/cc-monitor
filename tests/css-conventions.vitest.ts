@@ -341,9 +341,9 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   // 〔第四波 ST2〕远端也有真栏之后，这个包装本机与远端都用；显隐切两处：`applyOriginGate`（摆出来）
   //    与 `showUnanswered`（远端那台答不了时收起来）。同一个包装、同一个理由。
   // 〔合并 RM1a〕440/447 → 436/443：`readFootprint` 去掉那一道 `as unknown as`（命令签名本来就收 `{ origin }`），上移 4 行。
-  "src/settings/config-surface-section.ts:436":
+  "src/settings/config-surface-section.ts:435": // 〔CP2b〕行号 −1：字面量进表后收行
     "那一整套的显隐包装（本机与远端都用），刻意不挂类名（没有类就不会有裸 display 压过 [hidden]）",
-  "src/settings/config-surface-section.ts:443":
+  "src/settings/config-surface-section.ts:442": // 〔CP2b〕同上
     "同一个包装，远端那台答不了时收起来（`showUnanswered`）",
   "src/views/history.ts:1635":
     "`e.hidden = updated.hidden` —— 这一处根本不是「切某个组件的显隐」，是在把一条会话记录的 `hidden` 字段往回写",

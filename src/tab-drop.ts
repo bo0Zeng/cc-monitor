@@ -156,7 +156,7 @@ export function defaultGroupName(
     const m = /^组\s*(\d+)$/.exec(name.trim());
     if (m) max = Math.max(max, Number(m[1]));
   }
-  return copyText("tabDrop.defaultGroupName.defaultGroupName", { n: max + 1 });
+  return copyText("tabDrop.group.defaultName", { n: max + 1 });
 }
 
 /**
