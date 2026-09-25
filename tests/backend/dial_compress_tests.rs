@@ -501,6 +501,8 @@ fn the_russh_patch_is_really_wired() {
 /// - 不压那趟：载荷收全（> 2 MB）；
 /// - 压的那趟：**闸关着（russh 解压坏着）⇒ 30 秒内收不全**（现打的样子是卡在第一条通道上）；
 ///   闸开着 ⇒ 载荷逐字节同、线上字节 < 不压那趟的一半。
+/// - 〔CZ1〕上行那一半（客户端压、sshd 解 —— 与下行是两套代码）：同一条连接上把一段会话 jsonl 样子的载荷喂给远端 `sha256sum`，
+///   两趟都要摘要 == 本侧算的；闸开着 ⇒ 压的那趟上行线上字节 < 不压那趟的一半。
 #[ignore = "要真 sshd：由 tests/evidence/NT1-net-loopback.py --compress 带环境变量来跑"]
 #[tokio::test(flavor = "multi_thread")]
 async fn zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced() {
@@ -512,16 +514,30 @@ async fn zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced() {
     let port = v["port"].as_u64().unwrap() as u16;
     let user = v["user"].as_str().unwrap().to_string();
     let key = v["key_path"].as_str().unwrap().to_string();
+    // 上行载荷：会话 jsonl 的样子（可压比 ≫ 2），约 2.7 MB。
+    let line: &[u8] =
+        b"{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"";
+    let upload: Vec<u8> = (0..40_000u32)
+        .flat_map(|i| {
+            let mut row = line.to_vec();
+            row.extend_from_slice(format!("{i}\"}}]}}}}\n").as_bytes());
+            row
+        })
+        .collect();
+    let upload_hash = sha256_hex(&upload);
     let leg = |compress: bool| {
         let (host, user, key) = (host.clone(), user.clone(), key.clone());
+        let upload = upload.clone();
         async move {
             let tcp = tokio::net::TcpStream::connect((host.as_str(), port))
                 .await
                 .unwrap();
             let wire = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+            let sent = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
             let counted = Counting {
                 inner: tcp,
                 read: std::sync::Arc::clone(&wire),
+                written: std::sync::Arc::clone(&sent),
             };
             let checker = Checker {
                 expected: None,
@@ -549,24 +565,73 @@ async fn zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced() {
             .await
             .ok()
             .flatten();
+            // 〔CZ1〕上行那一半：同一条连接上把 `upload` 喂给远端 `sha256sum`，回来的摘要 == 本侧算的才算收全
+            // （客户端压、sshd 解 —— 与下行走的是两套代码）。上行字节另记（`sent`）。
+            let sent_before = sent.load(std::sync::atomic::Ordering::SeqCst);
+            let up = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+                let mut ch = h.channel_open_session().await.ok()?;
+                ch.exec(true, "sha256sum").await.ok()?;
+                ch.data(upload.as_slice()).await.ok()?;
+                ch.eof().await.ok()?;
+                let mut out = Vec::new();
+                while let Some(m) = ch.wait().await {
+                    match m {
+                        russh::ChannelMsg::Data { data } => out.extend_from_slice(&data),
+                        russh::ChannelMsg::Close => break,
+                        _ => {}
+                    }
+                }
+                String::from_utf8(out)
+                    .ok()?
+                    .split_whitespace()
+                    .next()
+                    .map(str::to_string)
+            })
+            .await
+            .ok()
+            .flatten();
+            let up_wire = sent.load(std::sync::atomic::Ordering::SeqCst) - sent_before;
             let _ = h.disconnect(russh::Disconnect::ByApplication, "", "").await;
-            (wire.load(std::sync::atomic::Ordering::SeqCst), body)
+            (
+                wire.load(std::sync::atomic::Ordering::SeqCst),
+                body,
+                up_wire,
+                up,
+            )
         }
     };
-    let (wire_off, off) = leg(false).await;
-    let (wire_on, on) = leg(true).await;
+    let (wire_off, off, up_off, up_hash_off) = leg(false).await;
+    let (wire_on, on, up_on, up_hash_on) = leg(true).await;
     let off = off.expect("不压那趟都没收全");
     println!(
-        "NT1-COMPRESS payload={} wire_off={wire_off} wire_on={wire_on} on_complete={}",
+        "NT1-COMPRESS payload={} wire_off={wire_off} wire_on={wire_on} on_complete={} \
+         upload={} up_off={up_off} up_on={up_on} up_off_ok={} up_on_ok={}",
         off.len(),
-        on.as_ref().is_some_and(|b| *b == off)
+        on.as_ref().is_some_and(|b| *b == off),
+        upload.len(),
+        up_hash_off.as_deref() == Some(upload_hash.as_str()),
+        up_hash_on.as_deref() == Some(upload_hash.as_str()),
     );
     assert!(off.len() > 2_000_000, "载荷太短：{}", off.len());
+    assert_eq!(
+        up_hash_off.as_deref(),
+        Some(upload_hash.as_str()),
+        "不压那趟上行都没收全"
+    );
     if RUSSH_ZLIB_SOUND {
         assert_eq!(on.as_deref(), Some(off.as_slice()), "压的那趟载荷不同");
         assert!(
             wire_on * 2 < wire_off,
             "压的那趟线上字节 {wire_on} 不到不压那趟 {wire_off} 的一半"
+        );
+        assert_eq!(
+            up_hash_on.as_deref(),
+            Some(upload_hash.as_str()),
+            "压的那趟上行：远端算出的摘要与本侧不同（客户端压 / sshd 解那一半坏了）"
+        );
+        assert!(
+            up_on * 2 < up_off,
+            "压的那趟上行线上字节 {up_on} 不到不压那趟 {up_off} 的一半"
         );
     } else {
         assert!(
@@ -576,10 +641,11 @@ async fn zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced() {
     }
 }
 
-/// 数读到的字节（线上字节 = TCP 上读到的，压缩在它之上）。
+/// 数读到 / 写出的字节（线上字节 = TCP 上读写的，压缩在它之上）。
 struct Counting {
     inner: tokio::net::TcpStream,
     read: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    written: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl tokio::io::AsyncRead for Counting {
@@ -602,7 +668,12 @@ impl tokio::io::AsyncWrite for Counting {
         cx: &mut std::task::Context<'_>,
         buf: &[u8],
     ) -> std::task::Poll<std::io::Result<usize>> {
-        std::pin::Pin::new(&mut self.inner).poll_write(cx, buf)
+        let r = std::pin::Pin::new(&mut self.inner).poll_write(cx, buf);
+        if let std::task::Poll::Ready(Ok(n)) = &r {
+            self.written
+                .fetch_add(*n as u64, std::sync::atomic::Ordering::SeqCst);
+        }
+        r
     }
     fn poll_flush(
         mut self: std::pin::Pin<&mut Self>,
