@@ -20,6 +20,8 @@
 /// 早先两边共用「必须 `/` 开头 + 禁 `\`」，于是真实的 Windows 账号目录
 /// `C:\Users\z\.claude-accts\z` **必被拒**，「本机分叉时选具名账号」在主平台 100% 失败。
 /// ⇒ 反向用例把那个回归钉住。
+///
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；②形（拒绝集 ＋ 形式判定）。
 #[test]
 fn the_config_dir_validator_rejects_every_injection_shape() {
     // ★ 先证明夹具走得通：两种平台的合法绝对路径都必须过。
