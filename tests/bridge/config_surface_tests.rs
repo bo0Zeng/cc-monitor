@@ -1,3 +1,12 @@
+//! # 要求住址：`设计/70 §6.1`（足迹：查不了就说「未确定 ＋ 为什么」，而且只读）
+//!
+//! 核原文：`设计/70 §6.1` 红线格逐字「① 只读、按需读一次、不轮询」·「② 查不了的显示成「未确定 ＋ 为什么」，
+//! 绝不显示成「缺失」」；同节「数据从哪来」格：表的人群是 `tool_registry.rs` 的环境清单闭集。
+//! 本族大头判 ②（Either 形态 · 列不出的目录 · 读不了的 settings · 分派不许有兜底臂 —— 一律 `Undetermined` 带理由），
+//! `this_module_only_reads` 判 ①，`the_view_population_is_exactly_the_closed_set` 判闭集。
+//! 生成待贴文本那一档的措辞另住 `设计/01 §3.6`（「措辞定在后端，界面不各写一遍」）。
+//! ⚠ host / destination 那几条钉的是 `tool_registry` 今天的申报自洽，挂在本节「位置徽章要真实」底下，偏弱。〔JA1 点址 2026-09-24〕
+
 use super::*;
 use crate::structural_scan::ScanReport;
 

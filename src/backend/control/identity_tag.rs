@@ -141,14 +141,54 @@ pub(crate) enum Outcome {
     /// 已经是这个值了 —— **不重复写**。启动重扫时每个会话都会走一遍这里，
     /// 免掉「已经对了还再起一次 `tmux`」。
     AlreadyCurrent,
-    /// 这个进程不在 tmux 里（`TMUX_PANE` 没有 / 形状不对）⇒ 没有会话可打。
+    /// 这个进程不在 tmux 里：环境**读得到**，`TMUX_PANE` 没设（或是空串）⇒ 没有会话可打。
+    ///
+    /// 〔U4b · 第四波〕这一格从此**只**说这一件事 —— 它是 `session_added.container = "none"`
+    /// 的唯一来源（`observe::watcher::container_of`）。环境读不到 / pane id 形状不对的那两支
+    /// 挪进 [`Outcome::PaneUnknown`]：它们说的是「不知道」，不是「不在」。
     NotInTmux,
+    /// 〔U4b〕**不知道它在不在 tmux 里**：环境这一刻读不到（`EnvRead::Unreadable`：exec 窗口、
+    /// 僵尸、非 Linux），或者 `TMUX_PANE` 有值但形状过不了 [`pane_is_safe`]。
+    ///
+    /// 打标上与 `NotInTmux` 一模一样（都不打）；分开它只为了容器那一格**不许把「不知道」报成「不在」**
+    /// —— 那正是 `K-R21` 在 `EnvRead` 上治过的同一句假话。
+    PaneUnknown,
     /// pane 还在环境里，但 tmux 说它不存在（会话已关 / server 换了）。
     NoSuchPane,
     /// sid 形状不对 —— **fail closed**，不往 tmux 里塞一个没核过的字符串。
     RejectedSid,
     /// 起不来 tmux / tmux 报错。
     Failed(String),
+}
+
+impl Outcome {
+    /// 〔U4b · 第四波〕**打标那一次探测的结局 → 这条会话的容器**（`session_added.container`）。
+    ///
+    /// | 结局 | 容器 | 为什么 |
+    /// |---|---|---|
+    /// | `Tagged` / `AlreadyCurrent` | `tmux` | tmux 认得这个进程所在的 pane |
+    /// | `NotInTmux` | `none` | 环境读得到，`TMUX_PANE` 没设 |
+    /// | `PaneUnknown` | 不知道 | 环境读不到 / pane id 形状不对 |
+    /// | `NoSuchPane` | 不知道 | 环境说在某个 pane 里，默认 socket 上的 tmux 不认（私有 `-S` socket 之类）|
+    /// | `RejectedSid` | 不知道 | sid 形状不对，压根没探 |
+    /// | `Failed` | 不知道 | 起不来 tmux / tmux 报错 |
+    ///
+    /// **不知道就不报**（`None`）：「不在 tmux 里」是一句会改变界面措辞的话，没有正面证据不许说。
+    ///
+    /// 为什么是 `Outcome` 的方法、而不是观测侧的一个自由函数：判定要逐个认这个类型的变体，
+    /// 放在观测侧就得让 `observe → control` 多一条跨层边（`layering_guard` 的登记表）；
+    /// 调用方（`observe/watcher.rs::process_session_added`）今天只经 `tag(..)` 的返回值用它。
+    pub(crate) fn container(&self) -> Option<crate::wire::SessionContainer> {
+        use crate::wire::SessionContainer;
+        match self {
+            Outcome::Tagged(_) | Outcome::AlreadyCurrent => Some(SessionContainer::Tmux),
+            Outcome::NotInTmux => Some(SessionContainer::None),
+            Outcome::PaneUnknown
+            | Outcome::NoSuchPane
+            | Outcome::RejectedSid
+            | Outcome::Failed(_) => None,
+        }
+    }
 }
 
 /// sid 的字符集。**与 `control::launch::parse_request` 同一条**：它会被拼进 tmux 的
@@ -182,7 +222,8 @@ fn pane_is_safe(pane: &str) -> bool {
 /// # ⚠ 上面那条「空串必须挡住」的防线，**在这条路上够不到**〔`K-R21` 09-03 现打，如实登记〕
 ///
 /// `proc_env_var` 在**读侧**就把空串压成了 `EnvRead::Unset`（`platform/proc.rs`：
-/// 「值是空串」与「压根没这个键」两支合并）⇒ 下面这个 `?` 一律早退成 `Outcome::NotInTmux`
+/// 「值是空串」与「压根没这个键」两支合并）⇒ 下面 `EnvRead::Unset` 那一臂一律早退成 `Outcome::NotInTmux`
+/// （〔U4b〕原先是一个 `.value()?`，换成三臂 `match` 之后这条性质不变）
 /// ⇒ **`pane_is_safe("")` 永远不会在生产路上被执行到**。
 ///
 /// 🔴 它**不是坏的，是死的**：它挡的是「拿到空串」，而上游让它拿不到。
@@ -192,11 +233,34 @@ fn pane_is_safe(pane: &str) -> bool {
 /// 而那一拍选的「乙」明确**只拆「环境这一刻取不到」**、把那两支留在一起
 /// （拆它们属于「甲」，已登记为后续清理）。**也刻意没删它** ——
 /// 它是 08-14 一次真事故（`display-message -t ''` 静默解析成「当前会话」⇒ 打错标就杀错）
-/// 撞出来的，那条 `?` 哪天换成别的写法，它就是唯一还站着的那道门。
-fn pane_of(pid: u32) -> Option<String> {
-    let raw = crate::platform::proc::proc_env_var(pid, TMUX_PANE_ENV).value()?;
+/// 撞出来的，那条早退（今天是 `Unset` 那一臂）哪天换成别的写法，它就是唯一还站着的那道门。
+///
+/// 〔U4b · 第四波〕返回值从 `Option` 换成三态（[`PaneRead`]）：`None` 原先把「没设」与「读不到 /
+/// 形状不对」合在一起，打标对它们确实等价（都不打），但容器那一格不等价（「不在 tmux 里」vs「不知道」）。
+/// 上面「空串那道防线够不到」那一段**照旧成立**：空串在读侧就成了 `EnvRead::Unset` ⇒ 走 `NotSet`。
+fn pane_of(pid: u32) -> PaneRead {
+    use crate::platform::proc::EnvRead;
+    let raw = match crate::platform::proc::proc_env_var(pid, TMUX_PANE_ENV) {
+        EnvRead::Value(v) => v,
+        EnvRead::Unset => return PaneRead::NotSet,
+        EnvRead::Unreadable => return PaneRead::Unknown,
+    };
     let pane = raw.trim().to_string();
-    pane_is_safe(&pane).then_some(pane)
+    if pane_is_safe(&pane) {
+        PaneRead::Pane(pane)
+    } else {
+        PaneRead::Unknown
+    }
+}
+
+/// [`pane_of`] 的三个结局。
+enum PaneRead {
+    /// 形状核过的 pane id。
+    Pane(String),
+    /// 环境读得到、`TMUX_PANE` 没设 ⇒ 不在 tmux 里。
+    NotSet,
+    /// 读不到，或者值的形状不对 ⇒ 不知道。
+    Unknown,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -282,8 +346,10 @@ pub(crate) fn tag(pid: u32, sid: &str) -> Outcome {
     if !sid_is_safe(sid) {
         return Outcome::RejectedSid;
     }
-    let Some(pane) = pane_of(pid) else {
-        return Outcome::NotInTmux;
+    let pane = match pane_of(pid) {
+        PaneRead::Pane(p) => p,
+        PaneRead::NotSet => return Outcome::NotInTmux,
+        PaneRead::Unknown => return Outcome::PaneUnknown,
     };
     // 探测复用 gate 那一处（**零新增起进程点**）。它顺带把当前 `@ccm_sid` 取回来 ⇒
     // 值没变就一次 `set-option` 都不用起。

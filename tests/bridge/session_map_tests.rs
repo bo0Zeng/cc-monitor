@@ -1,3 +1,10 @@
+//! # 要求住址：`INVARIANTS §18`（pidfile 宽容解析）＋ `INVARIANTS §26`（bg 门在数据层）＋ `INVARIANTS §24bis`（Superseded）
+//!
+//! 核原文：`INVARIANTS §18` 逐字「procStart 字段在 v2.6 后端按 `Option<String>` 反序列化」—— 缺字段不丢会话那几条判它；
+//! `§26` 逐字「**kind 缺失恒视为交互**」·「bg 门在数据层生效」—— 数据层过滤那几条判它；`§24bis` 逐字 Superseded =
+//! 同一个 pidfile「原地换了 sid」—— 只凭正面身份证据判 Superseded 那一条判它；未登记的 kind 记进本机名下对 `§18.1`。
+//! ⚠ 四块没有逐字住址：「变化才发」· 按 (cwd, sid) 排序 · 同 sid 的 kind 冲突消解 · 心跳分支不重读目录。〔JA1 点址 2026-09-24〕
+
 /// ★★ **心跳分支不许重读文件**〔audit-0805 08-08，Phase G 第 57 件，E12〕。
 ///
 /// `diff_sessions` 的头注逐字写着「scan → 本函数，是状态变化的**唯一检出点**

@@ -6,10 +6,11 @@
 //! 批注侧车是**唯一真相**(人写、可版本化);agent 只能 `propose`(落 `Proposed`),
 //! 要人 `approve` 才对 agent 可见。
 
-use super::{annotation_id, bare_name, guard_rel, split_sym_id, symbol_matches, to_rel, Engine};
+use super::{bare_name, guard_rel, split_sym_id, symbol_matches, to_rel, Engine};
+use crate::edits::{self, FileEdit};
 use crate::model::{
-    Anchor, AnchorState, Annotation, AnnotationOrigin, AnnotationStatus, DocLink, DriftItem,
-    LineRange, Resolution, SymbolId,
+    Anchor, AnchorState, Annotation, AnnotationStatus, DocLink, DriftItem, LineRange, Resolution,
+    SymbolId,
 };
 use crate::scan;
 use crate::{anchor, annotations, docs, symbols};
@@ -187,6 +188,9 @@ impl Engine {
     // ── 批注(F07,写 `.codepicture/annotations/` 侧车)──
 
     /// 人写批注,直接 Active(人写永远赢:可把同内容的 Proposed 提为 Active)。
+    ///
+    /// = [`edits::plan_add_annotation`](读 + 算)+ [`annotations::apply`](写盘)。
+    /// 别的写者(cc-monitor)只用前一半,落盘走自己的写口。
     pub fn add_annotation(
         &self,
         file: &str,
@@ -194,17 +198,9 @@ impl Engine {
         body: &str,
         author: &str,
     ) -> Result<String, Box<dyn Error>> {
-        if body.trim().is_empty() {
-            return Err("批注正文不能为空".into());
-        }
-        self.write_annotation(
-            file,
-            symbol,
-            body,
-            author,
-            AnnotationStatus::Active,
-            AnnotationOrigin::Human,
-        )
+        let p = edits::plan_add_annotation(&self.repo, file, symbol, body, author)?;
+        self.apply_annotation(p.edit.as_ref())?;
+        Ok(p.value)
     }
 
     /// agent 提议批注,Proposed;需人 `approve_annotation` 才 Active(人审门禁)。
@@ -216,63 +212,31 @@ impl Engine {
         body: &str,
         author: &str,
     ) -> Result<String, Box<dyn Error>> {
-        if body.trim().is_empty() {
-            return Err("批注正文不能为空".into());
-        }
-        let id = annotation_id(file, symbol, body);
-        if let Some(existing) = annotations::get(&self.annotations_dir, &id) {
-            if existing.status == AnnotationStatus::Active {
-                return Ok(id); // 已被人批准的同内容 → 不降级
-            }
-        }
-        self.write_annotation(
-            file,
-            symbol,
-            body,
-            author,
-            AnnotationStatus::Proposed,
-            AnnotationOrigin::Agent,
-        )
+        let p = edits::plan_propose_annotation(&self.repo, file, symbol, body, author)?;
+        self.apply_annotation(p.edit.as_ref())?;
+        Ok(p.value)
     }
 
-    fn write_annotation(
-        &self,
-        file: &str,
-        symbol: Option<&str>,
-        body: &str,
-        author: &str,
-        status: AnnotationStatus,
-        origin: AnnotationOrigin,
-    ) -> Result<String, Box<dyn Error>> {
-        let id = annotation_id(file, symbol, body);
-        let ann = Annotation {
-            id: id.clone(),
-            file: file.to_string(),
-            symbol: symbol.map(String::from),
-            body: body.to_string(),
-            author: author.to_string(),
-            status,
-            origin,
-        };
-        annotations::write(&self.annotations_dir, &ann)?;
-        Ok(id)
+    /// 写盘那一层(批注):计划说有改动才落。
+    fn apply_annotation(&self, edit: Option<&FileEdit>) -> Result<(), Box<dyn Error>> {
+        if let Some(e) = edit {
+            annotations::apply(&self.repo, e)?;
+        }
+        Ok(())
     }
 
     /// 人审批准:Proposed → Active。返回该 id 是否存在。**只改 `status`,不改 `origin`** ——
     /// 批准过的 agent 提议仍是 agent 说的。
     pub fn approve_annotation(&self, id: &str) -> Result<bool, Box<dyn Error>> {
-        match annotations::get(&self.annotations_dir, id) {
-            Some(mut a) => {
-                a.status = AnnotationStatus::Active;
-                annotations::write(&self.annotations_dir, &a)?;
-                Ok(true)
-            }
-            None => Ok(false),
-        }
+        let p = edits::plan_approve_annotation(&self.repo, id)?;
+        self.apply_annotation(p.edit.as_ref())?;
+        Ok(p.value)
     }
 
     pub fn remove_annotation(&self, id: &str) -> Result<bool, Box<dyn Error>> {
-        Ok(annotations::remove(&self.annotations_dir, id)?)
+        let p = edits::plan_remove_annotation(&self.repo, id)?;
+        self.apply_annotation(p.edit.as_ref())?;
+        Ok(p.value)
     }
 
     /// 全部批注(含 Proposed;给人看 / 审批队列)。
@@ -301,9 +265,13 @@ impl Engine {
     // ── 文档关联写(F08,编辑用户 `.md` 的 frontmatter `covers:`)──
 
     /// 在指定 `.md` 的 `covers:` 加一条关联(只动 covers、保留其余);写后刷新 doc-links。
+    /// = [`edits::plan_write_doc_link`] + [`docs::apply`] + [`Engine::refresh_doc_links`]。
     pub fn write_doc_link(&mut self, doc: &str, target: &str) -> Result<(), Box<dyn Error>> {
         guard_rel(doc)?;
-        docs::write_doc_link(&self.repo, doc, target)?;
+        let p = edits::plan_write_doc_link(&self.repo, doc, target)?;
+        if let Some(e) = &p.edit {
+            docs::apply(&self.repo, e)?;
+        }
         self.rebuild_doc_links()?;
         Ok(())
     }
@@ -311,10 +279,18 @@ impl Engine {
     /// 从指定 `.md` 删一条 `covers:` 关联(返回原本是否存在);存在才刷新 doc-links。
     pub fn remove_doc_link(&mut self, doc: &str, target: &str) -> Result<bool, Box<dyn Error>> {
         guard_rel(doc)?;
-        let removed = docs::remove_doc_link(&self.repo, doc, target)?;
-        if removed {
+        let p = edits::plan_remove_doc_link(&self.repo, doc, target)?;
+        if let Some(e) = &p.edit {
+            docs::apply(&self.repo, e)?;
+        }
+        if p.value {
             self.rebuild_doc_links()?;
         }
-        Ok(removed)
+        Ok(p.value)
+    }
+
+    /// 让索引里的文档关联跟上盘上的 `.md`(别的写者落了 `covers:` 之后调;只写索引,不碰用户文件)。
+    pub fn refresh_doc_links(&mut self) -> Result<(), Box<dyn Error>> {
+        self.rebuild_doc_links()
     }
 }

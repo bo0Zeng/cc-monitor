@@ -95,6 +95,7 @@ fn the_op_table_equals_the_dispatch_arms() {
     let src = prod();
     let mut arms = arms_of(&src, "dispatch");
     arms.extend(arms_of(&src, "dispatch_registry"));
+    arms.extend(arms_of(&src, "dispatch_plan"));
     arms.sort();
     let mut table: Vec<String> = OPS.iter().map(|(n, _)| n.to_string()).collect();
     table.sort();
@@ -205,6 +206,36 @@ fn every_op_runs_on_a_real_engine_over_a_synthetic_repo() {
         assert!(got.is_ok(), "op `{op}` 在真引擎上失败：{got:?}");
         ran.push(op);
     }
+    // 〔RM1d〕只算不写的那几个：跑得通、回的是一份计划（落盘不归本程序）。
+    for (op, args) in [
+        (
+            "plan_add_annotation",
+            json!({"file": "src/lib.rs", "symbol": "alpha", "body": "b", "author": "me"}),
+        ),
+        (
+            "plan_propose_annotation",
+            json!({"file": "src/lib.rs", "body": "p", "author": "agent"}),
+        ),
+        ("plan_approve_annotation", json!({"id": "abc"})),
+        ("plan_remove_annotation", json!({"id": "abc"})),
+        (
+            "plan_write_doc_link",
+            json!({"doc": "README.md", "target": "src/lib.rs#alpha"}),
+        ),
+        (
+            "plan_remove_doc_link",
+            json!({"doc": "README.md", "target": "src/lib.rs#alpha"}),
+        ),
+    ] {
+        let got = call(op, r, s, args).unwrap_or_else(|f| panic!("op `{op}` 失败：{f:?}"));
+        assert!(
+            got.get("value").is_some() && got.get("edit").is_some(),
+            "{op} ⇒ {got}"
+        );
+        ran.push(op);
+    }
+    call("refresh_doc_links", r, s, json!({})).unwrap();
+    ran.push("refresh_doc_links");
     let kinds = run("diagram_kinds", None, None, json!({})).unwrap();
     assert!(kinds.as_array().is_some_and(|a| !a.is_empty()), "{kinds}");
     ran.push("diagram_kinds");
@@ -259,18 +290,28 @@ fn the_status_shape_matches_the_monitor_dto() {
     }
 }
 
-/// ★ 写用户文件的那几个引擎方法，本程序生产段**零调用**（第一拍只读，理由见头注）。
+/// ★ 写用户文件的那几样，本程序生产段**零调用**（只算不写，理由见头注）。
 ///
-/// 针 = 那六个方法名后接 `(`；人群 = 本程序生产段（剥注释、剥测试块）。
+/// 针 =（a）`Engine` 那六个写方法的**方法调用形**（`.add_annotation(` …）——〔RM1d〕只认方法形，
+/// 因为「算」那一层的名字 `edits::plan_add_annotation(` 里含着裸名；（b）上游**写盘那一层**的
+/// 模块路径（`annotations::apply` · `annotations::write` · `annotations::remove` · `docs::apply` ·
+/// `docs::write_doc_link` · `docs::remove_doc_link`，不带括号 ⇒ `use` 进来改名也逮得住）。
+/// 人群 = 本程序生产段（剥注释、剥测试块）。
 #[test]
 fn the_program_never_calls_an_engine_method_that_writes_user_files() {
     let needles = [
-        "add_annotation(",
-        "propose_annotation(",
-        "approve_annotation(",
-        "remove_annotation(",
-        "write_doc_link(",
-        "remove_doc_link(",
+        ".add_annotation(",
+        ".propose_annotation(",
+        ".approve_annotation(",
+        ".remove_annotation(",
+        ".write_doc_link(",
+        ".remove_doc_link(",
+        "annotations::apply",
+        "annotations::write",
+        "annotations::remove",
+        "docs::apply",
+        "docs::write_doc_link",
+        "docs::remove_doc_link",
     ];
     let src = prod();
     // 反空真：人群得是真的那份（读到空串会零命中地绿）。
@@ -286,11 +327,123 @@ fn the_program_never_calls_an_engine_method_that_writes_user_files() {
          ⇒ 远端仓的批注 / 文档关联是远端的**用户文件**，按用户 09-24「只允许后端的文件管理部分写用户文件」\
          要走后端写面那一路（RW1），不在本程序里开第二条写路。"
     );
-    // 正控：同一把尺子对合成的一行真调用必须命中（尺子没瞎）。
-    let synthetic = guard_core::production_code(
-        "fn x(e: &mut Engine) { e.write_doc_link(\"a.md\", \"s\").unwrap(); }\n",
+    // 反空真：「算」那一层确实在用（不然零命中可能只是因为这几样整个没做）。
+    assert!(
+        src.contains("edits::plan_add_annotation("),
+        "生产段里没有「算」那一层"
     );
-    assert!(needles.iter().any(|n| synthetic.contains(n)), "尺子瞎了");
+    // 正控：同一把尺子对合成的真调用必须逐条命中（尺子没瞎）—— 方法形与写盘层各一行。
+    for (line, want) in [
+        (
+            "fn x(e: &mut Engine) { e.write_doc_link(\"a.md\", \"s\").unwrap(); }\n",
+            ".write_doc_link(",
+        ),
+        (
+            "fn x(r: &Path, p: &FileEdit) { code_picture_core::docs::apply(r, p).unwrap(); }\n",
+            "docs::apply",
+        ),
+        (
+            "use code_picture_core::annotations::apply as put;\n",
+            "annotations::apply",
+        ),
+    ] {
+        let synthetic = guard_core::production_code(line);
+        let hit: Vec<&str> = needles
+            .iter()
+            .copied()
+            .filter(|n| synthetic.contains(n))
+            .collect();
+        assert_eq!(hit, vec![want], "尺子对 {line:?} 没认对");
+    }
+}
+
+/// ★〔RM1d〕「算」那几个 op 对被分析的仓**一个字节都不写**，而且交回的 `before` 就是盘上原样
+/// （起它的那一侧拿它当 `files-put` 的 CAS 期望 —— 不是原样，写口就会恒 `stale`）。
+///
+/// ⚠ 不裸遍历目录（`scanning_guard_registry` 那条元判据）：比的是两份具体的文件 ＋ 批注目录在不在。
+#[test]
+fn planning_ops_leave_the_repo_byte_identical() {
+    let repo = fixture_repo();
+    let store = Tmp::new("store");
+    let (r, s) = (repo.0.as_path(), store.0.as_path());
+    let md = "---\ncovers: [src/lib.rs#beta]\n---\n# 说明\n";
+    std::fs::write(r.join("NOTES.md"), md).unwrap();
+    let lib = std::fs::read(r.join("src/lib.rs")).unwrap();
+
+    let add = call(
+        "plan_add_annotation",
+        r,
+        s,
+        json!({"file": "src/lib.rs", "symbol": "alpha", "body": "热路径", "author": "me"}),
+    )
+    .unwrap();
+    let e = &add["edit"];
+    assert_eq!(
+        e["before"],
+        Value::Null,
+        "批注还不存在 ⇒ before 必须是 null（CAS：必须不存在）"
+    );
+    assert!(
+        e["after"].as_str().is_some_and(|t| t.contains("热路径")),
+        "{add}"
+    );
+    assert_eq!(e["parents"], json!(true), "批注首写要建目录");
+    let id = add["value"].as_str().unwrap();
+    assert!(
+        e["rel"]
+            .as_str()
+            .is_some_and(|x| x.ends_with(&format!("{id}.json"))),
+        "{add}"
+    );
+
+    let link = call(
+        "plan_write_doc_link",
+        r,
+        s,
+        json!({"doc": "NOTES.md", "target": "src/lib.rs#alpha"}),
+    )
+    .unwrap();
+    assert_eq!(link["edit"]["before"], json!(md), "before 必须是盘上原样");
+    assert_eq!(link["edit"]["rel"], json!("NOTES.md"));
+    let unlink = call(
+        "plan_remove_doc_link",
+        r,
+        s,
+        json!({"doc": "NOTES.md", "target": "src/lib.rs#beta"}),
+    )
+    .unwrap();
+    assert_eq!(unlink["value"], json!(true), "{unlink}");
+    let none = call(
+        "plan_remove_doc_link",
+        r,
+        s,
+        json!({"doc": "NOTES.md", "target": "src/nope.rs"}),
+    )
+    .unwrap();
+    assert_eq!(
+        none,
+        json!({"value": false, "edit": null}),
+        "没有要写的 ⇒ edit 是 null"
+    );
+
+    assert!(!r.join(".codepicture").exists(), "算的那一步建了批注目录");
+    assert_eq!(
+        std::fs::read_to_string(r.join("NOTES.md")).unwrap(),
+        md,
+        "算的那一步改了 .md"
+    );
+    assert_eq!(std::fs::read(r.join("src/lib.rs")).unwrap(), lib);
+    assert!(!s.join(".codepicture").exists(), "算的那一步碰了索引根");
+    // 给错了东西 ⇒ bad_args（越界路径不许算出落点）。
+    assert!(matches!(
+        call(
+            "plan_write_doc_link",
+            r,
+            s,
+            json!({"doc": "../x.md", "target": "t"})
+        ),
+        Err(Fail::BadArgs(_))
+    ));
 }
 
 /// ★ 建索引与全部读 op 之后，被分析的仓里**没有长出索引侧车**（索引只落 `--store`）。

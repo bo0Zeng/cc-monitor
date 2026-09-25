@@ -1,3 +1,9 @@
+//! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md` 的 `plugins-marketplaces` 节 ＋ `INVARIANTS §1`（P8a 读面）
+//!
+//! 核原文：该节逐字「三条出口分开：文件不在 ⇒ `file_absent: true`（诚实的空）；读 / 解析失败 ⇒ `failed`；某一条数不出 ⇒ 那一条
+//! `declared_plugins: null` ＋ `declared_error` 理由，整张表照出」—— 前七条判它；`INVARIANTS §1` 逐字「**不去数**
+//! `marketplaces/<id>/plugins/` 那个目录」—— 快照目录不计数那一条判它（`§1` 那段散文点的读实现住址已过期，性质仍成立）。〔JA1 点址 2026-09-24〕
+//!
 //! 〔RM1b · 第四波〕从 monitor `tests/bridge/plugins_tests.rs`（`P8a`）**原样搬来** —— 本体搬进了后端，
 //! 判据跟着本体走（口径一字未改）；另加一条线上契约的字段集判据。夹具只造结构，不采任何真数据。
 
