@@ -193,6 +193,31 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "FRAME_BUDGET_US",
         "**时间**（一帧的预算，微秒），不是字节。两个门槛从它推出来。",
     ),
+    // ── 〔WN1 · 第四波 09-24〕后端 Windows 判活（`platform/win_proc.rs` · `platform/proc.rs`）带进来的五个 ──
+    //    全是 Win32 常量与时间换算，没有一个量字节。
+    (
+        "PROCESS_QUERY_LIMITED_INFORMATION",
+        "**Win32 访问掩码**（`OpenProcess` 的「只读查询」权限位，`0x1000`）。名字里的 LIMITED 是\
+             「受限的查询权限」，不是任何东西的上限 —— 是位掩码不是尺寸（同 `CREATE_NO_WINDOW` 那一族）。",
+    ),
+    (
+        "SYNCHRONIZE",
+        "**Win32 访问掩码**（允许等一个进程句柄的权限位）。是位掩码不是尺寸。",
+    ),
+    (
+        "WAIT_FOREVER",
+        "**「一直等」的哨兵值**（`WaitForSingleObject` 的 `INFINITE`，全 1）。不是时长上限、更不是字节量 —— \
+             它的意思恰恰是「没有上限」；`pidwatch_windows_shape_tests` 钉着它必须是全 1（零定时器）。",
+    ),
+    (
+        "FILETIME_TICKS_BEFORE_UNIX_EPOCH",
+        "**时间纪元差**（Win32 FILETIME 的 1601 起点与 Unix 1970 起点相差多少个 100ns tick）。\
+             与上面 `NET_EPOCH_TO_WIN32_FILETIME_TICKS` 同族：单位是时间不是字节。",
+    ),
+    (
+        "FILETIME_TICKS_PER_SEC",
+        "**时间刻度**（一秒里有多少个 100ns 的 FILETIME tick）。单位换算，不是任何东西的上限。",
+    ),
     // ⚠ `MIN_SCANNED_CODE_BYTES` 那条已删（08-06）：它是**测试段里的地板**，
     //    本表原来扫整份文件才需要排它；扫描面收窄到生产段之后它成了死规则，
     //    而本表自己的 `the_exclusion_list_is_not_dead_wood` 当场要求删。
