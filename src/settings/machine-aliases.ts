@@ -40,14 +40,10 @@ import { buildPasteBlock } from "../paste-block";
 import { ACTIVE_AGENT, listAgents } from "../agent-profile";
 import type { Alias } from "../generated/Alias";
 import type { AliasRender } from "../generated/AliasRender";
-import type { ProfileScan } from "../generated/ProfileScan";
-import type { AccountAliasRc } from "../generated/AccountAliasRc";
+import type { StartupFile } from "../generated/StartupFile";
 import type { Shell } from "../generated/Shell";
-import type { LegacyProfileEntry } from "../generated/LegacyProfileEntry";
-import type { ProfileKind } from "../generated/ProfileKind";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { makeInfoIcon, swapFileName } from "./info-icon";
-import { LS_KEYS, safeGet, safeSet } from "../local-storage";
+import { makeInfoIcon } from "./info-icon";
 import { hostOs } from "./host-os";
 
 /**
@@ -61,19 +57,39 @@ export function localShell(): Shell {
 /** 平台那几格的措辞（写死在一处，组件里按 `platform` 取）。 */
 const PLATFORM_COPY: Record<
   Shell,
-  { pasteTarget: string; pasteActivation: string; rcLabel: string; nameHint: string }
+  {
+    pasteTarget: string;
+    pasteActivation: string;
+    rcLabel: string;
+    nameHint: string;
+    /** 〔AL1d〕别名块是什么（状态行里「还没有别名块（…）」那一格）。 */
+    blockWhat: string;
+    blockInstallTitle: string;
+    blockAfterInstall: string;
+  }
 > = {
   posix: {
     pasteTarget: "~/.bashrc（或你实际用的 shell 配置文件）",
     pasteActivation: "source 它，或开一个新终端。",
     rcLabel: "这台机器的 shell 配置（那一行 source 加进哪份）：",
     nameHint: "名字，如 alphacct",
+    blockWhat: "cc / cct 这一族",
+    blockInstallTitle:
+      "把 cc / cct 与「接上别名文件」那一行（src/shared/ccm-aliases.sh）装进你选的那份配置：" +
+      "只动 cc-monitor 那一小块，写前先备份、写后回读比对、不对就恢复。",
+    blockAfterInstall: "装好了。开一个新终端，或在当前终端 source 那份配置。",
   },
   powershell: {
     pasteTarget: "$PROFILE（PowerShell 启动时读的那份脚本）",
     pasteActivation: "开一个新的 PowerShell 窗口。",
     rcLabel: "这台机器的 PowerShell 配置（那一行加进哪份 $PROFILE）：",
     nameHint: "名字，如 alphacc",
+    blockWhat: "拉前握手那一小段",
+    blockInstallTitle:
+      "把拉前握手那一小段（勾了「同时装 cc 函数」再加一个 cc 函数）装进你选的那份 $PROFILE：" +
+      "只动 cc-monitor 那一小块，写前先备份、写后回读比对、不对就恢复。",
+    blockAfterInstall:
+      "装好了。开一个新的 PowerShell 窗口生效；没勾「同时装 cc 函数」的话，在你自己的 cc / claude 函数开头加一行 __ccm_bind。",
   },
 };
 
@@ -344,46 +360,89 @@ export function buildAliasManager(opts: {
   wrap.appendChild(paste.element);
 
   // ── 写入（第②跳）────────────────────────────────────────────────────────
+  // 〔AL1d · 第四波 4B〕这个下拉是这台机器上**唯一**的启动文件选择器：别名文件那一行 source 装进哪份、
+  // 别名块装进哪份，都是它（从前 PowerShell 上另有一个版本预设下拉 ＋ 路径框，候选另有来历，`AL1d.md §1.2`）。
+  // 候选只来自读回口 `aliases_read`（`$PROFILE` 在哪由后端 `shell_dialect.rs` 一处答），本文件一个路径都不推。
   const rcSel = el("select", "ccm-acct-alias-rc");
   const rcRow = el("label", "settings-row");
   rcRow.append(copy.rcLabel, rcSel);
+  // 人另指的一份（原「自定义路径」，两种 shell 通用）：过后端围栏、并进候选。
+  const otherRow = el("div", "settings-row");
+  const otherIn = el("input", "settings-input settings-input-wide ccm-rc-other");
+  otherIn.type = "text";
+  otherIn.placeholder = "其它文件（绝对路径，或 ~/ 开头）";
+  const otherBtn = button("用这份", "settings-btn-secondary", () => void onOther());
+  const otherErr = el("div", "settings-hint");
+  otherRow.append(otherIn, otherBtn, otherErr);
   const writeBtn = button("写入", "settings-btn-primary", () => void onWrite());
   writeBtn.title = "写到 cc-monitor 自己那份别名文件；选了 shell 配置的话，再往里加一行 source。";
   const result = el("pre", "ccm-acct-alias-out");
-  wrap.append(rcRow, writeBtn, result);
+  wrap.append(rcRow, otherRow, writeBtn, result);
 
-  // ── 别名块（cc / cct ＋ 接上别名文件那一行）：装 / 卸 / 旧行 ─────────────
-  // `K-R62`：本机 POSIX 那一格的装口住这里（「终端集成」那一块整篇是 PowerShell）。
-  // 默认什么都不做：下拉停在「不动我的 shell 配置」时整块藏着，一条 IPC 都不发。
+  // ── 别名块：装 / 卸 / 预览 / 现状 —— 两种 shell 同一块，装进上面那个下拉选中的那份 ──────
+  // `K-R62`：本机 POSIX 那一格的装口从前就住这里；〔AL1d〕PowerShell 那一块（`__ccm_bind` ＋ 可选 `cc`，
+  // 原「终端集成」）并进来了：同一个选择器、同一次读回、同一族命令（`aliases_block_*`）。
+  // 默认什么都不做：下拉停在「不动我的 shell 配置」时整块藏着。选了之后**不发 IPC** —— 现状随读回口的候选一起到。
   const rcBlock = document.createElement("div");
   rcBlock.className = "ccm-rc-block";
   rcBlock.hidden = true;
-  const rcStatus = el("div", "ccm-rc-block-status");
-  const installBtn = button("装别名块", "settings-btn-secondary", () =>
-    void runRc("装", (path) =>
-      commands.cc_integration_install({ path, commandName: "cc", includeCcFunction: false }),
+  const rcStatusRow = el("div", "settings-cc-profile-status");
+  const rcStatus = el("span", "ccm-rc-block-status settings-cc-profile-badge");
+  rcStatusRow.appendChild(rcStatus);
+  // `with_cc`：只有 PowerShell 那一块有「要不要连 `cc` 函数一起装」这一问（POSIX 那一块的 `cc` 自带 `declare -f` 让着你）。
+  const withCcLabel = el("label", "settings-row settings-row-checkbox");
+  const withCc = el("input", "settings-checkbox");
+  withCc.type = "checkbox";
+  withCc.checked = false; // 默认只装握手那一小段，不抢你已有的 `cc`
+  withCcLabel.append(withCc, el("span", "settings-checkbox-label", "同时装 cc 函数"));
+  withCcLabel.appendChild(
+    makeInfoIcon(
+      "不勾：只装 __ccm_bind（拉前握手）。你自己已有的 cc / claude 函数开头加一行 __ccm_bind，Tab ↗ 就能拉对终端窗口。\n\n" +
+        "勾选：再装一个 function cc（走 ccm）。你 $PROFILE 里若已有 function cc，会被这一块盖掉（PowerShell 后定义的同名函数赢）。",
     ),
   );
-  installBtn.title =
-    "把 cc / cct 与「接上别名文件」那一行（src/shared/ccm-aliases.sh）装进你选的那份配置：" +
-    "只动 cc-monitor 那一小块，写前先备份、写后回读比对、不对就恢复。";
+  // ⚠ `hidden` 切的是外面这层 div 而不是那个 label：`.settings-row` / `.settings-row-checkbox` 在 CSS 里写了 `display`，
+  //   会压过 UA 的 `[hidden]`（`css-conventions` S30 ⑦）。外层不走 `el()`：类名要在这一行上看得见。
+  const withCcRow = document.createElement("div");
+  withCcRow.className = "ccm-rc-withcc";
+  withCcRow.appendChild(withCcLabel);
+  withCcRow.hidden = shell !== "powershell";
+  const rcWarn = el("div", "");
+  const rcButtons = el("div", "settings-cc-profile-buttons");
+  const installBtn = button("装别名块", "settings-btn-secondary", () =>
+    void runRc("装", (path) => commands.aliases_block_install({ rcPath: path, withCc: withCc.checked })),
+  );
+  installBtn.title = copy.blockInstallTitle;
   const uninstallBtn = document.createElement("button");
   uninstallBtn.type = "button";
   uninstallBtn.className = "settings-btn settings-btn-secondary";
   uninstallBtn.textContent = "卸载别名块";
   uninstallBtn.addEventListener("click", () =>
-    void runRc("卸", (path) => commands.cc_integration_uninstall({ path })),
+    void runRc("卸", (path) => commands.aliases_block_remove({ rcPath: path })),
   );
   uninstallBtn.title = "只删 cc-monitor 那一小块，你写的任何一行都不动。";
+  const previewBtn = button("预览别名块", "settings-btn-secondary", () => void onPreview());
+  previewBtn.title = "看一眼装进去的那一块长什么样（与装的那一下是同一份渲染）";
+  const openBtn = button("打开这份文件", "settings-btn-secondary", () => void onOpenRc());
+  openBtn.title = "用系统默认编辑器打开选中的那份";
+  const rescanBtn = button("重新读一遍", "settings-btn-secondary", () => void readBack(true));
+  rescanBtn.title = "重新读这台机器上的别名文件与这几份启动文件";
+  rcButtons.append(installBtn, uninstallBtn, previewBtn, openBtn, rescanBtn);
   const rcLegacy = document.createElement("pre");
   rcLegacy.className = "ccm-rc-block-legacy";
   rcLegacy.hidden = true;
-  rcBlock.append(rcStatus, installBtn, uninstallBtn, rcLegacy);
+  // 块还装在别的候选里（从前只查 PowerShell 的 `profile.ps1` 那两份「v1.7 装错位置」，今天每份候选都带块的现状，照实说）。
+  const rcElsewhere = document.createElement("div");
+  rcElsewhere.className = "settings-cc-legacy-warn";
+  rcElsewhere.hidden = true;
+  const rcNote = el("div", "settings-hint");
+  rcBlock.append(rcStatusRow, withCcRow, rcWarn, rcButtons, rcNote, rcLegacy, rcElsewhere);
   wrap.appendChild(rcBlock);
-  // 〔AL1c〕PowerShell 那一侧的「别名块」是终端集成块（`__ccm_bind` ＋ 可选 `cc`）＋ 用户级 PATH 那一格。
-  // 两块一构造就问后端 ⇒ **第一次展开才建**（见下面 `toggle`），守住这一块「构造零 I/O」。
+  // 〔AL1c〕PowerShell 那一侧还有两格不随启动文件走：握手的终端数 ＋ 自动打开 monitor（原「终端集成」）· 用户级 PATH。
+  // 它们一构造就问后端 ⇒ **第一次展开才建**（见下面 `toggle`），守住这一块「构造零 I/O」。
   const psSlot = el("div", "ccm-ps-slot");
   wrap.appendChild(psSlot);
+  let psExtras: PsExtras | null = null;
 
   // ── 状态与动作 ───────────────────────────────────────────────────────────
   let list: Alias[] = [];
@@ -519,26 +578,52 @@ export function buildAliasManager(opts: {
     void changed();
   };
 
-  const fillRcOptions = (cands: readonly AccountAliasRc[]): void => {
+  /** 这台机器的启动文件候选（读回口那一次扫描的结果；别名文件那一行与别名块共用）。 */
+  let cands: StartupFile[] = [];
+  /** 人另指的那一份（原样的输入串；后端过围栏）。一旦指过，之后每次读回都带着它。 */
+  let otherRc: string | null = null;
+
+  const fillRcOptions = (list: readonly StartupFile[]): void => {
     const keep = rcSel.value;
     rcSel.textContent = "";
     const none = el("option", "", "不动我的 shell 配置");
     none.value = "";
     rcSel.appendChild(none);
-    for (const c of cands) {
-      const label = c.sourced
-        ? `${c.path}（已经接上了）`
-        : c.exists
-          ? c.path
-          : `${c.path}（还不存在，写入时新建）`;
-      const o = el("option", "", label);
+    for (const c of list) {
+      const tags: string[] = [];
+      if (c.sourced) tags.push("已经接上了");
+      if (c.block.present) tags.push("已装别名块");
+      if (!c.exists) tags.push("还不存在，写入时新建");
+      const o = el("option", "", tags.length ? `${c.path}（${tags.join("；")}）` : c.path);
       o.value = c.path;
       rcSel.appendChild(o);
     }
     if ([...rcSel.options].some((o) => o.value === keep)) rcSel.value = keep;
   };
 
-  /** 读回口：盘上那份就是清单的起点。认不出的行原样说出来 —— 写回去之前人得知道它们会没。 */
+  /**
+   * 读回口：盘上那份就是清单的起点；认不出的行原样说出来 —— 写回去之前人得知道它们会没。
+   * 〔AL1d〕同一次读回带回启动文件候选（各带别名块的现状）与握手终端数 ⇒ 别名块那一格不再另问。
+   * `keepList`：只刷新盘上的现状，不动人正在编辑的清单（装 / 卸别名块之后、「重新读一遍」）。
+   */
+  const readBack = async (keepList: boolean): Promise<void> => {
+    try {
+      const got = await commands.aliases_read({ shell, rcPath: otherRc });
+      if (!keepList) list = got.aliases;
+      const head = got.exists
+        ? `${got.aliasPath}：${got.aliases.length} 条`
+        : `${got.aliasPath} 还不存在`;
+      const bad = got.unparsed.map((u) => `认不出这一行，写入时它会被去掉：${u}`);
+      status.textContent = [head, ...bad].join("\n");
+      cands = got.rcCandidates;
+      fillRcOptions(cands);
+      psExtras?.setBound(got.boundTerminals);
+    } catch (e) {
+      status.textContent = `读不了这台机器上的别名文件：${String(e)}`;
+    }
+    refreshRc();
+  };
+
   const load = async (): Promise<void> => {
     // 本机 ccm 那一格是 POSIX 的读法（`$HOME/.cc-monitor/bin/ccm` 与 PATH 上那一份）；
     // Windows 上「终端找不找得到 ccm」由用户级 PATH 那一格答。
@@ -552,18 +637,7 @@ export function buildAliasManager(opts: {
         pathCcm.textContent = `问不到本机 ccm 这一格：${String(e)}`;
       }
     }
-    try {
-      const got = await commands.aliases_read({ shell });
-      list = got.aliases;
-      const head = got.exists
-        ? `${got.aliasPath}：${got.aliases.length} 条`
-        : `${got.aliasPath} 还不存在`;
-      const bad = got.unparsed.map((u) => `认不出这一行，写入时它会被去掉：${u}`);
-      status.textContent = [head, ...bad].join("\n");
-      fillRcOptions(got.rcCandidates);
-    } catch (e) {
-      status.textContent = `读不了这台机器上的别名文件：${String(e)}`;
-    }
+    await readBack(false);
     await changed();
   };
 
@@ -585,29 +659,63 @@ export function buildAliasManager(opts: {
     await load();
   };
 
-  /** `K-R62`：把选中那份 rc 的现状扫一遍并上屏。只读。 */
-  const renderScan = (scan: ProfileScan): void => {
-    rcStatus.textContent = scan.has_ccm_block
-      ? `✓ ${scan.path}：别名块已经装了`
-      : `✗ ${scan.path}：还没有别名块（cc / cct 这一族）`;
-    installBtn.textContent = scan.has_ccm_block ? "重装别名块" : "装别名块";
-    uninstallBtn.hidden = !scan.has_ccm_block;
-    // 「你配置里这几行是旧的」：后端逐行指名，产品自己一个字节都不删。
-    rcLegacy.hidden = !scan.manual_cleanup_hint;
-    rcLegacy.textContent = scan.manual_cleanup_hint;
+  /** 〔AL1d〕「其它文件」：交给读回口过围栏、并进候选，然后选中它。过不了围栏 ⇒ 原话上屏，候选不动。 */
+  const onOther = async (): Promise<void> => {
+    const raw = otherIn.value.trim();
+    if (!raw) return;
+    otherErr.textContent = "";
+    try {
+      const got = await commands.aliases_read({ shell, rcPath: raw });
+      otherRc = raw;
+      cands = got.rcCandidates;
+      fillRcOptions(cands);
+      psExtras?.setBound(got.boundTerminals);
+      if (got.otherRc) rcSel.value = got.otherRc;
+    } catch (e) {
+      otherErr.textContent = `用不了这份：${String(e)}`;
+    }
+    refreshRc();
   };
 
-  const refreshRc = async (): Promise<void> => {
-    const path = rcSel.value;
-    rcBlock.hidden = !path || shell !== "posix";
-    if (rcBlock.hidden) return;
-    try {
-      renderScan(await commands.cc_integration_scan_path({ path, commandName: "cc" }));
-    } catch (e) {
-      rcStatus.textContent = `扫不动 ${path}：${String(e)}`;
-      rcLegacy.hidden = true;
+  const selected = (): StartupFile | undefined => cands.find((c) => c.path === rcSel.value);
+
+  /** 选中那一份的别名块现状上屏。**不发 IPC** —— 现状随读回口的候选一起到了。 */
+  const refreshRc = (): void => {
+    const c = selected();
+    rcBlock.hidden = !c;
+    if (!c) return;
+    const b = c.block;
+    if (b.present) {
+      rcStatus.textContent = `✓ ${c.path}：别名块已经装了${b.version ? `（${b.version}）` : ""}`;
+      rcStatus.className = "ccm-rc-block-status settings-cc-profile-badge settings-cc-badge-ok";
+    } else if (!c.exists) {
+      rcStatus.textContent = `○ ${c.path} 还不存在（装的时候新建）`;
+      rcStatus.className = "ccm-rc-block-status settings-cc-profile-badge settings-cc-badge-info";
+    } else {
+      rcStatus.textContent = `✗ ${c.path}：还没有别名块（${copy.blockWhat}）`;
+      rcStatus.className = "ccm-rc-block-status settings-cc-profile-badge settings-cc-badge-warn";
     }
+    installBtn.textContent = b.present ? "重装别名块" : "装别名块";
+    uninstallBtn.hidden = !b.present;
+    // 「你配置里这几行是旧的」：后端逐行指名，产品自己一个字节都不删。
+    rcLegacy.hidden = !b.manualCleanupHint;
+    rcLegacy.textContent = b.manualCleanupHint;
+    // 勾了「同时装 cc 函数」、而这份文件里块外已有同名函数 ⇒ 装上会盖掉它，先说清。
+    rcWarn.textContent = "";
+    rcWarn.className = "";
+    if (withCc.checked && !b.present && b.conflictingFunctions.length > 0) {
+      rcWarn.className = "settings-cc-profile-warn";
+      rcWarn.textContent =
+        `⚠ 这份文件里已有 function ${b.conflictingFunctions.join(", ")}。勾了「同时装 cc 函数」的话，` +
+        "装上之后 PowerShell 用的是别名块里那一个（它排在后面）。想留你自己的：取消勾选，在你那个函数开头加一行 __ccm_bind。";
+    }
+    const others = cands.filter((x) => x.block.present && x.path !== c.path).map((x) => x.path);
+    rcElsewhere.hidden = others.length === 0;
+    rcElsewhere.textContent = others.length
+      ? `别名块还装在这几份里：\n${others.join("\n")}\n同一台机器上装一份就够；多的那几份可以在下拉里选中后卸掉。`
+      : "";
   };
+  withCc.addEventListener("change", () => refreshRc());
 
   const runRc = async (
     verb: "装" | "卸",
@@ -618,21 +726,44 @@ export function buildAliasManager(opts: {
     installBtn.disabled = true;
     uninstallBtn.disabled = true;
     rcStatus.textContent = `${verb}别名块中…`;
+    let failed: string | null = null;
     try {
       await act(path);
     } catch (e) {
-      rcStatus.textContent = `${verb}失败：${String(e)}`;
-      installBtn.disabled = false;
-      uninstallBtn.disabled = false;
-      return;
+      failed = `${verb}失败：${String(e)}`;
     }
     installBtn.disabled = false;
     uninstallBtn.disabled = false;
-    await refreshRc();
+    // 成功失败都重读：盘上现在是什么样，就显示什么样（清单那一格不动 —— 人可能还没写入）。
+    await readBack(true);
+    if (failed) rcStatus.textContent = failed;
+    rcNote.textContent = !failed && verb === "装" ? copy.blockAfterInstall : "";
   };
 
-  // 只在人真的换了下拉时扫 —— `fillRcOptions` 重建选项那一下是程序改值，不触发 `change`。
-  rcSel.addEventListener("change", () => void refreshRc());
+  /** 〔AL1d〕预览别名块：与装那一下同一份渲染（后端 `plan_install`），方言由选中那份文件定。 */
+  const onPreview = async (): Promise<void> => {
+    const path = rcSel.value;
+    if (!path) return;
+    try {
+      const code = await commands.aliases_block_render({ rcPath: path, withCc: withCc.checked });
+      showPreviewModal(`将装进 ${path} 的别名块`, code);
+    } catch (e) {
+      showActionFailureToast("预览失败", String(e));
+    }
+  };
+
+  const onOpenRc = async (): Promise<void> => {
+    const path = rcSel.value;
+    if (!path) return;
+    try {
+      await openPath(path);
+    } catch (e) {
+      showActionFailureToast("打开失败", `${String(e)}\n路径：${path}`);
+    }
+  };
+
+  // 只在人真的换了下拉时刷新 —— `fillRcOptions` 重建选项那一下是程序改值，不触发 `change`。
+  rcSel.addEventListener("change", () => refreshRc());
   fillRcOptions([]);
   fillForm(emptyForm(), -1);
   renderList();
@@ -641,9 +772,9 @@ export function buildAliasManager(opts: {
     if (!wrap.open || loaded) return;
     loaded = true;
     if (shell === "powershell") {
-      const term = new PsTerminalIntegration();
-      psSlot.append(term.element, buildUserPathBlock());
-      term.loadNow();
+      psExtras = buildPsExtras();
+      psSlot.append(psExtras.element, buildUserPathBlock());
+      psExtras.loadNow();
     }
     void load();
   });
@@ -864,591 +995,148 @@ export function buildUserPathBlock(): HTMLElement {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 〔AL1c · 第四波 4B〕PowerShell 那一侧的「别名块」：终端集成（原 `cc_integration.ts` 整块搬来）
+// 〔AL1c · 第四波 4B〕PowerShell 那一侧不随启动文件走的两格（原「终端集成」剩下的那一半）
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// 它从前是本机页上单独一块「终端集成」（只在 Windows 上构造，S9）。并进「别名」之后，
-// 它就是 PowerShell 那一侧的「别名块」—— 与 POSIX 那一侧 `cc` / `cct` 片段同一个位置，由 `platform` 选。
-// 行为一个字没改（`$PROFILE` 预设 · 装 / 卸 / 预览 · 已注册数 · 旧位置提示 · 自动打开 monitor）。
-//
-// 设置面板：PowerShell 集成区（v1.7.9 简化版）。
-//  - 命令名固定 "cc"（不再让用户输自由文本，避免填错 / 跟 claude.exe 同名等坑）
-//  - "同时安装 cc wrapper" 改成复选框，**默认不勾选**（默认只装 helper，不覆盖用户已有 wrapper）
-//  - 所有冗长说明 → ! 图标 hover tooltip，UI 干净
-// v1.7.0-1.7.1 的 bug：默认 profile 文件名搞成 `profile.ps1`（CurrentUserAllHosts），
-// 但 PowerShell 默认 `$PROFILE` 指向 `Microsoft.PowerShell_profile.ps1`（CurrentUserCurrentHost）
-// —— PowerShell 启动不读 `profile.ps1`，cc 集成形同虚设。v1.7.2 改回正确文件名并扫描旧位置遗留。
+// 〔AL1d · 第四波 4B〕原「终端集成」一整块（`PsTerminalIntegration`）拆成两半：
+// - **随启动文件走的那一半**（选哪份 `$PROFILE` · 装 / 卸 / 预览 / 现状 · 块外同名函数 · 「块也装在 profile.ps1 里」）
+//   并进了上面那个两种 shell 共用的「别名块」—— 同一个下拉、同一次读回、同一族命令（`aliases_block_*`）。
+//   它自己那一份版本预设下拉（PS 5.1 / 7 × CurrentHost / AllHosts）、TS 推 `profile.ps1` 的那一步、记住上次选择的
+//   localStorage 都删了：`$PROFILE` 在哪今天只有后端 `shell_dialect.rs` 一处答（`调研/第四波记录/AL1d.md §2.3`）。
+// - **不随启动文件走的那一半**留在这里：已完成拉前握手的终端数（读回口带回来）· 自动打开 monitor。
 
-/** v1.7.12: 前端用的预设 id，覆盖 PS 版本 × profile scope 矩阵 */
-type PresetId =
-  | "Ps51-CurrentHost"
-  | "Ps51-AllHosts"
-  | "Ps7-CurrentHost"
-  | "Ps7-AllHosts"
-  | "Custom";
+/** 握手终端数（读回口带回来）＋ 自动打开 monitor 那一格。构造零 I/O；`loadNow()` 才问后端。 */
+interface PsExtras {
+  element: HTMLElement;
+  setBound(n: number): void;
+  loadNow(): void;
+}
 
-const PRESET_OPTIONS: Array<{ id: PresetId; label: string }> = [
-  { id: "Ps51-CurrentHost", label: "PowerShell 5.1 - $PROFILE（默认）" },
-  { id: "Ps51-AllHosts", label: "PowerShell 5.1 - 所有 host（profile.ps1）" },
-  { id: "Ps7-CurrentHost", label: "PowerShell 7.x - $PROFILE" },
-  { id: "Ps7-AllHosts", label: "PowerShell 7.x - 所有 host" },
-  { id: "Custom", label: "自定义路径..." },
-];
+function buildPsExtras(): PsExtras {
+  const group = document.createElement("div");
+  group.className = "settings-group";
 
-/** 固定命令名 —— 不让用户改。`claude` 跟 claude.exe 同名会无限递归；其他名字没必要让用户折腾 */
-const CC_COMMAND_NAME = "cc";
+  const heading = document.createElement("div");
+  heading.className = "settings-group-title";
+  heading.textContent = "PowerShell 集成";
+  heading.appendChild(
+    makeInfoIcon(
+      "别名块里的 __ccm_bind：启动 claude 时把当前终端窗口登记给 monitor，" +
+        "之后 Tab ↗ 跳焦能精确拉对应终端窗口。不装也能用 monitor，但拉前不工作。",
+    ),
+  );
+  group.appendChild(heading);
 
-class PsTerminalIntegration {
-  private root: HTMLElement;
-  private versionSelect!: HTMLSelectElement;
-  private pathInput!: HTMLInputElement;
-  private statusBadge!: HTMLSpanElement;
-  private warnArea!: HTMLDivElement;
-  private legacyArea!: HTMLDivElement;
-  private regCountSpan!: HTMLSpanElement;
-  private wrapperCheckbox!: HTMLInputElement;
-  private installBtn!: HTMLButtonElement;
-  private uninstallBtn!: HTMLButtonElement;
-  private autoLaunchCheckbox!: HTMLInputElement;
-  private autoLaunchPathSpan!: HTMLSpanElement;
-  /** 当前从后端拿到的推荐路径（仅 PS 版本，CurrentHost 那条）。AllHosts 路径前端推算同目录的 profile.ps1 */
-  private recommended: Record<ProfileKind, string | null> = {
-    Ps51: null,
-    Ps7: null,
-    Custom: null,
-  };
+  // 活跃注册数
+  const statRow = document.createElement("div");
+  statRow.className = "settings-cc-stat-row";
+  const statLabel = document.createElement("span");
+  statLabel.className = "settings-cc-stat-label";
+  statLabel.textContent = "已注册 PowerShell session";
+  statLabel.appendChild(
+    makeInfoIcon(
+      "正在跟 monitor 握手成功、可被 Tab ↗ 拉前的 PowerShell 进程数。\n" +
+        "数字 0 ≠ 没装好：只要你那个 PS 窗口最近没跑过 cc/__ccm_bind，就不会出现在这里。",
+    ),
+  );
+  statRow.appendChild(statLabel);
+  const regCountSpan = document.createElement("span");
+  regCountSpan.className = "settings-cc-stat-value";
+  regCountSpan.textContent = "—";
+  statRow.appendChild(regCountSpan);
+  group.appendChild(statRow);
 
-  constructor() {
-    this.root = this.build();
-    // ST1「延后加载」：构造期不读 —— 见 `loadNow()`。
-  }
+  // auto-launch toggle
+  const wrap = document.createElement("div");
+  wrap.className = "settings-cc-autolaunch";
+  const row = document.createElement("label");
+  row.className = "settings-row settings-row-checkbox";
+  const autoLaunchCheckbox = document.createElement("input");
+  autoLaunchCheckbox.type = "checkbox";
+  autoLaunchCheckbox.className = "settings-checkbox";
+  row.appendChild(autoLaunchCheckbox);
+  const label = document.createElement("span");
+  label.className = "settings-checkbox-label";
+  label.textContent = "用 cc 启动 claude 时自动打开 monitor";
+  row.appendChild(label);
+  row.appendChild(
+    makeInfoIcon(
+      "勾选后：跑 cc / __ccm_bind 时如果 monitor 没在跑，PowerShell 会自动启动它（路径下方显示）。\n" +
+        "不勾选：必须先手动开 monitor 再跑 cc，否则握手超时（3s）。",
+    ),
+  );
+  wrap.appendChild(row);
+  const hint = document.createElement("div");
+  hint.className = "settings-cc-autolaunch-path";
+  const pathLabel = document.createElement("span");
+  pathLabel.textContent = "monitor 路径: ";
+  pathLabel.style.color = "var(--text-faint)";
+  hint.appendChild(pathLabel);
+  const autoLaunchPathSpan = document.createElement("span");
+  autoLaunchPathSpan.className = "settings-cc-autolaunch-path-value";
+  autoLaunchPathSpan.textContent = "—";
+  hint.appendChild(autoLaunchPathSpan);
+  wrap.appendChild(hint);
+  group.appendChild(wrap);
 
-  /**
-   * ST1「延后加载」：构造期不发 I/O；〔AL1c〕宿主是本文件的 `buildAliasManager`，
-   * 「别名」那一块**第一次展开**时才建它、再调这一下（`70 §8` #3）。
-   */
-  loadNow(): void {
-    void this.refresh();
-    void this.refreshAutoLaunch();
-  }
-
-  get element(): HTMLElement {
-    return this.root;
-  }
-
-  private build(): HTMLElement {
-    const group = document.createElement("div");
-    group.className = "settings-group";
-
-    // 标题 + 旁边 ! 图标显示原理
-    const heading = document.createElement("div");
-    heading.className = "settings-group-title";
-    heading.textContent = "PowerShell 集成";
-    heading.appendChild(
-      makeInfoIcon(
-        "在 PowerShell profile 里装 __ccm_bind helper：启动 claude 时把当前终端 HWND 注册给 monitor，" +
-          "之后 Tab ↗ 跳焦能精确拉对应终端窗口。不装也能用 monitor，但拉前不工作。",
-      ),
-    );
-    group.appendChild(heading);
-
-    // PowerShell 版本下拉
-    const rowVer = document.createElement("div");
-    rowVer.className = "settings-row";
-    const lblVer = document.createElement("span");
-    lblVer.className = "settings-label";
-    lblVer.textContent = "PowerShell";
-    rowVer.appendChild(lblVer);
-    this.versionSelect = document.createElement("select");
-    this.versionSelect.className = "settings-input";
-    for (const opt of PRESET_OPTIONS) {
-      const o = document.createElement("option");
-      o.value = opt.id;
-      o.textContent = opt.label;
-      this.versionSelect.appendChild(o);
-    }
-    this.versionSelect.value = "Ps51-CurrentHost";
-    this.versionSelect.addEventListener("change", () => this.onVersionChange());
-    rowVer.appendChild(this.versionSelect);
-    rowVer.appendChild(
-      makeInfoIcon(
-        "AllHosts (profile.ps1)：所有 PowerShell host 都读 —— powershell.exe / pwsh.exe / VSCode 终端 / ISE / SSH 都生效。\n\n" +
-          "$PROFILE / CurrentHost (Microsoft.PowerShell_profile.ps1)：只有 powershell.exe / pwsh.exe 控制台读，VSCode/ISE 不读自己的同名文件。\n\n" +
-          "推荐 AllHosts —— cc 函数在哪个终端都用。",
-      ),
-    );
-    group.appendChild(rowVer);
-
-    // profile 路径
-    const rowPath = document.createElement("div");
-    rowPath.className = "settings-row settings-row-stack";
-    const lblPath = document.createElement("span");
-    lblPath.className = "settings-label";
-    lblPath.textContent = "Profile";
-    lblPath.appendChild(
-      makeInfoIcon(
-        "PowerShell 启动时读的脚本文件。默认填 $PROFILE 实际指向的 " +
-          "Microsoft.PowerShell_profile.ps1（CurrentUserCurrentHost）。在 PS 里跑 $PROFILE 看你机器上具体路径。",
-      ),
-    );
-    rowPath.appendChild(lblPath);
-    this.pathInput = document.createElement("input");
-    this.pathInput.type = "text";
-    this.pathInput.className = "settings-input settings-input-wide";
-    this.pathInput.placeholder = "...\\Documents\\WindowsPowerShell\\Microsoft.PowerShell_profile.ps1";
-    this.pathInput.addEventListener("change", () => {
-      // 用户手编路径：保存到 localStorage，下次打开记得
-      try {
-        safeSet(LS_KEYS.profilePath, this.pathInput.value.trim());
-        safeSet(LS_KEYS.profilePreset, "Custom");
-      } catch {}
-      void this.scanCurrentPath();
-    });
-    rowPath.appendChild(this.pathInput);
-    group.appendChild(rowPath);
-
-    // ★ v1.7.9：是否同时装 wrapper 复选框（默认不勾选）
-    const wrapperRow = document.createElement("label");
-    wrapperRow.className = "settings-row settings-row-checkbox";
-    this.wrapperCheckbox = document.createElement("input");
-    this.wrapperCheckbox.type = "checkbox";
-    this.wrapperCheckbox.className = "settings-checkbox";
-    this.wrapperCheckbox.checked = false; // 默认不覆盖
-    this.wrapperCheckbox.addEventListener("change", () => void this.scanCurrentPath());
-    wrapperRow.appendChild(this.wrapperCheckbox);
-    const wrapperLabel = document.createElement("span");
-    wrapperLabel.className = "settings-checkbox-label";
-    wrapperLabel.textContent = "同时安装 cc wrapper";
-    wrapperRow.appendChild(wrapperLabel);
-    wrapperRow.appendChild(
-      makeInfoIcon(
-        "默认不勾选：只装 __ccm_bind helper。你需要在自己已有的 claude 启动 wrapper（function cc / function claude / 别名等）开头加一行 __ccm_bind 来触发绑定。\n\n" +
-          "勾选：额外装 function cc { __ccm_bind; & claude $args }。\n" +
-          "⚠ 如果你 profile 里已有 function cc 会被替换（cc-monitor 自己的块在 profile 后端，PowerShell function 后定义的会覆盖前面同名的）。",
-      ),
-    );
-    group.appendChild(wrapperRow);
-
-    // 状态行
-    const rowStatus = document.createElement("div");
-    rowStatus.className = "settings-cc-profile-status";
-    this.statusBadge = document.createElement("span");
-    this.statusBadge.className = "settings-cc-profile-badge";
-    this.statusBadge.textContent = "...";
-    rowStatus.appendChild(this.statusBadge);
-    group.appendChild(rowStatus);
-
-    // 冲突警告
-    this.warnArea = document.createElement("div");
-    group.appendChild(this.warnArea);
-
-    // 按钮行
-    const btnRow = document.createElement("div");
-    btnRow.className = "settings-cc-profile-buttons";
-
-    const previewBtn = document.createElement("button");
-    previewBtn.type = "button";
-    previewBtn.className = "settings-btn settings-btn-secondary";
-    previewBtn.textContent = "预览代码";
-    previewBtn.title = "看一眼即将写入 profile 的 BEGIN/END 块内容";
-    previewBtn.addEventListener("click", () => void this.openPreview());
-    btnRow.appendChild(previewBtn);
-
-    const scanBtn = document.createElement("button");
-    scanBtn.type = "button";
-    scanBtn.className = "settings-btn settings-btn-secondary";
-    scanBtn.textContent = "重新扫描";
-    scanBtn.title = "重新读 profile 文件，刷新安装状态";
-    scanBtn.addEventListener("click", () => void this.scanCurrentPath(true));
-    btnRow.appendChild(scanBtn);
-
-    const openBtn = document.createElement("button");
-    openBtn.type = "button";
-    openBtn.className = "settings-btn settings-btn-secondary";
-    openBtn.textContent = "打开 profile";
-    openBtn.title = "用系统默认编辑器打开当前 profile 文件";
-    openBtn.addEventListener("click", () => void this.openProfileInEditor());
-    btnRow.appendChild(openBtn);
-
-    this.installBtn = document.createElement("button");
-    this.installBtn.type = "button";
-    this.installBtn.className = "settings-btn";
-    this.installBtn.textContent = "安装";
-    this.installBtn.title =
-      "v1.7.10+：写入前自动备份原 profile 到同目录 <profile>.ccm-backup-<时间戳>，写入失败自动回滚。" +
-      "用 Win32 ReplaceFileW 保留原文件 ACL，不会出现 v1.7.9 那种用户读不了自己 profile 的事故。";
-    this.installBtn.addEventListener("click", () => void this.install());
-    btnRow.appendChild(this.installBtn);
-
-    this.uninstallBtn = document.createElement("button");
-    this.uninstallBtn.type = "button";
-    this.uninstallBtn.className = "settings-btn settings-btn-secondary";
-    this.uninstallBtn.textContent = "卸载";
-    this.uninstallBtn.style.display = "none";
-    this.uninstallBtn.addEventListener("click", () => void this.uninstall());
-    btnRow.appendChild(this.uninstallBtn);
-    group.appendChild(btnRow);
-
-    // 活跃注册数
-    const statRow = document.createElement("div");
-    statRow.className = "settings-cc-stat-row";
-    const statLabel = document.createElement("span");
-    statLabel.className = "settings-cc-stat-label";
-    statLabel.textContent = "已注册 PowerShell session";
-    statLabel.appendChild(
-      makeInfoIcon(
-        "正在跟 monitor 握手成功、可被 Tab ↗ 拉前的 PowerShell 进程数。\n" +
-          "数字 0 ≠ 没装好：只要你那个 PS 窗口最近没跑过 cc/__ccm_bind，就不会出现在这里。",
-      ),
-    );
-    statRow.appendChild(statLabel);
-    this.regCountSpan = document.createElement("span");
-    this.regCountSpan.className = "settings-cc-stat-value";
-    this.regCountSpan.textContent = "—";
-    statRow.appendChild(this.regCountSpan);
-    group.appendChild(statRow);
-
-    // v1.7.0-1.7.1 旧位置遗留警告
-    this.legacyArea = document.createElement("div");
-    group.appendChild(this.legacyArea);
-
-    // auto-launch toggle
-    group.appendChild(this.buildAutoLaunchRow());
-
-    return group;
-  }
-
-  private buildAutoLaunchRow(): HTMLElement {
-    const wrap = document.createElement("div");
-    wrap.className = "settings-cc-autolaunch";
-
-    const row = document.createElement("label");
-    row.className = "settings-row settings-row-checkbox";
-
-    this.autoLaunchCheckbox = document.createElement("input");
-    this.autoLaunchCheckbox.type = "checkbox";
-    this.autoLaunchCheckbox.className = "settings-checkbox";
-    this.autoLaunchCheckbox.addEventListener("change", () => {
-      void this.toggleAutoLaunch(this.autoLaunchCheckbox.checked);
-    });
-    row.appendChild(this.autoLaunchCheckbox);
-
-    const label = document.createElement("span");
-    label.className = "settings-checkbox-label";
-    label.textContent = "用 cc 启动 claude 时自动打开 monitor";
-    row.appendChild(label);
-    row.appendChild(
-      makeInfoIcon(
-        "勾选后：跑 cc / __ccm_bind 时如果 monitor 没在跑，PowerShell 会自动启动它（路径下方显示）。\n" +
-          "不勾选：必须先手动开 monitor 再跑 cc，否则握手超时（3s）。",
-      ),
-    );
-
-    wrap.appendChild(row);
-
-    const hint = document.createElement("div");
-    hint.className = "settings-cc-autolaunch-path";
-    const pathLabel = document.createElement("span");
-    pathLabel.textContent = "monitor 路径: ";
-    pathLabel.style.color = "var(--text-faint)";
-    hint.appendChild(pathLabel);
-    this.autoLaunchPathSpan = document.createElement("span");
-    this.autoLaunchPathSpan.className = "settings-cc-autolaunch-path-value";
-    this.autoLaunchPathSpan.textContent = "—";
-    hint.appendChild(this.autoLaunchPathSpan);
-    wrap.appendChild(hint);
-
-    return wrap;
-  }
-
-  private wantsWrapper(): boolean {
-    return this.wrapperCheckbox.checked;
-  }
-
-  private async openProfileInEditor(): Promise<void> {
-    const p = this.pathInput.value.trim();
-    if (!p) {
-      showActionFailureToast("请先选 PS 版本", "或在自定义里填一个 profile 路径", { level: "info" });
-      return;
-    }
-    try {
-      await openPath(p);
-    } catch (e) {
-      showActionFailureToast("打开失败", `${e}\n手动路径：${p}`);
-    }
-  }
-
-  /** 打开面板时调用：拿推荐路径 + 填默认值 + 扫一遍当前路径状态 */
-  private async refresh(): Promise<void> {
-    try {
-      const status = await commands.cc_integration_status({ commandName: CC_COMMAND_NAME });
-      this.recommended.Ps51 = null;
-      this.recommended.Ps7 = null;
-      for (const p of status.profiles) {
-        this.recommended[p.kind] = p.path;
-      }
-
-      // v1.7.12: 优先恢复用户上次的选择 (localStorage)；没有就默认 PS 5.1 CurrentHost
-      let savedPreset: PresetId | null = null;
-      let savedPath: string | null = null;
-      try {
-        savedPreset = safeGet(LS_KEYS.profilePreset) as PresetId | null;
-        savedPath = safeGet(LS_KEYS.profilePath);
-      } catch {}
-      if (savedPreset && PRESET_OPTIONS.some((o) => o.id === savedPreset)) {
-        this.versionSelect.value = savedPreset;
-        if (savedPreset === "Custom" && savedPath) {
-          this.pathInput.value = savedPath;
-        } else {
-          this.pathInput.value = this.pathForPreset(savedPreset) ?? "";
-        }
-      } else {
-        this.versionSelect.value = "Ps51-CurrentHost";
-        this.pathInput.value = this.pathForPreset("Ps51-CurrentHost") ?? "";
-      }
-
-      this.regCountSpan.textContent = String(status.active_registrations);
-      this.renderLegacy(status.legacy_profile_paths_with_block);
-      await this.scanCurrentPath();
-    } catch (e) {
-      this.statusBadge.textContent = `扫描失败: ${e}`;
-      this.statusBadge.className = "settings-cc-profile-badge settings-cc-badge-warn";
-    }
-  }
-
-  /** 根据下拉选项 id 推算实际 profile 路径。CurrentHost 用后端给的推荐，AllHosts 用同目录 profile.ps1 */
-  private pathForPreset(id: PresetId): string | null {
-    switch (id) {
-      case "Ps51-CurrentHost":
-        return this.recommended.Ps51;
-      case "Ps7-CurrentHost":
-        return this.recommended.Ps7;
-      case "Ps51-AllHosts":
-        return this.recommended.Ps51 ? swapFileName(this.recommended.Ps51, "profile.ps1") : null;
-      case "Ps7-AllHosts":
-        return this.recommended.Ps7 ? swapFileName(this.recommended.Ps7, "profile.ps1") : null;
-      case "Custom":
-        return null; // 由用户输入
-    }
-  }
-
-  private async scanCurrentPath(notify = false): Promise<void> {
-    const p = this.pathInput.value.trim();
-    if (!p) {
-      this.statusBadge.textContent = "（请选 PS 版本或填路径）";
-      this.statusBadge.className = "settings-cc-profile-badge settings-cc-badge-info";
-      return;
-    }
-    try {
-      const scan = await commands.cc_integration_scan_path({
-        path: p,
-        commandName: CC_COMMAND_NAME,
-      });
-      this.renderScanResult(scan);
-      if (notify) {
-        this.flashScan();
-      }
-    } catch (e) {
-      this.statusBadge.textContent = `扫描失败: ${e}`;
-      this.statusBadge.className = "settings-cc-profile-badge settings-cc-badge-warn";
-    }
-  }
-
-  private renderScanResult(scan: ProfileScan): void {
-    this.warnArea.innerHTML = "";
-    if (!scan.exists) {
-      this.statusBadge.textContent = "○ profile 文件不存在（安装时自动创建）";
-      this.statusBadge.className = "settings-cc-profile-badge settings-cc-badge-info";
-    } else if (scan.has_ccm_block) {
-      const ver = scan.ccm_block_version ? ` (${scan.ccm_block_version})` : "";
-      this.statusBadge.textContent = `✓ 已安装${ver}`;
-      this.statusBadge.className = "settings-cc-profile-badge settings-cc-badge-ok";
-    } else {
-      this.statusBadge.textContent = "✗ 未安装";
-      this.statusBadge.className = "settings-cc-profile-badge settings-cc-badge-warn";
-    }
-    // 命令名固定 cc：如果 profile 已有同名 function 且用户勾了 "同时安装 wrapper"，警告会覆盖
-    if (
-      scan.conflicting_functions.length > 0 &&
-      !scan.has_ccm_block &&
-      this.wantsWrapper()
-    ) {
-      const warn = document.createElement("div");
-      warn.className = "settings-cc-profile-warn";
-      warn.textContent =
-        `⚠ profile 已有 function ${scan.conflicting_functions.join(", ")}。` +
-        ` 你勾了 "同时安装 cc wrapper"，安装后 PowerShell 会用 cc-monitor 块里的版本（因为它在 profile 后端）。` +
-        ` 想保留你自己的：取消勾选，然后在自己的 function 开头加 __ccm_bind。`;
-      this.warnArea.appendChild(warn);
-    }
-    this.installBtn.textContent = scan.has_ccm_block ? "重新安装" : "安装";
-    this.uninstallBtn.style.display = scan.has_ccm_block ? "" : "none";
-  }
-
-  private renderLegacy(entries: LegacyProfileEntry[]): void {
-    this.legacyArea.innerHTML = "";
-    if (entries.length === 0) return;
-    const warn = document.createElement("div");
-    warn.className = "settings-cc-legacy-warn";
-    const head = document.createElement("div");
-    head.style.fontWeight = "600";
-    head.textContent = "ℹ 在 profile.ps1 (AllHosts) 也检测到 cc-monitor 块";
-    warn.appendChild(head);
-    const body = document.createElement("div");
-    body.style.marginTop = "4px";
-    body.textContent =
-      "profile.ps1（CurrentUserAllHosts）是合法的 PowerShell profile 位置——所有 host 都会读它。" +
-      "如果你是故意装在那里（比如想让 VSCode 终端 / ISE / SSH 也用 cc），保留即可。" +
-      "如果是 v1.7.0/1.7.1 残留 或 重复安装（同时也在 $PROFILE 装了一份），建议清理其中一份避免重复定义：";
-    warn.appendChild(body);
-    const list = document.createElement("ul");
-    list.style.marginTop = "4px";
-    list.style.marginLeft = "16px";
-    list.style.fontFamily = "var(--font-mono, monospace)";
-    list.style.fontSize = "11px";
-    for (const e of entries) {
-      const li = document.createElement("li");
-      li.textContent = e.path;
-      list.appendChild(li);
-    }
-    warn.appendChild(list);
-    this.legacyArea.appendChild(warn);
-  }
-
-  private flashScan(): void {
-    const prev = this.statusBadge.style.outline;
-    this.statusBadge.style.outline = "2px solid var(--accent, #c25b3b)";
-    window.setTimeout(() => {
-      this.statusBadge.style.outline = prev;
-    }, 500);
-  }
-
-  private onVersionChange(): void {
-    const id = this.versionSelect.value as PresetId;
-    // 持久化用户选择，下次打开面板恢复
-    try {
-      safeSet(LS_KEYS.profilePreset, id);
-    } catch {}
-    if (id === "Custom") {
-      // Custom 不强填路径，让用户自己输
-      this.pathInput.focus();
-      return;
-    }
-    const path = this.pathForPreset(id);
-    if (path) {
-      this.pathInput.value = path;
-      try {
-        safeSet(LS_KEYS.profilePath, path);
-      } catch {}
-      void this.scanCurrentPath();
-    } else {
-      this.pathInput.value = "";
-      const isPs7 = id.startsWith("Ps7");
-      this.statusBadge.textContent = `（${isPs7 ? "PS 7.x" : "PS 5.1"} 没自动检测到）`;
-      this.statusBadge.className = "settings-cc-profile-badge settings-cc-badge-info";
-    }
-  }
-
-  private async openPreview(): Promise<void> {
-    try {
-      const resp = await commands.cc_integration_preview({
-        commandName: CC_COMMAND_NAME,
-        includeCcFunction: this.wantsWrapper(),
-      });
-      this.showPreviewModal(resp.code);
-    } catch (e) {
-      console.error("preview failed:", e);
-    }
-  }
-
-  private showPreviewModal(code: string): void {
-    document.querySelector(".settings-cc-modal-backdrop")?.remove();
-    const backdrop = document.createElement("div");
-    backdrop.className = "settings-cc-modal-backdrop";
-    const modal = document.createElement("div");
-    modal.className = "settings-cc-modal";
-    const title = document.createElement("div");
-    title.className = "settings-cc-modal-title";
-    title.textContent = this.wantsWrapper()
-      ? "将写入 profile（helper + function cc）"
-      : "将写入 profile（仅 helper）";
-    modal.appendChild(title);
-
-    const pre = document.createElement("pre");
-    pre.className = "settings-cc-modal-code";
-    pre.textContent = code;
-    modal.appendChild(pre);
-
-    const closeBtn = document.createElement("button");
-    closeBtn.type = "button";
-    closeBtn.className = "settings-btn settings-btn-secondary";
-    closeBtn.textContent = "关闭";
-    closeBtn.addEventListener("click", () => backdrop.remove());
-    const buttons = document.createElement("div");
-    buttons.className = "settings-cc-modal-buttons";
-    buttons.appendChild(closeBtn);
-    modal.appendChild(buttons);
-
-    backdrop.appendChild(modal);
-    backdrop.addEventListener("click", (e) => {
-      if (e.target === backdrop) backdrop.remove();
-    });
-    document.body.appendChild(backdrop);
-  }
-
-  private async install(): Promise<void> {
-    const p = this.pathInput.value.trim();
-    if (!p) {
-      showActionFailureToast("请先选 PS 版本", "或在自定义里填一个 profile 路径", { level: "info" });
-      return;
-    }
-    const includeCc = this.wantsWrapper();
-    try {
-      await commands.cc_integration_install({
-        path: p,
-        commandName: CC_COMMAND_NAME,
-        includeCcFunction: includeCc,
-      });
-      await this.scanCurrentPath();
-      const tail = includeCc
-        ? "请重启 PowerShell，cc 命令立即可用。"
-        : "下一步：[打开 profile]，在自己的 claude wrapper 开头加 __ccm_bind 再重启 PowerShell。";
-      showActionFailureToast("已写入 profile", tail, { level: "info", durationMs: 8000 });
-    } catch (e) {
-      showActionFailureToast("安装失败", String(e));
-    }
-  }
-
-  private async uninstall(): Promise<void> {
-    if (!confirm("确认卸载？BEGIN/END 块会被整块删除，profile 其他内容不动。")) return;
-    try {
-      await commands.cc_integration_uninstall({
-        path: this.pathInput.value.trim(),
-      });
-      await this.scanCurrentPath();
-    } catch (e) {
-      showActionFailureToast("卸载失败", String(e));
-    }
-  }
-
-  private async refreshAutoLaunch(): Promise<void> {
+  const refreshAutoLaunch = async (): Promise<void> => {
     try {
       const cfg = await commands.cc_get_auto_launch();
-      this.autoLaunchCheckbox.checked = cfg.auto_launch_enabled;
-      this.autoLaunchPathSpan.textContent =
-        cfg.monitor_exe_path ?? "(未记录，启动一次 monitor 后自动记录)";
-      this.autoLaunchPathSpan.title = cfg.monitor_exe_path ?? "";
+      autoLaunchCheckbox.checked = cfg.auto_launch_enabled;
+      autoLaunchPathSpan.textContent = cfg.monitor_exe_path ?? "(未记录，启动一次 monitor 后自动记录)";
+      autoLaunchPathSpan.title = cfg.monitor_exe_path ?? "";
     } catch (e) {
       console.warn("cc_get_auto_launch failed:", e);
     }
-  }
+  };
+  autoLaunchCheckbox.addEventListener("change", () => {
+    const enabled = autoLaunchCheckbox.checked;
+    void (async () => {
+      try {
+        await commands.cc_set_auto_launch({ enabled });
+      } catch (e) {
+        showActionFailureToast("保存失败", String(e));
+        autoLaunchCheckbox.checked = !enabled;
+      }
+    })();
+  });
 
-  private async toggleAutoLaunch(enabled: boolean): Promise<void> {
-    try {
-      await commands.cc_set_auto_launch({ enabled });
-    } catch (e) {
-      showActionFailureToast("保存失败", String(e));
-      this.autoLaunchCheckbox.checked = !enabled;
-    }
-  }
+  return {
+    element: group,
+    setBound: (n) => {
+      regCountSpan.textContent = String(n);
+    },
+    loadNow: () => void refreshAutoLaunch(),
+  };
+}
+
+/** 预览一段要装进去的代码（只读的浮层）。 */
+function showPreviewModal(titleText: string, code: string): void {
+  document.querySelector(".settings-cc-modal-backdrop")?.remove();
+  const backdrop = document.createElement("div");
+  backdrop.className = "settings-cc-modal-backdrop";
+  const modal = document.createElement("div");
+  modal.className = "settings-cc-modal";
+  const title = document.createElement("div");
+  title.className = "settings-cc-modal-title";
+  title.textContent = titleText;
+  modal.appendChild(title);
+  const pre = document.createElement("pre");
+  pre.className = "settings-cc-modal-code";
+  pre.textContent = code;
+  modal.appendChild(pre);
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.className = "settings-btn settings-btn-secondary";
+  closeBtn.textContent = "关闭";
+  closeBtn.addEventListener("click", () => backdrop.remove());
+  const buttons = document.createElement("div");
+  buttons.className = "settings-cc-modal-buttons";
+  buttons.appendChild(closeBtn);
+  modal.appendChild(buttons);
+  backdrop.appendChild(modal);
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop) backdrop.remove();
+  });
+  document.body.appendChild(backdrop);
 }

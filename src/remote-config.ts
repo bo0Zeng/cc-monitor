@@ -62,7 +62,20 @@ export function parseAddressLines(text: string): string[] {
 export interface RemoteConfig {
   enabled: boolean;
   hosts: RemoteHostConfig[];
+  /**
+   * 〔S5 · 第四波 · V41〕`remote` 段在、却认不出（没有 `hosts` 数组 —— 旧的单台写法、或 `hosts` 写成了别的类型）
+   * 时那一句原因；认得出 / 没有 `remote` 段 ⇒ 不给。认不出时 `hosts` 恒空（不猜那是哪台），
+   * 设置页把这一句说在机器列表顶上。Rust 那一侧同一个判准（`lib.rs::parse_remote_hosts`），落 `error!` 日志。
+   */
+  unrecognized?: string;
 }
+
+/**
+ * 〔S5 · 第四波 · V41「不为旧配置留兼容」〕`remote` 段认不出时，机器列表顶上那一句。
+ * 从前旧的单对象写法（`remote: { enabled, host, … }`）会被悄悄当成 1 台；那一支删了。
+ */
+export const REMOTE_CONFIG_UNRECOGNIZED =
+  "远端配置认不出：config.json 的 remote 段没有 hosts 列表（旧的单台写法不再认），这里一台都不显示；在这里重新添加机器，会按新写法存下来";
 
 /**
  * F83（#39）:可打开文件窗口的远端主机——`host` 与 `user` 都非空（`file-window.ts::openFileWindow` 的前置，
@@ -120,8 +133,9 @@ function coerceHost(obj: Record<string, unknown>): RemoteHostConfig {
 }
 
 /**
- * 读 config.json 的 `remote` 段 → RemoteConfig。**向后兼容**：有 `hosts` 数组 → 逐台读；
- * 无 `hosts` 但有 `host`（旧单对象）→ 归一成 1 台；都没有 → 空列表。永不抛。
+ * 读 config.json 的 `remote` 段 → RemoteConfig。有 `hosts` 数组 → 逐台读；`remote` 段在而没有
+ * `hosts` 数组 ⇒ **认不出**（`hosts` 空 ＋ `unrecognized` 那一句）；没有 `remote` 段 → 空列表。永不抛。
+ * 〔S5 · V41〕从前「无 `hosts` 但有 `host`（旧单对象）→ 归一成 1 台」那一支删了。
  */
 export async function readRemoteConfig(): Promise<RemoteConfig> {
   try {
@@ -133,15 +147,12 @@ export async function readRemoteConfig(): Promise<RemoteConfig> {
     const obj = r as Record<string, unknown>;
     const enabled = typeof obj.enabled === "boolean" ? obj.enabled : false;
 
-    let raw: Record<string, unknown>[] = [];
-    if (Array.isArray(obj.hosts)) {
-      raw = obj.hosts.filter(
-        (h): h is Record<string, unknown> => h !== null && typeof h === "object",
-      );
-    } else if (typeof obj.host === "string" && obj.host) {
-      // 旧单对象形态：把 remote 自身当一台。
-      raw = [obj];
+    if (!Array.isArray(obj.hosts)) {
+      return { enabled, hosts: [], unrecognized: REMOTE_CONFIG_UNRECOGNIZED };
     }
+    const raw = obj.hosts.filter(
+      (h): h is Record<string, unknown> => h !== null && typeof h === "object",
+    );
     return {
       enabled,
       hosts: raw.map(coerceHost),
@@ -221,7 +232,7 @@ function serializeHost(h: RemoteHostConfig): Record<string, unknown> {
 
 /**
  * 把 RemoteConfig MERGE 进 config.json 顶层的 `remote` 键，不动其他字段。
- * 写成 `{ enabled, hosts: [...] }`（升级旧单对象形态）；key 是 camelCase，与 Rust
+ * 写成 `{ enabled, hosts: [...] }`（认不出的那一段整个换掉）；key 是 camelCase，与 Rust
  * `lib.rs::load_remote_configs` 读的键严格一致。
  *
  * ★ S1 起这是**数据层内部的「序列化 + 落盘」单一出口**，`remote` 键的盘上形状只有
