@@ -39,10 +39,17 @@ fn only_the_panorama_cells_with_a_production_line_get_bytes() {
             .filter(|k| LINES.contains(&(Product::Panorama, *k)));
         assert_eq!(got, want, "{os} / {arch}");
         if want.is_none() {
-            assert!(
-                panorama_binary(os, arch).is_none(),
-                "{os} / {arch} 不该有字节"
-            );
+            // 〔TL1 · 4C〕从前判的是一个按两个词直接取字节的函数（远端推字节改走 `choose` 之后它删了）；
+            //   今天判那个口本身：两条路都拒。
+            for route in [
+                crate::byte_table::Route::Remote,
+                crate::byte_table::Route::Local,
+            ] {
+                assert!(
+                    crate::byte_table::choose(Product::Panorama, route, key_of(os, arch)).is_err(),
+                    "{os} / {arch} 不该有字节（{route:?}）"
+                );
+            }
         }
     }
 }
@@ -90,7 +97,10 @@ fn the_arches_we_pick_are_exactly_the_ones_build_rs_embeds() {
 #[test]
 fn the_embedded_bytes_are_the_right_arch() {
     for (arch, machine) in [("x86_64", 62u16), ("aarch64", 183u16)] {
-        let b = panorama_binary("Linux", arch).expect("cfg 置了却选不出字节");
+        let key = crate::byte_table::key_of("Linux", arch).expect("认得出");
+        let b = crate::byte_table::pick(crate::byte_table::Product::Panorama, key)
+            .expect("cfg 置了却选不出字节")
+            .bytes;
         assert_eq!(&b[..4], b"\x7fELF", "{arch} 那份不是 ELF");
         assert_eq!(
             u16::from_le_bytes([b[18], b[19]]),
@@ -173,15 +183,53 @@ fn the_push_lands_where_the_backend_looks_and_inside_a_remote_write_root() {
     );
 }
 
-/// `uname -s -m` 恰两段才认。
+/// ★〔TL1 · 4C〕**问那台是什么机器，monitor 生产段只有一处**（`DP1.md` 报备 7「两份 `uname -s -m`」收成一份）。
+///
+/// 要求住址：`设计/96 §7.1.1b`「全仓唯一的取字节口」（`byte_table.rs` 头注逐字）＋ `设计/01 §6.7a` 规矩 4
+/// （本机只是「目标机器恰好是自己」—— 两件产物、两条路走同一张表）。
+/// 两向：`uname -s -m` 这个命令串在 monitor 生产段的住址集合 == {`byte_table.rs`}（多一处 = 又长出第二份；
+/// 零处 = 尺子瞎了）；全景推字节那一臂真经 `choose(Panorama, Remote, probe_key(..))` 取、拒绝经 `say(Panorama, ..)` 说
+/// （读本模块生产段，异源于 `byte_table` 自己的判据）。
 #[test]
-fn uname_must_answer_exactly_os_and_arch() {
+fn asking_what_the_machine_is_lives_in_one_place_and_the_push_goes_through_choose() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let needle = format!("uname -s {}", "-m");
+    let mut at: Vec<String> = Vec::new();
+    for (p, src) in guard_core::scan_tree!(&root, &["rs"]) {
+        if guard_core::production_code(&src).contains(&needle) {
+            at.push(
+                p.strip_prefix(&root)
+                    .unwrap_or(&p)
+                    .to_string_lossy()
+                    .replace('\\', "/"),
+            );
+        }
+    }
+    at.sort();
     assert_eq!(
-        parse_uname("Linux x86_64\n"),
-        Ok(("Linux".to_string(), "x86_64".to_string()))
+        at,
+        vec!["byte_table.rs".to_string()],
+        "问机器的那条命令在 monitor 生产段的住址不是只有 byte_table.rs"
     );
-    for bad in ["", "Linux", "Linux x86_64 extra", "   \n"] {
-        assert!(parse_uname(bad).is_err(), "{bad:?}");
+    // 正控：同一把尺子在一段合成源码上数得出（不然上面的「只有一处」可能是空真 —— 它的非空由 byte_table.rs 那一处担着）。
+    assert!(
+        guard_core::production_code(&format!("const X: &str = \"{needle}\";")).contains(&needle)
+    );
+    let me: String =
+        guard_core::production_code(include_str!("../../src/bridge/src/panorama_bytes.rs"))
+            .split_whitespace()
+            .collect();
+    for want in [
+        "choose(Product::Panorama,Route::Remote,key)",
+        "letkey=probe_key(&cfg).await?;",
+        ".say(Product::Panorama,label)",
+        "choose(Product::Panorama,Route::Local,Key::this_machine())",
+        ".say(Product::Panorama,\"本机\")",
+    ] {
+        assert!(
+            me.contains(want),
+            "panorama_bytes.rs 生产段里找不到 `{want}`"
+        );
     }
 }
 
