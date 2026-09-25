@@ -203,7 +203,11 @@ import {
   withSessionReads,
 } from "./test-support/chan-fake";
 import { restartWithAccount } from "../src/account-restart";
-import { invalidateAccountsCache } from "../src/accounts";
+import {
+  invalidateAccountsCache,
+  __resetLocalLaunchSnapshotForTests,
+  __setLocalLaunchSnapshotForTests,
+} from "../src/accounts";
 import { showActionFailureToast } from "../src/error-toast";
 import { __setHostOsForTests, type HostOs } from "../src/settings/host-os";
 import {
@@ -5041,6 +5045,91 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
   it("★ 还没建的 tab 收到 unseen ⇒ 什么都不建", () => {
     tm.markUnseen("nobody");
     expect(home(tm).store.tabs.has("nobody")).toBe(false);
+  });
+});
+
+/**
+ * 〔GP1 · 第四波〕**resume 之前问记录，问的是这次 resume 要用的那个账号根**（`设计/30 §8` 第 4 条 ·
+ * `调研/第四波记录/GP1.md §4` H2）。期望的目录 == 交给起会话那一格的目录（同一次解析，两处读同一个值）。
+ */
+describe("〔GP1〕记录那一问带上这次 resume 的账号根", () => {
+  let tm: TabManager;
+  const probes = (): Record<string, unknown>[] =>
+    sessionReadCalls(vi.mocked(invoke).mock.calls, "probe_session_record");
+  const remoteAccounts = (accounts: unknown[]) => ({
+    available: true,
+    error: null,
+    meta: { enabled: true, acctsDir: "/h/.claude-accts", manifestPath: "/h/.claude-accts/accounts.json", updatedAt: null, sharedStore: null, count: accounts.length, error: null },
+    accounts,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    invalidateAccountsCache();
+    __resetLocalLaunchSnapshotForTests();
+    tm = makeTM();
+  });
+
+  it("★ 远端三支（直连 · tmux 就地 · tmux 全新）：带的是 withAccount 解析出的那个目录；基座 ⇒ 不带", async () => {
+    let accounts: unknown[] = [
+      { name: "z", email: "z@x.edu", configDir: "/h/.claude-accts/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true },
+    ];
+    let tmux: unknown[] = [];
+    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads(withAccountReads((cmd: string) => {
+      if (cmd === "list_remote_accounts") return Promise.resolve(remoteAccounts(accounts));
+      if (cmd === "list_last_accounts") return Promise.resolve({});
+      if (cmd === "list_remote_tmux") return Promise.resolve(tmux);
+      if (cmd === "probe_session_record") return Promise.resolve({ present: true, root: "/h/.claude-accts/z/projects" });
+      return Promise.resolve(undefined);
+    }))));
+    tm.ensureTab("k1", "/home/pi/proj", "/p/k1.jsonl", 0, "aya");
+    tm.archiveTab("k1");
+    await home(tm).actions.resumeTab("k1"); // 直连
+    await home(tm).actions.resumeTabTmux("k1"); // tmux 全新（没有空壳）
+    tmux = [{ name: "proj-cc", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "k1" }];
+    await home(tm).actions.resumeTabTmux("k1"); // tmux 就地（空壳还在）
+    expect(probes().map((p) => p.configDir)).toEqual([
+      "/h/.claude-accts/z",
+      "/h/.claude-accts/z",
+      "/h/.claude-accts/z",
+    ]);
+    // 同一次解析：交给起会话那一格的也是这个目录（异源：一边是记录那一问的请求体，一边是执行器的入参）。
+    expect(vi.mocked(runRemoteResume).mock.calls[0][4]).toMatchObject({ configDir: "/h/.claude-accts/z" });
+    // 基座（那台一个账号都没有）⇒ 不带，后端查它自己的家目录（与改之前逐字同一问）。
+    accounts = [];
+    invalidateAccountsCache();
+    vi.mocked(invoke).mockClear();
+    await home(tm).actions.resumeTab("k1");
+    expect(probes().map((p) => p.configDir)).toEqual([undefined]);
+  });
+
+  it("★ 本机：带的是本机起会话那一格解析出的账号目录（`localLaunchConfigDirSync`）", async () => {
+    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) => {
+      if (cmd === "probe_session_record") return Promise.resolve({ present: true, root: "/h/.claude-accts/acct-b/projects" });
+      return Promise.resolve(undefined);
+    })));
+    __setLocalLaunchSnapshotForTests(
+      {
+        origin: LOCAL_ORIGIN,
+        available: true,
+        error: null,
+        meta: null,
+        accounts: [
+          { name: "acct-b", email: null, configDir: "/h/.claude-accts/acct-b", isDefault: false, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true } as never,
+        ],
+        defaultName: "acct-b",
+        notice: null,
+      } as never,
+      {},
+    );
+    tm.ensureTab("k2", "/home/u/p", "/p/k2.jsonl", 0, LOCAL_ORIGIN);
+    tm.archiveTab("k2");
+    await home(tm).actions.resumeTab("k2");
+    expect(probes().map((p) => p.configDir)).toEqual(["/h/.claude-accts/acct-b"]);
+    // 同一个值也交给了起会话那一格（`resume_history_session` 的 `account.configDir`）。
+    const launched = vi.mocked(invoke).mock.calls.find((c) => c[0] === "resume_history_session");
+    expect(launched?.[1]).toMatchObject({ account: { configDir: "/h/.claude-accts/acct-b" } });
   });
 });
 

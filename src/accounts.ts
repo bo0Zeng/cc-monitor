@@ -379,6 +379,18 @@ export type LocalLaunchAccountWire = Record<
   Record<typeof LOCAL_LAUNCH_ACCOUNT_WIRE.configDir, string> &
   Record<typeof LOCAL_LAUNCH_ACCOUNT_WIRE.name, string>;
 
+/**
+ * 〔GP1 · 第四波〕本机这次起会话**要用的账号配置目录**（[`localLaunchAccountSync`] 载荷里 `configDir` 那一格的同一个值，
+ * 同一个快照、同一条规则）。说不出 ⇒ `undefined`（基座）。resume 之前问记录还在不在，要查的就是这棵树
+ * （`tab-session-actions.ts::recordStillThere`；`设计/30 §8` 第 4 条）。
+ */
+export function localLaunchConfigDirSync(sid: string | null): string | undefined {
+  const snap = localLaunchSnapshot;
+  const name = localLaunchAccountNameSync(sid);
+  if (!snap || !name) return undefined;
+  return snap.state.accounts.find((a) => a.name === name)?.configDir || undefined;
+}
+
 export function localLaunchAccountSync(sid: string | null): LocalLaunchAccountWire | undefined {
   const snap = localLaunchSnapshot;
   const name = localLaunchAccountNameSync(sid);
