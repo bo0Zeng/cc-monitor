@@ -1,55 +1,43 @@
-/// ★★ **写 doc-link 那条路的安全性整个压在 vendor 的 `guard_rel` 上**
-/// 〔audit-0805 08-08，Phase G 第 87 件〕。
+/// ★★ **写 doc-link 那条路的路径安全，第一道压在上游的 `guard_doc_rel` 上**
+/// 〔audit-0805 08-08，Phase G 第 87 件；〔RM1d〕09-24 随「引擎只算、文件管理来写」改射程〕。
 ///
 /// # 先核的结果（三段，别只读结论）
 ///
-/// 08-08 横扫「收路径参数的 `#[tauri::command]`」得 22 条，逐条分档：
-/// 远端那批（`sftp_pool` / `sftp` / `acct_iso_deploy` / `tmux`）操作的是**用户自己的
-/// 远端机器**，收任意路径是功能本身；本机那侧除上一轮刚围栏的三条 `cc_integration_*`，
-/// 只剩 panorama 这五条。
-///
-/// 1. `add_annotation` / `propose_annotation` 收的 `file` **不进路径** ——
-///    vendor 把它当**数据**存进 `Annotation`，落盘文件名是内容哈希 ⇒ 无穿越面，
-///    **刻意不给它们加守卫**（加了是安慰剂）。
-/// 2. `write_doc_link` / `remove_doc_link` 的 `doc` **真的进路径**（`repo.join(doc_rel)`），
-///    而 vendor **自己有围栏**：`guard_rel` / `guard_doc_rel` 拒绝绝对路径与 `..`。
-/// 3. `repo` 本身**刻意不设围栏**：panorama 的功能就是「索引任意一个项目目录」，
-///    home 围栏会砍掉 `/srv/work` 这类正当用法。⇒ 登记进 `ROADMAP §5` 当诚实边界，
-///    而不是装一道假围栏。
+/// 1. 批注的 `file` **不进路径** —— 上游把它当**数据**存进 `Annotation`，落点文件名是内容哈希 ⇒
+///    无穿越面，**刻意不给它加守卫**（加了是安慰剂）。
+/// 2. 文档关联的 `doc` **真的进路径**（计划里的 `rel` 就是它）。上游「算」那一层自己有围栏：
+///    `edits::plan_write_doc_link` / `plan_remove_doc_link`（以及纯的 `next_*`）先过 `docs::guard_doc_rel`，
+///    它拒绝绝对路径与 `..`。〔RM1d〕第二道在落盘那一侧：那台机器后端的 `files-put` / `files-delete`
+///    以 `root = 仓` 过写面围栏（后端判据管，不在这里判）。
+/// 3. `repo` 本身**刻意不设围栏**：全景的功能就是「索引任意一个项目目录」。
 ///
 /// # 本条钉什么
 ///
-/// 我们这侧的安全性**整个压在别人家的两行守卫上**，而 vendor 是**冻结的副本**
-///（红线：一字节不动）——它会被**整份换新**（`build.rs` 有 `.vendor_id` 新鲜度自检，
-/// 但那只说「副本旧了」，不说「那两行还在不在」）。
-/// ⇒ 前提触发器：那两个方法必须仍然调 `guard_rel`，且 `guard_rel` 必须仍然
-/// 同时拒**绝对路径**与 `..`。**只读 vendor，不改它一个字节。**
+/// 第一道是**别人家的几行守卫**，而 vendor 是冻结副本、会被整份换新 ⇒ 前提触发器：那四个「算」函数
+/// 必须仍然调 `guard_doc_rel`，且它必须仍然同时拒**绝对路径**与 `..`。**只读 vendor，不改它一个字节。**
 #[test]
 fn the_doc_link_writes_still_go_through_the_vendor_guard() {
-    // 〔PN1b 09-24 re-vendor〕上游把 `engine.rs` 按职责拆成了 `engine/` 目录：
-    // 两个写路径方法住 `docs_anchors.rs`，`guard_rel` 住 `mod.rs` ⇒ 两份拼起来读。
-    // 读不到任何一份都当场 panic（不许退成空串 —— 那会让下面每条都「找不到」而不是「判过」）。
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("vendor/code-picture-core/src/engine");
-    let src = ["docs_anchors.rs", "mod.rs"]
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("vendor/code-picture-core/src");
+    let src = ["edits.rs", "docs.rs"]
         .map(|f| {
             let p = dir.join(f);
             std::fs::read_to_string(&p)
                 .unwrap_or_else(|e| panic!("读不到 {p:?}：{e} —— vendor 布局变了就把本条一起改"))
         })
         .join("\n");
-    // 我们真正调到的**写路径**方法（`panorama.rs` 里各调一次）。
-    for m in ["write_doc_link", "remove_doc_link"] {
+    // 我们真正调到的「算」函数（本机 `panorama.rs::plan_local`、远端小程序各调一次）＋ 它们的纯内核。
+    for m in [
+        "plan_write_doc_link",
+        "plan_remove_doc_link",
+        "next_write_doc_link",
+        "next_remove_doc_link",
+    ] {
         let at = src.find(&format!("pub fn {m}(")).unwrap_or_else(|| {
             panic!("vendor 里找不到 `{m}` —— 换版了，本条与 `panorama.rs` 一起复核")
         });
-        // ⚠ 两件事一起做对，缺一个就白写：
-        // ① **按 char 取，别按字节切** —— vendor 源码里全是中文注释，
-        //    `&src[at..at+400]` 会落在汉字中间当场 panic（`digit_after` 头注记过）；
-        // ② **切到方法真正的结尾**，不是「起点后 N 个字符」——
-        //    ⚠ 08-08 变异实测：定长窗口把守卫删掉后**照样绿**，因为窗口
-        //    一路吃进了下一个方法 `remove_doc_link`，那里还有一句 `guard_rel`。
-        //    同一个缺陷两轮前刚在 `structural_scan` 修过，这次犯在自己新写的判据上。
+        // ⚠ 两件事一起做对，缺一个就白写（08-08 变异实测过）：
+        // ① **按 char 取，别按字节切** —— vendor 源码里全是中文注释；
+        // ② **切到函数真正的结尾**（大括号配平），不是「起点后 N 个字符」—— 定长窗口会吃进下一个函数。
         let body: String = {
             let rest: Vec<char> = src[at..].chars().take(4000).collect();
             let mut depth = 0i32;
@@ -70,36 +58,97 @@ fn the_doc_link_writes_still_go_through_the_vendor_guard() {
         let body = body.as_str();
         assert!(
             body.len() > 40 && body.lines().count() < 40,
-            "从 `{m}` 切出 {} 行，不像一个方法体（配平切错了，本条会零命中地绿）",
+            "从 `{m}` 切出 {} 行，不像一个函数体（配平切错了，本条会零命中地绿）",
             body.lines().count()
         );
         assert!(
-            guard_core::contains_word(body, "guard_rel"),
-            "vendor 的 `{m}` 不再调 `guard_rel` 了。\n\
-                 ★ 那两行是**我们这侧唯一挡着路径穿越的东西**：`doc` 来自 webview，\n\
-                 下游是 `repo.join(doc_rel)` 然后 `fs::write`。\n\
-                 ⚠ vendor 是冻结副本、会被整份换新，而 `.vendor_id` 新鲜度自检只说\n\
-                 「副本旧了」，不说「那两行还在不在」。\n\
+            guard_core::contains_word(body, "guard_doc_rel"),
+            "vendor 的 `{m}` 不再调 `guard_doc_rel` 了。\n\
+                 ★ 那一行是**算那一侧唯一挡着路径穿越的东西**：`doc` 来自 webview，\n\
+                 下游是计划里的 `rel`（本机那条读 `repo.join(doc)`）。\n\
                  换版后要么确认新版另有等价围栏，要么在 `panorama.rs` 这侧自己加一道。\n\
                  实得这一段：{body:?}"
         );
     }
     // 守卫本身还得真守：绝对路径与 `..` 两件都要拒。
     let g = src
-        .find("fn guard_rel(")
-        .expect("vendor 里找不到 `guard_rel` 定义 —— 上面那两条此刻在比一个不存在的东西");
-    let gbody: String = src[g..].chars().take(300).collect();
+        .find("fn guard_doc_rel(")
+        .expect("vendor 里找不到 `guard_doc_rel` 定义 —— 上面那几条此刻在比一个不存在的东西");
+    let gbody: String = src[g..].chars().take(600).collect();
     let gbody = gbody.as_str();
-    // ⚠ 用 `contains_word` 而不是裸 `contains`：`needle_anchor` 棘轮当场拦过
-    // （33→34），而它指出的不只是写法 —— 裸子串在事实被撑大时照样绿。
     for needle in ["starts_with", "\"..\""] {
         assert!(
             guard_core::contains_word(gbody, needle),
-            "`guard_rel` 里找不到 `{needle}` —— 它可能只剩半道围栏了。\n\
+            "`guard_doc_rel` 里找不到 `{needle}` —— 它可能只剩半道围栏了。\n\
                  两件缺一不可：绝对路径（`/etc/x.md` 直接跳出 repo）与 `..`（逐级爬出去）。\n\
                  实得：{gbody:?}"
         );
     }
+}
+
+/// ★〔RM1d · V110〕monitor 生产段（`panorama.rs` ＋ `panorama_call.rs`）**自己一个字节都不写**批注 /
+/// 文档关联：引擎写方法的调用形与上游写盘那一层零命中；落盘只经 `user_files::Door`。
+///
+/// 针与小程序那条（`tests/panorama-engine/cli_tests.rs::the_program_never_calls_…`）同一张；
+/// 反空真：「算」那一层与写口确实在用。
+#[test]
+fn the_monitor_never_writes_annotations_or_doc_links_itself() {
+    let prod = [
+        include_str!("../../src/bridge/src/panorama.rs"),
+        include_str!("../../src/bridge/src/panorama_call.rs"),
+    ]
+    .map(guard_core::production_code)
+    .join("\n");
+    let needles = [
+        ".add_annotation(",
+        ".propose_annotation(",
+        ".approve_annotation(",
+        ".remove_annotation(",
+        ".write_doc_link(",
+        ".remove_doc_link(",
+        "annotations::apply",
+        "annotations::write",
+        "annotations::remove",
+        "docs::apply",
+        "docs::write_doc_link",
+        "docs::remove_doc_link",
+    ];
+    let hits: Vec<&str> = needles
+        .iter()
+        .copied()
+        .filter(|n| prod.contains(n))
+        .collect();
+    assert!(
+        hits.is_empty(),
+        "monitor 自己写了批注 / 文档关联：{hits:?} —— 用户文件只许那台机器后端的文件管理写（V88 · V110）"
+    );
+    for must in ["edits::plan_add_annotation(", ".put(", ".delete("] {
+        assert!(
+            prod.contains(must),
+            "生产段里没有 `{must}` —— 「算 · 交」那条路不在了，零命中不作数"
+        );
+    }
+    // 正控：尺子对合成的一行真调用必须命中。
+    let synthetic =
+        guard_core::production_code("fn x(e: &Engine) { e.approve_annotation(\"1\").ok(); }\n");
+    assert!(needles.iter().any(|n| synthetic.contains(n)), "尺子瞎了");
+}
+
+/// 测试里代替「那台机器后端的文件管理」把一份计划落盘（**只在判据里**；生产只经 `user_files::Door`）。
+fn land<T>(repo: &std::path::Path, p: code_picture_core::edits::Planned<T>) -> T {
+    if let Some(e) = &p.edit {
+        let at = repo.join(&e.rel);
+        match &e.after {
+            Some(t) => {
+                if e.parents {
+                    std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+                }
+                std::fs::write(&at, t).unwrap();
+            }
+            None => std::fs::remove_file(&at).unwrap(),
+        }
+    }
+    p.value
 }
 
 use super::*;
@@ -194,9 +243,15 @@ fn annotation_writes_to_repo_not_store_after_split() {
             !repo.join(".codepicture").exists(),
             "写批注前 repo 内不该有 .codepicture（D20 lazy）"
         );
-        let id = g
-            .add_annotation("lib.rs", Some("f"), "note", "me")
-            .expect("add_annotation");
+        // 〔RM1d〕算（上游 `edits`，只读）＋ 落盘（判据里的替身，生产是那台后端的 `files-put`）。
+        let planned =
+            code_picture_core::edits::plan_add_annotation(&repo, "lib.rs", Some("f"), "note", "me")
+                .expect("plan_add_annotation");
+        assert!(
+            !repo.join(".codepicture").exists(),
+            "算那一步建了批注目录（D20 lazy）"
+        );
+        let id = land(&repo, planned);
         assert!(
             repo.join(".codepicture")
                 .join("annotations")
@@ -302,9 +357,19 @@ fn proposed_annotations_stay_invisible_to_agents_until_approved() {
         };
 
         // 1. 提议 → 人看得见（Proposed），agent 看不见。
-        let pid = g
-            .propose_annotation("lib.rs", Some("f"), "agent 觉得这里要改", "agent-x")
-            .expect("propose");
+        // 〔RM1d〕写走「算 ＋ 落盘」（生产里落盘是那台后端的 `files-put`，这里是判据替身 `land`）。
+        use code_picture_core::edits;
+        let pid = land(
+            &repo,
+            edits::plan_propose_annotation(
+                &repo,
+                "lib.rs",
+                Some("f"),
+                "agent 觉得这里要改",
+                "agent-x",
+            )
+            .expect("propose"),
+        );
         let listed: Vec<(String, model::AnnotationStatus)> = g
             .list_annotations()
             .into_iter()
@@ -322,20 +387,27 @@ fn proposed_annotations_stay_invisible_to_agents_until_approved() {
 
         // 2. 批准 → agent 恰好看见这一条。
         assert!(
-            g.approve_annotation(&pid).expect("approve"),
+            land(
+                &repo,
+                edits::plan_approve_annotation(&repo, &pid).expect("approve")
+            ),
             "批准一条存在的提议应回 true"
         );
         assert_eq!(agent_sees(&g, &f), vec![pid.clone()]);
         assert!(
-            !g.approve_annotation("0000").expect("approve"),
+            !land(
+                &repo,
+                edits::plan_approve_annotation(&repo, "0000").expect("approve")
+            ),
             "不存在的 id 应回 false"
         );
 
         // 3. 死值实验：人写的（Active）→ 侧车文件改成 Proposed → agent 立刻看不见。
         let gsym = "lib.rs#g".to_string();
-        let hid = g
-            .add_annotation("lib.rs", Some("g"), "人写的", "me")
-            .expect("add");
+        let hid = land(
+            &repo,
+            edits::plan_add_annotation(&repo, "lib.rs", Some("g"), "人写的", "me").expect("add"),
+        );
         assert_eq!(agent_sees(&g, &gsym), vec![hid.clone()]);
         let side = repo
             .join(".codepicture")
