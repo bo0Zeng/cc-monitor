@@ -677,11 +677,13 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "算一个 skill 的摘要时读其中一个文件（超了只记长度，`summary.truncated` 说出来）",
         "降级+说清",
     ),
+    // 〔C4d · 第四波 4B〕住址随「问远端那一跳」搬家（`asset_sync.rs` → `remote_ask.rs`，逻辑一字不改）；
+    //   量从「拉回来的那一份目录」放宽成「经那一跳问回来的任何一份 stdout」（资产目录 · 历史项目 / 会话清单）。
     (
-        "src/backend/asset_sync.rs",
+        "src/backend/remote_ask.rs",
         "PULL_MAX_BYTES",
         16 * 1024 * 1024,
-        "同步时从远端拉回来的那一份目录（capture 的 stdout）",
+        "本机后端经池里那条 SSH 在远端跑一条一次性子命令、拿回来的 stdout（资产目录 · 历史清单；capture）",
         "拒收+回错",
     ),
     (

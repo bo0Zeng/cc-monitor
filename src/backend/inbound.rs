@@ -148,6 +148,8 @@ pub const COMMANDS: &[&str] = &[
     "plugins-marketplaces",
     "relay-ensure",
     "relay-status",
+    // 〔C4d · 第四波 4B〕本机后端的可达表：monitor 在每台远端流握手那一刻交「怎么够到那台」（只登记）。
+    "remote-reach",
     "resolve",
     // 〔AS2〕skill「装到这台」：来源那台读 · 要被写的那一台判（都只读；写经 `files-put`）。
     "skill-install-plan",
@@ -925,8 +927,26 @@ pub const REGISTRY: &[CommandSpec] = &[
             Box::pin(async move {
                 let fold: crate::asset_sync::Fold =
                     std::sync::Arc::new(crate::asset_catalog::answer_merge);
-                crate::asset_sync::answer(&r.args, fold, &crate::asset_sync::DialRemote)
+                crate::asset_sync::answer(&r.args, fold, &crate::remote_ask::DialRemote)
                     .await
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
+    // 〔C4d · 第四波 4B〕**可达表登记**：monitor（宿主，只交事实）在每台远端流握手成功那一刻交「怎么够到那台」
+    //   （拨号请求 ＋ 那台后端的路径），本机后端记进内存可达表（`remote_ask`，后端重启就空）。**只登记，不拨号**：
+    //   之后「本机后端问远端后端」的两路（资产目录同步 · 历史跨机 join）都查这张表。老远端也登记（历史问它的是老子命令）。
+    CommandSpec {
+        name: "remote-reach",
+        doc_anchor: Some("#### `remote-reach`"),
+        codes: &["bad_args"],
+        fields: &["backend", "dial", "origin", "reach"],
+        takes_input: true,
+        // 纯内存（一把锁、插一行）⇒ 不进阻塞档，同 `ping` / `resolve`。
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::remote_ask::answer_reach(&r.args)
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))
             })

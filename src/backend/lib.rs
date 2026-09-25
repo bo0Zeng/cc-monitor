@@ -70,6 +70,7 @@ pub mod read_face; // 〔C1 · 09-24〕只读查询的帧面宿主（8 条：his
 #[path = "../../tests/backend/readonly_guard.rs"]
 mod readonly_guard; // F08a：backend 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
 pub mod relay; // K-H1：HTTP 中转（搬字节那半）——只听回环、按路径前缀分流、逐块透传 + tee
+pub mod remote_ask; // 〔C4d · 第四波 4B〕本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 可达表 —— 全后端只此一处；帧面 `remote-reach`
 #[cfg(test)]
 #[path = "../../tests/backend/single_stream_guard.rs"]
 mod single_stream_guard; // K-P1 KPY8：「多客户端的流」明确不做 —— 三处「恰好一个客户端」的触发器（整体 #[cfg(test)]）
@@ -592,6 +593,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔AS2〕skill「装到这台」那两条（`skill-read` / `skill-install-plan`）派生的 CLI 面。只读，入参从 stdin 读。
     "--skill-read",
     "--skill-install-plan",
+    // 〔C4d · 第四波 4B〕可达表登记（`inbound::REGISTRY` 的 `remote-reach`）派生的 CLI 面，入参从 stdin 读。
+    // ⚠ 一次性进程的可达表随进程退出就空 —— 真正的用法是常驻后端的帧面。加这一行会逼出一次 `BUILD_ID` bump，本路**不 bump**。
+    "--remote-reach",
     "--backend-probe",
     // 〔SR1a · 09-24〕`--dial`（拨号代理，`K-P6b` / C2）**从本表摘掉了**：拨号挪进本机那一个常驻后端、
     // 经流上的链路（`link-*` 四条，`dial/link.rs`）做，不再每条链路起一个进程。
