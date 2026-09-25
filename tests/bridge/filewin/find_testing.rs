@@ -470,12 +470,16 @@ impl FakeBackend {
                     .map(|rows| rows.iter().any(|r| r.name == name))
                     .unwrap_or(false);
                 if hit {
-                    (
-                        true,
-                        None,
-                        None,
-                        Some(serde_json::json!({ "path": p, "kind": "file" })),
-                    )
+                    // 〔GP1 · 第四波〕照后端那一格：unix 上送 `mode`（盘上那个文件真的低 12 位），非 unix 缺席。
+                    let mut v = serde_json::json!({ "path": p, "kind": "file" });
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt as _;
+                        if let Ok(md) = std::fs::metadata(p) {
+                            v["mode"] = serde_json::json!(md.permissions().mode() & 0o7777);
+                        }
+                    }
+                    (true, None, None, Some(v))
                 } else {
                     (
                         false,

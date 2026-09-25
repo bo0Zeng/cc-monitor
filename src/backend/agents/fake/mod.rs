@@ -339,6 +339,8 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         // 〔AS2〕最小假 agent 没有资产面（它要证的是「通用层零改动」，不是资产）。
         assets: None,
         history: None,
+        // 〔NT2 · V25〕最小假 agent 没有默认上游（未登记 ⇒ 上游选择拒）。
+        upstream: None,
         home: home_fn,
     };
     let discovered = crate::agents::visible_among(std::slice::from_ref(&adapter));

@@ -22,6 +22,9 @@
 // 也因此本文件**零引用 launch IR 模块**：spawn 是 fire-and-forget 的远端 exec，不开标签页。
 import { setCurrentMachine, subscribeMachine } from "./machine-context";
 import { commands } from "../ipc/commands";
+// 〔C4e · 第四波 4C〕查在线 · 发消息 · 收掉 · 派生 · 广播五件经通道直接问那台机器的后端（原是五条 Tauri 命令）。
+import { agentOnline, broadcast, killAgent, sendMessage, spawnAgent } from "../cc-bus-control";
+import { saidOfControl } from "../control-said";
 import { showActionFailureToast } from "../error-toast";
 // L2：账号选择复用既有封装——`fetchAccounts` 带 TTL 缓存、`selectableAccounts` 是
 // 「可选账号」的单一判据（`accounts.ts:130` 注释明写"别各处再 filter 一遍"）。
@@ -35,6 +38,7 @@ import { LOCAL_ORIGIN } from "../backend-policy";
 // ——**ts-rs 把它映射成 `number` 而不是 `bigint`**，所以 C03 那条大整数性质对它不适用。
 import type { CcBusAgent } from "../generated/CcBusAgent";
 import type { CcBusState } from "../generated/CcBusState";
+import { copyText } from "../copy-table";
 
 export class CcBusSection {
   readonly element: HTMLElement;
@@ -81,9 +85,7 @@ export class CcBusSection {
     const hint = document.createElement("div");
     hint.className = "settings-hint";
     hint.textContent =
-      "只读查看远端 cc-bus 上登记过的 agent（~/.cc-bus/agents.tsv + spawned.tsv），可给某个 agent 发消息、看它的收件箱。" +
-      "「登记」不等于「在线」——名单只说明它曾经登记过，要确认某个还活着请点那一行的「检查」。" +
-      "本面板不做后台轮询，只在你点「读取」时发一次请求。";
+      copyText("ccBus.build.intro");
     root.appendChild(hint);
 
     const row = document.createElement("div");
@@ -91,7 +93,7 @@ export class CcBusSection {
 
     const label = document.createElement("span");
     label.className = "settings-label";
-    label.textContent = "机器";
+    label.textContent = copyText("ccBus.build.machine");
     row.appendChild(label);
 
     this.originSel = document.createElement("select");
@@ -102,13 +104,13 @@ export class CcBusSection {
     const bcast = document.createElement("input");
     bcast.type = "text";
     bcast.className = "settings-input cc-bus-broadcast-input";
-    bcast.placeholder = "广播给所有 agent…";
+    bcast.placeholder = copyText("ccBus.build.broadcastHint");
     this.broadcastInput = bcast;
     row.appendChild(bcast);
     const bcastBtn = document.createElement("button");
     bcastBtn.type = "button";
     bcastBtn.className = "settings-btn settings-btn-secondary cc-bus-broadcast";
-    bcastBtn.textContent = "广播";
+    bcastBtn.textContent = copyText("ccBus.build.broadcast");
     bcastBtn.addEventListener("click", () => void this.doBroadcast());
     this.broadcastBtn = bcastBtn;
     row.appendChild(bcastBtn);
@@ -116,7 +118,7 @@ export class CcBusSection {
     this.readBtn = document.createElement("button");
     this.readBtn.type = "button";
     this.readBtn.className = "settings-btn settings-btn-secondary cc-bus-read";
-    this.readBtn.textContent = "读取";
+    this.readBtn.textContent = copyText("ccBus.build.read");
     this.readBtn.addEventListener("click", () => void this.reload());
     row.appendChild(this.readBtn);
 
@@ -130,9 +132,9 @@ export class CcBusSection {
     const deployBtn = document.createElement("button");
     deployBtn.type = "button";
     deployBtn.className = "settings-btn settings-btn-secondary cc-bus-deploy";
-    deployBtn.textContent = "装到本机";
+    deployBtn.textContent = copyText("ccBus.build.install");
     deployBtn.title =
-      "把仓内那份 cc-bus 装到 ~/.claude/skills/cc-bus/（幂等；覆盖前自动留备份）";
+      copyText("ccBus.build.installHint");
     deployBtn.addEventListener("click", () => void this.doDeploy(deployBtn));
     this.deployBtn = deployBtn;
     row.appendChild(deployBtn);
@@ -141,7 +143,7 @@ export class CcBusSection {
 
     this.statusEl = document.createElement("div");
     this.statusEl.className = "settings-hint cc-bus-status";
-    this.statusEl.textContent = "尚未读取。";
+    this.statusEl.textContent = copyText("ccBus.build.notRead");
     root.appendChild(this.statusEl);
 
     this.listBox = document.createElement("div");
@@ -173,36 +175,35 @@ export class CcBusSection {
     try {
       const st = await commands.cc_bus_install_state();
       if (st.state === "not_installed") {
-        this.deployBtn.textContent = "装到本机";
-        this.deployBtn.title = "本机还没装 cc-bus（装到 ~/.claude/skills/cc-bus/）";
+        this.deployBtn.textContent = copyText("ccBus.refreshInstallState.install");
+        this.deployBtn.title = copyText("ccBus.install.missing");
       } else if (st.state === "up_to_date") {
-        this.deployBtn.textContent = "已是最新";
-        this.deployBtn.title = "本机装的就是这一版（点了也不会写盘）";
+        this.deployBtn.textContent = copyText("ccBus.install.upToDate");
+        this.deployBtn.title = copyText("ccBus.install.upToDateHint");
       } else {
         const n = st.differing + st.missing;
-        this.deployBtn.textContent = `更新（差 ${n} 个文件）`;
+        this.deployBtn.textContent = copyText("ccBus.install.update", { n });
         this.deployBtn.title =
-          `本机装的**不是**这一版：${st.differing} 个内容不同、${st.missing} 个缺失。` +
-          "点一下更新（覆盖前自动留备份）";
+          copyText("ccBus.install.stale", { differing: st.differing, missing: st.missing });
       }
     } catch (e) {
       // 读不到就说读不到 —— **不许**退化成「未装」，那会让用户以为要装。
-      this.deployBtn.textContent = "装到本机";
-      this.deployBtn.title = `读不到本机安装状态：${String(e)}（这不等于「没装」）`;
+      this.deployBtn.textContent = copyText("ccBus.refreshInstallState.install");
+      this.deployBtn.title = copyText("ccBus.install.unknown", { e: String(e) });
     }
   }
 
   private async doDeploy(btn: HTMLButtonElement): Promise<void> {
     const prev = btn.textContent;
     btn.disabled = true;
-    btn.textContent = "装…";
+    btn.textContent = copyText("ccBus.deploy.running");
     try {
       const r = await commands.deploy_local_cc_bus();
       if (r.written === 0) {
-        this.statusEl.textContent = `已是最新：${r.dest}（${r.unchanged} 个文件都一致，未写盘）`;
+        this.statusEl.textContent = copyText("ccBus.deploy.unchanged", { dest: r.dest, unchanged: r.unchanged });
       } else {
-        const bak = r.backup ? `；旧的已备份到 ${r.backup}` : "";
-        this.statusEl.textContent = `已装到 ${r.dest}（写了 ${r.written} 个文件${bak}）`;
+        const bak = r.backup ? copyText("ccBus.deploy.backup", { backup: r.backup }) : "";
+        this.statusEl.textContent = copyText("ccBus.deploy.done", { dest: r.dest, written: r.written, bak });
       }
       // ★★ 装成功了、但装出来的东西现在跑不起来 —— 这句必须**显示出来**〔08-13〕。
       //
@@ -217,7 +218,7 @@ export class CcBusSection {
         this.statusEl.textContent += ` ⚠ ${r.warning}`;
       }
     } catch (e) {
-      showActionFailureToast("装到本机失败", String(e));
+      showActionFailureToast(copyText("ccBus.deploy.failed"), String(e));
     } finally {
       btn.disabled = false;
       btn.textContent = prev;
@@ -233,26 +234,25 @@ export class CcBusSection {
 
     const t = document.createElement("div");
     t.className = "settings-label";
-    t.textContent = "派生新 agent";
+    t.textContent = copyText("ccBus.spawn.title");
     box.appendChild(t);
 
     const h = document.createElement("div");
     h.className = "settings-hint";
     h.textContent =
-      "在上面选中的那台机器的某个目录开一个独立 agent（走那台机器上的 cc-spawn：同目录已有活会话就复用，没有才新建）。" +
-      "注意这会起一个真实的 agent 进程并消耗账号额度，所以要点两次确认。";
+      copyText("ccBus.spawn.intro");
     box.appendChild(h);
 
     this.spawnDir = document.createElement("input");
     this.spawnDir.type = "text";
     this.spawnDir.className = "settings-input cc-bus-spawn-dir";
-    this.spawnDir.placeholder = "工作目录（那台机器上的绝对路径）";
+    this.spawnDir.placeholder = copyText("ccBus.spawn.dir");
     box.appendChild(this.spawnDir);
 
     this.spawnTask = document.createElement("input");
     this.spawnTask.type = "text";
     this.spawnTask.className = "settings-input cc-bus-spawn-task";
-    this.spawnTask.placeholder = "初始任务（可留空）";
+    this.spawnTask.placeholder = copyText("ccBus.spawn.task");
     box.appendChild(this.spawnTask);
 
     this.spawnTool = document.createElement("select");
@@ -284,7 +284,7 @@ export class CcBusSection {
     this.spawnBtn = document.createElement("button");
     this.spawnBtn.type = "button";
     this.spawnBtn.className = "settings-btn settings-btn-secondary cc-bus-spawn-go";
-    this.spawnBtn.textContent = "派生";
+    this.spawnBtn.textContent = copyText("ccBus.spawn.go");
     this.spawnBtn.addEventListener("click", () => void this.doSpawn());
     box.appendChild(this.spawnBtn);
 
@@ -324,11 +324,11 @@ export class CcBusSection {
     {
       const opt = document.createElement("option");
       opt.value = LOCAL_ORIGIN;
-      opt.textContent = "本机";
+      opt.textContent = copyText("ccBus.machine.local");
       this.originSel.appendChild(opt);
     }
     if (origins.length === 0) {
-      this.statusEl.textContent = "未配置远端 —— 可以先看本机的 cc-bus。";
+      this.statusEl.textContent = copyText("ccBus.machine.noRemote");
     }
     // 账号随机器变——换台机器，上一台的账号名多半不适用
     this.originSel.addEventListener("change", () => {
@@ -365,12 +365,12 @@ export class CcBusSection {
     this.spawnAcct.replaceChildren();
     const base = document.createElement("option");
     base.value = ""; // 空串 → 后端转发 `--base`（显式不注入）
-    base.textContent = "账号：不指定（不注入任何账号）";
+    base.textContent = copyText("ccBus.spawn.accountNone");
     this.spawnAcct.appendChild(base);
     for (const n of names) {
       const o = document.createElement("option");
       o.value = n;
-      o.textContent = `账号：${n}`;
+      o.textContent = copyText("ccBus.spawn.accountNamed", { n });
       this.spawnAcct.appendChild(o);
     }
   }
@@ -402,7 +402,7 @@ export class CcBusSection {
     const origin = this.originSel.value;
     if (!origin) return;
     this.readBtn.disabled = true;
-    this.statusEl.textContent = "读取中…";
+    this.statusEl.textContent = copyText("ccBus.reload.reading");
     this.listBox.replaceChildren();
     try {
       this.state = await commands.read_cc_bus_state({ origin });
@@ -410,7 +410,7 @@ export class CcBusSection {
     } catch (e) {
       this.state = null;
       // 失败要说清是哪一步失败，而不是留个空面板让人以为"没有 agent"
-      this.statusEl.textContent = `读取失败：${String(e)}`;
+      this.statusEl.textContent = copyText("ccBus.reload.readFailed", { e: String(e) });
     } finally {
       this.readBtn.disabled = false;
     }
@@ -434,18 +434,18 @@ export class CcBusSection {
     const extra = st.spawned.filter((sp) => !registered.has(sp.id));
     const bothCount = st.agents.filter((a) => spawnedIds.has(a.id)).length;
 
-    const parts = [`登记 ${st.agents.length} 个`];
-    if (bothCount > 0) parts.push(`其中 spawn 派生 ${bothCount} 个`);
-    if (extra.length > 0) parts.push(`另有 ${extra.length} 个 spawn 过但未登记`);
-    if (st.skipped > 0) parts.push(`${st.skipped} 条无法解析（已跳过）`);
-    parts.push("「登记」不等于「在线」");
-    this.statusEl.textContent = parts.join(" · ");
+    const parts = [copyText("ccBus.summary.registered", { n: st.agents.length })];
+    if (bothCount > 0) parts.push(copyText("ccBus.summary.spawned", { n: bothCount }));
+    if (extra.length > 0) parts.push(copyText("ccBus.summary.unregistered", { n: extra.length }));
+    if (st.skipped > 0) parts.push(copyText("ccBus.summary.skipped", { skipped: st.skipped }));
+    parts.push(copyText("ccBus.summary.notOnline"));
+    this.statusEl.textContent = parts.join(copyText("ccBus.summary.sep"));
 
     this.listBox.replaceChildren();
     if (st.agents.length === 0 && extra.length === 0) {
       const empty = document.createElement("div");
       empty.className = "settings-hint";
-      empty.textContent = "这台机器上没有登记过的 cc-bus agent（或未装 cc-bus）。";
+      empty.textContent = copyText("ccBus.render.empty");
       this.listBox.appendChild(empty);
       return;
     }
@@ -484,23 +484,26 @@ export class CcBusSection {
     meta.className = "cc-bus-meta";
     const bits: string[] = [];
     if (dir) bits.push(dir);
-    bits.push(a.registered_at || "时间未知");
-    bits.push(isSpawned ? "cc-spawn 派生" : "自行登记");
-    if (!registered) bits.push("未在 agents.tsv 登记");
-    meta.textContent = bits.join(" · ");
+    bits.push(a.registered_at || copyText("ccBus.row.timeUnknown"));
+    bits.push(isSpawned ? copyText("ccBus.row.spawned") : copyText("ccBus.row.selfRegistered"));
+    if (!registered) bits.push(copyText("ccBus.row.unregistered"));
+    meta.textContent = bits.join(copyText("ccBus.row.sep"));
     row.appendChild(meta);
 
     // **在线状态默认「未知」**——这是本设计的要点，不是偷懒：名单证明不了在线，
     // 而全量查是 N 次往返。用户想知道哪一个，就点哪一个。
     const stateEl = document.createElement("span");
-    stateEl.className = "cc-bus-online cc-bus-online-unknown";
-    stateEl.textContent = "在线未知";
+    // 〔AR1 · `设计/41 §7` 约定 3：状态用 `data-*`，不用类名〕此前是 `cc-bus-online-<态>` 五个类名，
+    //   CSS 里一条规则都没有（git 史里也从来没有过）⇒ 悬空类；改成 `data-state`，界面上只说那几个字。
+    stateEl.className = "cc-bus-online";
+    stateEl.dataset.state = "unknown";
+    stateEl.textContent = copyText("ccBus.row.onlineUnknown");
     row.appendChild(stateEl);
 
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "settings-btn settings-btn-secondary cc-bus-check";
-    btn.textContent = "检查";
+    btn.textContent = copyText("ccBus.row.check");
     btn.addEventListener("click", () => void this.checkOne(a.id, stateEl, btn));
     row.appendChild(btn);
 
@@ -512,20 +515,20 @@ export class CcBusSection {
     const inboxBtn = document.createElement("button");
     inboxBtn.type = "button";
     inboxBtn.className = "settings-btn settings-btn-secondary cc-bus-inbox";
-    inboxBtn.textContent = "收件箱";
+    inboxBtn.textContent = copyText("ccBus.row.inbox");
     inboxBtn.addEventListener("click", () => void this.loadInbox(a.id, detail, inboxBtn));
     row.appendChild(inboxBtn);
 
     const msg = document.createElement("input");
     msg.type = "text";
     msg.className = "settings-input cc-bus-msg";
-    msg.placeholder = "发给它一条消息…";
+    msg.placeholder = copyText("ccBus.row.messageHint");
     row.appendChild(msg);
 
     const sendBtn = document.createElement("button");
     sendBtn.type = "button";
     sendBtn.className = "settings-btn settings-btn-secondary cc-bus-send";
-    sendBtn.textContent = "发送";
+    sendBtn.textContent = copyText("ccBus.row.send");
     sendBtn.addEventListener("click", () => void this.sendTo(a.id, msg, detail, sendBtn));
     row.appendChild(sendBtn);
 
@@ -534,8 +537,8 @@ export class CcBusSection {
     const killBtn = document.createElement("button");
     killBtn.type = "button";
     killBtn.className = "settings-btn settings-btn-secondary cc-bus-kill";
-    killBtn.textContent = "收掉";
-    killBtn.title = "杀掉这个 agent 的会话与进程树 —— 不可撤销";
+    killBtn.textContent = copyText("ccBus.row.kill");
+    killBtn.title = copyText("ccBus.row.killHint");
     killBtn.addEventListener("click", () => void this.killOne(a.id, detail, killBtn));
     row.appendChild(killBtn);
 
@@ -550,16 +553,16 @@ export class CcBusSection {
     const origin = this.originSel.value;
     if (!origin) return;
     btn.disabled = true;
-    stateEl.className = "cc-bus-online cc-bus-online-checking";
-    stateEl.textContent = "检查中…";
+    stateEl.dataset.state = "checking";
+    stateEl.textContent = copyText("ccBus.check.running");
     try {
-      const online = await commands.check_cc_bus_agent_online({ origin, id });
-      stateEl.className = `cc-bus-online cc-bus-online-${online ? "yes" : "no"}`;
-      stateEl.textContent = online ? "在线" : "不在线";
+      const online = await agentOnline(origin, id);
+      stateEl.dataset.state = online ? "yes" : "no";
+      stateEl.textContent = online ? copyText("ccBus.check.online") : copyText("ccBus.check.offline");
     } catch (e) {
       // 查失败 ≠ 不在线，必须区分开，否则会把"网络抖了一下"报成"agent 死了"
-      stateEl.className = "cc-bus-online cc-bus-online-error";
-      stateEl.textContent = `查不到（${String(e)}）`;
+      stateEl.dataset.state = "error";
+      stateEl.textContent = copyText("ccBus.check.failed", { e: saidOfControl(e) });
     } finally {
       btn.disabled = false;
     }
@@ -570,12 +573,12 @@ export class CcBusSection {
     if (!origin) return;
     btn.disabled = true;
     box.replaceChildren();
-    box.textContent = "读取中…";
+    box.textContent = copyText("ccBus.loadInbox.reading");
     try {
       const msgs = await commands.read_cc_bus_inbox({ origin, id });
       box.replaceChildren();
       if (msgs.length === 0) {
-        box.textContent = "收件箱是空的。";
+        box.textContent = copyText("ccBus.inbox.empty");
         return;
       }
       // 只渲染尾部若干条：后端已限 200 行，这里再收一次，面板不该被一屏刷爆
@@ -586,7 +589,7 @@ export class CcBusSection {
         box.appendChild(line);
       }
     } catch (e) {
-      box.textContent = `读收件箱失败：${String(e)}`;
+      box.textContent = copyText("ccBus.inbox.failed", { e: String(e) });
     } finally {
       btn.disabled = false;
     }
@@ -603,11 +606,11 @@ export class CcBusSection {
     if (!origin || !text.trim()) return;
     btn.disabled = true;
     try {
-      await commands.cc_bus_send({ origin, id, text });
+      // 〔C4e〕那一句由成品的三态说（在线 / 不在线 / 名字没登记过 / 问不到），不再一律「已发送」。
+      box.textContent = await sendMessage(origin, id, text);
       input.value = "";
-      box.textContent = "已发送（对方空闲会被敲门，在忙则靠它的 Stop 钩子兜底）。";
     } catch (e) {
-      box.textContent = `发送失败：${String(e)}`;
+      box.textContent = copyText("ccBus.send.failed", { e: saidOfControl(e) });
     } finally {
       btn.disabled = false;
     }
@@ -626,7 +629,7 @@ export class CcBusSection {
 
   /** 确认文案里要点名账号——「消耗额度」不说清是哪个号的额度等于没说。 */
   private acctLabel(): string {
-    return this.spawnAcct.value ? `账号 ${this.spawnAcct.value}` : "不指定账号";
+    return this.spawnAcct.value ? copyText("ccBus.acctLabel.named", { value: this.spawnAcct.value }) : copyText("ccBus.acctLabel.none");
   }
 
   /**
@@ -646,17 +649,16 @@ export class CcBusSection {
       this.killArmedFor = id;
       this.killArmedBtn = btn;
       // 回显真名 —— 一屏几十个 agent，不带名字的「确认」很容易杀错那一个。
-      btn.textContent = `确认收掉 ${id}`;
+      btn.textContent = copyText("ccBus.kill.confirm", { id });
       return;
     }
     this.disarmKill();
     btn.disabled = true;
     try {
-      const out = await commands.cc_bus_kill({ origin, id });
-      detail.textContent = out || `已收掉 ${id}`;
+      detail.textContent = await killAgent(origin, id);
       await this.reload();
     } catch (e) {
-      detail.textContent = `收掉失败: ${String(e)}`;
+      detail.textContent = copyText("ccBus.kill.failed", { e: saidOfControl(e) });
       btn.disabled = false;
     }
   }
@@ -671,14 +673,13 @@ export class CcBusSection {
     const text = this.broadcastInput.value.trim();
     if (!text) return;
     const n = this.state?.agents.length ?? 0;
-    if (!window.confirm(`广播给 ${n} 个 agent？\n\n${text}`)) return;
+    if (!window.confirm(copyText("ccBus.broadcast.confirm", { n, text }))) return;
     this.broadcastBtn.disabled = true;
     try {
-      const out = await commands.cc_bus_broadcast({ origin, text });
-      this.statusEl.textContent = out || `已广播给 ${n} 个`;
+      this.statusEl.textContent = await broadcast(origin, text);
       this.broadcastInput.value = "";
     } catch (e) {
-      this.statusEl.textContent = `广播失败: ${String(e)}`;
+      this.statusEl.textContent = copyText("ccBus.broadcast.failed", { e: saidOfControl(e) });
     } finally {
       this.broadcastBtn.disabled = false;
     }
@@ -686,14 +687,14 @@ export class CcBusSection {
 
   /** P4c D 补审：把武装中的「收掉」复位。切机器 / 重载 / 武装另一颗时都要调。 */
   private disarmKill(): void {
-    if (this.killArmedBtn) this.killArmedBtn.textContent = "收掉";
+    if (this.killArmedBtn) this.killArmedBtn.textContent = copyText("ccBus.row.kill");
     this.killArmedBtn = null;
     this.killArmedFor = null;
   }
 
   private disarmSpawn(): void {
     this.armedFor = null;
-    this.spawnBtn.textContent = "派生";
+    this.spawnBtn.textContent = copyText("ccBus.spawn.go");
   }
 
   /** 两步确认：起一个真 agent 会消耗额度，一键就走太危险。 */
@@ -706,7 +707,7 @@ export class CcBusSection {
       // 「武装 → 清空 dir → 点击（只提示请填目录，**仍处武装态**）→ 填新 dir → 点一次」
       // = 一次点击就起 agent，全程没出现过确认文案。
       this.disarmSpawn();
-      this.spawnOut.textContent = "请先填工作目录。";
+      this.spawnOut.textContent = copyText("ccBus.spawn.needDir");
       return;
     }
     const fp = this.spawnFingerprint();
@@ -714,30 +715,26 @@ export class CcBusSection {
       // 未武装，或武装后参数被改过 → （重新）武装，把要做的事原样说清楚
       const changed = this.armedFor !== null;
       this.armedFor = fp;
-      this.spawnBtn.textContent = "确认派生";
+      this.spawnBtn.textContent = copyText("ccBus.spawn.confirm");
       this.spawnOut.textContent =
-        (changed ? "参数已改动，请重新确认：" : "") +
-        `将在 ${origin} 的 ${dir} 上用${this.acctLabel()}派生一个 ${this.spawnTool.value}——` +
-        "这会起一个真实 agent 进程并**消耗额度**。再点一次「确认派生」执行。";
+        copyText("ccBus.spawn.confirmBody", { changed: (changed ? copyText("ccBus.spawn.changed") : ""), machine: origin, dir, account: this.acctLabel(), tool: this.spawnTool.value });
       return;
     }
     this.disarmSpawn();
     this.spawnBtn.disabled = true;
-    this.spawnOut.textContent = "派生中…";
+    this.spawnOut.textContent = copyText("ccBus.spawn.running");
     try {
-      const out = await commands.cc_bus_spawn({
-        origin,
+      this.spawnOut.textContent = await spawnAgent(origin, {
         dir,
         task: this.spawnTask.value,
         tool: this.spawnTool.value,
-        // 空串 = 显式基座。后端把它翻成 `--base`，**不存在"什么都不传"这一档**。
+        // 空串 = 显式基座（发 `base:true`）。**不存在"什么都不传"这一档**。
         account: this.spawnAcct.value,
       });
-      this.spawnOut.textContent = out || "已派生。";
       // 派生完顺手刷新名单——这是**用户动作触发**的一次读，不是后台轮询
       await this.reload();
     } catch (e) {
-      this.spawnOut.textContent = `派生失败：${String(e)}`;
+      this.spawnOut.textContent = copyText("ccBus.spawn.failed", { e: saidOfControl(e) });
     } finally {
       this.spawnBtn.disabled = false;
     }

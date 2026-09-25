@@ -16,18 +16,24 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+// 〔C4e · 第四波 4C〕就地 resume 那一次键入从 Tauri 命令 `backend_send_into`〔散文墓碑〕改成界面经通道直接说后端的
+//   `launch{mode:"send-into"}`（`src/tmux-control.ts::sendInto`）。本文件判的是起会话那几条路的**编排**与 F14 的三态处置 ⇒
+//   生产 `invoke` 换成一层翻译（`chan-fake.ts::tmuxControlShim`）：那一发 `chan_call` 照旧按旧名字 `backend_send_into`
+//   交给 `invokeMock`，旧回包（`{typed, mayFallBack, reason}`）译成通道那一跳的结局。
+const invokeMock = vi.hoisted(() => vi.fn());
+vi.mock("@tauri-apps/api/core", async () => {
+  const { tmuxControlShim } = await import("./test-support/chan-fake");
+  return { invoke: tmuxControlShim(invokeMock, "backend_send_into") };
+});
 vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 vi.mock("../src/behavior", () => ({
   getBehavior: vi.fn().mockResolvedValue({ forceLaunchPayloadRenderer: false }),
 }));
 
-import { invoke } from "@tauri-apps/api/core";
 import { runRemoteResumeIntoExistingTmux } from "../src/remote-launch-run";
 import { renderLaunchPayloadStub } from "./test-support/launch-render-ipc-stub.ts";
 import type { PayloadRenderRequest } from "../src/launch-cli-wire.ts";
 
-const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
 const SID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 const NAME = "aaaaaaaa-cc";
@@ -136,11 +142,17 @@ describe("U8a-2c-1 send-into：send-keys 半边走 backend", () => {
     expect(launchedCmd()).toBeUndefined();
   });
 
-  it("② IPC 整个抛了也回落，不是报错收场", async () => {
+  // 〔C4e · 第四波 4C〕这一条**翻了面**，而且是往严里翻。原来是「IPC 整个抛了也回落」：那时键入走 Tauri 命令
+  //   `backend_send_into`〔散文墓碑〕，它自己从不回错，IPC 一抛就说明 monitor 那条命令根本没跑 ⇒ 能证明没发出去。
+  //   今天键入经通道（`chan_call`）说，monitor 那一跳交回的失败**一律是分好层的**；解不出层的那一种
+  //   （`ours/Broken`：那一跳自己坏了）**拿不准**到没到后端 ⇒ 按最坏算、**不回落**（F14：回落那条整串没有门，
+  //   「可能已经键入过」再键一遍就是把载荷第二次提交给正在跑的 claude）。能证明没发出去的那一档（没有控制通道）
+  //   照旧回落 —— 见上面 ② 那一条。
+  it("② 通道那一跳自己坏了（解不出层）⇒ 拿不准有没有到后端 ⇒ 不回落，诚实失败", async () => {
     sendIntoThrows = true;
     const ok = await runRemoteResumeIntoExistingTmux("h1", SID, NAME, "claude");
-    expect(ok, "回落之后应当仍然拉起来了").toBe(true);
-    expect(launchedCmd()).toContain("send-keys");
+    expect(ok, "拿不准的时候不许换一条无门的路重做").toBe(false);
+    expect(seen.map((x) => x.cmd)).not.toContain("launch_remote_terminal");
   });
 
   it("③ 发给后端的载荷 == render_launch_payload 的产物；会话名是裸名", async () => {

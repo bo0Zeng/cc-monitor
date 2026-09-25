@@ -205,7 +205,11 @@ async fn reading_goes_through_the_channel_and_each_refusal_lands_on_its_own_shap
     assert_eq!(got("/srv/binary.bin").await, Ok(None));
     assert_eq!(got("/srv/huge.log").await, Ok(None));
     let e = got("/srv/gone.txt").await.expect_err("读不到竟然成了");
-    assert!(e.contains(CMD_READ_TEXT), "那句原话没说是哪条命令：{e}");
+    // 〔CP2b · CP1 裁「改·§2.1」〕对外那句不再点内部命令名 ⇒ 改认它说了是哪个文件、带着后端的码。
+    assert!(
+        e.contains("/srv/gone.txt") && e.contains("unreadable"),
+        "那句原话没说是哪个文件、后端怎么说：{e}"
+    );
     let log = wired.log.lock().unwrap().clone();
     assert_eq!(log.len(), 4, "线上该恰好四趟：{log:?}");
     for r in &log {

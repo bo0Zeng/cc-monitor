@@ -112,7 +112,7 @@ describe("DriftLedgerSection（DOM）", () => {
     document.body.appendChild(s.element);
     await new Promise((r) => setTimeout(r, 0));
     const text = s.element.textContent ?? "";
-    expect(text).toContain("读不到漂移账本");
+    expect(text).toContain("读不到格式兼容记录"); // 〔CP2b · CP1 裁〕「漂移账本」是自造概念名，对外叫「格式兼容记录」
     expect(text).toContain("这不等于");
     expect(text).not.toContain("没有遇到看不懂的东西");
   });

@@ -9,6 +9,7 @@
 //! 认证前提:当前 `connect_session` 只做 publickey/agent 鉴权(密码鉴权未实现,F61 已取消)。故 v1 =
 //! 已有 key/agent 访问权时追加/轮换新公钥;纯密码冷 onboarding 不支持(F61 已取消)。
 
+use crate::copy_table::copy_text;
 use crate::ssh_source::{self, shell_quote, RemoteConfig};
 use serde::Serialize;
 use tokio::io::{AsyncReadExt, BufReader};
@@ -58,29 +59,32 @@ pub fn sanitize_public_key(raw: &str) -> Result<String, String> {
         .filter(|l| !l.is_empty())
         .collect();
     match non_empty.len() {
-        0 => return Err("公钥为空".to_string()),
+        0 => return Err(copy_text("rsPubkey.sanitizePublicKey.empty", &[])),
         1 => {}
-        _ => return Err("公钥文件含多行内容,拒绝(防注入);一次只推一把公钥".to_string()),
+        _ => return Err(copy_text("rsPubkey.sanitizePublicKey.multiline", &[])),
     }
     let key = non_empty[0];
     if key.chars().any(|c| c.is_control()) {
-        return Err("公钥含控制字符,拒绝".to_string());
+        return Err(copy_text("rsPubkey.sanitizePublicKey.controlChars", &[]));
     }
     let mut parts = key.split_whitespace();
     let ktype = parts.next().unwrap_or("");
     let blob = parts.next().unwrap_or("");
     if !is_known_key_type(ktype) {
-        return Err(format!("无法识别的公钥类型 `{ktype}`(是否误选了私钥?)"));
+        return Err(copy_text(
+            "rsPubkey.sanitizePublicKey.unknownType",
+            &[("ktype", &ktype.to_string())],
+        ));
     }
     if blob.is_empty() {
-        return Err("公钥缺少 base64 主体".to_string());
+        return Err(copy_text("rsPubkey.sanitizePublicKey.noBody", &[]));
     }
     // base64 字符集轻校验(粗校验收紧):挡 `ssh-ed25519 !!!` 这类形态。
     if !blob
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '/' | '='))
     {
-        return Err("公钥 base64 主体含非法字符".to_string());
+        return Err(copy_text("rsPubkey.sanitizePublicKey.badBody", &[]));
     }
     Ok(key.to_string())
 }
@@ -107,9 +111,9 @@ pub fn parse_push_outcome(output: &str) -> Result<PushOutcome, String> {
     } else if output.contains("ALREADY") {
         Ok(PushOutcome::Already)
     } else {
-        Err(format!(
-            "推送未返回预期标记,可能失败(权限/路径)。远端输出:{}",
-            output.trim()
+        Err(copy_text(
+            "rsPubkey.parsePushOutcome.noMarker",
+            &[("output", &(output.trim()).to_string())],
         ))
     }
 }
@@ -130,12 +134,15 @@ pub async fn push_public_key(
                 .filter(|s| !s.trim().is_empty())
                 .map(|kp| format!("{kp}.pub"))
         })
-        .ok_or_else(|| {
-            "未指定公钥:请在配置里填私钥路径(取同名 .pub),或选一个 .pub 文件".to_string()
-        })?;
+        .ok_or_else(|| copy_text("rsPubkey.pushPublicKey.noKey", &[]))?;
 
     // 2) 读本地公钥 + 校验(注入防护红线)。
-    let raw = std::fs::read_to_string(&path).map_err(|e| format!("读公钥 {path} 失败: {e}"))?;
+    let raw = std::fs::read_to_string(&path).map_err(|e| {
+        copy_text(
+            "rsPubkey.pushPublicKey.readFailed",
+            &[("path", &path.to_string()), ("e", &e.to_string())],
+        )
+    })?;
     let key = sanitize_public_key(&raw)?;
 
     // 3) 构造 + 一次性 exec,读 stdout 取标记。
@@ -143,10 +150,12 @@ pub async fn push_public_key(
     let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
     let mut reader = BufReader::new(stream);
     let mut out = String::new();
-    reader
-        .read_to_string(&mut out)
-        .await
-        .map_err(|e| format!("读推送结果失败: {e}"))?;
+    reader.read_to_string(&mut out).await.map_err(|e| {
+        copy_text(
+            "rsPubkey.pushPublicKey.readResultFailed",
+            &[("e", &e.to_string())],
+        )
+    })?;
     let outcome = parse_push_outcome(&out)?;
 
     Ok(PushResult {

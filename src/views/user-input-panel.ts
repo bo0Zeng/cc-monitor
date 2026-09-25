@@ -31,6 +31,7 @@
  */
 // 〔SE1〕条目的形状由后端定（〔C4b〕后端帧应答的成品，TS 形状住 `session-reads.ts`）；判定只住后端。
 import type { UserInputEntry } from "../session-reads";
+import { copyText } from "../copy-table";
 
 /**
  * 这块界面的名字 —— **`大纲`**（`设计/10 §2.2b ③` 定名，步 2）。
@@ -47,10 +48,10 @@ import type { UserInputEntry } from "../session-reads";
  * ⚠ 一个住址。两条路（历史查看器 / 实时窗口）共用这份界面，名字也只有这一份 ——
  * 改名那天两边一起改，不会有一边还叫旧名。
  */
-export const OUTLINE_LABEL = "大纲";
+export const OUTLINE_LABEL = copyText("userInputPanel.outline.label");
 
 /** 开关的 tooltip（`设计/10 §2.2b ③`）。一个住址：建开关与「要到清单」两处都用它。 */
-const OUTLINE_HINT = "按你的输入跳转";
+const OUTLINE_HINT = copyText("userInputPanel.outline.hint");
 
 /**
  * 「跳」的结局：真正落到的那张卡 / `null` = 落空。
@@ -160,7 +161,7 @@ export class UserInputPanel {
    */
   setUnavailable(reason: string): void {
     this.clear();
-    this.toggle.title = reason ? `大纲暂时用不了：${reason}` : "大纲暂时用不了";
+    this.toggle.title = reason ? copyText("userInputPanel.setUnavailable.withReason", { reason }) : copyText("userInputPanel.setUnavailable.plain");
   }
 
   /** 清空并收起（换会话 / 关 tab）—— 旧会话的句子不许挂在新会话上。开合归宿主时只清不收。 */

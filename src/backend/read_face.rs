@@ -29,6 +29,7 @@
 //!
 //! 不拨号、不起进程、不写盘 —— 全是既有读函数的换壳。`readonly_guard` 那条写盘禁令照旧管它。
 
+use copy_core::copy_text;
 use serde_json::{json, Value};
 
 /// `history-read` 一页的目标字节数。
@@ -110,7 +111,9 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
                 Some(_) => {
                     return Err((
                         "bad_args",
-                        "`configDir` 要一个字符串或 null（null = 账号 0）".to_string(),
+                        crate::common::contract::malformed(
+                            "`configDir` must be a string or null (null = account 0)",
+                        ),
                     ))
                 }
             };
@@ -202,7 +205,10 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
         }
         "history-tail" => {
             let path = str_arg(args, "path")?;
-            let n = u64_arg(args, "n")?.ok_or(("bad_args", "缺 `n`".to_string()))?;
+            let n = u64_arg(args, "n")?.ok_or((
+                "bad_args",
+                crate::common::contract::malformed("missing `n`"),
+            ))?;
             let (plan, _) =
                 history_query::tail_plan(home, path, n as usize).map_err(|e| ("failed", e))?;
             Ok(json!({
@@ -213,12 +219,29 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
             }))
         }
         // 〔U4b · 第四波〕这条会话的记录还在不在（resume 之前问；本体住 `history_query::record_in`）。
+        // 〔GP1 · 第四波〕可选 `configDir`：这次 resume 要用的那个账号根（缺席 / `null` ⇒ 这台的家目录）。
         "history-record" => {
             let sid = str_arg(args, "sid")?;
-            let probe = history_query::record_in(home, sid).map_err(|e| ("bad_args", e))?;
+            let config_dir = match args.get("configDir") {
+                None | Some(Value::Null) => None,
+                Some(Value::String(s)) => Some(s.as_str()),
+                Some(_) => {
+                    return Err((
+                        "bad_args",
+                        crate::common::contract::malformed(
+                            "`configDir` must be a string or null (null = this machine's home)",
+                        ),
+                    ))
+                }
+            };
+            let probe =
+                history_query::record_for(home, config_dir, sid).map_err(|e| ("bad_args", e))?;
             Ok(json!({ "present": probe.present, "root": probe.root }))
         }
-        other => Err(("bad_args", format!("本族不认识 `{other}`"))),
+        other => Err((
+            "bad_args",
+            crate::common::contract::malformed(&format!("this face has no command `{other}`")),
+        )),
     }
 }
 
@@ -256,7 +279,13 @@ fn trust_code(c: &str) -> &'static str {
 fn too_large(size: usize) -> (&'static str, String) {
     (
         "too_large",
-        format!("结果超过 {LINES_CAP_BYTES} 字节上限，没有返回（至少 {size} 字节）"),
+        copy_text(
+            "beReadFace.tooLarge.say",
+            &[
+                ("size", &size.to_string()),
+                ("cap", &LINES_CAP_BYTES.to_string()),
+            ],
+        ),
     )
 }
 
@@ -315,18 +344,19 @@ impl std::io::Write for CappedBuf {
 }
 
 fn str_arg<'a>(args: &'a Value, key: &str) -> Result<&'a str, (&'static str, String)> {
-    args.get(key)
-        .and_then(Value::as_str)
-        .ok_or(("bad_args", format!("缺 `{key}`（要一个字符串）")))
+    args.get(key).and_then(Value::as_str).ok_or((
+        "bad_args",
+        crate::common::contract::malformed(&format!("missing `{key}` (a string)")),
+    ))
 }
 
 fn u64_arg(args: &Value, key: &str) -> Result<Option<u64>, (&'static str, String)> {
     match args.get(key) {
         None | Some(Value::Null) => Ok(None),
-        Some(v) => v
-            .as_u64()
-            .map(Some)
-            .ok_or(("bad_args", format!("`{key}` 要一个非负整数"))),
+        Some(v) => v.as_u64().map(Some).ok_or((
+            "bad_args",
+            crate::common::contract::malformed(&format!("`{key}` must be a non-negative integer")),
+        )),
     }
 }
 

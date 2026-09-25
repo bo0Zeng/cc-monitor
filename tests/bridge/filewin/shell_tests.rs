@@ -398,7 +398,7 @@ fn an_impossible_new_name_keeps_the_box_up_and_says_why() {
     assert!(!w.confirm_copy(None), "没有运行时却说起得来");
     let e = w.listing.error.lock().unwrap().clone().unwrap();
     assert!(
-        e.contains("运行时"),
+        e.contains("启动不了"),
         "合法名字被当成不合法挡了：{e} —— 那上面那几条买的就不是「名字」这一维"
     );
     // 取消把框收掉。
@@ -1159,7 +1159,7 @@ fn a_delete_click_goes_straight_to_the_batch_and_says_so_when_it_cannot_run() {
         .unwrap()
         .clone()
         .expect("一次删除被吞了，屏幕上一句话都没有");
-    assert!(e.contains("运行时"), "报的不是「没有运行时」：{e}");
+    assert!(e.contains("启动不了"), "报的不是「没有运行时」：{e}");
 }
 
 /// 有损名 · 越界下标 —— **两档都不接**（第二道闸，防「按钮没了、调用还在」）。
@@ -1199,7 +1199,7 @@ fn an_impossible_input_keeps_the_write_box_up_and_says_why() {
     assert!(!w.confirm_write(None), "没有运行时却说起得来");
     let e = w.listing.error.lock().unwrap().clone().unwrap();
     assert!(
-        e.contains("运行时"),
+        e.contains("启动不了"),
         "合法名字被当成不合法挡了：{e} —— 那上面那几条买的就不是「输入」这一维"
     );
     w.cancel_write();
@@ -1379,12 +1379,13 @@ async fn a_real_click_on_delete_walks_the_whole_chain_even_on_a_session_file() {
         Vec::new(),
         |ui| w.frame_body(ui),
     );
-    let buttons = crate::filewin::copy::testing::rects_of(&painted, DELETE_LABEL);
+    let buttons = crate::filewin::copy::testing::rects_of(&painted, DELETE_LABEL.as_str());
     assert_eq!(
         buttons.len(),
         1,
-        "这一帧上没有那颗「{DELETE_LABEL}」—— 行上那三颗写按钮没画出来，\
-         或者 `frame_body` 走的是命中那一支"
+        "这一帧上没有那颗「{}」—— 行上那三颗写按钮没画出来，\
+         或者 `frame_body` 走的是命中那一支",
+        DELETE_LABEL.as_str()
     );
     let pos = buttons[0].center();
 
@@ -1508,13 +1509,14 @@ async fn a_real_click_on_download_opens_the_destination_question() {
         Vec::new(),
         |ui| w.frame_body(ui),
     );
-    let buttons = crate::filewin::copy::testing::rects_of(&painted, DOWNLOAD_LABEL);
+    let buttons = crate::filewin::copy::testing::rects_of(&painted, DOWNLOAD_LABEL.as_str());
     assert_eq!(
         buttons.len(),
         1,
         "这一帧上没有那颗「{DOWNLOAD_LABEL}」（实得 {} 处）—— \
          行上那颗按钮没画出来，或者 `frame_body` 走的是命中那一支",
-        buttons.len()
+        buttons.len(),
+        DOWNLOAD_LABEL = DOWNLOAD_LABEL.as_str()
     );
     let pos = buttons[0].center();
 
@@ -1668,10 +1670,11 @@ async fn no_download_button_is_painted_on_rows_that_cannot_be_pulled() {
         "这一帧连那两行都没画出来 —— 本条此刻是空真的"
     );
     assert_eq!(
-        crate::filewin::copy::testing::rects_of(&painted, DOWNLOAD_LABEL).len(),
+        crate::filewin::copy::testing::rects_of(&painted, DOWNLOAD_LABEL.as_str()).len(),
         0,
         "目录 / 有损名那两行上画出了「{DOWNLOAD_LABEL}」—— 那是一颗死按钮：\
-         点它 `begin_pull` 会再判一次然后什么都不做，屏幕上「点了没反应」"
+         点它 `begin_pull` 会再判一次然后什么都不做，屏幕上「点了没反应」",
+        DOWNLOAD_LABEL = DOWNLOAD_LABEL.as_str()
     );
 
     // 🔴 阴性对照：**能拉的那一行上它必须画出来** ——
@@ -1698,9 +1701,10 @@ async fn no_download_button_is_painted_on_rows_that_cannot_be_pulled() {
         |ui| w2.frame_body(ui),
     );
     assert_eq!(
-        crate::filewin::copy::testing::rects_of(&p2, DOWNLOAD_LABEL).len(),
+        crate::filewin::copy::testing::rects_of(&p2, DOWNLOAD_LABEL.as_str()).len(),
         1,
-        "能拉的那一行上没画「{DOWNLOAD_LABEL}」"
+        "能拉的那一行上没画「{DOWNLOAD_LABEL}」",
+        DOWNLOAD_LABEL = DOWNLOAD_LABEL.as_str()
     );
 }
 
@@ -1752,12 +1756,13 @@ async fn a_real_click_on_edit_fires_the_read() {
         Vec::new(),
         |ui| w.frame_body(ui),
     );
-    let buttons = crate::filewin::copy::testing::rects_of(&painted, EDIT_LABEL);
+    let buttons = crate::filewin::copy::testing::rects_of(&painted, EDIT_LABEL.as_str());
     assert_eq!(
         buttons.len(),
         1,
         "这一帧上没有那颗「{EDIT_LABEL}」（实得 {} 处）",
-        buttons.len()
+        buttons.len(),
+        EDIT_LABEL = EDIT_LABEL.as_str()
     );
     let pos = buttons[0].center();
     let _ = crate::filewin::copy::testing::painted_text(
@@ -1797,7 +1802,8 @@ async fn a_real_click_on_edit_fires_the_read() {
     }
     assert!(
         w.edits.opens() > 0 || w.edits.opening().is_some(),
-        "真点了「{EDIT_LABEL}」，那趟读一次都没发出去 —— 胶水那一跳断了"
+        "真点了「{EDIT_LABEL}」，那趟读一次都没发出去 —— 胶水那一跳断了",
+        EDIT_LABEL = EDIT_LABEL.as_str()
     );
     // 〔F7a〕等它到货，然后编辑面真的立起来，内容就是后端那一趟交回来的。
     for _ in 0..400 {
@@ -1859,9 +1865,10 @@ async fn an_oversized_row_never_asks_the_remote_and_still_says_why() {
         "这一帧连那一行都没画 —— 本条此刻是空真的"
     );
     assert_eq!(
-        crate::filewin::copy::testing::rects_of(&painted, EDIT_LABEL).len(),
+        crate::filewin::copy::testing::rects_of(&painted, EDIT_LABEL.as_str()).len(),
         0,
-        "超上限那一行上画出了「{EDIT_LABEL}」—— 那是一颗死按钮"
+        "超上限那一行上画出了「{EDIT_LABEL}」—— 那是一颗死按钮",
+        EDIT_LABEL = EDIT_LABEL.as_str()
     );
 
     // 而**直接调那条路**（多选长出来那天会走到）也要：不发往返 ＋ 出声。
@@ -2508,7 +2515,7 @@ async fn a_save_over_a_file_someone_else_changed_asks_instead_of_overwriting() {
     );
 
     // 真点「仍然覆盖」。
-    click_label(&ctx, &mut w, OVERWRITE_LABEL, 1.0);
+    click_label(&ctx, &mut w, &OVERWRITE_LABEL, 1.0);
     until("覆盖那一趟的结局", || w.edits.saves() > 1).await;
     assert!(w.settle_saved_edits());
     let p = w.editing().unwrap();
@@ -2539,11 +2546,68 @@ async fn a_save_over_a_file_someone_else_changed_asks_instead_of_overwriting() {
     assert!(w.settle_saved_edits());
     assert!(w.editing().unwrap().stale);
     let opens = w.edits.opens();
-    click_label(&ctx, &mut w, REOPEN_LABEL, 2.0);
+    click_label(&ctx, &mut w, &REOPEN_LABEL, 2.0);
     until("重新打开到货", || w.edits.opens() > opens).await;
     assert!(w.settle_opened_edits());
     let p = w.editing().expect("重新打开之后编辑面不见了");
     assert_eq!(p.text, "theirs\n", "重新打开之后编辑框不是盘上此刻那一份");
     assert!(!p.stale && !p.dirty());
     assert_eq!(disk.lock().unwrap()[path], "theirs\n", "丢掉重开却动了盘");
+}
+
+/// 〔GP1 · 第四波〕改权限那个框：没有运行时 / 没有通道 ⇒ 现值那一趟**当场**落「读不到」（框上说出来，不静默、不猜），
+/// 框照旧空着开。要求住址：`设计/60 §7` · `调研/第四波记录/GP1.md §5`。
+#[test]
+fn gp1_a_chmod_box_without_a_line_says_the_current_mode_is_unreadable() {
+    let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
+    assert_eq!(w.mode_probe.readout(), None, "还没摆框就有了现值");
+    assert!(w.begin_chmod(0), "权限框没摆出来");
+    assert_eq!(
+        w.mode_probe.readout(),
+        Some(crate::filewin::writeops::ModeReadout {
+            line: "读不到现在的权限".to_string(),
+            prefill: None,
+        })
+    );
+    assert_eq!(w.write_prompt().map(|p| p.text.as_str()), Some(""));
+}
+
+/// 〔GP1 · 第四波〕P2⁗（`设计/60 §7` · `GP1.md §5`）：现值那一趟**真上线**：挂一台合成后端（它按盘上真文件答 `files-stat`，`mode` 取真权限位），逐项问、按序交回；
+/// 不在的那一项 ⇒ `None`（读不到，不猜）。异源：期望的权限位是本测试自己 `set_permissions` 设下去的。
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn gp1_the_mode_probe_asks_files_stat_per_target_over_the_wire() {
+    use crate::filewin::find::testing::{wire_up, Declared, FakeBackend};
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = std::env::temp_dir().join(format!("ccm-gp1-modes-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::create_dir_all(&dir).expect("建夹具目录");
+    let a = dir.join("a.bin");
+    let b = dir.join("b.bin");
+    for (f, m) in [(&a, 0o640_u32), (&b, 0o600)] {
+        std::fs::write(f, b"x").expect("铺文件");
+        std::fs::set_permissions(f, std::fs::Permissions::from_mode(m)).expect("设权限");
+    }
+    let wired = wire_up(
+        "gp1-modes",
+        FakeBackend::new(&["files-stat"], Declared::default()),
+    )
+    .await;
+    let origin = crate::origin::Origin(wired.origin.clone());
+    let paths: Vec<String> = [&a, &b, &dir.join("gone.bin")]
+        .iter()
+        .map(|p| p.to_str().expect("ASCII").to_string())
+        .collect();
+    let got = crate::filewin::writeops::probe_modes(&wired.line, &origin, &paths).await;
+    assert_eq!(got, vec![Some(0o640), Some(0o600), None]);
+    let asked: Vec<String> = wired
+        .log
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|v| v["cmd"] == "files-stat")
+        .map(|v| v["args"]["path"].as_str().unwrap_or("").to_string())
+        .collect();
+    assert_eq!(asked, paths, "逐项各问一次、按序");
+    std::fs::remove_dir_all(&dir).ok();
 }

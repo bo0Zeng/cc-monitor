@@ -13,6 +13,7 @@
  */
 import { renderMarkdown } from "../render";
 import { AGENT_PROFILE } from "../agent-profile";
+import { copyText } from "../copy-table";
 
 export function isInteractiveTool(name: string): boolean {
   return AGENT_PROFILE.interactiveTools.has(name);
@@ -56,7 +57,7 @@ function buildAskCard(input: unknown): HTMLElement {
 
   const title = document.createElement("div");
   title.className = "block-ask-title";
-  title.textContent = "❓ 等待你的选择";
+  title.textContent = copyText("interactive.ask.title");
   root.appendChild(title);
 
   for (const raw of questions) {
@@ -77,7 +78,7 @@ function buildAskCard(input: unknown): HTMLElement {
     }
     const qText = document.createElement("span");
     qText.className = "ask-q-text";
-    qText.textContent = q.multiSelect ? `${q.question}（可多选）` : q.question;
+    qText.textContent = q.multiSelect ? copyText("interactive.ask.multi", { question: q.question }) : q.question;
     qLine.appendChild(qText);
     qEl.appendChild(qLine);
 
@@ -125,7 +126,7 @@ function buildPlanCard(input: unknown, opts: { lazy?: boolean }): HTMLElement {
 
   const title = document.createElement("div");
   title.className = "block-plan-title";
-  title.textContent = "📋 计划待批准";
+  title.textContent = copyText("interactive.plan.title");
   root.appendChild(title);
 
   const body = document.createElement("div");

@@ -26,9 +26,9 @@ const TOK = "0f1e2d3c4b5a69788796a5b4c3d2e1f0";
 describe("validateLocalLaunch（本地路径的前置校验；F06 引入、R07 改名并收成纯校验）", () => {
   it("非法 sid（含 shell 元字符 / 空串）→ throw，且抢在任何 IPC 之前（同其余 planXxx 的既有校验模式）", () => {
     expect(() => validateLocalLaunch({ kind: "resume", sid: "a; rm -rf /" }, "/p")).toThrow(
-      /非法 sessionId/,
+      /非法会话 ID/,
     );
-    expect(() => validateLocalLaunch({ kind: "resume", sid: "" }, "/p")).toThrow(/非法 sessionId/);
+    expect(() => validateLocalLaunch({ kind: "resume", sid: "" }, "/p")).toThrow(/非法会话 ID/);
   });
 
   // **这条是文档不是门禁**（Phase D 审计指出）：把 throw 整个删掉它照样绿，

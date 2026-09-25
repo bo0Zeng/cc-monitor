@@ -50,6 +50,7 @@
 //! - tracing 全局 dispatcher 一旦 init 不能再换 → 必须在 `tauri::Builder` 之前调用
 //! - WorkerGuard drop 才会 flush 缓冲 → 必须挂在 state 上（与 app 同生命周期）
 
+use crate::copy_table::copy_text;
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -74,6 +75,23 @@ const LOG_DIR_NAME: &str = "logs";
 const LOG_FILE_PREFIX: &str = "monitor";
 const LOG_FILE_SUFFIX: &str = "log";
 const ERROR_EVENT: &str = "monitor-error";
+
+/// 〔NT2 · S1 · `设计/15 §4.7 S1`〕本机后端**脱离常驻**时自己的 stderr 诊断文件：住日志目录下这一层子目录
+/// （后端那侧 `src/backend/stderr_log.rs` 满了换份，同一目录里多一份旧的）。放子目录而不放日志目录顶层：
+/// 顶层的 `.log` 是本进程按天滚动的那一族（「当前文件」按 mtime 取最新 —— 混进去会被认成 monitor 自己的）。
+const BACKEND_STDERR_DIR: &str = "backend";
+const BACKEND_STDERR_FILE: &str = "stderr.log";
+
+/// 起脱离那条载体时交给后端的那一格（后端 `stderr_log::ENV` 同值，`logging_tests` 从后端源码现抠着对拍）。
+pub const BACKEND_STDERR_LOG_ENV: &str = "CCM_BACKEND_STDERR_LOG";
+
+/// 本机后端 stderr 诊断文件（当前那一份）的路径。**唯一一处算它**：起后端时交出去的与设置页读的是同一个。
+pub fn backend_stderr_log_path(monitor_data_dir: &Path) -> PathBuf {
+    monitor_data_dir
+        .join(LOG_DIR_NAME)
+        .join(BACKEND_STDERR_DIR)
+        .join(BACKEND_STDERR_FILE)
+}
 
 // ===== DiagnosticsConfig =====
 
@@ -482,9 +500,12 @@ fn write_diagnostics_to_config(
         // 〔S5 · 第四波 · D4 / D7〕读不懂 ⇒ **不写**，说清为什么。从前这里退成 `{}` 再整份写回 ——
         //   用户手填的那份（哪怕只是少了一个逗号）连同里面别的设置被静默盖成只剩 `diagnostics` 一格。
         serde_json::from_str(&raw).map_err(|e| {
-            format!(
-                "{} 读不懂（{e}），诊断设置没有存：写回去会把这份文件里别的设置一起盖掉，先把它改成合法的 JSON",
-                cfg_path.display()
+            copy_text(
+                "rsLogging.diagnostics.badConfig",
+                &[
+                    ("path", &(cfg_path.display()).to_string()),
+                    ("e", &e.to_string()),
+                ],
             )
         })?
     } else {
@@ -549,6 +570,8 @@ pub struct LogFileInfo {
     #[cfg_attr(test, ts(type = "number"))]
     pub current_size_bytes: u64,
     pub all_files: Vec<LogFileEntry>,
+    /// 〔NT2 · S1〕本机后端（脱离那条载体）的 stderr 诊断文件（当前 ＋ 旧的一份，在的才列；新在前）。
+    pub backend_stderr: Vec<LogFileEntry>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -565,39 +588,53 @@ pub struct LogFileEntry {
     pub modified_ms: i64,
 }
 
+/// 一个目录里的普通文件（`ext` 给了就只收那个扩展名），按 mtime 新在前。目录不在 ⇒ 空。
+pub(crate) fn list_log_entries(dir: &Path, ext: Option<&str>) -> Vec<LogFileEntry> {
+    let mut entries = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(dir) {
+        for e in rd.flatten() {
+            let p = e.path();
+            if !p.is_file() {
+                continue;
+            }
+            if ext.is_some_and(|x| p.extension().is_none_or(|y| y != x)) {
+                continue;
+            }
+            let meta = e.metadata().ok();
+            let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+            let mtime = meta
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(0);
+            entries.push(LogFileEntry {
+                path: p.to_string_lossy().into_owned(),
+                size_bytes: size,
+                modified_ms: mtime,
+            });
+        }
+    }
+    entries.sort_by(|a, b| b.modified_ms.cmp(&a.modified_ms));
+    entries
+}
+
 impl LoggingState {
     pub fn log_file_info(&self) -> LogFileInfo {
-        let mut entries = Vec::new();
-        if let Ok(rd) = std::fs::read_dir(&self.log_dir) {
-            for e in rd.flatten() {
-                let p = e.path();
-                if !p.is_file() {
-                    continue;
-                }
-                if p.extension().is_some_and(|x| x == LOG_FILE_SUFFIX) {
-                    let meta = e.metadata().ok();
-                    let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
-                    let mtime = meta
-                        .and_then(|m| m.modified().ok())
-                        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                        .map(|d| d.as_millis() as i64)
-                        .unwrap_or(0);
-                    entries.push(LogFileEntry {
-                        path: p.to_string_lossy().into_owned(),
-                        size_bytes: size,
-                        modified_ms: mtime,
-                    });
-                }
-            }
-        }
-        entries.sort_by(|a, b| b.modified_ms.cmp(&a.modified_ms));
+        let entries = list_log_entries(&self.log_dir, Some(LOG_FILE_SUFFIX));
         let current_file = entries.first().map(|e| e.path.clone());
         let current_size_bytes = entries.first().map(|e| e.size_bytes).unwrap_or(0);
+        // 〔NT2 · S1〕后端那一份：路径与起后端时交出去的是同一个函数算的（它的父目录）。
+        let backend_dir = backend_stderr_log_path(&self.monitor_data_dir)
+            .parent()
+            .map(Path::to_path_buf);
         LogFileInfo {
             dir: self.log_dir.to_string_lossy().into_owned(),
             current_file,
             current_size_bytes,
             all_files: entries,
+            backend_stderr: backend_dir
+                .map(|d| list_log_entries(&d, None))
+                .unwrap_or_default(),
         }
     }
 }
