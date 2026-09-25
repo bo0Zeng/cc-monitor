@@ -1,4 +1,4 @@
-//! 〔RM1a · 第四波〕`apikey_remote.rs` 的判据 —— 账号层那份凭据文件按机器读写的 monitor 半。
+//! 〔RM1a · 第四波〕`apikey_remote.rs` 的判据 —— 上游选择那份凭据文件按机器读写的 monitor 半。
 //!
 //! # 买到的
 //!
@@ -14,7 +14,7 @@
 //! # 买不到的
 //!
 //! - 真远端那一趟（真 SSH、真后端进程写真文件）：本仓测试不起远端；后端那一半的行为判据住
-//!   `tests/backend/accounts/apikey/file_face_tests.rs`，两半之间的线上字节没有金标准。
+//!   `tests/backend/accounts/upstream/file_face_tests.rs`，两半之间的线上字节没有金标准。
 
 use super::*;
 

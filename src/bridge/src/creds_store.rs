@@ -3,8 +3,8 @@
 //! # 〔GP1 · 第四波〕写侧不在这里了
 //!
 //! 主会话 09-25 裁「每台机器上这份文件的程序写者恰好一个 ＝ **那台的后端**」⇒ 本机那一份也由本机常驻后端写
-//! （`apikey_remote::write_key_on` → 帧面 `apikey-key-set` → `src/backend/accounts/apikey/file_face.rs`），
-//! 与远端同一条路。monitor 这一侧**一个字节都不落**，`creds-core` 的写半边（`harden`）也不再开。
+//! （`apikey_remote::write_key_on` → 帧面 `apikey-key-set` → `src/backend/accounts/upstream/file_face.rs`），
+//! 与远端同一条路。monitor 这一侧**一个字节都不落**、一处都不够 `creds-core` 的写半边（`harden` 仍开着，只为 Windows 上读 DACL）。
 //! 〔墓碑 —— 从前本模块头注是「写侧（monitor 独占）与读侧掩码」，论证「写盘为什么留在 `src/bridge/src`」
 //!  与 `K-H2a` 裁四「本机这一份只有这一侧写」；两段的前提（monitor 是本机那一份的写者）没了。〕
 //! 本模块留下的：[`resolve_path`]（本 monitor 认的那一份在哪 —— 起本机后端时交给它的就是这个，写之前也拿它核
@@ -25,7 +25,7 @@ use std::path::PathBuf;
 ///
 /// ★ **与后端那侧是同一个契约**：相对路径住 `creds_core::store`，两边各自 join 自己的家目录。
 /// 由 `the_two_sides_resolve_the_same_file` 对拍 —— 两边各写一份字面量，
-/// 漂开的那天没有任何东西会说，而症状是「界面上配好了，账号层说没配」这种查不出来的形状。
+/// 漂开的那天没有任何东西会说，而症状是「界面上配好了，上游选择说没配」这种查不出来的形状。
 ///
 /// ⚠ 它**不跟随** `claudeDir` 覆盖：`config.rs` 头注逐字「monitor 自己的设置永远在默认
 /// `~/.claude/work/` 下，不跟随 `claudeDir` 字段变化」。
@@ -130,9 +130,9 @@ fn notice_of(v: &Verdict) -> Option<String> {
 
 // 〔GP1 · 第四波〕**这里原来是本机那一份的写口**（`write_key`〔散文墓碑〕 / `write_key_at`〔散文墓碑〕 /
 // `check_base_url`〔散文墓碑〕）。主会话 09-25 裁「每台机器一个写者 ＝ 那台的后端」⇒ 本机那一份也交本机常驻后端写
-// （`apikey_remote::write_key_on` → 帧面 `apikey-key-set` → `src/backend/accounts/apikey/file_face.rs`），
+// （`apikey_remote::write_key_on` → 帧面 `apikey-key-set` → `src/backend/accounts/upstream/file_face.rs`），
 // monitor 一个字节都不落。那几条写路性质（写的那一刻读盘 · 未知键一个不吃 · 顺序稳定 · 出生即只给本人 ·
-// 说不出账号拒写 · Base URL 形状错整次不写）在后端那一份的判据里逐条都有（`tests/backend/accounts/apikey/file_face_tests.rs`，
+// 说不出账号拒写 · Base URL 形状错整次不写）在后端那一份的判据里逐条都有（`tests/backend/accounts/upstream/file_face_tests.rs`，
 // 本侧独有的三条随之搬了过去，名字带 `gp1_`）。
 
 #[cfg(test)]

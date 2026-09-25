@@ -1,4 +1,4 @@
-//! 本机账号层的两问：`acct-iso.check` / `acct-iso.shellinit` 的本机对侧（文件末尾）。
+//! 本机账号域的两问：`acct-iso.check` / `acct-iso.shellinit` 的本机对侧（文件末尾）。
 //!
 //! # 〔C4d · 第四波 4B〕本机账号清单的那份参照实现**删了**
 //!
@@ -63,7 +63,7 @@ mod tests;
 //
 // 远端那两条（`acct_iso_deploy.rs::check_remote_acct_iso` / `remote_acct_iso_shellinit`）
 // 吃 `RemoteConfig`、经 SSH 跑一串 shell；本机这两条**问本机后端**
-// （`--acct-iso-status` / `--acct-iso-shellinit`，住后端账号层 `accounts/iso.rs`），
+// （`--acct-iso-status` / `--acct-iso-shellinit`，住后端账号域 `accounts/iso.rs`），
 // 与 `list_local_accounts` 同一种调用法 —— `NR2`「claude 真实跑在哪台机器，账号就归那台的后端管」。
 // 出参类型与远端那条**逐字相同**（`AcctIsoStatus` / 片段文本），前端按同一个形状读。
 

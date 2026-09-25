@@ -13,9 +13,9 @@ src/account-restart.ts:97	\n将先在【旧账号】上 /compact（命中旧缓�
 src/accounts.ts:120	过旧	保留	[不对外] deriveUi 里对后端错误串做 includes 匹配的探针串，不渲染
 src/accounts.ts:120	不支持账号	保留	[不对外] deriveUi 里对后端错误串做 includes 匹配的探针串，不渲染
 src/accounts.ts:472	in-place 模式：cc-monitor 不支持对它按会话切号	保留	[对外] 账号徽标 title。术语表（src/shared/copy/terms.json「in-place」）：限用词 —— 这种账号只有亲手敲过 cc-acct-iso init --default-in-place 才会有（cc-monitor 从不建它），cc-acct-iso 自己的提示也叫它 in-place ⇒ 用户认得；此处正是在说它为什么不能按会话切换，语境合。CP1 原裁「判不了」（等术语表），CP2a 据术语表改裁 新词:in-place 模式
-src/accounts.ts:482	这个号在apikey 凭据文件里有一行，本机中转也在跑 —— 起本机会话时 cc-monitor 会把 	改·§2.4	[对外] 账号徽标 title：破折号＋长首句，一句里讲清「有什么＋我们怎么做（ANTHROPIC_BASE_URL 指向中转、账号层换 key）」兼§2.1 →「已配置：本机会话经本机中转发送请求」
-src/accounts.ts:486	ANTHROPIC_BASE_URL 指向本机中转；请求经过中转时，账号层按这一行换上它的 key。\n	改·§2.4	[对外] 与上一截同一句，复述账号层换 key 的实现 兼§2.1（R3：原句把换 key 说成中转做的，改成账号层）
-src/accounts.ts:487	⚠ 它保证的是「请求发得到中转、账号层按这一行换 key」；	改·§2.2	[对外] 在 tooltip 里论证「它保证的是什么」，写给开发看的边界论证 兼§2.4 →「key 是否有效，要等第一次请求才知道」
+src/accounts.ts:482	这个号在apikey 凭据文件里有一行，本机中转也在跑 —— 起本机会话时 cc-monitor 会把 	改·§2.4	[对外] 账号徽标 title：破折号＋长首句，一句里讲清「有什么＋我们怎么做（ANTHROPIC_BASE_URL 指向中转、上游选择换 key）」兼§2.1 →「已配置：本机会话经本机中转发送请求」
+src/accounts.ts:486	ANTHROPIC_BASE_URL 指向本机中转；请求经过中转时，后端按这一行换上它的 key。\n	改·§2.4	[对外] 与上一截同一句，复述上游选择换 key 的实现 兼§2.1（R3：原句把换 key 说成中转做的，改了主语；RN1 · V114：界面上的主语说「后端」，不把「上游选择」这个内部词带上界面）
+src/accounts.ts:487	⚠ 它保证的是「请求发得到中转、后端按这一行换 key」；	改·§2.2	[对外] 在 tooltip 里论证「它保证的是什么」，写给开发看的边界论证 兼§2.4 →「key 是否有效，要等第一次请求才知道」
 src/accounts.ts:485	那把 key 本身对不对、上游认不认，仍然要到 claude 那边才知道。	改·§2.2	[对外] 与上一截同一句（保证边界的论证）
 src/accounts.ts:493	这个号在apikey 凭据文件里有一行，但本机中转没在跑 —— 起会话会被当场拒掉	改·§2.4	[对外] 徽标 title：破折号＋括号长补充 兼§2.2（ST1 已去掉 `**当场拒**` 的星号，其余病未治）
 src/accounts.ts:494	（不是静默失败：中转没起来与网络坏了在 claude 那边长得一模一样，	改·§2.2	[对外] 括号里是设计论证（为什么在起会话一侧拦、与网络坏了长得一样）兼§2.4
@@ -159,8 +159,8 @@ src/bridge/crates/guard-core/src/lib.rs:1070	{who} · 生产段第 {} 行 · 逐
 src/bridge/crates/guard-core/src/lib.rs:1201	{who} · 第 {}–{} 行这一段：`{{` {opens} 个 / `}}` {closes} 个	保留	[不对外] 判据内核 offenders 清单条目，只进断言失败信息
 src/bridge/src/account_aliases.rs:239	# （当前一条别名都没有）\n	保留	[对外] 生成文件里清单为空时那一行注释，短
 src/bridge/src/account_aliases.rs:561	别名文件和盘上那份一模一样，没有重写。	保留	[对外] 写入结果的补充说明，先说结果
-src/bridge/src/account_aliases.rs:568	{rc_raw} 里加了一行 source（要撤就把 cc-monitor 那一小块整块删掉）。	保留	[对外] 写入结果：说清动了用户哪份文件、怎么撤；括号是撤法，不是论证
-src/bridge/src/account_aliases.rs:571	{rc_raw} 里已经接上了这份文件，没有再动它。	保留	[对外] 写入结果，短
+src/bridge/src/account_aliases.rs:449	{rc_raw} 还没接上这份文件：在下面给它装上别名块就接上了。不想装别名块的话，自己把这一行加进去：{line}	保留	[对外] 写入结果：〔TL1 · 71 §6.1〕选了 rc 只查不写 —— 先说结果（没接上），再给两条出路（装别名块 · 自己贴那一行），不替人写
+src/bridge/src/account_aliases.rs:444	{rc_raw} 已经接上了这份文件。	保留	[对外] 写入结果，短（〔TL1〕选了 rc 只查不写，原「…没有再动它」那半句随之不再需要）
 src/bridge/src/account_aliases.rs:575	新开一个终端就能用；当前终端要先执行一次 . {}	保留	[对外] 生效方式，一句一件事
 src/bridge/src/mcp_sync.rs:169	对面的后端答的内容认不出来，多半是两边版本不一样。这一趟什么都没写。	保留	[对外] 〔AS1〕MCP 推 / 拉：对面后端的应答缺格 / 类型不对（多半版本不一样）时的那一句；先说结果，第二句说后果，不露命令名与字段名
 src/bridge/src/mcp_sync.rs:250	{machine} 上那份配置在你看差异之后又被改过了，这一趟一个字节都没写。重新看一次差异再决定。	保留	[对外] 〔AS1〕MCP 推 / 拉：写的那一刻对面那份已不是看差异时那一份（CAS 拒）；说清发生了什么、没写、下一步是用户做得了的「重新看一次差异」
@@ -319,9 +319,9 @@ src/bridge/src/config_surface.rs:788	优先级最高	保留	[对外] 优先级�
 src/bridge/src/config_surface.rs:473	cc-monitor 旧版放的：认出是它放的就删，认不出的不动	保留	[对外] 〔GP1〕足迹那一页「我们对它做什么」一列（旧版入口那一行）
 src/bridge/src/creds_store.rs:101	读不动这份文件：{e}	保留	[对外] 凭据文件读失败，结果＋原因，短
 src/bridge/src/creds_store.rs:132	{how}。怎么修：{fix}	保留	[对外] 骨架「{how}。怎么修：{fix}」，干净；病在灌进来的 how/fix 本身（见 perm.rs）
-src/backend/accounts/apikey/file_face.rs:178	{how}。怎么修：{fix}	保留	[对外] 〔RM1a〕远端那台机器上那份凭据文件的权限提醒（`apikey-read` 的 notice，回到设置页那一块）；骨架与 creds_store.rs 那一句同文、干净，病在灌进来的 how/fix 本身（见 perm.rs）
+src/backend/accounts/upstream/file_face.rs:178	{how}。怎么修：{fix}	保留	[对外] 〔RM1a〕远端那台机器上那份凭据文件的权限提醒（`apikey-read` 的 notice，回到设置页那一块）；骨架与 creds_store.rs 那一句同文、干净，病在灌进来的 how/fix 本身（见 perm.rs）
 src/bridge/src/apikey_remote.rs:152	读写第三方 API key 时出了内部错误，没有拿到结果	保留	[可达存疑] 〔RM1a〕分流器 Done 那一臂的兜底（本族走不到）；说的是用户做的事（读写 API key）＋结果，短，同 backend_policy.rs 那一句的形
-src/bridge/src/remote_relay.rs:68	本机的中转住在本机后端进程里（随它起、随它按「退出行为」留或退），不在这里另起一个	保留	[可达存疑] 〔RL1 · V107〕`ensure_on` 对本机的拒绝（界面零调用方，本机那一臂只在内部走到）；说的是结果＋原因。「中转」是层 1 的正名（terms.json）
+src/bridge/src/remote_relay.rs:68	本机的中转住在本机后端进程里（随它起、随它按「退出行为」留或退），不在这里另起一个	保留	[可达存疑] 〔RL1 · V107〕`ensure_on` 对本机的拒绝（界面零调用方，本机那一臂只在内部走到）；说的是结果＋原因。「中转」是中转的正名（terms.json）
 src/bridge/src/remote_relay.rs:115	问中转时出了内部错误，没有拿到结果	保留	[可达存疑] 〔RM1a〕分流器 Done 那一臂的兜底（本族走不到）；同 backend_policy.rs 那一句的形
 src/backend/footprint.rs:104	列不动（没权限？）	保留	[不对外] 〔RM1a〕`footprint-probe` 应答里目录那一格的 notice，monitor 今天不读它（界面没有它的格子），过线是为了能查
 src/backend/footprint.rs:113	名字超过 {MAX_ENTRIES} 个，没列（不截断：截断的清单会被当成完整的）	保留	[不对外] 同上，目录名字超上限时那一格的 notice
@@ -349,9 +349,6 @@ src/bridge/src/fenced_block.rs:129	落盘走 SFTP（upload_atomic + 远端备份
 src/bridge/src/fenced_block.rs:133	本机 Windows 的 PowerShell profile	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:134	整块 PowerShell 代码（scripts/cc.ps1.tpl 渲染）	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:144	本机 POSIX 的 ~/<用户选的那份 rc>	保留	[不对外] FENCE_SHAPES 登记表字段
-src/bridge/src/fenced_block.rs:418	**一行** source，指向 ~/.cc-monitor/aliases.sh（内容住在那份生成文件里）	保留	[不对外] FENCE_SHAPES 登记表字段
-src/bridge/src/fenced_block.rs:150	🔴 唯一**没有卸口**的一套（K-R62 §0b 那张表的「卸」一栏逐字「部分」）；\n                     也是唯一「围栏里只有一行、真内容在别处」的一套 —— 它刻意用另一对标记，\n                     与别的套共用标记就会「装一个把另一个整块替换掉」	保留	[不对外] FENCE_SHAPES 登记表字段
-src/bridge/src/fenced_block.rs:157	本机 POSIX 的 ~/<用户选的那份 rc>	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:158	整块别名 snippet —— **与 `remote-posix-block` 同一个常量**（sftp.rs::CCM_WRAPPER_SNIPPET）	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:167	与 `remote-posix-block` **只差落盘那一跳**（本地原子替换 vs SFTP）：\n                     内容、围栏、合块与剥块的实现全共用；与 `local-windows-ps` 只差**方言**\n                     （分岔在 profile_installer.rs::plan_install / \n                     profile_installer.rs::plan_uninstall，落盘与备份回滚那一整套共用）。\n                     ⇒ 补这一格没有把三套变成四套。判据 \n                     profile_installer_tests.rs::the_local_posix_port_is_byte_for_byte_the_remote_one	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:271	原文件已恢复。	保留	[对外] 写失败 / 写后校验失败那句的后半句（fenced_block::undo_note），只说真发生了的事，短
@@ -644,7 +641,7 @@ src/bridge/src/tool_registry.rs:1076	app 装的	保留	[对外] 环境档名，�
 src/bridge/src/tool_registry.rs:1077	app 该自带 —— 今天还没有装口	内部词→「应随 app 提供（安装功能暂未提供）」	[对外] 环境档名；「装口」是内部说法 新词:装口
 src/bridge/src/tool_registry.rs:1078	你自己装 —— 缺了我们提示你	保留	[对外] 环境档名，破折号后一句说清我们做什么
 src/bridge/src/tool_registry.rs:1079	app 只查	保留	[对外] 环境档名，短
-src/bridge/src/tool_registry.rs:1425	**不是「装到别处的工具」，所以不属本表的语义** —— 它是 **vendored 进 cc-monitor \n         二进制**的 crate（`src/bridge/vendor/code-picture-core`），`panorama.rs` 直接 \n         `use Engine` 调它画图。没有 `destination`、没有安装动作、卸载它等于重新编译 monitor。\n\n         🔴 **〔RM1f 09-25〕上面这一句过期了**：monitor 摘掉了内嵌引擎（V108 后半句），今天它是只装引擎的\n         **独立小程序** `cc-monitor-panorama`（`src/panorama-engine`），随 monitor 的字节带着，本机放到\n         `~/.cc-monitor/bin/`（`panorama_bytes::place_local`）、远端推到那台的 `~/.cc-monitor/bin/`（`push_to`）——\n         那是**有落点**的部署物。它该不该像 `backend` 那样进 `TOOLS`（两个载体、两个落点），**已报备、本件没改**；\n         在那之前本条的「不属本表」只对「vendored 进二进制」那个旧身份成立。\n\n         ⚠ 它另有一个身份是 **MCP server（code-picture 的 Agent head，给 Claude 用）**，\n         那一个确实「装到别处」—— 但**装它走已有的 `project-mcp` 机制**（往 `.mcp.json` 加一个 \n         server 条目），是**用法**不是新工具。仓里今天对那个 MCP head 零实现（`mcp.rs` / \n         `config_surface.rs` 里 `code-picture` 零命中）。\n\n         ⇒ 真要做「一键装 code-picture 的 MCP」属 **issue #51 第 1 部分**，\n         用户 08-10 明说「cc-bus 和 code-picture 后面再增强，现在先不做」。\n\n         🔴 **〔条 67 · 2026-09-18〕这个名字曾经有第三个身份，现在没有了**：\n         `src/backend/sidecars/codepicture/` 那一层的**独立进程**（2 008 行）已整棵删除\n         （用户逐字「不在现在设计里的全部删掉」），环境闭集里那条 `code-picture-sidecar` 同拍摘了。\n         ⇒ **本条现在回到只有两个身份**：vendored 进二进制的 crate（就是本条说的这一份）\n         ＋ MCP server 那个头。⚠ `K-R65` 当初补那一句买到的道理**仍然成立**：\n         一个名字可以同时是好几样东西，写「表上没有它」的同一拍要把那张表改对（纪律 ⑲）。	保留	[不对外] NOT_MANAGED：只被判据读的「刻意不收」登记表理由（生产代码无读者） 〔RM1f：正文补了一段「上面这一句过期了」—— monitor 摘了内嵌引擎，它今天是有落点的独立小程序；裁词不变〕
+src/bridge/src/tool_registry.rs:1514	**这个名字今天只剩一个身份不属本表：MCP server（code-picture 的 Agent head，给 Claude 用）** —— \n         它确实「装到别处」，但**装它走已有的 `project-mcp` 机制**（往 `.mcp.json` 加一个 server 条目），\n         是**用法**不是新工具。仓里今天对那个 MCP head 零实现（`mcp.rs` / `config_surface.rs` 里 `code-picture` 零命中）。\n\n         ⇒ 真要做「一键装 code-picture 的 MCP」属 **issue #51 第 1 部分**，\n         用户 08-10 明说「cc-bus 和 code-picture 后面再增强，现在先不做」。\n\n         〔TL1 · 4C〕它的另外两个身份都不在这里了：① **vendored 进 monitor 二进制的 crate**（原先本条的主理由：\n         「没有 `destination`、没有安装动作、卸载它等于重新编译 monitor」）—— RM1f 起 monitor 摘掉了内嵌引擎（V108 后半句），这个身份没了；\n         它变成只装引擎的独立小程序 `cc-monitor-panorama`（`src/panorama-engine`），本机放到 `~/.cc-monitor/bin/`、远端推到那台的 \n         `~/.cc-monitor/bin/` —— 那是**有落点的部署物**，进了 [`TOOLS`]（`id: "panorama"`，两个载体）。\n         ② **独立进程那一层**（`src/backend/sidecars/codepicture/`，条 67 · 2026-09-18 整棵删了，环境闭集里那条 `code-picture-sidecar` 同拍摘了）。\n\n         ⚠ `K-R65` 当初补的那句道理**仍然成立**：一个名字可以同时是好几样东西，写「表上没有它」的同一拍要把那张表改对（纪律 ⑲）。	保留	[不对外] NOT_MANAGED：只被判据读的「刻意不收」登记表理由（生产代码无读者） 〔TL1：改写 —— 小程序那一身份进了 TOOLS（panorama），「vendored 进二进制」那一身份 RM1f 起没了，只剩 MCP head 不属本表；裁词不变〕
 src/bridge/src/tool_registry.rs:1441	**不由 cc-monitor 安装** —— 它是用户自己装在 `<claude_dir>/skills/planned-build/` 的 \n         skill，cc-monitor 只**读它的产物**（计划文件）并允许编辑那个收件箱。\n\n         ⇒ 它在 `skill_host::SKILLS` 里（接入的 skill），**不在**本表里（受管工具）。\n         ★ 这两个集合**有交集但不是同一张表**（今天交集只有 `cc-bus`）——\n         devbench 的账本 L4 原写「同一张表的两个视图」是**错的**，已订正。\n\n         它的 `SkillSpec.install` 如实记 `NotSupported` 并说明归 F06。	保留	[不对外] NOT_MANAGED 登记表理由
 src/bridge/src/verified_write.rs:54	长度相同（{} 字节）但内容不同，首个差异在第 {} 字节。\n             这类损坏（字节翻转 / 编码变形 / CRLF↔LF 等长替换）只比长度是查不出来的。	改·§2.2	[可达存疑] 写后校验失败的报错：第二句「这类损坏…只比长度是查不出来的」是在为校验手段辩护 兼§2.4（括号列举）→「写入后校验不一致：第 {at} 字节起内容不同」
 src/bridge/src/verified_write.rs:61	长度不匹配：期望 {} 字节，实际 {} 字节。	保留	[可达存疑] 写后校验失败，短而可核对
@@ -856,8 +853,8 @@ src/settings/panel.ts:157	改即生效，无需重启。点 [改] 后按下你�
 src/settings/panel.ts:163	「Claude 数据目录」—— monitor 监听的 .claude 根目录（下含 projects/ 和 sessions/）。	保留	[对外] 术语定义：破折号引定义、括号列子目录，是用户在磁盘上看得见的目录
 src/settings/panel.ts:164	默认 ~/.claude 或 $CLAUDE_CONFIG_DIR。修改后需重启 monitor 生效。	保留	[对外] 默认值＋生效条件
 src/settings/panel.ts:167	Claude Code，自动跟 monitor 双向绑定（拉前终端按钮才能 work）。可一键安装/卸载。	改·§2.1	[对外] 「双向绑定」是实现机制，括号里夹英文 work 兼§2.4 新词:双向绑定 →「装好后『拉前终端』按钮才能用。可一键安装/卸载。」
-src/settings/panel.ts:174	「远端 (SSH)」—— monitor 通过 SSH 连到远端主机，由远端后端取代本地 	改·§2.4	[对外] 破折号起头，一句里塞了连接方式＋数据源替换＋行为不变 兼§2.1
-src/settings/panel.ts:175	jsonl-watcher 作为数据源（渲染 / Tab / 分支等行为完全相同）。\n\n	改·§2.1	[对外] 「jsonl-watcher 作为数据源」整句在讲实现，R1 jsonl 命中 新词:watcher →「远端会话和本机会话显示方式相同」
+src/settings/panel.ts:172	「远端 (SSH)」：monitor 经 SSH 连到远端主机，把那台机器上的会话也列进来。	保留	[对外] 〔TL1 · 4C〕按 CP1 裁词改过（原「—— … 由远端后端取代本地 jsonl-watcher 作为数据源」：破折号起头、一句塞三件 · 讲实现）：拆成两句，先说做什么
+src/settings/panel.ts:173	远端会话和本机会话显示方式相同。\n\n	保留	[对外] 〔TL1 · 4C〕按 CP1 裁词改过（原「jsonl-watcher 作为数据源（渲染 / Tab / 分支等行为完全相同）」§2.1）：取裁词原句
 src/settings/panel.ts:176	关闭（默认）时一切走本地，不受影响。启用 / 修改任意远端设置后需重启 monitor 才生效。	保留	[对外] 默认＋生效条件，用户可操作
 src/settings/panel.ts:177	配置不完整（缺 host / user / backendPath）时后端自动回退本地模式。	内部词→「缺主机、用户或后端路径」	[对外] 配置键名 backendPath 新词:backendPath
 src/settings/panel.ts:184	「数据位置」—— 透明展示 monitor 自身写入的所有持久化路径：config.json / history-metadata.json / 	内部词→「monitor 自己写入的所有文件位置」	[对外] 「持久化路径」是实现词 新词:持久化
@@ -1002,17 +999,17 @@ src/bridge/src/chan/wire.rs:222	本侧：{why:?}	改·§2.1	[可达存疑] 同�
 src/bridge/src/chan/wire.rs:306	Key(<不打印>)	保留	[不对外] Key 的 Debug，刻意不打印内容
 src/session-reads.ts:222	这台机器上的后端版本旧，还不能在会话里查找（重装后端之后就有）	保留	[对外] 〔C4b〕查找面板「搜索」那一行状态（查不了时）；逐字搬自 monitor 那一份（`session_find.rs` 已删），说清原因与出路，用词是术语表的「后端」
 src/session-reads.ts:251	这台机器上的后端版本旧，还给不出骨架索引（重装后端之后就有）	保留	[不对外] 〔C4b〕只进 console.info（骨架未接的原因），界面行为是退回尾部窗口；替掉 monitor 那一句「对面后端不认 --index」
-src/backend/relay/server.rs:450	连不上	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半，短、先说结果
-src/backend/relay/server.rs:450	建立连接	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；哪一跳那半，用户读得懂的动作名
-src/backend/relay/server.rs:451	没回应就断开了	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半
-src/backend/relay/server.rs:451	等响应	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；哪一跳那半
-src/backend/relay/server.rs:452	没有回应	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半
-src/backend/relay/server.rs:452	等响应	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；哪一跳那半（同文第二处）
-src/backend/relay/server.rs:453	回的不是 HTTP 响应	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半，HTTP 是 R1b 那类用户自己也这么叫的词
-src/backend/relay/server.rs:453	读响应	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；哪一跳那半
-src/backend/relay/server.rs:454	读响应	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；哪一跳那半（同文第二处）
-src/backend/relay/server.rs:454	一直不给最终响应	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半（上游只回 1xx 中间响应的那一形）
-src/backend/relay/server.rs:472	上游 {}:{} {result}。卡在{hop}这一步。	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体（claude 那一侧可能原样显示）与 stderr 那一句的骨架（设计/20 §3.1a）；两句：先说谁出了什么结果，再说卡在哪一步，无内部词、无处方
+src/backend/relay/server.rs:450	连不上	保留	[可达存疑] 中转（relay）传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半，短、先说结果
+src/backend/relay/server.rs:450	建立连接	保留	[可达存疑] 中转（relay）传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；哪一跳那半，用户读得懂的动作名
+src/backend/relay/server.rs:451	没回应就断开了	保留	[可达存疑] 中转（relay）传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半
+src/backend/relay/server.rs:451	等响应	保留	[可达存疑] 中转（relay）传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；哪一跳那半
+src/backend/relay/server.rs:452	没有回应	保留	[可达存疑] 中转（relay）传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半
+src/backend/relay/server.rs:452	等响应	保留	[可达存疑] 中转（relay）传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；哪一跳那半（同文第二处）
+src/backend/relay/server.rs:453	回的不是 HTTP 响应	保留	[可达存疑] 中转（relay）传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半，HTTP 是 R1b 那类用户自己也这么叫的词
+src/backend/relay/server.rs:453	读响应	保留	[可达存疑] 中转（relay）传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；哪一跳那半
+src/backend/relay/server.rs:454	读响应	保留	[可达存疑] 中转（relay）传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；哪一跳那半（同文第二处）
+src/backend/relay/server.rs:454	一直不给最终响应	保留	[可达存疑] 中转（relay）传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半（上游只回 1xx 中间响应的那一形）
+src/backend/relay/server.rs:472	上游 {}:{} {result}。卡在{hop}这一步。	保留	[可达存疑] 中转（relay）传输失败时回给 agent 的 504 响应体（claude 那一侧可能原样显示）与 stderr 那一句的骨架（设计/20 §3.1a）；两句：先说谁出了什么结果，再说卡在哪一步，无内部词、无处方
 src/bridge/src/backend/control/backend_route.rs:207	{s} —— ⚠ 无法确认远端是否已经执行过这条命令，因此**不**再用另一条路重做一次；\n             请刷新会话列表后再决定	改·§2.4	[对外] markdown `**不**` ＋ 破折号 ＋ 发生了什么/我们不做什么/你该做什么 三合一 兼§2.2（另一条路） 新词:另一条路 →「不确定远端有没有执行。请刷新会话列表后再决定。」（F3 回修：分层判定之后 {e}→{s}，裁词照搬）
 src/launcher-diagnostics.ts:49	这条命令似乎绕开了 ccm——账号/模型偏好不会随它生效。想要这些好处的话，改填 ccm（或含 ccm 的自定义命令），或在机器页「本机 → 工具 → 别名」里拼一条。	改·§2.4	[对外] 启动命令诊断提示（〔AL1〕只把尾巴从「下面的生成器」改指机器页「别名」，病没动）：破折号＋括号补充两信号，「想要这些好处的话」口吻绕；ccm 是用户自己敲的命令（R1b 语境内）→「这条命令没经过 ccm，账号和模型偏好不会生效。可改填 ccm，或在机器页的「别名」里拼一条。」
 src/settings/machine-aliases.ts:162	（不带参数）	保留	[对外] 别名清单里一条不带参数时的占位显示，短
@@ -1042,7 +1039,7 @@ src/settings/machine-aliases.ts:281	清空表单	保留	[对外] 按钮
 src/settings/machine-aliases.ts:282	为每个账号加一条	保留	[对外] 按钮（一次性的便利动作，title 里说清不会跟着账号表自动增删）
 src/settings/machine-aliases.ts:298	还没生成。	保留	[对外] 复制门的理由，短
 src/settings/machine-aliases.ts:300	清单里有不合格的，先改好。	保留	[对外] 复制门的理由；「先改好」是用户自己的清单、他改得了
-src/settings/machine-aliases.ts:311	这台机器的 shell 配置（那一行 source 加进哪份）：	保留	[对外] 下拉的标签（从 launcher-diagnostics.ts 原样搬来）；括号说清下拉决定什么
+src/settings/machine-aliases.ts:74	这台机器的 shell 配置（别名块装进哪份）：	保留	[对外] 下拉的标签（从 launcher-diagnostics.ts 原样搬来）；括号说清下拉决定什么 〔TL1：只决定别名块装进哪份，括号跟着改〕
 src/settings/machine-aliases.ts:312	写入	保留	[对外] 按钮
 src/settings/machine-aliases.ts:324	装别名块	保留	[对外] 按钮
 src/settings/machine-aliases.ts:325	装	保留	[对外] 动词碎片，拼成「装别名块中…」「装失败：…」
@@ -1079,15 +1076,15 @@ src/settings/account-new-form.ts:69	这个号的命令名会是 {…}	保留	[�
 src/settings/panel.ts:912	账号	保留	[对外] 设置面板里一块的标题（名词短语）；ST1 延后加载把它从 safeBlock( 挪进 loadableBlock(，文字没变
 src/settings/panel.ts:940	插件（marketplace）	保留	[对外] 设置面板里一块的标题（名词短语）；ST1 延后加载把它从 safeBlock( 挪进 loadableBlock(，文字没变
 src/settings/panel.ts:947	cc-bus 钩子	保留	[对外] 设置面板里一块的标题（名词短语）；ST1 延后加载把它从 safeBlock( 挪进 loadableBlock(，文字没变
-src/backend/accounts/apikey/creds.rs:86	读不动凭据文件：{e}	保留	[可达存疑] 中转进程里账号层（层 2）装表/重载时写到 stdout 的公告行（accounts::apikey::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；短、先说结果（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
-src/backend/accounts/apikey/table.rs:255	账号 id 当不了路由段（只许字母数字与 - _，最长 128 字节）	内部词→用在请求地址里（路由段）	[可达存疑] 中转进程里账号层（层 2）装表/重载时写到 stdout 的公告行（accounts::apikey::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；括号里的约束可操作 新词:路由段（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
-src/backend/accounts/apikey/table.rs:264	base_url 是明文 http 而主机不是本机回环 —— 那会把这一行的 key 明着发上网线。要么换 https，要么把上游放到本机回环上	保留	[可达存疑] 中转进程里账号层（层 2）装表/重载时写到 stdout 的公告行（accounts::apikey::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；字段名 base_url 是用户自己写的键，两句：结果＋两种修法，可操作（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
-src/backend/accounts/apikey/table.rs:268	auth_style 写的不是账号层认得的值之一（认得的那几个见下面那行现算的清单）	改·§2.2	[可达存疑] 中转进程里账号层（层 2）装表/重载时写到 stdout 的公告行（accounts::apikey::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；括号「认得的那几个见下面那行现算的清单」泄了实现（现算） 兼§2.4 →「auth_style 的值认不出，可用值见下一行」（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
-src/backend/accounts/apikey/table.rs:276	这一条的 auth_style 说不发任何鉴权头，同一条却配了 api_key —— 两句话说的是相反的事，删掉其中一句	保留	[可达存疑] 中转进程里账号层（层 2）装表/重载时写到 stdout 的公告行（accounts::apikey::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；指出配置自相矛盾并给出修法，用户的配置用户能改（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
-src/backend/accounts/apikey/table.rs:280	base_url 带路径前缀 ⇒ 上游收到的是「那个前缀 + 客户端自己的真路径」。若前缀与客户端的路径头一段重了，上游会看到重复的那一段（中转不替你合并）	改·§2.4	[可达存疑] 中转进程里账号层（层 2）装表/重载时写到 stdout 的公告行（accounts::apikey::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；⇒ 记号＋括号补充＋两长句，一句里塞了发生什么＋后果＋我们不做什么（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
-src/backend/accounts/apikey/table.rs:288	这一条用 Authorization: Bearer 头把 key 交给上游，而客户端自带的鉴权头会被丢掉	保留	[可达存疑] 中转进程里账号层（层 2）装表/重载时写到 stdout 的公告行（accounts::apikey::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；说明性的一句（今天默认不印）（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
-src/backend/accounts/apikey/table.rs:292	这一条用 x-api-key 头把 key 交给上游（不是默认那种），而客户端自带的鉴权头会被丢掉	保留	[可达存疑] 中转进程里账号层（层 2）装表/重载时写到 stdout 的公告行（accounts::apikey::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；括号短（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
-src/backend/accounts/apikey/table.rs:296	这一条一个鉴权头都不发，客户端自带的那份也不转发 —— 这是给不校验凭据的本地部署用的那一档	保留	[可达存疑] 中转进程里账号层（层 2）装表/重载时写到 stdout 的公告行（accounts::apikey::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；破折号接的是用途说明，一处（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/backend/accounts/upstream/creds.rs:86	读不动凭据文件：{e}	保留	[可达存疑] 中转进程里上游选择装表/重载时写到 stdout 的公告行（accounts::upstream::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；短、先说结果（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/backend/accounts/upstream/table.rs:255	账号 id 当不了路由段（只许字母数字与 - _，最长 128 字节）	内部词→用在请求地址里（路由段）	[可达存疑] 中转进程里上游选择装表/重载时写到 stdout 的公告行（accounts::upstream::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；括号里的约束可操作 新词:路由段（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/backend/accounts/upstream/table.rs:264	base_url 是明文 http 而主机不是本机回环 —— 那会把这一行的 key 明着发上网线。要么换 https，要么把上游放到本机回环上	保留	[可达存疑] 中转进程里上游选择装表/重载时写到 stdout 的公告行（accounts::upstream::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；字段名 base_url 是用户自己写的键，两句：结果＋两种修法，可操作（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/backend/accounts/upstream/table.rs:268	auth_style 写的不是后端认得的值之一（认得的那几个见下面那行现算的清单）	改·§2.2	[可达存疑] 中转进程里上游选择装表/重载时写到 stdout 的公告行（accounts::upstream::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；括号「认得的那几个见下面那行现算的清单」泄了实现（现算） 兼§2.4 →「auth_style 的值认不出，可用值见下一行」（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/backend/accounts/upstream/table.rs:276	这一条的 auth_style 说不发任何鉴权头，同一条却配了 api_key —— 两句话说的是相反的事，删掉其中一句	保留	[可达存疑] 中转进程里上游选择装表/重载时写到 stdout 的公告行（accounts::upstream::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；指出配置自相矛盾并给出修法，用户的配置用户能改（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/backend/accounts/upstream/table.rs:280	base_url 带路径前缀 ⇒ 上游收到的是「那个前缀 + 客户端自己的真路径」。若前缀与客户端的路径头一段重了，上游会看到重复的那一段（中转不替你合并）	改·§2.4	[可达存疑] 中转进程里上游选择装表/重载时写到 stdout 的公告行（accounts::upstream::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；⇒ 记号＋括号补充＋两长句，一句里塞了发生什么＋后果＋我们不做什么（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/backend/accounts/upstream/table.rs:288	这一条用 Authorization: Bearer 头把 key 交给上游，而客户端自带的鉴权头会被丢掉	保留	[可达存疑] 中转进程里上游选择装表/重载时写到 stdout 的公告行（accounts::upstream::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；说明性的一句（今天默认不印）（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/backend/accounts/upstream/table.rs:292	这一条用 x-api-key 头把 key 交给上游（不是默认那种），而客户端自带的鉴权头会被丢掉	保留	[可达存疑] 中转进程里上游选择装表/重载时写到 stdout 的公告行（accounts::upstream::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；括号短（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/backend/accounts/upstream/table.rs:296	这一条一个鉴权头都不发，客户端自带的那份也不转发 —— 这是给不校验凭据的本地部署用的那一档	保留	[可达存疑] 中转进程里上游选择装表/重载时写到 stdout 的公告行（accounts::upstream::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；破折号接的是用途说明，一处（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
 src/accounts.ts:785	本机会话结束后，Resume 沿用它上次的账号；换号只对本工具在 tmux 里起的会话做得到。	保留	[对外] 换号重启定位失败时本机那一支的补救句（A3 第二波）；〔U4〕「归档后」换成「会话结束后」（设计/30 §3.5.2：会话状态只说已结束 / 可重连）；tmux 属 R1b「用户自己也这么叫」
 src/accounts.ts:786	可以等它结束后，用右键「把此会话切到账号 X」。	保留	[对外] 换号重启定位失败时远端那一支的补救句；〔U4〕「先归档」换成「等它结束」：归档不是用户能做的动作，能做的是等会话结束（设计/30 §3.5.2）
 src/backend/accounts/iso.rs:64	这台机器上还没装 cc-acct-iso。	保留	[可达存疑] 本机「找不到 cc-acct-iso」那句话的尾巴（前半「查过哪些地方」由 plugin::discover 拼）；进 --acct-iso-status 的 looked 与 --acct-iso-shellinit 的 not_installed 信封，短而直接
@@ -1282,7 +1279,7 @@ src/settings/panel.ts:1545	Claude 数据目录	保留	[对外] 落盘失败 / �
 src/settings/panel.ts:1733	外观	保留	[对外] 落盘失败时说是哪一格（ST2 步 9）
 src/settings/panel.ts:1763	外观	保留	[对外] 落盘失败时说是哪一格（ST2 步 9）
 src/settings/account-new-form.ts:86	Base URL，留空用默认上游	保留	[对外] 加账号表单 apikey 那一支的 Base URL 输入框占位（ST2 · 70 §4.4 线框里那一格）
-src/bridge/src/history.rs:2360	apikey 端点改写不可用：账号 {account:?} 在 [{host}] 的 apikey 表里有一行，\n         但那台机器上的中转起不来（{why}）——\n\n         这一发要是照旧起出去，claude 那边会报一个与网络故障同形的连接失败。\n\n         ⇒ 重装那台机器的后端再试，或把该账号那一行从那台机器的凭据文件里去掉。	保留	[对外] 〔RL1〕远端 apikey 号的中转起不来 ⇒ 拒绝起会话（toast「无法构造…」的第二行）；说的是结果＋原因＋下一步，点名那台机器。「中转」层 1 正名、「apikey 端点改写」层 2 正名（terms.json）
+src/bridge/src/history.rs:2360	apikey 端点改写不可用：账号 {account:?} 在 [{host}] 的 apikey 表里有一行，\n         但那台机器上的中转起不来（{why}）——\n\n         这一发要是照旧起出去，claude 那边会报一个与网络故障同形的连接失败。\n\n         ⇒ 重装那台机器的后端再试，或把该账号那一行从那台机器的凭据文件里去掉。	保留	[对外] 〔RL1〕远端 apikey 号的中转起不来 ⇒ 拒绝起会话（toast「无法构造…」的第二行）；说的是结果＋原因＋下一步，点名那台机器。「中转」中转正名、「apikey 端点改写」上游选择正名（terms.json）
 src/bridge/src/remote_relay.rs:82	那台的后端没有起中转（口上没人在听，它也没起进程）	保留	[对外] 〔RL1〕上一句里「为什么」那一格：relay-ensure 回 started:false
 src/bridge/src/remote_relay.rs:85	那台的后端起了一个中转，但等了一会儿它还没在那个口上听	保留	[对外] 〔RL1〕上一句里「为什么」那一格：起了进程、有界地等完了口上仍没人
 src/backend/control/files_write.rs:724	回读 {} 字节，与写进去的 {} 字节不一致	保留	[对外] files-put 写后校验失败那句的中段（RW1：用户文件的写规则从 monitor 的 fenced_block::apply 搬来后端），两个数都是用户看得懂的字节数
@@ -1307,7 +1304,7 @@ src/settings/machine-aliases.ts:67	~/.bashrc（或你实际用的 shell 配置�
 src/settings/machine-aliases.ts:68	source 它，或开一个新终端。	保留	[对外] 〔AL1c〕POSIX 手贴后的生效方式，原样搬进平台措辞表（文字没变）
 src/settings/machine-aliases.ts:73	$PROFILE（PowerShell 启动时读的那份脚本）	保留	[对外] 〔AL1c〕PowerShell 手贴的落点提示；$PROFILE / PowerShell 是用户自己也这么叫的词，括号里说清它是什么
 src/settings/machine-aliases.ts:74	开一个新的 PowerShell 窗口。	保留	[对外] 〔AL1c〕PowerShell 手贴后的生效方式，一句一件事
-src/settings/machine-aliases.ts:75	这台机器的 PowerShell 配置（那一行加进哪份 $PROFILE）：	保留	[对外] 〔AL1c〕下拉的标签，与 POSIX 那一句同形
+src/settings/machine-aliases.ts:85	这台机器的 PowerShell 配置（别名块装进哪份 $PROFILE）：	保留	[对外] 〔AL1c〕下拉的标签，与 POSIX 那一句同形 〔TL1：这个下拉今天只决定别名块装进哪份（接上别名文件那一行只住别名块里，71 §6.1），括号跟着改〕
 src/settings/machine-aliases.ts:76	名字，如 alphacc	保留	[对外] 〔AL1c〕名字输入框占位（PowerShell 上没有 tmux，例子不用 alphacct）
 src/settings/panel.ts:163	「别名」—— 一个名字加一组 ccm 参数，在终端里敲这个名字就等于敲 ccm 加上这组参数。	保留	[对外] 〔AL1c〕机器页 ⓘ 里「别名」一节的第一句：说清它是什么（终端集成并进来了，节名跟着改）
 src/settings/panel.ts:164	Windows 上这一块还管终端集成：把 cc 命令注入到 $PROFILE，让你打 `cc` 而不是 `claude` 启动 	改·§2.4	[对外] 〔AL1c〕原「终端集成」那一句前面加了一截「Windows 上这一块还管终端集成：」，余下逐字不变；与下一截拼成一句：破折号＋做什么＋为什么＋括号补充三合一 新词:注入
@@ -1340,6 +1337,7 @@ src/settings/machine-aliases.ts:590	已装别名块	保留	[对外] 〔AL1d〕�
 src/settings/machine-aliases.ts:591	还不存在，写入时新建	保留	[对外] 〔AL1d〕启动文件下拉的状态标签（原「{…}（还不存在，写入时新建）」拆成标签）
 src/settings/machine-aliases.ts:728	{…}失败：{…}	保留	[对外] 〔AL1d〕装 / 卸别名块失败：动词＋原因（与改写前同形，只是换了拼接位置）
 src/settings/machine-aliases.ts:744	将装进 {…} 的别名块	保留	[对外] 〔AL1d〕预览浮层标题：装进哪份文件
+src/settings/machine-aliases.ts:691	。这是旧版的别名块，点「重装别名块」换成新版（新版会自动接上你的别名）	保留	[对外] 〔TL1 · 4C〕别名块状态行的续句（PowerShell v2 块）：先说是什么（旧版），再说怎么办（点那颗钮），括号说换了得到什么
 src/bridge/src/panorama_call.rs:263	代码全景这一问出了内部错误，没有拿到结果	保留	[可达存疑] 〔RM1e〕分流器 Done 那一臂的兜底（本族走不到）；同 backend_policy.rs / apikey_remote.rs 那一句的形
 src/bridge/src/panorama_call.rs:305	{who} 的代码全景没答上来（{code}）：{message}	保留	[对外] 〔RM1e〕那台机器的全景失败原话：{who} 是「本机」或机器名，{code} 是后端的错误码（not_installed / unsupported / timed_out …，同 frame_query 那一句「查询失败（code）」的形，用户据此能跟着报错走），{message} 是后端那句人话
 src/tab-stream-view.ts:967	↑ 更早的消息 · 上翻加载	保留	[对外] 〔CF2〕实时 tab 顶端哨兵：账本空了、下面可能还有，上翻会按行号去取；与既有「↑ 还有 N 条更早消息 · 上翻加载」同一口吻

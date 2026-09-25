@@ -338,7 +338,7 @@ let localLaunchSnapshot: { state: AccountsState; pins: Record<string, string> } 
  *
  * 🔴 **上一拍这里读的是 `a.isDefault`（manifest 字段），而头注写的是 `currentWorkingAccount`
  * （优先 config.json 的 `defaultName`）—— 两者在「用户切过号」之后就不是同一个答案。**
- * 后果是**切过号之后新会话静默串号**，而且账号层会按错的 id 换上别人那一行的 key。
+ * 后果是**切过号之后新会话静默串号**，而且上游选择会按错的 id 换上别人那一行的 key。
  * ⇒ 快照现在整份存 `AccountsState`（`defaultName` 在里面），这里直接调那条唯一的规则。
  */
 export function localLaunchAccountNameSync(sid: string | null): string | null {
@@ -505,8 +505,8 @@ export function accountStatusBadge(
         warn: false,
         title:
           "这个号在apikey 凭据文件里有一行，本机中转也在跑 —— 起本机会话时 cc-monitor 会把 " +
-          "ANTHROPIC_BASE_URL 指向本机中转；请求经过中转时，账号层按这一行换上它的 key。\n" +
-          "⚠ 它保证的是「请求发得到中转、账号层按这一行换 key」；" +
+          "ANTHROPIC_BASE_URL 指向本机中转；请求经过中转时，后端按这一行换上它的 key。\n" +
+          "⚠ 它保证的是「请求发得到中转、后端按这一行换 key」；" +
           "那把 key 本身对不对、上游认不认，仍然要到 claude 那边才知道。",
       };
     }
@@ -579,7 +579,7 @@ export function isSelectable(a: Account): boolean {
   //
   // ★ **Z02 订正了 Z01 在这儿写的一句错话**。Z01 写的是「从 UI 起它需要『显式 unset』的
   // 注入路径，而 launch-plan 今天只会 export」——**不对**：那条路径早就有了，两条渲染路各一份
-  //   · CLI 路径：`ACCOUNT_DIMENSION.cliFlags` 对非 account 态吐 `--base`，
+  //   · CLI 路径：CLI 渲染器的 `account` 维度（〔LR1〕今天只在 Rust `ccm_invocation.rs`）对非 account 态吐 `--base`，
   //     而 `shared/ccm` 收到 `--base` 会 `unset CLAUDE_CONFIG_DIR`（两处落点，
   //     由 `base-flag-contract-guard.vitest.ts` 钉住）
   //   · 兜底渲染路径：`ENV_RESET_DIMENSION` 推 `unset-config-dir` op

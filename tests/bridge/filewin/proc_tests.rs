@@ -239,7 +239,7 @@ fn the_window_binary_is_never_guessed() {
 /// 一个**一定在**的替身二进制：它读 stdin 到 EOF 然后退出。
 ///
 /// 🔴 **为什么用替身，而不用那份真的 `cc-monitor-filewin`** —— 不是省事：
-/// 门禁那一格逐字跑 `cargo test --workspace --exclude code-picture-core --lib`，
+/// 门禁那一格逐字跑 `cargo test --workspace --lib`，
 /// 而 **`--lib` 不构建 bin** ⇒ 那份二进制在门禁跑的时候**根本不存在**。
 /// 照它写的判据在门禁上会恒红，而「判据恒红」与「判据不存在」一样没用。
 ///

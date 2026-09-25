@@ -1,79 +1,33 @@
-// F03「--print 平价预言机」的输入源：从真 CLI 渲染器取一批代表性场景的完整 `ccm …` 调用行。
-// 与 tests/e2e/tmux-target-emit.mts 同一模式（从真 builder/renderer 取生产串，不手搓等价命令）。
+// F03「--print 平价预言机」的输入源：一批代表性场景的完整 `ccm …` 调用行。
 //
-// R04① 后入口是 `tryRenderCli`（原 `canRenderCli`+`renderCli` 合成）。这里给一个"能力齐全"的
-// 假探测结果——本预言机要验的是**渲染出的命令行与真 ccm 的解析是否对得上**，不是降级逻辑，
-// 故必须让它走成功分支；真降级路径由 launch-render-cli.test.ts 覆盖。
+// 〔LR1 · U8c-3〕输入源从「现场跑 TS 渲染器 `tryRenderCli`」换成**入库夹具 `cli-golden.json`**
+// 里名字以 `print-parity:` 打头的那四条用例的 `out`。
+// ⚠ 这**不是**换成手搓命令：那四行的来历有一条链，每一环都有东西会红 ——
+//   ① `out` 写在 `src/launch-cli-golden.ts` 的用例表里（手写期望），落盘 == 现场由
+//      `tests/launch-payload-golden.vitest.ts` 管；
+//   ② `cargo` 那一侧（`launch_cli_parity.rs`）拿同一份夹具的 `req` 跑**生产**命令
+//      `render_ccm_launch`，与 `out` 逐字节比 ⇒ 这四行 == 今天生产渲染器（Rust）的产出；
+//   ③ 本套件把它们喂给真 `ccm --print`，验「生产渲染器那一行，真 ccm 读得懂」。
+// 生产渲染器从 U8c-2c-2 起就是 Rust；TS 那份早已零生产调用、U8c-3 删掉 ——
+// 本套件此前验的其实是一份不在生产路上的渲染器，换源之后才真的在验生产那一行。
 //
 // **注意（R04 实现期踩到）**：本目录不在 `tsconfig.json` 的 `include: ["src"]` 里，
-// 所以改动生产侧导出签名时 **tsc 抓不到这里**——只有真跑 e2e 才会暴露（本次就是这样发现的：
-// tsc 0 + npm test 701 全绿，而 ccm-print-parity 12 条全红）。这也是 R00 把这 7 套接进 CI 的理由。
-import { buildLaunchPlan } from "../../src/launch-plan.ts";
-import { tryRenderCli } from "../../src/launch-render-cli.ts";
-import type { LaunchContext } from "../../src/launch-plan.ts";
-import type { CcmProbeResult } from "../../src/ccm-probe.ts";
+// 所以改动生产侧导出签名时 **tsc 抓不到这里**——只有真跑 e2e 才会暴露。
+// 本文件因此只读 JSON、不 import 任何 `src/` 符号。
+import { readFileSync } from "node:fs";
 
-// `K-R53` `KR53D3`：`CcmProbeResult` 从「`installed` 布尔 + 两个恒在的字段」换成**三态判别联合**
-// （「探测出错」与「远端没装」不许压成同一个值，理由住 `src/ccm-probe.ts` 头注）。
-// ⚠ 本文件头注那条警告**当场兑现了一次**：`tests/e2e/` 不在 `tsconfig.json` 的 `include: ["src"]` 里
-//   ⇒ tsc 抓不到这里，`npm test` 也全绿，只有真跑本套件才炸（`PASS=0 FAIL=12`，
-//   症状是 `bash: line 1: --print: command not found` —— 本脚本抛了、TSV 是空的）。
-const FULL_CAPS: CcmProbeResult = {
-  state: "installed",
-  version: "1",
-  capabilities: new Set([
-    "new", "resume", "attach", "tmux", "account", "model", "cwd", "agent", "launcher", "ccm-sid", "print",
-  ]),
-};
+const FIXTURE = new URL("../../src/bridge/src/backend/control/fixtures/cli-golden.json", import.meta.url);
+const PREFIX = "print-parity:";
+/** 本套件 12 条断言按这四个名字取行（`ccm-print-parity.sh` 的 `get_line`）。**相等**，不是包含。 */
+const WANT = ["resumeTmuxWithIdentity", "newTmuxCustomLauncher", "attach", "resumeTmuxWithModel"];
 
-function line(ctx: LaunchContext): string {
-  const r = tryRenderCli(buildLaunchPlan(ctx), ctx, FULL_CAPS);
-  if (!r.ok) throw new Error(`平价预言机的场景必须可渲染，却降级了: ${r.reason}`);
-  return r.cmd;
+const fx = JSON.parse(readFileSync(FIXTURE, "utf8")) as { cases: { name: string; ok: boolean; out: string }[] };
+const picked = fx.cases.filter((c) => c.name.startsWith(PREFIX));
+const labels = picked.map((c) => c.name.slice(PREFIX.length));
+if (JSON.stringify([...labels].sort()) !== JSON.stringify([...WANT].sort())) {
+  throw new Error(`夹具里 \`${PREFIX}\` 用例是 ${JSON.stringify(labels)}，本套件要的是 ${JSON.stringify(WANT)}`);
 }
-
-const scenarios: Record<string, LaunchContext> = {
-  resumeTmuxWithIdentity: {
-    transport: { kind: "ssh" },
-    action: { kind: "resume", sid: "p1" },
-    container: { kind: "tmux", name: "cc-p1", nameQuoting: "raw", mode: "create" },
-    cwd: "/tmp",
-    account: { kind: "base" },
-    launcherOverride: "claude",
-    ccmSid: "p1",
-  },
-  newTmuxCustomLauncher: {
-    transport: { kind: "ssh" },
-    action: { kind: "new" },
-    container: { kind: "tmux", name: "cc-proj", nameQuoting: "quoted", mode: "create" },
-    cwd: "/home/pi/my proj",
-    account: { kind: "base" },
-    launcherOverride: "CCMPROBE",
-    ccmSid: undefined,
-  },
-  attach: {
-    transport: { kind: "ssh" },
-    action: { kind: "attach", name: "cc-p1" },
-    container: { kind: "tmux", name: "cc-p1", nameQuoting: "quoted", mode: "attach-only" },
-    cwd: null,
-    account: { kind: "base" },
-    launcherOverride: undefined,
-    ccmSid: undefined,
-  },
-  // F08：ccm 学会了 --model，闭合 R14①——验证真 ccm 收到 --model 后真的 export ANTHROPIC_MODEL。
-  // account 用 base（同其余场景，避免这里额外牵扯账号 manifest 解析——组合测试见 ccm-cli.test.sh）。
-  resumeTmuxWithModel: {
-    transport: { kind: "ssh" },
-    action: { kind: "resume", sid: "p1" },
-    container: { kind: "tmux", name: "cc-p1", nameQuoting: "raw", mode: "create" },
-    cwd: "/tmp",
-    account: { kind: "base" },
-    launcherOverride: "claude",
-    ccmSid: "p1",
-    modelOverride: "opus",
-  },
-};
-
-for (const [label, ctx] of Object.entries(scenarios)) {
-  console.log(`${label}\t${line(ctx)}`);
+for (const c of picked) {
+  if (!c.ok) throw new Error(`平价预言机的场景必须可渲染，夹具里却是降级：${c.name} → ${c.out}`);
+  console.log(`${c.name.slice(PREFIX.length)}\t${c.out}`);
 }

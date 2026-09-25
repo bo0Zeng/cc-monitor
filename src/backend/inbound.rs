@@ -803,7 +803,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔RM1a · 第四波〕**账号层**（层 2）那份凭据文件在**这台机器上**的读写口 —— 账号层自己的状态，
+    // 〔RM1a · 第四波〕**上游选择**那份凭据文件在**这台机器上**的读写口 —— 上游选择自己的状态，
     //   不是用户文件（判清全文 `调研/第四波记录/RM1a.md §1`）⇒ 写口登记在 `readonly_guard` 第四层，
     //   **只从这里一扇门进来**。远端账号页配的 key 从此落在会话跑的那台机器上。
     //   ⚠ 明文只在 `apikey-key-set` 的 `args.key` 里（帧面：长连接入方向；派生 CLI 面：stdin），
@@ -817,7 +817,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &["account", "baseUrl", "key", "masked", "path"],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::accounts::apikey::file_face::answer_set(&r.args)
+            crate::accounts::upstream::file_face::answer_set(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -829,12 +829,12 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &["configured", "masked", "notice", "path", "problem", "rows"],
         takes_input: false,
         run: Run::Blocking(|_r| {
-            crate::accounts::apikey::file_face::answer_read()
+            crate::accounts::upstream::file_face::answer_read()
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔RM1a · 第四波〕**中转（层 1）**：这台机器上的 `--relay` 进程在不在 · 没有就起一个脱离的。
+    // 〔RM1a · 第四波〕**中转**：这台机器上的 `--relay` 进程在不在 · 没有就起一个脱离的。
     //   远端那台上的会话要走中转，那台上就得有一个；本机那一个由 monitor 监护，monitor 从不对本机发 `relay-ensure`。
     //   ⚠ 只收端口，**一个凭据 / 账号的名字都不经过这两条**（「账号就账号, 中转就中转」）。
     //   ⚠ 阻塞档：回环连一次 / 起一个进程，开跑之后打不断。

@@ -2,23 +2,23 @@ use super::*;
 // ⚠ 下面这几条 `use` 是**判据段自己的**，不放在 `server.rs` 文件顶上：放上面会在
 //    非测试构建里变成 unused import。
 //    ⚠⚠ 〔`设计/20 §7` 步 1〕`table` / `creds` 这两条先前是**跟着 `super::*` 蹭进来的**
-//    —— 那时 `server.rs` 自己引着它们。层 2 搬走之后层 1 不再认识那两个模块，
+//    —— 那时 `server.rs` 自己引着它们。上游选择搬走之后中转不再认识那两个模块，
 //    判据要用就得自己写明白：**判据的人群从哪来，要看得见**。
 use super::super::listen::{
     listen, resolve_port, run_reading, run_with, serve, RelayExec, DOWNSTREAM_DEADLINE,
     UPSTREAM_DEADLINE,
 };
 use super::super::upstream;
-use crate::accounts::apikey::creds;
-use crate::accounts::apikey::{self as accounts, table::RoutingTable, Accounts};
+use crate::accounts::upstream::creds;
+use crate::accounts::upstream::{self as accounts, table::RoutingTable, Accounts};
 use creds_core::SecretKey;
 use std::io::BufRead;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::sync::mpsc;
 
-/// 判据里把一张表包成层 2、再交给层 1 的那一步。
+/// 判据里把一张表包成上游选择、再交给中转的那一步。
 ///
-/// ⚠ 走的是**生产段那条真实的层 2**（`Accounts`），不是判据自己造的一个假 `Destinations`
+/// ⚠ 走的是**生产段那条真实的上游选择**（`Accounts`），不是判据自己造的一个假 `Destinations`
 /// —— 造一个假的就等于「量的不是生产段那张决策表」。
 fn dest_of(table: RoutingTable) -> Arc<dyn super::super::Destinations> {
     Arc::new(Accounts::new(table, upstreams_without_env()))
@@ -38,13 +38,13 @@ const TEST_AGENT: &str = "agentA";
 /// 第二家（`routes_two_keys…` 用它证「两个键走同一个进程」）。
 const TEST_AGENT_B: &str = "agentB";
 
-/// 拿**生产段那张决策表**（`accounts::apikey::decide`，与 `Accounts::resolve` 同一份实现）
+/// 拿**生产段那张决策表**（`accounts::upstream::decide`，与 `Accounts::resolve` 同一份实现）
 /// 问一次，再把答案交给生产段那个渲染函数，返回它吐出来的那串字节。
 ///
 /// ⚠⚠ 判据**不自己判**「这一行该不该换头 / 要不要丢掉客户端那份」——
-/// 那是层 2 的活（`设计/20 §7` 步 1 之后它整条搬过去了）。判据自己再判一遍，
+/// 那是上游选择的活（`设计/20 §7` 步 1 之后它整条搬过去了）。判据自己再判一遍，
 /// 量到的就是判据里那份副本，不是生产段那一份。
-fn render_via_layer_two(
+fn render_via_upstream_selection(
     t: &RoutingTable,
     account: &str,
     head: &RequestHead,
@@ -66,20 +66,20 @@ fn render_via_layer_two(
         &mut |d| {
             out = Some(match d {
                 Destination::Refuse { status, .. } => {
-                    panic!("{account} 那一行该在表里，层 2 却答了 Refuse {status}")
+                    panic!("{account} 那一行该在表里，上游选择却答了 Refuse {status}")
                 }
                 Destination::Passthrough { upstream } => {
                     render_upstream_request(head, rest, upstream, None, body_len)
                 }
-                // 〔`P16` 2026-09-22〕层 2 交下来的是一个 `AuthSwap`（头名 ＋ 完整头值 ＋
-                // 要丢的头名全集），层 1 照写 ⇒ 这里原样把它递进渲染，**不许在判据里自己凑一份**。
+                // 〔`P16` 2026-09-22〕上游选择交下来的是一个 `AuthSwap`（头名 ＋ 完整头值 ＋
+                // 要丢的头名全集），中转照写 ⇒ 这里原样把它递进渲染，**不许在判据里自己凑一份**。
                 Destination::Substitute { upstream, auth } => {
                     render_upstream_request(head, rest, upstream, Some(&auth), body_len)
                 }
             });
         },
     );
-    String::from_utf8(out.expect("层 2 一次都没答")).expect("utf8")
+    String::from_utf8(out.expect("上游选择一次都没答")).expect("utf8")
 }
 
 /// 假上游发几个事件块。终止块另算 ⇒ 一条响应的**块数** = `UPSTREAM_EVENTS + 1`。
@@ -1082,7 +1082,7 @@ fn an_interim_1xx_response_is_skipped_instead_of_being_sent_as_the_final_one() {
 /// 上一条判据只喂到 **2** 条 1xx，够不到上限 ⇒ 把 `if interim > INTERIM_RESPONSES_ALLOWED`
 /// 整支拿掉，上一条照样绿，而真机后果是一个坏上游能让中转在那个循环里**一直读下去**。
 /// ⇒ 这一条喂 **9 条**（上限的手写字面量 8 + 1），断它回 **504**
-/// （`设计/20 §3.1a`：层 1 自己的传输失败；先前这一格回 502，与层 2 `Refuse` 撞码）。
+/// （`设计/20 §3.1a`：中转自己的传输失败；先前这一格回 502，与上游选择 `Refuse` 撞码）。
 ///
 /// ⚠ 期望值 `9` 是**手写字面量**，不是拿 `INTERIM_RESPONSES_ALLOWED` 算的
 /// —— 拿被测常量算期望值，改了常量本条会跟着漂、永远绿。
@@ -1415,10 +1415,10 @@ fn relay_child_process_entry_point() {
     // ⚠ home 走**生产段那条**解析（`resolve_home` 认 `CLAUDE_CONFIG_DIR`）——
     //   而凭据那份文件的位置由 `CCM_APIKEY_CREDENTIALS` 覆盖，父进程一定会设它
     //   （见 `spawn_relay_child_with_creds`）。**绝不能让判据去读用户真实的那份凭据。**
-    // ⚠ 〔层 2 搬出 `relay/` 那一拍〕走的是 `main.rs` 的 `--relay` 那一臂**真调的那一个**
-    //   （`accounts::apikey::run_relay` = 层 1 的 `run` ＋ 层 2 那只手），不是层 1 的 `run` 本身 ——
+    // ⚠ 〔上游选择搬出 `relay/` 那一拍〕走的是 `main.rs` 的 `--relay` 那一臂**真调的那一个**
+    //   （`accounts::upstream::run_relay` = 中转的 `run` ＋ 上游选择那只手），不是中转的 `run` 本身 ——
     //   后者今天要调用方递一个 `Startup` 进来，判据自己递就不是生产段那条接线了。
-    std::process::exit(crate::accounts::apikey::run_relay(
+    std::process::exit(crate::accounts::upstream::run_relay(
         &crate::agents::claudecode::paths::resolve_home(),
         &[],
     ));
@@ -1648,7 +1648,7 @@ fn a_sentinel_auth_header_shows_up_in_neither_the_relay_processs_stderr_nor_its_
 ///
 /// `a_sentinel_auth_header_shows_up_in_neither_the_relay_processs_stderr_nor_its_stdout`
 /// 喂进去的是**客户端发来的**那个头 —— 它证的是「**进来的**东西没被记下来」。
-/// 本条喂的是**中转进程的账号层从那份文件里读出来、替客户端换上去的那把 key**，
+/// 本条喂的是**中转进程的上游选择从那份文件里读出来、替客户端换上去的那把 key**，
 /// 那是**另一个值、从另一条路进来**。件计划 `§0` 逐字：**判据守的是前门，key 从后门进**，
 /// 而那一形「同时骗过了 PM 与一路审计」。⇒ **两条缺一都不成立。**
 ///
@@ -1946,7 +1946,7 @@ fn an_account_that_is_not_in_the_table_gets_404_and_nothing_reaches_upstream() {
 ///
 /// 件计划逐字记着 `K-H2a` 的诚实边界：「**502 那条错误支没测**（已测 404/400）」。
 /// 这里第三个账号 `acct-dead` 的 `base_url` 指着一个**没人监听**的回环端口
-/// ⇒ 连上游失败 ⇒ 走「层 1 传输失败」那一支（`设计/20 §3.1a` 之后回 **504**，先前是 502），
+/// ⇒ 连上游失败 ⇒ 走「中转传输失败」那一支（`设计/20 §3.1a` 之后回 **504**，先前是 502），
 /// 而它的 stderr 那一行（`[relay] upstream failed: …`）也一并进了下面四个出口的扫描面。
 ///
 /// # ⚠ 它**仍然没有**补上的那一格
@@ -2177,7 +2177,7 @@ fn a_configured_key_replaces_the_clients_header_instead_of_being_appended() {
     // 两行：一行配了 key，一行没配。**同一张表**里取，走的是生产段那条真实的路。
     let t = table_of(&[("with", &base, Some(MINE)), ("without", &base, None)]);
 
-    let with = render_via_layer_two(&t, "with", &head, "/v1/x", 3);
+    let with = render_via_upstream_selection(&t, "with", &head, "/v1/x", 3);
     // ★ **恰好一个** `Authorization` —— 追加一条会让上游看见两个，那是未定义行为。
     assert_eq!(
         with.matches("Authorization:").count(),
@@ -2191,7 +2191,7 @@ fn a_configured_key_replaces_the_clients_header_instead_of_being_appended() {
     );
 
     // 非空对照：**这一行没配** key 时是原样转发（不是恒替换）。
-    let without = render_via_layer_two(&t, "without", &head, "/v1/x", 3);
+    let without = render_via_upstream_selection(&t, "without", &head, "/v1/x", 3);
     assert!(without.contains("Authorization: Bearer THEIRS\r\n"));
     assert!(!without.contains(MINE));
 }
@@ -2201,7 +2201,7 @@ fn a_configured_key_replaces_the_clients_header_instead_of_being_appended() {
 ///
 /// # 死值验落在哪一格
 ///
-/// 把 `accounts::apikey::auth_header_of`（`P16` 之后住层 2）里 `XApiKey` 那一支改成 `Some(("Authorization", "Bearer "))`
+/// 把 `accounts::upstream::auth_header_of`（`P16` 之后住上游选择）里 `XApiKey` 那一支改成 `Some(("Authorization", "Bearer "))`
 /// （形状对、恒答默认那张脸）⇒ 本条的 `x-api-key` 那几格当场红，
 /// 而**默认那一行**那几格仍绿 ⇒ 这一刀是**单断**，不是目录级塌陷。
 ///
@@ -2228,7 +2228,7 @@ fn the_auth_header_shape_follows_the_row_and_not_a_process_wide_guess() {
         ("xapikey", &base, Some(MINE), AuthStyle::XApiKey),
         ("noauth", &base, None, AuthStyle::NoAuth),
     ]);
-    let render = |id: &str| render_via_layer_two(&t, id, &head, "/v1/x", 3);
+    let render = |id: &str| render_via_upstream_selection(&t, id, &head, "/v1/x", 3);
 
     let b = render("bearer");
     let x = render("xapikey");
@@ -2284,8 +2284,8 @@ fn the_auth_header_shape_follows_the_row_and_not_a_process_wide_guess() {
 /// 搬去 `creds_guard` 了** —— 墓碑，别在这里重建一份。
 ///
 /// 它焊的两端（「我可能写出来的头名」＝ `auth_header_of` · 「先丢掉哪几个」＝那份名单）
-/// 本来都住层 1。`P16` 把映射按 `C2` 搬去层 2、名单改成由映射**派生**之后，
-/// 两端都在层 2 ⇒ 判据跟着搬到层 2 那侧（`creds_guard`），**正题一个字没松**，
+/// 本来都住中转。`P16` 把映射按 `C2` 搬去上游选择、名单改成由映射**派生**之后，
+/// 两端都在上游选择 ⇒ 判据跟着搬到上游选择那侧（`creds_guard`），**正题一个字没松**，
 /// 而且多买了一格：它现在还断言那个集合是**全集**（射程不许缩）。
 ///
 /// ★★★ **`K-R1` 的正主之二**：`base_url` 里那一段路径前缀
@@ -2307,7 +2307,7 @@ fn the_path_prefix_from_the_base_url_really_reaches_the_request_line() {
     let prefixed = Base::parse("https://gw.example.com/anthropic").expect("带前缀那一形");
     let bare = Base::parse("https://gw.example.com").expect("不带前缀那一形");
     let t = table_of(&[("with-prefix", &prefixed, None), ("no-prefix", &bare, None)]);
-    let render = |id: &str, rest: &str| render_via_layer_two(&t, id, &head, rest, 0);
+    let render = |id: &str, rest: &str| render_via_upstream_selection(&t, id, &head, rest, 0);
 
     // ★★ 承重的那一格排最前：期望值是**手写字面量**的整条请求行。
     let with = render("with-prefix", "/v1/messages");
@@ -2618,7 +2618,7 @@ fn upstream_request_drops_hop_by_hop_and_narrows_accept_encoding() {
     let base = Base::parse("https://api.example.com").expect("base");
     // 这一行**没配 key** ⇒ 原样转发那一支（`K-H1` 甲半的形状）。换头那一支见下一条判据。
     let t = table_of(&[("acct", &base, None)]);
-    let out = render_via_layer_two(&t, "acct", &head, "/v1/x", 3);
+    let out = render_via_upstream_selection(&t, "acct", &head, "/v1/x", 3);
     assert!(out.starts_with("POST /v1/x HTTP/1.1\r\n"));
     assert!(out.contains("Host: api.example.com\r\n"));
     assert!(out.contains("Accept-Encoding: identity\r\n"));
@@ -3016,9 +3016,9 @@ fn the_relay_port_is_not_reachable_from_a_non_loopback_address() {
 #[test]
 fn the_config_resolver_has_defaults_and_lets_its_inputs_override_them() {
     // ⚠ 〔「中转层里没有账号」的前置〕本条先前还量**上游**那一格（默认值 · 旋钮盖得住 ·
-    //   路径前缀不丢 · 认不出回 `None`）。那是**层 2 的配置**，今天由层 2 自己解析 ——
+    //   路径前缀不丢 · 认不出回 `None`）。那是**上游选择的配置**，今天由上游选择自己解析 ——
     //   四格原样搬去了 `table_tests::each_agents_env_knob_overrides_only_that_agents_default`
-    //   （手写字面量期望、带前缀与不带的非空对照都在那边）。本条只剩层 1 自己的端口。
+    //   （手写字面量期望、带前缀与不带的非空对照都在那边）。本条只剩中转自己的端口。
     assert_eq!(resolve_port(None), 8788, "默认端口");
     assert_eq!(
         resolve_port(Some("19999")),
@@ -3041,7 +3041,7 @@ fn the_config_resolver_has_defaults_and_lets_its_inputs_override_them() {
 /// （`D2RUN`），而真机后果是 `--relay` 整个起不来。今天那条接线住 `run_reading`，
 /// 取值器与执行体都注入 ⇒ 本条打得到它，**且不碰进程环境**。
 ///
-/// 期望值全是**手写字面量**，不拿被测的 `ENV_PORT` / 层 2 那张表里的旋钮名去算。
+/// 期望值全是**手写字面量**，不拿被测的 `ENV_PORT` / 上游选择那张表里的旋钮名去算。
 ///
 /// ⚠⚠ **名字只说它证得了的那一半**〔铁律 15 自查，本轮我自己写的第一版就犯了同一种病〕：
 /// 我第一版把它叫 `the_relay_entry_reads_each_env_var_into_its_own_config_slot`
@@ -3053,7 +3053,7 @@ fn the_config_resolver_has_defaults_and_lets_its_inputs_override_them() {
 #[test]
 fn each_env_var_name_goes_into_its_own_config_slot() {
     // ⚠ 〔条 60〕执行体的第 2 个位今天是**取值器本身**，不是「上游那个变量的值」：
-    //   上游旋钮每家一个、名字住层 2 那张表，层 1 只把取值器原样递过去。
+    //   上游旋钮每家一个、名字住上游选择那张表，中转只把取值器原样递过去。
     //   ⇒ 本条量两件事：① 端口位读的是 `CCM_RELAY_PORT`；② 递下去的取值器**就是**入口收到的
     //   那一个（拿它问上游那个变量名，答回来的是**入口那个取值器**的答案）。
     let seen: std::sync::Mutex<Vec<(Option<String>, Option<String>)>> =
@@ -3091,7 +3091,7 @@ fn each_env_var_name_goes_into_its_own_config_slot() {
         "没设环境变量时两个配置位都该是 None"
     );
 
-    // ㈢ 上游那个变量名**每家一个**，而读它的是层 2：拿层 2 那张表问一遍，它问的正是那个名字。
+    // ㈢ 上游那个变量名**每家一个**，而读它的是上游选择：拿上游选择那张表问一遍，它问的正是那个名字。
     //    （期望值仍是手写字面量；被测的是 `Upstreams::from_env` 真的去问了它。）
     let asked: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
     let _ = accounts::Upstreams::from_env(&|k| {
@@ -3101,7 +3101,7 @@ fn each_env_var_name_goes_into_its_own_config_slot() {
     assert_eq!(
         asked.lock().expect("lock").clone(),
         vec!["CCM_AGENT_UPSTREAM_CLAUDE_CODE".to_string()],
-        "层 2 该问的上游旋钮（今天只登记了 claude-code 一家）不是这一个"
+        "上游选择该问的上游旋钮（今天只登记了 claude-code 一家）不是这一个"
     );
 }
 
@@ -3497,7 +3497,7 @@ fn a_credentials_file_produced_by_the_write_side_routes_that_account_to_the_upst
 /// # 它治的是什么
 ///
 /// 先前 `load_credentials` 只在 `run_with` 里跑一次，而且在**永不返回**的 `serve()` 之前
-/// ⇒ 用户在界面上按下「保存 key」之后，中转进程里的账号层手上还是启动那一刻的表 ⇒
+/// ⇒ 用户在界面上按下「保存 key」之后，中转进程里的上游选择手上还是启动那一刻的表 ⇒
 /// 那个账号**每一发都是 404**。而 404 与「账号 id 打错」**同形**，指不向原因。
 ///
 /// # 这一趟真到什么程度
@@ -3675,7 +3675,7 @@ fn the_dead_port_is_one_the_kernel_can_never_hand_out() {
     }
 }
 
-// ============================================================ `设计/20 §3.1a`：层 1 自己的传输失败回 504
+// ============================================================ `设计/20 §3.1a`：中转自己的传输失败回 504
 
 /// 一个**读完请求、回一串给定字节、然后按 `hold` 决定关不关**的假上游。
 ///
@@ -3730,7 +3730,7 @@ fn spawn_relay_with_upstream_deadline(
     addr
 }
 
-/// ★★★ `设计/20 §3.1a`：**层 1 自己的传输失败回 504，body 里一句话说清上游是谁、卡在哪一跳。**
+/// ★★★ `设计/20 §3.1a`：**中转自己的传输失败回 504，body 里一句话说清上游是谁、卡在哪一跳。**
 ///
 /// # 分母：五跳，逐跳一格
 ///
@@ -3747,11 +3747,11 @@ fn spawn_relay_with_upstream_deadline(
 /// 状态行与那句话都是本条手写的，不是拿 `server::FailedAt::words` 算的 —— 拿被测函数算期望值，
 /// 改了文案本条会跟着漂、永远绿。
 ///
-/// # 与层 2 那两个码**不同**（`D7` 可区分性）
+/// # 与上游选择那两个码**不同**（`D7` 可区分性）
 ///
 /// 同一个中转、同一张表：表里没这一行 ⇒ 404；上游连不上 ⇒ 504。两个码不同，本条末尾顺带断一次。
 #[test]
-fn layer_one_transport_failures_answer_504_saying_who_and_where() {
+fn relay_transport_failures_answer_504_saying_who_and_where() {
     const STATUS_LINE: &str = "HTTP/1.1 504 Gateway Timeout\r\n";
 
     // ① 建立连接：没人听的端口。
@@ -3830,7 +3830,7 @@ fn layer_one_transport_failures_answer_504_saying_who_and_where() {
 /// 本 crate 生产段里**每一个** HTTP 状态码字面量的住址〔`设计/20 §3.1a` ②，`D2`〕。
 ///
 /// `(相对 src/backend 的文件, 字面量, 属于哪一组)`。**手写**，与盘上现扫出来的两向相等。
-/// 同一个字面量出现两行 = 两个家（今天只有 404：层 1 的「路径不是路由形状」与层 2 的
+/// 同一个字面量出现两行 = 两个家（今天只有 404：中转的「路径不是路由形状」与上游选择的
 /// 「表里没这一行」同属「路由不成立」一组，下游读到的字节逐字节相同 —— `wire_golden` ③④）。
 const STATUS_HOMES: &[(&str, &str, StatusGroup)] = &[
     (
@@ -3850,12 +3850,12 @@ const STATUS_HOMES: &[(&str, &str, StatusGroup)] = &[
     ),
     ("relay/server.rs", "404 Not Found", StatusGroup::NoRoute),
     (
-        "accounts/apikey/mod.rs",
+        "accounts/upstream/mod.rs",
         "404 Not Found",
         StatusGroup::NoRoute,
     ),
     (
-        "accounts/apikey/mod.rs",
+        "accounts/upstream/mod.rs",
         "502 Bad Gateway",
         StatusGroup::NoRoute,
     ),
@@ -3876,11 +3876,11 @@ const STATUS_HOMES: &[(&str, &str, StatusGroup)] = &[
 enum StatusGroup {
     /// 下游的请求读不懂（400 / 411 / 413）。`20 §3.1a` 没列它：那是**下游**的错，与三组都不相干。
     Unreadable,
-    /// 路由不成立（层 2 `Refuse` ＋ 层 1 的「路径不是路由形状」）。
+    /// 路由不成立（上游选择 `Refuse` ＋ 中转的「路径不是路由形状」）。
     NoRoute,
     /// 在飞上界 —— 我们这侧现在吃不下。
     Busy,
-    /// 层 1 自己的传输失败 —— 上游那侧。
+    /// 中转自己的传输失败 —— 上游那侧。
     UpstreamFailed,
 }
 
@@ -3909,7 +3909,7 @@ fn status_literals(src: &str) -> Vec<String> {
 }
 
 /// ★★★ `设计/20 §3.1a` 那两条可机检的形状：
-/// ① 我们自己造的三组码（层 2 `Refuse` · 在飞上界 · 层 1 传输失败）**两两不相交**；
+/// ① 我们自己造的三组码（上游选择 `Refuse` · 在飞上界 · 中转传输失败）**两两不相交**；
 /// ② 每个码**只有一处常量**，不散在各个返回点上。
 ///
 /// # 量法（两向相等，不是地板）
@@ -3983,7 +3983,7 @@ fn every_status_we_make_has_one_home_and_the_three_groups_are_disjoint() {
     assert_eq!(
         codes_of(StatusGroup::UpstreamFailed),
         set(&[504]),
-        "层 1 传输失败那一组"
+        "中转传输失败那一组"
     );
     assert_eq!(
         codes_of(StatusGroup::Unreadable),
