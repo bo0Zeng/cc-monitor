@@ -5,8 +5,8 @@
 //! # 今天的读数，与它为什么还不是「只剩两条」
 //!
 //! - **窗口经通道说得出的传输操作**恰好两条：`transfer-upload` · `transfer-download`（撤 = 停订，不是命令）。
-//! - **写面**：传输核心只写暂存区（`ensure_staging_dir` · `upload_to_staging`；「暂存区之外零写」的行为读数住
-//!   `sftp_staging_tests`）。
+//! - **写面**：〔SR1b〕传输核心搬进了本机常驻后端 ⇒ 本文件（中继）**零**远端写；「暂存区之外零写」的行为读数
+//!   跟着搬去后端（`tests/backend/control/transfer_tests.rs`）。
 //! - 池子里那 13 条 `#[tauri::command]` **一条都不属于传输核心**（窗口不走 Tauri IPC、走通道）——
 //!   它们今天全是**待收**：最后一个消费者在别人的写区里（老面板归 F7b 删；复制 / 读文本 / 问 home 归 F7a 换）。
 //!   本路**不删**它们（删了 = 老面板那几处 `invoke` 当场悬空，红在别人那一侧），而是登记成 [`PENDING`]：
@@ -48,8 +48,12 @@ pub(super) const PENDING: &[(&str, &str, &str, &str, &str)] = &[
 /// 〔第四波 S4〕唯一那一行（零流量复制的核心）随它挂的那条命令一起删了 ⇒ 空。
 pub(super) const PENDING_WRITERS: &[(&str, &str)] = &[];
 
-/// 传输核心里**唯二**碰远端写原语的函数（都只写暂存区）。
-const STAGING_WRITERS: &[&str] = &["ensure_staging_dir", "upload_to_staging"];
+/// 传输核心里碰远端写原语的函数。
+///
+/// 〔SR1b · 2026-09-24〕**零**：传输核心（连同那两个只写暂存区的函数 —— 建暂存区那一个与
+/// `upload_to_staging`）整段搬进了本机常驻后端（`control/transfer.rs` ＋ `dial/sftp.rs` 的写原语，
+/// 那一侧的「只许两处」由后端 `readonly_guard::remote_write_layer` 钉）。本文件只剩中继 ⇒ 一处远端写都没有。
+const STAGING_WRITERS: &[&str] = &[];
 
 /// 远端写原语的调用形（见模块头注「买不到」第二条）。
 const WRITE_FORMS: &[&str] = &[
@@ -205,6 +209,39 @@ fn the_only_remote_writers_are_the_staging_pair_and_the_pending_ones() {
     assert!(WRITE_FORMS
         .iter()
         .any(|f| top_level_fns(fake)[0].1.contains(f)));
+}
+
+/// 🔴 〔SR1b〕中继**不持 SFTP**：生产段零 SFTP 会话类型 / 零 SFTP crate 路径 / 零「开一条 SFTP」的调用
+/// （零命中，带正控：同一把针在搬家之前那一版的语料上真的认得出来）。
+#[test]
+fn the_relay_holds_no_sftp_at_all() {
+    let needles = [
+        format!("Sftp{}", "Session"),
+        format!("russh{}sftp", "_"),
+        format!("connect{}sftp(", "_"),
+    ];
+    let prod = pool_production();
+    assert!(
+        prod.len() > 2_000,
+        "中继的生产段只剩 {} 字节 —— 剥法坏了",
+        prod.len()
+    );
+    let hits: Vec<&String> = needles
+        .iter()
+        .filter(|n| prod.contains(n.as_str()))
+        .collect();
+    assert!(hits.is_empty(), "中继里又出现了 SFTP：{hits:?}");
+    // 正控：合成一段「从前那一版」的写法，三根针各自认得出。
+    let then = concat!(
+        "fn f(s: &russh_sftp::client::SftpSession) {}\n",
+        "async fn g(c: &C) { let conn = connect_sftp(c).await; }\n",
+    );
+    for n in &needles {
+        assert!(
+            then.contains(n.as_str()),
+            "针 `{n}` 在正控语料上都不亮 —— 它是瞎的"
+        );
+    }
 }
 
 /// 🔴 判据 3：窗口经通道说得出的传输操作恰好两条；宿主分流只认这两条（撤不是命令）。

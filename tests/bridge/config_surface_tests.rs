@@ -569,7 +569,8 @@ fn remote_host_never_resolves_to_a_local_path() {
 fn every_host_declaration_is_pinned() {
     use HostScope::*;
     let want: &[(&str, &str, HostScope)] = &[
-        ("ccm", "~/.local/bin/ccm", Remote),
+        // 〔SR1b〕远端入口 `~/.local/bin/ccm` → `~/.cc-monitor/bin/ccm`（远端写只许两处；`01 §6.7b` 的落点）。
+        ("ccm", "~/.cc-monitor/bin/ccm", Remote),
         // 🔴 〔`K-R69` 09-12〕**本机那条** —— `Client` 是刻意的、也是本件的正题：
         //    在它之前，闭集里落点是 `…/ccm` 的只有上面那一条（远端）⇒ 本机 0 条，
         //    而用户 `K34` 逐字要的「旧的干净退役」就此没有承接方。
@@ -844,7 +845,7 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
     let sftp = include_str!("../../src/bridge/src/sftp.rs");
     pin_definition(
         sftp,
-        r#"const CCM_CLI_REMOTE_PATH: &str = ".local/bin/ccm";"#,
+        r#"const CCM_CLI_REMOTE_PATH: &str = ".cc-monitor/bin/ccm";"#,
         "const CCM_CLI_REMOTE_PATH",
         "ccm 远端落点",
     )
@@ -869,7 +870,7 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
         .collect();
     assert_eq!(
         remote_dests,
-        vec![&ToolDestination::RemoteHomeRelative(".local/bin/ccm")],
+        vec![&ToolDestination::RemoteHomeRelative(".cc-monitor/bin/ccm")],
         "注册表声明的 ccm 远端落点与 sftp.rs 的 CCM_CLI_REMOTE_PATH 不一致"
     );
 
@@ -1241,7 +1242,7 @@ fn rows_carry_the_host_label() {
     assert_eq!(ps.host_label, "本机");
     let ccm = rows
         .iter()
-        .find(|r| r.path_declared == "~/.local/bin/ccm")
+        .find(|r| r.path_declared == "~/.cc-monitor/bin/ccm")
         .unwrap();
     assert_eq!(ccm.host_label, "远端");
 }
