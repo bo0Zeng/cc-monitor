@@ -696,7 +696,7 @@ mod tests {
             version_lines,
             vec![r#"version = "0.0.0""#],
             "本 crate 的 `[package] version` 实得 {version_lines:?}。\n\
-             它**刻意**是 `0.0.0`（真身份住 `src/main.rs` 的 `BUILD_ID`，理由逐字写在\n\
+             它**刻意**是 `0.0.0`（真身份住 `lib.rs` 的 `BUILD_ID`，理由逐字写在\n\
              `Cargo.toml` 那一行上方）。要改成别的数字，得先答一个问题：\n\
              **谁在数它？** 把一个假值换成另一个假值，是 `KR70D2` 逐字点名的失效方向。"
         );

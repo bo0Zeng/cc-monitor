@@ -222,6 +222,7 @@ pub const STATUS_FIELDS: &[&str] = &[
     "stale",
     "browse_watches",
     "browse_watch_cap",
+    "cold_first_build_secs",
 ];
 
 /// 一条命中。**持有原始字节，不持有字符串**。
@@ -283,6 +284,9 @@ pub struct IndexStatus {
     pub stale: bool,
     pub browse_watches: u64,
     pub browse_watch_cap: u64,
+    /// 〔第四波 S4 · `设计/99 §2 Q5`〕后端**声明**的冷启动首建大约要几秒。
+    /// 这一侧只在「首建那一趟」里把它画出来（[`first_build_line`]），不定它、不换算它。
+    pub cold_first_build_secs: u64,
 }
 
 fn field(d: &Value, k: &str) -> Result<Value, String> {
@@ -377,6 +381,7 @@ pub fn decode_status(d: &Value) -> Result<IndexStatus, String> {
         stale: need_bool(d, "stale")?,
         browse_watches: need_u64(d, "browse_watches")?,
         browse_watch_cap: need_u64(d, "browse_watch_cap")?,
+        cold_first_build_secs: need_u64(d, "cold_first_build_secs")?,
     })
 }
 
@@ -455,6 +460,15 @@ pub fn freshness_line(s: &IndexStatus) -> String {
     t
 }
 
+/// 〔第四波 S4 · `设计/99 §2 Q5`〕**冷启动首建那一趟正在走**时画的那一行。
+///
+/// 数是后端报的（[`IndexStatus::cold_first_build_secs`]），这一侧只摆字。
+/// 「首次」二字是承重的：只有后端说「还没建过」（`index_missing`）的那一趟才画它 ——
+/// 周期性重走是热的，那个数不适用（[`one_round`] 那一段）。
+pub fn first_build_line(cold_first_build_secs: u64) -> String {
+    format!("正在建索引（首次约 {cold_first_build_secs} 秒）")
+}
+
 /// 命中那一摞上面那一行。**`scanned` 一定画出来** ——
 /// 「没命中」与「索引是空的」在屏幕上本来一模一样。
 pub fn hits_line(o: &FindOutcome) -> String {
@@ -508,6 +522,12 @@ pub struct SearchBoard {
     rebuilds: Arc<AtomicU64>,
     /// 落地过几份答案。判据靠它等（不靠睡一个猜出来的时长）。
     rounds: Arc<AtomicU64>,
+    /// 〔第四波 S4 · Q5〕**冷启动首建正在走**：`Some(后端声明的秒数)`。
+    ///
+    /// 🔴 它**不跟 `epoch` 走**，跟那一趟重走走：用户在首建期间接着打字，号就换了、
+    /// 发起重走的那一趟的答案会被整份丢掉 —— 而首建照样在走，那一行不许跟着没了。
+    /// ⇒ 抢到重走的那一趟挂上它、重走回来（成败都算）就摘，与 [`Self::rebuilding`] 同进同出。
+    first_build: Arc<Mutex<Option<u64>>>,
     ctx: Arc<Mutex<Option<egui::Context>>>,
 }
 
@@ -583,6 +603,16 @@ impl SearchBoard {
         self.rebuilding
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
             .is_ok()
+    }
+
+    /// 冷启动首建正在走 ⇒ 后端声明的那个秒数；否则 `None`。
+    pub fn first_build(&self) -> Option<u64> {
+        *self.first_build.lock().unwrap()
+    }
+
+    fn mark_first_build(&self, secs: Option<u64>) {
+        *self.first_build.lock().unwrap() = secs;
+        self.poke();
     }
 
     fn release_rebuild(&self) {
@@ -741,6 +771,17 @@ async fn one_round(
             .is_some_and(|s| s.index_missing || s.stale);
     if want && board.claim_rebuild() {
         board.rebuilds.fetch_add(1, Ordering::SeqCst);
+        // 〔第四波 S4 · Q5〕后端说「还没建过」⇒ 这一趟就是**冷启动首建**（后端起来之后的第一趟），
+        //   用户看得见它 ⇒ 先把后端声明的那个秒数挂到板子上（帧上画「正在建索引（首次约 N 秒）」），
+        //   重走回来再摘。`stale` / 按按钮那种是热的重走，那个数不适用 ⇒ 不挂。
+        let first = round
+            .status
+            .as_ref()
+            .filter(|s| s.index_missing)
+            .map(|s| s.cold_first_build_secs);
+        if first.is_some() {
+            board.mark_first_build(first);
+        }
         match call_one(
             line,
             origin,
@@ -773,6 +814,9 @@ async fn one_round(
                 }
             }
             Err(r) => round.notice = Some(r),
+        }
+        if first.is_some() {
+            board.mark_first_build(None);
         }
         board.release_rebuild();
     }
@@ -816,19 +860,27 @@ impl SearchBoard {
     /// 就是这几行。删掉它 ⇒ 用户看着一份五分钟前的索引，以为自己刚建的文件不存在。
     pub fn ui(&self, ui: &mut egui::Ui) {
         let s = self.shown();
-        match &s.status {
-            Some(st) => {
-                if st.index_missing || st.stale {
-                    ui.colored_label(
-                        egui::Color32::from_rgb(0xE0, 0x9A, 0x20),
-                        freshness_line(st),
-                    );
-                } else {
-                    ui.label(freshness_line(st));
+        // 〔第四波 S4 · Q5〕冷启动首建正在走 ⇒ 这一行顶替新鲜度那一行（那一行此刻只会说「还没建过」）。
+        if let Some(secs) = self.first_build() {
+            ui.colored_label(
+                egui::Color32::from_rgb(0xE0, 0x9A, 0x20),
+                first_build_line(secs),
+            );
+        } else {
+            match &s.status {
+                Some(st) => {
+                    if st.index_missing || st.stale {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(0xE0, 0x9A, 0x20),
+                            freshness_line(st),
+                        );
+                    } else {
+                        ui.label(freshness_line(st));
+                    }
                 }
-            }
-            None => {
-                ui.label(FRESHNESS_UNKNOWN);
+                None => {
+                    ui.label(FRESHNESS_UNKNOWN);
+                }
             }
         }
         if let Some(root) = &s.indexed_root {

@@ -8,8 +8,9 @@
  *
  * - `id`：稳定字符串 key，进 config.json `keybindings.<id>` 持久化字段
  * - `default`：默认 chord（规范化串，详 `registry.ts::normalizeChord`）；`null` = 默认未绑
- * - `available`：false 表示功能未上线（editor.ts 灰显并标"未上线"），用户既不能
- *   触发它（因为代码没 bind）也不能改它的绑定。预留位置让用户提前知道路线图
+ * - `available`：false 表示功能未上线（editor.ts 灰显那一行），用户既不能
+ *   触发它（因为代码没 bind）也不能改它的绑定。〔第四波 S4〕今天清单里没有未上线的：
+ *   用不上的预留位不留（最后一条 `app.search-history`〔散文墓碑〕删了），真要做时再加
  * - `category`：UI 表格分组用，纯展示
  *
  * ## chord 字符串规范
@@ -34,12 +35,10 @@ export interface Action {
    */
   readonly default: string | null;
   /**
-   * 功能是否已上线。false 时编辑器灰显 + 显示 `comingSoon` 文案，主程序也不会
+   * 功能是否已上线。false 时编辑器灰显那一行，主程序也不会
    * `bind()` 它（即使 config 里有覆盖也不会触发）。
    */
   readonly available: boolean;
-  /** available=false 时显示给用户的说明 */
-  readonly comingSoon?: string;
 }
 
 /**
@@ -48,7 +47,7 @@ export interface Action {
  * 加新 action 时：
  *  1. 这里加一条
  *  2. main.ts 里 `dispatcher.bind("<id>", callback)`
- *  3. （如果是预留）`available: false` + 文案
+ *  3. （如果是预留）`available: false`〔第四波 S4：预留位不留 —— 真做时再加〕
  */
 // 默认快捷键全部为**单键**（无 Ctrl/Shift）—— cc-monitor 是只读监视窗口，主视图不接受
 // 文本输入，单键导航更顺手。**前提**：dispatcher 在可编辑文本元素聚焦时不触发快捷键
@@ -87,14 +86,10 @@ export const ACTIONS: ReadonlyArray<Action> = [
   // F84（#57）：命令栏。唯一默认带 Ctrl 的 chord（palette 惯例；单键 K 会在只读主视图误触发，
   // 且 palette 要在任意上下文唤起，故用组合键——经核实 Ctrl+KeyK 全表空闲、零冲突）。
   { id: "app.open-command-bar", label: "打开命令栏（命令面板）", category: "App", default: "Ctrl+KeyK", available: true },
-  {
-    id: "app.search-history",
-    label: "历史浏览器全文搜索",
-    category: "App",
-    default: null,
-    available: false,
-    comingSoon: "已上线：H 打开历史后切「全文」模式（暂无独立快捷键）",
-  },
+  // 〔第四波 S4〕这里原先是 `app.search-history`〔散文墓碑〕：历史浏览器全文搜索的**预留位**（`default: null`、
+  //   `available: false`，编辑器里灰着一行「未上线」）。它从没上线过，而全文搜索本身早就能用（H 打开历史后切「全文」）
+  //   ⇒ 用不上的预留位不留，真要给它一个快捷键时再加。它是清单里唯一一条未上线的，
+  //   只为它存在的 `comingSoon` 说明字段与编辑器那枚「未上线（…）」标签一起删了。
   { id: "app.minimize", label: "最小化主窗口", category: "App", default: "KeyM", available: true },
   { id: "app.toggle-fullscreen", label: "切换真全屏（borderless 覆盖任务栏）", category: "App", default: "F11", available: true },
   {

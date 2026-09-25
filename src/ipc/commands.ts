@@ -170,7 +170,6 @@ import type { HistorySessionEntry } from "../generated/HistorySessionEntry";
 import type { HooksReport } from "../generated/HooksReport";
 import type { ImportGroup } from "../generated/ImportGroup";
 import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
-import type { TransferProgress } from "../generated/TransferProgress";
 import type { PanoramaStatus } from "../generated/PanoramaStatus";
 import type { ProfileScan } from "../generated/ProfileScan";
 import type { PushResult } from "../generated/PushResult";
@@ -494,24 +493,7 @@ export const commands = {
   panorama_write_doc_link: (args: { repo: string; doc: string; target: string }) =>
     invoke<void>("panorama_write_doc_link", args),
 
-  /**
-   * 远端内部复制（步 23b）。Rust 返回 `Result<Option<String>, String>` ⇒ `string | null`
-   * （**原始类型**；不生成类型）。
-   *
-   * 🔴 **`null` 与非 `null` 是两条不同的路，调用方必须分开处理：**
-   * - `null` ⇒ 走了 `copy-data` 扩展，**服务端自己搬字节，一个文件字节都没经过这台机器**；
-   * - 一串话 ⇒ **退了路**（协商不到 / 服务端拒了），字节走了「远端 → 你的机器 → 远端」，
-   *   也就是 **2× 流量**。那串话是**给用户看的**，已经含了实际过网字节数。
-   *
-   * ⚠ 把返回值丢掉 = 静默退化成 2× 流量，`设计/60 §5` 第二段逐字禁止。
-   */
-  sftp_copy: (args: {
-    cfg: unknown;
-    from: string;
-    to: string;
-    transferId: string;
-    onProgress: Channel<TransferProgress>;
-  }) => invoke<string | null>("sftp_copy", args),
+  // 〔第四波 S4〕`sftp_copy`（远端内部复制，步 23b）的包装随那条命令退役删了：窗口的复制走后端 `files-copy`。
 
   // 〔F7c 收尾 09-24〕池子那十二条的包装一起走了（老面板删了、窗口改走通道；`设计/60 §13b`）：
   //   sftp_cancel_transfer · sftp_chmod · sftp_delete · sftp_download · sftp_list_dir · sftp_mkdir ·
