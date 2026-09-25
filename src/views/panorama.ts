@@ -115,8 +115,8 @@ export class PanoramaView implements OverlayHandle {
   /** 当前视图针对的仓（**那台机器上**的路径；无仓时为 null）。搜索/刷新/详情都用它。 */
   private repo: string | null = null;
   /**
-   * 〔RM1c · 第四波〕当前仓在哪台机器上。本机走进程内那几条命令，远端问那台的后端
-   * （`panorama/api.ts`）。与 `repo` 一起换（`switchRepo`）。
+   * 〔RM1c · 第四波〕当前仓在哪台机器上：问那台机器的后端（`panorama/api.ts`；〔RM1f〕本机也是，
+   * 改前本机走进程内那几条命令）。与 `repo` 一起换（`switchRepo`）。
    */
   private origin: Origin = LOCAL_ORIGIN;
   /**
@@ -381,9 +381,9 @@ export class PanoramaView implements OverlayHandle {
       // 已启用（symbols>0）：陈旧则自动重建（用户此前已 opt-in，保持新鲜属正常运行、非新
       // opt-in——避免静默展示过期图）。非陈旧直接加载。
       if (st.stale) {
-        const cancel = this.cancelHandle(this.at(repo));
-        this.showLoading("索引已陈旧，重建中…", cancel?.abort);
-        await api.index(this.at(repo), cancel?.signal);
+        const cancel = this.cancelHandle();
+        this.showLoading("索引已陈旧，重建中…", cancel.abort);
+        await api.index(this.at(repo), cancel.signal);
         if (seq !== this.loadSeq) return;
       }
       this.showLoading("加载全景…");
@@ -406,10 +406,10 @@ export class PanoramaView implements OverlayHandle {
   private async enableAndIndex(repo: string): Promise<void> {
     const seq = ++this.loadSeq;
     this.hideMessage();
-    const cancel = this.cancelHandle(this.at(repo));
-    this.showLoading("首次建立索引中…（大仓较慢，请稍候）", cancel?.abort);
+    const cancel = this.cancelHandle();
+    this.showLoading("首次建立索引中…（大仓较慢，请稍候）", cancel.abort);
     try {
-      await api.index(this.at(repo), cancel?.signal);
+      await api.index(this.at(repo), cancel.signal);
       if (seq !== this.loadSeq) return;
       this.showLoading("加载全景…");
       const ov = await api.overview(this.at(repo));
@@ -429,10 +429,9 @@ export class PanoramaView implements OverlayHandle {
 
   /**
    * 〔RM1f〕一个撤单手柄：`abort` 给转圈旁那个「取消」按钮，`signal` 给那一问。
-   * 这台撤不掉（[`api.cancellable`] 为假）⇒ `null`，转圈旁不出按钮（不摆一个按了没用的按钮）。
+   * 本机远端都经那台后端 → 小程序，都撤得掉（后端 `panorama` 是可取消档）。
    */
-  private cancelHandle(at: RepoAt): { abort: () => void; signal: AbortSignal } | null {
-    if (!api.cancellable(at)) return null;
+  private cancelHandle(): { abort: () => void; signal: AbortSignal } {
     const ctrl = new AbortController();
     return { abort: () => ctrl.abort(), signal: ctrl.signal };
   }
@@ -529,10 +528,10 @@ export class PanoramaView implements OverlayHandle {
     const repo = this.repo;
     const seq = ++this.loadSeq;
     this.refreshBtn.disabled = true;
-    const cancel = this.cancelHandle(this.at(repo));
-    this.showLoading("重建索引中…", cancel?.abort);
+    const cancel = this.cancelHandle();
+    this.showLoading("重建索引中…", cancel.abort);
     try {
-      await api.reindex(this.at(repo), cancel?.signal);
+      await api.reindex(this.at(repo), cancel.signal);
       if (seq !== this.loadSeq) return;
       this.showLoading("加载全景…");
       const ov = await api.overview(this.at(repo));

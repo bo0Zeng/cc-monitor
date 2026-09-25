@@ -6,6 +6,7 @@
 #
 # ⚠ `vendor/code-picture-core` **刻意 exclude**：它是 vendor 进来的第三方内核，
 # 不该被 `--workspace` 的 fmt/clippy/test 扫到（也不该因为我们的 lint 设置而红）。
+# 〔RM1f〕monitor 已不再依赖它（链它的只剩全景小程序 `src/panorama-engine`）；它仍住本目录之下 ⇒ exclude 照留。
 # ⚠ `src/backend` **不在这里** —— 它有自己独立的 `Cargo.lock`，
 # 那条隔离是真架构约束（Linux/Windows CI runner），见它自己的 `Cargo.toml` 头注。
 [workspace]
@@ -102,9 +103,9 @@ serde_json = "1"
 # uuid 1.x 已在 Cargo.lock（tauri 传递依赖）+ 本地 registry 缓存，加 v4 feature 离线可编。
 uuid = { version = "1", features = ["v4"] }
 
-# Batch15-P0：code-picture 代码全景可视化内核（vendor 进仓,见 vendor/code-picture-core/VENDOR.md）。
-# 只读查询 + tree-sitter 符号索引 + rusqlite(bundled) 侧车索引;引 crate use Engine(不走 MCP)。
-code-picture-core = { path = "vendor/code-picture-core" }
+# 〔RM1f · V108 后半句「之后本机也走这条路、monitor 摘内嵌引擎」〕`code-picture-core` 这一行删了：
+# 本机全景也走「本机后端 → 插件口 → 全景小程序（`src/panorama-engine`）」，monitor 一行引擎都不链。
+# vendored 副本原地不动（`vendor/code-picture-core`，小程序经 `../bridge/vendor/…` 链它；挪家是另一件事）。
 # G1（branch-anywhere）：分叉的记录变换，与远端后端共用同一份实现。
 branch-core = { path = "crates/branch-core" }
 codex-token-core = { path = "crates/codex-token-core" }

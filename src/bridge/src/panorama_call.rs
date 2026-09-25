@@ -6,9 +6,10 @@
 //!
 //! # 这一拍接谁
 //!
-//! 前端今天只在**远端** origin 上用它（`src/panorama/api.ts`）；本机那一条仍是进程内那 23 条
-//! （`panorama.rs`），第二拍（本机对称、monitor 摘内嵌引擎）才改走这里 —— 那一拍要先答
-//! 「本机的批注写走哪」（记录在 `调研/第四波记录/RM1c.md`）。命令本身对 origin 不做假设。
+//! 〔RM1f · 本机对称〕**本机与远端同一条**：前端全景的每一个入口都经它问那台机器的后端（本机 = `<local>`
+//! 那条长连接），monitor 进程一行引擎都不链。本机那台缺小程序 / 装的太旧 ⇒ 由 monitor 放一份到
+//! `~/.cc-monitor/bin/`（`panorama_bytes::place_local`），与远端「推一份」同一个触发点。
+//! 〔墓碑 —— RM1c 那一版这里写着「前端今天只在**远端** origin 上用它；本机那一条仍是进程内那 23 条（`panorama.rs`（已删））」。〕
 //!
 //! # 期限
 //!
@@ -482,29 +483,17 @@ pub async fn panorama_edit(
         ));
     };
     let door = crate::user_files::BackendDoor::new(origin.clone());
-    // 「算」在哪：远端 = 那台机器的全景小程序；本机 = 进程内引擎的只读那一层（本机对称那一拍之前的过渡，
-    // `panorama.rs::plan_local`）。**落盘两边同一扇门**（那台机器后端的文件管理）。
-    let local = origin.is_local();
+    // 「算」与「写」都在那台机器上：算 = 那台的全景小程序（经那台后端），落盘 = 那台后端的文件管理。本机远端同一条。
+    // 〔墓碑 —— RM1d 那一版本机的「算」住 monitor 进程内（内嵌引擎的只读那一层），本机对称那一拍（RM1f）随内嵌引擎一起删了。〕
     let value = edit_via(&door, &repo, || {
         let (app, origin, repo, args) = (app.clone(), origin.clone(), repo.clone(), args.clone());
-        async move {
-            if local {
-                crate::panorama::plan_local(repo, plan_op, args).await
-            } else {
-                ask(&app, &origin, plan_op, Some(&repo), Some(args)).await
-            }
-        }
+        async move { ask(&app, &origin, plan_op, Some(&repo), Some(args)).await }
     })
     .await?;
     if *refresh {
-        let refreshed = if local {
-            crate::panorama::refresh_doc_links_local(repo.clone()).await
-        } else {
-            ask(&app, &origin, REFRESH_DOC_LINKS, Some(&repo), None)
-                .await
-                .map(|_| ())
-        };
-        refreshed.map_err(|e| {
+        ask(&app, &origin, REFRESH_DOC_LINKS, Some(&repo), None)
+            .await
+            .map_err(|e| {
                 format!("文档关联已经写进去了，但全景里的关联没跟着刷新（{e}）—— 点「刷新」重建一次就能看到")
             })?;
     }

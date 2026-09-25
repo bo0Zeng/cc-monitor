@@ -76,7 +76,7 @@ const PENDING: &[&str] = &[
     "tests/bridge/frame_cadence_guard_tests.rs",
     "tests/bridge/gate_singleton_guard_tests.rs",
     "tests/bridge/local_read_surface_registry_tests.rs",
-    "tests/bridge/panorama_tests.rs",
+    // 〔RM1f〕`tests/bridge/panorama_tests.rs` 这一行删了：那份文件随 monitor 的内嵌引擎（`panorama.rs`（已删））一起删了 ⇒ 上限跟着 −1。
     "tests/bridge/parser_tests.rs",
     "tests/bridge/polling_registry_tests.rs",
     "tests/bridge/profile_installer_tests.rs",
@@ -120,7 +120,7 @@ const PENDING: &[&str] = &[
 /// [`no_new_guard_walks_the_tree_without_excluding_itself`]。
 // 08-08：`backend_route.rs` 的裸遍历迁到了 `guard_core::scan_tree!`（那一轮把它的
 // 发现面从一个目录扩到整棵树，顺带就该换掉手写遍历）⇒ 清单少一行，上限一起降。
-const PENDING_CEILING: usize = 28; // `设计/50`：`account_usage.rs` 整删 ⇒ 存量少一条，上限同拍往下拧一格
+const PENDING_CEILING: usize = 27; // 〔RM1f〕`tests/bridge/panorama_tests.rs` 随 monitor 的内嵌引擎删了 ⇒ 存量少一条，上限同拍往下拧一格 · `设计/50`：`account_usage.rs` 整删 ⇒ 存量少一条，上限同拍往下拧一格
 
 /// 判定「这是一个带登记表的判据文件」的声明形态。**闭集，按名字认。**
 ///

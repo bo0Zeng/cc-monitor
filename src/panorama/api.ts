@@ -4,12 +4,11 @@
  * 每个入口吃一个 [`RepoAt`]（**哪台机器上的哪个仓**，`设计/97 §6` ④）。返回类型是 core 直出的
  * snake_case 结构体（见 types.ts）—— 本机与远端**逐字同形**，渲染那一层只有一份。
  *
- * ## 〔RM1c · 第四波〕两条路（用户 09-24 V108 选 B）
+ * ## 〔RM1f · 本机对称〕一条路（用户 09-24 V108：选 B，「之后本机也走这条路、monitor 摘内嵌引擎」）
  *
- * - **本机**：仍是 monitor 进程内那几条命令（`src/bridge/src/panorama.rs`，per-repo Engine 池）。
- *   第二拍（本机也改走本机后端、monitor 摘内嵌引擎）才换 —— 那一拍先要答「本机的批注写走哪」。
- * - **远端**：`panorama_call(origin, op, …)` ⇒ 那台机器的后端 `panorama` 帧命令 ⇒ 后端经插件口起
- *   只装引擎的独立小程序，索引与图都在那台机器上算，线上只回结构化结果（不传源码、不传索引）。
+ * 本机与远端同一条：`panorama_call(origin, op, …)` ⇒ 那台机器的后端 `panorama` 帧命令 ⇒ 后端经插件口起
+ * 只装引擎的独立小程序，索引与图都在那台机器上算，线上只回结构化结果（不传源码、不传索引）。本机 = `<local>`。
+ * 〔墓碑 —— RM1c 那一版这里是两条路：本机仍走 monitor 进程内那几条命令（per-repo Engine 池），远端才走 `panorama_call`。〕
  * - 〔RM1d · V110「引擎只算、文件管理来写」〕批注 / 文档关联的**写**本机远端同一条：
  *   `panorama_edit(origin, repo, op, args)` ⇒ 那台机器算出编辑计划（新内容），落盘经那台机器后端的
  *   文件管理（`files-put` 带 CAS / `files-delete`）。RM1c 那一拍的「远端仓只读、写入口当场拒」随之取消。
@@ -44,13 +43,7 @@ export class PanoramaCancelled extends Error {
   }
 }
 
-/**
- * 〔RM1f〕这一问能不能撤：带票的只有经那台机器后端走的那一路（`panorama_call` ＋ `panorama_cancel`）。
- * 本机今天仍是进程内命令（撤不掉）—— 本机对称那一拍之后两边一样。
- */
-export const cancellable = (at: RepoAt): boolean => !isLocalOrigin(at.origin);
-
-/** 远端：问那台机器的后端（`result` 的形状由 op 定，与本机那条同形）。给了 `cancel` ⇒ 带一张票，拨下就撤。 */
+/** 问那台机器的后端（本机 = `<local>`；`result` 的形状由 op 定）。给了 `cancel` ⇒ 带一张票，拨下就撤。 */
 function remote<T>(
   at: { origin: Origin; path: string | null },
   op: string,
@@ -91,27 +84,20 @@ export const sameRepo = (a: RepoAt | null, b: RepoAt | null): boolean =>
 export const repoLabel = (at: RepoAt): string =>
   isLocalOrigin(at.origin) ? at.path : `${at.path}（远端 ${at.origin}）`;
 
-/** 建索引（重活：tree-sitter 解析全仓 → SQLite）。开面板首次调 + loading。〔RM1f〕`cancel` 拨下 ⇒ 撤（[`cancellable`] 的那几台）。 */
+/** 建索引（重活：tree-sitter 解析全仓 → SQLite）。开面板首次调 + loading。〔RM1f〕`cancel` 拨下 ⇒ 撤（本机远端都撤得掉）。 */
 export const index = (at: RepoAt, cancel?: AbortSignal): Promise<IndexStats> =>
-  isLocalOrigin(at.origin)
-    ? commands.panorama_index({ repo: at.path })
-    : remote(at, "index", undefined, cancel);
+  remote(at, "index", undefined, cancel);
 
 /** 重建索引（改代码后刷新；只写索引，非侵入）。刷新按钮调。〔RM1f〕`cancel` 同上。 */
 export const reindex = (at: RepoAt, cancel?: AbortSignal): Promise<IndexStats> =>
-  isLocalOrigin(at.origin)
-    ? commands.panorama_reindex({ repo: at.path })
-    : remote(at, "reindex", undefined, cancel);
+  remote(at, "reindex", undefined, cancel);
 
 /** 索引新鲜度 + 上次索引时间 + 符号总数。开面板时查一次决定是否需索引。 */
-export const status = (at: RepoAt): Promise<PanoramaStatus> =>
-  isLocalOrigin(at.origin) ? commands.panorama_status({ repo: at.path }) : remote(at, "status");
+export const status = (at: RepoAt): Promise<PanoramaStatus> => remote(at, "status");
 
 /** 项目全景（脊柱文件 + 子系统聚类 + 入口点 + 覆盖信号）。budget 控 token 预算裁剪。 */
 export const overview = (at: RepoAt, budget?: number): Promise<Overview> =>
-  isLocalOrigin(at.origin)
-    ? commands.panorama_overview({ repo: at.path, budget })
-    : remote(at, "overview", budget === undefined ? {} : { budget });
+  remote(at, "overview", budget === undefined ? {} : { budget });
 
 /**
  * F69（补 D20：代码分析默认关、每仓手动开启）：据 status 决定开面板时的动作。
@@ -131,70 +117,49 @@ export function panoramaLoadDecision(
 
 /** 单符号详情（符号 + 直接 callers/callees + 关联文档）。symbol 用全限定 id。 */
 export const node = (at: RepoAt, symbol: string): Promise<NodeView | null> =>
-  isLocalOrigin(at.origin)
-    ? commands.panorama_node({ repo: at.path, symbol })
-    : remote(at, "node", { symbol });
+  remote(at, "node", { symbol });
 
 /** 以某符号为心的双向邻域子图。 */
 export const subgraph = (at: RepoAt, symbol: string, depth: number): Promise<SubGraph> =>
-  isLocalOrigin(at.origin)
-    ? commands.panorama_subgraph({ repo: at.path, symbol, depth })
-    : remote(at, "subgraph", { symbol, depth });
+  remote(at, "subgraph", { symbol, depth });
 
 /** 反向调用边（谁调用了它，BFS 到 depth）。 */
 export const callers = (at: RepoAt, symbol: string, depth: number): Promise<Edge[]> =>
-  isLocalOrigin(at.origin)
-    ? commands.panorama_callers({ repo: at.path, symbol, depth })
-    : remote(at, "callers", { symbol, depth });
+  remote(at, "callers", { symbol, depth });
 
 /** 正向调用边（它调用了谁，BFS 到 depth）。 */
 export const callees = (at: RepoAt, symbol: string, depth: number): Promise<Edge[]> =>
-  isLocalOrigin(at.origin)
-    ? commands.panorama_callees({ repo: at.path, symbol, depth })
-    : remote(at, "callees", { symbol, depth });
+  remote(at, "callees", { symbol, depth });
 
 /** 改动某符号的 blast-radius（反向可达的全部传递调用者）。 */
 export const impact = (at: RepoAt, symbol: string): Promise<ImpactSet> =>
-  isLocalOrigin(at.origin)
-    ? commands.panorama_impact({ repo: at.path, symbol })
-    : remote(at, "impact", { symbol });
+  remote(at, "impact", { symbol });
 
 /** 按名子串搜符号 → 拿全限定 id（裸名不解析，先搜再查 node）。 */
 export const search = (at: RepoAt, query: string, limit?: number): Promise<PanoramaSymbol[]> =>
-  isLocalOrigin(at.origin)
-    ? commands.panorama_search({ repo: at.path, query, limit })
-    : remote(at, "search", limit === undefined ? { query } : { query, limit });
+  remote(at, "search", limit === undefined ? { query } : { query, limit });
 
 /** 覆盖某符号的 `.md` 文档链接。 */
 export const docsFor = (at: RepoAt, symbol: string): Promise<DocLink[]> =>
-  isLocalOrigin(at.origin)
-    ? commands.panorama_docs_for({ repo: at.path, symbol })
-    : remote(at, "docs_for", { symbol });
+  remote(at, "docs_for", { symbol });
 
 /**
- * PN1b：图种注册表（原样）。本机那份编在 monitor 里；远端那份问那台机器上的小程序
- * （两台的版本可以不同 ⇒ 按机器取，不共用一份）。
+ * PN1b：图种注册表（原样）。问那台机器上的小程序（两台的版本可以不同 ⇒ 按机器取，不共用一份）。
+ * 〔RM1f〕本机也问本机的那一份（改前本机那份编在 monitor 里）。
  */
 export const diagramKinds = (origin: Origin): Promise<DiagramKindInfo[]> =>
-  isLocalOrigin(origin)
-    ? commands.panorama_diagram_kinds()
-    : remote({ origin, path: null }, "diagram_kinds");
+  remote({ origin, path: null }, "diagram_kinds");
 
 /** PN1b：画一张图。`kind` 是注册表里的 id，本仓不写死。 */
 export const diagram = (at: RepoAt, kind: string, request: DiagramRequest): Promise<PanoramaDiagram> =>
-  isLocalOrigin(at.origin)
-    ? commands.panorama_diagram({ repo: at.path, kind, request })
-    : remote(at, "diagram", { kind, request });
+  remote(at, "diagram", { kind, request });
 
 /** F71：列某文件的所有符号（点文件气泡 → 展开符号列表 → 点符号进详情）。 */
 export const symbolsInFile = (at: RepoAt, file: string): Promise<PanoramaSymbol[]> =>
-  isLocalOrigin(at.origin)
-    ? commands.panorama_symbols_in_file({ repo: at.path, file })
-    : remote(at, "symbols_in_file", { file });
+  remote(at, "symbols_in_file", { file });
 
 /** F71：文档漂移（仓里 `.md` 指向的目标文件/符号已失效）。反映上次索引快照，刷新后新鲜。 */
-export const drift = (at: RepoAt): Promise<DriftItem[]> =>
-  isLocalOrigin(at.origin) ? commands.panorama_drift({ repo: at.path }) : remote(at, "drift");
+export const drift = (at: RepoAt): Promise<DriftItem[]> => remote(at, "drift");
 
 // === F72：批注 + 文档关联写（落被分析仓、人手势触发）。存储格式只在上游定义（SS-15）。 ===
 // 〔RM1d〕本机远端同一条 `panorama_edit`：那台机器算、那台机器后端的文件管理写。
@@ -226,10 +191,7 @@ export const removeAnnotation = (at: RepoAt, id: string): Promise<boolean> =>
   edit(at, "remove_annotation", { id });
 
 /** F72：列全部批注（含 Proposed，审批队列用）。**读**。 */
-export const listAnnotations = (at: RepoAt): Promise<Annotation[]> =>
-  isLocalOrigin(at.origin)
-    ? commands.panorama_list_annotations({ repo: at.path })
-    : remote(at, "list_annotations");
+export const listAnnotations = (at: RepoAt): Promise<Annotation[]> => remote(at, "list_annotations");
 
 /** F72：把某 `.md` 关联到某符号（写 doc 的 frontmatter covers:，进仓可提交）。 */
 export const writeDocLink = (at: RepoAt, doc: string, target: string): Promise<void> =>
@@ -248,7 +210,4 @@ export const touching = (
   at: RepoAt,
   files: string[],
   ranges: [number, number][],
-): Promise<string[]> =>
-  isLocalOrigin(at.origin)
-    ? commands.panorama_touching({ repo: at.path, files, ranges })
-    : remote(at, "touching", { files, ranges });
+): Promise<string[]> => remote(at, "touching", { files, ranges });

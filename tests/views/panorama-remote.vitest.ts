@@ -170,14 +170,36 @@ describe("远端会话的全景（RM1c · RM1d）", () => {
     expect(vi.mocked(toast.showActionFailureToast), "撤单被当成失败弹了").not.toHaveBeenCalled();
   });
 
-  it("M5〔RM1f〕本机仓建索引（今天仍是进程内那条，撤不掉）⇒ 转圈旁不摆一个按了没用的「取消」", async () => {
-    vi.mocked(invoke).mockImplementation((() => new Promise(() => {})) as never);
+  it("M5〔RM1f〕本机仓建索引与远端同形：转圈旁也有「取消」，点它发的是同一张票的 panorama_cancel", async () => {
+    let settle: ((v: unknown) => void) | null = null;
+    vi.mocked(invoke).mockImplementation(((cmd: string) => {
+      if (cmd === "panorama_call") {
+        return new Promise((_, reject) => {
+          settle = reject;
+        });
+      }
+      if (cmd === "panorama_cancel") {
+        settle?.("已取消（后端那一趟已经停下）");
+        return Promise.resolve(true);
+      }
+      return Promise.resolve(null);
+    }) as never);
     const v = await openAt(LOCAL_ORIGIN, "/home/me/proj");
     const root = probe(v).root;
     const gate = [...root.querySelectorAll("button")].find((b) => b.textContent?.startsWith("建立索引"));
     (gate as HTMLButtonElement).click();
     await flush();
     expect(root.textContent, "正控：转圈在").toContain("首次建立索引中");
-    expect([...root.querySelectorAll("button")].map((b) => b.textContent)).not.toContain("取消");
+    const cancel = [...root.querySelectorAll("button")].find((b) => b.textContent === "取消");
+    expect(cancel, "本机仓建索引时转圈旁没有「取消」").toBeTruthy();
+    (cancel as HTMLButtonElement).click();
+    await flush();
+    await flush();
+    const calls = vi.mocked(invoke).mock.calls;
+    const asked = calls.find((c) => c[0] === "panorama_call")?.[1] as { origin: string; op: string; ticket: string };
+    const cancelled = calls.find((c) => c[0] === "panorama_cancel")?.[1] as { ticket: string };
+    expect([asked.origin, asked.op]).toEqual([LOCAL_ORIGIN, "index"]);
+    expect(cancelled?.ticket).toBe(asked.ticket);
+    expect(root.textContent).toContain("已取消建立索引");
   });
 });
