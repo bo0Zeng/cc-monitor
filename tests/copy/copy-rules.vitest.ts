@@ -99,6 +99,8 @@ export const CHECKS: Record<string, Check> = {
     const v = ctx.imperative.find((w) => s.trimStart().startsWith(w));
     return v ? `${e.kind} 档以祈使动词「${v}」开头` : null;
   },
+  // 〔CP2b · 设计/91 §4 R6 · 用户 09-24 裁「允许动词开头（问句仍禁）」〕control 档不许问句。
+  "C-Y4": (e) => (e.kind === "control" && /[？?]/.test(speech(e.zh)) ? "control 档是问句" : null),
   "C-P1": (e) => (/您/.test(e.zh) ? "称用户用了「您」" : null),
   "C-P2": (e) => (/我们/.test(e.zh) ? "产品自称「我们」" : null),
   "C-T1": (e, ctx) => {
