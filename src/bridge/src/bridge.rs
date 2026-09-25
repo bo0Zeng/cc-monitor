@@ -31,7 +31,7 @@ pub mod events {
     /// 不进 replay buffer（同 session-activity）——F5 靠 list_session_activity 快照收敛。
     pub const SESSION_STARTED: &str = "session-started";
     /// audit-fixes F03.2：远端 claude 退出但 tmux 会话尚在（idle-tmux 第三态）→ 前端渲**灰灯**、
-    /// **不归档**。**唯一由 remote-session-emitter emit**（emitter 收 backend-removed 时，若 sid 的
+    /// **不归档**。**由 remote-session-emitter emit**〔U4b · 第四波：本机 `session-changes-emitter` 也 emit —— 本机那一臂同样走 `classify_removed`，只查 `<local>` 那一格〕（emitter 收 backend-removed 时，若 sid 的
     /// `@ccm_sid` 仍出现在某 origin 的 `TmuxSessions` 帧里→判 idle）。不进 replay buffer（同
     /// session-activity/started）——F5 由 emitter 对账重发。idle 是 `remote_active` **之外**的态。
     pub const SESSION_IDLE: &str = "session-idle";
