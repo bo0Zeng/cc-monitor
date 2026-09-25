@@ -48,6 +48,7 @@ import {
   type AccountsState,
 } from "../../src/accounts";
 import { isChanCall, linesReply } from "../test-support/chan-fake";
+import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const runNewRemote = runNewSessionRemote as unknown as ReturnType<typeof vi.fn>;
@@ -161,7 +162,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     //   所以起会话那一跳读到的很可能还是冷快照 —— 那是一条**已登记的诚实边界**，不是本条要量的东西。
     //   本条量的是「**说得出账号名时，那次拉起被记住了**」。
     const snap: AccountsState = {
-      origin: "__local__",
+      origin: LOCAL_ORIGIN, // 〔C4b〕账号面的本机就是 `LOCAL_ORIGIN`（`"__local__"` 已退役）
       available: true,
       error: null,
       notice: null,

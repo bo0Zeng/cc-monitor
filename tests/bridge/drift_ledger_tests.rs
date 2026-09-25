@@ -334,14 +334,10 @@ const FEEDERS: &[(&str, &str, Whose, &str)] = &[
         "lib.rs",
         "batch_to_payloads",
         Whose::Given,
-        "参数 `origin`：本机 watcher 与远端流共用的出口",
+        "参数 `origin`：远端流、本机流、旁路快照三路共用的出口（唯一生产调用方 `ssh_source·rs::flush_lines`）",
     ),
-    (
-        "lib.rs",
-        "run",
-        Whose::Local,
-        "本机 jsonl watcher 那一批（只读本机 `~/.claude/projects`）",
-    ),
+    // 〔CF1 · 第四波 09-24〕`lib.rs::run`（`Local`，「本机 jsonl watcher 那一批」）那一行摘了：
+    //   本机会话的行从此是本机后端的 `line` 帧，经 `ssh_source·rs::flush_lines`（`Given`，origin 是本机）进账。
     (
         "parser.rs",
         "parse_for_kind",

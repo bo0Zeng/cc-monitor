@@ -23,20 +23,103 @@
 //!    `{value, edit: {rel, before, after, parents}}`，一个字节不写）→
 //! ② `edit = null` ⇒ 盘上已经是想要的样子，原样回 `value` →
 //! ③ `after` 是全文 ⇒ 同一台后端的 `files-put`（`root` = 仓、`expect = before`、`parents`）；
-//!    `after = null` ⇒ 先 `files-peek` 核「盘上还是 `before`」再 `files-delete` →
+//!    `after = null` ⇒ 同一台后端的 `files-delete`（〔RM1e〕带 `expect = before`：盘上不是那一份就不删）→
 //! ④ `stale`（盘上那份在算与写之间被别人改了）⇒ 回 ① 重算，最多 `user_files::EDIT_ATTEMPTS` 趟 →
 //! ⑤ 文档关联那两种写成之后 `refresh_doc_links`（让文档关联的查询跟上；只写索引）。
 //! 落盘只经 `user_files::Door`（monitor 碰用户文件的唯一开口）；**写的规则只住后端**，这里只「问 · 交」。
 //! 本机与远端同一条路，只差 origin。
 //!
+//! # 〔RM1e〕那台机器上没有小程序 / 装的那份太旧 ⇒ 推过去再问一次（用户 09-24 V108「只传给开过远端全景的机器」）
+//!
+//! 远端 `panorama` 回 [`PUSH_ON`] 里的码（`not_installed`：找不到或不是它；`unsupported`：装的那份缺这个 op）
+//! ⇒ 由 `panorama_bytes::push_to` 按那台的 `uname -s -m` 取内嵌字节、经本机常驻后端那条 `files` 链路
+//! （与 F08 部署后端同一条路、同一道「只许两根」围栏）推到 `~/.cc-monitor/bin/cc-monitor-panorama`，**再问一次**；
+//! 仍缺 ⇒ 如实说，不循环（[`ask_or_push`]）。每台机器一把锁：同时几问都撞上「没装」时只推一份。
+//! **本机不推**（本机的字节怎么到位是「本机对称」那一拍的事）。
+//! 「是不是同一代」只按 `--probe` 的能力表判（缺 op ⇒ `unsupported`）；为什么不比字节指纹写在
+//! `调研/第四波记录/RM1e.md §1.1`。
+//!
+//! 〔RM1e〕为了拿到对端的**码**，这里自己是发送端（`client_for` ＋ 共用分流器 `route_call_error`，
+//! 码从分流器递回的 `(code, message)` 里认，不自己 match 错误枚举 —— 与 `user_files.rs::BackendDoor::ask` 同形；
+//! 登记在 `backend_route_tests::SENDERS`）。〔墓碑 —— RM1c 那一版经 `frame_query::call` 发，它把码压进了一句话。〕
+//!
 //! # 诚实边界
 //!
 //! - 打不断：后端那一侧是阻塞档（`cancel` 回 `not_cancellable`）；这边等到期限为止。
-//! - 删批注**没有 CAS**（`files-delete` 不收 `expect`）：删前 `peek` 核一遍，核与删之间仍有一个窗口。
+//! - 〔RM1e〕删批注的 CAS 闭合在后端那一侧（核与删在同一个函数里紧挨着，窗只剩那两行之间 —— 后端写面头注那条 TOCTOU）。
+//!   〔墓碑 —— RM1d 那一版这里写着「删批注**没有 CAS**（`files-delete` 不收 `expect`）：删前 `peek` 核一遍，核与删之间仍有一个窗口」。〕
 
+use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
+use crate::backend::control::inbound_client::client_for;
 use crate::origin::Origin;
 use serde_json::{json, Value};
 use std::time::Duration;
+
+/// 后端那条帧命令的名字。
+const FRAME_CMD: &str = "panorama";
+
+/// ★〔RM1e〕对端回这几个码 ⇒ 那台机器上缺小程序 / 装的那份太旧 ⇒ 推字节再问一次。
+///
+/// == 后端适配层把「找不到 · 不是它 · 缺能力」映射出来的码（判据运行时读后端源码，两向）。
+pub(crate) const PUSH_ON: &[&str] = &["not_installed", "unsupported"];
+
+/// 〔RM1e〕问了一次没问成：对端说了话时带着它的码（没通道 / 没发出去 ⇒ `None`）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Asked {
+    pub code: Option<String>,
+    pub said: String,
+}
+
+impl Asked {
+    fn plain(said: String) -> Self {
+        Asked { code: None, said }
+    }
+    /// 这一次失败是不是「那台缺小程序 / 太旧」。
+    pub(crate) fn wants_bytes(&self) -> bool {
+        self.code.as_deref().is_some_and(|c| PUSH_ON.contains(&c))
+    }
+}
+
+/// 〔RM1e〕问一次；撞上「缺 / 旧」⇒ 推一次、再问一次。**推最多一次，问最多两次。**
+///
+/// `ask` / `push` 由调用方给（生产侧 = 那台后端 ＋ `panorama_bytes::push_to`；判据用替身数次数）。
+pub(crate) async fn ask_or_push<A, FA, P, FP>(mut ask: A, push: P) -> Result<Value, String>
+where
+    A: FnMut() -> FA,
+    FA: std::future::Future<Output = Result<Value, Asked>>,
+    P: FnOnce() -> FP,
+    FP: std::future::Future<Output = Result<(), String>>,
+{
+    let first = match ask().await {
+        Err(a) if a.wants_bytes() => a,
+        other => return other.map_err(|a| a.said),
+    };
+    push().await.map_err(|e| {
+        format!(
+            "{}\n—— 试着把代码全景组件推到那台机器上，没成：{e}",
+            first.said
+        )
+    })?;
+    match ask().await {
+        Err(again) if again.wants_bytes() => Err(format!(
+            "已经把这一版的代码全景组件推过去了，那台机器仍然说：{}",
+            again.said
+        )),
+        other => other.map_err(|a| a.said),
+    }
+}
+
+/// 每台机器一把「正在推」的锁（同一台同时几问都撞上「没装」时只推一份）。
+fn push_lock(origin: &str) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, OnceLock};
+    static LOCKS: OnceLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>> = OnceLock::new();
+    let mut m = LOCKS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    m.entry(origin.to_string()).or_default().clone()
+}
 
 /// 建索引那一档的 op（后端给子进程 900 s）。〔RM1d〕`refresh_doc_links` 写的也是索引。
 pub(crate) const BUILD_OPS: &[&str] = &["index", "reindex", "refresh_doc_links"];
@@ -134,14 +217,17 @@ where
                 }
             }
             None => {
-                // 删没有 CAS ⇒ 先核盘上还是算的那一份；不是 ⇒ 当 `stale` 重算。
-                let now = door.peek(repo, &edit.rel).await?;
-                if now.text != edit.before {
-                    last = format!("{} 在算完之后变了", now.path);
-                    continue;
+                // 〔RM1e〕删也带 CAS（`files-delete` 的 `expect`）：盘上不再是算的那一份 ⇒ 后端回 `stale` ⇒ 重算。
+                // 〔墓碑 —— RM1d 那一版先 `door.peek` 核、再删，核与删之间整整一趟往返的窗。〕
+                // `after = None` 而 `before = None` 上面已按「没事可做」回了 ⇒ 这里 `before` 恒在。
+                let Some(expect) = edit.before.as_deref() else {
+                    return Ok(planned.value);
+                };
+                match door.delete(repo, &edit.rel, expect).await {
+                    Ok(()) => return Ok(planned.value),
+                    Err(Refused::Stale(s)) => last = s,
+                    Err(e @ (Refused::Other(_) | Refused::Peer { .. })) => return Err(e.said()),
                 }
-                door.delete(repo, &edit.rel).await?;
-                return Ok(planned.value);
             }
         }
     }
@@ -174,26 +260,81 @@ pub async fn panorama_call(
     ask(&origin, &op, repo.as_deref(), args).await
 }
 
-/// 发一次 `panorama` 帧命令、拿 `result`（两条命令共用）。
+/// 分流器那三态里给人看的那句话。
+fn routed_text(r: Routed) -> String {
+    match r {
+        Routed::NoChannel(s) | Routed::Refused(s) => s,
+        Routed::Done => "代码全景这一问出了内部错误，没有拿到结果".to_string(),
+    }
+}
+
+/// 发一次 `panorama` 帧命令、拿 `result`；失败带着对端的码（〔RM1e〕推字节要按码判）。
+async fn ask_once(
+    origin: &Origin,
+    op: &str,
+    repo: Option<&str>,
+    args: Option<Value>,
+) -> Result<Value, Asked> {
+    let wire = origin.as_wire_str();
+    let who = crate::backend::control::cc_bus::machine_label(wire);
+    let Some(client) = client_for(wire) else {
+        return Err(Asked::plain(routed_text(no_channel(wire))));
+    };
+    if !client.accepts(FRAME_CMD) {
+        return Err(Asked::plain(
+            crate::backend::control::cc_bus::describe_backend_too_old_for(
+                wire,
+                FRAME_CMD,
+                "代码全景在这台上用不了",
+            ),
+        ));
+    }
+    // 对端说了话时它给的那个码（分流器递回来的 `(code, message)` 里认，不自己 match 错误枚举）。
+    let peer_code: std::cell::RefCell<Option<String>> = std::cell::RefCell::new(None);
+    match client
+        .call(FRAME_CMD, frame_args(op, repo, args), budget_for(op))
+        .await
+    {
+        Ok(Some(data)) => data.get("result").cloned().ok_or_else(|| {
+            Asked::plain(format!(
+                "{who} 的 `panorama` 应答没有 `result` —— 两端契约对不上"
+            ))
+        }),
+        Ok(None) => Err(Asked::plain(format!(
+            "{who} 的 `panorama` 回了一条空应答 —— 两端契约对不上"
+        ))),
+        Err(e) => {
+            let said = routed_text(route_call_error(&e, |code, message| {
+                *peer_code.borrow_mut() = Some(code.to_string());
+                format!("{who} 的代码全景没答上来（{code}）：{message}")
+            }));
+            Err(Asked {
+                code: peer_code.into_inner(),
+                said,
+            })
+        }
+    }
+}
+
+/// 问一次（两条命令共用）；远端回「缺 / 旧」⇒ 推字节再问一次（头注〔RM1e〕那一节）。
 async fn ask(
     origin: &Origin,
     op: &str,
     repo: Option<&str>,
     args: Option<Value>,
 ) -> Result<Value, String> {
-    let data = crate::backend::control::frame_query::call(
-        origin,
-        "panorama",
-        frame_args(op, repo, args),
-        budget_for(op),
+    match ask_once(origin, op, repo, args.clone()).await {
+        Err(a) if a.wants_bytes() && !origin.is_local() => {}
+        other => return other.map_err(|a| a.said),
+    }
+    // 拿到锁先**再问一次**（前一个人可能刚推完）—— `ask_or_push` 的第一问就是它。
+    let lock = push_lock(origin.as_wire_str());
+    let _pushing = lock.lock().await;
+    ask_or_push(
+        || ask_once(origin, op, repo, args.clone()),
+        || crate::panorama_bytes::push_to(origin),
     )
-    .await?;
-    data.get("result").cloned().ok_or_else(|| {
-        format!(
-            "远端 [{}] `panorama` 的应答没有 `result` —— 两端契约对不上",
-            origin.as_wire_str()
-        )
-    })
+    .await
 }
 
 /// 〔RM1d〕写批注 / 文档关联：问那台机器要计划、经那台机器后端的文件管理落盘（头注 ①–⑤）。

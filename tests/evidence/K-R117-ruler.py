@@ -155,6 +155,9 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     # ─────────────────────── ③ 装 MCP / skill 等 ───────────────────────
     ("mcp.write", (B3, "K34", "「包括安装 skill / MCP 等等」")),
     ("mcp.remove", (B3, "K34", "同上，撤那一侧")),
+    # 〔AS1 · 第四波 4B〕MCP 推 / 拉（`设计/96` 的 B · V111/V112）：把另一台那份 `.mcp.json` 里勾的条目装到这台 ——
+    #   与 `mcp.write` 同一件事（写的是同一份文件、经同一份规划），只是条目来自另一台机器。
+    ("mcp.sync", (B3, "K34+V111+V112", "「装 MCP」的跨机那一形：条目原样从另一台拷来，写之前看差异、不同的要点了才盖")),
     ("cc-bus.deploy", (B3, "K34",
                        "落点是 `<claude_dir>/skills/cc-bus/` ⇒ 属「装 skill」，不属「装后端」")),
     ("cc-bus.install-state", (B3, "K34", "同上，查装态那一半")),
@@ -364,6 +367,10 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         #   因为它描述的那个现实变了。
         "cc_bus_install_state",
         "deploy_local_cc_bus",
+        # 〔AS1 · 第四波 4B〕MCP 推 / 拉（能力 `mcp.sync`，归档同 `mcp.write` 在 ③）：写的是同一份 `.mcp.json`、
+        #   经同一份规划（`mcp.rs::plan_project_mcp`）⇒ 与下面那两条同一件。
+        "mcp_sync_apply",
+        "mcp_sync_preview",
         "remove_project_mcp_server",
         "write_project_mcp_server",
         "write_skill_file",

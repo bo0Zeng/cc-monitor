@@ -103,7 +103,7 @@ function state(p: Partial<AccountsState>): AccountsState {
  * 形状与远端那份逐字段相同（`fetchLocalAccounts` 头注：两条路填的是同一个 Rust 结构体）。
  */
 function localState(p: Partial<AccountsState> = {}): AccountsState {
-  return state({ origin: accounts.LOCAL_ORIGIN, ...p });
+  return state({ origin: LOCAL_ORIGIN, ...p }); // 〔C4b〕账号面的本机就是 `LOCAL_ORIGIN`（`"__local__"` 已退役）
 }
 const host = (p: Record<string, unknown> = {}) => ({
   label: "aya",

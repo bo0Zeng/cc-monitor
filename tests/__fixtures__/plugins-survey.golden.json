@@ -1,0 +1,21 @@
+{
+  "entries": [
+    {
+      "declared_error": null,
+      "declared_plugins": 2,
+      "id": "a-good",
+      "install_location": "<home>/mk-good",
+      "last_updated": "2026-01-01T00:00:00Z",
+      "source": "github:o/r"
+    },
+    {
+      "declared_error": "落点里没有 `/nonexistent/c4b/.claude-plugin/marketplace.json`",
+      "declared_plugins": null,
+      "id": "b-bad",
+      "install_location": "/nonexistent/c4b",
+      "last_updated": null,
+      "source": null
+    }
+  ],
+  "file_absent": false
+}
