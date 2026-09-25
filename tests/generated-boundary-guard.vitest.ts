@@ -128,7 +128,7 @@ describe("C01 边界生成物", () => {
       // **按字母序**（本条是 readdir + sort 的逐项对拍，不许按功能分组打乱顺序）。
       // 每项后面标它属于哪个功能，便于回溯。
       // K-R49：候选 rc（「那一行 source 加进哪份」）。〔AL1〕`AccountAliasReport.ts`〔散文墓碑〕随 `write_account_aliases` 退役。
-      "AccountAliasRc.ts",
+      // 〔AL1d · 4B〕`AccountAliasRc.ts` 改名 `StartupFile.ts`（候选各带别名块的现状 `BlockState.ts`，见下）。
       // P8a：marketplace 只读枚举的两个载荷。
       // ⚠ 顺序按目录名排序，别按加入时间摆。
       "AcctIsoStatus.ts", //          C04d 批3（**抓到漂移**：TS 原来只认 1/3 个字段）
@@ -145,6 +145,7 @@ describe("C01 边界生成物", () => {
       // 往一侧加字段没有任何门禁会红。
       "AuthKind.ts",
       "AutoLaunchConfig.ts", // C04d 批5a
+      "BlockState.ts", //             〔AL1d · 4B〕一份启动文件里别名块的现状（`StartupFile.block`）
       "BranchResult.ts", // C04d 批6a
       "CcBusAgent.ts", // C04d 批5a（CcBusState 的传递依赖）
       // PS1：本机部署 cc-bus 的结果（写了几个 / 跳过几个 / 备份在哪 —— 三种说法不合并）。
@@ -226,6 +227,7 @@ describe("C01 边界生成物", () => {
       "Shell.ts", //                  〔AL1c · 4B〕别名三条命令的 shell 方言入参（`shell_dialect.rs`）
       // 〔F7c 收尾 09-24〕"SftpEntry.ts" 走了（它的 Rust 源随池子那条列目录命令一起删了）。
       "Snippet.ts", //                C04d 批3
+      "StartupFile.ts", //            〔AL1d · 4B〕启动文件候选（别名文件那一行 ＋ 别名块共用一份，原 `AccountAliasRc.ts`）
       "SubagentLoadResult.ts", //     C04d 批2（**records: JsonlRecord[] 的传递依赖是 C04c 生成的**）
       "SurfaceRow.ts", //             C04d 批2（ConfigSurfaceReport 的传递依赖）
       "SurfaceState.ts", //           C04d 批2（serde(tag="kind") 内部标记枚举 → 判别联合）

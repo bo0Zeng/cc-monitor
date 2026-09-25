@@ -59,17 +59,23 @@ const FILE_BEGIN: &str = "# === cc-monitor aliases BEGIN v2 ===";
 const FILE_END: &str = "# === cc-monitor aliases END ===";
 
 /// 一份候选启动文件（rc / `$PROFILE`）的状态。
+///
+/// 〔AL1d · 第四波 4B〕从前叫 `AccountAliasRc`，只答「接没接上别名文件」；别名块（`cc` / `cct` ·
+/// `__ccm_bind`）装进的是**同一批**文件，却另有一条命令、另一份候选（`AL1d.md §1.2`）。
+/// 今天一份候选、一次扫描，两件事都在这一格上（`block`）。
 #[derive(Debug, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
-pub struct AccountAliasRc {
+pub struct StartupFile {
     /// 绝对路径。
     pub path: String,
     /// 这份文件今天已经把生成文件 `source` 进去了吗（装过 ccm 别名块的人这一格就是 true）。
     pub sourced: bool,
     /// 〔AL1c〕这份文件在不在盘上。POSIX 只列在的（恒 true）；PowerShell 的 `$PROFILE` 常常要装的时候才建。
     pub exists: bool,
+    /// 〔AL1d〕这份文件里别名块的现状（不在盘上 ⇒ 全空）。
+    pub block: crate::profile_installer::BlockState,
 }
 
 /// 生成文件的绝对路径。`home` 由调用方给 —— 测试拿临时目录当 home，**绝不碰真实家目录**。
@@ -157,8 +163,11 @@ pub struct AliasListing {
     pub aliases: Vec<Alias>,
     /// 解析不回清单的那几行（原文 ＋ 原因）。**不静默丢**：写回去之前人得知道它们会没。
     pub unparsed: Vec<String>,
-    /// 这台机器上这种 shell 的启动文件候选（「那一行 source 加进哪份」）。
-    pub rc_candidates: Vec<AccountAliasRc>,
+    /// 这台机器上这种 shell 的启动文件候选（「那一行 source 加进哪份」·「别名块装进哪份」，同一批）。
+    pub rc_candidates: Vec<StartupFile>,
+    /// 〔AL1d〕这台机器上已经跟 monitor 完成拉前握手的终端数（PowerShell 别名块里 `__ccm_bind` 的产物）。
+    /// 它不是盘上的事实（住 monitor 进程里的 `BindRegistry`）⇒ 由调用方给，本模块不认它。
+    pub bound_terminals: u32,
 }
 
 /// ② 那一跳的产物。
@@ -359,8 +368,19 @@ pub fn render(aliases: &[Alias], shell: Shell) -> AliasRender {
     }
 }
 
-/// **读回口**：盘上那份别名文件 → 清单。只读。
-pub fn read_in(home: &Path, shell: Shell) -> Result<AliasListing, String> {
+/// **读回口**：盘上那份别名文件 → 清单 ＋ 启动文件候选（各带别名块的现状）。只读。
+///
+/// 〔AL1d〕`extra_rc`：人在界面上指的「其它文件」（从前是终端集成那一块的「自定义路径」）。给了就过
+/// `profile_installer::fence_path_under`（只许落在 home 之内）、并进候选一起扫；过不了围栏 ⇒ `Err`。
+pub fn read_in(
+    home: &Path,
+    shell: Shell,
+    extra_rc: Option<&str>,
+    bound_terminals: u32,
+) -> Result<AliasListing, String> {
+    let extra = extra_rc
+        .map(|raw| crate::profile_installer::fence_path_under(home, raw))
+        .transpose()?;
     let path = alias_file_in(home, shell);
     let (exists, text) = match std::fs::read_to_string(&path) {
         Ok(t) => (true, t),
@@ -387,7 +407,8 @@ pub fn read_in(home: &Path, shell: Shell) -> Result<AliasListing, String> {
         exists,
         aliases,
         unparsed,
-        rc_candidates: rc_candidates_in(home, shell),
+        rc_candidates: rc_candidates_in(home, shell, extra.as_deref()),
+        bound_terminals,
     })
 }
 
@@ -452,17 +473,31 @@ pub fn collision_note(name: &str, shell: Shell) -> Option<String> {
     shell.dialect().name_taken(name)
 }
 
-/// 候选启动文件的现状。列哪几份由方言答（POSIX 只列在的；PowerShell 的 `$PROFILE` 不在也列）。
-pub fn rc_candidates_in(home: &Path, shell: Shell) -> Vec<AccountAliasRc> {
+/// 候选启动文件的现状。列哪几份由方言答（POSIX 只列在的；PowerShell 的 `$PROFILE` 不在也列）——
+/// 🔴 〔AL1d〕**`$PROFILE` 在哪，全仓只有 `ShellDialect::startup_files` 答**（`AL1d.md §2.3`）。
+/// `extra` 是人另指的那一份（已过围栏），与方言给的重了就不重复列。
+///
+/// 每份读**一次**：别名文件那一行接没接上（`sourced`）与别名块的现状（`block`）出自同一次读。
+pub fn rc_candidates_in(home: &Path, shell: Shell, extra: Option<&Path>) -> Vec<StartupFile> {
     let d = shell.dialect();
-    d.startup_files(home)
+    let mut paths = d.startup_files(home);
+    if let Some(x) = extra {
+        if !paths.iter().any(|p| p == x) {
+            paths.push(x.to_path_buf());
+        }
+    }
+    paths
         .into_iter()
         .map(|p| {
             let text = std::fs::read_to_string(&p).ok();
-            AccountAliasRc {
+            StartupFile {
                 path: p.display().to_string(),
                 sourced: text.as_deref().is_some_and(|s| d.sources_our_file(s)),
                 exists: text.is_some() || p.is_file(),
+                block: text
+                    .as_deref()
+                    .map(|t| crate::profile_installer::block_state(&p, t))
+                    .unwrap_or_default(),
             }
         })
         .collect()

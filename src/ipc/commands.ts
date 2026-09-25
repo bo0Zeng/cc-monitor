@@ -413,8 +413,12 @@ export const commands = {
   aliases_render: (args: { aliases: Alias[]; shell: Shell }) =>
     invoke<AliasRender>("aliases_render", args),
 
-  /** 〔AL1〕读回口：这台机器上那份别名文件今天有哪几条（认不出的行原文带原因列出来，不静默丢）。 */
-  aliases_read: (args: { shell: Shell }) => invoke<AliasListing>("aliases_read", args),
+  /**
+   * 〔AL1〕读回口：这台机器上那份别名文件今天有哪几条（认不出的行原文带原因列出来，不静默丢）。
+   * 〔AL1d〕启动文件候选各带别名块的现状 ＋ 完成拉前握手的终端数；`rcPath` = 人另指的一份（过围栏后并进候选）。
+   */
+  aliases_read: (args: { shell: Shell; rcPath?: string | null }) =>
+    invoke<AliasListing>("aliases_read", args),
 
   /**
    * 〔AL1〕第②跳：**唯一的副作用**。收的是清单，后端用第①跳同一个渲染落盘 ⇒ 写的就是预览的那一份。
@@ -422,6 +426,20 @@ export const commands = {
    */
   aliases_install: (args: { aliases: Alias[]; rcPath?: string | null; shell: Shell }) =>
     invoke<AliasInstallReport>("aliases_install", args),
+
+  /**
+   * 〔AL1d · 第四波 4B〕**别名块**（`cc` / `cct` · `__ccm_bind`）第①跳：纯 —— 块 → 代码（装进一份空文件会写成什么）。
+   * 两种方言都答；`withCc` 只对 PowerShell 有意义（连 `function cc` 一起装）。
+   */
+  aliases_block_render: (args: { shell: Shell; withCc: boolean }) =>
+    invoke<string>("aliases_block_render", args),
+
+  /** 〔AL1d〕别名块装进人选的那份启动文件（方言按那份文件的扩展名定）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
+  aliases_block_install: (args: { rcPath: string; withCc: boolean }) =>
+    invoke<void>("aliases_block_install", args),
+
+  /** 〔AL1d〕别名块卸掉（整块删，块外一个字节不动）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
+  aliases_block_remove: (args: { rcPath: string }) => invoke<void>("aliases_block_remove", args),
 
   /**
    * 〔RM1c · 第四波〕代码全景**经那台机器的后端**走（V108 选 B）：发帧命令 `panorama`，拿回 `result`。
