@@ -718,20 +718,23 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     // ★ 三个标签收成一个 `StreamId`（`20 §4`）—— 中转这一侧**没有业务名**，
     //   写到线上的仍然是 `agent`/`account`/`key` 三个字段（那是线契约，见 `tee::open`）。
     let id = r.stream_id();
-    relay.tee.open(id);
+    // 〔TAP〕`open` 发一个这一响应自己的游标（位置号 `n` 从 0 起），`event` / `note_dropped_bytes` / `close` 都拿它。
+    let mut at = relay.tee.open(id);
     // ★ 返回值**必须落地**：它是 `DoD-2㈡`「块数对账」的唯一量点。
     // 写成 `pump(...)?;` 就等于把它丢掉 —— 那正是审计 `K4` 能全绿的原因。
     let outcome = pump(&mut up, &mut down_w, &mut |raw| {
         let decoded = view.feed(raw, TEE_DECODE_CAP);
         for payload in splitter.feed(&decoded, TEE_DECODE_CAP) {
-            relay.tee.event(id, &payload);
+            relay.tee.event(id, &mut at, &payload);
         }
         // 解码那一路超上限丢掉的字节要**报出去**，不许静默（见 `TEE_DECODE_CAP` 头注）。
         relay
             .tee
-            .note_dropped_bytes(view.take_dropped() + splitter.take_dropped());
+            .note_dropped_bytes(&mut at, view.take_dropped() + splitter.take_dropped());
     });
     relay.note_pump(&outcome);
+    // 〔TAP〕收尾交一件：转发以错误收尾（claude 按了 Esc / 上游 RST / 下游写不动）⇒ `broken`。
+    relay.tee.close(id, at, outcome.is_err());
     outcome?;
     Ok(())
 }

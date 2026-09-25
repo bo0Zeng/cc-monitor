@@ -380,8 +380,10 @@ async fn run_over_stdio(
     let poke_task = spawn_sigusr1_task(slot);
 
     // (d) Run the stdout writer until the channel closes or a signal fires.
+    // 〔TAP · V124〕这条流连接的 tap 接收端（中转抄出来的 SSE 事件，最低优先、可丢）。
+    let tap_rx = tap::attach();
     tokio::select! {
-        _ = writer_task(stdout, rx, reply_rx) => {
+        _ = writer_task(stdout, rx, reply_rx, tap_rx) => {
             tracing::info!("writer task ended (channel closed)");
         }
         _ = shutdown_signal() => {
@@ -674,6 +676,8 @@ async fn serve_listening(
                 let (reply_tx, reply_rx) =
                     tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
                 let mut inbound_task = inbound::spawn(reader, reply_tx.clone(), hello_flushed);
+                // 〔TAP · V124〕这条流连接的 tap 接收端：上一条连接的那一条随之作废（hub 里只装此刻这一条）。
+                let tap_rx = tap::attach();
                 let done = done_tx.clone();
                 tracing::info!("一条流已接上（认证通过）");
                 tokio::spawn(async move {
@@ -690,7 +694,7 @@ async fn serve_listening(
                     // socket 的对端关了就是走了，而 stdio 那边刻意对写端关闭不敏感
                     //（那是为了不让一次误关掉整个 backend —— 两条载体的取舍不同，写清楚）。
                     tokio::select! {
-                        _ = writer_task(writer, rx, reply_rx) => {
+                        _ = writer_task(writer, rx, reply_rx, tap_rx) => {
                             tracing::info!("流结束：写不出去了（客户端走了）");
                         }
                         _ = &mut inbound_task => {
@@ -755,6 +759,7 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
     mut out: W,
     mut rx: tokio::sync::mpsc::Receiver<Frame>,
     mut reply_rx: tokio::sync::mpsc::Receiver<Frame>,
+    mut tap_rx: impl tap::TapSource,
 ) {
     // ★ 应答优先，但**有预算**。
     //
@@ -771,6 +776,10 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
     const REPLY_BURST: u32 = 8;
     let mut burst = 0u32;
     loop {
+        // 〔TAP · V124〕tap 帧**排在最后**（`biased` 按书写顺序问）：只有出方向与应答此刻都没有东西时才轮到它。
+        //   它可丢（SSE 只保快，jsonl 保对），而出方向里的 `line` 帧不许因为它晚到或被挤掉 —— tap 走自己那条
+        //   有界通道（`tap::TAP_CAPACITY`），满了在中转那一侧当场丢、位置号原位说。
+        //   tap 通道被换掉（又一条流连接接上了）⇒ `recv` 回 `None`，这一臂的模式不匹配、本轮不参与，不会空转。
         let frame = if burst < REPLY_BURST {
             tokio::select! {
                 biased;
@@ -779,6 +788,7 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
                     Some(f) => { burst = 0; f }
                     None => return, // 出方向通道关了 = 寿终
                 },
+                Some(f) = tap_rx.next() => f,
             }
         } else {
             burst = 0;
@@ -789,6 +799,7 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
                     None => return,
                 },
                 Some(f) = reply_rx.recv() => f,
+                Some(f) = tap_rx.next() => f,
             }
         };
         if let Err(e) = write_frame(&mut out, &frame).await {
@@ -864,3 +875,7 @@ async fn shutdown_signal() {
         let _ = tokio::signal::ctrl_c().await;
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/backend/writer_task_tests.rs"]
+mod writer_task_tests; // 〔TAP〕写者的优先序：tap 灌满时内容帧一条不少、顺序不变

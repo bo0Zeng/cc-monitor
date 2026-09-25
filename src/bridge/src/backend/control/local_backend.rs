@@ -1577,6 +1577,10 @@ pub(crate) fn absorb_local_frame(
             total,
             end,
         } => crate::sftp_pool::deliver(&id, got, total, end),
+        // 〔TAP · V124〕中转住本机常驻后端：它抄出来的 SSE 事件原样转前端（`session_tap::deliver`，从不阻塞、不进内容通道）。
+        InboundFrame::Tap(t) => {
+            crate::session_tap::deliver(crate::backend::control::inbound_client::LOCAL_ORIGIN, t)
+        }
         // 〔CF1〕内容三种（`session_added` 在上面那一臂记完容器也交回）：交回读循环，送进本机内容通道。
         f @ (InboundFrame::Line { .. } | InboundFrame::SessionRemoved { .. }) => return Some(f),
         // 其余帧（hello · 会话状态 · 溢出 …）本机这条流今天不消费。

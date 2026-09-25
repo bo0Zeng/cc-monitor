@@ -77,6 +77,7 @@ pub mod remote_ask; // 〔C4d · 第四波 4B〕本机后端问远端后端的�
 #[path = "../../tests/backend/single_stream_guard.rs"]
 mod single_stream_guard; // K-P1 KPY8：「多客户端的流」明确不做 —— 三处「恰好一个客户端」的触发器（整体 #[cfg(test)]）
 pub mod skill_install; // 〔AS2 · 第四波 4B · V113〕skill「装到这台」：帧面 `skill-read`（来源那台）/ `skill-install-plan`（要被写的那一台；复用 AS1 的差异与闸）。只读
+pub mod tap; // 〔TAP · V124〕tee 的消费侧（后端这一半）：进程级 tap 口 → 当前那条流连接的 `tap` 帧（`设计/20 §8`）
 pub mod wire;
 
 /// Streaming wire-protocol major version, reported as `v` in the `Hello` frame.
@@ -1551,6 +1552,9 @@ pub const EMITS: &[&str] = &[
     // 〔SR1b〕一趟传输的进度与终局（`control/transfer.rs` 的转发任务真发，登记 = 承诺真发）。
     // 只在客户端 `transfer-start` 之后才出现；旧客户端不认 ⇒ 忽略（additive）。
     "transfer",
+    // 〔TAP · V124〕中转抄出来的 SSE 事件（`tap::attach` 的接收端经 `writer_task` 真发，登记 = 承诺真发）。
+    // 只有进程里住着中转的那个后端（本机常驻）才会有；旧客户端不认 ⇒ 忽略（additive）。
+    "tap",
 ];
 
 /// ① 流模式 flag：出现即剥离并置位，**不影响模式判定**。

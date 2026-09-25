@@ -73,6 +73,11 @@ pub mod events {
     /// 宣告过了。前端据此把这台「固定、却没被报过」的 tab 从**说不清**落到**已结束**（`设计/30 §3.5.7a`）。
     /// 本机不走它：本机的清单是 `list_active_sessions`（前端起步就拉）。
     pub const ORIGIN_SESSIONS_LISTED: &str = "origin-sessions-listed";
+    /// 〔TAP · V124 · `设计/20 §8`〕**中转抄出来的一个 SSE 事件**（或一个响应的收尾），payload 见 [`super::SessionTapPayload`]。
+    ///
+    /// 来源是本机常驻后端的 `tap` 帧，monitor 原样转（`session_tap.rs`）。前端**直派**（不进内容队列、不吃 credit）：
+    /// 它是临时态（活卡），与行 / 起停事件之间不需要顺序 —— jsonl 那一轮到了就整轮覆盖（V24）。可丢；不进 replay buffer。
+    pub const SESSION_TAP: &str = "session-tap";
     // FOCUS_SWITCH 已删除：Win11 默认终端 (WindowsTerminal.exe) 是单进程多窗口架构，
     // OS GetForegroundWindow 只能拿到 WT 主进程 PID，无法区分 tab/window 内跑哪个
     // claude session。在 WT 默认环境下永远不工作；非 WT 终端可工作但不值为少数场景维护。
@@ -214,6 +219,29 @@ pub struct RemoteSessionAddedPayload {
 pub struct SessionContainerPayload {
     pub session_id: String,
     pub container: String,
+}
+
+/// 〔TAP · V124〕`session-tap` 的 payload：后端 `tap` 帧的字段原样 ＋ 哪台机器。
+///
+/// `stream` = 路由第三段（前端拿它对 tab 的 sid，对不上 ⇒ 匿名流、不显示）；`resp` · `n` 见后端 `wire::Frame::Tap`；
+/// `data`（SSE 事件原文，一个 JSON 串）与 `end`（`"done"` / `"broken"`）恰有一个。
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+pub struct SessionTapPayload {
+    pub origin: crate::origin::Origin,
+    pub stream: String,
+    // C03 大整数策略：本进程第几个响应 / 响应里第几个事件，远在 2^53 之内；线上是 JSON 文本，`bigint` 是错的。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub resp: u64,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub n: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub data: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub end: Option<String>,
 }
 
 /// 〔U4b · 第四波〕`origin-sessions-listed` 的 payload：哪台机器的清单报完了。

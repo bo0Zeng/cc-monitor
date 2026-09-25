@@ -174,6 +174,11 @@ const FRAMES: &[(&str, &str)] = &[
         "transfer",
         r#"{"kind":"transfer","id":"cf1-no-such-ticket","got":1,"total":2}"#,
     ),
+    // 〔TAP · V124〕中转抄出来的 SSE 事件 —— 不是会话内容（jsonl 才是），就地转给前端，不进内容通道。
+    (
+        "tap",
+        r#"{"kind":"tap","stream":"s1","resp":0,"n":0,"data":"{}"}"#,
+    ),
 ];
 
 #[test]

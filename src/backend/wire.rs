@@ -538,6 +538,39 @@ pub enum Frame {
         #[serde(skip_serializing_if = "Option::is_none")]
         end: Option<TransferEnd>,
     },
+
+    /// 〔TAP · V124 · `设计/20 §8`〕**中转抄出来的一个 SSE 事件**（或一个响应的收尾）。
+    ///
+    /// 只有**本机常驻后端**会发（中转住在它进程里，`relay::host`；远端的中转是脱离的 `--relay`，没有 wire 可走）。
+    /// 四样东西，**没有业务词**（字段名就是 `05 §9` 第 4 条「tee 线上字段名住哪」的答案：住这里，serde 名）：
+    /// - `stream`：路由第三段原样（resume ⇒ 那条会话的 sid；新开 ⇒ 起会话时铸的 nonce）。后端不解释它。
+    /// - `resp`：本进程第几个响应（跨响应单调，后端重启从 0 起）。
+    /// - `n`：这一个响应里第几个事件，**从 0 连续**。后端每个事件先占号再投递 ⇒ 丢了的号不出现 ⇒
+    ///   接收侧看 `n` 连不连得上就知道缺在哪（`设计/05 §3.3.4` 的 `Gap{from_seq,to_seq}` 那一形，原位、纯算术）。
+    /// - `data`（与 `end` 恰有一个）：SSE `data:` 后面那段原文，**一个 JSON 串**（上游字节敌手可控，不参与帧结构）。
+    /// - `end`：这个响应不会再有事件了（`done` 上游说完 · `broken` 转发以错误收尾）；这一帧的 `n` = 一共占了几个号。
+    ///
+    /// 🔴 **可丢**：走后端自己那条有界 tap 通道（`tap::TAP_CAPACITY`），满了就丢，不回推中转、不挤出方向的内容帧。
+    /// SSE 只保快，jsonl 保对（V24）。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    Tap {
+        stream: String,
+        resp: u64,
+        n: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        data: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        end: Option<TapEnd>,
+    },
+}
+
+/// 〔TAP〕一个响应怎么收场的（[`Frame::Tap`] 的 `end`）。
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TapEnd {
+    /// 上游把响应说完了（转发正常收尾）。
+    Done,
+    /// 转发以错误收尾：下游走了（claude 被 Esc 打断）· 上游断了 · 写不动。
+    Broken,
 }
 
 /// 〔SR1b〕一趟传输怎么收场的（[`Frame::Transfer`] 的 `end`）。
@@ -609,6 +642,9 @@ impl Frame {
             Frame::LinkEnd { .. } => false,
             // 〔SR1b〕传输的进度 / 终局：丢了终局那一帧，看的人永远等下去；也走应答通道。
             Frame::Transfer { .. } => false,
+            // 〔TAP〕SSE 只保快：它说的事 jsonl 那一侧都有（落盘保对，V24），丢了由位置号 `n` 原位说出来。
+            // ⚠ 它**不走**出方向那条通道（走 tap 自己那条），列在这里只为穷尽。
+            Frame::Tap { .. } => true,
         }
     }
 
@@ -633,6 +669,7 @@ impl Frame {
             Frame::LinkData { link, .. } => ("link_data", Some(link.clone())),
             Frame::LinkEnd { link, .. } => ("link_end", Some(link.clone())),
             Frame::Transfer { id, .. } => ("transfer", Some(id.clone())),
+            Frame::Tap { stream, .. } => ("tap", Some(stream.clone())),
         };
         LostFrame { kind, subject }
     }
