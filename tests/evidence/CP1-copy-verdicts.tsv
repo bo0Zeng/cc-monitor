@@ -1296,6 +1296,9 @@ src/backend/control/transfer.rs:652	没有这一趟传输（{tid}）	保留	[可
 src/backend/control/transfer.rs:658	这一趟传输已经起跑了（{tid}）	保留	[可达存疑] 〔SR1b〕同一趟起跑两次（monitor 一趟只订阅一次）；短、无内部词
 src/bridge/src/backend/control/local_backend.rs:1677	本机后端的流断了（stdio 载体）	改·§2.1	[可达存疑] 〔SR1b〕同 SR1a 那一行、同一句：本机那条流断了时经它开的传输也一起收场，原因显示在窗口传输那一行；裁法随那一行 →「和本机后端的连接断了」
 src/bridge/src/local_backend_host.rs:925	本机后端的流断了（常驻载体）	改·§2.1	[可达存疑] 〔SR1b〕同上（常驻那条载体）→「和本机后端的连接断了」
+src/bridge/src/local_backend_host.rs:451	（没有）	保留	[对外] 〔HX2〕「这个口上的后端是替另一个数据目录起的」那句里某一格一边没有值时的占位（接在「它用的是 / 这个 monitor 要的是」后面）
+src/bridge/src/local_backend_host.rs:458	{k}：它用的是 {}，这个 monitor 要的是 {}	保留	[对外] 〔HX2〕同一句里逐格点名：哪个环境变量、那个后端用的是什么、这个 monitor 要的是什么（变量名是用户隔离跑时自己设的那几个，认得出）
+src/bridge/src/local_backend_host.rs:465	这个口上的后端是替另一个数据目录起的（{}）—— 接上它，凭据与历史注解会写进那个数据目录，所以没有接。\n         多半是用 CCM_DATA_DIR 隔离跑的 monitor 碰上了平常那个 monitor 起的后端：换一个 CLAUDE_CONFIG_DIR 跑，或者先把那个后端停掉	保留	[对外] 〔HX2 · E10〕本机后端接不上时进「起不来」那句话（start_detached 的出声并拒绝那一臂）：先说结果（没有接）与为什么（会写进别的数据目录），再给用户做得了的两步；CCM_DATA_DIR / CLAUDE_CONFIG_DIR 是用户隔离跑时自己设的变量名
 src/bridge/src/sftp_pool.rs:235	本机后端的流断了	改·§2.1	[可达存疑] 〔SR1b〕起跑那一刻本机那条流已经没了：窗口传输那一行显示它；「流」是实现词 →「和本机后端的连接断了」
 src/settings/machine-aliases.ts:67	~/.bashrc（或你实际用的 shell 配置文件）	保留	[对外] 〔AL1c〕POSIX 手贴的落点提示，原样从组件体里搬进平台措辞表（文字没变）
 src/settings/machine-aliases.ts:68	source 它，或开一个新终端。	保留	[对外] 〔AL1c〕POSIX 手贴后的生效方式，原样搬进平台措辞表（文字没变）
