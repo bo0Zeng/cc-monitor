@@ -932,14 +932,7 @@ fn watch_loop(
     // on startup. We deliberately do NOT walk projects/ unconditionally — pulling
     // every historical jsonl as a Tab is the bug this fixes; browsing history is
     // the Ctrl+H history browser's job (Phase 1 for remote).
-    if sessions.is_dir() {
-        for entry in WalkDir::new(&sessions).into_iter().filter_map(Result::ok) {
-            let p = entry.path();
-            if is_session_json(p) {
-                process_session_added(p, &mut state, &mut sink);
-            }
-        }
-    }
+    initial_session_scan(&sessions, &mut state, &mut sink);
 
     // --- Phase 2: live watch. ---
     let mut debouncer = match new_debouncer(
@@ -1916,7 +1909,10 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     state.active_sids.insert(sid.clone());
     // `U-NP④`：身份打标（`@ccm_sid`）—— 接 `shared/ccm` 那条每秒轮询的班，见
     // `control::identity_tag`（跨层边已登记进 `layering_guard`）。放在冒名检查**之后**。
-    crate::control::identity_tag::tag(pid, &sid);
+    //
+    // 〔U4b · 第四波〕这一次探测的**结局**不再丢：它同时就是「这条会话住在什么容器里」的答案
+    // （`identity_tag::Outcome::container`，随下面的 `session_added` 报出去）—— 零新进程、零新节拍。
+    let container = crate::control::identity_tag::tag(pid, &sid).container();
     // P2：给这个进程实例挂 pidfd 看守（取代原先每 2s 一遍的判活扫描）。
     // `start` 就是上面 verdict 用过的那次 /proc 读，不再多读一次。
     arm_pid_watcher(&key_for_watch, pid, start, state);
@@ -1977,12 +1973,36 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         } else {
             None
         },
+        // 〔U4b〕判不了 ⇒ `None` ⇒ 不上线（与本字段加进来之前逐字节相同）。
+        container,
     });
     if !state.tail_only {
         for p in &jsonls {
             process_jsonl(p, state, sink);
         }
     }
+}
+
+/// Phase 1 的本体：逐个活 pidfile 发 `session_added`，**然后**发一帧 `sessions_replayed`。
+///
+/// 〔U4b · 第四波〕从 `watch_loop` 里抽出来，为的是「清单报完了」那一帧的**位置**能被直接验
+/// （`watcher_tests::sessions_replayed_follows_every_initial_session_added_exactly_once`）——
+/// 起整条 `watch_loop` 要挂 inotify、探真机 tmux、装 hook，判据不许碰那些。
+///
+/// `sessions_replayed` **无条件发**：`sessions/` 不在 = 清单是空的，也是一个说完了的答案。
+/// 它排在本函数所有 `session_added` 之后；调用方在 Phase 2 起来之前调本函数（同一个 sink、同一条线程）
+/// ⇒ 客户端收到它时，这台机器此刻全部的活会话都已经报过了 —— 靠它把「固定、却没被报过」的会话
+/// 从「说不清」落到「已结束」（`设计/30 §3.5.7a`）。
+fn initial_session_scan(sessions: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
+    if sessions.is_dir() {
+        for entry in WalkDir::new(sessions).into_iter().filter_map(Result::ok) {
+            let p = entry.path();
+            if is_session_json(p) {
+                process_session_added(p, state, sink);
+            }
+        }
+    }
+    sink.send(Frame::SessionsReplayed);
 }
 
 /// A `sessions/<PID>.json` was deleted: look up the cached sid (the file is

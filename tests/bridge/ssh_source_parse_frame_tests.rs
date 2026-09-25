@@ -371,6 +371,7 @@ fn known_kind_with_extra_fields_still_parses() {
             status: None,
             waiting_for: None,
             rbind_token: None,
+            container: None,
         }
     );
 }
@@ -394,6 +395,7 @@ fn session_added_metadata_parses() {
             status: None,
             waiting_for: None,
             rbind_token: None,
+            container: None,
         }
     );
 }
@@ -735,5 +737,42 @@ fn accounts_changed_is_recognised_and_reaches_the_frontend_as_ready() {
     assert!(
         body.contains("REMOTE_BACKEND_READY") && body.contains("\"reason\": \"accounts_changed\""),
         "accounts_changed 那一臂没发 remote-backend-ready（或没带 reason）"
+    );
+}
+
+/// 〔U4b · 第四波 · M1〕`session_added.container`：两个字面量认得；缺席 / 不认识的取值 ⇒ `None`（不知道 ≠ 不在）。
+/// 帧串与后端 `wire_tests::session_added_container_is_additive_with_two_literals` 的精确字节逐字相同（异源：那边是后端序列化器的产物）。
+#[test]
+fn session_added_container_reads_two_literals_and_unknown_is_none() {
+    use crate::session_facts::Container;
+    let get = |line: &str| match parse_frame(line).expect("session_added 要解得出") {
+        InboundFrame::SessionAdded { container, .. } => container,
+        other => panic!("解出来不是 session_added：{other:?}"),
+    };
+    assert_eq!(
+        get(r#"{"kind":"session_added","sid":"s","container":"tmux"}"#),
+        Some(Container::Tmux)
+    );
+    assert_eq!(
+        get(r#"{"kind":"session_added","sid":"s","container":"none"}"#),
+        Some(Container::None)
+    );
+    assert_eq!(get(r#"{"kind":"session_added","sid":"s"}"#), None);
+    assert_eq!(
+        get(r#"{"kind":"session_added","sid":"s","container":"screen"}"#),
+        None
+    );
+    assert_eq!(
+        get(r#"{"kind":"session_added","sid":"s","container":1}"#),
+        None
+    );
+}
+
+/// 〔U4b · 第四波 · M1〕`sessions_replayed`（无载荷）认得。帧串 == 后端 `wire_tests::sessions_replayed_has_exactly_these_bytes`。
+#[test]
+fn sessions_replayed_is_known() {
+    assert_eq!(
+        parse_frame(r#"{"kind":"sessions_replayed"}"#),
+        Some(InboundFrame::SessionsReplayed)
     );
 }
