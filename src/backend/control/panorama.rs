@@ -134,18 +134,25 @@ pub(crate) fn store_dir(home: &Path) -> PathBuf {
     home.join(super::exit_policy::DIR_NAME).join("panorama")
 }
 
+/// 〔RM1f〕盘上那个可执行文件的**文件名**：身份名 ＋ 这台机器的可执行后缀（Windows 上 `.exe`，别处空串）。
+///
+/// 身份（`--probe` 首行、[`PLUGIN_NAME`]）不带后缀；只有「去盘上哪儿找」这一格要它 ——
+/// Windows 本机那一份是 `cc-monitor-panorama.exe`（monitor 按目标平台放下来的，`panorama_bytes::local_file_name`）。
+/// 后端就跑在它要找的那台机器上 ⇒ 它自己的后缀就是那台的后缀。
+pub(crate) fn program_file_name() -> String {
+    format!("{PLUGIN_NAME}{}", std::env::consts::EXE_SUFFIX)
+}
+
 /// 固定候选 —— **纯函数**（不读环境，好测）。后端自己旁边优先（随后端一起铺的那一份），
 /// 其次是部署落点 `<家>/.cc-monitor/bin/`。
 pub(crate) fn fixed_candidates(exe_dir: Option<&Path>, home: Option<&Path>) -> Vec<PathBuf> {
+    let file = program_file_name();
     let mut out = Vec::new();
     if let Some(d) = exe_dir {
-        out.push(d.join(PLUGIN_NAME));
+        out.push(d.join(&file));
     }
     if let Some(h) = home {
-        let p = h
-            .join(super::exit_policy::DIR_NAME)
-            .join("bin")
-            .join(PLUGIN_NAME);
+        let p = h.join(super::exit_policy::DIR_NAME).join("bin").join(&file);
         if !out.contains(&p) {
             out.push(p);
         }

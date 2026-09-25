@@ -413,8 +413,10 @@ async fn ask(
     repo: Option<&str>,
     args: Option<Value>,
 ) -> Result<Value, String> {
+    // 〔RM1f〕本机也走这一格：本机后端答「没装 / 装的太旧」⇒ 把这一份产物带着的小程序放到本机后端找得到的地方、再问一次。
+    // 〔墓碑 —— RM1e 那一版这里是 `a.wants_bytes() && !origin.is_local()`：本机不推。〕
     match ask_once(origin, op, repo, args.clone()).await {
-        Err(a) if a.wants_bytes() && !origin.is_local() => {}
+        Err(a) if a.wants_bytes() => {}
         other => return other.map_err(|a| a.said),
     }
     // 拿到锁先**再问一次**（前一个人可能刚推完）—— `ask_or_push` 的第一问就是它。
@@ -433,13 +435,20 @@ pub(crate) const INSTALL_NOTICE_KIND: &str = "panorama-install";
 
 /// 〔RM1f〕那一句说什么（纯函数，判据直接比）。
 pub(crate) fn install_notice(origin: &str) -> crate::bridge::RemoteHealthPayload {
-    let who = crate::backend::control::cc_bus::machine_label(origin);
+    let message = if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
+        // 〔RM1f〕本机那一台不经网络：放到 `~/.cc-monitor/bin/`，一两秒的事。
+        "本机还没有这一版的代码全景组件，正在把它放好（一两秒）。放好之后这一问会自己接着答。"
+            .to_string()
+    } else {
+        let who = crate::backend::control::cc_bus::machine_label(origin);
+        format!(
+            "{who} 上还没有这一版的代码全景组件，正在把它装上去（约 20 MB，慢链路上要等一会儿）。装好之后这一问会自己接着答。"
+        )
+    };
     crate::bridge::RemoteHealthPayload {
         origin: origin.to_string(),
         kind: INSTALL_NOTICE_KIND.to_string(),
-        message: format!(
-            "{who} 上还没有这一版的代码全景组件，正在把它装上去（约 20 MB，慢链路上要等一会儿）。装好之后这一问会自己接着答。"
-        ),
+        message,
     }
 }
 

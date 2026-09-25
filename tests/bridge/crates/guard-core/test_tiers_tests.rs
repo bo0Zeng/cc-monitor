@@ -363,7 +363,6 @@ const SCAN: &[&str] = &[
     "tests/bridge/lockfile_conflict_guard_tests.rs",
     "tests/bridge/needle_anchor_registry_tests.rs",
     "tests/bridge/origin_tests.rs",
-    "tests/bridge/panorama_bytes_tests.rs",
     "tests/bridge/panorama_seam_registry_engine_port_scope.rs",
     "tests/bridge/panorama_seam_registry_tests.rs",
     "tests/bridge/parity_ledger_tests.rs",
@@ -551,6 +550,8 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/local_lines_tests.rs",
     "tests/bridge/logging_tests.rs",
     "tests/bridge/mcp_tests.rs",
+    // 〔RM1f〕SCAN → 集成：本机那一份小程序的放法（临时目录真写 · 逐字节相等零写 · 字节变了重写）
+    "tests/bridge/panorama_bytes_tests.rs",
     "tests/bridge/panorama_call_tests.rs",
     "tests/bridge/panorama_tests.rs",
     "tests/bridge/profile_installer_tests.rs",
