@@ -1392,7 +1392,7 @@ pub fn run() {
             history::update_history_metadata,
             history::list_last_accounts,
             history::resume_history_session,
-            history::probe_session_record, // 〔U4b〕resume 之前问记录还在不在
+            // 〔C4c〕`probe_session_record`（resume 之前问记录还在不在）退役：界面经通道问 `history-record`。
             history::new_local_session,
             // 🔴 `K-R109`（09-13）：本机后端产「把终端接进那个会话」那一句（`ccm attach <名>`）。
             //    `R61` 裁定三〔用 09-13 逐字「归本机后端就好了啊」〕。注册这一行与

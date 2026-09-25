@@ -59,7 +59,7 @@ pub(crate) const MOVED: &[(&str, &str)] = &[
 /// `MOVED` 右列 ∪ 本表 == 后端真登记给只读宿主的那几条。
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) const BORN_ON_FRAME: &[&str] = &[
-    // resume 之前问「这条会话的记录还在不在」（[`record`]）。
+    // resume 之前问「这条会话的记录还在不在」（〔C4c〕monitor 这一侧不再发它：界面经通道直接问）。
     "history-record",
 ];
 
@@ -178,44 +178,9 @@ pub(crate) async fn tail(origin: &Origin, path: &str, n: u64) -> Result<TailPlan
     Ok(plan)
 }
 
-/// 〔U4b · 第四波 · G1〕`history-record` 的答案：这条会话的记录在那台机器的记录树里找不找得到。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RecordProbe {
-    pub present: bool,
-    /// 查的那棵记录树的根（报错时说清查了什么）。
-    pub root: String,
-}
-
-/// 〔U4b · 第四波 · G1〕问那台机器（本机 `<local>` 与远端同一个口）：这条会话的记录还在不在。
-///
-/// resume 一跳在开终端之前问（`设计/01 §6.2` 最后一条）。问不到（没有通道 / 后端太旧不认这条 / 超时）
-/// ⇒ `Err` —— 调用方当「不知道」，**不当「不在」**。
-pub(crate) async fn record(origin: &Origin, sid: &str) -> Result<RecordProbe, String> {
-    let data = call(
-        origin,
-        "history-record",
-        json!({ "sid": sid }),
-        LINES_BUDGET,
-    )
-    .await?;
-    parse_record(origin, &data)
-}
-
-/// [`record`] 的应答解释（纯函数）。两个字段缺一个都是契约对不上 —— **绝不**把缺字段读成「不在」。
-pub(crate) fn parse_record(origin: &Origin, data: &Value) -> Result<RecordProbe, String> {
-    let origin = origin.as_wire_str();
-    let present = data.get("present").and_then(Value::as_bool);
-    let root = data.get("root").and_then(Value::as_str);
-    match (present, root) {
-        (Some(present), Some(root)) => Ok(RecordProbe {
-            present,
-            root: root.to_string(),
-        }),
-        _ => Err(format!(
-            "[{origin}] `history-record` 的应答缺 `present`/`root` —— 两端契约对不上"
-        )),
-    }
-}
+// 〔C4c · 第四波 4B〕`history-record` 那一问的发送端（`record` / `parse_record` / `RecordProbe`〔散文墓碑〕）删了：
+//   唯一调用方（Tauri 命令 `probe_session_record`）退役，界面经通道直接问后端（`src/session-reads.ts::probeSessionRecord`，
+//   「缺一格不许读成『不在』」那条口径随之搬到 TS 的 `decodeRecord`）。
 
 /// `history-read` 的一页。
 pub(crate) struct Page {
