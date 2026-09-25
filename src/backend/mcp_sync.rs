@@ -30,6 +30,7 @@
 //! 必须是同一个读法）· 不写盘 · 不改写任何一条配置（写的内容由 monitor 从原文里原样取）。
 //! 事实只有两种：`stat` 一条绝对路径 · 在这个后端进程的 `PATH` 上找一个名字。
 
+use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;
 use std::ffi::OsString;
@@ -299,19 +300,28 @@ pub(crate) fn servers_of(
     let v: Value = serde_json::from_str(t.trim_start_matches('\u{feff}')).map_err(|e| {
         (
             "bad_file",
-            format!("{side}不是合法的 JSON（{e}）—— 不拿它比，也不覆盖它"),
+            copy_text(
+                "beMcpSync.serversOf.badJson",
+                &[("side", &side.to_string()), ("e", &e.to_string())],
+            ),
         )
     })?;
     let root = v.as_object().ok_or((
         "bad_file",
-        format!("{side}的最外层不是一个对象 —— 不拿它比，也不覆盖它"),
+        copy_text(
+            "beMcpSync.serversOf.notObject",
+            &[("side", &side.to_string())],
+        ),
     ))?;
     match root.get("mcpServers") {
         None => Ok(Map::new()),
         Some(Value::Object(m)) => Ok(m.clone()),
         Some(_) => Err((
             "bad_file",
-            format!("{side}里的 mcpServers 不是一个对象 —— 不拿它比，也不覆盖它"),
+            copy_text(
+                "beMcpSync.serversOf.serversNotObject",
+                &[("side", &side.to_string())],
+            ),
         )),
     }
 }
@@ -356,7 +366,10 @@ pub(crate) fn plan(
     if let Some(n) = overwrite.iter().find(|n| !take.contains(*n)) {
         return Err((
             "bad_args",
-            format!("「{n}」说了要盖，却没勾它 —— 两张单子对不上，这一趟一条都没写"),
+            copy_text(
+                "beMcpSync.plan.overwriteUnchecked",
+                &[("n", &n.to_string())],
+            ),
         ));
     }
     let state_of = |n: &str| rows.iter().find(|(r, _)| r == n).map(|(_, s)| *s);
@@ -366,7 +379,7 @@ pub(crate) fn plan(
             None | Some(State::OnlyThere) => {
                 return Err((
                     "bad_args",
-                    format!("「{n}」不在拷出来的那一份里 —— 这一趟一条都没写"),
+                    copy_text("beMcpSync.plan.notInSource", &[("n", &n.to_string())]),
                 ))
             }
             Some(State::Same) => {}
@@ -375,7 +388,10 @@ pub(crate) fn plan(
             Some(State::Differs) => {
                 return Err((
                     "needs_consent",
-                    format!("「{n}」两边不一样，还没说要盖掉对面那一条 —— 这一趟一条都没写"),
+                    copy_text(
+                        "beMcpSync.plan.conflictUnconfirmed",
+                        &[("n", &n.to_string())],
+                    ),
                 ))
             }
         }
@@ -393,13 +409,17 @@ pub(crate) fn names_arg(
         Some(Value::Array(a)) => a
             .iter()
             .map(|x| {
-                x.as_str()
-                    .map(str::to_string)
-                    .ok_or(("bad_args", format!("`{key}` 里只收字符串")))
+                x.as_str().map(str::to_string).ok_or((
+                    "bad_args",
+                    crate::common::contract::malformed(&format!("`{key}` accepts strings only")),
+                ))
             })
             .collect::<Result<BTreeSet<_>, _>>()
             .map(Some),
-        Some(_) => Err(("bad_args", format!("`{key}` 只收字符串数组"))),
+        Some(_) => Err((
+            "bad_args",
+            crate::common::contract::malformed(&format!("`{key}` must be an array of strings")),
+        )),
     }
 }
 
@@ -412,29 +432,40 @@ pub(crate) fn answer(args: &Value) -> SyncAnswer {
 pub(crate) fn answer_with(facts: &dyn Facts, args: &Value) -> SyncAnswer {
     let source = args.get("source").and_then(Value::as_str).ok_or((
         "bad_args",
-        "少了 `source`（拷出来的那一份原文），或者它不是字符串".to_string(),
+        crate::common::contract::malformed(
+            "missing `source` (the copied text), or it is not a string",
+        ),
     ))?;
-    let target = match args.get("target") {
-        None => {
-            return Err((
+    let target =
+        match args.get("target") {
+            None => return Err((
                 "bad_args",
-                "少了 `target` —— 要写进去的那一份原文；那份文件不存在就给 `null`".to_string(),
-            ))
-        }
-        Some(Value::Null) => None,
-        Some(Value::String(s)) => Some(s.as_str()),
-        Some(_) => return Err(("bad_args", "`target` 只收字符串或 `null`".to_string())),
-    };
+                crate::common::contract::malformed(
+                    "missing `target` (the text to write into; `null` if that file does not exist)",
+                ),
+            )),
+            Some(Value::Null) => None,
+            Some(Value::String(s)) => Some(s.as_str()),
+            Some(_) => {
+                return Err((
+                    "bad_args",
+                    crate::common::contract::malformed("`target` must be a string or `null`"),
+                ))
+            }
+        };
     let take = names_arg(args.get("take"), "take")?;
     let overwrite = names_arg(args.get("overwrite"), "overwrite")?;
     if take.is_none() && overwrite.is_some() {
         return Err((
             "bad_args",
-            "给了 `overwrite` 没给 `take` —— 两张单子对不上".to_string(),
+            crate::common::contract::malformed("`overwrite` given without `take`"),
         ));
     }
-    let src = servers_of(Some(source), "拷出来的那一份")?;
-    let tgt = servers_of(target, "要写进去的那一份")?;
+    let src = servers_of(
+        Some(source),
+        &copy_text("beMcpSync.answerWith.sourceSide", &[]),
+    )?;
+    let tgt = servers_of(target, &copy_text("beMcpSync.answerWith.targetSide", &[]))?;
     let rows = diff(&src, &tgt);
     let rows_json: Vec<Value> = rows
         .iter()

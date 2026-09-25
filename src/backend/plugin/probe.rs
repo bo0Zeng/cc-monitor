@@ -36,6 +36,8 @@
 //!   **挡不住**「同名的另一份装在 `PATH` 上」。真跑那条命令的判据住 e2e，
 //!   而出货门禁一套 e2e 都不跑（`KY7`）。这一档由谁跑、什么时候跑，写在件文件里。
 
+use copy_core::copy_text;
+
 /// 插件对「你会什么」这一问的回答。
 pub(crate) struct Answer {
     /// 身份行的值（已经与调用方期望的名字对上过）。
@@ -78,19 +80,27 @@ impl Rejected {
     /// 人还得自己去比对哪个不在。
     pub(crate) fn message(&self) -> String {
         match self {
-            Rejected::NotThePlugin { want, saw } => format!(
-                "找到的这个程序不是 `{want}`：它的身份行报的是 `{saw}`。\
-                 ⚠ 这不是「它太旧」，是**找错了程序** —— 多半是 PATH 上有个同名的无关命令。"
+            Rejected::NotThePlugin { want, saw } => copy_text(
+                "beProbe.message.wrongProgram",
+                &[("want", &want.to_string()), ("saw", &saw.to_string())],
             ),
             Rejected::MissingCapability {
                 plugin,
                 token,
                 version,
-            } => format!(
-                "`{plugin}` 装的这份缺能力 `{token}`（它自己报的版本：{}）。\
-                 ⚠ 这**不是**「调用失败」—— 那个程序好好的，是它这一版还不会做这一件事，\
-                 换一份新的就行。",
-                version.as_deref().unwrap_or("<没报>")
+            } => copy_text(
+                "beProbe.message.missingAbility",
+                &[
+                    ("plugin", &plugin.to_string()),
+                    ("token", &token.to_string()),
+                    (
+                        "version",
+                        &(version
+                            .as_deref()
+                            .unwrap_or(&copy_text("beProbe.message.versionUnknown", &[])))
+                        .to_string(),
+                    ),
+                ],
             ),
         }
     }
@@ -150,7 +160,7 @@ pub(crate) fn parse(text: &str, want_name: &str) -> Result<Answer, Rejected> {
         }),
         None => Err(Rejected::NotThePlugin {
             want: want_name.to_string(),
-            saw: "<空的探测输出>".to_string(),
+            saw: copy_text("beProbe.parse.emptyOutput", &[]),
         }),
     }
 }

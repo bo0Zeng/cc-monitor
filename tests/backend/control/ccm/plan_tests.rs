@@ -885,7 +885,7 @@ fn a_manifest_with_a_utf8_bom_is_read_not_silently_eaten() {
     assert_eq!(t.config_dir_of("work"), Some(d.clone()));
     // 而且**不许**被报成「解析不动」：它解析得动，只是带了 BOM。
     assert!(
-        !t.names().contains("解析不动"),
+        !t.names().contains("读不懂"),
         "一份合法的（只是带 BOM 的）账号库被报成了坏文件：{}",
         t.names()
     );
@@ -907,7 +907,7 @@ fn a_manifest_we_cannot_parse_says_so_instead_of_claiming_there_is_no_library() 
     assert!(t.accounts.is_empty(), "坏 JSON 竟然读出了号");
     let said = t.names();
     assert!(
-        said.contains("解析不动"),
+        said.contains("读不懂"),
         "坏掉的账号库被报成了别的东西：{said}"
     );
     assert!(
@@ -920,7 +920,7 @@ fn a_manifest_we_cannot_parse_says_so_instead_of_claiming_there_is_no_library() 
     //  那时没装过账号库的用户会收到一句「你的文件坏了」）。
     let none = AccountTable::load("/nonexistent/accounts.json");
     assert!(none.names().contains("无账号库"), "实得 {}", none.names());
-    assert!(!none.names().contains("解析不动"), "实得 {}", none.names());
+    assert!(!none.names().contains("读不懂"), "实得 {}", none.names());
 
     // 空文件 == 没有账号库（**不是**坏文件）。
     let e = format!("{d}/empty.json");
@@ -955,10 +955,7 @@ fn the_message_the_user_actually_sees_carries_the_reason() {
     };
     let Die(msg) = resolve_account(&o, &e, &AccountTable::load(&e.accts_manifest))
         .expect_err("指名一个读不出来的号竟然成功了");
-    assert!(
-        msg.contains("解析不动"),
-        "用户看到的那句话里没有原因：{msg}"
-    );
+    assert!(msg.contains("读不懂"), "用户看到的那句话里没有原因：{msg}");
 }
 
 /// ★ 〔CC1〕自检那一趟与 pane 里那一趟**是同一条命令**：同一段 `export` 前缀、同一个入口、
