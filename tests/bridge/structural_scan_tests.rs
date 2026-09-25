@@ -3706,6 +3706,11 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/sftp_family_registry_tests.rs", 2),
         ("tests/bridge/sftp_move_ledger_tests.rs", 1),
         ("tests/bridge/sftp_pool_tests.rs", 5),
+        // 〔第四波 S4〕快捷键预留位 `app.search-history` 删了（历史全文搜索从没独立快捷键、预留位不留）：
+        //   清单那一处 ＋ 清单头注一处 ＋ 编辑器那枚「未上线」标签的遗址一处，逐处挂了墓碑。
+        ("src/keybindings/actions.ts", 2),
+        ("src/keybindings/editor.ts", 1),
+        ("tests/keybindings/actions.vitest.ts", 1),
     ];
 
     /// **挂歪了 / 在谈这件机制本身**的那些行，逐份登记**行数**。
