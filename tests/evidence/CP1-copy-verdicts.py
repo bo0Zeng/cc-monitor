@@ -12,7 +12,7 @@
     python3 tests/evidence/CP1-copy-verdicts.py --dump     # 把今天的存疑带逐条吐成 JSONL（裁的时候用）
     python3 tests/evidence/CP1-copy-verdicts.py --selftest # 死值验（空语料 · 删一行 · 加一条）
 
-退出码：0 = 两向相等且每行裁词合法 · 1 = 不相等 / 裁词不合法 · 3 = 空转（人群触地板）
+退出码：0 = 两向相等且每行裁词合法 · 1 = 不相等 / 裁词不合法 · 3 = 空转（正控没过：普查认不出那一句现造的存疑带样本）
 
 ═══════════════════════════════════════════════════════════════════════════════
  一、人群是**借来的**，不是本文件自己定义的
@@ -93,8 +93,40 @@ VERDICT_PREFIXES = ("保留", "改·§2.1", "改·§2.2", "改·§2.3", "改·§
 HEADER = ("住址", "原文", "裁词", "依据")
 REACH_TAGS = ("[不对外]", "[对外]", "[可达存疑]")
 
-# 地板：今天的存疑带是一千条上下；跌破它说明普查那把尺子没切到东西（或被本文件 import 错了）。
-FLOOR_BAND = 300
+# 防空转 = **正控**，不是地板〔MG1 · 主会话 09-25 裁〕。
+#
+# 这里原来是地板 `FLOOR_BAND = 300`（「今天的存疑带是一千条上下；跌破它说明普查那把尺子没切到东西」）。
+# 它的前提被全量抽表推翻了：CP2b（前端 ＋ monitor）与 CP2c（常驻端）把对外句子搬进文案表之后，
+# 存疑带**本来就该**越来越小 —— 两路合进主线那一拍是 241 条，两边单看都 > 300、合起来 < 300，
+# 地板把「抽对了」读成「尺子坏了」。按数字往下重钉只是换一个下一次抽表又会失效的数。
+#
+# ⇒ 换成**正控**（同 `CP2c-backend-copy-pending.py` 的做法）：在一棵临时树里现造一份文件，里面恰好一句
+# 普查该认进存疑带的字面量（`PROBE_BAND`，一个裸常量 —— 静态扫描分不出它上不上界面）＋ 一句该进主集、
+# **不许**进存疑带的（`PROBE_MAIN`，`throw new Error(…)`）；普查对那棵树的存疑带必须**恰好**是
+# `[PROBE_BAND]`：认不出（尺子没切到东西 / import 错了）⇒ 空转红；认多（主集那句也掉进来）⇒ 同样红。
+# 正控跑的是**同一个** `doubt_band`（同一份普查模块），不是另写一份判法。
+PROBE_BAND = "正控样本：这一句只为让普查认进存疑带"
+PROBE_MAIN = "正控样本：这一句进主集，不进存疑带"
+PROBE_FILE = "probe.ts"
+PROBE_BODY = (
+    f'export const PROBE_SENTENCE = "{PROBE_BAND}";\n'
+    "export function probeThrow(): never {\n"
+    f'  throw new Error("{PROBE_MAIN}");\n'
+    "}\n"
+)
+
+
+def probe_control(census=None, body: str = PROBE_BODY) -> tuple[bool, list[str]]:
+    """→ (过没过, 普查在临时树里认出的存疑带原文)。过 ⇔ 认出的恰好是 `[PROBE_BAND]`。"""
+    census = census or load_census()
+    saved = census.SRC_ROOT
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            (Path(td) / PROBE_FILE).write_text(body, encoding="utf-8")
+            got = [e["text"] for e in doubt_band(census, Path(td))]
+    finally:
+        census.SRC_ROOT = saved
+    return got == [PROBE_BAND], got
 
 
 def load_census():
@@ -223,7 +255,8 @@ def compare(band, rows):
     return missing, extra, drift
 
 
-def run_check(band, ledger_path: Path, as_json: bool) -> int:
+def run_check(band, ledger_path: Path, as_json: bool, probe: tuple[bool, list[str]] | None = None) -> int:
+    probe_ok, probe_got = probe if probe is not None else probe_control()
     rows, problems = read_ledger(ledger_path)
     unresolved = [e for e in band if e["text"] == "__UNRESOLVED__"]
     if unresolved:
@@ -233,10 +266,9 @@ def run_check(band, ledger_path: Path, as_json: bool) -> int:
     for r in rows:
         v = r["verdict"]
         vc[next(p for p in VERDICT_PREFIXES if v.startswith(p)) if v.startswith(VERDICT_PREFIXES) else "?"] += 1
-    floor_bad = len(band) < FLOOR_BAND
-    ok = not (missing or extra or problems or floor_bad)
+    ok = not (missing or extra or problems or not probe_ok)
     rep = dict(ok=ok, band=len(band), ledger=len(rows), missing=len(missing), extra=len(extra),
-               line_drift=len(drift), problems=problems[:40], floor_band=FLOOR_BAND, floor_failed=floor_bad,
+               line_drift=len(drift), problems=problems[:40], probe_ok=probe_ok, probe_got=probe_got[:5],
                verdicts=dict(vc),
                missing_sample=[f"{e['file']}:{e['line']}\t{e['text'][:60]}" for e in sorted(missing, key=lambda x: (x['file'], x['line']))[:40]],
                extra_sample=[f"{r['file']}:{r['line']}\t{r['text'][:60]}" for r in sorted(extra, key=lambda x: (x['file'], x['line']))[:40]])
@@ -254,9 +286,9 @@ def run_check(band, ledger_path: Path, as_json: bool) -> int:
         for p in problems[:40]:
             print(f"  ✘ {p}")
         print("  裁词分布: " + " · ".join(f"{k} {v}" for k, v in vc.most_common()))
-        if floor_bad:
-            print(f"  ✘ 存疑带 {len(band)} < 地板 {FLOOR_BAND} ⇒ 空转")
-    if floor_bad:
+        if not probe_ok:
+            print(f"  ✘ 正控没过：临时树里只放了一句存疑带样本，普查认出的是 {probe_got!r} ⇒ 空转")
+    if not probe_ok:
         return 3
     return 0 if ok else 1
 
@@ -267,20 +299,26 @@ def dump(band):
 
 
 def selftest() -> int:
-    """死值验三刀：① 空语料 ⇒ 3 · ② 台账删一行 ⇒ 1 · ③ 台账多一行假条 ⇒ 1。"""
+    """死值验：① 普查空转（扫描吐空）⇒ 正控红 ⇒ 3 · ①b 正控样本多一句存疑带 ⇒ 认多 ⇒ 不过 · ② 台账删一行 ⇒ 1 · ③ 台账多一行假条 ⇒ 1。"""
+    import contextlib
+    import io
     census = load_census()
     band = doubt_band(census)
     ok = True
-    # ① 空语料
-    with tempfile.TemporaryDirectory() as td:
-        c2 = load_census()
-        empty = doubt_band(c2, Path(td))
-        import contextlib
-        import io
-        with contextlib.redirect_stdout(io.StringIO()):
-            rc = run_check(empty, LEDGER, True)
-    print(f"  ① 空语料 ⇒ 退出码 {rc}（期望 3）")
-    ok &= rc == 3
+    # ① 普查空转：扫描结果换成空（同「扫描根指空目录 / import 错了」）⇒ 正控认不出那一句 ⇒ 3
+    c2 = load_census()
+    real_scan = c2.scan
+    c2.scan = lambda root: (lambda r: (r[0], r[1], r[2], [], r[4], r[5]))(real_scan(root))
+    idle = probe_control(c2)
+    with contextlib.redirect_stdout(io.StringIO()):
+        rc = run_check(band, LEDGER, True, idle)
+    print(f"  ① 普查空转（残差吐空）⇒ 正控 {idle} · 退出码 {rc}（期望 3）")
+    ok &= rc == 3 and idle[0] is False
+    # ①b 认多：样本里再放一句存疑带（裸常量）⇒ 认出两句 ⇒ 不过
+    extra_body = PROBE_BODY + 'export const PROBE_EXTRA = "正控样本：多出来的第二句";\n'
+    many = probe_control(load_census(), extra_body)
+    print(f"  ①b 样本里多一句存疑带 ⇒ 正控 {many[0]}（期望 False）· 认出 {len(many[1])} 句（期望 2）")
+    ok &= many[0] is False and len(many[1]) == 2
     rows_txt = LEDGER.read_text(encoding="utf-8").split("\n")
     body = [x for x in rows_txt[1:] if x.strip()]
     if not body:
@@ -306,7 +344,7 @@ def selftest() -> int:
         j = json.loads(buf.getvalue())
         print(f"  ③ 台账多一行假条 ⇒ 退出码 {rc}（期望 1）· extra={j['extra']}（期望 1）")
         ok &= rc == 1 and j["extra"] == 1 and j["missing"] == 0
-    print("  ✔ 三刀都死了" if ok else "  ✘ 有刀没死 ⇒ 本判据不可信")
+    print("  ✔ 四刀都死了" if ok else "  ✘ 有刀没死 ⇒ 本判据不可信")
     return 0 if ok else 1
 
 
