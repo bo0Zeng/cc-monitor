@@ -109,8 +109,8 @@ describe("chipLabel", () => {
   it("无 state → 未连远端", () => {
     expect(chipLabel(null)).toBe("未连远端");
   });
-  it("旧 backend → backend 需更新", () => {
-    expect(chipLabel(state({ available: false, error: "版本过旧" }))).toBe("backend 需更新");
+  it("旧 backend → 后端需更新", () => {
+    expect(chipLabel(state({ available: false, error: "版本过旧" }))).toBe("后端需更新");
   });
   it("未启用 → 未启用", () => {
     expect(

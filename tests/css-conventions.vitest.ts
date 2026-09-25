@@ -292,7 +292,7 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   // 〔SE2〕查找面板按模式切大纲清单的开合（大纲那一半的 `hidden` 从 `UserInputPanel` 自己手里交给了面板）。
   "src/views/session-find.ts:237": // 〔C4b〕行号 −1：两条类型 import 并成一条（`../session-reads`）·〔CP2b〕+1：加了 copyText 的 import
     "`this.outline.panel` —— 大纲清单那块，由 `UserInputPanel` 建（类 `.user-inputs`；`styles.css` 里那条规则头注逐字「绝不许出现 display」）",
-  "src/error-toast.ts:135":
+  "src/error-toast.ts:136": // 〔CP2b〕+1：加了 copyText 的 import
     "`existing.countEl` —— `existing` 是从一张 Map 里取回来的旧 toast，它的 countEl 在别处建的",
   // ⚠ 〔2026-09-19〕`606 → 614`：我在这份文件上方加了一段注释，**行号就漂了**。
   //    这条登记按**裸行号**做键 —— 那是它的固有脆弱：住址没变、内容没变，只因为

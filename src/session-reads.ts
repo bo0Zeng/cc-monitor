@@ -26,6 +26,7 @@ import { chan, ChanError, type CallError } from "./ipc/chan";
 import { budgetWithin, jsonBody, readJson, refusalOf, saidOf } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import type { SkeletonFacts } from "./height-estimate";
+import { copyText } from "./copy-table";
 
 // ─── 成品的形状（后端 `read_face.rs` 那三条的应答；跨语言金样 `tests/__fixtures__/session-reads.golden.json`）───
 
@@ -113,18 +114,18 @@ const isStr = (v: unknown): v is string => typeof v === "string";
 class ShapeError extends Error {
   readonly detail: string;
   constructor(op: string, what: string) {
-    super("那台机器的后端回的内容本程序读不懂，多半是两边版本对不上（重装那台机器的后端试试）");
+    super(copyText("sessionReads.ctor.unreadable"));
     this.name = "ShapeError";
-    this.detail = `${op} 的应答${what}（两端契约对不上）`;
+    this.detail = copyText("sessionReads.ctor.badShape", { op, what });
   }
 }
 
 /** `history-find` 的成品 ⇒ `(total, hits)`。形状不对 ⇒ 抛。 */
 export function decodeFind(v: unknown): { total: number; hits: FindHit[] } {
-  if (!isObj(v) || !isNum(v.total) || !Array.isArray(v.hits)) throw new ShapeError("history-find", "缺 `total` / `hits`");
+  if (!isObj(v) || !isNum(v.total) || !Array.isArray(v.hits)) throw new ShapeError("history-find", copyText("sessionReads.missing.find"));
   const hits = v.hits.map((h): FindHit => {
     if (!isObj(h) || ![h.uuid, h.kind, h.before, h.matched, h.after].every(isStr)) {
-      throw new ShapeError("history-find", "里有一条命中缺字段");
+      throw new ShapeError("history-find", copyText("sessionReads.missing.findHit"));
     }
     return { uuid: h.uuid as string, kind: h.kind as string, before: h.before as string, matched: h.matched as string, after: h.after as string };
   });
@@ -134,11 +135,11 @@ export function decodeFind(v: unknown): { total: number; hits: FindHit[] } {
 /** `history-user-inputs` 的成品 ⇒ `(from, end, entries)`。形状不对 ⇒ 抛。 */
 export function decodeUserInputs(v: unknown): { from: number; end: number; entries: UserInputEntry[] } {
   if (!isObj(v) || !isNum(v.from) || !isNum(v.end) || !Array.isArray(v.entries)) {
-    throw new ShapeError("history-user-inputs", "缺 `from` / `end` / `entries`");
+    throw new ShapeError("history-user-inputs", copyText("sessionReads.missing.inputs"));
   }
   const entries = v.entries.map((e): UserInputEntry => {
     if (!isObj(e) || ![e.uuid, e.excerpt, e.timestamp].every(isStr)) {
-      throw new ShapeError("history-user-inputs", "里有一条缺字段");
+      throw new ShapeError("history-user-inputs", copyText("sessionReads.missing.inputsEntry"));
     }
     return { uuid: e.uuid as string, excerpt: e.excerpt as string, timestamp: e.timestamp as string };
   });
@@ -148,10 +149,10 @@ export function decodeUserInputs(v: unknown): { from: number; end: number; entri
 /** `history-index` 的成品 ⇒ `(from, end, rows)`。行本身**不解释**（只验「是对象、带偏移与行长」）。 */
 export function decodeIndex(v: unknown): { from: number; end: number; rows: SkeletonFacts[] } {
   if (!isObj(v) || !isNum(v.from) || !isNum(v.end) || !Array.isArray(v.rows)) {
-    throw new ShapeError("history-index", "缺 `from` / `end` / `rows`");
+    throw new ShapeError("history-index", copyText("sessionReads.missing.index"));
   }
   for (const r of v.rows) {
-    if (!isObj(r) || !isNum(r.o) || !isNum(r.n)) throw new ShapeError("history-index", "里有一行缺 `o` / `n`");
+    if (!isObj(r) || !isNum(r.o) || !isNum(r.n)) throw new ShapeError("history-index", copyText("sessionReads.missing.indexRow"));
   }
   return { from: v.from, end: v.end, rows: v.rows as SkeletonFacts[] };
 }
@@ -195,7 +196,7 @@ export async function findInSession(
     const { total, hits } = decodeFind(readJson(reply));
     return { available: true, hits, total };
   } catch (e) {
-    const reason = reasonOf(e, "这台机器上的后端版本旧，还不能在会话里查找（重装后端之后就有）");
+    const reason = reasonOf(e, copyText("sessionReads.find.oldBackend"));
     return { available: false, reason, hits: [], total: 0 };
   }
 }
@@ -210,7 +211,7 @@ export async function listUserInputs(origin: Origin, jsonlPath: string, fromOffs
     return { available: true, from, end, entries };
   } catch (e) {
     const failure: OutlineFailure = e instanceof ChanError ? failureOf(e.error) : "transport";
-    const reason = reasonOf(e, "这台机器上的后端版本旧，还列不出大纲（重装后端之后就有）");
+    const reason = reasonOf(e, copyText("sessionReads.inputs.oldBackend"));
     return { available: false, reason, failure, from: fromOffset, end: fromOffset, entries: [] };
   }
 }
@@ -243,7 +244,7 @@ export interface RecordProbe {
 /** `history-record` 的成品 ⇒ [`RecordProbe`]。两格缺一格 / 多一格 / 类型不对 ⇒ 抛 —— **绝不**把缺字段读成「不在」。 */
 export function decodeRecord(v: unknown): RecordProbe {
   if (!isObj(v) || Object.keys(v).length !== 2 || typeof v.present !== "boolean" || !isStr(v.root)) {
-    throw new ShapeError("history-record", "不是恰好 `present` / `root` 两格");
+    throw new ShapeError("history-record", copyText("sessionReads.record.badShape"));
   }
   return { present: v.present, root: v.root };
 }

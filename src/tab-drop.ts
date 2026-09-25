@@ -12,6 +12,7 @@ import {
   removeMember,
   type TabCollection,
 } from "./tab-collections";
+import { copyText } from "./copy-table";
 
 /**
  * P7a-2：把 `block`（被拖的 tab **连同它的 bg 子串**）整块挪到 `beforeSid` 之前。
@@ -155,7 +156,7 @@ export function defaultGroupName(
     const m = /^组\s*(\d+)$/.exec(name.trim());
     if (m) max = Math.max(max, Number(m[1]));
   }
-  return `组 ${max + 1}`;
+  return copyText("tabDrop.defaultGroupName.defaultGroupName", { n: max + 1 });
 }
 
 /**

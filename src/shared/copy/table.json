@@ -3591,6 +3591,826 @@
       "kind": "error",
       "zh": "账号不可用",
       "args": []
+    },
+    "render.codeBlock.copy": {
+      "kind": "action",
+      "zh": "复制",
+      "args": []
+    },
+    "accountChip.selectDefault.failed": {
+      "kind": "error",
+      "zh": "切换当前账号失败",
+      "args": []
+    },
+    "accountChip.selectDefault.doneBody": {
+      "kind": "body",
+      "zh": "以后新会话、以及没指定过账号的 resume 都会用 {name}{email}；正在跑的会话不受影响（切号不重启任何东西）；已归属别的号的会话保持原号，要换到 {name} 就在那个 tab 上右键选「把此会话切到账号 {name}」。",
+      "args": ["name", "email"]
+    },
+    "accountChip.selectDefault.done": {
+      "kind": "body",
+      "zh": "已切当前账号",
+      "args": []
+    },
+    "accountChip.row.other": {
+      "kind": "body",
+      "zh": "○",
+      "args": []
+    },
+    "accountChip.row.current": {
+      "kind": "body",
+      "zh": "●",
+      "args": []
+    },
+    "accountChip.menu.refresh": {
+      "kind": "action",
+      "zh": "刷新",
+      "args": []
+    },
+    "accountChip.menu.manage": {
+      "kind": "action",
+      "zh": "管理账号…",
+      "args": []
+    },
+    "accountChip.menu.manageDeploy": {
+      "kind": "action",
+      "zh": "管理 / 部署…",
+      "args": []
+    },
+    "accountChip.menu.notEnabled": {
+      "kind": "body",
+      "zh": "该远端尚未启用多账号",
+      "args": []
+    },
+    "accountChip.menu.backendOld": {
+      "kind": "body",
+      "zh": "远端后端需要更新才能用多账号",
+      "args": []
+    },
+    "accountChip.refresh.icon": {
+      "kind": "body",
+      "zh": "👤",
+      "args": []
+    },
+    "accountChip.ctor.icon": {
+      "kind": "body",
+      "zh": "👤",
+      "args": []
+    },
+    "accountChip.ctor.hint": {
+      "kind": "body",
+      "zh": "当前账号（点击切换 / 管理）",
+      "args": []
+    },
+    "accountChip.label.disabled": {
+      "kind": "body",
+      "zh": "未启用",
+      "args": []
+    },
+    "accountChip.label.backendOld": {
+      "kind": "body",
+      "zh": "后端需更新",
+      "args": []
+    },
+    "accountChip.label.noRemote": {
+      "kind": "body",
+      "zh": "未连远端",
+      "args": []
+    },
+    "accountCommands.manage.keywords": {
+      "kind": "body",
+      "zh": "account 账号 管理 manage 设置",
+      "args": []
+    },
+    "accountCommands.manage.title": {
+      "kind": "action",
+      "zh": "账号：管理…",
+      "args": []
+    },
+    "accountCommands.setDefault.keywords": {
+      "kind": "body",
+      "zh": "account 账号 切换 default 默认 当前账号 {name} {email}",
+      "args": ["name", "email"]
+    },
+    "accountCommands.setDefault.title": {
+      "kind": "action",
+      "zh": "账号：设 {name} 为当前账号{current}",
+      "args": ["name", "current"]
+    },
+    "accountCommands.setDefault.isCurrent": {
+      "kind": "body",
+      "zh": " · 已是当前",
+      "args": []
+    },
+    "accountRestartLocal.runLocalRestartResume.failed": {
+      "kind": "error",
+      "zh": "本机没能用新账号起会话",
+      "args": []
+    },
+    "accountsDecode.bad.trust": {
+      "kind": "error",
+      "zh": "信任检查的回答格式不对，两边版本可能对不上",
+      "args": []
+    },
+    "accountsDecode.where.nth": {
+      "kind": "body",
+      "zh": "第 {i} 个账号",
+      "args": ["i"]
+    },
+    "accountsDecode.where.top": {
+      "kind": "body",
+      "zh": "顶层",
+      "args": []
+    },
+    "accountsDecode.bad.list": {
+      "kind": "error",
+      "zh": "账号清单的格式不对（{what}），两边版本可能对不上",
+      "args": ["what"]
+    },
+    "agentProfile.researched.null": {
+      "kind": "error",
+      "zh": "后端那张表里「{agent}」的 {key} 是 null，这一格今天没人考据过。不许拿别的 agent 那一份顶上（KR93D3）。",
+      "args": ["agent", "key"]
+    },
+    "agentProfile.lookup.unknown": {
+      "kind": "error",
+      "zh": "查不到 agent「{agent}」的资料（已知的有：{roster}）。",
+      "args": ["agent", "roster"]
+    },
+    "agentProfile.lookup.none": {
+      "kind": "body",
+      "zh": "一个都没有",
+      "args": []
+    },
+    "agentsPanel.status.aborted": {
+      "kind": "body",
+      "zh": "✗ 中止",
+      "args": []
+    },
+    "agentsPanel.status.done": {
+      "kind": "body",
+      "zh": "✓",
+      "args": []
+    },
+    "agentsPanel.status.running": {
+      "kind": "body",
+      "zh": "运行中",
+      "args": []
+    },
+    "agentsPanel.render.summary": {
+      "kind": "body",
+      "zh": "{n} agents ({running} 运行中)",
+      "args": ["n", "running"]
+    },
+    "agentsPanel.arrow.expanded": {
+      "kind": "body",
+      "zh": "▼",
+      "args": []
+    },
+    "agentsPanel.arrow.collapsed": {
+      "kind": "body",
+      "zh": "▶",
+      "args": []
+    },
+    "agentsPanel.ctor.closeHint": {
+      "kind": "body",
+      "zh": "关闭",
+      "args": []
+    },
+    "agentsPanel.ctor.close": {
+      "kind": "action",
+      "zh": "×",
+      "args": []
+    },
+    "branchButton.attachBranchButton.failed": {
+      "kind": "error",
+      "zh": "创建分支失败",
+      "args": []
+    },
+    "branchButton.attachBranchButton.icon": {
+      "kind": "action",
+      "zh": "⑂",
+      "args": []
+    },
+    "branchButton.attachBranchButton.done": {
+      "kind": "action",
+      "zh": "✓",
+      "args": []
+    },
+    "branchButton.title.offMain": {
+      "kind": "body",
+      "zh": "从这一轮创建分支。这一轮已被 ESC 回退：分叉会把你当初放弃的那段对话接成一个新会话，原会话不变。",
+      "args": []
+    },
+    "branchButton.title.onMain": {
+      "kind": "body",
+      "zh": "从这一轮创建分支（复制到这条为止 → 新会话，原会话不变，可 resume）",
+      "args": []
+    },
+    "branchFold.wrapRun.summary": {
+      "kind": "body",
+      "zh": "已被 ESC 回退（含 {n} 条消息）",
+      "args": ["n"]
+    },
+    "branchFold.wrapRun.arrow": {
+      "kind": "body",
+      "zh": "▶",
+      "args": []
+    },
+    "render.codeBlock.failed": {
+      "kind": "action",
+      "zh": "失败",
+      "args": []
+    },
+    "render.codeBlock.copied": {
+      "kind": "action",
+      "zh": "已复制",
+      "args": []
+    },
+    "entryViewer.bootstrapViewer.cwdHint": {
+      "kind": "body",
+      "zh": "打开工作目录 (E)",
+      "args": []
+    },
+    "entryViewer.bootstrapViewer.cwd": {
+      "kind": "action",
+      "zh": "📂 目录",
+      "args": []
+    },
+    "entryViewer.bootstrapViewer.terminalHint": {
+      "kind": "body",
+      "zh": "调出对应终端窗口（反引号键）",
+      "args": []
+    },
+    "entryViewer.bootstrapViewer.terminal": {
+      "kind": "action",
+      "zh": "↗ 终端",
+      "args": []
+    },
+    "entryViewer.bootstrapViewer.loading": {
+      "kind": "body",
+      "zh": "加载中…",
+      "args": []
+    },
+    "entryViewer.bootstrapViewer.title": {
+      "kind": "title",
+      "zh": "独立只读视图",
+      "args": []
+    },
+    "entryViewer.module.missingParam": {
+      "kind": "error",
+      "zh": "独立只读视图：地址里缺 ?viewer= 参数",
+      "args": []
+    },
+    "errorToast.showActionFailureToast.clickHint": {
+      "kind": "error",
+      "zh": "点击查看",
+      "args": []
+    },
+    "errorToast.showErrorToast.openLogHint": {
+      "kind": "error",
+      "zh": "点击打开 log 文件查看完整堆栈",
+      "args": []
+    },
+    "errorToast.showErrorToast.noMessage": {
+      "kind": "error",
+      "zh": "没有消息内容",
+      "args": []
+    },
+    "fileWindow.openFileWindow.failed": {
+      "kind": "error",
+      "zh": "文件窗口打开失败",
+      "args": []
+    },
+    "firstRunHint.mount.closeLabel": {
+      "kind": "body",
+      "zh": "关掉这次的提示",
+      "args": []
+    },
+    "firstRunHint.mount.closeHint": {
+      "kind": "body",
+      "zh": "这次先不看（下次启动还会提示，直到补齐）",
+      "args": []
+    },
+    "firstRunHint.mount.close": {
+      "kind": "action",
+      "zh": "×",
+      "args": []
+    },
+    "firstRunHint.mount.body": {
+      "kind": "body",
+      "zh": "打开设置 → 机器：「诊断」那一块逐条列着缺哪几项。每一项都写了缺了会怎样、点哪里补齐。",
+      "args": []
+    },
+    "firstRunHint.firstRunHintPrefix.prefix": {
+      "kind": "body",
+      "zh": "诊断：",
+      "args": []
+    },
+    "forkAsk.askForkLaunch.launch": {
+      "kind": "action",
+      "zh": "起会话",
+      "args": []
+    },
+    "forkAsk.askForkLaunch.cancel": {
+      "kind": "action",
+      "zh": "取消",
+      "args": []
+    },
+    "forkAsk.field.cwd": {
+      "kind": "title",
+      "zh": "工作目录",
+      "args": []
+    },
+    "forkAsk.field.tmux": {
+      "kind": "control",
+      "zh": "起在 tmux 里，断线可以 attach 回来",
+      "args": []
+    },
+    "forkAsk.account.base": {
+      "kind": "control",
+      "zh": "账号 0 · 不注入 CLAUDE_CONFIG_DIR",
+      "args": []
+    },
+    "forkAsk.field.account": {
+      "kind": "title",
+      "zh": "账号",
+      "args": []
+    },
+    "forkAsk.askForkLaunch.intro": {
+      "kind": "body",
+      "zh": "分支文件已经生成，原会话不受影响。下面这几项从源会话身上查不出来，请确认后再起：",
+      "args": []
+    },
+    "forkAsk.askForkLaunch.title": {
+      "kind": "title",
+      "zh": "起这条分叉会话",
+      "args": []
+    },
+    "forkFlow.runForkFlow.failed": {
+      "kind": "error",
+      "zh": "起分叉会话失败",
+      "args": []
+    },
+    "forkFlow.done.body": {
+      "kind": "body",
+      "zh": "新会话 {id} 正在起来，原会话不受影响，两条都活着。",
+      "args": ["id"]
+    },
+    "forkFlow.done.title": {
+      "kind": "body",
+      "zh": "✓ 已从这一轮分叉并起新会话",
+      "args": []
+    },
+    "forkLaunch.slot.ask": {
+      "kind": "body",
+      "zh": "{label}：需要你选一次 —— {why}",
+      "args": ["label", "why"]
+    },
+    "forkLaunch.slot.same": {
+      "kind": "body",
+      "zh": "{label}：跟原会话一致（据{from}）",
+      "args": ["label", "from"]
+    },
+    "forkLaunch.slot.cwd": {
+      "kind": "body",
+      "zh": "工作目录",
+      "args": []
+    },
+    "forkLaunch.slot.tmux": {
+      "kind": "body",
+      "zh": "是否在 tmux 里跑",
+      "args": []
+    },
+    "forkLaunch.slot.account": {
+      "kind": "body",
+      "zh": "账号",
+      "args": []
+    },
+    "forkLaunch.from.tmuxList": {
+      "kind": "body",
+      "zh": "tmux 会话清单",
+      "args": []
+    },
+    "forkLaunch.exited.tmux": {
+      "kind": "error",
+      "zh": "原会话已退出，查不到它当时在不在 tmux 里",
+      "args": []
+    },
+    "forkLaunch.from.process": {
+      "kind": "body",
+      "zh": "原会话的进程",
+      "args": []
+    },
+    "forkLaunch.inferForkLaunch.liveNoAccount": {
+      "kind": "error",
+      "zh": "原会话还在跑，但查不到它用的是哪个账号",
+      "args": []
+    },
+    "forkLaunch.inferForkLaunch.noCwd": {
+      "kind": "error",
+      "zh": "原会话的记录里没有工作目录",
+      "args": []
+    },
+    "forkLaunch.from.record": {
+      "kind": "body",
+      "zh": "会话记录",
+      "args": []
+    },
+    "forkLaunch.exited.account": {
+      "kind": "body",
+      "zh": "原会话已退出，查不到它当时用的账号",
+      "args": []
+    },
+    "format.formatTimestampSmart.empty": {
+      "kind": "body",
+      "zh": "—",
+      "args": []
+    },
+    "launchDimensions.bad.rbindToken": {
+      "kind": "error",
+      "zh": "非法 CCM_RBIND_TOKEN（要 32 位十六进制），不能拼进命令：{value}",
+      "args": ["value"]
+    },
+    "launchDimensions.bad.model": {
+      "kind": "error",
+      "zh": "非法模型名，不能拼进命令：{value}",
+      "args": ["value"]
+    },
+    "launchDimensions.bad.configDir": {
+      "kind": "error",
+      "zh": "非法 CLAUDE_CONFIG_DIR，不能拼进命令：{value}",
+      "args": ["value"]
+    },
+    "launchDimensions.bad.ccmSid": {
+      "kind": "error",
+      "zh": "非法会话标记，不能拼进命令：{value}",
+      "args": ["value"]
+    },
+    "launchMenu.account.base": {
+      "kind": "action",
+      "zh": "不指定账号 · 用远端 ~/.claude 那套凭据",
+      "args": []
+    },
+    "launchRequests.bad.tmuxName": {
+      "kind": "error",
+      "zh": "非法 tmux 会话名，不能拼进命令：{value}",
+      "args": ["value"]
+    },
+    "launchRequests.bad.sid": {
+      "kind": "error",
+      "zh": "非法会话 ID，不能拼进命令：{value}",
+      "args": ["value"]
+    },
+    "launcherDiagnostics.diagnoseRemoteLauncher.bypassesCcm": {
+      "kind": "body",
+      "zh": "这条命令没经过 ccm，账号和模型偏好不会生效。要用这些，改填 ccm 或含 ccm 的自定义命令，或者在机器页「本机 → 工具 → 别名」里生成一条。",
+      "args": []
+    },
+    "pasteBlock.buildPasteBlock.noClipboard": {
+      "kind": "error",
+      "zh": "剪贴板用不了，请手动选中复制。",
+      "args": []
+    },
+    "pasteBlock.buildPasteBlock.copyFailed": {
+      "kind": "error",
+      "zh": "复制失败",
+      "args": []
+    },
+    "pasteBlock.buildPasteBlock.copiedBody": {
+      "kind": "body",
+      "zh": "贴到 {target}。{mergeNote} 生效条件：{activation}",
+      "args": ["target", "mergeNote", "activation"]
+    },
+    "pasteBlock.buildPasteBlock.copied": {
+      "kind": "body",
+      "zh": "已复制",
+      "args": []
+    },
+    "pasteBlock.buildPasteBlock.notReady": {
+      "kind": "error",
+      "zh": "还不能贴",
+      "args": []
+    },
+    "pasteBlock.buildPasteBlock.copy": {
+      "kind": "action",
+      "zh": "复制",
+      "args": []
+    },
+    "pasteBlock.buildPasteBlock.activation": {
+      "kind": "body",
+      "zh": "生效条件：{activation}",
+      "args": ["activation"]
+    },
+    "pasteBlock.buildPasteBlock.target": {
+      "kind": "body",
+      "zh": "贴到：{target}",
+      "args": ["target"]
+    },
+    "remoteConfig.remoteConfigUnrecognized.unrecognized": {
+      "kind": "body",
+      "zh": "认不出远端配置，这里一台机器都不显示。config.json 的 remote 段没有 hosts 列表（旧的单台写法不再认）；在这里重新添加机器，会按新写法存下来。",
+      "args": []
+    },
+    "remoteHealth.bindRemoteHealthToast.noMessage": {
+      "kind": "error",
+      "zh": "没有消息内容",
+      "args": []
+    },
+    "remoteHealth.head.notice": {
+      "kind": "body",
+      "zh": "⚠ 远端提示",
+      "args": []
+    },
+    "remoteHealth.head.panoramaInstalling": {
+      "kind": "body",
+      "zh": "正在装代码全景组件",
+      "args": []
+    },
+    "remoteHealth.head.notDeployed": {
+      "kind": "body",
+      "zh": "⚠ 远端后端没装上",
+      "args": []
+    },
+    "remoteHealth.head.historyFailed": {
+      "kind": "body",
+      "zh": "⚠ 远端历史快照拉取失败",
+      "args": []
+    },
+    "remoteHealth.head.degraded": {
+      "kind": "body",
+      "zh": "远端降级模式",
+      "args": []
+    },
+    "remoteHealth.head.versionMismatch": {
+      "kind": "body",
+      "zh": "⚠ 远端后端版本不符",
+      "args": []
+    },
+    "remoteHealth.head.congested": {
+      "kind": "body",
+      "zh": "⚠ 远端连接拥塞",
+      "args": []
+    },
+    "sessionReads.record.badShape": {
+      "kind": "error",
+      "zh": "不是恰好 present / root 两格",
+      "args": []
+    },
+    "sessionReads.inputs.oldBackend": {
+      "kind": "error",
+      "zh": "这台机器上的后端版本旧，还列不出大纲。重装后端之后就有。",
+      "args": []
+    },
+    "sessionReads.find.oldBackend": {
+      "kind": "error",
+      "zh": "这台机器上的后端版本旧，还不能在会话里查找。重装后端之后就有。",
+      "args": []
+    },
+    "sessionReads.missing.indexRow": {
+      "kind": "error",
+      "zh": "里有一行缺 o / n 字段",
+      "args": []
+    },
+    "sessionReads.missing.index": {
+      "kind": "error",
+      "zh": "缺 from / end / rows 字段",
+      "args": []
+    },
+    "sessionReads.missing.inputsEntry": {
+      "kind": "error",
+      "zh": "里有一条缺字段",
+      "args": []
+    },
+    "sessionReads.missing.inputs": {
+      "kind": "error",
+      "zh": "缺 from / end / entries 字段",
+      "args": []
+    },
+    "sessionReads.missing.findHit": {
+      "kind": "error",
+      "zh": "里有一条命中缺字段",
+      "args": []
+    },
+    "sessionReads.missing.find": {
+      "kind": "error",
+      "zh": "缺 total / hits 字段",
+      "args": []
+    },
+    "sessionReads.ctor.badShape": {
+      "kind": "error",
+      "zh": "{op} 回来的内容{what}，两边版本可能对不上",
+      "args": ["op", "what"]
+    },
+    "sessionReads.ctor.unreadable": {
+      "kind": "error",
+      "zh": "那台机器的后端回的内容读不懂。多半是两边版本对不上，重装那台机器的后端试试。",
+      "args": []
+    },
+    "shellQuote.bad.configDir": {
+      "kind": "error",
+      "zh": "非法 CLAUDE_CONFIG_DIR，不能拼进命令：{value}",
+      "args": ["value"]
+    },
+    "skeletonView.ledgerFromIndex.noIndex": {
+      "kind": "error",
+      "zh": "索引不可用",
+      "args": []
+    },
+    "tabBarDrag.onDragMove.detachHint": {
+      "kind": "body",
+      "zh": "松开 → 独立窗口",
+      "args": []
+    },
+    "tabBarPrefs.pin.resume": {
+      "kind": "action",
+      "zh": "Resume 这个会话",
+      "args": []
+    },
+    "tabBarView.tab.forkedFrom": {
+      "kind": "body",
+      "zh": "↳ 从 {id} fork 而来",
+      "args": ["id"]
+    },
+    "tabBarView.tab.waiting": {
+      "kind": "body",
+      "zh": "等待操作：{waitingFor}",
+      "args": ["waitingFor"]
+    },
+    "tabBarView.tab.closeHint": {
+      "kind": "body",
+      "zh": "关闭 Tab",
+      "args": []
+    },
+    "tabBarView.tab.closeIcon": {
+      "kind": "body",
+      "zh": "×",
+      "args": []
+    },
+    "tabBarView.tab.terminalHint": {
+      "kind": "body",
+      "zh": "调出对应终端（反引号键）",
+      "args": []
+    },
+    "tabBarView.tab.terminalIcon": {
+      "kind": "body",
+      "zh": "↗",
+      "args": []
+    },
+    "tabBarView.tab.cwdHint": {
+      "kind": "body",
+      "zh": "打开工作目录 (E)",
+      "args": []
+    },
+    "tabBarView.tab.cwdIcon": {
+      "kind": "body",
+      "zh": "📂",
+      "args": []
+    },
+    "tabBarView.tab.pinHint": {
+      "kind": "body",
+      "zh": "已固定：关掉 app 再打开它还在",
+      "args": []
+    },
+    "tabBarView.tab.pinIcon": {
+      "kind": "body",
+      "zh": "📌",
+      "args": []
+    },
+    "tabBarView.badge.mismatch": {
+      "kind": "body",
+      "zh": "{tooltip} · 与当前账号「{current}」不一致",
+      "args": ["tooltip", "current"]
+    },
+    "tabBarView.group.dissolveHint": {
+      "kind": "body",
+      "zh": "解散这个集合（只去掉分组，会话一个都不会关）",
+      "args": []
+    },
+    "tabBarView.group.dissolve": {
+      "kind": "action",
+      "zh": "×",
+      "args": []
+    },
+    "tabBarView.group.namePrompt": {
+      "kind": "body",
+      "zh": "集合名：",
+      "args": []
+    },
+    "tabDrop.defaultGroupName.defaultGroupName": {
+      "kind": "body",
+      "zh": "组 {n}",
+      "args": ["n"]
+    },
+    "tabStreamView.sentinel.moreCount": {
+      "kind": "body",
+      "zh": "↑ 还有 {n} 条更早消息 · 上翻加载",
+      "args": ["n"]
+    },
+    "tabStreamView.sentinel.failed": {
+      "kind": "body",
+      "zh": "↑ 更早的消息这次没取回来：{reason}",
+      "args": ["reason"]
+    },
+    "tabStreamView.sentinel.loading": {
+      "kind": "body",
+      "zh": "↑ 正在取更早的消息…",
+      "args": []
+    },
+    "tabStreamView.sentinel.more": {
+      "kind": "body",
+      "zh": "↑ 更早的消息 · 上翻加载",
+      "args": []
+    },
+    "tabStreamView.search.notLoaded": {
+      "kind": "body",
+      "zh": "这一条还没加载出来 —— 往上翻到更早的消息之后再点",
+      "args": []
+    },
+    "tabStreamView.search.noFile": {
+      "kind": "error",
+      "zh": "这个会话的文件位置还没收到",
+      "args": []
+    },
+    "tasksPanel.status.other": {
+      "kind": "body",
+      "zh": "•",
+      "args": []
+    },
+    "tasksPanel.status.failed": {
+      "kind": "body",
+      "zh": "✗",
+      "args": []
+    },
+    "tasksPanel.status.done": {
+      "kind": "body",
+      "zh": "✓",
+      "args": []
+    },
+    "tasksPanel.status.inProgress": {
+      "kind": "body",
+      "zh": "■",
+      "args": []
+    },
+    "tasksPanel.status.pending": {
+      "kind": "body",
+      "zh": "□",
+      "args": []
+    },
+    "tasksPanel.arrow.expanded": {
+      "kind": "body",
+      "zh": "▼",
+      "args": []
+    },
+    "tasksPanel.arrow.collapsed": {
+      "kind": "body",
+      "zh": "▶",
+      "args": []
+    },
+    "tasksPanel.ctor.closeHint": {
+      "kind": "body",
+      "zh": "关闭",
+      "args": []
+    },
+    "tasksPanel.ctor.close": {
+      "kind": "action",
+      "zh": "×",
+      "args": []
+    },
+    "tasksPanel.ctor.title": {
+      "kind": "title",
+      "zh": "任务列表",
+      "args": []
+    },
+    "terminalFront.unavailable.detail": {
+      "kind": "error",
+      "zh": "只有 Windows 上的 cc-monitor 能把会话的终端窗口切到前台。",
+      "args": []
+    },
+    "terminalFront.unavailable.title": {
+      "kind": "error",
+      "zh": "本机不能切到终端窗口",
+      "args": []
+    },
+    "turnNotify.finish.body": {
+      "kind": "body",
+      "zh": "会话已回到等待输入状态。",
+      "args": []
+    },
+    "turnNotify.finish.title": {
+      "kind": "title",
+      "zh": "Claude 完成一轮 · {tab}",
+      "args": ["tab"]
+    },
+    "usageHud.render.approx": {
+      "kind": "body",
+      "zh": "活跃会话 context 占用 ≈ {rounded}%（{model}，最新一轮 {tok} tokens ÷ 模型上限）。近似值。",
+      "args": ["rounded", "model", "tok"]
+    },
+    "usageHud.render.unknownLimit": {
+      "kind": "body",
+      "zh": "活跃会话 context 占用：模型「{model}」上限未知（{tok} tokens）",
+      "args": ["model", "tok"]
     }
   }
 }

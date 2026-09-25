@@ -1,10 +1,4 @@
 住址	原文	裁词	依据
-src/account-chip.ts:50	未连远端	保留	[对外] 账号 chip 标签，短而清楚
-src/account-chip.ts:54	backend 需更新	内部词→后端（backend）	[对外] 账号 chip 标签；设计/91 §3.1 对外叫「后端」，英文 backend 夹在中文标签里 →「后端需更新」
-src/account-chip.ts:56	未启用	保留	[对外] 账号 chip 标签
-src/account-chip.ts:59	未启用	保留	[对外] 账号 chip 标签
-src/account-commands.ts:47	账号：设 {…} 为当前账号{…}	保留	[对外] 命令面板条目标题，动宾清楚
-src/account-commands.ts:60	账号：管理…	保留	[对外] 命令面板条目标题
 src/accounts.ts:120	过旧	保留	[不对外] deriveUi 里对后端错误串做 includes 匹配的探针串，不渲染
 src/accounts.ts:120	不支持账号	保留	[不对外] deriveUi 里对后端错误串做 includes 匹配的探针串，不渲染
 src/accounts.ts:472	in-place 模式：cc-monitor 不支持对它按会话切号	保留	[对外] 账号徽标 title。术语表（src/shared/copy/terms.json「in-place」）：限用词 —— 这种账号只有亲手敲过 cc-acct-iso init --default-in-place 才会有（cc-monitor 从不建它），cc-acct-iso 自己的提示也叫它 in-place ⇒ 用户认得；此处正是在说它为什么不能按会话切换，语境合。CP1 原裁「判不了」（等术语表），CP2a 据术语表改裁 新词:in-place 模式
@@ -32,7 +26,6 @@ src/accounts.ts:546	用该账号打开一个远端终端（在里面 /login）	�
 src/accounts.ts:779	无法换号重启：tmux 标记丢了	改·§2.1	[对外] 对话框标题；「tmux 标记」是我们打在 tmux 上的会话标记（@ccm_sid），属 R1b 第 2 条「我们对 tmux 的用法」→「无法换号重启：找不到这个会话所在的终端」
 src/accounts.ts:788	无法换号重启	保留	[对外] 对话框标题
 src/accounts.ts:1201	这一节只把这台机器上的账号清单列出来（只读）；在这里改不了它们。	保留	[对外] 账号区块说明，说清只读
-src/agent-profile.ts:74	（一个都没有）	保留	[可达存疑] 拼进「问不到 agent 的画像」报错的名单占位；这一截本身无病（外层句子不在存疑带）
 src/backend-policy.ts:57	monitor 退出时会结束它	保留	[对外] 后端退出策略说明短句；monitor 是产品名
 src/backend-policy.ts:60	monitor 退出后它继续跑，无人监护：崩了不会自动重起；下次开 monitor 会接上它，接不上才起一个新的	保留	[对外] 说清会发生什么（继续跑、崩了不重起、下次接上），分号断句、无括号破折号
 src/backend-policy.ts:62	monitor 不主动结束它；它仍会在 monitor 退出后很快自行退出	保留	[对外] 同族短句
@@ -134,9 +127,6 @@ src/backend/plugin/invoke.rs:220	起不来 `{}`：{e}	保留	[可达存疑] 〔R
 src/backend/plugin/probe.rs:78	找到的这个程序不是 `{want}`：它的身份行报的是 `{saw}`。\n                 ⚠ 这不是「它太旧」，是**找错了程序** —— 多半是 PATH 上有个同名的无关命令。	改·§2.2	[可达存疑] 插件探测被拒的原因，回到界面；⚠ 后那句「这不是『它太旧』」是在反驳一个用户没提的推断，**markdown** 与破折号 兼§2.4 新词:身份行 →「找到的 `{want}` 不对：它报的是 `{saw}`，PATH 上可能有个同名的别的程序」
 src/backend/plugin/probe.rs:86	`{plugin}` 装的这份缺能力 `{token}`（它自己报的版本：{}）。\n                 ⚠ 这**不是**「调用失败」—— 那个程序好好的，是它这一版还不会做这一件事，\n                 换一份新的就行。	改·§2.2	[可达存疑] 同上；「这不是『调用失败』—— 那个程序好好的」是论证，**markdown** 兼§2.4 新词:能力token →「`{plugin}` 这一版不支持 `{token}`（版本 {}），请更新」
 src/backend/plugin/probe.rs:89	<没报>	保留	[可达存疑] 同上一句里的版本占位碎片
-src/branch-button.ts:43	从这一轮创建分支（复制到这条为止 → 新会话，原会话不变，可 resume）	保留	[对外] 分支按钮 title，括号里是有用细节；resume 是 CC 用户认得的词
-src/branch-button.ts:45	从这一轮创建分支 —— ⚠ 这条属于**被 ESC 回退掉的**分支。\n	改·§2.4	[对外] title 属性里的 markdown `**被 ESC 回退掉的**` 会原样显示星号，外加破折号 →「从这一轮创建分支。这一轮已被 ESC 回退。」
-src/branch-button.ts:46	分叉会把那条你当初放弃的对话复活成一个新会话（原会话仍然不变）。	保留	[对外] 说清后果，括号短
 src/bridge/crates/creds-core/src/lib.rs:238	SecretKey(<已遮蔽>)	保留	[不对外] SecretKey 手写 Debug 的遮蔽形，只在 {:?} 路径里代替密钥出现，防泄漏用，不是文案
 src/bridge/crates/creds-core/src/perm.rs:98	同机器上的别人也读得到它（mode 是 {:04o}，本人之外还开着 {:03o}）	保留	[可达存疑] 凭据文件权限过宽的说明（Verdict::TooWide.how）；mode 是 Unix 用户自己认得的词，括号里是可核对的数
 src/bridge/crates/creds-core/src/perm.rs:112	这份文件的 DACL 里有宽泛主体：{}	内部词→「权限列表里有对所有人开放的条目」	[可达存疑] DACL / 宽泛主体 是 Windows 安全模型术语，用户在资源管理器里看到的叫「安全」页的组或用户名 新词:DACL 新词:宽泛主体
@@ -646,33 +636,12 @@ src/events.ts:591	[perf]   batch payloads drained T+{…} (+{…}) ← drain 全
 src/events.ts:592	[perf]   onBatchEnd fired       T+{…} (+{…}) ← 300ms grace 后真正切 live	保留	[不对外] perf timeline 开发者日志行
 src/events.ts:595	[perf]   建卡 rendered={…} · 收纳 deferred={…} · drained={…}(累计)	保留	[不对外] perf timeline 开发者日志行
 src/events.ts:596	[perf]   ── 总耗时（DOM → 加载完成）：{…}ms ──	保留	[不对外] perf timeline 开发者日志行
-src/first-run-hint.ts:171	关掉这次的提示	保留	[对外] 关闭按钮的 aria-label，清楚
-src/fork-launch.ts:61	源会话已退出：账号只记在 pidfile 里（进程一退就没了），	改·§2.1	[对外] 经 describeSlot 拼进「账号：需要你选一次 —— {why}」；pidfile 是 R1 词，整句在解释我们把账号记在哪 兼§2.2 →「原会话已结束，查不到它当时用的账号」
-src/fork-launch.ts:62	会话文件本身与它所在路径都不带账号信息	改·§2.2	[对外] 与上一截同一句：论证会话文件为什么不带账号信息，是内部推理
-src/fork-launch.ts:68	会话记录里的 cwd	内部词→工作目录（cwd）	[对外] 拼进「工作目录：跟原会话一致（据…）」；cwd 是开发者缩写，同一行标签已叫「工作目录」→「据会话记录」
-src/fork-launch.ts:80	源会话进程的 pidfile	内部词→原会话的进程（pidfile）	[对外] 拼进「账号：跟原会话一致（据…）」；pidfile 在 R1 词表 →「据原会话的进程」
-src/fork-launch.ts:88	tmux 会话清单	保留	[对外] 「tmux 会话清单」是用户自己也会这么叫的东西（R1b 语境内）
-src/fork-launch.ts:102	账号	保留	[对外] 分叉启动维度标签
-src/fork-launch.ts:102	是否在 tmux 里跑	保留	[对外] 分叉启动维度标签；tmux 在 R1b 语境内
-src/fork-launch.ts:102	工作目录	保留	[对外] 分叉启动维度标签
-src/fork-launch.ts:105	{…}：跟原会话一致（据{…}）	保留	[对外] 模板句本身无病（「据」后填充物单独裁）
-src/fork-launch.ts:106	{…}：需要你选一次 —— {…}	保留	[对外] 短句＋破折号接原因，可操作
 src/ipc/chan.ts:66	通道：{…}	保留	[不对外] 〔C4a〕`ChanError.message`：通道失败只进 console.warn（调用方按层说自己的话，界面那句不从这里取）
 src/ipc/chan.ts:75	第 {…} 跳卡在 {…}：{…}（发出去了没有：{…}）	保留	[不对外] 〔C4a〕`describeCallError` 给日志看的那一句，与 `chan/wire.rs` 的 `CallError` 的 Display 同形
 src/ipc/chan.ts:77	对端不认这个操作	保留	[不对外] 〔C4a〕同上（`peer/unsupported` 那一档的日志句）
 src/ipc/chan.ts:77	对端答「不行」	保留	[不对外] 〔C4a〕同上（`peer/refused` 那一档的日志句）
 src/ipc/chan.ts:79	本侧：{…}	保留	[不对外] 〔C4a〕同上（`ours` 那一档的日志句）
-src/remote-health.ts:31	⚠ 远端管道拥塞	内部词→连接（管道）	[对外] toast 标题；「远端管道」是我们事件流通道的内部叫法，用户不知道哪根管道 →「⚠ 远端连接拥塞」新词:管道
-src/remote-health.ts:33	⚠ 远端后端版本不符	保留	[对外] toast 标题；「后端」是 91 §3.1 定的对外词
-src/remote-health.ts:35	远端降级模式	保留	[对外] toast 标题
-src/remote-health.ts:37	⚠ 远端历史快照拉取失败	保留	[对外] toast 标题；「历史快照」可懂
-src/remote-health.ts:40	⚠ 远端后端没装上	保留	[对外] toast 标题（〔DP1〕连接前自动部署没成）；先说结果，正文是那句原因；「后端」是 91 §3.1 定的对外词
-src/remote-health.ts:39	⚠ 远端提示	保留	[对外] toast 兜底标题
-src/remote-health.ts:40	正在装代码全景组件	保留	[对外] 〔RM1f〕远端健康通道那一条 toast 的标题（`kind = panorama-install`）：推代码全景组件之前说一声，正文说哪台、约多大、装好会自己接着答；不是故障所以不带 ⚠，四类病都不中
 src/remote-launch-run.ts:338	刻意不替你挑终端模拟器	保留	[不对外] 对后端错误串做 includes 的匹配锚点（那句话本身由后端产、另行裁）
-src/remote-config.ts:78	远端配置认不出：config.json 的 remote 段没有 hosts 列表（旧的单台写法不再认），这里一台都不显示；在这里重新添加机器，会按新写法存下来	保留	[对外] 〔S5 · V41 · 主会话裁〕设置页机器列表顶上那一句（remote 段认不出时常驻）；先说发生了什么、再说后果和能做什么；config.json / remote / hosts 是用户手改那份文件时真会看见的名字，括号补的是原因
-src/render.ts:79	<button type="button" class="code-copy" data-copy>复制</button>	保留	[对外] 代码块复制按钮
-src/render.ts:107	<button type="button" class="code-copy" data-copy>复制</button>	保留	[对外] 代码块复制按钮
 src/settings/accounts-section.ts:588	将在远端「{…}」的终端里运行：\n\n{…}\n\n	保留	[对外] 危险操作的 confirm 首段：说清在哪台机器跑什么命令，先说结果
 src/settings/accounts-section.ts:590	命令在你看得见的终端里执行、需你亲手确认；工具自带备份，可 rollback。继续？	改·§2.4	[对外] 一句塞三件事（在哪执行＋要你确认＋自带备份可撤）且夹英文 rollback 新词:rollback →「命令会在远端终端里执行，出错可撤回。继续？」
 src/settings/accounts-section.ts:1115	片段不完整（缺 BEGIN/END 围栏），先别贴 —— 在远端跑一次 `cc-acct-iso verify` 看是什么状况。	改·§2.4	[对外] 括号补充＋破折号＋处方三合一 兼§2.3 新词:围栏 →「片段不完整，别贴。」细节另起一句
@@ -862,13 +831,6 @@ src/settings/remote-section.ts:1135	远端机器配置	保留	[对外] 「需重
 src/settings/router.ts:96	设置分类	保留	[对外] 导航的 aria-label，名词短语
 src/settings/unknown-keys-notice.ts:49	配置文件 config.json 里有 {…} 个设置项认不出来：{…}。	保留	[对外] 结果＋点名哪几个键；config.json 是用户自己机器上的文件
 src/settings/unknown-keys-notice.ts:50	它们不起作用（拼错了，或者是已经取消掉的旧名字）；改对或删掉它们，这条提示才会消失。	保留	[对外] 后果＋用户确实能做且做了会好的处理，括号是真补充
-src/tab-drop.ts:158	组 {…}	保留	[对外] 新建标签组的默认名
-src/tab-bar-view.ts:416	等待操作：{…}	保留	[对外] 标签页 tooltip
-src/tab-bar-view.ts:420	↳ 从 {…} fork 而来	保留	[对外] 标签页 tooltip；fork 是 CC 用户认得的词
-src/terminal-front.ts:34	本机不能切到终端窗口	保留	[对外] toast 标题：非 Windows 上按 ↗ 的快捷键 / 命令面板时说的实话（按钮本身不渲）；用的是术语表给「拉前」定的说法「切到终端窗口」
-src/terminal-front.ts:35	只有 Windows 上的 cc-monitor 能把会话的终端窗口切到前台。	保留	[对外] 上一条的正文：一句说清哪里能用，不讲实现（不提 Win32 / 桩），不派活
-src/turn-notify.ts:118	Claude 完成一轮 — {…}	保留	[对外] 系统通知标题：Claude 完成一轮＋标签名；破折号只是分隔
-src/turn-notify.ts:118	会话已回到等待输入状态。	保留	[对外] 系统通知正文，短
 src/views/history.ts:319	(未知项目)	保留	[对外] 历史浏览器项目名兜底
 src/views/history.ts:527	项目	保留	[对外] 模式切换按钮名
 src/views/history.ts:527	按项目名 / 标题过滤（本地，即时）	保留	[对外] 模式切换按钮 title，括号短而有用
@@ -889,7 +851,6 @@ src/bridge/src/chan/wire.rs:218	第 {} 跳卡在 `{}`：{why:?}（发出去了�
 src/bridge/src/chan/wire.rs:221	对端答「不行」：{why:?}	改·§2.1	[可达存疑] 同上；{why:?} 把枚举名原样上屏
 src/bridge/src/chan/wire.rs:222	本侧：{why:?}	改·§2.1	[可达存疑] 同上；「本侧」＋ 枚举名
 src/bridge/src/chan/wire.rs:306	Key(<不打印>)	保留	[不对外] Key 的 Debug，刻意不打印内容
-src/session-reads.ts:222	这台机器上的后端版本旧，还不能在会话里查找（重装后端之后就有）	保留	[对外] 〔C4b〕查找面板「搜索」那一行状态（查不了时）；逐字搬自 monitor 那一份（`session_find.rs` 已删），说清原因与出路，用词是术语表的「后端」
 src/session-reads.ts:251	这台机器上的后端版本旧，还给不出骨架索引（重装后端之后就有）	保留	[不对外] 〔C4b〕只进 console.info（骨架未接的原因），界面行为是退回尾部窗口；替掉 monitor 那一句「对面后端不认 --index」
 src/backend/relay/server.rs:450	连不上	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半，短、先说结果
 src/backend/relay/server.rs:450	建立连接	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；哪一跳那半，用户读得懂的动作名
@@ -903,7 +864,6 @@ src/backend/relay/server.rs:454	读响应	保留	[可达存疑] 中转（relay�
 src/backend/relay/server.rs:454	一直不给最终响应	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半（上游只回 1xx 中间响应的那一形）
 src/backend/relay/server.rs:472	上游 {}:{} {result}。卡在{hop}这一步。	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体（claude 那一侧可能原样显示）与 stderr 那一句的骨架（设计/20 §3.1a）；两句：先说谁出了什么结果，再说卡在哪一步，无内部词、无处方
 src/bridge/src/backend/control/backend_route.rs:207	{s} —— ⚠ 无法确认远端是否已经执行过这条命令，因此**不**再用另一条路重做一次；\n             请刷新会话列表后再决定	改·§2.4	[对外] markdown `**不**` ＋ 破折号 ＋ 发生了什么/我们不做什么/你该做什么 三合一 兼§2.2（另一条路） 新词:另一条路 →「不确定远端有没有执行。请刷新会话列表后再决定。」（F3 回修：分层判定之后 {e}→{s}，裁词照搬）
-src/launcher-diagnostics.ts:49	这条命令似乎绕开了 ccm——账号/模型偏好不会随它生效。想要这些好处的话，改填 ccm（或含 ccm 的自定义命令），或在机器页「本机 → 工具 → 别名」里拼一条。	改·§2.4	[对外] 启动命令诊断提示（〔AL1〕只把尾巴从「下面的生成器」改指机器页「别名」，病没动）：破折号＋括号补充两信号，「想要这些好处的话」口吻绕；ccm 是用户自己敲的命令（R1b 语境内）→「这条命令没经过 ccm，账号和模型偏好不会生效。可改填 ccm，或在机器页的「别名」里拼一条。」
 src/settings/machine-aliases.ts:162	（不带参数）	保留	[对外] 别名清单里一条不带参数时的占位显示，短
 src/settings/machine-aliases.ts:194	别名	保留	[对外] 机器页 ②「别名」那一块的折叠标题
 src/settings/machine-aliases.ts:199	一条别名是一个名字加一组 ccm 参数：在终端里敲这个名字，就等于敲 ccm 加上这组参数，后面还能再接别的参数。	保留	[对外] 别名那一块的说明：先说是什么、再说怎么用，一句一件事；ccm 是用户自己敲的命令（R1b 语境内）
@@ -1105,7 +1065,6 @@ src/settings/config-surface-section.ts:183	== cc-monitor 足迹 ==	保留	[对�
 src/settings/config-surface-section.ts:255	「答不出来」不等于「它没动过你的文件」。	保留	[对外] 远端足迹答不了那一句的 ⓘ（ST2 · 70 §11.4 #4：对冲后半挪进 ⓘ，区分保留）
 src/settings/config-surface-section.ts:448	这台机器（{…}）的足迹还查不了：要那台机器上的后端来答，它这一版还答不了。	保留	[对外] 远端足迹栏回声对不上时那一句（ST2，用户 09-24 裁远端也有真栏；读口归 RM1a）
 src/settings/panel.ts:1128	足迹	保留	[对外] 机器子页「足迹」那一块的块名（ST2 起经 loadableBlock 建）
-src/first-run-hint.ts:68	诊断：	保留	[对外] 主窗口状态栏那条指路的前缀，与机器列表页「诊断」块同一个词（ST2：原「还差什么：」）
 src/settings/panel.ts:1140	未识别的数据	保留	[对外] 机器子页「足迹」栏里那一块的块名（原顶层「改动足迹」页的漂移记账）
 src/settings/panel.ts:732	Claude 数据目录	保留	[对外] 落盘失败 / 重启条那一格的名字（ST2 步 9：全即时，每一格改了就落）
 src/settings/panel.ts:744	Claude 数据目录	保留	[对外] 落盘失败 / 重启条那一格的名字（ST2 步 9：全即时，每一格改了就落）
@@ -1171,16 +1130,11 @@ src/settings/machine-aliases.ts:728	{…}失败：{…}	保留	[对外] 〔AL1d�
 src/settings/machine-aliases.ts:744	将装进 {…} 的别名块	保留	[对外] 〔AL1d〕预览浮层标题：装进哪份文件
 src/bridge/src/panorama_call.rs:263	代码全景这一问出了内部错误，没有拿到结果	保留	[可达存疑] 〔RM1e〕分流器 Done 那一臂的兜底（本族走不到）；同 backend_policy.rs / apikey_remote.rs 那一句的形
 src/bridge/src/panorama_call.rs:305	{who} 的代码全景没答上来（{code}）：{message}	保留	[对外] 〔RM1e〕那台机器的全景失败原话：{who} 是「本机」或机器名，{code} 是后端的错误码（not_installed / unsupported / timed_out …，同 frame_query 那一句「查询失败（code）」的形，用户据此能跟着报错走），{message} 是后端那句人话
-src/tab-stream-view.ts:967	↑ 更早的消息 · 上翻加载	保留	[对外] 〔CF2〕实时 tab 顶端哨兵：账本空了、下面可能还有，上翻会按行号去取；与既有「↑ 还有 N 条更早消息 · 上翻加载」同一口吻
-src/tab-stream-view.ts:969	↑ 正在取更早的消息…	保留	[对外] 〔CF2〕同一哨兵，取着的那一刻
-src/tab-stream-view.ts:971	↑ 更早的消息这次没取回来：{…}	保留	[对外] 〔CF2〕同一哨兵，取失败：冒号后是那次调用的原因（monitor 那一侧已有的说法，如「那台后端还不认这条查询 —— 重装就有了」），不自动重试，切走再切回来再取一次
 src/bridge/src/event_replay.rs:512	没有叫 `{kind}` 的流	保留	[不对外] 〔CF2〕会话流句柄对认不出的流标签原位回的 Closed{Peer} 体（`{code,message}` 信封）；前端只记进控制台（events.ts 的 closed 那一支），不上界面
 src/bridge/src/event_replay.rs:520	会话内容流不支持从某一格续看（页面重载就是一条新的订阅）	保留	[不对外] 〔CF2〕同上：给了 from 游标时原位回的 Closed{Peer(bad_args)} 体；生产调用方恒给 null，只进控制台
 src/bridge/src/panorama_call.rs:293	已取消（后端那一趟已经停下）	保留	[可达存疑] 〔RM1f〕撤票那一问交回的话：界面自己撤的（`AbortSignal` 已拨下）⇒ `api.ts` 换成 `PanoramaCancelled` 类型、视图说它自己的「已取消建立索引」；只有别的调用方拿票撤了才会原话见人，句子本身不带内部名
 src/bridge/src/panorama_call.rs:440	本机还没有这一版的代码全景组件，正在把它放好（一两秒）。放好之后这一问会自己接着答。	保留	[对外] 〔RM1f〕远端健康通道 toast 正文（`kind = panorama-install`，本机那一台）：本机后端答「没装 / 太旧」时 monitor 把小程序放进 `~/.cc-monitor/bin/` 之前说一声；说的是人看得懂的事，不带内部名
 src/bridge/src/panorama_call.rs:445	{who} 上还没有这一版的代码全景组件，正在把它装上去（约 20 MB，慢链路上要等一会儿）。装好之后这一问会自己接着答。	保留	[对外] 〔RM1f〕远端健康通道 toast 正文（`kind = panorama-install`，远端那一台）：推字节是同步等的，不说的话界面上只有那一问在转圈；`{who}` 是机器名（`machine_label`），不是内部串
-src/accounts-decode.ts:39	顶层	保留	[对外] 〔C4c〕账号清单应答形状不对时那句「账号清单的应答形状不对（…）—— 两端契约对不上」里点名哪一格的片段（进 `available:false` 的原因，设置页账号那一块照原因显示）；与 C4b 会话读面同一句式
-src/accounts-decode.ts:80	第 {…} 个账号	保留	[对外] 〔C4c〕同上一行，点名第几个账号那一格坏了
 src/accounts.ts:1144	那台机器的后端版本过旧，还不认账号清单这一问 —— 重装那台机器的后端就有了	保留	[对外] 〔C4c〕账号那一块的「需更新」原因（后端不认 `accounts-list`）；说清原因与出路，用词是术语表的「后端」；替掉 monitor 那一句「远端后端不支持账号查询（版本过旧）——请更新 backend」（已删）
 src/backend/observe/accounts_query.rs:664	这台机器上的 cc-acct-iso 版本较旧：它的 accounts.json 里没有账号 0（不指定配置目录的那个默认登录）。\n         在这台机器上跑一次 'cc-acct-iso sync --apply'（或重新部署 cc-acct-iso）即可补上。	改·§2.3	[对外] 〔C4c〕后端出成品时「manifest 里没有账号 0」那一句，逐字承袭 monitor 旧那一句（台账那一行裁的正是 §2.3：把 sync / 重新部署那件维护活派给用户、括号给第二条路）；本拍只把「远端」改成「这台机器」（本机从此也出这一句），措辞重写留给文案那一轮 兼§2.4 →「这台机器的账号表缺默认账号，重新部署账号隔离工具后可补上」
 src/settings/backend-section.ts:84	那台机器的后端还不认「退出行为」这一问 —— 重装那台机器的后端就有了	保留	[对外] 〔C4c〕设置页「退出行为」那一勾问不到 / 存不下时的原因（后端不认 `exit-policy-*`）；说清原因与出路，用词是术语表的「后端」；此前界面看到的是 monitor 那一句（带命令名 `exit-policy-read`），那一句今天只剩退出臂那一问在用、只进日志
@@ -1235,7 +1189,6 @@ src/bridge/src/filewin/workspace.rs:72	×	保留	[对外] 纯符号串（99 §1 
 src/bridge/src/filewin/workspace.rs:74	● 	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：忙碌标记
 src/bridge/src/filewin/writeops.rs:810	；	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：列表分隔符（join），换语言时跟着换
 src/bridge/src/skill_install.rs:261	、	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：列表分隔符（join），换语言时跟着换
-src/format.ts:26	—	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：空值占位
 src/settings/assets-section.ts:432	、	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：列表分隔符（join），换语言时跟着换
 src/settings/data-section.ts:208	🛈 	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：提示图标
 src/settings/data-section.ts:390	…	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：截断省略号
@@ -1253,8 +1206,3 @@ src/settings/machine-status.ts:171	✓	保留	[对外] 纯符号串（99 §1 V99
 src/settings/machine-status.ts:171	✗	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：状态行前的图标
 src/settings/mcp-sync.ts:492	、	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：列表分隔符（join），换语言时跟着换
 src/settings/readiness.ts:209	，	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：列表分隔符（join），换语言时跟着换
-src/tasks-panel.ts:292	□	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：行首图标
-src/tasks-panel.ts:294	■	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：行首图标
-src/tasks-panel.ts:296	✓	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：行首图标
-src/tasks-panel.ts:298	✗	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：行首图标
-src/tasks-panel.ts:300	•	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：行首图标

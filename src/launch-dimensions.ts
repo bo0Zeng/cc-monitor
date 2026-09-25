@@ -14,6 +14,7 @@
 import { isValidConfigDir, isValidModelName, isValidSessionId } from "./shell-quote.ts";
 import { AGENT_PROFILE } from "./agent-profile.ts";
 import type { LaunchDimension } from "./launch-plan.ts";
+import { copyText } from "./copy-table";
 
 /** identity：身份打标。只在调用方已知道 sid 时才生效（今天只有 tmux-create-resume 这条路径
  *  设；"开新 Claude"从不设，是已知 F04 缺口，本次原样保留、不顺手"修一半"）。 */
@@ -23,7 +24,7 @@ export const IDENTITY_DIMENSION: LaunchDimension = {
   applies: (ctx) => ctx.ccmSid !== undefined,
   apply: (plan, ctx) => {
     if (!isValidSessionId(ctx.ccmSid!)) {
-      throw new Error(`非法 ccmSid（拒绝拼入命令）: ${JSON.stringify(ctx.ccmSid)}`);
+      throw new Error(copyText("launchDimensions.bad.ccmSid", { value: JSON.stringify(ctx.ccmSid) }));
     }
     plan.identity = { ccmSid: ctx.ccmSid! };
   },
@@ -63,7 +64,7 @@ export const ACCOUNT_DIMENSION: LaunchDimension = {
   apply: (plan, ctx) => {
     if (ctx.account.kind !== "account") return;
     if (!isValidConfigDir(ctx.account.configDir)) {
-      throw new Error(`非法 CLAUDE_CONFIG_DIR（拒绝拼入命令）: ${JSON.stringify(ctx.account.configDir)}`);
+      throw new Error(copyText("launchDimensions.bad.configDir", { value: JSON.stringify(ctx.account.configDir) }));
     }
     plan.env.push({ kind: "export-config-dir", value: ctx.account.configDir });
   },
@@ -107,7 +108,7 @@ export const MODEL_DIMENSION: LaunchDimension = {
   apply: (plan, ctx) => {
     if (!ctx.modelOverride) return;
     if (!isValidModelName(ctx.modelOverride)) {
-      throw new Error(`非法模型名（拒绝拼入命令）: ${JSON.stringify(ctx.modelOverride)}`);
+      throw new Error(copyText("launchDimensions.bad.model", { value: JSON.stringify(ctx.modelOverride) }));
     }
     plan.env.push({ kind: "export-model", value: ctx.modelOverride });
   },
@@ -206,7 +207,7 @@ export const RBIND_TOKEN_DIMENSION: LaunchDimension = {
       // 形状不对**不许降级成"这次不带令牌"** —— 那会把一次铸币 bug 变成一次
       // 「↗ 不明原因失效」，而 `§8.5 ②` 买的恰恰是「归因从四档猜变成一个布尔」。
       throw new Error(
-        `非法 CCM_RBIND_TOKEN（拒绝拼入命令，要 [0-9a-f]{32}）: ${JSON.stringify(ctx.rbindToken)}`,
+        copyText("launchDimensions.bad.rbindToken", { value: JSON.stringify(ctx.rbindToken) }),
       );
     }
     plan.env.push({ kind: "export-rbind-token", value: ctx.rbindToken });
@@ -228,29 +229,29 @@ export const LAUNCH_DIMENSIONS: LaunchDimension[] = [
 function assertDimensionOrderInvariants(dims: LaunchDimension[]): void {
   const seen = new Set<number>();
   for (const d of dims) {
-    if (seen.has(d.order)) throw new Error(`LaunchDimension order 冲突: ${d.id} order=${d.order}`);
+    if (seen.has(d.order)) throw new Error(`bug: LaunchDimension order clash: ${d.id} order=${d.order}`); // 〔CP2b〕程序员错误，刻意英文（不是对外文案）
     seen.add(d.order);
   }
   const idx = (id: string): number => dims.findIndex((d) => d.id === id);
   if (idx("env-reset") >= idx("account")) {
-    throw new Error("不变式违反：env-reset 必须排在 account 之前（防静默账号覆盖）");
+    throw new Error("invariant: env-reset must come before account (no silent account override)");
   }
   if (idx("account") >= idx("nested-env-reset")) {
-    throw new Error("不变式违反：account 必须排在 nested-env-reset 之前");
+    throw new Error("invariant: account must come before nested-env-reset");
   }
   // F07：model 卡在 account 与 nested-env-reset 之间。
   if (idx("account") >= idx("model")) {
-    throw new Error("不变式违反：account 必须排在 model 之前");
+    throw new Error("invariant: account must come before model");
   }
   if (idx("model") >= idx("nested-env-reset")) {
-    throw new Error("不变式违反：model 必须排在 nested-env-reset 之前");
+    throw new Error("invariant: model must come before nested-env-reset");
   }
   // `设计/80 §8` 步 1：rbind-token 排在**全部 unset 之后**（`nested-env-reset` 是今天最后
   // 那个 unset）。理由见 `RBIND_TOKEN_DIMENSION` 头注 ①：防「明天多一个 unset 变体，
   // 把刚 export 的令牌抹掉」。⚠ 同上面四条：本函数只对**完整注册表**有意义
   // （缺项时 `findIndex` 回 -1，会报一条与真实病因无关的不变式违反）。
   if (idx("nested-env-reset") >= idx("rbind-token")) {
-    throw new Error("不变式违反：rbind-token 必须排在 nested-env-reset 之后（防 unset 抹掉令牌）");
+    throw new Error("invariant: rbind-token must come after nested-env-reset (unset would wipe the token)");
   }
 }
 assertDimensionOrderInvariants(LAUNCH_DIMENSIONS);
