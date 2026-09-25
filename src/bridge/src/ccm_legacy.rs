@@ -30,6 +30,7 @@
 //!   卡在 `tests/evidence/MC1-AL1-摸底.md` 第三节那道 argv 设计题，报告里交主会话。
 //! - 真远端一次都没跑过（判据用内存替身 `Door`）。
 
+use crate::copy_table::copy_text;
 use crate::user_files::{Door, Refused};
 
 /// 那一份在家目录下的相对路径。**唯一住址**（足迹那一行由判据对拍它）。
@@ -69,8 +70,14 @@ impl Swept {
     pub(crate) fn say(&self) -> String {
         match self {
             Swept::Absent => String::new(),
-            Swept::Removed { .. } => format!("旧版放在 ~/{LEGACY_REL} 的入口已删掉。"),
-            Swept::Kept { why } => format!("~/{LEGACY_REL} 没动：{why}。"),
+            Swept::Removed { .. } => copy_text(
+                "rsCcmLegacy.say.removed",
+                &[("rel", &LEGACY_REL.to_string())],
+            ),
+            Swept::Kept { why } => copy_text(
+                "rsCcmLegacy.say.kept",
+                &[("rel", &LEGACY_REL.to_string()), ("why", &why.to_string())],
+            ),
         }
     }
 }
@@ -83,7 +90,7 @@ pub(crate) async fn sweep<D: Door>(door: &D) -> Result<Swept, String> {
         // 读不成（不是文本 / 读不动）⇒ 不认、不动。说出来，不当成「不在」。
         Err(e) => {
             return Ok(Swept::Kept {
-                why: format!("读不成文本（{e}），认不出是不是 cc-monitor 放的"),
+                why: copy_text("rsCcmLegacy.kept.unreadable", &[("e", &e.to_string())]),
             })
         }
     };
@@ -92,13 +99,13 @@ pub(crate) async fn sweep<D: Door>(door: &D) -> Result<Swept, String> {
     };
     if !is_ours(&text) {
         return Ok(Swept::Kept {
-            why: "不是 cc-monitor 放的".to_string(),
+            why: copy_text("rsCcmLegacy.kept.notOurs", &[]),
         });
     }
     match door.delete(&home, LEGACY_REL, &text).await {
         Ok(()) => Ok(Swept::Removed { path: got.path }),
         Err(Refused::Stale(_)) => Ok(Swept::Kept {
-            why: "刚读完它就被改了，这一次不删".to_string(),
+            why: copy_text("rsCcmLegacy.kept.changed", &[]),
         }),
         Err(r) => Err(r.said()),
     }

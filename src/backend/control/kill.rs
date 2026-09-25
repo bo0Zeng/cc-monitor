@@ -2,7 +2,7 @@
 //!
 //! # 它与 monitor 侧那条路的关系
 //!
-//! monitor 的 `tmux.rs::kill_remote_tmux` 今天拼一条穿过 ssh + shell 的原子命令，
+//! monitor 的 `kill_remote_tmux`（〔C4e〕已迁到界面 `src/tmux-control.ts::killSession`，经通道直接说本命令）当年拼一条穿过 ssh + shell 的原子命令，
 //! 带 §34 的 **Gate 1/2/3**。本模块是它在后端侧的对应物：
 //! **argv 直传、不过 shell**，三道门由 [`super::gate::admit_destructive`] 复现。
 //!
@@ -90,7 +90,14 @@ pub(crate) fn kill_for_inbound(
 ) -> Result<serde_json::Value, (String, String)> {
     let name = parse_name(args).map_err(|(c, m)| (c.to_string(), m))?;
     run(&name).map_err(|(c, m)| (c.to_string(), m))?;
-    Ok(serde_json::json!({ "session": name, "killed": true }))
+    Ok(reply(&name))
+}
+
+/// 〔C4e · 第四波 4C〕帧面成品 `{session, killed}` 的构造器 —— 从 [`kill_for_inbound`] 里原样抽出来（逻辑不动），
+/// 只为让跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 拿**同一个**构造器对拍：
+/// 界面（`src/tmux-control.ts::killSession`）从此直接收这份成品，monitor 那一跳只搬字节。
+pub(crate) fn reply(name: &str) -> serde_json::Value {
+    serde_json::json!({ "session": name, "killed": true })
 }
 
 #[cfg(test)]

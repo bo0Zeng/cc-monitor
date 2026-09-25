@@ -98,8 +98,6 @@ import type {
   CliRenderRequest,
   CliRenderResponse,
   PayloadRenderRequest,
-  SendIntoRequest,
-  SendIntoResponse,
 } from "../launch-cli-wire.ts";
 
 import type { Alias } from "../generated/Alias";
@@ -161,6 +159,7 @@ import type { SkillFile } from "../generated/SkillFile";
 import type { SkillInstallApplied } from "../generated/SkillInstallApplied";
 import type { SkillInstallPreview } from "../generated/SkillInstallPreview";
 import type { SkillTargetText } from "../generated/SkillTargetText";
+import type { SkillUninstallApplied } from "../generated/SkillUninstallApplied";
 import type { McpSyncPreview } from "../generated/McpSyncPreview";
 import type { RestartHint } from "../generated/RestartHint";
 import type { SessionActivityPayload } from "../generated/SessionActivityPayload";
@@ -198,28 +197,6 @@ export interface UserPathStatus {
 }
 
 export const commands = {
-  /** 往 bus 上某个 agent 发一条消息。Rust 返回 `Result<String, String>`（人话结果）⇒ 原始类型。 */
-  cc_bus_send: (args: { origin: string; id: string; text: string }) =>
-    invoke<string>("cc_bus_send", args),
-  /** P4c（#77/#78）：向**所有**已登记 agent 广播。爆炸半径大 —— UI 侧确认必须带数字。 */
-  cc_bus_broadcast: (args: { origin: string; text: string }) =>
-    invoke<string>("cc_bus_broadcast", args),
-  /** P4c（#77/#78）：收掉一个 agent。**破坏性且不可撤销** —— UI 侧两步确认。 */
-  cc_bus_kill: (args: { origin: string; id: string }) => invoke<string>("cc_bus_kill", args),
-
-  /**
-   * 在某目录派生一个协作 agent。Rust 返回 `Result<String, String>`（人话结果）⇒ 原始类型。
-   * `account` 空串 = **显式基座**（后端翻成 `--base`）——**不存在「什么都不传」这一档**。
-   */
-  cc_bus_spawn: (args: {
-    origin: string;
-    dir: string;
-    task: string;
-    tool: string;
-    // Rust 侧是 `Option<String>`；TS 侧传**空串**表示显式基座（后端翻成 `--base`）。
-    account: string;
-  }) => invoke<string>("cc_bus_spawn", args),
-
   /** 读 `cc_get_auto_launch`。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   cc_get_auto_launch: () => invoke<AutoLaunchConfig>("cc_get_auto_launch"),
 
@@ -248,10 +225,6 @@ export const commands = {
 
   /** `K-R135`：从用户级 PATH 上**只摘掉我们那一格**。桶①。 */
   ccm_user_path_remove: () => invoke<void>("ccm_user_path_remove"),
-
-  /** 远端 `tmux capture-pane -p` 的画面文本。返回**原始类型**，无需生成物（桶③）。 */
-  capture_remote_pane: (args: { origin: string; target: string }) =>
-    invoke<string>("capture_remote_pane", args),
 
   /**
    * 前端性能日志落进 monitor 日志（无 devtools 环境下的唯一取证通道，grep `fe_perf`）。
@@ -458,13 +431,6 @@ export const commands = {
     onChunk: Channel<JsonlLinePayload[]>;
   }) => invoke<number>("stream_read_session_jsonl", args),
 
-  /**
-   * 往远端 tmux 会话发按键。Rust 返回 `Result<(), String>` ⇒ **桶①**。
-   * `enter` 缺省时 Rust 侧按 true 处理（`account-restart.ts` 有一处显式传 `false`）。
-   */
-  tmux_send_keys: (args: { origin: string; target: string; keys: string; enter?: boolean }) =>
-    invoke<void>("tmux_send_keys", args),
-
   /** 读某 agent 的 inbox。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   read_cc_bus_inbox: (args: { origin: string; id: string }) =>
     invoke<CcBusMessage[]>("read_cc_bus_inbox", args),
@@ -631,10 +597,6 @@ export const commands = {
   /** log 目录与文件清单。`current_size_bytes`/`size_bytes` 是**字节数**、`modified_ms` 是**毫秒时间戳**——两个量纲的上限论证在 Rust 侧分开写（C03 纪律）。 */
   get_log_file_info: () => invoke<LogFileInfo>("get_log_file_info"),
 
-  /** 某个 bus agent 在不在线。返回 `Result<bool, String>` ⇒ 原始类型。 */
-  check_cc_bus_agent_online: (args: { origin: string; id: string }) =>
-    invoke<boolean>("check_cc_bus_agent_online", args),
-
   /** 部署内嵌的后端到远端。Rust 返回 `Result<String, String>`（人话结果）⇒ 原始类型。 */
   /** 部署远端后端（〔MC1〕连同 `ccm` 入口，一次）。 */
   deploy_remote_backend: (args: { cfg: unknown }) => invoke<string>("deploy_remote_backend", args),
@@ -716,12 +678,6 @@ export const commands = {
   // 那就是 §31 最终形态第①条逐字禁的「前端硬编码后端命令」。
   render_local_attach: (args: { tmuxName: string }) =>
     invoke<string>("render_local_attach", args),
-
-  // U8a-2c-1：**「控制搬进后端」的第一条生产通道** —— 往已存在的远端 tmux 会话键入载荷
-  // （`send-keys` 那半边）。`attach` 那半边**不走它**：§1.3 要求最终 exec 落在用户自己的
-  // 终端进程里，backend 在远端、开不了你面前的窗。
-  backend_send_into: (args: { req: SendIntoRequest }) =>
-    invoke<SendIntoResponse>("backend_send_into", args),
 
   /** 把内嵌的 vendor `cc-acct-iso` 部署到远端。返回人话结果串 ⇒ 原始类型，无需生成物。 */
   deploy_remote_acct_iso: (args: { cfg: unknown; destDir: string }) =>
@@ -816,10 +772,6 @@ export const commands = {
 
   /** 搜索索引状态。Rust 签名**无 `Result` 包装**（`-> SearchIndexStatus`）。 */
   get_search_index_status: () => invoke<SearchIndexStatus>("get_search_index_status"),
-
-  /** 杀掉远端某个 tmux 会话。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  kill_remote_tmux: (args: { origin: string; target: string }) =>
-    invoke<void>("kill_remote_tmux", args),
 
   /** 当前活着的端口转发列表。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   list_forwards: () => invoke<ForwardStatus[]>("list_forwards"),
@@ -988,6 +940,19 @@ export const commands = {
     take: string[];
     overwrite: string[];
   }) => invoke<SkillInstallApplied>("skill_install_apply", args),
+
+  /**
+   * 〔SU1 · 第四波 4C · V116〕skill 卸：`to` 那台装记录里 `dir` 那一条，把勾的那几个文件删掉（只删装时写进去的）。
+   * `seen` 原样送回看的时候那台后端回的现有原文（CAS 期望：那之后又被改过 ⇒ 停下，说清删了哪几个）；
+   * `confirm` = 勾了的里「要问」的那几个（装完改过 / 装之前就在）。目录留着。
+   */
+  skill_uninstall_apply: (args: {
+    to: Origin;
+    dir: string;
+    seen: SkillTargetText[];
+    take: string[];
+    confirm: string[];
+  }) => invoke<SkillUninstallApplied>("skill_uninstall_apply", args),
 
   // ════════════════════════════════════════════════════════════════════════
   // 〔C4a · 子步 2〕**最后十条**：原先在 `tab-session-actions.ts`（tab 层）与 `accounts.ts`

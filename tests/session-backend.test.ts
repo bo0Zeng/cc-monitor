@@ -159,7 +159,9 @@ test("P3s-Y2：新造名字的路径，deriveTmuxName 的结果必须过铸造�
       //   「留空则用 ${deriveTmuxName(cwd)}」只是给用户看**建议名**，不流进 name 位。
       //   ⇒ 人群是「**产出一个会被用作会话名的值**」，不是「出现过这个函数」。
       //   判法：那一行要么是赋值/传参（`=` 或 `,` 结尾），要么就是展示。
-      if (code.includes("`") && !code.includes("mintTmuxName(")) continue;
+      //   〔CP2b · 4C〕文案进了文案表之后那句展示长成 `copyText("…", { name: deriveTmuxName(…) })`，
+      //   不再是模板串 ⇒ 取文口调用同样算「展示」。
+      if ((code.includes("`") || code.includes("copyText(")) && !code.includes("mintTmuxName(")) continue;
       checked += 1;
       if (!code.includes("mintTmuxName(")) {
         const before = code;

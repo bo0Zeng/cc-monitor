@@ -1175,7 +1175,7 @@ fn watch_loop(
                     }
                 }
             }
-            WatchEvent::Notify(Err(errs)) => tracing::warn!("debouncer error: {errs:?}"),
+            WatchEvent::Notify(Err(errs)) => tracing::warn!("debouncer failed: {errs:?}"),
             // P2：pidfd 醒了 = 该 pidfile 当时追踪的**那个进程实例**已退出。取代原先
             // 每 2s 遍历 `state.sessions` 调 `session_alive` 的判活扫描。
             // **pid 比对挡陈旧唤醒**（同路径已换 pid / 已被移除）⇒ 幂等。

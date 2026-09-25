@@ -54,13 +54,15 @@
 //! 4. **真的「拖」出去没做** —— 这一刀是一颗按钮。窗口之间互拖、拖到别的应用里，
 //!    那要平台的拖放协议，与本刀不是一件事。
 
+use crate::copy_table::copy_text;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use super::source::Row;
 
 /// 行上那颗按钮。
-pub const DOWNLOAD_LABEL: &str = "下载";
+pub static DOWNLOAD_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinDownload.label.download", &[]));
 
 /// 这一行**拉得下来**吗。
 ///
@@ -101,12 +103,15 @@ pub fn is_downloadable(r: &Row) -> bool {
 pub fn plan_dest(typed: &str, src_name: &str) -> Result<String, String> {
     let t = typed.trim();
     if t.is_empty() {
-        return Err("要存到哪儿？落点是空的".into());
+        return Err(copy_text("rsFilewinDownload.plan.empty", &[]).into());
     }
     let ends_with_sep = t.ends_with('/') || (cfg!(windows) && t.ends_with('\\'));
     if ends_with_sep {
         if src_name.trim().is_empty() {
-            return Err(format!("`{t}` 看起来是个目录，可这一行没有名字能接上去"));
+            return Err(copy_text(
+                "rsFilewinDownload.plan.noName",
+                &[("path", &t.to_string())],
+            ));
         }
         return Ok(format!("{}/{}", t.trim_end_matches(['/', '\\']), src_name));
     }
@@ -200,7 +205,7 @@ pub fn judge_dest(ask: &Ask, exists: impl Fn(&str) -> bool) -> DestVerdict {
     else {
         // 第二问那一态不该走到这儿来。回一句能读的，而不是 panic ——
         // 这个窗口崩掉等于用户丢掉整个文件管理器（release 是 `panic = "abort"`）。
-        return DestVerdict::Rejected("内部状态不对：现在问的不是落点".into());
+        return DestVerdict::Rejected(copy_text("rsFilewinDownload.judge.wrongState", &[]).into());
     };
     let dest = match plan_dest(text, src_name) {
         Ok(d) => d,

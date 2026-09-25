@@ -115,6 +115,7 @@
 //!   两向相等判据住 `K-R124-ruler.py` ⑭；真 Windows 装机那一维仍零读数。
 //! - **Windows 上一趟读数都没有**（手上没有 Windows 机器）。
 
+use crate::copy_table::copy_text;
 use std::path::{Path, PathBuf};
 
 use super::source::{Listed, Source};
@@ -166,7 +167,8 @@ pub struct OpenRequest {
 ///
 /// 序列化失败（今天只可能是 `Row`/`Source` 里出现了 serde 表达不了的东西）。
 pub fn encode_request(r: &OpenRequest) -> Result<String, String> {
-    serde_json::to_string(r).map_err(|e| format!("开窗种子序列化失败：{e}"))
+    serde_json::to_string(r)
+        .map_err(|e| copy_text("rsFilewinProc.seed.encodeFailed", &[("e", &e.to_string())]))
 }
 
 /// 字节 → 种子。**纯函数**。
@@ -179,12 +181,13 @@ pub fn encode_request(r: &OpenRequest) -> Result<String, String> {
 /// 不是合法 JSON / 字段形状不对 / 空输入。
 pub fn decode_request(raw: &str) -> Result<OpenRequest, String> {
     if raw.trim().is_empty() {
-        return Err(format!(
-            "开窗种子是空的 —— 这个二进制不是给人直接跑的，\
-             它要 monitor 从 stdin 把那一屏交给它（或者由判据喂）。{BIN_ENV} 指的就是它"
+        return Err(copy_text(
+            "rsFilewinProc.seed.empty",
+            &[("binEnv", &BIN_ENV.to_string())],
         ));
     }
-    serde_json::from_str(raw).map_err(|e| format!("开窗种子读不动：{e}"))
+    serde_json::from_str(raw)
+        .map_err(|e| copy_text("rsFilewinProc.seed.unreadable", &[("e", &e.to_string())]))
 }
 
 /// 窗口那份二进制在 `dir` 里的落点。**纯函数**（判据要在临时目录上喂它）。
@@ -244,15 +247,20 @@ pub fn resolve_window_bin() -> Result<PathBuf, String> {
             }
             looked.push(p);
         }
-        Err(e) => return Err(format!("问不到本进程的可执行文件路径：{e}")),
+        Err(e) => {
+            return Err(copy_text(
+                "rsFilewinProc.selfPath.failed",
+                &[("e", &e.to_string())],
+            ))
+        }
     }
-    Err(format!(
-        "找不到窗口那份二进制（`{BIN_STEM}`）。看过这几处：{looked:?}\n\
-         ⚠ **安装包里有它**（装完与主程序同目录：Windows 是 `$INSTDIR`、deb 是 `/usr/bin`）\
-         ⇒ 走到这一句多半是两种情形之一：① 用户手里是 Release 页上那个**裸单文件**\
-         （它不带任何随包二进制）—— 出路是装一次安装包；② 开发树里第二个 bin 还没编\
-         —— 出路是 `cargo build --bin {BIN_STEM}`（产物在那棵树的 `<target-dir>/<档>/` 下）。\
-         要指一份别处的，设环境变量 {BIN_ENV}。"
+    Err(copy_text(
+        "rsFilewinProc.bin.notFound",
+        &[
+            ("binStem", &BIN_STEM.to_string()),
+            ("looked", &format!("{:?}", looked)),
+            ("binEnv", &BIN_ENV.to_string()),
+        ],
     ))
 }
 
@@ -290,7 +298,12 @@ pub fn spawn_window(req: &OpenRequest) -> Result<crate::spawn_managed::ManagedCh
         Lifetime::Detached,
         StderrSink::Inherit,
     )
-    .map_err(|e| format!("起不了窗口进程（{}）：{e}", bin.display()))?;
+    .map_err(|e| {
+        copy_text(
+            "rsFilewinProc.spawn.failed",
+            &[("bin", &(bin.display()).to_string()), ("e", &e.to_string())],
+        )
+    })?;
     write_seed(&mut child, &seed)?;
     Ok(child)
 }
@@ -304,16 +317,10 @@ fn write_seed(child: &mut crate::spawn_managed::ManagedChild, seed: &str) -> Res
     let mut pipe = child
         .stdin
         .take()
-        .ok_or_else(|| "窗口进程没有 stdin 管子 —— 那是本模块自己设的，设丢了".to_string())?;
+        .ok_or_else(|| copy_text("rsFilewinProc.spawn.noStdin", &[]))?;
     pipe.write_all(seed.as_bytes())
         .and_then(|()| pipe.flush())
-        .map_err(|e| {
-            format!(
-                "开窗种子送不进那个进程：{e}\n\
-                 ⚠ 这一形多半是它**当场就退了**（管子的读端没了 ⇒ EPIPE），\
-                 而不是窗口画不出来 —— 原因在它自己的 stderr 上"
-            )
-        })
+        .map_err(|e| copy_text("rsFilewinProc.seed.sendFailed", &[("e", &e.to_string())]))
 }
 
 /// **开一个窗口** —— 生产那条路的入口。回那个进程的 pid。
@@ -343,12 +350,13 @@ pub fn open_in_new_process(req: &OpenRequest) -> Result<u32, String> {
         super::shell::EARLY_FAILURE_BUDGET,
     ) {
         let why = match child.try_wait() {
-            Ok(Some(st)) => format!("那个进程在开窗预算内就退了（{st}）"),
-            Ok(None) => "那个进程既没退也没在跑 —— 这一形说明上面那一跳的判法坏了".to_string(),
-            Err(e) => format!("问不到那个进程的死活：{e}"),
+            Ok(Some(st)) => copy_text("rsFilewinProc.open.exited", &[("st", &st.to_string())]),
+            Ok(None) => copy_text("rsFilewinProc.open.failed", &[]),
+            Err(e) => copy_text("rsFilewinProc.open.failedWhy", &[("e", &e.to_string())]),
         };
-        return Err(format!(
-            "{why}。原因只落在它自己的 stderr 上（跟着界面进程的 stderr 走）"
+        return Err(copy_text(
+            "rsFilewinProc.open.seeStderr",
+            &[("why", &why.to_string())],
         ));
     }
     reap_later(child);
@@ -393,7 +401,7 @@ pub async fn dial_back(h: &crate::chan::host::Handoff) -> Result<super::source::
     };
     crate::chan::dial::dial(h, budget)
         .await
-        .map_err(|e| format!("窗口连不上主程序：{e}"))
+        .map_err(|e| copy_text("rsFilewinProc.dialBack.failed", &[("e", &e.to_string())]))
 }
 
 /// 拨回 monitor 那个通道口（回环）的期限。回环上连一次 ＋ 一来一回的认证，给得很宽。

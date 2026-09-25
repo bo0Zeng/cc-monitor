@@ -251,6 +251,10 @@ enum Kind {
     /// 它不是欠账：书签不是用户文件（不归后端写面管），是这个程序自己存下的东西，
     /// 与 `config.json` 同一族；写口只有 `bookmarks::mutate` 一处（上锁 → 现读 → 改 → 原子换）。
     OwnState,
+    /// 〔CP2b · 第四波 4C〕**对外文案表的取文口**（`copy_table::copy_text`）。它不是欠账：
+    /// `设计/01 §6.9`「所有对外文案与报错都从一张表来」—— 表是编译期内嵌的一份 JSON，窗口进程与 app 读同一份字节，
+    /// 取文口是纯函数（查表 ＋ 填占位符），不碰进程外任何东西。
+    Copy,
     /// monitor 那一侧：通道宿主（交接件 · 生产句柄）。
     Host,
     /// monitor 那一侧：起进程那个全仓唯一出口（`exec_site_registry` 管着）。
@@ -311,6 +315,8 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("launch::launch_remote_terminal", Kind::Terminal),
     // ── monitor 自己的状态 ──
     ("utils::atomic_write_json", Kind::OwnState),
+    // ── 对外文案表（CP2b）──
+    ("copy_table::copy_text", Kind::Copy),
 ];
 
 /// ★ **monitor 那一侧**（`entry.rs` ＋ [`MONITOR_FNS`]）够得到的 app 侧符号，逐条。
@@ -328,6 +334,8 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("spawn_managed::spawn_managed_cmd", Kind::Spawn),
     ("ssh_source::RemoteConfig", Kind::Config),
     ("paths::resolve_monitor_data_dir", Kind::DataDir),
+    // 〔CP2b〕monitor 那一侧（entry.rs）的报错也从文案表取。
+    ("copy_table::copy_text", Kind::Copy),
 ];
 
 /// 一段生产代码 → `(函数名, 那一块)`。函数外的行归 `""`。

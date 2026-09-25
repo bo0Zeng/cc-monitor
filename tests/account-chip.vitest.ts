@@ -109,8 +109,8 @@ describe("chipLabel", () => {
   it("无 state → 未连远端", () => {
     expect(chipLabel(null)).toBe("未连远端");
   });
-  it("旧 backend → backend 需更新", () => {
-    expect(chipLabel(state({ available: false, error: "版本过旧" }))).toBe("backend 需更新");
+  it("旧 backend → 后端需更新", () => {
+    expect(chipLabel(state({ available: false, error: "版本过旧" }))).toBe("后端需更新");
   });
   it("未启用 → 未启用", () => {
     expect(
@@ -269,7 +269,7 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
     const kk = acct({ name: "kk", authKind: "api-key", loggedIn: false, authReady: true });
     const items = await menuRows([acct({ name: "wei" }), kk], "wei");
     const row = rowOf(items, "kk");
-    expect(statusOf(row)).toBe("api-key（未配置端点）");
+    expect(statusOf(row)).toBe("API key（未配置端点）");
     // 三条阴性：替换**前**这一行会写「未登录 ⚠」（因为 `loggedIn: false`），而 KA6a 点名的
     // 坏体验是「已登录」那一档。两句都不许再出现在这个格子里。
     expect(statusOf(row)).not.toBe("已登录");
@@ -290,7 +290,7 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
     const esc = acct({ name: "esc", mode: "in-place" });
     const items = await menuRows([esc, acct({ name: "wei" })], "wei");
     const row = rowOf(items, "esc");
-    expect(statusOf(row)).toBe("逃生口");
+    expect(statusOf(row)).toBe("不支持切换");
     expect(row.title).toBe(accountsMod.accountStatusBadge(esc, { scope: "remote" }).title);
     expect(row.title).toContain("in-place 模式");
     // 这一格断的是 `accountStatusBadge` **实际给的** `warn` 值 —— 实读 `src/accounts.ts:185-191`：
@@ -442,15 +442,15 @@ describe("K-H2b D1 阻-5：没有远端时 chip 渲染本机账号，徽章带 a
     const B = apiKey("acct-b", "/h/.claude-alt/acct-b");
     // ① 有行 + 在跑 ⇒ 「经本机中转」；同一趟里 B 没行 ⇒ 「未配置端点」（非空对照就在同一趟）。
     let items = await localMenuRows([A, B], { routed: ["/h/.claude-alt/acct-a"], running: true });
-    expect(statusOf(rowOf(items, "acct-a"))).toBe("api-key（经本机中转）");
-    expect(statusOf(rowOf(items, "acct-b"))).toBe("api-key（未配置端点）");
+    expect(statusOf(rowOf(items, "acct-a"))).toBe("API key（经本机中转）");
+    expect(statusOf(rowOf(items, "acct-b"))).toBe("API key（未配置端点）");
     // ② 只把「中转在不在跑」翻过来 ⇒ 第三档。
     items = await localMenuRows([A, B], { routed: ["/h/.claude-alt/acct-a"], running: false });
-    expect(statusOf(rowOf(items, "acct-a"))).toBe("api-key（中转未运行）");
+    expect(statusOf(rowOf(items, "acct-a"))).toBe("API key（中转未运行）");
     // ③ 问不到 routing ⇒ **不表态**，回落到缺席那一档（只说条件、不下判断）。
     items = await localMenuRows([A, B], "fail");
-    expect(statusOf(rowOf(items, "acct-a"))).toBe("api-key（未配置端点）");
-    expect(rowOf(items, "acct-a").title).toContain("不替它下判断");
+    expect(statusOf(rowOf(items, "acct-a"))).toBe("API key（未配置端点）");
+    expect(rowOf(items, "acct-a").title).toContain("无法判断端点是否已配置");
   });
 
   it("★ 本机那一趟问的是本机那条路（不是 `list_remote_accounts`）", async () => {

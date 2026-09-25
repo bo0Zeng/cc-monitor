@@ -20,6 +20,7 @@ import { bindErrorToast } from "./error-toast";
 import { dispatcher } from "./keybindings/registry";
 import { getKeybindings } from "./keybindings/store";
 import { turnEndNotifier } from "./turn-notify";
+import { copyText } from "./copy-table";
 
 // Vite HMR：任何热更新一律整页重载（理由见 `main.ts` 同名那段）。
 if (import.meta.hot) {
@@ -36,7 +37,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 没带 sid 就没有东西可镜像。原先这种 URL 会落回主窗口的整套 bootstrap；
     // 拆开之后本窗口没有那一套，如实说出来而不是白屏。
     const status = document.getElementById("status-bar");
-    if (status) status.textContent = "独立只读视图：URL 缺 ?viewer=<sid>";
+    if (status) status.textContent = copyText("entryViewer.module.missingParam");
     return;
   }
   // 〔CF2〕这个会话在哪台机器上（会话流 `subscribe(origin, kind)` 的寻址键）。缺 ⇒ 本机（旧的开窗 URL 只带 sid）。
@@ -73,12 +74,12 @@ async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
   status.innerHTML = "";
   const statusMsg = document.createElement("span");
   statusMsg.className = "status-msg";
-  statusMsg.textContent = "独立只读视图";
+  statusMsg.textContent = copyText("entryViewer.bootstrapViewer.title");
   status.appendChild(statusMsg);
 
   const empty = document.createElement("div");
   empty.className = "empty-state";
-  empty.textContent = "加载中…";
+  empty.textContent = copyText("entryViewer.bootstrapViewer.loading");
   streamRoot.appendChild(empty);
 
   // 复用 TabManager，过滤到本 sid；tab 栏由 .viewer-mode 隐藏。无 tasksPanel。
@@ -99,8 +100,8 @@ async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
   const termBtn = document.createElement("button");
   termBtn.type = "button";
   termBtn.className = "viewer-topbar-btn";
-  termBtn.textContent = "↗ 终端";
-  termBtn.title = "调出对应终端窗口 (`)";
+  termBtn.textContent = copyText("entryViewer.bootstrapViewer.terminal");
+  termBtn.title = copyText("entryViewer.bootstrapViewer.terminalHint");
   termBtn.addEventListener("click", () => tabs.bringActiveTerminalToFront());
   // 〔S4 · 第四波〕↗ 与 tab 上那颗同一道门（`terminal-front.ts`）：非 Windows 上最后一跳是桩、每点必败 ⇒ 不渲。
   //   快捷键（下面的 `terminal.bring-front`）还够得到 `bringActiveTerminalToFront`，那里会说一句实话。
@@ -108,8 +109,8 @@ async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
   const cwdBtn = document.createElement("button");
   cwdBtn.type = "button";
   cwdBtn.className = "viewer-topbar-btn";
-  cwdBtn.textContent = "📂 目录";
-  cwdBtn.title = "打开工作目录 (E)";
+  cwdBtn.textContent = copyText("entryViewer.bootstrapViewer.cwd");
+  cwdBtn.title = copyText("entryViewer.bootstrapViewer.cwdHint");
   cwdBtn.addEventListener("click", () => tabs.openActiveTabCwd());
   topbar.appendChild(cwdBtn);
   const appEl = document.getElementById("app");
