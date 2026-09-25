@@ -479,7 +479,16 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p3m-ssh-zlib**（2026-09-25，第四波 CZ1 合并那一拍）：行为 —— russh 换成仓内打补丁的副本（`src/bridge/vendor/russh`，
 /// 修 zlib 解压一包只交出约 2 倍包长的缺陷），闸 `RUSSH_ZLIB_SOUND` 开 ⇒ 判准下「远」的链路从此真走 zlib@openssh.com。
 /// 子命令没变，照 p1v 先例不加历史行。
-pub const BUILD_ID: &str = "p3m-ssh-zlib";
+///
+/// ★★★ **p3n-channel-bus-skill-key**（2026-09-25，第四波 4C 合并列车 MG1：RT1 · RK1 · FN1 · GP1 · NT2 · SU1 · C4e · CP2b · CP2c 那一拍）：
+/// 子命令 ＋4 —— SU1 `--skill-install-record` · `--skill-installs` · `--skill-uninstall-plan`（skill 卸载，两个命令面）·
+/// C4e `--bus-broadcast`（cc-bus 广播的挑人与逐个投递挪进后端，两个命令面）。
+/// ＋ 行为：RK1 中转口要钥匙（`~/.cc-monitor/relay-key` 0600、跨重起不变；进门三问 403 / 421；`relay-*` 多 `not_ours`）·
+/// FN1 文件管理面不再拦会话文件（V119，无围栏，只剩删会话认会话形状）·
+/// GP1 `files.stat` 回 `mode` · `history-record` 收 `configDir` · 本机凭据文件的写者换成本机常驻后端 ·
+/// NT2 capture 放弃时关通道、`remote_ask` 内层随外层收 · 被交 `CCM_BACKEND_STDERR_LOG` 时 stderr 落有上限、滚动的文件 ·
+/// SU1 `skill-install-plan` 带 `take` 时多答 `ledger` · CP2c 后端对外的句子经文案表（`copy-core`）出、契约错改英文诊断。
+pub const BUILD_ID: &str = "p3n-channel-bus-skill-key";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
