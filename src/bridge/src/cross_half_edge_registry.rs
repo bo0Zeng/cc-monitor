@@ -83,6 +83,20 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
+        "tests/bridge/mcp_sync_tests.rs",
+        "src/backend/inbound.rs",
+        "〔AS1〕MCP 推 / 拉：monitor 发的命令名、发的四格与读的两格必须就是后端登记表里声明的那几个 \
+         —— 读它才能两向对拍（本侧手抄一份就成了两侧同源的恒等）",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/mcp_sync_tests.rs",
+        "src/backend/mcp_sync.rs",
+        "〔AS1〕「判定只住后端」的零命中判据：monitor 这一侧不许出现后端那几个闭集的线上名 —— \
+         闭集的人群必须从后端现抠（本侧抄一份，后端加一态这条就静默失效）",
+    ),
+    (
+        "monitor→backend",
         "tests/bridge/footprint_remote_tests.rs",
         "src/backend/inbound.rs",
         "〔RM1a〕「足迹」远端那一栏：monitor 发的命令名、读的那几格必须就是后端登记表里声明的那几个 \

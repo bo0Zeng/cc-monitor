@@ -608,3 +608,43 @@ fn every_reason_for_needing_a_shell_is_declared_once_and_used_once() {
         "本文件生产段的起进程口不是 2 处了 —— `readonly_guard::spawn_registry` 那个数要一起看"
     );
 }
+
+// ════════════════════════════════════════════════════════════════════════════════════════
+// 〔S5 · 第四波〕直路上 `--ccm-sid` 没有载体时**说一句**（不报错、照常起）
+// 要求住址：`调研/设计/99 §4.4` 那一行（「不报错 … 直路语义走已落地的启动期令牌那条路」）·
+// `lib.rs::TARGET_GAPS` 旧话逐字「被接受、零效果、而且不出声」。
+// ════════════════════════════════════════════════════════════════════════════════════════
+
+/// 出声的只有「无载体」那一格；没给 `--ccm-sid` 的一趟一个字不多。
+#[test]
+fn a_direct_ccm_sid_without_a_carrier_says_so() {
+    assert_eq!(
+        direct_identity_note(&direct_of(&["--ccm-sid", "s-1"], None)),
+        Some(DIRECT_SID_NO_CARRIER)
+    );
+    assert_eq!(direct_identity_note(&direct_of(&[], None)), None);
+    assert!(
+        DIRECT_SID_NO_CARRIER.contains("CCM_RBIND_TOKEN")
+            && DIRECT_SID_NO_CARRIER.contains("照常起"),
+        "那句话得说清靠什么认、以及这一趟照常起：{DIRECT_SID_NO_CARRIER}"
+    );
+}
+
+/// 真跑那一侧真的读这一格 —— 防「字段有了、没人读」（那正是本件的原病：进了 `Opts`、零效果）。
+/// 整行相等：撑大成别的表达式时那一行就不见了。
+#[test]
+fn exec_direct_really_reads_the_identity_cell() {
+    let prod = crate::guard_support::production_code(own_source());
+    let at = guard_core::pin_line(&prod, "if let Some(note) = direct_identity_note(d) {")
+        .unwrap_or_else(|e| panic!("`exec_direct` 不再读直路身份那一格：{e}"));
+    let fn_at = guard_core::pin_line(
+        &prod,
+        "fn exec_direct(d: &plan::Direct, resolved: Option<&str>) -> i32 {",
+    )
+    .expect("`exec_direct` 的签名变了");
+    assert_eq!(
+        at,
+        fn_at + 1,
+        "那一句不在 `exec_direct` 的第一行 —— 要在走 `sh -c` 那条岔路之前说（两条路都得出声）"
+    );
+}
