@@ -86,6 +86,7 @@ mod remote_history;
 mod remote_relay; // 〔RM1a〕中转（层 1）按机器：本机由 monitor 监护，远端问 / 交那台机器的后端
 mod remote_write_registry; // devbench F10c：远端写面登记（接三张表各自划出去、然后没人接的那道缝）
 mod search;
+mod session_facts; // 〔U4b〕两条后端流交来、要送前端的会话事实（容器 · 本机可重连落已结束）的一个口
 mod session_map;
 mod shell_dialect; // AL1c（第四波 4B）：`设计/71 §4.4` 那组 shell 方言接口 —— POSIX 与 PowerShell 各一份实现，通用层零 shell 文本
                    // `15 §5.1 A3` / `00 §1.5.2`：起子进程的**唯一出口**（三个策略都没有 Default）。
@@ -111,8 +112,8 @@ mod ccm_probe;
 mod ssh_source;
 // 〔C2 · `设计/05 §13`〕拨号应答的客户端（通信层面 A 的 SSH 链路那一段）。
 mod ssh_link;
-// 〔C2〕界面进程里最后一份 russh 拨号 —— 只剩 SFTP（`F7c`）一个用户，换走即删。
-mod inproc_dial;
+// 〔SR1b · 2026-09-24〕`inproc_dial`（界面进程里最后一份 russh 拨号，只剩 SFTP 一个用户）删了：
+//   SFTP 进了本机常驻后端（`src/backend/dial/sftp.rs`），**界面进程零 SSH**（用户 V89）。
 // 〔C2 → SR1a〕拨号的宿主：配置 → 请求 · 经本机常驻后端开链路 · 链路交给 `ssh_link`。
 mod dial_host;
 // 〔SR1a〕链路的 monitor 这一侧：在本机后端那条流上多路复用到各远端的字节流（`link-*`）。
@@ -186,8 +187,8 @@ mod quote_singleton_guard; // U8c-2b-0：POSIX 单引号 quote 在 Rust 侧只�
 mod rust_timer_registry; // F09：monitor **Rust 侧**周期唤醒清账（`polling_registry` 明确留下的那半）
 mod scanning_guard_registry; // audit-0805 F23：扫描型判据不许裸遍历（自匹配这一族的收口）
 mod session_name_registry; // U11 摸底：会话名产出点清账 + 递减棘轮（账本 S12 的落地形态）
-#[cfg(test)]
-mod sftp_move_ledger; // K-R78：那 14 处 SFTP 拨号今天各自卡在哪（乙为什么没搬 + 甲现打的四条挡路石；整体 cfg(test)）
+                           // 〔SR1b · 2026-09-24〕`sftp_move_ledger`〔散文墓碑〕（K-R78：那 14 处 SFTP 拨号今天各自卡在哪 —— 乙为什么没搬 + 甲的四条挡路石）
+                           //   **退役**：那 14 处全搬了（界面进程零 SFTP，V89），底账要记的那件事做完了；它的挡路石各自怎么被拆的写在 SR1b 的记录里。
 #[cfg(test)]
 mod shared_crate_registry; // U8c-1：新增共享 crate 时 CI 三样都要补 —— 从散文变机检
 mod shell_lint_registry; // audit-0805 08-08：每个 shell 脚本要么进 shellcheck 要么登记豁免
@@ -712,6 +713,44 @@ pub fn run() {
             // 原来这里起 monitor 自己的 jsonl watcher（`watcher.rs`，已删：第二套游标与 seq）、
             // 还有那条「会话后到 ⇒ 强制重扫」的兜底通道 —— 后端宣告会话时先 prime、历史走旁路快照，那个竞态不在了。
 
+            // 〔U4b · 第四波〕`session_facts` 的出口：两条后端流交来的会话事实在这里落地（见那个模块的头注）。
+            //   装在两个 emitter 之前 —— 装之前交来的容器事实只记账，`frontend-ready` 对账会整份重发。
+            {
+                let handle = app.handle().clone();
+                crate::session_facts::install_sink(move |fact| match fact {
+                    crate::session_facts::Fact::Container { sid, container } => {
+                        if let Err(e) = handle.emit(
+                            bridge::events::SESSION_CONTAINER,
+                            &bridge::SessionContainerPayload {
+                                session_id: sid,
+                                container: container.as_wire().to_string(),
+                            },
+                        ) {
+                            tracing::warn!("emit session-container failed: {e}");
+                        }
+                    }
+                    // 本机收割：这条可重连的会话，它的 tmux 会话没了 ⇒ 已结束（与本机 removed 臂的 Archive 同形）。
+                    // 只对**仍在** idle 账本里的 sid 落地：收割算完到这里之间它可能已经复活（`added` 臂清过）。
+                    crate::session_facts::Fact::LocalIdleGone { sid } => {
+                        let origin = crate::backend::control::inbound_client::LOCAL_ORIGIN;
+                        if !ssh_source::snapshot_idle_for_origin(origin).contains(&sid) {
+                            return;
+                        }
+                        ssh_source::clear_idle(&sid);
+                        if let Err(e) = handle.emit(
+                            bridge::events::SESSION_ENDED,
+                            &bridge::SessionEndedPayload {
+                                session_id: sid.clone(),
+                            },
+                        ) {
+                            tracing::warn!("emit session-ended（本机收割）failed: {e}");
+                        } else {
+                            tracing::info!("session ended（本机 tmux 也没了）: {sid}");
+                        }
+                    }
+                });
+            }
+
             // session 集合变化 emitter（本地）：
             //   - added：调 SidHwndCache.record 把 sid → hwnd 绑定持久化
             //   - removed：透传 session-ended 给前端，Tab 灰显归档
@@ -732,6 +771,8 @@ pub fn run() {
                                     let _ =
                                         cache_for_emitter.record(sid, info.pid, &bind_for_emitter);
                                 }
+                                // 〔U4b · G2〕本机也有可重连了 ⇒ 会话（重新）变活时清掉它的 idle 标记（远端那一臂同一条）。
+                                ssh_source::clear_idle(sid);
                                 // 会话（重新）变活 → 通知前端复活已归档的本地 Tab（resume：
                                 // 崩溃→灰显→/resume 后免 F5 即回 live）。**仅在 PID 真探活通过
                                 // 时发**：崩溃残留的旧 sessions/<PID>.json 被后续文件事件重扫也
@@ -757,20 +798,51 @@ pub fn run() {
                                     }
                                 }
                             }
-                            // S0：本地路径没有 idle-tmux 灰点（`SESSION_IDLE` 是远端专有）。
-                            // 「两种 cause 一视同仁」这句话的正主住 `SidHwndCache::apply_local_removal` 的头注
-                            //（K-W1C 09-04：在这里加 `match cause` 是行为改动，不是可测性改动）。
+                            // 〔U4b · 第四波 · G2〕**本机也按容器在不在分「可重连 / 已结束」**，与远端同一条判定
+                            //（`ssh_source::classify_removed`；`INVARIANTS §40`：本机 ＝ 不走 ssh 的远端）。
+                            // 此前这里写着「本地路径没有 idle-tmux 灰点（`SESSION_IDLE` 是远端专有）」、无条件
+                            // 发 `session-ended` ⇒ 本机 claude 退了而 tmux 会话还在时，tab 说「已结束」（`U4.md §0.1` G2）。
+                            // 查的**只是本机那一格**原文（`find_local_tmux_origin_for_sid`，不跨 origin 猜）；
+                            // `/branch` 那一形（`Superseded`）照旧恒归档 —— 本地 diff 早就判得出它（P3 刀 0），
+                            // `session_map.rs` 那段「要等有人给那个 emitter 接上 `classify_removed` 才第一次生效」从此生效。
+                            // 「可重连 → 已结束」的产出者是本机收割器（`local_backend::absorb_local_frame` 的两个 tmux 臂，
+                            // 结论经 `session_facts` 回到下面 setup 装的那个出口）。
+                            // 绑定照旧两种 cause 都忘（`SidHwndCache::apply_local_removal` 头注；本机 ↗ 只在 Windows 上有，
+                            // 而 Windows 没有 tmux ⇒ 本机永远走不到 `Idle`，那条头注的行为这一拍不动）。
                             for removed in change.removed {
                                 cache_for_emitter.apply_local_removal(&removed);
+                                crate::session_facts::forget(&removed.sid);
+                                let tmux_origin = ssh_source::find_local_tmux_origin_for_sid(&removed.sid);
+                                let disposition =
+                                    ssh_source::classify_removed(tmux_origin, removed.cause);
                                 let sid = removed.sid;
-                                let payload = bridge::SessionEndedPayload {
-                                    session_id: sid.clone(),
-                                };
-                                if let Err(e) = handle.emit(bridge::events::SESSION_ENDED, &payload)
-                                {
-                                    tracing::warn!("emit session-ended failed: {e}");
-                                } else {
-                                    tracing::info!("session ended: {sid}");
+                                match disposition {
+                                    ssh_source::RemovedDisposition::Idle { origin } => {
+                                        ssh_source::mark_idle(&origin, &sid);
+                                        let payload = bridge::SessionIdlePayload {
+                                            session_id: sid.clone(),
+                                        };
+                                        if let Err(e) =
+                                            handle.emit(bridge::events::SESSION_IDLE, &payload)
+                                        {
+                                            tracing::warn!("emit session-idle failed: {e}");
+                                        } else {
+                                            tracing::info!("session idle-tmux（本机）: {sid}");
+                                        }
+                                    }
+                                    ssh_source::RemovedDisposition::Archive => {
+                                        ssh_source::clear_idle(&sid);
+                                        let payload = bridge::SessionEndedPayload {
+                                            session_id: sid.clone(),
+                                        };
+                                        if let Err(e) =
+                                            handle.emit(bridge::events::SESSION_ENDED, &payload)
+                                        {
+                                            tracing::warn!("emit session-ended failed: {e}");
+                                        } else {
+                                            tracing::info!("session ended: {sid}");
+                                        }
+                                    }
                                 }
                             }
                             // issue #23：红绿灯——status/waitingFor 变了才会出现在这里
@@ -807,20 +879,19 @@ pub fn run() {
                 Arc::new(parking_lot::Mutex::new(std::collections::HashSet::new()));
 
             // SSH-remote Phase 0 (issue #15)：远端是**纯附加**数据源。config.json 的
-            // `remote.enabled = true` 且配置完整 → 在本地 watcher 之外**额外**起一条
+            // `remote.enabled = true` 且配置完整 → 在本机那条流之外**额外**起一条
             // ssh_source::run（aggregate：本地 + 远端 session 同时显示）。否则（默认 /
             // 无 remote 配置）此块不执行，本地路径与历史 bit-for-bit 一致。
             let remote_cfgs = load_remote_configs();
             if !remote_cfgs.is_empty() {
                 tracing::info!(
-                    "remote mode ENABLED (additive): {} SSH data source(s) (local jsonl-watcher still running)",
+                    "remote mode ENABLED (additive): {} SSH data source(s) (local backend stream still running)",
                     remote_cfgs.len()
                 );
 
                 // 远端独立 session 通道：ssh_source::run 持 sender；这里起一条**专用**的
                 // 精简 emitter drain 它。
-                //   - added（Feature ②）：远端 Tab 由 line 帧经 ensureTab 创建（不调
-                //     force_rescan_tx，那是本地 jsonl 专用）。但要扫本地窗口找
+                //   - added（Feature ②）：远端 Tab 由 line 帧经 ensureTab 创建。但要扫本地窗口找
                 //     `ccm-rbind-<sid>` 标题绑定 hwnd，供 ↗ 拉前。wrapper 设标题经 ssh
                 //     透传到本地 WT 有延迟（OSC 序列要等远端 shell 起来 + 透传），故
                 //     +1500/3000/4500/6000ms 重试扫描，首次绑定成功即停。
@@ -894,6 +965,8 @@ pub fn run() {
                                 }
                                 for removed in change.removed {
                                     let sid = removed.sid;
+                                    // 〔U4b〕容器是那个进程的事实 ⇒ 它离开活跃集就忘掉（不跨进程沿用）。
+                                    crate::session_facts::forget(&sid);
                                     // audit-fixes F03.2（灰灯三态分流）：backend-removed（claude 进程没了，权威）
                                     // 到达时，看该 sid 的 `@ccm_sid` 是否仍出现在某 origin 的 TmuxSessions 帧里：
                                     //   - Some(origin)=tmux 会话尚在（空 shell）→ **idle-tmux 灰灯**：mark_idle +
@@ -1101,6 +1174,16 @@ pub fn run() {
                         // 无行骨架/bg ⚙ 元数据/远端 lastActive 焦点全靠这次重发
                         // （Batch5 I-1 缺口）。宣告先于行的契约由这里的顺序保证。
                         ssh_source::reannounce_all(&handle);
+                        // 〔U4b · G3〕容器账本整份重发（事件不进 replay buffer；同 `reannounce_all` 的理由）。
+                        for (sid, c) in crate::session_facts::containers_snapshot() {
+                            let _ = handle.emit(
+                                bridge::events::SESSION_CONTAINER,
+                                &bridge::SessionContainerPayload {
+                                    session_id: sid,
+                                    container: c.as_wire().to_string(),
+                                },
+                            );
+                        }
                         replay
                             .replay_and_mark_ready(&handle, priority_sid.as_deref())
                             .await;
@@ -1112,10 +1195,17 @@ pub fn run() {
                         // 对账：对已不活跃的**本地** sid 补发 session-ended，复用前端
                         // archiveTab（幂等）。本段仅本地：session_map 只认本地，远端 sid
                         // 不在其中（远端对账见紧随其后的 issue #20 块）。
+                        // 〔U4b · G2〕本机也有可重连了 ⇒ 本机的 stale 集同样排除 idle sid（远端那一段的同一条理由：
+                        //   不排除就会补发 ended、F5 后可重连塌成已结束）。idle 账本本来就按 origin 存全部机器。
+                        let idle_all: std::collections::HashSet<String> =
+                            ssh_source::snapshot_idle_by_origin()
+                                .into_values()
+                                .flatten()
+                                .collect();
                         let stale: Vec<String> = replay
                             .buffered_local_session_ids()
                             .into_iter()
-                            .filter(|sid| !session_map.is_session_active(sid))
+                            .filter(|sid| !session_map.is_session_active(sid) && !idle_all.contains(sid))
                             .collect();
                         // issue #20：#19 的远端版。远端 sid 不在 session_map，活跃集由
                         // remote-session-emitter 维护（backend added/removed + 断连 flush
@@ -1128,11 +1218,7 @@ pub fn run() {
                         // 之前执行，归档随即被后续远端行 un-archive 翻回 live，补发等于无效。
                         // audit-fixes F03.2：idle-tmux sid 不在 remote_active（变 idle 时已移出），若不排除
                         // 会被当"死"补 SESSION_ENDED、F5 后灰灯塌成 archived。故排除 idle sid + 下面重发 SESSION_IDLE。
-                        let idle_all: std::collections::HashSet<String> =
-                            ssh_source::snapshot_idle_by_origin()
-                                .into_values()
-                                .flatten()
-                                .collect();
+                        //（`idle_all` 〔U4b〕挪到了本机 stale 那一段之前，两段共用。）
                         let remote_stale: Vec<String> = {
                             let active = remote_active.lock();
                             replay
@@ -1310,6 +1396,7 @@ pub fn run() {
             history::update_history_metadata,
             history::list_last_accounts,
             history::resume_history_session,
+            history::probe_session_record, // 〔U4b〕resume 之前问记录还在不在
             history::new_local_session,
             // 🔴 `K-R109`（09-13）：本机后端产「把终端接进那个会话」那一句（`ccm attach <名>`）。
             //    `R61` 裁定三〔用 09-13 逐字「归本机后端就好了啊」〕。注册这一行与
@@ -1369,16 +1456,11 @@ pub fn run() {
             panorama::panorama_touching,
             panorama::panorama_symbols_in_file,
             panorama::panorama_drift,
-            panorama::panorama_add_annotation,
-            panorama::panorama_propose_annotation,
-            panorama::panorama_approve_annotation,
-            panorama::panorama_remove_annotation,
             panorama::panorama_list_annotations,
-            panorama::panorama_write_doc_link,
-            panorama::panorama_remove_doc_link,
             panorama::panorama_diagram_kinds,
             panorama::panorama_diagram,
             panorama_call::panorama_call,
+            panorama_call::panorama_edit,
             port_forward::start_forward,
             port_forward::stop_forward,
             port_forward::list_forwards,

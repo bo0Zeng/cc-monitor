@@ -224,7 +224,7 @@ import {
   type TabRect,
 } from "../src/tabs";
 import type { TabCollection } from "../src/tab-collections";
-import { ENDED, LIVE, RECONNECTABLE } from "../src/tab-session-state";
+import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, RECONNECTABLE, UNSEEN } from "../src/tab-session-state";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { REPO_ROOT } from "./test-support/repo-root.ts";
@@ -3793,7 +3793,11 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
     };
     await tm.loadPinned();
     const t = tabOf("s1");
-    expect(t.state, "没有活进程 ⇒ 已结束（`§B.5` 逐字）").toEqual(ENDED);
+    // 〔U4b · 说不清〕本机还没报过清单 ⇒ **说不清**（`设计/30 §3.5.7a`：`Unseen` 不许显示成已结束）；
+    //   报完了、清单里没有它 ⇒ 已结束（`§B.5` 那句「没有活进程」这才成立）。
+    expect(t.state, "那台还没报完清单 ⇒ 说不清，不许说成已结束").toEqual(UNSEEN);
+    tm.markOriginSeen(LOCAL_ORIGIN, new Set());
+    expect(t.state, "清单报完了、里面没有它 ⇒ 已结束").toEqual(ENDED);
     expect(t.pinned, "复活出来的当然是固定的").toBe(true);
     expect(t.title, "🔴 标题要用存下来的那份 —— 不等读文件（`§B.5` 逐字）").toBe("存下来的标题");
     expect(t.parentPath, "jsonlPath 是复活的必需品，没落到 tab 上等于白存").toBe("/p/s1.jsonl");
@@ -4807,5 +4811,147 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
     rows[1].click();
     expect(t.skeleton!.isPending(42)).toBe(false);
     expect(t.skeleton!.isPending(7), "只物化点到的那一段，不是全建").toBe(true);
+  });
+});
+
+// ==========================================================================
+// 〔U4b · 第四波 · T3 / T4〕三格后端事实在 `TabManager` 上真走一遍（`调研/第四波记录/U4b.md §2`）。
+// ==========================================================================
+describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走", () => {
+  let tm: TabManager;
+  let disk: Record<string, unknown>;
+  /** `probe_session_record` 的桩答案：`undefined` = 抛错（问不到）。 */
+  let probe: { present: boolean; root: string } | undefined;
+  const tabOf = (sid: string): Tab => home(tm).store.tabs.get(sid)!;
+  const btn = (): HTMLElement => document.querySelector<HTMLElement>(".tab")!;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    disk = {};
+    probe = { present: true, root: "/h/.claude/projects" };
+    vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
+      if (cmd === "save_config") {
+        disk = JSON.parse(JSON.stringify((args as { value: unknown }).value));
+        return Promise.resolve(undefined);
+      }
+      if (cmd === "probe_session_record")
+        return probe ? Promise.resolve(probe) : Promise.reject(new Error("没有控制通道"));
+      return Promise.resolve(undefined);
+    });
+    tm = makeTM();
+  });
+
+  it("★ G3：容器事实落在活会话上（tooltip 第一行说它）；早到的暂存、建 tab 时落实；死了之后来的不改死的那一格", () => {
+    tm.noteContainer("c1", "tmux"); // 早于建 tab
+    const t = tm.ensureTab("c1", "/x", "p", 0, "pi");
+    expect(t.state).toEqual(LIVE_ATTACHABLE);
+    expect(btn().title).toBe("在 tmux 会话里运行：程序退了也能接回去");
+    tm.noteContainer("c1", "none");
+    expect(t.state).toEqual(LIVE_RESUMABLE);
+    expect(btn().title).toBe("不在 tmux 会话里：程序退了只能 resume");
+    tm.noteContainer("c1", "screen"); // 不认识的取值 ⇒ 当没报，不动
+    expect(t.state).toEqual(LIVE_RESUMABLE);
+    tm.archiveTab("c1");
+    tm.noteContainer("c1", "tmux"); // 晚到：死了的那一格由死的那一刻说了算
+    expect(t.state).toEqual(ENDED);
+  });
+
+  it("★ G3 行为不回退：活着、只是不在 tmux 里的会话 ≠ 已结束（× 不露、↗ 还在）", () => {
+    tm.ensureTab("c2", "/x", "p", 0, "pi");
+    tm.noteContainer("c2", "none");
+    expect(btn().classList.contains("ended")).toBe(false);
+    expect(btn().classList.contains("reconnectable")).toBe(false);
+  });
+
+  it("★ 说不清：固定复活、那台还没报完 ⇒ 说不清（字里零处「已结束」）；报完了没有它 ⇒ 已结束；报完了有它 ⇒ 活", async () => {
+    disk = {
+      tabBar: {
+        pinned: [
+          { sid: "p1", origin: "pi", title: "T1", jsonlPath: "/p/p1.jsonl" },
+          { sid: "p2", origin: LOCAL_ORIGIN, title: "T2", jsonlPath: "/p/p2.jsonl" },
+          { sid: "p3", origin: LOCAL_ORIGIN, title: "T3", jsonlPath: "/p/p3.jsonl" },
+        ],
+      },
+    };
+    await tm.loadPinned();
+    for (const sid of ["p1", "p2", "p3"]) expect(tabOf(sid).state).toEqual(UNSEEN);
+    // T4：说不清那一刻，tab 的提示句 · 状态名 · 固定空态，一处都不许说「已结束」。
+    const said = (): string =>
+      [...document.querySelectorAll<HTMLElement>(".tab")].map((b) => b.title).join("\n") +
+      [...document.querySelectorAll<HTMLElement>(".pin-revived-hint")].map((n) => n.textContent).join("\n");
+    expect(said()).toContain("说不清");
+    expect(said()).not.toContain("已结束");
+    // 本机清单报完：p3 在清单里 ⇒ 活；p2 不在 ⇒ 已结束；远端那条不受本机清单影响。
+    tm.markOriginSeen(LOCAL_ORIGIN, new Set(["p3"]));
+    expect([tabOf("p1").state, tabOf("p2").state, tabOf("p3").state]).toEqual([UNSEEN, ENDED, LIVE]);
+    // 远端报完（`origin-sessions-listed`）：没被宣告过 ⇒ 已结束。正控：这时才出现「已结束」。
+    tm.markOriginSeen("pi");
+    expect(tabOf("p1").state).toEqual(ENDED);
+    expect(said()).toContain("已结束");
+  });
+
+  it("★ 说不清：那台先报完、固定后复活 ⇒ 直接已结束（`seenOrigins` 记住了）；远端又宣告它 ⇒ 活", async () => {
+    tm.markOriginSeen("pi");
+    disk = { tabBar: { pinned: [{ sid: "q1", origin: "pi", title: "Q", jsonlPath: "/p/q1.jsonl" }] } };
+    await tm.loadPinned();
+    expect(tabOf("q1").state).toEqual(ENDED);
+    tm.createSkeletonTab("q1", "/x", "pi");
+    expect(tabOf("q1").state).toEqual(LIVE);
+  });
+
+  it("★ G1：resume 查到记录不在 ⇒ 不开终端 ＋ 诚实报错（说清哪台、哪棵树）＋ 落「记录已不在」；再查到在 ⇒ 翻回已结束、照常 resume", async () => {
+    tm.ensureTab("g1", "/home/u/p", "/p/g1.jsonl", 0, LOCAL_ORIGIN);
+    tm.archiveTab("g1");
+    probe = { present: false, root: "/h/.claude/projects" };
+    await home(tm).actions.resumeTab("g1");
+    expect(invoke).not.toHaveBeenCalledWith("resume_history_session", expect.anything());
+    expect(showActionFailureToast).toHaveBeenCalledWith(
+      "没法 resume：记录已不在",
+      "本机 的 /h/.claude/projects 里找不到会话 g1 的记录，resume 接不上它，所以没有打开终端。",
+    );
+    expect(tabOf("g1").state).toEqual(GONE);
+    expect(btn().title).toBe("这个会话已结束，它的记录也不在了，没法 resume");
+    probe = { present: true, root: "/h/.claude/projects" };
+    await home(tm).actions.resumeTab("g1");
+    expect(tabOf("g1").state).toEqual(ENDED);
+    expect(invoke).toHaveBeenCalledWith("resume_history_session", expect.objectContaining({ sessionId: "g1" }));
+  });
+
+  it("★ G1：远端两条路（直连 · tmux 全新）同样先问；问不到 ⇒ 当不知道、照今天的路走（不当「不在」）", async () => {
+    tm.ensureTab("g2", "/home/pi/proj", "/p/g2.jsonl", 0, "aya");
+    tm.archiveTab("g2");
+    probe = { present: false, root: "/home/pi/.claude/projects" };
+    await home(tm).actions.resumeTab("g2");
+    await home(tm).actions.resumeTabTmux("g2");
+    expect(runRemoteResume).not.toHaveBeenCalled();
+    expect(runRemoteResumeTmux).not.toHaveBeenCalled();
+    expect(tabOf("g2").state).toEqual(GONE);
+    probe = undefined; // 问不到
+    await home(tm).actions.resumeTab("g2");
+    expect(runRemoteResume).toHaveBeenCalledTimes(1);
+    expect(tabOf("g2").state, "问不到不改状态").toEqual(GONE);
+  });
+
+  it("★ G1：可重连的会话记录没了也不落「记录已不在」（终端还在，接得回去）", () => {
+    tm.ensureTab("g3", "/x", "p", 0, "pi");
+    tm.markTmuxIdle("g3");
+    tm.markRecord("g3", false);
+    expect(tabOf("g3").state).toEqual(RECONNECTABLE);
+  });
+});
+
+// 〔U4b · 第四波〕**接线判据**：`main.ts` 起步那几行（`list_active_sessions` 之后标本机清单报完 ·
+// 两个新事件交给 TabManager）没有 DOM 判据够得着（整个 `main.ts` 是入口脚本）⇒ 读源码数调用点，两向恰好一处。
+describe("〔U4b〕main.ts 接线", () => {
+  it("★ 本机清单报完 · 容器事件 · 远端清单报完，三处接线各恰一处", () => {
+    const main = readFileSync(resolve(REPO_ROOT, "src/main.ts"), "utf8");
+    const n = (needle: string): number => main.split(needle).length - 1;
+    expect([
+      n("tabs.markOriginSeen(LOCAL_ORIGIN, new Set(active.map((s) => s.session_id)))"),
+      n("onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container)"),
+      n("onOriginSessionsListed: (origin) => tabs.markOriginSeen(origin)"),
+    ]).toEqual([1, 1, 1]);
   });
 });

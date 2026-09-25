@@ -48,9 +48,8 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 
 use crate::event_replay::EventReplay;
 use crate::ssh_link::ConnectStage;
-// 〔C2〕`sftp.rs`（`F7c` 独占，本拍不许动）从本模块取这两个名字 —— 它们今天住 `inproc_dial.rs`
-// （界面进程里最后一份 russh 拨号，唯一调用方就是 SFTP）。`F7c` 换走那天这一行随那份文件一起删。
-pub(crate) use crate::inproc_dial::{connect_session, ClientHandler};
+// 〔SR1b · 2026-09-24〕从前这里把 `connect_session` / `ClientHandler` 从 `inproc_dial.rs` 再导出给 `sftp.rs`
+//   （界面进程里最后一份 russh 拨号，唯一调用方就是 SFTP）。SFTP 进了本机常驻后端，那份文件整份删了，这一行随之删。
 use crate::session_map::{RemovalCause, RemovedSid, SessionChange};
 
 /// S0 **跨语言双写点**：backend 那侧 `RemovalCause::Superseded` 的 serde 线上名。
@@ -825,6 +824,33 @@ pub fn find_tmux_origin_for_sid(sid: &str) -> Option<String> {
     tmux_origin_for_sid(&snapshot_tmux_by_origin(), sid)
 }
 
+/// 〔U4b · 第四波 · G2〕**只在一个 origin 那份 `tmux ls` 原文里**找 `@ccm_sid == sid`（纯函数）。
+///
+/// 本机那一臂要问的是「**本机**的 tmux 里还有没有它」—— 不许跨 origin 猜：sid 在别的机器的原文里出现
+/// （拷过去的会话、同 sid 的 resume）说的是那台机器，不是本机。远端那一臂仍用
+/// [`find_tmux_origin_for_sid`]（它本来就要知道「在哪台」，答案会被 `mark_idle(origin, …)` 记下）。
+pub(crate) fn tmux_origin_for_sid_at(
+    by_origin: &std::collections::HashMap<String, String>,
+    at: &crate::origin::Origin,
+    sid: &str,
+) -> Option<String> {
+    let key = at.as_wire_str();
+    let raw = by_origin.get(key)?;
+    crate::backend::control::tmux::parse_tmux_ls(raw)
+        .iter()
+        .any(|s| s.sid.as_deref() == Some(sid))
+        .then(|| key.to_string())
+}
+
+/// [`tmux_origin_for_sid_at`] 读本机那一格（`<local>`）的生产包装。
+pub fn find_local_tmux_origin_for_sid(sid: &str) -> Option<String> {
+    let origin = crate::backend::control::inbound_client::LOCAL_ORIGIN;
+    let raw = tmux_raw_for(origin)?;
+    let one: std::collections::HashMap<String, String> =
+        std::iter::once((origin.to_string(), raw)).collect();
+    tmux_origin_for_sid_at(&one, &crate::origin::Origin(origin.to_string()), sid)
+}
+
 /// audit-fixes F03.2（D 审计②覆盖缺口）：backend-removed 到达时的分流决策。emitter 收 removed 后
 /// 据「该 sid 的 tmux 是否仍在」（`find_tmux_origin_for_sid` 的 Option）择一：
 /// `Idle{origin}`=tmux 会话尚在 → 灰灯（mark_idle + emit SESSION_IDLE + **不 forget**）；
@@ -1579,7 +1605,13 @@ pub enum InboundFrame {
         /// 而 `§8.7` 逐字警告「**不要先做 4**」—— 先改 UI 分派会造出一段
         /// 「令牌还没有、判断已经改」的窗口期。本字段今天买到的是「**键到手了**」。
         rbind_token: Option<String>,
+        /// 〔U4b · 第四波，additive〕这条活会话住在什么容器里（`tmux` / `none`）。
+        /// 缺席 / 不认识的取值 ⇒ `None` = 不知道（**不是**「不在 tmux 里」）。
+        /// 交给 `session_facts::note_container`（本机那条流同一个口）。
+        container: Option<crate::session_facts::Container>,
     },
+    /// 〔U4b · 第四波〕后端的活会话清单报完了（Phase 1 走完）。无载荷。
+    SessionsReplayed,
     /// Batch9-F27：会话 status 变化（p1g backend；远端红绿灯）。
     SessionStatus {
         sid: String,
@@ -1635,6 +1667,14 @@ pub enum InboundFrame {
     LinkData { link: String, data: Vec<u8> },
     /// 〔SR1a〕一条链路收尾了（后端 `wire::Frame::LinkEnd`）。
     LinkEnd { link: String, error: Option<String> },
+    /// 〔SR1b〕一趟传输此刻的样子（后端 `wire::Frame::Transfer`）。只有**本机后端**那条流上会有
+    /// （传输台住本机后端），交 `sftp_pool::deliver`。`end` 解不动 ⇒ 整帧 `None`（坏帧）。
+    Transfer {
+        id: String,
+        got: u64,
+        total: u64,
+        end: Option<crate::sftp_pool::End>,
+    },
 }
 
 /// 拥塞提示的**措辞**：有没有不可恢复的丢失，说法完全不同〔audit-0805 F21〕。
@@ -1794,8 +1834,14 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
                 // 即**本地那张 `token → HWND` 表用的同一条**。两处各写一遍的后果是
                 // join 在某些取值上静默失配，而失配与「没有令牌」在界面上同形。
                 rbind_token: opt("rbind_token").filter(|t| crate::bind::rbind_token_shape_ok(t)),
+                // 〔U4b〕两个字面量之外一律当不知道（`Container::from_wire`）。
+                container: opt("container")
+                    .as_deref()
+                    .and_then(crate::session_facts::Container::from_wire),
             })
         }
+        // 〔U4b · 第四波〕additive 新帧，无载荷。旧后端不发 ⇒ 这条分支永不命中，固定的 tab 停在「说不清」。
+        "sessions_replayed" => Some(InboundFrame::SessionsReplayed),
         "session_status" => {
             let sid = obj.get("sid")?.as_str()?.to_string();
             let opt = |k: &str| obj.get(k).and_then(|v| v.as_str()).map(str::to_string);
@@ -1904,6 +1950,23 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
             Some(InboundFrame::LinkEnd { link, error })
         }
 
+        // 〔SR1b〕传输进度 / 终局。`end` 在 ⇒ 必须是后端那三形之一，认不出 ⇒ 整帧 `None`（不猜一个结局）。
+        "transfer" => {
+            let id = obj.get("id")?.as_str()?.to_string();
+            let got = obj.get("got")?.as_u64()?;
+            let total = obj.get("total")?.as_u64()?;
+            let end = match obj.get("end") {
+                None => None,
+                Some(e) => Some(transfer_end(e)?),
+            };
+            Some(InboundFrame::Transfer {
+                id,
+                got,
+                total,
+                end,
+            })
+        }
+
         // ── `turn_end` **认识但刻意不消费**（U7-1）。──────────────────────────
         //
         // 「认识」与「消费」是两件事。落进 `_ => None` 的后果不是「忽略」，是
@@ -1939,10 +2002,26 @@ const KNOWN_FRAME_KINDS: &[&str] = &[
     "session_added",
     "session_removed",
     "session_status",
+    "sessions_replayed",
     "tmux_session_closed",
     "tmux_sessions",
+    "transfer",
     "turn_end",
 ];
+
+/// 〔SR1b〕`transfer` 帧的 `end`：后端 `wire::TransferEnd` 那三形之一；认不出 ⇒ `None`（调用方整帧丢）。
+/// 抽出来住 `parse_frame` 外面：那张 match 的臂是帧 kind 的名单（`known_kinds_matches_parse_frame` 按臂抠），
+/// 结局的三个名字不该混进去。
+fn transfer_end(e: &serde_json::Value) -> Option<crate::sftp_pool::End> {
+    Some(match e.get("state")?.as_str()? {
+        "done" => crate::sftp_pool::End::Done {
+            bytes: e.get("bytes")?.as_u64()?,
+        },
+        "failed" => crate::sftp_pool::End::Failed(e.get("why")?.as_str()?.to_string()),
+        "cancelled" => crate::sftp_pool::End::Cancelled,
+        _ => return None,
+    })
+}
 
 /// U7-1：**backend 的产出面 ↔ monitor 的消费面**对拍。
 ///
@@ -2957,6 +3036,7 @@ async fn stream_loop(
                 status,
                 waiting_for,
                 rbind_token,
+                container,
             }) => {
                 // 🔴 〔`设计/80 §8.7` 步 4，第二波 T4〕**记进令牌账本 —— ↗ 从此按它分派。**
                 //
@@ -3014,6 +3094,9 @@ async fn stream_loop(
                 if let Err(e) = app.emit(crate::bridge::events::REMOTE_SESSION_ADDED, &payload) {
                     tracing::warn!("ssh_source remote-session-added emit failed: {e}");
                 }
+                // 〔U4b · 第四波〕容器事实交 `session_facts`（本机那条流同一个口、同一个事件）。
+                //   排在 `remote-session-added` 之后：前端先建 tab、再落容器（早到的也有暂存兜着）。
+                crate::session_facts::note_container(&sid, container);
                 // Batch8-F26：tail-only 下历史改走旁路快照——宣告带 path 即入队
                 // （无 path = 会话刚起还没写 jsonl → 无历史可拉，后续行天然从
                 // tail 全量到达，无需快照）。队列按 sid 幂等（重复宣告不重拉）。
@@ -3280,11 +3363,33 @@ async fn stream_loop(
                     tracing::warn!("remote-backend-ready（accounts_changed）emit failed: {e}");
                 }
             }
+            // 〔U4b · 第四波〕那台的活会话清单报完了 ⇒ 发前端 `origin-sessions-listed`。
+            //   与上面 `remote-session-added` 同一条线程、同序 emit ⇒ 前端收到它时，这台全部的活会话都已宣告过。
+            //   前端据此把这台「固定、却没被报过」的 tab 从说不清落到已结束（`设计/30 §3.5.7a`）。
+            Some(InboundFrame::SessionsReplayed) => {
+                tracing::info!(
+                    "sessions-replayed: [{host_label}] 活会话清单报完了 → 已 emit 给前端"
+                );
+                if let Err(e) = app.emit(
+                    crate::bridge::events::ORIGIN_SESSIONS_LISTED,
+                    &crate::bridge::OriginSessionsListedPayload {
+                        origin: crate::origin::Origin(host_label.clone()),
+                    },
+                ) {
+                    tracing::warn!("origin-sessions-listed emit failed: {e}");
+                }
+            }
             // 〔SR1a〕链路帧只该出现在**本机后端**那条流上（monitor 只在那里开链路）。
             // 远端后端发来 ⇒ 协议对不上，照实说、丢掉。
             Some(InboundFrame::LinkData { link, .. } | InboundFrame::LinkEnd { link, .. }) => {
                 tracing::warn!(
                     "ssh_source [{host_label}] 远端后端发来了链路帧（link={link}）—— monitor 没在远端开过链路，丢掉"
+                );
+            }
+            // 〔SR1b〕传输帧同理：传输台住**本机**后端，远端后端发来 ⇒ 协议对不上，照实说、丢掉。
+            Some(InboundFrame::Transfer { id, .. }) => {
+                tracing::warn!(
+                    "ssh_source [{host_label}] 远端后端发来了传输帧（id={id}）—— 传输台在本机后端，丢掉"
                 );
             }
             None => {

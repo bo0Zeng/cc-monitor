@@ -4,6 +4,8 @@
 //! ⇒ rc 里的别名块 · PowerShell `$PROFILE` · 项目 `.mcp.json` · skill 收件箱 · `~/.claude/skills/cc-bus/` ·
 //! 删历史会话，这些改动从此都经**那台机器上的后端**（`files-peek` / `files-put` / `files-rename` /
 //! `files-chmod` / `files-delete-session`），本机与远端**同一条路**，只差 origin。
+//! 〔RM1d〕代码全景的批注 / 文档关联（V110「引擎只算、文件管理来写」）也经这扇门：计划由全景小程序算
+//! （`panorama_call.rs::edit_via`），落盘是这里的 `put` / `delete`（后者 = `files-delete`）。
 //!
 //! # 分工
 //!
@@ -81,6 +83,9 @@ pub(crate) trait Door {
         parents: bool,
     ) -> Result<Landed, Refused>;
     async fn rename(&self, root: &str, from: &str, to: &str) -> Result<(), String>;
+    /// 〔RM1d〕删**一个文件**（`files-delete`，非递归；落点同一道围栏）。今天唯一的用户：全景删批注侧车。
+    /// ⚠ 没有 CAS（后端这条命令不收 `expect`）—— 调用方要「删的是读到的那一份」就先 [`Door::peek`] 核一遍。
+    async fn delete(&self, root: &str, rel: &str) -> Result<(), String>;
     async fn chmod(&self, root: &str, rel: &str, mode: u32) -> Result<(), String>;
     async fn delete_session(&self, sid: &str) -> Result<String, String>;
     /// 一个路径**在不在**（`files-stat`）：在 ⇒ `Some(kind)`；对端答「读不到」⇒ `None`。
@@ -318,6 +323,16 @@ impl Door for BackendDoor {
         self.ask(
             "files-rename",
             serde_json::json!({ "root": root, "from": from, "to": to }),
+        )
+        .await
+        .map(|_| ())
+        .map_err(Refused::said)
+    }
+
+    async fn delete(&self, root: &str, rel: &str) -> Result<(), String> {
+        self.ask(
+            "files-delete",
+            serde_json::json!({ "root": root, "rel": rel }),
         )
         .await
         .map(|_| ())

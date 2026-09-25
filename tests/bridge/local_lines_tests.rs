@@ -168,6 +168,12 @@ const FRAMES: &[(&str, &str)] = &[
         "link_end",
         r#"{"kind":"link_end","link":"cf1-no-such-link"}"#,
     ),
+    // 〔合并主线 8f9263c3〕U4b 的「A 的清单报完了」与 SR1b 的传输进度 —— 都不是会话内容，就地吸收。
+    ("sessions_replayed", r#"{"kind":"sessions_replayed"}"#),
+    (
+        "transfer",
+        r#"{"kind":"transfer","id":"cf1-no-such-ticket","got":1,"total":2}"#,
+    ),
 ];
 
 #[test]

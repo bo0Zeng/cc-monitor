@@ -1,3 +1,9 @@
+//! # 要求住址：`INVARIANTS §18.1`（看不懂的行记在哪台的账上）＋ `INVARIANTS §28`（远端行带 origin）
+//!
+//! 核原文：`INVARIANTS §18.1` 逐字「账本第一层键是 origin，每台机器只看得到自己那一份」—— `lib.rs::batch_to_payloads`
+//! 把看不懂的行记在这一批的 origin 名下（V104「漂移记账按机器分开」）；`INVARIANTS §28` 逐字「上 wire（每条远端行带 `origin`）」
+//! —— 远端行带那台的名字。连 JSON 都不成立的行跳过、不 panic，对 `§18.1` 那条的抢救口径。〔JA1 点址 2026-09-24〕
+
 use super::*;
 use std::path::PathBuf;
 

@@ -254,6 +254,7 @@ mod bind_guard; // `DoD-4㈠`：零命中守卫单住一个文件（理由见它
 #[cfg(test)]
 #[path = "../../../tests/backend/relay/creds_guard.rs"]
 mod creds_guard; // `K-H2a` `KS2`/`KS4`：明文出口恰好一处 · 记日志走白名单（整体 #[cfg(test)]）
+mod framer; // `17 §3.7`：`relay/` 里唯一的增量分帧器（游标，不 drain）—— `tee.rs` 与 `http1.rs` 是它的两个客户
 mod http1;
 mod listen; // `20 §4`：监听面 —— bind / accept / 在途上界 / 起监听之前的接线
 mod machine; // 〔RM1a〕这台机器上的中转进程：口上有没有人在听 · 没有就起一个脱离的（帧面 `relay-*`）
