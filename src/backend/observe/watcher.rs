@@ -227,6 +227,12 @@ fn install_tmux_hooks_best_effort() {
     tracing::info!("tmux hook 已装 {n}/3（会话生/死/改名 → SIGUSR1 → 立刻重探）");
 }
 
+/// 〔SR1a〕这一批文件事件里有没有那份账号 manifest。**抽出来是为了判据**：
+/// 事件循环本身要起 tmux 探测，单测不许碰用户真实的 tmux server（`C7i`）。
+fn manifest_touched<'a>(mut paths: impl Iterator<Item = &'a Path>, manifest: &Path) -> bool {
+    paths.any(|p| p == manifest)
+}
+
 /// P2：挂 pidfd 看守的幂等入口。`events_tx` 为 `None`（单元测试）时什么都不做。
 fn arm_pid_watcher(key: &Path, pid: u32, expected_start: Option<u64>, state: &mut ReaderState) {
     let Some(tx) = state.events_tx.clone() else {
@@ -894,6 +900,8 @@ fn watch_loop(
     // 不收的话「合并去重」承诺的性质（改布局只改一处）根本没拿到。
     let projects = crate::agents::claudecode::paths::projects_root(&agent_home);
     let sessions = crate::agents::claudecode::paths::sessions_root(&agent_home);
+    // 〔SR1a〕账号 manifest（`设计/05 §13.6 ③`「账号清单变了」一帧）。
+    let accounts_manifest = crate::observe::accounts_query::default_manifest_path();
 
     let mut state = ReaderState::new(projects.clone(), with_bg, tail_only);
     // 〔`设计/80 §8.7` 步 2〕注入「客户端索要了启动期令牌」这一位。**不进 `new` 的签名**
@@ -991,6 +999,17 @@ fn watch_loop(
         }
     }
     watch_sock_dir_if_present(&mut debouncer, &sock_dir, &mut sock_dir_watched);
+    // 〔SR1a · `设计/05 §13.6 ③`〕**账号清单变了 ⇒ 一帧 `accounts_changed`**。监视 manifest 所在目录
+    // （NonRecursive；写 manifest 常是「写临时文件再 rename」，盯文件本身会在 rename 之后失聪）。
+    // 目录不在（这台机没启用多账号）⇒ 不挂；它后来才被建出来这一格**听不见**（与 `sessions/` 那条同形的已知边界）。
+    if let Some(dir) = accounts_manifest.parent().filter(|d| d.is_dir()) {
+        if let Err(e) = debouncer.watcher().watch(dir, RecursiveMode::NonRecursive) {
+            tracing::warn!(
+                "监视账号目录 {} 失败: {e} —— 账号清单变了也不会有 accounts_changed",
+                dir.display()
+            );
+        }
+    }
 
     // `sessions_watched` = 「**当前这个 inode** 我挂上了没有」。事件循环里靠它决定要不要重挂。
     let mut sessions_watched = false;
@@ -1049,6 +1068,13 @@ fn watch_loop(
     while let Ok(event) = events_rx.recv() {
         match event {
             WatchEvent::Notify(Ok(events)) => {
+                // 〔SR1a〕一批里 manifest 动了几次都只报一帧（批内合并；下一批再动再报）。
+                if manifest_touched(
+                    events.iter().map(|ev| ev.path.as_path()),
+                    &accounts_manifest,
+                ) {
+                    sink.send(Frame::AccountsChanged);
+                }
                 for ev in events {
                     let p = ev.path.as_path();
                     // ★★ `P0b-Y2`：**`sessions/` 换了 inode 或刚出现 ⇒ 重挂 + 重扫。**
