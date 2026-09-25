@@ -26,7 +26,7 @@
 //! 1. **同进程**（上面那一节）⇒ 代码必须链进 app 那个二进制 ⇒ 它得是
 //!    `monitor` 或 `monitor` 的依赖。
 //! 2. **门禁 `cargo` 那一格把 workspace 包数恒等钉在 9**
-//!    （`gate.sh` 里逐字写着 `run_gate_sum cargo 9`；
+//!    （`gate.sh` 里逐字写着 `run_gate_sum cargo 10`；
 //!    判法住 `gate.sh` 的 `run_gate_sum`，包数不等就红）。
 //!    新增任何一个 workspace 成员（哪怕叫 `crates/filewin-core`）都会让那一格当场红，
 //!    而那个 `9` 住 `gate.sh` —— **不在 24e 的写区** ⇒ 不许为了塞一个 crate 去改判据。
