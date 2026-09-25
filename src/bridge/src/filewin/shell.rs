@@ -96,7 +96,7 @@
 //!   [`FileWindow::apply_keys`] / [`FileWindow::apply_pick_click`] /
 //!   [`FileWindow::apply_menu_click`] / [`FileWindow::perform`]。
 //!   🔴 **写操作一条新路都没长**：键盘与菜单做的每一件，都落回行上那几颗按钮已经在走的
-//!   那几个 `begin_*`（以及删除那一摞的 `start_writes`）⇒ 围栏 · 一次问完 · 只经通道说 `call`
+//!   那几个 `begin_*`（以及删除那一摞的 `start_writes`）⇒ 一次问完 · 只经通道说 `call`（〔FN1〕围栏那一道 V119 拿掉了）
 //!   这几道闸一道都没绕开。
 //!   ⚠ **拖放从这一条里划出去了**：第二刀做了「拖入本机文件 → 上传到当前远端目录」
 //!   那一半（见 [`FileWindow::start_drop`] 与 [`super::transfer`]）；
@@ -404,7 +404,7 @@ pub struct FileWindow {
     /// 搜索框里那几个字。**UI 线程自己的**（同 [`Self::copy_prompt`] 的理由：
     /// 它是一个正在被编辑的草稿，不该出现在两条线程共享的那份状态里）。
     query: String,
-    /// 🔴〔第五刀〕`设计/99 §4.6.4`：那四条写操作的状态机（**围栏 · 一次问完 · 结果**）。
+    /// 🔴〔第五刀〕`设计/99 §4.6.4`：那四条写操作的状态机（**一次问完 · 结果**；〔FN1〕围栏那一段 V119 拿掉了）。
     pub write_board: WriteBoard,
     /// 「叫什么名字 / 改成什么权限」那个框。`None` = 没在问。
     /// **UI 线程自己的**（理由见 [`WritePrompt`]）。
@@ -1285,7 +1285,7 @@ impl FileWindow {
         true
     }
 
-    /// 起一摞 `§4.6.4`：**先过围栏，再一次问完，才动手。**
+    /// 起一摞 `§4.6.4`：**一次问完，才动手。**（〔FN1〕原来是「先过围栏，再……」，围栏 V119 拿掉了）
     ///
     /// 🔴 三段的顺序不在这里，在 [`super::writeops::run_writes`] 的结构里 ——
     /// 这里只负责把「怎么问 · 怎么做」两个口接上去（同 [`Self::start_drop`]）。
@@ -2122,7 +2122,7 @@ impl FileWindow {
     ///
     /// 先**再问一次** [`select::actions_for`]（菜单是开菜单那一刻的快照，键盘压根没问过）：
     /// 不在表里 ⇒ 出声、不做。在表里 ⇒ 落回行上那几颗按钮**已经在走**的那几个 `begin_*`
-    /// —— 一条新写路都没长（围栏 · 一次问完 · 只经通道说 `call` 全在那几个函数后面）。
+    /// —— 一条新写路都没长（一次问完 · 只经通道说 `call` 全在那几个函数后面）。
     pub fn perform(&mut self, a: Action, ctx: Option<egui::Context>) -> bool {
         let (idx, allowed) = {
             let rows = self.listing.rows.lock().unwrap();
@@ -2154,7 +2154,7 @@ impl FileWindow {
     }
 
     /// 删掉第 `idx` 那几行 —— **一摞**，走 [`Self::start_writes`]（⇒ `run_writes`：
-    /// 围栏 → 一次问完 → 串行做）。「批量底层已做好」说的就是那个函数。
+    /// 一次问完 → 串行做）。「批量底层已做好」说的就是那个函数。
     ///
     /// 🔴 每一行照旧过 [`Self::writable_row`] 那道第二闸；有一行过不去 ⇒ **整摞不起**并出声
     /// （起一摞「删 3 项」却悄悄只删 2 项，正是「选中态 == 批量那一摞」这条相等的反面）。
@@ -2432,7 +2432,7 @@ impl FileWindow {
         // `§5` 第二段那一摞：覆盖确认 ／ 进度 ／ **上一趟走的是哪条路**。同样模态、同样在前。
         self.copy_board.ui(ui);
         self.copy_ui(ui);
-        // 🔴〔第五刀〕`§4.6.4` 那一摞：一次问完的确认框 ／ **被围栏挡住那几句话** ／ 结果。
+        // 🔴〔第五刀〕`§4.6.4` 那一摞：一次问完的确认框 ／ 结果（〔FN1〕「被围栏挡住那几句话」那一段删了）。
         //    同样模态、同样画在列表之前。
         self.write_board.ui(ui);
         self.write_ui(ui);
