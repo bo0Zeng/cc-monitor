@@ -164,7 +164,7 @@ fn said(r: Routed) -> String {
     }
 }
 
-/// 〔B2〕问那台机器：「退出行为」那个值现在是什么。回后端那份原样（`shell` / `state` / `killOnExit` / …）。
+/// 〔B2〕问那台机器：「退出行为」那个值现在是什么。回后端那份原样（`state` / `killOnExit` / `reason` / `path`）。
 #[tauri::command]
 pub async fn backend_exit_policy(origin: Origin) -> Result<Value, String> {
     // 本机与远端**同一条路**（都是那台机器那条长连接，`C1`）；`route` 只用来拦空白名 ——

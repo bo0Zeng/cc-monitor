@@ -39,7 +39,7 @@ vi.mock("../../src/ipc/commands", () => ({
           case "backend_status":
             return Promise.resolve({ channel: true, pid: 7 });
           case "backend_exit_policy":
-            return Promise.resolve({ shell: "standalone", state: "absent", killOnExit: false });
+            return Promise.resolve({ state: "absent", killOnExit: false });
           case "list_ssh_host_aliases":
             return Promise.resolve([]);
           default:
