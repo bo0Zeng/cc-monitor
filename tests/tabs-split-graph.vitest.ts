@@ -104,6 +104,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/tab-router.ts",
     "src/tab-session-actions.ts",
     "src/tab-session-facts.ts",
+    "src/tab-session-state.ts", // 〔U4〕会话状态只经 `nextState` 改（转移表）＋ 关 / 拉前两道谓词
     "src/tab-store.ts",
     "src/tab-stream-view.ts",
     "src/tasks-panel.ts", // ensureTab：初始 task 快照
@@ -116,10 +117,12 @@ const DEPS: Record<string, readonly string[]> = {
   "src/tab-model.ts": [],
   // ④ 落点算术：纯函数，只认集合表的增删。
   "src/tab-drop.ts": ["src/tab-collections.ts"],
-  // ① store：零依赖（只存东西、只做顺序运算、只有一份订阅）。
-  "src/tab-store.ts": [],
-  // ② 路由：只写「上次的 tab」那一格 localStorage。
-  "src/tab-router.ts": ["src/local-storage.ts"],
+  // ① store：只存东西、只做顺序运算、只有一份订阅。〔U4〕摘要按活性分 ⇒ 要 `isLive` 那一个谓词。
+  "src/tab-store.ts": ["src/tab-session-state.ts"],
+  // ① 〔U4〕会话状态的两个轴：形状 ＋ 转移 ＋ 谓词 ＋ 呈现。呈现的字只经文案表取（`sessionState.*`）。
+  "src/tab-session-state.ts": ["src/copy-table.ts"],
+  // ② 路由：只写「上次的 tab」那一格 localStorage。〔U4〕已结束的不自动跟随 ⇒ `isResumeOnly`。
+  "src/tab-router.ts": ["src/local-storage.ts", "src/tab-session-state.ts"],
   // ① 事实抽取：agent 工具名判定 · 写类工具的文件路径。
   "src/tab-session-facts.ts": ["src/cards/subagent.ts", "src/panorama/session-files.ts"],
   // ③ 实时流视图：渲染栈 ＋ 骨架 ＋ 大纲 ＋ 分叉按钮，经 ipc/commands 包装层要骨架索引与正文。
@@ -134,6 +137,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/render-stream-record.ts",
     "src/skeleton-view.ts",
     "src/stream.ts",
+    "src/tab-session-state.ts", // 〔U4〕已结束的不进后台物化队列
     "src/views/outline-source.ts",
     "src/views/session-find.ts", // 〔SE2〕查找面板（搜索 ／ 大纲两个模式）
     "src/views/session-viewer.ts", // 只为 revealCard（方向别扭的那条，理由在 import 处）
@@ -145,16 +149,25 @@ const DEPS: Record<string, readonly string[]> = {
     "src/ipc/origin.ts", // 〔C4a〕远端 tab 才挂 `.remote` / 走远端那条 ↗
     "src/session-status.ts",
     "src/tab-collections.ts",
+    "src/tab-session-state.ts", // 〔U4〕按钮上的两个状态类 · ↗ / 中键的两道门
     "src/terminal-front.ts",
   ],
   // ④ 拖拽：落点算术 ＋ 建组时铸一个集合 id。
   "src/tab-bar-drag.ts": ["src/tab-collections.ts", "src/tab-drop.ts"],
   // ④ 落盘偏好：集合 / 固定 / 顺序的盘上那一层。
-  "src/tab-bar-prefs.ts": ["src/tab-bar-state.ts", "src/tab-collections.ts"],
+  //   〔U4〕固定复活出来的是「已结束」· 落盘的「最后活动时刻」按活性判。
+  //   〔U4〕固定复活的空态文字住文案表（说到会话状态的字一处定）。
+  "src/tab-bar-prefs.ts": [
+    "src/copy-table.ts",
+    "src/tab-bar-state.ts",
+    "src/tab-collections.ts",
+    "src/tab-session-state.ts",
+  ],
   // ⑤ 菜单放哪几项：账号 flyout · tmux 判据 · attach / 预览 · 菜单控件 · 会话动作。
   "src/tab-menu.ts": [
     "src/agent-profile.ts",
     "src/behavior.ts",
+    "src/copy-table.ts", // 〔U4〕固定那一项的两句提示（说到会话状态）住文案表
     "src/error-toast.ts",
     "src/ipc/origin.ts", // 〔C4a〕本机 / 远端各给哪几项（原先是 backend-policy 的 LOCAL_ORIGIN ＋ 各处 `=== null`）
     "src/launch-menu.ts",
@@ -162,6 +175,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/tab-collections.ts",
     "src/tab-context-menu.ts",
     "src/tab-session-actions.ts",
+    "src/tab-session-state.ts", // 〔U4〕给 Resume 还是给换号重启 · 本机「杀死会话」占位
     "src/tmux-sessions.ts",
     "src/views/pane-preview.ts",
   ],
@@ -174,6 +188,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/account-restart.ts",
     "src/accounts.ts",
     "src/behavior.ts",
+    "src/copy-table.ts", // 〔U4〕杀空 tmux / 杀会话的确认与回执（说到会话状态）住文案表
     "src/error-toast.ts",
     "src/file-window.ts", // F78：远端会话「打开工作目录」（〔F7b〕老 SFTP 面板删了，改开文件窗口）
     "src/ipc/commands.ts",
@@ -204,6 +219,7 @@ const PURE = [
   "src/tab-store.ts",
   "src/tab-router.ts",
   "src/tab-session-facts.ts",
+  "src/tab-session-state.ts",
 ];
 
 describe("〔U2〕拆 tabs.ts：每一份的直接运行期依赖 == 登记（两向）", () => {
@@ -305,7 +321,8 @@ describe("〔U2〕tabs.ts 只剩组装根", () => {
         "TabManager",
         // tab-model.ts
         "Tab",
-        "TabStatus",
+        // 〔U4〕`TabStatus` 退役：会话状态换成两轴（`tab-session-state.ts::SessionState`），唯一的外部使用者
+        //   `tab-menu.ts` 改从新家拿 ⇒ 旧 import 面少这一个名字。
         "TabsSummary",
         // tab-drop.ts
         "moveTabBlock",

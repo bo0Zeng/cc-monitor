@@ -28,19 +28,19 @@ import type { TabBarPrefs } from "../src/tab-bar-prefs";
 import type { Tab } from "../src/tab-model";
 import type { TabCollection } from "../src/tab-collections";
 import { LOCAL_ORIGIN } from "../src/ipc/origin";
+import { ENDED, LIVE } from "../src/tab-session-state";
 
 /** tab 栏视图只读 `Tab` 的这几格；其余字段它不碰（`tab-bar-view.ts::updateTabButton` / `updateAccountBadge`）。 */
 function fakeTab(sid: string, over: Partial<Tab> = {}): Tab {
   return {
     sessionId: sid,
     title: `标题-${sid}`,
-    status: "live",
+    state: LIVE,
     pinned: false,
     cwd: "/w",
     origin: LOCAL_ORIGIN,
     kind: null,
     activity: null,
-    tmuxIdle: false,
     forkedFromSessionId: null,
     unread: 0,
     ...over,
@@ -408,7 +408,7 @@ describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒 3 个"
 
     it("↗ 在已结束的 tab 上 ⇒ 什么都不做", () => {
       const r = make(2);
-      (r.store.tabs.get("s0") as { status: string }).status = "archived";
+      r.store.tabs.get("s0")!.state = ENDED;
       sub(r, "s0", "tab-focus").click();
       expect(r.host.bringTerminalToFront).not.toHaveBeenCalled();
       expect(r.host.bringRemoteTerminalToFront).not.toHaveBeenCalled();
@@ -434,8 +434,8 @@ describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒 3 个"
 
     it("中键：已结束的 ⇒ 关掉并 preventDefault；活着的 ⇒ 不关；按在 × 上 ⇒ 不关（原先 × 吞掉了 mousedown）", () => {
       const r = make(3);
-      (r.store.tabs.get("s0") as { status: string }).status = "archived";
-      (r.store.tabs.get("s2") as { status: string }).status = "archived";
+      r.store.tabs.get("s0")!.state = ENDED;
+      r.store.tabs.get("s2")!.state = ENDED;
       const e = new MouseEvent("mousedown", { button: 1, bubbles: true, cancelable: true });
       btn(r, "s0").dispatchEvent(e);
       expect(r.host.closeTab).toHaveBeenCalledWith("s0");

@@ -47,6 +47,8 @@
 //! - [`signal`]：`send_sigusr1`（U3 从 `control/tmux_hook.rs` 下沉）
 //! - [`ssh_agent`]：连本机 ssh-agent（Unix 套接字 / Windows 命名管道）—— 〔C2〕拨号代理没配私钥路径时用
 //! - [`detach`]：〔RM1a〕把要起的子进程放进自己的进程组（远端那台的中转不许随 SSH 断而没了）
+//! - `win_proc`：〔WN1 · U4b〕Windows 上判活 / 起始时刻 / 等进程退出的 Win32 读法（`OpenProcess` 一族），
+//!   只在 Windows 编译时存在（刻意不写 intra-doc 链接：本机 Linux 上它不存在，链接会悬空）
 //! - [`shell`]：`posix_shell`（`K-R55` 09-11 从 `observe/watcher.rs` 下沉 ——
 //!   那两处 `Command::new("sh")` 正是 `K-R52` 立表时挂在 A2「真漏」堆上的头两条）
 //!
@@ -69,3 +71,9 @@ pub(crate) mod proc;
 pub(crate) mod shell;
 pub(crate) mod signal;
 pub(crate) mod ssh_agent;
+#[cfg(windows)]
+pub(crate) mod win_proc;
+// 〔WN1 · U4b〕Windows 判活那一臂在本机（Linux）够得着的那几半：纯换算 · 与 Linux 同契约的映射 · 唯一住址。
+#[cfg(test)]
+#[path = "../../../tests/backend/platform/win_proc_contract_tests.rs"]
+mod win_proc_contract_tests;

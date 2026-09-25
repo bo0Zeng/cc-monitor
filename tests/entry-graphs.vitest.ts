@@ -126,6 +126,8 @@ interface Closure {
   readonly facade: string;
   readonly modules: Set<string>;
   readonly cssAssets: Map<string, string>;
+  /** 〔UC2〕闭包里全部 JS chunk 的代码拼起来 —— CSS Modules 的哈希类名要在这里真出现（代码真用上了它）。 */
+  readonly jsCode: string;
 }
 
 let CLOSURES: Record<Win, Closure>;
@@ -167,12 +169,14 @@ async function buildClosures(): Promise<{ closures: Record<Win, Closure>; input:
     const modules = new Set<string>();
     const cssAssets = new Map<string, string>();
     const seen = new Set<string>();
+    let jsCode = "";
     const walk = (file: string): void => {
       if (seen.has(file)) return;
       seen.add(file);
       const c = chunks.get(file);
       if (!c) throw new Error(`闭包走到一个不存在的 chunk：${file}`);
       for (const id of Object.keys(c.modules)) modules.add(rel(id));
+      jsCode += c.code;
       const meta = (c as Rollup.OutputChunk & { viteMetadata?: { importedCss: Set<string> } }).viteMetadata;
       for (const css of meta?.importedCss ?? []) {
         const a = assets.get(css);
@@ -181,7 +185,7 @@ async function buildClosures(): Promise<{ closures: Record<Win, Closure>; input:
       for (const next of [...c.imports, ...c.dynamicImports]) walk(next);
     };
     walk(entry[0].fileName);
-    closures[win] = { facade: rel(entry[0].facadeModuleId ?? ""), modules, cssAssets };
+    closures[win] = { facade: rel(entry[0].facadeModuleId ?? ""), modules, cssAssets, jsCode };
   }
   BUILT_CSS_BY_HTML = {};
   for (const w of Object.values(WINDOWS)) {
@@ -303,6 +307,13 @@ const CSS_SOURCES: Record<string, string> = Object.fromEntries(
     return [rel, readFileSync(resolve(REPO_ROOT, rel), "utf8")];
   }),
 );
+
+/**
+ * 〔UC2 · `设计/41` 件 10〕CSS Modules（`*.module.css`）不走 html 的 `<link>` 清单：它们由 TS
+ * `import s from "./x.module.css"` 带进窗口的模块图，类名构建时哈希。⇒ 「每份 CSS 都被某个窗口链到」与
+ * 「完整性」两条只对**全局**样式文件成立；module 那一侧另有下面「CSS Modules 在产物里」那一组判。
+ */
+const isModuleCss = (f: string): boolean => f.endsWith(".module.css");
 
 function linksOf(html: string): string[] {
   return [...readFileSync(resolve(REPO_ROOT, html), "utf8").matchAll(/<link rel="stylesheet" href="\/([^"]+)"/g)].map(
@@ -457,7 +468,9 @@ function matchableIn(sels: string[], r: ReturnType<typeof reachable>): boolean {
 }
 
 const CSS_RULES: Record<string, string[][]> = Object.fromEntries(
-  Object.entries(CSS_SOURCES).map(([f, css]) => [f, selectorsOf(css)]),
+  Object.entries(CSS_SOURCES)
+    .filter(([f]) => !isModuleCss(f))
+    .map(([f, css]) => [f, selectorsOf(css)]),
 );
 
 /** 完整性：W 挂得上的每一条规则，它所在的文件都在 W 的清单里。返回缺的（文件 → 选择器）。 */
@@ -501,7 +514,14 @@ describe("子步 2 · CSS 按窗口拆（清单 ＝ 各 html 的 <link> 列表�
     expect(Object.keys(CSS_SOURCES).length, "glob 没扫到 CSS —— 下面那条零命中地绿").toBeGreaterThan(5);
     const empty = Object.entries(CSS_SOURCES).filter(([, t]) => t.trim().length < 50).map(([f]) => f);
     expect(empty, "这些 CSS 读出来是空的 —— 读法坏了（`?raw` 在 vitest 里就是这么坏的）").toEqual([]);
-    expect(Object.keys(CSS_SOURCES).filter((f) => !all.has(f)), "这些 CSS 没有任何窗口链它 —— 写了等于没写").toEqual([]);
+    expect(
+      Object.keys(CSS_SOURCES).filter((f) => !all.has(f) && !isModuleCss(f)),
+      "这些 CSS 没有任何窗口链它 —— 写了等于没写",
+    ).toEqual([]);
+    expect(
+      [...all].filter(isModuleCss),
+      "html 直接链了 CSS Module —— 那样类名不哈希、TS 那边的 `s.xxx` 对不上它（module 只许经 TS 导入）",
+    ).toEqual([]);
   });
 
   it("🔴 设置窗的构建产物 CSS：没有高亮 / 数学 / tab / 卡片 / 流 / 折叠块", () => {
@@ -548,6 +568,83 @@ describe("子步 2 · CSS 按窗口拆（清单 ＝ 各 html 的 <link> 列表�
       expect(blind, `${win}：摘掉这些文件，完整性判据照样绿`).toEqual([]);
     }
   }, TIMEOUT_MS);
+});
+
+// ═══════════════════════════ 〔UC2〕CSS Modules 在构建产物里（`设计/41` 件 10）═══════════════════════════
+//
+// 源码那一侧（全局样式文件集合 == 登记表 · 逐文件类型 == 类名集合 · 只经默认导入用 · 每个类都有人取 ·
+// tsc 真吃到逐文件类型）住 `tests/css-modules.vitest.ts`。这里判**产物**，因为有两件事只在构建里发生：
+//   ① 类名真的哈希了、代码里真的是那个哈希名（vite 的 CSS Modules 没生效时，产物里是原名 `.chip`，
+//      而 TS 侧 `s.chip` 在 vitest 里照样拿到一个串 —— 源码判据一格都看不见）；
+//   ② 次序：JS 导入的 module 样式排在 html 链的全局样式**之后**。示范组件的 delta 与它叠的全局基类
+//      `.status-tasks` 同层同特异度（`font: inherit` 对 `font-variant-numeric` · `:hover` 对 `color`/`background`），
+//      谁后谁赢 —— 这条次序一翻，delta 静默失效。
+// ⚠ 哈希名的形状认的是 vite 的默认 `_[local]_[hash]…`（现打 `_chip_16b8l_4`）；有人在 `vite.config.ts` 里改
+//   `css.modules.generateScopedName`，下面「恰有一个哈希名」那条会红 —— 那时照新形状改这里的正则。
+
+/** 全局样式文件（非 module）里出现过的类名。 */
+const GLOBAL_CLASSES = new Set(Object.values(CSS_RULES).flatMap((rules) => rules.flat().flatMap((sel) => needs(sel).classes)));
+/** 每份 `.module.css` → 它源码里的类名（去重）。 */
+const MODULE_CLASSES: Record<string, string[]> = Object.fromEntries(
+  Object.entries(CSS_SOURCES)
+    .filter(([f]) => isModuleCss(f))
+    .map(([f, css]) => [f, [...new Set(selectorsOf(css).flat().flatMap((sel) => needs(sel).classes))]]),
+);
+const hashedOf = (built: Set<string>, k: string): string[] =>
+  [...built].filter((c) => c.startsWith(`_${k}_`) && /^_[\w-]+$/.test(c));
+
+/** 一个窗口产物 CSS（按 `<link>` 序拼起来）里，第一条 module 规则之后还出现的全局规则。 */
+function globalRulesAfterFirstModule(text: string, hashed: readonly string[]): string[] {
+  const at = Math.min(...hashed.map((h) => text.indexOf(`.${h}`)).filter((i) => i >= 0));
+  if (!Number.isFinite(at)) return [];
+  const from = Math.max(text.lastIndexOf("}", at), text.lastIndexOf("{", at)) + 1;
+  const hs = new Set(hashed);
+  return selectorsOf(text.slice(from))
+    .flat()
+    .filter((sel) => {
+      const cs = needs(sel).classes;
+      return cs.some((c) => GLOBAL_CLASSES.has(c)) && !cs.some((c) => hs.has(c));
+    });
+}
+
+describe("〔UC2〕CSS Modules 在构建产物里（设计/41 件 10）", () => {
+  it("每份 .module.css 都进了某个窗口的模块图；每个类在产物 CSS 里恰有一个哈希名、原名不出现、哈希名在那个窗口的 JS 里真出现", () => {
+    const mods = Object.keys(MODULE_CLASSES);
+    expect(mods.length, "一份 `.module.css` 都没有 —— 本组零命中地绿（件 10 的示范被删了？）").toBeGreaterThan(0);
+    let judged = 0;
+    for (const f of mods) {
+      const wins = (Object.keys(WINDOWS) as Win[]).filter((w) => CLOSURES[w].modules.has(f));
+      expect(wins, `${f} 不在任何窗口的模块图里 —— 没有代码导入它，它进不了产物`).not.toEqual([]);
+      expect(MODULE_CLASSES[f].length, `${f} 里一个类都没抽到 —— 下面零命中地绿`).toBeGreaterThan(0);
+      for (const w of wins) {
+        const built = builtClasses(w);
+        for (const k of MODULE_CLASSES[f]) {
+          const hashed = hashedOf(built, k);
+          expect(hashed, `${w}：${f} 的 .${k} 在产物 CSS 里应恰有一个哈希名`).toHaveLength(1);
+          expect(built.has(k) && !GLOBAL_CLASSES.has(k), `${w}：产物 CSS 里出现了原名 .${k} —— CSS Modules 没生效`).toBe(false);
+          expect(CLOSURES[w].jsCode.includes(hashed[0]), `${w}：哈希名 ${hashed[0]} 不在 JS 里 —— 代码没用上它`).toBe(true);
+          judged++;
+        }
+      }
+    }
+    expect(judged).toBeGreaterThan(0);
+  });
+
+  it("次序：每个窗口产物 CSS 里，第一条 module 规则之后不再有全局样式的规则（module 的 delta 叠在全局基类之上）", () => {
+    let judged = 0;
+    for (const win of Object.keys(WINDOWS) as Win[]) {
+      const built = builtClasses(win);
+      const hashed = Object.values(MODULE_CLASSES).flatMap((ks) => ks.flatMap((k) => hashedOf(built, k)));
+      if (hashed.length === 0) continue;
+      const text = BUILT_CSS_BY_HTML[WINDOWS[win].html].join("\n");
+      expect(globalRulesAfterFirstModule(text, hashed), `${win}：module 规则后面还跟着全局规则 —— 同特异度时全局压过 module`).toEqual([]);
+      // 正控：同一个谓词对「module 之后再追加一条全局规则」必须红（谓词瞎了，上面那条零命中地绿）
+      const probe = [...GLOBAL_CLASSES][0];
+      expect(globalRulesAfterFirstModule(`${text}.${probe}{color:red}`, hashed), "次序谓词认不出追加在后面的全局规则").toHaveLength(1);
+      judged++;
+    }
+    expect(judged, "没有任何窗口的产物里有 module 规则 —— 本条零命中地绿").toBeGreaterThan(0);
+  });
 });
 
 // ═══════════════════════════ 子步 3：层真包进去（对构建产物）═══════════════════════════

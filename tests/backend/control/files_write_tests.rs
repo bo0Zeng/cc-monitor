@@ -1572,3 +1572,378 @@ fn a_recursive_delete_walks_through_non_utf8_children() {
     assert!(std::fs::symlink_metadata(root.join("t")).is_err());
     std::fs::remove_dir_all(&base).ok();
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+//  〔RW1 · 第四波 · 2026-09-24〕用户文件的读改写（`files-peek` / `files-put`）＋ 删历史会话
+// ══════════════════════════════════════════════════════════════════════════
+//
+// 买到的：全在本机临时目录上真跑 —— CAS 真的拒（盘上一个字节不动）· 相同不写 · 备份逐字节 ＋ 权限位 ·
+// 跟链接改真文件、链接本身还在 · 父目录只在要了时才补 · 会话文件照旧写不进去 · 暂存旁名不留 ·
+// 删会话只认 sid、找到的那一份不是会话形状就拒。
+// 买不到的：① 回读不符 ⇒ 回滚那一支（要在换名与回读之间插一次外部改动，本族没有注入口，一格没量）；
+// ② 真远端；③ CAS 与换名之间那一个窗（TOCTOU）。
+
+/// 目录里有没有替换留下的暂存旁名（`.<名>.ccm-put-<pid>-<序号>.part`）。
+///
+/// ⚠ **不列目录**（同 [`copy_leftovers`]：`scanning_guard_registry` 不许测试段裸遍历目录）：
+/// 旁名形状确定、本进程造过的序号是 `0..PUT_SEQ` ⇒ 逐个按名字问「在不在」。
+fn side_files(dir: &Path, name: &str) -> Vec<String> {
+    let upto = PUT_SEQ.load(std::sync::atomic::Ordering::Relaxed);
+    (0..upto)
+        .map(|seq| format!(".{name}.ccm-put-{}-{seq}.part", std::process::id()))
+        .filter(|n| std::fs::symlink_metadata(dir.join(n)).is_ok())
+        .collect()
+}
+
+#[test]
+fn peek_tells_absent_from_present_and_goes_through_the_same_fence() {
+    let base = temp_root("pk");
+    let root = base.join("r");
+    std::fs::create_dir_all(&root).expect("建根");
+    std::fs::write(root.join("a.txt"), "hello\n").expect("铺 a");
+    let got = peek_text(&root, "a.txt").expect("读一份在的文件");
+    assert_eq!(got.text.as_deref(), Some("hello\n"));
+    let none = peek_text(&root, "nope.txt").expect("不在不是错");
+    assert_eq!(none.text, None, "不在的文件该答 `None`，不是空串");
+    for (rel, want) in [("../x", "refused"), ("/etc/passwd", "refused")] {
+        assert_eq!(peek_text(&root, rel).unwrap_err().0, want, "{rel}");
+    }
+    std::fs::create_dir_all(root.join("cfg/projects/-p")).expect("建会话目录");
+    std::fs::write(root.join("cfg/projects/-p/s1.jsonl"), "{}\n").expect("铺会话");
+    assert_eq!(
+        peek_text(&root, "cfg/projects/-p/s1.jsonl").unwrap_err().0,
+        "refused",
+        "读改写的读那一半与写同一道围栏 —— 会话文件读不进来"
+    );
+    std::fs::write(root.join("bin.dat"), [0xffu8, 0xfe, 0x00]).expect("铺二进制");
+    assert_eq!(peek_text(&root, "bin.dat").unwrap_err().0, "not_text");
+    std::fs::write(root.join("big.txt"), vec![b'x'; PEEK_MAX_BYTES + 1]).expect("铺大文件");
+    assert_eq!(peek_text(&root, "big.txt").unwrap_err().0, "too_large");
+    std::fs::remove_dir_all(&base).ok();
+}
+
+#[test]
+fn put_is_compare_and_swap_and_a_stale_expectation_writes_nothing() {
+    let base = temp_root("pcas");
+    let root = base.join("r");
+    std::fs::create_dir_all(&root).expect("建根");
+    std::fs::write(root.join("a.txt"), "A").expect("铺 a");
+    for expect in [Some(&b"X"[..]), None] {
+        match put_text(&root, "a.txt", b"B", expect, false, false) {
+            Err(WriteRefusal::Stale(_)) => {}
+            other => panic!("🔴 期望对不上却没回 stale：{other:?}"),
+        }
+        assert_eq!(
+            std::fs::read(root.join("a.txt")).expect("a"),
+            b"A",
+            "stale 那一趟动了盘"
+        );
+    }
+    match put_text(&root, "new.txt", b"N", Some(b"old"), false, false) {
+        Err(WriteRefusal::Stale(_)) => {}
+        other => panic!("🔴 「读的时候在、现在不在」没回 stale：{other:?}"),
+    }
+    assert!(!root.join("new.txt").exists(), "stale 那一趟建出了文件");
+    let done = put_text(&root, "a.txt", b"B", Some(b"A"), false, false).expect("对上了就该写");
+    assert!(done.changed && !done.created && done.backup.is_none());
+    assert_eq!(std::fs::read(root.join("a.txt")).expect("a"), b"B");
+    let same = put_text(&root, "a.txt", b"B", Some(b"B"), true, false).expect("相同");
+    assert!(!same.changed, "内容相同该一个字节不写");
+    assert!(same.backup.is_none(), "没写就不该留备份");
+    let made = put_text(&root, "new.txt", b"N", None, false, false).expect("不在 ⇒ 建");
+    assert!(made.changed && made.created);
+    assert_eq!(std::fs::read(root.join("new.txt")).expect("new"), b"N");
+    for n in ["a.txt", "new.txt"] {
+        assert!(
+            side_files(&root, n).is_empty(),
+            "暂存旁名留下来了：{:?}",
+            side_files(&root, n)
+        );
+    }
+    std::fs::remove_dir_all(&base).ok();
+}
+
+#[test]
+fn put_builds_parents_only_when_asked_and_each_level_is_fenced() {
+    let base = temp_root("ppar");
+    let root = base.join("r");
+    std::fs::create_dir_all(&root).expect("建根");
+    match put_text(&root, "d/e/f.txt", b"x", None, false, false) {
+        Err(WriteRefusal::Fenced(_)) => {}
+        other => panic!("🔴 没要 `parents` 却补了父目录 / 没拒：{other:?}"),
+    }
+    assert!(!root.join("d").exists(), "没要 `parents` 也建了目录");
+    put_text(&root, "d/e/f.txt", b"x", None, false, true).expect("要了就补");
+    assert_eq!(std::fs::read(root.join("d/e/f.txt")).expect("f"), b"x");
+    assert!(put_text(&root, "../out/f.txt", b"x", None, false, true).is_err());
+    assert!(!base.join("out").exists(), "补父目录那一步逃出了目标根");
+    std::fs::remove_dir_all(&base).ok();
+}
+
+#[cfg(unix)]
+#[test]
+fn put_backup_keeps_the_original_bytes_and_the_mode_survives_the_swap() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let base = temp_root("pbak");
+    let root = base.join("r");
+    std::fs::create_dir_all(&root).expect("建根");
+    let rc = root.join(".bashrc");
+    std::fs::write(&rc, "# mine\n").expect("铺 rc");
+    std::fs::set_permissions(&rc, std::fs::Permissions::from_mode(0o600)).expect("600");
+    let done = put_text(
+        &root,
+        ".bashrc",
+        b"# mine\nnew\n",
+        Some(b"# mine\n"),
+        true,
+        false,
+    )
+    .expect("写");
+    let bak = done.backup.expect("要了备份却没有");
+    assert_eq!(
+        std::fs::read(&bak).expect("备份"),
+        b"# mine\n",
+        "备份不是原文"
+    );
+    let mode = |p: &Path| std::fs::metadata(p).expect("meta").permissions().mode() & 0o777;
+    assert_eq!(mode(&bak), 0o600, "备份没沿用原权限位");
+    assert_eq!(mode(&rc), 0o600, "换名上位之后原权限位丢了");
+    assert_eq!(std::fs::read(&rc).expect("rc"), b"# mine\nnew\n");
+    std::fs::remove_dir_all(&base).ok();
+}
+
+#[cfg(unix)]
+#[test]
+fn put_through_a_link_changes_the_real_file_and_the_link_stays_a_link() {
+    let base = temp_root("plink");
+    let root = base.join("r");
+    std::fs::create_dir_all(root.join("dotfiles")).expect("建根");
+    std::fs::write(root.join("dotfiles/bashrc"), "old\n").expect("铺真文件");
+    std::os::unix::fs::symlink("dotfiles/bashrc", root.join(".bashrc")).expect("建链接");
+    let got = peek_text(&root, ".bashrc").expect("经链接读");
+    assert_eq!(got.text.as_deref(), Some("old\n"));
+    put_text(&root, ".bashrc", b"new\n", Some(b"old\n"), false, false).expect("经链接写");
+    assert!(
+        std::fs::symlink_metadata(root.join(".bashrc"))
+            .expect("meta")
+            .file_type()
+            .is_symlink(),
+        "用户的链接被换成了一份普通文件"
+    );
+    assert_eq!(
+        std::fs::read(root.join("dotfiles/bashrc")).expect("真文件"),
+        b"new\n"
+    );
+    // 链接指到一份会话文件上 ⇒ 解到底之后被拒，那份会话一个字节不动。
+    let (live, bytes) = plant_live_session(&root);
+    std::os::unix::fs::symlink(&live, root.join("sneaky.txt")).expect("建链接");
+    let got = put_text(&root, "sneaky.txt", b"x", Some(&bytes), false, false);
+    assert!(matches!(got, Err(WriteRefusal::Fenced(_))), "{got:?}");
+    assert_eq!(std::fs::read(&live).expect("会话"), bytes);
+    std::fs::remove_dir_all(&base).ok();
+}
+
+#[test]
+fn put_never_writes_a_session_file_directly() {
+    let base = temp_root("psess");
+    let (live, bytes) = plant_live_session(&base);
+    let got = put_text(
+        &base,
+        "cfg/projects/-x/abc.jsonl",
+        b"x",
+        Some(&bytes),
+        false,
+        false,
+    );
+    assert!(matches!(got, Err(WriteRefusal::Fenced(_))), "{got:?}");
+    assert_eq!(std::fs::read(&live).expect("会话"), bytes);
+    std::fs::remove_dir_all(&base).ok();
+}
+
+#[test]
+fn the_read_modify_write_commands_answer_with_their_declared_fields() {
+    let base = temp_root("prmw");
+    let root = base.join("r");
+    std::fs::create_dir_all(&root).expect("建根");
+    let r = root.to_str().expect("utf8");
+    match answer_wire(
+        "files-put",
+        &serde_json::json!({"root": r, "rel": "a", "content": "x"}),
+    ) {
+        Err((c, _)) => assert_eq!(c, "bad_args", "缺 `expect` 该回 bad_args"),
+        Ok(v) => panic!("🔴 没给 `expect` 竟然写了：{v}"),
+    }
+    assert!(!root.join("a").exists(), "没给 `expect` 的那一趟落了盘");
+    match answer_wire(
+        "files-put",
+        &serde_json::json!({"root": r, "rel": "a", "content": "x", "expect": null, "backup": 1}),
+    ) {
+        Err((c, _)) => assert_eq!(c, "bad_args"),
+        Ok(v) => panic!("🔴 `backup: 1` 竟然被当成了布尔：{v}"),
+    }
+    let keys = |v: &serde_json::Value| -> std::collections::BTreeSet<String> {
+        v.as_object().expect("对象").keys().cloned().collect()
+    };
+    let declared = |name: &str| -> std::collections::BTreeSet<String> {
+        MANAGE_COMMANDS
+            .iter()
+            .find(|c| c.name == name)
+            .expect("在表里")
+            .fields
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
+    };
+    let peek0 = answer_wire("files-peek", &serde_json::json!({"root": r, "rel": "a"}))
+        .expect("peek 不在的文件");
+    assert_eq!(peek0["exists"], false);
+    assert_eq!(keys(&peek0), declared("files-peek"));
+    let put = answer_wire(
+        "files-put",
+        &serde_json::json!({"root": r, "rel": "a", "content": "x", "expect": null}),
+    )
+    .expect("put");
+    assert_eq!(keys(&put), declared("files-put"));
+    assert_eq!(put["created"], true);
+    let peek1 =
+        answer_wire("files-peek", &serde_json::json!({"root": r, "rel": "a"})).expect("peek");
+    assert_eq!(peek1["text"], "x");
+    match answer_wire(
+        "files-put",
+        &serde_json::json!({"root": r, "rel": "a", "content": "y", "expect": "not-x"}),
+    ) {
+        Err((c, _)) => assert_eq!(c, "stale"),
+        Ok(v) => panic!("🔴 期望对不上竟然写了：{v}"),
+    }
+    std::fs::remove_dir_all(&base).ok();
+}
+
+// ── 删历史会话：会话文件围栏唯一的例外 ────────────────────────────────────────
+
+/// 一个假的配置根：`projects/-p/<sid>.jsonl` ＋ 一份子代理那种更深的同名文件。
+fn plant_home(base: &Path, sid: &str) -> PathBuf {
+    let home = base.join("cfg");
+    std::fs::create_dir_all(home.join("projects/-p")).expect("建项目目录");
+    std::fs::write(home.join(format!("projects/-p/{sid}.jsonl")), "{}\n").expect("铺会话");
+    home
+}
+
+#[test]
+fn deleting_a_session_takes_only_a_sid_and_removes_exactly_that_file() {
+    let base = temp_root("dsess");
+    let sid = "2f1c9a4e-0b7d-4c1e-9a55-3b2f0c8d1e77";
+    let home = plant_home(&base, sid);
+    std::fs::write(home.join("projects/-p/other.jsonl"), "{}\n").expect("铺邻居");
+    let gone = delete_session_with(sid, |s| {
+        crate::agents::claudecode::paths::session_file_for_delete_in(&home, s)
+    })
+    .expect("删一份真在的会话");
+    assert!(!gone.exists(), "说删了，文件还在");
+    assert!(
+        home.join("projects/-p/other.jsonl").exists(),
+        "邻居被连带删了"
+    );
+    // 再删一次 ⇒ 找不到 ⇒ 拒（不是静默成功）。
+    let again = delete_session_with(sid, |s| {
+        crate::agents::claudecode::paths::session_file_for_delete_in(&home, s)
+    });
+    assert!(matches!(again, Err(WriteRefusal::Fenced(_))), "{again:?}");
+    for bad in ["../x", "a/b", "", "x.jsonl"] {
+        let got = delete_session_with(bad, |s| {
+            crate::agents::claudecode::paths::session_file_for_delete_in(&home, s)
+        });
+        assert!(
+            matches!(got, Err(WriteRefusal::Fenced(_))),
+            "`{bad}` 竟然过了：{got:?}"
+        );
+    }
+    std::fs::remove_dir_all(&base).ok();
+}
+
+#[test]
+fn the_session_fence_holds_even_if_the_locator_is_swapped() {
+    // 🔴 「例外」的定义是**它删的恰恰是会话、别的删不到**。把找文件那一步换成一个指向
+    //    普通文件的定位器（= 将来有人改坏了适配层），删那一步照样得拒。
+    let base = temp_root("dfence");
+    std::fs::create_dir_all(base.join("docs")).expect("建目录");
+    let notes = base.join("docs/notes.txt");
+    std::fs::write(&notes, "keep me").expect("铺普通文件");
+    let got = delete_session_with("s1", |_| Ok(notes.clone()));
+    assert!(matches!(got, Err(WriteRefusal::Fenced(_))), "{got:?}");
+    assert_eq!(std::fs::read(&notes).expect("notes"), b"keep me");
+    // 名字对得上、但不在 `projects/<proj>/` 底下（不是会话的形状）⇒ 只有「形状」那一问拦得住。
+    let named = base.join("docs/s1.jsonl");
+    std::fs::write(&named, "not a session").expect("铺同名普通文件");
+    let got = delete_session_with("s1", |_| Ok(named.clone()));
+    assert!(matches!(got, Err(WriteRefusal::Fenced(_))), "{got:?}");
+    assert!(named.exists(), "一份同名的普通文件被当成会话删了");
+    // 名字对不上 sid（别的会话）同样拒。
+    let home = plant_home(&base, "s2");
+    let other = home.join("projects/-p/s2.jsonl");
+    let got = delete_session_with("s1", |_| Ok(other.clone()));
+    assert!(matches!(got, Err(WriteRefusal::Fenced(_))), "{got:?}");
+    assert!(other.exists(), "拿 s1 的名义删掉了 s2");
+    std::fs::remove_dir_all(&base).ok();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_session_that_is_a_link_out_of_the_record_tree_is_not_followed() {
+    let base = temp_root("dlink");
+    let home = base.join("cfg");
+    std::fs::create_dir_all(home.join("projects/-p")).expect("建项目目录");
+    std::fs::create_dir_all(base.join("elsewhere/projects/-q")).expect("建外面");
+    let outside = base.join("elsewhere/projects/-q/s3.jsonl");
+    std::fs::write(&outside, "{}\n").expect("铺外面那份");
+    std::os::unix::fs::symlink(&outside, home.join("projects/-p/s3.jsonl")).expect("建链接");
+    let got = delete_session_with("s3", |s| {
+        crate::agents::claudecode::paths::session_file_for_delete_in(&home, s)
+    });
+    assert!(matches!(got, Err(WriteRefusal::Fenced(_))), "{got:?}");
+    assert!(outside.exists(), "跟着链接删到了记录树外面那一份");
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// 〔RW1 · 第四波 09-24〕从 `profile_installer_tests.rs` 里那条 `install_preserves_explicit_acl_entries`〔散文墓碑〕搬来：
+/// v1.7.9 那次事故（原 profile 上的 explicit ACE 被暂存文件的继承 ACL 顶掉，用户读不了自己的 `$PROFILE`）。
+/// 写从 monitor 搬到后端之后，替换那一步在 Windows 上走**就地覆盖写**（`swap_in` 的 `cfg(windows)` 那一支）。
+/// ⚠ 本机门禁是 Linux，这一条只在 Windows 上跑（`winchk-backend` 只编不跑）—— 如实登记为「没跑过」。
+#[cfg(windows)]
+#[test]
+fn put_keeps_explicit_acl_entries_on_windows() {
+    let base = temp_root("pacl");
+    let root = base.join("r");
+    std::fs::create_dir_all(&root).expect("建根");
+    let p = root.join("profile.ps1");
+    std::fs::write(&p, "Set-Alias g git\n").expect("铺");
+    let add = std::process::Command::new("icacls")
+        .arg(&p)
+        .arg("/grant")
+        .arg("Everyone:(R)")
+        .output();
+    let Ok(add) = add else { return };
+    if !add.status.success() {
+        return;
+    }
+    put_text(
+        &root,
+        "profile.ps1",
+        b"Set-Alias g git\nnew\n",
+        Some(b"Set-Alias g git\n"),
+        true,
+        false,
+    )
+    .expect("写");
+    let out = std::process::Command::new("icacls")
+        .arg(&p)
+        .output()
+        .expect("icacls");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout
+            .lines()
+            .any(|l| l.contains("Everyone:(R)") && !l.contains("(I)(R)")),
+        "explicit Everyone:(R) ACE 被替换那一步顶掉了：\n{stdout}"
+    );
+    std::fs::remove_dir_all(&base).ok();
+}

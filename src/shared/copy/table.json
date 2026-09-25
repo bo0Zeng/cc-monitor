@@ -151,6 +151,71 @@
       "kind": "body",
       "zh": "{reason}\n在这台机器的 bash 里执行：\n{cmd}",
       "args": ["reason", "cmd"]
+    },
+    "sessionState.ended.name": {
+      "kind": "body",
+      "zh": "已结束",
+      "args": []
+    },
+    "sessionState.reconnectable.name": {
+      "kind": "body",
+      "zh": "可重连",
+      "args": []
+    },
+    "sessionState.ended.tooltip": {
+      "kind": "body",
+      "zh": "这个会话已结束",
+      "args": []
+    },
+    "sessionState.reconnectable.tooltip": {
+      "kind": "body",
+      "zh": "程序退了，终端还在 —— 可以接回去",
+      "args": []
+    },
+    "sessionState.pin.pinHint": {
+      "kind": "body",
+      "zh": "固定后，关掉 app 再打开它还在，显示为已结束，可以 resume。位置不变。",
+      "args": []
+    },
+    "sessionState.pin.unpinHint": {
+      "kind": "body",
+      "zh": "取消后，这个会话结束之后，关掉 app 再打开就没了",
+      "args": []
+    },
+    "sessionState.pinned.head": {
+      "kind": "title",
+      "zh": "📌 固定下来的已结束会话",
+      "args": []
+    },
+    "sessionState.pinned.body": {
+      "kind": "body",
+      "zh": "已结束的会话只能 resume，不能回看内容。resume 接上之后，这个标签会自己亮起来。",
+      "args": []
+    },
+    "sessionState.pinnedEmpty.head": {
+      "kind": "title",
+      "zh": "这个会话没有留下记录",
+      "args": []
+    },
+    "sessionState.pinnedEmpty.body": {
+      "kind": "body",
+      "zh": "固定它的时候它还没写下任何内容，没有可以 resume 的记录。点标签上的 × 可以关掉它。",
+      "args": []
+    },
+    "sessionState.killIdle.confirm": {
+      "kind": "body",
+      "zh": "这个会话里的 Claude 已退出，只剩一个空的 tmux 会话。杀掉它之后，标签显示为已结束，可以 resume。它若是那台机器上唯一的 tmux 会话，要等下次重连才会变。",
+      "args": []
+    },
+    "sessionState.killIdle.done": {
+      "kind": "body",
+      "zh": "{who} 的 tmux 会话「{name}」已终止。标签随后显示为已结束，可以 resume。",
+      "args": ["who", "name"]
+    },
+    "sessionState.killLive.done": {
+      "kind": "body",
+      "zh": "{who} 的 tmux 会话「{name}」已终止。标签稍后显示为已结束。",
+      "args": ["who", "name"]
     }
   }
 }

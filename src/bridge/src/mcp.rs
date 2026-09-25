@@ -3,11 +3,10 @@
 //!   **远端** user scope（`read_remote_mcp_servers`：SSH-exec cat 远端 `~/.claude.json`）+ **远端项目**
 //!   （`read_remote_project_mcp`：SFTP 读远端 `<dir>/.mcp.json`）。**宽容读**（INVARIANTS §18）：缺/坏/字段缺跳过、server 原样。
 //! - **写**：**只** `<dir>/.mcp.json`（增/改/删）。**绝不写 `~/.claude.json` / `settings.json`**——本机经 `mcp_json_path`
-//!   硬编码 / **远端**经 `remote_mcp_json_path`+`is_safe_remote_mcp_json` 守卫 + `sftp::upload_atomic`（本文件承载
-//!   `write_remote_mcp_server`/`remove_remote_mcp_server`）。SS-G：远端写仅用户显式触发。
-//!   🔴 **〔步 12·C 收尾 09-20〕上一行那两个名字今天是「函数」不是「命令」** ——
-//!   上线的两条是 `write_project_mcp_server` / `remove_project_mcp_server`（各吃一个 `origin`），
-//!   它们是那两个函数的唯一调用点。别把「函数还在」读成「命令还在」。
+//!   硬编码 / **远端**经 `remote_mcp_json_path`+`is_safe_remote_mcp_json` 守卫。SS-G：写仅用户显式触发。
+//!   🔴 **〔RW1 · 第四波 09-24〕落盘不在本进程**：两侧都经那台机器的后端（`edit_project_mcp` →
+//!   `user_files::edit` → `files-peek` / `files-put`），本机与远端同一条路、只差 origin；
+//!   上线的两条命令是 `write_project_mcp_server` / `remove_project_mcp_server`（各吃一个 `origin`）。
 //!
 //! `~/.claude.json` 路径有变体（`CLAUDE_CONFIG_DIR` vs `$HOME`），故 `claude_json_candidates` 取多候选、
 //! 读第一个存在的——防御式，schema 真机可能变，不硬假设完整。
@@ -280,26 +279,18 @@ pub async fn list_remote_mcp_origins() -> Result<Vec<String>, String> {
     .map_err(|e| format!("spawn_blocking: {e}"))
 }
 
-/// **只**返回 `<dir>/.mcp.json` 路径——写侧唯一出口，硬编码 `.mcp.json`，杜绝误写
-/// `~/.claude.json` / `settings.json`（SS-14 铁律；grep 门禁：本文件写路径只此一处）。
+/// 本机 `<dir>/.mcp.json`（**写侧唯一出口，硬编码 `.mcp.json`**）。
+/// 〔RW1 · 第四波 09-24〕多一道：项目目录必须是**绝对路径** —— 这条路径交给后端去解析，
+/// 相对路径在后端那个进程里指的是别处。
 fn mcp_json_path(project_dir: &str) -> Result<PathBuf, String> {
     let d = project_dir.trim();
     if d.is_empty() {
         return Err("project_dir 为空，拒绝写".into());
     }
-    Ok(Path::new(d).join(".mcp.json"))
-}
-
-/// 读 `.mcp.json`（存在则解析，不存在给骨架 `{"mcpServers":{}}`）。§3 剥 BOM。
-fn read_or_skeleton(mcp: &Path) -> Result<Value, String> {
-    if mcp.is_file() {
-        let raw =
-            std::fs::read_to_string(mcp).map_err(|e| format!("read {}: {e}", mcp.display()))?;
-        serde_json::from_str(raw.trim_start_matches('\u{feff}'))
-            .map_err(|e| format!("parse {}: {e}", mcp.display()))
-    } else {
-        Ok(serde_json::json!({ "mcpServers": {} }))
+    if !Path::new(d).is_absolute() {
+        return Err(format!("项目目录须为绝对路径（实得 {d:?}）"));
     }
+    Ok(Path::new(d).join(".mcp.json"))
 }
 
 /// **纯核心**（F89a 抽出，本机/远端复用、可测）：把一条 server upsert 进 `.mcp.json` Value。名空拒。
@@ -354,60 +345,51 @@ fn remote_mcp_json_path(project_dir: &str) -> Result<String, String> {
     Ok(p)
 }
 
-/// §4 安全写**用户文件** `.mcp.json`：① 项目目录须**已存在**（真实项目根，不 `create_dir_all` typo
-/// 路径生成垃圾目录树）；② 写前 backup（dst 存在则备到 `.bak`）；③ **ReplaceFileW** 原子替换——
-/// 复用 `profile_installer::atomic_write_string`（保留 dst ACL），**不**用 config 的 `MoveFileExW`
-/// （§4 明令 MoveFileExW 会把 tmp 的 ACL 写到 dst，写用户文件是错的）；④ 写后**回读校验**（确认落盘 + 可解析）。
-fn write_json_atomic(path: &Path, value: &Value) -> Result<(), String> {
-    let parent = path.parent().ok_or_else(|| "bad path".to_string())?;
-    if !parent.is_dir() {
-        return Err(format!(
-            "项目目录不存在：{}（请填已存在的项目根）",
-            parent.display()
-        ));
-    }
-    let pretty = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
-    if path.is_file() {
-        let bak = path.with_extension("json.bak");
-        let _ = std::fs::copy(path, &bak); // best-effort backup
-    }
-    crate::profile_installer::atomic_write_string(&path.to_path_buf(), &pretty)
-        .map_err(|e| format!("write {}: {e}", path.display()))?;
-    let back =
-        std::fs::read_to_string(path).map_err(|e| format!("readback {}: {e}", path.display()))?;
-    serde_json::from_str::<Value>(back.trim_start_matches('\u{feff}'))
-        .map_err(|e| format!("readback parse {}: {e}", path.display()))?;
-    Ok(())
-}
-
-fn write_project_mcp_server_impl(
-    project_dir: String,
-    name: String,
-    server: Value,
+/// 🔴 〔RW1 · 第四波 · 2026-09-24〕**项目 `.mcp.json` 的唯一写法**：本机与远端同一条路 ——
+/// 经那台机器的后端（`user_files::edit` → `files-peek` / `files-put`），只差 origin。
+///
+/// 用户裁「只允许后端的文件管理部分写文件」**也管本机**、远端 F89a「按推荐改」⇒ 从前两份落盘
+/// （本机 `write_json_atomic`〔散文墓碑〕走 `ReplaceFileW`、远端 SFTP `upload_atomic`）都走了，
+/// 改那份 JSON 的纯核心照旧只有一份（[`upsert_mcp_server_value`] / [`remove_mcp_server_value`]）。
+///
+/// - 已存在但解析失败 ⇒ **拒绝覆盖**（不拿骨架盖掉现有的 server，与从前两侧同一句承诺）。
+/// - 不存在 ⇒ 从骨架 `{"mcpServers":{}}` 算起；`change` 回 `false`（删一条本来就不在的）⇒ 一个字节不写、不建文件。
+/// - 不留备份文件：`.mcp.json` 住在用户的仓里，每改一次留一份带时间戳的备份就是往仓里撒垃圾；
+///   替换本身是原子的、写后回读逐字比对、不符回滚（规则住后端）。⚠ 从前本机那份 `.json.bak` 因此不再出现。
+async fn edit_project_mcp(
+    door: &impl crate::user_files::Door,
+    target: &str,
+    mut change: impl FnMut(&mut Value) -> Result<bool, String>,
 ) -> Result<(), String> {
-    let mcp = mcp_json_path(&project_dir)?;
-    let mut root = read_or_skeleton(&mcp)?;
-    upsert_mcp_server_value(&mut root, name, server)?;
-    write_json_atomic(&mcp, &root)
+    // 落点由两个出口之一给（[`mcp_json_path`] / [`remote_mcp_json_path`]），这里只把它切成「根 ＋ 那一段」交给后端。
+    let (root, rel) = target
+        .rsplit_once(['/', '\\'])
+        .filter(|(r, n)| !r.is_empty() && !n.is_empty())
+        .ok_or_else(|| format!("拒绝写：{target} 切不出项目目录"))?;
+    let what = target.to_string();
+    crate::user_files::edit(door, root, rel, false, false, |existing| {
+        let mut v = match existing {
+            None => serde_json::json!({ "mcpServers": {} }),
+            Some(t) => serde_json::from_str(t.trim_start_matches('\u{feff}'))
+                .map_err(|e| format!("{what} 解析失败（拒绝覆盖）: {e}"))?,
+        };
+        if !change(&mut v)? {
+            return Ok(None);
+        }
+        serde_json::to_string_pretty(&v)
+            .map(Some)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map(|_| ())
 }
 
-/// F87 写命令：增 / 改项目 `.mcp.json` 里一条 MCP server。**只碰 `<dir>/.mcp.json`。**§10 spawn_blocking。
+/// F87 写命令：增 / 改项目 `.mcp.json` 里一条 MCP server。**只碰 `<dir>/.mcp.json`。**
 ///
-/// 🔴 **〔步 12·C 收尾 2026-09-20〕两条合成了一条带 `origin` 的**（本机那条
-/// ＋ [`write_remote_mcp_server`]）。`设计/00 §2.5 ①` 逐字「同义双份命令合成一条带 origin 参数的」。
-///
-/// **凭什么说这一对是同一件事**（判据不是名字 —— `真相源/97 §二b` 逐字「按名字数分叉会系统性高估」）：
-/// 两侧写的是**同一个写面**（`<dir>/.mcp.json`，SS-14 那条铁律的两端），
-/// 而**改那份 JSON 的那一份代码本来就只有一份** —— [`upsert_mcp_server_value`]
-/// （它的头注逐字「本机/远端复用、可测」，F89a 落地那天就是为这件事抽出来的）。
-/// 两侧的差别只剩两处，且两处都只是「字节走哪条路」：
-/// 读回来走 `read_or_skeleton`（读盘）还是 `read_remote_mcp_value`（SFTP）·
-/// 写回去走 `write_json_atomic`（`ReplaceFileW`）还是 `sftp::upload_atomic`（tmp+rename）。
-/// ⇒ 这正是 `INVARIANTS §40`「本地 ＝ 不走 ssh 的远端」在命令面上的样子。
-///
-/// ⚠ 上一路（步 12·C 首拍）判过这一对「**该合、但本步合不了**」——
-/// 卡的不是判据，是 `tests/evidence/K-R117-ruler.py::SPLIT_GROUPS["S5"]` 那张
-/// 字面量名单不在它的写区。本拍同拍把那张名单从 7 条改成 5 条，卡点消失。
+/// 🔴 **〔步 12·C 收尾 2026-09-20〕两条合成了一条带 `origin` 的**（本机那条 ＋ 远端那条）。
+/// `设计/00 §2.5 ①` 逐字「同义双份命令合成一条带 origin 参数的」。
+/// 〔RW1 · 第四波 09-24〕合并时留下的那一处差别（「字节走哪条路」）也没了：两侧都经那台机器的后端写
+/// （[`edit_project_mcp`]）；两支今天只差**落点怎么验**（本机可以是盘符路径，远端只收 POSIX 绝对路径）与门开在哪个 origin。
 ///
 /// ⚠ 本机 ＝ `Origin::local()`（线上 `"<local>"`），**不是 `null`** ——
 /// 「没说」那一支由 [`Origin::route`] 当场拒掉，理由见它的头注。
@@ -419,37 +401,22 @@ pub async fn write_project_mcp_server(
     server: Value,
 ) -> Result<(), String> {
     match origin.route("write_project_mcp_server")? {
-        Route::Local => tokio::task::spawn_blocking(move || {
-            write_project_mcp_server_impl(project_dir, name, server)
-        })
-        .await
-        .map_err(|e| format!("spawn_blocking: {e}"))?,
+        Route::Local => {
+            let target = mcp_json_path(&project_dir)?.to_string_lossy().into_owned();
+            let door = crate::user_files::BackendDoor::new(Origin::local());
+            edit_project_mcp(&door, &target, |v| {
+                upsert_mcp_server_value(v, name.clone(), server.clone()).map(|()| true)
+            })
+            .await
+        }
         Route::Remote(host) => write_remote_mcp_server(host, project_dir, name, server).await,
     }
 }
 
-fn remove_project_mcp_server_impl(project_dir: String, name: String) -> Result<(), String> {
-    let mcp = mcp_json_path(&project_dir)?;
-    if !mcp.is_file() {
-        return Ok(()); // 无文件即无条目
-    }
-    let mut root = read_or_skeleton(&mcp)?;
-    if !remove_mcp_server_value(&mut root, &name)? {
-        return Ok(()); // no-op（条目不存在）→ 不重写、不 churn
-    }
-    write_json_atomic(&mcp, &root)
-}
-
-/// F87 写命令：删项目 `.mcp.json` 里一条 MCP server。**只碰 `<dir>/.mcp.json`。**§10 spawn_blocking。
+/// F87 写命令：删项目 `.mcp.json` 里一条 MCP server。**只碰 `<dir>/.mcp.json`。**
 ///
-/// 🔴 **〔步 12·C 收尾 2026-09-20〕两条合成了一条带 `origin` 的**（本机那条
-/// ＋ [`remove_remote_mcp_server`]）。凭据与 [`write_project_mcp_server`] 同形，
-/// 只是共用的那一份纯核心换成了 [`remove_mcp_server_value`]（同样「本机/远端复用、可测」）。
-///
-/// ⚠ **两侧的「不存在就 no-op」语义也本来就是同一句**：本机先 `mcp.is_file()`、
-/// 远端先 `try_exists`，之后都走 `remove_mcp_server_value` 的返回值决定要不要重写。
-/// 合并没有改动其中任何一句 —— 那两句留在各自那一支里，因为「文件在不在」的问法
-/// 本机与远端不同（这正是 §40 说的「只是远端走 ssh」那一处差别）。
+/// 凭据与 [`write_project_mcp_server`] 同形，纯核心换成 [`remove_mcp_server_value`]。
+/// 「不存在就 no-op」两侧同一句：文件不在或条目不在 ⇒ 规划回「没事可做」，一个字节不写、不建文件。
 #[tauri::command]
 pub async fn remove_project_mcp_server(
     origin: Origin,
@@ -458,9 +425,9 @@ pub async fn remove_project_mcp_server(
 ) -> Result<(), String> {
     match origin.route("remove_project_mcp_server")? {
         Route::Local => {
-            tokio::task::spawn_blocking(move || remove_project_mcp_server_impl(project_dir, name))
-                .await
-                .map_err(|e| format!("spawn_blocking: {e}"))?
+            let target = mcp_json_path(&project_dir)?.to_string_lossy().into_owned();
+            let door = crate::user_files::BackendDoor::new(Origin::local());
+            edit_project_mcp(&door, &target, |v| remove_mcp_server_value(v, &name)).await
         }
         Route::Remote(host) => remove_remote_mcp_server(host, project_dir, name).await,
     }
@@ -524,57 +491,35 @@ pub async fn read_remote_project_mcp(
     Ok(collect_entries(None, "", Some(&root), &src, None))
 }
 
-/// F89a：增/改远端项目 `.mcp.json` 一条 server。**SS-G 用户显式触发 + SS-14 只碰 .mcp.json。**SFTP 原子 RMW。
+/// F89a：增/改远端项目 `.mcp.json` 一条 server —— [`write_project_mcp_server`] 的远端那一支。
 ///
-/// 🔴 **〔步 12·C 收尾 2026-09-20〕它不再是一条 Tauri 命令。**
-/// 上线的那一条是 [`write_project_mcp_server`]，本函数是它的远端那一支。
-///
-/// ⚠ 名字**刻意没改**（同 [`list_remote_mcp_project_dirs`] 的先例）：
-/// `local_origin_registry::TRIAGE_DEBT` 与
-/// `remote_write_registry_tests` 的接线层路由表都按「文件::函数」登记着这一处，
-/// 改名会让那两张表静默失配。
-/// ⚠ 参数名从 `origin` 改成 `host`，理由同 `ORIGIN_MIGRATION_CEILING` 上方那一段：
-/// 本函数今天拿到的是**已经分过本机**的机器名，`origin` 的取值域含 `"<local>"`
-/// 而这里结构上收不到它 —— 继续叫 `origin` 是句假话。
+/// 🔴 〔RW1 · 第四波 09-24〕F89a 按用户裁「按推荐改」：**经那台远端的后端写**（[`edit_project_mcp`]），
+/// 不再 SFTP 读改写 ＋ `upload_atomic`。它与本机那一支只差两件：落点过远端那道守卫
+/// （[`remote_mcp_json_path`]：绝对 + 尾 `/.mcp.json` + 无 `..` + 非裸）· 门开在远端那个 origin 上。
+/// ⚠ 参数名叫 `host`（不叫 `origin`）：它拿到的是**已经分过本机**的机器名（理由同 `ORIGIN_MIGRATION_CEILING` 上方那一段）。
 pub(crate) async fn write_remote_mcp_server(
     host: &str,
     project_dir: String,
     name: String,
     server: Value,
 ) -> Result<(), String> {
-    let cfg = crate::load_remote_config_by_label(host)
-        .ok_or_else(|| format!("远端 '{host}' 未配置或未启用"))?;
-    let path = remote_mcp_json_path(&project_dir)?;
-    let conn = crate::sftp::connect_sftp(&cfg).await?;
-    let mut root = read_remote_mcp_value(&conn.sftp, &path).await?; // 已存在坏文件 → Err 拒覆盖
-    upsert_mcp_server_value(&mut root, name, server)?;
-    let pretty = serde_json::to_string_pretty(&root).map_err(|e| e.to_string())?;
-    crate::sftp::upload_atomic(&conn.sftp, &path, pretty.as_bytes(), 0o600).await
+    let target = remote_mcp_json_path(&project_dir)?;
+    let door = crate::user_files::BackendDoor::new(Origin(host.to_string()));
+    edit_project_mcp(&door, &target, |v| {
+        upsert_mcp_server_value(v, name.clone(), server.clone()).map(|()| true)
+    })
+    .await
 }
 
-/// F89a：删远端项目 `.mcp.json` 一条 server。**SS-G 用户显式触发 + SS-14 只碰 .mcp.json。**SFTP 原子 RMW。
-///
-/// 🔴 **〔步 12·C 收尾 2026-09-20〕它不再是一条 Tauri 命令。**
-/// 上线的那一条是 [`remove_project_mcp_server`]，本函数是它的远端那一支。
-/// 名字与参数名的处置同 [`write_remote_mcp_server`]。
+/// F89a：删远端项目 `.mcp.json` 一条 server —— [`remove_project_mcp_server`] 的远端那一支（同上：经远端后端写）。
 pub(crate) async fn remove_remote_mcp_server(
     host: &str,
     project_dir: String,
     name: String,
 ) -> Result<(), String> {
-    let cfg = crate::load_remote_config_by_label(host)
-        .ok_or_else(|| format!("远端 '{host}' 未配置或未启用"))?;
-    let path = remote_mcp_json_path(&project_dir)?;
-    let conn = crate::sftp::connect_sftp(&cfg).await?;
-    if !conn.sftp.try_exists(path.clone()).await.unwrap_or(false) {
-        return Ok(()); // 无文件即无条目
-    }
-    let mut root = read_remote_mcp_value(&conn.sftp, &path).await?;
-    if !remove_mcp_server_value(&mut root, &name)? {
-        return Ok(()); // no-op
-    }
-    let pretty = serde_json::to_string_pretty(&root).map_err(|e| e.to_string())?;
-    crate::sftp::upload_atomic(&conn.sftp, &path, pretty.as_bytes(), 0o600).await
+    let target = remote_mcp_json_path(&project_dir)?;
+    let door = crate::user_files::BackendDoor::new(Origin(host.to_string()));
+    edit_project_mcp(&door, &target, |v| remove_mcp_server_value(v, &name)).await
 }
 
 #[cfg(test)]
