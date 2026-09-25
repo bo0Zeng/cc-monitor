@@ -29,6 +29,9 @@ pub(crate) struct DiskDoor {
     pub puts: RefCell<Vec<PutCall>>,
     /// 删会话那一条收到的 sid。
     pub deleted_sids: RefCell<Vec<String>>,
+    /// `list_dir` 的答案，由判据**事先摆好**（替身不去遍历盘上的目录 ——
+    /// `scanning_guard_registry` 不许测试段裸遍历目录）。键是目录的绝对路径。
+    pub listings: RefCell<std::collections::BTreeMap<String, Vec<(String, bool)>>>,
 }
 
 impl DiskDoor {
@@ -38,6 +41,7 @@ impl DiskDoor {
             interfere: RefCell::new(Vec::new()),
             puts: RefCell::new(Vec::new()),
             deleted_sids: RefCell::new(Vec::new()),
+            listings: RefCell::new(std::collections::BTreeMap::new()),
         }
     }
 
@@ -145,6 +149,24 @@ impl Door for DiskDoor {
     async fn delete_session(&self, sid: &str) -> Result<String, String> {
         self.deleted_sids.borrow_mut().push(sid.to_string());
         Ok(format!("<替身>/{sid}.jsonl"))
+    }
+
+    async fn stat_kind(&self, path: &str) -> Result<Option<String>, String> {
+        Ok(std::fs::metadata(path).ok().map(|m| {
+            if m.is_dir() {
+                "dir".to_string()
+            } else {
+                "file".to_string()
+            }
+        }))
+    }
+
+    async fn list_dir(&self, path: &str) -> Result<Vec<(String, bool)>, String> {
+        self.listings
+            .borrow()
+            .get(path)
+            .cloned()
+            .ok_or_else(|| format!("替身：没给 {path} 摆目录列表"))
     }
 }
 

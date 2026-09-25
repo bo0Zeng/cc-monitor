@@ -968,7 +968,7 @@ describe("K-H2b D5 阻-2：tab 栏那条本机 resume 也是**行为**判据（�
 // ══════════════════════════════════════════════════════════════════════════
 
 /** `origin` 参数现打的处数。**恒等**，不是地板 —— 地板在「变少」方向是瞎的。 */
-const ORIGIN_PARAM_COUNT = 33; // 〔B2 · 条 66〕+1（推生效值那一条退役 −1，`backend_exit_policy` / `set_backend_exit_policy` 各带一个 `origin` +2）； 〔SE1〕+1（list_user_inputs 带一个 `origin: Origin`）； 〔`设计/10` 骨架 · 子步 3〕+2（read_session_index / read_session_range 各带一个 `origin: Origin`）
+const ORIGIN_PARAM_COUNT = 36; // 〔RW1 · 第四波 09-24〕+3（list_skills / read_skill_file / write_skill_file 各带一个 `origin`：远端项目的收件箱也能编辑，读写经那台机器的后端）； // 〔B2 · 条 66〕+1（推生效值那一条退役 −1，`backend_exit_policy` / `set_backend_exit_policy` 各带一个 `origin` +2）； 〔SE1〕+1（list_user_inputs 带一个 `origin: Origin`）； 〔`设计/10` 骨架 · 子步 3〕+2（read_session_index / read_session_range 各带一个 `origin: Origin`）
 
 /**
  * 从一段包装层文本里摘出每一处 `origin` 参数：`{ optional, type }`。
