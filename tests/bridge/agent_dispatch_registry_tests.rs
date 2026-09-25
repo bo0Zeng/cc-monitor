@@ -61,7 +61,7 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
     (
         "history.rs",
         Face::Facade,
-        5,
+        4,
         "会话记录根 ×3（`records_dir`）+「这个文件是不是会话记录」×4（`has_record_ext`）\
              ⇒ 全树最重的一处，而它一根针都不在件计划 `§0` 的四把尺子里。\
              🔴 〔`K-R97` 09-12〕**11 → 8，棘轮往下拧了 3**：`list_history_projects` 改问本机\
@@ -74,7 +74,9 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
              那一格是**搬进共享 crate**，桌面侧从此不自己问「这个文件是不是会话记录」。\
              🔴 〔RW1 · 第四波 09-24〕**7 → 5**：本机删会话那道路径守卫（`records_dir` ×1 ＋ `has_record_ext` ×1）\
              整个不在了 —— 删会话改成后端一条只收 sid 的命令（`files-delete-session`），落点由后端按 sid 找。\
-             ⚠ 同样**不是「收进接口了」**：那一格是**整段搬去后端**，桌面侧从此不问这件事",
+             ⚠ 同样**不是「收进接口了」**：那一格是**整段搬去后端**，桌面侧从此不问这件事。\
+             🔴 〔RW1 · 第四波 09-24〕**5 → 4**：本机分叉那一支取记录根（`records_dir` ×1）也走了 ——\
+             本机分叉改成 exec 本机后端 `--fork-session`，与远端同一条子命令",
     ),
     (
         "history.rs",
@@ -156,7 +158,7 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
 /// `agents::<名>::`，这边走 trait + 门面）。要比较请各自报各自的尺子。
 /// 🔴 〔RW1 · 第四波 09-24〕**35 → 33**：`history.rs` 的门面那张脸 7 → 5，本机删会话那道路径守卫整段搬去后端
 /// （详见那条登记）。⚠ 与 `K-R97` 同形：**不是「收进接口了」**，是桌面侧不再问这件事。
-const COUPLING_BASELINE: usize = 33;
+const COUPLING_BASELINE: usize = 32; // 〔RW1〕33 → 32：本机分叉那一支取记录根随它交给后端走了
 
 /// **抹除 kind 的门面**：`adapter.rs` 里那几个「替调用者把 agent 写死」的自由函数。
 ///

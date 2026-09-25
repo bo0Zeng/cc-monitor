@@ -1198,3 +1198,5 @@ src/backend/control/files_write.rs:738	恢复原文件也失败了，请打开�
 src/backend/control/files_write.rs:739	刚建出来的那份没删掉，请手动删掉它。	保留	[对外] 同上一族，逐字沿用已裁的那一句；请人做的事他做得到，不中 §2.3
 src/backend/control/files_write.rs:631	{} 在盘上有 {on_disk} 字节，但读出来是空的（可能被 OneDrive 或杀毒软件锁着）。已取消，没改任何东西。	保留	[对外] 读改写的读 / 写两半在「盘上有字节却读到空」时停下（v1.7.9 事故那一道）。RW1 把它从 monitor 的本机读法搬到后端，话逐字沿用：说清看见了什么、可能是谁锁着、结果是一个字节没动
 src/views/inbox-view.ts:116	 ｜ 没有可编辑的收件箱	保留	[对外] 状态栏追加的一句：列出来的 skill 里没有一个声明了可编辑文件（在场的前提下）。〔RW1〕远端会话也走到这里之后它进了普查存疑带，话本身不改
+src/bridge/src/remote_branch.rs:201	源会话 id	保留	[对外] 同 :167 那一行（〔RW1〕本机分叉那一支 create_local_branch_session 的同一句 fail-fast）
+src/bridge/src/remote_branch.rs:202	消息 uuid	内部词→「消息 ID」	[对外] 同 :168 那一行（〔RW1〕本机那一支的同一句；裁法随那一行一起落）

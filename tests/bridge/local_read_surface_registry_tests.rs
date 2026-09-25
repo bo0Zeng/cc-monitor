@@ -42,14 +42,9 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              （backend 侧自己也有 canonicalize 前缀校验）—— 那是纵深防御，同 `remote_branch.rs` \
              那句「两个 id 已过白名单，仍照常 shell_quote」。",
     ),
-    (
-        "src/history.rs",
-        "write",
-        2,
-        "写操作**恰好也读 dir 来定位文件**：`create_branch_session`(744/745)。⚠ **不属读面** —— 分叉走 `--fork-session`。\
-             〔RW1 · 第四波 09-24〕**4 → 2**：`delete_history_session` 那两处走了 —— 删会话改成后端一条只收 sid 的命令\
-             （`files-delete-session`，落点由后端按 sid 找），本机不再解析 dir 来定位要删的那一份。",
-    ),
+    // 〔RW1 · 第四波 09-24〕这里原来有 `src/history.rs` 的 `write` 一行（写操作恰好也读 dir 来定位文件：
+    //   `delete_history_session` · `create_branch_session`，4 处）。两件都改经后端（删会话 `files-delete-session`
+    //   只收 sid · 本机分叉 exec 本机后端 `--fork-session`），本进程不再解析 dir 来定位要写的那一份 ⇒ 4 → 0，摘行。
     (
         "src/history.rs",
         "payload",

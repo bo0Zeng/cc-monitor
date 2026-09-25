@@ -2806,6 +2806,11 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         // 〔RW1 · 第四波 09-24〕本机用户文件的原子写原语随「用户文件改经后端写」删了（`$PROFILE` / `.mcp.json`）。
         ("src/bridge/README.md", "atomic_write_string", 1),
+        // 〔RW1 · 第四波 09-24〕本机分叉那份实现交给后端之后删掉的两个函数名。
+        ("src/bridge/src/history.rs", "read_jsonl_values", 1),
+        ("src/bridge/src/history.rs", "write_branch_file", 1),
+        ("src/bridge/src/remote_branch.rs", "write_branch_file", 1),
+        ("tests/bridge/history_tests.rs", "read_jsonl_values", 1),
         // 〔RW1 · 第四波 09-24〕远端删会话那道结构守卫（F11 改经远端后端删，`files-delete-session` 只收 sid）。
         (
             "src/backend/agents/claudecode/paths.rs",
@@ -3638,10 +3643,12 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/fenced_block.rs", 4),
         // 〔RW1 · 第四波 09-24〕F11 改经远端后端删：远端那一支的头注一块 · 本机那两组删除判据换掉时留的一块。
         ("src/bridge/src/remote_history.rs", 1),
+        // 〔RW1 · 第四波 09-24〕本机分叉改成 exec 本机后端 `--fork-session`：本机那一支的头注一块。
+        ("src/bridge/src/remote_branch.rs", 1),
         // 〔RW1 · 第四波 09-24〕远端删会话那道结构守卫随 F11 改经后端删走了：方向相反那一问的两处说明。
         ("src/backend/agents/claudecode/paths.rs", 1),
         ("src/bridge/src/claude_data_fence.rs", 2),
-        ("tests/bridge/history_tests.rs", 1),
+        ("tests/bridge/history_tests.rs", 3), // 〔RW1〕+2：本机分叉那几组判据换掉时留的块
         // 〔RW1 · 第四波 09-24〕项目 `.mcp.json` 的本机写原语删了（改经后端写）。
         ("src/bridge/src/mcp.rs", 1),
         // 〔RW1 · 第四波 09-24〕写点表摘掉那三行时留的一块。
@@ -3689,7 +3696,7 @@ fn every_prose_tombstone_mark_is_registered() {
         //   另三处各挂在一条**随功能一起走掉的判据**的名字上 ——
         //   那三个名字同时要进 `TOMBSTONED`，两张表单位不同，各记各的）。
         ("src/bridge/src/filewin/source.rs", 5), // 〔F7c 收尾 09-24〕4 → 5（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
-        ("src/bridge/src/history.rs", 2),        // 〔RW1〕+1：本机删会话那道路径守卫整段搬去后端
+        ("src/bridge/src/history.rs", 5), // 〔RW1〕+1：本机删会话那道路径守卫整段搬去后端 // 〔RW1〕+3：本机分叉的实现（`branch_impl` / `write_branch_file` / `read_jsonl_values`）交给后端
         ("src/bridge/src/launch.rs", 1),
         ("src/bridge/src/lib.rs", 2), // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("src/bridge/src/local_backend_host.rs", 1),

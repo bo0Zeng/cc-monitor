@@ -868,34 +868,12 @@ pub struct BranchResult {
 // 那道门的两条实证判据（`..` 穿越 · 软链逃逸）没有被删，**换成了新形状的同名两条**，
 // 住在本文件测试段里，读的是同一份实现。
 
-/// 读一个 jsonl 文件为逐行 `serde_json::Value`（剥 BOM、跳空行；解析失败的行**保留原样**
-/// 不了了之——建分支只复制祖先链上的记录，坏行若不在链上自然被忽略）。
-fn read_jsonl_values(path: &Path) -> Result<Vec<serde_json::Value>, String> {
-    let file = File::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
-    let reader = BufReader::new(file);
-    let mut out = Vec::new();
-    for line in reader.lines() {
-        let line = line.map_err(|e| format!("read {}: {e}", path.display()))?;
-        let trimmed = line.trim_start_matches('\u{feff}').trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
-            out.push(v);
-        }
-    }
-    Ok(out)
-}
-
-// G1：**记录变换已提成共享 crate** `branch-core` —— monitor 与远端后端共用同一份。
-// 搬走的理由与选型过程见 `.claude/planned-build/branch-anywhere/features/G1-*.md`；
-// 落盘格式的实证判据见该 crate 的 `build_branch_records` 头注。
-// **本文件只留 IO**（读 jsonl 的口径 ＋ `O_EXCL` 落盘，那两样是 monitor 侧特有的）；
-// 〔`K-R88` 09-13〕「按 sid 找那份源文件」也进了同一个 crate，两侧同一份。
-use branch_core::build_branch_records;
+// 〔RW1 · 第四波 · 2026-09-24〕这里原来是本机分叉读源会话那一格 `read_jsonl_values`〔散文墓碑〕与
+// `branch_core::build_branch_records` 的引入（记录变换）。本机分叉改成 exec 本机后端 `--fork-session`，
+// 读源 · 变换 · `O_EXCL` 落盘三样全在后端那一份（`control/fork_write.rs`）⇒ 本文件零调用方、删了。
 
 /// F62 IPC：从历史会话的某条消息创建分支。前端点消息卡上的 `⑂` 时调，成功返回新 sid。
-/// 见本段顶部大注释（§1 正交、原生格式、守卫）。薄壳：resolve_claude_dir → 委托 branch_impl。
+/// 见本段顶部大注释（§1 正交、原生格式、守卫）。〔RW1〕薄壳：按 origin 交给那台机器的后端 `--fork-session`。
 ///
 /// 🔴〔`K-R88` 09-13〕**入参从路径改成了 sid**，与远端那条
 /// （`remote_branch::create_remote_branch_session`）**形状一致**。
@@ -918,10 +896,10 @@ pub async fn create_branch_session(
     message_uuid: String,
 ) -> Result<BranchResult, String> {
     match origin.route("create_branch_session")? {
+        // 〔RW1 · 第四波 09-24〕本机那一支也交给后端写（exec 本机后端 `--fork-session`），本进程一个字节不写。
         crate::origin::Route::Local => {
-            let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
-            let projects_dir = crate::adapter::records_dir(&claude_dir);
-            branch_impl(&source_session_id, &message_uuid, &projects_dir)
+            crate::remote_branch::create_local_branch_session(&source_session_id, &message_uuid)
+                .await
         }
         crate::origin::Route::Remote(host) => {
             crate::remote_branch::create_remote_branch_session(
@@ -934,62 +912,11 @@ pub async fn create_branch_session(
     }
 }
 
-/// 建分支核心（可注入 projects_dir 直测，绕开 resolve_claude_dir 全局依赖）。
-/// 安全承诺全在这层：源零改动、只写新 sid、绝不覆盖。
-///
-/// 「找那份源文件」**不在这里**：走 `branch_core::find_session_file`，与后端同一份（`K-R88`）。
-/// 本函数留下的是 monitor 侧特有的两样：读 jsonl 的口径、以及 `O_EXCL` 落盘。
-fn branch_impl(
-    source_session_id: &str,
-    message_uuid: &str,
-    projects_dir: &Path,
-) -> Result<BranchResult, String> {
-    let source = branch_core::find_session_file(projects_dir, source_session_id)?;
-
-    let lines = read_jsonl_values(&source)?;
-    let new_sid = uuid::Uuid::new_v4().to_string();
-    let records = build_branch_records(&lines, message_uuid, source_session_id, &new_sid)?;
-
-    // 目标写进源会话同目录（projects 内某项目目录），文件名 = 新 sid。
-    let parent = source
-        .parent()
-        .ok_or("refuse branch: source has no parent dir")?;
-    let out_path = parent.join(format!("{new_sid}.jsonl"));
-    write_branch_file(&out_path, &records)?;
-    tracing::info!(
-        "history: branched sid={new_sid} from {source_session_id}@{message_uuid} ({} records)",
-        records.len()
-    );
-
-    Ok(BranchResult {
-        session_id: new_sid,
-        jsonl_path: out_path.to_string_lossy().into_owned(),
-    })
-}
-
-/// 把记录序列化成 JSONL 原子写入 `out_path`。**`create_new`：目标已存在则直接失败**——
-/// 自证「绝不覆盖任何现存会话」契约，消 exists()→write 的 TOCTOU 窗口。抽出便于直测。
-fn write_branch_file(out_path: &Path, records: &[serde_json::Value]) -> Result<(), String> {
-    use std::io::Write as _;
-    let mut body = String::new();
-    for rec in records {
-        body.push_str(&serde_json::to_string(rec).map_err(|e| format!("serialize: {e}"))?);
-        body.push('\n');
-    }
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(out_path)
-        .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::AlreadyExists {
-                format!("refuse branch: {} already exists", out_path.display())
-            } else {
-                format!("create {}: {e}", out_path.display())
-            }
-        })?;
-    f.write_all(body.as_bytes())
-        .map_err(|e| format!("write {}: {e}", out_path.display()))
-}
+// 〔RW1 · 第四波 · 2026-09-24〕这里原来是本机建分支的核心 `branch_impl`〔散文墓碑〕与它的落盘
+// `write_branch_file`〔散文墓碑〕（`O_EXCL` 在本进程里写 `~/.claude/projects/<proj>/<new-sid>.jsonl`）。
+// 用户裁「只允许后端的文件管理部分写文件」也管本机 ⇒ 本机分叉与远端同一条路：exec 本机后端的
+// `--fork-session`（`src/backend/control/fork_write.rs`，写盘白名单层那一处 `O_EXCL`），
+// 结果解释与远端共用 `remote_branch::interpret_fork_exec` ⇒ 两件零调用方、删了。
 
 /// 从本地 history-metadata.json 移除某 sid 的条目（best-effort）。本地删除与远端删除
 /// （issue F11 `delete_remote_history_session`）共用——元数据是 monitor 本地按 sid 的注解，
