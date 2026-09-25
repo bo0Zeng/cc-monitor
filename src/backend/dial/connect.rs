@@ -5,7 +5,11 @@
 //! `authenticate_via_agent`〔散文墓碑〕 与 `ClientHandler` —— 那几样在界面侧**删掉了**，这里是它们唯一的家。
 //! 与原来相比只有两处不同，都写在 `mod.rs` 头注「边界」一节：竞速同时起拨（不错开）；
 //! ssh-agent 两个平台都有（界面侧原来只有 Windows）。
+//!
+//! 〔NT1 · 2026-09-24〕TCP 改由这里自己拨（不再交给 `client::connect`）：拨通之后问内核这一跳的往返时间
+//! （`platform::tcp_rtt`），过**唯一一处**压缩判准 [`compression_for`]，再在这条 socket 上跑 SSH 握手。
 
+use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -31,6 +35,10 @@ pub(crate) struct Linked {
     pub(crate) _jump: Option<client::Handle<Checker>>,
     /// 〔SR1b〕这条连接上的通道预算（`pool::Budget`）：长流 · 查询 · SFTP 同一条连接，同一道闸。
     pub(crate) budget: super::pool::Budget,
+    /// 〔NT1〕这条连接托着的别的连接（主连接托着批量连接：长流在它就在，主连接没了随之释放 —— `pool.rs`）。
+    pub(crate) held: Mutex<Vec<Arc<Linked>>>,
+    /// 〔NT1〕这条连接上停着的那一条空闲 sftp 会话（一个空位；`sftp.rs::Parked`）。不托本连接。
+    pub(crate) idle_sftp: Mutex<Option<super::sftp::Parked>>,
 }
 
 /// host key 校验：给了期望值就严格比（比之前 `trim`），没给就 TOFU 接受并显眼 `warn`。
@@ -102,19 +110,102 @@ fn label(ep: &Endpoint) -> String {
     format!("{}:{}", ep.host, ep.port)
 }
 
-fn config(probe: bool) -> Arc<client::Config> {
+// ═══ 〔NT1 · 2026-09-24〕**压缩：开不开，判准只此一处** ═══════════════════════════════════════════
+//
+// 用户 V23（`设计/99 §1`）：「智能多开链接\压缩等等」「这是属于 ssh 优化的部分」。`设计/15 §3.3`：SSH 传输层零压缩，
+// 而会话数据 gzip 3.1–4.1×。`§5.5` 那个「russh 默认压不压 —— 读不到，不猜」今天读到了：0.61.1 的默认偏好序是
+// `[none, zlib, zlib@openssh.com]`，客户端按**自己的**偏好序挑双方都有的第一个 ⇒ **永远 `none`**。
+//
+// 判准看的是**这一跳真实的往返时间**（内核 `TCP_INFO`，`platform::tcp_rtt`），不是地址长什么样：
+// 用户的远端大半走覆盖网（地址在 RFC 1918 私网段、跨互联网、RTT 12–577 ms —— `NT1.md §0.3` 现打）。
+
+/// 往返时间到这个数（微秒）才压。回环 ≈ 0.07 ms、有线局域网 < 1 ms、无线局域网 1–5 ms；最近的一条跨互联网覆盖网 12 ms。
+/// 判错两种代价不对称：局域网被判「远」⇒ 多花一点 zlib `fast` 档的 CPU；跨互联网被判「近」⇒ 白传 3–5 倍字节 ⇒ 门槛取低。
+pub(crate) const COMPRESS_RTT_FLOOR_US: u32 = 5_000;
+
+/// 压缩偏好序：**压**（`zlib@openssh.com` 鉴权之后才开 —— OpenSSH 服务端 `Compression yes` 今天只给它；
+/// 远端 `Compression no` ⇒ 交集只剩 `none`，照样连得上）。
+pub(crate) const COMPRESS_ON: &[russh::compression::Name] = &[
+    russh::compression::ZLIB_LEGACY,
+    russh::compression::ZLIB,
+    russh::compression::NONE,
+];
+
+/// 压缩偏好序：**不压**。
+pub(crate) const COMPRESS_OFF: &[russh::compression::Name] = &[russh::compression::NONE];
+
+/// 🔴 **闸：russh 自己的 zlib 解压今天是坏的**（NT1 现打，`russh 0.61.1` 与 `0.61.2` 的 `compression.rs` 逐字相同）。
+///
+/// `Decompress::decompress` 的收尾判断用的是**本轮调用之前**的进度（`n_in_` / `n_out_`）⇒ 解出来的字节比输入多一倍以上时，
+/// 它在输出缓冲第二次撑满的那一刻提前收工：一包只交出 ≈ 2 × 包长，余下的留在解压器里、拼进**下一包** ⇒ 包流错位。
+/// 真 sshd（`OpenSSH_10.2p1`，`zlib@openssh.com`）上的样子：鉴权过了、第一条通道的确认被吃掉、会话卡死
+/// （keepalive 的回包又让它判不出超时）。会话 jsonl 的压缩比 3–5 倍（`设计/15 §3.3`）⇒ 几乎每一包都中。
+///
+/// ⇒ 判准照问、日志照写它的答案，**答案今天不落到连接上**。开闸的条件是 russh 的解压真的对了（升级 / 打补丁）：
+/// `dial_compress_tests::the_gate_matches_what_russh_really_does` 两向钉着 —— russh 修好了而闸没开 ⇒ 红（该开了）；
+/// 闸开了而 russh 还坏 ⇒ 红。
+pub(crate) const RUSSH_ZLIB_SOUND: bool = false;
+
+/// 🔴 **判准只此一处**：这一跳（`peer` ＋ 内核量到的往返微秒）要不要开 SSH 压缩。
+///
+/// - 回环 ⇒ 不压（压了只花 CPU）；
+/// - 往返时间读得到 ⇒ `≥ COMPRESS_RTT_FLOOR_US` 才压；
+/// - 读不到（平台答不上来）⇒ **压**（宁可在局域网上多花一点 CPU，也不在跨互联网那一跳上白传字节）。
+pub(crate) fn compression_for(peer: IpAddr, rtt_us: Option<u32>) -> bool {
+    if peer.to_canonical().is_loopback() {
+        return false;
+    }
+    rtt_us.is_none_or(|us| us >= COMPRESS_RTT_FLOOR_US)
+}
+
+fn config(probe: bool, compress: bool) -> Arc<client::Config> {
     Arc::new(client::Config {
         inactivity_timeout: probe.then_some(PROBE_INACTIVITY),
         keepalive_interval: (!probe).then_some(KEEPALIVE),
+        preferred: russh::Preferred {
+            compression: std::borrow::Cow::Borrowed(if compress {
+                COMPRESS_ON
+            } else {
+                COMPRESS_OFF
+            }),
+            ..russh::Preferred::DEFAULT
+        },
         ..Default::default()
     })
+}
+
+/// 拨 TCP，拨通后问内核这一跳的往返时间、过一遍判准。回 `(socket, 跨这一跳的字节压不压)` ——
+/// 判准的答案过了闸（[`RUSSH_ZLIB_SOUND`]）才算数。
+async fn tcp_hop(ep: &Endpoint) -> std::io::Result<(tokio::net::TcpStream, bool)> {
+    let tcp = tokio::net::TcpStream::connect((ep.host.as_str(), ep.port)).await?;
+    let rtt = crate::platform::tcp_rtt::rtt_us(&tcp);
+    let judged = compression_for(tcp.peer_addr()?.ip(), rtt);
+    let compress = judged && RUSSH_ZLIB_SOUND;
+    tracing::info!(
+        "dial: {} 往返 {} ⇒ 判准：{}{}",
+        label(ep),
+        rtt.map_or_else(|| "读不到".to_string(), |us| format!("{us} µs")),
+        if judged { "压" } else { "不压" },
+        if judged && !compress {
+            "（russh 的 zlib 解压有缺陷，闸关着 ⇒ 这一条不压）"
+        } else {
+            ""
+        }
+    );
+    Ok((tcp, compress))
 }
 
 /// 多地址竞速：**同时**对每个地址起拨（TCP ＋ 握手 ＋ host key 校验，各自独立的校验器与指纹格），
 /// 首个握手成功者胜、其余立即丢弃（drop 关 socket）。鉴权留给调用方只对胜者做一次
 /// （防 agent 并发撞 `MaxAuthTries`）。全失败 ⇒ 聚合各地址的错误；被丢弃的输家不算错误。
+///
+/// 〔NT1〕TCP 由这里自己拨（不再交给 `client::connect`）：拨通之后问内核这一跳的往返时间、过压缩判准
+/// （[`compression_for`]），再在这条 socket 上跑 SSH 握手。`apply = false` ⇒ 判准照问、答案**不用在这一条上**
+/// 而是回给调用方（跳板那一形：跳板自己只运隧道、里面是已加密的字节，压不动；该压的是隧道里的目标那条）。
+/// 回 `(句柄, 指纹格, 胜者, 跨这一跳的字节该不该压)`。
 async fn race(
-    config: Arc<client::Config>,
+    probe: bool,
+    apply: bool,
     expected: Option<String>,
     order: Vec<Endpoint>,
     stages: &StageSink,
@@ -123,6 +214,7 @@ async fn race(
         client::Handle<Checker>,
         Arc<Mutex<Option<String>>>,
         Endpoint,
+        bool,
     ),
     (String, Option<String>),
 > {
@@ -134,7 +226,6 @@ async fn race(
     let race = async move {
         let mut set: JoinSet<Result<_, String>> = JoinSet::new();
         for ep in order {
-            let config = Arc::clone(&config);
             let stages = stages.clone();
             let observed: Arc<Mutex<Option<String>>> = Arc::default();
             let expected = expected.clone();
@@ -150,18 +241,27 @@ async fn race(
                     stages: stages.clone(),
                     endpoint: ep_label.clone(),
                 };
-                let r = client::connect(config, (ep.host.as_str(), ep.port), checker).await;
+                let r = match tcp_hop(&ep).await {
+                    Ok((tcp, compress)) => {
+                        let config = config(probe, apply && compress);
+                        client::connect_stream(config, tcp, checker)
+                            .await
+                            .map(|h| (h, compress))
+                            .map_err(|e| e.to_string())
+                    }
+                    Err(e) => Err(e.to_string()),
+                };
                 if let Some(fp) = observed.lock().ok().and_then(|g| g.clone()) {
                     if let Ok(mut s) = seen.lock() {
                         *s = Some(fp);
                     }
                 }
                 match r {
-                    Ok(h) => Ok((h, observed, ep)),
+                    Ok((h, compress)) => Ok((h, observed, ep, compress)),
                     Err(e) => {
                         stages.emit(Stage::Failed {
                             endpoint: ep_label.clone(),
-                            reason: format!("[{}] {e}", classify_stage(&e.to_string())),
+                            reason: format!("[{}] {e}", classify_stage(&e)),
                         });
                         Err(format!("{ep_label} {e}"))
                     }
@@ -286,11 +386,11 @@ pub(crate) async fn establish(
     req: &DialRequest,
     stages: &StageSink,
 ) -> Result<Linked, (String, Option<String>)> {
-    let config = config(req.probe);
     let (mut session, observed, winner, jump) = match &req.jump {
         None => {
-            let (s, o, w) = race(
-                Arc::clone(&config),
+            let (s, o, w, _) = race(
+                req.probe,
+                true,
                 req.host_key_fingerprint.clone(),
                 req.race_order(),
                 stages,
@@ -311,8 +411,10 @@ pub(crate) async fn establish(
                 host: hop.host.clone(),
                 port: hop.port,
             };
-            let (mut jump_session, _jo, _jw) = race(
-                Arc::clone(&config),
+            // 〔NT1〕跳板那条不压（`apply = false`），但本机到跳板这一跳的判准答案要拿回来给目标那条用。
+            let (mut jump_session, _jo, _jw, compress_inner) = race(
+                req.probe,
+                false,
                 hop.host_key_fingerprint.clone(),
                 vec![hop_ep],
                 stages,
@@ -349,13 +451,16 @@ pub(crate) async fn establish(
                 stages: stages.clone(),
                 endpoint: ep_label,
             };
-            let session =
-                client::connect_stream(Arc::clone(&config), channel.into_stream(), checker)
-                    .await
-                    .map_err(|e| {
-                        let fp = observed.lock().ok().and_then(|g| g.clone());
-                        (format!("目标 SSH 握手失败（经跳板）: {e}"), fp)
-                    })?;
+            let session = client::connect_stream(
+                config(req.probe, compress_inner),
+                channel.into_stream(),
+                checker,
+            )
+            .await
+            .map_err(|e| {
+                let fp = observed.lock().ok().and_then(|g| g.clone());
+                (format!("目标 SSH 握手失败（经跳板）: {e}"), fp)
+            })?;
             let winner = Endpoint {
                 host: req.host.clone(),
                 port: req.port,
@@ -389,5 +494,11 @@ pub(crate) async fn establish(
         endpoint: label(&winner),
         _jump: jump,
         budget: super::pool::Budget::new(),
+        held: Mutex::new(Vec::new()),
+        idle_sftp: Mutex::new(None),
     })
 }
+
+#[cfg(test)]
+#[path = "../../../tests/backend/dial_compress_tests.rs"]
+mod tests;
