@@ -1370,3 +1370,8 @@ src/backend/asset_catalog.rs:536	{} 不是这个后端认得的目录：{e}	保�
 src/backend/asset_sync.rs:162	机器 {id} 的目录太大（{len} 字节，一趟最多 {PUSH_MAX_BYTES}），这一台没推过去	保留	[可达存疑] 〔AS2〕同步时某一台的快照超过一趟能推的上限 ⇒ 那一台不推，进 assets-sync 那一行的 error；{id} 是目录里的机器 id
 src/backend/asset_sync.rs:203	对面答的目录认不出来：{e}	保留	[可达存疑] 〔AS2〕同步时远端答回来的目录不是 JSON ⇒ 那一趟不并不推，进 assets-sync 那一行的 error
 src/bridge/src/asset_sync.rs:76	本机后端答的同步结果认不出来，多半是两边版本不一样。	保留	[可达存疑] 〔AS2〕monitor 读本机后端 assets-sync 应答对不上契约 ⇒ 不猜默认值，原话回机器页；同 AS1 mcp_sync 那一句的形
+src/backend/skill_install.rs:88	不是文本文件	保留	[可达存疑] 〔AS2〕skill 里某个文件为什么读不出原文（含 NUL 字节）⇒ skill-read 的 files[].why / 这台那一份的 blocked，机器页「资产」那一块照原话列：这一个装不过去
+src/backend/skill_install.rs:91	不是 UTF-8 文本	保留	[可达存疑] 〔AS2〕同上一行：不是 UTF-8 ⇒ 装不过去（写口只收文本）
+src/backend/skill_install.rs:355	不是普通文件	保留	[可达存疑] 〔AS2〕这台 skill 目录里那一处是指向目录的链接 / 特殊文件 ⇒ 盖不了，进那一行的 blocked
+src/backend/skill_install.rs:356	不是普通文件	保留	[可达存疑] 〔AS2〕这台 skill 目录里那一处是指向目录的链接 / 特殊文件 ⇒ 盖不了，进那一行的 blocked
+src/backend/skill_install.rs:363	来源那台读不出原文	保留	[不对外] 〔AS2〕skill-install-plan 内部比较用的占位值（进 JSON 值相等比较，不上线也不给人看）

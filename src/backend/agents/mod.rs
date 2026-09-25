@@ -114,11 +114,13 @@ pub(crate) struct Adapter {
     pub(crate) assets: Option<AssetFace>,
 }
 
-/// 〔AS2〕一家的资产面：函数指针（同 [`Adapter::home`]，不立 trait）。今天一件知识：怎么扫。
+/// 〔AS2〕一家的资产面：函数指针（同 [`Adapter::home`]，不立 trait）。两件知识：怎么扫 · skill 住哪。
 #[derive(Clone, Copy)]
 pub(crate) struct AssetFace {
     /// 按这台机器的环境现解根、现扫，交回原始事实（还没有摘要 —— 摘要是通用层的机器）。
     pub(crate) scan: fn() -> Sightings,
+    /// 这一家 skill 的根（「装到这台」读 / 写 skill 的落点从这里来；与扫描同一个家）。
+    pub(crate) skills_root: fn() -> Option<PathBuf>,
 }
 
 /// 〔AS2〕一家适配层看到的原始资产事实。**还没有摘要**（通用层 `asset_catalog.rs` 算）。
@@ -138,6 +140,14 @@ pub(crate) fn asset_sightings() -> Vec<Sightings> {
         .iter()
         .filter_map(|a| a.assets.map(|f| (f.scan)()))
         .collect()
+}
+
+/// 〔AS2〕skill 的根：注册表里**第一家**有资产面的那一家（今天只有一家）。
+/// ⚠ 第二家也有 skill 的那天，这里要按 kind 选 —— 那时 `skill-read` / `skill-install-plan` 的入参得带上 kind。
+pub(crate) fn skills_root() -> Option<PathBuf> {
+    REGISTRY
+        .iter()
+        .find_map(|a| a.assets.and_then(|f| (f.skills_root)()))
 }
 
 /// **这个后端认得哪几个 agent**〔`S5`〕。加一个 agent = 加一行（+ 上面加一行 `mod`）。

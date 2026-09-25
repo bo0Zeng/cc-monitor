@@ -198,6 +198,9 @@ fn every_registered_command_declares_its_run_kind() {
                 // 〔AS2 · 第四波 4B〕资产目录两条：扫 skill 目录 / 读项目 `.mcp.json` ＋ 原子写目录文件，同步文件 I/O。
                 | "assets-catalog"
                 | "assets-catalog-merge"
+                // 〔AS2〕skill「装到这台」两条：走 skill 目录、读文件原文、stat 可疑路径（同步文件 I/O）。
+                | "skill-read"
+                | "skill-install-plan"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_));
         assert_eq!(
@@ -291,6 +294,8 @@ fn every_registered_command_declares_its_run_kind() {
         // 〔AS2 · 第四波 4B〕资产目录两条（阻塞档，理由在上面 `expected_blocking`）。
         "assets-catalog",
         "assets-catalog-merge",
+        "skill-read",
+        "skill-install-plan",
         // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话（阻塞档，理由在上面 `expected_blocking`）。
         "files-peek",
         "files-put",

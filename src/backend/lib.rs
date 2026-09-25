@@ -73,6 +73,7 @@ pub mod relay; // K-H1：HTTP 中转（搬字节那半）——只听回环、�
 #[cfg(test)]
 #[path = "../../tests/backend/single_stream_guard.rs"]
 mod single_stream_guard; // K-P1 KPY8：「多客户端的流」明确不做 —— 三处「恰好一个客户端」的触发器（整体 #[cfg(test)]）
+pub mod skill_install; // 〔AS2 · 第四波 4B · V113〕skill「装到这台」：帧面 `skill-read`（来源那台）/ `skill-install-plan`（要被写的那一台；复用 AS1 的差异与闸）。只读
 pub mod wire;
 
 /// Streaming wire-protocol major version, reported as `v` in the `Hello` frame.
@@ -578,6 +579,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔AS2〕`assets-sync` 是真异步命令 ⇒ 按派生规则上 CLI 面（`cli_control::cli_exposed`：非内建即上）。
     // ⚠ 一次性进程没有常驻那一个的连接池与可达表：它自己新拨一条、对那一台做一趟，扇出恒为零台。
     "--assets-sync",
+    // 〔AS2〕skill「装到这台」那两条（`skill-read` / `skill-install-plan`）派生的 CLI 面。只读，入参从 stdin 读。
+    "--skill-read",
+    "--skill-install-plan",
     "--backend-probe",
     // 〔SR1a · 09-24〕`--dial`（拨号代理，`K-P6b` / C2）**从本表摘掉了**：拨号挪进本机那一个常驻后端、
     // 经流上的链路（`link-*` 四条，`dial/link.rs`）做，不再每条链路起一个进程。

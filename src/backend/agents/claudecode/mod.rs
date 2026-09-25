@@ -60,4 +60,7 @@ pub(crate) fn home() -> Option<std::path::PathBuf> {
 }
 
 /// 〔AS2 · 第四波 4B〕本家的资产面（注册表 `Adapter.assets` 那一格）：skill 与项目级 MCP 的布局知识住 [`assets`]。
-pub(crate) const ASSETS: super::AssetFace = super::AssetFace { scan: assets::scan };
+pub(crate) const ASSETS: super::AssetFace = super::AssetFace {
+    scan: assets::scan,
+    skills_root: assets::skills_root,
+};

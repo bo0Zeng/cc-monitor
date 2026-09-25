@@ -196,6 +196,12 @@ mod tests {
              `~/.cc-monitor/assets-catalog.json`（第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
         ),
         (
+            "skill_install",
+            "〔AS2 · 第四波 4B · V113〕skill「装到这台」：帧面 `skill-read`（来源那台读 skill 的文件原文）· `skill-install-plan`\
+             （要被写的那一台判：差异与闸原样用 `mcp_sync`，可疑项带那台的事实）。它归 backend-core 是因为文件与事实都在那台机器上。\
+             **零写盘**：写经 monitor → 那台后端 `files-put`（CAS）",
+        ),
+        (
             "asset_sync",
             "〔AS2 · 第四波 4B · V113〕资产目录的自动同步：帧面 `assets-sync` —— 本机常驻后端沿池里那条 SSH \
              在远端跑两条一次性子命令（拉 `--assets-catalog` · 推 `--assets-catalog-merge`）。它归 backend-core 是因为\
