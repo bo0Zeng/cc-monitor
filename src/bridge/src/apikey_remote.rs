@@ -1,4 +1,4 @@
-//! 〔RM1a · 第四波〕账号层那份凭据文件**按机器**读写 —— monitor 侧的分派与发送口。
+//! 〔RM1a · 第四波〕上游选择那份凭据文件**按机器**读写 —— monitor 侧的分派与发送口。
 //!
 //! # 它补的是哪一格
 //!
@@ -9,14 +9,14 @@
 //! | origin | 谁读写那份文件 |
 //! |---|---|
 //! | 本机 | monitor 自己（`creds_store`，既有、一个字节没动）|
-//! | 某台远端 | 那台机器的后端（帧面 `apikey-key-set` / `apikey-read`，`src/backend/accounts/apikey/file_face.rs`）|
+//! | 某台远端 | 那台机器的后端（帧面 `apikey-key-set` / `apikey-read`，`src/backend/accounts/upstream/file_face.rs`）|
 //!
 //! ⇒ **每台机器上这份文件的程序写者恰好一个**。本机那一臂**只进 `creds_store`**，从不把
 //! `apikey-key-set` 发给本机后端（判据：`the_local_arm_never_sends_the_key_to_a_backend`）。
 //!
 //! # 归属（判清全文 `调研/第四波记录/RM1a.md §1`）
 //!
-//! 那份文件是**账号层自己的状态**，不是用户文件 ⇒ 它不走文件管理那一面，也不走 SFTP
+//! 那份文件是**上游选择自己的状态**，不是用户文件 ⇒ 它不走文件管理那一面，也不走 SFTP
 //! （`creds_core` crate 头注：远端那一侧**不许从 SFTP 的 mode 参数拿机密性**）。
 //!
 //! # 明文走哪
@@ -27,7 +27,7 @@
 //!
 //! # 它**不**做什么
 //!
-//! 不起中转、不问中转（那是层 1 的事，有它自己的命令）；不推账号 id 的第二份规则
+//! 不起中转、不问中转（那是中转的事，有它自己的命令）；不推账号 id 的第二份规则
 //! （直接调 `history::apikey_account_id_of_dir`，起会话那一侧用的是同一个）。
 
 use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
@@ -147,7 +147,7 @@ async fn call(host: &str, cmd: &str, args: Value) -> Result<Value, String> {
     };
     if !client.accepts(cmd) {
         return Err(format!(
-            "[{host}] 的后端还不认 `{cmd}` —— 账号层那份凭据文件按机器读写之后才有这条命令，\
+            "[{host}] 的后端还不认 `{cmd}` —— 上游选择那份凭据文件按机器读写之后才有这条命令，\
              重装那台机器的后端就有了"
         ));
     }
