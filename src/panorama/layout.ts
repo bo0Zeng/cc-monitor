@@ -18,6 +18,7 @@
  */
 
 import type { Overview } from "./types";
+import { copyText } from "../copy-table";
 
 // === 基础几何 ===
 
@@ -143,7 +144,7 @@ export interface LayoutOptions {
 }
 
 /** 未归类子系统的标签（脊柱文件不属于任何 subsystem 时归此）。 */
-export const UNCATEGORIZED_LABEL = "· 未归类";
+export const UNCATEGORIZED_LABEL = copyText("layout.cluster.uncategorized");
 
 const DEFAULTS: Required<LayoutOptions> = {
   minRadius: 10,
@@ -423,9 +424,9 @@ export function coverageBanner(o: {
   const pe = o.parse_errors ?? 0;
   if (uc <= 0 && pe <= 0) return null;
   const parts: string[] = [];
-  if (uc > 0) parts.push(`${uc} 处调用未解析`);
-  if (pe > 0) parts.push(`${pe} 文件解析失败`);
-  return `覆盖不全：${parts.join("、")}（静态分析已知缺口）`;
+  if (uc > 0) parts.push(copyText("layout.coverage.unresolved", { n: uc }));
+  if (pe > 0) parts.push(copyText("layout.coverage.parseErrors", { n: pe }));
+  return copyText("layout.coverage.banner", { parts: parts.join(copyText("layout.coverage.listSep")) });
 }
 
 /**

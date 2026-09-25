@@ -63,6 +63,7 @@ describe("ST1 点设置有反馈", () => {
   it("本模块不 import 设置面板（主窗的模块图里不该有它）", () => {
     const src = readFileSync("src/settings/open-settings.ts", "utf8");
     const imports = [...src.matchAll(/^import .* from "([^"]+)";/gm)].map((m) => m[1]).sort();
-    expect(imports).toEqual(["../error-toast", "../ipc/commands"]);
+    // 〔CP2b〕+ 取文口（失败 toast 那句进了文案表）—— 它不是设置面板。
+    expect(imports).toEqual(["../copy-table", "../error-toast", "../ipc/commands"]);
   });
 });

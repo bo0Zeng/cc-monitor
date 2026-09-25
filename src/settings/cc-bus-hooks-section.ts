@@ -24,6 +24,7 @@ import type { HooksDiagnosis } from "../generated/HooksDiagnosis";
 import type { HooksReport } from "../generated/HooksReport";
 import type { HookState } from "../generated/HookState";
 import type { Snippet } from "../generated/Snippet";
+import { copyText } from "../copy-table";
 
 export type { HooksDiagnosis, HooksReport, HookState, Snippet };
 
@@ -35,28 +36,28 @@ export function describeState(st: HookState): {
 } {
   switch (st.kind) {
     case "not-installed":
-      return { text: "未装", tone: "bad" };
+      return { text: copyText("ccBusHooks.state.missing"), tone: "bad" };
     case "installed-via-path":
-      return { text: "已装（走 PATH）", tone: "ok" };
+      return { text: copyText("ccBusHooks.state.onPath"), tone: "ok" };
     case "installed-at-path":
       // 这是用户当前的实际状态。**不能渲染成"有问题"**——它能跑。
-      return { text: `已装（显式路径：${st.path}）`, tone: "ok" };
+      return { text: copyText("ccBusHooks.state.explicit", { path: st.path }), tone: "ok" };
     case "path-missing":
       // 真正的第三态：看着像装了，其实指不到东西。
-      return { text: `装了但路径不存在：${st.path}`, tone: "bad" };
+      return { text: copyText("ccBusHooks.state.brokenPath", { path: st.path }), tone: "bad" };
     case "unknown":
       // **第五态**（B04 审计 B04-4）：命令里出现了目标程序，但它包在 sh -c / env /
       // timeout 之类里，判不出是不是真的在跑。此前这种情况落到"未装"（红），
       // 于是装了包装写法的用户会去贴一份重复的钩子。**猜"未装"和猜"已装"一样是猜。**
       return {
-        text: `无法判断（命令形态复杂，钩子里出现了它但不是被直接执行的：${st.command}）`,
+        text: copyText("ccBusHooks.state.indirect", { command: st.command }),
         tone: "unknown",
       };
     default: {
       // 后端将来加第六态时，这里**不能整个炸掉**（原实现无 default，`d` 会是 undefined，
       // `d.ok` 当场抛，整个 renderDiag 挂掉）——与本工作区"对自己的 IPC 也要防御"一致。
       const unknownKind = (st as { kind?: string }).kind ?? "?";
-      return { text: `未知状态（${unknownKind}）`, tone: "unknown" };
+      return { text: copyText("ccBusHooks.state.unknown", { unknownKind }), tone: "unknown" };
     }
   }
 }
@@ -110,34 +111,30 @@ export class CcBusHooksSection {
     const hint = document.createElement("div");
     hint.className = "settings-hint";
     hint.textContent =
-      "cc-bus 要两个钩子才能自动收信：SessionStart → cc-register（上总线），Stop → cc-bus-stop-hook（兜底收信）。" +
-      "这里只做诊断，并生成一段待贴文本。";
+      copyText("ccBusHooks.build.intro");
     root.appendChild(hint);
 
     // 把"为什么不代劳"说清楚，而不是只丢一句"请手动粘贴"
     const why = document.createElement("div");
     why.className = "settings-hint cc-bus-hooks-why";
     why.textContent =
-      "为什么不替你写：~/.claude/settings.json 是一份共享的全局配置——你自己的编辑器、" +
-      "别的工具、别的 skill 都可能在动它，cc-monitor 单方面改它有可能覆盖掉你或它们的改动。" +
-      "cc-bus 自己的安装脚本同样拒绝碰它（它只软链命令、建目录，然后把钩子片段打印出来让你自己贴）。" +
-      "所以这里给你诊断结果和现成片段，最后一步由你来做。";
+      copyText("ccBusHooks.build.whyNotWrite");
     root.appendChild(why);
 
     const localT = document.createElement("div");
     localT.className = "settings-label";
-    localT.textContent = "本机";
+    localT.textContent = copyText("ccBusHooks.build.local");
     root.appendChild(localT);
     this.localBox = document.createElement("div");
     this.localBox.className = "cc-bus-hooks-local";
-    this.localBox.textContent = "检查中…";
+    this.localBox.textContent = copyText("ccBusHooks.build.checking");
     root.appendChild(this.localBox);
 
     const row = document.createElement("div");
     row.className = "settings-row";
     const remoteT = document.createElement("span");
     remoteT.className = "settings-label";
-    remoteT.textContent = "远端";
+    remoteT.textContent = copyText("ccBusHooks.build.remote");
     row.appendChild(remoteT);
 
     // E59：**这里原来有一个 origin 下拉，已删**（理由同 `accounts-section`：
@@ -155,7 +152,7 @@ export class CcBusHooksSection {
     btn.type = "button";
     btn.className =
       "settings-btn settings-btn-secondary cc-bus-hooks-check-remote";
-    btn.textContent = "检查远端";
+    btn.textContent = copyText("ccBusHooks.build.checkRemote");
     btn.addEventListener("click", () => void this.checkRemote(btn));
     row.appendChild(btn);
 
@@ -166,7 +163,7 @@ export class CcBusHooksSection {
 
     this.remoteBox = document.createElement("div");
     this.remoteBox.className = "cc-bus-hooks-remote";
-    this.remoteBox.textContent = "尚未检查。";
+    this.remoteBox.textContent = copyText("ccBusHooks.build.notChecked");
     root.appendChild(this.remoteBox);
 
     root.appendChild(this.buildSnippet());
@@ -183,7 +180,7 @@ export class CcBusHooksSection {
     // `snippet_home/bare`，但屏上这一块**只来自本机报告**（`currentSnippet()` 只读
     // `lastReport`，而 `checkRemote()` 不给它赋值）。不标明的话，用户点完「检查远端」
     // 会以为下面那段警示说的是远端盘面。
-    t.textContent = "待贴片段（基于本机盘面）";
+    t.textContent = copyText("ccBusHooks.snippet.title");
     box.appendChild(t);
 
     this.formSel = document.createElement("select");
@@ -194,8 +191,8 @@ export class CcBusHooksSection {
       // 根本不接收诊断结果。若用户的 cc-register 只在 /usr/local/bin，面板仍会推荐
       // `$HOME/.local/bin/...` 并说"与现状一致"——贴上去就是一个 PathMissing 的钩子。
       // 与其给一个可能是错的承诺，不如只描述两种形态各自的取舍，让用户按诊断结果自己选。
-      ["home", "$HOME 显式路径（不依赖 PATH；要求它确实装在那儿）"],
-      ["bare", "裸命令（简洁；要求它在 PATH 上）"],
+      ["home", copyText("ccBusHooks.snippet.explicit")],
+      ["bare", copyText("ccBusHooks.snippet.bare")],
     ]) {
       const o = document.createElement("option");
       o.value = v;
@@ -216,11 +213,11 @@ export class CcBusHooksSection {
 
     this.paste = buildPasteBlock({
       text: () => this.currentSnippet()?.text ?? "",
-      target: "~/.claude/settings.json 的 hooks 段",
+      target: copyText("ccBusHooks.snippet.target"),
       mergeNote:
-        "要合并进去，不是整份覆盖——那里可能还有别的工具的钩子，覆盖会把它们删掉。",
-      activation: "改完新开一个会话才生效（当前会话不会重读它）。",
-      invalidReason: (t) => (t.trim() ? null : "先等诊断读完。"),
+        copyText("ccBusHooks.snippet.merge"),
+      activation: copyText("ccBusHooks.snippet.activation"),
+      invalidReason: (t) => (t.trim() ? null : copyText("ccBusHooks.snippet.notReady")),
       multiline: true,
       rows: 8,
     });
@@ -242,8 +239,8 @@ export class CcBusHooksSection {
     this.knownOrigins = origins;
     if (origins.length === 0) {
       this.checkRemoteBtn.disabled = true;
-      this.originName.textContent = "（未配置远端）";
-      this.remoteBox.textContent = "未配置远端。";
+      this.originName.textContent = copyText("ccBusHooks.origins.noneOption");
+      this.remoteBox.textContent = copyText("ccBusHooks.origins.none");
       return;
     }
     // 清单到手之后重新认一次 store 给的那台（清单是异步来的，可能晚于第一次 setOrigin）。
@@ -260,8 +257,8 @@ export class CcBusHooksSection {
     this.originName.textContent = known
       ? origin
       : isLocalOrigin(origin)
-        ? "（本机页：无远端可诊断）"
-        : `（${origin}：未在已配置的远端里）`;
+        ? copyText("ccBusHooks.origin.localPage")
+        : copyText("ccBusHooks.origin.unknown", { machine: origin });
     this.checkRemoteBtn.disabled = !known;
   }
 
@@ -272,7 +269,7 @@ export class CcBusHooksSection {
       this.renderDiag(this.localBox, rep);
       this.renderSnippet();
     } catch (e) {
-      this.localBox.textContent = `本机诊断失败：${String(e)}`;
+      this.localBox.textContent = copyText("ccBusHooks.local.failed", { e: String(e) });
     }
   }
 
@@ -280,12 +277,12 @@ export class CcBusHooksSection {
     const origin = this.diagnosable;
     if (origin === null) return;
     btn.disabled = true;
-    this.remoteBox.textContent = "检查中…";
+    this.remoteBox.textContent = copyText("ccBusHooks.checkRemote.checking");
     try {
       const rep = await commands.diagnose_remote_cc_bus_hooks({ origin });
       this.renderDiag(this.remoteBox, rep, true);
     } catch (e) {
-      this.remoteBox.textContent = `远端诊断失败：${String(e)}`;
+      this.remoteBox.textContent = copyText("ccBusHooks.remote.failed", { e: String(e) });
     } finally {
       btn.disabled = false;
     }
@@ -301,15 +298,15 @@ export class CcBusHooksSection {
     box.replaceChildren();
     const src = document.createElement("div");
     src.className = "settings-hint cc-bus-hooks-source";
-    src.textContent = `诊断对象：${rep.source}`;
+    src.textContent = copyText("ccBusHooks.diag.source", { source: rep.source });
     box.appendChild(src);
 
     // **这一端自己的形态警示也要看得见**（T03 审计阻塞 3：远端算了 `Snippet` 却
     // 到不了屏幕，等于白算）。两种形态各自的警示都列出来——用户正是要据此选形态。
     if (showFormWarnings) {
       for (const [label, sn] of [
-        ["$HOME 显式路径形态", rep.snippet_home],
-        ["裸命令形态", rep.snippet_bare],
+        [copyText("ccBusHooks.diag.explicit"), rep.snippet_home],
+        [copyText("ccBusHooks.diag.bare"), rep.snippet_bare],
       ] as const) {
         if (!sn?.warning) continue;
         const w = document.createElement("div");

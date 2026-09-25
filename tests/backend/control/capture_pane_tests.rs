@@ -220,3 +220,47 @@ fn the_argv_is_the_read_only_capture_form_in_this_exact_order() {
              `-p` 必须是「打到 stdout」（换成落 buffer 就不再只读）"
     );
 }
+
+/// ★★〔C4e · 第四波 4C〕**跨语言金样**：界面直接收的这份成品，两侧读同一份 `tests/__fixtures__/tmux-control.golden.json`。
+///
+/// 守的要求：`设计/05 §14.3` 逐字「**成品的两侧对拍**：界面按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」，不猜）；
+/// 线上形状由一份跨语言金样钉住（后端测试产出 == 金样 · TS 解码器读同一份）」。
+/// 抓屏从这一拍起由界面经通道直接问（`src/tmux-control.ts::capturePane`），monitor 那一跳只搬字节 ——
+/// 于是「成品长什么样」「拒绝码有哪几个」从此只有后端这一侧与金样说了算，TS 那一半在 `tests/tmux-control.vitest.ts`。
+///
+/// 三格各自异源：请求样例过**生产**解析器（`kill::parse_name`，抓屏复用它）· 成品 == 生产构造器 [`reply`] ·
+/// 码集合 == 后端登记表 `inbound::REGISTRY` 那一块（手写在 `inbound.rs`，不从本文件派生）。
+#[test]
+fn the_capture_product_matches_the_cross_language_golden() {
+    let g: serde_json::Value =
+        serde_json::from_str(include_str!("../../__fixtures__/tmux-control.golden.json"))
+            .expect("金样读不出来");
+    let c = &g["capture-pane"];
+    let name =
+        super::super::kill::parse_name(&c["request"]).expect("金样的请求样例过不了生产解析器");
+    let screen = c["reply"]["screen"]
+        .as_str()
+        .expect("金样的成品样例缺 `screen`");
+    assert_eq!(
+        reply(&name, screen),
+        c["reply"],
+        "后端出的抓屏成品与金样不相等 —— 改了键名或多 / 少一格，界面那一侧就会读成「两端对不上」"
+    );
+    let spec = crate::inbound::REGISTRY
+        .iter()
+        .find(|s| s.name == "capture-pane")
+        .expect("后端登记表里没有 `capture-pane`");
+    let mut want: Vec<&str> = spec.codes.to_vec();
+    want.sort_unstable();
+    let mut got: Vec<&str> = c["codes"]
+        .as_array()
+        .expect("金样缺 `codes`")
+        .iter()
+        .map(|v| v.as_str().expect("码不是字符串"))
+        .collect();
+    got.sort_unstable();
+    assert_eq!(
+        got, want,
+        "金样里的拒绝码与后端登记的不相等 —— 界面那张「码 → 一句话」的表就会漏一档或多一档"
+    );
+}

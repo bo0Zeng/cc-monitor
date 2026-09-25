@@ -25,6 +25,7 @@ import {
 import { newCollectionId } from "./tab-collections";
 import type { TabStore } from "./tab-store";
 import type { TabBarPrefs } from "./tab-bar-prefs";
+import { copyText } from "./copy-table";
 
 /** 拖拽要宿主做的两件事。 */
 export interface TabBarDragHost {
@@ -230,7 +231,7 @@ export class TabBarDrag {
       if (d.ghost) {
         d.ghost.classList.toggle("armed", armed);
         d.ghost.textContent = armed
-          ? "松开 → 独立窗口"
+          ? copyText("tabBarDrag.onDragMove.detachHint")
           : (this.store.tabs.get(d.sid)?.title ?? "");
       }
     }

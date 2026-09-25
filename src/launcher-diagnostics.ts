@@ -15,6 +15,7 @@
 // `K-R93`：**盘上有几个 agent、默认是哪个，都是后端的事实** —— 本文件从前把
 // `claude` / `codex` 写死了两处（下拉清单 + 越层诊断的豁免名单）。
 import { listAgents, lookupAgentProfile } from "./agent-profile";
+import { copyText } from "./copy-table";
 
 /**
  * 后端认得的 agent 的**默认拉起二进制名**（`claude` / `codex` / …）。
@@ -46,5 +47,5 @@ export function diagnoseRemoteLauncher(cmd: string): string | null {
   if (!trimmed) return null; // 空 = 走默认（后端 `ACTIVE_AGENT` 那一份），不算绕过
   if (baseLaunchers().includes(trimmed)) return null; // 显式基座，不是旧式包装
   if (/ccm/.test(trimmed)) return null; // 命令本身含 ccm 子串（可能是包了一层的自定义命令）
-  return "这条命令似乎绕开了 ccm——账号/模型偏好不会随它生效。想要这些好处的话，改填 ccm（或含 ccm 的自定义命令），或在机器页「本机 → 工具 → 别名」里拼一条。";
+  return copyText("launcherDiagnostics.diagnoseRemoteLauncher.bypassesCcm");
 }

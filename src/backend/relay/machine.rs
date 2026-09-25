@@ -34,6 +34,7 @@
 //! 只说「进程起了」，要知道口上有没有人，再问一次 `relay-status`。
 //! ⚠ 它的诊断（起不来 · 凭据文件在哪 · 表里几行）因此**到不了人** —— 远端那台上没有监护者收它的 stderr。
 
+use copy_core::copy_text;
 use serde_json::{json, Value};
 use std::net::{Ipv4Addr, SocketAddr, TcpStream};
 use std::path::Path;
@@ -83,16 +84,20 @@ pub(crate) fn answer_ensure_with(
         Occupant::NoKeyFile => {
             return Err((
                 "not_ours",
-                format!(
-                    "{port} 口上有别的程序在听，这台机器上也没有中转钥匙，多半是升级前起的旧中转。\
-                     请在那台机器上结束占着这个口的进程再试。"
+                copy_text(
+                    "beMachine.occupant.noKeyFile",
+                    &[("port", &port.to_string())],
                 ),
             ));
         }
         Occupant::Nobody => {}
     }
-    let exe = std::env::current_exe()
-        .map_err(|e| ("spawn_failed", format!("找不到本后端自己这个二进制：{e}")))?;
+    let exe = std::env::current_exe().map_err(|e| {
+        (
+            "spawn_failed",
+            copy_text("beMachine.answerEnsure.noSelf", &[("e", &e.to_string())]),
+        )
+    })?;
     let pid = start(&exe, &["--relay"], port)?;
     Ok(json!({ "port": port, "listening": false, "started": true, "pid": pid }))
 }
@@ -128,8 +133,9 @@ pub(crate) fn occupant(port: u16, get: &dyn Fn(&str) -> Option<String>) -> Occup
     match (probe(port, right), probe(port, &wrong)) {
         (Ok(404), Ok(403)) => Occupant::Ours,
         // ⚠ 给人看的那句只说「是别的程序」与下一步；两发各得了什么不进话里（那是实现细节），判据直接断 `occupant` 的结局。
-        _ => Occupant::NotOurs(format!(
-            "{port} 口上有别的程序在听，不是这台机器上的中转，多半是升级前起的旧中转。请在那台机器上结束占着这个口的进程再试。"
+        _ => Occupant::NotOurs(copy_text(
+            "beMachine.occupant.notOurs",
+            &[("port", &port.to_string())],
         )),
     }
 }
@@ -149,7 +155,7 @@ fn probe(port: u16, seg: &str) -> std::io::Result<u16> {
     line.split_whitespace()
         .nth(1)
         .and_then(|c| c.parse::<u16>().ok())
-        .ok_or_else(|| std::io::Error::other("回的第一行不是 HTTP 状态行"))
+        .ok_or_else(|| std::io::Error::other("first reply line is not an HTTP status line"))
 }
 
 /// 回环上连一次那个口。连得上 = 有人在听（射程见模块头注）。
@@ -176,7 +182,13 @@ pub(crate) fn start(
     cmd.spawn().map(|c| c.id()).map_err(|e| {
         (
             "spawn_failed",
-            format!("起 {} 失败：{e}", program.display()),
+            copy_text(
+                "beMachine.start.spawnFailed",
+                &[
+                    ("program", &(program.display()).to_string()),
+                    ("e", &e.to_string()),
+                ],
+            ),
         )
     })
 }
@@ -187,7 +199,12 @@ fn port_arg(args: &Value) -> Result<u16, (&'static str, String)> {
         .and_then(Value::as_u64)
         .and_then(|p| u16::try_from(p).ok())
         .filter(|p| *p != 0)
-        .ok_or(("bad_args", "缺 `port`，或它不是 1–65535 的整数".to_string()))
+        .ok_or((
+            "bad_args",
+            crate::common::contract::malformed(
+                "missing `port`, or it is not an integer in 1-65535",
+            ),
+        ))
 }
 
 #[cfg(test)]

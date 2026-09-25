@@ -2899,7 +2899,7 @@ fn the_auto_start_refusal_is_not_only_a_log_line() {
     // ⚠ 标记带上 `=> {`：裸的 `Adopt::Refused(why) =>` 在生产段里**命中 2 处**
     //   （另一处是 `probe_and_attach_after_spawn` 的 `=> Err(why),`），
     //   而 `braced_block` 今天会断言唯一 ⇒ 不加这两个字符本条当场红。
-    let refused = braced_block(&me, "Adopt::Refused(why) => {", 300, 3000);
+    let refused = with_copy(braced_block(&me, "Adopt::Refused(why) => {", 300, 3000));
     assert!(
         refused.contains("note_start_refusal("),
         "那条记录不再写在 `Adopt::Refused` 那一臂里 —— \
@@ -3019,9 +3019,9 @@ fn the_user_actionable_start_failures_all_reach_the_user() {
         token_lane.contains("looked_at: vec![token_path(&dir)]"),
         "拿 token 失败那一格不再把 token 文件放进 `looked_at`"
     );
-    let ensure = body_of(&prod, "fn ensure_listen_token(");
+    let ensure = with_copy(body_of(&prod, "fn ensure_listen_token("));
     assert!(
-        ensure.contains("**下一步：删掉这个文件再起一次**"),
+        ensure.contains("下一步：删掉这个文件再起一次"),
         "`ensure_listen_token` 空文件支那句话不再说「下一步」——\n\
              ★ 这句话现在是**直接转交给用户**的（不再只进日志），\n\
              它少了「下一步」这三个字，用户拿到的就只是一句「它坏了」。"
@@ -4015,6 +4015,35 @@ fn the_annotation_path_env_name_is_the_one_the_backend_reads() {
     );
     // 反空真：这把尺子分得出「不是那个名字」。
     assert!(!envs.iter().any(|(k, _)| k == "CCM_HISTORY_METADATA_X"));
+}
+
+/// 〔CP2b · 4C〕给人看的话进了文案表（`copy_text("key", …)`）⇒ 「这一段代码说了什么」＝
+/// 代码本身 ＋ 它取的那几条表项的原文（占位符原样留着）。只看代码的话，「那句话说没说下一步」
+/// 这一类判据从此永远读不到那句话 —— 字搬了家，尺子跟着去新家量。
+fn with_copy(code: impl AsRef<str>) -> String {
+    let code = code.as_ref();
+    let table: serde_json::Value =
+        serde_json::from_str(include_str!("../../src/shared/copy/table.json"))
+            .expect("文案表读不懂");
+    let mut out = code.to_string();
+    let needle = "copy_text(";
+    let mut rest = code;
+    while let Some(at) = rest.find(needle) {
+        // `cargo fmt` 会把长调用拆行：`copy_text(` 与 key 之间可以隔着换行与缩进。
+        let tail = rest[at + needle.len()..].trim_start();
+        rest = tail;
+        let Some(tail) = tail.strip_prefix('"') else {
+            continue;
+        };
+        let key = &tail[..tail.find('"').expect("取文口的 key 没收尾")];
+        let zh = table["entries"][key]["zh"]
+            .as_str()
+            .unwrap_or_else(|| panic!("表里没有 {key}"));
+        out.push('\n');
+        out.push_str(zh);
+        rest = tail;
+    }
+    out
 }
 
 /// 〔HX1 · RK1 报 3〕token 取自**内核密码学随机数**，不再从时钟 / pid / 计数器里拼。

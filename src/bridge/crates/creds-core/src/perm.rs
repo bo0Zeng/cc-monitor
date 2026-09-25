@@ -41,6 +41,8 @@
 //! 今天靠约定。⚠ 而本 crate 是 `crates/` 这一层里**第一个**带平台 cfg 的
 //! （现打 08-27：另外 6 个 crate 平台 cfg 全树 0 处），所以这条边界比在 `platform_fs.rs` 里更该说清。
 
+use copy_core::copy_text;
+
 /// 我们在盘上**量到**的保护状态。**平台中立** —— 判断住 [`judge`]，一处。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Protection {
@@ -97,12 +99,14 @@ pub fn judge(p: &Protection) -> Verdict {
                 Verdict::OwnerOnly
             } else {
                 Verdict::TooWide {
-                    how: format!(
-                        "同机器上的别人也读得到它（mode 是 {:04o}，本人之外还开着 {:03o}）",
-                        mode & 0o7777,
-                        extra
+                    how: copy_text(
+                        "credsPerm.judge.tooWideUnix",
+                        &[
+                            ("mode", &format!("{:04o}", mode & 0o7777)),
+                            ("extra", &format!("{:03o}", extra)),
+                        ],
                     ),
-                    fix: "跑 `chmod 600 <这份文件>`，或者让程序重写一次它".to_string(),
+                    fix: copy_text("credsPerm.judge.fixUnix", &[]),
                 }
             }
         }
@@ -111,21 +115,16 @@ pub fn judge(p: &Protection) -> Verdict {
                 Verdict::OwnerOnly
             } else {
                 Verdict::TooWide {
-                    how: format!(
-                        "这份文件的 DACL 里有宽泛主体：{}",
-                        wide_principals.join(" / ")
+                    how: copy_text(
+                        "credsPerm.judge.tooWideWindows",
+                        &[("who", &(wide_principals.join(" / ")).to_string())],
                     ),
-                    fix: "在资源管理器的「属性 → 安全」里删掉 Everyone / Users 这类条目，\
-                          或者让程序重写一次它（会显式设 DACL 并断掉继承）"
-                        .to_string(),
+                    fix: copy_text("credsPerm.judge.fixWindows", &[]),
                 }
             }
         }
         Protection::Undetermined { why } => Verdict::Undetermined {
-            why: format!(
-                "查不出这份文件的权限（{why}）。**这不等于它没问题** —— \
-                 请自己确认一次只有你读得到它。"
-            ),
+            why: copy_text("credsPerm.judge.undetermined", &[("why", &why.to_string())]),
         },
     }
 }
@@ -142,7 +141,7 @@ pub fn probe(path: &std::path::Path) -> Protection {
                 mode: m.permissions().mode() & 0o7777,
             },
             Err(e) => Protection::Undetermined {
-                why: format!("读不到它的元数据：{e}"),
+                why: copy_text("credsPerm.probe.noMetadata", &[("e", &e.to_string())]),
             },
         };
     }
@@ -154,14 +153,14 @@ pub fn probe(path: &std::path::Path) -> Protection {
     {
         let _ = path;
         return Protection::Undetermined {
-            why: "这一份构建没有开 `harden`，读不了 DACL".to_string(),
+            why: copy_text("credsPerm.probe.notHardened", &[]),
         };
     }
     #[cfg(not(any(unix, windows)))]
     {
         let _ = path;
         return Protection::Undetermined {
-            why: "这个平台上不知道怎么量文件权限".to_string(),
+            why: copy_text("credsPerm.probe.unsupported", &[]),
         };
     }
 }
@@ -184,7 +183,7 @@ pub fn make_private(p: &std::path::Path) -> Result<(), String> {
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o600))
-            .map_err(|e| format!("把凭据文件收成只给本人失败: {e}"))?;
+            .map_err(|e| copy_text("credsPerm.makePrivate.failed", &[("e", &e.to_string())]))?;
         return Ok(());
     }
     #[cfg(windows)]
@@ -195,9 +194,9 @@ pub fn make_private(p: &std::path::Path) -> Result<(), String> {
     {
         // ⚠ 这里**必须**是错，不许是 `Ok(())`。理由整段见后端的 `platform/fallback_guard.rs`：
         // 一个答不上来的问题不该有一个看起来无害的答案。
-        Err(format!(
-            "这个平台上不知道怎么把 {} 收成只给本人 —— 没做到，不假装做到了",
-            p.display()
+        Err(copy_text(
+            "credsPerm.makePrivate.unsupported",
+            &[("path", &(p.display()).to_string())],
         ))
     }
 }
@@ -241,9 +240,9 @@ pub fn create_private(p: &std::path::Path) -> std::io::Result<std::fs::File> {
     {
         Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
-            format!(
-                "这个平台上不知道怎么建一个只给本人的文件（{}）—— 没做到，不假装做到了",
-                p.display()
+            copy_text(
+                "credsPerm.createPrivate.unsupported",
+                &[("path", &(p.display()).to_string())],
             ),
         ))
     }
@@ -320,8 +319,12 @@ fn current_user_sid() -> Result<String, String> {
 
     unsafe {
         let mut token = HANDLE::default();
-        OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token)
-            .map_err(|e| format!("打不开本进程令牌: {}", e.message()))?;
+        OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token).map_err(|e| {
+            copy_text(
+                "credsPerm.currentUserSid.noToken",
+                &[("e", &(e.message()).to_string())],
+            )
+        })?;
         let mut need = 0u32;
         let _ = GetTokenInformation(token, TokenUser, None, 0, &mut need);
         let mut buf = vec![0u8; need.max(1) as usize];
@@ -333,14 +336,26 @@ fn current_user_sid() -> Result<String, String> {
             &mut need,
         );
         let _ = CloseHandle(token);
-        got.map_err(|e| format!("取不到当前用户 SID: {}", e.message()))?;
+        got.map_err(|e| {
+            copy_text(
+                "credsPerm.currentUserSid.noUser",
+                &[("e", &(e.message()).to_string())],
+            )
+        })?;
         let tu = &*(buf.as_ptr() as *const TOKEN_USER);
         let mut s = PWSTR::null();
-        ConvertSidToStringSidW(tu.User.Sid, &mut s)
-            .map_err(|e| format!("SID 转不成串: {}", e.message()))?;
-        let out = s
-            .to_string()
-            .map_err(|e| format!("SID 串不是合法 UTF-16: {e}"))?;
+        ConvertSidToStringSidW(tu.User.Sid, &mut s).map_err(|e| {
+            copy_text(
+                "credsPerm.currentUserSid.toText",
+                &[("e", &(e.message()).to_string())],
+            )
+        })?;
+        let out = s.to_string().map_err(|e| {
+            copy_text(
+                "credsPerm.currentUserSid.notUtf16",
+                &[("e", &e.to_string())],
+            )
+        })?;
         let _ = LocalFree(HLOCAL(s.0 as *mut core::ffi::c_void));
         Ok(out)
     }
@@ -379,14 +394,19 @@ fn windows_set_owner_only_dacl(p: &std::path::Path) -> Result<(), String> {
             &mut psd,
             None,
         )
-        .map_err(|e| format!("SDDL 转不成安全描述符: {}", e.message()))?;
+        .map_err(|e| {
+            copy_text(
+                "credsPerm.windowsSetOwnerOnlyDacl.parse",
+                &[("e", &(e.message()).to_string())],
+            )
+        })?;
         let mut present = BOOL(0);
         let mut dacl: *mut ACL = std::ptr::null_mut();
         let mut defaulted = BOOL(0);
         let got = GetSecurityDescriptorDacl(psd, &mut present, &mut dacl, &mut defaulted);
         if got.is_err() || !present.as_bool() || dacl.is_null() {
             let _ = LocalFree(HLOCAL(psd.0));
-            return Err("从 SDDL 里取不出 DACL —— 没有设成只给本人".to_string());
+            return Err(copy_text("credsPerm.windowsSetOwnerOnlyDacl.noList", &[]));
         }
         // `DACL_SECURITY_INFORMATION` = 换 DACL；`PROTECTED_DACL_SECURITY_INFORMATION` = **断继承**。
         // 少了后一个，DACL 设上了但父目录的继承项还会回来 —— 那是「看起来做了」的形状。
@@ -401,7 +421,10 @@ fn windows_set_owner_only_dacl(p: &std::path::Path) -> Result<(), String> {
         );
         let _ = LocalFree(HLOCAL(psd.0));
         if rc.is_err() {
-            return Err(format!("设 DACL 失败（Win32 错误码 {}）", rc.0));
+            return Err(copy_text(
+                "credsPerm.windowsSetOwnerOnlyDacl.failed",
+                &[("rc", &(rc.0).to_string())],
+            ));
         }
     }
     Ok(())
@@ -437,7 +460,10 @@ fn windows_probe(p: &std::path::Path) -> Protection {
         );
         if rc.is_err() {
             return Protection::Undetermined {
-                why: format!("读不到它的 DACL（Win32 错误码 {}）", rc.0),
+                why: copy_text(
+                    "credsPerm.windowsProbe.unreadable",
+                    &[("rc", &(rc.0).to_string())],
+                ),
             };
         }
         let mut s = PWSTR::null();
@@ -451,7 +477,7 @@ fn windows_probe(p: &std::path::Path) -> Protection {
         if ok.is_err() {
             let _ = LocalFree(HLOCAL(psd.0));
             return Protection::Undetermined {
-                why: "DACL 转不成 SDDL 串".to_string(),
+                why: copy_text("credsPerm.windowsProbe.toText", &[]),
             };
         }
         let sddl = s.to_string().unwrap_or_default();

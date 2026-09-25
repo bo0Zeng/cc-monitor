@@ -13,6 +13,7 @@
 //! ⚠ **不是「工具函数堆」** —— 只放「同一件事在两个平台上做法不同」的那种原语。
 //! 纯逻辑（路径拼接、命名规则）不许进来：那些在 backend 里就能测，搬进来反而丢了可测性。
 
+use crate::copy_table::copy_text;
 use std::path::Path;
 
 /// 置可执行位。
@@ -31,7 +32,7 @@ pub fn make_executable(p: &Path) -> Result<(), String> {
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o700))
-            .map_err(|e| format!("置可执行位失败: {e}"))?;
+            .map_err(|e| copy_text("rsPlatformFs.chmod.failed", &[("e", &e.to_string())]))?;
     }
     #[cfg(not(unix))]
     {
