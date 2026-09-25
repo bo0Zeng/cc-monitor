@@ -1305,6 +1305,8 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 
 ⚠ 没有大小上限、没有「写之前那一版」的备份 —— 本面只做「写」这一件，编辑器的那些语义不在它里面。
 
+〔HX1 · 4D〕**原子地换**（主会话 D-a）：unix 上同目录 `O_EXCL` 暂存旁名写满、沿用原权限位、换名上位 ⇒ 写到一半失败或后端在写的中途被收掉，目标原封不动（旁边可能剩一份 `.<名>.ccm-put-<pid>-<序>.part`）。代价：inode 换了 ⇒ 硬链接的另一个名字仍指旧内容；目标属别的用户时属主变成后端那个用户；xattr / ACL 不跟过来。Windows 上照旧就地写（保 ACE）。
+
 #### `files-commit-upload`：把暂存区里一份传完的上传件挪进目标（F7c，2026-09-24）
 
 ```text
@@ -1348,7 +1350,7 @@ SFTP 缩成只做传输之后（`设计/60 §13`），上传**只写** `~/.cc-mo
 ⚠ `O_EXCL` 新建：同一 `key` 的同一块已经在（重发 / 撞键）⇒ `io_failed`，一个字节不盖。写到一半失败 ⇒ 删掉自己刚建的那一份。
 - **CLI 面同样有它**：`--files-stage-chunk`，载荷走 stdin，与帧面的 `args` 同形。
 
-#### `files-commit-text`：按块读回、拼起来、原地覆盖（F9c · 第四波，2026-09-24）
+#### `files-commit-text`：按块读回、拼起来、覆盖写（F9c · 第四波，2026-09-24）
 
 ```text
 → {"id":"w9","cmd":"files-commit-text","args":{"key":"0123456789abcdef0123456789abcdef","chunks":3,"bytes":3000000,"root":"/home/u/docs","rel":"big.log"}}
@@ -1360,7 +1362,7 @@ SFTP 缩成只做传输之后（`设计/60 §13`），上传**只写** `~/.cc-mo
 | `key` | → | 与 `files-stage-chunk` 同一个键 |
 | `chunks` | → | 块数：读回 `0..chunks` 这几块。只收 `1..=bytes`（每块至少 1 字节） |
 | `bytes` | → | 拼起来**必须恰好**这么长；最多 8 MiB（`files-read-text` 一趟的天花板：存得回的要读得回来），超了 ⇒ `bad_args` |
-| `root` / `rel` | → | 目标，语义与 `files-write-text` **完全相同**：必须已经在、是普通文件；跟链接（解到底再判一次）；原地覆盖（权限位 / 属主不变） |
+| `root` / `rel` | → | 目标，语义与 `files-write-text` **完全相同**：必须已经在、是普通文件；跟链接（解到底再判一次）；原子地换（权限位沿用；〔HX1〕属主 / 硬链接不再保留，见 `files-write-text`） |
 | `path` | ← | 解到底的那个真路径 |
 | `bytes` | ← | 写进去的字节数 |
 
