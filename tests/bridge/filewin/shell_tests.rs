@@ -1061,14 +1061,14 @@ fn the_window_process_owns_its_dpi_because_no_tauri_lives_there() {
         );
     }
     for rel in ["filewin/proc.rs", "filewin/win_main.rs"] {
-        let prod = &files
+        let window_proc_prod = &files
             .iter()
             .find(|(r, _)| r == rel)
             .unwrap_or_else(|| panic!("`{rel}` 不在扫描结果里 —— 搬家了？"))
             .1;
         for word in ["tauri", "tao"] {
             assert!(
-                !guard_core::contains_word(prod, word),
+                !guard_core::contains_word(window_proc_prod, word),
                 "`{rel}` 的生产段里出现了 `{word}` —— 窗口进程里有了 Tauri / tao，\n\
                  那 `any_thread_hook` 就又回到了「一个进程两个 DPI 主人」那一格（`shell.rs` 头注四格表下半）。"
             );
