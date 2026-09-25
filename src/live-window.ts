@@ -292,7 +292,7 @@ export class TailWindow {
  *
  * - **精度**：高度是第一级粗估（`estimateFromFacts`）。已渲染的卡由 `contain-intrinsic-size: auto`
  *   记住真值，那部分不走这里；这里只管**没渲染**的那些占多高。
- * - **截断重写**：本地 watcher 截断重读会换新 seq（INVARIANTS §25），那之后 seq 与行号不再相等，
+ * - **截断重写**：后端的 jsonl 读者截断重读会换新 seq（INVARIANTS §25；〔TL1〕本机远端同一个读者），那之后 seq 与行号不再相等，
  *   本账本对不上 —— 调用方见 `endSeq` 与实到的 seq 对不上时应当丢掉骨架（不许硬对）。
  */
 export class SkeletonLedger {
