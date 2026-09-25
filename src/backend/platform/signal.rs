@@ -8,7 +8,7 @@
 //! **身份校验刻意留在调用方**（`tmux_hook`）：那是域判断（「这个 pid 是不是我那个后端」，
 //! 靠 starttime 比对），不是平台能力。本层只负责「把信号发出去」这一件事。
 
-/// 〔HX1〕**等一次停机信号**（unix：SIGTERM 或 SIGINT；别处：Ctrl-C）。从 `main.rs::shutdown_signal` 下沉 ——
+/// 〔HX1〕**等一次停机信号**（unix：SIGTERM 或 SIGINT；别处：Ctrl-C）。从 `main.rs` 下沉（那里原有一个同形的等信号函数，已删）——
 /// 那一段带平台 cfg，而流模式的收场（`inbound::exit_after_drain`）也要它（排空时再来一次 ⇒ 不等了）。
 ///
 /// ★ **监听在调用的这一刻就登记好**，返回的 future 只负责等 —— 写成 `async fn` 的话，登记要等第一次被 poll，

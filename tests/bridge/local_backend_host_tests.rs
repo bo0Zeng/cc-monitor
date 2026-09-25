@@ -2749,8 +2749,8 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
 /// token 每次都不一样、够长，而且**不是空串**（空串会让 attach 那道门形同虚设）。
 #[test]
 fn every_token_is_fresh_and_long_enough() {
-    let a = fresh_token();
-    let b = fresh_token();
+    let a = fresh_token().expect("铸 token");
+    let b = fresh_token().expect("铸 token");
     assert_ne!(
         a, b,
         "两次拿到同一个 token —— 那说明熵源里没有「每次都变」的东西"
@@ -4015,4 +4015,63 @@ fn the_annotation_path_env_name_is_the_one_the_backend_reads() {
     );
     // 反空真：这把尺子分得出「不是那个名字」。
     assert!(!envs.iter().any(|(k, _)| k == "CCM_HISTORY_METADATA_X"));
+}
+
+/// 〔HX1 · RK1 报 3〕token 取自**内核密码学随机数**，不再从时钟 / pid / 计数器里拼。
+/// 守的要求：`INVARIANTS §48.1` 逐字「钥匙由宿主生成（新生成时 128 位随机）」；RK1 报备 §5.7 第 4 条（纳秒 ⊕ pid ⊕ 计数器 ＋ mtime 泄露铸造时刻）。
+/// 形状：生产段 `fresh_token` 体内零命中那几样可推的熵源、恰好读 `/dev/urandom` 一处（零富余，带正控）。
+#[test]
+fn hx1_the_token_comes_from_the_kernel_csprng_not_from_clock_pid_or_counter() {
+    let prod =
+        guard_core::production_code(include_str!("../../src/bridge/src/local_backend_host.rs"));
+    let at = prod.find("fn fresh_token(").expect("fresh_token");
+    let end = prod[at..].find("\n}\n").map(|i| at + i).expect("函数尾");
+    let body = &prod[at..end];
+    let guessable = [
+        "SystemTime",
+        "process::id",
+        "AtomicU64",
+        "Instant",
+        "as_nanos",
+    ];
+    let hit: Vec<&str> = guessable
+        .iter()
+        .copied()
+        .filter(|n| body.contains(n))
+        .collect();
+    assert!(hit.is_empty(), "token 又从可推的东西里取熵了：{hit:?}");
+    assert_eq!(
+        body.matches("File::open(\"/dev/urandom\")").count(),
+        1,
+        "不再读内核随机数"
+    );
+    // 正控：旧形状那几样确实会被认出来。
+    let old = "let nanos = std::time::SystemTime::now(); let p = std::process::id();";
+    assert!(guessable.iter().any(|n| old.contains(n)));
+}
+
+/// 〔HX1 · RK1 小尾巴〕`~/.cc-monitor` 这一层**建的那一下**就是 0700；**已在的**不动（两向）。
+/// 守的要求：`4d-lanes.md` HX1 出处「RK1 小尾巴（`~/.cc-monitor` 首建权限按 umask ⇒ 0700）」。
+#[test]
+#[cfg(unix)]
+fn hx1_the_monitor_home_dir_is_born_private_and_an_existing_one_is_left_alone() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let mode =
+        |p: &std::path::Path| std::fs::metadata(p).expect("meta").permissions().mode() & 0o777;
+    let base = std::env::temp_dir().join(format!("ccm-hx1-home-{}", std::process::id()));
+    std::fs::remove_dir_all(&base).ok();
+    std::fs::create_dir_all(&base).expect("base");
+    let fresh = base.join("new").join(".cc-monitor");
+    ensure_private_dir(&fresh).expect("建");
+    assert_eq!(mode(&fresh), 0o700);
+    // 生产那一条真路：token 文件落进一个还不存在的目录 ⇒ 那一层是 0700。
+    let via_token = base.join("tok").join(".cc-monitor");
+    ensure_listen_token(&via_token).expect("铸 token");
+    assert_eq!(mode(&via_token), 0o700);
+    let old = base.join("old");
+    std::fs::create_dir_all(&old).expect("预置");
+    std::fs::set_permissions(&old, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    ensure_private_dir(&old).expect("已在");
+    assert_eq!(mode(&old), 0o755, "已在的那一层被改了权限");
+    std::fs::remove_dir_all(&base).ok();
 }

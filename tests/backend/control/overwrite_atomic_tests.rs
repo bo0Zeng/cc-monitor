@@ -140,14 +140,19 @@ fn w2_the_swap_keeps_mode_follows_the_link_and_leaves_no_side_file() {
             .is_symlink(),
         "链接被顶掉了"
     );
-    let names: Vec<String> = std::fs::read_dir(&root)
-        .expect("列")
-        .flatten()
-        .map(|e| e.file_name().to_string_lossy().into_owned())
-        .collect::<std::collections::BTreeSet<_>>()
-        .into_iter()
+    // 不剩旁名：旁名的形状是确定的（`.<名>.ccm-put-<pid>-<序>.part`），序号从本进程的计数器来 ⇒ 按这个进程到目前为止发出去的号逐个看。
+    let upto = PUT_SEQ.load(std::sync::atomic::Ordering::Relaxed);
+    let left: Vec<u64> = (0..upto)
+        .filter(|seq| {
+            root.join(format!(
+                ".real.txt.ccm-put-{}-{seq}.part",
+                std::process::id()
+            ))
+            .exists()
+        })
         .collect();
-    assert_eq!(names, vec!["link.txt", "real.txt"], "剩了旁名");
+    assert!(left.is_empty(), "剩了旁名（序号 {left:?}）");
+    assert!(upto > 0, "正控：这一趟确实发过旁名的号");
     std::fs::remove_dir_all(&root).ok();
 }
 
@@ -191,41 +196,44 @@ fn write_calls(code: &str) -> Vec<usize> {
 
 #[test]
 fn w4_the_only_in_place_write_left_is_the_windows_arm_of_swap_in() {
+    // ① 全后端生产段的人群：`fs::write(` 只住 `control/files_write.rs`。
     let roots = crate::guard_support::code_roots();
-    let mut hits: Vec<(String, usize)> = Vec::new();
+    let mut files: Vec<String> = Vec::new();
     for (path, src) in guard_core::scan_tree_excluding(&roots[0], &["rs"], &[]) {
         let prod = crate::guard_support::production_side_of(&path, &src);
-        for at in write_calls(&prod) {
-            hits.push((
+        for _ in write_calls(&prod) {
+            files.push(
                 path.strip_prefix(&roots[0])
                     .unwrap_or(&path)
                     .to_string_lossy()
                     .replace('\\', "/"),
-                at,
-            ));
-        }
-        if path.ends_with("control/files_write.rs") {
-            // 那一处必须在 `swap_in` 里、`cfg(windows)` 之后。
-            let at = write_calls(&prod);
-            assert_eq!(
-                at.len(),
-                1,
-                "files_write.rs 生产段 `fs::write(` 不是恰好一处：{at:?}"
-            );
-            let fn_at = prod.find("fn swap_in(").expect("swap_in");
-            let win = prod[fn_at..].find("#[cfg(windows)]").map(|i| fn_at + i);
-            assert!(
-                win.is_some_and(|w| w < at[0]) && fn_at < at[0],
-                "那一处 `fs::write(` 不在 swap_in 的 Windows 臂里"
             );
         }
     }
-    let files: Vec<&str> = hits.iter().map(|(f, _)| f.as_str()).collect();
     assert_eq!(
         files,
-        vec!["control/files_write.rs"],
-        "后端生产段就地写的集合变了：{hits:?}"
+        vec!["control/files_write.rs".to_string()],
+        "后端生产段就地写的集合变了"
     );
+    // ② 那一处在 `swap_in` 那一段里、且那一段恰好一个 `#[cfg(windows)]`、就地写跟在它后面。
+    let prod = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/control/files_write.rs"
+    ));
+    assert_eq!(
+        prod.matches("fn swap_in(").count(),
+        1,
+        "swap_in 不是恰好一处"
+    );
+    let seg = &prod[prod.find("fn swap_in(").expect("swap_in")..];
+    let seg = &seg[..seg.find("\n}\n").expect("swap_in 的尾")];
+    assert_eq!(
+        seg.matches("#[cfg(windows)]").count(),
+        1,
+        "swap_in 里 Windows 臂不是恰好一处"
+    );
+    assert_eq!(write_calls(seg).len(), 1, "swap_in 里就地写不是恰好一处");
+    let win = seg.find("#[cfg(windows)]").expect("Windows 臂");
+    assert!(win < write_calls(seg)[0], "就地写不在 Windows 臂里");
     // 正控：数法认得出一处就地写。
     assert_eq!(write_calls("std::fs::write(&p, b)").len(), 1);
 }

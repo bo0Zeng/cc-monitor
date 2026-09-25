@@ -3483,7 +3483,7 @@ fn hx1_backend_stderr_lines_keep_their_level_capped_at_warn() {
             "2026-09-25T04:05:06.123456Z ERROR cc_monitor_backend: e",
             Level::WARN,
         ),
-        ("thread 'main' panicked at src/x.rs:1:1:", Level::WARN),
+        ("thread 'main' panicked at some place", Level::WARN),
         ("some child said INFO later in the line", Level::WARN),
         ("", Level::WARN),
     ];
