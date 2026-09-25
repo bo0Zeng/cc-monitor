@@ -418,7 +418,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// Windows 上的判活（`pid_alive` / `proc_starttime`）与进程看守从 `unimplemented!()` / 空壳换成真实现
 /// （`platform/win_proc.rs` · `pidwatch/win32.rs`）。旧后端在 Windows 本机见到第一个会话就 panic ⇒ 必须判 stale。
 /// 照 p1v 先例不往 `SUBCOMMAND_HISTORY` 加行。
-pub const BUILD_ID: &str = "p2y-win-proc";
+///
+/// ★★★ **p2z-relay-in-resident**（2026-09-24，第四波 RL1 合并那一拍）：子命令集不变，**行为**变更 ——
+/// 流模式后端被交了 `CCM_RELAY_PORT` 就在本进程里起中转（V107：中转住本机常驻后端，monitor 不再单独起它）。
+/// 旧后端不开中转 ⇒ 本机 apikey 号起会话会被「中转没在跑」拒掉 ⇒ 必须判 stale。照 p1v 先例不加历史行。
+pub const BUILD_ID: &str = "p2z-relay-in-resident";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
