@@ -1356,8 +1356,9 @@ run_gate winchk '不是数出来的数：`cargo check --all-targets --target x86
 run_gate winchk-backend '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `src/backend` 这一个 crate 的**生产段 ＋ test 档**（云端那 10 个错全在 test 档，所以 `--all-targets` 是承重的）。⚠ 本格用的是 `-gnu`，云端用的是 `-msvc`（沙箱里没有 zig，`ring` 的 build script 缺 `lib.exe`）⇒ **MSVC ABI 专属的那一类本行盖不到**；`src/bridge` 那棵树由上面 winchk 那一格盖' \
          bash -c 'cd src/backend && cargo check --all-targets --target x86_64-pc-windows-gnu 2>&1 && echo "winchk-backend: 1 passed"'
 
-# 8 个包 = `monitor` + 7 个共享 crate（`vendor/code-picture-core` 已被上面那条 `--exclude` 排掉）。
-run_gate_sum cargo 9 bash -c 'cd src/bridge && cargo test --workspace --exclude code-picture-core --lib 2>&1'
+# 10 个包 = `monitor` + 9 个共享 crate（`vendor/code-picture-core` 已被上面那条 `--exclude` 排掉）。
+# 〔CP2c〕9 → 10：加了 `copy-core`（对外文案表的 Rust 取文口；原注释「8 个包」早已比实数少一，同拍改成实数）。
+run_gate_sum cargo 10 bash -c 'cd src/bridge && cargo test --workspace --exclude code-picture-core --lib 2>&1'
 
 # ★★ `K-G3`（09-01）：上面那个合计**还缺一个分母** —— `src/bridge/embedded-backends/` 铺没铺。
 #

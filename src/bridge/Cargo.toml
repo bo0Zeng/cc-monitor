@@ -20,6 +20,7 @@ members = [
     "crates/search-core",
     "crates/shell-quote-core",
     "crates/codex-token-core",
+    "crates/copy-core",
 ]
 exclude = ["vendor/code-picture-core"]
 
@@ -110,6 +111,8 @@ uuid = { version = "1", features = ["v4"] }
 branch-core = { path = "crates/branch-core" }
 codex-token-core = { path = "crates/codex-token-core" }
 acct-core = { path = "crates/acct-core" }
+# 〔CP2c〕对外文案表的 Rust 取文口（唯一一份实现；`copy_table.rs` 转发它）。常驻后端与 creds-core 也链它。
+copy-core = { path = "crates/copy-core" }
 # K-H2a：第三方 API key 的唯一住址（类型 / 落盘格式 / 权限判断），与远端后端共用。
 # ★ `features = ["harden"]` —— **monitor 是唯一会写这份文件的一侧**，所以只有这里开它。
 # backend 那侧刻意**不开**（`K-H2a` 裁四：backend 只许读；`readonly_guard.rs` 扫它的生产段
