@@ -1909,6 +1909,858 @@
       "kind": "title",
       "zh": "没有可索引的仓库",
       "args": []
+    },
+    "diagramHonesty.unresolved.na": {
+      "kind": "body",
+      "zh": "看不见：不适用",
+      "args": []
+    },
+    "diagramHonesty.unresolved.some": {
+      "kind": "body",
+      "zh": "看不见 {n} 处调用",
+      "args": ["n"]
+    },
+    "diagramHonesty.ambiguous.na": {
+      "kind": "body",
+      "zh": "分不清：不适用",
+      "args": []
+    },
+    "diagramHonesty.ambiguous.some": {
+      "kind": "body",
+      "zh": "分不清 {n} 处调用",
+      "args": ["n"]
+    },
+    "diagramHonesty.filtered.na": {
+      "kind": "body",
+      "zh": "滤掉：不适用",
+      "args": []
+    },
+    "diagramHonesty.filtered.some": {
+      "kind": "body",
+      "zh": "滤掉 {n} 条全靠名字凑的连接",
+      "args": ["n"]
+    },
+    "diagramHonesty.excluded.na": {
+      "kind": "body",
+      "zh": "排除：不适用",
+      "args": []
+    },
+    "diagramHonesty.excluded.some": {
+      "kind": "body",
+      "zh": "排除 {n} 个测试符号",
+      "args": ["n"]
+    },
+    "diagramHonesty.omitted.na": {
+      "kind": "body",
+      "zh": "省略：不适用",
+      "args": []
+    },
+    "diagramHonesty.omitted.some": {
+      "kind": "body",
+      "zh": "省略 {nodes} 个节点（{symbols} 个符号）、{links} 条连接",
+      "args": ["nodes", "symbols", "links"]
+    },
+    "diagramHonesty.dbErrors.none": {
+      "kind": "body",
+      "zh": "读索引没出错",
+      "args": []
+    },
+    "diagramHonesty.dbErrors.some": {
+      "kind": "body",
+      "zh": "读索引出错 {n} 处，这张图不完整",
+      "args": ["n"]
+    },
+    "diagramHonesty.line.sep": {
+      "kind": "body",
+      "zh": " · ",
+      "args": []
+    },
+    "agentClip.clip.honesty": {
+      "kind": "body",
+      "zh": "诚实信号：{honesty}",
+      "args": ["honesty"]
+    },
+    "agentClip.clip.diagramObject": {
+      "kind": "body",
+      "zh": "对象：图「{title}」（kind={id}）{center}",
+      "args": ["title", "id", "center"]
+    },
+    "agentClip.clip.diagramCenter": {
+      "kind": "body",
+      "zh": " · 中心符号 {symbol}",
+      "args": ["symbol"]
+    },
+    "agentClip.clip.repo": {
+      "kind": "body",
+      "zh": "仓：{repo}",
+      "args": ["repo"]
+    },
+    "agentClip.clip.symbols": {
+      "kind": "body",
+      "zh": "符号（{n}）：",
+      "args": ["n"]
+    },
+    "agentClip.unsure.file": {
+      "kind": "body",
+      "zh": "分不清：文件级没有边 —— 边的确定度要点进符号那一级看",
+      "args": []
+    },
+    "agentClip.clip.fileObject": {
+      "kind": "body",
+      "zh": "对象：文件 {file}（子系统「{subsystem}」· {symbols} 个符号{entry}）",
+      "args": ["file", "subsystem", "symbols", "entry"]
+    },
+    "agentClip.clip.fileEntry": {
+      "kind": "body",
+      "zh": " · 含入口点",
+      "args": []
+    },
+    "agentClip.clip.annotations": {
+      "kind": "body",
+      "zh": "生效批注（{n}）：",
+      "args": ["n"]
+    },
+    "agentClip.clip.callers": {
+      "kind": "body",
+      "zh": "被调用（callers，{n}）：",
+      "args": ["n"]
+    },
+    "agentClip.clip.callees": {
+      "kind": "body",
+      "zh": "调用了（callees，{n}）：",
+      "args": ["n"]
+    },
+    "agentClip.clip.signature": {
+      "kind": "body",
+      "zh": "签名：{signature}",
+      "args": ["signature"]
+    },
+    "agentClip.clip.symbolObject": {
+      "kind": "body",
+      "zh": "对象：符号 {id}（{kind} · {lang} · {file}:{startLine}-{endLine}）",
+      "args": ["id", "kind", "lang", "file", "startLine", "endLine"]
+    },
+    "agentClip.unsure.symbol": {
+      "kind": "body",
+      "zh": "分不清：本符号 {allCount} 条直接边里 {unsure} 条按名字凑（启发 {heuristic} · 动态猜测 {dynamicGuess}），动态派发 {dispatch} 条，确定 {exact} 条",
+      "args": ["allCount", "unsure", "heuristic", "dynamicGuess", "dispatch", "exact"],
+      "waive": {
+        "C-L1": "给 agent 的剪贴文本，一行一个读数；拆成两句会把一组读数拆散"
+      }
+    },
+    "agentClip.unseen.counts": {
+      "kind": "body",
+      "zh": "看不见：全仓 {unresolvedCalls} 处调用未解析 · {parseErrors} 个文件解析失败 · 全景图只画了 {drawnFiles}/{totalFiles} 个文件",
+      "args": ["unresolvedCalls", "parseErrors", "drawnFiles", "totalFiles"],
+      "waive": {
+        "C-L1": "给 agent 的剪贴文本，一行一个读数；拆成两句会把一组读数拆散"
+      }
+    },
+    "agentClip.unseen.unknown": {
+      "kind": "body",
+      "zh": "看不见：未取到全仓覆盖读数（全景没加载完）—— 漏了多少未知",
+      "args": []
+    },
+    "agentClip.stamp.line": {
+      "kind": "body",
+      "zh": "索引读数：{iso}（unix {indexedAt}）{stale}",
+      "args": ["iso", "indexedAt", "stale"]
+    },
+    "agentClip.stamp.stale": {
+      "kind": "body",
+      "zh": " · ⚠ 索引已陈旧：源文件在这次索引之后改过",
+      "args": []
+    },
+    "agentClip.stamp.none": {
+      "kind": "body",
+      "zh": "索引读数：本仓没有索引记录 —— 这段内容的时效未知",
+      "args": []
+    },
+    "agentClip.stamp.failed": {
+      "kind": "body",
+      "zh": "索引读数：未取到（查索引状态失败）—— 这段内容的时效未知",
+      "args": []
+    },
+    "agentClip.head.banner": {
+      "kind": "body",
+      "zh": "【代码全景 → agent】下面是某一次索引的快照，不是当前事实；用之前以代码为准。",
+      "args": []
+    },
+    "diagramRender.legend.compose": {
+      "kind": "body",
+      "zh": "实线：组合（字段类型）",
+      "args": []
+    },
+    "diagramRender.legend.implements": {
+      "kind": "body",
+      "zh": "虚线：实现 / 继承",
+      "args": []
+    },
+    "diagramRender.legend.guessSym": {
+      "kind": "body",
+      "zh": "点线加 ?：按名字凑（N 选 1）",
+      "args": []
+    },
+    "diagramRender.legend.dispatch": {
+      "kind": "body",
+      "zh": "虚线：动态派发",
+      "args": []
+    },
+    "diagramRender.legend.certainSym": {
+      "kind": "body",
+      "zh": "粗实线：确定",
+      "args": []
+    },
+    "diagramRender.legend.mixed": {
+      "kind": "body",
+      "zh": "细实线：混着的一捆，标签写出成分",
+      "args": []
+    },
+    "diagramRender.legend.guess": {
+      "kind": "body",
+      "zh": "点线加 ?：按名字凑的候选",
+      "args": []
+    },
+    "diagramRender.legend.certain": {
+      "kind": "body",
+      "zh": "粗实线：全部确定",
+      "args": []
+    },
+    "diagramRender.typeGraph.more": {
+      "kind": "body",
+      "zh": "…还有 {n} 项",
+      "args": ["n"]
+    },
+    "diagramRender.typeGraph.implements": {
+      "kind": "body",
+      "zh": "实现",
+      "args": []
+    },
+    "diagramRender.cluster.size": {
+      "kind": "body",
+      "zh": "{n} 符号 / {files} 文件",
+      "args": ["n", "files"]
+    },
+    "diagramRender.link.guessPart": {
+      "kind": "body",
+      "zh": "{guess} 分不清",
+      "args": ["guess"]
+    },
+    "diagramRender.link.dispatchPart": {
+      "kind": "body",
+      "zh": "{dispatch} 派发",
+      "args": ["dispatch"]
+    },
+    "diagramRender.link.exactPart": {
+      "kind": "body",
+      "zh": "{exact} 确定",
+      "args": ["exact"]
+    },
+    "diagramRender.link.guess": {
+      "kind": "body",
+      "zh": "{total}×分不清?",
+      "args": ["total"]
+    },
+    "diagramRender.link.dispatch": {
+      "kind": "body",
+      "zh": "{total}×派发",
+      "args": ["total"]
+    },
+    "diagramRender.edge.pick": {
+      "kind": "body",
+      "zh": "{base} {candidates} 选 1",
+      "args": ["base", "candidates"]
+    },
+    "diagramRender.edge.guess": {
+      "kind": "body",
+      "zh": "分不清?",
+      "args": []
+    },
+    "diagramRender.edge.dispatch": {
+      "kind": "body",
+      "zh": "派发",
+      "args": []
+    },
+    "diagramView.node.typeMembers": {
+      "kind": "body",
+      "zh": "{fields} 个字段 · {methods} 个方法",
+      "args": ["fields", "methods"]
+    },
+    "diagramView.node.typeSelf": {
+      "kind": "action",
+      "zh": "{name} · 类型本身",
+      "args": ["name"]
+    },
+    "diagramView.node.cluster": {
+      "kind": "body",
+      "zh": "{title} · {files} 个文件 · {n} 个符号",
+      "args": ["title", "files", "n"]
+    },
+    "diagramView.paint.unsupported": {
+      "kind": "body",
+      "zh": "这一版还画不出这种形状的图（{shape}）。可以点「复制 Mermaid」拿到上游画好的文本。",
+      "args": ["shape"]
+    },
+    "diagramView.knobs.copyMermaid": {
+      "kind": "action",
+      "zh": "复制 Mermaid",
+      "args": []
+    },
+    "diagramView.knobs.maxNodes": {
+      "kind": "control",
+      "zh": "节点上限 ",
+      "args": []
+    },
+    "diagramView.knobs.maxNodesHint": {
+      "kind": "body",
+      "zh": "最多画几个节点；没画的写在图下面",
+      "args": []
+    },
+    "diagramView.knobs.excludeTestsHint": {
+      "kind": "body",
+      "zh": "架构讲的是产品的结构；排掉多少写在图下面",
+      "args": []
+    },
+    "diagramView.knobs.excludeTests": {
+      "kind": "control",
+      "zh": "排除测试",
+      "args": []
+    },
+    "diagramView.knobs.certainOnlyHint": {
+      "kind": "body",
+      "zh": "全靠名字凑、一条确定的都没有的连接不画；滤掉多少写在图下面",
+      "args": []
+    },
+    "diagramView.knobs.certainOnly": {
+      "kind": "control",
+      "zh": "只看确定的连接",
+      "args": []
+    },
+    "diagramView.picker.blocked": {
+      "kind": "control",
+      "zh": "{title} · 先点一个符号",
+      "args": ["title"]
+    },
+    "diagramView.picker.bubble": {
+      "kind": "control",
+      "zh": "气泡全景",
+      "args": []
+    },
+    "diagramView.redraw.failed": {
+      "kind": "error",
+      "zh": "画不出这张图：{e}",
+      "args": ["e"]
+    },
+    "diagramView.redraw.drawing": {
+      "kind": "body",
+      "zh": "画图中…",
+      "args": []
+    },
+    "diagramView.redraw.needSymbol": {
+      "kind": "body",
+      "zh": "「{title}」要以一个符号为中心：先在搜索或文件详情里点一个符号。",
+      "args": ["title"]
+    },
+    "diagramView.kinds.failed": {
+      "kind": "error",
+      "zh": "读不到图种清单",
+      "args": []
+    },
+    "diagramView.picker.hint": {
+      "kind": "body",
+      "zh": "选一种图；需要符号的图要先点一个符号",
+      "args": []
+    },
+    "layout.coverage.banner": {
+      "kind": "body",
+      "zh": "覆盖不全：{parts}（静态分析已知缺口）",
+      "args": ["parts"]
+    },
+    "layout.coverage.listSep": {
+      "kind": "body",
+      "zh": "、",
+      "args": []
+    },
+    "layout.coverage.parseErrors": {
+      "kind": "body",
+      "zh": "{n} 文件解析失败",
+      "args": ["n"]
+    },
+    "layout.coverage.unresolved": {
+      "kind": "body",
+      "zh": "{n} 处调用未解析",
+      "args": ["n"]
+    },
+    "layout.cluster.uncategorized": {
+      "kind": "body",
+      "zh": "· 未归类",
+      "args": []
+    },
+    "api.repoLabel.remote": {
+      "kind": "body",
+      "zh": "{path}（远端 {machine}）",
+      "args": ["path", "machine"]
+    },
+    "cards.truncate.ellipsis": {
+      "kind": "body",
+      "zh": "{text}…",
+      "args": ["text"]
+    },
+    "cards.markdown.renderAll": {
+      "kind": "action",
+      "zh": "渲染完整内容 ({kb} KB)",
+      "args": ["kb"]
+    },
+    "cards.text.showAll": {
+      "kind": "action",
+      "zh": "显示完整内容 ({kb} KB)",
+      "args": ["kb"]
+    },
+    "cards.result.markdownHint": {
+      "kind": "body",
+      "zh": "Markdown 渲染（含 LaTeX / 代码高亮）",
+      "args": []
+    },
+    "cards.result.textHint": {
+      "kind": "body",
+      "zh": "原始文本（Pre 格式）",
+      "args": []
+    },
+    "cards.result.text": {
+      "kind": "action",
+      "zh": "文本",
+      "args": []
+    },
+    "cards.remoteFile.noMachine": {
+      "kind": "error",
+      "zh": "找不到机器 {machine} 的配置",
+      "args": ["machine"]
+    },
+    "cards.remoteFile.openFailed": {
+      "kind": "error",
+      "zh": "打开文件失败",
+      "args": []
+    },
+    "cards.remoteFile.openHint": {
+      "kind": "body",
+      "zh": "在文件窗口里定位这个远端文件（可预览 / 下载）",
+      "args": []
+    },
+    "cards.remoteFile.open": {
+      "kind": "action",
+      "zh": "📂 在文件窗口打开：{path}",
+      "args": ["path"]
+    },
+    "cards.renderBlock.unknownBlock": {
+      "kind": "body",
+      "zh": "⚠️ 认不出的内容块：{type}",
+      "args": ["type"]
+    },
+    "cards.thinking.title": {
+      "kind": "title",
+      "zh": "💭 思考 · {n} 字",
+      "args": ["n"]
+    },
+    "cards.user.title": {
+      "kind": "title",
+      "zh": "用户",
+      "args": []
+    },
+    "cards.toolGroup.summary": {
+      "kind": "body",
+      "zh": "🔧 工具调用 · {count} 个 · 自 {since}",
+      "args": ["count", "since"]
+    },
+    "cards.queuedUser.title": {
+      "kind": "title",
+      "zh": "用户 · 排队时发出",
+      "args": []
+    },
+    "apiError.retry.network": {
+      "kind": "body",
+      "zh": "网络/服务异常",
+      "args": []
+    },
+    "apiError.retry.line": {
+      "kind": "body",
+      "zh": "⚠ API 调用失败：{error}{retry} · {time}",
+      "args": ["error", "retry", "time"]
+    },
+    "apiError.retry.count": {
+      "kind": "body",
+      "zh": " · 重试 {retryAttempt}/{maxRetries}",
+      "args": ["retryAttempt", "maxRetries"]
+    },
+    "apiError.card.noDetail": {
+      "kind": "body",
+      "zh": "(无错误详情)",
+      "args": [],
+      "waive": {
+        "C-L4": "卡片正文位置的空态占位：括号把它和真错误详情区分开。另：这张卡在秤 2 的真高金标准语料里，改字要重打金标准（台架住 /tmp，已不在）"
+      }
+    },
+    "apiError.card.title": {
+      "kind": "body",
+      "zh": "API 错误 — 本轮已中止",
+      "args": []
+    },
+    "apiError.card.icon": {
+      "kind": "body",
+      "zh": "⛔",
+      "args": []
+    },
+    "bash.output.showAll": {
+      "kind": "action",
+      "zh": "显示完整输出 ({n} 行)",
+      "args": ["n"]
+    },
+    "bash.output.empty": {
+      "kind": "body",
+      "zh": "（无输出）",
+      "args": [],
+      "waive": {
+        "C-L4": "显示在命令输出框里：括号把它和真输出区分开，真输出里可能恰好就有这几个字"
+      }
+    },
+    "bash.output.title": {
+      "kind": "title",
+      "zh": "bash 输出",
+      "args": []
+    },
+    "bash.output.icon": {
+      "kind": "body",
+      "zh": "▤",
+      "args": []
+    },
+    "bash.input.prompt": {
+      "kind": "body",
+      "zh": "❯",
+      "args": []
+    },
+    "subagent.renderSubagentBody.header": {
+      "kind": "body",
+      "zh": "agent-{agentId}  ·  {n} 条记录",
+      "args": ["agentId", "n"]
+    },
+    "subagent.loadAndRender.retry": {
+      "kind": "action",
+      "zh": "重试",
+      "args": []
+    },
+    "subagent.loadAndRender.failed": {
+      "kind": "error",
+      "zh": "加载失败：{e}",
+      "args": ["e"]
+    },
+    "subagent.loadAndRender.loading": {
+      "kind": "body",
+      "zh": "加载 subagent…",
+      "args": []
+    },
+    "interactive.plan.title": {
+      "kind": "title",
+      "zh": "📋 计划待批准",
+      "args": []
+    },
+    "interactive.ask.multi": {
+      "kind": "body",
+      "zh": "{question}（可多选）",
+      "args": ["question"]
+    },
+    "interactive.ask.title": {
+      "kind": "title",
+      "zh": "❓ 等待你的选择",
+      "args": []
+    },
+    "diff.buildDiffBody.showAll": {
+      "kind": "action",
+      "zh": "↕ 显示完整 diff（+{addCount} −{delCount}）",
+      "args": ["addCount", "delCount"]
+    },
+    "diff.capLine.ellipsis": {
+      "kind": "body",
+      "zh": "{text}…",
+      "args": ["text"]
+    },
+    "slash.card.icon": {
+      "kind": "body",
+      "zh": "⌘",
+      "args": []
+    },
+    "compact.summary.title": {
+      "kind": "title",
+      "zh": "📋 上下文摘要 · {n} 字 · {time}",
+      "args": ["n", "time"]
+    },
+    "chanCaller.said.internal": {
+      "kind": "error",
+      "zh": "查询没有完成：cc-monitor 内部出错",
+      "args": []
+    },
+    "chanCaller.said.withdrawn": {
+      "kind": "body",
+      "zh": "这次查询已撤回",
+      "args": []
+    },
+    "chanCaller.said.unreachable": {
+      "kind": "error",
+      "zh": "现在够不着那台机器的后端，连接不在或断了。这次先不显示。",
+      "args": []
+    },
+    "chanCaller.said.timeout": {
+      "kind": "error",
+      "zh": "等那台机器的后端答复超时了，这次先不显示",
+      "args": []
+    },
+    "chanCaller.said.error": {
+      "kind": "error",
+      "zh": "那台机器的后端没有答出来",
+      "args": []
+    },
+    "chanCaller.said.errorCoded": {
+      "kind": "error",
+      "zh": "那台机器的后端没有答出来（{code}）：{message}",
+      "args": ["code", "message"]
+    },
+    "chanCaller.linesOf.badShape": {
+      "kind": "error",
+      "zh": "后端的回答格式不对",
+      "args": []
+    },
+    "keybindingActions.category.account": {
+      "kind": "title",
+      "zh": "账号",
+      "args": []
+    },
+    "keybindingActions.category.panel": {
+      "kind": "title",
+      "zh": "面板",
+      "args": []
+    },
+    "keybindingActions.category.behavior": {
+      "kind": "title",
+      "zh": "行为",
+      "args": []
+    },
+    "keybindingActions.category.app": {
+      "kind": "title",
+      "zh": "应用",
+      "args": []
+    },
+    "keybindingActions.category.terminal": {
+      "kind": "title",
+      "zh": "终端",
+      "args": []
+    },
+    "keybindingActions.category.tab": {
+      "kind": "title",
+      "zh": "标签页",
+      "args": []
+    },
+    "keybindingActions.panel.tasks": {
+      "kind": "action",
+      "zh": "Task 面板开 / 关",
+      "args": []
+    },
+    "keybindingActions.behavior.autoFront": {
+      "kind": "action",
+      "zh": "切换「自动把 monitor 切到前台」",
+      "args": []
+    },
+    "keybindingActions.behavior.autoFollow": {
+      "kind": "action",
+      "zh": "切换「自动跟随用户输入」",
+      "args": []
+    },
+    "keybindingActions.account.menu": {
+      "kind": "action",
+      "zh": "打开账号菜单",
+      "args": []
+    },
+    "keybindingActions.app.closeOverlay": {
+      "kind": "action",
+      "zh": "关闭弹层 / 历史 / 设置",
+      "args": []
+    },
+    "keybindingActions.app.fullscreen": {
+      "kind": "action",
+      "zh": "切换真全屏，盖住任务栏",
+      "args": []
+    },
+    "keybindingActions.app.minimize": {
+      "kind": "action",
+      "zh": "最小化主窗口",
+      "args": []
+    },
+    "keybindingActions.app.commandBar": {
+      "kind": "action",
+      "zh": "打开命令栏",
+      "args": []
+    },
+    "keybindingActions.app.panorama": {
+      "kind": "action",
+      "zh": "打开 / 关闭代码全景",
+      "args": []
+    },
+    "keybindingActions.app.history": {
+      "kind": "action",
+      "zh": "打开 / 关闭历史浏览器",
+      "args": []
+    },
+    "keybindingActions.app.settings": {
+      "kind": "action",
+      "zh": "打开设置面板",
+      "args": []
+    },
+    "keybindingActions.terminal.front": {
+      "kind": "action",
+      "zh": "把对应终端窗口切到前台",
+      "args": []
+    },
+    "keybindingActions.session.find": {
+      "kind": "action",
+      "zh": "在当前会话里查找",
+      "args": []
+    },
+    "keybindingActions.tab.openInWindow": {
+      "kind": "action",
+      "zh": "在新窗口打开当前 Tab",
+      "args": []
+    },
+    "keybindingActions.tab.openCwd": {
+      "kind": "action",
+      "zh": "打开当前 Tab 的工作目录",
+      "args": []
+    },
+    "keybindingActions.tab.jump9": {
+      "kind": "action",
+      "zh": "跳到第 9 个 Tab",
+      "args": []
+    },
+    "keybindingActions.tab.jump8": {
+      "kind": "action",
+      "zh": "跳到第 8 个 Tab",
+      "args": []
+    },
+    "keybindingActions.tab.jump7": {
+      "kind": "action",
+      "zh": "跳到第 7 个 Tab",
+      "args": []
+    },
+    "keybindingActions.tab.jump6": {
+      "kind": "action",
+      "zh": "跳到第 6 个 Tab",
+      "args": []
+    },
+    "keybindingActions.tab.jump5": {
+      "kind": "action",
+      "zh": "跳到第 5 个 Tab",
+      "args": []
+    },
+    "keybindingActions.tab.jump4": {
+      "kind": "action",
+      "zh": "跳到第 4 个 Tab",
+      "args": []
+    },
+    "keybindingActions.tab.jump3": {
+      "kind": "action",
+      "zh": "跳到第 3 个 Tab",
+      "args": []
+    },
+    "keybindingActions.tab.jump2": {
+      "kind": "action",
+      "zh": "跳到第 2 个 Tab",
+      "args": []
+    },
+    "keybindingActions.tab.jump1": {
+      "kind": "action",
+      "zh": "跳到第 1 个 Tab",
+      "args": []
+    },
+    "keybindingActions.tab.prev": {
+      "kind": "action",
+      "zh": "切到上一个 Tab",
+      "args": []
+    },
+    "keybindingActions.tab.next": {
+      "kind": "action",
+      "zh": "切到下一个 Tab",
+      "args": []
+    },
+    "keybindingEditor.onResetAll.confirmResetAll": {
+      "kind": "body",
+      "zh": "确定恢复全部快捷键到默认？所有自定义会丢失。",
+      "args": []
+    },
+    "keybindingEditor.applyChord.confirmOverride": {
+      "kind": "body",
+      "zh": "{pretty} 当前是「{ownerLabel}」。要覆盖吗？\n\n「{ownerLabel}」会被解绑（变成「未绑定」）。",
+      "args": ["pretty", "ownerLabel"]
+    },
+    "keybindingEditor.applyChord.confirmRebindClose": {
+      "kind": "body",
+      "zh": "你正在把「关闭弹层」改成 {pretty}。\n\n改后按 Esc 不再自动关弹层，必须按新键或点 × 才能关。\n\n确定吗？",
+      "args": ["pretty"]
+    },
+    "keybindingEditor.applyChord.confirmUnbindClose": {
+      "kind": "body",
+      "zh": "你正在解绑「关闭弹层」的快捷键。解绑后所有弹层只能点 × 关闭，无法用键盘退出。\n\n确定要继续吗？",
+      "args": []
+    },
+    "keybindingEditor.startRecording.recording": {
+      "kind": "body",
+      "zh": "请按下组合键…",
+      "args": []
+    },
+    "keybindingEditor.buildActionRow.resetHint": {
+      "kind": "body",
+      "zh": "恢复默认",
+      "args": []
+    },
+    "keybindingEditor.buildActionRow.reset": {
+      "kind": "action",
+      "zh": "↺",
+      "args": []
+    },
+    "keybindingEditor.buildActionRow.edit": {
+      "kind": "action",
+      "zh": "改",
+      "args": []
+    },
+    "keybindingEditor.build.resetAll": {
+      "kind": "action",
+      "zh": "全部重置默认",
+      "args": []
+    },
+    "keybindingEditor.build.intro": {
+      "kind": "body",
+      "zh": "点 [改] 后按下你想要的组合键。Esc / Backspace 在录制中表示「解绑」。改动即时生效，无需重启。",
+      "args": []
+    },
+    "keybindingEditor.build.close": {
+      "kind": "action",
+      "zh": "×",
+      "args": []
+    },
+    "keybindingEditor.build.closeHint": {
+      "kind": "body",
+      "zh": "关闭",
+      "args": []
+    },
+    "keybindingEditor.build.title": {
+      "kind": "title",
+      "zh": "快捷键",
+      "args": []
+    },
+    "registry.prettyChord.unbound": {
+      "kind": "body",
+      "zh": "未绑定",
+      "args": []
+    },
+    "sessionState.closeEnded.shortcut": {
+      "kind": "action",
+      "zh": "关闭已结束的 Tab",
+      "args": []
     }
   }
 }

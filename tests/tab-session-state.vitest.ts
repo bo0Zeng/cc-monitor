@@ -196,8 +196,7 @@ describe("S5 说到会话状态的字只在文案表 `sessionState.*`（零命�
   const EXEMPT: Record<string, number> = {
     // 换号重启回执里的「旧会话已结束」说的是那一次重启里被杀掉的旧进程，不是某个 tab 此刻的状态。
     "src/account-restart.ts": 1,
-    // 快捷键名「关闭已结束的 Tab」：快捷键表是静态数据，不经文案表（`keybindings/actions.ts` 另有自己的判据族）。
-    "src/keybindings/actions.ts": 1,
+    // 〔CP2b〕快捷键名「关闭已结束的 Tab」进了文案表（`sessionState.closeEnded.shortcut`），不再是源码字面量 ⇒ 这一条豁免撤掉。
   };
   const NAMES = /已结束|可重连/g;
   const RETIRED = /归档|灰(?![色度阶])/g;
