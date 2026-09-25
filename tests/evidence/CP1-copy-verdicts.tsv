@@ -26,9 +26,6 @@ src/accounts.ts:546	用该账号打开一个远端终端（在里面 /login）	�
 src/accounts.ts:779	无法换号重启：tmux 标记丢了	改·§2.1	[对外] 对话框标题；「tmux 标记」是我们打在 tmux 上的会话标记（@ccm_sid），属 R1b 第 2 条「我们对 tmux 的用法」→「无法换号重启：找不到这个会话所在的终端」
 src/accounts.ts:788	无法换号重启	保留	[对外] 对话框标题
 src/accounts.ts:1201	这一节只把这台机器上的账号清单列出来（只读）；在这里改不了它们。	保留	[对外] 账号区块说明，说清只读
-src/backend-policy.ts:57	monitor 退出时会结束它	保留	[对外] 后端退出策略说明短句；monitor 是产品名
-src/backend-policy.ts:60	monitor 退出后它继续跑，无人监护：崩了不会自动重起；下次开 monitor 会接上它，接不上才起一个新的	保留	[对外] 说清会发生什么（继续跑、崩了不重起、下次接上），分号断句、无括号破折号
-src/backend-policy.ts:62	monitor 不主动结束它；它仍会在 monitor 退出后很快自行退出	保留	[对外] 同族短句
 src/backend/control/capture_pane.rs:105	🔴 **本轮真 tmux 打回来的那一句**（沙箱 tmux，显式 `-S <不存在的路径>`）：\n         逐字 `error connecting to /tmp/…/sock (No such file or directory)`。\n         ⚠ 它与下面那条**不是同一句话**，而我先前只登记了下面那条 ⇒ \n         第一趟门禁当场红（落进兜底档 `capture_failed`）。**留着这行来历**：\n         「tmux 连不上时会说 no server running」是个想当然，实测把它证伪了一半。	保留	[不对外] NO_*_NEEDLES 针表的理由列，classify() 只拿第 0 列（针）去匹配 stderr，理由列生产段无读者
 src/backend/control/capture_pane.rs:113	tmux 在**默认 socket**（生产走的那条）上找不到 server 时的原话\n         （`no server running on /tmp/tmux-<uid>/default`）。\n         ⚠ **这一句本轮没有在真 tmux 上打过**：本模块的判据只造得出显式 `-S` 那条路，\n         而默认 socket 在沙箱里没法造出「无 server」态（那台沙箱自己在用 tmux）。\n         ⇒ 它今天只由 `every_registered_needle_lands_in_its_own_bucket` \n         用合成样本证明「落对了档」，**不是**「见过它」。	保留	[不对外] NO_*_NEEDLES 针表的理由列，classify() 只拿第 0 列（针）去匹配 stderr，理由列生产段无读者
 src/backend/control/capture_pane.rs:128	tmux 对 target-pane 解析失败时的原话。`=名:` 收的正是 target-pane（`F01`）	保留	[不对外] NO_*_NEEDLES 针表的理由列，classify() 只拿第 0 列（针）去匹配 stderr，理由列生产段无读者
@@ -152,18 +149,7 @@ src/bridge/src/backend/control/ccm_invocation.rs:77	维度 {dim} 需要远端 cc
 src/bridge/src/backend/control/inbound_client.rs:439	（错误应答 code={} message={}）	保留	[不对外] 只拼进 tracing::warn!（本文件 :444），日志
 src/bridge/src/backend/control/local_backend.rs:600	 …〔这一行超过单行上界，在此切开，下一条接着它〕	保留	[不对外] STDERR_CUT_MARK 只贴进 monitor 自己的滚动日志（logging.rs）
 src/bridge/src/backend/control/local_backend.rs:1226	#!/bin/sh\n# cc-monitor: {CCM_ENTRY_WORD} = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec {} {CCM_ENTRY_WORD} "$@"\n	保留	[不对外] 远端 ~/.local/bin/ccm 那个 shim 的文件内容（shebang ＋ 一行注释 ＋ 一行 exec），不上屏；〔MC1〕CCM_SELF 那一行删了
-src/bridge/src/backend_policy.rs:53	monitor 退出时会结束它	保留	[对外] 设置页后端卡片上「退出时会怎样」那一句（TS 侧 backend-policy.ts 同文对拍）；短、说后果
-src/bridge/src/backend_policy.rs:56	monitor 退出后它继续跑，无人监护：崩了不会自动重起；下次开 monitor 会接上它，接不上才起一个新的	保留	[对外] 同上 EXIT_UNATTENDED；分号分开的三个后果都是用户要知道的，无破折号/括号（「无人监护」偏书面，CP2 可顺手换「没人看着」之类）
-src/bridge/src/backend_policy.rs:58	monitor 不主动结束它；它仍会在 monitor 退出后很快自行退出	保留	[对外] 同上 EXIT_SELF_DIES，短
-src/bridge/src/backend_policy.rs:251	起不来，而调用方一句原因都没转过来（这一格今天没有事实可说）	改·§2.2	[可达存疑] NO_START_REASON 经 death_copy 的 {reason} 进 HEALTH_CRASHED：「调用方一句原因都没转过来」「这一格今天没有事实可说」是内部推理 兼§2.4 新词:调用方 →「启动失败，原因不明」
-src/bridge/src/backend_policy.rs:328	从来没起来	保留	[可达存疑] death_kind 只进 ledger_line 的「判定=」字段；外露问题整体归 :400 那条日志行（本词口语但作状态名可用）
-src/bridge/src/backend_policy.rs:329	被拒了	保留	[可达存疑] 同上 death_kind 字段值
-src/bridge/src/backend_policy.rs:330	崩了	保留	[可达存疑] 同上 death_kind 字段值
-src/bridge/src/backend_policy.rs:331	读坏了	保留	[可达存疑] 同上 death_kind 字段值
-src/bridge/src/backend_policy.rs:338	没有退出状态（进程从来没存在过）	保留	[可达存疑] exit_status 字段值，只进 ledger_line；短而准确
-src/bridge/src/backend_policy.rs:343	没有退出状态	保留	[可达存疑] exit_status 字段值，只进 ledger_line
-src/bridge/src/backend_policy.rs:429	被控制台事件杀死 —— 可能是那个弹出的终端窗口被关了	保留	[对外] 〔S5 · 设计/00 §1.5.3 逐字〕exit_status 认出 0xC000013A 时替掉裸码，经 last_brief 进 HEALTH_CRASHED 的 {last}（也进日志行）；说发生了什么＋可能的原因，一个破折号（body 档至多一个）
-src/bridge/src/backend_policy.rs:400	[死亡账] origin={origin} 判定={} 退出状态={} —— {}	改·§2.1	[可达存疑] ledger_line：日志行格式「[死亡账] origin= 判定= 退出状态=」整行被拼进 HEALTH_CRASHED 的 {last}（ui-copy-discipline BACKEND_SIDE_DEBT 点名）兼§2.5（死亡账）→ 界面只取判定＋退出状态两格，日志行留在日志
+src/bridge/src/backend_policy.rs:400	[死亡账] origin={origin} 判定={} 退出状态={} —— {}	保留	[不对外] 〔CP2b 复核〕ST2 步 7 起界面只取 last_brief（判定＋退出状态），ledger_line 只经 DeathSink 落 monitor 日志；原裁「界面只取判定＋退出状态两格，日志行留在日志」已兑现 ⇒ 这一行今天不对外，不进文案表（原裁：改·§2.1 [可达存疑]）
 src/bridge/src/backend_policy.rs:504	脱离路：`attach_stream` 的流断了 ⇒ `reap_detached` 那条收尸线程 `wait()` 回来那一拍	保留	[不对外] DEATH_RECORD_SITES：判据用的登记表（记录点住址＋说明），生产代码不读
 src/bridge/src/backend_policy.rs:509	监护路：backend 那个 `on_event` **闭包**收到 `Exited` 那一拍。\n         它抽成一个返回闭包的函数，只为让 `KP3W3` 那三只假后端能跑**同一个闭包**\n         —— 内联的闭包测试够不着，那条行为判据就只能退回读源码	保留	[不对外] DEATH_RECORD_SITES 登记表说明
 src/bridge/src/backend_policy.rs:516	起不来：`start_local_backend` 返回 `StartOutcome::Failed` 那一个出口	保留	[不对外] DEATH_RECORD_SITES 登记表说明
@@ -322,9 +308,6 @@ src/backend/accounts/iso.rs:64	这台机器上还没装 cc-acct-iso。	保留	[�
 src/backend/control/cc_bus.rs:782	已 spawn:	保留	[不对外] 在 cc-spawn 回显里认新会话名字的匹配串（spawned_id_of），只决定回值里的 id，不是展示文本
 src/backend/read_face.rs:149	结果超过 {LINES_CAP_BYTES} 字节上限，没有返回（至少 {size} 字节）	保留	[可达存疑] 帧面只读查询（history-*/accounts-*）按行应答超上限时的命令级报错，monitor 原样带进「远端查询失败」那句；平白说出上限与没返回，无内部词、无论证
 src/bridge/src/backend/control/frame_query.rs:93	查询出了内部错误，没有拿到结果	保留	[可达存疑] 只读查询分流器落到「已完成」那一档时的兜底话（按构造走不到）；平白说出了事、没拿到结果，无内部词
-src/backend-policy.ts:74	那台机器上的退出策略读不出来，按默认（不结束）办 —— 这不等于有人这么选过	保留	[对外] 〔B2 · 条 66〕EXIT_UNREADABLE：措辞是 `设计/01 §3.3b ⑤` 逐字定下的那一句；说清会怎样（按默认不结束）与它不是什么（不是谁选的），与 HEALTH_UNKNOWN 同形
-src/bridge/src/backend_policy.rs:70	那台机器上的退出策略读不出来，按默认（不结束）办 —— 这不等于有人这么选过	保留	[对外] 同上 EXIT_UNREADABLE 的 Rust 镜像，只为逐字对拍存在
-src/bridge/src/backend_policy.rs:161	问退出策略出了内部错误，没有拿到结果	保留	[可达存疑] 分流器三态里走不到的那一档（Done）的兜底话；真到了用户眼前也只说「没拿到」，不带实现词
 src/backend/control/exit_policy.rs:105	读 {} 失败：{e}	保留	[不对外] 〔B2〕「读不出来」的原因：只进线上 `reason` 一格与后端日志，界面只说 EXIT_UNREADABLE 那一句、不显示它
 src/backend/control/exit_policy.rs:109	{} 不是 JSON：{e}	保留	[不对外] 同上：`reason` 一格与日志，界面不显示
 src/backend/control/exit_policy.rs:114	{} 里 `{KEY_KILL_ON_EXIT}` 不是布尔（实得 {other}）	保留	[不对外] 同上：`reason` 一格与日志，界面不显示
@@ -356,21 +339,10 @@ src/backend/relay/listen.rs:352	{ENV_PORT}={raw:?} 不是端口号（{e}）	保�
 src/backend/relay/listen.rs:361	读不出绑到的地址：{e}	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
 src/backend/relay/listen.rs:372	起不来接受线程：{e}	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
 src/bridge/src/local_backend_host.rs:923	本机后端的流断了（常驻载体）	改·§2.1	[可达存疑] 〔SR1a〕同上一行（常驻那条载体）→「和本机后端的连接断了」
-src/bridge/src/backend_policy.rs:431	退出状态未知（是 monitor 这一侧读坏了，不是它报的）	保留	[对外] exit_status 读坏了那一格；ST2 步 7 起经 last_brief 进设置页健康那一格。原「我们的读端」换成 monitor，短
 src/bridge/src/backend_policy.rs:447	从来没起来：{reason}（找过 {} 处：{}）。原因是启动那一侧原样转来的，照它说的去补。	保留	[不对外] death_copy 只随 ledger_line 落 monitor 日志（ST2 步 7：界面接 last_brief）；去掉了 markdown 与「本处不另写一份」那句论证
 src/bridge/src/backend_policy.rs:455	被拒了：它一个字节都没说就自己退出了。原样重连只会发同一个参数、\n             再被拒一次，先看它拒的是什么。	保留	[不对外] death_copy 只落日志；去掉了事故史、markdown、破折号
 src/bridge/src/backend_policy.rs:458	崩了：说过话之后异常终止。重起之前先看是不是每次都停在同一处，\n             同一处反复崩时重起帮不上忙。	保留	[不对外] death_copy 只落日志；去掉了「放大器」「自愈要治的那一格」论证与重复的 exit 码
 src/bridge/src/backend_policy.rs:462	读坏了：{detail}。这是 monitor 这一侧读的时候出错，不算它崩了一次；\n             重新接上它，别去动那个进程。	保留	[不对外] death_copy 只落日志；去掉了源码住址与 markdown
-src/backend-policy.ts:114	— 无记录	保留	[对外] 设置页后端那一行「健康」格：账上一条都没有（ST2 步 6，70 §2.3 线框原文）；为什么不等于没崩过进 ⓘ
-src/backend-policy.ts:120	这里只记这次 monitor 开着以来的退出，关掉 monitor 就清零。所以「无记录」不等于「没崩过」。	保留	[对外] 「无记录」那一格的 ⓘ 正文：那条「无记录 ≠ 没崩过」的区分（70 §2.2 不许扫掉），改成用户读得懂的事实
-src/backend-policy.ts:122	没崩过（这次 monitor 开着以来）	保留	[对外] 健康格第二档；括号里是范围不是说明（按 body 档）
-src/backend-policy.ts:124	⚠ 崩过 {crashed} 次 · 最后一次：{last}	保留	[对外] 健康格第三档（70 §2.3 线框）；{last} 由后端 last_brief 填（判定 ＋ 退出状态），不再是整条账行
-src/backend-policy.ts:126	没留下记录	保留	[对外] {last} 缺席时的兜底，短
-src/backend-policy.ts:133	这次 monitor 开着以来：崩了 {crashed} 次 · 被拒 {refused} 次 · 没起来 {neverStarted} 次 · 读坏了 {misread} 次。读坏是 monitor 这一侧的事，不算它崩。每一次的完整记录在日志文件里。	保留	[对外] 健康格 [详情] 展开的那一段：四个计数分开列 ＋ 完整记录去哪看
-src/bridge/src/backend_policy.rs:93	— 无记录	保留	[对外] 设置页后端那一行「健康」格：账上一条都没有（ST2 步 6，70 §2.3 线框原文）；为什么不等于没崩过进 ⓘ
-src/bridge/src/backend_policy.rs:95	没崩过（这次 monitor 开着以来）	保留	[对外] 健康格第二档；括号里是范围不是说明（按 body 档）
-src/bridge/src/backend_policy.rs:97	⚠ 崩过 {crashed} 次 · 最后一次：{last}	保留	[对外] 健康格第三档（70 §2.3 线框）；{last} 由后端 last_brief 填（判定 ＋ 退出状态），不再是整条账行
-src/bridge/src/backend_policy.rs:99	没留下记录	保留	[对外] {last} 缺席时的兜底，短
 src/bridge/src/history.rs:2360	apikey 端点改写不可用：账号 {account:?} 在 [{host}] 的 apikey 表里有一行，\n         但那台机器上的中转起不来（{why}）——\n\n         这一发要是照旧起出去，claude 那边会报一个与网络故障同形的连接失败。\n\n         ⇒ 重装那台机器的后端再试，或把该账号那一行从那台机器的凭据文件里去掉。	保留	[对外] 〔RL1〕远端 apikey 号的中转起不来 ⇒ 拒绝起会话（toast「无法构造…」的第二行）；说的是结果＋原因＋下一步，点名那台机器。「中转」层 1 正名、「apikey 端点改写」层 2 正名（terms.json）
 src/backend/control/files_write.rs:724	回读 {} 字节，与写进去的 {} 字节不一致	保留	[对外] files-put 写后校验失败那句的中段（RW1：用户文件的写规则从 monitor 的 fenced_block::apply 搬来后端），两个数都是用户看得懂的字节数
 src/backend/control/files_write.rs:728	写完读不回来（{e}）	保留	[对外] 同上一族；读回失败时带系统原话，短
@@ -430,7 +402,6 @@ src/settings/assets-section.ts:109	from 那一格	保留	[不对外] 〔AS2〕�
 src/settings/assets-section.ts:116	problems 那一格	保留	[不对外] 〔AS2〕同上一行
 src/backend/asset_sync.rs:120	；	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：列表分隔符（join），换语言时跟着换
 src/backend/plugin/discover.rs:121	 · 	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：列表分隔符（join），换语言时跟着换
-src/bridge/src/backend_policy.rs:452	 · 	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：列表分隔符（join），换语言时跟着换
 src/bridge/src/filewin/fonts.rs:305	启持支格求码误象返	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔CP2b〕全量抽表那一拍 ＋9 −3 之后的现文）
 src/bridge/src/filewin/fonts.rs:303	·—…→⚠⬆、。「」一上下不与东丢两个中串为主也了些交亮代以件份会传位住作你侧保做儿先全八关内再写几出列刚删别到制刷前剩动勾化历原去参发取口只叫可台史合同名后吗含命和哪器回围在场坏型备复外多	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔CP2b〕全量抽表之后的现文）
 src/bridge/src/filewin/fonts.rs:304	大太失如字存它完定容对小少尔就尾屏已布带帧并序建开弄引当录往径必态成或截打扫把拒拖拼拿按挡换据掉排接搜摞撤操改数敲整文断新旧时是更最有本机权条来样根框次正此段比没法洞浏消点版物状现	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔CP2b〕全量抽表之后的现文）

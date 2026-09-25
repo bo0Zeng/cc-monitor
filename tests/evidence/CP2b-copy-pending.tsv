@@ -1,6 +1,5 @@
 文件	理由
 src/accounts.ts	C4d 在改这一带，留最后一批
-src/backend-policy.ts	未抽
 src/backend/accounts/apikey/creds.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
 src/backend/accounts/apikey/file_face.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
 src/backend/accounts/apikey/mod.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
@@ -62,7 +61,6 @@ src/bridge/crates/creds-core/src/store.rs	射程外：monitor 的子 crate，够
 src/bridge/crates/guard-core/src/lib.rs	射程外：monitor 的子 crate，够不着 crate::copy_table
 src/bridge/src/backend/control/ccm_invocation.rs	未抽
 src/bridge/src/backend/control/frame_query.rs	C4d 在改这一带，留最后一批
-src/bridge/src/backend_policy.rs	未抽
 src/bridge/src/history.rs	C4d 在改这一带，留最后一批
 src/bridge/src/local_accounts.rs	C4d 在改这一带，留最后一批
 src/bridge/src/local_backend_host.rs	C4d 在改这一带，留最后一批

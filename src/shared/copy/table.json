@@ -13416,6 +13416,126 @@
       "kind": "error",
       "zh": "本机后端没起来",
       "args": []
+    },
+    "backendPolicy.exit.kills": {
+      "kind": "body",
+      "zh": "monitor 退出时会结束它",
+      "args": []
+    },
+    "backendPolicy.exit.unattended": {
+      "kind": "body",
+      "zh": "monitor 退出后它继续跑，无人监护：崩了不会自动重起；下次开 monitor 会接上它，接不上才起一个新的",
+      "args": []
+    },
+    "backendPolicy.exit.selfDies": {
+      "kind": "body",
+      "zh": "monitor 不主动结束它；它仍会在 monitor 退出后很快自行退出",
+      "args": []
+    },
+    "backendPolicy.exit.unreadable": {
+      "kind": "body",
+      "zh": "那台机器上的退出策略读不出来，按默认（不结束）办。这不等于有人这么选过",
+      "args": []
+    },
+    "backendPolicy.health.unknown": {
+      "kind": "body",
+      "zh": "— 无记录",
+      "args": []
+    },
+    "backendPolicy.health.unknownWhy": {
+      "kind": "body",
+      "zh": "这里只记这次 monitor 开着以来的退出，关掉 monitor 就清零。所以「无记录」不等于「没崩过」。",
+      "args": []
+    },
+    "backendPolicy.health.clean": {
+      "kind": "body",
+      "zh": "没崩过（这次 monitor 开着以来）",
+      "args": []
+    },
+    "backendPolicy.health.crashed": {
+      "kind": "body",
+      "zh": "⚠ 崩过 {crashed} 次 · 最后一次：{last}",
+      "args": ["crashed", "last"]
+    },
+    "backendPolicy.health.lastMissing": {
+      "kind": "body",
+      "zh": "没留下记录",
+      "args": []
+    },
+    "backendPolicy.health.detail": {
+      "kind": "body",
+      "zh": "这次 monitor 开着以来：崩了 {crashed} 次 · 被拒 {refused} 次 · 没起来 {neverStarted} 次 · 读坏了 {misread} 次。读坏是 monitor 这一侧的事，不算它崩。每一次的完整记录在日志文件里。",
+      "args": ["crashed", "refused", "neverStarted", "misread"]
+    },
+    "rsBackendPolicy.death.listSep": {
+      "kind": "body",
+      "zh": " · ",
+      "args": []
+    },
+    "rsBackendPolicy.status.misread": {
+      "kind": "body",
+      "zh": "退出状态未知（是 monitor 这一侧读坏了，不是它报的）",
+      "args": []
+    },
+    "rsBackendPolicy.status.none": {
+      "kind": "body",
+      "zh": "没有退出状态",
+      "args": []
+    },
+    "rsBackendPolicy.status.neverExisted": {
+      "kind": "body",
+      "zh": "没有退出状态（进程从来没存在过）",
+      "args": []
+    },
+    "rsBackendPolicy.death.consoleCtrl": {
+      "kind": "body",
+      "zh": "被控制台事件杀死 —— 可能是那个弹出的终端窗口被关了",
+      "args": []
+    },
+    "rsBackendPolicy.death.misread": {
+      "kind": "body",
+      "zh": "读坏了",
+      "args": []
+    },
+    "rsBackendPolicy.death.crashed": {
+      "kind": "body",
+      "zh": "崩了",
+      "args": []
+    },
+    "rsBackendPolicy.death.refused": {
+      "kind": "body",
+      "zh": "被拒了",
+      "args": []
+    },
+    "rsBackendPolicy.death.neverStarted": {
+      "kind": "body",
+      "zh": "从来没起来",
+      "args": []
+    },
+    "rsBackendPolicy.death.noStartReason": {
+      "kind": "body",
+      "zh": "启动失败，原因不明",
+      "args": []
+    },
+    "rsBackendPolicy.call.internal": {
+      "kind": "error",
+      "zh": "问退出策略出了内部错误，没有拿到结果",
+      "args": []
+    },
+    "rsBackendPolicy.call.noData": {
+      "kind": "error",
+      "zh": "[{machine}] 的后端应答里没有数据，两端版本对不上",
+      "args": ["machine"]
+    },
+    "rsBackendPolicy.call.failed": {
+      "kind": "error",
+      "zh": "[{machine}] 问退出策略失败：{message}",
+      "args": ["machine", "message"]
+    },
+    "rsBackendPolicy.call.tooOld": {
+      "kind": "error",
+      "zh": "[{machine}] 的后端太旧，还不认这条命令。重装那台机器的后端就有了",
+      "args": ["machine"]
     }
   }
 }
