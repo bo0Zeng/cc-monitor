@@ -477,8 +477,8 @@ export function accountStatusBadge(
         warn: false,
         title:
           "这个号在apikey 凭据文件里有一行，本机中转也在跑 —— 起本机会话时 cc-monitor 会把 " +
-          "ANTHROPIC_BASE_URL 指向本机中转；请求经过中转时，账号层按这一行换上它的 key。\n" +
-          "⚠ 它保证的是「请求发得到中转、账号层按这一行换 key」；" +
+          "ANTHROPIC_BASE_URL 指向本机中转；请求经过中转时，后端按这一行换上它的 key。\n" +
+          "⚠ 它保证的是「请求发得到中转、后端按这一行换 key」；" +
           "那把 key 本身对不对、上游认不认，仍然要到 claude 那边才知道。",
       };
     }
