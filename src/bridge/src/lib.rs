@@ -292,61 +292,9 @@ pub(crate) fn windows_to_destroy_after<'a>(destroyed: &str, alive: &[&'a str]) -
         .collect()
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// `D7 阻-3`：**退出时收哪几个进程**，收成一条判据能替换的缝
-// ═════════════════════════════════════════════════════════════════════════════
-
-/// 退出时**那一条自己不会死的起法**的收口点 —— 今天只剩本机中转。
-///
-/// # 为什么非有这条缝不可
-///
-/// 守着退出臂的判据原先是「那个窗口里有没有这几段文本」，`D7` 的刀 `T13`
-/// （`if kill {` → `if kill && !kill {`，收口那段文本一字不动）⇒ 全绿，而用户勾了「退出时结束它」、
-/// 退出，**本机中转还在那儿听着那个口**。⇒ 收口点进本结构，判据装一份**会记账的替身**，
-/// 断言**两支**：勾了 ⇒ 被调恰好一次；没勾 ⇒ 一次都没调。
-///
-/// # 〔B2 · 条 66〕原来这里有两个收口点，**常驻（脱离）那一个退役了**
-///
-/// 那个值搬到了后端所在那台机器上（`设计/01 §3.3b`），而**常驻那条起法的后端自己就是读它的人**：
-/// 最后一个客户（这个 monitor 的那条流）一断，它现读、选了「结束」就退（后端 `main.rs::serve_listening`）。
-/// monitor 再在退出臂里替它决定一次 = 两个决策处，而且 monitor 那一处违背 `§3.3b ⑥`
-/// （「不是『起我的那个 monitor 退了』」）。⇒ 那个收口点连同它的判据一起删掉。
-///
-/// 🔴 **中转为什么还归 monitor 收**：它的 stdin 是 null（`local_backend::supervise` 不接消费者），
-/// 它自己**感觉不到**宿主离开 ⇒ 它的去留只能由宿主决定；而宿主手里已经没有那个值 ⇒
-/// 退出臂在决定那一刻**现问**本机后端一次（`backend_policy::kill_on_exit_now`），两半共用那一个答案。
-///
-/// # ⚠ 它还买不到什么（射程边缘，如实写）
-///
-/// - 本结构管的是「**收不收**」。收口点自己收干净了没有是它自己的活（`stop_local_relay` 的头注与判据）。
-/// - 🔴 `RunEvent::Exit` 那个闭包**本身驱动不了** —— 那要真跑一次 tauri app（红线内够不着）。
-///   ⇒ 臂里那几行由 `local_backend_host_tests.rs::the_exit_arm_hands_the_relay_to_the_seam`
-///   的**零命中守卫**看着（谁在臂里另起一条收法就红）。
-#[derive(Clone, Copy)]
-pub(crate) struct ExitShutdownSinks {
-    /// 🔴 **第三个进程**：本机中转 —— 生产恒指 [`local_backend_host::stop_relay_on_exit`]。
-    /// 返回「这一趟真的收到了一个在跑的中转没有」。
-    pub(crate) relay: fn() -> bool,
-}
-
-/// 生产上这条缝里插的那个口。**只有这一处**，判据按函数地址对拍它。
-pub(crate) const PRODUCTION_EXIT_SHUTDOWN: ExitShutdownSinks = ExitShutdownSinks {
-    relay: local_backend_host::stop_relay_on_exit,
-};
-
-/// 退出臂的下半：**中转那条自己不会死的起法**，勾了就收掉。
-///
-/// ⚠ `kill` 是**入参**，不是在这里再问一次 —— 退出臂现问一次、两半共用同一个答案
-///（问两次 = 两条路可能拿到不同的答案，中间它是可以被别的 monitor 改的）。
-pub(crate) fn shutdown_relay_on_exit(kill: bool, sinks: ExitShutdownSinks) {
-    if !kill {
-        // 缺省不杀（`P2s` C8②③）：中转不会自己死 —— 那正是「勾了才收」这条策略的意义所在。
-        tracing::info!("退出：kill_on_exit=false —— 本机中转不收");
-        return;
-    }
-    let relay = (sinks.relay)();
-    tracing::info!("退出：本机中转收了没={relay}");
-}
+// 〔RL1 · V107〕这里先前是 `D7 阻-3` 那条缝（`ExitShutdownSinks` ＋ 它的收口点）：退出臂按现问的「退出行为」
+// 收掉 monitor 另起的那个本机中转。中转并进本机常驻后端之后，本机固定两个进程（monitor ＋ 常驻后端），
+// 中转随后端按「退出行为」留或退（`设计/01 §3.3b`）⇒ 退出臂里不再有第三个进程要收，那条缝连同它的判据一起删掉。
 
 pub fn run() {
     // 启动 perf 测量起点
@@ -1316,7 +1264,7 @@ pub fn run() {
             // K-H2b `KH2B7`：界面问「这几个**本机**账号走不走 apikey 端点改写」。
             // 只答本机不是欠账 —— 中转是每台机器自己的进程，本机这台答不了远端那台。
             apikey_routing_for,
-            relay_ensure,
+            relay_endpoint_for_launch,
             // 〔AL1 · 2026-09-24〕`设计/71`：别名只有一类（名字 ＋ 一组 ccm 参数），命令面两跳 ——
             // 渲染是纯的（预览 / 复制都只调它），写入是唯一的副作用；外加一个读回口。
             aliases_render,
@@ -1513,7 +1461,7 @@ pub fn run() {
                 //
                 // 〔B2 · 条 66 · `设计/01 §3.3b ④`〕那个值住后端所在那台机器上 ⇒ 这里**在决定那一刻现问**
                 // 本机后端一次（`kill_on_exit_now`），不再读一张启动时推进来的表（那张表删了）。
-                // 问不到就按缺省（不结束）办并出声。**只问一次**，下面两半共用同一个答案。
+                // 问不到就按缺省（不结束）办并出声。**只问一次**。
                 //
                 // ⚠ 常驻（脱离）那条起法**不在这里收** —— 它自己就是读那个值的人：
                 //   这个 monitor 的那条流一断，它现读、选了「结束」就退（后端 `main.rs::serve_listening`）。
@@ -1537,10 +1485,8 @@ pub fn run() {
                         }
                     }
                 }
-                // ── 🔴 本机中转（`D2 阻-5`）走缝 ──
-                // ⚠ **不许在这条臂里再就地收第二样东西** ——
-                //   `the_exit_arm_hands_the_relay_to_the_seam` 的零命中守卫数着这件事。
-                shutdown_relay_on_exit(kill, PRODUCTION_EXIT_SHUTDOWN);
+                // 〔RL1 · V107〕本机中转住在上面那个后端进程里 ⇒ 这里**没有**第三个进程要收
+                //   （`the_exit_arm_collects_no_relay` 的零命中守卫数着这件事）。
             }
         });
 }
@@ -1830,7 +1776,7 @@ struct ApikeyRouting {
 /// 自己答得了：表里有哪几行（账号层，`apikey-read`）· 那个口上有没有人在听（中转，`relay-status`）。
 /// 两件事**各问各的**（`apikey_remote::rows_on` / `remote_relay::running_on`，两个模块互不引用），
 /// 只在这里拼成一份给界面。本机那一臂两件事都照旧走 [`history::inject_facts`] 那条缝。
-/// ⚠ 远端那一格 `running` 的射程比本机**宽**：「口上有人在听」，不是「我们起过它、没停过」。
+/// 〔RL1〕两台的 `running` 今天是**同一个判准**：「那个口上有人在听」（本机那一格也改成回环连一次）。
 #[tauri::command]
 async fn apikey_routing_for(
     origin: origin::Origin,
@@ -1844,12 +1790,20 @@ async fn apikey_routing_for(
     })
 }
 
-/// 〔RM1a · 第四波〕让**那台远端机器**上有一个中转（层 1）在跑：口上没人听就由那台的后端起一个脱离的
-/// `--relay`（帧面 `relay-ensure`）。**本机拒** —— 本机那一个由 monitor 监护，不许再起第二个去抢口。
-/// ⚠ 它今天**没有自动触发点**（远端链路握手完成 / 起远端会话那两处都不在本拍写区），理由住 `remote_relay` 头注。
+/// 〔RL1 · 第四波〕**这次拉起往 `ANTHROPIC_BASE_URL` 里写哪个中转地址**（`null` = 不注入）。
+///
+/// 前端拉起远端会话（与本机「就地 resume」那一格）之前问它一次，拿到地址就作为载荷里的一条
+/// `export-relay-base-url` 交给 `render_launch_payload`。判断只在 `payload::relay_endpoint_for` 一处；
+/// 远端那一臂**用到才起**那台的中转（`history::relay_endpoint_on` 头注）。
+/// ⚠ 它接替了 RM1a 那条 `relay_ensure(origin)`（零调用方）：「让那台有一个中转」今天只在「要注入」时才发生，
+/// 不再单独暴露给界面。
 #[tauri::command]
-async fn relay_ensure(origin: origin::Origin) -> Result<remote_relay::RelayEnsured, String> {
-    remote_relay::ensure_on(&origin).await
+async fn relay_endpoint_for_launch(
+    origin: origin::Origin,
+    account: Option<history::LaunchAccount>,
+    sid: Option<String>,
+) -> Result<Option<String>, String> {
+    history::relay_endpoint_on(&origin, account.as_ref(), sid.as_deref()).await
 }
 
 /// `K-H2a` `KS10`：从界面配一把 key。

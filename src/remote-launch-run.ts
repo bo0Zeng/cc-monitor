@@ -51,6 +51,7 @@ import { getBehavior } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
 import { AGENT_PROFILE } from "./agent-profile";
 import { deriveTmuxName, mintTmuxName } from "./remote-launch";
+import { LOCAL_LAUNCH_ACCOUNT_WIRE as ACCOUNT_WIRE } from "./generated/launch-render-facts";
 import type { LaunchContext, LaunchPlan } from "./launch-plan";
 
 /** P1：Rust 侧 `payload::refuse()` 给业务拒绝打的标。**跨语言双写点** ——
@@ -145,6 +146,36 @@ function withMintedRbindToken(mods: LaunchModifiers): LaunchModifiers {
   return mods.rbindToken === undefined ? { ...mods, rbindToken: mintRbindToken() } : mods;
 }
 
+/** 〔RL1 · 第四波〕**这次拉起的中转地址**：问后端一次（`relay_endpoint_for_launch`），有就作为载荷里的一条
+ *  `export-relay-base-url` 补进去；`null` ⇒ plan 原样（照旧直连，逐字节不变）。
+ *
+ *  - 判断只在后端一处（`payload::relay_endpoint_for`，`设计/20 §3.2` 那张表）—— 本函数**不判**，只转交；
+ *  - 远端那台**用到才起**它的中转（后端那一侧做）；apikey 号的中转起不来 ⇒ 后端 reject，
+ *    本函数原样抛给执行器那一格 catch（toast「无法构造…」＋ 那句说得出是哪台的理由）；
+ *  - `attach` 不起 agent 进程 ⇒ 不问（没有「往中转上指」这回事）。
+ *  「哪个号」那一格的键名取生成物（`K-R95`：前端不自己写后端载荷的键）。 */
+export async function withRelayEndpoint(
+  origin: string,
+  ctx: LaunchContext,
+  plan: LaunchPlan,
+): Promise<LaunchPlan> {
+  if (plan.action.kind === "attach") return plan;
+  const account =
+    ctx.account.kind === "account"
+      ? {
+          [ACCOUNT_WIRE.tag]: ACCOUNT_WIRE.named,
+          [ACCOUNT_WIRE.configDir]: ctx.account.configDir,
+          ...(ctx.account.name ? { [ACCOUNT_WIRE.name]: ctx.account.name } : {}),
+        }
+      : { [ACCOUNT_WIRE.tag]: ACCOUNT_WIRE.base };
+  const url = await commands.relay_endpoint_for_launch({
+    origin,
+    account,
+    sid: plan.action.kind === "resume" ? plan.action.sid : null,
+  });
+  return url === null ? plan : { ...plan, env: [...plan.env, { kind: "export-relay-base-url", value: url }] };
+}
+
 /** 挑渲染器：`forceLegacyLaunchRenderer` 手动逃生口（MASTERPLAN R2）短路到载荷那条；否则探测到 ccm
  *  且该 plan 的全部维度都能表达成 CLI 语法 → 走 CLI；探测失败/未装/能力不足/含 CLI 表达不了的
  *  维度（如账号、idle-tmux 复用）→ 安全降级，绝不因为渲染器选择本身而让启动失败。
@@ -177,7 +208,10 @@ async function renderLaunchCommand(
   //
   // ⚠ 判据依据的是**载荷里有没有这条 `EnvOp`**（不是「ctx 里有没有 rbindToken」）——
   // 判据必须读渲染器真吃的那个对象，否则「维度没把它推进 plan」这一类回归在这里是隐形的。
-  const payloadCarriesRbindToken = plan.env.some((op) => op.kind === "export-rbind-token");
+  // 〔RL1〕中转地址那一条同理：`ccm …` 调用行说不出它（`CliSpec` 里没有这一维）⇒ 带它就不试那条路。
+  const payloadCarriesRbindToken = plan.env.some(
+    (op) => op.kind === "export-rbind-token" || op.kind === "export-relay-base-url",
+  );
   if (payloadCarriesRbindToken) {
     console.debug(
       `[launch] 载荷带启动期令牌，\`ccm …\` 调用行说不出它 ⇒ 直接走后端载荷渲染（origin=${origin}）`,
@@ -489,7 +523,8 @@ export async function runRemoteResume(
   let cmd: string;
   let token: string | null;
   try {
-    const { ctx, plan } = planResumeDirect(sid, cwd, launcher, withMintedRbindToken(mods));
+    const { ctx, plan: bare } = planResumeDirect(sid, cwd, launcher, withMintedRbindToken(mods));
+    const plan = await withRelayEndpoint(origin, ctx, bare);
     cmd = await renderLaunchCommand(origin, ctx, plan);
     token = rbindTokenOf(plan);
   } catch (err) {
@@ -525,7 +560,8 @@ export async function runRemoteResumeTmux(
   let cmd: string;
   let token: string | null;
   try {
-    const { ctx, plan } = planResumeTmux(sid, cwd, launcher, name, withMintedRbindToken(mods));
+    const { ctx, plan: bare } = planResumeTmux(sid, cwd, launcher, name, withMintedRbindToken(mods));
+    const plan = await withRelayEndpoint(origin, ctx, bare);
     cmd = await renderLaunchCommand(origin, ctx, plan);
     token = rbindTokenOf(plan);
   } catch (err) {
@@ -637,7 +673,8 @@ export async function runRemoteResumeIntoExistingTmux(
   let viaBackend = false;
   let token: string | null;
   try {
-    const { ctx, plan } = planResumeIntoExistingTmux(sid, name, launcher, withMintedRbindToken(mods));
+    const { ctx, plan: bare } = planResumeIntoExistingTmux(sid, name, launcher, withMintedRbindToken(mods));
+    const plan = await withRelayEndpoint(origin, ctx, bare);
     // ★ 〔第二波 T4〕两条出路都用**这份 send-into plan** 的令牌：`typed` 那条开的窗口只跑 `attach`，
     //   但它接上的正是刚被键入、环境里带着这个令牌的那个 claude —— 本地要登记的就是这一个。
     token = rbindTokenOf(plan);
@@ -707,7 +744,10 @@ export async function runLocalResumeIntoExistingTmux(
 ): Promise<boolean> {
   let plan: LaunchPlan;
   try {
-    ({ plan } = planResumeIntoExistingTmux(sid, name, launcher, withMintedRbindToken(mods)));
+    const { ctx, plan: bare } = planResumeIntoExistingTmux(sid, name, launcher, withMintedRbindToken(mods));
+    // 〔RL1〕本机这一格同样问一次（本机的两个事实走起会话那一侧的缝）：
+    //   「就地 resume」不经 `launch_local`，先前这里的 apikey 号**不走**中转 —— `01 §2.5` 入口纪律的一个漏口。
+    plan = await withRelayEndpoint(LOCAL_ORIGIN, ctx, bare);
   } catch (err) {
     showActionFailureToast("无法构造就地 resume 命令", String(err));
     return false;
@@ -836,7 +876,8 @@ export async function runRemoteLauncher(
   let cmd: string;
   let token: string | null;
   try {
-    const { ctx, plan } = planLauncher(cwd, tmuxName, command, withMintedRbindToken(mods));
+    const { ctx, plan: bare } = planLauncher(cwd, tmuxName, command, withMintedRbindToken(mods));
+    const plan = await withRelayEndpoint(origin, ctx, bare);
     cmd = await renderLaunchCommand(origin, ctx, plan);
     token = rbindTokenOf(plan);
   } catch (err) {

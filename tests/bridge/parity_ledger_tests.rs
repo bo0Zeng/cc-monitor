@@ -39,9 +39,14 @@ const LEDGER: &[(&str, &str, Side)] = &[
     // K-H2b `KH2B7`：界面问「这几个账号走不走 apikey 端点改写 · 中转在不在」。
     // 〔RM1a · 第四波〕收 `origin` ⇒ `Both`：远端那台由那台的后端答（`apikey-read` · `relay-status`）。
     ("apikey_routing_for", "apikey.routing", Side::Both),
-    // 〔RM1a · 第四波〕让远端那台上有一个中转在跑（那台的后端起 `--relay`）。**只对远端**：
-    // 本机那一个由 monitor 监护，这条命令对本机拒。理由见 `relay.machine` 那行。
-    ("relay_ensure", "relay.machine", Side::Remote),
+    // 〔RL1 · 第四波〕这次拉起往 `ANTHROPIC_BASE_URL` 里写哪个中转地址 —— 按 origin 取那台的事实
+    // （远端用到才起那台的中转），判断只在 `payload::relay_endpoint_for` 一处 ⇒ `Both`。
+    // 它接替了 RM1a 那条只对远端的 `relay_ensure`（零调用方；能力 `relay.machine` 随之退役）。
+    (
+        "relay_endpoint_for_launch",
+        "relay.launch-endpoint",
+        Side::Both,
+    ),
     // 〔AL1 · 2026-09-24〕`K-R49` 那条 `write_account_aliases`〔散文墓碑〕（`lines` ＋ `dryRun`）退役：
     // 它拆成下面两跳 ＋ 一个读回口，能力键 `alias.account-commands` 随之并进 `alias.manage`。
     // 〔AL1 · 2026-09-24〕`设计/71`：别名只有一类（名字 ＋ 一组 ccm 参数），两跳 ＋ 读回口。
@@ -504,7 +509,8 @@ const ASYMMETRY_REASONS: &[(&str, Asym, &str)] = &[
     //   那台机器自己的 `creds_core::perm` 管，不靠 SFTP 的 mode 参数，那一行点名的两条要求都照做了）。
     // 〔RM1a · 第四波〕`apikey.routing` 那一行（`NaturallyAsymmetric`：「本机这一侧在结构上答不了远端那台」）**删掉**：
     //   那一行自己写着出路 ——「远端那台要答同一个问题，得由跑在那台上的 backend 自己答」—— 今天就是这么答的。
-    ("relay.machine", Asym::NaturallyAsymmetric, "〔RM1a · 第四波〕「让那台机器上有一个中转在跑」**只对远端**：本机那一个由 monitor 自己监护（起本机后端那一刻一起起，`local_backend_host::start_local_relay`），这条命令若也对本机起一个，第二个会去抢同一个口 —— 抢赢了，监护者那一个起不来、三次之后放弃，本机的 api-key 号起会话从此全被拒。⇒ 不是「本机还没做」，是本机**已经有另一个监护者**，这条命令在本机那一侧**不该存在**。远端那台没有 monitor，那台上唯一住着的是它的后端 ⇒ 由后端起（`relay-ensure`）。"),
+    // 〔RL1 · 第四波〕`relay.machine` 那一行（`NaturallyAsymmetric`：「只对远端，本机那一个另有住处」）**删掉**：
+    //   那条只对远端的命令退役了，接替它的 `relay_endpoint_for_launch` 两台都答（本机经起会话那一侧的缝）。
     ("alias.manage", Asym::ParityDebt, "〔AL1 · 2026-09-24〕`设计/71`：别名 ＝ 名字 ＋ 一组 ccm 参数，命令面两跳（`aliases_render` 纯 · `aliases_install` 唯一副作用）＋ 读回口 `aliases_read`，今天**只有本机这一侧**。⚠ 欠的是什么要写准：①「渲染」这一跳**不欠** —— 它是纯函数，本机算出来的 POSIX 文本拿去远端手贴一样能用（远端机器页上就是这么给的）；② 欠的是「**写**」与「**读回**」两跳在远端的那一半。`71 §12.6.3` 给的路是**叫远端后端自己写**（远端的 `startup_files()` 由它自己的 platform 答）—— 那是把写挪进后端（`src/backend` 只读铁律那一族），本路停下报备、没做；**不走** monitor 侧 SFTP 再长一条写路（那正是 `71 §12.5` 要收掉的第三份）。"),
     ("port-forward", Asym::NaturallyAsymmetric, "§40 天然不对称白名单第 2 条：本地没有「转发到自己」这个需求。"),
     ("search.index", Asym::NaturallyAsymmetric, "远端**不建索引**：`search_history` 对远端是实时 SSH fan-out（其头注自陈「本地内存索引查询与远端 fan-out 并发」）。索引是本机侧的实现细节，不是一项对外能力。"),
@@ -734,6 +740,12 @@ const ORIGIN_TAKING_BOTH: &[(&str, &str)] = &[
         "〔RM1a · 第四波〕「足迹」：本机在 monitor 进程里扫（原样），远端问那台机器的后端要路径事实 \
              （`footprint-probe`）。命令体对 origin 不做远端假设 —— 它只用 origin 决定「事实从哪台来」，\
              判定（哪一行属于哪个工具、存在 / 缺失 / 查不动）两边走同一份 `config_surface::build_rows`。",
+    ),
+    (
+        "relay_endpoint_for_launch",
+        "〔RL1 · 第四波〕这次拉起的中转地址按**那台机器**的事实答：本机两件事走起会话那一侧那条缝，\
+             远端问那台的账号层（`apikey-read`）与中转（`relay-status` / 用到才 `relay-ensure`）。命令体对 origin 不做远端假设 —— \
+             分派住 `history::relay_endpoint_on`，判断只在 `payload::relay_endpoint_for` 一处。",
     ),
     (
         "apikey_routing_for",
@@ -1031,7 +1043,7 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     // - 〔SE2〕**+1**（`find_in_session`，`Both`，归已有能力 `history.read-session`）。
     // - 〔PN1b 选图 · 09-24〕**+2**（`panorama_diagram_kinds` / `panorama_diagram`，都 `Local`，
     //   归已有能力 `panorama.code-graph`）⇒ 命令总数 +2、能力总数不动、不对称数不动。
-    const EXPECTED_LOCAL_OR_BOTH: usize = 107; // 〔合并 C4a：±0（E79 本机会话账号 Local 退役 −1 · `chan_call` Both ＋1）〕 // 〔SE2：+1（find_in_session，Both）〕 // 〔B2 · 条 66：+1（推生效值那一条 Both 退役 −1，`backend_exit_policy` / `set_backend_exit_policy` 两条 Both ＋2）〕 〔合并 AL1：+2（aliases_render / aliases_read / aliases_install 三条 Local ＋3，write_account_aliases〔散文墓碑〕退役 −1）〕 〔合并 PN1b：+2〕 〔合并 A3：+3（两条 acct-iso 本机命令 Local ＋ check_account_trust Remote→Both）〕 〔合并 U3b＋SE1：两路各 +1，同基线合并时 git 合成了同一个 97，现打 98〕 `设计/50` −2（`aggregate_usage_all` Local · `account_usage_local` Local）  〔散文墓碑〕
+    const EXPECTED_LOCAL_OR_BOTH: usize = 108; // 〔RL1：+1（`relay_endpoint_for_launch` Both 进，接替只对远端的 `relay_ensure`）〕 // 〔合并 C4a：±0（E79 本机会话账号 Local 退役 −1 · `chan_call` Both ＋1）〕 // 〔SE2：+1（find_in_session，Both）〕 // 〔B2 · 条 66：+1（推生效值那一条 Both 退役 −1，`backend_exit_policy` / `set_backend_exit_policy` 两条 Both ＋2）〕 〔合并 AL1：+2（aliases_render / aliases_read / aliases_install 三条 Local ＋3，write_account_aliases〔散文墓碑〕退役 −1）〕 〔合并 PN1b：+2〕 〔合并 A3：+3（两条 acct-iso 本机命令 Local ＋ check_account_trust Remote→Both）〕 〔合并 U3b＋SE1：两路各 +1，同基线合并时 git 合成了同一个 97，现打 98〕 `设计/50` −2（`aggregate_usage_all` Local · `account_usage_local` Local）  〔散文墓碑〕
     assert_eq!(
         checked, EXPECTED_LOCAL_OR_BOTH,
         "检到 {checked} 条 Local/Both 命令（Local {n_local} + Both {n_both}），\
@@ -1250,7 +1262,7 @@ fn ledger_shape_is_pinned() {
     let sides = capability_sides();
     assert_eq!(sides.len(), 66, "能力总数变了"); // **〔RM1a · 第四波〕+1（relay.machine，Remote-only）** // **〔AL1 · 子步 4〕−1（alias.account-commands 并进 alias.manage）** // **〔AL1 · 2026-09-24〕+1（alias.manage）** // **`设计/50` −2（`usage.aggregate` 与 `usage.per-account` 两条能力整条退役 —— 两条**原本都对称**，所以不对称数不动）** // **K-R109 +1（launch.render-attach，Local-only；⚠ 派工单猜的是「能力数 65 不动」，实打不成立 —— 两个「归已有能力」的归法各被一条判据顶回来了，逐条见 `LEDGER` 里那一行旁边）** // **K-R49 +1（alias.account-commands，Local-only）** // **K-H2a +1（creds.apikey，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +1（skill.inbox，Local-only） // U8a-2c-1 +1（launch.send-into，Remote-only）； U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：**只是没有本机那条 IPC 命令** —— P3t-Y4 起理由不再是 §36「本机不经 IR」那条，§36 只绑 Windows，详见 ASYMMETRY_REASONS 里那行）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）；**P2s +3（app.backend-policy / backend.status / backend.lifecycle，都是 Both）**；P3t-Y2b +1（tmux.local-census，Local-only：把远端本来就有的那一格在本机补上）；**P8a +1（plugins.marketplaces，Local-only）**；**PS1 +1（cc-bus.deploy）**；**PS2 +1（cc-bus.install-state）**；**K-H2b +1（apikey.routing，Local-only）**；**`K-R135` +1（ccm.user-path，Local-only：`R85` 那一格「加/撤/现在状态」；远端那一侧同一件事由 rc 围栏块办，而「用户级 PATH」这一档是 Windows 独有的 ⇒ `NaturallyAsymmetric`）**
     let asym = asymmetric_capabilities();
-    assert_eq!(asym.len(), 20, "不对称能力数变了"); // **〔RW1 · 第四波 09-24〕−1（`skill.inbox` 结清：用户裁远端也能编辑，两侧经后端 ⇒ Both）** // **〔RM1a · 第四波〕−2：`creds.apikey` −1（读 / 写两条收 origin ⇒ `Both`）· `audit.config-surface` −1（远端那一栏由那台的后端答）· `apikey.routing` −1 与 `relay.machine` +1 净 0** // **〔RM1b · 第四波〕−1（`plugins.marketplaces` 结清：`list_plugin_marketplaces` 按 origin 问那台后端 ⇒ `Both`）** // **〔RM1b · 第四波〕−1（`session.tasks` 结清：`get_session_tasks` 按 origin 问那台后端 ⇒ `Both`）** // **〔`A3` 第二波〕−2（`acct-iso.check` / `acct-iso.shellinit` 结清：本机对侧问本机后端）** // **〔`A3` 第二波〕−1（`accounts.trust` 结清：`check_account_trust` 按 origin 分流到本机后端 ⇒ `Both`）** // **K-R109 +1（launch.render-attach，NaturallyAsymmetric）** // **K-R49 +1（alias.account-commands，ParityDebt）** // **K-H2b +1（apikey.routing，NaturallyAsymmetric）** // **K-H2a +1（creds.apikey，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +1（skill.inbox） // F08 -1（usage.per-account 补平） // U8a-2c-1 +1（launch.send-into）； G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
+    assert_eq!(asym.len(), 19, "不对称能力数变了"); // **〔RL1 · 第四波〕−1（`relay.machine` 随 `relay_ensure` 退役；接替它的 `relay.launch-endpoint` 是 `Both`）** // **〔RW1 · 第四波 09-24〕−1（`skill.inbox` 结清：用户裁远端也能编辑，两侧经后端 ⇒ Both）** // **〔RM1a · 第四波〕−2：`creds.apikey` −1（读 / 写两条收 origin ⇒ `Both`）· `audit.config-surface` −1（远端那一栏由那台的后端答）· `apikey.routing` −1 与 `relay.machine` +1 净 0** // **〔RM1b · 第四波〕−1（`plugins.marketplaces` 结清：`list_plugin_marketplaces` 按 origin 问那台后端 ⇒ `Both`）** // **〔RM1b · 第四波〕−1（`session.tasks` 结清：`get_session_tasks` 按 origin 问那台后端 ⇒ `Both`）** // **〔`A3` 第二波〕−2（`acct-iso.check` / `acct-iso.shellinit` 结清：本机对侧问本机后端）** // **〔`A3` 第二波〕−1（`accounts.trust` 结清：`check_account_trust` 按 origin 分流到本机后端 ⇒ `Both`）** // **K-R109 +1（launch.render-attach，NaturallyAsymmetric）** // **K-R49 +1（alias.account-commands，ParityDebt）** // **K-H2b +1（apikey.routing，NaturallyAsymmetric）** // **K-H2a +1（creds.apikey，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +1（skill.inbox） // F08 -1（usage.per-account 补平） // U8a-2c-1 +1（launch.send-into）； G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
                                                     // P3t-Y2b +1（tmux.local-census）；**P3b -1（launch.send-into 结清：P3 刀 3 让本机真的在用它 ⇒ Both，不再不对称）**
                                                     // **P7c-1 -1（subagent.load 结清：远端展开做出来了 ⇒ Both）** —— backend 只列候选，挑选留本侧（C1）
                                                     // **`K-R135` +1（ccm.user-path，`NaturallyAsymmetric`）** —— 见 ASYMMETRY_REASONS 里那一行：
@@ -1266,7 +1278,7 @@ fn ledger_shape_is_pinned() {
             })
             .or_default() += 1;
     }
-    assert_eq!(kinds.get("natural"), Some(&13), "天然不对称条数变了"); // **〔RM1a · 第四波〕净 0：`apikey.routing` −1（远端那台的后端自己答）· `relay.machine` +1（本机那一侧不该存在）** // **`K-R135` +1（ccm.user-path：远端同一件事由 rc 围栏块办 ＋ 那一档只有 Windows 有 ⇒ 天然，不是欠账；哪天远端是 Windows 就回来改成 `debt`）** // **K-R109 +1（launch.render-attach —— 记 `natural` 记的是「远端由 `render_ccm_launch` 一并产、不需要单独命令名」，不是「远端还没做」）** // U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）。★ P3t-Y4：这两条的**理由**换过（原来引 §36 说「本地不经 IR」——§36 只绑 Windows，且那个理由已被本机探针实测证伪），但 `natural` 的**条数没变**。P3t-Y2b +1（tmux.name-census）。**K-H2b +1（apikey.routing）—— 记 `natural` 记的是「回环自指 ⇒ 这个问题问错了机器」，不是「远端还没做」；把 key 送到远端那笔账在 `creds.apikey` 那行（`debt`），两者别混。**
+    assert_eq!(kinds.get("natural"), Some(&12), "天然不对称条数变了"); // **〔RL1 · 第四波〕−1（`relay.machine` 那一行随命令退役删了）** // **〔RM1a · 第四波〕净 0：`apikey.routing` −1（远端那台的后端自己答）· `relay.machine` +1（本机那一侧不该存在）** // **`K-R135` +1（ccm.user-path：远端同一件事由 rc 围栏块办 ＋ 那一档只有 Windows 有 ⇒ 天然，不是欠账；哪天远端是 Windows 就回来改成 `debt`）** // **K-R109 +1（launch.render-attach —— 记 `natural` 记的是「远端由 `render_ccm_launch` 一并产、不需要单独命令名」，不是「远端还没做」）** // U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）。★ P3t-Y4：这两条的**理由**换过（原来引 §36 说「本地不经 IR」——§36 只绑 Windows，且那个理由已被本机探针实测证伪），但 `natural` 的**条数没变**。P3t-Y2b +1（tmux.name-census）。**K-H2b +1（apikey.routing）—— 记 `natural` 记的是「回环自指 ⇒ 这个问题问错了机器」，不是「远端还没做」；把 key 送到远端那笔账在 `creds.apikey` 那行（`debt`），两者别混。**
     assert_eq!(kinds.get("debt"), Some(&5), "平价欠账条数变了"); // **〔RM1a · 第四波〕−2（`creds.apikey`：把 key 送到远端的路有了 · `audit.config-surface`：远端足迹有了后端读口）** // **〔RM1b · 第四波〕−1（`plugins.marketplaces`：远端那半补上了、本机同拍改走后端 —— 一件事清两笔账）** // **〔RM1b · 第四波〕−1（`session.tasks`：远端那半补上了，理由表那一行删掉）** // **〔`A3` 第二波〕−2（`acct-iso.check` / `acct-iso.shellinit`）** // **〔`A3` 第二波〕−1（`accounts.trust`：本机那一侧补上了，理由表那一行删掉）** // **K-R49 +1（alias.account-commands：远端那半只有「吐待贴文本」那半条路，落盘没有主人）** // **K-H2a +1（creds.apikey：本机能配、远端那侧还没有路 —— 而且不能照抄 SFTP 上传，理由见那一行）** // F08 -1（usage.per-account 补平） // G6 -1；E79 -1；**P7c-1 -1（subagent.load 结清：远端展开做出来了）**；**P8a +1（plugins.marketplaces：新开的本机口，远端那半要等后端的 `--list-marketplaces`）**
     assert_eq!(kinds.get("undecided"), Some(&2), "未裁定条数变了"); // **〔RW1 · 第四波 09-24〕−1（skill.inbox：用户 09-24 裁了「要」）** // devbench F03 +1（skill.inbox：远端项目的收件箱要不要能编辑，没人裁定过） // U8a-2c-1 +1（launch.send-into：本机该不该有后端进程未裁定）
                                                                     // P3b -1（launch.send-into：它的「还没裁定」被 C1/C8 + P2 + P3 刀 3 三重证伪）
@@ -1560,7 +1572,7 @@ const REMOTE_SIDE_SIGNOFF: &[(Derived, usize)] = &[
     (Derived::RemoteOnly, 18), // **〔合并 C4a〕19 → 18**（远端「某会话属哪个账号」那条退役、改走通道；原归 `RemoteOnly`；跑出来核过） // **〔第四波 S4〕20 → 19（`sftp_copy` 删了：它签名里带 `RemoteConfig`，原归 `RemoteOnly`；跑出来核过）** // **〔合并 F7c＋C2〕F7c 21 与 C2 −1 相加 ⇒ 20；Unclassified F7c 9 与 C2 ＋1 ⇒ 10（跑出来核过）** // **〔F7c 收尾 09-24〕32 → 21，Unclassified 10 → 9**（池子那十二条删了：十一条带 `RemoteConfig` 的归 `RemoteOnly`，`sftp_cancel_transfer` 签名里没有它、归 `Unclassified`；跑出来核过）。 // **〔合并 A3＋BS1b〕33 → 32**（A3 的 check_account_trust Remote→Both 与 BS1b 的 cc_bus_spawn RemoteOnly→FramePlane 各 −1；跑出来核过）。 // **〔`24e` 第二刀 · 09-20〕33 → 34**（`open_file_window`：签名里带 `RemoteConfig`、体里点名 `list_remote`，派生器现打归 `RemoteOnly`；另外三格一个都不动）。⚠ 这个数照旧是**跑出来的**，不是 33+1 算出来的：先让 `signed_total` 那一比印出现打的 `Side::Remote` 行数，再让 `hist == want` 印出现打的直方图，照它写。 // `设计/50` −1（`aggregate_remote_usage_all`）  〔散文墓碑〕 // **〔步 23b · 09-20〕+1（`sftp_copy`：签名里带 `RemoteConfig`、体里点名 `copy_remote_path`，派生器现打归 `RemoteOnly`）**
     (Derived::FramePlane, 6),  // `设计/50` −1（`account_usage`）；BS1b +1（`cc_bus_spawn`）
     (Derived::Mixed, 0),
-    (Derived::Unclassified, 11), // **〔RM1a · 第四波〕10 → 11**：`relay_ensure`（Remote；体里只转调 `remote_relay::ensure_on`，派生器只跟同一份文件 ⇒ 落 `Unclassified`；它照旧只对远端，本机那一臂在 `remote_relay` 里拒）。跑出来核过
+    (Derived::Unclassified, 10), // **〔RL1 · 第四波〕11 → 10**：`relay_ensure` 退役（它就是 RM1a 加进来的那一条） // **〔RM1a · 第四波〕10 → 11**：`relay_ensure`（Remote；体里只转调 `remote_relay::ensure_on`，派生器只跟同一份文件 ⇒ 落 `Unclassified`；它照旧只对远端，本机那一臂在 `remote_relay` 里拒）。跑出来核过
 ];
 
 /// **候选（派生 = `FramePlane`）的人裁** —— 闭集见 [`FrameVerdict`]，理由必须可追问。
@@ -1663,8 +1675,9 @@ fn the_remote_side_column_is_signed_off() {
     //    48 → 36，现打）。地板照旧只守「没塌成空集」，有牙的是下面那条直方图相等。
     // 🔴 **〔第四波 S4〕地板 36 → 35。** 零流量复制那一条 `Side::Remote` 命令真的删了（人群真少了 1 个，现打 35）。
     // 🔴 **〔合并 C4a〕地板 35 → 34。** 远端那条「某会话属哪个账号」（`Side::Remote`）退役（本机与远端收成一条经通道的路），现打 34。
+    // 🔴 **〔RL1 · 第四波〕地板 34 → 33。** 只对远端的 `relay_ensure` 退役（接替它的那条是 `Both`），人群真少了 1 个，现打 33。
     assert!(
-        remote_rows.len() >= 34,
+        remote_rows.len() >= 33,
         "`Side::Remote` 现打只有 {} 行 —— 本条的人群塌了，下面几条会空真地绿",
         remote_rows.len()
     );
