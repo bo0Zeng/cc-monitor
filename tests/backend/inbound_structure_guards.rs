@@ -169,6 +169,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "history-user-inputs"
                 | "history-find"
                 | "history-read"
+                | "history-record" // 〔U4b〕记录还在不在：一次目录枚举，同档
                 | "history-search"
                 | "history-sessions"
                 | "history-subagents"
@@ -252,6 +253,7 @@ fn every_registered_command_declares_its_run_kind() {
         "history-user-inputs",
         "history-find",
         "history-read",
+        "history-record", // 〔U4b〕
         "history-search",
         "history-sessions",
         "history-subagents",

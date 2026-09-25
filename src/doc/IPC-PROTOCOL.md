@@ -1732,6 +1732,21 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 
 🔴 **为什么分页**：一帧应答要整个进内存、整个过线；本仓见过 270 MB 的会话，而 monitor 单帧上限 64 MiB。单行比一页还长时续读到行尾，但超过 32 MiB ⇒ `oversized_line`（不叫 `line_too_long`：那是入方向信封的协议级 code）。
 
+#### `history-record`：这条会话的记录还在不在（〔U4b · 第四波〕resume 之前问）
+
+```text
+→ {"id":"q12","cmd":"history-record","args":{"sid":"9d66c46d-bf88-4f99-877e-455555555555"}}
+← {"kind":"reply","id":"q12","ok":true,"data":{"present":false,"root":"/home/u/.claude/projects"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `sid` | → | 会话 id。**只收 sid、不收路径**（`INVARIANTS §41.6` 收窄第 3 条）；形状不合法（`[A-Za-z0-9-]`，1..=64）⇒ `bad_args`，先于任何 IO |
+| `present` | ← | `<sid>.jsonl` 在这台后端的记录树里找得到（根那一层或项目目录那一层；符号链接不算命中）—— 找文件那一步与 `--fork-session` / `files-delete-session` 同一份（`branch_core::find_session_file`） |
+| `root` | ← | 查的那棵记录树的根（报错时说清查了什么，`设计/01 §6.9`） |
+
+**为什么要它**：`设计/01 §6.2` 最后一条逐字「对方那份记录也没了 ⇒ 重开必失败，要诚实报错，不许静默变成『起了个新会话』」。前端 resume 一跳在开终端之前问一次，答 `false` 就不开、把原因说出来。**射程**：查的是**这台后端**的记录树 —— 会话起在另一个账号的配置根下时这里答 `false` 而那边其实有，所以调用方的话要说成「这棵树里没有」。CLI 面随之自动多一条 `--history-record`。
+
 #### `history-tail`：尾段在哪（快照「尾部优先」那张图）
 
 ```text
