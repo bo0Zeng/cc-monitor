@@ -521,7 +521,10 @@ pub async fn connect_and_exec(
     }
     // 〔C2〕`connect_and_exec_cmd` 从此只经拨号代理拿链路（它的函数体由 `dial_move_judge` 钉着）——
     // 所以这一行**不再是**「进程内回落」，它就是唯一那条路。
-    connect_and_exec_cmd(cfg, &cmd).await
+    // 〔NT2 · A4〕链路出生带一次性总时限；长连接流是订阅（`设计/05 §3.3.2`：`subscribe` 的期限只盖建流），摘掉它。
+    connect_and_exec_cmd(cfg, &cmd)
+        .await
+        .map(crate::dial_host::DialStream::lives_long)
 }
 
 // 🔴 **这个模块的 `pub(crate)` 是 `K-R74` 的承重件，别顺手收回私有**〔09-12〕：
