@@ -7,8 +7,10 @@
  * 所以这条对拍是必需的。
  */
 import { describe, expect, test } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { productionTsFiles } from "./test-support/production-sources.ts";
+import { stripComments } from "./test-support/strip-comments.ts";
 
 const read = (p: string) => readFileSync(resolve(__dirname, "..", p), "utf8");
 const RUST = read("src/bridge/src/backend/control/launch_wire.rs");
@@ -143,7 +145,43 @@ describe("ccm 调用行的 wire 形状（U8c-2c-2）", () => {
   test("生产渲染路径调的是后端，不是 TS 的 tryRenderCli", () => {
     expect(RUN).toContain("await renderCliViaBackend(ctx, plan, probe)");
     expect(RUN).toContain("commands.render_ccm_launch");
-    // TS 的 `tryRenderCli` 只许作为**类型**出现（`CliRenderResult`），不许再被调用。
+    // 〔LR1 · U8c-3〕TS 的 `tryRenderCli` 已删；这一格留着挡「在本文件里再手写一个」。
+    // 全仓那一格见下面那组。
     expect(/[^a-zA-Z]tryRenderCli\s*\(/.test(RUN)).toBe(false);
+  });
+});
+
+/**
+ * 〔LR1 · U8c-3〕**`ccm …` 调用行在前端没有第二个家。**
+ *
+ * 守的要求：`设计/00 §2.5 ④`「起会话收成一处 —— 同一条命令串只留 Rust 那两份（CLI ＋ 载荷）；
+ * TS 的只供对拍、排期删」。TS 那份 `ccm …` 渲染器（`launch-render-cli.ts::tryRenderCli`）
+ * 删在本件；本组挡它以任何名字之外的最常见形状回来：原文件复活 · 生产段再 import 它 ·
+ * 生产段再出现那个入口名。
+ *
+ * ⚠ 射程如实写：它认的是**名字**，不是「渲染 `ccm …` 这件事」—— 换个名字重写一份它看不见
+ * （那一形由 `launch_wire_f07_main_path_tests.rs` 的 `LAUNCH_RENDERERS` 恒等登记表兜：
+ * 那张表是人写的，多一份不登记它也看不见 —— 两条都只是「照抄回来」会有东西说话）。
+ */
+describe("〔LR1〕TS 那份 `ccm …` 调用行渲染器不许回来", () => {
+  const NAME = /\btryRenderCli\b|launch-render-cli/;
+  const hits = (files: { file: string; text: string }[]) =>
+    files.filter((f) => NAME.test(stripComments(f.text, "ts"))).map((f) => f.file);
+
+  test("正控：import 路径形 · 调用形各命中，只在注释里的不算", () => {
+    expect(
+      hits([
+        { file: "a.ts", text: 'import type { X } from "./launch-render-cli";\n' },
+        { file: "b.ts", text: "// tryRenderCli 只在注释里\nconst x = 1;\n" },
+        { file: "c.ts", text: "const r = tryRenderCli(plan, ctx, probe);\n" },
+      ]),
+    ).toEqual(["a.ts", "c.ts"]);
+  });
+
+  test("原文件不在盘上，生产段零命中", () => {
+    expect(existsSync(resolve(__dirname, "..", "src/launch-render-cli.ts"))).toBe(false);
+    const files = productionTsFiles();
+    expect(files.length, "生产 TS 一份都没收到 —— 遍历坏了，下面的零命中不携带信息").toBeGreaterThan(100);
+    expect(hits(files)).toEqual([]);
   });
 });
