@@ -115,16 +115,15 @@ BUCKETS = (B1, B2, B3, NA)
 # cap -> (bucket, 依据, 一句话)
 CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     # ─────────────────────────── ① 装后端 ───────────────────────────
-    ("ccm.install", (B1, "R64+K26",
-                     "`ccm` 就是后端的 CLI 入口；`install_local_ccm_entry` 放下去的逐字是"
-                     "「后端二进制自己的改名副本」⇒ 装 ccm 与装后端是同一个动作")),
-    ("ccm.uninstall", (B1, "R64+K26", "同上，卸那一侧")),
-    ("ccm.install-ui", (B1, "R64+K26", "装 ccm 之前的预览 / 扫 PATH，是同一颗按钮的前半")),
+    # 〔DP1 · 第四波〕这里原来是 `ccm.install` / `ccm.uninstall` / `ccm.install-ui` 三格（归 ①，理由逐字
+    #   「`ccm` 就是后端的 CLI 入口 …… ⇒ 装 ccm 与装后端是同一个动作」）。MC1 之后那三条命令装 / 卸 / 预览的是
+    #   **别名块**（`install_remote_alias_block` · `aliases_block_*`），入口那一半并进了「部署后端」按钮 ⇒ 按 `设计/71 §5`
+    #   改名改归 ②，住下面 ② 那一段（`AL1d.md §5` 第 2 条）。
     # 🔴 `K-R135`（`R85`/`R87`/`R88`）：用户级 PATH 那一格（现在状态 · 加 · 撤）。
     # 归 ① 而不是 ②：② 是「生成 rc 片段**让用户自己填**」，而这一格是**用户点一下、产品就执行**
     # （`R85` 逐字「应该让用户手动点击加，也能管理删除」）。它是「装 ccm」这件事的**后半** ——
     # 二进制放下去了却敲不到等于没装（`K-R129`/`K-R132` 那条已发版缺陷就是这一形）
-    # ⇒ 与 `ccm.install` 是同一颗按钮的两半。⚠ 同族的 `ccm.install-ui` 早就在 ① 里，
+    # ⇒ 与 `ccm.install`（〔DP1〕已改名 `alias.block-install` 挪去 ②）是同一颗按钮的两半。⚠ 同族的 `ccm.install-ui` 当时在 ① 里，
     # 而它的理由逐字写着「装 ccm 之前的预览 / **扫 PATH**」—— PATH 这件事本来就归 ①。
     ("ccm.user-path", (B1, "R85+R87+R88",
                        "把我们那个 bin 目录放上**用户级** PATH，让三种终端都敲得到 `ccm`；"
@@ -149,6 +148,13 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("alias.manage", (B2, "K33+K34+设计/71",
                       "「有需要动用户 alias 的就生成命令让用户自己填」：渲染（纯）→ 手贴或写入；"
                       "先例 `accounts-section.ts::renderRcSnippet`")),
+    # 〔DP1 · 第四波〕别名块那三格（从 ① 挪来，旧名 `ccm.install` / `ccm.uninstall` / `ccm.install-ui`）：
+    #   `设计/71 §5`「② 别名：清单编辑 → 预览（纯）→ 写入 / 复制待贴」—— 别名块就是写入那一跳的一种落法，不是装后端。
+    ("alias.block-install", (B2, "K33+K34+设计/71 §5",
+                             "往用户选的 rc / `$PROFILE` 里装 cc-monitor 那一段别名块（本机 `aliases_block_install` · 远端 "
+                             "`install_remote_alias_block`）—— 写入那一跳，与 `alias.manage` 分两格只为各归各的平价（`AL1d.md §2.2`）")),
+    ("alias.block-remove", (B2, "K33+K34+设计/71 §5", "同上，卸那一侧")),
+    ("alias.block-preview", (B2, "K33+K34+设计/71 §5", "装别名块之前的预览（纯渲染，不写盘）")),
     ("acct-iso.shellinit", (B2, "K33",
                             "它产出的就是一段 rc 片段（`cc-acct-iso` 的 `cmd_shellinit` "
                             "只 `printf`、一个字节都不写盘）")),
@@ -307,7 +313,7 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
        "`ccm.install`/`ccm.uninstall` 的远端半」。现打这四条的住址恰好都在 `sftp.rs`")),
     ("S2", ("①-本机半", (
         # 〔AL1d · 第四波 4B〕别名块那三条并进 `aliases_*` 同一族命令面（`调研/第四波记录/AL1d.md §2.1`），
-        #   能力 id 不动（`ccm.install` / `ccm.uninstall` / `ccm.install-ui`，理由见账本那几行）⇒ 归处不动（S2）。
+        #   〔DP1〕能力 id 改成 `alias.block-*`、归档挪到 ②；切件分组（S2）是「那条命令住哪个写区」的历史读数，不随归档改。
         #   本条红时逐字「别改表去凑」—— 核过了，是「有人改了命令名」那一种（就是本路），改表是跟上真相。
         "aliases_block_install",
         "aliases_block_remove",

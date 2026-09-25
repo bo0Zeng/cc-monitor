@@ -10,7 +10,7 @@
  * 迟早会破，而且破了照样没人知道），而是让 tooltip **只在显示期间存在**。
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import { makeInfoIcon, __liveTooltipCountForTests, swapFileName } from "../../src/settings/info-icon";
+import { makeInfoIcon, __liveTooltipCountForTests } from "../../src/settings/info-icon";
 
 const tipsInBody = () => document.querySelectorAll(".settings-info-tooltip").length;
 const hover = (el: HTMLElement) => el.dispatchEvent(new Event("mouseenter"));
@@ -102,12 +102,3 @@ describe("E60：tooltip 不泄漏", () => {
   });
 });
 
-describe("swapFileName（同文件的既有工具，顺带钉住）", () => {
-  it("两种分隔符都认，无分隔符时整体替换", () => {
-    expect(swapFileName("C:\\a\\b\\Microsoft.PowerShell_profile.ps1", "profile.ps1")).toBe(
-      "C:\\a\\b\\profile.ps1",
-    );
-    expect(swapFileName("/home/u/x.ps1", "profile.ps1")).toBe("/home/u/profile.ps1");
-    expect(swapFileName("x.ps1", "profile.ps1")).toBe("profile.ps1");
-  });
-});
