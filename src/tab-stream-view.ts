@@ -836,6 +836,47 @@ export class TabStreamView {
       });
   }
 
+  /** 〔CF2〕每个 tab 在途的「往后补」（`recoverFromGap`）—— 同一个 tab 同时只补一趟。 */
+  private readonly forwardFills = new WeakSet<Tab>();
+
+  /**
+   * 〔CF2 · 第四波 4B〕**会话流丢过格之后补这一个 tab**（`TabManager.onStreamGap`，`调研/第四波记录/CF2.md §3.5`）：
+   *
+   * ① 账本（还没上屏的）整份出账（`dropPending`）—— 之后往上翻按行号取回（`fetchBelow`）；
+   * ② 从「见过的最大行号 + 1」起按行号往后取到末尾（`read_session_lines` 不给 `until`，一段 ≤ 1 MiB，取到 `eof`）——
+   *    丢在已上屏那一段之后的新行从这里回来；多取的（其实到过的）由 `(sid, seq)` 去重吃掉。
+   * 取回来的走 `feedHistoryRows`（批语义、不复活远端 tab）。一行都没见过的 tab 不往后取（那会把整份会话拉一遍；
+   * 它的内容等下一次宣告 / 下一行，或往上翻按行号取 —— 如实登记）。
+   */
+  recoverFromGap(tab: Tab): void {
+    tab.window.dropPending();
+    this.updateSentinel(tab);
+    if (!tab.parentPath || tab.seenSeqs.size === 0 || this.forwardFills.has(tab)) return;
+    let max = -1;
+    for (const s of tab.seenSeqs) if (s > max) max = s;
+    this.forwardFills.add(tab);
+    const jsonlPath = tab.parentPath;
+    const step = (from: number): void => {
+      void commands
+        .read_session_lines({ origin: tab.origin, jsonlPath, from })
+        .then((page) => {
+          if (this.store.tabs.get(tab.sessionId) !== tab) return this.forwardFills.delete(tab);
+          this.feedHistoryRows(
+            tab,
+            page.payloads.filter((p) => !tab.seenSeqs.has(p.seq)),
+          );
+          if (page.eof || page.next <= from) return this.forwardFills.delete(tab);
+          step(page.next);
+          return true;
+        })
+        .catch((e: unknown) => {
+          this.forwardFills.delete(tab);
+          console.warn(`[tabs] 会话流丢格之后往后补失败（${tab.sessionId.slice(0, 8)}，从第 ${from} 行）：`, e);
+        });
+    };
+    step(max + 1);
+  }
+
   /**
    * F40b R-1:批期缓冲的「窗口内中部插入」(大增量批老块)一次性挂载。
    * 排序后走渲染内核(含 unwrapAll/rebuildNow——不能依赖随后 flushPending,

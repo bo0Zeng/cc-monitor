@@ -1,4 +1,5 @@
-//! 事件持久化重播：解决前端 F5 刷新后状态丢失的问题。
+//! 事件持久化重播：解决前端 F5 刷新后状态丢失的问题。〔CF2〕也是会话内容流的「句柄」那一侧：
+//! 主界面经通道 `subscribe` 订的那条流，由本文件按 credit 交格（见下「订阅」）。
 //!
 //! ## 顺序保证（P5.4 B 重构后）
 //!
@@ -29,30 +30,103 @@
 //! ⚠ **仍然没有上界的那一维是会话数**（`CF2.md §2.2`）：单会话 ≤ `KEEP + SLACK` 条，缓冲里有几个会话
 //! 由「宣告过多少个 × 前端关没关（[`EventReplay::forget`]）× monitor 重启」决定。
 //! 读数（长度 / 会话数 / 修剪次数）见 [`EventReplay::stats`] 与每次修剪的 `[replay]` 日志行。
+//!
+//! ## 订阅（〔CF2 · 第四波 4B〕`设计/05 §8` 步 6「流那半收口成 `subscribe`」）
+//!
+//! 会话内容到前端**不再是两个 Tauri 广播事件**（`jsonl-line` / `jsonl-batch`，已退役）：前端经通道说
+//! `chan.subscribe(origin, kind, from, want)`（`src/ipc/chan.ts` → `chan/webview.rs::chan_subscribe`），
+//! 本文件是那条流的**句柄**那一侧 —— 它认识会话，通道那两半不认识。
+//!
+//! | `kind` | 交什么 | 什么时候交留存（重放） |
+//! |---|---|---|
+//! | `session-lines` | `origin` 那台机器的全部会话 | **就绪点**（主界面的 `frontend-ready`）：宣告重发之后、对账之前 —— 顺序与原来 `replay_and_mark_ready`〔散文墓碑〕一致 |
+//! | `session-lines/<sid>` | 只那一个会话（独立窗口） | 订阅当场 |
+//!
+//! 一格 = 一行（[`crate::bridge::SessionStreamFrame`]：`{"line": …}` 或成批那一段的边界 `{"batch": …}`）；
+//! `Item::Frame.seq` 是这条订阅里的**位置**（0, 1, 2 …，连续），不是行号。
+//!
+//! 🔴 **credit 与「不许晚到」**（`调研/第四波记录/CF2.md §3.3`）：
+//! - **实时那一份**（[`EventReplay::on_line_batch_awaited`]）：有 credit **当场**交（与原来同一个时刻 emit ⇒
+//!   与其后的 `session-ended` 等起停事件的先后不变，issue #20）；没 credit 就**丢**、位置照占，
+//!   下一次交出去之前原位先给 `Item::Gap`（`05 §3.3.4` 级 2）。**绝不攒着等 credit** —— 攒着的行会晚于
+//!   其间发出的 `session-ended`（僵尸 tab）；也**绝不让管线等** —— 一个不给 credit 的窗口会卡住那台机器的整条流。
+//! - **重放那一份**（就绪点 / 独立窗口开窗）按 credit **等**：它不在起停事件的顺序里（对账由同一个任务在它交完之后发）。
+//! - `Gap` / `Unseen` / `Seen` 不占 credit；`Frame`（含两种边界）每格占一个。
+//!
+//! 丢了什么由前端自己补（「判可恢复归上层」）：它收到 `Gap` 就把那台机器上各 tab 的账本当成不可信、
+//! 按行号往回取（`history-lines`）。
 
-use crate::bridge::{events, JsonlBatchPayload, JsonlLinePayload};
+use crate::bridge::{BatchEdge, JsonlLinePayload, SessionStreamFrame};
+use crate::chan::wire::{Body, By, Cursor, HopFault, HopId, Item};
 use parking_lot::Mutex;
-use std::collections::VecDeque;
-use tauri::{AppHandle, Emitter, Runtime, WebviewWindow};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::Arc;
+
+/// 〔CF2〕订阅流的出口：把一串格交给某个 webview 上的某条订阅。
+///
+/// 生产那一份是 `chan/webview.rs::WebviewSink`（`emit_to` 那个 webview 的 Tauri 事件 —— 与起停事件同一条
+/// 投递队列，先后不乱，理由见 `CF2.md §3.2`）；判据用一个记录器替它。**调用时本文件不持锁。**
+pub trait ItemSink: Send + Sync {
+    fn deliver(&self, label: &str, sub: u64, items: Vec<Item>);
+}
+
+/// 〔CF2〕本文件认的流标签：一台机器的全部会话 / （带 `/<sid>`）只一个会话。
+pub const SESSION_LINES_KIND: &str = "session-lines";
 
 pub struct EventReplay {
     inner: Mutex<Inner>,
+    /// 〔CF2〕有订阅拿到了 credit（或被撤了）—— 等 credit 的重放在这上面醒。
+    credit_changed: tokio::sync::Notify,
 }
 
 struct Inner {
     history: VecDeque<JsonlLinePayload>,
-    /// frontend 已收到 replay；可走 live emit。
-    /// P5.4 B 重构：删了 `replaying` flag —— chunked emit 期间 watcher push 直接
-    /// emit，前端 timeline 按 seq 自动放到正确位置。
-    ready: bool,
     /// Batch8-F26：frontend-ready 携带的"用户上次所在 tab"（F19 语义）。存下来
     /// 供远端快照拉取排队（当前 tab 的会话先拉）；None = 无记忆/未就绪。
     priority_sid: Option<String>,
     /// 〔CF2〕每个会话此刻在 `history` 里有几条 ＋ 它最低留存的 seq（修剪过之后才有；
     /// 之后到达、seq 低于它的行不进缓冲 —— 见 [`push_and_trim`]）。
-    sessions: std::collections::HashMap<String, Held>,
+    sessions: HashMap<String, Held>,
     /// 〔U3b〕累计修剪掉的条数（读数口，[`EventReplay::stats`]）。
     trimmed_total: u64,
+    /// 〔CF2〕订阅（按 `(webview, 编号)` 认）。
+    subs: Vec<Sub>,
+    /// 〔CF2〕订阅的代号：同一个 `(webview, 编号)` 被重订（页面重载）时新旧两份分得开。
+    generation: u64,
+    /// 〔CF2〕哪些 webview 已经过了就绪点（之后它再订整台机器，当场交留存）。
+    ready_labels: HashSet<String>,
+    /// 〔CF2〕每台机器的内容流此刻接没接着（`Unseen` / `Seen` 的来源）。没有的 = 没接着。
+    seen: HashMap<String, bool>,
+    /// 〔CF2〕出口（`lib.rs` 起步时装；没装之前一格都不交）。
+    sink: Option<Arc<dyn ItemSink>>,
+}
+
+/// 〔CF2〕一条订阅。
+struct Sub {
+    label: String,
+    id: u64,
+    generation: u64,
+    /// 订的是哪台机器（线上串：本机 `<local>`）。
+    origin: String,
+    /// `session-lines/<sid>` 那一形：只要这一个会话。
+    only: Option<String>,
+    /// 还能交几格 `Frame`（`want` 累加）。
+    credit: u64,
+    /// 下一格的位置。
+    next: u64,
+    /// 丢了还没说的那一段从哪个位置起（下一次交出去之前原位给 `Gap`）。
+    gap_from: Option<u64>,
+    /// 过了就绪点（实时的行交给它）。
+    live: bool,
+    /// 最后一次告诉它的「那台看不看得见」。
+    told_seen: bool,
+}
+
+impl Sub {
+    fn wants(&self, p: &JsonlLinePayload) -> bool {
+        let origin = p.origin.as_deref().unwrap_or(crate::origin::LOCAL);
+        origin == self.origin && self.only.as_deref().is_none_or(|s| s == p.session_id)
+    }
 }
 
 /// 〔CF2〕一个会话在缓冲里的账：几条 ＋ 修剪过的话最低留存的 seq。
@@ -95,217 +169,471 @@ pub struct ReplayStats {
     pub trimmed_total: u64,
 }
 
-/// 切块阈值（v2.3.1 issue #1 启动加速 + P5.4 B 重构简化）。
-///
-/// - history N < SINGLE_CHUNK_THRESHOLD → 单次 emit（无切块开销）
-/// - N ≥ SINGLE_CHUNK_THRESHOLD → 按 CHUNK_SIZE 切块，**末块先发**（最新一段）
+/// 切块（v2.3.1 issue #1 启动加速 + P5.4 B 重构简化）：成批的那一段按 CHUNK_SIZE 行一块交，**末块先发**
+/// （最新一段）；块与块之间停 CHUNK_PAUSE_MS。〔CF2〕一块 = 一次投递（一个 Tauri 事件里一串格）。
 ///
 /// P5.4：不再区分 head / mid —— 前端 RecordTimeline 按 seq 自动排到正确位置，
 /// 块内顺序对 DOM 无影响。chunks[0] = 最新一段，chunks[N-1] = 最老一段。
-const SINGLE_CHUNK_THRESHOLD: usize = 200;
 const CHUNK_SIZE: usize = 600;
-/// chunk 之间停顿，让 IPC 派发线程喘息 + watcher 新行在缝隙间 emit。
+/// chunk 之间停顿，让 IPC 派发线程喘息 + 实时的新行在缝隙间交出去。
 const CHUNK_PAUSE_MS: u64 = 10;
 
-/// v2.4.2 issue #2: incremental batch 切换到 chunked emit 的阈值。
-///
-/// 一次攒出来的批 >= 此值时（典型场景：用户
-/// `claude --resume <sid>` 灌历史），后端把这批走 jsonl-batch 切块 emit；
-/// 否则（用户日常敲键 1-N 行）走 jsonl-line 单条 live emit 保持低延迟。
+/// v2.4.2 issue #2: 一次攒出来的批 >= 此值时（典型场景：用户 `claude --resume <sid>` 灌历史），
+/// 这批按「成批」交（带 `batch` 边界、切块）；否则（用户日常敲键 1-N 行）逐行交保持 live 语义。
 ///
 /// 经验值 50：日常增量绝对低于这个数（claude 流式回复一行一条 jsonl 也只有
 /// 几条到十几条）；/resume 历史灌入轻松几百几千行。50 是清晰的分水岭。
 const INCREMENTAL_BATCH_THRESHOLD: usize = 50;
+
+/// 〔CF2〕一格的体（序列化失败 ⇒ 空体：两端契约的另一侧会按「解不出」处置，不猜）。
+fn body_of(f: &SessionStreamFrame) -> Body {
+    Body(serde_json::to_vec(f).unwrap_or_default())
+}
+
+/// 〔CF2〕成批那一段的若干块（末块先发），每块首尾加边界：第一块以 `start` 开头，每块以 `end` 收尾
+/// （与原来「第 0 块触发进批、每块末尾排一次出批」同一个节奏）。
+fn batch_chunks(chunks: Vec<Vec<JsonlLinePayload>>) -> Vec<Vec<Body>> {
+    let start = body_of(&SessionStreamFrame::Batch(BatchEdge::Start));
+    let end = body_of(&SessionStreamFrame::Batch(BatchEdge::End));
+    chunks
+        .into_iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let mut v = Vec::with_capacity(c.len() + 2);
+            if i == 0 {
+                v.push(start.clone());
+            }
+            v.extend(c.into_iter().map(|p| body_of(&SessionStreamFrame::Line(p))));
+            v.push(end.clone());
+            v
+        })
+        .collect()
+}
+
+/// 〔CF2〕**实时那一份**交给一条订阅的计划（纯函数）：有多少 credit 交多少，其余丢掉、位置照占；
+/// 这一次交出去的第一格之前，若有没说的丢失 ⇒ 原位先给 `Gap`。返回要交的格（可能为空）。
+fn plan_live(sub: &mut Sub, frames: Vec<Body>) -> Vec<Item> {
+    let n = frames.len() as u64;
+    let can = sub.credit.min(n);
+    let mut out = Vec::new();
+    if can > 0 {
+        if let Some(from_seq) = sub.gap_from.take() {
+            out.push(Item::Gap {
+                from_seq,
+                to_seq: sub.next,
+            });
+        }
+    }
+    for body in frames.into_iter().take(can as usize) {
+        out.push(Item::Frame {
+            seq: sub.next,
+            body,
+        });
+        sub.next += 1;
+    }
+    sub.credit -= can;
+    if can < n {
+        sub.gap_from.get_or_insert(sub.next);
+        sub.next += n - can;
+    }
+    out
+}
+
+/// 〔CF2〕**重放那一份**的一步（纯函数）：只交手里 credit 够的那几格、**不丢**；返回 `(要交的格, 用掉了几格)`。
+/// credit 为零 ⇒ `(空, 0)`，调用方去等。
+fn plan_replay(sub: &mut Sub, rest: &[Body]) -> (Vec<Item>, usize) {
+    let take = (sub.credit.min(rest.len() as u64)) as usize;
+    if take == 0 {
+        return (Vec::new(), 0);
+    }
+    let mut out = Vec::with_capacity(take + 1);
+    if let Some(from_seq) = sub.gap_from.take() {
+        out.push(Item::Gap {
+            from_seq,
+            to_seq: sub.next,
+        });
+    }
+    for body in &rest[..take] {
+        out.push(Item::Frame {
+            seq: sub.next,
+            body: body.clone(),
+        });
+        sub.next += 1;
+    }
+    sub.credit -= take as u64;
+    (out, take)
+}
+
+/// 〔CF2〕「那台机器看得见 / 看不见」换成流里的一格（不占 credit）。
+fn seen_item(seen: bool, opening: bool) -> Item {
+    if seen {
+        Item::Seen { from: None }
+    } else {
+        Item::Unseen {
+            at: HopId {
+                idx: 1,
+                tag: if opening { "open" } else { "read" },
+            },
+            why: if opening {
+                HopFault::Unreachable
+            } else {
+                HopFault::Dropped
+            },
+        }
+    }
+}
+
+/// 〔CF2〕对端（本文件这个句柄）原位说「不行」：`Closed{Peer({"code","message"})}` —— 与后端命令的拒绝同一个信封。
+fn refused(code: &str, message: String) -> Item {
+    let body = serde_json::to_vec(&serde_json::json!({ "code": code, "message": message }))
+        .unwrap_or_default();
+    Item::Closed {
+        by: By::Peer(Body(body)),
+    }
+}
+
+/// 〔CF2〕`kind` ⇒ `None`（整台机器）/ `Some(sid)`（一个会话）。认不出 ⇒ `Err`。
+fn parse_kind(kind: &str) -> Result<Option<String>, ()> {
+    if kind == SESSION_LINES_KIND {
+        return Ok(None);
+    }
+    match kind
+        .strip_prefix(SESSION_LINES_KIND)
+        .and_then(|r| r.strip_prefix('/'))
+    {
+        Some(sid) if !sid.is_empty() => Ok(Some(sid.to_string())),
+        _ => Err(()),
+    }
+}
 
 impl EventReplay {
     pub fn new() -> Self {
         Self {
             inner: Mutex::new(Inner {
                 history: VecDeque::new(),
-                ready: false,
                 priority_sid: None,
-                sessions: std::collections::HashMap::new(),
+                sessions: HashMap::new(),
                 trimmed_total: 0,
+                subs: Vec::new(),
+                generation: 0,
+                ready_labels: HashSet::new(),
+                seen: HashMap::new(),
+                sink: None,
             }),
+            credit_changed: tokio::sync::Notify::new(),
         }
     }
 
-    /// 行进重放缓冲的**唯一**入口：先进 `history`，ready 之后按批大小分流发出去 ——
-    /// 小批（< [`INCREMENTAL_BATCH_THRESHOLD`]）逐条 `jsonl-line`，大批切块 `jsonl-batch`。
-    /// 大 batch 的块序列**在调用方任务内发完才返回**（Batch5-F17 审计 R1）——`ssh_source` 的攒批 flush
-    /// 用它，保证行 emit 严格先于随后的 SessionRemoved/断连归档（issue #20 / FIX 2 的顺序契约），
-    /// 同时对后端帧流形成天然背压（emit 期间不再收帧）。
+    /// 〔CF2〕装出口（`lib.rs` 起步时一次）。
+    pub fn attach_sink(&self, sink: Arc<dyn ItemSink>) {
+        self.inner.lock().sink = Some(sink);
+    }
+
+    /// 行进重放缓冲的**唯一**入口：先进 `history`，再**当场**交给每一条已过就绪点、订了它的订阅 ——
+    /// 小批（< [`INCREMENTAL_BATCH_THRESHOLD`]）逐行交，大批切块、带 `batch` 边界。
+    /// 大 batch 的块序列**在调用方任务内交完才返回**（Batch5-F17 审计 R1）——`ssh_source` 的攒批 flush
+    /// 用它，保证行先于随后的 SessionRemoved/断连归档交出去（issue #20 / FIX 2 的顺序契约），
+    /// 同时对后端帧流形成天然背压（交的期间不再收帧）。
+    ///
+    /// 〔CF2〕没 credit 的订阅：丢、位置照占、下一次交之前原位给 `Gap`（头注「订阅」）。**不等 credit。**
     ///
     /// 〔CF1 · 2026-09-24〕原来还有一份不 await、把块序列 spawn 出去的孪生（只供本机 watcher 那条
     /// std 线程用，`真相源/10 §7.2`「五段逻辑字面重复」）。本机内容改走后端的帧之后它零调用方，删了；
     /// 名字里的 `_awaited` 留着是为了不在十几路同时改的时候改一个到处被点名的符号。
-    pub async fn on_line_batch_awaited<R: Runtime>(
-        &self,
-        handle: &AppHandle<R>,
-        payloads: Vec<JsonlLinePayload>,
-    ) {
+    pub async fn on_line_batch_awaited(&self, payloads: Vec<JsonlLinePayload>) {
         if payloads.is_empty() {
             return;
         }
-        let (ready, big_batch) = {
+        let bulk = payloads.len() >= INCREMENTAL_BATCH_THRESHOLD;
+        let (sink, plans) = {
             let mut inner = self.inner.lock();
             push_and_trim(&mut inner, &payloads);
-            (inner.ready, payloads.len() >= INCREMENTAL_BATCH_THRESHOLD)
-        };
-        if !ready {
-            return;
-        }
-        if !big_batch {
-            for p in payloads {
-                if let Err(e) = handle.emit(events::JSONL_LINE, &p) {
-                    tracing::warn!("emit jsonl-line failed: {e}");
+            let Some(sink) = inner.sink.clone() else {
+                return;
+            };
+            let mut plans: Vec<(String, u64, Vec<Vec<Item>>)> = Vec::new();
+            for sub in inner.subs.iter_mut().filter(|s| s.live) {
+                let mine: Vec<JsonlLinePayload> =
+                    payloads.iter().filter(|p| sub.wants(p)).cloned().collect();
+                if mine.is_empty() {
+                    continue;
+                }
+                let frames: Vec<Vec<Body>> = if bulk {
+                    batch_chunks(build_chunks(&mine))
+                } else {
+                    vec![mine
+                        .into_iter()
+                        .map(|p| body_of(&SessionStreamFrame::Line(p)))
+                        .collect()]
+                };
+                let chunks: Vec<Vec<Item>> = frames
+                    .into_iter()
+                    .map(|c| plan_live(sub, c))
+                    .filter(|c| !c.is_empty())
+                    .collect();
+                if !chunks.is_empty() {
+                    plans.push((sub.label.clone(), sub.id, chunks));
                 }
             }
-            return;
+            (sink, plans)
+        };
+        let total: usize = plans.iter().map(|(_, _, c)| c.len()).sum();
+        let mut sent = 0usize;
+        for (label, id, chunks) in plans {
+            for items in chunks {
+                sink.deliver(&label, id, items);
+                sent += 1;
+                if sent < total {
+                    tokio::time::sleep(std::time::Duration::from_millis(CHUNK_PAUSE_MS)).await;
+                }
+            }
         }
-        let n = payloads.len();
-        let chunks = build_chunks(&payloads);
-        let chunk_total = chunks.len() as u32;
-        tracing::info!("[perf] incremental batch chunked (awaited): total={n}, chunks={chunk_total} (remote snapshot)");
-        emit_chunks(handle, chunks, chunk_total).await;
     }
 
-    /// frontend-ready 时调一次：切块 emit 整个 history 后置 `ready = true`。
+    /// 〔CF2〕**就绪点**（主界面的 `frontend-ready` 那个任务里调，替掉原来的 `replay_and_mark_ready`〔散文墓碑〕）：
+    /// 把登记了、还没过就绪点的订阅逐条按 credit 交它那台机器的留存，交完才返回。
     ///
-    /// **顺序保证**（P5.4 B 重构后）：前端 RecordTimeline 按 seq 自动排序，
-    /// chunk 到达顺序 / 内部顺序对 DOM 视觉无影响。本函数只负责：
-    /// 1. 切块（性能：避免单次 emit 几千条 IPC 序列化卡主线程）
-    /// 2. **末块先发**：让用户立刻看到最新内容（DOM 自然 stickToBottom 到最新）
-    /// 3. 块间小 pause：让 IPC 派发线程喘息，watcher 新行可以在缝隙间 emit
-    ///    （直接走 on_line_batch_awaited 的实时那一支，前端 timeline 自动排序，**无需 catch-up**）
+    /// **顺序**（与原来同形）：调用方先重发宣告与容器（骨架 tab 先建）、再调本函数、再对账补发 `session-ended`
+    /// —— 对账必须晚于重放（issue #19 / #20）。优先会话（上次所在 tab）的块在前（Batch5-F19）。
     ///
-    /// v1.7.13: 之前对每条 history 单独 `emit(JSONL_LINE, p)` —— N=3000 时
-    /// Tauri IPC 每次 emit 都有序列化 + 派发 overhead，实测 ~400ms 阻塞主线程。
-    /// v2.2: 改成单次 `emit(JSONL_BATCH, Vec<...>)`，序列化只跑一次。
-    /// v2.3.1: 切块 emit，用户感知 ~22s → ~2s（仅渲染最新 100 条立刻可交互）。
-    /// P5.4: 删了原 catch-up 路径，前端按 seq 排序使其不再必要。
-    /// async：块间 pause 用 `tokio::time::sleep`——本函数跑在 tauri::async_runtime
-    /// 的 task 里（lib.rs frontend-ready），原 `std::thread::sleep` 会压住 tokio
-    /// worker（INVARIANT § 10），issue #20 顺手清理。
-    pub async fn replay_and_mark_ready<R: Runtime>(
-        &self,
-        handle: &AppHandle<R>,
-        priority_sid: Option<&str>,
-    ) {
+    /// 过就绪点的那一刻（拿快照的同一把锁里）订阅就收实时的行 —— 重放期间来的新行照样当场交，
+    /// 前端按 seq 落位（P5.4：不需要 catch-up）。
+    pub async fn ready_point(&self, priority_sid: Option<&str>) {
         let started = std::time::Instant::now();
-        // Batch8-F26：留存 priority（远端快照排队用）
-        self.inner.lock().priority_sid = priority_sid.map(str::to_string);
-
-        // 阶段 1：拿 snapshot + 立即置 ready
-        // P5.4 B 重构：no more replaying flag。chunked emit 期间 watcher 真新行
-        // 直接走 on_line_batch_awaited 的实时那一支（ready=true）→ emit jsonl-line → 前端
-        // timeline 按 seq 自动排序到正确位置。不需要 catch-up tail。
-        let snapshot: Vec<JsonlLinePayload> = {
+        let (sink, jobs) = {
             let mut inner = self.inner.lock();
-            inner.ready = true;
-            inner.history.iter().cloned().collect()
+            inner.priority_sid = priority_sid.map(str::to_string);
+            let Some(sink) = inner.sink.clone() else {
+                return;
+            };
+            let Inner {
+                history,
+                subs,
+                ready_labels,
+                ..
+            } = &mut *inner;
+            let mut jobs: Vec<(String, u64, u64, Vec<JsonlLinePayload>)> = Vec::new();
+            for sub in subs.iter_mut().filter(|s| !s.live) {
+                sub.live = true;
+                ready_labels.insert(sub.label.clone());
+                let mine: Vec<JsonlLinePayload> =
+                    history.iter().filter(|p| sub.wants(p)).cloned().collect();
+                jobs.push((sub.label.clone(), sub.id, sub.generation, mine));
+            }
+            (sink, jobs)
         };
-        let n = snapshot.len();
-
-        // N < 阈值 → 单次 emit
-        if n < SINGLE_CHUNK_THRESHOLD {
-            let payload = JsonlBatchPayload {
-                chunk_index: 0,
-                chunk_total: 1,
-                payloads: snapshot,
-            };
-            if let Err(e) = handle.emit(events::JSONL_BATCH, &payload) {
-                tracing::warn!("replay single-chunk emit failed: {e}");
-            }
-            tracing::info!(
-                "[perf] replayed {n} events to frontend (single chunk) in {}ms",
-                started.elapsed().as_millis()
-            );
-            return;
+        let n: usize = jobs.iter().map(|j| j.3.len()).sum();
+        for (label, id, generation, mine) in jobs {
+            self.replay_into(&*sink, &label, id, generation, mine, priority_sid)
+                .await;
         }
-
-        // N ≥ 阈值 → 切块。Batch5-F19：priority session（用户上次所在 tab）的
-        // 块在前（组内仍末块先发）——当前 tab 最先可读；其余随后（同样末块先发）。
-        // emit 重排对视觉正确性零影响（前端按 seq 排，INVARIANT § 5/§ 9）。
-        let chunks = build_priority_chunks(snapshot, priority_sid);
-        let chunk_total = chunks.len();
         tracing::info!(
-            "[perf] replay切块: total={n}, chunks={chunk_total} (CHUNK_SIZE={CHUNK_SIZE}, 末块先发, priority={priority_sid:?})"
-        );
-
-        for (idx, chunk) in chunks.into_iter().enumerate() {
-            let chunk_started = std::time::Instant::now();
-            let payload = JsonlBatchPayload {
-                chunk_index: idx as u32,
-                chunk_total: chunk_total as u32,
-                payloads: chunk,
-            };
-            if let Err(e) = handle.emit(events::JSONL_BATCH, &payload) {
-                tracing::warn!("replay chunk {idx} emit failed: {e}");
-            }
-            tracing::info!(
-                "[perf] chunk {idx}/{chunk_total} emit in {}ms",
-                chunk_started.elapsed().as_millis()
-            );
-            if idx + 1 < chunk_total {
-                tokio::time::sleep(std::time::Duration::from_millis(CHUNK_PAUSE_MS)).await;
-            }
-        }
-
-        tracing::info!(
-            "[perf] replayed {n} events to frontend (chunked × {chunk_total}) in {}ms total",
+            "[perf] ready point: replayed {n} lines in {}ms",
             started.elapsed().as_millis()
         );
     }
 
-    /// issue #10：把指定 session 的历史**定向** emit 给某个独立 viewer 窗口（不广播）。
-    ///
-    /// 独立窗口（`viewer-<sid>`）打开后调用：主窗口的全局 replay 早已发过，新窗口错过了，
-    /// 这里从 buffer 里挑该 sid 的历史，按 `build_chunks`（末块先发）只发给这一个窗口。
-    /// **seq 与实时 `jsonl-line` 同空间**（都是后端给的行号），所以新窗口前端把
-    /// 定向历史 + 实时增量混进同一个 RecordTimeline 时顺序天然正确（重叠由前端 seq 去重）。
-    ///
-    /// 仅活跃 session 的历史在 buffer 里（后端只宣告、只 tail 活跃会话）；archived session
-    /// 走前端一次性文件读路径，不经此函数。
-    pub fn replay_session_to_window<R: Runtime>(
+    /// 〔CF2〕把一份留存按 credit 交给一条订阅（不丢；credit 用完就等 `want`；订阅被撤 / 被重订就停）。
+    async fn replay_into(
         &self,
-        window: &WebviewWindow<R>,
-        session_id: &str,
+        sink: &dyn ItemSink,
+        label: &str,
+        id: u64,
+        generation: u64,
+        payloads: Vec<JsonlLinePayload>,
+        priority_sid: Option<&str>,
     ) {
-        let history: Vec<JsonlLinePayload> = {
-            let inner = self.inner.lock();
-            inner
-                .history
-                .iter()
-                .filter(|p| p.session_id == session_id)
-                .cloned()
-                .collect()
-        };
-        if history.is_empty() {
-            tracing::info!("replay_session_to_window({session_id}): no buffered history");
+        if payloads.is_empty() {
             return;
         }
-        let n = history.len();
-        let chunks = build_chunks(&history);
-        let chunk_total = chunks.len() as u32;
-        let label = window.label().to_string();
-        // 显式 WebviewWindow 目标定向投递（不广播，避免污染主窗口 timeline）。
-        // 前端 viewer 用 getCurrentWebviewWindow().listen 接（同 WebviewWindow{label} kind）。
-        // 不能用 `&str` 目标（那会变 EventTarget::AnyLabel，命不中前端的窗口作用域监听）。
-        let target = tauri::EventTarget::webview_window(label.clone());
-        for (idx, chunk) in chunks.into_iter().enumerate() {
-            let payload = JsonlBatchPayload {
-                chunk_index: idx as u32,
-                chunk_total,
-                payloads: chunk,
-            };
-            if let Err(e) = window.emit_to(target.clone(), events::JSONL_BATCH, &payload) {
-                tracing::warn!("replay_session_to_window emit chunk {idx} failed: {e}");
+        let chunks = batch_chunks(build_priority_chunks(payloads, priority_sid));
+        let total = chunks.len();
+        for (ci, chunk) in chunks.into_iter().enumerate() {
+            let mut rest: &[Body] = &chunk;
+            while !rest.is_empty() {
+                let notified = self.credit_changed.notified();
+                tokio::pin!(notified);
+                notified.as_mut().enable();
+                let (items, took) = {
+                    let mut inner = self.inner.lock();
+                    let Some(sub) = inner
+                        .subs
+                        .iter_mut()
+                        .find(|s| s.label == label && s.id == id && s.generation == generation)
+                    else {
+                        return; // 撤了 / 页面重载后被重订
+                    };
+                    plan_replay(sub, rest)
+                };
+                if took == 0 {
+                    notified.await;
+                    continue;
+                }
+                sink.deliver(label, id, items);
+                rest = &rest[took..];
+            }
+            if ci + 1 < total {
+                tokio::time::sleep(std::time::Duration::from_millis(CHUNK_PAUSE_MS)).await;
             }
         }
-        tracing::info!(
-            "replay_session_to_window({session_id}): {n} events in {chunk_total} chunks → {label}"
-        );
+    }
+
+    /// 〔CF2〕登记一条订阅（`chan/webview.rs::chan_subscribe` 调）。**不返回 `Result`**（`05 §3.3.5`）：
+    /// 说不了的在流里原位说（`Closed{Peer}`）；那台机器此刻看不见 ⇒ 第一格 `Unseen`，订阅照样成立。
+    ///
+    /// - 同一个 `(webview, 编号)` 再订一次 ⇒ 旧的那条作废（页面重载后编号从头来；旧页面的订阅不留成孤儿）。
+    /// - `from` 给了 ⇒ `Closed{Peer(bad_args)}`：webview 这一跳没有续传（`CF2.md §3.6`），不装作续上了。
+    /// - 整台机器那一形：这个 webview 还没过就绪点 ⇒ 等就绪点；过了 ⇒ 当场交留存。一个会话那一形：当场交。
+    pub fn subscribe(
+        self: &Arc<Self>,
+        label: &str,
+        id: u64,
+        origin: &crate::origin::Origin,
+        kind: &str,
+        from: Option<Cursor>,
+        want: u32,
+    ) {
+        let sink = self.inner.lock().sink.clone();
+        let Some(sink) = sink else {
+            return;
+        };
+        let origin = origin.as_wire_str();
+        if origin.trim().is_empty() {
+            // 空白名：调用方没说哪台（同 `chan_call` 那道闸）⇒ 用法错，不当成「一台永远看不见的机器」。
+            let item = Item::Closed {
+                by: By::Ours(crate::chan::wire::OursFault::Misuse),
+            };
+            sink.deliver(label, id, vec![item]);
+            return;
+        }
+        let only = match parse_kind(kind) {
+            Ok(o) => o,
+            Err(()) => {
+                let item = refused("no-such-stream", format!("没有叫 `{kind}` 的流"));
+                sink.deliver(label, id, vec![item]);
+                return;
+            }
+        };
+        if from.is_some() {
+            let item = refused(
+                "bad_args",
+                "会话内容流不支持从某一格续看（页面重载就是一条新的订阅）".to_string(),
+            );
+            sink.deliver(label, id, vec![item]);
+            return;
+        }
+        let (first, job) = {
+            let mut inner = self.inner.lock();
+            inner.subs.retain(|s| !(s.label == label && s.id == id));
+            inner.generation += 1;
+            let generation = inner.generation;
+            let seen = inner.seen.get(origin).copied().unwrap_or(false);
+            let immediate = only.is_some() || inner.ready_labels.contains(label);
+            let sub = Sub {
+                label: label.to_string(),
+                id,
+                generation,
+                origin: origin.to_string(),
+                only,
+                credit: u64::from(want),
+                next: 0,
+                gap_from: None,
+                live: immediate,
+                told_seen: seen,
+            };
+            let job = immediate.then(|| {
+                let mine: Vec<JsonlLinePayload> = inner
+                    .history
+                    .iter()
+                    .filter(|p| sub.wants(p))
+                    .cloned()
+                    .collect();
+                (generation, mine)
+            });
+            inner.subs.push(sub);
+            (
+                if seen {
+                    None
+                } else {
+                    Some(seen_item(false, true))
+                },
+                job,
+            )
+        };
+        if let Some(item) = first {
+            sink.deliver(label, id, vec![item]);
+        }
+        if let Some((generation, mine)) = job {
+            let this = Arc::clone(self);
+            let label = label.to_string();
+            tauri::async_runtime::spawn(async move {
+                this.replay_into(&*sink, &label, id, generation, mine, None)
+                    .await;
+            });
+        }
+    }
+
+    /// 〔CF2〕订阅方报「我还能吃多少」（累加）。手里有没说的丢失、而此刻有 credit 了 ⇒ 当场原位给 `Gap`。
+    pub fn want(&self, label: &str, id: u64, more: u32) {
+        let (sink, gap) = {
+            let mut inner = self.inner.lock();
+            let sink = inner.sink.clone();
+            let gap = inner
+                .subs
+                .iter_mut()
+                .find(|s| s.label == label && s.id == id)
+                .and_then(|sub| {
+                    sub.credit += u64::from(more);
+                    if sub.credit > 0 {
+                        sub.gap_from.take().map(|from_seq| Item::Gap {
+                            from_seq,
+                            to_seq: sub.next,
+                        })
+                    } else {
+                        None
+                    }
+                });
+            (sink, gap)
+        };
+        self.credit_changed.notify_waiters();
+        if let (Some(sink), Some(gap)) = (sink, gap) {
+            sink.deliver(label, id, vec![gap]);
+        }
+    }
+
+    /// 〔CF2〕撤订阅（本地撤单，`05 §3.3.3`）：之后一格都不再交；在等 credit 的重放随之停。
+    pub fn stop(&self, label: &str, id: u64) {
+        self.inner
+            .lock()
+            .subs
+            .retain(|s| !(s.label == label && s.id == id));
+        self.credit_changed.notify_waiters();
+    }
+
+    /// 〔CF2〕那台机器的内容流接上了 / 断了（`ssh_source` 的连接与本机那条流的起落调它）⇒ 订了它的每条订阅
+    /// 原位收一格 `Seen` / `Unseen`（状态没变就不重复说）。
+    pub fn origin_seen(&self, origin: &crate::origin::Origin, seen: bool) {
+        let origin = origin.as_wire_str();
+        let (sink, told) = {
+            let mut inner = self.inner.lock();
+            inner.seen.insert(origin.to_string(), seen);
+            let sink = inner.sink.clone();
+            let told: Vec<(String, u64)> = inner
+                .subs
+                .iter_mut()
+                .filter(|s| s.origin == origin && s.told_seen != seen)
+                .map(|s| {
+                    s.told_seen = seen;
+                    (s.label.clone(), s.id)
+                })
+                .collect();
+            (sink, told)
+        };
+        if let Some(sink) = sink {
+            for (label, id) in told {
+                sink.deliver(&label, id, vec![seen_item(seen, false)]);
+            }
+        }
     }
 
     /// 把指定 session_id 的全部历史从 buffer 移除。
@@ -462,38 +790,6 @@ fn build_priority_chunks(
     let mut chunks = build_chunks(&pri);
     chunks.extend(build_chunks(&rest));
     chunks
-}
-
-/// 增量大 batch 的块序列 emit（Batch5-F17 抽取，供 spawn 与 awaited 两个入口
-/// 共用）：块间 `tokio::time::sleep` pacing，块内顺序由 for 循环保证。
-async fn emit_chunks<R: Runtime>(
-    handle: &AppHandle<R>,
-    chunks: Vec<Vec<JsonlLinePayload>>,
-    chunk_total: u32,
-) {
-    let started = std::time::Instant::now();
-    for (idx, chunk) in chunks.into_iter().enumerate() {
-        let chunk_started = std::time::Instant::now();
-        let payload = JsonlBatchPayload {
-            chunk_index: idx as u32,
-            chunk_total,
-            payloads: chunk,
-        };
-        if let Err(e) = handle.emit(events::JSONL_BATCH, &payload) {
-            tracing::warn!("emit incremental jsonl-batch chunk {idx} failed: {e}");
-        }
-        tracing::info!(
-            "[perf] incremental chunk {idx}/{chunk_total} emit in {}ms",
-            chunk_started.elapsed().as_millis()
-        );
-        if idx as u32 + 1 < chunk_total {
-            tokio::time::sleep(std::time::Duration::from_millis(CHUNK_PAUSE_MS)).await;
-        }
-    }
-    tracing::info!(
-        "[perf] incremental batch chunked emit done in {}ms total",
-        started.elapsed().as_millis()
-    );
 }
 
 /// 切块策略（P5.4 B 重构简化）：按 CHUNK_SIZE 切块，**末块先发**——最新一段
