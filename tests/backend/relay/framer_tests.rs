@@ -79,10 +79,17 @@ fn f1_a_giant_sse_line_arriving_in_pieces_is_scanned_exactly_once_and_never_move
 }
 
 /// F1 的切法不变量：逐字节 · 整段一次 · 质数 4 099 字节一块 —— `examined == pushed` 三种切法同一条等式。
+///
+/// ⚠ 这里的长行刻意只有 16 KiB，**不是** 617 KiB：死值验把「每次喂入都从头找」那一形放回去时，
+/// 逐字节喂一条 617 KiB 的行是 ~2×10¹¹ 次比较 —— 判据不是红，是**挂住十几分钟**
+/// （现打：那一刀在 debug 构建上跑了 683 秒被手动杀掉）。挂住的判据在 CI 上等于没有判据。
+/// 617 KiB 那一形由上面 F1 那条按 16 KiB 一块喂（二次形状下也只有 ~2.5×10⁷，照样当场红）。
 #[test]
 fn f1_examined_equals_pushed_for_every_way_of_cutting_the_stream() {
     let mut wire = small_lines(50);
-    wire.extend(giant_line());
+    wire.extend_from_slice(b"data: ");
+    wire.extend(std::iter::repeat_n(b'y', 16 * 1024));
+    wire.push(b'\n');
     wire.extend(small_lines(50));
     wire.extend_from_slice(b"data: [half"); // 末尾留半行：它也要被找过一次
     for step in [1usize, 0, 4099] {
@@ -247,6 +254,17 @@ fn f4_crlf_mode_skips_a_bare_lf_and_joins_a_split_crlf() {
     );
 }
 
+/// F4 在调用点上的样子：块长度行里一个孤立的 `\n` **不**结束这一行 —— 与收口之前
+/// `windows(2)` 找 `\r\n` 的语义逐字节相同（那一行读成 `4\nabcd`，解不出十六进制 ⇒ 收工、零输出）。
+#[test]
+fn f4_a_bare_lf_never_ends_a_chunk_size_line() {
+    let mut view = BodyView::Chunked(ChunkedView::default());
+    assert!(view.feed(b"4\nabcd\r\n0\r\n", NO_CAP).is_empty());
+    // 非空对照：同样的数据写成合法的 CRLF 块，照常解出来。
+    let mut view = BodyView::Chunked(ChunkedView::default());
+    assert_eq!(view.feed(b"4\r\nabcd\r\n0\r\n", NO_CAP), b"abcd".to_vec());
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 //  F5 / F6 · 分帧只有一个实现，两个调用点是它的客户
 // ════════════════════════════════════════════════════════════════════════════
@@ -312,14 +330,19 @@ fn f5_relay_has_exactly_one_framer() {
     );
 }
 
-/// F6 —— 两个调用点各恰好一处 `LineFramer::new(`。
+/// F6 —— 两个调用点各恰好一处 `LineFramer::new(<分隔符>)`，分隔符各是各的
+/// （SSE 按 `\n` 切、chunked 块长度行按 `\r\n` 切；分隔符换错了，合法输入照样解得对 ——
+/// 只在坏输入上露馅，见 F4 的 `f4_a_bare_lf_never_ends_a_chunk_size_line`）。
 #[test]
 fn f6_both_call_sites_are_clients_of_the_one_framer() {
     let files = relay_production();
-    let needle = format!("{}::new(", "LineFramer");
-    for site in ["tee.rs", "http1.rs"] {
+    let ctor = format!("{}::new(", "LineFramer");
+    for (site, delim) in [("tee.rs", r#"b"\n")"#), ("http1.rs", r#"b"\r\n")"#)] {
         let prod = &files.iter().find(|(n, _)| n == site).unwrap().1;
-        guard_core::find_pinned(prod, &needle)
+        guard_core::find_pinned(prod, &ctor)
             .unwrap_or_else(|e| panic!("`{site}` 应恰好一处用分帧器：{e}"));
+        let needle = format!("{ctor}{delim}");
+        guard_core::find_pinned(prod, &needle)
+            .unwrap_or_else(|e| panic!("`{site}` 的分帧器分隔符应是 `{delim}`：{e}"));
     }
 }
