@@ -14,7 +14,7 @@ index.html  ─> /src/main.ts (defer)
                   ├─ 设置改独立窗口（F82a）：⚙/快捷键 invoke("open_settings_window")；
                   │   ?settings=1 → bootstrapSettings 挂 SettingsPanel(windowMode)
                   ├─ new HistoryView()   → views/history.ts
-                  ├─ bindEvents()         → events.ts （订阅后端 jsonl-line / session-ended）
+                  ├─ bindEvents()         → events.ts （起停事件 ＋〔CF2〕经通道订会话流）
                   └─ emit("frontend-ready")  通知后端 replay 历史
 ```
 
@@ -23,7 +23,7 @@ index.html  ─> /src/main.ts (defer)
 | 文件 | 角色 | 关键 API |
 |---|---|---|
 | **main.ts** | 启动 + 全局快捷键 + 错误捕获 + HMR 强制 reload；**issue #10**：URL 带 `?viewer=<sid>` 时走 `bootstrapViewer`（复用 TabManager 过滤到该 sid + 隐藏 chrome + 定向 replay 代替 frontend-ready）| DOMContentLoaded handler |
-| **events.ts** | 订阅后端 `jsonl-line` / `jsonl-batch` / `session-ended` / `task-update`，**批量调度让出主线程**；v2.2 (issue #12) `jsonl-batch` 包 `batch-start`/`batch-end` 哨兵；v2.3.1 (issue #1) 300ms grace 续期。**v2.6 B 重构**：删了 PayloadSource / onChunk callback / BatchChunkMeta；JsonlLinePayload 新增 `seq: u64` 字段（后端 watcher 给的 per-file 单调）。**issue #10**：`bindEvents` 改 async（await listener 注册完成再返回，防 emit-before-listen 丢事件）+ `{windowScoped}` 选项（viewer 用 `getCurrentWebviewWindow().listen` 接定向事件） | `await bindEvents({...}, {windowScoped?})` |
+| **events.ts** | 订阅后端 `session-ended` / `task-update` 等起停事件，〔CF2 · 第四波 4B〕会话内容经通道 `chan.subscribe(origin, "session-lines")`（原 `jsonl-line` / `jsonl-batch` 退役；一格的体是 `SessionStreamFrame`，批边界即 `batch-start`/`batch-end` 哨兵；处理一片还一片 credit，窗口 `STREAM_WINDOW`；`gap` ⇒ `onStreamGap` 按行号补），**批量调度让出主线程**；v2.3.1 (issue #1) 300ms grace 续期。**v2.6 B 重构**：删了 PayloadSource / onChunk callback / BatchChunkMeta；JsonlLinePayload 新增 `seq: u64` 字段（后端给的 per-file 单调）。**issue #10**：`bindEvents` 改 async（await listener 注册完成、会话流登记好再返回）+ `{windowScoped, streams}` 选项 | `await bindEvents({...}, {windowScoped?, streams?})` |
 | **tabs.ts** | TabManager 状态机：Tab 生命周期（live / archived）+ BranchFolder + v2.3 TasksPanel 路由；v2.4 (issue #2) `switchTo(sid, "manual"\|"auto")` + `userActive(sid)` + 5s `manualOverrideUntil`；`applyBehavior(cfg)` 同步设置面板 toggle。**v2.6 B 重构**：删了 inPrependMode / pendingPrependFragment / pendingToolGroup / appendCardOrBuffer / onChunk / markCardUuid / feedBranchFolder；onLine 改调 renderStreamRecord 共享管线。**issue #10**：`tab.cwd` 取最早 seq 记录的 cwd（项目根，防会话 cwd 漂移到子目录）；`openActiveInNewWindow()` + Tab 右键「在新窗口打开」。onLine 入口双层去重：`seenSeqs`（#17 同 seq）+ `processedUuids`（#26 换 seq 重投按 uuid 拒重，INVARIANTS § 25） | `onLine(payload) / onBatchStart() / onBatchEnd() / userActive() / openActiveInNewWindow() / archiveTab() / closeTab() / cycleActive()` |
 | **account-chip.ts / account-commands.ts / account-restart.ts** (A3–A5, #68/#69) | 多账号 UI + 编排：`account-chip` 徽章 + 切号菜单（mismatch/align 态）；`account-commands` 的 `withAccount` 按会话选账号起/Resume（账号解析 + lastAccount 记账）；`account-restart` 换号**破坏性**重启（[compact]→kill→resume 同 sid，失败语义严格照 DESIGN §5.2：compact 失败不阻断 / kill 失败必中止）。三者共用 `accounts.ts` 原语（fetchAccounts / accountConfigDir / recordLastAccount）。`account-color` 账号色板 / `settings/acct-deploy` app 内部署向导 | `withAccount() / restartSessionWithAccount() / accountConfigDir()` |
 | **record-timeline.ts** ⭐ v2.6 | 按 seq 排序的 TimelineEntry 数组 + DOM 挂载：`insert(entry)` binary search 找位置 → `stream.insertNode(element, anchor)`；`peekPrev(seq)` 给 tool-group 后处理用。**消除了** inPrependMode/pendingPrependFragment/chunkIndex 全部状态机。Batch13-F40a：deferMode（启动重放延后挂载）退役——旧记录由 TailWindow 收纳不建卡，本类回归纯「seq 有序 + 邻居查询」 | `new RecordTimeline(stream).insert / peekPrev / dispose / size` |
@@ -88,7 +88,7 @@ index.html  ─> /src/main.ts (defer)
 ### 实时消息（活跃 session）
 
 ```
-后端 jsonl-line emit
+后端交格（〔CF2〕会话流订阅）
   → events.ts 入队 (BATCH_SIZE=40 / BATCH_MS=8 让出主线程)
   → tabs.ts onLine(payload)
      ├─ ensureTab(sessionId, cwd, path)
@@ -101,7 +101,7 @@ index.html  ─> /src/main.ts (defer)
                → stream.insertNode(element, anchor)    // 守卫式 snap 贴底
 ```
 
-启动重放（jsonl-batch，末块先发）走同一管线,但经 F40a 尾部优先门控:active tab 首条 content 钉 `floor`,尾块直渲;更老的块与后台 virgin tab 全部收纳进 `TailWindow`(不建卡,meta/branch 经 `routeMetaAndBranch` 照喂),批后空闲物化尾 150 / switchTo 同步物化(消抖 + 免建卡,INVARIANT § 21)。F40b:active tab 上翻到顶部 800px 内自动补批(200 条/批,同步手动补偿视口),顶端哨兵显示「还有 N 条更早消息」;批期大增量老块经 `midBatchBuffer` 批末一次挂载。
+启动重放（〔CF2〕就绪点按 credit 交、末块先发）走同一管线,但经 F40a 尾部优先门控:active tab 首条 content 钉 `floor`,尾块直渲;更老的块与后台 virgin tab 全部收纳进 `TailWindow`(不建卡,meta/branch 经 `routeMetaAndBranch` 照喂),批后空闲物化尾 150 / switchTo 同步物化(消抖 + 免建卡,INVARIANT § 21)。F40b:active tab 上翻到顶部 800px 内自动补批(200 条/批,同步手动补偿视口),顶端哨兵显示「还有 N 条更早消息」;批期大增量老块经 `midBatchBuffer` 批末一次挂载。
 
 ### 历史浏览（懒加载）
 
