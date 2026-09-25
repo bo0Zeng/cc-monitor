@@ -245,9 +245,10 @@ const STYLELINT_CEILING = 36;
  * - `list`：同一条规则的选择器列表内部（声明一模一样，谁赢都一样）；
  * - `harmless`：逐条看过，结构上打不到同一个元素，或打到了也是作者要的结果（理由写在 `why`）；
  * - `defect?`：**真冲突，缺陷候选**，交主会话拍（改了会改变可见样式，本机无图形会话不能目视）；
- * - `U4` / `ST3`：在同波别的路的写区里（tab 规则 · `settings.css`），本路**没逐条判**，照实登记为「未判」。
+ * - 〔历史〕`U4` / `ST3` 两档：当时在同波别的路的写区里、没逐条判的「未判」。U4 那 10 条 U4 自己判了，
+ *   ST3 那 15 条〔AR1〕逐条判完（全是 `harmless`），这两档从类型里删了 —— 今天没有「未判」。
  *
- * ⚠ 并发：U4 改 tab 规则、ST3 改 `settings.css` 时，这张表会在合并那一拍红（多了或少了条目）——
+ * ⚠ 并发：别的路改到这些规则时，这张表会在合并那一拍红（多了或少了条目）——
  *   那是本条要的红：按现打把对应条目增删并写理由即可。
  */
 const DESCENDING_SPECIFICITY_EXCEPTIONS: readonly {
@@ -255,7 +256,7 @@ const DESCENDING_SPECIFICITY_EXCEPTIONS: readonly {
   later: string;
   earlier: string;
   n?: number;
-  kind: "list" | "harmless" | "defect?" | "ST3";
+  kind: "list" | "harmless" | "defect?";
   why: string;
 }[] = [
   // ── src/styles.css：本路判过的 7 条 ──
@@ -315,32 +316,115 @@ const DESCENDING_SPECIFICITY_EXCEPTIONS: readonly {
   { file: "src/styles.css", later: ".tab-focus:hover", earlier: ".tab.ended .tab-focus", kind: "harmless", why: "〔U4 判〕两边属性不相交（前者只设 `display`），先后翻转不改变任何一个声明的胜负" },
   { file: "src/styles.css", later: ".tab-cwd", earlier: ".tab.ended .tab-cwd", n: 2, kind: "harmless", why: "〔U4 判〕同属性只有 `display`（`n: 2` 里另一处是只设 `font-size` 的那条，不相交）；高特异度那条赢正是作者要的：× 只在已结束时露出，已结束时 ↗ / 📂 藏起来" },
   { file: "src/styles.css", later: ".tab-cwd:hover", earlier: ".tab.ended .tab-cwd", kind: "harmless", why: "〔U4 判〕两边属性不相交（前者只设 `display`），先后翻转不改变任何一个声明的胜负" },
-  // ── src/styles/settings.css（ST3 写区，未判）──
-  ...(
-    [
-      [".settings-data-item-open:disabled", ".settings-data-item-open:hover:not(:disabled)"],
-      [".remote-machine-legend", ".remote-machine-row .remote-machine-legend"],
-      [".kb-editor-btn-record:disabled", ".kb-editor-btn-record:hover:not(:disabled)"],
-      [".kb-editor-btn-reset:disabled", ".kb-editor-btn-reset:hover:not(:disabled)"],
-      [".accounts-new-adv > summary", ".accounts-maint-wrap > summary:hover"],
-      [".accounts-new-adv > summary::before", ".accounts-maint-wrap[open] > summary::before"],
-      [".accounts-maint", ".accounts-maint-wrap .accounts-maint"],
-      [".ccm-alias-gen > summary", ".accounts-maint-wrap > summary:hover"],
-      [".ccm-alias-gen > summary::before", ".accounts-maint-wrap[open] > summary::before"],
-      [".accounts-wiz-btns button", ".accounts-row-actions button:hover"],
-      [".accounts-wiz-copyrow button", ".accounts-row-actions button:hover"],
-      [".accounts-maint button", ".accounts-row-actions button:hover"],
-      [".accounts-wiz-btns button:disabled", ".accounts-wiz-btns button:hover:not(:disabled)"],
-      [".accounts-maint button:disabled", ".accounts-wiz-btns button:hover:not(:disabled)"],
-      [".paste-block-out", ".ccm-alias-gen-out > .paste-block-out"],
-    ] as const
-  ).map(([later, earlier]) => ({
+  // ── src/styles/settings.css：〔AR1 · C §2.2 · `设计/41 §12` 待拍 2〕ST3 那 15 条逐条判完 ──
+  //   读法：两条规则的声明逐条对（`postcss` 现打），再到 TS 里核两个选择器能不能落在同一个元素上。
+  //   结论 15 条全是 `harmless`（互斥伪类 / 属性不相交 / 结构上打不到同一元素 / 高特异度那条正是作者要的），
+  //   没有一条改变可见样式 ⇒ 不改 CSS。⚠ 视觉没目视（本机无图形会话），判的是级联，不是像素。
+  {
     file: "src/styles/settings.css",
-    later,
-    earlier,
-    kind: "ST3" as const,
-    why: "未判：`settings.css` 在 ST3 写区",
-  })),
+    later: ".settings-data-item-open:disabled",
+    earlier: ".settings-data-item-open:hover:not(:disabled)",
+    kind: "harmless",
+    why: "〔AR1 判〕`:hover:not(:disabled)` 与 `:disabled` 互斥（同一颗按钮同一刻只落一边），且两边属性不相交（前者只设底色 / 字色 / 边框色，后者只设 `cursor` / `opacity`）",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".remote-machine-legend",
+    earlier: ".remote-machine-row .remote-machine-legend",
+    kind: "harmless",
+    why: "〔AR1 判〕同属性只有 `gap`（与 `display` / `align-items`，值相同）：列表里的机器行（`remote-section.ts` 两处 `.remote-machine-row` 里的 legend）取 6px，机器卡（`machine-card.ts` 的 `fieldset.remote-machine`，不在 row 里）取 8px —— 高特异度那条赢正是作者要的（它头注「S4b：列表里的机器行」就是为行单写的收紧）",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".kb-editor-btn-record:disabled",
+    earlier: ".kb-editor-btn-record:hover:not(:disabled)",
+    kind: "harmless",
+    why: "〔AR1 判〕`:hover:not(:disabled)` 与 `:disabled` 互斥（同一颗按钮同一刻只落一边），且两边属性不相交（前者只设底色 / 字色 / 边框色，后者只设 `cursor` / `opacity`）",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".kb-editor-btn-reset:disabled",
+    earlier: ".kb-editor-btn-reset:hover:not(:disabled)",
+    kind: "harmless",
+    why: "〔AR1 判〕`:hover:not(:disabled)` 与 `:disabled` 互斥（同一颗按钮同一刻只落一边），且两边属性不相交（前者只设底色 / 字色 / 边框色，后者只设 `cursor` / `opacity`）",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".accounts-new-adv > summary",
+    earlier: ".accounts-maint-wrap > summary:hover",
+    kind: "harmless",
+    why: "〔AR1 判〕结构上打不到同一个元素：`.accounts-maint-wrap`（`accounts-section.ts::renderMaintenance` 的 details）与 `.accounts-new-adv`（`account-new-form.ts` 的 details）是两颗不同的 details，子选择器 `>` 只认各自的直接子 summary",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".accounts-new-adv > summary::before",
+    earlier: ".accounts-maint-wrap[open] > summary::before",
+    kind: "harmless",
+    why: "〔AR1 判〕同上一条：两颗不同的 details，各自的 summary 各归各",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".accounts-maint",
+    earlier: ".accounts-maint-wrap .accounts-maint",
+    kind: "harmless",
+    why: "〔AR1 判〕同属性只有 `margin-top`：`.accounts-maint` 全仓只一处（`renderMaintenance` 里挂在 `.accounts-maint-wrap` 之内）⇒ 恒取 6px；高特异度那条赢正是作者要的（它头注逐字「折叠容器已给了标题，里面那块就不必再顶一个 margin」）",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".ccm-alias-gen > summary",
+    earlier: ".accounts-maint-wrap > summary:hover",
+    kind: "harmless",
+    why: "〔AR1 判〕结构上打不到同一个元素：`.ccm-alias-gen` 是 `machine-aliases.ts` 自己建的 details，与 `.accounts-maint-wrap` 不是同一颗，子选择器 `>` 只认各自的 summary",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".ccm-alias-gen > summary::before",
+    earlier: ".accounts-maint-wrap[open] > summary::before",
+    kind: "harmless",
+    why: "〔AR1 判〕同上一条",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".accounts-wiz-btns button",
+    earlier: ".accounts-row-actions button:hover",
+    kind: "harmless",
+    why: "〔AR1 判〕结构上打不到同一个元素：`.accounts-row-actions` 是账号行的动作条（`accounts-section.ts` 里只装模型输入 / 设默认 / 复制 / 登录 / 展开钮），向导（`.accounts-wizard`）与维护块（`.accounts-maint`）挂在面板 body / 维护折叠里，不在任何一行的动作条之内",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".accounts-wiz-copyrow button",
+    earlier: ".accounts-row-actions button:hover",
+    kind: "harmless",
+    why: "〔AR1 判〕同上一条",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".accounts-maint button",
+    earlier: ".accounts-row-actions button:hover",
+    kind: "harmless",
+    why: "〔AR1 判〕同上一条",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".accounts-wiz-btns button:disabled",
+    earlier: ".accounts-wiz-btns button:hover:not(:disabled)",
+    kind: "harmless",
+    why: "〔AR1 判〕`:hover:not(:disabled)` 与 `:disabled` 互斥，且属性不相交（前者只设 `border-color`，后者只设 `opacity` / `cursor`）",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".accounts-maint button:disabled",
+    earlier: ".accounts-wiz-btns button:hover:not(:disabled)",
+    kind: "harmless",
+    why: "〔AR1 判〕同上一条（跨两个容器也一样：两个伪类互斥）",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".paste-block-out",
+    earlier: ".ccm-alias-gen-out > .paste-block-out",
+    kind: "harmless",
+    why: "〔AR1 判〕属性不相交：前者只设 `color`，后者设字体 / 宽度 / 换行 / 横向滚动，先后翻转不改变任何一个声明的胜负",
+  },
 ];
 
 const NDS = "no-descending-specificity";
