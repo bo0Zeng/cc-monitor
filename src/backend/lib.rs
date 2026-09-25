@@ -443,7 +443,10 @@ pub const PROTO_VERSION: u32 = 1;
 /// C4b `history-index` / `history-user-inputs` / `history-find` / `plugins-marketplaces` 四条应答形状变成后端出成品；
 /// CF1 本机常驻后端起参统一加 `--with-bg`（adopt 只比 build_id ⇒ 不 bump 会接上按旧起参起的后端，bg 会话内容缺）。
 /// 照 p1v 先例不加历史行。
-pub const BUILD_ID: &str = "p3e-shapes-cas-withbg";
+///
+/// ★★★ **p3f-mcp-sync-exitwire**（2026-09-25，第四波 AL1d ＋ S5 ＋ AS1 合并那一拍）：子命令 ＋1 —— AS1 `mcp-sync-plan`（两个命令面）。
+/// ＋ 行为：S5 `exit-policy-*` 线上删 `shell` 字段 · `ccm` 直路给了 `--ccm-sid` 而无令牌时 stderr 说一句 · `--list-accounts` 认带 BOM 的 manifest。
+pub const BUILD_ID: &str = "p3f-mcp-sync-exitwire";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
