@@ -1062,6 +1062,35 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     );
 }
 
+/// 🔴 〔AL1d · 第四波 4B〕**P2：别名的命令面是一族**（`调研/第四波记录/AL1d.md §2.1`）。
+///
+/// 两边异源：左边是本表（人手写的能力归属），右边是 `generate_handler!`（`lib.rs` 里真注册了哪几条、叫什么）。
+/// **别名那几格能力的本机侧命令集合 == 注册表里以 `aliases_` 打头的命令集合**（两向）：
+/// 别名 / 别名块再长一条不叫 `aliases_*` 的本机命令 ⇒ 红；起了个 `aliases_*` 名字却归到别的能力 ⇒ 也红。
+/// ⚠ 能力 id 为什么是两格（清单 `alias.manage` ／ 块 `ccm.*`）写在 `LEDGER` 那几行上：并成一格会把清单的远端欠账抹掉。
+/// ⚠ 远端那两条块命令（`install_remote_alias_block` / `uninstall_remote_alias_block`）不在左边：它们住 `sftp.rs`、
+///   经 SSH 那条路，不是本机命令面的一员 —— 本条只管本机这一族。
+#[test]
+fn the_alias_capabilities_speak_through_one_command_family() {
+    const ALIAS_CAPS: [&str; 4] = ["alias.manage", "ccm.install", "ccm.uninstall", "ccm.install-ui"];
+    let by_ledger: BTreeSet<String> = LEDGER
+        .iter()
+        .filter(|(_, cap, side)| ALIAS_CAPS.contains(cap) && *side != Side::Remote)
+        .map(|(c, _, _)| c.to_string())
+        .collect();
+    let by_name: BTreeSet<String> = registered_commands()
+        .into_iter()
+        // 按「命令名的第一个词」认（整词相等，不是前缀子串 —— `aliasesx_…` 这种不算这一族）。
+        .filter(|c| c.split('_').next() == Some("aliases"))
+        .collect();
+    // 反空真：右边空了（注册表解析坏了）左边也空 ⇒ 两边相等地绿。
+    assert!(by_name.len() >= 2, "`generate_handler!` 里只解析出 {} 条 `aliases_*`", by_name.len());
+    assert_eq!(
+        by_ledger, by_name,
+        "别名的本机命令面不是一族了：左边是本表里别名那几格能力的本机侧命令，右边是注册表里叫 `aliases_*` 的命令"
+    );
+}
+
 /// ★ 断言 4：表的形状钉死。改 `LEDGER` 就要来改这几个数。
 /// ★★ **P3b-Y3：每条不对称理由都得**可追问**。**
 ///

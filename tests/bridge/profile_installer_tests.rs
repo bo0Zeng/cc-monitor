@@ -1619,3 +1619,34 @@ fn the_powershell_profile_lands_with_a_bom_and_the_posix_rc_never_does() {
         "rc 里任何位置都不许出现 BOM"
     );
 }
+
+/// 🔴 〔AL1d · 第四波 4B〕**P4**：别名块的**预览就是写的那一份** —— `render_block` 与「往一份空文件里装一次」之后
+/// 盘上那份（BOM 剥掉）逐字相等。两种方言 × 要不要连 `cc` 函数，四格都走。
+///
+/// 这不是两份拼法对拍：两边调的是同一个 `plan_install`。它钉的是「预览没有另起一条拼法」这件事 ——
+/// 从前的预览（`render_cc_code`）只会 PowerShell 那一块、而且不带装那一跳会加的排版，POSIX 那一块根本没有预览。
+#[test]
+fn the_block_preview_is_byte_for_byte_what_an_install_writes() {
+    for (shell, name) in [(Shell::Posix, ".bashrc"), (Shell::PowerShell, "p.ps1")] {
+        for with_cc in [false, true] {
+            let td = tmpdir("block-preview");
+            let p = td.0.join(name);
+            let preview = render_block(shell, with_cc).expect("渲染");
+            run(install_to_profile(&door_at(&p), &p, CC_FUNCTION_NAME, with_cc)).expect("装进空文件");
+            let disk = std::fs::read_to_string(&p).expect("读回");
+            assert_eq!(strip_bom(&disk), preview, "{shell:?} with_cc={with_cc}：预览与写下的不是同一份");
+            // 反空真：两边都是空串也「逐字相等」—— 预览必须真是一块围栏（首行就是那个方言的 BEGIN）。
+            let fence = match shell {
+                Shell::PowerShell => BEGIN_MARKER,
+                Shell::Posix => crate::sftp::CCM_PROFILE_BEGIN,
+            };
+            assert!(
+                preview.lines().next().is_some_and(|l| l.starts_with(fence)),
+                "{shell:?}：预览的第一行不是那个方言的 BEGIN：{preview:?}"
+            );
+        }
+    }
+    // POSIX 那一块不理 `with_cc`（`cc` 自带 `declare -f` 让着用户）；PowerShell 那一块理。
+    assert_eq!(render_block(Shell::Posix, false), render_block(Shell::Posix, true));
+    assert_ne!(render_block(Shell::PowerShell, false), render_block(Shell::PowerShell, true));
+}
