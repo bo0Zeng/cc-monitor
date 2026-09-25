@@ -42,6 +42,7 @@ pub mod footprint; // 〔RM1a · 第四波〕「足迹」的这台机器那一�
 #[cfg(test)]
 mod guard_support; // U-1：各条源码扫描型守卫共用的「只留生产段」剥法（仅测试构建）
 pub mod history_annotations; // 〔C4d · 第四波 4B〕历史注解（星标 / 改名 / 隐藏 / 上次账号）：帧面 `history-annotate` / `history-forget` / `history-last-accounts`（第四层；文件就是 monitor 从前那一份，路径由它交）
+pub mod history_join; // 〔C4d · 第四波 4B〕历史跨机 join 的唯一的家：帧面 `history-projects` / `history-sessions` 出成品（这台 ＋ 可达表里的远端，并注解 ＋ 判活）
 pub mod inbound; // U6b-1：流连接上的入方向（信封 / 分派 / 取消）
 #[cfg(test)]
 #[path = "../../tests/backend/layering_guard.rs"]

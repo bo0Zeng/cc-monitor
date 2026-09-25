@@ -48,11 +48,15 @@ fn backend_command_blocks() -> Vec<(String, String)> {
     blocks
 }
 
-/// 后端 `inbound.rs` 生产段里把活交给 `read_face::answer` 的帧命令名（**从后端源码数**）。
+/// 后端 `inbound.rs` 生产段里把活交给 `read_face::answer`（〔C4d〕或 `history_join::answer_*`）的帧命令名（**从后端源码数**）。
 fn backend_read_face_commands() -> Vec<String> {
     let got: Vec<String> = backend_command_blocks()
         .into_iter()
-        .filter(|(_, blk)| blk.contains("read_face::answer"))
+        // 〔C4d · 第四波 4B〕出成品的那两条（`history-projects` / `history-sessions`）交给了 `history_join`（历史跨机 join 的唯一的家）——
+        //   同一族「搬上帧面的只读查询」，宿主从换壳那一层挪到了出成品那一层 ⇒ 两个宿主一起数。
+        .filter(|(_, blk)| {
+            blk.contains("read_face::answer") || blk.contains("history_join::answer_")
+        })
         .map(|(name, _)| name)
         .collect();
     assert!(!got.is_empty(), "从后端源码一条都没数到 —— 抽取坏了");

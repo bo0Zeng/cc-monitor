@@ -471,7 +471,8 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
 
 /// 解析 Claude 的 ISO8601 时间戳 `YYYY-MM-DDTHH:MM:SS(.fff)?Z` → epoch ms。
 /// 自带 civil-days 算法（Howard Hinnant），无需 chrono。
-fn parse_iso8601_ms(s: &str) -> Option<i64> {
+/// 〔C4d〕开成 `pub(crate)`：历史会话清单那一行的开始时刻（`history_query::analyze_session`）用同一份。
+pub(crate) fn parse_iso8601_ms(s: &str) -> Option<i64> {
     if s.len() < 19 {
         return None;
     }

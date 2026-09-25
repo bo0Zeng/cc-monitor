@@ -424,7 +424,16 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     // 〔RM1f〕`panorama` 起进程，但**异步等**（`plugin::invoke::run_abortable`）⇒ 同在这一档：
     //   不占 worker（等的是子进程退出，不是一段同步计算），`cancel` 命中时 future 被丢、子进程组被杀。
     // 〔C4d · 第四波 4B〕`remote-reach`：纯内存登记（一把锁、插一行），同 `ping` 在普通 spawn 上。
-    for c in ["ping", "resolve", "assets-sync", "panorama", "remote-reach"] {
+    // 〔C4d · 第四波 4B〕历史两条出成品：远端那一支等 `remote_ask`（真异步），本机扫盘那段自己挪到阻塞线程池。
+    for c in [
+        "ping",
+        "resolve",
+        "assets-sync",
+        "panorama",
+        "remote-reach",
+        "history-projects",
+        "history-sessions",
+    ] {
         assert!(
             matches!(d(c), Disposition::Spawn(..)),
             "`{c}` 不该在阻塞档上 —— 那会让它白白变成不可取消"
@@ -496,14 +505,13 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-read-text",
         "files-home",
         // 〔`C1` · 09-24〕只读查询面八条：全做文件 I/O（`history-search` 扫全库）。
-        "history-projects",
+        // 〔C4d · 第四波 4B〕`history-projects` / `history-sessions` 出列：它们出成品、远端那一支要等 ⇒ 真异步（见上面那一档）。
         "history-index",
         "history-user-inputs",
         "history-find",
         "history-read",
         "history-record", // 〔U4b〕
         "history-search",
-        "history-sessions",
         "history-subagents",
         "history-tail",
         "accounts-list",

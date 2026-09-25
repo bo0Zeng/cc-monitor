@@ -112,6 +112,12 @@ src/backend/files/mod.rs:363	定期重走 ＋ 浏览目录走 ReadDirectoryChang
 src/backend/files/mod.rs:366	**没实测**（本仓的 Windows 虚拟机上没跑过本族）。\n              ⚠ Everything 那套（读 MFT ＋ 订阅 USN Journal）**两段都要管理员**\n              （voidtools FAQ 逐字），而我们的后端不是 ⇒ 那条路对我们关着，\n              这一格拿不到 Everything 那种「整盘一秒」。	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
 src/backend/files/mod.rs:373	定期重走 ＋ 浏览目录走 FSEvents（notify 在这个平台上的后端）	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
 src/backend/files/mod.rs:376	🟡 **文献读数，没实测**（`设计/96 §2.9` 那张表里这一格逐字就是这么标的）。\n              FSEvents 能无特权递归监听一棵树、Spotlight 的索引普通用户可查（`mdfind`）——\n              两条都**没碰过**。⇒ 这个平台上「保鲜要不要换成另一套机制」判不了。	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
+src/backend/history_join.rs:69	那台的后端没带会话 id 清单（版本旧）	保留	[不对外] 〔C4d〕WhyUnknown::reason 只进 tracing::info!（log_unknowns 按理由汇总一条）；搬自 monitor remote_history.rs 那一份，措辞去掉了 sid / sessionCount
+src/backend/history_join.rs:70	那一行的会话 id 清单与会话数对不上（行坏了）	保留	[不对外] 〔C4d〕同上只进日志
+src/backend/history_join.rs:71	这条路上答不了会话此刻活没活	保留	[不对外] 〔C4d〕同上只进日志（远端 / 合成历史判活「不知道」的理由）
+src/backend/history_join.rs:72	星标 / 隐藏的记录读不到	保留	[不对外] 〔C4d〕同上只进日志；给界面的那一句是 notice（annotations() 那两句），不是这一句
+src/backend/history_join.rs:448	本机项目清单	保留	[不对外] 〔C4d〕log_unknowns 的日志标签
+src/backend/history_join.rs:465	远端项目清单	保留	[不对外] 〔C4d〕log_unknowns 的日志标签（搬自 monitor 那一份「远端项目列表」）
 src/backend/inbound.rs:169	单行超过上限 {MAX_LINE_BYTES} 字节，已整行丢弃	改·§2.1	[可达存疑] 常驻后端对帧请求的错误回帧，经 bridge 可能进 toast；「单行」指协议的一行帧，用户不知道这一层
 src/backend/inbound.rs:294	这条命令是同步阻塞的（已经在起进程/动 tmux），停不下来 —— \n                     等它自己的应答，别当它没发生	改·§2.2	[可达存疑] 同上；「同步阻塞」「等它自己的应答，别当它没发生」是写给客户端代码的论证 兼§2.4（括号＋破折号）→「这条命令已经开始执行，取消不了」
 src/backend/inbound.rs:330	内建命令 `{other}` 没有在 dispatch 里被处理 —— 这是本后端的 bug	改·§2.1	[可达存疑] 同上；dispatch 是实现名，「这是本后端的 bug」是给开发者的 新词:dispatch →「后端内部出错：命令 {…} 没有被处理」

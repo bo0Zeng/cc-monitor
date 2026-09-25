@@ -11,7 +11,7 @@
 //!
 //! ```text
 //!  monitor（宿主，只交事实） ── remote-reach {origin, dial, backend} ──▶ 可达表（内存）
-//!  调用方 ── ask(origin, argv) ──▶ 查表 ──▶ DialRemote.run(dial, "<backend> <argv…>")
+//!  调用方 ── ask_with(machine, argv, 表, 对面) ──▶ 查表 ──▶ DialRemote.run(dial, "<backend> <argv…>")
 //!                                          └─ dial::uses::run（池里那条 SSH，多一个 exec 通道，不是新连接）
 //! ```
 //!
@@ -147,14 +147,10 @@ pub(crate) fn unreachable_message(machine: &str) -> String {
     )
 }
 
-/// 问可达表里的那一台跑一条一次性子命令，交回它的 stdout。**生产入口**（进程里那张表 ＋ 真拨号）。
+/// 问可达表里的那一台跑一条一次性子命令，交回它的 stdout。表与对面由调用方给 —— 生产调用方交进程里那张表（[`REACH`]）
+/// ＋ 真拨号（[`DialRemote`]），判据交自己的表与替身（数得出「一台问了几次」）。
 /// `machine` = 可达表的键（monitor 交来的那台的名字；本后端只当不透明的键用 —— 参数名刻意不叫 origin：
 /// 那个概念在 monitor 里有自己的类型，这里只是一张表的键）。
-pub async fn ask(machine: &str, argv: &[&str]) -> Result<String, String> {
-    ask_with(machine, argv, &REACH, &DialRemote).await
-}
-
-/// [`ask`] 的可喂夹具那一半：表与对面都由调用方给。
 pub async fn ask_with(
     machine: &str,
     argv: &[&str],
