@@ -104,9 +104,8 @@ import {
   type HistoryProject,
   type HistorySessionEntry,
 } from "../history-reads";
-import type { Hit as SearchHit } from "../generated/Hit";
-import type { SearchResponse } from "../generated/SearchResponse";
-import type { SessionHits as SearchSessionHits } from "../generated/SessionHits";
+// 〔LOC1b · 4D〕搜索那三个线上类型的家从 Rust `search.rs` 的生成物换到 `history-search.ts`（本机也改问本机后端，那份 Rust 删了）。
+import type { Hit as SearchHit, SearchResult, SessionHits as SearchSessionHits } from "./history-search";
 
 interface SessionTreeNode {
   entry: HistorySessionEntry;
@@ -304,15 +303,9 @@ export class HistoryView {
 
   close(): void {
     if (!this.isOpen) return;
-    // ★ audit-0805 F14：**关掉视图必须掐断那条 1 秒重试链**。
-    //
-    // 全文搜索在 `status === "indexing"` 时挂一个 `setTimeout(…, 1000)` 重跑
-    // `runFullTextSearch()`，而它内含远端 fan-out（〔C4a〕今天是 `history-search.ts::searchAllMachines`
-    // 经通道逐台问）⇒ **对每台远端各一问**。
-    // 那个回调的存活判据是 `seq === this.ftSeq`，而 `close()` 此前**不动 ftSeq**
-    //（复位在 `open()`）⇒ 视图关掉、`root` 已 `remove()` 之后那条链**照跑**，
-    // 每秒继续对所有远端扇出，并把结果写进已 detach 的 DOM。
-    // 递增一次代际号就够了 —— 挂着的回调下一次醒来时 `seq !== this.ftSeq`，自行终止。
+    // ★ audit-0805 F14：关掉视图时递增代际号 —— 还在路上的那一次全文搜索回来时 `seq !== this.ftSeq`，
+    //   不把结果写进已 detach 的 DOM。〔LOC1b · 4D〕F14 当年要掐的那条 1 秒重试链（等本机索引建好）随本机内存索引删了，
+    //   这一行留下来管的是「在飞的那一问」。
     this.ftSeq++;
     this.closeViewer();
     this.closeEntryMenu(); // F96：菜单挂 document.body（不在 root 内），销毁视图须显式清，防 DOM+监听器泄漏
@@ -672,14 +665,7 @@ export class HistoryView {
     bar.appendChild(timeSel);
     this.fulltextOnlyEls.push(timeSel);
 
-    const reindexBtn = document.createElement("button");
-    reindexBtn.type = "button";
-    reindexBtn.className = "history-refresh";
-    reindexBtn.textContent = "重新索引";
-    reindexBtn.title = "重新扫描所有会话内容建立搜索索引（有大量新会话时用）";
-    reindexBtn.addEventListener("click", () => void this.rebuildIndex(reindexBtn));
-    bar.appendChild(reindexBtn);
-    this.fulltextOnlyEls.push(reindexBtn);
+    // 〔LOC1b · 4D〕「重新索引」按钮随本机内存索引一起删了：本机也问本机后端，每次现扫、没有可重建的东西。
 
     this.listShell.appendChild(bar);
 
@@ -726,7 +712,7 @@ export class HistoryView {
       if (this.searchInput.value.trim() !== "") {
         this.runFullTextSearch();
       } else {
-        void this.showIndexIdleHint();
+        this.showIndexIdleHint();
       }
     }
     this.searchInput.focus();
@@ -745,38 +731,27 @@ export class HistoryView {
     this.updateSearchPlaceholder();
   }
 
-  /** 全文模式但无关键词时，拉索引状态给个提示。 */
-  private async showIndexIdleHint(): Promise<void> {
+  /** 全文模式但无关键词时给个提示。〔LOC1b · 4D〕本机没有索引了 ⇒ 不再有「已索引 N 个 / 构建中」那两态。 */
+  private showIndexIdleHint(): void {
     this.resultsEl.replaceChildren();
-    this.statusEl.textContent = "查询索引状态…";
-    try {
-      // C04d 批 6c：原来是**更窄**的内联字面量（少了 Rust 侧的 `builtAtMs`）。
-      // 换成生成物后那个字段也在类型里了——宽于原来、与线上一致。
-      const st = await commands.get_search_index_status();
-      if (this.searchMode !== "fulltext") return;
-      this.statusEl.textContent = st.ready
-        ? `输入关键词搜索会话内容（已索引 ${st.indexedSessions} 个会话 / ${st.indexedMessages} 条消息）`
-        : `索引构建中…（已 ${st.indexedSessions} 个会话），稍候再搜`;
-    } catch (e) {
-      this.statusEl.textContent = `索引状态获取失败：${String(e)}`;
-    }
+    this.statusEl.textContent = "输入关键词搜索会话内容";
   }
 
   /**
    * 执行全文搜索。竞态防护：每次调用递增 ftSeq，异步结果回来时若 seq 已过期则丢弃。
-   * 索引未就绪（status=indexing）时显示进度并自动重试。
+   * 〔LOC1b · 4D〕「索引未就绪 ⇒ 显示进度并每秒重试」那一支随本机内存索引删了（本机也问本机后端，没有「索引中」）。
    */
   private async runFullTextSearch(): Promise<void> {
     const query = this.searchInput.value.trim();
     const seq = ++this.ftSeq;
     if (query === "") {
       this.resultsEl.replaceChildren();
-      void this.showIndexIdleHint();
+      this.showIndexIdleHint();
       return;
     }
     this.statusEl.textContent = "搜索中…";
     try {
-      // 〔C4a〕本机索引 ＋ 各台远端（远端那半经通道说 `history-search`），合并也在前端（`history-search.ts`）。
+      // 本机 ＋ 各台远端，逐台经通道说 `history-search`（〔LOC1b〕本机也是），合并在前端（`history-search.ts`）。
       const resp = await searchAllMachines({
         query,
         includeTools: this.includeTools,
@@ -785,11 +760,6 @@ export class HistoryView {
         limit: 300,
       });
       if (seq !== this.ftSeq || this.searchMode !== "fulltext") return; // 过期 / 已切模式
-      if (resp.status === "indexing") {
-        this.resultsEl.replaceChildren();
-        this.waitForIndexThenSearch(seq, resp.indexedSessions, 1);
-        return;
-      }
       this.renderSearchResults(resp, query);
     } catch (e) {
       if (seq !== this.ftSeq) return;
@@ -797,75 +767,10 @@ export class HistoryView {
     }
   }
 
-  /**
-   * 索引就绪等待的上限。120 × 1s = 2 分钟。
-   *
-   * ⚠ 上限与超限语义**成对定义**（定框 E5）：超了不是继续、也不是静默停 ——
-   * 是**停下来并说清为什么停、用户能做什么**（E4：静默失败给身份）。
-   * 此前这条链**一个上限都没有**：索引若永远建不好，它会一直转下去。
-   */
-  private static readonly INDEX_WAIT_MAX_TICKS = 120;
+  // 〔LOC1b · 4D〕`INDEX_WAIT_MAX_TICKS` 与 `waitForIndexThenSearch`〔散文墓碑〕删了：它们等的是本机内存索引建好
+  //   （audit-0805 F14 那条「只问本地索引状态、不再每秒重跑整条搜索」的 1 秒链），本机也改问本机后端之后没有「索引中」这一态。
 
-  /**
-   * 索引没建好时的等待。★ **只问本地索引状态，不再每秒重跑整条搜索**〔audit-0805 F14〕。
-   *
-   * # 它改掉了什么
-   *
-   * 原来是每 1 秒重跑一次 `runFullTextSearch()`，而完整搜索是**无条件**地同时问本地索引与各台远端
-   * （当时住 Rust `search.rs`；〔C4a〕今天住 `history-search.ts::searchAllMachines`，形状没变）——
-   * 没有「本地还在建索引就别问远端」这一说 ⇒ **每秒对每台远端各一问**。
-   *
-   * 而且它只在**远端一条都没命中**时才会继续转：合并（`history-search.ts::mergeSearchResults`）一旦拿到非空远端结果
-   * 就直接返回 `status: "ready"`。⇒ 这条链的实际形态是
-   * 「**每秒问一遍所有远端，每秒得到「没有」，然后再问一遍**」。
-   *
-   * 现在等待期间只调 `get_search_index_status`（`search.rs:890`，只有一次 `RwLock::read`、
-   * 无 `.await`、**零 SSH**），就绪后**再跑一次完整搜索**（那一次照常含远端）。
-   *
-   * # 诚实边界：indexing 期间不再问远端，这是**刻意的**
-   *
-   * 代价：若某台远端**在等待期间**新增了匹配（或从不可达变回可达），用户看到它的时刻
-   * 从「1 秒内」推迟到「本地索引建好之后」。接受这个代价的理由是三条：
-   * ① 首次那一发已经问过一遍远端了；② 这条链存在的理由是「**本地**索引没好」，
-   * 不是「远端可能会变」；③ 用户敲一下回车就能强制重问。
-   * ⇒ 换来的是从「每秒 N 条 SSH」降到 0。
-   */
-  private waitForIndexThenSearch(seq: number, indexedSessions: number, tick: number): void {
-    if (tick > HistoryView.INDEX_WAIT_MAX_TICKS) {
-      this.statusEl.textContent =
-        `索引构建中…（已 ${indexedSessions} 个会话）—— 等了 ` +
-        `${HistoryView.INDEX_WAIT_MAX_TICKS} 秒仍未就绪，已停止自动重试。` +
-        `可以先用「按项目」模式浏览，或稍后重新搜索。`;
-      return;
-    }
-    this.statusEl.textContent = `索引构建中…（已 ${indexedSessions} 个会话），${tick}s 后自动重试`;
-    window.setTimeout(() => {
-      // 存活判据与原来一致：`close()` 会递增 `ftSeq`（F14 第一刀），挂着的回调自行终止。
-      if (seq !== this.ftSeq || this.searchMode !== "fulltext") return;
-      void (async () => {
-        let ready = false;
-        let seen = indexedSessions;
-        try {
-          const st = await commands.get_search_index_status();
-          ready = st.ready;
-          seen = st.indexedSessions;
-        } catch (e) {
-          // 查状态都失败了 ⇒ 说清楚再停，不要装作还在等（E4）。
-          if (seq !== this.ftSeq) return;
-          this.statusEl.textContent = `索引状态查询失败：${String(e)}`;
-          return;
-        }
-        if (seq !== this.ftSeq || this.searchMode !== "fulltext") return;
-        if (ready) {
-          void this.runFullTextSearch();
-          return;
-        }
-        this.waitForIndexThenSearch(seq, seen, tick + 1);
-      })();
-    }, 1000);
-  }
-
-  private renderSearchResults(resp: SearchResponse, query: string): void {
+  private renderSearchResults(resp: SearchResult, query: string): void {
     this.resultsEl.replaceChildren();
     // K-R100：`truncated` 现在**本地与每一台远端都算**（收口前它只装本地那一半，
     // 于是远端截断在这一行上一个字不说）。措辞也改准：被砍掉的是 **snippet**，
@@ -1008,7 +913,7 @@ export class HistoryView {
           ? `${s.projectName}  ·  ${s.projectPath}`
           : s.projectPath,
         scrollToUuid: hit.uuid,
-        // issue #28：远端命中点击走远端只读视图（origin → stream_read_remote_session）。
+        // issue #28：远端命中点击走那台的只读视图（origin → `stream_read_session_jsonl` 带 origin 那一条）。
         origin: originFromWire(s.origin),
         cwd: s.projectPath, // F62：本地命中建分支后 resume 用
       });
@@ -1016,26 +921,7 @@ export class HistoryView {
     return row;
   }
 
-  private async rebuildIndex(btn: HTMLButtonElement): Promise<void> {
-    const prev = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = "索引中…";
-    this.statusEl.textContent = "重新索引中…";
-    try {
-      await commands.rebuild_search_index();
-      // 重建完后若有关键词则重搜，否则刷新空闲提示
-      if (this.searchInput.value.trim() !== "") {
-        await this.runFullTextSearch();
-      } else {
-        await this.showIndexIdleHint();
-      }
-    } catch (e) {
-      this.statusEl.textContent = `重新索引失败：${String(e)}`;
-    } finally {
-      btn.disabled = false;
-      btn.textContent = prev ?? "重新索引";
-    }
-  }
+  // 〔LOC1b · 4D〕`rebuildIndex`〔散文墓碑〕（「重新索引」按钮的动作）随本机内存索引删了。
 
   // === 列表渲染 ===
 

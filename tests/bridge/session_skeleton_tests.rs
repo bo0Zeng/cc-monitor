@@ -168,28 +168,24 @@ fn range_payloads_on_the_golden_fixture() {
 
 /// 〔U3b〕两条历史读路**真的走**那个「先占号、后过滤」的住址，而且手里不再有自己的计数器。
 /// 金标准那一格测的是住址本身；这一格钉的是读路没绕开它（绕开 = 回到「可显示序号」、与索引对不上）。
+/// 〔LOC1b · 第四波 4D〕从前是「两个历史读者（本机 `history.rs` · 远端 `remote_history.rs`）都走这一个住址」；
+/// 本机远端合成一条之后读者只剩 `history·rs::SessionPager` 一个 ⇒ 钉「恰好这一处走」＋「`remote_history.rs` 里不再有读者」。
 #[test]
-fn both_history_readers_go_through_the_one_numbering_home() {
-    for (name, src) in [
-        (
-            "history.rs",
-            include_str!("../../src/bridge/src/history.rs"),
-        ),
-        (
-            "remote_history.rs",
-            include_str!("../../src/bridge/src/remote_history.rs"),
-        ),
-    ] {
-        let prod = guard_core::production_code(src);
-        assert!(
-            guard_core::find_pinned(&prod, "session_skeleton::numbered_displayable(").is_ok(),
-            "{name}：没走（或不止一处走）`numbered_displayable`"
-        );
-        assert!(
-            !guard_core::contains_word(&prod, "next_seq"),
-            "{name}：读路里又长出了自己的 `next_seq` 计数器"
-        );
-    }
+fn the_whole_session_reader_goes_through_the_one_numbering_home() {
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/history.rs"));
+    assert!(
+        guard_core::find_pinned(&prod, "session_skeleton::numbered_displayable(").is_ok(),
+        "history.rs：没走（或不止一处走）`numbered_displayable`"
+    );
+    assert!(
+        !guard_core::contains_word(&prod, "next_seq"),
+        "history.rs：读路里又长出了自己的 `next_seq` 计数器"
+    );
+    let remote = guard_core::production_code(include_str!("../../src/bridge/src/remote_history.rs"));
+    assert!(
+        !remote.contains("numbered_displayable") && !remote.contains("parse_line"),
+        "remote_history.rs 又长出了一个会话读者 —— 本机远端读一整份会话只许有 `history.rs` 那一条"
+    );
 }
 
 fn st3_booked(o: &crate::origin::Origin, face: crate::drift_ledger::DriftFace, key: &str) -> bool {

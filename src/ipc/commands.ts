@@ -151,8 +151,6 @@ import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
 import type { SessionLinesPage } from "../generated/SessionLinesPage";
 import type { PushResult } from "../generated/PushResult";
 import type { ResolvedHost } from "../generated/ResolvedHost";
-import type { SearchIndexStatus } from "../generated/SearchIndexStatus";
-import type { SearchResponse } from "../generated/SearchResponse";
 import type { LogFileInfo } from "../generated/LogFileInfo";
 import type { AssetsSynced } from "../generated/AssetsSynced";
 import type { McpServerEntry } from "../generated/McpServerEntry";
@@ -278,18 +276,6 @@ export const commands = {
    */
   set_diagnostics_config: (args: { cfg: DiagnosticsConfig }) =>
     invoke<RestartHint>("set_diagnostics_config", args),
-
-  /**
-   * 全文搜索历史。`afterMs`/`limit` 在 Rust 侧是 `Option<i64>`/`Option<usize>` ⇒ `number | null`。
-   * `afterMs` 是**毫秒时间戳**量纲（同 C03：2^53-1 ms ≈ 28.5 万年）。
-   */
-  search_history: (args: {
-    query: string;
-    includeTools: boolean;
-    scope: string | null;
-    afterMs: number | null;
-    limit: number | null;
-  }) => invoke<SearchResponse>("search_history", args),
 
   /**
    * devbench F03：列出接入的 skill 及其状态。
@@ -441,7 +427,7 @@ export const commands = {
   /**
    * 流式读会话 jsonl。Rust 返回 `Result<u32, String>`（条数）。
    *
-   * 🔴 **〔步 12·C 2026-09-20〕`stream_read_remote_session` 已退役，两条收成这一条。**
+   * 🔴 **〔步 12·C 2026-09-20〕`stream_read_remote_session`〔散文墓碑〕已退役，两条收成这一条。**〔LOC1b · 4D〕Rust 那一侧两支也合成了一条（本机也经本机后端 `history-read`）。
    *
    * 这一行原先逐字写着「**注意它与 `stream_read_session_jsonl` 的签名刻意不同**：
    * 远端这条 `origin: String` 是**必填**，本地那条**根本没有 origin**」——
@@ -482,9 +468,6 @@ export const commands = {
    */
   push_public_key: (args: { cfg: unknown; pubKeyPath: string | null }) =>
     invoke<PushResult>("push_public_key", args),
-
-  /** 重建搜索索引。返回新状态 ⇒ 生成物（桶③）。 */
-  rebuild_search_index: () => invoke<SearchIndexStatus>("rebuild_search_index"),
 
   /** 读本机 MCP server 清单（user/local/project 三档）。Rust 签名**无 `Result` 包装**。 */
   /**
@@ -813,9 +796,6 @@ export const commands = {
   /** 往远端 rc 里装别名块（〔MC1〕从前叫「装 ccm 助手」）。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
   install_remote_alias_block: (args: { cfg: unknown; profile: string }) =>
     invoke<string>("install_remote_alias_block", args),
-
-  /** 搜索索引状态。Rust 签名**无 `Result` 包装**（`-> SearchIndexStatus`）。 */
-  get_search_index_status: () => invoke<SearchIndexStatus>("get_search_index_status"),
 
   /** 杀掉远端某个 tmux 会话。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   kill_remote_tmux: (args: { origin: string; target: string }) =>

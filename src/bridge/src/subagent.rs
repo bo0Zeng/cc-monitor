@@ -29,7 +29,7 @@
 //! 远端那条（〔C4d〕今天是长连接的帧命令，`frame_query` 按行那一档 30s 期限 ＋ 单帧上限）有期限与上限；本机那条
 //! （`local_query::run_query`）**两样都没有** —— 那一层刻意把超时留给调用方（见它自己的头注）。
 //! subagent 通常是短命的侧任务、文件很小，但一个长跑的 subagent 可能撞上远端那 30s。
-//! 真要收，得把本命令改成**流式**（同 `stream_read_remote_session` 那条 channel 路），
+//! 真要收，得把本命令改成**流式**（同 `history·rs::stream_read_session_jsonl` 那条 channel 路），
 //! 那会改它对前端的返回形状 —— 是另一件事，不在本件里顺手做。
 
 use crate::messages::JsonlRecord;
@@ -256,7 +256,7 @@ pub async fn load_subagent(
     // 分本机这一步**只有一个住址**（`origin_tests.rs` 的 `F` 组两向钉着：
     // 吃 `Origin` 的命令 == 体里经 `.route(` 分本机的命令）。
     let backend = Backend::for_origin(origin.route("load_subagent")?)?;
-    // 深度防御（与 `stream_read_remote_session` 同一条纪律）：路径来自前端，本侧先做廉价校验；
+    // 深度防御（与 `history·rs::stream_read_session_jsonl` 同一条纪律）：路径来自前端，本侧先做廉价校验；
     // 真正的越权读由后端的 `fence_under_projects` 兜底。
     // ⚠ `K-R94` 起这道校验**两条路都过** —— 改前只有远端那条有，而「同一个入参、两种把关」
     // 正是 `KR94D3` 说的那种两条路不一致。
