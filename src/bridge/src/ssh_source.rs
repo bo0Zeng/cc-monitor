@@ -398,6 +398,25 @@ pub(crate) fn winner_order(
 /// 只登记不扩，上面那条恒等判据会当场红（名单里有、门控不看它）。
 const KNOWN_CAPABILITY_TOKENS: &[&str] = &["bg", "rbind-token", "tail-only"];
 
+/// U-CC1 第四个面的写点：hello 里**不认识的**能力 token 记一笔。〔ST3〕记在 `origin`（那台远端）名下。
+/// 只记账，行为一字不改（不认识的 token 本来就按保守缺省忽略）。
+fn note_unknown_capabilities(
+    origin: &crate::origin::Origin,
+    capabilities: &[String],
+    build_id: &str,
+) {
+    for t in capabilities {
+        if !KNOWN_CAPABILITY_TOKENS.contains(&t.as_str()) {
+            crate::drift_ledger::record(
+                origin,
+                crate::drift_ledger::DriftFace::UnknownBackendToken,
+                &format!("capabilities:{t}"),
+                Some(&format!("build_id={build_id}")),
+            );
+        }
+    }
+}
+
 /// 三位流模式 flag：`(with_bg, tail_only, with_rbind_token)`。
 ///
 /// 🔴 〔步 3〕元组从 2 元扩成 3 元。**扩它会连带 [`should_upgrade_reconnect`]** ——
@@ -2276,13 +2295,12 @@ async fn flush_lines(
         .iter()
         .map(|l| (l.session_id.clone(), l.seq))
         .collect();
-    let payloads = crate::batch_to_payloads(lines, Some(host_label.to_string()));
+    // 〔ST3〕同一个 origin 既是载荷上的机器名、也是看不懂的行记账的那台。
+    let origin = crate::origin::Origin(host_label.to_string());
+    let payloads = crate::batch_to_payloads(lines, &origin);
     replay.on_line_batch_awaited(app, payloads).await;
     // 〔C2〕发出去了才推续点（连续才推，见 `snapshot_resume::note_flushed`）。
-    crate::snapshot_resume::note_flushed(
-        &crate::origin::Origin(host_label.to_string()),
-        flushed.iter().map(|(s, q)| (s.as_str(), *q)),
-    );
+    crate::snapshot_resume::note_flushed(&origin, flushed.iter().map(|(s, q)| (s.as_str(), *q)));
 }
 
 /// [`run`] 的内层流循环：connect → exec backend → 逐帧 dispatch。**所有**提前返回
@@ -2580,15 +2598,12 @@ async fn stream_loop(
                 // U-CC1：记下**我们不认识的**能力 token。多半是远端后端比 monitor 新
                 // （自动部署会把它拉回同一个 build，但手工装 / 关了自动部署的用户会长期不一致）。
                 // 只记账，行为一字不改：不认识的 token 本来就按保守缺省忽略。
-                for t in &capabilities {
-                    if !KNOWN_CAPABILITY_TOKENS.contains(&t.as_str()) {
-                        crate::drift_ledger::record(
-                            crate::drift_ledger::DriftFace::UnknownBackendToken,
-                            &format!("capabilities:{t}"),
-                            Some(&format!("build_id={build_id}")),
-                        );
-                    }
-                }
+                // 〔ST3〕记在这台名下。
+                note_unknown_capabilities(
+                    &crate::origin::Origin(host_label.clone()),
+                    &capabilities,
+                    &build_id,
+                );
                 // 标记本次连接已健康(收到 backend hello)，供 run() 重连循环判定是否重置退避。
                 connected.store(true, Ordering::Release);
                 // issue #33：版本协商。不兼容/偏旧经 SS-F remote-health 通道醒目提示（前端

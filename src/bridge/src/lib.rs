@@ -772,9 +772,11 @@ pub fn run() {
             let on_batch: watcher::BatchHandler = {
                 let replay = replay.clone();
                 let handle = app.handle().clone();
+                // 〔ST3〕本机 watcher 只读本机的 jsonl ⇒ 看不懂的东西记在本机名下（载荷上不带 origin，线上形状不变）。
+                let local = crate::origin::Origin::local();
                 Arc::new(move |lines: Vec<watcher::JsonlLine>| {
-                    // 本地行无 origin（None）；远端行由 ssh_source 传 Some(host)。
-                    let payloads = batch_to_payloads(lines, None);
+                    // 本地行载荷无 origin；远端行由 ssh_source 传那台的 origin。
+                    let payloads = batch_to_payloads(lines, &local);
                     replay.on_line_batch(&handle, payloads);
                 })
             };
@@ -1732,16 +1734,18 @@ pub(crate) fn load_remote_config_by_label(label: &str) -> Option<ssh_source::Rem
 /// 这一个自由函数，保持 parse → is_displayable 过滤 → extract_cwd → 组 payload
 /// 的行为唯一。过滤次序、解析错误 warn-then-continue、`seq` 透传都必须与历史一致。
 ///
-/// `origin`：数据来源标签。`None` = 本地（前端 Tab 标题不加前缀，与历史一致）；
-/// `Some(host)` = 远端（issue #15，前端 Tab 标题加 `[host]` 前缀以区分本地/远端）。
-/// 透传到每条 payload，让前端按 sid 分流时知道该 Tab 是本地还是哪台远端主机。
+/// `origin`：数据来源。载荷上的 `origin` 字段由它派生（与 `session_skeleton·rs::range_payloads` 同一口径）：
+/// 本机 ⇒ 不带（前端 Tab 标题不加前缀，与历史一致）；远端 ⇒ 那台的名字（issue #15，前端 Tab 标题加
+/// `[host]` 前缀以区分本地/远端）。透传到每条 payload，让前端按 sid 分流时知道该 Tab 是本地还是哪台远端主机。
+/// 〔ST3〕它同时是记账的那台：看不懂的行记在 `origin` 名下（原先收 `Option<String>`，`None` = 本机）。
 pub(crate) fn batch_to_payloads(
     lines: Vec<watcher::JsonlLine>,
-    origin: Option<String>,
+    origin: &crate::origin::Origin,
 ) -> Vec<bridge::JsonlLinePayload> {
+    let label = origin.host_name().map(str::to_string);
     let mut payloads = Vec::with_capacity(lines.len());
     for line in lines {
-        match parser::parse_line(&line.raw) {
+        match parser::parse_line(origin, &line.raw) {
             Ok(Some(record)) if record.is_displayable() => {
                 let cwd = extract_cwd(&record);
                 payloads.push(bridge::JsonlLinePayload {
@@ -1750,7 +1754,7 @@ pub(crate) fn batch_to_payloads(
                     path: line.path.to_string_lossy().into_owned(),
                     // P5.1：watcher 给每行单调编号；前端按 seq 排到 timeline
                     seq: line.seq,
-                    origin: origin.clone(),
+                    origin: label.clone(),
                     message: record,
                 });
             }
