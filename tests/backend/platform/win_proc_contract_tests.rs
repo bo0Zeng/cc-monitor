@@ -129,3 +129,45 @@ fn each_liveness_fact_has_exactly_one_windows_arm_that_delegates() {
         "`pid_alive` / `proc_starttime` / `start_epoch_from_ticks` 的兜底臂不是恰好三条"
     );
 }
+
+/// **Win32 读法只有一个住址**：`OpenProcess` 一族四个名字在后端生产段里出现的文件集合
+/// == {`platform/win_proc.rs`}，两向相等。
+///
+/// 多一个文件 ⇒ 有人在别处又写了一份 Win32 判活（两份读法迟早漂）；
+/// 少了 `win_proc.rs` ⇒ 读法搬走了而本条的锚没跟上。
+#[test]
+fn the_win32_process_reads_live_in_exactly_one_file() {
+    let root = crate::guard_support::src_root();
+    let names = [
+        "OpenProcess",
+        "GetExitCodeProcess",
+        "GetProcessTimes",
+        "WaitForSingleObject",
+    ];
+    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut scanned = 0usize;
+    for (path, raw) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
+        scanned += 1;
+        let prod = guard_core::production_code(&raw);
+        if names.iter().any(|n| guard_core::contains_word(&prod, n)) {
+            let rel = path
+                .strip_prefix(&root)
+                .expect("扫出来的都在后端源码树底下")
+                .to_string_lossy()
+                .replace('\\', "/");
+            seen.insert(rel);
+        }
+    }
+    assert!(
+        scanned > 50,
+        "只扫到 {scanned} 份 `.rs` —— 遍历坏了，本条在空转"
+    );
+    let want: std::collections::BTreeSet<String> =
+        ["platform/win_proc.rs".to_string()].into_iter().collect();
+    assert_eq!(
+        seen, want,
+        "后端生产段里提到 `OpenProcess` 一族的文件集合变了。\n\
+         Windows 上「进程在不在 / 何时起 / 等它死」的读法只许住 `platform/win_proc.rs`（`01 §3.1`：\n\
+         platform 是唯一的翻译官）。"
+    );
+}
