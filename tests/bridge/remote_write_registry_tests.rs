@@ -1143,3 +1143,94 @@ fn a_fenced_write_refuses_before_it_touches_the_wire() {
         late.join("\n")
     );
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// 🔴 〔RW1 · 第四波 · 2026-09-24〕**monitor 进程不经 SFTP 直写用户文件** —— 远端那一半的分类闭集
+// ══════════════════════════════════════════════════════════════════════════
+//
+// 用户裁远端三处（F10 别名块 · F11 删会话 · F89a `.mcp.json`）「按推荐改」经远端后端写，F08 部署后端留在 SFTP。
+// ⇒ 本表剩下的每一处 SFTP 写，都必须落在**不是用户文件**的那几类里（同本机那一半
+//   `write_site_registry_tests::every_monitor_write_site_lands_outside_the_users_files`）：
+//   闭集**没有「用户文件」这一档**；真是用户文件又一时搬不走的，记待收并指名谁来收。两向相等。
+
+/// 一处远端写写的是什么。**闭集，刻意没有「用户文件」这一档。**
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RemoteLands {
+    /// F08：我们的部署物（后端二进制 · 标记 · 入口 shim · 我们的脚本目录）—— 用户裁「留在 SFTP」。
+    OwnDeployment,
+    /// 我们自己的暂存区（`~/.cc-monitor/staging/`），落进用户目标的那一下在后端提交。
+    OwnStaging,
+    /// **是**用户文件，但有主、在别的路收：`(谁来收, 为什么不在本路)`。
+    Pending(&'static str),
+}
+
+const REMOTE_CLASS: &[(&str, &str, RemoteLands)] = &[
+    ("sftp.rs", "upload_atomic", RemoteLands::OwnDeployment),
+    ("sftp.rs", "ensure_dir_all", RemoteLands::OwnDeployment),
+    ("sftp.rs", "uninstall_remote_backend", RemoteLands::OwnDeployment),
+    // `SftpFile` 今天只剩 F08 那一个用户（`put_ccm_entry`：`~/.local/bin/ccm` 那三行入口）。
+    ("sftp.rs", "put_atomic", RemoteLands::OwnDeployment),
+    ("sftp.rs", "delete_created", RemoteLands::OwnDeployment),
+    (
+        "sftp_pool.rs",
+        "copy_remote_path",
+        RemoteLands::Pending(
+            "S4：`sftp_copy` 那套裸通道件退役（复制已走后端 `files-copy`，门禁 `f3-copy` 格随之退役）",
+        ),
+    ),
+    ("sftp_pool.rs", "upload_to_staging", RemoteLands::OwnStaging),
+    ("sftp_pool.rs", "ensure_staging_dir", RemoteLands::OwnStaging),
+    (
+        "sftp_pool.rs",
+        "download_inner",
+        RemoteLands::Pending("SR1b：SFTP 进本机常驻后端，下载的本机落地改由本机后端提交"),
+    ),
+];
+
+#[test]
+fn every_remaining_sftp_write_lands_outside_the_users_files() {
+    let registered: Vec<(&str, &str)> = REMOTE_WRITES.iter().map(|(f, n, _, _)| (*f, *n)).collect();
+    assert!(
+        !registered.is_empty(),
+        "远端写表空了 —— 下面那条相等在空集上成立"
+    );
+    let unclassified: Vec<String> = registered
+        .iter()
+        .filter(|(f, n)| !REMOTE_CLASS.iter().any(|(cf, cn, _)| cf == f && cn == n))
+        .map(|(f, n)| format!("{f}::{n}"))
+        .collect();
+    let ghosts: Vec<String> = REMOTE_CLASS
+        .iter()
+        .filter(|(cf, cn, _)| !registered.iter().any(|(f, n)| f == cf && n == cn))
+        .map(|(f, n, _)| format!("{f}::{n}"))
+        .collect();
+    assert!(
+        unclassified.is_empty() && ghosts.is_empty(),
+        "远端写与「它写的是什么」那张分类表对不上。\n  \
+         没分类的（🔴 新的一处 SFTP 写先回答它是不是用户文件）：{unclassified:?}\n  \
+         分类表里的幽灵（那一处没了，同轮摘行）：{ghosts:?}\n\n\
+         用户裁远端三处（别名块 · 删会话 · `.mcp.json`）经远端后端写；F08 部署留在 SFTP。\n\
+         ⇒ 分类是闭集，**没有「用户文件」这一档**：用户文件经那台远端的后端写（`user_files`）。"
+    );
+    for (f, n, c) in REMOTE_CLASS {
+        if let RemoteLands::Pending(owner) = c {
+            assert!(
+                owner.chars().count() >= 10,
+                "`{f}::{n}` 记成待收，却没写清谁来收"
+            );
+        }
+    }
+    // 远端三处用户文件的写，今天一处都不在本表的人群里（它们不再拿 SFTP 会话）。
+    for gone in [
+        "install_remote_alias_block",
+        "uninstall_remote_alias_block",
+        "remove_remote_file",
+        "write_remote_mcp_server",
+        "remove_remote_mcp_server",
+    ] {
+        assert!(
+            !write_sites().iter().any(|(_, n)| n == gone),
+            "`{gone}` 又经 SFTP 写了 —— 用户裁它经远端后端写"
+        );
+    }
+}

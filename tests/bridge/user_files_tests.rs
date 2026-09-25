@@ -290,3 +290,95 @@ fn rel_under_keeps_writes_inside_home_on_both_path_styles() {
         assert!(rel_under("/home/u", bad).is_err(), "{bad} 竟然过了");
     }
 }
+
+// ── J2：门发出去的命令 == 后端登记的写面 ∪ 读面里真用到的那几条（两侧异源：一侧 monitor 源码，一侧后端源码）──
+
+/// 从 monitor 的门（`BackendDoor`）生产段里抠出它发出去的命令名：每一处 `.ask(` 之后第一个字符串字面量。
+fn door_commands() -> std::collections::BTreeSet<String> {
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/user_files.rs"));
+    let mut out = std::collections::BTreeSet::new();
+    for (at, _) in prod.match_indices(".ask(") {
+        let rest = prod[at + ".ask(".len()..].trim_start();
+        if let Some(body) = rest.strip_prefix('"') {
+            if let Some(end) = body.find('"') {
+                out.insert(body[..end].to_string());
+            }
+        }
+    }
+    out
+}
+
+/// 后端那一侧**登记了**的线上命令名（运行时读后端源码：写面 `MANAGE_COMMANDS` 的 `name:` ＋ 读族 `CAPABILITIES`
+/// 的能力名换成线上写法 `.` → `-`）。⚠ 运行时读、不 `include_str!`：编译期跨半边的边有登记表管着。
+fn backend_declared() -> (
+    std::collections::BTreeSet<String>,
+    std::collections::BTreeSet<String>,
+) {
+    let root = crate::guard_support::repo_root();
+    let names = |rel: &str, prefix: &str| -> std::collections::BTreeSet<String> {
+        let raw = std::fs::read_to_string(root.join(rel))
+            .unwrap_or_else(|e| panic!("读不到后端的 {rel}：{e}"));
+        let prod = guard_core::production_code(&raw);
+        prod.lines()
+            .filter_map(|l| l.trim().strip_prefix("name: \""))
+            .filter_map(|l| l.split('"').next())
+            .filter(|n| n.starts_with(prefix))
+            .map(|n| n.replace('.', "-"))
+            .collect()
+    };
+    (
+        names("src/backend/control/files_write.rs", "files-"),
+        names("src/backend/files/mod.rs", "files."),
+    )
+}
+
+#[test]
+fn every_command_the_door_sends_is_registered_on_the_backend_and_the_new_trio_has_a_consumer() {
+    let sent = door_commands();
+    let (write_face, read_family) = backend_declared();
+    assert!(
+        sent.len() >= 5 && write_face.len() >= 8 && read_family.len() >= 5,
+        "人群塌了（门 {} 条 · 写面 {} 条 · 读族 {} 条）—— 抽取器坏了，本条空转",
+        sent.len(),
+        write_face.len(),
+        read_family.len()
+    );
+    let unknown: Vec<&String> = sent
+        .iter()
+        .filter(|c| !write_face.contains(*c) && !read_family.contains(*c))
+        .collect();
+    assert!(
+        unknown.is_empty(),
+        "门发出去的这几条后端根本没登记：{unknown:?} —— 发过去只会拿到 unknown_command"
+    );
+    // 反向：`RW1` 在后端写面加的三条，每一条在 monitor 这一侧都有消费者（不许登记了没人用）。
+    for trio in ["files-peek", "files-put", "files-delete-session"] {
+        assert!(
+            write_face.contains(trio),
+            "后端写面没有 `{trio}` —— 那一侧被改名 / 删了？"
+        );
+        assert!(
+            sent.contains(trio),
+            "`{trio}` 在后端登记了，monitor 的门却不发它 —— 登记挂空号"
+        );
+    }
+    // 写面里门会发的那几条，恰好是这一集合（多发一条写面命令 ⇒ 先回答它为什么经门）。
+    let sent_writes: std::collections::BTreeSet<&str> = sent
+        .iter()
+        .filter(|c| write_face.contains(*c))
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        sent_writes,
+        [
+            "files-chmod",
+            "files-delete-session",
+            "files-peek",
+            "files-put",
+            "files-rename"
+        ]
+        .into_iter()
+        .collect(),
+        "门经后端写面发的命令变了"
+    );
+}
