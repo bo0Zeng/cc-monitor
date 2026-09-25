@@ -14,7 +14,7 @@ import { commands } from "./ipc/commands";
 import { runRemoteResumeTmux } from "./remote-launch-run";
 import { fetchAccounts, accountConfigDir, recordLastAccount, checkTrust, getModelForAccount } from "./accounts";
 import { showActionFailureToast } from "./error-toast";
-// 〔`A3` 第二波〕本机那一侧：`origin` 是 backend 的 `<local>`（**不是** `accounts.ts` 那个 `__local__`）。
+// 〔`A3` 第二波〕本机那一侧：`origin` 是 backend 的 `<local>`（〔C4b〕账号面那个第二种写法已退役，只剩这一个）。
 import { LOCAL_ORIGIN } from "./backend-policy";
 import { runLocalRestartResume } from "./account-restart-local";
 

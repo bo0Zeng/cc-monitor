@@ -11,9 +11,8 @@
  * （`runRemoteResumeTmux` 的位置参数签名被 `tests/e2e/restart-cmd-driver.ts` 经 `account-restart.ts`
  * 传递性锁死）。
  */
-// ⚠ 仓里有**两个 `LOCAL_ORIGIN`**：这个是 backend origin（`"<local>"`，与 Rust
-// `inbound_client::LOCAL_ORIGIN` 逐字节相同、有跨语言判据钉着）；`accounts.ts` 里那个是
-// `"__local__"`，账号面自己的标记。导错不会红，只会静默查不到通道。
+// 本机 origin（`"<local>"`，与 Rust `inbound_client::LOCAL_ORIGIN` 逐字节相同、有跨语言判据钉着）。
+// 〔C4b〕`accounts.ts` 先前那个同名的 `"__local__"` 已退役 —— 全仓只剩这一个本机表示。
 import { LOCAL_ORIGIN } from "./backend-policy";
 import { commands } from "./ipc/commands";
 import {
