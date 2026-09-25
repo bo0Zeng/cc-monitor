@@ -378,3 +378,29 @@ fn parse_session_info_without_proc_start() {
     assert_eq!(info.session_id, "2bb6394f-xx");
     assert!(info.proc_start.is_none());
 }
+
+fn st3_booked(o: &crate::origin::Origin, face: crate::drift_ledger::DriftFace, key: &str) -> bool {
+    crate::drift_ledger::snapshot(o)
+        .into_iter()
+        .any(|f| f.face == face && f.entries.iter().any(|e| e.key == key))
+}
+
+/// 〔ST3〕★ 接缝：未登记的会话 kind 记在**本机**名下（pidfile 只在本机扫），不在别台名下。
+#[test]
+fn an_unknown_session_kind_is_booked_under_the_local_machine() {
+    use crate::drift_ledger::DriftFace;
+    let raw = r#"{"pid":9,"sessionId":"s9","cwd":"/x","kind":"st3-kind-probe"}"#;
+    let mut info: SessionInfo = serde_json::from_str(raw).unwrap();
+    assert!(
+        !is_interactive(&String::new(), &mut info),
+        "行为变了：未登记的 kind 应当当后台"
+    );
+    assert!(
+        st3_booked(
+            &crate::origin::Origin::local(),
+            DriftFace::UnknownSessionKind,
+            "st3-kind-probe"
+        ),
+        "未登记的 kind 没记在本机名下"
+    );
+}
