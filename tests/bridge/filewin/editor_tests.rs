@@ -197,7 +197,10 @@ async fn reading_goes_through_the_channel_and_each_refusal_lands_on_its_own_shap
     };
     assert_eq!(
         got("/srv/a.md").await,
-        Ok(Some("text of /srv/a.md".to_string()))
+        Ok(Some(Opened {
+            text: "text of /srv/a.md".to_string(),
+            sha256: crate::filewin::find::testing::fake_sha256("text of /srv/a.md"),
+        }))
     );
     assert_eq!(got("/srv/binary.bin").await, Ok(None));
     assert_eq!(got("/srv/huge.log").await, Ok(None));
@@ -236,7 +239,7 @@ async fn reading_goes_through_the_channel_and_each_refusal_lands_on_its_own_shap
 /// 于是用户每次都要答一遍一个假问题，而假问题答多了他就不看了。
 #[test]
 fn dirty_is_an_equality_not_a_keystroke_flag() {
-    let mut p = Pane::opened("/srv/a.txt", "a.txt", "hello".into());
+    let mut p = Pane::opened("/srv/a.txt", "a.txt", "hello".into(), SHA0.to_string());
     assert!(!p.dirty(), "刚读回来就说改过了");
     assert_eq!(judge_close(&p), Close::Now);
 
@@ -253,7 +256,7 @@ fn dirty_is_an_equality_not_a_keystroke_flag() {
 /// 存成功 ⇒ 基准线跟上；存失败 ⇒ **一个字都不碰用户敲的东西**。
 #[test]
 fn a_failed_save_keeps_every_character_the_user_typed() {
-    let mut p = Pane::opened("/srv/a.txt", "a.txt", "old".into());
+    let mut p = Pane::opened("/srv/a.txt", "a.txt", "old".into(), SHA0.to_string());
     p.text = "new".into();
 
     // 失败：`text` 与 `dirty` 都不许变（那些字是用户唯一的一份）。
@@ -266,7 +269,7 @@ fn a_failed_save_keeps_every_character_the_user_typed() {
         other => panic!("{other:?}"),
     }
     // 还要能再存一次（失败不是终态）。
-    p.mark_saved();
+    p.mark_saved("new", SHA0.to_string());
     assert!(!p.dirty(), "存成功之后基准线没跟上");
     assert_eq!(p.last_save, Some(Ok(())));
     assert_eq!(p.text, "new");
@@ -276,7 +279,7 @@ fn a_failed_save_keeps_every_character_the_user_typed() {
 #[test]
 fn typing_past_the_cap_is_visible_before_the_save_fails() {
     let cap = crate::filewin::editor::MAX_EDIT_BYTES;
-    let mut p = Pane::opened("/srv/a.txt", "a.txt", "x".into());
+    let mut p = Pane::opened("/srv/a.txt", "a.txt", "x".into(), SHA0.to_string());
     assert!(!p.over_cap());
     assert_eq!(p.headroom(), cap as i64 - 1);
 
@@ -392,6 +395,14 @@ fn a_full_cap_worth_of_text_still_lays_out_in_one_frame() {
 
 const SAVE_PATH: &str = "/srv/data/app.conf";
 
+/// 〔FW1〕只用来占位的摘要（纯函数判据里 Pane 要一个；合成后端那几条用 [`opened_sha`]）。
+const SHA0: &str = "0000000000000000000000000000000000000000000000000000000000000000";
+
+/// 〔FW1〕合成后端上 `SAVE_PATH` 一开始那一份的摘要（打开那一趟会交的那个）。
+fn opened_sha() -> String {
+    crate::filewin::find::testing::fake_sha256(&format!("text of {SAVE_PATH}"))
+}
+
 /// 🔴 **窗口量的那一行 == monitor 真发出去的那一行**（按最长的 id 算）。
 ///
 /// 异源：另一侧是 monitor 那一侧真正编请求行的纯函数 `inbound_client::encode_request`，
@@ -410,11 +421,11 @@ fn the_measured_save_line_is_byte_for_byte_the_line_that_is_sent() {
         "x".repeat(70_000),
     ] {
         for (cmd, args) in [
-            (CMD_WRITE_TEXT, save_args(SAVE_PATH, &content)),
+            (CMD_WRITE_TEXT, save_args(SAVE_PATH, &content, SHA0)),
             (CMD_STAGE_CHUNK, stage_args(key, u64::MAX, &content)),
             (
                 CMD_COMMIT_TEXT,
-                commit_args(SAVE_PATH, key, 17, content.len()),
+                commit_args(SAVE_PATH, key, 17, content.len(), SHA0),
             ),
         ] {
             let sent = crate::backend::control::inbound_client::encode_request(
@@ -545,13 +556,13 @@ async fn save_rig(
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_save_that_fits_one_line_goes_as_one_write_and_one_byte_more_goes_in_chunks() {
     let (wired, origin, committed) = save_rig("save-split", None).await;
-    let base = request_line_len(CMD_WRITE_TEXT, &save_args(SAVE_PATH, ""));
+    let base = request_line_len(CMD_WRITE_TEXT, &save_args(SAVE_PATH, "", SHA0));
     let fits = "a".repeat(SAVE_LINE_CAP - base);
     assert!(fits_one_line(SAVE_PATH, &fits), "夹具没造到刚好装满");
     let over = format!("{fits}a");
     assert!(!fits_one_line(SAVE_PATH, &over));
 
-    write_text(&wired.line, &origin, SAVE_PATH, &fits)
+    let first = write_text(&wired.line, &origin, SAVE_PATH, &fits, &opened_sha())
         .await
         .expect("刚好装得进一行的那一份没存成");
     assert_eq!(
@@ -560,9 +571,9 @@ async fn a_save_that_fits_one_line_goes_as_one_write_and_one_byte_more_goes_in_c
         "刚好装得进一行的那一份没走一条写"
     );
 
-    write_text(&wired.line, &origin, SAVE_PATH, &over)
+    write_text(&wired.line, &origin, SAVE_PATH, &over, &first.sha256)
         .await
-        .expect("多一个字节的那一份没存成");
+        .expect("多一个字节的那一份没存成（拿上一次应答交的摘要存）");
     let n = plan_chunks(&over, chunk_budget()).len();
     let mut want = vec![CMD_WRITE_TEXT.to_string()];
     want.extend(std::iter::repeat_n(CMD_STAGE_CHUNK.to_string(), n));
@@ -572,7 +583,12 @@ async fn a_save_that_fits_one_line_goes_as_one_write_and_one_byte_more_goes_in_c
         want,
         "多一个字节的那一份不是「逐块 ＋ 一次提交」"
     );
-    assert_eq!(n, 2, "多一个字节只该多出一块");
+    // 〔FW1〕从前这里是「恰好两块」：那时一整行的写与一块的信封几乎一样大。存盘带上 `expect`（定长 64 位摘要）之后，
+    //   一行写的信封比一块的大 ⇒ 刚好装不进一行写的那一份，一块就装得下 —— 块数照 `plan_chunks` 现算，不写死。
+    assert_eq!(
+        n, 1,
+        "刚好装不进一行写的那一份，一块就该装得下（块的信封比写的小）"
+    );
     let got = committed
         .lock()
         .unwrap()
@@ -594,9 +610,9 @@ async fn a_save_that_fits_one_line_goes_as_one_write_and_one_byte_more_goes_in_c
 async fn the_worst_case_full_cap_file_saves_back_through_the_staging_area() {
     let (wired, origin, committed) = save_rig("save-worst", None).await;
     let text = "\u{1}".repeat(MAX_EDIT_BYTES);
-    let mut p = Pane::opened(SAVE_PATH, "app.conf", text.clone());
+    let mut p = Pane::opened(SAVE_PATH, "app.conf", text.clone(), SHA0.to_string());
     assert!(!p.over_cap());
-    write_text(&wired.line, &origin, SAVE_PATH, &p.text)
+    let saved = write_text(&wired.line, &origin, SAVE_PATH, &p.text, &opened_sha())
         .await
         .expect("满上限的控制字符没存成");
     let n = wired.count(CMD_STAGE_CHUNK);
@@ -611,14 +627,18 @@ async fn the_worst_case_full_cap_file_saves_back_through_the_staging_area() {
             .is_some_and(|(_, t)| *t == text),
         "拼回来的不是原文"
     );
-    p.mark_saved();
+    p.mark_saved(&saved.sent, saved.sha256);
     assert!(!p.dirty());
 
     let over = format!("{text}\u{1}");
     let before = wired.cmds().len();
-    let why = write_text(&wired.line, &origin, SAVE_PATH, &over)
-        .await
-        .expect_err("超上限的那一份竟然存成了");
+    let SaveError::Failed(why) =
+        write_text(&wired.line, &origin, SAVE_PATH, &over, p.expect_sha256())
+            .await
+            .expect_err("超上限的那一份竟然存成了")
+    else {
+        panic!("超上限落成了 stale")
+    };
     assert_eq!(wired.cmds().len(), before, "超上限的那一份还是上了线");
     for want in [
         (MAX_EDIT_BYTES + 1).to_string(),
@@ -637,11 +657,15 @@ async fn a_chunk_that_fails_stops_the_save_before_the_commit() {
     let text = "\u{1}".repeat(2 * 1024 * 1024);
     let total = plan_chunks(&text, chunk_budget()).len();
     assert!(total > 3, "夹具切不出第三块");
-    let mut p = Pane::opened(SAVE_PATH, "app.conf", "old".into());
+    let mut p = Pane::opened(SAVE_PATH, "app.conf", "old".into(), SHA0.to_string());
     p.text = text.clone();
-    let why = write_text(&wired.line, &origin, SAVE_PATH, &p.text)
-        .await
-        .expect_err("第三块断了却存成了");
+    let SaveError::Failed(why) =
+        write_text(&wired.line, &origin, SAVE_PATH, &p.text, &opened_sha())
+            .await
+            .expect_err("第三块断了却存成了")
+    else {
+        panic!("断块落成了 stale")
+    };
     p.mark_failed(why.clone());
     assert_eq!(
         wired.cmds(),
@@ -655,4 +679,89 @@ async fn a_chunk_that_fails_stops_the_save_before_the_commit() {
     );
     assert_eq!(p.text, text, "存失败清掉了编辑框");
     assert!(p.dirty());
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 〔FW1 · 第四波 4D〕存盘 CAS 的窗口半（主会话裁 D-c）：结局分两形 · 没摘要不打开 · 基准是发出去的那一份
+// ═══════════════════════════════════════════════════════════════════
+
+/// 对端回 `stale` ⇒ `Stale`（让人选）；别的码 / 没走通 ⇒ `Failed`（原话）；成了却没交摘要 / 形状不对 ⇒ `Failed`（不猜）。
+#[test]
+fn a_save_reply_splits_into_saved_stale_and_failed_by_the_peers_code() {
+    use crate::filewin::source::Failed;
+    let failed = |code: Option<&str>| Failed {
+        code: code.map(str::to_string),
+        said: "原话".to_string(),
+    };
+    let sha = crate::filewin::find::testing::fake_sha256("x");
+    assert_eq!(
+        saved_from_reply("x", Ok(serde_json::json!({ "sha256": sha.clone() }))),
+        Ok(Saved {
+            sent: "x".into(),
+            sha256: sha.clone()
+        })
+    );
+    assert_eq!(
+        saved_from_reply("x", Err(failed(Some("stale")))),
+        Err(SaveError::Stale("原话".into()))
+    );
+    for code in [Some("refused"), Some("io_failed"), None] {
+        assert_eq!(
+            saved_from_reply("x", Err(failed(code))),
+            Err(SaveError::Failed("原话".into())),
+            "`{code:?}` 被当成了 stale —— 那会给人摆一颗对这件事没用的「仍然覆盖」"
+        );
+    }
+    for bad in [
+        serde_json::json!({}),
+        serde_json::json!({ "sha256": sha.to_uppercase() }),
+    ] {
+        assert!(
+            matches!(
+                saved_from_reply("x", Ok(bad.clone())),
+                Err(SaveError::Failed(_))
+            ),
+            "{bad}：没交（像样的）新摘要却当成存好了 —— 下一次存交不出盘上那一份"
+        );
+    }
+}
+
+/// 读回来有文本却没有摘要 ⇒ **不打开**（存不回去的编辑面不立起来）；有摘要 ⇒ 带着它打开。
+#[test]
+fn a_read_without_a_digest_does_not_open_an_editor_that_could_never_save() {
+    let sha = crate::filewin::find::testing::fake_sha256("hi\n");
+    assert_eq!(
+        opened_from_reply(Ok(
+            serde_json::json!({ "text": "hi\n", "sha256": sha.clone() })
+        )),
+        Ok(Some(Opened {
+            text: "hi\n".into(),
+            sha256: sha
+        }))
+    );
+    let e =
+        opened_from_reply(Ok(serde_json::json!({ "text": "hi\n" }))).expect_err("没摘要竟然打开了");
+    assert!(e.contains("旧"), "那句话没说是后端太旧：{e}");
+    assert!(opened_from_reply(Ok(serde_json::json!({ "text": "hi\n", "sha256": "abc" }))).is_err());
+}
+
+/// 存成之后基准是**发出去的那一份**：存在路上时又敲的字仍算没存（`dirty`）；摘要换成应答交的那一个。
+#[test]
+fn after_a_save_the_baseline_is_what_was_sent_and_the_digest_is_the_new_one() {
+    let mut p = Pane::opened("/srv/a.txt", "a.txt", "old".into(), SHA0.to_string());
+    p.text = "sent".into();
+    let sent = p.text.clone();
+    p.text.push_str(" + typed while saving");
+    let new_sha = crate::filewin::find::testing::fake_sha256("sent");
+    p.mark_saved(&sent, new_sha.clone());
+    assert!(p.dirty(), "存在路上时敲的字被当成存过了");
+    assert_eq!(
+        p.expect_sha256(),
+        new_sha,
+        "下一次存交的不是新摘要（会自撞 stale）"
+    );
+    p.mark_stale("x".into());
+    assert!(p.stale);
+    assert_eq!(p.text, "sent + typed while saving", "stale 动了用户的字");
+    assert_eq!(p.expect_sha256(), new_sha, "stale 不该动基准摘要");
 }

@@ -1381,3 +1381,8 @@ src/settings/assets-section.ts:103	rows 那一格	保留	[不对外] 〔AS2〕�
 src/settings/assets-section.ts:109	from 那一格	保留	[不对外] 〔AS2〕同上一行
 src/settings/assets-section.ts:116	problems 那一格	保留	[不对外] 〔AS2〕同上一行
 src/settings/panel.ts:1103	资产目录	保留	[对外] 〔AS2〕机器页「工具」栏一块的标题（名词短语）
+src/backend/control/files_write.rs:552	`expect` 只收 `{{"sha256": "<{SHA256_HEX_LEN} 位小写十六进制>"}}`（给的是 {v}）	保留	[不对外] 〔FW1 · D-c〕files-write-text / files-commit-text 的 bad_args：调用方（文件窗口）交错了 CAS 摘要的形状，是两段程序之间的契约错，用户按任何键都走不到；说的是线上字段本身
+src/bridge/src/filewin/editor.rs:232	盘上那份在你打开之后被改过了，这次没有存（{why}）	保留	[对外] 〔FW1 · D-c〕编辑器存盘撞上 CAS（stale）那一句：发生了什么（打开之后被改过）、结果（这次没存），后面接后端原话；紧跟着两颗按钮让人选
+src/bridge/src/filewin/editor.rs:295	仍然覆盖	保留	[对外] 〔FW1 · D-c〕stale 之后那颗按钮字面（主会话 09-25 认可「仍然覆盖 / 丢掉重开」）
+src/bridge/src/filewin/editor.rs:297	丢掉改动，重新打开	保留	[对外] 〔FW1 · D-c〕stale 之后另一颗按钮字面：说清代价（改动丢掉）与动作（重新打开）
+src/bridge/src/filewin/fonts.rs:305	仍然摘盘	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW1 · D-c〕＋4 字，编辑器存盘 CAS 那几句）
