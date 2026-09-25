@@ -375,3 +375,25 @@ fn a_machine_without_a_channel_is_named_and_nothing_moves() {
     // 同一台同一个目录（尾斜杠不算不同）⇒ 当场拒，不去读。
     assert!(err.contains("同一份文件"), "实得：{err}");
 }
+
+/// 头注「落点一处：`.mcp.json` 的路径只由 `mcp.rs` 的两个出口给」：本模块生产段里那个文件名零命中
+/// （`mcp_tests::every_project_file_name_this_module_builds_is_mcp_json` 只扫 `mcp.rs`，本文件是它的射程外，这里补上）。
+/// 正控：塞一处自己拼的落点数得到 1。
+#[test]
+fn the_landing_file_name_lives_only_in_mcp_rs() {
+    let needle = format!(".mcp{}", ".json");
+    let count = |src: &str| guard_core::production_code(src).matches(&needle).count();
+    let src = include_str!("../../src/bridge/src/mcp_sync.rs");
+    assert_eq!(
+        count(src),
+        0,
+        "mcp_sync.rs 自己拼了 MCP 配置文件的落点 —— 落点长出了第二个家"
+    );
+    let planted = src.replacen(
+        "let (root, rel) = crate::mcp::split_target(from_target)?;",
+        "let _own = format!(\"{from_target}/.mcp.json\");\n    let (root, rel) = crate::mcp::split_target(from_target)?;",
+        1,
+    );
+    assert_ne!(planted, src, "正控的锚没打中");
+    assert_eq!(count(&planted), 1);
+}
