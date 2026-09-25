@@ -7,6 +7,7 @@
  */
 import { loadConfig, saveConfig } from "./config";
 import { isValidModelName } from "./shell-quote";
+import { copyText } from "./copy-table";
 
 const CFG_KEY = "accounts";
 
@@ -71,7 +72,7 @@ export async function getModelForAccount(name: string): Promise<string | undefin
  *  非法即 throw，调用方（UI）负责 catch 并提示，绝不静默落盘。 */
 export async function setModelForAccount(name: string, model: string | null): Promise<void> {
   if (model && !isValidModelName(model)) {
-    throw new Error(`非法模型名（拒绝保存）: ${JSON.stringify(model)}`);
+    throw new Error(copyText("accounts.setModel.invalid", { model: JSON.stringify(model) }));
   }
   const cfg = (await loadConfig()) as Record<string, unknown>;
   const prev =

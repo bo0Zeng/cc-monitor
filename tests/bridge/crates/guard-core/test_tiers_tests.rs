@@ -242,6 +242,7 @@ const UNIT: &[&str] = &[
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
 const SCAN: &[&str] = &[
+    "tests/bg-flat.vitest.ts", // 〔BG1〕V125：tab 栏通用代码零 bg 分叉（扫 `src/tabs.ts` ＋ `src/tab-*.ts`）· CSS 零 `.tab-bg`
     "tests/account-availability-guard.vitest.ts",
     "tests/account-base-semantics.vitest.ts",
     "tests/account-chip.vitest.ts",
@@ -305,10 +306,8 @@ const SCAN: &[&str] = &[
     "tests/bridge/atomic_replace_registry_tests.rs",
     "tests/bridge/backend/control/agent_profile_parity_tests.rs",
     "tests/bridge/backend/control/backend_control_tests.rs",
-    "tests/bridge/backend/control/backend_kill_tests.rs",
-    "tests/bridge/backend/control/backend_launch_tests.rs",
+    "tests/bridge/backend/control/backend_kill_tests.rs", // 〔C4e〕挂载点从 `backend_kill.rs` 换成 `backend/control/mod.rs`（发送端删了，判据留着）；同拍 `backend_launch_tests.rs` / `backend_send_keys_tests.rs` 随发送端删掉、摘了
     "tests/bridge/backend/control/backend_route_tests.rs",
-    "tests/bridge/backend/control/backend_send_keys_tests.rs",
     "tests/bridge/backend/control/ccm_invocation_tests.rs",
     "tests/bridge/backend/control/frame_query_tests.rs",
     "tests/bridge/backend/control/gate2_parity_tests.rs",
@@ -328,6 +327,7 @@ const SCAN: &[&str] = &[
     "tests/bridge/config_surface_tests.rs",
     "tests/bridge/copy_table_tests.rs",
     "tests/bridge/crates/acct-core/lib_tests.rs",
+    "tests/bridge/crates/copy-core/lib_tests.rs",
     "tests/bridge/crates/creds-core/lib_tests.rs",
     "tests/bridge/crates/guard-core/lib_tests.rs",
     "tests/bridge/crates/guard-core/test_tiers_tests.rs",
@@ -446,6 +446,8 @@ const SCAN: &[&str] = &[
     "tests/session-backend-gate.vitest.ts",
     "tests/session-backend.test.ts",
     "tests/session-reads.vitest.ts", // 〔C4b〕读跨语言金样（`tests/__fixtures__/session-reads.golden.json`）
+    "tests/tmux-control.vitest.ts", // 〔C4e〕读跨语言金样（`tests/__fixtures__/tmux-control.golden.json`）
+    "tests/cc-bus-control.vitest.ts", // 〔C4e 批 3b〕读跨语言金样（`tests/__fixtures__/cc-bus-control.golden.json`）
     "tests/settings/accounts-section.vitest.ts",
     "tests/settings/backend-section.vitest.ts",
     "tests/settings/base-wording-guard.vitest.ts",
@@ -537,6 +539,8 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/relay/server_tests.rs",
     "tests/backend/relay/wire_golden.rs",
     // 〔NT2 · S1〕L2 真起子进程（re-exec 本测试二进制，fd 2 真被换走）
+    // 〔MG1 合 SU1〕skill 装记录：临时家目录里真写 / 读 / 摘 `~/.cc-monitor/skill-installs.json` ⇒ 判别器判集成层。
+    "tests/backend/skill_ledger_tests.rs",
     "tests/backend/stderr_log_tests.rs",
     "tests/backend/wire_tests.rs",
     "tests/bridge/account_aliases_tests.rs",
@@ -599,6 +603,9 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/utils_tests.rs",
     // 〔CF1 · 09-24〕`tests/bridge/watcher_tests.rs` 随 monitor 自己那套 jsonl watcher 一起删了（本机会话内容改走本机后端的 `line` 帧）。
     "tests/copy-verdicts-ledger.vitest.ts",
+    "tests/copy/backend-copy-pending.vitest.ts",
+    // 〔MG1 合 CP2b〕CP2b 待办表判据：起 python3 子进程跑 `CP2b-copy-pending.py --json` ⇒ 判别器判集成层（CP2b 分支上漏登记）。
+    "tests/copy/copy-pending.vitest.ts",
     "tests/eslint-baseline.vitest.ts",
     "tests/naming/account-vs-relay-naming.vitest.ts",
     "tests/node-suite-registry-guard.vitest.ts",

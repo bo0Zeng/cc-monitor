@@ -805,9 +805,9 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const inConn = got!.connection.textContent ?? "";
     const inComp = got!.components.textContent ?? "";
     expect(inConn).toContain("主机 (host)");
-    expect(inComp).toContain("resume 命令（这台机器）");
+    expect(inComp).toContain("resume 命令 · 这台机器");
     // 反向：resume 命令**不该**留在连接那半
-    expect(inConn).not.toContain("resume 命令（这台机器）");
+    expect(inConn).not.toContain("resume 命令 · 这台机器");
   });
 
   /**
@@ -831,7 +831,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(labels(got.components)).toEqual(["部署后端", "卸载后端"]);
     expect(labels(got.tools)).toEqual(["装别名块", "卸载别名块"]);
     expect(got.tools.textContent).toContain("别名");
-    expect(labels(got.connection).filter((t) => t !== "重置为 TOFU")).toEqual([
+    expect(labels(got.connection).filter((t) => t !== "重置主机指纹")).toEqual([
       "测试连接",
       "推送公钥",
       "文件",

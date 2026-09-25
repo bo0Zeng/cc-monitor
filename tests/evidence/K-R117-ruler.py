@@ -216,7 +216,9 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("launch.render-attach", (NA, "—", "渲染一条命令串")),
     ("launch.render-cli", (NA, "—", "渲染一条命令串")),
     ("launch.render-payload", (NA, "—", "渲染一份载荷")),
-    ("launch.send-into", (NA, "—", "往已有会话里送一段")),
+    # 〔墓碑 C4e · 第四波 4C〕`launch.send-into` 随就地 resume 改由界面经通道直接说后端 `launch`
+    # （`src/tmux-control.ts::sendInto`）而退役：monitor 那条命令删了 ⇒ 能力 id 已不在 `LEDGER` 里，
+    # 理由同下面 `usage.*` 那条墓碑（归档表留一个不存在的 id 会让 `R3b` 恒红）。
     ("mcp.list-origins", (NA, "—", "列 MCP 的 origin —— 读")),
     ("mcp.list-project-dirs", (NA, "—", "列项目目录 —— 读")),
     ("mcp.read", (NA, "—", "读 MCP 配置")),
@@ -389,6 +391,9 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         # 〔AS2 · 第四波 4B〕skill「装到这台」（能力 `skill.install`，③）：写的是这台 `<skill 根>/<名>/`，与 cc-bus 那一格同一件（装 skill）。
         "skill_install_apply",
         "skill_install_preview",
+        # 〔SU1 · 第四波 4C · V116〕skill 卸（同一能力 `skill.install`，③）：删的是同一个 `<skill 根>/<名>/` 里装时写进去的那几个 ⇒ 同一件（装 / 卸 skill）。
+        #   前端落点仍只在 `src/settings/mcp-section.ts::assetInstallApi`（`FRONTEND_PIN['S5']` 不动）。
+        "skill_uninstall_apply",
         "remove_project_mcp_server",
         "write_project_mcp_server",
         "write_skill_file",

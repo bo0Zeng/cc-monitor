@@ -120,6 +120,7 @@
 //!   `remote_write_registry_tests` 那条「窗口用了池子哪几条命令」的相等断言。
 //!   ⇒ 窗口上那颗按钮（住 `rows.rs` / `shell.rs`，不在本路写区）等 F2 接后端时一起落。
 
+use crate::copy_table::copy_text;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -129,13 +130,17 @@ use super::source::{parent_dir, remote_basename, Line, Origin};
 use super::source::Listed;
 
 /// 行上／工具栏上那几颗按钮的字面。**唯一住址** —— 判据按同一个常量去找它画出来的字。
-pub const MKDIR_LABEL: &str = "新建目录";
+pub static MKDIR_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinWriteops.label.mkdir", &[]));
 /// 行上那颗「改名」。
-pub const RENAME_LABEL: &str = "改名";
+pub static RENAME_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinWriteops.label.rename", &[]));
 /// 行上那颗「删除」。
-pub const DELETE_LABEL: &str = "删除";
+pub static DELETE_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinWriteops.label.delete", &[]));
 /// 行上那颗「权限」。
-pub const CHMOD_LABEL: &str = "权限";
+pub static CHMOD_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinWriteops.label.chmod", &[]));
 
 /// 这一行能不能被**写**（改名 / 删除 / 改权限）。**唯一住址** ——
 /// 列表画不画那三颗按钮（[`super::rows`]）与状态机接不接那一跳
@@ -212,13 +217,26 @@ impl WriteOp {
     /// 给人看的一句话（确认框 · 结果行都用它）。
     pub fn label(&self) -> String {
         match self {
-            WriteOp::Mkdir { path } => format!("新建目录 {path}"),
+            WriteOp::Mkdir { path } => {
+                copy_text("rsFilewinWriteops.op.mkdir", &[("path", &path.to_string())])
+            }
             WriteOp::Delete {
                 path, is_dir: true, ..
-            } => format!("删除目录 {path}（连同里面全部内容）"),
-            WriteOp::Delete { path, .. } => format!("删除文件 {path}"),
-            WriteOp::Rename { from, to, .. } => format!("改名 {from} → {to}"),
-            WriteOp::Chmod { path, mode, .. } => format!("改权限 {path} → {mode:o}"),
+            } => copy_text("rsFilewinWriteops.op.rmdir", &[("path", &path.to_string())]),
+            WriteOp::Delete { path, .. } => {
+                copy_text("rsFilewinWriteops.op.rm", &[("path", &path.to_string())])
+            }
+            WriteOp::Rename { from, to, .. } => copy_text(
+                "rsFilewinWriteops.op.rename",
+                &[("from", &from.to_string()), ("to", &to.to_string())],
+            ),
+            WriteOp::Chmod { path, mode, .. } => copy_text(
+                "rsFilewinWriteops.op.chmod",
+                &[
+                    ("path", &path.to_string()),
+                    ("mode", &format!("{:o}", mode)),
+                ],
+            ),
         }
     }
 
@@ -333,7 +351,10 @@ pub async fn apply_remote(line: &Line, origin: &Origin, op: &WriteOp) -> Result<
         WriteOp::Rename { from, to, raw } => {
             let root = parent_dir(from);
             if parent_dir(to) != root {
-                return Err(format!("{} 只能在同一个目录里改名", op.label()));
+                return Err(copy_text(
+                    "rsFilewinWriteops.remote.renameSameDir",
+                    &[("op", &(op.label()).to_string())],
+                ));
             }
             (
                 "files-rename",
@@ -490,12 +511,19 @@ impl WritePrompt {
     /// 框上那一行提示。
     pub fn heading(&self) -> String {
         match &self.kind {
-            PromptKind::Mkdir => "在这个目录里新建一个目录，叫：".to_string(),
-            PromptKind::Rename { .. } => format!("把 {} 改名为：", self.src_name),
-            PromptKind::Chmod { targets } if targets.len() > 1 => {
-                format!("把这 {} 项的权限改成（八进制）：", targets.len())
-            }
-            PromptKind::Chmod { .. } => format!("把 {} 的权限改成（八进制）：", self.src_name),
+            PromptKind::Mkdir => copy_text("rsFilewinWriteops.heading.mkdir", &[]),
+            PromptKind::Rename { .. } => copy_text(
+                "rsFilewinWriteops.heading.rename",
+                &[("name", &self.src_name.to_string())],
+            ),
+            PromptKind::Chmod { targets } if targets.len() > 1 => copy_text(
+                "rsFilewinWriteops.heading.chmodMany",
+                &[("n", &(targets.len()).to_string())],
+            ),
+            PromptKind::Chmod { .. } => copy_text(
+                "rsFilewinWriteops.heading.chmodOne",
+                &[("name", &self.src_name.to_string())],
+            ),
         }
     }
 
@@ -509,7 +537,10 @@ impl WritePrompt {
         let mut ops = self.to_ops()?;
         match ops.len() {
             1 => Ok(ops.remove(0)),
-            n => Err(format!("这个框一次出 {n} 件，不是一件")),
+            n => Err(copy_text(
+                "rsFilewinWriteops.toOp.notOne",
+                &[("n", &n.to_string())],
+            )),
         }
     }
 
@@ -532,7 +563,10 @@ impl WritePrompt {
                 let to = join_remote(&self.dir, &name);
                 // ⚠ 有损名：显示串相等不等于名字没变（旧名的真字节不是这几个字）⇒ 只对无损名判「就是原名」。
                 if &to == from && raw.is_none() {
-                    return Err(format!("「{name}」就是它现在的名字 —— 改名没有要改的东西"));
+                    return Err(copy_text(
+                        "rsFilewinWriteops.toOps.sameName",
+                        &[("name", &name.to_string())],
+                    ));
                 }
                 Ok(vec![WriteOp::Rename {
                     from: from.clone(),
@@ -543,7 +577,7 @@ impl WritePrompt {
             PromptKind::Chmod { targets } => {
                 let mode = parse_mode(t)?;
                 if targets.is_empty() {
-                    return Err("没有要改权限的项".to_string());
+                    return Err(copy_text("rsFilewinWriteops.toOps.nothingToChmod", &[]));
                 }
                 Ok(targets
                     .iter()
@@ -569,15 +603,19 @@ impl WritePrompt {
 /// 〔F7b〕「新建空文件」（[`super::create`]）问的也是这一个函数 —— 两颗并排的「新建」一套规矩。
 pub(super) fn clean_name(t: &str) -> Result<String, String> {
     if t.is_empty() {
-        return Err("名字是空的".to_string());
+        return Err(copy_text("rsFilewinWriteops.name.empty", &[]));
     }
     if t.contains('/') {
-        return Err(format!(
-            "「{t}」里带 `/` —— 这个框只改名字，不许在这儿写出一条别的路径"
+        return Err(copy_text(
+            "rsFilewinWriteops.name.hasSlash",
+            &[("name", &t.to_string())],
         ));
     }
     if t == "." || t == ".." {
-        return Err(format!("「{t}」不是一个名字，它是目录本身"));
+        return Err(copy_text(
+            "rsFilewinWriteops.name.isDir",
+            &[("name", &t.to_string())],
+        ));
     }
     Ok(t.to_string())
 }
@@ -589,13 +627,18 @@ pub(super) fn clean_name(t: &str) -> Result<String, String> {
 /// 而我们掩成 `644` ⇒ 他以为改的是别的东西。
 fn parse_mode(t: &str) -> Result<u32, String> {
     if t.is_empty() {
-        return Err("权限位是空的 —— 八进制，比如 644".to_string());
+        return Err(copy_text("rsFilewinWriteops.mode.empty", &[]));
     }
-    let mode = u32::from_str_radix(t, 8)
-        .map_err(|_| format!("「{t}」不是一个八进制数 —— 比如 644 或 755"))?;
+    let mode = u32::from_str_radix(t, 8).map_err(|_| {
+        copy_text(
+            "rsFilewinWriteops.mode.notOctal",
+            &[("text", &t.to_string())],
+        )
+    })?;
     if mode > 0o7777 {
-        return Err(format!(
-            "「{t}」超出权限位的范围（最大 7777）—— 文件类型位不许在这儿改"
+        return Err(copy_text(
+            "rsFilewinWriteops.mode.outOfRange",
+            &[("text", &t.to_string())],
         ));
     }
     Ok(mode)
@@ -628,7 +671,7 @@ pub struct ModeReadout {
 /// - 空摞 ⇒ 同「读不到」（框本身会被 [`WritePrompt::to_ops`] 拒，不会走到这里）。
 pub fn mode_readout(modes: &[Option<u32>]) -> ModeReadout {
     let unreadable = || ModeReadout {
-        line: "读不到现在的权限".to_string(),
+        line: copy_text("rsFilewinWriteops.mode.unreadable", &[]),
         prefill: None,
     };
     let Some(all) = modes.iter().copied().collect::<Option<Vec<u32>>>() else {
@@ -639,12 +682,12 @@ pub fn mode_readout(modes: &[Option<u32>]) -> ModeReadout {
     };
     if all.iter().any(|x| *x != m) {
         return ModeReadout {
-            line: "这几项现在的权限不一样".to_string(),
+            line: copy_text("rsFilewinWriteops.mode.mixed", &[]),
             prefill: None,
         };
     }
     ModeReadout {
-        line: format!("现在是 {m:o}"),
+        line: copy_text("rsFilewinWriteops.mode.now", &[("mode", &format!("{m:o}"))]),
         prefill: Some(format!("{m:o}")),
     }
 }
@@ -867,10 +910,13 @@ impl WriteBoard {
             let mut answer: Option<bool> = None;
             let mut changed = false;
             egui::Modal::new(egui::Id::new("filewin-write-confirm")).show(ui.ctx(), |ui| {
-                ui.heading(format!("这 {} 件要做吗？", asking.len()));
+                ui.heading(copy_text(
+                    "rsFilewinWriteops.confirm.ask",
+                    &[("n", &(asking.len()).to_string())],
+                ));
                 ui.colored_label(
                     egui::Color32::from_rgb(0xE0, 0x9A, 0x20),
-                    "⚠ 这一问只出现一次：勾完点确认。删除不可撤销。",
+                    &copy_text("rsFilewinWriteops.confirm.warn", &[]),
                 );
                 for (i, o) in asking.iter().enumerate() {
                     let mut t = ticks[i];
@@ -880,10 +926,16 @@ impl WriteBoard {
                     }
                 }
                 ui.horizontal(|ui| {
-                    if ui.button("做勾上的").clicked() {
+                    if ui
+                        .button(&copy_text("rsFilewinWriteops.confirm.doChecked", &[]))
+                        .clicked()
+                    {
                         answer = Some(true);
                     }
-                    if ui.button("都别做").clicked() {
+                    if ui
+                        .button(&copy_text("rsFilewinWriteops.confirm.doNone", &[]))
+                        .clicked()
+                    {
                         answer = Some(false);
                     }
                 });
@@ -899,18 +951,30 @@ impl WriteBoard {
             if !o.failed.is_empty() {
                 ui.colored_label(
                     egui::Color32::RED,
-                    format!(
-                        "上一摞 {} 件没做成：{}",
-                        o.failed.len(),
-                        o.failed
-                            .iter()
-                            .map(|(n, e)| format!("{n}（{e}）"))
-                            .collect::<Vec<_>>()
-                            .join("；")
+                    copy_text(
+                        "rsFilewinWriteops.result.failed",
+                        &[
+                            ("n", &(o.failed.len()).to_string()),
+                            (
+                                "failed",
+                                &(o.failed
+                                    .iter()
+                                    .map(|(n, e)| format!("{n}（{e}）"))
+                                    .collect::<Vec<_>>()
+                                    .join(&copy_text("rsFilewinWriteops.result.failedSep", &[])))
+                                .to_string(),
+                            ),
+                        ],
                     ),
                 );
             } else if o.ok > 0 || o.skipped > 0 {
-                ui.label(format!("上一摞 {} 件做完、{} 件跳过", o.ok, o.skipped));
+                ui.label(copy_text(
+                    "rsFilewinWriteops.result.done",
+                    &[
+                        ("ok", &o.ok.to_string()),
+                        ("skipped", &o.skipped.to_string()),
+                    ],
+                ));
             }
         }
     }

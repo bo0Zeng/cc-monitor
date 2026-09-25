@@ -86,14 +86,14 @@ export function renderApikeyFileBlock(status: ApikeyCredentialsStatus): HTMLElem
 
   const title = document.createElement("div");
   title.className = "apikey-file-title";
-  title.textContent = "第三方 API key";
+  title.textContent = copyText("accounts.apikeyFile.title");
   box.appendChild(title);
 
   // `KS9`：路径要能被找到，人才改得动它。
   const where = document.createElement("div");
   where.className = "apikey-file-path";
-  where.textContent = `文件：${status.path}`;
-  where.title = "这份文件是明文 JSON，可以直接用编辑器改，改完下次读就生效";
+  where.textContent = copyText("accounts.apikeyFile.path", { path: status.path });
+  where.title = copyText("accounts.apikeyFile.editHint");
   box.appendChild(where);
 
   // `KS11`：过宽 / 查不出来要**在界面上显出来**。
@@ -115,7 +115,7 @@ export function renderApikeyFileBlock(status: ApikeyCredentialsStatus): HTMLElem
   if (status.configured) {
     const legacy = document.createElement("div");
     legacy.className = "apikey-file-legacy";
-    legacy.textContent = `顶层那一把（历史格式）：已配置 ${status.masked}。它照常还能用，但界面不再往那一格写。`;
+    legacy.textContent = copyText("accounts.apikeyFile.legacyTop", { masked: status.masked });
     box.appendChild(legacy);
   }
   return box;
@@ -146,7 +146,7 @@ export function renderApikeyEditor(
   const toggle = document.createElement("button");
   toggle.type = "button";
   toggle.className = "accounts-row-apikey-toggle";
-  toggle.textContent = a.routed ? "换 apikey" : "配 apikey";
+  toggle.textContent = a.routed ? copyText("accounts.apikeyEditor.replace") : copyText("accounts.apikeyEditor.add");
   toggle.setAttribute("aria-expanded", "false");
   toggle.addEventListener("click", () => {
     box.hidden = !box.hidden;
@@ -156,8 +156,8 @@ export function renderApikeyEditor(
   const state = document.createElement("div");
   state.className = "accounts-row-apikey-state";
   state.textContent = a.routed
-    ? `${a.name}：apikey 表里已经有它那一行。再存一次会替换它那一把 key。`
-    : `${a.name}：apikey 表里还没有它那一行 —— 它的会话今天走官方直连。`;
+    ? copyText("accounts.apikeyEditor.hasRow", { name: a.name })
+    : copyText("accounts.apikeyEditor.noRow", { name: a.name });
   box.appendChild(state);
 
   const input = document.createElement("input");
@@ -165,10 +165,10 @@ export function renderApikeyEditor(
   input.className = "accounts-row-apikey-input";
   input.autocomplete = "off";
   // ★★ **这里刻意什么都不做** —— 不预填、不 placeholder 回显掩码。
-  input.placeholder = a.routed ? "输入新的 key 以替换" : "粘贴 key";
+  input.placeholder = a.routed ? copyText("accounts.apikeyEditor.replaceHint") : copyText("accounts.apikeyEditor.pasteHint");
   box.appendChild(input);
 
-  const save = mkBtn("保存");
+  const save = mkBtn(copyText("accounts.apikeyEditor.save"));
   save.className = "accounts-row-apikey-save";
   save.addEventListener("click", () => {
     const v = input.value.trim();
@@ -222,7 +222,7 @@ export class AccountsSection {
     const refresh = document.createElement("button");
     refresh.type = "button";
     refresh.className = "accounts-refresh";
-    refresh.textContent = "刷新";
+    refresh.textContent = copyText("accounts.ctor.refresh");
     refresh.addEventListener("click", () => {
       if (isRemoteOrigin(this.origin)) invalidateAccountsCache(this.origin);
       void this.reload(true);
@@ -357,7 +357,7 @@ export class AccountsSection {
     pending.className = "accounts-info";
     pending.dataset.pending = "accounts";
     pending.setAttribute("aria-busy", "true");
-    pending.textContent = `正在读 ${isLocalOrigin(this.origin) ? "本机" : this.origin} 的账号…`;
+    pending.textContent = copyText("accounts.reload.reading", { machine: isLocalOrigin(this.origin) ? copyText("accounts.who.local") : this.origin });
     this.body.appendChild(pending);
     try {
       await this.reloadInner(force);
@@ -380,8 +380,8 @@ export class AccountsSection {
     try {
       state = await fetchAccounts(this.origin, force);
     } catch (e) {
-      this.note("accounts", { kind: "fail", detail: "拉取失败" });
-      this.info(`拉取账号失败：${String(e)}`);
+      this.note("accounts", { kind: "fail", detail: copyText("accounts.status.pullFailed") });
+      this.info(copyText("accounts.status.pullFailedBody", { e: String(e) }));
       return;
     }
     const ui = deriveUi(state);
@@ -389,18 +389,18 @@ export class AccountsSection {
       // 🔴 `K-R59`：这里原来还有一支 `case "hidden"`，把 `accounts`/`acctIso` 两格
       //    记成 `na`、理由「用户显式选的降级」。那一档（`daemonless`）整格没了 ⇒ 支也没了。
       case "needs-update":
-        this.note("accounts", { kind: "fail", detail: "backend 需更新" });
-        this.info(`远端后端需要更新才能用多账号：${ui.reason}`);
+        this.note("accounts", { kind: "fail", detail: copyText("accounts.status.backendOld") });
+        this.info(copyText("accounts.status.backendOldBody", { reason: ui.reason }));
         return;
       case "not-enabled":
         // 读得到、但多账号管线没启用 ⇒ accounts 这一格算读到了，acctIso 那格是真的缺。
-        this.note("accounts", { kind: "ok", detail: "已读取" });
-        this.note("acctIso", { kind: "fail", detail: "未启用" });
+        this.note("accounts", { kind: "ok", detail: copyText("accounts.status.read") });
+        this.note("acctIso", { kind: "fail", detail: copyText("accounts.status.disabled") });
         void this.renderNotEnabledFlow(ui.manifestPath, ui.reason);
         return;
       case "ready":
-        this.note("accounts", { kind: "ok", detail: `${ui.accounts.length} 个` });
-        this.note("acctIso", { kind: "ok", detail: "已启用" });
+        this.note("accounts", { kind: "ok", detail: copyText("accounts.status.count", { n: ui.accounts.length }) });
+        this.note("acctIso", { kind: "ok", detail: copyText("accounts.status.enabled") });
         await this.renderTable(state, ui.accounts, ui.notice);
         return;
     }
@@ -463,15 +463,15 @@ export class AccountsSection {
       state = await fetchLocalAccounts(force);
     } catch (e) {
       // 档三：**读不动** —— 那条 Promise 直接 rejected，命令根本没跑通。
-      this.note("accounts", { kind: "fail", detail: "读不动" });
-      this.note("acctIso", { kind: "fail", detail: "读不动" });
+      this.note("accounts", { kind: "fail", detail: copyText("accounts.local.unreadable") });
+      this.note("acctIso", { kind: "fail", detail: copyText("accounts.local.unreadable") });
       this.localFail(box, String(e));
       return;
     }
     if (!state.available) {
       // 档二：**后端不在** —— 后端答了「不可用」，那句原因在 `state.error` 里。
-      this.note("accounts", { kind: "fail", detail: "后端不在" });
-      this.note("acctIso", { kind: "fail", detail: "后端不在" });
+      this.note("accounts", { kind: "fail", detail: copyText("accounts.local.noBackend") });
+      this.note("acctIso", { kind: "fail", detail: copyText("accounts.local.noBackend") });
       this.localFail(box, state.error ?? LOCAL_ACCOUNTS_COPY.unknownReason);
       return;
     }
@@ -479,8 +479,8 @@ export class AccountsSection {
       // 档一的空态：清单**读到了**（零个也是一个答案）⇒ `accounts` 是 `ok`；
       // 而多账号隔离在这台机上确实还没启用 ⇒ `acctIso` 是真的缺。
       // 两格分开说，与远端那条路的 `not-enabled` 一支逐字同形。
-      this.note("accounts", { kind: "ok", detail: "已读取" });
-      this.note("acctIso", { kind: "fail", detail: "未启用" });
+      this.note("accounts", { kind: "ok", detail: copyText("accounts.status.read") });
+      this.note("acctIso", { kind: "fail", detail: copyText("accounts.status.disabled") });
       AccountsSection.line(
         box,
         "accounts-info accounts-local-empty-title",
@@ -492,8 +492,8 @@ export class AccountsSection {
 
     // 档一：**读出来了**，而且这台机真的启用着隔离账号 ⇒ 两格都绿。
     // 这是本机那两格唯一能变绿的一档 —— `NF2D3` 那条判据买的就是它。
-    this.note("accounts", { kind: "ok", detail: `${state.accounts.length} 个` });
-    this.note("acctIso", { kind: "ok", detail: "已启用" });
+    this.note("accounts", { kind: "ok", detail: copyText("accounts.status.count", { n: state.accounts.length }) });
+    this.note("acctIso", { kind: "ok", detail: copyText("accounts.status.enabled") });
     AccountsSection.line(
       box,
       "accounts-meta accounts-local-count",
@@ -705,25 +705,23 @@ export class AccountsSection {
     if (isLocalOrigin(this.origin)) return false;
     const built = buildAcctIsoCmd(step);
     if (!built.ok) {
-      showActionFailureToast("命令无法生成", built.reason, { level: "error" });
+      showActionFailureToast(copyText("accounts.launchStep.cmdInvalid"), built.reason, { level: "error" });
       return false;
     }
     if (opts.danger) {
       const msg =
-        `将在远端「${this.origin}」的终端里运行：\n\n${built.cmd}\n\n` +
-        (opts.confirmExtra ? `${opts.confirmExtra}\n\n` : "") +
-        `命令在你看得见的终端里执行、需你亲手确认；工具自带备份，可 rollback。继续？`;
+        copyText("accounts.launchStep.confirm", { machine: this.origin, cmd: built.cmd, extra: (opts.confirmExtra ? `${opts.confirmExtra}\n\n` : "") });
       if (!window.confirm(msg)) return false;
     }
     try {
       await commands.launch_remote_terminal({ origin: this.origin, remoteCmd: built.cmd });
-      showActionFailureToast("已在终端里运行", "完成后点「刷新」更新账号列表。", {
+      showActionFailureToast(copyText("accounts.launchStep.launched"), copyText("accounts.launchStep.launchedNext"), {
         level: "info",
         durationMs: 5000,
       });
       return true;
     } catch (e) {
-      showActionFailureToast("拉起终端失败", String(e), { level: "error" });
+      showActionFailureToast(copyText("accounts.launchStep.failed"), String(e), { level: "error" });
       return false;
     }
   }
@@ -819,7 +817,7 @@ export class AccountsSection {
 
     const h = document.createElement("div");
     h.className = "accounts-ne-title";
-    h.textContent = "该远端还没装多账号管线（cc-acct-iso）";
+    h.textContent = copyText("accounts.needsDeploy.title");
     box.appendChild(h);
 
     // dest 推不出（缺 backendPath 且 user 缺失/非法）→ 给不出一键部署落点，退回文字指引，不留死角。
@@ -827,8 +825,7 @@ export class AccountsSection {
       const p = document.createElement("div");
       p.className = "accounts-ne-desc";
       p.textContent =
-        "多账号靠 cc-acct-iso（每账号一个隔离配置目录、数据共享）。这台远端缺 backendPath / 用户名，" +
-        "自动推不出部署目录——请先在「连接」组填好远端 user / backendPath，再回来一键部署。";
+        copyText("accounts.needsDeploy.noPath");
       box.appendChild(p);
       this.body.appendChild(box);
       return;
@@ -837,27 +834,26 @@ export class AccountsSection {
     const p = document.createElement("div");
     p.className = "accounts-ne-desc";
     p.textContent =
-      `多账号靠 cc-acct-iso（每账号一个隔离配置目录、数据共享）。点下面一键把它部署到远端 ` +
-      `${dest}（只软链到 ~/.local/bin，不改你的 ~/.bashrc）。装完再回来启用。`;
+      copyText("accounts.needsDeploy.intro", { dest });
     box.appendChild(p);
 
-    const btn = mkBtn("一键部署 cc-acct-iso");
+    const btn = mkBtn(copyText("accounts.needsDeploy.deploy"));
     btn.addEventListener("click", () => {
       btn.disabled = true;
       const prev = btn.textContent;
-      btn.textContent = "部署中…";
+      btn.textContent = copyText("accounts.needsDeploy.deploying");
       void commands
         .deploy_remote_acct_iso({ cfg: host, destDir: dest })
         .then(
           (msg) => {
-            showActionFailureToast("已部署 cc-acct-iso", msg, {
+            showActionFailureToast(copyText("accounts.needsDeploy.done"), msg, {
               level: "info",
               durationMs: 6000,
             });
             void this.reload(true);
           },
           (e) => {
-            showActionFailureToast("部署 cc-acct-iso 失败", String(e), { level: "error" });
+            showActionFailureToast(copyText("accounts.needsDeploy.failed"), String(e), { level: "error" });
             btn.disabled = false;
             btn.textContent = prev;
           },
@@ -874,14 +870,13 @@ export class AccountsSection {
 
     const h = document.createElement("div");
     h.className = "accounts-ne-title";
-    h.textContent = "该远端尚未启用多账号";
+    h.textContent = copyText("accounts.notEnabled.title");
     box.appendChild(h);
 
     const p = document.createElement("div");
     p.className = "accounts-ne-body";
     p.innerHTML =
-      `在远端跑 cc-acct-iso 迁移管线即可启用（各账号独立凭据、skills/记忆/历史/设置实时共享）。<br>` +
-      `原因：${escapeHtml(reason)}<br>manifest 查找位置：<code>${escapeHtml(manifestPath ?? "—")}</code>`;
+      copyText("accounts.notEnabled.intro", { reason: escapeHtml(reason), path: escapeHtml(manifestPath ?? copyText("accounts.notEnabled.noPath")) });
     box.appendChild(p);
 
     const wiz = document.createElement("div");
@@ -891,11 +886,11 @@ export class AccountsSection {
     const field = document.createElement("div");
     field.className = "accounts-wiz-field";
     const label = document.createElement("label");
-    label.textContent = "默认账号名（迁移现有默认账号进来）：";
+    label.textContent = copyText("accounts.notEnabled.defaultName");
     const input = document.createElement("input");
     input.type = "text";
     input.className = "accounts-wiz-name";
-    input.placeholder = "例如 z";
+    input.placeholder = copyText("accounts.notEnabled.defaultNameHint");
     field.appendChild(label);
     field.appendChild(input);
     const err = document.createElement("div");
@@ -909,11 +904,11 @@ export class AccountsSection {
     wiz.appendChild(preview);
     const copyRow = document.createElement("div");
     copyRow.className = "accounts-wiz-copyrow";
-    const copyBtn = mkBtn("复制命令");
+    const copyBtn = mkBtn(copyText("accounts.notEnabled.copy"));
     copyBtn.addEventListener("click", () => {
       void navigator.clipboard?.writeText(preview.textContent ?? "").then(
-        () => showActionFailureToast("已复制命令", "可粘到远端终端里跑。", { level: "info", durationMs: 2500 }),
-        () => showActionFailureToast("复制失败", "剪贴板不可用", { level: "error" }),
+        () => showActionFailureToast(copyText("accounts.notEnabled.copied"), copyText("accounts.notEnabled.copiedNext"), { level: "info", durationMs: 2500 }),
+        () => showActionFailureToast(copyText("accounts.copy.failed"), copyText("accounts.copy.noClipboard"), { level: "error" }),
       );
     });
     copyRow.appendChild(copyBtn);
@@ -922,19 +917,18 @@ export class AccountsSection {
     // 分步按钮。
     const btns = document.createElement("div");
     btns.className = "accounts-wiz-btns";
-    const bPreview = mkBtn("① 预览计划（dry-run）");
-    const bApply = mkBtn("② 执行迁移（--apply）");
+    const bPreview = mkBtn(copyText("accounts.notEnabled.step1"));
+    const bApply = mkBtn(copyText("accounts.notEnabled.step2"));
     bApply.classList.add("danger");
-    const bVerify = mkBtn("③ 自检 verify");
-    const bShellinit = mkBtn("④ 打印 rc 片段");
+    const bVerify = mkBtn(copyText("accounts.notEnabled.step3"));
+    const bShellinit = mkBtn(copyText("accounts.notEnabled.step4"));
     btns.append(bPreview, bApply, bVerify, bShellinit);
     wiz.appendChild(btns);
 
     const note = document.createElement("div");
     note.className = "accounts-wiz-note";
     note.innerHTML =
-      "<small>顺序：① 看计划（什么都不动）→ ② 执行迁移 → ③ 自检 → ④ 把打印的片段贴进 " +
-      "<code>~/.bashrc</code>（工具不改你的 rc）→ 回来点「刷新」。第二个账号可在启用后用「加账号」导入。</small>";
+      copyText("accounts.notEnabled.steps");
     wiz.appendChild(note);
 
     // —— 校验驱动的启用/禁用 + 预览 ——
@@ -949,8 +943,8 @@ export class AccountsSection {
       const ap = valid ? buildAcctIsoCmd({ kind: "init-apply", name }) : null;
       preview.textContent =
         pv && pv.ok && ap && ap.ok
-          ? `# 预览计划（零落盘）\n${pv.cmd}\n\n# 执行迁移\n${ap.cmd}\n\n# 打印 rc 片段\ncc-acct-iso shellinit`
-          : "（填入合法账号名后显示将运行的命令）";
+          ? copyText("accounts.sync.script", { cmd: pv.cmd, cmd2: ap.cmd })
+          : copyText("accounts.sync.empty");
     };
     input.addEventListener("input", sync);
     bPreview.addEventListener("click", () =>
@@ -959,7 +953,7 @@ export class AccountsSection {
     bApply.addEventListener("click", () =>
       void this.launchStep(
         { kind: "init-apply", name: input.value.trim() },
-        { danger: true, confirmExtra: "这会把现有默认账号的凭据与 .claude.json 搬进账号库、其余项建 symlink。" },
+        { danger: true, confirmExtra: copyText("accounts.notEnabled.moveNote") },
       ),
     );
     bVerify.addEventListener("click", () => void this.launchStep({ kind: "verify" }));
@@ -992,7 +986,7 @@ export class AccountsSection {
     main.className = "accounts-current-main";
     const name = document.createElement("span");
     name.className = "accounts-current-name";
-    name.textContent = def ? def.name : "未设当前账号";
+    name.textContent = def ? def.name : copyText("accounts.banner.none");
     main.appendChild(name);
     if (def?.email) {
       const email = document.createElement("span");
@@ -1005,10 +999,10 @@ export class AccountsSection {
     const scope = document.createElement("span");
     scope.className = "accounts-current-scope";
     scope.textContent = usable
-      ? "新会话 · 没指定过账号的 resume 用它；正在跑的会话不受影响"
+      ? copyText("accounts.banner.scope")
       : def
-        ? "该账号当前不可用（未登录 / 逃生口 / 目录缺失）——先修好它，账号徽章与对齐才会生效"
-        : "下面选一个账号「设为当前账号」";
+        ? copyText("accounts.banner.unavailable")
+        : copyText("accounts.banner.pick");
     box.appendChild(scope);
     return box;
   }
@@ -1032,7 +1026,7 @@ export class AccountsSection {
     if (meta) {
       const info = document.createElement("div");
       info.className = "accounts-meta";
-      info.textContent = `已启用 · ${accounts.length} 个账号 · manifest ${meta.manifestPath}${meta.updatedAt ? ` · 更新于 ${meta.updatedAt}` : ""}`;
+      info.textContent = copyText("accounts.table.summary", { n: accounts.length, path: meta.manifestPath, updated: meta.updatedAt ? copyText("accounts.table.updatedAt", { updatedAt: meta.updatedAt }) : "" });
       this.body.appendChild(info);
     }
     // 🔴 `设计/70 §4.4` 关键二：apikey 是**账号那一行自己的一格** ⇒ 画表之前先问清
@@ -1056,7 +1050,7 @@ export class AccountsSection {
     // 管辖范围那句已由上方横幅说了（U7 前这里是唯一出处）——这里只留横幅**没说**的部分，
     // 别在同一屏里把同一句话逐字重复两遍。
     hint.textContent =
-      "切换当前账号只改本机设置：不动远端、不碰凭据、不重启任何东西。未登录的账号可点它那行的「去登录」在终端里 /login。";
+      copyText("accounts.table.switchScope");
     this.body.appendChild(hint);
 
     // F09 Phase D 审计（UX，建议）：批量对齐这个能力随 F09 整体删除后，没有任何地方告诉
@@ -1082,7 +1076,7 @@ export class AccountsSection {
     const removedHint = document.createElement("div");
     removedHint.className = "accounts-hint";
     removedHint.textContent =
-      "提示：批量对齐（曾经的「⚠k」「⇄」和命令面板里的对齐命令）已下线，请在会话右键菜单的「Restart」里逐个切换账号。";
+      copyText("accounts.table.bulkGone");
     this.body.appendChild(removedHint);
 
     // K-H2a：第三方 API key 那份**文件**（路径 / 权限 / 读坏了 / 顶层那一把）。
@@ -1138,8 +1132,8 @@ export class AccountsSection {
     for (const name of this.pendingKeys.keys()) {
       const line = document.createElement("div");
       line.className = "accounts-hint";
-      line.textContent = `等 ${name} 出现在账号列表里（终端跑完点「刷新」），就把它的 apikey 写进去。`;
-      const drop = mkBtn("放弃");
+      line.textContent = copyText("accounts.pending.waiting", { name });
+      const drop = mkBtn(copyText("accounts.pending.drop"));
       drop.addEventListener("click", () => {
         this.pendingKeys.delete(name);
         this.renderPendingKeys();
@@ -1168,8 +1162,8 @@ export class AccountsSection {
       this.pendingKeys.delete(name);
       if (!a.configDir) {
         showActionFailureToast(
-          "apikey 没写",
-          `${name} 没有自己的账号目录，apikey 表里配了也不会被用上。`,
+          copyText("accounts.pending.notWritten"),
+          copyText("accounts.pending.noDir", { name }),
           { level: "error" },
         );
         continue;
@@ -1202,13 +1196,13 @@ export class AccountsSection {
         configDir,
         ...(baseUrl === undefined ? {} : { baseUrl }),
       });
-      showActionFailureToast("已写入 apikey", `${name} 的 apikey 已写进 apikey 表。`, {
+      showActionFailureToast(copyText("accounts.writeApikey.done"), copyText("accounts.writeApikey.doneBody", { name }), {
         level: "info",
         durationMs: 3000,
       });
       void this.reload(true);
     } catch (e) {
-      showActionFailureToast("保存第三方 API key", String(e));
+      showActionFailureToast(copyText("accounts.writeApikey.failed"), String(e));
     }
   }
 
@@ -1254,7 +1248,7 @@ export class AccountsSection {
     } catch (e) {
       fileBlock = document.createElement("div");
       fileBlock.className = "apikey-file-problem";
-      fileBlock.textContent = `读不到第三方 API key 的状态：${String(e)}`;
+      fileBlock.textContent = copyText("accounts.readApikey.failed", { e: String(e) });
     }
     return { entries, fileBlock };
   }
@@ -1273,7 +1267,7 @@ export class AccountsSection {
       this.maintOpen = wrap.open;
     });
     const summary = document.createElement("summary");
-    summary.textContent = "维护（自检 / 补链 / rc 片段）";
+    summary.textContent = copyText("accounts.maintenance.title");
     wrap.appendChild(summary);
 
     const box = document.createElement("div");
@@ -1282,19 +1276,18 @@ export class AccountsSection {
     // 自检 / 补链。
     const ops = document.createElement("div");
     ops.className = "accounts-maint-ops";
-    const verifyBtn = mkBtn("自检 verify");
+    const verifyBtn = mkBtn(copyText("accounts.maintenance.verify"));
     verifyBtn.addEventListener("click", () => void this.launchStep({ kind: "verify" }));
-    const syncBtn = mkBtn("补链 sync");
+    const syncBtn = mkBtn(copyText("accounts.maintenance.sync"));
     syncBtn.addEventListener("click", () =>
       void this.launchStep(
         { kind: "sync-apply" },
-        { danger: true, confirmExtra: "补齐/修复共享库软链、修权限、刷新 manifest 邮箱（幂等）。" },
+        { danger: true, confirmExtra: copyText("accounts.maintenance.syncHint") },
       ),
     );
-    const rcBtn = mkBtn("生成 rc 片段…");
+    const rcBtn = mkBtn(copyText("accounts.maintenance.rc"));
     rcBtn.title =
-      "抓远端 `cc-acct-iso shellinit` 的输出，给你一段可贴的 rc 片段（贴了之后裸 claude 走默认账号，"
-      + "每个账号有 <名>cc 函数，账号 0 有 0cc 逃生口）。只读，不会替你写任何文件。";
+      copyText("accounts.maintenance.rcHint");
     const rcBox = document.createElement("div");
     rcBox.className = "accounts-maint-rc";
     rcBtn.addEventListener("click", () => void this.renderRcSnippet(rcBtn, rcBox));
@@ -1335,37 +1328,36 @@ export class AccountsSection {
   private async renderRcSnippet(btn: HTMLButtonElement, box: HTMLElement): Promise<void> {
     const host = this.currentHost();
     if (!host) {
-      showActionFailureToast("拿不到这台远端的配置", "请先在「远端」里配好它", { level: "error" });
+      showActionFailureToast(copyText("accounts.rc.noConfig"), copyText("accounts.rc.noConfigBody"), { level: "error" });
       return;
     }
     btn.disabled = true;
     const prev = btn.textContent;
-    btn.textContent = "抓取中…";
+    btn.textContent = copyText("accounts.rc.fetching");
     box.innerHTML = "";
     try {
       const snippet = await commands.remote_acct_iso_shellinit({ cfg: host });
       box.appendChild(
         buildPasteBlock({
           text: () => snippet,
-          target: "这台远端的 ~/.bashrc（zsh 用户贴 ~/.zshrc；它是登录 shell 的配置文件）",
+          target: copyText("accounts.rc.target"),
           mergeNote:
-            "追加到文件末尾，并删掉你以前手写的 swap 式切号块——片段自带 BEGIN/END 围栏，"
-            + "重新生成时替换围栏之间那一段即可，别贴成两份。",
-          activation: "`source` 它，或在该远端开一个新的登录 shell（已经开着的 shell 不受影响）。",
+            copyText("accounts.rc.merge"),
+          activation: copyText("accounts.rc.activation"),
           // 围栏在 Rust 侧已经校验过一次（拿不到就直接 Err）；这里再校验一次是因为
           // 「能显示」与「能贴」是两件事——半截片段贴进 rc 会让登录 shell 报错。
           invalidReason: (t) =>
             t.includes("# ===== BEGIN cc-acct-iso =====") &&
             t.includes("# ===== END cc-acct-iso =====")
               ? null
-              : "片段不完整（缺 BEGIN/END 围栏），先别贴 —— 在远端跑一次 `cc-acct-iso verify` 看是什么状况。",
+              : copyText("accounts.rc.incomplete"),
           multiline: true,
           rows: 12,
           className: "accounts-rc-paste",
         }).element,
       );
     } catch (e) {
-      showActionFailureToast("生成 rc 片段失败", String(e), { level: "error" });
+      showActionFailureToast(copyText("accounts.rc.failed"), String(e), { level: "error" });
     } finally {
       btn.disabled = false;
       btn.textContent = prev;
@@ -1389,8 +1381,8 @@ export class AccountsSection {
 
     const mark = document.createElement("span");
     mark.className = "accounts-row-mark";
-    mark.textContent = isCurrent ? "★" : "";
-    mark.title = isCurrent ? "当前账号" : "";
+    mark.textContent = isCurrent ? copyText("accounts.row.currentIcon") : "";
+    mark.title = isCurrent ? copyText("accounts.row.current") : "";
     row.appendChild(mark);
 
     // account-ux U7：复用 U4 的账号头像——与状态栏 chip、tab 徽章同一套 hash 色，三处肉眼可对应。
@@ -1403,7 +1395,7 @@ export class AccountsSection {
 
     const email = document.createElement("span");
     email.className = "accounts-row-email";
-    email.textContent = a.email || "—";
+    email.textContent = a.email || copyText("accounts.row.none");
     row.appendChild(email);
 
     // K-A1：三态（逃生口 / api-key（未配置端点）/ 未登录 / 已登录）的取值住
@@ -1427,10 +1419,10 @@ export class AccountsSection {
     dir.className = "accounts-row-dir";
     // Z01：账号 0 没有 config dir——它**就是**「不设 CLAUDE_CONFIG_DIR」这个状态。
     // 显示它的真实含义，别显示空白，更别显示一个空串路径。
-    dir.textContent = a.configDir ?? "（不设 CLAUDE_CONFIG_DIR）";
+    dir.textContent = a.configDir ?? copyText("accounts.row.baseDir");
     dir.title =
       a.configDir ??
-      "账号 0：起它就是什么都不设。凭据在共享库（~/.claude），.claude.json 在 $HOME。";
+      copyText("accounts.row.baseHint");
     row.appendChild(dir);
 
     const actions = document.createElement("span");
@@ -1444,10 +1436,9 @@ export class AccountsSection {
     const modelInput = document.createElement("input");
     modelInput.type = "text";
     modelInput.className = "accounts-row-model";
-    modelInput.placeholder = "默认模型";
+    modelInput.placeholder = copyText("accounts.row.model");
     modelInput.title =
-      "该账号起会话时默认使用的模型（如 opus/sonnet），留空则跟随账号自身默认。" +
-      "仅对本 app 发起的会话生效——终端里手敲 ccm 暂不识别这条偏好（见 unify-launch F08）。";
+      copyText("accounts.row.modelHint");
     modelInput.value = model ?? "";
     let lastSaved = model ?? "";
     const saveModel = async (): Promise<void> => {
@@ -1457,13 +1448,13 @@ export class AccountsSection {
         await setModelForAccount(a.name, next || null);
         lastSaved = next;
         showActionFailureToast(
-          next ? "已保存默认模型" : "已清除默认模型",
-          next ? `${a.name} 起会话默认用 ${next}。` : `${a.name} 恢复跟随账号自身默认模型。`,
+          next ? copyText("accounts.model.saved") : copyText("accounts.model.cleared"),
+          next ? copyText("accounts.model.savedBody", { name: a.name, next }) : copyText("accounts.model.clearedBody", { name: a.name }),
           { level: "info", durationMs: 3000 },
         );
       } catch (e) {
         // 校验失败（非法字符集）等——不落盘，保留用户已输入的文本以便就地修正。
-        showActionFailureToast("保存模型偏好失败", String(e), { level: "error" });
+        showActionFailureToast(copyText("accounts.model.failed"), String(e), { level: "error" });
       }
     };
     modelInput.addEventListener("blur", () => void saveModel());
@@ -1476,25 +1467,25 @@ export class AccountsSection {
     if (isSelectable(a) && !isCurrent) {
       const setDef = document.createElement("button");
       setDef.type = "button";
-      setDef.textContent = "设为当前账号";
+      setDef.textContent = copyText("accounts.row.setDefault");
       setDef.addEventListener("click", () => void this.selectDefault(a));
       actions.appendChild(setDef);
     }
     const copy = document.createElement("button");
     copy.type = "button";
-    copy.textContent = "复制路径";
+    copy.textContent = copyText("accounts.row.copyPath");
     copy.addEventListener("click", () => {
       const text = a.configDir ?? "";
       if (!text) {
-        showActionFailureToast("账号 0 没有 config dir", "起它就是不设 CLAUDE_CONFIG_DIR", {
+        showActionFailureToast(copyText("accounts.row.baseNoDir"), copyText("accounts.row.baseNoDirBody"), {
           level: "info",
           durationMs: 3000,
         });
         return;
       }
       void navigator.clipboard?.writeText(text).then(
-        () => showActionFailureToast("已复制", text, { level: "info", durationMs: 2500 }),
-        () => showActionFailureToast("复制失败", "剪贴板不可用", { level: "error" }),
+        () => showActionFailureToast(copyText("accounts.copy.done"), text, { level: "info", durationMs: 2500 }),
+        () => showActionFailureToast(copyText("accounts.copy.failed"), copyText("accounts.copy.noClipboard"), { level: "error" }),
       );
     });
     actions.appendChild(copy);
@@ -1530,12 +1521,12 @@ export class AccountsSection {
       await this.reload(true);
       void emit(SETTINGS_APPLIED_EVENT); // 让主窗状态栏 chip 同步
       showActionFailureToast(
-        "已设为当前账号",
-        `以后新会话 / resume 默认用 ${a.name}；正在跑的会话不受影响。`,
+        copyText("accounts.setDefault.done"),
+        copyText("accounts.setDefault.doneBody", { name: a.name }),
         { level: "info", durationMs: 4000 },
       );
     } catch (e) {
-      showActionFailureToast("设为当前账号失败", String(e), { level: "error" });
+      showActionFailureToast(copyText("accounts.setDefault.failed"), String(e), { level: "error" });
     }
   }
 

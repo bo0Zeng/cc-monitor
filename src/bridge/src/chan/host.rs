@@ -56,6 +56,7 @@ use super::wire::{
     Body, By, CallError, CancelToken, Cursor, Item, Key, Kind, Op, Origin, OursFault,
 };
 use crate::backend::control::{backend_route, inbound_client};
+use crate::copy_table::copy_text;
 use futures::future::BoxFuture;
 use futures::stream::BoxStream;
 use serde::{Deserialize, Serialize};
@@ -157,11 +158,11 @@ pub async fn start() -> Result<(), String> {
         Duration::from_secs(5),
     )
     .await
-    .map_err(|e| format!("通道口绑不上回环：{e}"))?;
+    .map_err(|e| copy_text("rsChanHost.start.bindFailed", &[("e", &e.to_string())]))?;
     tracing::info!("通道：在 {} 上听（只认回环、只认一把钥匙）", handoff.addr);
     HANDOFF
         .set(handoff)
-        .map_err(|_| "通道口已经起过一次了".to_string())
+        .map_err(|_| copy_text("rsChanHost.start.twice", &[]))
 }
 
 /// 交给要起外部前端的那一方。`None` = 通道没起来 —— **不许**因此退回别的路（`D11`）。
@@ -272,15 +273,15 @@ async fn transfer_open(origin: Origin, op: Op, payload: Body) -> Result<Body, Ca
     if origin.as_wire_str() == inbound_client::LOCAL_ORIGIN {
         return Err(refused(
             "local_has_no_transfer",
-            "本机那一侧没有 SFTP 传输 —— 文件窗口只开在远端机器上".to_string(),
+            copy_text("rsChanHost.transfer.localNone", &[]),
         ));
     }
     let Some(cfg) = crate::load_remote_config_by_label(origin.as_wire_str()) else {
         return Err(refused(
             "no_such_origin",
-            format!(
-                "没有叫 `{}` 的远端配置 —— 传输要那台机器的 SSH 配置",
-                origin.as_wire_str()
+            copy_text(
+                "rsChanHost.transfer.noConfig",
+                &[("machine", &(origin.as_wire_str()).to_string())],
             ),
         ));
     };
@@ -323,7 +324,7 @@ fn transfer_stream(origin: &Origin, id: &str, from: Option<Cursor>) -> BoxStream
         }]))
     };
     if from.is_some() {
-        return closed("bad_args", "传输进度不支持从某一格续看".to_string());
+        return closed("bad_args", copy_text("rsChanHost.transfer.noResume", &[]));
     }
     match crate::sftp_pool::watch_ticket(origin, id) {
         Ok(snaps) => Box::pin(

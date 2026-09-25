@@ -99,6 +99,8 @@ export const CHECKS: Record<string, Check> = {
     const v = ctx.imperative.find((w) => s.trimStart().startsWith(w));
     return v ? `${e.kind} 档以祈使动词「${v}」开头` : null;
   },
+  // 〔CP2b · 设计/91 §4 R6 · 用户 09-24 裁「允许动词开头（问句仍禁）」〕control 档不许问句。
+  "C-Y4": (e) => (e.kind === "control" && /[？?]/.test(speech(e.zh)) ? "control 档是问句" : null),
   "C-P1": (e) => (/您/.test(e.zh) ? "称用户用了「您」" : null),
   "C-P2": (e) => (/我们/.test(e.zh) ? "产品自称「我们」" : null),
   "C-T1": (e, ctx) => {
@@ -118,7 +120,8 @@ export const CHECKS: Record<string, Check> = {
   "C-L3": (e) => {
     const groups = [...speech(e.zh).matchAll(PAREN)].map((m) => m[1] ?? m[2] ?? "");
     if (NARROW.has(e.kind)) {
-      const g = groups.find((x) => hanCount(x) >= 2);
+      // 〔CP2b〕「（可选）」标的是选填，不是说明（rules.json C-L3 的规矩文字同拍改）。
+      const g = groups.find((x) => hanCount(x) >= 2 && x.trim() !== "可选");
       return g !== undefined ? `${e.kind} 档的括号里装了说明「${g}」` : null;
     }
     const n = groups.filter((x) => x.trim().length >= 2).length;

@@ -519,7 +519,8 @@ async fn the_freshness_numbers_the_backend_reports_really_reach_the_frame() {
         let painted = testing::frame_text(&ctx, &mut w, Vec::new());
         let line = painted
             .iter()
-            .find(|t| t.contains("后端声明的重走周期"))
+            // 〔CP2b〕禁档词换掉（重走周期 → 扫描间隔，terms.json「重走」那一条）⇒ 按「扫描间隔」认那一行。
+            .find(|t| t.starts_with("索引 ") && t.contains("扫描间隔"))
             .unwrap_or_else(|| {
                 panic!("这一帧上没有新鲜度那一行 —— `§3.5.3` 那条 ⬜ 还是 ⬜。\n这一帧画的是：{painted:?}")
             })
@@ -534,8 +535,9 @@ async fn the_freshness_numbers_the_backend_reports_really_reach_the_frame() {
         // 🔴 而后端报的那几个数**逐个**在那一行上，而且是**带着措辞**找的
         //    （光找一个数字容易撞上同一行里别的数）。
         let frags = vec![
-            format!("后端声明的重走周期 {interval} 秒"),
-            format!("{age} 秒前走完"),
+            // 〔CP2b〕禁档词换掉（重走周期 → 扫描间隔 · 走完 → 扫完），数一个不少。
+            format!("扫描间隔 {interval} 秒"),
+            format!("{age} 秒前扫完"),
             format!("有 {unreadable} 个目录读不进去"),
         ];
         for frag in &frags {
@@ -659,7 +661,9 @@ async fn the_cold_first_build_line_is_on_the_frame_while_it_runs_and_gone_after(
             "首建走完了，帧上还说「正在建索引」：{after:?}"
         );
         assert!(
-            after.iter().any(|t| t.contains("后端声明的重走周期")),
+            after
+                .iter()
+                .any(|t| t.starts_with("索引 ") && t.contains("扫描间隔")),
             "首建走完之后新鲜度那一行该回来：{after:?}"
         );
         assert_eq!(

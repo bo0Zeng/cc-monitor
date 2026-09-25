@@ -16,6 +16,7 @@ import { isLocalOrigin, type Origin } from "./ipc/origin";
 // 〔FE1〕`ApikeyRoutingView`（`apikey_routing_for` 的线上形状）住零 import 的叶子 `apikey-routing-view.ts`：
 //   它是 `ipc/commands.ts` 的返回类型，先前住在这里 ⇒ 通信层在类型上依赖账号域，七个模块的类型环就靠这一条边闭合。
 import type { ApikeyRoutingView } from "./apikey-routing-view";
+import { copyText } from "./copy-table";
 
 // ---- 账号的形状：〔C4d · 第四波 4B〕从生成物改回手写，形状由后端成品 ＋ 跨语言金样定 ----
 //
@@ -118,16 +119,16 @@ export function deriveUi(state: AccountsState): AccountsUi {
   if (!state.available) {
     const e = state.error ?? "";
     if (e.includes("过旧") || e.includes("不支持账号")) {
-      return { kind: "needs-update", reason: e || "远端后端需要更新" };
+      return { kind: "needs-update", reason: e || copyText("accounts.deriveUi.needsUpdate") };
     }
     // 其它不可用（查询失败等）：当作"需更新/不可用"，可点开设置看原因
-    return { kind: "needs-update", reason: e || "账号功能暂不可用" };
+    return { kind: "needs-update", reason: e || copyText("accounts.deriveUi.unavailable") };
   }
   if (!state.meta?.enabled || state.accounts.length === 0) {
     return {
       kind: "not-enabled",
       manifestPath: state.meta?.manifestPath ?? null,
-      reason: state.meta?.error ?? "该远端尚未启用多账号",
+      reason: state.meta?.error ?? copyText("accounts.deriveUi.notEnabled"),
     };
   }
   return {
@@ -264,66 +265,53 @@ export function accountStatusBadge(
 ): AccountStatusBadge {
   if (a.mode === "in-place") {
     return {
-      text: "逃生口",
+      text: copyText("accounts.badge.inPlace"),
       warn: true,
-      title: "in-place 模式：cc-monitor 不支持对它按会话切号",
+      title: copyText("accounts.badge.inPlaceHint"),
     };
   }
   if (a.authKind === "api-key") {
     const local = endpoint?.scope === "local" ? endpoint : null;
     if (local?.hasRow && local.running) {
       return {
-        text: "api-key（经本机中转）",
+        text: copyText("accounts.badge.apikeyRelayed"),
         warn: false,
         title:
-          "这个号在apikey 凭据文件里有一行，本机中转也在跑 —— 起本机会话时 cc-monitor 会把 " +
-          "ANTHROPIC_BASE_URL 指向本机中转；请求经过中转时，后端按这一行换上它的 key。\n" +
-          "⚠ 它保证的是「请求发得到中转、后端按这一行换 key」；" +
-          "那把 key 本身对不对、上游认不认，仍然要到 claude 那边才知道。",
+          copyText("accounts.badge.apikeyRelayedHint"),
       };
     }
     if (local?.hasRow) {
       return {
-        text: "api-key（中转未运行）",
+        text: copyText("accounts.badge.apikeyRelayDown"),
         warn: true,
         title:
-          "这个号在apikey 凭据文件里有一行，但本机中转没在跑 —— 起会话会被当场拒掉" +
-          "（不是静默失败：中转没起来与网络坏了在 claude 那边长得一模一样，" +
-          "所以这一条在起会话那一侧就拦下来）。请先起本机后端。",
+          copyText("accounts.badge.apikeyRelayDownHint"),
       };
     }
     // 三种「没配上」的成因，各说各的 —— **合成一句就等于又写下一句说不准的话**。
     const why =
       local != null
-        ? "apikey 凭据文件里没有这个账号的一行 ⇒ cc-monitor 不会替它配 base URL。" +
-          "要用它：在那份 JSON 里给这个账号加一行（端点 + key），或者在该账号自己的 " +
-          "shell 环境里配好第三方端点。"
+        ? copyText("accounts.badge.whyNoRow")
         : endpoint?.scope === "remote"
           ? // 〔RM1a 合并〕旧句「把 key 送到远端那台机器是另一件事」半过期了：key 今天送得到那台机器上
             //   （设置里配 key 按页上那台机器写），差的是远端起的会话还不经中转换上它（注入归 4B RL1）。
-            "key 可以存到远端那台机器上，但远端起的会话今天还不经中转换上它（只有本机会话会）。" +
-            "要用这个号，先在远端那台机器上自己配好第三方端点。"
-          : "cc-monitor 只在两件事都成立时替它配端点（base URL）：① apikey 凭据文件里有这个" +
-            "账号 id 的一行；② 本机中转在跑。这一处没被告知它属于哪一半、那两条成不成立，" +
-            "所以不替它下判断。";
+            copyText("accounts.badge.whyRemote")
+          : copyText("accounts.badge.whyUnknown");
     return {
-      text: "api-key（未配置端点）",
+      text: copyText("accounts.badge.apikeyNoEndpoint"),
       warn: true,
       title:
-        "这个号用 API key 鉴权，不看 ~/.claude 里的订阅凭据 —— 所以它可以被设为当前账号、" +
-        "会话也起得来。但请求要发得出去还差一格：" +
-        why +
-        "\n没配好就起会话，请求会在 claude 那边报鉴权失败。",
+        copyText("accounts.badge.apikeyNoEndpointHint", { why }),
     };
   }
   if (!authReady(a)) {
     return {
-      text: "未登录",
+      text: copyText("accounts.badge.notSignedIn"),
       warn: true,
-      title: "该账号尚未登录——请在终端里用它 /login",
+      title: copyText("accounts.badge.notSignedInHint"),
     };
   }
-  return { text: "已登录", warn: false, title: "" };
+  return { text: copyText("accounts.badge.signedIn"), warn: false, title: "" };
 }
 
 /**
@@ -335,13 +323,13 @@ export function accountStatusBadge(
 export function accountLoginActionLabel(a: Account): { label: string; title: string } {
   if (a.authKind === "api-key") {
     return {
-      label: "打开终端",
-      title: "用该账号打开一个远端终端（api-key 号不需要 /login，要在里面配好端点环境变量）",
+      label: copyText("accounts.loginAction.openTerminal"),
+      title: copyText("accounts.loginAction.openTerminalHint"),
     };
   }
   return {
-    label: authReady(a) ? "登录终端" : "去登录",
-    title: "用该账号打开一个远端终端（在里面 /login）",
+    label: authReady(a) ? copyText("accounts.loginAction.loginTerminal") : copyText("accounts.loginAction.goLogin"),
+    title: copyText("accounts.loginAction.loginHint"),
   };
 }
 
@@ -496,7 +484,7 @@ export function sessionBadge(
     return {
       text: badgeText(live.account),
       known: true,
-      tooltip: `账号 ${live.account}${email ? ` · ${email}` : ""} · 来源：实时探测`,
+      tooltip: copyText("accounts.sessionBadge.live", { account: live.account, email: email ? ` · ${email}` : "" }),
       source: "live",
       account: live.account,
     };
@@ -509,16 +497,16 @@ export function sessionBadge(
     return {
       text: badgeText(last),
       known: true,
-      tooltip: `账号 ${last}${email ? ` · ${email}` : ""} · 来源：上次用本工具起`,
+      tooltip: copyText("accounts.sessionBadge.last", { last, email: email ? ` · ${email}` : "" }),
       source: "last",
       account: last,
     };
   }
   // 源③：都没有 → 未知，不猜。
   return {
-    text: "—",
+    text: copyText("accounts.sessionBadge.none"),
     known: false,
-    tooltip: "该会话不是本工具启动的，或已停止，无法判定账号",
+    tooltip: copyText("accounts.sessionBadge.noneHint"),
     source: "unknown",
     account: null,
   };
@@ -564,15 +552,24 @@ export function shouldShowAccountBadge(
  * ⚠ **尤其不许复用** `deriveUi` 那句「该远端尚未启用多账号」（本文件 `not-enabled` 那一支）：
  * 对一台本机来说那句话有两个字是假的。
  */
+// 〔CP2b〕每一格是取值器：用到时才取文（模块顶层不留取文口调用，见 accountsOldBackend 那一句）。
 export const LOCAL_ACCOUNTS_COPY = {
   /** 这一节的题头 —— 先把「在讲哪台机器」说清楚。 */
-  heading: "这台机器上的账号",
+  get heading(): string {
+    return copyText("accounts.local.heading");
+  },
   /** 计数那一行的后半（前半是现算的数字）。 */
-  countSuffix: "个账号",
+  get countSuffix(): string {
+    return copyText("accounts.local.countSuffix");
+  },
   /** 清单路径那一格的前缀。 */
-  manifestPrefix: "清单",
+  get manifestPrefix(): string {
+    return copyText("accounts.local.manifestPrefix");
+  },
   /** 一个隔离账号都没有时的正题。 */
-  emptyTitle: "这台机还没有隔离账号",
+  get emptyTitle(): string {
+    return copyText("accounts.local.emptyTitle");
+  },
   /**
    * 空态的下一步。
    *
@@ -581,29 +578,37 @@ export const LOCAL_ACCOUNTS_COPY = {
    * `check_remote_acct_iso` / `remote_acct_iso_shellinit` 名字里都带 `remote`，
    * 本机那一侧的安装口**不存在**。写「点这里装」会是一句假话。
    */
-  emptyNext:
-    "下一步：在这台机器上装好 cc-acct-iso 并跑一次初始化，把现在这个登录态收进第一个隔离账号。" +
-    "cc-monitor 今天还没有本机这一侧的安装口，先在终端里做。",
+  get emptyNext(): string {
+    return copyText("accounts.local.emptyNext");
+  },
   /** 读不出来时的正题 —— **不许**渲染成「你没有账号」。 */
-  loadFailed: "读不出这台机器的账号清单",
+  get loadFailed(): string {
+    return copyText("accounts.local.loadFailed");
+  },
   /** 后端连原因都没给时的兜底（`loadFailed` 后面那一格不许空着）。 */
-  unknownReason: "后端没有给出原因",
+  get unknownReason(): string {
+    return copyText("accounts.local.unknownReason");
+  },
   /** 当前账号那一行的标记。 */
-  currentMark: "当前",
+  get currentMark(): string {
+    return copyText("accounts.local.currentMark");
+  },
   /**
    * 这一节的管辖范围。
    *
    * ⚠ 它只说**本件真做到的事**（把清单列出来），不替下一件许愿：
    * 切号 / 加号 / 走后端都还没接上，写进来就是一句提前兑现的话。
    */
-  scopeHint: "这一节只把这台机器上的账号清单列出来（只读）；在这里改不了它们。",
+  get scopeHint(): string {
+    return copyText("accounts.local.scopeHint");
+  },
 } as const;
 
 /**
  * F05：判别联合形态的账号解析结果——`AccountResolver` 目标（MASTERPLAN §3 账本）。取代
  * "只吐 configDir、名字在解析完就被丢弃"的旧口径：`kind==="account"` 时同时带 `name` 和
  * `configDir`——线通给调用方后，`name` 才能继续往下传进 `LaunchContext`（F05 的核心交付：
- * 让 `ACCOUNT_DIMENSION.cliFlags` 吐得出 `--account <名>`）。
+ * 让 Rust `ccm_invocation.rs::DIMENSION_ORDER` 里 `account` 那一维说得出 `--account <名>`）。
  */
 export type AccountResolution =
   | { kind: "account"; name: string; configDir: string }

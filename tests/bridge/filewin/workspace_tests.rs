@@ -288,11 +288,11 @@ fn tabs_open_switch_and_close() {
     assert_eq!(ws.active_on(0), 0);
     // 真点「＋」：从这一帧画出来的字里找那颗按钮。
     let mut d = Drive::new();
-    let plus = d.find(&mut ws, NEW_TAB_LABEL);
+    let plus = d.find(&mut ws, NEW_TAB_LABEL.as_str());
     assert_eq!(plus.len(), 1, "一栏时「＋」该恰好一颗");
     d.click(&mut ws, plus[0].center(), egui::PointerButton::Primary);
     assert_eq!(ws.tabs_on(0), 2, "点了「＋」没开出标签页");
-    let close = d.find(&mut ws, CLOSE_TAB_LABEL);
+    let close = d.find(&mut ws, CLOSE_TAB_LABEL.as_str());
     assert_eq!(close.len(), 2, "两个标签各有一颗「×」");
     d.click(&mut ws, close[1].center(), egui::PointerButton::Primary);
     assert_eq!(ws.tabs_on(0), 1, "点了「×」没关掉");
@@ -317,7 +317,9 @@ fn a_busy_tab_refuses_to_close_and_says_why() {
         "那句话没画出来：{said}"
     );
     assert!(
-        painted.iter().any(|(t, _)| t.starts_with(BUSY_MARK)),
+        painted
+            .iter()
+            .any(|(t, _)| t.starts_with(BUSY_MARK.as_str())),
         "后台那个有事的标签，名字前没有「●」"
     );
     // 收掉那一问 ⇒ 关得掉（阴性对照）。

@@ -80,12 +80,9 @@ import type { ImportMember } from "../generated/ImportMember";
 
 
 
-const REMOTE_INFO_TEXT =
-  "远端模式：monitor 通过 SSH 连到一台或多台远端主机，由各台后端作为额外数据源\n" +
-  "与本地聚合（渲染、Tab、分支等行为完全相同；远端 Tab 标题带 [机器名] 前缀）。\n" +
-  "关闭（默认）或机器列表为空时一切走本地，不受影响。\n\n" +
-  "⚠ 启用 / 修改任意远端设置后，需重启 monitor 才生效。\n" +
-  "某台配置不完整（缺 host / user / backendPath）时后端会跳过该台。";
+// 〔CP2b〕做成函数、用到时才取文（模块顶层不留取文口调用 —— 顶层调用会让 Rollup 把设置面板挪进主窗共享 chunk）。
+const REMOTE_INFO_TEXT = (): string =>
+  copyText("remote.info.remote");
 
 /**
  * Feature ②：远端 ↗ 拉前的 bashrc 块——**注册原语与启动器分离**（镜像本地
@@ -107,7 +104,8 @@ const REMOTE_INFO_TEXT =
  */
 // 单一来源：src/shared/ccm-aliases.sh（后端 sftp.rs include_str! 同一文件，杜绝漂移）
 import CCM_WRAPPER_SNIPPET from "../shared/ccm-aliases.sh?raw";
-import { buildPasteBlock } from "../paste-block"; // T03：待贴文本统一组件
+import { buildPasteBlock } from "../paste-block";
+import { copyText } from "../copy-table"; // T03：待贴文本统一组件
 
 /**
  * S4b：「每台机器一页」的宿主。由 `panel.ts` 用 `SettingsRouter` 实现。
@@ -305,7 +303,7 @@ export class RemoteSection {
       //   by ACL` 就是这条路出来的）。状态栏离出事的那一块十万八千里，用户看不出
       //   「机器列表为什么是空的」。
       // ⇒ 就地说一句，并把异常继续往外抛（调用方要判成不成功，本行只负责说出口）。
-      this.showBanner(`读远端配置失败：${String(e)} —— 机器列表这一趟没读出来。`);
+      this.showBanner(copyText("remote.refresh.failed", { e: String(e) }));
       throw e;
     } finally {
       this.pages?.machinePagesSettled?.();
@@ -336,7 +334,7 @@ export class RemoteSection {
     const name = document.createElement("button");
     name.type = "button";
     name.className = "remote-machine-name remote-machine-open";
-    name.textContent = "本机";
+    name.textContent = copyText("remote.localRow.title");
     name.addEventListener("click", () =>
       this.pages?.navigateToMachinePage(LOCAL_MACHINE_PAGE_ID),
     );
@@ -384,7 +382,7 @@ export class RemoteSection {
       const on = st.channel === true;
       recordFacet(LOCAL_MACHINE_KEY, "backend", {
         kind: on ? "ok" : "fail",
-        detail: on ? "已连上" : "没起来",
+        detail: on ? copyText("remote.local.connected") : copyText("remote.local.notStarted"),
       });
     } catch {
       // 见头注：查不到就不写。**不许在这里补一个 `fail`** —— 那是替用户下一个没做过的结论。
@@ -416,7 +414,7 @@ export class RemoteSection {
       // 本机页的内容由宿主（panel）填 —— 它拿得到那几块 per-machine 分节，本分节拿不到。
       const localPage = document.createElement("div");
       localPage.className = "machine-page-local";
-      this.pages.addMachinePage(LOCAL_MACHINE_PAGE_ID, "本机", localPage);
+      this.pages.addMachinePage(LOCAL_MACHINE_PAGE_ID, copyText("remote.cards.local"), localPage);
       this.machinePageIds.push(LOCAL_MACHINE_PAGE_ID);
     }
     for (const h of hosts) {
@@ -463,7 +461,7 @@ export class RemoteSection {
     //    名字进块标题（与别的块同一个 `.settings-group-title`），摘要另起一行。
     const title = document.createElement("div");
     title.className = "settings-group-title";
-    title.textContent = "诊断";
+    title.textContent = copyText("remote.gaps.title");
     this.gapsBox.appendChild(title);
     const head = document.createElement("div");
     head.className = "settings-label remote-gaps-head";
@@ -565,8 +563,8 @@ export class RemoteSection {
     removeBtn.type = "button";
     removeBtn.className =
       "settings-btn settings-btn-secondary remote-machine-remove";
-    removeBtn.textContent = "删除";
-    removeBtn.title = "从列表移除这台机器";
+    removeBtn.textContent = copyText("remote.row.delete");
+    removeBtn.title = copyText("remote.row.deleteHint");
     removeBtn.addEventListener("click", (ev) => {
       ev.stopPropagation();
       this.removeCard(card);
@@ -686,13 +684,13 @@ export class RemoteSection {
     this.importSelect.innerHTML = "";
     const placeholder = document.createElement("option");
     placeholder.value = "";
-    placeholder.textContent = "选择一个主机别名…（导入为新机器）";
+    placeholder.textContent = copyText("remote.aliases.pick");
     this.importSelect.appendChild(placeholder);
 
     if (aliases.length === 0) {
       this.importSelect.disabled = true;
       this.importHint.textContent =
-        "未在 ~/.ssh/config 找到可导入的主机别名（也可点「添加机器」手动填写）。";
+        copyText("remote.aliases.none");
       this.importHint.style.display = "block";
       return;
     }
@@ -717,8 +715,8 @@ export class RemoteSection {
     if (!this.headless) {
       const heading = document.createElement("div");
       heading.className = "settings-group-title";
-      heading.textContent = "远端 (SSH)";
-      heading.appendChild(makeInfoIcon(REMOTE_INFO_TEXT));
+      heading.textContent = copyText("remote.build.title");
+      heading.appendChild(makeInfoIcon(REMOTE_INFO_TEXT()));
       group.appendChild(heading);
     }
 
@@ -747,7 +745,7 @@ export class RemoteSection {
     const addBtn = document.createElement("button");
     addBtn.type = "button";
     addBtn.className = "settings-btn settings-btn-secondary";
-    addBtn.textContent = "+ 添加机器";
+    addBtn.textContent = copyText("remote.build.addMachine");
     addBtn.addEventListener("click", () => {
       this.appendCard({ ...HOST_DEFAULTS });
       // 空白机器先不写 config（缺必填字段无意义）；用户填了字段 change 时才 save。
@@ -761,9 +759,9 @@ export class RemoteSection {
     const pfBtn = document.createElement("button");
     pfBtn.type = "button";
     pfBtn.className = "settings-btn settings-btn-secondary";
-    pfBtn.textContent = "端口转发…";
+    pfBtn.textContent = copyText("remote.build.portForward");
     pfBtn.title =
-      "本地端口转发(-L)管理台:把远端机(或其内网)端口映到本机,经已配置的 SSH 连接隧道";
+      copyText("remote.build.portForwardHint");
     pfBtn.addEventListener("click", () => openPortForwardPanel());
     toolbar.appendChild(pfBtn);
 
@@ -779,12 +777,11 @@ export class RemoteSection {
     enabledRow.appendChild(this.enabledCheckbox);
     const enabledLabel = document.createElement("span");
     enabledLabel.className = "settings-checkbox-label";
-    enabledLabel.textContent = "启用远端模式";
+    enabledLabel.textContent = copyText("remote.build.enable");
     enabledRow.appendChild(enabledLabel);
     enabledRow.appendChild(
       makeInfoIcon(
-        "勾选后 monitor 启动时会额外用 SSH 连下列每台机器作为数据源（与本地聚合）。\n" +
-          "⚠ 需重启 monitor 才生效。某台配置不完整时后端跳过该台。列表为空 = 等于关闭。",
+        copyText("remote.build.enableHint"),
       ),
     );
     toolbar.appendChild(enabledRow);
@@ -807,7 +804,7 @@ export class RemoteSection {
     this.emptyHint = document.createElement("div");
     this.emptyHint.className = "settings-hint";
     this.emptyHint.textContent =
-      "尚未添加远端机器。用上方工具条「+ 添加机器」，或从 ssh config 导入。";
+      copyText("remote.build.empty");
     this.emptyHint.style.display = "none";
     group.appendChild(this.emptyHint);
 
@@ -830,10 +827,10 @@ export class RemoteSection {
     this.importSelect = document.createElement("select");
     this.importSelect.className = "settings-input settings-input-select";
     this.importSelect.title =
-      "选一个 ~/.ssh/config 里的主机别名，自动用 `ssh -G` 解析出 host/port/user/私钥路径并新增一台机器填好（免手敲）。仍可手动微调任意字段。";
+      copyText("remote.import.hint");
     const placeholder = document.createElement("option");
     placeholder.value = "";
-    placeholder.textContent = "从 ssh config 导入…";
+    placeholder.textContent = copyText("remote.import.pick");
     this.importSelect.appendChild(placeholder);
     this.importSelect.disabled = true;
     this.importSelect.addEventListener(
@@ -846,9 +843,9 @@ export class RemoteSection {
     const batchBtn = document.createElement("button");
     batchBtn.type = "button";
     batchBtn.className = "settings-btn settings-btn-secondary";
-    batchBtn.textContent = "批量导入…";
+    batchBtn.textContent = copyText("remote.import.batch");
     batchBtn.title =
-      "一次导入 ~/.ssh/config 全部主机；同密钥+同用户+同基名前缀的别名智能聚合成一台多地址主机（预览可拆分/勾选）";
+      copyText("remote.import.batchHint");
     batchBtn.addEventListener("click", () => void this.onBatchImport());
     toolbar.appendChild(batchBtn);
 
@@ -871,10 +868,10 @@ export class RemoteSection {
       const card = this.appendCard({ ...HOST_DEFAULTS });
       card.applyResolved(resolved, alias);
       await this.save();
-      this.showBanner(`已从别名「${alias}」导入为新机器。`);
+      this.showBanner(copyText("remote.import.done", { alias }));
     } catch (e) {
       console.warn("resolve_ssh_host failed:", e);
-      this.showBanner(`导入别名「${alias}」失败：${String(e)}`);
+      this.showBanner(copyText("remote.import.failed", { alias, e: String(e) }));
     } finally {
       this.importSelect.value = "";
     }
@@ -886,11 +883,11 @@ export class RemoteSection {
     try {
       groups = await commands.import_ssh_hosts();
     } catch (e) {
-      this.showBanner(`批量导入失败：${String(e)}`);
+      this.showBanner(copyText("remote.batch.failed", { e: String(e) }));
       return;
     }
     if (groups.length === 0) {
-      this.showBanner("~/.ssh/config 里没有可导入的主机。");
+      this.showBanner(copyText("remote.batch.none"));
       return;
     }
     this.showImportPreview(groups);
@@ -949,7 +946,7 @@ export class RemoteSection {
     box.className = "import-preview-box";
     const title = document.createElement("div");
     title.className = "import-preview-title";
-    title.textContent = `从 ~/.ssh/config 导入（检测到 ${groups.length} 台）`;
+    title.textContent = copyText("remote.preview.title", { n: groups.length });
     box.appendChild(title);
 
     const list = document.createElement("div");
@@ -957,10 +954,10 @@ export class RemoteSection {
     for (const s of state) {
       const src = s.g.members.map((m) => m.alias).join(", ");
       const addrHint = s.g.addresses.length
-        ? ` +${s.g.addresses.length} 备用地址`
+        ? copyText("remote.preview.addresses", { n: s.g.addresses.length })
         : "";
-      const jumpHint = s.g.jump ? ` · 跳板 ${s.g.jump}` : "";
-      const aggLine = `${s.g.host}${addrHint} · ${s.g.user || "(无 user)"}${jumpHint} · 来源: ${src}`;
+      const jumpHint = s.g.jump ? copyText("remote.preview.jump", { jump: s.g.jump }) : "";
+      const aggLine = copyText("remote.preview.row", { host: s.g.host, addrHint, user: s.g.user || copyText("remote.preview.noUser"), jumpHint, src });
 
       const item = document.createElement("div");
       item.className = "import-preview-item";
@@ -992,10 +989,10 @@ export class RemoteSection {
         split.addEventListener("change", () => {
           s.split = split.checked;
           info.textContent = split.checked
-            ? `拆成 ${s.g.members.length} 台独立机: ${src}`
+            ? copyText("remote.preview.split", { n: s.g.members.length, src })
             : aggLine;
         });
-        splitWrap.append(split, document.createTextNode("拆分"));
+        splitWrap.append(split, document.createTextNode(copyText("remote.preview.splitToggle")));
         item.appendChild(splitWrap);
       }
       list.appendChild(item);
@@ -1007,12 +1004,12 @@ export class RemoteSection {
     const cancel = document.createElement("button");
     cancel.type = "button";
     cancel.className = "settings-btn";
-    cancel.textContent = "取消";
+    cancel.textContent = copyText("remote.preview.cancel");
     cancel.addEventListener("click", () => back.remove());
     const confirm = document.createElement("button");
     confirm.type = "button";
     confirm.className = "settings-btn settings-btn-primary";
-    confirm.textContent = "导入";
+    confirm.textContent = copyText("remote.preview.import");
     confirm.addEventListener("click", () => {
       back.remove();
       void this.applyImportPreview(state);
@@ -1077,7 +1074,7 @@ export class RemoteSection {
     }
     if (added > 0) await this.save();
     this.showBanner(
-      `批量导入完成：新增 ${added} 台${skipped ? `，跳过 ${skipped} 台（同名已存在）` : ""}。`,
+      copyText("remote.batch.done", { added, skippedPart: skipped ? copyText("remote.batch.skipped", { skipped }) : "" }),
     );
   }
 
@@ -1093,17 +1090,10 @@ export class RemoteSection {
 
     const label = document.createElement("summary");
     label.className = "settings-label remote-wrapper-summary";
-    label.textContent = "远端 ↗ 拉前（可选）";
+    label.textContent = copyText("remote.wrapper.title");
     label.appendChild(
       makeInfoIcon(
-        "用 `ccm` 起会话（而非直接 `claude`），远端会周期性把 ssh 窗口标题设成\n" +
-          "`ccm-rbind-<sid>`，本地 monitor 扫到即绑定该窗口；同时给 tmux 打上 @ccm_sid，\n" +
-          "于是终端起的会话 app 也认得出、能 attach、能换号重启。\n\n" +
-          "✅ 每台机器页的「组件」栏：「部署后端」放好 ccm 入口（~/.cc-monitor/bin/ccm），\n" +
-          "「装别名块」把别名块写进 ~/.bashrc（先备份、幂等可重装）；下面片段就是那个别名块，\n" +
-          "可手动复制（zsh / 自定义 profile 用；ccm 入口仍要用「部署后端」放）。\n\n" +
-          "⚠ 限制：多个 ssh 会话若开在同一个 Windows Terminal 窗口的不同 tab 里，↗ 只能\n" +
-          "拉起该窗口、无法切到具体 tab。建议每个远端会话单独开窗。",
+        copyText("remote.wrapper.help"),
       ),
     );
     row.appendChild(label);
@@ -1114,10 +1104,10 @@ export class RemoteSection {
     row.appendChild(
       buildPasteBlock({
         text: () => CCM_WRAPPER_SNIPPET,
-        target: "这台远端的 ~/.bashrc（或它实际用的 shell 配置文件）",
+        target: copyText("remote.wrapper.pasteTarget"),
         mergeNote:
-          "追加到文件末尾即可；里面是带 BEGIN/END 围栏的块，重复贴会有两份，先删掉旧的那一份。",
-        activation: "source 它，或在该远端开一个新的登录 shell。",
+          copyText("remote.wrapper.merge"),
+        activation: copyText("remote.wrapper.activation"),
         multiline: true,
         rows: 10,
         // 指回已有规则的那个 class（迁移时改名成 `-paste` 让 styles.css:3480
@@ -1154,11 +1144,11 @@ export class RemoteSection {
 
     if (incompleteCount > 0) {
       this.showBanner(
-        `已保存，但有 ${incompleteCount} 台 host/user/backendPath 不完整 —— 后端会跳过这些台。补全后重启 monitor 才会连。`,
+        copyText("remote.save.incomplete", { n: incompleteCount }),
       );
     } else if (fingerprintLooksOff) {
       this.showBanner(
-        "已保存。注意：某台主机指纹不是 `SHA256:` 开头格式 —— 请确认没粘错。",
+        copyText("remote.save.fingerprintShape"),
       );
     }
 
@@ -1212,12 +1202,12 @@ export class RemoteSection {
         // S7：「要重启」这个**状态**收敛到底部常驻条，banner 只报「这次动作成功了」。
         // 原先每次保存都在 banner 里重说一遍「需要重启」—— 那句话恒真，说多了就成噪音，
         // 真该注意时反而认不出来（§12）。
-        markRestartNeeded("远端机器配置");
-        this.showBanner("远端设置已更新。");
+        markRestartNeeded(copyText("remote.save.what"));
+        this.showBanner(copyText("remote.save.done"));
       }
     } catch (e) {
       console.warn("save remote config failed:", e);
-      this.showBanner(`保存失败：${String(e)}`);
+      this.showBanner(copyText("remote.save.failed", { e: String(e) }));
     }
   }
 

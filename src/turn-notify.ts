@@ -17,6 +17,7 @@
  * 依赖注入（deps）纯为可测：生产用默认实现，vitest 全量替换。
  */
 import { getBehavior } from "./behavior";
+import { copyText } from "./copy-table";
 
 /**
  * onLine payload 的最小形状（`tabs.ts` 的 `LinePayload` 超集兼容）。
@@ -115,7 +116,7 @@ export class TurnEndNotifier {
   private async finish(tabTitle: string): Promise<void> {
     try {
       if (!(await this.deps.enabled())) return;
-      await this.deps.send(`Claude 完成一轮 — ${tabTitle}`, "会话已回到等待输入状态。");
+      await this.deps.send(copyText("turnNotify.finish.title", { tab: tabTitle }), copyText("turnNotify.finish.body"));
     } catch (e) {
       console.warn("turn-notify: send failed:", e);
     }

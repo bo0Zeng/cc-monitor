@@ -6,6 +6,7 @@
 //! | 第 1 跳超时 ⇒ `Hop{1 wait, Unknown, Overrun}` ＋ 句柄的撤单手柄被拨下 | [`a_backend_that_never_answers_is_bounded_by_left`] |
 //! | 句柄的错误原样过线（不在这一跳改层） | [`backend_errors_pass_through_unchanged`] |
 //! | 交回 webview 的失败形状 == 金标准（TS 那侧解的是同一份文件） | [`the_fail_shape_equals_the_golden_file_the_ts_side_decodes`] |
+//! | 〔C4e〕「能不能回落」的收拢 == 金标准（TS 那侧 `provablyNotSent` 判的是同一份文件） | [`the_fallback_rule_equals_the_golden_file_the_ts_side_judges`] |
 //!
 //! 买不到：真 Tauri IPC 那一跳（`#[tauri::command]` 的实参反序列化、`Response` 的字节交付）——
 //! 那一跳要一个活的 webview，红线内起不来；这里证的是它之后的全部。
@@ -321,4 +322,77 @@ fn a_body_that_is_not_utf8_becomes_broken_not_lossy() {
             }
         );
     }
+}
+
+/// ★★〔C4e · 第四波 4C〕**F14 那条「能不能回落」的规则两份实现对拍**：Rust `backend_route::route_call_error`
+/// 那一收拢 == TS `ipc/chan-caller.ts::provablyNotSent`，跨语言金样 `tests/__fixtures__/reach-collapse.golden.json`。
+///
+/// 守的要求：`设计/05 §4.5.2`（面 A「连不上时怎么办」）与 `backend_route` 头注那条分界线逐字
+/// 「**能不能证明这条命令根本没发出去**」—— 就地 resume 迁到界面之后（`src/tmux-control.ts::sendInto`），
+/// 同一条规则在 TS 那一侧有了第二份（它读的是 webview 这一跳上线后的分层错误，不是 inbound 的枚举）。
+/// 两份一漂，后果就是 F14 记的那一形：一次「后端已键入但应答超时」被判成可回落 ⇒ 载荷第二次键入正在跑的 claude。
+///
+/// 异源：本侧把 inbound 的**每一种**失败（外加「没有控制通道」）经生产的 `layer_call_error` / `layer_no_channel`
+/// 分层、经生产的 [`fail`] 序列化成 webview 那一跳的线上形状，「可回落」取自生产的 `route_call_error`
+/// （`NoChannel` 那一档）—— 产出 == 金样；TS 那侧用生产的 `decodeFail` 解同一份、`provablyNotSent` 判。
+#[test]
+fn the_fallback_rule_equals_the_golden_file_the_ts_side_judges() {
+    use crate::backend::control::backend_route::{
+        layer_call_error, layer_no_channel, route_call_error, Routed,
+    };
+    use crate::backend::control::inbound_client::CallError as Inbound;
+    let cases: Vec<(&str, Inbound)> = vec![
+        (
+            "unsupported",
+            Inbound::Unsupported {
+                cmd: "launch".into(),
+                offered: vec![],
+            },
+        ),
+        ("too_many_pending", Inbound::TooManyPending),
+        ("disconnected", Inbound::Disconnected),
+        (
+            "timeout",
+            Inbound::Timeout {
+                after: Duration::from_secs(10),
+            },
+        ),
+        ("cancelled", Inbound::Cancelled),
+        (
+            "remote_refused",
+            Inbound::Remote {
+                code: "wrong_owner".into(),
+                message: "m".into(),
+            },
+        ),
+    ];
+    let mut rows = vec![serde_json::json!({
+        "case": "no_channel",
+        "fail": serde_json::to_value(fail(layer_no_channel(1))).expect("可序列化"),
+        // `client_for` 回 None ⇒ `backend_route::no_channel` ⇒ `Routed::NoChannel`（一个字节都没发）。
+        "provablyNotSent": true,
+    })];
+    for (name, e) in cases {
+        let may_fall_back = matches!(
+            route_call_error(&e, |_, _| String::new()),
+            Routed::NoChannel(_)
+        );
+        rows.push(serde_json::json!({
+            "case": name,
+            "fail": serde_json::to_value(fail(layer_call_error(&e, 1).error)).expect("可序列化"),
+            "provablyNotSent": may_fall_back,
+        }));
+    }
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let golden: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join("tests/__fixtures__/reach-collapse.golden.json"))
+            .expect("读不到 reach-collapse 金样"),
+    )
+    .expect("金样不是 JSON");
+    assert_eq!(
+        serde_json::Value::Array(rows),
+        golden["rows"],
+        "Rust 那条「能不能回落」的收拢与金样对不上 —— TS 那侧（`provablyNotSent`）按金样判，两份会各说各的。\n\
+         真改了规则就重打金样，并同拍改 `src/ipc/chan-caller.ts::provablyNotSent`"
+    );
 }
