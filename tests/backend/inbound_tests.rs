@@ -222,6 +222,83 @@ async fn an_oversized_line_is_rejected_without_killing_the_reader() {
     );
 }
 
+/// 〔F9c · 第四波〕🔴 **超长行的应答带回请求的 `id`**（`设计/60 §9c.2`：此前回空串，调用方熬满预算才超时）。
+///
+/// 真读循环、真超长行（行长 > [`MAX_LINE_BYTES`]）。四形：`id` 在第一个键 · `id` 排在一个
+/// 含假 `"id"` 的嵌套对象之后 · `id` 带转义 · 两条超长行挨着（第二条不许沾上第一条的 `id`）。
+/// 阴性对照：信封里没有 `id` ⇒ 仍回空串（抠不出就不编）。
+#[tokio::test]
+async fn an_oversized_line_answers_with_the_id_it_carried() {
+    let pad = "p".repeat(MAX_LINE_BYTES);
+    let lines = [
+        format!("{{\"id\":\"first\",\"cmd\":\"files-write-text\",\"args\":{{\"content\":\"{pad}\"}}}}\n"),
+        format!(
+            "{{\"cmd\":\"x\",\"args\":{{\"id\":\"inner\",\"n\":[1,{{\"id\":\"deeper\"}}]}},\"id\":\"outer\",\"pad\":\"{pad}\"}}\n"
+        ),
+        format!("{{\"id\":\"q\\\"uo\\\\te\",\"pad\":\"{pad}\"}}\n"),
+        format!("{{\"cmd\":\"no-id\",\"pad\":\"{pad}\"}}\n"),
+    ];
+    let out = one_line(&lines.concat()).await;
+    let got: Vec<(String, String)> = out
+        .iter()
+        .map(|l| {
+            let v: serde_json::Value = serde_json::from_str(l).expect("应答是一行 JSON");
+            (
+                v["id"].as_str().unwrap_or("<非字符串>").to_string(),
+                v["code"].as_str().unwrap_or("").to_string(),
+            )
+        })
+        .collect();
+    let want: Vec<(String, String)> = ["first", "outer", "q\"uo\\te", ""]
+        .iter()
+        .map(|id| (id.to_string(), "line_too_long".to_string()))
+        .collect();
+    assert_eq!(
+        got, want,
+        "超长行的应答没带回（或带错了）请求的 id —— 调用方会熬满自己的预算才超时"
+    );
+}
+
+/// 〔F9c〕[`sniff_id`] 的边：只看给它的那一段，顶层之外的 `id` 不认，形状不对就不编。
+#[test]
+fn the_id_sniffer_only_believes_a_top_level_string_id() {
+    let cases: &[(&str, Option<&str>)] = &[
+        (r#"{"id":"a"}"#, Some("a")),
+        (r#"  { "id" : "a b" , "cmd":"x"}"#, Some("a b")),
+        (
+            r#"{"cmd":"x","args":{"id":"inner"},"id":"outer"}"#,
+            Some("outer"),
+        ),
+        (
+            r#"{"n":-1.5e3,"t":true,"z":null,"s":"}\"{","id":"k"}"#,
+            Some("k"),
+        ),
+        (r#"{"id":"\u4e2d"}"#, Some("中")),
+        // 阴性：没有顶层 id · id 不是字符串 · 不是对象 · 段在 id 之前就断了
+        (r#"{"args":{"id":"inner"}}"#, None),
+        (r#"{"id":7}"#, None),
+        (r#"["id","a"]"#, None),
+        (r#"{"cmd":"xxxxxxxx"#, None),
+        (r#"{"id":"unterminated"#, None),
+        ("", None),
+    ];
+    for (head, want) in cases {
+        assert_eq!(
+            sniff_id(head.as_bytes()).as_deref(),
+            *want,
+            "嗅 {head:?} 嗅错了"
+        );
+    }
+    // 读循环只交给它行首 `ID_SNIFF_BYTES` 那么多：排在 id 前面的键把 id 挤出这一段 ⇒ 抠不出（回旧行为）。
+    let far = format!(r#"{{"pad":"{}","id":"late"}}"#, "p".repeat(ID_SNIFF_BYTES));
+    assert_eq!(sniff_id(&far.as_bytes()[..ID_SNIFF_BYTES]), None);
+    assert_eq!(
+        sniff_id(far.as_bytes()).as_deref(),
+        Some("late"),
+        "正控：给全了就认得"
+    );
+}
+
 /// ★ 喂一条**远超上限**的无换行流，进程内存不许跟着涨。
 ///
 /// 这条测的是 D 审计抓到的那件事：上限如果是「读完再判」，`line_too_long`
@@ -332,7 +409,8 @@ fn req(id: &str, cmd: &str) -> Request {
 fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     let (tx, _rx) = mpsc::channel::<Frame>(4);
     let running: Running = Arc::new(Mutex::new(HashMap::new()));
-    let d = |cmd: &str| dispatch(req("x", cmd), &tx, &running);
+    let links = crate::dial::link::Table::new(tx.clone());
+    let d = |cmd: &str| dispatch(req("x", cmd), &tx, &running, &links);
 
     // `launch` 起进程、同步阻塞 ⇒ 必须是 SpawnBlocking（不占 tokio worker + 不可取消）。
     assert!(
@@ -349,6 +427,17 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     }
     assert!(matches!(d("cancel"), Disposition::Done));
     assert!(matches!(d("nope"), Disposition::Reply(..)));
+    // 〔SR1a〕链路四条是硬臂、**就地**做完（不进任何 spawn 档）：`link-data` 要保序，
+    // 另三条只碰本连接的链路表。空 `args` ⇒ 当场回一条 `invalid_args` 应答（不起任务）。
+    for c in ["link-open", "link-data", "link-credit", "link-close"] {
+        assert!(
+            matches!(
+                d(c),
+                Disposition::Reply(Frame::Reply { code: Some(ref code), .. }) if code == "invalid_args"
+            ),
+            "`{c}` 没有就地回应答 —— 它该是硬臂，不该进 spawn 档"
+        );
+    }
 
     // P4f：两条 cc-bus 命令**要起子进程并等它退出** ⇒ 与 `launch`/`kill` 同档。
     // `K-R104`：那两条 tmux 原语同理（抓一屏 / 建会话都要起 tmux 并等它退出）。
@@ -384,6 +473,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     for c in [
         "files-create",
         "files-commit-upload",
+        "files-stage-chunk",
+        "files-commit-text",
         "files-chmod",
         "files-delete",
         "files-mkdir",
@@ -401,6 +492,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-home",
         // 〔`C1` · 09-24〕只读查询面八条：全做文件 I/O（`history-search` 扫全库）。
         "history-projects",
+        "history-index",
+        "history-user-inputs",
+        "history-find",
         "history-read",
         "history-search",
         "history-sessions",
@@ -411,6 +505,17 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 〔B2 · 条 66〕「退出行为」那两条：同步文件 I/O（读 / 原子写 `~/.cc-monitor` 下那一份）。
         "exit-policy-read",
         "exit-policy-set",
+        // 〔RM1b · 第四波〕功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
+        "plugins-marketplaces",
+        "tasks-list",
+        // 〔RM1a · 第四波〕账号层那份凭据文件的两条：同步文件 I/O（读 / 原子写那一份）。
+        "apikey-key-set",
+        "apikey-read",
+        // 〔RM1a · 第四波〕中转那两条：回环连一次 / 起一个进程。
+        "relay-ensure",
+        "relay-status",
+        // 〔RM1a · 第四波〕足迹那一条：一批 stat / 读几份小文件。
+        "footprint-probe",
         // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话：同步文件 I/O（围栏 ＋ 读 / 写满换名 / 删）。
         "files-peek",
         "files-put",
@@ -429,6 +534,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "ping",
         "resolve",
         "cancel",
+        "link-open",
+        "link-data",
+        "link-credit",
+        "link-close",
         "bus-list",
         "bus-send",
         "bus-kill",
@@ -437,6 +546,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "capture-pane",
         "files-create",
         "files-commit-upload",
+        "files-stage-chunk",
+        "files-commit-text",
         "files-chmod",
         "files-delete",
         "files-mkdir",
@@ -452,6 +563,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-read-text",
         "files-home",
         "history-projects",
+        "history-index",
+        "history-user-inputs",
+        "history-find",
         "history-read",
         "history-search",
         "history-sessions",
@@ -461,6 +575,13 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "accounts-sessions",
         "exit-policy-read",
         "exit-policy-set",
+        "plugins-marketplaces",
+        "tasks-list",
+        "apikey-key-set",
+        "apikey-read",
+        "relay-ensure",
+        "relay-status",
+        "footprint-probe",
         // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话：同步文件 I/O，阻塞档。
         "files-peek",
         "files-put",
@@ -495,6 +616,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
 fn every_registered_command_is_reachable_through_the_real_dispatch() {
     let (tx, _rx) = mpsc::channel::<Frame>(4);
     let running: Running = Arc::new(Mutex::new(HashMap::new()));
+    let links = crate::dial::link::Table::new(tx.clone());
     assert!(
         REGISTRY.len() >= 4,
         "注册表只有 {} 条 —— 本条在空转",
@@ -505,7 +627,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
         .map(|spec| spec.name)
         .filter(|name| {
             matches!(
-                dispatch(req("x", name), &tx, &running),
+                dispatch(req("x", name), &tx, &running, &links),
                 Disposition::Reply(Frame::Reply { code: Some(ref c), .. })
                     if c == "unknown_command"
             )
@@ -522,7 +644,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
     // ★ 反向自检：这把尺子真的会说「够不到」—— 不然上面那一批是空真。
     assert!(
         matches!(
-            dispatch(req("x", "no-such-command-kr104"), &tx, &running),
+            dispatch(req("x", "no-such-command-kr104"), &tx, &running, &links),
             Disposition::Reply(Frame::Reply { code: Some(ref c), .. }) if c == "unknown_command"
         ),
         "喂一个根本不存在的命令进去，本条居然认为它够得到 —— 那上面那一批证不了任何事"
@@ -554,10 +676,12 @@ async fn cancelling_a_blocking_command_says_not_cancellable_instead_of_lying() {
     .await;
 
     // 对它发 cancel。
+    let links = crate::dial::link::Table::new(tx.clone());
     handle_line(
         br#"{"id":"c1","cmd":"cancel","args":{"target":"blk"}}"#,
         &tx,
         &running,
+        &links,
     )
     .await;
 

@@ -41,6 +41,7 @@ import {
   PINNED_CAP,
   type PinnedTab,
 } from "../src/tab-bar-state";
+import { LOCAL_ORIGIN } from "../src/ipc/origin";
 
 const mockLoad = vi.mocked(loadConfig);
 const mockSave = vi.mocked(saveConfig);
@@ -51,7 +52,7 @@ function pin(over: Partial<PinnedTab> = {}): PinnedTab {
     sid: "s1",
     jsonlPath: "/p/s1.jsonl",
     cwd: "/home/u/proj",
-    origin: null,
+    origin: LOCAL_ORIGIN,
     account: "work",
     lastActiveAt: 1700000000000,
     kind: "interactive",
@@ -164,22 +165,33 @@ describe("③ 量具自检：`sanitizePinned` 真的在清（不过这格，下�
     ).toEqual(["先"]);
     expect(
       sanitizePinned([
-        { sid: "a", cwd: 3, origin: "", account: [], kind: null, lastActiveAt: "昨天" },
+        { sid: "a", cwd: 3, origin: "<local>", account: [], kind: null, lastActiveAt: "昨天" },
       ])[0],
       "字段类型不对的没收敛成 null ⇒ 复活时会把 `3` 当 cwd 传给 `createSkeletonTab`",
     ).toEqual({
       sid: "a",
       jsonlPath: "",
       cwd: null,
-      origin: null,
+      origin: "<local>",
       account: null,
       lastActiveAt: null,
       kind: null,
       name: null,
       title: "a",
     });
+    // 〔C4a · `设计/05 §8` 步 2〕origin 不是非空字符串 ⇒ **整条丢**：本机也有名字（`"<local>"`），
+    //   盘上的旧 `null` / 空串 / 缺键都复活不出「哪台机器」，猜成本机正是步 2 治的那件事。
     expect(
-      sanitizePinned([{ sid: "abcdefghijkl" }])[0].title,
+      sanitizePinned([
+        { sid: "n1", origin: null },
+        { sid: "n2", origin: "" },
+        { sid: "n3" },
+        { sid: "ok", origin: "devbox" },
+      ]).map((p) => p.sid),
+      "origin 说不出哪台机器的那几条没被丢掉 ⇒ 复活时会被悄悄当成本机",
+    ).toEqual(["ok"]);
+    expect(
+      sanitizePinned([{ sid: "abcdefghijkl", origin: "<local>" }])[0].title,
       "标题缺了没兜底 ⇒ 栏里出现一个没名字的 tab（全仓的兜底是 sid 前 8 位）",
     ).toBe("abcdefgh");
   });

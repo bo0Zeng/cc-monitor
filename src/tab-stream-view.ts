@@ -23,8 +23,10 @@ import type { SkeletonLedger } from "./live-window";
 import { SkeletonView, ledgerFromIndex } from "./skeleton-view";
 import { skeletonKind } from "./height-estimate";
 // K-R45 乙（`KR45D2`）：「大纲」。界面 / 跳 与历史查看器共用同一份；〔SE1〕清单问后端要（`OutlineSource`）。
-import { UserInputPanel } from "./views/user-input-panel";
-import { OutlineSource } from "./views/outline-source";
+// 〔SE2〕大纲并进会话内查找面板（`SessionFindPanel`：搜索 / 大纲两个模式，跳只有一个住址）。
+import type { UserInputPanel, JumpResult } from "./views/user-input-panel";
+import { OutlineSource, outlineSeedFromIndex } from "./views/outline-source";
+import { SessionFindPanel } from "./views/session-find";
 // ⚠ **实时窗口 import 历史查看器，方向是别扭的 —— 这是写区逼出来的将就，不是惯例。**
 // 共用的只有 `revealCard`（找卡→展开→滚，两条路的卡由同一份渲染器建）。把它搬进中立文件
 // 要同时改 `src/bridge/src/polling_registry.rs` 的调度点分类账（rAF/setTimeout 按文件精确对账），
@@ -38,8 +40,6 @@ import {
   type StreamSink,
 } from "./render-stream-record";
 import type { BranchRecord } from "./branching";
-// ⚠ 要的是 `backend-policy` 那个（`"<local>"`），不是 `accounts.ts` 里同名的 `"__local__"`（理由见 `tab-session-actions.ts` 那条注释）。
-import { LOCAL_ORIGIN } from "./backend-policy";
 import { commands } from "./ipc/commands";
 import type { Tab } from "./tab-model";
 import type { TabStore } from "./tab-store";
@@ -108,6 +108,14 @@ export class TabStreamView {
   private static readonly TOP_TRIGGER_PX = 800;
   /** F40b:补批防重入(补偿测量期间嵌套触发会算错差值) */
   private renderingFill = false;
+  /** 〔SE2〕每个 tab 的查找面板（关 tab 时摘掉）。`Tab` 上挂的是它的两半：`inputsEl`（整块）与 `inputsPanel`（大纲）。 */
+  private readonly finds = new Map<string, SessionFindPanel>();
+  /**
+   * 〔SE2〕每个 tab 在途的「按偏移取正文」（`fetchMissingRows` 发的那几趟）。
+   * 「跳」要等它们落完再找卡 —— 骨架接上之后，没物化的那段正文多半不在前端账本里（U3b `keepHighest`），
+   * `ensure` 只是把取正文的请求发出去，同步那一下去找卡必然落空。
+   */
+  private readonly rangeFetches = new WeakMap<Tab, Set<Promise<void>>>();
 
   constructor(
     private readonly store: TabStore,
@@ -116,7 +124,7 @@ export class TabStreamView {
   ) {}
 
   /**
-   * 建一个 tab 的流 DOM：`.stream` 容器 ＋ 消息流 ＋ 折叠层 ＋ 时间线 ＋ 大纲悬浮层与它的数据源。
+   * 建一个 tab 的流 DOM：`.stream` 容器 ＋ 消息流 ＋ 折叠层 ＋ 时间线 ＋ 查找面板（含大纲）与大纲的数据源。
    * 重放期建的新 tab 顺带进 batch 模式。原是 `ensureTab` 里的一段（逐字）。
    */
   mountTabDom(sessionId: string): TabStreamDom {
@@ -128,29 +136,36 @@ export class TabStreamView {
     const branchFolder = new BranchFolder(stream.contentElement);
     const timeline = new RecordTimeline(stream);
 
-    // K-R45 乙：本 tab 的「我说过的 N 句」。界面是共用那一份，这里只给它两件宿主自己的事：
-    // ① 怎么跳 —— 实时窗口没有 `uuidToIdx` / `UnrenderedRanges`，够得着的只有**已经建了卡的**
-    //    那些（`revealCard` 找不到就什么都不做：这条流本来就贴在底部，再滚一次是无意义的动作）；
-    // ② 跳空了怎么解释 —— 实时这一侧的成因与查看器**不是同一件事**：那边是「渲染时被剥成空卡」
+    // 〔SE2 · `设计/10 §2.2b ④`〕本 tab 的查找面板：搜索 ／ 大纲两个模式，**跳只有一个住址**（`jumpInTab`）。
+    // 原先的独立悬浮层 `.live-user-inputs`（K-R45 乙 · 步 2 止血形）整块由它取代。宿主自己的三件事：
+    // ① 怎么查 —— 问后端（`find_in_session` ⇒ `--find-in-session`），问的是这个 tab 的那份会话；
+    // ② 怎么跳 —— 见 `jumpInTab`；
+    // ③ 跳空了怎么解释 —— 实时这一侧的成因与查看器**不是同一件事**：那边是「渲染时被剥成空卡」
     //    （永久），这边是「还收纳在 `TailWindow` 里没建卡」（**上翻补一批就好了**）。
-    const inputsEl = document.createElement("div");
-    inputsEl.className = "live-user-inputs";
-    const inputsPanel = new UserInputPanel({
-      // 〔`设计/10` 骨架 · 子步 4〕骨架接上之后，「还没加载」的那条先按 uuid→seq 物化出来再跳。
-      jumpTo: (uuid) => {
-        const sk = this.store.tabs.get(sessionId)?.skeleton;
-        const seq = sk?.ledger.uuidToSeq.get(uuid);
-        if (sk && seq !== undefined && sk.isPending(seq)) sk.ensure(seq);
-        return revealCard(streamEl, uuid);
+    const find = new SessionFindPanel({
+      search: async (query, includeTools) => {
+        const t = this.store.tabs.get(sessionId);
+        if (!t?.parentPath) {
+          return { available: false, reason: "这个会话的文件位置还没收到", hits: [], total: 0 };
+        }
+        return commands.find_in_session({
+          origin: t.origin,
+          jsonlPath: t.parentPath,
+          query,
+          includeTools,
+        });
       },
+      jumpTo: (uuid) => this.jumpInTab(sessionId, streamEl, uuid),
       unjumpableHint: "这一条还没加载出来 —— 往上翻到更早的消息之后再点",
     });
-    inputsEl.append(inputsPanel.toggle, inputsPanel.panel);
+    this.finds.set(sessionId, find);
+    const inputsEl = find.el;
+    const inputsPanel = find.outline;
     this.streamRootEl.appendChild(inputsEl);
     // 〔SE1〕大纲的数据源：路径可能要等首条行回填（骨架 tab），所以每次要的时候现取
     const outline = new OutlineSource(inputsPanel, () => {
       const t = this.store.tabs.get(sessionId);
-      return t?.parentPath ? { origin: t.origin ?? LOCAL_ORIGIN, jsonlPath: t.parentPath } : null;
+      return t?.parentPath ? { origin: t.origin, jsonlPath: t.parentPath } : null;
     });
     // v2.2 issue #12: 重放期创建的新 Tab 也进 batch 模式，避免每条 record 都
     // 触发 O(N) computeMainBranch。批结束时 onBatchEnd 会统一 flush。
@@ -207,8 +222,10 @@ export class TabStreamView {
     tab.stream.dispose();
     tab.streamEl.remove();
     // K-R45 乙：大纲跟着走（〔SE1〕`reset` 也让在途那趟回来后不许回写）。
-    // 悬浮层是 `streamRootEl` 的直接子节点，不随 `streamEl.remove()` 一起走。
+    // 查找面板是 `streamRootEl` 的直接子节点，不随 `streamEl.remove()` 一起走。
     tab.outline.reset();
+    this.finds.get(tab.sessionId)?.reset(); // 〔SE2〕在途的查找作废、出弹层栈
+    this.finds.delete(tab.sessionId);
     tab.inputsEl.remove();
     // 显式清 Map：释放对已卸载 DOM 节点的强引用，让 GC 可早回收
     // （Map 本身也会随 Tab 对象一起回收，但显式 clear 让 DOM 引用计数立即归零）
@@ -227,14 +244,46 @@ export class TabStreamView {
     tab.branchFolder.dispose();
   }
 
-  /** 切 tab：只让这一条流（连同它的大纲悬浮层）可见（原是 `switchTo` 开头那一段，逐字）。 */
+  /** 切 tab：只让这一条流（连同它的查找面板）可见（原是 `switchTo` 开头那一段）。 */
   showOnly(sessionId: string): void {
     for (const [sid, t] of this.store.tabs) {
       t.streamEl.classList.toggle("active", sid === sessionId);
-      // K-R45 乙：清单悬浮层与它那条流**同进同出**。漏掉这一句 = 所有 tab 的清单
+      // K-R45 乙：面板与它那条流**同进同出**。漏掉这一句 = 所有 tab 的面板
       // 一起挂在屏幕上，而且点下去找的是别人的流（`revealCard` 只在自己的 streamEl 里找）。
       t.inputsEl.classList.toggle("active", sid === sessionId);
+      // 〔SE2〕切走的 tab 收起面板（出弹层栈）—— 不然 Esc 去关的是一块看不见的面板。
+      if (sid !== sessionId) this.finds.get(sid)?.close();
     }
+  }
+
+  /**
+   * 〔SE2 · `设计/10 §6 步 6`〕Ctrl+F（动作 `session.find`）：当前 tab 的查找面板打开到「搜索」、焦点进输入框。
+   * 没有 active tab ⇒ 什么都不做。
+   */
+  openFind(): void {
+    const sid = this.store.activeId;
+    if (sid === null) return;
+    this.finds.get(sid)?.open("search");
+  }
+
+  /**
+   * 〔SE2〕**跳（大纲行与查找命中行共用这一个住址）**：
+   * - 骨架没接上 / 这条已经物化 ⇒ 直接找卡（`revealCard`）；
+   * - 还在占位里 ⇒ `ensure` 物化它附近那一段；账本里有的当场建卡，没有的按偏移取回（`fetchMissingRows`）——
+   *   **等这个 tab 在途的取正文全部落完**再找卡。同步那一下去找必然落空（U3b 之后前端账本只留尾巴 200 条）。
+   * 等的期间 tab 被关掉 ⇒ 落空（`null`）。
+   */
+  private jumpInTab(sessionId: string, streamEl: HTMLElement, uuid: string): JumpResult {
+    const tab = this.store.tabs.get(sessionId);
+    const sk = tab?.skeleton;
+    const seq = sk?.ledger.uuidToSeq.get(uuid);
+    if (!tab || !sk || seq === undefined || !sk.isPending(seq)) return revealCard(streamEl, uuid);
+    sk.ensure(seq);
+    const inflight = this.rangeFetches.get(tab);
+    if (!inflight || inflight.size === 0) return revealCard(streamEl, uuid);
+    return Promise.allSettled([...inflight]).then(() =>
+      this.store.tabs.get(sessionId) === tab ? revealCard(streamEl, uuid) : null,
+    );
   }
 
   /** 切进来的 tab：物化 / 哨兵 / 骨架索引 / 大纲 / 不可滚时踢一次补批（原是 `switchTo` 中段，逐字）。 */
@@ -409,9 +458,12 @@ export class TabStreamView {
       // ★ F15：**帧末合批**，不是逐行整刷。
       // 这里是 live 路上每来一行都会走到的地方，而 `refreshTabBar` 是整条 bar 的重刷；
       // 徽标上的数字攒到帧末一次性更新，用户看到的结果一模一样。
-      // ⚠ 只合批**这一处** —— 其余十几个 `refreshTabBar()` 调用点是用户动作触发的
-      // （切 tab / 关 tab / 改名…），一帧最多一次，合批对它们没有收益，
-      // 反而会把「点完立刻看到」变成「下一帧才看到」。
+      // ⚠ 只合批**这一处**。〔UP1 订正〕这里原先的理由是「其余十几个 `refreshTabBar()` 调用点都是用户动作」——
+      // **事实不对**：UP1 现数 25 处同步整刷，其中 12 处是事件驱动的（状态帧 / 会话增删 / 账号变更…），不是用户点的。
+      // 结论不变（其余照旧同步整刷、不合批），理由换成现在这条：UP1 之后整刷对**没变的 tab 零 DOM 写**
+      // （`tab-bar-view.ts` 先算出要画成什么样、与上次画出去的一样就不写，`设计/30 §3` P2 / P7），
+      // ⇒ 一次整刷的代价只剩「变了的那几颗按钮」，不合批也不贵；合批反而会把「点完立刻看到」变成「下一帧才看到」。
+      // 这一处还合批，是因为它**每来一行 live 记录就走一次**（频率是逐行的，不是逐事件的）。
       this.host.scheduleTabBarRefresh();
     }
   }
@@ -568,9 +620,12 @@ export class TabStreamView {
     if (tab.window.floorSeq === null) return;
     tab.skeletonFetch = "pending";
     const jsonlPath = tab.parentPath;
-    const origin = tab.origin ?? LOCAL_ORIGIN;
-    void commands
-      .read_session_index({ origin, jsonlPath, fromOffset: 0 })
+    const origin = tab.origin;
+    const first = commands.read_session_index({ origin, jsonlPath, fromOffset: 0 });
+    // 〔SE2 · `设计/10 §9.5` 欠账〕大纲**等这一趟**：索引顺带出清单（后端 `IndexRow::x`）⇒ 首屏同一份文件
+    // 只读一遍；带不回（老后端 / 零条 / 失败）⇒ 它自己照旧 `list_user_inputs(0)`。
+    tab.outline.awaitSeed(first.then(outlineSeedFromIndex));
+    void first
       .then(async (res) => {
         if (this.store.tabs.get(tab.sessionId) !== tab) return; // 期间关掉了
         tab.skeletonFetch = "done";
@@ -673,11 +728,16 @@ export class TabStreamView {
       if (last && last[1] === s) last[1] = s + 1;
       else runs.push([s, s + 1]);
     }
-    const origin = tab.origin ?? LOCAL_ORIGIN;
+    const origin = tab.origin;
+    let inflight = this.rangeFetches.get(tab);
+    if (!inflight && runs.length > 0) {
+      inflight = new Set();
+      this.rangeFetches.set(tab, inflight);
+    }
     for (const [a, b] of runs) {
       const first = ledger.factsOf(a)!;
       const lastRow = ledger.factsOf(b - 1)!;
-      void commands
+      const fetched: Promise<void> = commands
         .read_session_range({
           origin,
           jsonlPath: tab.parentPath,
@@ -698,6 +758,10 @@ export class TabStreamView {
           if (again.length > 0) this.renderPayloadsBatch(tab, again);
         })
         .catch((e: unknown) => console.warn(`[tabs] 按偏移取正文失败 [${a},${b})：`, e));
+      // 〔SE2〕记进在途集合（「跳」等它落完），落完自己出列
+      const set = inflight!;
+      set.add(fetched);
+      void fetched.finally(() => set.delete(fetched));
     }
   }
 

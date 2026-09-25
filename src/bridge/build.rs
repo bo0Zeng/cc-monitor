@@ -773,7 +773,7 @@ fn embed_native_backend() {
         panic!(
             "本机内嵌后端（src/bridge/{}）**问不出身份** —— \
              在它的字节里找不到恰好一个 `{stamp_open}…{stamp_close}` 身份戳。\n\
-             身份是它落到用户盘上时的文件名来源（`cc-monitor-local-<build_id>`），\
+             身份是它落到用户盘上时的文件名来源（`cc-monitor-backend-<build_id>`），\
              问不出就拼不出落点。\n\
              可能是：① 它不是这套源码编出来的（`p2f-build-stamp` 之前的后端没有戳）；\
              ② 被改过 / 截断；③ 界标抠失败（现打 open=`{stamp_open}` close=`{stamp_close}`）。\n\
@@ -787,7 +787,7 @@ fn embed_native_backend() {
         panic!(
             "本机内嵌后端（src/bridge/{}）**的字节自报** `{embedded_id}`，而后端源码是 `{expected}` \
              —— **半 bump**。\n\
-             这一份会以 `cc-monitor-local-{embedded_id}` 之名落到用户盘上，而 monitor 这一侧\
+             这一份会以 `cc-monitor-backend-{embedded_id}` 之名落到用户盘上，而 monitor 这一侧\
              按 `{expected}` 谈能力：能力协商按源码谈、跑起来的是另一个。\n\
              🔴 这是 `BUILD_ID` bump 的**同拍债**（步 `19c`），与远端那两份同一形。\
              出路二选一，**两条都是同一条命令**：\

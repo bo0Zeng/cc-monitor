@@ -30,7 +30,6 @@ import { CcBusHooksSection } from "./cc-bus-hooks-section"; // B04：钩子只�
 import { ConfigSurfaceSection } from "./config-surface-section"; // T02：配置面审计（只读、按需一次、不轮询）
 import { DriftLedgerSection } from "./drift-ledger-section"; // U-CC1：数据面漂移记账（只读、按需一次、不轮询）
 import { DiagnosticsSection } from "./diagnostics-section";
-import { CollapsibleGroup } from "./collapsible-group";
 import { makeSkeleton } from "./skeleton";
 import { SettingsRouter } from "./router";
 // E62：`markRestartNeeded` —— 本文件两处「重启才生效」的改动此前不给常驻条供货。
@@ -38,12 +37,14 @@ import { createRestartBar, markRestartNeeded } from "./restart-notice";
 import { createUnknownKeysBar } from "./unknown-keys-notice"; // 🔴 P12：未知键要出声
 import { hostOsAllows, type HostOs } from "./host-os"; // S9：本机 OS 门
 import { setCurrentMachine } from "./machine-context";
+import { LOCAL_ORIGIN } from "../ipc/origin";
 import {
   LOCAL_MACHINE_PAGE_ID,
   MACHINE_PAGE_PREFIX,
 } from "./remote-section";
 import { DataSection } from "./data-section";
 import { RemoteSection } from "./remote-section";
+import type { MachineCardParts } from "./machine-card";
 import { BackendSection } from "./backend-section"; // P2s（C8）：每台机一个后端开关
 import {
   getBehavior,
@@ -164,8 +165,7 @@ const TERMINAL_INTEGRATION_INFO_TEXT =
   "Claude Code，自动跟 monitor 双向绑定（拉前终端按钮才能 work）。可一键安装/卸载。";
 
 const APPEARANCE_INFO_TEXT =
-  "字体（正文 / 等宽 / 字号）+ 颜色（10 个语义 token：背景 / 卡片 / 文字 / user / assistant 等）。" +
-  "配一次基本不再动，所以默认收起。";
+  "字体（正文 / 等宽 / 字号）+ 颜色（背景 / 卡片 / 文字 / 成功 / 警告 / 错误）。改了当场生效。";
 
 const REMOTE_INFO_TEXT =
   "「远端 (SSH)」—— monitor 通过 SSH 连到远端主机，由远端后端取代本地 " +
@@ -176,29 +176,37 @@ const REMOTE_INFO_TEXT =
 // 🔴 `70 §10.3`/`§10.2` 改名 ＋ `§2.4` 纪律：两块的名字跟着改（「诊断」→「日志」·
 // 「数据存储」→「数据位置」），并且把 `tracing` 这个**内部标识符**拿掉
 //（`91 §2.1` 那一族 —— 用户不需要知道我们用的是哪个日志库）。
-const DIAG_STORAGE_INFO_TEXT =
-  "「日志」—— 让后端把细节写进日志文件，出问题时拿得到一份能发给作者的记录。\n\n" +
+// 〔ST2 · 步 15〕两块各成一个子页之后，这段说明也拆成两段，各归各页。
+const LOGS_INFO_TEXT =
+  "「日志」—— 让后端把细节写进日志文件，出问题时拿得到一份能发给作者的记录。";
+const DATA_PLACES_INFO_TEXT =
   "「数据位置」—— 透明展示 monitor 自身写入的所有持久化路径：config.json / history-metadata.json / " +
   "WebView2 UserDataFolder / localStorage keys 等。每项可点 [打开] 直接到文件管理器。" +
   "纯展示，无危险操作。";
 
-// F82b（#56+#47）：4 组终态的合并 tooltip——外观并了 行为/快捷键、集成并了 诊断&存储，
-// group 级 tooltip 把原分组说明拼一起（子分节各带小标题导航）。
-const APPEARANCE_GROUP_INFO_TEXT =
-  APPEARANCE_INFO_TEXT +
-  "\n\n【行为】" +
-  BEHAVIOR_INFO_TEXT +
-  "\n\n【快捷键】" +
-  KEYBINDINGS_INFO_TEXT;
-// S2：「日志与数据」页内折叠组的文案 = 数据目录 + 诊断/存储（正好是它的三块内容）。
-const LOGS_AND_DATA_INFO_TEXT =
-  DATA_DIR_INFO_TEXT + "\n\n" + DIAG_STORAGE_INFO_TEXT;
+// 〔ST2 · 步 15〕「应用」页自己剩下的两块（行为 / 快捷键）的说明。原来它们拼在「外观」那个折叠组的 ⓘ 里
+// （F82b：外观并了 行为 / 快捷键），折叠组撤掉之后各归各页。
+const APP_PAGE_INFO_TEXT =
+  "【行为】" + BEHAVIOR_INFO_TEXT + "\n\n【快捷键】" + KEYBINDINGS_INFO_TEXT;
 // S2：机器页的文案 = 怎么连上远端 + 这台机上的启动器集成。
 const MACHINES_PAGE_INFO_TEXT =
   REMOTE_INFO_TEXT + "\n\n【终端集成】" + TERMINAL_INTEGRATION_INFO_TEXT;
 // S2 删除：原 `REMOTE_GROUP_INFO_TEXT` 描述的是那个「留空占位」的空组（F82b 拍板的 4 组之一，
 // 后被 A3 借去放账号）。它逐字写着「当前尚无独立项…留空占位」「在上面的『连接』组」——
 // 那个组和那个「上面」都不存在了，留着就是一句会误导人的话。
+
+/**
+ * 〔第四波 ST2 · `设计/70 §6` #3 · 第四刀 步 15〕「应用」下的三个**子页**（`parentId: "app"`）。
+ *
+ * 原来是「应用」页里两个默认收起的折叠组（外观 · 日志与数据）叠在路由分页之上：
+ * 找「字体大小」要 4 步（点应用 → 往下找 → 展开外观 → 找到那一行）。两套隐藏机制叠着 ⇒
+ * 用**已有的** `parentId` 一层子项替掉折叠组：点「外观」就到。
+ */
+const APP_SUBPAGES = {
+  appearance: { id: "app-appearance", title: "外观" },
+  logs: { id: "app-logs", title: "日志" },
+  data: { id: "app-data", title: "数据位置" },
+} as const;
 
 /** S2：落地页 id。主计划 §2.3 指定为「机器」。 */
 const SETTINGS_LANDING_ROUTE = "machines";
@@ -268,7 +276,7 @@ export class SettingsPanel {
   >();
   /** 当前编辑中的 theme（实时预览用） */
   private current: ThemeConfig = {};
-  /** 打开时的 theme 快照，取消时回滚 */
+  /** 盘上那一份（打开时读的，〔ST2 · 步 9〕之后每次落盘跟着更新）—— 判「还有没落的那一格」用。 */
   private original: ThemeConfig = {};
   private inputs = new Map<
     keyof ThemeConfig,
@@ -287,8 +295,6 @@ export class SettingsPanel {
   private banner!: HTMLElement;
   /** issue #3 (A): 「数据位置」展示区（`70 §10.2` 改名）。打开面板时 refresh 一次拉最新 stat */
   private dataSection?: DataSection;
-  /** `70 §10.1`（步 14a）：「足迹」——已从顶层「改动足迹」页搬进机器子页第五栏。 */
-  private footprintSection?: ConfigSurfaceSection;
   /** `70 §10.3` 改名后的「日志」块。步 2 要在「应用」页首次可见时叫醒它。 */
   private logsSection?: DiagnosticsSection;
   /** issue #15 (S6): 远端 (SSH) 配置区。打开面板时 refresh 一次拉最新 config */
@@ -325,8 +331,8 @@ export class SettingsPanel {
    * （`01 §1.3` 那个「重新打开」事件，这里用窗口自己的 focus 事件代替，不动后端那条命令）。
    */
   private hiddenByUs = false;
-  /** ST1「未保存关窗拦截」（`70 §6` #1）：有没保存的改动时拦在关窗前的那一条。 */
-  private closeGuard!: HTMLElement;
+  // 〔ST2 · 第二刀 步 9〕原来这里有一格 `closeGuard`（ST1「未保存关窗拦截」那一条）。全即时之后没有「未保存」
+  //   这回事了，那一条随混合保存模型一起退场（关窗前还没落的那一格由 `requestClose` 顺手落掉）。
 
   // issue #5: 快捷键编辑器（lazy 构造，首次打开时建 DOM）
   private kbEditor?: KeybindingsEditor;
@@ -344,7 +350,8 @@ export class SettingsPanel {
 
   /** dispatcher overlay 接口 */
   handleEsc(): void {
-    if (this.isOpen) this.cancel();
+    // 〔第四波 ST2 · `70 §6` #2 · 第二刀 步 9〕全即时之后没有「取消 = 回滚」这回事：Esc 与 X 同一条路。
+    if (this.isOpen) this.requestClose();
   }
 
   /**
@@ -578,7 +585,12 @@ export class SettingsPanel {
     }
   }
 
-  /** 外观（主题）或 Claude 数据目录有没保存的改动 —— 其余各块都是即时写，没有「未保存」这回事。 */
+  /**
+   * 〔第四波 ST2 · `70 §6` #2 · 第二刀 步 9〕**还有没落盘的那一格没有。**
+   *
+   * 全即时之后每一格改了就落（外观：`change`；Claude 数据目录：`change`）。剩下的只有一个窗口：
+   * 输入框里改了、焦点还没离开（`change` 还没触发）就关窗 —— 那一格由 `requestClose` 顺手落掉。
+   */
   isDirty(): boolean {
     const norm = (t: ThemeConfig): string =>
       JSON.stringify(
@@ -593,21 +605,32 @@ export class SettingsPanel {
   }
 
   /**
-   * ST1「未保存关窗拦截」（`70 §6` #1 · `§8` #7）：系统 X 与页头 × 都走这里。
-   * 没改动 ⇒ 直接关；有改动 ⇒ 亮出那一条（保存并关闭 / 丢弃改动 / 继续编辑），**不静默丢**。
-   * 「取消」与 Esc 不走这里 —— 那两个本来就是明说的「丢弃并关闭」（`§6` #1 原文：它们会回滚）。
+   * 系统 X、页头 ×、Esc 都走这里。
+   *
+   * 🔴 〔ST2 · 第二刀 步 9〕原来有改动时亮一条「保存并关闭 / 丢弃改动 / 继续编辑」（ST1 · `§6` #1）——
+   *   那一条存在的前提是「外观要点保存」的混合模型（`§6` #2 逐字：「预览了没保存」就是 #1 的温床）。
+   *   全即时之后那个温床没了 ⇒ 拦截条退场；**不静默丢**这一格由「关之前顺手落掉」兑现。
    */
   requestClose(): void {
     if (!this.isDirty()) {
       this.close();
       return;
     }
-    // 显隐只走类（`.settings-banner` 自带 `display:none`，再用 `hidden` 切会撞 S30 ⑦）。
-    this.closeGuard.classList.add("settings-banner-show");
+    void this.flushPending()
+      .then(() => {
+        if (this.isOpen) this.close();
+      })
+      .catch((e: unknown) => {
+        // 落不下就不关：窗口留着、说出原因，用户的改动还在输入框里。
+        this.banner.textContent = `保存失败：${String(e)}`;
+        this.banner.classList.add("settings-banner-show");
+      });
   }
 
-  private hideCloseGuard(): void {
-    this.closeGuard.classList.remove("settings-banner-show");
+  /** 把还没触发 `change` 的那一格落掉（外观 ＋ Claude 数据目录，各自只在真的改了时写）。 */
+  private async flushPending(): Promise<void> {
+    await this.persistTheme();
+    await this.persistClaudeDir();
   }
 
   close(): void {
@@ -618,7 +641,6 @@ export class SettingsPanel {
     const active = document.activeElement;
     if (active instanceof HTMLElement && this.el.contains(active))
       active.blur();
-    this.hideCloseGuard();
     // 窗口模式：ST1「关窗改隐藏」—— 关闭 ＝ 把窗口藏起来（`01 §1.3`），面板状态照非窗口模式那样收好，
     // 下一次 show 出来由 focus 那一路重跑 `open()`（见 `installWindowLifecycle`）。
     if (this.windowMode) {
@@ -643,37 +665,44 @@ export class SettingsPanel {
     dispatcher.popOverlay(this);
   }
 
-  private cancel(): void {
-    applyTheme(this.original);
-    this.close();
-  }
-
   /** F82a：窗口模式下广播「设置已应用」，主窗口 listen 后重读并 applyTheme/applyBehavior。
    *  非窗口模式（主窗口内浮层）走 applyTheme/onBehaviorChange 同窗直接生效，无需广播。 */
   private broadcastApplied(): void {
     if (this.windowMode) void emit(SETTINGS_APPLIED_EVENT);
   }
 
-  private async save(): Promise<void> {
+  /**
+   * 〔ST2 · 第二刀 步 9〕外观改了就落：`input` 只做实时预览（拖取色器 ~60Hz，不逐帧写盘），
+   * `change`（松手 / 失焦 / 选中）才调这里。没变就不写。
+   */
+  private async persistTheme(): Promise<void> {
+    if (JSON.stringify(this.current) === JSON.stringify(this.original)) return;
     await saveTheme(this.current);
     this.original = { ...this.current };
     this.broadcastApplied(); // 主窗口重读主题并应用
+  }
 
-    // claudeDir：与 theme 字段独立保存。变了就提示重启
+  /**
+   * 〔ST2 · 第二刀 步 9〕Claude 数据目录改了就落（输入框 `change` / 浏览… / 重置）。
+   * 它要重启才生效 ⇒ 照旧给常驻条供货（E62）＋ 当场一条 banner。
+   */
+  private async persistClaudeDir(): Promise<void> {
     const nextDir = this.claudeDirInput.value.trim();
-    const dirChanged = nextDir !== this.claudeDirOriginal;
-    if (dirChanged) {
-      await setClaudeDirOverride(nextDir === "" ? null : nextDir);
-      this.claudeDirOriginal = nextDir;
-      // E62：给 S7 那条常驻条**供货**。这里的 banner 是一次性的（关窗即没），
-      // 而「还没生效」是个会一直为真到重启为止的状态 —— 两者不是一回事，都要有。
-      markRestartNeeded("Claude 数据目录");
-      this.banner.textContent =
-        "Claude 数据目录已更新 —— 需要重启 monitor 才能生效";
-      this.banner.classList.add("settings-banner-show");
-      return; // 不关面板，让用户看到提示
-    }
-    this.close();
+    if (nextDir === this.claudeDirOriginal) return;
+    await setClaudeDirOverride(nextDir === "" ? null : nextDir);
+    this.claudeDirOriginal = nextDir;
+    // E62：给 S7 那条常驻条**供货**。这里的 banner 是一次性的（关窗即没），
+    // 而「还没生效」是个会一直为真到重启为止的状态 —— 两者不是一回事，都要有。
+    markRestartNeeded("Claude 数据目录");
+    this.banner.textContent =
+      "Claude 数据目录已更新 —— 需要重启 monitor 才能生效";
+    this.banner.classList.add("settings-banner-show");
+  }
+
+  /** 落盘失败时说出来（全即时的每一格都走它，不许静默吞）。 */
+  private reportSaveFailure(what: string, e: unknown): void {
+    this.banner.textContent = `${what}没存下：${String(e)}`;
+    this.banner.classList.add("settings-banner-show");
   }
 
   private async resetAll(): Promise<void> {
@@ -699,6 +728,10 @@ export class SettingsPanel {
       });
       if (typeof selected === "string" && selected) {
         this.claudeDirInput.value = selected;
+        // 〔ST2 · 步 9〕选完就落（全即时）。
+        await this.persistClaudeDir().catch((e: unknown) =>
+          this.reportSaveFailure("Claude 数据目录", e),
+        );
       }
     } catch (e) {
       console.warn("dialog open failed:", e);
@@ -707,6 +740,10 @@ export class SettingsPanel {
 
   private resetClaudeDir(): void {
     this.claudeDirInput.value = "";
+    // 〔ST2 · 步 9〕重置也是改了就落。
+    void this.persistClaudeDir().catch((e: unknown) =>
+      this.reportSaveFailure("Claude 数据目录", e),
+    );
   }
 
   // === DOM 构建 ===
@@ -716,7 +753,6 @@ export class SettingsPanel {
     root.className = "settings-panel";
 
     root.appendChild(this.buildHeader());
-    root.appendChild(this.buildCloseGuard());
     // 🔴 P12：「配置里有 app 不认识的键」常驻条。**放在最上面、任何一页之前** ——
     // 它说的是「你写下的某个设置根本没生效」，比面板里任何一格都更该先被看见。
     // 同 S7 那条：它是状态不是事件，所以不属于任何一页，也刻意没有关闭按钮。
@@ -726,33 +762,11 @@ export class SettingsPanel {
     // 不是某一页的事（改远端配置和改诊断开关都会点亮它），所以不属于任何一页。
     // 空时整块不渲染；**刻意没有关闭按钮**（见 restart-notice.ts 头注）。
     root.appendChild(createRestartBar());
-    root.appendChild(this.buildFooter());
+    // 🔴 〔ST2 · `70 §6` #2 · 第二刀 步 9〕页脚（恢复默认 / 取消 / 保存）退场：**保存模型统一成全即时**。
+    //   原来外观要点「保存」才落、行为开关与各块自己即时写，界面上长得一样（`§6` #2 的病）。
+    //   「恢复默认」是外观的事，挪进「外观」子页；「取消」「保存」没了（改了就是改了）。
 
     return root;
-  }
-
-  /** ST1「未保存关窗拦截」那一条。平时藏着；`requestClose()` 发现有改动才亮。 */
-  private buildCloseGuard(): HTMLElement {
-    const bar = document.createElement("div");
-    bar.className = "settings-banner";
-    bar.dataset.closeGuard = "unsaved";
-    bar.append("外观或 Claude 数据目录有改动还没保存。");
-    const saveBtn = this.makeBtn("保存并关闭", "primary", () => {
-      void this.save()
-        .then(() => {
-          if (this.isOpen) this.close();
-        })
-        .catch((e: unknown) => {
-          this.hideCloseGuard();
-          this.banner.textContent = `保存失败：${String(e)}`;
-          this.banner.classList.add("settings-banner-show");
-        });
-    });
-    const dropBtn = this.makeBtn("丢弃改动", "secondary", () => this.cancel());
-    const stayBtn = this.makeBtn("继续编辑", "secondary", () => this.hideCloseGuard());
-    bar.append(saveBtn, dropBtn, stayBtn);
-    this.closeGuard = bar;
-    return bar;
   }
 
   private buildHeader(): HTMLElement {
@@ -807,7 +821,7 @@ export class SettingsPanel {
    */
   private buildMachineTabs(
     pageId: string,
-    parts: { connection: HTMLElement; components: HTMLElement },
+    parts: MachineCardParts,
   ): HTMLElement {
     const tabs = new SettingsRouter({
       landingId: `${pageId}#conn`,
@@ -818,6 +832,9 @@ export class SettingsPanel {
     tabs.addRoute({ id: `${pageId}#comp`, title: "组件", element: parts.components });
     const acct = document.createElement("div");
     const tools = document.createElement("div");
+    // 〔ST2 · 协调方转主会话裁：别名统一放「工具」栏〕这台机器的别名那一块排在「工具」栏最前面，
+    //   与本机页「工具 → 别名」同一个位置（per-machine 那几块由 `movePerMachineTo` 接在它后面）。
+    tools.appendChild(parts.tools);
     const footprint = document.createElement("div");
     tabs.addRoute({ id: `${pageId}#acct`, title: "账号", element: acct });
     tabs.addRoute({ id: `${pageId}#tools`, title: "工具", element: tools });
@@ -859,44 +876,67 @@ export class SettingsPanel {
     appPage.appendChild(
       this.safeBlock("快捷键", () => this.buildKeybindingsGroup()),
     );
-    const appearance = new CollapsibleGroup({
-      // id 沿用 F82b 那个：字体+颜色这两块的归属没变，用户此前的折叠状态该跟过来。
-      id: "appearance-4grp",
-      title: "外观",
-      defaultCollapsed: true,
-      infoTooltip: APPEARANCE_GROUP_INFO_TEXT,
+    router.addRoute({
+      id: "app",
+      title: "应用",
+      element: appPage,
+      infoTooltip: APP_PAGE_INFO_TEXT,
     });
-    appearance.appendChild(
+
+    // 🔴 〔第四波 ST2 · `70 §6` #3 · 步 15〕原来这里是两个默认收起的折叠组（外观 · 日志与数据）。
+    //   换成「应用」下的三个子页（`APP_SUBPAGES`）：点「外观」就到，不再「翻页 ＋ 展开」两层藏。
+    // ① 外观（字体 ＋ 颜色）。
+    const appearancePage = document.createElement("div");
+    appearancePage.appendChild(
       this.buildGroup(
         "字体",
         FIELDS.filter((f) => f.group === "font"),
       ),
     );
-    appearance.appendChild(
+    appearancePage.appendChild(
       this.buildGroup(
         "颜色",
         FIELDS.filter((f) => f.group === "color"),
       ),
     );
-    appPage.appendChild(appearance.element);
-
-    // 「日志与数据」——主计划 §2.3 逐字指定的折叠组。读一次就够的东西。
-    const logsAndData = new CollapsibleGroup({
-      id: "logs-and-data",
-      title: "日志与数据",
-      defaultCollapsed: true,
-      infoTooltip: LOGS_AND_DATA_INFO_TEXT,
-    });
-    logsAndData.appendChild(this.buildDataGroup());
-    // 🔴 `70 §10.3`：「诊断」→「日志」。**让名**给 `§5.3` 那个改名，否则设置面板里
-    // 会同时有两个「诊断」（一个是「这台机器还缺什么」，一个是 monitor 的日志开关）。
-    logsAndData.appendChild(
-      this.safeBlock("日志", () => {
-        const sec = new DiagnosticsSection({ headless: true });
-        this.logsSection = sec;
-        return sec.element;
-      }),
+    // 〔ST2 · 步 9〕原页脚的「恢复默认」：它只管外观，搬到外观这一页。
+    const resetRow = document.createElement("div");
+    resetRow.className = "settings-row settings-row-end";
+    resetRow.appendChild(
+      this.makeBtn("恢复外观默认", "secondary", () => void this.resetAll()),
     );
+    appearancePage.appendChild(resetRow);
+    router.addRoute({
+      ...APP_SUBPAGES.appearance,
+      element: appearancePage,
+      parentId: "app",
+      infoTooltip: APPEARANCE_INFO_TEXT,
+    });
+
+    // ② 日志。🔴 `70 §10.3`：「诊断」→「日志」。**让名**给 `§5.3` 那个改名，否则设置面板里
+    // 会同时有两个「诊断」（一个是「这台机器还缺什么」，一个是 monitor 的日志开关）。
+    // 〔步 15〕这一页只有这一块 ⇒ 块不再自带标题（页头已经是「日志」，两个同名标题叠着是重名，`§8` #11）。
+    const logsPage = document.createElement("div");
+    logsPage.appendChild(
+      this.safeBlock(
+        "日志",
+        () => {
+          const sec = new DiagnosticsSection({ headless: true });
+          this.logsSection = sec;
+          return sec.element;
+        },
+        { untitled: true },
+      ),
+    );
+    router.addRoute({
+      ...APP_SUBPAGES.logs,
+      element: logsPage,
+      parentId: "app",
+      infoTooltip: LOGS_INFO_TEXT,
+    });
+    this.loadOnFirstVisit(APP_SUBPAGES.logs.id, () => this.logsSection?.loadNow());
+
+    // ③ 数据位置（＋ Claude 数据目录：「monitor 读哪、存哪」两件位置上的事放一页）。
     // 🔴 步 3b（`70 §10.2` 差项 2 · `§10.4` 第一刀）：**这一块原先的 `new` 在 `safeBlock` 外面。**
     // 原文是 `const dataSection = new DataSection(...)` 裸构造，`safeBlock` 只包住了
     // `() => dataSection.element` 那个 thunk —— 而 thunk 不可能抛。
@@ -904,20 +944,27 @@ export class SettingsPanel {
     //   那条纪律在这里**漏了一块**。现在 `new` 挪进 thunk 里，与它的九个兄弟同形。
     // ⚠ 字段仍然在 build 时赋值（`open()` 那边 `?.refresh()` 靠它）——
     //   构造失败时留 `undefined`，与 `remoteSection` 那一格同一个约定。
-    logsAndData.appendChild(
-      this.safeBlock("数据位置", () => {
-        const sec = new DataSection({ headless: true });
-        this.dataSection = sec;
-        return sec.element;
-      }),
+    const dataPage = document.createElement("div");
+    dataPage.appendChild(this.buildDataGroup());
+    dataPage.appendChild(
+      this.safeBlock(
+        "数据位置",
+        () => {
+          const sec = new DataSection({ headless: true });
+          this.dataSection = sec;
+          return sec.element;
+        },
+        { untitled: true },
+      ),
     );
-    appPage.appendChild(logsAndData.element);
-    router.addRoute({ id: "app", title: "应用", element: appPage });
-    // 步 2：这一页的 I/O（日志 2 发 + 数据位置 1 发）挂到「这一页首次可见」上。
-    this.loadOnFirstVisit("app", () => {
-      this.logsSection?.loadNow();
-      this.dataSection?.loadNow();
+    router.addRoute({
+      ...APP_SUBPAGES.data,
+      element: dataPage,
+      parentId: "app",
+      infoTooltip: DATA_DIR_INFO_TEXT + "\n\n" + DATA_PLACES_INFO_TEXT,
     });
+    // 步 2：I/O 挂到「这一页首次可见」上 —— 〔步 15〕从「应用」一页三发，拆成两个子页各自的那几发。
+    this.loadOnFirstVisit(APP_SUBPAGES.data.id, () => this.dataSection?.loadNow());
 
     // ---- 机器：改**某一台机器**的状态 ----
     //
@@ -926,17 +973,22 @@ export class SettingsPanel {
     // 四份互不同步）。有 origin 选择器 = 它改的是某台机器的状态。
     // S4 会把这四份选择器换成「当前在哪台机器页」这个上下文。
     const machinesPage = document.createElement("div");
-    // P2s（C8）：backend 开关排在「连接（远端）」**之前** —— 它管的是**每台机**（含本机），
-    // 而下面那块是远端专有的 SSH 配置面。本机在这一区的第一行，
-    // 不为它造特例（`C1`：本地只是不走 ssh 的那一台）。
-    // 同样进 `safeBlock`：它构造时会发 IPC，失败不该把整个设置面板炸穿。
-    machinesPage.appendChild(
-      this.safeBlock("backend 开关", () => {
-        const sec = new BackendSection({ headless: true });
-        this.backendSection = sec;
-        return sec.element;
-      }),
-    );
+    // 🔴 〔第四波 ST2 · `设计/70 §5.3` · 第四刀 步 14〕**「backend 开关」不再单独占一块**：
+    //   它本来就是每台一行，并进机器列表那一行上（状态 / 操作 / 退出行为 / 健康 四格，
+    //   `BackendSection.cellsFor`）。列表页从此只剩「列表 ＋ 添加 ＋ 全局开关 ＋ 诊断」四样（`§8` #10）。
+    // ⚠ 隔离照旧（T07）：它构造失败不许把机器列表带走 —— 失败时列表行上不挂那四格，
+    //   这里亮一块「此区块加载失败」，与 `safeBlock` 同一个样子。
+    let backend: BackendSection | undefined;
+    try {
+      backend = new BackendSection({ headless: true, hosted: true });
+      this.backendSection = backend;
+    } catch (e) {
+      machinesPage.appendChild(
+        this.safeBlock("后端", () => {
+          throw e;
+        }),
+      );
+    }
     // **T07 审计阻塞 1**：这里必须在 `safeBlock` 里——`RemoteSection` 正是唯一活的同步
     // throw 宿主（构造路径含 `remote-section.ts` 那个三句话必填的 `throw`）。审计真造它抛过：
     // 裸构造会让 `new SettingsPanel` 直接炸穿、**什么都没上屏**。
@@ -947,6 +999,12 @@ export class SettingsPanel {
         // 列表里只留一行。分节不需要知道路由器长什么样，只要「开页 / 收页 / 跳过去」。
         const sec = new RemoteSection({
           headless: true,
+          rowExtras: backend && {
+            head: () => BackendSection.columnHead(),
+            cells: (origin) => backend.cellsFor(origin),
+            // 后端清单里有、机器列表里没有的那几台（重名被后缀化 / 列表还没读出来）。
+            tail: () => backend.element,
+          },
           pages: {
             machinePagesSettled: () => this.onMachinePagesSettled(),
             addMachinePage: (id, title, element, parts) => {
@@ -962,10 +1020,9 @@ export class SettingsPanel {
               // ST1「延后加载」：per-machine 那几块是**单例**、跟着机器子页搬 ⇒ 任意一台机器的
               //   子页第一次可见时放一次（`loadPerMachineOnce` 自己去重）；之后切机器由各块
               //   自己的 `subscribeMachine` 重读。
-              this.pageLoaders.set(id, [
-                () => this.footprintSection?.loadNow(),
-                () => this.loadPerMachineOnce(),
-              ]);
+              // 〔ST2〕「足迹」也并进那一批单例：它今天按机器去问（远端也有真栏），
+              //   切机器由它自己的订阅重读 —— 与账号 / MCP 同一个形状，不再每台机器页各放一发。
+              this.pageLoaders.set(id, [() => this.loadPerMachineOnce()]);
               // ★ S4b-3b-2：远端机器页拆成横向四栏（主计划 §2.3）。
               // 复用 `SettingsRouter`（横向 + 无页头）而不是另造 tab 原语 ——
               // 「同一时刻只有一栏可见 + aria + 方向键 + 不重复注册」与左侧导航
@@ -973,7 +1030,7 @@ export class SettingsPanel {
               const pageEl = parts ? this.buildMachineTabs(id, parts) : element;
               router.addRoute({ id, title, element: pageEl, parentId: "machines" });
               // S4b-2：本机页一出现就让那几块 per-machine 分节先落在它上面。
-              // 这与 `machine-context` 的初始值（null = 本机）对齐 —— 否则 slot 在
+              // 这与 `machine-context` 的初始值（本机 = `LOCAL_ORIGIN`）对齐 —— 否则 slot 在
               // 用户第一次点进某台机器之前是**游离的**（不在文档里，谁也找不到它）。
               if (id === LOCAL_MACHINE_PAGE_ID) this.movePerMachineTo(element, true);
             },
@@ -1055,11 +1112,11 @@ export class SettingsPanel {
         ...this.loadableBlock("MCP", () => new McpSection()),
       },
       // P8a：插件面（marketplace）只读枚举。
-      // ⚠ `appliesTo: "local"` —— 它今天**只有本机口**（远端要等后端的
-      // `--list-marketplaces`，欠账记在 `parity_ledger::plugins.marketplaces` 那行）。
-      // 挂成 `both` 会让远端机器上出现一个恒失败的块，那是骗人。
+      // 〔RM1b · 第四波〕`appliesTo: "local"` → `"both"`：后端补了 `plugins-marketplaces`
+      // （本机与远端同一条路），`PluginsSection` 跟着「当前在看哪台机器」问那一台 ——
+      // 原先那句「挂成 both 会出现一个恒失败的块」的前提（远端没有口）不在了。
       {
-        appliesTo: "local",
+        appliesTo: "both",
         tab: "tools",
         ...this.loadableBlock("插件（marketplace）", () => new PluginsSection()),
       },
@@ -1081,17 +1138,22 @@ export class SettingsPanel {
       //    「面」「审计」是**我们这侧**的词（`91 §2.1` 那一族）；且它要和顶层页
       //    「改动足迹」同一个口径，而不是页叫足迹、块叫审计。
       //
-      // ⚠ `appliesTo: "both"` 而**远端那一页上它不画表** —— 今天后端那条读口不收 origin
-      //   （`§10.1` ②），照原样画就是拿本机的答案冒充 devbox 的。那一格由
-      //   `ConfigSurfaceSection.applyOriginGate()` 负责说实话，头注在那边。
+      // 〔ST2 · 用户 09-24 裁「远端也有真栏」〕`appliesTo: "both"`：远端那一页上它**按那台机器去问**
+      //   （读口归 RM1a）；答复的 `origin` 与所问对不上 ⇒ 说这台还答不了，不拿本机的答案冒充
+      //   （`ConfigSurfaceSection.readFootprint` / `answersFor` 头注）。
       {
         appliesTo: "both",
         tab: "footprint",
-        el: this.safeBlock("足迹", () => {
-          const sec = new ConfigSurfaceSection();
-          this.footprintSection = sec;
-          return sec.element;
-        }),
+        // 〔ST2〕字段 `footprintSection` 删了：它唯一的读者（每台机器页各放一发）随上面那次合批一起没了。
+        ...this.loadableBlock("足迹", () => new ConfigSurfaceSection()),
+      },
+      // 〔ST2 · 协调方转主会话裁「改动足迹并进机器页、漂移记账按机器分」〕原顶层「改动足迹」页剩下的那一块。
+      //   与足迹同栏：两块答的都是「这台机器上发生了什么」。今天只有本机那一栏读得到（账不分机器），
+      //   远端那一栏如实说读不到 —— 形状与理由在 `drift-ledger-section.ts` 的 `DRIFT_*` 头注。
+      {
+        appliesTo: "both",
+        tab: "footprint",
+        ...this.loadableBlock("未识别的数据", () => new DriftLedgerSection()),
       },
     ];
     for (const b of this.perMachineBlocks) this.perMachineSlot.appendChild(b.el);
@@ -1141,24 +1203,9 @@ export class SettingsPanel {
       infoTooltip: MACHINES_PAGE_INFO_TEXT,
     });
 
-    // ---- 改动足迹：「你在我机器上写过什么、能不能撤」 ----
-    const footprintPage = document.createElement("div");
-    // 🔴 步 14a（`70 §10.1`）：原来这一页的第一块是「配置面审计」——**它已经搬走了**，
-    // 改名「足迹」、挂进**每台机器自己的子页**（那张表答的是「我这台机器」的事）。
-    // U-CC1：这一页剩下的那一半 —— 「CC 变了、而我们看不懂的那些东西」。
-    const drift = new DriftLedgerSection();
-    footprintPage.appendChild(this.safeBlock("数据面漂移记账", () => drift.element));
-    router.addRoute({
-      id: "footprint",
-      title: "改动足迹",
-      element: footprintPage,
-    });
-    // 步 2：这一页也不是落地页 ⇒ 它那一发 IPC 同样推到「首次可见」。
-    this.loadOnFirstVisit("footprint", () => drift.loadNow());
-    // ⚠ `70 §10.5` #1 **判不了**：「足迹」搬走之后这个顶层页还留不留。
-    //   剩下的 `DriftLedgerSection` 也**没有 origin**、计数还是本进程内的
-    //   ⇒ 按那条顶层判据它其实属「应用」，那这个顶层页就空了。
-    //   但 drift ledger 不在 `99 §3.2` 点的那三块射程里，**撤不撤这一页本件不定**。
+    // 🔴 〔第四波 ST2 · 用户 09-24 裁「并进机器页，删掉顶层页」〕**顶层「改动足迹」页没了。**
+    //   它剩下的那一块（漂移记账）在**每台机器子页的「足迹」栏**里（per-machine 那一批，见上面
+    //   `perMachineBlocks` 最后一格）。按机器分那一半的设计在 `调研/第四波记录/ST2.md §3`（写区外）。
 
     // S6：cc-bus 驾驶舱**已搬出设置**，成为顶层运营视图（入口 = 命令面板）。
     // S2 当初把它临时单列成一页，正是为了这一刻只删这一段注册 —— 兑现了。
@@ -1171,7 +1218,7 @@ export class SettingsPanel {
     router.onNavigate((id) => {
       if (!id.startsWith(MACHINE_PAGE_PREFIX)) return;
       const isLocal = id === LOCAL_MACHINE_PAGE_ID;
-      setCurrentMachine(isLocal ? null : id.slice(MACHINE_PAGE_PREFIX.length));
+      setCurrentMachine(isLocal ? LOCAL_ORIGIN : id.slice(MACHINE_PAGE_PREFIX.length));
       const page = router.pageContentOf(id);
       if (page) this.movePerMachineTo(page, isLocal, id);
     });
@@ -1262,6 +1309,10 @@ export class SettingsPanel {
 
   private revealPerMachineFallback(why: string): void {
     if (this.machinePageRegistered) return;
+    // 〔步 14〕后端那几行本该挂在机器列表的行上（列表的尾巴）。列表没建起来 ⇒ 它们无处安放，
+    //   **退回列表页上**（与下面那几块同一个兜底思路：位置不理想，但都还在、都能用）。
+    const backendRows = this.backendSection?.element;
+    if (backendRows && !backendRows.isConnected) this.perMachineFallbackHint.before(backendRows);
     // ST1「延后加载」：兜底态下这几块就摆在（落地的）列表页上、用户看得见 ⇒ 这时才放它们的第一发。
     this.loadPerMachineOnce();
     this.perMachineSlot.hidden = false;
@@ -1489,6 +1540,12 @@ export class SettingsPanel {
     this.claudeDirInput.type = "text";
     this.claudeDirInput.className = "settings-input settings-input-wide";
     this.claudeDirInput.placeholder = "默认：~/.claude  或  $CLAUDE_CONFIG_DIR";
+    // 〔ST2 · 步 9〕全即时：失焦 / 回车（`change`）就落。逐键写盘没意义（路径没打完是个半截串）。
+    this.claudeDirInput.addEventListener("change", () => {
+      void this.persistClaudeDir().catch((e: unknown) =>
+        this.reportSaveFailure("Claude 数据目录", e),
+      );
+    });
     row1.appendChild(this.claudeDirInput);
     group.appendChild(row1);
 
@@ -1563,9 +1620,20 @@ export class SettingsPanel {
    * `safeBlock` 覆盖同步路径，**不声明白屏问题已全解**。异步那半边留给 T07 的
    * 对抗性审计去核；覆盖不到就如实说没守，这是本工作区的纪律。
    */
-  private safeBlock(title: string, build: () => HTMLElement): HTMLElement {
+  private safeBlock(
+    title: string,
+    build: () => HTMLElement,
+    opts: { untitled?: boolean } = {},
+  ): HTMLElement {
     try {
-      return this.titledSection(title, build());
+      // 〔ST2 · 步 15〕`untitled`：这一块独占一个子页，页头已经是它的名字 ⇒ 块不再自带标题
+      //   （同名标题叠两层是 `§8` #11 那种重名）。失败时照旧带标题 —— 那一刻得说清是哪一块坏了。
+      const body = build();
+      if (!opts.untitled) return this.titledSection(title, body);
+      const wrap = document.createElement("div");
+      wrap.className = "settings-group";
+      wrap.appendChild(body);
+      return wrap;
     } catch (e) {
       const wrap = document.createElement("div");
       wrap.className = "settings-group settings-block-failed";
@@ -1662,6 +1730,8 @@ export class SettingsPanel {
     delete this.current[f.key];
     applyThemeToken(f.key, undefined);
     this.syncOneInput(f);
+    // 〔ST2 · 步 9〕单项恢复默认也是改了就落。
+    void this.persistTheme().catch((e: unknown) => this.reportSaveFailure("外观", e));
   }
 
   /** 把单个 token 当前值（如果覆盖了）或 :root 计算值写到对应 input */
@@ -1689,6 +1759,11 @@ export class SettingsPanel {
     }
   }
 
+  /** 〔ST2 · 步 9〕外观那一格落盘（失败说出来，不静默吞）。 */
+  private commitTheme(): void {
+    void this.persistTheme().catch((e: unknown) => this.reportSaveFailure("外观", e));
+  }
+
   private buildControl(f: FieldSpec): HTMLInputElement | HTMLSelectElement {
     if (f.type === "font-base" || f.type === "font-mono") {
       const sel = document.createElement("select");
@@ -1703,25 +1778,22 @@ export class SettingsPanel {
         if (p.value) opt.style.fontFamily = p.value;
         sel.appendChild(opt);
       }
-      sel.addEventListener("change", () => this.onFieldChange(f, sel));
+      sel.addEventListener("change", () => {
+        this.onFieldChange(f, sel);
+        this.commitTheme();
+      });
       return sel;
     }
     const input = document.createElement("input");
     input.type = f.type; // color / number / text
     input.className = "settings-input";
+    // 〔ST2 · 步 9〕`input` 只预览（拖取色器 ~60Hz，不逐帧写盘）；`change`（松手 / 失焦 / 回车）才落。
     input.addEventListener("input", () => this.onFieldChange(f, input));
+    input.addEventListener("change", () => {
+      this.onFieldChange(f, input);
+      this.commitTheme();
+    });
     return input;
-  }
-
-  private buildFooter(): HTMLElement {
-    const footer = document.createElement("div");
-    footer.className = "settings-footer";
-    footer.appendChild(
-      this.makeBtn("恢复默认", "secondary", () => this.resetAll()),
-    );
-    footer.appendChild(this.makeBtn("取消", "secondary", () => this.cancel()));
-    footer.appendChild(this.makeBtn("保存", "primary", () => this.save()));
-    return footer;
   }
 
   private makeBtn(

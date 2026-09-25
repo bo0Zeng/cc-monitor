@@ -171,3 +171,82 @@ fn excerpt_falls_back_to_the_whole_text_when_the_head_is_all_whitespace() {
     );
     assert!(excerpt(&long).starts_with(&"w".repeat(EXCERPT_MAX)));
 }
+
+/// 从骨架索引的输出里把大纲搬出来（前端 `outline-source.ts::outlineSeedFromIndex` 做的同一件事）：
+/// 带 `x` 的行 ⇒ `{uuid: u, excerpt: x, timestamp: ts ?? ""}`。
+fn outline_from_index(data: &[u8]) -> Vec<(String, String, String)> {
+    let mut out = Vec::new();
+    crate::observe::history_query::write_session_index(data, 0, None, &mut out).expect("index ok");
+    let v: Vec<serde_json::Value> = String::from_utf8(out)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(v[0]["kind"], "session_index");
+    assert_eq!(v[v.len() - 1]["kind"], "session_index_end");
+    v[1..v.len() - 1]
+        .iter()
+        .filter(|r| r.get("x").is_some())
+        .map(|r| {
+            (
+                r["u"].as_str().expect("带 x 的行必有 u").to_string(),
+                r["x"].as_str().unwrap().to_string(),
+                r.get("ts")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+            )
+        })
+        .collect()
+}
+
+/// 🔴〔SE2 · B2〕骨架索引里**带 `x` 的行 ⇔ 夹具里的 `in-*`**（两向，文件序）。
+/// 期望取自夹具的 uuid 命名（异源），不取自判定函数 —— 索引若对某一类用户输入漏标、
+/// 或把工具结果回灌 / meta / 子 agent 标上，这一格当场红。
+#[test]
+fn the_skeleton_index_marks_exactly_the_user_inputs() {
+    let lines = fixture();
+    let expected: Vec<String> = lines
+        .iter()
+        .filter_map(|l| {
+            let i = l.find("\"uuid\":\"")? + 8;
+            let u = &l[i..i + l[i..].find('"')?];
+            u.starts_with("in-").then(|| u.to_string())
+        })
+        .collect();
+    assert_eq!(expected.len(), 6, "夹具里「该进」的一类变了");
+    let got: Vec<String> = outline_from_index(&bytes_of(&lines))
+        .into_iter()
+        .map(|(u, _, _)| u)
+        .collect();
+    assert_eq!(got, expected);
+}
+
+/// 🔴〔SE2 · B1〕**两个出口给出同一份清单**：从索引搬出来的 == `--list-user-inputs` 的，
+/// uuid · 摘要 · 时间戳逐条相等、含顺序。前端据此在索引带回清单时**不再单独要一趟**。
+/// 反空真：清单非空，且摘要与时间戳两样里都有非平凡值（空串对空串不算数）。
+#[test]
+fn the_skeleton_index_carries_the_same_outline_as_the_list() {
+    let data = bytes_of(&fixture());
+    let v = run(&data, 0);
+    let listed: Vec<(String, String, String)> = v[1..v.len() - 1]
+        .iter()
+        .map(|r| {
+            (
+                r["uuid"].as_str().unwrap().to_string(),
+                r["excerpt"].as_str().unwrap().to_string(),
+                r["timestamp"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect();
+    assert!(
+        listed.iter().any(|(_, x, _)| x == "a b"),
+        "摘要要走过折叠那一支"
+    );
+    assert!(listed.iter().any(|(_, _, t)| t == "t1"), "时间戳要有非空的");
+    assert!(
+        listed.iter().any(|(_, _, t)| t.is_empty()),
+        "时间戳要有缺席的"
+    );
+    assert_eq!(outline_from_index(&data), listed);
+}

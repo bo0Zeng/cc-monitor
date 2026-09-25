@@ -61,6 +61,12 @@ import { computeGaps, summarizeGaps } from "./settings/readiness";
 import type { MachineStatus } from "./settings/machine-status";
 import type { HostOs } from "./settings/host-os";
 
+/**
+ * 〔ST2〕指路那一行的前缀 —— 与设置面板机器列表页那一块的标题（`remote-section.ts` 里的「诊断」）同一个词。
+ * 由 `first-run-hint.vitest.ts` 读 `remote-section.ts` 对拍。
+ */
+export const FIRST_RUN_HINT_PREFIX = "诊断：";
+
 /** 那条指路的容器 class。判据与样式共用这一个名字，别在第二处写字面量。 */
 export const FIRST_RUN_HINT_CLASS = "status-first-run";
 
@@ -157,8 +163,11 @@ export class FirstRunHint {
       const open = document.createElement("button");
       open.type = "button";
       open.className = `${FIRST_RUN_HINT_CLASS}-open`;
+      // 〔第四波 ST2 · `设计/70 §12.2` 末条〕原文「打开设置 → 远端：那里逐条列着还差什么…」——
+      //   「设置 → 远端」这一页**不存在**（S2 起那块在「机器」页，落地页就是它），
+      //   「还差什么」是 `§5.3` 已改名的旧说法（用户逐字「这种说法太口语了」）。
       open.title =
-        "打开设置 → 远端：那里逐条列着还差什么、缺了有什么后果、点哪里补齐。";
+        "打开设置 → 机器：「诊断」那一块逐条列着缺哪几项、缺了有什么后果、点哪里补齐。";
       open.addEventListener("click", () => this.deps.openList());
       box.appendChild(open);
 
@@ -177,7 +186,8 @@ export class FirstRunHint {
     }
     const open = this.el.querySelector(`.${FIRST_RUN_HINT_CLASS}-open`);
     // 文案与数**全部**来自 `summarizeGaps`；这里只加一个前缀词，与
-    // `remote-section.ts` 那个标题逐字同形（同一句话不许有两种说法）。
-    if (open) open.textContent = `还差什么：${summary}`;
+    // `remote-section.ts` 那个块标题逐字同形（同一句话不许有两种说法）。
+    // 〔ST2〕那个块标题 `§5.3` 早改成「诊断」了，这里跟上（原来还是「还差什么：」）。
+    if (open) open.textContent = `${FIRST_RUN_HINT_PREFIX}${summary}`;
   }
 }

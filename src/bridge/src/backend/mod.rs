@@ -34,8 +34,10 @@
 //! ② **不只是「有后端可切」，是已经切过两次**：`local_read_surface_registry` 的棘轮史逐字
 //!    记着 `11 → 10`（F10b 第一批，`usage.rs` 改走本机后端的 `--usage`）→ `9`
 //!    → `8`（F10b 第二批·下半，`local_accounts.rs` 改走本机后端的 `--session-accounts`）
-//!    → `7` → `8`（`P8a` 新增）。接线点今天就在生产段上：`local_accounts.rs::list_local_session_accounts`
+//!    → `7` → `8`（`P8a` 新增）。接线点今天就在生产段上：`local_accounts.rs::list_local_accounts`
 //!    （一个 `#[tauri::command]`）直接调 `backend::observe::local_query::run_query(…, ["--list-accounts"])`。
+//!    〔C4a · 第四波：这里原先点的是 E79 那条本机会话账号查询 —— 它调的其实是 `--session-accounts`，
+//!     且已随「本机与远端同一条路」改走通道退役；换成真调 `--list-accounts` 的那一条，论点不变。〕
 //!    〔`设计/50`：这段原先举的例子是用量那一轴（那个命令与它调的 `--usage` 今天都不存在了）——
 //!     换成同形的账号那一轴，**论点一个字没变**。〕
 //! ③ 🔴 **`backend/` 里已经住着读面代码，而它当时挂在 `control` 线上** ——
@@ -243,7 +245,7 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
          的棘轮跟着往下拧」。**两句今天都不成立**：那条触发器 2026-08-04 就已经响过一次并\
          换成了后继形态（`every_caller_of_this_transport_is_already_off_the_read_surface_ledger`，\
          改成「每个调用方都必须已经从棘轮账上下来」）；而生产调用方 09-10 现打**不是零** —— \
-         `local_accounts.rs::list_local_session_accounts` 等在调它\
+         `local_accounts.rs::list_local_accounts` 等在调它（〔C4a〕原举的 E79 那条已退役）\
          （原话还并列了用量那一轴，`设计/50` 把它整轴删了）。\
          ⇒ 这里不再写「有几个调用方」这种会腐的数，那个数的家在那条判据里〕",
     ),

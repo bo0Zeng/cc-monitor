@@ -296,7 +296,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   function fakePages() {
     const added: { id: string; title: string; element: HTMLElement }[] = [];
     const addedParts: (
-      | { connection: HTMLElement; components: HTMLElement }
+      | { connection: HTMLElement; components: HTMLElement; tools: HTMLElement }
       | undefined
     )[] = [];
     const removed: string[] = [];
@@ -311,7 +311,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
           id: string,
           title: string,
           element: HTMLElement,
-          parts?: { connection: HTMLElement; components: HTMLElement },
+          parts?: { connection: HTMLElement; components: HTMLElement; tools: HTMLElement },
         ) => {
           added.push({ id, title, element });
           addedParts.push(parts);
@@ -817,7 +817,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
    *   ——（外加指纹那一格原有的「重置为 TOFU」）；
    * · 「ccm 助手 / ccm 启动器」这个词在两栏里一个字都不许有（用户逐字「装/卸 ccm 助手是假的」）。
    */
-  it("★ MC1：组件栏只剩 ① 部署后端 ＋ ② 别名，连接栏是动这条连接的那几颗，「ccm 助手」一个字都不剩", async () => {
+  it("★ MC1：组件栏只剩 ① 部署后端，〔ST2〕② 别名搬到「工具」栏，连接栏是动这条连接的那几颗，「ccm 助手」一个字都不剩", async () => {
     const p = fakePages();
     await mount([mkH("a", "1.1.1.1")], p.host);
     const got = p.addedParts[1]!;
@@ -825,14 +825,17 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       [...el.querySelectorAll<HTMLButtonElement>("button")]
         .filter((b) => !b.closest("details"))
         .map((b) => b.textContent ?? "");
-    expect(labels(got.components)).toEqual(["部署后端", "卸载后端", "装别名块", "卸载别名块"]);
+    // 〔ST2 · 协调方转主会话裁〕别名统一放「工具」栏：远端那一块与本机「工具 → 别名」同一个位置。
+    expect(labels(got.components)).toEqual(["部署后端", "卸载后端"]);
+    expect(labels(got.tools)).toEqual(["装别名块", "卸载别名块"]);
+    expect(got.tools.textContent).toContain("别名");
     expect(labels(got.connection).filter((t) => t !== "重置为 TOFU")).toEqual([
       "测试连接",
       "推送公钥",
       "文件",
       "开新 Claude",
     ]);
-    for (const part of [got.connection, got.components]) {
+    for (const part of [got.connection, got.components, got.tools]) {
       const txt = [part.textContent ?? "", ...[...part.querySelectorAll("[title]")].map((e) => e.getAttribute("title") ?? "")].join("\n");
       expect(txt).not.toMatch(/ccm (助手|启动器)/);
     }

@@ -203,6 +203,7 @@ async fn authenticate(
     session: &mut client::Handle<Checker>,
     user: &str,
     key_path: Option<&str>,
+    agent_sock: Option<&str>,
 ) -> Result<(), String> {
     // RSA key 要协商出服务端支持的 hash；非 RSA 时 flatten 成 None。
     let best_hash = session
@@ -227,33 +228,54 @@ async fn authenticate(
             Ok(())
         }
         None => {
-            let mut agent = crate::platform::ssh_agent::connect()
-                .await
-                .map_err(|e| format!("未配置私钥路径(keyPath)，尝试 ssh-agent 失败：{e}"))?;
-            let identities = agent
-                .request_identities()
-                .await
-                .map_err(|e| format!("ssh-agent 枚举身份失败: {e}"))?;
-            if identities.is_empty() {
-                return Err(
-                    "ssh-agent 没有任何身份（ssh-add 了吗？），且未配置 keyPath".to_string()
-                );
-            }
-            let mut last_err: Option<String> = None;
-            for id in identities {
-                let pubkey = id.public_key().into_owned();
-                match session
-                    .authenticate_publickey_with(user, pubkey, best_hash, &mut agent)
-                    .await
-                {
-                    Ok(res) if res.success() => return Ok(()),
-                    Ok(_) => last_err = Some(format!("agent 身份被拒（user={user}）")),
-                    Err(e) => last_err = Some(format!("agent 签名鉴权出错: {e}")),
-                }
-            }
-            Err(last_err.unwrap_or_else(|| "ssh-agent 所有身份均鉴权失败".to_string()))
+            // 〔SR1a〕agent 这一支**在当前线程上就地跑完**（`block_in_place` ＋ `block_on`），不留在外层 future 里。
+            //
+            // ⚠ 不是口味：拨号从此跑在要 `tokio::spawn` 的链路任务里（`dial/link.rs`），外层 future 必须 `Send`；
+            //   而 russh 的 `authenticate_publickey_with(.., &mut agent)` 经 `Signer::auth_sign(&AgentIdentity, ..)`
+            //   那条高阶生命周期，rustc 证不出它的 future 是 `Send`（`implementation of Send is not general enough`，
+            //   实打）。`block_on` 不要求 `Send` ⇒ 这一段就地跑完、不跨外层的任何 await。
+            //   代价如实写：这一段期间占住一个 worker（鉴权是毫秒级到秒级的一趟），并且**取消不掉**
+            //   （链路被关时它照样跑完这一趟鉴权；服务端的 `LoginGraceTime` 兜底）。
+            //   本 crate 的运行时是多线程的（`main.rs` 的 `#[tokio::main]`）；`block_in_place` 在单线程运行时上会 panic
+            //   ⇒ 走到这一支的判据要用多线程运行时。
+            let handle = tokio::runtime::Handle::current();
+            tokio::task::block_in_place(|| {
+                handle.block_on(agent_auth(session, user, best_hash, agent_sock))
+            })
         }
     }
+}
+
+/// ssh-agent 那一支的本体（见调用点：它**不在** `Send` 的 future 里跑）。
+async fn agent_auth(
+    session: &mut client::Handle<Checker>,
+    user: &str,
+    best_hash: Option<HashAlg>,
+    agent_sock: Option<&str>,
+) -> Result<(), String> {
+    let mut agent = crate::platform::ssh_agent::connect(agent_sock)
+        .await
+        .map_err(|e| format!("未配置私钥路径(keyPath)，尝试 ssh-agent 失败：{e}"))?;
+    let identities = agent
+        .request_identities()
+        .await
+        .map_err(|e| format!("ssh-agent 枚举身份失败: {e}"))?;
+    if identities.is_empty() {
+        return Err("ssh-agent 没有任何身份（ssh-add 了吗？），且未配置 keyPath".to_string());
+    }
+    let mut last_err: Option<String> = None;
+    for id in identities {
+        let pubkey = id.public_key().into_owned();
+        match session
+            .authenticate_publickey_with(user, pubkey, best_hash, &mut agent)
+            .await
+        {
+            Ok(res) if res.success() => return Ok(()),
+            Ok(_) => last_err = Some(format!("agent 身份被拒（user={user}）")),
+            Err(e) => last_err = Some(format!("agent 签名鉴权出错: {e}")),
+        }
+    }
+    Err(last_err.unwrap_or_else(|| "ssh-agent 所有身份均鉴权失败".to_string()))
 }
 
 /// 连 ＋ 鉴权。`jump` 在就先连跳板、经它开 direct-tcpip 到目标主地址、在隧道上跑目标的握手
@@ -295,9 +317,14 @@ pub(crate) async fn establish(
             )
             .await
             .map_err(|(e, fp)| (format!("跳板 {hop_name} 连接失败: {e}"), fp))?;
-            authenticate(&mut jump_session, &hop.user, hop.key_path.as_deref())
-                .await
-                .map_err(|e| (format!("跳板 {hop_name} 鉴权失败: {e}"), None))?;
+            authenticate(
+                &mut jump_session,
+                &hop.user,
+                hop.key_path.as_deref(),
+                req.agent_sock.as_deref(),
+            )
+            .await
+            .map_err(|e| (format!("跳板 {hop_name} 鉴权失败: {e}"), None))?;
             let channel = jump_session
                 .channel_open_direct_tcpip(
                     req.host.clone(),
@@ -335,7 +362,14 @@ pub(crate) async fn establish(
         }
     };
     let fingerprint = observed.lock().ok().and_then(|g| g.clone());
-    if let Err(e) = authenticate(&mut session, &req.user, req.key_path.as_deref()).await {
+    if let Err(e) = authenticate(
+        &mut session,
+        &req.user,
+        req.key_path.as_deref(),
+        req.agent_sock.as_deref(),
+    )
+    .await
+    {
         stages.emit(Stage::Auth {
             ok: false,
             detail: Some(e.clone()),

@@ -37,7 +37,7 @@ const WRITE_CALLS: &[&str] = &[
 pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     // ── P2z：单 exe 自释放内嵌后端。**不是安装动作** —— 它写的是 monitor 自己的缓存。
     ("local_backend.rs", "extract_embedded_to", None,
-     "把内嵌的后端二进制释放到 `~/.cc-monitor/bin/cc-monitor-local-<build_id>`，\
+     "把内嵌的后端二进制释放到 `~/.cc-monitor/bin/cc-monitor-backend-<build_id>`，\
           供 exe 旁没有本机后端时起进程。写的是 monitor 自己的目录，\
           不碰用户既有环境、不注册到任何用户配置里；按 build_id 命名 ⇒ 幂等、不覆盖别的版本。\
           ⚠ **唯一调用点是 `local_backend::resolve_or_extract`**〔`K-R43` 改：本行原先写\
@@ -120,6 +120,10 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     //    ⚠ 本表仍然只是**申报**，不是守卫 —— 别再把它当挡箭牌。
     ("sftp_pool.rs", "download_inner", None, "把远端文件落到**用户选的本机路径**（保存对话框 / 落点框）；围栏在入口 `sftp_download` 第一行"),
     ("utils.rs", "atomic_write_json", None, "通用原子写原语，调用方各自申报"),
+    // 〔FW34 · 第四波 09-24〕文件窗口的书签：锁旁件（空文件，只拿来上锁）＋ 它所在的目录。
+    //   书签文件本身走上面那条原子写原语（`filewin/bookmarks.rs::mutate`）。
+    ("bookmarks.rs", "lock_store", None,
+     "monitor 自己的状态：文件窗口书签的锁旁件（`<数据目录>/filewin-bookmarks.json.lock`，空文件）"),
     ("utils.rs", "atomic_replace_path", None, "同上，原语的本地副本"),
     // ── `K-P1`：常驻那条路要写两样东西。**都不是安装动作** —— 写的是 monitor 自己的目录。
     ("local_backend_host.rs", "ensure_listen_token", None,
@@ -443,6 +447,9 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
         Lands::OwnState,
     ),
     ("local_backend_host.rs", "write_listen_pid", Lands::OwnState),
+    // 〔合并 FW34〕文件窗口书签的锁旁件（`<monitor 数据目录>/filewin-bookmarks.json.lock`）——
+    //   书签是 monitor 自己的状态（FW34 头注逐字「不是用户文件 ⇒ 不走后端写面」）。
+    ("bookmarks.rs", "lock_store", Lands::OwnState),
 ];
 
 /// ① 的判定（抽出来好喂正控）：两边的键两向对不上的那几条。

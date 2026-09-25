@@ -65,9 +65,12 @@ mod tests {
     const PINS: &[(&str, &str, usize, &str)] = &[
         (
             "readonly_guard.rs",
-            "const SPAWN_SITES_TODAY: usize = 11;",
+            "const SPAWN_SITES_TODAY: usize = 12;",
             1,
             "backend 侧起进程登记表的**相等断言**（不是地板）。\
+             〔RM1a · 第四波：`11` → **12**，往**上**走一格：`relay/machine.rs` 那一处（远端那台上起一个脱离的 `--relay`）\
+             ——**真的新面，不是搬家**，`ALLOWED` 里已逐条写明它起什么、为什么不违反收窄后的铁律。\
+             往上走**不是本针在放宽**：`readonly_guard` 那条 `assert_eq!` 自己先红了，本针跟着记新值。〕\
              ⚠⚠ **这条针钉的是「那一行长什么样」，不是那个数字本身** —— 它挡的是\
              「不动断言、只把数调**小**」（调小 = 放宽扫描面）。数**变大**是结构变了，\
              `readonly_guard` 那条 `assert_eq!` 自己会先红、逼人回来重判，本针跟着记新值。\

@@ -14,6 +14,7 @@ import type { SkeletonView } from "./skeleton-view";
 import type { UserInputPanel } from "./views/user-input-panel";
 import type { OutlineSource } from "./views/outline-source";
 import type { AgentEntry } from "./agents-panel";
+import type { Origin } from "./ipc/origin";
 
 /**
  * Tab 生命周期：
@@ -53,11 +54,12 @@ export interface Tab {
    */
   forkedFromSessionId: string | null;
   /**
-   * issue #15：数据来源主机标签。null = 本地（标题无前缀）；非空（如 "raspberrypi.local"）
+   * issue #15：数据来源主机标签。本机 = `LOCAL_ORIGIN`（标题无前缀）；远端（如 "raspberrypi.local"）
    * = 远端 SSH 主机名，标题加 `[origin]` 前缀以区分本地/远端。首条 line 帧的 origin
    * 决定，之后不变（同一 sid 只来自一个来源）。
+   * 〔C4a · `设计/05 §8` 步 2〕本机不再是 `null`：判本机 / 远端一律经 `ipc/origin.ts`。
    */
-  origin: string | null;
+  origin: Origin;
   status: TabStatus;
   /**
    * 〔步 17·B · `设计/30 §B`〕**固定** —— 「关了 app 再打开它还在」。
@@ -223,9 +225,11 @@ function projectNameFromCwd(cwd: string): string | null {
  *   aiTitle 无 + cwd 有 → `项目`
  *   都没有 → `<sid 前 8 位>`
  *
- * issue #15：`origin`（远端 SSH 主机名）非空时，在以上结果前再加 `[origin] ` 前缀，
- * 让用户一眼区分本地 / 远端 Tab（如 `[raspberrypi.local] [proj] aiTitle`）。本地
- * （origin=null）行为与历史完全一致，不加任何前缀。
+ * issue #15：远端 Tab 在以上结果前再加 `[那台远端] ` 前缀，
+ * 让用户一眼区分本地 / 远端 Tab（如 `[raspberrypi.local] [proj] aiTitle`）。本机行为与历史完全一致，
+ * 不加任何前缀。
+ * 〔C4a〕第四个参数是**前缀里写的那台远端名**（本机 ⇒ `null`，没有前缀），不是 origin：
+ * 「是不是本机」由调用方经 `ipc/origin.ts` 判完再传进来 —— 本文件只有类型，零运行期依赖（`tabs-split-graph` 钉着）。
  *
  * Subagent 不再独立 Tab（嵌入到父 session 的 Task 折叠卡），所以没有 `↳` 前缀分支。
  */
@@ -233,7 +237,7 @@ export function computeTitleFor(
   sessionId: string,
   cwd: string | null,
   aiTitle: string | null,
-  origin: string | null = null,
+  remoteLabel: string | null = null,
   kind: string | null = null,
   bgName: string | null = null,
   forkedFromSessionId: string | null = null,
@@ -244,7 +248,7 @@ export function computeTitleFor(
   // Batch7-F24：bg 任务 → ⚙ + 任务名（缩进/⌞ 由 .tab-bg 样式承担）
   if (kind !== null && kind !== "interactive") {
     const base = `⚙ ${bgName ?? aiTitle ?? project ?? sessionId.slice(0, 8)}`;
-    return mark(origin ? `[${origin}] ${base}` : base);
+    return mark(remoteLabel !== null ? `[${remoteLabel}] ${base}` : base);
   }
   let base: string;
   if (aiTitle) {
@@ -254,5 +258,5 @@ export function computeTitleFor(
   } else {
     base = sessionId.slice(0, 8);
   }
-  return mark(origin ? `[${origin}] ${base}` : base);
+  return mark(remoteLabel !== null ? `[${remoteLabel}] ${base}` : base);
 }

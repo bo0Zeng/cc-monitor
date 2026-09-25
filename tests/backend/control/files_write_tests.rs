@@ -1188,6 +1188,391 @@ fn copy_refuses_its_shapes_and_is_reachable_on_the_command_face() {
     std::fs::remove_dir_all(&base).ok();
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+//  〔FW5 · 第四波 · 2026-09-24〕递归删：**逐条目过围栏**（设计住 `调研/第四波记录/FW5.md` 第一节）
+// ════════════════════════════════════════════════════════════════════════════
+//
+// 正控 ＋ 阴性对照同拍；阴性那一侧每一条都**去盘上核**「树里每一样东西都还在」
+// —— 回了 `Err` 不算数（一个先删后报错的实现也回 `Err`）。
+// ⚠ 不列目录（`scanning_guard_registry` 不许测试段裸遍历）：铺的是什么是已知的，逐个按名字问在不在。
+
+/// 在 `root/t` 底下铺一棵小树，回树里每一样东西的相对段（含 `t` 自己）。
+fn plant_tree(root: &Path) -> Vec<&'static str> {
+    std::fs::create_dir_all(root.join("t/a/b")).expect("铺树");
+    std::fs::create_dir_all(root.join("t/empty")).expect("铺空目录");
+    std::fs::write(root.join("t/one.md"), b"1").expect("铺");
+    std::fs::write(root.join("t/a/two.md"), b"2").expect("铺");
+    std::fs::write(root.join("t/a/b/three.md"), b"3").expect("铺");
+    vec![
+        "t",
+        "t/a",
+        "t/a/b",
+        "t/a/b/three.md",
+        "t/a/two.md",
+        "t/empty",
+        "t/one.md",
+    ]
+}
+
+fn still_there(root: &Path, rels: &[&str]) -> Vec<String> {
+    rels.iter()
+        .filter(|r| std::fs::symlink_metadata(root.join(r)).is_ok())
+        .map(|r| (*r).to_string())
+        .collect()
+}
+
+#[test]
+#[cfg(unix)]
+fn a_recursive_delete_removes_the_whole_tree_and_counts_every_entry_but_never_follows_a_link() {
+    let base = temp_root("rmtree");
+    let root = base.join("cfg");
+    std::fs::create_dir_all(&root).expect("建根");
+    let planted = plant_tree(&root);
+    // 树里一条指向**树外目录**的链接：删的是链接本身，不走进去。
+    let outside = base.join("outside");
+    std::fs::create_dir_all(&outside).expect("铺树外");
+    std::fs::write(outside.join("keep.md"), b"keep").expect("铺树外文件");
+    std::os::unix::fs::symlink(&outside, root.join("t/a/out")).expect("放链接");
+
+    let (at, removed) = delete_tree(&root, "t").expect("干净的递归删被误拒");
+    assert_eq!(at.file_name().and_then(|n| n.to_str()), Some("t"));
+    assert_eq!(
+        removed,
+        planted.len() + 1,
+        "删掉的条数不对（树里 {} 条 ＋ 一条链接）",
+        planted.len()
+    );
+    assert!(still_there(&root, &planted).is_empty(), "树里还剩东西");
+    assert!(
+        std::fs::symlink_metadata(root.join("t/a/out")).is_err(),
+        "链接还在"
+    );
+    assert_eq!(
+        std::fs::read(outside.join("keep.md")).expect("读树外"),
+        b"keep",
+        "🔴 递归删顺着链接走进了树外"
+    );
+    // 一份普通文件走递归那条路也只删它自己。
+    std::fs::write(root.join("solo.md"), b"s").expect("铺");
+    assert_eq!(delete_tree(&root, "solo.md").expect("删单个文件").1, 1);
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// 🔴🔴 **本节的正题**：顶上那个目录干净，底下藏着一份会话文件 ⇒ **整趟拒，一个字节不动**。
+///
+/// 两形：会话文件**在**树里（有人把 `projects/` 拷进了目标）· 目标就是 `~/.claude/projects/<proj>` 本身。
+#[test]
+fn a_session_file_anywhere_in_the_tree_refuses_the_whole_delete_and_nothing_moves() {
+    let base = temp_root("rmtree-live");
+    let root = base.join("cfg");
+    let (live, bytes) = plant_live_session(&base); // cfg/projects/-x/abc.jsonl
+    let planted = plant_tree(&root);
+    std::fs::create_dir_all(root.join("t/a/projects/-y")).expect("铺");
+    std::fs::write(root.join("t/a/projects/-y/s1.jsonl"), b"{}\n").expect("藏一份会话形状的文件");
+    let mut all = planted.clone();
+    all.extend([
+        "t/a/projects",
+        "t/a/projects/-y",
+        "t/a/projects/-y/s1.jsonl",
+    ]);
+
+    let err = delete_tree(&root, "t").expect_err("🔴 底下藏着会话文件，递归删竟然过了");
+    assert_eq!(err.code(), "refused", "{err:?}");
+    assert!(
+        err.message().contains("s1.jsonl") && err.message().contains("整趟拒"),
+        "拒了，但没说是哪一条、也没说整趟没动：{}",
+        err.message()
+    );
+    assert_eq!(
+        still_there(&root, &all),
+        all.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+        "🔴 整趟拒之前已经删掉了一部分 —— 计划趟必须在动手之前把整棵树判完"
+    );
+
+    // 目标就是那个项目目录本身（09-23 之后 `~/.claude` 底下改得动 —— 但会话文件不行）。
+    let err = delete_tree(&root, "projects/-x").expect_err("🔴 连项目目录带会话文件一起删了");
+    assert_eq!(err.code(), "refused", "{err:?}");
+    assert_eq!(
+        std::fs::read(&live).expect("读会话"),
+        bytes,
+        "🔴 会话被动了"
+    );
+    // 命令面同一件事：`recursive: true` ⇒ 同样整趟拒。
+    let r = root.to_str().expect("utf8");
+    let (code, _) = answer_wire(
+        "files-delete",
+        &serde_json::json!({"root": r, "rel": "projects", "recursive": true}),
+    )
+    .expect_err("🔴 命令面上递归删掉了 projects");
+    assert_eq!(code, "refused");
+    assert_eq!(
+        std::fs::read(&live).expect("读会话"),
+        bytes,
+        "🔴 会话被动了"
+    );
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// ★ **执行趟只删计划里的**：计划之后新长出来的东西（含一份会话形状的文件）不被连带删掉。
+///
+/// 手工走一遍 [`delete_tree`] 的执行趟（计划 → 中间插一件事 → 倒序逐条删），把「两趟之间」那个窗摆出来。
+#[test]
+fn the_execution_pass_only_deletes_what_was_planned_and_stops_on_a_newcomer() {
+    let base = temp_root("rmtree-new");
+    let root = base.join("cfg");
+    std::fs::create_dir_all(&root).expect("建根");
+    plant_tree(&root);
+    let plan = plan_tree(&root, "t").expect("计划被误拒");
+    assert_eq!(
+        plan.first().map(|p| p.rel.as_path()),
+        Some(Path::new("t")),
+        "先序：目标自己排第一"
+    );
+    // 两趟之间：有人往 `t/a/b` 里放了一份新文件。
+    std::fs::write(root.join("t/a/b/new.jsonl"), b"new").expect("插一份");
+    let mut removed = 0usize;
+    let mut stopped = None;
+    for p in plan.iter().rev() {
+        match remove_planned(&root, p) {
+            Ok(_) => removed += 1,
+            Err(e) => {
+                stopped = Some((p.rel.clone(), e));
+                break;
+            }
+        }
+    }
+    let (at, e) = stopped.expect("🔴 计划之外的那一份被连带删掉了（整趟都成了）");
+    assert_eq!(at, Path::new("t/a/b"), "停在了别处：{e:?}");
+    assert_eq!(e.code(), "io_failed", "{e:?}");
+    assert!(removed >= 1, "一条都没删 —— 这条判据没走到执行趟");
+    assert_eq!(
+        std::fs::read(root.join("t/a/b/new.jsonl")).expect("读新来的"),
+        b"new",
+        "🔴 计划之外新长出来的那一份被删了"
+    );
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// ★ **执行趟每一条当场再过一次围栏**：两趟之间把计划里的一层目录换成一条指向树外的链接 ⇒
+/// 那一层底下的那几条再判时父目录解出去了 ⇒ 拒；树外一个字节不动。
+#[test]
+#[cfg(unix)]
+fn the_execution_pass_refences_every_entry_so_a_swapped_in_link_is_caught() {
+    let base = temp_root("rmtree-swap");
+    let root = base.join("cfg");
+    std::fs::create_dir_all(&root).expect("建根");
+    plant_tree(&root);
+    let plan = plan_tree(&root, "t").expect("计划被误拒");
+    // 树外那一份，名字与计划里 `t/a/b/three.md` 同名。
+    let outside = base.join("outside");
+    std::fs::create_dir_all(&outside).expect("铺树外");
+    std::fs::write(outside.join("three.md"), b"victim").expect("铺受害者");
+    std::fs::remove_file(root.join("t/a/b/three.md")).expect("挪走");
+    std::fs::remove_dir(root.join("t/a/b")).expect("挪走");
+    std::os::unix::fs::symlink(&outside, root.join("t/a/b")).expect("换成链接");
+
+    let victim = plan
+        .iter()
+        .find(|p| p.rel == Path::new("t/a/b/three.md"))
+        .expect("计划里有那一条");
+    let err = remove_planned(&root, victim).expect_err("🔴 顺着换进来的链接删到了树外");
+    assert_eq!(err.code(), "refused", "{err:?}");
+    assert_eq!(
+        std::fs::read(outside.join("three.md")).expect("读受害者"),
+        b"victim",
+        "🔴 树外那一份被删了"
+    );
+    // 重新计划再整趟跑：那一层这回被看成**一条链接**（不跟过去）⇒ 删的是链接本身，树外原样。
+    delete_tree(&root, "t").expect("重新计划之后整棵树（连同那条链接本身）删不掉");
+    assert!(std::fs::symlink_metadata(root.join("t")).is_err(), "树还在");
+    assert_eq!(
+        std::fs::read(outside.join("three.md")).expect("读受害者"),
+        b"victim",
+        "🔴 整趟递归删删到了树外"
+    );
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// ★ 条目数上限：超了**整趟拒**，一条都不删（拿一个小上限验，不必真铺十万条）。
+#[test]
+fn a_tree_over_the_cap_is_refused_whole() {
+    let base = temp_root("rmtree-cap");
+    let root = base.join("cfg");
+    std::fs::create_dir_all(&root).expect("建根");
+    let planted = plant_tree(&root);
+    let err = plan_tree_within(&root, Path::new("t"), 3).expect_err("超了上限竟然出了计划");
+    assert_eq!(err.code(), "refused", "{err:?}");
+    assert!(
+        err.message().contains('3'),
+        "没说上限是多少：{}",
+        err.message()
+    );
+    assert_eq!(
+        still_there(&root, &planted).len(),
+        planted.len(),
+        "计划趟动了盘"
+    );
+    // 阴性：上限恰好够 ⇒ 过。
+    assert_eq!(
+        plan_tree_within(&root, Path::new("t"), planted.len())
+            .expect("恰好够的上限被误拒")
+            .len(),
+        planted.len()
+    );
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// ★ 命令面：`recursive` **显式**才递归；形状不对 ⇒ `bad_args`；出方向带 `removed`。
+#[test]
+fn the_command_face_recurses_only_when_asked_and_says_how_many() {
+    let base = temp_root("rmtree-cmd");
+    let root = base.join("cfg");
+    std::fs::create_dir_all(&root).expect("建根");
+    let planted = plant_tree(&root);
+    let r = root.to_str().expect("utf8");
+    // 不给 ⇒ 不递归（非空目录 ⇒ io_failed，树原样）。
+    let (code, _) = answer_wire("files-delete", &serde_json::json!({"root": r, "rel": "t"}))
+        .expect_err("🔴 没说 recursive 就删掉了整棵树");
+    assert_eq!(code, "io_failed");
+    // 给了但不是布尔 ⇒ 不猜。
+    for bad in [serde_json::json!("yes"), serde_json::json!(1)] {
+        let (code, _) = answer_wire(
+            "files-delete",
+            &serde_json::json!({"root": r, "rel": "t", "recursive": bad}),
+        )
+        .expect_err("`recursive` 收下了一个不是布尔的值");
+        assert_eq!(code, "bad_args");
+    }
+    assert_eq!(
+        still_there(&root, &planted).len(),
+        planted.len(),
+        "被拒的几次动了盘"
+    );
+    let v = answer_wire(
+        "files-delete",
+        &serde_json::json!({"root": r, "rel": "t", "recursive": true}),
+    )
+    .expect("显式递归删被误拒");
+    assert_eq!(v["removed"], planted.len(), "{v}");
+    assert!(still_there(&root, &planted).is_empty());
+    // 非递归那一支也回 `removed`（恒 1）。
+    std::fs::write(root.join("x.md"), b"x").expect("铺");
+    let v = answer_wire(
+        "files-delete",
+        &serde_json::json!({"root": r, "rel": "x.md"}),
+    )
+    .expect("删文件被误拒");
+    assert_eq!(v["removed"], 1, "{v}");
+    std::fs::remove_dir_all(&base).ok();
+}
+
+// ── 〔FW5〕乱码文件名（非 UTF-8）：相对段走 `{"b16": …}` ──────────────────────
+
+/// 🔴 非 UTF-8 的名字**能改名、能改权限、能删** —— 此前相对段只收 UTF-8 字符串，这一族一件都做不了。
+///
+/// 阴性对照同拍：b16 解出来的段照样逐段过围栏（上跳段 · 会话文件形状 ⇒ `refused`）。
+#[test]
+#[cfg(unix)]
+fn a_non_utf8_name_can_be_renamed_chmodded_and_deleted_through_b16() {
+    use std::os::unix::ffi::OsStrExt as _;
+    let base = temp_root("b16");
+    let root = base.join("cfg");
+    let (live, bytes) = plant_live_session(&base);
+    let raw: &[u8] = b"caf\xe9.txt"; // Latin-1 的 é —— 不是合法 UTF-8
+    let name = std::ffi::OsStr::from_bytes(raw);
+    std::fs::write(root.join(name), b"latin").expect("铺乱码名文件");
+    let r = root.to_str().expect("utf8");
+    let b16 = |b: &[u8]| serde_json::json!({ "b16": b.iter().map(|x| format!("{x:02x}")).collect::<String>() });
+
+    // 字符串那一形照旧寻址不到它（有损串里是 U+FFFD，不是那个字节）。
+    assert!(
+        answer_wire(
+            "files-chmod",
+            &serde_json::json!({"root": r, "rel": String::from_utf8_lossy(raw), "mode": 384}),
+        )
+        .is_err(),
+        "有损串竟然寻址到了原文件 —— 那这条判据量不出 b16 的价值"
+    );
+    answer_wire(
+        "files-chmod",
+        &serde_json::json!({"root": r, "rel": b16(raw), "mode": 384}),
+    )
+    .expect("🔴 b16 的相对段改不了权限");
+    // 改名：from 走 b16，to 是正常名字 —— 「改成一个读得出的名字」正是乱码名最常要的那一下。
+    answer_wire(
+        "files-rename",
+        &serde_json::json!({"root": r, "from": b16(raw), "to": "cafe.txt"}),
+    )
+    .expect("🔴 b16 的相对段改不了名");
+    assert_eq!(
+        std::fs::read(root.join("cafe.txt")).expect("读改名后"),
+        b"latin"
+    );
+    assert!(
+        std::fs::symlink_metadata(root.join(name)).is_err(),
+        "旧名还在"
+    );
+    // 改回去，再删。
+    answer_wire(
+        "files-rename",
+        &serde_json::json!({"root": r, "from": "cafe.txt", "to": b16(raw)}),
+    )
+    .expect("改回乱码名被误拒");
+    let v = answer_wire(
+        "files-delete",
+        &serde_json::json!({"root": r, "rel": b16(raw)}),
+    )
+    .expect("🔴 b16 的相对段删不掉");
+    assert_eq!(v["removed"], 1);
+    assert!(
+        std::fs::symlink_metadata(root.join(name)).is_err(),
+        "说删了，盘上还在"
+    );
+
+    // 阴性：b16 解出来的段照样逐段过围栏。
+    for (rel, why) in [
+        (b"../escape".to_vec(), "上跳段"),
+        (b"projects/-x/abc.jsonl".to_vec(), "会话文件"),
+    ] {
+        let (code, msg) = answer_wire(
+            "files-delete",
+            &serde_json::json!({"root": r, "rel": b16(&rel)}),
+        )
+        .expect_err(&format!("🔴 b16 那条路绕过了围栏（{why}）"));
+        assert_eq!(code, "refused", "{why}：{msg}");
+    }
+    assert_eq!(
+        std::fs::read(&live).expect("读会话"),
+        bytes,
+        "🔴 会话被动了"
+    );
+    // 形状不对 ⇒ bad_args（不猜）。
+    let (code, _) = answer_wire(
+        "files-delete",
+        &serde_json::json!({"root": r, "rel": {"b16": "zz"}}),
+    )
+    .expect_err("坏的十六进制被收下了");
+    assert_eq!(code, "bad_args");
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// ★ 递归删碰到树里的乱码名子项：照样逐条目过围栏、照样删得掉（计划趟的段是字节，不是字符串）。
+#[test]
+#[cfg(unix)]
+fn a_recursive_delete_walks_through_non_utf8_children() {
+    use std::os::unix::ffi::OsStrExt as _;
+    let base = temp_root("rmtree-b16");
+    let root = base.join("cfg");
+    std::fs::create_dir_all(root.join("t")).expect("建");
+    let odd = std::ffi::OsStr::from_bytes(b"d\xff");
+    std::fs::create_dir_all(root.join("t").join(odd)).expect("铺乱码目录");
+    std::fs::write(root.join("t").join(odd).join("f"), b"f").expect("铺");
+    let (_, removed) = delete_tree(&root, "t").expect("🔴 树里有乱码名就删不动了");
+    assert_eq!(removed, 3);
+    assert!(std::fs::symlink_metadata(root.join("t")).is_err());
+    std::fs::remove_dir_all(&base).ok();
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 //  〔RW1 · 第四波 · 2026-09-24〕用户文件的读改写（`files-peek` / `files-put`）＋ 删历史会话
 // ══════════════════════════════════════════════════════════════════════════

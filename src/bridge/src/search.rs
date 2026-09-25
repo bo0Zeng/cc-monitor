@@ -580,16 +580,16 @@ fn push_msg(
 
 // === IPC ===
 
-/// 全文搜索历史会话。query 大小写不敏感 substring 匹配。
+/// 全文搜索历史会话 —— **只查本机索引**。query 大小写不敏感 substring 匹配。
 ///
 /// - `include_tools`：是否附加搜索 tool_use / tool_result / thinking 内容。
 /// - `scope`：搜索范围 `"all"`（默认）/ `"user"`（只我的输入）/ `"assistant"`（只 Claude 回复）。
 /// - `after_ms`：时间范围下界（epoch ms）；只搜该时刻之后的消息，0 / 缺省 = 不限。
 /// - `limit`：返回的命中条数上限（total_hits 仍报全量）。
 ///
-/// 本地内存索引查询（CPU，spawn_blocking）与远端 fan-out（SSH，async）**并发**，
-/// 合并成一个 `SearchResponse`（issue #28）。本地大索引几十 ms、远端 SSH 几百 ms，
-/// 并发让总延迟≈max 而非和。
+/// 〔C4a · 第四波〕上一版这里还 `tokio::join!` 了一趟远端 fan-out 并合并（issue #28）。
+/// 那两件事搬到了前端 `src/views/history-search.ts`：远端那半经通道说帧命令 `history-search`，
+/// 合并也在那边（逐格同口径，`K-R100` 的「远端截断不许在合并处丢掉」一起搬过去）。
 #[tauri::command]
 pub async fn search_history(
     query: String,
@@ -607,49 +607,11 @@ pub async fn search_history(
         Some("assistant") => Some(Kind::Assistant),
         _ => None, // "all" / None / 未知值 → 不过滤
     };
-
-    // 本地（CPU）与远端（SSH）并发跑，再合并。
-    let q_local = query.clone();
-    let local_task = tokio::task::spawn_blocking(move || {
-        index.query(&q_local, include_tools, scope_kind, after_ms, limit)
-    });
-    let remote_task = crate::remote_history::search_remote_all(
-        &query,
-        include_tools,
-        scope.as_deref(),
-        after_ms,
-        limit,
-    );
-    let (local_res, remote) = tokio::join!(local_task, remote_task);
-    let local = local_res.map_err(|e| format!("spawn_blocking join: {e}"))?;
-    Ok(merge_search_results(local, remote))
-}
-
-/// 合并本地索引结果与远端 fan-out 结果（issue #28）：拼接 sessions 后按 updatedAt desc
-/// 重排，`total_hits`/`session_count` 重算。无远端 → 原样返回本地（含 indexing 态）。
-/// 本地 indexing 但有远端结果时 status=ready（不丢远端；本地结果待索引就绪后下次搜索补上）。
-fn merge_search_results(local: SearchResponse, remote: Vec<SessionHits>) -> SearchResponse {
-    if remote.is_empty() {
-        return local;
-    }
-    let remote_hits: u32 = remote.iter().map(|s| s.hit_count).sum();
-    // 🔴 `K-R100`：远端也会被自己的 `--limit` 砍。收口前这里逐字写的是
-    // `truncated: local.truncated` ⇒ **远端截断在界面上一个字不说**
-    // （实测一次查询 13 个命中会话里 10 个 `hitCount>0` 而 `hits: []`，状态行照旧只报总数）。
-    let remote_starved = remote.iter().any(|s| s.hits_truncated);
-    let mut sessions = local.sessions;
-    sessions.extend(remote);
-    sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
-    SearchResponse {
-        // remote 非空 → 必有结果，status 一律 ready（不让 indexing 吞掉远端结果）。
-        status: "ready".into(),
-        total_hits: local.total_hits + remote_hits,
-        session_count: sessions.len() as u32,
-        truncated: local.truncated || remote_starved,
-        indexed_sessions: local.indexed_sessions,
-        indexed_messages: local.indexed_messages,
-        sessions,
-    }
+    tokio::task::spawn_blocking(move || {
+        index.query(&query, include_tools, scope_kind, after_ms, limit)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join: {e}"))
 }
 
 /// 查索引状态（UI 显示"索引中 / 已就绪"，无需发查询）。

@@ -154,6 +154,11 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   ⇒ 登记成 `PureRouterNoFallbackDecision`，牙见那一档的判法：它连
     //   `inbound_client` 这个名字都不许碰 —— 碰了就说明它不再「只转交」了。
     ("router.rs", Verdict::PureRouterNoFallbackDecision),
+    // ★ 〔C4a · 第四波 · 2026-09-24〕**主界面那一跳的宿主**（`chan/webview.rs`）。发现阶段看见它，是因为
+    //   它生产段里有 `.call(` —— 那是**注入的** `Backends` 句柄（生产注入 `chan::host::InboundBackends`，
+    //   与 `entry.rs` 同一个），期限与撤单交给路由器那一份 `settle`。它不碰 inbound、不做回落判断，
+    //   牙与纯路由器那一档同一套。
+    ("webview.rs", Verdict::PureRouterNoFallbackDecision),
     // ★ 〔面 A 通道，2026-09-24〕**第八个发送端** —— 通道的生产句柄（`chan/host.rs`），
     //   外部前端经路由器转来的 `call` 在这里走 `inbound_client`。
     //   它要的不是三态而是 `05 §3.3.1` 的分层结果（层 × `reach` × `why`），
@@ -165,11 +170,27 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   本件要删的东西，长连接不在时明说「没有控制通道」。但**照样走分流器**
     //   （`route_call_error` ＋ `no_channel`），理由与 `cc_bus.rs` / `tmux.rs` / `find.rs` 逐字相同。
     ("frame_query.rs", Verdict::UsesRouter),
+    // ★ 〔SR1a · 2026-09-24〕**又一个发送端** —— 链路的 monitor 这一侧（`link_mux.rs`，`link-*` 四条，
+    //   经本机常驻后端那条流开到各远端的字节流）。它**没有第二条路可回落**（`D11`：不起代理进程、
+    //   不进程内拨），失败只渲染成一句话；**照样走分流器**，理由与 `frame_query.rs` 那一行逐字相同。
+    ("link_mux.rs", Verdict::UsesRouter),
     // ★ 〔B2 · 条 66 · 2026-09-24〕**第十个发送端** —— 「退出行为」那个值搬到后端所在那台机器上之后，
     //   monitor 问它 / 交它写 / 退出臂现问它，都经 `backend_policy.rs::exit_policy_call` 这一口。
     //   没有第二条路可回落（值只在那台机器上），长连接不在时明说「没有控制通道」；**照样走分流器**，
     //   理由与 `frame_query.rs` 那条逐字相同。
     ("backend_policy.rs", Verdict::UsesRouter),
+    // ★ 〔RM1a · 第四波〕账号层那份凭据文件**按机器**读写：远端那一臂问 / 交那台机器的后端
+    //   （`apikey-read` / `apikey-key-set`），都经 `apikey_remote.rs::call` 这一口。
+    //   没有第二条路可回落（那份文件只在那台机器上），长连接不在时明说「没有控制通道」；
+    //   **照样走分流器**，理由与 `backend_policy.rs` 那条逐字相同。
+    ("apikey_remote.rs", Verdict::UsesRouter),
+    // ★ 〔RM1a · 第四波〕中转（层 1）按机器：远端那一臂问 / 交那台机器的后端（`relay-status` / `relay-ensure`），
+    //   都经 `remote_relay.rs::call` 这一口。与上一条**分开两个文件**是刻意的（「账号就账号, 中转就中转」），
+    //   理由与形状逐字同上一条。
+    ("remote_relay.rs", Verdict::UsesRouter),
+    // ★ 〔RM1a · 第四波〕「足迹」的远端那一栏：问那台机器的后端要路径事实（`footprint-probe`），
+    //   经 `footprint_remote.rs::call` 这一口；形状与理由逐字同上两条。
+    ("footprint_remote.rs", Verdict::UsesRouter),
     // ★ 〔RW1 · 第四波 · 2026-09-24〕**第十一个发送端** —— 用户文件的读改写 ＋ 删历史会话
     //   （`user_files.rs::BackendDoor`：`files-home` / `files-peek` / `files-put` / `files-rename` /
     //   `files-chmod` / `files-delete-session`）。用户裁「只允许后端的文件管理部分写文件」也管本机

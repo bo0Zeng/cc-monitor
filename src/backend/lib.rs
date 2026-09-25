@@ -33,8 +33,10 @@ mod build_id_guard; // E77：加了子命令必须 bump BUILD_ID（内部整体 
 mod cc_bus_boundary_guard; // P4f-Y2：backend 不许碰 cc-bus 的数据布局（整体 #[cfg(test)]）
 pub mod common; // U2：两边都要、又不含平台原语的纯工具（§0.5-6 打掉了「三分够用」那个判断）
 pub mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux server / 发信号），或产出改变世界的计划
-pub mod dial; // K-P6b：`--dial` 代理进程 —— backend 那条长连接流的 SSH 握手住这里（**只此一处**，判据在它自己的测块）
+pub mod dial; // K-P6b / C2 / 〔SR1a〕：SSH 的一切 —— 握手 · 连接池 · 链路（**只此一处**，判据在它自己的测块）
+pub mod feature_face; // 〔RM1b · 第四波〕功能侧只读查询的帧面宿主（tasks-list …）—— 薄壳，本体在 observe/，与 read_face 分家的理由在它头注
 pub mod files; // 步 24f：`files-read` 这一族（**只读**）—— 常驻文件名索引 ＋ 四条只读能力（`设计/96 §2.9`）
+pub mod footprint; // 〔RM1a · 第四波〕「足迹」的这台机器那一半：帧面 `footprint-probe`（只读路径事实，判定住 monitor）
 #[cfg(test)]
 mod guard_support; // U-1：各条源码扫描型守卫共用的「只留生产段」剥法（仅测试构建）
 pub mod inbound; // U6b-1：流连接上的入方向（信封 / 分派 / 取消）
@@ -389,7 +391,24 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p2t-commit-upload-dial-v2**（2026-09-24，第三波收尾）：子命令 ＋2（F7c `files-commit-upload`，两个命令面）
 /// ＋ C2 行为：`--dial` 成为界面进程拨 SSH 的唯一代理（stream / capture / forward 三种用法、ack v2、ssh-agent 鉴权）。
-pub const BUILD_ID: &str = "p2t-commit-upload-dial-v2";
+///
+/// ★★★ **p2u-stage-find-tasks**（2026-09-24，第四波 4A 第一批合并那一拍）：子命令 ＋5 ——
+/// F9c `files-stage-chunk` / `files-commit-text`（大文件分块进暂存区、后端读回拼接提交）· SE2 `find-in-session` ·
+/// RM1b `tasks-list` / `plugins-marketplaces`（两个命令面都动）。
+/// ＋ 行为：FW5 递归删非空目录（逐条目过围栏）与批量改权限 · F9c 超长请求行的应答从前 4 KiB 抠回 `id` ·
+/// S4 冷启动首建索引的读数进 `files.index.status`。
+///
+/// ★★★ **p2v-resident-link**（2026-09-24，第四波 SR1a 合并那一拍）：子命令集大改 ——
+/// `--dial` 删（界面进程不再起拨号代理）；入方向 ＋ `link-open` / `link-data` / `link-credit` / `link-close`（只在帧面），
+/// ＋ `history-index` / `history-user-inputs` / `history-find`（骨架索引 · 大纲清单 · 会话内查找上帧面，CLI 面同名派生）。
+/// 线上多三种出方向帧：`link_data` · `link_end` · `accounts_changed`。
+/// ⚠ 旧本机后端不认 `link-open` ⇒ 界面判「本机后端太旧」、不回落（D11）⇒ **必须**让它被判 stale。
+///
+/// ★★★ **p2w-apikey-relay-footprint**（2026-09-24，第四波 C4a ＋ RM1a 合并那一拍）：子命令 ＋5 ——
+/// RM1a `apikey-key-set` / `apikey-read`（账号层那份凭据文件：远端由那台后端读写，第四层）· `relay-status` / `relay-ensure`
+/// （远端中转）· `footprint-probe`（足迹的这台机器那一半），两个命令面都动。
+/// ＋ 行为：后端开 `creds-core` 的 `harden`（远端要写那份文件；「后端写不了」从编译期收窄成两条判据）。C4a 不动后端。
+pub const BUILD_ID: &str = "p2w-apikey-relay-footprint";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -494,33 +513,22 @@ pub const SUBCOMMANDS: &[&str] = &[
     // ⚠ 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
     "--exit-policy-read",
     "--exit-policy-set",
+    // 〔RM1a · 第四波〕账号层那份凭据文件在这台机器上的两条命令（`inbound::REGISTRY` 的 `apikey-*`）
+    // 自动派生的 CLI 面。⚠ `--apikey-key-set` 的入参（含 key）**从 stdin 读**（`takes_input: true`），
+    // 不收 argv —— argv 在同机任何用户的 `ps` 里都看得见。加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
+    "--apikey-key-set",
+    "--apikey-read",
+    // 〔RM1a · 第四波〕中转（层 1）那两条（`inbound::REGISTRY` 的 `relay-*`）自动派生的 CLI 面。
+    // 入参只有端口，从 stdin 读。同上：加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
+    "--relay-ensure",
+    "--relay-status",
+    // 〔RM1a · 第四波〕「足迹」的这台机器那一半（`inbound::REGISTRY` 的 `footprint-probe`）派生的 CLI 面。只读。
+    "--footprint-probe",
     "--backend-probe",
-    // K-P6b：拨号代理。**常驻**（起来就一直搬字节，不返回），配置走**环境变量**
-    // `CCM_DIAL_REQUEST`，**argv 与 stdin 都不走** —— argv 在同机任何用户的 `ps` 里都
-    // 看得见，而那份 JSON 里有主机名、用户名、私钥**路径**；`/proc/<pid>/environ` 只有本人
-    // （与 root）读得到。
-    //
-    // 〔订正 2026-09-10 —— 本格原话逐字：「配置从 stdin 第一行进 ——不走 argv，因为 argv
-    //  在同机任何用户的 `ps` 里都看得见。」它记的是**第一版**的形状，代码早就改掉了。
-    //  这是同一次文档漂移的**第三份副本**（前两份在 `src/doc/IPC-PROTOCOL.md` §10，09-10 已订正）。
-    //  🔴 它**不是**同族的「前提翻了」，是纯粹的漂移：没有任何前提翻，只是这一处没跟着改。
-    //
-    //  证据（09-10 在本树现打的读数，不是从代码推的）：本仓 debug 构建的
-    //  `cc-monitor-backend --dial` 跑两趟 ——
-    //  ① 不设 `CCM_DIAL_REQUEST`、stdin 给 `/dev/null` ⇒ **退出码 2**，stdout **0 字节**，
-    //     stderr 逐字 `dial: 环境变量 CCM_DIAL_REQUEST 没设（或是空的）—— 界面没交请求`；
-    //  ② **把那份 JSON 原样喂进 stdin 第一行**、仍不设那个环境变量 ⇒ **还是退出码 2、
-    //     stdout 还是 0 字节、还是同一句话**
-    //  ⇒ 「stdin 第一行」那条路今天**一个字节都不被读**。
-    //  ⚠ 两趟都是 **Linux gnu debug 构建**，不是 Windows local_backend。
-    //
-    //  为什么改：`dial/mod.rs` 头注自陈 —— `ssh_source` 有一条判据逐字禁止它自己往流里写
-    //  （写的能力在 `U8a-2a` 整个交给了 `ParkedWriter`），硬走 stdin 就得去放宽那条判据，
-    //  代价不值。换成环境变量之后 `stdin` **纯粹**是要搬的字节。〕
-    //
-    // 它住这张表里的理由与 `--relay` 逐字相同：`is_query_mode` 那道闸门读的是本表，
-    // 不登记就会被当成未知 flag 静默进流模式。
-    "--dial",
+    // 〔SR1a · 09-24〕`--dial`（拨号代理，`K-P6b` / C2）**从本表摘掉了**：拨号挪进本机那一个常驻后端、
+    // 经流上的链路（`link-*` 四条，`dial/link.rs`）做，不再每条链路起一个进程。
+    // 〔墓碑 —— 那一行原来的理由要点：「**常驻**（起来就一直搬字节，不返回），配置走**环境变量**
+    //  `CCM_DIAL_REQUEST`，argv 与 stdin 都不走」。〕⚠ 摘这一行会让 `build_id_guard` 红 —— 本路**不 bump**，合并那一拍统一做。
     // 〔步 `24f` 第二刀 09-20〕`files-read` 这一族的 CLI 面。登记在这里的理由与上面
     // 那几条逐字相同 —— `is_query_mode` 那道**闸门**读的就是本表；不在表里 ⇒ 当未知 flag
     // ⇒ 打一行 warn 之后照常进流模式，调用方拿到的是一堆 jsonl 行而不是它要的应答。
@@ -550,6 +558,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--files-copy",
     // 〔F7c · 第三波 09-24〕上传的提交（`设计/60 §13`）。登记理由同上面写面那几条（CLI 面从 `REGISTRY` 派生）。
     "--files-commit-upload",
+    // 〔F9c · 第四波〕存盘装不进一行时的两步（逐块进暂存区 ＋ 读回拼起来原地覆盖）。登记理由同上。
+    "--files-stage-chunk",
+    "--files-commit-text",
     // 〔RW1 · 第四波 09-24〕用户文件的读改写 ＋ 删历史会话。登记理由同上面写面那几条（CLI 面从 `REGISTRY` 派生）。
     "--files-delete-session",
     "--files-peek",
@@ -563,14 +574,22 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔F7a · 第三波 09-24〕同族第七、第八条（`设计/60 §13`）。登记理由与上面那几条逐字相同。
     "--files-home",
     "--files-read-text",
+    // 〔SE2 · `设计/10 §6 步 6`〕会话内查找（Ctrl+F）。**是新子命令** ⇒ `build_id_guard` 红是预期的，
+    // BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    "--find-in-session",
     "--fork-session",
     // 〔`C1`〕同上一段：`history-*` 六条帧命令的 CLI 面。
+    // 〔SR1a〕+2：`history-index` / `history-user-inputs`（骨架索引与大纲清单上帧面）的 CLI 面，
+    //   登记理由同上 —— `is_query_mode` 那道闸门读本表。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--history-find",
+    "--history-index",
     "--history-projects",
     "--history-read",
     "--history-search",
     "--history-sessions",
     "--history-subagents",
     "--history-tail",
+    "--history-user-inputs",
     "--kill",
     "--launch",
     "--list-accounts",
@@ -581,6 +600,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--list-projects",
     "--list-sessions",
     "--ping",
+    // 〔RM1b · 第四波〕`plugins-marketplaces` 帧命令的 CLI 面（同 `--tasks-list` 那一段的理由）。
+    "--plugins-marketplaces",
     "--read-session",
     "--read-session-from-offset",
     "--read-session-tail",
@@ -590,6 +611,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--resolve",
     "--search",
     "--session-accounts",
+    // 〔RM1b · 第四波〕`tasks-list` 帧命令**自动派生**出来的 CLI 面（`cli_control::cli_exposed`），
+    // 登记理由同 `C1` 那一段：不在表里 ⇒ `is_query_mode` 当未知 flag ⇒ 静默进流模式。
+    // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    "--tasks-list",
     "--tmux-notify",
 ];
 
@@ -901,6 +926,9 @@ pub struct TargetGap {
 
 /// 🔴 **全部逐能力豁免 —— 唯一住址。**
 ///
+/// 〔FW5 · 09-24〕**14 → 16**：`files-chmod` × Windows（帧面 ＋ CLI 面各一行，档 = 结构），
+/// 由 `no_unix_mode` 码 × [`unix_mode_bits_on`] 现推出来（表尾那一段）。
+///
 /// 〔PR1 · 09-24〕**8 → 14**：命令面并进第 3 层之后，帧面 3 条 ＋ CLI 面 3 条（`capture-pane` /
 /// `kill` / `launch` × Windows）被那条横向两向相等**现推出来**、逐条登记在表尾。下面那段账说的是
 /// `ccm-launcher` 那 8 条：
@@ -1094,6 +1122,30 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         why: "与帧面 `launch` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
               派生到同一条登记）⇒ 同一个理由，将来与帧面那一行同拍还，**暂时不做**。",
     },
+    // ── 〔FW5 · 第四波 · 2026-09-24〕`files-chmod` × Windows：`设计/96 §8.5` 待拍 3 ────────────
+    //
+    // PR1 报告「买不到 1」逐字：`change_mode` 在非 unix 上恒回失败，而 `files-chmod` 的 `codes`
+    // 说不出「这个平台没有」⇒ 本条判它处处都在。FW5 给它声明了 `no_unix_mode`，现推段按
+    // `unix_mode_bits_on` × 这个码把它从 Windows 上摘掉 ⇒ 这两行是**现推出来**、再补理由与档。
+    // 档：**结构** —— 这条能力的名字与定义就是「改 unix 权限位」（低 12 位的 rwx/suid/sgid/sticky），
+    // Windows 没有这个机制（那边是 ACL 与只读属性）；那边若要「改访问权限」是另一条能力、另立一行。
+    TargetGap {
+        family: "wire-commands",
+        capability: "files-chmod",
+        target: Target::Windows,
+        kind: GapKind::Structural,
+        why: "改的是 **unix 权限位**（低 12 位），命令自己声明了 `no_unix_mode` 码。Windows 上没有这套位\
+              （那边是 ACL ＋ 只读属性），`change_mode` 在那里回 `no_unix_mode`、一个字节不动。\
+              ⇒ 这一条本身**不该跨过去**；Windows 那边若要「改访问权限」，是另一条能力、另立一行〔FW5 分档：结构〕。",
+    },
+    TargetGap {
+        family: "cli-subcommands",
+        capability: "--files-chmod",
+        target: Target::Windows,
+        kind: GapKind::Structural,
+        why: "与帧面 `files-chmod` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
+              派生到同一条登记）⇒ 同一个理由：unix 权限位这一条**不该跨过去**。",
+    },
 ];
 
 /// [`CAPABILITIES`] 的名单，包成 [`CapabilityFace::declares`] 要的形状。
@@ -1169,6 +1221,29 @@ pub const fn tmux_platform_of(t: Target) -> TmuxPlatform {
     }
 }
 
+/// 〔FW5 · 第四波〕编译 target → 那个平台**有没有 unix 权限位**（`files-chmod` 那一格的载体）。
+///
+/// 与 [`tmux_platform_of`] 并列的第二根平台轴，同一条纪律：**只把 [`Target`] 接到一个编译期就成立的事实上**，
+/// 不另立平台知识 —— 事实是「`change_mode` 那一支是 `#[cfg(unix)]`」，本函数与它对不对得上由
+/// `target_parity_guard::the_unix_mode_axis_agrees_with_what_this_binary_was_compiled_with`（本机一格）
+/// 与下面那条 `#[cfg(windows)]` 编译期断言（Windows 一格）各钉一半。
+///
+/// ⚠ macOS 是 unix（有权限位）⇒ `true`；本仓那一列今天纯声明（同本段头注）。
+pub const fn unix_mode_bits_on(t: Target) -> bool {
+    match t {
+        Target::Windows => false,
+        Target::LinuxGnu | Target::LinuxMusl | Target::MacOs => true,
+    }
+}
+
+/// ★ 只在 Windows 编译时存在：[`unix_mode_bits_on`] 说 Windows 没有 unix 权限位，
+/// 而这份二进制确实不是 unix（`change_mode` 编进去的是回 [`NO_UNIX_MODE`] 那一支）。
+#[cfg(windows)]
+const _: () = assert!(
+    !unix_mode_bits_on(Target::Windows) && !cfg!(unix),
+    "Target 轴说 Windows 有 unix 权限位，或者这份 Windows 二进制竟然是 unix —— 两根轴分叉了"
+);
+
 /// ★ 只在 Windows 编译时存在：[`tmux_platform_of`] 给 Windows 的档 == 那份二进制真编进去的 [`TMUX_PLATFORM`]。
 ///
 /// 同 `TMUX_PLATFORM` 旁边那条：本机（Linux）门禁上它**不存在**，开口的时刻是
@@ -1188,14 +1263,25 @@ fn tmux_by_platform(t: Target) -> Option<bool> {
     tmux_present(tmux_platform_of(t), None)
 }
 
-/// 帧面命令里，在 target `t` 上**平台默认做不到**的那几条（`codes` 里声明了 `no_tmux` 的）。
+/// 帧面命令里，在 target `t` 上**平台默认做不到**的那几条（`codes` 里声明了 `no_tmux` 的 ·
+/// 〔FW5〕声明了 [`NO_UNIX_MODE`] 且那个 target 没有 unix 权限位的）。
 ///
-/// 读的就是生产里填 `hello.unavailable` 的那一个函数（[`unavailable_from`]），不另写判准。
+/// tmux 那一维读的就是生产里填 `hello.unavailable` 的那一个函数（[`unavailable_from`]），不另写判准；
+/// unix 权限位那一维同形：**谁声明会回那个码，谁就依赖那个机制**，从 `codes` 现推，不抄名单。
 fn wire_commands_unavailable_on(t: Target) -> Vec<String> {
-    unavailable_from(tmux_by_platform(t))
+    let mut out: Vec<String> = unavailable_from(tmux_by_platform(t))
         .into_iter()
         .map(|u| u.command)
-        .collect()
+        .collect();
+    if !unix_mode_bits_on(t) {
+        out.extend(
+            inbound::REGISTRY
+                .iter()
+                .filter(|s| s.codes.contains(&NO_UNIX_MODE))
+                .map(|s| s.name.to_string()),
+        );
+    }
+    out
 }
 
 /// `ccm-launcher`：载体是 tmux 的那几条，在平台确证没有 tmux 的 target 上摘掉。
@@ -1352,6 +1438,12 @@ pub const EMITS: &[&str] = &[
     // P5：与上一份快照差分算出的**正向死亡帧**。登记 = 承诺真发（已接线，见 watcher.rs
     // 的 `diff_closed`）。monitor 收到即 retire、绕过 miss 计数；旧 monitor 忽略未知 kind。
     "tmux_session_closed",
+    // 〔SR1a · `设计/05 §13.6 ③`〕账号清单变了（watcher 盯 manifest 所在目录，登记 = 承诺真发，已接线）。
+    "accounts_changed",
+    // 〔SR1a〕链路的下行字节与收尾（`dial/link.rs` 的两台泵真发，登记 = 承诺真发）。
+    // 只在 monitor 开了链路之后才出现；旧 monitor / 仓外 aterm 不认这两个 kind ⇒ 忽略（additive）。
+    "link_data",
+    "link_end",
 ];
 
 /// ① 流模式 flag：出现即剥离并置位，**不影响模式判定**。
@@ -1373,6 +1465,8 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     // 降级形状住 `observe::history_query::FromOffsetOpts` 的头注。
     "--index",
     "--limit",
+    // 〔SE2〕`--find-in-session` 的查询串（选项值，不是位置参数：查询本身可能以 `--` 起头）。
+    "--query",
     "--scope",
     "--until",
 ];
@@ -1471,6 +1565,17 @@ use std::path::PathBuf;
 /// 查不到就红（`the_declared_code_is_one_the_registry_already_declares`）⇒
 /// 谁把那边的拼写改了，这边不会静默跟丢。
 pub const NO_TMUX: &str = "no_tmux";
+
+/// 〔FW5 · 第四波 · 2026-09-24〕命令级 code —— **「这个平台没有 unix 权限位」**。
+///
+/// 只有 `files-chmod` 声明它（`control/files_write.rs::change_mode` 在非 unix 上回它）。
+/// 与 [`NO_TMUX`] 同形：真相是 `inbound::REGISTRY` 里命令自己登记的 `codes`，本常量只拿去查那张表；
+/// target 轴（[`unix_mode_bits_on`] × 这个码）由此现推「Windows 上没有 `files-chmod`」
+/// ——`设计/96 §8.5` 待拍 3 那一格（「得让它的声明带一个『这个平台没有』的码」）。
+///
+/// ⚠ 运行期那条轴（`hello.unavailable`，[`unavailable_here`] 今天不接线）**本刀没动**：
+/// 它的判准住 [`unavailable_from`]，只看 tmux。要接那天同拍把这一维加进去。
+pub const NO_UNIX_MODE: &str = "no_unix_mode";
 
 /// `K-P4`：这台机器上**做不到**的命令 —— **纯判定那一半**（不碰世界 ⇒ 可拿合成读数驱动）。
 ///

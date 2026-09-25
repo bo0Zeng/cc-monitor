@@ -12,7 +12,7 @@
  *    ⇒ `tabs.ts` 的顶层声明 == `{TabManager}`，导出面 == 登记（它对外的 import 面，拆前拆后逐字相同）。
  *
  * 外加三条分工的零命中（**每条带同一谓词的正控**，免得零命中是因为谓词拼错）：
- * - 直呼 `invoke`（`@tauri-apps/api/core`）只在 `tab-session-actions.ts`；
+ * - 直呼 `invoke`（`@tauri-apps/api/core`）在 tab 层**零处**（〔C4a〕原先只在 `tab-session-actions.ts`，那 11 处收进了包装层）；
  * - 渲染栈（流 / 时间线 / 折叠层 / 卡片 / 逐条渲染）只在 `tab-stream-view.ts`（组装根除外）；
  * - 纯模块（形状 / 落点算术 / store / 路由 / 事实抽取）一处 `document.` / `window.` 都不碰。
  *
@@ -93,6 +93,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/cards/index.ts", // onLine：这一行是不是 compact 摘要（换号重启的等待者）
     "src/error-toast.ts", // bringActiveTerminalToFront：非 Windows 说一句实话
     "src/fork-flow.ts", // startForkedSession（E78：fork-flow.vitest 钉「tabs.ts 调 runForkFlow」）
+    "src/ipc/origin.ts", // 〔C4a〕本机 / 远端只经这一处判（线上缺省 = 本机的那一下表示法转换也在这里）
     "src/live-window.ts", // ensureTab：新 tab 的尾部窗口
     "src/tab-bar-drag.ts",
     "src/tab-bar-prefs.ts",
@@ -122,8 +123,8 @@ const DEPS: Record<string, readonly string[]> = {
   // ① 事实抽取：agent 工具名判定 · 写类工具的文件路径。
   "src/tab-session-facts.ts": ["src/cards/subagent.ts", "src/panorama/session-files.ts"],
   // ③ 实时流视图：渲染栈 ＋ 骨架 ＋ 大纲 ＋ 分叉按钮，经 ipc/commands 包装层要骨架索引与正文。
+  //   〔SE2〕大纲的界面从直接建 `UserInputPanel` 换成建查找面板（它里面挂着大纲）⇒ `user-input-panel` 只剩类型依赖。
   "src/tab-stream-view.ts": [
-    "src/backend-policy.ts",
     "src/branch-button.ts",
     "src/branch-fold.ts",
     "src/cards/index.ts",
@@ -134,13 +135,14 @@ const DEPS: Record<string, readonly string[]> = {
     "src/skeleton-view.ts",
     "src/stream.ts",
     "src/views/outline-source.ts",
+    "src/views/session-find.ts", // 〔SE2〕查找面板（搜索 ／ 大纲两个模式）
     "src/views/session-viewer.ts", // 只为 revealCard（方向别扭的那条，理由在 import 处）
-    "src/views/user-input-panel.ts",
   ],
   // ④ tab 栏视图：画按钮（账号徽章 · 状态灯 · 分组 · ↗ 的 OS 门），手势全交宿主。
   "src/tab-bar-view.ts": [
     "src/account-color.ts",
     "src/accounts.ts",
+    "src/ipc/origin.ts", // 〔C4a〕远端 tab 才挂 `.remote` / 走远端那条 ↗
     "src/session-status.ts",
     "src/tab-collections.ts",
     "src/terminal-front.ts",
@@ -152,9 +154,9 @@ const DEPS: Record<string, readonly string[]> = {
   // ⑤ 菜单放哪几项：账号 flyout · tmux 判据 · attach / 预览 · 菜单控件 · 会话动作。
   "src/tab-menu.ts": [
     "src/agent-profile.ts",
-    "src/backend-policy.ts",
     "src/behavior.ts",
     "src/error-toast.ts",
+    "src/ipc/origin.ts", // 〔C4a〕本机 / 远端各给哪几项（原先是 backend-policy 的 LOCAL_ORIGIN ＋ 各处 `=== null`）
     "src/launch-menu.ts",
     "src/remote-launch-run.ts",
     "src/tab-collections.ts",
@@ -165,17 +167,17 @@ const DEPS: Record<string, readonly string[]> = {
   ],
   // ⑤ 菜单控件：零依赖（纯 DOM）。
   "src/tab-context-menu.ts": [],
-  // ⑤ 会话动作：tab 层唯一直呼 invoke 的一份。
+  // ⑤ 会话动作。〔C4a · 子步 2〕原先是「tab 层唯一直呼 invoke 的一份」；那 11 处收进了包装层，
+  //   本份从此与其余几份一样只经 `ipc/commands.ts` 说话。
   "src/tab-session-actions.ts": [
-    "npm:@tauri-apps/api/core",
     "npm:@tauri-apps/plugin-opener",
     "src/account-restart.ts",
     "src/accounts.ts",
-    "src/backend-policy.ts",
     "src/behavior.ts",
     "src/error-toast.ts",
     "src/file-window.ts", // F78：远端会话「打开工作目录」（〔F7b〕老 SFTP 面板删了，改开文件窗口）
     "src/ipc/commands.ts",
+    "src/ipc/origin.ts", // 〔C4a〕本机 / 远端各走哪条动作
     "src/launch-requests.ts",
     "src/remote-config.ts",
     "src/remote-launch-run.ts",
@@ -240,10 +242,12 @@ describe("〔U2〕拆 tabs.ts：每一份的直接运行期依赖 == 登记（�
 });
 
 describe("〔U2〕分工的三条边界（零命中 ＋ 同一谓词的正控）", () => {
-  it("★ 直呼 invoke 只在 tab-session-actions.ts", () => {
+  // 〔C4a · 子步 2〕原题「直呼 invoke 只在 tab-session-actions.ts」：那一份的 11 处收进了包装层
+  //   （`src/ipc/commands.ts`），tab 层从此**零处**直呼。正控改到包装层自己身上（同一个谓词）。
+  it("★ 直呼 invoke 在 tab 层零处（正控：包装层自己命中）", () => {
     const hits = SPLIT.filter((f) => runtimeImports(f).includes(INVOKE));
-    expect(hits, "正控：会话动作那一份必须命中（否则谓词拼错了）").toContain("src/tab-session-actions.ts");
-    expect(hits).toEqual(["src/tab-session-actions.ts"]);
+    expect(runtimeImports("src/ipc/commands.ts"), "正控：包装层必须命中（否则谓词拼错了）").toContain(INVOKE);
+    expect(hits).toEqual([]);
     expect(runtimeImports("src/tabs.ts"), "组装根也不许直呼").not.toContain(INVOKE);
   });
 
@@ -274,6 +278,18 @@ describe("〔U2〕tabs.ts 只剩组装根", () => {
       ),
     ].map((m) => m[1]);
     expect(decls).toEqual(["TabManager"]);
+  });
+
+  // 〔S4 · 第四波〕U2 拆完时 `TabManager` 上给旧判据留了二十来个同名 `protected` 转交（值住新家），
+  // 只为 `tabs.vitest.ts` 按旧私有名直读。判据已改成直指新家（那边的 `TMHomes`）⇒ 转交删光。
+  // 本格钉「不再长回来」：`protected` 在这个类里**只**有过这一种用途。
+  it("★ 〔S4〕TabManager 上零 `protected` 成员（给旧判据的转交不再长回来；同一谓词的正控）", () => {
+    const protectedMember = /^[ \t]+protected\s+(?:get\s+|set\s+|readonly\s+)?[A-Za-z_$][\w$]*/gm;
+    expect(
+      "  protected get tabs(): Map<string, Tab> {\n    protected barEl: HTMLElement,\n".match(protectedMember),
+      "正控：旧转交的两种写法（访问器 · 参数属性）必须各命中一处（否则谓词拼错了）",
+    ).toEqual(["  protected get tabs", "    protected barEl"]);
+    expect(code.match(protectedMember) ?? []).toEqual([]);
   });
 
   it("★ 导出面 == 拆之前的 import 面（逐名两向相等）", () => {

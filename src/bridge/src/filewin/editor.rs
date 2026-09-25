@@ -123,23 +123,36 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-/// 编辑上限 ＝ **后端入方向一行的上限**（1 MiB）。**超上限拒编而非截断**（截断过的文本当编辑源会写坏文件）。
+/// 编辑上限 ＝ **存得回、也读得回来的量**（8 MiB）。**超上限拒编而非截断**（截断过的文本当编辑源会写坏文件）。
 ///
-/// 🔴〔F9 续 · 2026-09-24〕**256 KiB → 1 MiB，而且这个数从此答的是「存不存得回去」**（`设计/60 §9c 续`）：
-/// 存盘把整份内容装在**一条**请求行里（`files-write-text`），后端读请求那一侧一行最多收
-/// `src/backend/inbound.rs::MAX_LINE_BYTES` 字节（审计加的防 OOM 线，所有命令共用），多一个字节整行丢弃。
-/// ⇒ 原文比一行还长的文件**无论如何存不回去**（转义只会更长、信封还要占几十字节）⇒ 连读都不必去读。
-/// ⇒ 本常量**就是**那一行的上限，一个数两处用：打开前按大小拒（[`why_not_editable`]）·
-///   存之前按真序列化出来的那一行拒（[`save_fits`]）。
-/// ⚠ 两个 crate 之间引不到对方（后端有自己的 `Cargo.lock`）⇒ 它与后端那一处由
-///   `byte_cap_registry::the_cross_crate_twins_are_machine_checked_not_hand_copied` 读两侧源码**对拍相等**。
-/// ⚠ 打开之后还要再判一次：大小装得下、转义之后装不下的（控制字符一个字节写成六个）
-///   在打开那一刻就进只读并说清楚（[`Pane::read_only`]），不等用户改完才告诉他。
-/// ⚠ 读那一趟经 `max_bytes` 送给后端 `files-read-text`（后端一趟天花板 8 MiB，另一件事）。
-pub const MAX_EDIT_BYTES: usize = 1 << 20;
+/// 🔴〔F9c · 第四波 · 2026-09-24〕**1 MiB → 8 MiB**。上一版（F9 续）这个数被钉成后端入方向**一行**的上限，
+/// 因为存盘把整份内容装在一条请求行里；现在装不进一行的那几份**分块走暂存区**（[`write_text`]），
+/// 一行的上限不再管「能存多大」⇒ 能存多大改由后端提交那一条的天花板定：`files-commit-text` 只收
+/// `src/backend/files/mod.rs::READ_TEXT_MAX_BYTES` 以内（存得回的要读得回来），而读那一趟的天花板也是它。
+/// ⇒ 本常量**就是**那个数，一个数三处用：打开前按大小拒（[`why_not_editable`]）· 读那一趟的 `max_bytes` ·
+///   存之前按字节数拒（[`Pane::over_cap`]，与后端 `files-commit-text` 拒 `bytes` 的那一关逐字节同一个界）。
+/// ⚠ 两个 crate 之间引不到对方 ⇒ 由 `byte_cap_registry::the_cross_crate_twins_are_machine_checked_not_hand_copied`
+///   读两侧源码**对拍相等**（对 E）。
+/// ⚠ 界面那一侧 8 MiB 打得开、打得动字：`设计/60 §9c.1` 的读数（release，经窗口生产路径，大文件模式
+///   打开约 20 ms、每键 ≤ 3.03 ms）。
+pub const MAX_EDIT_BYTES: usize = 8 * 1024 * 1024;
 
-/// 存盘那条线上命令的名字。量的与发的必须是**同一条**命令同一份参数（[`save_args`]）。
+/// 🔴〔F9c〕**一条请求行最多多长** ＝ 后端入方向一行的上限（`src/backend/inbound.rs::MAX_LINE_BYTES`，
+/// 审计加的防 OOM 线，所有命令共用；多一个字节整行丢弃）。
+///
+/// 存盘用它分两支：整份装得进一行 ⇒ 一条 `files-write-text`；装不进 ⇒ 按它切块（[`plan_chunks`]），
+/// 每块那一行都装得进。与后端那一处由 `byte_cap_registry` 对 F 读两侧源码钉相等：
+/// 窗口多给一个字节 ⇒ 后端整行丢弃；少给 ⇒ 只是多切几块。
+pub const SAVE_LINE_CAP: usize = 1 << 20;
+
+/// 存盘那条线上命令的名字（装得进一行的那一支）。量的与发的必须是**同一条**命令同一份参数（[`save_args`]）。
 pub const CMD_WRITE_TEXT: &str = "files-write-text";
+
+/// 〔F9c〕装不进一行的那一支：逐块进暂存区（后端 `control/files_commit.rs`）。
+pub const CMD_STAGE_CHUNK: &str = "files-stage-chunk";
+
+/// 〔F9c〕装不进一行的那一支：读回拼起来、原地覆盖（与 `files-write-text` 同一个原语）。
+pub const CMD_COMMIT_TEXT: &str = "files-commit-text";
 
 /// 请求行里 `id` 最长能占多少字节 —— monitor 那一侧 `inbound_client` 发号的形状是
 /// `m{毫秒:x}.{连接号}-{序号}`：`m` ＋ u128 十六进制最多 32 ＋ `.` ＋ u64 十进制最多 20 ＋ `-` ＋ 20 ＝ 75。
@@ -152,6 +165,22 @@ pub fn save_args(path: &str, content: &str) -> serde_json::Value {
         "root": super::source::parent_dir(path),
         "rel": super::source::remote_basename(path),
         "content": content,
+    })
+}
+
+/// 〔F9c〕送一块的参数。`key` 是这一次存盘现造的 32 位小写十六进制（后端只收这个形状）。
+pub fn stage_args(key: &str, seq: u64, chunk: &str) -> serde_json::Value {
+    serde_json::json!({ "key": key, "seq": seq, "content": chunk })
+}
+
+/// 〔F9c〕提交那一趟的参数：块数与总字节数**显式**给，后端读回来必须对得上。
+pub fn commit_args(path: &str, key: &str, chunks: usize, bytes: usize) -> serde_json::Value {
+    serde_json::json!({
+        "root": super::source::parent_dir(path),
+        "rel": super::source::remote_basename(path),
+        "key": key,
+        "chunks": chunks,
+        "bytes": bytes,
     })
 }
 
@@ -171,43 +200,64 @@ pub fn request_line_len(cmd: &str, args: &serde_json::Value) -> usize {
     serde_json::to_vec(&RequestLine { id: &id, cmd, args }).map_or(usize::MAX, |v| v.len())
 }
 
-/// 存不回去：那一行多大、上限多少。
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct TooBig {
-    pub line: usize,
-    pub cap: usize,
+/// 〔F9c〕整份装得进**一条** `files-write-text` 吗（真序列化量，按最长 id）。
+pub fn fits_one_line(path: &str, content: &str) -> bool {
+    request_line_len(CMD_WRITE_TEXT, &save_args(path, content)) <= SAVE_LINE_CAP
 }
 
-/// 这一份存得回去吗（`Ok(那一行的字节数)`）。
-pub fn save_fits(path: &str, content: &str) -> Result<usize, TooBig> {
-    let line = request_line_len(CMD_WRITE_TEXT, &save_args(path, content));
-    if line > MAX_EDIT_BYTES {
-        Err(TooBig {
-            line,
-            cap: MAX_EDIT_BYTES,
-        })
-    } else {
-        Ok(line)
+/// 〔F9c〕一个字放进 JSON 字符串之后占几个字节 —— 与 `serde_json` 的转义**逐码位**相同
+/// （判据对全部 Unicode 标量值对拍）：引号 · 反斜杠 · 五个有短写法的控制字符 ⇒ 2；
+/// 其余 `U+0000..=U+001F` ⇒ 6（`\u00XX`）；别的字原样（UTF-8 字节数）。
+pub fn escaped_len(c: char) -> usize {
+    match c {
+        // 引号与反斜杠按码位写（`\u{22}` / `\u{5c}`）：本仓按文本抠字符串字面量的量具
+        // （`fonts_tests` 的探针人群）会把一个裸的引号字符字面量当成字符串的开头。
+        '\u{22}' | '\u{5c}' | '\u{8}' | '\u{c}' | '\n' | '\r' | '\t' => 2,
+        '\u{0}'..='\u{1f}' => 6,
+        _ => c.len_utf8(),
     }
 }
 
-/// 存的时候本地拒掉那句话。
-pub fn too_big_to_save(t: &TooBig) -> String {
+/// 〔F9c〕每块内容（转义之后）最多占多少字节 ＝ 一行上限 − 空内容那一块的信封（块号按最大的算）。
+pub fn chunk_budget() -> usize {
+    let key = "0".repeat(32);
+    SAVE_LINE_CAP - request_line_len(CMD_STAGE_CHUNK, &stage_args(&key, u64::MAX, ""))
+}
+
+/// 〔F9c〕把全文按字切成几块：每块转义之后 ≤ `budget`，**贪心取满**（下一块的第一个字放不进上一块）。
+///
+/// 按字符边界切 ⇒ 每块都是合法 UTF-8、能原样作为 JSON 字符串发出去；拼回来逐字节等于原文。
+/// `budget` 至少要放得下一个最长的字（6 字节），否则一块都切不出来 —— 那是调用方的错，这里 `assert`。
+pub fn plan_chunks(content: &str, budget: usize) -> Vec<&str> {
+    assert!(budget >= 6, "plan_chunks: budget {budget} < 6");
+    let mut out = Vec::new();
+    let (mut start, mut used) = (0usize, 0usize);
+    for (at, c) in content.char_indices() {
+        let e = escaped_len(c);
+        if used + e > budget {
+            out.push(&content[start..at]);
+            start = at;
+            used = 0;
+        }
+        used += e;
+    }
+    if start < content.len() {
+        out.push(&content[start..]);
+    }
+    out
+}
+
+/// 敲超上限、存的时候本地拒那句话（一个字节都没发）。
+pub fn over_cap_notice(len: usize) -> String {
     format!(
-        "这份存回去要发 {} 字节，后端一次最多收 {} 字节，多了 {} 字节，没有发出去。\
-         引号、反斜杠和控制字符在发送时会变长，删掉至少这么多再存。",
-        t.line,
-        t.cap,
-        t.line - t.cap
+        "这份有 {len} 字节，超过 {MAX_EDIT_BYTES} 字节的上限，多了 {} 字节，没有发出去。",
+        len.saturating_sub(MAX_EDIT_BYTES)
     )
 }
 
-/// 打开那一刻就判定存不回时，编辑面顶上那句话。
-pub fn read_only_notice(t: &TooBig) -> String {
-    format!(
-        "只读：这份存回去要发 {} 字节，后端一次最多收 {} 字节。可以看、可以复制，不能改。",
-        t.line, t.cap
-    )
+/// 分块存到一半断了那句话（第几段从 1 数；原话接在后面）。提交那一趟没发 ⇒ 远端那份一个字节没动。
+pub fn chunk_failed_notice(seq: usize, total: usize, why: &str) -> String {
+    format!("存到第 {} 段（共 {total} 段）时断了：{why}", seq + 1)
 }
 
 use super::source::Row;
@@ -294,16 +344,11 @@ pub struct Pane {
     pub last_save: Option<Result<(), String>>,
     /// 〔F9〕大文件模式那一格（`None` 在里面 ＝ 普通路径）。逐条住 [`super::bigfile`] 头注。
     pub(crate) big: super::bigfile::BigSlot,
-    /// 🔴〔F9 续〕打开那一刻就判定存不回（[`save_fits`]）⇒ 只读，里面是给用户的那句话。
-    /// 编辑面据此不收任何改动（普通路径与大文件模式两支都守）。
-    pub read_only: Option<String>,
 }
 
 impl Pane {
     pub fn opened(path: &str, name: &str, text: String) -> Self {
-        let read_only = save_fits(path, &text).err().map(|t| read_only_notice(&t));
         Self {
-            read_only,
             path: path.to_string(),
             name: name.to_string(),
             original: text.clone(),
@@ -338,9 +383,9 @@ impl Pane {
         MAX_EDIT_BYTES as i64 - self.text.len() as i64
     }
 
-    /// 🔴 **敲超上限了吗。** 〔F7a 订正〕存回去那一下**后端不拦大小**（写面 `files-write-text`
-    /// 没有上限）—— 拦的是本窗口：超上限的内容存回去之后，下次就读不回来编辑了（读那一问按上限拒）。
-    /// 所以要在屏幕上先说，并且不发那一趟。
+    /// 🔴 **敲超上限了吗。** 超上限的内容存不回去（〔F9c〕后端 `files-commit-text` 拒 `bytes` 超过
+    /// 同一个数的那一趟；装得进一行的那一支写面不拦大小，但存回去之后下次就读不回来编辑了）
+    /// —— 所以要在屏幕上先说，并且不发那一趟。
     pub fn over_cap(&self) -> bool {
         self.text.len() > MAX_EDIT_BYTES
     }
@@ -526,37 +571,46 @@ pub fn text_from_reply(
     }
 }
 
-/// 存回去 —— 〔F2 · 2026-09-24〕经通道说后端写面那条 `files-write-text`。
+/// 存回去 —— 〔F2 · 2026-09-24〕经通道说后端；〔F9c · 第四波〕装不进一行的分块走暂存区。
 ///
-/// 🔴 **围栏在后端那一层**（写面那道会话数据围栏，与桥那一份函数体逐字节相同）⇒ 本模块
-/// 不自己判一遍（判定只有一个家）。踩线时那句拒绝原样落进 [`Pane::last_save`]。
-/// ⚠ 上一版这里调的是池子那条写文本命令（SFTP）。读那一半（[`read_text`]）〔F7a〕也换成了后端。
-/// ⚠ 路径切成 `(root, rel)` 与写面其余四条同形（[`super::writeops::apply_remote`] 头注）。
+/// 🔴 **围栏在后端那一层**（写面那道会话数据围栏）⇒ 本模块不自己判一遍（判定只有一个家）。
+/// 踩线时那句拒绝原样落进 [`Pane::last_save`]。两支落在盘上是**同一个结果**（后端同一个原地覆盖原语）：
+///
+/// | 整份装得进一行（[`fits_one_line`]） | 一条 `files-write-text` |
+/// |---|---|
+/// | 装不进 | 现造一个键 ⇒ [`plan_chunks`] 切块 ⇒ 逐块 `files-stage-chunk`（顺序发）⇒ `files-commit-text` |
+///
+/// ⚠ 某一块没送成 ⇒ **不发提交**、当场回错（第几段、共几段、原话）；已经送进暂存区的块由后端孤儿扫收，
+///   远端那份一个字节没动。编辑框里的字一个不丢（「存失败不清编辑框」照旧，[`Pane::mark_failed`]）。
+/// ⚠ 超上限 ⇒ 本地拒、一个字节不发（[`over_cap_notice`]）。
 pub async fn write_text(
     line: &super::source::Line,
     origin: &super::source::Origin,
     path: &str,
     content: &str,
 ) -> Result<(), String> {
-    let args = save_args(path, content);
-    // 🔴〔F9 续〕先把要发的那一行真序列化一次量长度：后端一行装不下 ⇒ **当场说清、不发**。
-    //    发出去的话后端整行丢弃、回一条不带 id 的错，窗口要熬满写预算才超时（`设计/60 §9c`）。
-    let len = request_line_len(CMD_WRITE_TEXT, &args);
-    if len > MAX_EDIT_BYTES {
-        return Err(too_big_to_save(&TooBig {
-            line: len,
-            cap: MAX_EDIT_BYTES,
-        }));
+    if content.len() > MAX_EDIT_BYTES {
+        return Err(over_cap_notice(content.len()));
     }
-    super::source::ask(
-        line,
-        origin,
-        CMD_WRITE_TEXT,
-        &args,
-        super::writeops::WRITE_BUDGET,
-    )
-    .await
-    .map(|_| ())
+    let budget = super::writeops::WRITE_BUDGET;
+    if fits_one_line(path, content) {
+        let args = save_args(path, content);
+        return super::source::ask(line, origin, CMD_WRITE_TEXT, &args, budget)
+            .await
+            .map(|_| ());
+    }
+    let key = uuid::Uuid::new_v4().simple().to_string();
+    let chunks = plan_chunks(content, chunk_budget());
+    for (seq, chunk) in chunks.iter().enumerate() {
+        let args = stage_args(&key, seq as u64, chunk);
+        super::source::ask(line, origin, CMD_STAGE_CHUNK, &args, budget)
+            .await
+            .map_err(|why| chunk_failed_notice(seq, chunks.len(), &why))?;
+    }
+    let args = commit_args(path, &key, chunks.len(), content.len());
+    super::source::ask(line, origin, CMD_COMMIT_TEXT, &args, budget)
+        .await
+        .map(|_| ())
 }
 
 #[cfg(test)]

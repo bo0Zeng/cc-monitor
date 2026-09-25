@@ -166,7 +166,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     # 不写「与安装无关」这种同义反复。
     ("accounts.last-used", (NA, "—", "读账号最近用过谁")),
     ("accounts.list", (NA, "—", "列账号")),
-    ("accounts.session-accounts", (NA, "—", "列会话用的账号")),
+    # 〔墓碑 · 第四波 C4a〕`accounts.session-accounts` 随「某会话属哪个账号」远端 · 本机两条 Tauri 命令退役
+    #   （前端经通道直接说 `accounts-sessions`）⇒ 已不在 `LEDGER` 里，按上面 `usage.*` 那条同一个理由摘掉。
     ("accounts.trust", (NA, "—", "查远端信任态（ssh 那一侧，不是装东西）")),
     ("app.auto-launch", (NA, "—", "app 自己的开机自启开关")),
     ("app.config", (NA, "—", "app 自己的配置读写")),
@@ -180,9 +181,15 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("audit.config-surface", (NA, "—", "配置面审计页的**读**侧（它报告安装面，不改它）")),
     ("audit.drift-ledger", (NA, "—", "漂移账本的读侧")),
     ("cc-bus.cockpit", (NA, "—", "cc-bus 驾驶舱的读 / 发消息，不是装 cc-bus")),
-    ("creds.apikey", (NA, "—", "账号的第三方 API key（monitor 自己的 apikey 凭据文件）")),
+    ("creds.apikey", (NA, "—", "账号的第三方 API key —— 账号层自己的状态文件（本机 monitor 写，远端那台的后端写，〔RM1a〕），不是往用户环境里装东西")),
     ("backend.lifecycle", (NA, "—", "起 / 停 / 列后端进程 —— 是**跑**它，不是**装**它")),
     ("backend.status", (NA, "—", "问后端活没活 —— 同上，不是查装态")),
+    ("relay.machine", (NA, "—",
+                       "〔RM1a〕问 / 起**远端那台**的中转进程（`relay_ensure`）—— 同 `backend.lifecycle`，是**跑**它，"
+                       "不是**装**它：起的是那台已部署后端的 `--relay`，一个字节都不往用户环境里落")),
+    ("comm.face-a.call", (NA, "—",
+                          "〔C4a〕通信层面 A 在 Tauri IPC 那一跳的命令（`chan_call`）—— 只搬不透明字节，"
+                          "装什么、查什么装态都不是它的事")),
     ("history.branch", (NA, "—", "会话历史")),
     ("history.delete", (NA, "—", "会话历史")),
     ("history.list-projects", (NA, "—", "会话历史")),

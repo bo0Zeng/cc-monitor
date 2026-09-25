@@ -83,6 +83,28 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
+        "tests/bridge/footprint_remote_tests.rs",
+        "src/backend/inbound.rs",
+        "〔RM1a〕「足迹」远端那一栏：monitor 发的命令名、读的那几格必须就是后端登记表里声明的那几个 \
+         —— 读它才能对拍（本侧手抄一份就成了两侧同源的恒等）",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/remote_relay_tests.rs",
+        "src/backend/inbound.rs",
+        "〔RM1a〕中转按机器：monitor 发的两个命令名、解析的那几个字段必须就是后端登记表里声明的那几个 \
+         —— 读它才能拿**后端声明的**字段造样本喂解析器（本侧手抄一份就成了两侧同源的恒等）",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/apikey_remote_tests.rs",
+        "src/backend/inbound.rs",
+        "〔RM1a〕账号层那份凭据文件按机器读写：monitor 这边发的两个命令名、解析的那几个字段 \
+         必须就是后端登记表里声明的那几个 —— 读它才能拿**后端声明的**字段造样本喂解析器\
+         （本侧手抄一份就成了两侧同源的恒等）",
+    ),
+    (
+        "monitor→backend",
         "tests/bridge/backend/control/backend_send_keys_tests.rs",
         "src/backend/control/launch.rs",
         "两个 mode 名必须是后端真能 parse 的那两个（`parse_request` 不 deny unknown \
@@ -197,6 +219,24 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
+        "tests/bridge/session_find_tests.rs",
+        "src/backend/observe/search_query.rs",
+        "★〔SE2 · `设计/10 §6 步 6` 09-24 新增〕**会话内查找的线上词两侧同形** —— \
+         `session_find::tests::the_wire_words_match_what_the_backend_source_writes`。\
+         头尾的 `kind`（`session_find` / `session_find_end`）、尾行的 `total`、行上的五个键与缺省上限， \
+         写侧是后端 `write_session_find`，读侧是 monitor 的 `parse_find_output` 与 `FindHit`。 \
+         失效方向**很安静**：后端改一个字，monitor 把每一次真查找都认成「老后端」而两侧各自的判据全绿。",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/session_find_tests.rs",
+        "src/backend/observe/history_query.rs",
+        "★〔SE2 09-24 新增〕上一条的**argv 那一半**：monitor 的 `find_argv` 发的子命令名与 \
+         `--query` / `--include-tools` / `--limit`，必须是后端 `history_query::run` 那条臂与 \
+         `parse_find_args` 真认的那几个字面量 —— 两处各写一份，只有同时读两侧才验得了。",
+    ),
+    (
+        "monitor→backend",
         "tests/bridge/dial_host_tests.rs",
         "src/backend/dial/mod.rs",
         "★〔C2 · `设计/05 §13` 09-24 新增〕**拨号请求的键两侧同形** —— \
@@ -204,6 +244,15 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          `dial_host::request`（`serde_json::json!` 拼的蛇形键），读侧是后端 `dial::DialRequest` 的字段。\
          失效方向**很安静**：serde 默认忽略未知字段 ⇒ 本侧写错一个键名，代理照样读得动、那一项悄悄变成缺省 \
          （竞速只剩一个地址 · 跳板被当成直连 · 用法退回长流），两侧各自的判据全绿。",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/link_mux_tests.rs",
+        "src/backend/dial/link.rs",
+        "★〔SR1a 09-24 新增〕**monitor 的上行步长 == 后端一块的上限、窗口落在后端肯收的区间里** —— \
+         `link_mux::tests::the_chunk_cap_is_the_same_number_on_both_sides`。两侧各写一个数（`LINK_STEP` / \
+         `LINK_CHUNK_BYTES`，两棵依赖树，共享常量要一条新依赖）；失效方向：monitor 的块比后端的大 ⇒ \
+         后端对每一块回 `invalid_args`、上行整条断；窗口越出区间 ⇒ 后端拒开每一条链路。",
     ),
     (
         "monitor→backend",

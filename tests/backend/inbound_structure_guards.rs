@@ -140,6 +140,9 @@ fn every_registered_command_declares_its_run_kind() {
                 | "files-browse"
                 | "files-create"
                 | "files-commit-upload"
+                // 〔F9c · 第四波〕存盘的两步同档（同步文件 I/O ＋ 围栏的 `canonicalize`）。
+                | "files-stage-chunk"
+                | "files-commit-text"
                 | "files-chmod"
                 | "files-delete"
                 | "files-mkdir"
@@ -162,6 +165,9 @@ fn every_registered_command_declares_its_run_kind() {
                 // 〔`C1` · 09-24〕只读查询面八条同为阻塞档：全做文件 I/O，
                 // `history-search` 扫全库、`history-tail` 扫整份会话 —— 不许占 tokio worker。
                 | "history-projects"
+                | "history-index"
+                | "history-user-inputs"
+                | "history-find"
                 | "history-read"
                 | "history-search"
                 | "history-sessions"
@@ -173,6 +179,17 @@ fn every_registered_command_declares_its_run_kind() {
                 // 不许占 tokio worker。开跑之后打不断 ⇒ `cancel` 命中回 `not_cancellable`。
                 | "exit-policy-read"
                 | "exit-policy-set"
+                // 〔RM1b · 第四波〕功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
+                | "plugins-marketplaces"
+                | "tasks-list"
+                // 〔RM1a · 第四波〕账号层那份凭据文件的两条：同步文件 I/O（读一份小文件 / 原子写一份）。
+                | "apikey-key-set"
+                | "apikey-read"
+                // 〔RM1a · 第四波〕中转那两条：回环连一次 / 起一个进程，同步阻塞。
+                | "relay-ensure"
+                | "relay-status"
+                // 〔RM1a · 第四波〕足迹那一条：一批 stat / 读几份小文件，同步文件 I/O。
+                | "footprint-probe"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_));
         assert_eq!(
@@ -181,10 +198,15 @@ fn every_registered_command_declares_its_run_kind() {
             spec.name
         );
         let is_builtin = matches!(spec.run, Run::Builtin);
+        // 〔SR1a〕链路四条也是硬臂：要碰**本连接的链路表**与应答通道（`dial/link.rs`），
+        // 而且 `link-data` 必须在读循环里就地分派（保序）—— 交给独立 task 就不再保序。
+        let expected_builtin = matches!(
+            spec.name,
+            "cancel" | "link-open" | "link-data" | "link-credit" | "link-close"
+        );
         assert_eq!(
-            is_builtin,
-            spec.name == "cancel",
-            "`{}` 的 Builtin 档位不对 —— 只有 `cancel` 该是硬臂",
+            is_builtin, expected_builtin,
+            "`{}` 的 Builtin 档位不对 —— 只有 `cancel` 与链路四条该是硬臂",
             spec.name
         );
     }
@@ -195,6 +217,10 @@ fn every_registered_command_declares_its_run_kind() {
         "cancel",
         "kill",
         "launch",
+        "link-close",
+        "link-credit",
+        "link-data",
+        "link-open",
         "ping",
         "resolve",
         "bus-list",
@@ -206,6 +232,8 @@ fn every_registered_command_declares_its_run_kind() {
         "files-browse",
         "files-create",
         "files-commit-upload",
+        "files-stage-chunk",
+        "files-commit-text",
         "files-chmod",
         "files-delete",
         "files-mkdir",
@@ -220,6 +248,9 @@ fn every_registered_command_declares_its_run_kind() {
         "files-read-text",
         "files-home",
         "history-projects",
+        "history-index",
+        "history-user-inputs",
+        "history-find",
         "history-read",
         "history-search",
         "history-sessions",
@@ -229,6 +260,13 @@ fn every_registered_command_declares_its_run_kind() {
         "accounts-sessions",
         "exit-policy-read",
         "exit-policy-set",
+        "plugins-marketplaces",
+        "tasks-list",
+        "apikey-key-set",
+        "apikey-read",
+        "relay-ensure",
+        "relay-status",
+        "footprint-probe",
         // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话（阻塞档，理由在上面 `expected_blocking`）。
         "files-peek",
         "files-put",

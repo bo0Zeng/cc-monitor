@@ -213,7 +213,8 @@
 //!
 //! ## 反过来：**别处不许伸手进来**
 //!
-//! 本层对外**只有一个口**，就是本文件末尾那一行 `pub(crate) use server::run;`。
+//! 本层对外的口**逐条登记**（`layering_guard::RELAY_EXPORTS`，两向相等）：`--relay` 的入口 `run` ·
+//! 给层 2 的两样契约件 · 〔RM1a〕帧面 `relay-*` 那两个处理器。
 //! `crate::relay::server::…` / `crate::relay::upstream::…` 这类**一条都不许**：
 //! 一旦有人这么引，中转的内部结构就变成了公共契约，之后 `upstream.rs` 想换形状都得先问一圈。
 //! （路由表不在本层 —— 它是账号层的，住 `accounts::apikey::table`。）
@@ -251,6 +252,7 @@ mod bind_guard; // `DoD-4㈠`：零命中守卫单住一个文件（理由见它
 mod creds_guard; // `K-H2a` `KS2`/`KS4`：明文出口恰好一处 · 记日志走白名单（整体 #[cfg(test)]）
 mod http1;
 mod listen; // `20 §4`：监听面 —— bind / accept / 在途上界 / 起监听之前的接线
+mod machine; // 〔RM1a〕这台机器上的中转进程：口上有没有人在听 · 没有就起一个脱离的（帧面 `relay-*`）
 #[cfg(test)]
 #[path = "../../../tests/backend/relay/nodelay_guard.rs"]
 mod nodelay_guard; // `重要-5`：Nagle 零命中守卫，同样单住一个文件
@@ -268,6 +270,10 @@ mod wire_golden; // `设计/20 §7` 步 1–3：「零行为变化」的字节�
 /// `--relay` 的层 1 入口。**层 2 那只手由调用方递进来**（`accounts::apikey::run_relay`）——
 /// 本层叫不出它的名字（`account_layer_guard` ㈢ 零命中）。
 pub(crate) use listen::run;
+
+/// 〔RM1a · 第四波〕**第二个口**：帧面 `relay-status` / `relay-ensure` 的两个处理器（这台机器上的中转进程在不在 · 起一个）。
+/// 只交出端口这一个入参，一个账号层的名字都不经过它。对外口的全集由 `layering_guard` 那张登记表两向钉着。
+pub(crate) use machine::{answer_ensure, answer_status};
 
 // ══════════════════════════════════════════════════════════════════════════
 //  层间契约（`设计/20 §2`）—— 层 1 问一句，层 2 答一句，**层 1 不做任何判断**

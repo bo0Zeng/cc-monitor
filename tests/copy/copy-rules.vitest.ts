@@ -46,6 +46,10 @@ interface Rule {
   probeKind?: string;
   colloquial?: string[];
   imperative?: string[];
+  /** C-Y3：祈使动词那一条管哪几档（用户 09-24 裁：control 档许以动词开头）。 */
+  imperativeKinds?: string[];
+  /** C-Y3：control 档的正例 —— 以动词开头、按 control 档查必须放过。 */
+  controlGood?: string[];
 }
 
 function loadRules(): Rule[] {
@@ -56,6 +60,19 @@ interface Ctx {
   terms: Term[];
   colloquial: string[];
   imperative: string[];
+  /** 祈使动词那一条只查这几档 —— 从 `rules.json` 的 `C-Y3.imperativeKinds` 读，检法不写死。 */
+  imperativeKinds: string[];
+}
+
+/** 从规范里取 C-Y3 的三张表 —— 本文件三处共用这一个入口，不各抄一份。 */
+function y3Ctx(rules: Rule[], terms: Term[]): Ctx {
+  const y3 = rules.find((r) => r.id === "C-Y3");
+  return {
+    terms,
+    colloquial: y3?.colloquial ?? [],
+    imperative: y3?.imperative ?? [],
+    imperativeKinds: y3?.imperativeKinds ?? [],
+  };
 }
 
 const NARROW = new Set(["title", "control", "action"]);
@@ -75,8 +92,12 @@ export const CHECKS: Record<string, Check> = {
     if (/[？?]/.test(s)) return "title 档里有问号";
     const c = ctx.colloquial.find((w) => s.indexOf(w) >= 0);
     if (c) return `title 档里有口语词「${c}」`;
+    // 〔ST2 · 用户 09-24 裁〕祈使词只查 `imperativeKinds` 那几档（今天只有 title）。
+    //   ⚠ 上面那一句 `e.kind !== "title"` 管的是问号与口语词，这一句管的是动词开头 —— 两件事，
+    //   后者的射程住 `rules.json`，改规矩就是改那一格，检法跟着走。
+    if (!ctx.imperativeKinds.includes(e.kind)) return null;
     const v = ctx.imperative.find((w) => s.trimStart().startsWith(w));
-    return v ? `title 档以祈使动词「${v}」开头` : null;
+    return v ? `${e.kind} 档以祈使动词「${v}」开头` : null;
   },
   "C-P1": (e) => (/您/.test(e.zh) ? "称用户用了「您」" : null),
   "C-P2": (e) => (/我们/.test(e.zh) ? "产品自称「我们」" : null),
@@ -145,8 +166,7 @@ describe("CP2a · 文案规范", () => {
   const rules = loadRules();
   const terms = loadTerms();
   const py = readFileSync(CENSUS, "utf8");
-  const y3 = rules.find((r) => r.id === "C-Y3");
-  const ctx: Ctx = { terms, colloquial: y3?.colloquial ?? [], imperative: y3?.imperative ?? [] };
+  const ctx = y3Ctx(rules, terms);
 
   it("规范的形状：规矩号唯一 · 每条标机检或主观 · 主观写明为什么判不了 · 机检写明可不可豁免", () => {
     expect(rules.length, "规范一条都没读出来").toBeGreaterThan(0);
@@ -204,10 +224,39 @@ describe("CP2a · 文案规范", () => {
   });
 });
 
+describe("〔ST2 · 用户 09-24 裁〕复选框 / 开关标签允许动词开头 —— 规矩与检法同拍", () => {
+  const rules = loadRules();
+  const ctx = y3Ctx(rules, loadTerms());
+  const y3 = rules.find((r) => r.id === "C-Y3")!;
+
+  it("★ 规矩里写着射程，检法读的就是那一格：control 不在 imperativeKinds 里、title 在", () => {
+    expect(y3.imperativeKinds, "C-Y3 没有 imperativeKinds —— 检法会退回写死的那一份").toBeDefined();
+    expect(ctx.imperativeKinds).toEqual(y3.imperativeKinds);
+    expect(ctx.imperativeKinds).toContain("title");
+    expect(ctx.imperativeKinds, "用户裁 control 档许以动词开头，射程里却还有它").not.toContain("control");
+    expect(y3.rule, "规矩文字没写这条裁决 —— 规范与检法又会各说各的").toMatch(/control 档.*许以动词开头/);
+  });
+
+  it("★ 同一串按档各跑一遍：control 档放过、title 档逮住（判别在档，不在串）", () => {
+    const good = y3.controlGood ?? [];
+    expect(good.length, "controlGood 是空的 —— 下面的「放过」零命中地绿").toBeGreaterThan(0);
+    const p: string[] = [];
+    for (const zh of good) {
+      if (CHECKS["C-Y3"]({ kind: "control", zh, args: [] }, ctx)) p.push(`control 档逮住了「${zh}」`);
+    }
+    expect(p).toEqual([]);
+    // 正控：以祈使词开头的那几条换成 title 档必须红（否则「放过」可能是检法整个瞎了）。
+    const verbStart = good.filter((zh) => ctx.imperative.some((w) => zh.startsWith(w)));
+    expect(verbStart.length, "controlGood 里没有一条以祈使词开头 —— 这组正例证不了裁决").toBeGreaterThan(0);
+    for (const zh of verbStart) {
+      expect(CHECKS["C-Y3"]({ kind: "title", zh, args: [] }, ctx), `title 档放过了「${zh}」`).toMatch(/祈使动词/);
+    }
+  });
+});
+
 describe("CP2a · 文案规范判据自己会不会死（正控）", () => {
   const rules = loadRules();
-  const y3 = rules.find((r) => r.id === "C-Y3");
-  const ctx: Ctx = { terms: loadTerms(), colloquial: y3?.colloquial ?? [], imperative: y3?.imperative ?? [] };
+  const ctx = y3Ctx(rules, loadTerms());
 
   it("违反未豁免 · 死豁免 · 豁免不可豁免的规矩 · 豁免不存在的规矩 —— 各红一次", () => {
     const run = (e: Entry): string => tableViolations({ "a.b.c": e }, rules, ctx).join();

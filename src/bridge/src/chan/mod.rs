@@ -10,7 +10,7 @@
 //! 远端后端住在 monitor 手里那条 SSH 流里。⇒ 窗口今天只能走退路，按构造违反 `D11`。
 //! ⇒ **窗口是又一个前端**，它该说的正是 `01 §2.2` 那两个动作。本模块就是那两个动作跨进程的那条路。
 //!
-//! # 五份，两侧
+//! # 五份，两侧（〔C4a〕＋ webview 那一侧一份宿主）
 //!
 //! | 文件 | 住哪一侧 | 通信层成员？ | 干什么 |
 //! |---|---|---|---|
@@ -19,6 +19,7 @@
 //! | `client.rs` | 外部前端进程 | ✅ | `Comms` 的实现：`call` / `subscribe` |
 //! | `host.rs` | monitor 进程 | ❌ 刻意不是 | 绑回环 · 造钥匙 · `accept` · 生产句柄（`C4`/`C5` 不许成员做的那几件） |
 //! | `dial.rs` | 外部前端进程 | ❌ 刻意不是 | 按交接件拨号（`C5`：成员只用交给它的流） |
+//! | `webview.rs` | monitor 进程 | ❌ 刻意不是 | 〔C4a〕**主界面**（webview）说 `call` 的那一跳：Tauri 命令 `chan_call` ＋ 注入生产句柄；期限执行与回环那条共用 `router::settle`。成员那一半是 TS 的 `src/ipc/chan.ts` |
 //!
 //! # 为什么住 `src/bridge/src/chan/` 而不是 `backend/` 下
 //!
@@ -45,6 +46,7 @@ pub mod client;
 pub mod dial;
 pub mod host;
 pub mod router;
+pub mod webview;
 pub mod wire;
 
 #[cfg(test)]

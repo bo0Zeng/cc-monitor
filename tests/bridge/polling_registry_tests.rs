@@ -484,7 +484,7 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     ("src/tab-context-menu.ts", "setTimeout", 3, "① ② hover 菜单的 150ms 开 / 250ms 关延时（二级 flyout；`closeTabContextMenu` 统一清）③ 0ms 下一拍挂右键菜单关闭监听。都是一次性 UI 延时，不取数。"),
     // 〔U2 · 拆 `tabs.ts` 子步 5〕会话动作搬进 `tab-session-actions.ts` ⇒ 原 ② ③ ④ ⑧ ⑨ 五处跟着走（下一行）：8 = 3 ＋ 5。
     ("src/tab-session-actions.ts", "setTimeout", 5, "② ③ 两处 `timeoutMs` 上限（`awaitCompactFor` 的 `finish(false)` / `awaitExitFor` 的 `stop(false)`）④ ★ `pollTimer = setTimeout(() => void tick(), pollMs)` —— **真 data-poll**（`awaitExitFor`），见 `REGISTERED` 那条 ⑧ ⑨ 两处 `bring_*_terminal_to_front` 的 invoke 超时拒绝。除 ④ 外都不是周期取数。编号沿用 `tabs.ts` 那一行拆开之前的原号。"),
-    ("src/views/grid-monitor.ts", "setInterval", 1, "1s 整表重绘 —— **ui-clock，不取数**，见 `REGISTERED` 那条。"),
+    ("src/views/grid-monitor.ts", "setInterval", 1, "1s 重绘 —— 〔UP1〕按格差量（没变的一拍零 DOM 写），不再整表重建。**ui-clock，不取数**，见 `REGISTERED` 那条。"),
     ("src/views/history.ts", "requestAnimationFrame", 1, "展开/收起项目后合并重画一次列表，`rafPending` 标志防重入。一次性。"),
     ("src/views/history.ts", "setTimeout", 3, "① `waitForIndexThenSearch` 的 1 秒等待 —— **wait-for-condition**（等本地索引就绪），上限 120 拍、超限有说人话的文案。⚠ **F14 第四刀改过**：它原来每秒重发 `search_history`，而那条路在 Rust 侧无条件 join 了 `search_remote_all` ⇒ **每台一条 SSH**；现在只问 `get_search_index_status`（零 SSH），就绪后补跑一次完整搜索。关视图由 F14 第一刀的 `ftSeq++` 掐断。② 0ms 下一拍挂条目右键菜单的关闭监听。③ ★ **F07 下半新增**：搜索框输入去抖（250ms，每次输入前 `clearTimeout`）—— **一次性延时不是周期唤醒**，加它正是为了**减少**下游那三个放大器被触发的次数。"),
     ("src/views/panorama.ts", "requestAnimationFrame", 3, "① `scheduleDraw` 合并重绘，`drawScheduled` 防重入 ② ③ 开/关侧栏后下一帧重算画布尺寸再画。都是一次性。"),

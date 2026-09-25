@@ -333,11 +333,8 @@ const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
         "守的性质：",
         EnvKeyClaim::Asserts,
     ),
-    (
-        "src/bridge/src/local_accounts.rs",
-        "、`configDir` 过白名单",
-        EnvKeyClaim::Asserts,
-    ),
+    // 〔C4a · 第四波〕`local_accounts.rs` 那一份（E79 那条本机会话账号查询的头注里讲「抠哪几个环境变量」那一句）
+    //   随那条查询整条退役（本机与远端收成一条经通道的路，逐行解释搬去 `src/accounts.ts`）⇒ 副本少一份，这一行删掉。
     // 发版说明里那一份（`3.7.0` 起草，09-09）。**它在断言当下，不是在引述**：
     // 用户读发版说明是为了知道「装上这一版之后，这东西今天做什么」——
     // 那正是 `Asserts` 的定义，而不是病史 / 判据文案那一类。
@@ -388,11 +385,7 @@ const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
         "里没点名",
         EnvKeyClaim::Quotes,
     ),
-    (
-        "src/bridge/src/local_accounts.rs",
-        "不同拍改它就是在盘上留一句假话",
-        EnvKeyClaim::Quotes,
-    ),
+    // 〔C4a〕`local_accounts.rs` 那句「不同拍改它就是在盘上留一句假话」的引述随同一段头注删了（理由同上）。
     // ── 同句式、别的主语 ──────────────────────────────────────────────────
     (
         "tests/backend/observe/accounts_query_tests.rs",

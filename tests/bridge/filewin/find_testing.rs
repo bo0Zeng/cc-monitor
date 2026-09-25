@@ -192,6 +192,8 @@ pub struct Declared {
     pub truncated: bool,
     pub browse_watches: u64,
     pub browse_watch_cap: u64,
+    /// 〔第四波 S4 · Q5〕后端声明的冷启动首建估计。
+    pub cold_first_build_secs: u64,
 }
 
 impl Default for Declared {
@@ -206,6 +208,8 @@ impl Default for Declared {
             truncated: false,
             browse_watches: 0,
             browse_watch_cap: 64,
+            // 🔴 同上：**刻意不是 10**（后端今天声明的那个数）。
+            cold_first_build_secs: 4747,
         }
     }
 }
@@ -221,6 +225,16 @@ pub struct FakeBackend {
     /// 它声明自己认得哪几条命令（`hello.commands`）。
     pub offered: Vec<String>,
     pub log: WireLog,
+    /// 〔F9c〕送进来的块（`(key, seq)` → 内容），`files-commit-text` 按块号读回拼起来。
+    chunks: std::collections::BTreeMap<(String, u64), String>,
+    /// 〔F9c〕最近一次提交成功拼出来的那一份（`(root/rel, 全文)`）—— 判据拿它与原文比。
+    pub committed: std::sync::Arc<std::sync::Mutex<Option<(String, String)>>>,
+    /// 〔F9c〕第几块（块号）起按「盘满」那一档拒（演「送到一半断了」）。
+    pub refuse_stage_at: Option<u64>,
+    /// 〔第四波 S4 · Q5〕给了 ⇒ `files-index-rebuild` 的**应答扣住**，等用例放行才回。
+    /// 索引照常当场建好（与后端「走完才回」的时序不同，但窗口只看应答什么时候到）——
+    /// 判据要在「重走还在飞」那一刻跑一帧，看首建那一行在不在。
+    hold_rebuild: Option<std::sync::Arc<tokio::sync::Notify>>,
 }
 
 impl FakeBackend {
@@ -230,7 +244,17 @@ impl FakeBackend {
             declared,
             offered: offered.iter().map(|s| s.to_string()).collect(),
             log: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            chunks: Default::default(),
+            committed: Default::default(),
+            refuse_stage_at: None,
+            hold_rebuild: None,
         }
+    }
+
+    /// 把 `files-index-rebuild` 的应答扣到 `gate` 被 `notify_one` 为止（见 [`FakeBackend::hold_rebuild`]）。
+    pub fn holding_rebuild(mut self, gate: std::sync::Arc<tokio::sync::Notify>) -> Self {
+        self.hold_rebuild = Some(gate);
+        self
     }
 
     /// 让它开局就**已经**有一份索引（`files-index-rebuild` 那条阴性对照要它）。
@@ -507,6 +531,84 @@ impl FakeBackend {
                     Some(serde_json::json!({ "path": format!("{root}/{rel}"), "bytes": 0 })),
                 )
             }
+            // 〔F9c〕存盘的两步：按后端 `control/files_commit.rs` 的契约演 —— 同一块只收一次；
+            //   提交按块号 `0..chunks` 读回拼起来、总长必须恰好等于 `bytes`，否则拒；不论成败删掉这一键的块。
+            "files-stage-chunk" => {
+                let key = args["key"].as_str().unwrap_or("").to_string();
+                let Some(seq) = args["seq"].as_u64() else {
+                    return (
+                        false,
+                        Some("bad_args".into()),
+                        Some("少了 `seq`".into()),
+                        None,
+                    );
+                };
+                let content = args["content"].as_str().unwrap_or("").to_string();
+                if content.is_empty() {
+                    return (false, Some("bad_args".into()), Some("空块".into()), None);
+                }
+                if self.refuse_stage_at.is_some_and(|at| seq >= at) {
+                    return (false, Some("io_failed".into()), Some("盘满了".into()), None);
+                }
+                if self.chunks.contains_key(&(key.clone(), seq)) {
+                    return (
+                        false,
+                        Some("io_failed".into()),
+                        Some("这一块已经在了".into()),
+                        None,
+                    );
+                }
+                let n = content.len();
+                self.chunks.insert((key, seq), content);
+                (true, None, None, Some(serde_json::json!({ "bytes": n })))
+            }
+            "files-commit-text" => {
+                let key = args["key"].as_str().unwrap_or("").to_string();
+                let (Some(chunks), Some(bytes)) = (args["chunks"].as_u64(), args["bytes"].as_u64())
+                else {
+                    return (
+                        false,
+                        Some("bad_args".into()),
+                        Some("少了块数或字节数".into()),
+                        None,
+                    );
+                };
+                let mut whole = String::new();
+                let mut missing = false;
+                for seq in 0..chunks {
+                    match self.chunks.get(&(key.clone(), seq)) {
+                        Some(c) => whole.push_str(c),
+                        None => missing = true,
+                    }
+                }
+                self.chunks.retain(|(k, _), _| k != &key);
+                if missing || whole.len() as u64 != bytes {
+                    return (
+                        false,
+                        Some("io_failed".into()),
+                        Some("块对不上".into()),
+                        None,
+                    );
+                }
+                let root = args["root"].as_str().unwrap_or("");
+                let rel = args["rel"].as_str().unwrap_or("");
+                if root.contains("refuse") {
+                    return (
+                        false,
+                        Some("refused".into()),
+                        Some("refuse write: 围栏".into()),
+                        None,
+                    );
+                }
+                let at = format!("{root}/{rel}");
+                *self.committed.lock().unwrap() = Some((at.clone(), whole));
+                (
+                    true,
+                    None,
+                    None,
+                    Some(serde_json::json!({ "path": at, "bytes": bytes })),
+                )
+            }
             other => (
                 false,
                 Some("unknown_command".into()),
@@ -540,6 +642,7 @@ impl FakeBackend {
             "stale": stale,
             "browse_watches": d.browse_watches,
             "browse_watch_cap": d.browse_watch_cap,
+            "cold_first_build_secs": d.cold_first_build_secs,
         })
     }
 }
@@ -650,6 +753,12 @@ impl crate::chan::router::Backends for Hosted {
             .unwrap()
             .push(serde_json::json!({ "cmd": op.0, "args": args }));
         let (ok, code, message, data) = be.answer(&op.0, &args);
+        let hold = if op.0 == "files-index-rebuild" {
+            be.hold_rebuild.clone()
+        } else {
+            None
+        };
+        drop(be);
         let r = if ok {
             Ok(Body(
                 serde_json::to_vec(&data.unwrap_or(serde_json::Value::Null)).unwrap_or_default(),
@@ -667,7 +776,12 @@ impl crate::chan::router::Backends for Hosted {
                 },
             })
         };
-        Box::pin(async move { r })
+        Box::pin(async move {
+            if let Some(g) = hold {
+                g.notified().await;
+            }
+            r
+        })
     }
 
     fn subscribe(

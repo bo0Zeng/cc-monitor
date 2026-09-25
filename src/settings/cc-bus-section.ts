@@ -335,19 +335,18 @@ export class CcBusSection {
     // 账号随机器变——换台机器，上一台的账号名多半不适用
     this.originSel.addEventListener("change", () => {
       // S4a：写进共用 store；实际切换由订阅统一处理。
-      // ⚠ 共用 store 用 `null` 表示本机，而本选择器用 `LOCAL_ORIGIN`（后端认的那个串）——
-      // 两套表示各有各的理由，**换算只准在这一处发生**。
+      // 〔C4a〕共用 store 与本选择器现在是**同一个表示**（本机 = `LOCAL_ORIGIN`）——原先那处换算没有了。
       const v = this.originSel.value;
-      setCurrentMachine(v && v !== LOCAL_ORIGIN ? v : null);
+      setCurrentMachine(v);
       this.syncLocalAffordances();
       // 〔第三波 S3〕在这里换账号下拉。原先只靠下面那条订阅去换 —— 而订阅看到选择器**已经**是那台
       // （就是这一行刚选的）就早退，于是在下拉里换机器，账号下拉一直停在上一台的名单上。
       void this.loadAccounts(v);
     });
-    // S4a：跟随共用 store。`null` = 本机 —— **P4a 起它不再是「原地不动」**：
+    // S4a：跟随共用 store。本机（`LOCAL_ORIGIN`）—— **P4a 起它不再是「原地不动」**：
     // 本机这一格今天有意义了（读面已通），所以跟着切到「本机」那一项。
     subscribeMachine((origin) => {
-      const want = origin === null ? LOCAL_ORIGIN : origin;
+      const want = origin;
       if (![...this.originSel.options].some((o) => o.value === want)) return;
       if (this.originSel.value === want) return;
       this.originSel.value = want;

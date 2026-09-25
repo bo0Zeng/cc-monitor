@@ -500,7 +500,7 @@ interface DegenRow {
 function degenCtx(): RenderContext {
   return {
     parentPath: "/tmp/s22/session.jsonl",
-    origin: null,
+    origin: "<local>",
     toolUseNames: new Map(),
     toolUseElements: new Map(),
     pendingToolResults: new Map(),

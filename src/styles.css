@@ -533,10 +533,10 @@
 #message-stream {
   position: relative;
   /* 🔴 `设计/40 §7` 步 6 顺带那条 + `设计/41 §5`：**根治**「子孙逃出去压叔伯」。
-     以前这里是 `z-index: auto` ⇒ 不创建层叠上下文 ⇒ 流里的 `.live-user-inputs`
+     以前这里是 `z-index: auto` ⇒ 不创建层叠上下文 ⇒ 流里的大纲悬浮层（今天是查找面板 `.session-find`）
      （z-index 3）直接和 `#app` 里那六个 trigger（z-index 2）比大小，**压住它们连点击一起吃掉**。
      `设计/10` 步 2 当时用 `top: 40px` 把两者错开止了血；这一行是那个 bug 的根。
-     ⚠ 加了它之后，`.live-user-inputs` 的 3 只在这个圈子里有意义，永远压不到 #app 的按钮。 */
+     ⚠ 加了它之后，`.session-find` 的 3 只在这个圈子里有意义，永远压不到 #app 的按钮。 */
   z-index: var(--z-base);
   overflow: hidden;
 }
@@ -2135,7 +2135,7 @@
    而一个会出现在实时 tab 里的元素叫「session-viewer-…」就是名字在说谎 ——
    本仓最贵的那族病里，「名字与它实际住的地方对不上」是复发最多的一种。
    位置差异（查看器是流内一块、实时是悬浮在流上）落在**宿主自己的**
-   `.live-user-inputs` 上，不落在这三条共用规则里。
+   `.session-find`（〔SE2〕实时 tab 的查找面板）上，不落在这三条共用规则里。
 
    🔴 `.user-inputs` **绝不许出现 `display`**：面板靠 `el.hidden` 收起，
    而 `hidden` 是 UA 样式表里的 `display:none`，作者样式里任何一条 `display` 都会盖掉它
@@ -2150,6 +2150,7 @@
   background: var(--bg-2);
 }
 
+.session-find-hit,
 .user-input-row {
   display: block;
   width: 100%;
@@ -2168,6 +2169,7 @@
 /* 「这一条跳不过去」的变灰。原来住在 `jumpToUserInput` 里的 `row.style.opacity = "0.55"`。
    搬到这里顺带修掉一个旧形：那一句只加不减，同一行后来跳得过去了也会一直灰着；
    现在灰不灰只由 `data-unjumpable` 在不在决定，而那个标记是加也删也有的。 */
+.session-find-hit[data-unjumpable],
 .user-input-row[data-unjumpable] {
   opacity: 0.55;
 }
@@ -2175,7 +2177,7 @@
 /* 🔴 `设计/10` 步 2：开关按钮的样式 —— 在这之前它**全仓零条规则**
    （`grep -c '\.user-inputs-toggle' styles.css` = 0），于是在暗色主题上以浏览器默认按钮
    渲染：浅灰底、黑字、系统边框。那不是"没来得及美化"，是**一处白底控件贴在深色界面上**。
-   ⚠ 长相本身在沙箱里验不了（jsdom 无布局无渲染）—— 与 `.live-user-inputs` 同一条诚实边界。
+   ⚠ 长相本身在沙箱里验不了（jsdom 无布局无渲染）—— 与 `.session-find` 同一条诚实边界。
    有判据的只有「规则在不在」。
    ⚠ 声明与 `.tab-archive-toggle` 同族（同一套 token、同样的 2px/8px 小按钮），
    刻意不抽公共类：那两个按钮住在两个不相干的界面里，抽出来只会让下一个改其中一个的人
@@ -2202,24 +2204,18 @@
   cursor: default;
 }
 
-/* === K-R45 乙：实时窗口那一侧的**位置**（只有位置，长相还是上面那三条共用规则） ===
-   实时 tab 没有查看器那样的顶栏可以塞开关 —— 每个 tab 只有一个 `.stream`
-   （`position:absolute; inset:0`，叠在 `#message-stream` 里）。⇒ 开关 + 面板做成一块
-   与 `.stream` **平级**的悬浮层，`.active` 跟着 tab 一起翻，切 tab 时不会串台。
-   🔴 `visibility` 而不是 `display`：与 `.stream` 同一套机制（切 tab 0 reflow，见上面那段注释）。
-   ⚠ **长相在沙箱里验不了**（jsdom 无布局、无真渲染）—— 与上一轮
-   `.session-viewer-inputs-toggle` 同一条诚实边界，登记在件 `§5.6`。 */
-/* 🔴 `设计/10` 步 2（`§3` 的 E2）：**挪到按钮行之下。**
-   原来是 `top: 8px` —— 而顶栏那六个入口（`.settings-trigger` 一族）是 `#app` 的绝对定位子节点，
-   带宽 `top:4px` + `height:28px` ⇒ 占 **4…32px**，`--z-chrome`。
-   这一层 `--z-float` 且 `.active` 时 `pointer-events: auto`
-   ⇒ 它**压住那六个按钮，连点击一起吃掉**（用户点设置/历史没反应的根因）。
-   ⇒ `top` 改成 **40px**：按钮行底边 32px 之下再留 8px 呼吸位，两者不再有任何重叠带。
-   🔴 **S21 起这一条已经是第二道保险**：`#message-stream` 现在显式是层叠上下文
-   （`z-index: var(--z-base)`），这一层的 `--z-float` 关在流里，**结构上**再也够不到
-   `#app` 的按钮。`top: 40px` 留着是因为它同时还管「视觉上不叠按钮行」。
-   ⚠ 这一步只止血。独立悬浮层本身在步 6 并进 Ctrl+F 那块面板时整个删掉（`§2.2b ④`）。 */
-.live-user-inputs {
+/* === 〔SE2 · `设计/10 §2.2b ④`〕实时 tab 的会话内查找面板（搜索 / 大纲两个模式） ===
+   它取代了 K-R45 乙那块独立悬浮层 `.live-user-inputs`（步 2 的止血形）：大纲并进来当第二个模式，
+   悬浮层从两块变一块（z-index 参与者少一个）。**位置照搬**那块悬浮层的，一个值都没改：
+   🔴 `设计/10` 步 2（`§3` 的 E2）：`top: 40px` —— 顶栏那六个入口（`.settings-trigger` 一族）占 4…32px、
+   `--z-chrome`，这一层 `--z-float` 且 `.active` 时 `pointer-events: auto` ⇒ 贴着按钮行放会压住它们、连点击一起吃掉。
+   S21 起 `#message-stream` 显式是层叠上下文，这一层的 `--z-float` 关在流里，结构上也够不到 `#app` 的按钮。
+   🔴 `visibility` 而不是 `display` 翻 `.active`：与 `.stream` 同一套机制（切 tab 0 reflow）。
+   🔴 面板本体、「搜索」那一半、大纲清单都靠 `el.hidden` 收起 ⇒ 它们**绝不许出现 `display`**
+   （作者样式里任何一条 `display` 都会盖掉 UA 的 `[hidden]{display:none}`）。只有从不 `hidden` 的
+   里层容器（模式条 / 输入行）才写 `display`；整块本身一条 `display` 都不写（见它那条规则）。
+   ⚠ **长相在沙箱里验不了**（jsdom 无布局、无真渲染）—— 与上一轮同一条诚实边界。 */
+.session-find {
   position: absolute;
   top: 40px;
   right: 24px;
@@ -2227,21 +2223,108 @@
   max-width: min(420px, 60%);
   visibility: hidden;
   pointer-events: none;
+  /* 入口按钮靠右（与原悬浮层一样贴着右边）；面板里的字照常左对齐（见下一条）。
+     不用 flex 排：整块这一条沿用「切 tab 只翻 visibility、一条 display 都不写」的纪律（判据逐行查）。 */
+  text-align: right;
 }
 
-.live-user-inputs.active {
+.session-find.active {
   visibility: visible;
   pointer-events: auto;
 }
 
-/* 悬浮层里的面板要自己撑出宽度与边框（查看器那侧靠流内布局，用不着）。
-   ⚠ 这一条只加**位置/边框**，不碰 `.user-inputs` 的任何一条声明 ——
-   共用规则只有一个住址，宿主差异不许倒灌回去。 */
-.live-user-inputs .user-inputs {
-  min-width: 240px;
+.session-find-panel {
+  margin-top: 4px;
+  text-align: left;
+  width: min(420px, 60vw);
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   box-shadow: 0 6px 18px rgb(0 0 0 / 35%);
+  background: var(--bg-2);
+}
+
+.session-find-modes {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.session-find-mode,
+.session-find-close {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-2);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 8px;
+}
+
+.session-find-mode[aria-selected="true"] {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: var(--overlay-hover);
+}
+
+.session-find-close {
+  margin-left: auto;
+}
+
+.session-find-mode:hover,
+.session-find-close:hover {
+  color: var(--text);
+}
+
+.session-find-query {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+}
+
+.session-find-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 6px;
+}
+
+.session-find-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-2);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.session-find-status {
+  padding: 0 8px 6px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.session-find-hits {
+  max-height: 38vh;
+  overflow-y: auto;
+}
+
+/* 命中行的长相与大纲行同一套（上面 `.user-input-row` 那几条共用规则），这里只补片段里的高亮
+   （同历史浏览器全文搜索的 `.search-hit-snippet mark`）。 */
+.session-find-hit mark {
+  background: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--text);
+  border-radius: 2px;
+  padding: 0 1px;
 }
 
 /* 复用 .stream 容器样式（滚动 + padding），但改 flex item 布局。

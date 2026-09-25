@@ -668,6 +668,74 @@ mod tests {
     /// `production_code`（测试段被剥掉）⇒ 看不见它，**这是有意的**：
     /// 分层是**生产架构**的性质，测试跨层构造夹具是正常的（`refs_to_layer` 头注同款取舍）。
     /// 写在这里免得下一个人 `grep` 到那一行、以为本判据坏了。
+    /// 〔RM1a · 第四波〕`relay/` 对外的口（`relay/mod.rs` 里的 `pub(crate) use …`）**逐条登记**：`(项, 为什么它是对外的口)`。
+    ///
+    /// `relay/mod.rs` 头注逐字：「真要新开口子 ⇒ 加在那一行旁边，并在 `layering_guard` 里配一张**非空**登记表」。
+    /// 先前那张表不存在（口子只靠散文守）；本拍新开了两个口（`relay-*` 帧面那两个处理器），表同拍立起来。
+    const RELAY_EXPORTS: &[(&str, &str)] = &[
+        (
+            "listen::run",
+            "`--relay` 那一臂的层 1 入口；层 2 那只手由 `accounts::apikey::run_relay` 递进来",
+        ),
+        (
+            "machine::answer_ensure",
+            "〔RM1a〕帧面 `relay-ensure`：这台机器上没人在听就起一个脱离的 `--relay`（只收端口）",
+        ),
+        (
+            "machine::answer_status",
+            "〔RM1a〕帧面 `relay-status`：这台机器上那个口有没有人在听（只收端口）",
+        ),
+        (
+            "route::segment_is_safe",
+            "层 2 装表判账号 id 与层 1 切键是**同一个谓词**（`route.rs` 头注）",
+        ),
+        (
+            "upstream::Base",
+            "层 1 的传输原语：一行的上游是什么，层 2 解析它、焊进行里、原样交回",
+        ),
+    ];
+
+    /// 〔RM1a〕`relay/` 对外的口 == [`RELAY_EXPORTS`]（两向集合相等；从 `relay/mod.rs` 生产段现抠）。
+    #[test]
+    fn the_relay_layer_exports_exactly_the_registered_items() {
+        let src = std::fs::read_to_string(crate::guard_support::src_root().join("relay/mod.rs"))
+            .expect("读 relay/mod.rs");
+        let prod = production_code(&src);
+        let mut found: Vec<String> = Vec::new();
+        for line in prod.lines() {
+            let Some(rest) = line.trim().strip_prefix("pub(crate) use ") else {
+                continue;
+            };
+            let rest = rest.trim_end_matches(';').trim();
+            match rest.split_once("::{") {
+                Some((head, tail)) => {
+                    for item in tail.trim_end_matches('}').split(',') {
+                        let item = item.trim();
+                        if !item.is_empty() {
+                            found.push(format!("{head}::{item}"));
+                        }
+                    }
+                }
+                None => found.push(rest.to_string()),
+            }
+        }
+        found.sort();
+        let mut want: Vec<String> = RELAY_EXPORTS
+            .iter()
+            .map(|(i, _)| (*i).to_string())
+            .collect();
+        want.sort();
+        assert!(!want.is_empty(), "登记表空了 —— 相等会退化成「空 == 空」");
+        assert_eq!(
+            found, want,
+            "`relay/` 对外的口与登记表对不上。多出来的 = 有人新开了口子而没说为什么；\
+             少了的 = 口收掉了，同拍把登记摘掉。"
+        );
+        for (i, why) in RELAY_EXPORTS {
+            assert!(why.chars().count() >= 15, "`{i}` 没写清为什么它是对外的口");
+        }
+    }
+
     #[test]
     fn relay_layer_must_not_reference_the_semantic_layers() {
         let files = layer_sources("relay");

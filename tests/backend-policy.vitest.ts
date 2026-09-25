@@ -102,14 +102,10 @@ describe("K-P3 那句读数 —— 三档逐格钉死", () => {
     ).not.toBe(HEALTH_UNKNOWN);
   });
 
-  it("★ 第二档：记到过事、一次崩溃都没有 ⇒「没崩过」，且带得出读坏了几次", () => {
-    expect(describeBackendHealth({ ...NONE, misread: 2 })).toBe(
-      HEALTH_CLEAN.replace("{misread}", "2"),
-    );
-    // 「读坏了」不算它崩 —— 那是我们这一侧的读端（B1 那条错误诊断的全部内容）。
-    expect(describeBackendHealth({ ...NONE, refused: 1, misread: 0 })).toBe(
-      HEALTH_CLEAN.replace("{misread}", "0"),
-    );
+  it("★ 第二档：记到过事、一次崩溃都没有 ⇒「没崩过」（读坏了几次〔ST2〕挪进 [详情]）", () => {
+    expect(describeBackendHealth({ ...NONE, misread: 2 })).toBe(HEALTH_CLEAN);
+    // 「读坏了」不算它崩 —— 那是 monitor 这一侧的读端（B1 那条错误诊断的全部内容）。
+    expect(describeBackendHealth({ ...NONE, refused: 1, misread: 0 })).toBe(HEALTH_CLEAN);
   });
 
   it("★ 第三档：崩过 ⇒ 带次数与最后那一行；那一行没留住也要说出口", () => {

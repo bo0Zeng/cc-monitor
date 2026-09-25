@@ -82,6 +82,8 @@ pub const REPLY_CHANNEL_CAPACITY: usize = 256;
 pub const COMMANDS: &[&str] = &[
     "accounts-list",
     "accounts-sessions",
+    "apikey-key-set",
+    "apikey-read",
     "bus-kill",
     "bus-list",
     "bus-send",
@@ -93,6 +95,7 @@ pub const COMMANDS: &[&str] = &[
     "exit-policy-set",
     "files-browse",
     "files-chmod",
+    "files-commit-text",
     "files-commit-upload",
     "files-copy",
     "files-create",
@@ -108,18 +111,32 @@ pub const COMMANDS: &[&str] = &[
     "files-put",
     "files-read-text",
     "files-rename",
+    "files-stage-chunk",
     "files-stat",
     "files-write-text",
+    "footprint-probe",
+    "history-find",
+    "history-index",
     "history-projects",
     "history-read",
     "history-search",
     "history-sessions",
     "history-subagents",
     "history-tail",
+    "history-user-inputs",
     "kill",
     "launch",
+    // 〔SR1a〕链路四条（`dial/link.rs`）：本机常驻后端替 monitor 持有并复用到各远端的 SSH 连接。
+    "link-close",
+    "link-credit",
+    "link-data",
+    "link-open",
     "ping",
+    "plugins-marketplaces",
+    "relay-ensure",
+    "relay-status",
     "resolve",
+    "tasks-list",
 ];
 
 /// 在跑的命令登记表：`id` → 取消句柄。
@@ -153,10 +170,15 @@ where
 {
     tokio::spawn(async move {
         let running: Running = Arc::new(Mutex::new(HashMap::new()));
+        // 〔SR1a〕本连接的链路表：随本读循环一起死 ⇒ monitor 走了，它开的链路一条不留
+        // （`dial::link::Table` 的 `Drop`）。
+        let links = crate::dial::link::Table::new(replies.clone());
         let mut rd = BufReader::new(stdin);
         let mut buf: Vec<u8> = Vec::new();
         // 本行是否已经超限。超限之后**只丢字节、不再往 buf 里塞**（O(1) 内存）。
         let mut overflowed = false;
+        // 〔F9c · 第四波〕超限那一刻从行首抠出来的 `id`（抠不出 ⇒ 空串，见 [`sniff_id`]）。
+        let mut overflow_id = String::new();
         loop {
             let chunk = match rd.fill_buf().await {
                 Ok([]) => break, // 客户端关了写半边：正常寿终
@@ -173,6 +195,11 @@ where
             if !overflowed {
                 if buf.len() + take > MAX_LINE_BYTES {
                     overflowed = true;
+                    // 丢之前先看一眼行首（至多 `ID_SNIFF_BYTES`）：buf 此刻就是这一行的开头；
+                    // buf 若还是空的（一块就越线），行首就是这一块本身。
+                    let head: &[u8] = if buf.is_empty() { &chunk[..take] } else { &buf };
+                    overflow_id =
+                        sniff_id(&head[..head.len().min(ID_SNIFF_BYTES)]).unwrap_or_default();
                     buf.clear();
                     buf.shrink_to_fit();
                 } else {
@@ -188,7 +215,7 @@ where
                 send(
                     &replies,
                     err(
-                        "",
+                        &overflow_id,
                         "line_too_long",
                         &format!("单行超过上限 {MAX_LINE_BYTES} 字节，已整行丢弃"),
                     ),
@@ -196,15 +223,128 @@ where
                 .await;
                 overflowed = false;
             } else {
-                handle_line(&buf, &replies, &running).await;
+                handle_line(&buf, &replies, &running, &links).await;
             }
             buf.clear();
         }
     })
 }
 
+/// 〔F9c · 第四波〕超长行只看行首这么多字节去找 `id`。
+///
+/// 整行已经不进内存（[`MAX_LINE_BYTES`] 头注那条「读的时候就生效」），这里多留的只有这一小段，
+/// 与行长无关。4 KiB 远够：monitor 发号最长 75 字节、且 `id` 是信封的第一个键
+/// （`inbound_client::encode_request` 的字段顺序）；排在它前面的键再长也只是「抠不出 ⇒ 空串」，回到旧行为。
+pub const ID_SNIFF_BYTES: usize = 4 * 1024;
+
+/// 〔F9c · 第四波〕从一行**开头的一段**里尽力抠出信封的 `id`（顶层对象里、值是字符串的那一个）。
+///
+/// 为什么要它：超长行整行丢弃，此前回的 `line_too_long` 带**空** `id` ⇒ 发这一行的调用方等不到
+/// 自己的应答，要熬满它自己的预算才超时，看到的是「超时」而不是真原因（`设计/60 §9c.2`）。
+///
+/// ⚠ 只认**顶层**的 `"id"`：排在前面的键值原样跳过（字符串 / 数 / 嵌套对象与数组都认得），
+/// 嵌套对象里的 `"id"` 不算。段不完整、形状不对、`id` 不是字符串 ⇒ `None`（调用方回空串，即旧行为）。
+/// ⚠ 它不是 JSON 解析器，也不校验这一行别处合不合法 —— 这一行本来就要被丢弃，只借它的 `id` 回话。
+fn sniff_id(head: &[u8]) -> Option<String> {
+    // 结构字节按值写（不写成字符字面量）：本仓有几条按文本扫源码的判据，引号与大括号的字面量会搅乱它们的配平。
+    const QUOTE: u8 = 0x22;
+    const BACKSLASH: u8 = 0x5C;
+    const OPEN_OBJ: u8 = 0x7B;
+    const CLOSE_OBJ: u8 = 0x7D;
+    const OPEN_ARR: u8 = 0x5B;
+    const CLOSE_ARR: u8 = 0x5D;
+    const COMMA: u8 = 0x2C;
+    const COLON: u8 = 0x3A;
+    let at = |k: usize| head.get(k).copied();
+    let ws = |mut i: usize| {
+        while head.get(i).is_some_and(u8::is_ascii_whitespace) {
+            i += 1;
+        }
+        i
+    };
+    // 一个字符串（`i` 指在开头那个引号上）⇒ 回收尾引号之后的位置。
+    let string_end = |i: usize| -> Option<usize> {
+        if at(i) != Some(QUOTE) {
+            return None;
+        }
+        let mut k = i + 1;
+        loop {
+            match at(k)? {
+                BACKSLASH => k += 2,
+                QUOTE => return Some(k + 1),
+                _ => k += 1,
+            }
+        }
+    };
+    // 跳过一个值 ⇒ 回它之后的位置。
+    let value_end = |i: usize| -> Option<usize> {
+        match at(i)? {
+            QUOTE => string_end(i),
+            OPEN_OBJ | OPEN_ARR => {
+                let mut depth = 0usize;
+                let mut k = i;
+                loop {
+                    match at(k)? {
+                        QUOTE => {
+                            k = string_end(k)?;
+                            continue;
+                        }
+                        OPEN_OBJ | OPEN_ARR => depth += 1,
+                        CLOSE_OBJ | CLOSE_ARR => {
+                            depth -= 1;
+                            if depth == 0 {
+                                return Some(k + 1);
+                            }
+                        }
+                        _ => {}
+                    }
+                    k += 1;
+                }
+            }
+            _ => {
+                let mut k = i;
+                while !matches!(at(k)?, COMMA | CLOSE_OBJ | CLOSE_ARR)
+                    && !head[k].is_ascii_whitespace()
+                {
+                    k += 1;
+                }
+                Some(k)
+            }
+        }
+    };
+    let mut i = ws(0);
+    if at(i) != Some(OPEN_OBJ) {
+        return None;
+    }
+    i += 1;
+    loop {
+        i = ws(i);
+        let key_end = string_end(i)?;
+        let key: String = serde_json::from_slice(&head[i..key_end]).ok()?;
+        i = ws(key_end);
+        if at(i) != Some(COLON) {
+            return None;
+        }
+        i = ws(i + 1);
+        if key == "id" {
+            let end = string_end(i)?;
+            return serde_json::from_slice(&head[i..end]).ok();
+        }
+        i = ws(value_end(i)?);
+        if at(i) != Some(COMMA) {
+            return None;
+        }
+        i += 1;
+    }
+}
+
 /// 处理一行。**任何失败都只回一条错误应答，绝不 panic、绝不结束读循环。**
-async fn handle_line(raw: &[u8], replies: &mpsc::Sender<Frame>, running: &Running) {
+async fn handle_line(
+    raw: &[u8],
+    replies: &mpsc::Sender<Frame>,
+    running: &Running,
+    links: &crate::dial::link::Table,
+) {
     if raw.is_empty() {
         return; // 空行（含 CRLF 的裸 \r 之后）静默跳过
     }
@@ -216,7 +356,7 @@ async fn handle_line(raw: &[u8], replies: &mpsc::Sender<Frame>, running: &Runnin
             return;
         }
     };
-    match dispatch(req, replies, running) {
+    match dispatch(req, replies, running, links) {
         Disposition::Done => {}
         Disposition::Reply(f) => send(replies, f).await,
         Disposition::Spawn(req, run) => {
@@ -286,8 +426,23 @@ enum Disposition {
 }
 
 /// 命令表。**非 async —— 见 [`Disposition`]。**
-fn dispatch(req: Request, replies: &mpsc::Sender<Frame>, running: &Running) -> Disposition {
+fn dispatch(
+    req: Request,
+    replies: &mpsc::Sender<Frame>,
+    running: &Running,
+    links: &crate::dial::link::Table,
+) -> Disposition {
     match req.cmd.as_str() {
+        // 〔SR1a〕链路四条：要碰**本连接的链路表**与应答通道 ⇒ 与 `cancel` 同一档（硬臂、就地做完）。
+        // ★ `link-data` **必须就地**（不 `spawn`）：同一条链路的上行块按到达顺序进队，
+        //   交给独立 task 就不再保序。它成功时的应答由上行泵在写进管子之后发（背压）。
+        "link-open" => Disposition::Reply(links.open(&req.id, &req.args)),
+        "link-data" => match links.data(&req.id, &req.args) {
+            Some(f) => Disposition::Reply(f),
+            None => Disposition::Done,
+        },
+        "link-credit" => Disposition::Reply(links.credit(&req.id, &req.args)),
+        "link-close" => Disposition::Reply(links.close(&req.id, &req.args)),
         "cancel" => {
             let target = req
                 .args
@@ -369,7 +524,7 @@ fn dispatch(req: Request, replies: &mpsc::Sender<Frame>, running: &Running) -> D
 /// - [`Run::Blocking`]：**同步阻塞**（起进程 / 扫全库）⇒ 进 `spawn_blocking` 的专用线程池。
 ///   ⚠ 它**开跑之后打不断** —— 这一档不是「修好了取消」，是**停止假装能取消**：
 ///   `cancel` 命中它时回 `not_cancellable`，而不是撒一条 `cancelled` 的谎。
-/// - [`Run::Builtin`]：`dispatch` 里的硬臂（今天只有 `cancel`）。它要 `replies`/`running`，
+/// - [`Run::Builtin`]：`dispatch` 里的硬臂（`cancel` ＋ 〔SR1a〕链路四条）。它要 `replies`/`running`，
 ///   与别的命令签名不同 —— 硬塞进统一签名等于给每条命令都递上「自己发帧 / 碰登记表」的能力，
 ///   而那条性质今天是成立的，不该为了整齐拆掉。**但它仍要在注册表里占一行**，
 ///   否则「镜子 == 注册表」覆盖不到它。
@@ -607,6 +762,79 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // 〔RM1a · 第四波〕**账号层**（层 2）那份凭据文件在**这台机器上**的读写口 —— 账号层自己的状态，
+    //   不是用户文件（判清全文 `调研/第四波记录/RM1a.md §1`）⇒ 写口登记在 `readonly_guard` 第四层，
+    //   **只从这里一扇门进来**。远端账号页配的 key 从此落在会话跑的那台机器上。
+    //   ⚠ 明文只在 `apikey-key-set` 的 `args.key` 里（帧面：长连接入方向；派生 CLI 面：stdin），
+    //     **不进 argv / env / 日志**；两条的应答都只有掩码。
+    //   ⚠ 两条都在阻塞档：同步文件 I/O，开跑之后打不断。
+    //   ⚠ 它们**不起中转**、中转那几条也**不碰凭据**（「账号就账号, 中转就中转」）。
+    CommandSpec {
+        name: "apikey-key-set",
+        doc_anchor: Some("#### `apikey-key-set`"),
+        codes: &["bad_args", "bad_file", "io_failed"],
+        fields: &["account", "baseUrl", "key", "masked", "path"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::accounts::apikey::file_face::answer_set(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "apikey-read",
+        doc_anchor: Some("#### `apikey-read`"),
+        codes: &[],
+        fields: &["configured", "masked", "notice", "path", "problem", "rows"],
+        takes_input: false,
+        run: Run::Blocking(|_r| {
+            crate::accounts::apikey::file_face::answer_read()
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔RM1a · 第四波〕**中转（层 1）**：这台机器上的 `--relay` 进程在不在 · 没有就起一个脱离的。
+    //   远端那台上的会话要走中转，那台上就得有一个；本机那一个由 monitor 监护，monitor 从不对本机发 `relay-ensure`。
+    //   ⚠ 只收端口，**一个凭据 / 账号的名字都不经过这两条**（「账号就账号, 中转就中转」）。
+    //   ⚠ 阻塞档：回环连一次 / 起一个进程，开跑之后打不断。
+    CommandSpec {
+        name: "relay-status",
+        doc_anchor: Some("#### `relay-status`"),
+        codes: &["bad_args"],
+        fields: &["listening", "port"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::relay::answer_status(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "relay-ensure",
+        doc_anchor: Some("#### `relay-ensure`"),
+        codes: &["bad_args", "spawn_failed", "unsupported"],
+        fields: &["listening", "pid", "port", "started"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::relay::answer_ensure(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔RM1a · 第四波〕「足迹」的这台机器那一半：只交**路径事实**（环境 · stat · 有没有某几个字样），
+    //   哪一行属于哪个工具、存在 / 缺失 / 查不动怎么分，**只住 monitor 的 `config_surface`**。只读，阻塞档。
+    CommandSpec {
+        name: "footprint-probe",
+        doc_anchor: Some("#### `footprint-probe`"),
+        codes: &["bad_args", "too_large"],
+        fields: &["env", "hooks", "notices", "stat"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::footprint::answer(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     CommandSpec {
         name: "files-create",
         doc_anchor: Some("#### `files-create`"),
@@ -655,7 +883,8 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "files-delete",
         doc_anchor: Some("#### `files-delete`"),
         codes: &["bad_args", "bad_path", "io_failed", "refused"],
-        fields: &["path", "rel", "root"],
+        // 〔FW5〕`recursive`（入）· `removed`（出）：显式才删整棵树，逐条目过围栏。
+        fields: &["path", "recursive", "rel", "removed", "root"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args)
@@ -666,7 +895,14 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "files-chmod",
         doc_anchor: Some("#### `files-chmod`"),
-        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        // 〔FW5〕`no_unix_mode`：这个平台没有 unix 权限位（target 轴从这一格现推 Windows 那一格）。
+        codes: &[
+            "bad_args",
+            "bad_path",
+            "io_failed",
+            "no_unix_mode",
+            "refused",
+        ],
         fields: &["mode", "path", "rel", "root"],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -760,6 +996,32 @@ pub const REGISTRY: &[CommandSpec] = &[
     //   把它挪进用户目标的**那一下**在这里 —— 用户逐字「现在只允许后端的文件管理部分写文件」。
     //   处理器住 `control/files_commit.rs`（`readonly_guard` 第三层第二个登记的模块），
     //   本文件照旧是那一层唯一的门。阻塞档：同步文件系统 I/O（围栏的 `canonicalize` ＋ 改名）。
+    // ── 〔F9c · 第四波〕存盘装不进一条请求行时：逐块进暂存区 ＋ 读回拼起来原地覆盖 ──────────
+    //   同住 `control/files_commit.rs`（第三层第二个模块），阻塞档理由同上一条。
+    CommandSpec {
+        name: "files-stage-chunk",
+        doc_anchor: Some("#### `files-stage-chunk`"),
+        codes: &["bad_args", "io_failed", "refused"],
+        fields: &["bytes", "content", "key", "seq"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::files_commit::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "files-commit-text",
+        doc_anchor: Some("#### `files-commit-text`"),
+        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        fields: &["bytes", "chunks", "key", "path", "rel", "root"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::files_commit::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     CommandSpec {
         name: "files-commit-upload",
         doc_anchor: Some("#### `files-commit-upload`"),
@@ -833,6 +1095,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             "age_secs",
             "browse_watch_cap",
             "browse_watches",
+            "cold_first_build_secs",
             "entries",
             "index_missing",
             "resident_bytes",
@@ -1007,6 +1270,45 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // 〔SR1a · 2026-09-24〕骨架索引与大纲清单上帧面（此前它们在远端走逐次拨号 —— `STILL_DIALED` 那两行）。
+    // 同族同档（同步文件 I/O ⇒ 阻塞档）、同一个只读宿主（`read_face::answer`）。
+    // 〔SR1a × SE2〕会话内查找上帧面（此前走逐次拨号 —— `STILL_DIALED` 那一行）。同族同档。
+    CommandSpec {
+        name: "history-find",
+        doc_anchor: Some("#### `history-find`"),
+        codes: &["bad_args", "failed", "too_large"],
+        fields: &["include_tools", "limit", "lines", "path", "query"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "history-index",
+        doc_anchor: Some("#### `history-index`"),
+        codes: &["bad_args", "failed", "too_large"],
+        fields: &["lines", "offset", "path", "until"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "history-user-inputs",
+        doc_anchor: Some("#### `history-user-inputs`"),
+        codes: &["bad_args", "failed", "too_large"],
+        fields: &["from", "lines", "path"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     CommandSpec {
         name: "history-tail",
         doc_anchor: Some("#### `history-tail`"),
@@ -1039,6 +1341,39 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: false,
         run: Run::Blocking(|r| {
             crate::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // ── 〔RM1b · 第四波〕功能侧只读查询 —— 远端会话的任务列表（`parity_ledger` `session.tasks`）──
+    //
+    // 🔴 此前只有 monitor 直读**本机** `tasks/<sid>/` 那一条路，远端 tab 永远拿不到任务。
+    //   本机后端与远端后端是同一个二进制 ⇒ 读法搬到这里，monitor 按 origin 问（本机也走这里）。
+    // ⚠ 宿主是 `feature_face`，**不是** `read_face`：monitor 侧有一条两向判据数的正是
+    //   「交给 `read_face::answer` 的 == `C1` 那八条」，本族不在其中（理由全文在 `feature_face` 头注）。
+    // ⚠ 阻塞档：读一个目录 ＋ 每个任务文件各一次。`cancel` 命中回 `not_cancellable`（不撒谎）。
+    // 〔RM1b · 第四波〕同族第二条：插件市场只读枚举（`parity_ledger` `plugins.marketplaces`）。
+    //   从 monitor `plugins.rs`（`P8a`）原样搬来，三条出口不变；应答恰一行 = 整份 survey。
+    CommandSpec {
+        name: "plugins-marketplaces",
+        doc_anchor: Some("#### `plugins-marketplaces`"),
+        codes: &["failed", "too_large"],
+        fields: &["lines"],
+        takes_input: false,
+        run: Run::Blocking(|r| {
+            crate::feature_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "tasks-list",
+        doc_anchor: Some("#### `tasks-list`"),
+        codes: &["bad_args", "failed", "too_large"],
+        fields: &["lines", "sid"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::feature_face::answer(&r.cmd, &r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -1081,6 +1416,47 @@ pub const REGISTRY: &[CommandSpec] = &[
         ],
         takes_input: true,
         run: Run::Blocking(|r| crate::control::launch::launch_for_inbound(&r.args).map(Some)),
+    },
+    // 〔SR1a · 2026-09-24〕**链路四条** —— 用户裁「改成单一常驻后端」：本机只常驻一个后端，
+    // 到各远端的 SSH 连接由它持有、按拨号身份复用（`dial/pool.rs`）；monitor 经这条流开「链路」，
+    // 链路上的字节与 C2 那个 `--dial` 子进程的 stdout 逐字节同形（`dial/mod.rs` 头注）。
+    // 四条都是 `Run::Builtin`：要碰本连接的链路表 ⇒ **只在帧面**，CLI 面不派生（一次性进程没有「连接」可言）。
+    CommandSpec {
+        name: "link-open",
+        doc_anchor: Some("#### `link-open`"),
+        codes: &[
+            "invalid_args",
+            "unsupported_use",
+            "duplicate_link",
+            "too_many_links",
+        ],
+        fields: &["dial", "link", "window"],
+        takes_input: true,
+        run: Run::Builtin,
+    },
+    CommandSpec {
+        name: "link-data",
+        doc_anchor: Some("#### `link-data`"),
+        codes: &["invalid_args", "no_such_link", "link_busy", "link_closed"],
+        fields: &["data", "link"],
+        takes_input: true,
+        run: Run::Builtin,
+    },
+    CommandSpec {
+        name: "link-credit",
+        doc_anchor: Some("#### `link-credit`"),
+        codes: &["invalid_args", "no_such_link"],
+        fields: &["bytes", "link"],
+        takes_input: true,
+        run: Run::Builtin,
+    },
+    CommandSpec {
+        name: "link-close",
+        doc_anchor: Some("#### `link-close`"),
+        codes: &["invalid_args"],
+        fields: &["link"],
+        takes_input: true,
+        run: Run::Builtin,
     },
     CommandSpec {
         name: "ping",

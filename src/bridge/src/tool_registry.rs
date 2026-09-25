@@ -612,7 +612,7 @@ pub const TOOLS: &[ToolSpec] = &[
                 // **`Either`**——这一条我改了两次，第二次也不对（T04 审计重要 2）。
                 //
                 // 第一版标 `Client`：错，`accounts.rs` 的账号库列举全是
-                // `list_remote_accounts(origin)` / `list_remote_session_accounts(origin)`，走 ssh exec。
+                // `list_remote_accounts(origin)` 与「某会话属哪个账号」那一条（〔C4a〕今天经通道 `accounts-sessions`），走 ssh exec。
                 // 第二版改 `Remote`：也不对——本机 `CLAUDE_CONFIG_DIR` 会**指进这个目录**
                 // （这台机器上就是 `~/.claude-alt/z`），`hooks_diag::claude_config_dir` 与
                 // `config_surface` 自己都在读它，`ConfigSurfaceReport.claude_config_dir` 更是
@@ -690,9 +690,9 @@ pub const TOOLS: &[ToolSpec] = &[
                 // 落点带 build_id（`local_backend::local_extract_name`）—— 那不是命名品味：
                 // 远端自部署落的也是这个目录，两边对同一个文件名有不同期望就会互判 stale、
                 // 无限重装。glob 只在末段、只有一个 `*`（`resolve_local_home` 的两条校验）。
-                destination: ToolDestination::LocalHomeRelative(".cc-monitor/bin/cc-monitor-local-*"),
+                destination: ToolDestination::LocalHomeRelative(".cc-monitor/bin/cc-monitor-backend-*"),
                 touches: &[TouchedFile {
-                    path: "~/.cc-monitor/bin/cc-monitor-local-*",
+                    path: "~/.cc-monitor/bin/cc-monitor-backend-*",
                     host: HostScope::Client,
                     note: Some(
                         "本机自释放出来的那份后端，文件名带 build_id（`local_extract_name`）——\

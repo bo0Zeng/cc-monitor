@@ -453,6 +453,39 @@ pub enum Frame {
     /// U6b-1：某个在跑的命令**已被取消**。取消是一条普通命令（`cmd:"cancel"`）、不是带外信号——
     /// 带外要么另开通道要么发明转义序列，两者都要新的解析纪律，而取消排队等一下并无妨。
     Cancelled { id: String },
+
+    /// 〔SR1a · 2026-09-24 · `设计/05 §13.6 ③`〕**这台机器上的账号清单变了**（账号 manifest 被改写）。
+    ///
+    /// 无载荷：客户端收到就重拉一次账号清单（`accounts-list`），不在帧里带清单本身 ——
+    /// 清单的唯一出口仍是那条查询，别让同一份数据有两个出口。watcher 盯 manifest 所在目录，
+    /// 一批文件事件里 manifest 动了几次都只发一帧。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    AccountsChanged,
+
+    /// 〔SR1a · 2026-09-24〕**一条链路的下行字节**（`dial/link.rs`）。
+    ///
+    /// 用户裁「改成单一常驻后端」：本机只常驻一个后端，到各远端的 SSH 连接由它持有并复用；
+    /// monitor 经**这条已有的流**向它开「链路」（`link-open`），链路上的字节就是 C2 那个
+    /// `--dial` 子进程原来写在自己 stdout 上的那一串（阶段行 → 一行 ack → 按用法的字节），
+    /// 一个字节的形状都没改 —— 变的只是载体：子进程的管子 → 本帧。
+    ///
+    /// `data` 是 base64（标准字母表、带补位，[`b64_encode`]）：链路搬的是**任意字节**，
+    /// 而一帧是一行 UTF-8 JSON。解码后 ≤ `dial::link::LINK_CHUNK_BYTES`。
+    ///
+    /// 🔴 **不丢**：本帧走**应答那条独立通道**（阻塞 `send().await`），不走出方向那条会丢帧的大通道 ——
+    /// 丢一块下行字节就是这条链路上的数据坏了，别处没有第二份。流控是逐链路的信用（`link-credit`），
+    /// 由 `dial/link.rs` 的下行泵执行。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    LinkData { link: String, data: String },
+
+    /// 〔SR1a〕**一条链路不会再有字节了**；后端已经忘掉这个 `link` id。
+    ///
+    /// `error` 省略 = 正常收尾（用法那一段自己结束了：远端断了 / capture 收全了 / 转发收工了）；
+    /// 带上 = 非正常收尾（下行泵写不出去 · 连接表被拆），那句人话原样给调用方。
+    /// 拨不通**不**走这里 —— 那是链路字节里那一行失败的 ack（与 C2 同形），本帧随后照常到。
+    LinkEnd {
+        link: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
 }
 
 impl Frame {
@@ -501,6 +534,12 @@ impl Frame {
             //   按不可恢复算是保守的那一侧。
             Frame::Reply { .. } => false,
             Frame::Cancelled { .. } => false,
+            // 〔SR1a〕一次状态变化的通知，没有「下一次必然重发」⇒ 保守（丢了客户端就一直拿着旧清单）。
+            Frame::AccountsChanged => false,
+            // 〔SR1a〕链路字节：丢一块 = 那条链路上的数据坏了，别处没有第二份。
+            // 与上面两个同理，它们**不走**会丢帧的那条通道（走应答通道、阻塞发送）。
+            Frame::LinkData { .. } => false,
+            Frame::LinkEnd { .. } => false,
         }
     }
 
@@ -520,9 +559,69 @@ impl Frame {
             Frame::Overflow { .. } => ("overflow", None),
             Frame::Reply { id, .. } => ("reply", Some(id.clone())),
             Frame::Cancelled { id } => ("cancelled", Some(id.clone())),
+            Frame::AccountsChanged => ("accounts_changed", None),
+            Frame::LinkData { link, .. } => ("link_data", Some(link.clone())),
+            Frame::LinkEnd { link, .. } => ("link_end", Some(link.clone())),
         };
         LostFrame { kind, subject }
     }
+}
+
+/// 〔SR1a〕base64 的字母表（RFC 4648 §4，标准字母表、带 `=` 补位）。
+const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/// 〔SR1a〕链路字节进 JSON 串的编码（`link_data` 帧 / `link-data` 命令的 `data`）。
+///
+/// ⚠ **为什么手写而不加一条依赖**：本 crate 每加一条依赖都要过 `readonly_guard` 的依赖签字，
+/// 而这一段是 20 行、无状态、有 RFC 4648 §10 的七条标准向量可对拍
+/// （`wire_tests::b64_matches_the_rfc_4648_test_vectors` 与 monitor 侧那一份的判据
+/// **各拿同一组 RFC 向量**核自己 —— 异源是 RFC，不是对面的实现）。
+pub fn b64_encode(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b = [
+            chunk[0],
+            chunk.get(1).copied().unwrap_or(0),
+            chunk.get(2).copied().unwrap_or(0),
+        ];
+        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(char::from(B64[((n >> (18 - 6 * i)) & 63) as usize]));
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
+}
+
+/// [`b64_encode`] 的逆。**严格**：长度不是 4 的倍数、字母表外的字符、补位不在末尾 ⇒ `Err`
+/// （坏的就是坏的，不猜）。
+pub fn b64_decode(text: &str) -> Result<Vec<u8>, String> {
+    let s = text.as_bytes();
+    if s.len() % 4 != 0 {
+        return Err(format!("base64 长度 {} 不是 4 的倍数", s.len()));
+    }
+    let val = |c: u8| -> Option<u32> { B64.iter().position(|&x| x == c).map(|p| p as u32) };
+    let mut out = Vec::with_capacity(s.len() / 4 * 3);
+    let quads = s.len() / 4;
+    for (qi, q) in s.chunks(4).enumerate() {
+        let pad = q.iter().rev().take_while(|&&c| c == b'=').count();
+        if pad > 2 || (pad > 0 && qi + 1 != quads) {
+            return Err("base64 补位不在末尾".to_string());
+        }
+        let mut n: u32 = 0;
+        for &c in &q[..4 - pad] {
+            let v =
+                val(c).ok_or_else(|| format!("base64 里有字母表外的字符 {:?}", char::from(c)))?;
+            n = (n << 6) | v;
+        }
+        n <<= 6 * pad as u32;
+        let bytes = [(n >> 16) as u8, (n >> 8) as u8, n as u8];
+        out.extend_from_slice(&bytes[..3 - pad]);
+    }
+    Ok(out)
 }
 
 /// U6b-1：**入方向**请求信封。只 `Deserialize` —— backend 是读的那一方。

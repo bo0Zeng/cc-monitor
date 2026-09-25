@@ -32,6 +32,7 @@ import { honestyLine } from "../../src/panorama/diagram-honesty";
 import { CLIP_HEAD } from "../../src/panorama/agent-clip";
 import { PanoramaView } from "../../src/views/panorama";
 import * as fx from "../panorama/diagram-fixtures";
+import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
@@ -71,7 +72,7 @@ describe("PN1b 选图（界面）", () => {
     vi.mocked(api.status).mockResolvedValue({ symbols: 0, stale: false, indexedAt: 1_790_000_000 });
     vi.mocked(api.node).mockImplementation(async (_r, id) => nodeView(id));
     vi.mocked(api.symbolsInFile).mockResolvedValue([]);
-    v = new PanoramaView(() => ({ cwd: "/repo", origin: null }));
+    v = new PanoramaView(() => ({ cwd: "/repo", origin: LOCAL_ORIGIN }));
     await v.open();
     await flush();
   });

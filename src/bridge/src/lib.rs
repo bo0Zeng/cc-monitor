@@ -41,7 +41,8 @@ mod codex_record; // Phase 2 · F2a：Codex rollout 记录防御式分类器（k
 mod config;
 mod config_surface; // T02：配置面审计视图（遍历 tool_registry，只读、不轮询）
 mod data_paths;
-// U-CC1：数据面漂移记账 —— 把「CC 变了」从不可观测变成看一眼就知道。只记账，零行为变化。
+mod footprint_remote; // 〔RM1a〕「足迹」的远端那一栏：问那台后端要路径事实（footprint-probe），判定走同一份 build_rows
+                      // U-CC1：数据面漂移记账 —— 把「CC 变了」从不可观测变成看一眼就知道。只记账，零行为变化。
 mod drift_ledger;
 mod event_replay;
 mod fenced_block; // T04 第二步：围栏块配对判定（本机+远端 profile 共用最强那一档）
@@ -57,6 +58,7 @@ mod history;
 mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生成待贴文本（绝不写入）
                 // U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
                 // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
+mod apikey_remote; // 〔RM1a〕那份文件**按机器**读写：本机进 creds_store，远端交那台机器的后端
 mod backend; // P4a（§1.4b）：monitor 侧的后端边界 —— 读/控制两条能力线，宿主无关
 mod creds_store; // K-H2a：第三方 API key 那份文件的**写侧**（monitor 独占）+ 读侧只回掩码
 #[cfg(test)]
@@ -79,6 +81,7 @@ mod profile_installer;
 mod pubkey;
 mod remote_branch; // G6：远端分叉（经 ssh 调 backend `--fork-session`）——写面故与只读的 remote_history 分家
 mod remote_history;
+mod remote_relay; // 〔RM1a〕中转（层 1）按机器：本机由 monitor 监护，远端问 / 交那台机器的后端
 mod remote_write_registry; // devbench F10c：远端写面登记（接三张表各自划出去、然后没人接的那道缝）
 mod search;
 mod session_map;
@@ -107,8 +110,10 @@ mod ssh_source;
 mod ssh_link;
 // 〔C2〕界面进程里最后一份 russh 拨号 —— 只剩 SFTP（`F7c`）一个用户，换走即删。
 mod inproc_dial;
-// 〔C2〕拨号代理的宿主：定位本机后端 · 配置 → 请求 · 起 `--dial` · 管子交给 `ssh_link`。
+// 〔C2 → SR1a〕拨号的宿主：配置 → 请求 · 经本机常驻后端开链路 · 链路交给 `ssh_link`。
 mod dial_host;
+// 〔SR1a〕链路的 monitor 这一侧：在本机后端那条流上多路复用到各远端的字节流（`link-*`）。
+mod link_mux;
 // T01：结构性扫描的可复用形式（枚举+逐个断言+计数自检+钉死逃生口）。
 // **只在测试期编译**——它的消费者全在 `#[cfg(test)]` 里（`sftp.rs` 的 tmux 目标守卫、
 // `tool_registry.rs` 的字段纪律）。这是测试支撑模块，不是被闲置的生产代码；
@@ -188,6 +193,8 @@ mod subagent;
 mod session_skeleton;
 // 〔SE1 · `设计/10 §2.2b ⑥`〕大纲的数据源：问后端要「你说过的话」清单。
 mod session_outline;
+// 〔SE2 · `设计/10 §6 步 6`〕会话内查找（Ctrl+F）：问后端要这一份会话里的命中。
+mod session_find;
 // 〔C2 · U3 第 3 件〕远端流断线重连后，旁路快照从续点接着拉（不再从第 0 行整份重拉）。
 mod snapshot_resume;
 mod tasks;
@@ -1309,6 +1316,7 @@ pub fn run() {
             // K-H2b `KH2B7`：界面问「这几个**本机**账号走不走 apikey 端点改写」。
             // 只答本机不是欠账 —— 中转是每台机器自己的进程，本机这台答不了远端那台。
             apikey_routing_for,
+            relay_ensure,
             // 〔AL1 · 2026-09-24〕`设计/71`：别名只有一类（名字 ＋ 一组 ccm 参数），命令面两跳 ——
             // 渲染是纯的（预览 / 复制都只调它），写入是唯一的副作用；外加一个读回口。
             aliases_render,
@@ -1386,6 +1394,7 @@ pub fn run() {
             // 〔U3b〕接上骨架的会话，重放缓冲只留尾巴（`设计/10` 步 8）
             session_skeleton::replay_keep_tail_only,
             session_outline::list_user_inputs,
+            session_find::find_in_session,
             remote_history::list_remote_history_projects,
             // F10：装 / 卸远端 rc 里的别名块（SFTP 写 profile，SS-H）。〔MC1〕从前叫「装/卸 ccm 助手」，
             // 推 `ccm` 入口那一半并进了下面的 `deploy_remote_backend`（`设计/71 §13.3`）。
@@ -1414,16 +1423,15 @@ pub fn run() {
             // 台一律回 available:false，前端降级隐藏账号功能而不是弹错。
             accounts::list_remote_accounts,
             local_accounts::list_local_accounts,
-            local_accounts::list_local_session_accounts, // E79：本机版「某会话属于哪个账号」
+            // 〔C4a · 第四波〕「某会话属于哪个账号」那两条（本机 E79 · 远端 A2）退役：
+            //   本机与远端同一条路 —— 前端经通道 `chan_call` 说 `accounts-sessions`。
             // 〔`A3` 第二波〕`acct-iso.check` / `acct-iso.shellinit` 的本机对侧（问本机后端）。
             local_accounts::check_local_acct_iso,
             local_accounts::local_acct_iso_shellinit,
-            accounts::list_remote_session_accounts,
             accounts::check_account_trust,
             launch::launch_remote_terminal,
-            // 〔F7c 收尾 09-24〕池子的 Tauri 命令只剩 `sftp_copy` 一条（秤 F3 / 门禁 `f3-copy` 那一格还在量它的核心）；
-            //   其余十二条〔散文墓碑〕随老面板与窗口改走通道一起删了（`设计/60 §13b`）。
-            sftp_pool::sftp_copy, // 步 23b：零流量复制（`copy-data`），退不了路要出声
+            // 〔F7c 收尾 09-24〕池子那十二条 Tauri 命令〔散文墓碑〕随老面板与窗口改走通道一起删了（`设计/60 §13b`）；
+            //   〔第四波 S4〕最后一条（零流量复制）随门禁那一格退役一起删了 ⇒ 池子零条 Tauri 命令。
             // 🔴 `24e` 第二刀（`设计/60 §4 戊` / `§5` 第三段）：**原生文件管理窗口的入口。**
             //    它不是「又一条 sftp 命令」—— 它开的是那个 egui 窗口（同进程、次线程，
             //    进程形态见 `filewin/mod.rs` 头注）。先真的列一趟目录，列不出来就带原文报错，
@@ -1475,7 +1483,9 @@ pub fn run() {
             port_forward::start_forward,
             port_forward::stop_forward,
             port_forward::list_forwards,
-            // issue #6: 历史全文搜索
+            // 〔C4a · 第四波〕**主界面说 `call` 的那一跳**（`设计/05 §3.3`）：webview ⇒ 通道 ⇒ 注入的后端句柄。
+            chan::webview::chan_call,
+            // issue #6: 历史全文搜索（〔C4a〕只剩本机索引；远端那半前端经通道说 `history-search`）
             search::search_history,
             search::get_search_index_status,
             search::rebuild_search_index,
@@ -1762,9 +1772,15 @@ pub(crate) fn batch_to_payloads(
 /// 每一次都新增前端日志 / 崩溃报告 / 截图 / 录屏四个出口。
 /// ⇒ 返回类型 [`creds_store::ApikeyCredentialsStatus`] **在类型上就装不下明文**，
 /// 由 `the_status_type_cannot_carry_the_plaintext` 钉住。
+///
+/// 〔RM1a · 第四波〕**收 `origin`**：本机读 monitor 自己那一份（原样），远端问那台机器的后端
+/// （`apikey-read`）—— 远端账号页显的从此是**那台机器上**那份文件的状态，不再是本机的。
+/// 回的仍是同一个**装不下明文**的类型。
 #[tauri::command]
-fn read_apikey_credentials_status() -> Result<creds_store::ApikeyCredentialsStatus, String> {
-    creds_store::read_status()
+async fn read_apikey_credentials_status(
+    origin: origin::Origin,
+) -> Result<creds_store::ApikeyCredentialsStatus, String> {
+    apikey_remote::status_on(&origin).await
 }
 
 /// `K-H2b` `KH2B7`：界面问「**这几个本机账号在 apikey 表里有没有行、本机中转在不在跑**」。
@@ -1807,17 +1823,33 @@ struct ApikeyRouting {
 /// **第二个**生产消费方（第一个是起会话那一侧的 `history::relay_prefix_for_launch`），
 /// 两处走同一条缝、各有一条行为判据。直接在这里调那两个函数的写法只能靠「文本在不在」来钉，
 /// 而那一形 `D5` 已经打穿了 —— 整段理由住 `history::InjectFactSources` 的头注。
+///
+/// # 〔RM1a · 第四波〕**收 `origin`**：两件事都问**那台机器**
+///
+/// 上面「只答本机」那段理由的前提是「本机这一侧在结构上答不了远端那台」—— 今天远端那台的后端
+/// 自己答得了：表里有哪几行（账号层，`apikey-read`）· 那个口上有没有人在听（中转，`relay-status`）。
+/// 两件事**各问各的**（`apikey_remote::rows_on` / `remote_relay::running_on`，两个模块互不引用），
+/// 只在这里拼成一份给界面。本机那一臂两件事都照旧走 [`history::inject_facts`] 那条缝。
+/// ⚠ 远端那一格 `running` 的射程比本机**宽**：「口上有人在听」，不是「我们起过它、没停过」。
 #[tauri::command]
-fn apikey_routing_for(config_dirs: Vec<String>) -> ApikeyRouting {
-    let facts = history::inject_facts();
-    ApikeyRouting {
-        routed: history::apikey_routed_subset(
-            &config_dirs,
-            &(facts.rows)(),
-            history::launch_agent_id(),
-        ),
-        running: (facts.running)(),
-    }
+async fn apikey_routing_for(
+    origin: origin::Origin,
+    config_dirs: Vec<String>,
+) -> Result<ApikeyRouting, String> {
+    let rows = apikey_remote::rows_on(&origin).await?;
+    let running = remote_relay::running_on(&origin).await?;
+    Ok(ApikeyRouting {
+        routed: history::apikey_routed_subset(&config_dirs, &rows, history::launch_agent_id()),
+        running,
+    })
+}
+
+/// 〔RM1a · 第四波〕让**那台远端机器**上有一个中转（层 1）在跑：口上没人听就由那台的后端起一个脱离的
+/// `--relay`（帧面 `relay-ensure`）。**本机拒** —— 本机那一个由 monitor 监护，不许再起第二个去抢口。
+/// ⚠ 它今天**没有自动触发点**（远端链路握手完成 / 起远端会话那两处都不在本拍写区），理由住 `remote_relay` 头注。
+#[tauri::command]
+async fn relay_ensure(origin: origin::Origin) -> Result<remote_relay::RelayEnsured, String> {
+    remote_relay::ensure_on(&origin).await
 }
 
 /// `K-H2a` `KS10`：从界面配一把 key。
@@ -1851,9 +1883,22 @@ fn apikey_routing_for(config_dirs: Vec<String>) -> ApikeyRouting {
 /// ⚠ 〔`K-R20` 订正 09-03〕原先点的是
 /// `the_ui_never_derives_the_account_id_itself`〔散文墓碑〕，**那个名字全仓零定义**，
 /// 而这句话是当现状在说。
+///
+/// # 〔RM1a · 第四波〕**收 `origin`**：key 落在会话跑的那台机器上
+///
+/// 本机那一臂只进 `creds_store`（原样）；远端那一臂由 monitor 推出账号 id、交**那台机器的后端**写
+/// （帧面 `apikey-key-set`，后端账号域那一份是那台机器上唯一的写者）。分派住 `apikey_remote::write_key_on`。
+/// 明文在本函数体里仍然**只被往下传一次**（`PLAINTEXT_HOPS` 那一行跟着改了住址）。
 #[tauri::command]
-fn write_apikey_credentials_key(key: String, config_dir: String) -> Result<(), String> {
-    creds_store::write_key(&config_dir, &key)
+async fn write_apikey_credentials_key(
+    origin: origin::Origin,
+    key: String,
+    config_dir: String,
+    // 〔第四波 ST2 · `设计/70 §4.4`〕加账号表单 apikey 那一支的 Base URL。缺席 = 用默认上游（不碰那一格）。
+    // 〔RM1a〕它与 key 一起按 origin 走：本机进 `creds_store`，远端交那台机器的后端（`apikey-key-set` 的 `baseUrl`）。
+    base_url: Option<String>,
+) -> Result<(), String> {
+    apikey_remote::write_key_on(&origin, &config_dir, key, base_url).await
 }
 
 /// 〔AL1 · 2026-09-24〕`设计/71 §12.6` 第①跳：**纯** —— 清单 → 代码。一个字节都不写。

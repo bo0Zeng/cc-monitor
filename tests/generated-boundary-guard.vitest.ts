@@ -114,7 +114,7 @@ describe("C01 边界生成物", () => {
   it("派生 ts_rs::TS 的 Rust 源文件份数被钉住（自动发现的范围自检）", () => {
     // 这一条不是为了钉住某个数字，是为了让「新文件加了派生」这件事**红一次**
     // ——范围由 `tsDerivingSources()` 自动发现（不会漏），但**扩大范围要被看见**。
-    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(34); // **〔C2〕`ssh_link.rs` +1**（`ConnectStage` 从 `ssh_source.rs` 搬过去；`ssh_source.rs` 自己还派生别的几个，照旧在列）； **〔SE1〕`session_outline.rs` +1**（`UserInputsResult` / `UserInputEntry`）； **〔`设计/10` 骨架 · 子步 3〕`session_skeleton.rs` +1**（`SessionIndexResult`）； **〔步 12 · 09-20〕`origin.rs` +1**（`Origin` —— 「这一趟问的是哪台机器」的唯一类型；生成物 `Origin.ts` ＝ `null | string`，与今天 TS 侧逐字等价 ⇒ 零协议变更）；**`设计/50` −2（`usage.rs` 与 `account_usage.rs` 整删：`UsageTotals`/`SessionUsageRow`/`UsageBucket` 与 `AccountUsageProbeResult` 四个生成物同拍出列）** // G6 tmux.rs +1；E79 accounts.rs +1；**P8a plugins.rs +1**；**PS1 cc_bus_deploy.rs +1**；**K-R49 account_aliases.rs +1**；**K-R65 tool_registry.rs +1**（`EnvTier` 上线 ⇒ 那一页按档的**值**分档，不再靠措辞猜）
+    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(34); // **〔SE2〕`session_find.rs` +1**（`FindResult` / `FindHit`）； **〔第四波 S4〕`sftp_pool.rs` −1**（`TransferProgress` 随池子最后那条命令删了，那份文件从此不派生任何 TS 类型）； **〔C2〕`ssh_link.rs` +1**（`ConnectStage` 从 `ssh_source.rs` 搬过去；`ssh_source.rs` 自己还派生别的几个，照旧在列）； **〔SE1〕`session_outline.rs` +1**（`UserInputsResult` / `UserInputEntry`）； **〔`设计/10` 骨架 · 子步 3〕`session_skeleton.rs` +1**（`SessionIndexResult`）； **〔步 12 · 09-20〕`origin.rs` +1**（`Origin` —— 「这一趟问的是哪台机器」的唯一类型；生成物 `Origin.ts` ＝ `null | string`，与今天 TS 侧逐字等价 ⇒ 零协议变更）；**`设计/50` −2（`usage.rs` 与 `account_usage.rs` 整删：`UsageTotals`/`SessionUsageRow`/`UsageBucket` 与 `AccountUsageProbeResult` 四个生成物同拍出列）** // G6 tmux.rs +1；E79 accounts.rs +1；**P8a plugins.rs +1**；**PS1 cc_bus_deploy.rs +1**；**K-R49 account_aliases.rs +1**；**K-R65 tool_registry.rs +1**（`EnvTier` 上线 ⇒ 那一页按档的**值**分档，不再靠措辞猜）
   });
 
   it("生成目录里只有生成物，且每个都带「不许手改」标记", () => {
@@ -160,6 +160,8 @@ describe("C01 边界生成物", () => {
       "ConfigSurfaceReport.ts", //    C04d 批2
       "ConnTestResult.ts", // C04d 批5c
       "ConnectStage.ts", // C04d 批5c（**让 describeStage 的 `never` 兜底真正对 Rust 有牙**）
+      // 〔第四波 ST2〕数据位置那一格「真相 / 缓存」（`INVARIANTS §2.1`，用户 09-24 裁提前做）。
+      "DataClass.ts",
       "DataPathInfo.ts", //           C01
       "DataPathsResponse.ts", //      C01
       "DiagnosticsConfig.ts", // C04d 批4
@@ -169,6 +171,8 @@ describe("C01 边界生成物", () => {
       "EntryMetadata.ts", // C04d 批6c
       // K-R65：环境清单那四档（app 装的 / 该自带而没装口 / 你自己装我提示 / 只查）。
       "EnvTier.ts",
+      "FindHit.ts", //                SE2：会话内查找的一条命中（后端口径、monitor 搬运）
+      "FindResult.ts", //             SE2：会话内查找的回包
       "ForkedFrom.ts", //             C04c
       "ForwardStatus.ts", //          C04d 批3（`connCount: u64` 按累计连接数量纲论证）
       "FrontendReadyPayload.ts", //   C02（方向相反的那个：TS → Rust，带 Deserialize）
@@ -209,8 +213,8 @@ describe("C01 边界生成物", () => {
       "RestartHint.ts", // C04d 批4（只有 unit variant 的外部标记枚举 → 字面量联合）
       "SearchIndexStatus.ts", // C04d 批6c
       "SearchResponse.ts", // C04d 批6c
-      "SessionAccount.ts",
-      "SessionAccountsResult.ts",
+      // 〔C4a · 第四波〕"SessionAccount.ts" / "SessionAccountsResult.ts" 走了：它们的 Rust 源（`accounts.rs` 那两个类型）
+      //   随「会话 ↔ 账号」改走通道一起删了，逐行解释与它的类型只住 `src/accounts.ts`（`parseSessionAccountLines`）。
       "SessionActivityPayload.ts", // C02
       "SessionEndedPayload.ts", //    C02
       "SessionHits.ts", // C04d 批6c
@@ -226,7 +230,7 @@ describe("C01 边界生成物", () => {
       "TaskEntry.ts", //              C02
       "TasksUpdatePayload.ts", //     C02
       "TmuxSession.ts",
-      "TransferProgress.ts", //       C03
+      // 〔第四波 S4〕"TransferProgress.ts" 走了（它的 Rust 源随池子最后那条命令一起删了）。
       "Usage.ts", //                  C04c（messages.rs 的 token 计数，**不是** usage.rs 的 UsageTotals）
       "UserInputEntry.ts", //         SE1：大纲一行（后端判定、monitor 搬运）
       "UserInputsResult.ts", //       SE1：大纲清单的回包
@@ -365,7 +369,7 @@ describe("C01 边界生成物", () => {
     // ——对面那份二进制自报的构建身份（`--ccm-probe` 的 `build=` 行）。同一条理由：
     // **缺席与 `null` 语义不同** —— 缺席 = 那份后端是 `p2f-build-stamp` 之前的旧版、
     // 它压根不吐这一行；写成 `| null` 会把「它没说」与「它说了个空」混成一格。
-    expect(checked, `期望恰好 13 处 skip_serializing_if，实得 ${checked}`).toBe(16); // 〔SE1〕+2（`UserInputsResult.reason` / `.failure`：缺席 = 清单可用）； 〔`设计/10` 骨架 · 子步 3〕+1（`SessionIndexResult.reason`：缺席 = 索引可用）
+    expect(checked, `期望恰好 13 处 skip_serializing_if，实得 ${checked}`).toBe(17); // 〔SE2〕+1（`FindResult.reason`：缺席 = 查得了）； 〔SE1〕+2（`UserInputsResult.reason` / `.failure`：缺席 = 清单可用）； 〔`设计/10` 骨架 · 子步 3〕+1（`SessionIndexResult.reason`：缺席 = 索引可用）
   });
 
   it("每一个 u64/i64 字段都配了 ts(type = …)——C03 的大整数策略，打在源上", () => {
@@ -445,7 +449,7 @@ describe("C01 边界生成物", () => {
     //    （`UsageTotals` 的 `input`/`cache_creation`/`cache_read`/`output`）。
     //    ⚠ **这个数变小不是放宽**：它是「有多少个大整数字段被 `ts(type=…)` 策略盖住」，
     //    人群小了是因为被盖的对象少了，策略本身一个字没松。
-    expect(checked, `期望恰好 20 个大整数字段，实得 ${checked}`).toBe(23); // 〔F7c 收尾 09-24〕−1（`SftpEntry.size` 随那个类型删了）； 〔SE1〕+2（`UserInputsResult.from` / `.end`：字节偏移）； 〔`设计/10` 骨架 · 子步 3〕+2（`SessionIndexResult.from` / `.end`：字节偏移）
+    expect(checked, `期望恰好 22 个大整数字段，实得 ${checked}`).toBe(22); // 〔SE2〕+1（`FindResult.total`：命中条数）； 〔第四波 S4〕−2（`TransferProgress.transferred` / `.total` 随那个类型删了）； 〔F7c 收尾 09-24〕−1（`SftpEntry.size` 随那个类型删了）； 〔SE1〕+2（`UserInputsResult.from` / `.end`：字节偏移）； 〔`设计/10` 骨架 · 子步 3〕+2（`SessionIndexResult.from` / `.end`：字节偏移）
   });
 
   it("`Option<大整数>` 配 ts(type) 时不许丢掉 `| null`（除非同时有 ts(optional)）", () => {
@@ -536,7 +540,7 @@ describe("C01 边界生成物", () => {
     );
   });
 
-  it("直接 import invoke 的生产文件恰好 29 个（主计划 §0.1 成功标准 4 的度量）", () => {
+  it("直接 import invoke 的生产文件恰好 1 个 —— 包装层自己（主计划 §0.1 成功标准 4 的度量）", () => {
     const scanned = productionTsFiles();
     const hits = scanned.filter((f) =>
       /import\s*\{[^}]*\binvoke\b[^}]*\}\s*from\s*["']@tauri-apps\/api\/core["']/.test(code(read(f))),
@@ -562,10 +566,15 @@ describe("C01 边界生成物", () => {
     // 29 → 23 → 19 → 14 → 12 → 10 → 8 → 7 → 6 → 5 → 4 → **3**。
     // 〔U2 · 第三波〕名单里的 `tabs.ts` 换成了 `tab-session-actions.ts`：拆 `tabs.ts` 时把 tab 层的每一条
     //   `invoke` 收进那一份（tab 层唯一直呼 `invoke` 的一份），`tabs.ts` 与其余拆出来的几份一条都不直呼 ⇒ 仍是 3。
-    expect(hits.length, `期望恰好 3 个，实得 ${hits.length}`).toBe(3);
-    expect(hits.map((f) => f.replace(/\\/g, "/")), "包装层自己必须在名单里").toContain(
+    // ★★〔C4a · 第四波 · 子步 2〕**3 → 1**：`tab-session-actions.ts`（11 处）与 `accounts.ts`（5 处）
+    //   那 16 处裸 `invoke` 收进包装层（缺的十条命令补进 `commands.ts`，包装层 132 → 142 == Rust 命令数）。
+    //   `accounts.ts` 那条「跨工作区冲突协议」早已不在；`tabs.ts` 那条红线由 U2 拆分换成了 `tab-session-actions.ts`，
+    //   这一拍一起清掉。**名单逐字相等**（不是只问「包装层在不在」）：多出任何一个都是第二条路。
+    //   29 → … → 3 → **1**。
+    expect(hits.length, `期望恰好 1 个，实得 ${hits.length}`).toBe(1);
+    expect(hits.map((f) => f.replace(/\\/g, "/")), "名单只许是包装层自己").toEqual([
       "src/ipc/commands.ts",
-    );
+    ]);
   });
 
   it("生产代码不许 import `tests/test-support/`（那是守卫专用，进 bundle 就等于把测试代码发出去）", () => {

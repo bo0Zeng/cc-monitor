@@ -16,6 +16,7 @@ vi.mock("../../src/panorama/api", async (importOriginal) => {
 
 import * as api from "../../src/panorama/api";
 import { PanoramaView } from "../../src/views/panorama";
+import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 const sym = (id: string): PanoSymbol =>
@@ -32,7 +33,7 @@ describe("P7b 多跳子图 / 影响面", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     document.body.replaceChildren();
-    v = new PanoramaView(() => ({ cwd: "/repo", origin: null }));
+    v = new PanoramaView(() => ({ cwd: "/repo", origin: LOCAL_ORIGIN }));
     probe(v).repo = "/repo";
     vi.mocked(api.node).mockResolvedValue(nodeView("r"));
     await probe(v).openNodeDetail("r");

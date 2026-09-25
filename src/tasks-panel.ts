@@ -1,8 +1,13 @@
 /**
  * Issue #11: Claude Code CLI 的 task 列表展示。
  *
- * 数据源：后端 `tasks.rs` 监听 `~/.claude/tasks/<sid>/`，emit `task-update`。
- * Tab 创建时 invoke `get_session_tasks` 拿初次快照。
+ * 数据源：那台机器的后端 `tasks-list`（〔RM1b · 第四波〕本机与远端同一条路，按 `origin` 问）。
+ * Tab 创建时 invoke `get_session_tasks` 拿初次快照；本机另有 monitor 的 watcher 推 `task-update`。
+ *
+ * 〔RM1b〕**远端没有推送**（后端出方向加帧要动 `wire.rs`，第四波不在本件）。远端 tab 的新鲜度靠
+ * 「**被切到的那一刻 / 任务面板被展开的那一刻**」现问一次 —— 零定时器，不轮询。
+ * ⚠ 买不到：盯着一个远端 tab 不动时，任务的变化不会自己出现（切走再切回、或点开面板就有）。
+ * sid → origin 由 {@link fetchSessionTasks} 记下（Tab 创建时那一次就带着 origin）。
  *
  * UI 形态（v2.3 调整后）：
  *  - **summary chip**：嵌入底部 status bar，显示「N tasks (X done, Y active, Z open)」+ ▶/▼
@@ -25,6 +30,8 @@
 import { dispatcher } from "./keybindings/registry";
 import { commands } from "./ipc/commands";
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
+import { isLocalOrigin, type Origin } from "./ipc/origin";
+import type { Tab } from "./tab-model";
 
 // C02：改成从生成物 re-export（源：`src/bridge/src/tasks.rs` 的 `TaskEntry`）。
 // 保持 `export` 名字不变 ⇒ 别的模块的 import 一行都不用改。
@@ -58,6 +65,8 @@ export class TasksPanel {
   /** 当前显示的 session（来自 TabManager.activeId）。`null` = 无 active Tab。 */
   private activeSid: string | null = null;
   private collapsed: boolean;
+  /** 〔RM1b〕远端现问的代次：慢的那次回来不许盖掉后发的那次（同 `plugins-section.ts` 的 `seq`）。 */
+  private refreshSeq = 0;
 
   constructor() {
     this.collapsed = loadCollapsed();
@@ -121,6 +130,22 @@ export class TasksPanel {
    */
   setSession(sid: string | null, tasks: TaskEntry[]): void {
     this.activeSid = sid;
+    this.tasks = tasks;
+    this.render();
+    // 〔RM1b〕远端 tab 被切到的那一刻现问一次（本机有 watcher 推送，不必）。
+    if (sid !== null) void this.refreshIfRemote(sid);
+  }
+
+  /**
+   * 〔RM1b〕远端会话：向那台机器的后端现问一次，回来时仍是同一个 sid、且没被更晚的一次盖过才换上。
+   * 本机会话 / 不知道 origin 的 sid ⇒ 什么都不做（前者有推送，后者没有可问的对象）。
+   */
+  async refreshIfRemote(sid: string): Promise<void> {
+    const origin = originOfSession(sid);
+    if (origin === undefined || isLocalOrigin(origin)) return;
+    const mine = ++this.refreshSeq;
+    const tasks = await fetchSessionTasks(sid, origin);
+    if (mine !== this.refreshSeq || this.activeSid !== sid) return;
     this.tasks = tasks;
     this.render();
   }
@@ -207,6 +232,8 @@ export class TasksPanel {
     this.collapsed = next;
     saveCollapsed(next);
     this.applyCollapsedClass();
+    // 〔RM1b〕展开的那一刻，远端会话现问一次（看的就是这一刻的列表）。
+    if (!next && this.activeSid !== null) void this.refreshIfRemote(this.activeSid);
     // 0 task 时即使被 setCollapsed(false) 也不会 popoverElement 显示，
     // render() 会强制 display:none
     if (this.tasks.length > 0 && this.activeSid !== null) {
@@ -230,14 +257,31 @@ export class TasksPanel {
   }
 }
 
-/** Tab 创建时拉一次初始 task 快照。失败返空数组（panel 自然隐藏）。 */
+/** 〔RM1b〕sid → 它住哪台机器。{@link fetchSessionTasks} 每次调用都记一笔（Tab 创建时那一次必带）。 */
+const originBySid = new Map<string, Origin>();
+
+/** 这个会话住哪台机器；从没被问过 ⇒ `undefined`（不猜成本机）。 */
+export function originOfSession(sid: string): Origin | undefined {
+  return originBySid.get(sid);
+}
+
+/**
+ * 向那台机器的后端拉一次 task 快照（本机逐字 `LOCAL_ORIGIN`）。失败返空数组（panel 自然隐藏）。
+ *
+ * 〔RM1b〕第二个参数必填：本机与远端同一条路，差别只在问哪台。它收的是 **Tab 自己那一格**
+ * （`Tab["origin"]`）而不是另写一份类型。〔合并 C4a〕那一格已收成 `Origin`（本机 = `LOCAL_ORIGIN`），
+ * 原样过线 —— 上一版这里那个 `?? LOCAL_ORIGIN` 随之删了。
+ */
 export async function fetchSessionTasks(
   sessionId: string,
+  tabOrigin: Tab["origin"],
 ): Promise<TaskEntry[]> {
+  const origin: Origin = tabOrigin;
+  originBySid.set(sessionId, origin);
   try {
-    return await commands.get_session_tasks({ sessionId });
+    return await commands.get_session_tasks({ origin, sessionId });
   } catch (e) {
-    console.warn(`[tasks-panel] fetch ${sessionId} failed:`, e);
+    console.warn(`[tasks-panel] fetch ${sessionId}@${origin} failed:`, e);
     return [];
   }
 }
