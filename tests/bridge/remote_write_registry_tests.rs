@@ -597,11 +597,9 @@ fn the_ipc_entry_points_route_through_a_registered_write_site() {
             "deploy_remote_acct_iso",
             "ensure_dir_all",
         ),
-        // 〔AL1 · 2026-09-24〕装 / 卸远端 rc 两条命令今天**不直调写原语**：它们造一个 `SftpFile`
-        // 交给 `fenced_block::apply`，写落在 `SftpFile` 的原语上。那一格用「落点类型」表达
-        // （见下面 `STORES`），而不是在中间垫一层函数名 —— 本表仍是一跳。
-        ("sftp.rs", "uninstall_remote_alias_block", "SftpFile"),
-        ("sftp.rs", "install_remote_alias_block", "SftpFile"),
+        // 〔RW1 · 第四波 09-24〕装 / 卸远端 rc 两条命令（F10）从这里走了：它们今天经那台远端的**后端**写
+        //   （`user_files::BackendDoor` → `files-peek` / `files-put`），一个 SFTP 会话都不拿 ⇒ 不再是本表的人群。
+        //   `SftpFile` 只剩 F08 部署那一个用户（`put_ccm_entry`，入口 `deploy_remote_backend` 那一行上面已经在）。
         // ★〔步 23b · 09-20〕零流量复制。**为了这条边，`sftp_copy` 刻意没抽 `copy_inner`** ——
         // 本表是**一跳**的，中间垫一层，「按钮 ↔ 真实写点」这条边就表达不出来；
         // 理由逐字写在 `sftp_pool.rs::sftp_copy` 的头注上。

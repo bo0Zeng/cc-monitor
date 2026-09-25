@@ -2801,6 +2801,18 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    ⚠ `sftp.rs` 那块墓碑点的 `rollback_note` 不进本表：死名普查不把它算作死名
         //    （它是 `…_matches_what_actually_happened` 的前缀），标记只记在 `REGISTERED` 里。
         ("src/bridge/src/fenced_block.rs", "find_block_range", 1),
+        // 〔RW1 · 第四波 09-24〕Windows 上「替换保住 explicit ACE」那条判据随写搬到后端
+        //   （`files_write_tests.rs::put_keeps_explicit_acl_entries_on_windows`），monitor 那边留墓碑、后端那边说来历。
+        (
+            "tests/bridge/profile_installer_tests.rs",
+            "install_preserves_explicit_acl_entries",
+            1,
+        ),
+        (
+            "tests/backend/control/files_write_tests.rs",
+            "install_preserves_explicit_acl_entries",
+            1,
+        ),
         // 〔AL1 · 2026-09-24 · 子步 4〕`write_account_aliases`（`lines` ＋ `dryRun`）退役，拆成两跳 ＋ 读回口。
         (
             "tests/bridge/parity_ledger_tests.rs",
@@ -3594,7 +3606,14 @@ fn every_prose_tombstone_mark_is_registered() {
         //   那是这条判据落地后第一次真逮到东西，而逮到的是**同一波另一路**的产出。
         ("src/backend/lib.rs", 1),
         // 〔AL1 · 2026-09-24〕规则收成一份那一拍新贴的两块墓碑（本机配对 helper · 远端回滚措辞 helper）。
-        ("src/bridge/src/fenced_block.rs", 1),
+        // 〔RW1 · 第四波 09-24〕1 → 4：本机原语 `LocalFile` 与它的同步门面 `apply_local` 随「用户文件改经后端写」
+        //   整块走了，头注一处 ＋ 原住址一块墓碑（两个名字）= +3。
+        ("src/bridge/src/fenced_block.rs", 4),
+        // 〔RW1 · 第四波 09-24〕「盘上有字节却读到空」那一道从 monitor 的 `LocalFile::read` 搬到后端 `hollow_read`。
+        ("src/backend/control/files_write.rs", 1),
+        // 〔RW1 · 第四波 09-24〕Windows ACL 那条判据从 monitor 搬去后端：两头各一块墓碑。
+        ("tests/backend/control/files_write_tests.rs", 1),
+        ("tests/bridge/profile_installer_tests.rs", 1),
         // 〔C2 · 2026-09-24〕拨号归后端那一拍：`inproc_dial.rs` 那块（端口转发用的 russh 句柄别名删了）·
         // `ssh_source_dial_move_judge.rs` 三块（回落表那条判据 · 请求行那条 · 解析两处那条，随拨号搬家删掉）。
         ("src/bridge/src/inproc_dial.rs", 1),

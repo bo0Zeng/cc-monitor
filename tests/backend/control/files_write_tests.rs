@@ -1518,3 +1518,47 @@ fn a_session_that_is_a_link_out_of_the_record_tree_is_not_followed() {
     assert!(outside.exists(), "跟着链接删到了记录树外面那一份");
     std::fs::remove_dir_all(&base).ok();
 }
+
+/// 〔RW1 · 第四波 09-24〕从 `profile_installer_tests.rs` 里那条 `install_preserves_explicit_acl_entries`〔散文墓碑〕搬来：
+/// v1.7.9 那次事故（原 profile 上的 explicit ACE 被暂存文件的继承 ACL 顶掉，用户读不了自己的 `$PROFILE`）。
+/// 写从 monitor 搬到后端之后，替换那一步在 Windows 上走**就地覆盖写**（`swap_in` 的 `cfg(windows)` 那一支）。
+/// ⚠ 本机门禁是 Linux，这一条只在 Windows 上跑（`winchk-backend` 只编不跑）—— 如实登记为「没跑过」。
+#[cfg(windows)]
+#[test]
+fn put_keeps_explicit_acl_entries_on_windows() {
+    let base = temp_root("pacl");
+    let root = base.join("r");
+    std::fs::create_dir_all(&root).expect("建根");
+    let p = root.join("profile.ps1");
+    std::fs::write(&p, "Set-Alias g git\n").expect("铺");
+    let add = std::process::Command::new("icacls")
+        .arg(&p)
+        .arg("/grant")
+        .arg("Everyone:(R)")
+        .output();
+    let Ok(add) = add else { return };
+    if !add.status.success() {
+        return;
+    }
+    put_text(
+        &root,
+        "profile.ps1",
+        b"Set-Alias g git\nnew\n",
+        Some(b"Set-Alias g git\n"),
+        true,
+        false,
+    )
+    .expect("写");
+    let out = std::process::Command::new("icacls")
+        .arg(&p)
+        .output()
+        .expect("icacls");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout
+            .lines()
+            .any(|l| l.contains("Everyone:(R)") && !l.contains("(I)(R)")),
+        "explicit Everyone:(R) ACE 被替换那一步顶掉了：\n{stdout}"
+    );
+    std::fs::remove_dir_all(&base).ok();
+}

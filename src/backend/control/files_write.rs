@@ -607,6 +607,9 @@ pub fn peek_text(root: &Path, rel: &str) -> Result<Peeked, (&'static str, String
     }
     let bytes = std::fs::read(&real)
         .map_err(|e| ("io_failed", format!("读不出 {}：{e}", real.display())))?;
+    if bytes.is_empty() && md.len() > 0 {
+        return Err(("io_failed", hollow_read(&real, md.len())));
+    }
     let text = String::from_utf8(bytes).map_err(|_| {
         (
             "not_text",
@@ -617,6 +620,17 @@ pub fn peek_text(root: &Path, rel: &str) -> Result<Peeked, (&'static str, String
         path: real,
         text: Some(text),
     })
+}
+
+/// 「盘上有字节、读出来却是空的」那一句（v1.7.9 那次事故：OneDrive 占位 / 杀毒软件锁着）。
+///
+/// 🔴 继续走的后果是拿「空 ＋ 新内容」整份盖掉原文 —— 读改写的读那一半与写那一半都在这里停。
+/// 从前住 monitor 的 `fenced_block::LocalFile::read`〔散文墓碑〕，〔RW1〕随写规则一起搬到后端。
+fn hollow_read(p: &Path, on_disk: u64) -> String {
+    format!(
+        "{} 在盘上有 {on_disk} 字节，但读出来是空的（可能被 OneDrive 或杀毒软件锁着）。已取消，没改任何东西。",
+        p.display()
+    )
 }
 
 /// 一次 [`put_text`] 做了什么。
@@ -681,6 +695,12 @@ pub fn put_text(
         let cur = std::fs::read(&real).map_err(|e| {
             WriteRefusal::Io(format!("refuse write: 读不出 {}：{e}", real.display()))
         })?;
+        if cur.is_empty() && md.len() > 0 {
+            return Err(WriteRefusal::Io(format!(
+                "refuse write: {}",
+                hollow_read(&real, md.len())
+            )));
+        }
         (real, Some(cur), Some(md.permissions()))
     } else {
         (at, None, None)
@@ -806,6 +826,18 @@ fn swap_in(
     } else {
         at
     };
+    // 🔴 Windows：换名上位会让目标**换成暂存旁名的 ACL**（`MoveFileExW` 语义）—— v1.7.9 那次事故
+    //   （用户读不了自己的 `$PROFILE`）正是这一形，从前 monitor 那一侧靠 `ReplaceFileW` 保住。
+    //   后端没有那条平台原语 ⇒ 已在的目标在 Windows 上**就地覆盖写**（ACL / ADS / 创建时间都留着）。
+    //   ⚠ 代价如实写：这一支**不是原子的**（写到一半断电会留半份），兜底是调用方要的备份 ＋ 回读比对 ＋ 回滚。
+    #[cfg(windows)]
+    if std::fs::symlink_metadata(&dst).is_ok() {
+        let _ = &perms;
+        std::fs::write(&dst, bytes).map_err(|e| {
+            WriteRefusal::Io(format!("refuse write: 写 {} 失败：{e}", dst.display()))
+        })?;
+        return Ok(dst);
+    }
     let name = dst
         .file_name()
         .and_then(|n| n.to_str())

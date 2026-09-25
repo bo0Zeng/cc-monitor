@@ -170,6 +170,13 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   没有第二条路可回落（值只在那台机器上），长连接不在时明说「没有控制通道」；**照样走分流器**，
     //   理由与 `frame_query.rs` 那条逐字相同。
     ("backend_policy.rs", Verdict::UsesRouter),
+    // ★ 〔RW1 · 第四波 · 2026-09-24〕**第十一个发送端** —— 用户文件的读改写 ＋ 删历史会话
+    //   （`user_files.rs::BackendDoor`：`files-home` / `files-peek` / `files-put` / `files-rename` /
+    //   `files-chmod` / `files-delete-session`）。用户裁「只允许后端的文件管理部分写文件」也管本机
+    //   ⇒ **没有第二条路可回落**（直写正是被裁掉的那一形，`D11`）；长连接不在时明说「后端没连上」。
+    //   **照样走分流器**（`route_call_error` ＋ `no_channel`），理由与 `frame_query.rs` 那条逐字相同；
+    //   它要的 `stale` 那一档是从分流器递回来的 `(code, message)` 里认的，不自己 match 错误枚举。
+    ("user_files.rs", Verdict::UsesRouter),
 ];
 
 /// 分流器的**两个出口**：分层结果（`05` 形状）与从它收拢出来的旧三态。

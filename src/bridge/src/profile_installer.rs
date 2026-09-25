@@ -1052,37 +1052,46 @@ pub fn render_cc_code(command_name: &str, include_cc_function: bool) -> String {
 /// `include_cc_function = false` 时只装 `__ccm_bind` helper，不抢 cc function 名。
 ///
 /// v1.7.10 那四道安全加固（先备份 · 真原子替换 · 写后回读 · 盘上有字节却读到空就中止）
-/// 〔AL1 · 2026-09-24〕**不再住这里** —— 它们是「装一块东西进一份文件」的规则，
-/// 本机远端同一份：`fenced_block::apply`（序列）＋ `fenced_block::LocalFile`（本机原语，
-/// OneDrive 那一道在它的 `read` 里）。本函数只答方言那一半：[`plan_install`] ＋ [`encode_for_disk`]。
-/// ⚠ 行为差一处，如实写：内容与盘上逐字相同时**一个字节都不写**（从前照写一遍、照备份一份）。
-pub fn install_to_profile(
-    path: &PathBuf,
+/// 〔RW1 · 第四波 09-24〕**住后端**（`files-put` ／ `files-peek`，本机与远端同一份规则）——
+/// 本进程不再落盘。本函数只答方言那一半：[`plan_install`] ＋ [`encode_for_disk`]，读写经 `door`。
+/// ⚠ 内容与盘上逐字相同时**一个字节都不写**。
+pub async fn install_to_profile(
+    door: &impl crate::user_files::Door,
+    path: &Path,
     command_name: &str,
     include_cc_function: bool,
 ) -> Result<(), String> {
     let flavor = flavor_of(path);
     let what = path.display().to_string();
-    crate::fenced_block::apply_local(path, true, |raw| {
+    let home = door.home().await?;
+    let rel = crate::user_files::rel_under(&home, &what)?;
+    crate::user_files::edit(door, &home, &rel, true, true, |raw| {
         // 〔`K-R132`〕BOM 剥在**最靠近读的那一跳**；落盘那一份按方言再编码回去 ——
         // 读回比对比的是落盘那一份（比计划出来的那一份会恒差三个字节，当场回滚）。
         let existing = strip_bom(raw.unwrap_or(""));
         let updated = plan_install(flavor, existing, command_name, include_cc_function, &what)?;
         Ok(Some(encode_for_disk(flavor, &updated)))
     })
+    .await
     .map(|_| ())
 }
 
 /// 卸载：整块删除 BEGIN/END 之间的内容（含 marker 行）。块外内容不动。
-/// 文件不存在 ⇒ 什么都不做。序列与 [`install_to_profile`] 同一份（`fenced_block::apply`）。
-pub fn uninstall_from_profile(path: &PathBuf) -> Result<(), String> {
+/// 文件不存在 ⇒ 什么都不做。读写经 `door`，规则同 [`install_to_profile`]（住后端）。
+pub async fn uninstall_from_profile(
+    door: &impl crate::user_files::Door,
+    path: &Path,
+) -> Result<(), String> {
     let flavor = flavor_of(path);
     let what = path.display().to_string();
-    crate::fenced_block::apply_local(path, true, |raw| {
+    let home = door.home().await?;
+    let rel = crate::user_files::rel_under(&home, &what)?;
+    crate::user_files::edit(door, &home, &rel, true, false, |raw| {
         let Some(raw) = raw else { return Ok(None) };
         let stripped = plan_uninstall(flavor, strip_bom(raw), &what)?;
         Ok(Some(encode_for_disk(flavor, &stripped)))
     })
+    .await
     .map(|_| ())
 }
 

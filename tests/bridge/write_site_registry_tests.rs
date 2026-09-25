@@ -105,29 +105,13 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
           写本身走 `verified_write::verify_and_rollback`（备份 → 写 → 读回逐字节比对 →\
           不符即回滚），**没有自造第四份写入实现** —— 那个模块头注记着本仓曾有 4 处\
           独立实现且校验强度不一致（两处只比长度）。"),
-    // ── 🔴 〔AL1 · 2026-09-24〕`设计/71 §12.5`：**「装一块东西进一份文件」的规则收成了一份。**
-    //    从前这里有四行：`account_aliases.rs::write_alias_file` / `::ensure_rc_source_line` ·
-    //    `profile_installer.rs::install_to_profile` / `::uninstall_from_profile` —— 四个函数体
-    //    各写一遍「备份 → 原子写 → 回读 → 回滚」。今天它们一行 `fs::` 都没有了，
-    //    全部经 `fenced_block::apply`（序列）落到下面这三个本机原语上 ⇒ 写盘这一跳只剩三处。
-    //    它们各自**写什么**（生成文件 / rc 里那一行 source / ccm 别名块 / PowerShell 块）
-    //    住在各自的 `plan` 闭包里，一个字节的落盘都不自己做。
-    ("fenced_block.rs", "put_atomic", Some("ccm"),
-     "`LocalFile` 的原子替换：`mkdir -p` 上级目录 ＋ `profile_installer::atomic_write_string`。\
-          它是本机这几件事**唯一**的落盘漏斗：ccm 别名块装/卸进用户选的 rc · PowerShell profile 的 cc 块 · \
-          `~/.cc-monitor/account-aliases.sh`（monitor 自己那份生成文件，整份重写）· rc 里那一行 source。\
-          点名 `ccm` 是因为前两件是那个工具的安装/卸载动作；后两件不装任何工具。\
-          路径由调用方给，围栏在调用方（`profile_installer::fence_path_under`：只许落在 home 之内，\
-          那份 rc 由界面上的人选）。回滚也走它：把内存里那份原文原样写回。"),
-    ("fenced_block.rs", "save_backup", None,
-     "给用户那份 rc / profile 另存一份原文（`<名>.ccm-backup-<ms>`，`fs::copy` 连权限位一起拷）。\
-          **不是安装动作**，是安装的可撤销那一格。只给**用户的、非空的**文件存；\
-          我们自己那份生成文件不存（回滚用内存里的原文）。"),
-    ("fenced_block.rs", "delete_created", None,
-     "只在一种情形下删：**这份文件原本不存在、是这一次新建的，而写完读回来不对** ⇒ 删掉刚建的那份\
-          （半截的 rc 比没有它更坏）。不是安装动作。"),
+    // ── 🔴 〔RW1 · 第四波 · 2026-09-24〕这里原来有三行 `fenced_block.rs` 的本机原语
+    //    （`put_atomic` / `save_backup` / `delete_created`，那时是本机 rc · `$PROFILE` · 别名文件 · rc 里那一行
+    //    source 的唯一落盘漏斗）。用户裁「只允许后端的文件管理部分写文件」**也管本机** ⇒ 那几件改经本机后端
+    //    （`user_files::edit` → `files-peek` / `files-put`），本进程**一个字节都不落** ⇒ 三行随原语一起走了。
+    //    写的规则（备份 · 原子替换 · 回读 · 回滚）从此只住后端 `control/files_write.rs::put_text`。
     ("profile_installer.rs", "atomic_write_string", Some("ccm"),
-     "临时文件 + rename 的原语（〔AL1〕本机 ccm 那几件今天都经 `fenced_block.rs::put_atomic` 调它；另一个直调者是 `mcp.rs::write_json_atomic`）"),
+     "临时文件 + rename 的原语（〔RW1〕本机 ccm 那几件改经后端之后，只剩 `mcp.rs::write_json_atomic` 一个直调者）"),
     ("profile_installer.rs", "atomic_replace_path", Some("ccm"),
      "跨设备回退的 rename。⚠ 这是**四份平台原语副本之一**，四份都已登记在 `atomic_replace_registry`（承接 C10）——本条不重复判它，只记它是个写点"),
     ("mcp.rs", "write_json_atomic", Some("project-mcp"),

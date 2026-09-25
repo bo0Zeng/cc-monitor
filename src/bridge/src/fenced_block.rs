@@ -87,9 +87,11 @@ pub fn find_pair(
 // 「备份 → 原子写 → 回读比对 → 回滚」这个序列写了五个函数体（本机三处 ＋ 远端装/卸）。
 // `verified_write` 头注自己记着为什么远端那几处没收进去：「回滚是 `async` SFTP 操作，塞不进 `impl FnOnce()`」。
 //
-// ⇒ 按 `71 §12.3` 第 4、5 格切：**序列与拼接是规则（留这里，一份）**；
-//   「这台机器上怎么读、怎么存备份、怎么原子替换、怎么删」是读法（[`Store`] 的四个原语，
-//   本机一份 [`LocalFile`]、远端一份 `sftp::SftpFile`；方法名刻意不叫 `replace` / `remove` —— 那两个词与 `str::replace`、集合的 `remove` 同名，按名字认写者的判据会把它们认成同一个）；「排版」随目标文件的方言走（[`Layout`]）。
+// ⇒ 按 `71 §12.3` 第 4、5 格切：**拼接是规则（留这里，一份）**；「排版」随目标文件的方言走（[`Layout`]）。
+// 〔RW1 · 第四波 09-24〕**序列那一半搬去了后端**（`control/files_write.rs::put_text`）：用户文件（rc ·
+//   `$PROFILE` · 别名文件 · 远端 rc）从此经那台机器的后端写，本机那一份原语 `LocalFile`〔散文墓碑〕随之走了。
+//   [`apply`] ＋ [`Store`] 只剩 F08 部署物那一个用户（`sftp::SftpFile`，见 `put_ccm_entry`）；
+//   方法名刻意不叫 `replace` / `remove` —— 那两个词与 `str::replace`、集合的 `remove` 同名，按名字认写者的判据会把它们认成同一个。
 
 /// 排版方言。**规则不分方言**（配对 → 整块替换 / 追加 / 悬空中止；剥离 → 删 / 原样 / 悬空中止），
 /// 分方言的只有排版这一层 —— 由目标文件决定（`profile_installer::flavor_of` 按扩展名答），
@@ -340,78 +342,13 @@ pub(crate) async fn apply<S: Store>(
     })
 }
 
-/// 本机那一份原语。路径由调用方给（调用方负责围栏：`profile_installer::fence_path_under`）。
-pub(crate) struct LocalFile {
-    pub path: std::path::PathBuf,
-}
-
-impl Store for LocalFile {
-    fn label(&self) -> String {
-        self.path.display().to_string()
-    }
-
-    async fn read(&self) -> Result<Option<String>, String> {
-        let p = &self.path;
-        if !p.exists() {
-            return Ok(None);
-        }
-        let raw = std::fs::read_to_string(p).map_err(|e| format!("读不了 {}：{e}", p.display()))?;
-        // v1.7.9 事故的那一道：盘上有字节却读到空（OneDrive 占位 / 杀软锁着）。
-        // 继续走会拿「空 ＋ 新块」覆盖掉原内容。
-        let on_disk = std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
-        if on_disk > 0 && raw.is_empty() {
-            return Err(format!(
-                "{} 在盘上有 {on_disk} 字节，但读出来是空的（可能被 OneDrive 或杀毒软件锁着）。已取消，没改任何东西。",
-                p.display()
-            ));
-        }
-        Ok(Some(raw))
-    }
-
-    async fn save_backup(&self, _original: &str) -> Result<String, String> {
-        let ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0);
-        let name = self
-            .path
-            .file_name()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "profile".into());
-        let b = self.path.with_file_name(format!("{name}.ccm-backup-{ms}"));
-        // 逐字节拷（连同权限位）：用户那份 rc 若是 600，备份也该是 600。
-        std::fs::copy(&self.path, &b).map_err(|e| e.to_string())?;
-        Ok(b.display().to_string())
-    }
-
-    async fn put_atomic(&self, content: &str) -> Result<(), String> {
-        if let Some(parent) = self.path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-        }
-        crate::profile_installer::atomic_write_string(&self.path, content)
-            .map_err(|e| e.to_string())
-    }
-
-    async fn delete_created(&self) -> Result<(), String> {
-        std::fs::remove_file(&self.path).map_err(|e| e.to_string())
-    }
-}
-
-/// 本机调用方大多是同步的（`install_to_profile` 等）。本机的原语一个 `await` 点都不真等，
-/// 所以就地跑完即可 —— **远端那一份不许走这里**（它要真的等 SFTP）。
-pub(crate) fn apply_local(
-    path: &std::path::Path,
-    keep_backup: bool,
-    plan: impl FnOnce(Option<&str>) -> Result<Option<String>, String>,
-) -> Result<Applied, String> {
-    futures::executor::block_on(apply(
-        &LocalFile {
-            path: path.to_path_buf(),
-        },
-        keep_backup,
-        plan,
-    ))
-}
+// 〔RW1 · 第四波 09-24〕这里原来住着本机那一份原语 `LocalFile`〔散文墓碑〕与它的同步门面
+// `apply_local`〔散文墓碑〕：本机 rc / `$PROFILE` / 别名文件经它们在 monitor 进程里直写。
+// 用户裁「只允许后端的文件管理部分写文件」**也管本机** ⇒ 那几处改走本机后端
+// （`user_files::edit` → `files-peek` / `files-put`），序列（备份 · 原子替换 · 回读 · 回滚）住后端
+// `control/files_write.rs::put_text`，两件零调用方 ⇒ 整块走。
+// ⚠ [`apply`] 与 [`Store`] **还剩一个用户**：F08 部署那一族的 `sftp::put_ccm_entry`（`~/.local/bin/ccm`
+// 那三行入口，用户裁「F08 部署后端留在 SFTP」）—— 它是我们的部署物，不是用户文件，本路不改它的行为。
 
 // ═══════════════════════════════════════════════════════════════════════════
 // `KR62D3`：**同一件事今天有几套形状 —— 一条有住址的账**
@@ -478,7 +415,7 @@ pub const FENCE_SHAPES: &[FenceShape] = &[
     FenceShape {
         id: "local-posix-source-line",
         host: "本机 POSIX 的 ~/<用户选的那份 rc>",
-        what_goes_in: "**一行** source，指向 ~/.cc-monitor/account-aliases.sh（内容住在那份生成文件里）",
+        what_goes_in: "**一行** source，指向 ~/.cc-monitor/aliases.sh（内容住在那份生成文件里）",
         begin_marker: crate::account_aliases::RC_BEGIN,
         install_site: "account_aliases.rs::ensure_rc_source_line",
         uninstall_site: None,
