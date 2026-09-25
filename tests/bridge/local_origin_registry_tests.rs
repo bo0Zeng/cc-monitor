@@ -125,7 +125,7 @@ fn every_remote_config_lookup_deals_with_the_local_origin_first() {
     //    ⚠ 地板守的是「抽取器还够得到东西」；人群真的少了一个成员时不跟着改，
     //    才是让它替真判据挡枪（`K-G8`）。
     // 🔴 `K-R112`（09-13）：地板 19 → **17**，理由与上面 `K-R104` 那一条**同形**：
-    //    `cc_bus.rs::check_cc_bus_agent_online` 与 `tmux.rs::capture_remote_pane`
+    //    `cc_bus.rs::check_cc_bus_agent_online` 与 `capture_remote_pane`〔散文墓碑〕（`tmux.rs`，〔C4e〕已迁到界面）
     //    不再自己去查远端配置（两条都整条走后端通道，`client_for(origin)` 对 `<local>`
     //    与远端一视同仁）⇒ 这个人群**恰好少两处**。
     // 🔴 〔SR1b · 09-24〕地板 17 → **16**：`inproc_dial.rs` 里跳板那一跳的 `connect_via_jump`〔散文墓碑〕（查配置，只服务 SFTP）

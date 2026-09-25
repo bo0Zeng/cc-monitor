@@ -119,15 +119,18 @@ const SENDERS: &[(&str, Verdict)] = &[
     // 两档结果都只渲染成给用户的一句话 —— 但**照样走分流器**：
     // 分流规则有第二份实现的那天，「被门拒绝」就会在某一份里被洗成「换条路重做」。
     ("cc_bus.rs", Verdict::UsesRouter),
-    // ★ `K-R112` 09-13：**第七个发送端** —— 抓屏（`tmux.rs::capture_via_backend`）
+    // ★ `K-R112` 09-13：**第七个发送端** —— 抓屏（`capture_via_backend`〔散文墓碑〕，〔C4e〕已删）
     //   改走帧面 `capture-pane`。它**没有第二条路可回落**（那条一次性 SSH 本件删净了），
     //   但**照样走分流器**，理由与 `cc_bus.rs` 那条逐字相同：
     //   〔`设计/50`：原话还并列了 `account_usage.rs`（`K-R104` 的第六个发送端）——
     //    用量 ③ 轴整轴退役，那个发送端不存在了，发送端从七个变回六个。〕
     //   本模块的三态是从 `Routed` 搬过来的，不是它自己 match 一遍错误枚举。
     //   ⚠ 它回的是 `Result<String, Routed>` —— 「拿到了那一屏」与「三态里的另外两态」
-    //   在类型上分得开，怎么对用户说由调用方 `capture_remote_pane` 决定。
-    ("tmux.rs", Verdict::UsesRouter),
+    //   在类型上分得开，怎么对用户说由调用方 `capture_remote_pane` 决定。〔散文墓碑〕
+    // 〔C4e · 第四波 4C〕**上面那一行（`tmux.rs`）退役了**：抓屏改由界面经通道直接问那台机器的后端
+    //   （`src/tmux-control.ts::capturePane`），monitor 里那个发送端（`capture_via_backend`〔散文墓碑〕）删了 ——
+    //   `tmux.rs` 从此不再直连 `inbound_client`，发现阶段扫不到它，登记跟着摘。分层判定照旧只在
+    //   `backend_route::layer_call_error` 一处（通道宿主 `host.rs` 用它），界面那一侧只把分好层的结果翻成一句话。
     // ★ 〔步 `24f` 第四刀 09-21〕**第七个发送端** —— 原生文件窗口那一侧的搜索
     //   （`filewin/find.rs`，`files-find` / `files-index-status` /
     //   `files-index-rebuild` / `files-browse` 四条）。

@@ -249,10 +249,6 @@ export const commands = {
   /** `K-R135`：从用户级 PATH 上**只摘掉我们那一格**。桶①。 */
   ccm_user_path_remove: () => invoke<void>("ccm_user_path_remove"),
 
-  /** 远端 `tmux capture-pane -p` 的画面文本。返回**原始类型**，无需生成物（桶③）。 */
-  capture_remote_pane: (args: { origin: string; target: string }) =>
-    invoke<string>("capture_remote_pane", args),
-
   /**
    * 前端性能日志落进 monitor 日志（无 devtools 环境下的唯一取证通道，grep `fe_perf`）。
    * Rust 侧无返回值 ⇒ **桶①** `Promise<void>`。

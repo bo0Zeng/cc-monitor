@@ -251,12 +251,6 @@ src/bridge/src/backend/control/local_backend.rs:600	 …〔这一行超过单行
 src/bridge/src/backend/control/local_backend.rs:1314	放不下来	保留	[对外] EXTRACTION_REFUSED_MARKER，嵌进 extraction_failure_reason 那句话里（「但它放不下来」），措辞本身无病；病在整句，见 :1339
 src/bridge/src/backend/control/local_backend.rs:1339	这一份 monitor **自己带着**本机后端，但它{EXTRACTION_REFUSED_MARKER} —— \n         往 `{}` 里写的时候失败了（{err}）。\n\n         🔴 这**不是**「这份产物没有本机后端」：那是另一回事，下一步也不一样。\n\n         ⇒ 下一步挑一条：① 看那个目录是不是只读、或者被杀毒软件挡着，给它写权限；\n         ② 让 monitor 跑在一个家目录写得进去的账号下；\n         ③ 不想动它就**装一次安装包**（Releases 页）—— 装出来的那份后端与 monitor 同目录，\n         根本不用写这里。	改·§2.2	[对外] 「🔴 这**不是**…那是另一回事」是内部归因论证 兼§2.3（「下一步挑一条」处方，其中写权限/换账号用户做得了，可保留一条） 兼§2.4（markdown＋emoji＋破折号） 新词:产物 →「本机后端解压失败：{dir} 写不进去（{err}）。给这个目录写权限，或用安装包安装。」
 src/bridge/src/backend/control/local_backend.rs:1226	#!/bin/sh\n# cc-monitor: {CCM_ENTRY_WORD} = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec {} {CCM_ENTRY_WORD} "$@"\n	保留	[不对外] 远端 ~/.local/bin/ccm 那个 shim 的文件内容（shebang ＋ 一行注释 ＋ 一行 exec），不上屏；〔MC1〕CCM_SELF 那一行删了
-src/bridge/src/backend/control/tmux.rs:454	抓不了 `{target}` 的画面：那台机器上起不来 tmux（{message}）	保留	[对外] tmux 属 R1b 合法语境（用户自己装的）
-src/bridge/src/backend/control/tmux.rs:459	抓不了 `{target}` 的画面：tmux 在，但那台机器上**一个 tmux 的 server 进程都没有**（{message}）	改·§2.4	[对外] markdown `**…**` 会原样显示；「tmux 的 server 进程」用户可懂 →「tmux 在，但没有正在运行的 tmux 服务」
-src/bridge/src/backend/control/tmux.rs:462	抓不了 `{target}` 的画面：这个会话不存在，可能刚结束（{message}）	保留	[对外] 无病
-src/bridge/src/backend/control/tmux.rs:464	抓不了 `{target}` 的画面：这个会话名后端不收（{message}）	保留	[对外] 无病
-src/bridge/src/backend/control/tmux.rs:465	抓 `{target}` 那一屏失败了，tmux 原话：{message}	保留	[对外] 原样带出 tmux 的报错，R1b 语境成立
-src/bridge/src/backend/control/tmux.rs:466	抓 `{target}` 那一屏被拒：{other}：{message}	保留	[对外] 未知错误码原样带出，可接受
 src/bridge/src/backend/control/tmux.rs:586	本机后端通道不在，{action} `{target}`：{why}\n\n             （抓屏、送键与杀会话只走后端这一条路 —— 先让本机后端跑起来。\n             K-R72 / K-R112 起没有 SSH 兜底那条路了，所以这不是「再试一次」能过去的）	改·§2.2	[对外] 「K-R72 / K-R112 起没有 SSH 兜底那条路了」是工单号＋内部历史论证 兼§2.1（后端通道） 兼§2.4（换行括号段＋破折号） 新词:K-Rxx工单号 新词:通道 →「本机后端没在运行，{action} {target}：{why}。先启动本机后端。」
 src/bridge/src/backend/control/tmux.rs:592	`{origin}` 的后端通道不在，{action} `{target}`：{why}\n\n             （抓屏、送键与杀会话只走后端这一条路 —— 先让那台机器上的后端连上。\n             K-R72 / K-R112 起没有 SSH 兜底那条路了，所以这不是「再试一次」能过去的）	改·§2.2	[对外] 同 :586（工单号＋SSH 兜底历史论证） 兼§2.4 新词:K-Rxx工单号 →「{origin} 的后端没连上，{action} {target}：{why}」
 src/bridge/src/backend/observe/local_query.rs:91	{reason}；找过 {looked_at:?}	改·§2.1	[对外] QueryOutcome::NoBackend 经 subagent.rs:126「本机后端不在：{reason}」等回前端；{looked_at:?} 是 Rust Debug 格式的路径列表 →「…；找过：a、b」
@@ -1384,3 +1378,5 @@ src/settings/assets-section.ts:103	rows 那一格	保留	[不对外] 〔AS2〕�
 src/settings/assets-section.ts:109	from 那一格	保留	[不对外] 〔AS2〕同上一行
 src/settings/assets-section.ts:116	problems 那一格	保留	[不对外] 〔AS2〕同上一行
 src/settings/panel.ts:1103	资产目录	保留	[对外] 〔AS2〕机器页「工具」栏一块的标题（名词短语）
+src/tmux-control.ts:71	{…} 的应答{…}	保留	[不对外] 〔C4e〕`ControlError.detail`：只进日志（哪条命令的应答哪一格不对）；给人看的那句走文案表 `tmuxControl.reply.unreadable`
+src/tmux-control.ts:116	不是恰好 `{name, screen}` 两格字符串	保留	[不对外] 〔C4e〕`ControlError.detail` 的一截：只进日志；抓屏成品形状不对时给人看的那句走文案表
