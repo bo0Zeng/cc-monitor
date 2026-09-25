@@ -552,7 +552,8 @@ export class TabManager {
       //
       // 〔U4〕上面两件事原先是两段（`status` 翻 live · `tmuxIdle` 清 false），因为两个轴挤在两个字段里；
       //   两轴之后它们是同一条转移：「远端见行」把**死了的**（已结束 / 可重连）翻回活（`nextState`）。
-      if (isRemoteOrigin(tab.origin) && this.applyState(tab, "remote-line")) {
+      // 〔CF2〕取回来的历史行不算「远端见行」（`TabStore.historyFeed` 头注）。
+      if (isRemoteOrigin(tab.origin) && !this.store.historyFeed && this.applyState(tab, "remote-line")) {
         this.prefs.clearPinHint(sessionId); // 〔步 17·B〕远端复活：空态提示的对象没了
         this.refreshTabBar();
         this.emitTabStateProbe(tab); // F-E1:远端复活(死 → 活)

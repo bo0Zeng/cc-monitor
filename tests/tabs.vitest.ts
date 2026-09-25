@@ -960,8 +960,15 @@ describe("TabManager 生命周期", () => {
     expect((liveCall[2] as { onRealUserInput?: unknown }).onRealUserInput).toBeTypeOf("function");
   });
 
-  it("F40b 哨兵：账本非空显示剩余条数,补尽消失", async () => {
+  it("F40b 哨兵：账本非空显示剩余条数,补尽之后〔CF2〕按行号问一次更早的、问到顶才消失", async () => {
     await spyRender();
+    // 〔CF2〕按行号取回：答「那一段一条可显示的都没有」（from 原样、next = until）
+    vi.mocked(invoke).mockImplementation(((cmd: string, args?: { from: number; until: number }) =>
+      Promise.resolve(
+        cmd === "read_session_lines"
+          ? { from: args!.from, next: args!.until, eof: false, payloads: [] }
+          : undefined,
+      )) as never);
     tm.onLine(mkContent("sentA", 1, "sa-1")); // active
     tm.onBatchStart();
     for (let s = 100; s < 300; s++) tm.onLine(mkContent("sentB", s, `sb-${s}`));
@@ -969,7 +976,15 @@ describe("TabManager 生命周期", () => {
     tm.switchTo("sentB"); // 物化(4 轮×150 上限 → 200 全弹尽)
     const t = home(tm).store.tabs.get("sentB")!;
     expect(t.window.pendingCount).toBe(0);
+    // 〔CF2〕渲染窗口最老那一条是第 100 行（> 0）⇒ 下面可能还有：jsdom 恒不可滚 ⇒ 切入的 R-2 踢链当场问 [0, 100)
+    expect(vi.mocked(invoke).mock.calls.filter((c) => c[0] === "read_session_lines")).toEqual([
+      ["read_session_lines", { origin: "<local>", jsonlPath: "/p/sentB.jsonl", from: 0, until: 100 }],
+    ]);
+    expect(t.stream.contentElement.querySelector(".stream-more-above")?.textContent).toContain("正在取");
+    await new Promise((r) => setTimeout(r, 0));
+    // 问的是从第 0 行起 ⇒ 到顶了 ⇒ 哨兵退场，之后不再问
     expect(t.stream.contentElement.querySelector(".stream-more-above")).toBeNull();
+    vi.mocked(invoke).mockResolvedValue(undefined as never);
 
     // 再造残账(先切走,防 onBatchEnd 的 active 补物化清账):哨兵文本准确
     tm.switchTo("sentA");
@@ -4956,5 +4971,142 @@ describe("〔U4b〕main.ts 接线", () => {
       n("onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container)"),
       n("onOriginSessionsListed: (origin) => tabs.markOriginSeen(origin)"),
     ]).toEqual([1, 1, 1]);
+  });
+});
+
+/**
+ * 〔CF2 · 第四波 4B〕**没接骨架的 tab 按行号往下取**（`TabStreamView.fetchBelow` · `read_session_lines`）。
+ *
+ * 要求住址：`设计/99 §4.4`「无索引会话的重放缓冲上界（要先有不依赖索引的取回路）」· `设计/05 §3.3.4`
+ * 「⇒ **级 3 是判据**：任何一个订阅侧缓冲都要有上界」—— monitor 的重放缓冲从此每个会话只留尾巴，
+ * F5 之后更早的正文就只剩这一条路回来；它不成立，上界就是「丢了就没了」。
+ */
+describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
+  let tm: TabManager;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tm = makeTM();
+  });
+  afterEach(() => {
+    vi.mocked(invoke).mockResolvedValue(undefined as never);
+  });
+
+  const mk = (sid: string, seq: number, origin?: string) =>
+    ({
+      session_id: sid,
+      cwd: "/p",
+      path: `/p/${sid}.jsonl`,
+      seq,
+      ...(origin ? { origin } : {}),
+      message: { type: "assistant", uuid: `${sid}-${seq}` } as never,
+    }) as never;
+  const settle = async (): Promise<void> => {
+    for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
+  };
+  const asks = () =>
+    vi.mocked(invoke).mock.calls.filter((c) => c[0] === "read_session_lines").map((c) => c[1]);
+  /** 后端答：`[from, until)` 里每一行都可显示（seq 就是行号）。 */
+  const answerAll = (sid: string, origin?: string) =>
+    ((cmd: string, a?: { from: number; until: number }) =>
+      Promise.resolve(
+        cmd === "read_session_lines"
+          ? {
+              from: a!.from,
+              next: a!.until,
+              eof: false,
+              payloads: Array.from({ length: a!.until - a!.from }, (_, k) => mk(sid, a!.from + k, origin)),
+            }
+          : undefined,
+      )) as never;
+
+  it("★ L3：账尽 ＋ 最老那一条不是第 0 行 ⇒ 问 [floor − 200, floor)；回来的进账本、补上屏；问到第 0 行就不再问", async () => {
+    vi.mocked(invoke).mockImplementation(answerAll("lb"));
+    tm.onLine(mk("head", 1)); // 首个 tab ⇒ active
+    tm.onLine(mk("lb", 300)); // 后台 tab：非批期直渲、钉 floor = 300；账本空
+    const t = home(tm).store.tabs.get("lb")!;
+    expect(t.window.pendingCount).toBe(0);
+    expect(t.window.wantsBelow).toBe(true);
+    const { renderContentRecord } = await import("../src/render-stream-record");
+    const spy = renderContentRecord as unknown as ReturnType<typeof vi.fn>;
+    spy.mockClear();
+    tm.switchTo("lb"); // jsdom 恒不可滚 ⇒ R-2 踢一脚
+    expect(asks()).toEqual([{ origin: "<local>", jsonlPath: "/p/lb.jsonl", from: 100, until: 300 }]);
+    await settle();
+    // 回来的 200 条补上了屏（渲染窗口向下扩到 100）；之后接着问 [0, 100)，到第 0 行为止
+    expect(t.window.floorSeq).toBe(0);
+    expect(asks()).toEqual([
+      { origin: "<local>", jsonlPath: "/p/lb.jsonl", from: 100, until: 300 },
+      { origin: "<local>", jsonlPath: "/p/lb.jsonl", from: 0, until: 100 },
+    ]);
+    const rendered = new Set(spy.mock.calls.map((c) => (c[0] as { seq: number }).seq));
+    for (let s = 0; s < 300; s++) expect(rendered.has(s), `第 ${s} 行没上屏`).toBe(true);
+    // 🔴 取回的是历史：建卡的 sink 不接 onRealUserInput（不自动切 tab）
+    for (const c of spy.mock.calls) {
+      expect((c[2] as { onRealUserInput?: unknown }).onRealUserInput).toBeUndefined();
+    }
+    expect(t.window.belowState).toEqual({ kind: "none" });
+    expect(t.stream.contentElement.querySelector(".stream-more-above")).toBeNull();
+    // 到顶了：再怎么踢也不再问
+    home(tm).view.activate(t);
+    await settle();
+    expect(asks().length).toBe(2);
+  });
+
+  it("★ L3：问不动（老后端 / 断了）⇒ 哨兵说原因、不自动重问；切走再切回来才再问一次", async () => {
+    vi.mocked(invoke).mockImplementation(((cmd: string) =>
+      cmd === "read_session_lines"
+        ? Promise.reject(new Error("那台后端还不认这条查询"))
+        : Promise.resolve(undefined)) as never);
+    tm.onLine(mk("head", 1));
+    tm.onLine(mk("fb", 50));
+    const t = home(tm).store.tabs.get("fb")!;
+    tm.switchTo("fb");
+    await settle();
+    expect(asks().length).toBe(1);
+    expect(t.window.belowState).toEqual({ kind: "failed", reason: "那台后端还不认这条查询" });
+    expect(t.stream.contentElement.querySelector(".stream-more-above")?.textContent).toContain(
+      "那台后端还不认这条查询",
+    );
+    // 上翻（fillAbove 的每一个入口）不自动重问
+    home(tm).view.activate(t);
+    expect(asks().length, "activate 自己就是「切进来」—— 这一脚允许重问").toBe(2);
+    await settle();
+    (home(tm).view as unknown as { fillAbove(t: unknown): void }).fillAbove(t);
+    (home(tm).view as unknown as { fillAbove(t: unknown): void }).fillAbove(t);
+    expect(asks().length, "失败之后的上翻不许自己重问（否则是一个无界的重试环）").toBe(2);
+  });
+
+  it("★ L3：回来的行里**见过**的（被修剪出账本的）直接放回账本、不再过 onLine；没见过的走 onLine", async () => {
+    vi.mocked(invoke).mockImplementation(answerAll("seen"));
+    tm.onLine(mk("head", 1));
+    tm.onLine(mk("seen", 250));
+    const t = home(tm).store.tabs.get("seen")!;
+    t.seenSeqs.add(240); // 模拟：240 见过，但已被修剪出账本
+    const onLine = vi.spyOn(tm, "onLine");
+    tm.switchTo("seen");
+    await settle();
+    const fed = onLine.mock.calls.map((c) => (c[0] as { seq: number }).seq);
+    expect(fed).not.toContain(240);
+    expect(fed).toContain(239);
+    const { renderContentRecord } = await import("../src/render-stream-record");
+    const rendered = (renderContentRecord as unknown as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c) => (c[0] as { seq: number }).seq,
+    );
+    expect(rendered, "见过的那一条也要上屏（放回账本 ⇒ 补批建卡）").toContain(240);
+  });
+
+  it("★ L4：取回的历史行不把已结束的远端 tab 翻活；实时远端行照旧翻活（正控）", async () => {
+    vi.mocked(invoke).mockImplementation(answerAll("rm", "box"));
+    tm.onLine(mk("head", 1));
+    tm.onLine(mk("rm", 80, "box"));
+    const t = home(tm).store.tabs.get("rm")!;
+    tm.archiveTab("rm");
+    expect(t.state).toBe(ENDED);
+    tm.switchTo("rm"); // 往下取 [0, 80)：80 条远端历史行
+    await settle();
+    expect(asks().length).toBeGreaterThan(0);
+    expect(t.state, "取回来的历史行把已结束的远端 tab 翻活了").toBe(ENDED);
+    tm.onLine(mk("rm", 81, "box")); // 实时行
+    expect(t.state, "正控：实时远端行照旧翻活").not.toBe(ENDED);
   });
 });

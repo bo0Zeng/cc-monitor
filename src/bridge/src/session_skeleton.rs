@@ -172,6 +172,73 @@ pub async fn read_session_range(
     ))
 }
 
+/// 〔CF2 · 第四波 4B〕按**行号**取回的那一段（前端往上翻过了账本里最老那一条时要）。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+pub struct SessionLinesPage {
+    /// 这一段第一行的行号（＝ 问的那个）。
+    // C03 大整数策略同 `JsonlLinePayload.seq`：量纲是行号，f64 足够；线上是 JSON 数字。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub from: u64,
+    /// 下一段从这一行起。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub next: u64,
+    /// 读过了最后一个完整行（再往后没有了）。
+    pub eof: bool,
+    /// `[from, next)` 里**可显示**的那些（不可显示的照占号、不出 payload —— 与实时行同一个口径）。
+    pub payloads: Vec<crate::bridge::JsonlLinePayload>,
+}
+
+/// 〔CF2 · 第四波 4B〕**按行号取一段正文** `[from, until)`（`until` 缺 ＝ 到末尾）—— **不依赖骨架索引**的那条取回路。
+///
+/// # 为什么要有它（`调研/第四波记录/CF2.md §1`）
+///
+/// 按偏移取（[`read_session_range`]）要索引给字节边界；没接骨架的 tab（后台 tab · 老后端 · seq 对不上的）
+/// 手里没有索引 ⇒ 丢掉的正文无处可回 ⇒ monitor 的重放缓冲不敢设上界。行号不用索引：seq **就是**行号
+/// （实时 `line` 帧 · 旁路快照 · 本命令，三条路同一个空间）。前端唯一调用点在 `TabStreamView` 的上翻补批。
+///
+/// 解析住 monitor（`parse_line`，ts-rs 类型的来源）—— 与 `frame_query_tests::HELD_BACK` 里 `history-read`
+/// 那一行同一个理由；帧命令本身（`history-lines`）后端出的是可计行原文。
+#[tauri::command]
+pub async fn read_session_lines(
+    origin: crate::origin::Origin,
+    jsonl_path: String,
+    from: u64,
+    until: Option<u64>,
+) -> Result<SessionLinesPage, String> {
+    origin.route("read_session_lines")?;
+    precheck(&jsonl_path)?;
+    let page =
+        crate::backend::control::frame_query::session_lines(&origin, &jsonl_path, from, until)
+            .await?;
+    Ok(lines_page(page, &jsonl_path, &origin))
+}
+
+/// [`read_session_lines`] 的纯核：后端那一段 ⇒ payload（编号同 [`range_payloads`]：第 k 个可计行是 `from + k`）。
+pub(crate) fn lines_page(
+    page: crate::backend::control::frame_query::LinesPage,
+    path: &str,
+    origin: &crate::origin::Origin,
+) -> SessionLinesPage {
+    let file_name = path.rsplit(['/', '\\']).next().unwrap_or("");
+    let sid = file_name.strip_suffix(".jsonl").unwrap_or(file_name);
+    let payloads = range_payloads(
+        &page.lines,
+        page.from,
+        page.lines.len() as u64,
+        sid,
+        path,
+        origin,
+    );
+    SessionLinesPage {
+        from: page.from,
+        next: page.next,
+        eof: page.eof,
+        payloads,
+    }
+}
+
 /// 〔U3b · `设计/10` 步 8〕前端对这个会话**接上了骨架** ⇒ monitor 的重放缓冲里它只留尾巴
 /// （`event_replay·rs::REPLAY_TAIL_KEEP`，依据写在那个常量的头注里）。返回这次丢掉的条数。
 ///

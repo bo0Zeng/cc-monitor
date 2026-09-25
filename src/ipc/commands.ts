@@ -174,6 +174,7 @@ import type { HistorySessionEntry } from "../generated/HistorySessionEntry";
 import type { HooksReport } from "../generated/HooksReport";
 import type { ImportGroup } from "../generated/ImportGroup";
 import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
+import type { SessionLinesPage } from "../generated/SessionLinesPage";
 import type { PanoramaStatus } from "../generated/PanoramaStatus";
 import type { ProfileScan } from "../generated/ProfileScan";
 import type { PushResult } from "../generated/PushResult";
@@ -872,6 +873,13 @@ export const commands = {
     seqBase: number;
     lineCount: number;
   }) => invoke<JsonlLinePayload[]>("read_session_range", args),
+
+  /**
+   * 〔CF2 · 第四波 4B〕**按行号取一段正文** `[from, until)`（`until` 缺 ＝ 到末尾）—— 不依赖骨架索引的那条取回路。
+   * 唯一调用点：`TabStreamView.fetchBelow`（没接骨架的 tab 往上翻过了账本里最老那一条）。
+   */
+  read_session_lines: (args: { origin: Origin; jsonlPath: string; from: number; until?: number }) =>
+    invoke<SessionLinesPage>("read_session_lines", args),
 
   /**
    * 〔U3b · `设计/10` 步 8〕这个会话**接上了骨架** ⇒ monitor 的重放缓冲只留尾巴（F5 之后也只重放尾巴，

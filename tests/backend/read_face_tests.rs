@@ -749,3 +749,45 @@ fn lines_by_number_share_the_seq_space_with_tail_and_index() {
     }
     let _ = std::fs::remove_dir_all(&home);
 }
+
+/// ★ L1 跨 crate：`history-lines` 从 0 取到底，第 k 条的 uuid == 金标准第 k 行（`skeleton-seq-space.golden`，手算；
+/// monitor 那一侧 `LineNumberer` 与后端索引对的也是它）；条数 == `#count`（torn 残尾不交）。
+#[test]
+fn lines_by_number_match_the_shared_seq_space_golden() {
+    let data: &[u8] = include_bytes!("../__fixtures__/skeleton-seq-space.jsonl");
+    let golden = include_str!("../__fixtures__/skeleton-seq-space.golden");
+    let mut want: Vec<Option<String>> = Vec::new();
+    let mut count = None;
+    for l in golden.lines() {
+        if let Some(v) = l.strip_prefix("#count\t") {
+            count = v.parse::<usize>().ok();
+        } else if !l.starts_with('#') {
+            let (_, u) = l.split_once('\t').unwrap();
+            want.push((u != "-").then(|| u.to_string()));
+        }
+    }
+    assert!(
+        !want.is_empty(),
+        "金标准一行都没抽到 —— 下面的相等在空集上绿"
+    );
+    let pg = crate::observe::history_query::read_lines_from(
+        std::io::Cursor::new(data),
+        0,
+        None,
+        1 << 20,
+        1 << 20,
+    )
+    .unwrap();
+    let got: Vec<Option<String>> = pg
+        .lines
+        .iter()
+        .map(|l| {
+            serde_json::from_str::<serde_json::Value>(l.trim_start_matches('\u{feff}').trim())
+                .ok()
+                .and_then(|v| v.get("uuid").and_then(|u| u.as_str()).map(str::to_string))
+        })
+        .collect();
+    assert_eq!(got, want);
+    assert_eq!(Some(pg.lines.len()), count);
+    assert!(pg.eof);
+}

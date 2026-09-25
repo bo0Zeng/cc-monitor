@@ -1373,6 +1373,7 @@ pub fn run() {
             history::stream_read_session_jsonl,
             // 〔`设计/10` 骨架 · 子步 3〕`--read-session-from-offset` 在 monitor 侧的调用点（〔C4b〕骨架索引那一条改走通道）。
             session_skeleton::read_session_range,
+            session_skeleton::read_session_lines,
             // 〔U3b〕接上骨架的会话，重放缓冲只留尾巴（`设计/10` 步 8）
             session_skeleton::replay_keep_tail_only,
             remote_history::list_remote_history_projects,
