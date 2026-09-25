@@ -1,14 +1,13 @@
 // A3：多账号（cc-acct-iso）前端 store —— 账号模型的**单一真相**。
 //
 // 账号 = 一个 CLAUDE_CONFIG_DIR。本模块：
-//   1. 包装 A2 的三个只读 Tauri 命令（list_remote_accounts / list_remote_session_accounts /
-//      check_account_trust），带 per-origin TTL 缓存 + 手动刷新。
+//   1. 包装 A2 的只读查询（list_remote_accounts / check_account_trust 两条 Tauri 命令 ＋
+//      〔C4a〕经通道的 `accounts-sessions`），带 per-origin TTL 缓存 + 手动刷新。
 //   2. 存/取"我这台 cc-monitor 起新会话时用哪个账号"（config.json 的 accounts.defaultName）。
 //   3. 提供纯函数（降级判定 / 会话徽章映射）供 UI 与 vitest。
 //
 // **不注入 env（A4）、不重启会话（A5）、不碰本地账号（A7）**。全程走 A2 的
 // available:false 降级：未迁移 / 旧后端一律安静隐藏账号 UI，不报错。
-import { invoke } from "@tauri-apps/api/core";
 import { commands } from "./ipc/commands";
 import type { AuthKind } from "./generated/AuthKind";
 import type { RemoteAccount } from "./generated/RemoteAccount";
@@ -23,6 +22,9 @@ import { LOCAL_LAUNCH_ACCOUNT_WIRE } from "./generated/launch-render-facts";
 // 〔`A3` 第二波〕backend 的本机 origin（`"<local>"`）—— 与本文件自己那个 `LOCAL_ORIGIN`
 // （`"__local__"`，账号面的缓存键）**不是同一个值**，所以换个名字导进来，别让两者在读者眼里混成一个。
 import { LOCAL_ORIGIN as BACKEND_LOCAL_ORIGIN } from "./backend-policy";
+import { isLocalOrigin, type Origin } from "./ipc/origin";
+import { chan } from "./ipc/chan";
+import { budgetWithin, jsonBody, linesOf } from "./ipc/chan-caller";
 
 // ---- 账号的形状是**生成物**（K-A1），不再是一份手抄 ----
 //
@@ -50,7 +52,7 @@ export interface AccountsMeta {
   accountZeroAware?: boolean;
 }
 
-interface RawAccountsResult {
+export interface RawAccountsResult {
   available: boolean;
   error: string | null;
   meta: AccountsMeta | null;
@@ -80,12 +82,6 @@ export interface SessionAccount {
    * 而消费方一律把 `undefined` 与 `null` 当同一件事。
    */
   launchId?: string | null;
-}
-
-interface RawSessionAccountsResult {
-  available: boolean;
-  error: string | null;
-  sessions: SessionAccount[];
 }
 
 /** 账号功能在某台远端的整体状态（UI 直接消费）。 */
@@ -447,7 +443,8 @@ export function __setLocalLaunchSnapshotForTests(
 }
 
 export async function fetchLocalApikeyRouting(configDirs: string[]): Promise<ApikeyRoutingView> {
-  return await commands.apikey_routing_for({ configDirs });
+  // 〔RM1a〕那条命令收了 origin；本函数照旧只问本机（名字里的 `Local` 就是这一格）。
+  return await commands.apikey_routing_for({ origin: BACKEND_LOCAL_ORIGIN, configDirs });
 }
 
 /**
@@ -505,9 +502,10 @@ export function accountStatusBadge(
           "要用它：在那份 JSON 里给这个账号加一行（端点 + key），或者在该账号自己的 " +
           "shell 环境里配好第三方端点。"
         : endpoint?.scope === "remote"
-          ? "cc-monitor 今天只给本机会话配 base URL；远端这一半还不做" +
-            "（把 key 送到远端那台机器是另一件事）⇒ 这个号要用，得在远端那台机器上" +
-            "自己配好第三方端点。"
+          ? // 〔RM1a 合并〕旧句「把 key 送到远端那台机器是另一件事」半过期了：key 今天送得到那台机器上
+            //   （设置里配 key 按页上那台机器写），差的是远端起的会话还不经中转换上它（注入归 4B RL1）。
+            "key 可以存到远端那台机器上，但远端起的会话今天还不经中转换上它（只有本机会话会）。" +
+            "要用这个号，先在远端那台机器上自己配好第三方端点。"
           : "cc-monitor 只在两件事都成立时替它配端点（base URL）：① apikey 凭据文件里有这个" +
             "账号 id 的一行；② 本机中转在跑。这一处没被告知它属于哪一半、那两条成不成立，" +
             "所以不替它下判断。";
@@ -675,7 +673,7 @@ export function badgeText(name: string): string {
  *   源① live 探测（`/proc/<pid>/environ` 硬真相）——优先；
  *   源② lastAccount（history-metadata：上次用本工具带账号起该会话时记的）——探测不到时兜底，标"上次"；
  *   源③ 都无 → `—`、不猜。
- * 本地会话（origin 为 null）不产徽章。
+ * 本地会话（`LOCAL_ORIGIN`）不产徽章。
  */
 export interface SessionBadge {
   text: string; // 显示文本；"—" = 未知
@@ -688,12 +686,12 @@ export interface SessionBadge {
 }
 export function sessionBadge(
   sid: string,
-  origin: string | null,
+  origin: Origin,
   liveByS: Map<string, SessionAccount>,
   emailByName: Map<string, string>,
   lastAccountByS?: Map<string, string>,
 ): SessionBadge | null {
-  if (origin === null) return null; // 本地会话 A7 前不支持
+  if (isLocalOrigin(origin)) return null; // 本地会话 A7 前不支持
   // 源①：live 探测——唯一硬真相，优先。
   const live = liveByS.get(sid);
   if (live && live.alive && live.account) {
@@ -731,14 +729,14 @@ export function sessionBadge(
 
 /**
  * A4/§7 降级：某会话是否**该显**账号徽章。只有「账号可查询」的远端才显（即 available 的
- * origin,由 main.ts 收进 readyOrigins）。本地会话（origin null）与不可查询的远端
+ * origin,由 main.ts 收进 readyOrigins）。本地会话（`LOCAL_ORIGIN`）与不可查询的远端
  * （未迁移 / 旧后端）一律不显——否则满屏 `—` 是噪音、违反 §7「不可用即安静隐藏」。
  */
 export function shouldShowAccountBadge(
-  origin: string | null,
+  origin: Origin,
   readyOrigins: Set<string>,
 ): boolean {
-  if (origin === null) return false; // 本地会话 A7 前不支持
+  if (isLocalOrigin(origin)) return false; // 本地会话 A7 前不支持
   return readyOrigins.has(origin);
 }
 
@@ -881,7 +879,7 @@ export const PENDING_LAUNCH_TTL_MS = 120_000;
 /**
  * 🔴 **问几次**：每条待回填最多 8 次。
  *
- * 每一次「问」= 一次 `list_local_session_accounts`（一次 exec local_backend）。
+ * 每一次「问」= 一次经通道的 `accounts-sessions`（〔C4a〕此前是一次 E79 那条本机 Tauri 命令，一次 exec local_backend）。
  * 触发它的是**会话集合变化事件**，不是表 —— 一台机上短时间内起十几条会话是可能的，
  * 没有这个上限时，一条永远回填不了的待办会跟着每一次事件白发一次 IPC。
  */
@@ -950,7 +948,7 @@ export function rememberLocalLaunch(
  *
  * # ⚠ 它买不到什么（如实写）
  *
- * - **Windows**：`list_local_session_accounts` 要读 `/proc/<pid>/environ`，
+ * - **Windows**：`accounts-sessions` 要读 `/proc/<pid>/environ`，
  *   那边恒 `available:false` ⇒ 这条路上回填**永远查不到**，静默作废（fail closed）。
  *   那是 `K-P5f` 已登记的残留洞，不在本件账上。
  * - **父会话已死的继承值**：见 [`sidOfLaunch`] 头注 —— 那一格上回填会**指错**。
@@ -964,14 +962,9 @@ export async function resolvePendingLocalLaunches(nowMs: number = Date.now()): P
   );
   if (pendingLocalLaunches.length === 0) return;
 
-  let rows: SessionAccount[] = [];
-  try {
-    const r = await commands.list_local_session_accounts();
-    // `available:false`（Windows / 没有本机后端）⇒ 空行集 ⇒ 下面一条都命不中 = 不猜。
-    if (r.available) rows = r.sessions;
-  } catch {
-    /* 查不到就按「这一次没问出来」处理，待办留着等下一次事件 */
-  }
+  // 〔C4a〕经通道问本机后端（`fetchSessionAccounts` 那一处，`force`：刚起的会话不许被 8 秒缓存挡住）。
+  //   查不到（Windows / 没有本机后端 / 没有控制通道）⇒ 空行集 ⇒ 下面一条都命不中 = 不猜，待办留着等下一次事件。
+  const rows: SessionAccount[] = await fetchSessionAccounts(BACKEND_LOCAL_ORIGIN, true);
 
   const still: PendingLocalLaunch[] = [];
   for (const p of pendingLocalLaunches) {
@@ -1107,7 +1100,7 @@ export async function fetchAccounts(origin: string, force = false): Promise<Acco
 
   let raw: RawAccountsResult;
   try {
-    raw = await invoke<RawAccountsResult>("list_remote_accounts", { origin });
+    raw = await commands.list_remote_accounts({ origin });
   } catch (e) {
     // Rust 侧只有"该远端根本没配"才 Err；当作不可用而非崩溃
     const state: AccountsState = {
@@ -1225,7 +1218,7 @@ export async function fetchLocalAccounts(force = false): Promise<AccountsState> 
 
   let raw: RawAccountsResult;
   try {
-    raw = await invoke<RawAccountsResult>("list_local_accounts");
+    raw = await commands.list_local_accounts();
   } catch (e) {
     // Rust 侧只有「取不到 HOME」才 Err；当作不可用而非崩溃（与远端那条同处理）。
     const state: AccountsState = {
@@ -1254,17 +1247,29 @@ export async function fetchLocalAccounts(force = false): Promise<AccountsState> 
   return state;
 }
 
-/** 取某台远端正在跑的会话账号归属（带 TTL 缓存）。 */
+/**
+ * 那台机器（**本机也一样**）上正在跑的会话各属于哪个账号（带 TTL 缓存；`force` 绕过缓存）。
+ *
+ * 〔C4a · 第四波 · 子步 3〕**走通道**：`chan.call(origin, "accounts-sessions", …)` —— 帧命令直接问那台机器的后端，
+ * 本机与远端**同一条路**（本机那台由 `<local>` 那条长连接答）。在此之前是两条 Tauri 命令
+ * （远端那条走帧面 · 本机那条〔E79〕每次 exec 一个本机后端），
+ * 各在 Rust 里把同一种行解析一遍 —— 两条命令与那两份解析一起退役，行的解释只剩 [`parseSessionAccountLines`] 一处。
+ *
+ * 失败（没有控制通道 / 后端不认 / 对端说不行 / 期限到）一律按「这一次没问出来」：空表、`console.warn`，
+ * 不猜 —— 与旧那两条的 `available:false ⇒ 空表` 同形（调用方从来只看行）。
+ */
 export async function fetchSessionAccounts(
-  origin: string,
+  origin: Origin,
   force = false,
 ): Promise<SessionAccount[]> {
   const now = Date.now();
   const cached = sessionAccountsCache.get(origin);
   if (!force && cached && now - cached.at < SESSION_ACCOUNTS_TTL_MS) return cached.value;
   try {
-    const raw = await invoke<RawSessionAccountsResult>("list_remote_session_accounts", { origin });
-    const value = raw.available ? (raw.sessions ?? []) : [];
+    const empty = jsonBody({});
+    const budget = budgetWithin(SESSION_ACCOUNTS_BUDGET_MS);
+    const reply = await chan.call(origin, "accounts-sessions", empty, budget);
+    const value = parseSessionAccountLines(linesOf(reply));
     sessionAccountsCache.set(origin, { at: now, value });
     return value;
   } catch (e) {
@@ -1272,6 +1277,69 @@ export async function fetchSessionAccounts(
     sessionAccountsCache.set(origin, { at: now, value: [] });
     return [];
   }
+}
+
+/**
+ * 「会话 ↔ 账号」那一问的期限：30 秒 —— 与它上一个住址（monitor 侧 `frame_query` 的 `LINES_BUDGET`）同值，
+ * 它盖的是「那台后端扫一遍活会话 ＋ 回程」，不含握手（长连接早就连着）。
+ */
+const SESSION_ACCOUNTS_BUDGET_MS = 30_000;
+
+const optStr = (v: unknown): v is string | null | undefined =>
+  v === undefined || v === null || typeof v === "string";
+const optBool = (v: unknown): v is boolean | undefined => v === undefined || typeof v === "boolean";
+
+/**
+ * `accounts-sessions`（= `--session-accounts`）的逐行 ⇒ [`SessionAccount`]。**坏行跳过**（`console.warn`），不毁整次。
+ *
+ * 口径逐格照它上一个住址（Rust `accounts.rs::SessionAccount` 的 serde：`camelCase`、`pid` 必有、
+ * 其余可缺；`bare` / `alive` 缺 ⇒ `false`）：
+ * - 🔴 **additive**（`K-P5f` `KP5FD4`）：老后端的行**逐字节没有 `launchId` 键** ⇒ 读成 `null`，
+ *   **不许判成坏行**（那会让整台机器的会话账号映射一条不剩、徽章整片消失）；
+ * - 某一格**在但类型不对** ⇒ 整行坏（serde 同样整行拒）—— 不替后端猜一个值。
+ */
+export function parseSessionAccountLines(lines: string[]): SessionAccount[] {
+  const out: SessionAccount[] = [];
+  for (const line of lines) {
+    let v: unknown;
+    try {
+      v = JSON.parse(line);
+    } catch (e) {
+      console.warn("session-accounts 行解析失败（跳过）:", e);
+      continue;
+    }
+    if (v === null || typeof v !== "object" || Array.isArray(v)) {
+      console.warn("session-accounts 行不是对象（跳过）");
+      continue;
+    }
+    const o = v as Record<string, unknown>;
+    if (
+      typeof o.pid !== "number" ||
+      !Number.isInteger(o.pid) ||
+      o.pid < 0 ||
+      !optStr(o.sessionId) ||
+      !optStr(o.cwd) ||
+      !optStr(o.configDir) ||
+      !optStr(o.account) ||
+      !optBool(o.bare) ||
+      !optBool(o.alive) ||
+      !optStr(o.launchId)
+    ) {
+      console.warn("session-accounts 行字段类型不对（跳过）");
+      continue;
+    }
+    out.push({
+      pid: o.pid,
+      sessionId: o.sessionId ?? null,
+      cwd: o.cwd ?? null,
+      configDir: o.configDir ?? null,
+      account: o.account ?? null,
+      bare: o.bare ?? false,
+      alive: o.alive ?? false,
+      launchId: o.launchId ?? null,
+    });
+  }
+  return out;
 }
 
 /** 换号前的目录信任预检（A5 会用；A3 先提供）。available:false → 视为"未知"，调用方只警告不拦。 */
@@ -1291,7 +1359,7 @@ export async function checkTrust(
   cwd: string,
 ): Promise<TrustResult> {
   try {
-    return await invoke<TrustResult>("check_account_trust", { origin, configDir, cwd });
+    return await commands.check_account_trust({ origin, configDir, cwd });
   } catch (e) {
     return { available: false, trusted: false, known: false, error: String(e) };
   }
@@ -1320,7 +1388,7 @@ export function __resetAccountsCacheForTest(): void {
  */
 export async function recordLastAccount(sessionId: string, account: string): Promise<void> {
   try {
-    await invoke("update_history_metadata", { sessionId, patch: { lastAccount: account } });
+    await commands.update_history_metadata({ sessionId, patch: { lastAccount: account } });
   } catch (e) {
     console.warn("record lastAccount failed:", e);
   }

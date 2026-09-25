@@ -770,7 +770,7 @@ fn the_backend_is_one_thing_landing_in_several_places() {
         // ① 这一份产物自己带着、旁边没有本机后端时自释放的那份
         (
             "src/bridge/native-backend/cc-monitor-native".into(),
-            "~/.cc-monitor/bin/cc-monitor-local-*".into(),
+            "~/.cc-monitor/bin/cc-monitor-backend-*".into(),
             HostScope::Client,
         ),
         // ② 推给远端那台机器、在那台机器上当**它的本地后端**跑的那份

@@ -30,9 +30,8 @@
  */
 
 import { commands } from "./ipc/commands";
-// 〔步 12·C〕本机那个 origin 的**唯一住址**（Rust 侧是 `inbound_client::LOCAL_ORIGIN`，
-// 两侧由 `origin_tests::the_sentinel_agrees_with_the_two_existing_homes` 两向钉着）。
-import { LOCAL_ORIGIN } from "./backend-policy";
+// 〔C4a〕本机 = `LOCAL_ORIGIN`（`"<local>"`，Rust 侧 `origin.rs::LOCAL`，跨语言对拍）。
+import type { Origin } from "./ipc/origin";
 import { showActionFailureToast } from "./error-toast";
 import type { BranchResult } from "./generated/BranchResult";
 
@@ -58,8 +57,8 @@ export interface BranchButtonOptions {
    * Rust 头注）。〔`K-R88` 09-13〕本机那条原先收路径，收成 sid 之后这里少了一个字段。
    */
   sourceSessionId: string;
-  /** 远端 origin；`null`/缺省 = 本机。G6 起远端也能分叉。 */
-  origin?: string | null;
+  /** 哪台机器（本机 = `LOCAL_ORIGIN`）。G6 起远端也能分叉。〔C4a〕必填：「没说」不再被当成本机。 */
+  origin: Origin;
   /** 新会话的工作目录（起会话用）。 */
   cwd?: string;
   /** 成功之后干什么（弹 toast / 起会话）——由调用方决定，本组件不管起会话。 */
@@ -107,8 +106,9 @@ export function attachBranchButton(
         // 把「哪台机器」从命令名里搬到参数里。
         // ⚠ **本机是 `LOCAL_ORIGIN`（`"<local>"`），不是 `undefined`、不是 `null`** ——
         //   `INVARIANTS §40` 逐字「本地 ＝ 不走 ssh 的远端」，它是一个**具名**的 origin。
+        //   〔C4a〕`opts.origin` 本来就是这个表示，原样过线。
         const res = await commands.create_branch_session({
-          origin: opts.origin ?? LOCAL_ORIGIN,
+          origin: opts.origin,
           sourceSessionId: opts.sourceSessionId,
           messageUuid: opts.uuid,
         });

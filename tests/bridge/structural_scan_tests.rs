@@ -1735,9 +1735,9 @@ fn line_number_addresses_stay_in_range_and_never_grow() {
         //    那正是原先第 1062 行那段话讲的东西）⇒ 从「判不了真伪」变成
         //    `every_symbol_address_in_the_sources_still_resolves` **真的判得了**。
         //    ⚠ 没有「换一个今天对的行号」—— 那是本条头注逐字禁的那一手。
-        // 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕住址跟着那句散文搬进 `tests/bridge/`。
-        // **存量条数一格没变** —— 一处行号地址都没新增，只是左端的文件名换了。
-        ("parity_ledger_tests.rs", "sftp.rs", 141),
+        // 🔴 〔RM1a · 第四波〕**这一行删了**：`parity_ledger_tests.rs` 里点 `sftp.rs` 第 141 行的那句散文
+        //    住在 `creds.apikey` 那条平价欠账的理由里，那条欠账结清、整行删掉，那处行号地址随之没了。
+        //    **存量少一条，这是往下走**（递减方向）。
         ("ratchet_guard.rs", "control/tmux_hook.rs", 6),
         ("ratchet_guard.rs", "control/tmux_hook.rs", 102),
         ("ratchet_guard.rs", "main.rs", 651),
@@ -2672,6 +2672,23 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// `tool_registry`（→ `tool_registry_environment_tests.rs`）。
     /// 另有**真新增的一条**（退役判据留下的墓碑），挂在本表末尾、单独写了理由。
     const TOMBSTONED: &[(&str, &str, usize)] = &[
+        // 〔SR1a · 2026-09-24〕`--dial` 那条分派臂删了，守它「接得到」的判据随入口换成链路四条而改名。
+        (
+            "tests/backend/main_argv_table_guard.rs",
+            "the_dial_arm_is_actually_wired_into_the_dispatch",
+            1,
+        ),
+        // 🔴 〔C4a · 第四波 · 2026-09-24〕远端全文搜索的合并搬去了前端（`views/history-search.ts::mergeSearchResults`），
+        //    Rust 那一份删了；后端那句病史（「收口前它逐字 `truncated: local.truncated`」）说的正是它为什么被改 ⇒ 第②条出路。
+        (
+            "src/backend/observe/search_query.rs",
+            "merge_search_results",
+            1,
+        ),
+        // 🔴 〔F9c · 第四波 · 2026-09-24〕存盘装不进一行的改走暂存区分块之后，「打开即只读」一档与它那两句话一起删了；
+        //    `fonts.rs` 的探针来路里逐字记着那两句当初带进来的九个字 ⇒ 第②条出路：贴墓碑 ＋ 记账。
+        ("src/bridge/src/filewin/fonts.rs", "too_big_to_save", 1),
+        ("src/bridge/src/filewin/fonts.rs", "read_only_notice", 1),
         // 🔴 〔C2 · 2026-09-24〕拨号搬进后端的拨号代理之后，界面侧 `K-P6b` 那一版的三条判据随它们守的东西一起删了：
         //    回落登记（回落删了，`D11`）· 请求行按蛇形键写（请求改由宿主 `dial_host` 造，判据搬去那边且改成与后端异源）·
         //    代理只从两处解析（解析多了「自释放那一份」一处）。留下的那几句说的正是「它们为什么不在了」⇒ 第②条出路。
@@ -3337,7 +3354,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_chmod_attrs_never_put_a_size_on_the_wire",
             1,
         ),
-        ("src/bridge/src/sftp_pool.rs", "is_lossy_name", 1),
+        // 〔第四波 S4〕`sftp_pool.rs` 那一处（句柄有损判定的头注里点着从前那个判文件名的函数）随它所在的
+        //   零流量复制一段整块删了 ⇒ 这一行走了（被守的那件事整段退役，不是墓碑被人擦掉）。
         (
             "tests/bridge/filewin/boundary_tests.rs",
             "sftp_cancel_transfer",
@@ -3628,6 +3646,10 @@ fn every_prose_tombstone_mark_is_registered() {
     /// 不是（量具脚本里的针、讲机制的散文）⇒ 同样记一笔，并在旁边写清它是哪一类。
     /// **不许**为了让本条变绿就把标记删掉 —— 删掉的是账，不是病。
     const REGISTERED: &[(&str, usize)] = &[
+        // 〔C4a · 第四波 · 2026-09-24〕「会话 ↔ 账号」与远端全文搜索改走通道，Rust 那几份删了，留下的三处病史各挂一块：
+        ("src/backend/observe/search_query.rs", 1), // 合并那一份（`K-R100` 病史）
+        ("src/bridge/src/remote_history.rs", 2), // 远端全文搜索那份 fan-out ·〔合并 RW1〕+1：F11 改经远端后端删，远端那一支的头注一块
+        ("tests/bridge/local_read_surface_registry_tests.rs", 1), // 棘轮史里 E79 那一格
         // ▸ 下面这 5 份是 `P14` 立件的**直接证据**：它们在 `TOMBSTONED` 里一行都没有
         //   ⇒ 它们的标记**没有一处**落在死名人群上 ⇒ 在本条之前按构造零判据。
         //   逐份是：本模块生产侧那份（标记的定义处）· 本文件（那一处带标记的墓碑，
@@ -3641,8 +3663,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔RW1 · 第四波 09-24〕1 → 4：本机原语 `LocalFile` 与它的同步门面 `apply_local` 随「用户文件改经后端写」
         //   整块走了，头注一处 ＋ 原住址一块墓碑（两个名字）= +3。
         ("src/bridge/src/fenced_block.rs", 4),
-        // 〔RW1 · 第四波 09-24〕F11 改经远端后端删：远端那一支的头注一块 · 本机那两组删除判据换掉时留的一块。
-        ("src/bridge/src/remote_history.rs", 1),
+        // 〔RW1 · 第四波 09-24〕F11 改经远端后端删：远端那一支的头注一块（住址并进 C4a 那一行，〔合并〕两边各 +1）。
         // 〔RW1 · 第四波 09-24〕本机分叉改成 exec 本机后端 `--fork-session`：本机那一支的头注一块。
         ("src/bridge/src/remote_branch.rs", 1),
         // 〔RW1 · 第四波 09-24〕远端删会话那道结构守卫随 F11 改经后端删走了：方向相反那一问的两处说明。
@@ -3653,8 +3674,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/mcp.rs", 1),
         // 〔RW1 · 第四波 09-24〕写点表摘掉那三行时留的一块。
         ("tests/bridge/write_site_registry_tests.rs", 1),
-        // 〔RW1 · 第四波 09-24〕「盘上有字节却读到空」那一道从 monitor 的 `LocalFile::read` 搬到后端 `hollow_read`。
-        ("src/backend/control/files_write.rs", 1),
+        // 〔RW1 · 第四波 09-24〕「盘上有字节却读到空」那一道从 monitor 的 `LocalFile::read` 搬到后端 `hollow_read`
+        //   （住址并进 FW5 那一行，〔合并〕两边各 +1）。
         // 〔RW1 · 第四波 09-24〕Windows ACL 那条判据从 monitor 搬去后端：两头各一块墓碑。
         ("tests/backend/control/files_write_tests.rs", 1),
         ("tests/bridge/profile_installer_tests.rs", 1),
@@ -3662,6 +3683,10 @@ fn every_prose_tombstone_mark_is_registered() {
         // `ssh_source_dial_move_judge.rs` 三块（回落表那条判据 · 请求行那条 · 解析两处那条，随拨号搬家删掉）。
         ("src/bridge/src/inproc_dial.rs", 1),
         ("tests/bridge/ssh_source_dial_move_judge.rs", 3),
+        // 〔SR1a · 2026-09-24〕`--dial` 删了那一拍：守它的判据改名留的墓碑 · C2 那份读数脚本头上
+        //   那句「界面侧判据随之改名」（它点名的判据 SR1a 改了名，脚本本身只对 C2 那一版有效）。
+        ("tests/backend/main_argv_table_guard.rs", 1),
+        ("tests/evidence/C2-dial-loopback.py", 1),
         // 〔MC1〕+3：模块头注 ＋ 装 / 卸两条命令头注里各一块（`…_ccm_helper` 改名成 `…_alias_block`）。
         ("src/bridge/src/sftp.rs", 9), // 〔F7c 收尾 09-24〕4 → 6（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑） // 〔RW1〕+3：F11 那条 SFTP 直删与它的结构守卫（段头一块两个名字 ＋ 模块头注一处）
         ("src/bridge/src/profile_installer.rs", 5), // 〔AL1〕+1：`AccountAliasReport` 那一句 · 〔RW1〕+3：本机原子写原语 `atomic_write_string` / `atomic_replace_path` 删了（原住址一块 ＋ BOM 那段两句）
@@ -3696,6 +3721,7 @@ fn every_prose_tombstone_mark_is_registered() {
         //   另三处各挂在一条**随功能一起走掉的判据**的名字上 ——
         //   那三个名字同时要进 `TOMBSTONED`，两张表单位不同，各记各的）。
         ("src/bridge/src/filewin/source.rs", 5), // 〔F7c 收尾 09-24〕4 → 5（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
+        ("src/bridge/src/filewin/fonts.rs", 2), // 〔F9c 第四波 09-24〕0 → 2（探针来路里那两句「存不回去」的函数名随只读一档删了）
         ("src/bridge/src/history.rs", 5), // 〔RW1〕+1：本机删会话那道路径守卫整段搬去后端 // 〔RW1〕+3：本机分叉的实现（`branch_impl` / `write_branch_file` / `read_jsonl_values`）交给后端
         ("src/bridge/src/launch.rs", 1),
         ("src/bridge/src/lib.rs", 2), // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
@@ -3744,7 +3770,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/filewin/source_tests.rs", 2), // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         // 〔AL1 · 2026-09-24〕+5：`write_account_aliases` 退役那一行 ＋ 增量账里它那一行 ＋ 合并主线时
         //   三个计数旁的增量注（`EXPECTED_LOCAL_OR_BOTH` · `LEDGER.len()` · 增量账）。
-        ("tests/bridge/parity_ledger_tests.rs", 11), // 〔F7c 收尾 09-24〕10 → 11（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
+        ("tests/bridge/parity_ledger_tests.rs", 12), // 〔C4a · 第四波〕11 → 12（E79 那条本机会话账号命令退役，账本那一行挂墓碑） // 〔F7c 收尾 09-24〕10 → 11（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("tests/bridge/plugin_class_registry_tests.rs", 2),
         ("tests/bridge/polling_registry_tests.rs", 1),
         // 〔AL1 · 2026-09-24〕+1：`rollback_note_matches_what_actually_happened` 搬走的那块墓碑。
@@ -3763,12 +3789,21 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/filewin/mod.rs", 2),
         ("src/bridge/src/filewin/transfer.rs", 4),
         ("src/bridge/src/filewin/writeops.rs", 1),
-        ("src/bridge/src/sftp_pool.rs", 1),
+        // 〔第四波 S4〕`sftp_pool.rs` 1 → 0（行删）：那块墓碑随零流量复制一段整块删了，理由同 `TOMBSTONED` 那一行。
         ("tests/bridge/filewin/boundary_tests.rs", 2),
         ("tests/bridge/filewin/transfer_tests.rs", 1),
         ("tests/bridge/sftp_family_registry_tests.rs", 2),
         ("tests/bridge/sftp_move_ledger_tests.rs", 1),
         ("tests/bridge/sftp_pool_tests.rs", 5),
+        // 〔FW5 · 第四波〕两处墓碑标记：写面相对段「只收 UTF-8」那句（围栏改按 `Path` 判之后作废）·
+        //   选中那张表里「批量改权限没做」那一格（做了）。〔合并 RW1〕+1：`hollow_read` 那一道从 monitor 搬来。
+        ("src/backend/control/files_write.rs", 2),
+        ("src/bridge/src/filewin/select.rs", 1),
+        // 〔第四波 S4〕快捷键预留位 `app.search-history` 删了（历史全文搜索从没独立快捷键、预留位不留）：
+        //   清单那一处 ＋ 清单头注一处 ＋ 编辑器那枚「未上线」标签的遗址一处，逐处挂了墓碑。
+        ("src/keybindings/actions.ts", 2),
+        ("src/keybindings/editor.ts", 1),
+        ("tests/keybindings/actions.vitest.ts", 1),
     ];
 
     /// **挂歪了 / 在谈这件机制本身**的那些行，逐份登记**行数**。

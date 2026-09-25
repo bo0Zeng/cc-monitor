@@ -384,7 +384,7 @@ F40b 上翻补批：active tab 滚到顶部 800px 内自动从 `TailWindow` 弹 
 ### 账号子系统：隔离又同步（A2–A6 / #68/#69）
 **模型**：一个「账号」= 一个 `CLAUDE_CONFIG_DIR`（各自 `.credentials.json`，两号可同时跑、不互踢），而 skills/memory/history/settings/plugins 经 symlink 共享到同一库——**凭据隔离、其余同步**。隔离/同步管线是远端脚本 `cc-acct-iso`（app 内向导 `settings/acct-deploy.ts` 分步驱动）。
 
-**只读边界**：cc-monitor 侧对账号只**读**——后端 `accounts.rs` 三命令（`list_remote_accounts` / `list_remote_session_accounts` / `check_account_trust`，全 `async(origin: String)`、**无 State**）经后端纯只读查（名/邮箱/是否登录 / 某会话属哪个账号 / 目录是否可信）。动凭据（登录/同步/`--apply`）一律走**真实终端窗口**，不由 monitor 直接改。
+**只读边界**：cc-monitor 侧对账号只**读**——后端 `accounts.rs` 两命令（`list_remote_accounts` / `check_account_trust`，全 `async(origin: String)`、**无 State**）＋〔C4a〕前端经通道直接说的帧命令 `accounts-sessions`，经后端纯只读查（名/邮箱/是否登录 / 某会话属哪个账号 / 目录是否可信）。动凭据（登录/同步/`--apply`）一律走**真实终端窗口**，不由 monitor 直接改。
 
 **前端族**（`src/account-*.ts` + `settings/acct-deploy.ts`）：`account-chip.ts` 徽章 + 切号菜单（mismatch/align 状态）；`account-commands.ts`(A4) 「按会话选账号起/Resume」的 `withAccount`（账号解析 + `lastAccount` 记账）；`account-restart.ts`(A5) 「换号对齐当前会话」的**破坏性**重启编排。
 

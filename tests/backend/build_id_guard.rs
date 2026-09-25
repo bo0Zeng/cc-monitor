@@ -351,6 +351,28 @@ mod tests {
             "p2t-commit-upload-dial-v2",
             "--account-trust\n--account-trust-zero\n--accounts-list\n--accounts-sessions\n--acct-iso-shellinit\n--acct-iso-status\n--backend-probe\n--bus-kill\n--bus-list\n--bus-send\n--bus-spawn\n--bus-state\n--capture-pane\n--dial\n--exit-policy-read\n--exit-policy-set\n--files-browse\n--files-chmod\n--files-commit-upload\n--files-copy\n--files-create\n--files-delete\n--files-find\n--files-home\n--files-index-rebuild\n--files-index-status\n--files-ls\n--files-mkdir\n--files-read-text\n--files-rename\n--files-stat\n--files-write-text\n--fork-session\n--history-projects\n--history-read\n--history-search\n--history-sessions\n--history-subagents\n--history-tail\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--list-user-inputs\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tmux-notify\n#channel\nch:accounts-list\nch:accounts-sessions\nch:bus-kill\nch:bus-list\nch:bus-send\nch:bus-spawn\nch:bus-state\nch:cancel\nch:capture-pane\nch:exit-policy-read\nch:exit-policy-set\nch:files-browse\nch:files-chmod\nch:files-commit-upload\nch:files-copy\nch:files-create\nch:files-delete\nch:files-find\nch:files-home\nch:files-index-rebuild\nch:files-index-status\nch:files-ls\nch:files-mkdir\nch:files-read-text\nch:files-rename\nch:files-stat\nch:files-write-text\nch:history-projects\nch:history-read\nch:history-search\nch:history-sessions\nch:history-subagents\nch:history-tail\nch:kill\nch:launch\nch:ping\nch:resolve",
         ),
+        // ★ p2u（2026-09-24 第四波 4A 第一批合并，FW34 · FW5 · F9c · S4 · SE2 · RM1b · ST2 同拍）：**一次 bump**。子命令 ＋5：
+        //   F9c `files-stage-chunk` / `files-commit-text` · SE2 `find-in-session` · RM1b `tasks-list` / `plugins-marketplaces`
+        //   （除 `find-in-session` 只有 CLI 面，其余两个命令面都动）。另有行为变更：FW5 递归删 ＋ 批量改权限 · F9c 超长行应答带回 id。
+        // 🔴 上面各行快照一个字节没改。
+        (
+            "p2u-stage-find-tasks",
+            "--account-trust\n--account-trust-zero\n--accounts-list\n--accounts-sessions\n--acct-iso-shellinit\n--acct-iso-status\n--backend-probe\n--bus-kill\n--bus-list\n--bus-send\n--bus-spawn\n--bus-state\n--capture-pane\n--dial\n--exit-policy-read\n--exit-policy-set\n--files-browse\n--files-chmod\n--files-commit-text\n--files-commit-upload\n--files-copy\n--files-create\n--files-delete\n--files-find\n--files-home\n--files-index-rebuild\n--files-index-status\n--files-ls\n--files-mkdir\n--files-read-text\n--files-rename\n--files-stage-chunk\n--files-stat\n--files-write-text\n--find-in-session\n--fork-session\n--history-projects\n--history-read\n--history-search\n--history-sessions\n--history-subagents\n--history-tail\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--list-user-inputs\n--ping\n--plugins-marketplaces\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tasks-list\n--tmux-notify\n#channel\nch:accounts-list\nch:accounts-sessions\nch:bus-kill\nch:bus-list\nch:bus-send\nch:bus-spawn\nch:bus-state\nch:cancel\nch:capture-pane\nch:exit-policy-read\nch:exit-policy-set\nch:files-browse\nch:files-chmod\nch:files-commit-text\nch:files-commit-upload\nch:files-copy\nch:files-create\nch:files-delete\nch:files-find\nch:files-home\nch:files-index-rebuild\nch:files-index-status\nch:files-ls\nch:files-mkdir\nch:files-read-text\nch:files-rename\nch:files-stage-chunk\nch:files-stat\nch:files-write-text\nch:history-projects\nch:history-read\nch:history-search\nch:history-sessions\nch:history-subagents\nch:history-tail\nch:kill\nch:launch\nch:ping\nch:plugins-marketplaces\nch:resolve\nch:tasks-list",
+        ),
+        // ★ p2v（2026-09-24 第四波 SR1a 合并）：`--dial` 删；＋ `ch:link-open` / `-data` / `-credit` / `-close`（只在帧面）
+        //   ＋ `history-index` / `history-user-inputs` / `history-find`（两个命令面）。线上另多三种出方向帧。
+        // 🔴 上面各行快照一个字节没改。
+        (
+            "p2v-resident-link",
+            "--account-trust\n--account-trust-zero\n--accounts-list\n--accounts-sessions\n--acct-iso-shellinit\n--acct-iso-status\n--backend-probe\n--bus-kill\n--bus-list\n--bus-send\n--bus-spawn\n--bus-state\n--capture-pane\n--exit-policy-read\n--exit-policy-set\n--files-browse\n--files-chmod\n--files-commit-text\n--files-commit-upload\n--files-copy\n--files-create\n--files-delete\n--files-find\n--files-home\n--files-index-rebuild\n--files-index-status\n--files-ls\n--files-mkdir\n--files-read-text\n--files-rename\n--files-stage-chunk\n--files-stat\n--files-write-text\n--find-in-session\n--fork-session\n--history-find\n--history-index\n--history-projects\n--history-read\n--history-search\n--history-sessions\n--history-subagents\n--history-tail\n--history-user-inputs\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--list-user-inputs\n--ping\n--plugins-marketplaces\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tasks-list\n--tmux-notify\n#channel\nch:accounts-list\nch:accounts-sessions\nch:bus-kill\nch:bus-list\nch:bus-send\nch:bus-spawn\nch:bus-state\nch:cancel\nch:capture-pane\nch:exit-policy-read\nch:exit-policy-set\nch:files-browse\nch:files-chmod\nch:files-commit-text\nch:files-commit-upload\nch:files-copy\nch:files-create\nch:files-delete\nch:files-find\nch:files-home\nch:files-index-rebuild\nch:files-index-status\nch:files-ls\nch:files-mkdir\nch:files-read-text\nch:files-rename\nch:files-stage-chunk\nch:files-stat\nch:files-write-text\nch:history-find\nch:history-index\nch:history-projects\nch:history-read\nch:history-search\nch:history-sessions\nch:history-subagents\nch:history-tail\nch:history-user-inputs\nch:kill\nch:launch\nch:link-close\nch:link-credit\nch:link-data\nch:link-open\nch:ping\nch:plugins-marketplaces\nch:resolve\nch:tasks-list",
+        ),
+        // ★ p2w（2026-09-24 第四波 C4a ＋ RM1a 合并）：子命令 ＋5（RM1a `apikey-key-set` / `apikey-read` / `relay-status` /
+        //   `relay-ensure` / `footprint-probe`，两个命令面）。另有行为变更：后端开 `harden`。
+        // 🔴 上面各行快照一个字节没改。
+        (
+            "p2w-apikey-relay-footprint",
+            "--account-trust\n--account-trust-zero\n--accounts-list\n--accounts-sessions\n--acct-iso-shellinit\n--acct-iso-status\n--apikey-key-set\n--apikey-read\n--backend-probe\n--bus-kill\n--bus-list\n--bus-send\n--bus-spawn\n--bus-state\n--capture-pane\n--exit-policy-read\n--exit-policy-set\n--files-browse\n--files-chmod\n--files-commit-text\n--files-commit-upload\n--files-copy\n--files-create\n--files-delete\n--files-find\n--files-home\n--files-index-rebuild\n--files-index-status\n--files-ls\n--files-mkdir\n--files-read-text\n--files-rename\n--files-stage-chunk\n--files-stat\n--files-write-text\n--find-in-session\n--footprint-probe\n--fork-session\n--history-find\n--history-index\n--history-projects\n--history-read\n--history-search\n--history-sessions\n--history-subagents\n--history-tail\n--history-user-inputs\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--list-user-inputs\n--ping\n--plugins-marketplaces\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--relay-ensure\n--relay-status\n--resolve\n--search\n--session-accounts\n--tasks-list\n--tmux-notify\n#channel\nch:accounts-list\nch:accounts-sessions\nch:apikey-key-set\nch:apikey-read\nch:bus-kill\nch:bus-list\nch:bus-send\nch:bus-spawn\nch:bus-state\nch:cancel\nch:capture-pane\nch:exit-policy-read\nch:exit-policy-set\nch:files-browse\nch:files-chmod\nch:files-commit-text\nch:files-commit-upload\nch:files-copy\nch:files-create\nch:files-delete\nch:files-find\nch:files-home\nch:files-index-rebuild\nch:files-index-status\nch:files-ls\nch:files-mkdir\nch:files-read-text\nch:files-rename\nch:files-stage-chunk\nch:files-stat\nch:files-write-text\nch:footprint-probe\nch:history-find\nch:history-index\nch:history-projects\nch:history-read\nch:history-search\nch:history-sessions\nch:history-subagents\nch:history-tail\nch:history-user-inputs\nch:kill\nch:launch\nch:link-close\nch:link-credit\nch:link-data\nch:link-open\nch:ping\nch:plugins-marketplaces\nch:relay-ensure\nch:relay-status\nch:resolve\nch:tasks-list",
+        ),
     ];
 
     use crate::guard_support::{assert_no_test_code, production_code};
@@ -696,7 +718,7 @@ mod tests {
             version_lines,
             vec![r#"version = "0.0.0""#],
             "本 crate 的 `[package] version` 实得 {version_lines:?}。\n\
-             它**刻意**是 `0.0.0`（真身份住 `src/main.rs` 的 `BUILD_ID`，理由逐字写在\n\
+             它**刻意**是 `0.0.0`（真身份住 `lib.rs` 的 `BUILD_ID`，理由逐字写在\n\
              `Cargo.toml` 那一行上方）。要改成别的数字，得先答一个问题：\n\
              **谁在数它？** 把一个假值换成另一个假值，是 `KR70D2` 逐字点名的失效方向。"
         );
@@ -733,7 +755,7 @@ mod tests {
         );
         assert!(
             !super::super::BUILD_ID.is_empty(),
-            "`BUILD_ID` 是空串 —— 落到用户盘上的名字会变成 `cc-monitor-local-`（不带版本）"
+            "`BUILD_ID` 是空串 —— 落到用户盘上的名字会变成 `cc-monitor-backend-`（不带版本）"
         );
         // 戳的两个界标也是身份住址的一部分：它们一变，扫字节那一侧全瞎。
         assert!(

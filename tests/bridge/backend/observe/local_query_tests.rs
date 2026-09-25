@@ -11,7 +11,7 @@ use super::*;
 ///
 /// # 三个候选都不是答案，而根因也不是「缺判据形态」
 ///
-/// 摸底先量了一件事：**当时那两个调用方（用量聚合 ＋ `list_local_session_accounts`）
+/// 摸底先量了一件事：**当时那两个调用方（用量聚合 ＋ E79 那条本机会话账号查询〔C4a 已退役〕）
 /// 一个测试都没有驱动过**（`grep` 实测 0 处）。⇒ 三个候选
 /// （真二进制 e2e 断言副作用 / 覆盖率门槛 / `#[cfg(test)]` 计数探针）
 /// **全都要先有「一个真驱动那条路的测试」才谈得上**，而那一步才是缺的那步。
@@ -51,13 +51,16 @@ async fn a_short_circuit_cannot_fake_the_honest_degrade() {
     // 〔`设计/50`：这里原先还有第二个调用点「② 用量聚合」，
     //   随用量 ② 轴整轴退役 ⇒ 本条今天只剩一个调用点。**性质没降**：它买的是
     //   「短路装不出诚实降级」，一个调用点就足以买到；降的是覆盖面，如实记在这儿。〕
-    let r = crate::local_accounts::list_local_session_accounts()
+    // 〔C4a · 第四波〕这里原先驱动的是 E79 那条「本机会话属于哪个账号」—— 它随「本机与远端同一条路」
+    //   改走通道、整条退役了 ⇒ 换成**同一种调用形状**的另一个调用方 `list_local_accounts`
+    //   （同样 exec 本机后端、同样把「后端不在」折成带理由的 `available:false`）。性质一格没降。
+    let r = crate::local_accounts::list_local_accounts()
         .await
         .expect("这条路的诚实降级是 Ok(available=false)，不该是 Err");
     assert!(!r.available, "没有本机后端却报 available=true");
     assert!(
         r.error.is_some(),
-        "`list_local_session_accounts` 返回了「空但成功」——\n\
+        "`list_local_accounts` 返回了「空但成功」——\n\
              没有本机后端时它**必须说出理由**（定框 §5：tagged 返回 + reason）。\n\
              ⇒ 拿不出 reason 就意味着**那条查询根本没发生**（被短路了），\n\
              而扫源码的守卫看不见这种错：调用那行文字还在。"

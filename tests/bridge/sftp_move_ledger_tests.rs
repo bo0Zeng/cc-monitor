@@ -135,7 +135,11 @@ const DIAL_CENSUS: &[(&str, usize, &str)] = &[
 /// （门禁 `f3-copy` 那一格还在量它的核心）。拨号仍然只有 `OriginPool::conn` 那一处 ——
 /// 传输台借的就是同一个池。⚠ 命令少了不等于「乙离搬进后端更近了」：传输台与暂存区上传
 /// 仍要一条 SFTP 会话（`设计/60 §8.4` 裁的是「保留SFTP」）。
-const POOL_SHAPE: (usize, usize) = (1, 1);
+///
+/// 🔴 **〔第四波 S4〕`(1, 1)` → `(0, 1)`：最后一条命令（零流量复制）随门禁那一格退役删了，拨号处数一处没动。**
+/// 同一拍，过界那几样里的「进度通道」没了（它是那条命令用的 tauri channel）⇒ `REGISTERED` 乙那一半从三样变两样。
+/// ⚠ 照旧**别读成「乙离搬进后端更近了」**：池、死连驱逐、传输台都还在界面进程里（SFTP 进常驻后端是 4B 的 SR1b）。
+const POOL_SHAPE: (usize, usize) = (0, 1);
 
 // ── 登记表 ───────────────────────────────────────────────────────────────
 
@@ -147,22 +151,10 @@ const POOL_SHAPE: (usize, usize) = (1, 1);
 /// ⚠ 表名 `REGISTERED` 是 `scanning_guard_registry::TABLE_DECLS` 闭集里的成员之一，
 /// 刻意不起新名字（`DECISIONS.md#R33` 裁定一：新名字要同拍动那张闭集，而它不在本件写区）。
 const REGISTERED: &[(&str, &str, &str, &str)] = &[
-    // ── 乙：`KR78D2` 要的那三样 ───────────────────────────────────────
-    (
-        "乙",
-        "进度通道",
-        "Channel<TransferProgress>",
-        "它是 **tauri 的 IPC channel**，而 `TransferProgress` 还带 `ts_rs` 那个 `TS` 派生、\
-             导出给前端。⚠ 上一句刻意**不写**那个派生的全限定名（模块路径 ＋ `::` ＋ 类型名）——\
-             `tests/generated-boundary-guard.vitest.ts::tsDerivingSources` 按**整仓文本子串**取人群，\
-             本文件写全了就会被当成「又一份派生了它的源文件」而把那条计数判据顶红。\
-             〔09-12 实打撞到过：npm 那格 `实得 33 … expected 33 to be 32`。〕\
-             ⇒ 搬进后端要先回答「一条 tauri channel 怎么跨进程」：\
-             backend 那棵树**根本没有 tauri 这个依赖**（现打：`src/backend/Cargo.toml` \
-             的 `[dependencies]` 里一条 tauri 都没有），\
-             而 monitor 侧 `backend/` 那道宿主无关守卫 `the_backend_layer_stays_host_agnostic` \
-             的禁词表里已经有 `Emitter` / `State<` / `.emit(` 一族。",
-    ),
+    // ── 乙：`KR78D2` 要的那几样（立表那天三样）──────────────────────────
+    // 〔第四波 S4〕「进度通道」那一样（`Channel<TransferProgress>`：tauri 的 IPC channel，后端那棵树没有 tauri）
+    //   随最后一条用它的命令一起删了 —— 那块挡路石**清掉了**，不是被挪走：传输台的进度今天走通道的
+    //   订阅流（`watch_ticket`），本来就是跨进程的形状。剩下两样照旧挡着。
     (
         "乙",
         "per-origin 连接池",
@@ -376,7 +368,9 @@ fn the_pool_shape_this_ledger_registers_is_still_what_is_on_disk() {
     );
 }
 
-/// `KR78D2` 正题：**三样要跟着过界的东西，逐条点名，逐条在盘上。**
+/// `KR78D2` 正题：**要跟着过界的那几样东西，逐条点名，逐条在盘上。**
+///
+/// 〔第四波 S4〕函数与两条判据名字里的 three 是立表那天的数；「进度通道」那一样清掉之后今天是**两样**。
 ///
 /// 死值验（`M3`）：把 `sftp_pool.rs` 里任一个校验位改名 ⇒ 本条红并点名是哪一样。
 /// **纯函数**（语料由调用方给）⇒ 阳性/阴性两个方向都切得动。
@@ -386,9 +380,9 @@ fn three_things_present(prod: &str) -> Result<usize, String> {
         .iter()
         .filter(|(half, ..)| *half == "乙")
         .collect();
-    if mine.len() != 3 {
+    if mine.len() != 2 {
         return Err(format!(
-            "乙那一半要点名的应当**恰好三样**（进度通道 · 连接池 · 死连接重建），实得 {}。\n\
+            "乙那一半要点名的应当**恰好两样**（连接池 · 死连接重建；〔第四波 S4〕进度通道那一样清掉了），实得 {}。\n\
                  少一样 = 这条登记不再说得出「挡着的是什么」；多一样 = 有人往里塞了别的东西。",
             mine.len()
         ));
@@ -408,7 +402,7 @@ fn three_things_present(prod: &str) -> Result<usize, String> {
 #[test]
 fn each_of_the_three_things_that_must_cross_with_the_pool_is_still_on_disk() {
     let prod = production_code(POOL_SRC);
-    assert_eq!(three_things_present(&prod), Ok(3));
+    assert_eq!(three_things_present(&prod), Ok(2));
 }
 
 /// **反向那半**：三样里少任意一样，判据必须红**并点名是哪一样**。
@@ -498,7 +492,6 @@ fn every_blocker_this_ledger_registers_is_still_quoted_verbatim_on_disk() {
 
     // 每条校验位该去哪一份语料里找 —— 表与语料的绑定写死，别让判据自己去猜。
     let where_to_look: &[(&str, &str)] = &[
-        ("进度通道", "sftp_pool.rs"),
         ("per-origin 连接池", "sftp_pool.rs"),
         ("死连接重建重试", "sftp_pool.rs"),
         ("backend 只读铁律 I7", "src/doc/INVARIANTS.md"),

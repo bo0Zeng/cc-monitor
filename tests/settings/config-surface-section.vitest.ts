@@ -23,10 +23,17 @@ import {
   gapKindOfState,
   promptToInstall,
   summarizeOwedInstallers,
+  owedInstallerNames,
+  UNKNOWN_IS_NOT_ABSENT,
+  REMOTE_UNANSWERED_WHY,
+  answersFor,
+  readFootprint,
   type ConfigSurfaceReport,
   type SurfaceRow,
 } from "../../src/settings/config-surface-section";
 import { GAP_HEAD } from "../../src/settings/readiness";
+import { setCurrentMachine, __resetMachineContextForTests } from "../../src/settings/machine-context";
+import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
 function row(over: Partial<SurfaceRow> = {}): SurfaceRow {
   return {
@@ -69,6 +76,8 @@ function report(over: Partial<ConfigSurfaceReport> = {}): ConfigSurfaceReport {
     ],
     claude_config_dir: "/h/.claude",
     home: "/h",
+    // 〔RM1a 合并〕报告带回它答的是哪台（生成物里 `origin` 是必填的）；夹具默认是本机那一份。
+    origin: "<local>",
     ...over,
   };
 }
@@ -129,10 +138,11 @@ describe("describeUndo", () => {
     const owed = say("AppShipsNoInstallerYet");
     const theirs = say("UserInstallsWePrompt");
     const notOurs = say("AppOnlyChecks");
-    // 「我们欠的」必须说「该由 cc-monitor 自带」，且**不许**说成「不该由它装」
-    expect(owed).toContain("该由 cc-monitor 自带");
-    expect(owed).toContain("还没写");
+    // 「我们欠的」必须保住「还没有」这个语义，且**不许**说成「不该由它装」（`KR65D2`）。
+    // 〔ST2 · `70 §11.4` #1〕但不再用「谁欠谁」的话说（「该由 cc-monitor 自带 / 还没写」）—— 一格状态。
+    expect(owed).toBe("暂无撤销：还没有安装入口");
     expect(owed).not.toContain("不该");
+    expect(owed).not.toMatch(/该由 cc-monitor 自带|还没写/);
     // 「你自己装」那一档要说清是你自己装
     expect(theirs).toContain("你自己装");
     // 三档措辞两两不同 —— 一句话涵盖三档就等于没有档
@@ -229,9 +239,9 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
     // 一项都没有时整行不渲染，不写「0 项」
     expect(summarizeOwedInstallers([prompted()])).toBeNull();
     const txt = summarizeOwedInstallers([owed])!;
-    expect(txt).toContain("1 项");
-    expect(txt).toContain("cc-acct-iso 本机那份");
-    expect(txt).toContain("该由 cc-monitor 自带");
+    // 〔ST2 · `§11.3.1`〕数照旧数得出来，措辞不再说「我们欠」；名单挪进展开。
+    expect(txt).toBe("⚠ 1 项还没有安装入口");
+    expect(owedInstallerNames([owed, prompted()])).toEqual(["cc-acct-iso 本机那份"]);
 
     invokeMock.mockResolvedValue(report({ rows: [owed] }));
     const s = new ConfigSurfaceSection();
@@ -239,7 +249,10 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
     const el = s.element.querySelector(".config-surface-owed") as HTMLElement;
     expect(el, "计数行必须在 DOM 里").not.toBeNull();
     expect(el.hidden).toBe(false);
-    expect(el.textContent).toContain("cc-acct-iso 本机那份");
+    expect(el.textContent).toContain("⚠ 1 项还没有安装入口");
+    const which = el.querySelector<HTMLElement>("[data-owed-names]")!;
+    expect(which.querySelector("summary")?.textContent).toBe("哪 1 项");
+    expect(which.textContent).toContain("cc-acct-iso 本机那份");
   });
 
   it("那句话也要进可复制的诊断文本（贴出去的那一份不含它就等于没说）", () => {
@@ -257,7 +270,32 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
       }),
     );
     expect(txt).toContain("自己装");
-    expect(txt).toContain("该由 cc-monitor 自带");
+    // 〔ST2〕计数与名单都进可复制文本（名单不许只在屏幕上）。
+    expect(txt).toContain("⚠ 1 项还没有安装入口：cc-acct-iso 本机那份");
+  });
+
+  it("〔ST2 · 用户 09-24 裁「一起改」〕可复制诊断文本的首行跟块名一致：「足迹」，不再是「配置面审计」", () => {
+    const txt = formatReportText(report());
+    expect(txt.split("\n")[0]).toBe("== cc-monitor 足迹 ==");
+    expect(txt).not.toContain("配置面审计");
+  });
+
+  it("〔ST2 · `§11.4` #3〕「查不动」那一句：前半留在行上，后半（查不动 ≠ 不在）进 ⓘ", async () => {
+    invokeMock.mockResolvedValue(
+      report({ rows: [prompted({ state: { kind: "undetermined", why: "Windows 侧才知道" } })] }),
+    );
+    const s = new ConfigSurfaceSection();
+    await s.refresh();
+    const p = s.element.querySelector<HTMLElement>('.config-surface-prompt[data-gap="unknown"]')!;
+    expect(p.firstChild?.nodeValue).toBe(`${GAP_HEAD.unknown} —— 这一项本机查不动（见上面的原因）`);
+    const why = p.querySelector<HTMLElement>("[aria-label]");
+    expect(why, "区分的后半被一起扫掉了（§2.2：只换位置，不删义）").not.toBeNull();
+    expect(why!.getAttribute("aria-label")).toBe(UNKNOWN_IS_NOT_ABSENT);
+    // 「缺」那一档不挂这个 ⓘ（它说的就是确认没有）。
+    invokeMock.mockResolvedValue(report({ rows: [prompted({ state: { kind: "absent" } })] }));
+    const s2 = new ConfigSurfaceSection();
+    await s2.refresh();
+    expect(s2.element.querySelector('.config-surface-prompt[data-gap="missing"] [aria-label]')).toBeNull();
   });
 });
 
@@ -416,8 +454,141 @@ describe("ConfigSurfaceSection", () => {
     invokeMock.mockResolvedValue(report());
     const s = new ConfigSurfaceSection();
     await s.refresh();
-    for (const call of invokeMock.mock.calls) {
-      expect(call[0]).toBe("config_surface_report");
+    // 〔ST2〕读面两条：配置面那一条 ＋ 「PowerShell profile 备份」那一格借的 `get_data_paths`（也是只读）。
+    const names = new Set(invokeMock.mock.calls.map((c) => c[0]));
+    expect([...names].sort()).toEqual(["config_surface_report", "get_data_paths"]);
+  });
+});
+
+describe("〔ST2 · `70 §10.2` · 步 15〕「PowerShell profile 备份」搬进本机「足迹」", () => {
+  const answer = (dirs: unknown) => (cmd: string) =>
+    cmd === "get_data_paths"
+      ? Promise.resolve({ monitorDataDir: "/h", entries: [], webviewUserDataDir: null, profileBackupDirs: dirs })
+      : Promise.resolve(report());
+
+  it("★ 有备份 ⇒ 这一格出现，每一个备份目录的路径都以纯文本上屏", async () => {
+    invokeMock.mockImplementation(
+      answer([{ path: "/h/Documents/PowerShell" }, { path: "/h/Documents/WindowsPowerShell" }]),
+    );
+    const s = new ConfigSurfaceSection();
+    await s.refresh();
+    const box = s.element.querySelector<HTMLElement>("[data-profile-backups]")!;
+    expect(box.querySelector(".settings-subtitle")?.textContent).toBe("PowerShell profile 备份");
+    expect([...box.querySelectorAll("li")].map((li) => li.textContent)).toEqual([
+      "/h/Documents/PowerShell",
+      "/h/Documents/WindowsPowerShell",
+    ]);
+  });
+
+  it("★ 一个备份都没有 ⇒ 整块不出现（不是画一个空标题）", async () => {
+    invokeMock.mockImplementation(answer([]));
+    const s = new ConfigSurfaceSection();
+    await s.refresh();
+    expect(s.element.querySelector("[data-profile-backups]")!.childElementCount).toBe(0);
+  });
+
+  it("★★ 读不到 ⇒ 说读不到，不拿「没有备份」糊过去；上面那张表不受影响", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "get_data_paths" ? Promise.reject(new Error("盘坏了")) : Promise.resolve(report()),
+    );
+    const s = new ConfigSurfaceSection();
+    await s.refresh();
+    const box = s.element.querySelector<HTMLElement>("[data-profile-backups]")!;
+    expect(box.textContent).toContain("读不到 PowerShell profile 备份在哪");
+    expect(box.textContent).toContain("盘坏了");
+    expect(s.element.querySelectorAll(".config-surface-row").length, "备份那一格读不到把表也带走了").toBe(1);
+  });
+});
+
+describe("〔ST2 · 用户 09-24 裁「远端也有真栏」〕足迹按机器去问，回声对上才画", () => {
+  afterEach(() => __resetMachineContextForTests());
+  const flush = async () => {
+    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+  };
+
+  it("★ 问的时候带着这台机器（本机 = LOCAL_ORIGIN），不再是零参数", async () => {
+    const mod = await import("../../src/ipc/commands");
+    const spy = vi.spyOn(mod.commands, "config_surface_report").mockResolvedValue(report());
+    try {
+      await readFootprint(LOCAL_ORIGIN);
+      await readFootprint("aya");
+      expect(spy.mock.calls.map((c) => (c as unknown[])[0])).toEqual([{ origin: "<local>" }, { origin: "aya" }]);
+    } finally {
+      spy.mockRestore();
     }
+  });
+
+  it("★★ 读口没合进来（参数被静默丢掉、回的是不带 origin 的本机那份）⇒ 远端页说答不了，**不画表**", async () => {
+    invokeMock.mockResolvedValue(report());
+    setCurrentMachine("aya");
+    const s = new ConfigSurfaceSection();
+    s.loadNow();
+    await flush();
+    expect(s.element.querySelectorAll(".config-surface-row").length, "拿本机的答案冒充 aya 的").toBe(0);
+    const box = s.element.querySelector<HTMLElement>("[data-footprint-unanswered]")!;
+    expect(box.hidden).toBe(false);
+    const why = box.querySelector<HTMLElement>("[aria-label]");
+    expect(s.element.textContent).toContain("这台机器（aya）的足迹还查不了");
+    expect(why?.getAttribute("aria-label")).toBe(REMOTE_UNANSWERED_WHY);
+  });
+
+  it("★★ 回声对上（报告说它答的就是 aya）⇒ 远端页画表；`$PROFILE` 备份那一格不问（只答本机）", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "config_surface_report"
+        ? Promise.resolve({ ...report(), origin: "aya" })
+        : Promise.reject(new Error(`不该问 ${cmd}`)),
+    );
+    setCurrentMachine("aya");
+    const s = new ConfigSurfaceSection();
+    s.loadNow();
+    await flush();
+    expect(s.element.querySelectorAll(".config-surface-row").length).toBe(1);
+    expect(s.element.textContent).not.toContain("还查不了");
+    expect(invokeMock.mock.calls.map((c) => c[0])).toEqual(["config_surface_report"]);
+  });
+
+  it("★ 回声是另一台（答错了机器）⇒ 照样不画", async () => {
+    invokeMock.mockResolvedValue({ ...report(), origin: "gpd" });
+    setCurrentMachine("aya");
+    const s = new ConfigSurfaceSection();
+    s.loadNow();
+    await flush();
+    expect(s.element.querySelectorAll(".config-surface-row").length).toBe(0);
+    expect(s.element.textContent).toContain("这台机器（aya）的足迹还查不了");
+  });
+
+  it("★ 本机：旧读口不带 origin ⇒ 照画（反向对照）；带的是别的机器 ⇒ 扫描失败，不画", async () => {
+    expect(answersFor(report(), LOCAL_ORIGIN)).toBe(true);
+    expect(answersFor({ ...report(), origin: "<local>" } as never, LOCAL_ORIGIN)).toBe(true);
+    expect(answersFor({ ...report(), origin: "aya" } as never, LOCAL_ORIGIN)).toBe(false);
+    invokeMock.mockResolvedValue({ ...report(), origin: "aya" });
+    const s = new ConfigSurfaceSection();
+    await s.refresh();
+    expect(s.element.querySelectorAll(".config-surface-row").length).toBe(0);
+    expect(s.element.textContent).toContain("扫描失败");
+  });
+
+  it("★ 切机器快过答复：晚到的上一台的答复不许盖掉当前这台", async () => {
+    let releaseLocal!: (v: unknown) => void;
+    invokeMock.mockImplementation((cmd: string, args?: { origin?: string }) => {
+      void args;
+      if (cmd !== "config_surface_report") return Promise.resolve({ profileBackupDirs: [] });
+      return new Promise((r) => {
+        releaseLocal = r;
+      });
+    });
+    const s = new ConfigSurfaceSection();
+    s.loadNow(); // 本机那一趟挂着
+    const firstRelease = releaseLocal;
+    invokeMock.mockImplementation(() => Promise.resolve({ ...report(), origin: "aya" }));
+    setCurrentMachine("aya"); // 订阅那一路重读 aya
+    await flush();
+    expect(s.element.querySelectorAll(".config-surface-row").length).toBe(1);
+    firstRelease(report({ rows: [row(), row({ path_declared: "~/.bashrc" })] })); // 本机那份晚到
+    await flush();
+    expect(
+      s.element.querySelectorAll(".config-surface-row").length,
+      "晚到的本机答复盖掉了 aya 那一页",
+    ).toBe(1);
   });
 });

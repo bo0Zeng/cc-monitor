@@ -65,9 +65,27 @@ export class TabBarDrag {
     dragging: boolean;
     armed: boolean;
     ghost: HTMLElement | null;
+    /**
+     * 〔UP1 · `设计/30 §3` P3〕栏里每个 tab 的矩形，**起拖后第一次要用时量一次**，之后 mousemove 只做算术。
+     * `null` = 该量了。原先每次 mousemove 量 2N 次（停留判定与落点各一遍），而且紧挨在前面有一次写
+     * （`ghost.style.left/top`）⇒ 读前有写，每次 mousemove 都是一次强制同步布局。
+     *
+     * 什么时候会过期、过期了怎么办：
+     * - 整刷挪节点 —— 拖拽期间整刷本来就挂起（`deferRefresh`，6d）⇒ 不会发生；
+     * - tab 栏滚动（按着拖的时候转滚轮）/ 窗口尺寸变 ⇒ `onInvalidate` 置回 `null`，下一次 mousemove 重量。
+     * ⚠ 被标成 `drop-onto` 的那个 tab 有 `transform: scale(1.03)`，会改它自己的 `getBoundingClientRect`；
+     *   缓存量的是没放大那一刻的矩形 ⇒ 停留判定不会被自己放大后的矩形带偏。
+     */
+    rects: TabRect[] | null;
+    onInvalidate: () => void;
     onMove: (e: MouseEvent) => void;
     onUp: (e: MouseEvent) => void;
   } | null = null;
+  /**
+   * 〔UP1 · P3〕此刻打着落点标记的是谁（`drop-before` / `drop-onto` 各一个）。
+   * 换标记只动**旧的与新的**那两个，不再遍历全部 N 个按钮。
+   */
+  private marked: { before: string | null; onto: string | null } = { before: null, onto: null };
   /**
    * ★ 6d：拖拽进行中有人要求刷 tab 栏 —— 记一笔，`teardownDrag` 收尾时补一次。
    * 只是一个「有没有」，不记是谁要求的：`refreshTabBar` 本来就是整栏重刷，补一次就够。
@@ -128,6 +146,9 @@ export class TabBarDrag {
     const barRight = this.barEl.getBoundingClientRect().right;
     const onMove = (ev: MouseEvent): void => this.onDragMove(ev);
     const onUp = (ev: MouseEvent): void => this.onDragUp(ev);
+    const onInvalidate = (): void => {
+      if (this.drag) this.drag.rects = null;
+    };
     this.drag = {
       sid,
       startX: e.clientX,
@@ -143,11 +164,17 @@ export class TabBarDrag {
       dwellY: e.clientY,
       dwellTimer: null,
       ghost: null,
+      rects: null,
+      onInvalidate,
       onMove,
       onUp,
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
+    // 〔UP1 · P3〕缓存的矩形只在这两件事上过期（见 `rects` 头注）。捕获阶段挂在 `barEl` 上：
+    // `scroll` 不冒泡，捕获才收得到栏里任何一层滚动。
+    this.barEl.addEventListener("scroll", onInvalidate, true);
+    window.addEventListener("resize", onInvalidate);
   }
 
   /** document mousemove：阈值判定 → 起拖（建 ghost / 变暗），随后跟随 + arm 检测。 */
@@ -217,8 +244,9 @@ export class TabBarDrag {
    *   ⇒ 拖不进组、也拖不出组。换成 `barEl.contains(...)`：组容器是 `barEl` 的子树，
    *   组里的 tab 因此照常参与，而栏外的东西（撕出去的窗口等）仍然不参与。
    *
-   * ⚠ 只量一次、返回纯数据 —— 判定逻辑在 `pickDropTarget`（纯函数，判据直接打它）。
-   *   这也顺带守住 `§3 P3`「拖拽 layout thrash：量一次、只改变化的那一个」。
+   * ⚠ 返回纯数据 —— 判定逻辑在 `pickDropTarget`（纯函数，判据直接打它）。
+   *   〔UP1〕原先这里自称「顺带守住 `§3 P3`」，其实每次 mousemove 都调它两次（量 2N 次）；
+   *   「一次拖拽只量一次」现在住 `dragRects`（缓存 ＋ 滚动 / 改尺寸作废），本函数只管量。
    */
   tabRects(): TabRect[] {
     const out: TabRect[] = [];
@@ -230,12 +258,20 @@ export class TabBarDrag {
     return out;
   }
 
+  /** 〔UP1 · P3〕拖拽期间用的矩形：缓存里有就用缓存，没有（刚起拖 / 刚过期）才量一次。 */
+  private dragRects(): TabRect[] {
+    const d = this.drag;
+    if (!d) return this.tabRects();
+    if (d.rects === null) d.rects = this.tabRects();
+    return d.rects;
+  }
+
   /** 〔步 17·D〕现在的落点。三种语义的判定住 `pickDropTarget`，这里只负责喂它读数。 */
   private computeDropTarget(clientY: number): DropTarget {
     const d = this.drag;
     if (!d) return { kind: "end" };
     return pickDropTarget(
-      this.tabRects(),
+      this.dragRects(),
       clientY,
       new Set(this.dragBlockOf(d.sid)),
       d.dwellArmed,
@@ -254,7 +290,7 @@ export class TabBarDrag {
   private updateDwell(clientX: number, clientY: number): void {
     const d = this.drag;
     if (!d) return;
-    const hovered = tabUnderY(this.tabRects(), clientY, new Set(this.dragBlockOf(d.sid)));
+    const hovered = tabUnderY(this.dragRects(), clientY, new Set(this.dragBlockOf(d.sid)));
     const moved = Math.hypot(clientX - d.dwellX, clientY - d.dwellY);
     if (hovered === d.dwellSid && moved < DWELL_MOVE_PX) return; // 还在攒，别打断计时
     d.dwellSid = hovered;
@@ -311,9 +347,19 @@ export class TabBarDrag {
   private markDropTarget(target: DropTarget | null): void {
     const beforeSid = target?.kind === "before" ? target.sid : null;
     const ontoSid = target?.kind === "onto" ? target.sid : null;
-    for (const [sid, refs] of this.buttons) {
-      refs.root.classList.toggle("drop-before", sid === beforeSid);
-      refs.root.classList.toggle("drop-onto", sid === ontoSid);
+    // 〔UP1 · P3〕只动旧的与新的那两个（原先每次 mousemove 遍历全部 N 个按钮、各 toggle 两次）。
+    const flip = (sid: string | null, cls: string, on: boolean): void => {
+      if (sid !== null) this.buttons.get(sid)?.root.classList.toggle(cls, on);
+    };
+    if (this.marked.before !== beforeSid) {
+      flip(this.marked.before, "drop-before", false);
+      flip(beforeSid, "drop-before", true);
+      this.marked.before = beforeSid;
+    }
+    if (this.marked.onto !== ontoSid) {
+      flip(this.marked.onto, "drop-onto", false);
+      flip(ontoSid, "drop-onto", true);
+      this.marked.onto = ontoSid;
     }
   }
 
@@ -376,6 +422,8 @@ export class TabBarDrag {
     if (!d) return;
     document.removeEventListener("mousemove", d.onMove);
     document.removeEventListener("mouseup", d.onUp);
+    this.barEl.removeEventListener("scroll", d.onInvalidate, true);
+    window.removeEventListener("resize", d.onInvalidate);
     // 〔步 17·D〕停留计时器必须在这里清。不清的话它会在拖拽结束之后才到点，
     // 往一个已经收尾的状态上写 `onto` —— 而那时 `this.drag` 已是 null，
     // 回调里的守卫会吞掉它，但计时器本身是条悬空引线（同 `pendingMenuTimers` 那条教训）。

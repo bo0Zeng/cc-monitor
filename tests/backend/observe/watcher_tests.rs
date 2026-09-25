@@ -1713,7 +1713,7 @@ fn the_rewatch_path_still_exists_with_its_rescan() {
 /// 那一路的事件**永远不来，且没有任何错误**。三次的表现分别是「永不宣告会话」
 ///「看不见新 tmux server」「会话还在但内容不动了」——**每一个都不报错**。
 ///
-/// # 今天的 7 处
+/// # 今天的 8 处（〔SR1a · 09-24〕7 → 8：账号 manifest 所在目录）
 ///
 /// | 处 | 归属 | 换 inode 怎么办 |
 /// |---|---|---|
@@ -1724,6 +1724,7 @@ fn the_rewatch_path_still_exists_with_its_rescan() {
 /// | `watch_loop` 里 socket 目录的**父** | 同上（等 socket 目录出现） | 同上 |
 /// | `watch_loop` 里 `sessions` 起步那次 | 起步挂一次，之后归 `rewatch_sessions` | 已有 |
 /// | `watch_loop` 里 tmux socket **所在目录**（P3 复活探测） | 一次性触发器，socket 换 inode 由上面那条目录耳朵覆盖 | 已有 |
+/// | `watch_loop` 里账号 manifest **所在目录**（〔SR1a〕`accounts_changed`） | 起步挂一次（目录不在就不挂） | **不重挂，如实认下**：目录被删掉重建之后这一路失聪、直到后端重启 —— 代价只是「账号清单变了不推帧」，客户端退回既有的刷新时机（连上 / 会话起停）；不许为它去盯整个 `$HOME`（那是噪声最大的目录） |
 #[test]
 fn every_watch_site_answers_the_inode_swap_question() {
     let src = include_str!("../../../src/backend/observe/watcher.rs");
@@ -1737,8 +1738,8 @@ fn every_watch_site_answers_the_inode_swap_question() {
     };
     let sites = prod.matches(".watch(").count();
     assert_eq!(
-        sites, 7,
-        "生产段 `.watch(` 有 {sites} 处（登记表记着 7 处）。\n             \
+        sites, 8,
+        "生产段 `.watch(` 有 {sites} 处（登记表记着 8 处）。\n             \
              ⇒ **加了一处就来回答这个问题**：那个目录被删掉重建（换 inode）之后，\n             \
              它还收得到事件吗？收不到就走 `rewatch_dir`；确实不需要就把理由写进本条头注的表里。\n             \
              ⚠ 08-13 同一个形状踩了三次，三次的症状都是**不报任何错**：\n             \
@@ -3213,4 +3214,41 @@ fn the_launch_token_rides_the_session_added_frame_only_when_the_client_asked() {
         "环境里没有那个变量，帧上却凭空多出一个令牌 —— \
          那会让 `§8.5 ②` 那个布尔恒真（「有没有令牌」从此答不准）"
     );
+}
+
+/// 〔SR1a〕★ A1 的判定那一半：一批文件事件里**有** manifest ⇒ 真；只有无关文件（同目录里的别的文件、
+/// 写 manifest 时的临时文件）⇒ 假。事件循环里每批只调一次它、真就发**恰好一帧**（结构判据见下一条）。
+/// 真进程读数（manifest 改一次 ⇒ 恰好一帧；同目录别的文件 ⇒ 零帧）见 `tests/evidence/SR1a-link-loopback.py` ⑪。
+#[test]
+fn a_batch_counts_as_an_accounts_change_only_when_the_manifest_is_in_it() {
+    let m = PathBuf::from("/h/.claude-accts/accounts.json");
+    let other = PathBuf::from("/h/.claude-accts/accounts.json.tmp");
+    let far = PathBuf::from("/h/.claude/projects/p/s.jsonl");
+    assert!(manifest_touched(
+        [other.as_path(), m.as_path()].into_iter(),
+        &m
+    ));
+    assert!(manifest_touched([m.as_path(), m.as_path()].into_iter(), &m));
+    assert!(!manifest_touched(
+        [other.as_path(), far.as_path()].into_iter(),
+        &m
+    ));
+    assert!(!manifest_touched(std::iter::empty(), &m));
+}
+
+/// 〔SR1a〕接线：`Notify` 那一臂里**恰好一处**问 `manifest_touched`、真了发 `Frame::AccountsChanged`，
+/// 而且它排在逐条处理事件的 `for` **之前**（逐条那一段里有 `continue`，放进去会被跳过）。
+#[test]
+fn the_notify_arm_asks_once_per_batch_before_the_per_event_loop() {
+    let src = include_str!("../../../src/backend/observe/watcher.rs");
+    let prod = crate::guard_support::production_code(src);
+    let ask = guard_core::find_pinned(&prod, "if manifest_touched(")
+        .expect("Notify 那一臂里不是恰好一处问 manifest_touched");
+    let emit = guard_core::find_pinned(&prod, "sink.send(Frame::AccountsChanged);")
+        .expect("发 accounts_changed 的不是恰好一处");
+    let per_event = prod[ask..]
+        .find("for ev in events {")
+        .map(|k| ask + k)
+        .expect("问完之后没有逐条处理事件的 for —— 结构变了");
+    assert!(ask < emit && emit < per_event, "问与发要排在逐条处理之前");
 }

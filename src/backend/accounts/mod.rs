@@ -2,7 +2,7 @@
 //!
 //! | 块 | 是什么 | 谁用它 |
 //! |---|---|---|
-//! | [`apikey`] | `--relay` 的**层 2**（apikey 端点改写）：`(agent, 账号)` 路由表 · 凭据文件（只读）· 热重载 | 中转进程的装配口 `apikey::run_relay` |
+//! | [`apikey`] | `--relay` 的**层 2**（apikey 端点改写）：`(agent, 账号)` 路由表 · 凭据文件（中转进程里只读）· 热重载 ＋ 〔RM1a〕这台机器上那份凭据文件的帧面读写口 | 中转进程的装配口 `apikey::run_relay` · `inbound.rs` 的 `apikey-key-set` / `apikey-read` |
 //! | [`iso`] | 这台机器上的 `cc-acct-iso`：装没装 · `shellinit` 片段（两条一次性查询） | `main.rs` 的 `--acct-iso-*` 两条臂 |
 //!
 //! ⚠ **它们不共用一张登记表**：层 2 的那几条判据（`relay::account_layer_guard` 的层 2 根、

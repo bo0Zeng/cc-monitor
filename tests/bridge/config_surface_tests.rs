@@ -29,6 +29,7 @@ fn env_with<'a>(home: &'a Path, fs: &'a FsProbe<'a>, path_env: Option<&'a str>) 
         is_dir: &no_dir,
         fs,
         path_env,
+        vantage: Vantage::Monitor,
     }
 }
 
@@ -37,6 +38,7 @@ fn env_with<'a>(home: &'a Path, fs: &'a FsProbe<'a>, path_env: Option<&'a str>) 
 #[test]
 fn resolves_local_home_paths() {
     let r = resolve_touched_path(
+        Vantage::Monitor,
         "~/.local/bin/ccm",
         &ToolDestination::LocalHomeRelative("x"),
         HostScope::Client,
@@ -53,6 +55,7 @@ fn resolves_local_home_paths() {
 fn claude_paths_honor_config_dir_and_fall_back() {
     let acct = PathBuf::from("/h/.claude-accts/z");
     let with = resolve_touched_path(
+        Vantage::Monitor,
         "~/.claude/settings.json",
         &ToolDestination::LocalHomeRelative("x"),
         HostScope::Client,
@@ -67,6 +70,7 @@ fn claude_paths_honor_config_dir_and_fall_back() {
     );
     // 环境变量指向的不是目录 → 回落 `~/.claude`（与 hooks_diag 同一条规则）
     let without = resolve_touched_path(
+        Vantage::Monitor,
         "~/.claude/settings.json",
         &ToolDestination::LocalHomeRelative("x"),
         HostScope::Client,
@@ -84,6 +88,7 @@ fn claude_paths_honor_config_dir_and_fall_back() {
 #[test]
 fn resolves_one_level_glob() {
     let r = resolve_touched_path(
+        Vantage::Monitor,
         "~/.local/bin/cc-*",
         &ToolDestination::LocalHomeRelative("x"),
         HostScope::Client,
@@ -106,6 +111,7 @@ fn resolves_one_level_glob() {
 fn remote_project_and_profile_are_not_local() {
     assert_eq!(
         resolve_touched_path(
+            Vantage::Monitor,
             "~/.local/bin/ccm-backend",
             &ToolDestination::RemoteHomeRelative("x"),
             HostScope::Remote,
@@ -118,6 +124,7 @@ fn remote_project_and_profile_are_not_local() {
     );
     assert_eq!(
         resolve_touched_path(
+            Vantage::Monitor,
             ".mcp.json",
             &ToolDestination::ProjectRelative("x"),
             HostScope::ProjectDir,
@@ -130,6 +137,7 @@ fn remote_project_and_profile_are_not_local() {
     );
     assert_eq!(
         resolve_touched_path(
+            Vantage::Monitor,
             "$PROFILE",
             &ToolDestination::UserShellProfile,
             HostScope::Client,
@@ -162,8 +170,16 @@ fn declaration_inconsistency_is_an_error_not_a_guess() {
         ),
     ] {
         assert!(
-            resolve_touched_path(declared, &dest, HostScope::Client, &home(), None, &no_dir)
-                .is_err(),
+            resolve_touched_path(
+                Vantage::Monitor,
+                declared,
+                &dest,
+                HostScope::Client,
+                &home(),
+                None,
+                &no_dir
+            )
+            .is_err(),
             "{declared:?} 配 {dest:?} 应判不自洽"
         );
     }
@@ -286,9 +302,15 @@ fn every_declared_path_resolves() -> ScanReport {
     for t in TOOLS {
         for (c, f) in t.carrier_touches() {
             r.checked += 1;
-            if let Err(e) =
-                resolve_touched_path(f.path, &c.destination, f.host, &home(), None, &no_dir)
-            {
+            if let Err(e) = resolve_touched_path(
+                Vantage::Monitor,
+                f.path,
+                &c.destination,
+                f.host,
+                &home(),
+                None,
+                &no_dir,
+            ) {
                 r.violations.push(format!("{}/{:?}：{e}", t.id, f.path));
             }
         }
@@ -318,7 +340,15 @@ fn prose_paths_are_rejected() {
         } else {
             ToolDestination::LocalHomeRelative("x")
         };
-        let r = resolve_touched_path(declared, &dest, HostScope::Client, &home(), None, &no_dir);
+        let r = resolve_touched_path(
+            Vantage::Monitor,
+            declared,
+            &dest,
+            HostScope::Client,
+            &home(),
+            None,
+            &no_dir,
+        );
         // **必须直接 Err。** 第一版这里写的是"Err 或者解析出带括号的假路径都算抓到"，
         // 于是 `~/.local/bin/cc-*（12 条软链）` 溜了过去——它成功解析成
         // `LocalGlob { prefix: "cc-", suffix: "（12 条软链）" }`，`dir` 干干净净，
@@ -376,7 +406,16 @@ fn either_never_absent_with(probe: &FsProbe) {
         .flat_map(|t| t.carrier_touches())
         .filter(|(_, f)| f.host == HostScope::Either)
         .map(|(c, f)| {
-            resolve_touched_path(f.path, &c.destination, f.host, &home(), None, &no_dir).unwrap()
+            resolve_touched_path(
+                Vantage::Monitor,
+                f.path,
+                &c.destination,
+                f.host,
+                &home(),
+                None,
+                &no_dir,
+            )
+            .unwrap()
         })
     {
         assert!(
@@ -438,6 +477,7 @@ fn either_host_keeps_the_glob_count() {
         .expect("cc-bus 应有一条 glob touch");
     assert_eq!(glob.host, HostScope::Either, "前提：这条是 Either");
     let r = resolve_touched_path(
+        Vantage::Monitor,
         glob.path,
         &carrier.destination,
         glob.host,
@@ -465,8 +505,16 @@ fn remote_host_never_resolves_to_a_local_path() {
     let mut checked = 0;
     for t in TOOLS {
         for (c, f) in t.carrier_touches() {
-            let r = resolve_touched_path(f.path, &c.destination, f.host, &home(), None, &no_dir)
-                .unwrap();
+            let r = resolve_touched_path(
+                Vantage::Monitor,
+                f.path,
+                &c.destination,
+                f.host,
+                &home(),
+                None,
+                &no_dir,
+            )
+            .unwrap();
             let local = matches!(
                 r,
                 PathResolution::Local(_)
@@ -542,7 +590,7 @@ fn every_host_declaration_is_pinned() {
         //    **不是它的身份**：在那台机器上它就是那台机器的本地后端（`K36`）。
         //    ⚠ 标 `Either` 会说假话：①② 那两份远端那台上没有。
         ("backend", "$APP_DIR", Client),
-        ("backend", "~/.cc-monitor/bin/cc-monitor-local-*", Client),
+        ("backend", "~/.cc-monitor/bin/cc-monitor-backend-*", Client),
         ("backend", "$BACKEND_PATH", Remote),
         ("project-mcp", ".mcp.json", ProjectDir),
         ("powershell-profile", "$PROFILE", Client),
@@ -703,7 +751,16 @@ fn host_projection_preserves_the_richer_resolution() {
         .carrier_touches()
         .find(|(_, f)| f.host == HostScope::Remote)
         .expect("后端必须有一份是推给远端那台机器的");
-    let r = resolve_touched_path(f.path, &c.destination, f.host, &home(), None, &no_dir).unwrap();
+    let r = resolve_touched_path(
+        Vantage::Monitor,
+        f.path,
+        &c.destination,
+        f.host,
+        &home(),
+        None,
+        &no_dir,
+    )
+    .unwrap();
     match r {
         PathResolution::NeedsUserConfig { what } => {
             assert!(what.contains("backend"), "实得 {what}");
@@ -727,6 +784,7 @@ fn destination_checks_still_run_under_every_host() {
     ] {
         for bad in ["/etc/passwd", "~/.local/*/bin", "~/.local/bin/*-*"] {
             let e = resolve_touched_path(
+                Vantage::Monitor,
                 bad,
                 &ToolDestination::LocalHomeRelative("x"),
                 host,
@@ -1209,7 +1267,14 @@ fn settings_scopes_include_local_and_admit_project_is_unchecked() {
             Some("{}".to_string())
         }
     };
-    let s = build_settings_scopes(&home(), None, &no_dir, &read, &f);
+    // 〔RM1a〕第四个参数换成「有没有钩子字样」：本机那条路读原文、交 `hooks_in_text` 判（与生产那一臂同一个函数）。
+    let s = build_settings_scopes(
+        &home(),
+        None,
+        &no_dir,
+        &|p| hooks_in_text(read(p).as_deref()),
+        &f,
+    );
     assert_eq!(s.len(), 3);
     // E67①：**按「路径分量」比，不按斜杠比**。原来写的是
     // `s[0].path.ends_with("/.claude/settings.json")`，在 Windows 上恒假 ——
@@ -1237,7 +1302,13 @@ fn settings_scopes_include_local_and_admit_project_is_unchecked() {
 /// 读不到文件时 `has_cc_bus_hooks` 必须是 `None`（**不猜 false**）。
 #[test]
 fn unreadable_settings_does_not_claim_absence_of_hooks() {
-    let s = build_settings_scopes(&home(), None, &no_dir, &|_| None, &empty_probe());
+    let s = build_settings_scopes(
+        &home(),
+        None,
+        &no_dir,
+        &|_| hooks_in_text(None),
+        &empty_probe(),
+    );
     assert_eq!(s[0].has_cc_bus_hooks, None);
     assert_eq!(s[1].has_cc_bus_hooks, None);
 }

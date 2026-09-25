@@ -66,6 +66,11 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
             Ok((from, p)) => list_user_inputs(agent_home, p, from),
             Err(e) => Err(e),
         },
+        // 〔SE2 · `设计/10 §6 步 6`〕会话内查找（口径与 `--search` 同一份，内核住 `observe::search_query`）。
+        Some("--find-in-session") => match parse_find_args(&args[1..]) {
+            Ok(a) => find_in_session(agent_home, &a),
+            Err(e) => Err(e),
+        },
         Some(other) => Err(format!("unknown argument: {other}")),
         None => Err("no query argument".into()),
     };
@@ -522,6 +527,21 @@ pub(crate) fn parse_user_inputs_args(rest: &[String]) -> Result<(u64, &String), 
 /// `from` 超过文件长度 ⇒ **报错**（文件被截断或重写过 —— 调用方手上的 `end` 已经不指向这份文件），
 /// 不回一份空清单假装「没有新的」。路径守卫与 `--read-session` 同一套。
 fn list_user_inputs(agent_home: &Path, jsonl_path: &str, from: u64) -> Result<(), String> {
+    let stdout = std::io::stdout();
+    let mut out = std::io::BufWriter::new(stdout.lock());
+    list_user_inputs_into(agent_home, jsonl_path, from, &mut out)?;
+    out.flush().map_err(|e| format!("stream failed: {e}"))?;
+    Ok(())
+}
+
+/// `--list-user-inputs` 的本体，出口是参数 ——〔SR1a · 2026-09-24〕帧面那条（`history-user-inputs`）
+/// 与 CLI 这条**跑的是同一个函数**，只是 `out` 一个是 stdout、一个是内存里那份应答（同 `list_projects_into`）。
+pub(crate) fn list_user_inputs_into(
+    agent_home: &Path,
+    jsonl_path: &str,
+    from: u64,
+    mut out: &mut dyn Write,
+) -> Result<(), String> {
     use std::io::{Seek, SeekFrom};
     let target = validate_session_path(agent_home, jsonl_path)?;
     let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
@@ -533,11 +553,105 @@ fn list_user_inputs(agent_home: &Path, jsonl_path: &str, from: u64) -> Result<()
     }
     f.seek(SeekFrom::Start(from))
         .map_err(|e| format!("seek failed: {e}"))?;
-    let stdout = std::io::stdout();
-    let mut out = std::io::BufWriter::new(stdout.lock());
     crate::observe::user_inputs::write_user_inputs(std::io::BufReader::new(f), from, &mut out)
         .map_err(|e| format!("stream failed: {e}"))?;
+    Ok(())
+}
+
+/// `--find-in-session` 的 argv（〔SE2〕）。
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct FindArgs<'a> {
+    pub(crate) path: &'a String,
+    pub(crate) query: &'a String,
+    pub(crate) include_tools: bool,
+    pub(crate) limit: usize,
+}
+
+/// `--find-in-session [--include-tools] [--limit <n>] --query <q> <jsonl_path>`。
+///
+/// 🔴 **查询串是 `--query` 的值，不是位置参数**：用户要找的就可能是 `--force` 这种以 `--` 起头的词，
+/// 作为位置参数它会被当成一个写错的选项。选项的值原样取下一个 token，不看它长什么样。
+/// 选项在位置参数前后都认；**monitor 一律写在前面**（`session_find::find_argv` 有判据钉着）。
+/// 未知的 `--选项`、缺 `--query`、位置参数不是恰好一个 ⇒ **报错**（不静默忽略 —— `--search` 那种
+/// 「未知选项容错忽略」正是本命令不做成它的一个选项的理由之一，见 `IPC-PROTOCOL.md §10.5`）。
+/// `--limit` 超出封顶按封顶算（`FIND_MAX_LIMIT`）；0 ⇒ 只数不列。
+pub(crate) fn parse_find_args(rest: &[String]) -> Result<FindArgs<'_>, String> {
+    use crate::observe::search_query::{FIND_DEFAULT_LIMIT, FIND_MAX_LIMIT};
+    let mut query: Option<&String> = None;
+    let mut include_tools = false;
+    let mut limit = FIND_DEFAULT_LIMIT;
+    let mut pos: Vec<&String> = Vec::new();
+    let mut it = rest.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--query" => query = Some(it.next().ok_or("--query requires <text>")?),
+            "--include-tools" => include_tools = true,
+            "--limit" => {
+                limit = it
+                    .next()
+                    .ok_or("--limit requires <n>")?
+                    .parse::<usize>()
+                    .map_err(|_| "--limit <n>: n must be a number")?
+                    .min(FIND_MAX_LIMIT);
+            }
+            other if other.starts_with("--") => {
+                return Err(format!("--find-in-session: unknown option {other}"))
+            }
+            _ => pos.push(a),
+        }
+    }
+    let query = query.ok_or("--find-in-session requires --query <text>")?;
+    match pos.as_slice() {
+        [p] => Ok(FindArgs {
+            path: p,
+            query,
+            include_tools,
+            limit,
+        }),
+        _ => Err(format!(
+            "--find-in-session takes exactly one <jsonl_path>, got {} positional arguments",
+            pos.len()
+        )),
+    }
+}
+
+/// `--find-in-session`：在**一份**会话里找（路径守卫与 `--read-session` 同一套）。形状见
+/// [`crate::observe::search_query::write_session_find`] 的头注。
+fn find_in_session(agent_home: &Path, a: &FindArgs<'_>) -> Result<(), String> {
+    let stdout = std::io::stdout();
+    let mut out = std::io::BufWriter::new(stdout.lock());
+    find_in_session_into(
+        agent_home,
+        a.path,
+        a.query,
+        a.include_tools,
+        a.limit,
+        &mut out,
+    )?;
     out.flush().map_err(|e| format!("stream failed: {e}"))?;
+    Ok(())
+}
+
+/// 会话内查找的本体，出口是参数 ——〔SR1a × SE2〕帧面那条（`history-find`）与 CLI 这条
+/// （`--find-in-session`）**跑的是同一个函数**（同 `list_projects_into`）。
+pub(crate) fn find_in_session_into(
+    agent_home: &Path,
+    jsonl_path: &str,
+    query: &str,
+    include_tools: bool,
+    limit: usize,
+    mut out: &mut dyn Write,
+) -> Result<(), String> {
+    let target = validate_session_path(agent_home, jsonl_path)?;
+    let f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
+    crate::observe::search_query::write_session_find(
+        std::io::BufReader::new(f),
+        query,
+        include_tools,
+        limit,
+        &mut out,
+    )
+    .map_err(|e| format!("stream failed: {e}"))?;
     Ok(())
 }
 
@@ -558,16 +672,29 @@ fn session_index(
     offset: u64,
     until: Option<u64>,
 ) -> Result<(), String> {
+    let stdout = std::io::stdout();
+    let mut out = std::io::BufWriter::new(stdout.lock());
+    session_index_into(agent_home, jsonl_path, offset, until, &mut out)?;
+    out.flush().map_err(|e| format!("stream failed: {e}"))?;
+    Ok(())
+}
+
+/// 骨架索引的本体，出口是参数 ——〔SR1a · 2026-09-24〕帧面那条（`history-index`）
+/// 与 CLI 这条（`--read-session-from-offset --index`）**跑的是同一个函数**（同 `list_projects_into`）。
+pub(crate) fn session_index_into(
+    agent_home: &Path,
+    jsonl_path: &str,
+    offset: u64,
+    until: Option<u64>,
+    mut out: &mut dyn Write,
+) -> Result<(), String> {
     use std::io::{Seek, SeekFrom};
     let target = validate_session_path(agent_home, jsonl_path)?;
     let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
     f.seek(SeekFrom::Start(offset))
         .map_err(|e| format!("seek failed: {e}"))?;
-    let stdout = std::io::stdout();
-    let mut out = std::io::BufWriter::new(stdout.lock());
     write_session_index(std::io::BufReader::new(f), offset, until, &mut out)
         .map_err(|e| format!("stream failed: {e}"))?;
-    out.flush().map_err(|e| format!("stream failed: {e}"))?;
     Ok(())
 }
 
@@ -667,6 +794,17 @@ pub(crate) struct IndexRow {
     /// 它们渲染成一行 summary（或并进工具组），与正文长短无关。
     #[serde(skip_serializing_if = "is_zero")]
     pub(crate) fd: u32,
+    /// 〔SE2〕这一行是一条**用户输入**（大纲的一项）⇒ 它的摘要；不是 ⇒ 省略。
+    ///
+    /// 判定只住 [`crate::observe::user_inputs::user_input_of`]（与 `--list-user-inputs` **同一个函数**），
+    /// 摘要同 `excerpt`、uuid 就是本行的 `u`。有了它，首屏的「索引」与「大纲清单」合成一趟读：
+    /// 前端见到索引里**有** `x` ⇒ 对面是会出它的后端、每一条用户输入都带着 ⇒ 不再单独要清单；
+    /// 一个 `x` 都没有 ⇒ 分不清「老后端」还是「真的零条」⇒ 照旧要一份（形状登记 `IPC-PROTOCOL.md §10.3`）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) x: Option<String>,
+    /// 〔SE2〕同上那一行的 `timestamp`（空串 ⇒ 省略；清单那边的空串 == 这里缺席）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) ts: Option<String>,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -695,6 +833,11 @@ pub(crate) fn index_row(line: &[u8], offset: u64, len: u64) -> IndexRow {
     row.u = v.get("uuid").and_then(|u| u.as_str()).map(str::to_string);
     row.sc = v.get("isSidechain").and_then(|b| b.as_bool()) == Some(true);
     row.mt = v.get("isMeta").and_then(|b| b.as_bool()) == Some(true);
+    // 〔SE2〕大纲那一项（判定只住 `user_inputs`；这里只搬字段）
+    if let Some(ui) = crate::observe::user_inputs::user_input_of(&v) {
+        row.x = Some(ui.excerpt);
+        row.ts = Some(ui.timestamp).filter(|t| !t.is_empty());
+    }
     // 正文在哪：user/assistant 在 `message.content`（字符串或块数组）；system 在顶层 `content`。
     let content = v
         .get("message")

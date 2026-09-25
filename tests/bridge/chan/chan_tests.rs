@@ -645,9 +645,11 @@ fn only_the_host_binds_and_only_to_loopback() {
             "host.rs",
             "mod.rs",
             "router.rs",
+            "webview.rs",
             "wire.rs"
         ],
-        "通道目录的份数变了 —— 回来重读本条与 `chan/mod.rs` 那张表"
+        "通道目录的份数变了 —— 回来重读本条与 `chan/mod.rs` 那张表\n\
+         （〔C4a〕`webview.rs` 是主界面那一跳的宿主：不绑口，下面那条「绑口恰好一处」照样量它）"
     );
     let bind = format!("TcpListener::{}(", "bind");
     for (p, text) in &files {

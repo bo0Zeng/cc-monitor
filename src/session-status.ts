@@ -1,12 +1,14 @@
 /**
  * F91（#27）：会话活动状态的**共享纯逻辑** —— 红绿灯类名 + 跨会话监控快照 DTO。
- * 零 import，node 可测。
+ * 零运行期 import（只有一条会被擦除的 `import type`），node 可测。
  *
  * **单一事实源**：红绿灯语义（`idle`/`shell`=红、`waiting`=黄、`busy`/未知=绿）此前内联在
  * `tabs.ts` 的 `updateTabButton`（tab-bar 灯）。F91 的 mission-control grid 也要同一套语义，
  * 故抽到这里让 tab-bar 与 grid **共用**、不各写一份（呼应 SS-9「同一套判定别写两遍」的精神）。
  * 抽取对 tab-bar 是**逐字节等价**重构：输出的类名与原三分支完全一致。
  */
+
+import type { Origin } from "./generated/Origin";
 
 /** tab/cell 上叠的活动灯类名。空串 = 不叠类（维持默认绿点：busy 或未知 activity）。 */
 export type ActivityLightClass = "" | "act-idle" | "act-waiting";
@@ -31,8 +33,8 @@ export interface GridSessionSnapshot {
   sessionId: string;
   /** Tab 标题（[项目] aiTitle > 项目名 > sid 前 8）。 */
   title: string;
-  /** null = 本地；非空 = 远端主机 label。 */
-  origin: string | null;
+  /** 哪台机器：本机 = `LOCAL_ORIGIN`；其余 = 远端主机 label。〔C4a〕不再用 `null` 表示本机。 */
+  origin: Origin;
   /** 项目根 / 启动目录（最早记录的 cwd）；null = 尚未拿到。 */
   cwd: string | null;
   status: "live" | "archived";

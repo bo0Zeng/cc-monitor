@@ -1,4 +1,5 @@
 use super::*;
+use crate::filewin::source::Row;
 
 /// 合成一份远端配置。**全字段合成**，不读任何真配置 ——
 /// `host` 用 `.invalid`（RFC 2606 保留），确保就算有人不小心让它真去连，
@@ -517,6 +518,7 @@ fn xvfb_worker_opens_a_real_window() {
         None,
         rows.iter().cloned().map(Into::into).collect(),
         None,
+        None,
     );
 
     let ids = xvfb::wait_for_windows(&display, WINDOW_NEEDLE, 20_000);
@@ -636,6 +638,7 @@ fn xvfb_worker_opens_with_no_x_server_at_all() {
         None,
         None,
         vec![file_row("f.txt").into()],
+        None,
         None,
     );
     let (verdict, why) = join_verdict(h, 30_000);
@@ -1153,6 +1156,7 @@ fn the_fence_line_really_gets_painted_on_the_window() {
         &crate::filewin::writeops::WriteOp::Delete {
             path: "/home/u/.claude/projects/p/s.jsonl".into(),
             is_dir: false,
+            raw: None,
         },
         "/home/u/.claude/projects/p/s.jsonl",
     );

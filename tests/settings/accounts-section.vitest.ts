@@ -175,7 +175,7 @@ describe("account-ux U7 设置账号组：降级分支不被 IA 重排改掉", (
    */
   it("没有已配置的远端 → 远端那三件套一件不出、远端读口一次不调（本机那一支归 NF1bD1）", async () => {
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
-    setCurrentMachine(null); // 〔第三波 S3〕一台远端都没配 ⇒ 只有本机那一页
+    setCurrentMachine(LOCAL_ORIGIN); // 〔第三波 S3〕一台远端都没配 ⇒ 只有本机那一页
     const el = await mount();
     expectNoReadyChrome(el);
     expect(
@@ -774,7 +774,9 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     );
     // ★ 正题的另一半：那条命令**确实**收到了 configDir（不是「什么都没传所以没推 id」）。
     expect(
-      /write_apikey_credentials_key\(\{\s*key,\s*configDir\s*\}\)/.test(code),
+      // 〔ST2〕参数里可以多一格 baseUrl（表单那一路）；〔RM1a〕打头的是 origin（按这一页那台机器），
+      // 接着照旧是 key 与它自己的 configDir。
+      /write_apikey_credentials_key\(\{\s*origin:\s*this\.machineOrigin\(\),\s*key,\s*configDir\b/.test(code),
       "那条写命令没把 configDir 一起交出去 —— 后端就只能落到顶层那一格",
     ).toBe(true);
   });
@@ -826,7 +828,7 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
   /** 没有配任何远端 —— 本族每条都从这里出发。 */
   function noRemotes(): void {
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
-    setCurrentMachine(null); // 一台远端都没配 ⇒ 只有本机那一页
+    setCurrentMachine(LOCAL_ORIGIN); // 一台远端都没配 ⇒ 只有本机那一页
   }
 
   /**
@@ -1096,7 +1098,7 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
 describe("S3：本机页就是本机（配了远端也一样）", () => {
   it("★ 本机页（store = null）＋ 配了远端 ⇒ 走本机那条读口，远端读口一次不调", async () => {
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host()] });
-    setCurrentMachine(null);
+    setCurrentMachine(LOCAL_ORIGIN);
     fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
     const el = await mount();
     expect(fetchLocalAccountsMock, "本机页上没去读本机的账号").toHaveBeenCalled();
@@ -1112,7 +1114,7 @@ describe("S3：本机页就是本机（配了远端也一样）", () => {
     // 前提：确实先站在 aya 上（否则下面那条「切回来」是空真）。
     expect(el.querySelector(".accounts-table"), "前提：先得在 aya 那一页上").not.toBeNull();
     expect(fetchLocalAccountsMock).not.toHaveBeenCalled();
-    setCurrentMachine(null);
+    setCurrentMachine(LOCAL_ORIGIN);
     await new Promise((r) => setTimeout(r, 0));
     await new Promise((r) => setTimeout(r, 0));
     expect(fetchLocalAccountsMock, "切回本机页后没去读本机").toHaveBeenCalled();
@@ -1132,7 +1134,7 @@ describe("S3：本机那一支接上 A3 的两条本机命令", () => {
 
   function noRemotes(): void {
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
-    setCurrentMachine(null); // 一台远端都没配 ⇒ 只有本机那一页
+    setCurrentMachine(LOCAL_ORIGIN); // 一台远端都没配 ⇒ 只有本机那一页
   }
   /** 只答指名的那几条命令，其余一律 `undefined`（与本文件默认桩同形）。 */
   function answer(table: Record<string, () => Promise<unknown>>): void {
@@ -1262,7 +1264,7 @@ describe("S3：本机清单的徽章说本机那一半的真话", () => {
   });
   async function badgeWith(routing: (() => Promise<unknown>) | null): Promise<HTMLElement> {
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
-    setCurrentMachine(null);
+    setCurrentMachine(LOCAL_ORIGIN);
     fetchLocalAccountsMock.mockResolvedValue(localState({ accounts: [KEYED], defaultName: "k" }));
     invokeMock.mockImplementation((cmd: string) =>
       cmd === "apikey_routing_for" && routing ? routing() : Promise.resolve(undefined),
@@ -1278,7 +1280,8 @@ describe("S3：本机清单的徽章说本机那一半的真话", () => {
     );
     const asked = invokeMock.mock.calls.filter(([c]) => c === "apikey_routing_for");
     expect(asked).toHaveLength(1);
-    expect(asked[0][1]).toEqual({ configDirs: [KEYED.configDir] });
+    // 〔RM1a〕那条命令收了 origin；本机这一页问的仍是本机（逐字送后端那个本机串）。
+    expect(asked[0][1]).toEqual({ origin: LOCAL_ORIGIN, configDirs: [KEYED.configDir] });
   });
 
   it("★ 表里有它 ＋ 中转没跑 ⇒ 「中转未运行」；表里没它 ⇒ 说表里没它 —— 三档两两不同", async () => {
@@ -1355,7 +1358,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
 
   function noRemotes(): void {
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
-    setCurrentMachine(null); // 一台远端都没配 ⇒ 只有本机那一页
+    setCurrentMachine(LOCAL_ORIGIN); // 一台远端都没配 ⇒ 只有本机那一页
   }
 
   /** 跑一遍本机那条路，回来时账本里本机那一栏长什么样。 */
@@ -1614,7 +1617,7 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
     return calls;
   }
 
-  async function submitApikey(el: HTMLElement, name: string, key: string): Promise<void> {
+  async function submitApikey(el: HTMLElement, name: string, key: string, baseUrl?: string): Promise<void> {
     const form = el.querySelector<HTMLElement>(".accounts-new")!;
     const nameIn = form.querySelector<HTMLInputElement>("input.accounts-maint-name")!;
     nameIn.value = name;
@@ -1622,7 +1625,12 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
     const r = form.querySelector<HTMLInputElement>('input[type=radio][value="apikey"]')!;
     r.checked = true;
     r.dispatchEvent(new Event("change"));
-    const keyIn = form.querySelector<HTMLInputElement>(".accounts-new-key input")!;
+    if (baseUrl !== undefined) {
+      const baseIn = form.querySelector<HTMLInputElement>('.accounts-new-key input[data-field="base-url"]')!;
+      baseIn.value = baseUrl;
+      baseIn.dispatchEvent(new Event("input"));
+    }
+    const keyIn = form.querySelector<HTMLInputElement>(".accounts-new-key input[type=password]")!;
     keyIn.value = key;
     keyIn.dispatchEvent(new Event("input"));
     [...form.querySelectorAll("button")].find((b) => b.textContent === "创建")!.click();
@@ -1656,9 +1664,28 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
     for (let i = 0; i < 6; i++) await tick();
 
     const writes = calls.filter(([c]) => c === "write_apikey_credentials_key");
-    expect(writes.map(([, a]) => a)).toEqual([{ key: "sk-ant-FOR-B", configDir: B_DIR }]);
+    // 〔RM1a〕key 落在**建号的那台机器**上：这一页站在 aya ⇒ origin 就是 aya（先前不收 origin，落本机）。
+    expect(writes.map(([, a]) => a)).toEqual([{ origin: "aya", key: "sk-ant-FOR-B", configDir: B_DIR }]);
     expect(el.querySelector(".accounts-new-pending"), "写完了还挂着「等」那一行").toBeNull();
     expect(el.querySelector("select")).toBeNull();
+  });
+
+  it("★ 〔ST2 · `70 §4.4`〕填了 Base URL ⇒ 号出现之后连同 key 一起写给**它的** configDir（一次操作）", async () => {
+    const calls = wire();
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    const el = await mount();
+    await submitApikey(el, "b", "sk-ant-FOR-B", "https://api.example.com/v1");
+    fetchAccountsMock.mockResolvedValue(
+      state({ accounts: [acct({ name: "z" }), acct({ name: "b", configDir: B_DIR })], defaultName: "z" }),
+    );
+    el.querySelector<HTMLButtonElement>("button.accounts-refresh")!.click();
+    for (let i = 0; i < 6; i++) await tick();
+    const writes = calls.filter(([c]) => c === "write_apikey_credentials_key");
+    expect(writes.map(([, a]) => a)).toEqual([
+      // 〔RM1a 合并〕key 与 Base URL 一起落在建号的那台机器上（这一页站在 aya）。
+      { origin: "aya", key: "sk-ant-FOR-B", configDir: B_DIR, baseUrl: "https://api.example.com/v1" },
+    ]);
+    expect(el.textContent, "Base URL 输入框没清空、还挂在屏上").not.toContain("api.example.com");
   });
 
   it("终端没拉起来 ⇒ 不留那把 key（那个号不会出现，留着就是一把永远等不到主人的明文）", async () => {
@@ -1674,6 +1701,33 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
     el.querySelector<HTMLButtonElement>("button.accounts-refresh")!.click();
     for (let i = 0; i < 6; i++) await tick();
     expect(calls.some(([c]) => c === "write_apikey_credentials_key")).toBe(false);
+  });
+
+  it("〔RM1a〕等着的那把 key 只认**建它的那台机器**：换到本机页、同名的号出现也不写；回到那台才写", async () => {
+    const calls = wire();
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    const el = await mount();
+    await submitApikey(el, "b", "sk-ant-FOR-B");
+    expect(el.querySelector(".accounts-new-pending")?.textContent).toContain("等 b 出现");
+    // 换到本机页：本机恰好也有一个叫 b 的号（本机列表走本机那条读口）。
+    fetchLocalAccountsMock.mockResolvedValue(
+      localState({ accounts: [acct({ name: "z" }), acct({ name: "b", configDir: B_DIR })], defaultName: "z" }),
+    );
+    setCurrentMachine(LOCAL_ORIGIN);
+    for (let i = 0; i < 8; i++) await tick();
+    expect(fetchLocalAccountsMock, "没真切到本机页 —— 下面那条「没写」是空真").toHaveBeenCalled();
+    expect(
+      calls.some(([c]) => c === "write_apikey_credentials_key"),
+      "在 aya 上建的号，key 被写到了本机",
+    ).toBe(false);
+    // 回到 aya：号出现了 ⇒ 写给 aya。
+    fetchAccountsMock.mockResolvedValue(
+      state({ accounts: [acct({ name: "z" }), acct({ name: "b", configDir: B_DIR })], defaultName: "z" }),
+    );
+    setCurrentMachine("aya");
+    for (let i = 0; i < 8; i++) await tick();
+    const writes = calls.filter(([c]) => c === "write_apikey_credentials_key");
+    expect(writes.map(([, a]) => a)).toEqual([{ origin: "aya", key: "sk-ant-FOR-B", configDir: B_DIR }]);
   });
 
   it("「放弃」把等着的那把 key 丢掉：之后号出现也不写", async () => {
@@ -1721,7 +1775,7 @@ describe("S3：本机页新建账号", () => {
   const writeText = vi.fn();
   async function mountLocal(accts: Account[]): Promise<HTMLElement> {
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
-    setCurrentMachine(null);
+    setCurrentMachine(LOCAL_ORIGIN);
     writeText.mockReset().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     fetchLocalAccountsMock.mockResolvedValue(localState({ accounts: accts, defaultName: "z" }));
@@ -1736,7 +1790,7 @@ describe("S3：本机页新建账号", () => {
       const r = form.querySelector<HTMLInputElement>('input[type=radio][value="apikey"]')!;
       r.checked = true;
       r.dispatchEvent(new Event("change"));
-      const keyIn = form.querySelector<HTMLInputElement>(".accounts-new-key input")!;
+      const keyIn = form.querySelector<HTMLInputElement>(".accounts-new-key input[type=password]")!;
       keyIn.value = key;
       keyIn.dispatchEvent(new Event("input"));
     }
@@ -1794,7 +1848,10 @@ describe("S3：本机页新建账号", () => {
     expect(el.textContent, "key 的明文上了屏").not.toContain("sk-ant-FOR-B");
     await refresh(el, [acct({ name: "z" }), acct({ name: "b", configDir: B_DIR })]);
     const writes = calls.filter(([c]) => c === "write_apikey_credentials_key");
-    expect(writes.map(([, a]) => a)).toEqual([{ key: "sk-ant-FOR-B", configDir: B_DIR }]);
+    // 〔RM1a〕本机页 ⇒ origin 是后端那个本机串（本机那一份仍只由 monitor 写）。
+    expect(writes.map(([, a]) => a)).toEqual([
+      { origin: LOCAL_ORIGIN, key: "sk-ant-FOR-B", configDir: B_DIR },
+    ]);
     expect(el.querySelector(".accounts-new-pending")).toBeNull();
   });
 

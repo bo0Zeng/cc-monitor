@@ -32,6 +32,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { deriveForkSource, runForkFlow } from "../src/fork-flow";
 import { askForkLaunch } from "../src/fork-ask";
 import type { SessionAccount } from "../src/accounts";
+import { LOCAL_ORIGIN } from "../src/ipc/origin";
+import { isChanCall, linesReply } from "./test-support/chan-fake";
 
 type TmuxRow = {
   name: string;
@@ -225,15 +227,14 @@ describe("K-R46：分叉本机起会话的 tmux 名（行为）", () => {
 
   /** 源会话活着、账号确认是「账号 0」（⇒ 三格全 known ⇒ 一次都不用问）。 */
   function serveLocal(tmuxNames: string[] | null): void {
-    invokeMock.mockImplementation((cmd: string) => {
-      if (cmd === "list_local_session_accounts") {
-        return Promise.resolve({
-          available: true,
-          error: null,
-          sessions: [
+    invokeMock.mockImplementation((cmd: string, args: unknown) => {
+      // 〔C4a〕本机「会话 ↔ 账号」经通道问本机后端（原先是 E79 那条已退役的本机 Tauri 命令）。
+      if (isChanCall(cmd, args, "accounts-sessions")) {
+        return Promise.resolve(
+          linesReply([
             { pid: 1, sessionId: SRC, cwd: "/p", configDir: null, account: null, bare: true, alive: true },
-          ],
-        });
+          ]),
+        );
       }
       if (cmd === "list_local_tmux") {
         return Promise.resolve(
@@ -261,7 +262,7 @@ describe("K-R46：分叉本机起会话的 tmux 名（行为）", () => {
 
   async function fork(): Promise<string> {
     const outcome = await runForkFlow({
-      origin: null,
+      origin: LOCAL_ORIGIN,
       newSessionId: NEW,
       sourceSessionId: SRC,
       cwd: "/p",

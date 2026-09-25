@@ -13,7 +13,7 @@
  */
 // `LOCAL_ORIGIN`〔`设计/05 §8` 步 2〕：本机那个 origin 的**唯一住址**（Rust 侧是
 // `origin::LOCAL`，三处由 `origin_tests.rs::the_sentinel_agrees_with_the_two_existing_homes` 钉着）。
-import { LOCAL_ORIGIN } from "./backend-policy";
+import { isRemoteOrigin, LOCAL_ORIGIN } from "./ipc/origin";
 import { emit } from "@tauri-apps/api/event";
 import { commands } from "./ipc/commands";
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
@@ -307,9 +307,8 @@ window.addEventListener("DOMContentLoaded", async () => {
           description: entry.desc, // ★ 用 trim 后的原始 desc（非展示 label）——load_subagent 精确匹配
           toolUseTimestamp: entry.timestamp,
           // P7c-1：远端会话也能展开了（backend `--list-subagents` 只列候选，挑选留后端本侧）。
-          // 🔴 **〔步 2〕本机是 `LOCAL_ORIGIN`（`"<local>"`），不是 `null`** ——
-          // `actx.origin` 是前端自己的表示（`null` = 本机），这里是线上边界，得换过去。
-          origin: actx.origin ?? LOCAL_ORIGIN,
+          // 〔C4a〕`actx.origin` 本机就是 `LOCAL_ORIGIN`（前端与线上同一个表示，不再换）。
+          origin: actx.origin,
         });
         closeAgentViewer(); // 关掉上一个（单例语义）
         agentViewerMount = document.createElement("div");
@@ -326,6 +325,9 @@ window.addEventListener("DOMContentLoaded", async () => {
         void agentViewer.load({
           jsonlPath: result.path,
           displayTitle: entry.label,
+          // 〔C4a〕子 agent 的文件在父会话那台机器上。上一版这里**没传** origin，
+          // 而查看器把「没说」当本机 ⇒ 远端子 agent 的记录被拿去本机读（读不到）。
+          origin: actx.origin,
           suppressBranch: true,
         });
         agentViewerMount.focus?.(); // 让 Esc keydown 能落到挂载壳
@@ -552,11 +554,11 @@ window.addEventListener("DOMContentLoaded", async () => {
     );
     // 切到会话（来自 F91 只读投影 snapshotSessions）
     for (const s of tabs.snapshotSessions()) {
-      const originTag = s.origin ? `[${s.origin}] ` : "";
+      const originTag = isRemoteOrigin(s.origin) ? `[${s.origin}] ` : "";
       cmds.push({
         id: `switch-${s.sessionId}`,
         title: `切到会话：${originTag}${s.title}`,
-        keywords: `switch session 切换 会话 ${s.cwd ?? ""} ${s.origin ?? ""}`,
+        keywords: `switch session 切换 会话 ${s.cwd ?? ""} ${isRemoteOrigin(s.origin) ? s.origin : ""}`,
         run: () => tabs.switchTo(s.sessionId),
       });
     }
@@ -670,6 +672,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   dispatcher.bind("tab.close-archived", () => tabs.closeActiveIfArchived());
   dispatcher.bind("tab.open-cwd", () => tabs.openActiveTabCwd());
   dispatcher.bind("tab.pop-out", () => tabs.openActiveInNewWindow());
+  dispatcher.bind("session.find", () => tabs.openFind()); // 〔SE2〕会话内查找（大纲同一块面板）
   dispatcher.bind("terminal.bring-front", () => tabs.bringActiveTerminalToFront());
   dispatcher.bind("app.open-settings", () => void openSettingsWindow()); // F82a：开独立设置窗口
   dispatcher.bind("app.toggle-history", () => {
@@ -750,7 +753,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       if (tabs.hasTab(sessionId)) {
         tabs.reviveTab(sessionId);
       } else {
-        tabs.createSkeletonTab(sessionId, meta.cwd || null, null, meta.kind, meta.name);
+        tabs.createSkeletonTab(sessionId, meta.cwd || null, LOCAL_ORIGIN, meta.kind, meta.name);
       }
       // ★★ `K-P5h` `KP5HD3`：**「过一会儿再问」搭的是这条已有的事件，不是一个新定时器。**
       //    身份 token 在会话起来**之前**就铸好了，而 `--session-accounts` 要进程已经在跑
@@ -817,7 +820,13 @@ window.addEventListener("DOMContentLoaded", async () => {
   try {
     const active = await commands.list_active_sessions();
     for (const s of active) {
-      tabs.createSkeletonTab(s.session_id, s.cwd || null, null, s.kind ?? null, s.name ?? null);
+      tabs.createSkeletonTab(
+        s.session_id,
+        s.cwd || null,
+        LOCAL_ORIGIN,
+        s.kind ?? null,
+        s.name ?? null,
+      );
     }
   } catch (e) {
     console.warn("[skeleton] list_active_sessions failed:", e);

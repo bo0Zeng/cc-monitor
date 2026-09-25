@@ -63,6 +63,15 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              没上限就等于「点一次恢复永远转圈」。退役归：std 有了 `wait_timeout` 之后（今天没有）。",
     ),
     (
+        "src/dial_host.rs",
+        "wait-for-condition",
+        1,
+        "〔SR1a 09-24〕`local_channel` 的 60×50ms（≤3 s）：等**本机常驻后端那条流的 hello 到了**\
+             （`<local>` 那条入方向客户端登记上）—— monitor 刚起、本机后端刚接上的那个窗口里，\
+             远端链路要经它开。**一次性条件、有次数上限**，等到就走、等不到就如实报「本机后端不在」\
+             （`D11`：不起代理进程、不进程内拨）。不是节拍器：没有链路要开时它根本不跑。",
+    ),
+    (
         "src/local_backend_host.rs",
         "wait-for-condition",
         1,

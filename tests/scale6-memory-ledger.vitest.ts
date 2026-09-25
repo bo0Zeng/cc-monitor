@@ -100,13 +100,14 @@ import {
   type RigPayload,
 } from "./test-support/session-viewer-rig";
 import { TabManager, type Tab } from "../src/tabs";
+import { LOCAL_ORIGIN } from "../src/ipc/origin";
 
 const FIXTURE = resolve(__dirname, "__fixtures__/scale2-height-records.jsonl");
 
 function freshCtx(): RenderContext {
   return {
     parentPath: "/tmp/scale6/session.jsonl",
-    origin: null,
+    origin: LOCAL_ORIGIN,
     toolUseNames: new Map(),
     toolUseElements: new Map(),
     pendingToolResults: new Map(),
@@ -429,7 +430,7 @@ describe("秤 6 丙：三个账本的大小进 `debugSnapshot`", () => {
 
   const feed = (p: RigPayload): void => tm.onLine(p as never);
   const peek = (sid: string): Tab =>
-    (tm as unknown as { tabs: Map<string, Tab> }).tabs.get(sid)!;
+    (tm as unknown as { store: { tabs: Map<string, Tab> } }).store.tabs.get(sid)!;
   /** 直读 `BranchFolder` 的私有账本 —— 判据侧的**第二条路**，用来跟快照对数。 */
   const realBranchRecords = (sid: string): number =>
     (peek(sid).branchFolder as unknown as { records: unknown[] }).records

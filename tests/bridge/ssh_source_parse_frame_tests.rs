@@ -712,3 +712,28 @@ fn the_token_value_never_reaches_a_log_macro() {
         );
     }
 }
+
+/// 〔SR1a · `设计/05 §13.6 ③`〕`accounts_changed`：认得出（无载荷，多余字段忽略）；
+/// 远端流收到它 ⇒ 发前端既有的 `remote-backend-ready`、带 `reason: "accounts_changed"`（恰好一处）。
+#[test]
+fn accounts_changed_is_recognised_and_reaches_the_frontend_as_ready() {
+    assert_eq!(
+        parse_frame(r#"{"kind":"accounts_changed"}"#),
+        Some(InboundFrame::AccountsChanged)
+    );
+    assert_eq!(
+        parse_frame(r#"{"kind":"accounts_changed","future":1}"#),
+        Some(InboundFrame::AccountsChanged),
+        "多余字段该被忽略（additive）"
+    );
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/ssh_source.rs"));
+    let arm = guard_core::find_pinned(&prod, "Some(InboundFrame::AccountsChanged) =>")
+        .expect("流循环里不是恰好一条 accounts_changed 的臂");
+    // 臂体取到下一条 `Some(InboundFrame::` 臂为止（按字符切，不按字节数切 —— 中文注释会切在字中间）。
+    let rest = &prod[arm + 1..];
+    let body = &prod[arm..arm + 1 + rest.find("Some(InboundFrame::").unwrap_or(rest.len())];
+    assert!(
+        body.contains("REMOTE_BACKEND_READY") && body.contains("\"reason\": \"accounts_changed\""),
+        "accounts_changed 那一臂没发 remote-backend-ready（或没带 reason）"
+    );
+}

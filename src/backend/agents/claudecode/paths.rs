@@ -47,6 +47,17 @@ pub(crate) fn sessions_root(home: &Path) -> PathBuf {
     home.join("sessions")
 }
 
+/// 一个插件市场的落点 → 它**声明插件的那份清单**：`<落点>/.claude-plugin/marketplace.json`。
+///
+/// 〔RM1b · 第四波〕插件市场只读枚举从 monitor 搬进后端（`observe/plugins_query.rs`，远端也要答得出）；
+/// 清单的目录名带 agent 的名字 ⇒ 这件格式知识住本层（`agent_locality_guard` 的针当场认得出它）。
+/// 通用层那一处调用登记在 `ADAPTER_CALL_SITES`，对应的能力是假 agent 的「插件市场清单」。
+pub(crate) fn marketplace_manifest(install_location: &Path) -> PathBuf {
+    install_location
+        .join(".claude-plugin")
+        .join("marketplace.json")
+}
+
 /// 一个路径**在不在 Claude 的那几棵树里** —— `~/.claude*` 那个星号的**唯一住址**。
 ///
 /// 〔步 23b · 2026-09-19〕`设计/60 §6.5.2 A` 给新的写模块定的围栏逐字是

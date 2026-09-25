@@ -10,10 +10,13 @@
 //! 而那正是本工作区在治的那族病（守卫的人群对不上它守的性质）。
 //! ⇒ 写盘留在这里：在人群里、要申报。〔洞本身另立跟进件 `己1-f8`，本件不修。〕
 //!
-//! # `K-H2a` 裁四：**backend 只读，写只有这一侧**
+//! # `K-H2a` 裁四：**本机这一份只有这一侧写**
 //!
-//! 本模块整个不存在于 backend crate 里，而 `creds-core` 那半「把文件收窄」的平台原语
-//! 挂在 `harden` feature 上、**只有 monitor 开** ⇒ 「backend 写不了这份文件」是**编译器**兜的。
+//! 本模块只写 **monitor 所在那台机器**上的那一份。〔RM1a · 第四波〕裁四原话「backend 只读」收窄了：
+//! 远端那台机器上的那一份由那台的后端写（`src/backend/accounts/apikey/file_face.rs`，帧面 `apikey-key-set`），
+//! 后端因此也开了 `harden`，「backend 写不了这份文件」不再是编译器兜的。
+//! ⇒ 每台机器上的程序写者仍然恰好一个；monitor **从不**让本机后端写本机这一份
+//! （`lib.rs::write_apikey_credentials_key` 按 origin 分两臂，本机那一臂只进本模块）。
 //!
 //! # 这一档保什么、不保什么
 //!
@@ -186,12 +189,26 @@ fn notice_of(v: &Verdict) -> Option<String> {
 /// ⚠ 而「明文入参那一跳」由 `the_plaintext_argument_is_only_ever_handed_one_hop_further`
 /// 钉着：明文进来之后**只许被往下传一次**，一路到 `SecretKey::new`。
 /// **IPC 那一跳本身仍然是 `判不了`**（原样延续 `K-H2a` 的登记）。
-pub(crate) fn write_key(config_dir: &str, plain: &str) -> Result<(), String> {
+pub(crate) fn write_key(
+    config_dir: &str,
+    plain: &str,
+    base_url: Option<&str>,
+) -> Result<(), String> {
     write_key_at(
         &resolve_path().ok_or_else(|| "no home dir".to_string())?,
         config_dir,
         plain,
+        base_url,
     )
+}
+
+/// 〔第四波 ST2 · `设计/70 §4.4`〕`base_url` 那一格在**写之前**的形状关。
+///
+/// 〔RM1a〕规则本身搬进了 `creds_core::store::check_base_url_shape`：远端那一份由那台的后端写
+/// （`accounts/apikey/file_face.rs`），两个写者要**同一条**形状关，不许各写一份。本函数只转一手。
+/// ⚠ 形状不对 ⇒ **整次写都不做**（key 也不落）：半截写进去，用户看到的是「key 配上了、端点没配上」。
+fn check_base_url(raw: &str) -> Result<(), String> {
+    store::check_base_url_shape(raw)
 }
 
 /// `write_key` 剥掉「路径从哪来」之后的那一半 —— **`KS10` 的行为判据打的就是它**。
@@ -208,7 +225,14 @@ pub(crate) fn write_key_at(
     path: &std::path::Path,
     config_dir: &str,
     plain: &str,
+    // 〔第四波 ST2〕加账号表单 apikey 那一支的 Base URL（`70 §4.4` 线框里那一格）。`None` / 空 = 不碰这一格。
+    //   ⚠ 仍然是本文件**唯一**那个写函数：只加一格入参，不另起第二个写函数（理由见上）。
+    base_url: Option<&str>,
 ) -> Result<(), String> {
+    let base_url = base_url.map(str::trim).filter(|s| !s.is_empty());
+    if let Some(url) = base_url {
+        check_base_url(url)?;
+    }
     // ★★ 「这是哪个账号」**全仓只有一份规则** —— 直接调起会话那一侧的那一个。
     //    这不是「两侧对拍」，是**共用一份实现**：漂开这件事在结构上不可表示。
     let id = crate::history::apikey_account_id_of_dir(config_dir).ok_or_else(|| {
@@ -229,6 +253,10 @@ pub(crate) fn write_key_at(
     // ★★ `KH2C1`：落进 `accounts.<id>` 那一格，**不是顶层那一把**。
     //    `merge_account_key` 只改这一条，别的条与两层的未知键一个字节都不动。
     let merged = store::merge_account_key(&current, &id, &SecretKey::new(plain));
+    let merged = match base_url {
+        Some(url) => store::merge_account_base_url(&merged, &id, url),
+        None => merged,
+    };
     let text = store::to_pretty_json(&merged);
 
     let tmp = path.with_extension("json.tmp");

@@ -140,10 +140,8 @@ async fn main() {
             // K-H2a：多传一个 `agent_home` —— 这个进程的账号层（层 2）要从 `<home>/claudecode-frontend/` 下
             // 读那份凭据文件。**不新开子命令、不动 `SUBCOMMANDS`** ⇒ 不逼出 BUILD_ID bump。
             Some("--relay") => accounts::apikey::run_relay(&agent_home, &args),
-            // K-P6b：拨号代理。**常驻**，起来就搬字节直到某一头断开。
-            // 它不认 `agent_home`（不读任何 agent 的东西），也不碰 `listen::Admit`
-            // —— `K-P7` 逐字写着 E 成立的条件就是「不复用 `listen::Admit`」。
-            Some("--dial") => dial::run(&args).await,
+            // 〔SR1a〕`--dial` 那条拨号代理臂**删了**：拨号挪进本机那一个常驻后端，经流上的链路
+            // （`link-*` 四条，`dial/link.rs`）做 —— 不再每条链路起一个进程。
             // ★ 这几个字面量必须与 `observe::accounts_query::run` 自己认的子命令**完全一致**。
             // v3.4.0 出过一次事故：`--account-trust-zero` 在 accounts_query 里实现完整，
             // 但这里漏列 ⇒ 落进下面的 `_` 臂走历史查询 ⇒ `unknown argument` + exit 2，

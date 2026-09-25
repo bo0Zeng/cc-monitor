@@ -576,7 +576,7 @@ fn a_local_tmux_frame_lands_in_the_ledger_without_any_backend() {
         "解析出来的不是 TmuxSessions —— 后面的断言就没有意义了"
     );
 
-    absorb_local_frame(&frame);
+    absorb_local_frame(frame, None);
 
     let snap = crate::ssh_source::snapshot_tmux_by_origin();
     let got = snap
@@ -601,13 +601,80 @@ fn the_read_loop_really_calls_the_absorb_point() {
     let prod = guard_core::production_code(include_str!(
         "../../../../src/bridge/src/backend/control/local_backend.rs"
     ));
-    let at = guard_core::find_pinned(&prod, "absorb_local_frame(&frame);")
-        .expect("读行循环里必须恰好有一处 `absorb_local_frame(&frame);`");
+    let at = guard_core::find_pinned(&prod, "absorb_local_frame(frame, registered.as_ref());")
+        .expect("读行循环里必须恰好有一处 `absorb_local_frame(frame, registered.as_ref());`");
     let before = &prod[..at];
     assert!(
         before.contains("parse_frame(&line)"),
         "吸收点必须排在**解析出帧之后** —— 顺序反了就是拿没解析的东西去收"
     );
+    // 〔SR1a〕★ M3：常驻那条载体（宿主的 `attach_stream`）**也**只经这一个吸收点 —— 恰好一处，
+    // 而且两条循环结束时都把经它开的在飞链路一起结束（`link_mux::fail_owned_by`，各恰好一处）。
+    let host = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/local_backend_host.rs"
+    ));
+    let at = guard_core::find_pinned(
+        &host,
+        "crate::backend::control::local_backend::absorb_local_frame(f, Some(&client));",
+    )
+    .expect("常驻载体的读循环里必须恰好有一处吸收点调用");
+    assert!(
+        host[..at].contains("parse_frame(line)"),
+        "常驻载体：吸收点必须排在解析出帧之后"
+    );
+    for (name, src) in [
+        ("local_backend.rs", &prod),
+        ("local_backend_host.rs", &host),
+    ] {
+        guard_core::find_pinned(src, "crate::link_mux::fail_owned_by(").unwrap_or_else(|e| {
+            panic!(
+                "{name}：读循环结束时不是恰好一处 `link_mux::fail_owned_by`（{e:?}）—— 断流时在飞的链路会干等到超时"
+            )
+        });
+    }
+}
+
+/// 〔SR1a〕★ 本机那条流上的**应答**真的路由回请求方（此前本机两条读循环一条都不路由 ⇒ 本机入方向命令只会等到超时）。
+/// 走**真的**吸收点：造一个 client、发一条命令，把对应的 `reply` 帧喂给吸收点，调用方拿到 `data`。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_local_reply_reaches_the_caller_through_the_absorb_point() {
+    use tokio::io::AsyncBufReadExt;
+    let (mine, theirs) = tokio::io::duplex(4096);
+    let hello = crate::ssh_source::InboundFrame::Hello {
+        v: 1,
+        build_id: "t".into(),
+        host_arch: "x86_64".into(),
+        claude_dir: "/tmp".into(),
+        homes: vec![],
+        capabilities: vec![],
+        commands: vec!["ping".into()],
+    };
+    let witness =
+        crate::backend::control::inbound_client::BackendHello::from_hello_frame(&hello).unwrap();
+    let client = crate::backend::control::inbound_client::park(mine).into_client(witness);
+    let c2 = std::sync::Arc::clone(&client);
+    let call = tokio::spawn(async move {
+        c2.call(
+            "ping",
+            serde_json::json!({}),
+            std::time::Duration::from_secs(5),
+        )
+        .await
+    });
+    let mut peer = tokio::io::BufReader::new(theirs);
+    let mut line = String::new();
+    peer.read_line(&mut line).await.unwrap();
+    let id = serde_json::from_str::<serde_json::Value>(&line).unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let reply = crate::ssh_source::parse_frame(&format!(
+        r#"{{"kind":"reply","id":{id:?},"ok":true,"data":{{"pong":1}}}}"#
+    ))
+    .unwrap();
+    absorb_local_frame(reply, Some(&client));
+    let got = call.await.unwrap().expect("应答没路由回来");
+    assert_eq!(got, Some(serde_json::json!({"pong": 1})));
 }
 
 /// P3-Y1（acceptor: **实测**）：**本机后端的 tmux 帧真的进了账本**。
@@ -1148,9 +1215,23 @@ fn the_local_extract_path_is_build_id_scoped() {
                  改成固定名 = 把「无限重装循环」装回来（见 `extract_embedded_to` 头注 D1 段）。"
         );
     }
+    // 〔SR1a · 09-24〕释放名从 `cc-monitor-local-<id>` 改成 `cc-monitor-backend-<id>`（题面：进程表里
+    //   它就该叫「后端」）。要避开的从来不是「名字里有 backend 这个词」，是两件具体的事：
+    //   ① **与远端自部署落点同名**（`~/.cc-monitor/bin/cc-monitor-backend`，D1 段那次无限重装）；
+    //   ② **被按 exe 收孤儿的脚本认成远端那一份**（`reap-orphan-backends.sh` / `graylight-suite.sh`
+    //      都按 exe 路径 `*cc-monitor-backend` 结尾判 —— 常驻的本机后端 PPID 就是 1，认错了会被收掉）。
+    //   ⇒ 两条都按「结尾」判：带着 `-<build_id>` 尾巴，两条都结构上撞不上。
+    let remote = "cc-monitor-backend";
+    for name in [&a, &b] {
+        assert!(
+            name.as_str() != remote && !name.ends_with(remote),
+            "本机释放名 `{name}` 撞上了远端自部署那个名字（或以它结尾）—— 那正是 D1 段要避开的文件，\
+             也会被按 exe 收孤儿的脚本认成远端那一份"
+        );
+    }
     assert!(
-        !a.contains("cc-monitor-backend"),
-        "本机释放名不许长成远端那个名字（`cc-monitor-backend`）—— 那正是要避开的那个文件"
+        a.starts_with("cc-monitor-backend-"),
+        "本机释放名 `{a}` 不是 `cc-monitor-backend-<build_id>` 那一形（SR1a 题面改名）"
     );
 }
 

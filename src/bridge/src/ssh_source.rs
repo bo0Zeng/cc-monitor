@@ -1242,7 +1242,7 @@ pub async fn connect_and_exec_cmd(
     cfg: &RemoteConfig,
     cmd: &str,
 ) -> Result<crate::dial_host::DialStream, String> {
-    // 〔C2〕拨号在后端的拨号代理里；这里拿到的是代理子进程那两根管子（读端 = 远端命令的 stdout）。
+    // 〔C2 → SR1a〕拨号在本机常驻后端里；这里拿到的是它开的一条链路（读端 = 远端命令的 stdout）。
     crate::dial_host::open_stream(cfg, cmd).await
 }
 
@@ -1403,7 +1403,7 @@ pub async fn connect_and_exec_capture(
     cmd: &str,
     abort_marker: Option<&str>,
 ) -> Result<RemoteExec, String> {
-    // 〔C2〕收全三样的活在拨号代理里（`use: capture`）；stdout/stderr 各自的上限照旧由这里给。
+    // 〔C2 → SR1a〕收全三样的活在本机常驻后端里（`use: capture`）；stdout/stderr 各自的上限照旧由这里给。
     crate::dial_host::capture(cfg, cmd, abort_marker, EXEC_CAPTURE_MAX_BYTES).await
 }
 
@@ -1583,6 +1583,13 @@ pub enum InboundFrame {
     },
     /// U6b-1 / U8a-2a：某条在跑的入方向命令**已被取消**。
     Cancelled { id: String },
+    /// 〔SR1a · `设计/05 §13.6 ③`〕那台机器上的账号清单变了（后端 `wire::Frame::AccountsChanged`，无载荷）。
+    AccountsChanged,
+    /// 〔SR1a〕一条链路的下行字节（后端 `wire::Frame::LinkData`；`data` 在解帧这一步就解开了 base64）。
+    /// 只有**本机后端**那条流上会有（monitor 只在那条流上开链路），交 `link_mux`。
+    LinkData { link: String, data: Vec<u8> },
+    /// 〔SR1a〕一条链路收尾了（后端 `wire::Frame::LinkEnd`）。
+    LinkEnd { link: String, error: Option<String> },
 }
 
 /// 拥塞提示的**措辞**：有没有不可恢复的丢失，说法完全不同〔audit-0805 F21〕。
@@ -1834,6 +1841,24 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
             Some(InboundFrame::Cancelled { id })
         }
 
+        // 〔SR1a · `设计/05 §13.6 ③`〕账号清单变了。
+        "accounts_changed" => Some(InboundFrame::AccountsChanged),
+
+        // 〔SR1a〕链路两帧。`data` 解不开 ⇒ 整帧 `None`（坏帧，调用方 warn）—— 不交一段猜出来的字节。
+        "link_data" => {
+            let link = obj.get("link")?.as_str()?.to_string();
+            let data = crate::link_mux::b64_decode(obj.get("data")?.as_str()?).ok()?;
+            Some(InboundFrame::LinkData { link, data })
+        }
+        "link_end" => {
+            let link = obj.get("link")?.as_str()?.to_string();
+            let error = obj
+                .get("error")
+                .and_then(|e| e.as_str())
+                .map(str::to_string);
+            Some(InboundFrame::LinkEnd { link, error })
+        }
+
         // ── `turn_end` **认识但刻意不消费**（U7-1）。──────────────────────────
         //
         // 「认识」与「消费」是两件事。落进 `_ => None` 的后果不是「忽略」，是
@@ -1858,9 +1883,12 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
 /// `known_kinds_matches_parse_frame` 两条钉住。
 #[cfg(test)]
 const KNOWN_FRAME_KINDS: &[&str] = &[
+    "accounts_changed",
     "cancelled",
     "hello",
     "line",
+    "link_data",
+    "link_end",
     "overflow",
     "reply",
     "session_added",
@@ -2981,6 +3009,23 @@ async fn stream_loop(
             Some(f @ (InboundFrame::Reply { .. } | InboundFrame::Cancelled { .. })) => {
                 route_inbound_frame(&host_label, inbound.as_ref(), f);
             }
+            // 〔SR1a · `设计/05 §13.6 ③`〕那台的账号清单变了 ⇒ 发前端既有的「这台就绪」那一个事件
+            //   （账号表与 chip 听的就是它，`main.ts`），多带一个 `reason` 说清这一次为什么（additive）。
+            Some(InboundFrame::AccountsChanged) => {
+                if let Err(e) = app.emit(
+                    crate::bridge::events::REMOTE_BACKEND_READY,
+                    &serde_json::json!({ "origin": host_label, "reason": "accounts_changed" }),
+                ) {
+                    tracing::warn!("remote-backend-ready（accounts_changed）emit failed: {e}");
+                }
+            }
+            // 〔SR1a〕链路帧只该出现在**本机后端**那条流上（monitor 只在那里开链路）。
+            // 远端后端发来 ⇒ 协议对不上，照实说、丢掉。
+            Some(InboundFrame::LinkData { link, .. } | InboundFrame::LinkEnd { link, .. }) => {
+                tracing::warn!(
+                    "ssh_source [{host_label}] 远端后端发来了链路帧（link={link}）—— monitor 没在远端开过链路，丢掉"
+                );
+            }
             None => {
                 // 未知 kind / 坏帧 / 非 JSON：跳过，绝不 panic、绝不中断流。
                 tracing::warn!("ssh_source skipping unparseable/unknown frame: {line}");
@@ -3439,7 +3484,7 @@ pub async fn test_remote_connection(
         }
     }
 
-    // 链路（连同代理子进程）在 `probe_backend` 里用完即丢 ⇒ 代理收工、SSH 连接随之关。
+    // 链路在 `probe_backend` 里用完即丢 ⇒ 后端收掉它；测试连接的链路不进连接池 ⇒ 那条 SSH 连接随之关。
     Ok(result)
 }
 

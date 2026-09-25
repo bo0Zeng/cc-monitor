@@ -1,9 +1,9 @@
-//! 〔C2 · `设计/05 §13`〕拨号代理宿主（`dial_host`）的判据。
+//! 〔C2 · `设计/05 §13`〕拨号宿主（`dial_host`）的判据。〔SR1a〕起它不再起任何进程：链路开在本机常驻后端里。
 //!
 //! 买到：请求按蛇形键写（与后端 `dial::DialRequest` 读的那一侧逐键对拍，异源：后端源码）·
-//! 只放私钥**路径**不放本体 · 竞速顺序 last-good 排首 · 跳板环当场拒 · **没有进程内回落**
-//! （本文件生产段零 `russh`、恰好一处起进程）。
-//! **买不到**：真代理进程与真 sshd（读数脚本 `tests/evidence/C2-dial-loopback.py`）。
+//! 只放私钥**路径**不放本体 · 竞速顺序 last-good 排首 · 跳板环当场拒 · **没有进程内回落、也不起代理进程**
+//! （本文件生产段零 `russh`、零起进程；monitor 生产段 `--dial` 那一套零命中）。
+//! **买不到**：真后端 × 真 sshd（读数脚本 `tests/evidence/SR1a-link-loopback.py`）。
 
 use super::*;
 
@@ -65,6 +65,8 @@ fn the_request_keys_are_the_ones_the_proxy_reads() {
         "command",
         "endpoints",
         "use",
+        // 〔SR1a〕常驻后端活得比界面长 ⇒ agent 套接字由界面交过去（缺席时是 null，键照样在）。
+        "agent_sock",
     ] {
         assert!(written.contains(must), "请求里缺 `{must}`");
     }
@@ -112,22 +114,24 @@ fn a_jump_to_itself_is_refused_before_dialing() {
     );
 }
 
-/// 🔴 **没有退路**（`D11`）：宿主生产段里零 `russh`、恰好一处起进程（起的就是拨号代理），
-/// 且拿链路的四个入口都经同一个 `open(`。进程内拨号只许住 `inproc_dial.rs`（只剩 SFTP）。
+/// 🔴 **没有退路**（`D11`）：宿主生产段里零 `russh`、**零起进程**（〔SR1a〕C2 那一版恰好一处，起的是
+/// `--dial` 代理），拿链路的四个入口都经同一个 `open(`，而 `open` 恰好一次经本机那条流开链路。
+/// 进程内拨号只许住 `inproc_dial.rs`（只剩 SFTP，SR1b 的事）。
 #[test]
-fn the_host_never_dials_in_process() {
+fn the_host_never_dials_in_process_and_spawns_nothing() {
     let prod = guard_core::production_code(include_str!("../../src/bridge/src/dial_host.rs"));
     assert!(
         !prod.contains("russh"),
         "宿主里出现了 russh —— 进程内拨号长回来了"
     );
-    guard_core::find_pinned(&prod, "tokio::process::Command::new(&bin)")
-        .expect("起拨号代理那一处不是恰好一处");
     assert_eq!(
         prod.matches("Command::new(").count(),
-        1,
-        "宿主里起进程的地方不止一处"
+        0,
+        "宿主里又起进程了 —— 每链路一个代理进程的形态回来了（SR1a 裁的是单一常驻后端）"
     );
+    guard_core::find_pinned(&prod, "LinkStream::open(client,").expect("开链路那一处不是恰好一处");
+    guard_core::find_pinned(&prod, "let client = local_channel().await")
+        .expect("拿本机那条流的那一处不是恰好一处");
     for entry in [
         "pub(crate) async fn open_stream(",
         "pub(crate) async fn capture(",
@@ -147,27 +151,84 @@ fn the_host_never_dials_in_process() {
     }
 }
 
-/// 〔C2 · 读数，不进门禁〕**界面这一侧对着真回环 sshd 走一遍**：宿主起真代理、成员读真应答。
-///
-/// 由 `tests/evidence/C2-dial-loopback.py --monitor` 起 sshd 之后带着环境变量 `C2_LOOPBACK`
-/// （一份 JSON：`{host,port,user,key_path,proxy}`）来跑；没有那个变量就**明说跳过**（`#[ignore]`，默认不跑）。
-/// 买到：`connect_and_exec_cmd` 的字节流 · `connect_and_exec_capture` 的退出码 · 测试连接的阶段 ＋ 指纹 ·
-/// 端口转发的计数 —— 全部经 `dial_host`，界面进程里零 russh。
-#[tokio::test]
-#[ignore = "要真 sshd：由 tests/evidence/C2-dial-loopback.py --monitor 带环境变量来跑"]
-async fn loopback_roundtrip_through_the_proxy() {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    let raw = std::env::var("C2_LOOPBACK").expect("没有 C2_LOOPBACK —— 这条只该由读数脚本来跑");
-    let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
-    // 宿主按 `CCM_DIAL_PROXY` 找代理：读数脚本同时设了它（本条不去改进程环境）。
-    assert_eq!(
-        std::env::var(DIAL_PROXY_ENV).ok().as_deref(),
-        v["proxy"].as_str(),
-        "读数脚本没把 CCM_DIAL_PROXY 指到它编出来的那份代理"
+/// `--dial` 那一套的三根针（运行时拼：直接写字面量的话，本文件自己就会被别的扫描器命中）。
+fn dial_needles() -> [String; 3] {
+    [
+        format!("{}{}", "\"--", "dial\""),
+        format!("{}{}", "CCM_DIAL_", "REQUEST"),
+        format!("{}{}", "CCM_DIAL_", "PROXY"),
+    ]
+}
+
+/// 一段生产代码里命中了哪几根针。
+fn dial_traces(prod: &str) -> Vec<String> {
+    dial_needles()
+        .into_iter()
+        .filter(|n| prod.contains(n.as_str()))
+        .collect()
+}
+
+/// ★ M2：`--dial` 那一套（子命令 · 请求环境变量 · 代理住址环境变量）在 monitor **生产段零命中**。
+/// 正控：同一个判定函数喂一段含三根针的合成代码，三根都要量到（不是「这把尺子什么都量不到」）。
+#[test]
+fn the_dial_proxy_leaves_no_trace_in_monitor_production() {
+    let root = crate::guard_support::repo_root().join("src/bridge/src");
+    let mut hits: Vec<String> = Vec::new();
+    let mut scanned = 0usize;
+    for (path, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
+        scanned += 1;
+        for n in dial_traces(&guard_core::production_code(&src)) {
+            hits.push(format!("{} 里有 `{n}`", path.display()));
+        }
+    }
+    assert!(
+        scanned > 100,
+        "只扫到 {scanned} 份 —— 扫描面坏了，本条在空转"
     );
+    assert!(hits.is_empty(), "拨号代理那一套还有残留：{hits:?}");
+    let [a, b, c] = dial_needles();
+    let synthetic = format!("fn f() {{ c.arg({a}).env(\"{b}\", x); std::env::var(\"{c}\"); }}\n");
+    assert_eq!(
+        dial_traces(&guard_core::production_code(&synthetic)).len(),
+        3,
+        "正控：三根针在合成代码里没全量到 —— 判定函数坏了，上面的零命中是空真"
+    );
+}
+
+/// 〔C2 → SR1a · 读数，不进门禁〕**界面这一侧对着真回环 sshd 走一遍**：起一个**真的**本机后端（stdio 载体，
+/// 隔离过：私有 HOME / TMUX_TMPDIR、摘掉 TMUX —— `C7i` 红线），用**真的**本机吸收点接上它，
+/// 之后宿主经它开链路、成员读真应答。
+///
+/// 由 `tests/evidence/SR1a-link-loopback.py --monitor` 起 sshd 之后带着环境变量 `SR1A_LOOPBACK`
+/// （一份 JSON：`{host,port,user,key_path,backend,home}`）来跑；没有那个变量就**明说跳过**（`#[ignore]`，默认不跑）。
+/// 买到：`connect_and_exec_cmd` 的字节流 · `connect_and_exec_capture` 的退出码 · 测试连接的阶段 ＋ 指纹 ·
+/// 两条链路复用同一条 SSH（第二条的握手时间只剩开 channel）—— 全部经本机常驻后端，界面进程零 russh、零代理进程。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "要真 sshd ＋ 真后端二进制：由 tests/evidence/SR1a-link-loopback.py --monitor 带环境变量来跑"]
+async fn loopback_roundtrip_through_the_resident_backend() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let _local = crate::backend::control::inbound_client::local_origin_test_lock();
+    let raw = std::env::var("SR1A_LOOPBACK").expect("没有 SR1A_LOOPBACK —— 这条只该由读数脚本来跑");
+    let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    // 起真后端（stdio 载体），用**生产那一个**消费者接上它 ⇒ `<local>` 那条流登记上。
+    let home = v["home"].as_str().unwrap();
+    let mut child = std::process::Command::new(v["backend"].as_str().unwrap())
+        .env("HOME", home)
+        .env("TMUX_TMPDIR", home)
+        .env_remove("TMUX")
+        .env_remove("CCM_LISTEN_PORT")
+        .env_remove("CCM_LISTEN_TOKEN")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("起不了后端");
+    let (stdin, stdout) = (child.stdin.take().unwrap(), child.stdout.take().unwrap());
+    std::thread::spawn(move || {
+        crate::backend::control::local_backend::local_stdio_consumer(stdin, stdout)
+    });
     let cfg = RemoteConfig {
         host: v["host"].as_str().unwrap().into(),
-        label: "c2-loopback".into(),
+        label: "sr1a-loopback".into(),
         port: v["port"].as_u64().unwrap() as u16,
         user: v["user"].as_str().unwrap().into(),
         key_path: v["key_path"].as_str().map(String::from),
@@ -177,6 +238,7 @@ async fn loopback_roundtrip_through_the_proxy() {
         jump: None,
     };
     // ① 字节流：远端 `head -n1`，写进去什么回来什么；它读完一行自己退 ⇒ 下行 EOF ⇒ 链路收工
+    //   （第一条链路：池里没有 ⇒ 真拨一次）
     let mut s = crate::ssh_source::connect_and_exec_cmd(&cfg, "head -n1")
         .await
         .expect("开不了流");
@@ -185,7 +247,7 @@ async fn loopback_roundtrip_through_the_proxy() {
     let mut got = String::new();
     s.read_to_string(&mut got).await.unwrap();
     assert_eq!(got, "hello\n");
-    // ①b 界面关了写半边 ⇒ 代理收工（`D3③`：界面走了代理跟着走）—— 远端 `cat` 永不自己退
+    // ①b 界面关了写半边 ⇒ 链路收工（`D3③`：界面走了它跟着走）—— 远端 `cat` 永不自己退
     let mut s = crate::ssh_source::connect_and_exec_cmd(&cfg, "cat")
         .await
         .expect("开不了流");
@@ -193,7 +255,7 @@ async fn loopback_roundtrip_through_the_proxy() {
     let mut rest = Vec::new();
     tokio::time::timeout(std::time::Duration::from_secs(10), s.read_to_end(&mut rest))
         .await
-        .expect("关了写半边 10 秒代理还没收工 —— 它挂在一条没人收的下行上了")
+        .expect("关了写半边 10 秒链路还没收工 —— 它挂在一条没人收的下行上了")
         .unwrap();
     // ② 收全：stdout / stderr / 退出码
     let ex = crate::ssh_source::connect_and_exec_capture(&cfg, "echo o; echo e >&2; exit 5", None)
@@ -221,5 +283,8 @@ async fn loopback_roundtrip_through_the_proxy() {
         .as_deref()
         .is_some_and(|f| f.starts_with("SHA256:")));
     assert_eq!(ack.endpoint, Some(format!("{}:{}", cfg.host, cfg.port)));
-    println!("C2-LOOPBACK-MONITOR ok");
+    drop(_link);
+    let _ = child.kill();
+    let _ = child.wait();
+    println!("SR1A-LOOPBACK-MONITOR ok");
 }

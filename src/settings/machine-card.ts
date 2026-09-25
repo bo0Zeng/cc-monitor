@@ -9,7 +9,7 @@
  *
  * 1. `persistedKey` —— **卡片身份**（这张卡对应盘上哪一条）。S1 加的，不是渲染细节：
  *    origin 可被用户编辑，没有它改个名就会变成「新增一台 + 留下孤儿」。
- * 2. `parts()` —— 交出「连接 / 组件」两块，详情页据此分栏（S4b-3b-2）。
+ * 2. `parts()` —— 交出「连接 / 组件」两块，详情页据此分栏（S4b-3b-2）；〔ST2〕外加「工具」栏那一块（别名）。
  * 3. `setPageMode()` —— 进入独占一页的形态（去折叠箭头与删除按钮）。
  */
 import { Channel } from "@tauri-apps/api/core";
@@ -179,6 +179,16 @@ export function shouldShowResetFingerprint(current: string): boolean {
   return current.trim().length > 0;
 }
 
+/** 〔ST2〕一张机器卡交给详情页的三块：连接 / 组件 / 工具（别名）。 */
+export interface MachineCardParts {
+  connection: HTMLElement;
+  components: HTMLElement;
+  tools: HTMLElement;
+}
+
+/** 按钮结果写在哪一栏。 */
+type ResultArea = "conn" | "comp" | "tools";
+
 export class MachineCard {
   readonly element: HTMLElement;
   private legend!: HTMLElement;
@@ -208,6 +218,14 @@ export class MachineCard {
   /** S4b-3b-2：body 的两半 —— 详情页据此拆「连接 / 组件」两栏。 */
   private connectionPart!: HTMLElement;
   private componentsPart!: HTMLElement;
+  /**
+   * 〔第四波 ST2 · 协调方转主会话裁〕「工具」栏里的那一块：② 别名。
+   * 原来远端的别名住「组件」栏、本机的住「工具 → 别名」—— 同一个动作两个位置（`71 §5`：每张卡上同一个动作）。
+   * ⇒ 统一放「工具」栏：本机远端同一个位置。
+   */
+  private toolsPart!: HTMLElement;
+  /** 「工具」栏里别名那几颗按钮的结果区（原来借「组件」栏的 `actionResult`，搬栏之后结果得跟着按钮走）。 */
+  private toolsResult!: HTMLElement;
   /** legend 里承载机器名的 span（label || host）。 */
   private nameSpan!: HTMLElement;
   /** legend 左侧折叠指示符（▸ 折叠 / ▾ 展开）。 */
@@ -324,6 +342,10 @@ export class MachineCard {
     this.componentsPart = document.createElement("div");
     this.componentsPart.className = "machine-part machine-part-components";
     this.body.appendChild(this.componentsPart);
+    // 〔ST2〕第三块：「工具」栏（别名）。不挂类名：它只负责装东西，样式沿用里面那几行自己的类。
+    this.toolsPart = document.createElement("div");
+    this.toolsPart.dataset.machinePart = "tools";
+    this.body.appendChild(this.toolsPart);
 
     let body = this.connectionPart;
 
@@ -555,6 +577,14 @@ export class MachineCard {
     deployRow.appendChild(this.backendUninstallButton);
     body.appendChild(deployRow);
 
+    this.actionResult = document.createElement("div");
+    this.actionResult.className = "remote-test-result";
+    this.actionResult.style.display = "none";
+    body.appendChild(this.actionResult);
+
+    // ↓↓ 从这里起归「工具」栏 ↓↓〔ST2：原来在「组件」栏，与本机那一格不在同一个位置〕
+    body = this.toolsPart;
+
     // ── ② 别名 ──
     const aliasTitle = document.createElement("div");
     aliasTitle.className = "settings-label";
@@ -583,12 +613,11 @@ export class MachineCard {
     );
     aliasRow.appendChild(this.ccmUninstallButton);
     body.appendChild(aliasRow);
+    this.toolsResult = document.createElement("div");
+    this.toolsResult.className = "remote-test-result";
+    this.toolsResult.style.display = "none";
+    body.appendChild(this.toolsResult);
     body.appendChild(buildRemoteAliasPaste());
-
-    this.actionResult = document.createElement("div");
-    this.actionResult.className = "remote-test-result";
-    this.actionResult.style.display = "none";
-    body.appendChild(this.actionResult);
 
     return card;
   }
@@ -664,9 +693,16 @@ export class MachineCard {
     this.hooks.onStatusChanged?.(this);
   }
 
-  /** S4b-3b-2：交出「连接 / 组件」两块，供宿主拆成两栏。 */
-  parts(): { connection: HTMLElement; components: HTMLElement } {
-    return { connection: this.connectionPart, components: this.componentsPart };
+  /** S4b-3b-2：交出「连接 / 组件」两块，供宿主拆成两栏。〔ST2〕外加「工具」栏那一块（别名）。 */
+  parts(): MachineCardParts {
+    return { connection: this.connectionPart, components: this.componentsPart, tools: this.toolsPart };
+  }
+
+  /** 结果区：哪一栏的按钮，结果就写在哪一栏里。 */
+  private resultArea(where: ResultArea): HTMLElement {
+    if (where === "comp") return this.actionResult;
+    if (where === "tools") return this.toolsResult;
+    return this.testResult;
   }
 
   /** 这张卡在列表/导航上显示的名字。 */
@@ -749,7 +785,7 @@ export class MachineCard {
   private async onInstallAliasBlock(): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user) {
-      this.showResultText("请先填好 host / user 再装别名块。", "comp");
+      this.showResultText("请先填好 host / user 再装别名块。", "tools");
       return;
     }
     // 别名块由后端拥有（写进 ~/.bashrc 的是被 shell 执行的代码，不让前端注入）。
@@ -758,7 +794,7 @@ export class MachineCard {
       "装别名块中",
       () => commands.install_remote_alias_block({ cfg, profile: ".bashrc" }),
       { facet: "ccm", ok: "已装", fail: "装失败" },
-      "comp",
+      "tools",
     );
     invalidateCcmProbeCache(cfg.label);
   }
@@ -967,8 +1003,8 @@ export class MachineCard {
   }
 
   /** 在结果区显示一行提示（缺字段 / 取消等）。 */
-  private showResultText(text: string, where: "conn" | "comp" = "conn"): void {
-    const out = where === "comp" ? this.actionResult : this.testResult;
+  private showResultText(text: string, where: ResultArea = "conn"): void {
+    const out = this.resultArea(where);
     out.style.display = "block";
     out.textContent = text;
   }
@@ -984,10 +1020,10 @@ export class MachineCard {
      * 停在旧结论上，而 UI 上看不出来。
      */
     ledger?: { facet: MachineFacet; ok: string; fail: string },
-    /** 〔MC1〕结果写到哪一栏：「连接」栏的动作写 `testResult`，「组件」栏的写 `actionResult`。 */
-    where: "conn" | "comp" = "conn",
+    /** 〔MC1〕结果写到哪一栏：「连接」栏的动作写 `testResult`，「组件」栏的写 `actionResult`，〔ST2〕「工具」栏的写 `toolsResult`。 */
+    where: ResultArea = "conn",
   ): Promise<void> {
-    const out = where === "comp" ? this.actionResult : this.testResult;
+    const out = this.resultArea(where);
     btn.disabled = true;
     const prev = btn.textContent;
     btn.textContent = `${busyLabel}…`;
@@ -1064,7 +1100,7 @@ export class MachineCard {
   private async onUninstallAliasBlock(): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user) {
-      this.showResultText("请先填好 host / user 再卸载别名块。", "comp");
+      this.showResultText("请先填好 host / user 再卸载别名块。", "tools");
       return;
     }
     if (
@@ -1079,7 +1115,7 @@ export class MachineCard {
       "卸载别名块中",
       () => commands.uninstall_remote_alias_block({ cfg, profile: ".bashrc" }),
       undefined,
-      "comp",
+      "tools",
     );
     // 同后端卸载：动作成功 = 组件不在了。
     this.recordFacet("ccm", { kind: "fail", detail: "已卸载" });

@@ -21,12 +21,16 @@
  *
  * ## 本文件今天覆盖多少
  *
- * **89 个命令**（C04a 样板 1 + C04d 批 1-6c 的 88）。
- * 其余 10 个仍走各模块里的裸 `invoke`（119 − 109 = 10），由 **C04d** 后续批次迁进来。
+ * ~~**89 个命令**（C04a 样板 1 + C04d 批 1-6c 的 88）。其余 10 个仍走各模块里的裸 `invoke`。~~〔那是 C04d 时的读数〕
+ * ★★〔C4a · 第四波 · 子步 2〕**全部**：Rust 侧每一条命令在本表里都有且只有一个条目（今天 142/142，
+ * 数由 `commands.vitest.ts` 的包装层计数与 `RUST_COMMAND_COUNT` 两处钉着），
+ * 全仓 TS **只有本文件**直呼 `invoke`（判据：`commands.vitest.ts` 末尾「裸 invoke 只在包装层」那一节
+ * ＋ `generated-boundary-guard.vitest.ts` 的「直接 import invoke 的生产文件恰好 1 个」）。
  *
- * **条目按字母序**（键名排序），加新条目时插到对的位置——这样 diff 只显示真正的新增。
+ * ~~**条目按字母序**~~〔现打：早就不是了 —— 各批按落地顺序追加〕。加新条目时追加即可。
  *
- * **所以守卫里绝不能写「每个命令都必须经过包装层」**——那会假红，而假红的守卫会被人关掉。
+ * 〔C4a〕上一版这里写「守卫里绝不能写『每个命令都必须经过包装层』—— 那会假红」：
+ * 那句话记的是还剩裸 `invoke` 的年代；今天那条**就是**判据（零命中带正控）。
  *
  * ## 守卫实际钉住的四条（别少说也别多说）
  *
@@ -64,7 +68,7 @@ import { invoke, type Channel } from "@tauri-apps/api/core";
  * **必须手动同步**，由 Rust 侧 `the_ts_status_type_matches_this_struct` **双向**对拍
  *（Rust 的字段名从结构体源码派生、TS 的从本接口体派生，**两边条数相等**，多一个少一个都红）。
  */
-import type { ApikeyRoutingView } from "../accounts";
+import type { ApikeyRoutingView, RawAccountsResult, TrustResult } from "../accounts";
 
 export interface ApikeyCredentialsStatus {
   /** 配了没配。 */
@@ -117,11 +121,13 @@ import type { BranchResult } from "../generated/BranchResult";
 // ⇒ `§8` 承诺的「**`tsc` 就能验**」从这一行开始成立：给任何一个 origin 参数传 `null`
 // 现在是**编译错**，不是一次运行时报错。
 // ⚠ 本机要逐字送 `LOCAL_ORIGIN`（`"<local>"`，住 `../backend-policy.ts`）。
-// ⚠ 射程：这一条只管**入方向**。出方向那一半（`JsonlRecord` / `RemoteHealthPayload` 一族的
-//   `origin: string | null`）今天仍有 `null`，不在步 2 的写区里 —— 别读成「全仓没有 `null` 了」。
+// ⚠ 射程：这一条只管**入方向**。〔C4a〕TS 侧其余各处的 origin 也收成了同一个表示（本机 = `LOCAL_ORIGIN`，
+//   判据 `tests/ipc/commands.vitest.ts` 末尾「TS 侧 origin 去 null」那一节，全 TS ＋ 生成物）；
+//   只剩生成物 `RemoteHealthPayload.origin` 一处 `string | null`（Rust 出方向，登记在那一节的 `PENDING`）。
 import type { Origin } from "../generated/Origin";
 import type { SessionIndexResult } from "../generated/SessionIndexResult";
 import type { UserInputsResult } from "../generated/UserInputsResult";
+import type { FindResult } from "../generated/FindResult";
 import type { CcBusMessage } from "../generated/CcBusMessage";
 import type { CcBusState } from "../generated/CcBusState";
 import type { CcPreviewResponse } from "../generated/CcPreviewResponse";
@@ -170,7 +176,6 @@ import type { HistorySessionEntry } from "../generated/HistorySessionEntry";
 import type { HooksReport } from "../generated/HooksReport";
 import type { ImportGroup } from "../generated/ImportGroup";
 import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
-import type { TransferProgress } from "../generated/TransferProgress";
 import type { PanoramaStatus } from "../generated/PanoramaStatus";
 import type { ProfileScan } from "../generated/ProfileScan";
 import type { PushResult } from "../generated/PushResult";
@@ -181,7 +186,7 @@ import type { SearchResponse } from "../generated/SearchResponse";
 import type { LogFileInfo } from "../generated/LogFileInfo";
 import type { McpServerEntry } from "../generated/McpServerEntry";
 import type { RestartHint } from "../generated/RestartHint";
-import type { SessionAccountsResult } from "../generated/SessionAccountsResult";
+import type { SessionActivityPayload } from "../generated/SessionActivityPayload";
 import type { SubagentLoadResult } from "../generated/SubagentLoadResult";
 import type { TaskEntry } from "../generated/TaskEntry";
 
@@ -350,11 +355,11 @@ export const commands = {
    */
   // 〔RW1 · 第四波 09-24〕三条都吃 `origin`（本机 = `"<local>"`）：远端项目的收件箱也能编辑，
   //   读写都经那台机器的后端（本机同一条路）。
-  list_skills: (args: { origin: string; cwd: string }) =>
+  list_skills: (args: { origin: Origin; cwd: string }) =>
     invoke<SkillView[]>("list_skills", args),
 
   /** devbench F03：读一个 skill 的可编辑文件（读也过写面围栏，免得变成任意文件读取口）。 */
-  read_skill_file: (args: { origin: string; cwd: string; skillId: string; path: string }) =>
+  read_skill_file: (args: { origin: Origin; cwd: string; skillId: string; path: string }) =>
     invoke<string>("read_skill_file", args),
 
   /**
@@ -376,12 +381,22 @@ export const commands = {
    * （`history::apikey_account_id_of_dir`）从 `configDir` 推 —— 起会话那一侧调的是同一个函数。
    * 前端**一个字都不许自己推那个 id**（`split('/').pop()` 那一形）：那是在长第二份规则，
    * 漂开的那天症状是「设置里说走 apikey 端点改写、起会话时没走」，而两边看起来都没错。
+   *
+   * 〔RM1a · 第四波〕**收 `origin`**：key 落在会话跑的**那台机器**上 —— 本机进 monitor 自己那一份，
+   * 远端交那台机器的后端写（`apikey-key-set`）。先前远端账号页配的 key 落在本机，远端会话用不上。
    */
-  write_apikey_credentials_key: (args: { key: string; configDir: string }) =>
+  // 〔第四波 ST2〕`baseUrl`：加账号表单 apikey 那一支的 Base URL（`设计/70 §4.4`）；缺席 = 用默认上游。
+  // 〔RM1a〕`origin`：key 与 Base URL 一起落在那台机器上（本机进 monitor 那一份，远端交那台的后端）。
+  write_apikey_credentials_key: (args: {
+    origin: Origin;
+    key: string;
+    configDir: string;
+    baseUrl?: string | null;
+  }) =>
     invoke<void>("write_apikey_credentials_key", args),
 
   write_skill_file: (args: {
-    origin: string;
+    origin: Origin;
     cwd: string;
     skillId: string;
     path: string;
@@ -504,24 +519,7 @@ export const commands = {
   panorama_write_doc_link: (args: { repo: string; doc: string; target: string }) =>
     invoke<void>("panorama_write_doc_link", args),
 
-  /**
-   * 远端内部复制（步 23b）。Rust 返回 `Result<Option<String>, String>` ⇒ `string | null`
-   * （**原始类型**；不生成类型）。
-   *
-   * 🔴 **`null` 与非 `null` 是两条不同的路，调用方必须分开处理：**
-   * - `null` ⇒ 走了 `copy-data` 扩展，**服务端自己搬字节，一个文件字节都没经过这台机器**；
-   * - 一串话 ⇒ **退了路**（协商不到 / 服务端拒了），字节走了「远端 → 你的机器 → 远端」，
-   *   也就是 **2× 流量**。那串话是**给用户看的**，已经含了实际过网字节数。
-   *
-   * ⚠ 把返回值丢掉 = 静默退化成 2× 流量，`设计/60 §5` 第二段逐字禁止。
-   */
-  sftp_copy: (args: {
-    cfg: unknown;
-    from: string;
-    to: string;
-    transferId: string;
-    onProgress: Channel<TransferProgress>;
-  }) => invoke<string | null>("sftp_copy", args),
+  // 〔第四波 S4〕`sftp_copy`（远端内部复制，步 23b）的包装随那条命令退役删了：窗口的复制走后端 `files-copy`。
 
   // 〔F7c 收尾 09-24〕池子那十二条的包装一起走了（老面板删了、窗口改走通道；`设计/60 §13b`）：
   //   sftp_cancel_transfer · sftp_chmod · sftp_delete · sftp_download · sftp_list_dir · sftp_mkdir ·
@@ -609,21 +607,30 @@ export const commands = {
   /** 读本机 MCP server 清单（user/local/project 三档）。Rust 签名**无 `Result` 包装**。 */
   /**
    * `K-H2a` `KS6`：读 apikey 表那把 key 的状态。**返回里永远只有掩码。**
+   * 〔RM1a〕收 `origin`：远端读的是**那台机器上**那一份（问那台的后端 `apikey-read`）。
    */
-  read_apikey_credentials_status: () =>
-    invoke<ApikeyCredentialsStatus>("read_apikey_credentials_status"),
+  read_apikey_credentials_status: (args: { origin: Origin }) =>
+    invoke<ApikeyCredentialsStatus>("read_apikey_credentials_status", args),
 
   /**
-   * `K-H2b` `KH2B7`：问「这几个**本机** configDir 在 apikey 表里有没有行（走不走 apikey 端点改写）」。
+   * `K-H2b` `KH2B7`：问「这几个 configDir 在 apikey 表里有没有行 · 中转在不在」。
    *
-   * ⚠ **只答本机**，而且那不是欠账：中转是**每台机器自己的一个进程**、注入的是**回环**地址
-   * （自指）⇒ 本机这一侧**在结构上答不了远端那台**。命令面的登记
-   * （`parity_ledger` 的 `apikey.routing`，`NaturallyAsymmetric`）写着同一条理由。
+   * 〔RM1a · 第四波〕**收 `origin`**：两件事都问**那台机器**（远端由那台的后端答：
+   * 表里有哪几行 `apikey-read` · 口上有没有人在听 `relay-status`）。先前「只答本机」的理由是
+   * 「本机这一侧在结构上答不了远端那台」—— 今天远端那台自己答。
    * ⚠ 返回类型是**手写镜像**（`ApikeyRoutingView` 住 `src/accounts.ts`），
    * 与 Rust 的 `ApikeyRouting` **手动同步、今天没有判据对拍** —— 如实记，别读成有人守。
    */
-  apikey_routing_for: (args: { configDirs: string[] }) =>
+  apikey_routing_for: (args: { origin: Origin; configDirs: string[] }) =>
     invoke<ApikeyRoutingView>("apikey_routing_for", args),
+
+  /**
+   * 〔RM1a · 第四波〕让**那台远端机器**上有一个中转（层 1）在跑：口上没人听就由那台的后端起一个。
+   * **本机拒**（本机那一个由 monitor 监护）。⚠ 今天界面上没有调用方 —— 自动触发点（远端链路握手完成 /
+   * 起远端会话）不在 RM1a 写区，交主会话接。
+   */
+  relay_ensure: (args: { origin: Origin }) =>
+    invoke<{ listening: boolean; started: boolean }>("relay_ensure", args),
 
   read_mcp_servers: (args: { projectDir: string | null }) =>
     invoke<McpServerEntry[]>("read_mcp_servers", args),
@@ -709,7 +716,8 @@ export const commands = {
   local_ccm_entry_status: () => invoke<LocalCcmEntry>("local_ccm_entry_status"),
 
   /** 某会话的 TodoWrite 任务快照。`TaskEntry` C02 已生成 ⇒ **桶③**。 */
-  get_session_tasks: (args: { sessionId: string }) =>
+  // 〔RM1b · 第四波〕收 `origin`：问那台机器的后端 `tasks-list`（本机逐字 `LOCAL_ORIGIN`）。
+  get_session_tasks: (args: { origin: Origin; sessionId: string }) =>
     invoke<TaskEntry[]>("get_session_tasks", args),
 
   /** 在远端起一个终端跑给定命令。Rust 返回 `Result<(), String>` ⇒ **桶①**。
@@ -755,13 +763,8 @@ export const commands = {
     messageUuid: string;
   }) => invoke<BranchResult>("create_branch_session", args),
 
-  /**
-   * E79：**本机**版「某会话现在跑在哪个账号下」——远端 `--session-accounts` 的对侧。
-   * **Linux 才有**（要读 `/proc/<pid>/environ`）；别的平台返回 `available:false` + 原因，
-   * 不是静默空表。返回值字段被真消费 ⇒ 生成物（桶③）。
-   */
-  list_local_session_accounts: () =>
-    invoke<SessionAccountsResult>("list_local_session_accounts"),
+  // 〔C4a · 子步 3〕E79 那条本机版「某会话跑在哪个账号下」退役：
+  //   本机与远端同一条路 —— `accounts.ts::fetchSessionAccounts` 经通道 `chan.call(origin, "accounts-sessions", …)`。
 
   /**
    * 删历史会话。**桶①**。
@@ -783,14 +786,21 @@ export const commands = {
   list_remote_tmux: (args: { origin: string }) =>
     invoke<TmuxSession[] | null>("list_remote_tmux", args),
 
-  /** 一次配置面审计（只读、一次性，不新增轮询）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
-  config_surface_report: () => invoke<ConfigSurfaceReport>("config_surface_report"),
+  /**
+   * 一次「足迹」（原「配置面审计」）：只读、一次性，不新增轮询。返回值字段被真消费 ⇒ 生成物（桶③）。
+   * 〔RM1a · 第四波〕**收 `origin`**：本机照旧在 monitor 进程里扫；远端问那台机器的后端要路径事实
+   * （`footprint-probe`），判定走同一份 `build_rows`。远端那一栏的界面归 ST2 接。
+   */
+  config_surface_report: (args: { origin: Origin }) =>
+    invoke<ConfigSurfaceReport>("config_surface_report", args),
   // U-CC1：数据面漂移记账（只读、按需一次，不轮询）。
   drift_ledger_report: () => invoke<DriftFaceReport[]>("drift_ledger_report"),
   // P8a：Claude Code 的 marketplace 面（只读、按需一次，不轮询）。
   // ⚠ 它回答的是「有哪些 marketplace / 它**声明**了多少插件」，
   // **不是**「装了/启用了哪些插件」—— 后者今天在盘上没有真相源（待决 `U10d`）。
-  list_plugin_marketplaces: () => invoke<MarketplaceSurvey>("list_plugin_marketplaces"),
+  // 〔RM1b · 第四波〕收 `origin`：问那台机器的后端 `plugins-marketplaces`（本机逐字 `LOCAL_ORIGIN`）。
+  list_plugin_marketplaces: (args: { origin: Origin }) =>
+    invoke<MarketplaceSurvey>("list_plugin_marketplaces", args),
   // PS1：把内嵌的 cc-bus 装到 `<claude_dir>/skills/cc-bus/`。
   // ⚠ **只读铁律的第 7 条例外**（`U10b` 用@08-13 裁「开」）⇒ 它是本仓**唯一**往
   // `<claude_dir>` 写的口子，必须由**用户显式点击**触发，绝不放进任何自动路径。
@@ -892,6 +902,14 @@ export const commands = {
    */
   list_user_inputs: (args: { origin: Origin; jsonlPath: string; fromOffset: number }) =>
     invoke<UserInputsResult>("list_user_inputs", args),
+
+  /**
+   * 〔SE2 · `设计/10 §6 步 6`〕**会话内查找**（Ctrl+F）：在这一份会话里找 `query`，命中按文件序。
+   * 跑的是后端 `--find-in-session`（`IPC-PROTOCOL.md §10.5`；口径与全局搜索同一份）。
+   * `available: false` **不是错误**：老后端 / 本机后端不在 / 输出被截断 ⇒ 面板那一行状态说清原因。
+   */
+  find_in_session: (args: { origin: Origin; jsonlPath: string; query: string; includeTools: boolean }) =>
+    invoke<FindResult>("find_in_session", args),
 
   /**
    * 启动时先拉本地活跃会话建骨架 Tab。返回值字段被真消费 ⇒ 生成物（桶③）。
@@ -1041,6 +1059,12 @@ export const commands = {
      * - 两个都空 ⇒ 问远端 `realpath('.')`（第七刀）。
      */
     revealFile?: string | null;
+    /**
+     * 〔FW34〕〔待退役〕老 SFTP 面板留在 webview 里的目录书签（机器名 → 目录），开窗前并进
+     * 原生窗口的书签文件（Rust 侧 `filewin::entry::carry_legacy`）；并不进去整趟报错、不开窗。
+     * 没有旧书签就不带这一格。
+     */
+    carryBookmarks?: Record<string, string[]>;
   }) => invoke<number>("open_file_window", args),
 
   /** 开独立设置窗口（非浮层）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
@@ -1097,4 +1121,60 @@ export const commands = {
     name: string;
     server: unknown;
   }) => invoke<void>("write_project_mcp_server", args),
+
+  // ════════════════════════════════════════════════════════════════════════
+  // 〔C4a · 子步 2〕**最后十条**：原先在 `tab-session-actions.ts`（tab 层）与 `accounts.ts`
+  // 里直呼裸 `invoke` 的那 16 处调的命令里，没进包装层的这十条。自此 **142/142** 条全部经本表，
+  // 全仓 TS 只有本文件直呼 `invoke`（判据 `commands.vitest.ts` 末尾「裸 invoke 只在包装层」那一节）。
+  // ════════════════════════════════════════════════════════════════════════
+
+  /** issue #10：把某会话在一个独立只读窗口（`viewer-<sid>`）里打开。`x`/`y` = 拖拽撕离的落点。**桶①**。 */
+  open_session_in_new_window: (args: {
+    sessionId: string;
+    title: string;
+    x?: number;
+    y?: number;
+  }) => invoke<void>("open_session_in_new_window", args),
+
+  /** 本机会话拉前（Windows 按 sid→HWND 缓存）。**桶①**。 */
+  bring_terminal_to_front: (args: { sessionId: string }) =>
+    invoke<void>("bring_terminal_to_front", args),
+
+  /** 远端会话拉前（后端唯一分派点：先启动令牌、后标题退路）。**桶①**。 */
+  bring_remote_terminal_to_front: (args: { sessionId: string }) =>
+    invoke<void>("bring_remote_terminal_to_front", args),
+
+  /** 关 tab 时让事件重放忘掉这个会话。**桶①**。 */
+  forget_session: (args: { sessionId: string }) => invoke<void>("forget_session", args),
+
+  /** 把监控窗口拉到最前。**桶①**。 */
+  bring_monitor_to_front: () => invoke<void>("bring_monitor_to_front"),
+
+  /** 某台远端的账号清单。**桶③**（手写形状 `RawAccountsResult`，住 `accounts.ts`，理由见那里）。 */
+  list_remote_accounts: (args: { origin: Origin }) =>
+    invoke<RawAccountsResult>("list_remote_accounts", args),
+
+  /** 本机账号清单（问本机后端 `--list-accounts`）。**桶③**，同上。 */
+  list_local_accounts: () => invoke<RawAccountsResult>("list_local_accounts"),
+
+  // 〔C4a · 子步 3〕远端那条「某会话跑在哪个账号下」退役（子步 2 刚收进来，子步 3 连同本机那条一起改走通道）。
+
+  /**
+   * 换号前的目录信任预检。**桶③**（手写 `TrustResult`，住 `accounts.ts`）。
+   * `configDir: null` = 问账号 0（后端走 `--account-trust-zero`）—— **绝不传空串**（Z01）。
+   */
+  check_account_trust: (args: { origin: Origin; configDir: string | null; cwd: string }) =>
+    invoke<TrustResult>("check_account_trust", args),
+
+  /** issue #23：红绿灯快照（启动 / F5 后拉一次做初始收敛）。**桶③**（生成物）。 */
+  list_session_activity: () => invoke<SessionActivityPayload[]>("list_session_activity"),
+
+  /**
+   * 〔C4a · 子步 3〕**通道在 Tauri IPC 这一跳上的那条命令**（`chan/webview.rs`）。
+   * ⚠ 调用方**不直接用它**：一律经 `src/ipc/chan.ts` 的 `chan.call(origin, op, payload, budget)`
+   * （期限换算、本地撤单、三层错误解码都住那里）。载荷去程是字节数组、回程是原样字节（`ArrayBuffer`）。
+   * **桶②**：回的是不透明字节，本表不认识它的形状。
+   */
+  chan_call: (args: { origin: Origin; op: string; payload: number[]; leftMs: number }) =>
+    invoke<ArrayBuffer>("chan_call", args),
 } as const;

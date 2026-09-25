@@ -137,6 +137,12 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "read_face.rs",
         include_str!("../../src/backend/read_face.rs"),
     ),
+    // 〔RM1a · 第四波〕`relay-ensure` 起的是本二进制的 `--relay` 那一臂（argv 字面量住这里）
+    // ⇒ 派生的文件集把它扫了进来。登记，不改判据：`--relay` 本来就在 IPC-PROTOCOL.md 里。
+    (
+        "relay/machine.rs",
+        include_str!("../../src/backend/relay/machine.rs"),
+    ),
     // 它不做 match 分派，只在用法串里提自己的名字 —— 但 D 审计正是把一个
     // `pub const CTRL_FLAG: &str = "--ccm-hidden-ctrl";` 藏在这里绕过了护栏。
     // 放宽后的探测把它揪了出来。

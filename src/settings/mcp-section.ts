@@ -11,7 +11,7 @@ import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { commands } from "../ipc/commands";
 // 〔步 12·C〕本机那个 origin 的**唯一住址**（Rust 侧是 `inbound_client::LOCAL_ORIGIN`，
 // 两侧由 `origin_tests::the_sentinel_agrees_with_the_two_existing_homes` 两向钉着）。
-import { LOCAL_ORIGIN } from "../backend-policy";
+import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { showActionFailureToast } from "../error-toast";
 
 export type McpScope = "user" | "local" | "project";
@@ -129,10 +129,10 @@ export class McpSection {
   /** F87b-fix：编辑态横幅（「编辑中 X · 取消」）——编辑时锁名，防改名静默重复。 */
   private editBanner: HTMLElement | null = null;
   private editNameLabel: HTMLElement | null = null;
-  /** F87b③：当前选中的机器。null = 本机（既有本地读写）；非空 = 远端 origin（只读跨机）。 */
-  private origin: string | null = null;
+  /** F87b③：当前选中的机器。`LOCAL_ORIGIN` = 本机（既有本地读写）；其余 = 远端 origin（只读跨机）。 */
+  private origin: Origin = LOCAL_ORIGIN;
   /** ST1：`loadNow()` 之前收到的「要看哪台」（只记不读）。 */
-  private wantedOrigin: string | null = getCurrentMachine();
+  private wantedOrigin: Origin = getCurrentMachine();
   private loaded = false;
   /** F89b：统一目录（库）——会话内读到过的所有 distinct server（键=catalogKey），供一键注册进项目。累积不清（有清空钮）。 */
   private catalog = new Map<string, { name: string; server: unknown }>();
@@ -140,7 +140,7 @@ export class McpSection {
   constructor() {
     this.element = this.build();
     // S4a：跟随共用的「当前在看哪台机器」store。本分节是四块里**唯一**能表示「本机」的
-    // （它的机器行第一颗按钮就是本机），所以 null 也照单全收。
+    // （它的机器行第一颗按钮就是本机），所以本机也照单全收。
     // `selectMachine` 自带「同值早退」，与 store 的「同值不通知」两道去重叠加，
     // 不会因为往返而多打一次 ssh。
     // ST1「延后加载」：还没 `loadNow()` 之前只记下要看哪台，**不发 I/O**。
@@ -162,7 +162,7 @@ export class McpSection {
       void this.selectMachine(this.wantedOrigin); // 它自己会拉候选 + 读
       return;
     }
-    if (this.origin === null) void this.loadProjectCandidates();
+    if (isLocalOrigin(this.origin)) void this.loadProjectCandidates();
     else void this.loadRemoteProjectCandidates(this.origin);
     // 业务二审 gap#6：打开即读（空 dir 也先显 user/local scope），不再是看似坏掉的空框。
     void this.refresh();
@@ -324,14 +324,14 @@ export class McpSection {
     this.machineRow.appendChild(label);
     const name = document.createElement("span");
     name.className = "mcp-machine-name";
-    name.textContent = this.origin ?? "本机";
+    name.textContent = isLocalOrigin(this.origin) ? "本机" : this.origin;
     this.machineRow.appendChild(name);
   }
 
   /** F87b③/F89a：切机器。本机 → 本地读写；远端 → **项目目录行也显**（F89a：填项目=远端项目 .mcp.json 可写；
    *  空=远端 user scope 只读）。切机器清空目录（本机/远端项目路径不通用）+ 换 datalist 候选。
    *  F87b-fix：已是当前机器 → 早退（防误双击并发 SSH）。 */
-  private async selectMachine(origin: string | null): Promise<void> {
+  private async selectMachine(origin: Origin): Promise<void> {
     if (origin === this.origin) return;
     this.origin = origin;
     this.dirRow.style.display = ""; // F89a：远端也显目录行（可填项目管理远端 .mcp.json）
@@ -345,15 +345,15 @@ export class McpSection {
     this.renderDirCandidatesLoading();
     // E59：按钮没了，改成更新那行只读显示。
     const name = this.machineRow.querySelector<HTMLElement>(".mcp-machine-name");
-    if (name) name.textContent = origin ?? "本机";
-    if (origin === null) void this.loadProjectCandidates();
+    if (name) name.textContent = isLocalOrigin(origin) ? "本机" : origin;
+    if (isLocalOrigin(origin)) void this.loadProjectCandidates();
     else void this.loadRemoteProjectCandidates(origin);
     await this.refresh();
   }
 
   /** F89a：统一刷新入口，按 (机器, 目录) 三态分发。 */
   private async refresh(): Promise<void> {
-    if (this.origin === null) return this.reload(); // 本机
+    if (isLocalOrigin(this.origin)) return this.reload(); // 本机
     const dir = this.currentDir();
     if (dir) return this.reloadRemoteProject(this.origin, dir); // 远端项目（可写）
     return this.reloadRemote(this.origin); // 远端 user scope（只读）
@@ -580,7 +580,7 @@ export class McpSection {
     const hint = document.createElement("div");
     hint.className = "settings-hint";
     hint.textContent = dir
-      ? `注册目标：${this.origin === null ? "本机" : `远端 [${this.origin}]`} 项目 ${dir}`
+      ? `注册目标：${isLocalOrigin(this.origin) ? "本机" : `远端 [${this.origin}]`} 项目 ${dir}`
       : "注册到项目需先在上方填项目目录（作为注册目标）。";
     body.appendChild(hint);
 
@@ -705,7 +705,7 @@ export class McpSection {
     }
 
     // F89a：项目 scope 加/改表单——本机恒显（无目录则 save 禁用）；远端仅在已填项目目录（=可写）时显。
-    if (scope === "project" && (this.origin === null || !!dir)) {
+    if (scope === "project" && (isLocalOrigin(this.origin) || !!dir)) {
       box.appendChild(this.renderAddForm(dir));
     }
     return box;
@@ -800,11 +800,9 @@ export class McpSection {
       // F89a：本机 → 本地 FS 写；远端 → SFTP 写远端 .mcp.json（写面仍只 .mcp.json，SS-14；SS-G 用户显式触发）。
       // 〔步 12·C 收尾〕**两侧同一条命令**（`write_remote_mcp_server` 已退役）：
       // 走哪一侧由 `origin` 说，不再由命令名说。
-      // 🔴 本机是 `LOCAL_ORIGIN`（`"<local>"`）**不是 `null`** —— `this.origin === null`
-      //    是本分节自己表示「本机」的内部形状，送上线前必须翻成那个具名的 origin，
-      //    否则线上是 `null`，而 Rust 侧 `Origin::route` 把 `null` 当场拒。
+      // 🔴 本机是 `LOCAL_ORIGIN`（`"<local>"`）**不是 `null`**。〔C4a〕本分节内部也是这个表示，原样过线。
       await commands.write_project_mcp_server({
-        origin: startOrigin ?? LOCAL_ORIGIN,
+        origin: startOrigin,
         projectDir: dir,
         name,
         server,
@@ -822,7 +820,7 @@ export class McpSection {
 
   private async removeEntry(dir: string, name: string): Promise<void> {
     const startOrigin = this.origin;
-    const where = startOrigin === null ? "本机" : `远端 [${startOrigin}]`;
+    const where = isLocalOrigin(startOrigin) ? "本机" : `远端 [${startOrigin}]`;
     if (
       !window.confirm(`从${where}项目 .mcp.json 删除 MCP server「${name}」？`)
     )
@@ -830,7 +828,7 @@ export class McpSection {
     try {
       // 〔步 12·C 收尾〕同 `writeEntry`：两侧一条命令，本机逐字送 `LOCAL_ORIGIN`。
       await commands.remove_project_mcp_server({
-        origin: startOrigin ?? LOCAL_ORIGIN,
+        origin: startOrigin,
         projectDir: dir,
         name,
       });

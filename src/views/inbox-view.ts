@@ -33,11 +33,11 @@
  * 全 textContent，无 innerHTML（同 `command-bar.ts` 那条纪律）。
  */
 import { commands, type SkillView } from "../ipc/commands";
-import { LOCAL_ORIGIN } from "../backend-policy";
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
+import { LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 
-type CwdGetter = () => { cwd: string; origin: string | null } | null;
+type CwdGetter = () => { cwd: string; origin: Origin } | null;
 
 export class InboxView implements OverlayHandle {
   private root: HTMLDivElement | null = null;
@@ -48,8 +48,8 @@ export class InboxView implements OverlayHandle {
   /** 当前编辑对象：`null` = 没有可编辑的文件（skill 不在场 / 该 skill 没声明 editable）。 */
   private target: { skillId: string; path: string } | null = null;
   private cwd = "";
-  /** 〔RW1〕哪台机器（本机 = `"<local>"`）—— 读写都经那台机器的后端。 */
-  private origin: string = LOCAL_ORIGIN;
+  /** 〔RW1〕哪台机器（本机 = `LOCAL_ORIGIN`）—— 读写都经那台机器的后端。 */
+  private origin: Origin = LOCAL_ORIGIN;
   /** 〔RW1〕打开时读到的那一份：写回时交给后端当 CAS 期望（agent 在这之后改过 ⇒ 不写）。 */
   private loaded = "";
 
@@ -72,7 +72,7 @@ export class InboxView implements OverlayHandle {
     }
     // 〔RW1 · 第四波 09-24〕用户裁：远端项目的收件箱也能编辑 —— 经那台机器的后端读写，
     //   本机同一条路（从前这里对远端直接拒，`parity_ledger` 记着 `Undecided`）。
-    this.origin = info.origin ?? LOCAL_ORIGIN;
+    this.origin = info.origin;
     this.cwd = info.cwd;
     this.ensureDom();
     if (this.root) this.root.style.display = "flex";
