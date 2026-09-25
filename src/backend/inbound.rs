@@ -131,6 +131,8 @@ pub const COMMANDS: &[&str] = &[
     "link-credit",
     "link-data",
     "link-open",
+    // 〔AS1 · 第四波 4B〕MCP 资产同步的判定（只读；写经文件管理那一面 `files-put`）。
+    "mcp-sync-plan",
     // 〔RM1c · 第四波〕代码全景（V108 选 B）：后端经插件口起独立小程序，只说查询语义。
     "panorama",
     "ping",
@@ -833,6 +835,21 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::footprint::answer(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔AS1 · 第四波 4B〕**MCP 资产同步的判定**（`设计/96` 的 B，用户 09-24 V111 · V112）：两份原文进、
+    //   差异四态 ＋ 可疑项（带这台机器的事实）＋「写哪几条」出。由**要被写的那一台**跑（事实是那台的）。
+    //   只读：原文由 monitor 经 `files-peek` 读来，写经 `files-put`（CAS）—— 本条一个字节都不落盘。阻塞档（`stat`）。
+    CommandSpec {
+        name: "mcp-sync-plan",
+        doc_anchor: Some("#### `mcp-sync-plan`"),
+        codes: &["bad_args", "bad_file", "needs_consent"],
+        fields: &["overwrite", "rows", "source", "take", "target", "write"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::mcp_sync::answer(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
