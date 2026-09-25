@@ -1,0 +1,6 @@
+# 🔴 构建输出**不许落在 `src/panorama-engine/target/`**（同 `src/backend/.cargo/config.toml` 那条理由）：
+# 本仓有一族判据「走一遍源码树、收所有 `.rs`」，`target/` 里成千上万个 build script 生成的 `.rs`
+# 一旦落在 `src/` 里，那些判据的人群会被生成代码淹没 —— 不是报错，是安静地扫错东西。
+# ⇒ 输出落仓根的隐藏目录（`.gitignore` 已忽略 `/.build/`）。相对路径以本文件的上级为基准。
+[build]
+target-dir = "../../.build/panorama"

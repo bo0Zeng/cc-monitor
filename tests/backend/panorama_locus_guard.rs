@@ -16,7 +16,7 @@
 //!
 //! # 今天的读数（就是下面那两张登记表的内容，别在这段散文里复述第二遍）
 //!
-//! 人群 = 本仓今天的两个 `Cargo.lock`（monitor 那棵 · backend 那棵）+ 两棵源码树的生产段
+//! 人群 = 本仓今天的三个 `Cargo.lock`（monitor 那棵 · backend 那棵 · 独立全景小程序那棵）+ 两棵源码树的生产段
 //! + `src/bridge/crates/` 下每个共享 crate 的 manifest。
 //!
 //! # ⚠ 它认不出什么（逐条写，别读成全覆盖）
@@ -26,11 +26,15 @@
 //! - **不判运行期**。静态处数不等于运行期的地址空间数：同一处代码被两个进程各跑一遍，
 //!   照样是两条 SQLite 连接。堵那一格靠的是「backend 这一棵**不许链**」这半，
 //!   不是「处数恰好一处」这半。
-//! - **第三棵树今天不存在** —— S2（本仓自己出一个薄 local_backend crate）落地那天会出现一棵
-//!   新的树、一份新的 lock。本条的人群是**登记的那两份 lock**
-//!   ⇒ **「有人加了第三棵树却没登记」这一格本条买不到**。那正是件文件 `§0f` 第 4 条
-//!   要求「每一条按树切的判据都重新问一遍」的那一问，落点在 `KW2D4`（不在本条）。
-//!   本条能买到的是：第三棵树**若走 `src/bridge/crates/` 那个现成的家**，当场红。
+//! - **第三棵树〔RM1c · 第四波〕已经来了，而且登记了**：`src/panorama-engine/`（只装引擎的独立小程序
+//!   `cc-monitor-panorama`，用户 09-24 V108 选 B —— 后端经插件通用调用口按需起它，
+//!   解析发生在**被起的那个进程**里，正是下面正题②失败文案指的那条路）。它自己一份 lock，
+//!   进了 [`tests::LOCKS`] 与 [`tests::ENGINE_LINKED_BY`]。
+//!   〔改前原话逐字：「**第三棵树今天不存在** —— S2（本仓自己出一个薄 local_backend crate）
+//!   落地那天会出现一棵新的树、一份新的 lock。」〕
+//!   ⚠ 射程照旧：本条的人群是**登记的那几份 lock** ⇒ **「有人加了第四棵树却没登记」这一格本条买不到**
+//!   （件文件 `§0f` 第 4 条那一问，落点在 `KW2D4`）。本条能买到的是：新树**若走
+//!   `src/bridge/crates/` 那个现成的家**，当场红（正题④）。
 //! - **不认 vendor 本体**（`C7`：`src/bridge/vendor/code-picture-core/` 不动）。
 //!   引擎自己的 manifest 里那行 `[package] name` 不是一条依赖声明，采集器按**键的形状**认，
 //!   不按「文件里出现过这个名字」认 —— 同一条形状让
@@ -89,14 +93,23 @@ mod tests {
     ///
     /// 键是**仓根相对路径**；`Cargo.lock` 里列的是**整个依赖图**（含传递依赖）
     /// ⇒ 比读 manifest 严一档：有人经由第三个 crate 把引擎间接链进后端，这里也看得见。
-    const LOCKS: &[&str] = &["src/bridge/Cargo.lock", "src/backend/Cargo.lock"];
+    ///
+    /// 〔RM1c · 第四波〕第三份：`src/panorama-engine/Cargo.lock`（只装引擎的独立小程序）。
+    const LOCKS: &[&str] = &[
+        "src/bridge/Cargo.lock",
+        "src/backend/Cargo.lock",
+        "src/panorama-engine/Cargo.lock",
+    ];
 
     /// **登记表②**：上面那几份里，**允许**含引擎那个包的是哪几份。
     ///
-    /// 今天恰好一份 —— monitor 那棵。它就是「解析发生在 monitor 进程里」这句话的账面形态。
+    /// 今天恰好两份 —— monitor 那棵（本机全景仍在 monitor 进程内，第二拍才摘）与独立小程序那棵
+    /// （远端全景：后端起它，解析在它的进程里）。**后端那一份不在** —— 那就是「后端本体零引擎」
+    /// （`C21` / V108）的账面形态。
+    /// 〔改前原话逐字：「今天恰好一份 —— monitor 那棵。」〕
     /// ⚠ 这是一道**相等断言**，不是地板：多一份（backend 也链了）与少一份（monitor 不再链了）
     /// 都会红，而两种红各有各的处置，诊断里分开写。
-    const ENGINE_LINKED_BY: &[&str] = &["src/bridge/Cargo.lock"];
+    const ENGINE_LINKED_BY: &[&str] = &["src/bridge/Cargo.lock", "src/panorama-engine/Cargo.lock"];
 
     /// 读一份仓内文件，**读不到就 panic，不许静默成空串地绿**。
     fn read_pinned(rel: &str, floor: usize) -> String {

@@ -54,6 +54,7 @@ src/bridge/
     ├── search.rs      # issue #6 历史全文搜索：后台建内存索引 + substring 查询（含远端结果合并）
     ├── mcp.rs         # F87 MCP 管理：跨 scope 宽容读 / 只写项目 .mcp.json（SS-14 读写分界）
     ├── panorama.rs    # Batch15 code-picture 代码全景后端：per-repo Engine 池（索引落 monitor 数据目录）+ 全景查询/批注命令族
+    ├── panorama_call.rs # 〔RM1c〕远端仓的全景：按 origin 问那台后端的 `panorama` 帧命令（后端经插件口起独立全景小程序）
     ├── ssh_source.rs  # russh 远端数据源：连接/鉴权/指纹校验 + 后端流帧解析 + 版本协商 + ssh-config 导入 + 测试连接 + B14-F59 daemonless 降级读取(纯 tail 轮询)
     ├── remote_history.rs # 远端历史浏览 + 远端全文搜索查询（一次性 exec 后端子命令，多机 fan-out）
     ├── sftp.rs        # SS-D 统一 SFTP 写层：后端自动部署 (#29) + 远端历史删除 (F11) + ccm 安装 (F10)
@@ -148,6 +149,7 @@ src/bridge/
 | `push_public_key` (B14-F50) | `{ cfg, pubKeyPath? }` | `PushResult {outcome,pubPath}` | 公钥推送 authorized_keys;pubKeyPath 空则取 `{keyPath}.pub`;`sanitize_public_key`(单行防注入)+ `grep -qxF` 去重,返回 added/already |
 | `list_remote_tmux` (B14-F51) | `{ origin }` | `TmuxSession[] \| null` | tab 右键 attach 反查;`command -v tmux` 无 → `null`(隐藏 attach);否则 `tmux ls -F`(真 TAB)解析成会话列表;走 exec 通道 |
 | `capture_remote_pane` (B14-F60) | `{ origin, target }` | `String` | tab 右键「预览远端 tmux 画面」;`tmux capture-pane -p -t <会话>` 抓当前屏只读快照;`command -v tmux` 门控 + `NO_PANE` 哨兵(会话不存在),`classify_capture_output` 纯函数判;走 exec 通道 target 经 `shell_quote` |
+| `panorama_call` (RM1c) | `{ origin, op, repo, args }` | `unknown`（形状随 op，与本机那几条同形） | 远端仓的全景：按 origin 问那台机器的后端 `panorama`（只读；批注写在远端当场拒） |
 | `panorama_index` (Batch15-P1) | `{ repo }` | `IndexStats` | 用户显式点「建立索引」：tree-sitter 全仓扫描，落 monitor 数据目录 `panorama/` |
 | `panorama_reindex` (Batch15) | `{ repo }` | `IndexStats` | 「重新索引」按钮 |
 | `panorama_status` (Batch15) | `{ repo }` | `PanoramaStatus` | 打开全景视图查索引就绪 / `indexedAt` |
