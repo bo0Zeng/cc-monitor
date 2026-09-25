@@ -520,7 +520,7 @@ describe("〔ST2 · 设计/70 第二刀 步 6〕后端开关表格式四栏：�
     const s = new BackendSection({ headless: true });
     await flush();
     await flush();
-    const want = BACKEND_COLUMNS.map(([c]) => c);
+    const want = BACKEND_COLUMNS().map(([c]) => c);
     expect(want).toEqual(["state", "ops", "exit", "health"]);
     const head = s.element.querySelector<HTMLElement>('[data-backend-columns="head"]')!;
     expect([...head.children].map((c) => (c as HTMLElement).dataset.col)).toEqual(want);

@@ -144,10 +144,6 @@ src/bridge/src/tool_registry.rs	C4d 在改这一带，留最后一批
 src/bridge/src/user_files.rs	未抽
 src/bridge/src/verified_write.rs	未抽
 src/panorama-engine/main.rs	射程外：全景独立小程序（另一个可执行文件）
-src/settings/backend-section.ts	未抽
-src/settings/data-section.ts	未抽
-src/settings/diagnostics-section.ts	未抽
-src/settings/drift-ledger-section.ts	未抽
 src/settings/panel.ts	TL1 第 4 件那一句（REMOTE_INFO_TEXT「由远端后端取代本地 jsonl-watcher…」）归 TL1 改，本路跳过；其余已抽
 src/views/history-actions.ts	C4d 在改这一带，留最后一批
 src/views/history.ts	C4d 在改这一带，留最后一批
