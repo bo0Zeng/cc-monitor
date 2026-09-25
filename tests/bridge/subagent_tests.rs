@@ -3,11 +3,11 @@
 //! 核原文：`D11` 展开逐字「后端不在 ⇒ 这件事**不发生**，并且**说清楚为什么**」—— 盘上摆着候选而后端不在时只报「本机后端不在」、
 //! 不自己枚举，判的正是它；`设计/05 §13.6` 逐字「查询错误带出种类」—— 分「老后端 / 传输」那条对它。挑选只有一处实现属 `D1`。〔JA1 点址 2026-09-24〕
 
-use super::{
-    choose_subagent, extract_agent_id, local_failure_kind, QueryFailure, UNKNOWN_ARGUMENT,
-};
-use crate::backend::observe::local_query::{run_query, QueryOutcome};
+use super::{choose_subagent, extract_agent_id, QueryFailure};
 use std::path::PathBuf;
+
+#[path = "support/scripted_backend.rs"]
+mod scripted;
 
 /// 造一行后端 `--list-subagents` 的输出。
 fn listed(path: &str, description: &str, timestamp: Option<&str>) -> String {
@@ -41,18 +41,17 @@ fn listed(path: &str, description: &str, timestamp: Option<&str>) -> String {
 /// 这正是 `KR94D1` 第 ③ 刀（「本机退回自己 `read_dir` ⇒ 必须红」）的可执行形态。
 ///
 /// ⚠ 它**不证明** happy path 对（那要真本机后端，属 e2e）。只杀「悄悄读本机盘」这一类。
-#[tokio::test]
-async fn the_candidate_set_comes_from_the_backend_not_from_this_machines_disk() {
-    // 前提自检：本测试环境**必须**没有本机后端，否则下面那条断言会走 happy path 而空转。
-    let probe = run_query(
-        env!("CCM_TARGET_TRIPLE"),
-        &["--list-subagents"],
-        &*crate::spawn_managed::local_backend_one_shot_query(),
-    );
+#[test]
+fn the_candidate_set_comes_from_the_backend_not_from_this_machines_disk() {
+    // 〔LOC1a〕本机那条从此走 `<local>` 长连接（不再 exec 一次性后端）⇒「后端不在」的形态换成「`<local>` 上没有通道」。
+    // 前提自检：`<local>` 上**必须**没有通道，否则下面那条断言会走 happy path 而空转。
+    let _guard = crate::backend::control::inbound_client::local_origin_test_lock();
     assert!(
-        matches!(probe, QueryOutcome::NoBackend(_)),
-        "测试环境里居然找得到 local_backend —— 本条的前提不成立，下面那条断言会空转。\n\
-             （若哪天单测环境真带本机后端，本条要改成显式指一个不存在的 target triple）"
+        crate::backend::control::inbound_client::client_for(
+            crate::backend::control::inbound_client::LOCAL_ORIGIN
+        )
+        .is_none(),
+        "测试进程里 `<local>` 上居然有入方向通道 —— 本条的前提不成立，下面那条断言会空转"
     );
 
     // 盘上摆两个**货真价实**的候选：meta 描述精确匹配、jsonl 首行有时间戳。
@@ -79,28 +78,81 @@ async fn the_candidate_set_comes_from_the_backend_not_from_this_machines_disk() 
     let parent = tmp.join("parent.jsonl");
     std::fs::write(&parent, "").expect("写父会话");
 
-    let got = super::load_subagent(
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("建不出 runtime —— 本条无从判断，别读成绿");
+    let got = rt.block_on(super::load_subagent(
         parent.to_string_lossy().into_owned(),
         "找它".to_string(),
         "2026-09-12T10:30:00.000Z".to_string(),
-        // 🔴 〔`设计/05 §8` 步 2 09-20〕这一行原先是 `None`（那时 `origin: Option<String>`，
-        //    `None` 与 `""` 都被当成本机）。本条判的是**本机**那条路 ⇒ 逐字送
-        //    `Origin::local()`（线上 `"<local>"`）。
-        //    ⚠ **不许送一个空白名** —— 那会被 `Origin::route` 在**问后端之前**拒掉，
-        //      于是本条会因为「参数不对」而绿，而不是因为「候选是后端给的」。
+        // 本条判的是**本机**那条路 ⇒ 逐字送 `Origin::local()`（线上 `"<local>"`）。
+        // ⚠ **不许送一个空白名** —— 那会被 `Origin::route` 在**问后端之前**拒掉，
+        //   于是本条会因为「参数不对」而绿，而不是因为「候选是后端给的」。
         crate::origin::Origin::local(),
-    )
-    .await;
+    ));
     let _ = std::fs::remove_dir_all(&tmp);
 
     let err = got.expect_err(
-        "盘上摆着两个候选、而本机后端不在，它却给出了结果 ——\n\
+        "盘上摆着两个候选、而本机后端没有通道，它却给出了结果 ——\n\
              ⇒ 候选是它**自己从盘上枚举**出来的，不是后端给的（`KR94D1` 第 ③ 刀）。",
     );
     assert!(
-        err.contains("本机后端不在"),
-        "报错没说清是「后端不在」（定框 §5：它与「查询失败」对用户是两种处境）：{err}"
+        err.contains("没有可用的控制通道"),
+        "报错没说清是「本机后端够不着」（定框 §5：它与「查询失败」对用户是两种处境）：{err}"
     );
+}
+
+/// 〔LOC1a · J2〕★★ **本机那条真走 `<local>` 长连接**（`设计/05 §14.6`），问的是那两条帧命令、按那个顺序。
+///
+/// 异源：数的是**假后端那一侧**收到的帧命令（`scripted_backend::Rig::seen`），不是被测函数自己说的。
+/// 候选与正文都只由脚本给 ⇒ 结果只能来自那条长连接。
+#[test]
+fn the_local_path_asks_the_resident_backend_over_the_long_connection() {
+    let _guard = crate::backend::control::inbound_client::local_origin_test_lock();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let _enter = rt.enter();
+    let parent = "/r/proj/parent.jsonl";
+    let picked = "/r/proj/parent/subagents/agent-abc.jsonl";
+    let rig = scripted::rig(
+        crate::backend::control::inbound_client::LOCAL_ORIGIN,
+        &["history-subagents", "history-read"],
+        vec![
+            (
+                "history-subagents",
+                Ok(serde_json::json!({"lines": [listed(picked, "找它", Some("2026-09-12T10:29:00.000Z"))]})),
+            ),
+            (
+                "history-read",
+                Ok(serde_json::json!({
+                    "text": "{\"type\":\"user\",\"uuid\":\"u1\",\"timestamp\":\"2026-09-12T10:29:00.000Z\",\"message\":{\"role\":\"user\",\"content\":\"hi\"}}\n",
+                    "next": 10,
+                    "eof": true
+                })),
+            ),
+        ],
+    );
+    let got = rt
+        .block_on(super::load_subagent(
+            parent.to_string(),
+            "找它".to_string(),
+            "2026-09-12T10:30:00.000Z".to_string(),
+            crate::origin::Origin::local(),
+        ))
+        .expect("脚本里候选与正文都给了，本机那条该成");
+    assert_eq!(
+        rig.cmds(),
+        vec!["history-subagents".to_string(), "history-read".to_string()],
+        "本机那条没有恰好经长连接问这两条帧命令"
+    );
+    let seen = rig.seen.lock().expect("lock").clone();
+    assert_eq!(seen[0].1["parent"], parent, "列候选问的不是那个父会话");
+    assert_eq!(seen[1].1["path"], picked, "读正文读的不是挑中的那一份");
+    assert_eq!(got.path, picked);
+    assert_eq!(got.agent_id, "abc");
 }
 
 /// ★★ `KR94D1` 第 ①② 刀：**后端给的候选变了，结果就得跟着变。**
@@ -360,19 +412,17 @@ fn both_paths_ask_the_backend_and_reuse_the_existing_subcommands() {
         1,
         "内容读口要**复用既有的** `--read-session`，而且只许有一处"
     );
-    // 本机那条真的 exec 本机后端（`C1`：本地 = 不走 ssh 的远端）。
+    // 〔LOC1a〕两条路连传输都是同一条：只经一处帧面出口（`frame_query::run_routed`），
+    //   本机不再 exec 一次性后端（`local_query` 零命中 —— 那个模块整份删了），也没有第二条拨号回落
+    //   （拨号那条路的函数名在生产段零命中另由 `frame_query_tests::the_dial_per_query_path_is_gone` 管）。
     assert!(
-        prod.contains("local_query::{run_query, QueryOutcome}"),
-        "本机那条没有走 `backend::observe::local_query` —— 它又在自己读盘了"
+        !prod.contains("local_query"),
+        "本机那条又 exec 一次性本机后端了（`05 §14.6`：本机那几问走 `<local>` 长连接）"
     );
-    // 远端那条只走长连接的帧命令（`frame_query::run_routed`），没有另起炉灶。
-    // 〔C4d · 第四波 4B〕原先这里钉「远端那条仍走既有的 ssh 传输」（逐次拨号那条路，今天删了）；
-    //   改钉「只有帧面那一出口、没有第二条拨号回落」—— 拨号那条路的函数名在生产段零命中另由
-    //   `frame_query_tests::the_dial_per_query_path_is_gone` 管。
     assert_eq!(
         prod.matches("frame_query::run_routed(").count(),
         1,
-        "远端那条不再恰好经一处帧面出口 —— 要么没接上，要么又长出了第二条路"
+        "两条路不再恰好经一处帧面出口 —— 要么没接上，要么又长出了第二条路"
     );
     assert!(
         !prod.contains("connect_and_exec_cmd"),
@@ -395,50 +445,38 @@ fn agent_id_comes_off_the_file_name() {
     assert_eq!(extract_agent_id(&PathBuf::from("/r/other.jsonl")), None);
 }
 
-/// 〔C2 · SE1 欠账〕本机那条的**种类**在失败那一层当场定：退出 2 ＋ 后端印的 `unknown argument: <子命令>`
-/// ⇒ 老后端；其余 ⇒ 传输。另一侧异源：那句话的前缀从**后端源码**里现抠（`history_query.rs` 的
-/// `unknown argument: {other}` 与 `query error: {e}` 两处拼出来的就是本机 stderr 那一行）。
+/// 〔C2 · SE1 欠账 → LOC1a〕本机那条的**种类**与远端同一个判定：`<local>` 长连接在、却不认这条帧命令 ⇒ 老后端，
+/// 且**一个字节都不发**（假后端那一侧收到零条）；通道不在 ⇒ 传输。
 #[test]
-fn a_local_backend_that_does_not_know_the_subcommand_is_old_not_broken() {
-    let sub = "--list-user-inputs";
-    let line = format!("cc-monitor-backend query error: {UNKNOWN_ARGUMENT}{sub}\n");
-    assert_eq!(
-        local_failure_kind(Some(2), &line, sub),
-        QueryFailure::OldBackend
+fn a_local_backend_that_does_not_know_the_command_is_old_not_broken() {
+    let _guard = crate::backend::control::inbound_client::local_origin_test_lock();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let _enter = rt.enter();
+    let backend = super::Backend::for_origin(crate::origin::Route::Local).expect("本机");
+    // 通道不在 ⇒ 传输（瞬时）
+    let e = rt
+        .block_on(backend.query(&["--list-subagents", "/r/p.jsonl"]))
+        .expect_err("没有通道");
+    assert_eq!(e.kind, QueryFailure::Transport, "{e}");
+    // 通道在、却不认 ⇒ 老后端（结构性），且不发
+    let rig = scripted::rig(
+        crate::backend::control::inbound_client::LOCAL_ORIGIN,
+        &["ping"],
+        vec![],
     );
-    // 退出码不是 2 ⇒ 不是「不认这条子命令」那一形
-    assert_eq!(
-        local_failure_kind(Some(1), &line, sub),
-        QueryFailure::Transport
-    );
-    assert_eq!(
-        local_failure_kind(None, &line, sub),
-        QueryFailure::Transport
-    );
-    // 不认的是**别的**参数（选项拼错 / 新选项）⇒ 子命令本身它认得 ⇒ 不许判老后端
-    let other = "cc-monitor-backend query error: unknown argument: --from\n";
-    assert_eq!(
-        local_failure_kind(Some(2), other, sub),
-        QueryFailure::Transport
-    );
-    // 别的 exit 2（参数缺失）⇒ 传输
-    assert_eq!(
-        local_failure_kind(
-            Some(2),
-            "cc-monitor-backend query error: no query argument\n",
-            sub
-        ),
-        QueryFailure::Transport
-    );
-    // 异源：后端源码里真这么拼
-    let hq = include_str!("../../src/backend/observe/history_query.rs");
-    assert!(
-        guard_core::find_pinned(hq, "Err(format!(\"unknown argument: {other}\"))").is_ok(),
-        "后端 `history_query` 不再这样报不认的子命令 —— `UNKNOWN_ARGUMENT` 那一侧要跟着改"
-    );
-    assert!(
-        hq.contains("eprintln!(\"cc-monitor-backend query error: {e}\");"),
-        "后端 `history_query` 不再把错误原样印进 stderr —— 本机「老后端」那一档从此认不出"
-    );
-    assert!(UNKNOWN_ARGUMENT.starts_with("unknown argument"));
+    let e = rt
+        .block_on(backend.query(&["--list-subagents", "/r/p.jsonl"]))
+        .expect_err("不认");
+    assert_eq!(e.kind, QueryFailure::OldBackend, "{e}");
+    assert!(e.message.starts_with("本机"), "本机那条不许说成远端：{e}");
+    assert!(rig.cmds().is_empty(), "不认的命令照样发出去了：{:?}", rig.cmds());
+    // 认不出帧命令的 argv ⇒ 传输（本程序的 bug），同样不发
+    let e = rt
+        .block_on(backend.query(&["--no-such-thing"]))
+        .expect_err("没有帧命令");
+    assert_eq!(e.kind, QueryFailure::Transport, "{e}");
+    assert!(rig.cmds().is_empty());
 }

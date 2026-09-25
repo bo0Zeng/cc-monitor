@@ -178,14 +178,8 @@ const SITES: &[(&str, &str, &str, &str)] = &[
          那两根管子（stdout 的 EOF 是「进程死了」这个事件的唯一来源）——\
          那两根**不是**三条策略里的任何一条。",
     ),
-    (
-        "backend/observe/local_query.rs",
-        "run_query",
-        "ManagedSpawn",
-        "**注入形**，理由同上一行（宿主那侧声明 `local_backend_one_shot_query` 那三格）。\
-         留在本层的是「跑哪个二进制、带哪些子命令参数」与 stdout piped ——\
-         一次性查询的输出是返回值，`QueryOutcome` 按它分类。",
-    ),
+    // 〔LOC1a · 第四波 4D〕`backend/observe/local_query.rs::run_query`〔散文墓碑〕那一行删了（注入形第二处）：
+    //   本机那几问改走 `<local>` 长连接，宿主那侧的一次性查询三格（`local_backend_one_shot_query`〔散文墓碑〕）随之删。
 ];
 
 /// 本 crate 的源码根 —— 住址唯一源。

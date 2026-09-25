@@ -123,6 +123,36 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
     }
 }
 
+/// 〔LOC1a · 第四波 4D〕帧面 `session-fork {sid, uuid} → {sessionId, jsonlPath}` 的本体 —— 与 CLI
+/// `--fork-session` **同一个** [`run_inner`]（读 → `branch-core` 变换 → `O_EXCL` 落盘），只是入参从 argv 换成 `args`、
+/// 结果从 stdout 一行换成 `data`。
+///
+/// 为什么要它（`设计/05 §14.6`：本机那几问从「exec 一次性本机后端」改走 `<local>` 长连接）：monitor 本机分叉此前每次
+/// exec 一个本机后端进程跑 `--fork-session`、远端经拨号链路 exec 同一条；两条路现在都经那台机器常驻后端的长连接说这一条。
+/// ⚠ 帧命令**不叫** `fork-session`：`cli_control` 从帧面自动派生的 CLI 面会是 `--fork-session`，
+/// 与对 aterm 冻结的那一条（argv 两个位置参数）撞名。
+pub(crate) fn answer_wire(args: &serde_json::Value) -> Result<serde_json::Value, (&'static str, String)> {
+    answer_wire_at(&crate::observe::history_query::agent_home(), args)
+}
+
+/// [`answer_wire`] 的可注入家目录形（判据用）。
+pub(crate) fn answer_wire_at(
+    agent_home: &Path,
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, (&'static str, String)> {
+    let field = |k: &str| {
+        args.get(k)
+            .and_then(serde_json::Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .ok_or(("bad_args", format!("`{k}` 缺或不是非空字符串")))
+    };
+    let (sid, uuid) = (field("sid")?, field("uuid")?);
+    let argv = ["--session-fork".to_string(), sid, uuid];
+    let res = run_inner(agent_home, &argv).map_err(|m| ("fork_failed", m))?;
+    serde_json::to_value(&res).map_err(|e| ("fork_failed", format!("serialize: {e}")))
+}
+
 fn fail(code: &str, message: &str) -> i32 {
     let env = serde_json::json!({ "code": code, "message": message });
     eprintln!("{env}");

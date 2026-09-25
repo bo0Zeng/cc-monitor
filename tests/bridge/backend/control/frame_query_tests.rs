@@ -272,6 +272,13 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "history-last-accounts",
         "sid → 上次用哪个号起（账号徽章回落 · 带账号 resume 前现读）；从前是 monitor 读那份文件",
     ),
+    // 〔LOC1a · 第四波 4D · C4e 批 4〕`session.tasks`。
+    (
+        "tasks-list",
+        "后端出成品 `{tasks}`（字段语义挪进后端 `tasks_query.rs::task_entry`），界面 `tasks-panel.ts::decodeTasks` 按形状收；\
+         monitor 那条命令（`get_session_tasks`）与行解释（`parse_task_lines`）删了。\
+         ⚠ monitor 自己**另有**一处问它（本机任务 watcher，见 [`ASKED_BY_MONITOR_ITSELF`]）—— 那是推送，不是替界面转",
+    ),
 ];
 
 /// 〔C4c · 第四波 4B〕**monitor 自己**（不是替界面转）也要问的帧命令 —— `(帧命令, 生产段里几处, 为什么)`。
@@ -279,12 +286,20 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
 /// 它们同时在 [`CHANNELED_ELSEWHERE`] 里（界面那一问已走通道）；下面那条判据里 monitor 生产段的字面量
 /// 从此 == `BORN_ON_FRAME` 那一次 ＋ 本表登记的处数（两向相等：多一处 = 又长出一个替界面转的发送点；
 /// 少一处 = monitor 那件自己的事不问了，这一行馊了）。
-const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[(
-    "exit-policy-read",
-    1,
-    "退出臂在决定那一刻现问一次（`backend_policy::kill_on_exit_now`，`设计/01 §3.3b ④`）：\
-     monitor 自己要不要跟着收那台后端 —— 它的答案不给界面",
-)];
+const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
+    (
+        "exit-policy-read",
+        1,
+        "退出臂在决定那一刻现问一次（`backend_policy::kill_on_exit_now`，`设计/01 §3.3b ④`）：\
+         monitor 自己要不要跟着收那台后端 —— 它的答案不给界面",
+    ),
+    (
+        "tasks-list",
+        1,
+        "〔LOC1a〕本机任务 watcher（`tasks.rs::fetch_session_tasks`）：notify 报「哪个 sid 变了」之后经 `<local>` 问成品、推 `task-update` \
+         —— 推送那一路是 monitor 自己的事（`05 §14.3`「推送那一路」待定：是否换 `subscribe` 不在本件），它不解释字段",
+    ),
+];
 
 /// 后端 `inbound.rs` 生产段里登记的全部帧命令名（异源：从后端源码数，不读本文件的表）。
 fn backend_registered_commands() -> std::collections::BTreeSet<String> {

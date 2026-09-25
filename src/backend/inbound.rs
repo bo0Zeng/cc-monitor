@@ -84,6 +84,9 @@ pub const COMMANDS: &[&str] = &[
     "accounts-sessions",
     // 〔C4c · 第四波 4B〕换号前的信任预检（替掉最后两条仍逐次拨号的 `--account-trust*`）。
     "accounts-trust",
+    // 〔LOC1a · 第四波 4D〕这台机器的 `cc-acct-iso` 两问（本机那两条从 exec 一次性后端改走 `<local>` 长连接）。
+    "acct-iso-shellinit",
+    "acct-iso-status",
     "apikey-key-set",
     "apikey-read",
     // 〔AS2 · 第四波 4B · V113〕资产目录（后端自有状态，第四层）：现扫 ＋ 记 · 并进别处的整份。
@@ -157,6 +160,8 @@ pub const COMMANDS: &[&str] = &[
     // 〔C4d · 第四波 4B〕本机后端的可达表：monitor 在每台远端流握手那一刻交「怎么够到那台」（只登记）。
     "remote-reach",
     "resolve",
+    // 〔LOC1a · 第四波 4D〕分叉（`fork_write`，本 crate 唯一的 `O_EXCL` 新建写口）：本机远端同一条长连接。
+    "session-fork",
     // 〔AS2〕skill「装到这台」：来源那台读 · 要被写的那一台判（都只读；写经 `files-put`）。
     "skill-install-plan",
     "skill-read",
@@ -1651,11 +1656,64 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // 〔LOC1a · 第四波 4D〕这台机器的 `cc-acct-iso` 两问 —— 与 CLI `--acct-iso-status` / `--acct-iso-shellinit`
+    //   同一份本体（`accounts/iso.rs`）。`设计/05 §14.6`：本机那几问从「exec 一次性本机后端」改走 `<local>` 长连接。
+    //   `shellinit` 要起一次 `cc-acct-iso`（插件口）⇒ 两条都进阻塞档（`status` 只看文件在不在，同档省一份理由）。
+    CommandSpec {
+        name: "acct-iso-status",
+        doc_anchor: Some("#### `acct-iso-status`"),
+        codes: &[],
+        fields: &["installed", "looked", "path"],
+        takes_input: false,
+        run: Run::Blocking(|_r| {
+            crate::accounts::iso::answer_wire_status()
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "acct-iso-shellinit",
+        doc_anchor: Some("#### `acct-iso-shellinit`"),
+        codes: &["not_installed", "not_run", "timed_out", "tool_failed"],
+        fields: &["snippet"],
+        takes_input: false,
+        run: Run::Blocking(|_r| {
+            crate::accounts::iso::answer_wire_shellinit()
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔LOC1a · 第四波 4D〕分叉：与 CLI `--fork-session` 同一个本体（`control/fork_write.rs::run_inner`，
+    //   读 → `branch-core` 变换 → `O_EXCL` 新建）。本机远端同一条长连接；读整份 jsonl ⇒ 阻塞档。
+    //   ⚠ 名字刻意不是 `fork-session`：自动派生的 CLI 面会与对 aterm 冻结的 `--fork-session`（argv 形）撞名。
+    CommandSpec {
+        name: "session-fork",
+        doc_anchor: Some("#### `session-fork`"),
+        codes: &["bad_args", "fork_failed"],
+        fields: &["jsonlPath", "sessionId", "sid", "uuid"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::fork_write::answer_wire(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     CommandSpec {
         name: "tasks-list",
         doc_anchor: Some("#### `tasks-list`"),
         codes: &["bad_args", "failed", "too_large"],
-        fields: &["lines", "sid"],
+        // 〔LOC1a · 第四波 4D · C4e 批 4〕应答换成成品 `{tasks: [...]}`（原是原样对象的 `lines`）⇒ 后端行为变更，合并那拍 bump。
+        fields: &[
+            "activeForm",
+            "blockedBy",
+            "blocks",
+            "description",
+            "id",
+            "sid",
+            "status",
+            "subject",
+            "tasks",
+        ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::feature_face::answer(&r.cmd, &r.args)

@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "support/scripted_backend.rs"]
+mod scripted;
+
 // 〔C4d · 第四波 4B〕本机 manifest 参照实现（`list_from_dir`〔散文墓碑〕一族）删了，驱动它的八条判据随之退役；
 //   它们钉的性质各自改指现存实现（后端 `observe/accounts_query.rs` ＋ `common/fs.rs`），住
 //   `tests/backend/observe/accounts_query_tests.rs` 的 C4d 那一节：
@@ -21,66 +24,60 @@ use super::*;
 // 〔`A3` 第二波〕`acct-iso.check` / `acct-iso.shellinit` 的本机对侧
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// 「没装」是 `Ok(installed:false)`（后端 exit 0 那一支），不是错误；
-/// 「问不出来」三档（后端不在 / 查询失败 / 读不懂）是 `Err`，且**不许**说成「没装」。
+/// 「没装」是 `Ok(installed:false)`（后端答了「没有」），不是错误；
+/// 「问不出来」（够不着 / 对端说不行 / 应答读不懂）是 `Err`，且**不许**说成「没装」。
 #[test]
 fn the_local_acct_iso_status_tells_not_installed_from_cannot_ask() {
-    let yes = classify_local_acct_iso(QueryOutcome::Ok(
-        "{\"installed\":true,\"path\":\"/h/.local/bin/cc-acct-iso\",\"looked\":null}\n".into(),
-    ))
+    let yes = classify_local_acct_iso(Ok(serde_json::json!(
+        {"installed": true, "path": "/h/.local/bin/cc-acct-iso", "looked": null}
+    )))
     .unwrap();
     assert!(yes.installed);
     assert_eq!(yes.path.as_deref(), Some("/h/.local/bin/cc-acct-iso"));
     // vendor 指纹与远端那条同一个来源（前端比「有没有更新」用的是同一个值）。
     assert_eq!(yes.vendor_id, crate::acct_iso_deploy::vendor_id());
 
-    let no = classify_local_acct_iso(QueryOutcome::Ok(
-        "{\"installed\":false,\"path\":null,\"looked\":\"找不到\"}".into(),
-    ))
+    let no = classify_local_acct_iso(Ok(serde_json::json!(
+        {"installed": false, "path": null, "looked": "找不到"}
+    )))
     .unwrap();
     assert!(!no.installed && no.path.is_none());
 
     let errs: Vec<String> = [
-        QueryOutcome::NoBackend("找过 /x".into()),
-        QueryOutcome::Failed {
-            code: Some(2),
-            stderr: "{\"code\":\"bad_args\",\"message\":\"unknown argument\"}".into(),
-        },
-        QueryOutcome::Ok("not json".into()),
-        QueryOutcome::Ok("{\"path\":null}".into()),
+        Err("[<local>] 没有可用的控制通道（backend 未在场或长连接未握手）".to_string()),
+        Ok(serde_json::json!({"path": null})),
+        Ok(serde_json::json!("not an object")),
     ]
     .into_iter()
     .map(|o| classify_local_acct_iso(o).expect_err("问不出来的那几档必须是 Err"))
     .collect();
-    assert!(errs[0].contains("本机后端不在") && errs[0].contains("找过 /x"));
-    assert!(
-        errs[1].contains("unknown argument") && !errs[1].contains("\"code\""),
-        "后端的 {{code,message}} 要取出 message 说人话：{}",
-        errs[1]
-    );
+    assert!(errs[0].contains("没有可用的控制通道"), "{}", errs[0]);
+    assert!(errs[1].contains("两端契约对不上") && errs[2].contains("两端契约对不上"));
     for e in &errs {
-        assert!(!e.contains("远端"), "本机那条路的话里出现了「远端」：{e}");
+        // 问不出来 ⇒ 句子以「查不出」或契约那句开头，绝不是一句「没装」的结论。
+        assert!(
+            e.starts_with("查不出") || e.contains("两端契约对不上"),
+            "问不出来被说成了别的：{e}"
+        );
     }
 }
 
-/// 片段：围栏齐 ⇒ 原样；缺 END ⇒ 截断那句；缺 BEGIN ⇒ 没产出那句；后端失败 ⇒ 带后端原话。
-/// 四种失败两两不同，都不说「远端」、都不指「先在『维护』里部署」（本机没有那个口）。
+/// 片段：围栏齐 ⇒ 原样；缺 END ⇒ 截断那句；缺 BEGIN ⇒ 没产出那句；对端失败 ⇒ 带后端原话；应答缺 `snippet` ⇒ 契约那句。
+/// 五种失败两两不同，都不说「远端」、都不指「先在『维护』里部署」（本机没有那个口）。
 #[test]
 fn the_local_shellinit_uses_the_same_fence_judgment_with_local_words() {
     use crate::acct_iso_deploy::{SHELLINIT_FENCE_BEGIN as B, SHELLINIT_FENCE_END as E};
     let whole = format!("{B}\nzcc() {{ :; }}\n{E}\n");
     assert_eq!(
-        classify_local_shellinit(QueryOutcome::Ok(whole.clone())),
+        classify_local_shellinit(Ok(serde_json::json!({ "snippet": whole.clone() }))),
         Ok(whole)
     );
     let errs: Vec<String> = [
-        QueryOutcome::Ok(format!("{B}\nzcc() {{")),
-        QueryOutcome::Ok("warn only".into()),
-        QueryOutcome::NoBackend("找过 /x".into()),
-        QueryOutcome::Failed {
-            code: Some(2),
-            stderr: "{\"code\":\"not_installed\",\"message\":\"找不到 `cc-acct-iso`\"}".into(),
-        },
+        Ok(serde_json::json!({ "snippet": format!("{B}\nzcc() {{") })),
+        Ok(serde_json::json!({ "snippet": "warn only" })),
+        Err("[<local>] 没有可用的控制通道（backend 未在场或长连接未握手）".to_string()),
+        Err("本机 查询失败（not_installed）：找不到 `cc-acct-iso`".to_string()),
+        Ok(serde_json::json!({})),
     ]
     .into_iter()
     .map(|o| classify_local_shellinit(o).expect_err("失败档必须是 Err"))
@@ -88,10 +85,11 @@ fn the_local_shellinit_uses_the_same_fence_judgment_with_local_words() {
     assert!(errs[0].contains("不完整"));
     assert!(errs[1].contains("没能产出"));
     assert!(errs[3].contains("找不到 `cc-acct-iso`"));
+    assert!(errs[4].contains("两端契约对不上"));
     assert_eq!(
         errs.iter().collect::<std::collections::BTreeSet<_>>().len(),
-        4,
-        "四种失败说成了同一句：{errs:?}"
+        5,
+        "五种失败说成了同一句：{errs:?}"
     );
     for e in &errs {
         assert!(
@@ -107,27 +105,45 @@ fn the_local_shellinit_uses_the_same_fence_judgment_with_local_words() {
     );
 }
 
-/// ★ 走**生产入口本体**：单测环境没有本机后端 ⇒ 两条都是带理由的 `Err`（真去问了），
-/// 不是「空但成功」（被短路的形状：`Ok(installed:false)` / `Ok("")`）。
-#[tokio::test]
-async fn the_two_local_acct_iso_commands_really_ask_the_backend() {
-    let probe = run_query(
-        env!("CCM_TARGET_TRIPLE"),
-        &["--acct-iso-status"],
-        &*crate::spawn_managed::local_backend_one_shot_query(),
+/// ★ 走**生产入口本体**，〔LOC1a〕两条都真走 `<local>` 长连接、问的是那两条帧命令（异源：数假后端收到的）；
+/// 通道不在 ⇒ 带理由的 `Err`（不是「空但成功」那种被短路的形状：`Ok(installed:false)` / `Ok("")`）。
+#[test]
+fn the_two_local_acct_iso_commands_really_ask_the_backend() {
+    use crate::acct_iso_deploy::{SHELLINIT_FENCE_BEGIN as B, SHELLINIT_FENCE_END as E};
+    let _guard = crate::backend::control::inbound_client::local_origin_test_lock();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let _enter = rt.enter();
+    // 通道不在
+    let st = rt
+        .block_on(check_local_acct_iso())
+        .expect_err("没有本机后端通道却答出了装没装");
+    assert!(st.contains("没有可用的控制通道"), "{st}");
+    let sn = rt
+        .block_on(local_acct_iso_shellinit())
+        .expect_err("没有本机后端通道却拿到了片段");
+    assert!(sn.contains("没有可用的控制通道"), "{sn}");
+    // 通道在：真问了那两条
+    let whole = format!("{B}\nzcc() {{ :; }}\n{E}\n");
+    let rig = scripted::rig(
+        crate::backend::control::inbound_client::LOCAL_ORIGIN,
+        &["acct-iso-status", "acct-iso-shellinit"],
+        vec![
+            (
+                "acct-iso-status",
+                Ok(serde_json::json!({"installed": true, "path": "/h/x", "looked": null})),
+            ),
+            ("acct-iso-shellinit", Ok(serde_json::json!({ "snippet": whole.clone() }))),
+        ],
     );
-    assert!(
-        matches!(probe, QueryOutcome::NoBackend(_)),
-        "测试环境里居然找得到 local_backend —— 本条的前提不成立"
+    assert!(rt.block_on(check_local_acct_iso()).expect("装了").installed);
+    assert_eq!(rt.block_on(local_acct_iso_shellinit()).expect("片段"), whole);
+    assert_eq!(
+        rig.cmds(),
+        vec!["acct-iso-status".to_string(), "acct-iso-shellinit".to_string()]
     );
-    let st = check_local_acct_iso()
-        .await
-        .expect_err("没有本机后端却答出了装没装");
-    assert!(st.contains("本机后端不在"), "{st}");
-    let sn = local_acct_iso_shellinit()
-        .await
-        .expect_err("没有本机后端却拿到了片段");
-    assert!(sn.contains("本机后端不在"), "{sn}");
 }
 
 // 〔C4c · 第四波 4B〕S3 那一节（本机 apikey 表并进清单）〔散文墓碑〕随 `with_apikey_table` 一起退役：并表挪进了后端

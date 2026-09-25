@@ -3599,15 +3599,8 @@ mod error_envelope_registry {
             "同上一行，另一档：参数不齐那一支。它与 `message` 分在两行上\
              ⇒ 键集那条判据的窗口必须够得着下一行（见 `every_envelope_carries_both_keys`）。",
         ),
-        (
-            "accounts/iso.rs",
-            "serde_json::json!({\"code\": code, \"message\": message})",
-            "〔`A3` 第二波〕本机 `cc-acct-iso` 两问的失败信封（一个闭包 `fail`，四档码共用）",
-            "与 `observe/accounts_query.rs` 那份**同形不同家**：它住账号域（`accounts/`），\
-             而那份住 observe、`control/` 的出口按分层它也引不到 ⇒ 收成一份要先动分层，\
-             同 `K-R103`「不收」那条的理由。⚠ 它**只产出**信封、不自己写 stderr —— \
-             写出去那一下在 `main.rs::emit_answer`（账号域的输出受中转日志白名单管 —— 其中上游选择那块挂在中转进程上，查询输出不是日志）。",
-        ),
+        // 〔LOC1a · 第四波 4D〕`accounts/iso.rs` 那一行（本机 `cc-acct-iso` 两问的 argv 形失败信封）删了：
+        //   两问上了帧面，失败走帧面的 `(code, message)` 应答，iso.rs 里不再自己拼信封。
         (
             "dial/sftp.rs",
             "serde_json::json!({ \"code\": code, \"message\": message })",

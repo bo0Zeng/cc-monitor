@@ -1999,11 +1999,15 @@ fn finding_a_session_file_by_sid_now_lives_in_exactly_one_place() {
                  后端那一侧 ≠ 1 ⇒ 不走共享那份了，或一条路上问了两遍。"
         );
     }
-    // 两侧的分叉都交给后端的同一条子命令（本机 exec 本机后端 · 远端 ssh exec 远端后端）。
+    // 〔LOC1a〕两侧的分叉交给那台后端的**同一条帧命令**、只有一处发送点（本机 `<local>` 与远端同一个 `fork_on`）。
     assert_eq!(
-        mine_remote.matches("--fork-session").count(),
-        2,
-        "本机与远端那两支都该交给后端的 `--fork-session`（本机 argv 一处 ＋ 远端命令串一处）"
+        mine_remote.matches("\"session-fork\"").count(),
+        1,
+        "本机与远端那两支都该经同一处发 `session-fork`（`remote_branch.rs::fork_on`）"
+    );
+    assert!(
+        !mine_remote.contains("connect_and_exec_capture(") && !mine_remote.contains("run_query("),
+        "monitor 的分叉又自己 exec 了（拨号 capture / 一次性本机后端两条路 LOC1a 都删了）"
     );
 
     // ③ 两条分叉路径上**一处目录枚举都没有** —— 「自己又找了一遍」的形状。

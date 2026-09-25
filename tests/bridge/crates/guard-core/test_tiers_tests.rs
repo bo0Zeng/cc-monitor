@@ -316,7 +316,6 @@ const SCAN: &[&str] = &[
     "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
     "tests/bridge/backend/control/payload_tests.rs",
     "tests/bridge/backend/control/tmux_tests.rs",
-    "tests/bridge/backend/observe/local_query_tests.rs",
     "tests/bridge/backend_policy_tests.rs",
     "tests/bridge/backend_tests.rs",
     "tests/bridge/bus_identity_registry_tests.rs",
