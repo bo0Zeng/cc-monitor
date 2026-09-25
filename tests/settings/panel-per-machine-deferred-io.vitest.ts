@@ -98,11 +98,17 @@ const LOCAL_PAGE_IPC = [
  * cc-bus 钩子切机器**刻意不发**（它的既有语义：远端诊断只在点「检查远端」时发）。
  * 足迹在远端页上不发（`applyOriginGate`：今天的读口不收 origin）。
  */
-const SWITCH_TO_AYA_IPC: readonly string[] = ["list_mcp_project_dirs", "read_remote_mcp_servers"];
+const SWITCH_TO_AYA_IPC: readonly string[] = [
+  "list_mcp_project_dirs",
+  "read_remote_mcp_servers",
+  // 〔RM1b · 第四波〕插件那块也跟着机器走了（`plugins-marketplaces` 按 origin 问那台后端）。
+  "list_plugin_marketplaces",
+];
 /**
  * 第一次可见就是 devbox：per-machine 那一批放一次，**每一发恰好一次**。
- * ⚠ 代价如实写：「终端集成」「插件」两块只对本机有意义（远端页上是藏着的），
- *   但它们与其余几块是同一批单例、同一个时刻放 ⇒ 这里也读了（都是本机读，不走 SSH）。
+ * ⚠ 代价如实写：「终端集成」只对本机有意义（远端页上是藏着的），
+ *   但它与其余几块是同一批单例、同一个时刻放 ⇒ 这里也读了（本机读，不走 SSH）。
+ *   〔RM1b · 第四波〕「插件」那块不再是本机专属：它问的是**当前那台**（这里就是 devbox），同样恰好一次。
  */
 const FIRST_VISIT_AYA_IPC: readonly string[] = [
   "load_config", // 账号：读远端清单
