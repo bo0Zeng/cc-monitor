@@ -50,6 +50,7 @@ import {
   MachineCard,
   defaultBackendPathFor,
   shouldShowResetFingerprint,
+  type MachineCardParts,
 } from "./machine-card";
 import { markRestartNeeded } from "./restart-notice";
 import { computeGaps, summarizeGaps, describeGap } from "./readiness";
@@ -123,7 +124,7 @@ export interface MachinePagesHost {
     id: string,
     title: string,
     element: HTMLElement,
-    parts?: { connection: HTMLElement; components: HTMLElement },
+    parts?: MachineCardParts,
   ): void;
   removeMachinePage(id: string): void;
   navigateToMachinePage(id: string): void;

@@ -43,6 +43,7 @@ import {
 } from "./remote-section";
 import { DataSection } from "./data-section";
 import { RemoteSection } from "./remote-section";
+import type { MachineCardParts } from "./machine-card";
 import { BackendSection } from "./backend-section"; // P2s（C8）：每台机一个后端开关
 import {
   getBehavior,
@@ -811,7 +812,7 @@ export class SettingsPanel {
    */
   private buildMachineTabs(
     pageId: string,
-    parts: { connection: HTMLElement; components: HTMLElement },
+    parts: MachineCardParts,
   ): HTMLElement {
     const tabs = new SettingsRouter({
       landingId: `${pageId}#conn`,
@@ -822,6 +823,9 @@ export class SettingsPanel {
     tabs.addRoute({ id: `${pageId}#comp`, title: "组件", element: parts.components });
     const acct = document.createElement("div");
     const tools = document.createElement("div");
+    // 〔ST2 · 协调方转主会话裁：别名统一放「工具」栏〕这台机器的别名那一块排在「工具」栏最前面，
+    //   与本机页「工具 → 别名」同一个位置（per-machine 那几块由 `movePerMachineTo` 接在它后面）。
+    tools.appendChild(parts.tools);
     const footprint = document.createElement("div");
     tabs.addRoute({ id: `${pageId}#acct`, title: "账号", element: acct });
     tabs.addRoute({ id: `${pageId}#tools`, title: "工具", element: tools });

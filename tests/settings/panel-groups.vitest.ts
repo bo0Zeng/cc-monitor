@@ -42,7 +42,7 @@ vi.mock("../../src/settings/remote-section", () => ({
           id: string,
           title: string,
           el: HTMLElement,
-          parts?: { connection: HTMLElement; components: HTMLElement },
+          parts?: { connection: HTMLElement; components: HTMLElement; tools: HTMLElement },
         ) => void;
       };
     }) {
@@ -58,9 +58,14 @@ vi.mock("../../src/settings/remote-section", () => ({
         conn.textContent = "CONN";
         const comp = document.createElement("div");
         comp.textContent = "COMP";
+        // 〔ST2〕第三块：「工具」栏里那台机器自己的别名（与本机页同一个位置）。
+        const tools = document.createElement("div");
+        tools.textContent = "TOOLS";
+        tools.id = "stub-remote-aliases";
         opts?.pages?.addMachinePage("machine:devbox", "devbox", document.createElement("div"), {
           connection: conn,
           components: comp,
+          tools,
         });
       }, 0);
     }
@@ -474,6 +479,19 @@ describe("S2 设置面板分页结构", () => {
     expect(toolTitles).toContain("cc-bus 钩子");
     // 反向：账号**不该**也出现在工具栏里（搬 DOM 一处一份，不能有两份）
     expect(toolTitles).not.toContain("账号");
+    // 🔴 〔ST2 · 协调方转主会话裁：别名统一放「工具」栏〕这台机器自己的别名在「工具」栏**最前面**，
+    //   不在「组件」栏 —— 与本机页「工具 → 别名」同一个位置。
+    const tools = tabPage("tools");
+    expect(tools.querySelector("#stub-remote-aliases"), "远端的别名不在「工具」栏").not.toBeNull();
+    expect(tabPage("comp").querySelector("#stub-remote-aliases")).toBeNull();
+    const stub = tools.querySelector<HTMLElement>("#stub-remote-aliases")!;
+    expect(stub.parentElement!.firstElementChild, "别名不在「工具」栏最前面").toBe(stub);
+    // 本机那一格：「工具」里也有「别名」—— 两边同一个位置。
+    document.querySelector<HTMLButtonElement>("#settings-tab-machine\\:（本机）")!.click();
+    const localTitles = [
+      ...document.querySelectorAll('.settings-page[data-route-id="machine:（本机）"] .settings-group-title'),
+    ].map((e) => e.textContent);
+    expect(localTitles).toContain("别名");
   });
 
   it("★ S7：没有待生效改动时，重启条不出现（恒显示的警告 = 背景噪音）", async () => {
