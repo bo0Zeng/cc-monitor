@@ -1714,7 +1714,7 @@ fn line_number_addresses_stay_in_range_and_never_grow() {
         // **存量少一条，这是往下走**（递减方向），不是把账挂空。
         ("lib.rs", "main.rs", 26),
         ("lib.rs", "russh-sftp-2.3.0/src/protocol/file_attrs.rs", 29),
-        ("lib.rs", "sftp.rs", 141),
+        // 〔SR1b〕`lib.rs → sftp.rs 的第 141 行` 摘了：creds-core 那句改成了点符号（原子上传搬去后端 `put_atomic`）。
         // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
         ("local_backend_tests.rs", "structural_scan.rs", 425),
         // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
@@ -2643,6 +2643,10 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/bridge/README.md", "drain_complete_lines", 1),
         ("src/bridge/README.md", "exec_on_session", 1),
         ("src/bridge/README.md", "plan_file_read", 1),
+        // 〔SR1b 子步 3 · 2026-09-24〕同一份 README 那一行（`ssh_source.rs` 的旧功能表）里的跳板函数名：界面侧最后一份
+        //   （`inproc_dial.rs` 里 SFTP 用的那一个）随界面进程零 SSH 整份删了，后端那份改了名 ⇒ 真死名，如实记账；
+        //   那一行同时点着上面四个死名，不给整行贴墓碑（贴了会把它们一起改记成「墓碑」，账就错了）。
+        ("src/bridge/README.md", "connect_via_jump", 1),
         // 🔴 〔搬树 2026-09-18 · `设计/16 §4.2`〕**这里删掉了 6 行**，逐条点名：
         //   `INVARIANTS.md`/`guard-core/src/lib.rs`  `every_monitor_file_strips_clean`
         //   `accounts_query.rs`/`local_backend_host.rs`     `every_comment_stripping_transformer_is_registered`
@@ -2672,6 +2676,39 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// `tool_registry`（→ `tool_registry_environment_tests.rs`）。
     /// 另有**真新增的一条**（退役判据留下的墓碑），挂在本表末尾、单独写了理由。
     const TOMBSTONED: &[(&str, &str, usize)] = &[
+        // 〔SR1b 子步 3 · 2026-09-24〕界面进程零 SSH：`inproc_dial.rs`（SFTP 那一份拨号）整份删了 ⇒ 从界面侧搬去后端的
+        //   几个旧函数名（跳板 · agent 鉴权）全仓只剩散文；`sftp_move_ledger`（SFTP 14 处拨号的挡路石底账）随事做完退役。
+        ("src/backend/dial/connect.rs", "connect_via_jump", 1),
+        ("src/backend/dial/connect.rs", "authenticate_via_agent", 1),
+        (
+            "src/backend/platform/ssh_agent.rs",
+            "authenticate_via_agent",
+            1,
+        ),
+        (
+            "src/bridge/src/backend/control/mod.rs",
+            "sftp_move_ledger",
+            1,
+        ),
+        ("src/bridge/src/lib.rs", "sftp_move_ledger", 1),
+        (
+            "tests/bridge/local_origin_registry_tests.rs",
+            "connect_via_jump",
+            2,
+        ),
+        ("tests/bridge/tool_registry_tests.rs", "sftp_move_ledger", 1),
+        // 〔SR1b 子步 3〕「russh 只住 SFTP 还要它的地方」那条判据改名成零命中（`russh_is_named_nowhere_in_the_monitor_crate`）。
+        (
+            "tests/bridge/ssh_source_dial_move_judge.rs",
+            "russh_lives_only_where_sftp_still_needs_it",
+            1,
+        ),
+        // 〔SR1b · 2026-09-24〕读回比对的判定改成吃后端交回的事实（`verify_readback`），creds-core 那段历史引用旧名留墓碑。
+        (
+            "src/bridge/crates/creds-core/src/lib.rs",
+            "verify_uploaded_bytes",
+            1,
+        ),
         // 〔SR1b · 2026-09-24〕V89「SFTP 进本机常驻后端，只写暂存区」之后，后端**有**远端写了（只在 `dial/sftp.rs`、
         //   只许两处）⇒ 「今天一处远端写都没有」那条判据换成两条相等（`remote_write_layer`），旧名留墓碑说它为什么不在了。
         (
@@ -3356,8 +3393,9 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "sftp_read_text_for_edit",
             1,
         ),
+        // 〔SR1b〕住址 `src/bridge/src/sftp.rs` → `src/backend/dial/sftp.rs`：那段原子上传的来历随函数搬进了本机后端。
         (
-            "src/bridge/src/sftp.rs",
+            "src/backend/dial/sftp.rs",
             "the_chmod_attrs_never_put_a_size_on_the_wire",
             1,
         ),
@@ -3635,6 +3673,17 @@ fn every_prose_tombstone_mark_is_registered() {
     /// 不是（量具脚本里的针、讲机制的散文）⇒ 同样记一笔，并在旁边写清它是哪一类。
     /// **不许**为了让本条变绿就把标记删掉 —— 删掉的是账，不是病。
     const REGISTERED: &[(&str, usize)] = &[
+        // 〔SR1b 子步 3 · 2026-09-24〕`inproc_dial.rs` 整份删了（界面进程零 SSH）⇒ 从界面侧搬来的旧函数名全仓只剩散文：
+        ("src/backend/dial/connect.rs", 2), // 头注「搬自」那一句里跳板 · agent 鉴权两个旧名
+        ("src/backend/platform/ssh_agent.rs", 1), // 头注「搬自」那一句里 agent 鉴权旧名
+        ("tests/bridge/local_origin_registry_tests.rs", 2), // 地板 17 → 16 · 分诊债 12 → 11 两处（跳板查配置那一处随文件走了）
+        // 〔SR1b 子步 3〕`sftp_move_ledger`（SFTP 14 处拨号的挡路石底账）随那 14 处全搬完退役：点它名字的两处旁注各一块。
+        ("src/bridge/src/backend/control/mod.rs", 1),
+        ("tests/bridge/tool_registry_tests.rs", 1),
+        // 〔SR1b · 2026-09-24〕后端那份 SFTP：原子上传的来历随函数从 monitor 搬来（改权限那条旧判据名一块）。
+        ("src/backend/dial/sftp.rs", 1),
+        // 〔SR1b · 2026-09-24〕creds-core 头注里「远端那一侧」那段：原子上传与读回比对的住址搬了，两处旧名挂墓碑。
+        ("src/bridge/crates/creds-core/src/lib.rs", 2),
         // 〔C4a · 第四波 · 2026-09-24〕「会话 ↔ 账号」与远端全文搜索改走通道，Rust 那几份删了，留下的三处病史各挂一块：
         ("src/backend/observe/search_query.rs", 1), // 合并那一份（`K-R100` 病史）
         ("src/bridge/src/remote_history.rs", 2), // 远端全文搜索那份 fan-out ·〔合并 RW1〕+1：F11 改经远端后端删，远端那一支的头注一块
@@ -3660,7 +3709,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/claude_data_fence.rs", 2),
         ("tests/bridge/history_tests.rs", 3), // 〔RW1〕+2：本机分叉那几组判据换掉时留的块
         // 〔RW1 · 第四波 09-24〕项目 `.mcp.json` 的本机写原语删了（改经后端写）。
-        ("src/bridge/src/mcp.rs", 1),
+        ("src/bridge/src/mcp.rs", 2), // 〔SR1b〕+1：远端 `.mcp.json` 读那一半改经远端后端 `files-peek`，旧的 SFTP 读取函数留墓碑
         // 〔RW1 · 第四波 09-24〕写点表摘掉那三行时留的一块。
         ("tests/bridge/write_site_registry_tests.rs", 1),
         // 〔RW1 · 第四波 09-24〕「盘上有字节却读到空」那一道从 monitor 的 `LocalFile::read` 搬到后端 `hollow_read`
@@ -3668,21 +3717,22 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔RW1 · 第四波 09-24〕Windows ACL 那条判据从 monitor 搬去后端：两头各一块墓碑。
         ("tests/backend/control/files_write_tests.rs", 1),
         ("tests/bridge/profile_installer_tests.rs", 1),
-        // 〔C2 · 2026-09-24〕拨号归后端那一拍：`inproc_dial.rs` 那块（端口转发用的 russh 句柄别名删了）·
-        // `ssh_source_dial_move_judge.rs` 三块（回落表那条判据 · 请求行那条 · 解析两处那条，随拨号搬家删掉）。
-        ("src/bridge/src/inproc_dial.rs", 1),
-        ("tests/bridge/ssh_source_dial_move_judge.rs", 3),
+        // 〔C2 · 2026-09-24〕拨号归后端那一拍：`ssh_source_dial_move_judge.rs` 三块（回落表那条判据 · 请求行那条 ·
+        //   解析两处那条，随拨号搬家删掉）。〔SR1b 子步 3〕+1：只剩 SFTP 还要 russh 的那条判据改名成零命中。
+        // 〔SR1b 子步 3〕`inproc_dial.rs` 那一行摘了：**那份文件整份删了**（SFTP 进本机常驻后端，界面进程零 SSH），
+        //   它那块墓碑（端口转发用的 russh 句柄别名）随被守的那件事整轴退役。
+        ("tests/bridge/ssh_source_dial_move_judge.rs", 4),
         // 〔SR1a · 2026-09-24〕`--dial` 删了那一拍：守它的判据改名留的墓碑 · C2 那份读数脚本头上
         //   那句「界面侧判据随之改名」（它点名的判据 SR1a 改了名，脚本本身只对 C2 那一版有效）。
         ("tests/backend/main_argv_table_guard.rs", 1),
         ("tests/evidence/C2-dial-loopback.py", 1),
         // 〔MC1〕+3：模块头注 ＋ 装 / 卸两条命令头注里各一块（`…_ccm_helper` 改名成 `…_alias_block`）。
-        ("src/bridge/src/sftp.rs", 9), // 〔F7c 收尾 09-24〕4 → 6（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑） // 〔RW1〕+3：F11 那条 SFTP 直删与它的结构守卫（段头一块两个名字 ＋ 模块头注一处）
+        ("src/bridge/src/sftp.rs", 10), // 〔SR1b〕9 → 10（进 3 出 2）：执行那一半（SFTP）搬进本机后端 —— 模块头注两块（开会话 · 原子上传）＋ `SftpFile` 改名一块进；原子上传那段头注的两块随函数搬去后端 `dial/sftp.rs`
         ("src/bridge/src/profile_installer.rs", 5), // 〔AL1〕+1：`AccountAliasReport` 那一句 · 〔RW1〕+3：本机原子写原语 `atomic_write_string` / `atomic_replace_path` 删了（原住址一块 ＋ BOM 那段两句）
         ("src/bridge/src/verified_write.rs", 3),    // 〔RW1〕+1：`verify_and_rollback` 零调用方删了
         ("tests/bridge/verified_write_tests.rs", 1), // 〔RW1〕那三条回滚判据随它走了
         // 〔SR1b〕+2：传输台那三行摘掉时留的墓碑（暂存区上传 · 本机下载落地两个旧名）。
-        ("tests/bridge/remote_write_registry_tests.rs", 10), // 〔F7c 收尾 09-24〕1 → 7（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔RW1〕+1：F11 那条 SFTP 直删
+        ("tests/bridge/remote_write_registry_tests.rs", 12), // 〔F7c 收尾 09-24〕1 → 7（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔RW1〕+1：F11 那条 SFTP 直删 · 〔SR1b 子步 3〕+2：写点表整张空了，`sftp.rs` 那一对原语（原子上传 · 入口落点类型）的旧名
         // 〔MC1 · 2026-09-24〕`CCM_SELF` 删了那一拍：shim 那条判据改名留的墓碑。
         ("tests/bridge/backend/control/local_backend_tests.rs", 1),
         // 〔AL1 · 2026-09-24〕别名改由后端渲染那一拍：本模块头注里 TS 那个旧生成器（`buildAliasLine`）·
@@ -3714,7 +3764,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/filewin/fonts.rs", 2), // 〔F9c 第四波 09-24〕0 → 2（探针来路里那两句「存不回去」的函数名随只读一档删了）
         ("src/bridge/src/history.rs", 5), // 〔RW1〕+1：本机删会话那道路径守卫整段搬去后端 // 〔RW1〕+3：本机分叉的实现（`branch_impl` / `write_branch_file` / `read_jsonl_values`）交给后端
         ("src/bridge/src/launch.rs", 1),
-        ("src/bridge/src/lib.rs", 2), // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
+        ("src/bridge/src/lib.rs", 3), // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔SR1b 子步 3〕+1：`sftp_move_ledger` 退役
         ("src/bridge/src/local_backend_host.rs", 1),
         ("src/bridge/src/local_origin_registry.rs", 1),
         ("src/bridge/src/spawn_managed.rs", 2),
@@ -3766,7 +3816,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/plugin_class_registry_tests.rs", 2),
         ("tests/bridge/polling_registry_tests.rs", 1),
         // 〔AL1 · 2026-09-24〕+1：`rollback_note_matches_what_actually_happened` 搬走的那块墓碑。
-        ("tests/bridge/sftp_tests.rs", 4),
+        ("tests/bridge/sftp_tests.rs", 5), // 〔SR1b〕+1：`SftpFile` 改名 `RemoteFile`
         ("tests/bridge/shared_crate_registry_tests.rs", 1),
         // 〔`C1` · 09-24〕快照那一格的墓碑（`parse_snapshot_meta` 随改走长连接删了）。
         ("tests/bridge/ssh_source_snapshot_tail_tests.rs", 1),

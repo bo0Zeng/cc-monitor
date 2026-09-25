@@ -1383,12 +1383,18 @@ fn the_user_path_status_uses_the_same_equality_as_the_generated_commands() {
 #[test]
 fn the_shared_alias_snippet_really_puts_both_ccm_dirs_on_path_local_first() {
     let local = crate::tool_registry::local_ccm_bin_dir_rel().expect("本机申报的 bin 目录");
+    // 〔SR1b · 2026-09-24〕**前提变了，照这里原话「回到 `KR135D3` 重裁一次」**：远端入口挪到 `.cc-monitor/bin`
+    //   （远端写只许 `~/.cc-monitor/{bin,staging}`，V89；也正是 `设计/01 §6.7b` 用户 09-18「两边尽量同形」的落点）
+    //   ⇒ 两边落点**相等**了。本条从「一份文本、两个落点，两个都上 PATH、本机那个赢」改裁成：
+    //   ① 两边相等（`tool_registry` 现算，钉住「同形」）；② 那个落点在 PATH 上；③ 它赢过 `~/.local/bin` ——
+    //   那一格今天住的是**旧的**东西（用户早年那份 bash `ccm` · 远端更早部署留下的 shim，产品一个字节都不删）。
+    //   这一裁要主会话签字（写进 SR1b 的记录「要拍板的」）。
     let remote = crate::tool_registry::remote_ccm_bin_dir_rel().expect("远端申报的 bin 目录");
-    assert_ne!(
+    assert_eq!(
         local, remote,
-        "两边落点变成同一个了 —— 那本条的前提（一份文本、两个落点）就没了。\
-             这不是放宽它的理由：回到 `KR135D3` 重裁一次"
+        "两边的 ccm 落点又分开了 —— `设计/01 §6.7b` 要的是两边同形（SR1b 把远端挪到了 `.cc-monitor/bin`）"
     );
+    let remote = ".local/bin".to_string();
     let td = tmpdir("aliassnip");
     let home = td.0.join("h");
     std::fs::create_dir_all(&home).expect("造假家目录");
@@ -1423,7 +1429,10 @@ fn the_shared_alias_snippet_really_puts_both_ccm_dirs_on_path_local_first() {
     let want_local = format!("{}/{local}", home.display());
     let want_remote = format!("{}/{remote}", home.display());
     let segs: Vec<&str> = path.split(':').collect();
-    for (who, want) in [("本机", &want_local), ("远端", &want_remote)] {
+    for (who, want) in [
+        ("ccm 落点（两边同一个）", &want_local),
+        ("旧的那一格（`~/.local/bin`）", &want_remote),
+    ] {
         assert!(
             segs.contains(&want.as_str()),
             "{who}那个 `ccm` 落点不在 PATH 上：`{want}`。\n\

@@ -121,21 +121,21 @@ fn the_remote_vantage_drops_the_monitor_machine_rows_and_really_probes_the_rest(
             .clone()
     };
     assert_eq!(
-        pick(&absent.rows, remote, "~/.local/bin/ccm"),
+        pick(&absent.rows, remote, "~/.cc-monitor/bin/ccm"),
         SurfaceState::Absent
     );
     assert!(matches!(
-        pick(&present.rows, remote, "~/.local/bin/ccm"),
+        pick(&present.rows, remote, "~/.cc-monitor/bin/ccm"),
         SurfaceState::Present { .. }
     ));
     let ccm = absent
         .rows
         .iter()
-        .find(|r| r.path_declared == "~/.local/bin/ccm")
+        .find(|r| r.path_declared == "~/.cc-monitor/bin/ccm")
         .unwrap();
     assert_eq!(
         ccm.path_resolved.as_deref(),
-        Some("/r/home/.local/bin/ccm"),
+        Some("/r/home/.cc-monitor/bin/ccm"),
         "解析用的不是那台的家目录"
     );
     // ③ 「本机或远端」答不在 ⇒ 未确定（也可能在另一台上），不说「缺」。

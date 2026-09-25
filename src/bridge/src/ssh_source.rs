@@ -46,9 +46,8 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 
 use crate::event_replay::EventReplay;
 use crate::ssh_link::ConnectStage;
-// 〔C2〕`sftp.rs`（`F7c` 独占，本拍不许动）从本模块取这两个名字 —— 它们今天住 `inproc_dial.rs`
-// （界面进程里最后一份 russh 拨号，唯一调用方就是 SFTP）。`F7c` 换走那天这一行随那份文件一起删。
-pub(crate) use crate::inproc_dial::{connect_session, ClientHandler};
+// 〔SR1b · 2026-09-24〕从前这里把 `connect_session` / `ClientHandler` 从 `inproc_dial.rs` 再导出给 `sftp.rs`
+//   （界面进程里最后一份 russh 拨号，唯一调用方就是 SFTP）。SFTP 进了本机常驻后端，那份文件整份删了，这一行随之删。
 use crate::session_map::{RemovalCause, RemovedSid, SessionChange};
 
 /// S0 **跨语言双写点**：backend 那侧 `RemovalCause::Superseded` 的 serde 线上名。

@@ -293,11 +293,19 @@ pub(crate) async fn fenced_remote(
 
 /// 原子上传 `bytes` 到 `path`，权限 `mode`（只在 open-create 的属性里设一次）。
 ///
-/// 序列与 monitor 那一份 F08 的 `upload_atomic` 逐步相同（它的头注是这一序列的来历 ——
-/// 「先备份不删旧」「**绝不** rename 之后 setstat 兜底 chmod」那两条事故教训都在那里）：
-/// 写 `<path>.tmp`（先删残留，再 **EXCLUDE** 创建：临时件是一条预置的链接也不会跟过去）
-/// → 旧目标**改名成 `.bak`**（不是删）→ 临时件上位 → 删 `.bak`。临时件与 `.bak` 都在目标**同一个父目录**里，
-/// 那个父目录已经过了围栏。
+/// 〔SR1b · 2026-09-24〕搬自 monitor `sftp.rs` 的 F08 原子上传（那一份随界面进程零 SFTP 删了），序列逐步相同：
+/// 写 `<path>.tmp`（先删残留，再 **EXCLUDE** 创建：临时件是一条预置的链接也不会跟过去 —— F89a 审计）
+/// → 旧目标**改名成 `.bak`**（不是删：「先删旧」一旦后续改名失败就丢原件，DN-7 订正过那句注释）
+/// → 临时件上位 → 删 `.bak`。临时件与 `.bak` 都在目标**同一个父目录**里，那个父目录已经过了围栏。
+/// 标准 SFTP 的改名不覆盖（`russh-sftp` 没有 `posix-rename@openssh.com`）⇒ 只能这样近似原子（单写者、低频部署够用）。
+///
+/// ⚠ **改名之后绝不 `set_metadata` 兜底 chmod** —— 真机 e2e 实证：OpenSSH sftp-server 上那一次 setstat 把刚上位的
+/// 后端**截成 0 字节** ⇒ 不可 exec → 连接 EOF → 标记变空 → 无限重部署。权限只在 open-create 的属性里设一次。
+/// ⚠ 〔2026-09-20 现打订正，随函数搬来〕「即便只设 permissions、`size=None` 也会截断」那句括号是推断、今天复现不出来
+/// （真 `OpenSSH_10.2p1` 上 permissions-only 的 SETSTAT 前后都是 16 字节）；最可能当年那个属性块真的带了 size。
+/// 🔴 **但这条禁令不放宽**：事故是真的、只量了一个服务端版本、部署路上多一次 setstat 收益为零风险是变砖。
+/// ⚠ 与改权限命令的关系：那条命令（今天是后端 `files-chmod`）**要**改权限，是它的本职；它当年靠「属性块逐字节不带 size」
+/// 那条判据挡住这一形（`the_chmod_attrs_never_put_a_size_on_the_wire`〔散文墓碑〕，随那条老命令一起删了）。
 pub(crate) async fn put_atomic(
     s: &Session,
     path: &str,

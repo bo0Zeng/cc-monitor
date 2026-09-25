@@ -360,6 +360,188 @@ pub(crate) async fn forward(
     Ok(ForwardLink { link })
 }
 
+// ═══ 〔SR1b · 2026-09-24〕部署那条路：受限的远端文件一问一答（链路 `use:"files"`）═══════════════════
+//
+// 用户 V89「SFTP 进本机常驻后端，只写暂存区」：界面进程零 SSH / 零 SFTP。自部署（F08 后端二进制 · `.build_id` ·
+// `ccm` 入口 · cc-acct-iso）的**业务判定**留在 monitor（`sftp.rs` / `acct_iso_deploy.rs`，一个判定函数都没动），
+// 执行交给本机常驻后端那一份 SFTP（`src/backend/dial/sftp.rs`）—— 它**只许往 `~/.cc-monitor/staging/` 与
+// `~/.cc-monitor/bin/` 写**（越界 ⇒ 应答 `code:"fenced"`，这里原话带回）。线上形状住后端那份头注与协议文档。
+
+/// 一行应答的字节上限（`read` 的数据 base64 进这一行；部署读的都是小文件：标记 · 入口 · 脚本）。
+fn files_reply_cap() -> u64 {
+    8 * 1024 * 1024
+}
+
+/// `put` 之后等那一行应答的上限：后端先把字节收全（本机管道），再经 SFTP 传到远端（网络），再读回比对。
+/// 一份 MB 级的后端二进制在慢链路上要好一会儿 —— 给宽，但有界。
+const FILES_PUT_DEADLINE: Duration = Duration::from_secs(600);
+
+/// 其余几问（`home` · `stat` · `read` · `remove` · `mkdirs`）等应答的上限：各是一两个 SFTP 往返。
+const FILES_ASK_DEADLINE: Duration = Duration::from_secs(60);
+
+/// 读回来的那一份与期望的比对结论（后端算的）：`None` = 读不回来；`Some((读回长度, 首个差异))`。
+pub(crate) type Readback = Option<(u64, Option<u64>)>;
+
+/// 部署用的远端文件句柄：一条开在本机后端里的 `files` 链路。**只有这几问，写只许两处。**
+///
+/// 丢掉它 = 关链路 = 后端收掉那条 sftp 通道（那条 SSH 连接不跟着断）。
+pub(crate) struct RemoteFs {
+    link: tokio::sync::Mutex<DialStream>,
+    home: String,
+}
+
+impl RemoteFs {
+    /// 开一条 `files` 链路（拨号 / 池里复用 · 开 sftp 子系统），问一次起始目录。
+    pub(crate) async fn open(cfg: &RemoteConfig) -> Result<RemoteFs, String> {
+        let req = request(cfg, "files", serde_json::json!({}))?;
+        let (link, _) = open(cfg, &req, "files", &mut |_| {})
+            .await
+            .map_err(|(e, _)| e)?;
+        let mut fs = RemoteFs {
+            link: tokio::sync::Mutex::new(link),
+            home: String::new(),
+        };
+        let v = fs.ask(serde_json::json!({"op": "home"}), None).await?;
+        fs.home = v
+            .get("home")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| format!("本机后端没答出远端的起始目录：{v}"))?
+            .to_string();
+        Ok(fs)
+    }
+
+    /// 远端 SFTP 的起始目录（真路径）。
+    pub(crate) fn home(&self) -> &str {
+        &self.home
+    }
+
+    /// 一问一答。`bytes` 跟在请求行后面（只有 `put` 用）。失败那一形（`{"code","message"}`）⇒ `Err(message)`。
+    async fn ask(
+        &self,
+        req: serde_json::Value,
+        bytes: Option<&[u8]>,
+    ) -> Result<serde_json::Value, String> {
+        use tokio::io::AsyncWriteExt;
+        let deadline = if bytes.is_some() {
+            FILES_PUT_DEADLINE
+        } else {
+            FILES_ASK_DEADLINE
+        };
+        let mut link = self.link.lock().await;
+        let round = async {
+            let mut line = req.to_string();
+            line.push('\n');
+            link.write_all(line.as_bytes())
+                .await
+                .map_err(|e| format!("往本机后端送请求失败：{e}"))?;
+            if let Some(b) = bytes {
+                link.write_all(b)
+                    .await
+                    .map_err(|e| format!("往本机后端送字节失败：{e}"))?;
+            }
+            link.flush()
+                .await
+                .map_err(|e| format!("往本机后端送请求失败：{e}"))?;
+            ssh_link::reply_line(&mut link.r, files_reply_cap())
+                .await
+                .map_err(|e| e.to_string())
+        };
+        let v = tokio::time::timeout(deadline, round)
+            .await
+            .map_err(|_| format!("本机后端 {}s 没答这一问", deadline.as_secs()))??;
+        if let Some(code) = v.get("code").and_then(serde_json::Value::as_str) {
+            let message = v
+                .get("message")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            return Err(if code == "fenced" {
+                format!("{message}（远端只许往 ~/.cc-monitor/bin/ 与 ~/.cc-monitor/staging/ 写）")
+            } else {
+                message.to_string()
+            });
+        }
+        Ok(v)
+    }
+
+    /// 那个文件在不在 / 多大：`(metadata 的 size, 补问的 exists)` —— 与 `sftp::interpret_target_probe` 入参同形。
+    pub(crate) async fn stat(
+        &self,
+        path: &str,
+    ) -> Result<(Option<Option<u64>>, Option<bool>), String> {
+        let v = self
+            .ask(serde_json::json!({"op": "stat", "path": path}), None)
+            .await?;
+        let meta = v
+            .get("meta")
+            .filter(|m| !m.is_null())
+            .map(|m| m.get("size").and_then(serde_json::Value::as_u64));
+        Ok((meta, v.get("exists").and_then(serde_json::Value::as_bool)))
+    }
+
+    /// 整份读回来：`(字节, 读不出时补问的 exists, 读到空时补问的 size)` —— 与 `sftp::interpret_profile_read` 入参同形。
+    pub(crate) async fn read(
+        &self,
+        path: &str,
+        max: u64,
+    ) -> Result<(Option<Vec<u8>>, Option<bool>, Option<u64>), String> {
+        let v = self
+            .ask(
+                serde_json::json!({"op": "read", "path": path, "max": max}),
+                None,
+            )
+            .await?;
+        let data = match v.get("data").and_then(serde_json::Value::as_str) {
+            Some(t) => Some(crate::link_mux::b64_decode(t)?),
+            None => None,
+        };
+        Ok((
+            data,
+            v.get("exists").and_then(serde_json::Value::as_bool),
+            v.get("size").and_then(serde_json::Value::as_u64),
+        ))
+    }
+
+    /// 原子上传（EXCL 临时件 → 旧的改名 `.bak` → 上位 → 删 `.bak`；**绝不 setstat**）。`verify` ⇒ 后端读回比对，回结论。
+    pub(crate) async fn put(
+        &self,
+        path: &str,
+        bytes: &[u8],
+        mode: u32,
+        verify: bool,
+    ) -> Result<Readback, String> {
+        let v = self
+            .ask(
+                serde_json::json!({"op": "put", "path": path, "size": bytes.len(), "mode": mode, "verify": verify}),
+                Some(bytes),
+            )
+            .await?;
+        let rb = v.get("readback").filter(|r| !r.is_null());
+        Ok(rb.map(|r| {
+            (
+                r.get("len")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0),
+                r.get("first_diff").and_then(serde_json::Value::as_u64),
+            )
+        }))
+    }
+
+    /// 删一份（不在 ⇒ `false`）。
+    pub(crate) async fn remove(&self, path: &str) -> Result<bool, String> {
+        let v = self
+            .ask(serde_json::json!({"op": "remove", "path": path}), None)
+            .await?;
+        Ok(v.get("removed").and_then(serde_json::Value::as_bool) == Some(true))
+    }
+
+    /// `mkdir -p`（每一级都过后端那道围栏）。
+    pub(crate) async fn mkdirs(&self, path: &str) -> Result<(), String> {
+        self.ask(serde_json::json!({"op": "mkdirs", "path": path}), None)
+            .await
+            .map(|_| ())
+    }
+}
+
 #[cfg(test)]
 #[path = "../../../tests/bridge/dial_host_tests.rs"]
 mod tests;
