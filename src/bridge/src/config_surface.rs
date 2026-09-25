@@ -47,7 +47,7 @@ pub enum PathResolution {
     /// Windows 侧 `$PROFILE`，路径由 PowerShell 决定。
     WindowsProfile,
     /// 路径由**用户配置**决定，本页查不到——`what` 告诉用户去哪儿看那个值。
-    NeedsUserConfig { what: &'static str },
+    NeedsUserConfig { what: String },
     /// **两端皆可**（`HostScope::Either`）：可以在本机查，但**"本机没找到" ≠ "不存在"**
     /// ——这东西也可能装在远端（Claude Code 跑在哪台，它就在哪台）。
     ///
@@ -241,7 +241,7 @@ fn resolve_by_destination(
         // 落点只是这个工具碰的文件之一，不是全部。测试当场红在这里。
         ToolDestination::UserConfiguredPath { token, what } => {
             if declared == *token {
-                Ok(PathResolution::NeedsUserConfig { what })
+                Ok(PathResolution::NeedsUserConfig { what: what.get() })
             } else {
                 resolve_local_home(declared, home, cfg_dir_env, is_dir)
             }
@@ -339,7 +339,7 @@ fn describe_target(r: &PathResolution) -> String {
         } => format!("{}/{prefix}*{suffix}", dir.display()),
         PathResolution::EitherHost(inner) => describe_target(inner),
         PathResolution::Remote(p) | PathResolution::NeedsProjectDir(p) => p.clone(),
-        PathResolution::NeedsUserConfig { what } => (*what).to_string(),
+        PathResolution::NeedsUserConfig { what } => what.clone(),
         PathResolution::WindowsProfile => "$PROFILE".to_string(),
     }
 }
@@ -475,10 +475,9 @@ pub fn source_label(s: &ToolSource) -> String {
         ToolSource::Generated => copy_text("rsConfigSurface.source.generated", &[]),
         // 〔`K-R60`〕装不了的那一档：措辞必须**先说清不是我们的**，
         // 否则用户会以为这一行也是 cc-monitor 放上去的。
-        ToolSource::NotOurs { who } => copy_text(
-            "rsConfigSurface.source.notOurs",
-            &[("who", &who.to_string())],
-        ),
+        ToolSource::NotOurs { who } => {
+            copy_text("rsConfigSurface.source.notOurs", &[("who", &who.get())])
+        }
     }
 }
 
@@ -518,7 +517,7 @@ pub fn effect_label(e: TouchEffect) -> String {
 #[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 pub struct SurfaceRow {
     pub tool_id: &'static str,
-    pub tool_name: &'static str,
+    pub tool_name: String,
     /// 🔴 〔`K-R65`〕**档进线上形状了。**
     ///
     /// 上一版 `config-surface-section.ts` 的 `describeUndo` 逐字写着
@@ -530,7 +529,7 @@ pub struct SurfaceRow {
     pub path_declared: &'static str,
     /// 解析出的本机路径（远端 / 项目相对 / `$PROFILE` 一律 `None`）。
     pub path_resolved: Option<String>,
-    pub note: Option<&'static str>,
+    pub note: Option<String>,
     pub host_label: String,
     pub effect_label: String,
     pub state: SurfaceState,
@@ -601,14 +600,14 @@ fn row(
     };
     SurfaceRow {
         tool_id: t.id,
-        tool_name: t.display_name,
+        tool_name: t.display_name.get(),
         tier: e.tier,
         // 🔴 〔`K-R81`〕读的是**这一份载体**的来源，不是「这个工具的来源」——
         //    `ccm` 那一行先前只能填一个，而它的注释自己承认「本机那一半的来源不是这个」。
         source_label: source_label(&c.source),
         path_declared: f.path,
         path_resolved,
-        note: f.note,
+        note: f.note.map(|n| n.get()),
         host_label: host_label(f.host),
         effect_label: effect_label(f.effect),
         state,
@@ -692,12 +691,12 @@ fn unmanaged_row(
     let (path_resolved, state) = observe_unmanaged(named, probe, env);
     SurfaceRow {
         tool_id: e.id,
-        tool_name: e.display_name,
+        tool_name: e.display_name.clone(),
         tier: e.tier,
         source_label,
         path_declared: named,
         path_resolved,
-        note: Some(e.why),
+        note: Some(e.why.clone()),
         host_label: host_label(host),
         effect_label,
         state,
@@ -769,7 +768,7 @@ fn observe_unmanaged(
         EnvProbe::CannotProbe { why } => (
             None,
             SurfaceState::Undetermined {
-                why: copy_text("rsConfigSurface.probe.cannot", &[("why", &why.to_string())]),
+                why: copy_text("rsConfigSurface.probe.cannot", &[("why", &why.get())]),
             },
         ),
     }

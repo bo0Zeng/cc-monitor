@@ -785,7 +785,8 @@ fn host_projection_preserves_the_richer_resolution() {
     .unwrap();
     match r {
         PathResolution::NeedsUserConfig { what } => {
-            assert!(what.contains("backend"), "实得 {what}");
+            // 〔CP2b〕界面上那一格的名字是「后端路径」（话进了文案表，按界面上的叫法认）。
+            assert!(what.contains("后端路径"), "实得 {what}");
         }
         other => panic!("远端投影把 NeedsUserConfig 吞成了 {other:?}"),
     }
@@ -927,7 +928,7 @@ fn user_configured_destinations_declare_a_placeholder_not_a_guess() {
                 n += 1;
                 assert!(token.starts_with('$'), "{}: {token:?} 不像占位符", t.id);
                 assert!(
-                    !what.trim().is_empty(),
+                    !what.get().trim().is_empty(),
                     "{}: 得告诉用户去哪儿看这个值",
                     t.id
                 );
@@ -1106,7 +1107,9 @@ fn the_same_name_under_three_probes_gives_three_different_cells() {
     let (_, blind) = observe_unmanaged(
         "tmux",
         EnvProbe::CannotProbe {
-            why: "这一支是死值验用的：把探测掐掉，看它会不会被显示成「缺」",
+            why: crate::tool_registry::Text(|| {
+                "这一支是死值验用的：把探测掐掉，看它会不会被显示成「缺」".to_string()
+            }),
         },
         &env,
     );

@@ -163,15 +163,6 @@ src/bridge/src/local_backend_host.rs:1208	已断开与本机常驻后端的连�
 src/bridge/src/local_backend_host.rs:1800	本机后端已停（pid={pid:?}）	改·§2.1	[对外] {pid:?} 是 Option<u32> 的调试格式，界面上会显示 pid=Some(1234) →「本机后端已停止」
 src/bridge/src/local_backend_host.rs:1802	本机后端本来就没在跑	保留	[对外] 短
 src/backend/observe/plugins_query.rs:175	`known_marketplaces.json` 里没记 `installLocation` ⇒ 无从去数	改·§2.1	[对外] 〔RM1b · 第四波〕随插件市场枚举从 monitor `plugins.rs` 原样搬进后端（远端也要答得出），裁词照旧 —— 插件页 declared_error：installLocation 字段名 ＋「⇒ 无从去数」的推导箭头 兼§2.4 →「插件市场记录里缺安装位置，数不出插件数」
-src/bridge/src/tool_registry.rs:828	Claude Code 自己建、自己写	保留	[对外] 经 source_label 显示为「不由 cc-monitor 提供：Claude Code 自己建、自己写」
-src/bridge/src/tool_registry.rs:831	Claude Code 的数据根（`adapter/claude_code.rs` 的 CLAUDE_LAYOUT.sessions_subdir）	改·§2.1	[可达存疑] ToolDestination 带 serde::Serialize，whose 可能随清单到前端：露出源码住址 adapter/claude_code.rs 与常量名 CLAUDE_LAYOUT.sessions_subdir →「Claude Code 的会话目录」
-src/bridge/src/tool_registry.rs:984	app 自带	保留	[对外] 来源档名，短
-src/bridge/src/tool_registry.rs:985	你自己装	保留	[对外] 来源档名，短
-src/bridge/src/tool_registry.rs:986	不是装出来的	保留	[对外] 来源档名，短（偏口语，CP2 可换「无需安装」）
-src/bridge/src/tool_registry.rs:1076	app 装的	保留	[对外] 环境档名，短
-src/bridge/src/tool_registry.rs:1077	app 该自带 —— 今天还没有装口	内部词→「应随 app 提供（安装功能暂未提供）」	[对外] 环境档名；「装口」是内部说法 新词:装口
-src/bridge/src/tool_registry.rs:1078	你自己装 —— 缺了我们提示你	保留	[对外] 环境档名，破折号后一句说清我们做什么
-src/bridge/src/tool_registry.rs:1079	app 只查	保留	[对外] 环境档名，短
 src/bridge/src/tool_registry.rs:1441	**不由 cc-monitor 安装** —— 它是用户自己装在 `<claude_dir>/skills/planned-build/` 的 \n         skill，cc-monitor 只**读它的产物**（计划文件）并允许编辑那个收件箱。\n\n         ⇒ 它在 `skill_host::SKILLS` 里（接入的 skill），**不在**本表里（受管工具）。\n         ★ 这两个集合**有交集但不是同一张表**（今天交集只有 `cc-bus`）——\n         devbench 的账本 L4 原写「同一张表的两个视图」是**错的**，已订正。\n\n         它的 `SkillSpec.install` 如实记 `NotSupported` 并说明归 F06。	保留	[不对外] NOT_MANAGED 登记表理由
 src/events.ts:585	[perf] === 启动管线 timeline (前端 performance.now ms · window={…}) ===	保留	[不对外] 启动管线 perf timeline 行，经 console.info / frontend_perf_log 进开发者日志
 src/events.ts:589	[perf]   first jsonl-batch in   T+{…} (+{…}) ← 后端 replay 完成	保留	[不对外] perf timeline 开发者日志行
