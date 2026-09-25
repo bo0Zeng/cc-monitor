@@ -1304,40 +1304,98 @@ fn resolve_backend_bin(
 }
 
 /// 停掉常驻那个。**调用方必须已经持有 [`LOCAL_BACKEND`] 的锁**（锁序，见 [`DETACHED`]）。
-fn stop_detached_locked() -> Option<String> {
+/// `None` = 没有常驻那个；`Some(Ok)` = 干净地停了；`Some(Err)` = 强杀了 / 没停掉（都要到用户眼前）。
+///
+/// 🔴〔HX1 · 4D · 主会话 D-a〕**先请它自己收尾（SIGTERM）→ 等（≤ 约 10 秒）→ 还在才 SIGKILL**（[`crate::stop_grace`]）。
+/// 此前自己起的那个直接 `Child::kill`（SIGKILL）—— 后端正在写的那一条被当场腰斩（E §E2）；
+/// 接管来的那个只发一次 SIGTERM 就说「已停」，不等、不看它是不是真退了。
+/// 后端收到 SIGTERM 会先排空停不下来的那一档再退（`src/backend/inbound.rs::exit_after_drain`）。
+/// ⚠ SIGKILL 挡不住（整组被 SIGKILL 的 OOM 那一形同样挡不住）：强杀那一格照样可能腰斩一条写 ——
+///   覆盖写那一半由后端的原子换兜（目标原封不动），话里说出来「可能没做完」。
+fn stop_detached_locked() -> Option<Result<String, String>> {
+    use crate::stop_grace::{stop_gracefully, StopEnd, STOP_GRACE_TRIES, STOP_POLL};
     let mut g = DETACHED.lock().unwrap_or_else(|e| e.into_inner());
     let h = g.take()?;
     let pid = h.pid;
-    if let Some(mut c) = h.child {
-        let _ = c.kill();
-        // 收尸：**不 `wait` 就留 `Z`**（`launch.rs:198` 逐字）。
-        let _ = c.wait();
-        return Some(copy_text(
-            "rsLocalBackendHost.stop.detached",
-            &[("pid", &pid.to_string())],
-        ));
-    }
-    // 接管来的那个：手里没有 `Child`。**按 pid 杀之前先核身份** ——
-    // pid 会被复用，杀错一个无关进程是不可逆的。
-    match kill_adopted(pid, &h.bin) {
-        Ok(()) => Some(copy_text(
+    let (end, adopted) = if let Some(c) = h.child {
+        // 自己起的：「还在不在」问 `try_wait`（顺手收尸，不留 `Z` —— `INVARIANTS §48.2`）；强杀 = `Child::kill`
+        // （对一个已经退了的孩子它回 `Ok`，不会误伤）。
+        let c = std::cell::RefCell::new(c);
+        let end = stop_gracefully(
+            || signal_term(pid),
+            || matches!(c.borrow_mut().try_wait(), Ok(Some(_))),
+            || c.borrow_mut().kill().map_err(|e| e.to_string()),
+            STOP_GRACE_TRIES,
+            STOP_POLL,
+        );
+        (end, false)
+    } else {
+        // 接管来的那个：手里没有 `Child`。**按 pid 发信号之前先核身份** —— pid 会被复用，杀错一个无关进程是不可逆的；
+        // 强杀那一下之前**再核一次**（等的那几秒里 pid 可能已经换了人）。
+        let bin = h.bin.clone();
+        if let Err(e) = kill_adopted(pid, &bin) {
+            return Some(Err(copy_text(
+                "rsLocalBackendHost.stop.adoptedKillFailed",
+                &[("pid", &pid.to_string()), ("e", &e.to_string())],
+            )));
+        }
+        let end = stop_gracefully(
+            || Ok(()),
+            || adopted_gone(pid),
+            || {
+                same_backend(pid, &bin)?;
+                signal_kill(pid)
+            },
+            STOP_GRACE_TRIES,
+            STOP_POLL,
+        );
+        (end, true)
+    };
+    let pid_s = pid.to_string();
+    Some(match end {
+        StopEnd::Stopped if adopted => Ok(copy_text(
             "rsLocalBackendHost.stop.adopted",
-            &[("pid", &pid.to_string())],
+            &[("pid", &pid_s)],
         )),
-        Err(e) => Some(copy_text(
-            "rsLocalBackendHost.stop.adoptedKillFailed",
-            &[("pid", &pid.to_string()), ("e", &e.to_string())],
+        StopEnd::Stopped => Ok(copy_text(
+            "rsLocalBackendHost.stop.detached",
+            &[("pid", &pid_s)],
         )),
-    }
+        StopEnd::Forced => Err(copy_text(
+            "rsLocalBackendHost.stop.forced",
+            &[("pid", &pid_s)],
+        )),
+        StopEnd::Stuck(why) => {
+            let why = why.unwrap_or_else(|| copy_text("rsLocalBackendHost.stop.stillThere", &[]));
+            Err(copy_text(
+                "rsLocalBackendHost.stop.adoptedKillFailed",
+                &[("pid", &pid_s), ("e", &why)],
+            ))
+        }
+    })
 }
 
-/// 杀一个**不是我们起的**常驻实例。
+/// 杀一个**不是我们起的**常驻实例（请它收尾那一步）。
 ///
-/// ⚠ **先核身份再杀。**pid 会被复用，而「杀错一个无关进程」是不可逆的。
+/// ⚠ **先核身份再发信号。**pid 会被复用，而「杀错一个无关进程」是不可逆的。
 /// 核的是 `/proc/<pid>/exe` 是不是同一个二进制 —— 与 `--tmux-notify` 那条
 /// pid+starttime 双钉同一条道理：**只有身份对得上才动手**。
 #[cfg(target_os = "linux")]
 fn kill_adopted(pid: u32, bin: &std::path::Path) -> Result<(), String> {
+    same_backend(pid, bin)?;
+    // 先发 SIGTERM：backend 自己有停机路径（先排空再退，`platform/signal.rs::shutdown_listener`），SIGKILL 会跳过它。
+    // 〔HX1〕等不到才由 `stop_detached_locked` 升级成 SIGKILL（那之前再核一次身份）。
+    signal_term(pid)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn kill_adopted(_pid: u32, _bin: &std::path::Path) -> Result<(), String> {
+    Err(copy_text("rsLocalBackendHost.kill.unsupported", &[]).into())
+}
+
+/// 〔HX1〕pid 此刻跑的还是不是我们那个二进制（`kill_adopted` 与强杀前的复核共用；原先整段住 `kill_adopted` 里）。
+#[cfg(target_os = "linux")]
+fn same_backend(pid: u32, bin: &std::path::Path) -> Result<(), String> {
     if pid == 0 {
         return Err(copy_text("rsLocalBackendHost.kill.noPid", &[]).into());
     }
@@ -1368,26 +1426,64 @@ fn kill_adopted(pid: u32, bin: &std::path::Path) -> Result<(), String> {
             ],
         ));
     }
-    // 只发 SIGTERM：backend 自己有停机路径（`shutdown_signal`），SIGKILL 会跳过它。
-    signal_term(pid)
+    Ok(())
 }
 
 #[cfg(not(target_os = "linux"))]
-fn kill_adopted(_pid: u32, _bin: &std::path::Path) -> Result<(), String> {
+fn same_backend(_pid: u32, _bin: &std::path::Path) -> Result<(), String> {
     Err(copy_text("rsLocalBackendHost.kill.unsupported", &[]).into())
 }
 
-/// 发一次 SIGTERM。
+/// 〔HX1〕接管来的那个「还在不在」：`/proc/<pid>/stat` 没了，或状态字是 `Z`（它不是我们的孩子，
+/// 收尸归它的父进程 / init —— 僵尸已经不跑任何东西了）。
+pub(crate) fn adopted_gone(pid: u32) -> bool {
+    match std::fs::read_to_string(format!("/proc/{pid}/stat")) {
+        Err(_) => true,
+        Ok(stat) => proc_stat_says_zombie(&stat),
+    }
+}
+
+/// `/proc/<pid>/stat` 的状态字是不是 `Z`。第二段（进程名）带括号且可能含空格、括号 ⇒ 从**最后一个** `)` 之后取。
+pub(crate) fn proc_stat_says_zombie(stat: &str) -> bool {
+    stat.rsplit_once(')')
+        .and_then(|(_, rest)| rest.split_whitespace().next())
+        == Some("Z")
+}
+
+/// 发一次 SIGTERM（请它自己收尾）。
+#[cfg(target_os = "linux")]
+fn signal_term(pid: u32) -> Result<(), String> {
+    send_signal(pid, "-TERM")
+}
+
+/// 〔HX1〕发一次 SIGKILL（等满了还在 ⇒ 强杀；只用于接管来的那个，自己起的走 `Child::kill`）。
+#[cfg(target_os = "linux")]
+fn signal_kill(pid: u32) -> Result<(), String> {
+    send_signal(pid, "-KILL")
+}
+
+#[cfg(not(target_os = "linux"))]
+fn signal_term(_pid: u32) -> Result<(), String> {
+    Err(copy_text("rsLocalBackendHost.kill.unsupported", &[]).into())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn signal_kill(_pid: u32) -> Result<(), String> {
+    Err(copy_text("rsLocalBackendHost.kill.unsupported", &[]).into())
+}
+
+/// 按 pid 发一个信号（`kill -TERM|-KILL <pid>`）。〔HX1〕原名 `signal_term`、只会发 `-TERM`；强杀那一格要 `-KILL`，
+/// 起进程那一处仍只有这一个（两个薄壳 [`signal_term`] / [`signal_kill`] 只选信号）。
 ///
 /// ⚠ **为什么起一个进程而不是调 `libc::kill`**：monitor 今天**没有 `libc` 这条直接依赖**
 /// （它只在依赖树里，靠传递依赖进来），为一次「停」按钮加一条直接依赖是更大的代价。
 /// 这一处**已登记**在 `write_site_registry::spawn_sites::SPAWNS`（那张表默认拒绝）。
-/// 参数是**我们自己算出来的 pid**，不吃任何用户输入。
+/// 参数是**我们自己算出来的 pid** 与两个薄壳里的字面量之一，不吃任何用户输入。
 #[cfg(target_os = "linux")]
-fn signal_term(pid: u32) -> Result<(), String> {
+fn send_signal(pid: u32, flag: &'static str) -> Result<(), String> {
     use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
     let mut cmd = std::process::Command::new("kill");
-    cmd.arg("-TERM")
+    cmd.arg(flag)
         .arg(pid.to_string())
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null());
@@ -1725,8 +1821,9 @@ pub fn stop_local_backend() -> Result<String, String> {
         .map_err(|e| copy_text("rsLocalBackendHost.lock.poisoned", &[("e", &e.to_string())]))?;
     // 〔RL1 · V107〕中转住本机后端进程里 ⇒ 停后端就是停中转，这里不再另收一个。
     // ★ `K-P1`：常驻那条路的「停」。**锁序**：仍在 `LOCAL_BACKEND` 的锁里动 `DETACHED`。
-    if let Some(msg) = stop_detached_locked() {
-        return Ok(msg);
+    // 〔HX1〕强杀 / 没停掉 ⇒ `Err`（到用户眼前），不再一律 `Ok`（从前「没能停掉它」那一句也走 `Ok`、只进 console）。
+    if let Some(r) = stop_detached_locked() {
+        return r;
     }
     match g.take() {
         Some(h) => {

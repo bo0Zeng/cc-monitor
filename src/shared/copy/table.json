@@ -15320,6 +15320,16 @@
       "zh": "本机后端已停（常驻，pid={pid}）",
       "args": ["pid"]
     },
+    "rsLocalBackendHost.stop.forced": {
+      "kind": "error",
+      "zh": "本机后端 10 秒内没收完手上的活，已强制结束（pid={pid}）。那一刻在跑的写可能没做完。",
+      "args": ["pid"]
+    },
+    "rsLocalBackendHost.stop.stillThere": {
+      "kind": "error",
+      "zh": "强制结束之后它还在",
+      "args": []
+    },
     "rsLocalBackendHost.adopt.waited": {
       "kind": "error",
       "zh": "{last}（等了 {tries}×{interval}ms 还是这样）",

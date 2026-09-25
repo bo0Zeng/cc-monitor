@@ -613,7 +613,12 @@ fn the_stop_command_really_calls_this_module() {
     let dc = guard_core::production_code(include_str!(
         "../../src/bridge/src/backend/control/backend_control.rs"
     ));
-    guard_core::find_pinned(&dc, "local_backend_host::stop_local_backend()").unwrap_or_else(|e| {
+    // 〔HX1〕停口改成 `async`、本机那一支交阻塞线程池跑（`spawn_blocking(…::stop_local_backend)`，传的是函数本身）。
+    guard_core::find_pinned(
+        &dc,
+        "spawn_blocking(crate::local_backend_host::stop_local_backend)",
+    )
+    .unwrap_or_else(|e| {
         panic!(
             "`backend_control` 的停口没有接到 `stop_local_backend`（{e}）——\n\
                  那么 UI 上的「停」对本机是个空动作，而它照样回一句成功的话。"
