@@ -224,13 +224,6 @@ src/settings/plugins-section.ts:84	顶层两格的类型不对	保留	[不对外
 src/settings/plugins-section.ts:87	第 {…} 条不是对象	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
 src/settings/plugins-section.ts:89	第 {…} 条的键是 {…}	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
 src/settings/plugins-section.ts:93	第 {…} 条有一格类型不对	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
-src/views/history.ts:319	(未知项目)	保留	[对外] 历史浏览器项目名兜底
-src/views/history.ts:527	项目	保留	[对外] 模式切换按钮名
-src/views/history.ts:527	按项目名 / 标题过滤（本地，即时）	保留	[对外] 模式切换按钮 title，括号短而有用
-src/views/history.ts:528	全文	保留	[对外] 模式切换按钮名
-src/views/history.ts:528	搜索所有会话的消息内容（回车触发）	保留	[对外] 模式切换按钮 title
-src/views/history.ts:1323	{…} 个会话	保留	[对外] 项目分组统计 chip
-src/views/history.ts:1331	隐藏 {…}	保留	[对外] 项目分组统计 chip
 src/bridge/src/bind.rs:300	{RBIND_TOKEN_MARKER_PREFIX}<32hex 已隐去>	保留	[不对外] 日志里 marker 的脱敏形
 src/bridge/src/bind.rs:304	{}{RBIND_TOKEN_MARKER_PREFIX}<已隐去>	保留	[不对外] 日志里窗口标题的脱敏形
 src/bridge/src/chan/router.rs:146	回 Welcome 写不出去：{e}	保留	[不对外] 只进日志（host.rs 的 tracing::warn），连接结束原因
@@ -364,7 +357,6 @@ src/backend/history_join.rs:448	本机项目清单	保留	[不对外] 〔C4d〕l
 src/backend/history_join.rs:465	远端项目清单	保留	[不对外] 〔C4d〕log_unknowns 的日志标签（搬自 monitor 那一份「远端项目列表」）
 src/backend/accounts/upstream/file_face.rs:178	{how}。怎么修：{fix}	保留	[对外] 〔RM1a〕远端那台机器上那份凭据文件的权限提醒（`apikey-read` 的 notice，回到设置页那一块）；骨架与 creds_store.rs 那一句同文、干净，病在灌进来的 how/fix 本身（见 perm.rs）
 src/bridge/src/tool_registry.rs:1514	**这个名字今天只剩一个身份不属本表：MCP server（code-picture 的 Agent head，给 Claude 用）** —— \n         它确实「装到别处」，但**装它走已有的 `project-mcp` 机制**（往 `.mcp.json` 加一个 server 条目），\n         是**用法**不是新工具。仓里今天对那个 MCP head 零实现（`mcp.rs` / `config_surface.rs` 里 `code-picture` 零命中）。\n\n         ⇒ 真要做「一键装 code-picture 的 MCP」属 **issue #51 第 1 部分**，\n         用户 08-10 明说「cc-bus 和 code-picture 后面再增强，现在先不做」。\n\n         〔TL1 · 4C〕它的另外两个身份都不在这里了：① **vendored 进 monitor 二进制的 crate**（原先本条的主理由：\n         「没有 `destination`、没有安装动作、卸载它等于重新编译 monitor」）—— RM1f 起 monitor 摘掉了内嵌引擎（V108 后半句），这个身份没了；\n         它变成只装引擎的独立小程序 `cc-monitor-panorama`（`src/panorama-engine`），本机放到 `~/.cc-monitor/bin/`、远端推到那台的 \n         `~/.cc-monitor/bin/` —— 那是**有落点的部署物**，进了 [`TOOLS`]（`id: "panorama"`，两个载体）。\n         ② **独立进程那一层**（`src/backend/sidecars/codepicture/`，条 67 · 2026-09-18 整棵删了，环境闭集里那条 `code-picture-sidecar` 同拍摘了）。\n\n         ⚠ `K-R65` 当初补的那句道理**仍然成立**：一个名字可以同时是好几样东西，写「表上没有它」的同一拍要把那张表改对（纪律 ⑲）。	保留	[不对外] NOT_MANAGED：只被判据读的「刻意不收」登记表理由（生产代码无读者） 〔TL1：改写 —— 小程序那一身份进了 TOOLS（panorama），「vendored 进二进制」那一身份 RM1f 起没了，只剩 MCP head 不属本表；裁词不变〕
-src/history-reads.ts:283	本机后端版本旧，还答不了历史清单（重装后端之后就有）	保留	[对外] 〔C4d〕历史清单问本机常驻后端、它不认这条命令时给的那句（经 `saidOf` 进「加载失败：…」/ toast）；说清是谁、为什么、怎么好
 src/settings/panel.ts:172	「远端 (SSH)」：monitor 经 SSH 连到远端主机，把那台机器上的会话也列进来。	保留	[对外] 〔TL1 · 4C〕按 CP1 裁词改过（原「—— … 由远端后端取代本地 jsonl-watcher 作为数据源」：破折号起头、一句塞三件 · 讲实现）：拆成两句，先说做什么
 src/settings/panel.ts:173	远端会话和本机会话显示方式相同。\n\n	保留	[对外] 〔TL1 · 4C〕按 CP1 裁词改过（原「jsonl-watcher 作为数据源（渲染 / Tab / 分支等行为完全相同）」§2.1）：取裁词原句
 src/backend/accounts/upstream/creds.rs:86	读不动凭据文件：{e}	保留	[可达存疑] 中转进程里上游选择装表/重载时写到 stdout 的公告行（accounts::upstream::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；短、先说结果（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）

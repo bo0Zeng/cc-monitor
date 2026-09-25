@@ -13786,6 +13786,649 @@
       "kind": "error",
       "zh": "远端还没装后端",
       "args": []
+    },
+    "history.entry.deleteHint": {
+      "kind": "body",
+      "zh": "删除这份会话记录（不可恢复）",
+      "args": []
+    },
+    "history.entry.deleteRemoteHint": {
+      "kind": "body",
+      "zh": "删除远端 [{origin}] 的这份会话记录（不可恢复）",
+      "args": ["origin"]
+    },
+    "history.entry.deleteIcon": {
+      "kind": "action",
+      "zh": "✕",
+      "args": []
+    },
+    "history.resume.hint": {
+      "kind": "body",
+      "zh": "在新终端里 resume 这个会话",
+      "args": []
+    },
+    "history.resume.remoteHint": {
+      "kind": "body",
+      "zh": "在新终端里 resume 远端 [{origin}] 的这个会话（失败则复制命令）",
+      "args": ["origin"]
+    },
+    "history.resume.icon": {
+      "kind": "action",
+      "zh": "↺",
+      "args": []
+    },
+    "history.entry.hideHint": {
+      "kind": "body",
+      "zh": "隐藏（不删除，只是默认列表里不显示）",
+      "args": []
+    },
+    "history.entry.unhideHint": {
+      "kind": "body",
+      "zh": "取消隐藏",
+      "args": []
+    },
+    "history.entry.hideIcon": {
+      "kind": "action",
+      "zh": "–",
+      "args": []
+    },
+    "history.entry.renameHint": {
+      "kind": "body",
+      "zh": "重命名",
+      "args": []
+    },
+    "history.entry.renameIcon": {
+      "kind": "action",
+      "zh": "✎",
+      "args": []
+    },
+    "history.entry.messages": {
+      "kind": "body",
+      "zh": "{count} 条消息",
+      "args": ["count"]
+    },
+    "history.entry.starHint": {
+      "kind": "body",
+      "zh": "标星",
+      "args": []
+    },
+    "history.entry.unstarHint": {
+      "kind": "body",
+      "zh": "取消标星",
+      "args": []
+    },
+    "history.entry.unstarred": {
+      "kind": "action",
+      "zh": "☆",
+      "args": []
+    },
+    "history.entry.starred": {
+      "kind": "action",
+      "zh": "★",
+      "args": []
+    },
+    "history.entry.backgroundHint": {
+      "kind": "body",
+      "zh": "Claude Code 的后台分身会话，历史是主会话的克隆。续对话请 resume 主会话",
+      "args": []
+    },
+    "history.entry.backgroundMark": {
+      "kind": "body",
+      "zh": "⚙",
+      "args": []
+    },
+    "history.fork.orphanHint": {
+      "kind": "body",
+      "zh": "这个会话从 {parent} fork 而来，原会话已不在本项目。可能是跨项目 fork，或原会话已删除",
+      "args": ["parent"]
+    },
+    "history.fork.orphanMark": {
+      "kind": "body",
+      "zh": "↳",
+      "args": []
+    },
+    "history.fork.expandHint": {
+      "kind": "body",
+      "zh": "展开 {childCount} 个 fork 子会话",
+      "args": ["childCount"]
+    },
+    "history.fork.collapseHint": {
+      "kind": "body",
+      "zh": "折叠 {childCount} 个 fork 子会话",
+      "args": ["childCount"]
+    },
+    "history.fork.collapsedMark": {
+      "kind": "action",
+      "zh": "▶",
+      "args": []
+    },
+    "history.fork.expandedMark": {
+      "kind": "action",
+      "zh": "▼",
+      "args": []
+    },
+    "history.accountResume.hint": {
+      "kind": "body",
+      "zh": "以账号「{name}」{email} 起这个会话（注入它的 CLAUDE_CONFIG_DIR）",
+      "args": ["name", "email"]
+    },
+    "history.accountResume.item": {
+      "kind": "action",
+      "zh": "用账号 {name} resume",
+      "args": ["name"]
+    },
+    "history.delete.failed": {
+      "kind": "error",
+      "zh": "删除失败",
+      "args": []
+    },
+    "history.delete.confirmLocal": {
+      "kind": "body",
+      "zh": "删除会话「{label}」？\n\n这份会话记录会被直接删除，Claude Code 之后也无法 resume。\n此操作不可恢复。",
+      "args": ["label"]
+    },
+    "history.delete.remoteFailed": {
+      "kind": "error",
+      "zh": "远端删除失败",
+      "args": []
+    },
+    "history.delete.confirmRemoteAgain": {
+      "kind": "body",
+      "zh": "再次确认：永久删除远端 [{origin}] 的「{label}」？",
+      "args": ["origin", "label"]
+    },
+    "history.delete.confirmRemote": {
+      "kind": "body",
+      "zh": "删除远端会话「{label}」（机器 {origin}）？\n\n那台机器的后端会删掉这份会话记录，Claude Code 之后也无法 resume。\n此操作不可恢复。",
+      "args": ["label", "origin"]
+    },
+    "history.newSession.failed": {
+      "kind": "error",
+      "zh": "起新会话失败",
+      "args": []
+    },
+    "history.newSession.startedDetail": {
+      "kind": "body",
+      "zh": "新终端窗口正在 {cwd} 启动。",
+      "args": ["cwd"]
+    },
+    "history.newSession.started": {
+      "kind": "body",
+      "zh": "已在该目录起新会话",
+      "args": []
+    },
+    "history.resume.failed": {
+      "kind": "error",
+      "zh": "恢复失败",
+      "args": []
+    },
+    "history.resume.cannotBuild": {
+      "kind": "error",
+      "zh": "无法构造 resume 命令",
+      "args": []
+    },
+    "history.unselectable.detail": {
+      "kind": "error",
+      "zh": "账号「{name}」现在选不了（未登录、不是隔离账号或目录缺失）。改用这个会话上次的账号或当前账号 resume。",
+      "args": ["name"]
+    },
+    "history.unselectable.title": {
+      "kind": "error",
+      "zh": "账号不可用",
+      "args": []
+    },
+    "history.rename.prompt": {
+      "kind": "body",
+      "zh": "自定义标题（留空恢复默认）",
+      "args": []
+    },
+    "history.toggleAll.loading": {
+      "kind": "body",
+      "zh": "加载 {count} 个项目的会话…",
+      "args": ["count"]
+    },
+    "history.loadAll.action": {
+      "kind": "action",
+      "zh": "全量加载",
+      "args": []
+    },
+    "history.loadAll.progressButton": {
+      "kind": "action",
+      "zh": "加载 {done}/{total}",
+      "args": ["done", "total"]
+    },
+    "history.loadAll.progress": {
+      "kind": "body",
+      "zh": "加载中 {done}/{total} …",
+      "args": ["done", "total"]
+    },
+    "history.loadAll.done": {
+      "kind": "body",
+      "zh": "已加载全部 {projects} 个项目",
+      "args": ["projects"]
+    },
+    "history.body.loadingMore": {
+      "kind": "body",
+      "zh": "继续加载中…",
+      "args": []
+    },
+    "history.body.noMatch": {
+      "kind": "body",
+      "zh": "没有匹配的会话",
+      "args": []
+    },
+    "history.body.empty": {
+      "kind": "body",
+      "zh": "此项目下没有会话（可能已全部删除）",
+      "args": []
+    },
+    "history.body.loading": {
+      "kind": "body",
+      "zh": "加载中…",
+      "args": []
+    },
+    "history.body.clickToLoad": {
+      "kind": "body",
+      "zh": "点击加载…",
+      "args": []
+    },
+    "history.projectGroup.chipSep": {
+      "kind": "body",
+      "zh": " · ",
+      "args": []
+    },
+    "history.projectGroup.hidden": {
+      "kind": "body",
+      "zh": "隐藏 {hiddenCount}",
+      "args": ["hiddenCount"]
+    },
+    "history.projectGroup.sessions": {
+      "kind": "body",
+      "zh": "{sessionCount} 个会话",
+      "args": ["sessionCount"]
+    },
+    "history.projectGroup.remoteHint": {
+      "kind": "body",
+      "zh": "远端数据来源：{origin}（只读）",
+      "args": ["origin"]
+    },
+    "history.project.unknown": {
+      "kind": "body",
+      "zh": "(未知项目)",
+      "args": [],
+      "waive": {
+        "C-L4": "项目名缺失时的占位：括号把它和真项目名区分开（真项目名里可能恰好就有这四个字）"
+      }
+    },
+    "history.group.collapsedMark": {
+      "kind": "body",
+      "zh": "▸",
+      "args": []
+    },
+    "history.originFilter.localHint": {
+      "kind": "body",
+      "zh": "本地历史",
+      "args": []
+    },
+    "history.originFilter.remoteHint": {
+      "kind": "body",
+      "zh": "远端 {origin} 的历史",
+      "args": ["origin"]
+    },
+    "history.originFilter.local": {
+      "kind": "action",
+      "zh": "本地",
+      "args": []
+    },
+    "history.originFilter.label": {
+      "kind": "body",
+      "zh": "来源：",
+      "args": []
+    },
+    "history.originGroup.stats": {
+      "kind": "body",
+      "zh": "{projects} 个项目 · {sessions} 个会话",
+      "args": ["projects", "sessions"]
+    },
+    "history.originGroup.local": {
+      "kind": "body",
+      "zh": "本地",
+      "args": []
+    },
+    "history.list.noMatch": {
+      "kind": "body",
+      "zh": "没有匹配的项目。检查上方的搜索词或来源筛选。",
+      "args": []
+    },
+    "history.list.empty": {
+      "kind": "body",
+      "zh": "还没有历史会话。Claude Code 记下新会话之后会出现在这里。",
+      "args": []
+    },
+    "history.reindex.action": {
+      "kind": "action",
+      "zh": "重新索引",
+      "args": []
+    },
+    "history.reindex.failed": {
+      "kind": "error",
+      "zh": "重新索引失败：{e}",
+      "args": ["e"]
+    },
+    "history.reindex.status": {
+      "kind": "body",
+      "zh": "重新索引中…",
+      "args": []
+    },
+    "history.reindex.running": {
+      "kind": "action",
+      "zh": "索引中…",
+      "args": []
+    },
+    "history.searchHit.tool": {
+      "kind": "body",
+      "zh": "工具",
+      "args": []
+    },
+    "history.searchHit.you": {
+      "kind": "body",
+      "zh": "你",
+      "args": []
+    },
+    "history.searchSession.moreCapped": {
+      "kind": "body",
+      "zh": "…还有 {rest} 条命中（本会话只列前 {shown} 条）。点这里打开会话",
+      "args": ["rest", "shown"]
+    },
+    "history.searchSession.moreStarved": {
+      "kind": "body",
+      "zh": "…还有 {rest} 条命中没显示（摘录预算已用完）。点这里打开会话",
+      "args": ["rest"]
+    },
+    "history.searchSession.allStarved": {
+      "kind": "body",
+      "zh": "本会话 {hitCount} 条命中，摘录预算已用完，一条都没显示出来。点这里打开会话",
+      "args": ["hitCount"]
+    },
+    "history.searchSession.count": {
+      "kind": "body",
+      "zh": "{hitCount} 条命中 · {time}",
+      "args": ["hitCount", "time"]
+    },
+    "history.searchSession.remoteHost": {
+      "kind": "body",
+      "zh": "远端机器：{origin}",
+      "args": ["origin"]
+    },
+    "history.search.noMatch": {
+      "kind": "body",
+      "zh": "无匹配。换个关键词，或勾上「含工具内容」扩大范围。",
+      "args": []
+    },
+    "history.indexWait.failed": {
+      "kind": "error",
+      "zh": "索引状态没查到：{e}",
+      "args": ["e"]
+    },
+    "history.indexWait.retrying": {
+      "kind": "body",
+      "zh": "索引构建中…（已 {sessions} 个会话），{tick} 秒后自动重试",
+      "args": ["sessions", "tick"]
+    },
+    "history.indexWait.gaveUp": {
+      "kind": "body",
+      "zh": "索引还没建好（已 {sessions} 个会话），等了 {seconds} 秒，不再自动重试。可以先按项目浏览，或过一会儿再搜。",
+      "args": ["sessions", "seconds"]
+    },
+    "history.search.failed": {
+      "kind": "error",
+      "zh": "搜索失败：{e}",
+      "args": ["e"]
+    },
+    "history.search.searching": {
+      "kind": "body",
+      "zh": "搜索中…",
+      "args": []
+    },
+    "history.indexHint.failed": {
+      "kind": "error",
+      "zh": "索引状态没取到：{e}",
+      "args": ["e"]
+    },
+    "history.indexHint.building": {
+      "kind": "body",
+      "zh": "索引构建中…（已 {sessions} 个会话），稍候再搜",
+      "args": ["sessions"]
+    },
+    "history.indexHint.ready": {
+      "kind": "body",
+      "zh": "输入关键词搜索会话内容（已索引 {sessions} 个会话 / {messages} 条消息）",
+      "args": ["sessions", "messages"]
+    },
+    "history.indexHint.checking": {
+      "kind": "body",
+      "zh": "查询索引状态…",
+      "args": []
+    },
+    "history.build.reindexHint": {
+      "kind": "body",
+      "zh": "重新扫描所有会话、重建搜索索引（新会话很多时用）",
+      "args": []
+    },
+    "history.build.time30d": {
+      "kind": "control",
+      "zh": "时间：近 30 天",
+      "args": []
+    },
+    "history.build.time7d": {
+      "kind": "control",
+      "zh": "时间：近 7 天",
+      "args": []
+    },
+    "history.build.timeAll": {
+      "kind": "control",
+      "zh": "时间：全部",
+      "args": []
+    },
+    "history.build.timeHint": {
+      "kind": "body",
+      "zh": "时间范围",
+      "args": []
+    },
+    "history.build.scopeClaude": {
+      "kind": "control",
+      "zh": "范围：只 Claude",
+      "args": []
+    },
+    "history.build.scopeUser": {
+      "kind": "control",
+      "zh": "范围：只我的输入",
+      "args": []
+    },
+    "history.build.scopeAll": {
+      "kind": "control",
+      "zh": "范围：全部",
+      "args": []
+    },
+    "history.build.scopeHint": {
+      "kind": "body",
+      "zh": "搜索范围",
+      "args": []
+    },
+    "history.build.includeTools": {
+      "kind": "control",
+      "zh": "含工具内容",
+      "args": []
+    },
+    "history.build.includeToolsHint": {
+      "kind": "body",
+      "zh": "默认只搜你的输入和 Claude 的回复；勾上后也搜工具调用、工具结果和思考过程",
+      "args": []
+    },
+    "history.build.refresh": {
+      "kind": "action",
+      "zh": "刷新",
+      "args": []
+    },
+    "history.build.showHidden": {
+      "kind": "control",
+      "zh": "显示已隐藏",
+      "args": []
+    },
+    "history.build.loadAllHint": {
+      "kind": "body",
+      "zh": "拉取所有项目的会话详情。加载后，搜索也能匹配会话内容（标题 / 首条消息 / 会话 ID）",
+      "args": []
+    },
+    "history.build.expandAllHint": {
+      "kind": "body",
+      "zh": "切换所有项目组的展开状态",
+      "args": []
+    },
+    "history.build.expandAll": {
+      "kind": "action",
+      "zh": "展开 / 收起",
+      "args": []
+    },
+    "history.build.sortCreated": {
+      "kind": "control",
+      "zh": "组内：最近创建",
+      "args": []
+    },
+    "history.build.sortUpdated": {
+      "kind": "control",
+      "zh": "组内：最近更新",
+      "args": []
+    },
+    "history.build.sortHint": {
+      "kind": "body",
+      "zh": "组内会话的排序方式",
+      "args": []
+    },
+    "history.build.modeFulltextHint": {
+      "kind": "body",
+      "zh": "搜索所有会话的消息内容，回车开始",
+      "args": []
+    },
+    "history.build.modeFulltext": {
+      "kind": "action",
+      "zh": "全文",
+      "args": []
+    },
+    "history.build.modeTreeHint": {
+      "kind": "body",
+      "zh": "按项目名 / 标题过滤，在本机即时过滤",
+      "args": []
+    },
+    "history.build.modeTree": {
+      "kind": "action",
+      "zh": "项目",
+      "args": []
+    },
+    "history.build.back": {
+      "kind": "action",
+      "zh": "← 返回",
+      "args": []
+    },
+    "history.sessions.failed": {
+      "kind": "error",
+      "zh": "会话列表没加载上",
+      "args": []
+    },
+    "history.sessions.remoteFailed": {
+      "kind": "error",
+      "zh": "远端的会话列表没加载上",
+      "args": []
+    },
+    "history.refresh.remoteFailed": {
+      "kind": "error",
+      "zh": "远端的历史没加载上",
+      "args": []
+    },
+    "history.refresh.partialHosts": {
+      "kind": "body",
+      "zh": "{hosts}，下次打开时重试",
+      "args": ["hosts"]
+    },
+    "history.refresh.hostSep": {
+      "kind": "body",
+      "zh": "、",
+      "args": []
+    },
+    "history.refresh.partialTitle": {
+      "kind": "error",
+      "zh": "部分远端的历史没加载上",
+      "args": []
+    },
+    "history.refresh.failed": {
+      "kind": "body",
+      "zh": "加载失败：{reason}",
+      "args": ["reason"]
+    },
+    "history.refresh.noticeTitle": {
+      "kind": "error",
+      "zh": "星标 / 隐藏标记没合并上",
+      "args": []
+    },
+    "history.refresh.loadingProjects": {
+      "kind": "body",
+      "zh": "加载项目列表…",
+      "args": []
+    },
+    "history.search.placeholderTree": {
+      "kind": "control",
+      "zh": "搜索项目名 / 路径；展开的项目也搜会话内容，点「全量加载」可搜全部",
+      "args": []
+    },
+    "history.search.placeholderLoaded": {
+      "kind": "control",
+      "zh": "搜索项目名与会话内容：标题、首条消息、会话 ID",
+      "args": []
+    },
+    "history.search.placeholderFulltext": {
+      "kind": "control",
+      "zh": "搜索会话里你的输入与 Claude 的回复，回车开始",
+      "args": []
+    },
+    "historyReads.remote.allFailed": {
+      "kind": "error",
+      "zh": "{count} 台远端的历史都没拿到。最后一台的原因：{error}",
+      "args": ["count", "error"]
+    },
+    "historyReads.reason.fallback": {
+      "kind": "error",
+      "zh": "本机后端版本旧，还答不了历史清单（重装后端之后就有）",
+      "args": []
+    },
+    "historyReads.shape.unreadable": {
+      "kind": "error",
+      "zh": "本机后端回的历史清单读不懂，多半是两边版本不一样。重装后端试试",
+      "args": []
+    },
+    "history.search.summary": {
+      "kind": "body",
+      "zh": "「{query}」匹配 {totalHits} 条 · {sessionCount} 个会话",
+      "args": ["query", "totalHits", "sessionCount"]
+    },
+    "history.search.summaryTruncated": {
+      "kind": "body",
+      "zh": "「{query}」匹配 {totalHits} 条 · {sessionCount} 个会话。摘录预算已用完，缩小关键词范围能看到更多",
+      "args": ["query", "totalHits", "sessionCount"]
+    },
+    "history.search.summaryStarved": {
+      "kind": "body",
+      "zh": "「{query}」匹配 {totalHits} 条 · {sessionCount} 个会话。摘录预算已用完，{starved} 个会话只列了标题；缩小关键词范围能看到更多",
+      "args": ["query", "totalHits", "sessionCount", "starved"]
+    },
+    "history.list.summary": {
+      "kind": "body",
+      "zh": "{projects} 个项目 · {sessions} 个会话",
+      "args": ["projects", "sessions"]
+    },
+    "history.list.summaryFiltered": {
+      "kind": "body",
+      "zh": "{projects} 个项目 · {sessions} 个会话 / 共 {total}",
+      "args": ["projects", "sessions", "total"]
     }
   }
 }
