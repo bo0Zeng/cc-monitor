@@ -1215,9 +1215,23 @@ fn the_local_extract_path_is_build_id_scoped() {
                  改成固定名 = 把「无限重装循环」装回来（见 `extract_embedded_to` 头注 D1 段）。"
         );
     }
+    // 〔SR1a · 09-24〕释放名从 `cc-monitor-local-<id>` 改成 `cc-monitor-backend-<id>`（题面：进程表里
+    //   它就该叫「后端」）。要避开的从来不是「名字里有 backend 这个词」，是两件具体的事：
+    //   ① **与远端自部署落点同名**（`~/.cc-monitor/bin/cc-monitor-backend`，D1 段那次无限重装）；
+    //   ② **被按 exe 收孤儿的脚本认成远端那一份**（`reap-orphan-backends.sh` / `graylight-suite.sh`
+    //      都按 exe 路径 `*cc-monitor-backend` 结尾判 —— 常驻的本机后端 PPID 就是 1，认错了会被收掉）。
+    //   ⇒ 两条都按「结尾」判：带着 `-<build_id>` 尾巴，两条都结构上撞不上。
+    let remote = "cc-monitor-backend";
+    for name in [&a, &b] {
+        assert!(
+            name.as_str() != remote && !name.ends_with(remote),
+            "本机释放名 `{name}` 撞上了远端自部署那个名字（或以它结尾）—— 那正是 D1 段要避开的文件，\
+             也会被按 exe 收孤儿的脚本认成远端那一份"
+        );
+    }
     assert!(
-        !a.contains("cc-monitor-backend"),
-        "本机释放名不许长成远端那个名字（`cc-monitor-backend`）—— 那正是要避开的那个文件"
+        a.starts_with("cc-monitor-backend-"),
+        "本机释放名 `{a}` 不是 `cc-monitor-backend-<build_id>` 那一形（SR1a 题面改名）"
     );
 }
 

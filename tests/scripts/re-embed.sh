@@ -268,7 +268,7 @@ do_check() {
       ok "本机内嵌后端与源码同一版" "字节自报 [$got] == 源码 [$id]"
     else
       bad "本机内嵌后端与源码同一版" \
-          "字节自报 [$got]，源码是 [$id] —— **半 bump**：它会以 cc-monitor-local-[$got] 之名落到用户盘上"
+          "字节自报 [$got]，源码是 [$id] —— **半 bump**：它会以 cc-monitor-backend-[$got] 之名落到用户盘上"
     fi
     # 🔴〔B1〕**起不起得来**。只对「给这台机器编的」那一份问 —— 给别的 triple 编的那份
     #   在这里本来就起不来，而那一格 `build.rs` 的 ① 号硬校验已经会当场 panic。

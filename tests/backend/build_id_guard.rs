@@ -733,7 +733,7 @@ mod tests {
         );
         assert!(
             !super::super::BUILD_ID.is_empty(),
-            "`BUILD_ID` 是空串 —— 落到用户盘上的名字会变成 `cc-monitor-local-`（不带版本）"
+            "`BUILD_ID` 是空串 —— 落到用户盘上的名字会变成 `cc-monitor-backend-`（不带版本）"
         );
         // 戳的两个界标也是身份住址的一部分：它们一变，扫字节那一侧全瞎。
         assert!(
