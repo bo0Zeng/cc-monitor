@@ -23,7 +23,8 @@ import {
 } from "../theme";
 import { getClaudeDirOverride, setClaudeDirOverride } from "../paths";
 import { AccountsSection } from "./accounts-section";
-import { McpSection } from "./mcp-section"; // F87：MCP 管理（集成组）
+import { McpSection, assetInstallApi } from "./mcp-section"; // F87：MCP 管理（集成组）· 〔AS2〕「装」那几条从它递给资产目录
+import { AssetsSection } from "./assets-section"; // 〔AS2 · 第四波 4B · V113〕资产目录（别的机器有、这台没有的 skill / MCP，装要你点）
 import { PluginsSection } from "./plugins-section"; // P8a：marketplace 只读枚举（**不声称安装/启用**）
 import { CcBusHooksSection } from "./cc-bus-hooks-section"; // B04：钩子只读诊断 + 生成待贴文本（绝不写入）
 import { ConfigSurfaceSection } from "./config-surface-section"; // T02：配置面审计（只读、按需一次、不轮询）
@@ -1092,6 +1093,14 @@ export class SettingsPanel {
         appliesTo: "both",
         tab: "tools",
         ...this.loadableBlock("MCP", () => new McpSection()),
+      },
+      // 〔AS2 · 第四波 4B · V113〕资产目录：别的机器有、这台没有（或不一样）的 skill 与项目级 MCP，装要你点。
+      // 本机与远端都有意义（目录在各台后端之间自动对上；装的那一下经被写那台的后端）。「装」那几条命令从
+      // `mcp-section.ts` 递进来（那里是「装 MCP / skill」在前端的唯一落点）。
+      {
+        appliesTo: "both",
+        tab: "tools",
+        ...this.loadableBlock("资产目录", () => new AssetsSection(() => assetInstallApi())),
       },
       // P8a：插件面（marketplace）只读枚举。
       // 〔RM1b · 第四波〕`appliesTo: "local"` → `"both"`：后端补了 `plugins-marketplaces`

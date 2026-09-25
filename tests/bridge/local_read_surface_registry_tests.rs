@@ -195,7 +195,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/tool_registry.rs",
         "non-read",
-        7,
+        9,
         "T01 受管工具登记表的一句**文案**里提到它，不读文件 ⇒ **不属**读面。\
              ⚠ **08-10（devbench F06）4 → 5**：新增的 `NOT_MANAGED` 反向登记表里，\
              `planned-build` 那条理由写着它装在 `<claude_dir>/skills/planned-build/`。\
@@ -205,7 +205,10 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              『装得了就必须申报装到哪』当场要它）与 `~/.claude/projects/`\
              （Claude Code 自己写的会话记录，app 装不了、只读）。\
              两条都仍是**登记表里的申报字面量**，本文件零文件读取 —— \
-             真去 stat 它们的是 `config_surface`（已在本表里单列，仍是 3 处）。",
+             真去 stat 它们的是 `config_surface`（已在本表里单列，仍是 3 处）。\
+             ⚠ **〔AS2 · 第四波 4B〕7 → 9**：`skill-install` 那一条的两个申报字面量 —— \
+             落点 `.claude/skills` 与足迹路径 `~/.claude/skills`（资产目录里「装到这台」的 skill 写在那下面）。\
+             仍是登记表里的申报字面量，本文件零文件读取。",
     ),
     (
         "src/skill_host.rs",

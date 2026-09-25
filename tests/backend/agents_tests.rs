@@ -25,10 +25,10 @@ fn synth_home_unknown() -> Option<PathBuf> {
 
 #[rustfmt::skip]
 const SYNTH_REGISTRY: &[Adapter] = &[
-    Adapter { kind: "alpha",   home: synth_home_present, account_env: None },
-    Adapter { kind: "ghost",   home: synth_home_absent, account_env: None },
-    Adapter { kind: "nameless", home: synth_home_unknown, account_env: None },
-    Adapter { kind: "filey",   home: synth_home_is_a_file, account_env: None },
+    Adapter { kind: "alpha",   home: synth_home_present, account_env: None, assets: None },
+    Adapter { kind: "ghost",   home: synth_home_absent, account_env: None, assets: None },
+    Adapter { kind: "nameless", home: synth_home_unknown, account_env: None, assets: None },
+    Adapter { kind: "filey",   home: synth_home_is_a_file, account_env: None, assets: None },
 ];
 
 /// `S5-Y1`：**看得见 = home 目录存在**。整条链喂合成注册表，一次验四种形态。

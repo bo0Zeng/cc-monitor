@@ -178,8 +178,13 @@ import type { ResolvedHost } from "../generated/ResolvedHost";
 import type { SearchIndexStatus } from "../generated/SearchIndexStatus";
 import type { SearchResponse } from "../generated/SearchResponse";
 import type { LogFileInfo } from "../generated/LogFileInfo";
+import type { AssetsSynced } from "../generated/AssetsSynced";
 import type { McpServerEntry } from "../generated/McpServerEntry";
 import type { McpSyncApplied } from "../generated/McpSyncApplied";
+import type { SkillFile } from "../generated/SkillFile";
+import type { SkillInstallApplied } from "../generated/SkillInstallApplied";
+import type { SkillInstallPreview } from "../generated/SkillInstallPreview";
+import type { SkillTargetText } from "../generated/SkillTargetText";
 import type { McpSyncPreview } from "../generated/McpSyncPreview";
 import type { RestartHint } from "../generated/RestartHint";
 import type { SessionActivityPayload } from "../generated/SessionActivityPayload";
@@ -776,6 +781,12 @@ export const commands = {
    */
   config_surface_report: (args: { origin: Origin }) =>
     invoke<ConfigSurfaceReport>("config_surface_report", args),
+
+  /**
+   * 〔AS2 · 第四波 4B · V113〕资产目录同步：让本机常驻后端对 `origin` 那台做一趟「拉 · 并 · 推」
+   * （本机那一页逐字 `LOCAL_ORIGIN` ⇒ 对它够得到的每一台各一趟）。回每一趟的结局 ＋ 可达表（origin ↔ 目录里的机器 id）。
+   */
+  assets_sync: (args: { origin: Origin }) => invoke<AssetsSynced>("assets_sync", args),
   // U-CC1：数据面漂移记账（只读、按需一次，不轮询）。
   // 〔ST3〕按机器分：问哪台答哪台，回包带回 `origin`（界面按回声判）。monitor 自己的命令，不经后端。
   drift_ledger_report: (args: { origin: Origin }) =>
@@ -1091,6 +1102,26 @@ export const commands = {
     take: string[];
     overwrite: string[];
   }) => invoke<McpSyncApplied>("mcp_sync_apply", args),
+
+  /**
+   * 〔AS2 · 第四波 4B · V113〕skill「装到这台」：看差异。`from` 那台的 skill `name` 装到 `to` 那台会发生什么 ——
+   * 来源那台的后端读（`skill-read`），`to` 那台的后端判（`skill-install-plan`：差异四态与闸原样用 AS1 那一份）。
+   */
+  skill_install_preview: (args: { from: Origin; to: Origin; name: string }) =>
+    invoke<SkillInstallPreview>("skill_install_preview", args),
+
+  /**
+   * 〔AS2〕skill「装到这台」：写。把勾的那几个文件原样写进 `to` 那台（`overwrite` = 那台不同、用户说了要盖的那几个）。
+   * `source` / `target` 原样送回看差异时拿到的那两份（后者是 CAS 期望：那台在那之后变了 ⇒ 停下，说清前面写了哪几个）。
+   */
+  skill_install_apply: (args: {
+    to: Origin;
+    name: string;
+    source: SkillFile[];
+    target: SkillTargetText[];
+    take: string[];
+    overwrite: string[];
+  }) => invoke<SkillInstallApplied>("skill_install_apply", args),
 
   // ════════════════════════════════════════════════════════════════════════
   // 〔C4a · 子步 2〕**最后十条**：原先在 `tab-session-actions.ts`（tab 层）与 `accounts.ts`
