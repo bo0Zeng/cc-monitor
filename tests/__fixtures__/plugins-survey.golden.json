@@ -9,7 +9,7 @@
       "source": "github:o/r"
     },
     {
-      "declared_error": "落点里没有 `/nonexistent/c4b/.claude-plugin/marketplace.json`",
+      "declared_error": "插件市场目录里没有 /nonexistent/c4b/.claude-plugin/marketplace.json",
       "declared_plugins": null,
       "id": "b-bad",
       "install_location": "/nonexistent/c4b",

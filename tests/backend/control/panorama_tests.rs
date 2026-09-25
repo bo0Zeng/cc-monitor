@@ -211,7 +211,7 @@ esac"#;
     // 装的这份不会这个 op：说出缺的那一个。
     let (c, m) = code_of(json!({"op": "diagram", "args": {"kind": "arch", "request": {}}}));
     assert_eq!(c, "unsupported");
-    assert!(m.contains("`diagram`"), "缺能力要点名缺的那个：{m}");
+    assert!(m.contains("「diagram」"), "缺能力要点名缺的那个：{m}");
     // 找不到：说清查过哪儿。
     let (c, m) = answer_now(&[dir.join("nowhere")], &store, &json!({"op": "status"})).unwrap_err();
     assert_eq!(c, "not_installed");

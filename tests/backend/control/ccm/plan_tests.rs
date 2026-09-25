@@ -953,10 +953,7 @@ fn the_message_the_user_actually_sees_carries_the_reason() {
     };
     let Die(msg) = resolve_account(&o, &e, &AccountTable::load(&e.accts_manifest))
         .expect_err("指名一个读不出来的号竟然成功了");
-    assert!(
-        msg.contains("读不懂"),
-        "用户看到的那句话里没有原因：{msg}"
-    );
+    assert!(msg.contains("读不懂"), "用户看到的那句话里没有原因：{msg}");
 }
 
 /// ★ 〔CC1〕自检那一趟与 pane 里那一趟**是同一条命令**：同一段 `export` 前缀、同一个入口、
