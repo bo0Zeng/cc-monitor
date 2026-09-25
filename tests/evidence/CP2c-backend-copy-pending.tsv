@@ -8,26 +8,20 @@ src/backend/agents/claudecode/assets.rs	SU1 在改（skill 卸载），留最后
 src/backend/agents/claudecode/paths.rs	FN1 在改（去数据围栏），留最后一批
 src/backend/asset_catalog.rs	SU1 在改（skill 卸载），留最后一批
 src/backend/asset_sync.rs	未抽
-src/backend/common/fs.rs	未抽
-src/backend/common/session_snapshot.rs	未抽
 src/backend/control/capture_pane.rs	C4e 在改（tmux 三条成品化），留最后一批
 src/backend/control/cc_bus.rs	C4e 在改（tmux 三条成品化），留最后一批
-src/backend/control/exit_policy.rs	未抽
 src/backend/control/files_commit.rs	FN1 在改（去数据围栏），留最后一批
 src/backend/control/files_write.rs	FN1 在改（去数据围栏），留最后一批
 src/backend/control/gate.rs	C4e 在改（tmux 三条成品化），留最后一批
 src/backend/control/kill.rs	C4e 在改（tmux 三条成品化），留最后一批
 src/backend/control/launch.rs	C4e 在改（tmux 三条成品化），留最后一批
 src/backend/control/panorama.rs	TL1 在改，留最后一批
-src/backend/control/resolve_query.rs	未抽
 src/backend/control/transfer.rs	未抽
 src/backend/dial/connect.rs	NT2 / CZ1 / GP1 在改（期限 · 压缩 · 部署），留最后一批
 src/backend/dial/link.rs	NT2 / CZ1 / GP1 在改（期限 · 压缩 · 部署），留最后一批
 src/backend/dial/sftp.rs	NT2 / CZ1 / GP1 在改（期限 · 压缩 · 部署），留最后一批
 src/backend/dial/uses.rs	NT2 / CZ1 / GP1 在改（期限 · 压缩 · 部署），留最后一批
-src/backend/feature_face.rs	未抽
 src/backend/files/mod.rs	FN1 在改（去数据围栏），留最后一批
-src/backend/footprint.rs	未抽
 src/backend/history_annotations.rs	未抽
 src/backend/history_join.rs	未抽
 src/backend/inbound.rs	未抽
@@ -35,16 +29,8 @@ src/backend/lib.rs	未抽
 src/backend/listen.rs	未抽
 src/backend/mcp_sync.rs	未抽
 src/backend/observe/accounts_query.rs	未抽
-src/backend/observe/history_query.rs	未抽
-src/backend/observe/plugins_query.rs	未抽
 src/backend/observe/tasks_query.rs	未抽
 src/backend/observe/watcher.rs	TL1 在改，留最后一批
-src/backend/platform/detach.rs	未抽
-src/backend/platform/pidwatch/mod.rs	未抽
-src/backend/platform/ssh_agent.rs	未抽
-src/backend/plugin/discover.rs	未抽
-src/backend/plugin/invoke.rs	未抽
-src/backend/plugin/probe.rs	未抽
 src/backend/read_face.rs	未抽
 src/backend/relay/http1.rs	未抽
 src/backend/relay/listen.rs	未抽

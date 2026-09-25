@@ -222,6 +222,191 @@
         "C-L4": "拼在「可用:」后面、代替账号名单的占位"
       }
     },
+    "beDiscover.notInstalledMessage.noPlaces": {
+      "kind": "body",
+      "zh": "<没有可查的固定位置，HOME 也没设>",
+      "args": []
+    },
+    "beDiscover.notInstalledMessage.notFound": {
+      "kind": "error",
+      "zh": "找不到 {name}：查过 {places}，以及 PATH 上的 {pathDirs} 个目录。{hint}",
+      "args": ["name", "places", "pathDirs", "hint"]
+    },
+    "beInvoke.runAbortable.waitFailed": {
+      "kind": "error",
+      "zh": "等 {bin} 退出时出错：{e}",
+      "args": ["bin", "e"]
+    },
+    "beInvoke.notRun.failed": {
+      "kind": "error",
+      "zh": "起不来 {bin}：{e}",
+      "args": ["bin", "e"]
+    },
+    "beProbe.parse.emptyOutput": {
+      "kind": "error",
+      "zh": "它什么都没答",
+      "args": []
+    },
+    "beProbe.message.versionUnknown": {
+      "kind": "body",
+      "zh": "没报",
+      "args": []
+    },
+    "beProbe.message.missingAbility": {
+      "kind": "error",
+      "zh": "{plugin} 这一版不支持「{token}」（版本 {version}），换一份新的就行。",
+      "args": ["plugin", "token", "version"]
+    },
+    "beProbe.message.wrongProgram": {
+      "kind": "error",
+      "zh": "找错了程序：找到的 {want} 报的是 {saw}，多半是 PATH 上有个同名的无关命令。",
+      "args": ["want", "saw"]
+    },
+    "beDetach.detach.notUnix": {
+      "kind": "error",
+      "zh": "这台机器不是 Unix，没法让它脱离当前进程单独跑。没有起。",
+      "args": []
+    },
+    "bePidwatch.noDeathEventsHere.say": {
+      "kind": "body",
+      "zh": "后端在这个系统上意外退出时没人发现。它也不会自动重启：只有 Linux 和 Windows 上看得住它。",
+      "args": []
+    },
+    "beSshAgent.connect.unsupported": {
+      "kind": "error",
+      "zh": "这个系统上不知道怎么连 SSH agent",
+      "args": []
+    },
+    "beSshAgent.connect.pipe": {
+      "kind": "error",
+      "zh": "连不上 {pipe}：{e}。SSH agent 在运行吗？",
+      "args": ["pipe", "e"]
+    },
+    "beSshAgent.connect.authSock": {
+      "kind": "error",
+      "zh": "连不上 SSH_AUTH_SOCK 指向的 SSH agent：{e}。它在运行吗？环境变量设了吗？",
+      "args": ["e"]
+    },
+    "beSshAgent.connect.givenSocket": {
+      "kind": "error",
+      "zh": "连不上 SSH agent（{path}）：{e}。它在运行吗？",
+      "args": ["path", "e"]
+    },
+    "beFs.readRegularCapped.tooBig": {
+      "kind": "error",
+      "zh": "超过 {cap} 字节上限",
+      "args": ["cap"]
+    },
+    "beFs.readRegularCapped.tooBigSized": {
+      "kind": "error",
+      "zh": "超过 {cap} 字节上限（文件 {size} 字节）",
+      "args": ["cap", "size"]
+    },
+    "beFs.readRegularCapped.notRegular": {
+      "kind": "error",
+      "zh": "不是普通文件（可能是 FIFO、设备或目录）",
+      "args": []
+    },
+    "beSessionSnapshot.probeTmux.noTmux": {
+      "kind": "error",
+      "zh": "起不来 tmux：{e}。这台机器装了 tmux 吗？",
+      "args": ["e"]
+    },
+    "beHistoryQuery.readLinesFrom.lineTooLong": {
+      "kind": "error",
+      "zh": "会话记录第 {at} 行超过 {lineCap} 字节，读不了",
+      "args": ["at", "lineCap"]
+    },
+    "beHistoryQuery.readPage.lineTooLong": {
+      "kind": "error",
+      "zh": "会话记录里有一行超过 {lineCap} 字节，读不了（从偏移 {offset} 起）",
+      "args": ["lineCap", "offset"]
+    },
+    "bePluginsQuery.surveyMarketplacesIn.noInstallLocation": {
+      "kind": "error",
+      "zh": "known_marketplaces.json 没记这个市场装在哪，数不了",
+      "args": []
+    },
+    "bePluginsQuery.countDeclaredPlugins.noPlugins": {
+      "kind": "error",
+      "zh": "插件市场清单里没有插件列表",
+      "args": []
+    },
+    "bePluginsQuery.countDeclaredPlugins.unparsable": {
+      "kind": "error",
+      "zh": "插件市场清单读不懂：{e}",
+      "args": ["e"]
+    },
+    "bePluginsQuery.countDeclaredPlugins.noManifest": {
+      "kind": "error",
+      "zh": "插件市场目录里没有 {manifest}",
+      "args": ["manifest"]
+    },
+    "bePluginsQuery.parseKnownMarketplaces.notObject": {
+      "kind": "error",
+      "zh": "known_marketplaces.json 的顶层不是一个对象",
+      "args": []
+    },
+    "bePluginsQuery.parseKnownMarketplaces.unparsable": {
+      "kind": "error",
+      "zh": "known_marketplaces.json 读不懂：{e}",
+      "args": ["e"]
+    },
+    "bePluginsQuery.readCapped.unreadable": {
+      "kind": "error",
+      "zh": "读不到 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "bePluginsQuery.readCapped.tooBig": {
+      "kind": "error",
+      "zh": "{path} 有 {size} 字节，超过上限 {cap}，没有读",
+      "args": ["path", "size", "cap"]
+    },
+    "beFeatureFace.answerAt.tooLarge": {
+      "kind": "error",
+      "zh": "结果太大（{size} 字节，上限 {cap}），没有返回",
+      "args": ["size", "cap"]
+    },
+    "beExitPolicy.answerSet.noHome": {
+      "kind": "error",
+      "zh": "找不到家目录（HOME 和 USERPROFILE 都没设），没有写",
+      "args": []
+    },
+    "beExitPolicy.writeAt.renameFailed": {
+      "kind": "error",
+      "zh": "把 {tmp} 挪到 {path} 失败：{e}",
+      "args": ["tmp", "path", "e"]
+    },
+    "beExitPolicy.writeAt.tmpWriteFailed": {
+      "kind": "error",
+      "zh": "写不了临时文件 {tmp}：{e}",
+      "args": ["tmp", "e"]
+    },
+    "beExitPolicy.writeAt.tmpCreateFailed": {
+      "kind": "error",
+      "zh": "建不了临时文件 {tmp}：{e}",
+      "args": ["tmp", "e"]
+    },
+    "beExitPolicy.writeAt.mkdirFailed": {
+      "kind": "error",
+      "zh": "建不了目录 {dir}：{e}",
+      "args": ["dir", "e"]
+    },
+    "beExitPolicy.writeAt.noParent": {
+      "kind": "error",
+      "zh": "{path} 没有父目录",
+      "args": ["path"]
+    },
+    "beResolveQuery.resolve.unsafeLauncher": {
+      "kind": "error",
+      "zh": "启动命令里有 shell 特殊字符或控制字符，没有用它：{base}",
+      "args": ["base"]
+    },
+    "beResolveQuery.resolve.badSessionId": {
+      "kind": "error",
+      "zh": "会话ID 不合法（只许字母、数字、_ 和 -，最长 128）：{id}",
+      "args": ["id"]
+    },
     "panePreview.head.title": {
       "kind": "title",
       "zh": "预览画面 · [{origin}] tmux: {target}",
