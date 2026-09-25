@@ -1524,10 +1524,10 @@ fn relay_prefix_for_launch(
     let sid = match action {
         LocalPsAction::Resume(sid) => Some(sid.as_str()),
         LocalPsAction::New => None,
-        // attach 不起 agent ⇒ 这一跳没有「往中转上指」这个问题。
-        // ⚠ 它今天到不了这里（[`launch_local`] 入口就拒了 attach），本臂是**穷尽性**的一半。
+        // attach 不起 agent ⇒ 这一跳没有「往中转上指」这个问题 ⇒ **不问**那台后端（空前缀）；
+        // [`launch_local`] 随后在渲染那一截拒掉 attach（它不走 spawn 那条路），拒的理由由那里说。
         #[cfg(not(windows))]
-        LocalPsAction::Attach => None,
+        LocalPsAction::Attach => return Ok(String::new()),
     };
     let url = tauri::async_runtime::block_on(relay_endpoint_on(
         &crate::origin::Origin::local(),
