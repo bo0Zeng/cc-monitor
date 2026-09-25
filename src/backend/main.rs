@@ -316,6 +316,8 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
         // `the_answer_is_a_function_of_the_machine_not_of_the_build` 钉的是另一半 ——
         // **空表不等于这个字段是个编译期常量**。
         unavailable: Vec::new(),
+        // 〔HX2〕回显起我的宿主交来的那几格（名单 `wire::HOST_ECHO_ENVS`）；一格都没交 ⇒ 省略、线上字节不变。
+        host_env: wire::host_env_from(|name| std::env::var(name).ok()),
     }
 }
 
