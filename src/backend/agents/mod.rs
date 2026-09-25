@@ -106,6 +106,38 @@ pub(crate) struct Adapter {
     /// 让每家自己定判准的话，「看得见一个 agent」就成了两套语义，
     /// 而 `S6` 的最小假 agent 得先猜自己该伪造哪一套。
     pub(crate) home: fn() -> Option<PathBuf>,
+    /// 〔AS2 · 第四波 4B · V113〕这一家的**资产面**（skill · 项目级 MCP 住哪、怎么认出来）。
+    /// `None` = 这一家今天没有可记进资产目录的东西。
+    ///
+    /// ⚠ 收进注册表而不是让 `asset_catalog.rs` 直呼 `agents::<名>::` —— 理由与 [`Adapter::account_env`] 同一条：
+    /// 后者会让 `agent_locality_guard` 判据④的读数（只许降）凭空上涨。
+    pub(crate) assets: Option<AssetFace>,
+}
+
+/// 〔AS2〕一家的资产面：函数指针（同 [`Adapter::home`]，不立 trait）。今天一件知识：怎么扫。
+#[derive(Clone, Copy)]
+pub(crate) struct AssetFace {
+    /// 按这台机器的环境现解根、现扫，交回原始事实（还没有摘要 —— 摘要是通用层的机器）。
+    pub(crate) scan: fn() -> Sightings,
+}
+
+/// 〔AS2〕一家适配层看到的原始资产事实。**还没有摘要**（通用层 `asset_catalog.rs` 算）。
+#[derive(Debug, Default, Clone, PartialEq)]
+pub(crate) struct Sightings {
+    /// `(名字, 目录, description)`。目录可能是一条链接（通用层按它跟到底走一遍）。
+    pub skills: Vec<(String, PathBuf, Option<String>)>,
+    /// `(项目目录, server 名, 那一条原样的定义)`。
+    pub mcp: Vec<(String, String, serde_json::Value)>,
+    /// 读不出来的那几份（一句话一份）—— 「这台没有」与「这台那份读不出来」不许合成一句。
+    pub problems: Vec<String>,
+}
+
+/// 〔AS2〕注册表里每一家有资产面的，各扫一遍（注册序）。
+pub(crate) fn asset_sightings() -> Vec<Sightings> {
+    REGISTRY
+        .iter()
+        .filter_map(|a| a.assets.map(|f| (f.scan)()))
+        .collect()
 }
 
 /// **这个后端认得哪几个 agent**〔`S5`〕。加一个 agent = 加一行（+ 上面加一行 `mod`）。
@@ -118,12 +150,12 @@ pub(crate) struct Adapter {
 /// 一家拆成四行会让那个读数变成排版的函数。
 #[rustfmt::skip]
 pub(crate) const REGISTRY: &[Adapter] = &[
-    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV) },
+    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS) },
     // ⚠ codex 那一格**今天借用同一个载体，这是如实登记的耦合、不是设计**：
     //   账号维度来自 `cc-acct-iso`（机器上只有一套账号库），而那套库切的就是这个变量。
     //   `ccm --agent codex --account b` 从来就是这个行为（`shared/ccm` 那侧也是无条件 export）。
     //   codex 自己并不读它 ⇒ 哪天账号维度按家拆开，改的就是这一行。
-    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: Some(claudecode::paths::CONFIG_DIR_ENV) },
+    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: None },
 ];
 
 /// 某一家的账号载体（环境变量名）。认不出这家 ⇒ `None`。

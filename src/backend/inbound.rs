@@ -84,6 +84,9 @@ pub const COMMANDS: &[&str] = &[
     "accounts-sessions",
     "apikey-key-set",
     "apikey-read",
+    // 〔AS2 · 第四波 4B · V113〕资产目录（后端自有状态，第四层）：现扫 ＋ 记 · 并进别处的整份。
+    "assets-catalog",
+    "assets-catalog-merge",
     "bus-kill",
     "bus-list",
     "bus-send",
@@ -852,6 +855,35 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::footprint::answer(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔AS2 · 第四波 4B · V113〕**资产目录**：这台现扫一次 skill 与项目级 MCP、记进后端自有的
+    //   `~/.cc-monitor/assets-catalog.json`（第四层，变了才写）、回整份目录 ＋「这台缺什么」的判定。
+    //   `-merge` 那条再把另一台后端的整份并进来（同一台取 `gen` 大的整份）。一个用户文件都不写。阻塞档（扫盘）。
+    CommandSpec {
+        name: "assets-catalog",
+        doc_anchor: Some("#### `assets-catalog`"),
+        codes: &["catalog_unreadable", "io_failed"],
+        fields: &["changed", "machines", "path", "problems", "rows", "self"],
+        takes_input: false,
+        run: Run::Blocking(|r| {
+            crate::asset_catalog::answer_catalog(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "assets-catalog-merge",
+        doc_anchor: Some("#### `assets-catalog-merge`"),
+        codes: &["bad_args", "catalog_unreadable", "io_failed"],
+        fields: &[
+            "catalog", "changed", "machines", "path", "problems", "rows", "self",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::asset_catalog::answer_merge(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),

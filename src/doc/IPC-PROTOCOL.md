@@ -1622,6 +1622,50 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 **错误码**：`bad_args`（不是数组 / 相对路径 / 给了路径没给字样）· `too_large`（超过条数上限）。
 ⚠ **CLI 面也有它**（`--footprint-probe`），入参从 stdin 读。
 
+#### `assets-catalog`：资产目录 —— 这台现扫一次、记下、回整份（AS2 · 第四波 4B，2026-09-25）
+
+用户裁（`99 §1` V113，逐字）：「比如本机后端在本机看见一个skill并记录下来, 就会和远端后端同步, 这样远端后端也能在远端装skill或者mcp / mcp保持项目级别」·「目录自动同步，装要你点」。
+本条是「记下来」那一半：这台后端现扫一次它看到的 skill（`<配置根>/skills/<名>/`）与项目级 MCP（`.claude.json` 的 `projects` × `<项目>/.mcp.json` 的 `mcpServers`），
+放进**后端自有**的目录文件 `~/.cc-monitor/assets-catalog.json`（第四层：只有本后端写它；**一个用户文件都不写**），变了才写，回整份目录 ＋「别的机器有的，这台怎样」。
+
+```text
+→ {"id":"a1","cmd":"assets-catalog","args":{}}
+← {"kind":"reply","id":"a1","ok":true,"data":{"self":"9f…","machines":[{"id":"9f…","label":"u@h","gen":3,"seenAt":1727250000,"assets":[{"kind":"skill","name":"demo","digest":"…","summary":{"description":"…","files":2,"bytes":120,"binary":false,"truncated":false}}]}],"rows":[{"kind":"mcp","name":"gh","state":"missing","from":[{"machine":"4c…","project":"/home/r/x","digest":"…","summary":{…}}]}],"problems":[],"changed":false,"path":"/home/u/.cc-monitor/assets-catalog.json"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `self` | ← | 这台机器的 id（第一次记目录时生成，之后不变） |
+| `machines` | ← | 各台一份快照 `{id, label, gen, seenAt, assets}`：`gen` 是那台**自己**的代数（它自己那份变了才 +1）；`seenAt` 是那一代的时刻（那台的钟，只给人看、不参与合并）。`assets[]` 是 `{kind, name, project?, digest, summary}`：`kind` 闭集 `skill` · `mcp`；`project` 只有 MCP 有（**项目级**）；`digest` 只答相同 / 不同（FNV-1a 64，不防篡改） |
+| `rows` | ← | 别的机器有的每个（`kind`, `name`）一行 `{kind, name, state, from}`：`state` 闭集 `missing`（这台一条同名的都没有）· `differs`（有同名的，摘要都不同）· `same`（有一条摘要相同）；`from` 是别处那几条 `{machine, project, digest, summary}` |
+| `problems` | ← | 这一趟扫描读不出来的那几份（一句话一份）—— 「这台没有」与「这台那份读不出来」分开说 |
+| `changed` | ← | 这一趟目录有没有变（变了才写盘） |
+| `path` | ← | 目录文件在这台上的路径 |
+
+🔴 **MCP 的 `env` / `headers` 的值不进目录**，只进键名（`envKeys` / `headersKeys`）；`args` / `command` / `cwd` / `type` / `url` 原样，其余字段只记键名（`otherKeys`）。
+`digest` 按整条原文算（只差密钥值也判得出不同）。理由：目录是**自动**同步到每台的；「原样拷」（V112）发生在用户点「装」那一下、从来源那台现读。
+
+**错误码**：`catalog_unreadable`（目录文件在但读不懂 / 是更新的格式 —— **不覆盖**）· `io_failed`（家目录解析不出来 / 写不进去）。
+⚠ **CLI 面也有它**（`--assets-catalog`），无入参。
+
+#### `assets-catalog-merge`：把另一台后端的整份目录并进来（AS2 · 第四波 4B，2026-09-25）
+
+同 `assets-catalog`（先现扫这台、记下），再把 `catalog` 里各台的快照并进来：**同一台取 `gen` 大的那一份整份**（删除随整份替换传播）；
+这台自己那一格**只认自己扫的**（别处传来的一律不收）。不比墙钟、幂等、与到达顺序无关 ⇒ 反复同步收敛。回并完之后的整份（形状同上）。
+
+```text
+→ {"id":"a2","cmd":"assets-catalog-merge","args":{"catalog":{"self":"4c…","machines":[{"id":"4c…","label":"r@x","gen":2,"seenAt":1727250100,"assets":[…]}]}}}
+← {"kind":"reply","id":"a2","ok":true,"data":{"self":"9f…","machines":[…],"rows":[…],"problems":[],"changed":true,"path":"…"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `catalog` | → | 另一台后端的整份目录，形状就是 `assets-catalog` 的应答（只读它的 `machines`） |
+| 其余 | ← | 同 `assets-catalog` |
+
+**错误码**：`bad_args`（缺 `catalog` / 某台缺格 / 类型不对 / `kind` 不在闭集 —— 不猜）· `catalog_unreadable` · `io_failed`。
+⚠ **CLI 面也有它**（`--assets-catalog-merge`），入参从 stdin 读。
+
 #### 只读查询面（`C1`，2026-09-24）—— **八条一次性查询搬上这条长连接**
 
 出处 `设计/15 §3.2` 层 1 ＋ `设计/99 §4.19.2 ⑥`。这八条此前**只有**一次性子命令那一面：monitor 每问一次就新拨一条 SSH（握手 ＋ 鉴权 ＋ exec），账号那两条还被一个 10 秒的轮询按台数翻倍。现在它们也在帧面上 —— **跑的是 CLI 那一臂同一个函数**，只是输出从 stdout 换成应答里的 `data`。

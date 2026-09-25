@@ -190,6 +190,12 @@ mod tests {
              那一格 09-21 的处置：**不是把数改对，是把抄来的第二份摘掉**。",
         ),
         (
+            "asset_catalog",
+            "〔AS2 · 第四波 4B · V113〕资产目录：帧面 `assets-catalog` / `assets-catalog-merge`。它归 backend-core 是因为\
+             「这台机器上有哪些 skill / 项目级 MCP」是**那台机器上**的事实；写的只有后端**自己的**目录文件 \
+             `~/.cc-monitor/assets-catalog.json`（第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
+        ),
+        (
             "feature_face",
             "〔RM1b · 第四波〕功能侧只读查询的帧面宿主（任务列表 …）—— 与 `read_face` 同形的一层壳：\
              本体在 `observe/`，它只解 `args`、装应答。**零写盘**",
@@ -630,6 +636,14 @@ mod tests {
              临时文件出生即只给本人（`creds_core::perm::create_private`，O_EXCL）→ 写满 → 原子挪过去；\
              只建 `work/` 那一层目录；失败删自己的临时文件。线上入口只有 `inbound.rs` 的 `apikey-key-set`",
         ),
+        (
+            "asset_catalog.rs",
+            "〔AS2 · 第四波 4B · V113〕**资产目录** `~/.cc-monitor/assets-catalog.json`：这台看到的 skill / 项目级 MCP \
+             ＋ 别的后端同步来的各台快照。文件名 / 格式 / 落点都是本仓定的、只有后端读它 ⇒ 后端**自己的**状态，不是用户数据\
+             （用户的 skill 与 `.mcp.json` 本模块一个字节都不写）。`O_EXCL` 建临时文件 → 写满 → 原子挪过去；只建 \
+             `~/.cc-monitor` 那一层；失败删自己的临时文件；读不懂的那份不覆盖。线上入口只有 `inbound.rs` 的 \
+             `assets-catalog` / `assets-catalog-merge`（＋ 派生的 CLI 面）",
+        ),
     ];
 
     /// 第四层模块**能用**的写动词（`fs::` 之后那个词）。**闭集**。
@@ -655,7 +669,8 @@ mod tests {
     /// 第四层那扇门：后端生产树里**唯一**被允许引用写口的文件。
     const OWN_STATE_DOORS: &[(&str, &str)] = &[(
         "inbound.rs",
-        "命令注册那一处 —— `exit-policy-set` 与〔RM1a〕`apikey-key-set` 各一条（帧面与派生的 CLI 面共用）。\
+        "命令注册那一处 —— `exit-policy-set` 与〔RM1a〕`apikey-key-set` 各一条（帧面与派生的 CLI 面共用）；\
+         〔AS2〕资产目录那两条（`assets-catalog` / `assets-catalog-merge`）。\
          前端改那两份只有这一条路（`§3.3b ③`：前端要改它，走一条后端命令）",
     )];
 
@@ -665,6 +680,9 @@ mod tests {
     const OWN_STATE_WRITERS: &[(&str, &str)] = &[
         ("control/exit_policy.rs", "exit_policy::answer_set"),
         ("accounts/apikey/file_face.rs", "file_face::answer_set"),
+        // 〔AS2〕三条写口同一个前缀（`answer_catalog` 现扫即记 · `answer_merge` 并进来再记，都会写）⇒ 针取前缀：
+        // 本模块生产段里凡是 `answer_` 开头的公开入口都是写口，只许 `inbound.rs` 碰。
+        ("asset_catalog.rs", "asset_catalog::answer_"),
     ];
 
     fn is_own_state(rel: &str) -> bool {

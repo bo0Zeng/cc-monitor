@@ -193,6 +193,9 @@ fn every_registered_command_declares_its_run_kind() {
                 | "relay-status"
                 // 〔RM1a · 第四波〕足迹那一条：一批 stat / 读几份小文件，同步文件 I/O。
                 | "footprint-probe"
+                // 〔AS2 · 第四波 4B〕资产目录两条：扫 skill 目录 / 读项目 `.mcp.json` ＋ 原子写目录文件，同步文件 I/O。
+                | "assets-catalog"
+                | "assets-catalog-merge"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_));
         assert_eq!(
@@ -281,6 +284,9 @@ fn every_registered_command_declares_its_run_kind() {
         "relay-ensure",
         "relay-status",
         "footprint-probe",
+        // 〔AS2 · 第四波 4B〕资产目录两条（阻塞档，理由在上面 `expected_blocking`）。
+        "assets-catalog",
+        "assets-catalog-merge",
         // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话（阻塞档，理由在上面 `expected_blocking`）。
         "files-peek",
         "files-put",
