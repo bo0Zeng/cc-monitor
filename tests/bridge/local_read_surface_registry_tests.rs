@@ -619,7 +619,7 @@ fn every_reader_names_its_retirement_owner() {
              → **9**（F10b 第二批：`accounts.rs` **改分类**为 `remote` —— 它本来就不是本机读面，\n\
              ⚠ **那一格不算退役、不算工作量减少**，只是把误分类改对，理由写在它自己那条登记里）\n\
              → **8**（F10b 第二批·下半：`local_accounts.rs` **真退役** —— 那 3 个命中全属\n\
-             `list_local_session_accounts` 一个函数，它改走本机后端的 `--session-accounts`；\n\
+             `list_local_session_accounts`〔散文墓碑〕一个函数，它改走本机后端的 `--session-accounts`；\n\
              顺带删掉 `proc_claude_config_dir`/`pid_alive` 两个**平台原语的第二份实现**，\n\
              它们的家在后端的 `platform/proc.rs`）。\n\
              → **7**（F10b 末批：`history.rs` 的 reader 条**转成 `no-counterpart`** ——\n\

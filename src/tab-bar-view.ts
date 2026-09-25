@@ -23,6 +23,7 @@ import {
 } from "./tab-collections";
 import { activityLightClass } from "./session-status";
 import { terminalFrontAvailable } from "./terminal-front";
+import { isRemoteOrigin } from "./ipc/origin";
 import type { Tab } from "./tab-model";
 import type { TabStore } from "./tab-store";
 import type { TabBarPrefs } from "./tab-bar-prefs";
@@ -152,7 +153,7 @@ export class TabBarView {
         if (!t || t.status === "archived") return;
         // Feature ②：远端 Tab → 后端唯一分派点（先启动令牌、后 ccm-rbind 标题退路）；
         // 本地 Tab → 走原 sid_hwnd_cache 路径。
-        if (t.origin !== null) {
+        if (isRemoteOrigin(t.origin)) {
           void this.host.bringRemoteTerminalToFront(sid);
         } else {
           void this.host.bringTerminalToFront(sid);
@@ -387,7 +388,9 @@ export class TabBarView {
     );
     if (!b || !b.account) return hide(); // 未知账号（源③）→ 退 hover；顺带把 b.account 窄化为 string
     const ghost = b.source === "last";
-    const current = tab.origin ? this.store.currentByOrigin.get(tab.origin) ?? null : null;
+    const current = isRemoteOrigin(tab.origin)
+      ? this.store.currentByOrigin.get(tab.origin) ?? null
+      : null;
     const mismatch = detectAccountMismatch(b.account, current);
     // 头像是 `(账号名, 幽灵态)` 的纯函数（`account-color.ts::accountAvatarEl`）；提示文字是
     // `(b.tooltip, 不一致时的当前账号)` 的纯函数（下面那一行）⇒ 这几样就是全部输出。
@@ -471,10 +474,10 @@ export class TabBarView {
     // pin 管的是「别丢」不是「排前面」；位置由 `§C` 的顺序落盘管，两者不抢）。
     const pinned = tab.pinned;
     const hasCwd = !!tab.cwd;
-    // FIX 5 / Feature ②（issue #15）：远端 Tab（origin 非 null）的 cwd 是 Pi 上的路径，
+    // FIX 5 / Feature ②（issue #15）：远端 Tab 的 cwd 是 Pi 上的路径，
     // 本地不存在，故 .remote 类只隐藏「打开工作目录」📂（CSS）。「调出终端」↗ 现在保留
     // 给远端 —— 点击走 bringRemoteTerminalToFront（后端按 ccm-rbind 拉本地 ssh 窗口）。
-    const remote = tab.origin !== null;
+    const remote = isRemoteOrigin(tab.origin);
     // Batch7-F24：bg 任务 tab——缩进 + ⌞ 前缀由 CSS 承担
     const bg = tab.kind !== null && tab.kind !== "interactive";
     // issue #23 红绿灯：busy=绿（.live-dot 默认色）/ idle·shell=红 / waiting=黄。

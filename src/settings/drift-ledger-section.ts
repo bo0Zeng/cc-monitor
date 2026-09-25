@@ -23,6 +23,7 @@ import { commands } from "../ipc/commands";
 import { showActionFailureToast } from "../error-toast";
 import { withPending } from "./pending";
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
+import { isLocalOrigin, isRemoteOrigin, type Origin } from "../ipc/origin";
 import type { DriftEntry } from "../generated/DriftEntry";
 import type { DriftFace } from "../generated/DriftFace";
 import type { DriftFaceReport } from "../generated/DriftFaceReport";
@@ -127,19 +128,19 @@ export class DriftLedgerSection {
   loadNow(): void {
     this.started = true;
     // 〔ST2〕远端那一栏读不到 ⇒ 一发都不放（账不分机器，拿本机那本冒充它就是撒谎）。
-    if (getCurrentMachine() !== null) return;
+    if (isRemoteOrigin(getCurrentMachine())) return;
     void this.refresh();
   }
 
-  private onMachineChanged(origin: string | null): void {
+  private onMachineChanged(origin: Origin): void {
     this.applyMachine(origin);
-    if (this.started && origin === null) void this.refresh();
+    if (this.started && isLocalOrigin(origin)) void this.refresh();
   }
 
   /** 本机 ⇒ 摆那一整套；远端 ⇒ 收起来，只留那一句。只切两个节点（S30 ⑦：切不挂类的包装）。 */
-  private applyMachine(origin: string | null): void {
-    this.localOnly.hidden = origin !== null;
-    this.remoteNote.hidden = origin === null;
+  private applyMachine(origin: Origin): void {
+    this.localOnly.hidden = isRemoteOrigin(origin);
+    this.remoteNote.hidden = isLocalOrigin(origin);
   }
 
   private build(): HTMLElement {

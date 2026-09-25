@@ -44,6 +44,7 @@ import {
 import { REPO_ROOT } from "../test-support/repo-root";
 import { SessionViewer } from "../../src/views/session-viewer";
 import { invoke } from "@tauri-apps/api/core";
+import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
 let rig: ViewerRigHandles;
 
@@ -63,7 +64,7 @@ async function mount(lines: RigPayload[], outline?: string[]): Promise<SessionVi
     .map((u) => outlineEntry(u, text(lines.find((p) => (p.message as { uuid?: string }).uuid === u)!)));
   const v = new SessionViewer(() => {});
   document.body.appendChild(v.element);
-  await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", suppressBranch: true });
+  await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL_ORIGIN, suppressBranch: true });
   await settleOutline();
   expectLoaded(v.element);
   return v;
@@ -123,7 +124,7 @@ describe("SE1 清单挂进查看器：后端给什么就列什么（查看器不
     document.body.appendChild(v.element);
     outlineBackend.available = false;
     outlineBackend.reason = "本机后端不在";
-    await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", suppressBranch: true });
+    await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL_ORIGIN, suppressBranch: true });
     await settleOutline();
     expect(rowsOf(v).length).toBe(0);
     expect(toggleOf(v).disabled).toBe(true);
@@ -229,7 +230,7 @@ describe("KR45D1 点一下跳过去", () => {
 
     viewerRig.chunk = [userLine(1, "n1", "新会话唯一一句")];
     outlineBackend.entries = [outlineEntry("n1", "新会话唯一一句")];
-    await v.load({ jsonlPath: "/p/s2.jsonl", displayTitle: "T2", suppressBranch: true });
+    await v.load({ jsonlPath: "/p/s2.jsonl", displayTitle: "T2", origin: LOCAL_ORIGIN, suppressBranch: true });
     await settleOutline();
     expectLoaded(v.element);
 

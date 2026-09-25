@@ -1,17 +1,16 @@
 /**
- * 〔U2 · 拆 `tabs.ts` ⑤〕**对一个会话做的动作** —— 以及 tab 这一层**唯一直呼 `invoke` 的一份**。
+ * 〔U2 · 拆 `tabs.ts` ⑤〕**对一个会话做的动作**。
  *
  * resume（直连 / tmux / 就地）· 换号重启（等 compact · 等退出）· 杀 tmux 会话 · 打开工作目录 ·
  * 在新窗口打开 · 切到终端窗口；外加 tab 层那几条零散的后端调用（忘掉会话 · 把 monitor 拉到前面 ·
  * 红绿灯快照 · DEV 探针日志）。
  *
- * # 为什么直呼 `invoke` 收在这一份
+ * # 〔C4a · 第四波 · 子步 2〕本文件不再直呼 `invoke`
  *
- * 「直接 `import { invoke }` 的生产文件」是一个**恒等计数**（`generated-boundary-guard.vitest.ts`，
- * 主计划 §0.1 成功标准 4 的度量）：拆之前 `tabs.ts` 是其中一个。拆成几份之后若每份各自 import，
- * 那个数就会涨 ⇒ 这里把 tab 层用到的每一条 `invoke` 都收进本文件，`tabs.ts` 与其余几份一条都不直呼 ——
- * 计数不变，只是名单里的 `tabs.ts` 换成了本文件。经 `ipc/commands.ts` 包装层的调用（流视图的骨架索引 /
- * 按偏移取正文、本文件的 `list_local_tmux`）不算直呼，照旧走包装层。
+ * U2 拆 `tabs.ts` 时把 tab 层的每一条 `invoke` 收进本文件（「直接 `import { invoke }` 的生产文件」是
+ * `generated-boundary-guard.vitest.ts` 的恒等计数，拆开不许涨）。C4a 把这 11 处连同 `accounts.ts` 那 5 处
+ * 一起收进包装层 `ipc/commands.ts`（缺的十条命令补进去）⇒ 那个计数 3 → 1，只剩包装层自己；
+ * 本文件与 tab 层其余几份一样，只经 `commands.x(…)` 说话。
  *
  * # 它要宿主给什么
  *
@@ -19,7 +18,6 @@
  * 不碰 tab 栏、不碰流 DOM。方法体逐字从 `tabs.ts` 搬来，唯一的改写是 `this.tabs.get(` 等四处宿主读数
  * 换成 `this.host.…`（同一个值，换了个取法）。
  */
-import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
 import {
   restartLocateFailureMessage,
@@ -39,11 +37,9 @@ import {
   runRemoteResumeIntoExistingTmux,
   runRemoteAttach,
 } from "./remote-launch-run";
-// ⚠ **两个同名常量**：本文件要的是 `backend-policy` 那个（`"<local>"`，与 Rust
-// `inbound_client::LOCAL_ORIGIN` 逐字节相同、有跨语言判据钉着）；`accounts.ts` 里那个是
-// `"__local__"`，是账号面自己的标记，**不是 backend origin**。导错一个不会红，只会静默查不到。
-// 〔U2〕这条原住 `tabs.ts`，随 `LOCAL_ORIGIN` 的用处一起搬来；`tab-menu.ts` / `tab-stream-view.ts` 指向这里。
-import { LOCAL_ORIGIN } from "./backend-policy";
+// 〔C4a · `设计/05 §8` 步 2〕本机 = `LOCAL_ORIGIN`（`"<local>"`，与 Rust `origin.rs::LOCAL` 跨语言对拍）；
+// 「是不是本机」只经 `ipc/origin.ts` 判。`accounts.ts` 那个同名的 `"__local__"` 已退役 —— 全仓只剩一个本机表示。
+import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN } from "./ipc/origin";
 import { commands } from "./ipc/commands";
 import { mintSessionTmuxName } from "./remote-launch";
 import { getBehavior } from "./behavior";
@@ -70,7 +66,7 @@ import type { Tab } from "./tab-model";
 export function e2eLog(line: string): void {
   if (import.meta.env.DEV) {
     console.info(line);
-    void invoke("frontend_perf_log", { lines: line }).catch(() => {});
+    void commands.frontend_perf_log({ lines: line }).catch(() => {});
   }
 }
 
@@ -137,7 +133,7 @@ export class TabSessionActions {
     const tab = this.host.tab(sid);
     if (!tab) return;
     try {
-      await invoke("open_session_in_new_window", {
+      await commands.open_session_in_new_window({
         sessionId: sid,
         title: tab.title,
         ...(screenX !== undefined && screenY !== undefined
@@ -160,7 +156,7 @@ export class TabSessionActions {
    */
   private async readSessionPin(sid: string): Promise<string | undefined> {
     try {
-      const map = await invoke<Record<string, string>>("list_last_accounts");
+      const map = await commands.list_last_accounts();
       return map?.[sid];
     } catch {
       return undefined;
@@ -177,7 +173,7 @@ export class TabSessionActions {
     const tab = this.host.tab(sid);
     if (!tab) return;
     const behavior = await getBehavior();
-    if (tab.origin !== null) {
+    if (isRemoteOrigin(tab.origin)) {
       // A4：带账号统一走 withAccount（点击时重解析 configDir + 记 lastAccount 源②，与 history 同口径）。
       // 本地账号切换是 A7，此处忽略（withAccount 只在远端调）。
       const origin = tab.origin;
@@ -265,7 +261,7 @@ export class TabSessionActions {
       //    钉这件事的那条判据（`commands.vitest.ts`）逐字写的就是 `localLaunchAccountSync`。
       //    resume 走那条会话上次的 pin，
       //    说不出就**缺席**（逐字节旧行为），绝不回落到「当前账号」——那是 #75 的形状。
-      await invoke("resume_history_session", {
+      await commands.resume_history_session({
         sessionId: sid,
         cwd: tab.cwd ?? "",
         launcher: behavior.resumeCommandLocal || null,
@@ -311,7 +307,7 @@ export class TabSessionActions {
     useBase: boolean,
   ): Promise<void> {
     const tab = this.host.tab(sid);
-    if (!tab || tab.origin === null) return;
+    if (!tab || isLocalOrigin(tab.origin)) return;
     const behavior = await getBehavior();
     const origin = tab.origin;
     const cwd = tab.cwd ?? "";
@@ -446,7 +442,7 @@ export class TabSessionActions {
       const sessions =
         origin === LOCAL_ORIGIN
           ? await commands.list_local_tmux()
-          : await invoke<TmuxSession[] | null>("list_remote_tmux", { origin });
+          : await commands.list_remote_tmux({ origin });
       // 只缓存确定结果（成功列表 / NO_TMUX=null）；瞬时 ssh 失败不缓存，免 8s 内抑制重试（D-Sug3）。
       this.tmuxCache.set(origin, { ts: Date.now(), sessions });
       return sessions;
@@ -563,7 +559,7 @@ export class TabSessionActions {
   ): Promise<boolean> {
     // 〔`A3` 第二波〕本机会话的 origin 是 `<local>`：下面每一跳（tmux 快照 / send-keys / kill /
     // 账号清单 / 信任预检）都按 origin 分流，本机走得通；resume 那一跳在 `restartWithAccount` 里分。
-    const origin = tab.origin ?? LOCAL_ORIGIN;
+    const origin = tab.origin;
     const cwd = tab.cwd ?? "";
     const behavior = await getBehavior();
     // 解析该会话当前 tmux 名，一律新查（对齐 resumeTabTmux：attach/重启对新鲜度最敏感，防据陈旧快照误伤）。
@@ -652,7 +648,7 @@ export class TabSessionActions {
     if (!ok) return;
     void (async () => {
       try {
-        await invoke("kill_remote_tmux", { origin, target: tmuxName });
+        await commands.kill_remote_tmux({ origin, target: tmuxName });
         const who = isLocal ? "本机" : `远端 [${origin}]`;
         showActionFailureToast(
           "已杀死会话",
@@ -673,7 +669,7 @@ export class TabSessionActions {
     if (!tab?.cwd) return;
     // F78：远端 Tab 的 cwd 是远端路径，本地 openPath 打不开——改成用该机配置开 SFTP 进入该目录
     // （Batch9-F29 曾从静默 no-op 改成 info 提示；现进一步真能浏览）。找不到该机配置才回退提示。
-    if (tab.origin !== null) {
+    if (isRemoteOrigin(tab.origin)) {
       const host = findHostByOrigin((await readRemoteConfig()).hosts, tab.origin);
       if (host && host.host.trim() !== "" && host.user.trim() !== "") {
         void openFileWindow(host, { dir: tab.cwd });
@@ -710,7 +706,7 @@ export class TabSessionActions {
 export function bringTerminalToFront(sessionId: string): Promise<void> {
   const timeoutMs = 5000;
   return Promise.race([
-    invoke<void>("bring_terminal_to_front", { sessionId }),
+    commands.bring_terminal_to_front({ sessionId }),
     new Promise<never>((_, reject) =>
       window.setTimeout(
         () => reject(new Error("切到终端窗口超时")),
@@ -743,7 +739,7 @@ export function bringRemoteTerminalToFront(sessionId: string): Promise<void> {
   // 抬到其上、留 Win32 activate 余量——5s→8s,否则前端超时会和后端重试撞车(刚要绑上就被判超时)。
   const timeoutMs = 8000;
   return Promise.race([
-    invoke<void>("bring_remote_terminal_to_front", { sessionId }),
+    commands.bring_remote_terminal_to_front({ sessionId }),
     new Promise<never>((_, reject) =>
       window.setTimeout(
         () => reject(new Error("切到终端窗口超时")),
@@ -758,14 +754,14 @@ export function bringRemoteTerminalToFront(sessionId: string): Promise<void> {
 
 /** 关 tab 时让后端 event_replay 把这个 session 的历史也丢掉（失败只记日志）。 */
 export function forgetSession(sessionId: string): void {
-  void invoke("forget_session", { sessionId }).catch((e) => {
+  void commands.forget_session({ sessionId }).catch((e) => {
     console.warn(`forget_session ${sessionId} failed:`, e);
   });
 }
 
 /** v2.4 issue #2：自动跟随时把 monitor 窗口拉到前台（失败只记日志）。 */
 export function bringMonitorToFront(): void {
-  void invoke("bring_monitor_to_front").catch((e) => {
+  void commands.bring_monitor_to_front().catch((e) => {
     console.warn("bring_monitor_to_front failed:", e);
   });
 }
@@ -774,7 +770,5 @@ export function bringMonitorToFront(): void {
 export function listSessionActivity(): Promise<
   { session_id: string; status: string | null; waiting_for: string | null }[]
 > {
-  return invoke<{ session_id: string; status: string | null; waiting_for: string | null }[]>(
-    "list_session_activity",
-  );
+  return commands.list_session_activity();
 }

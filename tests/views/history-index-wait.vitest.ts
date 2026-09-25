@@ -1,7 +1,7 @@
 // audit-0805 F14 第四刀：**索引没建好时的等待，不许每秒把整条搜索重跑一遍**。
 //
-// Rust 侧 `search.rs:848-860` 是无条件 `tokio::join!(本地索引, search_remote_all)` ——
-// 没有「本地还在建索引就别问远端」这一说。而 `merge_search_results` 一旦拿到非空远端结果
+// Rust 侧 `search.rs:848-860` 是无条件 `tokio::join!(本地索引, 远端 fan-out（〔C4a〕今天是 `history-search.ts::searchAllMachines` 经通道逐台问）)` ——
+// 没有「本地还在建索引就别问远端」这一说。而 `mergeSearchResults`（〔C4a〕今天住 `history-search.ts`，逐格同口径） 一旦拿到非空远端结果
 // 就直接返回 `status: "ready"` ⇒ 那条 1 秒重试链的**实际形态**是：
 // 「每秒问一遍所有远端，每秒得到『没有』，然后再问一遍」。
 //
@@ -65,6 +65,9 @@ function setup(opts: { statusThrows?: boolean } = {}): { setReady(): void } {
       });
     }
     if (cmd === "list_history_projects") return Promise.resolve([]);
+    // 〔C4a〕远端全文搜索改由前端经通道逐台问（`history-search.ts::searchAllMachines`）；
+    //   本组不配远端 ⇒ 远端清单为空，一次都不扇出。
+    if (cmd === "list_remote_mcp_origins") return Promise.resolve([]);
     if (cmd === "list_remote_history_projects")
       return Promise.resolve({ projects: [], failedHosts: [] });
     return Promise.resolve(undefined);
@@ -108,7 +111,7 @@ describe("索引等待期间不许再扇出远端（audit-0805 F14 第四刀）"
 
     expect(
       count("search_history"),
-      "★ 等待期间又重跑了整条搜索 —— 它在 Rust 侧无条件 join 了 search_remote_all，" +
+      "★ 等待期间又重跑了整条搜索 —— 它在 Rust 侧无条件 join 了 远端 fan-out（〔C4a〕今天是 `history-search.ts::searchAllMachines` 经通道逐台问），" +
         "也就是**每秒对每台远端各一条 SSH**，而且这条链只在远端一条都没命中时才会持续转：" +
         "每秒问一遍所有远端，每秒得到「没有」，然后再问一遍。",
     ).toBe(1);

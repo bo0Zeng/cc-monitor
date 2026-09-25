@@ -28,6 +28,8 @@ import { commands } from "../ipc/commands";
 // 〔步 12·C〕本机那个 origin 的**唯一住址**（Rust 侧是 `inbound_client::LOCAL_ORIGIN`，
 // 两侧由 `origin_tests::the_sentinel_agrees_with_the_two_existing_homes` 两向钉着）。
 import { LOCAL_ORIGIN } from "../backend-policy";
+import { originFromWire } from "../ipc/origin";
+import { searchAllMachines } from "./history-search";
 // `K-R46`：本机 tmux 名的唯一算法口（铸名过 `mintTmuxName` + 「不知道就不铸」）。
 import { mintLocalTmuxName } from "../ipc/local-tmux-name";
 import { SessionViewer, type ViewerOptions } from "./session-viewer";
@@ -296,7 +298,8 @@ export class HistoryView {
     // ★ audit-0805 F14：**关掉视图必须掐断那条 1 秒重试链**。
     //
     // 全文搜索在 `status === "indexing"` 时挂一个 `setTimeout(…, 1000)` 重跑
-    // `runFullTextSearch()`，而它内含 `search_remote_all` ⇒ **对每台远端各一条 SSH**。
+    // `runFullTextSearch()`，而它内含远端 fan-out（〔C4a〕今天是 `history-search.ts::searchAllMachines`
+    // 经通道逐台问）⇒ **对每台远端各一问**。
     // 那个回调的存活判据是 `seq === this.ftSeq`，而 `close()` 此前**不动 ftSeq**
     //（复位在 `open()`）⇒ 视图关掉、`root` 已 `remove()` 之后那条链**照跑**，
     // 每秒继续对所有远端扇出，并把结果写进已 detach 的 DOM。
@@ -325,7 +328,7 @@ export class HistoryView {
       jsonlPath: entry.jsonlPath,
       displayTitle,
       subtitle,
-      origin: entry.origin,
+      origin: originFromWire(entry.origin),
       cwd: entry.projectPath, // F62：建分支后 resume 用作新终端起始目录
     });
   }
@@ -784,7 +787,8 @@ export class HistoryView {
     }
     this.statusEl.textContent = "搜索中…";
     try {
-      const resp = await commands.search_history({
+      // 〔C4a〕本机索引 ＋ 各台远端（远端那半经通道说 `history-search`），合并也在前端（`history-search.ts`）。
+      const resp = await searchAllMachines({
         query,
         includeTools: this.includeTools,
         scope: this.searchScope,
@@ -818,11 +822,11 @@ export class HistoryView {
    *
    * # 它改掉了什么
    *
-   * 原来是每 1 秒重跑一次 `runFullTextSearch()`，而 `search_history` 在 Rust 侧
-   * （`search.rs:848-860`）是**无条件** `tokio::join!(本地索引, search_remote_all)` ——
-   * 没有「本地还在建索引就别问远端」这一说 ⇒ **每秒对每台远端各一条 SSH**。
+   * 原来是每 1 秒重跑一次 `runFullTextSearch()`，而完整搜索是**无条件**地同时问本地索引与各台远端
+   * （当时住 Rust `search.rs`；〔C4a〕今天住 `history-search.ts::searchAllMachines`，形状没变）——
+   * 没有「本地还在建索引就别问远端」这一说 ⇒ **每秒对每台远端各一问**。
    *
-   * 而且它只在**远端一条都没命中**时才会继续转：`merge_search_results` 一旦拿到非空远端结果
+   * 而且它只在**远端一条都没命中**时才会继续转：合并（`history-search.ts::mergeSearchResults`）一旦拿到非空远端结果
    * 就直接返回 `status: "ready"`。⇒ 这条链的实际形态是
    * 「**每秒问一遍所有远端，每秒得到「没有」，然后再问一遍**」。
    *
@@ -977,7 +981,7 @@ export class HistoryView {
           subtitle: s.projectName
             ? `${s.projectName}  ·  ${s.projectPath}`
             : s.projectPath,
-          origin: s.origin,
+          origin: originFromWire(s.origin),
           cwd: s.projectPath,
         });
       });
@@ -1016,7 +1020,7 @@ export class HistoryView {
           : s.projectPath,
         scrollToUuid: hit.uuid,
         // issue #28：远端命中点击走远端只读视图（origin → stream_read_remote_session）。
-        origin: s.origin,
+        origin: originFromWire(s.origin),
         cwd: s.projectPath, // F62：本地命中建分支后 resume 用
       });
     });

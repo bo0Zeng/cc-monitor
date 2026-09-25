@@ -9,7 +9,7 @@
  * | ② | **路由**：切到哪个 tab、谁有权切（手动 5s 保护 · 自动跟随）、记住上次的 tab | `main.ts` 快捷键 / 命令面板 / 启动选 active（`switchTo` · `cycleActive` · `jumpToIndex` · `applyBehavior` · `persistLastActive` · `onManualSwitch`）；`onLine` 里真用户输入（`userActive`） | `tab-router.ts` |
  * | ③ | **实时流视图**：每个 tab 的流 DOM、按 seq 门控建卡、尾部窗口 / 骨架 / 上翻补批 / 哨兵 / 大纲、重放批 | `events.ts` → `onBatchStart` · `onLine` · `onBatchEnd`；`main.ts` DEV 探针 `debugSnapshot` | `tab-stream-view.ts` |
  * | ④ | **tab 栏视图**：按钮 · 徽章 · 分组 · 拖动排序与成组 · 固定 · 顺序落盘 | 用户手势；`main.ts` 启动 `loadCollections` · `loadPinned` · `loadOrder` | `tab-bar-view.ts` · `tab-bar-drag.ts` · `tab-drop.ts`（纯落点算术）· `tab-bar-prefs.ts`（集合 / 固定 / 顺序三份落盘） |
- * | ⑤ | **会话动作**：右键菜单（resume · 换号重启 · attach · 预览 · 杀会话 · 集合 · 固定）与它背后的 IPC（开目录 · 新窗口 · 切到终端窗口） | 用户右键；`main.ts` 快捷键 / 命令面板（`bringActiveTerminalToFront` · `openActiveTabCwd` · `openActiveInNewWindow` · `closeActiveIfArchived`） | `tab-menu.ts`（菜单项怎么组）· `tab-context-menu.ts`（菜单这个控件）· `tab-session-actions.ts`（动作本身 ＋ 本层唯一直呼 `invoke` 的一份） |
+ * | ⑤ | **会话动作**：右键菜单（resume · 换号重启 · attach · 预览 · 杀会话 · 集合 · 固定）与它背后的 IPC（开目录 · 新窗口 · 切到终端窗口） | 用户右键；`main.ts` 快捷键 / 命令面板（`bringActiveTerminalToFront` · `openActiveTabCwd` · `openActiveInNewWindow` · `closeActiveIfArchived`） | `tab-menu.ts`（菜单项怎么组）· `tab-context-menu.ts`（菜单这个控件）· `tab-session-actions.ts`（动作本身；〔C4a〕IPC 经包装层 `ipc/commands.ts`） |
  *
  * 本文件拆完只剩 `TabManager` 这个**组装根**：对外 API（`main.ts` / `entry-viewer.ts` 调的那些）
  * 逐字不变，事件怎么在上面几份之间流转写在这里。拆分逐子步提交，每一步 `tabs.vitest` 全绿、断言不动。
@@ -33,6 +33,7 @@ import {
   TERMINAL_FRONT_UNAVAILABLE_DETAIL,
 } from "./terminal-front";
 import { computeTitleFor, type Tab, type TabsSummary } from "./tab-model";
+import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, originFromWire, type Origin } from "./ipc/origin";
 // 〔U2〕`Tab` 的形状与标题函数搬去了 `tab-model.ts`；这里原样 re-export，既有 import 面零改动。
 export type { Tab, TabStatus, TabsSummary } from "./tab-model";
 // 〔U2〕落点算术搬去了 `tab-drop.ts`；原样 re-export，`tabs.vitest.ts` 的 import 面零改动。
@@ -195,7 +196,7 @@ export class TabManager {
   }
 
   /**
-   * 〔U2 · ⑤〕会话动作住 `tab-session-actions.ts`（tab 层唯一直呼 `invoke` 的一份）。它只要宿主给四样读数 / 回调。
+   * 〔U2 · ⑤〕会话动作住 `tab-session-actions.ts`（〔C4a〕它的 IPC 也经包装层 `ipc/commands.ts`）。它只要宿主给四样读数 / 回调。
    */
   private readonly actions = new TabSessionActions({
     tab: (sid) => this.store.tabs.get(sid),
@@ -290,7 +291,7 @@ export class TabManager {
       payload.cwd,
       payload.path,
       payload.seq,
-      payload.origin ?? null,
+      originFromWire(payload.origin),
     );
 
     // SSH 重连后远端后端从 seq 0 重发该 session 整段 jsonl → 按 seq 去重。必须在
@@ -350,7 +351,7 @@ export class TabManager {
   createSkeletonTab(
     sessionId: string,
     cwd: string | null,
-    origin: string | null,
+    origin: Origin,
     kind: string | null = null,
     name: string | null = null,
     // E73：`null` = 没说（旧 backend / 存量会话）= 视为可以。只有显式 `false` 才记账。
@@ -380,10 +381,10 @@ export class TabManager {
 
   /**
    * Batch15-P2：活跃 tab 的仓信息（cwd + origin），供全景视图判断索引哪个本地仓。
-   * 无活跃 tab / 活跃 tab 无 cwd → 返 null。origin!==null = 远端会话（代码在远端机，
+   * 无活跃 tab / 活跃 tab 无 cwd → 返 null。origin 是远端 = 远端会话（代码在远端机，
    * 本地 code-picture 索引不到，全景侧据此显式提示不索引）。**additive getter，只读，不改既有逻辑。**
    */
-  activeRepoInfo(): { cwd: string; origin: string | null } | null {
+  activeRepoInfo(): { cwd: string; origin: Origin } | null {
     const tab = this.store.activeId !== null ? this.store.tabs.get(this.store.activeId) : undefined;
     if (!tab || !tab.cwd) return null;
     return { cwd: tab.cwd, origin: tab.origin };
@@ -391,15 +392,15 @@ export class TabManager {
 
   /**
    * F70：某会话在全景图上可高亮的「改动集」——cwd（定仓）+ 它写类工具碰过的文件。
-   * **本地会话专属**：origin!==null（远端）/ 无 cwd → 返 null（远端代码不在本机、code-picture
+   * **本地会话专属**：origin 是远端 / 无 cwd → 返 null（远端代码不在本机、code-picture
    * 索引不到，高亮不可用——门控就地做，呼应 activeRepoInfo）。**只读 getter，不落盘。**
    */
   touchedFilesFor(
     sid: string,
-  ): { cwd: string; origin: null; files: string[] } | null {
+  ): { cwd: string; origin: Origin; files: string[] } | null {
     const tab = this.store.tabs.get(sid);
-    if (!tab || !tab.cwd || tab.origin !== null) return null;
-    return { cwd: tab.cwd, origin: null, files: [...tab.touchedFiles] };
+    if (!tab || !tab.cwd || isRemoteOrigin(tab.origin)) return null;
+    return { cwd: tab.cwd, origin: LOCAL_ORIGIN, files: [...tab.touchedFiles] };
   }
 
   /**
@@ -474,7 +475,7 @@ export class TabManager {
       account: s.account,
       mismatch: detectAccountMismatch(
         s.account,
-        s.origin ? this.store.currentByOrigin.get(s.origin) ?? null : null,
+        isRemoteOrigin(s.origin) ? this.store.currentByOrigin.get(s.origin) ?? null : null,
       ),
     }));
     return JSON.stringify(sessions);
@@ -530,7 +531,7 @@ export class TabManager {
     cwd: string | null,
     sourcePath: string,
     seq: number,
-    origin: string | null = null,
+    origin: Origin = LOCAL_ORIGIN,
     kind: string | null = null,
     bgName: string | null = null,
   ): Tab {
@@ -540,7 +541,7 @@ export class TabManager {
       // 活着 → 复活成 live。必须放在 ensureTab 里（在 onLine 的 seq 去重 return 之前），否则整段
       // 重放全被去重时连第一条行都走不到翻转。**仅远端**：本地归档由 PID 判活驱动，不靠「收到行」
       // 翻转，避免会话退出时尾写把已归档的本地 Tab 误复活（远端掉线归档是连接驱动，无此风险）。
-      if (tab.status === "archived" && tab.origin !== null) {
+      if (tab.status === "archived" && isRemoteOrigin(tab.origin)) {
         tab.status = "live";
         this.prefs.clearPinHint(sessionId); // 〔步 17·B〕远端复活：空态提示的对象没了
         this.refreshTabBar();
@@ -587,7 +588,14 @@ export class TabManager {
       return tab;
     }
 
-    const title = computeTitleFor(sessionId, cwd, null, origin, kind, bgName);
+    const title = computeTitleFor(
+      sessionId,
+      cwd,
+      null,
+      isRemoteOrigin(origin) ? origin : null,
+      kind,
+      bgName,
+    );
 
     const { streamEl, stream, branchFolder, timeline, inputsEl, inputsPanel, outline } =
       this.view.mountTabDom(sessionId);
@@ -693,7 +701,7 @@ export class TabManager {
       tab.sessionId,
       tab.cwd,
       tab.aiTitle,
-      tab.origin,
+      isRemoteOrigin(tab.origin) ? tab.origin : null,
       tab.kind,
       tab.bgName,
       tab.forkedFromSessionId,
@@ -711,7 +719,7 @@ export class TabManager {
     e2eLog(
       `[e2e] tab-state sid=${tab.sessionId.slice(0, 8)} status=${tab.status} tmuxIdle=${
         tab.tmuxIdle ? 1 : 0
-      } origin=${tab.origin ?? "local"}`,
+      } origin=${isLocalOrigin(tab.origin) ? "local" : tab.origin}`,
     );
   }
 
@@ -755,7 +763,7 @@ export class TabManager {
     this.store.pendingTmuxIdle.delete(sessionId); // audit-fixes F03.2：复活即清暂存灰灯
     const tab = this.store.tabs.get(sessionId);
     if (!tab) return;
-    if (tab.origin !== null) return; // 仅本地；远端复活走 ensureTab 见行路径
+    if (isRemoteOrigin(tab.origin)) return; // 仅本地；远端复活走 ensureTab 见行路径
     if (tab.status !== "archived") return;
     tab.status = "live";
     this.prefs.clearPinHint(sessionId); // 〔步 17·B〕真接上了 ⇒ 那块「只能 resume」的空态该走了
@@ -1006,7 +1014,7 @@ export class TabManager {
     const tab = this.store.tabs.get(this.store.activeId);
     if (!tab || tab.status === "archived") return;
     // Feature ②：远端 Tab → 后端唯一分派点（先启动令牌、后 ccm-rbind 标题退路）；本地 Tab → 原 sid_hwnd_cache 路径。
-    if (tab.origin !== null) {
+    if (isRemoteOrigin(tab.origin)) {
       void bringRemoteTerminalToFront(this.store.activeId);
     } else {
       void bringTerminalToFront(this.store.activeId);
@@ -1025,8 +1033,8 @@ export class TabManager {
   }
 
   /** F77：活跃 tab 的子 agent 加载上下文（parentPath + origin）——main.ts 点 agent 行时用它
-   *  调 `load_subagent`。无活跃 tab / 无 parentPath → null；远端会话 origin!==null（不支持，调用方提示）。 */
-  getActiveSubagentContext(): { parentPath: string; origin: string | null } | null {
+   *  调 `load_subagent`。无活跃 tab / 无 parentPath → null。 */
+  getActiveSubagentContext(): { parentPath: string; origin: Origin } | null {
     const tab = this.store.activeId !== null ? this.store.tabs.get(this.store.activeId) : undefined;
     if (!tab || !tab.parentPath) return null;
     return { parentPath: tab.parentPath, origin: tab.origin };

@@ -37,6 +37,7 @@ import { formatTimestampShort } from "../format";
 import { openFileWindow } from "../file-window";
 import { resolveRemoteConfigByOrigin } from "../remote-config";
 import { showActionFailureToast } from "../error-toast";
+import { isRemoteOrigin, type Origin } from "../ipc/origin";
 
 // === Rust 端 JsonlRecord 的 TS 镜像 ===
 //
@@ -86,11 +87,11 @@ export interface RenderContext {
   /** 父 JSONL 路径，subagent 模块用它定位 `<parent>/subagents/` 目录 */
   parentPath: string;
   /**
-   * Batch9-F29：会话来源（null/缺省=本地；string=远端机器 label）。subagent
-   * 懒加载据此降级——远端会话的 subagent 文件在远端机器，本地 load_subagent
-   * 必然失败（此前渲染成报错+永远失败的"重试"按钮，盘点 #2 UX 误导）。
+   * Batch9-F29：会话来源（本机 = `LOCAL_ORIGIN`；其余 = 远端机器 label）。
+   * 〔C4a · `设计/05 §8` 步 2〕上一版是「`null`/缺省 = 本地」—— 两种「没说」都被当成本机；
+   * 现在**必填**：每个造渲染上下文的地方都得说出是哪台机器。
    */
-  origin?: string | null;
+  origin: Origin;
   /**
    * tool_use_id → tool_name 映射。tool_use 出现在 assistant 消息，tool_result
    * 出现在下一条 user 消息，跨消息不能就地反查；TabManager（或 subagent 嵌套
@@ -511,7 +512,7 @@ function buildToolUseCard(
     // F54:远端会话 + 有 file_path 的工具(Read/Write/Edit/…)→ body 顶部插「在 SFTP 打开」可点
     // 链接(会话→文件跳转)。放 body(展开时)而非 summary——summary 会被 tool_result 注入重写。
     const fp = fileInputPath(block.input);
-    if (ctx.origin && fp) {
+    if (isRemoteOrigin(ctx.origin) && fp) {
       wrap.insertBefore(buildRemoteFileLink(ctx.origin, fp), wrap.firstChild);
     }
     argsRendered = true;

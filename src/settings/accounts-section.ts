@@ -41,6 +41,7 @@ import { copyText } from "../copy-table";
 // 〔第三波 S3〕本机建号那一跳：后端那个本机串（与本文件经 `../accounts` 用的 `"__local__"` 不是同一个值），
 // 以及「本机刻意不开终端窗口」那句话的跨语言标记（唯一住址在 `remote-launch-run.ts`）。
 import { LOCAL_ORIGIN as BACKEND_LOCAL_ORIGIN } from "../backend-policy";
+import { isLocalOrigin, isRemoteOrigin, type Origin } from "../ipc/origin";
 import { POSIX_NO_WINDOW_MARKER } from "../remote-launch-run";
 // 〔AL1 · 2026-09-24〕别名那一块与用户级 PATH 那一格都搬去了机器页「本机 → 工具 → 别名」
 // （`设计/70 §3.3` · `设计/71`）—— 两者是同一个问题（「这台机器的终端怎么找到 ccm」）的两条路。
@@ -203,7 +204,8 @@ export class AccountsSection {
   readonly element: HTMLElement;
   private body: HTMLElement;
   private hosts: RemoteHostConfig[] = [];
-  private origin: string | null = null;
+  /** 在看哪台机器（本机 = `LOCAL_ORIGIN`；初值由 `init` 从共用 store 取）。 */
+  private origin: Origin = BACKEND_LOCAL_ORIGIN;
   /** U7：维护区展开态。null=用户还没表态（默认折叠）；true/false=用户手动开合过，reload 后保持。 */
   private maintOpen: boolean | null = null;
   /**
@@ -236,7 +238,7 @@ export class AccountsSection {
     refresh.className = "accounts-refresh";
     refresh.textContent = "刷新";
     refresh.addEventListener("click", () => {
-      if (this.origin) invalidateAccountsCache(this.origin);
+      if (isRemoteOrigin(this.origin)) invalidateAccountsCache(this.origin);
       void this.reload(true);
     });
     bar.appendChild(refresh);
@@ -302,10 +304,10 @@ export class AccountsSection {
    * 起就不成立了（`origin` 为空时走本机那一支），留着它的后果是：从 devbox 那一页切回本机页，
    * 这一节还停在 devbox 的账号上。⇒ 本机也跟。
    */
-  private followMachine(origin: string | null): void {
+  private followMachine(origin: Origin): void {
     // E59：判据从「在不在我自己的下拉里」改成「在不在已加载的主机清单里」——
     // 下拉没了，而这条判据本来问的就是「这台我认不认得」。
-    if (origin !== null && !this.knows(origin)) return;
+    if (isRemoteOrigin(origin) && !this.knows(origin)) return;
     if (this.origin === origin) return;
     this.origin = origin;
     void this.reload(true);
@@ -357,7 +359,7 @@ export class AccountsSection {
     facet: "acctIso" | "accounts",
     state: { kind: "ok" | "fail" | "na"; detail?: string },
   ): void {
-    recordFacet(this.origin || LOCAL_MACHINE_KEY, facet, state);
+    recordFacet(isLocalOrigin(this.origin) ? LOCAL_MACHINE_KEY : this.origin, facet, state);
   }
 
   private async reload(force: boolean): Promise<void> {
@@ -369,7 +371,7 @@ export class AccountsSection {
     pending.className = "accounts-info";
     pending.dataset.pending = "accounts";
     pending.setAttribute("aria-busy", "true");
-    pending.textContent = `正在读 ${this.origin ?? "本机"} 的账号…`;
+    pending.textContent = `正在读 ${isLocalOrigin(this.origin) ? "本机" : this.origin} 的账号…`;
     this.body.appendChild(pending);
     try {
       await this.reloadInner(force);
@@ -379,7 +381,7 @@ export class AccountsSection {
   }
 
   private async reloadInner(force: boolean): Promise<void> {
-    if (!this.origin) {
+    if (isLocalOrigin(this.origin)) {
       // `N-F1b`：这里原先逐字印
       // 「没有已配置的远端。账号功能在远端 Linux 上——先在「连接」组配一台远端。」
       // 然后早返回。那句话在一台**本来就有账号**的机器上是一句坏话：它把「这一节
@@ -714,7 +716,7 @@ export class AccountsSection {
     step: AcctIsoStep,
     opts: { danger?: boolean; confirmExtra?: string } = {},
   ): Promise<boolean> {
-    if (!this.origin) return false;
+    if (isLocalOrigin(this.origin)) return false;
     const built = buildAcctIsoCmd(step);
     if (!built.ok) {
       showActionFailureToast("命令无法生成", built.reason, { level: "error" });
@@ -793,7 +795,7 @@ export class AccountsSection {
 
   /** 当前选中远端对应的 host 配置（多账号 IPC 要传 cfg=RemoteHostConfig）。 */
   private currentHost(): RemoteHostConfig | null {
-    if (!this.origin) return null;
+    if (isLocalOrigin(this.origin)) return null;
     return (
       this.hosts.find((h) => (h.label || h.host) === this.origin) ?? this.hosts[0] ?? null
     );

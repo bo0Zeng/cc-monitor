@@ -40,8 +40,6 @@ import {
   type StreamSink,
 } from "./render-stream-record";
 import type { BranchRecord } from "./branching";
-// ⚠ 要的是 `backend-policy` 那个（`"<local>"`），不是 `accounts.ts` 里同名的 `"__local__"`（理由见 `tab-session-actions.ts` 那条注释）。
-import { LOCAL_ORIGIN } from "./backend-policy";
 import { commands } from "./ipc/commands";
 import type { Tab } from "./tab-model";
 import type { TabStore } from "./tab-store";
@@ -151,7 +149,7 @@ export class TabStreamView {
           return { available: false, reason: "这个会话的文件位置还没收到", hits: [], total: 0 };
         }
         return commands.find_in_session({
-          origin: t.origin ?? LOCAL_ORIGIN,
+          origin: t.origin,
           jsonlPath: t.parentPath,
           query,
           includeTools,
@@ -167,7 +165,7 @@ export class TabStreamView {
     // 〔SE1〕大纲的数据源：路径可能要等首条行回填（骨架 tab），所以每次要的时候现取
     const outline = new OutlineSource(inputsPanel, () => {
       const t = this.store.tabs.get(sessionId);
-      return t?.parentPath ? { origin: t.origin ?? LOCAL_ORIGIN, jsonlPath: t.parentPath } : null;
+      return t?.parentPath ? { origin: t.origin, jsonlPath: t.parentPath } : null;
     });
     // v2.2 issue #12: 重放期创建的新 Tab 也进 batch 模式，避免每条 record 都
     // 触发 O(N) computeMainBranch。批结束时 onBatchEnd 会统一 flush。
@@ -622,7 +620,7 @@ export class TabStreamView {
     if (tab.window.floorSeq === null) return;
     tab.skeletonFetch = "pending";
     const jsonlPath = tab.parentPath;
-    const origin = tab.origin ?? LOCAL_ORIGIN;
+    const origin = tab.origin;
     const first = commands.read_session_index({ origin, jsonlPath, fromOffset: 0 });
     // 〔SE2 · `设计/10 §9.5` 欠账〕大纲**等这一趟**：索引顺带出清单（后端 `IndexRow::x`）⇒ 首屏同一份文件
     // 只读一遍；带不回（老后端 / 零条 / 失败）⇒ 它自己照旧 `list_user_inputs(0)`。
@@ -730,7 +728,7 @@ export class TabStreamView {
       if (last && last[1] === s) last[1] = s + 1;
       else runs.push([s, s + 1]);
     }
-    const origin = tab.origin ?? LOCAL_ORIGIN;
+    const origin = tab.origin;
     let inflight = this.rangeFetches.get(tab);
     if (!inflight && runs.length > 0) {
       inflight = new Set();

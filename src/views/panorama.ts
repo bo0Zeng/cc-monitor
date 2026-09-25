@@ -21,6 +21,7 @@
 
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import * as api from "../panorama/api";
+import { isRemoteOrigin, type Origin } from "../ipc/origin";
 import {
   clampDepth,
   layerImpact,
@@ -66,7 +67,7 @@ type FileRef = {
 };
 
 /** main.ts 注入的活跃仓信息取值器（读活跃 tab 的 cwd/origin）。 */
-type RepoInfoGetter = () => { cwd: string; origin: string | null } | null;
+type RepoInfoGetter = () => { cwd: string; origin: Origin } | null;
 
 /**
  * F72：从符号全 id 取「批注用的符号段」——**镜像 core `split_sym_id`**：取 `#` 后、`@行号`消歧
@@ -212,7 +213,7 @@ export class PanoramaView implements OverlayHandle {
       );
       return;
     }
-    if (info.origin !== null) {
+    if (isRemoteOrigin(info.origin)) {
       // 远端会话：代码在远端机，本地 code-picture 索引不到（诚实提示，不索引）。
       this.switchRepo(null);
       this.updateRepoChrome();

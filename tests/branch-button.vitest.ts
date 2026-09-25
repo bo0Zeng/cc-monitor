@@ -30,6 +30,7 @@ vi.mock("../src/ipc/commands", () => ({
 vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 
 import { attachBranchButton, isOffMainCard, FOLD_WRAP_SELECTOR } from "../src/branch-button";
+import { LOCAL_ORIGIN } from "../src/ipc/origin";
 
 function card(): HTMLElement {
   const el = document.createElement("div");
@@ -49,14 +50,14 @@ describe("attachBranchButton", () => {
 
   it("挂上按钮并给宿主加定位类", () => {
     const el = card();
-    attachBranchButton(el, { uuid: "u1", sourceSessionId: "src-sid", onForked: () => {} });
+    attachBranchButton(el, { uuid: "u1", sourceSessionId: "src-sid", origin: LOCAL_ORIGIN, onForked: () => {} });
     expect(btnOf(el)).not.toBeNull();
     expect(el.classList.contains("has-branch-btn")).toBe(true);
   });
 
   it("★ 幂等：增量重渲会重复调，不能长出第二个按钮", () => {
     const el = card();
-    const o = { uuid: "u1", sourceSessionId: "src-sid", onForked: () => {} };
+    const o = { uuid: "u1", sourceSessionId: "src-sid", origin: LOCAL_ORIGIN, onForked: () => {} };
     attachBranchButton(el, o);
     attachBranchButton(el, o);
     attachBranchButton(el, o);
@@ -69,6 +70,7 @@ describe("attachBranchButton", () => {
     attachBranchButton(el, {
       uuid: "u7",
       sourceSessionId: "src-sid",
+      origin: LOCAL_ORIGIN,
       onForked: (r) => (got = r.sessionId),
     });
     btnOf(el)!.click();
@@ -106,7 +108,7 @@ describe("G5：off-main 的判据与呈现", () => {
     document.body.appendChild(wrap);
     const el = document.createElement("div");
     wrap.appendChild(el);
-    attachBranchButton(el, { uuid: "u1", sourceSessionId: "src-sid", onForked: () => {} });
+    attachBranchButton(el, { uuid: "u1", sourceSessionId: "src-sid", origin: LOCAL_ORIGIN, onForked: () => {} });
     const b = btnOf(el)!;
     b.dispatchEvent(new Event("mouseenter"));
     expect(b.title).toContain("ESC 回退");
@@ -116,7 +118,7 @@ describe("G5：off-main 的判据与呈现", () => {
 
   it("★ on-main 的 tooltip 不许提「回退」（否则每条消息都在吓唬人）", () => {
     const el = card();
-    attachBranchButton(el, { uuid: "u1", sourceSessionId: "src-sid", onForked: () => {} });
+    attachBranchButton(el, { uuid: "u1", sourceSessionId: "src-sid", origin: LOCAL_ORIGIN, onForked: () => {} });
     const b = btnOf(el)!;
     b.dispatchEvent(new Event("mouseenter"));
     expect(b.title).not.toContain("ESC 回退");
@@ -126,7 +128,7 @@ describe("G5：off-main 的判据与呈现", () => {
   it("★ tooltip 在指上去那一刻才定 —— 一条消息会从 on-main 变成 off-main", () => {
     // attach 时定死就会说谎：ESC 回退会把原本主线的一段甩进折叠块。
     const el = card();
-    attachBranchButton(el, { uuid: "u1", sourceSessionId: "src-sid", onForked: () => {} });
+    attachBranchButton(el, { uuid: "u1", sourceSessionId: "src-sid", origin: LOCAL_ORIGIN, onForked: () => {} });
     const b = btnOf(el)!;
     b.dispatchEvent(new Event("mouseenter"));
     expect(b.title).not.toContain("ESC 回退");
@@ -158,11 +160,14 @@ describe("步 12·C：本机 / 远端走**同一条** IPC，分叉点在 `origin
    * 原文逐字留着：本条原来叫「带的是**路径**」，断言的是 `sourceJsonlPath`。
    * 那不是笔误，是当时的事实；收成一份「按 sid 找那份文件」之后它才不成立。
    */
-  it("★ 没有 origin → 送 `<local>`，带的是 **sid**，且一个路径字段都没有", async () => {
+  // 〔C4a〕标题原为「没有 origin → 送 `<local>`」：`origin` 现在必填（「没说」不再被当成本机），
+  //   本机就是 `LOCAL_ORIGIN` 这个具名值 —— 本条改量「本机那个名字原样过线」。
+  it("★ 本机（`LOCAL_ORIGIN`）→ 送 `<local>`，带的是 **sid**，且一个路径字段都没有", async () => {
     const el = card();
     attachBranchButton(el, {
       uuid: "u1",
       sourceSessionId: "src-sid",
+      origin: LOCAL_ORIGIN,
       onForked: () => {},
     });
     btnOf(el)!.click();
@@ -216,12 +221,13 @@ describe("步 12·C：本机 / 远端走**同一条** IPC，分叉点在 `origin
   //    「`null` **在前端就被补成 `"<local>"`**，一个 `null` 都不许过线」——
   //    因为 Rust 侧 `Origin::route` 对 `null` 是 `Err`，
   //    而调用方（tab / 会话卡）**确实**常把 `tab.origin` 直接透传。
-  it("origin 为 null → 前端补成 `<local>`，不许把 null 原样送过线", async () => {
+  // 〔C4a〕`null` 在类型上已经装不进 `origin`（`tsc` 当场拒）；本条留着量「过线的那一份里没有 null」。
+  it("本机 origin → 线上是 `<local>`，一个 null 都不过线", async () => {
     const el = card();
     attachBranchButton(el, {
       uuid: "u1",
       sourceSessionId: "s",
-      origin: null,
+      origin: LOCAL_ORIGIN,
       onForked: () => {},
     });
     btnOf(el)!.click();

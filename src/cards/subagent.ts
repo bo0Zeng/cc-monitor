@@ -10,9 +10,6 @@
  */
 
 import { commands } from "../ipc/commands";
-// 〔`设计/05 §8` 步 2〕本机那个 origin 的**唯一住址**（Rust 侧是 `origin::LOCAL`，
-// 三处由 `origin_tests.rs::the_sentinel_agrees_with_the_two_existing_homes` 两向钉着）。
-import { LOCAL_ORIGIN } from "../backend-policy";
 import { AGENT_PROFILE } from "../agent-profile";
 import type { JsonlRecord, RenderContext, RenderResult } from "./index";
 
@@ -20,6 +17,7 @@ import type { JsonlRecord, RenderContext, RenderResult } from "./index";
 // C04d 批 2：改用生成物。**它的 `records: Vec<JsonlRecord>` 传递依赖是 C04c 生成的**
 // ——那一轮把 `JsonlRecord` 变成生成物的投资，在这里第一次收息（否则这一批还得先啃它）。
 import type { SubagentLoadResult } from "../generated/SubagentLoadResult";
+import type { Origin } from "../ipc/origin";
 
 /** Agent tool_use 块的 input 形状（部分字段，按实测保留） */
 interface AgentInput {
@@ -89,14 +87,11 @@ export function buildAgentCard(
         description: desc,
         toolUseTimestamp: timestamp,
         // 🔴 **〔步 2〕本机是 `LOCAL_ORIGIN`（`"<local>"`），不是 `null`。**
-        // `ctx.origin` 是**前端自己**的表示（`null` = 本机，那一半没动）；
-        // 这里是**线上边界**，`null` 到这儿就得换成本机那个名字。
-        // ⚠ 别把 `?? LOCAL_ORIGIN` 读成「补一个默认」—— 它是一次**表示法转换**：
-        //   `INVARIANTS §40` 逐字「本地 ＝ 不走 ssh 的远端」⇒ 本机本来就有名字。
-        origin: ctx.origin ?? LOCAL_ORIGIN,
+        // 〔C4a〕前端那一半也收成了同一个表示（`ctx.origin` 必填、本机就是这个名字）⇒ 原样过线。
+        origin: ctx.origin,
       });
       bodyEl.replaceChildren();
-      renderSubagentBody(bodyEl, result, renderChild);
+      renderSubagentBody(bodyEl, result, renderChild, ctx.origin);
       loaded = true;
     } catch (e) {
       bodyEl.replaceChildren();
@@ -126,6 +121,7 @@ function renderSubagentBody(
   body: HTMLElement,
   result: SubagentLoadResult,
   renderChild: (rec: JsonlRecord, ctx: RenderContext) => RenderResult,
+  origin: Origin,
 ): void {
   const header = document.createElement("div");
   header.className = "block-agent-header";
@@ -142,6 +138,8 @@ function renderSubagentBody(
   // 增量场景，timeline 抽象没收益；保留简单 for-loop。
   const nestedCtx: RenderContext = {
     parentPath: result.path,
+    // 〔C4a〕子 agent 的文件与父会话在同一台机器上（上一版这里不填 ⇒ 被当成本机）。
+    origin,
     toolUseNames: new Map(),
     toolUseElements: new Map(),
     // P4：pendingToolResults 必填。subagent 内部一次性渲染，无 reconcile 路径，

@@ -27,6 +27,7 @@ import { TabStore } from "../src/tab-store";
 import type { TabBarPrefs } from "../src/tab-bar-prefs";
 import type { Tab } from "../src/tab-model";
 import type { TabCollection } from "../src/tab-collections";
+import { LOCAL_ORIGIN } from "../src/ipc/origin";
 
 /** tab 栏视图只读 `Tab` 的这几格；其余字段它不碰（`tab-bar-view.ts::updateTabButton` / `updateAccountBadge`）。 */
 function fakeTab(sid: string, over: Partial<Tab> = {}): Tab {
@@ -36,7 +37,7 @@ function fakeTab(sid: string, over: Partial<Tab> = {}): Tab {
     status: "live",
     pinned: false,
     cwd: "/w",
-    origin: null,
+    origin: LOCAL_ORIGIN,
     kind: null,
     activity: null,
     tmuxIdle: false,
@@ -67,7 +68,7 @@ function rig(n: number, grouped = 0): Rig {
   for (let i = 0; i < n; i++) {
     const sid = `s${i}`;
     const remote = i % 2 === 1;
-    store.tabs.set(sid, fakeTab(sid, { origin: remote ? "pi" : null }));
+    store.tabs.set(sid, fakeTab(sid, { origin: remote ? "pi" : LOCAL_ORIGIN }));
     store.orderedIds.push(sid);
     if (remote) store.accountLastByS.set(sid, i % 4 === 1 ? "alice" : "bob");
   }

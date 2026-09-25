@@ -34,7 +34,7 @@ beforeEach(() => {
 describe("RM1b：调用带着 origin", () => {
   it("本机 tab（那一格还是 null）⇒ 逐字送 LOCAL_ORIGIN；远端 ⇒ 送那台的名字", async () => {
     getSessionTasks.mockResolvedValue([task("1")]);
-    await fetchSessionTasks("sid-local", null);
+    await fetchSessionTasks("sid-local", LOCAL_ORIGIN);
     await fetchSessionTasks("sid-remote", "devbox");
     expect(getSessionTasks.mock.calls.map((c) => c[0])).toEqual([
       { origin: LOCAL_ORIGIN, sessionId: "sid-local" },
@@ -56,7 +56,7 @@ describe("RM1b：远端现问，本机不问", () => {
   it("切到远端 tab ⇒ 现问一次并换上；切到本机 tab ⇒ 一次都不问", async () => {
     getSessionTasks.mockResolvedValue([]);
     await fetchSessionTasks("r1", "devbox");
-    await fetchSessionTasks("l1", null);
+    await fetchSessionTasks("l1", LOCAL_ORIGIN);
     getSessionTasks.mockReset();
 
     const p = new TasksPanel();
@@ -94,7 +94,7 @@ describe("RM1b：远端现问，本机不问", () => {
   it("★ 回来时已经切走（切到一个不必问的本机 tab）⇒ 不许盖到新 tab 上", async () => {
     getSessionTasks.mockResolvedValue([]);
     await fetchSessionTasks("ra", "devbox");
-    await fetchSessionTasks("la", null);
+    await fetchSessionTasks("la", LOCAL_ORIGIN);
     const p = new TasksPanel();
 
     let releaseA!: (v: TaskEntry[]) => void;

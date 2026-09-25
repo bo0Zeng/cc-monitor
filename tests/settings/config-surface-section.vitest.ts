@@ -33,6 +33,7 @@ import {
 } from "../../src/settings/config-surface-section";
 import { GAP_HEAD } from "../../src/settings/readiness";
 import { setCurrentMachine, __resetMachineContextForTests } from "../../src/settings/machine-context";
+import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
 function row(over: Partial<SurfaceRow> = {}): SurfaceRow {
   return {
@@ -507,7 +508,7 @@ describe("〔ST2 · 用户 09-24 裁「远端也有真栏」〕足迹按机器�
     const mod = await import("../../src/ipc/commands");
     const spy = vi.spyOn(mod.commands, "config_surface_report").mockResolvedValue(report());
     try {
-      await readFootprint(null);
+      await readFootprint(LOCAL_ORIGIN);
       await readFootprint("devbox");
       expect(spy.mock.calls.map((c) => (c as unknown[])[0])).toEqual([{ origin: "<local>" }, { origin: "devbox" }]);
     } finally {
@@ -555,9 +556,9 @@ describe("〔ST2 · 用户 09-24 裁「远端也有真栏」〕足迹按机器�
   });
 
   it("★ 本机：旧读口不带 origin ⇒ 照画（反向对照）；带的是别的机器 ⇒ 扫描失败，不画", async () => {
-    expect(answersFor(report(), null)).toBe(true);
-    expect(answersFor({ ...report(), origin: "<local>" } as never, null)).toBe(true);
-    expect(answersFor({ ...report(), origin: "devbox" } as never, null)).toBe(false);
+    expect(answersFor(report(), LOCAL_ORIGIN)).toBe(true);
+    expect(answersFor({ ...report(), origin: "<local>" } as never, LOCAL_ORIGIN)).toBe(true);
+    expect(answersFor({ ...report(), origin: "devbox" } as never, LOCAL_ORIGIN)).toBe(false);
     invokeMock.mockResolvedValue({ ...report(), origin: "devbox" });
     const s = new ConfigSurfaceSection();
     await s.refresh();

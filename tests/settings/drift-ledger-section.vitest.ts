@@ -7,6 +7,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { countUnit, faceTitle, formatEntry, formatReport } from "../../src/settings/drift-ledger-section";
 import type { DriftFace, DriftFaceReport } from "../../src/settings/drift-ledger-section";
+import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
 /** 后端 `DriftFace` 的四个变体（`src/generated/DriftFace.ts` 是源）。 */
 const FACES: DriftFace[] = [
@@ -196,7 +197,7 @@ describe("〔ST2 · 漂移记账按机器分：这一拍只做本机〕", () => 
     s.loadNow();
     await flush();
     expect(calls).toEqual([]);
-    ctx.setCurrentMachine(null);
+    ctx.setCurrentMachine(LOCAL_ORIGIN);
     await flush();
     expect(calls).toEqual(["drift_ledger_report"]);
     ctx.setCurrentMachine("devbox");

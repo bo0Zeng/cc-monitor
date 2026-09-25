@@ -50,6 +50,7 @@ import type {
   RenderContext,
   ContentBlock,
 } from "../src/cards/index";
+import { LOCAL_ORIGIN } from "../src/ipc/origin";
 
 export interface CorpusItem {
   /** 稳定 id：同一份语料在两侧必须产出同一串，否则对不上号 */
@@ -86,7 +87,7 @@ function bucketOf(n: number): string {
 function freshCtx(): RenderContext {
   return {
     parentPath: "/tmp/scale2/session.jsonl",
-    origin: null,
+    origin: LOCAL_ORIGIN,
     toolUseNames: new Map(),
     toolUseElements: new Map(),
     pendingToolResults: new Map(),
