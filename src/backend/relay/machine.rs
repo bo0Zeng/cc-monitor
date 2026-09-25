@@ -113,6 +113,13 @@ pub(crate) enum Occupant {
 /// 探针那一次读写最多等多久（回环上对端一个字节都不回就会永远挂住；`no_timer_guard` 登记：一次阻塞的上限，不是定时器）。
 const PROBE_DEADLINE: std::time::Duration = std::time::Duration::from_millis(2_000);
 
+/// 〔US1 · 4D〕这台机器上**我们的**中转在不在听 —— 与 `relay-status` 同一个判准（[`occupant`] == `Ours`）。
+/// 读者：上游选择出的两份成品（`launch-endpoint` 的 `listening` · `apikey-routing` 的 `running`）。
+/// 本机常驻后端问的是它自己进程里那个中转（回环上连自己一次），远端后端问那台的脱离 `--relay` —— 本机远端同一个判准。
+pub(crate) fn our_relay_listening(port: u16) -> bool {
+    occupant(port, &|k| std::env::var(k).ok()) == Occupant::Ours
+}
+
 /// 〔RK1〕口上是谁（射程见模块头注）。取值器注入 ⇒ 判据喂夹具家目录。
 pub(crate) fn occupant(port: u16, get: &dyn Fn(&str) -> Option<String>) -> Occupant {
     if !listening(port) {

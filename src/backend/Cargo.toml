@@ -112,6 +112,8 @@ creds-core = { path = "../bridge/crates/creds-core", features = ["harden"] }
 # U8c-2b-0：POSIX 单引号 quote 的唯一实现（账本 S5 收口）。
 # 本 crate 只用它一处（`control/tmux_hook::sq`）；U8c-2c 起载荷渲染也走它。
 shell-quote-core = { path = "../bridge/crates/shell-quote-core" }
+# 〔US1 · 4D〕中转门牌的唯一住址（端口 · 钥匙文件路径 · 路由语法），与 monitor 同一份（`设计/20 §5` 目标）。
+relay-route-core = { path = "../bridge/crates/relay-route-core" }
 # K-R100：历史全文搜索口径的唯一实现（本 crate 的 `observe/search_query.rs` 全靠它）。
 # 与 monitor 同一份 —— 两侧的 snippet 预算顺序、截断口径、文本抽取从此不可能各走各的。
 search-core = { path = "../bridge/crates/search-core" }

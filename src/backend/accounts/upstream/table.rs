@@ -218,6 +218,15 @@ impl RoutingTable {
         self.rows.get(&(agent.to_string(), account.to_string()))
     }
 
+    /// 〔US1〕这一家在表里有哪几条账号 id（有序）。**「表里有哪几行」的唯一出处**（`file_face::rows_at`）。
+    pub(crate) fn ids_of(&self, agent: &str) -> Vec<String> {
+        self.rows
+            .keys()
+            .filter(|(a, _)| a == agent)
+            .map(|(_, id)| id.clone())
+            .collect()
+    }
+
     /// 表里有几行。只给日志与判据用。
     pub(crate) fn len(&self) -> usize {
         self.rows.len()

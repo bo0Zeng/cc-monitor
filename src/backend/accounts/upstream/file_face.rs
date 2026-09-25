@@ -135,9 +135,10 @@ pub(crate) fn answer_read() -> FileFaceAnswer {
 /// [`answer_read`] 的本体。**从不报错** —— 读不动 / 解析不了是**状态**（`problem`），不是一次失败：
 /// 界面要的正是那一句「读坏了」，而不是一次「命令失败」。
 ///
-/// 字段与 monitor 那一侧 `creds_store::ApikeyCredentialsStatus` 同名同义（`configured` / `masked`
-/// 说的是**顶层那一把**，`KH2C3`），外加 `rows`：表里有哪几条账号 id（与 monitor
-/// `history::apikey_rows_at` 同一口径：`store::read_accounts` 的 id，筛掉当不了路由段的）。
+/// `configured` / `masked` 说的是**顶层那一把**（`KH2C3`）。界面经 `chan.call` 直接问它、按形状收
+/// （〔US1〕monitor 那一份状态读者 `creds_store::read_status`〔散文墓碑〕与转发的 Tauri 命令退役）。
+/// 〔US1〕先前还回一格 `rows`（表里有哪几行，只给 monitor 起会话那一侧用）：「表里有哪几行」从此只有 [`rows_at`] 一份、
+/// 只在这台后端里用（`launch-endpoint` · `apikey-routing` · `accounts-list`），不再出线。
 pub(crate) fn read_at(path: &Path) -> Value {
     let verdict = perm::judge(&perm::probe(path));
     let (doc, problem) = match read_doc(path) {
@@ -150,7 +151,6 @@ pub(crate) fn read_at(path: &Path) -> Value {
         Some(k) => (true, k.masked()),
         None => (false, String::new()),
     };
-    let rows: Vec<String> = doc.as_ref().map(rows_of).unwrap_or_default();
     json!({
         "configured": configured,
         "masked": masked,
@@ -158,28 +158,40 @@ pub(crate) fn read_at(path: &Path) -> Value {
         // 文件不存在时不报权限问题（那时的「查不出来」不是一条有用的提醒）—— 同 monitor 那一侧。
         "notice": if exists { notice_of(&verdict) } else { None },
         "problem": problem,
-        "rows": rows,
     })
 }
 
-/// 「表里有哪几行」—— `store::read_accounts` 的 id，筛掉当不了路由段的（装表那一步同一个谓词）。
-/// `apikey-read` 的 `rows` 与 [`rows_at`] 共用这一份口径。
-fn rows_of(doc: &Map<String, Value>) -> Vec<String> {
-    store::read_accounts(doc)
-        .into_iter()
-        .map(|e| e.id)
-        .filter(|id| crate::relay::segment_is_safe(id))
-        .collect()
+/// ★★〔US1 · 第四波 4D〕**「表里有哪几行」的唯一住址** = 上游选择装表那一步（`table::build`，中转装表同一个函数、
+/// 同一张每 agent 默认上游）**真收进表**的那几行的 id。
+///
+/// 先前这里（与 monitor `history::apikey_rows_at`〔散文墓碑〕）只筛「id 当不当得了路由段」，而装表还会因为
+/// `base_url` 解析不了 · 明文非回环 · `auth_style` 认不出 · 「不发头」却配了 key 把一行丢出表 ⇒
+/// 那一行界面说「经本机中转」、起会话注入 `/s/`，中转却 404（头注自认的残留）。今天三处读者
+/// （`accounts-list` 并表 · `apikey-routing` · `launch-endpoint`）都读这一份 ⇒ 与中转同答。
+///
+/// **读不动 / 解析不了 ⇒ 零条**：零条的正确行为就是「谁都不按 apikey 号算」，把一份坏文件变成一次清单失败，
+/// 是拿一个能用的状态去换一条报错。坏文件自己的那句话由 `apikey-read` 的 `problem` 说。
+/// ⚠ 与中转的一处差别（照实写）：中转遇到坏文件**保留上一张表**（`Accounts::refresh_if_changed`），这里答零条。
+/// 默认上游的环境旋钮认不出（那一刻中转也起不来）⇒ 同样零条。
+pub(crate) fn rows_at(path: &Path) -> Vec<String> {
+    rows_at_with(path, &|k| std::env::var(k).ok())
 }
 
-/// 〔C4c · 第四波 4B〕只要「表里有哪几行」（`accounts-list` 出成品时并表用）。**读不动 / 解析不了 ⇒ 零条**：
-/// 零条的正确行为就是「谁都不按 apikey 号算」，把一份坏文件变成一次清单失败，是拿一个能用的状态去换一条报错
-/// （与 monitor 那一侧 `history::apikey_rows_at` 同一条理由）。坏文件自己的那句话由 `apikey-read` 的 `problem` 说。
-pub(crate) fn rows_at(path: &Path) -> Vec<String> {
-    match read_doc(path) {
-        Ok(Some(doc)) => rows_of(&doc),
-        Ok(None) | Err(_) => Vec::new(),
+/// [`rows_at`] 的本体：环境取值器注入（判据不改进程环境）。
+pub(crate) fn rows_at_with(path: &Path, get: &dyn Fn(&str) -> Option<String>) -> Vec<String> {
+    let mut loaded = super::creds::load(path);
+    if loaded.problem.is_some() {
+        return Vec::new();
     }
+    let Some(upstreams) = super::Upstreams::from_env(get) else {
+        return Vec::new();
+    };
+    let (table, _, _) = super::table::build(
+        std::mem::take(&mut loaded.accounts),
+        super::CREDENTIALS_FILE_AGENT,
+        upstreams.of_credentials_file(),
+    );
+    table.ids_of(super::CREDENTIALS_FILE_AGENT)
 }
 
 /// 读一次、解析一次。`Ok(None)` = 文件不在（还没配）；空文件 = 空对象。
