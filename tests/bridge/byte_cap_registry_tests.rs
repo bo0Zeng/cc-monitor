@@ -57,6 +57,12 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "STATUS_CONTROL_C_EXIT",
+        "〔S5 · 第四波 09-24 · `设计/00 §1.5.3`〕**退出码**不是体量：Windows 的 NTSTATUS \
+             `0xC000013A`（被控制台事件打死）。`backend_policy·rs::exit_status` 拿它认出那一种死法、说人话，\
+             不限任何东西的大小。",
+    ),
+    (
         "LINK_STEP",
         "〔SR1a 09-24〕**步长**不是体量：monitor 往链路里送上行字节时一次切多大（`link_mux·rs::LinkStream` 的 \
              `poll_write`）。多出来的留给调用方下一次写 —— **不丢、不截**，它不限任何总量。\

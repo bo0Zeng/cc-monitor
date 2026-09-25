@@ -537,14 +537,14 @@ describe("〔ST2 · 设计/70 第二刀 步 6〕后端开关表格式四栏：�
   });
 
   it("★★ 崩过 ⇒ 格子里一句短话 ＋ [详情] 分开列四个计数；账行 / markdown 一个都不上屏", async () => {
-    const health = { crashed: 4, refused: 1, neverStarted: 0, misread: 2, last: "崩了，exit -1073741510" };
+    const health = { crashed: 4, refused: 1, neverStarted: 0, misread: 2, last: "崩了，exit -1073741819" };
     status = { channel: true, pid: 42, health };
     const s = new BackendSection({ headless: true });
     await flush();
     await flush();
     const col = s.element.querySelector<HTMLElement>('.backend-row [data-col="health"]')!;
     expect(col.querySelector(".backend-row-health")?.textContent).toBe(
-      "⚠ 崩过 4 次 · 最后一次：崩了，exit -1073741510",
+      "⚠ 崩过 4 次 · 最后一次：崩了，exit -1073741819",
     );
     const more = col.querySelector<HTMLElement>('[data-health-extra="detail"]')!;
     expect(more.tagName).toBe("DETAILS");

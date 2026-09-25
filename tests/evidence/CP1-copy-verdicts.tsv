@@ -265,6 +265,7 @@ src/bridge/src/backend_policy.rs:330	崩了	保留	[可达存疑] 同上 death_k
 src/bridge/src/backend_policy.rs:331	读坏了	保留	[可达存疑] 同上 death_kind 字段值
 src/bridge/src/backend_policy.rs:338	没有退出状态（进程从来没存在过）	保留	[可达存疑] exit_status 字段值，只进 ledger_line；短而准确
 src/bridge/src/backend_policy.rs:343	没有退出状态	保留	[可达存疑] exit_status 字段值，只进 ledger_line
+src/bridge/src/backend_policy.rs:429	被控制台事件杀死 —— 可能是那个弹出的终端窗口被关了	保留	[对外] 〔S5 · 设计/00 §1.5.3 逐字〕exit_status 认出 0xC000013A 时替掉裸码，经 last_brief 进 HEALTH_CRASHED 的 {last}（也进日志行）；说发生了什么＋可能的原因，一个破折号（body 档至多一个）
 src/bridge/src/backend_policy.rs:400	[死亡账] origin={origin} 判定={} 退出状态={} —— {}	改·§2.1	[可达存疑] ledger_line：日志行格式「[死亡账] origin= 判定= 退出状态=」整行被拼进 HEALTH_CRASHED 的 {last}（ui-copy-discipline BACKEND_SIDE_DEBT 点名）兼§2.5（死亡账）→ 界面只取判定＋退出状态两格，日志行留在日志
 src/bridge/src/backend_policy.rs:504	脱离路：`attach_stream` 的流断了 ⇒ `reap_detached` 那条收尸线程 `wait()` 回来那一拍	保留	[不对外] DEATH_RECORD_SITES：判据用的登记表（记录点住址＋说明），生产代码不读
 src/bridge/src/backend_policy.rs:509	监护路：backend 那个 `on_event` **闭包**收到 `Exited` 那一拍。\n         它抽成一个返回闭包的函数，只为让 `KP3W3` 那三只假后端能跑**同一个闭包**\n         —— 内联的闭包测试够不着，那条行为判据就只能退回读源码	保留	[不对外] DEATH_RECORD_SITES 登记表说明
