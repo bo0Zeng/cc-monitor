@@ -402,7 +402,7 @@ describe("S30 ⑦ 会被 hidden 切的元素，CSS 不许在它身上裸写 disp
       "这些元素会被 TS 用 `hidden` 切，而 CSS 又在它们**自己身上**写了 `display` ——\n" +
         "作者样式里的任何一条 `display` 都会压过 UA 的 `[hidden] { display: none }`，\n" +
         "那句 `x.hidden = …` 于是成了空写：**看起来在切，其实从来没切过**。\n" +
-        "  修法：补一条 `.<类名>[hidden] { display: none; }`（`.tab-archive` 就是这么修的）。\n" +
+        "  修法：补一条 `.<类名>[hidden] { display: none; }`。\n" +
         `现打：\n${detail}`,
     ).toEqual(sorted(Object.keys(HIDDEN_KNOWN_BAD)));
   });
