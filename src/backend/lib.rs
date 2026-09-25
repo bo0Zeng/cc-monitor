@@ -446,7 +446,11 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p3f-mcp-sync-exitwire**（2026-09-25，第四波 AL1d ＋ S5 ＋ AS1 合并那一拍）：子命令 ＋1 —— AS1 `mcp-sync-plan`（两个命令面）。
 /// ＋ 行为：S5 `exit-policy-*` 线上删 `shell` 字段 · `ccm` 直路给了 `--ccm-sid` 而无令牌时 stderr 说一句 · `--list-accounts` 认带 BOM 的 manifest。
-pub const BUILD_ID: &str = "p3f-mcp-sync-exitwire";
+///
+/// ★★★ **p3g-conn-family**（2026-09-25，第四波 NT1 合并那一拍）：子命令集不变、线上字节不变，**行为**变更 ——
+/// 长流在时传输走同一身份的第二条 SSH 连接 · 被远端回拒的连接不再摘 · 在黑洞上等回话被打断时摘掉那条 ·
+/// 传输用完的 sftp 会话停着复用（远端多一个空闲 sftp-server）。照 p1v 先例不加历史行。
+pub const BUILD_ID: &str = "p3g-conn-family";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
