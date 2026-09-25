@@ -24,9 +24,12 @@
 //! synchronous, `std::sync::mpsc`-based API) and talks to the async writer
 //! through `tokio::sync::mpsc`.
 //!
-//! # Parity with `../../bridge/src/watcher.rs`
+//! # 增量读的规则（〔TL1 · 4C〕今天全仓只有这一份）
 //!
-//! The incremental read mirrors `process_file`: a per-file [`ReadCursor`],
+//! 〔CF1 起 monitor 自己那份 jsonl 读者删了：本机会话内容也走本机后端的 `line` 帧（`设计/00 §2.5 ②`）。
+//!  这一节原先叫「Parity with 那份 monitor 读者」、逐条与它对拍；对拍的另一边没了，下面的规则就是唯一一份。〕
+//!
+//! The incremental read: a per-file [`ReadCursor`],
 //! read from `cursor.consumed` up to the **last `\n`** in the new region — a
 //! torn tail without a trailing `\n` is deferred to the next event, never
 //! emitted half-way (Batch4-F14). BOM strip via
@@ -37,10 +40,9 @@
 //! per-file seq keeps climbing** (the seq comes from [`SeqCounter`], which is
 //! never reset) — see [`read_new_lines`].
 //!
-//! Known non-parity (accepted): on a mid-read I/O error the monitor keeps the
-//! complete lines it already consumed and advances the cursor past them, while
-//! this backend gives up the whole pass (cursor untouched). Both are
-//! at-least-once-safe.
+//! On a mid-read I/O error this reader gives up the whole pass (cursor untouched)
+//! — at-least-once-safe. (The deleted monitor copy kept the complete lines it had
+//! already consumed; that difference left with it.)
 //!
 //! ⚠ 这段话此前写的是 "reads via one `fs::read` snapshot" —— 那**曾经是真的**，
 //! 而它只评了**错误语义**那一面，对**内存与 IO 后果一个字没记**（audit-0805 B-4）：
@@ -286,7 +288,7 @@ fn initial_tmux_probe(tx: &std::sync::mpsc::Sender<WatchEvent>) {
 /// drops frames with a warning (Phase-0 gap, see module docs).
 pub const CHANNEL_CAPACITY: usize = 10_000;
 
-/// notify-debouncer-mini debounce window, matching `../../bridge/src/watcher.rs`.
+/// notify-debouncer-mini debounce window.（〔TL1〕从前写「与 monitor 那份读者对齐」—— 那份 CF1 删了。）
 const DEBOUNCE_MS: u64 = 100;
 
 /// B2：`tmux ls -F` 格式串——**与 monitor `tmux::TMUX_LS_FMT` 逐字对齐**（真 TAB 分列，monitor
@@ -1291,8 +1293,8 @@ fn watch_loop(
 /// access is serialized by construction.
 struct ReaderState {
     /// `<claude_dir>/projects` — used to rescan a session's jsonl when it becomes
-    /// active (so its existing lines stream, mirroring the local watcher's
-    /// force-rescan on session-added).
+    /// active (so its existing lines stream the moment the session is announced;
+    /// 〔TL1〕monitor 那一侧从前的「会话出现就强制重扫」随它自己的读者 CF1 删了，今天只剩这一处).
     projects: PathBuf,
     /// Per-file consumed byte offset, keyed by [`path_key`]. Reset to 0 on
     /// truncation; the climbing seq lives separately in [`Self::seqs`] so a
@@ -1324,9 +1326,8 @@ struct ReaderState {
     /// 区分进程实例的东西（`starttime`）本来就在 `arm_pid_watcher` 的参数里，只是没进键。
     pid_watched: HashSet<(PathBuf, u32, Option<u64>)>,
     /// Fast membership for the active-session filter: sids currently streaming.
-    /// Mirrors the local watcher's `active_filter` — only sessions whose PID is
-    /// alive on this host stream; historical jsonl is NOT pulled (that is the
-    /// Ctrl+H history browser's job).
+    /// Only sessions whose PID is alive on this host stream; historical jsonl is
+    /// NOT pulled (that is the Ctrl+H history browser's job).
     active_sids: HashSet<String>,
     /// Batch7-F24：`--with-bg` 时放行 kind:"bg" 会话（宣告+流行，帧带元信息）；
     /// 默认 false = Batch6-F21 行为（bg 不算会话）。
@@ -1429,7 +1430,7 @@ pub struct ReadCursor {
 /// seqs assigned) and the updated cursor. The seq for each kept line comes
 /// from `seqs.next(key)`, so it is per-path monotonic and **never reset**.
 ///
-/// Mirrors `../../bridge/src/watcher.rs` `process_file`:
+/// Rules (〔TL1〕the monitor copy this used to mirror was deleted by CF1 — these are the only ones):
 ///
 /// - read from `cursor.consumed`, but only consume **complete lines** — bytes
 ///   up to and including the last `\n` in the new region. A torn tail without
@@ -1546,10 +1547,9 @@ fn scan_new_lines(
         cursor.seen_len
     );
     if truncated && len > 0 {
-        // Parity with the monitor's truncation warn (INVARIANTS §25: re-reads
-        // hand out new seqs — must leave a trace; silence made an old
-        // mis-folding bug near-impossible to diagnose). len == 0 re-reads
-        // nothing, so stay quiet like the monitor.
+        // Truncation warn (INVARIANTS §25: re-reads hand out new seqs — must
+        // leave a trace; silence made an old mis-folding bug near-impossible to
+        // diagnose). len == 0 re-reads nothing, so stay quiet.
         tracing::warn!(
             "jsonl truncated (len {len} < seen_len {}), full re-read with new seqs: {key}",
             cursor.seen_len
@@ -1651,8 +1651,8 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
     let Some(session_id) = file_stem_str(path) else {
         return;
     };
-    // Active-session filter (mirrors the local watcher's `active_filter`): only
-    // stream sessions whose PID is alive. Historical jsonl is never pulled.
+    // Active-session filter: only stream sessions whose PID is alive.
+    // Historical jsonl is never pulled.
     if !state.active_sids.contains(&session_id) {
         return;
     }
@@ -2327,7 +2327,6 @@ fn is_session_json(p: &Path) -> bool {
 }
 
 /// subagent JSONL is excluded: any path containing a `subagents` segment.
-/// Mirrors `../../bridge/src/watcher.rs::is_subagent_path`.
 fn is_subagent_path(p: &Path) -> bool {
     p.components()
         .any(|c| c.as_os_str().eq_ignore_ascii_case("subagents"))
