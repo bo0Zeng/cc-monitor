@@ -15,13 +15,14 @@
 //!
 //! 🔴 **界面那一侧的 `russh` 拨号已经删了**（`设计/05 §13.4`，用户「后端是给定的，不要退路」）：
 //! 没有「拿不到常驻后端就进程内拨」那条回落，也没有「起一个一次性代理进程」那条回落 ——
-//! 常驻后端不在 ⇒ monitor **报**（`dial_host.rs`）。**唯一的例外**是 SFTP（仍在界面侧 `inproc_dial.rs`，
-//! 进常驻后端是 SR1b 的事）。
+//! 常驻后端不在 ⇒ monitor **报**（`dial_host.rs`）。
 //!
-//! ⚠ **SFTP 子系统刻意不在本目录的用法里**：`readonly_guard` 的远端写那一层把
-//! 「在 channel 上请求一个子系统」判作「远端文件传输能力」，红线 `I7` 的裁定（`ROADMAP.md#KU31`「远端 rc 能不能
-//! 替用户写」）今天没拍 ⇒ 后端不许长出这条能力。协议上给它留了口（`use:"subsystem"`），
-//! 后端对它回 `unsupported_use`（见 [`link`]）。
+//! 〔SR1b · 2026-09-24，用户 V89「SFTP 进本机常驻后端，只写暂存区」〕**SFTP 也在这里了**（[`sftp`]）：
+//! 在池里那条连接上开 sftp 子系统，远端写**只许两处**（`~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/`）。
+//! 界面拿不到原始 SFTP 字节（`use:"subsystem"` 照旧回 `unsupported_use`，见 [`link`]）—— 它只有两条路：
+//! 部署走链路 `use:"files"`（受限的远端文件一问一答）；传输走入方向命令 `transfer-*`（`control/transfer.rs`）。
+//! 〔墓碑 —— SR1a 那一版原话要点：「SFTP 子系统刻意不在本目录的用法里……红线 `I7` 的裁定今天没拍 ⇒ 后端不许长出
+//!  这条能力」。V89 拍了；`INVARIANTS §41.6` 的 V89 订正与 `readonly_guard::remote_write_layer` 同拍改写。〕
 //!
 //! # 一条链路上的字节（与 C2 拨号代理的 stdout **逐字节同形**，线上帧见 `wire.rs` 的 `LinkData`）
 //!
@@ -32,7 +33,8 @@
 //! 后端 → 界面  stages=true 时先有若干行 {"stage":{…}}（与界面 `ConnectStage` 同形）
 //!              然后**恰好一行** ack（DialAck，`\n` 结尾）
 //!              其后按用法：stream 原样字节 · capture 一行 Captured 后结束 ·
-//!              forward 每接进一条连接一行 {"accepted":n}
+//!              forward 每接进一条连接一行 {"accepted":n} ·
+//!              〔SR1b〕files 之后一问一答（上行一行请求、下行一行应答，`sftp.rs` 头注）
 //! ```
 //!
 //! **为什么 ack 要有**：「连不上」与「连上了但远端还没说话」在链路上一模一样，ack 把它们分开。
@@ -55,14 +57,17 @@ use tokio::io::AsyncWriteExt;
 mod connect;
 pub mod link;
 mod pool;
-mod uses;
+pub(crate) mod sftp;
+pub(crate) mod uses;
 
 /// ack 里的协议版本。**v1** = 只有长流、只有一个地址、只会私钥文件（`K-P6b` 那一版）；
 /// **v2** = 本文件（竞速 · 跳板 · agent · 三种用法 · 阶段行）。
+/// 〔SR1b〕多一种用法 `files` **不 bump 它**：老界面不发 `files`，新界面凭 `uses` 认出老后端（`TooOld`），
+/// 版本号只在「同一种用法的字节形状变了」时才动。
 pub const ACK_V: u32 = 2;
 
 /// 本代理认得的用法 —— ack 的 `uses` 字段原样回这张表，界面据它判「代理够不够新」。
-pub const USES: &[&str] = &["stream", "capture", "forward"];
+pub const USES: &[&str] = &["stream", "capture", "forward", "files"];
 
 /// 一个拨号地址。
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
@@ -95,6 +100,8 @@ pub enum Use {
     Capture,
     /// 本进程绑本机回环口、每接进一条连接开一条 direct-tcpip（F58 端口转发）。
     Forward,
+    /// 〔SR1b〕开 sftp 子系统，之后在链路上一问一答（受限的远端文件操作：写只许两处，[`sftp`]）。
+    Files,
 }
 
 /// `use: capture` 的参数。

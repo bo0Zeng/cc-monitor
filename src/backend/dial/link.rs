@@ -160,14 +160,11 @@ impl Table {
         let Some(dial) = args.get("dial") else {
             return err(id, "invalid_args", "缺 `dial`（一份拨号请求）");
         };
-        // 🔴 **子系统留口不开**（SFTP 进常驻后端是 SR1b 的事；`readonly_guard` 远端写那一层把
-        //    「请求子系统」判作远端文件传输能力，红线 `I7` 那一裁没拍）。协议上认得这个词，说得出为什么不做。
+        // 🔴 **原始子系统字节流不交给界面**（〔SR1b〕SFTP 住本机常驻后端 `dial/sftp.rs`：界面只有两条路 ——
+        //    部署走 `use:"files"` 的一问一答、传输走 `transfer-*` 命令；把协议字节交出去 = SFTP 协议又回到界面进程，
+        //    V89「界面进程零 SSH」当场破）。协议上认得这个词，说得出为什么不做。
         if dial.get("use").and_then(serde_json::Value::as_str) == Some("subsystem") {
-            return err(
-                id,
-                "unsupported_use",
-                "这台后端还不开子系统（SFTP 进常驻后端是 SR1b 的事）",
-            );
+            return err(id, "unsupported_use", "这台后端不支持这种连接");
         }
         let req = match super::parse_request_value(dial) {
             Ok(r) => r,

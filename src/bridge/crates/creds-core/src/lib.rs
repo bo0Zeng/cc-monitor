@@ -22,15 +22,16 @@
 //!
 //! ## ⚠ 远端那一侧：**不许从 SFTP 的 mode 参数拿机密性**〔实@08-27〕
 //!
-//! `src/bridge/src/sftp.rs::upload_atomic` 收一个 mode 参数，看起来像是「推上去就是 0600」。
+//! 远端原子上传收一个 mode 参数（〔SR1b〕今天住 `src/backend/dial/sftp.rs::put_atomic`；从前是 monitor 的
+//! `upload_atomic`〔散文墓碑〕），看起来像是「推上去就是 0600」。
 //! 对面是 Windows 时**那不是「不生效」，是「静默地不生效」**，三条读数（分母都在，量于 08-27）：
 //! 1. 那个 mode 只以 SFTP v3 的 `SSH_FILEXFER_ATTR_PERMISSIONS` 属性搭在 `SSH_FXP_OPEN` 上
 //!    （`russh-sftp-2.3.0/src/protocol/file_attrs.rs:29`）——**顺不顺是服务端的事，协议不回执**；
-//! 2. **没有第二次机会**：`sftp.rs:141-147` 头注逐字禁掉了兜底 `set_metadata`
+//! 2. **没有第二次机会**：那一段的头注逐字禁掉了兜底 `set_metadata`
 //!    （理由是 OpenSSH sftp-server 上 setstat 会把文件截成 0 字节 —— 而那条理由是在一台
 //!    **POSIX** 服务端上量的）；
-//! 3. **本仓没有任何一处回读权限**：`upload_atomic_verified` 只走 `verify_uploaded_bytes`，
-//!    那函数三条分支逐字只比**字节与长度**。
+//! 3. **本仓没有任何一处回读权限**：部署的读回比对（〔SR1b〕后端算事实、monitor 的 `sftp.rs::verify_readback` 判）
+//!    三条分支逐字只比**字节与长度**（从前那一份叫 `verify_uploaded_bytes`〔散文墓碑〕）。
 //!    再加一条：全仓唯一那条 OS 判定 `src/settings/host-os.ts` 头注逐字说它量的是
 //!    **monitor 自己**跑在哪个 OS 上，**不是远端** ⇒ 代码里根本没有「对面是什么 OS」这个量。
 //!

@@ -1481,6 +1481,7 @@ pub(crate) const LOCAL_STREAM_ARGS: &[&str] = &["--tail-only", "--with-bg"];
 ///   ⚠ **此前本机两条读循环一条都不路由应答**（现打逐行读过）⇒ 在本机那条通道上发出去的入方向命令
 ///   **只会等到超时**。开链路（`link-open`）要这条应答，所以这一格在这一拍补上。
 /// - `link_data` / `link_end` ⇒ 交 [`crate::link_mux`]（链路的 monitor 这一侧）。
+/// - 〔SR1b〕`transfer` ⇒ 交 [`crate::sftp_pool::deliver`]（传输台的中继）。
 ///
 /// 〔CF1 · 2026-09-24〕**内容三种（`line` · `session_added` · `session_removed`）原样交回调用方**
 /// （返回 `Some`），由读循环送进 `crate::local_lines`（再进与远端同一个 `LineIntake`）。
@@ -1501,11 +1502,55 @@ pub(crate) fn absorb_local_frame(
         // ⚠ 收它有前置：本地 sid 进这张表之后，`/branch` 会走 `(Some(origin), …)`
         // ⇒ 必须先有「本地也判得出 `Superseded`」（P3 刀 0）。没有刀 0 就收帧 =
         // 把「永远消不掉的灰点」那个 bug 请回来。
-        InboundFrame::TmuxSessions { raw, .. } => {
+        //
+        // 〔U4b · 第四波 · G2〕本机也有「可重连」了（`lib.rs` 本机那一臂改走 `classify_removed`）⇒
+        //   「可重连 → 已结束」要有产出者，与远端 `stream_loop` 的收帧收割器同一个判定（`reconcile_step`）。
+        //   结论交 `session_facts::retire_local_idle`（写 idle 账本只许在 `lib.rs`）。
+        InboundFrame::TmuxSessions { raw, observation } => {
+            let origin = crate::backend::control::inbound_client::LOCAL_ORIGIN;
+            let idle = crate::ssh_source::snapshot_idle_for_origin(origin);
+            let retire = {
+                let mut st = local_reaper_state()
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                local_idle_retirements(&mut st, &raw, observation.as_deref(), &idle)
+            };
             crate::ssh_source::record_tmux_raw(
                 crate::backend::control::inbound_client::LOCAL_ORIGIN,
                 raw,
             );
+            let n_retire = retire.len();
+            if n_retire > 0 {
+                tracing::info!("tmux-reconcile(本机): retire {n_retire} 条可重连会话（本机 tmux 里已不见它们）");
+                crate::session_facts::retire_local_idle(retire);
+            }
+        }
+        // 〔U4b · 第四波 · G2〕本机 tmux 会话关了（正向死亡帧）—— 此前这一帧在本机这条流上被直接丢掉。
+        //   与远端同序：**先把那一行从账本摘掉，再退** —— 否则 claude 随后退出时 `classify_removed`
+        //   仍看得见它 ⇒ 判成可重连（`#60` 现象 2 的本机版）。那条会话若已是可重连 ⇒ 立刻落已结束。
+        InboundFrame::TmuxSessionClosed { name } => {
+            let origin = crate::backend::control::inbound_client::LOCAL_ORIGIN;
+            if let Some(raw) = crate::ssh_source::tmux_raw_for(origin) {
+                let (rest, sid) = local_tmux_closed(&raw, &name);
+                crate::ssh_source::record_tmux_raw(
+                    crate::backend::control::inbound_client::LOCAL_ORIGIN,
+                    rest,
+                );
+                let idle_now = crate::ssh_source::snapshot_idle_for_origin(origin);
+                if let Some(sid) = sid.filter(|s| idle_now.contains(s)) {
+                    tracing::info!("本机 tmux 会话 {name} 关闭 ⇒ 可重连的 sid={sid} 落已结束");
+                    crate::session_facts::retire_local_idle(vec![sid]);
+                }
+            }
+        }
+        // 〔U4b · 第四波 · G3〕本机活会话的容器事实：与远端流同一个口（`session_facts`）、同一个事件。
+        // 〔CF1 · 2026-09-24〕记完容器，这一帧**照样交回**读循环 —— 它的 `path` / `lines` 是本机旁路快照的起点
+        //   （本机会话的行从此走这条流，见下面内容三种那一臂）；本机会话的起停仍归 `session_map`。
+        f @ InboundFrame::SessionAdded { .. } => {
+            if let InboundFrame::SessionAdded { sid, container, .. } = &f {
+                crate::session_facts::note_container(sid, *container);
+            }
+            return Some(f);
         }
         InboundFrame::Reply {
             id,
@@ -1527,14 +1572,63 @@ pub(crate) fn absorb_local_frame(
         },
         InboundFrame::LinkData { link, data } => crate::link_mux::deliver_data(&link, data),
         InboundFrame::LinkEnd { link, error } => crate::link_mux::deliver_end(&link, error),
-        // 〔CF1〕内容三种：交回读循环，送进本机内容通道。
-        f @ (InboundFrame::Line { .. }
-        | InboundFrame::SessionAdded { .. }
-        | InboundFrame::SessionRemoved { .. }) => return Some(f),
+        // 〔SR1b〕传输台住本机后端：进度 / 终局交中继（`sftp_pool::deliver`，从不阻塞）。
+        InboundFrame::Transfer {
+            id,
+            got,
+            total,
+            end,
+        } => crate::sftp_pool::deliver(&id, got, total, end),
+        // 〔CF1〕内容三种（`session_added` 在上面那一臂记完容器也交回）：交回读循环，送进本机内容通道。
+        f @ (InboundFrame::Line { .. } | InboundFrame::SessionRemoved { .. }) => return Some(f),
         // 其余帧（hello · 会话状态 · 溢出 …）本机这条流今天不消费。
         _ => {}
     }
     None
+}
+
+/// 〔U4b · 第四波 · G2〕本机收割器的对账状态（跨帧累计缺失计数）。一份常驻：本机只有一条后端流，
+/// 流断了重连后 idle 集没变，计数接着累计是对的（与远端「每连接一份」不同：远端断连有 flush 兜底归档）。
+fn local_reaper_state() -> &'static std::sync::Mutex<crate::tmux_reconcile::ReconcileState> {
+    static STATE: std::sync::OnceLock<std::sync::Mutex<crate::tmux_reconcile::ReconcileState>> =
+        std::sync::OnceLock::new();
+    STATE.get_or_init(Default::default)
+}
+
+/// 〔U4b · 第四波 · G2〕**本机收割的纯决策**：这一帧 `tmux ls` 之后，哪些本机「可重连」该落到已结束。
+///
+/// 与远端 `stream_loop` 的 `TmuxSessions` 臂同一个判定：观测无效（`Skip`）⇒ 本帧不算；有效 ⇒
+/// `reconcile_step`（去抖 `RETIRE_MISS_THRESHOLD` 拍）。`tracked` 与 `pre_bound` 都是**本机 idle 集**：
+/// 本机活会话的死活由 monitor 的 `session_map`（pidfile）判，不归这里管（远端 `tracked` 里的 `announced` 在本机没有对应物）；
+/// idle sid 的 `@ccm_sid` 在原文里出现过 = 铁证绑过 tmux ⇒ 直接播种 `ever_bound`（同远端那条 D 审计②）。
+pub(crate) fn local_idle_retirements(
+    state: &mut crate::tmux_reconcile::ReconcileState,
+    raw: &str,
+    observation: Option<&str>,
+    idle: &std::collections::HashSet<String>,
+) -> Vec<String> {
+    match crate::backend::control::tmux::classify_tmux_observation(raw, observation) {
+        crate::backend::control::tmux::TmuxObservation::Backend(backend) => {
+            crate::tmux_reconcile::reconcile_step(
+                state,
+                idle,
+                &backend,
+                idle,
+                crate::tmux_reconcile::RETIRE_MISS_THRESHOLD,
+            )
+        }
+        crate::backend::control::tmux::TmuxObservation::Skip(_) => Vec::new(),
+    }
+}
+
+/// 〔U4b · 第四波 · G2〕本机 tmux 会话 `name` 关了：摘掉那一行后的原文 ＋ 那一行上挂着的 sid（纯函数）。
+/// 按名字**逐字相等**找（`remove_tmux_line` 同一条纪律：不做前缀匹配）。
+pub(crate) fn local_tmux_closed(raw: &str, name: &str) -> (String, Option<String>) {
+    let sid = crate::backend::control::tmux::parse_tmux_ls(raw)
+        .into_iter()
+        .find(|e| e.name == name)
+        .and_then(|e| e.sid);
+    (crate::ssh_source::remove_tmux_line(raw, name), sid)
 }
 
 /// # 诚实边界 10a + 10e：通道**通了**，但没人往里发命令，也没验命令真能执行
@@ -1681,6 +1775,8 @@ pub(crate) fn local_stdio_consumer(
     // 〔SR1a〕流没了 ⇒ 经它开的在飞链路全部带原因结束（不让调用方干等到超时）。
     if let Some(mine) = registered.as_ref() {
         crate::link_mux::fail_owned_by(mine, "本机后端的流断了（stdio 载体）");
+        // 〔SR1b〕经它开的传输也一律收场（后端的票表随那条流一起撤了）。
+        crate::sftp_pool::fail_owned_by(mine, "本机后端的流断了（stdio 载体）");
     }
     // 〔CF1〕告诉本机内容消费者这条流结束了（冲掉残批、下一条流换新的收口）。
     crate::local_lines::stream_ended_blocking();

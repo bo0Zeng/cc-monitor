@@ -433,45 +433,13 @@ pub async fn remove_project_mcp_server(
     }
 }
 
-// ───────────────────────── F89a：远端项目级 MCP 读写（SFTP） ─────────────────────────
+// ───────────────────────── F89a：远端项目级 MCP 读写 ─────────────────────────
 // 只读铁律边界：读=只读；**写/删仅用户显式触发（SS-G 豁免）**、写面**只** `<dir>/.mcp.json`
-// （`remote_mcp_json_path` 硬编码 + `is_safe_remote_mcp_json` 守卫，SS-14 远端对端）。SFTP `upload_atomic`
-// 原子 tmp+rename；**已存在但读/解析失败 → 报错拒绝覆盖**（不 skeleton 盖掉现有 server，对齐本机 read_or_skeleton）。
-
-/// SFTP 读远端 `.mcp.json` Value：不存在→骨架；存在但读/解析失败→Err（拒绝后续覆盖丢数据）。
-/// batch20 审计修（两处）：① `try_exists` **Err → Err 拒写**（原 `unwrap_or(false)` 把瞬态 stat 失败当「不存在」→
-/// 会 skeleton 覆盖丢其余 server）；② **崩溃恢复**——path 缺但 `<path>.bak` 在 = 上次写在末段 rename 中断（`upload_atomic`
-/// 备份了旧文件、tmp→path 失败），此时读骨架会让重试丢掉备份里的其余 server → 改为**从 `.bak` 恢复**旧内容。
-async fn read_remote_mcp_value(
-    sftp: &russh_sftp::client::SftpSession,
-    path: &str,
-) -> Result<Value, String> {
-    let exists = sftp
-        .try_exists(path.to_string())
-        .await
-        .map_err(|e| format!("检查远端 {path} 存在性失败（拒绝写以免丢数据）: {e}"))?;
-    if !exists {
-        // 崩溃恢复：path 缺但 .bak 在 → 从 .bak 读回上次写中断前的内容（否则重试骨架覆盖丢 server）。
-        let bak = format!("{path}.bak");
-        if sftp.try_exists(bak.clone()).await.unwrap_or(false) {
-            if let Ok(bytes) = sftp.read(bak.clone()).await {
-                if let Ok(v) = serde_json::from_str::<Value>(
-                    String::from_utf8_lossy(&bytes).trim_start_matches('\u{feff}'),
-                ) {
-                    return Ok(v); // 从备份恢复
-                }
-            }
-        }
-        return Ok(serde_json::json!({ "mcpServers": {} }));
-    }
-    let bytes = sftp
-        .read(path.to_string())
-        .await
-        .map_err(|e| format!("读远端 {path} 失败: {e}"))?;
-    let text = String::from_utf8_lossy(&bytes);
-    serde_json::from_str(text.trim_start_matches('\u{feff}'))
-        .map_err(|e| format!("远端 {path} 解析失败（拒绝覆盖）: {e}"))
-}
+// （`remote_mcp_json_path` 硬编码 + `is_safe_remote_mcp_json` 守卫，SS-14 远端对端）。
+// 〔RW1〕写经那台远端的后端（`user_files`）；〔SR1b · 2026-09-24〕**读也经它**（`files-peek`，与写同一个家、同一道围栏）。
+// 〔墓碑 —— 从前读这一半是界面进程自己开一条 SFTP 读（`read_remote_mcp_value`〔散文墓碑〕：`try_exists` 失败即拒 ·
+//  path 缺而 `.bak` 在就从 `.bak` 恢复）。那条「崩溃恢复」治的是旧 SFTP 原子写中断留下的 `.bak`；写改经后端之后
+//  那一形不再产生（后端那一份序列自己回滚），读也就不必替它兜。〕
 
 /// F89a：读远端某项目的 `.mcp.json`（project scope 条目）。**只读**。缺/坏 → 空段（宽容，读侧不阻断）。
 #[tauri::command]
@@ -482,11 +450,18 @@ pub async fn read_remote_project_mcp(
     let cfg = crate::load_remote_config_by_label(&origin)
         .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))?;
     let path = remote_mcp_json_path(&project_dir)?;
-    let conn = crate::sftp::connect_sftp(&cfg).await?;
-    // 读侧宽容：不存在/坏 → 空（不像写侧那样 Err）。
-    let root = read_remote_mcp_value(&conn.sftp, &path)
+    let (root_dir, rel) = path
+        .rsplit_once('/')
+        .filter(|(r, n)| !r.is_empty() && !n.is_empty())
+        .ok_or_else(|| format!("{path} 切不出项目目录"))?;
+    let door = crate::user_files::BackendDoor::new(crate::origin::Origin(cfg.origin_label()));
+    // 读侧宽容：不存在 / 读不出 / 坏 → 空（不像写侧那样 Err）。
+    let root = crate::user_files::Door::peek(&door, root_dir, rel)
         .await
-        .unwrap_or_else(|_| serde_json::json!({ "mcpServers": {} }));
+        .ok()
+        .and_then(|p| p.text)
+        .and_then(|t| serde_json::from_str::<Value>(t.trim_start_matches('\u{feff}')).ok())
+        .unwrap_or_else(|| serde_json::json!({ "mcpServers": {} }));
     let src = format!("[{}] {path}", cfg.origin_label());
     Ok(collect_entries(None, "", Some(&root), &src, None))
 }

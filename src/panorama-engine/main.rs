@@ -18,13 +18,16 @@
 //! - ⚠ **退出码的语义只在这里定义一次**；起它的那一侧（后端适配层）自己持一张码 → 语义码的表，
 //!   插件口本身不翻码（那条纪律住 `src/backend/plugin/mod.rs` 头注）。
 //!
-//! # 第一拍**只读**（写用户文件的那几样一样都不出）
+//! # 引擎只算、文件管理来写（〔RM1d〕用户 09-24 V110）
 //!
 //! 批注增 / 提 / 批 / 删与文档关联写 / 删，写的是**被分析仓里的文件**（`<仓>/.codepicture/annotations/`、
-//! 文档的 frontmatter）。远端仓的这些文件是远端的用户文件，而用户 09-24 裁「只允许后端的
-//! 文件管理部分写用户文件」⇒ 那几样要等后端写面那一路（RW1）接上，**不在本程序里开第二条写路**。
-//! 判据：`tests::the_program_never_calls_an_engine_method_that_writes_user_files`（零命中 ＋ 正控）。
-//! 唯一的写是**索引**：落 `--store` 给的目录（后端自己的数据目录），不是用户文件。
+//! 文档的 frontmatter）—— 用户文件。用户 09-24 裁「只允许后端的文件管理部分写用户文件」⇒
+//! 本程序对这六样**只算不写**：`plan_*` 那几个 op 读盘上现状、调上游 `edits::plan_*`，把算好的
+//! `{value, edit: {rel, before, after, parents}}` 原样交回；落盘由起它的那一侧交给那台机器后端的
+//! 文件管理（`files-put` 带 `expect = before` / `files-delete`）。
+//! 判据：`tests::the_program_never_calls_an_engine_method_that_writes_user_files`（上游写盘那一层
+//! 零命中 ＋ 正控）· `tests::planning_ops_leave_the_repo_byte_identical`。
+//! 本程序唯一的写是**索引**：落 `--store` 给的目录（后端自己的数据目录），不是用户文件。
 //!
 //! # 应答形状与 monitor 进程内那 23 条命令**逐字同形**
 //!
@@ -34,7 +37,7 @@
 //! ⇒ 前端「按形状渲染」那一层本机与远端同一份，不为远端另写一套。
 
 use code_picture_core::diagram::{self, DiagramKind, DiagramRequest};
-use code_picture_core::{model, Engine, EngineOpts};
+use code_picture_core::{edits, model, Engine, EngineOpts};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -57,6 +60,8 @@ pub const EXIT_FAILED: i32 = 3;
 pub enum Need {
     /// 不碰仓、不碰索引（今天只有图种注册表 —— 它编在二进制里）。
     Nothing,
+    /// 〔RM1d〕只读仓里那一两份文件、算出新内容：要仓，**不要索引根、不上锁、不开引擎**。
+    Repo,
     /// 读：要仓与索引根，**共享**锁（多个读可以并行）。
     Read,
     /// 建索引：要仓与索引根，**独占**锁（同一个索引根上同一时刻只许一个在写）。
@@ -86,6 +91,15 @@ pub const OPS: &[(&str, Need)] = &[
     ("list_annotations", Need::Read),
     ("diagram_kinds", Need::Nothing),
     ("diagram", Need::Read),
+    // 〔RM1d〕只算不写：回一份编辑计划，落盘归那台机器的后端文件管理（头注）。
+    ("plan_add_annotation", Need::Repo),
+    ("plan_propose_annotation", Need::Repo),
+    ("plan_approve_annotation", Need::Repo),
+    ("plan_remove_annotation", Need::Repo),
+    ("plan_write_doc_link", Need::Repo),
+    ("plan_remove_doc_link", Need::Repo),
+    // 〔RM1d〕外面落了 `.md` 的 `covers:` 之后让索引跟上（只写索引）。
+    ("refresh_doc_links", Need::Build),
 ];
 
 /// 失败的两类（与两个退出码一一对应）。
@@ -198,8 +212,6 @@ pub fn run(
         return dispatch_registry(op, args);
     }
     let repo = repo.ok_or_else(|| Fail::BadArgs(format!("op `{op}` 要一个仓（`--repo`）")))?;
-    let store =
-        store.ok_or_else(|| Fail::BadArgs(format!("op `{op}` 要一个索引根（`--store`）")))?;
     if !repo.is_absolute() {
         return Err(Fail::BadArgs(format!(
             "仓路径必须是绝对路径：`{}`",
@@ -214,6 +226,12 @@ pub fn run(
             repo.display()
         )));
     }
+    if *need == Need::Repo {
+        // 只算不写：不碰索引根（给了也不用）、不上锁、不开引擎。
+        return dispatch_plan(op, &canon, args);
+    }
+    let store =
+        store.ok_or_else(|| Fail::BadArgs(format!("op `{op}` 要一个索引根（`--store`）")))?;
     std::fs::create_dir_all(store)
         .map_err(|e| Fail::Failed(format!("建不出索引根 `{}`：{e}", store.display())))?;
     let _guard = lock_store(store, *need)?;
@@ -304,6 +322,29 @@ struct DiagramArgs {
     request: DiagramRequest,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AnnotateArgs {
+    file: String,
+    /// 符号段（如 `f` / `Type::method`）；缺席 / `null` = 文件级批注。
+    symbol: Option<String>,
+    body: String,
+    author: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct IdArgs {
+    id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DocLinkArgs {
+    doc: String,
+    target: String,
+}
+
 /// 序列化成线上的值（引擎直出的类型原样透出）。
 fn out<T: serde::Serialize>(v: T) -> Result<Value, Fail> {
     serde_json::to_value(v).map_err(|e| Fail::Failed(format!("序列化应答失败：{e}")))
@@ -320,7 +361,58 @@ fn dispatch_registry(op: &str, args: Value) -> Result<Value, Fail> {
     }
 }
 
-/// 在开好的引擎上跑一个 op。**这里只有读引擎的方法与建索引**（写用户文件的那几样不在，见头注）。
+/// 上游「算」那一层的失败 → 两类：给错了东西 / 盘上那份读不出来。
+fn plan_fail(e: edits::PlanError) -> Fail {
+    match e {
+        edits::PlanError::Invalid(m) => Fail::BadArgs(m),
+        edits::PlanError::Io(e) => Fail::Failed(format!("读不出盘上那一份：{e}")),
+    }
+}
+
+/// 〔RM1d〕只算不写的那几个 op：调上游 `edits::plan_*`（读 ＋ 纯），把计划原样交回。
+/// **这里没有一处写盘**（判据 `the_program_never_calls_an_engine_method_that_writes_user_files`）。
+fn dispatch_plan(op: &str, repo: &Path, args: Value) -> Result<Value, Fail> {
+    match op {
+        "plan_add_annotation" => {
+            let a: AnnotateArgs = take(op, args)?;
+            out(
+                edits::plan_add_annotation(repo, &a.file, a.symbol.as_deref(), &a.body, &a.author)
+                    .map_err(plan_fail)?,
+            )
+        }
+        "plan_propose_annotation" => {
+            let a: AnnotateArgs = take(op, args)?;
+            out(edits::plan_propose_annotation(
+                repo,
+                &a.file,
+                a.symbol.as_deref(),
+                &a.body,
+                &a.author,
+            )
+            .map_err(plan_fail)?)
+        }
+        "plan_approve_annotation" => {
+            let a: IdArgs = take(op, args)?;
+            out(edits::plan_approve_annotation(repo, &a.id).map_err(plan_fail)?)
+        }
+        "plan_remove_annotation" => {
+            let a: IdArgs = take(op, args)?;
+            out(edits::plan_remove_annotation(repo, &a.id).map_err(plan_fail)?)
+        }
+        "plan_write_doc_link" => {
+            let a: DocLinkArgs = take(op, args)?;
+            out(edits::plan_write_doc_link(repo, &a.doc, &a.target).map_err(plan_fail)?)
+        }
+        "plan_remove_doc_link" => {
+            let a: DocLinkArgs = take(op, args)?;
+            out(edits::plan_remove_doc_link(repo, &a.doc, &a.target).map_err(plan_fail)?)
+        }
+        other => Err(Fail::BadArgs(format!("op `{other}` 不在「算」那一组里"))),
+    }
+}
+
+/// 在开好的引擎上跑一个 op。**这里只有读引擎的方法与建索引**（写用户文件的那几样只算不写，
+/// 住 [`dispatch_plan`]，见头注）。
 fn dispatch(op: &str, e: &mut Engine, args: Value) -> Result<Value, Fail> {
     match op {
         "status" => {
@@ -396,6 +488,12 @@ fn dispatch(op: &str, e: &mut Engine, args: Value) -> Result<Value, Fail> {
         "list_annotations" => {
             take::<NoArgs>(op, args)?;
             out(e.list_annotations())
+        }
+        "refresh_doc_links" => {
+            take::<NoArgs>(op, args)?;
+            e.refresh_doc_links()
+                .map_err(|x| Fail::Failed(x.to_string()))?;
+            Ok(Value::Null)
         }
         "diagram" => {
             let a: DiagramArgs = take(op, args)?;

@@ -1030,6 +1030,13 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
              交付前跑一趟、把输出贴进报告。",
         ),
         (
+            "sr1b_loopback_deploy_and_transfer_through_the_resident_backend",
+            "〔SR1b 09-24〕不是 e2e：同上一条，要**真 sshd**（sftp 子系统起始目录钉在临时目录）＋ 编好的后端二进制。\
+             触发器是读数脚本 `tests/evidence/SR1b-sftp-loopback.py --monitor`（设好 `SR1B_LOOPBACK` 按名字跑这一条，\
+             核输出里那句 `SR1B-LOOPBACK-MONITOR ok`）。谁什么时候跑：改 `sftp.rs` 部署那几问 / `sftp_pool.rs` 中继 /\
+             `dial_host::RemoteFs` / 后端 `dial/sftp.rs` · `control/transfer.rs` 的那一拍，交付前跑一趟、把输出贴进报告。",
+        ),
+        (
             "a_real_backend_feeds_local_lines_through_the_production_read_loop",
             "〔CF1 09-24〕不是 e2e：它要一份编好的后端二进制（stdio 载体、起参就是生产的 `LOCAL_STREAM_ARGS`，私有 HOME / \
              `CLAUDE_CONFIG_DIR` / `TMUX_TMPDIR`）＋ `/proc`（冒充会话的 `sleep` 要有启动时刻）。触发器是读数脚本 \
