@@ -62,12 +62,55 @@ pub(crate) const MAX_PUT_BYTES: u64 = 64 << 20;
 
 /// 一条开在池里那条连接上的 SFTP 会话（占这条连接的一格通道，传输另占一格车道）。
 pub(crate) struct Session {
-    sftp: SftpSession,
+    /// 只在 `Drop` 那一刻被取走（停进空位）—— 之后没有人还拿得到 `&self`。
+    sftp: Option<SftpSession>,
     /// SFTP 起始目录的真路径（`realpath(".")`）—— 围栏把绝对路径归一成相对它。
     home: String,
-    /// 保活：借到的那一格预算 ＋ 底层那条 SSH 连接（生产上是 `(pool::Permit, Arc<Linked>)`）。
-    /// **不许省**：连接句柄一 drop 整条连接就断，这条通道跑在它上面；预算那一格要攥到会话用完。
-    _keep: Box<dyn std::any::Any + Send + Sync>,
+    /// 保活 ＋ 用完去哪。
+    keep: Keep,
+}
+
+/// 会话要攥着的东西。**不许省**：连接句柄一 drop 整条连接就断，这条通道跑在它上面；预算那一格要攥到会话用完。
+enum Keep {
+    /// 台架 / files 链路：攥着就好，用完关掉（生产上 files 链路是 `(pool::Permit, Arc<Linked>)`）。
+    Hold(#[allow(dead_code)] Box<dyn std::any::Any + Send + Sync>),
+    /// 〔NT1〕传输：用完**停进这条连接的空位**（[`Parked`]）—— 连同这一格传输许可；空位已有 / 连接关了 ⇒ 照常关掉。
+    Park(Option<pool::Permit>, Arc<Linked>),
+}
+
+/// 〔NT1 · 2026-09-24〕**一条停着的空闲 sftp 会话**，住在它那条连接里（`Linked::idle_sftp`，每条连接**一个空位**）。
+///
+/// 读数（`NT1.md §0.2` ⑤c）：1 KB 小文件每件 ≈ 9.7 个往返，其中开 sftp 通道（开 channel · 请求子系统 · `SSH_FXP_INIT` ·
+/// `realpath .`）占 4 个。停一个 ⇒ 下一趟只花 1 个往返验活（`realpath .` 对一遍 home）。
+/// - **它不托连接**：空位住在 `Linked` 里、不持 `Arc<Linked>` ⇒ 连接照旧随最后一个用户 / 托它的主连接一起走，空位随之没了。
+/// - **它连同那一格传输许可一起停**（车道 ＋ 通道）：远端 `MaxSessions` 数的正是这条还开着的通道，账要对得上。
+/// - **挤掉**：别的放置借不到格时，池先把空位里的关掉、还出那一格（`pool::Conn::reclaim_idle`）—— 事件驱动的回收，不是定时器。
+pub(crate) struct Parked {
+    sftp: SftpSession,
+    home: String,
+    permit: pool::Permit,
+}
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        let Keep::Park(permit, linked) = &mut self.keep else {
+            return;
+        };
+        let (Some(sftp), Some(permit)) = (self.sftp.take(), permit.take()) else {
+            return;
+        };
+        if linked.session.is_closed() {
+            return;
+        }
+        let mut slot = linked.idle_sftp.lock().unwrap_or_else(|e| e.into_inner());
+        if slot.is_none() {
+            *slot = Some(Parked {
+                sftp,
+                home: std::mem::take(&mut self.home),
+                permit,
+            });
+        }
+    }
 }
 
 /// 在 channel 上请求 sftp 子系统，装进一个**显式 `Send`** 的盒子（理由同 `uses.rs::exec`：
@@ -79,7 +122,8 @@ fn subsystem(
 }
 
 /// 开一条 SFTP 会话：过这条连接的预算（`lane`）→ 开 session channel → 请求 sftp 子系统 → `SSH_FXP_INIT` →
-/// 问一次起始目录的真路径。**三到四个往返** —— 不复用通道（旧 monitor 池的空闲栈随它一起删了），代价如实记。
+/// 问一次起始目录的真路径。**三到四个往返**。〔NT1〕传输那一形用完停进这条连接的空位（[`Parked`]），
+/// 下一趟传输先取它（[`open_for_transfer`]，1 个往返验活）—— 旧 monitor 池的空闲栈随它一起删了，今天回来的是「每条连接一个空位」。
 pub(crate) async fn open(
     lease: &mut Lease,
     req: &DialRequest,
@@ -89,8 +133,52 @@ pub(crate) async fn open(
     subsystem(&channel)
         .await
         .map_err(|e| format!("请求 sftp 子系统失败（远端 sshd 没开 sftp？）: {e}"))?;
-    let keep: (pool::Permit, Arc<Linked>) = (permit, Arc::clone(lease.linked()));
-    Session::over(channel.into_stream(), Box::new(keep)).await
+    let stream = channel.into_stream();
+    let linked = Arc::clone(lease.linked());
+    if lease.lane() != Lane::Transfer {
+        // files 链路（部署）：用完就关。
+        return Session::over(stream, Box::new((permit, linked))).await;
+    }
+    // 〔NT1〕传输：用完停进这条连接的空位（`Parked`）。
+    let (sftp, home) = init(stream).await?;
+    Ok(Session {
+        sftp: Some(sftp),
+        home,
+        keep: Keep::Park(Some(permit), linked),
+    })
+}
+
+/// 〔NT1〕在这个身份的一族里找一条**停着的空闲会话**（只在传输能放的成员上找 —— 与放置同一条分道规矩），
+/// 取出来、验活（`realpath .` 与停进去时的 home 相同）。验不过 ⇒ 丢掉它（关通道、还格），接着找下一条。
+async fn take_parked(req: &DialRequest) -> Option<Session> {
+    if req.probe || req.stages {
+        return None;
+    }
+    for linked in pool::ssh().transfer_candidates(&pool::identity(req)) {
+        let parked = linked
+            .idle_sftp
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
+        let Some(p) = parked else {
+            continue;
+        };
+        match p.sftp.canonicalize(".").await {
+            Ok(h) if h == p.home => {
+                tracing::info!("dial: {} 上复用了一条停着的 sftp 会话", linked.endpoint);
+                return Some(Session {
+                    sftp: Some(p.sftp),
+                    home: p.home,
+                    keep: Keep::Park(Some(p.permit), linked),
+                });
+            }
+            other => tracing::info!(
+                "dial: {} 上停着的 sftp 会话验不过（{other:?}），丢掉",
+                linked.endpoint
+            ),
+        }
+    }
+    None
 }
 
 /// 一份拨号请求（传输台开单时读进来、起跑时拿它开会话）。包一层是为了让传输台**只经本文件**够到拨号：
@@ -106,14 +194,33 @@ impl Dial {
     }
 }
 
-/// 传输那一趟的会话：拿池里那条连接（同身份复用）→ 过**传输车道**开一条 sftp 通道。
+/// 传输那一趟的会话：〔NT1〕先找一条停着的空闲会话（1 个往返）；没有 ⇒ 在池里放置（同身份复用 / 分道到批量连接）
+/// → 过**传输车道**开一条 sftp 通道（4 个往返）。
 pub(crate) async fn open_for_transfer(d: &Dial) -> Result<Session, String> {
     let req = &d.0;
+    if let Some(s) = take_parked(req).await {
+        return Ok(s);
+    }
     let stages = StageSink::new(false);
     let mut lease = Lease::take(req, &stages, Lane::Transfer)
         .await
         .map_err(|(e, _)| e)?;
     open(&mut lease, req, &stages).await
+}
+
+/// `SSH_FXP_INIT` ＋ 问一次起始目录的真路径。
+async fn init<S>(stream: S) -> Result<(SftpSession, String), String>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    let sftp = SftpSession::new(stream)
+        .await
+        .map_err(|e| format!("初始化 sftp 会话失败: {e}"))?;
+    let home = sftp
+        .canonicalize(".")
+        .await
+        .map_err(|e| format!("问不出 SFTP 起始目录（realpath .）: {e}"))?;
+    Ok((sftp, home))
 }
 
 impl Session {
@@ -126,18 +233,19 @@ impl Session {
     where
         S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     {
-        let sftp = SftpSession::new(stream)
-            .await
-            .map_err(|e| format!("初始化 sftp 会话失败: {e}"))?;
-        let home = sftp
-            .canonicalize(".")
-            .await
-            .map_err(|e| format!("问不出 SFTP 起始目录（realpath .）: {e}"))?;
+        let (sftp, home) = init(stream).await?;
         Ok(Session {
-            sftp,
+            sftp: Some(sftp),
             home,
-            _keep: keep,
+            keep: Keep::Hold(keep),
         })
+    }
+
+    fn sftp(&self) -> &SftpSession {
+        match &self.sftp {
+            Some(s) => s,
+            None => unreachable!("sftp 会话只在 Drop 里被取走"),
+        }
     }
 
     /// SFTP 起始目录的真路径。
@@ -267,13 +375,13 @@ pub(crate) async fn fenced_remote(
     if rel == root {
         return Ok(rel);
     }
-    let real_root = s.sftp.canonicalize(root).await.map_err(|e| {
+    let real_root = s.sftp().canonicalize(root).await.map_err(|e| {
         fenced(format!(
             "refuse write: 写根 ~/{root} 解析不了（它还不在？）：{e}"
         ))
     })?;
     let parent = parent_of(&rel);
-    let real_parent = s.sftp.canonicalize(parent).await.map_err(|e| {
+    let real_parent = s.sftp().canonicalize(parent).await.map_err(|e| {
         fenced(format!(
             "refuse write: ~/{parent} 解析不了（父目录不在？）：{e}"
         ))
@@ -319,9 +427,9 @@ pub(crate) async fn put_atomic(
         permissions: Some(mode),
         ..Default::default()
     };
-    let _ = s.sftp.remove_file(tmp.clone()).await;
+    let _ = s.sftp().remove_file(tmp.clone()).await;
     let mut file = s
-        .sftp
+        .sftp()
         .open_with_flags_and_attributes(
             tmp.clone(),
             OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE,
@@ -340,10 +448,10 @@ pub(crate) async fn put_atomic(
         .await
         .map_err(|e| io(format!("关闭 ~/{tmp} 失败: {e}")))?;
     drop(file);
-    let bak = if s.sftp.try_exists(rel.clone()).await.unwrap_or(false) {
+    let bak = if s.sftp().try_exists(rel.clone()).await.unwrap_or(false) {
         let b = format!("{rel}.bak");
-        let _ = s.sftp.remove_file(b.clone()).await;
-        s.sftp
+        let _ = s.sftp().remove_file(b.clone()).await;
+        s.sftp()
             .rename(rel.clone(), b.clone())
             .await
             .map_err(|e| io(format!("备份旧文件 ~/{rel} → ~/{b} 失败: {e}")))?;
@@ -351,12 +459,12 @@ pub(crate) async fn put_atomic(
     } else {
         None
     };
-    s.sftp
+    s.sftp()
         .rename(tmp.clone(), rel.clone())
         .await
         .map_err(|e| io(format!("rename ~/{tmp} → ~/{rel} 失败: {e}")))?;
     if let Some(b) = bak {
-        let _ = s.sftp.remove_file(b).await;
+        let _ = s.sftp().remove_file(b).await;
     }
     Ok(())
 }
@@ -364,10 +472,10 @@ pub(crate) async fn put_atomic(
 /// 删一份文件。回「真删了」（不在 ⇒ `false`，不算错）。
 pub(crate) async fn remove(s: &Session, path: &str) -> Result<bool, Refusal> {
     let rel = fenced_remote(s, path, Intent::File).await?;
-    if !s.sftp.try_exists(rel.clone()).await.unwrap_or(false) {
+    if !s.sftp().try_exists(rel.clone()).await.unwrap_or(false) {
         return Ok(false);
     }
-    s.sftp
+    s.sftp()
         .remove_file(rel.clone())
         .await
         .map_err(|e| io(format!("删除 ~/{rel} 失败: {e}")))?;
@@ -377,12 +485,12 @@ pub(crate) async fn remove(s: &Session, path: &str) -> Result<bool, Refusal> {
 /// 建**一层**目录（已在 ⇒ 什么都不做）。
 pub(crate) async fn make_dir(s: &Session, path: &str) -> Result<(), Refusal> {
     let rel = fenced_remote(s, path, Intent::Dir).await?;
-    if s.sftp.try_exists(rel.clone()).await.unwrap_or(false) {
+    if s.sftp().try_exists(rel.clone()).await.unwrap_or(false) {
         return Ok(());
     }
-    if let Err(e) = s.sftp.create_dir(rel.clone()).await {
+    if let Err(e) = s.sftp().create_dir(rel.clone()).await {
         // 并发的另一趟刚建好它 —— 那不算错。
-        if !s.sftp.try_exists(rel.clone()).await.unwrap_or(false) {
+        if !s.sftp().try_exists(rel.clone()).await.unwrap_or(false) {
             return Err(io(format!("建目录 ~/{rel} 失败: {e}")));
         }
     }
@@ -413,7 +521,7 @@ pub(crate) async fn open_for_write(
     truncate: bool,
 ) -> Result<RemoteFile, Refusal> {
     let rel = fenced_remote(s, path, Intent::File).await?;
-    if let Ok(m) = s.sftp.symlink_metadata(rel.clone()).await {
+    if let Ok(m) = s.sftp().symlink_metadata(rel.clone()).await {
         if m.is_symlink() {
             return Err(fenced(format!(
                 "refuse write: ~/{rel} 是一条链接 —— 开写会跟过去，拒"
@@ -424,7 +532,7 @@ pub(crate) async fn open_for_write(
     if truncate {
         flags |= OpenFlags::TRUNCATE;
     }
-    s.sftp
+    s.sftp()
         .open_with_flags(rel.clone(), flags)
         .await
         .map_err(|e| io(format!("开 ~/{rel} 写失败: {e}")))
@@ -434,7 +542,7 @@ pub(crate) async fn open_for_write(
 
 /// 打开一份远端文件只读。
 pub(crate) async fn open_for_read(s: &Session, path: &str) -> Result<RemoteFile, String> {
-    s.sftp
+    s.sftp()
         .open_with_flags(path.to_string(), OpenFlags::READ)
         .await
         .map_err(|e| format!("打开远端 {path} 失败: {e}"))
@@ -442,17 +550,21 @@ pub(crate) async fn open_for_read(s: &Session, path: &str) -> Result<RemoteFile,
 
 /// `metadata` 的大小：`None` = 那次调用失败；`Some(None)` = 服务器没给 size（**不是 0 字节**）。
 pub(crate) async fn metadata_size(s: &Session, path: &str) -> Option<Option<u64>> {
-    s.sftp.metadata(path.to_string()).await.ok().map(|m| m.size)
+    s.sftp()
+        .metadata(path.to_string())
+        .await
+        .ok()
+        .map(|m| m.size)
 }
 
 /// 在不在：`None` = 问不出来。
 pub(crate) async fn exists(s: &Session, path: &str) -> Option<bool> {
-    s.sftp.try_exists(path.to_string()).await.ok()
+    s.sftp().try_exists(path.to_string()).await.ok()
 }
 
 /// 整份读回来；读不出 ⇒ `None`。
 pub(crate) async fn read_all(s: &Session, path: &str) -> Option<Vec<u8>> {
-    s.sftp.read(path.to_string()).await.ok()
+    s.sftp().read(path.to_string()).await.ok()
 }
 
 // ═══ files 链路（`use:"files"`）：受限远端文件的一问一答 ════════════════════════════════

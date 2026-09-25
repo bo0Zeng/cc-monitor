@@ -131,6 +131,11 @@ impl Lease {
         &self.linked
     }
 
+    /// 这一趟走哪一道（`sftp.rs` 据它判「用完停不停进空位」：只有传输停）。
+    pub(crate) fn lane(&self) -> Lane {
+        self.lane
+    }
+
     /// 开一条 session channel。那一格**放置时已经借好了**（`pool::Budget`：长流 · 查询 · SFTP 同一条连接、同一道闸），
     /// 随返回的 [`pool::Permit`] 走，调用方攥到通道用完为止。
     ///

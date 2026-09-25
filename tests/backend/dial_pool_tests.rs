@@ -21,6 +21,8 @@ struct Fake {
     closed: AtomicBool,
     budget: Budget,
     held: Mutex<Vec<Arc<Fake>>>,
+    /// 停着的「空闲会话」：这里只要它攥着的那一格（与 `Linked::idle_sftp` 里的 `Parked` 同一种攥法）。
+    idle: Mutex<Option<Permit>>,
 }
 
 impl Conn for Fake {
@@ -33,6 +35,9 @@ impl Conn for Fake {
     fn adopt(&self, other: Arc<Self>) {
         self.held.lock().unwrap().push(other);
     }
+    fn reclaim_idle(&self) -> bool {
+        self.idle.lock().unwrap().take().is_some()
+    }
 }
 
 fn fake() -> Fake {
@@ -40,6 +45,7 @@ fn fake() -> Fake {
         closed: AtomicBool::new(false),
         budget: Budget::new(),
         held: Mutex::new(Vec::new()),
+        idle: Mutex::new(None),
     }
 }
 
@@ -409,4 +415,54 @@ async fn a_second_bulk_connection_is_never_dialed() {
     assert_eq!(dials.load(Ordering::SeqCst), 2, "多开了第二条批量连接");
     drop(xfers.pop());
     assert_eq!(fifth.await.unwrap(), How::Reused);
+}
+
+/// ★ S1（`NT1.md §3`）：停着的空闲会话**连同它那一格**停在连接里；别的放置借不到格时，池**先挤掉它**、还出那一格，
+/// 再放 —— 不因为一个空位多开一条（拨号次数仍 == 1）。
+#[tokio::test]
+async fn a_parked_idle_session_is_squeezed_out_before_anyone_dials() {
+    let pool: Pool<Fake> = Pool::new();
+    let dials = AtomicUsize::new(0);
+    let x = place(&pool, "k", Lane::Transfer, &dials).await;
+    let conn = Arc::clone(&x.conn);
+    *conn.idle.lock().unwrap() = x.permit;
+    let mut held = Vec::new();
+    for _ in 1..SESSION_CHANNEL_CAP {
+        held.push(place(&pool, "k", Lane::Query, &dials).await);
+    }
+    assert_eq!(
+        conn.budget().free().0,
+        0,
+        "7 条查询 ＋ 1 个停着的会话该占满 8 格"
+    );
+    let eighth = place(&pool, "k", Lane::Query, &dials).await;
+    assert!(
+        eighth.how == How::Reused && Arc::ptr_eq(&eighth.conn, &conn),
+        "该先挤掉停着的会话、落在这条上"
+    );
+    assert!(conn.idle.lock().unwrap().is_none(), "停着的会话没被挤掉");
+    assert_eq!(dials.load(Ordering::SeqCst), 1, "为了一个空位多开了一条");
+}
+
+/// ★ S1 的另一半：找停着的会话只在**传输能放的成员**上找（与放置同一条分道规矩）——
+/// 主连接上有长流 ⇒ 候选只有批量连接；没长流 ⇒ 主连接在先。
+#[tokio::test]
+async fn parked_sessions_are_looked_up_where_a_transfer_may_land() {
+    let pool: Pool<Fake> = Pool::new();
+    let dials = AtomicUsize::new(0);
+    let q = place(&pool, "k", Lane::Query, &dials).await;
+    let c = pool.transfer_candidates("k");
+    assert!(
+        c.len() == 1 && Arc::ptr_eq(&c[0], &q.conn),
+        "没长流 ⇒ 主连接就是候选"
+    );
+    let s = place(&pool, "k", Lane::Stream, &dials).await;
+    assert!(
+        pool.transfer_candidates("k").is_empty(),
+        "主连接上有长流、还没有批量连接 ⇒ 没有候选"
+    );
+    let x = place(&pool, "k", Lane::Transfer, &dials).await;
+    let c = pool.transfer_candidates("k");
+    assert!(c.len() == 1 && Arc::ptr_eq(&c[0], &x.conn) && !Arc::ptr_eq(&c[0], &s.conn));
+    assert!(pool.transfer_candidates("另一个身份").is_empty());
 }
