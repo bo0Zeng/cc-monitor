@@ -199,7 +199,7 @@
     },
     "sessionState.unseen.tooltip": {
       "kind": "body",
-      "zh": "还没连上那台机器，说不清这个会话还在不在",
+      "zh": "现在看不见那台机器，说不清这个会话还在不在",
       "args": []
     },
     "sessionState.recordGone.title": {

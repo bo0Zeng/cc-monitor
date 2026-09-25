@@ -534,6 +534,8 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/relay/machine_tests.rs",
     "tests/backend/relay/server_tests.rs",
     "tests/backend/relay/wire_golden.rs",
+    // 〔NT2 · S1〕L2 真起子进程（re-exec 本测试二进制，fd 2 真被换走）
+    "tests/backend/stderr_log_tests.rs",
     "tests/backend/wire_tests.rs",
     "tests/bridge/account_aliases_tests.rs",
     "tests/bridge/adapter_tests.rs",
@@ -552,6 +554,8 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/comm_boundary_registry_tests.rs",
     "tests/bridge/crates/creds-core/perm_tests.rs",
     "tests/bridge/creds_store_tests.rs",
+    // 〔GP1 · 第四波〕旧版 `~/.local/bin/ccm` 那一份：替身门在临时目录上真读真删。
+    "tests/bridge/ccm_legacy_tests.rs",
     "tests/bridge/data_paths_tests.rs",
     "tests/bridge/dial_home_registry_tests.rs",
     "tests/bridge/dial_host_tests.rs",
@@ -709,6 +713,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "tests/backend/relay/host_tests.rs",
         "hosted_relay_child_entry_point",
         Trigger::Filter { by: "tests/backend/relay/host_tests.rs", needle: "relay::listen::host_tests::hosted_relay_child_entry_point" },
+    ),
+    (
+        "tests/backend/stderr_log_tests.rs",
+        "stderr_log_child_entry_point",
+        Trigger::Filter { by: "tests/backend/stderr_log_tests.rs", needle: "stderr_log::tests::stderr_log_child_entry_point" },
     ),
     (
         "tests/backend/relay/machine_tests.rs",
