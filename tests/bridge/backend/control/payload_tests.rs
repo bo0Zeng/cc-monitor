@@ -1181,8 +1181,10 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
     // 抽取器自检：剥完还得看得见东西（否则下面整条是空真）。
     // 门槛现打（09-02，剥完的字节数）：`history.rs` ≈ 48.7k（原文 213k）· `payload.rs` ≈ 8.2k（原文 88k）
     // —— 门槛按现打值往下留一档，不贴着写。
+    // 〔C4d · 第四波 4B〕`history.rs` 那一格 30k → 20k：历史清单与注解那一族搬进本机常驻后端，剥完现打 29,494 字节
+    //   （起会话那几段一字未动 —— 本条要读的 export 都在那几段里）；按现打值往下留一档。
     assert!(
-        hist.len() > 30_000 && pay.len() > 5_000,
+        hist.len() > 20_000 && pay.len() > 5_000,
         "剥完只剩 history={} payload={} 字节 —— 剥法坏了，本条会零命中地绿",
         hist.len(),
         pay.len()
@@ -1438,7 +1440,7 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
              那一格由 `the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary` \
              钉着，与本条数的是两件事。";
     const NOT_WIRED_TS: &str =
-        "TS 兜底渲染器服务的是**远端**那族（`tryRenderCli` 拒了之后的回落），\
+        "TS 兜底渲染器服务的是**远端**那族（`ccm …` 调用行渲染拒了之后的回落），\
              而本件 `§0e` 裁四明写只保本机、远端那一半 `判不了`（要先给 `creds.apikey` 找到主人）。";
     const NOT_WIRED_WINDOW: &str =
         "开窗那一跳给的是**终端进程**的 env（`backend_bin_env_for_window`），\

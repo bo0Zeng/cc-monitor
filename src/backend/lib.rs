@@ -15,7 +15,7 @@
 //!   · `tests/backend/build_id_guard.rs`（真身份住址的逐条核对）
 //! **别在第四处写它的住址。**
 
-pub mod accounts; // 账号层（apikey 端点改写）：`resolve` 那张决策表 ＋ 表 ＋ 凭据 ＋ 热重载。**不是中转**，不住 relay/
+pub mod accounts; // 账号域：上游选择（`resolve` 那张决策表 ＋ 表 ＋ 凭据 ＋ 热重载）＋ `iso`。**不是中转**，不住 relay/
 #[cfg(test)]
 #[path = "../../tests/backend/agent_boundary_guard.rs"]
 mod agent_boundary_guard; // S1：通用层不许知道任何 agent 的名字与文件格式（整体 #[cfg(test)]）
@@ -41,6 +41,8 @@ pub mod files; // 步 24f：`files-read` 这一族（**只读**）—— 常驻�
 pub mod footprint; // 〔RM1a · 第四波〕「足迹」的这台机器那一半：帧面 `footprint-probe`（只读路径事实，判定住 monitor）
 #[cfg(test)]
 mod guard_support; // U-1：各条源码扫描型守卫共用的「只留生产段」剥法（仅测试构建）
+pub mod history_annotations; // 〔C4d · 第四波 4B〕历史注解（星标 / 改名 / 隐藏 / 上次账号）：帧面 `history-annotate` / `history-forget` / `history-last-accounts`（第四层；文件就是 monitor 从前那一份，路径由它交）
+pub mod history_join; // 〔C4d · 第四波 4B〕历史跨机 join 的唯一的家：帧面 `history-projects` / `history-sessions` 出成品（这台 ＋ 可达表里的远端，并注解 ＋ 判活）
 pub mod inbound; // U6b-1：流连接上的入方向（信封 / 分派 / 取消）
 #[cfg(test)]
 #[path = "../../tests/backend/layering_guard.rs"]
@@ -70,6 +72,7 @@ pub mod read_face; // 〔C1 · 09-24〕只读查询的帧面宿主（8 条：his
 #[path = "../../tests/backend/readonly_guard.rs"]
 mod readonly_guard; // F08a：backend 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
 pub mod relay; // K-H1：HTTP 中转（搬字节那半）——只听回环、按路径前缀分流、逐块透传 + tee
+pub mod remote_ask; // 〔C4d · 第四波 4B〕本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 可达表 —— 全后端只此一处；帧面 `remote-reach`
 #[cfg(test)]
 #[path = "../../tests/backend/single_stream_guard.rs"]
 mod single_stream_guard; // K-P1 KPY8：「多客户端的流」明确不做 —— 三处「恰好一个客户端」的触发器（整体 #[cfg(test)]）
@@ -373,7 +376,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p2p-readface-outline-acctiso-spawn-504**（2026-09-24，第二波合并那一拍）：
 /// 子命令 ＋21 —— C1 只读查询面八条上帧面（及其自动派生的 CLI 面）· SE1 `--list-user-inputs` ·
 /// A3 `--acct-iso-status` / `--acct-iso-shellinit` · BS1b `bus-spawn`（两个命令面）；
-/// ＋ 一处**行为**变更（R2：中转层 1 传输失败回 504 并说清卡在哪一步）。
+/// ＋ 一处**行为**变更（R2：中转传输失败回 504 并说清卡在哪一步）。
 /// ★ re-embed 归发版那一拍（同 p2d…p2o）。
 ///
 /// ★★★ **p2q-no-ccm-self**（2026-09-24，第二波 MC1+AL1 合并那一拍）：**子命令集一个没变，是行为变了**
@@ -383,7 +386,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★ re-embed 归发版那一拍。
 ///
 /// ★★★ **p2r-apikey-naming**（2026-09-24，第三波 R3 合并那一拍）：**子命令集一个没变，是行为变了** ——
-/// 账号层读的凭据文件改叫 `apikey-credentials.json`、环境变量改叫 `CCM_APIKEY_CREDENTIALS` /
+/// 上游选择读的凭据文件改叫 `apikey-credentials.json`、环境变量改叫 `CCM_APIKEY_CREDENTIALS` /
 /// `CCM_AGENT_UPSTREAM_CLAUDE_CODE`（旧名逐条登记在 `tests/naming/account-vs-relay-naming.vitest.ts` 那张表里，
 /// 这里**刻意不复写**，否则那条判据当场红）。用户裁「不要把账号和中转混为一谈」，不留兼容读旧名。
 /// ⚠ 新 monitor 递新变量名、旧后端不认 ⇒ 回头读旧文件名 ⇒ 界面配好了、请求静默 404 ⇒ **必须**让已部署的后端被判 stale。
@@ -409,7 +412,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// ⚠ 旧本机后端不认 `link-open` ⇒ 界面判「本机后端太旧」、不回落（D11）⇒ **必须**让它被判 stale。
 ///
 /// ★★★ **p2w-apikey-relay-footprint**（2026-09-24，第四波 C4a ＋ RM1a 合并那一拍）：子命令 ＋5 ——
-/// RM1a `apikey-key-set` / `apikey-read`（账号层那份凭据文件：远端由那台后端读写，第四层）· `relay-status` / `relay-ensure`
+/// RM1a `apikey-key-set` / `apikey-read`（上游选择那份凭据文件：远端由那台后端读写，第四层）· `relay-status` / `relay-ensure`
 /// （远端中转）· `footprint-probe`（足迹的这台机器那一半），两个命令面都动。
 /// ＋ 行为：后端开 `creds-core` 的 `harden`（远端要写那份文件；「后端写不了」从编译期收窄成两条判据）。C4a 不动后端。
 ///
@@ -466,7 +469,15 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p3k-deploy-by-bytes**（2026-09-25，第四波 DP1 合并那一拍）：子命令集不变，**行为**变更 ——
 /// 下载失败留 `.part`（只清零字节的空 `.part`）· 上传失败先等完已发出的写再走 · 远端身份改由 monitor 读字节里的戳判（`.build_id` 退役）。
 /// 照 p1v 先例不加历史行。
-pub const BUILD_ID: &str = "p3k-deploy-by-bytes";
+///
+/// ★★★ **p3l-remote-ask-history**（2026-09-25，第四波 C4d 合并那一拍）：子命令 ＋4 —— `remote-reach` · `history-annotate` ·
+/// `history-forget` · `history-last-accounts`（两个命令面）。＋ 行为：`history-projects` / `history-sessions` 应答改成
+/// 本机后端出的跨机 join 成品 `{rows, notice}`；注解文件的读写者换成本机后端。
+///
+/// ★★★ **p3m-ssh-zlib**（2026-09-25，第四波 CZ1 合并那一拍）：行为 —— russh 换成仓内打补丁的副本（`src/bridge/vendor/russh`，
+/// 修 zlib 解压一包只交出约 2 倍包长的缺陷），闸 `RUSSH_ZLIB_SOUND` 开 ⇒ 判准下「远」的链路从此真走 zlib@openssh.com。
+/// 子命令没变，照 p1v 先例不加历史行。
+pub const BUILD_ID: &str = "p3m-ssh-zlib";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -574,12 +585,12 @@ pub const SUBCOMMANDS: &[&str] = &[
     // ⚠ 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
     "--exit-policy-read",
     "--exit-policy-set",
-    // 〔RM1a · 第四波〕账号层那份凭据文件在这台机器上的两条命令（`inbound::REGISTRY` 的 `apikey-*`）
+    // 〔RM1a · 第四波〕上游选择那份凭据文件在这台机器上的两条命令（`inbound::REGISTRY` 的 `apikey-*`）
     // 自动派生的 CLI 面。⚠ `--apikey-key-set` 的入参（含 key）**从 stdin 读**（`takes_input: true`），
     // 不收 argv —— argv 在同机任何用户的 `ps` 里都看得见。加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
     "--apikey-key-set",
     "--apikey-read",
-    // 〔RM1a · 第四波〕中转（层 1）那两条（`inbound::REGISTRY` 的 `relay-*`）自动派生的 CLI 面。
+    // 〔RM1a · 第四波〕中转那两条（`inbound::REGISTRY` 的 `relay-*`）自动派生的 CLI 面。
     // 入参只有端口，从 stdin 读。同上：加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
     "--relay-ensure",
     "--relay-status",
@@ -598,6 +609,14 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔AS2〕skill「装到这台」那两条（`skill-read` / `skill-install-plan`）派生的 CLI 面。只读，入参从 stdin 读。
     "--skill-read",
     "--skill-install-plan",
+    // 〔C4d · 第四波 4B〕可达表登记（`inbound::REGISTRY` 的 `remote-reach`）派生的 CLI 面，入参从 stdin 读。
+    // ⚠ 一次性进程的可达表随进程退出就空 —— 真正的用法是常驻后端的帧面。加这一行会逼出一次 `BUILD_ID` bump，本路**不 bump**。
+    "--remote-reach",
+    // 〔C4d · 第四波 4B〕历史注解那三条（`inbound::REGISTRY` 的 `history-annotate` / `-forget` / `-last-accounts`）派生的 CLI 面。
+    // ⚠ 一次性进程多半没被交 `CCM_HISTORY_METADATA` ⇒ 明拒（不猜路径）。加这三行会逼出一次 `BUILD_ID` bump，本路**不 bump**。
+    "--history-annotate",
+    "--history-forget",
+    "--history-last-accounts",
     "--backend-probe",
     // 〔SR1a · 09-24〕`--dial`（拨号代理，`K-P6b` / C2）**从本表摘掉了**：拨号挪进本机那一个常驻后端、
     // 经流上的链路（`link-*` 四条，`dial/link.rs`）做，不再每条链路起一个进程。

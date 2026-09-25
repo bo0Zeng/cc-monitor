@@ -3,7 +3,7 @@
 //! # 只切 CLI 那一支，为什么
 //!
 //! `remote-launch-run.ts::renderLaunchCommand` 有两支：
-//! `tryRenderCli`（装了 ccm 时走，产 `ccm …`）与 `renderFallback`（没装时走，产裸载荷）。
+//! `tryRenderCli`（装了 ccm 时走，产 `ccm …`；〔LR1 · U8c-3〕TS 那份已删）与 `renderFallback`（没装时走，产裸载荷）。
 //!
 //! - **CLI 那支是真在跑的那支**（U8c-2b-0 摸底：装了 ccm 就直接 return，兜底根本不执行）；
 //! - **兜底那支切不动**：`container: tmux` 时它要外层 tmux 命令（`session-backend.ts`），
@@ -70,8 +70,9 @@ pub struct CliRenderRequest {
     /// `remote-launch-run.ts::buildCliRenderRequest`（真正填它的地方）——
     /// **两个文件都不在 `K-R95` 的写区**。⇒ 交回里作 `〔R95b〕` 报给 PM。
     ///
-    /// 那句话本身**已经只有一处**了：`src/generated/launch-render-facts.ts` 的
-    /// `CLI_REFUSAL_REASON.probeUnknown`（源在本文件的生成器）。缺的是**线**，不是措辞。
+    /// 〔LR1 · U8c-3〕那句话（「探测没得出答案（不等于没装）」）原先只由 TS 那份渲染器说，
+    /// 随它一起删了 —— 生产上本来就说不出。修这条线的那一拍，它应当作为
+    /// `ccm_invocation::Refusal` 的一个变体重新出生，由 Rust 判据管。
     pub caps: Option<Vec<String>>,
     pub action: WireAction,
     pub container: WireContainer,

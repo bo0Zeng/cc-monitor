@@ -712,7 +712,7 @@ pub const RELAY_PASSTHROUGH_PREFIX: &str = "/t/";
 /// 路由键走哪个前缀。**只有 [`relay_route_path_in`] 一处把它翻成字面量。**
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RouteMode {
-    /// `/s/`：代入 —— apikey 表里有这一行（账号层的事，见 [`apikey_endpoint_for`]）。
+    /// `/s/`：代入 —— apikey 表里有这一行（上游选择的事，见 [`apikey_endpoint_for`]）。
     Substitute,
     /// `/t/`：直通 —— 表里没这一行，只为过中转拿 SSE（见 [`relay_endpoint_for`]）。
     Passthrough,
@@ -929,21 +929,21 @@ pub fn relay_env_prefix_ps(base_url: &str) -> String {
 /// 每一行都是这一家的。⇒ 本文件判「这个号在不在表里」时，**agent 也得对得上**，
 /// 否则别家拿同一个账号 id 起会话会被注入一条后端必回 404 的路由（或更早那一版：错发到 Anthropic）。
 ///
-/// ⚠ 它是一个事实的两处写法之一：后端那一份是 `accounts::apikey::CREDENTIALS_FILE_AGENT`，
+/// ⚠ 它是一个事实的两处写法之一：后端那一份是 `accounts::upstream::CREDENTIALS_FILE_AGENT`，
 /// 由后端那条 `the_credentials_file_agent_is_the_same_on_both_halves` 现抠**本行的字面量**对拍；
 /// 本侧再由 `payload_tests` 钉它等于 claude-code 那个适配器的 `id()`（两侧异源）。
 pub const APIKEY_TABLE_AGENT: &str = "claude-code";
 
 /// 「这次拉起要不要**改写 apikey 端点**」的**唯一判断口**〔`§0e` 裁一：**只接 api-key 号**〕。
 ///
-/// ⚠ 〔`设计/90 §1.2` · `设计/20 §6` 命名推论〕它问的是**账号层**的事（这个号有没有第三方 key、
+/// ⚠ 〔`设计/90 §1.2` · `设计/20 §6` 命名推论〕它问的是**上游选择**的事（这个号有没有第三方 key、
 /// 要不要把端点改写掉），**不是**「要不要走中转」—— 改写恰好经由本机中转落地，但「过不过中转」
-/// 是层 1 的事，将来对每一条会话都成立（`设计/20 §3.2` 表里无行那一格的 `/t/`）。
-/// 本函数先前的名字（旧名见 `设计/90 §1.2` 那张对照表的左列）与这一行头注都用中转的名字说账号层的事，两处都改了。
+/// 是中转的事，将来对每一条会话都成立（`设计/20 §3.2` 表里无行那一格的 `/t/`）。
+/// 本函数先前的名字（旧名见 `设计/90 §1.2` 那张对照表的左列）与这一行头注都用中转的名字说上游选择的事，两处都改了。
 ///
 /// # 判据是「表里有没有这一行」，不是「这个号看起来是不是 api-key 号」
 ///
-/// 账号层的 apikey 表按 (agent, 账号 id) 索引，**没有那一行就是 404**（`KL7` 第 2 条：查不到 ⇒ 404 且
+/// 上游选择的 apikey 表按 (agent, 账号 id) 索引，**没有那一行就是 404**（`KL7` 第 2 条：查不到 ⇒ 404 且
 /// 一个字节不发上游、不许回落）。⇒ 把一个表里没有的号指向中转 = 亲手把一个能用的号弄坏。
 /// 而**行是用户配第三方 key 时才会有的** ⇒ 「表里有行」与「这是个 api-key 号」在生产上同延，
 /// 但前者是**可判定的**、后者要靠 manifest 里那个自述字段。
@@ -1013,12 +1013,12 @@ fn endpoint_in(
 /// # 🔴 这张表为什么是注入闸的一半（codex 那一刀）
 ///
 /// `/t/` 表里无行时，后端按路由键第 1 段取**那一家自己的**默认上游；没登记 ⇒ 502
-/// （`accounts::apikey::decide`）。而 `01 §2.5` 那条同拍前置逐字是「否则非 Anthropic 的 agent 带着中转地址
+/// （`accounts::upstream::decide`）。而 `01 §2.5` 那条同拍前置逐字是「否则非 Anthropic 的 agent 带着中转地址
 /// 起来、表里又没有它 ⇒ **每一发都错发到 Anthropic**」。后端那一侧今天已经 fail-closed（502），
 /// 但「注入之后每一发都 502」对用户而言与「会话起不来」同形 ⇒ **注入闸在这一侧就不注**：
 /// 不在这张表里的 agent 一个字节都不注入，照旧直连。
 ///
-/// ⚠ 它是一个事实的两处写法之一：后端那一份是 `accounts::apikey::AGENT_UPSTREAMS` 那张表的 agent 列，
+/// ⚠ 它是一个事实的两处写法之一：后端那一份是 `accounts::upstream::AGENT_UPSTREAMS` 那张表的 agent 列，
 /// 由后端那条 `the_agents_with_a_default_upstream_are_the_same_on_both_halves` 现抠**本行的字面量**
 /// 做两向集合相等（异源：一侧是后端运行期的表，一侧是本文件的源码文本）。
 /// ⚠ codex **刻意不在这里**：它的默认上游本仓零证据（后端那张表头注逐字）。
@@ -1068,7 +1068,7 @@ pub struct RelayAsk<'a> {
 /// 用户在 shell 或 `settings.json` 里有没有设它 —— 开关打开时，那种号的端点会被本注入盖掉（或盖不掉，
 /// 取决于 claude 自己的优先级，本仓零证据、`C7` 不许起真 claude 去量）。这是开关默认关的理由之一。
 pub fn relay_endpoint_for(ask: &RelayAsk<'_>) -> Result<Option<String>, String> {
-    // ① 账号层先答。它答 `Some` 或 `Err` 就是终局 —— 「非它不可」那一格不许被下面的「有它更好」盖掉。
+    // ① 上游选择先答。它答 `Some` 或 `Err` 就是终局 —— 「非它不可」那一格不许被下面的「有它更好」盖掉。
     if let Some(u) = apikey_endpoint_for(ask.account_id, ask.rows, ask.running, ask.sid, ask.agent)?
     {
         return Ok(Some(u));

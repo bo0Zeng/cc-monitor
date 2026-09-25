@@ -526,7 +526,7 @@ impl DeployError {
     /// 对用户说的那一句（`machine` = 机器名）。
     pub fn say(&self, machine: &str) -> String {
         match self {
-            DeployError::Refused(r) => r.say(machine),
+            DeployError::Refused(r) => r.say(crate::byte_table::Product::Backend, machine),
             DeployError::Failed(why) => why.clone(),
         }
     }
@@ -703,7 +703,9 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
     // 〔DP1〕与自动部署同一个取字节口、同一句拒绝的话。
     let bin = match remote_backend_binary(&cfg).await? {
         Ok(b) => b,
-        Err(refusal) => return Err(refusal.say(&cfg.origin_label())),
+        Err(refusal) => {
+            return Err(refusal.say(crate::byte_table::Product::Backend, &cfg.origin_label()))
+        }
     };
     // 〔SR1b〕经本机常驻后端那条 `files` 链路；`path` 不在 `~/.cc-monitor/bin/` 下 ⇒ 后端围栏拒、原话带回。
     let fs = RemoteFs::open(&cfg).await?;

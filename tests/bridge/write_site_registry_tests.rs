@@ -549,11 +549,10 @@ fn moved_out_needles() -> Vec<String> {
 
 /// ② 里**逐行登记的例外**：搬走写盘的那几份文件里，还在写 **monitor 自己的**状态文件的那几行。
 /// `(文件, 那一行逐字, 写的是什么)`。整行相等，不是子串；每一行必须恰好出现一次（幽灵检查）。
-const OWN_STATE_LINES: &[(&str, &str, &str)] = &[(
-    "history.rs",
-    "crate::utils::atomic_write_json(&path, m).map_err(|e| e.to_string())",
-    "`history-metadata.json`（标星 / 改名 / 隐藏这些**monitor 本机的注解**，按 sid 存在 monitor 数据目录里）",
-)];
+/// 〔C4d · 第四波 4B〕**今天是空表**：唯一那一行（`history.rs` 写 `history-metadata.json` —— 标星 / 改名 / 隐藏这些注解）摘了：
+/// 主会话 09-25 裁注解的读写者换成本机常驻后端（`src/backend/history_annotations.rs`，第四层；文件原地不动）⇒
+/// 搬走写盘的这几份文件里，连 monitor 自己的状态也一行都不写了。表留着：新长一处「写自己的状态」时第一个要表态的地方。
+const OWN_STATE_LINES: &[(&str, &str, &str)] = &[];
 
 fn moved_out_hits(file: &str, prod: &str) -> Vec<String> {
     let needles = moved_out_needles();

@@ -17,11 +17,12 @@
 //! 长连接不在时这里**明说**「没有控制通道」，不悄悄再拨一次 SSH。
 //! 代价如实写：历史浏览从此依赖那台的流连接活着（此前它是独立拨号，流断了也能翻历史）。
 //!
-//! # 还在逐次拨号的那几条（[`STILL_DIALED`]，逐条带理由）
+//! # 逐次拨号那条路没有了〔C4d · 第四波 4B〕
 //!
-//! 不在题面那八条里的一次性查询照旧走 `remote_history::run_list_query`，
-//! 而那条路**只放行本表里的子命令** —— 八条里任何一条从那里漏出去都会被当场拒掉
-//! （[`dial_allowed`]，判据在 `tests/bridge/backend/control/frame_query_tests.rs`）。
+//! 不在帧面上的一次性查询从前落到 `remote_history.rs` 的逐次拨号那条路（`run_list_query`〔散文墓碑〕），
+//! 而那条路只放行一张「仍拨号」的表 —— C4c 起那张表就是空的（最后两条随账号域上了帧面）。
+//! 主会话 09-25 裁删：那条路、那张表与那道闸门一起没了。认不出帧命令的查询**当场说**（`subagent·rs::Backend::query`），
+//! 不拨号、不回落；「新长一条逐次拨号的查询」从此在代码里无处可落（判据在 `frame_query_tests.rs`）。
 
 use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
 use crate::backend::control::inbound_client;
@@ -48,7 +49,7 @@ pub(crate) const MOVED: &[(&str, &str)] = &[
     ("--list-user-inputs", "history-user-inputs"),
     // 〔SR1a × SE2〕会话内查找（Ctrl+F）：同一个处境（新子命令、此前在远端逐次拨号），一起上帧面。
     ("--find-in-session", "history-find"),
-    // 〔C4c · 第四波 4B〕换号前的信任预检（主会话裁：随账号层一起上帧面）。两形合进**一条**帧命令
+    // 〔C4c · 第四波 4B〕换号前的信任预检（主会话裁：随账号域一起上帧面）。两形合进**一条**帧命令
     //   （`configDir` 缺席 / null = 账号 0）⇒ 右列 `accounts-trust` 出现两次，判据按集合比。
     ("--account-trust", "accounts-trust"),
     ("--account-trust-zero", "accounts-trust"),
@@ -65,25 +66,7 @@ pub(crate) const BORN_ON_FRAME: &[&str] = &[
     "history-lines",
 ];
 
-/// 仍然逐次拨号的一次性查询 —— `(子命令, 为什么今天还拨)`。**只有它们**过得了拨号那条路。
-///
-/// 〔C4c · 第四波 4B〕**今天是空表**：最后两行（`--account-trust` / `--account-trust-zero`）随账号层上了帧面
-/// （`accounts-trust`，见 [`MOVED`]）⇒ 拨号那条路（`remote_history::run_list_query`）从此一条都放不过去。
-/// 表与闸门留着：它们是「新长一条逐次拨号的查询」时第一个要表态的地方（判据按两向相等管它）。
-pub(crate) const STILL_DIALED: &[(&str, &str)] = &[
-    // 〔C4c〕`--account-trust` / `--account-trust-zero` 两行**摘了**：上了帧面（`accounts-trust`）。
-    // 〔SR1a · 09-24〕`--read-session-from-offset`（`--index` 那一形）与 `--list-user-inputs` 两行**摘了**：
-    //   上了帧面（`history-index` / `history-user-inputs`，见 [`MOVED`]）。拨号 = 经本机常驻后端开一条 capture 链路，
-    //   同一台远端已经有长流时不再握手；但查询本身仍是一次性进程 —— 能走帧面的就走帧面。
-    // 〔SR1a × SE2 · 09-24〕`--find-in-session`（会话内查找，SE2）那一行也**摘了**：随另两条一起上了帧面（`history-find`）。
-];
-
-/// 拨号那条路放不放行这条子命令（`args` 的第一个 token）。
-pub(crate) fn dial_allowed(subcommand: &str) -> bool {
-    STILL_DIALED.iter().any(|(f, _)| *f == subcommand)
-}
-
-/// 按行那几条的期限：与旧 `LIST_TIMEOUT` 同值（30s）。它从此只盖「远端跑查询 ＋ 回程」，不再盖握手。
+/// 按行那几条的期限：30s（与已删的逐次拨号那条路的整体限时同值）。它从此只盖「远端跑查询 ＋ 回程」，不再盖握手。
 const LINES_BUDGET: Duration = Duration::from_secs(30);
 /// 一页 `history-read` / 一次 `history-tail` 的期限：与旧逐行读的单次超时同值（60s）。
 const PAGE_BUDGET: Duration = Duration::from_secs(60);
@@ -125,7 +108,7 @@ fn said(r: Routed) -> String {
     }
 }
 
-/// 按行那六条：`data.lines` 原样拿回（逐行、trim 过、剔空行 —— 与旧 `run_list_query` 同形）。
+/// 按行那六条：`data.lines` 原样拿回（逐行、trim 过、剔空行 —— 与已删的逐次拨号那条路的出参同形）。
 pub(crate) async fn lines(origin: &Origin, cmd: &str, args: Value) -> Result<Vec<String>, String> {
     let data = call(origin, cmd, args, LINES_BUDGET).await?;
     let origin = origin.as_wire_str();
@@ -297,7 +280,7 @@ pub(crate) fn parse_session_lines(
     })
 }
 
-/// 读整段区间，收成逐行（trim 过、剔空行）—— 与旧 `run_list_query` 读 `--read-session` 的出参同形。
+/// 读整段区间，收成逐行（trim 过、剔空行）—— 与已删的逐次拨号那条路读 `--read-session` 的出参同形。
 pub(crate) async fn read_lines(
     origin: &Origin,
     path: &str,
@@ -325,7 +308,7 @@ pub(crate) async fn read_lines(
 /// `subagent::Backend::query` 远端那一支用的：一条 argv 能不能走帧面、走哪条。
 ///
 /// 认得的形状恰好是本仓今天真在发的那几种（`subagent.rs` 与 `session_skeleton.rs` 造的 argv）；
-/// 认不出 ⇒ `None`，调用方落到拨号那条路 —— 而那条路只放行 [`STILL_DIALED`]。
+/// 认不出 ⇒ `None`，调用方当场说「这条查询没有帧命令」（〔C4d〕逐次拨号那条路删了，不回落）。
 pub(crate) enum ArgvRoute {
     Lines(&'static str, Value),
     Read {
@@ -355,11 +338,8 @@ pub(crate) fn refuses(origin: &Origin, route: &ArgvRoute) -> bool {
 
 pub(crate) fn route_argv(argv: &[&str]) -> Option<ArgvRoute> {
     match argv {
-        ["--list-projects"] => Some(ArgvRoute::Lines("history-projects", json!({}))),
-        ["--list-sessions", dir] => Some(ArgvRoute::Lines(
-            "history-sessions",
-            json!({"project_dir": dir}),
-        )),
+        // 〔C4d · 第四波 4B〕`--list-projects` / `--list-sessions` 两形删了：历史清单前端经通道问**本机**常驻后端
+        //   （`history-projects` / `history-sessions` 带 `origin`，它沿池里那条 SSH 去问那台），monitor 这一侧不再有路发它们。
         ["--list-subagents", parent] => Some(ArgvRoute::Lines(
             "history-subagents",
             json!({"parent": parent}),

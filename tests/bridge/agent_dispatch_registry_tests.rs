@@ -58,7 +58,7 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
     (
         "history.rs",
         Face::Facade,
-        4,
+        1,
         "会话记录根 ×3（`records_dir`）+「这个文件是不是会话记录」×4（`has_record_ext`）\
              ⇒ 全树最重的一处，而它一根针都不在件计划 `§0` 的四把尺子里。\
              🔴 〔`K-R97` 09-12〕**11 → 8，棘轮往下拧了 3**：`list_history_projects` 改问本机\
@@ -73,15 +73,12 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
              整个不在了 —— 删会话改成后端一条只收 sid 的命令（`files-delete-session`），落点由后端按 sid 找。\
              ⚠ 同样**不是「收进接口了」**：那一格是**整段搬去后端**，桌面侧从此不问这件事。\
              🔴 〔RW1 · 第四波 09-24〕**5 → 4**：本机分叉那一支取记录根（`records_dir` ×1）也走了 ——\
-             本机分叉改成 exec 本机后端 `--fork-session`，与远端同一条子命令",
+             本机分叉改成 exec 本机后端 `--fork-session`，与远端同一条子命令。\
+             🔴 〔C4d · 第四波 4B〕**4 → 1**：本机历史清单那一段（展开一个项目取记录根 ×1 ＋ 判记录文件 ×1 ＋ Codex 枚举判记录文件 ×1）\
+             整段搬去本机常驻后端（历史跨机 join 的唯一的家）。⚠ 同样**不是「收进接口了」**：桌面侧从此不问这件事",
     ),
-    (
-        "history.rs",
-        Face::KindLiteral,
-        2,
-        "`enumerate_codex_sessions` 里两处写死 `AgentKind::Codex`（取数据根 + 取 layout）\
-             —— 通用层里的一条 Codex 专属分支",
-    ),
+    // 〔C4d · 第四波 4B〕`history.rs` 的 `KindLiteral` 那一行（2 处：Codex 枚举里写死 `AgentKind::Codex` 取数据根 ＋ 取 layout）摘了 ——
+    //   Codex 合成历史搬进后端的适配层（`src/backend/agents/codex/history.rs`，经注册表 `Adapter.history` 那一格给通用层）。
     (
         "lib.rs",
         Face::Active,
@@ -157,7 +154,11 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
 /// 🔴 〔CF1 · 第四波 09-24〕**31 → 23**：`watcher.rs` 那张门面脸（5 处）整份删了，`lib.rs` 门面 3 → 2（records 那一处），
 /// `adapter.rs` 的 `Active` 6 → 5、`Facade` 1 → 0（只有那条 watcher 用的两个门面一起删了）。
 /// ⚠ 同样**不是「收进接口了」**：本机会话内容改走本机后端的 `line` 帧，桌面侧从此不自己 watch、不自己判记录文件。
-const COUPLING_BASELINE: usize = 23;
+///
+/// 🔴 〔C4d · 第四波 4B〕**23 → 18**：`history.rs` 门面 4 → 1、`KindLiteral` 2 → 0 —— 本机历史清单（展开项目 · Codex 枚举）
+/// 整段搬去本机常驻后端。⚠ 同上几笔：**不是「收进接口了」**，是桌面侧不再问这件事（后端那把尺子
+/// `agent_locality_guard` 没涨：Codex 那半进了 `agents/codex/`，经注册表那一格够到）。
+const COUPLING_BASELINE: usize = 18;
 
 /// **抹除 kind 的门面**：`adapter.rs` 里那几个「替调用者把 agent 写死」的自由函数。
 ///

@@ -1506,16 +1506,16 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 ⚠ **远端**那一行的值写得进去、读得回来，但今天**没有任何进程按它动手**：远端后端只走 stdio（SSH exec），
 它没有「最后一个客户走了」那一臂，SSH 一断它本来就随管道破裂退出。
 
-#### 账号层那份凭据文件在「这台机器」上的读写（RM1a · 第四波，2026-09-24）—— **账号层自己的状态，不是用户文件**
+#### 上游选择那份凭据文件在「这台机器」上的读写（RM1a · 第四波，2026-09-24）—— **上游选择自己的状态，不是用户文件**
 
-第三方 API key 那份文件（`apikey-credentials.json`）归**账号层（层 2）**：名字、格式、落点都是本仓定的，
-只有中转进程里的账号层读它 ⇒ 它**不走**文件管理那一面（那一面是给用户文件的），
+第三方 API key 那份文件（`apikey-credentials.json`）归**上游选择**：名字、格式、落点都是本仓定的，
+只有中转进程里的上游选择读它 ⇒ 它**不走**文件管理那一面（那一面是给用户文件的），
 写口登记在后端 `readonly_guard` 的**第四层**（后端自有状态文件），只从下面 `apikey-key-set` 一条进来。
 判清的全文住 `调研/第四波记录/RM1a.md §1`。
 
 - **每台机器上的程序写者恰好一个**：monitor 所在那台是 monitor 自己；其余每台是那台的后端（本节两条）。
   monitor **从不**把 `apikey-key-set` 发给本机那条连接。
-- **路径**与那台机器上 `--relay` 进程的账号层**同一个出处**（`accounts::apikey::creds::resolve_path` ＋ 同一个家目录）。
+- **路径**与那台机器上 `--relay` 进程的上游选择**同一个出处**（`accounts::upstream::creds::resolve_path` ＋ 同一个家目录）。
 - 🔴 **明文只在 `apikey-key-set` 的 `args.key` 里**：不进 argv、不进 env、不进任何日志；两条的应答都只有**掩码**。
 - 两条都**不起中转**；中转那两条（`relay-*`）也**不碰凭据**。
 
@@ -1528,7 +1528,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `account` | ↔ | 账号 id（monitor 用全仓唯一那份规则从账号目录推出来，后端不再推）。必须当得了路由段 —— 与账号层装表时**同一个谓词**，写得进去却装不进表 = 那一行永远 404 |
+| `account` | ↔ | 账号 id（monitor 用全仓唯一那份规则从账号目录推出来，后端不再推）。必须当得了路由段 —— 与上游选择装表时**同一个谓词**，写得进去却装不进表 = 那一行永远 404 |
 | `key` | → | 明文。空串拒 |
 | `baseUrl` | ↔ | 入（可选）：这个账号的第三方端点。缺席 / `null` / 空串 = **不碰那一格**（只配 key 时已有端点原样留着）；给了就先过与本机那一侧**同一条**形状关（`creds_core::store::check_base_url_shape`），不对 ⇒ `bad_args`、整次不写。出：写完读回这一行的端点（没有 ⇒ `null`） |
 | `masked` | ← | 写完**再读一遍**、这一行 key 的掩码（盘上的事实） |
@@ -1556,14 +1556,14 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 
 ⚠ **CLI 面也有它们**（`--apikey-key-set` / `--apikey-read`），从 `inbound::REGISTRY` 派生；`--apikey-key-set` 的入参**从 stdin 读**。
 
-#### 中转（层 1）在「这台机器」上的进程（RM1a · 第四波，2026-09-24）
+#### 中转在「这台机器」上的进程（RM1a · 第四波，2026-09-24）
 
 〔RL1 · V107〕本机的中转住**本机常驻后端进程里**（monitor 起本机后端时交 `CCM_RELAY_PORT`，见 `--relay` 那一条下的「进程内」一格）；
 **远端那台机器上的中转由那台的后端起**（下面两条）—— 远端后端随 SSH 退、远端会话活得比 SSH 长，中转必须是脱离的那一个。
-两条都**只收端口**，一个凭据 / 账号的名字都不经过它们（账号层那份文件由上面 `apikey-*` 两条管）。
+两条都**只收端口**，一个凭据 / 账号的名字都不经过它们（上游选择那份文件由上面 `apikey-*` 两条管）。
 monitor **从不**对本机那条连接发 `relay-ensure`（本机那一个就在本机后端进程里，不许再起第二个去抢口）。
 
-起出来的 `--relay` 继承后端的环境，它里面的账号层与后端账号域那份写口按同一个函数、同一个家目录出处解凭据路径
+起出来的 `--relay` 继承后端的环境，它里面的上游选择与后端账号域那份写口按同一个函数、同一个家目录出处解凭据路径
 ⇒ 两边是同一份文件，不必在这两条命令里传路径。
 
 #### `relay-status`：这个口上有没有人在听（只读）
@@ -1721,6 +1721,81 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 ⚠ **CLI 面也有它**（`--assets-sync`，入参从 stdin 读；按派生规则「非内建即上 CLI」），但一次性进程没有常驻那一个的连接池与可达表：
 它自己新拨一条 SSH、只对给的那一台做一趟，扇出恒为零台 —— 真正的用法是常驻后端的帧面。
 
+#### `history-annotate`：改一条历史注解（C4d · 第四波 4B，2026-09-25）
+
+历史注解（星标 / 改名 / 隐藏 / 上次用哪个号起这个会话）的**读写者是本机常驻后端**（主会话 09-25 裁：文件留在原处、同一路径，不迁移、一条不丢）。
+那份文件就是 monitor 从前读写的 `<monitor 数据目录>/history-metadata.json`：路径由 monitor 起本机后端时用环境变量 `CCM_HISTORY_METADATA` 显式交（没交 ⇒ `no_annotations`，不猜路径）。
+写是后端**自有状态**（`readonly_guard` 第四层）：先严格读一遍，读不懂 ⇒ `annotations_unreadable`、原文件一个字节不动；再在原文上只改那一条（其余条目与认不出的键原样留着）→ `O_EXCL` 临时文件 → 原子挪过去。
+
+```text
+→ {"id":"a1","cmd":"history-annotate","args":{"sid":"0f…","patch":{"starred":true}}}
+← {"kind":"reply","id":"a1","ok":true,"data":{"entry":{"starred":true,"customTitle":null,"hidden":false,"updatedAt":1727250000000,"lastAccount":null}}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `sid` | → | 会话 id |
+| `patch` | → | 要改的那几格：`starred` / `customTitle` / `hidden` / `lastAccount`（后两格也认蛇形 `custom_title` / `last_account`）。缺格或 `null` = 不改；标题 / 账号名给空白串 = 清空；多一格 ⇒ `bad_args` |
+| `entry` | ← | 改完的那一条：`starred` · `customTitle`（`null` = 没改过名）· `hidden` · `updatedAt`（毫秒，= 这一次）· `lastAccount`（`null` = 没记过） |
+
+**错误码**：`bad_args` · `no_annotations`（这个后端没被交路径）· `annotations_unreadable`（那份文件读不懂 / 读不动 —— 没有覆盖它）· `io_failed`。
+⚠ **CLI 面也有它**（`--history-annotate`，入参从 stdin 读）；一次性进程多半没被交路径 ⇒ `no_annotations`。
+
+#### `history-forget`：删一条历史注解（C4d · 第四波 4B，2026-09-25）
+
+删会话时连带（monitor 删完那份会话文件之后问本机后端）。写法同 `history-annotate`；那一条不在 ⇒ 不写。
+
+```text
+→ {"id":"f1","cmd":"history-forget","args":{"sid":"0f…"}}
+← {"kind":"reply","id":"f1","ok":true,"data":{"removed":true}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `sid` | → | 会话 id |
+| `removed` | ← | 真删了一条没有（`false` = 本来就没有这一条，文件没动） |
+
+**错误码**：同 `history-annotate`。
+⚠ **CLI 面也有它**（`--history-forget`，入参从 stdin 读）；一次性进程多半没被交路径 ⇒ `no_annotations`。
+
+#### `history-last-accounts`：sid → 上次用哪个号起（C4d · 第四波 4B，2026-09-25，**只读**）
+
+账号徽章的回落来源（「上次用本工具带账号起」）与带账号 resume 前的现读。只含真记过账号的那几条。
+
+```text
+→ {"id":"l1","cmd":"history-last-accounts","args":{}}
+← {"kind":"reply","id":"l1","ok":true,"data":{"accounts":{"0f…":"work"}}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `accounts` | ← | `{sid: 账号名}` |
+
+**错误码**：`no_annotations` · `annotations_unreadable`（读不懂不说成「一条都没有」）。
+⚠ **CLI 面也有它**（`--history-last-accounts`，不读 stdin）；一次性进程多半没被交路径 ⇒ `no_annotations`。
+
+#### `remote-reach`：本机后端的可达表登记（C4d · 第四波 4B，2026-09-25）
+
+「本机后端问远端后端」那一跳（`设计/01 §3.5`；实现住后端 `remote_ask.rs`，全后端只此一处）要先知道「怎么够到那台」。
+monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交一次：拨号请求 ＋ 那台后端的路径。本机后端记进**内存**可达表（后端重启就空，下次那台连上再填），**只登记、不拨号**。
+之后的两路都查这张表：资产目录同步（`assets-sync`）· 历史跨机 join（`history-projects` / `history-sessions` 带 `origin`）。
+老远端也登记：历史那一路问它的是 `--list-projects` / `--list-sessions` 这种老子命令。
+
+```text
+→ {"id":"r1","cmd":"remote-reach","args":{"origin":"dev","dial":{"host":"10.0.0.2","port":22,"user":"u","key_path":"~/.ssh/id_ed25519"},"backend":"/home/u/.cc-monitor/bin/ccm"}}
+← {"kind":"reply","id":"r1","ok":true,"data":{"origin":"dev","reach":[{"origin":"dev","machine":null}]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `origin` | → | 那台的名字（monitor 的 origin 名，本后端只当不透明的键用） |
+| `dial` | → | 那台的拨号请求（同 `link-open` 的 `dial`；只有路径，没有私钥本体）。用时会把 `use` 改成 `capture` |
+| `backend` | → | 那台上后端的路径 |
+| `reach` | ← | 登记之后的可达表 `[{origin, machine}]`（同 `assets-sync` 的那一格） |
+
+**错误码**：`bad_args`（缺 `origin` / `origin` 空串 · 缺 `dial` / `backend` · 可达表满）。
+⚠ **CLI 面也有它**（`--remote-reach`，入参从 stdin 读），但一次性进程的可达表随进程退出就空 —— 真正的用法是常驻后端的帧面。
+
 #### `skill-read`：读来源那台上的一个 skill（AS2 · 第四波 4B，2026-09-25，**只读**）
 
 「装要用户点」（V113）那一步的读半边：在**来源那台**跑，交出 `<skill 根>/<名>/` 下每个文件的原文（V112「内容，原样拷过去」）。
@@ -1784,28 +1859,41 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 - 八条全在阻塞档（做文件 I/O）⇒ `cancel` 命中回 `not_cancellable`。
 - 失败的 code 都是**命令级**的；读失败 `failed`，参数缺或类型不对 `bad_args`。
 
-#### `history-projects`：列全部项目（**不读 stdin**）
+#### `history-projects`：列全部项目（〔C4d · 第四波 4B〕**出成品**：并上注解 ＋ 判活，远端经本机后端问）
+
+历史跨机 join 的唯一的家是**本机常驻后端**（主会话 09-25 裁；实现 `history_join.rs`）。`origin` 缺席 = 这台机器：记录树里的项目（`--list-projects` 那一行）＋ 合成历史（Codex 按 cwd 分组，项目键 `codex:<cwd>`）＋ 这台后端自己判活（pidfile）；
+`origin` 给了 = 可达表里的那一台（`remote-reach` 登记的）：本机后端沿池里那条 SSH 在那台跑 `--list-projects`（CLI 老子命令，stdout 形状一个字节没变 ⇒ **那台的后端不必升级**），判活「不知道」。
+两支都并上**这台**的注解（`history-annotate` 那一份：星标数 / 隐藏数；读不到 ⇒ 两个数 `null`、`notice` 说为什么）。项目按「活的 → 有星标的 → 最近动过的」排。
 
 ```text
-→ {"id":"q1","cmd":"history-projects","args":{}}
-← {"kind":"reply","id":"q1","ok":true,"data":{"lines":["{\"dirName\":…}", …]}}
+→ {"id":"q1","cmd":"history-projects","args":{"origin":"dev"}}
+← {"kind":"reply","id":"q1","ok":true,"data":{"rows":[{"projectPath":"/home/u/proj","projectName":"proj","projectDir":"-home-u-proj","sessionCount":3,"starredCount":1,"hiddenCount":0,"lastActivity":1727250000000,"hasLive":null,"origin":"dev"}],"notice":null}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `lines` | ← | 每项目一行，形状同 `--list-projects`（含 `sessionIds`） |
+| `origin` | → | 可缺席：那台的名字（可达表的键）。缺席 = 这台 |
+| `rows` | ← | 每项目一行：`projectPath` · `projectName` · `projectDir`（懒加载的键，原样交回 `history-sessions`）· `sessionCount` · `starredCount` / `hiddenCount`（`null` = 不知道，**不是 0**）· `lastActivity`（毫秒）· `hasLive`（`null` = 这条路上答不了）· `origin`（远端那台才有） |
+| `notice` | ← | 注解没并上的那句话；`null` = 并上了 |
 
-#### `history-sessions`：列一个项目下的会话
+**错误码**：`bad_args`（`origin` 空串 / 不是串）· `failed`（这台的记录树读不动）· `unreachable`（可达表里没有那一台 / 那台问不出来 —— 带那台的名字与原因）· `too_large`。
+⚠ **CLI 面也有它**（`--history-projects`，入参从 stdin 读）；一次性进程的可达表是空的 ⇒ 只答得了这台。
+
+#### `history-sessions`：列一个项目下的会话（〔C4d · 第四波 4B〕**出成品**，同上）
 
 ```text
-→ {"id":"q2","cmd":"history-sessions","args":{"project_dir":"-home-u-proj"}}
-← {"kind":"reply","id":"q2","ok":true,"data":{"lines":["{\"sessionId\":…}", …]}}
+→ {"id":"q2","cmd":"history-sessions","args":{"project_dir":"-home-u-proj","origin":"dev"}}
+← {"kind":"reply","id":"q2","ok":true,"data":{"rows":[{"sessionId":"0f…","projectPath":"/home/u/proj","projectName":"proj","aiTitle":null,"firstUserExcerpt":"…","startedAt":1727250000000,"updatedAt":1727250001000,"jsonlPath":"/home/u/.claude/projects/-home-u-proj/0f….jsonl","isLive":null,"messageCountApprox":12,"isBg":false,"starred":false,"customTitle":null,"hidden":false,"origin":"dev"}],"notice":null}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `project_dir` | → | 项目目录名（不是路径；含分隔符 / `..` ⇒ `failed`） |
-| `lines` | ← | 每会话一行，形状同 `--list-sessions` |
+| `project_dir` | → | `history-projects` 给的那个项目键：记录树的项目目录名（不是路径；含分隔符 / `..` ⇒ `bad_args`），或合成历史的 `<kind>:<cwd>`（只在这台） |
+| `origin` | → | 同 `history-projects` |
+| `rows` | ← | 每会话一行：`sessionId` · `projectPath` · `projectName` · `aiTitle` · `firstUserExcerpt` · `startedAt` / `updatedAt`（毫秒）· `jsonlPath` · `isLive`（`null` = 答不了）· `messageCountApprox` · `isBg` · `starred` / `customTitle` / `hidden`（这台的注解）· `forkedFromSessionId` / `forkedFromMessageUuid`（`/branch` 分叉来的才有）· `origin`（远端那台才有） |
+| `notice` | ← | 同 `history-projects` |
+
+**错误码**：`bad_args` · `failed` · `unreachable` · `too_large`。⚠ 远端那一支在那台跑 `--list-sessions <project_dir>`。
 
 #### `history-search`：全文搜索
 
@@ -2108,7 +2196,9 @@ key_path · host_key_fingerprint · 竞速地址 · 跳板`；〔NT1〕默认一
 - 在一条连接上等远端回话（开通道 / 验活）时**链路被关**（界面的握手期限到点）⇒ 当它可能是黑洞，从族里摘掉（摘掉 ≠ 关掉），
   下一条链路拨新的 —— 不再等 keepalive 连错三次（约 90 s）才换。
 - 压缩：判准住 `dial/connect.rs::compression_for`（回环不压 · 内核量到的握手往返 ≥ 5 ms 才压 · 读不到就压），
-  **今天闸关着**（`RUSSH_ZLIB_SOUND = false`：russh 0.61 的 zlib 解压一包最多交出约两倍包长，真 sshd 上强开压缩会在第一条通道上卡死）。
+  闸 `RUSSH_ZLIB_SOUND` **开着**〔CZ1 · V118〕：上游 russh 0.61 的 zlib 解压一包最多交出约两倍包长（真 sshd 上一开压缩第一条通道就卡死），
+  后端链的是仓内补过的副本（`Cargo.toml` 的 `[patch.crates-io]` → `src/bridge/vendor/russh`，改了哪几行见那里的 `VENDOR.md`）。
+  协商偏好序：压 ⇒ `zlib@openssh.com, zlib, none`（远端关了压缩照样连得上）；跳板自己那条永远不压，答案给隧道里的目标。
 
 **一条链路上的字节 = C2 拨号代理原来的 stdout，逐字节同形**：`stages=true` 时若干行 `{"stage":{…}}` → **恰好一行** ack
 `{"ok","error","fingerprint","endpoint","v":2,"uses":[…]}` → `stream` 原样双向字节 · `capture` 一行 `{"stdout","stderr","exit_status"}` 后结束 ·
@@ -2372,12 +2462,12 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 
 - **只监听 `127.0.0.1`**，不对外暴露；端口默认 `8788`，`CCM_RELAY_PORT` 可盖。
 - 〔RL1 · V107〕**进程内那一形**：流模式（`--tail-only` 等，stdio 或常驻监听口两条载体一样）的后端**被交了** `CCM_RELAY_PORT`
-  ⇒ 在本进程里起同一个中转（层 1 ＋ 层 2 同一份代码，`relay::listen::host` ＋ `accounts::apikey::host_relay`），接受循环跑一条专属线程，
+  ⇒ 在本进程里起同一个中转（中转 ＋ 上游选择同一份代码，`relay::listen::host` ＋ `accounts::upstream::host_relay`），接受循环跑一条专属线程，
   随进程生死（常驻后端按「退出行为」留或退，中转一起）。与上面独立那一形的差别只有三格：**端口没有缺省值**（认不出 ⇒ 不开）·
   **tee 丢弃**（stdout 是 wire）· **起不来不退出**（出声，后端照常服务）。没交端口 ⇒ 不开（远端经 SSH exec 起的流模式后端就是这一格）。
   凭据文件路径同样由 `CCM_APIKEY_CREDENTIALS` 交（monitor 起本机后端时交，与它自己写的那份同一个路径）。
 - 默认上游**每个 agent 一行**〔条 59 / 条 60，2026-09-24 订正；先前这里写的是一个**进程级**的上游默认
-  （`https://api.anthropic.com`，由一个进程级环境变量盖）—— 已整删〕。它是**账号层（层 2）**的表，不是中转的配置：
+  （`https://api.anthropic.com`，由一个进程级环境变量盖）—— 已整删〕。它是**上游选择**的表，不是中转的配置：
   今天只登记了 `claude-code`（默认 `https://api.anthropic.com`，`CCM_AGENT_UPSTREAM_CLAUDE_CODE` 只盖这一家；
   〔R3〕这个变量先前叫中转的名字，改名不留兼容读旧名）；
   **codex 刻意没登记**（它的默认上游本仓零证据）⇒ 它走 `/t/` 回 **502**，不回落到任何一家。
@@ -2386,7 +2476,7 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
   ⚠ **订正〔`K-R1` 09-04〕**：这一行先前逐字写着「`http://` 只给本机夹具用」——**那半句今天不准确了**。
   今天的分界线是**回环**：`http://` 打到本机回环是一等公民（〔用 09-04〕逐字要「还可以接本地部署的」），
   而**明文 + 非回环**的那一行会被装表那一步**拒掉并出声**
-  （判据 `accounts::table::tests::a_plaintext_upstream_is_only_allowed_on_loopback`；层 2 2026-09-24 搬出了 `relay/`）。
+  （判据 `accounts::table::tests::a_plaintext_upstream_is_only_allowed_on_loopback`；上游选择 2026-09-24 搬出了 `relay/`）。
   `裁-1`「只准 TLS」**没有被推翻**，升的只有回环这一格。
 - 路由：`claude` 把 `ANTHROPIC_BASE_URL` 指到 `http://127.0.0.1:<port>/s/<agent>/<account>/<key>`
   （**代入**：apikey 表里有这一行，换上这一行的 key）或 `…/t/<agent>/<account>/<key>`
@@ -2399,7 +2489,7 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
   ⚠ **`<account>` 那一段是 `K-H2` 加的**。〔条 49，2026-09-24 订正：先前这里写「中转……只拿 `<account>` 查表」，
   拆键之后不准了〕apikey 表的键是 **`<agent>` ＋ `<account>` 两段**（claude-code 的 3 号与 codex 的 3 号是两行）：
   `/s/` 表里查不到那一对 ⇒ **404，一个字节都不发上游**（不回落到别的账号的 key，
-  也不回落到默认上游）。三段对**中转（层 1）**仍然都是不透明串 —— 它不解释它们，原样交给账号层（层 2）去查。
+  也不回落到默认上游）。三段对**中转**仍然都是不透明串 —— 它不解释它们，原样交给上游选择去查。
   ⚠ 线上字节一个没变，变的是查表语义。
   ⚠⚠ **老的三段形状 `/s/<agent>/<key>/…` 不会被解析器拒掉**，它会被重读成
   `account=<key>`；挡住它的是「表里查不到」那一格，不是解析器
@@ -2412,7 +2502,7 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
   中转没在跑 ⇒ 不注（照旧直连，不拒绝）。远端机器那一半不注入。
 - 中转**自己造**的状态码〔`设计/20 §3.1a`，每个码只有一处常量，三组两两不相交〕：
   请求读不懂 400 / 411 / 413 · 路由不成立 404（`/s/` 表里无行，或路径根本不是路由形状）与 502（`/t/` 的 agent 没登记默认上游）·
-  在途连接顶满 503 · 🔴 **上游连不上 / 没回应 / 回的不是 HTTP ⇒ 504**（2026-09-24 前是 502，与层 2 撞码），
+  在途连接顶满 503 · 🔴 **上游连不上 / 没回应 / 回的不是 HTTP ⇒ 504**（2026-09-24 前是 502，与上游选择撞码），
   响应体第二行是一句人话：`上游 <主机>:<端口> <结果>。卡在<哪一步>这一步。`。
   ⚠ 上游**自己**答的 5xx 原样转发，与上面这几个码共用值域 —— 分得开它们的只有那句话。
 - 响应**逐块透传绝不缓冲**；同一批字节里的 SSE 事件抄一份到**本进程的 stdout**

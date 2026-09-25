@@ -473,7 +473,7 @@ cell(
     #   `evidence/K-R115-deathvalue.md#§E`）。这不是本件弄红的，是本件顺手量到的。
     anchor="run_gate_sum cargo 9 bash -c",
     cwd="src-tauri/",
-    cmd="cargo test --workspace --exclude code-picture-core --lib",
+    cmd="cargo test --workspace --lib",
     **{
         "src/generated/": ("无", "〔现打 09-19〕这棵树是 `.ts`，Rust 那侧碰不到它 —— **盯「Rust 源改了而生成物没跟」的是 `generated` 那一格，不是本格**"),
         "tests/": ("部", "〔现打 09-19〕`tests/bridge/` 那 152 份 `.rs` 靠 `src/bridge/src/*.rs` 里的 `#[path]` 挂进 crate ⇒ 本格**编它们、跑它们**（步 7b 把测试段整批搬出生产树之后，两棵生产树的真 `#[test]` 是 0/0，测试全在这棵树里）。⚠ `.ts` 那一半本格看不见"),
@@ -1315,7 +1315,7 @@ invoke("cargo", ELSEWHERE,
        "`rust`（windows-latest）与 `rust-linux`（ubuntu-latest）**两个 job** 各跑一趟同一条命令。"
        "⚠ 云端那两趟**不带 `--lib`** ⇒ 人群比本格宽（含 integration/doc 档）；"
        "而本格多一条**包数相等**断言，云端没有 ⇒ 一个 crate 静默掉出 workspace 时**云端看不见**",
-       anchor="cargo test --workspace --exclude code-picture-core")
+       anchor="cargo test --workspace")
 invoke("comm-boundary", ELSEWHERE,
        "那 15 条靠 `#[path]` 挂在 `monitor` 的 lib 上 ⇒ 云端那两趟 workspace test **会跑到它们**。"
        "🔴 **但云端没有本格的三方对拍与那两条逐字锚点** —— 整个模块被摘掉时，"
@@ -1323,12 +1323,12 @@ invoke("comm-boundary", ELSEWHERE,
        "⚠ 这一条对本格尤其要命：那一族的人群**可能是空集**，"
        "一个人群为空、又没人看它还在不在的判据族，买到的是零。"
        "⇒ 这一维**只有本机这一格买得到**，如实记着",
-       anchor="cargo test --workspace --exclude code-picture-core")
+       anchor="cargo test --workspace")
 invoke("test-tiers", ELSEWHERE,
        "那 12 条靠 `#[path]` 挂在 `guard-core` 的 lib 上，而 `guard-core` 是 `src/bridge` workspace 的成员 ⇒ 云端那两趟 workspace test **会跑到它们**。"
        "🔴 **但云端没有本格的三方对拍与那两条锚点** —— 那一行 `mod` 被摘掉时云端只是合计小 12。"
        "⇒ 「测试层分级没有静默消失」这一维**只有本机这一格买得到**，如实记着",
-       anchor="cargo test --workspace --exclude code-picture-core")
+       anchor="cargo test --workspace")
 invoke("backend", ELSEWHERE,
        "`backend` 那个 job 在 `src/backend` 上跑单包 `cargo test`",
        anchor="name: Remote backend (Linux) lint + test")
@@ -1344,7 +1344,7 @@ invoke("winchk", ELSEWHERE,
        "`rust` 那个 job 整个跑在 **windows-latest 原生**（host = `x86_64-pc-windows-msvc`）"
        "⇒「monitor 在 Windows 上编不编得过」这一维云端有人看。"
        "⚠ **ABI 不同**：本格是 `-gnu` 交叉，云端是 `-msvc` 原生 ⇒ 两边各盖一半，不是同一格",
-       anchor="cargo clippy --workspace --exclude code-picture-core --all-targets")
+       anchor="cargo clippy --workspace --all-targets")
 invoke("winchk-backend", ELSEWHERE,
        "`backend` 那个 job 有一条 `-msvc` 跨 target check（`真相源/92 §2.1.1` 的 `C3`）。"
        "⚠ 同上：本格 `-gnu`、云端 `-msvc`",

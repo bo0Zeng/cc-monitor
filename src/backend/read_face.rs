@@ -59,15 +59,8 @@ pub(crate) fn answer(cmd: &str, args: &Value) -> Answer {
 fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
     use crate::observe::{accounts_query, history_query, search_query};
     match cmd {
-        "history-projects" => {
-            lines(|out| history_query::list_projects_into(home, out).map_err(|e| ("failed", e)))
-        }
-        "history-sessions" => {
-            let dir = str_arg(args, "project_dir")?;
-            lines(|out| {
-                history_query::list_sessions_into(home, dir, out).map_err(|e| ("failed", e))
-            })
-        }
+        // 〔C4d · 第四波 4B〕`history-projects` / `history-sessions` 两臂搬走了：它们从此出成品（并注解 ＋ 判活 ＋ 远端那一跳），
+        //   住 `history_join.rs`（历史跨机 join 的唯一的家）；这里只剩按行 / 按页的换壳。
         "history-subagents" => {
             let parent = str_arg(args, "parent")?;
             lines(|out| history_query::list_subagents_into(home, parent, out))
@@ -88,18 +81,18 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
             }
             Ok(json!({ "lines": rows }))
         }
-        // 〔C4c · 第四波 4B〕账号清单**出成品**（主会话裁：账号层读自己那台的 apikey 表、agent 随请求带）：
+        // 〔C4c · 第四波 4B〕账号清单**出成品**（主会话裁：账号域读自己那台的 apikey 表、agent 随请求带）：
         //   monitor 那一份行解析 / 降级说明 / 本机并表（`local_accounts::with_apikey_table`）删了〔散文墓碑〕，界面经通道直接问。
-        //   并的是**这台机器自己**那份表（与 `apikey-read` · 中转里的账号层同一个出处）—— 远端从此第一次并上它自己的表。
+        //   并的是**这台机器自己**那份表（与 `apikey-read` · 中转里的上游选择同一个出处）—— 远端从此第一次并上它自己的表。
         "accounts-list" => {
             let agent = str_arg(args, "agent")?;
-            let rows = crate::accounts::apikey::file_face::rows_at(
-                &crate::accounts::apikey::file_face::machine_path(),
+            let rows = crate::accounts::upstream::file_face::rows_at(
+                &crate::accounts::upstream::file_face::machine_path(),
             );
             let v = accounts_query::list_product(
                 &rows,
                 agent,
-                crate::accounts::apikey::CREDENTIALS_FILE_AGENT,
+                crate::accounts::upstream::CREDENTIALS_FILE_AGENT,
             );
             let size = v.to_string().len();
             if size > LINES_CAP_BYTES {

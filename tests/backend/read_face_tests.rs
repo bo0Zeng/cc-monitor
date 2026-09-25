@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 /// 〔SR1a · 09-24〕+2：`history-index` / `history-user-inputs`（题面「`--list-user-inputs` 与骨架
 /// `--read-session-from-offset --index` 上帧面」那一句 —— 异源仍是题面，不是 `inbound.rs`）。
 /// 〔C4c · 第四波 4B〕+1：`accounts-trust`（主会话裁「仍在拨号的 `--account-trust` / `--account-trust-zero`」
-/// 随账号层一起上帧面 —— 异源是题面 `C4c` 那一句，不是 `inbound.rs`）。
+/// 随账号域一起上帧面 —— 异源是题面 `C4c` 那一句，不是 `inbound.rs`）。
 const FAMILY: &[&str] = &[
     "accounts-list",
     "accounts-sessions",
@@ -22,12 +22,12 @@ const FAMILY: &[&str] = &[
     "history-lines",
     // 〔SR1a × SE2〕会话内查找。
     "history-find",
-    "history-projects",
+    // 〔C4d · 第四波 4B〕`history-projects` / `history-sessions` 出列：它们出成品（并注解 ＋ 判活 ＋ 远端那一跳），
+    //   交给 `history_join`（历史跨机 join 的唯一的家；异源仍是题面 —— 主会话 09-25 裁 C4d 第 2 条）。
     "history-read",
     // 〔U4b · 第四波〕记录还在不在（resume 一跳先问；异源是题面 `U4b` G1，不是 `inbound.rs`）。
     "history-record",
     "history-search",
-    "history-sessions",
     "history-subagents",
     "history-tail",
 ];
@@ -180,47 +180,9 @@ fn the_frame_read_keeps_the_projects_fence() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// ★ 按行那几条：`{"lines": [...]}`，内容与夹具**结构**对得上（异源：期望值来自夹具，不来自被测函数）。
-#[test]
-fn line_shaped_answers_carry_the_rows() {
-    let home = scratch("rows");
-    session(&home, "-alpha", "a1", 3, false);
-    session(&home, "-alpha", "a2", 1, false);
-    session(&home, "-beta", "b1", 2, false);
-    let v = answer_at(&home, "history-projects", &serde_json::json!({})).unwrap();
-    let mut dirs: Vec<(String, u64)> = v["lines"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|l| {
-            let row: serde_json::Value = serde_json::from_str(l.as_str().unwrap()).unwrap();
-            (
-                row["dirName"].as_str().unwrap().to_string(),
-                row["sessionCount"].as_u64().unwrap(),
-            )
-        })
-        .collect();
-    dirs.sort();
-    assert_eq!(
-        dirs,
-        vec![("-alpha".to_string(), 2), ("-beta".to_string(), 1)]
-    );
-    let v = answer_at(
-        &home,
-        "history-sessions",
-        &serde_json::json!({"project_dir": "-alpha"}),
-    )
-    .unwrap();
-    assert_eq!(v["lines"].as_array().unwrap().len(), 2);
-    // 缺参 ⇒ bad_args（不是 panic、不是空清单冒充成功）。
-    assert_eq!(
-        answer_at(&home, "history-sessions", &serde_json::json!({}))
-            .unwrap_err()
-            .0,
-        "bad_args"
-    );
-    let _ = std::fs::remove_dir_all(&home);
-}
+// 〔C4d · 第四波 4B〕「按行那几条」那一条（`line_shaped_answers_carry_the_rows`〔散文墓碑〕）随 `history-projects` / `history-sessions`
+//   搬去 `history_join` 一起退役：同一件事（行与夹具结构对得上 · 缺参 bad_args）今天在 `history_join_tests.rs` 里按成品钉
+//   （`a_local_listing_joins_the_record_tree_and_the_synthesized_history` · `unreachable_or_malformed_requests_are_refused_without_asking`）。
 
 /// ★ 尾段那张图：按它的两段区间读回来 ＝ CLI `--read-session-tail` 印出的那两段（meta 之后的字节）。
 ///

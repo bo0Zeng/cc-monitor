@@ -141,58 +141,51 @@ fn duplicate_names_are_refused() {
     assert!(!alias_file_in(&h.0, P).exists());
 }
 
-/// ★★ rc 那一行：**加一次，第二次一个字节都不写**，而且用户自己的内容一行不动。
+// ═══════════════════════════════════════════════════════════════════════════
+// 〔TL1 · 4C〕`设计/71 §6.1`「source 那一行只许一处装」：接上别名文件的那一行**只住别名块里**（两种方言），
+// 选了 rc 的「安装」只查不写（提供检测，不代装）。从前这里的六条判的是代装那一跳（加一次 · 认 `$HOME` 形 ·
+// 旧名改写 · 围栏损坏中止 · 围栏）—— 那一跳退役，判据换成下面这几条。
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// 🔴 **选了 rc，rc 一个字节都不动** —— 没接上就说清楚、给出那一行，由人自己决定（`71 §6.1`「不代装」）。
 #[test]
-fn the_rc_source_line_is_added_once_and_keeps_user_content() {
+fn a_chosen_rc_is_only_checked_never_written() {
     let h = tmp_home("rc");
     let rc = h.0.join(".bashrc");
     std::fs::write(&rc, "export PATH=$PATH:/opt/bin\nalias ll='ls -l'\n").expect("写 rc");
+    let before = std::fs::read(&rc).expect("读原文");
+    let list = vec![al("zcc", &["--account", "z"])];
+    let rep = run(install_in(
+        &door(&h),
+        &list,
+        Some(&rc.display().to_string()),
+        P,
+    ))
+    .expect("写别名文件");
+    assert!(rep.wrote_alias_file, "{rep:?}");
+    assert_eq!(
+        std::fs::read(&rc).expect("读回"),
+        before,
+        "★ rc 被写了 —— 那一行只许住别名块里"
+    );
     let line = source_line(&alias_file_in(&h.0, P));
-
-    let added = run(ensure_rc_source_line(
-        &door(&h),
-        &hs(&h),
-        &rc.display().to_string(),
-        &line,
-    ))
-    .expect("第一次装");
-    assert!(added, "第一次该真写");
-    let after = std::fs::read_to_string(&rc).expect("读回");
+    let said = rep.notes.join("\n");
     assert!(
-        pinned(&after, "alias ll='ls -l'"),
-        "用户内容被动了：{after}"
+        said.contains("还没接上") && said.contains(&line) && said.contains("别名块"),
+        "没接上要说清、并给出那一行：{said}"
     );
-    assert!(after.contains(&line), "那一行没进去：{after}");
-    assert!(
-        after.contains(RC_BEGIN) && after.contains(RC_END),
-        "{after}"
-    );
-
-    let again = run(ensure_rc_source_line(
-        &door(&h),
-        &hs(&h),
-        &rc.display().to_string(),
-        &line,
-    ))
-    .expect("第二次");
-    assert!(!again, "★ 第二次又写了一遍 —— 那正是「重复追加」那条病");
-    let twice = std::fs::read_to_string(&rc).expect("读回");
-    assert_eq!(twice.matches(&line).count(), 1, "那一行出现了两次：{twice}");
-
-    // 顺带：候选表能认出「已经 source 过了」
+    // 对照：候选表也说没接上（同一种认法）。
     let me = rc_candidates_in(&h.0, P, None)
         .into_iter()
         .find(|c| c.path == rc.display().to_string())
         .expect("候选里该有 .bashrc");
-    assert!(me.sourced, "装完了还说没 source 过：{me:?}");
+    assert!(!me.sourced, "{me:?}");
 }
 
-/// 🔴 **装了 ccm 别名块的人，不许再被追加一行。**
+/// 🔴 **装了别名块的人，报「已经接上」、rc 逐字不动。**
 ///
 /// `src/shared/ccm-aliases.sh` 里那一行写的是 `$HOME/.cc-monitor/…`（**没展开**），
-/// 而 [`source_line`] 手上是展开后的绝对路径。按整行比，这个人会被判成
-/// 「还没 source 过」，于是又被追加一行 —— **那正是本件开头列的第一条病**。
-/// 本条把那个形状原样喂进去。
+/// 而 [`source_line`] 手上是展开后的绝对路径。按整行比，这个人会被判成「还没接上」—— 本条把那个形状原样喂进去。
 #[test]
 fn an_rc_that_already_sources_it_via_home_var_is_recognized() {
     let h = tmp_home("homevar");
@@ -202,22 +195,19 @@ fn an_rc_that_already_sources_it_via_home_var_is_recognized() {
         "if [ -r \"$HOME/.cc-monitor/aliases.sh\" ]; then . \"$HOME/.cc-monitor/aliases.sh\"; fi\n";
     std::fs::write(&rc, format!("# mine\n{ccm_block}")).expect("写 rc");
     let before = std::fs::read(&rc).expect("读原文");
-
-    let line = source_line(&alias_file_in(&h.0, P));
-    let added = run(ensure_rc_source_line(
+    let rep = run(install_in(
         &door(&h),
-        &hs(&h),
-        &rc.display().to_string(),
-        &line,
+        &[al("zcc", &[])],
+        Some(&rc.display().to_string()),
+        P,
     ))
     .expect("不该报错");
     assert!(
-        !added,
-        "★ 已经 source 过了还要再加一行 —— 那正是「重复追加」那条病"
+        rep.notes.iter().any(|n| n.contains("已经接上")),
+        "认不出 `$HOME` 那一形：{:?}",
+        rep.notes
     );
     assert_eq!(std::fs::read(&rc).expect("读回"), before, "rc 必须逐字未变");
-
-    // 候选表也要认得出来（界面上那一项会显「已经 source 过了」）。
     let me = rc_candidates_in(&h.0, P, None)
         .into_iter()
         .find(|c| c.path == rc.display().to_string())
@@ -225,46 +215,36 @@ fn an_rc_that_already_sources_it_via_home_var_is_recognized() {
     assert!(me.sourced, "候选表没认出 `$HOME` 那一形：{me:?}");
 }
 
-/// 🔴〔RW1 · 第四波 09-24〕别名文件改名 `account-aliases.sh` → `aliases.sh`，**不留兼容**（主会话裁）：
-/// 装过旧那一段的 rc，下一次「安装」就被**整块改写**成指向新名字的那一行（同一对围栏），
-/// 用户自己的内容一行不动；旧那一行不留、旧名不读。
+/// 🔴〔RW1 · 第四波 09-24〕别名文件改名 `account-aliases.sh` → `aliases.sh`，**不留兼容**：
+/// 指着旧名的那一段**不算接上**（只认新名），〔TL1〕而且**也不改写它**（从前下一次「安装」会整块改写成新名 —— 那是代装，退役了）；
+/// 旧文件在盘上也不读。
 #[test]
-fn an_rc_with_the_old_file_name_is_rewritten_to_the_new_shape_on_next_install() {
+fn an_rc_with_the_old_file_name_is_not_taken_as_sourced_and_not_rewritten() {
     let h = tmp_home("rename");
     let rc = h.0.join(".bashrc");
     let old_line = source_line(&h.0.join(".cc-monitor/account-aliases.sh"));
-    std::fs::write(
-        &rc,
-        format!("# mine\n{RC_BEGIN}\n{old_line}\n{RC_END}\n# tail\n"),
-    )
-    .expect("铺装过旧名的 rc");
-    let line = source_line(&alias_file_in(&h.0, P));
-    let added = run(ensure_rc_source_line(
+    std::fs::write(&rc, format!("# mine\n{old_line}\n# tail\n")).expect("铺装过旧名的 rc");
+    let before = std::fs::read(&rc).expect("读原文");
+    let rep = run(install_in(
         &door(&h),
-        &hs(&h),
-        &rc.display().to_string(),
-        &line,
+        &[al("zcc", &[])],
+        Some(&rc.display().to_string()),
+        P,
     ))
-    .expect("改写");
-    assert!(added, "旧那一段该被改写");
-    let after = std::fs::read_to_string(&rc).expect("读回");
-    assert!(pinned(&after, &line), "新那一行没进去：{after}");
+    .expect("写");
     assert!(
-        !after.contains("account-aliases.sh"),
-        "旧名还留在 rc 里：{after}"
+        rep.notes.iter().any(|n| n.contains("还没接上")),
+        "{:?}",
+        rep.notes
     );
-    assert!(
-        pinned(&after, "# mine") && pinned(&after, "# tail"),
-        "用户内容被动了：{after}"
-    );
-    assert_eq!(after.matches(RC_BEGIN).count(), 1, "围栏成了两对：{after}");
+    assert_eq!(std::fs::read(&rc).expect("读回"), before, "rc 被改写了");
     // 读回口只认新名：旧文件在盘上也不读（不留读旧名的分支）。
-    std::fs::create_dir_all(h.0.join(".cc-monitor")).expect("建目录");
     std::fs::write(
         h.0.join(".cc-monitor/account-aliases.sh"),
         "zcc() { ccm --account z \"$@\"; }\n",
     )
     .expect("铺旧文件");
+    std::fs::remove_file(alias_file_in(&h.0, P)).expect("摘掉新名那份");
     let listing = read_in(&h.0, P, None, 0).expect("读回");
     assert!(
         !listing.exists && listing.aliases.is_empty(),
@@ -273,7 +253,7 @@ fn an_rc_with_the_old_file_name_is_rewritten_to_the_new_shape_on_next_install() 
     );
 }
 
-/// 那一行在文件不存在时**必须返回 0** —— 它是 `ccm-aliases.sh` 的最后一行。
+/// 那一行在文件不存在时**必须返回 0** —— 它是 `ccm-aliases.sh` 的最后一行（〔TL1〕今天也是报告里给人贴的那一行）。
 #[test]
 fn the_source_line_is_a_no_op_when_the_file_is_absent() {
     let line = source_line(Path::new("/nowhere/aliases.sh"));
@@ -287,56 +267,73 @@ fn the_source_line_is_a_no_op_when_the_file_is_absent() {
     );
 }
 
-/// 围栏损坏（有 BEGIN 没 END）⇒ **中止**，文件逐字未变。
+/// rc 路径过 home 围栏 —— 跑出 home 的一律拒、**整趟一个字节不写**（复用 `profile_installer` 那道，不另立一份）。
 ///
-/// 这条与 `profile_installer::damaged_fence_leaves_the_file_byte_identical` 同形：
-/// 用后面那个 END 去配对，会把中间的用户代码整段吃掉。
-#[test]
-fn a_damaged_fence_leaves_the_rc_byte_identical() {
-    let h = tmp_home("bad");
-    let rc = h.0.join(".bashrc");
-    let original = format!("# mine\n{RC_BEGIN}\nalias ll='ls -l'\n");
-    std::fs::write(&rc, &original).expect("写 rc");
-    let before = std::fs::read(&rc).expect("读原文");
-    let line = source_line(&alias_file_in(&h.0, P));
-    let e = run(ensure_rc_source_line(
-        &door(&h),
-        &hs(&h),
-        &rc.display().to_string(),
-        &line,
-    ))
-    .expect_err("围栏损坏该中止");
-    assert!(e.contains("找不到配对的 END"), "理由要说得清：{e}");
-    assert_eq!(
-        std::fs::read(&rc).expect("读回"),
-        before,
-        "围栏损坏时文件必须逐字未变"
-    );
-}
-
-/// rc 路径过 home 围栏 —— 跑出 home 的一律拒（复用 `profile_installer` 那道，不另立一份）。
-///
-/// ⚠ 正例那一半不是凑数：围栏若收成「谁都不许」，上面那条「装一行 source」会当场变成
-/// 一个永远写不成的按钮，而本条**只看反例时读起来一样绿**。
+/// ⚠ 正例那一半不是凑数：围栏若收成「谁都不许」，选了 rc 的「安装」会当场变成一个永远点不成的按钮，
+/// 而本条**只看反例时读起来一样绿**。
 #[test]
 fn the_rc_path_cannot_escape_home() {
     let h = tmp_home("fence");
     for bad in ["/etc/profile", "/tmp/x.rc", ".bashrc"] {
-        let e = run(ensure_rc_source_line(&door(&h), &hs(&h), bad, "# x")).expect_err("该被围栏拒");
+        let e =
+            run(install_in(&door(&h), &[al("zcc", &[])], Some(bad), P)).expect_err("该被围栏拒");
         assert!(e.starts_with("拒绝写这个配置文件"), "{bad}：{e}");
+        assert!(
+            !alias_file_in(&h.0, P).exists(),
+            "围栏拒了还写了别名文件：{bad}"
+        );
     }
-    // 正例：home 之内那一份真的过得去（文件不存在 ⇒ 停在「读不到」，而不是停在围栏上）。
-    let e = run(ensure_rc_source_line(
+    // 正例：home 之内那一份过得去（文件还不在 ⇒ 没接上，照说；别名文件照写）。
+    let rep = run(install_in(
         &door(&h),
-        &hs(&h),
-        &h.0.join(".zshrc").display().to_string(),
-        "# x",
+        &[al("zcc", &[])],
+        Some(&h.0.join(".zshrc").display().to_string()),
+        P,
     ))
-    .expect_err("文件还不存在，这一步该停在读那一步");
+    .expect("围栏把 home 之内的路径也拒了 —— 那会让那个按钮永远点不成");
     assert!(
-        !e.starts_with("拒绝写这个配置文件"),
-        "围栏把 home 之内的路径也拒了 —— 那会让那个按钮永远写不成：{e}"
+        rep.wrote_alias_file && rep.notes.iter().any(|n| n.contains("还没接上")),
+        "{rep:?}"
     );
+    assert!(
+        !h.0.join(".zshrc").exists(),
+        "只查不写：不存在的 rc 不许被建出来"
+    );
+}
+
+/// ★★〔TL1 · 4C〕**两种方言对称：别名块里恰好一行接上别名文件**（`71 §6.1`「source 那一行只许一处装」；
+/// `AL1d.md §5` 第 4 条：从前 PowerShell 的别名块不接，那一侧只剩代装那一处）。
+///
+/// 人群：POSIX 别名块 = `sftp::CCM_WRAPPER_SNIPPET`（就是 `src/shared/ccm-aliases.sh`）；PowerShell 别名块 =
+/// `profile_installer::render_block`（带 / 不带 `cc` 两形）。每一份里「那种方言认得出的接上行」恰好一行（零 = 不接，二 = 两处）。
+/// 另一半：本模块生产段里写用户文件的口恰好一处（`user_files::edit(` —— 写别名文件那一处；代装 rc 那一处退役）。
+#[test]
+fn the_alias_block_is_the_one_place_that_sources_the_alias_file_in_both_dialects() {
+    let count = |text: &str, sh: Shell| {
+        text.lines()
+            .filter(|l| !l.trim_start().starts_with('#'))
+            .filter(|l| sh.dialect().sources_our_file(l))
+            .count()
+    };
+    assert_eq!(
+        count(crate::sftp::CCM_WRAPPER_SNIPPET, P),
+        1,
+        "POSIX 别名块"
+    );
+    for with_cc in [true, false] {
+        let block =
+            crate::profile_installer::render_block(Shell::PowerShell, with_cc).expect("渲染");
+        assert_eq!(
+            count(&block, Shell::PowerShell),
+            1,
+            "PowerShell 别名块（with_cc = {with_cc}）：{block}"
+        );
+    }
+    // 正控：认法对别人家的行不命中（不然上面的「恰好 1」可能是整份都算）。
+    assert_eq!(count("export PATH=/x\nalias ll='ls -l'\n", P), 0);
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/account_aliases.rs"));
+    guard_core::find_pinned(&prod, "crate::user_files::edit(")
+        .expect("本模块写用户文件的口不是恰好一处（只许写别名文件那一处）");
 }
 
 /// 🔴 `§0c 问三`：`cc` 在多数机器上是 C 编译器 —— 撞了要**出声**。
@@ -778,8 +775,9 @@ fn a_value_powershell_would_mangle_is_a_problem_there_only() {
     assert_eq!(check_alias(&a, P), Ok(()));
 }
 
-/// 🔴 PowerShell 那一臂的写与读回：别名文件 `aliases.ps1` 带 BOM；`$PROFILE` 还不在 ⇒ 建出来（带 BOM ＋ 那一对围栏
-/// ＋ 一行 source）；读回的清单 == 写进去的；再写一次一个字节都不动；POSIX 那份文件不受影响。
+/// 🔴 PowerShell 那一臂的写与读回：别名文件 `aliases.ps1` 带 BOM；读回的清单 == 写进去的；再写一次一个字节都不动；
+/// POSIX 那份文件不受影响。〔TL1 · 4C〕选了 `$PROFILE` ⇒ **只查**：还不在就不建、说「没接上」并给 PowerShell 那一行；
+/// 往里装上别名块（生产那一跳同一个函数）之后，同一问答「已经接上」—— 与 POSIX 那一侧对称（从前这里代建 `$PROFILE`、代装那一行）。
 #[test]
 fn the_powershell_arm_writes_and_reads_back_the_same_list() {
     let h = tmp_home("ps");
@@ -799,7 +797,7 @@ fn the_powershell_arm_writes_and_reads_back_the_same_list() {
         PS,
     ))
     .expect("写");
-    assert!(rep.wrote_alias_file && rep.wrote_rc, "{rep:?}");
+    assert!(rep.wrote_alias_file, "{rep:?}");
     let ours = alias_file_in(&h.0, PS);
     assert!(ours.ends_with(".cc-monitor/aliases.ps1"), "{ours:?}");
     let bytes = std::fs::read(&ours).unwrap();
@@ -814,12 +812,10 @@ fn the_powershell_arm_writes_and_reads_back_the_same_list() {
         format!("\u{feff}{}", render(&list, PS).code),
         "落盘的不是预览的那一份"
     );
-    let prof = std::fs::read_to_string(&profile).expect("$PROFILE 该被建出来");
-    assert!(prof.starts_with('\u{feff}'), "$PROFILE 没有 BOM：{prof:?}");
+    assert!(!profile.exists(), "★ 只查不写：$PROFILE 被建出来了");
     let line = PS.dialect().source_line(&ours.display().to_string());
-    assert!(pinned(&prof, &line), "source 那一行没进去：{prof}");
-    let body = crate::shell_dialect::strip_bom(&prof);
-    assert!(pinned(body, RC_BEGIN) && pinned(body, RC_END), "{prof}");
+    let said = rep.notes.join("\n");
+    assert!(said.contains("还没接上") && said.contains(&line), "{said}");
     let back = read_in(&h.0, PS, None, 0).expect("读回");
     assert!(
         back.exists && back.unparsed.is_empty(),
@@ -827,13 +823,26 @@ fn the_powershell_arm_writes_and_reads_back_the_same_list() {
         back.unparsed
     );
     assert_eq!(back.aliases, list);
-    let cand = back
+    // 装上别名块 ⇒ 接上了（别名块结尾那一行，与 POSIX 别名块最后一行同一件事）。
+    run(crate::profile_installer::install_to_profile(
+        &door(&h),
+        &profile,
+        "cc",
+        false,
+    ))
+    .expect("装别名块");
+    let cand = read_in(&h.0, PS, None, 0)
+        .unwrap()
         .rc_candidates
-        .iter()
+        .into_iter()
         .find(|c| c.path == profile.display().to_string())
         .expect("候选里该有 $PROFILE");
-    assert!(cand.sourced && cand.exists, "{cand:?}");
-    // 再写一次同一份 ⇒ 两处都一个字节不动。
+    assert!(
+        cand.sourced && cand.exists && cand.block.present,
+        "{cand:?}"
+    );
+    let prof = std::fs::read_to_string(&profile).unwrap();
+    // 再写一次同一份 ⇒ 别名文件与 `$PROFILE` 都一个字节不动，并说已经接上。
     let again = run(install_in(
         &door(&h),
         &list,
@@ -841,29 +850,15 @@ fn the_powershell_arm_writes_and_reads_back_the_same_list() {
         PS,
     ))
     .unwrap();
-    assert!(!again.wrote_alias_file && !again.wrote_rc, "{again:?}");
+    assert!(!again.wrote_alias_file, "{again:?}");
+    assert!(
+        again.notes.iter().any(|n| n.contains("已经接上")),
+        "{again:?}"
+    );
     assert_eq!(std::fs::read_to_string(&profile).unwrap(), prof);
     // POSIX 那份是另一个文件：没写过就是不在。
     let posix = read_in(&h.0, P, None, 0).unwrap();
     assert!(!posix.exists && posix.aliases.is_empty());
-}
-
-/// PowerShell 的 `$PROFILE` 里围栏损坏（有 BEGIN 没 END）⇒ 中止、逐字未变（同一份围栏规则，排版按方言）。
-#[test]
-fn a_damaged_fence_in_the_powershell_profile_is_left_alone() {
-    let h = tmp_home("psbad");
-    let profile = h.0.join("p.ps1");
-    let original = format!("\u{feff}# mine\r\n{RC_BEGIN}\r\nfunction x {{}}\r\n");
-    std::fs::write(&profile, &original).unwrap();
-    let e = run(install_in(
-        &door(&h),
-        &[al("zcc", &[])],
-        Some(&profile.display().to_string()),
-        PS,
-    ))
-    .expect_err("围栏损坏该中止");
-    assert!(e.contains("找不到配对的 END"), "{e}");
-    assert_eq!(std::fs::read_to_string(&profile).unwrap(), original);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -925,11 +920,12 @@ fn the_block_state_rides_on_the_candidates_it_was_installed_into() {
         hit.exists && hit.block.version.is_some(),
         "PowerShell 那一对围栏带版本串：{hit:?}"
     );
-    // 同一次读：别名文件那一行没装过 ⇒ `sourced` 仍是假（两件事各答各的，不串）。
-    assert!(!hit.sourced, "{hit:?}");
+    // 〔TL1 · 4C〕同一次读：装了别名块就接上了别名文件（块结尾那一行）—— 与 POSIX 对称；
+    //   从前这里断言「仍是假」（PowerShell 的别名块不接，那一侧只有代装那一处，`AL1d.md §5` 第 4 条）。
+    assert!(hit.sourced, "{hit:?}");
 }
 
-/// 🔴 **P6**（读回口那一半）：人另指的「其它文件」过围栏 —— 跑出 home 的一律拒、原话带「refuse profile path」；
+/// 🔴 **P6**（读回口那一半）：人另指的「其它文件」过围栏 —— 跑出 home 的一律拒、原话带「拒绝写这个配置文件」；
 /// home 之内的并进候选、带回过了围栏之后的绝对路径（界面拿它认出刚指的是哪一份）。
 #[test]
 fn another_startup_file_goes_through_the_fence_before_it_is_read() {

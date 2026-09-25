@@ -20,6 +20,8 @@
 /// 早先两边共用「必须 `/` 开头 + 禁 `\`」，于是真实的 Windows 账号目录
 /// `C:\Users\z\.claude-accts\z` **必被拒**，「本机分叉时选具名账号」在主平台 100% 失败。
 /// ⇒ 反向用例把那个回归钉住。
+///
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；②形（拒绝集 ＋ 形式判定）。
 #[test]
 fn the_config_dir_validator_rejects_every_injection_shape() {
     // ★ 先证明夹具走得通：两种平台的合法绝对路径都必须过。
@@ -1636,257 +1638,24 @@ fn extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place() {
     );
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// `K-R97`：本机项目列表改走后端那条 `--list-projects`
-// ═══════════════════════════════════════════════════════════════════
-
-/// 一行后端产出（形状照 `observe/history_query.rs::project_row`：5 个字段）。
-fn r97_row(dir: &str, path: &str, sids: &[&str], last_ms: i64) -> serde_json::Value {
-    serde_json::json!({
-        "dirName": dir,
-        "projectPath": path,
-        "sessionCount": sids.len(),
-        "lastActivityMs": last_ms,
-        "sessionIds": sids,
-    })
-}
-
-/// 把几行折成后端的 stdout（逐行 JSON）。
-fn r97_stdout(rows: &[serde_json::Value]) -> QueryOutcome {
-    QueryOutcome::Ok(
-        rows.iter()
-            .map(|r| r.to_string())
-            .collect::<Vec<_>>()
-            .join("\n")
-            + "\n",
-    )
-}
-
-/// 会答话的假真相源（同 `remote_history` 测试段那两个夹具的形状）。
-/// ⚠ 它是**夹具**，不是第二份实现：生产那份是 [`SessionMapLiveness`]。
-struct R97Oracle(&'static [&'static str]);
-impl LivenessOracle for R97Oracle {
-    fn is_live(&self, _origin: &str, sid: &str) -> Counted<bool> {
-        Counted::Known(self.0.contains(&sid))
-    }
-}
-
-/// ★★ `KR97D1`：**本机那条路的数据来自后端** —— 判的是性质，不是写法。
-///
-/// 第 ① 刀「后端产出变了而本机不跟 ⇒ 红」＋ 第 ② 刀「跟了 ⇒ 绿」都在这里：
-/// 同一条路喂**两份不同的后端产出**，逐字段看它跟不跟。
-///
-/// ⚠ 逐字**不判**「代码里还有没有 `read_dir`」（那判的是写法，改个写法就瞎）。
-/// 第 ③ 刀「本机退回自己遍历 records 根 ⇒ 红」由**另一处**接住，而且它更硬：
-/// `local_read_surface_registry` 的递减棘轮按「文件 → 命中行数」逐行对账，
-/// 谁把 `resolve_claude_dir()` / `records_dir()` 写回 `history.rs`，那条当场红
-///（`K-R97` 之后 `src/history.rs` 登记的处数之和是 **13**，写回去就是 15）。
-#[test]
-fn the_local_project_list_is_whatever_the_backend_said() {
-    let md = HistoryMetadata::default();
-    let live = R97Oracle(&[]);
-
-    let a = local_projects_via(
-        |_| r97_stdout(&[r97_row("-w-alpha", "/w/alpha", &["s1", "s2"], 111)]),
-        &md,
-        &live,
-    )
-    .expect("后端答了，这一趟该成");
-    assert_eq!(a.len(), 1, "后端只说了一个项目，本机却给出 {} 个", a.len());
-    assert_eq!(a[0].0.project_name, "alpha");
-    assert_eq!(a[0].0.project_path, "/w/alpha");
-    assert_eq!(a[0].0.session_count, 2);
-    assert_eq!(a[0].0.last_activity, 111);
-    assert_eq!(
-        a[0].0.project_dir, "-w-alpha",
-        "懒加载键要原样带回后端给的名字"
-    );
-    assert_eq!(a[0].0.origin, None, "本机那条路 origin 恒为 None");
-
-    // ★ 换一份后端产出：**同一个项目键**，其余全变。本机的返回必须跟着变。
-    let b = local_projects_via(
-        |_| r97_stdout(&[r97_row("-w-alpha", "/w/beta", &["s1", "s2", "s3"], 222)]),
-        &md,
-        &live,
-    )
-    .expect("后端答了，这一趟该成");
-    assert_eq!(
-        (
-            b[0].0.project_name.as_str(),
-            b[0].0.project_path.as_str(),
-            b[0].0.session_count,
-            b[0].0.last_activity
-        ),
-        ("beta", "/w/beta", 3, 222),
-        "🔴 后端那一行变了，本机的返回没跟着变 —— 那说明这条路的数据**不是**后端给的。\n\
-             这正是本条第 ① 刀：改后端那条的产出，本机跟不跟。"
-    );
-
-    // ★ 后端没说的项目不许冒出来（「数据只来自后端」的另一半）。
-    let none = local_projects_via(|_| QueryOutcome::Ok(String::new()), &md, &live)
-        .expect("空答复也是答复");
-    assert!(
-        none.is_empty(),
-        "后端一行都没说，本机却端出了 {} 个项目",
-        none.len()
-    );
-}
-
-/// ★★ `KR97D2`：**「不知道」一路带到本机这条，不被压平。**
-///
-/// `K-R92` 那一形的预防：后端那一行**没带 sid 清单**（旧版后端）时，
-/// star / hide / 活状态三个数**算不出来** —— 那不是 0、不是「没有星标」、
-/// 更不是「这个项目没有活会话」。
-///
-/// 第 ① 刀「压平 ⇒ 红」用 `assert_ne!` 逐格钉：`Some(0)` / `Some(false)` 与 `None`
-/// 在类型上分得开，压平当场红。第 ② 刀「带得过去 ⇒ 绿」是那三个 `None`。
-#[test]
-fn an_unknown_from_the_backend_row_is_not_flattened_on_the_local_path() {
-    let md = HistoryMetadata::default();
-    // 旧版后端那一行：**只有 4 个字段**，没有 `sessionIds`。
-    let old_row = serde_json::json!({
-        "dirName": "-w-alpha",
-        "projectPath": "/w/alpha",
-        "sessionCount": 2,
-        "lastActivityMs": 111,
-    });
-    let out = local_projects_via(|_| r97_stdout(&[old_row.clone()]), &md, &R97Oracle(&["s1"]))
-        .expect("行是好的，只是少了一个字段");
-    let p = &out[0].0;
-    assert_eq!(
-        p.starred_count, None,
-        "🔴 算不出来的星标数被说成了一个数 —— 「不知道」在这一段被压平了"
-    );
-    assert_ne!(
-        p.starred_count,
-        Some(0),
-        "🔴 `Some(0)` 是同一句谎话换了个类型说一遍：它读作「查过了，一个星标都没有」"
-    );
-    assert_eq!(p.hidden_count, None, "同上，hidden 那一格");
-    assert_ne!(p.hidden_count, Some(0), "同上，hidden 那一格");
-    assert_eq!(p.has_live, None, "同上，活状态那一格");
-    assert_ne!(
-        p.has_live,
-        Some(false),
-        "🔴 `Some(false)` 读作「查过了，这个项目没有活会话」—— 而根本没人查过"
-    );
-
-    // ★ 反面：带了清单就该**算得出真值**，否则上面三条会变成「反正都是 None」的空转。
-    let md2 = {
-        let mut m = HistoryMetadata::default();
-        m.entries.insert(
-            "s1".to_string(),
-            EntryMetadata {
-                starred: true,
-                ..Default::default()
-            },
-        );
-        m
-    };
-    let good = local_projects_via(
-        |_| r97_stdout(&[r97_row("-w-alpha", "/w/alpha", &["s1", "s2"], 111)]),
-        &md2,
-        &R97Oracle(&["s2"]),
-    )
-    .expect("这一行是全的");
-    assert_eq!(
-        good[0].0.starred_count,
-        Some(1),
-        "★ 真值端得动（本机 metadata 按 sid 合）"
-    );
-    assert_eq!(
-        good[0].0.hidden_count,
-        Some(0),
-        "★ 「查过了，是 0」也是一个真值"
-    );
-    assert_eq!(good[0].0.has_live, Some(true), "★ 活状态端得动");
-}
-
-/// ★ `KR97D2` 的另一半：**本机这条路的判活真相源答得出真值**，不许跟着远端一起「不知道」。
-///
-/// 远端那个绑定（`NoLivenessOracleYet`）答不出是有理由的（`SessionMap` 只认本机 pid）；
-/// 本机这个绑定**没有那个理由** —— 它要是也答「不知道」，那就是把一处能查的事说成查不了。
-#[test]
-fn the_local_liveness_oracle_answers_known_not_unknown() {
-    let tmp = TmpDir::new();
-    let (map, _rx) = SessionMap::load_with_changes(tmp.0.clone(), true);
-    let oracle = SessionMapLiveness(map);
-    assert_eq!(
-        oracle.is_live("", "没有这个会话"),
-        Counted::Known(false),
-        "🔴 本机答得出「查过了，没活」—— 答成 `Unknown` 就是把能查的事说成查不了"
-    );
-}
-
-/// ★★ `KR97D3`：**一次调用里问了后端几次** —— 判的是这个可数的事实，不是有没有 for 循环。
-///
-/// 同 `KR83D3` 的口径。失效方向具体得很：一旦有人为了拿 star/hide 而在那个循环里
-/// 补一句 `--list-sessions`，计数当场从 `1` 涨成 `1 + 项目数`。
-#[test]
-fn one_call_asks_the_backend_exactly_once_no_matter_how_many_projects() {
-    let md = HistoryMetadata::default();
-    let calls = std::cell::Cell::new(0usize);
-    let rows = [
-        r97_row("-p1", "/w/p1", &["a1"], 1),
-        r97_row("-p2", "/w/p2", &["b1", "b2"], 2),
-        r97_row("-p3", "/w/p3", &["c1", "c2", "c3"], 3),
-    ];
-    let out = local_projects_via(
-        |args| {
-            calls.set(calls.get() + 1);
-            assert_eq!(args, &["--list-projects"], "问的不是这条子命令");
-            r97_stdout(&rows)
-        },
-        &md,
-        &R97Oracle(&[]),
-    )
-    .expect("后端答了");
-    assert_eq!(out.len(), 3, "夹具没喂进 3 个项目，下面那条计数就没有意义");
-    assert_eq!(
-        calls.get(),
-        1,
-        "🔴 3 个项目问了后端 {} 次。一次调用只许问一次 —— \n\
-             逐项目再问一次的话，项目列表这个常开界面会变成 N 次进程 spawn。",
-        calls.get()
-    );
-}
-
-/// ★ 三态诚实降级（定框 §5）：**「后端不在」不是「一个历史项目都没有」。**
-///
-/// 这两件事对用户是完全不同的处境：前者该提示装 / 该修，后者是真的空。
-/// 压成一个空列表就是 F14 那次「静默回落」的形状。
-#[test]
-fn a_missing_backend_is_not_an_empty_project_list() {
-    let md = HistoryMetadata::default();
-    let no_backend = local_projects_via(
-        |_| QueryOutcome::NoBackend("找过 [\"…/cc-monitor-backend\"]".into()),
-        &md,
-        &R97Oracle(&[]),
-    )
-    .expect_err("后端不在时不许返回一个空列表");
-    assert!(
-        no_backend.contains("本机后端不在"),
-        "报错没说清是「后端不在」：{no_backend}"
-    );
-    let failed = local_projects_via(
-        |_| QueryOutcome::Failed {
-            code: Some(2),
-            stderr: "read_dir failed\n".into(),
-        },
-        &md,
-        &R97Oracle(&[]),
-    )
-    .expect_err("查询失败时不许返回一个空列表");
-    assert!(
-        failed.contains("查询失败") && failed.contains("read_dir failed"),
-        "报错没带上后端说的原因：{failed}"
-    );
-    assert_ne!(
-        no_backend, failed,
-        "🔴 「后端不在」与「后端在但这条查询失败了」被说成了同一句话 —— \n\
-             那正是让上层猜的那一形（定框 §5）。"
-    );
-}
+// 〔C4d · 第四波 4B〕历史清单与注解搬进本机常驻后端（主会话 09-25 裁：join 只一个家、注解读写者换成本机后端）——
+//   这里原先驱动 monitor 那一份实现的几组判据随被测函数一起退役，它们钉的性质各自在新家有判据（逐条对应）：
+//   - `K-R97` 本机项目清单来自后端那一行 · 行里的「不知道」不被压平 · 本机判活答真值 · 一次列举只问一次
+//     （`the_local_project_list_is_whatever_the_backend_said` 那一组〔散文墓碑〕）⇒ 后端 `tests/backend/history_join_tests.rs`
+//     （`local_liveness_answers_true_and_false_and_unknown_is_its_own_bucket` · `a_local_listing_joins_the_record_tree_and_the_synthesized_history` ·
+//     `one_remote_is_asked_exactly_once_with_the_old_subcommands` · `remote_projects_carry_the_annotation_counts_and_say_unknown_honestly`）；
+//     「本机后端不在 ≠ 一个项目都没有」⇒ 通道的失败层级（`src/history-reads.ts` 抛、界面说「加载失败」），判据 `tests/history-reads.vitest.ts`；
+//   - `K-R92` 线上那几格分得开「不知道」与「真的是 0」· 「不知道」自成一档排序（`the_three_counts_can_say_i_do_not_know` 那两条〔散文墓碑〕）
+//     ⇒ 后端 `history_join_tests.rs`（`unreadable_annotations_are_unknown_not_zero` · `projects_sort_unknown_between_known_true_and_known_false`）；
+//   - 两个线上形状的驼峰契约（`history_project_camel_case_contract` 那两条〔散文墓碑〕）⇒ 跨语言金样 `tests/__fixtures__/history-products.golden.json`
+//     （后端产 · TS 解码器逐键收）；
+//   - Codex 分组 · 首条真用户话去注入（`codex_projects_group_by_cwd` 那两条〔散文墓碑〕）⇒ 后端 `tests/backend/agents/codex/history_tests.rs`
+//     ＋ `history_join_tests.rs::synthesized_history_groups_by_cwd_under_the_kind_prefix`；
+//   - 上次账号的 serde 与 patch 三态 · 只含真有的那几条（`last_account_serde_and_patch_semantics` 那两条〔散文墓碑〕）⇒ 后端
+//     `tests/backend/history_annotations_tests.rs`（`patch_semantics_match_what_the_monitor_did` · `last_accounts_are_only_the_entries_that_have_one`）；
+//   - 摘录按字符截断（`truncate_chars_unicode` 那三条〔散文墓碑〕）⇒ `search-core` 的 `truncate_excerpt`（后端会话行改用它）；
+//   - 「迁移前」旧读者读注解夹具 == 金样（`c4d_the_old_reader_reads_the_annotation_fixture_as_the_golden`〔散文墓碑〕，子步 4 那一拍对过）
+//     ⇒ 金样 `tests/__fixtures__/history-metadata.readout.golden.json` 留作「迁移前」的冻结读数，后端新读者照旧对它。
 
 /// Phase 2 F1a-3：Codex 会话按 cwd 分组成合成 HistoryProject（count/max-mtime/name/键/has_live）。
 /// 测试用：把一个 configDir 包成具名账号。
@@ -1960,7 +1729,7 @@ fn account_prefix_is_prepended_posix_and_ps() {
 /// 100% 失败（`fork-flow.ts` 是全仓唯一给 `resume_history_session` 传 `configDir` 的
 /// 调用点，所以这个洞是分叉专属的、别处测不到）。
 ///
-/// 判据照抄 `local_accounts::looks_absolute` —— 那个函数的头注已经写明这一课。
+/// 判据照抄当年的 `local_accounts::looks_absolute`〔散文墓碑〕（〔C4d〕已删；同一课今天住后端 `is_safe_config_dir`）。
 /// 而**旧测试全喂 POSIX 路径**（`/home/u/.claude-accts/z`），所以它们测不出来。
 #[test]
 fn windows_account_dirs_are_accepted_by_the_ps_side() {
@@ -2075,79 +1844,6 @@ fn posix_account_prefix_is_byte_identical_after_moving_to_the_kernel() {
         config_dir_prefix_posix(Some(&named("/home/u/.claude-accts/z"))).unwrap(),
         "export CLAUDE_CONFIG_DIR='/home/u/.claude-accts/z'; "
     );
-}
-
-#[test]
-fn codex_projects_group_by_cwd() {
-    let sessions = vec![
-        CodexSessionInfo {
-            sid: "s1".into(),
-            path: PathBuf::from("/a"),
-            cwd: "/home/u/proj".into(),
-            mtime_ms: 100,
-        },
-        CodexSessionInfo {
-            sid: "s2".into(),
-            path: PathBuf::from("/b"),
-            cwd: "/home/u/proj".into(),
-            mtime_ms: 300,
-        },
-        CodexSessionInfo {
-            sid: "s3".into(),
-            path: PathBuf::from("/c"),
-            cwd: "".into(),
-            mtime_ms: 50,
-        },
-    ];
-    let projects = codex_projects_from(sessions);
-    assert_eq!(projects.len(), 2, "两个 cwd 组");
-    let proj = projects
-        .iter()
-        .find(|p| p.project_path == "/home/u/proj")
-        .expect("proj 组");
-    assert_eq!(proj.session_count, 2);
-    assert_eq!(proj.last_activity, 300, "组内 max mtime");
-    assert_eq!(proj.project_name, "proj", "cwd 末段");
-    assert_eq!(proj.project_dir, "codex:/home/u/proj", "键带 codex: 前缀");
-    assert_eq!(
-        proj.has_live, None,
-        "★ `K-R92`：Codex 判活 = F4（无 pidfile）⇒ 这一格是**不知道**。\n\
-             上一版这里断言的是 `false` —— 那是「查过了，没有活会话」，而根本没人查过。"
-    );
-    let unknown = projects
-        .iter()
-        .find(|p| p.project_path.is_empty())
-        .expect("空 cwd 组");
-    assert_eq!(unknown.project_name, "(codex)");
-    assert_eq!(unknown.project_dir, "codex:");
-}
-
-/// F1a-3c + Phase G 审计修：Codex 会话摘要取首个**真** user message，跳 CLI 注入块——
-/// 复用渲染路同一 `is_injected_context`（**3 标记**：environment_context / recommended_plugins /
-/// # AGENTS.md instructions），与渲染去噪一致（此前只跳 environment_context）。
-#[test]
-fn codex_first_user_excerpt_skips_injected_context() {
-    let dir = std::env::temp_dir().join(format!("ccm-codex-exc-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let f = dir.join("rollout.jsonl");
-    let user = |t: &str| {
-        format!(
-            r#"{{"type":"response_item","payload":{{"type":"message","role":"user","content":[{{"type":"input_text","text":{}}}]}}}}"#,
-            serde_json::to_string(t).unwrap()
-        )
-    };
-    // 首 3 条 user = 3 种注入块（全跳）；末 user = 真用户输入（取）。
-    let content = [
-        r#"{"type":"session_meta","payload":{"cwd":"/p"}}"#.to_string(),
-        user("<environment_context>injected</environment_context>"),
-        user("<recommended_plugins>\nplugins…"),
-        user("# AGENTS.md instructions\n\n<INSTRUCTIONS>\n# AGENTS.md\n本文件…"),
-        user("真实问题"),
-    ]
-    .join("\n");
-    std::fs::write(&f, content).unwrap();
-    assert_eq!(codex_first_user_excerpt(&f), "真实问题");
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 // 〔RW1 · 第四波 · 2026-09-24〕这里原来是「建分支入口真的过了围栏吗」（喂一个界外的绝对路径给本机那份
@@ -2447,322 +2143,7 @@ fn both_branch_commands_take_a_session_id_not_a_path() {
     );
 }
 
-// ─────────────────── `KR92D1`：线上那一格分得开「不知道」和「真的是 0」 ───────────────────
-
-/// 造一个线上项目行，三格全是**「查过了，真的是 0」**；要哪一格变成「不知道」，
-/// 调用方用 `..` 语法覆盖那一格（这样「只动了一格」在源码上一眼可见）。
-fn wire_project_all_known_zero() -> HistoryProject {
-    HistoryProject {
-        project_path: "/x/y".into(),
-        project_name: "y".into(),
-        project_dir: "y-enc".into(),
-        session_count: 3,
-        starred_count: Some(0),
-        hidden_count: Some(0),
-        last_activity: 1,
-        has_live: Some(false),
-        origin: Some("pi".into()),
-    }
-}
-
-/// ★★ `KR92D1`：**过线之后，下游分得出这三个数是「算过的」还是「不知道」。**
-///
-/// # 判的是性质，不是形状
-///
-/// 本条**逐字不判**那三格长什么样（`null` / tagged union / 并列一个 `*_known` 布尔都行）——
-/// 它判的是**两份只在「不知道 vs 真的是 0」上不同的行，过线之后字节不同**。
-/// ⇒ 换一种等价表示（第 ② 刀）本条照常绿；把 `Unknown` 压成 `0`/`false`（第 ① 刀）当场红。
-///
-/// 🔴 **三格逐格分开断**（第 ③ 刀：只修 star/hide 不修 `has_live` ⇒ 必须红）：
-/// 一次只把一格换成「不知道」，三次都要与「真的是 0」那一份可分。
-/// 合起来断一次是接不住的 —— 只要有一格治了，整行就已经不同。
-#[test]
-fn the_three_counts_can_say_i_do_not_know() {
-    let wire = |p: &HistoryProject| serde_json::to_string(p).expect("序列化");
-    let all_zero = wire(&wire_project_all_known_zero());
-
-    for (格, unknown_row) in [
-        (
-            "starred_count",
-            HistoryProject {
-                starred_count: None,
-                ..wire_project_all_known_zero()
-            },
-        ),
-        (
-            "hidden_count",
-            HistoryProject {
-                hidden_count: None,
-                ..wire_project_all_known_zero()
-            },
-        ),
-        (
-            "has_live",
-            HistoryProject {
-                has_live: None,
-                ..wire_project_all_known_zero()
-            },
-        ),
-    ] {
-        assert_ne!(
-            wire(&unknown_row),
-            all_zero,
-            "🔴 `{格}` 这一格：「不知道」与「查过了，真的是 0」过线之后**长得一模一样**。\n\
-                 那正是 `K-R92` 的题面 —— 后端已经分得开，线上这一格又把它压回去了。\n\
-                 ⚠ 三格是一族：只治 star/hide 不治 `has_live`，本条在 `has_live` 那一轮红。\n\
-                 现打这一行：{}",
-            wire(&unknown_row)
-        );
-    }
-
-    // 对照组：**真的是 0** 与 **真的是 0** 恒同 —— 上面那三条不是靠「随便变点什么」绿的。
-    assert_eq!(
-        all_zero,
-        wire(&wire_project_all_known_zero()),
-        "★ 对照组：同一份输入序列化两次应当逐字节相同"
-    );
-}
-
-/// ★★ `KR92D1` 的排序侧：**「不知道」自成一档**，既不冒充「有」，也不被当成「没有」。
-///
-/// 失效方向（本条存在的理由）：`Option` 的派生序是 `None < Some(false) < Some(true)`，
-/// 谁哪天把 [`live_rank`] 换回 `b.has_live.cmp(&a.has_live)`，「不知道」就被排到
-/// 「确定没活」后面 —— 那是一句没人查过的断言。
-#[test]
-fn unknown_is_its_own_bucket_when_sorting() {
-    assert!(
-        live_rank(Some(true)) > live_rank(None) && live_rank(None) > live_rank(Some(false)),
-        "★ 活：确定有 > 不知道 > 确定没有（现打 {} / {} / {}）",
-        live_rank(Some(true)),
-        live_rank(None),
-        live_rank(Some(false))
-    );
-    assert!(
-        star_rank(Some(2)) > star_rank(None) && star_rank(None) > star_rank(Some(0)),
-        "★ 星标：有 > 不知道 > 查过了一个都没有（现打 {} / {} / {}）",
-        star_rank(Some(2)),
-        star_rank(None),
-        star_rank(Some(0))
-    );
-    assert_ne!(
-        live_rank(None),
-        live_rank(Some(false)),
-        "🔴 把「不知道」和「确定没有活会话」排进同一档 = 排序这一端仍然分不开"
-    );
-    assert_ne!(star_rank(None), star_rank(Some(0)), "🔴 同上，星标那一格");
-}
-
-/// P1.2 contract test：守护后端 wire 跟前端 TS interface 字段名一致。
-/// 改字段名必须同步改前端 views/history.ts 的 HistoryProject / HistorySessionEntry interface。
-/// 若本测试失败 = 后端 wire 漂移；若 tsc 编译错 = 前端 access 漂移。两边都受保护。
-#[test]
-fn history_project_camel_case_contract() {
-    let p = HistoryProject {
-        project_path: "/x/y".into(),
-        project_name: "y".into(),
-        project_dir: "/y-encoded".into(),
-        session_count: 1,
-        starred_count: Some(2),
-        hidden_count: Some(3),
-        last_activity: 1700_000_000_000,
-        has_live: Some(true),
-        origin: Some("pi-host".into()), // issue #16：远端来源也走同一 wire 契约
-    };
-    let j = serde_json::to_string(&p).unwrap();
-    for camel_key in [
-        "\"projectPath\"",
-        "\"projectName\"",
-        "\"projectDir\"",
-        "\"sessionCount\"",
-        "\"starredCount\"",
-        "\"hiddenCount\"",
-        "\"lastActivity\"",
-        "\"hasLive\"",
-    ] {
-        assert!(
-            j.contains(camel_key),
-            "HistoryProject wire 缺 {camel_key}: {j}"
-        );
-    }
-    // 反例守护：不应出现任何 snake_case 字段
-    for snake_key in [
-        "\"project_path\"",
-        "\"project_name\"",
-        "\"project_dir\"",
-        "\"session_count\"",
-        "\"starred_count\"",
-        "\"hidden_count\"",
-        "\"last_activity\"",
-        "\"has_live\"",
-    ] {
-        assert!(
-            !j.contains(snake_key),
-            "HistoryProject 漏改 {snake_key}: {j}"
-        );
-    }
-}
-
-#[test]
-fn history_session_entry_camel_case_contract() {
-    let e = HistorySessionEntry {
-        session_id: "s-1".into(),
-        project_path: "/x".into(),
-        project_name: "x".into(),
-        ai_title: Some("t".into()),
-        first_user_excerpt: "hi".into(),
-        started_at: 1,
-        updated_at: 2,
-        jsonl_path: "/a.jsonl".into(),
-        is_live: Some(true),
-        message_count_approx: 5,
-        is_bg: true,
-        starred: false,
-        custom_title: None,
-        hidden: false,
-        forked_from_session_id: Some("p-1".into()),
-        forked_from_message_uuid: Some("u-1".into()),
-        origin: Some("pi-host".into()),
-    };
-    let j = serde_json::to_string(&e).unwrap();
-    for camel_key in [
-        "\"sessionId\"",
-        "\"isBg\"",
-        "\"projectPath\"",
-        "\"projectName\"",
-        "\"aiTitle\"",
-        "\"firstUserExcerpt\"",
-        "\"startedAt\"",
-        "\"updatedAt\"",
-        "\"jsonlPath\"",
-        "\"isLive\"",
-        "\"messageCountApprox\"",
-        "\"customTitle\"",
-        "\"forkedFromSessionId\"",
-        "\"forkedFromMessageUuid\"",
-    ] {
-        assert!(
-            j.contains(camel_key),
-            "HistorySessionEntry wire 缺 {camel_key}: {j}"
-        );
-    }
-    for snake_key in [
-        "\"session_id\"",
-        "\"project_path\"",
-        "\"first_user_excerpt\"",
-        "\"is_live\"",
-        "\"forked_from_session_id\"",
-    ] {
-        assert!(
-            !j.contains(snake_key),
-            "HistorySessionEntry 漏改 {snake_key}: {j}"
-        );
-    }
-}
-
-/// A4：EntryMetadata / MetadataPatch 的 lastAccount serde 契约 + 向后兼容 + 三态 patch。
-#[test]
-fn last_account_serde_and_patch_semantics() {
-    // 1) 向后兼容：旧文件无 lastAccount 字段 → None，不报错。
-    let old: EntryMetadata =
-        serde_json::from_str(r#"{"starred":true,"hidden":false,"updatedAt":9}"#).unwrap();
-    assert_eq!(old.last_account, None);
-
-    // 2) camelCase wire：Some(name) 序列化含 "lastAccount"、不含 snake。
-    let e = EntryMetadata {
-        last_account: Some("z".into()),
-        ..Default::default()
-    };
-    let j = serde_json::to_string(&e).unwrap();
-    assert!(j.contains("\"lastAccount\""), "wire 缺 lastAccount: {j}");
-    assert!(!j.contains("last_account"), "wire 不该含 snake: {j}");
-
-    // 2b) 旧 snake alias 仍可读入（迁移容错）。
-    let via_alias: EntryMetadata = serde_json::from_str(r#"{"last_account":"b"}"#).unwrap();
-    assert_eq!(via_alias.last_account, Some("b".into()));
-
-    // 3) MetadataPatch：缺键 / null 都折叠为 None(不改)——与既有 customTitle 同(plain
-    //    serde default，非 double_option)；清空经"空串 → filter"实现(见 4))，不靠 null。
-    let none: MetadataPatch = serde_json::from_str("{}").unwrap();
-    assert_eq!(none.last_account, None);
-    let via_null: MetadataPatch = serde_json::from_str(r#"{"lastAccount":null}"#).unwrap();
-    assert_eq!(via_null.last_account, None);
-    let set: MetadataPatch = serde_json::from_str(r#"{"lastAccount":"z"}"#).unwrap();
-    assert_eq!(set.last_account, Some(Some("z".into())));
-
-    // 4) apply 语义（镜像 update_history_metadata 分支）：空白账号名按清空处理。
-    fn apply(mut e: EntryMetadata, json: &str) -> EntryMetadata {
-        let p: MetadataPatch = serde_json::from_str(json).unwrap();
-        if let Some(a) = p.last_account {
-            e.last_account = a.filter(|s| !s.trim().is_empty());
-        }
-        e
-    }
-    let base = EntryMetadata {
-        last_account: Some("z".into()),
-        ..Default::default()
-    };
-    assert_eq!(
-        apply(EntryMetadata::default(), r#"{"lastAccount":"z"}"#).last_account,
-        Some("z".into())
-    );
-    assert_eq!(
-        apply(base.clone(), r#"{"lastAccount":""}"#).last_account,
-        None
-    ); // 空串=清空
-    assert_eq!(
-        apply(base.clone(), r#"{"lastAccount":null}"#).last_account,
-        Some("z".into()) // null 折叠为"不改"（同 customTitle）
-    );
-    assert_eq!(
-        apply(base.clone(), r#"{"starred":true}"#).last_account,
-        Some("z".into()) // 未提 lastAccount → 不改
-    );
-    assert_eq!(
-        apply(EntryMetadata::default(), r#"{"lastAccount":"   "}"#).last_account,
-        None // 纯空白 = 清空
-    );
-}
-
-/// A4：list_last_accounts 的纯变换——只含有 lastAccount 的条目，None 的剔除。
-#[test]
-fn last_accounts_of_filters_none() {
-    let mut entries = HashMap::new();
-    entries.insert(
-        "s-has".to_string(),
-        EntryMetadata {
-            last_account: Some("z".into()),
-            ..Default::default()
-        },
-    );
-    entries.insert("s-none".to_string(), EntryMetadata::default()); // 无 lastAccount
-    let out = last_accounts_of(HistoryMetadata {
-        version: 1,
-        entries,
-    });
-    assert_eq!(out.get("s-has"), Some(&"z".to_string()));
-    assert!(!out.contains_key("s-none"));
-    assert_eq!(out.len(), 1);
-}
-
 // P3 归并：iso_parse_* 测试已搬到 utils::tests（函数本身搬到 utils）。
-
-#[test]
-fn truncate_chars_unicode() {
-    let s = truncate_chars("你好世界abc", 3);
-    assert_eq!(s, "你好世…");
-}
-
-#[test]
-fn truncate_chars_short() {
-    let s = truncate_chars("hi", 10);
-    assert_eq!(s, "hi");
-}
-
-#[test]
-fn truncate_chars_newline_replaced() {
-    let s = truncate_chars("a\nb\nc", 10);
-    assert_eq!(s, "a b c");
-}
 
 #[test]
 fn resume_cmd_prefers_cc_with_claude_fallback() {
@@ -3144,7 +2525,7 @@ fn only_an_account_that_has_a_row_in_the_apikey_table_gets_the_base_url_prefix()
 ///
 /// 第一版只喂**一个**账号（`acct-a`）⇒ `D6` 的刀 `E6` 把 [`apikey_account_id`] 的答案
 /// `.map(|_| "acct-a")` 写死（那段文本一字不动）⇒ **全绿、门禁四个数与干净树逐字相同**。
-/// 生产后果是**路由键的 `<account>` 段恒是一个号** ⇒ 账号层按它取 key ⇒
+/// 生产后果是**路由键的 `<account>` 段恒是一个号** ⇒ 上游选择按它取 key ⇒
 /// **acct-b 的会话拿着 acct-a 的那把 key 发请求，两边都显示成功** ——
 /// 正是整个多账号工作要防的最坏那一形。
 /// ⇒ 本条**至少喂两个不同的号**，并断言前缀里的 `<account>` 段跟着变。
@@ -3256,7 +2637,7 @@ fn the_launch_side_really_asks_those_two_take_points_and_uses_their_answers() {
     assert_ne!(
         got, got_b,
         "\n换一个号，拼出来的前缀一个字节都没变 —— 「这次拉起是哪个号」这一维成了常量。\n\
-             生产后果：路由键的 `<account>` 段恒指一个号 ⇒ 账号层按它取 key ⇒\n\
+             生产后果：路由键的 `<account>` 段恒指一个号 ⇒ 上游选择按它取 key ⇒\n\
              **acct-b 的会话拿着 acct-a 的那把 key 发请求，而两边都显示成功。**"
     );
     assert!(
@@ -3629,7 +3010,7 @@ fn the_rows_really_come_from_that_file_not_from_a_constant() {
         vec!["acct-a".to_string(), "acct-b".to_string()],
         "没把那份文件里的行读出来 —— 这个取值口恒空的话，谁都不会走中转，而且全绿"
     );
-    // ③ 当不了路由段的 id **筛掉**（与账号层装表那一侧同一条规则）。
+    // ③ 当不了路由段的 id **筛掉**（与上游选择装表那一侧同一条规则）。
     std::fs::write(
         &f,
         b"{\n  \"accounts\": {\n    \"ok-1\": {},\n    \"has.dot\": {},\n    \"has/slash\": {}\n  }\n}\n",
@@ -3638,7 +3019,7 @@ fn the_rows_really_come_from_that_file_not_from_a_constant() {
     assert_eq!(
         apikey_rows_at(&f),
         vec!["ok-1".to_string()],
-        "界面这一侧收下了账号层装表时会丢掉的行 —— 那会让界面说「经本机中转」而账号层 404"
+        "界面这一侧收下了上游选择装表时会丢掉的行 —— 那会让界面说「经本机中转」而上游选择 404"
     );
     // ④ 文件坏了 ⇒ 零条 + 不 panic（人手编打错一个逗号是常态）。
     std::fs::write(&f, b"{ not json").expect("写夹具");

@@ -27,8 +27,7 @@
 任何 `#[tauri::command]` 函数签名里出现 `State<...>` 就是这里的消费者。
 
 ### `Arc<SessionMap>`
-- `history.rs::list_history_projects(map: State<'_, Arc<SessionMap>>)`
-- `history.rs::stream_history_sessions_in_project(project_dir, on_entry: Channel, map: State<'_, Arc<SessionMap>>)` (v2.2，v2.6 删了非流式版)
+- 〔C4d · 第四波 4B〕历史清单那两条（本机项目 · 展开一个项目）退役：清单与判活搬进本机常驻后端（`history-projects` / `history-sessions`），不再接 `State`。
 - `lib.rs::list_session_activity(map: State<'_, Arc<SessionMap>>)` (issue #23：红绿灯启动快照)
 - `lib.rs::list_active_sessions(map: State<'_, Arc<SessionMap>>)` (Batch5-F18：启动骨架 Tab 清单，sid+cwd 按 (cwd,sid) 排序)
 
