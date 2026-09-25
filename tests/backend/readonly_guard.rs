@@ -196,6 +196,13 @@ mod tests {
              `~/.cc-monitor/assets-catalog.json`（第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
         ),
         (
+            "asset_sync",
+            "〔AS2 · 第四波 4B · V113〕资产目录的自动同步：帧面 `assets-sync` —— 本机常驻后端沿池里那条 SSH \
+             在远端跑两条一次性子命令（拉 `--assets-catalog` · 推 `--assets-catalog-merge`）。它归 backend-core 是因为\
+             SSH 连接只住本机常驻后端（`dial/`）。**零写盘**：本机目录的写口（`asset_catalog::answer_merge`）由 \
+             `inbound.rs` 递进来，本模块不直呼它（第四层 ④）",
+        ),
+        (
             "feature_face",
             "〔RM1b · 第四波〕功能侧只读查询的帧面宿主（任务列表 …）—— 与 `read_face` 同形的一层壳：\
              本体在 `observe/`，它只解 `args`、装应答。**零写盘**",

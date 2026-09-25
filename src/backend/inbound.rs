@@ -87,6 +87,8 @@ pub const COMMANDS: &[&str] = &[
     // 〔AS2 · 第四波 4B · V113〕资产目录（后端自有状态，第四层）：现扫 ＋ 记 · 并进别处的整份。
     "assets-catalog",
     "assets-catalog-merge",
+    // 〔AS2〕本机常驻后端沿池里那条 SSH 拉 / 并 / 推远端的目录（事件触发：连上 · 看机器页）。
+    "assets-sync",
     "bus-kill",
     "bus-list",
     "bus-send",
@@ -886,6 +888,26 @@ pub const REGISTRY: &[CommandSpec] = &[
             crate::asset_catalog::answer_merge(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔AS2〕**资产目录的自动同步**：本机常驻后端沿池里那条 SSH 连接（多开一个 exec 通道，零新连接）
+    //   拉远端的目录、并进本机、把远端缺的推过去。写口（`answer_merge`）由这扇门递进去 —— `asset_sync.rs`
+    //   自己不直呼它（`readonly_guard` 第四层 ④：写口只从 `inbound.rs` 进来）。真异步（拨号 / 等远端）。
+    CommandSpec {
+        name: "assets-sync",
+        doc_anchor: Some("#### `assets-sync`"),
+        codes: &["bad_args"],
+        fields: &["backend", "dial", "origin", "reach", "synced"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                let fold: crate::asset_sync::Fold =
+                    std::sync::Arc::new(crate::asset_catalog::answer_merge);
+                crate::asset_sync::answer(&r.args, fold, &crate::asset_sync::DialRemote)
+                    .await
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
         }),
     },
     CommandSpec {

@@ -420,7 +420,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
              而且 `cancel` 会对它撒谎（abort 对 spawn_blocking 是空操作）"
     );
     // 纯计算的两条留在普通 spawn 上（它们能在 await 点被真取消）。
-    for c in ["ping", "resolve"] {
+    // 〔AS2 · 第四波 4B〕`assets-sync`：等拨号 / 等远端 capture —— 真异步，也在普通 spawn 上。
+    for c in ["ping", "resolve", "assets-sync"] {
         assert!(
             matches!(d(c), Disposition::Spawn(..)),
             "`{c}` 不该在阻塞档上 —— 那会让它白白变成不可取消"
@@ -540,6 +541,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "kill",
         "ping",
         "resolve",
+        "assets-sync",
         "cancel",
         "link-open",
         "link-data",
