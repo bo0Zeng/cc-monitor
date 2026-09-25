@@ -216,6 +216,7 @@ const UNIT: &[&str] = &[
     "tests/views/history-cache.test.ts",
     "tests/views/history-close-stops-retry.vitest.ts",
     "tests/views/history-counted.vitest.ts",
+    "tests/views/history-state-chip.vitest.ts", // 〔AR1〕历史状态词只住 sessionState.*
     "tests/views/history-filter-collapse.vitest.ts",
     "tests/views/history-index-wait.vitest.ts",
     "tests/views/history-prefs.test.ts",
