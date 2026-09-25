@@ -389,6 +389,9 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         # 〔AS2 · 第四波 4B〕skill「装到这台」（能力 `skill.install`，③）：写的是这台 `<skill 根>/<名>/`，与 cc-bus 那一格同一件（装 skill）。
         "skill_install_apply",
         "skill_install_preview",
+        # 〔SU1 · 第四波 4C · V116〕skill 卸（同一能力 `skill.install`，③）：删的是同一个 `<skill 根>/<名>/` 里装时写进去的那几个 ⇒ 同一件（装 / 卸 skill）。
+        #   前端落点仍只在 `src/settings/mcp-section.ts::assetInstallApi`（`FRONTEND_PIN['S5']` 不动）。
+        "skill_uninstall_apply",
         "remove_project_mcp_server",
         "write_project_mcp_server",
         "write_skill_file",
