@@ -133,6 +133,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "kill"
                 | "bus-list"
                 | "bus-send"
+                | "bus-broadcast"
                 | "bus-kill"
                 | "bus-spawn"
                 | "bus-state"
@@ -206,6 +207,10 @@ fn every_registered_command_declares_its_run_kind() {
                 // 〔AS2〕skill「装到这台」两条：走 skill 目录、读文件原文、stat 可疑路径（同步文件 I/O）。
                 | "skill-read"
                 | "skill-install-plan"
+                // 〔SU1 · 第四波 4C〕skill 卸三条：原子写装记录 · 读装记录 · 逐个读盘比摘要（同步文件 I/O）。
+                | "skill-install-record"
+                | "skill-installs"
+                | "skill-uninstall-plan"
                 // 〔C4d · 第四波 4B〕历史注解三条：读 / 原子写一份小文件（同步文件 I/O）。
                 | "history-annotate"
                 | "history-forget"
@@ -258,6 +263,7 @@ fn every_registered_command_declares_its_run_kind() {
         "remote-reach",
         "bus-list",
         "bus-send",
+        "bus-broadcast",
         "bus-kill",
         "bus-spawn",
         "bus-state",
@@ -311,6 +317,10 @@ fn every_registered_command_declares_its_run_kind() {
         "assets-catalog-merge",
         "skill-read",
         "skill-install-plan",
+        // 〔SU1 · 第四波 4C〕skill 卸三条（阻塞档，理由在上面 `expected_blocking`）。
+        "skill-install-record",
+        "skill-installs",
+        "skill-uninstall-plan",
         // 〔C4d · 第四波 4B〕历史注解三条（阻塞档，理由在上面 `expected_blocking`）。
         "history-annotate",
         "history-forget",

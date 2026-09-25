@@ -89,7 +89,7 @@ fn an_old_backend_rejecting_the_new_mode_is_not_a_reason_to_fall_back() {
 ///
 /// 第一版是**手写的两条清单**（`backend_kill.rs` / `backend_send_keys.rs`）——
 /// Phase G 的 `/full-audit` 当场指出：同一个目录里**第三个**走后端的发送端
-/// `backend_launch.rs::backend_send_into`（U8a-2c-1，早于本工作区）**不在清单里**，
+/// `backend_launch.rs` 里的 `backend_send_into`〔散文墓碑〕（U8a-2c-1，早于本工作区；〔C4e〕随就地 resume 迁到界面删了）**不在清单里**，
 /// 于是它自己 match 一整套 `CallError`、把**每一档**都折成「诚实降级」，
 /// 而调用方拿到降级就**回落到 TS 渲染的整串**（那条串没有 §34 的 Gate 2）。
 ///
@@ -103,31 +103,33 @@ fn an_old_backend_rejecting_the_new_mode_is_not_a_reason_to_fall_back() {
 /// 目录里每个 `.call(` 的文件都必须在下表里，要么用分流器、要么是**带理由的刻意例外**。
 #[cfg(test)]
 const SENDERS: &[(&str, Verdict)] = &[
-    ("backend_kill.rs", Verdict::UsesRouter),
-    ("backend_send_keys.rs", Verdict::UsesRouter),
-    // ✅ **F14 已收进来**：`SendIntoResponse` 加了第三个字段 `may_fall_back`
-    // （两态表达不出「不许回落」），分流本体改调 `route_call_error`。
-    // ⚠ 上一版把它记成 `ExemptPendingF14`，而那条判据断言例外那格**不**用分流器
-    // ⇒ 改好的当天它**如设计般红了一次**，逼人回来把登记改对。**那是它的岗位。**
-    ("backend_launch.rs", Verdict::UsesRouter),
+    // 〔C4e · 第四波 4C〕这里原来头三行是 `backend_kill.rs` / `backend_send_keys.rs` / `backend_launch.rs`
+    //   （杀会话 · 送键 · 就地 resume 三个发送端，都 `UsesRouter`；`backend_launch` 那一行还记着 F14 的
+    //   「`may_fall_back` 第三个字段 · 上一版误记成例外、改好当天如设计般红过一次」）。三条 Tauri 命令迁到界面
+    //   （`src/tmux-control.ts` 经通道直接说 `kill` / `launch`），发送端整份删了，发现阶段扫不到它们 ⇒ 三行摘掉。
+    //   它们守的那件事没丢：Rust 这一侧的分层判定照旧只在 `backend_route::layer_call_error` 一处（通道宿主 `host.rs` 用它）；
+    //   F14 那条「能不能回落」在界面那一侧的同义一份（`ipc/chan-caller.ts::provablyNotSent`）由跨语言金样
+    //   `tests/__fixtures__/reach-collapse.golden.json` 与本侧 `route_call_error` 对拍（`chan/webview_tests.rs`）。
     // ★ 08-08 扩面当场逮出来的**第四个真实发送端**（此前整个在扫描面之外）。
     // 它发的是 `probe_backend` 里那条 `ping`：只把成败渲染成 `control=ok(..ms)` /
     // `control=failed(..)` 的诊断串，**不做任何回落决策** ⇒ 没有「该不该回落」这个问题。
     ("ssh_source.rs", Verdict::ProbeOnlyNoFallbackDecision),
-    // ★ P4f 08-13：**本机 cc-bus 写面**（`cc_bus_send` 对 `<local>`）走后端的
-    // `bus-send` 原语。它没有第二条路可回落（本机 shell 写面正是 `P4a` 拒掉的东西），
-    // 两档结果都只渲染成给用户的一句话 —— 但**照样走分流器**：
-    // 分流规则有第二份实现的那天，「被门拒绝」就会在某一份里被洗成「换条路重做」。
-    ("cc_bus.rs", Verdict::UsesRouter),
-    // ★ `K-R112` 09-13：**第七个发送端** —— 抓屏（`tmux.rs::capture_via_backend`）
+    // 〔C4e · 第四波 4C〕**`cc_bus.rs` 那一行退役了**：P4f 起它把 cc-bus 写面（发消息 · 收掉 · 派生 · 查在线）经后端的
+    //   `bus-*` 原语转一手、走分流器；现在界面经通道直接说（`src/cc-bus-control.ts`，广播的挑人也搬进了后端 `bus-broadcast`），
+    //   monitor 的 `cc_bus.rs` 只剩读名单 / 读收件箱两条 shell 读，不再是走后端的发送端 —— 从登记表删，不留过渡格。
+    //   「monitor 里写面一条路都不剩」由 `cc_bus_tests.rs::the_monitor_has_no_cc_bus_write_path_any_more` 两向判。
+    // ★ `K-R112` 09-13：**第七个发送端** —— 抓屏（`capture_via_backend`〔散文墓碑〕，〔C4e〕已删）
     //   改走帧面 `capture-pane`。它**没有第二条路可回落**（那条一次性 SSH 本件删净了），
     //   但**照样走分流器**，理由与 `cc_bus.rs` 那条逐字相同：
     //   〔`设计/50`：原话还并列了 `account_usage.rs`（`K-R104` 的第六个发送端）——
     //    用量 ③ 轴整轴退役，那个发送端不存在了，发送端从七个变回六个。〕
     //   本模块的三态是从 `Routed` 搬过来的，不是它自己 match 一遍错误枚举。
     //   ⚠ 它回的是 `Result<String, Routed>` —— 「拿到了那一屏」与「三态里的另外两态」
-    //   在类型上分得开，怎么对用户说由调用方 `capture_remote_pane` 决定。
-    ("tmux.rs", Verdict::UsesRouter),
+    //   在类型上分得开，怎么对用户说由调用方 `capture_remote_pane` 决定。〔散文墓碑〕
+    // 〔C4e · 第四波 4C〕**上面那一行（`tmux.rs`）退役了**：抓屏改由界面经通道直接问那台机器的后端
+    //   （`src/tmux-control.ts::capturePane`），monitor 里那个发送端（`capture_via_backend`〔散文墓碑〕）删了 ——
+    //   `tmux.rs` 从此不再直连 `inbound_client`，发现阶段扫不到它，登记跟着摘。分层判定照旧只在
+    //   `backend_route::layer_call_error` 一处（通道宿主 `host.rs` 用它），界面那一侧只把分好层的结果翻成一句话。
     // ★ 〔步 `24f` 第四刀 09-21〕**第七个发送端** —— 原生文件窗口那一侧的搜索
     //   （`filewin/find.rs`，`files-find` / `files-index-status` /
     //   `files-index-rebuild` / `files-browse` 四条）。

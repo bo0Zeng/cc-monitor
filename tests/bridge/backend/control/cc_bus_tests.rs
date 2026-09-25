@@ -337,9 +337,10 @@ fn cat_command_is_a_constant_with_no_interpolation() {
 // ★★ `K-R112`（09-13）：**这里原来住着「在线检查：id 必须先过校验才允许拼进命令」**。〔散文墓碑〕
 // 它守的是「构造那条 `tmux has-session -t '=<id>:'` 之前先校验」这个顺序 ——
 // 而那条命令串本件删净了（查在线改走 `bus-list`）⇒ 它守的顺序**不存在了**。
-// **校验本身没有丢**：`online_via_backend` 开场就拒非法 id，由
-// `the_online_lamp_asks_the_identity_space_and_has_nothing_else_to_ask` ＋
-// `an_unknown_liveness_is_never_rendered_as_dark`（走**生产入口本体**，不是扫源码）钉着。
+// **校验本身没有丢**：`online_via_backend` 开场就拒非法 id，由〔散文墓碑〕
+// `the_online_lamp_asks_the_identity_space_and_has_nothing_else_to_ask` ＋〔散文墓碑〕
+// `an_unknown_liveness_is_never_rendered_as_dark`（走**生产入口本体**，不是扫源码）钉着。〔散文墓碑〕
+// 〔C4e〕那一处也迁走了：查在线今天住界面 `src/cc-bus-control.ts` 的 `agentOnline`（发出之前先核 id），判据 `tests/cc-bus-control.vitest.ts`。
 
 // ===================== B03 批二 =====================
 //
@@ -411,14 +412,17 @@ fn quote_roundtrip_is_the_real_property() {
 // ===== 校验落在构造函数上（删掉任何一处校验，这些立刻红）=====
 //
 // ⚠〔`K-R98` 09-13〕发消息那条**不在这里了**：它没有命令构造器可言（改走后端原语）。
-//   那道 id 白名单**没有丢，换了住址** —— 搬进 `send_via_backend`，
-//   由 `the_send_path_asks_the_backend_instead_of_composing_a_shell_line` 按源码钉着。
+//   那道 id 白名单**没有丢，换了住址** —— 搬进 `send_via_backend`，〔散文墓碑〕
+//   由 `the_send_path_asks_the_backend_instead_of_composing_a_shell_line` 按源码钉着。〔散文墓碑〕
+//   〔C4e〕发消息迁到界面：白名单今天住 `src/cc-bus-control.ts` 的 `sendMessage` 发出之前；两份 id 规则由
+//   `the_bus_id_rule_agrees_with_the_front_end_on_the_shared_samples` 对拍。
 #[test]
 fn builders_reject_bad_ids_at_the_call_site() {
     for bad in ["--help", "-t", "a b", "a;id", "", "a'b", "a/b"] {
         // ⚠〔`K-R112` 09-13〕`build_online_cmd` 从这张表出去了 —— 它整块删了
         //   （查在线改走 `bus-list`）。那道白名单**没有丢，换了住址**：搬进
-        //   `online_via_backend`，由 `an_unknown_liveness_is_never_rendered_as_dark` 钉着。
+        //   `online_via_backend`，由 `an_unknown_liveness_is_never_rendered_as_dark` 钉着。〔散文墓碑〕
+        //   〔C4e〕今天住界面 `src/cc-bus-control.ts`（查在线迁过去了）。
         assert!(build_inbox_cmd(bad).is_err(), "inbox: {bad:?} 应被拒");
     }
 }
@@ -436,63 +440,12 @@ fn inbox_cmd_is_readonly_and_bounded() {
 // 〔BS1b 09-24〕这里原先三条钉的是派生那条 SSH 主路的命令构造器（白名单 tool · 引用路径 ·
 //   账号必须表态 · 账号名字符集）。构造器随那条路一起删了；四件事的新住址：
 //   `--` 与账号表态 → 后端 `control::cc_bus::tests` 的 `bus_spawn_*` 那几条；
-//   账号名字符集 → 下面 `spawn_shape_is_checked_on_this_side_before_the_backend`；
+//   账号名字符集 → 下面 `spawn_shape_is_checked_on_this_side_before_the_backend`；〔散文墓碑〕
 //   tool 白名单 → **删了**（认不认归 cc-spawn，后端那条判据钉着「后端不许再白名单」）。
 
-/// 账号名来自 manifest（我们自己维护），但**仍要过字符集**—— B03 审计的 `--help` 教训：
-/// 盘上真会出现没人预料的 id，「这是我们自己的数据」不是免检理由。
-/// 〔BS1b〕从「拼进命令之前」挪到「交给后端之前」：注入面没了，「调用方不能靠对端校验」没作废。
-#[test]
-fn spawn_shape_is_checked_on_this_side_before_the_backend() {
-    for bad in ["--base", "-x", "a b", "a;id", "", "a'b", "a/b", "$(id)"] {
-        assert!(
-            check_spawn_shape("claude", "/d", Some(bad)).is_err(),
-            "账号名 {bad:?} 必须被拒"
-        );
-    }
-    for ok in ["z", "acct_b", "team-1", "A9"] {
-        assert!(
-            check_spawn_shape("claude", "/d", Some(ok)).is_ok(),
-            "{ok} 应合法"
-        );
-    }
-    assert!(
-        check_spawn_shape("claude", "/d", None).is_ok(),
-        "不选号 = 基座，合法"
-    );
-    assert!(
-        check_spawn_shape("claude", "  ", None).is_err(),
-        "空目录应被拒"
-    );
-    assert!(
-        check_spawn_shape(" ", "/d", None).is_err(),
-        "没说起哪种 agent 应被拒"
-    );
-    assert!(
-        check_spawn_shape("not-an-agent", "/d", None).is_ok(),
-        "这一侧又开始白名单 agent 种类了 —— 认不认归 cc-spawn"
-    );
-}
-
-/// `bus-spawn` 回值讲成人话：`id` 认不出**不许**说成「没起来」；形状不认识 ⇒ 说「不知道起没起」。
-#[test]
-fn spawn_reply_never_turns_an_unrecognised_name_into_a_failure() {
-    let ok = describe_spawn_reply(Some(
-        &serde_json::json!({"spawned":true,"id":"p_cc-2","said":"已 spawn: p_cc-2"}),
-    ));
-    assert!(ok.starts_with("已派生 p_cc-2"), "{ok}");
-    let noid = describe_spawn_reply(Some(
-        &serde_json::json!({"spawned":true,"id":null,"said":"x"}),
-    ));
-    assert!(
-        noid.contains("已派生") && noid.contains("不要重试"),
-        "认不出名字那档必须说「已派生、不要重试」：{noid}"
-    );
-    let odd = describe_spawn_reply(Some(&serde_json::json!({"hello":1})));
-    assert!(odd.contains("不确定会话有没有起来"), "{odd}");
-    assert_ne!(ok, noid);
-    assert_ne!(noid, odd);
-}
+// 〔C4e · 第四波 4C〕这里原来还有两条：派生的形状在这一侧先核（`spawn_shape_is_checked_on_this_side_before_the_backend`）·〔散文墓碑〕
+//   认不出新会话名字 ≠ 没起来（`spawn_reply_never_turns_an_unrecognised_name_into_a_failure`）〔散文墓碑〕。
+//   派生迁到界面（`src/cc-bus-control.ts::spawnAgent`），两条性质随之住 `tests/cc-bus-control.vitest.ts`（`checkSpawnShape` · `saidOfSpawn`）。
 
 // ===== inbox 解析同样守"坏行跳过并计数" =====
 #[test]
@@ -533,7 +486,8 @@ fn inbox_bad_lines_skipped_not_fatal() {
 #[test]
 fn the_probe_by_name_template_is_gone_from_production() {
     let code = non_test_code();
-    assert!(code.contains("pub async fn check_cc_bus_agent_online"));
+    // 〔C4e〕锚点从查在线那条命令换成读名单那条（前者迁到界面删了）；换的是参照物，不是口径。
+    assert!(code.contains("pub async fn read_cc_bus_state"));
     assert_eq!(
         code.matches("tmux has-session -t").count(),
         0,
@@ -543,8 +497,8 @@ fn the_probe_by_name_template_is_gone_from_production() {
     );
     // 反向自检：抽取器还够得着东西（不然上面那个 0 是空真）。
     assert!(
-        code.contains("online_via_backend"),
-        "生产段连 `online_via_backend` 都找不到 —— 抽取器坏了，上面那个 0 不作数"
+        code.contains("pub async fn read_cc_bus_inbox"),
+        "生产段连读收件箱那条命令都找不到 —— 抽取器坏了，上面那个 0 不作数"
     );
 }
 
@@ -660,8 +614,9 @@ fn fn_body(code: &str, name: &str) -> String {
 /// ⚠〔`K-R98` 09-13〕**那条路今天整个不在了**：发消息改走后端的 `bus-send` 原语，
 /// 连同它的 shell 构造器一起删净 ⇒ 本条的人群从 6 个降到 5 个。
 /// 「这条路上还有没有拼出来的命令串」由
-/// `the_send_path_asks_the_backend_instead_of_composing_a_shell_line` 接着守，
-/// **判的是那条路，不是某个符号在不在**。
+/// `the_send_path_asks_the_backend_instead_of_composing_a_shell_line` 接着守，〔散文墓碑〕
+/// **判的是那条路，不是某个符号在不在**。〔C4e〕那条判据随发消息迁到界面退役；「monitor 里写面一条路都不剩」由
+/// `the_monitor_has_no_cc_bus_write_path_any_more` 两向判。
 ///
 /// # 人群从构造器本身派生
 ///
@@ -749,10 +704,8 @@ fn non_test_code() -> String {
 fn non_test_code_helper_is_sane() {
     // 守住这个助手本身：剥过头（剥成空）或没剥干净，上下两条守卫就都成了摆设
     let c = non_test_code();
-    assert!(
-        c.contains("pub async fn check_cc_bus_agent_online"),
-        "剥过头了"
-    );
+    // 〔C4e〕锚点从查在线那条命令换成读名单那条（前者迁到界面删了）。
+    assert!(c.contains("pub async fn read_cc_bus_state"), "剥过头了");
     // ⚠〔`K-R112` 09-13〕锚点从 `build_online_cmd` 换成 `build_inbox_cmd` ——
     //   前者整块删了（查在线改走 `bus-list`）。换的是**参照物**，不是口径。
     assert!(c.contains("fn build_inbox_cmd"), "剥过头了");
@@ -1330,48 +1283,6 @@ async fn bounded<T: Send + 'static>(
     }
 }
 
-/// ★ 在线灯**必须先问身份空间**，不能只有那条按名字的老探法。
-///
-/// ⚠ 变异实测：把「先问后端」那一步整个拿掉，上面那条纯函数判据**照样绿** ——
-/// 它钉的是"答案怎么算"，不是"有没有去问"。⇒ 这条钉接线本身（位置：问在前，探在后）。
-///
-/// ⚠⚠ **本条的射程如实写**：它按**字面量位置**判，所以
-/// · 真删掉那一步 ⇒ **红**（实测）；
-/// · 把调用留在原地却不用它的结果（`if let Some(x) = None { … online_via_backend(…) }`）
-///   ⇒ **绿**（我自己第一次的变异恰好是这个形状，它溜过去了）。
-/// 后者要靠行为判据（真起后端跑一遍）才逮得住，那归后端侧那套 e2e。
-/// **写下来**是因为：不写的话，下一个人会以为这条比它实际能做的更强。
-#[test]
-fn the_online_lamp_asks_the_identity_space_and_has_nothing_else_to_ask() {
-    let code = non_test_code();
-    // ⚠〔`K-R112` 09-13〕原文钉的是**顺序**（先问身份空间、再退回按名字探）。
-    //   本件把老探法整条删了 ⇒ 「顺序」这件事不存在了，**位置比较的参照物没了**。
-    //   照字面留着它只能放宽成「提到过 online_via_backend」——那是空真。
-    //   ⇒ 翻成更强的一格：这条路上**只有一条路**。
-    for name in ["check_cc_bus_agent_online", "online_via_backend"] {
-        let body = fn_body(&code, name);
-        assert!(
-            body.chars().count() > 40,
-            "`{name}` 的体只切出 {} 字 —— 抽取器坏了，本条在空转",
-            body.chars().count()
-        );
-        let hits = shell_line_markers(&body);
-        assert!(
-            hits.is_empty(),
-            "`{name}` 这条路上又出现了命令串的痕迹 {hits:?} —— 老探法回潮了。\n\
-                 它按**名字**探（`tmux has-session`），而名字会被重用：那盏灯会为别人的会话亮。"
-        );
-    }
-    assert!(
-        fn_body(&code, "check_cc_bus_agent_online").contains("online_via_backend(&origin, &id)"),
-        "在线灯没有把 origin 原样交给那条唯一的路"
-    );
-    assert!(
-        fn_body(&code, "online_via_backend").contains(".call(\n            BUS_LIST"),
-        "`online_via_backend` 没在调 `bus-list` —— 那盏灯又不问身份空间了"
-    );
-}
-
 /// ★★ **给 `agents.tsv` 加一列，不许打破读它的人**〔08-13〕。
 ///
 /// 今天为身份核对加了第 4 列（登记时的 pane 根进程 pid）。这张表有**四个读者**：
@@ -1420,594 +1331,26 @@ b_cc	b_cc:0.0	ts	12345
     assert_eq!(bad_short, 1, "两列行该算坏行");
 }
 
-/// ★ 在线灯：**「问不到」不许渲染成「不在线」**。
-///
-/// 老探法是 `tmux has-session -t '=<id>:'`（纯按名字）——名字被别人占着时它照样说在线。
-/// 换成问 `bus-list` 之后，`None` 有两种来源（不在名单 / `live` 是 null）。
-///
-/// ⚠〔`K-R112` 09-13〕原文第三句写「**两种都要回落到老探法**」—— 那半句今天假了：
-/// 老探法删了。**保住的是这一条本来要买的东西**（灭灯是一个确定的答案，而我们并不确定），
-/// 只是出口从「回落」换成 [`unknown_liveness`] 那句诚实的「问不到」。
-/// 出口那一半由 `an_unknown_liveness_is_never_rendered_as_dark` 钉。
-#[test]
-fn the_online_lamp_never_guesses_dark() {
-    use serde_json::json;
-    let agents = vec![
-        json!({"id": "a_cc", "live": true}),
-        json!({"id": "b_cc", "live": false}),
-        json!({"id": "c_cc", "live": null}),
-    ];
-    assert_eq!(live_of(&agents, "a_cc"), Some(true));
-    assert_eq!(
-        live_of(&agents, "b_cc"),
-        Some(false),
-        "确定不在线要答得出来"
-    );
-    assert_eq!(
-        live_of(&agents, "c_cc"),
-        None,
-        "live=null 是「问不到」，不是「不在」"
-    );
-    assert_eq!(
-        live_of(&agents, "nobody_cc"),
-        None,
-        "不在名单里也是「答不上」"
-    );
-}
-
-/// ★★ **广播不许再打进幽灵收件箱**〔P4f 08-13，用户机器上实测出来的〕。
-///
-/// 老路（`cc-broadcast` 脚本）发给 `agents.tsv` 的**每一行**。用户机器实测：
-/// **86 行登记、只有 8 个会话还活着** ⇒ 一次广播打进 **78 个没人读的收件箱**，
-/// 而它报「已向 86 个 agent 发出广播」—— 那个数把 78 个幽灵也算了进去。
-#[test]
-fn broadcast_only_goes_to_the_ones_that_are_actually_there() {
-    use serde_json::json;
-    let agents = vec![
-        json!({"id": "a_cc", "live": true}),
-        json!({"id": "b_cc", "live": false}),
-        json!({"id": "c_cc", "live": true}),
-        json!({"id": MONITOR_BUS_ID, "live": true}),
-    ];
-    let plan = pick_broadcast_targets(&agents, MONITOR_BUS_ID);
-    assert_eq!(plan.targets, vec!["a_cc", "c_cc"], "只该发给活着的");
-    assert_eq!(plan.skipped_offline, 1, "不在线的要计数，不是悄悄丢掉");
-    assert!(!plan.liveness_unknown);
-    assert!(
-        !plan.targets.iter().any(|t| t == MONITOR_BUS_ID),
-        "不发给自己"
-    );
-}
-
-/// ★ **「问不到」不等于「都不在」**。
-///
-/// 身份空间答不上时（没装 tmux 等，`live` 全是 `null`），退回「发给所有登记的」——
-/// 若问不到就谁都不发，用户会看到一次「已广播给 0 个」，那是**把不知道渲染成了确定**。
-#[test]
-fn unknown_liveness_does_not_silently_become_nobody() {
-    use serde_json::json;
-    let agents = vec![
-        json!({"id": "a_cc", "live": null}),
-        json!({"id": "b_cc", "live": null}),
-    ];
-    let plan = pick_broadcast_targets(&agents, MONITOR_BUS_ID);
-    assert_eq!(plan.targets.len(), 2, "问不到时不许把人全滤掉");
-    assert!(
-        plan.liveness_unknown,
-        "而且要**标出来**是问不到，不是装作知道"
-    );
-    assert_eq!(plan.skipped_offline, 0);
-    let said = describe_broadcast(&plan, 2, &[]);
-    assert!(said.contains("问不到谁在线"), "话没说清：{said}");
-}
-
-/// ★ 三个数**分开说**：发到几个 / 跳过几个 / 失败几个。
-#[test]
-fn the_broadcast_wording_keeps_the_three_counts_apart() {
-    let plan = BroadcastPlan {
-        targets: vec!["a_cc".into(), "b_cc".into()],
-        skipped_offline: 78,
-        liveness_unknown: false,
-    };
-    let said = describe_broadcast(&plan, 1, &["b_cc（超时）".to_string()]);
-    assert!(said.contains("1 个**在线**"), "{said}");
-    assert!(said.contains("跳过 78 个"), "跳过的没说：{said}");
-    assert!(said.contains("1 个失败"), "失败的没说：{said}");
-    // 老路那句话的形状（把所有人算成一个 N）不许回来
-    assert!(!said.contains("已向 79"), "又把跳过的算进总数了：{said}");
-}
-
-/// ★★ **三态在线不许在讲人话这一层被抹平**〔P4f 08-13，变异 M2 逼出来的〕。
-///
-/// backend 的 `bus-send` 回 `registered` + 三态 `live`，而 UI 拿到的是一句话。
-/// 变异实测：把 `describe_send_reply` 改成恒说「已投递给 X」——**60 条测试全绿**。
-/// 也就是说那三态一路传到最后一米，然后被一句话吃掉，没有任何东西看着。
-///
-/// 「发出去了」和「发出去了但没人会读」对用户是两件事：后者要么名字打错了，
-/// 要么对方不在线（消息躺在收件箱里等它下次起来）。
-#[test]
-fn the_delivery_wording_keeps_the_three_states_apart() {
-    use serde_json::json;
-    let say = |v: serde_json::Value| describe_send_reply("proj_cc", Some(&v));
-    let ok = say(json!({"registered": true, "live": true}));
-    let offline = say(json!({"registered": true, "live": false}));
-    let ghost = say(json!({"registered": false, "live": null}));
-    let unknown = say(json!({"registered": true, "live": null}));
-    for (a, b, why) in [
-        (&ok, &offline, "「在线」与「不在线」"),
-        (&ok, &ghost, "「在线」与「名字没登记过」"),
-        (&offline, &ghost, "「不在线」与「名字没登记过」"),
-        (&ok, &unknown, "「在线」与「问不到在不在线」"),
-    ] {
-        assert_ne!(a, b, "{why} 说的是同一句话 —— 三态被抹平了");
-    }
-    // 各自要点到实处（不是只要求"不一样"就行）
-    assert!(offline.contains("不在线"), "{offline}");
-    assert!(ghost.contains("没在总线上登记过"), "{ghost}");
-    assert!(unknown.contains("问不到"), "{unknown}");
-    // 四种都得说「已投递」—— 投递是照做的，三态只是附加说明
-    for m in [&ok, &offline, &ghost, &unknown] {
-        assert!(m.contains("已投递"), "投递本身没说清：{m}");
-    }
-}
-
-/// ★ P4a-Y2：**写面两条必须在 `cfg_of` 之前就把本机挡掉。**
-///
-/// ⚠ 本条是**变异逼出来的**：M5（拿掉 `cc_bus_send` 的本机拒绝）第一次跑
-/// **照样绿** —— 因为 `local_origin_registry` 只扫**直接**调
-/// `load_remote_config_by_label(` 的地方，而这两条走的是 `cfg_of` 这个**包装**。
-/// ⇒ 那条护栏对「隔了一层包装」是瞎的（已在它的头注里登记）。
-///
-/// 钉**位置**而不是「有没有这句话」：本机分支必须在 `cfg_of` 之前，
-/// 否则用户拿到的是 `cfg_of` 那句通用话，而不是这条路真实的说法。
-///
-/// ⚠⚠ **08-13 P4f 改过一次口径**：本条原来钉的是 `refuse_local_write(` 这个**写法**。 〔散文墓碑〕
-/// 而 `cc_bus_send` 的本机路当时**不再是拒绝** —— 它走后端的 `bus-send` 原语
-/// （拒绝理由逐字写着「等命令组件做出来」，那些组件做出来了）。
-/// ⇒ 钉的东西从「有没有那句拒绝」改成**「本机分支在不在 `cfg_of` 前面」**：
-/// 前者是实现，后者才是这条判据真正要保的性质。
-/// **两种形态都算数**：`refuse_local_write(` 或 `== LOCAL_ORIGIN` 的早返回。 〔散文墓碑〕
-///
-/// ⚠⚠⚠ **09-13 `K-R98` 又改一次人群 —— 而这一次是把 `cc_bus_send` 挪出去，
-/// 不是把它豁免掉。** 它今天**整条路只有一份**（远端那半也改走 `bus-send`），
-/// 函数体里**根本没有 `cfg_of`** ⇒ 「本机会不会掉进 `cfg_of` 拿到一句通用话」
-/// 这个问题在它身上**结构上不成立**（不是「今天恰好不会」）。
-/// 🔴 而「不成立」必须**判出来**：下面那一段单独钉它 ——
-/// 从表里删掉了事就是静默失去覆盖，那正是本仓栽过的「把判据的分母改小」。
-#[test]
-fn the_write_face_branches_on_local_before_it_asks_for_a_remote_config() {
-    let code = non_test_code();
-    // 窗口按**函数边界**截 —— 两处都用它（第一版各写一遍，其中一处越进了邻居）。
-    let body_of = |name: &str| -> String {
-        let at = code
-            .find(name)
-            .unwrap_or_else(|| panic!("生产段找不到 {name} —— 判据在空转"));
-        let rest = &code[at..];
-        let end = rest[1..]
-            .find("\npub async fn ")
-            .or_else(|| rest[1..].find("\npub fn "))
-            .map(|k| k + 1)
-            .unwrap_or_else(|| rest.len().min(1400));
-        rest[..end].to_string()
-    };
-
-    // ── ① `cc_bus_send`：**不问远端配置**，因为它没有「远端专属」那一支了 ──────
-    let send = body_of("pub async fn cc_bus_send(");
-    assert!(
-        send.chars().count() > 40,
-        "`cc_bus_send` 的体只切出 {} 字 —— 窗口坏了，下面三条都在空转",
-        send.chars().count()
-    );
-    for needle in ["cfg_of(", "exec_read(", "local_shell_read("] {
-        assert!(
-            !send.contains(needle),
-            "`cc_bus_send` 里又出现了 `{needle}` —— 那意味着它重新长出了一支\n\
-                 「远端专属」的路。本条此前钉的是「本机分支要排在 `cfg_of` 前面」，\n\
-                 `K-R98` 之后钉的是**根本没有那个问题**：两侧同一条路，origin 是入参。"
-        );
-    }
-    assert!(
-        send.contains("send_via_backend(&origin, &id, &text)"),
-        "`cc_bus_send` 没有把 origin 原样交给那条唯一的路 —— \n\
-             它一旦自己判 origin，两条路就又有两份实现了。"
-    );
-
-    // ── ①b 〔`K-R112` 09-13〕**另外三条也进了这一段** ──────────────────────
-    //     收掉 / 广播 / 查在线本件都改走后端原语 ⇒ 它们与发消息同形：
-    //     没有「远端专属」那一支，也就没有「本机分支排在哪」这个问题。
-    // ⚠ 这里用 `fn_body`（**按顶格行配边界**）而不是上面那个 `body_of`：
-    //   `check_cc_bus_agent_online` 与下一个 `pub async fn` 之间隔着一大段非 pub 代码
-    //   （构造器 / `exec_read` / `cfg_of` / `local_shell_read` 的**定义**），
-    //   `body_of` 的窗口会把它们整段读进来 ⇒ 下面那三个 needle 恒命中 = 一次假红。
-    // 〔BS1b 09-24〕`cc_bus_spawn` 也进了这一段（改走 `bus-spawn` 原语）。
-    for name in [
-        "cc_bus_kill",
-        "cc_bus_broadcast",
-        "check_cc_bus_agent_online",
-        "cc_bus_spawn",
-    ] {
-        let b = fn_body(&code, name);
-        assert!(
-            b.chars().count() > 30,
-            "{name} 的体只切出 {} 字 —— 窗口坏了",
-            b.chars().count()
-        );
-        for needle in ["cfg_of(", "exec_read(", "local_shell_read("] {
-            assert!(
-                !b.contains(needle),
-                "{name} 里又出现了 `{needle}` —— 那意味着它重新长出了一支「远端专属」的路"
-            );
-        }
-    }
-
-    // ── ② 〔BS1b 09-24〕原来这里逐条核「写面命令的本机分支排在 `cfg_of` 前面」，
-    //     最后一个成员是派生；它改走原语之后**写面里一条问远端配置的都没有了** ——
-    //     这件事不在这里靠「人群变空」表达（空循环是空转），而由上面 ①/①b 逐条钉住
-    //     「写面四条函数体里没有 `cfg_of(` / `exec_read(` / `local_shell_read(`」，
-    //     读面那一条（`read_cc_bus_inbox`）由 `whoever_still_asks_for_a_remote_config_branches_on_local_first` 接着判。
-}
-
 // ════════════════════════════════════════════════════════════════════════
-// `K-R98`（09-13）：发消息**远端那半**也改走后端的 `bus-send` 原语。
-// 下面三条分别是 `KR98D1` / `KR98D2` / `KR98D3` 的机检。
+// 〔C4e · 第四波 4C〕cc-bus 写面 ＋ 查在线迁到界面：本文件退役的那一批判据，逐条的去处
 // ════════════════════════════════════════════════════════════════════════
-
-/// 「这段代码在**拼 / 跑一条 shell 串**吗」—— 认形态，不认某一个符号。
-///
-/// 🔴 `KR98D1` 逐字记下的失效方向：判「代码里还有没有 `exec_read`」是**判写法**，
-/// 它挡不住换个写法再拼一遍（内联 `format!` ＋ `connect_and_exec_cmd`）。
-/// ⇒ 本谓词认的是「命令串」这件事的**几种形态**，而它对每一种真的会响这件事，
-/// 由 `the_shell_line_detector_really_sees_each_shape` 用活体语料证明。
-fn shell_line_markers(body: &str) -> Vec<&'static str> {
-    // 逐条：经命令构造器 · 送进远端 shell · 送进本机 shell · 自己连上去跑 ·
-    // 为了拼进 shell 才需要的引用 · 问「这台远端怎么连」· 重定向（命令串的指纹） ·
-    // 那条老命令自己。
-    [
-        "_cmd(",
-        "exec_read(",
-        "local_shell_read(",
-        "connect_and_exec_cmd(",
-        "shell_quote(",
-        "cfg_of(",
-        "2>&1",
-        "cc-send ",
-    ]
-    .into_iter()
-    .filter(|m| body.contains(m))
-    .collect()
-}
-
-/// ★ 上面那个谓词的**活体夹具**：它对每一种形态都得真的响。
-///
-/// 没有这一条的话，`shell_line_markers` 哪天被改瘸（比如有人为了让某条判据变绿
-/// 把 `_cmd(` 从表里拿掉），真判据会**零命中地绿** —— 那正是本仓最贵的一类假绿。
-#[test]
-fn the_shell_line_detector_really_sees_each_shape() {
-    // 形态一律**现拼**，免得夹具自己被真树上的扫描收进人群。
-    let old_send = format!(
-        "let cmd = build{u}send{u}cmd(&id, &text)?;\n\
-             let cfg = cfg{u}of(&origin)?;\n\
-             let out = exec{u}read(&cfg, &cmd, CAP, 30, \"x\", OnOverflow::Truncate).await?;",
-        u = "_"
-    );
-    assert!(
-        shell_line_markers(&old_send).len() >= 3,
-        "老那条路（构造器 + cfg_of + exec_read）没被认出来：{:?}",
-        shell_line_markers(&old_send)
-    );
-    let inlined = format!("let c = format!(\"cc{d}send {{id}} {{q}} 2>&1\");", d = "-");
-    assert!(
-        !shell_line_markers(&inlined).is_empty(),
-        "**换个写法内联拼一份**没被认出来 —— 那正是「判写法」买不到的那一格"
-    );
-    // 反向：一段真的只调原语的代码不许被误判。
-    let clean = "let args = json!({ \"to\": id });\nclient.call(BUS_SEND, args, d).await";
-    assert!(
-        shell_line_markers(clean).is_empty(),
-        "只调原语的代码被误判成拼串：{:?}",
-        shell_line_markers(clean)
-    );
-}
-
-/// ★★ `KR98D1`：**发一条给远端时，走的是后端原语，不是拼出来的 shell 串。**
-///
-/// 判的是**这条路**（`cc_bus_send` → `send_via_backend`）上有没有命令串，
-/// 不是「文件里还有没有 `exec_read`」—— 文件里当然还有（inbox / 广播 / 收掉 / spawn
-/// 四条仍旧走它，`KR98D3` 正是钉着它们别被顺手放行）。
-///
-/// 第 ③ 刀单列在末尾：**本机与远端两条路的可观测行为等价**。
-#[test]
-fn the_send_path_asks_the_backend_instead_of_composing_a_shell_line() {
-    let code = non_test_code();
-    // ── ① 这条路上没有命令串 ────────────────────────────────────────────
-    let mut checked = 0usize;
-    for name in ["cc_bus_send", "send_via_backend"] {
-        let body = fn_body(&code, name);
-        assert!(
-            body.chars().count() > 60,
-            "`{name}` 的体只切出 {} 字 —— 抽取器坏了，本条在空转",
-            body.chars().count()
-        );
-        let hits = shell_line_markers(&body);
-        assert!(
-            hits.is_empty(),
-            "`{name}` 这条路上又出现了命令串的痕迹 {hits:?}。\n\
-                 发消息归后端的 `{BUS_SEND}` 原语（`P4f` 逐字「cc-bus 的基础命令」）——\n\
-                 拼一份 shell 串走 SSH 就是同一件事的第二份实现（`K33`「所有命令只许有一处」）。"
-        );
-        checked += 1;
-    }
-    assert_eq!(checked, 2, "只核到 {checked} 段 —— 本断言在空转");
-
-    // ── ② 它真的调了那条原语，而且校验没在搬家的路上丢掉 ────────────────
-    let send = fn_body(&code, "send_via_backend");
-    for needle in [
-        ".call(BUS_SEND",
-        "is_valid_bus_id(id)",
-        "text.trim().is_empty()",
-    ] {
-        assert!(
-            send.contains(needle),
-            "`send_via_backend` 里找不到 `{needle}` —— 要么它没在调原语，\n\
-                 要么那两道随构造器一起被删的校验（id 白名单 / 空消息）没跟着搬过来。"
-        );
-    }
-
-    // ── ③ 🔴 两条路的可观测行为等价：**origin 是入参，不是分支** ──────────
-    for name in ["cc_bus_send", "send_via_backend"] {
-        let body = fn_body(&code, name);
-        for forbidden in ["LOCAL_ORIGIN", "origin =="] {
-            assert!(
-                !body.contains(forbidden),
-                "`{name}` 里出现了 `{forbidden}` —— 它又开始按 origin 分岔了。\n\
-                     两条路一分岔就有了两份实现，而用户看得见的那一面（措辞 / 校验 / 三态在线）\n\
-                     会各自漂 —— 这一条判的正是「同一输入 ⇒ 同一结果形状」。"
-            );
-        }
-    }
-    // 现跑一趟：同一输入喂给本机与一台远端，**两句话逐字相同**。
-    // （这两格在 `client_for` 之前就返回 ⇒ 与进程内那张登记表无关，不会飘。）
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("建运行时");
-    let local = crate::backend::control::inbound_client::LOCAL_ORIGIN;
-    for (id, text) in [("proj_cc", "   "), ("--help", "hi")] {
-        let a = rt.block_on(cc_bus_send(local.into(), id.into(), text.into()));
-        let b = rt.block_on(cc_bus_send(
-            "kr98-no-such-host".into(),
-            id.into(),
-            text.into(),
-        ));
-        assert_eq!(
-            a, b,
-            "同一输入（id={id:?} text={text:?}）在本机与远端上给了两种结果 —— 不等价。"
-        );
-        assert!(a.is_err(), "这一格本来就该拒：id={id:?} text={text:?}");
-    }
-    // 要说到「这台机器」的那几句，也只准差一个称呼。
-    let pairs = [
-        (
-            describe_no_channel(local, "p"),
-            describe_no_channel("h1", "p"),
-        ),
-        (
-            describe_backend_too_old(local, "p"),
-            describe_backend_too_old("h1", "p"),
-        ),
-    ];
-    for (l, r) in pairs {
-        assert_ne!(l, r, "两句话逐字相同 —— 那说明称呼根本没进去，本格在空转");
-        assert_eq!(
-            l.replacen(&machine_label(local), "<M>", 1),
-            r.replacen(&machine_label("h1"), "<M>", 1),
-            "本机与远端不只差一个称呼 —— 那就是同一件事的第二种说法"
-        );
-    }
-}
-
-/// ★★ `KR98D2`：**老后端那一档说得出话，不与超时 / 网络错同形。**
-///
-/// 「这台机器的后端没有这条命令」是**问得出答案**的（`hello` 里那张命令表），
-/// 「超时」「连接断了」是**问不出答案**的。压成同一句「发消息失败」就是
-/// 本工作区最贵的那一形 —— 一个值装了两件事。
-#[test]
-fn an_old_backend_on_the_send_path_is_told_apart_from_a_timeout() {
-    use crate::backend::control::inbound_client::CallError;
-    let origin = "h1";
-    let id = "proj_cc";
-    let too_old = describe_backend_too_old(origin, id);
-    let timeout = describe_send_error(
-        id,
-        &CallError::Timeout {
-            after: std::time::Duration::from_secs(30),
-        },
-    );
-    let dropped = describe_send_error(id, &CallError::Disconnected);
-    let no_chan = describe_no_channel(origin, id);
-
-    // ① 四句话两两不同 —— 一句都不许被另一句吸收掉。
-    let all = [&too_old, &timeout, &dropped, &no_chan];
-    for (i, a) in all.iter().enumerate() {
-        for b in all.iter().skip(i + 1) {
-            assert_ne!(a, b, "两档被压成了同一句话");
-        }
-    }
-    // ② 「太旧」那一档必须自己说出「太旧」，而且要说清消息没发出去。
-    assert!(too_old.contains("太旧"), "{too_old}");
-    assert!(too_old.contains("没有发出去"), "{too_old}");
-    // ③ 🔴 分得开的那一刀：超时 / 断连**不许**长成「太旧」的样子，
-    //    而且它们自己带着「无法确认是否已经执行过」那句（不能证明没发出去）。
-    for other in [&timeout, &dropped] {
-        assert!(
-            !other.contains("太旧"),
-            "超时 / 断连被说成了「backend 太旧」：{other}"
-        );
-        assert!(
-            other.contains("无法确认"),
-            "超时 / 断连丢掉了「不能证明没发出去」那一格：{other}"
-        );
-    }
-    // ④ 反过来：「太旧」不许借用那句「无法确认」—— 它是**确认过**的（能力协商）。
-    assert!(
-        !too_old.contains("无法确认"),
-        "「太旧」被说成了不确定：{too_old}"
-    );
-
-    // ⑤ 🔴 **它得真的走得到**：纯函数再分得开，没人调也是空转。
-    let code = non_test_code();
-    let body = fn_body(&code, "send_via_backend");
-    let ask = body
-        .find("accepts(BUS_SEND)")
-        .expect("`send_via_backend` 没有先问一句能力 —— 「太旧」那句话永远说不出口");
-    let call = body
-        .find(".call(BUS_SEND")
-        .expect("`send_via_backend` 没在调那条原语 —— 判据的参照物没了");
-    assert!(
-        ask < call,
-        "能力协商排在真发之后 —— 那就永远走不到，用户拿到的仍是一句含糊的失败"
-    );
-    assert!(
-        body.contains("describe_backend_too_old(origin, id)"),
-        "问了能力却没把「太旧」讲出来"
-    );
-    // ⑥ 分流本身仍然只有一份（`backend_route` 的登记表逐字要求每个发送端表态）。
-    // ⚠〔`K-R112` 09-13〕住址换了：`describe_send_error` 今天是 4 行薄壳，
-    //   三档分流搬进 `describe_bus_error`（收掉 / 查在线也用它）。
-    //   钉的仍是同一件事，而且**更强一格**：全模块只有这一处 `route_call_error`。
-    assert!(
-        fn_body(&code, "describe_bus_error").contains("route_call_error"),
-        "失败分流没走共用的那一份 —— 第二份分流规则会把「被门拒绝」洗成「换条路重做」"
-    );
-    // ⚠ **刻意不在这里数 `route_call_error` 的处数**：`broadcast_via_backend` 自己
-    //   也调它（那是对的 —— 它是**用**分流器，不是第二份分流规则）。
-    //   「不许有第二份分流规则」那条由 `backend_route` 的登记表守
-    //   （它判的是「本文件生产段里有没有自己 match 那个错误枚举」），不在这里重复一份。
-}
-
-/// ★★ `KR112D1`（**纪律 ⑱**，形状抄 `KR98D3`）→〔BS1b 09-24〕**写面四条全走原语**。
-///
-/// 🪦 本条原名 `letting_kill_broadcast_and_online_through_did_not_let_spawn_through` 〔散文墓碑〕：
-/// 那时放行三条、钉住 `spawn` 仍拒（它的拒绝理由等的是「后端先长出那条原语」）。
-/// 原语长出来了（`bus-spawn`）⇒ 派生并进「放行」那一组，「仍拒」那一半删掉 —— 名字跟着改，
-/// 留旧名就是一个说反话的判据。
-///
-/// 「被放行」在这里有确切的意思：那条命令的路**离开了 shell 串**，
-/// 而且它对 `<local>` 不再有一句「本机做不了」。两样都发生才算放行。
-///
-/// 🔴 **它的分母是从源码派生的，不是这里手写的一张名单**：人群 = `#[tauri::command]`
-/// 里所有 `cc_bus_*` / `check_cc_bus_*` / `read_cc_bus_*` 命令。
-/// 手写名单看不见新长出来的第五条 —— 那正是本仓在三个模块上栽过的同一个坑。
-#[test]
-fn every_write_command_goes_through_a_backend_primitive() {
-    let code = non_test_code();
-    // ── 人群派生：本模块所有 tauri 命令 ──────────────────────────────
-    let mut cmds: Vec<String> = Vec::new();
-    for (i, _) in code.match_indices("pub async fn ") {
-        let name: String = code[i + "pub async fn ".len()..]
-            .chars()
-            .take_while(|c| c.is_alphanumeric() || *c == '_')
-            .collect();
-        if name.contains("cc_bus") {
-            cmds.push(name);
-        }
-    }
-    cmds.sort();
-    cmds.dedup();
-    assert_eq!(
-        cmds.len(),
-        7,
-        "本模块的 cc-bus 命令现打 {} 条（`K-R112` 09-13 实测 **7**：\
-             state · online · inbox · send · broadcast · kill · spawn）\
-             —— 抽取器坏了或有人加了新命令：{cmds:?}\n\
-             ⚠ `deploy_local_cc_bus` / `cc_bus_install_state` 住 `cc_bus_deploy.rs`，不在本文件的分母里。",
-        cmds.len()
-    );
-    // ── ① 走原语那几条：路上没有命令串，也没有对 `<local>` 的那句拒绝 ────
-    let freed = [
-        "cc_bus_send",
-        "cc_bus_broadcast",
-        "cc_bus_kill",
-        "check_cc_bus_agent_online",
-        "cc_bus_spawn",
-    ];
-    for name in freed {
-        let body = fn_body(&code, name);
-        assert!(
-            body.chars().count() > 30,
-            "`{name}` 的体只切出 {} 字 —— 抽取器坏了",
-            body.chars().count()
-        );
-        let hits = shell_line_markers(&body);
-        assert!(
-            hits.is_empty(),
-            "`{name}` 这条路上还有命令串的痕迹 {hits:?} —— 它没有真的改走原语"
-        );
-        assert!(
-            !body.contains("本机还不能"),
-            "`{name}` 还在对 `<local>` 说「本机做不了」—— 而它今天两侧同一条路"
-        );
-    }
-    // 〔BS1b〕那句「本机做不了」的**公共造句处**整个删了 —— 生产段里一处都不许再有。
-    //   针拼开写：写成整词的话，本文件那几处订正注释与这句断言自己都会被读成「又长回来了」。
-    let refuse_fn = format!("fn {}_local_write(", "refuse");
-    assert!(
-        !code.contains(&refuse_fn),
-        "对 `<local>` 的公共拒绝又长回来了 —— 写面今天没有一条需要它"
-    );
-    // ── ④ 反向自检：`read_cc_bus_inbox` 那条**确实**还在老路上 ──────────
-    //     （它是「不是接线」那一档：backend 侧没有 inbox 读口，`K-R111 §C3` 现打）
-    let inbox = fn_body(&code, "read_cc_bus_inbox");
-    assert!(
-        !shell_line_markers(&inbox).is_empty(),
-        "`read_cc_bus_inbox` 也走掉了 —— 本条此刻比较的是一个不存在的对照。\n\
-             若真做了，把它从这条反向自检里挪出去，并去 `K-R111` 那把尺子上把刻度拧下来。"
-    );
-}
-
-/// ★★ `KR112D1`：收掉那道 id 校验**没有丢，换了住址** —— 而且要走**生产入口本体**。
-///
-/// # 它替掉了什么，为什么不是放宽
-///
-/// 原文（`P4c-Y1`）打的是 `build_broadcast_cmd` / `build_kill_cmd` 这两个**构造器**〔散文墓碑〕，
-/// 理由逐字：「只测 happy path 不够 —— 断言要落在**命令构造真的调了它**上」。
-/// 本件把两条都改走后端原语 ⇒ **那两个构造器整块删了**，原判据的参照物不存在。
-///
-/// ⇒ 这一条不扫源码、不看构造器：**真调一遍那两个 tauri 命令**，看它拒不拒。
-/// 比原文强一格 —— 原文证的是「构造器会拒」，这一条证的是「**这条命令会拒**」。
-///
-/// ⚠ 射程：两格都在 `client_for` **之前**返回 ⇒ 与进程内那张登记表无关，不会飘。
-#[test]
-fn the_kill_entry_still_refuses_bad_ids_before_it_asks_anyone() {
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("建运行时");
-    let local = crate::backend::control::inbound_client::LOCAL_ORIGIN;
-    // 收掉：非法 id 拒绝 —— **不能靠对端校验**，这一条的后果是杀掉一棵进程树。
-    for bad in ["", "a b", "--help", "x;y", "../etc", "a'b"] {
-        let r = rt.block_on(cc_bus_kill(local.into(), bad.into()));
-        let e = r.expect_err(&format!("非法 id {bad:?} 竟然被放去 `bus-kill` 了"));
-        assert!(
-            e.contains("非法 agent id"),
-            "非法 id {bad:?} 被拒了，但拒的理由不是「非法 id」：{e}\n\
-                 —— 那说明它是掉进别的分支（没通道 / 太旧）才失败的，校验其实没跑到。"
-        );
-    }
-    // 合法 id 要走过校验那一关（这一格证明上面那几条不是「什么都拒」）。
-    let ok = rt.block_on(cc_bus_kill(local.into(), "proj_cc".into()));
-    let e = ok.expect_err("测试机上没有后端通道，这一格本来就该失败");
-    assert!(
-        !e.contains("非法 agent id"),
-        "合法 id `proj_cc` 也被白名单拒了 —— 那道校验拒过头了：{e}"
-    );
-    // ⚠ **刻意不在这里断广播的空消息**（诚实边界）：测试进程里没有入方向通道，
-    //   空消息与非空消息**都**会失败在「没通道」那一档 ⇒ 一句 `is_err()` 分不出
-    //   它到底是被空消息校验拒的，还是被通道拒的。那是一次**假举证**。
-    //   空消息那道校验今天住 `send_via_backend`（广播是「列成员 + 逐个发」的组合），
-    //   由 `the_send_path_asks_the_backend_instead_of_composing_a_shell_line`
-    //   的现跑那一格钉着（`("proj_cc", "   ")` 两侧同拒）。
-}
+//
+// 五条 Tauri 命令（查在线 · 发消息 · 广播 · 收掉 · 派生）连同它们在 monitor 侧的整份解释迁到界面
+// （`src/cc-bus-control.ts` 经通道直接说后端的 `bus-list` / `bus-send` / `bus-broadcast` / `bus-kill` / `bus-spawn`），
+// 广播这个组合收进后端（`bus-broadcast`）。这里原来住着的那一批判据〔散文墓碑〕：
+// · 查在线：`the_online_lamp_asks_the_identity_space_and_has_nothing_else_to_ask` · `the_online_lamp_never_guesses_dark` ·〔散文墓碑〕
+//   `an_unknown_liveness_is_never_rendered_as_dark` ⇒ `tests/cc-bus-control.vitest.ts`「查在线」一组（问不到一律抛、结构上造不出灭灯）；〔散文墓碑〕
+// · 广播：`broadcast_only_goes_to_the_ones_that_are_actually_there` · `unknown_liveness_does_not_silently_become_nobody` ⇒
+//   后端 `tests/backend/control/cc_bus_tests.rs` 同名两条（挑人规则随组合搬过去）＋ e2e `backend-cc-bus.sh [18]`；
+//   `the_broadcast_wording_keeps_the_three_counts_apart` · `the_broadcast_has_no_ssh_fallback_left` ⇒ vitest「广播」一组；〔散文墓碑〕
+// · 发消息：`the_delivery_wording_keeps_the_three_states_apart` · `an_old_backend_on_the_send_path_is_told_apart_from_a_timeout` ⇒〔散文墓碑〕
+//   vitest「发消息」一组；
+// · 收掉：`the_kill_reply_keeps_the_three_states_apart` · `the_kill_entry_still_refuses_bad_ids_before_it_asks_anyone` ⇒ vitest「收掉」一组；〔散文墓碑〕
+// · 「这条路问的是后端、不拼 shell 串」那一族：`the_send_path_asks_the_backend_instead_of_composing_a_shell_line` ·〔散文墓碑〕
+//   `the_kill_path_asks_the_backend_instead_of_composing_a_shell_line` · `every_write_command_goes_through_a_backend_primitive` ·〔散文墓碑〕
+//   `the_shell_line_detector_really_sees_each_shape` · `the_write_face_branches_on_local_before_it_asks_for_a_remote_config` ⇒〔散文墓碑〕
+//   下面 `the_monitor_has_no_cc_bus_write_path_any_more`（整棵 monitor 生产段零命中）＋
+//   `the_front_end_speaks_the_bus_ops_only_through_one_module`（界面只经一处说）。
 
 /// ★ P4c：对 `<local>` 诚实拒绝的那几条，**拒绝必须排在 `cfg_of` 之前**（排后面永远走不到）。
 ///
@@ -2069,205 +1412,6 @@ fn whoever_still_asks_for_a_remote_config_branches_on_local_first() {
         assert!(
             body[..refuse].contains(what) || body[refuse..].contains(what),
             "{name} 的本机分支没说清它在做什么（应含 {what:?}）"
-        );
-    }
-}
-
-// ════════════════════════════════════════════════════════════════════════
-// `K-R112`（09-13）：收掉 / 广播 / 查在线三条改走后端原语。
-// 下面四条是 `KR112D1` 的机检。
-// ════════════════════════════════════════════════════════════════════════
-
-/// ★★ `KR112D1` 刀①：**收掉一个 agent 走的是 `bus-kill` 帧，不是拼出来的 shell 串。**
-///
-/// 判的是**这条路**（`cc_bus_kill` → `kill_via_backend`）上有没有命令串 ——
-/// 🔴 **不是**「文件里还有没有 `Command::new`」：`K-R111` 现打过，`cc_bus.rs` 那 9 处里
-/// **6 处在文档注释里**、2 处在测试段，数它会同时假红与假绿。**判的是那一跳走哪条路。**
-#[test]
-fn the_kill_path_asks_the_backend_instead_of_composing_a_shell_line() {
-    let code = non_test_code();
-    // ── ① 这条路上没有命令串 ────────────────────────────────────────────
-    let mut checked = 0usize;
-    for name in ["cc_bus_kill", "kill_via_backend"] {
-        let body = fn_body(&code, name);
-        assert!(
-            body.chars().count() > 60,
-            "`{name}` 的体只切出 {} 字 —— 抽取器坏了，本条在空转",
-            body.chars().count()
-        );
-        let hits = shell_line_markers(&body);
-        assert!(
-            hits.is_empty(),
-            "`{name}` 这条路上又出现了命令串的痕迹 {hits:?}。\n\
-                 收掉 agent 归后端的 `{BUS_KILL}` 原语 —— 拼一份 `cc-kill` 串走 SSH\n\
-                 就是同一件事的第二份实现（`K33`「所有命令只许有一处」）。"
-        );
-        checked += 1;
-    }
-    assert_eq!(checked, 2, "只核到 {checked} 段 —— 本断言在空转");
-
-    // ── ② 它真的调了那条原语，能力协商排在动手之前，校验没在搬家路上丢掉 ──
-    let kill = fn_body(&code, "kill_via_backend");
-    let ask = kill
-        .find("accepts(BUS_KILL)")
-        .expect("`kill_via_backend` 没有先问一句能力 —— 「这台的后端太旧」永远说不出口");
-    let call = kill
-        .find("BUS_KILL,")
-        .expect("`kill_via_backend` 没在调那条原语 —— 判据的参照物没了");
-    assert!(ask < call, "能力协商排在真杀之后 —— 那就永远走不到");
-    assert!(
-        kill.contains("is_valid_bus_id(id)"),
-        "那道随构造器一起被删的 id 白名单没跟着搬过来 —— \n\
-             它的后果是**杀掉一棵进程树**，不能靠对端校验。"
-    );
-
-    // ── ③ 🔴 两条路的可观测行为等价：**origin 是入参，不是分支** ──────────
-    for name in ["cc_bus_kill", "kill_via_backend"] {
-        let body = fn_body(&code, name);
-        for forbidden in ["LOCAL_ORIGIN", "origin =="] {
-            assert!(
-                !body.contains(forbidden),
-                "`{name}` 里出现了 `{forbidden}` —— 它又开始按 origin 分岔了"
-            );
-        }
-    }
-    // 现跑一趟：同一输入喂给本机与一台远端，**两句话逐字相同**。
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("建运行时");
-    let local = crate::backend::control::inbound_client::LOCAL_ORIGIN;
-    for id in ["--help", "a b"] {
-        let a = rt.block_on(cc_bus_kill(local.into(), id.into()));
-        let b = rt.block_on(cc_bus_kill("kr112-no-such-host".into(), id.into()));
-        assert_eq!(
-            a, b,
-            "同一输入（id={id:?}）在本机与远端上给了两种结果 —— 不等价"
-        );
-        assert!(a.is_err(), "这一格本来就该拒：id={id:?}");
-    }
-    // 要说到「这台机器」的那几句，也只准差一个称呼。
-    let pairs = [
-        (
-            describe_no_channel_for(local, "收掉 agent", "x"),
-            describe_no_channel_for("h1", "收掉 agent", "x"),
-        ),
-        (
-            describe_backend_too_old_for(local, BUS_KILL, "x"),
-            describe_backend_too_old_for("h1", BUS_KILL, "x"),
-        ),
-    ];
-    for (l, r) in pairs {
-        assert_ne!(l, r, "两句话逐字相同 —— 那说明称呼根本没进去，本格在空转");
-        assert_eq!(
-            l.replacen(&machine_label(local), "<M>", 1),
-            r.replacen(&machine_label("h1"), "<M>", 1),
-            "本机与远端不只差一个称呼 —— 那就是同一件事的第二种说法"
-        );
-    }
-}
-
-/// ★★ `KR112D1` 刀②的落点：**`bus-kill` 的三态不许被压成一句「已收掉」。**
-///
-/// backend 那条原语刻意回三个字段（`control/cc_bus.rs` 逐字：「回值要说清到底动了什么」）。
-/// 老那条 SSH 路把 `cc-kill` 的 stdout `trim` 一下就交给用户 —— 「杀了会话」与
-/// 「身份对不上、只摘了陈旧登记」在那一坨里**分不开**。这一条钉住它们分得开。
-#[test]
-fn the_kill_reply_keeps_the_three_states_apart() {
-    use serde_json::json;
-    let killed = describe_kill_reply("a_cc", Some(&json!({"killed": true, "stale_only": false})));
-    let stale = describe_kill_reply("a_cc", Some(&json!({"killed": false, "stale_only": true})));
-    let nothing = describe_kill_reply("a_cc", Some(&json!({"killed": false, "stale_only": false})));
-    let broken = describe_kill_reply("a_cc", Some(&json!({"nope": 1})));
-    let none = describe_kill_reply("a_cc", None);
-    let all = [&killed, &stale, &nothing];
-    for (i, a) in all.iter().enumerate() {
-        for b in all.iter().skip(i + 1) {
-            assert_ne!(a, b, "两档被压成了同一句话");
-        }
-    }
-    assert!(killed.contains("已收掉"), "{killed}");
-    assert!(stale.contains("会话没动"), "{stale}");
-    assert!(
-        !stale.contains("已收掉"),
-        "只摘了登记被说成了「已收掉」：{stale}"
-    );
-    assert!(
-        !nothing.contains("已收掉"),
-        "什么都没动被说成了「已收掉」：{nothing}"
-    );
-    // 🔴 形状不认识那一档：**不知道它动没动**，不许说成「没杀成」。
-    assert_eq!(broken, none, "缺字段与整个 body 缺应当同档");
-    assert!(broken.contains("不知道它到底动没动"), "{broken}");
-    assert!(!broken.contains("已收掉"), "{broken}");
-}
-
-/// ★★ `KR112D1`：**「问不到」不许被渲染成「不在线」** —— 走生产入口本体验。
-///
-/// 这是删回落之后唯一要守的那件事。老探法（按名字 `tmux has-session`）删掉之后，
-/// 「答不上」的出口只有 [`unknown_liveness`] 一处 ⇒ 「不在线」这个答案在这条路上
-/// **造不出来**。本条从两侧钉：纯函数那一份说得对 ＋ 生产入口真的走它。
-#[test]
-fn an_unknown_liveness_is_never_rendered_as_dark() {
-    let msg = unknown_liveness("h1", "a_cc", "这台的后端通道没起来");
-    assert!(msg.contains("问不到"), "{msg}");
-    assert!(msg.contains("不是**不在线**"), "{msg}");
-    assert!(msg.contains("h1"), "没说是哪台机器：{msg}");
-    // 生产入口：没有通道时它给的是 `Err`（一句「问不到」），**不是** `Ok(false)`。
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("建运行时");
-    let got = rt.block_on(check_cc_bus_agent_online(
-        "kr112-no-such-host".into(),
-        "a_cc".into(),
-    ));
-    match got {
-        Ok(v) => panic!("问不到的时候它答了一个确定的 {v} —— 那正是这一条要拦的"),
-        Err(e) => {
-            assert!(e.contains("问不到"), "答不上时没说「问不到」：{e}");
-            assert!(
-                e.contains("不是**不在线**"),
-                "答不上那句话没经 `unknown_liveness` —— 出口不止一处了：{e}"
-            );
-        }
-    }
-    // 非法 id 那一格**先于**通道判：它是调用方自己的责任，不许被说成「问不到」。
-    let bad = rt.block_on(check_cc_bus_agent_online(
-        "kr112-no-such-host".into(),
-        "--help".into(),
-    ));
-    assert!(
-        bad.unwrap_err().contains("非法 agent id"),
-        "非法 id 没在问通道之前被拒 —— 那道白名单没跟着搬过来"
-    );
-}
-
-/// ★★ `KR112D1`：**广播没有第二条路了**，而三个数分开说那份诚实还在。
-#[test]
-fn the_broadcast_has_no_ssh_fallback_left() {
-    let code = non_test_code();
-    let body = fn_body(&code, "cc_bus_broadcast");
-    let hits = shell_line_markers(&body);
-    assert!(
-        hits.is_empty(),
-        "`cc_bus_broadcast` 这条路上又出现了命令串的痕迹 {hits:?} —— \n\
-             老 `cc-broadcast` 回潮了。那条脚本发给 `agents.tsv` 的**每一行**\n\
-             （用户机器实测 86 行登记 / 8 个活着），正是 `P4f` 要治的那次事故。"
-    );
-    // 两侧同一句话：本机与远端不再各说各的。
-    for forbidden in ["LOCAL_ORIGIN", "origin =="] {
-        assert!(
-            !body.contains(forbidden),
-            "`cc_bus_broadcast` 里出现了 `{forbidden}` —— 它又开始按 origin 分岔了"
-        );
-    }
-    // 三态分流仍在，而且三条都 return（同 `K-R72` 给 kill / send-keys 记的那条）。
-    for arm in ["BroadcastRoute::NoChannel", "BroadcastRoute::Failed"] {
-        assert!(
-            body.contains(arm),
-            "`cc_bus_broadcast` 少了 `{arm}` 那一臂 —— 两个读数被合并了：\n\
-                 「一条都没发出去」与「已经发了一部分」压成一句，用户就不知道该不该重试。"
         );
     }
 }
@@ -2567,5 +1711,150 @@ fn why_the_read_face_is_not_on_the_backend_yet_stays_measured() {
             "读面头注里少了「{needle}」—— 那段是 `P4a2` 摸底的全部产出，\
                  删了它下一个人会拿感觉重答一遍「省一次握手不好吗」"
         );
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 〔C4e · 第四波 4C〕cc-bus 写面迁到界面之后：monitor 里一条路都不剩 · 界面只经一处说 · id 规则两份对拍
+// ════════════════════════════════════════════════════════════════════════
+
+/// ★★〔C4e · 第四波 4C〕**monitor 里 cc-bus 写面一条路都不剩**（零命中 ＋ 正控）。
+///
+/// 守的要求：`设计/05 §14.3` 逐字「迁到通道之后，业务解释是不是**只有一个家**」—— 发消息 / 收掉 / 派生 / 广播的解释
+/// 今天只住 `src/cc-bus-control.ts`（广播的挑人住后端）；monitor 里再长出一条拼 `cc-send` / `cc-kill` / `cc-spawn` /
+/// `cc-broadcast` shell 串的路，就是 `K-R98` / `K-R112` / BS1b 一条条删掉的那几条 SSH 路回来了（它们纯按名字、没有身份核对）。
+/// 帧命令名那一格由 `frame_query_tests` 的 `CHANNELED_ELSEWHERE`（monitor 生产段零字面量）管，本条管 shell 串那几种形态。
+/// 正控：同一识别器在后端 `control/cc_bus.rs` 的生产段上认得出它真在转调的 `cc-send`。
+#[test]
+fn the_monitor_has_no_cc_bus_write_path_any_more() {
+    let root = crate::guard_support::repo_root();
+    // 现拼，免得本文件自己被别的扫描收进人群。
+    let verbs: Vec<String> = ["send", "kill", "spawn", "broadcast"]
+        .iter()
+        .map(|v| format!("cc-{v}"))
+        .collect();
+    // 唯一豁免：部署器 `cc_bus_deploy.rs` 把这几份脚本**装到盘上**（字节表 + 装之前核 ccm 够不够新的那几句话），
+    // 不调用它们。判的是**两向相等**：生产段里提到这几个名字的 monitor 文件集合 == {部署器}。
+    // 别的文件一出现就是多一个元素；部署器不再提（比如字节表挪走了）就是少一个 —— 豁免过期，也红。
+    let deployer = "cc_bus_deploy.rs";
+    let mut who = std::collections::BTreeSet::new();
+    let mut files = 0usize;
+    for (p, one_file) in guard_core::scan_tree_excluding(&root.join("src/bridge/src"), &["rs"], &[])
+    {
+        files += 1;
+        let prod = guard_core::strip_comment_lines(&guard_core::production_code(&one_file));
+        for v in &verbs {
+            if guard_core::contains_word(&prod, v) {
+                who.insert(format!(
+                    "{} ({v})",
+                    p.file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default()
+                ));
+            }
+        }
+    }
+    assert!(files > 100, "只扫到 {files} 份 monitor 源码 —— 遍历坏了");
+    let only_deployer: std::collections::BTreeSet<String> =
+        verbs.iter().map(|v| format!("{deployer} ({v})")).collect();
+    assert_eq!(
+        who, only_deployer,
+        "monitor 生产段里提到 cc-bus 写面脚本名的文件 ≠ {{部署器 × 四个名字}} —— 多出来的那个就是在 monitor 里长回的一条\
+         拼 shell 串的路（它只许经后端的 `bus-*` 原语，界面经 `src/cc-bus-control.ts` 一处说）；少了就是豁免过期"
+    );
+    let backend = guard_core::production_code(
+        &std::fs::read_to_string(root.join("src/backend/control/cc_bus.rs"))
+            .expect("读后端 cc_bus.rs"),
+    );
+    assert!(
+        guard_core::contains_word(&backend, &verbs[0]),
+        "正控失败：后端 `control/cc_bus.rs` 的生产段里认不出 `cc-send` —— 识别器瞎了，上面的零命中不可信"
+    );
+}
+
+/// ★★〔C4e · 第四波 4C〕**界面说 cc-bus 那五条只经一处**：`chan.call(origin, "bus-…"` 只住 `src/cc-bus-control.ts`，
+/// 各恰好一处。
+///
+/// 守的要求：同上一条（业务解释只有一个家）—— 先核 id / 正文 / 派生形状、按形状收、逐态说人话，这几件只写在那一份里；
+/// 别处直接 `chan.call(…, "bus-send", …)` 就是绕过它们的第二条路。两向相等：出现这些字面量的文件集合 == `{src/cc-bus-control.ts}`，
+/// 那一份里处数恒等（五条各 1）。
+#[test]
+fn the_front_end_speaks_the_bus_ops_only_through_one_module() {
+    let root = crate::guard_support::repo_root();
+    let ops = [
+        "bus-list",
+        "bus-send",
+        "bus-kill",
+        "bus-spawn",
+        "bus-broadcast",
+    ];
+    let mut homes: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
+        Default::default();
+    let mut counts: std::collections::BTreeMap<String, usize> = Default::default();
+    let mut scanned = 0usize;
+    for (p, text) in guard_core::scan_tree_excluding(&root.join("src"), &["ts"], &[]) {
+        scanned += 1;
+        let rel = p
+            .strip_prefix(&root)
+            .unwrap_or(&p)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let prod = guard_core::strip_comment_lines(&text);
+        for op in ops {
+            let needle = format!("chan.call(origin, \"{op}\"");
+            let c = prod.matches(needle.as_str()).count();
+            if c > 0 {
+                homes.entry(op.to_string()).or_default().insert(rel.clone());
+                *counts.entry(op.to_string()).or_default() += c;
+            }
+        }
+    }
+    assert!(scanned > 100, "只扫到 {scanned} 份前端源码 —— 遍历坏了");
+    for op in ops {
+        assert_eq!(
+            homes.get(op).cloned().unwrap_or_default().into_iter().collect::<Vec<_>>(),
+            vec!["src/cc-bus-control.ts".to_string()],
+            "`{op}` 的 `chan.call` 出现在 `src/cc-bus-control.ts` 之外（或那一份里没有了）—— 界面说它的家不止一个"
+        );
+        assert_eq!(
+            counts.get(op).copied(),
+            Some(1),
+            "`{op}` 在那一份里不是恰好一处"
+        );
+    }
+}
+
+/// ★〔C4e · 第四波 4C〕**agent id 的规则两份对拍**：monitor [`is_valid_bus_id`]（读收件箱那一条还在用）与界面
+/// `src/cc-bus-control.ts::isValidBusId`（发消息 / 收掉 / 查在线前先核）读同一份 `ids`（跨语言金样 `cc-bus-control.golden.json`）。
+///
+/// 守的要求：同一条规则（非空 · 不以 `-` 开头 · 只含 `[A-Za-z0-9_-]`）两处实现，漂开的那天 `--help` 这种 id 会从一侧溜过去
+/// （它在盘上真出现过）。本侧逐条判 == 金样；TS 侧在 `tests/cc-bus-control.vitest.ts` 判同一份。
+#[test]
+fn the_bus_id_rule_agrees_with_the_front_end_on_the_shared_samples() {
+    let g: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            crate::guard_support::repo_root().join("tests/__fixtures__/cc-bus-control.golden.json"),
+        )
+        .expect("读金样"),
+    )
+    .expect("金样不是 JSON");
+    let take = |k: &str| -> Vec<String> {
+        g["ids"][k]
+            .as_array()
+            .unwrap_or_else(|| panic!("金样缺 ids.{k}"))
+            .iter()
+            .map(|v| v.as_str().expect("id 不是字符串").to_string())
+            .collect()
+    };
+    let (ok, bad) = (take("ok"), take("bad"));
+    assert!(
+        !ok.is_empty() && !bad.is_empty(),
+        "金样的 ids 空了 —— 下面是空转"
+    );
+    for id in &ok {
+        assert!(is_valid_bus_id(id), "{id:?} 该放行");
+    }
+    for id in &bad {
+        assert!(!is_valid_bus_id(id), "{id:?} 该拒");
     }
 }

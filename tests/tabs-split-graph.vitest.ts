@@ -200,6 +200,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/remote-launch-run.ts",
     "src/remote-launch.ts",
     "src/session-reads.ts", // 〔C4c〕resume 之前问记录还在不在（经通道问 `history-record`）
+    "src/tmux-control.ts", // 〔C4e〕杀会话经通道直接说后端的 `kill`（原 Tauri 命令 `kill_remote_tmux` 退役）
     "src/tmux-sessions.ts",
   ],
 };

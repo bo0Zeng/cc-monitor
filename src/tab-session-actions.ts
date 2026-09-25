@@ -61,6 +61,7 @@ import {
 } from "./tmux-sessions";
 import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
+import { killSession, saidOfControl } from "./tmux-control";
 
 /**
  * auto-e2e F-E0:DEV-only 断言出口。同 e2e-probe.ts 的 `log()`——把状态转移写成可 grep 的
@@ -702,7 +703,7 @@ export class TabSessionActions {
     if (!ok) return;
     void (async () => {
       try {
-        await commands.kill_remote_tmux({ origin, target: tmuxName });
+        await killSession(origin, tmuxName);
         const who = isLocal ? "本机" : `远端 [${origin}]`;
         showActionFailureToast(
           "已杀死会话",
@@ -712,7 +713,7 @@ export class TabSessionActions {
           { level: "info", durationMs: 6000 },
         );
       } catch (err) {
-        showActionFailureToast("杀死会话失败", String(err));
+        showActionFailureToast("杀死会话失败", saidOfControl(err));
       }
     })();
   }

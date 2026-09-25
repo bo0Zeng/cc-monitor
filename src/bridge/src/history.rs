@@ -1011,7 +1011,7 @@ fn render_local_ccm_with(
 ///
 /// # ⚠ 本机 `launch` **不经 backend**，而本机 `kill` 经〔E 阶段全局审计 08-12，待决 `U13`〕
 ///
-/// `backend_kill.rs::backend_kill` 那条本机 kill 走的是后端通道（P3 刀 2）；本函数**没有**。
+/// 本机 kill 走的是后端通道（P3 刀 2；当年是 monitor 的 `backend_kill`〔散文墓碑〕，〔C4e〕今天是界面 `src/tmux-control.ts::killSession` 经通道说）；本函数**没有**。
 /// 同一个控制面里两条命令走了两条路，而 `control-parity` 的 `C1` 逐字排除的正是
 /// 「本地直接 `Command::new` spawn」这条今天的做法 —— 也就是**本函数下游那条**。
 ///

@@ -286,7 +286,8 @@ pub enum TouchEffect {
     /// 这一档是 T02 审计的阻塞项逼出来的：`~/.cc-bus/` 原先声明成 [`Self::ReadOnly`]，
     /// 于是审计页渲染出「只读（诊断用），我们不写」——**假话**。
     /// cc-monitor 的 cc-bus 驾驶舱有两个按钮走的是
-    /// `cc_bus::cc_bus_send`（远端跑 `cc-send`）与 `cc_bus::cc_bus_spawn`（跑 `cc-spawn`），
+    /// `cc_bus::cc_bus_send`（远端跑 `cc-send`）与 `cc_bus::cc_bus_spawn`（跑 `cc-spawn`）〔散文墓碑〕
+    /// （〔C4e〕今天是界面经通道直接说那台后端的 `bus-send` / `bus-spawn`，后端照旧调那两份脚本 —— 这一档的理由不变），
     /// 而 `cc-bus-lib.sh:221` 是 `printf '%s\n' "$line" >> "$inbox"`、
     /// `cc-spawn:141` 追加 `spawned.tsv`、`cc-register:25` 换掉 `agents.tsv`。
     /// 「我们只是调了别人的命令」不改变**用户的文件因为在我们这儿点了一下而变了**这件事。
@@ -586,8 +587,9 @@ pub const TOOLS: &[ToolSpec] = &[
                 //
                 // ⇒ 改 `Either`。原文担心的那个「用新的假阳性换掉旧的假阴性」今天不成立了：
                 // 本机确实会被读（`P4a`），所以说「本机存在」不再是冒充。
-                // ⚠ 但 `IndirectWrite` 那句仍要留神：**写**面（`cc_bus_send`/`_spawn`/
+                // ⚠ 但 `IndirectWrite` 那句仍要留神：**写**面（`cc_bus_send`/`_spawn`/〔散文墓碑〕
                 // `_broadcast`/`_kill`）至今**只动远端**（`refuse_local_write`），
+                // 〔C4e 订正〕这半句早已不成立（P4f / BS1b 起写面本机也走后端，〔C4e〕起由界面经通道直接说，本机与远端同一条路）；
                 // 所以 note 里把「读」与「写」分开说，别让人以为本机那个也会被写。
                 host: HostScope::Either,
                 note: Some(
@@ -823,12 +825,14 @@ pub const TOOLS: &[ToolSpec] = &[
     // 〔AS2 · 第四波 4B · V113〕**skill「装到这台」**：资产目录里别的机器有的 skill，用户点了才装到这台 ——
     //   文件原样从来源那台拷来（V112），写经这台后端 `files-put`（带 `expect`，`skill_install.rs`）。
     //   `96 §4`：每个写点都要在足迹里可见。落点由用户点的那一条决定（这台 skills 下以那个名字为名的目录）⇒ 占位符，不猜。
-    //   `uninstallable: false`：没有「卸掉装来的 skill」这条口，如实声明。
+    //   〔SU1 · 第四波 4C · V116〕`uninstallable: true`：用户裁「要，只删装时写进去的文件」—— 装的时候那台后端记下写了哪几个
+    //   （第二条 touch：那台后端自己的装记录），卸口 `skill_install.rs::skill_uninstall_apply` 只删记着的那几个（装完改过的先问）。
+    //   〔墓碑 —— AS2 那一版这里是 `uninstallable: false`（「没有卸掉装来的 skill 这条口，如实声明」）。〕
     ToolSpec {
         id: "skill-install",
         display_name: "从别的机器装来的 skill",
         installable: true,
-        uninstallable: false,
+        uninstallable: true,
         carriers: &[Carrier {
             what: "资产目录里你点了「装到这台」的那个 skill：另一台机器上那个 skill 目录里的文件（你勾的那几个），原样写进这台",
             source: ToolSource::Generated,
@@ -839,7 +843,16 @@ pub const TOOLS: &[ToolSpec] = &[
                 host: HostScope::Either,
                 note: Some(
                     "装到哪台就写哪台，只写 skills 下以你点的那个 skill 为名的那一个目录；\
-                     只写你勾的那几个文件（不同的要你点了「盖」才盖），别的文件不动",
+                     只写你勾的那几个文件（不同的要你点了「盖」才盖），别的文件不动；\
+                     卸的时候只删装时写进去的那几个（装完你改过的、装之前就在的先问你），目录本身留着",
+                ),
+                effect: TouchEffect::OwnedFile,
+            }, TouchedFile {
+                path: "~/.cc-monitor/skill-installs.json",
+                host: HostScope::Either,
+                note: Some(
+                    "装到哪台就记在哪台：那台后端自己的装记录（每个装写进去的文件的摘要 ＋ 装之前在不在），卸只认这里记着的；\
+                     卸掉的从这里摘掉",
                 ),
                 effect: TouchEffect::OwnedFile,
             }],
