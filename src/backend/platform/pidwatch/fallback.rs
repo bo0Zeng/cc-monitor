@@ -1,5 +1,9 @@
 //! U4a（2026-08-01）：**非 Linux 的看守形态 —— 一个诚实的空壳，不是一个假实现。**
 //!
+//! 〔WN1 · 09-24〕Windows 那一格已经不归这里了：`win32.rs` 是它的真实现（U4b 后半，只买到编得过 ＋
+//! 与 `linux.rs` 的源码对拍）。本文件今天只管**既不是 Linux 也不是 Windows** 的平台（macOS 等，
+//! `01 §7` 表 B「目标里有、现在不做」）。下面 U4a 的原文照留，读「这个平台」时按那个人群读。
+//!
 //! # 它为什么什么都不做，而不是「尽力而为」
 //!
 //! `watch_pid_until_exit` 的契约是「进程终止时调 `on_dead`」。这个平台上还没有实现
@@ -33,6 +37,6 @@ where
     let _ = (expected_start, on_dead);
     tracing::error!(
         "pidfd 看守在本平台未实现（pid {pid}）—— 进程退出**不会**产生死亡事件。\
-         会话只能靠 pidfile 删除或断连来收。真实现见 U4b（OpenProcess + WaitForSingleObject）。"
+         会话只能靠 pidfile 删除或断连来收。有真实现的只有 Linux（pidwatch/linux.rs）与 Windows（pidwatch/win32.rs）。"
     );
 }
