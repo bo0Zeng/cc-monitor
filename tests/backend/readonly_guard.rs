@@ -701,7 +701,7 @@ mod tests {
             "〔NT2 · 第四波 4C · S1〕脱离常驻那条载体的后端自己的 **stderr 诊断文件**（当前 `stderr.log` ＋ 旧的一份 \
              `stderr.old.log`；路径由 monitor 起脱离那条载体时交 `CCM_BACKEND_STDERR_LOG`，目录由它建好）。只有后端写、\
              是后端自己说的话 ⇒ 后端**自己的**状态，不是用户数据。动词：`O_EXCL` 新建当前那份 · 原子挪成旧的（盖掉上一份旧的）；\
-             不建目录、不截断、不追加。写口 `install_from_env` 只从 `main.rs` 流模式那一处进（本层唯一一扇不是 `inbound.rs` 的门）",
+             不建目录、不截断、不追加。对外口（装它的 `install_from_env` · 交给 `tracing` 的 `stderr_writer`）只从 `main.rs` 进（本层唯一一扇不是 `inbound.rs` 的门）",
         ),
     ];
 
@@ -727,7 +727,7 @@ mod tests {
 
     /// 第四层的门：后端生产树里被允许引用写口的文件。**每个写口恰好一扇**（[`OWN_STATE_WRITERS`] 第三列），
     /// 本表是门的全集（用到的门 == 本表，两向）。
-    /// 〔NT2 · S1〕先前只有 `inbound.rs` 一扇、所有写口共用；stderr 诊断文件的写口在进程起来那一刻装（没有命令可走）⇒
+    /// 〔NT2 · S1〕先前只有 `inbound.rs` 一扇、所有写口共用；stderr 诊断文件的写口在进程起来那一刻装、此后跟着 `tracing` 滚（没有命令可走）⇒
     /// 门改成「每个写口自己的那一扇」，`inbound.rs` 那几个写口照旧只许 `inbound.rs` 碰（一格没松）。
     const OWN_STATE_DOORS: &[(&str, &str)] = &[
         (
@@ -768,7 +768,8 @@ mod tests {
             "inbound.rs",
         ),
         // 〔NT2 · S1〕stderr 诊断文件：写口是装它的那一个函数，门是 `main.rs`。
-        ("stderr_log.rs", "stderr_log::install_from_env", "main.rs"),
+        // 针取模块前缀：装它（`install_from_env`）与滚它（`stderr_writer`，交给 `tracing`）都会写，都只许 `main.rs` 碰。
+        ("stderr_log.rs", "stderr_log::", "main.rs"),
     ];
 
     fn is_own_state(rel: &str) -> bool {
