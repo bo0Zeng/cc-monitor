@@ -81,6 +81,9 @@ run_side() {
   fi
 
   # 被测的目标文件：测试二进制（同一组参数 --no-run，不会重编）＋ 本侧的可执行文件（测试会 spawn 它）。
+  # ⚠ 这一趟也要给 `LLVM_PROFILE_FILE`：插桩标志对 build script 与 proc-macro 也生效，它们一旦被执行
+  #   （真要重编的时候，rustc 会加载插桩过的 proc-macro），不给路径就往**当前目录**落 `default_*.profraw`
+  #   —— TQ1 落地那趟现打在 `src/bridge/` 下落了 70 份。给它一个 `.build/` 下的去处，不进源码树。
   local objs=()
   local exe
   while IFS= read -r exe; do
@@ -88,6 +91,7 @@ run_side() {
   done < <(
     cd "$repo/$dir" &&
       RUSTFLAGS="-C instrument-coverage" CARGO_TARGET_DIR="$target" \
+        LLVM_PROFILE_FILE="$out/build-profraw/%p-%m.profraw" \
         cargo test "$@" --no-run --message-format=json 2>/dev/null |
       grep -o '"executable":"[^"]*"' | cut -d'"' -f4 | sort -u
   )

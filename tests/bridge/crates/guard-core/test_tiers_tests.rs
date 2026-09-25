@@ -114,6 +114,7 @@ const UNIT: &[&str] = &[
     "tests/bridge/port_forward_tests.rs",
     "tests/bridge/remote_branch_tests.rs",
     "tests/bridge/remote_history_tests.rs",
+    "tests/bridge/session_facts_tests.rs",
     "tests/bridge/session_map_f13_tests.rs",
     "tests/bridge/ssh_link_tests.rs",
     "tests/bridge/ssh_source_batcher_tests.rs",
