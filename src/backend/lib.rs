@@ -425,7 +425,10 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p3a-panorama-engine**（2026-09-24，第四波 RM1c 合并那一拍）：子命令 ＋1 —— `panorama`（两个命令面）：
 /// 后端经插件口起独立全景小程序 `cc-monitor-panorama`，只说查询语义（V108）；后端本体仍零 code-picture。
-pub const BUILD_ID: &str = "p3a-panorama-engine";
+///
+/// ★★★ **p3b-session-facts**（2026-09-24，第四波 U4b 合并那一拍）：子命令 ＋1 —— `history-record`（`{sid}` → 记录在不在，两个命令面）。
+/// ＋ 线上：`session_added` 多一个可选字段 `container`（tmux / none）· 新出方向帧 `sessions_replayed`。
+pub const BUILD_ID: &str = "p3b-session-facts";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
