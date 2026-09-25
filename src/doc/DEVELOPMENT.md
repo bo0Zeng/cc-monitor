@@ -120,14 +120,14 @@ DevTools Network tab 看不到 Tauri IPC（不走 HTTP）。要看 IPC：
 
 ```powershell
 cd src/bridge
-cargo test --workspace --exclude code-picture-core   # ★ 后端全量（见下方警告）
+cargo test --workspace   # ★ 后端全量（见下方警告）
 cargo test --lib profile_installer                   # 单个模块
 cargo test --lib -- --nocapture                      # 看 println! 输出
 ```
 
 > ⚠ **`--lib` 那种跑法不是全量**〔08-06 订正〕：它只覆盖**根包**，
 > 六个共享 crate（`guard-core` / `gate-core` / `shell-quote-core` / …）一条都不跑。
-> 上面那条 `--workspace --exclude code-picture-core` 与 `ci.yml` 的 `rust` job **逐字相同**，
+> 上面那条 `--workspace` 与 `ci.yml` 的 `rust` job **逐字相同**（〔TL1 · 4C〕从前带 `--exclude code-picture-core`，vendor 不再是成员之后删了），
 > 由 `doc_claim_registry_tests.rs::the_backend_test_command_in_the_docs_matches_ci` 钉住。
 >
 > **本机还必须跑的（CI 里有、或 CI 根本跑不到的）**：
