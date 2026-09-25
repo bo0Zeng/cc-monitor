@@ -19,6 +19,7 @@
 //! | [`copy_across_speaks_files_copy_with_a_common_root`] | 线上那一行 `files-copy` 的 `root` / `from` / `to` 逐格相等（合成后端） | 期望手写；实得是合成后端真收到的那一行 |
 //! | [`copy_across_refuses_what_it_cannot_do_and_sends_nothing`] | 没开双栏 / 选了两项 / 选了目录 / 两栏同目录 ⇒ 出声、线上零条（带正控：合法那一形恰好一条） | 零命中读的是线上那本账 |
 //! | [`across_args_cuts_paths_at_the_common_directory`] | 公共前缀那一刀逐格相等（含只在根下相交的那一形） | 期望手写 |
+//! | [`ctrl_t_and_ctrl_w_open_and_close_tabs_on_the_focused_side`] | 〔W5-FILES · `设计/60 §6.2` 标签页快捷键 ＋ `§6.3` 键盘四道闸〕Ctrl+T / Ctrl+W 只作用于焦点那一栏（两栏各自的标签数逐格相等）；有一问摆着 ⇒ 零作用；不按 Ctrl 的 T ⇒ 零作用 | 标签数读的是各栏自己的表；期望手写 |
 //!
 //! ⚠ 买不到：真窗口真画在屏幕上；真的拖一行过去（手势没做，理由住 `super` 头注）。
 
@@ -520,4 +521,57 @@ fn across_args_cuts_paths_at_the_common_directory() {
         "/srv",
         "按段比，不按字符前缀比"
     );
+}
+
+fn ctrl(k: egui::Key) -> egui::Event {
+    egui::Event::Key {
+        key: k,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::COMMAND,
+    }
+}
+
+fn tab_counts(ws: &Workspace) -> Vec<usize> {
+    (0..ws.sides()).map(|k| ws.tabs_on(k)).collect()
+}
+
+/// 〔W5-FILES〕要求住址：`设计/60 §6.2`「标签页快捷键（Ctrl+T / Ctrl+W）」＋ `§6.3`「键盘归谁，四道闸」。
+#[test]
+fn ctrl_t_and_ctrl_w_open_and_close_tabs_on_the_focused_side() {
+    let mut ws = two_sides(pane("/l", &["a"]), pane("/r", &["b"]));
+    let mut d = Drive::new();
+    assert_eq!(ws.focus(), 1);
+    d.frame(&mut ws, vec![ctrl(egui::Key::T)]);
+    assert_eq!(tab_counts(&ws), vec![1, 2], "Ctrl+T 没落在焦点那一栏");
+    assert_eq!(ws.active_on(1), 1, "开完没切过去");
+    assert_eq!(ws.pane_on(1).cwd, "/r", "新标签没落在这一栏当前的目录上");
+    d.frame(&mut ws, vec![ctrl(egui::Key::W)]);
+    assert_eq!(tab_counts(&ws), vec![1, 1], "Ctrl+W 没关掉焦点那一栏的当前标签");
+    // 最后一个关不掉，并且出声。
+    d.frame(&mut ws, vec![ctrl(egui::Key::W)]);
+    assert_eq!(tab_counts(&ws), vec![1, 1]);
+    assert!(ws.notice().is_some(), "最后一个标签关不掉却没说为什么");
+    // 阴性一：不按 Ctrl 的 T（打字跳转那一路）⇒ 不开标签。
+    d.frame(
+        &mut ws,
+        vec![egui::Event::Key {
+            key: egui::Key::T,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }],
+    );
+    assert_eq!(tab_counts(&ws), vec![1, 1], "不带 Ctrl 的 T 开了标签");
+    // 阴性二：焦点那一栏有一问摆着（新建空文件那个框）⇒ 键归那个框，Ctrl+T 零作用。
+    assert!(ws.pane_on_mut(1).begin_new_file());
+    d.frame(&mut ws, vec![ctrl(egui::Key::T)]);
+    assert_eq!(tab_counts(&ws), vec![1, 1], "框开着时 Ctrl+T 还是开了标签");
+    ws.pane_on_mut(1).cancel_new_file();
+    // 正控：框收掉之后同一个键开得出来；焦点换到左栏之后落在左栏。
+    ws.focus_side(0);
+    d.frame(&mut ws, vec![ctrl(egui::Key::T)]);
+    assert_eq!(tab_counts(&ws), vec![2, 1], "焦点换到左栏之后 Ctrl+T 没落在左栏");
 }
