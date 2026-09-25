@@ -53,6 +53,13 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "TREE_ENTRY_CAP",
+        "〔FW5 · 第四波 09-24〕**条数**不是体量：一趟递归删最多动多少条（含目标自己，\
+             后端 `files_write·rs::plan_tree_within` 的计划趟）。超了**整趟拒、一个字节不动**\
+             （`refused`，话里带上限是多少）—— 不做半截。它管的是「一次手势删多少条」与计划表的内存，\
+             不限任何字节量。",
+    ),
+    (
         "STAGING_STALE_SECS",
         "〔F7c · 第三波 09-24〕**时间**不是体量：暂存区里一份上传件多少秒没动过才算孤儿\
              （后端 `files_commit·rs::sweep_stale`，只在一次提交成功时顺手扫，不是节拍器）。\
