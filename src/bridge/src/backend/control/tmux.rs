@@ -6,7 +6,7 @@
 //!
 //! **最隐蔽的重写坑(调研 03 档 §3.1)**:`tmux ls -F` 的格式串**不解释**字面 `\t`——给什么
 //! 字节原样输出。所以分隔符必须是**真 TAB 字节(0x09)**。Rust 里 `"\t"` 是真 TAB(勿写
-//! `\\t`),`parse_tmux_ls` 按真 TAB `split`。F60 `capture_remote_pane` 已续挂本模块;kill/rename
+//! `\\t`),`parse_tmux_ls` 按真 TAB `split`。F60 抓屏曾续挂本模块（〔C4e〕已迁到界面 `src/tmux-control.ts`）;kill/rename
 //! 明确不做(见 MASTERPLAN 不做清单),F52 短路门未扩本模块。
 
 use crate::ssh_source;
@@ -57,7 +57,7 @@ const TMUX_LS_FMT_FIELDS: usize = 6;
 ///    `tmux display-message -u -p …` 都是 `rc=1 + unknown flag -u` ⇒ **放错是响的**。
 ///
 /// ⚠ `capture-pane -p` **不在人群里**：实测它抓回来的中文是原始 UTF-8 字节，
-/// POSIX / `C.UTF-8` / `-u` 三种模式逐字节相同 ⇒ [`capture_remote_pane`]
+/// POSIX / `C.UTF-8` / `-u` 三种模式逐字节相同 ⇒ 抓屏（今天由后端 `control/capture_pane.rs` 跑）
 /// **不受本件影响**，本拍**刻意不给它加 `-u`**（不扩面）。
 /// 〔`设计/50`：原话还并列了 `account_usage.rs` 的用量探针 —— 那条整轴退役了。〕
 ///
@@ -423,49 +423,10 @@ pub(crate) fn classify_tmux_observation(raw: &str, observation: Option<&str>) ->
     TmuxObservation::Backend(backend)
 }
 
-/// backend 那条**抓一屏**原语的名字（`K-R86` 出 CLI 面 · `K-R104` 搬上帧面）。
-///
-/// 闭集只许有一个住址：调用点不写字面量。
-const CAPTURE_PANE: &str = "capture-pane";
-
-// ★★ `K-R112`（09-13）：**这里原来住着 `classify_capture_output`（两个哨兵的判定）**。〔散文墓碑〕
-//
-// 它读的是那条一次性 SSH 串的 stdout：`NO_TMUX`（没装 tmux）/ `NO_PANE`（会话不存在**或**
-// 抓屏失败）。⚠ 它自己的头注逐字承认过一个边角：「pane 内容 `trim_end` 后恰等于某哨兵串
-// → 误判」—— 那不是概率问题，是**把答案编码进 stdout** 这种做法的固有形状。
-//
-// 换成帧面之后**答案与内容分开走**（`{name, screen}` ＋ 一个错误码），
-// 于是「屏幕上恰好只有 NO_PANE 这几个字」再也不是一次误判。
-// 五档怎么分见 [`describe_capture_refusal`]。
-
-/// 把 `capture-pane` 的**拒绝码**讲成人话 —— 纯函数。
-///
-/// 🔴 **五档分得开，这才是换掉那条 SSH 串真正买到的东西。**
-/// 老那条串只有两个哨兵，而「tmux 没装」「一个 server 都没有」「这个会话不存在」
-/// 「抓屏本身失败」四件事里有三件被压进 `NO_PANE` 一个读数 ——
-/// 它们的下一步各不相同（装 tmux / 那台机器上没有会话在跑 / 刷新列表 / 看 tmux 原话）。
-/// 那五个码是后端按**退出码 ＋ stderr 命中哪张针表**分出来的
-/// （`src/backend/control/capture_pane.rs` 头注那张表），不是这一侧猜的。
-///
-/// ⚠ **认不出的码不许猜**：原样带出去。「压成一个具体而错误的答案」正是后端那侧
-/// 兜底档（`capture_failed` ＋ stderr 原样回包）写下来要避免的形状 —— 这一侧照抄那条纪律。
-fn describe_capture_refusal(target: &str, code: &str, message: &str) -> String {
-    match code {
-        "no_tmux" => format!("抓不了 `{target}` 的画面：那台机器上起不来 tmux（{message}）"),
-        // ⚠ 「tmux 的 server」不是啰嗦：写成「tmux server」会被 `tmux_backend_gate_guard`
-        //    那条「远端 tmux 动词」守卫读成一个叫 `server` 的动词（它按字面「tmux 空格 小写词」
-        //    取，刻意不问上下文 —— 那是它 fail-closed 的方式）。**说的是同一件事，不许改语义。**
-        "no_server" => format!(
-            "抓不了 `{target}` 的画面：tmux 在，但那台机器上**一个 tmux 的 server 进程都没有**（{message}）"
-        ),
-        "no_such_session" => {
-            format!("抓不了 `{target}` 的画面：这个会话不存在，可能刚结束（{message}）")
-        }
-        "invalid_args" => format!("抓不了 `{target}` 的画面：这个会话名后端不收（{message}）"),
-        "capture_failed" => format!("抓 `{target}` 那一屏失败了，tmux 原话：{message}"),
-        other => format!("抓 `{target}` 那一屏被拒：{other}：{message}"),
-    }
-}
+// 〔C4e · 第四波 4C〕这里原来住着抓屏那一族在 monitor 侧的解释：帧命令名常量 `CAPTURE_PANE`、
+//   五个拒绝码的人话 `describe_capture_refusal`〔散文墓碑〕（再往前是 `K-R112` 删掉的 `classify_capture_output`〔散文墓碑〕）。
+//   抓屏改由界面经通道直接问那台机器的后端（`src/tmux-control.ts::capturePane`），「五档分得开、认不出的码原样带出去」
+//   那条口径随之搬到 TS 的 `captureRefusal`（`tests/tmux-control.vitest.ts` 逐码钉着）。
 
 /// F01：tmux `-t <target>` 的**精确匹配**包装。
 ///
@@ -486,7 +447,7 @@ fn describe_capture_refusal(target: &str, code: &str, message: &str) -> String {
 /// 删掉它会让换号重启把 `/exit` 敲进**兄弟会话里还活着的 claude** 并 kill 它，而 UI 报告「已重启」。
 ///
 /// F04 Gate 1（恒强制）：**空 target 必须被拒**——`=:` 会被 tmux 解析成「当前会话」，是本模块
-/// 唯一真正的危险默认值（今天 `capture_remote_pane` 是唯一无门的入口，见其函数头注）。
+/// 唯一真正的危险默认值（抓屏刻意不过身份门，见后端 `control/capture_pane.rs` 头注）。
 ///
 /// **只查空串，不额外收紧字符集**——glob/元字符（`*`/`;`/`$`/空格）不在这里挡：`shell_quote`
 /// 已经把任意内容安全引号化（不会脱出 shell），字符集层面的收紧是**另一层职责**（TS 侧
@@ -558,7 +519,7 @@ pub(crate) fn exact_target(target: &str) -> Result<String, String> {
 ///
 /// # 它是那笔代价的出口
 ///
-/// ⚠〔`K-R112` 09-13〕**第三个消费者进来了**：抓屏（`capture_remote_pane`）也走这一份。
+/// ⚠〔`K-R112` 09-13〕**第三个消费者进来过**：抓屏也走过这一份（〔C4e〕抓屏迁到界面，这一句随它搬进文案表 `tmuxControl.channel.*`）。
 /// 它的代价与那两条不同、要单记：抓屏此前对 `<local>` 是**一句「还看不了」**（根本没有那条路），
 /// 今天两侧同一条路 ⇒ 本机从「做不到」变成「做得到，除非后端没起来」。
 ///
@@ -614,91 +575,11 @@ fn no_channel_message(action: &str, origin: &str, target: &str, why: &str) -> St
 // 由后端侧与 `backend/control/gate2_parity.rs` 两条轨道共读）。
 // 回潮闸在 `tmux_backend_gate_guard`：那两条命令里**再出现** `connect_and_exec_cmd` 就红。
 
-/// 抓一屏走后端的 `capture-pane` 帧〔`K-R112` 09-13〕。
-///
-/// 回 `Err(Routed)` 而不是 `Err(String)`：**「一个字节都没发出去」与「后端说了话」不是一回事**，
-/// 而这一层判不了该怎么对用户说 —— 那归调用方（同 `backend_kill` / `backend_send_keys` 的分法）。
-///
-/// ⚠ **分流走那唯一的一份**（`backend_route::route_call_error`）：本模块不许自己 match
-/// 一遍错误枚举 —— 分流规则一旦有第二份实现，「被门拒绝」就会在某一份里被洗成「换条路重做」。
-async fn capture_via_backend(
-    origin: &str,
-    target: &str,
-) -> Result<String, crate::backend::control::backend_route::Routed> {
-    use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
-    let Some(client) = crate::backend::control::inbound_client::client_for(origin) else {
-        return Err(no_channel(origin));
-    };
-    // 能力协商放在抓之前：抓一屏是 `K-R86`/`K-R104` 之后才有的原语，老后端上没有。
-    // **「这台的后端太旧」是问得出答案的**，不许与超时同形（同 `cc_bus::send_via_backend`）。
-    if !client.accepts(CAPTURE_PANE) {
-        return Err(Routed::NoChannel(format!(
-            "`{origin}` 的后端没声明 `{CAPTURE_PANE}` 能力 —— \
-             抓一屏是后来才上帧面的原语，**重装那台机器的后端**就有了"
-        )));
-    }
-    let reply = client
-        .call(
-            CAPTURE_PANE,
-            crate::backend::control::command_args::capture_pane_args(target),
-            std::time::Duration::from_secs(20),
-        )
-        .await
-        .map_err(|e| {
-            route_call_error(&e, |code, message| {
-                describe_capture_refusal(target, code, message)
-            })
-        })?;
-    // ⚠ **空屏是合法的成功**（backend 侧头注逐字）：一个刚建起来、什么都没打印的 pane
-    //   抓回来就是空串。所以这里判的是**字段在不在**，不是「内容空不空」。
-    reply
-        .as_ref()
-        .and_then(|v| v.get("screen"))
-        .and_then(|v| v.as_str())
-        .map(str::to_string)
-        .ok_or_else(|| {
-            Routed::Refused(format!(
-                "抓 `{target}` 的应答里没有 `screen` 字段 —— 这一端与那一端的契约漂开了"
-            ))
-        })
-}
-
-/// F60:抓一个 tmux 会话当前窗口/pane 的屏幕文本(**只读快照,非 attach**)。
-///
-/// # ★★ `K-R112`（09-13）：**改走后端的 `capture-pane` 帧，本机那一支跟着通了**
-///
-/// 在本件之前这条命令是**一次性 SSH**〔散文墓碑〕（`build_capture_pane_cmd` 拼一条带 `command -v tmux`
-/// 门控与 `NO_PANE` 哨兵的 shell 串 → `connect_and_exec_cmd`），而**本机那一支直接回一句
-/// 「还看不了」**。那句话当时是诚实的：backend 没有抓屏原语。
-/// `K-R86`（09-13）补了 CLI 面、`K-R104` 把它搬上帧面 ⇒ **前提到期了**，这一条不再拒本机。
-///
-/// 换来的三样，逐条都是具体的：
-/// 1. **本机能预览了** —— `<local>` 也是一个 origin，`client_for` 两侧都答得出。
-/// 2. **五档错误分得开**（[`describe_capture_refusal`]）：老路两个哨兵把四件事压成两个读数。
-/// 3. **精确形态只剩一份**：`=name:` 那道 Gate 1 今天只住后端侧
-///    （`control/capture_pane.rs::capture_on`），monitor 不再拼第二份。
-///
-/// ⚠ **代价如实写**：后端通道不在时，抓屏从「远端还能靠一次性 SSH 抓到」变成**明确失败**
-/// （出口 [`no_channel_message`]）。远端那一侧这是**净损失一条路**，值不值由这三样换 ——
-/// 而 `K33` 逐字「所有命令只许有一处」把它判成了值。
-///
-/// ⚠ **只读快照，刻意不过身份门（Gate 2）** —— 两侧口径一致，backend 侧
-/// `control/capture_pane.rs::capture` 头注逐字记着同一句。别顺手给它加门。
-#[tauri::command]
-pub async fn capture_remote_pane(origin: String, target: String) -> Result<String, String> {
-    use crate::backend::control::backend_route::Routed;
-    // Gate 1 仍在**本地就地**判（同 `tmux_send_keys` / `kill_remote_tmux`）：
-    // 空目标不该先花一次往返（`=:` 会被 tmux 解析成「当前会话」）。
-    gate1_reject_empty(&target)?;
-    match capture_via_backend(&origin, &target).await {
-        Ok(screen) => Ok(screen),
-        Err(Routed::Refused(why)) => Err(why),
-        Err(Routed::NoChannel(why)) => Err(no_channel_message("抓不了", &origin, &target, &why)),
-        Err(Routed::Done) => {
-            Err("抓屏的分流器判成「已完成」，这不该发生 —— 那一档没有屏幕内容可回".to_string())
-        }
-    }
-}
+// 〔C4e · 第四波 4C〕这里原来住着抓屏的发送端 `capture_via_backend` 与 Tauri 命令 `capture_remote_pane`〔散文墓碑〕：
+//   空目标先拒 · 预问那台后端认不认 · 转 `capture-pane` · 取 `screen`。那四件事今天只在界面一处
+//   （`src/tmux-control.ts::capturePane`），monitor 那一跳只搬字节（`chan/webview.rs::chan_call`）。
+//   `K-R112` 买到的三样（本机也能预览 · 五档分开 · 精确形态只剩后端一份）一样没丢：本机仍经 `<local>` 那条长连接、
+//   五档在 TS 逐码分开、`=name:` 仍只住后端 `control/capture_pane.rs::capture_on`。
 
 /// F79(#38)：杀死远端 tmux 会话。**破坏性操作**——前端二次确认后才调。
 /// 杀完 tab 变灰由 #60-A 的 tmux 存活对账兜（本命令不主动 archive，守 §24）。

@@ -19,7 +19,7 @@
 //! # 它的单元判据为什么没跟着搬
 //!
 //! 那三条（`the_e2e_send_into_line_is_exactly_what_the_encoder_produces` ·
-//! `the_tmux_primitive_arg_builder_matches_the_backend_parser` ·
+//! `the_tmux_primitive_arg_builder_matches_the_backend_parser`〔散文墓碑〕（〔C4e〕随抓屏那个构造器删了）·
 //! `launch_args_field_names_match_the_backend_parser`）仍住
 //! `tests/bridge/backend/control/inbound_client_tests.rs`，只把函数路径改了。
 //! 理由是**现打的**：那几条带**跨半边的 `include_str!`**
@@ -76,16 +76,9 @@ pub fn launch_args(
     Value::Object(m)
 }
 
-/// `K-R104`：`capture-pane` 命令的**参数构造器**（monitor 这一侧的契约面）。
-///
-/// 与 [`launch_args`] 同一条理由：字段名一旦与后端的解析器漂开，症状是
-/// 「命令发出去了、backend 回 `invalid_args` 说缺字段」，而两边各自看都「对」。
-/// 由 [`tests::the_tmux_primitive_arg_builder_matches_the_backend_parser`] 对拍。
-pub fn capture_pane_args(name: &str) -> Value {
-    let mut m = serde_json::Map::new();
-    m.insert("name".into(), Value::String(name.to_string()));
-    Value::Object(m)
-}
+// 〔C4e · 第四波 4C〕这里原来住着 `capture-pane` 的参数构造器 `capture_pane_args`（`K-R104`）〔散文墓碑〕：
+//   抓屏改由界面经通道直接问，它唯一的调用方（monitor 的抓屏发送端）删了；请求形状改由跨语言金样
+//   `tests/__fixtures__/tmux-control.golden.json` 钉（后端解析器与界面请求体读同一份）。
 
 /// `create-or-attach` **专有**的那三个可选字段〔`K-P2` `D3` 09-03〕。
 ///

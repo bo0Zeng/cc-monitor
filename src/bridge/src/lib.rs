@@ -1429,7 +1429,6 @@ pub fn run() {
             pubkey::push_public_key,
             backend::control::tmux::list_remote_tmux,
             backend::control::tmux::list_local_tmux,
-            backend::control::tmux::capture_remote_pane,
             backend::control::tmux::kill_remote_tmux,
             backend::control::tmux::tmux_send_keys,
             ccm_probe::probe_ccm_cli,

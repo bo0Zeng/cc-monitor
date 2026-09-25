@@ -671,6 +671,86 @@
       "kind": "body",
       "zh": "留意：{value}",
       "args": ["value"]
+    },
+    "tmuxControl.machine.local": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
+    },
+    "tmuxControl.target.empty": {
+      "kind": "error",
+      "zh": "没有指定 tmux 会话，这次没有执行。",
+      "args": []
+    },
+    "tmuxControl.channel.localDown": {
+      "kind": "error",
+      "zh": "本机后端没有运行，这次没有执行。本机后端起来之后再试。",
+      "args": []
+    },
+    "tmuxControl.channel.remoteDown": {
+      "kind": "error",
+      "zh": "连不上 {machine} 的后端，这次没有执行。等它连上之后再试。",
+      "args": ["machine"]
+    },
+    "tmuxControl.channel.oldBackend": {
+      "kind": "error",
+      "zh": "{machine} 的后端版本不对，需要更新。",
+      "args": ["machine"]
+    },
+    "tmuxControl.channel.unsure": {
+      "kind": "error",
+      "zh": "不知道 {machine} 那边做完了没有：连接断了，或者等回复超时。刷新会话列表后再决定要不要重试。",
+      "args": ["machine"]
+    },
+    "tmuxControl.channel.cancelled": {
+      "kind": "error",
+      "zh": "这次操作已撤回。",
+      "args": []
+    },
+    "tmuxControl.channel.broken": {
+      "kind": "error",
+      "zh": "这次操作没有完成，cc-monitor 内部出错了。",
+      "args": []
+    },
+    "tmuxControl.reply.unreadable": {
+      "kind": "error",
+      "zh": "{machine} 的后端回的内容读不懂。多半是两边版本不一致，需要更新它。",
+      "args": ["machine"]
+    },
+    "tmuxControl.capture.noTmux": {
+      "kind": "error",
+      "zh": "抓取不了 {target} 的画面：那台机器上起不来 tmux（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.capture.noServer": {
+      "kind": "error",
+      "zh": "抓取不了 {target} 的画面：那台机器上没有在运行的 tmux（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.capture.noSuchSession": {
+      "kind": "error",
+      "zh": "抓取不了 {target} 的画面：这个会话不存在，可能刚结束（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.capture.badName": {
+      "kind": "error",
+      "zh": "抓取不了 {target} 的画面：后端不接受这个会话名（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.capture.failed": {
+      "kind": "error",
+      "zh": "抓取 {target} 的画面失败了，tmux 的原话：{detail}",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.capture.otherCode": {
+      "kind": "error",
+      "zh": "抓取 {target} 的画面被拒：{code}：{detail}",
+      "args": ["target", "code", "detail"]
+    },
+    "tmuxControl.capture.noReason": {
+      "kind": "error",
+      "zh": "抓取 {target} 的画面被拒，没有给出原因。",
+      "args": ["target"]
     }
   }
 }

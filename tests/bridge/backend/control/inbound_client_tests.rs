@@ -3,7 +3,7 @@ use super::*;
 // （`C1` 在 `inbound_client.rs` 上咬的 `sid` / `agent` 两处全在它们身上）。
 // 下面那三条判据**刻意留在这里** —— 理由（跨半边 include 被别人的登记表按文件路径钉着）
 // 写在 `command_args` 的头注里，不在这里抄第二份。
-use crate::backend::control::command_args::{capture_pane_args, launch_args, LaunchExtras};
+use crate::backend::control::command_args::{launch_args, LaunchExtras};
 use tokio::io::AsyncBufReadExt;
 
 fn hello_frame(commands: &[&str]) -> InboundFrame {
@@ -459,70 +459,11 @@ fn the_e2e_command_list_matches_the_backend_command_table() {
     );
 }
 
-/// ★★ `KR104D1` 的跨轨对拍：那条新原语的参数构造器与后端的解析器对得上。
-///
-/// 〔`设计/50`：本条原名 `the_two_tmux_primitive_arg_builders_match_the_backend_parsers`  〔散文墓碑〕
-///  （`tests/evidence/K-R104-deathvalue.md` 里按那个名字记着读数）。「两条」里的
-///  `oneshot-session` 随用量 ③ 轴退役，剩 `capture-pane` 一条 ⇒ 名字跟着改，
-///  免得它自己变成一句假话。〕
-///
-/// # 为什么不照抄上面那条 `launch` 的抠法
-///
-/// `launch` 的解析器逐个 `get_str("<key>")`，抠得出来。`capture-pane` 的解析器写法不同
-/// （复用 `kill::parse_name`）⇒ 照抄那把尺子会**零命中地绿**。
-/// ⇒ 这里换一个**共同的、数据级**的真相源：backend 的 `inbound::REGISTRY` 里那条
-/// `CommandSpec::fields`（它自己已经被 `protocol_doc_guard` 与后端侧的判据
-/// 双向钉着，不是第三份手写清单）。
-///
-/// **args 是 fields 的子集**（fields = args ∪ data）⇒ 断的是**包含**，
-/// 并另加一格「data 那几个键不许出现在 args 里」，免得包含关系退化成空真。
-#[test]
-fn the_tmux_primitive_arg_builder_matches_the_backend_parser() {
-    const BACKEND_INBOUND: &str = include_str!("../../../../src/backend/inbound.rs");
-    let prod = guard_core::production_code(BACKEND_INBOUND);
-
-    /// 从后端的 `REGISTRY` 里抠出某条命令那一格 `fields: &[…]` 的成员。
-    fn fields_of(prod: &str, cmd: &str) -> Vec<String> {
-        let head = format!("name: \"{cmd}\",");
-        let at = prod.find(&head).unwrap_or_else(|| {
-            panic!("backend 的 `REGISTRY` 里找不到 `{cmd}` —— 尺子的作用域没了")
-        });
-        let rest = &prod[at..];
-        let f = rest
-            .find("fields: &[")
-            .unwrap_or_else(|| panic!("`{cmd}` 那一格没有 `fields`"));
-        let body_at = f + "fields: &[".len();
-        let end = rest[body_at..]
-            .find(']')
-            .unwrap_or_else(|| panic!("`{cmd}` 的 `fields` 没有收尾 `]`"));
-        let body = &rest[body_at..body_at + end];
-        let mut out: Vec<String> = Vec::new();
-        for piece in body.split('"').skip(1).step_by(2) {
-            out.push(piece.to_string());
-        }
-        out.sort();
-        out
-    }
-
-    // ── `capture-pane` ────────────────────────────────────────────────
-    let cap_fields = fields_of(&prod, "capture-pane");
-    assert_eq!(
-        cap_fields,
-        vec!["name".to_string(), "screen".to_string()],
-        "backend 侧 `capture-pane` 的 `fields` 变了 —— 两边同拍改"
-    );
-    let cap = capture_pane_args("cc-x");
-    let cap_keys: Vec<String> = cap.as_object().expect("对象").keys().cloned().collect();
-    assert_eq!(
-        cap_keys,
-        vec!["name".to_string()],
-        "`capture_pane_args` 的键变了"
-    );
-    assert!(
-        !cap_keys.iter().any(|k| k == "screen"),
-        "`screen` 是**回**的那一侧，不该出现在请求 args 里"
-    );
-}
+// 〔C4e · 第四波 4C〕这里原来住着 `KR104D1` 那条跨轨对拍（抓屏的参数构造器 `capture_pane_args` ↔ 后端 `REGISTRY` 那一格 `fields`）〔散文墓碑〕。
+//   抓屏改由界面经通道直接问（`src/tmux-control.ts::capturePane`），monitor 侧那个构造器没了生产调用方、随发送端删了；
+//   请求 / 成品的形状从此由跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 钉着：后端侧
+//   `capture_pane_tests.rs::the_capture_product_matches_the_cross_language_golden`（请求样例过生产解析器 · 成品 == 生产构造器 ·
+//   码集合 == `REGISTRY`），界面侧 `tests/tmux-control.vitest.ts`（请求体 · 解码器读同一份）。
 
 /// ★ 跨轨对拍：`launch_args` 吐的键名必须**恰好**是后端解析器认的那几个。
 ///
