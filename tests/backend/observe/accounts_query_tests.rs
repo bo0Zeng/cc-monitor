@@ -1723,3 +1723,61 @@ fn an_inherited_launch_id_is_never_reported_as_the_childs_own_identity() {
              那么上面两格的 `null` 证明不了防冒名在起作用（全抹掉也是这个读数）。"
     );
 }
+
+// ════════════════════════════════════════════════════════════════════════════════════════
+// 〔S5 · 第四波〕同一份账号 manifest，**两个读者**读出同一张表 —— 带不带 UTF-8 BOM 都一样
+// ════════════════════════════════════════════════════════════════════════════════════════
+//
+// 要求住址：`调研/第四波记录/WN1.md §1` 件 F，逐字「账号库 manifest 带 UTF-8 BOM ⇒ 整块当空表」
+// （`真相源/106 §3.4` 那次真机读数：PS 5.1 `-Encoding UTF8` 与记事本默认写 BOM）。
+//
+// 后端读这份文件的有两处：`control/ccm/plan.rs::AccountTable::load`（`ccm --account` 那一条，09-21 已修）
+// 与本文件的 `load_manifest`（`--list-accounts` ⇒ 账号页）。前者修了、后者没修 ⇒ 同一台 Windows 上
+// `ccm --account work` 起得来，账号页却说「没启用多账号」。
+// ⇒ 判据不钉「某一个读者剥了 BOM」，钉**两个读者读出的号两向相等**：以后谁再长出第三种读法、
+//   或其中一个改了解析口径，这里当场红。两侧异源：两份各自的解析代码，同一份盘上字节。
+#[test]
+fn both_readers_of_the_manifest_see_the_same_accounts() {
+    let body = r#"{"version":1,"accounts":[{"name":"work","configDir":"/w"},{"name":"play","configDir":"/p","isDefault":true}]}"#;
+    for (tag, bytes) in [
+        ("plain", body.to_string()),
+        ("bom", format!("\u{FEFF}{body}")),
+    ] {
+        let root = tmpdir(&format!("two-readers-{tag}"));
+        let accts = root.join("accts");
+        write_manifest(&accts, &bytes);
+        // 夹具先自证：带 BOM 那一份真的以 EF BB BF 开头（否则这一格在量一个没有 BOM 的文件）。
+        let raw = fs::read(accts.join("accounts.json")).unwrap();
+        assert_eq!(
+            raw.starts_with(&[0xEF, 0xBB, 0xBF]),
+            tag == "bom",
+            "夹具不对：{tag}"
+        );
+
+        let mut ours: Vec<String> = load_manifest(&accts)
+            .unwrap_or_else(|e| panic!("`--list-accounts` 那个读者读不动（{tag}）：{e}"))
+            .accounts
+            .into_iter()
+            .map(|a| a.name)
+            .collect();
+        let path = accts.join("accounts.json");
+        let mut ccm: Vec<String> =
+            crate::control::ccm::plan::AccountTable::load(path.to_str().unwrap())
+                .accounts
+                .into_iter()
+                .map(|a| a.name)
+                .collect();
+        ours.sort();
+        ccm.sort();
+        assert_eq!(
+            ours, ccm,
+            "同一份 manifest（{tag}），账号页那个读者与 `ccm --account` 那个读者读出的号不一样"
+        );
+        assert_eq!(
+            ours,
+            vec!["play".to_string(), "work".to_string()],
+            "（{tag}）两边都读漏了"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+}
