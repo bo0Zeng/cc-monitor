@@ -119,6 +119,13 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
+        "tests/bridge/creds_store_tests.rs",
+        "src/backend/accounts/upstream/file_face.rs",
+        "〔GP1 · 第四波〕本机凭据文件的写者换成本机常驻后端之后，「monitor 生产段零处够写半边」那条零命中判据的**正控** \
+         要落在真写者身上 —— 同一把针在后端那一份写口里数得到，才说明零命中不是针瞎了（合成样本证不了针对准了真写口）",
+    ),
+    (
+        "monitor→backend",
         "tests/bridge/backend/control/backend_send_keys_tests.rs",
         "src/backend/control/launch.rs",
         "两个 mode 名必须是后端真能 parse 的那两个（`parse_request` 不 deny unknown \
@@ -265,7 +272,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          `analyze_session`（本机与远端同一个函数）⇒ 这条性质只能同时读两侧源码才验得了。失效方向同它立项时那一次：\
          CC 再改一次标题记录的名字，后端那一臂接不住，会话列表上的标题静默消失，两侧各自全绿。",
     ),
-    // ── backend → monitor（2 条）：backend 的判据去读 monitor ────────────────────
+    // ── backend → monitor（4 条 · 〔RK1〕3 → 4：`door_tests` 那一条）：backend 的判据去读 monitor ────────────────────
     (
         "backend→monitor",
         // 〔步 7c 后端剖分 2026-09-19 · C 类〕住址跟着那条 include 搬进 `tests/backend/`。
@@ -297,6 +304,15 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          PM 08-28 亲手实测过它存在：把 monitor 的 `relay_env_prefix_posix` 改成返回空串，\
          monitor 半边红 3 条，**backend 半边的 `KH2B1` 一条都不红**（它的桩启动器自己读环境变量，\
          够不着 monitor 的函数）。跨轨对拍是唯一能把这一格焊住的形状。",
+    ),
+    (
+        "backend→monitor",
+        "tests/backend/relay/door_tests.rs",
+        "src/bridge/src/backend/control/payload.rs",
+        "★〔RK1 · 第四波 4C 新增〕**中转钥匙文件的相对路径两侧同一个串** —— \
+         `door_tests::the_key_file_is_the_same_path_on_both_halves`。中转（backend `door::KEY_FILE_REL`）在那里读 / 铸钥匙，\
+         monitor 的渲染器（`payload::RELAY_KEY_FILE_REL`）拼 `$(cat \"$HOME/…\")` 让 pane shell 现读它。\
+         失效方向**很安静**：两边漂开 ⇒ shell 读一个不在的文件 ⇒ 钥匙段为空 ⇒ 每一发 403，与「钥匙不对」同形，两侧各自全绿。",
     ),
 ];
 

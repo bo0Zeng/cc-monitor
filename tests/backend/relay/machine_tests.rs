@@ -74,17 +74,142 @@ fn listening_sees_a_bound_port_and_stops_seeing_it_once_released() {
     );
 }
 
+/// 夹具家目录（钥匙文件在它底下）＋ 喂给 `*_with` 的取值器。
+fn fixture_home(tag: &str) -> std::path::PathBuf {
+    let d = std::env::temp_dir().join(format!(
+        "ccm-rk1-machine-{tag}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    std::fs::create_dir_all(&d).expect("夹具家目录");
+    d
+}
+
+fn home_env(home: &std::path::Path) -> impl Fn(&str) -> Option<String> {
+    let h = home.display().to_string();
+    move |k: &str| (k == "HOME").then(|| h.clone())
+}
+
+/// 〔RK1〕⑧ 口上是**我们的中转**（真中转、带夹具钥匙）⇒ `relay-status` 说在听、`relay-ensure` 一个进程都不起。
 #[test]
-fn ensure_starts_nothing_when_someone_already_listens() {
-    let l = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
-    let port = l.local_addr().unwrap().port();
-    let got = answer_ensure(&json!({ "port": port })).expect("应当成功");
+fn ensure_starts_nothing_when_our_relay_already_listens() {
+    let home = super::super::door::door_tests::seed_test_home(&fixture_home("ours"));
+    let listener = super::super::listen::listen(0).expect("listen");
+    let port = listener.local_addr().unwrap().port();
+    let relay = std::sync::Arc::new(super::super::server::Relay::new(
+        std::sync::Arc::new(NoRows),
+        super::super::door::Key::for_tests(),
+        super::super::tee::TeeSink::new(Box::new(std::io::sink())),
+        std::time::Duration::from_secs(10),
+        std::time::Duration::from_secs(10),
+    ));
+    std::thread::spawn(move || super::super::listen::serve(listener, relay));
+    let get = home_env(&home);
+    assert_eq!(occupant(port, &get), Occupant::Ours);
+    let got = answer_ensure_with(&json!({ "port": port }), &get).expect("应当成功");
     assert_eq!(got["started"], false, "口上有人还起了一个：{got}");
     assert_eq!(got["listening"], true);
     assert!(got.get("pid").is_none(), "没起进程却带着 pid：{got}");
-    let st = answer_status(&json!({ "port": port })).unwrap();
+    let st = answer_status_with(&json!({ "port": port }), &get).unwrap();
     assert_eq!(st["listening"], true);
+    // 泄露判据的一面：应答里没有钥匙（正控：应答里有端口）。
+    for v in [&got, &st] {
+        let text = v.to_string();
+        assert!(text.contains(&port.to_string()), "应答采集面是死的：{text}");
+        assert_eq!(
+            text.matches(super::super::door::door_tests::TEST_KEY)
+                .count(),
+            0,
+            "钥匙进了应答：{text}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 〔RK1〕⑧ 口上是**别的东西**：
+/// - 一个只 accept 不说话的口、而这台没有钥匙文件 ⇒ `relay-status` 说「不在」（窄窗那一格）、`relay-ensure` 说 `not_ours`；
+/// - 有钥匙文件、口上是个对什么都回 404 的「旧中转」⇒ 两条都 `not_ours`；
+/// - 没人 ⇒ `Nobody`。
+#[test]
+fn a_port_held_by_something_else_is_not_ours_and_ensure_says_so() {
+    // ① 没钥匙文件、有人在听。
+    let empty = fixture_home("nokey");
+    let l = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let port = l.local_addr().unwrap().port();
+    let get = home_env(&empty);
+    assert_eq!(occupant(port, &get), Occupant::NoKeyFile);
+    assert_eq!(
+        answer_status_with(&json!({ "port": port }), &get).unwrap()["listening"],
+        false
+    );
+    let err = answer_ensure_with(&json!({ "port": port }), &get).expect_err("该拒");
+    assert_eq!(err.0, "not_ours", "{err:?}");
     drop(l);
+    // ② 有钥匙文件，口上是一个对什么都回 404 的旧中转（没有门）。
+    let home = super::super::door::door_tests::seed_test_home(&fixture_home("old"));
+    let old = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let port = old.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        use std::io::{Read, Write};
+        for s in old.incoming() {
+            let Ok(mut s) = s else { continue };
+            let _ = s.set_read_timeout(Some(std::time::Duration::from_secs(5)));
+            let mut buf = [0u8; 1024];
+            let _ = s.read(&mut buf);
+            let _ = s.write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n");
+        }
+    });
+    let get = home_env(&home);
+    match occupant(port, &get) {
+        Occupant::NotOurs(why) => {
+            assert!(
+                why.contains(&port.to_string()),
+                "为什么里要点名那个口：{why}"
+            );
+            assert_eq!(
+                why.matches(super::super::door::door_tests::TEST_KEY)
+                    .count(),
+                0,
+                "钥匙进了说法：{why}"
+            );
+        }
+        other => panic!("对什么都回 404 的旧中转不该被认成我们的：{other:?}"),
+    }
+    for (name, got) in [
+        (
+            "relay-status",
+            answer_status_with(&json!({ "port": port }), &get),
+        ),
+        (
+            "relay-ensure",
+            answer_ensure_with(&json!({ "port": port }), &get),
+        ),
+    ] {
+        assert_eq!(got.expect_err("该拒").0, "not_ours", "{name}");
+    }
+    // ③ 没人。
+    assert_eq!(occupant(free_port(), &get), Occupant::Nobody);
+    let _ = std::fs::remove_dir_all(&home);
+    let _ = std::fs::remove_dir_all(&empty);
+}
+
+/// 一行都没有的上游选择（探针只打「不是路由」那一形，不需要表）。
+struct NoRows;
+impl super::super::Destinations for NoRows {
+    fn resolve(
+        &self,
+        _mode: super::super::Mode,
+        _key: &super::super::RouteKey,
+        act: &mut dyn FnMut(super::super::Destination<'_>),
+    ) {
+        act(super::super::Destination::Refuse {
+            status: "404 Not Found",
+            why: "夹具：一行都没有",
+        });
+    }
 }
 
 #[test]

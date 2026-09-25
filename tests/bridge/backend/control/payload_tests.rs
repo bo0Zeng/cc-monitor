@@ -1523,14 +1523,90 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
         }
     }
     // ★ 反面：本文件的 POSIX 那一处**必须真的接上了**（不然上面整张表可以全是「没接」）。
+    // 〔RK1〕钥匙段是读钥匙文件的命令替换（形状理由在 `RELAY_KEY_FILE_REL` 头注）。
     assert_eq!(
         relay_env_prefix_posix("http://127.0.0.1:8788/s/a/b/c"),
-        "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/a/b/c'; "
+        "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'\"$(cat \"$HOME/.cc-monitor/relay-key\")\"'/s/a/b/c'; "
     );
     assert_eq!(
         relay_env_prefix_ps("http://127.0.0.1:8788/s/a/b/c"),
-        "$env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/a/b/c'; "
+        "$env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/' + (Get-Content -Raw -LiteralPath (Join-Path $HOME '.cc-monitor/relay-key')).Trim() + '/s/a/b/c'; "
     );
+}
+
+/// 〔RK1 · `INVARIANTS §48.1`〕⑥ 渲染出来的 `export` **一个钥匙字节都不含**，而**真 shell** 展开之后
+/// `ANTHROPIC_BASE_URL` 逐字节 == `http://127.0.0.1:8788/<钥匙>/s/…`（钥匙从 `$HOME` 底下那一份现读）。
+/// 钥匙文件不在 ⇒ 展开成空段 `…8788//s/…` —— 中转会以 403 拒（出声），**不会**变成一条不过中转的直连。
+///
+/// 异源：钥匙是本判据现造的随机串、写进夹具家目录；期望 URL 由判据自己拼（不调渲染器）。
+#[cfg(unix)]
+#[test]
+fn the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_home() {
+    let home = std::env::temp_dir().join(format!(
+        "ccm-rk1-render-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let key = format!(
+        "{:032x}{:032x}",
+        uuid::Uuid::new_v4().as_u128(),
+        uuid::Uuid::new_v4().as_u128()
+    );
+    let url = relay_base_url_in(
+        RouteMode::Substitute,
+        8788,
+        "claude-code",
+        "acct-a",
+        "sid-1",
+    )
+    .expect("构造口");
+    let prefix = relay_env_prefix_posix(&url);
+    assert_eq!(prefix.matches(&key).count(), 0, "渲染串里不许有钥匙");
+    assert!(!prefix.contains(&key[..8]), "连钥匙的前缀都不该有");
+    let run = |home: &std::path::Path| {
+        let out = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!("{prefix}printf '%s' \"$ANTHROPIC_BASE_URL\""))
+            .env("HOME", home)
+            .output()
+            .expect("起 sh");
+        String::from_utf8(out.stdout).expect("utf-8")
+    };
+    // 文件不在 ⇒ 空段。
+    std::fs::create_dir_all(&home).expect("夹具家目录");
+    assert_eq!(
+        run(&home),
+        "http://127.0.0.1:8788//s/claude-code/acct-a/sid-1",
+        "钥匙文件不在时应展开成空段（中转以 403 拒），不是别的"
+    );
+    // 文件在 ⇒ 逐字节 == 带钥匙的 URL。
+    std::fs::create_dir_all(home.join(".cc-monitor")).expect("建 .cc-monitor");
+    std::fs::write(home.join(RELAY_KEY_FILE_REL), &key).expect("写夹具钥匙");
+    assert_eq!(
+        run(&home),
+        format!("http://127.0.0.1:8788/{key}/s/claude-code/acct-a/sid-1"),
+        "真 shell 展开之后不是带钥匙的那条 URL"
+    );
+    // `/t/` 那一形同样。
+    let t = relay_base_url_in(RouteMode::Passthrough, 8788, "claude-code", "0", "sid-2")
+        .expect("构造口");
+    let out = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(format!(
+            "{}printf '%s' \"$ANTHROPIC_BASE_URL\"",
+            relay_env_prefix_posix(&t)
+        ))
+        .env("HOME", &home)
+        .output()
+        .expect("起 sh");
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        format!("http://127.0.0.1:8788/{key}/t/claude-code/0/sid-2")
+    );
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 /// ★★★ `D6 阻-4` 的**人群闸**：谁绕开 `history::InjectFactSources` / `history::LaunchSink`

@@ -96,7 +96,7 @@
 //!   [`FileWindow::apply_keys`] / [`FileWindow::apply_pick_click`] /
 //!   [`FileWindow::apply_menu_click`] / [`FileWindow::perform`]。
 //!   🔴 **写操作一条新路都没长**：键盘与菜单做的每一件，都落回行上那几颗按钮已经在走的
-//!   那几个 `begin_*`（以及删除那一摞的 `start_writes`）⇒ 围栏 · 一次问完 · 只经通道说 `call`
+//!   那几个 `begin_*`（以及删除那一摞的 `start_writes`）⇒ 一次问完 · 只经通道说 `call`（〔FN1〕围栏那一道 V119 拿掉了）
 //!   这几道闸一道都没绕开。
 //!   ⚠ **拖放从这一条里划出去了**：第二刀做了「拖入本机文件 → 上传到当前远端目录」
 //!   那一半（见 [`FileWindow::start_drop`] 与 [`super::transfer`]）；
@@ -404,11 +404,13 @@ pub struct FileWindow {
     /// 搜索框里那几个字。**UI 线程自己的**（同 [`Self::copy_prompt`] 的理由：
     /// 它是一个正在被编辑的草稿，不该出现在两条线程共享的那份状态里）。
     query: String,
-    /// 🔴〔第五刀〕`设计/99 §4.6.4`：那四条写操作的状态机（**围栏 · 一次问完 · 结果**）。
+    /// 🔴〔第五刀〕`设计/99 §4.6.4`：那四条写操作的状态机（**一次问完 · 结果**；〔FN1〕围栏那一段 V119 拿掉了）。
     pub write_board: WriteBoard,
     /// 「叫什么名字 / 改成什么权限」那个框。`None` = 没在问。
     /// **UI 线程自己的**（理由见 [`WritePrompt`]）。
     write_prompt: Option<WritePrompt>,
+    /// 〔GP1 · 第四波〕改权限那个框的**现值**那一趟（UI 线程读，tokio 那条写；`writeops::ModeProbe`）。
+    pub mode_probe: super::writeops::ModeProbe,
     /// 已经消化过几摞写操作（同 [`Self::seen_rounds`]，每条路各一个数）。
     seen_write_rounds: u64,
     /// 🔴〔第八刀〕**往外拖**那一趟的共享落点（进度 · 结局）。
@@ -550,6 +552,7 @@ impl FileWindow {
             query: String::new(),
             write_board: WriteBoard::default(),
             write_prompt: None,
+            mode_probe: super::writeops::ModeProbe::default(),
             seen_write_rounds: 0,
             pull: super::download::DownloadBoard::default(),
             pull_ask: None,
@@ -1229,7 +1232,25 @@ impl FileWindow {
         };
         let refs: Vec<&super::source::Listed> = rows.iter().collect();
         self.write_prompt = Some(WritePrompt::for_chmod_many(&self.cwd, &refs));
+        // 〔GP1 · 第四波〕框一摆出来就逐项问现值（`files-stat` 的 `mode`）；答回来之后框上说、只预填一次。
+        let paths: Vec<String> = rows.iter().map(|r| r.path.clone()).collect();
+        self.start_mode_probe(paths);
         !refs.is_empty()
+    }
+
+    /// 〔GP1〕起「现值」那一趟。没有运行时 / 没有通道 ⇒ 当场落「全读不到」（框上说「读不到现在的权限」，不猜、不静默）。
+    fn start_mode_probe(&mut self, paths: Vec<String>) {
+        let gen = self.mode_probe.start();
+        let (Some(h), Some(line)) = (self.rt.clone(), self.line.clone()) else {
+            self.mode_probe.land(gen, vec![None; paths.len()]);
+            return;
+        };
+        let board = self.mode_probe.clone();
+        let origin = self.source.origin();
+        h.spawn(async move {
+            let modes = super::writeops::probe_modes(&line, &origin, &paths).await;
+            board.land(gen, modes);
+        });
     }
 
     /// 🔴 **删除不经那个框** —— 它不向用户要任何输入，它要的是一次**确认**，
@@ -1285,7 +1306,7 @@ impl FileWindow {
         true
     }
 
-    /// 起一摞 `§4.6.4`：**先过围栏，再一次问完，才动手。**
+    /// 起一摞 `§4.6.4`：**一次问完，才动手。**（〔FN1〕原来是「先过围栏，再……」，围栏 V119 拿掉了）
     ///
     /// 🔴 三段的顺序不在这里，在 [`super::writeops::run_writes`] 的结构里 ——
     /// 这里只负责把「怎么问 · 怎么做」两个口接上去（同 [`Self::start_drop`]）。
@@ -1884,8 +1905,25 @@ impl FileWindow {
             return;
         };
         let (mut go, mut cancel) = (false, false);
+        // 〔GP1 · 第四波〕改权限那个框：现值答回来了 ⇒ 预填至多一次（`writeops::apply_prefill`）。
+        let readout = matches!(p.kind, super::writeops::PromptKind::Chmod { .. }).then(|| {
+            self.mode_probe.attach(ui.ctx().clone());
+            self.mode_probe.readout()
+        });
+        if let Some(Some(r)) = &readout {
+            super::writeops::apply_prefill(&mut p, r);
+        }
         egui::Modal::new(egui::Id::new("filewin-write-prompt")).show(ui.ctx(), |ui| {
             ui.heading(p.heading());
+            match &readout {
+                Some(Some(r)) => {
+                    ui.label(r.line.as_str());
+                }
+                Some(None) => {
+                    ui.label("正在读现在的权限…");
+                }
+                None => {}
+            }
             ui.text_edit_singleline(&mut p.text);
             ui.label("⚠ 只在这一个目录里 —— 不许带 `/`。");
             ui.horizontal(|ui| {
@@ -2122,7 +2160,7 @@ impl FileWindow {
     ///
     /// 先**再问一次** [`select::actions_for`]（菜单是开菜单那一刻的快照，键盘压根没问过）：
     /// 不在表里 ⇒ 出声、不做。在表里 ⇒ 落回行上那几颗按钮**已经在走**的那几个 `begin_*`
-    /// —— 一条新写路都没长（围栏 · 一次问完 · 只经通道说 `call` 全在那几个函数后面）。
+    /// —— 一条新写路都没长（一次问完 · 只经通道说 `call` 全在那几个函数后面）。
     pub fn perform(&mut self, a: Action, ctx: Option<egui::Context>) -> bool {
         let (idx, allowed) = {
             let rows = self.listing.rows.lock().unwrap();
@@ -2154,7 +2192,7 @@ impl FileWindow {
     }
 
     /// 删掉第 `idx` 那几行 —— **一摞**，走 [`Self::start_writes`]（⇒ `run_writes`：
-    /// 围栏 → 一次问完 → 串行做）。「批量底层已做好」说的就是那个函数。
+    /// 一次问完 → 串行做）。「批量底层已做好」说的就是那个函数。
     ///
     /// 🔴 每一行照旧过 [`Self::writable_row`] 那道第二闸；有一行过不去 ⇒ **整摞不起**并出声
     /// （起一摞「删 3 项」却悄悄只删 2 项，正是「选中态 == 批量那一摞」这条相等的反面）。
@@ -2432,7 +2470,7 @@ impl FileWindow {
         // `§5` 第二段那一摞：覆盖确认 ／ 进度 ／ **上一趟走的是哪条路**。同样模态、同样在前。
         self.copy_board.ui(ui);
         self.copy_ui(ui);
-        // 🔴〔第五刀〕`§4.6.4` 那一摞：一次问完的确认框 ／ **被围栏挡住那几句话** ／ 结果。
+        // 🔴〔第五刀〕`§4.6.4` 那一摞：一次问完的确认框 ／ 结果（〔FN1〕「被围栏挡住那几句话」那一段删了）。
         //    同样模态、同样画在列表之前。
         self.write_board.ui(ui);
         self.write_ui(ui);

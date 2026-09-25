@@ -73,9 +73,9 @@ pub const AUTH_STYLE_FIELD: &str = "auth_style";
 ///   **谁都不许顺手删它**（删掉就是打掉老用户手上那份文件），
 ///   由 `the_legacy_top_level_key_becomes_one_named_row_not_a_default_row` 与
 ///   `an_unconfigured_file_yields_no_rows_at_all` 两条钉着。
-/// - **写**：界面那条路（`creds_store::write_key_at`）落的是 `accounts.<id>`，
-///   **一个字节都不再往顶层那一格写**。机检住 monitor 侧的
-///   `the_write_side_no_longer_targets_the_legacy_top_level_slot`。
+/// - **写**：界面那条路（〔GP1 · 第四波〕每台机器那台后端的写口 `accounts/upstream/file_face.rs`，本机也是）落的是 `accounts.<id>`，
+///   **一个字节都不再往顶层那一格写**。机检住后端那一侧的
+///   `file_face_tests::gp1_the_write_side_never_targets_the_legacy_top_level_slot`。
 ///
 /// ★ 为什么写侧非换不可（这不是洁癖）：写顶层那一格 ⇒ 读回来 id 逐字是本常量，
 /// 而起会话那一侧按**账号目录末段名**索引 ⇒ **从界面配的 key 永远匹配不上任何账号**，

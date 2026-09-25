@@ -427,3 +427,175 @@ fn the_local_arm_only_looks_at_the_local_slot() {
         RemovedDisposition::Archive
     );
 }
+
+// ============================================================================
+// 〔GP1 · 第四波〕远端断连 ⇒ 说不清，不是已结束。
+//
+// 要求住址：`设计/30 §3.5.7a`「两条不许越的线：**`Unseen` 不许被显示成『已结束』**」·
+// `§8` 第 2 条（「远端**断连**时应显示『说不清』而不是『已结束』：要改 `ssh_source` 断连 flush」）。
+// 设计与判据编号：`调研/第四波记录/GP1.md §1`（R1–R4）。
+// ============================================================================
+
+/// R1：三个 cause × 两种快照 == 手写表。`Unseen` 与 `Superseded` 一样**先于快照**裁。
+#[test]
+fn gp1_classify_removed_three_causes_by_two_snapshots_match_the_hand_written_table() {
+    let idle = || RemovedDisposition::Idle {
+        origin: "pi".to_string(),
+    };
+    let cells = [
+        (Some("pi"), RemovalCause::Gone, idle()),
+        (None, RemovalCause::Gone, RemovedDisposition::Archive),
+        (
+            Some("pi"),
+            RemovalCause::Superseded,
+            RemovedDisposition::Archive,
+        ),
+        (None, RemovalCause::Superseded, RemovedDisposition::Archive),
+        // ★ 关键两格：快照说 tmux 还在也好、不在也好，机器看不见了就是说不清。
+        (Some("pi"), RemovalCause::Unseen, RemovedDisposition::Unseen),
+        (None, RemovalCause::Unseen, RemovedDisposition::Unseen),
+    ];
+    for (snap, cause, want) in cells {
+        assert_eq!(
+            classify_removed(snap.map(str::to_string), cause),
+            want,
+            "classify_removed({snap:?}, {cause:?})"
+        );
+    }
+}
+
+/// R2：断连 flush 送出去的那一摞 —— 宣告过的 ∪ 可重连的，**每一条都是 `Unseen`**，一条不丢。
+#[test]
+fn gp1_the_disconnect_flush_hands_over_every_session_as_unseen() {
+    let got = disconnect_removals(
+        vec!["a1".to_string(), "a2".to_string()],
+        vec!["i1".to_string()],
+    );
+    // 正控：非空（空摞会让「每一条都是 Unseen」空真）。
+    assert_eq!(
+        got.iter().map(|r| r.sid.as_str()).collect::<Vec<_>>(),
+        vec!["a1", "a2", "i1"]
+    );
+    assert_eq!(
+        got.iter().map(|r| r.cause).collect::<Vec<_>>(),
+        vec![RemovalCause::Unseen; 3],
+        "断连 ≠ 会话死了：这一摞不许有一条走 `Gone`（那条会被裁成 Archive ⇒ 前端「已结束」）"
+    );
+}
+
+/// R3：F5 对账的分流 == 手写两表（两向：每个 sid 恰落一边，保持入参顺序）。
+#[test]
+fn gp1_stale_sessions_split_by_whether_their_machine_has_listed() {
+    let listed: std::collections::HashSet<String> = ["up".to_string()].into_iter().collect();
+    let stale = vec![
+        ("s1".to_string(), "up".to_string()),
+        ("s2".to_string(), "down".to_string()),
+        ("s3".to_string(), "up".to_string()),
+        ("s4".to_string(), "never".to_string()),
+    ];
+    let (ended, unseen) = split_stale(stale, &listed);
+    assert_eq!(ended, vec!["s1".to_string(), "s3".to_string()]);
+    assert_eq!(unseen, vec!["s2".to_string(), "s4".to_string()]);
+    // 没有一台报完 ⇒ 全落说不清（断连期间 F5 那一形；改之前这一格全是 ended）。
+    let (e2, u2) = split_stale(
+        vec![("x".to_string(), "down".to_string())],
+        &std::collections::HashSet::new(),
+    );
+    assert!(e2.is_empty());
+    assert_eq!(u2, vec!["x".to_string()]);
+}
+
+/// R3′：「报完了清单」那本账 —— 记入 / 摘掉；生产段写口各恰一处（收 `SessionsReplayed` 那一臂 · `run()` 连接结束）。
+#[test]
+fn gp1_the_listed_ledger_is_written_exactly_where_the_stream_says_so() {
+    note_listed("gp1_listed_origin");
+    assert!(listed_origins().contains("gp1_listed_origin"));
+    forget_listed("gp1_listed_origin");
+    assert!(!listed_origins().contains("gp1_listed_origin"));
+
+    let src = guard_core::production_code(include_str!("../../src/bridge/src/ssh_source.rs"));
+    let replayed = src
+        .split("Some(InboundFrame::SessionsReplayed) => {")
+        .nth(1)
+        .expect("收 `SessionsReplayed` 那一臂不在了 —— 名字改了就来改本条");
+    let arm = &replayed[..replayed
+        .find("Some(InboundFrame::")
+        .unwrap_or(replayed.len())];
+    assert_eq!(
+        arm.matches("note_listed(&host_label)").count(),
+        1,
+        "收到 `sessions_replayed` 那一臂没记账 ⇒ F5 之后固定复活的 tab 停在说不清"
+    );
+    assert_eq!(
+        src.matches("note_listed(").count(),
+        2,
+        "`note_listed(` 在生产段应当恰好 2 处（定义 1 ＋ 收帧那一臂 1）"
+    );
+    assert_eq!(
+        src.matches("forget_listed(&cfg.origin_label())").count(),
+        1,
+        "`run()` 连接结束那一处没摘账 ⇒ 断着的那台在 F5 里仍被当成「报完了」、会话被补成已结束"
+    );
+}
+
+/// R4：emitter 那两处 `Unseen` 臂发的是「说不清」，**零处** `SESSION_ENDED`；F5 那一摞同一个出口。
+///
+/// emitter 住 `lib.rs` 的 setup 闭包里，单测进不去 ⇒ 按源码切臂体（同 U4b M2 的如实写法）。
+/// 正控：`Archive` 臂恰好各有一处 `SESSION_ENDED`（同一把切法切得出来）。
+#[test]
+fn gp1_the_unseen_arms_say_unseen_and_never_ended() {
+    let src = guard_core::production_code(include_str!("../../src/bridge/src/lib.rs"));
+    let arm_of = |head: &str| -> Vec<String> {
+        src.split(head)
+            .skip(1)
+            .map(|rest| {
+                // 臂体 = 到下一个 `ssh_source::RemovedDisposition::` 或 `}\n` 缩进收尾为止（取较短者）。
+                let end = rest
+                    .find("ssh_source::RemovedDisposition::")
+                    .unwrap_or(rest.len())
+                    .min(
+                        rest.find("\n                                }\n")
+                            .unwrap_or(rest.len()),
+                    );
+                rest[..end].to_string()
+            })
+            .collect()
+    };
+    let unseen = arm_of("ssh_source::RemovedDisposition::Unseen =>");
+    let archive = arm_of("ssh_source::RemovedDisposition::Archive =>");
+    assert_eq!(
+        unseen.len(),
+        2,
+        "两个 emitter（本机 · 远端）各一个 `Unseen` 臂"
+    );
+    assert_eq!(archive.len(), 2, "正控：两个 `Archive` 臂");
+    for a in &unseen {
+        assert_eq!(
+            a.matches("emit_session_unseen(").count(),
+            1,
+            "`Unseen` 臂：\n{a}"
+        );
+        assert_eq!(
+            a.matches("SESSION_ENDED").count(),
+            0,
+            "`Unseen` 臂发了 ended：\n{a}"
+        );
+    }
+    for a in &archive {
+        assert_eq!(
+            a.matches("SESSION_ENDED").count(),
+            1,
+            "正控 `Archive` 臂：\n{a}"
+        );
+    }
+    // 出口本身：发 `SESSION_UNSEEN`、不发 `SESSION_ENDED`。
+    let body = src
+        .split("fn emit_session_unseen(")
+        .nth(1)
+        .and_then(|r| r.split("\n}\n").next())
+        .expect("`emit_session_unseen` 不在了");
+    assert_eq!(body.matches("SESSION_UNSEEN").count(), 1);
+    assert_eq!(body.matches("SESSION_ENDED").count(), 0);
+    // 调用点：两个臂 ＋ F5 那一摞 == 3。
+    assert_eq!(src.matches("emit_session_unseen(&handle,").count(), 3);
+}
