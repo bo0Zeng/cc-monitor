@@ -3390,7 +3390,7 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_acc
 ///
 /// ⚠ 另有一跳**本来就不归本条**：id 是怎么从 `configDir` 推出来的
 /// （`history::apikey_account_id_of_dir`，住 monitor，backend 够不着）——
-/// 那一格由 `what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for` 钉。
+/// 那一格由 `file_face_tests::us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses` 钉（〔US1〕写口 → 人群 → 成品，都在后端）。
 /// **本条从「已经有了一个 id」那一刻接手。**
 #[cfg(unix)]
 fn creds_text_the_write_side_would_produce(rows: &[(&str, &str)]) -> String {

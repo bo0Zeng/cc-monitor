@@ -17,6 +17,7 @@ members = [
     "crates/creds-core",
     "crates/gate-core",
     "crates/guard-core",
+    "crates/relay-route-core",
     "crates/search-core",
     "crates/shell-quote-core",
     "crates/codex-token-core",
@@ -114,20 +115,19 @@ acct-core = { path = "crates/acct-core" }
 # 〔CP2c〕对外文案表的 Rust 取文口（唯一一份实现；`copy_table.rs` 转发它）。常驻后端与 creds-core 也链它。
 copy-core = { path = "crates/copy-core" }
 # K-H2a：第三方 API key 的唯一住址（类型 / 落盘格式 / 权限判断），与远端后端共用。
-# ★ `features = ["harden"]` —— 〔GP1 · 第四波〕monitor **不再写**这份文件（本机那一份的写者换成本机常驻后端，
-#   主会话 09-25 裁「每台机器一个写者 ＝ 那台的后端」），开它今天只为**读那一半**：Windows 上量 DACL
-#   （`perm::probe` 的 `all(windows, feature = "harden")` 那一臂；不开 ⇒ 本机 Windows 上界面那一格恒「读不了 DACL」）。
-#   写半边（`create_private` / `make_private`）在 monitor 生产段**零调用**，判据
-#   `creds_store_tests::gp1_the_monitor_never_reaches_the_credentials_write_half` 钉着（编译器兜不住了，由它兜）。
-# 〔墓碑 —— 从前这里写「monitor 是唯一会写这份文件的一侧，所以只有这里开它；backend 那侧刻意不开」：
-#   RM1a 起后端也开了（远端那一份由那台后端写），GP1 起 monitor 不写了。〕
-creds-core = { path = "crates/creds-core", features = ["harden"] }
+# 〔US1 · 第四波 4D〕**不开 `harden`**：monitor 既不写（GP1 起本机那一份的写者是本机常驻后端）也不读（US1 起本机那份的状态
+#   由本机常驻后端答 `apikey-read`）这份文件，只用 `store::FILE_NAME` 算「本 monitor 认的那一份在哪」（`creds_store::resolve_path`）。
+#   「monitor 写不了这份文件」从判据兜换回**编译器兜**：写半边（`perm::create_private` / `make_private`）只在 `harden` 下存在。
+# 〔墓碑 —— GP1 那一版开着它「只为 Windows 上读 DACL」（`perm::probe` 那一臂）：读者随 `creds_store::read_status`〔散文墓碑〕一起没了。〕
+creds-core = { path = "crates/creds-core" }
 
 # P4c：**POSIX 单引号 quote 的唯一 Rust 实现**（P4b 之前叫 `launch-core`，那时它还持有
 # 载荷编译器与 ccm 调用行的决策内核 —— 那两样 P4b 已归位 `src/backend/control/`）。
 # ⚠ 原注释说「backend 侧刻意还没加这条依赖」已经过期两轮：U8c-2b-0 起后端的
 # `control/tmux_hook.rs::sq` 就在调它，那也是它今天唯一的后端用量。
 shell-quote-core = { path = "crates/shell-quote-core" }
+# 〔US1 · 4D〕中转门牌（端口 · 钥匙文件路径 · 路由语法）的唯一住址，与后端同一份（`设计/20 §5` 目标）。
+relay-route-core = { path = "crates/relay-route-core" }
 # F03：**§34 Gate 2（identity）的唯一实现**——「这个 tmux 会话是不是本工具管的」。
 # monitor 与后端共用同一份判定（定框 C1），防「把 send-keys/kill 搬进后端时静默丢掉一道门」。
 gate-core = { path = "crates/gate-core" }
@@ -263,17 +263,19 @@ windows = { version = "0.56", features = [
     #   不加这一行时 `windows::Win32::System::JobObjects` 是 `E0432 unresolved import`，
     #   编译器自己指出「the item is gated behind the `Win32_System_JobObjects` feature」。
     "Win32_System_JobObjects",
+    # 〔US1 · 第四波 4D〕`CreateJobObjectW` 的签名收 `Option<*const SECURITY_ATTRIBUTES>` ⇒ 要 `Win32_Security`。
+    #   先前它是从 `creds-core` 的 `harden` 那边 feature 合并**顺带**开的（下面那段 `KS5` 注释说的「事实上是开的」）；
+    #   monitor 不开 `harden` 之后那条顺带没了，`cargo check -p monitor --target x86_64-pc-windows-gnu` 现打
+    #   `E0432 unresolved import …CreateJobObjectW` ⇒ 在真用它的这一侧显式声明。
+    "Win32_Security",
     "Win32_UI_WindowsAndMessaging",
     # v2.4.2 issue #2: keybd_event 模拟 Alt 按键让 OS 视当前进程为
     # "刚有用户输入"，配合 AttachThreadInput 突破 Win10/11 前台抢焦限制。
     "Win32_UI_Input_KeyboardAndMouse",
 ] }
-# K-H2a `KS5`：`Win32_Security` / `Win32_Security_Authorization` 两个 feature **不加在这里**。
-# 用到它们的 Win32 调用（设 / 读凭据文件的 DACL）住 `crates/creds-core`——
-# 那是「一个安全性质只许有一个实现」的落点（`K-H2a` 裁三），monitor 与后端共用同一份。
-# 本 crate 只是它的**调用点之一**（`src/platform_fs.rs`），不直接碰 Win32。
-# ⚠ cargo 对同一版本的 `windows` 做 feature 合并 ⇒ 本 crate 的构建里那两个 feature 事实上是开的，
-# 但**声明住在真正用它的那个 crate**，别在这里重复一份（两处声明 = 下一个漂移源）。
+# K-H2a `KS5`：`Win32_Security_Authorization` **不加在这里** —— 设 / 读凭据文件 DACL 的 Win32 调用住 `crates/creds-core`
+# （「一个安全性质只许有一个实现」）。〔US1〕monitor 今天既不读也不写那份文件、不开 `harden`；`Win32_Security` 上面那一条是
+# Job Object 的签名要的，与凭据文件无关。
 # issue #9：single-instance lock。第二个 cc-monitor 实例启动时立即退出，
 # 第一个窗口拉到前台。Tauri 官方 plugin，user-scoped mutex，跨 user session 不冲突。
 tauri-plugin-single-instance = "2"

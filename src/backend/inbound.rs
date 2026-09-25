@@ -87,6 +87,8 @@ pub const COMMANDS: &[&str] = &[
     "accounts-trust",
     "apikey-key-set",
     "apikey-read",
+    // 〔US1 · 第四波 4D〕界面「这几个号在这台的表里有没有行 · 这台的中转在不在」（成品，界面经 `chan.call` 直接问）。
+    "apikey-routing",
     // 〔AS2 · 第四波 4B · V113〕资产目录（后端自有状态，第四层）：现扫 ＋ 记 · 并进别处的整份。
     "assets-catalog",
     "assets-catalog-merge",
@@ -143,6 +145,8 @@ pub const COMMANDS: &[&str] = &[
     "history-user-inputs",
     "kill",
     "launch",
+    // 〔US1 · 第四波 4D〕「这个号这一发走哪、注入什么」（上游选择出成品，`设计/20 §3.2` 那张表搬进后端）。
+    "launch-endpoint",
     // 〔SR1a〕链路四条（`dial/link.rs`）：本机常驻后端替 monitor 持有并复用到各远端的 SSH 连接。
     "link-close",
     "link-credit",
@@ -862,10 +866,37 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "apikey-read",
         doc_anchor: Some("#### `apikey-read`"),
         codes: &[],
-        fields: &["configured", "masked", "notice", "path", "problem", "rows"],
+        // 〔US1〕`rows` 退出线上：「表里有哪几行」只在这台后端里用（`file_face::rows_at`，三处读者同一份）。
+        fields: &["configured", "masked", "notice", "path", "problem"],
         takes_input: false,
         run: Run::Blocking(|_r| {
             crate::accounts::upstream::file_face::answer_read()
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔US1 · 第四波 4D〕上游选择出的两份成品（`accounts/upstream/endpoint.rs`）。
+    //   阻塞档：读一次凭据文件、装一次表；要注入时在回环上探一次中转（RK1 的差分探针，每发一次读期限）。
+    CommandSpec {
+        name: "launch-endpoint",
+        doc_anchor: Some("#### `launch-endpoint`"),
+        codes: &["bad_args"],
+        fields: &["account", "baseUrl", "listening", "whenDown"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::accounts::upstream::endpoint::answer_launch(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "apikey-routing",
+        doc_anchor: Some("#### `apikey-routing`"),
+        codes: &["bad_args"],
+        fields: &["routed", "running"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::accounts::upstream::endpoint::answer_routing(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
