@@ -24,6 +24,7 @@
 //! 界面进程里的 `russh` 拨号除 SFTP 那一份（SR1b 的事，登记在 `inproc_dial.rs`）外全删了 ——
 //! 这里就是界面拿到一条 SSH 链路的**唯一**入口。
 
+use crate::copy_table::copy_text;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -68,10 +69,7 @@ pub(crate) async fn local_backend_accepting(cmd: &str) -> Result<Arc<InboundClie
     for attempt in 0..LOCAL_WAIT_TRIES {
         if let Some(c) = inbound_client::client_for(local) {
             if !c.accepts(cmd) {
-                return Err(format!(
-                    "本机后端太旧：它不认 `{cmd}`（远端的 SSH 与 SFTP 从这一版起由本机后端来做）—— \
-                     停掉旧的本机后端、重开 monitor"
-                ));
+                return Err(copy_text("rsDialHost.local.tooOld", &[]));
             }
             return Ok(c);
         }
@@ -79,10 +77,12 @@ pub(crate) async fn local_backend_accepting(cmd: &str) -> Result<Arc<InboundClie
             tokio::time::sleep(Duration::from_millis(LOCAL_WAIT_INTERVAL_MS)).await;
         }
     }
-    Err(format!(
-        "本机后端不在，远端连不了（远端的 SSH 由本机后端来拨）：等了 {}ms 还没有本机后端那条流。\
-         到设置 → 后端里看本机后端的状态",
-        u64::from(LOCAL_WAIT_TRIES) * LOCAL_WAIT_INTERVAL_MS
+    Err(copy_text(
+        "rsDialHost.local.absent",
+        &[(
+            "ms",
+            &(u64::from(LOCAL_WAIT_TRIES) * LOCAL_WAIT_INTERVAL_MS).to_string(),
+        )],
     ))
 }
 
@@ -140,10 +140,14 @@ pub(crate) fn request(
     });
     if let Some(jump_label) = cfg.jump.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         if jump_label == origin {
-            return Err("跳板配置指向自己（环）".to_string());
+            return Err(copy_text("rsDialHost.jump.loop", &[]));
         }
-        let jump_cfg = crate::load_remote_config_by_label(jump_label)
-            .ok_or_else(|| format!("跳板配置未找到: {jump_label}"))?;
+        let jump_cfg = crate::load_remote_config_by_label(jump_label).ok_or_else(|| {
+            copy_text(
+                "rsDialHost.jump.notFound",
+                &[("jumpLabel", &jump_label.to_string())],
+            )
+        })?;
         // v1 单跳：跳板自身的 jump 忽略（防链式递归 / 环）。
         req["jump"] = hop_json(&jump_cfg);
     }
@@ -228,14 +232,21 @@ async fn open(
         // 到点：`r`（链路）随本函数返回被丢掉 ⇒ `link-close` ⇒ 后端收掉这条链路的拨号。
         Err(_) => {
             return Err((
-                format!(
-                    "握手超时（{}s 没回应答；地址 {}）",
-                    ACK_DEADLINE.as_secs(),
-                    cfg.endpoints()
-                        .iter()
-                        .map(|e| format!("{}:{}", e.host, e.port))
-                        .collect::<Vec<_>>()
-                        .join(", ")
+                copy_text(
+                    "rsDialHost.open.timeout",
+                    &[
+                        ("secs", &(ACK_DEADLINE.as_secs()).to_string()),
+                        (
+                            "addr",
+                            &(cfg
+                                .endpoints()
+                                .iter()
+                                .map(|e| format!("{}:{}", e.host, e.port))
+                                .collect::<Vec<_>>()
+                                .join(", "))
+                            .to_string(),
+                        ),
+                    ],
                 ),
                 None,
             ))
@@ -340,8 +351,12 @@ pub(crate) async fn forward(
     remote_port: u16,
 ) -> Result<ForwardLink, String> {
     let origin = origin.as_wire_str();
-    let cfg = crate::load_remote_config_by_label(origin)
-        .ok_or_else(|| format!("未找到远端配置: {origin}"))?;
+    let cfg = crate::load_remote_config_by_label(origin).ok_or_else(|| {
+        copy_text(
+            "rsDialHost.forward.noConfig",
+            &[("machine", &origin.to_string())],
+        )
+    })?;
     let cfg = &cfg;
     let req = request(
         cfg,
@@ -356,7 +371,12 @@ pub(crate) async fn forward(
     )?;
     let (link, _) = open(cfg, &req, "forward", &mut |_| {})
         .await
-        .map_err(|(e, _)| format!("连接 {origin} 失败: {e}"))?;
+        .map_err(|(e, _)| {
+            copy_text(
+                "rsDialHost.forward.connectFailed",
+                &[("machine", &origin.to_string()), ("e", &e.to_string())],
+            )
+        })?;
     Ok(ForwardLink { link })
 }
 
@@ -405,7 +425,7 @@ impl RemoteFs {
         fs.home = v
             .get("home")
             .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| format!("本机后端没答出远端的起始目录：{v}"))?
+            .ok_or_else(|| copy_text("rsDialHost.open.noHome", &[("v", &v.to_string())]))?
             .to_string();
         Ok(fs)
     }
@@ -431,31 +451,37 @@ impl RemoteFs {
         let round = async {
             let mut line = req.to_string();
             line.push('\n');
-            link.write_all(line.as_bytes())
-                .await
-                .map_err(|e| format!("往本机后端送请求失败：{e}"))?;
+            link.write_all(line.as_bytes()).await.map_err(|e| {
+                copy_text("rsDialHost.ask.sendRequestFailed", &[("e", &e.to_string())])
+            })?;
             if let Some(b) = bytes {
-                link.write_all(b)
-                    .await
-                    .map_err(|e| format!("往本机后端送字节失败：{e}"))?;
+                link.write_all(b).await.map_err(|e| {
+                    copy_text("rsDialHost.ask.sendBytesFailed", &[("e", &e.to_string())])
+                })?;
             }
-            link.flush()
-                .await
-                .map_err(|e| format!("往本机后端送请求失败：{e}"))?;
+            link.flush().await.map_err(|e| {
+                copy_text("rsDialHost.ask.sendRequestFailed", &[("e", &e.to_string())])
+            })?;
             ssh_link::reply_line(&mut link.r, files_reply_cap())
                 .await
                 .map_err(|e| e.to_string())
         };
-        let v = tokio::time::timeout(deadline, round)
-            .await
-            .map_err(|_| format!("本机后端 {}s 没答这一问", deadline.as_secs()))??;
+        let v = tokio::time::timeout(deadline, round).await.map_err(|_| {
+            copy_text(
+                "rsDialHost.ask.timeout",
+                &[("secs", &(deadline.as_secs()).to_string())],
+            )
+        })??;
         if let Some(code) = v.get("code").and_then(serde_json::Value::as_str) {
             let message = v
                 .get("message")
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or("");
             return Err(if code == "fenced" {
-                format!("{message}（远端只许往 ~/.cc-monitor/bin/ 与 ~/.cc-monitor/staging/ 写）")
+                copy_text(
+                    "rsDialHost.ask.writeFenced",
+                    &[("message", &message.to_string())],
+                )
             } else {
                 message.to_string()
             });

@@ -12488,6 +12488,361 @@
       "kind": "error",
       "zh": "置可执行位失败：{e}",
       "args": ["e"]
+    },
+    "rsChanWire.hop.unreachable": {
+      "kind": "error",
+      "zh": "连不上对面",
+      "args": []
+    },
+    "rsChanWire.hop.dropped": {
+      "kind": "error",
+      "zh": "连接半路断了",
+      "args": []
+    },
+    "rsChanWire.hop.overrun": {
+      "kind": "error",
+      "zh": "等太久没有回应",
+      "args": []
+    },
+    "rsChanWire.peer.unsupported": {
+      "kind": "error",
+      "zh": "对面不支持这个操作",
+      "args": []
+    },
+    "rsChanWire.peer.refused": {
+      "kind": "error",
+      "zh": "对面拒绝了这个操作",
+      "args": []
+    },
+    "rsChanWire.ours.cancelled": {
+      "kind": "error",
+      "zh": "已取消",
+      "args": []
+    },
+    "rsChanWire.ours.misuse": {
+      "kind": "error",
+      "zh": "程序内部错误：用法不对",
+      "args": []
+    },
+    "rsChanWire.ours.broken": {
+      "kind": "error",
+      "zh": "程序内部错误",
+      "args": []
+    },
+    "rsSshLink.parse.withLine": {
+      "kind": "error",
+      "zh": "{e}（原文 {line}）",
+      "args": ["e", "line"]
+    },
+    "rsSshLink.parse.noAccepted": {
+      "kind": "error",
+      "zh": "转发计数行没有 accepted（原文 {line}）",
+      "args": ["line"]
+    },
+    "rsSshLink.dial.noReason": {
+      "kind": "error",
+      "zh": "本机后端没说原因",
+      "args": []
+    },
+    "rsSshLink.parse.ackLine": {
+      "kind": "error",
+      "zh": "应答 {e}（原文 {line}）",
+      "args": ["e", "line"]
+    },
+    "rsSshLink.parse.stageLine": {
+      "kind": "error",
+      "zh": "阶段行 {e}（原文 {line}）",
+      "args": ["e", "line"]
+    },
+    "rsSshLink.dial.readFailed": {
+      "kind": "error",
+      "zh": "和本机后端的连接断了：{e}",
+      "args": ["e"]
+    },
+    "rsSshLink.dial.tooLong": {
+      "kind": "error",
+      "zh": "本机后端回的数据不对劲，已拒收",
+      "args": []
+    },
+    "rsSshLink.dial.badShape": {
+      "kind": "error",
+      "zh": "本机后端回了看不懂的东西，重装后再试",
+      "args": []
+    },
+    "rsSshLink.dial.tooOld": {
+      "kind": "error",
+      "zh": "本机后端太旧，重装后再试",
+      "args": []
+    },
+    "rsSshLink.dial.failed": {
+      "kind": "error",
+      "zh": "连不上：{why}",
+      "args": ["why"]
+    },
+    "rsSshLink.dial.silent": {
+      "kind": "error",
+      "zh": "本机后端没能替你连上远端（它自己的日志里有原因）",
+      "args": []
+    },
+    "rsDialHost.ask.writeFenced": {
+      "kind": "error",
+      "zh": "{message}（远端只许往 ~/.cc-monitor/bin/ 与 ~/.cc-monitor/staging/ 写）",
+      "args": ["message"]
+    },
+    "rsDialHost.ask.timeout": {
+      "kind": "error",
+      "zh": "本机后端 {secs} 秒没答这一问",
+      "args": ["secs"]
+    },
+    "rsDialHost.ask.sendRequestFailed": {
+      "kind": "error",
+      "zh": "往本机后端送请求失败：{e}",
+      "args": ["e"]
+    },
+    "rsDialHost.ask.sendBytesFailed": {
+      "kind": "error",
+      "zh": "往本机后端送字节失败：{e}",
+      "args": ["e"]
+    },
+    "rsDialHost.open.noHome": {
+      "kind": "error",
+      "zh": "本机后端没答出远端的起始目录：{v}",
+      "args": ["v"]
+    },
+    "rsDialHost.forward.connectFailed": {
+      "kind": "error",
+      "zh": "连接 {machine} 失败：{e}",
+      "args": ["machine", "e"]
+    },
+    "rsDialHost.forward.noConfig": {
+      "kind": "error",
+      "zh": "未找到远端配置：{machine}",
+      "args": ["machine"]
+    },
+    "rsDialHost.open.timeout": {
+      "kind": "error",
+      "zh": "连接超时（{secs} 秒没有回应；地址 {addr}）",
+      "args": ["secs", "addr"]
+    },
+    "rsDialHost.jump.notFound": {
+      "kind": "error",
+      "zh": "跳板配置未找到：{jumpLabel}",
+      "args": ["jumpLabel"]
+    },
+    "rsDialHost.jump.loop": {
+      "kind": "error",
+      "zh": "跳板配置指向自己（环）",
+      "args": []
+    },
+    "rsDialHost.local.absent": {
+      "kind": "error",
+      "zh": "本机后端不在，远端连不了。远端的 SSH 由本机后端来拨，等了 {ms} 毫秒还没连上本机后端。到设置 → 后端里看本机后端的状态",
+      "args": ["ms"]
+    },
+    "rsDialHost.local.tooOld": {
+      "kind": "error",
+      "zh": "本机后端太旧，重开 monitor 后再试。远端的 SSH 与 SFTP 从这一版起由本机后端来做，要先停掉旧的本机后端。",
+      "args": []
+    },
+    "rsLinkMux.b64.badChar": {
+      "kind": "error",
+      "zh": "base64 里有字母表外的字符 {char}",
+      "args": ["char"]
+    },
+    "rsLinkMux.b64.badPadding": {
+      "kind": "error",
+      "zh": "base64 补位不在末尾",
+      "args": []
+    },
+    "rsLinkMux.b64.badLength": {
+      "kind": "error",
+      "zh": "base64 长度 {len} 不是 4 的倍数",
+      "args": ["len"]
+    },
+    "rsLinkMux.write.notSent": {
+      "kind": "error",
+      "zh": "这条连接上的数据没送到：{said}",
+      "args": ["said"]
+    },
+    "rsLinkMux.write.closed": {
+      "kind": "error",
+      "zh": "这条连接已经关了",
+      "args": []
+    },
+    "rsLinkMux.flight.unfinished": {
+      "kind": "error",
+      "zh": "这条连接的发送任务没跑完：{e}",
+      "args": ["e"]
+    },
+    "rsLinkMux.open.refused": {
+      "kind": "error",
+      "zh": "本机后端没接下这条连接：{said}",
+      "args": ["said"]
+    },
+    "rsLinkMux.data.noCredit": {
+      "kind": "error",
+      "zh": "本机后端版本不对，这条远端连接断了；重开 monitor 后再试",
+      "args": []
+    },
+    "rsLinkMux.said.internal": {
+      "kind": "error",
+      "zh": "连接出错了，这是程序内部错误",
+      "args": []
+    },
+    "rsLinkMux.said.refused": {
+      "kind": "error",
+      "zh": "本机后端拒绝了这次连接：{message}",
+      "args": ["message"]
+    },
+    "rsBind.remote.titleStale": {
+      "kind": "error",
+      "zh": "按 tmux 窗口标题找到的窗口已经不能用了：{titleErr}。",
+      "args": ["titleErr"]
+    },
+    "rsBind.remote.titleNotFound": {
+      "kind": "error",
+      "zh": "按 tmux 窗口标题也没找到。",
+      "args": []
+    },
+    "rsBind.remote.mayBeClosed": {
+      "kind": "error",
+      "zh": "{fail}，它可能已经关了。",
+      "args": ["fail"]
+    },
+    "rsBind.front.failWithoutToken": {
+      "kind": "error",
+      "zh": "这个会话不是 cc-monitor 启动的，找不到它的终端窗口",
+      "args": []
+    },
+    "rsBind.front.failWithToken": {
+      "kind": "error",
+      "zh": "这个会话是 cc-monitor 启动的，但找不到它的终端窗口",
+      "args": []
+    },
+    "rsBind.activate.refused": {
+      "kind": "error",
+      "zh": "SetForegroundWindow 被拒绝（窗口可能在任务栏闪烁；用户需要先点 monitor 窗口）",
+      "args": []
+    },
+    "rsBind.verify.pidReused": {
+      "kind": "error",
+      "zh": "属主进程的 PID 被复用了，启动时间对不上",
+      "args": []
+    },
+    "rsBind.verify.windowReused": {
+      "kind": "error",
+      "zh": "窗口编号被别的进程复用了：当前属主 PID {curOwner}，绑定时 PID {ownerPid}",
+      "args": ["curOwner", "ownerPid"]
+    },
+    "rsBind.verify.windowGone": {
+      "kind": "error",
+      "zh": "窗口已不存在，可能已被关闭",
+      "args": []
+    },
+    "rsSftpPool.watch.lost": {
+      "kind": "error",
+      "zh": "这一趟传输的状态丢了",
+      "args": []
+    },
+    "rsSftpPool.watch.streamGone": {
+      "kind": "error",
+      "zh": "和本机后端的连接断了",
+      "args": []
+    },
+    "rsSftpPool.watch.taken": {
+      "kind": "error",
+      "zh": "这一趟传输已经有人在看了（{id}）",
+      "args": ["id"]
+    },
+    "rsSftpPool.watch.unknown": {
+      "kind": "error",
+      "zh": "没有这一趟传输（{id}）",
+      "args": ["id"]
+    },
+    "rsSftpPool.call.noTicket": {
+      "kind": "error",
+      "zh": "本机后端开了单却没回票号：{v}",
+      "args": ["v"]
+    },
+    "rsSftpPool.call.notTransfer": {
+      "kind": "error",
+      "zh": "{other} 不是传输台的命令",
+      "args": ["other"]
+    },
+    "rsSftpPool.call.missingField": {
+      "kind": "error",
+      "zh": "{op} 少了 {k}，或者它不是一个字符串",
+      "args": ["op", "k"]
+    },
+    "rsChanWire.frame.tooLong": {
+      "kind": "error",
+      "zh": "一段 {n} 字节，超出帧长度字段的表示范围",
+      "args": ["n"]
+    },
+    "rsChanWire.frame.badHead": {
+      "kind": "error",
+      "zh": "帧头解不出来：{e}",
+      "args": ["e"]
+    },
+    "rsChanWire.segment.tooLong": {
+      "kind": "error",
+      "zh": "一段声称 {n} 字节，超过上限 {cap}",
+      "args": ["n", "cap"]
+    },
+    "rsChanHost.transfer.noResume": {
+      "kind": "error",
+      "zh": "传输进度不支持从某一格续看",
+      "args": []
+    },
+    "rsChanHost.transfer.noConfig": {
+      "kind": "error",
+      "zh": "没有叫「{machine}」的远端配置，传输要那台机器的 SSH 配置",
+      "args": ["machine"]
+    },
+    "rsChanHost.transfer.localNone": {
+      "kind": "error",
+      "zh": "本机那一侧没有 SFTP 传输 —— 文件窗口只开在远端机器上",
+      "args": []
+    },
+    "rsChanHost.start.twice": {
+      "kind": "error",
+      "zh": "通道口已经起过一次了",
+      "args": []
+    },
+    "rsChanHost.start.bindFailed": {
+      "kind": "error",
+      "zh": "通道口绑不上回环：{e}",
+      "args": ["e"]
+    },
+    "rsPortForward.stop.notFound": {
+      "kind": "error",
+      "zh": "未找到转发：{id}",
+      "args": ["id"]
+    },
+    "rsPortForward.spec.remotePort": {
+      "kind": "error",
+      "zh": "远端端口必须 > 0",
+      "args": []
+    },
+    "rsPortForward.spec.remoteHost": {
+      "kind": "error",
+      "zh": "远端 host 不能为空",
+      "args": []
+    },
+    "rsPortForward.spec.localPort": {
+      "kind": "error",
+      "zh": "本地端口必须 > 0",
+      "args": []
+    },
+    "rsOrigin.route.blank": {
+      "kind": "error",
+      "zh": "{command} 收到的机器名是空的。没给名字不等于本机：本机也要写成 \"{local}\"。",
+      "args": ["command", "local"]
+    },
+    "rsOrigin.expecting.name": {
+      "kind": "error",
+      "zh": "一台机器的名字；本机要写成 \"{local}\"",
+      "args": ["local"]
     }
   }
 }
