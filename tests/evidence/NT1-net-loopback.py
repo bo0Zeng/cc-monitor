@@ -27,7 +27,7 @@ sftp 子系统起始目录钉在临时目录 —— 同 `SR1b-sftp-loopback.py`�
   ⑥（`--compress`）强制压 vs 不压（真 sshd）：sshd 日志按先后 `none` · `zlib@openssh.com`；今天 russh 0.61 的 zlib 解压有缺陷（闸
      `connect.rs::RUSSH_ZLIB_SOUND` 关着）⇒ 压的那趟卡在第一条通道上、收不全 —— 这一格就是闸为什么关着的真 sshd 读数
   ⑤ 弱网读数（甲台经整形代理，DELAY 单程 · BPS 每方向）：下载 16 MiB 期间长流上的回声延迟 · 顺序小文件下载每件耗时 ·
-     首条 / 复用 capture 耗时（握手成本）—— 只印、不判（墙钟读数）；顺序 6 趟小下载的 sftp 子系统请求次数 **恰好 1**（判，计数）
+     首条 / 复用 capture 耗时（握手成本）—— 只印、不判（墙钟读数）；一趟大下载 ＋ 顺序 6 趟小下载的 sftp 子系统请求次数 **恰好 1**（判，计数）
 
 退出码：0 = 全过 · 1 = 有一条不对 · 3 = 起不来 sshd / 找不到二进制（环境不满足，不是被测对象坏了）
 """
@@ -415,6 +415,7 @@ def main():
 
             idle = echo_series("idle", 10, 0.2)
             print(f"  read 空闲时长流回声：p50 {pct(idle, 50):.0f} ms · max {max(idle):.0f} ms")
+            sub0 = a.text().count("Starting session: subsystem 'sftp'")
             xid = be.download(dial(a, port=px.port), big, os.path.join(d, "dl", "big5.bin"))
             be.wait(lambda: any(f["got"] > 256 * 1024 for f in be.xfer.get(xid, [])) or None, 120)
             busy = echo_series("busy", 20, 0.25)
@@ -422,7 +423,6 @@ def main():
             last = be.end_of(xid, 600)
             print(f"  read 下载 16 MiB 期间长流回声：p50 {pct(busy, 50):.0f} ms · p95 {pct(busy, 95):.0f} ms · max {max(busy):.0f} ms（下载收场 {last and last['end'].get('state')}，余下 {time.monotonic() - t0:.1f} s）")
             smalls = []
-            sub0 = a.text().count("Starting session: subsystem 'sftp'")
             for i in range(6):
                 src = os.path.join(rhome, f"small{i}.txt")
                 with open(src, "w") as fh:
@@ -433,7 +433,7 @@ def main():
                 smalls.append((time.monotonic() - t0) * 1000)
             print(f"  read 顺序下载 6 个 1 KB 小文件（长流在）：每件 {', '.join(f'{x:.0f}' for x in smalls)} ms（中位 {statistics.median(smalls):.0f} ms；RTT {DELAY * 2000:.0f} ms）")
             subs = a.text().count("Starting session: subsystem 'sftp'") - sub0
-            check("顺序 6 趟小下载 ⇒ sshd 记下的 sftp 子系统请求恰好 1 次（空闲会话复用；基线 6 次）", subs == 1, subs)
+            check("一趟大下载 ＋ 顺序 6 趟小下载 ⇒ sshd 记下的 sftp 子系统请求恰好 1 次（用完停进空位、下一趟复用；基线 7 次）", subs == 1, subs)
             be.call("link-close", {"link": "s5"})
         if compress_mode:
             print("⑥ 压缩（强制，真 sshd）：dial_compress_tests::zr_…（#[ignore]）")

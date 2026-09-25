@@ -37,6 +37,8 @@ pub(crate) struct Linked {
     pub(crate) budget: super::pool::Budget,
     /// 〔NT1〕这条连接托着的别的连接（主连接托着批量连接：长流在它就在，主连接没了随之释放 —— `pool.rs`）。
     pub(crate) held: Mutex<Vec<Arc<Linked>>>,
+    /// 〔NT1〕这条连接上停着的那一条空闲 sftp 会话（一个空位；`sftp.rs::Parked`）。不托本连接。
+    pub(crate) idle_sftp: Mutex<Option<super::sftp::Parked>>,
 }
 
 /// host key 校验：给了期望值就严格比（比之前 `trim`），没给就 TOFU 接受并显眼 `warn`。
@@ -493,6 +495,7 @@ pub(crate) async fn establish(
         _jump: jump,
         budget: super::pool::Budget::new(),
         held: Mutex::new(Vec::new()),
+        idle_sftp: Mutex::new(None),
     })
 }
 

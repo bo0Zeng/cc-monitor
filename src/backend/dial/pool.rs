@@ -46,6 +46,8 @@ pub(crate) trait Conn: Send + Sync + 'static {
     fn adopt(&self, other: Arc<Self>)
     where
         Self: Sized;
+    /// 〔NT1〕把停着的空闲 sftp 会话关掉、还出它那一格（有就 `true`）。借不到格时池先做这一步。
+    fn reclaim_idle(&self) -> bool;
 }
 
 impl Conn for Linked {
@@ -60,6 +62,14 @@ impl Conn for Linked {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .push(other);
+    }
+    fn reclaim_idle(&self) -> bool {
+        let parked = self
+            .idle_sftp
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
+        parked.is_some()
     }
 }
 
@@ -258,6 +268,10 @@ impl<C: Conn> Pool<C> {
             if let Some(p) = fam.fit(lane) {
                 return Ok(p);
             }
+            // 〔NT1〕借不到格 ⇒ 先挤掉停着的空闲 sftp 会话（还出它那一格），再看一遍 —— 空位不许逼出一次多开 / 一次等。
+            if lane != Lane::Tunnel && fam.live().iter().any(|c| c.reclaim_idle()) {
+                continue;
+            }
             let guard = fam.dialing.lock().await;
             if let Some(p) = fam.fit(lane) {
                 return Ok(p);
@@ -289,6 +303,17 @@ impl<C: Conn> Pool<C> {
             drop(guard);
             notified.await;
         }
+    }
+
+    /// 这个身份此刻能放传输的成员（与放置同一条分道规矩：主连接上有长流 ⇒ 只有没长流的非主成员）。
+    /// `sftp.rs` 在这些成员上找停着的空闲会话。
+    pub(crate) fn transfer_candidates(&self, key: &str) -> Vec<Arc<C>> {
+        let fam = {
+            let g = self.families.lock().unwrap_or_else(|e| e.into_inner());
+            g.get(key).cloned()
+        };
+        fam.map(|f| Family::transfer_candidates(&f.live()))
+            .unwrap_or_default()
     }
 
     /// 这一条不能用了（死了）⇒ 从族里摘掉（**摘掉 ≠ 关掉**：手里还拿着它的用户照用到走；只是新的放置不再落到它上面）。
