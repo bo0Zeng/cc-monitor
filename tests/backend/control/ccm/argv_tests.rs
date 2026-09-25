@@ -1,3 +1,9 @@
+//! # 要求住址：`设计/71 §2.2`（ccm argv 的组合规则一条都不许静默忽略）＋ `设计/01 §5 D1` / `D2`
+//!
+//! 核原文：`设计/71 §2.2` 逐字「后端的纪律是「一条都不许静默忽略」（`control/ccm/argv.rs`）」，同节 V1–V3 三种互斥 / 依赖组合
+//! 就是 `the_combination_rules_all_fail_loudly` 逐条断言的那几种。`the_ccm_argv_is_parsed_in_exactly_one_place` 对 `D1`「一个判定只有一个家」；
+//! `every_default_lives_only_in_the_defaults_block` 对 `D2`「一个数只有一个住址」。〔JA1 点址 2026-09-24〕
+
 use super::*;
 
 fn v(a: &[&str]) -> Vec<String> {

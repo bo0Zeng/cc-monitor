@@ -43,6 +43,8 @@ cp -a "$repo/src/bridge/src" "$dv/src/bridge/"
 cp -a "$repo/src/doc" "$dv/src/"
 cp -a "$repo/tests/backend" "$dv/tests/"
 cp -a "$repo/tests/evidence" "$dv/tests/"
+# 〔TQ1 2026-09-24〕秤本体搬去了 `tests/benches/`（`[[bench]]` 的 `path` 指那里）⇒ 副本里也要有。
+cp -a "$repo/tests/benches" "$dv/tests/"
 
 target="$dv/src/backend/observe/history_query.rs"
 cp "$target" "$dv/history_query.rs.orig"

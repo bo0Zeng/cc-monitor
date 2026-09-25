@@ -30,7 +30,7 @@ const PHASES: &[(&str, &str, &str)] = &[
         "[perf] ssh_source [{host_label}] 首个 hello T+{}ms（",
     ),
     // 〔C2 09-24〕握手那一段搬进了拨号代理，量它的埋点跟着搬到宿主 `dial_host.rs::open`
-    //   （原住 `ssh_source.rs` 里的 `connect_session`；那个函数今天只剩 SFTP 那一份，住 `inproc_dial.rs::connect_session`）。
+    //   （原住 `ssh_source.rs` 里的 `connect_session`；〔SR1b〕SFTP 那一份也随 `inproc_dial.rs` 整份删了，握手今天只在本机后端 `dial/connect.rs`）。
     //   ⚠ 量的东西多了一次**起代理进程** —— 那是 `设计/05 §13.4` 认下来的代价，埋点让它看得见。
     (
         "SSH 握手+鉴权",

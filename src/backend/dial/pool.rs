@@ -102,6 +102,86 @@ impl<C: Conn> Pool<C> {
     }
 }
 
+// ═══ 〔SR1b · 2026-09-24〕**一条连接上的通道预算** ═══════════════════════════════════════
+//
+// SFTP 进本机常驻后端之后，一台远端的长流 · 一次性查询 · SFTP **同一条 SSH 连接**（本池的复用）⇒
+// 远端 `MaxSessions`（`man 5 sshd_config`：「open shell, login or subsystem (e.g. sftp) sessions permitted
+// per network connection … The default is 10」；本机 `OpenSSH_10.2p1` 现打 `sshd -T` 印 `maxsessions 10`）
+// 数的是**这一条连接上**的 session 通道 ⇒ 预算必须**按连接**记，不能再按「SFTP 那条连接」记。
+// 从前 monitor 那一份（`sftp_pool` 里的通道闸，6 格）管的是 SFTP 自己那条独立连接。
+
+/// **一条 SSH 连接上所有 session 通道**（exec 长流 · capture · sftp 子系统）的上限。
+///
+/// 8 = 默认 `MaxSessions` 10 留 2 格：① `sshd` 回收旧通道与新通道短暂重叠；② 被调低到 8 的机器
+/// 仍不撞墙（撞了也只是这一次开通道报错，不坏整条连接）。端口转发的 direct-tcpip 通道**不计** ——
+/// `MaxSessions` 不数它（它不是 session）。
+/// ⚠ 远端真正的 `MaxSessions` **量不到**（协议里没有这个数）⇒ 这是一条**本地自律**，不是协商结果。
+pub(crate) const SESSION_CHANNEL_CAP: usize = 8;
+
+/// 其中**传输**（sftp 上传 / 下载）最多占几格。
+///
+/// 4 ⇒ 满载传输时会话长流 ＋ 一次性查询仍有 ≥ 4 格 —— 一个大上传不许把「列会话」「读大纲」饿死。
+/// 〔墓碑 —— 同名常量从前住 monitor 的 `sftp_pool.rs`，理由是「给浏览留格子」（`设计/60 §7` 第 3 条）；
+///  浏览离开 SFTP 之后 S4 把它退役了。今天它回来，**理由换了**：给同一条连接上的会话与查询留格子。〕
+pub(crate) const TRANSFER_LANE_CAP: usize = 4;
+
+/// 一条连接的两道闸。**等 = 排队**（`acquire_owned().await`），零定时器。
+pub(crate) struct Budget {
+    sessions: Arc<tokio::sync::Semaphore>,
+    transfers: Arc<tokio::sync::Semaphore>,
+}
+
+/// 借到的一格（或两格）。drop 即归还。
+pub(crate) struct Permit {
+    _session: tokio::sync::OwnedSemaphorePermit,
+    _lane: Option<tokio::sync::OwnedSemaphorePermit>,
+}
+
+impl Budget {
+    pub(crate) fn new() -> Self {
+        Budget {
+            sessions: Arc::new(tokio::sync::Semaphore::new(SESSION_CHANNEL_CAP)),
+            transfers: Arc::new(tokio::sync::Semaphore::new(TRANSFER_LANE_CAP)),
+        }
+    }
+
+    /// 一条 session 通道（长流 / capture / files 链路）。
+    pub(crate) async fn session(&self) -> Result<Permit, String> {
+        let s = Arc::clone(&self.sessions)
+            .acquire_owned()
+            .await
+            .map_err(|_| "这条连接的通道预算已关闭".to_string())?;
+        Ok(Permit {
+            _session: s,
+            _lane: None,
+        })
+    }
+
+    /// 一条**传输用**的 session 通道：**先过传输车道、再过通道闸** —— 排队等车道的传输不占通道格。
+    pub(crate) async fn transfer(&self) -> Result<Permit, String> {
+        let lane = Arc::clone(&self.transfers)
+            .acquire_owned()
+            .await
+            .map_err(|_| "这条连接的传输车道已关闭".to_string())?;
+        let s = Arc::clone(&self.sessions)
+            .acquire_owned()
+            .await
+            .map_err(|_| "这条连接的通道预算已关闭".to_string())?;
+        Ok(Permit {
+            _session: s,
+            _lane: Some(lane),
+        })
+    }
+
+    /// 此刻 `(还剩几格通道, 还剩几格车道)`。生产日志读它（不是只给判据看的仪表）。
+    pub(crate) fn free(&self) -> (usize, usize) {
+        (
+            self.sessions.available_permits(),
+            self.transfers.available_permits(),
+        )
+    }
+}
+
 /// 本进程那一个 SSH 连接池。
 pub(crate) fn ssh() -> &'static Pool<Linked> {
     static P: OnceLock<Pool<Linked>> = OnceLock::new();

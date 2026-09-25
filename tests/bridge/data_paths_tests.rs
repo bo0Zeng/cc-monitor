@@ -1,3 +1,10 @@
+//! # 要求住址：`设计/70 §6.2`（数据位置：逐个文件、目录不算大小、说明不说内部词）＋ `INVARIANTS §2.1`（真相 / 缓存两类）
+//!
+//! 核原文：`设计/70 §6.2` 红线格逐字「③ 不递归算目录大小 ⇒ 目录行只显示「已创建」，是刻意的」——
+//! `probe_dir_never_returns_size` 判这一句；同节「今天 / 改成」表逐字「去掉 `sid` / `HWND`」——
+//! `no_entry_description_speaks_our_internal_words` 判这一句；每项的类与 `INVARIANTS §2.1` 那张表两向相等。
+//! ⚠ 那条判据原先自称出自「`70 §10.2` 差项 4」，`设计/70` 里没有那一节（已改指 `§6.2`；生产侧同一处注释在写区外，未改）。〔JA1 点址 2026-09-24〕
+
 use super::*;
 use std::fs;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -144,7 +151,8 @@ fn the_class_goes_over_the_wire_as_two_lowercase_words() {
     );
 }
 
-/// ★ `70 §10.2` 差项 4：条目说明里不许再有 R1 那两个词（`sid` / `HWND`）。带正控。
+/// ★ `设计/70 §6.2`「今天 / 改成」表那一行：条目说明里不许再有 R1 那两个词（`sid` / `HWND`）。带正控。
+/// 〔JA1 2026-09-24〕原写「`70 §10.2` 差项 4」—— `设计/70` 里已没有那一节，改指今天写着这件事的那一节。
 #[test]
 fn no_entry_description_speaks_our_internal_words() {
     let hits = |s: &str| {

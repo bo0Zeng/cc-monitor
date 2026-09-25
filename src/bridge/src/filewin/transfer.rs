@@ -42,8 +42,9 @@
 //!   今天**经通道**说话（开单 · 订阅进度 · 后端提交），不自己开连接、不碰池子
 //!   （判据 `transfer_tests::the_real_adapters_speak_only_through_the_channel` 判源码，
 //!   `transfer_tests::an_upload_opens_watches_then_commits_with_the_humans_answer` 在真回环 ＋ 合成对端上判三步的顺序与载荷）。
-//!   传输台那一侧（真 SFTP 会话上）的读数由 `sftp_staging_tests` / `chan::host::transfer_stream_tests` 各自判。
-//! - **`lanes` 不是真正的闸。** 真正的闸在 monitor 的池里（`lease_transfer` 过的通道闸，
+//!   传输台那一侧的读数：〔SR1b〕传输本体（真 SFTP 会话上）搬进了本机常驻后端，由后端
+//!   `tests/backend/control/transfer_tests.rs` 判；monitor 的中继由 `sftp_pool_tests` / `chan::host::transfer_stream_tests` 判。
+//! - **`lanes` 不是真正的闸。** 真正的闸〔SR1b〕在本机常驻后端里、按连接记（传输车道 ＋ 通道闸，
 //!   借不到就 `await`，那个 `await` 就是队列）。
 //!   本层这个数只为「别把一万条订阅一起堆起来」（[`WINDOW_TRANSFER_LANES`]）。
 //!   〔第四波 S4〕池里那道 4 条的车道闸随浏览离开 SFTP 退役了，本层这个数不再是它的副本 ——
@@ -110,13 +111,13 @@ use std::sync::{Arc, Mutex};
 
 /// 一趟拖入同时起几件（同时挂着几条进度订阅 / 同时问几件「那儿有没有东西」）。
 ///
-/// 🔴 **这个数不在本层裁定** —— 真正的闸在 monitor 的池里（`lease_transfer` 过的通道闸，
-/// `sftp_pool::SESSION_CHANNEL_CAP`）；这里多挂的那几条订阅只是在那道闸前面排队。
+/// 🔴 **这个数不在本层裁定** —— 真正的闸在〔SR1b〕本机常驻后端里、**按连接**记
+/// （`src/backend/dial/pool.rs` 的 `TRANSFER_LANE_CAP` / `SESSION_CHANNEL_CAP`）；这里多挂的那几条订阅只是在那道闸前面排队。
 /// 本层限并发只为「别把一万条订阅一起堆起来」。
 ///
 /// 〔第四波 S4〕它原先是池里那道 4 条车道闸的副本（两份 ＋ 相等断言）；车道闸随浏览离开 SFTP
-/// 退役之后，判据改钉「一个窗口的一趟拖入占不满池子的通道闸」
-/// （`transfer_tests::one_windows_burst_never_fills_the_pools_channel_gate`）。
+/// 退役之后改钉「占不满池子的通道闸」；〔SR1b〕池子搬进后端之后改钉两条关系
+/// （`transfer_tests::one_windows_burst_fits_the_transfer_lane_and_never_fills_the_connection`）。
 /// 窗口进程照旧一个 `sftp_pool` 的符号都不碰（`boundary_tests::WINDOW_SIDE` 两向钉着）。
 pub const WINDOW_TRANSFER_LANES: usize = 4;
 

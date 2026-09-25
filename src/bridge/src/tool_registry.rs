@@ -435,10 +435,12 @@ pub const TOOLS: &[ToolSpec] = &[
                 source: ToolSource::EmbeddedText {
                     repo_path: "src/bridge/src/backend/control/local_backend.rs::ccm_entry_shim",
                 },
-                destination: ToolDestination::RemoteHomeRelative(".local/bin/ccm"),
+                // 〔SR1b · 2026-09-24〕`.local/bin/ccm` → `.cc-monitor/bin/ccm`：远端写只许两处（V89），入口是部署物；
+                //   也正是 `设计/01 §6.7b` 的落点（本机那一条早就在那儿）。
+                destination: ToolDestination::RemoteHomeRelative(".cc-monitor/bin/ccm"),
                 touches: &[
                     TouchedFile {
-                        path: "~/.local/bin/ccm",
+                        path: "~/.cc-monitor/bin/ccm",
                         note: None,
                         host: HostScope::Remote,
                         effect: TouchEffect::OwnedFile,

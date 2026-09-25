@@ -940,7 +940,7 @@ fn every_carrier_says_which_one_it_is() {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Why {
     /// **符号名**（那几个 `*_backend` 的 `pub async fn`、以及对它们的逐字引用）。
-    /// 改它要与 `structural_scan` 的逐字签名钉、`sftp_move_ledger`、
+    /// 改它要与 `structural_scan` 的逐字签名钉、`sftp_move_ledger`〔散文墓碑〕（〔SR1b〕已退役）、
     /// `parity_ledger`、`remote_write_registry` 那几张登记表**同拍**改 ——
     /// 那是一件纯符号改名件，与本件的正题（名字说错了「它**是什么**」）不同轴。
     /// **解锁条件**：另立一件「符号改名」，把那几张表一起带上。

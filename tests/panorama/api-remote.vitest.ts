@@ -5,8 +5,9 @@
 //  ① 远端仓上，每个**读**入口发的恰是 `panorama_call`，而它们用到的 op 集合 == 后端适配层
 //     `control/panorama.rs` 那张 `OPS` 表（两向相等，**异源**：一侧是真调一遍 `api.ts` 录下来的，
 //     一侧是读 Rust 源码抽出来的）；
-//  ② 远端仓上，六个**写**入口一个请求都不发、当场拒，拒的那句话就是 `REMOTE_WRITE_REFUSED`；
-//  ③ 本机仓上照旧走进程内那几条命令（`panorama_call` 一次都不发）。
+//  ② 〔RM1d · V110〕六个**写**入口本机远端同一条：恰发一次 `panorama_edit`，origin / 仓原样，
+//     op 集合 == monitor `panorama_call.rs::EDITS` 第一列（两向，异源：读 Rust 源码）；
+//  ③ 本机仓的**读**照旧走进程内那几条命令（`panorama_call` 一次都不发）。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -50,6 +51,17 @@ const WRITES: Record<string, (at: api.RepoAt) => Promise<unknown>> = {
   removeDocLink: (at) => api.removeDocLink(at, "d.md", "a#f"),
 };
 
+/** monitor `panorama_call.rs::EDITS` 第一列与第二列（读 Rust 源码，异源）。 */
+function monitorEdits(): { ops: string[]; plans: string[] } {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const src = readFileSync(resolve(here, "../../src/bridge/src/panorama_call.rs"), "utf8");
+  const at = src.indexOf("const EDITS: &[(&str, &str, bool)] = &[");
+  expect(at, "monitor 的写表改了写法 —— 本条跟着改").toBeGreaterThan(0);
+  const body = src.slice(at, src.indexOf("];", at));
+  const rows = [...body.matchAll(/^\s*\("([a-z_]+)", "([a-z_]+)",/gm)];
+  return { ops: rows.map((m) => m[1]).sort(), plans: rows.map((m) => m[2]).sort() };
+}
+
 /** 后端适配层 `OPS` 表里的 op 名（读 Rust 源码，异源）。 */
 function backendOps(): string[] {
   const here = dirname(fileURLToPath(import.meta.url));
@@ -77,7 +89,7 @@ describe("全景 IPC 按机器分路（RM1c）", () => {
     const exported = Object.entries(api)
       .filter(([, v]) => typeof v === "function")
       .map(([k]) => k)
-      .filter((k) => !["panoramaLoadDecision", "canWriteAnnotations", "repoLabel", "sameRepo"].includes(k))
+      .filter((k) => !["panoramaLoadDecision", "repoLabel", "sameRepo"].includes(k))
       .sort();
     expect(exported).toEqual([...Object.keys(READS), ...Object.keys(WRITES)].sort());
   });
@@ -94,24 +106,34 @@ describe("全景 IPC 按机器分路（RM1c）", () => {
       expect(s[0].args.repo, name).toBe(name === "diagramKinds" ? null : "/srv/proj");
       ops.push(String(s[0].args.op));
     }
-    expect(ops.sort()).toEqual(backendOps());
+    // 〔RM1d〕后端 OPS 余下的那几个（「算」＋ 刷文档关联）不由读入口发，由 monitor 的写那条发：
+    // 集合 == monitor `EDITS` 第二列 ＋ `refresh_doc_links`（两向，拼起来 == 后端全表）。
+    expect([...ops, ...monitorEdits().plans, "refresh_doc_links"].sort()).toEqual(backendOps());
   });
 
-  it("A2 远端写：一个请求都不发，当场拒，话就是 REMOTE_WRITE_REFUSED", async () => {
-    for (const [name, call] of Object.entries(WRITES)) {
-      vi.mocked(invoke).mockClear();
-      await expect(call(REMOTE), name).rejects.toThrow(api.REMOTE_WRITE_REFUSED);
-      expect(sent(), name).toEqual([]);
+  it("A2 写：本机远端同一条 —— 恰发一次 panorama_edit，op 集合 == monitor EDITS（两向）", async () => {
+    for (const at of [REMOTE, LOCAL]) {
+      const ops: string[] = [];
+      for (const [name, call] of Object.entries(WRITES)) {
+        vi.mocked(invoke).mockClear();
+        await call(at);
+        const s = sent();
+        expect(s.map((x) => x.cmd), name).toEqual(["panorama_edit"]);
+        expect([s[0].args.origin, s[0].args.repo], name).toEqual([at.origin, at.path]);
+        ops.push(String(s[0].args.op));
+      }
+      expect(ops.sort()).toEqual(monitorEdits().ops);
     }
-    expect(api.canWriteAnnotations(REMOTE)).toBe(false);
-    expect(api.canWriteAnnotations(LOCAL)).toBe(true);
+    vi.mocked(invoke).mockClear();
+    await api.addAnnotation(REMOTE, "a.rs", null, "x", "me");
+    expect(sent()[0].args.args).toEqual({ file: "a.rs", symbol: null, body: "x", author: "me" });
   });
 
-  it("A3 本机：照旧走进程内那几条命令，panorama_call 一次都不发", async () => {
-    for (const call of [...Object.values(READS), ...Object.values(WRITES)]) await call(LOCAL);
+  it("A3 本机读：照旧走进程内那几条命令，panorama_call 一次都不发", async () => {
+    for (const call of Object.values(READS)) await call(LOCAL);
     const cmds = sent().map((s) => s.cmd);
     expect(cmds).not.toContain("panorama_call");
-    expect(cmds.length).toBe(Object.keys(READS).length + Object.keys(WRITES).length);
+    expect(cmds.length).toBe(Object.keys(READS).length);
     expect(sent().find((s) => s.cmd === "panorama_overview")?.args).toEqual({ repo: "/home/me/proj", budget: 2000 });
   });
 

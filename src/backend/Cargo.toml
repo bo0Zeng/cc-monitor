@@ -50,6 +50,12 @@ path = "main.rs"
 
 # ── 秤 7（`调研/设计/17 §6` 表第 7 行）：`benches/` 从零立的第一条 ───────────────
 #
+# 〔TQ1 2026-09-24〕源码从 `tests/evidence/` 搬进 `tests/benches/`（bench 源码的唯一住址；
+# 量具与历史读数那棵树的规矩是「不许改」，而这一份真的在编译）。
+# `test = true`：`cargo test` 也编它、跑它 —— 不带 `--bench` 时它走**冒烟档**（小语料、每格一次、
+# 出字节与期望逐字节相等，**不计时**），于是门禁 `backend` 那一格顺带证明「这把秤跑得起来」；
+# 读数照旧只由 `cargo bench --bench s7_history_read` 出，墙钟不进任何判据。
+#
 # `harness = false`：不写 `[[bench]]` 的话 cargo 会套 libtest 的 bench harness，
 # 那个要 `#![feature(test)]`（nightly）。本仓是 stable + **断网**（`~/.cargo` 里没有
 # criterion 的 `.crate`，`--offline` 解析不动）⇒ 自带 `fn main()` + `std::time::Instant`。
@@ -62,14 +68,15 @@ path = "main.rs"
 # ⇒ 只要这个文件落在 `src/backend/` 下面任何一层，`backend_production_code_has_no_periodic_wakeups`
 # 当场红，而那条守卫住 `tests/backend/`、不在本件的写区里。
 # 同理还有 `readonly_guard::every_fs_call_in_backend_production_is_read_only` 那张只读白名单。
-# ⇒ 源码放 `tests/evidence/`（它**不在** `code_roots()` 的两棵树里 —— 那两棵是
+# ⇒ 源码放 `tests/benches/`（它**不在** `code_roots()` 的两棵树里 —— 那两棵是
 #   `src/backend/` 与 `tests/backend/`），住址由本节的 `path` 指过去。
 #   这与 `.cargo/config.toml` 把 `target-dir` 挪出源码树是**同一条理由的第二例**：
 #   「源码树上多一个 `.rs`」对这个仓来说从来不是中性的。
 [[bench]]
 name = "s7_history_read"
-path = "../../tests/evidence/S7-history-read.rs"
+path = "../../tests/benches/s7_history_read.rs"
 harness = false
+test = true
 
 [dependencies]
 # Versions pinned to whatever ../bridge/Cargo.lock already resolved so the
@@ -168,10 +175,15 @@ webpki-roots = "1"
 # ── `K-P6b`（候选 E）：`--dial` 那条代理臂的 SSH 客户端 ──────────────────────
 #
 # 🔴 **它只服务 `src/dial/`那一份**（`dial_locality` 那条判据把「谁许 `use russh`」钉在文件维上）。
-# 版本与 feature 集**逐字照抄** `../bridge/Cargo.toml`（`0.61.1` · `default-features = false`
+# 版本与 feature 集**逐字照抄**当年 `../bridge/Cargo.toml` 那一行（`0.61.1` · `default-features = false`
 # · `["ring", "flate2", "rsa"]`）—— 理由不是省事：**两侧握出来的必须是同一套算法集**，
 # 一侧多开一个 feature 就意味着「界面拨得通、代理拨不通」这种只在某台远端上才现形的分叉。
-# `primefield` 那条 `=` 钉同理，逐字理由住 `../bridge/Cargo.toml`（p256/p521 的 rc.9/rc.10 不兼容）。
+# 〔SR1b · 2026-09-24〕**界面那一侧的 `russh` / `russh-sftp` / `primefield` 三行已经删了**（界面进程零 SSH，V89）
+# ⇒ 「两侧同一套」这句话今天没有第二侧了；本 crate 是唯一的 SSH 客户端。
+# `primefield` 那条钉（搬自 `../bridge/Cargo.toml`，那一行随三行一起删了）：russh 的 ECDSA 走 p256/p521 0.14.0-rc.9，
+# 它们要 primefield 0.14.0-rc.9；cargo 默认会在 0.14.0-rc.* 里取最新的 rc.10（改了 ff trait 拆分，与 rc.9 的
+# p256/p521 不兼容 ⇒ `E0277 FieldElement: elliptic_curve::Field`）。本 crate **没有**声明它，靠的是 lock 里锁着的
+# `0.14.0-rc.9`（`K-P6b-r3-lock-prime.py` 播的种）—— 与下面 `crypto-bigint` 那段同一个处境：**重解析就会撞上**。
 #
 # ⚠⚠ **两条如实登记的代价，别读成「没问题」**：
 #   ① **`C18`「依赖树零 C」这条本 crate 早就不成立**（`rustls`/`ring` 08-25 就进来了，
@@ -235,6 +247,17 @@ webpki-roots = "1"
 #    它今天的状态是「**登记在案、等着谁来决定**」，不是「批过了」。
 # ─────────────────────────────────────────────────────────────────────────
 russh = { version = "0.61.1", default-features = false, features = ["ring", "flate2", "rsa"] }
+# ── 〔SR1b · 2026-09-24〕SFTP 客户端：**SFTP 进本机常驻后端**（用户 V89「进本机常驻后端，只写暂存区」）──
+#
+# 🔴 **它只服务 `src/dial/sftp.rs` 那一份**：`readonly_guard::remote_write_layer` 把「持 SFTP 会话 /
+# 开子系统 / 协议改动动词」钉在那**一份文件**上，而那份文件的写根 == `{~/.cc-monitor/staging, ~/.cc-monitor/bin}`
+# （`INVARIANTS §41.6` 的 V89 订正）。签字行住 `readonly_guard::g6_dependency_signoff`。
+# 版本照抄当年 `../bridge/Cargo.toml` 那一行（`3`，lock 里 `3.0.0`，Apache-2.0；`设计/60 §6.5.3` 现打核过 5 个候选、
+# 用户「不要 GPL」核过）。monitor 那一行同拍删了（界面进程零 SFTP）⇒ 本 crate 是唯一一份。
+# ⚠ 3.0.0 **仍然无** posix-rename@openssh 扩展 ⇒ `dial/sftp.rs::put_atomic` 的近似原子写照旧成立，不许当成已解决。
+# 它是**传输泛型**的（吃 `AsyncRead + AsyncWrite`，自己的 `tokio` 没开 `net`）⇒ 结构上开不了 socket，
+# 字节只能走 `dial/` 那条已鉴权的 SSH 连接。
+russh-sftp = "3"
 notify = "6.1"
 notify-debouncer-mini = "0.4"
 walkdir = "2.5"

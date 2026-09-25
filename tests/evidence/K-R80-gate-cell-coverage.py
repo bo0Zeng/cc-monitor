@@ -381,8 +381,12 @@ cell(
     cwd="remote-daemon-proto/",
     cmd="cargo check --all-targets --target x86_64-pc-windows-gnu",
     **{
-        "tests/evidence/": ("部", "〔现打 09-19〕**这棵树里有一条活的 `[[bench]]`** —— `src/backend/Cargo.toml` 的 `path = '../../tests/evidence/S7-history-read.rs'`，本格带 `--all-targets` ⇒ 它**被跨目标编译**。★ 有现物：步 8 改名把这一份漏了（`CARGO_BIN_EXE_cc-monitor-remote`），宿主 `cargo test` 全绿，**只有本格红**。⚠ 这棵树其余 383 份（读数 `.md` ／ 一次性量具 `.py`）本格一份不碰"),
-        "tests/": ("部", "〔现打 09-19〕本格带 `--all-targets` ⇒ test target 也编 ⇒ 盖 `tests/backend/` 那 75 份。★ 这条有现物：步 8 改名漏了 `tests/evidence/S7-history-read.rs` 里的 `CARGO_BIN_EXE_cc-monitor-remote`，宿主 `cargo test` 全绿，**只有本格红**"),
+        "tests/evidence/": blind("〔TQ1 09-24〕这棵树里原有的那一条活 `[[bench]]`（秤 7）搬去了 `tests/benches/`（bench 源码的唯一住址）"
+                                 "⇒ 这棵树今天没有一份被本格编译；它的读数 `.md` ／ 一次性量具 `.py` 本格一份不碰。"
+                                 "（09-19 的现物照记：步 8 改名漏了那份 bench 里的 `CARGO_BIN_EXE_cc-monitor-remote`，宿主 `cargo test` 全绿，**只有本格红**）"),
+        "tests/": ("部", "〔现打 09-19〕本格带 `--all-targets` ⇒ test target 也编 ⇒ 盖 `tests/backend/` 那 75 份；"
+                         "〔TQ1 09-24〕bench target 也编 ⇒ 盖 `tests/benches/` 下 `[[bench]]` 指着的那份（秤 7）。"
+                         "★ 这条有现物：步 8 改名漏了秤 7 里的 `CARGO_BIN_EXE_cc-monitor-remote`，宿主 `cargo test` 全绿，**只有本格红**"),
         "src/backend/": (PART, "唯一成员 `cc-monitor-remote` 的**生产段 ＋ test 档**"
                                        "（`--all-targets` 是承重的：云端那 10 个错一个都不在生产段）"
                                        "在 Windows target 上**编得过**。"
@@ -528,6 +532,39 @@ cell(
         ROOTFILES: (PART, "〔现打 09-20〕`src/bridge/Cargo.toml` 那一份是语料见证之一"
                           "（每个后缀各一个逐字住址，`toml` 那个落在这里）。⚠ 真正的仓根文件"
                           "（`package.json` 等）不在 `src`/`tests` 两个根之下 ⇒ 本格不碰"),
+    },
+)
+
+# ── TQ1（09-24）：第 29 格 `test-tiers` ───────────────────────────────────────
+#
+# 同 `comm-boundary` 那一形：那一族（测试层分级，12 条）挂在 `guard-core` 的 lib 上，
+# `mod test_tiers;` 那一行被摘掉时十二条一起消失，而 `cargo` 那一格只会合计小一点。
+# ⚠ 它**扫**的面很宽（为了圈人群），**判**的面窄 —— 下面逐棵把「扫过」与「判过」分开写。
+cell(
+    "test-tiers",
+    anchor="run_gate test-tiers '判过的条数 = 测试层分级那一族",
+    cwd="仓根（内层 cd src/bridge）",
+    cmd="cargo test -p guard-core --lib test_tiers::（＋ 三方对拍 ＋ 两条锚点）",
+    **{
+        "tests/": (PART, "〔现打 09-24〕**判**的是人群：`tests/bridge|backend/**/*.rs` 与 `tests/**/*.{vitest,test}.ts` "
+                         "逐份归层（分区两向相等）、每份够不够得着它的跑者、扫描层的路径字面量在不在盘、"
+                         "集成层有没有静默跳过、每条 `#[ignore]` 的触发链；另读 `tests/benches/` 的份数对 `[[bench]]`。"
+                         "⚠ 判的是**这些文件在不在执行链上**，一条判据的断言对不对它一个字不看；"
+                         "本格还**读**判据本体那份文本数 `#[test]`（三方对拍的一条腿）"),
+        "tests/e2e/": (PART, "〔现打 09-24〕全部 shell 逐份归「套件 / 辅助件」（套件 == `package.json` 在跑的那批，两向），"
+                             "辅助件要有人引用（剥注释后按文件名找）。⚠ 套件里的任何一行断言本格都不看"),
+        "tests/evidence/": (PART, "〔现打 09-24〕只**读**两样：真机层一条触发者住这里（`SR1a-link-loopback.py` 里那条测试名）· "
+                                  "引用语料扫过这棵树的 `.rs`/`.ts`（找辅助件的名字）。这棵树的量具与读数本格一份不判"),
+        "tests/scripts/": (PART, "〔现打 09-24〕只被**扫**：引用语料（按文件名找 e2e 辅助件的用户）。不判"),
+        "tests/hooks/": (PART, "〔现打 09-24〕只被**扫**：同上"),
+        "src/bridge/": (PART, "〔现打 09-24〕**编**的是 `-p guard-core` 一个包；另**读**这棵树全部 `.rs` 找 `#[path]` 挂载"
+                              "（单元层可达那一条的人群）与 `Cargo.toml` 的 `[[bench]]`。那些 `.rs` 的内容本格不判"),
+        "src/backend/": (PART, "〔现打 09-24〕**读**全部 `.rs` 找 `#[path]` 挂载、读 `Cargo.toml` 的 `[[bench]]`（秤 7 标没标 `test = true`）。"
+                               "⚠ 冒烟档那一趟**不在本格**：它在 `backend` 那一格的 `cargo test` 里跑"),
+        VENDOR: (PART, "〔现打 09-24〕只被**扫**（找 `#[path]` 挂载；vendor 的 `Cargo.toml` 明写不看）。不判"),
+        ROOTFILES: (PART, "〔现打 09-24〕**判** `package.json`（`npm test` 那条 `&&` 链够不够得着每份 `.test.ts`；"
+                          "e2e 套件从它派生）与 `vitest.config.ts`（include 那一整行钉住）。其余仓根文件不碰"),
+        ".github/": (PART, "〔现打 09-24〕只被**扫**：引用语料里有 `workflows/*.yml`（找 e2e 辅助件的名字）。不判"),
     },
 )
 
@@ -1288,6 +1325,11 @@ invoke("comm-boundary", ELSEWHERE,
        "一个人群为空、又没人看它还在不在的判据族，买到的是零。"
        "⇒ 这一维**只有本机这一格买得到**，如实记着",
        anchor="cargo test --workspace --exclude code-picture-core")
+invoke("test-tiers", ELSEWHERE,
+       "那 12 条靠 `#[path]` 挂在 `guard-core` 的 lib 上，而 `guard-core` 是 `src/bridge` workspace 的成员 ⇒ 云端那两趟 workspace test **会跑到它们**。"
+       "🔴 **但云端没有本格的三方对拍与那两条锚点** —— 那一行 `mod` 被摘掉时云端只是合计小 12。"
+       "⇒ 「测试层分级没有静默消失」这一维**只有本机这一格买得到**，如实记着",
+       anchor="cargo test --workspace --exclude code-picture-core")
 invoke("backend", ELSEWHERE,
        "`backend` 那个 job 在 `src/backend` 上跑单包 `cargo test`",
        anchor="name: Remote backend (Linux) lint + test")
@@ -1806,7 +1848,7 @@ def main():
     order = [c for c in ("worktree-clean", "hooks", "copy2", "shellcheck", "ci-e2e-prereq", "release-gate",
                          "gate-selfdesc", "platform",
                          "installface", "fmt", "fmt-backend", "winchk", "winchk-backend",
-                         "muslbuild", "cargo", "comm-boundary", "deadcode", "generated", "backend", "tsc", "npm")
+                         "muslbuild", "cargo", "comm-boundary", "test-tiers", "deadcode", "generated", "backend", "tsc", "npm")
              if c in REGISTRY] + sorted(c for c in REGISTRY if c.startswith("ccm tests/e2e/"))
     missing = sorted(set(REGISTRY) - set(order))
     if missing:

@@ -191,9 +191,11 @@ impl BodyView {
 }
 
 /// 增量 chunked 拆帧。**只拆不攒**：喂进来多少就尽量吐多少。
-#[derive(Default)]
+///
+/// 攒字节、找块长度行交给 [`super::framer::LineFramer`]（`relay/` 里唯一的增量分帧器，
+/// `设计/17 §3.7`）—— 这里只剩 chunked 自己的那一层：块长度、块尾 CRLF、终止块、上限。
 pub(crate) struct ChunkedView {
-    buf: Vec<u8>,
+    pub(super) framer: super::framer::LineFramer,
     /// 当前块还剩多少字节（含结尾的 `\r\n` 由 `crlf_left` 单管）。
     left: usize,
     crlf_left: usize,
@@ -202,11 +204,23 @@ pub(crate) struct ChunkedView {
     dropped: u64,
 }
 
+impl Default for ChunkedView {
+    fn default() -> Self {
+        Self {
+            framer: super::framer::LineFramer::new(b"\r\n"),
+            left: 0,
+            crlf_left: 0,
+            done: false,
+            dropped: 0,
+        }
+    }
+}
+
 impl ChunkedView {
     /// # `cap` 管的是**攒着还没成形的那截**〔回修轮之五 08-25，`阻-1(D3)` 的同职面〕
     ///
-    /// `left > 0` 那一支每次都把能拿的**全部**吐出去，`buf` 不会累积；
-    /// 真正会无界涨的只有**块长度行还没读到 `\r\n`** 那一支 —— 它把收到的一切原样留在 `buf` 里。
+    /// `left > 0` 那一支每次都把能拿的**全部**吐出去，分帧器里不会累积；
+    /// 真正会无界涨的只有**块长度行还没读到 `\r\n`** 那一支 —— 它把收到的一切原样留在分帧器里。
     /// 一个坏掉/有敌意的上游发一条**永不结束的块长度行**就能让它一直涨。
     ///
     /// ⚠ 它与 `阻-1` **不同族，别混**：`阻-1` 是「拿外部给的**一个数**去分配」（攻击方一个字节
@@ -217,10 +231,11 @@ impl ChunkedView {
     /// tee 少一段，**下游的字节一个不少**。计数由 `server.rs::handle` 取走并写进 tee 流的
     /// `__dropped__` 行 ⇒ **不是静默丢**。
     fn feed(&mut self, raw: &[u8], cap: usize) -> Vec<u8> {
-        self.buf.extend_from_slice(raw);
-        if self.buf.len() > cap {
-            self.dropped += self.buf.len() as u64;
-            self.buf.clear();
+        self.framer.push(raw);
+        let pending = self.framer.pending();
+        if pending > cap {
+            self.dropped += pending as u64;
+            self.framer.skip(pending);
             self.done = true;
             return Vec::new();
         }
@@ -230,8 +245,8 @@ impl ChunkedView {
                 break;
             }
             if self.crlf_left > 0 {
-                let take = self.crlf_left.min(self.buf.len());
-                self.buf.drain(..take);
+                let take = self.crlf_left.min(self.framer.pending());
+                self.framer.skip(take);
                 self.crlf_left -= take;
                 if self.crlf_left > 0 {
                     break;
@@ -239,24 +254,22 @@ impl ChunkedView {
                 continue;
             }
             if self.left > 0 {
-                let take = self.left.min(self.buf.len());
-                out.extend_from_slice(&self.buf[..take]);
-                self.buf.drain(..take);
-                self.left -= take;
+                let data = self.framer.take(self.left);
+                out.extend_from_slice(data);
+                self.left -= data.len();
                 if self.left == 0 {
                     self.crlf_left = 2;
                 }
-                if self.buf.is_empty() {
+                if self.framer.pending() == 0 {
                     break;
                 }
                 continue;
             }
             // 读块长度行
-            let Some(pos) = self.buf.windows(2).position(|w| w == b"\r\n") else {
+            let Some(line) = self.framer.next_line() else {
                 break;
             };
-            let line = String::from_utf8_lossy(&self.buf[..pos]).to_string();
-            self.buf.drain(..pos + 2);
+            let line = String::from_utf8_lossy(line).to_string();
             let size_hex = line.split(';').next().unwrap_or("").trim().to_string();
             match usize::from_str_radix(&size_hex, 16) {
                 Ok(0) => {
