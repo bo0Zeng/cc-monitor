@@ -447,7 +447,8 @@ export function __setLocalLaunchSnapshotForTests(
 }
 
 export async function fetchLocalApikeyRouting(configDirs: string[]): Promise<ApikeyRoutingView> {
-  return await commands.apikey_routing_for({ configDirs });
+  // 〔RM1a〕那条命令收了 origin；本函数照旧只问本机（名字里的 `Local` 就是这一格）。
+  return await commands.apikey_routing_for({ origin: BACKEND_LOCAL_ORIGIN, configDirs });
 }
 
 /**

@@ -608,16 +608,24 @@ export const commands = {
     invoke<ApikeyCredentialsStatus>("read_apikey_credentials_status", args),
 
   /**
-   * `K-H2b` `KH2B7`：问「这几个**本机** configDir 在 apikey 表里有没有行（走不走 apikey 端点改写）」。
+   * `K-H2b` `KH2B7`：问「这几个 configDir 在 apikey 表里有没有行 · 中转在不在」。
    *
-   * ⚠ **只答本机**，而且那不是欠账：中转是**每台机器自己的一个进程**、注入的是**回环**地址
-   * （自指）⇒ 本机这一侧**在结构上答不了远端那台**。命令面的登记
-   * （`parity_ledger` 的 `apikey.routing`，`NaturallyAsymmetric`）写着同一条理由。
+   * 〔RM1a · 第四波〕**收 `origin`**：两件事都问**那台机器**（远端由那台的后端答：
+   * 表里有哪几行 `apikey-read` · 口上有没有人在听 `relay-status`）。先前「只答本机」的理由是
+   * 「本机这一侧在结构上答不了远端那台」—— 今天远端那台自己答。
    * ⚠ 返回类型是**手写镜像**（`ApikeyRoutingView` 住 `src/accounts.ts`），
    * 与 Rust 的 `ApikeyRouting` **手动同步、今天没有判据对拍** —— 如实记，别读成有人守。
    */
-  apikey_routing_for: (args: { configDirs: string[] }) =>
+  apikey_routing_for: (args: { origin: Origin; configDirs: string[] }) =>
     invoke<ApikeyRoutingView>("apikey_routing_for", args),
+
+  /**
+   * 〔RM1a · 第四波〕让**那台远端机器**上有一个中转（层 1）在跑：口上没人听就由那台的后端起一个。
+   * **本机拒**（本机那一个由 monitor 监护）。⚠ 今天界面上没有调用方 —— 自动触发点（远端链路握手完成 /
+   * 起远端会话）不在 RM1a 写区，交主会话接。
+   */
+  relay_ensure: (args: { origin: Origin }) =>
+    invoke<{ listening: boolean; started: boolean }>("relay_ensure", args),
 
   read_mcp_servers: (args: { projectDir: string | null }) =>
     invoke<McpServerEntry[]>("read_mcp_servers", args),

@@ -1421,6 +1421,49 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 
 ⚠ **CLI 面也有它们**（`--apikey-key-set` / `--apikey-read`），从 `inbound::REGISTRY` 派生；`--apikey-key-set` 的入参**从 stdin 读**。
 
+#### 中转（层 1）在「这台机器」上的进程（RM1a · 第四波，2026-09-24）
+
+本机的中转由 monitor 起本机后端时顺手监护；**远端那台机器上的中转由那台的后端起**（下面两条）。
+两条都**只收端口**，一个凭据 / 账号的名字都不经过它们（账号层那份文件由上面 `apikey-*` 两条管）。
+monitor **从不**对本机那条连接发 `relay-ensure`（本机那一个有监护者，不许再起第二个去抢口）。
+
+起出来的 `--relay` 继承后端的环境，它里面的账号层与后端账号域那份写口按同一个函数、同一个家目录出处解凭据路径
+⇒ 两边是同一份文件，不必在这两条命令里传路径。
+
+#### `relay-status`：这个口上有没有人在听（只读）
+
+```text
+→ {"id":"r1","cmd":"relay-status","args":{"port":8788}}
+← {"kind":"reply","id":"r1","ok":true,"data":{"port":8788,"listening":false}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `port` | ↔ | 中转的端口（monitor 那边的 `payload::RELAY_PORT` 是权威，入参给出） |
+| `listening` | ← | 回环上连一次那个口，连得上 = **有人在听**。⚠ 答不了「听的那个是不是我们的中转」 |
+
+**错误码**：`bad_args`（`port` 缺了或不在 1–65535）。
+
+#### `relay-ensure`：没人在听就起一个脱离的中转
+
+```text
+→ {"id":"r2","cmd":"relay-ensure","args":{"port":8788}}
+← {"kind":"reply","id":"r2","ok":true,"data":{"port":8788,"listening":false,"started":true,"pid":4242}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `port` | ↔ | 同上 |
+| `listening` | ← | 起之前那一刻口上有没有人（有 ⇒ 什么都不做，`started:false`） |
+| `started` | ← | 这一趟起了一个进程。⚠ **不等它 bind**（后端零定时器）：`true` 只说「进程起了」，要知道口上有没有人再问一次 `relay-status` |
+| `pid` | ← | 只在 `started:true` 时有 |
+
+起法：本后端这个二进制自己带 `--relay`，环境多一格 `CCM_RELAY_PORT`，stdio 全接空，自成一个进程组（SSH 断了它不跟着走）。
+⚠ 它的诊断因此到不了人（远端那台上没有监护者收它的 stderr）。
+**错误码**：`bad_args` · `spawn_failed`（找不到自己 / 起不动）· `unsupported`（非 unix：不知道怎么起成脱离的一组，没起）。
+
+⚠ **CLI 面也有它们**（`--relay-status` / `--relay-ensure`），入参从 stdin 读。
+
 #### 只读查询面（`C1`，2026-09-24）—— **八条一次性查询搬上这条长连接**
 
 出处 `设计/15 §3.2` 层 1 ＋ `设计/99 §4.19.2 ⑥`。这八条此前**只有**一次性子命令那一面：monitor 每问一次就新拨一条 SSH（握手 ＋ 鉴权 ＋ exec），账号那两条还被一个 10 秒的轮询按台数翻倍。现在它们也在帧面上 —— **跑的是 CLI 那一臂同一个函数**，只是输出从 stdout 换成应答里的 `data`。

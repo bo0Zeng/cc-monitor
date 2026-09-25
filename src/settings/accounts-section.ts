@@ -1233,7 +1233,7 @@ export class AccountsSection {
    * ③ 〔RM1a · 第四波〕这一页显的是 `this.origin` 那台机器的账号，读写那份文件的两条命令
    *    （`read_apikey_credentials_status` / `write_apikey_credentials_key`）**按同一台机器**去
    *    （[`machineOrigin`]）—— 远端页读写的是那台机器上那一份，不再是本机的。
-   *    ⚠ `apikey_routing_for`（「有没有行 · 中转在不在」）这一拍**还只答本机**，下一子步收 origin。
+   *    「有没有行」（`apikey_routing_for`）同样问这一页那台机器（远端由那台的后端答 `apikey-read`）。
    */
   private async readApikeyState(
     accounts: Account[],
@@ -1241,7 +1241,10 @@ export class AccountsSection {
     const dirs = accounts.map((a) => a.configDir).filter((d): d is string => !!d);
     let routed: string[] = [];
     try {
-      routed = dirs.length ? (await fetchLocalApikeyRouting(dirs)).routed : [];
+      // 〔RM1a〕问**这一页那台机器**（远端由那台的后端答），不再问本机。
+      routed = dirs.length
+        ? (await commands.apikey_routing_for({ origin: this.machineOrigin(), configDirs: dirs })).routed
+        : [];
     } catch {
       // 口径①：这一格失败只让状态那一行说「还没有它那一行」，不挡配 key。
     }

@@ -499,6 +499,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 不收 argv —— argv 在同机任何用户的 `ps` 里都看得见。加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
     "--apikey-key-set",
     "--apikey-read",
+    // 〔RM1a · 第四波〕中转（层 1）那两条（`inbound::REGISTRY` 的 `relay-*`）自动派生的 CLI 面。
+    // 入参只有端口，从 stdin 读。同上：加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
+    "--relay-ensure",
+    "--relay-status",
     "--backend-probe",
     // K-P6b：拨号代理。**常驻**（起来就一直搬字节，不返回），配置走**环境变量**
     // `CCM_DIAL_REQUEST`，**argv 与 stdin 都不走** —— argv 在同机任何用户的 `ps` 里都

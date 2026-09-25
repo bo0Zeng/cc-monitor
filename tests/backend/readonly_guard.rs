@@ -1854,6 +1854,18 @@ mod spawn_registry {
              ⚠ 在那之前**不许**因为「反正已经登记了」而往这一条底下加第三种用途 —— \
              要加就先回来把这一栏的「恰好两处」重新数一遍。",
         ),
+        (
+            "relay/machine.rs",
+            "<非字面量>",
+            "〔RM1a · 第四波〕远端那台机器上的中转（层 1）由那台的后端起：**本后端这个二进制自己**\
+             （`current_exe`）带 `--relay`，stdio 全接空、自成一个进程组（`platform::detach`）。\
+             被起的那个进程就是 `--relay` 那一臂 —— 它自己的写面由本护栏照样管（同一个二进制、同一份生产段），\
+             **不是**后端进程自身写用户既有数据。程序名走变量（`current_exe`）⇒ 抽取器记成 `<非字面量>`。\
+             只从帧面 `relay-ensure` 一条进来，monitor 从不对本机发它（本机那一个由 monitor 监护）。",
+            "缩性质",
+            "远端的中转改由别的东西起（比如常驻后端自己带着它）的那天摘掉。\
+             ⚠ 在那之前**不许**往这一处起法底下加第二种用途 —— 它起的永远是本二进制的 `--relay`。",
+        ),
     ];
 
     /// ★ 生产段的每一处起进程都必须在 [`ALLOWED`] 里。
@@ -1963,7 +1975,9 @@ mod spawn_registry {
         //    `Command::new(<非字面量>)`）一起没了，`ALLOWED` 里那两条同拍摘掉。
         //    ⚠ **变少这一次是真的少了，不是抽取坏了**：`control/capture_pane.rs` 那一处还在
         //    （拉屏预览在用），下面 `found` 的实测清单里看得见。
-        const SPAWN_SITES_TODAY: usize = 11;
+        // 〔RM1a · 第四波〕**11 → 12**：`relay/machine.rs` 那一处（远端那台上起一个脱离的 `--relay`）。
+        //    ⚠ 真的新面，不是搬家：远端起中转这件事此前后端侧一处都没有（`ALLOWED` 里那条新登记写了它起什么）。
+        const SPAWN_SITES_TODAY: usize = 12;
         assert_eq!(
             found.len(),
             SPAWN_SITES_TODAY,

@@ -414,6 +414,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 〔RM1a · 第四波〕账号层那份凭据文件的两条：同步文件 I/O（读 / 原子写那一份）。
         "apikey-key-set",
         "apikey-read",
+        // 〔RM1a · 第四波〕中转那两条：回环连一次 / 起一个进程。
+        "relay-ensure",
+        "relay-status",
     ] {
         assert!(
             matches!(d(c), Disposition::SpawnBlocking(..)),
@@ -462,6 +465,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "exit-policy-set",
         "apikey-key-set",
         "apikey-read",
+        "relay-ensure",
+        "relay-status",
     ];
     let missing: Vec<&&str> = COMMANDS.iter().filter(|c| !covered.contains(c)).collect();
     assert!(
