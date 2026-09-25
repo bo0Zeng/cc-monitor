@@ -8,12 +8,15 @@
 //! cc-monitor 对远端的写入均**用户显式触发**，各自独立路径守卫、绝不混用：
 //! - **F08**：自部署后端二进制到 `~/.cc-monitor/bin/`（非用户数据、幂等、版本门控）。
 //! - **F11**：用户**主动**删除远端会话 jsonl（`remove_remote_file`，`is_safe_remote_jsonl` + `canonicalize`）。
-//! - **F89a**：用户**显式**增/改/删远端**项目** `.mcp.json`（`mcp::write_remote_mcp_server` 等，字符串守卫
-//!   `is_safe_remote_mcp_json`：绝对 + 尾 `/.mcp.json` + 无 `..` + 非裸；经本模块 `upload_atomic` 原子写）。
+//! - **F89a**：用户**显式**增/改/删远端**项目** `.mcp.json`（字符串守卫 `is_safe_remote_mcp_json`：
+//!   绝对 + 尾 `/.mcp.json` + 无 `..` + 非裸）。〔RW1 · 第四波 09-24〕**写已不在本模块**：
+//!   经远端后端（`mcp::write_project_mcp_server` → `user_files`），不再 SFTP 直写。
 //!   **SS-14**：写面**只** `.mcp.json`，非 Claude 会话数据。
 //! - **F10**：别名块装/卸——**本模块 [`install_remote_alias_block`]/[`uninstall_remote_alias_block`] 写远端 `~/.bashrc`**
 //!   （〔MC1〕从前这一对叫 `install_remote_ccm_helper`〔散文墓碑〕/ `uninstall_…`，推入口那一半并进了 [`deploy_remote_backend`]）
 //!   （BEGIN/END 块 + 备份 + 写后校验回滚）；本机 profile 写在 `profile_installer`。（batch20 审计修：原「非远端」措辞误——本模块确写远端 `~/.bashrc`。）
+//!   〔RW1 · 第四波 09-24〕**落盘已不在本模块**：两条命令经远端后端读改写（`user_files`），本模块只剩规划那一半
+//!   （[`merge_profile_block`] / [`strip_profile_block`]）。
 //! - **F50**：`pubkey::push_public_key` 经 SSH-exec 追加公钥到远端 `~/.ssh/authorized_keys`（不在本模块，登记于此备查）。
 //!
 //! `upload_atomic`（F89a 审计后加固）：tmp 用 **EXCLUDE** 创建（防 symlink 预置 clobber）+ 旧目标先备份到

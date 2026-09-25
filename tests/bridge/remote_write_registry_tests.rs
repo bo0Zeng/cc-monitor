@@ -583,7 +583,8 @@ fn the_ipc_entry_points_route_through_a_registered_write_site() {
         //   上传今天的入口是传输台的开单口（窗口经通道说 `transfer-upload`），它转发到只写暂存区的那一个写点。
         ("sftp_pool.rs", "transfer_call", "upload_to_staging"),
         ("sftp.rs", "deploy_remote_backend", "upload_atomic"),
-        ("mcp.rs", "write_remote_mcp_server", "upload_atomic"),
+        // 〔RW1 · 第四波 09-24〕`mcp.rs` 远端写那一行走了：F89a 按用户裁「按推荐改」改经远端后端写，
+        //   那个分支函数（`write_remote_mcp_server`）今天一个 SFTP 会话都不拿 ⇒ 不再是本表的人群。
         (
             "remote_history.rs",
             "delete_remote_history_session",
