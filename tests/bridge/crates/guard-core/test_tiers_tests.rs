@@ -78,6 +78,8 @@ const UNIT: &[&str] = &[
     "tests/backend/relay/http1_tests.rs",
     "tests/backend/relay/tee_tests.rs",
     "tests/backend/relay/upstream_tests.rs",
+    "tests/backend/tap_tests.rs",         // 〔TAP〕hub 与帧转换
+    "tests/backend/writer_task_tests.rs", // 〔TAP〕写者优先序（tap 最低）
     "tests/branch-button.vitest.ts",
     "tests/branch-fold-batching.vitest.ts",
     "tests/branching.test.ts",

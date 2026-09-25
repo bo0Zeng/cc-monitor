@@ -92,6 +92,7 @@ mod remote_write_registry; // devbench F10c：远端写面登记（接三张表�
 mod search;
 mod session_facts; // 〔U4b〕两条后端流交来、要送前端的会话事实（容器 · 本机可重连落已结束）的一个口
 mod session_map;
+mod session_tap; // 〔TAP · V124〕本机后端的 `tap` 帧（中转抄出来的 SSE 事件）原样转给前端 `session-tap`
 mod shell_dialect; // AL1c（第四波 4B）：`设计/71 §4.4` 那组 shell 方言接口 —— POSIX 与 PowerShell 各一份实现，通用层零 shell 文本
                    // `15 §5.1 A3` / `00 §1.5.2`：起子进程的**唯一出口**（三个策略都没有 Default）。
                    // 住宿主知识层是硬的：平台原语进不了 `backend/`（那侧的禁针 + 递减棘轮），
@@ -720,6 +721,15 @@ pub fn run() {
 
             // 〔U4b · 第四波〕`session_facts` 的出口：两条后端流交来的会话事实在这里落地（见那个模块的头注）。
             //   装在两个 emitter 之前 —— 装之前交来的容器事实只记账，`frontend-ready` 对账会整份重发。
+            // 〔TAP · V124〕`session_tap` 的出口：本机后端的 `tap` 帧原样发 `session-tap`（前端直派，可丢）。
+            {
+                let handle = app.handle().clone();
+                crate::session_tap::install_sink(move |payload| {
+                    if let Err(e) = handle.emit(bridge::events::SESSION_TAP, &payload) {
+                        tracing::debug!("emit session-tap failed: {e}");
+                    }
+                });
+            }
             {
                 let handle = app.handle().clone();
                 crate::session_facts::install_sink(move |fact| match fact {

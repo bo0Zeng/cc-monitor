@@ -350,12 +350,14 @@ impl std::fmt::Display for Hosted {
 /// 共用：上游选择那两步（`check` → `into_destinations`）· [`listen`]（回环）· [`serve`] · 两个期限值。
 /// 不共用：① 端口**没有缺省值**（交了一个认不出的串 ⇒ `Failed`，不悄悄退回 `DEFAULT_PORT` ——
 /// 注入侧拼的是它交出来的那个数，两边对不上就是一个查不出来的连接失败）；
-/// ② tee 落 [`TeeSink::discard`]：本进程的 stdout 在 stdio 载体上**就是 wire**（一行一帧），
-/// 在脱离载体上是 null —— 哪一条都不是 tee 的落点；③ 起不来不退出（见 [`Hosted`]）。
+/// ② tee 落宿主交下来的 tap 口（[`TeeSink::to_port`]，〔TAP · V124〕）：本进程的 stdout 在 stdio 载体上**就是 wire**
+/// （一行一帧），在脱离载体上是 null —— 哪一条都不是 NDJSON 行的落点；宿主把事件转成 `tap` 帧走它自己的有界通道；
+/// ③ 起不来不退出（见 [`Hosted`]）。
 pub(crate) fn host(
     get: &dyn Fn(&str) -> Option<String>,
     home: &std::path::Path,
     startup: &dyn Startup,
+    tap: std::sync::Arc<dyn super::tee::TapPort>,
 ) -> Hosted {
     let Some(raw) = get(ENV_PORT).filter(|s| !s.trim().is_empty()) else {
         return Hosted::NotAsked;
@@ -367,7 +369,7 @@ pub(crate) fn host(
             return Hosted::Failed(format!("{ENV_PORT}={raw:?} 不是端口号（{e}）"));
         }
     };
-    let (listener, relay) = match prepare(port, get, home, startup, TeeSink::discard()) {
+    let (listener, relay) = match prepare(port, get, home, startup, TeeSink::to_port(tap)) {
         Ok(x) => x,
         Err(why) => return Hosted::Failed(why),
     };

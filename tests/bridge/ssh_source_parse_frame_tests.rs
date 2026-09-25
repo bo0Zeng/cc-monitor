@@ -776,3 +776,74 @@ fn sessions_replayed_is_known() {
         Some(InboundFrame::SessionsReplayed)
     );
 }
+
+/// 〔TAP · V124〕`tap` 两形（字面量与后端 `wire_tests::tap_frames_have_exactly_these_bytes` 同一串 —— 异源 = 各自对手写字面量）；
+/// `data` 与 `end` 都缺 · `end` 不认识 · `data` 不是串 · 缺 `n` ⇒ 整帧 `None`（坏帧，不猜）。
+#[test]
+fn tap_frames_parse_into_the_two_shapes_and_bad_ones_are_none() {
+    use crate::session_tap::{Tap, TapBody, TapEnd};
+    let data = "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"resp\":12,\"n\":3,\"data\":\"{\\\"type\\\":\\\"ping\\\"}\"}";
+    assert_eq!(
+        parse_frame(data),
+        Some(InboundFrame::Tap(Tap {
+            stream: "0b6c1f7e-sid".into(),
+            resp: 12,
+            n: 3,
+            body: TapBody::Data("{\"type\":\"ping\"}".into()),
+        }))
+    );
+    for (word, want) in [("done", TapEnd::Done), ("broken", TapEnd::Broken)] {
+        let line = format!(
+            "{{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"resp\":12,\"n\":9,\"end\":\"{word}\"}}"
+        );
+        assert_eq!(
+            parse_frame(&line),
+            Some(InboundFrame::Tap(Tap {
+                stream: "0b6c1f7e-sid".into(),
+                resp: 12,
+                n: 9,
+                body: TapBody::End(want),
+            }))
+        );
+    }
+    for bad in [
+        r#"{"kind":"tap","stream":"s","resp":1,"n":0}"#,
+        r#"{"kind":"tap","stream":"s","resp":1,"n":0,"end":"maybe"}"#,
+        r#"{"kind":"tap","stream":"s","resp":1,"n":0,"data":{"type":"ping"}}"#,
+        r#"{"kind":"tap","stream":"s","resp":1,"data":"{}"}"#,
+    ] {
+        assert_eq!(parse_frame(bad), None, "坏的 tap 帧被当成好帧解了：{bad}");
+    }
+}
+
+/// 〔TAP〕转交是纯照搬：帧 → `session-tap` 的 payload（origin 由调用方给；`end` 用线上那个字）。
+#[test]
+fn a_tap_frame_becomes_the_session_tap_payload_field_for_field() {
+    use crate::session_tap::{to_payload, Tap, TapBody, TapEnd};
+    let p = to_payload(
+        "<local>",
+        Tap {
+            stream: "sid".into(),
+            resp: 4,
+            n: 2,
+            body: TapBody::End(TapEnd::Broken),
+        },
+    );
+    assert_eq!(
+        serde_json::to_string(&p).unwrap(),
+        r#"{"origin":"<local>","stream":"sid","resp":4,"n":2,"end":"broken"}"#
+    );
+    let p = to_payload(
+        "<local>",
+        Tap {
+            stream: "sid".into(),
+            resp: 4,
+            n: 1,
+            body: TapBody::Data("{}".into()),
+        },
+    );
+    assert_eq!(
+        serde_json::to_string(&p).unwrap(),
+        r#"{"origin":"<local>","stream":"sid","resp":4,"n":1,"data":"{}"}"#
+    );
+}

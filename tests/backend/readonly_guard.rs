@@ -221,6 +221,12 @@ mod tests {
              **零写盘**：注解只读（`history_annotations::load`）",
         ),
         (
+            "tap",
+            "〔TAP · V124〕tee 的消费侧（后端这一半）：进程级 tap 口 ＋ 每条流连接一条有界通道 ＋ 事件 → `tap` 帧。\
+             它归 backend-core 是因为中转住本机常驻后端这个进程（V107），帧从这个进程的 wire 出去。\
+             **零写盘**：只在内存里递事件",
+        ),
+        (
             "remote_ask",
             "〔C4d · 第四波 4B〕本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 内存可达表，\
              帧面 `remote-reach`。它归 backend-core 是因为 SSH 连接只住本机常驻后端（`dial/`）。**零写盘**：\
