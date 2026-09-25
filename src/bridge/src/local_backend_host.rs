@@ -559,7 +559,8 @@ fn spawn_detached(
     for (k, v) in extra_env {
         cmd.env(k, v);
     }
-    cmd.arg("--tail-only")
+    // 〔CF1〕流模式起参与 stdio 那条载体共用一份（`local_backend::LOCAL_STREAM_ARGS`：`--tail-only --with-bg`）。
+    cmd.args(local_backend::LOCAL_STREAM_ARGS)
         // ★★ **`TMUX` 一律不继承**〔08-11 事故订正，与 `supervise_with_stdio` 同一条〕：
         //   tmux 客户端在 `TMUX` 有值时按它给的 socket 走，`TMUX_TMPDIR` 完全不起作用。
         //   漏这一条，被起的后端会去改「monitor 恰好从哪个 tmux 里被启动」的那个 server。
@@ -917,8 +918,15 @@ fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Stri
             };
             // 本机的 tmux 帧（`P3` 刀 1）·〔SR1a〕应答 · 链路帧 —— 与 stdio 那条载体**同一个吸收点**，
             // 理由与前置条件写在 `local_backend::absorb_local_frame` 的头注上，这里不再抄一份散文。
-            crate::backend::control::local_backend::absorb_local_frame(f, Some(&client));
+            // 〔CF1〕交回来的内容帧送进本机内容通道 —— 这是 tokio 任务 ⇒ `.await` 那一形（满了就停读：级 1 回推）。
+            if let Some(f) =
+                crate::backend::control::local_backend::absorb_local_frame(f, Some(&client))
+            {
+                crate::local_lines::deliver(f).await;
+            }
         }
+        // 〔CF1〕告诉本机内容消费者这条流结束了。
+        crate::local_lines::stream_ended().await;
         // 〔SR1a〕流没了 ⇒ 经它开的在飞链路全部带原因结束（不让调用方干等到超时）。
         crate::link_mux::fail_owned_by(&client, "本机后端的流断了（常驻载体）");
         // 〔SR1b〕经它开的传输也一律收场（后端的票表随那条流一起撤了）。

@@ -49,7 +49,7 @@ const lastShown = new Map<string, number>();
 export function bindRemoteHealthToast(): void {
   void listen<RemoteHealthPayload>("remote-health", (e) => {
     const p = e.payload;
-    const key = `${p.origin ?? ""}|${p.kind}`;
+    const key = `${p.origin}|${p.kind}`;
     const now = Date.now();
     if (!shouldShowHealthToast(lastShown.get(key), now)) return;
     lastShown.set(key, now);

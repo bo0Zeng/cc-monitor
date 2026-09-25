@@ -14,7 +14,7 @@
 //! 库 crate 根：模块声明 + Tauri 应用装配。
 //!
 //! `run()` 在 `tauri::Builder` 之前先 `logging::init`（tracing 全局 dispatcher 必须最先 init），
-//! 然后注册 single-instance plugin（须为链上第一个）、`setup()` 里 spawn watcher / 各后台线程
+//! 然后注册 single-instance plugin（须为链上第一个）、`setup()` 里起本机内容消费者 / 各后台线程
 //! 并 `app.manage` 所有 Arc-shared State，最后注册 `invoke_handler`（IPC 命令清单）。
 //! State 注册矩阵见 src/doc/STATE-MATRIX.md；漏 `manage` 不会被 cargo check 抓住（INVARIANT § 8）。
 
@@ -69,6 +69,7 @@ mod local_backend_host; // P2s（C8）：本机后端的生命周期（起/停/�
 mod local_origin_registry;
 mod logging;
 mod mcp; // F87（#50+#51）：MCP 管理（读跨 scope 展示 / 写只项目 .mcp.json，SS-14）
+mod mcp_sync; // 〔AS1 · 第四波 4B〕MCP 推 / 拉：只编排 I/O（读两边 · 请对面后端判 · 经对面后端写），判定住后端 `mcp-sync-plan`
 mod messages;
 mod panorama;
 mod panorama_bytes; // 〔RM1c · 第四波〕全景小程序的字节从哪来：按 (OS, arch) 选内嵌的那一份（推上去归 F08 部署路 / SR1b）
@@ -77,7 +78,8 @@ mod panorama_seam_registry; // P7c-2 第一刀：引擎住哪一侧要可换（�
 mod parser;
 mod paths;
 mod platform_fs; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
-mod plugins; // P8a：Claude Code marketplace 面的只读枚举（**不声称安装/启用**，见模块头注）
+                 // 〔C4b · 第四波 4B〕`plugins` 模块（P8a 的 marketplace 只读枚举，`list_plugin_marketplaces`〔散文墓碑〕）删了：
+                 //   后端 `plugins-marketplaces` 直接出成品，界面经通道问（`src/settings/plugins-section.ts::fetchSurvey`）。
 mod port_forward;
 mod profile_installer;
 mod pubkey;
@@ -104,10 +106,10 @@ mod verified_write; // T01：统一的「备份→写→读回比对→回滚」
                     // SS-D 统一 SFTP 写层（issue #29 自动部署 F08；后续 F11/F10 复用）。
 mod sftp;
 // SSH-remote Phase 0 (issue #15)：从 setup() 调用 —— 当 config.json 的
-// `remote.enabled = true` 时，ssh_source::run 作为**附加**数据源与本地 jsonl-watcher
-// 并行跑（aggregate：本地 + 远端 session 同时显示为 Tab），走相同的
-// batch_to_payloads → replay.on_line_batch 出口；远端行带 origin=host 标签。
-// remote off（默认）时本模块不被调用，本地路径 bit-for-bit 不变。
+// `remote.enabled = true` 时，ssh_source::run 作为**附加**数据源与本机那条流
+// 并行跑（aggregate：本地 + 远端 session 同时显示为 Tab）。〔CF1〕本机会话内容也经本模块的
+// `LineIntake` / `consume_local` 走同一个出口（flush_lines → batch_to_payloads → on_line_batch_awaited）；
+// 远端行带 origin=host 标签。
 mod ccm_probe;
 mod ssh_source;
 // 〔C2 · `设计/05 §13`〕拨号应答的客户端（通信层面 A 的 SSH 链路那一段）。
@@ -118,6 +120,8 @@ mod ssh_link;
 mod dial_host;
 // 〔SR1a〕链路的 monitor 这一侧：在本机后端那条流上多路复用到各远端的字节流（`link-*`）。
 mod link_mux;
+// 〔CF1〕本机会话内容的入口通道：本机两条读循环把后端的内容帧送进来，交给与远端同一个 `ssh_source::LineIntake`。
+mod local_lines;
 // T01：结构性扫描的可复用形式（枚举+逐个断言+计数自检+钉死逃生口）。
 // **只在测试期编译**——它的消费者全在 `#[cfg(test)]` 里（`sftp.rs` 的 tmux 目标守卫、
 // `tool_registry.rs` 的字段纪律）。这是测试支撑模块，不是被闲置的生产代码；
@@ -195,10 +199,8 @@ mod structural_scan;
 mod subagent;
 // 〔`设计/10` 骨架 · 子步 3〕monitor 侧「从偏移读」：骨架索引 ＋ 按偏移取一段正文。
 mod session_skeleton;
-// 〔SE1 · `设计/10 §2.2b ⑥`〕大纲的数据源：问后端要「你说过的话」清单。
-mod session_outline;
-// 〔SE2 · `设计/10 §6 步 6`〕会话内查找（Ctrl+F）：问后端要这一份会话里的命中。
-mod session_find;
+// 〔C4b · 第四波 4B〕大纲清单与会话内查找两个模块（`session_outline` / `session_find`）删了：
+//   界面经通道直接说帧命令 `history-user-inputs` / `history-find`，后端出成品（`src/session-reads.ts`）。
 // 〔C2 · U3 第 3 件〕远端流断线重连后，旁路快照从续点接着拉（不再从第 0 行整份重拉）。
 mod snapshot_resume;
 mod tasks;
@@ -206,7 +208,6 @@ mod tmux_backend_gate_guard; // U10 裁决：backend 侧没有身份守卫之前
 mod tmux_reconcile;
 mod tool_registry; // T01：受管工具声明（只声明，不改各工具行为）
 mod utils;
-mod watcher;
 mod write_site_registry; // audit-0805 08-07：每个会写用户机器的落点都要申报（关掉 §5 4b 一半） // audit-0805 08-07：每处远端执行都要申报命令来历 // audit-0805 08-08：webview 能力清单 = 三张登记表的共同前提
 
 use std::path::PathBuf;
@@ -546,6 +547,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .setup(move |app| {
+            // 〔CF1 · 2026-09-24〕**重放缓冲与本机内容消费者先于本机后端就位。** 本机会话内容从此是
+            // 本机后端的 `line` 帧（`local_lines` 头注）；后端一接上就开始宣告、发行 ⇒ 接住它们的那一头
+            // 必须先在。原来 `EventReplay` 造在下面 watcher 那一段（本机 watcher 已删）。
+            let replay = Arc::new(event_replay::EventReplay::new());
+            local_lines::install(app.handle().clone(), replay.clone());
+
             // F05a（定框 C7：没有 daemonless）：起并看住**本机后端进程**。
             // 〔`K-R59` 09-11：`C7` 的第二格今天补上了 —— 远端那个 `daemonless`
             //  每机开关整格删除（定框 `K35`），从此**没有「没有后端」这回事**。〕
@@ -665,7 +672,6 @@ pub fn run() {
             let agent = adapter::active();
             let claude_dir = agent.data_root().ok_or("agent data dir not found")?;
             tracing::info!("monitor using agent [{}] data dir: {}", agent.id(), claude_dir.display());
-            let projects_dir = adapter::records_dir(&claude_dir);
             let sessions_dir = adapter::liveness_dir(&claude_dir);
             // v2.3.0 issue #11：任务追踪文件根（CC = tasks）
             let tasks_dir =
@@ -702,42 +708,10 @@ pub fn run() {
                     load_show_bg_sessions(),
                 );
 
-            // Watcher: 只对活跃 session 的 jsonl emit
-            let active_filter: watcher::ActiveFilter = {
-                let map = session_map.clone();
-                Arc::new(move |sid: &str| map.is_session_active(sid))
-            };
-
-            // v2.4 (修首次启动乱序)：watcher 直接调 on_line 回调（取代之前的 mpsc
-            // 中间层）。回调内同步 parse + record() —— history buffer 在 watcher
-            // 线程内同步落盘，初始全量扫完成 = history 完整 = frontend-ready 触发
-            // replay 时 snapshot 一定完整。
-            //
-            // 旧设计：watcher tx → mpsc → tauri::async_runtime::spawn drain → record。
-            // async drain 跟 frontend-ready 是竞态：drain 没追上时 snapshot 不完整，
-            // 部分历史漏到 live emit 路径 → 跟 chunked replay 错位 → 首次启动乱序。
-            // F5 因 backend 已稳定看不到 bug。详 watcher.rs::spawn_watcher 注释。
-            let replay = Arc::new(event_replay::EventReplay::new());
-            // v2.4.2 issue #2: watcher 改成一次 process_file 给一批 lines，
-            // lib.rs 这里 parse 整批后一次 on_line_batch 给 EventReplay。
-            // EventReplay 按 batch 大小分流（详 event_replay::on_line_batch 注释）。
-            let on_batch: watcher::BatchHandler = {
-                let replay = replay.clone();
-                let handle = app.handle().clone();
-                // 〔ST3〕本机 watcher 只读本机的 jsonl ⇒ 看不懂的东西记在本机名下（载荷上不带 origin，线上形状不变）。
-                let local = crate::origin::Origin::local();
-                Arc::new(move |lines: Vec<watcher::JsonlLine>| {
-                    // 本地行载荷无 origin；远端行由 ssh_source 传那台的 origin。
-                    let payloads = batch_to_payloads(lines, &local);
-                    replay.on_line_batch(&handle, payloads);
-                })
-            };
-
-            // 本地 jsonl-watcher：**始终** spawn（与 SSH-remote 引入前完全一致）。
-            // 远端（如启用）是纯附加数据源（见下方 load_remote_configs 块），不影响这里。
-            let watcher_handle = watcher::spawn_watcher(projects_dir, active_filter, on_batch);
-            let force_rescan_tx = watcher_handle.force_rescan_tx;
-            let initial_scan_done = watcher_handle.initial_scan_done;
+            // 〔CF1 · 2026-09-24〕本机会话内容**不再**由 monitor 自己 watch：它是本机后端的 `line` 帧，
+            // 经 `local_lines` → `ssh_source::consume_local` → 与远端同一个 `LineIntake`（`设计/00 §2.5 ②`）。
+            // 原来这里起 monitor 自己的 jsonl watcher（`watcher.rs`，已删：第二套游标与 seq）、
+            // 还有那条「会话后到 ⇒ 强制重扫」的兜底通道 —— 后端宣告会话时先 prime、历史走旁路快照，那个竞态不在了。
 
             // 〔U4b · 第四波〕`session_facts` 的出口：两条后端流交来的会话事实在这里落地（见那个模块的头注）。
             //   装在两个 emitter 之前 —— 装之前交来的容器事实只记账，`frontend-ready` 对账会整份重发。
@@ -778,8 +752,7 @@ pub fn run() {
             }
 
             // session 集合变化 emitter（本地）：
-            //   - added：通知 jsonl-watcher 主动重扫该 session（修 Bug 2-A 竞态）
-            //             + 调 SidHwndCache.record 把 sid → hwnd 绑定持久化
+            //   - added：调 SidHwndCache.record 把 sid → hwnd 绑定持久化
             //   - removed：透传 session-ended 给前端，Tab 灰显归档
             //              + 调 SidHwndCache.forget 清理过期 sid
             {
@@ -792,10 +765,7 @@ pub fn run() {
                     .spawn(move || {
                         while let Ok(change) = session_changes.recv() {
                             for sid in &change.added {
-                                tracing::info!("session added: {sid}, triggering jsonl rescan");
-                                if let Err(e) = force_rescan_tx.send(sid.clone()) {
-                                    tracing::warn!("force_rescan send failed for {sid}: {e}");
-                                }
+                                tracing::info!("session added: {sid}");
                                 // 尝试绑定 sid → hwnd（通过 claude_pid 的 parent PS）
                                 if let Some(info) = session_map_for_emitter.lookup(sid) {
                                     let _ =
@@ -909,20 +879,19 @@ pub fn run() {
                 Arc::new(parking_lot::Mutex::new(std::collections::HashSet::new()));
 
             // SSH-remote Phase 0 (issue #15)：远端是**纯附加**数据源。config.json 的
-            // `remote.enabled = true` 且配置完整 → 在本地 watcher 之外**额外**起一条
+            // `remote.enabled = true` 且配置完整 → 在本机那条流之外**额外**起一条
             // ssh_source::run（aggregate：本地 + 远端 session 同时显示）。否则（默认 /
             // 无 remote 配置）此块不执行，本地路径与历史 bit-for-bit 一致。
             let remote_cfgs = load_remote_configs();
             if !remote_cfgs.is_empty() {
                 tracing::info!(
-                    "remote mode ENABLED (additive): {} SSH data source(s) (local jsonl-watcher still running)",
+                    "remote mode ENABLED (additive): {} SSH data source(s) (local backend stream still running)",
                     remote_cfgs.len()
                 );
 
                 // 远端独立 session 通道：ssh_source::run 持 sender；这里起一条**专用**的
                 // 精简 emitter drain 它。
-                //   - added（Feature ②）：远端 Tab 由 line 帧经 ensureTab 创建（不调
-                //     force_rescan_tx，那是本地 jsonl 专用）。但要扫本地窗口找
+                //   - added（Feature ②）：远端 Tab 由 line 帧经 ensureTab 创建。但要扫本地窗口找
                 //     `ccm-rbind-<sid>` 标题绑定 hwnd，供 ↗ 拉前。wrapper 设标题经 ssh
                 //     透传到本地 WT 有延迟（OSC 序列要等远端 shell 起来 + 透传），故
                 //     +1500/3000/4500/6000ms 重试扫描，首次绑定成功即停。
@@ -1092,13 +1061,13 @@ pub fn run() {
                     }
                 }
 
-                // 每台远端各起一条 ssh_source::run（多机 #30），与本地 watcher 走相同出口
-                // （batch_to_payloads → on_line_batch）；session 变化共享 remote_tx → 上面那
+                // 每台远端各起一条 ssh_source::run（多机 #30），〔CF1〕与本机那条流同一个内容收口
+                // （`ssh_source::LineIntake` → flush_lines）；session 变化共享 remote_tx → 上面那
                 // 唯一的 remote-session-emitter（session 变化 host 无关，按 sid 维护）。
                 // `connected` 是 connection-healthy signal（每台一份）：stream_loop 收到 backend
                 // hello 时置 true，run() 的重连循环据此判定本次是否连上过（连上过→下次立即快速
-                // 重连，否则指数退避）。远端**不**门控 frontend-ready（本地 watcher 的
-                // initial_scan_done 才门控 replay；远端是实时流，无"初始扫完成"概念）。
+                // 重连，否则指数退避）。远端**不**门控 frontend-ready（实时流，无"初始扫完成"概念；
+                // 〔CF1〕本机那条今天也是同一个样子，原来那道等待随本机 watcher 一起删了）。
                 for cfg in remote_cfgs {
                     tracing::info!(
                         "  remote host [{}]: {}@{}:{}",
@@ -1170,19 +1139,14 @@ pub fn run() {
                 }
             }
 
-            // 前端 ready 事件 → 等 watcher 初始扫完成 → replay all。
+            // 前端 ready 事件 → replay all。
             //
-            // v2.4 修首次启动乱序：之前 listener 直接调 replay()，但 watcher 是
-            // 异步全量扫，snapshot 时 history 不完整 → 部分历史漏到 live emit 路径
-            // → 跟 chunked replay 错位。现在 listener 在 async task 里 spin-wait
-            // `initial_scan_done`，扫完才 snapshot，保证 chunked replay 包含全部历史。
-            //
-            // 等待用 10ms 间隔 poll，整体 timeout 10s（防 watcher 死锁卡死整个 UI
-            // 永远看不到内容）。timeout 到也会强行 replay，degraded but unblocked。
+            // 〔CF1 · 2026-09-24〕这里原来先 10ms 一拍地等本机 watcher「首扫完成」（10 s 上限）才 replay ——
+            // 那是 v2.4 修首次启动乱序的办法。P5.4 之后前端按 seq 排序，而远端流从来就不等；
+            // 本机内容改走后端的帧之后与远端同形：没到的行 ready 之后照样实时发、按 seq 落位，不需要等。
             {
                 let replay = replay.clone();
                 let handle = app.handle().clone();
-                let initial_scan_done = initial_scan_done.clone();
                 let session_map = session_map.clone();
                 let remote_active = remote_active.clone();
                 let t0_capture = t0;
@@ -1197,33 +1161,13 @@ pub fn run() {
                             .and_then(|p| p.priority_sid);
                     let replay = replay.clone();
                     let handle = handle.clone();
-                    let initial_scan_done = initial_scan_done.clone();
                     let session_map = session_map.clone();
                     let remote_active = remote_active.clone();
                     let listen_recv_at = t0_capture.elapsed().as_millis();
                     tauri::async_runtime::spawn(async move {
                         tracing::info!(
-                            "[perf] T+{}ms frontend-ready received, waiting for watcher initial scan",
+                            "[perf] T+{}ms frontend-ready received, starting replay",
                             listen_recv_at
-                        );
-                        let wait_started = std::time::Instant::now();
-                        const WAIT_TIMEOUT: std::time::Duration =
-                            std::time::Duration::from_secs(10);
-                        while !initial_scan_done
-                            .load(std::sync::atomic::Ordering::Acquire)
-                        {
-                            if wait_started.elapsed() > WAIT_TIMEOUT {
-                                tracing::warn!(
-                                    "watcher initial scan timed out after 10s; replay with partial history"
-                                );
-                                break;
-                            }
-                            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-                        }
-                        tracing::info!(
-                            "[perf] T+{}ms watcher initial scan done (+{}ms wait), starting replay",
-                            t0_capture.elapsed().as_millis(),
-                            wait_started.elapsed().as_millis()
                         );
                         // Batch9-F28：replay 之前先重发全部已宣告远端会话（骨架+
                         // 初始灯）——remote-session-added 不进 replay buffer，F5 后
@@ -1362,6 +1306,10 @@ pub fn run() {
             aliases_render,
             aliases_read,
             aliases_install,
+            // 〔AL1d〕别名块（`cc` / `cct` · `__ccm_bind`）与清单同一族命令面（`AL1d.md §2.1`）。
+            aliases_block_render,
+            aliases_block_install,
+            aliases_block_remove,
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
             // B03 批一：cc-bus 驾驶舱（只读，按需 SSH cat，无轮询）
             backend::control::cc_bus::read_cc_bus_state,
@@ -1389,6 +1337,9 @@ pub fn run() {
             mcp::list_mcp_project_dirs,
             mcp::write_project_mcp_server,
             mcp::remove_project_mcp_server,
+            // 〔AS1 · 第四波 4B〕MCP 推 / 拉（`设计/96` 的 B）：看差异 ＋ 写，两条都吃 origin（本机远端同一条路）。
+            mcp_sync::mcp_sync_preview,
+            mcp_sync::mcp_sync_apply,
             subagent::load_subagent,
             forget_session,
             // issue #10: 独立只读窗口（多窗口 / 双屏）
@@ -1404,13 +1355,9 @@ pub fn run() {
             list_active_sessions,
             // v2.4 issue #2: 用户在终端输入时可选拉前 monitor 自身
             bring_monitor_to_front,
-            cc_integration_status,
-            cc_integration_preview,
-            cc_integration_scan_path,
-            cc_integration_install,
-            cc_integration_uninstall,
             // 🔴 `K-R135` / `R85`：用户级 PATH 那一格（现在状态 · 加 · 撤）。
-            //    `R87` 裁定它住 Tauri 命令 —— 与上面 `cc_integration_*` 同族
+            //    `R87` 裁定它住 Tauri 命令 —— 与别名块那几条同族（〔AL1d〕今天是 `aliases_block_*`，从前叫
+            //    `cc_integration_*`〔散文墓碑〕）
             //    （「往用户的 shell profile 里写」与「往用户级 PATH 里写一段」是同一族动作，
             //    而前者已经在这儿了；再给同一族动作另起一条路本身就违反 `K33`）。
             ccm_user_path_status,
@@ -1428,13 +1375,10 @@ pub fn run() {
             history::list_history_projects,
             history::stream_history_sessions_in_project,
             history::stream_read_session_jsonl,
-            // 〔`设计/10` 骨架 · 子步 3〕`--read-session-from-offset` 在 monitor 侧的两个调用点。
-            session_skeleton::read_session_index,
+            // 〔`设计/10` 骨架 · 子步 3〕`--read-session-from-offset` 在 monitor 侧的调用点（〔C4b〕骨架索引那一条改走通道）。
             session_skeleton::read_session_range,
             // 〔U3b〕接上骨架的会话，重放缓冲只留尾巴（`设计/10` 步 8）
             session_skeleton::replay_keep_tail_only,
-            session_outline::list_user_inputs,
-            session_find::find_in_session,
             remote_history::list_remote_history_projects,
             // F10：装 / 卸远端 rc 里的别名块（SFTP 写 profile，SS-H）。〔MC1〕从前叫「装/卸 ccm 助手」，
             // 推 `ccm` 入口那一半并进了下面的 `deploy_remote_backend`（`设计/71 §13.3`）。
@@ -1495,7 +1439,6 @@ pub fn run() {
             skill_host::list_skills,
             skill_host::read_skill_file,
             skill_host::write_skill_file,
-            plugins::list_plugin_marketplaces,
             cc_bus_deploy::deploy_local_cc_bus,
             cc_bus_deploy::cc_bus_install_state,
             panorama::panorama_index,
@@ -1621,9 +1564,10 @@ pub(crate) fn load_show_bg_sessions() -> bool {
 ///   ]
 /// }
 /// ```
-/// **向后兼容**：旧单对象形态 `"remote": { "enabled": true, "host": …, … }`（无 `hosts`
-/// 键）归一成 1 元素列表（`label` 默认 = host）。每台缺必填字段(host/user/backendPath)
-/// 则跳过 + warn；`label` 重复则后缀化 ` (#2)`（保证 by-label 选台 key 唯一）。
+/// 每台缺必填字段(host/user/backendPath) 则跳过 + warn；`label` 重复则后缀化 ` (#2)`（保证 by-label 选台 key 唯一）。
+/// 〔S5 · 第四波 · `99 §1` V41「不为旧配置留兼容」〕旧单对象形态（`"remote": { "enabled": true, "host": …, … }`，
+/// 没有 `hosts` 数组）**不再认**：[`parse_remote_hosts`] 回 `Err`，这里照原样落一条 `error!` 日志、不连任何远端 ——
+/// 不再把它悄悄当成一台，也不装作「没配远端」（D4）。
 pub(crate) fn load_remote_configs() -> Vec<ssh_source::RemoteConfig> {
     let Some(cfg_path) = paths::resolve_config_path() else {
         return Vec::new();
@@ -1646,19 +1590,29 @@ pub(crate) fn load_remote_configs() -> Vec<ssh_source::RemoteConfig> {
         return Vec::new();
     }
 
-    parse_remote_hosts(remote)
+    match parse_remote_hosts(remote) {
+        Ok(cfgs) => cfgs,
+        Err(why) => {
+            tracing::error!("{} 的 remote 段：{why}", cfg_path.display());
+            Vec::new()
+        }
+    }
 }
 
-/// 把 `remote` 对象解析成 host 列表（抽出供单测直接喂 JSON 对象）。优先读 `hosts`
-/// 数组；无 `hosts` 但有 `host`（旧单对象）→ 当 1 台。重复 label 后缀化去重。
+/// `remote` 段没有 `hosts` 数组时那句话（旧单对象写法、或者 `hosts` 写成了别的类型）。
+pub(crate) const REMOTE_HOSTS_UNRECOGNIZED: &str =
+    "认不出：没有 hosts 数组（旧的单台写法不再认），远端一台都不连；在设置里重新添加这台机器";
+
+/// 把 `remote` 对象解析成 host 列表（抽出供单测直接喂 JSON 对象）。**只认 `hosts` 数组**；
+/// 没有它 ⇒ `Err`（〔S5〕旧单对象那一支删了，V41）。重复 label 后缀化去重。
 fn parse_remote_hosts(
     remote: &serde_json::Map<String, serde_json::Value>,
-) -> Vec<ssh_source::RemoteConfig> {
+) -> Result<Vec<ssh_source::RemoteConfig>, &'static str> {
+    let Some(arr) = remote.get("hosts").and_then(|v| v.as_array()) else {
+        return Err(REMOTE_HOSTS_UNRECOGNIZED);
+    };
     let host_objs: Vec<&serde_json::Map<String, serde_json::Value>> =
-        match remote.get("hosts").and_then(|v| v.as_array()) {
-            Some(arr) => arr.iter().filter_map(|v| v.as_object()).collect(),
-            None => vec![remote], // 向后兼容：旧单对象
-        };
+        arr.iter().filter_map(|v| v.as_object()).collect();
 
     let mut out: Vec<ssh_source::RemoteConfig> = Vec::new();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -1682,7 +1636,7 @@ fn parse_remote_hosts(
         }
         out.push(cfg);
     }
-    out
+    Ok(out)
 }
 
 /// 解析单个 host JSON 对象 → RemoteConfig；缺必填字段(host/user/backendPath) → None+warn。
@@ -1761,10 +1715,10 @@ pub(crate) fn load_remote_config_by_label(label: &str) -> Option<ssh_source::Rem
         .find(|c| c.origin_label() == label)
 }
 
-/// 把 watcher 读出的一批 `JsonlLine` parse 成可 emit 的 `JsonlLinePayload`。
+/// 把后端帧里来的一批 `JsonlLine` parse 成可 emit 的 `JsonlLinePayload`。
 ///
-/// v2.4.2 issue #2 抽出的最小 seam：watcher 回调和后续（SSH-remote）数据源都调
-/// 这一个自由函数，保持 parse → is_displayable 过滤 → extract_cwd → 组 payload
+/// v2.4.2 issue #2 抽出的最小 seam。〔CF1〕今天它**只有一个**生产调用方：`ssh_source::flush_lines`
+/// （远端流 · 本机流 · 旁路快照三路的行都从那里出去）。这一个自由函数，保持 parse → is_displayable 过滤 → extract_cwd → 组 payload
 /// 的行为唯一。过滤次序、解析错误 warn-then-continue、`seq` 透传都必须与历史一致。
 ///
 /// `origin`：数据来源。载荷上的 `origin` 字段由它派生（与 `session_skeleton·rs::range_payloads` 同一口径）：
@@ -1772,7 +1726,7 @@ pub(crate) fn load_remote_config_by_label(label: &str) -> Option<ssh_source::Rem
 /// `[host]` 前缀以区分本地/远端）。透传到每条 payload，让前端按 sid 分流时知道该 Tab 是本地还是哪台远端主机。
 /// 〔ST3〕它同时是记账的那台：看不懂的行记在 `origin` 名下（原先收 `Option<String>`，`None` = 本机）。
 pub(crate) fn batch_to_payloads(
-    lines: Vec<watcher::JsonlLine>,
+    lines: Vec<ssh_source::JsonlLine>,
     origin: &crate::origin::Origin,
 ) -> Vec<bridge::JsonlLinePayload> {
     let label = origin.host_name().map(str::to_string);
@@ -1785,7 +1739,7 @@ pub(crate) fn batch_to_payloads(
                     session_id: line.session_id.clone(),
                     cwd,
                     path: line.path.to_string_lossy().into_owned(),
-                    // P5.1：watcher 给每行单调编号；前端按 seq 排到 timeline
+                    // P5.1：后端给每行编行号（`--tail-only` 下与快照同一个行号空间）；前端按 seq 排到 timeline
                     seq: line.seq,
                     origin: label.clone(),
                     message: record,
@@ -1960,10 +1914,22 @@ fn aliases_render(
 
 /// 〔AL1〕读回口：这台机器上那份别名文件今天有哪几条（`设计/70 §3.1` 「列出现在有哪些命令」）。
 /// 〔AL1c〕按 `shell` 读那一种的文件（`aliases.sh` / `aliases.ps1`）与那一种的启动文件候选。
+/// 〔AL1d · 第四波 4B〕启动文件候选各带**别名块**的现状（从前要另问终端集成那两条：列 `$PROFILE` · 扫一份），
+/// 外加这台机器上完成了拉前握手的终端数（`BindRegistry`）。`rc_path` = 人另指的一份（过围栏后并进候选）。
+/// 读若干份文件 ⇒ `spawn_blocking`（同步命令会占住主线程）。
 #[tauri::command]
-fn aliases_read(shell: shell_dialect::Shell) -> Result<account_aliases::AliasListing, String> {
-    let home = dirs::home_dir().ok_or_else(|| "找不到 home 目录".to_string())?;
-    account_aliases::read_in(&home, shell)
+async fn aliases_read(
+    shell: shell_dialect::Shell,
+    rc_path: Option<String>,
+    bind_state: tauri::State<'_, Arc<bind::BindRegistry>>,
+) -> Result<account_aliases::AliasListing, String> {
+    let bound = u32::try_from(bind_state.registration_count()).unwrap_or(u32::MAX);
+    tokio::task::spawn_blocking(move || {
+        let home = dirs::home_dir().ok_or_else(|| "找不到 home 目录".to_string())?;
+        account_aliases::read_in(&home, shell, rc_path.as_deref(), bound)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
 /// 〔AL1〕第②跳：**唯一的副作用**。收的是清单不是代码 —— 写进 shell 的文本只由后端渲染
@@ -1979,6 +1945,35 @@ async fn aliases_install(
 ) -> Result<account_aliases::AliasInstallReport, String> {
     let door = user_files::BackendDoor::new(origin::Origin::local());
     account_aliases::install_in(&door, &aliases, rc_path.as_deref(), shell).await
+}
+
+/// 〔AL1d · 第四波 4B〕**别名块**的第①跳：纯 —— 块 → 代码（「装进一份空文件会写成什么」，BOM 除外）。
+/// 两种方言都答（从前的预览只会 PowerShell 那一块）；与装那一跳调同一个 `profile_installer::plan_install`。
+/// 收的是**目标文件**而不是 `shell`：方言由那份文件的扩展名定（与装那一跳同一个判法 `Shell::of_target`），
+/// 前端不替后端判方言。只看扩展名、一个字节都不读 ⇒ 不过围栏。
+/// `with_cc` 只对 PowerShell 有意义：要不要连 `function cc` 一起（不勾 = 只装 `__ccm_bind`，不抢用户自己的 `cc`）。
+#[tauri::command]
+fn aliases_block_render(rc_path: String, with_cc: bool) -> Result<String, String> {
+    let shell = shell_dialect::Shell::of_target(std::path::Path::new(&rc_path));
+    profile_installer::render_block(shell, with_cc)
+}
+
+/// 〔AL1d〕**别名块**的第②跳：装进人选的那份启动文件（方言按那份文件的扩展名定，`71 §4.4` 末段）。
+/// 幂等：已有块就整块替换。落盘经本机后端的文件管理那一面（`user_files::BackendDoor`），本进程不写。
+#[tauri::command]
+async fn aliases_block_install(rc_path: String, with_cc: bool) -> Result<(), String> {
+    let p = profile_installer::fence_profile_path(&rc_path)?;
+    let door = user_files::BackendDoor::new(origin::Origin::local());
+    profile_installer::install_to_profile(&door, &p, profile_installer::CC_FUNCTION_NAME, with_cc)
+        .await
+}
+
+/// 〔AL1d〕**别名块**卸掉（整块删，块外一个字节不动；围栏损坏 ⇒ 中止）。经本机后端写。
+#[tauri::command]
+async fn aliases_block_remove(rc_path: String) -> Result<(), String> {
+    let p = profile_installer::fence_profile_path(&rc_path)?;
+    let door = user_files::BackendDoor::new(origin::Origin::local());
+    profile_installer::uninstall_from_profile(&door, &p).await
 }
 
 #[tauri::command]
@@ -2286,27 +2281,12 @@ async fn bring_remote_terminal_to_front(
 }
 
 // === v1.7：PowerShell profile cc 集成 IPC ===
-
-#[derive(serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-struct CcStatusResponse {
-    profiles: Vec<profile_installer::ProfileScan>,
-    active_registrations: u32,
-    default_command_name: &'static str,
-    /// v1.7.0-1.7.1 错把 cc 块装到 profile.ps1（CurrentUserAllHosts，PS 不自动加载）
-    /// 的遗留文件列表。v1.7.2 起改装到 Microsoft.PowerShell_profile.ps1（默认 $PROFILE）。
-    /// UI 检测到非空时显示警告，引导用户清理。
-    legacy_profile_paths_with_block: Vec<LegacyProfileEntry>,
-}
-
-#[derive(serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-struct LegacyProfileEntry {
-    kind: profile_installer::ProfileKind,
-    path: String,
-}
+//
+// 〔AL1d · 第四波 4B〕这里原来是「终端集成」那五条命令（`cc_integration_*`〔散文墓碑〕：状态 · 扫一份 · 预览 · 装 · 卸）
+// 与它们的三个出参类型。它们办的是**别名块**（两种方言都办：`profile_installer::plan_install` 按扩展名分），
+// 装进的是别名文件那一行同一批启动文件 ⇒ 并进 `aliases_*` 同一族命令面（`调研/第四波记录/AL1d.md §2.1`）：
+// 状态 ＋ 扫一份 → `aliases_read`（候选各带块的现状）· 预览 → `aliases_block_render` · 装 / 卸 → `aliases_block_install` / `aliases_block_remove`。
+// 「v1.7.0-1.7.1 装错位置」那一段遗留扫描随之删了 —— 每份候选都带块的现状，块装在哪几份照实说。
 
 /// Batch13-F40:前端 perf 仪表落盘。webview 无 devtools(生产/CCM_NO_DEVTOOLS)时
 /// console 取证不能,前端把启动管线 timeline/建卡计数经此写进 monitor 日志。
@@ -2317,84 +2297,6 @@ fn frontend_perf_log(lines: String) {
         let capped: String = line.chars().take(2000).collect();
         tracing::info!(target: "fe_perf", "{capped}");
     }
-}
-
-/// 扫描两个 PS profile + 报告当前活跃注册数。前端打开设置面板时调用。
-#[tauri::command]
-async fn cc_integration_status(
-    command_name: Option<String>,
-    bind_state: tauri::State<'_, Arc<bind::BindRegistry>>,
-) -> Result<CcStatusResponse, String> {
-    let cmd = command_name.unwrap_or_else(|| "cc".to_string());
-    let bind_state = bind_state.inner().clone();
-    tokio::task::spawn_blocking(move || {
-        let profiles: Vec<_> = profile_installer::discover_profiles()
-            .into_iter()
-            .map(|(kind, path)| profile_installer::scan_profile(kind, &path, &cmd))
-            .collect();
-        let legacy = profile_installer::scan_legacy_profiles()
-            .into_iter()
-            .map(|(kind, path)| LegacyProfileEntry { kind, path })
-            .collect();
-        Ok(CcStatusResponse {
-            profiles,
-            active_registrations: bind_state.registration_count() as u32,
-            default_command_name: "cc",
-            legacy_profile_paths_with_block: legacy,
-        })
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking join error: {e}"))?
-}
-
-#[derive(serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-struct CcPreviewResponse {
-    code: String,
-}
-
-/// 返回将要写入 profile 的代码（含 BEGIN/END marker）。前端预览 modal 显示。
-///
-/// `include_cc_function` 控制是否生成完整 cc function（true）还是只装 helper（false）。
-#[tauri::command]
-fn cc_integration_preview(
-    command_name: String,
-    include_cc_function: bool,
-) -> Result<CcPreviewResponse, String> {
-    Ok(CcPreviewResponse {
-        code: profile_installer::render_cc_code(&command_name, include_cc_function),
-    })
-}
-
-/// 安装 cc function 到指定 path（前端自己组装路径——版本下拉 + 可编辑覆盖）。
-/// idempotent；已有 ccm 块则原地替换。
-///
-/// `include_cc_function = false` 时只装 `__ccm_bind` helper，避免覆盖用户已有的 cc。
-#[tauri::command]
-async fn cc_integration_install(
-    path: String,
-    command_name: String,
-    include_cc_function: bool,
-) -> Result<(), String> {
-    // 〔RW1 · 第四波 09-24〕落盘经本机后端的文件管理那一面（`user_files::BackendDoor`），本进程不写。
-    let p = profile_installer::fence_profile_path(&path)?;
-    let door = user_files::BackendDoor::new(origin::Origin::local());
-    profile_installer::install_to_profile(&door, &p, &command_name, include_cc_function).await
-}
-
-/// 扫单个 path 的安装状态（前端用户改了路径后调）。
-#[tauri::command]
-async fn cc_integration_scan_path(
-    path: String,
-    command_name: String,
-) -> Result<profile_installer::ProfileScan, String> {
-    tokio::task::spawn_blocking(move || {
-        let p = profile_installer::fence_profile_path(&path)?;
-        Ok(profile_installer::scan_path(&p, &command_name))
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
 /// 读 auto-launch.json：UI 显示当前 toggle 状态 + 记录的 exe 路径。
@@ -2409,15 +2311,6 @@ fn cc_get_auto_launch() -> Result<auto_launch::AutoLaunchConfig, String> {
 fn cc_set_auto_launch(enabled: bool) -> Result<(), String> {
     let dir = auto_launch::data_dir().ok_or("no data dir")?;
     auto_launch::set_enabled(&dir, enabled)
-}
-
-/// 卸载 cc function（删除 BEGIN/END 块；用户其他内容不动）。
-#[tauri::command]
-async fn cc_integration_uninstall(path: String) -> Result<(), String> {
-    // 〔RW1 · 第四波 09-24〕同 `cc_integration_install`：经本机后端写。
-    let p = profile_installer::fence_profile_path(&path)?;
-    let door = user_files::BackendDoor::new(origin::Origin::local());
-    profile_installer::uninstall_from_profile(&door, &p).await
 }
 
 // ===== 🔴 `K-R135`（`R85` / `R87` / `R88`）：用户级 PATH 那一格 =====

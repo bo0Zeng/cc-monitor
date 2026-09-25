@@ -1,7 +1,8 @@
-//! 〔`设计/10` 骨架 · 子步 3〕monitor 侧「从偏移读」两条命令的纯函数判据。
+//! 〔`设计/10` 骨架 · 子步 3〕monitor 侧「从偏移读」的纯函数判据。
 //!
-//! 买到：老后端（不认 `--index`、透传 jsonl）**认得出来**而不是被当成索引解析；截断的索引不当全量；
-//! 按偏移取回的正文 seq 与索引对得上（空行/BOM 行不占号、不可显示的占号不出 payload）；
+//! 〔C4b〕索引那一半（老后端认不认得出、截断的索引不当全量）随 `read_session_index` 改走通道删了：
+//! 帧面一帧是原子的、后端直接出成品，「有头没尾」那一形在帧面上不存在。
+//! 买到：按偏移取回的正文 seq 与索引对得上（空行/BOM 行不占号、不可显示的占号不出 payload）；
 //! 老后端不认 `--until` 一路透传到 EOF 时**数够就停**。
 //! **买不到**：真 SSH / 真本机后端那一圈（transport 本身由 `subagent::Backend` 的既有判据管）。
 
@@ -9,63 +10,6 @@ use super::*;
 
 fn l(v: &[&str]) -> Vec<String> {
     v.iter().map(|s| s.to_string()).collect()
-}
-
-#[test]
-fn a_real_index_parses_head_rows_tail() {
-    let out = l(&[
-        r#"{"kind":"session_index","v":1,"from":0}"#,
-        r#"{"o":0,"n":10,"t":"user","u":"a"}"#,
-        r#"{"o":10,"n":5}"#,
-        r#"{"kind":"session_index_end","count":2,"end":15}"#,
-    ]);
-    let (from, end, rows) = parse_index_output(&out).unwrap();
-    assert_eq!((from, end, rows.len()), (0, 15, 2));
-    assert_eq!(rows[0]["u"], "a");
-}
-
-/// 🔴 老后端：它不认 `--index`，照旧透传 jsonl 字节 —— 首行是一条**记录**，不是索引头。
-#[test]
-fn an_old_backend_dumping_jsonl_is_recognised_not_parsed_as_index() {
-    let out = l(&[
-        r#"{"type":"user","uuid":"x","message":{"role":"user","content":"hi"}}"#,
-        r#"{"type":"assistant","uuid":"y"}"#,
-    ]);
-    assert_eq!(parse_index_output(&out), Err(IndexUnavailable::OldBackend));
-    assert_eq!(
-        parse_index_output(&[]),
-        Err(IndexUnavailable::OldBackend),
-        "空输出同档"
-    );
-}
-
-#[test]
-fn a_truncated_index_is_not_taken_as_complete() {
-    // 有头没尾
-    let no_tail = l(&[
-        r#"{"kind":"session_index","v":1,"from":0}"#,
-        r#"{"o":0,"n":1}"#,
-    ]);
-    assert_eq!(
-        parse_index_output(&no_tail),
-        Err(IndexUnavailable::Truncated {
-            got: 0,
-            claimed: None
-        })
-    );
-    // 尾行条数对不上
-    let short = l(&[
-        r#"{"kind":"session_index","v":1,"from":0}"#,
-        r#"{"o":0,"n":1}"#,
-        r#"{"kind":"session_index_end","count":5,"end":1}"#,
-    ]);
-    assert_eq!(
-        parse_index_output(&short),
-        Err(IndexUnavailable::Truncated {
-            got: 1,
-            claimed: Some(5)
-        })
-    );
 }
 
 /// seq 对齐：第 k 个**可计行**是 `seq_base + k`；不可显示的占号不出 payload；空行 / BOM 行不占号。
@@ -122,18 +66,9 @@ fn path_precheck_rejects_traversal_and_non_jsonl() {
 
 /// 🔴 选项必须在位置参数**前面**：老后端只看 `args[1]`（路径）/`args[2]`（offset），若那两格恰好是
 /// `<path> <offset>`，它会把整份会话透传回来（现打 50 955 695 字节）。
+/// 〔C4b〕索引那一半随那条命令改走通道删了（帧面不走 argv）；取正文这一半照旧。
 #[test]
 fn argv_puts_options_first_so_old_backends_fail_with_zero_bytes() {
-    // 索引：老后端拿 args[2]（路径）当 offset ⇒ 解析失败、零字节退出 2
-    let idx = index_argv("/p/s.jsonl", 7);
-    assert_eq!(
-        idx,
-        vec!["--read-session-from-offset", "--index", "/p/s.jsonl", "7"]
-    );
-    assert!(
-        idx[2].parse::<u64>().is_err(),
-        "老后端会把 args[2] 当 offset 成功解析：{idx:?}"
-    );
     // 取正文：老后端拿 args[1]（`--until`）当路径 ⇒ 围栏拒、零字节退出 2
     let rng = range_argv("/p/s.jsonl", 7, 99);
     assert_eq!(

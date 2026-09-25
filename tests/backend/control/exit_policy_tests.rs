@@ -112,12 +112,11 @@ fn set_rejects_a_non_boolean_and_writes_nothing() {
 }
 
 #[test]
-fn the_wire_shape_carries_the_three_states_and_the_shell() {
+fn the_wire_shape_carries_the_three_states() {
     let v = wire(&Read::Unreadable("坏了".into()), None);
     assert_eq!(v["state"], "unreadable");
     assert_eq!(v["reason"], "坏了");
     assert_eq!(v["killOnExit"], DEFAULT_KILL_ON_EXIT);
-    assert_eq!(v["shell"], SHELL);
     let v = wire(&Read::Chosen(true), None);
     assert_eq!(v["state"], "chosen");
     assert_eq!(v["killOnExit"], true);
@@ -125,6 +124,48 @@ fn the_wire_shape_carries_the_three_states_and_the_shell() {
     let v = wire(&Read::Absent, None);
     assert_eq!(v["state"], "absent");
     assert!(v["reason"].is_null());
+}
+
+/// 〔S5 · 第四波 · V105 清账〕线上形状**恰好**是登记的那几格 —— 两侧异源、按集合相等：
+///
+/// - 一侧是**真跑出来的** JSON（三态各跑一遍 `wire`，取键的并集）；
+/// - 另一侧是 `inbound.rs::REGISTRY` 里两条命令手写的 `fields`（也是 `protocol_doc_guard` 拿去钉文档的那一份）。
+///
+/// 它防的是 `shell` 那一格的回潮：那一格恒为 `"standalone"`、唯一的读者是界面一条永远走不到的
+/// 「不适用」臂（「折进前端进程」那一档已放弃，`99 §1` V105）。任何一侧单独加回一格都红；
+/// 两侧一起加回 ⇒ 下面那条字面量对照红（它是第三个来源：本判据作者读 `01 §3.3b` 写下的四格）。
+#[test]
+fn the_wire_shape_is_exactly_the_four_registered_fields() {
+    let mut produced = std::collections::BTreeSet::new();
+    for r in [
+        Read::Chosen(true),
+        Read::Absent,
+        Read::Unreadable("x".into()),
+    ] {
+        let v = wire(&r, Some(std::path::Path::new("/p")));
+        let obj = v.as_object().expect("wire 回的不是对象");
+        produced.extend(obj.keys().cloned());
+    }
+    for name in ["exit-policy-read", "exit-policy-set"] {
+        let spec = crate::inbound::REGISTRY
+            .iter()
+            .find(|s| s.name == name)
+            .unwrap_or_else(|| panic!("注册表里没有 {name}"));
+        let declared: std::collections::BTreeSet<String> =
+            spec.fields.iter().map(|s| s.to_string()).collect();
+        assert_eq!(
+            produced, declared,
+            "`{name}` 真跑出来的键与登记的 `fields` 对不上（两向）"
+        );
+    }
+    let want: std::collections::BTreeSet<String> = ["killOnExit", "path", "reason", "state"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    assert_eq!(
+        produced, want,
+        "线上形状漂了 —— `shell` 回来了？（V105 之后壳只剩一种，这一格没有信息量）"
+    );
 }
 
 // ═══════════════════════════ E1：写者全仓只有一处 ═══════════════════════════

@@ -964,7 +964,7 @@ fn a_reader_that_never_existed_is_neither_a_clean_eof_nor_a_misread() {
     );
 }
 
-// ── 〔步 12 · 2026-09-19〕两个同名 `LOCAL_ORIGIN` 的钉子 ────────────────────
+// ── 〔步 12 · 2026-09-19〕两个同名 `LOCAL_ORIGIN` 的钉子 ⇒ 〔C4b · 第四波 4B〕合了 ──────
 //
 // ⚠ **这一段原本是两条，删掉了一条 —— 那条是我重复造的。**
 //   跨语言那条（Rust `inbound_client::LOCAL_ORIGIN` ↔ TS `backend-policy.ts`）
@@ -972,47 +972,53 @@ fn a_reader_that_never_existed_is_neither_a_clean_eof_nor_a_misread() {
 //   the_local_origin_is_the_same_string_on_both_sides`。
 //   我一度判它「不存在」，依据是一条 `grep … | head -4` 的输出 ——
 //   🔴 **拿一个截断过的人群下「不存在」的判，正是本仓反复治的那个病。**
-//   `src/settings/cc-bus-section.ts:31` 那句「跨语言钉住」**是真的**，没有假话要修。
 //
-// 下面这一条是真的没有：全仓判据里 `__local__` 现打**只有本条**提到它。
+// 〔C4b〕剩下那一条原名 `the_two_same_named_local_origin_constants_stay_deliberately_different`〔散文墓碑〕，
+// 钉的是「两者**刻意不同**：`backend-policy.ts` 的是 backend origin，`accounts.ts` 的 `"__local__"` 是账号面自己的标记
+// ——合并是一次设计变更，回去看 `设计/00 §2.5 ①`」。它守的是「合并之前别顺手改」，不是「永远不合」。
+// C4b 读了 `00 §2.5 ①`（一个 Origin 类型、账号面本机与远端同一条路）裁「合」：`"__local__"` 装的就是
+// 「哪台机器」本身（它只是本机那条命令结果的缓存键），账号面没有第二个概念 ⇒ 这一次就是它等的那次设计变更。
+// ⇒ 本条改成钉**合了之后**的形状；TS 那一侧按语法树的零命中住 `tests/ipc/commands.vitest.ts`（「本机只有一个表示」）。
 
-/// 仓里那**两个同名 `LOCAL_ORIGIN`** 是**刻意不同**的 —— 钉住这件事本身。
+/// 账号面**不再有自己的本机表示**：`accounts.ts` 生产段里零处 `LOCAL_ORIGIN` 声明、零处 `"__local__"`；
+/// 本机那个值的家恰好一个（`backend-policy.ts` 的 `LOCAL_ORIGIN = "<local>"`，正控）。
 ///
-/// # 为什么这条判据该存在
-///
-/// `src/remote-launch-run.ts:14` · `src/tabs.ts:75` · `src/settings/cc-bus-section.ts:29`
-/// —— **三处注释**分别警告过同一件事，措辞都是「导错一个**不会红**，只会静默……」。
-/// 按 `16 §5.1`（一条形状出现 N 次就抽一个住址）：**三份警告 ＝ 一条该立而没立的判据**。
-///
-/// ⚠ 它钉的是「**两者不同**」，不是「两者该不该合并」——
-///   后者是设计题（`origin` 归一那一节），本条只保证：在合并之前，
-///   谁把其中一个顺手改成另一个的值，**当场红**。
+/// 与 TS 那条（`commands.vitest.ts`，按语法树扫全树的字符串字面量）**异源**：本条按文本读两份指名的文件，
+/// 专钉「账号面那一份不许再声明一个同名常量」—— 换个值再声明一次，TS 那条的字面量扫描认不出它的用意。
 #[test]
-fn the_two_same_named_local_origin_constants_stay_deliberately_different() {
+fn the_account_face_has_no_local_origin_of_its_own() {
     let policy = include_str!("../../src/backend-policy.ts");
     let accounts = include_str!("../../src/accounts.ts");
-    let pick = |src: &str, what: &str| -> String {
-        let needle = "export const LOCAL_ORIGIN = ";
-        let n = src.matches(needle).count();
-        assert_eq!(
-            n, 1,
-            "{what} 里 `{needle}` 命中 {n} 次（应当 1 次）—— 抽取器坏了"
-        );
-        src.split_once(needle)
-            .and_then(|(_, rest)| rest.split_once(';'))
-            .map(|(v, _)| v.trim().trim_matches('"').to_string())
-            .expect("抠不出值")
-    };
-    let backend_origin = pick(policy, "backend-policy.ts");
-    let account_origin = pick(accounts, "accounts.ts");
-    assert_eq!(backend_origin, "<local>", "backend origin 的哨兵值变了");
-    assert_eq!(account_origin, "__local__", "账号面的本机标记变了");
-    assert_ne!(
-        backend_origin, account_origin,
-        "两个 `LOCAL_ORIGIN` 变成同一个值了。\n\
-         它们**刻意不同**：`backend-policy.ts` 的是 **backend origin**（与 Rust 侧协议对拍），\n\
-         `accounts.ts` 的是**账号面自己的标记**。合并它们是一次设计变更，\n\
-         不是一次「顺手统一常量」—— 回去看 `设计/00 §2.5 ①`。"
+    let needle = "export const LOCAL_ORIGIN = ";
+    let prod = |src: &str| guard_core::strip_comment_lines(src);
+    // 正控：本机那个值恰好一个家，值是 `<local>`。
+    let policy_prod = prod(policy);
+    assert_eq!(
+        policy_prod.matches(needle).count(),
+        1,
+        "`backend-policy.ts` 里 `{needle}` 应恰好 1 处 —— 抽取器坏了，或本机那个值的家挪了"
+    );
+    let value = policy_prod
+        .split_once(needle)
+        .and_then(|(_, rest)| rest.split_once(';'))
+        .map(|(v, _)| v.trim().trim_matches('"').to_string())
+        .expect("抠不出值");
+    assert_eq!(value, "<local>", "backend origin 的哨兵值变了");
+    // 账号面：零声明、零旧值。
+    let accounts_prod = prod(accounts);
+    assert_eq!(
+        accounts_prod.matches(needle).count(),
+        0,
+        "`accounts.ts` 又声明了一个自己的 `LOCAL_ORIGIN` —— 账号缓存键与 `AccountsState.origin` 用 `ipc/origin.ts` 那一个"
+    );
+    assert!(
+        !accounts_prod.contains("\"__local__\""),
+        "`accounts.ts` 生产段里又出现了 `\"__local__\"` —— 那是已退役的第二种本机写法"
+    );
+    // 阴性对照：剥法真的在跑（注释里讲历史不算）。
+    assert!(
+        !prod("// 旧写法 \"__local__\"\n").contains("__local__"),
+        "剥注释没剥掉 —— 上面那条零命中可能是空转"
     );
 }
 
@@ -1097,8 +1103,10 @@ fn what_reaches_the_settings_panel_carries_no_markdown_no_argument_no_log_format
 #[test]
 fn the_crash_reading_quotes_the_brief_not_the_ledger_line() {
     let origin = "st2-读数接短摘要-甲";
+    // 〔S5〕这里原来用 `-1073741510` 当「任意崩溃码」—— 那个码今天有自己的人话（见下一族判据），
+    //   换一个没有人话的码（Windows 访问越界 `0xC0000005`），本条要的仍是「裸码照实报」。
     let ev = DeathEvidence {
-        outcome: Outcome::Exited(-1073741510),
+        outcome: Outcome::Exited(-1073741819),
         handshake: Handshake::Spoke,
         reader: ReaderEnd::CleanEof,
         start_failure: None,
@@ -1115,7 +1123,7 @@ fn the_crash_reading_quotes_the_brief_not_the_ledger_line() {
     assert_eq!(h.last_brief.as_deref(), Some(last_brief(&d).as_str()));
     let said = describe_health(&h);
     assert!(
-        said.contains("exit -1073741510"),
+        said.contains("exit -1073741819"),
         "读数里没有退出状态：{said}"
     );
     assert_eq!(
@@ -1140,4 +1148,65 @@ fn the_status_json_hands_the_panel_the_brief() {
              整条账行（日志行格式）又会被拼进设置面板（`70 §2.1` #3）。"
         )
     });
+}
+
+// ── 〔S5 · 第四波 · `设计/00 §1.5.3`〕死亡账说人话：`0xC000013A` ─────────────────────────
+
+/// 被控制台事件杀死的那一种，那一格说**人话**，不说裸码。
+///
+/// ⚠ 两侧异源：码写成**字面量** `-1073741510`（`ExitStatus::code()` 在 Windows 上真给的那个 `i32`），
+/// 不从 [`STATUS_CONTROL_C_EXIT`] 推；那句话逐字抄 `00 §1.5.3`，不引用常量。
+/// 常量写错一位（或按数值换算成了别的数）⇒ 这里当场红。
+#[test]
+fn a_console_ctrl_kill_is_said_in_words_not_as_a_bare_code() {
+    const SAID: &str = "被控制台事件杀死 —— 可能是那个弹出的终端窗口被关了";
+    let crashed = Death::Crashed {
+        how: Outcome::Exited(-1073741510),
+    };
+    assert_eq!(last_brief(&crashed), format!("崩了，{SAID}"));
+    let refused = Death::Refused { code: -1073741510 };
+    assert_eq!(last_brief(&refused), format!("被拒了，{SAID}"));
+    for d in [&crashed, &refused] {
+        let brief = last_brief(d);
+        assert!(
+            !brief.contains("1073741510") && !brief.contains("exit "),
+            "说了人话还把裸码带上了：{brief}"
+        );
+        assert_eq!(
+            ui_copy_violations(&brief),
+            Vec::<&str>::new(),
+            "那句人话自己带了界面禁用的形状：{brief}"
+        );
+        // 日志那一行同一个来源：也说人话（日志里要看码，去 `exit_status` 的判定一处看）。
+        assert!(
+            ledger_line("o", d).contains(&format!("退出状态={SAID}")),
+            "日志那一行没跟上：{}",
+            ledger_line("o", d)
+        );
+    }
+}
+
+/// 邻格对照：**只认那一个码**。差一的码、POSIX 的码、信号，照旧是裸码 ——
+/// 防「一律换成人话」那种写法让上一条也绿。
+#[test]
+fn only_that_one_code_gets_words_the_neighbours_stay_bare() {
+    for code in [-1073741509, -1073741511, -1073741819, 1, 2, 255] {
+        let d = Death::Crashed {
+            how: Outcome::Exited(code),
+        };
+        assert_eq!(
+            exit_status(&d),
+            format!("exit {code}"),
+            "码 {code} 被说成了别的"
+        );
+        assert_eq!(
+            exit_status(&Death::Refused { code }),
+            format!("exit {code}"),
+            "被拒那一臂的码 {code} 被说成了别的"
+        );
+    }
+    let sig = Death::Crashed {
+        how: Outcome::Signalled(9),
+    };
+    assert_eq!(exit_status(&sig), "signal 9");
 }

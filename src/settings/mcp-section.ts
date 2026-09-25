@@ -13,6 +13,7 @@ import { commands } from "../ipc/commands";
 // 两侧由 `origin_tests::the_sentinel_agrees_with_the_two_existing_homes` 两向钉着）。
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { showActionFailureToast } from "../error-toast";
+import { McpSyncPanel } from "./mcp-sync";
 
 export type McpScope = "user" | "local" | "project";
 // C04d 批 5b：改用生成物（源 `mcp.rs`）。
@@ -136,6 +137,21 @@ export class McpSection {
   private loaded = false;
   /** F89b：统一目录（库）——会话内读到过的所有 distinct server（键=catalogKey），供一键注册进项目。累积不清（有清空钮）。 */
   private catalog = new Map<string, { name: string; server: unknown }>();
+  /**
+   * 〔AS1 · 第四波 4B〕「跨机器推 / 拉」那一块（`mcp-sync.ts`）。一个实例跟着本分节活，挂在可写的项目 scope 下面；
+   * 本页那台机器 ＝ `this.origin`、项目目录 ＝ 输入框里那一个。拉（写的是本页这台）写完 ⇒ 本页重读。
+   */
+  private readonly sync = new McpSyncPanel(
+    () => ({ origin: this.origin, dir: this.currentDir() }),
+    () => void this.refresh(),
+    // 四条命令从这里递进去（本分节是「装 MCP」那一件在前端的落点，面板自己不另立一份）。
+    {
+      machines: () => commands.list_remote_mcp_origins(),
+      dirs: (a) => commands.list_mcp_project_dirs(a),
+      preview: (a) => commands.mcp_sync_preview(a),
+      apply: (a) => commands.mcp_sync_apply(a),
+    },
+  );
 
   constructor() {
     this.element = this.build();
@@ -176,7 +192,7 @@ export class McpSection {
     hint.className = "settings-hint";
     hint.textContent =
       "读：跨 scope 展示 MCP 服务器（用户 / local / 项目）；配了远端可切「机器」跨机只读看远端 user scope。" +
-      "写：只增改删「本机项目 .mcp.json」——绝不动 ~/.claude.json、绝不跨机写。设置窗拿不到当前会话项目，请在下面填/选项目目录。";
+      "写：只增改删「本机项目 .mcp.json」——绝不动 ~/.claude.json；跨机器只经项目下面那一块「推 / 拉」。设置窗拿不到当前会话项目，请在下面填/选项目目录。";
     root.appendChild(hint);
 
     // F87b③：机器选择行（本机 / 各远端 origin）。仅当配了远端时由 loadMachines 填充；否则留空不显。
@@ -336,6 +352,7 @@ export class McpSection {
     this.origin = origin;
     this.dirRow.style.display = ""; // F89a：远端也显目录行（可填项目管理远端 .mcp.json）
     this.dirInput.value = ""; // 本机/远端项目路径不通用，切机器清空
+    this.sync.reset(); // 〔AS1〕上一台的差异与「另一台」候选一并作废（面板折着就一发 I/O 都不打）
     // ★ **候选清单也要一起清**〔P6b D 阶段补审 08-12〕。
     //
     // 上面那句注释说的「路径不通用」对候选同样成立，而在 P6b 之前它不显眼：候选只进
@@ -708,6 +725,8 @@ export class McpSection {
     if (scope === "project" && (isLocalOrigin(this.origin) || !!dir)) {
       box.appendChild(this.renderAddForm(dir));
     }
+    // 〔AS1〕跨机器推 / 拉：只在「这台机器的这个项目」可写时出现（推的来源 / 拉的落点都是它）。
+    if (writable) box.appendChild(this.sync.element);
     return box;
   }
 

@@ -1,0 +1,149 @@
+/**
+ * 〔C4b · 第四波 4B〕会话读面三问（`src/session-reads.ts`）的判据。
+ *
+ * | 性质 | 判据 |
+ * |---|---|
+ * | TS 解码器读得懂**后端真出的**成品 —— 同一份跨语言金样，后端那侧 `read_face_tests::the_three_products_match_the_cross_language_golden` 写它（异源：Rust 造、TS 解） | 「金样」那一条 |
+ * | 形状不对 ⇒ 抛（给人看的那句不带内部名），不猜、不补默认值 | 「形状不对」那一条 |
+ * | 失败种类只看通道的层，不看文字：不认 ⇒ `oldBackend` · 装不下 ⇒ `truncated` · 其余 ⇒ `transport` | 「失败种类」那一条 |
+ * | 三问各自经通道说**对的帧命令、对的请求体**，本机也走同一条路（`<local>`），失败折成 `available:false`（不抛） | 「三问」那两条 |
+ *
+ * 买不到：真 Tauri IPC 与真后端（后端那一侧的判据在 Rust 里；monitor 那一跳由 `webview_tests` 量）。
+ */
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+
+import { invoke } from "@tauri-apps/api/core";
+import { ChanError } from "../src/ipc/chan";
+import {
+  decodeFind,
+  decodeIndex,
+  decodeUserInputs,
+  failureOf,
+  findInSession,
+  FIND_LIMIT,
+  listUserInputs,
+  readSessionIndex,
+} from "../src/session-reads";
+import { REPO_ROOT } from "./test-support/repo-root";
+import { chanArgsJson, chanReply, refusedReply, UNSUPPORTED, NO_CHANNEL, type ChanCallArgs } from "./test-support/chan-fake";
+
+const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
+const golden = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/session-reads.golden.json"), "utf8")) as Record<
+  string,
+  unknown
+>;
+
+beforeEach(() => invokeMock.mockReset());
+
+describe("〔C4b〕会话读面三问：按形状收", () => {
+  it("★★ 金样：TS 解码器读得懂后端真出的三份成品（逐字段）", () => {
+    const idx = decodeIndex(golden["history-index"]);
+    expect([idx.from, idx.end, idx.rows.length]).toEqual([0, 376, 4]);
+    expect(idx.rows.map((r) => [r.o, r.n, r.u])).toEqual([
+      [0, 86, "in-1"],
+      [86, 137, "out-1"],
+      [224, 75, "meta-1"],
+      [299, 77, "in-2"],
+    ]);
+    const ui = decodeUserInputs(golden["history-user-inputs"]);
+    expect([ui.from, ui.end]).toEqual([0, 376]);
+    expect(ui.entries).toEqual([
+      { uuid: "in-1", excerpt: "alpha zqx beta", timestamp: "t1" },
+      { uuid: "in-2", excerpt: "delta", timestamp: "t2" },
+    ]);
+    const f = decodeFind(golden["history-find"]);
+    expect(f.total).toBe(2);
+    expect(f.hits.map((h) => [h.uuid, h.kind, h.before, h.matched, h.after])).toEqual([
+      ["in-1", "user", "alpha", "zqx", "beta"],
+      ["out-1", "assistant", "gamma", "zqx", ""],
+    ]);
+  });
+
+  it("★ 形状不对 ⇒ 抛（缺键 / 类型不对 / 条目缺字段），不补默认值", () => {
+    expect(() => decodeIndex({ from: 0, end: 1 })).toThrow(/读不懂/);
+    expect(() => decodeIndex({ from: 0, end: 1, rows: [{ o: 0 }] })).toThrow(/读不懂/);
+    expect(() => decodeUserInputs({ from: 0, end: "1", entries: [] })).toThrow(/读不懂/);
+    expect(() => decodeUserInputs({ from: 0, end: 1, entries: [{ uuid: "a", excerpt: "b" }] })).toThrow(/读不懂/);
+    expect(() => decodeFind({ lines: [] })).toThrow(/读不懂/);
+    expect(() => decodeFind({ total: 1, hits: [{ uuid: "a" }] })).toThrow(/读不懂/);
+  });
+
+  it("★★ 失败种类只看通道的层：不认 ⇒ oldBackend · 装不下 ⇒ truncated · 其余 ⇒ transport", () => {
+    const body = (code: string) => new TextEncoder().encode(JSON.stringify({ code, message: "m" }));
+    expect(failureOf({ layer: "peer", why: "unsupported" })).toBe("oldBackend");
+    expect(failureOf({ layer: "peer", why: "refused", body: body("too_large") })).toBe("truncated");
+    expect(failureOf({ layer: "peer", why: "refused", body: body("failed") })).toBe("transport");
+    expect(failureOf({ layer: "peer", why: "refused", body: new Uint8Array([0xff]) })).toBe("transport");
+    expect(failureOf({ layer: "hop", at: { idx: 1, tag: "open" }, reach: "NotSent", why: "Unreachable" })).toBe("transport");
+    expect(failureOf({ layer: "ours", why: "Cancelled" })).toBe("transport");
+  });
+});
+
+describe("〔C4b〕会话读面三问：经通道说对的帧命令", () => {
+  /** 这一趟唯一那一发 `chan_call` 的 `(origin, op, 请求体)`。 */
+  function sent(): [string, string, unknown] {
+    const calls = invokeMock.mock.calls;
+    expect(calls.map((c) => c[0] as string)).toEqual(["chan_call"]);
+    const a = calls[0][1] as ChanCallArgs;
+    expect(a.leftMs, "期限没带上（`X6`：调用点显式给）").toBeGreaterThan(0);
+    return [a.origin, a.op, chanArgsJson(a)];
+  }
+
+  it("★★ 三问各自的帧命令与请求体；本机也走同一条路（`<local>`）；成品原样交回", async () => {
+    invokeMock.mockResolvedValueOnce(chanReply(golden["history-index"]));
+    const idx = await readSessionIndex("<local>", "/p/s.jsonl", 7);
+    expect(sent()).toEqual(["<local>", "history-index", { path: "/p/s.jsonl", offset: 7 }]);
+    expect([idx.available, idx.end, idx.rows.length]).toEqual([true, 376, 4]);
+
+    invokeMock.mockReset().mockResolvedValueOnce(chanReply(golden["history-user-inputs"]));
+    const ui = await listUserInputs("aya", "/p/s.jsonl", 42);
+    expect(sent()).toEqual(["aya", "history-user-inputs", { path: "/p/s.jsonl", from: 42 }]);
+    expect([ui.available, ui.failure, ui.entries.length]).toEqual([true, undefined, 2]);
+
+    invokeMock.mockReset().mockResolvedValueOnce(chanReply(golden["history-find"]));
+    const f = await findInSession("aya", "/p/s.jsonl", "--force", true);
+    expect(sent()).toEqual([
+      "aya",
+      "history-find",
+      { path: "/p/s.jsonl", query: "--force", include_tools: true, limit: FIND_LIMIT },
+    ]);
+    expect([f.available, f.total, f.hits.length]).toEqual([true, 2, 2]);
+  });
+
+  it("★ 失败一律折成 `available:false`（不抛）：种类与原因按层给；对端说「不行」时原因原样带上", async () => {
+    invokeMock.mockRejectedValueOnce(UNSUPPORTED);
+    const a = await listUserInputs("aya", "/p/s.jsonl", 5);
+    expect([a.available, a.failure, a.from, a.end, a.entries]).toEqual([false, "oldBackend", 5, 5, []]);
+    expect(a.reason).toContain("后端版本旧");
+
+    invokeMock.mockReset().mockRejectedValueOnce(refusedReply("failed", "past EOF"));
+    const b = await listUserInputs("aya", "/p/s.jsonl", 5);
+    expect([b.available, b.failure]).toEqual([false, "transport"]);
+    expect(b.reason).toContain("past EOF");
+
+    invokeMock.mockReset().mockRejectedValueOnce(refusedReply("too_large", "big"));
+    expect((await listUserInputs("aya", "/p/s.jsonl", 0)).failure).toBe("truncated");
+
+    invokeMock.mockReset().mockRejectedValueOnce(NO_CHANNEL);
+    const c = await readSessionIndex("aya", "/p/s.jsonl", 0);
+    expect([c.available, c.rows]).toEqual([false, []]);
+    expect(c.reason).toContain("够不着");
+
+    invokeMock.mockReset().mockResolvedValueOnce(chanReply({ lines: [] }));
+    const d = await findInSession("aya", "/p/s.jsonl", "q", false);
+    expect([d.available, d.hits, d.total]).toEqual([false, [], 0]);
+    expect(d.reason).toContain("读不懂");
+  });
+
+  it("正控：`ChanError` 是经通道那一层抛出来的那一个（折叠认得它）", async () => {
+    invokeMock.mockRejectedValueOnce(UNSUPPORTED);
+    const { chan } = await import("../src/ipc/chan");
+    await expect(chan.call("aya", "history-index", new Uint8Array(), { until: performance.now() + 1000 })).rejects.toBeInstanceOf(
+      ChanError,
+    );
+  });
+});

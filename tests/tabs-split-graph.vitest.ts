@@ -135,6 +135,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/ipc/commands.ts",
     "src/record-timeline.ts",
     "src/render-stream-record.ts",
+    "src/session-reads.ts", // 〔C4b〕会话读面三问改走通道：骨架索引 ＋ 会话内查找经它问那台后端（替掉包装层那两条）
     "src/skeleton-view.ts",
     "src/stream.ts",
     "src/tab-session-state.ts", // 〔U4〕已结束的不进后台物化队列

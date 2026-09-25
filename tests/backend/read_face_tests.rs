@@ -267,8 +267,9 @@ fn an_oversized_listing_is_refused_not_truncated() {
     assert_eq!(ok, serde_json::json!({"lines": ["a", "b"]}));
 }
 
-/// ★ F2（〔SR1a〕）：骨架索引与大纲清单两条帧命令的 `lines`，与**夹具算出来的**三段逐行相等
-/// （异源：期望的偏移 / 行长 / uuid 从夹具字节自己数，不借被测函数）。
+/// ★ F2（〔SR1a〕→〔C4b〕出成品）：骨架索引与大纲清单两条帧命令的应答**就是成品**，
+/// 条目与**夹具算出来的**逐条相等（异源：期望的偏移 / 行长 / uuid 从夹具字节自己数，不借被测函数）；
+/// 键集合恒等（`{from, end, rows}` / `{from, end, entries}`）—— 不再是按行的头尾三段。
 #[test]
 fn index_and_user_input_answers_carry_the_rows_the_fixture_predicts() {
     let home = scratch("sr1a-index");
@@ -284,6 +285,11 @@ fn index_and_user_input_answers_carry_the_rows_the_fixture_predicts() {
     let body: String = rows.iter().map(|r| format!("{r}\n")).collect();
     std::fs::write(&p, &body).unwrap();
     let path = p.to_string_lossy().to_string();
+    let keys = |v: &serde_json::Value| -> Vec<String> {
+        let mut k: Vec<String> = v.as_object().unwrap().keys().cloned().collect();
+        k.sort();
+        k
+    };
 
     let v = answer_at(
         &home,
@@ -291,13 +297,7 @@ fn index_and_user_input_answers_carry_the_rows_the_fixture_predicts() {
         &serde_json::json!({"path": path, "offset": 0}),
     )
     .unwrap();
-    let lines: Vec<serde_json::Value> = v["lines"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|l| serde_json::from_str(l.as_str().unwrap()).unwrap())
-        .collect();
-    assert_eq!(lines.first().unwrap()["kind"], "session_index");
+    assert_eq!(keys(&v), ["end", "from", "rows"], "骨架索引的成品形状变了");
     let mut o = 0u64;
     let want: Vec<(u64, u64)> = rows
         .iter()
@@ -308,19 +308,16 @@ fn index_and_user_input_answers_carry_the_rows_the_fixture_predicts() {
             (at, n)
         })
         .collect();
-    let got: Vec<(u64, u64)> = lines[1..lines.len() - 1]
+    let got: Vec<(u64, u64)> = v["rows"]
+        .as_array()
+        .unwrap()
         .iter()
         .map(|r| (r["o"].as_u64().unwrap(), r["n"].as_u64().unwrap()))
         .collect();
     assert_eq!(got, want, "索引行的偏移 / 行长与夹具对不上");
-    let tail = lines.last().unwrap();
     assert_eq!(
-        (
-            tail["kind"].as_str(),
-            tail["count"].as_u64(),
-            tail["end"].as_u64()
-        ),
-        (Some("session_index_end"), Some(3), Some(body.len() as u64))
+        (v["from"].as_u64(), v["end"].as_u64()),
+        (Some(0), Some(body.len() as u64))
     );
 
     let v = answer_at(
@@ -329,22 +326,19 @@ fn index_and_user_input_answers_carry_the_rows_the_fixture_predicts() {
         &serde_json::json!({"path": path}),
     )
     .unwrap();
-    let lines: Vec<serde_json::Value> = v["lines"]
+    assert_eq!(
+        keys(&v),
+        ["end", "entries", "from"],
+        "大纲清单的成品形状变了"
+    );
+    let uuids: Vec<&str> = v["entries"]
         .as_array()
         .unwrap()
-        .iter()
-        .map(|l| serde_json::from_str(l.as_str().unwrap()).unwrap())
-        .collect();
-    assert_eq!(lines.first().unwrap()["kind"], "user_inputs");
-    let uuids: Vec<&str> = lines[1..lines.len() - 1]
         .iter()
         .map(|r| r["uuid"].as_str().unwrap())
         .collect();
     assert_eq!(uuids, ["in-1"], "清单里的 uuid 与夹具里的 `in-*` 不相等");
-    assert_eq!(
-        lines.last().unwrap()["end"].as_u64(),
-        Some(body.len() as u64)
-    );
+    assert_eq!(v["end"].as_u64(), Some(body.len() as u64));
     // 起点越过文件尾 ⇒ failed（不回一份空清单冒充「没有新的」）。
     let e = answer_at(
         &home,
@@ -370,8 +364,83 @@ fn index_and_user_input_answers_carry_the_rows_the_fixture_predicts() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// ★ 〔SR1a × SE2〕`history-find` 的 `lines`：命中集合 == 夹具里 `hit-*` 那几条（异源：期望取自夹具的 uuid 命名），
-/// 头尾两段在；围栏同一套。
+/// ★★〔C4b〕帧面成品的条目 == CLI 那一臂**中段**的逐行（同一份夹具、两个出口）。
+///
+/// 异源在：CLI 那一臂照旧写头尾三段（`write_*` 经 stdout 那条路），本条把它的中段剥出来，
+/// 与帧面那一臂的成品逐条比 —— 两臂共用的是扫描，不是装配；装配任一边丢一条 / 多一条 / 改一个键都红。
+#[test]
+fn the_frame_products_carry_exactly_the_rows_the_cli_arm_prints() {
+    let home = scratch("c4b-cli-parity");
+    let dir = home.join("projects").join("-p");
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("s.jsonl");
+    // 结构占位：两条用户输入（带同一个查找词）、一条助手行、一个空行、一条 meta —— 不采任何真会话正文。
+    let body = [
+        r#"{"type":"user","uuid":"u-1","timestamp":"t1","message":{"content":"zqx one"}}"#,
+        r#"{"type":"assistant","uuid":"a-1","message":{"content":[{"type":"text","text":"zqx two"}]}}"#,
+        "",
+        r#"{"type":"user","uuid":"m-1","isMeta":true,"message":{"content":"meta"}}"#,
+        r#"{"type":"user","uuid":"u-2","timestamp":"t2","message":{"content":"three zqx"}}"#,
+    ]
+    .iter()
+    .map(|r| format!("{r}\n"))
+    .collect::<String>();
+    std::fs::write(&p, &body).unwrap();
+    let path = p.to_string_lossy().to_string();
+    let middle = |f: &dyn Fn(&mut Vec<u8>) -> Result<(), String>| -> Vec<serde_json::Value> {
+        let mut out: Vec<u8> = Vec::new();
+        f(&mut out).unwrap();
+        let lines: Vec<serde_json::Value> = String::from_utf8(out)
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        assert!(lines.len() >= 2, "CLI 臂没写头尾");
+        lines[1..lines.len() - 1].to_vec()
+    };
+    let cases: [(&str, serde_json::Value, &str, Vec<serde_json::Value>); 3] = [
+        (
+            "history-index",
+            serde_json::json!({"path": path, "offset": 0}),
+            "rows",
+            middle(&|o| {
+                crate::observe::history_query::session_index_into(&home, &path, 0, None, o)
+            }),
+        ),
+        (
+            "history-user-inputs",
+            serde_json::json!({"path": path, "from": 0}),
+            "entries",
+            middle(&|o| crate::observe::history_query::list_user_inputs_into(&home, &path, 0, o)),
+        ),
+        (
+            "history-find",
+            serde_json::json!({"path": path, "query": "zqx", "limit": 500}),
+            "hits",
+            middle(&|o| {
+                crate::observe::history_query::find_in_session_into(
+                    &home, &path, "zqx", false, 500, o,
+                )
+            }),
+        ),
+    ];
+    for (cmd, args, key, cli) in cases {
+        let v = answer_at(&home, cmd, &args).unwrap();
+        assert!(
+            !cli.is_empty(),
+            "`{cmd}` 的 CLI 臂中段是空的 —— 夹具没打到，本条会空真"
+        );
+        assert_eq!(
+            v[key].as_array().unwrap(),
+            &cli,
+            "`{cmd}` 的成品条目 != CLI 臂中段"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// ★ 〔SR1a × SE2〕→〔C4b 出成品〕`history-find` 的 `hits`：命中集合 == 夹具里 `hit-*` 那几条（异源：期望取自夹具的 uuid 命名），
+/// 成品键集合恒等（`{total, hits}`）；围栏同一套。
 #[test]
 fn the_find_answer_hits_exactly_the_fixture_hits() {
     let home = scratch("sr1a-find");
@@ -393,15 +462,13 @@ fn the_find_answer_hits_exactly_the_fixture_hits() {
         &serde_json::json!({"path": path, "query": "zqxneedle"}),
     )
     .unwrap();
-    let lines: Vec<serde_json::Value> = v["lines"]
+    let mut keys: Vec<&String> = v.as_object().unwrap().keys().collect();
+    keys.sort();
+    assert_eq!(keys, ["hits", "total"], "查找的成品形状变了");
+    assert_eq!(v["total"].as_u64(), Some(2));
+    let hits: Vec<&str> = v["hits"]
         .as_array()
         .unwrap()
-        .iter()
-        .map(|l| serde_json::from_str(l.as_str().unwrap()).unwrap())
-        .collect();
-    assert_eq!(lines.first().unwrap()["kind"], "session_find");
-    assert_eq!(lines.last().unwrap()["kind"], "session_find_end");
-    let hits: Vec<&str> = lines[1..lines.len() - 1]
         .iter()
         .map(|r| r["uuid"].as_str().unwrap())
         .collect();
@@ -426,6 +493,51 @@ fn the_find_answer_hits_exactly_the_fixture_hits() {
     )
     .is_err());
     let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 〔C4b · 第四波 4B〕金样那份夹具会话：结构占位（uuid 按角色命名、正文是无意义占位词），不采任何真会话正文。
+fn golden_session(home: &Path) -> String {
+    let dir = home.join("projects").join("-golden");
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("g.jsonl");
+    let body = [
+        r#"{"type":"user","uuid":"in-1","timestamp":"t1","message":{"content":"alpha zqx beta"}}"#,
+        r#"{"type":"assistant","uuid":"out-1","message":{"content":[{"type":"text","text":"gamma zqx"},{"type":"tool_use","name":"x","input":{}}]}}"#,
+        "",
+        r#"{"type":"user","uuid":"meta-1","isMeta":true,"message":{"content":"meta"}}"#,
+        r#"{"type":"user","uuid":"in-2","timestamp":"t2","message":{"content":"delta"}}"#,
+    ]
+    .iter()
+    .map(|r| format!("{r}\n"))
+    .collect::<String>();
+    std::fs::write(&p, body).unwrap();
+    p.to_string_lossy().to_string()
+}
+
+/// ★★〔C4b · 第四波 4B〕**跨语言金样**：三条帧命令对同一份夹具会话的成品 == `tests/__fixtures__/session-reads.golden.json`。
+///
+/// 那份金样的另一个读者是 TS 解码器（`tests/session-reads.vitest.ts` 读同一份文件、逐字段断言）⇒ 两侧**异源**：
+/// 后端改一个键名 ⇒ 本条红；TS 解码器改一个键名 ⇒ 那边红。金样是手写落盘的，不是任一侧跑出来就算数的
+/// （本条红时印出现打的成品，人读过再改金样）。
+#[test]
+fn the_three_products_match_the_cross_language_golden() {
+    let home = scratch("c4b-golden");
+    let path = golden_session(&home);
+    let got = serde_json::json!({
+        "history-index": answer_at(&home, "history-index", &serde_json::json!({"path": path, "offset": 0})).unwrap(),
+        "history-user-inputs": answer_at(&home, "history-user-inputs", &serde_json::json!({"path": path, "from": 0})).unwrap(),
+        "history-find": answer_at(&home, "history-find", &serde_json::json!({"path": path, "query": "zqx", "include_tools": false, "limit": 500})).unwrap(),
+    });
+    let want: serde_json::Value =
+        serde_json::from_str(include_str!("../__fixtures__/session-reads.golden.json"))
+            .expect("金样不是合法 JSON");
+    let _ = std::fs::remove_dir_all(&home);
+    assert_eq!(
+        got,
+        want,
+        "帧面成品与跨语言金样不一致。现打：\n{}",
+        serde_json::to_string_pretty(&got).unwrap()
+    );
 }
 
 /// 〔U4b · 第四波 · B4〕`history-record`：在 ⇒ `present:true`；不在 ⇒ `present:false`（一个答案，不是错误）；
