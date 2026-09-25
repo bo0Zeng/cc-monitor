@@ -1285,8 +1285,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            backend_policy::backend_exit_policy,
-            backend_policy::set_backend_exit_policy,
+            // 〔C4c〕「退出行为」问 / 交写那两条退役：设置页经通道说 `exit-policy-read` / `exit-policy-set`。
             backend::control::backend_control::backend_machines,
             backend::control::backend_control::backend_status,
             backend::control::backend_control::backend_start,
@@ -1396,7 +1395,7 @@ pub fn run() {
             history::update_history_metadata,
             history::list_last_accounts,
             history::resume_history_session,
-            history::probe_session_record, // 〔U4b〕resume 之前问记录还在不在
+            // 〔C4c〕`probe_session_record`（resume 之前问记录还在不在）退役：界面经通道问 `history-record`。
             history::new_local_session,
             // 🔴 `K-R109`（09-13）：本机后端产「把终端接进那个会话」那一句（`ccm attach <名>`）。
             //    `R61` 裁定三〔用 09-13 逐字「归本机后端就好了啊」〕。注册这一行与
@@ -1404,16 +1403,13 @@ pub fn run() {
             //    **是同一拍的事**：拆开任意一处，`commands.vitest.ts` 的 `C04a`
             //    或 `parity_ledger` 的双向相等当场红（`K-R106` 实测过前一种）。
             history::render_local_attach,
-            // A2：多账号只读查询（账号=一个 CLAUDE_CONFIG_DIR）。旧 backend
-            // 台一律回 available:false，前端降级隐藏账号功能而不是弹错。
-            accounts::list_remote_accounts,
-            local_accounts::list_local_accounts,
+            // 〔C4c · 第四波 4B〕A2 那两条账号清单（远端 `list_remote_accounts` · 本机 `list_local_accounts`）与
+            //   换号前的信任预检（`check_account_trust`）退役：前端经通道说 `accounts-list` / `accounts-trust`，后端出成品。
             // 〔C4a · 第四波〕「某会话属于哪个账号」那两条（本机 E79 · 远端 A2）退役：
             //   本机与远端同一条路 —— 前端经通道 `chan_call` 说 `accounts-sessions`。
             // 〔`A3` 第二波〕`acct-iso.check` / `acct-iso.shellinit` 的本机对侧（问本机后端）。
             local_accounts::check_local_acct_iso,
             local_accounts::local_acct_iso_shellinit,
-            accounts::check_account_trust,
             launch::launch_remote_terminal,
             // 〔F7c 收尾 09-24〕池子那十二条 Tauri 命令〔散文墓碑〕随老面板与窗口改走通道一起删了（`设计/60 §13b`）；
             //   〔第四波 S4〕最后一条（零流量复制）随门禁那一格退役一起删了 ⇒ 池子零条 Tauri 命令。

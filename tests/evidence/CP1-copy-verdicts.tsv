@@ -163,12 +163,6 @@ src/bridge/src/shell_dialect.rs:370	`{name}`：PATH 上已经有一个同名程�
 src/bridge/src/shell_dialect.rs:536	# 这份文件由 cc-monitor 设置里「别名」那一块整份重写，别手改 —— 下一次写入会原样覆盖。\n\n         # 每一个函数是一条别名：名字 ＋ 一组 ccm 参数，调用时再给的参数接在后面。\n\n         # 写法是 PowerShell 函数，5.1 与 7 都 dot-source 得了。\n	保留	[对外] 〔AL1c〕PowerShell 那份生成别名文件的头注，与 POSIX 那份同一口径（别手改 · 每个函数一条 · 哪几版能用）；PowerShell / dot-source 是用户自己也这么叫的词
 src/bridge/src/shell_dialect.rs:645	`{name}`：cc-monitor 的终端集成块里已经有同名函数 —— \n                 两者都在 $PROFILE 里时，排在后面的那一个赢；确认这就是你要的	保留	[对外] 〔AL1c〕PowerShell 撞名提示：说清撞了谁（终端集成块里的同名函数）与后果（后定义的赢），刻意不露模板文件名（POSIX 那一句露了 src/shared/ccm-aliases.sh，已被裁 改·§2.1）
 src/bridge/src/shell_dialect.rs:651	`{name}`：PATH 上已经有一个同名程序（{}）—— 装上之后你在 PowerShell 里敲 `{name}` \n                 打到的是这条别名，不再是那个程序	保留	[对外] 〔AL1c〕与 POSIX 那一句同形：PATH / PowerShell 是用户自己会这么叫的词；破折号后接的是后果，信息必要
-src/bridge/src/accounts.rs:212	远端后端版本较旧：它不认识账号 0（未设 CLAUDE_CONFIG_DIR 的那个默认登录），             列表里会少这一行。更新远端后端后即可看到。	保留	[对外] 先说结果（版本旧、少一行）再说怎么办；「更新远端后端」设置页里有这个动作；括号解释账号 0 是必要信息
-src/bridge/src/accounts.rs:218	远端 cc-acct-iso 版本较旧：它的 accounts.json 里没有账号 0（未设              CLAUDE_CONFIG_DIR 的那个默认登录）。在远端跑一次 'cc-acct-iso sync --apply'              （或重新部署 cc-acct-iso）即可补上。	改·§2.3	[对外] 让用户去远端手跑 'cc-acct-iso sync --apply' 或重新部署——内部维护活派给用户，且括号又给第二条路 兼§2.4 兼§2.1（accounts.json）→「远端账号表缺默认账号，重新部署账号隔离工具后可补上」
-src/bridge/src/accounts.rs:392	远端后端不支持账号查询（版本过旧）——请更新 backend	内部词→「后端」	[对外] 句尾「请更新 backend」中英混用，前半句已说「远端后端」；破折号可顺手去掉
-src/bridge/src/accounts.rs:398	远端返回的账号数据无法解析（backend 版本不匹配？）	内部词→「后端」	[对外] 括号里 backend 未译；且「版本不匹配？」是把猜测当归因（R3），改时说「数据格式认不出」即可 兼§2.4
-src/bridge/src/accounts.rs:472	远端未返回信任状态（backend 版本过旧或该 configDir 被拒）	内部词→「后端」「配置目录」	[对外] backend / configDir 两个内部名；括号里两个猜测并列也属 R3 新词:configDir
-src/bridge/src/accounts.rs:481	信任状态解析失败: {e}	保留	[对外] 「信任状态解析失败：{e}」短而直接（半角冒号 CP2 可顺手统一）
 src/bridge/src/acct_iso_deploy.rs:190	远端已是最新 cc-acct-iso（{}）：{dest}，无需重装。	保留	[对外] 部署结果；cc-acct-iso 是用户在设置页里点名部署、在终端里自己敲的命令名，属限用而非禁用
 src/bridge/src/acct_iso_deploy.rs:266	已软链到 ~/.local/bin，命令可用。	保留	[对外] 部署结果，短
 src/bridge/src/acct_iso_deploy.rs:268	已软链到 ~/.local/bin，但它可能不在你终端的 PATH——在终端里 `export PATH="$HOME/.local/bin:$PATH"`。	保留	[对外] PATH 提示可操作且确是用户自己终端的事；破折号接具体命令
@@ -556,12 +550,6 @@ src/bridge/src/lib.rs:1578	认不出：没有 hosts 数组（旧的单台写法�
 src/bridge/src/local_accounts.rs:248	manifest 不是合法 JSON：{e}	内部词→「账号清单」（manifest）	[对外] 设置页本机账号一节的错误说明；manifest 是内部对账号清单文件的叫法 新词:manifest
 src/bridge/src/local_accounts.rs:266	manifest schema 版本 {v} 不受支持（本机只认 1）	内部词→「账号清单格式版本」（manifest schema）	[对外] 同上；括号里「本机只认 1」可保留作可核对信息 新词:manifest 新词:schema
 src/bridge/src/local_accounts.rs:281	manifest 缺 version 字段（或不是数字）	内部词→「账号清单」（manifest / version 字段）	[对外] 同上 新词:manifest
-src/bridge/src/local_accounts.rs:386	本机后端答出了 {} 个账号（清单 {}，启用={}）	改·§2.1	[对外] 设置页本机账号一节的状态行：括号里「启用={}」是日志行 key=value 形并直出 true/false →「本机有 {} 个账号」，清单路径另起一行
-src/bridge/src/local_accounts.rs:392	本机后端不在，问不出这台机器上有哪些账号：{reason}。\n                 ⚠ 这**不是**「你没有账号」—— 开发树里本来就没有这个二进制，\n                 它只在发版构建时才装进安装包；装好之后这一节就会把账号列出来。	改·§2.2	[对外] 本机后端不在时的说明：「开发树里本来就没有这个二进制，只在发版构建时才装进安装包」是写给开发者的论证 兼§2.4（⚠＋markdown **不是**＋破折号）→「本机后端没在运行，暂时列不出账号：{reason}」
-src/bridge/src/local_accounts.rs:397	本机后端答了，但那份账号数据读不动：{why}。\n                 多半是后端版本与界面对不上 —— 重装一次本机后端（或更新 cc-monitor）。	改·§2.3	[对外] 猜测归因（「多半是版本对不上」）后让用户重装本机后端，且括号再给一条路 兼§2.4（破折号＋括号）→「读不出账号数据：{why}。更新 cc-monitor 可能解决。」
-src/bridge/src/local_accounts.rs:440	退出码 {code:?}；后端说：{}	改·§2.1	[对外] {code:?} 是 Option<i32> 的调试格式，界面上会显示 Some(2) / None →「退出码 {code}；后端输出：{stderr}」
-src/bridge/src/local_accounts.rs:454	它一行都没吐（不认这个子命令？）	改·§2.2	[对外] 「它一行都没吐（不认这个子命令？）」是排查时的内部推测 兼§2.1（子命令）→「后端没有返回账号数据」
-src/bridge/src/local_accounts.rs:461	{} 行里没有一行是 accounts-meta（版本不匹配？）	改·§2.1	[对外] 露出协议行名 accounts-meta 兼§2.2（「版本不匹配？」猜测）新词:accounts-meta →「后端返回的数据里没有账号信息」
 src/bridge/src/local_backend_host.rs:382	这个口上的第一行不是一帧合法的后端帧（{} 字节）	改·§2.1	[可达存疑] HelloVerdict::Stranger 理由，经 Adopt::Refused → note_start_refusal 进启动失败通知正文：「口」「一帧合法的后端帧」是协议实现 新词:口 新词:帧 →「端口 {port} 上的程序不是 cc-monitor 后端」
 src/bridge/src/local_backend_host.rs:392	这个口的首帧不是 hello	改·§2.1	[可达存疑] 同上链路：hello / 首帧 是握手协议实现名 新词:首帧 新词:hello
 src/bridge/src/local_backend_host.rs:396	这个口上的后端是 build_id={build_id}，而本 monitor 期望 {want_build}	改·§2.1	[可达存疑] 同上链路：build_id=… 期望 … 的日志形比对 →「端口上的后端版本与当前 cc-monitor 不一致」新词:build_id
@@ -1093,10 +1081,6 @@ src/backend/accounts/apikey/table.rs:280	base_url 带路径前缀 ⇒ 上游收�
 src/backend/accounts/apikey/table.rs:288	这一条用 Authorization: Bearer 头把 key 交给上游，而客户端自带的鉴权头会被丢掉	保留	[可达存疑] 中转进程里账号层（层 2）装表/重载时写到 stdout 的公告行（accounts::apikey::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；说明性的一句（今天默认不印）（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
 src/backend/accounts/apikey/table.rs:292	这一条用 x-api-key 头把 key 交给上游（不是默认那种），而客户端自带的鉴权头会被丢掉	保留	[可达存疑] 中转进程里账号层（层 2）装表/重载时写到 stdout 的公告行（accounts::apikey::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；括号短（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
 src/backend/accounts/apikey/table.rs:296	这一条一个鉴权头都不发，客户端自带的那份也不转发 —— 这是给不校验凭据的本地部署用的那一档	保留	[可达存疑] 中转进程里账号层（层 2）装表/重载时写到 stdout 的公告行（accounts::apikey::creds::announce，英文前缀＋这句中文），给手编凭据文件的人看；破折号接的是用途说明，一处（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
-src/bridge/src/local_accounts.rs:525	本机后端没有返回信任状态	保留	[可达存疑] 本机信任预检一行都没答时的原因；唯一消费者（换号重启 account-restart.ts）只看 available/trusted、不渲染 error，短而直接
-src/bridge/src/local_accounts.rs:528	本机后端不在，查不出这个账号是否信任过该目录：{reason}	保留	[可达存疑] 同上一行的消费者；说清是哪一种失败（后端不在）＋ 带上找过哪些路径
-src/bridge/src/local_accounts.rs:531	本机后端的信任查询失败（退出码 {code:?}）：{}	保留	[可达存疑] 同上；退出码与后端原话原样带出，便于排查 兼§2.1（退出码是实现细节，但它在消费者那里不渲染）
-src/bridge/src/local_accounts.rs:553	本机信任查询没能跑完：{e}	保留	[可达存疑] 同上；阻塞线程池 join 失败的兜底（几乎不可达）
 src/accounts.ts:785	本机会话结束后，Resume 沿用它上次的账号；换号只对本工具在 tmux 里起的会话做得到。	保留	[对外] 换号重启定位失败时本机那一支的补救句（A3 第二波）；〔U4〕「归档后」换成「会话结束后」（设计/30 §3.5.2：会话状态只说已结束 / 可重连）；tmux 属 R1b「用户自己也这么叫」
 src/accounts.ts:786	可以等它结束后，用右键「把此会话切到账号 X」。	保留	[对外] 换号重启定位失败时远端那一支的补救句；〔U4〕「先归档」换成「等它结束」：归档不是用户能做的动作，能做的是等会话结束（设计/30 §3.5.2）
 src/backend/accounts/iso.rs:64	这台机器上还没装 cc-acct-iso。	保留	[可达存疑] 本机「找不到 cc-acct-iso」那句话的尾巴（前半「查过哪些地方」由 plugin::discover 拼）；进 --acct-iso-status 的 looked 与 --acct-iso-shellinit 的 not_installed 信封，短而直接
@@ -1114,8 +1098,6 @@ src/bridge/src/cc_bus_deploy.rs:461	cc-monitor 装的 ccm（{at}）不是这一�
 src/bridge/src/cc_bus_deploy.rs:467	cc-monitor 装的 ccm（{at}）版本对，但缺少：{}，cc-spawn 会因此退出。请在设置页重装本机后端。\n{path_caveat}	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么
 src/bridge/src/cc_bus_deploy.rs:471	cc-monitor 装的 ccm（{at}）是这一版，cc-spawn 需要的 {needs} 都支持。\n{path_caveat}	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么
 src/backend/read_face.rs:149	结果超过 {LINES_CAP_BYTES} 字节上限，没有返回（至少 {size} 字节）	保留	[可达存疑] 帧面只读查询（history-*/accounts-*）按行应答超上限时的命令级报错，monitor 原样带进「远端查询失败」那句；平白说出上限与没返回，无内部词、无论证
-src/bridge/src/backend/control/frame_query.rs:49	换号前的信任预检：不在题面八条里；用户点一次换号才发一次，不在任何轮询上	保留	[不对外] frame_query::STILL_DIALED 登记表的理由栏，生产段只拿第一栏判放不放行，这一栏只被判据读
-src/bridge/src/backend/control/frame_query.rs:51	同上一行（账号 0 那一形）	保留	[不对外] frame_query::STILL_DIALED 登记表的理由栏，生产段只拿第一栏判放不放行，这一栏只被判据读
 src/bridge/src/backend/control/frame_query.rs:93	查询出了内部错误，没有拿到结果	保留	[可达存疑] 只读查询分流器落到「已完成」那一档时的兜底话（按构造走不到）；平白说出了事、没拿到结果，无内部词
 src/panorama/agent-clip.ts:81	分不清：本符号 {…} 条直接边里 {…} 条按名字凑	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；CP4「分不清」行，只计数
 src/panorama/agent-clip.ts:82	（启发 {…} · 动态猜测 {…}），动态派发 {…} 条，确定 {…} 条	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；「分不清」的分项计数，动态派发单列（候选完整，不算分不清）
@@ -1352,3 +1334,8 @@ src/settings/machine-aliases.ts:728	{…}失败：{…}	保留	[对外] 〔AL1d�
 src/settings/machine-aliases.ts:744	将装进 {…} 的别名块	保留	[对外] 〔AL1d〕预览浮层标题：装进哪份文件
 src/bridge/src/panorama_call.rs:263	代码全景这一问出了内部错误，没有拿到结果	保留	[可达存疑] 〔RM1e〕分流器 Done 那一臂的兜底（本族走不到）；同 backend_policy.rs / apikey_remote.rs 那一句的形
 src/bridge/src/panorama_call.rs:305	{who} 的代码全景没答上来（{code}）：{message}	保留	[对外] 〔RM1e〕那台机器的全景失败原话：{who} 是「本机」或机器名，{code} 是后端的错误码（not_installed / unsupported / timed_out …，同 frame_query 那一句「查询失败（code）」的形，用户据此能跟着报错走），{message} 是后端那句人话
+src/accounts-decode.ts:39	顶层	保留	[对外] 〔C4c〕账号清单应答形状不对时那句「账号清单的应答形状不对（…）—— 两端契约对不上」里点名哪一格的片段（进 `available:false` 的原因，设置页账号那一块照原因显示）；与 C4b 会话读面同一句式
+src/accounts-decode.ts:80	第 {…} 个账号	保留	[对外] 〔C4c〕同上一行，点名第几个账号那一格坏了
+src/accounts.ts:1144	那台机器的后端版本过旧，还不认账号清单这一问 —— 重装那台机器的后端就有了	保留	[对外] 〔C4c〕账号那一块的「需更新」原因（后端不认 `accounts-list`）；说清原因与出路，用词是术语表的「后端」；替掉 monitor 那一句「远端后端不支持账号查询（版本过旧）——请更新 backend」（已删）
+src/backend/observe/accounts_query.rs:664	这台机器上的 cc-acct-iso 版本较旧：它的 accounts.json 里没有账号 0（不指定配置目录的那个默认登录）。\n         在这台机器上跑一次 'cc-acct-iso sync --apply'（或重新部署 cc-acct-iso）即可补上。	改·§2.3	[对外] 〔C4c〕后端出成品时「manifest 里没有账号 0」那一句，逐字承袭 monitor 旧那一句（台账那一行裁的正是 §2.3：把 sync / 重新部署那件维护活派给用户、括号给第二条路）；本拍只把「远端」改成「这台机器」（本机从此也出这一句），措辞重写留给文案那一轮 兼§2.4 →「这台机器的账号表缺默认账号，重新部署账号隔离工具后可补上」
+src/settings/backend-section.ts:84	那台机器的后端还不认「退出行为」这一问 —— 重装那台机器的后端就有了	保留	[对外] 〔C4c〕设置页「退出行为」那一勾问不到 / 存不下时的原因（后端不认 `exit-policy-*`）；说清原因与出路，用词是术语表的「后端」；此前界面看到的是 monitor 那一句（带命令名 `exit-policy-read`），那一句今天只剩退出臂那一问在用、只进日志

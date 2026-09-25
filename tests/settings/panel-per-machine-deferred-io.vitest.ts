@@ -83,7 +83,8 @@ const LOCAL_PAGE_IPC = [
   "config_surface_report", // 足迹（步 14a）
   "drift_ledger_report", // 〔ST2〕未识别的数据（原顶层「改动足迹」那一块）；〔ST3〕按这台去问
   "load_config", // 账号：先读远端清单（落地页也读它 —— 这里量的是「新增」那一段）
-  "list_local_accounts", // 账号（本机那一支）
+  // 〔C4c · 第四波 4B〕账号（本机那一支）改走通道：`chan_call`（`accounts-list` 发给 `<local>`）—— 本表按集合比，
+  //   与下面插件那一条同名，不另起一行。
   // 〔AL1c · 4B〕这里原来还有终端集成那两发（终端集成的状态那一发〔AL1d：今天并进 `aliases_read`〕/ `cc_get_auto_launch`）：那块并进了「别名」
   // （一个 `<details>`，**第一次展开**才建它、才发那两发）⇒ 子页可见时不再发，往后又延了一层。
   "read_mcp_servers", // MCP（本机）
@@ -120,7 +121,7 @@ const FIRST_VISIT_AYA_IPC: readonly string[] = [
   "config_surface_report", // 足迹：〔ST2〕按 devbox 去问
   "drift_ledger_report", // 未识别的数据：〔ST3〕按 devbox 去问
   "load_config", // 账号：读远端清单
-  "list_remote_accounts", // 账号：devbox 那一台
+  "chan_call", // 账号：devbox 那一台（〔C4c〕经通道说 `accounts-list`）
   "list_mcp_project_dirs", // MCP：devbox 的项目候选
   "read_remote_mcp_servers", // MCP：devbox 的 user scope
   "chan_call", // 插件：〔C4b〕经通道说 `plugins-marketplaces`

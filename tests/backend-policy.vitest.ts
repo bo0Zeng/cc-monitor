@@ -58,14 +58,12 @@ describe("B2 · 「退出行为」那个值不住前端", () => {
           "`设计/01 §3.3b ②④`：monitor 的 config 里不许再留一份、那条推送随之退役 —— 留着就是第二个真相源。",
       ).toEqual([]);
     }
-    // ★ 正控：新的两条命令**真的**在包装层里（否则上面那几条零命中可能只是「整片都没了」）。
-    const cmds = files.find((f) => f.rel === "src/ipc/commands.ts");
-    expect(cmds, "找不到 ipc/commands.ts —— 人群坏了").toBeDefined();
-    for (const name of ["backend_exit_policy", "set_backend_exit_policy"]) {
-      expect(
-        cmds!.code.includes(`invoke<Record<string, unknown>>("${name}"`),
-        `包装层里没有 ${name}`,
-      ).toBe(true);
+    // ★ 正控：问 / 交写那两问**真的**还在（否则上面那几条零命中可能只是「整片都没了」）。
+    // 〔C4c · 第四波 4B〕两条包装层命令退役，设置页经通道直接说后端那两条帧命令 ⇒ 正控改成钉那两处 `chan.call`。
+    const sec = files.find((f) => f.rel === "src/settings/backend-section.ts");
+    expect(sec, "找不到 settings/backend-section.ts —— 人群坏了").toBeDefined();
+    for (const op of ["exit-policy-read", "exit-policy-set"]) {
+      expect(sec!.code.includes(`chan.call(origin, "${op}"`), `设置页没有经通道说 ${op}`).toBe(true);
     }
   });
 });
