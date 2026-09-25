@@ -3293,7 +3293,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_chmod_attrs_never_put_a_size_on_the_wire",
             1,
         ),
-        ("src/bridge/src/sftp_pool.rs", "is_lossy_name", 1),
+        // 〔第四波 S4〕`sftp_pool.rs` 那一处（句柄有损判定的头注里点着从前那个判文件名的函数）随它所在的
+        //   零流量复制一段整块删了 ⇒ 这一行走了（被守的那件事整段退役，不是墓碑被人擦掉）。
         (
             "tests/bridge/filewin/boundary_tests.rs",
             "sftp_cancel_transfer",
@@ -3699,7 +3700,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/filewin/mod.rs", 2),
         ("src/bridge/src/filewin/transfer.rs", 4),
         ("src/bridge/src/filewin/writeops.rs", 1),
-        ("src/bridge/src/sftp_pool.rs", 1),
+        // 〔第四波 S4〕`sftp_pool.rs` 1 → 0（行删）：那块墓碑随零流量复制一段整块删了，理由同 `TOMBSTONED` 那一行。
         ("tests/bridge/filewin/boundary_tests.rs", 2),
         ("tests/bridge/filewin/transfer_tests.rs", 1),
         ("tests/bridge/sftp_family_registry_tests.rs", 2),

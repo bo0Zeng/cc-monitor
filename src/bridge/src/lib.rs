@@ -1420,9 +1420,8 @@ pub fn run() {
             accounts::list_remote_session_accounts,
             accounts::check_account_trust,
             launch::launch_remote_terminal,
-            // 〔F7c 收尾 09-24〕池子的 Tauri 命令只剩 `sftp_copy` 一条（秤 F3 / 门禁 `f3-copy` 那一格还在量它的核心）；
-            //   其余十二条〔散文墓碑〕随老面板与窗口改走通道一起删了（`设计/60 §13b`）。
-            sftp_pool::sftp_copy, // 步 23b：零流量复制（`copy-data`），退不了路要出声
+            // 〔F7c 收尾 09-24〕池子那十二条 Tauri 命令〔散文墓碑〕随老面板与窗口改走通道一起删了（`设计/60 §13b`）；
+            //   〔第四波 S4〕最后一条（零流量复制）随门禁那一格退役一起删了 ⇒ 池子零条 Tauri 命令。
             // 🔴 `24e` 第二刀（`设计/60 §4 戊` / `§5` 第三段）：**原生文件管理窗口的入口。**
             //    它不是「又一条 sftp 命令」—— 它开的是那个 egui 窗口（同进程、次线程，
             //    进程形态见 `filewin/mod.rs` 头注）。先真的列一趟目录，列不出来就带原文报错，

@@ -14,7 +14,7 @@
 //!
 //! 两条毛病是**同一个** `for … await` 生出来的：
 //!
-//! 1. **传输一件件来** ⇒ `sftp_pool` 那 4 条传输车道（`TRANSFER_LANE_CAP`）永远只用到 1 条。
+//! 1. **传输一件件来** ⇒ `sftp_pool` 那几格传输通道永远只用到 1 格。
 //! 2. **问答与传输交错** ⇒ 拖 10 个文件、第 7 个才冲突，用户已经等了 6 趟传输才被弹一次窗；
 //!    而那 6 趟已经在跑，答「取消」也收不回来。
 //!
@@ -43,10 +43,11 @@
 //!   （判据 `transfer_tests::the_real_adapters_speak_only_through_the_channel` 判源码，
 //!   `transfer_tests::an_upload_opens_watches_then_commits_with_the_humans_answer` 在真回环 ＋ 合成对端上判三步的顺序与载荷）。
 //!   传输台那一侧（真 SFTP 会话上）的读数由 `sftp_staging_tests` / `chan::host::transfer_stream_tests` 各自判。
-//! - **`lanes` 不是真正的闸。** 真正的闸在 monitor 的池里（`lease_transfer` 的 4 条车道，
-//!   借不到就 `await`，那个 `await` 就是队列 —— `设计/60 §5.4a`）。
-//!   本层这个数只为「别把一万条订阅一起堆起来」；〔F7c〕它是一份**与池里那个数钉相等**的副本
-//!   （[`WINDOW_TRANSFER_LANES`]），因为窗口进程一个 `sftp_pool` 符号都不碰。
+//! - **`lanes` 不是真正的闸。** 真正的闸在 monitor 的池里（`lease_transfer` 过的通道闸，
+//!   借不到就 `await`，那个 `await` 就是队列）。
+//!   本层这个数只为「别把一万条订阅一起堆起来」（[`WINDOW_TRANSFER_LANES`]）。
+//!   〔第四波 S4〕池里那道 4 条的车道闸随浏览离开 SFTP 退役了，本层这个数不再是它的副本 ——
+//!   判据改钉「一个窗口的一趟拖入占不满池子的通道闸」。
 //! - **不做断点续传的判断**：那在传输台那一侧（暂存件的尾块对拍），本模块看不见也不该看见。
 //! - ✅〔F7c · 第三波 09-24〕**「上传按钮」做了**：工具栏「上传」⇒ 问一句本机路径（一行一个）⇒ 交给 [`run_drop`]
 //!   （`upload.rs`；下面三件里 ① 拍了、② 仍然没有原生选文件框、③ 挂载只占 `shell.rs` 几行）。下面是当时停下的原话：
@@ -109,14 +110,14 @@ use std::sync::{Arc, Mutex};
 
 /// 一趟拖入同时起几件（同时挂着几条进度订阅 / 同时问几件「那儿有没有东西」）。
 ///
-/// 🔴 **这个数不在本层裁定** —— 真正的闸在 monitor 的池里（`lease_transfer` 的车道信号量，
-/// `设计/60 §5.4a` 的 `6 − 4 = 2`）；这里多挂的那几条订阅只是在那道闸前面排队。
+/// 🔴 **这个数不在本层裁定** —— 真正的闸在 monitor 的池里（`lease_transfer` 过的通道闸，
+/// `sftp_pool::SESSION_CHANNEL_CAP`）；这里多挂的那几条订阅只是在那道闸前面排队。
 /// 本层限并发只为「别把一万条订阅一起堆起来」。
 ///
-/// 〔F7c 09-24〕它**不再** `use` 池里那个常量：窗口进程一个 `sftp_pool` 的符号都不碰
-/// （`boundary_tests::WINDOW_SIDE` 两向钉着）⇒ 两边各写一份、判据钉**相等**
-/// （`transfer_tests::our_concurrency_cap_is_the_pools_own_lane_count`）——
-/// 「两份逐字副本 ＋ 相等断言」，与 `设计/60 §11.4` 那两份围栏同一个形状。
+/// 〔第四波 S4〕它原先是池里那道 4 条车道闸的副本（两份 ＋ 相等断言）；车道闸随浏览离开 SFTP
+/// 退役之后，判据改钉「一个窗口的一趟拖入占不满池子的通道闸」
+/// （`transfer_tests::one_windows_burst_never_fills_the_pools_channel_gate`）。
+/// 窗口进程照旧一个 `sftp_pool` 的符号都不碰（`boundary_tests::WINDOW_SIDE` 两向钉着）。
 pub const WINDOW_TRANSFER_LANES: usize = 4;
 
 /// 一趟拖入同时起几件 —— 窗口那一侧拿这个数的**唯一**落点。
@@ -311,7 +312,8 @@ impl CancelDesk {
     /// 造一个这一趟的 `transfer_id` 并登记进在飞表。
     ///
     /// ⚠ 每趟现造：它是池子取消登记表的键，两趟用同一个键会互相摘掉对方的登记
-    /// （`sftp_pool::register_cancel` 的注释逐字记着这一条）。
+    /// （从前池子那张按 id 的取消登记表的注释逐字记着这一条；〔第四波 S4〕那张表随老 Tauri 传输一路删了，
+    /// 这一趟今天是停订即撤，键仍要唯一 —— 它是本层在飞表的键）。
     pub fn mint(&self, name: &str) -> String {
         let id = format!("filewin-{}", uuid::Uuid::new_v4());
         self.in_flight

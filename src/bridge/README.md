@@ -57,7 +57,7 @@ src/bridge/
     ├── ssh_source.rs  # russh 远端数据源：连接/鉴权/指纹校验 + 后端流帧解析 + 版本协商 + ssh-config 导入 + 测试连接 + B14-F59 daemonless 降级读取(纯 tail 轮询)
     ├── remote_history.rs # 远端历史浏览 + 远端全文搜索查询（一次性 exec 后端子命令，多机 fan-out）
     ├── sftp.rs        # SS-D 统一 SFTP 写层：后端自动部署 (#29) + 远端历史删除 (F11) + ccm 安装 (F10)
-    ├── sftp_pool.rs   # SFTP 只做传输（F7c）：per-host 连接池 + 传输台（暂存区上传 · 下载 · 进度流）＋ 仅剩的 sftp_copy
+    ├── sftp_pool.rs   # SFTP 只做传输（F7c）：per-host 连接池 + 传输台（暂存区上传 · 下载 · 进度流）；〔第四波 S4〕零条 Tauri 命令
     ├── pubkey.rs      # B14-F50 公钥一键推送 authorized_keys（防注入 sanitize + 幂等去重）
     ├── port_forward.rs # B14-F58 本地端口转发(-L)管理台（复用 SSH 连接隧道 direct-tcpip）
     ├── tmux.rs        # B14-F51/F60 tmux 反查 attach + 画面预览快照（capture-pane 只读）
@@ -144,7 +144,7 @@ src/bridge/
 | `update_history_metadata` | `{ sessionId, patch }` | `EntryMetadata` | star / 重命名 / 隐藏 |
 | `resume_history_session` | `{ sessionId, cwd, launcher? }` | `()` | ↺ 按钮（v2.8.1：拉起 wt.exe / powershell.exe，读 profile + `cc` 优先回退 `claude`；F34 起 `launcher` 自定义启动命令）。F62 建分支后一键 resume 复用此命令 |
 | `launch_remote_terminal` (B14-F41) | `{ origin, remoteCmd }` | `()` | 远端一键 resume（tab 右键 / 历史 ↺）：按 origin 取 RemoteConfig，拉起 wt.exe/PowerShell 跑 `ssh -t … "bash -lic '<remoteCmd>'"`；ssh.exe 预检失败/校验拒 → Err（前端回退复制命令）。remote_cmd 双层防线（前端构造校验 + 本侧控制字符/双引号/长度再验） |
-| 〔F7c 收尾 09-24〕池子那十二条（`sftp_realpath` · `sftp_list_dir` · `sftp_stat` · `sftp_download` · `sftp_upload` · `sftp_cancel_transfer`〔散文墓碑〕 · `sftp_mkdir` · `sftp_rename` · `sftp_delete` · `sftp_read_text_for_edit`〔散文墓碑〕 · `sftp_write_text` · `sftp_chmod`）已删 | — | — | 老面板删了；文件窗口的浏览 / 写 / 读文本走后端 `files-*`，上传 / 下载经通道开单（`transfer-upload` / `transfer-download`）、订阅 `transfer/<id>` 进度（`设计/60 §13b`）。池子的 Tauri 命令只剩 `sftp_copy` |
+| 〔F7c 收尾 09-24〕池子那十二条（`sftp_realpath` · `sftp_list_dir` · `sftp_stat` · `sftp_download` · `sftp_upload` · `sftp_cancel_transfer`〔散文墓碑〕 · `sftp_mkdir` · `sftp_rename` · `sftp_delete` · `sftp_read_text_for_edit`〔散文墓碑〕 · `sftp_write_text` · `sftp_chmod`）已删 | — | — | 老面板删了；文件窗口的浏览 / 写 / 读文本走后端 `files-*`，上传 / 下载经通道开单（`transfer-upload` / `transfer-download`）、订阅 `transfer/<id>` 进度（`设计/60 §13b`）。池子的 Tauri 命令只剩 `sftp_copy`；〔第四波 S4〕它也随门禁 `f3-copy` 那一格退役删了 ⇒ 零条 |
 | `push_public_key` (B14-F50) | `{ cfg, pubKeyPath? }` | `PushResult {outcome,pubPath}` | 公钥推送 authorized_keys;pubKeyPath 空则取 `{keyPath}.pub`;`sanitize_public_key`(单行防注入)+ `grep -qxF` 去重,返回 added/already |
 | `list_remote_tmux` (B14-F51) | `{ origin }` | `TmuxSession[] \| null` | tab 右键 attach 反查;`command -v tmux` 无 → `null`(隐藏 attach);否则 `tmux ls -F`(真 TAB)解析成会话列表;走 exec 通道 |
 | `capture_remote_pane` (B14-F60) | `{ origin, target }` | `String` | tab 右键「预览远端 tmux 画面」;`tmux capture-pane -p -t <会话>` 抓当前屏只读快照;`command -v tmux` 门控 + `NO_PANE` 哨兵(会话不存在),`classify_capture_output` 纯函数判;走 exec 通道 target 经 `shell_quote` |
