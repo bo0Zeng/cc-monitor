@@ -2,7 +2,9 @@
  * Issue #11: Claude Code CLI 的 task 列表展示。
  *
  * 数据源：那台机器的后端 `tasks-list`（〔RM1b · 第四波〕本机与远端同一条路，按 `origin` 问）。
- * Tab 创建时 invoke `get_session_tasks` 拿初次快照；本机另有 monitor 的 watcher 推 `task-update`。
+ * 〔LOC1a · 第四波 4D · C4e 批 4〕Tab 创建时**经通道直接问**（`chan.call(origin, "tasks-list")`），后端出成品 `{tasks}`，
+ * 这里按形状严格收（{@link decodeTasks}；字段语义只住后端 `observe/tasks_query.rs::task_entry`）。
+ * 本机另有 monitor 的 watcher 推 `task-update`（它也读同一份成品，不解释字段）。
  *
  * 〔RM1b〕**远端没有推送**（后端出方向加帧要动 `wire.rs`，第四波不在本件）。远端 tab 的新鲜度靠
  * 「**被切到的那一刻 / 任务面板被展开的那一刻**」现问一次 —— 零定时器，不轮询。
@@ -28,7 +30,8 @@
  */
 
 import { dispatcher } from "./keybindings/registry";
-import { commands } from "./ipc/commands";
+import { chan } from "./ipc/chan";
+import { budgetWithin, jsonBody, readJson } from "./ipc/chan-caller";
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import type { Tab } from "./tab-model";
@@ -257,6 +260,43 @@ export class TasksPanel {
   }
 }
 
+/** 这一问的期限：与它上一个住址（monitor `frame_query::LINES_BUDGET`）同值 —— 读一个小目录 ＋ 回程。 */
+const TASKS_BUDGET_MS = 30_000;
+
+/** 成品里一个任务**恰好**能有的键（可选的两格可缺）。 */
+const TASK_REQUIRED_KEYS = ["blockedBy", "blocks", "id", "status", "subject"];
+const TASK_OPTIONAL_KEYS = ["activeForm", "description"];
+
+/**
+ * 〔LOC1a · 第四波 4D〕`tasks-list` 的成品 → `TaskEntry[]`。**按形状严格收，不解释**：多一格 / 缺一格 / 类型不对 ⇒ 抛
+ * （两端契约对不上，不猜、不跳过）。字段语义（哪几格必填、`null` 怎么算）只住后端 `task_entry`；
+ * 线上形状由 `tests/__fixtures__/tasks-list.golden.json` 钉住（后端产出 == 金样 · 本解码器读同一份）。
+ */
+export function decodeTasks(v: unknown): TaskEntry[] {
+  const bad = (what: string): never => {
+    throw new Error(`tasks-list 的应答形状对不上：${what}`);
+  };
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return bad("不是一个对象");
+  const o = v as Record<string, unknown>;
+  if (Object.keys(o).join(",") !== "tasks" || !Array.isArray(o.tasks)) return bad("顶层不是恰好一格 tasks 数组");
+  const strs = (x: unknown): x is string[] => Array.isArray(x) && x.every((s) => typeof s === "string");
+  return o.tasks.map((raw, i): TaskEntry => {
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return bad(`第 ${i} 条不是对象`);
+    const t = raw as Record<string, unknown>;
+    const keys = Object.keys(t);
+    const known = [...TASK_REQUIRED_KEYS, ...TASK_OPTIONAL_KEYS];
+    if (!TASK_REQUIRED_KEYS.every((k) => keys.includes(k)) || !keys.every((k) => known.includes(k))) {
+      return bad(`第 ${i} 条的键是 ${keys.sort().join(",")}`);
+    }
+    const optOk = TASK_OPTIONAL_KEYS.every((k) => !(k in t) || typeof t[k] === "string");
+    if (typeof t.id !== "string" || typeof t.subject !== "string" || typeof t.status !== "string"
+      || !strs(t.blocks) || !strs(t.blockedBy) || !optOk) {
+      return bad(`第 ${i} 条有一格类型不对`);
+    }
+    return t as unknown as TaskEntry;
+  });
+}
+
 /** 〔RM1b〕sid → 它住哪台机器。{@link fetchSessionTasks} 每次调用都记一笔（Tab 创建时那一次必带）。 */
 const originBySid = new Map<string, Origin>();
 
@@ -279,7 +319,13 @@ export async function fetchSessionTasks(
   const origin: Origin = tabOrigin;
   originBySid.set(sessionId, origin);
   try {
-    return await commands.get_session_tasks({ origin, sessionId });
+    const reply = await chan.call(
+      origin,
+      "tasks-list",
+      jsonBody({ sid: sessionId }),
+      budgetWithin(TASKS_BUDGET_MS),
+    );
+    return decodeTasks(readJson(reply));
   } catch (e) {
     console.warn(`[tasks-panel] fetch ${sessionId}@${origin} failed:`, e);
     return [];

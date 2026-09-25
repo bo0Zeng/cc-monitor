@@ -547,6 +547,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔`A3` 第二波〕本机 `cc-acct-iso` 的两问（`accounts/iso.rs`）。登记理由同下面那几条：
     // `is_query_mode` 那道闸门读本表，不在表里 ⇒ 当未知 flag 静默进流模式。
     // ⚠ 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
+    // 〔LOC1a · 第四波 4D〕这两行今天是帧面 `acct-iso-status` / `acct-iso-shellinit` **自动派生**的 CLI 面（同名；
+    //   argv 形那两臂退役）—— 名字一格没变，所以这两行不动；帧面那两条的 `ch:` 进指纹 ⇒ 仍逼出一次 bump。
     "--acct-iso-shellinit",
     "--acct-iso-status",
     // 〔`C1` · 2026-09-24〕只读查询面那八条帧命令**自动派生**出来的 CLI 面
@@ -671,6 +673,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     // BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
     "--find-in-session",
     "--fork-session",
+    // 〔LOC1a · 第四波 4D〕帧面 `session-fork` 自动派生的 CLI 面（读 stdin）。刻意不与上一行同名：那一条是对 aterm 冻结的
+    //   argv 形。⚠ 加这一行逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
+    "--session-fork",
     // 〔`C1`〕同上一段：`history-*` 六条帧命令的 CLI 面。
     // 〔SR1a〕+2：`history-index` / `history-user-inputs`（骨架索引与大纲清单上帧面）的 CLI 面，
     //   登记理由同上 —— `is_query_mode` 那道闸门读本表。⚠ 逼出 `BUILD_ID` bump，本路不 bump。

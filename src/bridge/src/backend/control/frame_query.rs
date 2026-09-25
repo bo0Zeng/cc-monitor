@@ -81,6 +81,7 @@ pub(crate) async fn call(
     args: Value,
     budget: Duration,
 ) -> Result<Value, String> {
+    let who = who(origin);
     let origin = origin.as_wire_str();
     let Some(client) = inbound_client::client_for(origin) else {
         return Err(said(no_channel(origin)));
@@ -89,15 +90,15 @@ pub(crate) async fn call(
     // 不许与超时同形。
     if !client.accepts(cmd) {
         return Err(format!(
-            "远端 [{origin}] 的后端还不认 `{cmd}` —— 这条查询是后来才上长连接的，重装那台机器的后端就有了"
+            "{who} 的后端还不认 `{cmd}` —— 这条查询是后来才上长连接的，重装那台机器的后端就有了"
         ));
     }
     let data = client.call(cmd, args, budget).await.map_err(|e| {
         said(route_call_error(&e, |code, message| {
-            format!("远端 [{origin}] 查询失败（{code}）：{message}")
+            format!("{who} 查询失败（{code}）：{message}")
         }))
     })?;
-    data.ok_or_else(|| format!("远端 [{origin}] `{cmd}` 的应答没有 data —— 两端契约对不上"))
+    data.ok_or_else(|| format!("{who} `{cmd}` 的应答没有 data —— 两端契约对不上"))
 }
 
 /// 三态里给人看的那句话。`Done` 在本族走不到（查询不产「已完成」这一档）。
@@ -108,14 +109,26 @@ fn said(r: Routed) -> String {
     }
 }
 
+/// 报错里的「谁」：本机说「本机」，远端说「远端 [x]」〔LOC1a〕。
+///
+/// 本机那几问从 exec 一次性后端改走 `<local>` 长连接之后，同一句话本机远端共用 ——
+/// 不许把本机说成「远端 [<local>]」。
+pub(crate) fn who(origin: &Origin) -> String {
+    if origin.is_local() {
+        "本机".to_string()
+    } else {
+        format!("远端 [{}]", origin.as_wire_str())
+    }
+}
+
 /// 按行那六条：`data.lines` 原样拿回（逐行、trim 过、剔空行 —— 与已删的逐次拨号那条路的出参同形）。
 pub(crate) async fn lines(origin: &Origin, cmd: &str, args: Value) -> Result<Vec<String>, String> {
     let data = call(origin, cmd, args, LINES_BUDGET).await?;
-    let origin = origin.as_wire_str();
+    let who = who(origin);
     let rows = data
         .get("lines")
         .and_then(Value::as_array)
-        .ok_or_else(|| format!("远端 [{origin}] `{cmd}` 的应答没有 `lines` —— 两端契约对不上"))?;
+        .ok_or_else(|| format!("{who} `{cmd}` 的应答没有 `lines` —— 两端契约对不上"))?;
     Ok(rows
         .iter()
         .filter_map(Value::as_str)
@@ -143,11 +156,11 @@ pub(crate) async fn tail(origin: &Origin, path: &str, n: u64) -> Result<TailPlan
         PAGE_BUDGET,
     )
     .await?;
-    let origin = origin.as_wire_str();
+    let who = who(origin);
     let num = |k: &str| {
         data.get(k)
             .and_then(Value::as_u64)
-            .ok_or_else(|| format!("远端 [{origin}] `history-tail` 的应答缺 `{k}`"))
+            .ok_or_else(|| format!("{who} `history-tail` 的应答缺 `{k}`"))
     };
     let plan = TailPlan {
         total: num("total")?,
@@ -157,7 +170,7 @@ pub(crate) async fn tail(origin: &Origin, path: &str, n: u64) -> Result<TailPlan
     };
     if plan.tail_from > plan.total || plan.split_at > plan.end {
         return Err(format!(
-            "远端 [{origin}] `history-tail` 的应答自相矛盾：{plan:?}"
+            "{who} `history-tail` 的应答自相矛盾：{plan:?}"
         ));
     }
     Ok(plan)
@@ -191,18 +204,18 @@ pub(crate) async fn read_page(
         args["until"] = json!(u);
     }
     let data = call(origin, "history-read", args, PAGE_BUDGET).await?;
-    let origin = origin.as_wire_str();
+    let who = who(origin);
     let text = data.get("text").and_then(Value::as_str);
     let next = data.get("next").and_then(Value::as_u64);
     let eof = data.get("eof").and_then(Value::as_bool);
     let (Some(text), Some(next), Some(eof)) = (text, next, eof) else {
         return Err(format!(
-            "远端 [{origin}] `history-read` 的应答缺 `text`/`next`/`eof` —— 两端契约对不上"
+            "{who} `history-read` 的应答缺 `text`/`next`/`eof` —— 两端契约对不上"
         ));
     };
     if !eof && next <= offset {
         return Err(format!(
-            "远端 [{origin}] `history-read` 在偏移 {offset} 处不前进 —— 停下，不空转"
+            "{who} `history-read` 在偏移 {offset} 处不前进 —— 停下，不空转"
         ));
     }
     Ok(Page {

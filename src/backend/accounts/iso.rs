@@ -1,9 +1,12 @@
-//! 〔`A3` 第二波〕**这台机器上的 `cc-acct-iso`** —— 两条一次性查询：
+//! 〔`A3` 第二波〕**这台机器上的 `cc-acct-iso`** —— 两条查询（〔LOC1a · 第四波 4D〕帧命令，CLI 面自动派生同名 `--…`）：
 //!
-//! | 子命令 | 答什么 | 远端那一侧今天怎么答（对照） |
+//! | 帧命令 | 答什么 | 远端那一侧今天怎么答（对照） |
 //! |---|---|---|
-//! | `--acct-iso-status` | 装没装、装在哪 | monitor 经 SSH 跑 `PATH="$HOME/.local/bin:$PATH" command -v cc-acct-iso` |
-//! | `--acct-iso-shellinit` | `cc-acct-iso shellinit` 吐的那段 rc 片段（原样） | monitor 经 SSH 跑 `cc-acct-iso shellinit` |
+//! | `acct-iso-status` | 装没装、装在哪 | monitor 经 SSH 跑 `PATH="$HOME/.local/bin:$PATH" command -v cc-acct-iso` |
+//! | `acct-iso-shellinit` | `cc-acct-iso shellinit` 吐的那段 rc 片段（原样） | monitor 经 SSH 跑 `cc-acct-iso shellinit` |
+//!
+//! 〔LOC1a〕此前是两条 argv 形一次性子命令，唯一调用方是 monitor 每问 exec 一次本机后端（`local_query`〔散文墓碑〕，删了）；
+//! 本机那两问改走 `<local>` 长连接之后 argv 形那两臂零调用方 ⇒ 退役，只留帧面这一份（`设计/05 §14.6`）。
 //!
 //! # 为什么住账号域、不住 `observe/`
 //!
@@ -65,11 +68,11 @@ fn locate() -> Result<PathBuf, String> {
     )
 }
 
-/// `--acct-iso-status` 的那一行 —— **纯函数**。
+/// `acct-iso-status` 的 `data` —— **纯函数**。
 ///
 /// 没找到**不是错误**（exit 0）：「没装」是一个确定的答案，与远端那条 `installed:false` 同形。
 /// `looked` 只在没找到时带：说清查过哪儿（`plugin::discover::not_installed_message` 那句话）。
-pub(crate) fn status_line(found: &Result<PathBuf, String>) -> String {
+pub(crate) fn status_value(found: &Result<PathBuf, String>) -> serde_json::Value {
     match found {
         Ok(p) => serde_json::json!({
             "installed": true,
@@ -82,11 +85,10 @@ pub(crate) fn status_line(found: &Result<PathBuf, String>) -> String {
             "looked": looked,
         }),
     }
-    .to_string()
 }
 
-/// `--acct-iso-shellinit` 跑完之后怎么交差 —— **纯函数**：`Ok` = 原样吐到 stdout；
-/// `Err((code, message))` = stderr 一行结构化 JSON ＋ exit 2（同 `--account-trust` 的约定）。
+/// `acct-iso-shellinit` 跑完之后怎么交差 —— **纯函数**：`Ok` = 原样交出片段；
+/// `Err((code, message))` = 那条帧命令的失败码。
 ///
 /// ⚠ 码 → 语义的映射住**调用方这一侧**（`plugin` 层逐字：同一个码在不同插件里语义互斥）。
 /// 这里只认一条：`0` 才算产出了片段。`cc-acct-iso` 的 warn（比如「manifest 里没有默认账号」）
@@ -115,53 +117,28 @@ pub(crate) fn shellinit_outcome(
     }
 }
 
-/// 一次查询的**答案**：退出码 ＋ 要写到 stdout / stderr 的字节。
-///
-/// ⚠ **本层不自己 `print`**：`accounts/` 里的上游选择同时挂在 `--relay` 进程上，它的每一条日志都在
-/// `relay::creds_guard` 的白名单底下（前缀 `[apikey]`、插值逐项登记 —— 防 key 漏进日志）。
-/// 查询的输出不是日志、也不该带那个前缀 ⇒ 这里只**产出**答案，写出去的那一下归进程入口
-/// （`main.rs` 的 `emit_answer`，与 `std::process::exit` 同一处）。
-pub struct Answer {
-    pub code: i32,
-    pub stdout: String,
-    pub stderr: Option<String>,
+/// 找到它、起一次 `shellinit`、按 [`shellinit_outcome`] 交差。
+fn shellinit_now() -> Result<String, (&'static str, String)> {
+    match locate() {
+        Err(looked) => Err(("not_installed", looked)),
+        Ok(bin) => shellinit_outcome(crate::plugin::invoke::run(
+            &bin,
+            &["shellinit"],
+            SHELLINIT_DEADLINE_SECS,
+            &[],
+        )),
+    }
 }
 
-/// 查询模式入口。退出码约定同 `observe::accounts_query::run`（0 ok / 2 err），
-/// 失败时 stderr 是一行结构化 `{code,message}`（同 `--account-trust`）。
-pub fn answer(args: &[String]) -> Answer {
-    let fail = |code: &str, message: String| Answer {
-        code: 2,
-        stdout: String::new(),
-        stderr: Some(serde_json::json!({"code": code, "message": message}).to_string()),
-    };
-    match args.first().map(String::as_str) {
-        Some("--acct-iso-status") => Answer {
-            code: 0,
-            stdout: format!("{}\n", status_line(&locate())),
-            stderr: None,
-        },
-        Some("--acct-iso-shellinit") => {
-            let got = match locate() {
-                Err(looked) => Err(("not_installed", looked)),
-                Ok(bin) => shellinit_outcome(crate::plugin::invoke::run(
-                    &bin,
-                    &["shellinit"],
-                    SHELLINIT_DEADLINE_SECS,
-                    &[],
-                )),
-            };
-            match got {
-                Ok(snippet) => Answer {
-                    code: 0,
-                    stdout: snippet,
-                    stderr: None,
-                },
-                Err((code, message)) => fail(code, message),
-            }
-        }
-        other => fail("bad_args", format!("unknown argument: {other:?}")),
-    }
+/// 〔LOC1a · 第四波 4D〕帧面 `acct-iso-status → {installed, path, looked}`（`设计/05 §14.6`：本机那几问从
+/// 「exec 一次性本机后端」改走 `<local>` 长连接）。从不报错 ——「没装」是一个答案。CLI 面由帧面自动派生（同名 `--acct-iso-status`）。
+pub(crate) fn answer_wire_status() -> Result<serde_json::Value, (&'static str, String)> {
+    Ok(status_value(&locate()))
+}
+
+/// 〔LOC1a · 第四波 4D〕帧面 `acct-iso-shellinit → {snippet}`：片段原样（围栏校验仍归 monitor，理由见模块头注「诚实边界」）。
+pub(crate) fn answer_wire_shellinit() -> Result<serde_json::Value, (&'static str, String)> {
+    shellinit_now().map(|snippet| serde_json::json!({ "snippet": snippet }))
 }
 
 #[cfg(test)]

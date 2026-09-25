@@ -6,55 +6,61 @@
 //!
 //! 〔RM1b · 第四波〕读任务文件那一段搬进了后端（`src/backend/observe/tasks_query.rs`，
 //! 它的判据在 `tests/backend/observe/tasks_query_tests.rs`：跳旁文件 · 按数字排 · 半截跳过 ·
-//! 目录不在 = 空 · 目录读不了 ≠ 空 · sid 围栏 · 超限跳过）。本文件只剩 monitor 这一侧的三件：
-//! 字段语义（`parse_task_lines`）· watcher 反推 sid · 线上 camelCase 契约。
+//! 目录不在 = 空 · 目录读不了 ≠ 空 · sid 围栏 · 超限跳过）。
+//! 〔LOC1a · 第四波 4D · C4e 批 4〕字段语义也搬过去了（后端 `task_entry` 出成品，`设计/05 §14.3`「业务解释只有一个家」；
+//! 旧口径那几档 —— 缺必填 / 类型不对 / 多余键 —— 由跨语言金样 `tests/__fixtures__/tasks-list.golden.json` 在后端那侧判）。
+//! 本文件只剩 monitor 这一侧的三件：成品按形状严格收（`decode_tasks`）· watcher 反推 sid · 线上 camelCase 契约。
 //! 夹具只造结构（占位字段），不采任何真会话正文。
 
 use super::*;
 use std::path::PathBuf;
 
-fn line(id: &str, status: &str) -> String {
-    format!(r#"{{"id":"{id}","subject":"s{id}","status":"{status}","blocks":[],"blockedBy":[]}}"#)
+fn golden() -> serde_json::Value {
+    let raw = std::fs::read_to_string(
+        crate::guard_support::repo_root().join("tests/__fixtures__/tasks-list.golden.json"),
+    )
+    .expect("读金样");
+    serde_json::from_str(&raw).expect("金样是 JSON")
 }
 
+/// 金样的成品这一侧收得下，逐格读得出来（异源：金样由后端测试从生产路径现算核过）。
 #[test]
-fn parse_keeps_the_backend_order_and_drops_lines_that_are_not_tasks() {
-    let lines = vec![
-        line("1", "completed"),
-        // 后端只保证「是一个对象」：缺 `subject` / `status` 的对象在这一侧挡下。
-        r#"{"id":"2"}"#.to_string(),
-        "not json".to_string(),
-        line("10", "pending"),
-    ];
-    let got = parse_task_lines(&lines);
+fn the_golden_product_decodes_on_this_side() {
+    let got = decode_tasks("本机", golden()["product"].clone()).expect("成品收得下");
     let ids: Vec<&str> = got.iter().map(|t| t.id.as_str()).collect();
-    assert_eq!(ids, vec!["1", "10"]);
-    // 反向：一行都不是任务 ⇒ 空（不是 panic、不是错）。
-    assert!(parse_task_lines(&["[]".to_string()]).is_empty());
+    assert_eq!(ids, vec!["1", "2", "3"]);
+    assert_eq!(got[0].description.as_deref(), Some("说明"));
+    assert_eq!(got[1].active_form.as_deref(), Some("占位乙中"));
+    assert_eq!(got[1].blocked_by, vec!["1"]);
+    assert!(got[2].description.is_none() && got[2].blocks.is_empty());
+    // 空清单 ⇒ 空（诚实的空，不是错）。
+    assert!(decode_tasks("本机", serde_json::json!({"tasks": []})).unwrap().is_empty());
 }
 
+/// 按形状**严格**收：多一格 / 缺一格 / 类型不对 / 顶层不对 ⇒ `Err`「两端契约对不上」，**不跳过那一条**
+/// （跳过是字段语义，那一份只住后端）。
 #[test]
-fn parse_reads_the_optional_fields() {
-    let lines = vec![r##"{
-        "id":"1",
-        "subject":"占位 subject",
-        "description":"占位 description",
-        "activeForm":"占位 activeForm",
-        "status":"in_progress",
-        "blocks":["2"],
-        "blockedBy":["0"],
-        "unknownFutureField": true
-    }"##
-    .to_string()];
-    let got = parse_task_lines(&lines);
-    assert_eq!(got.len(), 1);
-    let t = &got[0];
-    assert_eq!(t.subject, "占位 subject");
-    assert_eq!(t.description.as_deref(), Some("占位 description"));
-    assert_eq!(t.active_form.as_deref(), Some("占位 activeForm"));
-    assert_eq!(t.status, "in_progress");
-    assert_eq!(t.blocks, vec!["2"]);
-    assert_eq!(t.blocked_by, vec!["0"]);
+fn a_product_of_the_wrong_shape_is_refused_not_skimmed() {
+    let ok = serde_json::json!({"id":"1","subject":"s","status":"pending","blocks":[],"blockedBy":[]});
+    let with = |k: &str, v: serde_json::Value| {
+        let mut t = ok.clone();
+        t[k] = v;
+        serde_json::json!({ "tasks": [t] })
+    };
+    let mut missing = ok.clone();
+    missing.as_object_mut().unwrap().remove("status");
+    for bad in [
+        with("extra", serde_json::json!(1)),
+        with("id", serde_json::json!(1)),
+        with("blocks", serde_json::json!(null)),
+        serde_json::json!({ "tasks": [missing] }),
+        serde_json::json!({ "lines": [] }),
+        serde_json::json!({ "tasks": [], "more": 1 }),
+        serde_json::json!([]),
+    ] {
+        let e = decode_tasks("本机", bad.clone()).expect_err("该拒");
+        assert!(e.contains("两端契约对不上"), "{bad} ⇒ {e}");
+    }
 }
 
 /// ★ 本机读实现真的退役了：生产段里一处 `read_dir` / `read_to_string` 都不许有

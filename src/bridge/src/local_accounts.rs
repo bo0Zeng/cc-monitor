@@ -14,8 +14,8 @@
 //!
 //! 更早的来历（`N-F1c` 读口改问本机后端、C4c 本机清单与信任预检改走通道）见 git 历史与 `调研/第四波记录/C4c.md`。
 
-// `N-F1c`：本机那两问的传输。**只做调用方**，一个字都不改它的语义。
-use crate::backend::observe::local_query::{run_query, QueryOutcome};
+// 〔LOC1a · 第四波 4D〕本机那两问的传输：`<local>` 那条长连接（帧命令 `acct-iso-status` / `acct-iso-shellinit`）。
+//   此前每问 exec 一次本机后端（`local_query`〔散文墓碑〕，整份删了；`设计/05 §14.6`）。
 
 // 〔C4c · 第四波 4B〕本机账号清单那条 Tauri 命令（`list_local_accounts`）与它的三档结局（`LocalAccountsOutcome`）·
 //   行解析转交（`classify_local_accounts`）· 本机并表（`with_apikey_table`）〔散文墓碑〕一起退役：本机与远端同一条路 ——
@@ -62,50 +62,28 @@ mod tests;
 // ─────────────────────────────────────────────────────────────────────────────
 //
 // 远端那两条（`acct_iso_deploy.rs::check_remote_acct_iso` / `remote_acct_iso_shellinit`）
-// 吃 `RemoteConfig`、经 SSH 跑一串 shell；本机这两条**问本机后端**
-// （`--acct-iso-status` / `--acct-iso-shellinit`，住后端账号域 `accounts/iso.rs`），
-// 与 `list_local_accounts` 同一种调用法 —— `NR2`「claude 真实跑在哪台机器，账号就归那台的后端管」。
+// 吃 `RemoteConfig`、经拨号链路跑一串 shell；本机这两条**问本机常驻后端**（帧命令 `acct-iso-status` /
+// `acct-iso-shellinit`，本体住后端账号域 `accounts/iso.rs`），走 `<local>` 那条长连接 ——
+// `NR2`「claude 真实跑在哪台机器，账号就归那台的后端管」。
 // 出参类型与远端那条**逐字相同**（`AcctIsoStatus` / 片段文本），前端按同一个形状读。
+// ⚠ 远端那两条今天仍是 shell（`05 §14.3` 把 `acct-iso.*` 划进 B 组「与上游选择整体进后端一起做」，
+//   不在 LOC1a 的射程；后端帧命令已在，远端改走它只差那一拍）。
 
-/// 后端 stderr 那一行 `{code,message}` 里的 `message`；解析不了就原样带回（不猜）。
-fn backend_message(stderr: &str) -> String {
-    serde_json::from_str::<serde_json::Value>(stderr.trim())
-        .ok()
-        .and_then(|v| {
-            v.get("message")
-                .and_then(|m| m.as_str())
-                .map(str::to_string)
-        })
-        .unwrap_or_else(|| stderr.trim().to_string())
-}
+/// 本机两问的期限：`status` 只看文件在不在；`shellinit` 起一次 `cc-acct-iso`（后端那侧自带 20 s 期限）。
+const ACCT_ISO_BUDGET: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// `--acct-iso-status` 的结局 → `AcctIsoStatus` —— **纯函数**。
+/// `acct-iso-status` 的结局 → `AcctIsoStatus` —— **纯函数**。
 ///
-/// 「没装」是 `Ok(installed:false)`（后端 exit 0 的那一支），不是 `Err`；
-/// `Err` 只给「问不出来」的两档（后端不在 / 查询失败 / 出参读不懂），且**不许**说成「没装」。
+/// 「没装」是 `Ok(installed:false)`（后端答了「没有」），不是 `Err`；
+/// `Err` 只给「问不出来」的两档（够不着 / 对端说不行 · 应答读不懂），且**不许**说成「没装」。
 pub(crate) fn classify_local_acct_iso(
-    outcome: QueryOutcome,
+    got: Result<serde_json::Value, String>,
 ) -> Result<crate::acct_iso_deploy::AcctIsoStatus, String> {
-    let stdout = match outcome {
-        QueryOutcome::Ok(s) => s,
-        QueryOutcome::NoBackend(reason) => {
-            return Err(format!(
-                "本机后端不在，查不出这台机器装没装 cc-acct-iso：{reason}"
-            ))
-        }
-        QueryOutcome::Failed { code, stderr } => {
-            return Err(format!(
-                "本机后端查不出 cc-acct-iso 装没装（退出码 {code:?}）：{}",
-                backend_message(&stderr)
-            ))
-        }
-    };
-    let v: serde_json::Value = serde_json::from_str(stdout.trim())
-        .map_err(|e| format!("本机后端回的 cc-acct-iso 状态读不懂：{e}"))?;
+    let v = got.map_err(|e| format!("查不出这台机器装没装 cc-acct-iso：{e}"))?;
     let installed = v
         .get("installed")
         .and_then(serde_json::Value::as_bool)
-        .ok_or_else(|| "本机后端回的 cc-acct-iso 状态里没有 installed".to_string())?;
+        .ok_or_else(|| "本机后端回的 cc-acct-iso 状态里没有 installed —— 两端契约对不上".to_string())?;
     Ok(crate::acct_iso_deploy::AcctIsoStatus {
         installed,
         path: v.get("path").and_then(|p| p.as_str()).map(str::to_string),
@@ -116,37 +94,33 @@ pub(crate) fn classify_local_acct_iso(
 /// `acct-iso.check` 的本机对侧：这台机器装没装 `cc-acct-iso`。
 #[tauri::command]
 pub async fn check_local_acct_iso() -> Result<crate::acct_iso_deploy::AcctIsoStatus, String> {
-    tokio::task::spawn_blocking(|| {
-        classify_local_acct_iso(run_query(
-            env!("CCM_TARGET_TRIPLE"),
-            &["--acct-iso-status"],
-            &*crate::spawn_managed::local_backend_one_shot_query(),
-        ))
-    })
-    .await
-    .map_err(|e| format!("本机 cc-acct-iso 查询没能跑完：{e}"))?
+    classify_local_acct_iso(
+        crate::backend::control::frame_query::call(
+            &crate::origin::Origin::local(),
+            "acct-iso-status",
+            serde_json::json!({}),
+            ACCT_ISO_BUDGET,
+        )
+        .await,
+    )
 }
 
-/// `--acct-iso-shellinit` 的结局 → 片段 —— **纯函数**。
+/// `acct-iso-shellinit` 的结局 → 片段 —— **纯函数**。
 ///
 /// 围栏校验与远端那条**同一个判定**（`acct_iso_deploy::shellinit_fence_state`），
 /// 只是话按本机说（远端那句「先在『维护』里部署」对本机是一条走不通的路 ——
 /// 本机的安装口今天不存在，`LOCAL_ACCOUNTS_COPY.emptyNext` 逐字写着）。
-pub(crate) fn classify_local_shellinit(outcome: QueryOutcome) -> Result<String, String> {
+pub(crate) fn classify_local_shellinit(
+    got: Result<serde_json::Value, String>,
+) -> Result<String, String> {
     use crate::acct_iso_deploy::{shellinit_fence_state, FenceState};
     use crate::acct_iso_deploy::{SHELLINIT_FENCE_BEGIN, SHELLINIT_FENCE_END};
-    let out = match outcome {
-        QueryOutcome::Ok(s) => s,
-        QueryOutcome::NoBackend(reason) => {
-            return Err(format!("本机后端不在，拿不到这台机器的 rc 片段：{reason}"))
-        }
-        QueryOutcome::Failed { stderr, .. } => {
-            return Err(format!(
-                "本机没能产出 rc 片段：{}",
-                backend_message(&stderr)
-            ))
-        }
-    };
+    let v = got.map_err(|e| format!("本机没能产出 rc 片段：{e}"))?;
+    let out = v
+        .get("snippet")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "本机后端回的应答里没有 snippet —— 两端契约对不上".to_string())?
+        .to_string();
     match shellinit_fence_state(&out) {
         FenceState::Complete => Ok(out),
         FenceState::Truncated => Err(format!(
@@ -163,13 +137,13 @@ pub(crate) fn classify_local_shellinit(outcome: QueryOutcome) -> Result<String, 
 /// `acct-iso.shellinit` 的本机对侧：这台机器的 `cc-acct-iso shellinit` 片段（**只读**，不代写 rc）。
 #[tauri::command]
 pub async fn local_acct_iso_shellinit() -> Result<String, String> {
-    tokio::task::spawn_blocking(|| {
-        classify_local_shellinit(run_query(
-            env!("CCM_TARGET_TRIPLE"),
-            &["--acct-iso-shellinit"],
-            &*crate::spawn_managed::local_backend_one_shot_query(),
-        ))
-    })
-    .await
-    .map_err(|e| format!("本机 rc 片段查询没能跑完：{e}"))?
+    classify_local_shellinit(
+        crate::backend::control::frame_query::call(
+            &crate::origin::Origin::local(),
+            "acct-iso-shellinit",
+            serde_json::json!({}),
+            ACCT_ISO_BUDGET,
+        )
+        .await,
+    )
 }
