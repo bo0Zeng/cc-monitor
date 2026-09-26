@@ -117,7 +117,12 @@ fn is_file_text(t: &str) -> bool {
 /// 本族量的是**编辑面自己**（排版 · 编辑 · 撤销）在大文本上的形状。
 /// 〔F9c〕上一版这里要把「打开即只读」摘掉（1 MiB 以上存不回）；存盘改走暂存区之后那一档整个删了。
 fn pane(text: String) -> Pane {
-    Pane::opened("/srv/big.txt", "big.txt", text)
+    Pane::opened(
+        "/srv/big.txt",
+        "big.txt",
+        text,
+        crate::filewin::find::testing::fake_sha256(""),
+    )
 }
 
 /// 先在一个丢掉的 `Context` 上跑一帧，让 `Doc` 立起来（钉偏移要它先在）。
@@ -663,6 +668,7 @@ fn the_file_window_really_goes_through_the_big_mode() {
             path: "/srv/data/x.json".into(),
             name: "x.json".into(),
             text: text.clone(),
+            sha256: crate::filewin::find::testing::fake_sha256(""),
         });
         let ctx = egui::Context::default();
         let mut painted = Vec::new();
@@ -905,6 +911,7 @@ fn the_readings_behind_the_two_thresholds() {
             path: "/srv/data/big.txt".into(),
             name: "big.txt".into(),
             text: text.to_string(),
+            sha256: crate::filewin::find::testing::fake_sha256(""),
         });
         // 打开 ＝ 到货之后、**第一屏文件文字真画出来**为止的那几帧之和
         //（egui 的模态框第一帧只量尺寸不画 ⇒ 通常是两帧）。

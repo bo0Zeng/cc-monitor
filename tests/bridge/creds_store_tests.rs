@@ -74,7 +74,7 @@ fn the_key_never_lands_in_the_config_file_the_frontend_rewrites_wholesale() {
     // 同一个目录是**可以**的（`§0a` 要的是「不进那份配置」，不是「不同目录」）。
     assert_eq!(cfg.parent(), creds.parent());
     // ★ 机检：`config.rs` 的生产段里不许出现那个字段名 ——
-    //   它一旦出现，就说明有人把 key 塞进 `load_config`/`save_config` 那条路了。
+    //   它一旦出现，就说明有人把 key 塞进 `load_config`/`patch_config` 那条路了（〔CFG1〕写口从整份换成按键补丁）。
     let cfg_src = guard_core::production_code(include_str!("../../src/bridge/src/config.rs"));
     assert!(
         !cfg_src.contains(store::KEY_FIELD),

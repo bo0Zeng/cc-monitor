@@ -186,8 +186,9 @@ fn the_ledger_half_of_the_launcher_population_matches_the_registry() {
     // 〔C4e · 第四波 4C〕地板 100 → 99：抓屏 · 杀会话 · 送键 · 就地 resume 四条命令退役，单行三元组人群真少了 4 行（现打 99）。
     // 〔C4e 批 3b〕地板 99 → 94：cc-bus 查在线 · 发消息 · 派生 · 广播 · 收掉五条命令退役，单行三元组人群真少了 5 行（现打 94）。
     // 〔US1 · 第四波 4D〕地板 94 → 93：`read_apikey_credentials_status` / `apikey_routing_for` 两条退役（单行三元组人群真少了；现打 93）。
+    // 〔HX2 · 第四波 4D〕地板 93 → 92：`write_apikey_credentials_key` 退役（单行三元组人群真少了 1 行；现打 92）。
     assert!(
-        rows.len() >= 93,
+        rows.len() >= 92,
         "只从账本里抠到 {} 行单行三元组（09-02 现打 116）—— 抽取器坏了，本条会零命中地绿",
         rows.len()
     );

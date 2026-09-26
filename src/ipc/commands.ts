@@ -104,6 +104,7 @@ import type { ConnTestResult } from "../generated/ConnTestResult";
 import type { CcmProbeResult } from "../generated/CcmProbeResult";
 // `K-R69`：本机那条 `ccm` 入口这一格（我们那一份 · PATH 上那一份 · 判词 · 那句话）。
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
+import type { ConfigEdit } from "../generated/ConfigEdit";
 import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
 import type { DriftLedgerReport } from "../generated/DriftLedgerReport";
 import type { CcBusDeployReport } from "../generated/CcBusDeployReport";
@@ -214,8 +215,11 @@ export const commands = {
   /** 探测远端有没有装 `ccm` CLI 及其能力集。返回**线上形状**（TS 侧另有领域类型）⇒ 桶③。 */
   probe_ccm_cli: (args: { origin: string }) => invoke<CcmProbeResult>("probe_ccm_cli", args),
 
-  /** 写配置。Rust 返回 `Result<(), String>` ⇒ **桶①**。入参同样是不透明 JSON（见 `load_config`）。 */
-  save_config: (args: { value: Record<string, unknown> }) => invoke<void>("save_config", args),
+  /**
+   * 写配置：只交「改哪几条路径」（〔CFG1〕整份替换的 `save_config` 删了）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 〔散文墓碑〕
+   * 补丁的形状由生成物 `ConfigEdit` 钉（Rust `config.rs::ConfigEdit`）；值本身仍是不透明 JSON（见 `load_config`）。
+   */
+  patch_config: (args: { edits: ConfigEdit[] }) => invoke<void>("patch_config", args),
 
   /**
    * 写诊断配置。返回 `RestartHint` —— **它是个只有 unit variant 的外部标记枚举**

@@ -2466,13 +2466,16 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     // 〔MG1 · 合并 SU1 ＋ C4e〕基数 18 ＋ SU1 增量 2 ＋ C4e 增量 9 = 29（两路各自从 18 起算；上面两段各写各的增量）。
     // 〔US1 · 第四波 4D〕〔合并 US1 × 主线〕主线 29 ＋ 2：`apikey-reads.ts::readApikeyStatus`（`apikey-read`）· `fetchApikeyRouting`（`apikey-routing`）——
     //    API key 那两问从 monitor 的两条 Tauri 命令改走通道；每处显式给期限。
+    // 〔HX1 · 4D · D-f〕31 → 32：`account-reads.ts::fetchSessionAccountsOrNull`（`accounts-sessions`，机器页「停」本机后端之前
+    //    现问一次走中转的活会话；不走缓存、问不到回 `null`）；显式给期限。
+    // 〔HX2 · 4D〕32 → 33：`apikey-reads.ts::writeApikeyKey`（`apikey-key-set`，写 key 从 monitor 那条 Tauri 命令改走通道）；显式给期限。
     // 〔CF2 · 第四波 4B〕`chan.subscribe`（TS，主界面）恰好 1 处：`events.ts::bindEvents` 按 `streams` 订会话内容流
     //    （主窗口每台机器一条、独立窗口一条，都经这一处）。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 31usize),
+            ("chan.call", 33usize),
             ("chan.subscribe", 1usize),
             ("subscribe", 1usize)
         ]

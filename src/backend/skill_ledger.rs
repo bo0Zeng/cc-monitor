@@ -147,17 +147,13 @@ pub fn load_at(path: &Path) -> Result<Ledger, (&'static str, String)> {
     }
 }
 
-/// **全仓唯一的写者**：`O_EXCL` 新建临时文件 → 写满 → `sync` → 原子挪过去；目录不在就建那一层；失败删临时文件。
+/// **全仓唯一的写者**：`O_EXCL` 新建临时文件 → 写满 → `sync` → 原子挪过去；失败删临时文件（那一层目录由 [`record_at`] 建）。
 fn write_at(path: &Path, ledger: &Ledger) -> Result<(), String> {
     use std::io::Write as _;
     let dir = path
         .parent()
         .ok_or_else(|| format!("{} 没有父目录", path.display()))?;
-    if let Err(e) = std::fs::create_dir(dir) {
-        if e.kind() != std::io::ErrorKind::AlreadyExists {
-            return Err(format!("建 {} 失败：{e}", dir.display()));
-        }
-    }
+    // 〔HX1〕那一层目录由 [`record_at`] 在拿锁之前经 `own_dir::ensure_private_dir` 建（〔HX2〕挪过去：锁的是这个目录，它得先在）。
     let body = serde_json::to_string(ledger).map_err(|e| format!("装记录序列化失败：{e}"))?;
     let tmp = dir.join(format!("{FILE_NAME}.{}.tmp", std::process::id()));
     let result = (|| {
@@ -276,11 +272,9 @@ pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answe
     let lock_dir = path
         .parent()
         .ok_or(("io_failed", format!("{} 没有父目录", path.display())))?;
-    if let Err(e) = std::fs::create_dir(lock_dir) {
-        if e.kind() != std::io::ErrorKind::AlreadyExists {
-            return Err(("io_failed", format!("建 {} 失败：{e}", lock_dir.display())));
-        }
-    }
+    // 〔HX1〕只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。
+    crate::own_dir::ensure_private_dir(lock_dir)
+        .map_err(|e| ("io_failed", format!("建 {} 失败：{e}", lock_dir.display())))?;
     let _g = crate::platform::lock::hold(lock_dir).map_err(|e| ("io_failed", e))?;
     let mut ledger = load_at(path)?;
     let (dir, name, changed, left) = match op {

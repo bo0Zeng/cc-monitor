@@ -275,7 +275,12 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 〔US1 · 第四波 4D〕`05 §14.3` B 组：API key 那两问（`creds.apikey` 读 · `apikey.routing`）—— 后端出成品，界面经 `src/apikey-reads.ts` 问。
     (
         "apikey-read",
-        "那台机器上那份凭据文件的状态（只回掩码）：monitor 那条命令（`read_apikey_credentials_status`）本机自己读文件、远端转这一条          —— 本机那一份读者删了，界面按形状严格收（`apikey-reads.ts::decodeApikeyStatus`，跨语言金样 `apikey.golden.json`）。         ⚠ monitor 自己**另有**一处问它（写 key 之前核路径，见 [`ASKED_BY_MONITOR_ITSELF`]）—— 那不是替界面转",
+        "那台机器上那份凭据文件的状态（只回掩码）：monitor 那条命令（`read_apikey_credentials_status`）本机自己读文件、远端转这一条          —— 本机那一份读者删了，界面按形状严格收（`apikey-reads.ts::decodeApikeyStatus`，跨语言金样 `apikey.golden.json`）。         〔HX2 · 4D〕monitor 写 key 之前核路径那一问（`apikey_remote::send_key`〔散文墓碑〕）随写臂一起删了 —— monitor 生产段零处问它",
+    ),
+    // 〔HX2 · 第四波 4D〕`creds.apikey` 写：界面经 `src/apikey-reads.ts::writeApikeyKey` 直接交那台后端（账号 id 由后端推）。
+    (
+        "apikey-key-set",
+        "给一个号配 key：monitor 那条命令（`write_apikey_credentials_key`〔散文墓碑〕）推账号 id、本机那一臂先问 `apikey-read` 核路径再转这一条 ——         推 id 搬进后端写口（`acct_core` 那一份规则），核路径由常驻后端的身份（hello 的 `host_env`）答，命令与写臂删了",
     ),
     (
         "apikey-routing",
@@ -367,12 +372,7 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
         "退出臂在决定那一刻现问一次（`backend_policy::kill_on_exit_now`，`设计/01 §3.3b ④`）：\
          monitor 自己要不要跟着收那台后端 —— 它的答案不给界面",
     ),
-    (
-        "apikey-read",
-        1,
-        "〔GP1 · US1〕写 key 之前核「那台后端写的就是本 monitor 认的那一份」（`apikey_remote::send_key` 只读 `path`，\
-         `CCM_DATA_DIR` 隔离跑时接错后端 ⇒ 拒写）—— 它的答案不给界面",
-    ),
+    // 〔HX2 · 第四波 4D〕`apikey-read` 那一行退役：写 key 之前核路径那一问（`apikey_remote::send_key`〔散文墓碑〕）随写臂删了。
     (
         "skill-uninstall-plan",
         1,

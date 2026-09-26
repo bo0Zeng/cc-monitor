@@ -18,6 +18,7 @@
  * 买不到：真机 app 里点一遍（jsdom 之外没量）；真远端。
  */
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { copyText } from "../../src/copy-table";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -239,6 +240,8 @@ describe("资产目录 · 那一块", () => {
       dir: a.dir,
       deleted: a.take,
       recordFailed: null,
+      dirRemoved: true, // 〔FW1〕删完目录空了、也收掉了
+      dirFailed: null,
     }));
     let fetched = 0;
     const sec = new AssetsSection(() => {
@@ -278,5 +281,7 @@ describe("资产目录 · 那一块", () => {
       confirm: ["edited.md"],
     });
     expect(sec.element.textContent).toContain("删了 2 个文件");
+    // 〔FW1 · 主会话裁 SU1 问 2〕目录收掉了就说收掉了（不再说「目录还在」）。
+    expect(sec.element.textContent).toContain(copyText("assets.uninstall.doneDirRemoved", { n: "2", dir: "/h/.claude/skills/pulled" }));
   });
 });

@@ -207,6 +207,31 @@
       "zh": "现在看不见那台机器，说不清这个会话还在不在",
       "args": []
     },
+    "sessionState.deleteLive.confirm": {
+      "kind": "body",
+      "zh": "会话「{label}」还在跑。\n\n删掉之后 Claude 还会往旧文件里写，这些内容之后 resume 不到。仍要删除？",
+      "args": ["label"]
+    },
+    "sessionState.deleteUnknown.confirm": {
+      "kind": "body",
+      "zh": "说不清会话「{label}」还在不在跑。\n\n它若还在跑，删掉之后 Claude 还会往旧文件里写，这些内容之后 resume 不到。仍要删除？",
+      "args": ["label"]
+    },
+    "sessionState.recordFile.gone": {
+      "kind": "body",
+      "zh": "记录文件不见了。它被删掉或改了名，会话本身还在跑；文件回来后接着显示。",
+      "args": []
+    },
+    "sessionState.recordFile.truncated": {
+      "kind": "body",
+      "zh": "记录文件被改短了，已从头重读。",
+      "args": []
+    },
+    "sessionState.recordFile.rewritten": {
+      "kind": "body",
+      "zh": "记录文件被改过了，已从头重读。",
+      "args": []
+    },
     "sessionState.recordGone.title": {
       "kind": "error",
       "zh": "没法 resume：记录已不在",
@@ -767,9 +792,14 @@
       "zh": "在 {machine} 上删掉勾了的",
       "args": ["machine"]
     },
+    "assets.uninstall.doneDirRemoved": {
+      "kind": "body",
+      "zh": "删了 {n} 个文件，目录 {dir} 空了，也删掉了。",
+      "args": ["n", "dir"]
+    },
     "assets.uninstall.done": {
       "kind": "body",
-      "zh": "删了 {n} 个文件，目录 {dir} 还在。",
+      "zh": "删了 {n} 个文件，目录 {dir} 还在（里面还有别的东西）。",
       "args": ["n", "dir"]
     },
     "assets.uninstall.failed": {
@@ -4780,11 +4810,6 @@
     "tabBarView.group.dissolve": {
       "kind": "action",
       "zh": "×",
-      "args": []
-    },
-    "tabBarView.group.namePrompt": {
-      "kind": "body",
-      "zh": "集合名：",
       "args": []
     },
     "tabDrop.group.defaultName": {
@@ -9121,6 +9146,21 @@
       "zh": "停后端失败",
       "args": []
     },
+    "backend.stop.relayConfirm": {
+      "kind": "body",
+      "zh": "有 {n} 条会话在走本机中转。停了本机后端之后，它们的每一次请求都会失败，直到再起后端。仍然停？",
+      "args": ["n"]
+    },
+    "backend.stop.relayMaybe": {
+      "kind": "body",
+      "zh": "有 {n} 条会话在走本机中转，另有 {k} 条说不清走不走。停了本机后端之后，走中转的会话每一次请求都会失败，直到再起后端。仍然停？",
+      "args": ["k", "n"]
+    },
+    "backend.stop.relayUnknown": {
+      "kind": "body",
+      "zh": "问不到现在有几条会话在走本机中转。停了本机后端之后，走中转的会话每一次请求都会失败，直到再起后端。仍然停？",
+      "args": []
+    },
     "backend.start.failed": {
       "kind": "error",
       "zh": "起后端失败",
@@ -10449,6 +10489,16 @@
       "zh": "；",
       "args": []
     },
+    "rsFilewinTransfer.ui.redone": {
+      "kind": "error",
+      "zh": "传上去的那份中间有坏的一段，已整份重传：{names}",
+      "args": ["names"]
+    },
+    "rsFilewinTransfer.upload.noDigest": {
+      "kind": "error",
+      "zh": "传输台没交回摘要，没法比对，没有写进目标。请重开 app 再传。",
+      "args": []
+    },
     "rsFilewinTransfer.ui.failed": {
       "kind": "body",
       "zh": "上一趟 {n} 件失败：{failed}",
@@ -10673,6 +10723,41 @@
       "kind": "error",
       "zh": "存到第 {seq} 段（共 {total} 段）时断了：{why}",
       "args": ["seq", "total", "why"]
+    },
+    "rsFilewinEditor.stale.notice": {
+      "kind": "error",
+      "zh": "盘上那份在你打开后被改过了，这次没有存（{why}）",
+      "args": ["why"]
+    },
+    "rsFilewinEditor.stale.overwrite": {
+      "kind": "action",
+      "zh": "仍然覆盖",
+      "args": []
+    },
+    "rsFilewinEditor.stale.reopen": {
+      "kind": "action",
+      "zh": "丢掉改动，重新打开",
+      "args": []
+    },
+    "rsFilewinEditor.reply.noDigest": {
+      "kind": "error",
+      "zh": "那台机器上的后端太旧，存不回去，就没有打开。读文本的回答里没有这份内容的摘要。",
+      "args": []
+    },
+    "rsFilewinEditor.saved.noDigest": {
+      "kind": "error",
+      "zh": "已经存进去了，可后端没交回新摘要。再存一次会被当成盘上被改过，请关掉重新打开再改。",
+      "args": []
+    },
+    "rsFilewinEditor.overwrite.notText": {
+      "kind": "error",
+      "zh": "盘上那份现在不是能编辑的文本（{why}），覆盖不了。编辑框里的字还在。",
+      "args": ["why"]
+    },
+    "rsFilewinEditor.overwrite.readFailed": {
+      "kind": "error",
+      "zh": "为了覆盖先读一趟盘上那份，没读到：{why}。编辑框里的字还在。",
+      "args": ["why"]
     },
     "rsFilewinEditor.overCap.notice": {
       "kind": "error",
@@ -11088,11 +11173,6 @@
       "kind": "error",
       "zh": "把后端 {bin} 复制成本机 ccm 入口失败：{e}",
       "args": ["bin", "e"]
-    },
-    "rsLocalBackend.extract.mkdirFailed": {
-      "kind": "error",
-      "zh": "建目录 {dir} 失败：{e}",
-      "args": ["dir", "e"]
     },
     "rsLocalBackend.ccmEntry.readFailed": {
       "kind": "error",
@@ -12404,6 +12484,11 @@
       "zh": "置可执行位失败：{e}",
       "args": ["e"]
     },
+    "rsPlatformFs.mkdir.failed": {
+      "kind": "error",
+      "zh": "建目录 {dir} 失败：{e}",
+      "args": ["dir", "e"]
+    },
     "rsChanWire.hop.unreachable": {
       "kind": "error",
       "zh": "连不上对面",
@@ -12882,6 +12967,16 @@
       "zh": "主题 / 字体 / Claude 配置目录 / 诊断开关",
       "args": []
     },
+    "rsConfig.write.unreadable": {
+      "kind": "error",
+      "zh": "{path} 读不懂（{e}），这次的设置没有存。写回去会把这份文件里别的设置一起盖掉，先把它改成合法的 JSON",
+      "args": ["path", "e"]
+    },
+    "rsConfig.write.notAnObject": {
+      "kind": "error",
+      "zh": "最外层不是一个对象",
+      "args": []
+    },
     "rsLogging.diagnostics.badConfig": {
       "kind": "error",
       "zh": "{path} 读不懂（{e}），诊断设置没有存。写回去会把这份文件里别的设置一起盖掉，先把它改成合法的 JSON",
@@ -13095,6 +13190,11 @@
     "rsByteTable.key.noAnswer": {
       "kind": "error",
       "zh": "它没有答",
+      "args": []
+    },
+    "rsByteTable.key.notUtf8": {
+      "kind": "error",
+      "zh": "它的回答不是 UTF-8 编码，多半是 Windows 的 PowerShell 或 cmd 在说没有 uname 这个命令",
       "args": []
     },
     "rsFootprintRemote.call.internal": {
@@ -15335,6 +15435,16 @@
       "zh": "本机后端已停（常驻，pid={pid}）",
       "args": ["pid"]
     },
+    "rsLocalBackendHost.stop.forced": {
+      "kind": "error",
+      "zh": "本机后端 {secs} 秒内没收完手上的活，已强制结束（pid={pid}）。那一刻在跑的写可能没做完。",
+      "args": ["pid", "secs"]
+    },
+    "rsLocalBackendHost.stop.stillThere": {
+      "kind": "error",
+      "zh": "强制结束之后它还在",
+      "args": []
+    },
     "rsLocalBackendHost.adopt.waited": {
       "kind": "error",
       "zh": "{last}（等了 {tries}×{interval}ms 还是这样）",
@@ -15364,6 +15474,16 @@
       "kind": "error",
       "zh": "端口 {port} 上已经有程序，但接不上它：{why}。不会再起第二个，也不会换端口。要重来，先把那个进程停掉",
       "args": ["port", "why"]
+    },
+    "rsLocalBackendHost.start.busy": {
+      "kind": "error",
+      "zh": "端口 {port} 上的本机后端正被另一个 cc-monitor 连着，这一个接不上",
+      "args": ["port"]
+    },
+    "rsLocalBackendHost.start.busyNotice": {
+      "kind": "error",
+      "zh": "本机后端正被另一个 cc-monitor 连着，这一个没有接上。关掉另一个 cc-monitor 再打开这一个。",
+      "args": []
     },
     "rsLocalBackendHost.start.refusedNotice": {
       "kind": "error",
@@ -15485,10 +15605,10 @@
       "zh": "写 {path} 失败：{e}",
       "args": ["path", "e"]
     },
-    "rsLocalBackendHost.fs.mkdirFailed": {
+    "rsLocalBackendHost.token.noRandom": {
       "kind": "error",
-      "zh": "建目录 {dir} 失败：{e}",
-      "args": ["dir", "e"]
+      "zh": "取不到系统随机数（{e}），生成不了本机后端的连接钥匙",
+      "args": ["e"]
     },
     "rsLocalBackendHost.fs.createFailed": {
       "kind": "error",
@@ -15619,6 +15739,11 @@
       "kind": "body",
       "zh": "、",
       "args": []
+    },
+    "rsSkillInstall.uninstall.dirFailed": {
+      "kind": "error",
+      "zh": "文件删完了，收空目录 {path} 时没成：{e}",
+      "args": ["path", "e"]
     },
     "rsSkillInstall.uninstall.stopped": {
       "kind": "error",
@@ -16288,6 +16413,11 @@
       "zh": "后端内部出错，这条命令没做完：{e}",
       "args": ["e"]
     },
+    "beInbound.drain.shuttingDown": {
+      "kind": "error",
+      "zh": "后端正在退出，这条命令没有执行；重新连上之后再试",
+      "args": []
+    },
     "beAccountsQuery.trustProductAt.unparsable": {
       "kind": "error",
       "zh": "读不懂信任状态：{e}",
@@ -16813,6 +16943,96 @@
       "kind": "error",
       "zh": "读不到{machine}的账号清单，说不清账号「{name}」还能不能用，这次没有起。点这条提示改用「不指定账号」起。",
       "args": ["machine", "name"]
+    },
+    "askDialog.buttons.ok": {
+      "kind": "action",
+      "zh": "确定",
+      "args": []
+    },
+    "askDialog.buttons.cancel": {
+      "kind": "action",
+      "zh": "取消",
+      "args": []
+    },
+    "events.stream.closedTitle": {
+      "kind": "error",
+      "zh": "会话更新停了",
+      "args": []
+    },
+    "events.stream.closedLocal": {
+      "kind": "body",
+      "zh": "本机的会话不会再自动更新。重启 cc-monitor 可以重新接上。",
+      "args": []
+    },
+    "events.stream.closedRemote": {
+      "kind": "body",
+      "zh": "{machine} 上的会话不会再自动更新。重启 cc-monitor 可以重新接上。",
+      "args": ["machine"]
+    },
+    "launchAccount.lastAccount.notRecorded": {
+      "kind": "error",
+      "zh": "没记下这次用的账号",
+      "args": []
+    },
+    "launchAccount.lastAccount.notRecordedBody": {
+      "kind": "body",
+      "zh": "会话照常起了；下次恢复这条会话时不会自动选「{account}」。原因：{e}",
+      "args": ["account", "e"]
+    },
+    "settingsPanel.claudeDir.pickFailed": {
+      "kind": "error",
+      "zh": "选目录的窗口打不开：{e}。可以直接在输入框里填路径。",
+      "args": ["e"]
+    },
+    "remote.import.listFailed": {
+      "kind": "error",
+      "zh": "读不了 ~/.ssh/config：{e}。可以点「添加机器」手动填写。",
+      "args": ["e"]
+    },
+    "machineAliases.autoLaunch.unreadable": {
+      "kind": "error",
+      "zh": "读不到这项设置：{e}",
+      "args": ["e"]
+    },
+    "tabBar.persist.collectionsFailed": {
+      "kind": "error",
+      "zh": "分组没存上，重启后会回到上次存下的分组",
+      "args": []
+    },
+    "tabBar.persist.pinnedFailed": {
+      "kind": "error",
+      "zh": "固定没存上，重启后会回到上次存下的固定",
+      "args": []
+    },
+    "tabBar.persist.orderFailed": {
+      "kind": "error",
+      "zh": "顺序没存上，重启后会回到上次存下的顺序",
+      "args": []
+    },
+    "settings.behavior.saveFailed": {
+      "kind": "error",
+      "zh": "行为设置没存上",
+      "args": []
+    },
+    "keybindings.persist.failed": {
+      "kind": "error",
+      "zh": "快捷键没存上，重启后会回到上次存下的键位",
+      "args": []
+    },
+    "history.star.failed": {
+      "kind": "error",
+      "zh": "星标没改成",
+      "args": []
+    },
+    "history.rename.failed": {
+      "kind": "error",
+      "zh": "标题没改成",
+      "args": []
+    },
+    "history.hide.failed": {
+      "kind": "error",
+      "zh": "隐藏没改成",
+      "args": []
     }
   }
 }
