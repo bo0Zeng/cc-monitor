@@ -454,7 +454,8 @@ const BACKEND_PATH_READS: &[(&str, usize, &str)] = &[
 fn every_read_of_the_backend_path_field_is_registered() {
     let mut on_disk: BTreeMap<String, usize> = BTreeMap::new();
     for (rel, body) in production_sources() {
-        if !rel.starts_with("src/bridge/src/") || !rel.ends_with(".rs") {
+        // 按路径分量认（`needle_anchor_registry` 那条棘轮不许在语料变量上裸 `.starts_with`）。
+        if !rel.split('/').take(3).eq(["src", "bridge", "src"]) || !rel.ends_with(".rs") {
             continue;
         }
         let n = body.matches(".backend_path").count()
