@@ -35,6 +35,9 @@
  *   原 `cc_integration.ts` 整块搬进来）＋ 用户级 PATH 那一格。
  */
 import { commands } from "../ipc/commands";
+import { chan } from "../ipc/chan";
+import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
+import { LOCAL_ORIGIN } from "../ipc/origin";
 import { showActionFailureToast } from "../error-toast"; // `K-R135`：用户级 PATH 那一格的失败要出声
 import { buildPasteBlock } from "../paste-block";
 import { ACTIVE_AGENT, listAgents } from "../agent-profile";
@@ -108,8 +111,61 @@ export function suggestAliasName(account: string): string {
   return /^[0-9]/.test(withCc) ? `_${withCc}` : withCc;
 }
 
+/** 〔W5-ALIAS〕问一次预览（`ccm-print`）最多等多久：读一份账号库 ＋ 问一次会话快照，秒级内。 */
+const PREVIEW_BUDGET_MS = 10_000;
+
+/**
+ * 〔W5-ALIAS · 第五波先行〕**一条别名实际会执行什么**（`设计/71 §2.3`「`ccm --print` 不跑、吐出等价的一行 shell
+ * ⇒ 生成器旁边显示这条别名实际会执行什么，是真验证，不是前端拼串」）。
+ *
+ * 问这台机器的后端（帧命令 `ccm-print`，经通道 `chan.call`）—— 与终端里 `ccm --print` 同一个计划函数；
+ * 语境是「家目录里的一个新终端」（后端那一侧写死，`control/ccm/plan.rs::Env::for_preview`）。
+ * 本文件一个字节的 shell 都不拼：`line` 原样上屏。点了才问（不在首开的那几发里）。
+ */
+export async function previewAlias(a: Alias): Promise<string> {
+  try {
+    const budget = budgetWithin(PREVIEW_BUDGET_MS);
+    const body = jsonBody({ args: a.args });
+    const reply = await chan.call(LOCAL_ORIGIN, "ccm-print", body, budget);
+    const got = readJson(reply) as { line?: unknown };
+    return copyText("machineAliases.aliasPreview.line", {
+      name: a.name,
+      line: typeof got.line === "string" ? got.line : "",
+    });
+  } catch (e) {
+    return copyText("machineAliases.aliasPreview.failed", {
+      reason: saidOf(e, copyText("machineAliases.aliasPreview.tooOld")),
+    });
+  }
+}
+
 /** tmux 那一维的四个取值（`71 §4` 第一档）。 */
 export type TmuxMode = "none" | "auto" | "named" | "base";
+
+/**
+ * 〔W5-ALIAS · 第五波先行〕tmux 四选各自**撞名时会怎样**（`设计/71 §8 #9`：表单上那四个选项只有名字，没有一句说撞了会怎样）。
+ *
+ * 规则不在这里：取名与退让住后端 `control/ccm/plan.rs::build`（`next_free_name`，`--print` 与真跑同一个名字）。
+ * 这里只把那三条取名路的态度说成人话 —— `stepsAside` 那一格与后端逐条对拍
+ * （`tests/settings/machine-aliases-naming.vitest.ts` 读后端原文，两向相等），说明里「依次试」出现 ⇔ 它为真。
+ */
+// ⚠ `text` 是取文函数、不是模块加载时就取好的串：模块顶层调 `copyText` 算一次副作用，会让打包器把本模块挪进
+//   主窗口也要的共享块（`tests/entry-graphs.vitest.ts` 当场逮到：主窗口因此「挂得上」设置页的一堆类）。
+export const TMUX_NAMING: Record<TmuxMode, { stepsAside: boolean | null; text: () => string }> = {
+  none: { stepsAside: null, text: () => copyText("machineAliases.tmuxNaming.none") },
+  auto: {
+    stepsAside: true,
+    text: () => copyText("machineAliases.tmuxNaming.auto"),
+  },
+  named: {
+    stepsAside: false,
+    text: () => copyText("machineAliases.tmuxNaming.named"),
+  },
+  base: {
+    stepsAside: true,
+    text: () => copyText("machineAliases.tmuxNaming.base"),
+  },
+};
 
 /** 表单那一侧的样子。**只是编辑界面** —— 合不合格由后端 `account_aliases::check_alias` 判。 */
 export interface AliasForm {
@@ -312,6 +368,11 @@ export function buildAliasManager(opts: {
     ...listAgents().map((a): [string, string] => [a, `agent：${a}`]),
   ]);
   grid.append(nameIn, cwdIn, acctSel, tmuxSel, tmuxNameIn, agentSel);
+  // 〔W5-ALIAS〕选了哪种 tmux，下面一句说清撞名时会怎样（`TMUX_NAMING`）。
+  for (const o of [...tmuxSel.options]) o.title = TMUX_NAMING[o.value as TmuxMode].text();
+  // 挂钩用 `data-role` 不用类名：这一行的外观就是 `.settings-hint`，多一个没有规则的类名只会让悬空类名那条棘轮多一格。
+  const tmuxHint = el("div", "settings-hint");
+  tmuxHint.dataset.role = "tmux-naming";
 
   const adv = el("details", "ccm-alias-gen");
   adv.appendChild(el("summary", "", copyText("machineAliases.form.more")));
@@ -338,7 +399,7 @@ export function buildAliasManager(opts: {
   const perAcctBtn = button(copyText("machineAliases.form.perAccount"), "", () => void onPerAccount());
   perAcctBtn.title = copyText("machineAliases.form.perAccountHint");
   formRow.append(saveBtn, clearBtn, perAcctBtn);
-  wrap.append(grid, adv, formRow);
+  wrap.append(grid, tmuxHint, adv, formRow);
 
   // ── 渲染结果（第①跳）────────────────────────────────────────────────────
   const problemsBox = el("div", "settings-hint machine-aliases-problems");
@@ -476,6 +537,7 @@ export function buildAliasManager(opts: {
   }
   const syncEnabled = (): void => {
     const inTmux = tmuxSel.value !== "none";
+    tmuxHint.textContent = TMUX_NAMING[tmuxSel.value as TmuxMode].text();
     tmuxNameIn.disabled = !(tmuxSel.value === "named" || tmuxSel.value === "base");
     sizeIn.disabled = !inTmux;
     detachCk.disabled = !inTmux;
@@ -521,7 +583,18 @@ export function buildAliasManager(opts: {
     list.forEach((a, i) => {
       const row = el("div", "settings-row machine-aliases-row");
       row.append(el("code", "", a.name), el("span", "settings-hint", describeArgs(a.args)));
+      // 〔W5-ALIAS〕「实际会执行什么」那一行：点「预览」才问后端（`previewAlias`），答案挂在这一条下面。
+      // 点了才建、才挂（不用 `hidden` 切：会被切的元素要一个静态认得出的类，而这一格的外观没有自己的规则）。
+      const previewOut = document.createElement("pre");
+      previewOut.dataset.role = "alias-preview";
       row.append(
+        button(copyText("machineAliases.aliasPreview.button"), "", () => {
+          if (!previewOut.isConnected) row.after(previewOut);
+          previewOut.textContent = copyText("machineAliases.aliasPreview.asking");
+          void previewAlias(a).then((t) => {
+            previewOut.textContent = t;
+          });
+        }),
         button(copyText("machineAliases.list.edit"), "", () => fillForm(aliasToForm(a), i)),
         button(copyText("machineAliases.list.delete"), "", () => {
           list = list.filter((_, j) => j !== i);
@@ -1087,7 +1160,12 @@ function buildPsExtras(): PsExtras {
       autoLaunchPathSpan.title = cfg.monitor_exe_path ?? "";
     } catch (e) {
       console.warn("cc_get_auto_launch failed:", e);
+      // 〔W5-UI · 设计/70 §7 #4〕读不到时别把「不知道」画成「没勾」：复选框禁用、路径那格说读不到。
+      autoLaunchCheckbox.disabled = true;
+      autoLaunchPathSpan.textContent = copyText("machineAliases.autoLaunch.unreadable", { e: String(e) });
+      return;
     }
+    autoLaunchCheckbox.disabled = false;
   };
   autoLaunchCheckbox.addEventListener("change", () => {
     const enabled = autoLaunchCheckbox.checked;

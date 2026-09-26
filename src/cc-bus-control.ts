@@ -16,9 +16,10 @@
  *
  * # 本文件做的只有三件（都是调用方那一侧的事）
  *
- * 1. **先核入参**（「调用方不能靠对端校验」）：agent id 过 [`isValidBusId`]（与 monitor 读收件箱那一份同一条规则，
- *    跨语言金样 `tests/__fixtures__/cc-bus-control.golden.json` 的 `ids` 钉两份）· 正文非空 · 派生的形状（[`checkSpawnShape`]）。
- *    过不了就一个字节都不发。
+ * 1. **先核入参**：正文非空 · 派生的形状（[`checkSpawnShape`]：选了 tool、目录非空）。过不了就一个字节都不发。
+ *    〔DUP2 · 主会话 09-26 裁 J12〕agent id / 派生账号名的**形状**不在这里判了：规则只有一份（`shell_quote_core::bus_id_ok`），
+ *    后端在把它交给 `cc-send` / `cc-kill` / `cc-spawn` 之前先判、判不过回 `bad_id`（`INVARIANTS §47` 那一格改写成「后端交给 `cc-send` 之前」，
+ *    `设计/90 §3` 判据 2）；这里把那个码说成人话。
  * 2. **按形状收**：成品恰好是那几格、类型对 ⇒ 收；否则当成「两边版本对不上」抛，不猜
  *    （破坏性的收掉 / 派生：形状不认识 ⇒ **不知道动没动**，那句话明说别直接重来）。
  *    线上形状由跨语言金样钉着（后端产出 == 金样 · 本文件读同一份）。
@@ -48,17 +49,9 @@ const ONLINE_BUDGET_MS = 15_000;
 const WRITE_BUDGET_MS = 30_000;
 const SPAWN_BUDGET_MS = 90_000;
 
-/**
- * cc-bus agent id 合法吗：非空 · 不以 `-` 开头 · 只含 `[A-Za-z0-9_-]`（`--help` 在盘上真出现过，放它过去只会造一个没人读的收件箱）。
- * 与 monitor `backend/control/cc_bus.rs::is_valid_bus_id`（读收件箱那一条还在用）同一条规则，跨语言金样的 `ids` 钉两份。
- */
-export function isValidBusId(id: string): boolean {
-  return /^[A-Za-z0-9_][A-Za-z0-9_-]*$/.test(id);
-}
-
-function refuseBadId(id: string): void {
-  if (!isValidBusId(id)) throw new ControlError(copyText("ccBus.id.invalid", { id }), `invalid agent id: ${JSON.stringify(id)}`);
-}
+// 〔DUP2 · J12〕这里原来有 `isValidBusId`〔散文墓碑〕与 `refuseBadId`〔散文墓碑〕—— 与 monitor 读收件箱那一份同一条规则的 TS 副本，
+// 发 / 收 / 查在线之前先核。今天规则只有一份、住共享 crate（`shell_quote_core::bus_id_ok`），后端入口先判（`bad_id`），
+// 下面三张拒绝表各一句。查在线（`bus-list`）不把 id 交给任何人（只在名单里找）⇒ 不判：找不到就是「查不到」。
 
 // ─── 查在线（`bus-list`）───
 
@@ -115,7 +108,6 @@ function listRefusals(id: string): Refusals {
  * 这是刻意的一次往返：只在用户点某一行的「检查」时问，不默认全量查、不轮询。
  */
 export async function agentOnline(origin: Origin, id: string): Promise<boolean> {
-  refuseBadId(id);
   const payload = jsonBody({});
   const budget = budgetWithin(ONLINE_BUDGET_MS);
   const v = await settle(origin, "bus-list", chan.call(origin, "bus-list", payload, budget), listRefusals(id));
@@ -134,6 +126,8 @@ function sendRefusals(id: string): Refusals {
       switch (code) {
         case "invalid_args":
           return copyText("ccBus.send.invalidArgs", { id, detail });
+        case "bad_id":
+          return copyText("ccBus.send.badId", { detail });
         case "not_installed":
           return copyText("ccBus.send.notInstalled", { id, detail });
         case "rejected":
@@ -173,7 +167,6 @@ export function saidOfDelivery(origin: Origin, id: string, v: unknown): string {
 
 /** 给 `origin` 上的 agent `id` 发一条消息（以 cc-monitor 的身份）。回那一句；失败 ⇒ 抛 [`ControlError`]。 */
 export async function sendMessage(origin: Origin, id: string, text: string): Promise<string> {
-  refuseBadId(id);
   if (text.trim() === "") throw new ControlError(copyText("ccBus.send.empty"), "empty message, nothing sent");
   const payload = jsonBody({ to: id, text, from: MONITOR_BUS_ID });
   const budget = budgetWithin(WRITE_BUDGET_MS);
@@ -189,6 +182,8 @@ function killRefusals(id: string): Refusals {
       switch (code) {
         case "invalid_args":
           return copyText("ccBus.kill.invalidArgs", { id, detail });
+        case "bad_id":
+          return copyText("ccBus.kill.badId", { detail });
         case "not_installed":
           return copyText("ccBus.kill.notInstalled", { id, detail });
         case "timed_out":
@@ -216,7 +211,6 @@ export function saidOfKill(origin: Origin, id: string, v: unknown): string {
 
 /** 收掉 `origin` 上的 agent `id`（**破坏性，不可撤销** —— 调用方两步确认）。回那一句；失败 ⇒ 抛 [`ControlError`]。 */
 export async function killAgent(origin: Origin, id: string): Promise<string> {
-  refuseBadId(id);
   const payload = jsonBody({ id });
   const budget = budgetWithin(WRITE_BUDGET_MS);
   const v = await settle(origin, "bus-kill", chan.call(origin, "bus-kill", payload, budget), killRefusals(id));
@@ -234,16 +228,13 @@ export interface SpawnRequest {
 }
 
 /**
- * 派生交给后端之前这一侧自己判的形状：`tool` / `dir` 非空 · 账号名过字符集（不以 `-` 开头、只含 `[A-Za-z0-9_-]`）。
+ * 派生交给后端之前这一侧自己判的形状：`tool` / `dir` 非空。
  * ⚠ **刻意不白名单 `tool`**：认不认归 `cc-spawn`（后端那侧同一条）。过不了 ⇒ 抛那一句。
+ * 〔DUP2 · J12〕账号名的字符集原来也在这里判（`isValidBusId`〔散文墓碑〕）；今天归后端（`bad_id`，同一个 `bus_id_ok`）。
  */
 export function checkSpawnShape(req: SpawnRequest): void {
   if (req.tool.trim() === "") throw new ControlError(copyText("ccBus.spawn.noTool"), "no tool chosen");
   if (req.dir.trim() === "") throw new ControlError(copyText("ccBus.spawn.noDir"), "empty working directory");
-  const a = req.account;
-  if (a !== undefined && a !== "" && !isValidBusId(a)) {
-    throw new ControlError(copyText("ccBus.spawn.badAccount", { account: a }), `invalid account name: ${JSON.stringify(a)}`);
-  }
 }
 
 function spawnRefusals(): Refusals {
@@ -252,6 +243,8 @@ function spawnRefusals(): Refusals {
       switch (code) {
         case "invalid_args":
           return copyText("ccBus.spawn.invalidArgs", { detail });
+        case "bad_id":
+          return copyText("ccBus.spawn.badId", { detail });
         case "not_installed":
           return copyText("ccBus.spawn.notInstalled", { detail });
         case "timed_out":

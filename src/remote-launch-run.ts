@@ -15,6 +15,8 @@
 // 〔C4b〕`accounts.ts` 先前那个同名的 `"__local__"` 已退役 —— 全仓只剩这一个本机表示。
 import { LOCAL_ORIGIN } from "./backend-policy";
 import { commands } from "./ipc/commands";
+// 〔TL3 · 审计 F 🔴-5〕「是不是本机」只经 `ipc/origin.ts` 判（`设计/00 §2.5 ①`）。
+import { isLocalOrigin } from "./ipc/origin";
 import {
   planResumeDirect,
   planResumeTmux,
@@ -22,18 +24,16 @@ import {
   planLauncher,
   planAttach,
 } from "./launch-requests";
-import type { LaunchModifiers } from "./launch-plan";
-import { isValidRbindToken } from "./launch-dimensions";
+import type { LaunchModifiers } from "./launch-types";
+// 〔DUP2 · `设计/90 §3` 判据 2〕令牌的字母表与长度只有一份（`payload.rs` 那两个常量），这里读它现生成的那份、按它**造**。
+import { RBIND_TOKEN_ALPHABET, RBIND_TOKEN_LEN } from "./generated/judgment-rules";
 // 🔴 〔步 22b·B 2026-09-20〕**这里原来 `import { renderFallback } from "./launch-render-fallback"`。**
 // `设计/90 §4 E` 收官：外层 tmux 那三格切到 `backend::control::payload::render_tmux_outer`
 // 之后，本文件是 `renderFallback` **最后一个生产消费者** —— 那一行随之退役。
-// ⚠ 那两个文件（`launch-render-fallback.ts` / `session-backend.ts`）**没删**：
-// 它们今天是逐字节金标准（`payload-golden.json` / `tmux-outer-golden.json`）的**左边**，
-// 也就是「另一种语言的独立实现」；删它们等于把跨语言对拍降级成「Rust 没变」的冻结快照
-// —— 〔LR1〕`ccm …` 调用行那一份 TS 渲染器曾按同一条理由留着，U8c-3 已删
-// （它的夹具换成「生产请求 ＋ 手写期望」，见 `launch-cli-golden.ts` 头注）；这一族还没动。
-// 逐处住址与「还站不站在生产路上」两把尺子见 `launch_wire_f07_main_path_tests.rs` 的
-// `TS_FALLBACK_KEEPERS` / `TS_FALLBACK_REACH`，**本刀两张都重裁过**。
+// 〔LR2 2026-09-25〕那两个文件（`launch-render-fallback.ts` / `session-backend.ts`）连同
+// `remote-launch.ts` 那五个 builder 也删了（`设计/00 §2.5 ④`）：两份夹具（`payload-golden.json` /
+// `tmux-outer-golden.json`）的左边照 LR1 的办法换成手写期望，`req` 仍由本文件的请求构造现产。
+// 「这一族不许回来」由 `tests/launch-no-shell-in-ts.vitest.ts` 管（`设计/90 §3` 条 1）。
 // 〔LR1 · U8c-3〕`ccm …` 调用行的 TS 渲染器（原 `launch-render-cli.ts`）已删 ——
 // 生产从 U8c-2c-2 起就只走 Rust（`renderCliViaBackend` → `render_ccm_launch`），
 // 它最后只剩「产夹具的 `out`」一个用途，而那一格改成了手写期望。
@@ -41,16 +41,14 @@ import { isValidRbindToken } from "./launch-dimensions";
 type CliRenderResult = { ok: true; cmd: string } | { ok: false; reason: string };
 import type { CliRenderRequest, PayloadRenderRequest } from "./launch-cli-wire.ts";
 import type { CcmProbeResult } from "./ccm-probe.ts";
-import { sanitizeRemoteLauncher } from "./shell-quote.ts";
 import { probeCcm } from "./ccm-probe";
-import { getBehavior } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
 import { sendInto, type SendIntoOutcome } from "./tmux-control";
 import { AGENT_PROFILE } from "./agent-profile";
 // 〔FE1〕起新会话的名字只从一个家取：`tmux-name-mint.ts`（列名单 ＋ 铸名 ＋ 「列不出 ⇒ 不起」）。
 import { mintFreshTmuxName, refuseUnmintable } from "./tmux-name-mint";
 import { LOCAL_LAUNCH_ACCOUNT_WIRE as ACCOUNT_WIRE } from "./generated/launch-render-facts";
-import type { LaunchContext, LaunchPlan } from "./launch-plan";
+import type { LaunchContext, LaunchPlan } from "./launch-types";
 import { copyText } from "./copy-table";
 
 /** P1：Rust 侧 `payload::refuse()` 给业务拒绝打的标。**跨语言双写点** ——
@@ -98,24 +96,20 @@ const REFUSE_TAG = "REFUSE:";
 // 判据在 `tests/remote-launch-run.vitest.ts` 的「铸币口」那一组（含一条点名钉住
 // 「`attach` 仍走 `ccm …`」的正控 —— 少了它，「CLI 那条路整个死了」会读成一条绿）。
 
-/** 令牌的熵：**16 字节 = 128 位**，渲成 32 个小写十六进制字符。
- *
- *  ⚠ 那个 `32` 是**跨三处的双写点**（本侧字符数 ·
- *  `payload.rs::RBIND_TOKEN_LEN` · `bind.rs::RBIND_TOKEN_LEN`），三处各有判据。
- *  这里只声明**字节数**，字符数由 `2 * 本值` 派生 —— 不再手抄一个 32 出来。 */
-const RBIND_TOKEN_ENTROPY_BYTES = 16;
-
 /**
- * 铸一个启动期令牌。
+ * 铸一个启动期令牌：**按生成物造**（〔DUP2 · J8〕字母表 `RBIND_TOKEN_ALPHABET` × 长度 `RBIND_TOKEN_LEN`，
+ * 两个值由 monitor 从 `payload.rs` 那两个常量现生成，形状的唯一一份是 `payload.rs::rbind_token_shape_ok`）。
+ * 每一位从平台 CSPRNG 取一个字节、按拒绝采样落到字母表里（不假设字母表大小整除 256 ⇒ 每一位均匀）；
+ * 今天字母表 16 个字符 × 32 位 = 128 位熵。
  *
  * **只有一个出口**（这是刻意的）：全仓所有「起 agent 进程」的拉起都从这里取令牌，
  * 于是「令牌怎么产的」这一问只有一个住址可查、只有一处会被死值验打。
  *
- * @throws 拿不到 CSPRNG（`crypto.getRandomValues` 不在）—— 见上方那段，**不回落**。
- * @throws 铸出来的串形状不对 —— 那是一次编程错误（进制/长度算错），
- *         宁可在铸币口当场炸，也不要让它一路滑到远端 shell 里去
- *         （`RBIND_TOKEN_DIMENSION.apply` 与 `payload.rs` 那两道闸会拒，
- *          但那时的错误信息说的是「拼命令时发现形状不对」，指不到这里）。
+ * 〔DUP2〕这里原来铸完再过一遍 TS 手写的形状自检（`launch-dimensions.ts` 那一份，与 Rust 逐字同的副本），
+ * 维度 `apply` 里还有一遍。今天构造上就造不出别的形状 ⇒ 两遍都删了；真有坏串（调用方显式传的）由渲染侧
+ * `payload.rs` 那道闸拒（带 `REFUSE:`，前端照拒说出来）。
+ *
+ * @throws 拿不到 CSPRNG（`crypto.getRandomValues` 不在）—— **不回落**。
  */
 export function mintRbindToken(): string {
   const c: Crypto | undefined = globalThis.crypto;
@@ -124,12 +118,14 @@ export function mintRbindToken(): string {
       copyText("remoteLaunchRun.token.noRandom"),
     );
   }
-  const bytes = new Uint8Array(RBIND_TOKEN_ENTROPY_BYTES);
-  c.getRandomValues(bytes);
-  const token = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-  if (!isValidRbindToken(token)) {
-    // 与维度侧**同一条形状**（不在这里写第二份正则）。
-    throw new Error(copyText("remoteLaunchRun.token.badShape", { token: JSON.stringify(token) }));
+  const n = RBIND_TOKEN_ALPHABET.length;
+  // 落在 [limit, 256) 的字节扔掉重取：否则 `b % n` 偏向前几个字符（n 不整除 256 时）。
+  const limit = 256 - (256 % n);
+  let token = "";
+  while (token.length < RBIND_TOKEN_LEN) {
+    const bytes = new Uint8Array(RBIND_TOKEN_LEN - token.length);
+    c.getRandomValues(bytes);
+    for (const b of bytes) if (b < limit) token += RBIND_TOKEN_ALPHABET[b % n];
   }
   return token;
 }
@@ -147,7 +143,8 @@ function withMintedRbindToken(mods: LaunchModifiers): LaunchModifiers {
 /** 〔RL1 · 第四波〕**这次拉起的中转地址**：问后端一次（`relay_endpoint_for_launch`），有就作为载荷里的一条
  *  `export-relay-base-url` 补进去；`null` ⇒ plan 原样（照旧直连，逐字节不变）。
  *
- *  - 判断只在后端一处（`payload::relay_endpoint_for`，`设计/20 §3.2` 那张表）—— 本函数**不判**，只转交；
+ *  - 判断只在那台机器的后端一处（帧命令 `launch-endpoint`，决策表 `accounts/upstream/endpoint.rs::decide_launch`，`设计/20 §3.2`）
+ *    —— 本函数**不判**，只转交；
  *  - 远端那台**用到才起**它的中转（后端那一侧做）；apikey 号的中转起不来 ⇒ 后端 reject，
  *    本函数原样抛给执行器那一格 catch（toast「无法构造…」＋ 那句说得出是哪台的理由）；
  *  - `attach` 不起 agent 进程 ⇒ 不问（没有「往中转上指」这回事）。
@@ -174,24 +171,19 @@ export async function withRelayEndpoint(
   return url === null ? plan : { ...plan, env: [...plan.env, { kind: "export-relay-base-url", value: url }] };
 }
 
-/** 挑渲染器：`forceLegacyLaunchRenderer` 手动逃生口（MASTERPLAN R2）短路到载荷那条；否则探测到 ccm
- *  且该 plan 的全部维度都能表达成 CLI 语法 → 走 CLI；探测失败/未装/能力不足/含 CLI 表达不了的
- *  维度（如账号、idle-tmux 复用）→ 安全降级，绝不因为渲染器选择本身而让启动失败。
+/** 挑渲染器：探测到 ccm 且该 plan 的全部维度都能表达成 CLI 语法 → 走 CLI；探测失败/未装/能力不足/
+ *  含 CLI 表达不了的维度（如账号、idle-tmux 复用）→ 安全降级，绝不因为渲染器选择本身而让启动失败。
  *
  *  🔴 〔步 22b·B 2026-09-20〕**两条分支今天都在 Rust 里**（`设计/90 §4 E` 收官）：
  *  `render_ccm_launch`（`ccm …` 调用行）与 `render_launch_payload`（内层载荷 ＋ 外层 tmux 三格）。
- *  ✅ 〔`P12` 2026-09-21 收完〕那个键此前叫 `forceLegacyLaunchRenderer`，而**名字里没有一个词是真的**
- *  （legacy 那一头在 `22b·B` 之后已经不存在）⇒ 改成 `forceLaunchPayloadRenderer`：
- *  保留「强制挑哪个渲染器」这个语义槽位，把宾语换成一个**真住址**（`render_launch_payload`）。
- *  🔴 那一拍顺带治了一个**比改名值钱得多**的毛病：config.json 里**未知键此前是静默忽略的**
- *  ——「关掉了」与「过了」在终端上一模一样。现在旧键出现会在设置面板顶上**指名喊出来**，
- *  并有会红的判据钉着（`tests/config-unknown-keys.vitest.ts`）。裁定住 `设计/99 §2.5 P12`。 */
+ *  〔LR2 2026-09-25〕这里原来还有一道手动逃生口 `forceLaunchPayloadRenderer`（`P12` 由 `forceLegacyLaunchRenderer`
+ *  改名而来，MASTERPLAN R2）：「探测说能也强制走载荷那条」。无界面入口、设置面板为它开特判
+ *  （`D-bolted-on §D4`），两条路又都在 Rust、同一排闸 ⇒ 删；为什么删写在 `src/behavior.ts` 那段注释里。 */
 async function renderLaunchCommand(
   origin: string,
   ctx: LaunchContext,
   plan: LaunchPlan,
 ): Promise<string> {
-  const behavior = await getBehavior();
   // 🔴 `设计/80 §8` 步 1：**带启动期令牌的 plan 不许去试 `ccm …` 调用行那条路。**
   //
   // `ccm` 今天没有承接 `CCM_RBIND_TOKEN` 的 flag，而**生产的 CLI 渲染在 Rust 那侧**
@@ -214,7 +206,7 @@ async function renderLaunchCommand(
       `[launch] 载荷带启动期令牌，\`ccm …\` 调用行说不出它 ⇒ 直接走后端载荷渲染（origin=${origin}）`,
     );
   }
-  if (!behavior.forceLaunchPayloadRenderer && ctx.transport.kind === "ssh" && !payloadCarriesRbindToken) {
+  if (ctx.transport.kind === "ssh" && !payloadCarriesRbindToken) {
     const probe = await probeCcm(origin);
     // R04①：一次调用同时回答"能不能"与"渲染成什么"。拿不到 `ok:true` 就走兜底——
     // 不存在"渲染出来了但悄悄丢了某个修饰"这个中间态（R04① 之前 TS 渲染器对说不出的维度
@@ -246,7 +238,7 @@ async function renderLaunchCommand(
   // （`backend::control::payload::render_payload`）。
   if (plan.container.kind === "none" && plan.action.kind !== "attach") {
     try {
-      return await commands.render_launch_payload({ req: buildPayloadRenderRequest(plan) });
+      return await commands.render_launch_payload({ req: buildLaunchRenderRequest(plan) });
     } catch (e) {
       // 后端拒了（非法 configDir / 会裂的 arg）⇒ **不静默用 TS 版糊过去**：
       // 那等于把一次 fail-closed 变成 fail-open。原样抛给调用方的 catch（它会 toast）。
@@ -277,12 +269,25 @@ async function renderLaunchCommand(
   // 没有 tmux 容器的串 —— 那时用户的会话根本不在 tmux 里，而两侧的闸一个都不响）。
   // 那一条由 `tests/remote-launch-run.vitest.ts` 的 `W22B` 组逐格钉着。
   try {
-    return await commands.render_launch_payload({ req: buildTmuxOuterRenderRequest(plan) });
+    return await commands.render_launch_payload({ req: buildLaunchRenderRequest(plan) });
   } catch (e) {
     // 同上一格：带 `REFUSE:` 标的是坏输入（换条路渲染只会糊过去），不带标的是通道异常；
     // 两者在这一格的处置**相同** —— 因为这里已经没有第二条路了。
     throw new Error(copyText("remoteLaunchRun.render.outerRefused", { e: String(e) }));
   }
+}
+
+/**
+ * 空白 ⇒ 默认启动器（`01 §5` D3 的诚实缺省：没配就是没配，不是一个判定）。
+ *
+ * 〔DUP1 · `设计/90 §3` 判据 2〕这里原来调 `shell-quote.ts::sanitizeRemoteLauncher`〔散文墓碑〕：除了缺省这一格，
+ * 它还按 `; | & $ \` < >` 与换行把启动器**静默换成默认那个** —— 那是 Rust 载荷渲染 `payload.rs::render_payload`
+ * 那道闸的同一个字符集在 TS 里的第二份，而且处置相反（那边拒并说清，这边悄悄换掉：用户以为跑的是自己配的命令，
+ * 撞 `01 §5` D4「一条都不许静默忽略」）。今天字符集只在 Rust 判：载荷路拒（带 `REFUSE:` 标，前端说出来）；
+ * `ccm …` 调用行那条路整串进 `--launcher '<原样>'`（引号里是字面量，远端照 exec，找不到就在终端里说）。
+ */
+function launcherOrDefault(launcher: string): string {
+  return launcher.trim() || AGENT_PROFILE.defaultLauncher;
 }
 
 /** U8c-2c-2：把 `{ctx, plan, probe}` 摊成上线形状，交给 Rust 渲染 `ccm …` 调用行。
@@ -326,11 +331,15 @@ export function buildCliRenderRequest(
 ): CliRenderRequest {
   return {
     isSsh: plan.transport.kind === "ssh",
-    // `K-R53` `KR53D3`：**肯定式** —— `null` 的两种来历（真没装 · 没探出来）在这条 wire 上
-    // 本来就同形（都是「拿不到能力集」⇒ Rust 侧 `installed = caps.is_some()` 为 false ⇒ 降级），
-    // 而**值**那一侧已经分得开了（`ccm-probe.ts` 的三态）。这里刻意不把 `unknown` 写成
-    // `installed:false` 再传下去 —— 降级是处置，不是事实。
-    caps: probe.state === "installed" ? [...probe.capabilities] : null,
+    // 〔LR2 · R95b〕三态一对一过线（`ccm-probe.ts::CcmProbeResult` → `launch_wire.rs::WireCcmProbe`）。
+    // 原来这一格是 `caps: … | null`，`unknown` 与 `not-installed` 在线上同形 ⇒ Rust 那边只能说「没装」
+    // （`设计/80 §9.4`〔R95b〕）。现在 `unknown` 带着探测那一跳的原话过去，Rust 回「没探到，不等于没装」。
+    ccm:
+      probe.state === "installed"
+        ? { state: "installed", caps: [...probe.capabilities] }
+        : probe.state === "not-installed"
+          ? { state: "not-installed" }
+          : { state: "unknown", error: probe.error },
     action:
       plan.action.kind === "resume"
         ? { kind: "resume", sid: plan.action.sid }
@@ -348,7 +357,7 @@ export function buildCliRenderRequest(
         : { kind: "base" },
     ccmSid: ctx.ccmSid ?? null,
     model: ctx.modelOverride ?? null,
-    launcher: sanitizeRemoteLauncher(plan.launcher),
+    launcher: launcherOrDefault(plan.launcher),
     defaultLauncher: AGENT_PROFILE.defaultLauncher,
   };
 }
@@ -368,7 +377,7 @@ export function buildCliRenderRequest(
  * 🔴 **〔步 22b·B 2026-09-20〕生产接过来了。** 这里原来逐字写着「生产调用方今天是 0
  * 〔本轮只搬了『后端产得出』那一半〕，唯一的调用者是金标准发生器」——
  * 那是 22b·A 的读数。今天的调用方有两个：`renderLaunchCommand` 最后那一格（**生产**）
- * 与 `src/launch-tmux-outer-golden.ts`（金标准发生器）。
+ * 与 `tests/test-support/launch-tmux-outer-golden.ts`（金标准发生器）。
  *
  * ⚠ **最要紧的一条**：生产那一格送出去的 `req` **必须带 `outer`**。
  * 少送它不会有任何一道闸响 —— 后端会老老实实渲一条**只有内层载荷**的串
@@ -418,17 +427,35 @@ export function buildTmuxOuterRenderRequest(plan: LaunchPlan): PayloadRenderRequ
   };
 }
 
+/**
+ * 〔LR2〕**这份 plan 交给 `render_launch_payload` 的那个请求** —— 「挑哪个请求构造」的唯一住址。
+ *
+ * `container:"none"`（且不是 attach）⇒ 内层载荷那一形（[`buildPayloadRenderRequest`]）；
+ * 其余三格（tmux `create` / `send-into` / `attach`）⇒ 带 `outer` 那一形（[`buildTmuxOuterRenderRequest`]）。
+ *
+ * 抽出来是为了让 e2e 验的就是生产那一行：`tests/e2e/launch-render-driver.ts` 调**同一个函数**
+ * 产请求、交给生产 Rust 命令渲染（`emit_launch_render_for_e2e`）。挑法要是在 e2e 里另写一份，
+ * 两边一漂，e2e 验的又是一份副本。`renderLaunchCommand` 那两格都经它取请求，
+ * 两格的分支只剩「报错说哪一层」这一件事。
+ */
+export function buildLaunchRenderRequest(plan: LaunchPlan): PayloadRenderRequest {
+  return plan.container.kind === "none" && plan.action.kind !== "attach"
+    ? buildPayloadRenderRequest(plan)
+    : buildTmuxOuterRenderRequest(plan);
+}
+
 export function buildPayloadRenderRequest(plan: LaunchPlan): PayloadRenderRequest {
   return {
     env: plan.env,
     cwd: plan.cwd,
-    launcher: sanitizeRemoteLauncher(plan.launcher),
+    launcher: launcherOrDefault(plan.launcher),
     args:
       plan.action.kind === "resume"
         ? [AGENT_PROFILE.resumeFlag, plan.action.sid, ...plan.args]
         : [...plan.args],
     nestedEnv: [...AGENT_PROFILE.nestedEnvVars],
     wrap: plan.wrap.map((w) => ({ order: w.order, prelude: w.prelude })),
+    resumeSid: plan.action.kind === "resume" ? plan.action.sid : null,
   };
 }
 
@@ -496,7 +523,7 @@ async function invokeLaunchOrCopyFallback(
         : toasts.failureNotCopied;
     // ★ 本机没有 ssh 那一跳，文案不能照抄远端那句〔08-12〕。
     const where =
-      origin === LOCAL_ORIGIN ? copyText("remoteLaunchRun.copyFallback.runLocal") : copyText("remoteLaunchRun.copyFallback.runRemote", { machine: origin });
+      isLocalOrigin(origin) ? copyText("remoteLaunchRun.copyFallback.runLocal") : copyText("remoteLaunchRun.copyFallback.runRemote", { machine: origin });
     showActionFailureToast(
       headline,
       `${String(err)}\n${where}\n${cmd}`,
@@ -581,8 +608,8 @@ export async function runRemoteResumeTmux(
  *
  *  # ★★ F14 为什么把两态改成三态
  *
- *  原来「任何一步不顺都回落」。而那条整串（`session-backend.ts` 的
- *  `tmux send-keys -t '=name:' … ; tmux attach …`）**没有 §34 的门** —— 既无 `display-message`
+ *  原来「任何一步不顺都回落」。而那条整串（外层 send-into 那一格：
+ *  `tmux send-keys -t '=name:' … ; tmux attach …`，今天由 Rust `payload::render_tmux_outer` 产）**没有 §34 的门** —— 既无 `display-message`
  *  探测也无 `CCM_GUARD_REJECTED`。于是：
  *
  *  - 一次 `wrong_owner`（门说「这不是本工具的会话」）会被那条**无门**的路重做一遍；
@@ -770,7 +797,8 @@ export async function runLocalResumeIntoExistingTmux(
   //   出的就是 `tmux attach -t '=<name>:'`），换的是**谁拥有这条语法**。
   //   ⚠ 那条门禁此前只是散文里的一条手工 grep，**且只盯 `remote-launch.ts` 一个文件** ——
   //   本文件是后来从它拆出去的，门禁没跟着拆 ⇒ 这处违反因此躺了下来。
-  //   现在它有机检了（`session-backend-gate.vitest.ts`），扫**整个前端生产段**。
+  //   现在它有机检了（当时是 `session-backend-gate.vitest.ts`；〔LR2〕接替它的是
+  //   `launch-no-shell-in-ts.vitest.ts`，`设计/90 §3` 条 1），扫**整个前端生产段**。
   //
   // 🔴🔴 〔`K-R109` 2026-09-13〕**接过去了 —— 这一处不再问座要。**
   //   用户逐字裁「新起一个会话之后，把你的终端接进那个会话那一句 `tmux attach`，

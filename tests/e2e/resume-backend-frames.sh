@@ -3,13 +3,13 @@
 # 跨进程/tmux 判活边沿。不需 GUI/SSH:backend 二进制指向隔离 fixture 跑,读它 stdout 线协议帧。
 # **为何 backend-frame 级是复活断言的诚实天花板**:前端 `[e2e] tab-state ... archived→live` 需整个 app
 # 在跑,而 Linux 上 GUI resume 触发经 `launch.rs::launch_powershell_window` 仅 Windows → 必回退剪贴板、
-# 绝不执行(结构性,见 tests/e2e/README + resume-suite.sh 头注)。故复活的**执行**由本脚本用真源 builder 造的
+# 绝不执行(结构性,见 tests/e2e/README + resume-suite.sh 头注)。故复活的**执行**由本脚本用生产渲染链造的
 # 命令驱动(命令级),复活的**检测**(灰→live)由后端判活边沿断言(后端半场)。
 # 序列:
 #   gen-idle-tmux(fake-claude 活 + @ccm_sid)        → SessionAdded(sid)      = live
 #   (kill fake-claude,tmux 会话留活)                → SessionRemoved(sid)    = 灰(claude 死、tmux 在)
 #   tmux 帧仍含 @ccm_sid                              = 灰后端条件(Idle 非 Archive)
-#   (跑**真源** buildResumeIntoExistingTmuxCmd 就地 resume,复用原名)
+#   (跑**生产渲染链**〔LR2:生产 planResumeIntoExistingTmux → 生产 Rust render_launch_payload〕就地 resume,复用原名)
 #     → fake-claude 复活(新 pidfile,同 sessionId)   → SessionAdded(sid) 再现 = **复活清灰**(后端边沿)
 #   全程 tmux 只有一个 cc-<sid8>(复用,无 -N 孤儿,治 #76)
 # 红线:backend 零改动(只跑它)/ CLAUDE_CONFIG_DIR 隔离绝不碰真 ~/.claude / 不改 TMUX_LS_FMT。
@@ -152,7 +152,7 @@ if [ "$GRAY_ALIVE" = 1 ] && printf '%s' "$TS_GRAY" | grep -q "$SID"; then
 else bad "claude 死后会话没了($GRAY_ALIVE) 或最近一帧丢了 @ccm_sid(不该)"; fi
 
 # ── 3. REVIVE:跑真源就地 resume 命令(复用原名)→ fake-claude 复活 → SessionAdded 再现 = 清灰 ──
-echo "-- 就地 resume(真源 buildResumeIntoExistingTmuxCmd,复用 $SESSION,注入后端所看目录)--"
+echo "-- 就地 resume(生产渲染链 planResumeIntoExistingTmux → render_launch_payload,复用 $SESSION,注入后端所看目录)--"
 # configDir = backend 监视目录 → 复活的 fake-claude pidfile 落这里,backend 判活得到 = 后端复活。
 CMD="$(npx tsx "$DRIVER" into-existing "$SID" "$SESSION" "$FAKE" "$CLAUDE_DIR")"
 echo "   cmd: $CMD"

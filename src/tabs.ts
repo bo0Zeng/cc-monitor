@@ -5,7 +5,7 @@
  *
  * | # | 这件事 | 谁在调（生产） | 拆到 |
  * |---|---|---|---|
- * | ① | **会话状态账**：tab 集合 · 顺序 · 当前 tab · 早于 tab 到达的信号暂存（已结束/可重连/红绿灯）· 账号快照 · 任务快照 · 「变了」那一份订阅 | `main.ts` / `entry-viewer.ts` 把 `events.ts` 的事件喂进来（`onLine` · `archiveTab` · `reviveTab` · `markTmuxIdle` · `updateActivity` · `updateTasks` · `createSkeletonTab` · `setSessionAccounts`）；`main.ts` 读投影（`snapshotSessions` · `peekSession` · `hasTab` · `activeRepoInfo` · `touchedFilesFor` · `getActiveSubagentContext` · `activeSessionId`） | `tab-store.ts`（store）· `tab-model.ts`（`Tab` 形状与标题）· `tab-session-facts.ts`（从记录里抽事实）· `tab-session-state.ts`（〔U4〕会话状态的两个轴：活性 × 可恢复性，转移与谓词） |
+ * | ① | **会话状态账**：tab 集合 · 顺序 · 当前 tab · 早于 tab 到达的信号暂存（已结束/可重连/红绿灯）· 账号快照 · 任务快照 · 「变了」那一份订阅 | `main.ts` / `entry-viewer.ts` 把 `events.ts` 的事件喂进来（`onLine` · `archiveTab` · `reviveTab` · `markTmuxIdle` · `updateActivity` · `updateTasks` · `createSkeletonTab` · `setSessionAccounts`）；`main.ts` 读投影（`snapshotSessions` · `peekSession` · `hasTab` · `activeRepoInfo` · `touchedFilesFor` · `getActiveSubagentContext` · `activeSessionId`） | `tab-store.ts`（store）· `tab-model.ts`（`Tab` 形状与标题）· `tab-session-facts.ts`（〔STC〕把后端给的会话事实落到 tab 上；数据源 `views/facts-source.ts`）· `tab-session-state.ts`（〔U4〕会话状态的两个轴：活性 × 可恢复性，转移与谓词） |
  * | ② | **路由**：切到哪个 tab、谁有权切（手动 5s 保护 · 自动跟随）、记住上次的 tab | `main.ts` 快捷键 / 命令面板 / 启动选 active（`switchTo` · `cycleActive` · `jumpToIndex` · `applyBehavior` · `persistLastActive` · `onManualSwitch`）；`onLine` 里真用户输入（`userActive`） | `tab-router.ts` |
  * | ③ | **实时流视图**：每个 tab 的流 DOM、按 seq 门控建卡、尾部窗口 / 骨架 / 上翻补批 / 哨兵 / 大纲、重放批 | `events.ts` → `onBatchStart` · `onLine` · `onBatchEnd`；`main.ts` DEV 探针 `debugSnapshot` | `tab-stream-view.ts` |
  * | ④ | **tab 栏视图**：按钮 · 徽章 · 分组 · 拖动排序与成组 · 固定 · 顺序落盘 | 用户手势；`main.ts` 启动 `loadCollections` · `loadPinned` · `loadOrder` | `tab-bar-view.ts` · `tab-bar-drag.ts` · `tab-drop.ts`（纯落点算术）· `tab-bar-prefs.ts`（集合 / 固定 / 顺序三份落盘） |
@@ -33,7 +33,7 @@ import {
   TERMINAL_FRONT_UNAVAILABLE_DETAIL,
 } from "./terminal-front";
 import { computeTitleFor, isBgKind, type Tab, type TabsSummary } from "./tab-model";
-import { ENDED, LIVE, RECONNECTABLE, isResumeOnly, hasTerminal, nextState, type StateEvent } from "./tab-session-state";
+import { ENDED, LIVE, RECONNECTABLE, isLive, isResumeOnly, hasTerminal, nextState, type StateEvent } from "./tab-session-state";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, originFromWire, type Origin } from "./ipc/origin";
 // 〔U2〕`Tab` 的形状与标题函数搬去了 `tab-model.ts`；这里原样 re-export，既有 import 面零改动。
 export type { Tab, TabsSummary } from "./tab-model";
@@ -53,17 +53,14 @@ export type { DropTarget, TabRect } from "./tab-drop";
 import { TabMenu } from "./tab-menu";
 import { TabStore } from "./tab-store";
 import { TabStreamView } from "./tab-stream-view";
+import { LiveCards, type LivePainter, type TapPayload } from "./live-card";
 import { TabBarPrefs } from "./tab-bar-prefs";
 import { TabBarDrag } from "./tab-bar-drag";
 import { TabBarView } from "./tab-bar-view";
 import { TabRouter } from "./tab-router";
-import {
-  abortRunningAgents,
-  noteAgents,
-  noteForkedFrom,
-  noteTouchedFiles,
-  noteUsage,
-} from "./tab-session-facts";
+import { abortRunningAgents, applyFacts } from "./tab-session-facts";
+import { FactsSource } from "./views/facts-source";
+import type { SessionFacts } from "./session-reads";
 import {
   TabSessionActions,
   bringMonitorToFront,
@@ -148,6 +145,18 @@ export class TabManager {
       startForkedSession: (tab, res) => this.startForkedSession(tab, res),
     });
   }
+
+  /**
+   * 〔TAP · V124〕活卡：中转抄出来的 SSE 先上屏，jsonl 那一轮到了整轮覆盖（`live-card.ts`，`设计/20 §8`）。
+   * 路由只认「`stream` 就是这个 tab 的 sid、机器也对得上」；对不上 ⇒ 匿名流，不显示。
+   */
+  private readonly live = new LiveCards(
+    (origin, stream) => {
+      const t = this.store.tabs.get(stream);
+      return t && t.origin === origin ? t.sessionId : null;
+    },
+    (sid) => this.store.tabs.get(sid)?.stream.trailerElement ?? null,
+  );
 
   /**
    * 〔U2 · ④〕tab 栏的三份落盘偏好（集合 · 固定 · 顺序）住 `tab-bar-prefs.ts`。
@@ -254,10 +263,9 @@ export class TabManager {
    */
   onBatchEnd(): void {
     this.store.inBatch = false;
-    const active = this.view.batchEnd();
-    // F88b：批期 trackUsage 只更了 tab 字段没喂 chip，这里对活跃 tab 单次 flush 到 HUD
-    // （批内多条 assistant 记录只刷一次，消视觉抖动）。
-    this.onActiveUsageChanged?.(active?.latestModel ?? null, active?.latestPromptTokens ?? null);
+    // 〔STC〕会话事实（含 HUD 那一格 usage）在这里统一问后端（`batchEnd` 里），到了再推给 HUD（`onSessionFacts`）——
+    //   批内不再逐条攒、也就没有「批末 flush 一次」那一步了。
+    this.view.batchEnd();
   }
 
   /**
@@ -314,7 +322,7 @@ export class TabManager {
     tab.seenSeqs.add(payload.seq);
 
     // issue #26：按 uuid 去重——截断重读换新 seq 重投时上面的 seq 去重放行，这里把
-    // "同一记录再来一遍"整体拒掉（不渲染、不 trackAgents），否则内容在 timeline 末尾
+    // "同一记录再来一遍"整体拒掉（不渲染、不触发事件），否则内容在 timeline 末尾
     // 翻倍（INVARIANTS § 25 的渲染层履约点）。必须放在 ensureTab 之后（远端
     // un-archive 靠"收到行"翻转，重投行也要触发它）、seq 去重之后。
     const uuid = (payload.message as { uuid?: unknown }).uuid;
@@ -323,8 +331,12 @@ export class TabManager {
       tab.processedUuids.add(uuid);
     }
 
+    // 〔TAP · V124〕jsonl 那一轮到了 ⇒ 同 `message.id` 的活卡整轮覆盖（撤掉）；挂在双重去重**之后**：
+    //   `设计/20 §8`「前端现有的去重层就是吸收层」—— 重投 / 快照重叠区的重复记录不会重复触发。
+    this.live.onRecord(tab.sessionId, payload.message);
+
     // 〔SE1〕大纲：只记一笔「这份会话又长了」（清单问后端要，这里不判、不攒）。
-    this.view.noteOutlineLine(tab);
+    this.view.noteGrew(tab); // 〔STC〕会话事实同一笔（分叉 · agent · 改动文件 · usage 问后端要，`设计/10 §2.2`）
 
     // A5：换号重启的 compact 完成检测。仅当有该 sid 的等待者才判（常态零开销）：见 compact 摘要
     // 行即 resolve 该等待者（换号重启编排随即从 compact 步进入 kill 步）。
@@ -332,24 +344,13 @@ export class TabManager {
       this.actions.settleCompact(payload.session_id, () => isCompactRecord(payload.message));
     }
 
-    // issue #63①：首条带 forkedFrom 的记录 → 锁定血缘、给 tab 标题加 `↳` 徽标(与原会话区分)。
-    // 放在双重去重之后、turnEndNotifier 之前——这样首条即含徽标的标题也进 turn-end 通知(审计 建议)。
-    this.applyForkedFrom(tab, payload.message);
-
     // Batch14-F42：turn-end 系统通知。放在双重去重之后（重投行不重报）、
     // 渲染管线之前（通知与渲染/收纳互相独立）。批量重放由 inBatch 短路。
     turnEndNotifier.observe(payload.session_id, tab.title, payload, this.store.inBatch);
 
-    // issue #23（第二增量）：配对 agent 工具调用，喂 AgentsPanel
-    this.trackAgents(tab, payload.message);
-
-    // F88b：捕获带 usage 的 assistant 记录 → 更新本会话最新 prompt token+model（供 HUD context%）。
-    // 与 trackAgents 同处（双重去重之后，重投不重复累）。活跃会话则即时推给 HUD。
-    this.trackUsage(tab, payload.message, payload.seq);
-
-    // F70：累进本会话改动集（写类工具 file_path）——放在双重去重之后（重投不重复累），
-    // 渲染/收纳门控之前（连"收纳不建卡"的记录也计入）。纯增量、无 DOM。近因序那条理由见 `noteTouchedFiles` 头注。
-    noteTouchedFiles(tab, payload.message);
+    // 〔STC · `设计/90 §3` 判据 3〕这里原先还挂着四个旁路记账员（分叉血缘 · agent 配对 · 最新 usage · 改动文件集），
+    //   它们改成问后端要（`history-facts`）；`onLine` 上只剩「真事件」那两个（compact 完成 · 轮次结束）。
+    //   判据 `tests/online-bypass-ledger.vitest.ts`。
 
     this.view.ingest(tab, payload);
   }
@@ -533,10 +534,14 @@ export class TabManager {
   requestPanoramaHighlight: ((sid: string) => void) | null = null;
 
   /** F88b：活跃会话最新 usage 变化回调——main.ts 注入喂 UsageHud（context% chip）。
-   *  两处触发：onLine 捕到活跃会话新 assistant 记录；switchTo 切到别的会话。
+   *  两处触发：〔STC〕活跃会话的会话事实到了、usage 变了（`onSessionFacts`）；switchTo 切到别的会话。
    *  (model=null 或 promptTokens=null → chip 显 `?` 或隐藏)。同 requestPanoramaHighlight 注入范式。 */
   onActiveUsageChanged: ((model: string | null, promptTokens: number | null) => void) | null =
     null;
+
+  /** 〔STC〕活跃会话的会话事实**要不到**的原因（`null` = 可用）—— main.ts 注入喂 UsageHud（chip 显示 `ctx —` ＋ 原因）。
+   *  两处触发：活跃会话的可用性变了（`onFactsAvailability`）；switchTo 切到别的会话。 */
+  onActiveFactsAvailability: ((reason: string | null) => void) | null = null;
 
   ensureTab(
     sessionId: string,
@@ -629,7 +634,7 @@ export class TabManager {
       // 记下当前 cwd 来源的 seq；后续更早（更小 seq）的记录可覆盖（取项目根）。
       cwdSeq: cwd ? seq : Number.POSITIVE_INFINITY,
       aiTitle: null,
-      forkedFromSessionId: null, // issue #63①:onLine 见首条 forkedFrom 记录时锁定
+      forkedFromSessionId: null, // issue #63①：〔STC〕后端的会话事实到了才有（`onSessionFacts`）
       origin,
       state: LIVE, // 〔U4〕见了行 / 宣告了才建 ⇒ 活着；早到的死亡信号在下面落实
       // 〔步 17·B〕**不做自动固定**（照 `tab-collections.ts` 那条「手动建，不要自动」的先例，
@@ -656,11 +661,23 @@ export class TabManager {
       inputsEl,
       // issue #23：红绿灯信号若先于建 Tab 到达，从暂存取（否则 null=未知→绿）
       activity: this.store.pendingActivity.get(sessionId) ?? null,
+      // 〔STC〕下面四样只经 `facts` 落下来（后端 `history-facts` 出成品，`onSessionFacts`）。
       agents: new Map(),
-      touchedFiles: new Set(), // F70：会话改动集，onLine 增量累进
-      latestPromptTokens: null, // F88b：HUD context% 数据；onLine 捕获带 usage 的 assistant 记录
+      agentsAborted: new Set(),
+      touchedFiles: new Set(), // F70：会话改动集
+      latestPromptTokens: null, // F88b：HUD context% 数据
       latestModel: null,
-      latestUsageSeq: -1,
+      facts: new FactsSource(
+        () => {
+          // 问的是**当前**那一份 tab 的路径与机器（`parentPath` 由首条行回填；没有 ⇒ 这一趟不要）。
+          const t = this.store.tabs.get(sessionId);
+          return t && t.parentPath ? { origin: t.origin, jsonlPath: t.parentPath } : null;
+        },
+        {
+          facts: (f, first) => this.onSessionFacts(sessionId, f, first),
+          availability: (reason) => this.onFactsAvailability(sessionId, reason),
+        },
+      ),
     };
     this.store.pendingActivity.delete(sessionId);
     this.view.wireTab(tab);
@@ -701,13 +718,6 @@ export class TabManager {
     if (!trimmed) return;
     if (tab.aiTitle === trimmed) return;
     tab.aiTitle = trimmed;
-    tab.title = this.computeTitle(tab);
-    this.refreshTabBar();
-  }
-
-  /** issue #63①：首条带 `forkedFrom` 的记录锁定血缘（`tab-session-facts.ts::noteForkedFrom`）⇒ 标题加 `↳` 徽标。 */
-  private applyForkedFrom(tab: Tab, message: unknown): void {
-    if (!noteForkedFrom(tab, message)) return;
     tab.title = this.computeTitle(tab);
     this.refreshTabBar();
   }
@@ -755,6 +765,7 @@ export class TabManager {
 
   /** session 退出（~/.claude/sessions/<PID>.json 被删）且容器也没了 —— 已结束，内容保留 */
   archiveTab(sessionId: string): void {
+    this.live.dropTab(sessionId); // 〔TAP〕结束了 ⇒ 它的活卡全撤
     const tab = this.store.tabs.get(sessionId);
     if (!tab) {
       // issue #19：Tab 还没被 ensureTab 建出来（归档信号早于 replay 行到达）——
@@ -810,6 +821,7 @@ export class TabManager {
    * 〔U4〕改之前这里只置 `tmuxIdle = true`、`status` 留在 live —— 活性一轴说了假话。
    */
   markTmuxIdle(sessionId: string): void {
+    this.live.dropTab(sessionId); // 〔TAP〕claude 退了 ⇒ 它的活卡全撤
     const tab = this.store.tabs.get(sessionId);
     if (!tab) {
       this.store.pendingTmuxIdle.add(sessionId);
@@ -819,6 +831,36 @@ export class TabManager {
     if (!this.applyState(tab, "idle")) return;
     this.refreshTabBar();
     this.emitTabStateProbe(tab); // F-E1:可重连(claude 退但 tmux 在)
+  }
+
+  /** 〔TAP · V124〕`session-tap`：中转抄出来的一个 SSE 事件（`events.ts` 直派）。 */
+  onSessionTap(p: TapPayload): void {
+    this.live.onTap(p);
+  }
+
+  /** 〔TAP〕装活卡的画法（主窗口入口装；独立查看器不装 ⇒ 只记账不画，见 `live-card.ts::LivePainter`）。 */
+  setLivePainter(p: LivePainter): void {
+    this.live.setPainter(p);
+  }
+
+  /** 〔TAP〕那台机器的 tap 流看不见了 ⇒ 那台的活卡全撤。 */
+  dropLiveCards(origin: string): void {
+    this.live.dropOrigin(origin);
+  }
+
+  /** 〔FW1 · 第四波 4D · D-e〕这个会话此刻在 tab 栏里是活的吗（历史浏览器删会话前问一句用）。没有这个 tab ⇒ `false`。 */
+  isSessionLive(sessionId: string): boolean {
+    const tab = this.store.tabs.get(sessionId);
+    return tab !== undefined && isLive(tab.state);
+  }
+
+  /**
+   * 〔FW1 · 第四波 4D · D-d〕这个会话的流容器（没有这个 tab ⇒ `null`）—— 记录文件那一句话挂在它顶上
+   * （`record-file-notice.ts`；那个模块只由主窗口 `main.ts` 接线，样式随主窗口的产物走，不进与独立查看窗共用的块）。
+   * **不碰会话状态**（判活不看 jsonl：不误判结束）。
+   */
+  streamElOf(sessionId: string): HTMLElement | null {
+    return this.store.tabs.get(sessionId)?.streamEl ?? null;
   }
 
   /**
@@ -930,18 +972,34 @@ export class TabManager {
     this.refreshTabBar();
   }
 
-  /** F88b：带 usage 的 assistant 记录 ⇒ 更新本会话最新 prompt token ＋ model（`tab-session-facts.ts::noteUsage`）。
-   *  批期不即时喂 chip（onBatchEnd 单次 flush）；实时流则即时刷活跃会话。 */
-  private trackUsage(tab: Tab, message: unknown, seq: number): void {
-    if (!noteUsage(tab, message, seq)) return;
-    if (!this.store.inBatch && tab.sessionId === this.store.activeId) {
+  /**
+   * 〔STC · `设计/90 §4` 阶段 C〕后端的一份会话事实到了（`views/facts-source.ts`）⇒ 落到 tab 上（`applyFacts`，纯投影），
+   * 只刷变了的那几块：分叉 ⇒ 标题 `↳`（issue #63①）· agent ⇒ 面板（issue #23）· usage ⇒ HUD（F88b，只 active）。
+   * 改动文件集没有推的去处（全景高亮 / 右键菜单 / 监控板 peek 都是现取）。
+   *
+   * **第一份到的时候会话已经不忙** ⇒ 当场补判一次中止：「落到不忙」那一刻（`updateActivity` 的 idle / shell、
+   * `archiveTab`）多半发生在事实到之前（F5 之后红绿灯快照先到），那时 `agents` 还是空的、判不到它们。
+   */
+  private onSessionFacts(sid: string, f: SessionFacts, first: boolean): void {
+    const tab = this.store.tabs.get(sid);
+    if (!tab) return;
+    const ch = applyFacts(tab, f);
+    const notBusy =
+      isResumeOnly(tab.state) || tab.activity?.status === "idle" || tab.activity?.status === "shell";
+    const aborted = first && notBusy && abortRunningAgents(tab);
+    if (ch.forkedFrom) {
+      tab.title = this.computeTitle(tab);
+      this.refreshTabBar();
+    }
+    if (ch.agents || aborted) this.agentsChanged(tab);
+    if (ch.usage && sid === this.store.activeId) {
       this.onActiveUsageChanged?.(tab.latestModel, tab.latestPromptTokens);
     }
   }
 
-  /** issue #23（第二增量）：配对 agent 工具调用（`tab-session-facts.ts::noteAgents`），真有变化才刷面板。 */
-  private trackAgents(tab: Tab, message: unknown): void {
-    if (noteAgents(tab, message)) this.agentsChanged(tab);
+  /** 〔STC〕这个 tab 的会话事实可不可用变了 ⇒ 是 active 就告诉 HUD（要不到 ⇒ 出声，`设计/05 §14.3`「不可用，不是空表」）。 */
+  private onFactsAvailability(sid: string, reason: string | null): void {
+    if (sid === this.store.activeId) this.onActiveFactsAvailability?.(reason);
   }
 
   /** issue #23：会话不再 busy ⇒ 仍 running 的 agent 标 aborted（`tab-session-facts.ts::abortRunningAgents`）。 */
@@ -989,6 +1047,7 @@ export class TabManager {
     const fallbackId =
       this.store.orderedIds[idx + 1] ?? this.store.orderedIds[idx - 1] ?? null;
 
+    this.live.dropTab(sessionId); // 〔TAP〕先撤活卡（它的 DOM 随流容器一起走）
     this.view.disposeTab(tab);
     this.store.tasksBySid.delete(sessionId);
     this.store.tabs.delete(sessionId);
@@ -1202,6 +1261,7 @@ export class TabManager {
       // F88b：HUD context% chip 切到新 active 会话的最新 usage（无带 usage 记录 → null → 隐藏）
       const nt = this.store.tabs.get(sessionId);
       this.onActiveUsageChanged?.(nt?.latestModel ?? null, nt?.latestPromptTokens ?? null);
+      this.onActiveFactsAvailability?.(nt?.facts.unavailableReason ?? null); // 〔STC〕要不到 ⇒ chip 说原因
     });
   }
 

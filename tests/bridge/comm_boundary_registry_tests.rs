@@ -2466,13 +2466,28 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     // 〔MG1 · 合并 SU1 ＋ C4e〕基数 18 ＋ SU1 增量 2 ＋ C4e 增量 9 = 29（两路各自从 18 起算；上面两段各写各的增量）。
     // 〔US1 · 第四波 4D〕〔合并 US1 × 主线〕主线 29 ＋ 2：`apikey-reads.ts::readApikeyStatus`（`apikey-read`）· `fetchApikeyRouting`（`apikey-routing`）——
     //    API key 那两问从 monitor 的两条 Tauri 命令改走通道；每处显式给期限。
+    // 〔HX1 · 4D · D-f〕31 → 32：`account-reads.ts::fetchSessionAccountsOrNull`（`accounts-sessions`，机器页「停」本机后端之前
+    //    现问一次走中转的活会话；不走缓存、问不到回 `null`）；显式给期限。
+    // 〔LOC1a · 第四波 4D〕〔合并 LOC1a × 主线 66f2b6bf〕主线 31 ＋ 1：`tasks-panel.ts::fetchSessionTasks`（`tasks-list`）——
+    //    任务快照从 monitor 的 Tauri 命令改走通道（C4e 批 4）；显式给期限。
+    // 〔合并 HX1 × LOC1a〕两路各自 31 ＋ 1 ⇒ 31 ＋ 2 = 33。
+    // 〔HX2 · 4D〕〔合并 HX2 × 主线 290d8c33〕主线 33 ＋ 1 ⇒ 34：`apikey-reads.ts::writeApikeyKey`（`apikey-key-set`，写 key 从 monitor 那条 Tauri 命令改走通道）；显式给期限。
+    // 〔STC · 第四波 4D〕〔合并 STC × 主线 39f5ab18〕主线 35 ＋ 1 ⇒ 36：`session-reads.ts::readSessionFacts`（`history-facts`，会话事实出成品 ——
+    //    此前是前端 `onLine` 旁路自己攒的，不是替掉一条 Tauri 命令）；显式给期限（`READ_BUDGET_MS`）。
     // 〔CF2 · 第四波 4B〕`chan.subscribe`（TS，主界面）恰好 1 处：`events.ts::bindEvents` 按 `streams` 订会话内容流
     //    （主窗口每台机器一条、独立窗口一条，都经这一处）。
+    // 〔TAP〕`session-tap` 与会话行走同一处（`plan` 里多一种流），仍是 1。
+    // 〔DL1 · 第五波〕`accounts-changed`（替掉裸事件 `remote-backend-ready`；`设计/01 §2.2`「前端只有两个动作」）同样经这一处
+    //    （合并 TAP 时从单独一处 `watchAccountsChanged` 收回 `bindEvents` 的 `plan`，照 TAP 那一形）⇒ 仍是 1。
+    // 〔W5-ALIAS · 第五波先行〕＋1（合并主线 a6b10281 之后 34 → 35；那一拍两边各自写成 34、git 当同一行合了，现打 35）：`settings/machine-aliases.ts::previewAlias` 一处（别名预览 `ccm-print`，
+    //    问本机常驻后端「这条别名实际会执行什么」，`设计/71 §2.3`）；显式给期限（`PREVIEW_BUDGET_MS`）。
+    // 〔DUP2 · J4〕36 → 37：`settings/acct-deploy.ts::askAcctIsoCmd` 一处（cc-acct-iso 步骤那一行问那台后端 `acct-iso-cmd`；
+    //    新建表单预览 · 启用向导预览 · 弹终端三个用处都经这一处）；显式给期限（`CMD_BUDGET_MS`）。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 31usize),
+            ("chan.call", 37usize),
             ("chan.subscribe", 1usize),
             ("subscribe", 1usize)
         ]
@@ -2608,8 +2623,8 @@ const TRANSPORT_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
         "〔RW1 · 第四波 09-24〕**原来只差 `C1` 一条，今天一条都不咬了** —— 咬它的那个词随 F11 那条 SFTP 直删\
          （连同它的结构守卫〔散文墓碑〕）改经远端后端删一起走了（`设计/05 §8.1.3` 说的「要清掉那个词得连它一起搬」，\
          搬的是用户裁的 RW1）。🔴 **而它仍然不圈**，这是一次归属判断、不是判据没跑：\
-         本文件今天剩下的是 F08 的**部署**（后端二进制 · 入口 shim · 卸载）与远端 rc 别名块的**规划**\
-         （`merge_profile_block` / `strip_profile_block` / `CCM_WRAPPER_SNIPPET`）—— 都是业务，不是传输；\
+         本文件今天剩下的是 F08 的**部署**（后端二进制 · 入口 shim · 卸载）（〔W5-ALIAS〕远端 rc 别名块的**规划**\
+         `merge_profile_block` / `strip_profile_block` / `CCM_WRAPPER_SNIPPET` 搬去了 `profile_installer.rs`）—— 都是业务，不是传输；\
          SFTP 整体进常驻后端是 4B 的 `SR1b`，这一份的去留归它裁。十一条全绿不等于该圈（`真相源/100 §二` 那一形）。",
     ),
     (

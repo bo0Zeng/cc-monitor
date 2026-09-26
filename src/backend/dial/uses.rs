@@ -370,7 +370,7 @@ async fn serve<R, W>(
                         out,
                         stages,
                         &DialAck::failed(
-                            format!("往 {} 的 stdin 写载荷失败: {e}", req.command),
+                            format!("远端命令起来了，但交给它的那一行没送过去: {e}"),
                             fp,
                         ),
                     )

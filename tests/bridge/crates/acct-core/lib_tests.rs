@@ -205,3 +205,50 @@ fn the_account_id_is_the_last_path_segment_and_the_subset_is_per_agent() {
     );
     assert!(apikey_routed_subset(&dirs, &[], "claude-code", "claude-code").is_empty());
 }
+
+/// 〔DUP1 · `设计/90 §3` 判据 2 · `INVARIANTS §47` ②〕账号配置目录的全表（全仓唯一一份）：POSIX 形与任一平台形，**正反各一格**。
+/// 要求住址：`INVARIANTS §47` ②「本仓自管的值（配置目录 · 后端落点）……走全表」—— 形式（绝对 · 无 `..` 段）＋ 拒绝集（控制符 · 元字符 · 欺骗字符）。
+#[test]
+fn a_config_dir_passes_the_full_table_only_when_it_is_plainly_absolute() {
+    for good in ["/home/u/.claude-alt/z", "/home/用户/带 空格/z", "/a..b/c"] {
+        assert!(config_dir_posix_ok(good), "POSIX 形好值被拒了：{good:?}");
+        assert!(config_dir_ok(good), "任一平台形好值被拒了：{good:?}");
+    }
+    for win in [
+        r"C:\Users\z\.claude-alt\z",
+        "C:/Users/z",
+        r"\\server\share\z",
+    ] {
+        assert!(config_dir_ok(win), "Windows 形好值被拒了：{win:?}");
+        assert!(
+            !config_dir_posix_ok(win),
+            "POSIX 形不该认 Windows 形：{win:?}"
+        );
+    }
+    for bad in [
+        "",
+        "/",
+        "rel",
+        "~/x",
+        "/a/../b",
+        "/a/..",
+        "/a'b",
+        "/a$b",
+        "/a;b",
+        "/a`b",
+        "/a b\n",
+        "/a\u{3000}b",
+        "/a\u{202E}b",
+        "/a\u{0085}b",
+    ] {
+        assert!(!config_dir_posix_ok(bad), "POSIX 形坏值放行了：{bad:?}");
+        assert!(!config_dir_ok(bad), "任一平台形坏值放行了：{bad:?}");
+    }
+    assert!(!config_dir_ok(r"C:\Users\..\..\x"), "反斜杠下的上跳也要拒");
+    assert!(!config_dir_posix_ok("/a\\b"), "POSIX 形拒反斜杠");
+    assert!(
+        config_dir_char_unsafe('\0')
+            && config_dir_char_unsafe('!')
+            && !config_dir_char_unsafe('中')
+    );
+}

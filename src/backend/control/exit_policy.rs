@@ -169,14 +169,16 @@ fn write_at(path: &Path, kill: bool) -> Result<(), String> {
             &[("path", &(path.display()).to_string())],
         )
     })?;
-    if let Err(e) = std::fs::create_dir(dir) {
-        if e.kind() != std::io::ErrorKind::AlreadyExists {
-            return Err(copy_text(
-                "beExitPolicy.writeAt.mkdirFailed",
-                &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
-            ));
-        }
-    }
+    // 〔HX1〕只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。
+    crate::own_dir::ensure_private_dir(dir).map_err(|e| {
+        copy_text(
+            "beExitPolicy.writeAt.mkdirFailed",
+            &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
+        )
+    })?;
+    // 〔HX2〕第四层同一条规矩：写之前拿那个目录的跨进程锁（`platform/lock.rs`）。这一份没有读—改—写（整份一格），
+    //   锁在这里只为「每一份第四层写口都在锁里写」这条规矩没有例外（`readonly_guard` 第四层 ⑥）。
+    let _lock = crate::platform::lock::hold(dir)?;
     let tmp = dir.join(format!("{FILE_NAME}.{}.tmp", std::process::id()));
     let result = (|| {
         let mut f = std::fs::OpenOptions::new()

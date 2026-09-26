@@ -46,8 +46,15 @@ fn search_end_to_end_and_rejects_traversal() {
         limit: 300,
     };
     let mut budget = SnippetBudget::new(opts.limit);
-    let hit = build_session_hits(&jsonl, "docker", &opts, &mut budget, 1_700_000_000_000)
-        .expect("must hit");
+    let hit = session_hits_in(
+        &jsonl,
+        &std::fs::read_to_string(&jsonl).expect("读夹具"),
+        "docker",
+        &opts,
+        &mut budget,
+        1_700_000_000_000,
+    )
+    .expect("must hit");
     assert_eq!(hit["sessionId"], "s1");
     assert_eq!(
         hit["updatedAt"], 1_700_000_000_000i64,
@@ -72,7 +79,15 @@ fn search_end_to_end_and_rejects_traversal() {
         limit: 300,
     };
     let mut budget2 = SnippetBudget::new(opts_u.limit);
-    let hu = build_session_hits(&jsonl, "docker", &opts_u, &mut budget2, 1).expect("user hits");
+    let hu = session_hits_in(
+        &jsonl,
+        &std::fs::read_to_string(&jsonl).expect("读夹具"),
+        "docker",
+        &opts_u,
+        &mut budget2,
+        1,
+    )
+    .expect("user hits");
     assert_eq!(hu["hitCount"], 1);
 
     std::fs::remove_dir_all(&tmp).ok();
@@ -215,10 +230,10 @@ fn truncation_is_stated_not_left_to_an_empty_array() {
 /// `KR100D1` 第 ③ 刀（本侧那一半）：**改 `search_core` 一处，本侧真跑出来的东西跟着变**。
 ///
 /// 期望值**从 `search_core::SNIPPET_CTX` 取**，实际值从本文件的生产管线
-/// （`search` → `build_session_hits` → `search_core::make_snippet`）来。
+/// （`search` → `session_hits_in` → `search_core::make_snippet`）来。
 /// · 改 core 的 `SNIPPET_CTX` ⇒ 实际与期望**一起动**，本条仍绿（＝行为跟着变了）；
 /// · 本侧哪天自己写回一个 `const SNIPPET_CTX = 48` ⇒ 实际不动、期望动 ⇒ **当场红**。
-/// monitor 侧有一条同形的（`search_tests.rs::the_snippet_window_comes_from_core`）。
+/// monitor 侧原有一条同形的（〔LOC1b · 4D〕随 monitor 内存索引一起删了：本机搜索也走本条测的这一份）。
 #[test]
 fn the_snippet_window_comes_from_core() {
     let ctx = search_core::SNIPPET_CTX;
@@ -243,5 +258,44 @@ fn the_snippet_window_comes_from_core() {
         "snippet 前窗必须等于 `search_core::SNIPPET_CTX`（={ctx}）+ 省略号"
     );
     assert_eq!(hit["after"].as_str().unwrap().chars().count(), ctx + 1);
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+/// 〔W5-VIS · E 吞错普查点名 `search_query` 那一处〕**读不动的会话不许从结果里静默消失**：
+/// 两份会话都含那个词，其中一份不是合法 UTF-8（整份读不动）⇒ 结果只有读得动的那一份（行形状不动），
+/// 而这一趟回的「读不动」数 == 1、那句总账说出这个数；全都读得动 ⇒ 0、不说话（两向）。
+///
+/// 要求住址：`设计/15 §4.7 S5`（逐字）「处置不是别吞，是吞了要留一行日志」。
+#[test]
+fn w5vis_an_unreadable_session_is_counted_and_said_not_silently_dropped() {
+    let tmp = std::env::temp_dir().join(format!("ccm-w5vis-search-{}", std::process::id()));
+    std::fs::remove_dir_all(&tmp).ok();
+    let proj = tmp.join("projects").join("p");
+    std::fs::create_dir_all(&proj).unwrap();
+    let rec = r#"{"type":"user","uuid":"u","timestamp":"2026-01-01T00:00:00Z","cwd":"/w","message":{"role":"user","content":"docker"}}"#;
+    std::fs::write(proj.join("good.jsonl"), rec).unwrap();
+    let opts = parse_opts(&[]);
+    let mut buf = Vec::new();
+    assert_eq!(
+        search_counting(&tmp, "docker", &opts, &mut buf).expect("search ok"),
+        0,
+        "全都读得动却报了读不动"
+    );
+    let mut bad = rec.as_bytes().to_vec();
+    bad.extend_from_slice(b"\n\xff\xfe docker\n");
+    std::fs::write(proj.join("bad.jsonl"), &bad).unwrap();
+    let mut buf = Vec::new();
+    let n = search_counting(&tmp, "docker", &opts, &mut buf).expect("search ok");
+    assert_eq!(n, 1, "读不动的那一份没被数到");
+    let rows: Vec<Value> = String::from_utf8(buf)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(rows.len(), 1, "结果行数不对：{rows:?}");
+    assert_eq!(rows[0]["sessionId"], "good");
+    assert_eq!(unreadable_note(0), None);
+    let note = unreadable_note(n).expect("读不动 1 份却不说");
+    assert!(note.contains('1'), "{note}");
     std::fs::remove_dir_all(&tmp).ok();
 }

@@ -408,13 +408,11 @@ fn the_platform_needles_actually_match_the_platform_heavy_half() {
     let src_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
     // 地板按**实测的「命中几种形态」**写，不是「命中几次」——
     // ⚠ 第一版把 21 处 / 9 处（次数）当成了种类数，判据当场红。
-    // 实测种类数：`utils.rs` **6** · `bind.rs` **4** · `session_map.rs` **4**。
+    // 实测种类数：`utils.rs` **6** · `bind.rs` **4**。
     // 地板留一格余量（少一种形态不算警报，少两种就说明形态集在烂）。
-    for (rel, least) in [
-        ("utils.rs", 5usize),
-        ("bind.rs", 3usize),
-        ("session_map.rs", 3usize),
-    ] {
+    // 〔LOC1b · 第四波 4D〕`session_map.rs`（原 4 种）那个锚摘了：monitor 自己那份进程身份判活（`/proc` · `GetProcessTimes`）
+    //   随本机判活改由本机后端的帧来删了，那份文件今天零平台形态 —— 它不再是「平台重的那一半」，拿它当锚会恒红。
+    for (rel, least) in [("utils.rs", 5usize), ("bind.rs", 3usize)] {
         let p = src_root.join(rel);
         assert!(
             p.is_file(),

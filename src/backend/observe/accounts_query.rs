@@ -52,8 +52,9 @@
 //! - `.credentials.json` **只 stat 存在性，绝不读内容**。
 //! - `.claude.json` 只取 `projects[<cwd>].hasTrustDialogAccepted` 一个布尔；
 //!   **绝不回传文件内容**——那里面有 `mcpServers` 的环境变量（可能含 API key）。
-//! - `/proc/<pid>/environ` 只抠**两个写死的键**（`CLAUDE_CONFIG_DIR` 与
-//!   `CCM_LAUNCH_ID`），**不回传整个环境快照**。
+//! - `/proc/<pid>/environ` 只抠**三个写死的键**（`CLAUDE_CONFIG_DIR` · `CCM_LAUNCH_ID` ·〔HX1 · D-f〕`ANTHROPIC_BASE_URL`），
+//!   **不回传整个环境快照**。`ANTHROPIC_BASE_URL` 的值带中转钥匙 ⇒ **只折成一个布尔**（`viaRelay`：是不是本机中转那一形地址），
+//!   值本身不出参、不进日志。
 //!   ⚠ `K-P5f` 加第二个键那一拍要求把「两个键」与「整个快照」的界说清楚，界在这里：
 //!   **键名是本文件里的两个常量**（`paths::CONFIG_DIR_ENV` 与 [`LAUNCH_ID_ENV`]），
 //!   **不接受任何调用方传进来的键名**。一旦键名成为一维参数，这条查询就退化成
@@ -65,8 +66,8 @@
 //!   （路径是 `$HOME/.claude.json`，写死在代码里），所以它连这个面都没有。
 
 use acct_core::{
-    auth_kind_from_manifest, auth_kind_with_apikey_table, auth_ready, is_deceptive_char,
-    ACCTS_DIR_NAME, CREDENTIALS_NAME, MANIFEST_NAME, SUPPORTED_SCHEMA,
+    auth_kind_from_manifest, auth_kind_with_apikey_table, auth_ready, ACCTS_DIR_NAME,
+    CREDENTIALS_NAME, MANIFEST_NAME, SUPPORTED_SCHEMA,
 };
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
@@ -119,54 +120,11 @@ struct Manifest {
 /// 允许普通空格与常规非 ASCII（如中文；单引号内无害且常见），拒绝引号/命令替换/
 /// 重定向/通配/控制字符 + 视觉欺骗类 Unicode。
 pub(crate) fn is_safe_config_dir(p: &str) -> bool {
-    // 🔴 `N-F1c`：这个判据被**拆成两半**了。拆法逐字照 monitor 那份同名实现的模块头注
-    // （`src/bridge/src/local_accounts.rs` 顶部那一节，逐字：「判据落在性质上，不落在表面
-    // 特征上 —— 照抄 `starts_with('/')` 是抄了形式、丢了性质」）：
-    //   ① shell 元字符与视觉欺骗字符 = **平台无关的安全性质**，两侧逐字同一套；
-    //   ② 「是绝对路径」= **平台相关的形式**，各写各的。
-    //
-    // 为什么现在才拆：本函数此前只服务远端（backend 只跑在 Linux 上），而
-    // `N-F1c` 起 **monitor 的本机账号清单也来问这个二进制**（`--list-accounts`），
-    // 而那份 monitor 要在 Windows 上跑 —— Windows 的账号目录是 `C:\Users\…`，
-    // 旧的第一条会把每一个 Windows 账号判成不安全 ⇒ **清单恒空**。
-    // ⚠ 障碍是这条检查，**不是**「backend 不能在 Windows 上跑」：发版流水线的
-    //   `build-windows` 里有原生本机后端构建，产物装进 `externalBin`。
-    fn looks_absolute(p: &str) -> bool {
-        if p.starts_with('/') {
-            return true; // POSIX
-        }
-        // Windows：盘符（`C:\` / `C:/`）或 UNC（`\\server\share`）。
-        let b = p.as_bytes();
-        let drive = b.len() >= 3
-            && b[0].is_ascii_alphabetic()
-            && b[1] == b':'
-            && (b[2] == b'\\' || b[2] == b'/');
-        drive || p.starts_with("\\\\")
-    }
-    if !looks_absolute(p) {
-        return false;
-    }
-    if p == "/" || p.contains("/../") || p.ends_with("/..") {
-        return false;
-    }
-    // 反斜杠成了合法分隔符 ⇒ **上跳那一手也要按反斜杠再拒一次**，否则放宽绝对路径的同时
-    // 就把 `C:\Users\..\..\x` 一起放进来了（monitor 那份加这一条正是为此）。
-    if p.contains("\\..\\") || p.ends_with("\\..") {
-        return false;
-    }
-    // 平台无关的那一半：shell 元字符 + 视觉欺骗字符，**与 monitor 那份逐字同一套**。
-    // **反斜杠不在此列** —— Windows 的路径分隔符就是它。放行它在这里是安全的，
-    // 因为**下游那一层自己会拒**：monitor 把 configDir 拼进 POSIX 命令之前要过
-    // `config_dir_command_safe`，那个函数明确把 `\` 列进拒绝集。
-    // ⇒ 这是**分层校验**，不是「反正没人拿它拼命令」。
-    !p.chars().any(|c| {
-        c.is_control()
-            || is_deceptive_char(c)
-            || matches!(
-                c,
-                '\'' | '"' | '`' | '$' | ';' | '|' | '&' | '<' | '>' | '*' | '?' | '(' | ')' | '!'
-            )
-    })
+    // 〔DUP1 · `设计/90 §3` 判据 2 · `01 §5` D1〕规则整份搬进 `acct_core::config_dir_ok`（全仓唯一一份）：
+    // 后端 `control/ccm` 起会话也要这张全表，而 `control → observe` 是禁止方向 —— 住共享 crate 两边都够得着。
+    // 原先这里的拆法（`N-F1c`：「平台无关的安全性质（拒绝集）＋ 平台相关的形式」，以及为什么要认 Windows 形 ——
+    // monitor 的本机账号清单也来问这个二进制，Windows 的账号目录是 `C:\Users\…`）随规则一起搬过去了，理由原样写在那边。
+    acct_core::config_dir_ok(p)
 }
 
 /// 去掉尾部 `/`，让 manifest 里的路径与 `/proc` 环境变量里的写法能对上。
@@ -402,7 +360,7 @@ const LAUNCH_ID_ENV: &str = "CCM_LAUNCH_ID";
 
 /// 身份 token 的字符集 —— **fail closed**，形状不对就不往下游递。
 ///
-/// 与铸法那一侧同一条：`payload::relay_segment_is_safe` 逐字是
+/// 与铸法那一侧同一条：段闸 `relay_route_core::segment_is_safe`（〔US1〕从 monitor `payload.rs` 搬进共享 crate）逐字是
 /// 「只许字母数字与 `-` `_`，1..=128 字节」，而 `route_key_for_session` 铸出来的
 /// 要么是 UUID v4（`[0-9a-f-]`，36 字节）、要么是过了那条白名单的 sid ⇒ 两种都在集内。
 ///
@@ -443,6 +401,10 @@ struct SessionRow {
     /// 从 `/proc/<pid>/environ` 抠到、且过了 [`launch_id_is_safe`] 的原值。
     /// 还没过防冒名那一格 —— **别直接往出参里填这一格**。
     launch_id: Option<String>,
+    /// 〔HX1 · D-f〕这条会话的 `ANTHROPIC_BASE_URL` 是不是**本机中转那一形**（回环 ＋ 钥匙段 ＋ 路由，
+    /// `relay_route_core::split_keyed_base_url` 认得出）。`None` = 不知道（进程已死 / 环境这一刻取不到）。
+    /// 用途：机器页「停」本机后端之前数一数有几条会话会断（主会话 D-f）。
+    via_relay: Option<bool>,
 }
 
 /// 🔴🔴 **防冒名：不唯一的身份 token 一律不作数**〔`KP5FD5`〕。
@@ -760,6 +722,8 @@ pub(crate) fn live_session_ids(agent_home: &Path) -> std::collections::BTreeSet<
 
 /// `--session-accounts`：扫 `<claude_dir>/sessions/<PID>.json`，每条一行。
 fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
+    // 〔HX1 · D-f〕向适配层要「会话进程环境里该读哪两个键」只问这一次（账号 · 上游地址）。
+    let env_keys = crate::agents::claudecode::paths::SESSION_ENV_KEYS;
     // Z01：`None` 这个 key 是账号 0（configDir 缺席）。裸起会话过去归属不到任何账号
     // （`account: null` + `bare: true`），现在它有名字了。
     let by_dir: Vec<(Option<String>, String)> = load_manifest(accts_dir)
@@ -800,7 +764,7 @@ fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
         // + `bare:false` 今天就是一个可表达的状态 ⇒ 出参形状一个字节都没改）。
         // ⚠ 另两支（键不在 / 值是空串）**仍然合并**，理由在 `EnvRead` 的类型头注。
         let (cfg, cfg_env_unreadable) = if alive {
-            match proc_env_var(pid, crate::agents::claudecode::paths::CONFIG_DIR_ENV) {
+            match proc_env_var(pid, env_keys.config_dir) {
                 EnvRead::Value(v) => (Some(v), false),
                 EnvRead::Unset => (None, false),
                 EnvRead::Unreadable => (None, true),
@@ -823,6 +787,16 @@ fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
             proc_env_var(pid, LAUNCH_ID_ENV)
                 .value()
                 .filter(|v| launch_id_is_safe(v))
+        } else {
+            None
+        };
+        // 〔HX1 · D-f〕第三个键：只折成「走不走本机中转」一个布尔；值带钥匙，这一行之后就丢掉。
+        let via_relay = if alive {
+            match proc_env_var(pid, env_keys.base_url) {
+                EnvRead::Value(v) => Some(relay_route_core::split_keyed_base_url(&v).is_some()),
+                EnvRead::Unset => Some(false),
+                EnvRead::Unreadable => None,
+            }
         } else {
             None
         };
@@ -849,6 +823,7 @@ fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
             alive,
             cfg_env_unreadable,
             launch_id,
+            via_relay,
         });
     }
     // 🔴 防冒名那一格**只能在这里判**：它要看完整批才知道有没有撞（`KP5FD5`）。
@@ -885,6 +860,9 @@ fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
                 // 「四种」的旧话订正成实话。
                 // ⚠ 老后端不出这个键，下游读成 `None`（additive）。
                 "launchId": json_str(r.launch_id.as_deref()),
+                // 〔HX1 · D-f〕走不走本机中转：`true` / `false` / `null`（不知道：进程已死或环境这一刻取不到）。
+                // ⚠ 老后端不出这个键，下游读成 `null`（additive）。
+                "viaRelay": r.via_relay,
             })
             .to_string()
         })

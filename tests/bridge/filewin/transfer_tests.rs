@@ -131,7 +131,7 @@ async fn every_overwrite_question_is_asked_once_and_before_any_transfer_starts()
             asked: 2,
             skipped: 0,
             ok: 4,
-            failed: Vec::new()
+            ..Default::default()
         }
     );
 }
@@ -423,7 +423,7 @@ fn a_board_with_no_window_still_records_and_does_not_panic() {
         asked: 0,
         skipped: 0,
         ok: 1,
-        failed: Vec::new(),
+        ..Default::default()
     });
     assert_eq!(board.rounds(), 1);
     assert_eq!(board.last().map(|o| o.ok), Some(1));
@@ -635,6 +635,8 @@ async fn only_the_items_a_human_agreed_to_overwrite_go_out_with_overwrite() {
 #[derive(Clone, Copy)]
 pub(crate) enum Ends {
     Done,
+    /// 〔FW1〕传完，但提交那一趟前 `n` 次答 `stale`（整份摘要对不上：暂存件中间有坏块）。
+    DoneStaleCommits(usize),
     Failed,
     /// 永不收场（只有被停订才结束）——「撤」那一条用。
     Hang,
@@ -644,6 +646,13 @@ pub(crate) enum Ends {
 pub(crate) struct XferHost {
     ends: Ends,
     log: std::sync::Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>>,
+    /// 〔FW1〕提交来过几趟。
+    commits: std::sync::atomic::AtomicUsize,
+}
+
+/// 〔FW1〕合成对端 done 帧交的整份摘要（判据核它原样进了提交的 `expect`）。
+pub(crate) fn xfer_sha() -> String {
+    "5a".repeat(32)
 }
 
 /// 流被丢掉时记一笔（停订 / 连接没了）。
@@ -671,6 +680,24 @@ impl crate::chan::router::Backends for XferHost {
     > {
         let args: serde_json::Value = serde_json::from_slice(&payload.0).unwrap_or_default();
         self.log.lock().unwrap().push((op.0.clone(), args));
+        if op.0 == "files-commit-upload" {
+            let n = self
+                .commits
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if matches!(self.ends, Ends::DoneStaleCommits(k) if n < k) {
+                let body = serde_json::to_vec(&serde_json::json!({
+                    "code": "stale",
+                    "message": "传上来的那份和本机那份对不上（合成）",
+                }))
+                .unwrap_or_default();
+                return Box::pin(async move {
+                    Err(crate::chan::wire::err_from_wire(
+                        crate::chan::wire::WireErr::Refused,
+                        body,
+                    ))
+                });
+            }
+        }
         let answer = match op.0.as_str() {
             "transfer-upload" => serde_json::json!({ "id": "x-up", "key": "k".repeat(32) }),
             "transfer-download" => serde_json::json!({ "id": "x-down" }),
@@ -705,9 +732,9 @@ impl crate::chan::router::Backends for XferHost {
         let mark = DropMark(self.log.clone());
         let head = futures::stream::iter([frame]);
         match self.ends {
-            Ends::Done => head
+            Ends::Done | Ends::DoneStaleCommits(_) => head
                 .chain(futures::stream::iter([end(
-                    serde_json::json!({ "state": "done", "bytes": 3 }),
+                    serde_json::json!({ "state": "done", "bytes": 3, "sha256": xfer_sha() }),
                 )]))
                 .map(move |i| {
                     let _keep = &mark;
@@ -747,6 +774,7 @@ pub(crate) async fn xfer_rig(
         std::sync::Arc::new(XferHost {
             ends,
             log: log.clone(),
+            commits: Default::default(),
         }),
         crate::chan::host::mint_key(),
         1 << 20,
@@ -806,7 +834,55 @@ async fn an_upload_opens_watches_then_commits_with_the_humans_answer() {
     assert_eq!(got[1].1, serde_json::json!("transfer/x-up"));
     assert_eq!(
         got[2].1,
-        serde_json::json!({ "key": "k".repeat(32), "root": "/srv", "rel": "a.bin", "overwrite": true })
+        serde_json::json!({ "key": "k".repeat(32), "root": "/srv", "rel": "a.bin", "overwrite": true,
+                            "expect": { "sha256": xfer_sha() } }),
+        "提交没带传输台交的整份摘要（〔FW1〕远端后端改名上位之前要核它）"
+    );
+}
+
+/// 〔FW1 · 第四波 4D〕**提交时整份摘要对不上 ⇒ 从头重传一次、出声**（主会话裁 09-25「不等 ⇒ stale、删坏暂存件、从 0 重传并出声」）。
+///
+/// 要求住址：同上那条裁决 · `设计/60 §7` 第 8 条。两形：① 第一次提交 stale、第二次成 ⇒ 整条再走一遍
+/// （开单 → 看 → 提交，两遍），成、而且这一件记进「从头重传过」；② 一直 stale ⇒ 只重一次、第二次照原话失败（不原地打转）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_commit_that_finds_a_bad_staging_part_restarts_once_and_says_so() {
+    let (line, origin, log) = xfer_rig(Ends::DoneStaleCommits(1)).await;
+    let board = DropBoard::default();
+    upload_remote(&line, &origin, &p("a.bin"), &board)
+        .await
+        .expect("重传一次该成");
+    let names: Vec<String> = steps(&log).into_iter().filter(|s| s != "dropped").collect();
+    let once = ["transfer-upload", "subscribe", "files-commit-upload"];
+    assert_eq!(
+        names,
+        once.iter()
+            .chain(once.iter())
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>(),
+        "stale 之后不是「整条从头再走一遍」"
+    );
+    board.finish(DropOutcome {
+        ok: 1,
+        ..Default::default()
+    });
+    assert_eq!(
+        board.last().map(|o| o.redone),
+        Some(vec!["a.bin".to_string()]),
+        "从头重传过却没记下来（界面上不会出声）"
+    );
+
+    let (line, origin, log) = xfer_rig(Ends::DoneStaleCommits(usize::MAX)).await;
+    let e = upload_remote(&line, &origin, &p("a.bin"), &DropBoard::default())
+        .await
+        .expect_err("一直对不上竟然成了");
+    assert!(e.contains("对不上"), "原话没带回来：{e}");
+    assert_eq!(
+        steps(&log)
+            .iter()
+            .filter(|s| *s == "files-commit-upload")
+            .count(),
+        2,
+        "一直 stale 却不止重一次（或一次都没重）"
     );
 }
 

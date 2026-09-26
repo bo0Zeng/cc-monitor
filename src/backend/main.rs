@@ -103,6 +103,9 @@ async fn main() {
     tracing_subscriber::fmt()
         // 〔NT2 · S1〕仍是 stderr；写每一行之前看一眼要不要滚（没被交诊断文件路径时它就是 `std::io::stderr`）。
         .with_writer(stderr_log::stderr_writer)
+        // 〔HX1 · NT2 问 3 ＋ RT1 F3〕只在 stderr 是终端（人在手跑）时上色：进 monitor 日志的管子、
+        //   进脱离载体那份 stderr 文件的，转义码原样落盘、而且让 monitor 那一侧认不出行首的级别字。
+        .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stderr()))
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
@@ -149,11 +152,8 @@ async fn main() {
             // 而 monitor 的账号 0 路径**真的在发这条命令**。
             // 测试当时抓不到，是因为它们直接调 `observe::accounts_query::run`、**绕过了本处调度**。
             // 现由 `observe::accounts_query::tests::main_dispatches_every_subcommand_we_handle` 钉住。
-            // 〔`A3` 第二波〕本机那一侧的 `cc-acct-iso` 两问 —— 住账号域（不住 `observe/`：shellinit 要起进程）。
-            // ⚠ 两条臂各写一行（不合成 `A | B`）：合起来超宽，`cargo fmt` 会把臂体折成块，
-            //   而 `argv_table_guard` 按行取臂体、块体会被判成「不是一次调用」。
-            Some("--acct-iso-status") => emit_answer(accounts::iso::answer(&args)),
-            Some("--acct-iso-shellinit") => emit_answer(accounts::iso::answer(&args)),
+            // 〔LOC1a · 第四波 4D〕`cc-acct-iso` 两问的 argv 形两臂退役：它们上了帧面（`acct-iso-status` /
+            //   `acct-iso-shellinit`），CLI 面由帧面自动派生、走下面 `cli_control` 那一臂（同名 flag）。
             Some("--list-accounts")
             | Some("--session-accounts")
             | Some("--account-trust")
@@ -222,6 +222,9 @@ async fn main() {
         }
         listen::Mode::Listen { port, token } => {
             // 停机信号只挂**一次**（不在 accept 循环里每轮重装一个 SIGTERM 处理器）。
+            // 〔HX1〕收到之后监听口随 `serve_listening` 一起丢（不再接新连接）；已接上的那条流是独立任务，
+            //   排空期间照常写应答，新来的阻塞命令回 `shutting_down`（`inbound::exit_after_drain`）。
+            let stop = inbound::shutdown_listener();
             tokio::select! {
                 _ = serve_listening(
                     port,
@@ -232,14 +235,16 @@ async fn main() {
                     tail_only,
                     with_rbind_token,
                 ) => {}
-                _ = shutdown_signal() => {
+                _ = stop => {
                     tracing::info!("shutdown signal received; exiting");
                 }
             }
+            inbound::exit_after_drain("常驻后端收到停机信号", None::<std::future::Ready<()>>).await
         }
     }
 
-    // ★ **必须显式 exit，不能让 runtime 自然 drop。**
+    // ★ **必须显式 exit，不能让 runtime 自然 drop。**〔HX1〕那一下今天住 `inbound::exit_after_drain`
+    //   （三个退出口共用）；下面这段理由原样留着，它说的是那一下为什么必须是 `exit`。
     //
     // `tokio::io::stdin()` 走的是**阻塞线程池**。`inbound_task.abort()` 只取消那个 async
     // task，**阻塞中的 `read(0)` 不受影响**；而 `#[tokio::main]` 展开出来的 runtime 在 drop
@@ -253,27 +258,16 @@ async fn main() {
     // 爆炸半径正是生产形状：monitor 经 SSH exec 连着时 stdin 一直开着。
     // 远端手工 kill 一个卡住的后端、部署脚本替换在跑的二进制，今天都会失效。
     //
-    // 为什么 exit 是安全的：**流模式后端没有任何待落盘状态** —— 它只读；
-    // 唯一的写盘入口 `control/fork_write.rs` 在一次性查询模式，那条路早就 exit 了。
-    // stdout 也不欠 flush：`writer_task` 每帧写完即 flush。
-    std::process::exit(0);
+    // 🪦〔HX1 · 4D〕原话「为什么 exit 是安全的：**流模式后端没有任何待落盘状态** —— 它只读；
+    // 唯一的写盘入口 `control/fork_write.rs` 在一次性查询模式，那条路早就 exit 了」—— RW1 / FW5 / F9c 之后**已假**：
+    // `files-*` 写面、`files-commit-*`、`exit-policy-set`、资产目录、`apikey-key-set`、`history-annotate` 全在流模式里跑，
+    // 当场 `exit` 会把正在写的那一条连线程带走（E §E2）。⇒ 今天 exit 之前先排空停不下来的那一档（`inbound::exit_after_drain`）。
+    // stdout 不欠 flush 那半仍成立：`writer_task` 每帧写完即 flush。
+    // 两条载体都不返回（类型上是 `!`，各自在收场处 exit）⇒ 这里没有第二个 exit。
 }
 
 /// 造那一帧 hello。**抽出来是因为两条载体都要发它**，而它必须只有一份 ——
 /// 两份 hello 会各自漂，而这一帧是仓外 aterm 按精确字节在读的东西。
-/// 〔`A3` 第二波〕把账号域产出的一次查询答案写出去 —— 进程的 stdout / stderr 归入口这一处。
-///
-/// 账号域（`accounts/`）不自己 `print`：其中的上游选择同时挂在 `--relay` 进程上，它的每一条输出都在
-/// 中转日志白名单底下（`relay::creds_guard`），而查询的输出不是日志。理由全文见
-/// `accounts::iso::Answer` 头注。
-fn emit_answer(a: accounts::iso::Answer) -> i32 {
-    print!("{}", a.stdout);
-    if let Some(e) = a.stderr {
-        eprintln!("{e}");
-    }
-    a.code
-}
-
 fn build_hello(agent_home: &std::path::Path) -> Frame {
     Frame::Hello {
         v: PROTO_VERSION,
@@ -325,6 +319,8 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
         // `the_answer_is_a_function_of_the_machine_not_of_the_build` 钉的是另一半 ——
         // **空表不等于这个字段是个编译期常量**。
         unavailable: Vec::new(),
+        // 〔HX2〕回显起我的宿主交来的那几格（名单 `wire::HOST_ECHO_ENVS`）；一格都没交 ⇒ 省略、线上字节不变。
+        host_env: wire::host_env_from(|name| std::env::var(name).ok()),
     }
 }
 
@@ -338,7 +334,7 @@ async fn run_over_stdio(
     with_bg: bool,
     tail_only: bool,
     with_rbind_token: bool,
-) {
+) -> ! {
     let mut stdout = BufWriter::new(tokio::io::stdout());
     // U6b-3：写 + flush 一步到位，**并拿到 `HelloFlushed` 见证**。
     // 那个见证是 `inbound::spawn` 的必填参数 ⇒「reader 抢在 Hello 之前起来」
@@ -347,7 +343,8 @@ async fn run_over_stdio(
         Ok(w) => w,
         Err(e) => {
             tracing::error!("failed to write/flush hello frame: {e}");
-            return;
+            // 一条命令都还没收过 ⇒ 没有可排空的；走同一个收场口只为「exit 只有一处」。
+            inbound::exit_after_drain("hello 写不出去", None::<std::future::Ready<()>>).await
         }
     };
 
@@ -389,21 +386,35 @@ async fn run_over_stdio(
     let poke_task = spawn_sigusr1_task(slot);
 
     // (d) Run the stdout writer until the channel closes or a signal fires.
-    tokio::select! {
-        _ = writer_task(stdout, rx, reply_rx) => {
+    // 〔HX1〕收信号那一支**不丢写者**：排空期间它照常把在飞命令的最终应答写回去（`inbound::exit_after_drain`）；
+    //   入方向 reader 也留着 —— 新来的阻塞命令要有人回它一句 `shutting_down`。
+    let stop = inbound::shutdown_listener();
+    // 〔TAP · V124〕这条流连接的 tap 接收端（中转抄出来的 SSE 事件，最低优先、可丢）。
+    let tap_rx = tap::attach();
+    let writer = writer_task(stdout, rx, reply_rx, tap_rx);
+    tokio::pin!(writer);
+    let signalled = tokio::select! {
+        _ = &mut writer => {
             tracing::info!("writer task ended (channel closed)");
+            false
         }
-        _ = shutdown_signal() => {
+        _ = stop => {
             tracing::info!("shutdown signal received; exiting");
+            true
         }
-    }
+    };
     // P5：**显式告诉 reader 停** —— 删掉 8s ticker 之后，reader 那边的
     // `sink.is_closed()` 复查再没有定期醒来的机会，只会一直阻塞在 `recv()`。
     // 漏这一句不会红任何测试（进程退出时线程随之消亡），所以它与删 ticker 是同一步。
     poke_for_shutdown.shutdown();
     poke_task.abort();
+    if signalled {
+        inbound::exit_after_drain("收到停机信号", Some(writer)).await
+    }
+    // 写者断了 = 对端走了（SSH 断 / monitor 退）：入方向不会再有东西来，收掉它再排空。
     inbound_task.abort();
     drop(reply_tx);
+    inbound::exit_after_drain("对端走了（写不出去）", None::<std::future::Ready<()>>).await
 }
 
 /// SIGUSR1 处理器要 poke 的那个 watcher 住的**槽**。
@@ -615,9 +626,9 @@ async fn serve_listening(
         Err(e) => {
             let in_use = e.kind() == std::io::ErrorKind::AddrInUse;
             // ★★ **绑不上就退出，绝不自己换端口。**
-            // 换端口 = 每台机 N 个后端，各自往 tmux server 装 `[50]` 槽位的全局 hook
-            // 互相盖（`control/tmux_hook.rs::install_hooks`，**没有关掉它的开关**，
-            // 载荷里烤着那一个后端的 pid+starttime）⇒ 比今天更糟。
+            // 换端口 = 每台机 N 个后端（中转口与全部 SSH 各 N 份）⇒ 比今天更糟。
+            // 〔HX2〕从前这里还写着「各自往 tmux server 装 `[50]` 槽位的全局 hook 互相盖」—— 今天 hook 按实例一格
+            // （`control/tmux_hook.rs::install_hooks`），那一条不成立了。
             tracing::error!(
                 "绑不上 {addr}（{e}）⇒ 退出。\n\
                  这个口上已经有东西了：宿主该**连上去读一行 hello 比对**，\n\
@@ -683,6 +694,8 @@ async fn serve_listening(
                 let (reply_tx, reply_rx) =
                     tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
                 let mut inbound_task = inbound::spawn(reader, reply_tx.clone(), hello_flushed);
+                // 〔TAP · V124〕这条流连接的 tap 接收端：上一条连接的那一条随之作废（hub 里只装此刻这一条）。
+                let tap_rx = tap::attach();
                 let done = done_tx.clone();
                 tracing::info!("一条流已接上（认证通过）");
                 tokio::spawn(async move {
@@ -699,7 +712,7 @@ async fn serve_listening(
                     // socket 的对端关了就是走了，而 stdio 那边刻意对写端关闭不敏感
                     //（那是为了不让一次误关掉整个 backend —— 两条载体的取舍不同，写清楚）。
                     tokio::select! {
-                        _ = writer_task(writer, rx, reply_rx) => {
+                        _ = writer_task(writer, rx, reply_rx, tap_rx) => {
                             tracing::info!("流结束：写不出去了（客户端走了）");
                         }
                         _ = &mut inbound_task => {
@@ -722,8 +735,13 @@ async fn serve_listening(
                 //   ⚠ `§3.3b ⑦` 的 `lingerMs`（归零后等一下再决定）**本路没做**：那是一个会自己醒来的构件，
                 //   后端零定时器铁律（P6）不放行，理由整段在 `control/exit_policy.rs` 头注，交主会话拍板。
                 if control::exit_policy::last_client_left() {
-                    tracing::info!("流结束 ⇒ 这台机器的退出策略是「结束」⇒ 退出");
-                    std::process::exit(0);
+                    // 〔HX1〕不再当场 `exit`：刚走的那个客户可能还有停不下来的写在跑 ⇒ 先排空再退。
+                    //   排空期间 accept 循环停着（新连接排在 backlog 里，退了之后被 RST，monitor 那头按「连不上 ⇒ 起一个」走）。
+                    inbound::exit_after_drain(
+                        "流结束 ⇒ 这台机器的退出策略是「结束」",
+                        None::<std::future::Ready<()>>,
+                    )
+                    .await
                 }
                 tracing::info!("流结束 ⇒ 回到空转：口仍在听，sessions/ 仍在看");
                 busy.store(false, Ordering::SeqCst);
@@ -764,6 +782,7 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
     mut out: W,
     mut rx: tokio::sync::mpsc::Receiver<Frame>,
     mut reply_rx: tokio::sync::mpsc::Receiver<Frame>,
+    mut tap_rx: impl tap::TapSource,
 ) {
     // ★ 应答优先，但**有预算**。
     //
@@ -780,6 +799,10 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
     const REPLY_BURST: u32 = 8;
     let mut burst = 0u32;
     loop {
+        // 〔TAP · V124〕tap 帧**排在最后**（`biased` 按书写顺序问）：只有出方向与应答此刻都没有东西时才轮到它。
+        //   它可丢（SSE 只保快，jsonl 保对），而出方向里的 `line` 帧不许因为它晚到或被挤掉 —— tap 走自己那条
+        //   有界通道（`tap::TAP_CAPACITY`），满了在中转那一侧当场丢、位置号原位说。
+        //   tap 通道被换掉（又一条流连接接上了）⇒ `recv` 回 `None`，这一臂的模式不匹配、本轮不参与，不会空转。
         let frame = if burst < REPLY_BURST {
             tokio::select! {
                 biased;
@@ -788,6 +811,7 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
                     Some(f) => { burst = 0; f }
                     None => return, // 出方向通道关了 = 寿终
                 },
+                Some(f) = tap_rx.next() => f,
             }
         } else {
             burst = 0;
@@ -798,6 +822,7 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
                     None => return,
                 },
                 Some(f) = reply_rx.recv() => f,
+                Some(f) = tap_rx.next() => f,
             }
         };
         if let Err(e) = write_frame(&mut out, &frame).await {
@@ -838,38 +863,9 @@ fn resolve_agent_home() -> PathBuf {
     agents::claudecode::paths::resolve_home()
 }
 
-/// Resolve when a SIGTERM or SIGINT (Ctrl-C) is received, for clean shutdown.
-///
-/// On Unix this listens for both SIGTERM and SIGINT; on other platforms it
-/// falls back to Ctrl-C only (sufficient for the Windows smoke).
-async fn shutdown_signal() {
-    #[cfg(unix)]
-    {
-        use tokio::signal::unix::{signal, SignalKind};
-        let mut sigterm = match signal(SignalKind::terminate()) {
-            Ok(s) => s,
-            Err(e) => {
-                tracing::error!("failed to install SIGTERM handler: {e}");
-                // Fall back to Ctrl-C only so we still shut down on SIGINT.
-                let _ = tokio::signal::ctrl_c().await;
-                return;
-            }
-        };
-        let mut sigint = match signal(SignalKind::interrupt()) {
-            Ok(s) => s,
-            Err(e) => {
-                tracing::error!("failed to install SIGINT handler: {e}");
-                let _ = sigterm.recv().await;
-                return;
-            }
-        };
-        tokio::select! {
-            _ = sigterm.recv() => {}
-            _ = sigint.recv() => {}
-        }
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = tokio::signal::ctrl_c().await;
-    }
-}
+// 🪦〔HX1 · 4D〕这里原有 `shutdown_signal`（等一次 SIGTERM / SIGINT，别处 Ctrl-C）—— 下沉到 `platform/signal.rs::shutdown_listener`〔散文墓碑〕：
+//   平台 cfg 只许住那一层，而流模式的收场（`inbound::exit_after_drain`）也要它（排空时再来一次 ⇒ 不等了）。
+
+#[cfg(test)]
+#[path = "../../tests/backend/writer_task_tests.rs"]
+mod writer_task_tests; // 〔TAP〕写者的优先序：tap 灌满时内容帧一条不少、顺序不变

@@ -11,7 +11,7 @@ const REGISTERED: &[(&str, &str, &str)] = &[
     //    （新帧或文件事件）」—— 这一拍兑现的是两件事：两条查询搬上了已有长连接（`accounts-sessions` /
     //    `accounts-list`，不再每拍握一次手），而「会话 ↔ 账号」只在会话起停时变、**起停本来就有帧**
     //    （`session_added` / `session_removed` ⇒ `remote-session-added` / `session-ended`），
-    //    再加一个握手完成事件 `remote-backend-ready`。⇒ 刷新改由事件驱动（`createEventRefresher`，零定时器），
+    //    再加一个握手完成事件 `remote-backend-ready`（〔DL1〕后来改经通道订 `accounts-changed`，那一格 `seen`）。⇒ 刷新改由事件驱动（`createEventRefresher`，零定时器），
     //    `setInterval` 删了。留着这一行，下面那条反向检查（「登记了却已经没有周期唤醒」）会当场红。
     //    买不到的一格写在 `session-accounts-poll.ts` 头注：别处改了默认账号、而这台上没有会话起停时，
     //    账号清单要等下一次握手 / 起停 / 本 UI 操作才刷新。
@@ -488,7 +488,7 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     ("src/tab-session-actions.ts", "setTimeout", 5, "② ③ 两处 `timeoutMs` 上限（`awaitCompactFor` 的 `finish(false)` / `awaitExitFor` 的 `stop(false)`）④ ★ `pollTimer = setTimeout(() => void tick(), pollMs)` —— **真 data-poll**（`awaitExitFor`），见 `REGISTERED` 那条 ⑧ ⑨ 两处 `bring_*_terminal_to_front` 的 invoke 超时拒绝。除 ④ 外都不是周期取数。编号沿用 `tabs.ts` 那一行拆开之前的原号。"),
     ("src/views/grid-monitor.ts", "setInterval", 1, "1s 重绘 —— 〔UP1〕按格差量（没变的一拍零 DOM 写），不再整表重建。**ui-clock，不取数**，见 `REGISTERED` 那条。"),
     ("src/views/history.ts", "requestAnimationFrame", 1, "展开/收起项目后合并重画一次列表，`rafPending` 标志防重入。一次性。"),
-    ("src/views/history.ts", "setTimeout", 3, "① `waitForIndexThenSearch` 的 1 秒等待 —— **wait-for-condition**（等本地索引就绪），上限 120 拍、超限有说人话的文案。⚠ **F14 第四刀改过**：它原来每秒重发 `search_history`，而那条路在 Rust 侧无条件 join 了 `search_remote_all` ⇒ **每台一条 SSH**；现在只问 `get_search_index_status`（零 SSH），就绪后补跑一次完整搜索。关视图由 F14 第一刀的 `ftSeq++` 掐断。② 0ms 下一拍挂条目右键菜单的关闭监听。③ ★ **F07 下半新增**：搜索框输入去抖（250ms，每次输入前 `clearTimeout`）—— **一次性延时不是周期唤醒**，加它正是为了**减少**下游那三个放大器被触发的次数。"),
+    ("src/views/history.ts", "setTimeout", 2, "〔LOC1b · 第四波 4D〕3 → 2：原先的 ① `waitForIndexThenSearch`（等本机索引就绪的 1 秒等待，F14 第四刀）随本机内存索引删了 —— 本机搜索改问本机后端，没有「索引中」。② 0ms 下一拍挂条目右键菜单的关闭监听。③ ★ **F07 下半新增**：搜索框输入去抖（250ms，每次输入前 `clearTimeout`）—— **一次性延时不是周期唤醒**，加它正是为了**减少**下游那三个放大器被触发的次数。"),
     ("src/views/panorama.ts", "requestAnimationFrame", 3, "① `scheduleDraw` 合并重绘，`drawScheduled` 防重入 ② ③ 开/关侧栏后下一帧重算画布尺寸再画。都是一次性。"),
     ("src/views/panorama.ts", "setTimeout", 2, "① 250ms 搜索去抖。一次性（每次输入前 clear）。② 「复制给 agent」成功后 1.5s 把按钮字还原。一次性，只动按钮自己的字，不取数不重排。"),
     ("src/views/session-viewer.ts", "requestAnimationFrame", 5, "① ② 两处 `maybeFillAbove` —— **向上补料的 rAF 链**，五道守卫在 `:418-426`（世代 / 已到顶 / 在途 等）③ 渲染批前先让状态文绘一帧 ④ ⑤ 双 rAF 后重发 `scrollIntoView`（等 content-visibility 材料化）。"),

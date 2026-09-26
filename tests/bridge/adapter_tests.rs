@@ -1,48 +1,30 @@
 //! # 要求住址：`设计/00 §1.6.6`（目录布局归 `agents/`）＋ `设计/01 §5 D2`（agent 画像只有一个住址）
 //!
-//! 核原文：`设计/00 §1.6.6` 逐字「会话文件长什么样 · 住哪个目录、文件怎么命名」归 `agents/` —— 按 kind 派生记录目录那几条判它；
+//! 核原文：`设计/00 §1.6.6` 逐字「会话文件长什么样 · 住哪个目录、文件怎么命名」归 `agents/` —— 按文件名形态判种类那一条判它（〔LOC1b〕按 kind 派生记录目录那几条随函数删了）；
 //! `D2` 逐字「同一个数写在两处，其中一处一定先腐」—— 画像生成给前端那一条判它（不许前端再手写一份）。
 //! 「不在任何根下的路径默认归 Claude」那一条没有逐字原文。〔JA1 点址 2026-09-24〕
 
 use super::*;
 
-/// Phase 2 F1a：records_dir_for 按 kind 派生正确子目录（Claude=projects / Codex=sessions）。
+/// 〔LOC1b · 第四波 4D〕按文件名形态判种类：`rollout-<ts>-<uuid>.jsonl` ⇒ Codex、其余 ⇒ Claude；不看本机有哪家的根
+/// （远端路径也判得对）。原先这里那三条（`records_dir_for` · `enabled_kinds` · `kind_of_path`〔散文墓碑〕）随被测的函数一起删了。
 #[test]
-fn records_dir_for_per_kind() {
-    let root = Path::new("/home/u/.claude");
+fn the_record_name_shape_decides_the_agent_kind() {
+    let uuid = "0b8f7a4e-0000-4000-8000-000000000003";
     assert_eq!(
-        records_dir_for(AgentKind::ClaudeCode, root),
-        Path::new("/home/u/.claude/projects")
+        kind_of_record_name(Path::new(&format!(
+            "/far/.codex/sessions/2026/01/01/rollout-2026-01-01T00-00-00-{uuid}.jsonl"
+        ))),
+        AgentKind::Codex
     );
-    let croot = Path::new("/home/u/.codex");
     assert_eq!(
-        records_dir_for(AgentKind::Codex, croot),
-        Path::new("/home/u/.codex/sessions")
-    );
-}
-
-/// enabled_kinds 恒含 Claude（零回归）；Codex 仅当 ~/.codex/sessions 存在时纳入（machine-dependent，
-/// 此处只锁 Claude 恒在 + records_roots 有对应 projects 根，Codex 分支由装了 Codex 的机器真机验证）。
-#[test]
-fn enabled_kinds_always_includes_claude() {
-    assert!(enabled_kinds().contains(&AgentKind::ClaudeCode));
-    let roots = records_roots();
-    let claude = roots.iter().find(|(k, _)| *k == AgentKind::ClaudeCode);
-    assert!(
-        claude
-            .map(|(_, d)| d.ends_with("projects"))
-            .unwrap_or(false),
-        "Claude 根应以 projects 结尾"
-    );
-}
-
-/// kind_of_path：不在任何启用 kind 根下的路径 → 默认 `ClaudeCode`（**零回归**：非 Codex 路径
-/// 走原 Claude 行为；调用方仍会对该根做前缀校验挡非法路径）。真根下派发由真机集成验证。
-#[test]
-fn kind_of_path_defaults_to_claude_for_unrooted() {
-    assert_eq!(
-        kind_of_path(Path::new("/tmp/nowhere/x.jsonl")),
+        kind_of_record_name(Path::new(&format!("/far/.claude/projects/p/{uuid}.jsonl"))),
         AgentKind::ClaudeCode
+    );
+    assert_eq!(
+        kind_of_record_name(Path::new("/x/rollout-not-a-uuid.jsonl")),
+        AgentKind::ClaudeCode,
+        "像 rollout 却没有 UUID 尾巴 ⇒ 不认成 Codex（不臆造）"
     );
 }
 

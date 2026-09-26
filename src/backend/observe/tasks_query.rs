@@ -140,6 +140,66 @@ pub(crate) fn session_task_lines(home: &Path, sid: &str) -> Result<Vec<String>, 
     Ok(out.into_iter().map(|(_, l)| l).collect())
 }
 
+/// 〔LOC1a · 第四波 4D · C4e 批 4〕一个任务对象 → **成品**（`tasks-list` 的 `data.tasks` 里的一格）。**纯函数**。
+///
+/// 字段语义**只住这里**（`设计/05 §14.3`「业务解释只有一个家」）：此前后端只保证「每行是一个对象」、
+/// 字段由 monitor 那边的 `parse_task_lines`〔散文墓碑〕解（serde `TaskEntry`）；搬过来之后口径逐字照那一份：
+/// - `id` / `subject` / `status` **必填、是串**（缺 / 不是串 ⇒ 这一条不算任务，`None`）；
+/// - `description` / `activeForm` 可缺、可为 `null`（⇒ 成品里**不出现**这一格），出现就必须是串；
+/// - `blocks` / `blockedBy` 缺 ⇒ 空表；出现就必须是**串的数组**（`null` / 别的 ⇒ 这一条不算，同 serde `Vec<String>`）；
+/// - 别的键一律不带（成品只有这七格，界面按形状严格收）。
+pub(crate) fn task_entry(v: &serde_json::Value) -> Option<serde_json::Value> {
+    use serde_json::Value;
+    let s = |k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
+    let (id, subject, status) = (s("id")?, s("subject")?, s("status")?);
+    let opt = |k: &str| -> Option<Option<String>> {
+        match v.get(k) {
+            None | Some(Value::Null) => Some(None),
+            Some(Value::String(x)) => Some(Some(x.clone())),
+            Some(_) => None,
+        }
+    };
+    let list = |k: &str| -> Option<Vec<String>> {
+        match v.get(k) {
+            None => Some(Vec::new()),
+            Some(Value::Array(a)) => a.iter().map(|x| x.as_str().map(str::to_string)).collect(),
+            Some(_) => None,
+        }
+    };
+    let (description, active_form) = (opt("description")?, opt("activeForm")?);
+    let (blocks, blocked_by) = (list("blocks")?, list("blockedBy")?);
+    let mut out = serde_json::json!({
+        "id": id,
+        "subject": subject,
+        "status": status,
+        "blocks": blocks,
+        "blockedBy": blocked_by,
+    });
+    if let Some(d) = description {
+        out["description"] = Value::String(d);
+    }
+    if let Some(a) = active_form {
+        out["activeForm"] = Value::String(a);
+    }
+    Some(out)
+}
+
+/// 〔LOC1a〕一个会话的任务**成品**：[`session_task_lines`] 读出的每个对象过 [`task_entry`]，解不成任务的跳过（`trace!`），
+/// 顺序原样（任务号升序）。
+pub(crate) fn session_tasks(home: &Path, sid: &str) -> Result<Vec<serde_json::Value>, Refusal> {
+    Ok(session_task_lines(home, sid)?
+        .iter()
+        .filter_map(|l| {
+            let v: serde_json::Value = serde_json::from_str(l).ok()?;
+            let t = task_entry(&v);
+            if t.is_none() {
+                tracing::trace!("任务对象缺必填格或类型不对，跳过：{l}");
+            }
+            t
+        })
+        .collect())
+}
+
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/tasks_query_tests.rs"]
 mod tests;

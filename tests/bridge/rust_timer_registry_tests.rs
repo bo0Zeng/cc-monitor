@@ -122,12 +122,17 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              要重定，见 `99 §4.9` 那条待裁），第二次开窗不再是失败 ⇒ 这一跳就没用了。",
     ),
     (
-        "src/search.rs",
-        "startup-delay",
+        "src/stop_grace.rs",
+        "wait-for-condition",
         1,
-        "`build_blocking` 起头让路一次：避开首屏 replay 的磁盘/CPU 争用。\
-             索引不在关键路径，晚几秒就绪没关系（UI 那之前显示「索引中」）。**一次性**。",
+        "〔HX1 · 4D · D-a〕机器页「停」本机后端：SIGTERM 之后每 100ms 看一眼**它退了没有**（一次性条件），\
+             最多 350 眼（≈ 35 秒，`STOP_GRACE_TRIES × STOP_POLL`，比后端自己的退出排空期限多 5 秒）；等满还在 ⇒ 强杀，再等最多同样的眼数。\
+             **不是节拍器**：只在用户点「停」的那一趟里跑。为什么非等不可：后端收到 SIGTERM 先把停不下来的那一档排空再退、\
+             而后端零定时器、自己不设上限 ⇒ 上限只能由叫它退的这一方执行（`设计/05 §3.3.2`「执行归调用方」）；\
+             接管来的那个不是本进程的孩子，没有 `waitpid` 可阻塞等。退役归：「停」改成经流发一条关机命令、后端答「排空完了」的那天。",
     ),
+    // 〔LOC1b · 第四波 4D〕`src/search.rs` 那一行（`startup-delay` 1 处：`build_blocking` 起头让路 1.5 s）随本机内存索引删了 ——
+    //   本机全文搜索改问本机后端（`history-search`），monitor 不再建索引。
     // 〔C2 09-24〕`src/port_forward.rs` 那一行（accept 瞬时错误 100ms 退避）**删了**：accept 循环整个搬进了
     //   后端的拨号代理（`src/backend/dial/uses.rs::forward`），而后端不许睡 ⇒ 那一侧改成「accept 失败就收工并出声」。
     // ★★ 🔴 `K-R59`（09-11）：**这里原来是本表抓到的第二个真节拍器，那一条今天退役了。**
@@ -167,29 +172,9 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
         "两处 `CHUNK_PAUSE_MS`：分块 emit 之间让 UI 喘一口。\
              **上界是 `chunk_total`**（`if idx + 1 < chunk_total` 才 sleep），最后一块不停。",
     ),
-    (
-        "src/session_map.rs",
-        "ticker",
-        1,
-        "★★ 同上那两处的另一处〔devbench F07, 08-10〕。`recv_timeout(2s)`，无终止条件；\
-             超时臂走**心跳分支**，对 `by_id` 里**每个**条目跑 `is_process_alive`。\
-             它治的 bug 逐字在 `:405-408`：「用户关闭终端窗口导致 `claude.exe` 被强杀时，\
-             `sessions/<PID>.json` **不会被删**（Claude Code 的退出 hook 没跑）→ 文件事件永不触发 \
-             → **死 session 的 Tab 永远 live**」。\
-             ⇒ **事件源存在但住在别的 crate**：backend 侧 `platform/pidwatch/linux.rs` 用 \
-             `pidfd_open(2)` + 无超时 `poll(2)` 绑**进程实例**解掉了同一个问题（PID 复用骗不过它）。\
-             ⚠ **但后端侧的 Windows 那格是空壳** —— `platform/pidwatch/fallback.rs` 头注逐字\
-             「非 Linux 的看守形态 —— **一个诚实的空壳，不是一个假实现**」，真形态 \
-             `OpenProcess` + `WaitForSingleObject` 登记为 **U4b**（`unified-backend` 区，\
-             标「要用户跑真 Windows 机」）。而本条治的 bug **恰恰是 Windows 场景**。\
-             **退役归属：`devbench` F12，被 U4b 挡着。** 实测依据（08-10）：monitor 侧\
-             `cargo check --lib --target x86_64-pc-windows-msvc` ⇒ \
-             `failed to find tool \"lib.exe\"`（monitor 有 C 依赖，交叉编译要 MSVC 工具链），\
-             而后端侧同一条能过 ⇒ **平台代码该住后端侧，不该在 monitor 侧再抽一层**\
-             （原设计那样做是在造第二份实现，已否）。\
-             〔WN1 · 09-24〕U4b 的 Windows 臂已写（`pidwatch/win32.rs`，只到编得过 ＋ 源码对拍）\
-             ⇒ F12 不再被挡，见 `the_windows_pidwatch_has_landed_so_f12_is_unblocked`。",
-    ),
+    // 〔LOC1b · 第四波 4D〕`src/session_map.rs` 那条 `ticker`（`recv_timeout(2s)` 心跳，对每个本机会话跑 `is_process_alive`）
+    //   **真退役**，按它自己写的出路：「事件源存在但住在别的 crate」—— 本机判活改由本机后端的帧来（后端 pidfd 看守
+    //   ＋ Windows 的死亡事件，RT1 F9 真机读数：后端 1 ms 就醒），monitor 那份判活连同这条心跳一起删了。
 ];
 
 fn root() -> &'static Path {
@@ -404,9 +389,9 @@ fn every_ticker_names_its_event_source_and_owner() {
     }
     // 抽取器自检：一条 ticker 都没认出来时上面的断言全空转。
     assert_eq!(
-        tickers, 2,
-        "登记表里的 ticker 条数变了（实测 2 条：`bind.rs::run_heartbeat` 10s · \
-             **`session_map.rs` 的 2s**）。\n\
+        tickers, 1,
+        "登记表里的 ticker 条数变了（实测 1 条：`bind.rs::run_heartbeat` 10s；\
+             〔LOC1b · 4D〕`session_map.rs` 的 2s 心跳**真退役** —— 本机判活改由本机后端的帧来，2 → 1）。\n\
              多一条 ⇒ 新增了真节拍器，必须单独论证；少一条 ⇒ 退役了，把账拧下来。\n\
              ⚠ **这个数最近走过 2 → 4 → 3 → 2，四次都不是回归**，值得一并读懂：\n\
              · 2 → 4（08-10 devbench **F07**）：把 `recv_timeout` 收进针时 `watcher.rs` 的 100ms \

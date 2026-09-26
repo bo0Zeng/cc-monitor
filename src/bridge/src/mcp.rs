@@ -102,9 +102,28 @@ fn collect_entries(
 
 /// 宽容读一个 JSON 文件为 Value（缺 / 坏 → None，不报错）。§3：解析前剥 BOM（Claude 写的
 /// 文件偶带 UTF-8 BOM，全库读端统一剥，见 parser.rs/tasks.rs/history.rs 等）。
+///
+/// 〔W5-VIS · E 吞错普查点名〕「坏」与「没有」照旧同一个返回值（MCP 区照旧显示空；要让界面说「这份文件坏了」得改前端，
+/// 登记为买不到），但**坏的那一形说出来**：文件在而读不动 / 不是 JSON ⇒ `warn` 一行（哪份、为什么）。不存在那一形照旧静默。
 fn read_json_lenient(path: &Path) -> Option<Value> {
-    let raw = std::fs::read_to_string(path).ok()?;
-    serde_json::from_str(raw.trim_start_matches('\u{feff}')).ok()
+    let raw = match std::fs::read_to_string(path) {
+        Ok(r) => r,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(e) => {
+            tracing::warn!("MCP：读不动 {}（{e}），这一份当作没有", path.display());
+            return None;
+        }
+    };
+    match serde_json::from_str(raw.trim_start_matches('\u{feff}')) {
+        Ok(v) => Some(v),
+        Err(e) => {
+            tracing::warn!(
+                "MCP：{} 不是合法 JSON（{e}），这一份当作没有",
+                path.display()
+            );
+            None
+        }
+    }
 }
 
 /// **纯核心**（供单测）：从 `~/.claude.json` Value 抽 `projects` 键（排序）。宽容：非对象 → 空。
@@ -530,12 +549,30 @@ pub async fn read_remote_project_mcp(
         })?;
     let door = crate::user_files::BackendDoor::new(crate::origin::Origin(cfg.origin_label()));
     // 读侧宽容：不存在 / 读不出 / 坏 → 空（不像写侧那样 Err）。
-    let root = crate::user_files::Door::peek(&door, root_dir, rel)
-        .await
-        .ok()
-        .and_then(|p| p.text)
-        .and_then(|t| serde_json::from_str::<Value>(t.trim_start_matches('\u{feff}')).ok())
-        .unwrap_or_else(|| serde_json::json!({ "mcpServers": {} }));
+    // 〔W5-VIS · E 吞错普查点名〕读不出 / 坏那两形**说出来**（原先三个 `.ok()` 折成「空」，与「没有」同形、一句话都没有）。
+    let root = match crate::user_files::Door::peek(&door, root_dir, rel).await {
+        Ok(p) => match p.text {
+            None => None,
+            Some(t) => match serde_json::from_str::<Value>(t.trim_start_matches('\u{feff}')) {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    tracing::warn!(
+                        "MCP：[{}] {path} 不是合法 JSON（{e}），这一份当作没有",
+                        cfg.origin_label()
+                    );
+                    None
+                }
+            },
+        },
+        Err(e) => {
+            tracing::warn!(
+                "MCP：读不出 [{}] {path}（{e}），这一份当作没有",
+                cfg.origin_label()
+            );
+            None
+        }
+    }
+    .unwrap_or_else(|| serde_json::json!({ "mcpServers": {} }));
     let src = format!("[{}] {path}", cfg.origin_label());
     Ok(collect_entries(None, "", Some(&root), &src, None))
 }

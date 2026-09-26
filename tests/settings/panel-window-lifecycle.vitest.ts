@@ -94,6 +94,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(), listen: vi.fn() }));
 
 import { SettingsPanel } from "../../src/settings/panel";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { __setHostOsForTests } from "../../src/settings/host-os";
 import { __resetMachineContextForTests } from "../../src/settings/machine-context";
 
@@ -216,5 +217,27 @@ describe("ST1：设置窗关窗 ＝ 隐藏；〔ST2〕全即时：改了就落�
     await tick();
     expect(theme.load).toHaveBeenCalledTimes(1);
     expect(document.querySelector(".settings-panel")!.classList.contains("open")).toBe(true);
+  });
+});
+
+// 〔W5-UI · 设计/70 §7 #4〕「浏览…」那一下：选目录的窗口打不开（插件抛）原先只打 console —— 点了什么都没发生。
+describe("〔W5-UI〕选 Claude 数据目录的窗口打不开 ⇒ 说出来", () => {
+  beforeEach(() => {
+    document.body.replaceChildren();
+    __resetMachineContextForTests();
+    __setHostOsForTests("windows");
+  });
+
+  it("插件抛 ⇒ 设置窗 banner 上说一句（原因原样）；插件正常返回取消 ⇒ 不说（正控）", async () => {
+    const p = await mount();
+    const pick = (): Promise<void> => (p as unknown as { pickClaudeDir(): Promise<void> }).pickClaudeDir();
+    vi.mocked(openDialog).mockResolvedValueOnce(null);
+    await pick();
+    expect(document.body.textContent ?? "").not.toContain("选目录的窗口打不开");
+    vi.mocked(openDialog).mockRejectedValueOnce(new Error("dialog-refused-xyz"));
+    await pick();
+    const text = document.body.textContent ?? "";
+    expect(text, "打不开也不说").toContain("选目录的窗口打不开");
+    expect(text).toContain("dialog-refused-xyz");
   });
 });

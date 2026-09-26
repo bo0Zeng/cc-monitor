@@ -100,9 +100,18 @@ pub fn label(path: &str) -> String {
 /// 后端那句原话（围栏拒 `refused` · 已存在 / 父目录不在 `io_failed` · 通道哪一段断了），
 /// 经 [`super::source::said`] 翻过，原样交出去。
 pub async fn create_remote(line: &Line, origin: &Origin, path: &str) -> Result<(), String> {
+    create_remote_at(line, origin, &super::source::RemotePath::plain(path)).await
+}
+
+/// 〔W5-FILES · 有损名全寻址〕同 [`create_remote`]，路径可以带字节（有损目录里新建：根发 `{"b16": …}`）。
+pub async fn create_remote_at(
+    line: &Line,
+    origin: &Origin,
+    at: &super::source::RemotePath,
+) -> Result<(), String> {
     let args = serde_json::json!({
-        "root": super::source::parent_dir(path),
-        "rel": super::source::remote_basename(path),
+        "root": at.parent().wire(),
+        "rel": at.tail_wire(),
     });
     super::source::ask(line, origin, CMD_CREATE, &args, WRITE_BUDGET)
         .await
@@ -163,8 +172,13 @@ impl FileWindow {
         let origin = self.source.origin();
         let board = self.write_board.clone();
         board.attach(ctx);
+        // 〔W5-FILES〕落点 ＝ 当前目录的字节 ＋ 新名字（合法 UTF-8 目录时与 `path` 逐字节同）。
+        let at = super::shell::join_path(
+            &self.cwd_path(),
+            super::source::remote_basename(&path).as_bytes(),
+        );
         h.spawn(async move {
-            let out = match create_remote(&line, &origin, &path).await {
+            let out = match create_remote_at(&line, &origin, &at).await {
                 Ok(()) => WriteOutcome {
                     ok: 1,
                     ..WriteOutcome::default()

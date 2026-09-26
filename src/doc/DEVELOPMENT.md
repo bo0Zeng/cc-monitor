@@ -142,7 +142,7 @@ cargo test --lib -- --nocapture                      # 看 println! 输出
 
 | 层 | 跑法 | 覆盖 |
 |---|---|---|
-| node 纯函数断言(`src/**/*.test.ts`,**14 组**) | `npm test` 前段(node 原生跑 TS,需 Node ≥22.18) | diff/branching/api-error/bash/format/remote-health/remote-launch/history-cache/history-prefs/history-actions/pricing/session-backend/panorama-session-files/**launch-dimensions** 纯逻辑(〔LR1〕`launch-render-cli` 那一组随 TS 渲染器删了)。<br>**这张清单的单一事实源是 `tests/node-suite-registry-guard.vitest.ts` 的 `NODE_SUITES`**(U0 2026-08-01 起机检:套件集合↔`package.json`↔`npm test` 链三方对拍)。本行是给人读的副本 —— 原写「14 组」且漏了后两个,正是副本漂移 |
+| node 纯函数断言(`src/**/*.test.ts`,**13 组**) | `npm test` 前段(node 原生跑 TS,需 Node ≥22.18) | diff/branching/api-error/bash/format/remote-health/remote-launch/history-cache/history-prefs/history-actions/pricing/panorama-session-files/**launch-dimensions** 纯逻辑(〔LR1〕`launch-render-cli` 那一组随 TS 渲染器删了;〔LR2〕`session-backend` 那一组随 TS 座删了)。<br>**这张清单的单一事实源是 `tests/node-suite-registry-guard.vitest.ts` 的 `NODE_SUITES`**(U0 2026-08-01 起机检:套件集合↔`package.json`↔`npm test` 链三方对拍)。本行是给人读的副本 —— 原写「14 组」且漏了后两个,正是副本漂移 |
 | vitest + jsdom(`src/**/*.vitest.ts`;条数以 `npm run test:dom` 实跑为准,**别在文档里存副本** —— 这个数在仓里有 4-5 份拷贝、注定漂,见 BACKLOG E65) | `npm run test:dom`(覆盖率 `npm run coverage`) | DOM/生命周期/mock 协作:tabs 门控与物化、TailWindow、UnrenderedRanges、RecordTimeline、估高、路由表、探针纯函数、settings 面板分组、mcp-section、grid-monitor、command-bar、账号徽章/灰灯 等 |
 | E2E 套件(`npm run test:f40` = `tests/e2e/f40-suite.sh`；⚠ 它会往 `~/.claude/` 写 fixture，**本机受限环境别跑**) | **手动**,Linux Xvfb + `tauri dev`(前置见 [tests/e2e/README.md](../../tests/e2e/README.md)) | 整机行为:启动门控/贴底/上翻补批/fork 折叠/抖动密度绊线 |
 
@@ -228,7 +228,7 @@ $env:RUST_LOG = "monitor=debug,tauri=warn"; ...
 
 ### 会话内容在 timeline 底部整段重复（已修 issue #26，回归排查）
 - 根因：watcher 截断重读换新 seq 重投整个文件（at-least-once，INVARIANTS § 25），seq 去重放行 → 每条记录以更大 seq 在末尾再渲染一遍
-- 检查：`tabs.ts onLine` 的 `processedUuids` 按 uuid 整体拒重还在（ensureTab/seq 去重之后、trackAgents/渲染之前）
+- 检查：`tabs.ts onLine` 的 `processedUuids` 按 uuid 整体拒重还在（ensureTab/seq 去重之后、活卡定稿 / 两个真事件 / 渲染之前；〔STC〕会话事实早已不在 `onLine` 上攒）
 - 复现：对一个被 watch 的活跃 jsonl 手动截短再追加回去 → 后端出 `jsonl truncated ... full re-read` warn → Tab 内容应**不**翻倍
 
 ### 大段消息被误折成「已被 ESC 回退」（已修 issue #25，回归排查）

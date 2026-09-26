@@ -102,6 +102,21 @@ pub(crate) fn register(table: &Table, args: &Value) -> Result<String, (&'static 
                 "`origin` given without `backend` (the backend path on that machine)",
             ),
         ))?;
+    // 〔TL3 · `INVARIANTS §47` ②〕可达表是这台后端往远端拼命令时「那台后端在哪」的唯一出处（`command_line` ·
+    //   `asset_sync::{pull_command, push_command}` 都读它）⇒ 在这扇唯一的写口先过放行判定，判不过一条都不登记。
+    //   规则是本后端里那一份同族判定（形式 ＋ 拒绝集，`accounts_query::is_safe_config_dir`），不另写。
+    if !crate::observe::accounts_query::is_safe_config_dir(backend) {
+        return Err((
+            "bad_args",
+            copy_text(
+                "beRemoteAsk.register.backendPathRefused",
+                &[
+                    ("origin", &o.to_string()),
+                    ("path", &format!("{backend:?}")),
+                ],
+            ),
+        ));
+    }
     let mut t = lock(table);
     if !t.contains_key(o) && t.len() >= MAX_REACH {
         return Err((
@@ -172,6 +187,18 @@ pub async fn ask_with(
     table: &Table,
     remote: &dyn Remote,
 ) -> Result<String, String> {
+    // 〔TL3 · `INVARIANTS §47` ② · 主会话 09-26 按 V131 裁〕argv 是自由文本（项目目录名 · 会话路径 · 搜索词 …）⇒
+    //   拼进远端命令之前先过拒绝集（只收 NUL / CR / LF，**不拒 shell 元字符** —— 交给 `command_line` 里那一处 quote）。
+    //   判不过 ⇒ 一次都不拨。那台后端的路径在可达表唯一的写口（[`register`]）进门时已经判过。
+    if let Some(a) = argv.iter().find(|a| !shell_quote_core::free_text_ok(a)) {
+        return Err(copy_text(
+            "beRemoteAsk.argv.refused",
+            &[
+                ("machine", &machine.to_string()),
+                ("value", &format!("{a:?}")),
+            ],
+        ));
+    }
     let r = lock(table)
         .get(machine)
         .cloned()

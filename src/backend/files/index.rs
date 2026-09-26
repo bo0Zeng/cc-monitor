@@ -121,6 +121,8 @@ pub struct Stats {
     pub unreadable_dirs: usize,
     /// 撞上 `u32` 界桩、提前收摊了。真的发生时 [`Snapshot::entries`] 是**不完整**的。
     pub truncated: bool,
+    /// 〔W5-FILES · `设计/60 §3.7`〕根底下挂着的**别的文件系统**，没走进去的个数（那个目录本身照样在索引里）。
+    pub skipped_mounts: usize,
 }
 
 /// 一次遍历留下来的东西。**不可变** —— 重走产出一份新的，整份换掉。
@@ -139,6 +141,7 @@ pub struct Snapshot {
     built_at: SystemTime,
     unreadable_dirs: usize,
     truncated: bool,
+    skipped_mounts: usize,
 }
 
 impl Snapshot {
@@ -165,6 +168,7 @@ impl Snapshot {
             resident_bytes: self.resident_bytes(),
             unreadable_dirs: self.unreadable_dirs,
             truncated: self.truncated,
+            skipped_mounts: self.skipped_mounts,
         }
     }
 
@@ -204,17 +208,25 @@ impl Snapshot {
 /// ⚠ 代价如实写：指向目录的 symlink 底下那些文件**不在索引里**，
 /// 除非它们本来也在根底下。
 ///
-/// # ⚠ 它**没有**做的：不跨文件系统边界这一档
+/// # 〔W5-FILES · 第五波〕不跨文件系统边界（`设计/60 §3.7`）
 ///
-/// `真相源/98 §3.3` 那趟现打用的是 `find ~ -xdev`（**不跨设备**）。
-/// 本实现**没有**那一档 —— 拿到设备号要走平台扩展 trait，而那是 `platform/` 的地盘
-///（`cfgless_guard` 的 `A1` 信号表上有它）。
-/// ⇒ 根底下挂着别的文件系统时，本族会把它一起走完。**这是差异，不是等价。**
+/// 这里原来写着「本实现**没有**那一档 —— 拿到设备号要走平台扩展 trait，而那是 `platform/` 的地盘」。
+/// 今天有了：设备号走 `platform::paths::device_of`，与 `真相源/98 §3.3` 那趟现打的 `find ~ -xdev` 同口径 ——
+/// 子目录的设备号与根不同 ⇒ **这一条照样收进索引**（它是根底下的一个名字），**不往里走**，`skipped_mounts` 记一个数
+/// （经 `files-index-status` / `files-index-rebuild` 交出去，不静默少走）。
+/// ⚠ 非 unix 上设备号问不出 ⇒ 那一判不开口（全当同一个文件系统），如实登记。
 pub fn build(root: &Path) -> Snapshot {
+    build_with(root, crate::platform::paths::device_of)
+}
+
+/// [`build`] 的本体，设备号由调用方给（判据注入「这个子目录在另一个设备上」—— 真挂载点在测试里造不出来）。
+pub fn build_with(root: &Path, device_of: impl Fn(&Path) -> Option<u64>) -> Snapshot {
     let mut blob: Vec<u8> = Vec::new();
     let mut ends: Vec<u32> = Vec::new();
     let mut unreadable_dirs = 0usize;
     let mut truncated = false;
+    let mut skipped_mounts = 0usize;
+    let root_dev = device_of(root);
     let mut stack: Vec<std::path::PathBuf> = vec![root.to_path_buf()];
 
     while let Some(dir) = stack.pop() {
@@ -239,6 +251,10 @@ pub fn build(root: &Path) -> Snapshot {
             blob.extend_from_slice(bytes);
             ends.push(blob.len() as u32);
             if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                if root_dev.is_some() && device_of(&path) != root_dev {
+                    skipped_mounts += 1;
+                    continue;
+                }
                 stack.push(path);
             }
         }
@@ -253,6 +269,7 @@ pub fn build(root: &Path) -> Snapshot {
         built_at: SystemTime::now(),
         unreadable_dirs,
         truncated,
+        skipped_mounts,
     }
 }
 
@@ -467,6 +484,8 @@ pub struct Status {
     pub resident_bytes: usize,
     pub unreadable_dirs: usize,
     pub truncated: bool,
+    /// 〔W5-FILES〕没走进去的挂载点个数（[`Stats::skipped_mounts`]）。
+    pub skipped_mounts: usize,
     /// 距上次走完过了多少秒。界面拿它显示「多久前更新的」。
     pub age_secs: u64,
     /// 后端**声明**的重走周期（[`REWALK_INTERVAL_SECS`]）。
@@ -496,6 +515,7 @@ pub fn status() -> Status {
                     resident_bytes: 0,
                     unreadable_dirs: 0,
                     truncated: false,
+                    skipped_mounts: 0,
                 },
                 0,
             ),
@@ -506,6 +526,7 @@ pub fn status() -> Status {
             resident_bytes: s.resident_bytes,
             unreadable_dirs: s.unreadable_dirs,
             truncated: s.truncated,
+            skipped_mounts: s.skipped_mounts,
             age_secs: age,
             rewalk_interval_secs: REWALK_INTERVAL_SECS,
             stale: !missing && is_stale(age),

@@ -20,6 +20,8 @@ function acct(name: string, opts: Partial<Account> = {}): Account {
     mode: "isolated",
     exists: true,
     loggedIn: true,
+    authKind: "subscription",
+    authReady: true,
     ...opts,
   };
 }
@@ -51,13 +53,13 @@ describe("enumerateAccountModifiers", () => {
   });
 
   it("0 可选账号（无账号/全不可选）→ 空数组", async () => {
-    fetchAccountsMock.mockResolvedValue(state([acct("z", { loggedIn: false })]));
+    fetchAccountsMock.mockResolvedValue(state([acct("z", { loggedIn: false, authReady: false })]));
     expect(await enumerateAccountModifiers("host")).toEqual([]);
   });
 
   it("≥2 可选账号 → 基座 + 每个可选账号，过滤掉不可选的", async () => {
     fetchAccountsMock.mockResolvedValue(
-      state([acct("z"), acct("b"), acct("dead", { loggedIn: false })]),
+      state([acct("z"), acct("b"), acct("dead", { loggedIn: false, authReady: false })]),
     );
     expect(await enumerateAccountModifiers("host")).toEqual([
       { kind: "base", label: "不指定账号 · 用远端 ~/.claude 那套凭据" },

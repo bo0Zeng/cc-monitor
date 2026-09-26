@@ -279,6 +279,64 @@ async fn an_abandoned_ask_takes_its_inner_task_down_with_it() {
         .expect("哨兵没报信就没了");
 }
 
+/// ★ 〔TL3 · `INVARIANTS §47` ②〕可达表唯一的写口先过放行判定：那台后端的路径不合形 / 撞拒绝集 ⇒ `bad_args`、一条都不登记；
+/// 真实落点照登（§47「拒过头也算违反」⇒ 正反各一格）。要求住址：`INVARIANTS §47`，逐字「在它被**拼进 shell 命令串**、
+/// 或被**交给对端去执行 / 去寻址**之前，**本侧**先过一道按这个值的种类写成的放行判定」—— 表里的值随后被 `command_line` ·
+/// `asset_sync::{pull_command, push_command}` 拼进远端命令。
+#[test]
+fn the_reach_table_refuses_a_backend_path_that_must_not_be_spliced() {
+    let t = Table::default();
+    for good in [
+        "/home/u/.cc-monitor/bin/cc-monitor-backend",
+        "/opt/my tools/b",
+    ] {
+        register(&t, &reach_args("ok", "h", good))
+            .unwrap_or_else(|e| panic!("真实好值被拒了：{good:?} ⇒ {e:?}"));
+    }
+    for bad in [
+        "bin/b",
+        "/",
+        "/home/u/../etc/x",
+        "/home/u/x;reboot",
+        "/home/u/$(id)",
+        "/home/u/x`id`",
+        "/home/u/x\nboom",
+        "/home/u/x\u{202E}",
+    ] {
+        let (code, msg) = register(&t, &reach_args("bad", "h", bad))
+            .expect_err(&format!("坏值登进表了：{bad:?}"));
+        assert_eq!(code, "bad_args");
+        assert!(
+            msg.contains("bad") && msg.contains(&format!("{bad:?}")),
+            "那句话没说清哪台 / 哪个值：{msg}"
+        );
+    }
+    assert!(!lock(&t).contains_key("bad"), "拒了，却还是登进了可达表");
+}
+
+/// ★ 〔TL3 · `INVARIANTS §47` ②〕一次性子命令的 argv 是自由文本：拒绝集只收 NUL / CR / LF（**不拒 shell 元字符**），
+/// 判不过一次都不拨；真实名字（带 `'` `(` `&` 的目录名 · 中文 · 空格）照发。要求住址：`INVARIANTS §47` ②；
+/// 主会话 09-26 按 V131 裁「自由文本路径……拒绝集只收控制字符（NUL / CR / LF）……不拒 shell 元字符（拒过头同样违反 §47）」。
+#[tokio::test]
+async fn one_shot_argv_refuses_only_what_the_quote_cannot_hold() {
+    let table = Table::default();
+    answer_reach_with(&reach_args("dev", "10.0.0.2", "/opt/b"), &table).unwrap();
+    let far = Recorder::default();
+    for good in ["-home-u-Bob's notes", "照片 (2019)", "a & b; c"] {
+        ask_with("dev", &["--list-sessions", good], &table, &far)
+            .await
+            .unwrap_or_else(|e| panic!("真实好值被拒了：{good:?} ⇒ {e}"));
+    }
+    assert_eq!(far.n.load(Ordering::SeqCst), 3);
+    for bad in ["a\nb", "a\rb", "a\0b"] {
+        let e = ask_with("dev", &["--search", bad], &table, &far)
+            .await
+            .expect_err(&format!("坏值拼进远端命令了：{bad:?}"));
+        assert!(e.contains("dev") && e.contains(&format!("{bad:?}")), "{e}");
+    }
+    assert_eq!(far.n.load(Ordering::SeqCst), 3, "拒了却还是去拨了");
+}
+
 /// 〔W5-AUX · `设计/96 §3.6`〕交给 capture 的 stdin 真进了拨号请求的 `capture.stdin`（缺席 = 一个字节不写），
 /// 命令原样、用法是 capture —— 生产那一个对面（`DialRemote`）就是拿这份请求去跑 `dial::uses::run` 的。
 /// ⚠ 买不到：「写进远端进程 stdin」那一跳要真 sshd（读数见 `W5-AUX.md §7`，不进门禁）。

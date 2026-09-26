@@ -11,10 +11,8 @@
  * 是**静默账号被抹掉**，所以钉成模块加载即崩的断言（下方 `assertDimensionOrderInvariants`），
  * 而非留作注释纪律。
  */
-import { isValidConfigDir, isValidModelName, isValidSessionId } from "./shell-quote.ts";
 import { AGENT_PROFILE } from "./agent-profile.ts";
-import type { LaunchDimension } from "./launch-plan.ts";
-import { copyText } from "./copy-table";
+import type { LaunchDimension } from "./launch-types.ts";
 
 /** identity：身份打标。只在调用方已知道 sid 时才生效（今天只有 tmux-create-resume 这条路径
  *  设；"开新 Claude"从不设，是已知 F04 缺口，本次原样保留、不顺手"修一半"）。 */
@@ -23,9 +21,8 @@ export const IDENTITY_DIMENSION: LaunchDimension = {
   order: 5,
   applies: (ctx) => ctx.ccmSid !== undefined,
   apply: (plan, ctx) => {
-    if (!isValidSessionId(ctx.ccmSid!)) {
-      throw new Error(copyText("launchDimensions.bad.ccmSid", { value: JSON.stringify(ctx.ccmSid) }));
-    }
+    // 〔DUP1 · `设计/90 §3` 判据 2〕这里原来先过 TS 的 `isValidSessionId`〔散文墓碑〕—— 今天原样推：
+    // 渲染侧判（外层 `@ccm_sid` · `--ccm-sid=` 都过 `shell_quote_core::session_id_ok`，判不过拒并说清）。
     plan.identity = { ccmSid: ctx.ccmSid! };
   },
 };
@@ -63,9 +60,9 @@ export const ACCOUNT_DIMENSION: LaunchDimension = {
   applies: () => true,
   apply: (plan, ctx) => {
     if (ctx.account.kind !== "account") return;
-    if (!isValidConfigDir(ctx.account.configDir)) {
-      throw new Error(copyText("launchDimensions.bad.configDir", { value: JSON.stringify(ctx.account.configDir) }));
-    }
+    // 〔DUP1 · `设计/90 §3` 判据 2〕这里原来先过一遍 TS 的 `isValidConfigDir`〔散文墓碑〕再推 —— 那是
+    // `payload.rs::config_dir_command_safe` 的逐项手抄。今天原样推：拼进命令的那一侧（Rust 载荷渲染
+    // `render_env_ops`）自己判，判不过带 `REFUSE:` 标拒、前端照拒说出来；`ccm` 那条路只带账号**名**，configDir 不上线。
     plan.env.push({ kind: "export-config-dir", value: ctx.account.configDir });
   },
   // 〔LR1 · U8c-3〕这里原来还有 `cliFlags`（`--base` / `--account <名>` / 名字缺失 ⇒ `null`）与
@@ -94,9 +91,8 @@ export const MODEL_DIMENSION: LaunchDimension = {
   applies: (ctx) => !!ctx.modelOverride,
   apply: (plan, ctx) => {
     if (!ctx.modelOverride) return;
-    if (!isValidModelName(ctx.modelOverride)) {
-      throw new Error(copyText("launchDimensions.bad.model", { value: JSON.stringify(ctx.modelOverride) }));
-    }
+    // 〔DUP1 · `设计/90 §3` 判据 2〕这里原来先过 TS 的 `isValidModelName`〔散文墓碑〕（它还会拒 `sonnet[1m]`、Bedrock / Vertex 名）。
+    // 今天原样推：规则只有一份（`shell_quote_core::model_name_ok`），渲染侧与后端 ccm 在拼进命令之前判。
     plan.env.push({ kind: "export-model", value: ctx.modelOverride });
   },
   // 〔LR1 · U8c-3〕`cliFlags`（`--model <名>`）与 `requiredCaps`（`["model"]`）两格随 TS 渲染器删了；
@@ -117,29 +113,14 @@ export const NESTED_ENV_RESET_DIMENSION: LaunchDimension = {
   },
 };
 
-/**
- * 令牌形状的**唯一判据（TS 侧）**：32 个小写十六进制字符。
- *
- * **不收大写、不收 `0x` 前缀、不收连字符**——形状只有一种，为的是省掉「同一个令牌两种写法」
- * 这件事：本地那张 `token → HWND` 表与后端从 `environ` 读回来的串要能直接相等比较，
- * 中间不许有归一化步骤（归一化是「两侧各写一遍、各写错一遍」的经典落点）。
- *
- * ⚠ **它不做转义、也不替代转义**：渲染器照样 `posixQuote` 一遍（同 `export-model`）。
- * 这条校验买的是「变量值的形状」，不是「拼进 shell 安不安全」——
- * 那两件事在本仓是两道闸，不许合并成一道。
- *
- * Rust 同侧是 `src/bridge/src/backend/control/payload.rs::rbind_token_shape_ok`
- * （那边是 fail-closed 的 `Err`，不是 `throw`）。两侧形状由
- * `tests/launch-render-fallback.vitest.ts` 的对拍钉住：**改 Rust 的长度或字符集，TS 这边会红**。
- */
-export function isValidRbindToken(token: string): boolean {
-  return /^[0-9a-f]{32}$/.test(token);
-}
+// 〔DUP2 · `设计/90 §3` 判据 2〕这里原来有 `isValidRbindToken`〔散文墓碑〕—— 令牌形状的 TS 副本（32 个小写十六进制，与 Rust 逐字同），
+// 维度 `apply` 与铸币口各过它一遍。今天铸币口按生成物（字母表 × 长度）**造**、构造上造不出别的形状，形状只剩 Rust 一份
+// （`payload.rs::rbind_token_shape_ok`，渲染前那道闸）⇒ 副本与两遍自检都删了。
 
 /**
  * 🔴 **rbind-token（`设计/80 §8` 步 1，2026-09-23）：启动期令牌 `CCM_RBIND_TOKEN`。**
  *
- * 「买到什么 / **买不到什么**」逐字住 `launch-plan.ts::EnvOp` 那一段
+ * 「买到什么 / **买不到什么**」逐字住 `launch-types.ts::EnvOp` 那一段
  * （要害一句：**令牌不许承载任何权限语义** —— 它会进 `/proc/<pid>/environ`、
  * `cmdline` 与 shell 历史）。这里只记三件与**维度机制**有关的事：
  *
@@ -180,13 +161,8 @@ export const RBIND_TOKEN_DIMENSION: LaunchDimension = {
     ctx.rbindToken !== undefined && (ctx.action.kind === "new" || ctx.action.kind === "resume"),
   apply: (plan, ctx) => {
     if (ctx.rbindToken === undefined) return;
-    if (!isValidRbindToken(ctx.rbindToken)) {
-      // 形状不对**不许降级成"这次不带令牌"** —— 那会把一次铸币 bug 变成一次
-      // 「↗ 不明原因失效」，而 `§8.5 ②` 买的恰恰是「归因从四档猜变成一个布尔」。
-      throw new Error(
-        copyText("launchDimensions.bad.rbindToken", { value: JSON.stringify(ctx.rbindToken) }),
-      );
-    }
+    // 〔DUP2〕形状不在这里判（规则只有 Rust 一份）：原样推出去，坏串（含 `""`）由渲染侧 `payload.rs` 那道闸拒 ——
+    // 仍然**不会降级成"这次不带令牌"**（`applies` 那条 `!== undefined` 照旧），只是「拒」的那一刻从这里挪到了渲染那一跳。
     plan.env.push({ kind: "export-rbind-token", value: ctx.rbindToken });
   },
 };

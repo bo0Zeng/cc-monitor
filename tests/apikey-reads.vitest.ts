@@ -20,8 +20,10 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   decodeApikeyRouting,
   decodeApikeyStatus,
+  decodeApikeyWritten,
   fetchApikeyRouting,
   readApikeyStatus,
+  writeApikeyKey,
 } from "../src/apikey-reads";
 import { REPO_ROOT } from "./test-support/repo-root";
 import {
@@ -122,5 +124,49 @@ describe("失败：一句人话，不退化成「没配」/「没行」", () => 
     await expect(
       fetchApikeyRouting("host-a", "claude-code", ["/d"]),
     ).rejects.toThrow(/够不着/);
+  });
+});
+
+// ═══ 〔HX2 · 第四波 4D〕写 key 也走通道（`apikey-key-set`）═══════════════════════════════════
+//
+// 要求住址：`设计/05 §14.3` B 组（`creds.apikey` 经 `chan.call`）；`第四波记录/US1.md` 表「`creds.apikey` 写 … 等 HX2 落了再迁」；
+// `KH2C1`（前端一个字都不推账号 id：请求体里只有 `configDir`）。
+describe("〔HX2〕W2 写 key：经通道交那台机器的后端", () => {
+  const WRITTEN = { account: "work", path: "/h/k.json", masked: "sk-****", baseUrl: null };
+  it("op 对、请求体恰是 {configDir, key}（带 Base URL 那一路多 baseUrl）、origin 原样、一发", async () => {
+    invokeMock.mockResolvedValue(chanReply(WRITTEN));
+    await writeApikeyKey("devbox", "/h/.claude-alt/work", "sk-FIXTURE");
+    invokeMock.mockResolvedValue(chanReply(WRITTEN));
+    await writeApikeyKey("<local>", "/h/.claude-alt/work", "sk-FIXTURE", "https://up.example/v1");
+    const calls = invokeMock.mock.calls;
+    expect(calls.map((c) => c[0])).toEqual(["chan_call", "chan_call"]);
+    const [a, b] = calls.map((c) => c[1] as ChanCallArgs);
+    expect([a.origin, a.op, chanArgsJson(a)]).toEqual([
+      "devbox",
+      "apikey-key-set",
+      { configDir: "/h/.claude-alt/work", key: "sk-FIXTURE" },
+    ]);
+    expect([b.origin, b.op, chanArgsJson(b)]).toEqual([
+      "<local>",
+      "apikey-key-set",
+      { configDir: "/h/.claude-alt/work", key: "sk-FIXTURE", baseUrl: "https://up.example/v1" },
+    ]);
+  });
+  it("成品严格收：四格照收；多一格 / 缺一格 / 类型不对 ⇒ 抛（不补值）", () => {
+    expect(decodeApikeyWritten(WRITTEN)).toEqual(WRITTEN);
+    for (const bad of [
+      { ...WRITTEN, key: "sk-FIXTURE" },
+      { account: "work", path: "/h/k.json", masked: "sk-****" },
+      { ...WRITTEN, baseUrl: 3 },
+      null,
+    ]) {
+      expect(() => decodeApikeyWritten(bad)).toThrow(/两端版本对不上/);
+    }
+  });
+  it("失败说人话、话里不带明文", async () => {
+    invokeMock.mockRejectedValue(NO_CHANNEL);
+    const err = await writeApikeyKey("host-a", "/d", "sk-SHOULD-NOT-SHOW").catch((e: Error) => e);
+    expect(String(err)).toMatch(/够不着/);
+    expect(String(err)).not.toContain("sk-SHOULD-NOT-SHOW");
   });
 });

@@ -9,8 +9,7 @@ fn codex_layout_locked() {
     assert_eq!(a.id(), "codex");
     assert_eq!(a.default_launcher(), "codex");
     let l = a.layout();
-    assert_eq!(l.sessions_subdir, "sessions");
-    assert_eq!(l.record_ext, "jsonl");
+    // 〔LOC1b · 4D〕子目录名 / 扩展名两格随 monitor 读本机盘那几份实现删了（目录布局归后端 `agents/codex/`）。
     assert_eq!(l.sid_strategy, SidStrategy::CodexRollout);
     assert_eq!(l.tasks_subdir, None);
 }
