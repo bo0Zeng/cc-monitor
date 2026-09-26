@@ -68,53 +68,9 @@ fn analyze_session_detects_bg_kind() {
     std::fs::remove_dir_all(&tmp).ok();
 }
 
-/// ★ 围栏只许有一处〔audit-0805 08-06，定框 E3〕。
-///
-/// # 它钉的不是「拒绝逃逸」，是「**只有一个地方在判逃逸**」
-///
-/// 上面那几条各自断言某条读路会 `is_err()` —— 那是**行为**。
-/// 但行为对了不等于结构对了：此前 `list_sessions` 有一份**内联副本**，
-/// 注释逐字写着「与 `read_session` 对齐」，也就是**靠手工对齐的两份**。
-/// 两份都能通过各自的行为判据，而**强化其中一份时另一份不会跟** ——
-/// 那正是本区 E3 反复要挡的形状。
-///
-/// 判准取「`canonicalize()` 在生产段出现在几处」：它是这套围栏的**核心动作**，
-/// 收成一处之后，任何新写的「自己解析一下路径再判」都会让这个数变大。
-#[test]
-fn path_resolution_has_exactly_one_home() {
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/observe/history_query.rs"
-    ));
-    let n = prod.matches("canonicalize()").count();
-    // 抽取器自检：剥过头 / 抠不到 ⇒ 下面那条会零命中地绿。
-    assert!(
-        prod.len() > 3_000,
-        "剥完生产段只剩 {} 字节 —— 剥法坏了，本条此刻无效",
-        prod.len()
-    );
-    assert_eq!(
-        n, 2,
-        "`canonicalize()` 在生产段出现了 {n} 处（应恰好 2：`fence_under_projects` 里\n\
-             一次解析 root、一次解析目标）。\n\
-             多出来 = 又有人自己解析了一遍路径 —— 那就是第二份围栏，\n\
-             它今天可能与 `fence_under_projects` 等价，但**强化一边时另一边不会跟**（E3）。\n\
-             少了 = 围栏被简化了，去看它是不是还挡得住 symlink 逃逸。"
-    );
-    // 反向锚点：那两处确实在围栏函数里，不是散落在别处凑够了数。
-    let f = prod
-        .find("fn fence_under_projects")
-        .expect("找不到围栏函数 —— 上面那个计数就失去了意义");
-    // ⚠ **本文件里不许写「只含右大括号、没有左大括号」的字符串或注释**：
-    // 括号配平扫描面里，一个不配对的大括号会把它的剥法提前收尾，
-    // 于是测试段泄进「生产段」——第一版就是这么写的，当场把两条判据打红。
-    // 改用「下一个顶层 fn」当边界，绕开大括号。
-    let body_end = prod[f..].find("\nfn ").map_or(prod.len(), |k| f + k);
-    assert_eq!(
-        prod[f..body_end].matches("canonicalize()").count(),
-        2,
-        "两处 `canonicalize()` 不在 `fence_under_projects` 里 —— 计数凑对了，位置没对"
-    );
-}
+// 〔TL3 · 审计 F 🔴-6〕「围栏只许有一处」（audit-0805 08-06，定框 E3）那一条搬去 `fence_tests.rs`、名字照旧：
+//   它先前只数**本文件**里的 `canonicalize()`（== 2），而 `search_query.rs` 里还有一份内联的 —— `设计/15 §4.2`
+//   「守卫范围 ≠ 性质范围」。围栏收进 `observe/fence.rs` 之后，人群换成 observe 全树。
 
 #[test]
 fn list_sessions_rejects_path_traversal() {

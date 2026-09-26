@@ -524,6 +524,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/main_fourth_face_tests.rs",
     "tests/backend/mcp_sync_tests.rs", // 〔AS1〕
     "tests/backend/observe/accounts_query_tests.rs",
+    "tests/backend/observe/fence_tests.rs", // 〔TL3〕读路径围栏一个家（扫 observe 全树）＋ 放行 / 拒绝行为（临时目录 · symlink）
     "tests/backend/observe/history_query_f07_tests.rs",
     "tests/backend/observe/history_query_index_tests.rs",
     "tests/backend/observe/history_query_kr83_tests.rs",
