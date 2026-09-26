@@ -1923,7 +1923,8 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
   });
 
   // R05 Phase D 审计（第 4 题，**实测修了一个真 bug**）：账号名允许下划线
-  // （`settings/acct-deploy.ts::validateAcctName` 放行 `[A-Za-z0-9._-]`、只禁首字符 `-`/`.`），
+  // （当时 `settings/acct-deploy.ts::validateAcctName` 放行 `[A-Za-z0-9._-]`、只禁首字符 `-`/`.`；〔DUP2〕今天它读生成物、
+  // 与建号工具同一条 —— 首字符要字母数字，`__base__` 在表单里建不出来了，但下面那条理由照旧成立），
   // 故一个**真实账号**完全可以叫 `__base__`；何况账号也能由 cc-acct-iso 在 app 之外直接建、
   // 根本不过这道校验。改造前 `isBase = opt.id === "__base__"` 会把它判成基座：
   // 点它 → 静默落基座、用户选的号被吞掉（R11/R08 那族「看起来生效了，只是用了错的号」），
