@@ -656,3 +656,113 @@ fn the_selfevidencing_skip_branch_is_still_there() {
         );
     }
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// 〔TL2 · 4D · C4e 问 2〕过门的命令，登记表里的码必须盖住门会回的码
+// ════════════════════════════════════════════════════════════════════════
+
+/// 一段生产源码里「错误元组 / 错误出口」的码：`(` 之后（隔空白）紧跟一个蛇形字面量、再跟 `,`。
+fn tl2_error_codes_in(src: &str) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    for (i, _) in src.match_indices('(') {
+        let after = src[i + 1..].trim_start();
+        let Some(rest) = after.strip_prefix('"') else {
+            continue;
+        };
+        let Some(end) = rest.find('"') else { continue };
+        let lit = &rest[..end];
+        if rest[end + 1..].trim_start().chars().next() == Some(',')
+            && lit.contains('_')
+            && lit.chars().all(|c| c.is_ascii_lowercase() || c == '_')
+        {
+            out.insert(lit.to_string());
+        }
+    }
+    out
+}
+
+/// `gate.rs` 生产段里 `fn <name>(` 的函数体（到顶层 `\n}` 为止）。
+fn tl2_fn_body<'a>(src: &'a str, name: &str) -> &'a str {
+    let at = src
+        .find(&format!("fn {name}("))
+        .unwrap_or_else(|| panic!("gate.rs 里找不到 `fn {name}(`"));
+    let tail = &src[at..];
+    &tail[..tail.find("\n}").expect("函数没收尾")]
+}
+
+/// 〔TL2〕要求住址：`INVARIANTS §34`（tmux 破坏性 / 半破坏性命令三道门）· `INVARIANTS §42`（线上契约文档与代码不许漂）。
+///
+/// C4e 交上来的缺口逐字：「`launch` 那条后端登记表的 `codes` **没列 `wrong_owner`**，而 `control/launch.rs::run` 经 `gate::admit` 真会回它」。
+/// 病根是「码表手写、没人从门那一侧核」。本条从**门的源码**派生：`admit` / `admit_destructive` 各自会回哪些码（连它们调的 `probe`），
+/// 再从 `inbound::REGISTRY` 的每一格找出「实现模块调了哪道门」，那一格的 `codes` 必须 ⊇ 那道门的码。
+/// 异源：码集合读 `gate.rs`，调用关系读各模块与 `inbound.rs` 的源码，被比的是运行期的 `REGISTRY`。
+#[test]
+fn every_command_that_passes_the_gate_lists_the_gates_codes() {
+    let gate =
+        crate::guard_support::production_code(include_str!("../../../src/backend/control/gate.rs"));
+    let probe = tl2_error_codes_in(tl2_fn_body(&gate, "probe"));
+    let codes_of = |f: &str| -> std::collections::BTreeSet<String> {
+        let body = tl2_fn_body(&gate, f);
+        let mut c = tl2_error_codes_in(body);
+        if body.contains("probe(") {
+            c.extend(probe.iter().cloned());
+        }
+        c
+    };
+    let doors = [
+        ("admit", codes_of("admit")),
+        ("admit_destructive", codes_of("admit_destructive")),
+    ];
+    assert!(
+        doors[0].1.contains("wrong_owner") && doors[1].1.contains("too_many_windows"),
+        "门的码读错了：{doors:?}"
+    );
+
+    let inbound =
+        crate::guard_support::production_code(include_str!("../../../src/backend/inbound.rs"));
+    let root = crate::guard_support::src_root();
+    let mut checked = Vec::new();
+    for spec in crate::inbound::REGISTRY {
+        let anchor = format!("name: \"{}\",", spec.name);
+        let Some(at) = inbound.find(&anchor) else {
+            continue;
+        };
+        let cell = &inbound[at..];
+        let cell = &cell[..cell.find("\n    },").unwrap_or(cell.len())];
+        for (i, _) in cell.match_indices("crate::control::") {
+            let module: String = cell[i + "crate::control::".len()..]
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            let Ok(src) =
+                std::fs::read_to_string(root.join("control").join(format!("{module}.rs")))
+            else {
+                continue;
+            };
+            let prod = crate::guard_support::production_code(&src);
+            for (door, want) in &doors {
+                if !prod.contains(&format!("gate::{door}(")) {
+                    continue;
+                }
+                let have: std::collections::BTreeSet<String> =
+                    spec.codes.iter().map(|s| s.to_string()).collect();
+                let missing: Vec<_> = want.difference(&have).collect();
+                assert!(
+                    missing.is_empty(),
+                    "`{}` 的实现（control/{module}.rs）过 `gate::{door}`，那道门会回 {missing:?}，而 `inbound::REGISTRY` 那一格的 `codes` 没列 —— \
+                     界面按登记的码逐码说人话，漏一个就是那一句永远说不出来（C4e 问 2 那一形）",
+                    spec.name
+                );
+                checked.push((spec.name, *door));
+            }
+        }
+    }
+    checked.sort();
+    checked.dedup();
+    // 正控 ＋ 人群：今天过门的恰好是 launch（admit）与 kill（admit_destructive）。多了少了都要回来看一眼。
+    assert_eq!(
+        checked,
+        vec![("kill", "admit_destructive"), ("launch", "admit")],
+        "过门的命令变了"
+    );
+}

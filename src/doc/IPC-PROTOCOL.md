@@ -836,6 +836,7 @@ monitor 的 `tmux_send_keys(…, enter=false)` 生产上唯一的用途是**优�
 | `send-into` / `send-keys-raw` 键入成功 | true | — | false / true |
 | tmux 不在 PATH | false | `no_tmux` | 没起成 |
 | `send-into` / `send-keys-raw` 但会话不存在 | false | `no_such_session` | 没起成 |
+| `send-into` / `send-keys-raw` 但会话不是本工具的（§34 Gate 2，〔TL2〕原先这一行漏了） | false | `wrong_owner` | 没起成 —— 没往别人的会话里打字 |
 | 建不出来且也不存在 | false | `create_failed` | 没起成 |
 | 会话在，`send-keys` 失败 | false | `typed_unconfirmed` | **起了但没确认** —— 别重试新建 |
 
