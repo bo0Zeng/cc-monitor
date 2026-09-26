@@ -876,3 +876,96 @@ fn the_real_probe_asks_this_binarys_own_platform() {
         caps_line(&probe_output_for("/x/ccm", crate::TmuxPlatform::AskThePath))
     );
 }
+
+/// 〔SH1 · `INVARIANTS §49` · V121〕**codex 的 cc-bus 身份配方读会话名时，那个 tmux 客户端是 UTF-8 客户端。**
+///
+/// 要求住址：`INVARIANTS §49`「本仓每一处按格式串读 tmux 打印通道的调用点，起的 tmux 客户端都必须是 UTF-8 客户端」·
+/// `TL2.md §9.1` 3（`BUS_ID_RECIPE` 读 `#S` 是五处真违反之一）。
+///
+/// 真跑：隔离 socket（显式 `-S` ＋ `-f /dev/null`，不碰默认 socket）起一个**中文名**会话，pane 里整条命令跑在
+/// `LC_ALL=C` 下（tmux 只看 `LC_ALL`→`LC_CTYPE`→`LANG` 第一个非空值有没有 `UTF-8`）。生产那一段配方原样执行，
+/// `CC_BUS_ID` 必须逐字节就是会话名。
+///
+/// ⚠ **台架为什么要一个 shim 把 tmux 客户端那一侧的 `TMUX` 摘掉**〔SH1 09-26 现打，tmux 3.6〕：
+/// `TMUX` 已设的客户端，tmux **一律按 UTF-8 打**，不看 locale（`env -i LC_ALL=C TMUX=/x,1,0 tmux … display-message -p` 读出原样中文；
+/// 摘掉 `TMUX` 就是 `_`）。而这段配方整段裹在 `[ -n "${TMUX:-}" ]` 里 ⇒ 生产上它恒在 `TMUX` 已设时跑 ⇒
+/// **在 3.6 上它今天其实没被改写**，TL2 记的「真违反」是**潜伏**的：靠的是一条手册里没写的启发式（`K-R12` 的实验室当年
+/// 在 tmux 外面量，没碰到这一格）。旗保证的是**不靠它**。⇒ 台架必须把那条启发式关掉，否则下面的反向正控立不住、
+/// 那条相等是空真（本条第一版就是这么红在反向正控上的）。
+/// ★ 反向正控：同一个 pane、同一个 locale、同一个 shim，**不带旗**的 `display-message -p "#S"` 必须被改写。
+#[test]
+fn the_bus_id_recipe_reads_the_session_name_through_a_utf8_client() {
+    let dir = std::env::temp_dir().join(format!("ccm-sh1-u8-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("shim")).expect("建台架目录");
+    let sock = dir.join("sock");
+    let real = std::process::Command::new("sh")
+        .args(["-c", "command -v tmux"])
+        .output()
+        .expect("sh 不可执行");
+    let real = String::from_utf8_lossy(&real.stdout).trim().to_string();
+    assert!(!real.is_empty(), "找不到 tmux —— 本测试要求环境有 tmux（刻意不静默跳过）");
+    let shim = dir.join("shim").join("tmux");
+    std::fs::write(
+        &shim,
+        format!("#!/bin/sh\nunset TMUX\nexec '{real}' -S '{}' \"$@\"\n", sock.display()),
+    )
+    .expect("写 shim");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).expect("chmod shim");
+    }
+    let name = "u8甲乙";
+    let script = format!(
+        "{BUS_ID_RECIPE} printf '%s' \"$CC_BUS_ID\" > '{d}/id'; \
+         printf '%s' \"$(tmux display-message -p '#S')\" > '{d}/raw'; touch '{d}/done'; exec sleep 30",
+        d = dir.display()
+    );
+    let path = format!(
+        "{}:{}",
+        dir.join("shim").display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let tmux = |args: &[&str]| {
+        std::process::Command::new(&real)
+            .arg("-S")
+            .arg(&sock)
+            .args(args)
+            .output()
+            .expect("tmux 不可执行")
+    };
+    let path_kv = format!("PATH={path}");
+    let out = tmux(&[
+        "-f", "/dev/null", "new-session", "-d", "-s", name, "env", "LC_ALL=C", "LANG=C",
+        "LC_CTYPE=C", &path_kv, "sh", "-c", &script,
+    ]);
+    assert!(
+        out.status.success(),
+        "隔离 socket 上建会话失败：{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    // 夹具侧的有界等待（pane 里那条命令由另一个进程跑完）；等不到就失败，不静默跳过。
+    for _ in 0..250 {
+        if dir.join("done").exists() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let id = std::fs::read(dir.join("id"));
+    let raw = std::fs::read(dir.join("raw"));
+    let _ = tmux(&["kill-server"]);
+    let _ = std::fs::remove_dir_all(&dir);
+    let id = id.expect("配方那一趟没跑完（`id` 没写出来）");
+    let raw = raw.expect("反向正控那一趟没跑完（`raw` 没写出来）");
+    assert!(
+        !raw.is_empty() && raw != name.as_bytes(),
+        "反向正控没立住：不带旗的 `display-message` 在这个台架上也读得出中文（或什么都没读到：{raw:?}）—— \
+         台架不是非 UTF-8 客户端，下面那条相等是空真"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&id),
+        name,
+        "配方在非 UTF-8 客户端下读出的会话名被改写了 —— `BUS_ID_RECIPE` 的 `display-message` 没带 UTF-8 旗（`INVARIANTS §49`）"
+    );
+}

@@ -2340,8 +2340,10 @@ shell 套件那一侧 `e2e_gate_registry_tests.rs::no_e2e_suite_isolates_with_tm
 ⚠ **它买不到的**：
 - **人群判据是按行认的**〔TL2 · 4D 立：`lib_invariant_population_tests.rs::every_tmux_print_site_is_registered_with_how_it_carries_utf8`，
   两棵树 ＋ 随部署的 shell 脚本里每一处「tmux 打印子命令 ＋ `-F` / `-p`」== 登记表（文件 × 子命令 × 带法 → 处数，两向）〕：一条命令串被拆在两行上它认不到；
-  `show-options` 那类不按格式串读的不在人群里。登记表里**不带** UTF-8 的有两类，如实写着：只读 ASCII 的（pid · 窗口数 · `%N` pane id，今天无害，
-  含 `IV1` 升格当天现打的 `ccm/plan.rs` 那条 `list-panes … -F '#{pane_id}'`）与**读会话名 / 地址的五处**（`ccm/mod.rs` 的 `BUS_ID_RECIPE` · cc-bus 的 `cc-register` · `cc-whoami` ×3）——
-  后者是本条的真违反，待裁（改它们是载荷 / 随部署脚本的字节变更）。
+  `show-options` 那类不按格式串读的不在人群里。登记表里**不带** UTF-8 的只剩一类：只读 ASCII 的（pid · 窗口数 · `%N` pane id，今天无害，
+  含 `IV1` 升格当天现打的 `ccm/plan.rs` 那条 `list-panes … -F '#{pane_id}'`）。〔SH1 · 09-26〕原先另一类「**读会话名 / 地址的五处**」
+  （`ccm/mod.rs` 的 `BUS_ID_RECIPE` · cc-bus 的 `cc-register` · `cc-whoami` ×3，TL2 现打的真违反）按 V121 加了旗（`-u`，排在子命令前），
+  由 `tests/e2e/backend-cc-bus.sh` 的 `[SH1-a]` 在非 UTF-8 客户端 ＋ 中文会话名下真跑钉住（带反向正控：同台架上不带旗的那一条确实被改写）。
+  ⚠ 随部署脚本那四处要在各台机器上**重新部署 cc-bus** 才生效；`BUS_ID_RECIPE` 随后端载荷走。
 - **上溢今天仍被丢弃**：`pane_current_path` 里的真 TAB 会多切一段，monitor 的 `!= N` 判法会把那个会话静默丢掉（`tmux_tests.rs::a_dirty_line_underflows_and_an_overflowing_line_is_still_dropped_today` 的名字就写着「今天仍丢」）。本条只要求下溢出声，不管上溢。
 - 旗放错位置是 `rc=1 + unknown flag -u` 的**响错**，而几处调用点刻意不看退出码 ⇒ 那一声在生产里会被压成「一个会话都没有」。位置由各调用点判据单独钉，不由本条的家管。

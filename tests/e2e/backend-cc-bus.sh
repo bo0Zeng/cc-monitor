@@ -487,6 +487,38 @@ chk "★ 空正文 ⇒ invalid_args（空广播不是缺省）" "$(jq -r .code <
 tmux kill-session -t '=bcast_cc' 2>/dev/null || true
 tmux kill-session -t '=bcme_cc' 2>/dev/null || true
 
+echo "[SH1-a] ★ INVARIANTS §49：读会话名 / 地址的 tmux 客户端是 UTF-8 客户端（非 UTF-8 locale ＋ 中文会话名）"
+# 〔SH1 · V121〕`cc-register` 记登记地址 · `cc-whoami` 三条认身份的路，读的都是**会话名**（可以是中文）。
+# 台架：pane 里整条命令跑在 `LC_ALL=C` 下 —— tmux 只看 `LC_ALL`→`LC_CTYPE`→`LANG` 第一个非空值有没有 `UTF-8`，
+# 这一形就是「非 UTF-8 客户端」。不带旗的话，中文被改写成 `_`、退出码仍是 0。
+# 期望值由**同一个 locale 下的同一条消毒**现算（`cc-whoami::resolve` 的那条 sed），不写死。
+# ⚠ 〔SH1 09-26 现打，tmux 3.6〕`TMUX` 已设的客户端 tmux **一律按 UTF-8 打**、不看 locale —— 这五处在生产上都跑在
+#   tmux 里（`TMUX` 恒设），所以 3.6 上它们今天其实没被改写（潜伏的违反，靠的是一条手册里没写的启发式）。
+#   旗保证的是不靠它 ⇒ 台架给 pane 里的 `tmux` 另挂一层 shim：摘掉客户端那一侧的 `TMUX` 再转给隔离 socket，
+#   才造得出真正的非 UTF-8 客户端（反向正控就是验这一格）。脚本自己读到的 `$TMUX` 不动（`cc-whoami` 兜底 1 要它）。
+_u8d="$SANDBOX/u8"; _u8bus="$SANDBOX/u8bus"; _u8shim="$SANDBOX/u8shim"; mkdir -p "$_u8d" "$_u8bus" "$_u8shim"
+printf '#!/bin/bash\nunset TMUX\nexec %s -L %s "$@"\n' "$REALTMUX" "$_SOCK" > "$_u8shim/tmux"
+chmod +x "$_u8shim/tmux"
+_u8name="u8甲乙"
+tmux new-session -d -s "$_u8name" -c /tmp \
+  env LC_ALL=C LANG=C LC_CTYPE=C PATH="$_u8shim:$PATH" CC_BUS_HOME="$_u8bus" SCRIPTS="$SCRIPTS" OUT="$_u8d" sh -c '
+    "$SCRIPTS/cc-register" > "$OUT/reg" 2>&1
+    "$SCRIPTS/cc-whoami" > "$OUT/who1" 2>&1
+    env -u TMUX_PANE "$SCRIPTS/cc-whoami" > "$OUT/who2" 2>&1
+    env -u TMUX_PANE TMUX="${TMUX%,*}," "$SCRIPTS/cc-whoami" > "$OUT/who3" 2>&1
+    tmux display-message -p "#S" > "$OUT/raw" 2>&1
+    touch "$OUT/done"; exec sleep 30' 2>/dev/null
+for _i in $(seq 1 100); do [ -f "$_u8d/done" ] && break; sleep 0.1; done
+_u8want="$(printf '%s' "$_u8name" | LC_ALL=C sed 's/[^A-Za-z0-9_-]/-/g; s/^-*//; s/-*$//')"
+chk "  反向正控：同台架上不带旗的 display-message 确实被改写（台架真是非 UTF-8 客户端）" \
+  "$([ "$(cat "$_u8d/raw" 2>/dev/null)" != "$_u8name" ] && [ -f "$_u8d/done" ] && echo yes || echo no)" "yes"
+chk "★ cc-register 记下的登记地址是那个中文会话名（不是 _ 改写过的）" \
+  "$(awk -F'\t' -v id="$_u8want" '$1==id{print $2}' "$_u8bus/agents.tsv" 2>/dev/null)" "$_u8name:0.0"
+chk "★ cc-whoami（TMUX_PANE 那一条）认出的身份" "$(cat "$_u8d/who1" 2>/dev/null)" "$_u8want"
+chk "★ cc-whoami（按 \$TMUX 反查会话 id 那一条）认出的身份" "$(cat "$_u8d/who2" 2>/dev/null)" "$_u8want"
+chk "★ cc-whoami（沿进程树找 pane 那一条）认出的身份" "$(cat "$_u8d/who3" 2>/dev/null)" "$_u8want"
+tmux kill-session -t "=$_u8name" 2>/dev/null || true
+
 "$REALTMUX" -L "$_SOCK" kill-server 2>/dev/null || true
 
 echo

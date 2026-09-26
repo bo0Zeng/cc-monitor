@@ -191,6 +191,8 @@ fn tmux_print_sites() -> BTreeMap<(String, String, Carry), usize> {
 /// 读出来的字段只可能是 ASCII（pid · 窗口数 · `%N` 形 pane id）⇒ 改写成 `_` 也不改一个字节，今天无害；
 /// 读的是**会话名 / 地址**（用户起的会话名可以是中文）⇒ 非 UTF-8 客户端下会被改写成 `_`，**是真违反，待裁**
 /// （改它们是后端载荷字节 / 随部署脚本字节的变更，不在本件写区，报主会话）。
+/// 〔SH1 · 09-26〕那五处（`BUS_ID_RECIPE` · `cc-register` 登记地址 · `cc-whoami` ×3）按 V121 加了旗、翻成 `Flag`；
+/// 今天 `Carry::None` 只剩读 ASCII 的那几处。
 const TMUX_PRINT_SITES: &[(&str, &str, Carry, usize, &str)] = &[
     ("src/backend/common/session_snapshot.rs", "list-sessions", Carry::Flag, 1, "argv；`session_snapshot_tests.rs` 钉旗在子命令前"),
     ("src/backend/control/gate.rs", "display-message", Carry::Flag, 1, "argv；`gate_tests.rs` 钉旗在子命令前"),
@@ -198,15 +200,16 @@ const TMUX_PRINT_SITES: &[(&str, &str, Carry, usize, &str)] = &[
     ("src/backend/observe/watcher.rs", "display-message", Carry::Env, 1, "`sh -c`，同上"),
     ("src/bridge/src/backend/control/tmux.rs", "ls", Carry::Flag, 1, "跨 SSH 串；`tmux_tests.rs` 钉旗在子命令前"),
     ("src/backend/control/ccm/plan.rs", "list-panes", Carry::None, 1, "无害：只读 `#{pane_id}`（`%N`，ASCII，单列、不按 TAB 切）—— IV1 报过"),
-    ("src/backend/control/ccm/mod.rs", "display-message", Carry::None, 1, "🔴 违反·待裁：`BUS_ID_RECIPE` 读 `#S`（会话名，可以非 ASCII）⇒ 非 UTF-8 客户端下 codex 的 cc-bus 身份被改写"),
+    ("src/backend/control/ccm/mod.rs", "display-message", Carry::Flag, 1, "〔SH1〕`BUS_ID_RECIPE` 读 `#S`（会话名，可以非 ASCII）⇒ 拼进 pane 的命令串，按表用旗；真跑判据 `backend-cc-bus.sh` [SH1-a]"),
     ("src/shared/cc-bus/scripts/cc-bus-adapt-posix.sh", "display-message", Carry::None, 1, "无害：只读 `#{pane_pid}`（数字）"),
     ("src/shared/cc-bus/scripts/cc-kill", "display-message", Carry::None, 2, "无害：`#{pane_pid}` · `#{session_windows}`（数字）"),
     ("src/shared/cc-bus/scripts/cc-kill", "list-panes", Carry::None, 1, "无害：`#{pane_pid}`（数字）"),
-    ("src/shared/cc-bus/scripts/cc-register", "display-message", Carry::None, 2, "🔴 违反·待裁：一处读 `#{session_name}:…` 当登记地址（会话名可以非 ASCII）；另一处 `#{pane_pid}` 无害"),
+    ("src/shared/cc-bus/scripts/cc-register", "display-message", Carry::Flag, 1, "〔SH1〕读 `#{session_name}:…` 当登记地址（会话名可以非 ASCII）⇒ 旗；真跑判据 `backend-cc-bus.sh` [SH1-a]"),
+    ("src/shared/cc-bus/scripts/cc-register", "display-message", Carry::None, 1, "无害：`#{pane_pid}`（数字）"),
     ("src/shared/cc-bus/scripts/cc-agents", "display-message", Carry::None, 1, "无害：`#{pane_pid}`（数字）"),
-    ("src/shared/cc-bus/scripts/cc-whoami", "display-message", Carry::None, 1, "🔴 违反·待裁：读 `#{session_name}` 当身份（事后按 `[A-Za-z0-9_-]` 消毒，非 ASCII 那几段两种客户端下都变 `-`，今天结果相同，但那是巧合）"),
-    ("src/shared/cc-bus/scripts/cc-whoami", "list-sessions", Carry::None, 1, "🔴 违反·待裁：`#{session_id} #{session_name}`（同上）"),
-    ("src/shared/cc-bus/scripts/cc-whoami", "list-panes", Carry::None, 1, "🔴 违反·待裁：`#{pane_pid} #{session_name}`（同上）"),
+    ("src/shared/cc-bus/scripts/cc-whoami", "display-message", Carry::Flag, 1, "〔SH1〕读 `#{session_name}` 当身份 ⇒ 旗（非 UTF-8 客户端下中文被改写成 `_`，消毒之后与 UTF-8 客户端下的身份不同）；真跑判据 `backend-cc-bus.sh` [SH1-a]"),
+    ("src/shared/cc-bus/scripts/cc-whoami", "list-sessions", Carry::Flag, 1, "〔SH1〕`#{session_id} #{session_name}` ⇒ 旗（同上）"),
+    ("src/shared/cc-bus/scripts/cc-whoami", "list-panes", Carry::Flag, 1, "〔SH1〕`#{pane_pid} #{session_name}` ⇒ 旗（同上）"),
 ];
 
 /// 〔TL2〕`INVARIANTS §49` 人群判据：盘上每一处「tmux 打印子命令 ＋ 读打印通道的旗」== 登记表（两向，含处数与带法）。
