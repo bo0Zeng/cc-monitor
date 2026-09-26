@@ -183,7 +183,7 @@ export function mintTmuxName(base: string, existing: ReadonlySet<string>): strin
  *
  * @param cwd  这条会话的工作目录；空 / 派生不出东西 ⇒ 回落 `session-cc`（同 `deriveTmuxName`）。
  * @param existing 当前已占用的 tmux 会话名集合。**「不知道」的时候别调本函数** ——
- *                 传空集 = 「一个都没占」，那是 issue #76 的形状（见 `ipc/local-tmux-name.ts`）。
+ *                 传空集 = 「一个都没占」，那是 issue #76 的形状（见 `tmux-name-mint.ts`：列不出 ⇒ 不铸名）。
  */
 export function mintSessionTmuxName(cwd: string, existing: ReadonlySet<string>): string {
   return mintTmuxName(deriveTmuxName(cwd), existing);

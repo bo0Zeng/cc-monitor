@@ -3962,16 +3962,6 @@
       "zh": "正在重启中",
       "args": []
     },
-    "tabSessionActions.unselectable.body": {
-      "kind": "error",
-      "zh": "账号「{name}」现在选不了，可能没登录、不是隔离账号或目录缺失。改用这个会话上次的账号或当前账号 resume。",
-      "args": ["name"]
-    },
-    "tabSessionActions.unselectable.title": {
-      "kind": "error",
-      "zh": "账号不可用",
-      "args": []
-    },
     "tabSessionActions.dupes.body": {
       "kind": "error",
       "zh": "这个会话同时活在 {n} 个 tmux 会话里，这次接的是「{name}」。其余几个要不要清理，请到终端里看。",
@@ -3980,16 +3970,6 @@
     "tabSessionActions.dupes.title": {
       "kind": "error",
       "zh": "检测到多个同身份会话",
-      "args": []
-    },
-    "tabSessionActions.resume.failed": {
-      "kind": "error",
-      "zh": "恢复失败",
-      "args": []
-    },
-    "tabSessionActions.resume.buildFailed": {
-      "kind": "error",
-      "zh": "生成不了 resume 命令",
       "args": []
     },
     "tabSessionActions.openInWindow.failed": {
@@ -4215,11 +4195,6 @@
     "accountCommands.setDefault.isCurrent": {
       "kind": "body",
       "zh": " · 已是当前",
-      "args": []
-    },
-    "accountRestartLocal.runLocalRestartResume.failed": {
-      "kind": "error",
-      "zh": "本机没能用新账号起会话",
       "args": []
     },
     "accountsDecode.bad.trust": {
@@ -13972,26 +13947,6 @@
       "zh": "已在该目录起新会话",
       "args": []
     },
-    "history.resume.failed": {
-      "kind": "error",
-      "zh": "恢复失败",
-      "args": []
-    },
-    "history.resume.cannotBuild": {
-      "kind": "error",
-      "zh": "无法构造 resume 命令",
-      "args": []
-    },
-    "history.unselectable.detail": {
-      "kind": "error",
-      "zh": "账号「{name}」现在选不了（未登录、不是隔离账号或目录缺失）。改用这个会话上次的账号或当前账号 resume。",
-      "args": ["name"]
-    },
-    "history.unselectable.title": {
-      "kind": "error",
-      "zh": "账号不可用",
-      "args": []
-    },
     "history.rename.prompt": {
       "kind": "body",
       "zh": "自定义标题（留空恢复默认）",
@@ -16788,6 +16743,81 @@
       "kind": "error",
       "zh": "{port} 口上有别的程序在听，不是这台机器上的中转。多半是升级前起的旧中转，请在那台机器上结束占着这个口的进程再试。",
       "args": ["port"]
+    },
+    "tmuxMint.unknown.notAsked": {
+      "kind": "error",
+      "zh": "没问到那台机器上已有哪些 tmux 会话",
+      "args": []
+    },
+    "tmuxMint.unknown.localNotYet": {
+      "kind": "error",
+      "zh": "本机后端还没报过这台机器上已有哪些 tmux 会话",
+      "args": []
+    },
+    "tmuxMint.refused.title": {
+      "kind": "error",
+      "zh": "没有起会话",
+      "args": []
+    },
+    "tmuxMint.refused.body": {
+      "kind": "error",
+      "zh": "问不出 {machine} 上已有哪些 tmux 会话。新会话的名字可能撞上已有的、接进别的会话里，所以这次没有起。原因：{reason}",
+      "args": ["machine", "reason"]
+    },
+    "localResume.build.failed": {
+      "kind": "error",
+      "zh": "无法构造 resume 命令",
+      "args": []
+    },
+    "localResume.launch.failed": {
+      "kind": "error",
+      "zh": "恢复失败",
+      "args": []
+    },
+    "localResume.restart.failed": {
+      "kind": "error",
+      "zh": "本机没能用新账号拉起会话",
+      "args": []
+    },
+    "localResume.fork.failed": {
+      "kind": "error",
+      "zh": "起分叉会话失败",
+      "args": []
+    },
+    "accountPick.machine.local": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
+    },
+    "accountPick.refused.title": {
+      "kind": "error",
+      "zh": "账号现在选不了，没有起会话",
+      "args": []
+    },
+    "accountPick.refused.pinGoneToCurrent": {
+      "kind": "error",
+      "zh": "这个会话上次用的账号「{name}」现在选不了。不换号，就没法续这场会话，所以这次没有起。点这条提示改用当前账号「{current}」起。",
+      "args": ["name", "current"]
+    },
+    "accountPick.refused.pinGoneToBase": {
+      "kind": "error",
+      "zh": "这个会话上次用的账号「{name}」现在选不了。不换号，就没法续这场会话，所以这次没有起。点这条提示改用「不指定账号」起。",
+      "args": ["name"]
+    },
+    "accountPick.refused.explicitGoneToCurrent": {
+      "kind": "error",
+      "zh": "账号「{name}」现在选不了，这次没有起。点这条提示改用当前账号「{current}」起。",
+      "args": ["name", "current"]
+    },
+    "accountPick.refused.explicitGoneToBase": {
+      "kind": "error",
+      "zh": "账号「{name}」现在选不了，这次没有起。点这条提示改用「不指定账号」起。",
+      "args": ["name"]
+    },
+    "accountPick.refused.listUnknown": {
+      "kind": "error",
+      "zh": "读不到{machine}的账号清单，说不清账号「{name}」还能不能用，这次没有起。点这条提示改用「不指定账号」起。",
+      "args": ["machine", "name"]
     }
   }
 }

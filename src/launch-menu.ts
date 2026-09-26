@@ -4,7 +4,7 @@
  * R12 决策（见 `src/doc/INVARIANTS.md` §38、`.claude/planned-build/unify-launch/features/
  * F09-ui-convergence.md` §0）：`container`/`agent` 两条轴**不**收进 `LAUNCH_DIMENSIONS` 注册表，
  * 继续硬编码。`account` 组虽然已经是注册表维度（`ACCOUNT_DIMENSION`），但 `LaunchDimension` 接口
- * 本身从未回答过"这个维度当前有哪些可选值"——那向来是 `src/accounts.ts::fetchAccounts` 现查的活。
+ * 本身从未回答过"这个维度当前有哪些可选值"——那向来是 `src/account-reads.ts::fetchAccounts` 现查的活。
  * 所以本文件手写取值逻辑，不是"该走注册表却没走"，是这条轴本来就该用另一种方式回答
  * "有哪些可选值"这个问题。
  *
@@ -24,7 +24,8 @@
  * **本文件现在只负责账号轴**；容器那两项（tmux / 直连）住在 `tabs.ts::containerLeaves`，
  * 是全仓唯一来源。找它们别再来这里。
  */
-import { fetchAccounts, selectableAccounts } from "./accounts.ts";
+import { selectableAccounts } from "./accounts.ts";
+import { fetchAccounts } from "./account-reads.ts";
 import { copyText } from "./copy-table";
 
 /**
@@ -55,9 +56,9 @@ export type NamedAccountModifier = Extract<AccountModifierOption, { kind: "accou
  * **鉴权前提就绪** && exists —— K-A1 起第二项不再是裸 `loggedIn`，见
  * `accounts.ts::authReady`），**没有**复刻旧版 `appendAccountMenuItems` 那句 `if (!a.configDir)
  * continue`——这是有意的行为变化，不是遗漏：旧版对 `configDir` 落空的账号是**静默隐藏**菜单项
- * （用户看不到这个账号、不知道为什么），新版是**显示、点击后走 `withAccount` 的
- * `onUnselectable` 回调**弹一次"账号不可用"的 toast（`tabs.ts::buildResumeSubmenu` 走的正是
- * 这条路径）。显式反馈优于静默隐藏，故意不搬那条 continue。
+ * （用户看不到这个账号、不知道为什么），新版是**显示、点击后由 `withAccount` 说清**
+ * （〔FE1 · D-h〕今天是 `launch-account.ts::refuseUnavailableAccount`：不起、说是哪个号选不了、给「改用当前账号」的
+ * 可点选择；`tab-menu.ts::buildResumeSubmenu` 走的正是这条路径）。显式反馈优于静默隐藏，故意不搬那条 continue。
  */
 export async function enumerateAccountModifiers(origin: string): Promise<AccountModifierOption[]> {
   let accountsAvailable = false;

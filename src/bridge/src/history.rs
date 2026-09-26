@@ -497,7 +497,7 @@ pub enum LaunchAccount {
         /// CLI 只会 `--account <名字>`。本变体先前**只有目录**
         /// ⇒ [`render_local_ccm_with`] 对它必然 §35 短路 ⇒ **本机具名账号一条都进不了
         /// ccm 容器路**。而盘上四个本机拉起入口里有三个只说得出具名账号
-        /// （`src/accounts.ts::localLaunchAccountSync`），⇒ 那三条**在类型上**走不到后端那条路。
+        /// （`src/launch-account.ts::localLaunchAccountSync`），⇒ 那三条**在类型上**走不到后端那条路。
         ///
         /// # ⚠ 它**不是**从 `config_dir` 推出来的
         ///
@@ -508,7 +508,7 @@ pub enum LaunchAccount {
         /// ⇒ **一次本来能起的会话变成一条报错**。⇒ 这一格只收**调用方说得出**的名字。
         ///
         /// 前端那一侧的取值口与 `configDir` 那半**同源**
-        /// （`accounts.ts::localLaunchAccountNameSync`，两半是同一条规则的两侧）。
+        /// （`launch-account.ts::localLaunchAccountNameSync`，两半是同一条规则的两侧）。
         ///
         /// `None` = **调用方只说得出目录**（例：分叉时源会话是活的，继承的是它的目录、
         /// 没有名字）⇒ CLI 仍然说不出 `--account` ⇒ 照旧 §35 短路，与本字段加进来之前逐字同。
@@ -927,7 +927,7 @@ fn render_local_ccm_with(
     // ② `Some(Named{config_dir, name: Some(n)})` —— CLI 发 `--account <n>`。**可渲染**。
     //    〔`K-R53` 09-11 开的就是这一格〕名字由**调用方**说（`LaunchAccount::Named::name`
     //    的头注写着为什么不从目录推），前端那一侧与 `configDir` 同源
-    //    （`accounts.ts::localLaunchAccountNameSync`）。
+    //    （`launch-account.ts::localLaunchAccountNameSync`）。
     //    在这之前本变体只有目录 ⇒ 本机具名账号**一条都进不了容器**，而盘上四个本机拉起
     //    入口里有三个只说得出具名账号 ⇒ 那三条在类型上到不了后端那条路。
     // ②′ `Some(Named{name: None})` —— 调用方只说得出目录（例：分叉时源会话是活的，
@@ -1044,7 +1044,7 @@ fn render_local_ccm_with(
 /// 也是 [`new_local_session`] 的调用方能拿到「我刚起的那条是哪个会话」的**唯一**入口。
 ///
 /// ⚠ **它不是 sid**：`K-P5 §3 三` 现打「5 处起会话方没有一处在起新会话时知道 sid」。
-/// 拿它反查 sid 是**下一跳**的事（前端 `accounts.ts::sidOfLaunch` 与它旁边那张待回填表），
+/// 拿它反查 sid 是**下一跳**的事（前端 `local-launch-backfill.ts::sidOfLaunch` 与它旁边那张待回填表），
 /// 而那一跳必然要**等进程真的跑起来**才问得到 —— 时序那一格归 `KP5HD3`。
 ///
 /// `K-R53`：**中转在场时，本机拉起照旧走旧路**的那句降级理由。
@@ -1831,7 +1831,7 @@ fn build_new_session_ps_command(launcher: Option<&str>) -> Result<String, String
 /// 「起会话方手上有 token、而这条会话还没有 sid」的地方。
 ///
 /// ⚠ **token 不是 sid，也不许被当成 sid 用**。前端拿它去做的事只有一件：
-/// 在这条会话真的跑起来之后，用 `accounts.ts::sidOfLaunch` 从 `--session-accounts`
+/// 在这条会话真的跑起来之后，用 `local-launch-backfill.ts::sidOfLaunch` 从 `--session-accounts`
 /// 的行里把 sid **反查**出来（`KP5HD2`）。
 /// ⚠ **它是个内部 nonce**：不许显示给用户（同 `K-P5g` 那条判据的口径）。
 #[tauri::command]
