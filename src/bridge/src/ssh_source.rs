@@ -1401,11 +1401,41 @@ async fn fetch_snapshot(
     )
     .await?;
     // 〔C2 · U3 第 3 件〕断线重连后从续点接着拉（`snapshot_resume` 头注），续点对不上才整份。
-    let how = crate::snapshot_resume::plan_read(
-        crate::snapshot_resume::cursor_of(&origin, sid).as_ref(),
-        path,
-        &plan,
-    );
+    let cursor = crate::snapshot_resume::cursor_of(&origin, sid);
+    let mut how = crate::snapshot_resume::plan_read(cursor.as_ref(), path, &plan);
+    // 〔W5-VIS · `设计/15 §3.4 ②`〕续传之前先核锚那一行还是不是那一行（`snapshot_resume` 头注「截断 / 改写检测」）：
+    //   断线期间被整份改写而且变长的文件，上面那道「文件没变短」拦不住。对不上 ⇒ 续点作废、整份重读、交那个会话一格「被改过」。
+    if let (crate::snapshot_resume::Read::Resume { .. }, Some(w)) =
+        (&how, cursor.as_ref().and_then(|c| c.witness.clone()))
+    {
+        let page = frame_query::read_page(
+            &origin,
+            path,
+            w.start,
+            Some(w.end),
+            frame_query::Deadline::within(frame_query::PAGE_BUDGET),
+        )
+        .await?;
+        // 一页没读满那一行（`next < end` 且没到头）⇒ 核不了，照续传（不许把「没读全」说成「被改过」）。
+        let whole = page.eof || page.next >= w.end;
+        if whole && !crate::snapshot_resume::witness_holds(&w, &page.text) {
+            tracing::warn!(
+                "snapshot [{host_label}] {sid}: 续点那一行（字节 {}–{}）与上次不是同一行 —— 记录文件在断线期间被改写过，整份重读",
+                w.start,
+                w.end
+            );
+            crate::snapshot_resume::forget(&origin, sid);
+            replay
+                .on_session_notice(crate::bridge::SessionFileNoticePayload {
+                    session_id: sid.to_string(),
+                    origin: host_label.to_string(),
+                    path: path.to_string(),
+                    change: FileChange::Rewritten.as_wire().to_string(),
+                })
+                .await;
+            how = crate::snapshot_resume::Read::Full;
+        }
+    }
     if let crate::snapshot_resume::Read::Resume {
         from_byte,
         upto,
@@ -1419,6 +1449,8 @@ async fn fetch_snapshot(
         );
     }
     let mut walk = crate::snapshot_resume::Walk::new(&how, &plan);
+    // 〔W5-VIS〕走读时顺手挑下一次续传要核的那一行（文件最后一个可计行）。
+    let mut pick = crate::snapshot_resume::WitnessPick::default();
     let mut total_bytes: u64 = 0;
     let mut chunk: Vec<JsonlLine> = Vec::with_capacity(SNAPSHOT_CHUNK_LINES);
     let mut cancelled = false;
@@ -1441,11 +1473,11 @@ async fn fetch_snapshot(
                 );
                 break 'read;
             }
-            for line in page.text.split('\n') {
-                let line = line.trim_end_matches('\r');
+            for (line, span) in crate::snapshot_resume::page_lines(offset, &page.text) {
                 if !snapshot_line_countable(line) {
                     continue;
                 }
+                pick.see(upto, plan.end, line, span);
                 let Some(seq) = walk.step() else {
                     continue; // 续传：锚到续点之间的行前端已有，数掉不发
                 };
@@ -1509,6 +1541,7 @@ async fn fetch_snapshot(
     }
     // `[0, total)` 全到了（整份：刚发完；续传：锚之前的早有、之后的刚发完）⇒ 立锚。
     crate::snapshot_resume::note_snapshot_done(&origin, sid, path, &plan);
+    crate::snapshot_resume::note_witness(&origin, sid, pick.done());
     Ok(FetchOutcome::Done(arrived))
 }
 
