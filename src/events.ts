@@ -719,48 +719,47 @@ export async function bindEvents(
   await Promise.all(registrations);
 
   // 〔TAP · V124〕`session-tap`：一格 = 一个 tap 事件（`SessionTapPayload`），当场交活卡、当场还 credit；
-  //   `Gap` 不补（位置号 `n` 在活卡那一侧看得出缺口）；`Unseen` ⇒ 那台的活卡全撤（开着的响应不会再有下文）。
-  await Promise.all(
-    (opts.taps ?? []).map(async (origin) => {
-      const hold: StreamHold = { sub: null, owed: 0 };
-      hold.sub = await chan.subscribe(origin, "session-tap", null, TAP_WINDOW, (items) => {
-        let used = 0;
-        for (const it of items) {
-          if (it.t === "frame") {
-            used += 1;
-            let p: SessionTapPayload | null = null;
-            try {
-              p = JSON.parse(it.body) as SessionTapPayload;
-            } catch {
-              p = null;
-            }
-            if (p !== null && typeof p === "object" && typeof p.stream === "string") {
-              handlers.onSessionTap?.(p);
-            } else {
-              console.warn("[events] tap 流里一格读不懂，跳过：", it.body.slice(0, 200));
-            }
-          } else if (it.t === "gap") {
-            console.info(`[events] tap 流 [${origin}] 丢了第 ${it.fromSeq}..${it.toSeq} 格（前端落后了）—— 活卡按位置号自己撤`);
-          } else if (it.t === "unseen") {
-            handlers.onSessionTapLost?.(origin);
-          } else if (it.t === "closed") {
-            console.warn(`[events] tap 流 [${origin}] 关了：`, it.by);
-            handlers.onSessionTapLost?.(origin);
-          }
+  //   `Gap` 不补（位置号 `n` 在活卡那一侧看得出缺口）；`Unseen` / `Closed` ⇒ 那台的活卡全撤（开着的响应不会再有下文）。
+  const onTapItems = (origin: Origin, hold: StreamHold, items: Item[]): void => {
+    let used = 0;
+    for (const it of items) {
+      if (it.t === "frame") {
+        used += 1;
+        let p: SessionTapPayload | null = null;
+        try {
+          p = JSON.parse(it.body) as SessionTapPayload;
+        } catch {
+          p = null;
         }
-        if (used > 0) hold.sub?.want(used);
-      });
-    }),
-  );
+        if (p !== null && typeof p === "object" && typeof p.stream === "string") {
+          handlers.onSessionTap?.(p);
+        } else {
+          console.warn("[events] tap 流里一格读不懂，跳过：", it.body.slice(0, 200));
+        }
+      } else if (it.t === "gap") {
+        console.info(`[events] tap 流 [${origin}] 丢了第 ${it.fromSeq}..${it.toSeq} 格（前端落后了）—— 活卡按位置号自己撤`);
+      } else if (it.t === "unseen") {
+        handlers.onSessionTapLost?.(origin);
+      } else if (it.t === "closed") {
+        console.warn(`[events] tap 流 [${origin}] 关了：`, it.by);
+        handlers.onSessionTapLost?.(origin);
+      }
+    }
+    if (used > 0) hold.sub?.want(used);
+  };
 
   // 〔CF2 · 第四波 4B〕会话流：起停那几个事件的监听都在了之后再订（订阅一登记，句柄就可能开始交格）。
   //   返回时 monitor 那一侧已经登记好 ⇒ 主界面接着发 `frontend-ready`（就绪点）不会落空。
+  // 〔TAP〕`session-tap` 与会话行走**同一处** `chan.subscribe`（前端对通信层入口的调用点各恰好一处，`X6`）：
+  //   两种流只差窗口与这一格怎么交。
+  const plan: { origin: Origin; kind: string; window: number; feed: typeof onStreamItems }[] = [
+    ...(opts.streams ?? []).map(({ origin, kind }) => ({ origin, kind, window: STREAM_WINDOW, feed: onStreamItems })),
+    ...(opts.taps ?? []).map((origin) => ({ origin, kind: "session-tap", window: TAP_WINDOW, feed: onTapItems })),
+  ];
   await Promise.all(
-    (opts.streams ?? []).map(async ({ origin, kind }) => {
+    plan.map(async ({ origin, kind, window, feed }) => {
       const hold: StreamHold = { sub: null, owed: 0 };
-      hold.sub = await chan.subscribe(origin, kind, null, STREAM_WINDOW, (items) =>
-        onStreamItems(origin, hold, items),
-      );
+      hold.sub = await chan.subscribe(origin, kind, null, window, (items) => feed(origin, hold, items));
     }),
   );
 }
