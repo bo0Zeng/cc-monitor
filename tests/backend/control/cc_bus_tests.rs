@@ -668,3 +668,65 @@ fn the_bus_products_match_the_cross_language_golden() {
         "`bus-broadcast` 成品与金样不相等"
     );
 }
+
+/// 〔DUP3 · 主会话 09-26 裁 · `INVARIANTS §47`「交给对端之前本侧先判」〕`from`（`bus-send` · `bus-broadcast`，作 `CC_BUS_ID` 交给 `cc-send`）
+/// 与广播名单里的收件人（`cc-list` 的输出 —— 对端来的值）都过同一个 `bus_id_ok`，正反各一格（样本同上一条，取跨语言金样的 `ids`）：
+/// - `from` 判不过 ⇒ 整条 `bad_id`、那一句点出是哪个值（一个进程都不起 —— 解析器在起进程之前）；
+/// - 名单收件人判不过 ⇒ 不交给 `cc-send`，成品 `failed` 里照实一格 `{id, error:"bad_id", detail}`（不静默跳过、不整条回错）；
+/// - 空 / 纯空白的 `from` 仍是「没给」（今天的行为），不是「形状不对」。
+#[test]
+fn senders_and_broadcast_recipients_are_judged_before_they_reach_cc_send() {
+    let g: serde_json::Value = serde_json::from_str(include_str!(
+        "../../__fixtures__/cc-bus-control.golden.json"
+    ))
+    .expect("金样读不出来");
+    let take = |k: &str| -> Vec<String> {
+        g["ids"][k]
+            .as_array()
+            .unwrap_or_else(|| panic!("金样缺 ids.{k}"))
+            .iter()
+            .map(|v| v.as_str().expect("id 不是字符串").to_string())
+            .collect()
+    };
+    let (ok, bad) = (take("ok"), take("bad"));
+    assert!(
+        !ok.is_empty() && !bad.is_empty(),
+        "金样的 ids 空了 —— 下面是空转"
+    );
+    for id in &ok {
+        let (_, _, from) = parse_send(&json!({ "to": "alpha_cc", "text": "x", "from": id }))
+            .unwrap_or_else(|e| panic!("{id:?} 当发件身份该放行：{e:?}"));
+        assert_eq!(from.as_deref(), Some(id.as_str()));
+        let (_, from) = parse_broadcast(&json!({ "text": "x", "from": id }))
+            .unwrap_or_else(|e| panic!("{id:?} 当广播发件身份该放行：{e:?}"));
+        assert_eq!(from.as_deref(), Some(id.as_str()));
+        assert_eq!(recipient_refused(id), None, "{id:?} 当广播收件人该发得出去");
+    }
+    for id in bad.iter().filter(|id| !id.trim().is_empty()) {
+        let e = parse_send(&json!({ "to": "alpha_cc", "text": "x", "from": id })).expect_err(id);
+        assert_eq!(e.0, "bad_id", "{id:?}：发消息的发件身份拒码不对（{e:?}）");
+        assert!(e.1.contains(&format!("{id:?}")), "{id:?}：那一句没点出是哪个值：{}", e.1);
+        let e = parse_broadcast(&json!({ "text": "x", "from": id })).expect_err(id);
+        assert_eq!(e.0, "bad_id", "{id:?}：广播的发件身份拒码不对（{e:?}）");
+        let entry = recipient_refused(id).unwrap_or_else(|| panic!("{id:?} 当广播收件人被放行了"));
+        assert_eq!(entry["id"], json!(id), "{id:?}");
+        assert_eq!(entry["error"], json!("bad_id"), "{id:?}");
+        let detail = entry["detail"].as_str().expect("detail 是字符串");
+        assert!(detail.contains(&format!("{id:?}")), "{id:?}：那一句没点出是哪个值：{detail}");
+    }
+    // 空 / 纯空白的 `from` = 没给（照旧以后端处境里的身份发），不是 `bad_id`。
+    for blank in ["", "  "] {
+        assert_eq!(
+            parse_send(&json!({ "to": "alpha_cc", "text": "x", "from": blank }))
+                .expect("空 from = 没给")
+                .2,
+            None
+        );
+        assert_eq!(
+            parse_broadcast(&json!({ "text": "x", "from": blank }))
+                .expect("空 from = 没给")
+                .1,
+            None
+        );
+    }
+}

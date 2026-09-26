@@ -591,7 +591,7 @@ pane 根进程 pid）+ 登记的完整地址。08-13 实测过不核的后果：
 | 码 | 什么情况 | 来源 |
 |---|---|---|
 | `invalid_args` | 缺 `to`/`text`，或 cc-send 判定收件人非法 | 形状校验 / `cc-send` rc=2 |
-| `bad_id` | 〔DUP2〕收件人的形状过不了 `shell_quote_core::bus_id_ok`（空 · `-` 开头 · `[A-Za-z0-9_-]` 以外的字符）—— **交给 `cc-send` 之前**就拒（`INVARIANTS §47` ①） | 后端入口 |
+| `bad_id` | 〔DUP2〕收件人的形状过不了 `shell_quote_core::bus_id_ok`（空 · `-` 开头 · `[A-Za-z0-9_-]` 以外的字符）—— **交给 `cc-send` 之前**就拒（`INVARIANTS §47` ①）；〔DUP3〕给了的 `from` 同样判（它作 `CC_BUS_ID` 交给 `cc-send`） | 后端入口 |
 | `rejected` | 被路由层拦下（ACL / 限流 / 去重 / 灭环），`bus.log` 里有对应一行 | `cc-send` rc=3 |
 | `not_installed` | 找不到 `cc-send` | 查找规则全落空 |
 | `timed_out` | 子进程跑过了期限被结束（默认 10 秒，`CC_BUS_TIMEOUT_SECS` 可调） | 子进程退出码 124 |
@@ -633,7 +633,10 @@ pane 根进程 pid）+ 登记的完整地址。08-13 实测过不核的后果：
 `{id, error, detail}`，`error` 是 `bus-send` 那一套码；键刻意不叫 `code` / `message` —— 那一对是整条失败的错误信封）。⚠ **部分失败不整条回错**：已经投出去一部分之后再失败，整条回错会让
 调用方以为一条都没发、再发一遍 ⇒ 一部分人收到两遍。
 
-错误码（整条失败，一条都还没发）：`invalid_args`（`text` 缺 / 空）· `not_installed` · `timed_out` · `failed`（列名单那一步）。
+错误码（整条失败，一条都还没发）：`invalid_args`（`text` 缺 / 空）· `not_installed` · `timed_out` · `failed`（列名单那一步）·
+`bad_id`（〔DUP3〕给的 `from` 形状过不了 `shell_quote_core::bus_id_ok` —— **交给 `cc-send` 之前**就拒，`INVARIANTS §47`）。
+〔DUP3〕名单里的收件人（`cc-list` 的输出，对端来的值）也在交给 `cc-send` 之前逐个过同一个判定：过不了的**不发**、照实列进 `failed`
+（`{id, error:"bad_id", detail}`），不整条回错（可能已经投出去几个了）。
 
 #### `bus-state`：总线名单 ＋ spawn 台账**一次回全**（`K-R113`，09-13）
 

@@ -17378,6 +17378,16 @@
       "kind": "error",
       "zh": "隐藏没改成",
       "args": []
+    },
+    "beCcBus.parse.badSender": {
+      "kind": "error",
+      "zh": "发件身份不是合法的 agent 名。只许字母、数字、下划线和连字符，不许以 - 开头：{id}",
+      "args": ["id"]
+    },
+    "ccBus.broadcast.badId": {
+      "kind": "error",
+      "zh": "没有广播：{detail}",
+      "args": ["detail"]
     }
   }
 }

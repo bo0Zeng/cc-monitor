@@ -50,6 +50,6 @@
       "liveness_unknown": false,
       "failed": [{ "id": "x_cc", "error": "timed_out", "detail": "d" }]
     },
-    "codes": ["invalid_args", "not_installed", "timed_out", "failed"]
+    "codes": ["invalid_args", "not_installed", "timed_out", "failed", "bad_id"]
   }
 }
