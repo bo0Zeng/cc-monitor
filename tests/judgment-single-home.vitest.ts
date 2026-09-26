@@ -671,7 +671,7 @@ function resolvesTo(file: string, spec: string, target: string): boolean {
 }
 
 /**
- * 〔DUP2〕⑥ 在对拍测试的代码里找的那一截：`via` 路径的末两段（`__fixtures__/x.golden.json` · `control/payload.rs`）；
+ * 〔DUP2〕⑥ 在对拍测试的代码里找的那一截：`via` 路径的末两段（`__fixtures__/accounts.golden.json` · `control/payload.rs`）；
  * 文件名太泛（`lib.rs` / `mod.rs` / `main.rs`）时取末三段（`agent-tools-core/src/lib.rs`）。
  * 用后缀不用全路径：Rust 侧读金样常是 `include_str!("../../__fixtures__/…")` 这种相对写法。
  */
@@ -886,11 +886,11 @@ describe("DUP1 判定只有一个家（设计/90 §3 判据 2）", () => {
     expect(resolvesTo("src/settings/y.ts", "../generated/judgment-rules.ts", "src/generated/judgment-rules.ts")).toBe(true);
     expect(resolvesTo("src/x.ts", "./elsewhere", "src/generated/judgment-rules.ts")).toBe(false);
     // ⑥ 的「代码里提到」：注释里的提及剥掉、字符串里的留着（两种语言各一格）。
-    expect(stripComments('// 读 a.golden.json\nlet x = 1;', "rust").includes("a.golden.json")).toBe(false);
-    expect(stripComments('let p = "tests/a.golden.json";', "rust").includes("a.golden.json")).toBe(true);
-    expect(stripComments('/** a.golden.json */\nconst x = 1;', "ts").includes("a.golden.json")).toBe(false);
-    expect(stripComments('readFileSync("tests/a.golden.json")', "ts").includes("a.golden.json")).toBe(true);
-    expect(viaNeedle("tests/__fixtures__/a.golden.json")).toBe("__fixtures__/a.golden.json");
+    expect(stripComments('// 读 accounts.golden.json\nlet x = 1;', "rust").includes("accounts.golden.json")).toBe(false);
+    expect(stripComments('let p = "tests/__fixtures__/accounts.golden.json";', "rust").includes("accounts.golden.json")).toBe(true);
+    expect(stripComments('/** accounts.golden.json */\nconst x = 1;', "ts").includes("accounts.golden.json")).toBe(false);
+    expect(stripComments('readFileSync("tests/__fixtures__/accounts.golden.json")', "ts").includes("accounts.golden.json")).toBe(true);
+    expect(viaNeedle("tests/__fixtures__/accounts.golden.json")).toBe("__fixtures__/accounts.golden.json");
     expect(viaNeedle("src/bridge/crates/agent-tools-core/src/lib.rs")).toBe("agent-tools-core/src/lib.rs");
     // `mirror` 的设计住址形状：认得出两种、认不出空话。
     expect(DESIGN_ADDRESS.test("`设计/01 §6.9` 逐字")).toBe(true);
