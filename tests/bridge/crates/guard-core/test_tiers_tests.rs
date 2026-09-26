@@ -56,6 +56,7 @@ use std::path::{Path, PathBuf};
 
 /// 单元层：不读仓内文本、不碰 OS 的测试文件。
 const UNIT: &[&str] = &[
+    "tests/events-stream-closed.vitest.ts", // 〔W5-UI〕会话流 closed 格 ⇒ 恰好一条 toast
     "tests/bridge/local_accounts_tests.rs", // 〔C4d〕从 `INTEGRATION` 挪来（见那一行的墓碑）
     "tests/account-color.vitest.ts",
     "tests/account-commands.vitest.ts",
@@ -245,6 +246,7 @@ const UNIT: &[&str] = &[
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
 const SCAN: &[&str] = &[
+    "tests/ask-dialog.vitest.ts", // 〔W5-UI〕D1 生产 TS 零原生 confirm/prompt（AST 扫）· D1b askConfirm/askText 必 await ＋ 调用方清单
     "tests/bg-flat.vitest.ts", // 〔BG1〕V125：tab 栏通用代码零 bg 分叉（扫 `src/tabs.ts` ＋ `src/tab-*.ts`）· CSS 零 `.tab-bg`
     "tests/account-availability-guard.vitest.ts",
     "tests/account-base-semantics.vitest.ts",

@@ -19,6 +19,7 @@
  * | `want` / `stop` 各恰好一次 IPC（撤了之后 `want` 不再发） | 「S5 往回说」 |
  * | 解不出的一格 ⇒ 交 `closed{ours: Broken}` 并撤掉，不猜 | 「S5 解不出」 |
  * | 登记那一跳失败 ⇒ 原位 `closed{ours: Broken}`，`subscribe` 本身不抛（`§3.3.5`） | 「S5 不失败」 |
+ * | 〔W5-UI〕报信用那一跳失败 ⇒ 同样原位 `closed{ours: Broken}` 并撤掉（原先被吞 ⇒ 静默停流） | 「S5 信用报不上去」 |
  *
  * 买不到：真 Tauri IPC 那一跳（要一个活的 webview）—— 这里 mock 的是 `invoke`，
  * 它之后的那一跳由 Rust 侧 `tests/bridge/chan/webview_tests.rs` 用合成句柄 ＋ 真 `router::settle` 量。
@@ -248,6 +249,28 @@ describe("〔CF2〕webview 通道客户端 · subscribe", () => {
     expect(invokeMock.mock.calls.filter((c) => c[0] === "chan_stop")).toEqual([["chan_stop", { id }]]);
     deliver(id, [{ t: "frame", seq: 2, body: "c" }]);
     expect(got.length).toBe(1);
+  });
+
+  it("★ S5 信用报不上去：`chan_want` 抛了 ⇒ 原位交一格 `closed{ours: Broken}`、撤单、之后的格不再交", async () => {
+    // 〔W5-UI · `audit/E-compat.md §3.3`「`chan_want` 失败被吞 ⇒ 订阅拿不到信用，静默停流」〕
+    // 住址：`设计/05 §3.3.5`「`subscribe` 不会失败」—— 说不了的在流里原位说。
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "chan_want") throw new Error("ipc down");
+      return undefined;
+    });
+    const got: Item[][] = [];
+    const sub = await chan.subscribe("<local>", "session-lines", null, 5, (items) => got.push(items));
+    const id = lastSubId();
+    deliver(id, [{ t: "frame", seq: 0, body: "a" }]);
+    sub.want(1);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(got).toEqual([[{ t: "frame", seq: 0, body: "a" }], [{ t: "closed", by: { ours: "Broken" } }]]);
+    expect(invokeMock.mock.calls.filter((c) => c[0] === "chan_stop")).toEqual([["chan_stop", { id }]]);
+    deliver(id, [{ t: "frame", seq: 1, body: "b" }]);
+    sub.want(1);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(got.length, "撤了之后还在交格 / 又说了一遍").toBe(2);
+    expect(invokeMock.mock.calls.filter((c) => c[0] === "chan_want").length, "撤了之后还在报 credit").toBe(1);
   });
 
   it("★ S5 不失败：登记那一跳抛了 ⇒ 原位交 `closed{ours: Broken}`，`subscribe` 本身照常返回", async () => {

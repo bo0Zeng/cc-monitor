@@ -672,6 +672,7 @@ export class RemoteSection {
   /** 从 ~/.ssh/config 拉别名清单填进导入下拉。空 → 禁用下拉 + 提示。 */
   private async populateAliases(): Promise<void> {
     let aliases: string[] = [];
+    let unreadable: string | null = null;
     try {
       // 同 `mcp-section` 那处：**别只防 reject**，`invoke` 也可能 resolve 成 `undefined`
       // → 下面 `aliases.length` 抛（T07 审计④）。
@@ -679,6 +680,8 @@ export class RemoteSection {
       if (Array.isArray(got)) aliases = got;
     } catch (e) {
       console.warn("list_ssh_host_aliases failed:", e);
+      // 〔W5-UI · 设计/70 §7 #4〕读失败与「真没有别名」原先同形（都是空下拉 ＋ 「未找到」）⇒ 分开说。
+      unreadable = String(e);
     }
 
     this.importSelect.innerHTML = "";
@@ -690,7 +693,9 @@ export class RemoteSection {
     if (aliases.length === 0) {
       this.importSelect.disabled = true;
       this.importHint.textContent =
-        copyText("remote.aliases.none");
+        unreadable !== null
+          ? copyText("remote.import.listFailed", { e: unreadable })
+          : copyText("remote.aliases.none");
       this.importHint.style.display = "block";
       return;
     }
@@ -786,6 +791,7 @@ export class RemoteSection {
     );
     toolbar.appendChild(enabledRow);
     group.appendChild(toolbar);
+    toolbar.insertAdjacentElement("afterend", this.importHint);
 
     // ★ S5 / E56：「还差什么」——新用户一站式的落点。
     // **只读 S3 的账本，不发任何请求**（§1-2）；空的时候整块不渲染，不打扰老用户。
@@ -854,7 +860,8 @@ export class RemoteSection {
     this.importHint = document.createElement("div");
     this.importHint.className = "settings-hint";
     this.importHint.style.display = "none";
-    toolbar.insertAdjacentElement("afterend", this.importHint);
+    // 〔W5-UI〕挂载挪到 `toolbar` 进了 `group` 之后（`buildBody` 那一句）：这里调用时 `toolbar` 还没有父节点，
+    //   `insertAdjacentElement("afterend")` 是空操作 ⇒ 这块提示从来没进过 DOM（「未找到」「读不了」都没人看得见）。
   }
 
   /** 选了别名 → resolve_ssh_host → 新增一台机器并填好 → 保存。 */
