@@ -6,14 +6,20 @@
 // 并钉 **localStorage 一个字都没写**。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const store = { cfg: {} as Record<string, unknown>, saves: 0 };
-vi.mock("../src/config", () => ({
-  loadConfig: vi.fn(async () => store.cfg),
-  saveConfig: vi.fn(async (c: Record<string, unknown>) => {
-    store.cfg = c;
-    store.saves += 1;
-  }),
-}));
+const store = vi.hoisted(() => ({ cfg: {} as Record<string, unknown>, saves: 0 }));
+// 〔CFG1〕写只交补丁（`patchConfig`）；按与 Rust 写口同一份金样的语义（`tests/config-patch-fake.ts`）应用到 `store.cfg`。
+vi.mock("../src/config", async (orig) => {
+  const actual = await orig<Record<string, unknown>>();
+  const { applyConfigEdits } = await import("./config-patch-fake");
+  return {
+    ...actual,
+    loadConfig: vi.fn(async () => store.cfg),
+    patchConfig: vi.fn(async (edits: Parameters<typeof applyConfigEdits>[1]) => {
+      store.cfg = JSON.parse(applyConfigEdits(JSON.stringify(store.cfg), edits)) as Record<string, unknown>;
+      store.saves += 1;
+    }),
+  };
+});
 
 import {
   sanitizeCollections,
@@ -28,8 +34,12 @@ import {
   COLLECTION_CAP,
   MEMBER_CAP,
   NAME_MAX,
+  createRefusal,
+  memberRefusal,
+  collectionRefusalText,
   type TabCollection,
 } from "../src/tab-collections";
+import { dropRefusal } from "../src/tab-drop";
 
 const c = (id: string, name: string, members: string[] = []): TabCollection => ({
   id,
@@ -100,7 +110,7 @@ describe("P7a-3 集合：存到哪儿", () => {
 
   it("★★ P7a3-Y1：写的是 `config.json` 那条路，**localStorage 一个字都不写**", async () => {
     await setCollections([c("a", "A", ["s1"])]);
-    expect(store.saves, "必须真的走 saveConfig").toBe(1);
+    expect(store.saves, "必须真的走 patchConfig").toBe(1);
     expect(store.cfg.tabCollections).toEqual([c("a", "A", ["s1"])]);
     // ⚠ 这一条才是本 DoD 的正题：localStorage 是最顺手的错路（tab 偏好全在那儿），
     // 而它住 WebView2 用户数据目录 —— 清一次缓存，用户手写的集合名就没了。
@@ -115,5 +125,52 @@ describe("P7a-3 集合：存到哪儿", () => {
 
   it("config.json 里没有这个键 ⇒ 空列表，不是 undefined", async () => {
     expect(await getCollections()).toEqual([]);
+  });
+});
+
+// 〔TL2 · E13〕要求住址：`设计/01 §5 D4`「一条都不许静默忽略」—— 到上界时数据层照旧原样返回，
+// 但得有一个判定说得出「为什么没做」，调用方据它出声。期望手写（不从被测函数生成），正反各一格。
+describe("〔TL2 · E13〕到上界：为什么没做", () => {
+  const many = (n: number): TabCollection[] => Array.from({ length: n }, (_, i) => c(`c${i}`, `组${i}`));
+  const fullOf = (id: string, name: string, first: string, n: number): TabCollection =>
+    c(id, name, [first, ...Array.from({ length: n - 1 }, (_, i) => `m${i}`)]);
+
+  it("建集合：满了 ⇒ collections-full；差一个 ⇒ null", () => {
+    expect(createRefusal(many(COLLECTION_CAP))).toEqual({ kind: "collections-full" });
+    expect(createRefusal(many(COLLECTION_CAP - 1))).toBeNull();
+    // 与数据层对拍：判定说「满」的那一格，`createCollection` 恰好原样返回。
+    expect(createCollection(many(COLLECTION_CAP), "新").length).toBe(COLLECTION_CAP);
+  });
+
+  it("加成员：满了且不在里面 ⇒ members-full（带组名）；已在里面 / 差一个 / 没这个组 ⇒ null", () => {
+    const full = [fullOf("g", "白天", "a", MEMBER_CAP)];
+    expect(memberRefusal(full, "g", "x")).toEqual({ kind: "members-full", name: "白天" });
+    expect(memberRefusal(full, "g", "a"), "已经在里面不算拒绝").toBeNull();
+    expect(memberRefusal([fullOf("g", "白天", "a", MEMBER_CAP - 1)], "g", "x")).toBeNull();
+    expect(memberRefusal(full, "没这个组", "x")).toBeNull();
+    expect(addMember(full, "g", "x")[0].members.includes("x"), "判定说满、数据层却加进去了").toBe(false);
+  });
+
+  it("拖放：从结果判 —— 满组 · 建不出组 · 进去了 · 落到末尾 · 压在自己身上", () => {
+    const full = [fullOf("g", "白天", "b", MEMBER_CAP)];
+    expect(dropRefusal(full, "a", { kind: "onto", sid: "b" })).toEqual({ kind: "members-full", name: "白天" });
+    expect(dropRefusal(full, "a", { kind: "before", sid: "b" })).toEqual({ kind: "members-full", name: "白天" });
+    expect(dropRefusal(many(1), "a", { kind: "onto", sid: "b" })).toEqual({ kind: "collections-full" });
+    expect(dropRefusal([c("g", "白天", ["b", "a"])], "a", { kind: "onto", sid: "b" })).toBeNull();
+    expect(dropRefusal(many(1), "a", { kind: "before", sid: "b" }), "插到一个散 tab 前 = 本来就不进组").toBeNull();
+    expect(dropRefusal(full, "a", { kind: "end" })).toBeNull();
+    expect(dropRefusal(many(1), "b", { kind: "onto", sid: "b" })).toBeNull();
+  });
+
+  it("两句话：各说各的、都带上界数、零占位符残留", () => {
+    const a = collectionRefusalText({ kind: "collections-full" });
+    const b = collectionRefusalText({ kind: "members-full", name: "白天" });
+    expect(a.body).toContain(String(COLLECTION_CAP));
+    expect(b.body).toContain(String(MEMBER_CAP));
+    expect(b.title).toContain("白天");
+    expect(a.title).not.toEqual(b.title);
+    for (const t of [a.title, a.body, b.title, b.body]) {
+      expect(t).not.toMatch(/[{〔]/);
+    }
   });
 });

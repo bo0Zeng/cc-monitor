@@ -39,11 +39,11 @@ fn the_fixture_covers_both_ok_and_refusal() {
     let refused = f.cases.len() - ok;
     // 〔LR1〕改成**相等**（原是 ≥9 / ≥7 的地板）：两类各自的条数是用例表写死的，
     // 地板只挡「少」、挡不住「某条 refusal 悄悄变成 ok」—— 而那一条恰恰让 ok 数变多。
-    // 实数：13 ok（原 9 ＋ print-parity 4）＋ 7 refusal。
+    // 实数：13 ok（原 9 ＋ print-parity 4）＋ 8 refusal（〔LR2 · R95b〕7 → 8：+「没探出来」）。
     assert_eq!(ok, 13, "ok 类条数变了（实数 13）");
     assert_eq!(
-        refused, 7,
-        "refusal 类条数变了（实数 7）—— §33 要防的正是「该降级却渲染出来了」"
+        refused, 8,
+        "refusal 类条数变了（实数 8）—— §33 要防的正是「该降级却渲染出来了」"
     );
 }
 

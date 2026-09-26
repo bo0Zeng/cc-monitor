@@ -33,8 +33,9 @@
 //!   随用量 ③ 轴整轴退役。〕
 //! - **Windows 分支不在这里** —— `$env:CLAUDE_CONFIG_DIR=$null; ` 与它自己那套
 //!   「什么算绝对路径」（盘符 / UNC / `\` 分隔）是刻意的平台特化。
-//! - TS 侧还剩 `launch-render-fallback.ts` 一个产出点（U8c-3 删除）。跨语言一致性由
-//!   `fixtures/payload-golden.json` 的**逐字节对拍**保证（TS 生成并入库、Rust 读同一份自己渲染再比）。
+//! - 〔LR2〕TS 侧那个产出点（`launch-render-fallback.ts`）U8c-3 已删 —— 本文件是载荷与外层三格唯一的家。
+//!   `fixtures/payload-golden.json` / `tmux-outer-golden.json` 仍入库，左边是用例表里的手写期望
+//!   （`tests/test-support/launch-*-golden.ts`），Rust 读同一份自己渲染再逐字节比。
 
 /// P1：**业务拒绝的唯一构造口** —— 所有「渲染不出来，且这是坏输入」的 `Err` 都必须经这里。
 ///
@@ -72,7 +73,11 @@ use std::fmt::Write as _;
 /// （POSIX `'…'` 无转义；PowerShell `'…'` 无插值），真正要挡的是能提前闭合引号或另起命令的那几个。
 /// 〔audit-0805 08-06〕提为 `pub(crate)`：它是**权威源**，
 /// `history.rs` 那份逐字副本已删（E3），判据也要遍历这一份而不是再抄一遍。
-pub(crate) const SHELL_META_COMMON: &str = "'\"`$;|&<>*?()!";
+/// 〔DUP1〕字面量本身搬进 `acct_core::CONFIG_DIR_SHELL_META`（后端那份全表 `is_safe_config_dir` 原来也各抄一遍，
+/// 两份收成那一份）；这里留的是 monitor 这一侧唯一的那个名字，值取自它 —— 定义处仍恰好一处（`the_shell_metachar_blacklist_has_exactly_one_home`）。
+/// 〔DUP1〕生产段里已经没人读它了（判定整份在 `acct_core::config_dir_char_unsafe`），只剩判据在遍历 ⇒ 只在 `test` 下编（不留死代码）。
+#[cfg(test)]
+pub(crate) const SHELL_META_COMMON: &str = acct_core::CONFIG_DIR_SHELL_META;
 
 /// 一个字符能不能出现在**要拼进命令**的 config dir 里。
 ///
@@ -87,22 +92,23 @@ pub(crate) const SHELL_META_COMMON: &str = "'\"`$;|&<>*?()!";
 /// ⚠ **诚实定级**：那是**纵深防御**的缺口，不是当时可利用的洞 —— configDir 的上游
 /// （本机 / 远端 manifest）都已经用并集把过一道。但「权威也保留本地校验」是这个仓自己
 /// 写在 `resolve_query.rs` 头注里的纪律（B2），少一层就是少一层。
+///
+/// 〔DUP1〕判定本身搬进 `acct_core::config_dir_char_unsafe`（全仓唯一一份；C1 那一段 `is_control()` 本来就含），这里转手；
+/// 只剩 Windows 那条路（`history.rs::has_bad_chars`）在用 ⇒ 只在 `windows` / `test` 下编。
+#[cfg(any(windows, test))]
 pub fn is_command_unsafe_char(c: char) -> bool {
-    c.is_control()
-        || ('\u{0080}'..='\u{009f}').contains(&c)
-        || SHELL_META_COMMON.contains(c)
-        || acct_core::is_deceptive_char(c)
+    acct_core::config_dir_char_unsafe(c)
 }
 
 /// **POSIX 命令面**的 config dir 校验：绝对 POSIX 路径、无 `..` 段、无反斜杠、
 /// 无元字符/控制符/视觉欺骗字符。
 ///
 /// fail-closed：稍有可疑即判非法，**绝不拼进命令**。
+///
+/// 〔DUP1 · `设计/90 §3` 判据 2〕规则住 `acct_core::config_dir_posix_ok`（全仓唯一一份，后端 ccm 那一侧也用得着），
+/// 名字留在这里给既有调用方（本机拉起 · 后端落点 · 两条渲染路）转手。
 pub fn config_dir_command_safe(dir: &str) -> bool {
-    if !dir.starts_with('/') || dir == "/" || dir.contains("/../") || dir.ends_with("/..") {
-        return false;
-    }
-    !dir.chars().any(|c| c == '\\' || is_command_unsafe_char(c))
+    acct_core::config_dir_posix_ok(dir)
 }
 
 /// 「这次拉起用哪个账号」—— **三态，不是两态**。
@@ -147,13 +153,13 @@ pub fn config_dir_prefix_posix(account: Option<&Account>) -> Result<String, Stri
 /// 「**显式不注入** `CLAUDE_CONFIG_DIR`」这条前缀 —— 也就是账号 0 的起法。
 ///
 /// 逐字节形态被 e2e 探针用 `grep -q "unset CLAUDE_CONFIG_DIR;"` 断言，且与 TS
-/// `shell-quote.ts::UNSET_CONFIG_DIR_PREFIX` 同源（对拍夹具覆盖）。
+/// 〔LR2〕TS 那份同名常量随兜底渲染器删了；逐字节由 `payload-golden.json`「账号 0」那条夹具钉着。
 pub const UNSET_CONFIG_DIR_PREFIX: &str = "unset CLAUDE_CONFIG_DIR; ";
 
 /// 启动期令牌的长度 —— **32 个字符**。
 ///
 /// 单独提成常量是为了让 TS 那侧的对拍判据**从本文件抽这个数**、而不是手抄一个 32
-/// （`tests/launch-render-fallback.vitest.ts`）。改这个数 ⇒ TS 那条对拍当场红。
+/// （`tests/rbind-token-shape-parity.vitest.ts`，〔LR2〕从已删的兜底渲染器判据文件搬来）。改这个数 ⇒ TS 那条对拍当场红。
 pub const RBIND_TOKEN_LEN: usize = 32;
 
 /// 令牌形状：恰好 [`RBIND_TOKEN_LEN`] 个**小写**十六进制字符。
@@ -173,7 +179,7 @@ pub fn rbind_token_shape_ok(token: &str) -> bool {
 
 /// 载荷里的一条环境操作。
 ///
-/// **刻意是窄变体而不是通用 `{op, key, value}`**（照搬 TS `launch-plan.ts::EnvOp` 的裁决）：
+/// **刻意是窄变体而不是通用 `{op, key, value}`**（照搬 TS `launch-types.ts::EnvOp` 的裁决）：
 /// 通用形态等于给任何上游开一个「往命令里塞任意变量名」的口子，
 /// 而实际产出者的键集合全是代码里写死的。把「清哪些变量」从**数据**移进**变体名**之后，
 /// 那件事在类型层不可表达。
@@ -187,7 +193,7 @@ pub enum EnvOp<'a> {
     },
     /// `设计/80 §8` 步 1：启动期令牌 `CCM_RBIND_TOKEN`（`[0-9a-f]{32}`）。
     ///
-    /// 「买到什么 / **买不到什么**」逐字住 TS `launch-plan.ts::EnvOp` 那一段。
+    /// 「买到什么 / **买不到什么**」逐字住 TS `launch-types.ts::EnvOp` 那一段。
     /// 本侧只重复一句要害：**它只是一个不可猜的关联 id，不许承载任何权限语义** ——
     /// 它会进远端的 `/proc/<pid>/environ` 与 `cmdline`，拿到它顶多能让某人的
     /// `↗` 拉错窗口，不能越权。
@@ -199,10 +205,12 @@ pub enum EnvOp<'a> {
         value: &'a str,
     },
     /// 〔RL1 · 第四波〕中转地址 `ANTHROPIC_BASE_URL`：远端（与本机「就地 resume」那一格）拉起时，
-    /// 值由 [`relay_endpoint_for`] 那个唯一判断口答出、经 tauri `relay_endpoint_for_launch` 交给前端、再原样放进载荷。
+    /// 值由那台机器的后端出成品（帧命令 `launch-endpoint`，决策表 `accounts/upstream/endpoint.rs::decide_launch`），
+    /// 经 `history::relay_endpoint_on` → tauri `relay_endpoint_for_launch` 交给前端、再原样放进载荷。
+    /// 〔TL3 · 审计 F 🔴-3〕先前这里链到 monitor 的 `relay_endpoint_for`〔散文墓碑〕—— US1 把那张表整块搬进了后端。
     ///
     /// ⚠ 形状校验在 [`render_env_ops`] 里、**fail-closed**（[`relay_base_url_shape_ok`]）：只收
-    /// [`relay_base_url_in`] 产得出的那一形。渲错了的症状是「claude 每一发都连不上」，与网络故障同形 ——
+    /// 构造口（`relay_route_core::base_url`，后端上游选择调它）产得出的那一形。渲错了的症状是「claude 每一发都连不上」，与网络故障同形 ——
     /// 与启动期令牌那一格同一条理由（静默的错不许渲）。渲染只经 [`relay_env_prefix_posix`]
     /// （本文件唯一产出那句 `export` 的地方，判据数着）。
     ExportRelayBaseUrl {
@@ -289,6 +297,15 @@ fn render_env_ops(ops: &[EnvOp]) -> Result<String, String> {
                 );
             }
             EnvOp::ExportModel { value } => {
+                // 〔DUP1 · `INVARIANTS §47` ①〕模型名是标识符：共享那一份判（`shell_quote_core::model_name_ok`，
+                // 真实模型名全过 —— `sonnet[1m]` · Bedrock `…-v1:0` · Vertex `…@2025…` · 网关 `anthropic/…`）。
+                // 这里原来「刻意宽容渲染」、只靠 quote；前端那份 `isValidModelName`〔散文墓碑〕删了（`设计/90 §3` 判据 2）。
+                if !shell_quote_core::model_name_ok(value) {
+                    return Err(refuse(copy_text(
+                        "rsPayload.model.bad",
+                        &[("value", &format!("{:?}", value))],
+                    )));
+                }
                 let _ = write!(
                     out,
                     "export ANTHROPIC_MODEL={}; ",
@@ -401,8 +418,8 @@ pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
     // 不是攻击者）；② 与同函数 `args` 那道白名单**姿态一致**（不对称本身会误导下一个人）。
     // 真正的边界在别处：backend 的 `admit`（会话身份）+ 前端执行面（CSP / 能力表）。
     //
-    // 字符集镜像 TS 的 `sanitizeRemoteLauncher`（今天真正管着这条路的那份策略），
-    // 但按本函数的既有惯例**返回 `Err` 而不是静默回落**：拒绝要让调用方看得见。
+    // 字符集当年镜像 TS 的 `sanitizeRemoteLauncher`〔散文墓碑〕（〔DUP1〕那份按 `设计/90 §3` 判据 2 删了：同一字符集、
+    // 处置却是静默换成默认 launcher ⇒ **今天这里是这条判定唯一的家**），按本函数的既有惯例**返回 `Err` 而不是静默回落**：拒绝要让调用方看得见。
     // ⚠ 刻意**不复用** `history::sanitize_launcher` 的白名单 —— 它排掉了 `/`，
     // 而远端 launcher 合法地可以是 `/usr/local/bin/claude`（收太紧 = 把一个洞换成一个回归）。
     if let Some(c) = spec
@@ -423,6 +440,13 @@ pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
     let inner = argv.join(" ");
     let cd = match spec.cwd {
         Some("") => return Err(refuse(&copy_text("rsPayload.cwd.empty", &[]))),
+        // 〔TL3 · §47 ②〕工作目录是从本进程外面来的自由文本路径 ⇒ 先过形式 ＋ 拒绝集，再走唯一的 quote。
+        Some(c) if !shell_quote_core::posix_free_path_ok(c) => {
+            return Err(refuse(copy_text(
+                "rsPayload.cwd.bad",
+                &[("value", &format!("{c:?}"))],
+            )))
+        }
         Some(c) => format!("cd {} && ", shell_quote_core::posix_quote(c)),
         None => String::new(),
     };
@@ -567,16 +591,9 @@ pub enum TmuxOuter<'a> {
     Attach { target: TmuxTarget<'a> },
 }
 
-/// `@ccm_sid` 是裸拼进命令的，白名单与 TS 座声称调用方会保证的那一条同口径
-/// （座头注逐字「调用方须保证 `ccmSid` 为 `[A-Za-z0-9_-]`（座不做校验、裸拼）」）。
-///
-/// **本侧不信那句声称** —— 它是一句注释纪律，而这条路的上游是 webview。
-fn ccm_sid_safe(sid: &str) -> bool {
-    !sid.is_empty()
-        && sid
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
-}
+// 〔DUP1 · `INVARIANTS §47` ①〕`@ccm_sid` 是裸拼进命令的 ⇒ 过 sid 那一条放行判定（`shell_quote_core::session_id_ok`，
+// 全仓唯一一份）。这里原来有一份自己的白名单（`[A-Za-z0-9_-]`、无上界、不管前导 `-`），与 TS 座当年声称的那条同口径 ——
+// **本侧不信那句声称**的理由照旧（上游是 webview），换的只是「信谁」：信共享那一份，不再各写各的。
 
 /// 外层三格的编译。`payload` = **内层已渲染好的生料**（没 quote），本函数负责 quote。
 ///
@@ -608,6 +625,13 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
             };
             let cflag = match cwd {
                 Some("") => return Err(refuse(&copy_text("rsPayload.cwd.empty", &[]))),
+                // 〔TL3 · §47 ②〕同 `render_payload` 那一格。
+                Some(c) if !shell_quote_core::posix_free_path_ok(c) => {
+                    return Err(refuse(copy_text(
+                        "rsPayload.cwd.bad",
+                        &[("value", &format!("{c:?}"))],
+                    )))
+                }
                 Some(c) => format!(" -c {}", shell_quote_core::posix_quote(c)),
                 None => String::new(),
             };
@@ -618,7 +642,7 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
             let (set_sid, set_title) = match ccm_sid {
                 None => (String::new(), String::new()),
                 Some(s) => {
-                    if !ccm_sid_safe(s) {
+                    if !shell_quote_core::session_id_ok(s) {
                         return Err(refuse(copy_text(
                             "rsPayload.sessionMark.bad",
                             &[("value", &format!("{:?}", s))],
@@ -801,3 +825,8 @@ pub fn relay_env_prefix_ps(base_url: &str) -> String {
 #[cfg(test)]
 #[path = "../../../../../tests/bridge/backend/control/payload_tests.rs"]
 mod tests;
+
+// 〔DUP1〕标识符放行判定的生成物（`src/generated/judgment-rules.ts`）与共用金样（`INVARIANTS §47` ①）。
+#[cfg(test)]
+#[path = "../../../../../tests/bridge/backend/control/payload_judgment_rules.rs"]
+mod judgment_rules;

@@ -652,3 +652,227 @@ fn exec_direct_really_reads_the_identity_cell() {
         "那一句不在 `exec_direct` 的第一行 —— 要在走 `sh -c` 那条岔路之前说（两条路都得出声）"
     );
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// 〔W5-ALIAS · 第五波先行〕帧命令 `ccm-print`：别名预览（`设计/71 §2.3`）
+// 住址：`设计/71 §2.3`「`ccm --print` 不跑、吐出等价的一行 shell ⇒ 生成器旁边显示**这条别名实际会执行什么**，
+// 是真验证，不是前端拼串」。
+// ═══════════════════════════════════════════════════════════════════════
+
+/// **C1：预览与 `ccm --print` 是同一个计划函数。**
+///
+/// 源码那一半：`run` 与 [`answer_print`] 都经 [`plan_of`]（`plan::build(` 全文件恰好一处由
+/// `the_name_avoidance_has_exactly_one_source_and_the_plan_settles_it` 钉着），预览那一处交的是预览环境、不继承账号。
+/// 行为那一半（异源）：同一组参数，`answer_print` 的 `line` == 手搭一份「家目录里的新终端」环境、
+/// 直接走 `argv::parse` → `plan::build` → `plan::render` 的产物（直路 · 容器路 · 显式不带账号三形）。
+#[test]
+fn the_alias_preview_is_the_same_plan_as_ccm_print() {
+    let prod = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/control/ccm/mod.rs"
+    ));
+    for pin in [
+        "plan_of(&o, env, true)",
+        "plan_of(&o, Env::for_preview(), false)",
+    ] {
+        guard_core::find_pinned(&prod, pin).unwrap_or_else(|e| {
+            panic!("`{pin}` 不是恰好一处（{e}）—— 预览与 `--print` 不再走同一个计划函数")
+        });
+    }
+    let home = std::env::var("HOME").unwrap_or_default();
+    for args in [
+        vec!["--cwd", "/p", "--agent", "claude"],
+        vec!["--tmux=w5alias-preview-probe", "--cwd", "/p"],
+        vec!["--base", "--model", "m", "--cwd", "/q"],
+    ] {
+        let got = answer_print(&serde_json::json!({ "args": args }))
+            .unwrap_or_else(|e| panic!("{args:?} 预览被拒：{e:?}"));
+        let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        let o = match argv::parse(&a).expect("该解析得动") {
+            Parsed::Opts(o) => o,
+            other => panic!("{other:?}"),
+        };
+        let pick =
+            |k: &str, d: String| std::env::var(k).ok().filter(|v| !v.is_empty()).unwrap_or(d);
+        let e = Env {
+            home: home.clone(),
+            pwd: home.clone(),
+            accts_manifest: pick(
+                "CCM_ACCTS_MANIFEST",
+                format!("{home}/{}", argv::Defaults::ACCTS_MANIFEST_REL),
+            ),
+            ccm_env: pick("CCM_ENV", argv::Defaults::ENV.to_string()),
+            account_env: crate::agents::account_env_of(&o.agent)
+                .unwrap_or_default()
+                .to_string(),
+            self_argv: vec!["ccm".into()],
+            no_pretrust: std::env::var("CCM_NO_PRETRUST").as_deref() == Ok("1"),
+            bus_scripts: plan::discover_bus_scripts(),
+            ..Default::default()
+        };
+        // 账号表照这台机器的真值（预览要的就是这一点：「这台机器上敲这条别名」）—— 读法与真跑同一个 `AccountTable::load`。
+        let table = if needs_account_table(&o, &e) {
+            AccountTable::load(&e.accts_manifest)
+        } else {
+            AccountTable::default()
+        };
+        let plan = plan::build(&o, &e, &table, None).expect("该算得出计划");
+        assert_eq!(
+            got["line"].as_str().expect("line"),
+            plan::render(&plan, None),
+            "{args:?}：预览与同一语境下的 `--print` 不是同一行"
+        );
+    }
+}
+
+/// **C2：预览的语境逐格写死**（「从这台机器家目录里的一个新终端敲这条别名」）。各格一刀：
+/// 叫的是 `ccm` · cwd = home · 不在 tmux 里 · 没有继承来的中转地址 / 启动号 / 令牌 / 账号目录。
+#[test]
+fn the_alias_preview_speaks_for_a_fresh_terminal_at_home() {
+    let e = Env::for_preview();
+    assert_eq!(
+        e.self_argv,
+        vec![SUBCOMMAND_WORD.to_string()],
+        "别名叫的是 `ccm`"
+    );
+    assert_eq!(e.pwd, e.home, "不给 --cwd 的别名在家目录里敲");
+    assert!(e.tmux.is_none(), "新终端不在 tmux 里");
+    assert!(e.inherited_config_dir.is_none(), "账号目录变量不继承");
+    assert!(
+        e.anthropic_base_url.is_none() && e.ccm_launch_id.is_none() && e.launch_token.is_none(),
+        "常驻后端进程身上的中转地址 / 启动号 / 令牌不是那个终端的"
+    );
+    // 行为：不给 --cwd ⇒ 落在家目录；容器路内层叫回的是 `ccm`。
+    let line = |args: &[&str]| -> String {
+        answer_print(&serde_json::json!({ "args": args })).expect("该答得出")["line"]
+            .as_str()
+            .expect("line")
+            .to_string()
+    };
+    let home = std::env::var("HOME").unwrap_or_default();
+    assert!(
+        line(&["--agent", "claude"]).contains(&plan::qarg(&home)),
+        "不给 --cwd 却没落在家目录"
+    );
+    let boxed = line(&["--tmux=w5alias-preview-probe", "--cwd", "/p"]);
+    assert!(
+        boxed.contains("'ccm' '--cwd'"),
+        "容器路内层没有叫回 `ccm`：{boxed}"
+    );
+}
+
+/// `ccm-print` 的两种拒：形状不对 ⇒ `bad_args`；ccm 自己拒 / 不起会话的那一形 ⇒ `refused`，原话带回。
+#[test]
+fn the_alias_preview_refuses_in_the_words_of_ccm() {
+    let code = |v: serde_json::Value| answer_print(&v).map(|_| "ok").unwrap_or_else(|(c, _)| c);
+    assert_eq!(code(serde_json::json!({})), "bad_args");
+    assert_eq!(code(serde_json::json!({ "args": [1] })), "bad_args");
+    assert_eq!(
+        code(serde_json::json!({ "args": vec!["x"; PRINT_MAX_WORDS + 1] })),
+        "bad_args"
+    );
+    assert_eq!(code(serde_json::json!({ "args": ["--help"] })), "refused");
+    let (c, said) = answer_print(&serde_json::json!({ "args": ["--no-such-flag"] }))
+        .expect_err("未知旗标该被拒");
+    assert_eq!(c, "refused");
+    let want = match argv::parse(&["--no-such-flag".to_string()]) {
+        Err(argv::Die(m)) => m,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(said, want, "拒的那句不是 ccm 自己的原话");
+    assert_eq!(code(serde_json::json!({ "args": ["--cwd", "/p"] })), "ok");
+}
+
+// ── 〔WIN1 · 第四波 4D · RT1 F7〕`--ccm-probe` 自报的能力 = 这台机器上做得到的那一份 ──────────
+//
+// 要求住址：`设计/96 §2` 第 2 层「能力清单从实现派生」（`lib.rs` 头注那张表逐字「**能力清单从实现派生，
+// `CAPABILITIES` 由它们汇总而来，不许手写**」）；读数出处 `第四波记录/RT1.md §8` F7 逐字「`ccm.exe --ccm-probe`
+// 在 Windows 上自报 `tmux, attach, detach, tmux-size, tmux-base, bus-register` 等能力 —— 这些在 Windows 上都做不到」。
+// 异源：Windows 那一格的期望是**手写的两张名单**（做得到 / 做不到），不从 `CCM_TMUX_CARRIED` 或
+// `ccm_launcher_with` 里抠 —— 否则两侧同源、恒真。
+// ⚠ 买不到：`TMUX_PLATFORM` 在本机是 `AskThePath`，Windows 那一档由入参模拟；真 `ccm.exe` 吐什么要真机
+//    （`第四波记录/WIN1.md` 的虚拟机读数）。
+
+fn caps_line(out: &str) -> std::collections::BTreeSet<String> {
+    out.lines()
+        .find_map(|l| l.strip_prefix("capabilities="))
+        .expect("`--ccm-probe` 没有 `capabilities=` 那一行")
+        .split(',')
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+#[test]
+fn on_windows_the_probe_does_not_claim_what_only_tmux_can_carry() {
+    let win = caps_line(&probe_output_for(
+        "C:\\x\\ccm.exe",
+        crate::TmuxPlatform::AbsentUnlessExeOnPath,
+    ));
+    let want_absent = [
+        "tmux",
+        "attach",
+        "detach",
+        "tmux-size",
+        "tmux-base",
+        "bus-register",
+        "ccm-sid",
+        "base-url-across-tmux",
+    ];
+    let want_present = [
+        "new",
+        "resume",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "print",
+        "backend-discover",
+        "account-via-backend",
+    ];
+    let want: std::collections::BTreeSet<String> =
+        want_present.iter().map(|s| s.to_string()).collect();
+    assert_eq!(
+        win, want,
+        "Windows 那一份 `--ccm-probe` 自报的能力与手写期望不等（两向）；做不到的那几条：{want_absent:?}"
+    );
+    // 正控：Linux（问 PATH 的那一档）上逐字是整张表 —— 两张手写名单的并集。
+    let linux = caps_line(&probe_output_for(
+        "/usr/local/bin/ccm",
+        crate::TmuxPlatform::AskThePath,
+    ));
+    let all: std::collections::BTreeSet<String> = want_present
+        .iter()
+        .chain(want_absent.iter())
+        .map(|s| s.to_string())
+        .collect();
+    assert_eq!(linux, all, "Linux 那一份应当逐字是整张 `CAPABILITIES`");
+}
+
+/// 生产那一口真的把**本二进制的**平台档交进去（不是回到整张表，也不是写死某一档）。
+#[test]
+fn the_real_probe_asks_this_binarys_own_platform() {
+    let me = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/control/ccm/mod.rs"
+    ));
+    let body = me
+        .split("pub(crate) fn probe_output(self_path: &str) -> String {")
+        .nth(1)
+        .and_then(|b| b.split("\n}\n").next())
+        .expect("找不到 `probe_output` —— 抽取器坏了");
+    assert_eq!(
+        body.trim(),
+        "probe_output_for(self_path, crate::TMUX_PLATFORM)",
+        "`probe_output` 要把本二进制的 `TMUX_PLATFORM` 交给内核"
+    );
+    assert_eq!(
+        me.matches("CAPABILITIES.join(").count(),
+        0,
+        "又把整张 `CAPABILITIES` 原样吐进 `--ccm-probe` 了（Windows 上会自报 tmux 那一族）"
+    );
+    // 本机读数：Linux 上生产那一份 == 问 PATH 那一档。
+    assert_eq!(
+        caps_line(&probe_output("/x/ccm")),
+        caps_line(&probe_output_for("/x/ccm", crate::TmuxPlatform::AskThePath))
+    );
+}

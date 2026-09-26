@@ -276,14 +276,16 @@ fixtures:
 **★ 诚实分层(硬结构限)**:Linux headless 的 GUI resume **结构性不可执行**——一键拉起走
 `launch.rs::launch_powershell_window`,该函数 `#[cfg(not(windows))]` 直接 `Err("拉起终端窗口仅支持
 Windows")`,故 app 里点 resume 在 Linux 必回退剪贴板、**绝不真执行**命令。因此 argv/孤儿断言的诚实天花板
-= **命令级**:直接驱**真源** builder(`remote-launch.ts` 的 `buildResumeIntoExistingTmuxCmd` 等,经
-`resume-cmd-driver.ts` import,不重写)拿到 app **真正会跑**的命令串,再把该串真跑到真 tmux + fake-claude,
+= **命令级**:直接驱**生产渲染链**(〔LR2〕生产 `launch-requests.ts::plan*` → 生产 `buildLaunchRenderRequest` →
+生产 Rust `render_launch_payload`,经 `resume-cmd-driver.ts` → `launch-render-driver.ts`,不重写)拿到 app **真正会跑**的命令串,再把该串真跑到真 tmux + fake-claude,
 断言 argv.log(`--resume <sid>` + `CLAUDE_CONFIG_DIR`)与 `tmux ls` 孤儿数。复活(灰→live)的**检测**由
 后端判活边沿断言(后端半场)。本地 resume(`resume_history_session`)同为 Windows-only,Linux 不可执行。
 
 fixtures / 驱动:
-- `resume-cmd-driver.ts`——tsx 驱动器,import 真实 `remote-launch.ts`/`accounts.ts`,打印 app 真会跑的
-  resume 命令串 / 账号解析结果(#75/#76 的修复活在这些函数里,套件据其 stdout 断言并真跑到 tmux)。
+- `resume-cmd-driver.ts`——tsx 驱动器,命令串经 `launch-render-driver.ts` 走生产渲染链(生产 TS 请求 → 生产 Rust
+  `render_launch_payload`,后者经 `cargo test --lib emit_launch_render_for_e2e -- --ignored` 那个数据出口),
+  账号解析 import 真实 `accounts.ts`,打印 app 真会跑的 resume 命令串 / 账号解析结果(套件据其 stdout 断言并真跑到 tmux)。
+  ⚠ 第一次跑要编 monitor 的 lib 测试(几分钟);之后走缓存。
 - `fake-claude` 必须可执行(`chmod +x`;直接被 `gen-idle-tmux` 内联 exec)——F-E0 提交时误落 100644,已修 100755。
 
 两级跑法(都无需 GUI,全自动):

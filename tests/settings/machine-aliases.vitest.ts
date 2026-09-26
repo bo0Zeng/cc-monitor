@@ -100,12 +100,16 @@ type Plat = "posix" | "powershell";
 
 describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳 ＋ 读回口 ＋ 默认不动用户配置", (plat) => {
   let seen: Array<{ cmd: string; args?: unknown }>;
+  /** 〔W5-ALIAS〕预览那一发要不要失败。 */
+  let previewFails = false;
   let disk: Alias[];
   let problems: Array<{ name: string; message: string }>;
   /** 替身盘面：哪几份候选里装着别名块（装 / 卸会改它，读回口照它答）。 */
   let blockAt: Set<string>;
   /** 〔TL1〕装着旧版别名块的那几份（装一次 = 换成新版 ⇒ 从这里摘掉）。 */
   let oldAt: Set<string>;
+  /** 〔W5-UI〕非 null ⇒ 读「自动打开 monitor」那项设置失败，拒绝原因就是它。 */
+  let autoLaunchFail: string | null;
 
   /** 〔AL1d〕一份候选（别名文件那一行与别名块共用）；`block` 是后端那一次扫描带回来的别名块现状。 */
   const cand = (
@@ -133,8 +137,26 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     problems = [];
     blockAt = new Set();
     oldAt = new Set();
+    autoLaunchFail = null;
     vi.resetModules();
     vi.doMock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn() }));
+    // 〔W5-ALIAS〕预览走通道（`chan.call(origin, "ccm-print", …)`）：替身把每一发记进同一本账（`chan:<op>`），
+    //   首开那几发的集合相等判据因此也看得见「展开时有没有偷问预览」。
+    previewFails = false;
+    vi.doMock("../../src/ipc/chan", () => ({
+      // `chan-caller.ts::saidOf` 按 `instanceof ChanError` 分流 —— 替身也得交出这个类（替身抛的是普通 Error）。
+      ChanError: class ChanError extends Error {},
+      chan: {
+        call: (origin: string, op: string, body: Uint8Array) => {
+          const args = JSON.parse(new TextDecoder().decode(body)) as { args: string[] };
+          seen.push({ cmd: `chan:${op}`, args: { origin, ...args } });
+          if (previewFails) return Promise.reject(new Error("后端没接住"));
+          return Promise.resolve(
+            new TextEncoder().encode(JSON.stringify({ line: `LINE ${args.args.join(" ")}` })),
+          );
+        },
+      },
+    }));
     vi.doMock("../../src/ipc/commands", () => ({
       commands: {
         local_ccm_entry_status: () => {
@@ -198,6 +220,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
         },
         cc_get_auto_launch: () => {
           seen.push({ cmd: "cc_get_auto_launch" });
+          if (autoLaunchFail !== null) return Promise.reject(autoLaunchFail);
           return Promise.resolve({ auto_launch_enabled: false, monitor_exe_path: null });
         },
         ccm_user_path_status: () => {
@@ -267,6 +290,36 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     el.dispatchEvent(new Event("toggle"));
     await open(el);
     expect(seen.length, "再展开又读了一遍").toBe(n);
+  });
+
+  it("〔W5-ALIAS · C〕点「预览」恰好问一次本机后端 `ccm-print`，交的就是这一条的参数，答的那一行原样上屏", async () => {
+    const el = await mount();
+    await open(el);
+    const before = seen.length;
+    const rows = [...el.querySelectorAll<HTMLElement>(".machine-aliases-row")];
+    const zRow = rows.find((r) => r.querySelector("code")?.textContent === "alphacc")!;
+    clickText(zRow, "预览");
+    await flush();
+    const asked = seen.slice(before);
+    expect(asked).toEqual([
+      { cmd: "chan:ccm-print", args: { origin: "<local>", args: ["--account", "z"] } },
+    ]);
+    const out = zRow.nextElementSibling as HTMLElement;
+    expect(out.dataset.role).toBe("alias-preview");
+    expect(out.textContent).toContain("LINE --account z");
+    expect(out.textContent).toContain("alphacc");
+  });
+
+  it("〔W5-ALIAS · C〕预览没问成 ⇒ 那一条下面照实说「预览不了」＋ 原因，不静默", async () => {
+    const el = await mount();
+    await open(el);
+    previewFails = true;
+    const row = el.querySelector<HTMLElement>(".machine-aliases-row")!;
+    clickText(row, "预览");
+    await flush();
+    const out = row.nextElementSibling as HTMLElement;
+    expect(out.textContent).toContain("预览不了");
+    expect(out.textContent).toContain("后端没接住");
   });
 
   it("🔴 别名三条命令每一发都带着这个平台的 `shell`（平台是入参，不是组件自己猜的）", async () => {
@@ -480,6 +533,28 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     const last = [...seen].reverse().find((c) => c.cmd === "aliases_read")!.args as { rcPath: string };
     expect(last.rcPath).toBe("~/.config/x.rc");
   });
+
+  if (plat === "powershell") {
+    // 〔W5-UI · 设计/70 §7 #4〕读不到时别把「不知道」画成「没勾」。
+    it("读「自动打开 monitor」失败 ⇒ 复选框禁用、路径那格说读不到（原因原样）；读到 ⇒ 可点（正控）", async () => {
+      autoLaunchFail = "boom-autolaunch";
+      let el = await mount();
+      await open(el);
+      await flush();
+      const box = (): HTMLInputElement =>
+        el.querySelector<HTMLInputElement>(".settings-cc-autolaunch input[type=checkbox]")!;
+      const path = (): string => el.querySelector(".settings-cc-autolaunch-path-value")!.textContent ?? "";
+      expect(box().disabled, "读失败还让人勾 —— 画成了「关着」").toBe(true);
+      expect(path()).toContain("读不到这项设置");
+      expect(path()).toContain("boom-autolaunch");
+      autoLaunchFail = null;
+      el = await mount();
+      await open(el);
+      await flush();
+      expect(box().disabled).toBe(false);
+      expect(path()).not.toContain("读不到这项设置");
+    });
+  }
 
   if (plat === "posix") {
     it("POSIX：没有「同时装 cc 函数」那一问（`cc` 自带 `declare -f` 让着你）；没有用户级 PATH 那一格", async () => {

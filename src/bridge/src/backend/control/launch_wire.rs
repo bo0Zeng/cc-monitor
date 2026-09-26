@@ -6,8 +6,10 @@
 //! `tryRenderCli`（装了 ccm 时走，产 `ccm …`；〔LR1 · U8c-3〕TS 那份已删）与 `renderFallback`（没装时走，产裸载荷）。
 //!
 //! - **CLI 那支是真在跑的那支**（U8c-2b-0 摸底：装了 ccm 就直接 return，兜底根本不执行）；
-//! - **兜底那支切不动**：`container: tmux` 时它要外层 tmux 命令（`session-backend.ts`），
+//! - **兜底那支当时切不动**：`container: tmux` 时它要外层 tmux 命令（`session-backend.ts`），
 //!   而 `src/doc/INVARIANTS.md` §33b 写死了「删/搬 `session-backend.ts` 前必须先回答三件事」。
+//!   〔LR2〕后来切了（步 22b·B：外层三格进 `payload.rs::render_tmux_outer`），TS 那一族（兜底渲染器 ＋ 座）也删了；
+//!   本段以下是那次切换当时的记录。
 //!   🔴 **那三问今天不是当年那三问了**（`K-R105` 09-13 第四次复裁）：第三问
 //!   （daemonless 的远端要不要能起会话）**已随定框 `K35` / `K-R59` 退役**，
 //!   第一问的答案也在 `K-P2 D3`（09-03）之后变过一次。**三问的今天版只有一个家**：
@@ -22,7 +24,9 @@
 //! 用 `Result` 的 `Err` 表达它，会和「IPC 真的失败了」混成一件事，
 //! 而那两件事在前端要走**不同的分支**。
 
-use super::ccm_invocation::{render_ccm_invocation, Action, CliAccount, CliSpec, Container};
+use super::ccm_invocation::{
+    render_ccm_invocation, Action, CliAccount, CliSpec, Container, Refusal,
+};
 use crate::copy_table::copy_text;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -53,27 +57,17 @@ pub struct CliRenderRequest {
     /// POSIX 本机那条路住在 Rust 里（`history.rs::render_local_ccm`），
     /// 不必绕一圈 IPC 问自己。⇒ 这是**路由事实**，不是禁令。
     pub is_ssh: bool,
-    /// `null` = **拿不到能力集**。
+    /// 远端 `ccm` 探测的结果 —— **三态**，与前端 `ccm-probe.ts::CcmProbeResult` 一一对应。
     ///
-    /// # 🔴 `K-R95` 登记的缺口：这条线只有两态，而**它上游有三态**
+    /// # 〔LR2 · R95b〕原来这里是 `caps: Option<Vec<String>>`，两态
     ///
-    /// 前端那一侧从 `K-R53` 起是**三态判别联合**（`ccm-probe.ts`：`installed` /
-    /// `not-installed` / `unknown`，`unknown` 连缓存都不进，理由住那个文件的头注）。
-    /// 而这里只有 `Some`/`None` ⇒ `unknown` **一过线就被压成「没装」**
-    /// ⇒ 后端回 `Refusal::NotInstalled`（逐字「远端还没装后端」，住文案表 `rsCcmInvocation.refusal.notInstalled`）。
-    /// **一次 ssh 抖动，用户被告知「那台机器上没有 ccm」** —— 正是 `K-R53` 治掉的那一形，
-    /// 只不过它换到了线上：值那一侧分得开，线上又合回去了。
-    ///
-    /// ⚠ **本件没修它**，不是没看见：补第三态要给这个结构加一个字段，而那要同步改
-    /// `src/launch-cli-wire.ts`（TS 那份**手写镜像**，由
-    /// `tests/launch-cli-wire.vitest.ts` 的「字段集相等」钉着）与
-    /// `remote-launch-run.ts::buildCliRenderRequest`（真正填它的地方）——
-    /// **两个文件都不在 `K-R95` 的写区**。⇒ 交回里作 `〔R95b〕` 报给 PM。
-    ///
-    /// 〔LR1 · U8c-3〕那句话（「探测没得出答案（不等于没装）」）原先只由 TS 那份渲染器说，
-    /// 随它一起删了 —— 生产上本来就说不出。修这条线的那一拍，它应当作为
-    /// `ccm_invocation::Refusal` 的一个变体重新出生，由 Rust 判据管。
-    pub caps: Option<Vec<String>>,
+    /// 前端那一侧从 `K-R53` 起就是三态（`installed` / `not-installed` / `unknown`，`unknown`
+    /// 连缓存都不进），而线上只有 `Some` / `None` ⇒ `unknown` 一过线就被压成「没装」⇒ 回
+    /// `Refusal::NotInstalled` ⇒ **一次 ssh 抖动，用户被告知「那台机器没装」**（`设计/80 §9.4`〔R95b〕：
+    /// 「缺的是线，不是措辞」；`K-R95` 登记、LR1 报剩余）。
+    /// ⇒ 线上加第三态：`unknown` 带着探测那一跳的错误原话过线，这边回 `Refusal::ProbeUnknown`
+    /// —— 那句「没探到，不等于没装」在 Rust 里重新出生、由 Rust 判据管（LR1 删 TS 渲染器时留的话）。
+    pub ccm: WireCcmProbe,
     pub action: WireAction,
     pub container: WireContainer,
     pub cwd: Option<String>,
@@ -83,6 +77,17 @@ pub struct CliRenderRequest {
     /// 已 sanitize 的 launcher（sanitize 仍在 TS，见 `super::payload` 头注）。
     pub launcher: String,
     pub default_launcher: String,
+}
+
+/// 〔LR2 · R95b〕探测结果的三态（上面 `CliRenderRequest::ccm` 那一格）。
+/// 线上形状按 `state` 判别：`{state:"installed",caps:[…]}` · `{state:"not-installed"}` ·
+/// `{state:"unknown",error:"…"}` —— 与 `ccm-probe.ts::CcmProbeResult` 的 `state` 同名同值。
+#[derive(Debug, Deserialize)]
+#[serde(tag = "state", rename_all = "kebab-case", deny_unknown_fields)]
+pub enum WireCcmProbe {
+    Installed { caps: Vec<String> },
+    NotInstalled,
+    Unknown { error: String },
 }
 
 #[derive(Debug, Deserialize)]
@@ -134,8 +139,19 @@ pub struct CliRenderResponse {
 
 #[tauri::command]
 pub fn render_ccm_launch(req: CliRenderRequest) -> CliRenderResponse {
-    let caps: BTreeSet<String> = req.caps.clone().unwrap_or_default().into_iter().collect();
-    let installed = req.caps.is_some();
+    // 〔LR2 · R95b〕三态一对一映射；「没探出来」**先于一切**回它自己的理由，不压成「没装」
+    //   （与 `render_ccm_invocation` 里 `NotInstalled` 排第一同一个位置）。
+    let (caps, installed): (BTreeSet<String>, bool) = match &req.ccm {
+        WireCcmProbe::Installed { caps } => (caps.iter().cloned().collect(), true),
+        WireCcmProbe::NotInstalled => (BTreeSet::new(), false),
+        WireCcmProbe::Unknown { error } => {
+            return CliRenderResponse {
+                ok: false,
+                cmd: None,
+                reason: Some(Refusal::ProbeUnknown(error.clone()).reason()),
+            }
+        }
+    };
     let action = match &req.action {
         WireAction::New => Action::New,
         WireAction::Resume { sid } => Action::Resume { sid },
@@ -242,6 +258,15 @@ pub struct PayloadRenderRequest {
     /// 今天 `plan.wrap` 恒空所以无生产影响；补上之后那条用例才真的在验生产路径。
     #[serde(default)]
     pub wrap: Vec<WireWrap>,
+    /// 〔DUP1 · `INVARIANTS §47` ①〕**resume 的那个 sid**（`args` 里 `[resume 旗, sid, …]` 那一格的同一个值，单独再报一次）。
+    ///
+    /// 为什么要单报：这条线上 sid 住在 `args` 里，渲染侧认不出哪一格是 sid（旗随 agent 变，而 monitor 的
+    /// `backend/` 这一半不许去问 agent 画像）；前端那份 `isValidSessionId`〔散文墓碑〕按 `设计/90 §3` 判据 2 删了之后，
+    /// 「resume 的 sid 不许 `-` 开头」（`--dangerously-skip-permissions` 当 sid 会被 agent 吃成参数）得有人在拼进载荷之前判 ——
+    /// 单报一次、这里判、再核它确实就是 `args` 第二格（报了一个、渲了另一个 ⇒ 拒），比按位置猜稳。
+    /// `None` = 不是 resume（`#[serde(default)]`：入库夹具里那些非 resume 的请求一个字不用动）。
+    #[serde(default)]
+    pub resume_sid: Option<String>,
 }
 
 /// 与 TS `WrapSpec` 同构（`id` 只用于 TS 侧排错，不参与渲染）。
@@ -388,6 +413,21 @@ pub fn render_launch_payload(req: PayloadRenderRequest) -> Result<String, String
         })
         .collect();
     let args: Vec<&str> = req.args.iter().map(String::as_str).collect();
+    // 〔DUP1 · `INVARIANTS §47` ①〕resume 的 sid：共享那一份判（`shell_quote_core::session_id_ok`），且必须就是 `args` 第二格。
+    if let Some(sid) = req.resume_sid.as_deref() {
+        if !shell_quote_core::session_id_ok(sid) {
+            return Err(super::payload::refuse(copy_text(
+                "rsLaunchWire.resumeSid.bad",
+                &[("value", &format!("{sid:?}"))],
+            )));
+        }
+        if args.get(1) != Some(&sid) {
+            return Err(super::payload::refuse(copy_text(
+                "rsLaunchWire.resumeSid.notInArgs",
+                &[("value", &format!("{sid:?}"))],
+            )));
+        }
+    }
     let wrap: Vec<super::payload::WrapSpec> = req
         .wrap
         .iter()

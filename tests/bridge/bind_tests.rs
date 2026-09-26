@@ -139,7 +139,8 @@ fn a_local_session_that_is_gone_gets_forgotten_in_memory_and_on_disk() {
 /// `apply_local_removal` 里加一个 `match cause`，这一条就红。
 ///
 /// ⚠ 它**不**覆盖上游那一步（「同 pid + 同 procStart 换 sid 该判 `Superseded`」）——
-/// 那一格由 `diff_detects_superseded_only_with_positive_identity_evidence` 守着，
+/// 那一格〔LOC1b〕今天由本机后端说（`session_removed.cause`），monitor 这边钉的是「原样交出去」
+/// （`ssh_source_f032_idle_tests` 的 ③ 与 `local_lines_tests` 的 L1），
 /// 是另一条边。两条缺一不可，别把其中一条读成两条。
 #[test]
 fn a_local_session_that_was_superseded_gets_forgotten_too() {
@@ -154,7 +155,10 @@ fn a_local_session_that_was_superseded_gets_forgotten_too() {
         "入场自检：绑定本来就不在盘上 —— 落盘那一半此刻是空转"
     );
 
-    cache.apply_local_removal(&crate::session_map::RemovedSid::superseded(sid));
+    cache.apply_local_removal(&crate::session_map::RemovedSid {
+        sid: sid.to_string(),
+        cause: crate::session_map::RemovalCause::Superseded,
+    });
 
     assert!(
         cache.lookup(sid).is_none(),

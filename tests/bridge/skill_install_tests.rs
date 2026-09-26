@@ -530,7 +530,9 @@ async fn uninstall_deletes_exactly_the_judged_paths_with_the_seen_texts_and_drop
         "删的恰是判定放行的那几个，期望是看的时候那一份"
     );
     assert!(dir.join("keep.md").exists(), "没被放行的不许删");
-    assert!(dir.exists(), "目录留着（只删文件）");
+    // 〔FW1〕删完之后收空目录：skill 目录里还留着 keep.md ⇒ 不空 ⇒ 留着（问过一次「只删空目录」，被拒成 stale、不当错）。
+    assert!(dir.exists(), "目录里还有别的却被删了");
+    assert!(!out.dir_removed && out.dir_failed.is_none());
     let asked = ask.asked.borrow().clone();
     assert_eq!(
         (asked[0].0.as_str(), asked[0].1.as_str(), asked[0].2.clone()),
@@ -634,4 +636,70 @@ async fn an_uninstall_reply_that_breaks_the_contract_deletes_nothing() {
     }
     assert!(door.deleted.borrow().is_empty());
     let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 〔FW1 · 第四波 4D · 主会话裁 SU1 问 2「卸 skill 最后删空目录」〕文件删完 ⇒ 装时建的子目录由深到浅、最后 skill 目录自己，
+/// 逐个「只删空目录」；目录里还有用户自己放的东西 ⇒ 那一层留着（不当错），别的空的照收。两形各跑一遍。
+#[tokio::test]
+async fn an_uninstall_that_empties_the_skill_removes_its_empty_dirs_deepest_first() {
+    for with_user_file in [false, true] {
+        let home = temp_home(if with_user_file {
+            "skill-rmdir-keep"
+        } else {
+            "skill-rmdir"
+        });
+        let dir = home.join("skills/demo");
+        std::fs::create_dir_all(dir.join("scripts/lib")).unwrap();
+        let files = [
+            ("SKILL.md", "s\n"),
+            ("scripts/run.sh", "r\n"),
+            ("scripts/lib/x.sh", "x\n"),
+        ];
+        for (p, t) in files {
+            std::fs::write(dir.join(p), t).unwrap();
+        }
+        if with_user_file {
+            std::fs::create_dir_all(dir.join("notes")).unwrap();
+            std::fs::write(dir.join("notes/mine.md"), "mine\n").unwrap();
+        }
+        let paths: Vec<String> = files.iter().map(|(p, _)| p.to_string()).collect();
+        let ask = FakeAsk::new(vec![
+            Ok(uninstall_reply(json!(paths), json!([]))),
+            Ok(json!({"remaining": 0})),
+        ]);
+        let door = DiskDoor::new(&home);
+        let d = dir.display().to_string();
+        let seen: Vec<SkillTargetText> = files
+            .iter()
+            .map(|(p, t)| SkillTargetText {
+                path: p.to_string(),
+                text: t.to_string(),
+            })
+            .collect();
+        let out = uninstall_with(&ask, &door, &origin("dev"), &d, &seen, &paths, &[])
+            .await
+            .expect("卸");
+        assert_eq!(out.deleted.len(), 3);
+        let parent = home.join("skills").display().to_string();
+        assert_eq!(
+            door.emptied.borrow().clone(),
+            vec![
+                (d.clone(), "scripts/lib".to_string()),
+                (d.clone(), "scripts".to_string()),
+                (parent, "demo".to_string()),
+            ],
+            "收空目录不是「由深到浅、最后 skill 目录自己」"
+        );
+        assert!(!dir.join("scripts").exists(), "装时建的空子目录没收掉");
+        assert_eq!(out.dir_failed, None);
+        if with_user_file {
+            assert!(
+                !out.dir_removed && dir.join("notes/mine.md").exists(),
+                "用户自己放的东西跟着没了"
+            );
+        } else {
+            assert!(out.dir_removed && !dir.exists(), "skill 目录空了却还在");
+        }
+        let _ = std::fs::remove_dir_all(&home);
+    }
 }
