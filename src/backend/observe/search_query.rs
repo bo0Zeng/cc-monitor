@@ -218,6 +218,8 @@ struct FileEntry {
     tail: Facts,
     /// 读不动（不是合法 UTF-8）：坏在完整行里 ⇒ 下次变了就整份重读；坏在残尾里 ⇒ 追加读会重看它。
     bad: Option<(BadAt, String)>,
+    /// 记录里抽没抽工具文本。
+    tools: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -235,7 +237,7 @@ struct Facts {
     records: Vec<Rec>,
 }
 
-/// 一条 user / assistant 记录：正文与工具文本都抽好（工具文本恒抽，查询期按 `include_tools` 看不看）。
+/// 一条 user / assistant 记录。工具文本**按需**抽：第一次有 `include_tools` 的那一问才整份重读补上（它要把整块工具输入 / 输出串起来，贵）。
 struct Rec {
     rt: RecordText,
     ts_ms: i64,
@@ -244,7 +246,7 @@ struct Rec {
 
 impl Facts {
     /// 逐行吸收一段文本（与旧现扫逐行那段同一套分支，只是不看查询）。
-    fn absorb(&mut self, text: &str) {
+    fn absorb(&mut self, text: &str, tools: bool) {
         for line in text.lines() {
             let trimmed = line.trim_start_matches('\u{feff}').trim();
             if trimmed.is_empty() {
@@ -273,7 +275,7 @@ impl Facts {
                     }
                 }
                 "user" | "assistant" => {
-                    let Some(rt) = record_text(&v, true) else {
+                    let Some(rt) = record_text(&v, tools) else {
                         continue;
                     };
                     if !rt.is_assistant && self.excerpt.is_empty() && !rt.main.is_empty() {
@@ -312,7 +314,7 @@ impl Facts {
 }
 
 impl FileEntry {
-    fn empty(mtime: Option<std::time::SystemTime>) -> Self {
+    fn empty(mtime: Option<std::time::SystemTime>, tools: bool) -> Self {
         Self {
             seen: (mtime, 0),
             consumed: 0,
@@ -320,6 +322,7 @@ impl FileEntry {
             done: Facts::default(),
             tail: Facts::default(),
             bad: None,
+            tools,
         }
     }
 
@@ -335,11 +338,11 @@ impl FileEntry {
             match std::str::from_utf8(whole) {
                 Ok(s) => {
                     let mut seg = Facts::default();
-                    seg.absorb(s);
+                    seg.absorb(s, self.tools);
                     self.done.extend(seg);
                 }
                 Err(e) => {
-                    *self = Self::empty(mtime);
+                    *self = Self::empty(mtime, self.tools);
                     self.bad = Some((BadAt::Done, e.to_string()));
                 }
             }
@@ -352,7 +355,7 @@ impl FileEntry {
         }
         if self.bad.is_none() {
             match std::str::from_utf8(rest) {
-                Ok(s) => self.tail.absorb(s),
+                Ok(s) => self.tail.absorb(s, self.tools),
                 Err(e) => self.bad = Some((BadAt::Tail, e.to_string())),
             }
         }
@@ -362,11 +365,17 @@ impl FileEntry {
 
 impl SearchIndex {
     /// 这一份带到这一问：(mtime, 长度) 没变不读 · 变长且见证对得上只读尾巴 · 其余整份重读。打不开 / 读不了 ⇒ `Err(原因)`。
-    fn bring_up(&mut self, path: &Path, prev: Option<FileEntry>) -> Result<FileEntry, String> {
+    fn bring_up(
+        &mut self,
+        path: &Path,
+        prev: Option<FileEntry>,
+        tools: bool,
+    ) -> Result<FileEntry, String> {
         use std::io::{Read, Seek, SeekFrom};
         let meta = std::fs::metadata(path).map_err(|e| e.to_string())?;
         let seen = (meta.modified().ok(), meta.len());
-        if let Some(mut e) = prev {
+        // 这一问要工具文本而这一格没抽过 ⇒ 整份重读。
+        if let Some(mut e) = prev.filter(|e| e.tools || !tools) {
             if e.seen == seen {
                 self.last.reused += 1;
                 return Ok(e);
@@ -394,7 +403,7 @@ impl SearchIndex {
             .map_err(|e| e.to_string())?;
         self.last.full += 1;
         self.last.bytes += buf.len() as u64;
-        let mut e = FileEntry::empty(seen.0);
+        let mut e = FileEntry::empty(seen.0, tools);
         e.take(seen.0, &buf);
         Ok(e)
     }
@@ -440,7 +449,7 @@ impl SearchIndex {
             }
             // 〔W5-VIS〕读不动 ⇒ 说出来、记一笔（原先 `.ok()?` 折成「无命中」静默消失）。
             // 打不开 / 读不了 ⇒ 这一格丢掉；不是合法 UTF-8 ⇒ 这一格留着（没变就不再读），照样说、照样数。
-            let (entry, bad) = match self.bring_up(&path, prev.remove(&path)) {
+            let (entry, bad) = match self.bring_up(&path, prev.remove(&path), opts.include_tools) {
                 Ok(e) => {
                     let bad = e.bad.as_ref().map(|(_, why)| why.clone());
                     (Some(e), bad)
@@ -610,7 +619,7 @@ pub(crate) fn record_text(v: &Value, include_tools: bool) -> Option<RecordText> 
 
 /// 命中判定：先看正文、再看工具内容（大小写不敏感子串）。命中 ⇒ `(种类, 命中的那段文本)`，
 /// 种类是 `"user"` / `"assistant"` / `"tool"`（与 `Hit.kind` 同一套词）。`q_lc` 已小写、已 trim。
-/// 〔SX1〕工具内容只在 `include_tools` 时看（索引恒抽工具文本，不看时当它是空串）。
+/// 〔SX1〕工具内容只在 `include_tools` 时看（索引里的那一格可能抽过工具文本，不看时当它是空串）。
 pub(crate) fn record_hit<'a>(
     rt: &'a RecordText,
     q_lc: &str,

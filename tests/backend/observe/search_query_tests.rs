@@ -46,7 +46,7 @@ fn search_end_to_end_and_rejects_traversal() {
         limit: 300,
     };
     // 〔SX1〕会话那一格来自索引：整份读进一格 `FileEntry`，查询对它跑。
-    let mut entry = FileEntry::empty(None);
+    let mut entry = FileEntry::empty(None, true);
     entry.take(None, &std::fs::read(&jsonl).expect("读夹具"));
     let mut budget = SnippetBudget::new(opts.limit);
     let hit = session_hits_in(
