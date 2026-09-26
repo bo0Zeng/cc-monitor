@@ -168,7 +168,7 @@ export async function killSession(origin: Origin, target: string): Promise<void>
 
 // ─── 发按键 · 就地恢复（都是 `launch` 那条帧命令） ───
 
-/** `launch` 那条（发按键 / 就地恢复）的拒绝码 ⇒ 一句话。`wrong_owner` 来自后端的身份门（登记表里没列它，见 C4e 记录）。 */
+/** `launch` 那条（发按键 / 就地恢复）的拒绝码 ⇒ 一句话。`wrong_owner` 来自后端的身份门（§34 Gate 2；〔TL2〕后端登记表与金样已补上它）。 */
 function keysRefusals(target: string): Refusals {
   return {
     byCode(code, detail) {

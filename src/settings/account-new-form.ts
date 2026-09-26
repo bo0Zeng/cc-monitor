@@ -20,7 +20,7 @@
  * - **订阅**：弹终端跑 `cc-acct-iso add <名> --apply`，用户在那个终端里 `/login`。
  * - **第三方 apikey**：同一条命令建出账号目录；**key 在表单里就收下**，
  *   等这个号出现在账号列表里（知道了它的 configDir）时由 `accounts-section.ts`
- *   接着调 `write_apikey_credentials_key` 写进 apikey 表 —— 两条命令在前端串起来，
+ *   接着经通道 `apikey-key-set`（〔HX2〕先前是 Tauri 命令 `write_apikey_credentials_key`〔散文墓碑〕）写进 apikey 表 —— 两步在前端串起来，
  *   用户看到的是一次操作（`§4.4` 末段：「前提是后端不动」）。
  *
  * ⚠ 为什么不能当场就写 key：apikey 表按账号目录索引，而账号目录由那条终端命令建，
@@ -31,10 +31,12 @@
  * 本文件里每一处 `.value =` 赋值的右边都只许是空串 —— 输入框从不预填、交出去之前先清空。
  * 由 `accounts-section.vitest.ts` 里 `KS6` 那条源码扫描钉着（人群含本文件）。
  */
-import { buildAcctIsoCmd, validateAcctName } from "./acct-deploy";
+import { askAcctIsoCmd, validateAcctName } from "./acct-deploy";
 // 〔AL1〕`suggestAliasName` 随别名那一块搬进了 `machine-aliases.ts`（机器页「别名」）。
 import { suggestAliasName } from "./machine-aliases";
 import { copyText } from "../copy-table";
+import { saidOfControl } from "../control-said";
+import type { Origin } from "../ipc/origin";
 
 /** 接入方式 —— `§4.4` 那个岔口的两支。 */
 export type AccountAccess = "subscription" | "apikey";
@@ -132,9 +134,13 @@ export function aliasHintFor(name: string): string {
 
 /**
  * 画出那张表单。`onCreate` 收到的是一份**已经校验过**的请求（名字合法、apikey 支有 key、
- * 快照路径能拼成命令）；不合法时「创建」是灰的，并且就算被绕过 `disabled` 点了也不交出去。
+ * 那台后端答得出这条命令）；不合法时「创建」是灰的，并且就算被绕过 `disabled` 点了也不交出去。
+ *
+ * 〔DUP2 · J4〕逐字预览的那一行由 `origin` 那台机器的后端出（`askAcctIsoCmd`，帧命令 `acct-iso-cmd`）：输入一变就问一次，
+ * **只认最后一次**的答案（序号，零定时器）；快照路径过不过也由它判（拒了 ⇒ 那一句上屏、「创建」灰）。
  */
 export function renderNewAccountForm(
+  origin: Origin,
   onCreate: (req: NewAccountRequest) => void | Promise<void>,
   /**
    * 〔第三波 S3〕两支岔口下面那一行提示的**替换**。缺席 = 远端那一页的原话（「创建后弹出终端」）。
@@ -248,14 +254,15 @@ export function renderNewAccountForm(
   const chosen = (): AccountAccess =>
     radios.get("apikey")!.checked ? "apikey" : "subscription";
 
-  /** 当前表单能不能交；能交就给出那份请求。**判据与按钮共用这一个函数。** */
-  const current = (): { req: NewAccountRequest; cmd: string } | { why: string } => {
+  /**
+   * 当前表单（本侧那几格）能不能交；能交就给出那份请求。**判据与按钮共用这一个函数。**
+   * 〔DUP2 · J4〕命令本身（含快照路径那道校验）归后端，见下面 `sync` 里那一问；这里只管名字 · key · Base URL。
+   */
+  const current = (): { req: NewAccountRequest } | { why: string } => {
     const name = nameIn.value.trim();
     const v = validateAcctName(name);
     if (!v.ok) return { why: name ? v.reason : "" };
     const credFile = chosen() === "subscription" ? credIn.value.trim() || undefined : undefined;
-    const built = buildAcctIsoCmd({ kind: "add-apply", name, credFile });
-    if (!built.ok) return { why: built.reason };
     if (chosen() === "apikey") {
       const base = checkBaseUrl(baseIn.value);
       if (!base.ok) return { why: base.reason };
@@ -263,10 +270,14 @@ export function renderNewAccountForm(
       if (!key) return { why: "" };
       const req: NewAccountRequest = { name, access: "apikey", key };
       if (base.value !== undefined) req.baseUrl = base.value;
-      return { req, cmd: built.cmd };
+      return { req };
     }
-    return { req: { name, access: "subscription", credFile }, cmd: built.cmd };
+    return { req: { name, access: "subscription", credFile } };
   };
+
+  /** 那台后端对「这一份输入」答出了命令 ⇒ `true`（只认最后一问）。「创建」要它为真。 */
+  let cmdOk = false;
+  let asked = 0;
 
   const sync = (): void => {
     const apikey = chosen() === "apikey";
@@ -277,21 +288,30 @@ export function renderNewAccountForm(
       : (hints?.subscription ?? C.subscriptionHint);
     aliasHint.textContent = aliasHintFor(nameIn.value.trim());
     const cur = current();
-    if ("req" in cur) {
-      nameErr.textContent = "";
-      create.disabled = false;
-      preview.textContent = `${C.previewHead}\n${cur.cmd}`;
-    } else {
-      nameErr.textContent = cur.why;
-      create.disabled = true;
-      // 名字合法时（只差 key）命令照样能预览 —— 命令本身与 key 无关。
-      const name = nameIn.value.trim();
-      const built = validateAcctName(name).ok
-        ? buildAcctIsoCmd({ kind: "add-apply", name })
-        : null;
-      preview.textContent =
-        built && built.ok ? `${C.previewHead}\n${built.cmd}` : C.previewEmpty;
+    nameErr.textContent = "req" in cur ? "" : cur.why;
+    create.disabled = true;
+    cmdOk = false;
+    const my = ++asked;
+    const name = nameIn.value.trim();
+    // 名字不合法就不问（问了也是拒）；名字合法时（只差 key）命令照样能预览 —— 命令本身与 key 无关。
+    if (!validateAcctName(name).ok) {
+      preview.textContent = C.previewEmpty;
+      return;
     }
+    const credFile = chosen() === "subscription" ? credIn.value.trim() || undefined : undefined;
+    void askAcctIsoCmd(origin, { kind: "add-apply", name, credFile }).then(
+      (cmd) => {
+        if (my !== asked) return; // 输入又变了：这一问作废
+        preview.textContent = `${C.previewHead}\n${cmd}`;
+        cmdOk = true;
+        create.disabled = !("req" in current());
+      },
+      (e: unknown) => {
+        if (my !== asked) return;
+        preview.textContent = C.previewEmpty;
+        nameErr.textContent = saidOfControl(e);
+      },
+    );
   };
 
   for (const el of [nameIn, keyIn, baseIn, credIn]) el.addEventListener("input", sync);
@@ -306,7 +326,7 @@ export function renderNewAccountForm(
   });
   create.addEventListener("click", () => {
     const cur = current();
-    if (!("req" in cur)) return;
+    if (!("req" in cur) || !cmdOk) return;
     // 先清空再交出去：明文在 DOM 里停留的时间越短越好（`KS6`）。
     keyIn.value = "";
     baseIn.value = "";

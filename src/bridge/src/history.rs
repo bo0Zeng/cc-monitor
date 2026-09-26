@@ -18,8 +18,6 @@ use crate::copy_table::copy_text;
 use crate::messages::JsonlRecord;
 use crate::paths;
 use serde::Serialize;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 
 // === 〔C4d · 第四波 4B〕历史清单与注解搬进了本机常驻后端 ===
@@ -35,20 +33,114 @@ use std::path::PathBuf;
 // 「迁移前后读出来的注解逐条相等」由结构占位夹具 `tests/__fixtures__/history-metadata.fixture.json` ＋ 旧读者产出的金样
 // `tests/__fixtures__/history-metadata.readout.golden.json` 钉着。
 
-/// issue #12: 流式版（取代已删的非流式 `read_session_jsonl`）。
+/// 读一整份会话的总量上限（从 `remote_history.rs` 搬来，〔LOC1b · 4D〕本机远端同一条）。
 ///
-/// 按 100 行一 chunk 边读边发，前端可在 ~500ms 内开始渲染首屏（即使整 jsonl
-/// 上千条 / 10MB+）。
+/// ⚠〔audit-0805 F06〕实测本机最大会话 **270,103,105 字节 / 92,967 行**（就是那次审计对话本身），
+/// 已经**越过** 256 MiB 这条线 1,667,649 字节；57 MB 以上的会话有 5 个，不是孤例。
+/// ⇒ 上限**会被真实数据打到**，所以「打到之后怎么办」不能是静默（[`session_truncated_message`]）。
+/// 〔LOC1b · 4D〕本机从前没有这条上限（monitor 自己 `File::open` 读到底）；本机冷读改走本机后端之后与远端同一条
+/// —— 主会话 09-25 认可「本机从此也受，超了明说」。
+const MAX_SESSION_BYTES: u64 = 256 * 1024 * 1024;
+
+/// 超限时给用户的话〔audit-0805 F06，定框 **E4/E5**〕。
 ///
-/// 取消：前端 drop channel 时 send 返 Err → break。
-/// 🔴 **〔步 12·C 2026-09-20〕本机 ＋ 远端两条合成了一条带 `origin` 的。**
+/// 此前（远端那一支还是一条 SSH 流时）读法是 `take(MAX)` ＋ `if n == 0 { break; }` —— 到限与正常 EOF
+/// **完全同形** ⇒ 前端拿到一份「看起来完整」的历史，而后面的内容**无声消失**；
+/// 同一份数据走后端的 `--fork-session` 却会**硬报错** —— 正是定框 **E5** 要消灭的「同一份数据走不同路得到不同答案」。
+/// 抽成纯函数是为了让它可判据。字住文案表（CP2c 抽过：键原是 `rsRemoteHistory.session.truncated`）；
+/// 〔LOC1b〕键随函数搬进本文件改名 `rsHistory.session.truncated`，「仍在远端」→「仍在那台机器上」（本机也走这一句）。
+fn session_truncated_message(read_bytes: u64, lines_shown: u32) -> String {
+    copy_text(
+        "rsHistory.session.truncated",
+        &[
+            ("max", &MAX_SESSION_BYTES.to_string()),
+            ("read", &read_bytes.to_string()),
+            ("lines", &lines_shown.to_string()),
+        ],
+    )
+}
+
+/// 一页原文 ⇒ 这一页里可显示的那几条（占号在先、过滤在后），带 per-file `seq`。**纯**：判据直接喂页。
 ///
-/// 这一对住 `真相源/97 §二 丙`（「措辞不同」那一档）：本机叫
-/// `stream_read_session_jsonl`、远端叫 `stream_read_remote_session`，**名字里没有一个
-/// 共同的词** ⇒ 按名字数分叉的量法看不见它。认出它靠的是两条实打的判据：
-/// ① 两侧的 chunk 口径**逐字对齐**（每 100 条一发、同一个 `JsonlLinePayload`、
-/// 同一套 per-file `seq`）；② 前端的 `SessionViewer` 对两条路**共用同一段消费代码**
-/// （`session-viewer.ts` 里那个三目就是全部差别）。
+/// 〔LOC1b · 4D〕本机远端同一份（从前两侧各写一遍循环体，靠注释「逐字对齐」）。
+/// agent 种类按**文件名形态**判（[`crate::adapter::kind_of_record_name`]）：远端路径也判得对，不依赖本机有没有那一家的根。
+pub(crate) struct SessionPager {
+    kind: crate::adapter::AgentKind,
+    session_id: String,
+    path: String,
+    payload_origin: Option<String>,
+    parse_origin: crate::origin::Origin,
+    numberer: crate::session_skeleton::LineNumberer,
+    cwd_seen: Option<String>,
+}
+
+impl SessionPager {
+    /// `origin` 是这一份从哪台读来的；载荷里的 `origin` 本机 `None`、远端 `Some(名字)`
+    /// （这处不对称是载荷那一层的事，`JsonlLinePayload::origin`，不在本路射程）。
+    pub(crate) fn new(origin: &crate::origin::Origin, jsonl_path: &str) -> Self {
+        let p = std::path::Path::new(jsonl_path);
+        let kind = crate::adapter::kind_of_record_name(p);
+        let session_id =
+            crate::adapter::session_id_from_path_with(crate::adapter::for_kind(kind).layout(), p)
+                .unwrap_or_default();
+        Self {
+            kind,
+            session_id,
+            path: jsonl_path.to_string(),
+            payload_origin: origin.host_name().map(str::to_string),
+            parse_origin: origin.clone(),
+            numberer: crate::session_skeleton::LineNumberer::default(),
+            cwd_seen: None,
+        }
+    }
+
+    pub(crate) fn session_id(&self) -> &str {
+        &self.session_id
+    }
+
+    /// 喂一页（切在行尾，末页可含残尾）。
+    pub(crate) fn page(&mut self, text: &str) -> Vec<crate::bridge::JsonlLinePayload> {
+        let mut out = Vec::new();
+        for line in text.lines() {
+            // 〔U3b〕seq = **可计行号**（与 watcher / 骨架索引同一个空间）：不可显示的记录照占号、不出 payload。
+            // 「占不占号」只有一个住址：`session_skeleton·rs::LineNumberer`。
+            // 〔ST3〕看不懂的行记在读来的那台名下。
+            let (kind, origin) = (self.kind, &self.parse_origin);
+            let Some((seq, rec)) =
+                crate::session_skeleton::numbered_displayable(&mut self.numberer, line, |b| {
+                    crate::parser::parse_for_kind(kind, origin, b)
+                })
+            else {
+                continue;
+            };
+            if let JsonlRecord::User { cwd, .. } = &rec {
+                if self.cwd_seen.is_none() {
+                    self.cwd_seen = cwd.clone();
+                }
+            }
+            out.push(crate::bridge::JsonlLinePayload {
+                session_id: self.session_id.clone(),
+                cwd: self.cwd_seen.clone(),
+                path: self.path.clone(),
+                seq,
+                origin: self.payload_origin.clone(),
+                message: rec,
+            });
+        }
+        out
+    }
+}
+
+/// issue #12: 流式读一整份会话（取代已删的非流式 `read_session_jsonl`；按 100 条一 chunk 边读边发，前端 ~500ms 内开始渲染首屏）。
+///
+/// 取消：前端 drop channel 时 send 返 Err → 停。
+///
+/// 🔴 **〔LOC1b · 第四波 4D〕本机与远端是同一条路**（`INVARIANTS §40`「本地＝不走 ssh 的远端」· `设计/00 §2.5 ①`）：
+/// 都经**那台机器的后端**帧命令 `history-read` 按字节分页取原文（一页 ≤1 MiB、切在行尾），monitor 解析。
+/// 从前本机那一支在这里自己 `File::open` 读 jsonl、自己验根（monitor 里的第二个会话读者，`local_read_surface_registry`
+/// 的针只认 `claude_dir` 没数到它）；远端那一支住 `remote_history.rs`。两支合成一条之后，围栏归后端
+/// （`observe/history_query.rs::validate_session_path`，Codex 的记录根也认），这里只留两侧同一道廉价预检。
+/// 代价如实写：本机后端不在 ⇒ 本机会话也读不了（`D11` 的兑现，同本机实时内容）。
 #[tauri::command]
 pub async fn stream_read_session_jsonl(
     origin: crate::origin::Origin,
@@ -56,97 +148,68 @@ pub async fn stream_read_session_jsonl(
     on_chunk: tauri::ipc::Channel<Vec<crate::bridge::JsonlLinePayload>>,
 ) -> Result<u32, String> {
     const CHUNK_SIZE: usize = 100;
-    if let crate::origin::Route::Remote(host) = origin.route("stream_read_session_jsonl")? {
-        return crate::remote_history::stream_read_remote_session(jsonl_path, host, on_chunk).await;
+    origin.route("stream_read_session_jsonl")?;
+    // 廉价预检（纵深防御；真正的越界由那台后端的围栏兜底）：拒 `..` ＋ 必须 `.jsonl`。
+    if jsonl_path.contains("..") || !jsonl_path.ends_with(".jsonl") {
+        return Err(copy_text(
+            "rsHistory.session.badPath",
+            &[("path", &jsonl_path.to_string())],
+        ));
     }
-    tokio::task::spawn_blocking(move || {
-        let started = std::time::Instant::now();
-        let target = PathBuf::from(&jsonl_path);
-        // Phase 2 F1a：按路径判 agent kind（Claude `~/.claude/projects` vs Codex `~/.codex/sessions`）。
-        // Claude 路径 kind=ClaudeCode → 根/session_id/解析与原字节一致（零回归）；Codex 走对应根 + 映射。
-        let kind = crate::adapter::kind_of_path(&target);
-        let root = crate::adapter::for_kind(kind)
-            .data_root()
-            .map(|dr| crate::adapter::records_dir_for(kind, &dr))
-            .ok_or("agent data dir not found")?;
-        if !target.starts_with(&root) {
-            return Err(format!(
-                "refuse: {} outside {}",
-                target.display(),
-                root.display()
-            ));
-        }
-        if !crate::adapter::has_record_ext(&target) {
-            return Err("not a .jsonl file".into());
-        }
-
-        let session_id = crate::adapter::session_id_from_path_with(
-            crate::adapter::for_kind(kind).layout(),
-            &target,
+    let started = std::time::Instant::now();
+    let mut pager = SessionPager::new(&origin, &jsonl_path);
+    let mut read_bytes: u64 = 0;
+    let mut chunk: Vec<crate::bridge::JsonlLinePayload> = Vec::with_capacity(CHUNK_SIZE);
+    let mut total = 0u32;
+    let mut offset: u64 = 0;
+    // 〔DL1 · `设计/05 §3.3.2`〕读一整份是**一件事**：期限在读第一页之前造一次，每一页都拿同一个时刻去等（不重新计时）。
+    //   大小事先不知道 ⇒ 按字节上限给（`frame_query::read_budget(MAX_SESSION_BYTES)`）。
+    let deadline = crate::backend::control::frame_query::Deadline::within(
+        crate::backend::control::frame_query::read_budget(MAX_SESSION_BYTES),
+    );
+    loop {
+        let page = crate::backend::control::frame_query::read_page(
+            &origin,
+            &jsonl_path,
+            offset,
+            None,
+            deadline,
         )
-        .unwrap_or_default();
-        let file = File::open(&target).map_err(|e| format!("open {}: {e}", target.display()))?;
-        let reader = BufReader::new(file);
-        let path_str = target.to_string_lossy().into_owned();
-        let mut cwd_seen: Option<String> = None;
-        let mut buf: Vec<crate::bridge::JsonlLinePayload> = Vec::with_capacity(CHUNK_SIZE);
-        let mut total = 0u32;
-        // P5.1：history 流式读时同样给每行 seq（per-file 单调）。SessionViewer
-        // 用 RecordTimeline 排序时跟实时 tab 走同一套逻辑。
-        // 〔U3b〕seq = **可计行号**（与 watcher / 骨架索引同一个空间）：不可显示的记录照占号、
-        // 不出 payload。原先只给可显示的编号 ⇒ 查看器的 seq 与索引对不上、骨架接不上。
-        // 「占不占号」只有一个住址：`session_skeleton·rs::LineNumberer`。
-        let mut numberer = crate::session_skeleton::LineNumberer::default();
-
-        for line in reader.lines().map_while(Result::ok) {
-            let Some((seq, rec)) =
-                crate::session_skeleton::numbered_displayable(&mut numberer, &line, |b| {
-                    // 〔ST3〕这一支是 `route` 之后的本机那一支 ⇒ `origin` 就是本机。
-                    crate::parser::parse_for_kind(kind, &origin, b)
-                })
-            else {
-                continue;
-            };
-            if let JsonlRecord::User { cwd, .. } = &rec {
-                if cwd_seen.is_none() {
-                    cwd_seen = cwd.clone();
-                }
-            }
-            buf.push(crate::bridge::JsonlLinePayload {
-                session_id: session_id.clone(),
-                cwd: cwd_seen.clone(),
-                path: path_str.clone(),
-                seq,
-                // 历史浏览器读本地 jsonl，无远端来源标签。
-                origin: None,
-                message: rec,
-            });
+        .await?;
+        read_bytes += page.next - offset;
+        if read_bytes > MAX_SESSION_BYTES {
+            // F06：**不许静默截断**。同一份数据走后端的 `--fork-session` 会硬报错，
+            // 走这条路却假装读完了 —— 定框 E5 要的是「同一份数据走不同路得到同一个答案」。
+            return Err(session_truncated_message(read_bytes, total));
+        }
+        for payload in pager.page(&page.text) {
+            chunk.push(payload);
             total += 1;
-            if buf.len() >= CHUNK_SIZE {
-                let chunk = std::mem::replace(&mut buf, Vec::with_capacity(CHUNK_SIZE));
-                if on_chunk.send(chunk).is_err() {
+            if chunk.len() >= CHUNK_SIZE {
+                let full = std::mem::replace(&mut chunk, Vec::with_capacity(CHUNK_SIZE));
+                if on_chunk.send(full).is_err() {
                     tracing::info!(
-                        "stream_read_session_jsonl({}): cancelled at {} records",
-                        session_id,
-                        total
+                        "stream_read_session_jsonl({}): 前端取消于 {total} 条",
+                        pager.session_id()
                     );
                     return Ok(total);
                 }
             }
         }
-        if !buf.is_empty() {
-            let _ = on_chunk.send(buf);
+        offset = page.next;
+        if page.eof {
+            break;
         }
-        tracing::info!(
-            "stream_read_session_jsonl({}): {} records in {}ms",
-            session_id,
-            total,
-            started.elapsed().as_millis()
-        );
-        Ok(total)
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking join: {e}"))?
+    }
+    if !chunk.is_empty() {
+        let _ = on_chunk.send(chunk);
+    }
+    tracing::info!(
+        "stream_read_session_jsonl({}): {total} records in {}ms",
+        pager.session_id(),
+        started.elapsed().as_millis()
+    );
+    Ok(total)
 }
 
 // 〔RW1 · 第四波 · 2026-09-24〕这里原来是本机删除的路径守卫 `validate_delete_target`〔散文墓碑〕（Batch4-F15：
@@ -324,7 +387,7 @@ pub async fn create_branch_session(
 // `write_branch_file`〔散文墓碑〕（`O_EXCL` 在本进程里写 `~/.claude/projects/<proj>/<new-sid>.jsonl`）。
 // 用户裁「只允许后端的文件管理部分写文件」也管本机 ⇒ 本机分叉与远端同一条路：exec 本机后端的
 // `--fork-session`（`src/backend/control/fork_write.rs`，写盘白名单层那一处 `O_EXCL`），
-// 结果解释与远端共用 `remote_branch::interpret_fork_exec` ⇒ 两件零调用方、删了。
+// 结果解释与远端共用 `remote_branch::interpret_fork_exec`〔散文墓碑〕（〔LOC1a〕随 exec 那条路一起删了，今天是帧命令 `session-fork`）⇒ 两件零调用方、删了。
 
 /// 在新终端窗口里 resume 一个历史会话。
 ///
@@ -345,21 +408,20 @@ pub async fn create_branch_session(
 /// 缺席（今天所有调用点都缺席）⇒ 渲染器诚实降级回旧路 ⇒ 与本参数存在之前逐字节相同。
 /// 名字必须由前端 `mintTmuxName` 铸（那是全仓唯一带撞名避让的铸造口），所以它只能传进来、
 /// 不能在 Rust 里造。Windows 那一侧**不读它**（`C12`）。
+///
+/// 〔TL3 · 审计 F 🔴-2〕**`async`**（`INVARIANTS §10`）：先前是同步命令，跑在 IPC 派发线程上，
+/// 而链路里要等本机后端答一次 `launch-endpoint`（最长 `apikey_remote::BUDGET` 10 s，当时用 `block_on` 等）
+/// ＋ 同步跑 `bash -lic` 探 ccm ＋ `spawn` 终端 —— 那几秒里别的 IPC 全排队。今天：问后端那一跳 `await`，
+/// 同步那一截进 `spawn_blocking`（[`launch_local_asking_backend`]）。判据 `sync_command_registry_tests`。
 #[tauri::command]
-pub fn resume_history_session(
+pub async fn resume_history_session(
     session_id: String,
     cwd: String,
     launcher: Option<String>,
     account: Option<LaunchAccount>,
     tmux_name: Option<String>,
 ) -> Result<(), String> {
-    resume_impl(
-        &session_id,
-        &cwd,
-        launcher.as_deref(),
-        account.as_ref(),
-        tmux_name.as_deref(),
-    )
+    resume_impl(session_id, cwd, launcher, account, tmux_name).await
 }
 
 // 〔C4c · 第四波 4B〕「resume 之前问记录还在不在」那条 Tauri 命令（`probe_session_record` 与它的答案形状
@@ -448,7 +510,8 @@ enum LocalPsAction {
 /// 否则两个平台迟早各自漂移；而「怎么写这个条件判断」才是平台差异
 /// （PowerShell 用 `Get-Command`，POSIX 用 `command -v`）。
 ///
-/// **sid 校验留在这里**：它与前端 `validateLocalLaunch` 是**两道独立防线**，不是重复
+/// **sid 校验留在这里**：〔DUP1〕原先写「它与前端 `validateLocalLaunch` 是两道独立防线」—— 前端那一道按 `设计/90 §3` 判据 2 删了，
+/// 这里是本机拉起这条路上唯一的一道（规则住 `shell_quote_core::session_id_ok`）
 
 /// G3b：账号前缀 —— 把 `CLAUDE_CONFIG_DIR` 注入本地拉起命令。
 ///
@@ -457,9 +520,10 @@ enum LocalPsAction {
 /// 与 IR 的 `--base` 语义对齐，也保证「没选账号」这条路的输出**与本功能之前逐字节相同**
 /// —— 既有那批钉死输出的测试因此原样全绿，它们就成了「账号 0 不变」的守卫。
 ///
-/// # 校验语义照抄 TS 侧的 `isValidConfigDir`（`src/shell-quote.ts:41`）
+/// # 校验语义：与载荷渲染同一道闸（`payload.rs::config_dir_command_safe`）
 ///
-/// **不重新发明判据**：那边已经因为账号隔离审计 D7（extraEnv key 无校验）收紧过一轮。
+/// **不重新发明判据**。〔DUP1〕这里原来写「照抄 TS 侧的 `isValidConfigDir`」〔散文墓碑〕—— TS 那份按
+/// `设计/90 §3` 判据 2 删了（它本身就是这张拒绝集的手抄），今天这张表只在 Rust。
 /// 拒的东西：非绝对路径 · `/` 本身 · 含 `/../` 或以 `/..` 结尾 · shell 元字符/引号/控制符 ·
 /// 可欺骗 Unicode（零宽 / 双向控制 / NBSP / BOM）。
 ///
@@ -694,11 +758,9 @@ fn local_launch_choice(
         return Err(OLD_PATH_CANNOT_ATTACH.to_string());
     }
     if let LocalPsAction::Resume(sid) = action {
-        let valid = !sid.is_empty()
-            && sid
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-        if !valid {
+        // 〔DUP1 · `INVARIANTS §47` ①〕sid 规则只有一份：`shell_quote_core::session_id_ok`（原先这里内联一份
+        // `[A-Za-z0-9_-]`、无上界、不管前导 `-`）。前端那道 `validateLocalLaunch` 的 sid 判定也删了（`设计/90 §3` 判据 2）⇒ 这里是唯一一道。
+        if !shell_quote_core::session_id_ok(sid) {
             return Err(format!("refuse resume: invalid session_id {sid:?}"));
         }
     }
@@ -1090,16 +1152,20 @@ static ATTACH_IS_NOT_A_SPAWN: std::sync::LazyLock<String> =
 
 /// ⚠ **`Err` 那一支不回 token**：拉起没成功就没有「刚起的那条」可言，
 /// 回一个 token 会让调用方去等一条根本不存在的会话。
+///
+/// 〔TL3 · 审计 F 🔴-2〕`relay` 是**调用方先 `await` 好的**中转前缀（[`relay_prefix_for_launch`]，
+/// 经 [`launch_local_asking_backend`]）：本函数全同步（ccm 探测 · 渲染 · `spawn`），只跑在 `spawn_blocking` 里，
+/// 不再在自己里面 `block_on` 等那台后端。
 fn launch_local(
     action: &LocalPsAction,
     launcher: Option<&str>,
     cwd: Option<&str>,
     account: Option<&LaunchAccount>,
     tmux_name: Option<&str>,
+    relay: String,
 ) -> Result<String, String> {
-    // ★★ `K-H2b`：**这一行就是「那条线」** —— 起会话这一刻把 base URL 指向本机中转。
+    // ★★ `K-H2b`：**`relay` 就是「那条线」** —— 起会话这一刻把 base URL 指向本机中转。
     //    空串 = 这个号不走中转（`§0e` 裁一：官方号一个字节不进中转）。
-    let relay = relay_prefix_for_launch(action, account)?;
     // Windows 那半**逐字不动**（`C12`：「windows不要tmux」）。`tmux_name` 在这一侧
     // 连读都不读 —— 读了就是给「Windows 也进容器」留了个口子。
     #[cfg(windows)]
@@ -1545,11 +1611,15 @@ pub(crate) fn relay_down_refusal(where_: &str, account: Option<&str>, why: &str)
     )
 }
 
-/// 上一条的**本机起会话那一截**（[`launch_local`] 是同步的：两个 `#[tauri::command]` 的同步调用链）：
-/// 在这里等成品（`block_on`），按这台机器是不是 Windows 渲成前缀。
+/// 上一条的**本机起会话那一截**：`await` 那台后端的成品，按这台机器是不是 Windows 渲成前缀。
 ///
-/// ⚠ 事实**只从 [`inject_facts`] 取**（理由见 [`InjectFactSources`] 头注）。
-fn relay_prefix_for_launch(
+/// 〔TL3 · 审计 F 🔴-2〕先前这里是 `block_on` —— 因为调用链（两条 `#[tauri::command]` → [`launch_local`]）是同步的，
+/// 等于在 IPC 派发线程上最长等 10 s（`INVARIANTS §10`）。今天它是 `async`，由 [`launch_local_asking_backend`] 先 `await`、
+/// 再把算好的前缀交给同步那一截；整条起会话链路零 `block_on`。
+///
+/// ⚠ 事实**只从 [`inject_facts`] 取**（理由见 [`InjectFactSources`] 头注）；平台那一格在 `await` 之前取
+/// （判据的替身是线程局部的，取值口不跨 `await`）。
+async fn relay_prefix_for_launch(
     action: &LocalPsAction,
     account: Option<&LaunchAccount>,
 ) -> Result<String, String> {
@@ -1561,12 +1631,9 @@ fn relay_prefix_for_launch(
         #[cfg(not(windows))]
         LocalPsAction::Attach => return Ok(String::new()),
     };
-    let url = tauri::async_runtime::block_on(relay_endpoint_on(
-        &crate::origin::Origin::local(),
-        account,
-        sid,
-    ))?;
-    Ok(relay_prefix_for(url.as_deref(), (inject_facts().windows)()))
+    let windows = (inject_facts().windows)();
+    let url = relay_endpoint_on(&crate::origin::Origin::local(), account, sid).await?;
+    Ok(relay_prefix_for(url.as_deref(), windows))
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1596,15 +1663,15 @@ pub(crate) const LAUNCH_ID_VAR: &str = "CCM_LAUNCH_ID";
 /// 买到的只是「今天这几条输入两侧同答」；共用一份实现，**漂开根本没有位置可以发生**。
 /// ⇒ 这里刻意**不**写 `match action { Resume(sid) => sid.clone(), New => Uuid::new_v4() }`
 ///    这种「看起来一样」的第二份 —— 它与那一份的差别只在**白名单回落**那一格
-///    （sid 过不了 `relay_segment_is_safe` 时那一份回落到 nonce），而那一格恰恰是
+///    （sid 过不了段闸 `relay_route_core::segment_is_safe` 时那一份回落到 nonce），而那一格恰恰是
 ///    「本条真的调了那一份铸法吗」唯一能被判据翻出来的一维。
 ///
 /// # ⚠ 它欠的一笔账（如实登记，别读成缺陷也别读成没有）
 ///
 /// **新开**会话时，中转路由键与本 token 是**两个不同的 nonce**（同一份铸法被调了两次）——
-/// 中转路由键那一份在 `payload::apikey_endpoint_for` 里面，本文件够不着它算好的值。
-/// 今天不构成缺陷：`mint_route_key` 头注现打登记过「route key 对路由完全惰性、tee 今天零消费者」，
-/// 而身份 token 与它**不共享任何消费者**。要它们相等得改 `payload.rs`（本拍只许读它）。
+/// 中转路由键那一份在 [`launch_endpoint_args`] 里（作 `launch-endpoint` 的 `key` 交给那台后端），与本 token 各铸各的。
+/// 〔TL3〕先前这里写的是「在 `payload::apikey_endpoint_for` 里」—— US1 把上游选择搬进后端之后，铸它的那一口挪到了这边的入参组装。
+/// 今天不构成缺陷：`mint_route_key` 头注现打登记过「route key 对路由完全惰性」，而身份 token 与它**不共享任何消费者**。
 fn launch_identity_token(action: &LocalPsAction) -> String {
     let sid = match action {
         LocalPsAction::Resume(sid) => Some(sid.as_str()),
@@ -1790,27 +1857,101 @@ fn build_resume_ps_command(session_id: &str, launcher: Option<&str>) -> Result<S
 /// Batch14-F41：wt.exe/PowerShell 拉起机械抽到 `launch.rs::launch_powershell_window`
 /// （与远端 resume/attach 族共用），本函数只剩「构造本地 resume 命令体 + 委托拉起」。
 /// 非 Windows：launch 层统一报错（仅 Windows 支持，错误文案改为中文）。
-fn resume_impl(
-    session_id: &str,
-    cwd: &str,
-    launcher: Option<&str>,
-    account: Option<&LaunchAccount>,
-    tmux_name: Option<&str>,
+/// 〔TL3〕随命令一起 `async`：拉起那一趟走 [`launch_local_asking_backend`]（问后端 `await` ＋ 同步那一截挪出 IPC 派发线程）。
+async fn resume_impl(
+    session_id: String,
+    cwd: String,
+    launcher: Option<String>,
+    account: Option<LaunchAccount>,
+    tmux_name: Option<String>,
 ) -> Result<(), String> {
     // 🔴〔`K-P5h`〕**resume 这一支刻意把 token 丢掉，那不是疏忽。**
     // `K-P5g` 现打过：resume 时 token **就是 sid**（`route_key_for_session(Some(sid))` 在 sid
     // 过白名单时原样返回）⇒ 「拿 token 反查 sid」在这一支上退化成
     // 「答案要么是它自己、要么 `None`」，一个布尔谓词，**买不到本件的正题**。
     // 本件的正主是**新开**那一支（见 [`new_local_session`]）—— 那一支才没有 sid。
-    launch_local(
-        &LocalPsAction::Resume(session_id.to_string()),
+    launch_local_asking_backend(
+        LocalPsAction::Resume(session_id.clone()),
         launcher,
         Some(cwd),
         account,
         tmux_name,
-    )?;
+    )
+    .await?;
     tracing::info!("history: resumed sid={session_id}");
     Ok(())
+}
+
+/// 〔TL3 · 审计 F 🔴-2〕两条本机起会话命令共用的那一趟（`INVARIANTS §10`「IPC 命令默认写 `pub async fn`，
+/// 函数体包 `spawn_blocking`」）：
+/// ① 先 **`await`** 那台后端的成品（[`relay_prefix_for_launch`]；不占任何线程等，零 `block_on`）；
+/// ② 同步那一截（ccm 探测 · 渲染 · `spawn` 终端 —— [`launch_local`]）挪出 IPC 派发线程（[`off_the_ipc_thread`]）。
+/// 问不到 / 该拒 ⇒ ① 就回 `Err`，一个字节都不送出去（与先前同）。
+async fn launch_local_asking_backend(
+    action: LocalPsAction,
+    launcher: Option<String>,
+    cwd: Option<String>,
+    account: Option<LaunchAccount>,
+    tmux_name: Option<String>,
+) -> Result<String, String> {
+    let relay = relay_prefix_for_launch(&action, account.as_ref()).await?;
+    off_the_ipc_thread(move || {
+        launch_local(
+            &action,
+            launcher.as_deref(),
+            cwd.as_deref(),
+            account.as_ref(),
+            tmux_name.as_deref(),
+            relay,
+        )
+    })
+    .await
+}
+
+/// 〔TL3〕同步的活挪出 IPC 派发线程：`tokio::task::spawn_blocking`（`INVARIANTS §10` 实施口诀）。
+///
+/// ⚠ 判据那三条缝（[`CcmProbeSource`] · [`InjectFactSources`] · [`LaunchSink`]）是**线程局部**的替身，
+/// 换线程就丢 ⇒ 调用线程上装着的那几条由 [`carried_seams`] 带过去重装（生产构建里它什么都不带）。
+/// `spawn_blocking` 那一跳判据与生产走的是同一条。
+async fn off_the_ipc_thread<T: Send + 'static>(
+    work: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    let carry = carried_seams();
+    tokio::task::spawn_blocking(move || {
+        let _carried = carry();
+        work()
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join: {e}"))?
+}
+
+/// 〔TL3〕调用线程上装着的替身（没装的格是 `None`）→ 一个在别的线程上重装它们的闭包；
+/// 各守卫装在回来的那个盒子里，盒子掉出作用域就各自还原（线程池里的线程会被下一趟复用）。
+/// 生产构建里三条缝都没有替身可带 ⇒ 回的是一个空盒子（零大小，不分配）。
+/// ⚠ 这里**不立 `#[cfg(test)]` 的 item**（只有按 cfg 取舍的语句）：`structural_scan` 那张「测试专用支撑项只许降」的棘轮数的是 item。
+/// ccm 探测那条缝只在非 Windows 上有（`CcmProbeSource` 挂 `#[cfg(not(windows))]`）⇒ Windows 上那一格是空的。
+fn carried_seams() -> impl FnOnce() -> Box<dyn std::any::Any> + Send {
+    #[cfg(all(test, not(windows)))]
+    let probe = CCM_PROBE_OVERRIDE.with(std::cell::Cell::get);
+    #[cfg(test)]
+    let facts = INJECT_FACTS_OVERRIDE.with(std::cell::Cell::get);
+    #[cfg(test)]
+    let sink = LAUNCH_SINK_OVERRIDE.with(std::cell::Cell::get);
+    move || {
+        #[cfg(all(test, not(windows)))]
+        let probe = probe.map(override_ccm_probe);
+        #[cfg(all(test, windows))]
+        let probe = ();
+        #[cfg(test)]
+        let held: Box<dyn std::any::Any> = Box::new((
+            probe,
+            facts.map(override_inject_facts),
+            sink.map(override_launch_sink),
+        ));
+        #[cfg(not(test))]
+        let held: Box<dyn std::any::Any> = Box::new(());
+        held
+    }
 }
 
 /// F96（#62）：本地「在该目录起**新**会话」的 PowerShell 命令体——薄委托（同上，DoD 要求
@@ -1834,8 +1975,11 @@ fn build_new_session_ps_command(launcher: Option<&str>) -> Result<String, String
 /// 在这条会话真的跑起来之后，用 `local-launch-backfill.ts::sidOfLaunch` 从 `--session-accounts`
 /// 的行里把 sid **反查**出来（`KP5HD2`）。
 /// ⚠ **它是个内部 nonce**：不许显示给用户（同 `K-P5g` 那条判据的口径）。
+///
+/// 〔TL3 · 审计 F 🔴-2〕**`async`**，理由同 [`resume_history_session`]（`INVARIANTS §10`）。
+/// 顺序照旧：先核 cwd（文件系统那一下也挪出 IPC 派发线程）、再问后端、再拉起 —— 两件都失败时报的仍是「目录不在」。
 #[tauri::command]
-pub fn new_local_session(
+pub async fn new_local_session(
     cwd: String,
     launcher: Option<String>,
     account: Option<LaunchAccount>,
@@ -1843,12 +1987,14 @@ pub fn new_local_session(
     // F96：起新会话**依赖 cwd 定位**（不像 resume 靠 sid）——cwd 非空且不是现存目录（项目被
     // 移动/删除）就明确报错，别静默在默认目录起会话 + 弹假成功 toast。`launch_powershell_window`
     // 只把存在的 cwd 作窗口起始目录、失效则回落默认，对 resume 无害、对 new-session 是错目录。
-    if !cwd.is_empty() && !std::path::Path::new(&cwd).is_dir() {
-        return Err(copy_text(
-            "rsHistory.newSession.noDir",
-            &[("cwd", &cwd.to_string())],
-        ));
-    }
+    let dir = cwd.clone();
+    off_the_ipc_thread(move || {
+        if !dir.is_empty() && !std::path::Path::new(&dir).is_dir() {
+            return Err(copy_text("rsHistory.newSession.noDir", &[("cwd", &dir)]));
+        }
+        Ok(())
+    })
+    .await?;
     // ★★ `K-H2b` `D1 阻-1`：**账号这一格是本轮加的，加它的理由要写清楚。**
     //
     // 原注释逐字：「起**全新**会话不继承任何账号（那是『新开一个』的语义，不是分叉）」。
@@ -1861,13 +2007,14 @@ pub fn new_local_session(
     //
     // P3t-Y2：起新会话这条**暂不传名字**（`None` ⇒ 渲染器诚实降级回旧路）。
     // 名字只许由 `mintTmuxName` 铸，在这里补一个默认名就是 F13 那个坑的第三次。
-    let launch_id = launch_local(
-        &LocalPsAction::New,
-        launcher.as_deref(),
-        Some(&cwd),
-        account.as_ref(),
+    let launch_id = launch_local_asking_backend(
+        LocalPsAction::New,
+        launcher,
+        Some(cwd.clone()),
+        account,
         None,
-    )?;
+    )
+    .await?;
     // ⚠ **日志里不写 token**：它是身份凭据形态的 nonce，而 tracing 的 ERROR 那一档会被
     //   `bindErrorToast` 刷到界面上 —— 内部 nonce 一个字节都不该往那条路上走。
     tracing::info!("history: new local session in {cwd}");
@@ -1978,3 +2125,7 @@ mod title_coverage;
 #[cfg(test)]
 #[path = "../../../tests/bridge/history_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../tests/bridge/history_f06_tests.rs"]
+mod f06_tests;

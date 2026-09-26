@@ -336,7 +336,8 @@ export const RELAY_NAMES: { name: string; re: RegExp; why: string }[] = [
   { name: "relay_host_envs", re: ident("relay_host_envs"), why: "起本机后端时交给它的中转端口（与凭据路径 —— 那是上游选择要读的，但交接这一步是为中转在那个进程里起来）" },
   { name: "host_relay", re: ident("host_relay"), why: "常驻后端进程内起中转的装配口（中转的 host ＋ 上游选择那只手）" },
   { name: "RelayAsk", re: ident("RelayAsk"), why: "`relay_endpoint_for` 的入参" },
-  { name: "relay_segment_is_safe", re: ident("relay_segment_is_safe"), why: "中转路由段的字符闸（中转线格式）" },
+  // 〔DUP1 · 4D〕「中转路由段字符闸」那一行（登记的是它 US1 之前的旧名）删了：那道闸今天叫 `relay_route_core::segment_is_safe`，
+  //   旧名只剩 `history_tests.rs` ④ 那段注释还在点；那一格按 sid 规则收紧改写之后旧名全仓零处 ⇒ 本表那一行随之退役（不是改名漏网）。
   { name: "RELAY_KEEPS_THE_OLD_PATH", re: ident("RELAY_KEEPS_THE_OLD_PATH"), why: "中转前缀在场时本机拉起走旧路的理由句" },
   { name: "run_relay", re: ident("run_relay"), why: "`--relay` 的装配口：跑中转 ＋ 把上游选择那只手递进去（住上游选择，依赖上游选择 → 中转）" },
   { name: "src/backend/relay/", re: lit("src/backend/relay/"), why: "中转的目录" },

@@ -16,13 +16,15 @@
 //! backend 无 `parse_line`，故仍直接在 `serde_json::Value` 上抽取 —— 那是**取数**的差别，
 //! 不是**口径**的差别。
 //!
-//! 安全：路径严格限 `<claude_dir>/projects/`（canonicalize 前缀校验，复刻 history_query）；
+//! 安全：路径严格限 `<claude_dir>/projects/`（〔TL3 · 审计 F 🔴-6〕经 observe 唯一那道围栏 `observe/fence.rs::Fence`；
+//! 先前这里内联复刻了一份 history_query 的，`设计/15 §4.2` 点名的第二个家）；
 //! 只读铁律（cc-monitor 不写远端）成立——本模块只 read_dir / read。
 
 // U2/U3：这两个原来在本文件里各有一份逐字相同的副本。去向**不同**：
 // `projects_root` 跨 observe/control 两层 ⇒ `common/`；`mtime_ms` 两个调用点同属 observe
 // ⇒ U3 按 `common/` 自己的「≥2 层」门槛搬回 `observe/`。
 use crate::agents::claudecode::paths::projects_root;
+use crate::observe::fence::Fence;
 use crate::observe::fs::mtime_ms;
 use search_core::{SnippetBudget, SnippetVerdict, MAIN_CAP, TOOL_CAP};
 use serde_json::Value;
@@ -131,17 +133,37 @@ fn search(
     opts: &SearchOpts,
     out: &mut impl Write,
 ) -> Result<(), String> {
+    let unreadable = search_counting(agent_home, query, opts, out)?;
+    if let Some(note) = unreadable_note(unreadable) {
+        tracing::warn!("{note}");
+    }
+    Ok(())
+}
+
+/// 〔W5-VIS · E 吞错普查点名〕扫完一趟，有几个会话文件**读不动**（权限 / IO 错 / 不是合法 UTF-8）、因此没搜到。
+/// 原先读不动的那一份 `.ok()?` 折成「无命中」—— 从结果里**静默消失、不计数**。
+/// 结果的行形状不动（界面那一半要改前端与协议，登记为买不到）；逐份在读的那一刻 `warn`，扫完再出一行总数。
+pub(crate) fn unreadable_note(n: usize) -> Option<String> {
+    (n > 0)
+        .then(|| format!("全文搜索：{n} 个会话文件读不动，这一趟没搜到它们（逐份原因见上面几行）"))
+}
+
+/// [`search`] 的本体：回「读不动、没搜到」的会话数（判据直接看这个数，不看日志）。
+pub(crate) fn search_counting(
+    agent_home: &Path,
+    query: &str,
+    opts: &SearchOpts,
+    out: &mut impl Write,
+) -> Result<usize, String> {
     let q = query.trim().to_lowercase();
     let root = projects_root(agent_home);
     if q.is_empty() || !root.is_dir() {
-        return Ok(()); // 空查询 / 无 projects → 无输出（exit 0）
+        return Ok(0); // 空查询 / 无 projects → 无输出（exit 0）
     }
-    // 路径白名单根（canonicalize；read 的文件必须在其下，挡 symlink 逃逸）。
-    let canon_root = root
-        .canonicalize()
-        .map_err(|e| format!("projects root unavailable: {e}"))?;
+    // 路径白名单根（read 的文件必须在其下，挡 symlink 逃逸）：observe 唯一那道围栏（`observe/fence.rs`）。
+    let fence = Fence::at(&root)?;
 
-    let files: Vec<PathBuf> = WalkDir::new(&canon_root)
+    let files: Vec<PathBuf> = WalkDir::new(fence.root())
         .max_depth(2)
         .into_iter()
         .filter_map(Result::ok)
@@ -167,19 +189,26 @@ fn search(
     search_core::sort_by_recency(&mut files, |(_, m)| *m);
 
     let mut budget = SnippetBudget::new(opts.limit);
+    let mut unreadable = 0usize;
     for (path, updated_at) in files {
-        // 防 symlink 逃逸：canonicalize 后仍须在 projects/ 下。
-        let Ok(canon) = path.canonicalize() else {
-            continue;
-        };
-        if !canon.starts_with(&canon_root) {
+        // 防 symlink 逃逸：解开之后仍须在 projects/ 下；解不开 / 越界 ⇒ 跳过这一份（与先前同）。
+        if fence.admit(&path).is_err() {
             continue;
         }
-        if let Some(session) = build_session_hits(&path, &q, opts, &mut budget, updated_at) {
+        // 〔W5-VIS〕读不动 ⇒ 说出来、记一笔（原先 `.ok()?` 折成「无命中」静默消失）。
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(e) => {
+                unreadable += 1;
+                tracing::warn!("全文搜索：读不动 {}（{e}），这一份没搜", path.display());
+                continue;
+            }
+        };
+        if let Some(session) = session_hits_in(&path, &content, &q, opts, &mut budget, updated_at) {
             writeln!(out, "{session}").map_err(|e| format!("stdout write failed: {e}"))?;
         }
     }
-    Ok(())
+    Ok(unreadable)
 }
 
 /// 扫一个 jsonl，返回该会话的命中 JSON（无命中 → None）。`budget` 跨会话累计已构造
@@ -188,15 +217,17 @@ fn search(
 /// 「全局预算用完」与「单会话满 `PER_SESSION_CAP` 条」（收口前这两件事挤在一个
 /// `if` 里，下游只看得到 `hitCount > hits.len()` 这一个信号）。
 /// `updated_at` 由调用方传入（排序时已 stat 过一次，别再 stat 第二次）。
-fn build_session_hits(
+/// 一个会话文件的命中（文件已经读出来了 —— 读不动那一形由 [`search_counting`] 自己说、自己数）。
+/// 〔W5-VIS〕从前它自己读文件，读不动那一份 `.ok()?` 折成「无命中」静默消失；读挪到了调用方。
+fn session_hits_in(
     path: &Path,
+    content: &str,
     q_lc: &str,
     opts: &SearchOpts,
     budget: &mut SnippetBudget,
     updated_at: i64,
 ) -> Option<Value> {
     let session_id = path.file_stem()?.to_str()?.to_string();
-    let content = std::fs::read_to_string(path).ok()?;
 
     let mut hits: Vec<Value> = Vec::new();
     let mut hit_count: u32 = 0;
@@ -314,7 +345,7 @@ fn build_session_hits(
     }))
 }
 
-/// 一条 user / assistant 记录拿去搜的两段文本（〔SE2〕从 `build_session_hits` 里拆出来）。
+/// 一条 user / assistant 记录拿去搜的两段文本（〔SE2〕从 `session_hits_in` 里拆出来）。
 pub(crate) struct RecordText {
     pub(crate) is_assistant: bool,
     /// 正文：文本块；user 那侧先剥 CLI 注入的包装（`clean_user_text`），再按 `MAIN_CAP` 截断。

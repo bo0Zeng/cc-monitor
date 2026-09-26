@@ -13,15 +13,10 @@ use std::path::PathBuf;
 
 /// Codex 会话源布局：`~/.codex/sessions/YYYY/MM/DD/rollout-<ts>-<uuid>.jsonl`。
 /// 与 Claude 的差异（见事实对照）：**按日期分区**（无 `enc(cwd)` 项目目录）、sid 从文件名末 UUID 取
-/// （非 stem）。`liveness_subdir` 对 Codex **是占位**——Codex 无 pidfile 目录，判活（F4）走
-/// `logs_2.sqlite` process_uuid + `/proc/<pid>`，不 join 此字段。`tasks_subdir` 无对应。
+/// （非 stem）。`tasks_subdir` 无对应。〔LOC1b · 4D〕会话子目录 / 活性目录 / 扩展名三格随 monitor 读本机盘那几份实现删了
+/// （目录布局归后端 `agents/codex/`）。
 static CODEX_LAYOUT: SessionLayout = SessionLayout {
-    sessions_subdir: "sessions",
-    // F4 占位：Codex 无 pidfile 判活目录；per-kind liveness 落地时对 Codex 作废此字段。
-    liveness_subdir: "sessions",
     tasks_subdir: None,
-    // F1：live/warm 会话为 `.jsonl`；冷会话 `.jsonl.zst`（压缩）发现留 F2/history。
-    record_ext: "jsonl",
     sid_strategy: SidStrategy::CodexRollout,
     // Codex 子 agent 会话是独立 rollout（谱系在 state_5.thread_spawn_edges）；无 Claude 那样的
     // `/subagents/` 路径段可跳。子 agent 过滤（按 agent_role）留后续 feature。

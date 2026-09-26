@@ -98,7 +98,7 @@ describe("HistoryView 搜索卡片 resume (F85 #44)", () => {
           available: true,
           error: null,
           meta: { enabled: true, acctsDir: "/h/.claude-accts", manifestPath: "/h/.claude-accts/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null },
-          accounts: [{ name: "z", email: "z@x.edu", configDir: "/h/.claude-accts/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true }],
+          accounts: [{ name: "z", email: "z@x.edu", configDir: "/h/.claude-accts/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true }],
         });
       }
       if (cmd === "list_last_accounts") return Promise.resolve({}); // 无既有 pin → 落 current

@@ -828,3 +828,225 @@ fn the_launch_request_and_product_match_the_cross_language_golden() {
     got.sort_unstable();
     assert_eq!(got, want, "金样里的拒绝码与后端登记的不相等");
 }
+
+// ═══ 〔W5-VIS · `设计/15 §4.7 S4 · S5`〕tmux 的原话进错误 · 次要动作失败留一行日志 ═══════════════════
+//
+// 要求住址：`设计/15 §4.7 S4` 逐字「`control/kill.rs` 用 `output()`，把 tmux 自己说的原因放进错误消息。
+// **正确形状就在隔壁文件。**」· `§4.7 S5` 逐字「**处置不是别吞，是吞了要留一行日志**」。
+
+/// 不起进程的 tmux 替身：按子命令分派结局，并记下每一次被调的 argv（顺序即调用顺序）。
+struct FakeTmux {
+    calls: std::cell::RefCell<Vec<Vec<String>>>,
+    answer: Box<dyn Fn(&str) -> Result<Ran, CmdErr>>,
+}
+
+impl FakeTmux {
+    fn new(answer: impl Fn(&str) -> Result<Ran, CmdErr> + 'static) -> Self {
+        FakeTmux {
+            calls: Default::default(),
+            answer: Box::new(answer),
+        }
+    }
+    fn call(&self, a: &[&str]) -> Result<Ran, CmdErr> {
+        self.calls
+            .borrow_mut()
+            .push(a.iter().map(|s| s.to_string()).collect());
+        (self.answer)(a[0])
+    }
+    fn verbs(&self) -> Vec<String> {
+        self.calls
+            .borrow()
+            .iter()
+            .map(|c| {
+                if c[0] == "set-option" {
+                    format!("set-option {}", c[3])
+                } else {
+                    c[0].clone()
+                }
+            })
+            .collect()
+    }
+}
+
+fn said(ok: bool, s: &str) -> Result<Ran, CmdErr> {
+    Ok(Ran {
+        ok,
+        said: s.to_string(),
+    })
+}
+
+fn create_req() -> LaunchRequest {
+    parse_request(&serde_json::json!({
+        "mode": "create-or-attach",
+        "name": "cc-w5vis",
+        "payload": "claude --resume x",
+        "cwd": "/home/u/p",
+        "agent": "claude",
+        "ccm_sid": "1a2b3c4d-0000-0000-0000-000000000000",
+    }))
+    .expect("请求应当解析成功")
+}
+
+/// ★ S4：`create-or-attach` 那一臂的四格结局 —— 失败的两格**带 tmux 的原话**；
+/// ★ S5：四步次要动作全失败 ⇒ **照样键入、照样回成功**（不阻断），且四步都真的被调过（没被短路掉）。
+#[test]
+fn w5vis_s4_s5_the_create_arm_carries_tmux_reasons_and_is_not_blocked_by_secondary_steps() {
+    let req = create_req();
+    // ① 建不出、也不存在 ⇒ `create_failed` 带原话。
+    let f = FakeTmux::new(|verb| match verb {
+        "new-session" => said(
+            false,
+            "can't create session: /home/u/p: No such file or directory",
+        ),
+        _ => said(false, "can't find session: cc-w5vis"),
+    });
+    let e = run_with(&req, &|a| f.call(a)).unwrap_err();
+    assert_eq!(e.0, "create_failed");
+    assert!(
+        e.1.contains("/home/u/p: No such file or directory"),
+        "{}",
+        e.1
+    );
+    assert_eq!(
+        f.verbs(),
+        ["new-session", "has-session"],
+        "建不出之后只该问一次在不在"
+    );
+    // ② 建不出、但已存在 ⇒ 幂等短路：什么都不做（不键入）。
+    let f = FakeTmux::new(|verb| said(verb == "has-session", "duplicate session: cc-w5vis"));
+    let o = run_with(&req, &|a| f.call(a)).expect("已存在是幂等成功");
+    assert_eq!((o.created, o.typed), (false, false));
+    assert_eq!(f.verbs(), ["new-session", "has-session"]);
+    // ③ 建出来了、四步次要动作全失败 ⇒ 不阻断：照样键入、回成功；四步都真的被调过、键入排在它们之后。
+    let f = FakeTmux::new(|verb| said(verb != "set-option", "invalid option: w5vis"));
+    let o = run_with(&req, &|a| f.call(a)).expect("次要动作失败不许阻断");
+    assert_eq!((o.created, o.typed), (true, true));
+    assert_eq!(
+        f.verbs(),
+        [
+            "new-session",
+            "set-option @ccm_agent",
+            "set-option @ccm_sid_expect",
+            "set-option set-titles",
+            "set-option set-titles-string",
+            "send-keys",
+        ]
+    );
+    // ④ 建出来了、键入失败 ⇒ `typed_unconfirmed` 带原话。
+    let f = FakeTmux::new(|verb| match verb {
+        "send-keys" => said(false, "can't find pane: %9"),
+        _ => said(true, ""),
+    });
+    let e = run_with(&req, &|a| f.call(a)).unwrap_err();
+    assert_eq!(e.0, "typed_unconfirmed");
+    assert!(e.1.contains("can't find pane: %9"), "{}", e.1);
+    // 裸键那一支同形。
+    let f = FakeTmux::new(|_| said(false, "not a terminal"));
+    let e = type_keys_raw("$1", "Escape", &|a| f.call(a)).unwrap_err();
+    assert_eq!(e.0, "typed_unconfirmed");
+    assert!(e.1.contains("not a terminal"), "{}", e.1);
+}
+
+/// ★ S5 的话：做成了不说；没做成 ⇒ 说哪一步、tmux 说的、后果（四步逐格，两向）。起不来 tmux 那一形同样要说。
+#[test]
+fn w5vis_s5_the_secondary_note_speaks_only_when_the_step_failed() {
+    for step in [
+        Secondary::AgentTag,
+        Secondary::IntentTag,
+        Secondary::TitlesOn,
+        Secondary::TitleFormat,
+    ] {
+        assert_eq!(
+            secondary_note("cc-x", step, &said(true, "")),
+            None,
+            "{step:?} 做成了不该说"
+        );
+        let n = secondary_note("cc-x", step, &said(false, "invalid option: w5vis"))
+            .unwrap_or_else(|| panic!("{step:?} 没做成却一个字都没说"));
+        for must in ["cc-x", "invalid option: w5vis", step.consequence()] {
+            assert!(n.contains(must), "{step:?} 那句话里缺 `{must}`：{n}");
+        }
+        let n = secondary_note("cc-x", step, &Err(("no_tmux", "起不来 tmux：w5vis".into())))
+            .unwrap_or_else(|| panic!("{step:?} 起不来 tmux 却一个字都没说"));
+        assert!(n.contains("起不来 tmux：w5vis"), "{n}");
+    }
+    // 身份意图那一步的后果必须点名 `wrong_owner`（S2 那条事实链的另一头）。
+    assert!(Secondary::IntentTag.consequence().contains("wrong_owner"));
+}
+
+/// ★ S4：真起一个假 tmux 子进程（退出码 · stderr 由它定 —— 异源），`ran` 把原话收下来。
+#[cfg(unix)]
+#[test]
+fn w5vis_s4_ran_keeps_what_the_real_process_said_on_stderr() {
+    let dir = std::env::temp_dir().join(format!("ccm-w5vis-s4-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("mkdir");
+    let fake = dir.join("tmux");
+    std::fs::write(
+        &fake,
+        "#!/bin/sh\nif [ \"$1\" = new-session ]; then echo 'duplicate session: w5vis' >&2; exit 1; fi\nexit 0\n",
+    )
+    .expect("write");
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    // 经 `/bin/sh <脚本>` 起（不直接 exec 刚写完的文件 —— 并行 fork 下会撞 `ETXTBSY`，见 `identity_tag_tests::fake_cmd`）。
+    let sh = || {
+        let mut c = std::process::Command::new("/bin/sh");
+        c.arg(&fake);
+        c
+    };
+    let r = ran(sh(), &["new-session", "-d"]).expect("起得来");
+    assert_eq!(
+        r,
+        Ran {
+            ok: false,
+            said: "duplicate session: w5vis".into()
+        }
+    );
+    let r = ran(sh(), &["has-session"]).expect("起得来");
+    assert!(r.ok);
+    let e = ran(std::process::Command::new(dir.join("gone")), &["x"]).unwrap_err();
+    assert_eq!(e.0, "no_tmux");
+    // `said_of`：没说话 ⇒ 那句占位；一个灌一整屏的 tmux 截在 `SAID_CAP` 之内（字符边界上）并标 `…`。
+    assert_eq!(said_of(b"  \n"), "（tmux 没说原因）");
+    let long = "错".repeat(SAID_CAP);
+    let s = said_of(long.as_bytes());
+    assert!(
+        s.ends_with('…') && s.len() <= SAID_CAP + '…'.len_utf8(),
+        "{}",
+        s.len()
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 接线（剥注释后的生产段）：零处 `let _ = tmux` · stderr 零处丢进 `Stdio::null()` · 零处 `.status()`。
+/// 各带正控：S4 / S5 之前的原形必须被认出。
+#[test]
+fn w5vis_s4_s5_no_tmux_result_or_stderr_is_thrown_away_any_more() {
+    fn offences(prod: &str) -> Vec<&'static str> {
+        let mut v = Vec::new();
+        if prod.contains("let _ = tmux(") {
+            v.push("`let _ = tmux(`");
+        }
+        if prod.contains(".stderr(Stdio::null())") {
+            v.push("`.stderr(Stdio::null())`");
+        }
+        if prod.contains(".status()") {
+            v.push("`.status()`（只收退出码、原话丢了）");
+        }
+        v
+    }
+    let prod = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/control/launch.rs"
+    ));
+    assert!(
+        prod.contains("fn run_with("),
+        "切出来的生产段不对 —— 本条会零命中地绿"
+    );
+    assert_eq!(offences(&prod), Vec::<&str>::new());
+    let old = format!(
+        "{}\n{}\n",
+        "let _ = tmux(&[\"set-option\", \"-t\", &t, \"@ccm_agent\", agent]);",
+        "Command::new(\"tmux\").args(args).stderr(Stdio::null()).status()"
+    );
+    assert_eq!(offences(&old).len(), 3, "旧形没被全认出 —— 量具瞎了");
+}

@@ -708,6 +708,10 @@ mod tests {
             "〔RL1 · V107〕流模式常驻后端**进程内**起中转的入口；上游选择那只手由 `accounts::upstream::host_relay` 递进来",
         ),
         (
+            "listen::ENV_PORT",
+            "〔HX2〕中转端口那个环境变量**名**：hello 回显宿主交来的那几格（`wire::HOST_ECHO_ENVS`）要点它，名字只住 `listen.rs` 一处",
+        ),
+        (
             "listen::run",
             "`--relay` 那一臂的中转入口；上游选择那只手由 `accounts::upstream::run_relay` 递进来",
         ),
@@ -730,6 +734,18 @@ mod tests {
         (
             "upstream::Base",
             "中转的传输原语：一行的上游是什么，上游选择解析它、焊进行里、原样交回",
+        ),        // 〔TAP · V124〕tee 的第二个落点（三条同一个口：口本身 ＋ 它交出去的那件事的两半）。
+        (
+            "tee::TapPort",
+            "〔TAP〕tee 的第二个落点的口：宿主（`crate::tap::TapHub`）实现它，进程内中转经 `listen::host` 收它",
+        ),
+        (
+            "tee::TapEvent",
+            "〔TAP〕tee 交给 tap 口的一件事（`stream` · `resp` · `n` · 事件原文 / 收尾），宿主转成 `tap` 帧",
+        ),
+        (
+            "tee::TapBody",
+            "〔TAP〕`TapEvent` 的两形：一个 SSE 事件原文 · 这个响应收尾了（`broken`）",
         ),
     ];
 

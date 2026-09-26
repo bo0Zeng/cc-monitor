@@ -485,3 +485,105 @@ fn every_link_is_born_with_the_one_shot_deadline() {
         "`DialStream` 的构造应当恰好一处（`open` 里那一次）—— 多一处 = 一条不经 `open`、不带期限的链路"
     );
 }
+
+// ═══ 〔W5-VIS〕一个预算、按段归因（`设计/15 §3.6` 小病 · `设计/05 §3.3.2`） ═══════════════════════════
+//
+// 守的要求（住址，纪律 19）：`设计/05 §3.3.2`（逐字）「**一个预算、多个归因点**：超时回的是 `Hop { at, reach, why: Overrun }`
+// —— 期限只有一个，但卡在哪一跳说得出来（治的是「同一个数盖了握手与远端跑查询两段、而两种成因处置完全不同」那一格）」·
+// `设计/15 §3.6` 小病（逐字）「⇒ 一个预算、多个归因点（`05 §3.3.2`；W5-VIS）」。
+
+/// B1 ★ 到点那句话按段说：握完手之后到点 ⇒ 说出握手用了多久、之后远端跑了多久（两个数 == 喂进去的两段）；
+/// 还在握手就到点 ⇒ 另一句（两句不同）。纯函数，直接喂时长（不睡墙钟）。
+#[test]
+fn w5vis_the_expiry_note_says_which_leg_ate_the_budget() {
+    let total = std::time::Duration::from_secs(120);
+    let n = expiry_note(
+        total,
+        Some(std::time::Duration::from_millis(44_200)),
+        std::time::Duration::from_millis(120_000),
+    );
+    for must in ["120", "44.2", "75.8"] {
+        assert!(n.contains(must), "按段归因那句话里缺 `{must}`：{n}");
+    }
+    let in_shake = expiry_note(total, None, total);
+    assert!(in_shake.contains("120"), "{in_shake}");
+    assert!(
+        !in_shake.contains("44.2") && in_shake != n,
+        "还在握手就到点那一形与握完手之后到点那一形说成了同一句：{in_shake}"
+    );
+    // 两段加起来不超过等了多久（不许凭空多出一段）。
+    let n0 = expiry_note(total, Some(total), total);
+    assert!(
+        n0.contains("0.0"),
+        "握手吃光了整个预算时「之后远端跑了」应是 0.0：{n0}"
+    );
+}
+
+/// B2 ★ 真链路层：`mark_shaken` 之后到点 ⇒ 报出来的错**就是**按段归因那一句（握手那一段 ≈ 0）；
+/// 没 `mark_shaken` ⇒ 说「还在握手」。真时钟（bridge 的 tokio 没开 `test-util`，同 A1），期限 1 s。
+#[tokio::test]
+async fn w5vis_a_timed_out_link_names_the_leg_it_timed_out_in() {
+    use tokio::io::AsyncReadExt;
+    let total = std::time::Duration::from_secs(1);
+    let mut buf = [0u8; 4];
+    let (_far, near) = tokio::io::duplex(64);
+    let mut s = Bounded::new(near, Some((tokio::time::Instant::now() + total, total)));
+    s.mark_shaken();
+    let e = tokio::time::timeout(std::time::Duration::from_secs(30), s.read(&mut buf))
+        .await
+        .expect("期限没生效")
+        .expect_err("对面没写却读到了");
+    let shaken = expiry_note(total, Some(std::time::Duration::ZERO), total);
+    let head = &shaken[..shaken.find("0.0").expect("握手那一段该是 0.0")];
+    assert!(
+        e.to_string().starts_with(head) && e.to_string().contains("0.0"),
+        "握完手之后到点，报的不是按段归因那一句：{e}"
+    );
+    let (_far2, near2) = tokio::io::duplex(64);
+    let mut s2 = Bounded::new(near2, Some((tokio::time::Instant::now() + total, total)));
+    let e2 = tokio::time::timeout(std::time::Duration::from_secs(30), s2.read(&mut buf))
+        .await
+        .expect("期限没生效")
+        .expect_err("对面没写却读到了");
+    assert_eq!(e2.to_string(), expiry_note(total, None, total));
+}
+
+/// B3 接线：`mark_shaken()` 生产段恰好一处、在 `open` 里、排在读完 ack（`let ack = match`）之后、交出 `DialStream` 之前；
+/// 到点那一句经 `expiry_note(` 出。正控：合成的 `open` 缺那一行必须被认出。
+#[test]
+fn w5vis_open_marks_the_handshake_done_right_after_the_ack() {
+    fn wired(prod: &str) -> Result<(), String> {
+        let n = prod.matches(".mark_shaken()").count();
+        if n != 1 {
+            return Err(format!("`.mark_shaken()` 调用 {n} 处（要恰好 1）"));
+        }
+        let at = prod.find("\nasync fn open(").ok_or("找不到 `open`")?;
+        let (open_fn, _) = prod[at..].split_once("\n}\n").ok_or("切不出 `open`")?;
+        let ack = open_fn
+            .find("let ack = match")
+            .ok_or("`open` 里没有读 ack 那一段")?;
+        let mark = open_fn
+            .find(".mark_shaken()")
+            .ok_or("`.mark_shaken()` 不在 `open` 里")?;
+        let out = open_fn
+            .find("Ok((DialStream { r }, ack))")
+            .ok_or("`open` 里没有交出 `DialStream`")?;
+        if !(ack < mark && mark < out) {
+            return Err("`.mark_shaken()` 不在「读完 ack」与「交出链路」之间".into());
+        }
+        Ok(())
+    }
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/dial_host.rs"));
+    wired(&prod).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(
+        prod.matches("expiry_note(").count(),
+        2,
+        "`expiry_note(` 应当恰好两处（定义 ＋ `expired` 里那一次调用）"
+    );
+    let synthetic =
+        "\nasync fn open() {\n    let ack = match x {};\n    Ok((DialStream { r }, ack))\n}\n";
+    assert!(
+        wired(synthetic).is_err(),
+        "缺 `mark_shaken` 的 `open` 没被认出 —— 量具瞎了"
+    );
+}

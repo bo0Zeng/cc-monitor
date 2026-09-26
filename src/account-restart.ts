@@ -11,6 +11,7 @@
 //      （kill 失败提前 return、绝不记，见 §5.2 + vitest ④）。硬合需给 withAccount 加 abort-vs-degrade /
 //      条件记账 / run 前置 compact&kill 钩子三个开关，复杂度净增、收益为负。二者已共用 accounts.ts
 //      **同一批原语**（fetchAccounts / accountConfigDir / recordLastAccount），无逻辑漂移。故维持分离。
+import { askConfirm, type ConfirmFn } from "./ask-dialog";
 import { killSession, saidOfControl, sendKeys } from "./tmux-control";
 import { runRemoteResumeTmux } from "./remote-launch-run";
 import { accountConfigDir, type SessionAccount } from "./accounts";
@@ -19,7 +20,8 @@ import { getModelForAccount } from "./account-prefs";
 import { recordLastAccount } from "./launch-account";
 import { showActionFailureToast } from "./error-toast";
 // 〔`A3` 第二波〕本机那一侧：`origin` 是 backend 的 `<local>`（〔C4b〕账号面那个第二种写法已退役，只剩这一个）。
-import { LOCAL_ORIGIN } from "./backend-policy";
+// 〔TL3 · 审计 F 🔴-5〕「是不是本机」只经 `ipc/origin.ts` 判（`设计/00 §2.5 ①`），这里不再自己比常量。
+import { isLocalOrigin } from "./ipc/origin";
 // 〔FE1〕本机那一跳走 resume 编排的唯一一份（原 `account-restart-local.ts` 并进去了）。
 import { resumeLocalSession } from "./local-resume";
 import { copyText } from "./copy-table";
@@ -45,7 +47,7 @@ export interface RestartWithAccountOpts {
   /** ③ 是否先在【旧账号】上 /compact（默认 false，用户拍板）。 */
   compactFirst: boolean;
   // —— 可注入点（默认走真实实现；测试注入 mock）——
-  confirm?: (message: string) => boolean;
+  confirm?: ConfirmFn;
   /** 等 compact 完成：resolve(true)=检测到完成 / resolve(false)=超时放弃。省略 → 有界延时兜底。 */
   awaitCompact?: () => Promise<boolean>;
   /**
@@ -99,12 +101,13 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   }
 
   // ② 破坏性二次确认。
-  const confirmFn = opts.confirm ?? ((m: string) => window.confirm(m));
+  // 〔W5-UI〕默认走应用内对话框：真 app 里 `window.confirm` 是插件注入的 async 替身（返回 Promise，恒真值）。
+  const confirmFn: ConfirmFn = opts.confirm ?? askConfirm;
   const msg =
     copyText("accountRestart.confirm.body", { name: accountName, tmuxName, compact: (opts.compactFirst
       ? copyText("accountRestart.confirm.compactNote")
       : ""), trust: trustWarn });
-  if (!confirmFn(msg)) return false;
+  if (!(await confirmFn(msg))) return false;
 
   // ③ [可选] 在【旧账号】上 compact（换号前，命中旧缓存——§5.1）。失败/超时不阻断（§5.2）。
   if (opts.compactFirst) {
@@ -203,7 +206,7 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   // | 模型偏好 | 交（`modelOverride`） | **交不了** —— 本机那条的载荷里没有模型这一格（如实登记，不假装），所以这里不去查它 |
   //
   // ⚠ 账号**不走**跟随（`follow`）：换号重启的正题恰恰是换成另一个号，跟随会把用户的选择丢了。
-  const isLocal = origin === LOCAL_ORIGIN;
+  const isLocal = isLocalOrigin(origin);
   const launched = isLocal
     ? await resumeLocalSession({
         sid: sessionId,

@@ -39,7 +39,7 @@ vi.mock("../../src/ipc/commands", () => ({
               ? Promise.reject(new Error("读不到 config.json"))
               : Promise.resolve(store.cfg);
         }
-        if (name === "save_config") return () => Promise.resolve();
+        if (name === "patch_config") return () => Promise.resolve(); // 〔CFG1〕写口换成按键补丁
         return () => Promise.reject(new Error(`[录音机] ${name} 没有真后端`));
       },
     },
@@ -140,7 +140,7 @@ describe("P12：那条常驻条（`createUnknownKeysBar`）", () => {
   });
 
   it("★ 反空真：配置干净 ⇒ 条是藏着的、正文是空的（不是「永远亮着」）", async () => {
-    store.cfg = { theme: {}, notifyTurnEnd: true, forceLaunchPayloadRenderer: false };
+    store.cfg = { theme: {}, notifyTurnEnd: true, autoFollowUserActive: false }; // 〔LR2〕原来第三个键是已退役的 forceLaunchPayloadRenderer
     const bar = createUnknownKeysBar();
     await tick();
     expect(

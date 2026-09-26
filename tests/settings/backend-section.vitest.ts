@@ -99,7 +99,8 @@ vi.mock("../../src/remote-config", () => ({
 
 vi.mock("../../src/error-toast", () => ({ showActionFailureToast: () => {} }));
 
-import { BACKEND_COLUMNS, BackendSection } from "../../src/settings/backend-section";
+import { BACKEND_COLUMNS, BackendSection, stopWarning } from "../../src/settings/backend-section";
+import type { SessionAccount } from "../../src/accounts";
 import { srcDirOf } from "../test-support/repo-root";
 import COPY_TABLE from "../../src/shared/copy/table.json";
 import {
@@ -599,5 +600,101 @@ describe("〔ST2〕（原 describe 的收尾占位，保持文件结构）", () 
     expect(d).toContain("读坏了 4 次");
     expect(d).not.toMatch(/\{\w+\}/);
     expect(describeHealthDetail({ crashed: 0, refused: 0, neverStarted: 0, misread: 0, last: null })).toBeNull();
+  });
+});
+
+
+/**
+ * 〔HX1 · 主会话裁 HX1 拍板项 3 · D-f〕**停本机后端之前数一数走本机中转的活会话，>0 就先问一句、说几条会断**。
+ * 守的要求：主会话 D-f 逐字「停后端时有走中转的活会话 ⇒ 先确认（说几条会断）」；主会话裁「设置页『停』前 >0 就确认，说几条会断」
+ * ＋ 用 `ask-dialog.ts::askConfirm`（真 app 里 `window.confirm` 从来不拦）。形状：话按表逐格相等；接线两向（答否 ⇒ 零次 `backend_stop` ·
+ * 答是 ⇒ 恰好一次；一条都没有 ⇒ 不问；问不到 ⇒ 照样问；远端 ⇒ 不数不问）。
+ */
+describe("〔HX1 · D-f〕停本机后端之前数走中转的会话", () => {
+  const row = (o: Partial<SessionAccount>): SessionAccount => ({
+    pid: 1,
+    sessionId: "s",
+    cwd: null,
+    configDir: null,
+    account: null,
+    bare: false,
+    alive: true,
+    launchId: null,
+    viaRelay: false,
+    ...o,
+  });
+  const zh = (k: string, args: Record<string, number> = {}) =>
+    (COPY_TABLE.entries as Record<string, { zh: string }>)[k].zh.replace(/\{(\w+)\}/g, (_m, n: string) => String(args[n]));
+
+  it("stopWarning 逐格：问不到照样问 · 确定几条 · 说不清的一起说 · 一条都没有不问 · 死会话不算", () => {
+    expect(stopWarning(null)).toBe(zh("backend.stop.relayUnknown"));
+    expect(stopWarning([])).toBeNull();
+    expect(stopWarning([row({ viaRelay: false }), row({ alive: false, viaRelay: true })])).toBeNull();
+    expect(stopWarning([row({ viaRelay: true }), row({ viaRelay: true }), row({ viaRelay: false })])).toBe(
+      zh("backend.stop.relayConfirm", { n: 2 }),
+    );
+    expect(stopWarning([row({ viaRelay: true }), row({ viaRelay: null }), row({ viaRelay: undefined })])).toBe(
+      zh("backend.stop.relayMaybe", { n: 1, k: 2 }),
+    );
+    expect(zh("backend.stop.relayConfirm", { n: 2 })).toContain("2 条");
+  });
+
+  const stopOf = (s: BackendSection, origin: string) => {
+    const r = s.element.querySelector<HTMLElement>(`.backend-row[data-origin="${origin}"]`);
+    const b = r ? [...r.querySelectorAll<HTMLButtonElement>("button")] : [];
+    return b.find((x) => x.textContent === zh("backend.buildCells.stop"));
+  };
+  const until = async (ok: () => boolean) => {
+    for (let i = 0; i < 100 && !ok(); i++) await new Promise((r) => setTimeout(r, 10));
+  };
+  const stops = () => calls.filter((c) => c.name === "backend_stop").length;
+
+  it("接线：答否不停 · 答是停一次 · 没有走中转的不问 · 远端不数", async () => {
+    let asked: string[] = [];
+    let answer = false;
+    let rows: SessionAccount[] | null = [row({ viaRelay: true }), row({ viaRelay: true })];
+    let sessionsAsked: string[] = [];
+    const s = new BackendSection({
+      headless: true,
+      confirm: (m) => {
+        asked.push(m);
+        return answer;
+      },
+      sessions: (o) => {
+        sessionsAsked.push(o);
+        return Promise.resolve(rows);
+      },
+    });
+    await flush();
+    await flush();
+    const localStop = stopOf(s, LOCAL_ORIGIN);
+    expect(localStop, "本机那一行的「停」找不到 —— 下面整段空转").toBeTruthy();
+    // 答否 ⇒ 问了、说了几条、没停。
+    localStop!.click();
+    await until(() => asked.length === 1);
+    await flush();
+    expect(asked).toEqual([zh("backend.stop.relayConfirm", { n: 2 })]);
+    expect(stops(), "答了否还是停了").toBe(0);
+    await until(() => !localStop!.disabled);
+    // 答是 ⇒ 停一次。
+    answer = true;
+    localStop!.click();
+    await until(() => stops() === 1);
+    expect(stops()).toBe(1);
+    await until(() => !localStop!.disabled);
+    // 一条都没有 ⇒ 不问、直接停。
+    asked = [];
+    rows = [row({ viaRelay: false })];
+    localStop!.click();
+    await until(() => stops() === 2);
+    expect(asked, "没有走中转的会话也问了").toEqual([]);
+    await until(() => !localStop!.disabled);
+    // 远端 ⇒ 不数也不问。
+    sessionsAsked = [];
+    const remoteStop = stopOf(s, "甲机");
+    expect(remoteStop).toBeTruthy();
+    remoteStop!.click();
+    await until(() => stops() === 3);
+    expect(sessionsAsked, "远端的「停」也去数本机中转的会话了").toEqual([]);
   });
 });

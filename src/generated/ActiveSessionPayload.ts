@@ -7,6 +7,6 @@
  */
 export type ActiveSessionPayload = { session_id: string, cwd: string, 
 /**
- * Batch7-F24：kind/name（bg → ⚙ 标识 + 树状归属；name 作 bg 标题）。
+ * Batch7-F24：kind/name（bg → ⚙ 标识；name 作 bg 标题。〔V125〕bg 平铺为普通 tab，不再挂宿主排成树）。
  */
 kind: string | null, name: string | null, };

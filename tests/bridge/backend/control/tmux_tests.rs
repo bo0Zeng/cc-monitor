@@ -210,7 +210,7 @@ fn ccm_tmux_name_whitelist() {
 ///    「空目标就地拒，一个字节都不发」三个入口各一条（Tauri 命令 `tmux_send_keys` / `kill_remote_tmux`〔散文墓碑〕删了）。
 ///
 /// 含 glob/元字符但非空的 target **不**在这一层被拒（`shell_quote` 已安全引号化，
-/// 字符集收紧是 TS 侧 `isValidNewTmuxName`/`isValidTmuxName` 的职责，
+/// 字符集收紧是〔DUP2〕`gate-core` 那两条（`new_tmux_name_issue` / `existing_tmux_name_issue`）的职责，
 /// 见 `is_safe_tmux_target` 头注）。
 ///
 /// 〔IV1 · V121〕要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；②形（attach 目标只拒空）。

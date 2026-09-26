@@ -37,6 +37,7 @@ import { createRestartBar, markRestartNeeded } from "./restart-notice";
 import { createUnknownKeysBar } from "./unknown-keys-notice"; // 🔴 P12：未知键要出声
 import { setCurrentMachine } from "./machine-context";
 import { LOCAL_ORIGIN } from "../ipc/origin";
+import { showActionFailureToast } from "../error-toast"; // 〔CFG1〕行为设置落盘失败出声
 import {
   LOCAL_MACHINE_PAGE_ID,
   MACHINE_PAGE_PREFIX,
@@ -61,6 +62,7 @@ import { KeybindingsEditor } from "../keybindings/editor";
 import { emit } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { SETTINGS_APPLIED_EVENT } from "./events";
+import { askConfirm } from "../ask-dialog";
 import { copyText } from "../copy-table";
 
 /**
@@ -299,11 +301,6 @@ export class SettingsPanel {
   private resumeRemotePresets: string[] = [];
   private remoteLauncherWarning!: HTMLElement; // F08：越层启动器诊断提示（只诊断，不代改）
   private bringFrontCheckbox!: HTMLInputElement;
-  /** F03（unify-launch）：载荷渲染器那个逃生口（落盘键 `forceLaunchPayloadRenderer`）
-   *  无 UI 暴露（手改 config.json），但 `onBehaviorToggle` 每次都要交一份完整
-   *  `BehaviorConfig`——缓存 open() 时读到的值原样带回，防止面板任何一个勾选框变动
-   *  都把它悄悄重置成 DEFAULTS 里的 false。 */
-  private forceLaunchPayloadRenderer = false;
   private onBehaviorChange?: (cfg: BehaviorConfig) => void;
   /** F82a：见 SettingsPanelOptions.windowMode。 */
   private readonly windowMode: boolean;
@@ -385,7 +382,6 @@ export class SettingsPanel {
     this.resumeRemotePresets = behavior.resumeCommandRemotePresets ?? [];
     this.renderResumePresets();
     this.updateRemoteLauncherWarning();
-    this.forceLaunchPayloadRenderer = behavior.forceLaunchPayloadRenderer;
     this.updateBringFrontEnabled();
     this.banner.textContent = "";
     this.banner.classList.remove("settings-banner-show");
@@ -514,7 +510,6 @@ export class SettingsPanel {
         this.resumeRemoteInput.value,
       ),
       notifyTurnEnd: this.notifyTurnEndCheckbox.checked,
-      forceLaunchPayloadRenderer: this.forceLaunchPayloadRenderer,
     };
     try {
       await setBehavior(next);
@@ -533,6 +528,8 @@ export class SettingsPanel {
       this.broadcastApplied(); // 窗口模式：广播让主窗口 applyBehavior
     } catch (e) {
       console.warn("save behavior failed:", e);
+      // 〔CFG1 · 4D〕从前只记日志：勾选框已经翻了、盘上没变，界面一句不说（E §3.3）。
+      showActionFailureToast(copyText("settings.behavior.saveFailed"), String(e));
     }
   }
 
@@ -690,7 +687,7 @@ export class SettingsPanel {
 
   private async resetAll(): Promise<void> {
     if (
-      !window.confirm(copyText("settingsPanel.appearance.resetConfirm"))
+      !(await askConfirm(copyText("settingsPanel.appearance.resetConfirm")))
     ) {
       return;
     }
@@ -718,6 +715,9 @@ export class SettingsPanel {
       }
     } catch (e) {
       console.warn("dialog open failed:", e);
+      // 〔W5-UI · 设计/70 §7 #4〕点了「选择…」却什么都没发生 ⇒ 说出来（落在同一块 banner 上）。
+      this.banner.textContent = copyText("settingsPanel.claudeDir.pickFailed", { e: String(e) });
+      this.banner.classList.add("settings-banner-show");
     }
   }
 

@@ -1,71 +1,41 @@
-//! 活跃 session 探测 —— 不用 hook，直接读 Claude Code 自己维护的 `~/.claude/sessions/<PID>.json`。
+//! 本机活会话表 —— **由本机常驻后端那条流的帧喂出来**，monitor 自己不再看 `~/.claude/sessions/<PID>.json`。
 //!
-//! 每个 PID.json 含：`{pid, sessionId, cwd, startedAt, procStart, status, ...}`
+//! # 〔LOC1b · 第四波 4D〕它换掉的是什么
 //!
-//! ## `procStart` 是**平台原生**的（U7d 实测订正，2026-08-02）
+//! 这个模块原来是 monitor 里的**第二份判活**：自己 `notify` 盯 `sessions/<PID>.json`、自己读 `/proc/<pid>/stat`
+//! 第 22 字段（Windows 走 `GetProcessTimes`）核 `procStart`、再加一条 2 s 心跳扫死进程（`SessionMap`〔散文墓碑〕·
+//! `run_watcher`〔散文墓碑〕· `is_process_alive`〔散文墓碑〕）。同一件事本机常驻后端早就在做（`observe/watcher.rs`：
+//! inotify ＋ pidfd 看守 ＋ 冒名检查），它发的 `session_added` / `session_status` / `session_removed` / `sessions_replayed`
+//! 本机那条流上**一直在来，被整个丢掉**。
+//! 主会话 09-25 裁「迁」（按 `设计/00 §2.2` · `01 §1.1`「一切判定都在后端」· `INVARIANTS §40`「本地＝不走 ssh 的远端」；
+//! ⚠ 偏离 `05 §15.1` 那句「本机会话的起停归 `session_map`」—— 那是 09-24 的迁移范围裁定，由 DD1 改）。
+//! RT1 F9 的真机读数支持退役心跳：Windows 上后端 1 ms 就醒的那一帧早于 monitor 心跳 1 s。
 //!
-//! 这里原先只写了 Windows 那一种，读起来像是跨平台统一格式 —— **不是**：
+//! # 形状
 //!
-//! | 平台 | `procStart` 的量纲 | 拿什么比 |
-//! |---|---|---|
-//! | Windows | **.NET DateTime.Ticks 字符串**（100ns 自 0001-01-01 **Local**，非 Win32 FILETIME UTC；比较要过 `FileTime::to_net_local_ticks`，详 `utils::NetTicks`） | `GetProcessTimes` 的 FILETIME，直接 u64 等值（容差几毫秒） |
-//! | Linux | **`/proc/<pid>/stat` 第 22 字段**（starttime，时钟滴答自 boot） | 同一字段，**逐字符相等** |
+//! - 本机那条流的起停帧 ⇒ [`Lifecycle`]（`ssh_source::local_lifecycle` 从帧里摘，藏起来的 bg 会话不进）；
+//! - [`LocalTable::step`] 是**纯**的：一件起停事实 × 这张表 ⇒ 表怎么变 ＋ 交给本机 emitter 的 [`Out`]；
+//! - 本机 emitter（`lib.rs` 的 `session-changes-emitter`）吃 [`Out`]：与远端 emitter 同一个裁决
+//!   （`ssh_source::classify_removed`）、同一组事件。
 //!
-//! Linux 那行是实测出来的：本机 6 个真实会话的 `procStart` 与 `/proc` 第 22 字段
-//! **6/6 完全相等**，且它们的量级（~10^6）一眼不是 .NET Ticks（~6.4e17）。
-//! ⇒ 两个平台各自与本平台的查询口径同源，**PID 复用防御两边都是满精度**，不需要启发式。
+//! # 流断：与远端同一形（主会话 09-25 补的那一件）
 //!
-//! **v1.6.7 撤回了 bring_terminal_to_front 整条链路**（4-tier WindowMatcher /
-//! WT title 匹配 / SetForegroundWindow 等）。在 explorer 启 PowerShell + WT
-//! DefTerm 接管 console 的常见架构下，claude 进程的祖先链与 WT 窗口完全脱节，
-//! 无法可靠定位"哪个 WT 窗口跑了这个 session"。新方案以 `cc` 命令注入式绑定
-//! 实现，待 v1.7 引入。
+//! 本机那条流结束 ⇒ 表里的活会话 ∪ 本机的可重连会话**一律 `Unseen`**（`ssh_source::disconnect_removals`，
+//! 远端断连 flush 用的**同一个函数**）⇒ 前端「说不清」，不是「已结束」（`设计/30 §3.5.7a`）；
+//! 「报完了清单」那本账（`ssh_source::note_listed` / `forget_listed`）本机也记，F5 对账按它分已结束 / 说不清。
+//! 下一条流初扫重新宣告 ⇒ 回活；`sessions_replayed` 之后仍没被报的由前端落已结束。
 
-use notify::RecursiveMode;
-use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
 use parking_lot::RwLock;
-use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::sync::mpsc;
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::OnceLock;
 
-/// session 集合变化 —— 由 watcher 线程每次重扫 / 心跳后比对旧表得出。
-///
-/// - `removed`：sessions/<PID>.json 被删 / 心跳探活失败 → lib.rs 推 session-ended 事件
-/// - `added`：sessions/<PID>.json 新增 → lib.rs 的 `session-changes-emitter` 线程试着把 sid 绑到终端窗口、
-///   清掉它的 idle 标记。〔TL1 · 4C〕这里从前还写着「触发 monitor 自己的 jsonl 读者强制重扫该 session」
-///   （治「jsonl 行先于 PID.json 到达」的竞态）—— 那个读者与那条重扫通道 CF1 删了：本机会话内容也走本机后端的
-///   `line` 帧，「会话一出现就把已有行流出来」今天由后端 `observe/watcher.rs` 在宣告那一刻做。
 /// S0：一个 sid **为什么**从活跃集里出去。
 ///
-/// 之所以要这个类型，而不是继续只传 sid：monitor 收到 removed 后要在「灰点（tmux 会话
-/// 还在，用户可以回去 attach）」和「归档」之间二选一，原先靠**查自己缓存的那份
-/// `tmux ls` 原文里 `@ccm_sid` 还在不在**来猜。`/branch` 场景这个猜法必错——见
-/// [`Superseded`](RemovalCause::Superseded)。
-///
-/// ⚠ **F01b 订正**：原文写「远端由后端在帧里明说，**本地由 diff 得出**」——
-/// **后半句是假的**。实测本地那条 diff（`session_map.rs` 的两处）**全部产 `Gone`**，
-/// 一处 `Superseded` 都没有；`Superseded` 今天**只从远端帧来**
-/// （`ssh_source.rs` 解析 `"cause":"superseded"` 后直接构造）。
-///
-/// 那么本地 `/branch` 为什么没出「永远消不掉的灰点」那个 bug？
-/// **理由不是文档说的那个** —— 是本地 sid **根本不进 `tmux_raw_registry`**
-/// （那张表只在 SSH 连接路径按 `host_label` 写）⇒ `find_tmux_origin_for_sid` 恒 `None`
-/// ⇒ `classify_removed(None, Gone)` = `Archive`。**结论对、理由是个巧合。**
-///
-/// ★★ **P3 刀 0（08-11）：那个巧合不再是唯一依靠；刀 1 已经把它拆了。**
-///
-/// ⚠ **上面那句「本地 sid 根本不进 `tmux_raw_registry`」今天是假的** ——
-/// P3 刀 1（`7226093`）让本机 tmux 帧进了那张表（键 `<local>`）。
-/// 留着原句是因为它记录的是**当时的实测**；推翻它的是下面这段，不是把它删掉。
-/// `diff_sessions` 现在按 `pid + procStart` 判得出 `Superseded`（要正面证据，
-/// `procStart` 缺席退回 `Gone`）。上面那句「F01b 订正」里的
-/// 「本地那条 diff 全部产 `Gone`」**从此不成立** —— 留着它是因为它记录了当时的实测，
-/// 而**推翻它的过程比结论有用**。
-/// 钉住新事实的是 `session_map::diff_detects_superseded_only_with_positive_identity_evidence`；
-/// `ssh_source` 那条同名判据的锚点也随之从「本地不产 Superseded」翻成「本地确实产」。
+/// 之所以要这个类型，而不是只传 sid：emitter 收到 removed 后要在「可重连（tmux 会话还在）」「已结束」
+/// 「说不清」之间选一个，而 `/branch` 那一形（[`Self::Superseded`]）按 tmux 快照猜必错。
+/// 三种 cause 都由**后端**在帧里明说（`session_removed.cause`），或由断连 flush 给（[`Self::Unseen`]）——
+/// 〔LOC1b〕本机从此也一样：本机那份「按 `pid + procStart` diff 出 `Superseded`」的实现（`diff_sessions`〔散文墓碑〕）
+/// 随本机判活一起删了，本机的 `Superseded` 由本机后端说（`observe/watcher.rs` 同 pidfile 换 sid 那一支）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RemovalCause {
     /// 真的没了：pidfile 被删 / 进程退出。**默认值。**
@@ -79,8 +49,9 @@ pub enum RemovalCause {
     Superseded,
     /// 〔GP1 · 第四波〕**那台机器看不见了**（到它的那条连接断了）：说不清这条会话还在不在。
     ///
-    /// 唯一产出者是 `ssh_source::run` 的断连 flush（`ssh_source::disconnect_removals`）。
-    /// 它说的是**机器**，不是会话 ⇒ 裁决不看 tmux 快照（断连时那一台的快照已经忘了），
+    /// 产出者是两条流的断连 flush，同一个函数（`ssh_source::disconnect_removals`）：远端 `ssh_source::run` ·
+    /// 〔LOC1b〕本机 [`LocalTable::step`] 收 [`Lifecycle::StreamEnded`] 那一臂。
+    /// 它说的是**机器**，不是会话 ⇒ 裁决不看 tmux 快照，
     /// 落到前端是「说不清」而不是「已结束」（`设计/30 §3.5.7a`：`Unseen` 不许被显示成已结束）。
     Unseen,
 }
@@ -93,37 +64,31 @@ pub struct RemovedSid {
 }
 
 impl RemovedSid {
-    /// 真死。绝大多数调用点用这个。
+    /// 真死。
     pub fn gone(sid: impl Into<String>) -> Self {
         Self {
             sid: sid.into(),
             cause: RemovalCause::Gone,
         }
     }
-    /// 被顶替：同一条命（pid + `procStart` 都相同）在这一轮里换了个 sid。
-    ///
-    /// ⚠ **这个构造器 F01b 删过一次，P3 又加回来了** —— 删它的理由是「生产段零调用方，
-    /// 留着会让人以为本地也会产 `Superseded`」。那个理由当时**成立**；现在不成立了，
-    /// 因为本地真的开始产它了（`diff_sessions`）。**加回来不是推翻 F01b，是它的前提变了。**
-    pub fn superseded(sid: impl Into<String>) -> Self {
-        Self {
-            sid: sid.into(),
-            cause: RemovalCause::Superseded,
-        }
-    }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct SessionChange {
     pub added: Vec<String>,
     pub removed: Vec<RemovedSid>,
-    /// issue #23: 红绿灯——本次重扫中 status/waitingFor 发生变化（含新出现）的会话。
-    /// lib.rs 据此 emit session-activity（变化才发，天然稀疏：CLI 仅在状态转换时
-    /// 重写 sessions/<PID>.json）。
+    /// issue #23: 红绿灯——status/waitingFor 变了（含新宣告的初始值）的会话。
     pub status_changed: Vec<SessionActivity>,
+    /// 〔TL2 · GP1 问 3〕这一笔处理完之后，替那台机器报「清单报完了」（`origin-sessions-listed`）。
+    ///
+    /// 只有远端**重连**那一形用：上一轮断连时那台的可重连会话，要先按这一轮的 tmux 快照重新宣告
+    ///（还在 ⇒ 可重连；不在 ⇒ 已结束），**然后**才能报清单 —— 前端收到「报完了」时会把仍说不清的一律落已结束，
+    /// 而转移表里「已结束」收到 `idle` 不动（`设计/30 §3.5.6`）。两件事一个在 emitter 线程、一个原本在流线程，
+    /// 跨线程不保序 ⇒ 让 emitter 一并做。别的来源恒 `None`。
+    pub then_listed: Option<String>,
 }
 
-/// issue #23: 单个会话的红绿灯状态快照（status 直接来自 Claude Code 官方字段）。
+/// issue #23: 单个会话的红绿灯状态快照（status 直接来自 Claude Code 官方字段，经后端帧转交）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionActivity {
     pub session_id: String,
@@ -134,9 +99,8 @@ pub struct SessionActivity {
     pub waiting_for: Option<String>,
 }
 
-/// Batch7-F24：`snapshot_active` 的富化条目（骨架 tab 清单——kind/name 供
-/// ⚙ 标识与树状归属）。
-#[derive(Debug, Clone)]
+/// Batch7-F24：`list_active_sessions` 的条目（骨架 tab 清单 —— kind/name 供 ⚙ 标识与 bg 标题）。
+#[derive(Debug, Clone, PartialEq)]
 pub struct ActiveSession {
     pub session_id: String,
     pub cwd: String,
@@ -144,140 +108,166 @@ pub struct ActiveSession {
     pub name: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
-pub struct SessionInfo {
-    pub pid: u32,
-    #[serde(rename = "sessionId")]
-    pub session_id: String,
-    pub cwd: String,
-    /// 进程启动时刻，**平台原生格式的字符串**（见模块头注那张表）：
-    /// Windows = .NET DateTime.ToFileTime()；Linux = `/proc/<pid>/stat` 第 22 字段。
-    ///
-    /// v2.4.2 issue: 实测 Claude Code 某些启动路径（特定 /resume 流？）写出的
-    /// `sessions/<PID>.json` 不含 `procStart` 字段。之前 `String` 必填导致 serde
-    /// 解析失败 → 整个 session 被忽略 → monitor 漏 Tab。改 Option：缺失时
-    /// `is_process_alive` 跳过 PID 复用校验仅看 STILL_ACTIVE（代价是 PID 短期
-    /// 复用极小概率误判活跃，但比 "session 完全不出现" 强）。
-    #[serde(rename = "procStart", default)]
-    pub proc_start: Option<String>,
-    /// issue #23: Claude Code 官方会话状态（"busy"/"idle"/"waiting"/"shell"），
-    /// CLI **仅在状态转换时**重写本文件（实测与 jsonl turn_duration 同步，差 ~24ms）。
-    /// 红绿灯主信号。Option 兜旧版 CC 无此字段。
-    #[serde(default)]
-    pub status: Option<String>,
-    /// issue #23: status=="waiting" 时的细分原因（"permission prompt" / "dialog open"
-    /// / "input needed" / "worker request" / "sandbox request"）。
-    #[serde(rename = "waitingFor", default)]
-    pub waiting_for: Option<String>,
-    /// Claude 给会话起的语义名（aka ai-title；bg 任务的任务名）。Batch7-F24 起
-    /// 由骨架清单/树状标题消费。
-    #[serde(default)]
-    pub name: Option<String>,
-    /// Batch6-F21：会话类型。CC 2.1.x 起后端后台任务（--fork-session）也写
-    /// pidfile，标 `kind:"bg"`（另带 jobId）；交互会话为 `"interactive"`。
-    /// Option 兜旧版 CC 无此字段（缺失视为交互，保守放行）。
-    #[serde(default)]
+/// 表里的一条：本机后端宣告这条会话时带来的元信息（`session_added` 的那几格），之后按 `session_status` 更新灯。
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct LiveEntry {
+    pub cwd: Option<String>,
+    /// `session_kind`（"interactive" / "bg"；旧 CC 缺）。
     pub kind: Option<String>,
+    pub name: Option<String>,
+    pub status: Option<String>,
+    pub waiting_for: Option<String>,
+    /// 那个 claude 进程的 pid（`session_added.pid`，〔LOC1b〕additive）。本机 ↗ 按它找父 PowerShell 绑窗口
+    /// （`bind::SidHwndCache::record`，只在 Windows 上有）；老后端不带 ⇒ 那一格不绑，不猜。
+    pub pid: Option<u32>,
 }
 
-pub struct SessionMap {
-    dir: PathBuf,
-    /// session_id → SessionInfo
-    by_id: Arc<RwLock<HashMap<String, SessionInfo>>>,
-    /// Batch7-F24：显示 bg 会话（config.json showBgSessions，默认 true；重启生效）。
-    show_bg: bool,
+/// 本机那条流上的一件起停事实（已经滤掉被藏起来的 bg 会话）。
+#[derive(Debug, Clone, PartialEq)]
+pub enum Lifecycle {
+    Added {
+        sid: String,
+        entry: LiveEntry,
+    },
+    Status {
+        sid: String,
+        status: Option<String>,
+        waiting_for: Option<String>,
+    },
+    Removed {
+        sid: String,
+        cause: RemovalCause,
+    },
+    /// `sessions_replayed`：这台的活会话清单报完了。
+    Listed,
+    /// 这条流结束了。`idle` = 此刻本机的可重连会话（与远端断连 flush 并进来的同一摞）。
+    StreamEnded {
+        idle: Vec<String>,
+    },
 }
 
-impl SessionMap {
-    /// 加载 sessions/ 目录的全部活跃 session，并启动 watcher 线程。
-    /// 返回一个 channel 接收 session 集合变化（lib.rs 用它推送 session-ended 事件给前端）。
-    pub fn load_with_changes(
-        dir: PathBuf,
-        show_bg: bool,
-    ) -> (Arc<Self>, mpsc::Receiver<SessionChange>) {
-        tracing::info!(
-            "session_map scanning {} (exists={})",
-            dir.display(),
-            dir.exists()
-        );
-        let initial = scan_dir(&dir, show_bg);
-        tracing::info!("session_map loaded {} entries", initial.len());
-        for (sid, info) in &initial {
-            tracing::info!("  session: {} pid={} cwd={}", sid, info.pid, info.cwd);
-        }
-        let (tx, rx) = mpsc::channel::<SessionChange>();
-        let me = Arc::new(Self {
-            dir: dir.clone(),
-            by_id: Arc::new(RwLock::new(initial)),
-            show_bg,
-        });
-        Self::spawn_watcher(&me, Some(tx));
-        (me, rx)
-    }
+/// 交给本机 emitter 的东西。**顺序就是意义**：`Listed` 排在它前面那些 `Change` 之后发，
+/// 前端收到它时本机全部活会话都已宣告过。
+#[derive(Debug, Clone, PartialEq)]
+pub enum Out {
+    Change(SessionChange),
+    Listed,
+}
 
-    fn spawn_watcher(this: &Arc<Self>, change_tx: Option<mpsc::Sender<SessionChange>>) {
-        let dir = this.dir.clone();
-        let by_id = this.by_id.clone();
-        let show_bg = this.show_bg;
-        if let Err(e) = std::thread::Builder::new()
-            .name("session-map-watcher".into())
-            .spawn(move || run_watcher(dir, by_id, change_tx, show_bg))
-        {
-            tracing::error!(
-                "spawn session-map-watcher failed: {e}; \
-                 active session list will stay frozen at initial scan"
-            );
-        }
-    }
+/// 本机活会话表。
+#[derive(Debug, Default)]
+pub struct LocalTable {
+    by_id: HashMap<String, LiveEntry>,
+    /// 这条流上收到过 `sessions_replayed`（流一断就不算数）。
+    listed: bool,
+}
 
-    pub fn is_session_active(&self, session_id: &str) -> bool {
-        let info = match self.by_id.read().get(session_id).cloned() {
-            Some(i) => i,
-            None => {
-                tracing::debug!("active? {session_id} -> NOT in session map");
-                return false;
+impl LocalTable {
+    /// **纯**：一件起停事实 ⇒ 表怎么变 ＋ 交给 emitter 什么。
+    pub fn step(&mut self, ev: Lifecycle) -> Vec<Out> {
+        match ev {
+            Lifecycle::Added { sid, entry } => {
+                let activity = SessionActivity {
+                    session_id: sid.clone(),
+                    status: entry.status.clone(),
+                    waiting_for: entry.waiting_for.clone(),
+                };
+                self.by_id.insert(sid.clone(), entry);
+                vec![Out::Change(SessionChange {
+                    added: vec![sid],
+                    removed: vec![],
+                    status_changed: vec![activity],
+                    then_listed: None,
+                })]
             }
-        };
-        let alive = is_process_alive(info.pid, info.proc_start.as_deref());
-        tracing::debug!("active? {session_id} pid={} alive={alive}", info.pid);
-        alive
+            Lifecycle::Status {
+                sid,
+                status,
+                waiting_for,
+            } => {
+                let Some(e) = self.by_id.get_mut(&sid) else {
+                    return vec![];
+                };
+                e.status = status.clone();
+                e.waiting_for = waiting_for.clone();
+                vec![Out::Change(SessionChange {
+                    status_changed: vec![SessionActivity {
+                        session_id: sid,
+                        status,
+                        waiting_for,
+                    }],
+                    ..Default::default()
+                })]
+            }
+            Lifecycle::Removed { sid, cause } => {
+                if self.by_id.remove(&sid).is_none() {
+                    return vec![];
+                }
+                vec![Out::Change(SessionChange {
+                    removed: vec![RemovedSid { sid, cause }],
+                    ..Default::default()
+                })]
+            }
+            Lifecycle::Listed => {
+                self.listed = true;
+                vec![Out::Listed]
+            }
+            Lifecycle::StreamEnded { idle } => {
+                self.listed = false;
+                let mut announced: Vec<String> = self.by_id.drain().map(|(sid, _)| sid).collect();
+                announced.sort();
+                let removed = crate::ssh_source::disconnect_removals(announced, idle);
+                if removed.is_empty() {
+                    return vec![];
+                }
+                vec![Out::Change(SessionChange {
+                    removed,
+                    ..Default::default()
+                })]
+            }
+        }
     }
 
-    /// 查 SessionInfo（v1.7 绑定逻辑用：拿 claude_pid → parent → BindRegistry）
-    pub fn lookup(&self, session_id: &str) -> Option<SessionInfo> {
-        self.by_id.read().get(session_id).cloned()
+    pub fn is_active(&self, sid: &str) -> bool {
+        self.by_id.contains_key(sid)
     }
 
-    /// issue #23: 当前全部活跃会话的红绿灯快照。前端启动/F5 后拉一次做初始收敛
-    /// （session-activity 事件不进 replay buffer，刷新会丢——同 get_session_tasks
-    /// 的「快照 + 事件增量」双路收敛模式）。
+    pub fn lookup(&self, sid: &str) -> Option<LiveEntry> {
+        self.by_id.get(sid).cloned()
+    }
+
+    /// issue #23: 当前全部活会话的红绿灯快照（前端启动 / F5 后拉一次做初始收敛 —— session-activity 事件不进 replay buffer，
+    /// 刷新会丢；同任务快照那一问（`tasks-list`）的「快照 + 事件增量」双路收敛模式）。
     pub fn snapshot_activity(&self) -> Vec<SessionActivity> {
-        self.by_id
-            .read()
+        let mut v: Vec<SessionActivity> = self
+            .by_id
             .iter()
-            .map(|(sid, info)| SessionActivity {
+            .map(|(sid, e)| SessionActivity {
                 session_id: sid.clone(),
-                status: info.status.clone(),
-                waiting_for: info.waiting_for.clone(),
+                status: e.status.clone(),
+                waiting_for: e.waiting_for.clone(),
             })
-            .collect()
+            .collect();
+        v.sort_by(|a, b| a.session_id.cmp(&b.session_id));
+        v
     }
 
-    /// Batch5-F18：活跃会话清单（sid + cwd），供 `list_active_sessions` IPC——
-    /// 前端启动时先建全部骨架 Tab，不等首条内容行。
-    ///
-    /// 按 (cwd, sid) 排序：HashMap 迭代序每进程随机，不排序则 tab 栏顺序每次
-    /// 启动洗牌（F18 审计发现）。cwd 优先 → 同项目的会话相邻，跨启动稳定。
+    /// `list_active_sessions` 的答案：清单**报完了**才给（`Some`），没报完 ⇒ `None`（不交半截的清单 ——
+    /// 前端拿它把固定复活的本机 tab 落成「活 / 已结束」，半截的会把还没宣告到的活会话说成已结束，`设计/30 §3.5.7a`）。
+    pub fn listed_active(&self) -> Option<Vec<ActiveSession>> {
+        self.listed.then(|| self.snapshot_active())
+    }
+
+    /// Batch5-F18：活会话清单，按 (cwd, sid) 排（跨启动稳定，同项目的会话相邻）。
     pub fn snapshot_active(&self) -> Vec<ActiveSession> {
         let mut v: Vec<ActiveSession> = self
             .by_id
-            .read()
             .iter()
-            .map(|(sid, info)| ActiveSession {
+            .map(|(sid, e)| ActiveSession {
                 session_id: sid.clone(),
-                cwd: info.cwd.clone(),
-                kind: info.kind.clone(),
-                name: info.name.clone(),
+                cwd: e.cwd.clone().unwrap_or_default(),
+                kind: e.kind.clone(),
+                name: e.name.clone(),
             })
             .collect();
         v.sort_by(|a, b| (&a.cwd, &a.session_id).cmp(&(&b.cwd, &b.session_id)));
@@ -285,418 +275,51 @@ impl SessionMap {
     }
 }
 
-fn scan_dir(dir: &Path, show_bg: bool) -> HashMap<String, SessionInfo> {
-    // v2.22.2:先按 pid(文件名,天然唯一)收全量,再按 sid 归并。同 sid 多份
-    // pidfile(实证:cc-backend 的 bg-spare 备用进程复用父会话 sid、标 kind=bg)
-    // 时 **interactive 恒压过 bg**——此前直接按 sid 建 map = 目录序先到先得,
-    // bg 先扫到会把真交互会话降格成 ⚙、树状挂错宿主(用户截图实锤)。
-    // 同 rank 取更新的(procStart 数值比较,缺失回退 pid 大者),消除任意性。
-    let by_pid = crate::utils::scan_dir_jsons(dir, |info: &SessionInfo| info.pid);
-    let mut map: HashMap<String, SessionInfo> = HashMap::new();
-    for (_, info) in by_pid {
-        let replace = match map.get(&info.session_id) {
-            None => true,
-            Some(prev) => {
-                let (rp, rn) = (kind_rank(prev), kind_rank(&info));
-                rn > rp || (rn == rp && newer_than(&info, prev))
-            }
-        };
-        if replace {
-            map.insert(info.session_id.clone(), info);
-        }
-    }
-    // Batch7-F24：showBgSessions 开（默认）→ 保留 bg（kind 字段随 info 透传给下游
-    // 做 ⚙ 标识/树状）；关 → 回到 Batch6-F21 行为（bg 不算会话）。
-    if show_bg {
-        return map;
-    }
-    // Batch6-F21：交互性过滤。CC 2.1.x 的后端后台任务（--fork-session）也写
-    // pidfile（kind:"bg" + jobId）——是自己文件的真作者，但不是交互会话，不该成
-    // Tab / 进红绿灯 / 进骨架清单。保守规则（与远端后端一字一致）：kind 存在
-    // 且非 "interactive" 才排除，旧 CC 无该字段 → 保留。在 by_id 源头纯净化，
-    // 下游（diff/snapshot/activity/list_active_sessions）自动干净。
-    map.retain(is_interactive);
-    map
+static TABLE: OnceLock<RwLock<LocalTable>> = OnceLock::new();
+static SINK: OnceLock<std::sync::mpsc::Sender<Out>> = OnceLock::new();
+
+/// 本机那一张（进程里只有一条本机流 ⇒ 只有一张）。
+pub fn local() -> &'static RwLock<LocalTable> {
+    TABLE.get_or_init(Default::default)
 }
 
-/// Batch6-F21：交互性谓词——`scan_dir` 过滤与单测共用（测产线谓词而非测试内
-/// 副本，审计 S2）。签名匹配 `HashMap::retain`。
-fn is_interactive(_sid: &String, info: &mut SessionInfo) -> bool {
-    let ok = info.kind.as_deref().map_or(true, |k| k == "interactive");
-    // U-CC1：**排他 ≠ 无声**。这条白名单是刻意的（`kind` 是授权型判据，把 bg 当交互
-    // 会让用户对着一个不能打字的东西敲键），但「不在白名单里就隐藏」这件事本身
-    // 今天一声不吭 ⇒ CC 加了新 kind 时没有任何信号。只记账，**不改行为**。
-    if let Some(k) = info.kind.as_deref() {
-        if k != "interactive" && k != "bg" {
-            // 〔ST3〕pidfile 只在本机 `~/.claude/sessions` 里扫 ⇒ 记在本机名下。
-            crate::drift_ledger::record(
-                &crate::origin::Origin::local(),
-                crate::drift_ledger::DriftFace::UnknownSessionKind,
-                k,
-                None,
+/// 装本机 emitter 的入口（`lib.rs` 起步段调一次）。第二次调是用法错：大声说，不换。
+pub fn install_sink(tx: std::sync::mpsc::Sender<Out>) {
+    if SINK.set(tx).is_err() {
+        tracing::error!(
+            "session_map::install_sink 被调了第二次 —— 本机 emitter 只许有一个，这次不换"
+        );
+    }
+}
+
+/// 本机那条流交来一件起停事实：改表，把结果按序交给 emitter。
+///
+/// 「报完了清单」那本账与远端同一本（`ssh_source::note_listed` / `forget_listed`，键 `<local>`）——
+/// F5 对账按它分「已结束 / 说不清」，本机远端一条规则。
+pub fn feed(ev: Lifecycle) {
+    let origin = crate::backend::control::inbound_client::LOCAL_ORIGIN;
+    match &ev {
+        Lifecycle::Listed => crate::ssh_source::note_listed(origin),
+        Lifecycle::StreamEnded { .. } => crate::ssh_source::forget_listed(origin),
+        _ => {}
+    }
+    let outs = local().write().step(ev);
+    let Some(tx) = SINK.get() else {
+        if !outs.is_empty() {
+            tracing::warn!(
+                "本机 emitter 还没装上（session_map::install_sink 没调过）—— 这 {} 件丢掉",
+                outs.len()
             );
         }
-    }
-    ok
-}
-
-/// v2.22.2:kind 优先级——interactive(或缺失,旧 CC 视为交互)= 1,bg 等 = 0。
-fn kind_rank(info: &SessionInfo) -> u8 {
-    if info.kind.as_deref().map_or(true, |k| k == "interactive") {
-        1
-    } else {
-        0
-    }
-}
-
-/// v2.22.2:同 rank 平局判新——procStart(FILETIME 数值)大者新;缺失回退 pid。
-fn newer_than(a: &SessionInfo, b: &SessionInfo) -> bool {
-    let ps = |i: &SessionInfo| i.proc_start.as_deref().and_then(|s| s.parse::<u64>().ok());
-    match (ps(a), ps(b)) {
-        (Some(x), Some(y)) if x != y => x > y,
-        _ => a.pid > b.pid,
-    }
-}
-
-/// issue #23: 重扫 diff（纯函数，供单测）。
-///
-/// - removed/added：sid 集合差（与历史 HashSet difference 逻辑等价）。
-/// - status_changed：next 中 status/waitingFor 与 prev 不同的会话；**新出现的也算**
-///   （让前端立即拿到初始灯色）。CLI 状态转换 = 重写 PID.json = 文件事件 = 必走
-///   scan → 本函数，是状态变化的唯一检出点（心跳分支不重读文件、无状态可比）。
-fn diff_sessions(
-    prev: &HashMap<String, SessionInfo>,
-    next: &HashMap<String, SessionInfo>,
-) -> SessionChange {
-    // ★★ **P3 刀 0：本地也判 `Superseded`。**
-    //
-    // 原注释逐字写着「本地路径**没有**远端那条『同 pidfile 原地换 sid』的信息
-    // （那是后端才看得见的 per-pidfile 视角）」—— **那句话是假的**：
-    // `SessionInfo` 自己就带 `pid` 与 `procStart`，而本地会话文件正是 `sessions/<PID>.json`。
-    // 信息一直在，只是**没人算**。
-    //
-    // 为什么必须算（`session_map.rs` 头注那条巧合）：**刀 1 之前**本地 sid 不进
-    // `tmux_raw_registry` ⇒ `find_tmux_origin_for_sid` 恒 `None` ⇒ 两种 cause 都归档
-    // ⇒ `/branch` 的灰点 bug 碰巧没出现。「**结论对、理由是个巧合**」。
-    // P3 刀 1 已经让本机 tmux 进了那张表（`7226093`）⇒ **那个巧合已经没了**，
-    // 今天挡住 `/branch` 灰点的就是本函数这一支。
-    //
-    // 〔U4b · 第四波〕本机 emitter 已接上 `classify_removed`（`lib.rs`），本支从此有真消费者：
-    // 本机的「可重连 / 已结束」按它分流（P3 §6 的 D1 兑现）。
-    //
-    // ⚠ **要正面证据才敢说「同一条命」**：`procStart` 缺席（实测某些启动路径不写它）时
-    // **退回 `Gone`**，不拿「pid 相同」单独一条就断言。pid 是会被复用的；
-    // 判错方向的代价不对称 —— 误判 `Superseded` 会让一个真死的会话不归档（留个消不掉的条目），
-    // 而误判 `Gone` 只是回到今天的行为。
-    let identity = |i: &SessionInfo| i.proc_start.as_deref().map(|ps| (i.pid, ps.to_string()));
-    let next_by_identity: HashMap<(u32, String), &str> = next
-        .iter()
-        .filter_map(|(sid, i)| identity(i).map(|k| (k, sid.as_str())))
-        .collect();
-    let removed: Vec<RemovedSid> = prev
-        .iter()
-        .filter(|(k, _)| !next.contains_key(*k))
-        .map(
-            |(sid, info)| match identity(info).and_then(|k| next_by_identity.get(&k).copied()) {
-                Some(new_sid) if new_sid != sid.as_str() => RemovedSid::superseded(sid.clone()),
-                _ => RemovedSid::gone(sid.clone()),
-            },
-        )
-        .collect();
-    let added: Vec<String> = next
-        .keys()
-        .filter(|k| !prev.contains_key(*k))
-        .cloned()
-        .collect();
-    let mut status_changed: Vec<SessionActivity> = Vec::new();
-    for (sid, info) in next {
-        let changed = match prev.get(sid) {
-            Some(p) => p.status != info.status || p.waiting_for != info.waiting_for,
-            None => true,
-        };
-        if changed {
-            status_changed.push(SessionActivity {
-                session_id: sid.clone(),
-                status: info.status.clone(),
-                waiting_for: info.waiting_for.clone(),
-            });
-        }
-    }
-    SessionChange {
-        added,
-        removed,
-        status_changed,
-    }
-}
-
-fn run_watcher(
-    dir: PathBuf,
-    by_id: Arc<RwLock<HashMap<String, SessionInfo>>>,
-    change_tx: Option<mpsc::Sender<SessionChange>>,
-    show_bg: bool,
-) {
-    if !dir.exists() {
-        if let Err(e) = std::fs::create_dir_all(&dir) {
-            tracing::warn!("create {} failed: {e}", dir.display());
-            return;
-        }
-    }
-
-    let (tx, rx) = std::sync::mpsc::channel::<DebounceEventResult>();
-    let mut debouncer = match new_debouncer(Duration::from_millis(80), tx) {
-        Ok(d) => d,
-        Err(e) => {
-            tracing::error!("session_map debouncer init failed: {e}");
-            return;
-        }
-    };
-
-    if let Err(e) = debouncer.watcher().watch(&dir, RecursiveMode::NonRecursive) {
-        tracing::error!("watch failed for {}: {e}", dir.display());
         return;
-    }
-
-    // 双触发：文件事件（即时） + 心跳（每 2s）。心跳是为修 Bug —— 用户关闭终端
-    // 窗口导致 claude.exe 被强杀时，sessions/<PID>.json **不会被删**（Claude Code 的
-    // 退出 hook 没跑）→ 文件事件永不触发 → 死 session 的 Tab 永远 live。心跳主动调
-    // is_process_alive 清理这种残留。
-    use std::sync::mpsc::RecvTimeoutError;
-    loop {
-        let evt = rx.recv_timeout(Duration::from_secs(2));
-        let scan = match evt {
-            Ok(_) => true,                           // 文件事件 → 全量重扫
-            Err(RecvTimeoutError::Timeout) => false, // 心跳 → 只探活
-            Err(RecvTimeoutError::Disconnected) => break,
-        };
-
-        if scan {
-            let next = scan_dir(&dir, show_bg);
-            let n = next.len();
-            // issue #23: diff 抽纯函数（可单测，"变化才发"契约的唯一实现点）。
-            // 块作用域确保 read guard 在 write 前释放（parking_lot 同线程 read→write 死锁）。
-            let change = {
-                let prev = by_id.read();
-                diff_sessions(&prev, &next)
-            };
-            *by_id.write() = next;
-            if !change.removed.is_empty()
-                || !change.added.is_empty()
-                || !change.status_changed.is_empty()
-            {
-                if !change.removed.is_empty() || !change.added.is_empty() {
-                    tracing::info!(
-                        "session_map: {n} active (+{} -{})",
-                        change.added.len(),
-                        change.removed.len()
-                    );
-                }
-                if let Some(tx) = &change_tx {
-                    let _ = tx.send(change);
-                }
-            }
-        } else {
-            // 心跳：探活所有当前条目。死的算 removed（PID.json 还在但进程没了）。
-            let snapshot: Vec<(String, SessionInfo)> = by_id
-                .read()
-                .iter()
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect();
-            let dead: Vec<String> = snapshot
-                .into_iter()
-                .filter(|(_, info)| !is_process_alive(info.pid, info.proc_start.as_deref()))
-                .map(|(sid, _)| sid)
-                .collect();
-            if !dead.is_empty() {
-                {
-                    let mut w = by_id.write();
-                    for sid in &dead {
-                        w.remove(sid);
-                    }
-                }
-                tracing::info!(
-                    "session_map heartbeat: {} dead session(s) removed: {:?}",
-                    dead.len(),
-                    dead
-                );
-                if let Some(tx) = &change_tx {
-                    let _ = tx.send(SessionChange {
-                        added: vec![],
-                        removed: dead.into_iter().map(RemovedSid::gone).collect(),
-                        status_changed: vec![],
-                    });
-                }
-            }
+    };
+    for o in outs {
+        if let Err(e) = tx.send(o) {
+            tracing::warn!("本机 emitter 收不了了：{e}");
         }
     }
 }
-
-// === 进程探活（Windows） ===
-//
-// 两道关卡：
-//   1) OpenProcess + GetExitCodeProcess == STILL_ACTIVE：PID 当前被占用着
-//   2) GetProcessTimes 返回的 creation FILETIME 与 sessions/<PID>.json 里记录的
-//      procStart（NetTicks 字符串）在 100ms 容差内吻合（FileTime → NetTicks 转换
-//      在 utils::FileTime::to_net_local_ticks 中处理）
-//
-// 没有第二关，残留的死 session PID.json 会因为 PID 被另一个进程复用而被误判为活跃
-// （Windows PID 短期内复用很常见）。早期注释里"代价仅是多显示一个 Tab"的判断不成立，
-// 用户实际看到的是 4 个僵尸 Tab。
-
-#[cfg(windows)]
-fn is_process_alive(pid: u32, expected_proc_start: Option<&str>) -> bool {
-    use crate::utils::{FileTime, NetTicks};
-    use windows::Win32::Foundation::{CloseHandle, FILETIME};
-    use windows::Win32::System::Threading::{
-        GetExitCodeProcess, GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-    };
-
-    const STILL_ACTIVE: u32 = 259;
-    /// 100ms = 1,000,000 个 100ns tick
-    const PROC_START_TOLERANCE_TICKS: u64 = 1_000_000;
-
-    if pid == 0 {
-        return false;
-    }
-
-    unsafe {
-        let handle = match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
-            Ok(h) if !h.is_invalid() => h,
-            _ => return false,
-        };
-
-        // 1) STILL_ACTIVE
-        let mut code: u32 = 0;
-        if GetExitCodeProcess(handle, &mut code).is_err() || code != STILL_ACTIVE {
-            let _ = CloseHandle(handle);
-            return false;
-        }
-
-        // 2) procStart 校验 —— 防 PID 复用
-        //   Claude Code 写的 procStart = NetTicks（.NET Local Ticks）
-        //   GetProcessTimes 给的 = FILETIME UTC
-        // FileTime → NetTicks 经 utils::FileTime::to_net_local_ticks 转换后比较。
-        if let Some(expected) = expected_proc_start.and_then(NetTicks::parse_str) {
-            let mut creation = FILETIME::default();
-            let mut exit_t = FILETIME::default();
-            let mut kernel = FILETIME::default();
-            let mut user = FILETIME::default();
-            if GetProcessTimes(handle, &mut creation, &mut exit_t, &mut kernel, &mut user).is_ok() {
-                let actual = FileTime::from_win32(&creation).to_net_local_ticks();
-                let diff = actual.abs_diff(expected);
-                if diff > PROC_START_TOLERANCE_TICKS {
-                    tracing::debug!(
-                        "pid {pid} proc_start mismatch: expected={} actual_net={} diff={} — PID reused",
-                        expected.0, actual.0, diff
-                    );
-                    let _ = CloseHandle(handle);
-                    return false;
-                }
-            }
-        }
-
-        let _ = CloseHandle(handle);
-        true
-    }
-}
-
-/// Linux：`/proc/<pid>` 存在性 + `procStart` 精确比对（**同样是双重校验，不是降级**）。
-///
-/// # 为什么这里能做到与 Windows 同等强度（U7d 实测，2026-08-02）
-///
-/// 计划原本担心「monitor 侧 `procStart` 是 .NET DateTime.Ticks，而 Linux 的
-/// `/proc/<pid>/stat` 第 22 字段是自 boot 的时钟滴答，**量纲不同、不能硬套**」，
-/// 并准备降级成「只查存在性 + 标注置信度」。
-///
-/// **实测推翻了这条前提**：Claude Code 在 Linux 上写进 pidfile 的 `procStart`
-/// **就是 `/proc/<pid>/stat` 第 22 字段本身**。本机 6 个真实会话逐个比对，**6/6 完全相等**
-/// （`3169940` / `12892607` / `5500689` / `6027532` / `1069089` / `1196681`）——
-/// 那些值也一眼不是 .NET Ticks（后者是 ~6.4e17 量级）。
-///
-/// 也就是说 `procStart` 是**平台原生**的：Windows 上是 FILETIME 系，Linux 上是 jiffies 系，
-/// 各自与本平台的查询口径同源。⇒ PID 复用防御在这里是**满精度**的，不需要任何启发式。
-///
-/// # `procStart` 缺失 ⇒ 只查存在性
-///
-/// 与 Windows 分支同语义（v2.4.2 实测某些启动路径下 Claude Code 不写这个字段）。
-#[cfg(target_os = "linux")]
-fn is_process_alive(pid: u32, expected_proc_start: Option<&str>) -> bool {
-    let Ok(raw) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
-        return false; // 进程不在（或读不到）⇒ 判死。fail-safe：宁可少显示，不显示僵尸
-    };
-    liveness_from_stat(&raw, expected_proc_start)
-}
-
-/// 拿到 `/proc/<pid>/stat` 原文之后的判定〔audit-0805 F13 / 报告 I-14〕。
-///
-/// # 抽出来是为了让它可判据
-///
-/// 上面那半要真 `/proc`，测不了；而**判定规则本身**恰恰是本条要修的东西。
-///
-/// # 它此前与后端那份**方向相反**
-///
-/// 原来最后一行是 `proc_stat_starttime(&raw).is_some_and(|got| got == want)` ——
-/// **字段解析不出时 `is_some_and` 给 `false` ⇒ 判死**。
-/// 而后端侧 `platform/liveness.rs` 对同一格逐字写着：
-/// 「current unreadable right now: existence is all we can assert.
-/// **Do not archive a still-existing PID on missing start info.**」
-///
-/// ⇒ 同一件事两个方向。**而这一格的语义很清楚**：`/proc/<pid>/stat` 都读到了，
-/// 就说明那个 pid **还在**；解析不出 starttime 只是「我认不出它是不是同一个进程」，
-/// 不是「它不在了」。判死会让一个**活着的会话**被归档。
-///
-/// ⚠ 保守方向的代价也要说清：这样改之后，「pid 被复用且 starttime 恰好解析不出」会误判成活。
-/// 那比误杀活会话轻 —— 而且后端侧一直是这么选的，两边现在口径一致。
-#[cfg(target_os = "linux")]
-fn liveness_from_stat(raw: &str, expected_proc_start: Option<&str>) -> bool {
-    let Some(want) = expected_proc_start else {
-        return true; // 缺 procStart ⇒ 退到存在性，同 Windows 侧与后端侧
-    };
-    match proc_stat_starttime(raw) {
-        Some(got) => got == want,
-        // F13：解析不出 ≠ 进程不在。/proc 读到了就说明它还在。
-        None => true,
-    }
-}
-
-/// 从 `/proc/<pid>/stat` 原文里取第 22 字段（starttime）。
-///
-/// # ★ 不能用朴素 `split_whitespace()`
-///
-/// 第 2 字段 `comm` 是**括号包起来的可执行名，允许含空格与括号**。
-/// 实测本机 400 个进程里就有一个踩中：**`comm = "tmux: server"`** ——
-/// 朴素切法读到 `0`，正确值是 `1042`。而 tmux server 正是本仓的核心依赖。
-///
-/// 稳健解法：找**最后一个** `)`（comm 内部的括号不会是最后一个），其后即第 3 字段起，
-/// 于是 starttime = 其后第 `22 - 3 = 19` 项（0 基）。
-#[cfg(target_os = "linux")]
-fn proc_stat_starttime(raw: &str) -> Option<&str> {
-    let close = raw.rfind(')')?;
-    raw.get(close + 1..)?.split_whitespace().nth(19)
-}
-
-/// 其余 unix（**主要是 macOS**）：仍然恒 `false` —— 本机会话不会被监听。
-///
-/// **这是如实的未实现，不是判据**。macOS 没有 `/proc`，要做得走 `sysctl KERN_PROC`
-/// 的 FFI；本仓没有 macOS CI，我也无法在这里实测 —— 按本仓纪律**不写没验过的实现**。
-///
-/// 为什么返回 `false` 而不是像后端侧那样 `unimplemented!()`：
-/// 那边是 CLI，panic 是「没人能忽略的信号」；这边是 GUI 常驻进程，panic 会直接崩掉窗口。
-/// `false` 在这里是 **fail-safe**（少显示，而不是显示永不消失的僵尸会话），
-/// 且这条限制已写进 `src/doc/ARCHITECTURE.md` 与双语 README —— **不是静默的谎**。
-#[cfg(all(unix, not(target_os = "linux")))]
-fn is_process_alive(_pid: u32, _expected_proc_start: Option<&str>) -> bool {
-    false
-}
-
-/// U7d：Linux 判活的测试。**跑在真进程上**，不是只喂夹具字符串。
-#[cfg(all(test, target_os = "linux"))]
-#[path = "../../../tests/bridge/session_map_linux_liveness.rs"]
-mod linux_liveness;
 
 #[cfg(test)]
 #[path = "../../../tests/bridge/session_map_tests.rs"]
 mod tests;
-
-#[cfg(all(test, target_os = "linux"))]
-#[path = "../../../tests/bridge/session_map_f13_tests.rs"]
-mod f13_tests;

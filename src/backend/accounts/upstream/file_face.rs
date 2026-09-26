@@ -68,10 +68,24 @@ pub(crate) fn answer_set(args: &Value) -> FileFaceAnswer {
 
 /// [`answer_set`] 的本体，路径是参数（判据拿临时目录喂它，不碰真家目录）。
 pub(crate) fn answer_set_at(path: &Path, args: &Value) -> FileFaceAnswer {
-    let account = args
-        .get("account")
-        .and_then(Value::as_str)
-        .ok_or(("bad_args", "缺 `account`（要一个字符串）".to_string()))?;
+    // 〔HX2 · 第四波 4D〕入参从 `account` 换成 `configDir`：账号 id 由**这台后端**按全仓唯一那份规则推
+    //   （`acct_core::apikey_account_id_of_dir`，起会话那一侧 `endpoint.rs` 调的同一个）。从前是 monitor 推好了交过来 ——
+    //   那一跳随写 key 改走 `chan.call` 一起退了（前端一个字都不推账号 id：`KH2C1`）。不为旧形状留兼容：还给 `account` ⇒ 拒。
+    if args.get("account").is_some() {
+        return Err((
+            "bad_args",
+            "不收 `account`：账号 id 由这台后端从 `configDir` 推（全仓一份规则）".to_string(),
+        ));
+    }
+    let config_dir = args.get("configDir").and_then(Value::as_str).ok_or((
+        "bad_args",
+        "缺 `configDir`（这个号的账号目录，要一个字符串）".to_string(),
+    ))?;
+    let account_id = acct_core::apikey_account_id_of_dir(config_dir).ok_or((
+        "bad_args",
+        format!("从账号目录 {config_dir:?} 推不出账号 id —— 不写"),
+    ))?;
+    let account = account_id.as_str();
     // ★ 与装表那一步**同一个谓词**：写得进去、却装不进表 ⇒ 那一行的请求永远 404，而文件里明明有它。
     if !crate::relay::segment_is_safe(account) {
         return Err((
@@ -233,6 +247,9 @@ fn write_at(
             return Err(("io_failed", format!("建 {} 失败：{e}", dir.display())));
         }
     }
+    // 〔HX2〕读—改—写整段在那个目录的跨进程锁里（`platform/lock.rs`）：两个后端进程同时给两个号写 key，
+    //   从前后写的那一份整份盖掉先写的那一格（这一份连进程内锁都没有）。
+    let _lock = crate::platform::lock::hold(dir).map_err(|e| ("io_failed", e))?;
     // ★ 写的这一刻读盘。解析不了 ⇒ `bad_file`，**不覆盖**。
     let current = read_doc(path)?.unwrap_or_default();
     let merged = store::merge_account_key(&current, id, key);

@@ -83,6 +83,11 @@ pub(crate) fn sessions() -> Vec<crate::agents::SynthSession> {
     }
 }
 
+/// 〔LOC1b · 4D〕这台机器上 Codex 会话记录的根（`<codex home>/sessions`；说不出 home ⇒ `None`）。与 [`sessions`] 扫的是同一个根。
+pub(crate) fn records_root() -> Option<std::path::PathBuf> {
+    super::home().map(|h| parse::sessions_root(&h))
+}
+
 /// [`sessions`] 的本体，Codex home 是参数（判据喂临时目录）。
 pub(crate) fn sessions_under(codex_home: &Path) -> Vec<crate::agents::SynthSession> {
     let root = parse::sessions_root(codex_home);

@@ -153,7 +153,7 @@ fn blank_query_and_torn_tail_yield_nothing_extra() {
 }
 
 /// 🔴 B4：与 `--search` **同一份口径**的行为面 —— 对同一份文件、同一查询，
-/// `--search`（`build_session_hits`）给的 uuid 序列与三段片段，与本命令逐条相等（上限之内）。
+/// `--search`（`session_hits_in`）给的 uuid 序列与三段片段，与本命令逐条相等（上限之内）。
 /// 两个出口各跑各的管线（一个走全局预算、带时间戳；一个按文件序、不带），只在「口径」上必须重合。
 #[test]
 fn find_and_global_search_agree_on_the_same_file() {
@@ -170,7 +170,15 @@ fn find_and_global_search_agree_on_the_same_file() {
         };
         let mut budget = SnippetBudget::new(opts.limit);
         let q = Q.trim().to_lowercase();
-        let s = build_session_hits(&p, &q, &opts, &mut budget, 0).expect("有命中");
+        let s = session_hits_in(
+            &p,
+            &std::fs::read_to_string(&p).expect("读夹具"),
+            &q,
+            &opts,
+            &mut budget,
+            0,
+        )
+        .expect("有命中");
         // `--search` 也列没有 uuid 的记录（uuid 记成空串）；本命令不列 —— 这是两者**唯一**刻意的差别
         let searched: Vec<(String, String, String, String)> = s["hits"]
             .as_array()

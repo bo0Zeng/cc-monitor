@@ -161,11 +161,28 @@ pub const CMD_COMMIT_TEXT: &str = "files-commit-text";
 pub const REQUEST_ID_ROOM: usize = 1 + 32 + 1 + 20 + 1 + 20;
 
 /// 存盘那一趟的参数（路径切成 `(root, rel)` 与写面其余四条同形）。
-pub fn save_args(path: &str, content: &str) -> serde_json::Value {
+///
+/// 〔FW1 · 第四波 4D · D-c〕`expect` = 「我打开时那一份」的摘要（`files-read-text` 交的、或上一次存成时应答交的），
+/// 后端比盘上此刻那一份、对不上就 `stale`、一个字节不写。窗口只把它当不透明令牌原样交回（算法住后端一处）。
+pub fn save_args(path: &str, content: &str, expect_sha256: &str) -> serde_json::Value {
+    save_args_at(
+        &super::source::RemotePath::plain(path),
+        content,
+        expect_sha256,
+    )
+}
+
+/// 〔W5-FILES · 有损名全寻址〕同 [`save_args`]，路径可以带字节（`root` / `rel` 按字节切，有损那一段发 `{"b16": …}`）。
+pub fn save_args_at(
+    at: &super::source::RemotePath,
+    content: &str,
+    expect_sha256: &str,
+) -> serde_json::Value {
     serde_json::json!({
-        "root": super::source::parent_dir(path),
-        "rel": super::source::remote_basename(path),
+        "root": at.parent().wire(),
+        "rel": at.tail_wire(),
         "content": content,
+        "expect": { "sha256": expect_sha256 },
     })
 }
 
@@ -175,13 +192,37 @@ pub fn stage_args(key: &str, seq: u64, chunk: &str) -> serde_json::Value {
 }
 
 /// 〔F9c〕提交那一趟的参数：块数与总字节数**显式**给，后端读回来必须对得上。
-pub fn commit_args(path: &str, key: &str, chunks: usize, bytes: usize) -> serde_json::Value {
+pub fn commit_args(
+    path: &str,
+    key: &str,
+    chunks: usize,
+    bytes: usize,
+    expect_sha256: &str,
+) -> serde_json::Value {
+    commit_args_at(
+        &super::source::RemotePath::plain(path),
+        key,
+        chunks,
+        bytes,
+        expect_sha256,
+    )
+}
+
+/// 〔W5-FILES〕同 [`commit_args`]，路径可以带字节。
+pub fn commit_args_at(
+    at: &super::source::RemotePath,
+    key: &str,
+    chunks: usize,
+    bytes: usize,
+    expect_sha256: &str,
+) -> serde_json::Value {
     serde_json::json!({
-        "root": super::source::parent_dir(path),
-        "rel": super::source::remote_basename(path),
+        "root": at.parent().wire(),
+        "rel": at.tail_wire(),
         "key": key,
         "chunks": chunks,
         "bytes": bytes,
+        "expect": { "sha256": expect_sha256 },
     })
 }
 
@@ -202,8 +243,26 @@ pub fn request_line_len(cmd: &str, args: &serde_json::Value) -> usize {
 }
 
 /// 〔F9c〕整份装得进**一条** `files-write-text` 吗（真序列化量，按最长 id）。
+/// 〔FW1〕`expect` 那一格定长（摘要恒 [`SHA256_HEX_LEN`] 位），按一份同长的占位量 —— 与真发的逐字节同长。
 pub fn fits_one_line(path: &str, content: &str) -> bool {
-    request_line_len(CMD_WRITE_TEXT, &save_args(path, content)) <= SAVE_LINE_CAP
+    let room = "0".repeat(SHA256_HEX_LEN);
+    request_line_len(CMD_WRITE_TEXT, &save_args(path, content, &room)) <= SAVE_LINE_CAP
+}
+
+/// 〔FW1〕后端 CAS 摘要（SHA-256）的十六进制长度。窗口不算摘要，只认形状：读回来的那一格不是这个形状 ⇒ 不打开
+/// （存不回去的编辑面不该立起来）。与后端 `files::SHA256_HEX_LEN` 同一个数（SHA-256 的定义，不是可调的量）。
+pub const SHA256_HEX_LEN: usize = 64;
+
+/// 〔FW1〕这一格像不像后端交的摘要（64 位小写十六进制）。
+pub fn is_sha256_hex(s: &str) -> bool {
+    s.len() == SHA256_HEX_LEN
+        && s.bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// 〔FW1〕存盘那一问的「盘上那份在你打开之后被改过了」那句（`stale` 那一档；后端原话接在后面）。
+pub fn stale_notice(why: &str) -> String {
+    copy_text("rsFilewinEditor.stale.notice", &[("why", why)])
 }
 
 /// 〔F9c〕一个字放进 JSON 字符串之后占几个字节 —— 与 `serde_json` 的转义**逐码位**相同
@@ -277,6 +336,12 @@ use super::source::Row;
 /// 行上那颗按钮。
 pub static EDIT_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinEditor.label.edit", &[]));
+/// 〔FW1 · D-c〕存盘撞上 stale 之后那两颗按钮（住这里：判据按名字点它们，不在画的地方另写一遍）。
+pub static OVERWRITE_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinEditor.stale.overwrite", &[]));
+/// 〔FW1 · D-c〕同上，另一颗。
+pub static REOPEN_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinEditor.stale.reopen", &[]));
 
 /// 这一行**为什么**改不了（`None` = 改得了）。
 ///
@@ -316,7 +381,23 @@ pub fn why_not_editable(r: &Row) -> Option<String> {
     None
 }
 
-/// 行上那颗「编辑」画不画。
+/// 〔W5-FILES · `设计/60 §6.2`「有损名的…编辑」〕**窗口里一行**为什么不能编辑：有损但带着原始字节 ⇒ 名字那一关放行
+/// （读 / 存走字节），其余几关（目录 · 超上限）照 [`why_not_editable`]。行上那颗按钮与右键菜单问的是它。
+pub fn why_not_editable_listed(l: &super::source::Listed) -> Option<String> {
+    if l.lossy_name && l.raw_name.is_some() {
+        let mut r = l.row.clone();
+        r.lossy_name = false;
+        return why_not_editable(&r);
+    }
+    why_not_editable(&l.row)
+}
+
+/// 〔W5-FILES〕[`why_not_editable_listed`] 的 `is_none()`。
+pub fn editable(l: &super::source::Listed) -> bool {
+    why_not_editable_listed(l).is_none()
+}
+
+/// 只有那五格时「编辑」画不画（窗口里一行走 [`editable`]）。
 ///
 /// ⚠ 它就是 [`why_not_editable`] 的 `is_none()` —— **刻意不另写一套条件**
 ///（那正是「按钮画了但点了没反应」那个静默态的来源；同 `download` 那一对
@@ -357,22 +438,90 @@ pub struct Pane {
     /// 🔴 **读回来时的那一份** —— [`Self::dirty`] 靠它，而那是这一刀
     /// 「不静默丢弃」的判据源。
     original: String,
+    /// 〔FW1 · D-c〕**盘上那一份的摘要**（打开时后端交的；每次存成换成应答交的新摘要）—— 存盘 CAS 的 `expect`。
+    base_sha256: String,
     /// 上一次存盘的结局（`None` = 还没存过）。
     pub last_save: Option<Result<(), String>>,
+    /// 〔FW1 · D-c〕上一次存盘撞上了「盘上那份在你打开之后被改过了」（`stale`）⇒ 编辑面摆两颗按钮让人选
+    /// （仍然覆盖 · 丢掉我的改动重新打开）。存成 / 重开之后清掉。
+    pub stale: bool,
     /// 〔F9〕大文件模式那一格（`None` 在里面 ＝ 普通路径）。逐条住 [`super::bigfile`] 头注。
     pub(crate) big: super::bigfile::BigSlot,
+    /// 〔W5-FILES · 有损名全寻址〕路径不是合法 UTF-8 时那份文件的整条原始字节（读 / 存都走它；`None` ⇒ `path` 就是真字节）。
+    pub raw_path: Option<Vec<u8>>,
+    /// 〔W5-FILES · `设计/60 §6.2`「查找替换」〕编辑面上那一截查找替换的状态（只在普通路径上画；大文件模式没有，`§5.5`）。
+    pub find: FindBar,
+}
+
+/// 〔W5-FILES〕编辑面那一截查找替换的状态。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FindBar {
+    /// 查找框里的字。
+    pub needle: String,
+    /// 替换框里的字。
+    pub with: String,
+    /// 上一下做完时说的那句话（没找到 · 替换了几处）。
+    pub notice: Option<String>,
+}
+
+/// 〔W5-FILES〕在 `text` 里从第 `from` 个**字**起找 `needle`（区分大小写、字面匹配，不做正则 —— 没人裁过）。
+///
+/// 往后找 ⇒ 从 `from` 起第一处，找不到从头绕回；往前找 ⇒ `from` 之前最后一处，找不到从尾绕回。
+/// 回 `(起, 止)`，单位是**字**（egui 光标的单位）。空的查找串 ⇒ `None`。
+pub fn find_from(text: &str, needle: &str, from: usize, backward: bool) -> Option<(usize, usize)> {
+    if needle.is_empty() {
+        return None;
+    }
+    let byte_at = |k: usize| -> usize { text.char_indices().nth(k).map_or(text.len(), |(b, _)| b) };
+    let char_at = |b: usize| -> usize { text[..b].chars().count() };
+    let at = byte_at(from);
+    let hit = if backward {
+        text[..at].rfind(needle).or_else(|| text.rfind(needle))
+    } else {
+        text[at..]
+            .find(needle)
+            .map(|b| b + at)
+            .or_else(|| text.find(needle))
+    }?;
+    let start = char_at(hit);
+    Some((start, start + needle.chars().count()))
+}
+
+/// 〔W5-FILES〕把 `text` 里所有的 `needle` 换成 `with`。回 `(新文本, 换了几处)`。空的查找串 ⇒ 原样、0 处。
+pub fn replace_all(text: &str, needle: &str, with: &str) -> (String, usize) {
+    if needle.is_empty() {
+        return (text.to_string(), 0);
+    }
+    let n = text.matches(needle).count();
+    (text.replace(needle, with), n)
+}
+
+/// 〔W5-FILES〕把第 `start..end` 个**字**换成 `with`。回新文本。
+pub fn replace_chars(text: &str, start: usize, end: usize, with: &str) -> String {
+    let byte_at = |k: usize| -> usize { text.char_indices().nth(k).map_or(text.len(), |(b, _)| b) };
+    let (a, b) = (byte_at(start), byte_at(end));
+    format!("{}{}{}", &text[..a], with, &text[b..])
 }
 
 impl Pane {
-    pub fn opened(path: &str, name: &str, text: String) -> Self {
+    pub fn opened(path: &str, name: &str, text: String, sha256: String) -> Self {
         Self {
             path: path.to_string(),
             name: name.to_string(),
             original: text.clone(),
             text,
+            base_sha256: sha256,
             last_save: None,
+            stale: false,
             big: Default::default(),
+            raw_path: None,
+            find: FindBar::default(),
         }
+    }
+
+    /// 〔FW1〕存盘那一趟该交的 `expect`（盘上那一份的摘要）。
+    pub fn expect_sha256(&self) -> &str {
+        &self.base_sha256
     }
 
     /// 改过了吗。**相等断言**，不是一个「用户敲过键」的标志位 ——
@@ -381,10 +530,22 @@ impl Pane {
         self.text != self.original
     }
 
-    /// 存成功了 ⇒ 基准线跟上（从此 [`Self::dirty`] 回 `false`）。
-    pub fn mark_saved(&mut self) {
-        self.original = self.text.clone();
+    /// 存成功了 ⇒ 基准线跟上（从此 [`Self::dirty`] 回 `false`）；〔FW1〕摘要换成后端应答交的那份（写进去那份的）
+    /// ⇒ 连存两次不自撞。
+    ///
+    /// ⚠ 基准线是**发出去的那一份**（`sent`），不是此刻的 `text`：存在路上时用户又敲了字，那几个字没存过，
+    /// 该算「改过了」。
+    pub fn mark_saved(&mut self, sent: &str, sha256: String) {
+        self.original = sent.to_string();
+        self.base_sha256 = sha256;
         self.last_save = Some(Ok(()));
+        self.stale = false;
+    }
+
+    /// 〔FW1〕存盘撞上 `stale` ⇒ 同 [`Self::mark_failed`]（字一个不动、基准不动），外加摆出那两颗按钮。
+    pub fn mark_stale(&mut self, why: String) {
+        self.last_save = Some(Err(stale_notice(&why)));
+        self.stale = true;
     }
 
     /// 🔴 存失败了 ⇒ **基准线不动、`text` 一个字都不碰**。
@@ -438,6 +599,8 @@ pub enum Arrived {
         path: String,
         name: String,
         text: String,
+        /// 〔FW1〕后端对那份字节算的摘要（存盘 CAS 的 `expect`）。
+        sha256: String,
     },
     /// 后端说它不可编辑（那句话由 [`not_text_notice`] 给）。
     NotText { path: String },
@@ -453,8 +616,8 @@ struct Desk {
     arrived: Option<Arrived>,
     /// 正在存（`None` = 没在存）。
     saving: Option<String>,
-    /// 存的结局（UI 线程取走）。
-    saved: Option<Result<(), String>>,
+    /// 存的结局（UI 线程取走）。〔FW1〕成 ⇒ 发出去的那一份 ＋ 后端交的新摘要。
+    saved: Option<Result<Saved, SaveError>>,
 }
 
 /// 跨线程共享那一格（UI 线程读，tokio 那条写）。同 `DownloadBoard` 的理由。
@@ -509,7 +672,7 @@ impl EditBoard {
         self.lock().saving = Some(path.to_string());
     }
 
-    pub fn deliver_save(&self, r: Result<(), String>) {
+    pub fn deliver_save(&self, r: Result<Saved, SaveError>) {
         {
             let mut d = self.lock();
             d.saving = None;
@@ -519,7 +682,7 @@ impl EditBoard {
         self.poke();
     }
 
-    pub fn take_saved(&self) -> Option<Result<(), String>> {
+    pub fn take_saved(&self) -> Option<Result<Saved, SaveError>> {
         self.lock().saved.take()
     }
 
@@ -562,9 +725,49 @@ pub async fn read_text(
     line: &super::source::Line,
     origin: &super::source::Origin,
     path: &str,
-) -> Result<Option<String>, String> {
-    let args = serde_json::json!({ "path": path, "max_bytes": MAX_EDIT_BYTES });
-    text_from_reply(super::source::ask_coded(line, origin, CMD_READ_TEXT, &args, READ_BUDGET).await)
+) -> Result<Option<Opened>, String> {
+    read_text_at(line, origin, &super::source::RemotePath::plain(path)).await
+}
+
+/// 〔W5-FILES · 有损名全寻址〕同 [`read_text`]，路径可以带字节（`path` 发 `{"b16": …}`）。
+pub async fn read_text_at(
+    line: &super::source::Line,
+    origin: &super::source::Origin,
+    at: &super::source::RemotePath,
+) -> Result<Option<Opened>, String> {
+    let args = serde_json::json!({ "path": at.wire(), "max_bytes": MAX_EDIT_BYTES });
+    opened_from_reply(
+        super::source::ask_coded(line, origin, CMD_READ_TEXT, &args, READ_BUDGET).await,
+    )
+}
+
+/// 〔FW1〕打开那一趟交回来的：全文 ＋ 后端对那份字节算的摘要。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Opened {
+    pub text: String,
+    pub sha256: String,
+}
+
+/// 〔FW1〕[`text_from_reply`] ＋ 摘要那一格。**纯函数**。
+///
+/// 有文本却没有摘要（或形状不对）⇒ `Err`：没有它就存不回去（存盘必带「我打开时那一份」，后端不收不带的），
+/// 立起一个存不回去的编辑面比不打开更糟 —— 那句话说清是后端太旧。
+pub fn opened_from_reply(
+    r: Result<serde_json::Value, super::source::Failed>,
+) -> Result<Option<Opened>, String> {
+    let sha = r
+        .as_ref()
+        .ok()
+        .and_then(|d| d.get("sha256"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    let Some(text) = text_from_reply(r)? else {
+        return Ok(None);
+    };
+    let sha256 = sha
+        .filter(|s| is_sha256_hex(s))
+        .ok_or_else(|| copy_text("rsFilewinEditor.reply.noDigest", &[]))?;
+    Ok(Some(Opened { text, sha256 }))
 }
 
 /// 后端那一趟的结局 → 编辑器那三形。**纯函数**（判得动）。
@@ -605,29 +808,131 @@ pub async fn write_text(
     origin: &super::source::Origin,
     path: &str,
     content: &str,
-) -> Result<(), String> {
+    expect_sha256: &str,
+) -> Result<Saved, SaveError> {
+    write_text_at(
+        line,
+        origin,
+        &super::source::RemotePath::plain(path),
+        content,
+        expect_sha256,
+    )
+    .await
+}
+
+/// 〔W5-FILES · 有损名全寻址〕同 [`write_text`]，路径可以带字节。一行装不装得下按真要发的那一形量。
+pub async fn write_text_at(
+    line: &super::source::Line,
+    origin: &super::source::Origin,
+    at: &super::source::RemotePath,
+    content: &str,
+    expect_sha256: &str,
+) -> Result<Saved, SaveError> {
     if content.len() > MAX_EDIT_BYTES {
-        return Err(over_cap_notice(content.len()));
+        return Err(SaveError::Failed(over_cap_notice(content.len())));
     }
     let budget = super::writeops::WRITE_BUDGET;
-    if fits_one_line(path, content) {
-        let args = save_args(path, content);
-        return super::source::ask(line, origin, CMD_WRITE_TEXT, &args, budget)
-            .await
-            .map(|_| ());
+    let room = "0".repeat(SHA256_HEX_LEN);
+    let r = if request_line_len(CMD_WRITE_TEXT, &save_args_at(at, content, &room)) <= SAVE_LINE_CAP
+    {
+        let args = save_args_at(at, content, expect_sha256);
+        super::source::ask_coded(line, origin, CMD_WRITE_TEXT, &args, budget).await
+    } else {
+        let key = uuid::Uuid::new_v4().simple().to_string();
+        let chunks = plan_chunks(content, chunk_budget());
+        for (seq, chunk) in chunks.iter().enumerate() {
+            let args = stage_args(&key, seq as u64, chunk);
+            super::source::ask(line, origin, CMD_STAGE_CHUNK, &args, budget)
+                .await
+                .map_err(|why| SaveError::Failed(chunk_failed_notice(seq, chunks.len(), &why)))?;
+        }
+        let args = commit_args_at(at, &key, chunks.len(), content.len(), expect_sha256);
+        super::source::ask_coded(line, origin, CMD_COMMIT_TEXT, &args, budget).await
+    };
+    saved_from_reply(content, r)
+}
+
+/// 〔FW1〕存成了：发出去的那一份 ＋ 后端交的新摘要（下一次存的 `expect`）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Saved {
+    pub sent: String,
+    pub sha256: String,
+}
+
+/// 〔FW1〕存没成的两形 —— 下一步完全不同，不压成一句话：
+/// `Stale` = 盘上那份在你打开之后被改过了（让人选：仍然覆盖 / 丢掉重开）；`Failed` = 别的（原话照画）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SaveError {
+    Stale(String),
+    Failed(String),
+}
+
+/// 〔FW1〕存那一趟的结局 → [`Saved`] / [`SaveError`]。**纯函数**（判得动）。
+///
+/// 对端回 `stale` ⇒ `Stale`；成了却没交新摘要（或形状不对）⇒ `Failed`：后端已经写了，但下一次存交不出
+/// 「盘上那份」，那句话照实说（关掉重开就好）。
+pub fn saved_from_reply(
+    sent: &str,
+    r: Result<serde_json::Value, super::source::Failed>,
+) -> Result<Saved, SaveError> {
+    match r {
+        Ok(d) => d
+            .get("sha256")
+            .and_then(serde_json::Value::as_str)
+            .filter(|s| is_sha256_hex(s))
+            .map(|s| Saved {
+                sent: sent.to_string(),
+                sha256: s.to_string(),
+            })
+            .ok_or_else(|| SaveError::Failed(copy_text("rsFilewinEditor.saved.noDigest", &[]))),
+        Err(f) if f.code.as_deref() == Some("stale") => Err(SaveError::Stale(f.said)),
+        Err(f) => Err(SaveError::Failed(f.said)),
     }
-    let key = uuid::Uuid::new_v4().simple().to_string();
-    let chunks = plan_chunks(content, chunk_budget());
-    for (seq, chunk) in chunks.iter().enumerate() {
-        let args = stage_args(&key, seq as u64, chunk);
-        super::source::ask(line, origin, CMD_STAGE_CHUNK, &args, budget)
-            .await
-            .map_err(|why| chunk_failed_notice(seq, chunks.len(), &why))?;
-    }
-    let args = commit_args(path, &key, chunks.len(), content.len());
-    super::source::ask(line, origin, CMD_COMMIT_TEXT, &args, budget)
-        .await
-        .map(|_| ())
+}
+
+/// 〔FW1 · D-c〕**仍然覆盖**：先问一趟盘上此刻那一份的摘要（重读），拿它当 `expect` 再存。
+///
+/// CAS 仍在：重读与再存之间又被人改了 ⇒ 照样 `stale`（那时再让人选一次）。
+/// 盘上那份此刻不是能编辑的文本（被换成二进制 / 超上限 / 不在了）⇒ 拿不到摘要 ⇒ 不写，说清为什么。
+pub async fn overwrite_anyway(
+    line: &super::source::Line,
+    origin: &super::source::Origin,
+    path: &str,
+    content: &str,
+) -> Result<Saved, SaveError> {
+    overwrite_anyway_at(
+        line,
+        origin,
+        &super::source::RemotePath::plain(path),
+        content,
+    )
+    .await
+}
+
+/// 〔W5-FILES〕同 [`overwrite_anyway`]，路径可以带字节。
+pub async fn overwrite_anyway_at(
+    line: &super::source::Line,
+    origin: &super::source::Origin,
+    at: &super::source::RemotePath,
+    content: &str,
+) -> Result<Saved, SaveError> {
+    let path = at.shown.as_str();
+    let now = match read_text_at(line, origin, at).await {
+        Ok(Some(o)) => o.sha256,
+        Ok(None) => {
+            return Err(SaveError::Failed(copy_text(
+                "rsFilewinEditor.overwrite.notText",
+                &[("why", &not_text_notice(path))],
+            )))
+        }
+        Err(why) => {
+            return Err(SaveError::Failed(copy_text(
+                "rsFilewinEditor.overwrite.readFailed",
+                &[("why", &why)],
+            )))
+        }
+    };
+    write_text_at(line, origin, at, content, &now).await
 }
 
 #[cfg(test)]

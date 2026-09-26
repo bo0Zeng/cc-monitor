@@ -273,6 +273,29 @@ pub fn parse_address_line(line: &str, default_port: u16) -> Option<Endpoint> {
 }
 
 impl RemoteConfig {
+    /// 〔TL3 · `INVARIANTS §47` ②〕**这台的后端路径，拼进 shell 命令 / 交给对端去执行之前的那一道放行判定。**
+    ///
+    /// `backendPath` 是用户在机器页手填的（从本进程外面来），而它会被拼进远端命令串（流模式 exec · 测试连接的探针 ·
+    /// 自动 / 手动部署 · 卸载 · 身份扫描 · `ccm` 入口）。它是**本仓自管的远端落点**（默认 `~/.cc-monitor/bin/cc-monitor-backend`，
+    /// 远端 Windows 今天不承诺 ⇒ 只收 POSIX 形），于是走 §47 ②形的全套：唯一的 quote（调用方）＋ 形式判定（绝对 · 非 `/` ·
+    /// 无 `..` 段 · 无 `\`）＋ 拒绝集权威表（控制字符 · shell 元字符 · 视觉欺骗字符）—— 规则就是
+    /// [`crate::backend::control::payload::config_dir_command_safe`] 那一条，这里不另写一份。
+    /// 不过 ⇒ 带着「哪台 · 哪个值 · 为什么」的 `Err`，**一个请求都不发**。取值前 trim（与部署 / 卸载那两条既有的口一致）。
+    pub(crate) fn backend_path_for_shell(&self) -> Result<&str, String> {
+        let p = self.backend_path.trim();
+        if crate::backend::control::payload::config_dir_command_safe(p) {
+            Ok(p)
+        } else {
+            Err(copy_text(
+                "rsSshSource.backendPath.refused",
+                &[
+                    ("machine", &self.origin_label()),
+                    ("path", &format!("{p:?}")),
+                ],
+            ))
+        }
+    }
+
     /// origin 标签 = 稳定身份。`label` 为空时回退用 `host`（向后兼容：旧配置 / 前端
     /// 未传 label 时与单机时代 `origin = host` 行为一致）。多机 #30 用作 Tab 前缀 /
     /// 历史分组 / `load_remote_config_by_label` 选台 key。
@@ -501,7 +524,7 @@ pub async fn connect_and_exec(
     // Batch7-F24/Batch8-F26：两个流模式 flag 都由调用方决定（run_stream 里绑定
     // "部署确认为当前版本"，见该处注释）。tail_only=true → backend 不重放历史
     // （历史由本侧旁路快照拉取），实时通道流量趋零。
-    let mut cmd = shell_quote(&cfg.backend_path);
+    let mut cmd = shell_quote(cfg.backend_path_for_shell()?);
     if with_bg {
         cmd.push_str(" --with-bg");
     }
@@ -912,6 +935,86 @@ pub(crate) fn disconnect_removals(
         .collect()
 }
 
+/// 〔TL2 · GP1 问 3〕**重连之后要按新快照重新裁一次的那几条**：上一轮断连时这台的可重连会话里，
+/// 这一轮**没被宣告成活**的（宣告成活的已经由 `session_added` 翻回活了）。保序去重，一律 `Gone`：
+/// emitter 照常用这一轮的 tmux 快照裁 —— `@ccm_sid` 还在 ⇒ `Idle`（前端 说不清 → 可重连）；不在 ⇒ `Archive`（→ 已结束）。
+/// 主会话裁（4D「GP1 问 3」）逐字：「可重连 → 断连 → 重连后，tmux 里还在的那几条重新宣告为可重连（不是落已结束）」。
+pub(crate) fn reannounce_after_reconnect(
+    pending: &[String],
+    is_announced: impl Fn(&str) -> bool,
+) -> Vec<RemovedSid> {
+    let mut seen = std::collections::HashSet::new();
+    pending
+        .iter()
+        .filter(|s| !is_announced(s) && seen.insert(s.as_str()))
+        .map(|s| RemovedSid::gone(s.clone()))
+        .collect()
+}
+
+/// 〔TL2 · GP1 问 3〕收到 `sessions_replayed` 那一刻做什么。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OnReplayed {
+    /// 没有要重新裁的 ⇒ 照原样当场报清单。
+    Listed,
+    /// 有要重新裁的，这一轮的 tmux 快照已经到过 ⇒ 现在就裁、裁完再报（经 emitter）。
+    Reannounce,
+    /// 有要重新裁的，快照还没到 ⇒ 先不报，等这一轮第一帧 `tmux_sessions`。
+    Hold,
+}
+
+/// 〔TL2 · GP1 问 3〕`sessions_replayed` 到达时的决定。**纯函数**。
+pub(crate) fn on_sessions_replayed(pending_empty: bool, tmux_seen: bool) -> OnReplayed {
+    match (pending_empty, tmux_seen) {
+        (true, _) => OnReplayed::Listed,
+        (false, true) => OnReplayed::Reannounce,
+        (false, false) => OnReplayed::Hold,
+    }
+}
+
+/// 〔TL2 · GP1 问 3〕断连那一刻把这台的可重连会话并进「下一轮要重新裁」那一份（保序去重；上一轮没来得及裁的留着）。
+pub(crate) fn merge_pending<'a>(
+    pending: &mut Vec<String>,
+    idle_here: impl IntoIterator<Item = &'a String>,
+) {
+    let mut fresh: Vec<&String> = idle_here.into_iter().collect();
+    fresh.sort(); // 来源是个集合：排一下，让「先到的在前、同一趟里按字典序」可复现
+    for s in fresh {
+        if !pending.contains(s) {
+            pending.push(s.clone());
+        }
+    }
+}
+
+/// 〔TL2 · GP1 问 3〕送出重新裁的那一笔（带 `then_listed`：emitter 裁完再替这台报清单）。
+/// 这一轮的 tmux 观测不可信（`Skip`）⇒ 一条都不宣告（判不了），只报清单 —— 与改之前同一个终态（落已结束）。
+fn send_reannounce(
+    host_label: &str,
+    pending: &mut Vec<String>,
+    announced: &std::collections::HashMap<String, AnnouncedMeta>,
+    observable: bool,
+    session_changes: &std::sync::mpsc::Sender<SessionChange>,
+) {
+    let removed = if observable {
+        reannounce_after_reconnect(pending, |s| announced.contains_key(s))
+    } else {
+        Vec::new()
+    };
+    tracing::info!(
+        "reconnect-reannounce: [{host_label}] 断连前可重连的 {} 条按这一轮的 tmux 快照重新裁（送 {} 条，tmux 可观测={observable}），裁完再报清单",
+        pending.len(),
+        removed.len()
+    );
+    pending.clear();
+    if let Err(e) = session_changes.send(SessionChange {
+        added: vec![],
+        removed,
+        status_changed: vec![],
+        then_listed: Some(host_label.to_string()),
+    }) {
+        tracing::warn!("reconnect-reannounce send failed: {e}");
+    }
+}
+
 /// 〔GP1 · 第四波〕**「那台报完了活会话清单」这本账**：origin → 这条连接上收到过 `sessions_replayed`。
 ///
 /// 写者只有本模块两处：收 `SessionsReplayed` 那一臂记入（[`note_listed`]）· `run()` 每轮连接结束摘掉（[`forget_listed`]）。
@@ -931,6 +1034,19 @@ pub(crate) fn note_listed(origin: &str) {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .insert(origin.to_string());
+}
+
+/// 发前端 `origin-sessions-listed`（那台的活会话清单报完了）。流线程收 `sessions_replayed` 那一臂与
+/// 〔TL2 · GP1 问 3〕emitter 替重连那一笔报的时候共用这一个出口。
+pub(crate) fn emit_origin_listed(app: &tauri::AppHandle, origin: &str) {
+    if let Err(e) = app.emit(
+        crate::bridge::events::ORIGIN_SESSIONS_LISTED,
+        &crate::bridge::OriginSessionsListedPayload {
+            origin: crate::origin::Origin(origin.to_string()),
+        },
+    ) {
+        tracing::warn!("origin-sessions-listed emit failed: {e}");
+    }
 }
 
 /// 那台的连接结束了 ⇒ 它的清单不再算数。
@@ -1275,13 +1391,51 @@ async fn fetch_snapshot(
     let sid = &item.sid;
     let path = &item.path;
     let origin = crate::origin::Origin(host_label.to_string());
-    let plan = frame_query::tail(&origin, path, SNAPSHOT_TAIL_LINES as u64).await?;
-    // 〔C2 · U3 第 3 件〕断线重连后从续点接着拉（`snapshot_resume` 头注），续点对不上才整份。
-    let how = crate::snapshot_resume::plan_read(
-        crate::snapshot_resume::cursor_of(&origin, sid).as_ref(),
+    // 〔DL1 · `设计/05 §3.3.2`〕快照是两件事、各一个期限：先问图（一问，`PAGE_BUDGET`）；
+    //   读正文（分页）在知道要读多少字节之后再造、按大小给（`frame_query::read_budget`），每一页都拿同一个时刻去等。
+    let plan = frame_query::tail(
+        &origin,
         path,
-        &plan,
-    );
+        SNAPSHOT_TAIL_LINES as u64,
+        frame_query::Deadline::within(frame_query::PAGE_BUDGET),
+    )
+    .await?;
+    // 〔C2 · U3 第 3 件〕断线重连后从续点接着拉（`snapshot_resume` 头注），续点对不上才整份。
+    let cursor = crate::snapshot_resume::cursor_of(&origin, sid);
+    let mut how = crate::snapshot_resume::plan_read(cursor.as_ref(), path, &plan);
+    // 〔W5-VIS · `设计/15 §3.4 ②`〕续传之前先核锚那一行还是不是那一行（`snapshot_resume` 头注「截断 / 改写检测」）：
+    //   断线期间被整份改写而且变长的文件，上面那道「文件没变短」拦不住。对不上 ⇒ 续点作废、整份重读、交那个会话一格「被改过」。
+    if let (crate::snapshot_resume::Read::Resume { .. }, Some(w)) =
+        (&how, cursor.as_ref().and_then(|c| c.witness.clone()))
+    {
+        let page = frame_query::read_page(
+            &origin,
+            path,
+            w.start,
+            Some(w.end),
+            frame_query::Deadline::within(frame_query::PAGE_BUDGET),
+        )
+        .await?;
+        // 一页没读满那一行（`next < end` 且没到头）⇒ 核不了，照续传（不许把「没读全」说成「被改过」）。
+        let whole = page.eof || page.next >= w.end;
+        if whole && !crate::snapshot_resume::witness_holds(&w, &page.text) {
+            tracing::warn!(
+                "snapshot [{host_label}] {sid}: 续点那一行（字节 {}–{}）与上次不是同一行 —— 记录文件在断线期间被改写过，整份重读",
+                w.start,
+                w.end
+            );
+            crate::snapshot_resume::forget(&origin, sid);
+            replay
+                .on_session_notice(crate::bridge::SessionFileNoticePayload {
+                    session_id: sid.to_string(),
+                    origin: host_label.to_string(),
+                    path: path.to_string(),
+                    change: FileChange::Rewritten.as_wire().to_string(),
+                })
+                .await;
+            how = crate::snapshot_resume::Read::Full;
+        }
+    }
     if let crate::snapshot_resume::Read::Resume {
         from_byte,
         upto,
@@ -1295,13 +1449,22 @@ async fn fetch_snapshot(
         );
     }
     let mut walk = crate::snapshot_resume::Walk::new(&how, &plan);
+    // 〔W5-VIS〕走读时顺手挑下一次续传要核的那一行（文件最后一个可计行）。
+    let mut pick = crate::snapshot_resume::WitnessPick::default();
     let mut total_bytes: u64 = 0;
     let mut chunk: Vec<JsonlLine> = Vec::with_capacity(SNAPSHOT_CHUNK_LINES);
     let mut cancelled = false;
-    'read: for (from, upto) in walk.segments().to_vec() {
+    let segments = walk.segments().to_vec();
+    let body_bytes: u64 = segments
+        .iter()
+        .map(|(from, upto)| upto.saturating_sub(*from))
+        .sum();
+    let body =
+        frame_query::Deadline::within(frame_query::read_budget(body_bytes.min(SNAPSHOT_MAX_BYTES)));
+    'read: for (from, upto) in segments {
         let mut offset = from;
         while offset < upto {
-            let page = frame_query::read_page(&origin, path, offset, Some(upto)).await?;
+            let page = frame_query::read_page(&origin, path, offset, Some(upto), body).await?;
             total_bytes += page.next - offset;
             if total_bytes > SNAPSHOT_MAX_BYTES {
                 // 防御上限：不再继续拉（完整性校验会把截断判为失败 → toast）。
@@ -1310,11 +1473,11 @@ async fn fetch_snapshot(
                 );
                 break 'read;
             }
-            for line in page.text.split('\n') {
-                let line = line.trim_end_matches('\r');
+            for (line, span) in crate::snapshot_resume::page_lines(offset, &page.text) {
                 if !snapshot_line_countable(line) {
                     continue;
                 }
+                pick.see(upto, plan.end, line, span);
                 let Some(seq) = walk.step() else {
                     continue; // 续传：锚到续点之间的行前端已有，数掉不发
                 };
@@ -1378,6 +1541,7 @@ async fn fetch_snapshot(
     }
     // `[0, total)` 全到了（整份：刚发完；续传：锚之前的早有、之后的刚发完）⇒ 立锚。
     crate::snapshot_resume::note_snapshot_done(&origin, sid, path, &plan);
+    crate::snapshot_resume::note_witness(&origin, sid, pick.done());
     Ok(FetchOutcome::Done(arrived))
 }
 
@@ -1707,9 +1871,19 @@ pub enum InboundFrame {
         /// 缺席 / 不认识的取值 ⇒ `None` = 不知道（**不是**「不在 tmux 里」）。
         /// 交给 `session_facts::note_container`（本机那条流同一个口）。
         container: Option<crate::session_facts::Container>,
+        /// 〔LOC1b · 第四波 4D，additive〕那个 claude 进程的 pid。本机活会话表（`session_map::LiveEntry::pid`）
+        /// 拿它给本机 ↗ 绑窗口（`bind::SidHwndCache::record`）；老后端不带 ⇒ `None`。远端那一支不读它。
+        pid: Option<u32>,
     },
     /// 〔U4b · 第四波〕后端的活会话清单报完了（Phase 1 走完）。无载荷。
     SessionsReplayed,
+    /// 〔FW1 · 第四波 4D · D-d〕活会话的记录文件不见了（`session_file_gone`）/ 被改过已从头重读（`session_file_reread`）。
+    /// 两个 kind 收成一形：下游只关心「哪个会话、怎么了」。
+    SessionFileNotice {
+        sid: String,
+        path: String,
+        change: FileChange,
+    },
     /// Batch9-F27：会话 status 变化（p1g backend；远端红绿灯）。
     SessionStatus {
         sid: String,
@@ -1773,6 +1947,9 @@ pub enum InboundFrame {
         total: u64,
         end: Option<crate::sftp_pool::End>,
     },
+    /// 〔TAP · V124〕中转抄出来的一个 SSE 事件 / 一个响应的收尾（后端 `wire::Frame::Tap`）。只有**本机后端**那条流上会有
+    /// （中转住本机常驻后端），交 `session_tap::deliver`。`data` / `end` 都缺、或 `end` 认不出 ⇒ 整帧 `None`（坏帧）。
+    Tap(crate::session_tap::Tap),
 }
 
 /// 拥塞提示的**措辞**：有没有不可恢复的丢失，说法完全不同〔audit-0805 F21〕。
@@ -1944,10 +2121,26 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
                 container: opt("container")
                     .as_deref()
                     .and_then(crate::session_facts::Container::from_wire),
+                // 〔LOC1b〕只认装得进 u32 的非负整数；别的一律当没带。
+                pid: obj
+                    .get("pid")
+                    .and_then(|v| v.as_u64())
+                    .and_then(|n| u32::try_from(n).ok()),
             })
         }
         // 〔U4b · 第四波〕additive 新帧，无载荷。旧后端不发 ⇒ 这条分支永不命中，固定的 tab 停在「说不清」。
         "sessions_replayed" => Some(InboundFrame::SessionsReplayed),
+        // 〔FW1 · 第四波 4D〕additive 新帧。`why` 认不出 ⇒ 整帧当坏帧跳过（不猜成哪一种）。
+        "session_file_gone" => Some(InboundFrame::SessionFileNotice {
+            sid: obj.get("session_id")?.as_str()?.to_string(),
+            path: obj.get("path")?.as_str()?.to_string(),
+            change: FileChange::Gone,
+        }),
+        "session_file_reread" => Some(InboundFrame::SessionFileNotice {
+            sid: obj.get("session_id")?.as_str()?.to_string(),
+            path: obj.get("path")?.as_str()?.to_string(),
+            change: FileChange::reread_from_wire(obj.get("why")?.as_str()?)?,
+        }),
         "session_status" => {
             let sid = obj.get("sid")?.as_str()?.to_string();
             let opt = |k: &str| obj.get(k).and_then(|v| v.as_str()).map(str::to_string);
@@ -2073,6 +2266,25 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
             })
         }
 
+        // 〔TAP · V124〕中转抄出来的 SSE 事件。`data` 与 `end` 恰有一个：先认 `data`（原样，一个串），没有就必须是认得的 `end`。
+        "tap" => {
+            let stream = obj.get("stream")?.as_str()?.to_string();
+            let resp = obj.get("resp")?.as_u64()?;
+            let n = obj.get("n")?.as_u64()?;
+            let body = match obj.get("data") {
+                Some(d) => crate::session_tap::TapBody::Data(d.as_str()?.to_string()),
+                None => crate::session_tap::TapBody::End(crate::session_tap::TapEnd::from_wire(
+                    obj.get("end")?.as_str()?,
+                )?),
+            };
+            Some(InboundFrame::Tap(crate::session_tap::Tap {
+                stream,
+                resp,
+                n,
+                body,
+            }))
+        }
+
         // ── `turn_end` **认识但刻意不消费**（U7-1）。──────────────────────────
         //
         // 「认识」与「消费」是两件事。落进 `_ => None` 的后果不是「忽略」，是
@@ -2106,9 +2318,12 @@ const KNOWN_FRAME_KINDS: &[&str] = &[
     "overflow",
     "reply",
     "session_added",
+    "session_file_gone",
+    "session_file_reread",
     "session_removed",
     "session_status",
     "sessions_replayed",
+    "tap",
     "tmux_session_closed",
     "tmux_sessions",
     "transfer",
@@ -2122,6 +2337,8 @@ fn transfer_end(e: &serde_json::Value) -> Option<crate::sftp_pool::End> {
     Some(match e.get("state")?.as_str()? {
         "done" => crate::sftp_pool::End::Done {
             bytes: e.get("bytes")?.as_u64()?,
+            // 〔FW1〕可缺席（下载那一路没有）；在就原样带着（窗口提交时交回，形状由后端那一关判）。
+            sha256: e.get("sha256").and_then(|v| v.as_str()).map(str::to_string),
         },
         "failed" => crate::sftp_pool::End::Failed(e.get("why")?.as_str()?.to_string()),
         "cancelled" => crate::sftp_pool::End::Cancelled,
@@ -2295,11 +2512,27 @@ fn negotiate_version(reported_v: u64, reported_build_id: &str) -> VersionVerdict
 fn version_warning(reported_v: u64, reported_build_id: &str, label: &str) -> Option<String> {
     match negotiate_version(reported_v, reported_build_id) {
         VersionVerdict::Ok => None,
+        // 〔HX2 · 主会话 D-b〕按新旧分两句（部署只升不降，`sftp::identity_decision`）：
+        //   那台旧 ⇒ 下次连上的部署预检会换掉它；那台不比这一版旧 ⇒ 这个 monitor 不会把它换回去。
+        //   〔墓碑 —— 从前一句话不分新旧（`rsSshSource.version.buildMismatch`：「…建议更新后端（后续将支持自动部署）」），自动部署早已落地。〕
+        VersionVerdict::StaleBuild { reported }
+            if crate::sftp::is_newer(EXPECTED_BACKEND_BUILD_ID, &reported) =>
+        {
+            Some(copy_text(
+                "rsSshSource.version.remoteOlder",
+                &[
+                    ("label", &label.to_string()),
+                    ("reported", &reported.to_string()),
+                    ("mine", &EXPECTED_BACKEND_BUILD_ID.to_string()),
+                ],
+            ))
+        }
         VersionVerdict::StaleBuild { reported } => Some(copy_text(
-            "rsSshSource.version.buildMismatch",
+            "rsSshSource.version.remoteNotOlder",
             &[
                 ("label", &label.to_string()),
                 ("reported", &reported.to_string()),
+                ("mine", &EXPECTED_BACKEND_BUILD_ID.to_string()),
             ],
         )),
         VersionVerdict::Incompatible { .. } => Some(copy_text(
@@ -2359,6 +2592,8 @@ pub async fn run(
     // build_id）。None = 尚未收到能力声明；Some(caps) = 下一轮据此发 flag 升级。
     // 回退清账语义（`:is_some()` 那段）不变。
     let mut hello_confirmed: Option<Vec<String>> = None;
+    // 〔TL2 · GP1 问 3〕上一轮断连时这台的可重连会话 —— 下一轮连上、tmux 快照到了之后重新裁一次（跨轮留着，不进全局表）。
+    let mut pending_idle: Vec<String> = Vec::new();
     loop {
         connected.store(false, Ordering::Release);
         // F05：本轮连接的起点。退避重置的判据是「活过多久」，不是「握没握上手」。
@@ -2378,6 +2613,7 @@ pub async fn run(
             &connected,
             &mut announced,
             &mut hello_confirmed,
+            &mut pending_idle,
         )
         .await;
         // 〔CF2〕这条连接没了 ⇒ 订了这台会话流的那些订阅原位收一格 `Unseen`（不是终点，`05 §4.5.2`）。
@@ -2402,6 +2638,8 @@ pub async fn run(
         // 〔GP1 · 第四波〕这台的「报完了清单」随连接一起作废（F5 对账据它分已结束 / 说不清）。
         forget_listed(&cfg.origin_label());
         let idle_here = snapshot_idle_for_origin(&cfg.origin_label());
+        // 〔TL2 · GP1 问 3〕它们马上要被说成「说不清」；记下来，重连后按新快照重新裁（还在 ⇒ 可重连）。
+        merge_pending(&mut pending_idle, &idle_here);
         if !announced.is_empty() || !idle_here.is_empty() {
             let removed = disconnect_removals(announced.into_keys(), idle_here);
             tracing::info!(
@@ -2414,6 +2652,7 @@ pub async fn run(
                 // 改之前这里逐字「连接断了兜底归档 = 真死（不是被顶替）」、送的是 `gone`。
                 removed,
                 status_changed: vec![], // 本分支无状态变化（F27 起 status 走 SessionAdded/SessionStatus 臂）
+                then_listed: None,
             }) {
                 tracing::warn!("ssh_source final session archival send failed: {e}");
             }
@@ -2614,10 +2853,56 @@ impl LineIntake {
         }
     }
 
+    /// 〔FW1 · 第四波 4D · D-d〕一个会话的记录文件不见了 / 被改过已从头重读：残批先冲（出声那一格排在它之前的行后面、
+    /// 重读出来的行前面 —— 后端发它就在重读的行之前），再交那个会话的内容流一格。
+    async fn notice(&mut self, sid: &str, path: &str, change: FileChange) {
+        self.flush().await;
+        self.replay
+            .on_session_notice(crate::bridge::SessionFileNoticePayload {
+                session_id: sid.to_string(),
+                origin: self.origin_label.clone(),
+                path: path.to_string(),
+                change: change.as_wire().to_string(),
+            })
+            .await;
+    }
+
     /// 一个会话走了：撤它的快照（排队的摘掉、在飞的打取消标记）、续点作废（再宣告时整份拉）。
     fn removed(&self, sid: &str) {
         self.snapshots.cancel(sid);
         crate::snapshot_resume::forget(&crate::origin::Origin(self.origin_label.clone()), sid);
+    }
+}
+
+/// 〔FW1 · 第四波 4D · D-d〕活会话的记录文件怎么了。线上（后端 `session_file_gone` / `session_file_reread.why`）与交前端的
+/// 那一格（`SessionFileNoticePayload.change`）同一组字面量。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileChange {
+    /// 不见了（删了 / 改名走了）。
+    Gone,
+    /// 变短了，已从头重读。
+    Truncated,
+    /// 游标之前被原地改写过，已从头重读。
+    Rewritten,
+}
+
+impl FileChange {
+    /// `session_file_reread.why` → 那一形；认不出 ⇒ `None`（整帧跳过，不猜）。
+    pub fn reread_from_wire(why: &str) -> Option<Self> {
+        match why {
+            "truncated" => Some(FileChange::Truncated),
+            "rewritten" => Some(FileChange::Rewritten),
+            _ => None,
+        }
+    }
+
+    /// 交前端那一格的字面量。
+    pub fn as_wire(self) -> &'static str {
+        match self {
+            FileChange::Gone => "gone",
+            FileChange::Truncated => "truncated",
+            FileChange::Rewritten => "rewritten",
+        }
     }
 }
 
@@ -2648,6 +2933,12 @@ pub(crate) enum LocalStep {
     },
     /// 冲掉残批，再进 [`LineIntake::removed`]。
     Remove { sid: String },
+    /// 〔FW1〕进 [`LineIntake::notice`]（冲掉残批、交一格出声）。
+    Notice {
+        sid: String,
+        path: String,
+        change: FileChange,
+    },
     /// 这一件不进内容流（被藏起来的 bg 会话的行 / 宣告，或不是内容帧）。
     Skip,
     /// 冲掉残批、换一个新的 [`LineIntake`]（下一条流从头来）。
@@ -2658,6 +2949,82 @@ pub(crate) enum LocalStep {
 /// `kind` 在且不是 `interactive` 才算非交互；旧 CC 不写 kind ⇒ 当交互。
 fn local_hides(kind: Option<&str>, show_bg: bool) -> bool {
     !show_bg && kind.is_some_and(|k| k != "interactive")
+}
+
+/// 〔LOC1b · 第四波 4D〕本机那条流上的一件东西 ⇒ 本机活会话表的一件起停事实（**纯**；藏起来的 bg 会话不进）。
+///
+/// 与 [`local_step`] 读同一件东西、同一个「藏不藏」口径（[`local_hides`]），但**先于**它跑（它会改 `hidden`）。
+/// 远端那一支的同一件事住 [`stream_loop`] 的三个起停帧臂；两边交给 emitter 的是同一种 `SessionChange`、同一个裁决。
+/// `local_idle` = 此刻本机的可重连会话：流断时与表里的活会话并成一摞 `Unseen`（与远端断连 flush 同一个函数）。
+pub(crate) fn local_lifecycle(
+    item: &LocalItem,
+    show_bg: bool,
+    hidden: &std::collections::HashSet<String>,
+    local_idle: &[String],
+) -> Option<crate::session_map::Lifecycle> {
+    use crate::session_map::{Lifecycle, LiveEntry};
+    match item {
+        LocalItem::StreamEnded => Some(Lifecycle::StreamEnded {
+            idle: local_idle.to_vec(),
+        }),
+        LocalItem::Frame(InboundFrame::SessionAdded {
+            sid,
+            session_kind,
+            cwd,
+            name,
+            status,
+            waiting_for,
+            pid,
+            ..
+        }) => (!local_hides(session_kind.as_deref(), show_bg)).then(|| Lifecycle::Added {
+            sid: sid.clone(),
+            entry: LiveEntry {
+                cwd: cwd.clone(),
+                kind: session_kind.clone(),
+                name: name.clone(),
+                status: status.clone(),
+                waiting_for: waiting_for.clone(),
+                pid: *pid,
+            },
+        }),
+        LocalItem::Frame(InboundFrame::SessionStatus {
+            sid,
+            status,
+            waiting_for,
+        }) => (!hidden.contains(sid)).then(|| Lifecycle::Status {
+            sid: sid.clone(),
+            status: status.clone(),
+            waiting_for: waiting_for.clone(),
+        }),
+        LocalItem::Frame(InboundFrame::SessionRemoved { sid, cause }) => (!hidden.contains(sid))
+            .then(|| Lifecycle::Removed {
+                sid: sid.clone(),
+                cause: *cause,
+            }),
+        LocalItem::Frame(InboundFrame::SessionsReplayed) => Some(Lifecycle::Listed),
+        LocalItem::Frame(_) => None,
+    }
+}
+
+/// 〔LOC1b · 第四波 4D〕本机宣告的会话 `kind` 既不是 `interactive` 也不是 `bg` ⇒ 记一笔漂移账（记在本机名下）。
+///
+/// 这一笔从前住 `session_map·rs::is_interactive`〔散文墓碑〕（monitor 自己扫 pidfile 时顺手记）；本机判活改由本机后端的帧来之后，
+/// 本机那条流是唯一看得见 `kind` 的地方。**排他 ≠ 无声**（U-CC1）：只记账，不改行为。
+fn book_unknown_local_kind(item: &LocalItem) {
+    if let LocalItem::Frame(InboundFrame::SessionAdded {
+        session_kind: Some(k),
+        ..
+    }) = item
+    {
+        if k != "interactive" && k != "bg" {
+            crate::drift_ledger::record(
+                &crate::origin::Origin::local(),
+                crate::drift_ledger::DriftFace::UnknownSessionKind,
+                k,
+                None,
+            );
+        }
+    }
 }
 
 /// 〔CF1〕本机消费者的**纯分派核**：一件东西 × 「显示 bg 吗」× 「藏起来的 sid」⇒ 怎么处置。
@@ -2712,6 +3079,14 @@ pub(crate) fn local_step(
             hidden.remove(&sid);
             LocalStep::Remove { sid }
         }
+        // 〔FW1〕藏起来的 bg 会话照旧不出声（它的行也不进内容流）。
+        LocalItem::Frame(InboundFrame::SessionFileNotice { sid, path, change }) => {
+            if hidden.contains(&sid) {
+                LocalStep::Skip
+            } else {
+                LocalStep::Notice { sid, path, change }
+            }
+        }
         LocalItem::Frame(_) => LocalStep::Skip,
     }
 }
@@ -2726,7 +3101,9 @@ pub(crate) const LOCAL_STREAM_TAIL_ONLY: bool = true;
 /// 下一条流换新的 —— 与远端「每条连接一套」同形。本机后端重连之后会重新宣告每个活会话，
 /// 旁路快照按续点接着拉（`snapshot_resume`）。
 ///
-/// ⚠ **本机流断不归档会话**（远端那条 `run` 会）：本机会话的起停今天归 `session_map`，本路只改内容行从哪来。
+/// 〔LOC1b · 第四波 4D〕**本机会话的起停也从这条流来**（[`local_lifecycle`] ⇒ `session_map::feed`）；
+/// 流断 ⇒ 本机的活会话与可重连会话一律 `Unseen`（说不清，与远端断连 flush 同一个函数），不归档。
+/// 〔此前这里写「本机流断不归档会话（远端那条 `run` 会）：本机会话的起停今天归 `session_map`」—— 那是本机自己判活的时候。〕
 /// ⚠ 本任务**绝不**等一个经本机通道的应答（快照那几问在分发器的任务里）：读循环可能正停在往本通道送东西上，
 ///   这里要是也等它 ⇒ 互等。
 pub(crate) async fn consume_local(
@@ -2751,6 +3128,25 @@ pub(crate) async fn consume_local(
                 seen = true;
                 replay.origin_seen(&crate::origin::Origin(label.clone()), true);
             }
+            // 〔LOC1b · 4D〕本机起停：先交本机活会话表（它按 `hidden` 滤，而下面 `local_step` 会改 `hidden`）。
+            //   流断那一件先冲掉残批再交（与远端同序：行先落、再说「看不见了」）。
+            book_unknown_local_kind(&item);
+            if matches!(item, LocalItem::StreamEnded) {
+                intake.flush().await;
+            }
+            let local_idle: Vec<String> = if matches!(item, LocalItem::StreamEnded) {
+                let mut v: Vec<String> =
+                    snapshot_idle_for_origin(crate::backend::control::inbound_client::LOCAL_ORIGIN)
+                        .into_iter()
+                        .collect();
+                v.sort();
+                v
+            } else {
+                Vec::new()
+            };
+            if let Some(ev) = local_lifecycle(&item, show_bg, &hidden, &local_idle) {
+                crate::session_map::feed(ev);
+            }
             match local_step(item, show_bg, &mut hidden) {
                 LocalStep::Line {
                     session_id,
@@ -2772,6 +3168,7 @@ pub(crate) async fn consume_local(
                     intake.flush().await;
                     intake.removed(&sid);
                 }
+                LocalStep::Notice { sid, path, change } => intake.notice(&sid, &path, change).await,
                 LocalStep::Skip => {}
                 LocalStep::StreamEnded => {
                     intake.flush().await;
@@ -2798,7 +3195,12 @@ async fn stream_loop(
     connected: &Arc<AtomicBool>,
     announced: &mut std::collections::HashMap<String, AnnouncedMeta>,
     hello_confirmed: &mut Option<Vec<String>>,
+    pending_idle: &mut Vec<String>,
 ) -> Result<(), String> {
+    // 〔TL2 · GP1 问 3〕这一轮：tmux 快照到过没有 / 那一帧可不可信 / 清单是不是压着没报。
+    let mut tmux_seen = false;
+    let mut tmux_observable = false;
+    let mut listed_held = false;
     // issue #15 / #30：远端行的 origin 标签 = 该机器的稳定身份（label，默认 host）。
     // 前端据此给该 Tab 标题加 `[label]` 前缀以区分本地/各远端机器。进 loop 前 clone。
     let host_label = cfg.origin_label();
@@ -2925,6 +3327,8 @@ async fn stream_loop(
     // 退出路径随 `intake` 被丢掉而关闭队列——已入队项仍会被分发器拉完，独立连接自灭）。
     // 〔CF1〕攒批 ＋ 静默窗 ＋ 旁路快照收成 [`LineIntake`]，本机那条流用的是同一个。
     let mut intake = LineIntake::open(host_label.clone(), tail_only, replay, app);
+    // 〔W5-VIS · `设计/15 §3.4 ②`〕这条流上跳过了几帧认不出的（读任务那边另有一本记非 UTF-8 行）。
+    let mut tally = crate::frame_tally::FrameTally::new(format!("ssh_source {host_label}"));
 
     // Batch5-F17：帧读取挪进独立 task、经 channel 交回——攒批需要"带静默窗口
     // 的读"，而 tokio 的 read_line **不是 cancellation-safe**（timeout 取消会
@@ -2941,6 +3345,8 @@ async fn stream_loop(
         // ★ F10b：从无界 `read_line` 换成 [`read_capped_line`] —— 无界读遇「一条永远不结束
         // 的行」就是无界堆分配，而对端是**远端进程**（它坏掉或不是我们的后端都可能）。
         let mut buf: Vec<u8> = Vec::new();
+        // 〔W5-VIS · `设计/15 §3.4 ②`〕这条流上有几行不是合法 UTF-8（按替换字符读的）—— 计数、按 2 的幂次说、流结束出总账。
+        let mut tally = crate::frame_tally::FrameTally::new(format!("ssh_source {reader_host}"));
         loop {
             match read_capped_line(&mut reader, &mut buf, BACKEND_FRAME_LINE_CAP).await {
                 Ok(CappedLine::Eof) => {
@@ -2970,7 +3376,12 @@ async fn stream_loop(
                     }
                 }
                 Ok(CappedLine::Line) => {
-                    // 非 UTF-8 不该让整条连接死掉（与全批 exec 输出读取同一取舍）。
+                    // 非 UTF-8 不该让整条连接死掉（与全批 exec 输出读取同一取舍）—— 但**记账、说出来**（W5-VIS）。
+                    if std::str::from_utf8(&buf).is_err() {
+                        if let Some(n) = tally.note_bad_utf8(&buf) {
+                            tracing::warn!("{n}");
+                        }
+                    }
                     let text = String::from_utf8_lossy(&buf);
                     let line = text.trim_end_matches(['\n', '\r']);
                     if line.is_empty() {
@@ -3029,14 +3440,10 @@ async fn stream_loop(
         if let Some(client) = attach_inbound_client(&host_label, &mut parked, frame.as_ref()) {
             inbound_guard.1 = Some(client.clone());
             inbound = Some(client);
-            // 〔`C1` · 09-24〕告诉前端「这台的长连接能问话了」：账号那两条查询从此走它，
-            // 前端的账号刷新（替掉那个 10 秒轮询的事件驱动刷新器）在这一刻强制拉一次。
-            if let Err(e) = app.emit(
-                crate::bridge::events::REMOTE_BACKEND_READY,
-                &serde_json::json!({ "origin": host_label }),
-            ) {
-                tracing::warn!("remote-backend-ready emit failed: {e}");
-            }
+            // 〔`C1` · 09-24〕「这台的长连接能问话了」—— 前端的账号刷新在这一刻强制拉一次。
+            // 〔DL1〕原先这里发一个裸 Tauri 事件（`remote-backend-ready`）；今天由下面 Hello 臂里既有的
+            //   `replay.origin_seen(.., true)` 说（订了这台 `accounts-changed` 的订阅原位收 `Seen`，`event_replay` 头注那张表）——
+            //   同一个时刻、同一个事实，只留一个家。
             // 〔AS2 · V113〕连上那一刻：让本机常驻后端沿池里那条 SSH 同步资产目录（后台跑，零判定）。
             let accepts = inbound
                 .as_ref()
@@ -3175,6 +3582,8 @@ async fn stream_loop(
                 waiting_for,
                 rbind_token,
                 container,
+                // 〔LOC1b〕pid 只给本机那条流用（本机 ↗ 绑窗口）；远端这一支不读。
+                pid: _,
             }) => {
                 // 🔴 〔`设计/80 §8.7` 步 4，第二波 T4〕**记进令牌账本 —— ↗ 从此按它分派。**
                 //
@@ -3259,6 +3668,7 @@ async fn stream_loop(
                         status,
                         waiting_for,
                     }],
+                    then_listed: None,
                 }) {
                     tracing::warn!("ssh_source session_added send failed: {e}");
                 }
@@ -3299,6 +3709,7 @@ async fn stream_loop(
                         status,
                         waiting_for,
                     }],
+                    then_listed: None,
                 }) {
                     tracing::warn!("ssh_source session_status send failed: {e}");
                 }
@@ -3329,6 +3740,7 @@ async fn stream_loop(
                     // ★ S0：cause 由后端说了算，monitor 不猜（原先靠查会陈旧的 tmux 快照）。
                     removed: vec![RemovedSid { sid, cause }],
                     status_changed: vec![],
+                    then_listed: None,
                 }) {
                     tracing::warn!("ssh_source session_removed send failed: {e}");
                 }
@@ -3403,6 +3815,7 @@ async fn stream_loop(
                             // tmux 会话关了 = 那一格没了，真死。
                             removed: vec![RemovedSid::gone(sid)],
                             status_changed: vec![],
+                            then_listed: None,
                         }) {
                             tracing::warn!("ssh_source tmux_session_closed send failed: {e}");
                         }
@@ -3446,6 +3859,10 @@ async fn stream_loop(
                     &raw,
                     observation.as_deref(),
                 );
+                let observable_now = matches!(
+                    verdict,
+                    crate::backend::control::tmux::TmuxObservation::Backend(_)
+                );
                 let kind = match &verdict {
                     crate::backend::control::tmux::TmuxObservation::Backend(_) => "backend",
                     crate::backend::control::tmux::TmuxObservation::Skip(r) => r.as_str(),
@@ -3479,6 +3896,7 @@ async fn stream_loop(
                             // 对账收割 = tmux 后端已不见它，真死。
                             removed: retire.into_iter().map(RemovedSid::gone).collect(),
                             status_changed: vec![],
+                            then_listed: None,
                         }) {
                             tracing::warn!("ssh_source tmux-reconcile(收帧) send failed: {e}");
                         }
@@ -3486,37 +3904,64 @@ async fn stream_loop(
                 }
                 // 存最新一份原文（emitter 判 idle/archived 时经 snapshot_tmux_by_origin 读；仅存最新）。
                 record_tmux_raw(&host_label, raw);
+                // 〔TL2 · GP1 问 3〕这一轮第一帧快照到了、清单还压着 ⇒ 现在重新裁、裁完报。**必须在 `record_tmux_raw` 之后**：
+                //   emitter 裁的时候读的就是刚存进去的这一份。
+                tmux_seen = true;
+                tmux_observable = observable_now;
+                if listed_held {
+                    listed_held = false;
+                    send_reannounce(
+                        &host_label,
+                        pending_idle,
+                        announced,
+                        tmux_observable,
+                        session_changes,
+                    );
+                }
             }
             // U8a-2a：入方向应答 —— 交给本连接的客户端按 `id` 路由回请求方。
             Some(f @ (InboundFrame::Reply { .. } | InboundFrame::Cancelled { .. })) => {
                 route_inbound_frame(&host_label, inbound.as_ref(), f);
             }
-            // 〔SR1a · `设计/05 §13.6 ③`〕那台的账号清单变了 ⇒ 发前端既有的「这台就绪」那一个事件
-            //   （账号表与 chip 听的就是它，`main.ts`），多带一个 `reason` 说清这一次为什么（additive）。
+            // 〔SR1a · `设计/05 §13.6 ③`〕那台的账号清单变了 ⇒ 告诉前端（账号表与 chip 据此重取）。
+            // 〔DL1〕经通道 `subscribe`：订了这台 `accounts-changed` 的订阅收一格 `Frame`（原先是一个裸 Tauri 事件）。
             Some(InboundFrame::AccountsChanged) => {
-                if let Err(e) = app.emit(
-                    crate::bridge::events::REMOTE_BACKEND_READY,
-                    &serde_json::json!({ "origin": host_label, "reason": "accounts_changed" }),
-                ) {
-                    tracing::warn!("remote-backend-ready（accounts_changed）emit failed: {e}");
-                }
+                replay.accounts_changed(&crate::origin::Origin(host_label.clone()));
+            }
+            // 〔FW1 · 第四波 4D · D-d〕那台一条活会话的记录文件不见了 / 被改过已从头重读 ⇒ 残批先冲、再交那个会话的内容流一格。
+            Some(InboundFrame::SessionFileNotice { sid, path, change }) => {
+                intake.notice(&sid, &path, change).await;
             }
             // 〔U4b · 第四波〕那台的活会话清单报完了 ⇒ 发前端 `origin-sessions-listed`。
             //   与上面 `remote-session-added` 同一条线程、同序 emit ⇒ 前端收到它时，这台全部的活会话都已宣告过。
             //   前端据此把这台「固定、却没被报过」的 tab 从说不清落到已结束（`设计/30 §3.5.7a`）。
             Some(InboundFrame::SessionsReplayed) => {
-                tracing::info!(
-                    "sessions-replayed: [{host_label}] 活会话清单报完了 → 已 emit 给前端"
-                );
-                // 〔GP1 · 第四波〕记进「报完了清单」那本账（F5 对账要重建前端这一格；连接结束时摘）。
-                note_listed(&host_label);
-                if let Err(e) = app.emit(
-                    crate::bridge::events::ORIGIN_SESSIONS_LISTED,
-                    &crate::bridge::OriginSessionsListedPayload {
-                        origin: crate::origin::Origin(host_label.clone()),
-                    },
-                ) {
-                    tracing::warn!("origin-sessions-listed emit failed: {e}");
+                match on_sessions_replayed(pending_idle.is_empty(), tmux_seen) {
+                    OnReplayed::Listed => {
+                        tracing::info!(
+                            "sessions-replayed: [{host_label}] 活会话清单报完了 → 已 emit 给前端"
+                        );
+                        // 〔GP1 · 第四波〕记进「报完了清单」那本账（F5 对账要重建前端这一格；连接结束时摘）。
+                        note_listed(&host_label);
+                        emit_origin_listed(app, &host_label);
+                    }
+                    // 〔TL2 · GP1 问 3〕断连前有可重连的 ⇒ 先按这一轮的 tmux 快照重新裁，裁完再报（经 emitter 保序）。
+                    OnReplayed::Reannounce => {
+                        send_reannounce(
+                            &host_label,
+                            pending_idle,
+                            announced,
+                            tmux_observable,
+                            session_changes,
+                        );
+                    }
+                    OnReplayed::Hold => {
+                        tracing::info!(
+                        "sessions-replayed: [{host_label}] 清单报完了，但断连前有 {} 条可重连要按 tmux 快照重新裁 ⇒ 等这一轮第一帧 tmux_sessions 再报",
+                        pending_idle.len()
+                    );
+                        listed_held = true;
+                    }
                 }
             }
             // 〔SR1a〕链路帧只该出现在**本机后端**那条流上（monitor 只在那里开链路）。
@@ -3532,9 +3977,21 @@ async fn stream_loop(
                     "ssh_source [{host_label}] 远端后端发来了传输帧（id={id}）—— 传输台在本机后端，丢掉"
                 );
             }
+            // 〔TAP · V124〕远端的中转是脱离的 `--relay`，不在那台的流模式后端进程里 ⇒ 今天远端流上**没有** tap 来源
+            //   （怎么接是设计题，住仓外 `调研/第四波记录/TAP.md §8` 题 1）。真来了：没有设计过它怎么对 sid，不转；
+            //   不按帧刷 warn（token 级的频率会把日志淹掉）—— 记一句 debug。
+            Some(InboundFrame::Tap(t)) => {
+                tracing::debug!(
+                    "ssh_source [{host_label}] 远端后端发来了 tap 帧（stream={}）—— 远端 tap 还没有设计，丢掉",
+                    t.stream
+                );
+            }
             None => {
                 // 未知 kind / 坏帧 / 非 JSON：跳过，绝不 panic、绝不中断流。
-                tracing::warn!("ssh_source skipping unparseable/unknown frame: {line}");
+                // 〔W5-VIS · `设计/15 §3.4 ②`〕记账：按 2 的幂次说（带累计数），流结束出总账（原先逐帧一行、从不计数）。
+                if let Some(n) = tally.note_unparsed(line) {
+                    tracing::warn!("{n}");
+                }
             }
         }
     }
@@ -3953,7 +4410,10 @@ pub async fn test_remote_connection(
             tracing::warn!("connect stage emit failed: {e}");
         }
     };
-    let (link, ack) = match crate::dial_host::probe(&cfg, &cfg.backend_path, &mut to_ui).await {
+    // 〔TL3 · §47〕探针那一发先过放行判定、再走唯一的 quote —— 先前这里把 `backendPath` **原样**当命令串交给拨号代理
+    //   （远端 shell 会解析它；TL2 那张 quote 人群表逮不到裸插值）。判不过 ⇒ 这是「构造不出测试」的硬错，照实回 `Err`。
+    let probe_cmd = shell_quote(cfg.backend_path_for_shell()?);
+    let (link, ack) = match crate::dial_host::probe(&cfg, &probe_cmd, &mut to_ui).await {
         Ok(v) => v,
         Err((e, _seen_fingerprint)) => {
             // 握手失败（含 host key 不匹配被拒）。代理那侧看到过的指纹**刻意不回给前端**：
