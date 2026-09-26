@@ -4727,11 +4727,6 @@
       "zh": "那台机器的后端回的内容读不懂。多半是两边版本对不上，重装那台机器的后端试试。",
       "args": []
     },
-    "shellQuote.bad.configDir": {
-      "kind": "error",
-      "zh": "非法 CLAUDE_CONFIG_DIR，不能拼进命令：{value}",
-      "args": ["value"]
-    },
     "skeletonView.ledgerFromIndex.noIndex": {
       "kind": "error",
       "zh": "索引不可用",
@@ -13821,6 +13816,11 @@
       "kind": "error",
       "zh": "远端还没装后端",
       "args": []
+    },
+    "rsCcmInvocation.refusal.probeUnknown": {
+      "kind": "error",
+      "zh": "这次没探到远端的后端，不等于没装：{e}",
+      "args": ["e"]
     },
     "history.entry.deleteHint": {
       "kind": "body",
