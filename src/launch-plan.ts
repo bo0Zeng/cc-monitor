@@ -178,7 +178,7 @@ export interface LaunchPlan {
  *    **但"零改 builder"那一半没达成，别把这里读成"只需三处"**（R03 Phase D 对抗审计指出，
  *    此前本注释确实这么写过）：`launch-requests.ts` 的 4 个 `planXxx` 仍要各改 2 行
  *    （解构 + ctx 字面量），`LaunchContext` 也要同步加字段；若新维度需要新的 `EnvOp` 种类，
- *    `launch-render-fallback.ts` 还要加一个 switch 分支。真要闭合这一半，得让 `LaunchContext`
+ *    Rust `payload.rs` 的渲染还要加一个分支（〔LR2〕TS 那份兜底渲染器已删）。真要闭合这一半，得让 `LaunchContext`
  *    持有一个**纯透传子集**（只搬不需要解析的字段——绝不能把 `configDir`/`accountName` 也搬进去，
  *    那会让"未解析的原始字段"与"已解析的 `account` 判别联合"并存，未来某个维度读了原始字段
  *    就绕过 `accountOf` 的解析，正是 R11 那一族病）。未做，登记在案。

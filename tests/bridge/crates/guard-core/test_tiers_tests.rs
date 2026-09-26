@@ -424,8 +424,8 @@ const SCAN: &[&str] = &[
     "tests/ipc/chan.vitest.ts",
     "tests/ipc/commands.vitest.ts",
     "tests/launch-cli-wire.vitest.ts",
+    "tests/launch-no-shell-in-ts.vitest.ts", // 〔LR2〕`设计/90 §3` 条 1（接替 session-backend-gate）
     "tests/launch-payload-golden.vitest.ts",
-    "tests/launch-render-fallback.vitest.ts",
     "tests/launch-tmux-outer-golden.vitest.ts",
     "tests/liveness-process-names-parity.vitest.ts",
     "tests/panorama/api-remote.vitest.ts",
@@ -433,6 +433,7 @@ const SCAN: &[&str] = &[
     "tests/paste-block-guard.vitest.ts",
     "tests/paste-block.vitest.ts",
     "tests/remote-config.vitest.ts",
+    "tests/rbind-token-shape-parity.vitest.ts", // 〔LR2〕从 launch-render-fallback.vitest.ts 搬来（读 Rust `payload.rs`）
     "tests/replay-tail-keep.vitest.ts",
     "tests/scale1-render-cost.vitest.ts",
     "tests/scale2-height-truth.vitest.ts",
@@ -441,8 +442,6 @@ const SCAN: &[&str] = &[
     "tests/scale5-replay-queue-depth.vitest.ts",
     "tests/scale6-memory-ledger.vitest.ts",
     "tests/scanning-guard-registry.vitest.ts",
-    "tests/session-backend-gate.vitest.ts",
-    "tests/session-backend.test.ts",
     "tests/session-reads.vitest.ts", // 〔C4b〕读跨语言金样（`tests/__fixtures__/session-reads.golden.json`）
     "tests/settings/accounts-section.vitest.ts",
     "tests/settings/backend-section.vitest.ts",
@@ -456,7 +455,6 @@ const SCAN: &[&str] = &[
     "tests/settings/remote-section.vitest.ts",
     "tests/settings/settings-source-markdown.vitest.ts",
     "tests/shell-quote-deceptive-parity.vitest.ts",
-    "tests/shell-quote-posix-parity.vitest.ts",
     "tests/tab-session-state.vitest.ts",
     "tests/tabs-copy-terms.vitest.ts",
     "tests/tabs-split-graph.vitest.ts",
@@ -648,6 +646,7 @@ const E2E_SUPPORT: &[&str] = &[
     "tests/e2e/fake-backend.sh",
     "tests/e2e/fake-claude",
     "tests/e2e/gen-idle-tmux.sh",
+    "tests/e2e/launch-render-emit.sh", // 〔LR2〕生产 Rust 渲染器给 e2e 的出口（`launch-render-driver.ts` 调它）
     "tests/e2e/local-backend-container/build-image.sh",
     "tests/e2e/local-backend-container/guard-run-netns.sh",
     "tests/e2e/local-backend-container/rig.sh",
@@ -779,6 +778,13 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "tests/bridge/filewin/shell_tests.rs",
         "xvfb_worker_opens_with_no_x_server_at_all",
         Trigger::Filter { by: "tests/bridge/filewin/shell_tests.rs", needle: "filewin::shell::tests::xvfb_worker_opens_with_no_x_server_at_all" },
+    ),
+    (
+        // 〔LR2〕生产命令 `render_launch_payload` 给 e2e 的数据出口（`resume-suite` · `resume-backend-frames` ·
+        //   `tmux-target-acceptance` 三套经这个驱动取「app 真正会跑的那一串」）。
+        "tests/bridge/backend/control/launch_tmux_outer_parity_tests.rs",
+        "emit_launch_render_for_e2e",
+        Trigger::Filter { by: "tests/e2e/launch-render-emit.sh", needle: "emit_launch_render_for_e2e" },
     ),
     (
         "tests/bridge/history_tests.rs",

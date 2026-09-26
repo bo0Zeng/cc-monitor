@@ -27,13 +27,10 @@ import { isValidRbindToken } from "./launch-dimensions";
 // 🔴 〔步 22b·B 2026-09-20〕**这里原来 `import { renderFallback } from "./launch-render-fallback"`。**
 // `设计/90 §4 E` 收官：外层 tmux 那三格切到 `backend::control::payload::render_tmux_outer`
 // 之后，本文件是 `renderFallback` **最后一个生产消费者** —— 那一行随之退役。
-// ⚠ 那两个文件（`launch-render-fallback.ts` / `session-backend.ts`）**没删**：
-// 它们今天是逐字节金标准（`payload-golden.json` / `tmux-outer-golden.json`）的**左边**，
-// 也就是「另一种语言的独立实现」；删它们等于把跨语言对拍降级成「Rust 没变」的冻结快照
-// —— 〔LR1〕`ccm …` 调用行那一份 TS 渲染器曾按同一条理由留着，U8c-3 已删
-// （它的夹具换成「生产请求 ＋ 手写期望」，见 `launch-cli-golden.ts` 头注）；这一族还没动。
-// 逐处住址与「还站不站在生产路上」两把尺子见 `launch_wire_f07_main_path_tests.rs` 的
-// `TS_FALLBACK_KEEPERS` / `TS_FALLBACK_REACH`，**本刀两张都重裁过**。
+// 〔LR2 2026-09-25〕那两个文件（`launch-render-fallback.ts` / `session-backend.ts`）连同
+// `remote-launch.ts` 那五个 builder 也删了（`设计/00 §2.5 ④`）：两份夹具（`payload-golden.json` /
+// `tmux-outer-golden.json`）的左边照 LR1 的办法换成手写期望，`req` 仍由本文件的请求构造现产。
+// 「这一族不许回来」由 `tests/launch-no-shell-in-ts.vitest.ts` 管（`设计/90 §3` 条 1）。
 // 〔LR1 · U8c-3〕`ccm …` 调用行的 TS 渲染器（原 `launch-render-cli.ts`）已删 ——
 // 生产从 U8c-2c-2 起就只走 Rust（`renderCliViaBackend` → `render_ccm_launch`），
 // 它最后只剩「产夹具的 `out`」一个用途，而那一格改成了手写期望。
@@ -244,7 +241,7 @@ async function renderLaunchCommand(
   // （`backend::control::payload::render_payload`）。
   if (plan.container.kind === "none" && plan.action.kind !== "attach") {
     try {
-      return await commands.render_launch_payload({ req: buildPayloadRenderRequest(plan) });
+      return await commands.render_launch_payload({ req: buildLaunchRenderRequest(plan) });
     } catch (e) {
       // 后端拒了（非法 configDir / 会裂的 arg）⇒ **不静默用 TS 版糊过去**：
       // 那等于把一次 fail-closed 变成 fail-open。原样抛给调用方的 catch（它会 toast）。
@@ -275,7 +272,7 @@ async function renderLaunchCommand(
   // 没有 tmux 容器的串 —— 那时用户的会话根本不在 tmux 里，而两侧的闸一个都不响）。
   // 那一条由 `tests/remote-launch-run.vitest.ts` 的 `W22B` 组逐格钉着。
   try {
-    return await commands.render_launch_payload({ req: buildTmuxOuterRenderRequest(plan) });
+    return await commands.render_launch_payload({ req: buildLaunchRenderRequest(plan) });
   } catch (e) {
     // 同上一格：带 `REFUSE:` 标的是坏输入（换条路渲染只会糊过去），不带标的是通道异常；
     // 两者在这一格的处置**相同** —— 因为这里已经没有第二条路了。
@@ -414,6 +411,23 @@ export function buildTmuxOuterRenderRequest(plan: LaunchPlan): PayloadRenderRequ
             quoting: plan.container.nameQuoting,
           },
   };
+}
+
+/**
+ * 〔LR2〕**这份 plan 交给 `render_launch_payload` 的那个请求** —— 「挑哪个请求构造」的唯一住址。
+ *
+ * `container:"none"`（且不是 attach）⇒ 内层载荷那一形（[`buildPayloadRenderRequest`]）；
+ * 其余三格（tmux `create` / `send-into` / `attach`）⇒ 带 `outer` 那一形（[`buildTmuxOuterRenderRequest`]）。
+ *
+ * 抽出来是为了让 e2e 验的就是生产那一行：`tests/e2e/launch-render-driver.ts` 调**同一个函数**
+ * 产请求、交给生产 Rust 命令渲染（`emit_launch_render_for_e2e`）。挑法要是在 e2e 里另写一份，
+ * 两边一漂，e2e 验的又是一份副本。`renderLaunchCommand` 那两格都经它取请求，
+ * 两格的分支只剩「报错说哪一层」这一件事。
+ */
+export function buildLaunchRenderRequest(plan: LaunchPlan): PayloadRenderRequest {
+  return plan.container.kind === "none" && plan.action.kind !== "attach"
+    ? buildPayloadRenderRequest(plan)
+    : buildTmuxOuterRenderRequest(plan);
 }
 
 export function buildPayloadRenderRequest(plan: LaunchPlan): PayloadRenderRequest {
@@ -579,8 +593,8 @@ export async function runRemoteResumeTmux(
  *
  *  # ★★ F14 为什么把两态改成三态
  *
- *  原来「任何一步不顺都回落」。而那条整串（`session-backend.ts` 的
- *  `tmux send-keys -t '=name:' … ; tmux attach …`）**没有 §34 的门** —— 既无 `display-message`
+ *  原来「任何一步不顺都回落」。而那条整串（外层 send-into 那一格：
+ *  `tmux send-keys -t '=name:' … ; tmux attach …`，今天由 Rust `payload::render_tmux_outer` 产）**没有 §34 的门** —— 既无 `display-message`
  *  探测也无 `CCM_GUARD_REJECTED`。于是：
  *
  *  - 一次 `wrong_owner`（门说「这不是本工具的会话」）会被那条**无门**的路重做一遍；
@@ -775,7 +789,8 @@ export async function runLocalResumeIntoExistingTmux(
   //   出的就是 `tmux attach -t '=<name>:'`），换的是**谁拥有这条语法**。
   //   ⚠ 那条门禁此前只是散文里的一条手工 grep，**且只盯 `remote-launch.ts` 一个文件** ——
   //   本文件是后来从它拆出去的，门禁没跟着拆 ⇒ 这处违反因此躺了下来。
-  //   现在它有机检了（`session-backend-gate.vitest.ts`），扫**整个前端生产段**。
+  //   现在它有机检了（当时是 `session-backend-gate.vitest.ts`；〔LR2〕接替它的是
+  //   `launch-no-shell-in-ts.vitest.ts`，`设计/90 §3` 条 1），扫**整个前端生产段**。
   //
   // 🔴🔴 〔`K-R109` 2026-09-13〕**接过去了 —— 这一处不再问座要。**
   //   用户逐字裁「新起一个会话之后，把你的终端接进那个会话那一句 `tmux attach`，

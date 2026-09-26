@@ -2691,6 +2691,17 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// `tool_registry`（→ `tool_registry_environment_tests.rs`）。
     /// 另有**真新增的一条**（退役判据留下的墓碑），挂在本表末尾、单独写了理由。
     const TOMBSTONED: &[(&str, &str, usize)] = &[
+        // 〔LR2〕U8c-3「前提触发器」改写成只管 `create-or-attach` 两棵树、改了名；两处散文点它的原名讲沿革。
+        (
+            "src/doc/INVARIANTS.md",
+            "the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold",
+            1,
+        ),
+        (
+            "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
+            "the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold",
+            1,
+        ),
         // 〔TL1 · 4C〕代装 rc 那一行 source 的那一跳退役（`设计/71 §6.1`：接上别名文件的那一行只住别名块里）；
         //   两处散文逐字点它讲来历（「配对之后怎么拼」写过三份那一段 · 写规则只有一个住址那条的死值验说明）。
         ("src/bridge/src/fenced_block.rs", "ensure_rc_source_line", 1),
@@ -3130,12 +3141,9 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_daemonless_remote_still_needs_the_ts_fallback_renderer",
             1,
         ),
-        (
-            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
-            "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
-            "the_daemonless_remote_still_needs_the_ts_fallback_renderer",
-            2,
-        ),
+        // 〔LR2 2026-09-25〕`launch_wire_f07_main_path_tests.rs` 里点
+        //   `the_daemonless_remote_still_needs_the_ts_fallback_renderer` 的两处墓碑删了：它们住在
+        //   「那份换人手续」与「U8c-3 前提触发器」两段头注里，那两条判据随 TS 兜底一族整条退役（被守的事整轴没了）。
         // 🔴 〔`K-R96` 09-12〕**这一行删了 —— 盘上那句墓碑随被墓碑的那件事一起走了。**
         //
         // 它盖的是 `plan.rs::Container::avoid_collision` 的头注里那句
@@ -3146,12 +3154,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // 问同一张会话快照，`--print` 与真跑吐同一个名字）⇒ 连带那个字段与那句头注
         // 一起删。⇒ 按本表头注那条纪律：「登记的那一处盘上已经没有了 ⇒ 删掉它，
         // 别让表替真判据挡枪」。
-        (
-            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
-            "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
-            "ccm_reaches_the_backend_through_one_shot_subcommands",
-            1,
-        ),
+        // 〔LR2 2026-09-25〕同上：点 `ccm_reaches_the_backend_through_one_shot_subcommands` 的那处墓碑住在
+        //   U8c-3 前提触发器的头注里，那条判据改写成只管 `create-or-attach` 两棵树之后，那段头注整段删了。
         (
             // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
             "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
@@ -4070,7 +4074,9 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/spawn_managed.rs", 2),
         ("src/bridge/src/structural_scan.rs", 1),
         ("src/doc/ARCHITECTURE.md", 1),
-        ("src/doc/INVARIANTS.md", 6), // 〔RW1〕+2：§1 例外 3 那道远端删会话守卫 · 例外 1 本机那道路径守卫（`validate_delete_target`）
+        ("src/doc/INVARIANTS.md", 9), // 〔RW1〕+2：§1 例外 3 那道远端删会话守卫 · 例外 1 本机那道路径守卫（`validate_delete_target`）
+        //   〔LR2〕6 → 8：§33b 产出方表 `session-backend.ts` 那格 · 三问表 ③ 那格 —— 两处原文点着随 TS 兜底一族删掉的判据与消费者表
+        //   · 8 → 9：§33b「删掉座的代价也换人了」那段点着前提触发器的原名（那条判据改名改写了）
         ("src/doc/IPC-PROTOCOL.md", 4),
         // 〔AL1 · 2026-09-24〕+1：别名那一块搬走时留的墓碑（`buildAccountAliasBlock`）。
         ("src/settings/accounts-section.ts", 2),
@@ -4087,8 +4093,10 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/backend/control/cc_bus_tests.rs", 7),
         ("tests/bridge/backend/control/inbound_client_tests.rs", 1),
         (
+            // 〔LR2〕4 → 2：TS 兜底一族退役，两段带墓碑的头注（换人手续 · 前提触发器的旧头注）整段删了；
+            //   留下的两处：`launch_via_backend` 那句 ＋ 本拍新贴的「本条原名 …」那句。
             "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
-            4,
+            2,
         ),
         ("tests/bridge/backend/control/tmux_tests.rs", 3),
         ("tests/bridge/backend_tests.rs", 1),

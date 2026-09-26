@@ -286,8 +286,11 @@ fn the_outer_layer_producers_are_in_the_state_the_doc_claims() {
     let root = repo_root();
     let checks: &[(&str, bool)] = &[
         (
-            "session-backend.ts（TS 生产远端主路）",
-            root.join("src/session-backend.ts").is_file(),
+            // 🔴 〔LR2 2026-09-25〕**「必须在」翻成「必须不在」**（同 `K-R104` 那一格的处置）：
+            //    TS 座按 `设计/00 §2.5 ④` 删了（外层三格只剩 `payload::render_tmux_outer` 一个家），
+            //    `INVARIANTS §33b` 产出方表那一行同拍改记「已删」。长回来 ⇒ 红。
+            "session-backend.ts（TS 座，LR2 已删 —— 必须不在）",
+            !root.join("src/session-backend.ts").is_file(),
         ),
         (
             "control/launch.rs（backend argv）",
@@ -389,7 +392,8 @@ fn the_three_questions_in_33b_have_todays_answers() {
     };
 
     // ── 量法 ② ────────────────────────────────────────────────────────────
-    // 座本身（`session-backend.ts`）不算 —— 它是被问的那一层，不是问的人。
+    // 〔LR2〕座本身（`session-backend.ts`）删了；量法照旧数「生产 TS 里还有谁问座要 attach」——
+    // 座长回来、又有人问它要，这一问的判词就翻回「前端仍产」。
     let seat_attach = format!("SESSION_BACKEND.{}", "attach");
     let mut askers: Vec<String> = Vec::new();
     let mut scanned_ts = 0usize;
@@ -399,7 +403,7 @@ fn the_three_questions_in_33b_have_todays_answers() {
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-        // 座本身不算 —— 它是被问的那一层，不是问的人。
+        // 座本身不算 —— 它是被问的那一层，不是问的人（〔LR2〕今天它不在盘上，这一格留着给「长回来」那天）。
         if name.ends_with(".test.ts")
             || name.ends_with(".vitest.ts")
             || name == "session-backend.ts"
@@ -916,6 +920,26 @@ fn every_code_symbol_named_in_the_docs_still_resolves() {
             "`INVARIANTS.md` 那句逐字写着它**已删**（audit-fixes F03.2）—— 历史句，\
                  删掉反而丢掉「为什么今天没有 poller」的解释",
         ),
+        // 〔LR2 2026-09-25〕下面四条：`INVARIANTS.md` §33b 的沿革段逐字点着它们 —— 它们是 TS 兜底一族的
+        //   「存续理由」判据与两把尺子，随那一族（`launch-render-fallback.ts` · `session-backend.ts` · 五个 builder）
+        //   按 `设计/00 §2.5 ④` 删了。那几句是「那一族当年靠什么站着」的解释，改写会丢线索（同 `build_usage_probe_cmd`）；
+        //   「那一族长回来」由 `tests/launch-no-shell-in-ts.vitest.ts` 挡着。
+        (
+            "the_ts_fallback_renderer_now_stands_on_its_own_consumers",
+            "〔LR2〕历史句：TS 兜底渲染器的「存续理由」判据，那一族删了",
+        ),
+        (
+            "the_retired_premise_left_a_tombstone_that_is_still_on_the_board",
+            "〔LR2〕历史句：上一条的看守，同一拍删了",
+        ),
+        (
+            "TS_FALLBACK_KEEPERS",
+            "〔LR2〕历史句：尺子A（兜底一族的消费者处数表），同一拍删了",
+        ),
+        (
+            "TS_FALLBACK_REACH",
+            "〔LR2〕历史句：尺子B（兜底一族有没有生产调用方），同一拍删了",
+        ),
         (
             "build_usage_probe_cmd",
             "★〔`K-R104` 09-13〕`INVARIANTS.md` §33b 那两处逐字写着它**已退役** \
@@ -1158,6 +1182,26 @@ fn every_repo_path_named_in_the_docs_still_resolves() {
             "**历史句**〔LR1 · U8c-3 09-25〕：`INVARIANTS §33` 三处「验证」逐字记着当时那几刀下在\
                  哪套测试上（R04① · #76 防线）。套件随 TS 渲染器删了，今天的验证住址逐条写在\
                  §33 末尾的 LR1 更新段",
+        ),
+        // 〔LR2 2026-09-25〕下面四条：TS 兜底一族（座 · 兜底渲染器）与它们的两份套件按 `设计/00 §2.5 ④` 删了。
+        //   `INVARIANTS §31 / §31a / §33 / §33b` 与 `CONTRIBUTING` 那一节点它们的句子都是**沿革**
+        //   （「阶段①问前端座」「门禁腐过一次」「四处同源」「双渲染器」），每处旁边都补了〔LR2〕那句今天的住址；
+        //   删掉路径，读的人就不知道今天那条规矩当初是对着哪一份立的。
+        (
+            "src/session-backend.ts",
+            "**历史句**〔LR2〕：TS 座，已删（外层三格今天只在 `payload.rs`）",
+        ),
+        (
+            "src/launch-render-fallback.ts",
+            "**历史句**〔LR2〕：TS 兜底渲染器，已删",
+        ),
+        (
+            "tests/session-backend-gate.vitest.ts",
+            "**历史句**〔LR2〕：`§31` 第①条的旧机检，已由 `tests/launch-no-shell-in-ts.vitest.ts` 接替",
+        ),
+        (
+            "tests/session-backend.test.ts",
+            "**历史句**〔LR2〕：座的套件，已删（与座无关的两条搬进 `tests/remote-launch.test.ts`）",
         ),
         (
             "src/cards/memory-recall.ts",
