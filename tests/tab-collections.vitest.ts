@@ -4,6 +4,10 @@
 //（localStorage 住 WebView2 用户数据目录，与 cache 同处；集合名是用户手写的真相，
 // 必须活过一次清缓存）。所以判据要钉**它写的是 config.json 那条路**，
 // 并钉 **localStorage 一个字都没写**。
+//
+// 〔GRP1 · `设计/99 §1` V140〕「分组不应该单独存会话记录」⇒ 组只存 `{id, name}`；组员关系改住 tab 自己身上
+//（`Tab.group` ＋ `tabBar.groupOf.<sid>`）。测成员名单 / 成员上界 / 「组员满了」的格随被测的东西一起删了，
+// 组员那一半的判据住 `tests/tab-group-v140.vitest.ts`。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const store = vi.hoisted(() => ({ cfg: {} as Record<string, unknown>, saves: 0 }));
@@ -26,29 +30,21 @@ import {
   createCollection,
   renameCollection,
   deleteCollection,
-  addMember,
-  removeMember,
-  collectionOf,
   getCollections,
-  setCollections,
+  collectionsEdit,
   COLLECTION_CAP,
-  MEMBER_CAP,
   NAME_MAX,
   createRefusal,
-  memberRefusal,
   collectionRefusalText,
   type TabCollection,
 } from "../src/tab-collections";
-import { dropRefusal } from "../src/tab-drop";
+import { patchConfig } from "../src/config";
+import { groupMoveForDrop, type DropTarget, type GroupMove } from "../src/tab-drop";
 
-const c = (id: string, name: string, members: string[] = []): TabCollection => ({
-  id,
-  name,
-  members,
-});
+const c = (id: string, name: string): TabCollection => ({ id, name });
 
 describe("P7a-3 集合：纯操作", () => {
-  it("★ P7a3-Y3：五个动作齐全，且各自的空/越界口都堵住", () => {
+  it("★ P7a3-Y3：四个动作齐全，且各自的空/越界口都堵住", () => {
     let l: TabCollection[] = [];
     l = createCollection(l, "  工作  ", "c1");
     expect(l).toEqual([c("c1", "工作")]); // trim
@@ -57,37 +53,32 @@ describe("P7a-3 集合：纯操作", () => {
     expect(renameCollection(l, "c1", "  ")).toEqual(l);
     l = renameCollection(l, "c1", "白天");
     expect(l[0].name).toBe("白天");
-    l = addMember(l, "c1", "s1");
-    l = addMember(l, "c1", "s1"); // 幂等
-    expect(l[0].members).toEqual(["s1"]);
-    l = removeMember(l, "s1");
-    expect(l[0].members).toEqual([]);
     expect(deleteCollection(l, "c1")).toEqual([]);
-  });
-
-  it("★ P7a3-Y3b：一个 tab 只属一个集合 —— 加进新的会从旧的移出", () => {
-    let l = [c("a", "A", ["s1"]), c("b", "B")];
-    l = addMember(l, "b", "s1");
-    expect(l[0].members).toEqual([]);
-    expect(l[1].members).toEqual(["s1"]);
-    expect(collectionOf(l, "s1")?.id).toBe("b");
-    expect(collectionOf(l, "s9")).toBeNull();
   });
 
   it("★ P7a3-Y1：盘上脏值逐种收拾干净", () => {
     expect(sanitizeCollections("nope")).toEqual([]);
     expect(sanitizeCollections([1, null, [], { name: "无 id" }, { id: "x" }])).toEqual([]);
-    // 重名 id 只留第一个；成员去重；一个 sid 只准属一个集合（后来的丢掉）。
+    // 重名 id 只留第一个。
     const got = sanitizeCollections([
-      { id: "a", name: "A", members: ["s1", "s1", 7, "  ", "s2"] },
+      { id: "a", name: "A" },
       { id: "a", name: "重复 id" },
-      { id: "b", name: "B", members: ["s2", "s3"] },
+      { id: "b", name: "B" },
     ]);
-    expect(got).toEqual([c("a", "A", ["s1", "s2"]), c("b", "B", ["s3"])]);
+    expect(got).toEqual([c("a", "A"), c("b", "B")]);
     // 名字截断到上界。
     expect(sanitizeCollections([{ id: "x", name: "n".repeat(200) }])[0].name).toHaveLength(
       NAME_MAX,
     );
+  });
+
+  it("🔴 〔GRP1 · V140〕旧形状的 `members` 不读、不带出去（`no-legacy-compat`：不迁移不兼容）—— 每一项的键恰好是 {id, name}", () => {
+    const got = sanitizeCollections([
+      { id: "a", name: "A", members: ["s1", "s2"] },
+      { id: "b", name: "B", extra: 1 },
+    ]);
+    expect(got).toEqual([c("a", "A"), c("b", "B")]);
+    for (const g of got) expect(Object.keys(g).sort(), "组只存 {id, name}").toEqual(["id", "name"]);
   });
 
   it("★ P7a3-Y1b：**上界真的裁**（灌满再验）", () => {
@@ -96,8 +87,6 @@ describe("P7a-3 集合：纯操作", () => {
     expect(createCollection(sanitizeCollections(many), "再来一个", "zz")).toHaveLength(
       COLLECTION_CAP,
     );
-    const big = [c("a", "A", Array.from({ length: MEMBER_CAP + 10 }, (_, i) => `s${i}`))];
-    expect(sanitizeCollections(big)[0].members).toHaveLength(MEMBER_CAP);
   });
 });
 
@@ -109,18 +98,22 @@ describe("P7a-3 集合：存到哪儿", () => {
   });
 
   it("★★ P7a3-Y1：写的是 `config.json` 那条路，**localStorage 一个字都不写**", async () => {
-    await setCollections([c("a", "A", ["s1"])]);
+    await patchConfig([collectionsEdit([c("a", "A")])]);
     expect(store.saves, "必须真的走 patchConfig").toBe(1);
-    expect(store.cfg.tabCollections).toEqual([c("a", "A", ["s1"])]);
+    expect(store.cfg.tabCollections).toEqual([c("a", "A")]);
     // ⚠ 这一条才是本 DoD 的正题：localStorage 是最顺手的错路（tab 偏好全在那儿），
     // 而它住 WebView2 用户数据目录 —— 清一次缓存，用户手写的集合名就没了。
     expect(localStorage.length, "集合不许落进 localStorage").toBe(0);
-    expect(await getCollections()).toEqual([c("a", "A", ["s1"])]);
+    expect(await getCollections()).toEqual([c("a", "A")]);
   });
 
   it("落盘时也过一遍 sanitize（别把脏东西写进 config.json）", async () => {
-    await setCollections([c("a", "A", ["s1", "s1"]), c("a", "重复 id")]);
-    expect(store.cfg.tabCollections).toEqual([c("a", "A", ["s1"])]);
+    const dirty = [
+      { id: "a", name: "A", members: ["s1"] },
+      { id: "a", name: "重复 id" },
+    ] as unknown as TabCollection[];
+    await patchConfig([collectionsEdit(dirty)]);
+    expect(store.cfg.tabCollections).toEqual([c("a", "A")]);
   });
 
   it("config.json 里没有这个键 ⇒ 空列表，不是 undefined", async () => {
@@ -130,10 +123,9 @@ describe("P7a-3 集合：存到哪儿", () => {
 
 // 〔TL2 · E13〕要求住址：`设计/01 §5 D4`「一条都不许静默忽略」—— 到上界时数据层照旧原样返回，
 // 但得有一个判定说得出「为什么没做」，调用方据它出声。期望手写（不从被测函数生成），正反各一格。
+// 〔GRP1 · V140〕「组员满了」那一种随成员上界作废；只剩组数到上界这一种。
 describe("〔TL2 · E13〕到上界：为什么没做", () => {
   const many = (n: number): TabCollection[] => Array.from({ length: n }, (_, i) => c(`c${i}`, `组${i}`));
-  const fullOf = (id: string, name: string, first: string, n: number): TabCollection =>
-    c(id, name, [first, ...Array.from({ length: n - 1 }, (_, i) => `m${i}`)]);
 
   it("建集合：满了 ⇒ collections-full；差一个 ⇒ null", () => {
     expect(createRefusal(many(COLLECTION_CAP))).toEqual({ kind: "collections-full" });
@@ -142,35 +134,36 @@ describe("〔TL2 · E13〕到上界：为什么没做", () => {
     expect(createCollection(many(COLLECTION_CAP), "新").length).toBe(COLLECTION_CAP);
   });
 
-  it("加成员：满了且不在里面 ⇒ members-full（带组名）；已在里面 / 差一个 / 没这个组 ⇒ null", () => {
-    const full = [fullOf("g", "白天", "a", MEMBER_CAP)];
-    expect(memberRefusal(full, "g", "x")).toEqual({ kind: "members-full", name: "白天" });
-    expect(memberRefusal(full, "g", "a"), "已经在里面不算拒绝").toBeNull();
-    expect(memberRefusal([fullOf("g", "白天", "a", MEMBER_CAP - 1)], "g", "x")).toBeNull();
-    expect(memberRefusal(full, "没这个组", "x")).toBeNull();
-    expect(addMember(full, "g", "x")[0].members.includes("x"), "判定说满、数据层却加进去了").toBe(false);
-  });
-
-  it("拖放：从结果判 —— 满组 · 建不出组 · 进去了 · 落到末尾 · 压在自己身上", () => {
-    const full = [fullOf("g", "白天", "b", MEMBER_CAP)];
-    expect(dropRefusal(full, "a", { kind: "onto", sid: "b" })).toEqual({ kind: "members-full", name: "白天" });
-    expect(dropRefusal(full, "a", { kind: "before", sid: "b" })).toEqual({ kind: "members-full", name: "白天" });
-    expect(dropRefusal(many(1), "a", { kind: "onto", sid: "b" })).toEqual({ kind: "collections-full" });
-    expect(dropRefusal([c("g", "白天", ["b", "a"])], "a", { kind: "onto", sid: "b" })).toBeNull();
-    expect(dropRefusal(many(1), "a", { kind: "before", sid: "b" }), "插到一个散 tab 前 = 本来就不进组").toBeNull();
-    expect(dropRefusal(full, "a", { kind: "end" })).toBeNull();
-    expect(dropRefusal(many(1), "b", { kind: "onto", sid: "b" })).toBeNull();
-  });
-
-  it("两句话：各说各的、都带上界数、零占位符残留", () => {
+  it("那一句：带上界数、零占位符残留", () => {
     const a = collectionRefusalText({ kind: "collections-full" });
-    const b = collectionRefusalText({ kind: "members-full", name: "白天" });
+    expect(a.title).toBe("没有建新集合");
     expect(a.body).toContain(String(COLLECTION_CAP));
-    expect(b.body).toContain(String(MEMBER_CAP));
-    expect(b.title).toContain("白天");
-    expect(a.title).not.toEqual(b.title);
-    for (const t of [a.title, a.body, b.title, b.body]) {
+    for (const t of [a.title, a.body]) {
       expect(t).not.toMatch(/[{〔]/);
     }
+  });
+});
+
+// 〔GRP1 · V140〕拖放对组的后果（`tab-drop.ts::groupMoveForDrop`）—— 手写表，期望不从被测函数生成。
+describe("〔GRP1〕拖放：归属跟着落点宿主走（`§D.7`），只回「被拖那个 tab 怎么动」", () => {
+  // a 在 g1；b 在 g1；x 在 g2；s、t 散着。
+  const groups: Record<string, string | null> = { a: "g1", b: "g1", x: "g2", s: null, t: null };
+  const groupOf = (sid: string): string | null => groups[sid] ?? null;
+  const cases: [string, string, DropTarget, GroupMove][] = [
+    ["压在散 tab 上 ⇒ 现建", "s", { kind: "onto", sid: "t" }, { kind: "found", with: "t" }],
+    ["组里的压在散 tab 上 ⇒ 现建（离开原组）", "a", { kind: "onto", sid: "t" }, { kind: "found", with: "t" }],
+    ["散 tab 压在组里的上 ⇒ 进那个组", "s", { kind: "onto", sid: "a" }, { kind: "join", gid: "g1" }],
+    ["压在别组的上 ⇒ 换组", "a", { kind: "onto", sid: "x" }, { kind: "join", gid: "g2" }],
+    ["压在同组的上 ⇒ 不变", "a", { kind: "onto", sid: "b" }, { kind: "stay" }],
+    ["压在自己身上 ⇒ 不变", "s", { kind: "onto", sid: "s" }, { kind: "stay" }],
+    ["插到组里的前面 ⇒ 进那个组", "s", { kind: "before", sid: "a" }, { kind: "join", gid: "g1" }],
+    ["插到散 tab 前面 ⇒ 拖出组", "a", { kind: "before", sid: "s" }, { kind: "leave" }],
+    ["散 tab 插到散 tab 前面 ⇒ 不变", "s", { kind: "before", sid: "t" }, { kind: "stay" }],
+    ["同组里挪位置 ⇒ 不变", "a", { kind: "before", sid: "b" }, { kind: "stay" }],
+    ["落到末尾 ⇒ 拖出组", "a", { kind: "end" }, { kind: "leave" }],
+    ["散 tab 落到末尾 ⇒ 不变", "s", { kind: "end" }, { kind: "stay" }],
+  ];
+  it.each(cases)("%s", (_label, sid, target, want) => {
+    expect(groupMoveForDrop(groupOf, sid, target)).toEqual(want);
   });
 });

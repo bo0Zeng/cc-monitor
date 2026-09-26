@@ -44,12 +44,11 @@ export {
   tabUnderY,
   commonDirName,
   defaultGroupName,
-  applyDropToCollections,
-  collectionsEqual,
+  groupMoveForDrop,
   DWELL_MS,
   DWELL_MOVE_PX,
 } from "./tab-drop";
-export type { DropTarget, TabRect } from "./tab-drop";
+export type { DropTarget, GroupMove, TabRect } from "./tab-drop";
 import { TabMenu } from "./tab-menu";
 import { TabStore } from "./tab-store";
 import { TabStreamView } from "./tab-stream-view";
@@ -223,7 +222,21 @@ export class TabManager {
       isAttachable: (sid) => this.isAttachable(sid),
       collectionsLoaded: () => this.prefs.collectionsLoaded,
       collections: () => this.prefs.collections,
-      commitCollections: (next) => this.prefs.commitCollections(next),
+      // 〔GRP1 · V140〕组员关系是 tab 自己的属性：菜单那三个动作改完内存（落盘偏好那一份同时写盘）就重画。
+      groupOf: (sid) => this.prefs.groupOf(sid),
+      joinGroup: (sid, gid) => {
+        void this.prefs.joinGroup(sid, gid);
+        this.refreshTabBar();
+      },
+      foundGroup: (sids, name, id) => {
+        const why = this.prefs.foundGroup(sids, name, id);
+        this.refreshTabBar();
+        return why;
+      },
+      leaveGroup: (sid) => {
+        void this.prefs.leaveGroup(sid);
+        this.refreshTabBar();
+      },
       pinnedLoaded: () => this.prefs.pinnedLoaded,
       togglePin: (sid) => this.togglePin(sid),
       requestPanoramaHighlight: (sid) => this.requestPanoramaHighlight?.(sid),
@@ -640,6 +653,8 @@ export class TabManager {
       // 〔步 17·B〕**不做自动固定**（照 `tab-collections.ts` 那条「手动建，不要自动」的先例，
       // `§B.7` 逐字）。盘上固定过的那些由 `loadPinned` 在复活时置回 true。
       pinned: false,
+      // 〔GRP1 · V140〕组员关系是 tab 自己的属性；盘上有它的组 id ⇒ 下面 `adoptGroup` 归位。
+      group: null,
       streamEl,
       stream,
       parentPath: sourcePath,
@@ -701,6 +716,8 @@ export class TabManager {
     }
     this.store.tabs.set(sessionId, tab);
     this.store.placeInOrder(tab);
+    // 〔GRP1〕tab 到了 ⇒ 盘上那份组 id 意图若有它，挪到 `tab.group`（形同上一行对顺序意图的再应用）。
+    this.prefs.adoptGroup(tab);
 
     if (this.store.activeId === null) {
       // "auto"：首个 Tab 的激活不是用户手势，不该占用 5s manualOverride 抑制
@@ -1063,6 +1080,10 @@ export class TabManager {
       void this.prefs.persistPinned();
     }
     this.prefs.clearPinHint(sessionId);
+    // 🔴 〔GRP1 · `设计/99 §1` V140「x就是没了, 不存在还要移出分组」〕**关掉 = 组关系随它一起没。**
+    //   摘盘上它那一键 `tabBar.groupOf.<sid>`；它是组里最后一个在栏里的 ⇒ 组也没（`TabBarPrefs.forgetTab`）。
+    //   必须在上面 `store.tabs.delete` 之后：「组里还剩谁」只数真在栏里的。没分组的 tab ⇒ 零写。
+    void this.prefs.forgetTab(tab);
 
     // 让后端 event_replay 把这个 session 的历史也丢掉
     forgetSession(sessionId);

@@ -8,22 +8,33 @@
  *
  * 字段与方法逐字从 `tabs.ts` 搬来，唯一的改写：刷 tab 栏 · 建骨架 tab · resume 三样换成 `this.host.…`。
  * 顺序那份「意图」本身（`savedOrder`）与落位运算住 `TabStore`，这里只管读盘 / 落盘。
+ *
+ * 〔GRP1 · `设计/99 §1` V140〕分组这一份改了形：组表只存 `{id, name}`，组员关系是 tab 自己的属性（`Tab.group`，
+ * 落盘 `tabBar.groupOf.<sid>`）。改组员的全部动作（建组 · 进组 · 出组 · × · 解散 · 改名）住这里，
+ * 每个动作「先改内存、再把组表与那几个 tab 的组 id 键装进**一次** `patchConfig`」（`writeGroups`）。
  */
 import {
   collectionRefusalText,
+  collectionsEdit,
+  createCollection,
+  createRefusal,
+  deleteCollection,
   getCollections,
-  setCollections,
+  renameCollection,
   type CollectionRefusal,
   type TabCollection,
 } from "./tab-collections";
 import {
+  getGroupOf,
   getPinned,
   getTabOrder,
+  groupOfEdit,
   isDegradedPin,
   setPinned,
   setTabOrder,
   type PinnedTab,
 } from "./tab-bar-state";
+import { patchConfig, type ConfigEdit } from "./config";
 import type { Tab } from "./tab-model";
 import { ENDED, UNSEEN, isLive } from "./tab-session-state";
 import { copyText } from "./copy-table";
@@ -33,7 +44,7 @@ import type { Origin } from "./ipc/origin";
 
 /**
  * 〔TL2 · E13〕集合到上界、这一下没做成 ⇒ 说一句（`设计/01 §5 D4`「一条都不许静默忽略」）。
- * 判定住 `tab-collections.ts`（`createRefusal` / `memberRefusal`）与 `tab-drop.ts::dropRefusal`，句子住文案表；
+ * 判定住 `tab-collections.ts::createRefusal`（经 [`TabBarPrefs.foundGroup`] 回给调用方），句子住文案表；
  * 两个入口（右键菜单 · 拖放）都经这一处说。
  */
 export function sayCollectionRefusal(r: CollectionRefusal): void {
@@ -57,8 +68,21 @@ export interface TabBarPrefsHost {
 }
 
 export class TabBarPrefs {
-  /** P7a-3（#61）：标签页集合。**零自动归组**〔用 08-11「纯手动」〕。 */
+  /**
+   * P7a-3（#61）：标签页集合（组表）。**零自动归组**〔用 08-11「纯手动」〕。
+   * 〔GRP1 · V140〕每一项只有 `{id, name}`；谁在组里看 `Tab.group`。
+   */
   collections: TabCollection[] = [];
+  /**
+   * 〔GRP1〕盘上 `tabBar.groupOf` 里、**tab 还没到**的那些组 id（sid → 组 id）—— 一份**意图**，形同 `TabStore.savedOrder`。
+   *
+   * 为什么不在读的那一拍按存活过滤：`设计/30 §C.3` 同一条理由 —— 读发生在启动那一刻，
+   * 「已经没了的会话」与「还没宣告到的会话」长得一模一样。
+   * tab 到达（[`adoptGroup`]）⇒ 它的组 id 从这里**挪到** `Tab.group`（此后真相只在 tab 身上一处）；
+   * 组没了（× 掉最后一个 · 解散）⇒ 指向它的条目从这里连同盘上一起摘。
+   * ⚠ 从没到过的 tab 的条目**留着**（盘上也留着）—— 何时能判它「不会再来」设计里没答（`GRP1.md` Q2 待拍）。
+   */
+  savedGroupOf = new Map<string, string>();
   /**
    * P7a-3 E 阶段补审：**这个实例拉过集合没有。**
    *
@@ -102,30 +126,148 @@ export class TabBarPrefs {
     private readonly host: TabBarPrefsHost,
   ) {}
 
-  /** P7a-3：从 `config.json` 拉一次集合并重画。宿主启动时调一次。 */
+  /**
+   * P7a-3：从 `config.json` 拉一次组表与每个 tab 的组 id，并重画。宿主启动时调一次。
+   *
+   * 〔GRP1〕`tabBar.groupOf` 里指向**组表里没有的组**的条目丢（认不出就丢）；其余存成意图（`savedGroupOf`），
+   * 并立刻对**已经在栏里**的 tab 补一次归位 —— 固定复活的骨架（`loadPinned`，与本函数并排跑）可能先到。
+   */
   async loadCollections(): Promise<void> {
-    this.collections = await getCollections();
+    const [table, groupOf] = await Promise.all([getCollections(), getGroupOf()]);
+    this.collections = table;
+    const ids = new Set(table.map((c) => c.id));
+    this.savedGroupOf = new Map([...groupOf].filter(([, gid]) => ids.has(gid)));
     this.collectionsLoaded = true;
+    for (const t of this.store.tabs.values()) this.adoptGroup(t);
     this.host.refreshTabBar();
-  }
-
-  /** P7a-3：落盘 + 重画。**先改内存再落盘** —— 让 UI 立刻响应；落盘失败出声（toast）＋ 记日志。 */
-  async commitCollections(next: TabCollection[]): Promise<void> {
-    this.collections = next;
-    this.host.refreshTabBar();
-    await this.persistCollections(next);
   }
 
   /**
-   * 只落盘、不重画。〔步 17·D〕`applyDrop` 要在同一拍里改**顺序 ＋ 归属**，
-   * 由它统一重画一次 —— 这里再画一次就是白画（拖动结束那一拍本来就重。`§3 P3`）。
-   * ⚠ 「落盘失败怎么说」这句话只能有一个住址，所以 `commitCollections` 也走这里。
+   * 〔GRP1〕一个 tab **到了**（`TabManager.ensureTab` 建出它的那一刻 / `loadCollections` 读完时）：
+   * 意图里有它 ⇒ 组 id 从意图**挪到** `tab.group`（挪，不是抄：此后这个事实只住 tab 身上）。
+   * 没拉过组表（viewer 窗口）⇒ 意图恒空 ⇒ 什么都不做。
+   */
+  adoptGroup(tab: Tab): void {
+    const gid = this.savedGroupOf.get(tab.sessionId);
+    if (gid === undefined) return;
+    this.savedGroupOf.delete(tab.sessionId);
+    if (tab.group === null && this.collections.some((c) => c.id === gid)) tab.group = gid;
+  }
+
+  /** 〔GRP1〕`sid` 所在的组（`null` = 散 tab / 没这个 tab）。 */
+  groupOf(sid: string): TabCollection | null {
+    const gid = this.store.tabs.get(sid)?.group ?? null;
+    return gid === null ? null : (this.collections.find((c) => c.id === gid) ?? null);
+  }
+
+  /**
+   * 〔GRP1〕右键「新建集合…」/ 拖放「压在一个散 tab 上」：建一个组，把 `sids` 这几个 tab 放进去。
+   * 组数到上界 ⇒ 回拒绝原因、**什么都不做**（调用方出声）；名字空 ⇒ 什么都不做（空名不是一个集合）。
+   * 盘：组表 ＋ 每个 tab 的组 id 键，**一次**写。
+   */
+  foundGroup(sids: readonly string[], name: string, id: string): CollectionRefusal | null {
+    const full = createRefusal(this.collections);
+    if (full) return full;
+    const next = createCollection(this.collections, name, id);
+    if (next.length === this.collections.length) return null;
+    this.collections = next;
+    const edits: ConfigEdit[] = [collectionsEdit(next)];
+    for (const sid of sids) {
+      const t = this.store.tabs.get(sid);
+      if (!t) continue;
+      t.group = id;
+      edits.push(groupOfEdit(sid, id));
+    }
+    void this.writeGroups(edits);
+    return null;
+  }
+
+  /** 〔GRP1〕右键「加入集合 › X」/ 拖放进组：`sid` 进组 `gid`（原来在别的组 ⇒ 就不在了：`group` 是单值）。 */
+  joinGroup(sid: string, gid: string): Promise<void> {
+    const t = this.store.tabs.get(sid);
+    if (!t || t.group === gid || !this.collections.some((c) => c.id === gid)) return Promise.resolve();
+    t.group = gid;
+    return this.writeGroups([groupOfEdit(sid, gid)]);
+  }
+
+  /**
+   * 〔GRP1〕右键「移出」/ 拖出组：`sid` 回到散 tab。
+   * ⚠ 组里因此一个 tab 都不剩时**组留着**（`设计/30 §6` 第 12 条「空组也留着」）——
+   *   V140「组里最后一个 tab 没了组自己消失」是否也管「离开」设计里两说，`GRP1.md` Q1 待拍；今天只有 × 触发组消失。
+   */
+  leaveGroup(sid: string): Promise<void> {
+    const t = this.store.tabs.get(sid);
+    if (!t || t.group === null) return Promise.resolve();
+    t.group = null;
+    return this.writeGroups([groupOfEdit(sid, null)]);
+  }
+
+  /**
+   * 🔴 〔GRP1 · V140「x就是没了, 不存在还要移出分组」〕**× 那一刻**：tab 的组关系随 tab 一起没。
+   *
+   * 调用时机：`closeTab` 已把 tab 从 `store.tabs` 摘掉之后（「组里还剩谁」只数真在栏里的）。
+   * - 盘：摘它自己那一键 `tabBar.groupOf.<sid>`；
+   * - 它是组里**最后一个在栏里的** tab ⇒ 组也没（V140「组里最后一个 tab 没了组自己消失」）：组表去掉它 ＋ 指向它的意图一并摘；
+   * - 它本来不在组里 ⇒ **零写**（没分组的 tab 关一下不该顺手改 `config.json`，与 `closeTab` 摘固定同一条理由）。
+   */
+  forgetTab(tab: Tab): Promise<void> {
+    const gid = tab.group;
+    if (gid === null) return Promise.resolve();
+    tab.group = null;
+    const edits: ConfigEdit[] = [groupOfEdit(tab.sessionId, null)];
+    if (!this.hasMemberInBar(gid)) edits.push(...this.dropGroup(gid));
+    return this.writeGroups(edits);
+  }
+
+  /** 〔GRP1〕组头 ×：解散。**只去掉分组，一个 tab 都不动**（集合是个视图，不是容器）。 */
+  dissolveGroup(gid: string): Promise<void> {
+    const edits: ConfigEdit[] = [];
+    for (const t of this.store.tabs.values()) {
+      if (t.group !== gid) continue;
+      t.group = null;
+      edits.push(groupOfEdit(t.sessionId, null));
+    }
+    edits.push(...this.dropGroup(gid));
+    return this.writeGroups(edits);
+  }
+
+  /** 〔GRP1〕组头就地改名。空名 / 与现名相同 ⇒ 零写。 */
+  renameGroup(gid: string, name: string): Promise<void> {
+    const next = renameCollection(this.collections, gid, name);
+    const before = this.collections.find((c) => c.id === gid)?.name;
+    const after = next.find((c) => c.id === gid)?.name;
+    if (before === undefined || before === after) return Promise.resolve();
+    this.collections = next;
+    return this.writeGroups([collectionsEdit(next)]);
+  }
+
+  /** 栏里还有没有 tab 带着这个组 id。 */
+  private hasMemberInBar(gid: string): boolean {
+    for (const t of this.store.tabs.values()) if (t.group === gid) return true;
+    return false;
+  }
+
+  /** 组表去掉 `gid`，指向它的意图一并摘 —— 回要落盘的那几条（内存已改）。 */
+  private dropGroup(gid: string): ConfigEdit[] {
+    this.collections = deleteCollection(this.collections, gid);
+    const edits: ConfigEdit[] = [collectionsEdit(this.collections)];
+    for (const [sid, g] of this.savedGroupOf) {
+      if (g !== gid) continue;
+      this.savedGroupOf.delete(sid);
+      edits.push(groupOfEdit(sid, null));
+    }
+    return edits;
+  }
+
+  /**
+   * 分组落盘的唯一出口：这一次改动的全部补丁**一次** `patchConfig`（Rust 一把锁里一起落，不会只落一半）。
    * 〔CFG1 · 4D〕从前落盘失败只记日志（`设计/30 §C.3` 原话）——重启后分组没了、当时一句话都没有（E §3.3）。
    * 主会话 09-25 按 `INVARIANTS §12`（关键失败要出声）认可改成：内存照旧先改 · 落盘失败弹一条 toast · 日志照留。
    */
-  async persistCollections(next: readonly TabCollection[]): Promise<void> {
+  private async writeGroups(edits: readonly ConfigEdit[]): Promise<void> {
+    if (edits.length === 0) return;
     try {
-      await setCollections(next);
+      await patchConfig(edits);
     } catch (e) {
       console.warn("[tab-collections] 落盘失败:", e);
       showActionFailureToast(copyText("tabBar.persist.collectionsFailed"), String(e));

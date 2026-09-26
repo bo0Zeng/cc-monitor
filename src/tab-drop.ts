@@ -2,17 +2,9 @@
  * 〔U2 · 拆 `tabs.ts` ④〕**拖动排序 / 拖动成组的落点算术** —— 全是纯函数，判据直接打在它们身上。
  *
  * 零 DOM、零 IPC：量尺寸（`getBoundingClientRect`）与挂监听是 `tab-bar-drag.ts` 的事，
- * 这里只回答「这几个矩形 ＋ 这个指针位置 ⇒ 落在哪」「这次落点对集合表意味着什么」。
+ * 这里只回答「这几个矩形 ＋ 这个指针位置 ⇒ 落在哪」「这次落点对被拖那个 tab 的组意味着什么」。
  * 原住 `tabs.ts`，逐字搬出；`tabs.ts` 原样 re-export，既有 import 面（`tabs.vitest.ts`）零改动。
  */
-import {
-  addMember,
-  collectionOf,
-  createCollection,
-  removeMember,
-  type CollectionRefusal,
-  type TabCollection,
-} from "./tab-collections";
 import { copyText } from "./copy-table";
 
 /**
@@ -42,7 +34,7 @@ export function moveTab(
  * 落点语义。**从 1 种扩到 3 种**（`§D.3` 逐字）—— 在这之前只有 `before`（与 `null`＝末尾）。
  *
  * ⚠ `onto` 与 `before` 的区别不只是「插哪儿」：`onto` 会**建组 / 入组**，
- *   而落点所在的容器还顺带决定「拖出组」（`§D.7`）。两件事在 `applyDropToCollections` 里合一。
+ *   而落点所在的容器还顺带决定「拖出组」（`§D.7`）。两件事在 [`groupMoveForDrop`] 里合一。
  */
 export type DropTarget =
   | { kind: "before"; sid: string } // 插到它前面（今天的行为）
@@ -162,90 +154,48 @@ export function defaultGroupName(
 }
 
 /**
- * 一次落点对**集合**的全部后果。`§D.7` 那条判据的唯一住址：
+ * 〔GRP1 · `设计/99 §1` V140〕一次落点对**被拖那个 tab 的组**意味着什么。
+ * 组员关系是 tab 自己的属性（`Tab.group`）⇒ 这里不再重算整张组表，只回「这个 tab 怎么动」。
+ */
+export type GroupMove =
+  | { kind: "stay" } // 归属不变（零写盘：拖动是高频动作，没改归属就不许每拖一下写一次 `config.json`）
+  | { kind: "join"; gid: string } // 进一个已有的组
+  | { kind: "found"; with: string } // 与落点那个散 tab 现建一个组（两个都进去）
+  | { kind: "leave" }; // 移出所在的组，回到散 tab
+
+/**
+ * 一次落点对**组**的全部后果。`§D.7` 那条判据的唯一住址：
  * 「**落点宿主 ≠ 该 tab 当前所属组的容器 ⇒ 视为移出**」。
  *
  * 这里把它写成对称的一句话：**归属跟着落点宿主走**。
  * | 落点 | 宿主 | 后果 |
  * |---|---|---|
- * | `onto X` | X 所在的组；X 还没组 ⇒ 现建一个 | **入组** |
+ * | `onto X` | X 所在的组；X 还没组 ⇒ 现建一个 | **入组** / **现建** |
  * | `before X` | X 所在的组（X 是散 tab ⇒ 无宿主）| 入组 / **拖出组** |
  * | `end` | 无宿主（末尾就是散 tab 区）| **拖出组** |
+ * 宿主就是它现在那个组 ⇒ `stay`（`before` 同组的另一个 · 散 tab 拖到散 tab 之间 · 压在自己身上）。
  *
  * 〔BG1 · V125「删掉树」〕归属只跟着被拖的那一个走：原先这里收的是「一块」（交互 tab 连同它的
  *   bg 子串整块入组 / 出组）—— 那是 bg 树借集合开的第二条分类路，与 `设计/30 §1` 不变量 3
  *   「集合归属是唯一分类维」相违，随树一起删。
- * ⚠ 建组失败（到 32 个集合的上界 / 名字空）⇒ **原样返回，什么都不做** ——
- *   不许把 tab 塞进一个不存在的集合（`newCollectionId` 那条路已有同样的守卫）。
+ * ⚠ 现建到上界（32 个组）怎么办不归这里：`TabBarPrefs.foundGroup` 回拒绝原因、什么都不做，调用方出声（E13）。
+ *
+ * @param groupOf 此刻某个 tab 的组 id（`null` = 散 tab）—— 读 `Tab.group`，由调用方给（本文件零 DOM、零 store）。
  */
-export function applyDropToCollections(
-  collections: readonly TabCollection[],
+export function groupMoveForDrop(
+  groupOf: (sid: string) => string | null,
   sid: string,
   target: DropTarget,
-  newName: string,
-  newId: string,
-): TabCollection[] {
-  let next: TabCollection[] = [...collections];
-  let hostId: string | null = null;
+): GroupMove {
+  if (target.kind === "onto" && target.sid === sid) return { kind: "stay" }; // 压在自己身上不是一次合并
+  const cur = groupOf(sid);
+  let host: string | null = null;
   if (target.kind === "onto") {
-    if (target.sid === sid) return next; // 压在自己身上不是一次合并
-    const existing = collectionOf(next, target.sid);
-    if (existing) {
-      hostId = existing.id;
-    } else {
-      // 🔴 **这里刻意没有「建组失败就提前 return」那道守卫** —— 死值验刀 24 实测它恒不承重：
-      //   到 32 个集合的上界时 `createCollection` 原样返回，随后 `addMember` 找不到
-      //   `newId` 这个集合、也原样返回（`tab-collections.ts` 里那两条各自的守卫），
-      //   于是加不加那一行，输出一个字节都不差。
-      //   照 `sanitizeCollections` 的逐字先例：任何输入都区分不出的守卫是一条假绿的防线。
-      // ⇒ 「到上界就什么都不做」这条性质的住址是 `COLLECTION_CAP`，判据也钉在那儿
-      //   （死值验刀 24 改的是那一行，当场红）。
-      next = addMember(createCollection(next, newName, newId), newId, target.sid);
-      hostId = newId;
-    }
+    host = groupOf(target.sid);
+    if (host === null) return { kind: "found", with: target.sid };
   } else if (target.kind === "before") {
-    hostId = collectionOf(next, target.sid)?.id ?? null;
+    host = groupOf(target.sid);
   }
-  return hostId ? addMember(next, hostId, sid) : removeMember(next, sid);
-}
-
-/**
- * 〔TL2 · E13〕拖放之后，被拖的那个 tab **该进组却没进** ⇒ 为什么（到上界）；进了 / 本来就不该进 ⇒ `null`。
- *
- * 从**结果**判，不重算一遍 [`applyDropToCollections`] 的规则（两份规则会漂）：
- * 落点是某个 tab（`onto` / `before`）且它在 `next` 里有组 ⇒ 被拖的那个得在那一组里，不在 ⇒ 那一组满了；
- * `onto` 而目标在 `next` 里仍没有组 ⇒ 新组没建出来 ⇒ 集合数到上界了（名字恒非空：`defaultGroupName` 兜 `组 N`）。
- */
-export function dropRefusal(
-  next: readonly TabCollection[],
-  sid: string,
-  target: DropTarget,
-): CollectionRefusal | null {
-  if (target.kind === "end" || target.sid === sid) return null;
-  const host = collectionOf(next, target.sid);
-  if (!host) return target.kind === "onto" ? { kind: "collections-full" } : null;
-  return host.members.includes(sid) ? null : { kind: "members-full", name: host.name };
-}
-
-/**
- * 两份集合表是不是同一件事（顺序、id、名字、成员全比）。
- *
- * 只为一件事存在：**拖动是高频动作**，落点没改变归属时不该每拖一下就写一次
- * `config.json`。写盘本身没坏处，但那会把「用户改了分组」这条信号淹掉。
- */
-export function collectionsEqual(
-  a: readonly TabCollection[],
-  b: readonly TabCollection[],
-): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    const x = a[i];
-    const y = b[i];
-    if (x.id !== y.id || x.name !== y.name) return false;
-    if (x.members.length !== y.members.length) return false;
-    for (let j = 0; j < x.members.length; j++) {
-      if (x.members[j] !== y.members[j]) return false;
-    }
-  }
-  return true;
+  if (host === cur) return { kind: "stay" };
+  return host === null ? { kind: "leave" } : { kind: "join", gid: host };
 }
