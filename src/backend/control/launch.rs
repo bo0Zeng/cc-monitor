@@ -354,16 +354,57 @@ fn check_typed_payload(v: &str) -> Result<(), CmdErr> {
     Ok(())
 }
 
-/// 跑一次 tmux 子命令，返回它成不成功。**argv 直传，不过 shell。**
-fn tmux(args: &[&str]) -> Result<bool, CmdErr> {
-    match Command::new("tmux")
+/// 一次 tmux 子命令的结局：成没成 ＋ **tmux 自己说的那句话**（stderr）。
+///
+/// 〔W5-VIS · `设计/15 §4.7 S4`〕原先只回一个 bool、stderr 丢进 `Stdio::null()` ⇒ 建会话失败时只能猜
+/// （「cwd 不可用？名字非法？」）；隔壁 `kill.rs` 用 `output()` 把 tmux 的原话放进错误 —— 正确形状就在那儿，照它办。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Ran {
+    pub(crate) ok: bool,
+    /// tmux 的 stderr（[`said_of`]：去首尾空白、有上限；一个字都没说 ⇒ 「（tmux 没说原因）」）。
+    pub(crate) said: String,
+}
+
+/// tmux 自己说的那句话（stderr）〔W5-VIS〕：去首尾空白、截到 [`SAID_CAP`] 字节（截在字符边界上，截了标 `…`）；
+/// 一个字都没说 ⇒ 「（tmux 没说原因）」。
+pub(crate) fn said_of(stderr: &[u8]) -> String {
+    let text = String::from_utf8_lossy(stderr);
+    let text = text.trim();
+    if text.is_empty() {
+        return "（tmux 没说原因）".to_string();
+    }
+    if text.len() <= SAID_CAP {
+        return text.to_string();
+    }
+    let mut end = SAID_CAP;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}…", &text[..end])
+}
+
+/// tmux 原话进原因时的上限（字节）。tmux 的报错是一行短话；上限只防一个坏掉的 tmux 灌进一整屏。
+const SAID_CAP: usize = 400;
+
+/// 跑一次 tmux 子命令。**argv 直传，不过 shell。**
+fn tmux(args: &[&str]) -> Result<Ran, CmdErr> {
+    ran(Command::new("tmux"), args)
+}
+
+/// [`tmux`] 的本体：`cmd` 由调用方造（生产 = `Command::new("tmux")`；判据换一个假 tmux 的绝对路径，
+/// 不碰进程级 `PATH`）。stdout 照旧不要（这几条子命令本来就不往 stdout 写）。
+fn ran(mut cmd: Command, args: &[&str]) -> Result<Ran, CmdErr> {
+    match cmd
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
+        .stderr(Stdio::piped())
+        .output()
     {
-        Ok(st) => Ok(st.success()),
+        Ok(out) => Ok(Ran {
+            ok: out.status.success(),
+            said: said_of(&out.stderr),
+        }),
         Err(e) => Err((
             "no_tmux",
             format!("起不来 tmux（远端装了吗？PATH 里有吗？）：{e}"),
@@ -371,8 +412,86 @@ fn tmux(args: &[&str]) -> Result<bool, CmdErr> {
     }
 }
 
+/// 〔W5-VIS · `设计/15 §4.7 S5`〕建会话之后那几步**次要动作**（失败不阻断键入载荷）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Secondary {
+    /// agent 标（`@ccm_agent`）。
+    AgentTag,
+    /// 身份**意图**键（建会话的人声明「打算跑这个 sid」）。
+    IntentTag,
+    /// 打开窗口标题。
+    TitlesOn,
+    /// 窗口标题的格式串。
+    TitleFormat,
+}
+
+impl Secondary {
+    /// 这一步没做成的后果（一句）。
+    fn consequence(self) -> &'static str {
+        match self {
+            Secondary::AgentTag => "agent 标没打上，这个会话在列表里认不出是哪个 agent",
+            Secondary::IntentTag => {
+                "身份意图没写上：之后对这个会话的 kill / 送键可能被身份门拒（wrong_owner）"
+            }
+            Secondary::TitlesOn | Secondary::TitleFormat => {
+                "窗口标题没设上：拉前终端按标题找窗口的那条退路失效（启动期令牌那条主路不受影响）"
+            }
+        }
+    }
+    fn what(self) -> &'static str {
+        match self {
+            Secondary::AgentTag => "打 agent 标",
+            Secondary::IntentTag => "写身份意图",
+            Secondary::TitlesOn => "打开窗口标题",
+            Secondary::TitleFormat => "设窗口标题格式",
+        }
+    }
+}
+
+/// 〔W5-VIS · `设计/15 §4.7 S5`〕次要动作的结局 → **一句给日志的话**；做成了 ⇒ `None`。
+///
+/// 「身份标记与标题是次要动作：失败绝不阻断主要动作」那条决定不动（`15 §4.7 S5`：「处置不是别吞，
+/// 是吞了要留一行日志」）—— 本函数只管「说什么」，抽成纯的才判得到；打日志的是 [`secondary`]。
+pub(crate) fn secondary_note(
+    session: &str,
+    step: Secondary,
+    r: &Result<Ran, CmdErr>,
+) -> Option<String> {
+    let why = match r {
+        Ok(Ran { ok: true, .. }) => return None,
+        Ok(Ran { ok: false, said }) => said.clone(),
+        Err((_, msg)) => msg.clone(),
+    };
+    Some(format!(
+        "会话 {session:?} 建好了，但{}没做成：{why} —— {}",
+        step.what(),
+        step.consequence()
+    ))
+}
+
+/// 跑一步次要动作；没做成 ⇒ 留一行日志、不阻断。
+fn secondary(
+    tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
+    session: &str,
+    step: Secondary,
+    args: &[&str],
+) {
+    if let Some(note) = secondary_note(session, step, &tmux(args)) {
+        tracing::warn!("{note}");
+    }
+}
+
 /// 真做事。**只在 `Disposition::spawn` 的独立 task 上跑** —— 它会阻塞（起进程）。
 pub(crate) fn run(req: &LaunchRequest) -> Result<LaunchOutcome, CmdErr> {
+    run_with(req, &tmux)
+}
+
+/// [`run`] 的本体：起 tmux 的那一下由调用方交进来（生产 = [`tmux`]；判据交一个不起进程的替身，
+/// 驱动 `create-or-attach` 那一臂的每一格结局）。`send-into` 两臂的门（`gate::admit`）照旧起真 tmux。
+fn run_with(
+    req: &LaunchRequest,
+    tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
+) -> Result<LaunchOutcome, CmdErr> {
     let t = exact_target(&req.name);
     match req.mode {
         Mode::SendInto => {
@@ -386,7 +505,7 @@ pub(crate) fn run(req: &LaunchRequest) -> Result<LaunchOutcome, CmdErr> {
             // ⚠ 顺序不可反：`admit` 必须在 `type_payload` **之前**。
             // 由 `the_send_into_arm_admits_before_it_types` 钉住。
             let handle = super::gate::admit(&req.name, &t)?;
-            type_payload(&handle, &req.payload)?;
+            type_payload(&handle, &req.payload, tmux)?;
             Ok(LaunchOutcome {
                 created: false,
                 typed: true,
@@ -398,7 +517,7 @@ pub(crate) fn run(req: &LaunchRequest) -> Result<LaunchOutcome, CmdErr> {
             // （monitor 侧 F04 Phase D 审计修过「给非破坏性动作加 Gate 3」那个错法）。
             let handle = super::gate::admit(&req.name, &t)?;
             // ★ 唯一的区别：**不附 `Enter`**。由 `send_keys_raw_never_appends_enter` 钉住。
-            type_keys_raw(&handle, &req.payload)?;
+            type_keys_raw(&handle, &req.payload, tmux)?;
             Ok(LaunchOutcome {
                 created: false,
                 typed: true,
@@ -422,19 +541,21 @@ pub(crate) fn run(req: &LaunchRequest) -> Result<LaunchOutcome, CmdErr> {
             // 幂等闸：会话已存在 ⇒ new-session 失败 ⇒ **短路，什么都不做**。
             // 与今天那条 shell 串 `new-session -d … 2>/dev/null && send-keys …` 逐字同义
             // （不重复 resume）。区别只是这里不吞 stderr 靠 `2>/dev/null`，而是看退出码。
-            if !tmux(&new_args)? {
+            let made = tmux(&new_args)?;
+            if !made.ok {
                 // 分辨「已存在（幂等）」与「真的建不出来」——今天那条 shell 串分不出来。
-                if tmux(&["has-session", "-t", &t])? {
+                if tmux(&["has-session", "-t", &t])?.ok {
                     return Ok(LaunchOutcome {
                         created: false,
                         typed: false,
                     });
                 }
+                // 〔W5-VIS · S4〕带上 tmux 自己说的原因（cwd 不在 / 名字不合法 / server 起不来 …），不再让人猜。
                 return Err((
                     "create_failed",
                     format!(
-                        "建不出会话 {:?}，且它也不存在（cwd 不可用？名字非法？）",
-                        req.name
+                        "建不出会话 {:?}，且它也不存在。tmux 说：{}",
+                        req.name, made.said
                     ),
                 ));
             }
@@ -478,12 +599,28 @@ pub(crate) fn run(req: &LaunchRequest) -> Result<LaunchOutcome, CmdErr> {
             // 〔`K-P2` `D3`〕`@ccm_agent`：与 `shared/ccm` 那条本地编排**同一个顺序**
             // （`new-session` → `@ccm_agent` → `@ccm_sid_expect` → `send-keys`）。
             // 同样是**次要动作**：失败不阻断键入载荷（`shared/ccm` 那边写的是 `|| true`）。
+            // 〔W5-VIS · `15 §4.7 S5`〕四步都是次要动作：没做成 ⇒ [`secondary`] 留一行日志（哪一步 · tmux 说的 · 后果），不阻断。
             if let Some(agent) = &req.agent {
-                let _ = tmux(&["set-option", "-t", &t, "@ccm_agent", agent]);
+                secondary(
+                    tmux,
+                    &req.name,
+                    Secondary::AgentTag,
+                    &["set-option", "-t", &t, "@ccm_agent", agent],
+                );
             }
             if let Some(sid) = &req.ccm_sid {
-                let _ = tmux(&["set-option", "-t", &t, "@ccm_sid_expect", sid]);
-                let _ = tmux(&["set-option", "-t", &t, "set-titles", "on"]);
+                secondary(
+                    tmux,
+                    &req.name,
+                    Secondary::IntentTag,
+                    &["set-option", "-t", &t, "@ccm_sid_expect", sid],
+                );
+                secondary(
+                    tmux,
+                    &req.name,
+                    Secondary::TitlesOn,
+                    &["set-option", "-t", &t, "set-titles", "on"],
+                );
                 // ⚠ 〔`K-R48` 09-11〕**这一行刻意保持字面量，别「顺手收口」成
                 // `super::ccm::TERMINAL_BIND_TITLE_FORMAT`。** 试过一次，代价是 monitor 侧
                 // `ccm_cli_contract::the_intent_tag_and_the_fact_tag_are_not_merged_by_the_move`
@@ -492,15 +629,20 @@ pub(crate) fn run(req: &LaunchRequest) -> Result<LaunchOutcome, CmdErr> {
                 // 「标题回填没了」。⇒ 收口会把一条真判据变瞎。
                 // 两份不漂由 `control::ccm::tests::the_window_title_format_has_the_same_text_on_both_sides`
                 // 钉住（它拿常量去本文件的生产段里找），比收口买到的更多。
-                let _ = tmux(&[
-                    "set-option",
-                    "-t",
-                    &t,
-                    "set-titles-string",
-                    "#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}",
-                ]);
+                secondary(
+                    tmux,
+                    &req.name,
+                    Secondary::TitleFormat,
+                    &[
+                        "set-option",
+                        "-t",
+                        &t,
+                        "set-titles-string",
+                        "#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}",
+                    ],
+                );
             }
-            type_payload(&t, &req.payload)?;
+            type_payload(&t, &req.payload, tmux)?;
             Ok(LaunchOutcome {
                 created: true,
                 typed: true,
@@ -513,13 +655,21 @@ pub(crate) fn run(req: &LaunchRequest) -> Result<LaunchOutcome, CmdErr> {
 ///
 /// 这一档是 DoD 6 那条「起了但没确认」的落点：调用方**不许**据此重试 create
 /// （会话确实在），该做的是告诉用户「会话建好了但没能把命令打进去」。
-fn type_payload(target: &str, payload: &str) -> Result<(), CmdErr> {
-    if tmux(&["send-keys", "-t", target, payload, "Enter"])? {
+fn type_payload(
+    target: &str,
+    payload: &str,
+    tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
+) -> Result<(), CmdErr> {
+    let r = tmux(&["send-keys", "-t", target, payload, "Enter"])?;
+    if r.ok {
         return Ok(());
     }
     Err((
         "typed_unconfirmed",
-        format!("会话 {target:?} 在，但 send-keys 失败 —— 载荷未必落进去了；别重试新建"),
+        format!(
+            "会话 {target:?} 在，但 send-keys 失败（tmux 说：{}）—— 载荷未必落进去了；别重试新建",
+            r.said
+        ),
     ))
 }
 
@@ -530,13 +680,21 @@ fn type_payload(target: &str, payload: &str) -> Result<(), CmdErr> {
 /// 这种键 —— 区别只在**要不要再补一下回车**。
 ///
 /// 失败仍是 `typed_unconfirmed`（同 [`type_payload`]）：会话在，键未必落。
-fn type_keys_raw(target: &str, keys: &str) -> Result<(), CmdErr> {
-    if tmux(&["send-keys", "-t", target, keys])? {
+fn type_keys_raw(
+    target: &str,
+    keys: &str,
+    tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
+) -> Result<(), CmdErr> {
+    let r = tmux(&["send-keys", "-t", target, keys])?;
+    if r.ok {
         return Ok(());
     }
     Err((
         "typed_unconfirmed",
-        format!("会话 {target:?} 在，但 send-keys（裸键）失败 —— 键未必落进去了"),
+        format!(
+            "会话 {target:?} 在，但 send-keys（裸键）失败（tmux 说：{}）—— 键未必落进去了",
+            r.said
+        ),
     ))
 }
 
