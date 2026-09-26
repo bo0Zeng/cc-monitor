@@ -266,6 +266,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
          界面 `settings/machine-aliases.ts::previewAlias` 原样上屏",
     ),
     (
+        "acct-iso-cmd",
+        "〔DUP2 · J4〕cc-acct-iso 步骤那一行：生来就走通道（原先界面自己拼、从没过 monitor）—— 后端应答就是成品（那一行命令），\
+         界面 `settings/acct-deploy.ts::askAcctIsoCmd` 原样上屏 / 原样交给 `launch_remote_terminal`",
+    ),
+    (
         "assets-catalog",
         "〔AS2 · 4B · V113〕资产目录：生来就走通道（没有过 monitor 那一条）—— 后端应答就是成品（整份目录 ＋「这台缺什么」的判定），\
          界面 `settings/assets-section.ts::decodeCatalog` 按形状收",

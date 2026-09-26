@@ -330,28 +330,84 @@ fn the_three_exit_codes_map_to_three_different_meanings() {
     assert_eq!(killed, other, "被信号打断与其它失败同档（都是 failed）");
 }
 
-/// `P4f-Y5` 的另一半：backend **不重复校验收件人合法性**。
+/// 〔DUP2 · 主会话 09-26 裁 J12 · `INVARIANTS §47` ①〕**id 的形状在交给 `cc-send` / `cc-kill` / `cc-spawn` 之前先判**，
+/// 规则是共享那一份（`shell_quote_core::bus_id_ok`，全仓唯一；monitor 读收件箱用的是同一个函数）。
 ///
-/// 传一个 cc-bus 自己会拒的名字（含 `/`），本侧必须**放行到 cc-send 那一步**——
-/// 由它去拒（rc=2 → `invalid_args`）。这样白名单只有一份。
+/// 这一条替掉了 `P4f-Y5` 那一格原来的判据（「backend 不重复校验收件人合法性，放行到 cc-send 那一步由它拒」）：
+/// `§47` 逐字「**『对端会校验』不是理由**」—— 界面那一道按 `设计/90 §3` 判据 2 删了之后，「本侧」就是真把 id 交出去的这一侧。
+/// ⚠ 判的是**形状**不是**成员资格**：一个形状合法但没登记过的名字照样发（`registered:false` 如实回），不在这里拒。
+///
+/// 样本取跨语言金样 `cc-bus-control.golden.json` 的 `ids`（手写：`--help` 在盘上真出现过）：三个入口正反各一格。
 #[test]
-fn the_backend_does_not_re_implement_the_recipient_charset_rule() {
-    let ok = parse_send(&json!({ "to": "a/b", "text": "x" }));
+fn bus_ids_are_judged_here_before_they_reach_cc_bus() {
+    let g: serde_json::Value = serde_json::from_str(include_str!(
+        "../../__fixtures__/cc-bus-control.golden.json"
+    ))
+    .expect("金样读不出来");
+    let take = |k: &str| -> Vec<String> {
+        g["ids"][k]
+            .as_array()
+            .unwrap_or_else(|| panic!("金样缺 ids.{k}"))
+            .iter()
+            .map(|v| v.as_str().expect("id 不是字符串").to_string())
+            .collect()
+    };
+    let (ok, bad) = (take("ok"), take("bad"));
     assert!(
-        ok.is_ok(),
-        "本侧不该判收件人字符集 —— 那会造出第二份规则：{ok:?}"
+        !ok.is_empty() && !bad.is_empty(),
+        "金样的 ids 空了 —— 下面是空转"
     );
-    // 形状还是要判的（这不是安全边界，是「能不能构成一次有意义的调用」）
+    for id in &ok {
+        assert!(
+            parse_send(&json!({ "to": id, "text": "x" })).is_ok(),
+            "{id:?} 该发得出去"
+        );
+        assert_eq!(
+            parse_kill(&json!({ "id": id })).as_deref(),
+            Ok(id.as_str()),
+            "{id:?} 该收得掉"
+        );
+        assert!(
+            parse_spawn(&json!({ "tool": "claude", "dir": "/p", "account": id })).is_ok(),
+            "{id:?} 当账号名该派生得出去"
+        );
+    }
+    for id in bad.iter().filter(|id| !id.trim().is_empty()) {
+        let e = parse_send(&json!({ "to": id, "text": "x" })).expect_err(id);
+        assert_eq!(e.0, "bad_id", "{id:?}：发消息的拒码不对（{e:?}）");
+        assert!(
+            e.1.contains(&format!("{id:?}")),
+            "{id:?}：那一句没点出是哪个值：{}",
+            e.1
+        );
+        let e = parse_kill(&json!({ "id": id })).expect_err(id);
+        assert_eq!(e.0, "bad_id", "{id:?}：收掉的拒码不对（{e:?}）");
+        let e =
+            parse_spawn(&json!({ "tool": "claude", "dir": "/p", "account": id })).expect_err(id);
+        assert_eq!(e.0, "bad_id", "{id:?}：派生账号名的拒码不对（{e:?}）");
+    }
+    // 空 / 纯空白是「缺」（`invalid_args`），不是「形状不对」—— 两件事的话不一样。
+    assert_eq!(
+        parse_send(&json!({ "to": "  ", "text": "x" }))
+            .unwrap_err()
+            .0,
+        "invalid_args"
+    );
+    assert_eq!(
+        parse_kill(&json!({ "id": "" })).unwrap_err().0,
+        "invalid_args"
+    );
+    // 形状之外的缺格照旧判（「能不能构成一次有意义的调用」）。
     for bad in [
         json!({}),
         json!({ "to": "x" }),
         json!({ "text": "x" }),
         json!({ "to": "", "text": "x" }),
-        json!({ "to": "  ", "text": "x" }),
         json!({ "to": 1, "text": "x" }),
     ] {
         assert!(parse_send(&bad).is_err(), "形状不对却放行了：{bad:?}");
     }
+    // 「规则只有一份、后端入口用的就是共享那一个」由 `tests/judgment-single-home.vitest.ts` 的 J12 行钉（`rustNeedles`）。
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

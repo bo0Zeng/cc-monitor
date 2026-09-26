@@ -99,8 +99,8 @@ export type LaunchAccount =
  * 同本文件头注第 3 条与上面 R04③ 的**同一条理由**：通用 `{op:"export";key;value}`
  * 等于给任何维度开一个「绕开校验往命令里塞任意变量名」的口子。
  * ⇒ 变体名把变量名钉死，`value` 侧再过 `[0-9a-f]{32}` 形状校验
- * （TS 侧 `launch-dimensions.ts::isValidRbindToken`，Rust 侧
- * `payload.rs::rbind_token_shape_ok`，两侧形状由判据对拍）。**先例是 `export-model`。**
+ * （〔DUP2〕只有 Rust 一份：`payload.rs::rbind_token_shape_ok`，渲染前那道闸；前端铸币口按生成物造，
+ * 「铸出来的都在形状里」由 `tests/rbind-token-shape-parity.vitest.ts` 对 Rust 源码钉）。**先例是 `export-model`。**
  */
 export type EnvOp =
   | { kind: "export-config-dir"; value: string }

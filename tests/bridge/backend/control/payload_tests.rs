@@ -2046,3 +2046,60 @@ fn the_model_export_passes_real_names_and_refuses_the_rest() {
         assert!(e.starts_with(REFUSE_TAG), "坏模型名该带拒标：{bad:?} ⇒ {e}");
     }
 }
+
+/// 〔DUP2 · 主会话 09-26 裁 J6〕外层三格的会话名：**新建**那一格走 gate-core 新建那一条（`§47` ①：非空 · 不以 `-` 开头 ·
+/// 无 `*?.:=` · 无控制符与欺骗字符 · ≤128，F01「不把 glob 建进名字」），attach / 送进已有会话走已有会话那一条
+/// （V131 ②：拒绝集 ＋ 非空，寻址恒 `'=<名>:'`）。**正反各一格**，拒的都带「拒」标。
+/// 这里原来：`Raw` 只核字符集、放过前导 `-`（`new-session -d -s -x` 会被当选项）；F01 在这条路上只靠界面那一道 —— 那份删了。
+#[test]
+fn a_tmux_name_follows_the_create_or_existing_rule_from_gate_core() {
+    let create = |t: TmuxTarget| {
+        render_tmux_outer(
+            &TmuxOuter::Create {
+                target: t,
+                cwd: None,
+                ccm_sid: None,
+            },
+            Some("claude"),
+        )
+    };
+    let attach = |t: TmuxTarget| render_tmux_outer(&TmuxOuter::Attach { target: t }, None);
+    let send_into =
+        |t: TmuxTarget| render_tmux_outer(&TmuxOuter::SendInto { target: t }, Some("claude"));
+    // 正：真实会建的名字（两种引号姿态）。
+    create(TmuxTarget::Raw("proj-cc-2")).expect("铸出来的名字该建得出来");
+    create(TmuxTarget::Quoted("my session")).expect("带空格的自定义名该建得出来");
+    // 反：新建那一格。
+    for (t, want) in [
+        (TmuxTarget::Raw("-x"), "\"-x\""),
+        (TmuxTarget::Quoted("a*b"), "\"a*b\""),
+        (TmuxTarget::Quoted("proj=x"), "\"proj=x\""),
+        (TmuxTarget::Quoted("a\u{202e}b"), "\"a\\u{202e}b\""),
+    ] {
+        let e = create(t.clone()).expect_err(&format!("新建那一格放过了 {t:?}"));
+        assert!(e.starts_with(REFUSE_TAG) && e.contains(want), "{e}");
+    }
+    let long = "a".repeat(129);
+    assert!(
+        create(TmuxTarget::Quoted(&long)).is_err(),
+        "超过 128 的新建名该拒"
+    );
+    // 正：已有会话里真有 glob / `=` 的名字，照接、照送，寻址是精确形。
+    let a = attach(TmuxTarget::Quoted("st*ar")).expect("已有会话名带 glob 也该接得上");
+    assert_eq!(a, "tmux attach -t '=st*ar:'");
+    send_into(TmuxTarget::Quoted("a=b")).expect("已有会话名带 `=` 也该送得进去");
+    // `Raw` 那一支的裸拼前提照旧（不是名字的规则）：`=` 进不了裸拼。
+    assert!(
+        attach(TmuxTarget::Raw("a=b")).is_err(),
+        "裸拼前提放过了 `=`"
+    );
+    // 反：已有会话那一条只拒空 · 控制符 · 欺骗字符。
+    for t in [
+        TmuxTarget::Quoted(""),
+        TmuxTarget::Quoted("a\nb"),
+        TmuxTarget::Quoted("a\u{200b}b"),
+    ] {
+        let e = attach(t.clone()).expect_err(&format!("已有会话那一条放过了 {t:?}"));
+        assert!(e.starts_with(REFUSE_TAG), "{e}");
+    }
+}

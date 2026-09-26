@@ -25,7 +25,8 @@ import {
   planAttach,
 } from "./launch-requests";
 import type { LaunchModifiers } from "./launch-types";
-import { isValidRbindToken } from "./launch-dimensions";
+// 〔DUP2 · `设计/90 §3` 判据 2〕令牌的字母表与长度只有一份（`payload.rs` 那两个常量），这里读它现生成的那份、按它**造**。
+import { RBIND_TOKEN_ALPHABET, RBIND_TOKEN_LEN } from "./generated/judgment-rules";
 // 🔴 〔步 22b·B 2026-09-20〕**这里原来 `import { renderFallback } from "./launch-render-fallback"`。**
 // `设计/90 §4 E` 收官：外层 tmux 那三格切到 `backend::control::payload::render_tmux_outer`
 // 之后，本文件是 `renderFallback` **最后一个生产消费者** —— 那一行随之退役。
@@ -95,24 +96,20 @@ const REFUSE_TAG = "REFUSE:";
 // 判据在 `tests/remote-launch-run.vitest.ts` 的「铸币口」那一组（含一条点名钉住
 // 「`attach` 仍走 `ccm …`」的正控 —— 少了它，「CLI 那条路整个死了」会读成一条绿）。
 
-/** 令牌的熵：**16 字节 = 128 位**，渲成 32 个小写十六进制字符。
- *
- *  ⚠ 那个 `32` 是**跨三处的双写点**（本侧字符数 ·
- *  `payload.rs::RBIND_TOKEN_LEN` · `bind.rs::RBIND_TOKEN_LEN`），三处各有判据。
- *  这里只声明**字节数**，字符数由 `2 * 本值` 派生 —— 不再手抄一个 32 出来。 */
-const RBIND_TOKEN_ENTROPY_BYTES = 16;
-
 /**
- * 铸一个启动期令牌。
+ * 铸一个启动期令牌：**按生成物造**（〔DUP2 · J8〕字母表 `RBIND_TOKEN_ALPHABET` × 长度 `RBIND_TOKEN_LEN`，
+ * 两个值由 monitor 从 `payload.rs` 那两个常量现生成，形状的唯一一份是 `payload.rs::rbind_token_shape_ok`）。
+ * 每一位从平台 CSPRNG 取一个字节、按拒绝采样落到字母表里（不假设字母表大小整除 256 ⇒ 每一位均匀）；
+ * 今天字母表 16 个字符 × 32 位 = 128 位熵。
  *
  * **只有一个出口**（这是刻意的）：全仓所有「起 agent 进程」的拉起都从这里取令牌，
  * 于是「令牌怎么产的」这一问只有一个住址可查、只有一处会被死值验打。
  *
- * @throws 拿不到 CSPRNG（`crypto.getRandomValues` 不在）—— 见上方那段，**不回落**。
- * @throws 铸出来的串形状不对 —— 那是一次编程错误（进制/长度算错），
- *         宁可在铸币口当场炸，也不要让它一路滑到远端 shell 里去
- *         （`RBIND_TOKEN_DIMENSION.apply` 与 `payload.rs` 那两道闸会拒，
- *          但那时的错误信息说的是「拼命令时发现形状不对」，指不到这里）。
+ * 〔DUP2〕这里原来铸完再过一遍 TS 手写的形状自检（`launch-dimensions.ts` 那一份，与 Rust 逐字同的副本），
+ * 维度 `apply` 里还有一遍。今天构造上就造不出别的形状 ⇒ 两遍都删了；真有坏串（调用方显式传的）由渲染侧
+ * `payload.rs` 那道闸拒（带 `REFUSE:`，前端照拒说出来）。
+ *
+ * @throws 拿不到 CSPRNG（`crypto.getRandomValues` 不在）—— **不回落**。
  */
 export function mintRbindToken(): string {
   const c: Crypto | undefined = globalThis.crypto;
@@ -121,12 +118,14 @@ export function mintRbindToken(): string {
       copyText("remoteLaunchRun.token.noRandom"),
     );
   }
-  const bytes = new Uint8Array(RBIND_TOKEN_ENTROPY_BYTES);
-  c.getRandomValues(bytes);
-  const token = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-  if (!isValidRbindToken(token)) {
-    // 与维度侧**同一条形状**（不在这里写第二份正则）。
-    throw new Error(copyText("remoteLaunchRun.token.badShape", { token: JSON.stringify(token) }));
+  const n = RBIND_TOKEN_ALPHABET.length;
+  // 落在 [limit, 256) 的字节扔掉重取：否则 `b % n` 偏向前几个字符（n 不整除 256 时）。
+  const limit = 256 - (256 % n);
+  let token = "";
+  while (token.length < RBIND_TOKEN_LEN) {
+    const bytes = new Uint8Array(RBIND_TOKEN_LEN - token.length);
+    c.getRandomValues(bytes);
+    for (const b of bytes) if (b < limit) token += RBIND_TOKEN_ALPHABET[b % n];
   }
   return token;
 }

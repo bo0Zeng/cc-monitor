@@ -550,7 +550,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p4c-history-facts**（2026-09-26，第四波 4D STC 合并那一拍）：子命令 ＋1 `--history-facts`、帧命令 ＋1 `history-facts`（`90` 阶段 C：
 /// 后端出会话事实成品 `{end, forkedFrom, touchedFiles, agents, usage}`，续传令牌 = 上一份成品原样交回、后端零状态；分叉判定抽成 `history_query::fork_origin`
 /// 与历史树同一个函数）。前端 `onLine` 旁路四个记账员删到只剩真事件。
-pub const BUILD_ID: &str = "p4c-history-facts";
+///
+/// ★★★ **p4d-acct-iso-cmd**（2026-09-26，第四波 4D DUP2 合并那一拍）：子命令 ＋1 `--acct-iso-cmd`、帧命令 ＋1 `acct-iso-cmd`（建号命令由后端出、
+/// 界面预览 / 弹终端经 `call` 问，TS 零拼 shell 串）。＋ 行为：`bus-send` / `bus-kill` / `bus-spawn` 入口先判 id（`shell_quote_core::bus_id_ok`，拒码 `bad_id`）·
+/// `ccm` 新建会话名走 `gate-core::new_tmux_name_issue`（多拒欺骗字符与超过 128 的名字）· agent 工具名收进共享 crate `agent-tools-core`。
+pub const BUILD_ID: &str = "p4d-acct-iso-cmd";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -682,6 +686,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔W5-ALIAS · 第五波先行〕别名预览（`inbound::REGISTRY` 的 `ccm-print`）派生的 CLI 面。只读，入参从 stdin 读。
     // 加这一行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
     "--ccm-print",
+    // 〔DUP2 · J4〕cc-acct-iso 步骤那一行（`inbound::REGISTRY` 的 `acct-iso-cmd`）派生的 CLI 面。纯函数，入参从 stdin 读。
+    // 加这一行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，停在那条红上报备。
+    "--acct-iso-cmd",
     // 〔AS1 · 第四波 4B〕MCP 资产同步的判定（`inbound::REGISTRY` 的 `mcp-sync-plan`）派生的 CLI 面。只读，入参从 stdin 读。
     // 加这一行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
     "--mcp-sync-plan",

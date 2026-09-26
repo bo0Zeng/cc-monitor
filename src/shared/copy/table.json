@@ -1037,11 +1037,6 @@
       "zh": "会话名或要键入的内容是空的，这次没有发出去。",
       "args": []
     },
-    "ccBus.id.invalid": {
-      "kind": "error",
-      "zh": "agent 名不合法，没有发出去：{id}",
-      "args": ["id"]
-    },
     "ccBus.online.notInstalled": {
       "kind": "error",
       "zh": "问不到 {id} 在不在线：那台机器上找不到 cc-bus（{detail}）",
@@ -1071,6 +1066,36 @@
       "kind": "error",
       "zh": "消息是空的，没有发出去。",
       "args": []
+    },
+    "ccBus.send.badId": {
+      "kind": "error",
+      "zh": "消息没有发出去：{detail}",
+      "args": ["detail"]
+    },
+    "ccBus.kill.badId": {
+      "kind": "error",
+      "zh": "没有收掉：{detail}",
+      "args": ["detail"]
+    },
+    "ccBus.spawn.badId": {
+      "kind": "error",
+      "zh": "没有派生：{detail}",
+      "args": ["detail"]
+    },
+    "beCcBus.parse.badRecipient": {
+      "kind": "error",
+      "zh": "收件人不是合法的 agent 名。只许字母、数字、下划线和连字符，不许以 - 开头：{id}",
+      "args": ["id"]
+    },
+    "beCcBus.parse.badKillId": {
+      "kind": "error",
+      "zh": "要收掉的不是合法的 agent 名。只许字母、数字、下划线和连字符，不许以 - 开头：{id}",
+      "args": ["id"]
+    },
+    "beCcBus.parse.badAccount": {
+      "kind": "error",
+      "zh": "账号名不合法。只许字母、数字、下划线和连字符，不许以 - 开头：{account}",
+      "args": ["account"]
     },
     "ccBus.send.invalidArgs": {
       "kind": "error",
@@ -1181,11 +1206,6 @@
       "kind": "error",
       "zh": "工作目录是空的，没有派生。",
       "args": []
-    },
-    "ccBus.spawn.badAccount": {
-      "kind": "error",
-      "zh": "账号名不合法，没有派生：{account}",
-      "args": ["account"]
     },
     "ccBus.spawn.invalidArgs": {
       "kind": "error",
@@ -3562,11 +3582,6 @@
       "zh": "后端生成不了启动命令：{e}",
       "args": ["e"]
     },
-    "remoteLaunchRun.token.badShape": {
-      "kind": "error",
-      "zh": "生成的启动令牌格式不对：{token}",
-      "args": ["token"]
-    },
     "remoteLaunchRun.token.noRandom": {
       "kind": "error",
       "zh": "生成不了启动令牌：这个环境没有安全随机数。",
@@ -4602,20 +4617,10 @@
       "zh": "—",
       "args": []
     },
-    "launchDimensions.bad.rbindToken": {
-      "kind": "error",
-      "zh": "非法 CCM_RBIND_TOKEN（要 32 位十六进制），不能拼进命令：{value}",
-      "args": ["value"]
-    },
     "launchMenu.account.base": {
       "kind": "action",
       "zh": "不指定账号 · 用远端 ~/.claude 那套凭据",
       "args": []
-    },
-    "launchRequests.bad.tmuxName": {
-      "kind": "error",
-      "zh": "非法 tmux 会话名，不能拼进命令：{value}",
-      "args": ["value"]
     },
     "launcherDiagnostics.diagnoseRemoteLauncher.bypassesCcm": {
       "kind": "body",
@@ -5670,45 +5675,55 @@
       "zh": "缺",
       "args": []
     },
-    "acctDeploy.buildAcctIsoCmd.snapshotPath": {
-      "kind": "control",
-      "zh": "凭据快照路径",
+    "acctDeploy.cmd.refused": {
+      "kind": "error",
+      "zh": "命令拼不出来：{detail}",
+      "args": ["detail"]
+    },
+    "acctDeploy.cmd.contract": {
+      "kind": "error",
+      "zh": "那台机器的后端没读懂这一问，两边版本对不上：{detail}",
+      "args": ["detail"]
+    },
+    "acctDeploy.cmd.otherCode": {
+      "kind": "error",
+      "zh": "命令拼不出来（{code}）：{detail}",
+      "args": ["code", "detail"]
+    },
+    "acctDeploy.cmd.noReason": {
+      "kind": "error",
+      "zh": "命令拼不出来，那台机器的后端没说原因",
       "args": []
     },
-    "acctDeploy.path.dash": {
+    "beIso.cmd.badName": {
       "kind": "error",
-      "zh": "{label}不能以「-」开头",
-      "args": ["label"]
+      "zh": "账号名不合规：{name}。只能用字母、数字、下划线和连字符，以字母或数字开头，最长 {max} 个字符",
+      "args": ["name", "max"]
     },
-    "acctDeploy.path.control": {
+    "beIso.cmd.snapshotEmpty": {
       "kind": "error",
-      "zh": "{label}不能包含控制字符",
-      "args": ["label"]
-    },
-    "acctDeploy.path.quote": {
-      "kind": "error",
-      "zh": "{label}不能包含双引号",
-      "args": ["label"]
-    },
-    "acctDeploy.path.empty": {
-      "kind": "error",
-      "zh": "{label}不能为空",
-      "args": ["label"]
-    },
-    "acctDeploy.name.badStart": {
-      "kind": "error",
-      "zh": "账号名不能以「-」或「.」开头",
+      "zh": "凭据快照路径是空的",
       "args": []
     },
-    "acctDeploy.name.badChars": {
+    "beIso.cmd.snapshotQuote": {
       "kind": "error",
-      "zh": "账号名只能含字母、数字、点、下划线、连字符",
-      "args": []
+      "zh": "凭据快照路径不能含双引号：{path}",
+      "args": ["path"]
     },
-    "acctDeploy.name.tooLong": {
+    "beIso.cmd.snapshotControl": {
       "kind": "error",
-      "zh": "账号名过长（≤64）",
-      "args": []
+      "zh": "凭据快照路径不能含控制字符：{path}",
+      "args": ["path"]
+    },
+    "beIso.cmd.snapshotDash": {
+      "kind": "error",
+      "zh": "凭据快照路径不能以「-」开头：{path}",
+      "args": ["path"]
+    },
+    "acctDeploy.name.shape": {
+      "kind": "error",
+      "zh": "账号名不合规。只能用字母、数字、下划线和连字符，以字母或数字开头，最长 {max} 个字符",
+      "args": ["max"]
     },
     "acctDeploy.name.empty": {
       "kind": "error",
@@ -11439,6 +11454,11 @@
       "zh": "tmux 会话名 {name} 含控制符或视觉欺骗字符 {c}，不能拼进命令。",
       "args": ["name", "c"]
     },
+    "rsPayload.tmuxName.newShape": {
+      "kind": "error",
+      "zh": "新建的会话名不合规：{name}。不能以 - 开头，不能含 {refused} 这几个字符，最长 {max} 个字符",
+      "args": ["name", "refused", "max"]
+    },
     "rsPayload.tmuxName.rawBad": {
       "kind": "error",
       "zh": "tmux 会话名 {name} 声明成原样拼接，却含不许的字符（只许 A-Z a-z 0-9 _ -）",
@@ -14142,6 +14162,16 @@
       "zh": "模型名 {value} 用不了（字母数字开头，只许字母数字与 . _ - : @ / [ ]，最长 256）",
       "args": ["value"]
     },
+    "rsCcmInvocation.refusal.idTmuxName": {
+      "kind": "error",
+      "zh": "会话名 {value} 建不了。不能以 - 开头，不能含 {refused} 这几个字符，最长 {max} 个字符",
+      "args": ["value", "refused", "max"]
+    },
+    "rsCcmInvocation.refusal.freeTextAttach": {
+      "kind": "error",
+      "zh": "要接回的会话名 {value} 用不了。里面不能有控制字符或看不见的字符",
+      "args": ["value"]
+    },
     "rsCcmInvocation.refusal.idAccount": {
       "kind": "error",
       "zh": "账号名 {value} 用不了（字母数字开头，只许字母数字与 _ -，最长 32）",
@@ -16169,6 +16199,16 @@
       "kind": "error",
       "zh": "账号 '{account}' 不可用（不在 {manifestPath}，或其目录不存在）。可用: {names}",
       "args": ["account", "manifestPath", "names"]
+    },
+    "bePlan.validateTmuxName.deceptive": {
+      "kind": "error",
+      "zh": "非法 tmux 会话名（含看不见的字符）: '{name}'",
+      "args": ["name"]
+    },
+    "bePlan.validateTmuxName.tooLong": {
+      "kind": "error",
+      "zh": "非法 tmux 会话名（超过 {max} 个字符）: '{name}'",
+      "args": ["name", "max"]
     },
     "bePlan.validateTmuxName.control": {
       "kind": "error",

@@ -266,6 +266,8 @@ fn every_registered_command_declares_its_run_kind() {
         "link-open",
         "ping",
         "resolve",
+        // 〔DUP2 · J4〕cc-acct-iso 步骤那一行：纯函数（校验 ＋ 唯一的 quote），不起进程不碰盘 ⇒ 不进阻塞档。
+        "acct-iso-cmd",
         // 〔AS2 · 第四波 4B〕资产目录的同步：真异步（拨号 / 等远端 capture），在 await 点可取消。
         "assets-sync",
         // 〔C4d · 第四波 4B〕可达表登记：纯内存，普通 spawn。

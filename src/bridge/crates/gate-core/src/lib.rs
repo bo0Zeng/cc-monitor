@@ -131,6 +131,89 @@ pub fn gate2(name: &str, remote_sid: Option<&str>) -> Gate2 {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 〔DUP2 · 主会话 09-26 裁 J6〕**tmux 会话名的形状 —— 全仓唯一一份**（`设计/01 §5` D1 · `设计/90 §3` 判据 2）。
+//
+// 此前三份、规则互不相同（`DUP1.md §0.3`）：后端 `ccm/plan.rs::validate_tmux_name`（非空 · 不以 `-` 开头 · 无 `*?.:=` · 无控制符）·
+// monitor 载荷 `TmuxTarget::check`（`Raw` 只放行 `[A-Za-z0-9_-]`、却放过前导 `-`；`Quoted` 拒控制符与欺骗字符）·
+// 界面 `shell-quote.ts` 两个谓词 ＋ `launch-requests.ts` 两处内联式子（F01「不把 glob 建进名字」在载荷那条路上只有界面那一道）。
+// 今天两条规则住这里，按「这个名字是不是本工具要**建**的」分：
+//
+// - **新建**（本工具铸的名，`INVARIANTS §47` ① 那一族）：非空 · 不以 `-` 开头（`new-session -s -x` 会被当选项）·
+//   无 [`NEW_TMUX_NAME_REFUSED`]（`.` `:` `=` 是 tmux 目标语法、`*` `?` 是 glob —— F01「本工具永远不把 glob 字符建进会话名」·
+//   F04b「别建一个主路杀不掉的名字」）· 无控制符与视觉欺骗字符 · ≤ [`NEW_TMUX_NAME_MAX`] 个字符；
+// - **已有会话**（attach / 送进一个已在的会话，V131：`§47` ② 那一形）：非空 · 无控制符与视觉欺骗字符（**拒绝集**，不是白名单：
+//   那些名字不是我们建的，里面真有 glob 字符）。寻址恒走 tmux 精确匹配形 `=<名>:`（`INVARIANTS §31a`：`*` `?` 不被当通配、
+//   前导 `-` 不被当选项 —— DUP2 在隔离 socket 上现打过，读数在 `调研/第四波记录/DUP2.md §0.1`）。
+//
+// 本 crate 只判、不说：各调用处按 [`TmuxNameIssue`] 用自己的文案出声（句子不进共享 crate）。
+// 欺骗字符表是 `acct_core::is_deceptive_char` 那一张权威表（`§47` ② 的拒绝集），不在这里另抄一份。
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// 本工具**新建**的会话名最长多少个字符（按 Unicode 标量数）。
+pub const NEW_TMUX_NAME_MAX: usize = 128;
+
+/// 新建会话名里不许出现的字符：tmux 目标语法 `.` `:` `=` 与 glob `*` `?`。
+///
+/// 刻意写成**一个字符串字面量**：创建路径那条跨轨判据（`backend_kill_tests.rs` 的 `VALIDATORS`）钉的就是这个表达式本身，
+/// 并逐个核后端 kill 形状门拒的每个字符都在里面。
+pub const NEW_TMUX_NAME_REFUSED: &str = "*?.:=";
+
+/// 一个会话名为什么不行（调用处按它说自己的那一句）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TmuxNameIssue {
+    /// 空串。
+    Empty,
+    /// 以 `-` 开头（只对新建判）。
+    LeadingDash,
+    /// 含 [`NEW_TMUX_NAME_REFUSED`] 里的一个字符（只对新建判）。
+    TargetSyntax(char),
+    /// 含控制字符（`char::is_control`：C0 · DEL · C1）。
+    Control(char),
+    /// 含视觉欺骗字符（`acct_core::is_deceptive_char`）。
+    Deceptive(char),
+    /// 超过 [`NEW_TMUX_NAME_MAX`] 个字符（只对新建判）。
+    TooLong,
+}
+
+/// 两条规则共用的拒绝集：控制符 · 视觉欺骗字符。
+fn refused_char(n: &str) -> Option<TmuxNameIssue> {
+    if let Some(c) = n.chars().find(|c| c.is_control()) {
+        return Some(TmuxNameIssue::Control(c));
+    }
+    n.chars()
+        .find(|c| acct_core::is_deceptive_char(*c))
+        .map(TmuxNameIssue::Deceptive)
+}
+
+/// **新建**会话名（本工具铸的 · 用户给的新名）过不过：`None` = 过。规则见本节头注。
+pub fn new_tmux_name_issue(n: &str) -> Option<TmuxNameIssue> {
+    if n.is_empty() {
+        return Some(TmuxNameIssue::Empty);
+    }
+    if n.starts_with('-') {
+        return Some(TmuxNameIssue::LeadingDash);
+    }
+    if let Some(c) = n.chars().find(|c| NEW_TMUX_NAME_REFUSED.contains(*c)) {
+        return Some(TmuxNameIssue::TargetSyntax(c));
+    }
+    if let Some(issue) = refused_char(n) {
+        return Some(issue);
+    }
+    if n.chars().count() > NEW_TMUX_NAME_MAX {
+        return Some(TmuxNameIssue::TooLong);
+    }
+    None
+}
+
+/// **已有会话**的名字（attach · 送进一个已在的会话）过不过：`None` = 过。只拒空、控制符与视觉欺骗字符（V131 ②）。
+pub fn existing_tmux_name_issue(n: &str) -> Option<TmuxNameIssue> {
+    if n.is_empty() {
+        return Some(TmuxNameIssue::Empty);
+    }
+    refused_char(n)
+}
+
 #[cfg(test)]
 #[path = "../../../../../tests/bridge/crates/gate-core/lib_tests.rs"]
 mod tests;

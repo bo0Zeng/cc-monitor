@@ -190,7 +190,8 @@ pub struct AgentProfileFacts {
 }
 
 /// 子 agent 工具（展开 = 子会话）。〔`K-R93` 从 `src/agent-profile.ts` 搬来，值逐字未改〕
-static CLAUDE_AGENT_TOOLS: &[&str] = &["Agent", "Task"];
+/// 〔DUP2 · J19〕值住共享 crate `agent_tools_core`（后端会话事实的 agent 列表用同一份；两半编译期不许互咬 ⇒ 共享 crate）。
+static CLAUDE_AGENT_TOOLS: &[&str] = &agent_tools_core::CLAUDE_AGENT_TOOLS;
 /// 交互工具（agent 在等用户决定）。〔同上〕
 static CLAUDE_INTERACTIVE_TOOLS: &[&str] = &["AskUserQuestion", "ExitPlanMode"];
 /// 写类工具（行级 diff）。〔同上〕
