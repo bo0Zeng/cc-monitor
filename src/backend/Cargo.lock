@@ -769,6 +769,9 @@ dependencies = [
 [[package]]
 name = "gate-core"
 version = "0.1.0"
+dependencies = [
+ "acct-core",
+]
 
 [[package]]
 name = "generic-array"
