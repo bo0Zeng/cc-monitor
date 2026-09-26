@@ -53,14 +53,8 @@ const SITES: &[(&str, &str, usize, &str, &str)] = &[
         "写的是我们自己的配置文件，tmp 的 ACL 覆盖到 dst 没有受害者。\
              §4 把 ReplaceFileW 的要求**限定在用户文件**，这里不在其中。",
     ),
-    (
-        "logging.rs",
-        "MoveFileExW",
-        1,
-        "monitor 自己的日志轮转",
-        "同 config.rs（该处头注自陈「是从 config.rs 复制的」）。\
-             ⚠ 复制而来这件事本身没问题 —— 有问题的是此前**没有任何东西记着它为什么可以照抄**。",
-    ),
+    // 〔CFG1 · 4D〕`logging.rs [MoveFileExW]` 摘了：诊断写口改经 `config::patch_config_at`（config.json 唯一的写函数），
+    //   它那份从 config.rs 复制来的 `atomic_replace` 随之删了。
     (
         "utils.rs",
         "ReplaceFileW",
@@ -90,13 +84,7 @@ const SITES: &[(&str, &str, usize, &str, &str)] = &[
         "同文件那条 `MoveFileExW` 的 `cfg(not(windows))` 对侧。写的是我们自己的配置，\
              POSIX 上 rename 即原子替换，无 ACL 顾虑。",
     ),
-    (
-        "logging.rs",
-        "rename",
-        1,
-        "**monitor 自己的** 日志轮转（POSIX 分支）",
-        "同文件那条 `MoveFileExW` 的 `cfg(not(windows))` 对侧，理由同 config.rs。",
-    ),
+    // 〔CFG1 · 4D〕`logging.rs [rename]` 同上一起摘。
     // 〔SR1b · 2026-09-24〕`sftp.rs [rename] 2`（远端上传落地的两步：旧的改名 `.bak` · 临时件上位）摘了 ——
     //   那段原子上传随 SFTP 搬进本机常驻后端（`src/backend/dial/sftp.rs::put_atomic`，写只许两处）；本表只管 monitor。
     // 〔SR1b · 2026-09-24〕`sftp_pool.rs [rename]`（`download_inner`：下载先写 `<local>.part` 再 rename 落地）这一行摘了 ——

@@ -2,14 +2,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-vi.mock("../src/config", () => ({ loadConfig: vi.fn(), saveConfig: vi.fn() }));
+// 〔CFG1〕config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`。
+vi.mock("../src/config", async (orig) => (await import("./config-patch-fake")).mockedConfigModule(orig));
 // 〔W5-UI〕记账失败要出声：只换 toast 这一个出口，判据读它收到了什么。
 // 〔FE1 · D-h〕账号选不了的那句提示由 `withAccount` 自己出（先前是调用方各带一个「账号不可用」回调）。
 vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
 import { showActionFailureToast } from "../src/error-toast";
-import { loadConfig, saveConfig } from "../src/config";
+import { loadConfig } from "../src/config";
+import { fakeCfg } from "./config-patch-fake";
 import { deriveUi, effectiveDefault, currentWorkingAccount, currentAccountForBadge, accountColorsActive, selectableAccounts, resolveFollowAccount, detectAccountMismatch, isSelectable, accountConfigDir, badgeText, sessionBadge, shouldShowAccountBadge, resolveAccount, isAccountZero, accountStatusBadge, localApikeyEndpointStateFor, accountLoginActionLabel, type AccountsState, type Account, type SessionAccount } from "../src/accounts";
 import { fetchAccounts, fetchSessionAccounts, parseSessionAccountLines, invalidateAccountsCache, __resetAccountsCacheForTest, fetchLocalApikeyRouting } from "../src/account-reads";
 import { getDefaultName, setDefaultName, getModelForAccount, setModelForAccount } from "../src/account-prefs";
@@ -33,7 +35,7 @@ import {
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const loadCfg = loadConfig as unknown as ReturnType<typeof vi.fn>;
-const saveCfg = saveConfig as unknown as ReturnType<typeof vi.fn>;
+const saveCfg = fakeCfg.saved;
 
 function acct(p: Partial<Account>): Account {
   return {
