@@ -1541,11 +1541,11 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 写口登记在后端 `readonly_guard` 的**第四层**（后端自有状态文件），只从下面 `apikey-key-set` 一条进来。
 判清的全文住 `调研/第四波记录/RM1a.md §1`。
 
-- **每台机器上的程序写者恰好一个**：**那台的后端**（本节两条）—— 〔GP1 · 第四波〕monitor 所在那台也一样，是本机常驻后端
-  （monitor 把 `apikey-key-set` 发给本机那条连接，与远端同一条路；monitor 一个字节都不写）。
-  发之前 monitor 先问一次 `apikey-read`：本机后端答的 `path` 必须就是这个 monitor 认的那一份（`CCM_DATA_DIR` 隔离跑时
-  接上的可能是别的数据目录起的那个常驻后端），不等 ⇒ 不写。〔RM1a 那一版这里写「monitor 所在那台是 monitor 自己；
-  monitor **从不**把 `apikey-key-set` 发给本机那条连接」。〕
+- **每台机器上的程序写者恰好一个**：**那台的后端**（本节两条）—— 〔GP1 · 第四波〕monitor 所在那台也一样，是本机常驻后端。
+  〔HX2 · 4D〕界面经 `chan.call(这台, "apikey-key-set", …)` 直接交给那台的后端（本机 ＝ `<local>` 那条长连接）；monitor 只转不透明的字节。
+  「本机后端写的那份就是这个 monitor 用的那份」由**连接本身**保证：常驻载体接上之前 hello 的 `host_env` 已与 monitor 要交的
+  `CCM_APIKEY_CREDENTIALS` 两向比过（`local_backend_host.rs::hello_verdict`），被监护的 stdio 载体是 monitor 按同一份环境起的。
+  〔GP1 那一版：monitor 发之前先问一次 `apikey-read` 核 `path`；RM1a 那一版：「monitor **从不**把 `apikey-key-set` 发给本机那条连接」。〕
 - **路径**与那台机器上 `--relay` 进程的上游选择**同一个出处**（`accounts::upstream::creds::resolve_path` ＋ 同一个家目录）。
 - 🔴 **明文只在 `apikey-key-set` 的 `args.key` 里**：不进 argv、不进 env、不进任何日志；两条的应答都只有**掩码**。
 - 两条都**不起中转**；中转那两条（`relay-*`）也**不碰凭据**。
@@ -1553,20 +1553,21 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 #### `apikey-key-set`：给一个账号写 key，写完读回
 
 ```text
-→ {"id":"k1","cmd":"apikey-key-set","args":{"account":"work","key":"<明文>","baseUrl":"https://api.example.com"}}
+→ {"id":"k1","cmd":"apikey-key-set","args":{"configDir":"/home/u/.claude-accts/work","key":"<明文>","baseUrl":"https://api.example.com"}}
 ← {"kind":"reply","id":"k1","ok":true,"data":{"account":"work","path":"/home/u/.claude/claudecode-frontend/apikey-credentials.json","masked":"sk-a****wxyz","baseUrl":"https://api.example.com"}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `account` | ↔ | 账号 id（monitor 用全仓唯一那份规则从账号目录推出来，后端不再推）。必须当得了路由段 —— 与上游选择装表时**同一个谓词**，写得进去却装不进表 = 那一行永远 404 |
+| `configDir` | → | 〔HX2 · 4D〕这个号的账号目录。账号 id 由**这台后端**按全仓唯一那份规则推（`acct_core::apikey_account_id_of_dir`，起会话那一侧同一个）；推不出 ⇒ `bad_args`。还给旧的 `account` ⇒ `bad_args`（不为旧形状留兼容） |
+| `account` | ← | 推出来的账号 id。必须当得了路由段 —— 与上游选择装表时**同一个谓词**，写得进去却装不进表 = 那一行永远 404 |
 | `key` | → | 明文。空串拒 |
 | `baseUrl` | ↔ | 入（可选）：这个账号的第三方端点。缺席 / `null` / 空串 = **不碰那一格**（只配 key 时已有端点原样留着）；给了就先过**那一条**形状关（`creds_core::store::check_base_url_shape`；〔GP1〕写者只剩后端这一处），不对 ⇒ `bad_args`、整次不写。出：写完读回这一行的端点（没有 ⇒ `null`） |
 | `masked` | ← | 写完**再读一遍**、这一行 key 的掩码（盘上的事实） |
 | `path` | ← | 那份文件的绝对路径 |
 
 写法：**写的那一刻读盘** → 只改 `accounts.<account>` 的 `api_key`（与给了的 `base_url`）那一两格（别的行与未知键一个不动）→ 临时文件**出生即只给本人**（O_EXCL）→ 写满 → 落盘 → 原子改名；失败删自己的临时文件。
-**错误码**：`bad_args`（缺字段 / 账号 id 当不了路由段 / key 空）· `bad_file`（现有文件解析不了 ⇒ **不覆盖**，人手编的内容不许被抹掉）· `io_failed`。
+**错误码**：`bad_args`（缺字段 / 推不出账号 id / 账号 id 当不了路由段 / key 空 / 还给了 `account`）· `bad_file`（现有文件解析不了 ⇒ **不覆盖**，人手编的内容不许被抹掉）· `io_failed`。
 
 #### `apikey-read`：文件级的状态（**不读 stdin**）
 

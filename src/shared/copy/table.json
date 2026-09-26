@@ -12784,11 +12784,6 @@
       "zh": "[{host}] 读写 API key 失败：{message}",
       "args": ["host", "message"]
     },
-    "rsApikeyRemote.send.noAccount": {
-      "kind": "error",
-      "zh": "说不出这是哪个账号（配置目录是 {dir}），不往 [{host}] 的表里写。写进去的那一行谁也命中不了",
-      "args": ["dir", "host"]
-    },
     "rsRemoteRelay.call.internal": {
       "kind": "error",
       "zh": "问中转时出了内部错误，没有拿到结果",
@@ -14445,6 +14440,11 @@
       "zh": "读不懂那台后端回的凭据文件状态，两端版本对不上",
       "args": []
     },
+    "apikeyReads.write.badShape": {
+      "kind": "error",
+      "zh": "读不懂那台后端回的写入结果，两端版本对不上",
+      "args": []
+    },
     "apikeyReads.routing.badShape": {
       "kind": "error",
       "zh": "读不懂那台后端回的账号表情况，两端版本对不上",
@@ -15519,21 +15519,6 @@
       "kind": "body",
       "zh": "装到哪台就记在哪台。那台后端自己的装记录：每个装写进去的文件的摘要，和装之前在不在。卸只认这里记着的，卸掉的从这里摘掉",
       "args": []
-    },
-    "rsApikeyRemote.local.noDataDir": {
-      "kind": "error",
-      "zh": "没有写。找不到 monitor 的数据目录，说不出本机那份凭据文件该在哪",
-      "args": []
-    },
-    "rsApikeyRemote.send.notSameFile": {
-      "kind": "error",
-      "zh": "没有写：两份凭据文件不是同一个。[{host}] 的后端写的是 {got}，而这个 monitor 用的是 {want}。\n多半是这个 monitor 隔离跑（CCM_DATA_DIR）而接上了别的数据目录起的那个后端；停掉那个后端、让这个 monitor 自己起一个，再配",
-      "args": ["host", "got", "want"]
-    },
-    "rsApikeyRemote.read.noPath": {
-      "kind": "error",
-      "zh": "[{host}] 的后端回答里没有 path 字段，说不出它写哪一份 —— 没有写",
-      "args": ["host"]
     },
     "rsCcmLegacy.say.removed": {
       "kind": "body",
