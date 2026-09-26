@@ -1896,7 +1896,8 @@ pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), String> {
 // monitor 不再单独起 / 收中转（本机固定两个进程）」⇒ 那一族整个删掉：
 // - 起：后端流模式进程被交了端口就在本进程里起（`src/backend/relay/listen.rs::host`）；
 // - 收：随常驻后端按「退出行为」留或退（`设计/01 §3.3b`），monitor 一行都不管；
-// - 在不在：回环上连一次那个口（[`relay_running`]），与远端 `relay-status` 同一个判准。
+// - 在不在：由本机常驻后端自己答（`launch-endpoint` 成品里的 `listening`，与远端 `relay-status` 同一个判准）；
+//   〔US1〕monitor 这一侧先前那个「回环上连一次」的探针（`relay_running`〔散文墓碑〕）随上游选择整块进后端删了。
 
 /// 〔RL1〕起本机后端时交给它的那份**环境**：中转端口 ＋ 凭据文件路径。**两条载体交的是同一份**
 /// （常驻那条 `start_detached` 的 `extra_env` · 被监护那条 `local_backend::start_or_extract` 的 `envs`）。
@@ -1904,9 +1905,10 @@ pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), String> {
 /// ★ 端口**显式交**：注入侧（`payload::RELAY_PORT`）与后端里 bind 的是同一个值；后端那一侧**没有缺省值**
 ///   （交了认不出的串就不开中转），它的 `DEFAULT_PORT` 只属于独立 `--relay` 那一形。
 /// ★★ 凭据路径也显式交（`D1 阻-3` 那条理由原样）：不交的话，后端里的上游选择走它自己那条
-///   `resolve_path` → `resolve_home()`，而那一条认 `CLAUDE_CONFIG_DIR`；monitor 写的那份**不跟随**它
-///   （`creds_store::resolve_path` 头注）⇒ 两侧读写两份文件，症状是「界面上配好了，上游选择说没配」。
-///   由**写那份文件的那一侧**把路径说出来 —— `CCM_DATA_DIR` 隔离跑时读者因此跟着 monitor 的数据目录走。
+///   `resolve_path` → `resolve_home()`，而那一条认 `CLAUDE_CONFIG_DIR`；monitor 认的那份（它的数据目录下，
+///   `creds_store::resolve_path`）**不跟随**它 ⇒ 两侧认两份文件，症状是「界面上配好了，上游选择说没配」。
+///   由 monitor 把**它认的那一份**说出来 —— 〔GP1 · US1〕写那份文件的（`apikey-key-set`）与读它的（上游选择）今天都是本机常驻后端，
+///   `CCM_DATA_DIR` 隔离跑时两者因此都跟着 monitor 的数据目录走（接上的是不是这个数据目录的那一个后端，由连接本身答：[`hello_verdict`] 比 hello 的 `host_env`）。
 ///
 /// ⚠ 拿不到家目录时凭据那一格**缺席**（不是空串）：后端那时退回它自己那条解析，
 /// 而那正是上面那个静默 404 的成因 ⇒ 缺席这一格不许被读成「安全」。

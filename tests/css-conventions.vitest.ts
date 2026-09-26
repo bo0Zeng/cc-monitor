@@ -342,9 +342,9 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   // 〔第四波 ST2〕远端也有真栏之后，这个包装本机与远端都用；显隐切两处：`applyOriginGate`（摆出来）
   //    与 `showUnanswered`（远端那台答不了时收起来）。同一个包装、同一个理由。
   // 〔合并 RM1a〕440/447 → 436/443：`readFootprint` 去掉那一道 `as unknown as`（命令签名本来就收 `{ origin }`），上移 4 行。
-  "src/settings/config-surface-section.ts:435": // 〔CP2b〕行号 −1：字面量进表后收行
+  "src/settings/config-surface-section.ts:436": // 〔CP2b〕行号 −1：字面量进表后收行 ·〔TL3〕+1：`answersFor` 回声那一行上面加了一行注释
     "那一整套的显隐包装（本机与远端都用），刻意不挂类名（没有类就不会有裸 display 压过 [hidden]）",
-  "src/settings/config-surface-section.ts:442": // 〔CP2b〕同上
+  "src/settings/config-surface-section.ts:443": // 〔CP2b〕同上 ·〔TL3〕同上 +1
     "同一个包装，远端那台答不了时收起来（`showUnanswered`）",
   // 〔C4d〕行号随上方历史清单那几段改走通道挪了（1635 → 1617），那一处本身没动。
   // 〔W5-UI〕`1612 → 1613`：`history.ts` 多一行 import（应用内对话框）；〔FW1〕再 +5：`liveInTabs` 那一格；

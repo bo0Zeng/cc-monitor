@@ -535,7 +535,10 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p3y-files-inplace**（2026-09-26，第五波 W5-FILES 合并那一拍）：子命令 ＋1 `--files-size`、帧命令 ＋1 `files-size`。＋ 行为：复制保权限位 ·
 /// `files-copy` 收 `recursive`（计划趟逐条目解析、整趟拒 / 执行趟逐条目再解析、中途失败撤回本趟所建）· 索引不跨文件系统 · `files-browse` 真挂 watcher
 /// （应答多 `watching` / `watch_failed` / `watch_error`）· 暂存件跨盘提交退回「复制后删」（`EXDEV`）· 非 UTF-8 名按字节寻址。
-pub const BUILD_ID: &str = "p3y-files-inplace";
+///
+/// ★★★ **p3z-fence-home-backendpath**（2026-09-26，第四波 4D TL3 合并那一拍）：行为 —— 读路径围栏收成 `observe/fence.rs::Fence` 一个家（history / search 两个读者）·
+/// `remote-reach` 进门判 `backend` 形状、不合形回 `bad_args`。子命令没变，照 p1v 先例不加历史行。
+pub const BUILD_ID: &str = "p3z-fence-home-backendpath";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -926,6 +929,9 @@ pub enum CapabilityKind {
 ///
 /// 他那一拍是三句，合起来是一条完整裁决：
 /// ① 判「**做得到**」；② 「**除非暂时不做**」；③ 「**Windows 用 Windows 自己的后台服务，后面再做**」。
+/// 〔TL3 · 审计 F 🔴-11〕③ 的**机制**那半被 09-24 的 V109 收回：Windows 上「会话活在前端之外」用哪种机制
+/// （甲 · 控制台窗口本身就是容器 / 乙 · 常驻后端用 ConPTY 托管 / 丙 · 真 Windows 服务）用户裁「都先不做」、**机制未定**
+/// ⇒ [`TARGET_GAPS`] 的理由串不许替他选（`设计/96 §2.3`「以 V109 为准」）；①② 两句照旧。
 ///
 /// ⇒ 于是本轴的形状变了三处：
 /// 1. `targets` 那一栏的意思从「编得过」变成「**这一面在这个 target 上真的做得到**」；
@@ -1094,6 +1100,7 @@ pub enum GapKind {
 /// ⚠ **「暂时不做」是一种合法答复，但必须写出来** —— 用户那一拍逐字
 /// 「**做得到. 除非暂时不做. windows用windows自己的后台服务. 后面在做**」。
 /// ⇒ [`TargetGap::rationale`] 要同时答两件：**今天为什么做不到** ＋ **将来怎么办**。
+/// 〔TL3〕「将来怎么办」那一半**不许预设机制**：09-24 V109 把「用哪种机制」收回成未定（见 [`Target`] 头注）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TargetGap {
     /// 哪一面。必须是 [`CAPABILITY_FACES`] 或 [`COMMAND_FACES`] 里真有的族名。
@@ -1136,43 +1143,50 @@ pub const TARGET_GAPS: &[TargetGap] = &[
     //
     // 🔴 **将来的答复是用户给的，不是我们挑的**：他 2026-09-21 逐字
     //    「**windows用windows自己的后台服务. 后面在做**」
-    //    ⇒ 方向已定（**不是**去 Windows 上装个 tmux，也**不是**自己写一个终端复用器），
-    //      落地时间**明确推后**。这六条的 `why` 都指着同一句裁决。
+    //    ⇒ 当时读成「方向已定」（**不是**去 Windows 上装个 tmux，也**不是**自己写一个终端复用器），落地时间推后。
+    // 〔TL3 · 审计 F 🔴-11 订正〕09-24 用户又裁 **V109**〔选〕「先不做 Windows 这一族」：甲 · 乙 · 丙三种机制都先不做，
+    //    **机制未定** ⇒ 上面那句「方向已定」以 V109 为准不再成立（`设计/96 §2.3`）。下面各行的理由只说「等 V109 那一族」，
+    //    不替用户选机制；判据 `target_parity_guard::no_gap_rationale_picks_the_windows_mechanism`。
     TargetGap {
         family: "ccm-launcher",
         capability: "tmux",
         target: Target::Windows,
         kind: GapKind::Owed,
-        rationale: "Windows 上没有 tmux（也不打算装）。将来由 **Windows 自己的后台服务**               承担「会话活在前端之外」这件事〔用户 2026-09-21 拍板〕，**暂时不做**。",
+        rationale: "Windows 上没有 tmux（也不打算装）。「会话活在前端之外」在 Windows 上用哪种机制，\
+              用户 09-24 裁「先不做 Windows 这一族」、机制未定（V109）⇒ **暂时不做**；\
+              将来选定机制的那一拍一并给出等价物。",
     },
     TargetGap {
         family: "ccm-launcher",
         capability: "attach",
         target: Target::Windows,
         kind: GapKind::Owed,
-        rationale: "「接回一个还活着的会话」今天的实现是 `tmux attach`。Windows 上那条路不存在               ⇒ 等那个后台服务落地时一并给出等价物〔同上裁决〕，**暂时不做**。",
+        rationale: "「接回一个还活着的会话」今天的实现是 `tmux attach`。Windows 上那条路不存在 \
+              ⇒ 等 V109 那一族选定机制（未定）时一并给出等价物，**暂时不做**。",
     },
     TargetGap {
         family: "ccm-launcher",
         capability: "detach",
         target: Target::Windows,
         kind: GapKind::Owed,
-        rationale: "「把会话留在后台」今天是 `tmux detach`。同 `attach`，等那个后台服务，**暂时不做**。",
+        rationale: "「把会话留在后台」今天是 `tmux detach`。同 `attach`，等 V109 那一族选定机制，**暂时不做**。",
     },
     TargetGap {
         family: "ccm-launcher",
         capability: "tmux-size",
         target: Target::Windows,
         kind: GapKind::Structural,
-        rationale: "给 tmux 那个窗格定尺寸。没有 tmux 就没有这一格；将来那个后台服务里              「会话的终端多大」是另一种形状，**不照搬这一条** ⇒ 这一条本身不跨过去；\
-              那个后台服务里的尺寸若要有，是**另一条**能力、另立一行〔PR1 分档：结构〕。",
+        rationale: "给 tmux 那个窗格定尺寸。没有 tmux 就没有这一格；V109 那一族将来不论选哪种机制，\
+              「会话的终端多大」都是另一种形状，**不照搬这一条** ⇒ 这一条本身不跨过去；\
+              那边的尺寸若要有，是**另一条**能力、另立一行〔PR1 分档：结构〕。",
     },
     TargetGap {
         family: "ccm-launcher",
         capability: "tmux-base",
         target: Target::Windows,
         kind: GapKind::Structural,
-        rationale: "tmux 的窗格编号基数（`base-index`）。它是 tmux 自己的配置面，              Windows 上连对应概念都没有 ⇒ **不是推后，是这一条本身不该跨过去**。",
+        rationale: "tmux 的窗格编号基数（`base-index`）。它是 tmux 自己的配置面，\
+              Windows 上连对应概念都没有 ⇒ **不是推后，是这一条本身不该跨过去**（V109 那一族选哪种机制都一样）。",
     },
     // ── `ccm-launcher` × Windows：**真机现打补上的三条**〔2026-09-21〕 ───────
     //
@@ -1193,8 +1207,8 @@ pub const TARGET_GAPS: &[TargetGap] = &[
               `--bus-register` 要 `--detach`，而 `--detach` 要 `--tmux`。\
               真机现打（Win11）把两个 bus 脚本都种齐、排掉「脚本缺失」这个变量之后，\
               仍然 `EXIT=4 no_tmux` ⇒ **唯一闸门就是 tmux**。\
-              ⇒ 等那个 Windows 后台服务落地时，「把会话登记到总线上」要重新回答一次\
-              〔用户 2026-09-21 拍板〕，**暂时不做**。",
+              ⇒ 等 V109 那一族选定机制（未定）时，「把会话登记到总线上」要重新回答一次，\
+              **暂时不做**。",
     },
     TargetGap {
         family: "ccm-launcher",
@@ -1210,7 +1224,8 @@ pub const TARGET_GAPS: &[TargetGap] = &[
               🔴 **而令牌那条路的读侧在 Windows 上不通**：后端从 agent 进程的环境里读令牌 \
               （`identity_tag::rbind_token_of` → `platform::proc::proc_env_var`），非 Linux 恒 `Unreadable` \
               （`WN1.md §1` 件 E：要读对方 PEB，未做）⇒ 令牌注进去了也读不回来 ⇒ 这一格在 Windows 上仍是欠账。\
-              **将来**：件 E（Windows 上读别的进程的环境）落地那一拍，这一行跟着删；在那之前暂时不做。",
+              **将来**：件 E（Windows 上读别的进程的环境）落地那一拍，这一行跟着删；件 E 随 V109 \
+              「先不做 Windows 这一族」挂着，在那之前暂时不做。",
     },
     // ── 🔴 〔散文墓碑〕〔`P19` 09-22〕**`agent` 那一条豁免删了，原话留在这里** ──────
     //
@@ -1248,7 +1263,8 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "base-url-across-tmux",
         target: Target::Windows,
         kind: GapKind::Owed,
-        rationale: "把中转地址跨 tmux 会话传下去。载体没了这一条就没了；              将来那个后台服务要自己回答「地址怎么传给它起的会话」，**暂时不做**。",
+        rationale: "把中转地址跨 tmux 会话传下去。载体没了这一条就没了；\
+              将来 V109 那一族选定机制时要自己回答「地址怎么传给它起的会话」，**暂时不做**。",
     },    // ── 〔PR1 · 2026-09-24〕命令面 × Windows：**不是新裁的，是第一次被看见** ────────────
     //
     // 这六行在 PR1 之前就是真的（`K-P4` 那一拍 `unavailable_from` 在 Windows 上就会列出这三条），
@@ -1256,15 +1272,16 @@ pub const TARGET_GAPS: &[TargetGap] = &[
     // 那条两向相等当场点出它们，于是逐条登记。**差异是现推出来的**（命令自己声明的 `no_tmux` 码 ×
     // Windows 平台档），这里只补理由与档。
     // 档：六条都是**欠着** —— 「起会话 / 杀会话 / 看一眼画面」与 tmux 无关，是 Windows 该有的；
-    // 谁来还是用户 09-21 那一句（「Windows 用 Windows 自己的后台服务，后面再做」）。
+    // 谁来还：挂在 V109（09-24「先不做 Windows 这一族」，机制未定）。〔TL3〕先前这里写「用户 09-21 那一句
+    //   （Windows 用 Windows 自己的后台服务，后面再做）」—— 那句的机制那半以 V109 为准。
     TargetGap {
         family: "wire-commands",
         capability: "capture-pane",
         target: Target::Windows,
         kind: GapKind::Owed,
         rationale: "抓一屏今天就是起一次 `tmux capture-pane`（命令自己声明了 `no_tmux` 码）。\
-              Windows 上没有 tmux ⇒ 平台默认做不到。将来由那个 Windows 后台服务给出\
-              「看一眼会话画面」的等价物〔用户 2026-09-21 拍板〕，**暂时不做**。",
+              Windows 上没有 tmux ⇒ 平台默认做不到。将来 V109 那一族选定机制（未定）时给出\
+              「看一眼会话画面」的等价物，**暂时不做**。",
     },
     TargetGap {
         family: "wire-commands",
@@ -1272,8 +1289,8 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         target: Target::Windows,
         kind: GapKind::Owed,
         rationale: "结束会话今天是起一次 `tmux kill-session`（命令自己声明了 `no_tmux` 码）。\
-              Windows 上没有 tmux ⇒ 平台默认做不到。将来由那个 Windows 后台服务\
-              管会话的生死〔用户 2026-09-21 拍板〕，**暂时不做**。",
+              Windows 上没有 tmux ⇒ 平台默认做不到。将来 V109 那一族选定机制（未定）时\
+              一并管会话的生死，**暂时不做**。",
     },
     TargetGap {
         family: "wire-commands",
@@ -1281,8 +1298,8 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         target: Target::Windows,
         kind: GapKind::Owed,
         rationale: "起会话今天是在 tmux 里开一个新会话（命令自己声明了 `no_tmux` 码）。\
-              Windows 上没有 tmux ⇒ 平台默认做不到。将来由那个 Windows 后台服务\
-              承担「会话活在前端之外」〔用户 2026-09-21 拍板〕，**暂时不做**。",
+              Windows 上没有 tmux ⇒ 平台默认做不到。「会话活在前端之外」在 Windows 上的机制\
+              未定（V109），**暂时不做**。",
     },
     TargetGap {
         family: "cli-subcommands",
@@ -1290,7 +1307,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         target: Target::Windows,
         kind: GapKind::Owed,
         rationale: "与帧面 `capture-pane` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
-              派生到同一条登记）⇒ 同一个理由，将来与帧面那一行同拍还，**暂时不做**。",
+              派生到同一条登记）⇒ 同一个理由（V109），将来与帧面那一行同拍还，**暂时不做**。",
     },
     TargetGap {
         family: "cli-subcommands",
@@ -1298,7 +1315,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         target: Target::Windows,
         kind: GapKind::Owed,
         rationale: "与帧面 `kill` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
-              派生到同一条登记）⇒ 同一个理由，将来与帧面那一行同拍还，**暂时不做**。",
+              派生到同一条登记）⇒ 同一个理由（V109），将来与帧面那一行同拍还，**暂时不做**。",
     },
     TargetGap {
         family: "cli-subcommands",
@@ -1306,7 +1323,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         target: Target::Windows,
         kind: GapKind::Owed,
         rationale: "与帧面 `launch` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
-              派生到同一条登记）⇒ 同一个理由，将来与帧面那一行同拍还，**暂时不做**。",
+              派生到同一条登记）⇒ 同一个理由（V109），将来与帧面那一行同拍还，**暂时不做**。",
     },
     // ── 〔FW5 · 第四波 · 2026-09-24〕`files-chmod` × Windows：`设计/96 §8.5` 待拍 3 ────────────
     //

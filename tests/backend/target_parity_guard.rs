@@ -80,6 +80,72 @@ fn every_gap_speaks_in_the_voice_of_its_own_tier() {
     );
 }
 
+/// 〔TL3 · 审计 F 🔴-11〕V109 点名的那 14 行：`ccm-launcher × Windows` 8 行 ＋ 命令面 × Windows 6 行
+/// （**手抄自 V109 原文**「`TARGET_GAPS` 里 `ccm-launcher × Windows` 那 8 行 ＋ 命令面 6 行继续记欠账」，与理由串异源）。
+const V109_ROWS: &[(&str, &str)] = &[
+    ("ccm-launcher", "tmux"),
+    ("ccm-launcher", "attach"),
+    ("ccm-launcher", "detach"),
+    ("ccm-launcher", "tmux-size"),
+    ("ccm-launcher", "tmux-base"),
+    ("ccm-launcher", "bus-register"),
+    ("ccm-launcher", "ccm-sid"),
+    ("ccm-launcher", "base-url-across-tmux"),
+    ("wire-commands", "capture-pane"),
+    ("wire-commands", "kill"),
+    ("wire-commands", "launch"),
+    ("cli-subcommands", "--capture-pane"),
+    ("cli-subcommands", "--kill"),
+    ("cli-subcommands", "--launch"),
+];
+
+/// 理由串里一旦出现就等于替用户选了 V109 三选一里的某一种（丙 · 乙 · 甲）。
+const MECHANISM_WORDS: &[&str] = &["后台服务", "ConPTY", "控制台窗口本身"];
+
+/// 🔴 〔TL3 · 审计 F 🔴-11〕**理由串不替用户选 Windows 那一族的机制。**
+///
+/// # 守的要求（住址）
+///
+/// `设计/99 §1` **V109**〔选〕「先不做 Windows 这一族」—— 题：Windows 上会话要能放后台 / 接回 / 看一眼画面 / 往里送字，
+/// 用哪种机制（甲 · 控制台窗口本身就是容器 / 乙 · 常驻后端用 ConPTY 托管 / 丙 · 真 Windows 服务）⇒ 都先不做。
+/// `设计/96 §2.3`：「`TARGET_GAPS` 里各行 `why` 的原文仍引 09-21 那句，以 V109 为准」。
+/// 出处：审计 F 🔴-11 —— 9 行理由串写着「将来由 **Windows 自己的后台服务** 承担」，等于替用户选了丙。
+///
+/// # 判（两向相等）
+///
+/// - 理由串里引 `V109` 的行集合 == [`V109_ROWS`]（V109 原文点名的 14 行）—— 同时是正控：扫描器读得到理由串、认得出子串。
+/// - 理由串里点名任一机制（[`MECHANISM_WORDS`]）的行 == ∅。
+///
+/// 买不到：换一个没登记的说法预设机制（新词）看不见；V109 裁定之后这张表要跟着改（选了哪种，哪一格就能写它）。
+#[test]
+fn no_gap_rationale_picks_the_windows_mechanism() {
+    let cites: BTreeSet<(&str, &str)> = TARGET_GAPS
+        .iter()
+        .filter(|g| g.target == Target::Windows && g.rationale.contains("V109"))
+        .map(|g| (g.family, g.capability))
+        .collect();
+    let want: BTreeSet<(&str, &str)> = V109_ROWS.iter().copied().collect();
+    assert_eq!(
+        cites, want,
+        "引 V109 的理由串那几行 ≠ V109 原文点名的那 14 行（`ccm-launcher × Windows` 8 ＋ 命令面 6）"
+    );
+    let picks: Vec<String> = TARGET_GAPS
+        .iter()
+        .flat_map(|g| {
+            MECHANISM_WORDS
+                .iter()
+                .filter(|w| g.rationale.contains(**w))
+                .map(move |w| format!("{} / {} / {:?}：「{w}」", g.family, g.capability, g.target))
+        })
+        .collect();
+    assert!(
+        picks.is_empty(),
+        "\n🔴 理由串替用户选了 Windows 那一族的机制（V109：甲 · 乙 · 丙都先不做，**机制未定**）：\n{}\n\
+         ⇒ 改成「等 V109 那一族选定机制」这一类不预设的说法；用户真裁了哪一种，先改本条的 `MECHANISM_WORDS`。",
+        picks.join("\n")
+    );
+}
+
 /// ★ **两档各要有真成员，而且条数钉死**（恒等计数，动了连理由一起改）。
 ///
 /// 只剩一档时 [`GapKind`] 就是装饰（同 `CapabilityKind` 那条「一个只有一个成员的枚举

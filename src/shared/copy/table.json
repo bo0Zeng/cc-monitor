@@ -13747,6 +13747,11 @@
       "zh": "[{machine}] 的后端太旧，还不认这条命令。重装那台机器的后端就有了",
       "args": ["machine"]
     },
+    "rsSshSource.backendPath.refused": {
+      "kind": "error",
+      "zh": "{machine} 的后端路径 {path} 不能用。要绝对路径，不含 ..、反斜杠、引号、分号这类 shell 字符、控制字符或看不见的字符；去机器页改对它",
+      "args": ["machine", "path"]
+    },
     "rsSshSource.control.unsupported": {
       "kind": "body",
       "zh": "control=unsupported：后端太旧，不能在远端起会话",
@@ -16522,6 +16527,11 @@
       "kind": "error",
       "zh": "记得住的远端机器已经满了（{max} 台）",
       "args": ["max"]
+    },
+    "beRemoteAsk.register.backendPathRefused": {
+      "kind": "error",
+      "zh": "机器 {origin} 登记的后端路径 {path} 不能用。要绝对路径，不含 ..、引号、分号这类 shell 字符、控制字符或看不见的字符",
+      "args": ["origin", "path"]
     },
     "beAssetSync.syncOne.unparsable": {
       "kind": "error",

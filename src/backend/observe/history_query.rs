@@ -21,6 +21,7 @@
 // `projects_root` 跨 observe/control 两层 ⇒ `common/`；`mtime_ms` 两个调用点同属 observe
 // ⇒ U3 按 `common/` 自己的「≥2 层」门槛搬回 `observe/`。
 use crate::agents::claudecode::paths::projects_root;
+use crate::observe::fence::Fence;
 use crate::observe::fs::mtime_ms;
 use copy_core::copy_text;
 use std::io::Write;
@@ -221,49 +222,17 @@ pub(crate) fn list_sessions_into(
     Ok(())
 }
 
-/// `--read-session <jsonl_path>`：路径校验后原样透传文件内容。
-/// 透传而非逐行解析：monitor 侧本就有完整的 parse_line 管线，backend 不重复造。
-/// **围栏：全文件唯一的一处 `canonicalize` + 前缀校验**〔audit-0805 08-06，定框 E3〕。
-///
-/// # 为什么抽出来
-///
-/// 此前这套「canonicalize root → canonicalize 目标 → `starts_with(root)`」有**两份**：
-/// [`validate_session_path`]（三条 read 路共用）与 `list_sessions` 里的**内联副本**，
-/// 而那份副本的注释逐字写着「与 `read_session` 对齐」—— **靠手工对齐的两份**。
-/// 谁强化了一边（比如将来要挡一种新的逃逸形态），另一边不会跟。
-/// ⇒ E3：定唯一权威源，其余派生。两边各自的附加检查留在各自那里
-///（`.jsonl` 后缀属文件路；`/` `\` `..` 预检属目录名）。
-///
-/// `candidate` 相对路径按 root 拼；绝对路径直接用。
-fn fence_under_projects(agent_home: &Path, candidate: &Path) -> Result<std::path::PathBuf, String> {
-    fence_under_root(&projects_root(agent_home), candidate)
-}
+// **围栏住 `observe/fence.rs`**〔TL3 · 审计 F 🔴-6 · `设计/15 §4.2` / `§5.3 C5`〕：这里原来是具名围栏
+// `fence_under_projects` 的本体（「全文件唯一的一处 `canonicalize` + 前缀校验」，audit-0805 08-06 定框 E3 从
+// `list_sessions` 的内联副本收成一份）。E3 只收到了**本文件**，`search_query` 里还有一份内联的（头注逐字「复刻 history_query」）
+// ⇒ 判定本体（解开根 · 解开目标 · 前缀比）搬去 observe 内部唯一的家 `observe/fence.rs::Fence`；这里只剩「以 `projects/` 为根」
+//   那一行（根是哪一个属 Claude 的目录布局，留在认得它的这一侧），三条按路径读的路照旧调它，报错原话逐字不变。
+// 〔合并 LOC1b〕LOC1b 在这里把本体提成了「根是参数」的一形（为各家合成历史面给的记录根）—— 那一形就是
+// `observe/fence.rs::Fence::at(根)?.admit(候选)`（报错取根目录名，与 LOC1b 那一版逐字同形），下面 [`validate_session_path_among`] 改调它。
 
-/// 〔LOC1b · 4D〕围栏的本体（从 [`fence_under_projects`] 里提出来，根是参数）：Claude 的 `projects/` 与
-/// 各家合成历史面给的记录根（[`validate_session_path_among`]）走**同一份** —— 仍是全文件唯一的一处 `canonicalize`（E3）。
-/// 报错那句话里的名字取根目录自己的名字（Claude 那一个 ⇒ 与此前逐字相同）。
-fn fence_under_root(root: &Path, candidate: &Path) -> Result<std::path::PathBuf, String> {
-    let what = root
-        .file_name()
-        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
-    let root = root
-        .canonicalize()
-        .map_err(|e| format!("{what} root unavailable: {e}"))?;
-    let joined = if candidate.is_absolute() {
-        candidate.to_path_buf()
-    } else {
-        root.join(candidate)
-    };
-    let target = joined
-        .canonicalize()
-        .map_err(|e| format!("path unavailable: {e}"))?;
-    if !target.starts_with(&root) {
-        return Err(format!(
-            "refusing to access outside {what} dir: {}",
-            target.display()
-        ));
-    }
-    Ok(target)
+/// `<agent_home>/projects/` 这道围栏放行一个候选路径（本体在 [`Fence`]；`candidate` 相对按根拼、绝对直用）。
+fn fence_under_projects(agent_home: &Path, candidate: &Path) -> Result<std::path::PathBuf, String> {
+    Fence::at(&projects_root(agent_home))?.admit(candidate)
 }
 
 /// P7c-1：列一个父会话的 **subagent 候选**。
@@ -392,7 +361,7 @@ fn validate_session_path_among(
         Ok(t) => t,
         Err(refused) if candidate.is_absolute() => extra_roots
             .iter()
-            .find_map(|r| fence_under_root(r, candidate).ok())
+            .find_map(|r| Fence::at(r).and_then(|f| f.admit(candidate)).ok())
             .ok_or(refused)?,
         Err(refused) => return Err(refused),
     };
@@ -402,6 +371,8 @@ fn validate_session_path_among(
     Ok(target)
 }
 
+/// `--read-session <jsonl_path>`：路径校验后原样透传文件内容（〔TL3〕这两行原先挂在围栏头上，随围栏搬家挪回它说的那个函数）。
+/// 透传而非逐行解析：monitor 侧本就有完整的 parse_line 管线，backend 不重复造。
 fn read_session(agent_home: &Path, jsonl_path: &str) -> Result<(), String> {
     let target = validate_session_path(agent_home, jsonl_path)?;
     let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;

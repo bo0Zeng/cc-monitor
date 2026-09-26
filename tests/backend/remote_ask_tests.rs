@@ -276,3 +276,38 @@ async fn an_abandoned_ask_takes_its_inner_task_down_with_it() {
         .expect("答完 10 秒了，内层任务还在")
         .expect("哨兵没报信就没了");
 }
+
+/// ★ 〔TL3 · `INVARIANTS §47` ②〕可达表唯一的写口先过放行判定：那台后端的路径不合形 / 撞拒绝集 ⇒ `bad_args`、一条都不登记；
+/// 真实落点照登（§47「拒过头也算违反」⇒ 正反各一格）。要求住址：`INVARIANTS §47`，逐字「在它被**拼进 shell 命令串**、
+/// 或被**交给对端去执行 / 去寻址**之前，**本侧**先过一道按这个值的种类写成的放行判定」—— 表里的值随后被 `command_line` ·
+/// `asset_sync::{pull_command, push_command}` 拼进远端命令。
+#[test]
+fn the_reach_table_refuses_a_backend_path_that_must_not_be_spliced() {
+    let t = Table::default();
+    for good in [
+        "/home/u/.cc-monitor/bin/cc-monitor-backend",
+        "/opt/my tools/b",
+    ] {
+        register(&t, &reach_args("ok", "h", good))
+            .unwrap_or_else(|e| panic!("真实好值被拒了：{good:?} ⇒ {e:?}"));
+    }
+    for bad in [
+        "bin/b",
+        "/",
+        "/home/u/../etc/x",
+        "/home/u/x;reboot",
+        "/home/u/$(id)",
+        "/home/u/x`id`",
+        "/home/u/x\nboom",
+        "/home/u/x\u{202E}",
+    ] {
+        let (code, msg) = register(&t, &reach_args("bad", "h", bad))
+            .expect_err(&format!("坏值登进表了：{bad:?}"));
+        assert_eq!(code, "bad_args");
+        assert!(
+            msg.contains("bad") && msg.contains(&format!("{bad:?}")),
+            "那句话没说清哪台 / 哪个值：{msg}"
+        );
+    }
+    assert!(!lock(&t).contains_key("bad"), "拒了，却还是登进了可达表");
+}

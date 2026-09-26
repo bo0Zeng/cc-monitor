@@ -684,8 +684,9 @@ pub fn home_from_reply(d: &serde_json::Value) -> Result<String, String> {
 //
 // # ⚠ 这一步**没有**做到什么（别读宽）
 //
-// - **跨机传输仍走 SFTP**（上传 · 往外拖 · 取消）：`设计/60 §8.4` 未拍，
-//   题面逐字「上传/跨机传输不做」。逐条登记在 `boundary_tests::Kind::Transfer`。
+// - ✅〔TL3 · 审计 F 🔴-3 订正〕**跨机传输**：这里原先写「仍走 SFTP（上传 · 往外拖 · 取消），`设计/60 §8.4` 未拍」。
+//   今天上传 / 下载是窗口说 `transfer-upload` / `transfer-download` ＋ 订阅 `transfer/<id>`（取消 = 停订），
+//   monitor 只中继，SFTP 住本机常驻后端（`设计/60 §4.2` · `§4.6`）；往 OS 拖出去不做（V122）。窗口进程零 SFTP。
 //   ✅〔F7a · 第三波 2026-09-24〕「读一份文本进编辑器」那一条已换成后端 `files-read-text`。
 // - ✅〔F7a · 第三波 2026-09-24〕**同机复制**此前仍走 SFTP（后端没有 `files-copy`，
 //   登记在 `boundary_tests` 那一类「后端缺命令」里）—— 现在问后端 `files-copy`，那一类清零删了。

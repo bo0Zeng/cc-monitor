@@ -5,7 +5,7 @@
 //! 主会话 09-25 裁「每台机器上这份文件的程序写者恰好一个 ＝ **那台的后端**」⇒ 本机那一份也由本机常驻后端写
 //! （〔HX2 · 4D〕界面经通道 `chan.call(这台, "apikey-key-set", …)` → `src/backend/accounts/upstream/file_face.rs`；
 //!  〔GP1 那一版〕经 monitor 的 `apikey_remote::write_key_on`〔散文墓碑〕），
-//! 与远端同一条路。monitor 这一侧**一个字节都不落**、一处都不够 `creds-core` 的写半边（`harden` 仍开着，只为 Windows 上读 DACL）。
+//! 与远端同一条路。monitor 这一侧**一个字节都不落**、一处都不够 `creds-core` 的写半边（〔US1〕monitor 不开 `harden`，写半边在这一侧连编都编不进来 —— `src/bridge/Cargo.toml` 那一行）。
 //! 〔墓碑 —— 从前本模块头注是「写侧（monitor 独占）与读侧掩码」，论证「写盘为什么留在 `src/bridge/src`」
 //!  与 `K-H2a` 裁四「本机这一份只有这一侧写」；两段的前提（monitor 是本机那一份的写者）没了。〕
 //! 本模块留下的：[`resolve_path`]（本 monitor 认的那一份在哪 —— 起本机后端时交给它的就是这个；〔HX2〕接上一个常驻后端之前
