@@ -923,44 +923,7 @@ pub fn supervise_with_stdio(
 /// **local_backend 不在就不设** —— 导一个指向空处的路径不会让 ccm 更聪明（它那边 `[ -x ]` 一样过不了），
 /// 只会让「这台机到底有没有本机后端」这个问题多一个假阳性来源。⇒ 空值 ≠ 未设（Z01 那条支点）。
 pub(crate) fn backend_bin_env_for_window(target_triple: &str) -> Option<(&'static str, String)> {
-    // 〔WIN1 · RT1 F2〕问「正在用的那份」，不只问 exe 旁边（裸 exe 的机器上旁边永远没有，见 [`resolve_in_use`]）。
-    env_from_resolved(resolve_in_use(target_triple))
-}
-
-/// 〔WIN1 · RT1 F2〕这个进程**这一趟解析出来、交去起的那份**本机后端住哪。
-///
-/// 由 [`resolve_or_extract`]（两条起法 —— 监护的 stdio 那条与常驻宿主那条 —— 共用的唯一解析口）
-/// 在找到的那一刻记下；只记路径，不记别的。进程内一份，不落盘（重启后下一次起后端时重记）。
-static IN_USE: Mutex<Option<PathBuf>> = Mutex::new(None);
-
-fn note_in_use(bin: &Path) {
-    *IN_USE.lock().unwrap_or_else(|e| e.into_inner()) = Some(bin.to_path_buf());
-}
-
-/// 〔WIN1 · RT1 F2〕**读面与给窗口的环境要的那份本机后端**：先认这个进程正在用的那份
-/// （[`resolve_or_extract`] 记下的，自释放到 `~/.cc-monitor/bin/` 的那份也算），它不在了才找 exe 旁边。
-///
-/// 真 Win11 现打（`第四波记录/RT1.md §8` F2）：裸 `monitor.exe` 旁边没有后端，后端自释放到
-/// `~\.cc-monitor\bin\` 并已在跑（设置页「已连上（pid 3256）」），而账号页同一屏说「本机后端不在」——
-/// 从前读面只问 [`resolve_beside_this_exe`]。那是 `设计/01 §5 D11`「所有东西都不要假设后端没起来」的反面。
-pub fn resolve_in_use(target_triple: &str) -> Resolved {
-    in_use_or(
-        IN_USE.lock().unwrap_or_else(|e| e.into_inner()).clone(),
-        || resolve_beside_this_exe(target_triple),
-        &|p: &Path| p.is_file(),
-    )
-}
-
-/// [`resolve_in_use`] 的纯内核（记下的那份 · 旁边那一问 · 「文件在不在」都是注入的）。
-pub(crate) fn in_use_or(
-    remembered: Option<PathBuf>,
-    beside: impl FnOnce() -> Resolved,
-    exists: &dyn Fn(&Path) -> bool,
-) -> Resolved {
-    match remembered {
-        Some(p) if exists(&p) => Resolved::Found(p),
-        _ => beside(),
-    }
+    env_from_resolved(resolve_beside_this_exe(target_triple))
 }
 
 /// 上面那个函数的**纯**内核 —— 抽出来是为了两个分支都测得到。
@@ -2042,8 +2005,6 @@ pub fn resolve_or_extract(
     //    两份手写实现之间只会漂，而漂开的后果是同一台机器上两条路给出不同的答案。
     // ⚠ **它失败不许拖垮后端**：少一条终端命令 ≠ 后端起不来。诚实吼一声，照常返回。
     if let Resolved::Found(bin) = &resolved {
-        // 〔WIN1 · RT1 F2〕记下「这个进程用的是哪一份」—— 读面（[`resolve_in_use`]）从此认得它。
-        note_in_use(bin);
         if let Err(e) = install_local_ccm_entry(extract_dir, bin, make_executable) {
             tracing::warn!("本机 ccm 入口没放下来（后端本身没事，只是终端里少一条 `ccm`）：{e}");
         }
