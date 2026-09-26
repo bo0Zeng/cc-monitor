@@ -752,29 +752,23 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
 pub const RELAY_PORT: u16 = relay_route_core::PORT;
 
 /// 〔RL1〕载荷里那条中转地址（`EnvOp::ExportRelayBaseUrl`）的 fail-closed 校验：必须是构造口产得出的形状
-/// （`http://127.0.0.1:<1–65535>` ＋ `/s/` 或 `/t/` ＋ 恰好三段、每段过闸）。
+/// （`http://127.0.0.1:<1–65535>` ＋ `/s/` 或 `/t/` ＋ 恰好两段、每段过闸；〔V141〕没有会话段）。
 /// 〔US1〕构造口搬去后端上游选择之后，这个「逆」与构造口同住共享 crate（`relay_route_core::base_url_shape_ok`），本侧不另写一份。
 pub use relay_route_core::base_url_shape_ok as relay_base_url_shape_ok;
 
-/// `<key>` 段（第 3 段，流标签）与起会话身份 token 的**唯一铸造口**〔`KH2B6`〕。
+/// 起会话身份 token（`CCM_LAUNCH_ID`）的**唯一铸造口**〔`KH2B6`〕：resume ⇒ 那条会话的 sid；新开 ⇒ 启动时现铸的 nonce。
 ///
-/// | 这一格 | 填什么 |
-/// |---|---|
-/// | resume 一条已有会话 | **那条会话的 sid**（天然是 UUID 形态 ⇒ 过得了段闸） |
-/// | 新开一个会话 | **一个启动时生成的 nonce** —— 不等 claude 产 sid |
-///
-/// ⚠ 它欠的账（`§0e` 裁二逐字采纳）：nonce 与 claude 事后产生的 sid **没有对应关系**；
-/// 这一段**不参与选上游、不参与选凭据**（上游选择的键是前两段），只喂 tee。今天不是缺陷、是债。
-/// 〔US1〕起会话那一侧把它作为 `launch-endpoint` 的 `key` 交给那台后端（后端再过一次段闸，不另铸）。
+/// 〔V141〕它**不再**是中转路由的第 3 段（那一段退役：中转从 claude 自己的请求头认会话）。
+/// ⚠ 身份 token 本身也是「启动器铸、进 env 的会话身份」—— 与 V141 字面冲突，消费者（判活 / 回填）不在中转写区，报备主会话。
 fn mint_route_key() -> String {
     // UUID v4 的连字符形态逐字过得了段闸（`[0-9a-f-]`，36 字节）。
     uuid::Uuid::new_v4().to_string()
 }
 
-/// 见 [`mint_route_key`]。**这是 `<key>` 段与身份 token 唯一的取值口** —— resume 用 sid，新开用 nonce。
+/// 见 [`mint_route_key`]。**这是身份 token 唯一的取值口** —— resume 用 sid，新开用 nonce。
 ///
-/// sid 过不了段闸（`relay_route_core::segment_is_safe`，与中转切键同一份）时**也回落到 nonce**（而不是 `Err`）：
-/// 这一段对路由惰性，为它把一次起会话整个拒掉不划算。
+/// sid 过不了段闸（`relay_route_core::segment_is_safe`）时**也回落到 nonce**（而不是 `Err`）：
+/// 为一个标签把一次起会话整个拒掉不划算。
 pub fn route_key_for_session(sid: Option<&str>) -> String {
     match sid {
         Some(s) if relay_route_core::segment_is_safe(s) => s.to_string(),

@@ -1812,9 +1812,8 @@ pub(crate) fn batch_to_payloads(
 async fn relay_endpoint_for_launch(
     origin: origin::Origin,
     account: Option<history::LaunchAccount>,
-    sid: Option<String>,
 ) -> Result<Option<String>, String> {
-    history::relay_endpoint_on(&origin, account.as_ref(), sid.as_deref()).await
+    history::relay_endpoint_on(&origin, account.as_ref()).await
 }
 
 // 〔HX2 · 第四波 4D〕墓碑：这里从前是 Tauri 命令 `write_apikey_credentials_key`〔散文墓碑〕（`K-H2a` 从界面配一把 key；

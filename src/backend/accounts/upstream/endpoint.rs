@@ -2,7 +2,7 @@
 //!
 //! | 帧命令 | 答什么 | 谁问 |
 //! |---|---|---|
-//! | `launch-endpoint` | 这个号这一发往 `ANTHROPIC_BASE_URL` 里写哪个中转地址（或不写）· 这台的中转在不在 · 不在时拒还是直连 | monitor 起会话那一侧（本机与远端同一条：`history::relay_endpoint_on`） |
+//! | `launch-endpoint` | 这个号这一发往 `ANTHROPIC_BASE_URL` 里写哪个中转地址（或不写；〔V141〕地址不随会话变，不带会话段）· 这台的中转在不在 · 不在时拒还是直连 | monitor 起会话那一侧（本机与远端同一条：`history::relay_endpoint_on`） |
 //! | `apikey-routing` | 这几个号在这台的表里有没有行 · 这台的中转在不在 | 界面经 `chan.call` 直接问（账号页徽章） |
 //!
 //! # 为什么搬到这里（`设计/05 §14.3` B 组 · B-decouple §2.1 必须拆 1）
@@ -21,18 +21,20 @@
 //!
 //! | # | 情况 | 答 |
 //! |---|---|---|
-//! | ① | agent 是凭据文件那一家、named 账号推出的 id 在表里 | `/s/<agent>/<id>/<key>`，中转不在 ⇒ **拒**（非它不可） |
+//! | ① | agent 是凭据文件那一家、named 账号推出的 id 在表里 | `/s/<agent>/<id>`，中转不在 ⇒ **拒**（非它不可） |
 //! | ② | 全量注入开关关着（默认） | 不注入 |
 //! | ③ | agent 没在适配层登记默认上游（codex） | 不注入（注进去每一发都 502，对用户与起不来同形） |
 //! | ④ | `/t/` 标签：named ⇒ id；账号 0 ⇒ [`BASE_ACCOUNT_SEGMENT`]；**没表态 ⇒ [`UNDECLARED_ACCOUNT_SEGMENT`]**（F5）；推不出 id ⇒ 不注入 | —— |
 //! | ⑤ | 标签与表里某一行同名 | 不注入（`/t/` 有行那一格会把这条会话自己的鉴权头送去那一行的上游） |
-//! | ⑥ | 其余 | `/t/<agent>/<标签>/<key>`，中转不在 ⇒ **直连**（有它更好） |
+//! | ⑥ | 其余 | `/t/<agent>/<标签>`，中转不在 ⇒ **直连**（有它更好） |
+//!
+//! 〔V141〕地址里没有会话段：会话 id 归 claude 自己，中转从它请求里自带的头认会话（`relay::Destinations::stream_label_headers`）。
 //!
 //! ⚠ ① 与 ⑥ 的降级**刻意不同**，而且从此写在线上（`whenDown`）—— 「把这两种降级写成一样是最容易犯的错」（`20 §3.2`）。
 
 use super::CREDENTIALS_FILE_AGENT;
 use copy_core::copy_text;
-use relay_route_core::{base_url, segment_is_safe, RouteMode, PORT};
+use relay_route_core::{base_url, RouteMode, PORT};
 use serde_json::{json, Value};
 
 /// 本族的应答：`data` 或 `(code, message)`。
@@ -82,11 +84,10 @@ pub(crate) enum Endpoint {
 }
 
 /// ★★ **决策表的唯一实现**（纯函数）。`routed` = 这台表里有哪几行（[`super::file_face::rows_at`]）；
-/// `registered` = 这一家 agent 在适配层登记了默认上游没有。`key` 调用方已过段闸。
+/// `registered` = 这一家 agent 在适配层登记了默认上游没有。
 pub(crate) fn decide_launch(
     agent: &str,
     account: &LaunchAccount,
-    key: &str,
     all_sessions: bool,
     routed: &[String],
     registered: bool,
@@ -98,7 +99,7 @@ pub(crate) fn decide_launch(
     };
     // ①
     if let Some(id) = id.as_deref().filter(|id| has_row(id)) {
-        return match base_url(PORT, RouteMode::Substitute, agent, id, key) {
+        return match base_url(PORT, RouteMode::Substitute, agent, id) {
             Some(url) => Endpoint::Inject {
                 url,
                 when_down: WhenDown::Refuse,
@@ -126,7 +127,7 @@ pub(crate) fn decide_launch(
         return Endpoint::None;
     }
     // ⑥（标签当不了路由段 ⇒ 拼不出 ⇒ 不注入：「有它更好」不为它拒绝起会话）
-    match base_url(PORT, RouteMode::Passthrough, agent, label, key) {
+    match base_url(PORT, RouteMode::Passthrough, agent, label) {
         Some(url) => Endpoint::Inject {
             url,
             when_down: WhenDown::Direct,
@@ -136,7 +137,7 @@ pub(crate) fn decide_launch(
     }
 }
 
-/// `launch-endpoint`：入参 `{agent, account?, key, allSessions}` → `{baseUrl, listening, whenDown, account}`。
+/// `launch-endpoint`：入参 `{agent, account?, allSessions}` → `{baseUrl, listening, whenDown, account}`。
 pub(crate) fn answer_launch(args: &Value) -> EndpointAnswer {
     answer_launch_with(
         args,
@@ -152,16 +153,6 @@ pub(crate) fn answer_launch_with(
     listening: &dyn Fn(u16) -> bool,
 ) -> EndpointAnswer {
     let agent = str_arg(args, "agent")?;
-    let key = str_arg(args, "key")?;
-    if !segment_is_safe(key) {
-        return Err((
-            "bad_args",
-            copy_text(
-                "beUpstreamEndpoint.key.notSegment",
-                &[("key", &format!("{key:?}"))],
-            ),
-        ));
-    }
     let all_sessions = args.get("allSessions").and_then(Value::as_bool).ok_or((
         "bad_args",
         copy_text(
@@ -175,7 +166,7 @@ pub(crate) fn answer_launch_with(
     let registered = super::Upstreams::from_env(&|k| std::env::var(k).ok())
         .is_some_and(|u| u.of(agent).is_some());
     Ok(
-        match decide_launch(agent, &account, key, all_sessions, routed, registered) {
+        match decide_launch(agent, &account, all_sessions, routed, registered) {
             Endpoint::None => json!({
                 "baseUrl": null, "listening": false, "whenDown": null, "account": null,
             }),

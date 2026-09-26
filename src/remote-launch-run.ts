@@ -163,11 +163,7 @@ export async function withRelayEndpoint(
           ...(ctx.account.name ? { [ACCOUNT_WIRE.name]: ctx.account.name } : {}),
         }
       : { [ACCOUNT_WIRE.tag]: ACCOUNT_WIRE.base };
-  const url = await commands.relay_endpoint_for_launch({
-    origin,
-    account,
-    sid: plan.action.kind === "resume" ? plan.action.sid : null,
-  });
+  const url = await commands.relay_endpoint_for_launch({ origin, account });
   return url === null ? plan : { ...plan, env: [...plan.env, { kind: "export-relay-base-url", value: url }] };
 }
 

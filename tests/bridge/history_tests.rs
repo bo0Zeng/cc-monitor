@@ -2427,16 +2427,16 @@ fn unified_builder_byte_identical_to_pre_f06_new_session_output() {
 /// 给了地址 ⇒ POSIX / PowerShell 两形（钥匙段读文件，RK1）。期望手写。
 #[test]
 fn the_relay_prefix_is_rendered_from_the_answer_by_platform() {
-    let url = "http://127.0.0.1:8788/s/claude-code/acct-a/sid-1";
+    let url = "http://127.0.0.1:8788/s/claude-code/acct-a";
     assert_eq!(relay_prefix_for(None, false), "");
     assert_eq!(relay_prefix_for(None, true), "");
     assert_eq!(
         relay_prefix_for(Some(url), false),
-        "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'\"$(cat \"$HOME/.cc-monitor/relay-key\")\"'/s/claude-code/acct-a/sid-1'; ",
+        "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'\"$(cat \"$HOME/.cc-monitor/relay-key\")\"'/s/claude-code/acct-a'; ",
     );
     assert_eq!(
         relay_prefix_for(Some(url), true),
-        "$env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/' + (Get-Content -Raw -LiteralPath (Join-Path $HOME '.cc-monitor/relay-key')).Trim() + '/s/claude-code/acct-a/sid-1'; "
+        "$env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/' + (Get-Content -Raw -LiteralPath (Join-Path $HOME '.cc-monitor/relay-key')).Trim() + '/s/claude-code/acct-a'; "
     );
 }
 
@@ -2471,13 +2471,13 @@ fn the_launch_side_really_asks_the_backend_and_uses_its_answer() {
         windows: spy_windows,
         all_sessions: all_sessions_off,
     });
-    let s_url = |id: &str, key: &str| format!("http://127.0.0.1:8788/s/claude-code/{id}/{key}");
+    let s_url = |id: &str| format!("http://127.0.0.1:8788/s/claude-code/{id}");
 
     // ① 有行 ＋ 在听 ⇒ 前缀 == 纯函数拿那个地址渲出来的；问了恰好一次、问的是本机、入参逐格对。
     fake_table(&["acct-a", "acct-b"], true);
     let _ = fake_asks();
     let got = prefix_now(&action, Some(&acct_a)).expect("这一档不该报错");
-    let want = relay_prefix_for(Some(&s_url("acct-a", "sid-1")), false);
+    let want = relay_prefix_for(Some(&s_url("acct-a")), false);
     assert!(!want.is_empty(), "期望值是空串 —— 下面那条相等断言是空真");
     assert_eq!(got, want, "问是问了，**答案没被用上**（`D5` 那一刀的形状）");
     let asks = fake_asks();
@@ -2487,7 +2487,7 @@ fn the_launch_side_really_asks_the_backend_and_uses_its_answer() {
             None,
             serde_json::json!({"agent":"claude-code",
                 "account":{"kind":"named","configDir":"/h/.claude-alt/acct-a","name":null},
-                "key":"sid-1","allSessions":false})
+                "allSessions":false})
         )],
         "这次拉起没问那台后端 / 问了不止一次 / 问的入参不对"
     );
@@ -2495,7 +2495,7 @@ fn the_launch_side_really_asks_the_backend_and_uses_its_answer() {
     // ①b 只换一个号 ⇒ 路由键的账号段跟着变（`D6 阻-2`：acct-b 的会话不许拿 acct-a 的 key）。
     let got_b = prefix_now(&action, Some(&acct_b)).expect("这一档不该报错");
     assert!(
-        got.contains("/acct-a/") && got_b.contains("/acct-b/"),
+        got.contains("/acct-a'") && got_b.contains("/acct-b'"),
         "{got:?} · {got_b:?}"
     );
 
@@ -2512,28 +2512,24 @@ fn the_launch_side_really_asks_the_backend_and_uses_its_answer() {
     fake_table(&["acct-a"], true);
     WINDOWS_ANSWER.with(|c| c.set(true));
     let ps = prefix_now(&action, Some(&acct_a)).unwrap();
-    assert_eq!(ps, relay_prefix_for(Some(&s_url("acct-a", "sid-1")), true));
+    assert_eq!(ps, relay_prefix_for(Some(&s_url("acct-a")), true));
     WINDOWS_ANSWER.with(|c| c.set(false));
     assert_ne!(prefix_now(&action, Some(&acct_a)).unwrap(), ps);
 
-    // ⑤ 「哪一次拉起」：resume 的 `key` 是这一次的 sid（`D7 阻-4` 刀 `S1`）。
+    // ⑤⑥ 〔V141〕resume 与新开**都真的问、都真的注入**（刀 `S1` `S2`），而问的入参与拿到的前缀逐字相同：
+    //   地址不随会话变、入参里零会话身份（会话 id 归 claude，中转从它的请求头认）。
     let _ = fake_asks();
     let r9 = prefix_now(&LocalPsAction::Resume("sid-9".to_string()), Some(&acct_a)).unwrap();
-    assert_eq!(r9, relay_prefix_for(Some(&s_url("acct-a", "sid-9")), false));
-    // ⑥ 新开：也真的问、也真的注入（刀 `S2`），`key` 是一次性 nonce（两次不同，也不是哪个 sid）。
     let n1 = prefix_now(&LocalPsAction::New, Some(&acct_a)).unwrap();
-    let n2 = prefix_now(&LocalPsAction::New, Some(&acct_a)).unwrap();
-    let keys: Vec<String> = fake_asks()
-        .into_iter()
-        .map(|(_, a)| a["key"].as_str().unwrap().to_string())
-        .collect();
-    assert_eq!(keys.len(), 3, "三次拉起问了 {} 次", keys.len());
-    assert_eq!(keys[0], "sid-9");
-    assert!(
-        keys[1] != keys[2] && !keys[1].starts_with("sid-"),
-        "新开的 key 不是 nonce：{keys:?}"
+    assert_eq!(r9, relay_prefix_for(Some(&s_url("acct-a")), false));
+    assert_eq!(n1, r9, "新开与 resume 的地址不同 ⇒ 地址里带了会话身份");
+    let asks = fake_asks();
+    assert_eq!(asks.len(), 2, "两次拉起问了 {} 次", asks.len());
+    assert_eq!(
+        asks[0], asks[1],
+        "两次拉起问的入参不同 ⇒ 入参里带了会话身份"
     );
-    assert!(n1.contains("ANTHROPIC_BASE_URL") && n1.contains(&keys[1]) && n2.contains(&keys[2]));
+    assert!(!r9.contains("sid-9"), "resume 的 sid 进了地址：{r9}");
 }
 
 /// 〔US1〕D11：**问不到那台后端 ⇒ 拒绝起会话并说清**（不退回「自己读文件」、不猜成「不注入」）。
@@ -2732,7 +2728,7 @@ fn a_launch_that_needs_the_relay_is_refused_when_the_relay_is_not_running() {
     assert!(prefix_now(&action, Some(&acct_a)).unwrap().contains("/s/"));
     assert!(prefix_now(&action, Some(&LaunchAccount::Base))
         .unwrap()
-        .contains("/t/claude-code/0/"));
+        .contains("/t/claude-code/0'"));
 }
 
 /// ★★★ **接线判据**：`launch_local` **真正交出去的那一串**以中转前缀打头。
@@ -2835,7 +2831,7 @@ fn the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched() {
         answer(&["acct-a", "acct-b"], true);
         // 〔US1〕期望的前缀 = 纯函数拿「那台后端该答的那个地址」渲出来的（地址手写，不由被测函数现算）。
         let prefix = relay_prefix_for(
-            Some(&format!("http://127.0.0.1:8788/s/claude-code/{id}/sid-1")),
+            Some(&format!("http://127.0.0.1:8788/s/claude-code/{id}")),
             cfg!(windows),
         );
         // 反空真：期望的前缀本来就该是非空的，否则下面那条相等断言是「x == x」。
@@ -2859,7 +2855,7 @@ fn the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched() {
     let (id_a, cmd_a) = &with_relay[0];
     let (id_b, cmd_b) = &with_relay[1];
     assert!(
-        cmd_a.contains(&format!("/{id_a}/")) && cmd_b.contains(&format!("/{id_b}/")),
+        cmd_a.contains(&format!("/{id_a}'")) && cmd_b.contains(&format!("/{id_b}'")),
         "\n路由键里的账号段不是这次拉起的那个号 —— 刀 `E6` 的形状：\n\
              把 `apikey_account_id` 的答案 `.map(|_| \"acct-a\")` 写死，\n\
              生产后果是 **acct-b 的会话拿着 acct-a 的那把 key 发请求，两边都显示成功**。\n\
@@ -2906,7 +2902,7 @@ fn the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched() {
         .expect("新开会话走中转这一趟不该失败");
     let new_sent = last_sent();
     assert!(
-        new_sent.contains("ANTHROPIC_BASE_URL") && new_sent.contains("/acct-a/"),
+        new_sent.contains("ANTHROPIC_BASE_URL") && new_sent.contains("/acct-a'"),
         "\n★★ **新开会话送出去的那一串里没有中转注入** —— 刀 `S2` 的形状：\n\
              `LocalPsAction::New => return Ok(String::new())`。\n\
              生产后果：一个 api-key 号**新开**一个会话 ⇒ claude 直连官方端点、\n\
@@ -2923,10 +2919,12 @@ fn the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched() {
     )
     .expect("这一趟不该失败");
     let resumed_9 = last_sent();
+    // 〔V141〕sid 只在命令体里（`--resume`），不在中转地址里。
+    let (relay_part, body_part) = resumed_9.split_once("; ").unwrap_or_default();
     assert!(
-        resumed_9.contains("/sid-9'"),
-        "\n换一个会话 id，送出去的那一串里的 `<key>` 段没跟着变 —— 刀 `S1` 的形状：\n\
-             `Resume(_sid) => Some(\"sid-1\")`。实得 = {resumed_9:?}"
+        body_part.contains("sid-9") && !relay_part.contains("sid-9"),
+        "\n换一个会话 id，送出去的那一串没跟着变（刀 `S1` 的形状：`Resume(_sid) => Some(\"sid-1\")`），\n\
+             或 sid 进了中转地址（V141）。实得 = {resumed_9:?}"
     );
     // 反空真：这两趟本来就该是两条不同的串（否则上面两条里有一条在数同一份东西）。
     assert_ne!(
@@ -3465,12 +3463,16 @@ fn the_resume_hop_above_launch_local_carries_the_account_and_the_sid_through() {
              而在 `D8` 实测里**全量门禁四个数一格不动**。实得 = {routed:?}"
     );
     assert!(
-        routed.contains(&format!("/{}/", "acct-r1")),
+        routed.contains(&format!("/{}'", "acct-r1")),
         "路由键里的账号段不是这一发的号：{routed:?}"
     );
     assert!(
-        routed.contains("/sid-r1'"),
-        "路由键里的 `<key>` 段不是这一发的 sid —— `session_id` 在这一跳被换掉了：{routed:?}"
+        !routed
+            .split("; ")
+            .next()
+            .unwrap_or_default()
+            .contains("sid-r1"),
+        "〔V141〕resume 的 sid 进了中转地址（会话 id 归 claude，地址不随会话变）：{routed:?}"
     );
     // 逐字节：前缀 + 基准串。剥掉第一段之后剩下的**必须**逐字节等于 ① 那趟的基准串
     // —— 「多注入一个前缀」与「顺手把命令体也换了」在只断 `contains` 的判据上同形。
@@ -3528,15 +3530,19 @@ fn the_resume_command_the_frontend_calls_hands_all_five_arguments_down_unchanged
     .expect("这一趟不该失败");
     let (from_cmd, cmd_cwd) = entry_last();
     assert!(
-        from_cmd.contains("ANTHROPIC_BASE_URL") && from_cmd.contains("/acct-r2/"),
+        from_cmd.contains("ANTHROPIC_BASE_URL") && from_cmd.contains("/acct-r2'"),
         "\n★★ **那条 `#[tauri::command]` 把账号扔了** —— 刀 `D8P32b` 的形状：\n\
              `resume_impl(…, account.as_ref().filter(|_| false), …)`。\n\
              这一跳就是**历史页 resume 那个按钮真正调的那条命令**，\n\
              而在 `D8` 实测里一刀下去**全量门禁四个数一格不动**。实得 = {from_cmd:?}"
     );
     assert!(
-        from_cmd.contains("/sid-r2'"),
-        "路由键里的 `<key>` 段不是这一发的 sid：{from_cmd:?}"
+        !from_cmd
+            .split("; ")
+            .next()
+            .unwrap_or_default()
+            .contains("sid-r2"),
+        "〔V141〕resume 的 sid 进了中转地址：{from_cmd:?}"
     );
 
     // ② 对拍：同一组输入直接喂下一跳，两串必须**逐字节相同**。
@@ -3617,7 +3623,7 @@ fn the_new_session_command_the_frontend_calls_carries_the_account_and_the_cwd_th
     .expect("走中转这一趟不该失败");
     let (routed, routed_cwd) = entry_last();
     assert!(
-        routed.contains("ANTHROPIC_BASE_URL") && routed.contains("/acct-r3/"),
+        routed.contains("ANTHROPIC_BASE_URL") && routed.contains("/acct-r3'"),
         "\n★★ **「在该目录起新会话」那条命令把账号扔了** —— 刀 `D8P33` 的形状：\n\
              `launch_local(…, account.as_ref().filter(|_| false), …)`。\n\
              生产后果：一个 api-key 号**新开**会话 ⇒ 直连官方端点，\n\
@@ -3693,14 +3699,13 @@ fn fake_ep(host: Option<String>, a: serde_json::Value) -> EpFut {
     let rows = FAKE_ROWS.with(|v| v.borrow().clone());
     let listening = FAKE_LISTENING.with(std::cell::Cell::get);
     let agent = a["agent"].as_str().unwrap_or_default().to_string();
-    let key = a["key"].as_str().unwrap_or_default().to_string();
     let id = a["account"]["configDir"]
         .as_str()
         .and_then(apikey_account_id_of_dir);
     let has = |x: &str| agent == "claude-code" && rows.iter().any(|r| r == x);
     let none = serde_json::json!({"baseUrl":null,"listening":false,"whenDown":null,"account":null});
     let answer = if let Some(id) = id.as_deref().filter(|i| has(i)) {
-        serde_json::json!({"baseUrl": format!("http://127.0.0.1:8788/s/{agent}/{id}/{key}"),
+        serde_json::json!({"baseUrl": format!("http://127.0.0.1:8788/s/{agent}/{id}"),
             "listening": listening, "whenDown": "refuse", "account": id})
     } else if a["allSessions"] == serde_json::json!(true) && agent == "claude-code" {
         let label = match a["account"]["kind"].as_str() {
@@ -3710,7 +3715,7 @@ fn fake_ep(host: Option<String>, a: serde_json::Value) -> EpFut {
         };
         match label.filter(|l| !has(l)) {
             Some(l) => {
-                serde_json::json!({"baseUrl": format!("http://127.0.0.1:8788/t/{agent}/{l}/{key}"),
+                serde_json::json!({"baseUrl": format!("http://127.0.0.1:8788/t/{agent}/{l}"),
                 "listening": listening, "whenDown": "direct", "account": null})
             }
             None => none,
@@ -3805,7 +3810,7 @@ fn the_launch_side_asks_the_all_sessions_switch_and_uses_its_answer() {
     });
     assert_eq!(
         prefix_now(&action, Some(&named)).unwrap(),
-        "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'\"$(cat \"$HOME/.cc-monitor/relay-key\")\"'/t/claude-code/acct-sub/sid-1'; ",
+        "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'\"$(cat \"$HOME/.cc-monitor/relay-key\")\"'/t/claude-code/acct-sub'; ",
         "开关开着，订阅号该走 `/t/`"
     );
     assert_eq!(fake_asks()[0].1["allSessions"], serde_json::json!(true));
@@ -3917,9 +3922,8 @@ fn rl1_answer(
     serde_json::json!({"baseUrl": url, "listening": listening, "whenDown": when_down, "account": account})
 }
 
-const RL1_S_URL: &str =
-    "http://127.0.0.1:8788/s/claude-code/acct-a/11111111-2222-3333-4444-555555555555";
-const RL1_T_URL: &str = "http://127.0.0.1:8788/t/claude-code/0/k-1";
+const RL1_S_URL: &str = "http://127.0.0.1:8788/s/claude-code/acct-a";
+const RL1_T_URL: &str = "http://127.0.0.1:8788/t/claude-code/0";
 
 fn rl1_named(id: &str) -> LaunchAccount {
     LaunchAccount::Named {
@@ -3954,7 +3958,6 @@ fn a_launch_that_needs_no_relay_sends_no_relay_command() {
     let got = tauri::async_runtime::block_on(relay_endpoint_on(
         &crate::origin::Origin(rig.host.clone()),
         Some(&rl1_named("acct-a")),
-        None,
     ));
     assert_eq!(got, Ok(None));
     assert_eq!(
@@ -3978,7 +3981,6 @@ fn an_apikey_row_on_a_listening_machine_gets_the_substitute_url_without_an_ensur
     let got = tauri::async_runtime::block_on(relay_endpoint_on(
         &crate::origin::Origin(rig.host.clone()),
         Some(&rl1_named("acct-a")),
-        Some("11111111-2222-3333-4444-555555555555"),
     ))
     .expect("不该拒");
     assert_eq!(got.as_deref(), Some(RL1_S_URL));
@@ -4017,7 +4019,6 @@ fn a_silent_machine_gets_its_relay_started_and_waited_for_before_the_url_is_hand
     let got = tauri::async_runtime::block_on(relay_endpoint_on(
         &crate::origin::Origin(rig.host.clone()),
         Some(&rl1_named("acct-a")),
-        None,
     ))
     .expect("不该拒");
     assert_eq!(got.as_deref(), Some(RL1_S_URL));
@@ -4057,7 +4058,6 @@ fn an_apikey_row_whose_machine_cannot_start_a_relay_refuses_the_launch() {
     let err = tauri::async_runtime::block_on(relay_endpoint_on(
         &crate::origin::Origin(rig.host.clone()),
         Some(&rl1_named("acct-a")),
-        None,
     ))
     .expect_err("中转起不来还放行了一个 apikey 号");
     assert_eq!(
@@ -4099,7 +4099,6 @@ fn a_passthrough_launch_whose_relay_cannot_start_goes_direct_instead_of_failing(
     let got = tauri::async_runtime::block_on(relay_endpoint_on(
         &crate::origin::Origin(rig.host.clone()),
         Some(&LaunchAccount::Base),
-        None,
     ));
     assert_eq!(got, Ok(None));
     assert_eq!(

@@ -398,10 +398,15 @@ mod tests {
         let files = crate_production();
         // 上游选择的人群：`accounts/upstream/` 底下那几份。中转 = `relay/` 里**除它之外**的。
         // 〔NT2 · V25〕适配层（`agents/`）是默认上游那一格今天的住址（用户 V25「写死, 跟着适配层」）。
-        let is_upstream_selection =
-            |p: &str| p.contains("accounts/upstream/") || p.contains("accounts\\upstream\\"); // 〔`A3` 第二波〕上游选择收窄到 `accounts/upstream/`（`accounts/iso.rs` 不是上游选择）
-        let in_adapter = |p: &str| p.contains("agents/") || p.contains("agents\\");
-        let in_relay = |p: &str| p.contains("relay/") || p.contains("relay\\");
+        // 〔RELAY〕按 crate 根之后的相对路径判：工作树目录名里可能正好带 `relay`（`w4-relay/` 让下面每份文件都「在中转里」）。
+        let rel = |p: &str| {
+            let q = p.replace('\\', "/");
+            q.rsplit_once("src/backend/")
+                .map_or(q.clone(), |(_, r)| r.to_string())
+        };
+        let is_upstream_selection = |p: &str| rel(p).starts_with("accounts/upstream/"); // 〔`A3` 第二波〕上游选择收窄到 `accounts/upstream/`（`accounts/iso.rs` 不是上游选择）
+        let in_adapter = |p: &str| rel(p).starts_with("agents/");
+        let in_relay = |p: &str| rel(p).starts_with("relay/");
 
         // 两根针：读那一格的唯一入口 ＋ 那个值。**两根都数**，免得有人只搬走名字、把字面量留在原地。
         // 期望处数是**显式登记的**（不是「>0 就算」）—— 多一处就要来加一行，说清它是什么。

@@ -761,17 +761,18 @@ fn routes_two_keys_through_one_process_and_strips_the_prefix() {
     let up = spawn_fake_upstream(None);
     // ★ **一个**中转实例，**一个**监听面 —— 两个键都从这里走（`K9` 裁定二第 1 条）。
     let (relay_addr, relay, tee) = spawn_relay(up.addr);
+    // 〔V141〕流标签取自请求自带的会话标识头（路径里没有会话段）。
     let mut c = send_request(
         relay_addr,
-        "/s/agentA/acctA/sid-AAA/v1/messages?beta=true",
-        "",
+        "/s/agentA/acctA/v1/messages?beta=true",
+        "x-claude-code-session-id: sid-AAA\r\n",
     );
     let mut got = Vec::new();
     c.read_to_end(&mut got).expect("read a");
     let mut c2 = send_request(
         relay_addr,
-        "/s/agentB/acctB/sid-BBB/v1/messages?beta=true",
-        "",
+        "/s/agentB/acctB/v1/messages?beta=true",
+        "x-claude-code-session-id: sid-BBB\r\n",
     );
     let mut got2 = Vec::new();
     c2.read_to_end(&mut got2).expect("read b");
@@ -920,7 +921,7 @@ fn a_body_larger_than_the_cap_is_refused_with_413_and_never_reaches_upstream() {
     let (relay_addr, _relay, _tee) = spawn_relay(up.addr);
 
     // 非空对照先打一发：这条路是通的，上游的记录面是活的。
-    let mut warm = send_request(relay_addr, "/s/agentA/acctA/sid-AAA/v1/messages", "");
+    let mut warm = send_request(relay_addr, "/s/agentA/acctA/v1/messages", "");
     let mut sink0 = Vec::new();
     warm.read_to_end(&mut sink0).expect("read warmup");
     assert!(
@@ -936,7 +937,7 @@ fn a_body_larger_than_the_cap_is_refused_with_413_and_never_reaches_upstream() {
     // 正题：一条 `Content-Length: 1e12`，其余**一个字节都不发**。
     let (got, clean) = send_raw(
         relay_addr,
-        "POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 1000000000000\r\n\r\n",
+        "POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 1000000000000\r\n\r\n",
     );
     assert!(
         got.starts_with("HTTP/1.1 413"),
@@ -964,7 +965,7 @@ fn an_unparsable_content_length_is_refused_with_400_instead_of_dropping_the_body
     let up = spawn_fake_upstream(None);
     let (relay_addr, _relay, _tee) = spawn_relay(up.addr);
 
-    let mut warm = send_request(relay_addr, "/s/agentA/acctA/sid-AAA/v1/messages", "");
+    let mut warm = send_request(relay_addr, "/s/agentA/acctA/v1/messages", "");
     let mut sink0 = Vec::new();
     warm.read_to_end(&mut sink0).expect("read warmup");
     assert_eq!(
@@ -980,7 +981,7 @@ fn an_unparsable_content_length_is_refused_with_400_instead_of_dropping_the_body
 
     let (got, clean) = send_raw(
         relay_addr,
-        "POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 7abc\r\n\r\n{\"m\":1}",
+        "POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 7abc\r\n\r\n{\"m\":1}",
     );
     assert!(
         got.starts_with("HTTP/1.1 400"),
@@ -1059,7 +1060,7 @@ fn an_interim_1xx_response_is_skipped_instead_of_being_sent_as_the_final_one() {
     for script in scripts {
         let up = spawn_scripted_upstream(script);
         let (relay_addr, _relay, _tee) = spawn_relay(up);
-        let mut c = send_request(relay_addr, "/s/agentA/acctA/sid-AAA/v1/messages", "");
+        let mut c = send_request(relay_addr, "/s/agentA/acctA/v1/messages", "");
         let mut got = String::new();
         c.read_to_string(&mut got).expect("read");
         assert!(
@@ -1110,7 +1111,7 @@ fn too_many_interim_responses_are_refused_with_504() {
     );
     let up = spawn_scripted_upstream(script);
     let (relay_addr, _relay, _tee) = spawn_relay(up);
-    let mut c = send_request(relay_addr, "/s/agentA/acctA/sid-AAA/v1/messages", "");
+    let mut c = send_request(relay_addr, "/s/agentA/acctA/v1/messages", "");
     let mut got = String::new();
     c.read_to_string(&mut got).expect("read");
     assert!(
@@ -1176,7 +1177,7 @@ fn an_over_cap_sse_line_is_reported_on_the_tee_stream_while_downstream_keeps_eve
         }
     });
     let (relay_addr, _relay, tee) = spawn_relay(up_addr);
-    let mut c = send_request(relay_addr, "/s/agentA/acctA/sid-AAA/v1/messages", "");
+    let mut c = send_request(relay_addr, "/s/agentA/acctA/v1/messages", "");
     let mut got = Vec::new();
     c.read_to_end(&mut got).expect("read");
     // 非空对照：转发那一路一个字节都不许少（tee 丢的是**另一条路**）。
@@ -1248,8 +1249,8 @@ fn a_wedged_tee_consumer_stalls_neither_its_own_connection_nor_another() {
         let t0 = std::time::Instant::now();
         let mut c = send_request(
             relay_addr,
-            &format!("/s/agentA/acctA/{key}/v1/messages"),
-            "",
+            "/s/agentA/acctA/v1/messages",
+            &format!("x-claude-code-session-id: {key}\r\n"),
         );
         let mut got = Vec::new();
         c.read_to_end(&mut got).expect("read");
@@ -1312,7 +1313,7 @@ fn inflight_connections_are_capped_and_the_refusal_is_spoken() {
 
     // ㈠ 半开一条：只发半个请求头，**永不**发结尾空行、不关连接。
     let mut half = TcpStream::connect(relay_addr).expect("connect");
-    half.write_all(b"POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n")
+    half.write_all(b"POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n")
         .expect("half head");
     half.flush().expect("flush");
     assert!(
@@ -1327,7 +1328,7 @@ fn inflight_connections_are_capped_and_the_refusal_is_spoken() {
         .store(INFLIGHT_CONNECTIONS - 1, Ordering::SeqCst);
     let (got, _clean) = send_raw(
         relay_addr,
-        "POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 7\r\n\r\n{\"m\":1}",
+        "POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 7\r\n\r\n{\"m\":1}",
     );
     assert!(
         got.starts_with("HTTP/1.1 200"),
@@ -1346,7 +1347,7 @@ fn inflight_connections_are_capped_and_the_refusal_is_spoken() {
     relay.inflight.store(INFLIGHT_CONNECTIONS, Ordering::SeqCst);
     let (got, clean) = send_raw(
         relay_addr,
-        "POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 7\r\n\r\n{\"m\":1}",
+        "POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 7\r\n\r\n{\"m\":1}",
     );
     assert!(
         got.starts_with("HTTP/1.1 503"),
@@ -1362,7 +1363,7 @@ fn inflight_connections_are_capped_and_the_refusal_is_spoken() {
 
     // ㈣ 计数会还：把它放回 0，跑一发正常的，走完之后必须回到 0。
     relay.inflight.store(0, Ordering::SeqCst);
-    let mut c = send_request(relay_addr, "/s/agentA/acctA/sid-AAA/v1/messages", "");
+    let mut c = send_request(relay_addr, "/s/agentA/acctA/v1/messages", "");
     let mut sink = Vec::new();
     c.read_to_end(&mut sink).expect("read");
     assert!(
@@ -1609,7 +1610,7 @@ fn a_sentinel_auth_header_shows_up_in_neither_the_relay_processs_stderr_nor_its_
 
     let mut c = send_request(
         relay.addr,
-        "/s/claude-code/acctA/sid-AAA/v1/messages",
+        "/s/claude-code/acctA/v1/messages",
         &format!("Authorization: Bearer {SENTINEL}\r\n"),
     );
     let mut got = Vec::new();
@@ -1717,7 +1718,7 @@ fn the_substituted_key_never_shows_up_in_any_of_the_four_exits() {
     // ⚠ `K-H2`：账号段是 `default` —— 这份夹具走的是**顶层一把 key** 那个旧形状
     //   （`K-H2a` 交付时的样子），它被读成一条 id 逐字是 `default` 的**有名字的行**。
     //   ⇒ 本条同时是「旧文件升级之后照常能用」的端到端判据。
-    let mut c = send_request(relay.addr, "/s/claude-code/default/sid-AAA/v1/messages", "");
+    let mut c = send_request(relay.addr, "/s/claude-code/default/v1/messages", "");
     let mut got = Vec::new();
     c.read_to_end(&mut got).expect("read");
     let downstream = String::from_utf8_lossy(&got).to_string();
@@ -1734,7 +1735,7 @@ fn the_substituted_key_never_shows_up_in_any_of_the_four_exits() {
     );
     let (bad_len, _) = send_raw(
         relay.addr,
-        "POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/claude-code/default/sid-AAA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 7abc\r\n\r\n",
+        "POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/claude-code/default/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 7abc\r\n\r\n",
     );
     assert!(
         bad_len.starts_with("HTTP/1.1 400"),
@@ -1897,7 +1898,7 @@ fn an_account_that_is_not_in_the_table_gets_404_and_nothing_reaches_upstream() {
     // ── ㈠ 表里没有的那个账号段 ────────────────────────────────
     let mut c = send_request(
         addr,
-        "/s/agentA/acctB/sid-X/v1/messages",
+        "/s/agentA/acctB/v1/messages",
         "Authorization: Bearer THEIRS\r\n",
     );
     let mut got = Vec::new();
@@ -1931,7 +1932,7 @@ fn an_account_that_is_not_in_the_table_gets_404_and_nothing_reaches_upstream() {
     // ── ★★ 非空对照：配得到的那条路走得通，而且带的是**它自己那把** key ──
     let mut c2 = send_request(
         addr,
-        "/s/agentA/acctA/sid-X/v1/messages",
+        "/s/agentA/acctA/v1/messages",
         "Authorization: Bearer THEIRS\r\n",
     );
     let mut got2 = Vec::new();
@@ -2021,7 +2022,7 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
     for acct in ["acct-a", "acct-b"] {
         let mut c = send_request(
             relay.addr,
-            &format!("/s/claude-code/{acct}/sid-{acct}/v1/messages"),
+            &format!("/s/claude-code/{acct}/v1/messages"),
             "",
         );
         let mut got = Vec::new();
@@ -2074,7 +2075,7 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
     // ── ㈡ 表里没有的账号段 ⇒ **两个上游那本账都一次都没涨**，然后才是 404 ──
     let (not_found, _) = send_raw(
         relay.addr,
-        "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/claude-code/acct-nope/sid-x/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+        "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/claude-code/acct-nope/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
     );
     assert_eq!(
         up_a.auth_values.lock().expect("lock").len(),
@@ -2094,7 +2095,7 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
     // ── ㈢ **连不上上游那一支**（`K-H2a` 留下的那一格；`设计/20 §3.1a` 之后回 504）──────────
     let (bad_gateway, _) = send_raw(
         relay.addr,
-        "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/claude-code/acct-dead/sid-x/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+        "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/claude-code/acct-dead/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
     );
     assert!(
         bad_gateway.starts_with("HTTP/1.1 504"),
@@ -2190,7 +2191,7 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
 fn a_configured_key_replaces_the_clients_header_instead_of_being_appended() {
     const MINE: &str = "sk-ant-MINE";
     let head = http1::parse_request(
-        b"POST /s/a/acct/k/v1/x HTTP/1.1\r\nHost: relay\r\nAuthorization: Bearer THEIRS\r\nContent-Length: 3\r\n\r\n",
+        b"POST /s/a/acct/v1/x HTTP/1.1\r\nHost: relay\r\nAuthorization: Bearer THEIRS\r\nContent-Length: 3\r\n\r\n",
     )
     .expect("parse");
     let base = Base::parse("https://api.example.com").expect("base");
@@ -2238,7 +2239,7 @@ fn the_auth_header_shape_follows_the_row_and_not_a_process_wide_guess() {
     const MINE: &str = "sk-ROW-OWN-KEY";
     use creds_core::store::AuthStyle;
     let head = http1::parse_request(
-        b"POST /s/a/acct/k/v1/x HTTP/1.1\r\nHost: relay\r\nAuthorization: Bearer THEIRS\r\nx-api-key: THEIRS-XAK\r\nContent-Length: 3\r\n\r\n",
+        b"POST /s/a/acct/v1/x HTTP/1.1\r\nHost: relay\r\nAuthorization: Bearer THEIRS\r\nx-api-key: THEIRS-XAK\r\nContent-Length: 3\r\n\r\n",
     )
     .expect("parse");
     let base = Base::parse("https://api.example.com").expect("base");
@@ -2321,7 +2322,7 @@ fn the_auth_header_shape_follows_the_row_and_not_a_process_wide_guess() {
 #[test]
 fn the_path_prefix_from_the_base_url_really_reaches_the_request_line() {
     let head = http1::parse_request(
-        b"POST /s/a/acct/k/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: 0\r\n\r\n",
+        b"POST /s/a/acct/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: 0\r\n\r\n",
     )
     .expect("parse");
     let prefixed = Base::parse("https://gw.example.com/anthropic").expect("带前缀那一形");
@@ -2380,8 +2381,8 @@ fn one_relay_process_serves_both_keys_and_shares_its_tee_sequence() {
     for key in ["sid-AAA", "sid-BBB"] {
         let mut c = send_request(
             relay.addr,
-            &format!("/s/claude-code/acctA/{key}/v1/messages?beta=true"),
-            "",
+            "/s/claude-code/acctA/v1/messages?beta=true",
+            &format!("x-claude-code-session-id: {key}\r\n"),
         );
         let mut got = Vec::new();
         c.read_to_end(&mut got).expect("read");
@@ -2433,7 +2434,7 @@ fn an_unroutable_path_is_refused_and_never_reaches_upstream() {
     // ★ **非空对照先打一发**：不然「上游没被碰」是空真 ——
     // 假上游的记录面坏掉、或中转根本没起来，这条照样绿。
     // （本仓纪律：「差集为空 / 没有变化」要附一个非空对照。）
-    let mut warmup = send_request(relay_addr, "/s/agentA/acctA/sid-AAA/v1/messages", "");
+    let mut warmup = send_request(relay_addr, "/s/agentA/acctA/v1/messages", "");
     let mut sink0 = Vec::new();
     warmup.read_to_end(&mut sink0).expect("read warmup");
     assert_eq!(
@@ -2494,7 +2495,7 @@ fn every_chunk_reaches_the_client_before_upstream_sends_the_next_one() {
     let up = spawn_fake_upstream(Some(gate_rx));
     let (relay_addr, relay, _sink) = spawn_relay(up.addr);
     let t0 = std::time::Instant::now();
-    let mut c = send_request(relay_addr, "/s/agentA/acctA/sid-AAA/v1/messages", "");
+    let mut c = send_request(relay_addr, "/s/agentA/acctA/v1/messages", "");
     c.set_read_timeout(Some(std::time::Duration::from_millis(4000)))
         .expect("read deadline");
 
@@ -2591,7 +2592,7 @@ fn the_auth_header_is_forwarded_but_never_teed() {
     let (relay_addr, _relay, tee) = spawn_relay(up.addr);
     let mut c = send_request(
         relay_addr,
-        "/s/agentA/acctA/sid-AAA/v1/messages",
+        "/s/agentA/acctA/v1/messages",
         &format!("Authorization: Bearer {SENTINEL}\r\n"),
     );
     let mut got = Vec::new();
@@ -2632,7 +2633,7 @@ fn the_auth_header_is_forwarded_but_never_teed() {
 #[test]
 fn upstream_request_drops_hop_by_hop_and_narrows_accept_encoding() {
     let head = http1::parse_request(
-        b"POST /s/a/acct/k/v1/x HTTP/1.1\r\nHost: relay\r\nConnection: keep-alive\r\nAccept-Encoding: gzip, br\r\nAuthorization: Bearer T\r\nContent-Length: 3\r\n\r\n",
+        b"POST /s/a/acct/v1/x HTTP/1.1\r\nHost: relay\r\nConnection: keep-alive\r\nAccept-Encoding: gzip, br\r\nAuthorization: Bearer T\r\nContent-Length: 3\r\n\r\n",
     )
     .expect("parse");
     let base = Base::parse("https://api.example.com").expect("base");
@@ -2692,7 +2693,7 @@ fn both_directions_really_disable_nagle_on_the_socket() {
             .expect("read deadline（风险 5x）");
         let body = REQUEST_BODY;
         let req = format!(
-            "POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: {}\r\n\r\n{body}",
+            "POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: {}\r\n\r\n{body}",
             body.len()
         );
         c.write_all(req.as_bytes()).expect("write req");
@@ -2783,7 +2784,7 @@ fn both_peers_really_carry_their_read_and_write_deadline_on_the_socket() {
             .expect("read deadline（风险 5x）");
         let body = REQUEST_BODY;
         let req = format!(
-            "POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: {}\r\n\r\n{body}",
+            "POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: {}\r\n\r\n{body}",
             body.len()
         );
         c.write_all(req.as_bytes()).expect("write req");
@@ -2897,7 +2898,7 @@ fn a_socket_deadline_makes_a_half_open_read_return_instead_of_wedging_the_thread
 
     // ── ㈠ 半开：只发半个请求头（**没有**结尾空行），且**不关**连接。
     let mut half = TcpStream::connect(a).expect("connect 半开");
-    half.write_all(b"POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n")
+    half.write_all(b"POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n")
         .expect("write 半个头");
     half.flush().expect("flush");
     let (mut srv, _p) = l.accept().expect("accept 半开");
@@ -2937,7 +2938,7 @@ fn a_socket_deadline_makes_a_half_open_read_return_instead_of_wedging_the_thread
     // ── ㈡ 非空对照：同一把尺子、同样的期限，一条**发全了**的连接必须走通且明显快。
     let mut whole = TcpStream::connect(a).expect("connect 完整");
     whole
-        .write_all(b"POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+        .write_all(b"POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
         .expect("write 完整头");
     whole.flush().expect("flush");
     let (mut srv2, _p2) = l.accept().expect("accept 完整");
@@ -3285,7 +3286,7 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_acc
         // 形状与 monitor 侧 `payload::relay_base_url` / `relay_env_prefix_posix` 同形
         //（那一侧自己有判据钉着；两侧之间没有，见头注那条「没买到的缝」）。
         let url = format!(
-            "http://127.0.0.1:{}/s/claude-code/{acct}/k-0123456789abcdef",
+            "http://127.0.0.1:{}/s/claude-code/{acct}",
             relay.addr.port()
         );
         let cmd = format!("{}bash {}", rendered_export(&url), stub.to_string_lossy());
@@ -3336,7 +3337,7 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_acc
     // ★ 正题③（`KL7` 第 2 条）：**表里查不到的账号 ⇒ 404 且一个字节不发上游**。
     //   非空对照就是上面那两发 —— 同一条路、同一个桩，只有账号段不同。
     let url = format!(
-        "http://127.0.0.1:{}/s/claude-code/acct-not-in-the-table/k-0123456789abcdef",
+        "http://127.0.0.1:{}/s/claude-code/acct-not-in-the-table",
         relay.addr.port()
     );
     let out = std::process::Command::new("bash")
@@ -3455,7 +3456,7 @@ fn a_credentials_file_produced_by_the_write_side_routes_that_account_to_the_upst
     // 起两发：同一条起会话路径，**只有账号段不同**。
     for acct in ["row-one", "row-two"] {
         let url = format!(
-            "http://127.0.0.1:{}/s/claude-code/{acct}/k-0123456789abcdef",
+            "http://127.0.0.1:{}/s/claude-code/{acct}",
             relay.addr.port()
         );
         let out = std::process::Command::new("bash")
@@ -3509,7 +3510,7 @@ fn a_credentials_file_produced_by_the_write_side_routes_that_account_to_the_upst
     //   ⇒ 一个没配过的账号段**不会**被那一行顶上。
     for miss in ["row-three", creds_core::store::LEGACY_ACCOUNT_ID] {
         let url = format!(
-            "http://127.0.0.1:{}/s/claude-code/{miss}/k-0123456789abcdef",
+            "http://127.0.0.1:{}/s/claude-code/{miss}",
             relay.addr.port()
         );
         let out = std::process::Command::new("bash")
@@ -3559,7 +3560,7 @@ fn a_row_added_after_the_relay_started_is_picked_up_without_a_restart() {
     let relay = spawn_relay_child_with_creds(up.addr, &creds);
 
     // ① 起手：那个还没配的账号 **404**（非空对照排最前 —— 证明这把尺子分得出两种结局）。
-    let mut c = send_request(relay.addr, "/s/claude-code/acctLate/sid-1/v1/messages", "");
+    let mut c = send_request(relay.addr, "/s/claude-code/acctLate/v1/messages", "");
     let mut got = String::new();
     c.read_to_string(&mut got).expect("read");
     assert!(
@@ -3580,7 +3581,7 @@ fn a_row_added_after_the_relay_started_is_picked_up_without_a_restart() {
     .expect("重写凭据夹具");
 
     // ③ 同一个中转进程、同一条路：这一发必须**走通**，且带的是新那一行的 key。
-    let mut c2 = send_request(relay.addr, "/s/claude-code/acctLate/sid-1/v1/messages", "");
+    let mut c2 = send_request(relay.addr, "/s/claude-code/acctLate/v1/messages", "");
     let mut got2 = String::new();
     c2.read_to_string(&mut got2).expect("read");
     assert!(
@@ -3619,7 +3620,7 @@ fn a_broken_credentials_file_keeps_the_last_good_table_instead_of_emptying_it() 
     let relay = spawn_relay_child_with_creds(up.addr, &creds);
 
     // 非空对照：起手这一发走得通（否则下面「仍然走得通」是空真）。
-    let mut c = send_request(relay.addr, "/s/claude-code/acctA/sid-1/v1/messages", "");
+    let mut c = send_request(relay.addr, "/s/claude-code/acctA/v1/messages", "");
     let mut got = String::new();
     c.read_to_string(&mut got).expect("read");
     assert!(got.starts_with("HTTP/1.1 200"), "起手就不通：{got:?}");
@@ -3628,7 +3629,7 @@ fn a_broken_credentials_file_keeps_the_last_good_table_instead_of_emptying_it() 
     std::fs::write(&creds, b"{ \"accounts\": { \"acctA\": { } ").expect("写坏文件");
 
     // 正题：**仍然走得通** —— 上一张能用的表还在。
-    let mut c2 = send_request(relay.addr, "/s/claude-code/acctA/sid-2/v1/messages", "");
+    let mut c2 = send_request(relay.addr, "/s/claude-code/acctA/v1/messages", "");
     let mut got2 = String::new();
     c2.read_to_string(&mut got2).expect("read");
     assert!(
@@ -3804,7 +3805,7 @@ fn relay_transport_failures_answer_504_saying_who_and_where() {
     let (relay, _r, _t) = spawn_relay(SocketAddr::new(LOOPBACK, dead));
     let (got, _) = send_raw(
         relay,
-        "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-1/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+        "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
     );
     assert!(got.starts_with(STATUS_LINE), "① 连不上该回 504：{got:?}");
     let want = format!("上游 127.0.0.1:{dead} 连不上。卡在建立连接这一步。");
@@ -3815,7 +3816,7 @@ fn relay_transport_failures_answer_504_saying_who_and_where() {
     // ★ 可区分性（`D7`）：**同一个中转**上，表里没有的那一行回的是 404，不是 504。
     let (miss, _) = send_raw(
         relay,
-        "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/nosuch/sid-1/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+        "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/nosuch/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
     );
     assert!(
         miss.starts_with("HTTP/1.1 404 Not Found\r\n"),
@@ -3827,7 +3828,7 @@ fn relay_transport_failures_answer_504_saying_who_and_where() {
     let (relay, _r, _t) = spawn_relay(up);
     let (got, _) = send_raw(
         relay,
-        "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-2/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+        "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
     );
     assert!(
         got.starts_with(STATUS_LINE),
@@ -3844,7 +3845,7 @@ fn relay_transport_failures_answer_504_saying_who_and_where() {
     let relay = spawn_relay_with_upstream_deadline(up, std::time::Duration::from_millis(300));
     let (got, _) = send_raw(
         relay,
-        "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-3/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+        "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
     );
     assert!(
         got.starts_with(STATUS_LINE),
@@ -3858,7 +3859,7 @@ fn relay_transport_failures_answer_504_saying_who_and_where() {
     let (relay, _r, _t) = spawn_relay(up);
     let (got, _) = send_raw(
         relay,
-        "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-4/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+        "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
     );
     assert!(
         got.starts_with(STATUS_LINE),
@@ -4098,16 +4099,13 @@ fn rk1_the_door_refuses_without_the_key_and_that_is_not_a_404() {
     let wrong = format!("{}0", &k[..k.len() - 1]);
     let host = "Host: 127.0.0.1\r\n";
     for target in [
-        "/s/agentA/acctA/sid-1/v1/messages".to_string(),
-        "/t/agentA/acctA/sid-1/v1/messages".to_string(),
-        format!("/{wrong}/s/agentA/acctA/sid-1/v1/messages"),
-        format!("/{}/s/agentA/acctA/sid-1/v1/messages", &k[..32]),
-        format!("/{k}0/s/agentA/acctA/sid-1/v1/messages"),
-        format!(
-            "/{}/s/agentA/acctA/sid-1/v1/messages",
-            k.to_ascii_uppercase()
-        ),
-        "//s/agentA/acctA/sid-1/v1/messages".to_string(),
+        "/s/agentA/acctA/v1/messages".to_string(),
+        "/t/agentA/acctA/v1/messages".to_string(),
+        format!("/{wrong}/s/agentA/acctA/v1/messages"),
+        format!("/{}/s/agentA/acctA/v1/messages", &k[..32]),
+        format!("/{k}0/s/agentA/acctA/v1/messages"),
+        format!("/{}/s/agentA/acctA/v1/messages", k.to_ascii_uppercase()),
+        "//s/agentA/acctA/v1/messages".to_string(),
         format!("/{k}"),
     ] {
         let got = rk1_send(relay_addr, &target, host);
@@ -4124,7 +4122,7 @@ fn rk1_the_door_refuses_without_the_key_and_that_is_not_a_404() {
     // 钥匙对、表里没这一行 ⇒ 404（不是 403）—— 可分。
     let miss = rk1_send(
         relay_addr,
-        &format!("/{k}/s/agentA/nosuch/sid-1/v1/messages"),
+        &format!("/{k}/s/agentA/nosuch/v1/messages"),
         host,
     );
     assert!(
@@ -4138,7 +4136,7 @@ fn rk1_the_door_refuses_without_the_key_and_that_is_not_a_404() {
     // ② 钥匙对、表里有行 ⇒ 真转发，上游看不到钥匙。
     let ok = rk1_send(
         relay_addr,
-        &format!("/{k}/s/agentA/acctA/sid-1/v1/messages"),
+        &format!("/{k}/s/agentA/acctA/v1/messages"),
         host,
     );
     assert!(
@@ -4159,10 +4157,7 @@ fn rk1_the_door_refuses_without_the_key_and_that_is_not_a_404() {
 fn rk1_browser_and_rebinding_requests_are_refused_but_the_cli_shape_passes() {
     let up = spawn_fake_upstream(None);
     let (relay_addr, _relay, _tee) = spawn_relay(up.addr);
-    let target = format!(
-        "/{}/s/agentA/acctA/sid-1/v1/messages",
-        door::door_tests::TEST_KEY
-    );
+    let target = format!("/{}/s/agentA/acctA/v1/messages", door::door_tests::TEST_KEY);
     let origin = rk1_send(
         relay_addr,
         &target,
@@ -4259,7 +4254,7 @@ fn rk1_the_minted_key_never_shows_up_in_logs_tee_argv_env_or_upstream() {
         "这一条要的是**现铸**的那把，不是夹具值"
     );
     let good_req = format!(
-        "POST /{key}/s/claude-code/acctA/sid-leak/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 2\r\n\r\n{{}}"
+        "POST /{key}/s/claude-code/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 2\r\n\r\n{{}}"
     );
     assert_eq!(
         good_req.matches(&key).count(),
@@ -4281,7 +4276,7 @@ fn rk1_the_minted_key_never_shows_up_in_logs_tee_argv_env_or_upstream() {
     assert_ne!(wrong, key, "错钥匙必须与真钥匙不同");
     let (bad, _) = send_raw(
         relay.addr,
-        &format!("POST /{wrong}/s/claude-code/acctA/sid-leak/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 2\r\n\r\n{{}}"),
+        &format!("POST /{wrong}/s/claude-code/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 2\r\n\r\n{{}}"),
     );
     assert!(bad.starts_with("HTTP/1.1 403"), "错钥匙 ⇒ 403：{bad:?}");
     // 等子进程把「门拒了一条」那句日志写出来（异步采集；它是本条 stderr 的活性正控）。

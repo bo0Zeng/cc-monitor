@@ -17,7 +17,7 @@
   `writer_task` → stdout 上的 `tap` 帧。本脚本只从 stdout 收帧，不碰后端内部。
 - **正文是假上游合成的**（固定的几段中文 ＋ 编号），不含任何真会话正文（`test-fixtures-no-real-transcript`）。夹具里的 jsonl
   只留 `type` · `apiBlockIndex` · `message.{id,content}`（去掉 cwd / 版本 / 时间戳这些机器相关的格）。
-- 路由键第三段 = `--session-id` 给 claude 的那个 UUID ⇒ `stream == sid`（resume 那一形）。
+- 〔V141〕流标签 = claude 请求头 `x-claude-code-session-id`（== `--session-id` 给它的那个 UUID）⇒ `stream == sid`；地址里没有会话段。
 
 同一趟还量一件事（`TAP.md §8` 题 3）：假上游在**思考块收尾之后、正文开始之前**停一拍，看那一刻 claude 有没有已经把
 这一轮（同 `message.id`）的第一条记录写进 jsonl。写了 ⇒「同 id 第一条记录就整张覆盖」会在正文开始流之前撤掉活卡。
@@ -257,7 +257,7 @@ def main() -> int:
             time.sleep(0.05)
         key = key_file.read_text().strip()
         sid = str(uuid.uuid4())
-        base = f"http://127.0.0.1:{relay_port}/{key}/s/claude-code/acctA/{sid}"
+        base = f"http://127.0.0.1:{relay_port}/{key}/s/claude-code/acctA"
         cenv = {
             "PATH": os.environ.get("PATH", ""),
             "HOME": str(home),

@@ -42,7 +42,7 @@ use super::http1::{self, BodyView, RequestHead};
 use super::route;
 use super::tee::{SseSplitter, TeeSink};
 use super::upstream::{self, Base, Conn};
-use super::{AuthSwap, Destination, Destinations};
+use super::{AuthSwap, Destination, Destinations, StreamId};
 use std::io::{BufReader, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, TcpStream};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -232,6 +232,8 @@ pub(crate) struct Relay {
     /// ⚠ 字段名刻意不叫那个会被 `table_guard` 当成「进程级凭据」的字面：它不是上游的凭据，是**下游进门**的钥匙。
     door: door::Key,
     tee: TeeSink,
+    /// 〔V141〕给流打标签的请求头名单（构造时向上游选择要一次，[`Destinations::stream_label_headers`]）。
+    stream_headers: Vec<&'static str>,
     /// 下游那条 socket 的读写期限。**由后端交下来**（`C4`：值归后端 · 执行归本层）。
     ///
     /// ⚠ 它是**一个字段**而不是两处各写一次 —— [`apply_downstream_deadline`] 有两个
@@ -272,6 +274,7 @@ impl Relay {
         upstream_deadline: std::time::Duration,
     ) -> Self {
         Self {
+            stream_headers: dest.stream_label_headers(),
             dest,
             door,
             tee,
@@ -739,7 +742,11 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     let mut splitter = SseSplitter::default();
     // ★ 三个标签收成一个 `StreamId`（`20 §4`）—— 中转这一侧**没有业务名**，
     //   写到线上的仍然是 `agent`/`account`/`key` 三个字段（那是线契约，见 `tee::open`）。
-    let id = r.stream_id();
+    //   〔V141〕流标签取自请求自己带的头（会话 id 归 agent），不是路径段。
+    let id = StreamId {
+        key: &r.key,
+        stream: stream_label(&head, &relay.stream_headers),
+    };
     // 〔TAP〕`open` 发一个这一响应自己的游标（位置号 `n` 从 0 起），`event` / `note_dropped_bytes` / `close` 都拿它。
     let mut at = relay.tee.open(id);
     // ★ 返回值**必须落地**：它是 `DoD-2㈡`「块数对账」的唯一量点。
@@ -759,6 +766,15 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     relay.tee.close(id, at, outcome.is_err());
     outcome?;
     Ok(())
+}
+
+/// 〔V141〕这条流的标签：名单里第一个出现在请求里、值过段闸的头的值；没有 ⇒ 空串（前端当匿名流）。
+/// 过闸是因为它要进 tee 行与 tap 帧（同 `route::segment_is_safe` 那条理由）。
+fn stream_label<'h>(head: &'h RequestHead, names: &[&str]) -> &'h str {
+    names
+        .iter()
+        .find_map(|n| head.header(n).filter(|v| route::segment_is_safe(v)))
+        .unwrap_or("")
 }
 
 /// ★★ **本件的全部意义就在这个函数里。**

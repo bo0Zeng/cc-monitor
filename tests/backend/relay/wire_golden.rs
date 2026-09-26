@@ -100,11 +100,11 @@ const GOLDEN_CASES: usize = 6;
 /// 其中**真的把字节送到上游**的格数。垫住 `upstream_head: None` 那几格的空真。
 const GOLDEN_CASES_REACHING_UPSTREAM: usize = 3;
 
-/// 六格金标准。**每一串都是手写的**。
+/// 六格金标准。**每一串都是手写的**。〔V141〕路径里没有会话段；这几发客户端不带会话标识头 ⇒ tee 的 `key` 是空串。
 const GOLDEN: &[Golden] = &[
     // ① 代入模式 ＋ 表里那一行有 key ⇒ 下游那份 auth 头被**整条丢掉**，换成这一行自己的。
     Golden {
-        target: "/s/agentA/acctA/sid-AAA/v1/messages",
+        target: "/s/agentA/acctA/v1/messages",
         upstream_head: Some(concat!(
             "POST /v1/messages HTTP/1.1\r\n",
             "Host: 127.0.0.1:UPSTREAM\r\n",
@@ -126,16 +126,16 @@ const GOLDEN: &[Golden] = &[
             "0\r\n\r\n",
         ),
         tee: concat!(
-            r#"{"__meta__":{"source":"relay","proto":"passthrough-v0","agent":"agentA","account":"acctA","key":"sid-AAA","seq":0}}"#,
+            r#"{"__meta__":{"source":"relay","proto":"passthrough-v0","agent":"agentA","account":"acctA","key":"","seq":0}}"#,
             "\n",
-            r#"{"agent":"agentA","account":"acctA","key":"sid-AAA","event":"{\"n\":1}"}"#,
+            r#"{"agent":"agentA","account":"acctA","key":"","event":"{\"n\":1}"}"#,
             "\n",
         ),
     },
     // ② 代入模式 ＋ 表里那一行**没有** key ⇒ 下游那份 auth 头**逐字节原样**到上游。
     //    （订阅登录那一档是合法状态：行在表里、没有 key。）
     Golden {
-        target: "/s/agentA/acctB/sid-BBB/v1/messages",
+        target: "/s/agentA/acctB/v1/messages",
         upstream_head: Some(concat!(
             "POST /v1/messages HTTP/1.1\r\n",
             "Host: 127.0.0.1:UPSTREAM\r\n",
@@ -157,15 +157,15 @@ const GOLDEN: &[Golden] = &[
             "0\r\n\r\n",
         ),
         tee: concat!(
-            r#"{"__meta__":{"source":"relay","proto":"passthrough-v0","agent":"agentA","account":"acctB","key":"sid-BBB","seq":0}}"#,
+            r#"{"__meta__":{"source":"relay","proto":"passthrough-v0","agent":"agentA","account":"acctB","key":"","seq":0}}"#,
             "\n",
-            r#"{"agent":"agentA","account":"acctB","key":"sid-BBB","event":"{\"n\":1}"}"#,
+            r#"{"agent":"agentA","account":"acctB","key":"","event":"{\"n\":1}"}"#,
             "\n",
         ),
     },
     // ③ 代入模式 ＋ 表里**没有这一行** ⇒ 404，一个字节都不到上游，tee 上一行都没有。
     Golden {
-        target: "/s/agentA/nosuch/sid-CCC/v1/messages",
+        target: "/s/agentA/nosuch/v1/messages",
         upstream_head: None,
         downstream: concat!(
             "HTTP/1.1 404 Not Found\r\n",
@@ -194,7 +194,7 @@ const GOLDEN: &[Golden] = &[
     //    量到的差别只能来自模式那一格。`/t/` 逐字是「中转永不代入 auth」：
     //    上游收到的必须是**客户端那把**（`CLIENT-TOKEN`），`KEY-A` 一个字节都不许出现。
     Golden {
-        target: "/t/agentA/acctA/sid-TTT/v1/messages",
+        target: "/t/agentA/acctA/v1/messages",
         upstream_head: Some(concat!(
             "POST /v1/messages HTTP/1.1\r\n",
             "Host: 127.0.0.1:UPSTREAM\r\n",
@@ -216,9 +216,9 @@ const GOLDEN: &[Golden] = &[
             "0\r\n\r\n",
         ),
         tee: concat!(
-            r#"{"__meta__":{"source":"relay","proto":"passthrough-v0","agent":"agentA","account":"acctA","key":"sid-TTT","seq":0}}"#,
+            r#"{"__meta__":{"source":"relay","proto":"passthrough-v0","agent":"agentA","account":"acctA","key":"","seq":0}}"#,
             "\n",
-            r#"{"agent":"agentA","account":"acctA","key":"sid-TTT","event":"{\"n\":1}"}"#,
+            r#"{"agent":"agentA","account":"acctA","key":"","event":"{\"n\":1}"}"#,
             "\n",
         ),
     },
@@ -231,7 +231,7 @@ const GOLDEN: &[Golden] = &[
     //    ⚠ 它与 ③ 的 404 **刻意不同码**：404 答的是「代入模式要求表里有这一行」，
     //    502 答的是「这个 agent 没有登记上游」——两件事，两个码。
     Golden {
-        target: "/t/agentA/nosuch/sid-UUU/v1/messages",
+        target: "/t/agentA/nosuch/v1/messages",
         upstream_head: None,
         downstream: concat!(
             "HTTP/1.1 502 Bad Gateway\r\n",
