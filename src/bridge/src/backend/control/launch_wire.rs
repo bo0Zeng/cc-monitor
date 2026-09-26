@@ -258,6 +258,15 @@ pub struct PayloadRenderRequest {
     /// 今天 `plan.wrap` 恒空所以无生产影响；补上之后那条用例才真的在验生产路径。
     #[serde(default)]
     pub wrap: Vec<WireWrap>,
+    /// 〔DUP1 · `INVARIANTS §47` ①〕**resume 的那个 sid**（`args` 里 `[resume 旗, sid, …]` 那一格的同一个值，单独再报一次）。
+    ///
+    /// 为什么要单报：这条线上 sid 住在 `args` 里，渲染侧认不出哪一格是 sid（旗随 agent 变，而 monitor 的
+    /// `backend/` 这一半不许去问 agent 画像）；前端那份 `isValidSessionId`〔散文墓碑〕按 `设计/90 §3` 判据 2 删了之后，
+    /// 「resume 的 sid 不许 `-` 开头」（`--dangerously-skip-permissions` 当 sid 会被 agent 吃成参数）得有人在拼进载荷之前判 ——
+    /// 单报一次、这里判、再核它确实就是 `args` 第二格（报了一个、渲了另一个 ⇒ 拒），比按位置猜稳。
+    /// `None` = 不是 resume（`#[serde(default)]`：入库夹具里那些非 resume 的请求一个字不用动）。
+    #[serde(default)]
+    pub resume_sid: Option<String>,
 }
 
 /// 与 TS `WrapSpec` 同构（`id` 只用于 TS 侧排错，不参与渲染）。
@@ -404,6 +413,21 @@ pub fn render_launch_payload(req: PayloadRenderRequest) -> Result<String, String
         })
         .collect();
     let args: Vec<&str> = req.args.iter().map(String::as_str).collect();
+    // 〔DUP1 · `INVARIANTS §47` ①〕resume 的 sid：共享那一份判（`shell_quote_core::session_id_ok`），且必须就是 `args` 第二格。
+    if let Some(sid) = req.resume_sid.as_deref() {
+        if !shell_quote_core::session_id_ok(sid) {
+            return Err(super::payload::refuse(copy_text(
+                "rsLaunchWire.resumeSid.bad",
+                &[("value", &format!("{sid:?}"))],
+            )));
+        }
+        if args.get(1) != Some(&sid) {
+            return Err(super::payload::refuse(copy_text(
+                "rsLaunchWire.resumeSid.notInArgs",
+                &[("value", &format!("{sid:?}"))],
+            )));
+        }
+    }
     let wrap: Vec<super::payload::WrapSpec> = req
         .wrap
         .iter()

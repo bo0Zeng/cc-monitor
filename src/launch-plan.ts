@@ -17,7 +17,7 @@
  *    是调度元数据不是渲染输入，继续作 `runLaunch`/`renderLaunchCommand` 的独立首参。
  * 2. `container.tmux.name` 配 `nameQuoting: "raw"|"quoted"`（判别式，非字符串形状嗅探）。
  * 3. `EnvOp` 用窄变体 `export-config-dir`（非通用 `{op:"export";key;value}`）——防止任何维度
- *    绕开 `isValidConfigDir` 往命令里塞任意变量名（呼应账号隔离审计 D7 的 extraEnv key 无校验风险）。
+ *    绕开 configDir 那道校验（今天住渲染侧 `payload.rs::config_dir_command_safe`）往命令里塞任意变量名（呼应账号隔离审计 D7 的 extraEnv key 无校验风险）。
  */
 import { LAUNCH_DIMENSIONS } from "./launch-dimensions.ts";
 // 〔LR2〕IR 的类型拆进纯类型叶子 `launch-types.ts`（断 `launch-plan ⇄ launch-dimensions` 那个类型环）。

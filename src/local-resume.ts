@@ -29,7 +29,6 @@
 import { commands } from "./ipc/commands";
 import { LOCAL_ORIGIN } from "./ipc/origin";
 import { explicitLocalAccountWire, localFollowPlan, primeLocalLaunchAccounts, recordLocalLaunchAccount, refuseUnavailableAccount, type LocalAccountWire } from "./launch-account";
-import { validateLocalLaunch } from "./launch-requests";
 import { getBehavior } from "./behavior";
 import { mintFromListing, readTmuxListing } from "./tmux-name-mint";
 import { showActionFailureToast } from "./error-toast";
@@ -70,13 +69,8 @@ export interface LocalResumeRequest {
 export async function resumeLocalSession(req: LocalResumeRequest): Promise<boolean> {
   // `D1 阻-1`：**不等待**地把账号快照踢一脚（等它就多一拍）。只有跟随那一态读快照。
   if (req.account.kind === "follow") primeLocalLaunchAccounts();
-  try {
-    // F06：sid 校验先于任何 IPC 往返。
-    validateLocalLaunch({ kind: "resume", sid: req.sid }, req.cwd);
-  } catch (err) {
-    showActionFailureToast(copyText("localResume.build.failed"), String(err));
-    return false;
-  }
+  // 〔DUP1 · `设计/90 §3` 判据 2〕这里原来先过 `validateLocalLaunch`〔散文墓碑〕（sid 字符集）—— 那份删了：
+  // 本机拉起那条路上 Rust 自己判（`history.rs` 本机决策 → `shell_quote_core::session_id_ok`），判不过回错、下面照常说出来。
   // 🔴 〔FE1 · D-h〕跟随时，这条会话的 pin 那个号选不了 ⇒ **不起**：说清、给「用当前账号」的显式选择
   //   （点了就以**显式**选号再起一次，起成了记 pin —— 与远端 `withAccount` 显式那一支同语义）。
   //   先前这一形落成「缺席」⇒ 落 shell rc 里的默认号，不说一个字（E7 的本机那一形）。

@@ -232,6 +232,11 @@ fn sample_reason(variant: &str) -> String {
             value: format!("{:?}", "rel/dir"),
         }
         .reason(),
+        "IdentifierRefused" => Refusal::IdentifierRefused {
+            slot: IdentifierSlot::Sid,
+            value: format!("{:?}", "--evil"),
+        }
+        .reason(),
         other => panic!(
             "变体 `{other}` 没有代表样本 —— 新变体要在这里给一个，\
                  否则夹具对拍认不出它（这一步刻意不自动化：带占位的理由要人来选值）"
@@ -300,6 +305,13 @@ fn every_refusal_reason_is_pinned_byte_for_byte() {
             },
             "工作目录 \"rel/dir\" 用不了。要绝对路径，不含 .. 段、换行或 NUL",
         ),
+        (
+            Refusal::IdentifierRefused {
+                slot: IdentifierSlot::Sid,
+                value: format!("{:?}", "--evil"),
+            },
+            "会话 ID \"--evil\" 不合形状（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
+        ),
     ];
     // ★ 人群**从枚举派生**，不再手写「七个」这个数。
     let variants = refusal_variants();
@@ -361,6 +373,11 @@ fn the_reasons_the_fixture_covers_really_come_from_the_typescript_side() {
             "FreeTextRefused",
             "〔TL3 · §47〕夹具（`cli-golden.json`）里的请求都是好值 —— \
              由行为判据 `a_free_text_cwd_or_agent_arg_is_refused_before_it_becomes_a_ccm_argument` 顶着（正反各一格）",
+        ),
+        (
+            "IdentifierRefused",
+            "〔DUP1 · §47 ①〕夹具（`cli-golden.json`）里的请求都是好值 —— \
+             由行为判据 `an_identifier_is_refused_before_it_becomes_a_ccm_argument` 顶着（正反各一格）",
         ),
     ];
     let variants = refusal_variants();
@@ -803,4 +820,91 @@ fn a_free_text_cwd_or_agent_arg_is_refused_before_it_becomes_a_ccm_argument() {
             value: format!("{:?}", "bad\rx"),
         })
     );
+}
+
+/// 〔DUP1 · `INVARIANTS §47` ①〕ccm 那条路：resume 的 sid 与 `--ccm-sid=` 是标识符 ⇒ 写成 ccm 参数之前先过
+/// `shell_quote_core::session_id_ok`（全仓唯一一份；前端那份按 `设计/90 §3` 判据 2 删了），**正反各一格**。
+/// 要求住址：`INVARIANTS §47` ①「字符集白名单（闭集，默认拒）＋ 不许 `-` 开头（选项注入）＋ 有长度上界的就钉上界」。
+#[test]
+fn an_identifier_is_refused_before_it_becomes_a_ccm_argument() {
+    let resume = |sid: &'static str, ccm_sid: Option<&'static str>| {
+        let mut s = base_spec();
+        s.action = Action::Resume { sid };
+        s.ccm_sid = ccm_sid;
+        render_ccm_invocation(&s, &caps_all(), true)
+    };
+    resume(
+        "0473c3a0-1111-2222-3333-444455556666",
+        Some("0473c3a0-1111-2222-3333-444455556666"),
+    )
+    .unwrap_or_else(|e| panic!("真实 UUID 被拒了：{e:?}"));
+    for bad in ["--dangerously-skip-permissions", "a_b", "", "a;b"] {
+        let bad: &'static str = Box::leak(bad.to_string().into_boxed_str());
+        assert_eq!(
+            resume(bad, None),
+            Err(Refusal::IdentifierRefused {
+                slot: IdentifierSlot::Sid,
+                value: format!("{bad:?}"),
+            })
+        );
+    }
+    assert_eq!(
+        resume("s1", Some("-x")),
+        Err(Refusal::IdentifierRefused {
+            slot: IdentifierSlot::CcmSid,
+            value: format!("{:?}", "-x"),
+        })
+    );
+}
+
+/// 〔DUP1 · `INVARIANTS §47` ①〕`--model <名>`：真实模型名全过（主会话 09-26「真实模型名都放行」），
+/// 选项形 / shell 形拒 —— 判定住 `shell_quote_core::model_name_ok`，**正反各一格**。
+#[test]
+fn a_model_name_is_refused_before_it_becomes_a_ccm_argument() {
+    let with = |m: &'static str| {
+        let mut s = base_spec();
+        s.model = Some(m);
+        render_ccm_invocation(&s, &caps_all(), true)
+    };
+    for good in [
+        "sonnet[1m]",
+        "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        "claude-sonnet-4-5@20250929",
+    ] {
+        let cmd = with(good).unwrap_or_else(|e| panic!("真实模型名被拒了：{good:?} ⇒ {e:?}"));
+        assert!(cmd.contains("--model"), "{cmd}");
+    }
+    for bad in ["-x", "opus 4", "a;b"] {
+        assert_eq!(
+            with(bad),
+            Err(Refusal::IdentifierRefused {
+                slot: IdentifierSlot::Model,
+                value: format!("{bad:?}"),
+            })
+        );
+    }
+}
+
+/// 〔DUP1 · `INVARIANTS §47` ①〕`--account <名>`：与建账号的那个工具（`cc-acct-iso` 的 `name_check`）逐字同的那一份判
+/// （`shell_quote_core::account_name_ok`），**正反各一格**。
+#[test]
+fn an_account_name_is_refused_before_it_becomes_a_ccm_argument() {
+    let with = |n: &'static str| {
+        let mut s = base_spec();
+        s.account = CliAccount::Named { name: Some(n) };
+        render_ccm_invocation(&s, &caps_all(), true)
+    };
+    for good in ["work", "acct-a", "a_b"] {
+        let cmd = with(good).unwrap_or_else(|e| panic!("真实账号名被拒了：{good:?} ⇒ {e:?}"));
+        assert!(cmd.contains("--account"), "{cmd}");
+    }
+    for bad in ["-x", "a.b", "a b", "_a"] {
+        assert_eq!(
+            with(bad),
+            Err(Refusal::IdentifierRefused {
+                slot: IdentifierSlot::Account,
+                value: format!("{bad:?}"),
+            })
+        );
+    }
 }

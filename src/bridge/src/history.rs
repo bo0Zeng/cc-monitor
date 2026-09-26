@@ -510,7 +510,8 @@ enum LocalPsAction {
 /// 否则两个平台迟早各自漂移；而「怎么写这个条件判断」才是平台差异
 /// （PowerShell 用 `Get-Command`，POSIX 用 `command -v`）。
 ///
-/// **sid 校验留在这里**：它与前端 `validateLocalLaunch` 是**两道独立防线**，不是重复
+/// **sid 校验留在这里**：〔DUP1〕原先写「它与前端 `validateLocalLaunch` 是两道独立防线」—— 前端那一道按 `设计/90 §3` 判据 2 删了，
+/// 这里是本机拉起这条路上唯一的一道（规则住 `shell_quote_core::session_id_ok`）
 
 /// G3b：账号前缀 —— 把 `CLAUDE_CONFIG_DIR` 注入本地拉起命令。
 ///
@@ -519,9 +520,10 @@ enum LocalPsAction {
 /// 与 IR 的 `--base` 语义对齐，也保证「没选账号」这条路的输出**与本功能之前逐字节相同**
 /// —— 既有那批钉死输出的测试因此原样全绿，它们就成了「账号 0 不变」的守卫。
 ///
-/// # 校验语义照抄 TS 侧的 `isValidConfigDir`（`src/shell-quote.ts:41`）
+/// # 校验语义：与载荷渲染同一道闸（`payload.rs::config_dir_command_safe`）
 ///
-/// **不重新发明判据**：那边已经因为账号隔离审计 D7（extraEnv key 无校验）收紧过一轮。
+/// **不重新发明判据**。〔DUP1〕这里原来写「照抄 TS 侧的 `isValidConfigDir`」〔散文墓碑〕—— TS 那份按
+/// `设计/90 §3` 判据 2 删了（它本身就是这张拒绝集的手抄），今天这张表只在 Rust。
 /// 拒的东西：非绝对路径 · `/` 本身 · 含 `/../` 或以 `/..` 结尾 · shell 元字符/引号/控制符 ·
 /// 可欺骗 Unicode（零宽 / 双向控制 / NBSP / BOM）。
 ///
@@ -756,11 +758,9 @@ fn local_launch_choice(
         return Err(OLD_PATH_CANNOT_ATTACH.to_string());
     }
     if let LocalPsAction::Resume(sid) = action {
-        let valid = !sid.is_empty()
-            && sid
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-        if !valid {
+        // 〔DUP1 · `INVARIANTS §47` ①〕sid 规则只有一份：`shell_quote_core::session_id_ok`（原先这里内联一份
+        // `[A-Za-z0-9_-]`、无上界、不管前导 `-`）。前端那道 `validateLocalLaunch` 的 sid 判定也删了（`设计/90 §3` 判据 2）⇒ 这里是唯一一道。
+        if !shell_quote_core::session_id_ok(sid) {
             return Err(format!("refuse resume: invalid session_id {sid:?}"));
         }
     }

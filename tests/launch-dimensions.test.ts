@@ -66,10 +66,13 @@ test("identity：有 ccmSid → 设 plan.identity", () => {
   IDENTITY_DIMENSION.apply(plan, ctx);
   eq(plan.identity, { ccmSid: "abc-123" });
 });
-test("identity：非法 ccmSid → throw（拒绝拼入命令）", () => {
+// 〔DUP1 · `设计/90 §3` 判据 2〕这条原来是「非法 ccmSid → throw」（TS 那份 `isValidSessionId`〔散文墓碑〕判的）。
+// 今天前端不判：原样推进 plan，外层 `@ccm_sid` 与 `--ccm-sid=` 由渲染侧过 `shell_quote_core::session_id_ok`。
+test("identity：ccmSid 前端不判，原样推进 plan（判它的是 Rust 渲染侧）", () => {
   const ctx: LaunchContext = { ...baseCtx, ccmSid: "; rm -rf /" };
   const plan: LaunchPlan = { transport: ctx.transport, action: ctx.action, container: ctx.container, cwd: ctx.cwd, env: [], launcher: "", args: [], wrap: [] };
-  throws(() => IDENTITY_DIMENSION.apply(plan, ctx));
+  IDENTITY_DIMENSION.apply(plan, ctx);
+  eq(plan.identity, { ccmSid: "; rm -rf /" });
 });
 
 test("env-reset：仅在 tmux send-into 且无账号时生效", () => {
@@ -93,10 +96,14 @@ test("account：注入合法 configDir", () => {
   ACCOUNT_DIMENSION.apply(plan, ctx);
   eq(plan.env, [{ kind: "export-config-dir", value: "/home/u/.claude-alt/z" }]);
 });
-test("account：非法 configDir → throw", () => {
+// 〔DUP1 · `设计/90 §3` 判据 2〕这条原来是「非法 configDir → throw」—— 判它的是 TS 那份 `isValidConfigDir`〔散文墓碑〕，
+// Rust 渲染侧 `config_dir_command_safe` 的逐项手抄。那份删了：前端不判、原样推，拼命令那一侧判
+// （`payload_tests.rs` 逐码位钉着拒绝集；带 `REFUSE:` 标，前端照拒说出来）。这里钉「前端真的不再判」。
+test("account：configDir 前端不判，原样推进 plan（判它的是 Rust 渲染侧）", () => {
   const ctx: LaunchContext = { ...baseCtx, account: { kind: "account", name: "z", configDir: "not-absolute" } };
   const plan: LaunchPlan = { transport: ctx.transport, action: ctx.action, container: ctx.container, cwd: ctx.cwd, env: [], launcher: "", args: [], wrap: [] };
-  throws(() => ACCOUNT_DIMENSION.apply(plan, ctx));
+  ACCOUNT_DIMENSION.apply(plan, ctx);
+  eq(plan.env, [{ kind: "export-config-dir", value: "not-absolute" }]);
 });
 // F05：applies 恒真（base 态也要在 CLI 语境下显式表态，不再只在 kind==="account" 时触发——
 // 这条修的是 F03 遗留的一个真实 bug，见 launch-dimensions.ts 头注/F05 计划 §2 第3条）。
@@ -120,10 +127,13 @@ test("model：apply 对合法模型名推入 export-model", () => {
   MODEL_DIMENSION.apply(plan, ctx);
   eq(plan.env, [{ kind: "export-model", value: "claude-opus-4-5-20260101" }]);
 });
-test("model：非法模型名 → throw（拒绝拼入命令）", () => {
+// 〔DUP1 · `设计/90 §3` 判据 2〕这条原来是「非法模型名 → throw」（TS 那份 `isValidModelName`〔散文墓碑〕判的）。
+// 今天前端不判：原样推，渲染侧与后端 ccm 过 `shell_quote_core::model_name_ok`（`payload_tests` · `ccm_invocation_tests` 钉）。
+test("model：模型名前端不判，原样推进 plan（判它的是 Rust 渲染侧）", () => {
   const ctx: LaunchContext = { ...baseCtx, modelOverride: "opus; rm -rf /" };
   const plan: LaunchPlan = { transport: ctx.transport, action: ctx.action, container: ctx.container, cwd: ctx.cwd, env: [], launcher: "", args: [], wrap: [] };
-  throws(() => MODEL_DIMENSION.apply(plan, ctx));
+  MODEL_DIMENSION.apply(plan, ctx);
+  eq(plan.env, [{ kind: "export-model", value: "opus; rm -rf /" }]);
 });
 // 〔LR1 · U8c-3〕这里原来有两条测 `MODEL_DIMENSION.cliFlags`（`--model <名>` · 无偏好不被问到）。
 // 前者随 TS 渲染器删了（今天在 `ccm_invocation_tests.rs::model_dimension_is_conditional_by_design`），

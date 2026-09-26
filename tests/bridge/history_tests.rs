@@ -1750,7 +1750,7 @@ fn windows_account_dirs_are_accepted_by_the_ps_side() {
 }
 
 /// ★ 非法 configDir **绝不拼进命令** —— 这条产物会进 shell，宽容一格就是注入面。
-/// 判据照抄 TS 侧 `isValidConfigDir`（`src/shell-quote.ts:41`），不重新发明。
+/// 判据与载荷渲染同一道闸（`payload.rs::config_dir_command_safe`），不重新发明。〔DUP1〕原先写的是「照抄 TS 侧 `isValidConfigDir`」〔散文墓碑〕，TS 那份删了。
 #[test]
 fn illegal_config_dir_is_refused_not_sanitized() {
     let bad = [
@@ -3076,39 +3076,39 @@ fn the_launcher_plants_the_session_identity_into_the_process_environment() {
         "新开那一支把上一条 resume 的 sid 当成了自己的身份：{new_a:?}"
     );
 
-    // ④ **铸法是共用那一份**：喂一个过不了 `relay_segment_is_safe` 白名单的 sid，
-    //   共用那份铸法会回落到 nonce；本文件里另写的第二份不会。
-    //   ⇒ 这一格是「有没有真的调那一份」唯一翻得出来的一维。
-    //
-    //   ⚠ 夹具**必须同时满足两件事**，第一版选错了（现打修的）：
-    //   ① 过得了 `local_launch_choice` 那道 sid 校验（字母数字 + `-` + `_`，**无长度上限**）——
-    //      带 `/` 的串在那一关就被拒了，整趟 `launch_local` 回 `Err`，
-    //      本条量到的是「拉起失败」而不是「身份铸法」；
-    //   ② 过不了 `relay_segment_is_safe`（同一套字符集，但**多一条 ≤128 字节**）。
-    //   ⇒ 两者的差集今天恰好只有**长度**这一维 ⇒ 用一个 129 字节的纯字母 sid。
+    // ④ **铸法是共用那一份** —— 〔DUP1〕这一格原来喂一个「过得了本机拉起那道 sid 校验、过不了中转段白名单」的 sid
+    //   （129 字节纯字母：旧校验无长度上限），看身份会不会回落到 nonce（共用那份铸法 `payload::route_key_for_session` 会，
+    //   第二份实现不会）。sid 规则收进 `shell_quote_core::session_id_ok`（`设计/90 §3` 判据 2 · `INVARIANTS §47` ①，1..=64）之后，
+    //   **本机拉起收得进来的 sid 全都过得了中转段白名单** ⇒ 那一支回落在这条路上不可达，这个行为判别器没了。
+    //   「铸法只有一份」今天由 `launcher_identity_registry_tests.rs` 数 `route_key_for_session(` 的调用点那条结构判据守着；
+    //   这里改钉两件事：那个 129 字节的 sid **在拉起那一关就被拒**（新规则确实更严），以及「收得进来 ⇒ 中转段安全」这个包含关系。
     let bad = "a".repeat(129);
-    let bad = bad.as_str();
     assert!(
-        !relay_route_core::segment_is_safe(bad),
-        "夹具选错了：这个 sid 过得了白名单 ⇒ 下面那条断言是空真"
+        launch_now(
+            &LocalPsAction::Resume(bad.clone()),
+            None,
+            None,
+            Some(&account),
+            None,
+        )
+        .is_err(),
+        "129 字节的 sid 过了本机拉起那一关 —— sid 规则没接到共享那一份"
     );
-    launch_now(
-        &LocalPsAction::Resume(bad.to_string()),
-        None,
-        None,
-        Some(&account),
-        None,
-    )
-    .expect("这一趟不该失败");
-    let dirty = identity_segment(&last_sent())
-        .expect("这一趟没有身份")
-        .to_string();
-    assert!(
-        !dirty.contains(bad),
-        "\n★★ **本文件自己又铸了一份身份** —— 一个过不了白名单的 sid 被原样当成了身份。\n\
-             共用的那份铸法（`payload::route_key_for_session`）在这一格会回落到 nonce；\n\
-             会这样答的只有第二份实现。⇒ `KP5BD1`「铸法只有一份」当场破。实得 = {dirty:?}"
-    );
+    for ok in [
+        sid,
+        sid9,
+        "a",
+        &"a".repeat(shell_quote_core::SESSION_ID_MAX),
+    ] {
+        assert!(
+            shell_quote_core::session_id_ok(ok),
+            "样本自己不合法：{ok:?}"
+        );
+        assert!(
+            relay_route_core::segment_is_safe(ok),
+            "拉起收得进来的 sid {ok:?} 过不了中转段白名单 —— 包含关系破了，④ 原来那一格又变得可达（该把它加回来）"
+        );
+    }
 
     // ⑤ 平台那一维翻得动：`windows = true` ⇒ 渲成 PowerShell 形态。
     //   写死那一格的生产后果是 Windows 上往 PowerShell 串里塞一句 POSIX `export`

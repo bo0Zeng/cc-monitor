@@ -253,6 +253,10 @@ describe("C01 边界生成物", () => {
       // 照样被门禁第六格 `generated` 的 `git diff --exit-code` 盖住。
       // ⚠ 排在最后不是分组：`files.sort()` 是默认排序，小写字母排在大写之后。
       "agent-profile-table.ts",
+      // 〔DUP1 · 第四波 4D〕**第三份值表**，源是 `src/bridge/src/backend/control/payload.rs::export_bindings_judgment_rules`：
+      // 标识符放行判定（`INVARIANTS §47` ①）里前端写入点要先说一句的那一格（模型名）—— 式子从 `shell-quote-core` 的常量现生成，
+      // 前端不手抄规则（`设计/90 §3` 判据 2）。排在这里是默认排序：小写 `j` 在 `a` 之后、`l` 之前。
+      "judgment-rules.ts",
       // 🔴 `K-R95`（09-12）：**第二份值表**，源是
       // `src/bridge/src/backend/control/launch_wire.rs::export_bindings_launch_render_facts`。
       // 三格：`ccm` 调用行每次无条件要求的能力集 · 八句降级理由的措辞 ·
@@ -268,6 +272,7 @@ describe("C01 边界生成物", () => {
       TS_RS_HEADER,
       "src/bridge/src/adapter.rs",
       "src/bridge/src/backend/control/launch_wire.rs",
+      "src/bridge/src/backend/control/payload.rs", // 〔DUP1〕`judgment-rules.ts`
     ];
     for (const f of files) {
       const src = read(`src/generated/${f}`);

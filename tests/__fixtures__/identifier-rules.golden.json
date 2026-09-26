@@ -1,0 +1,85 @@
+{
+  "_": "〔DUP1 · INVARIANTS §47 ①〕标识符放行判定的共用金样：Rust（shell-quote-core 那三条，monitor payload_judgment_rules.rs 读）与 TS（生成物 src/generated/judgment-rules.ts，tests/identifier-rules-parity.vitest.ts 读）逐条对同一份。期望是手写的，不是由被测函数算的。",
+  "session_id": {
+    "ok": [
+      "0473c3a0-1111-2222-3333-444455556666",
+      "0198f0d2-9999-4222-8333-444455556666",
+      "a",
+      "A1-b2",
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ],
+    "bad": [
+      "",
+      "-abc",
+      "--dangerously-skip-permissions",
+      "a_b",
+      "a.b",
+      "a/b",
+      "../etc",
+      "a b",
+      "a;b",
+      "a\nb",
+      "会话",
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ]
+  },
+  "model_name": {
+    "ok": [
+      "opus",
+      "sonnet",
+      "haiku",
+      "sonnet[1m]",
+      "opus[1m]",
+      "claude-opus-4-5-20260101",
+      "claude-3-5-haiku-latest",
+      "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+      "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/abcdef123456",
+      "claude-sonnet-4-5@20250929",
+      "anthropic/claude-sonnet-4-5",
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ],
+    "bad": [
+      "",
+      "-x",
+      "--model",
+      "[1m]",
+      ".opus",
+      "/x",
+      "opus 4",
+      "Claude Opus 4.5",
+      "a;b",
+      "a$b",
+      "a`b",
+      "a'b",
+      "a\"b",
+      "a\\b",
+      "a|b",
+      "a&b",
+      "a\nb",
+      "a\tb",
+      "模型",
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ]
+  },
+  "account_name": {
+    "ok": [
+      "work",
+      "z",
+      "acct-a",
+      "a_b",
+      "A1",
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ],
+    "bad": [
+      "",
+      "-a",
+      "_a",
+      "a.b",
+      "a b",
+      "a/b",
+      "a;b",
+      "账号",
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ]
+  }
+}

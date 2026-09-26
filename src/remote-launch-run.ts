@@ -40,7 +40,6 @@ import { isValidRbindToken } from "./launch-dimensions";
 type CliRenderResult = { ok: true; cmd: string } | { ok: false; reason: string };
 import type { CliRenderRequest, PayloadRenderRequest } from "./launch-cli-wire.ts";
 import type { CcmProbeResult } from "./ccm-probe.ts";
-import { sanitizeRemoteLauncher } from "./shell-quote.ts";
 import { probeCcm } from "./ccm-probe";
 import { showActionFailureToast } from "./error-toast";
 import { sendInto, type SendIntoOutcome } from "./tmux-control";
@@ -279,6 +278,19 @@ async function renderLaunchCommand(
   }
 }
 
+/**
+ * 空白 ⇒ 默认启动器（`01 §5` D3 的诚实缺省：没配就是没配，不是一个判定）。
+ *
+ * 〔DUP1 · `设计/90 §3` 判据 2〕这里原来调 `shell-quote.ts::sanitizeRemoteLauncher`〔散文墓碑〕：除了缺省这一格，
+ * 它还按 `; | & $ \` < >` 与换行把启动器**静默换成默认那个** —— 那是 Rust 载荷渲染 `payload.rs::render_payload`
+ * 那道闸的同一个字符集在 TS 里的第二份，而且处置相反（那边拒并说清，这边悄悄换掉：用户以为跑的是自己配的命令，
+ * 撞 `01 §5` D4「一条都不许静默忽略」）。今天字符集只在 Rust 判：载荷路拒（带 `REFUSE:` 标，前端说出来）；
+ * `ccm …` 调用行那条路整串进 `--launcher '<原样>'`（引号里是字面量，远端照 exec，找不到就在终端里说）。
+ */
+function launcherOrDefault(launcher: string): string {
+  return launcher.trim() || AGENT_PROFILE.defaultLauncher;
+}
+
 /** U8c-2c-2：把 `{ctx, plan, probe}` 摊成上线形状，交给 Rust 渲染 `ccm …` 调用行。
  *
  *  **`ok:false` 不是错误，是诚实降级**（§33）—— 调用方拿着 `reason` 去走载荷那条，
@@ -346,7 +358,7 @@ export function buildCliRenderRequest(
         : { kind: "base" },
     ccmSid: ctx.ccmSid ?? null,
     model: ctx.modelOverride ?? null,
-    launcher: sanitizeRemoteLauncher(plan.launcher),
+    launcher: launcherOrDefault(plan.launcher),
     defaultLauncher: AGENT_PROFILE.defaultLauncher,
   };
 }
@@ -437,13 +449,14 @@ export function buildPayloadRenderRequest(plan: LaunchPlan): PayloadRenderReques
   return {
     env: plan.env,
     cwd: plan.cwd,
-    launcher: sanitizeRemoteLauncher(plan.launcher),
+    launcher: launcherOrDefault(plan.launcher),
     args:
       plan.action.kind === "resume"
         ? [AGENT_PROFILE.resumeFlag, plan.action.sid, ...plan.args]
         : [...plan.args],
     nestedEnv: [...AGENT_PROFILE.nestedEnvVars],
     wrap: plan.wrap.map((w) => ({ order: w.order, prelude: w.prelude })),
+    resumeSid: plan.action.kind === "resume" ? plan.action.sid : null,
   };
 }
 

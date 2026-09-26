@@ -155,6 +155,8 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
       mode: "isolated",
       exists: true,
       loggedIn: true,
+      authKind: "subscription" as const,
+      authReady: true,
     };
     invokeMock.mockImplementation(withHistoryReads(withAccountReads((cmd: string, args: unknown) => {
       // ★ 会话真的跑起来了 —— 两条行里只有一条带着我们那个 token。
@@ -248,7 +250,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
           available: true,
           error: null,
           meta: { enabled: true, acctsDir: "/h/.claude-alt", manifestPath: "/h/.claude-alt/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null },
-          accounts: [{ name: "z", email: "z@x.edu", configDir: "/h/.claude-alt/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true }],
+          accounts: [{ name: "z", email: "z@x.edu", configDir: "/h/.claude-alt/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true }],
         });
       }
       return Promise.resolve(undefined);

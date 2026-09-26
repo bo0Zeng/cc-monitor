@@ -58,7 +58,7 @@ import { REPO_ROOT } from "./test-support/repo-root.ts";
  * ⚠ 改这个数之前先问：是修好了一条（往下调，欢迎），还是**又有一批没被 globals 认领的文件
  * 溜进了作用面**（那是 V7-3 的复发，去看第二条判据说了什么）。
  */
-const ESLINT_ERROR_BASELINE = 3; // 〔AL1d · 第四波 4B · 09-24〕7 → 3：`src/settings/machine-aliases.ts` 那四处 `no-empty`（原「终端集成」记住上次选择的 localStorage 写，四个空 catch）随那段代码删了；剩下三处是 `render.ts` / `shell-quote.ts` 的 `no-control-regex` 与 `tests/panorama/session-files.test.ts` 的一个未用变量
+const ESLINT_ERROR_BASELINE = 2; // 〔DUP1 · 4D〕3 → 2：`shell-quote.ts` 那处 `no-control-regex` 随 `isValidConfigDir` 删了（`设计/90 §3` 判据 2）；剩 `render.ts` 一处与 `session-files.test.ts` 一处 // 〔AL1d · 第四波 4B · 09-24〕7 → 3：`src/settings/machine-aliases.ts` 那四处 `no-empty`（原「终端集成」记住上次选择的 localStorage 写，四个空 catch）随那段代码删了；剩下三处是 `render.ts` / `shell-quote.ts` 的 `no-control-regex` 与 `tests/panorama/session-files.test.ts` 的一个未用变量
 
 /** `eslint.config.js` 与 `ci.yml` 里那两句散文声称的数 —— 它们必须与上面这个常量同一个值。 */
 const PROSE_CLAIM = /全仓(?:实测仍是)?\s*\*{0,2}(\d+)\s*(?:个|项)/g;

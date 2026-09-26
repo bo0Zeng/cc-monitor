@@ -11,7 +11,6 @@
  * 是**静默账号被抹掉**，所以钉成模块加载即崩的断言（下方 `assertDimensionOrderInvariants`），
  * 而非留作注释纪律。
  */
-import { isValidConfigDir, isValidModelName, isValidSessionId } from "./shell-quote.ts";
 import { AGENT_PROFILE } from "./agent-profile.ts";
 import type { LaunchDimension } from "./launch-types.ts";
 import { copyText } from "./copy-table";
@@ -23,9 +22,8 @@ export const IDENTITY_DIMENSION: LaunchDimension = {
   order: 5,
   applies: (ctx) => ctx.ccmSid !== undefined,
   apply: (plan, ctx) => {
-    if (!isValidSessionId(ctx.ccmSid!)) {
-      throw new Error(copyText("launchDimensions.bad.ccmSid", { value: JSON.stringify(ctx.ccmSid) }));
-    }
+    // 〔DUP1 · `设计/90 §3` 判据 2〕这里原来先过 TS 的 `isValidSessionId`〔散文墓碑〕—— 今天原样推：
+    // 渲染侧判（外层 `@ccm_sid` · `--ccm-sid=` 都过 `shell_quote_core::session_id_ok`，判不过拒并说清）。
     plan.identity = { ccmSid: ctx.ccmSid! };
   },
 };
@@ -63,9 +61,9 @@ export const ACCOUNT_DIMENSION: LaunchDimension = {
   applies: () => true,
   apply: (plan, ctx) => {
     if (ctx.account.kind !== "account") return;
-    if (!isValidConfigDir(ctx.account.configDir)) {
-      throw new Error(copyText("launchDimensions.bad.configDir", { value: JSON.stringify(ctx.account.configDir) }));
-    }
+    // 〔DUP1 · `设计/90 §3` 判据 2〕这里原来先过一遍 TS 的 `isValidConfigDir`〔散文墓碑〕再推 —— 那是
+    // `payload.rs::config_dir_command_safe` 的逐项手抄。今天原样推：拼进命令的那一侧（Rust 载荷渲染
+    // `render_env_ops`）自己判，判不过带 `REFUSE:` 标拒、前端照拒说出来；`ccm` 那条路只带账号**名**，configDir 不上线。
     plan.env.push({ kind: "export-config-dir", value: ctx.account.configDir });
   },
   // 〔LR1 · U8c-3〕这里原来还有 `cliFlags`（`--base` / `--account <名>` / 名字缺失 ⇒ `null`）与
@@ -94,9 +92,8 @@ export const MODEL_DIMENSION: LaunchDimension = {
   applies: (ctx) => !!ctx.modelOverride,
   apply: (plan, ctx) => {
     if (!ctx.modelOverride) return;
-    if (!isValidModelName(ctx.modelOverride)) {
-      throw new Error(copyText("launchDimensions.bad.model", { value: JSON.stringify(ctx.modelOverride) }));
-    }
+    // 〔DUP1 · `设计/90 §3` 判据 2〕这里原来先过 TS 的 `isValidModelName`〔散文墓碑〕（它还会拒 `sonnet[1m]`、Bedrock / Vertex 名）。
+    // 今天原样推：规则只有一份（`shell_quote_core::model_name_ok`），渲染侧与后端 ccm 在拼进命令之前判。
     plan.env.push({ kind: "export-model", value: ctx.modelOverride });
   },
   // 〔LR1 · U8c-3〕`cliFlags`（`--model <名>`）与 `requiredCaps`（`["model"]`）两格随 TS 渲染器删了；

@@ -151,3 +151,54 @@ fn the_ccm_argv_is_parsed_in_exactly_one_place() {
              别处只许 `use` 它。在第二处敲一遍字面量，两份迟早分叉（`K-R50` 的成因）。"
     );
 }
+
+/// 〔DUP1 · `INVARIANTS §47` ①〕resume 的 sid 与 `--ccm-sid` 是标识符：进容器路那条 shell 串 / 交给 agent 之前先过
+/// `shell_quote_core::session_id_ok`（全仓唯一一份，`设计/01 §5` D1）——**正反各一格**（§47「拒过头也算违反」）。
+/// 要求住址：`INVARIANTS §47` ①「字符集白名单（闭集，默认拒）＋ 不许 `-` 开头（选项注入）＋ 有长度上界的就钉上界」。
+#[test]
+fn a_session_id_is_judged_before_it_goes_anywhere() {
+    let uuid = "0473c3a0-1111-2222-3333-444455556666";
+    assert_eq!(ok(&["resume", uuid]).sid, uuid);
+    assert_eq!(ok(&["--resume", uuid, "--ccm-sid", uuid]).ccm_sid, uuid);
+    for bad in ["a_b", "a;b", "a.b"] {
+        assert!(
+            err(&["resume", bad]).contains("不合形状"),
+            "坏 sid {bad:?} 放行了"
+        );
+    }
+    // `--resume=-x`：位置参数那一关挡不住 `=` 形，得由形状判定挡。
+    assert!(err(&["--resume=-x"]).contains("不合形状"));
+    assert!(err(&["new", "--ccm-sid", "a_b"]).contains("不合形状"));
+    assert!(err(&["resume", &"a".repeat(65)]).contains("不合形状"));
+}
+
+/// 〔DUP1 · `INVARIANTS §47` ①〕`--model`：真实模型名全过、选项形 / shell 形拒（`shell_quote_core::model_name_ok`），**正反各一格**。
+#[test]
+fn a_model_name_is_judged_before_it_goes_anywhere() {
+    assert_eq!(ok(&["new", "--model", "sonnet[1m]"]).model, "sonnet[1m]");
+    assert_eq!(
+        ok(&["new", "--model", "claude-sonnet-4-5@20250929"]).model,
+        "claude-sonnet-4-5@20250929"
+    );
+    // `=` 形：`--model -x` 那样分开写会先在取值那一关被当成漏了参数拒，走不到形状判定。
+    for bad in ["-x", "opus 4", "a;b"] {
+        let arg = format!("--model={bad}");
+        assert!(
+            err(&["new", &arg]).contains("用不了"),
+            "坏模型名 {bad:?} 放行了"
+        );
+    }
+}
+
+/// 〔DUP1 · `INVARIANTS §47` ①〕`--account`：与建账号的那个工具逐字同的那一份判（`shell_quote_core::account_name_ok`），**正反各一格**。
+#[test]
+fn an_account_name_is_judged_before_it_goes_anywhere() {
+    assert_eq!(ok(&["new", "--account", "work"]).account, "work");
+    for bad in ["a.b", "_a", "a b"] {
+        let arg = format!("--account={bad}");
+        assert!(
+            err(&["new", &arg]).contains("用不了"),
+            "坏账号名 {bad:?} 放行了"
+        );
+    }
+}

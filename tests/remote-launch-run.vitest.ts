@@ -31,7 +31,7 @@ import {
   // 🔴 `K-R109` `KR109D3`：wire 上那两态同形，是「兜底那条路走得到」的第一环。
   buildCliRenderRequest } from "../src/remote-launch-run";
 import { planAttach } from "../src/launch-requests";
-import { renderLaunchPayloadStub } from "./test-support/launch-render-ipc-stub.ts";
+import { renderLaunchPayloadStub, STUB_REFUSE_TAG } from "./test-support/launch-render-ipc-stub.ts";
 import type { PayloadRenderRequest } from "../src/launch-cli-wire.ts";
 
 const toastMock = showActionFailureToast as unknown as ReturnType<typeof vi.fn>;
@@ -389,10 +389,24 @@ describe("F41 runRemoteResume", () => {
     expect(toastMock.mock.calls[0][0]).toBe("拉起失败，已复制 resume 命令");
   });
 
-  it("非法 sid → 构造报错 toast,不 invoke", async () => {
-    invokeMock.mockClear();
+  // 〔DUP1 · `设计/90 §3` 判据 2〕这条原来断「非法 sid ⇒ 前端构造那一步就拒、一次 invoke 都不发」（TS 那份
+  // `isValidSessionId`〔散文墓碑〕判的）。今天前端不判 sid：请求照发给渲染侧、sid 在 `resumeSid` 单报一次，
+  // 渲染侧（`launch_wire.rs`）过 `shell_quote_core::session_id_ok` 拒并打 `REFUSE:` 标 ⇒ 构造报错 toast、终端不起。
+  // 桩不模拟校验闸（见 `launch-render-ipc-stub.ts` 顶注）⇒ 这里直接 mock 一次带标的拒。
+  it("非法 sid 前端不判：请求照发（resumeSid 单报），渲染侧拒 ⇒ 构造报错 toast、不起终端", async () => {
+    const seen: PayloadRenderRequest[] = [];
+    invokeMock.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null);
+      if (cmd === "probe_ccm_cli") return Promise.resolve({ installed: false, version: null, capabilities: [] });
+      if (cmd === "render_launch_payload") {
+        seen.push((args as { req: PayloadRenderRequest }).req);
+        return Promise.reject(`${STUB_REFUSE_TAG} 会话 ID "--evil" 不合形状`);
+      }
+      return Promise.resolve(undefined);
+    });
     await runRemoteResume("devbox", "--evil", "/p", "");
-    expect(invokeMock).not.toHaveBeenCalled();
+    expect(seen.map((r) => r.resumeSid)).toEqual(["--evil"]);
+    expect(invokeMock.mock.calls.map((c) => c[0])).not.toContain("launch_remote_terminal");
     expect(toastMock.mock.calls[0][0]).toBe("生成不了 resume 命令");
   });
 });
