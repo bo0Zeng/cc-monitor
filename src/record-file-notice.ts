@@ -44,7 +44,7 @@ function sayOf(change: RecordFileChange): string {
   }
 }
 
-/** 画 / 换那一句。
+/** 画 / 换那一句。 */
 export function showRecordFileNotice(streamEl: HTMLElement, change: RecordFileChange): void {
   let el = noticeOf(streamEl);
   if (!el) {
@@ -57,6 +57,30 @@ export function showRecordFileNotice(streamEl: HTMLElement, change: RecordFileCh
   el.textContent = sayOf(change);
   if (change === "gone") goneShown.add(streamEl);
   else goneShown.delete(streamEl);
+}
+
+/**
+ * 主窗口的接线（`main.ts` 装进 `EventHandlers`）：只要一个「会话 → 它的流容器」的查法。
+ * - `onSessionFileNotice`：认得的取值 ∧ 有这个 tab ⇒ 画；否则不画、不抛。
+ * - `afterLine`：这个会话又来了一行（`TabManager.onLine` 之后调）⇒ 「不见了」那一句收掉。
+ * ⚠ 只在主窗口接：本模块带一份 CSS Module，从 `tabs.ts`（主窗口与独立查看窗共用）引进来，样式会落进共用块、
+ *   排到全局样式前面（`entry-graphs` 次序判据当场红过一次）。
+ */
+export function recordFileWiring(streamElOf: (sessionId: string) => HTMLElement | null): {
+  onSessionFileNotice: (sessionId: string, change: string) => void;
+  afterLine: (sessionId: string) => void;
+} {
+  return {
+    onSessionFileNotice: (sessionId, change) => {
+      if (!isRecordFileChange(change)) return;
+      const el = streamElOf(sessionId);
+      if (el) showRecordFileNotice(el, change);
+    },
+    afterLine: (sessionId) => {
+      const el = streamElOf(sessionId);
+      if (el) clearGoneNotice(el);
+    },
+  };
 }
 
 /** 这个会话又来了一行 ⇒ 「不见了」那一句收掉（别的那两句不动）。 */

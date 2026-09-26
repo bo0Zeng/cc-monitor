@@ -207,6 +207,16 @@
       "zh": "现在看不见那台机器，说不清这个会话还在不在",
       "args": []
     },
+    "sessionState.deleteLive.confirm": {
+      "kind": "body",
+      "zh": "会话「{label}」还在跑。\n\n删掉之后 Claude 还会往旧文件里写，这些内容之后 resume 不到。仍要删除？",
+      "args": ["label"]
+    },
+    "sessionState.deleteUnknown.confirm": {
+      "kind": "body",
+      "zh": "说不清会话「{label}」还在不在跑。\n\n它若还在跑，删掉之后 Claude 还会往旧文件里写，这些内容之后 resume 不到。仍要删除？",
+      "args": ["label"]
+    },
     "sessionState.recordFile.gone": {
       "kind": "body",
       "zh": "记录文件不见了。它被删掉或改了名，会话本身还在跑；文件回来后接着显示。",

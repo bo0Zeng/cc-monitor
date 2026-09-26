@@ -32,6 +32,7 @@ import { CcBusView } from "./views/cc-bus-view";
 import { GridMonitorView } from "./views/grid-monitor";
 import { CommandBarView, type Command } from "./views/command-bar";
 import { UsageHud } from "./usage-hud";
+import { recordFileWiring } from "./record-file-notice";
 import { bindErrorToast, showActionFailureToast } from "./error-toast";
 import { bindRemoteHealthToast } from "./remote-health";
 // F83（#39）：顶栏 SFTP 入口——按远端主机数 0/1/N 分支打开现有 SFTP 模态。
@@ -440,7 +441,11 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // 历史浏览器入口 —— 顶栏右侧，紧邻设置按钮左边
   // v2.5+: HistoryView 不再接管 streamRoot，自挂 body 作 fixed overlay
+  // 〔FW1 · 第四波 4D · D-d〕记录文件不见了 / 被改过 ⇒ 那个 tab 顶上说一句（只在主窗口接，理由见 `record-file-notice.ts`）。
+  const recordFile = recordFileWiring((sid) => tabs.streamElOf(sid));
   const historyView = new HistoryView();
+  // 〔FW1 · 第四波 4D · D-e〕删会话前看活不活：条目自己那一格可能是列表拉下来那一刻的，tab 栏是此刻的。
+  historyView.liveInTabs = (sid) => tabs.isSessionLive(sid);
   const historyTrigger = document.createElement("button");
   historyTrigger.type = "button";
   historyTrigger.className = "history-trigger";
@@ -749,7 +754,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   // （它就是这些订阅的就绪点：后端先重发宣告、再按 credit 交留存、再对账 —— 顺序见 `event_replay·rs::ready_point`）。
   await bindEvents({
     // P5.2 B 重构：onLine 不再带 source 参数（前端按 seq timeline 排，不分 batch/live）
-    onLine: (e) => tabs.onLine(e),
+    onLine: (e) => {
+      tabs.onLine(e);
+      recordFile.afterLine(e.session_id); // 〔FW1 · D-d〕又来了一行 ⇒ 「记录文件不见了」那一句收掉
+    },
     onSessionEnded: (sessionId) => tabs.archiveTab(sessionId),
     // audit-fixes F03.2：远端 claude 退但 tmux 会话仍在 → 灰灯（idle-tmux 第三态，非归档）。
     onSessionIdle: (sessionId) => tabs.markTmuxIdle(sessionId),
@@ -757,7 +765,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container),
     onOriginSessionsListed: (origin) => tabs.markOriginSeen(origin),
     // 〔FW1 · 第四波 4D · D-d〕记录文件不见了 / 被改过已从头重读 ⇒ 那个 tab 顶上说一句。
-    onSessionFileNotice: (sessionId, change) => tabs.noteRecordFile(sessionId, change),
+    onSessionFileNotice: recordFile.onSessionFileNotice,
     // 〔GP1 · 第四波〕那台机器看不见了 ⇒ 说不清（不是已结束）。
     onSessionUnseen: (sessionId) => tabs.markUnseen(sessionId),
     // 会话复活（resume）：后端 liveness 门控后才发，复活已归档的本地 Tab，免 F5。
