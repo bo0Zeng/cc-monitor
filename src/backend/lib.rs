@@ -493,7 +493,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p3o-upstream-endpoint**（2026-09-25，第四波 4D US1 合并那一拍）：子命令 ＋2 —— `launch-endpoint` · `apikey-routing`
 /// （上游选择出成品：这一发走哪、注入什么由后端答，monitor 只转交执行）。＋ 行为：`apikey-read` 应答去掉 `rows`；
 /// 路由语法 / 端口 / 钥匙路径改住共享 crate `relay-route-core`；无账号的本机会话在全量注入下走 `/t/…/_/…`（开关仍默认关）。
-pub const BUILD_ID: &str = "p3o-upstream-endpoint";
+///
+/// ★★★ **p3p-drain-atomic-stop**（2026-09-25，第四波 4D HX1 合并那一拍）：行为 —— 流模式三个退出口先关闸、等在跑的阻塞命令做完再退
+/// （新来的阻塞命令回 `shutting_down`）· 覆盖写改「同目录临时件 → 沿用权限位 → 改名上位」原子化 · tracing 只在 stderr 是终端时上色。
+/// 子命令没变，照 p1v 先例不加历史行。
+pub const BUILD_ID: &str = "p3p-drain-atomic-stop";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
