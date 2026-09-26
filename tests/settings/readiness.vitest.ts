@@ -238,7 +238,8 @@ describe("N-F2 NF2D3：本机全绿 + 没有远端 ⇒ 那张清单该整块消�
       "accounts:unknown",
     ]);
     const s = summarizeGaps(gaps);
-    expect(s).toBe("3 项还没测过");
+    // 〔W5-VIS · 缺口三〕后端那一格是必需的，另两格可选 —— 摘要按轻重分开说。
+    expect(s).toBe("必需：1 项还没测过；可选：2 项还没测过");
   });
 
   it("★ 诚实边界：非 Windows 本机还剩 `ccm` 一格 —— 本机的 ccm 至今没有任何写点", () => {
@@ -277,14 +278,44 @@ describe("summarizeGaps —— 措辞必须区分「缺」与「没测过」", (
 
   it("两类都有时分开说", () => {
     expect(summarizeGaps([mk("missing"), mk("unknown"), mk("unknown")])).toBe(
-      "1 项确认缺，2 项还没测过",
+      "可选：1 项确认缺，2 项还没测过",
     );
   });
 
   it("只有没测过时**不说「缺」**", () => {
     const s = summarizeGaps([mk("unknown"), mk("unknown")])!;
-    expect(s).toBe("2 项还没测过");
+    expect(s).toBe("可选：2 项还没测过");
     expect(s).not.toContain("缺");
+  });
+
+  /**
+   * 〔W5-VIS · `设计/15 §4.5` 缺口三〕逐字：「**摘要不分严重度** —— blocking 的后端与 optional 的 ccm
+   * 在摘要那行读起来一模一样（信息在，只是摘要没说）」。四种组合逐格相等（两档各自的缺 / 没测过分开数，
+   * 只有一档就只说那一档，必需那一档排在前面）。
+   */
+  it("★ W5-VIS 缺口三：摘要按轻重分开说（必需在前，只有一档就只说一档）", () => {
+    const at = (severity: Gap["severity"], kind: Gap["kind"]): Gap => ({
+      origin: "devbox",
+      facet: severity === "blocking" ? "backend" : "ccm",
+      kind,
+      consequence: "x",
+      severity,
+    });
+    const table: [Gap[], string][] = [
+      [[at("blocking", "missing")], "必需：1 项确认缺"],
+      [[at("optional", "unknown")], "可选：1 项还没测过"],
+      [
+        [at("optional", "unknown"), at("blocking", "unknown"), at("blocking", "missing")],
+        "必需：1 项确认缺，1 项还没测过；可选：1 项还没测过",
+      ],
+      [
+        [at("blocking", "unknown"), at("optional", "missing"), at("optional", "unknown")],
+        "必需：1 项还没测过；可选：1 项确认缺，1 项还没测过",
+      ],
+    ];
+    for (const [gaps, want] of table) expect(summarizeGaps(gaps)).toBe(want);
+    // 正控：旧形（不分轻重）说不出这几格 —— 一档里全是必需时也不许读成「可选」。
+    expect(summarizeGaps([at("blocking", "missing")])).not.toContain("可选");
   });
 
   it("空列表 → null", () => {

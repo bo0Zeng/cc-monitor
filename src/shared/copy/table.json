@@ -5625,6 +5625,21 @@
       "zh": "本机",
       "args": []
     },
+    "readiness.gaps.blocking": {
+      "kind": "body",
+      "zh": "必需：{parts}",
+      "args": ["parts"]
+    },
+    "readiness.gaps.optional": {
+      "kind": "body",
+      "zh": "可选：{parts}",
+      "args": ["parts"]
+    },
+    "readiness.gaps.groupSep": {
+      "kind": "body",
+      "zh": "；",
+      "args": []
+    },
     "readiness.gaps.sep": {
       "kind": "body",
       "zh": "，",
