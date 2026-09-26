@@ -280,6 +280,8 @@ const SCAN: &[&str] = &[
     "tests/backend/main_stream_flag_tests.rs",
     "tests/backend/main_window_raise_guard.rs",
     "tests/backend/no_timer_guard.rs",
+    // 〔STC〕会话事实的口径与续传（纯字节）＋ 一条异源对拍读生成物 `src/generated/agent-profile-table.ts` ⇒ 判别器判扫描层。
+    "tests/backend/observe/facts_query_tests.rs",
     "tests/backend/panorama_locus_guard.rs",
     "tests/backend/platform/cfgless_guard.rs",
     "tests/backend/platform/fallback_guard.rs",
