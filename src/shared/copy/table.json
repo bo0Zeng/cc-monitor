@@ -4607,11 +4607,6 @@
       "zh": "非法 CCM_RBIND_TOKEN（要 32 位十六进制），不能拼进命令：{value}",
       "args": ["value"]
     },
-    "launchDimensions.bad.model": {
-      "kind": "error",
-      "zh": "非法模型名，不能拼进命令：{value}",
-      "args": ["value"]
-    },
     "launchMenu.account.base": {
       "kind": "action",
       "zh": "不指定账号 · 用远端 ~/.claude 那套凭据",
@@ -11404,6 +11399,11 @@
       "zh": "会话标记 {value} 不合形状（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
       "args": ["value"]
     },
+    "rsPayload.model.bad": {
+      "kind": "error",
+      "zh": "模型名 {value} 用不了（字母数字开头，只许字母数字与 . _ - : @ / [ ]，最长 256）",
+      "args": ["value"]
+    },
     "rsPayload.cwd.bad": {
       "kind": "error",
       "zh": "工作目录 {value} 不能用。要绝对路径，不含 .. 段、换行或 NUL",
@@ -14122,6 +14122,11 @@
       "zh": "会话标记 {value} 不合形状（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
       "args": ["value"]
     },
+    "rsCcmInvocation.refusal.idModel": {
+      "kind": "error",
+      "zh": "模型名 {value} 用不了（字母数字开头，只许字母数字与 . _ - : @ / [ ]，最长 256）",
+      "args": ["value"]
+    },
     "rsCcmInvocation.refusal.freeTextCwd": {
       "kind": "error",
       "zh": "工作目录 {value} 用不了。要绝对路径，不含 .. 段、换行或 NUL",
@@ -16014,6 +16019,11 @@
       "kind": "error",
       "zh": "会话标记 {sid} 不合形状（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
       "args": ["sid"]
+    },
+    "beArgv.validate.badModel": {
+      "kind": "error",
+      "zh": "模型名 {model} 用不了（字母数字开头，只许字母数字与 . _ - : @ / [ ]，最长 256）",
+      "args": ["model"]
     },
     "beArgv.validate.noResume": {
       "kind": "error",

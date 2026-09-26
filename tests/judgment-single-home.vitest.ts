@@ -232,12 +232,14 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J17: {
     what: "模型名能不能交出去（`ANTHROPIC_MODEL` · `--model`）",
+    // 〔DUP1 子步 7 · 主会话 09-26「两侧同一份、住共享 crate，真实模型名都放行」〕唯一住址 `shell-quote-core::model_name_ok`；
+    //   monitor 载荷 `ExportModel` · `ccm …` 的 `--model` · 后端 ccm argv 调它。TS 手写那份删：设置里写入点那一句读
+    //   **生成物** `src/generated/judgment-rules.ts`（生成物目录不在本判据的扫描面里 —— 它是规则的投影，不是孪生），
+    //   两侧由共用金样 `identifier-rules.golden.json` 逐条对。
     homes: ["shell-quote-core::model_name_ok"],
-    status: "open",
+    status: "zero",
     defs: ["isValidModelName"],
-    needles: [{ text: "[A-Za-z0-9._-]{1,128}", count: 1 }],
-    owner: "DUP1 子步 7",
-    why: "TS 那份会拒 sonnet[1m] 与 Bedrock / Vertex 名；Rust 侧此前零判定（主会话 09-26 交：两侧同一份、住共享 crate）",
+    needles: [{ text: "[A-Za-z0-9._-]{1,128}", count: 0 }],
   },
   J18: {
     what: "账号名（`--account <名>`）",

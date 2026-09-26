@@ -2018,3 +2018,31 @@ fn a_resume_sid_and_a_session_mark_are_judged_before_they_enter_the_payload() {
     let e = render_launch_payload(req(&["--resume", uuid], Some(uuid), Some("-x"))).unwrap_err();
     assert!(e.starts_with(REFUSE_TAG), "坏 @ccm_sid 该拒：{e}");
 }
+
+/// 〔DUP1 · `INVARIANTS §47` ①〕载荷的 `export ANTHROPIC_MODEL=`：共享那一份判（`shell_quote_core::model_name_ok`），
+/// 真实模型名全过、坏的带「拒」标 —— **正反各一格**。这一格原来「刻意宽容渲染」、只靠 quote（QUOTE_SITES 第四列那一条）。
+#[test]
+fn the_model_export_passes_real_names_and_refuses_the_rest() {
+    let render = |m: &str| {
+        render_payload(&PayloadSpec {
+            env: &[EnvOp::ExportModel { value: m }],
+            cwd: None,
+            launcher: "claude",
+            args: &[],
+            wrap: &[],
+        })
+    };
+    for good in [
+        "opus",
+        "sonnet[1m]",
+        "claude-sonnet-4-5@20250929",
+        "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    ] {
+        let p = render(good).unwrap_or_else(|e| panic!("真实模型名被拒了：{good:?} ⇒ {e}"));
+        assert!(p.contains("export ANTHROPIC_MODEL="), "{p}");
+    }
+    for bad in ["-x", "opus 4", "a;b", ""] {
+        let e = render(bad).unwrap_err();
+        assert!(e.starts_with(REFUSE_TAG), "坏模型名该带拒标：{bad:?} ⇒ {e}");
+    }
+}

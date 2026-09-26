@@ -7,7 +7,7 @@
  * 不再「读整份 → 改一个键 → 整份写回」（E §E1：两次读-改-写一交错，后写的整份盖掉先写的键）。
  */
 import { loadConfig, patchConfig, removeAt, setAt } from "./config";
-import { isValidModelName } from "./shell-quote";
+import { modelNameOk } from "./generated/judgment-rules";
 import { copyText } from "./copy-table";
 
 const CFG_KEY = "accounts";
@@ -63,7 +63,10 @@ export async function getModelForAccount(name: string): Promise<string | undefin
  *  命令"的 toast，且设置面板的输入框不会标出"当前值非法"，很难把两者联系起来。fail-closed：
  *  非法即 throw，调用方（UI）负责 catch 并提示，绝不静默落盘。 */
 export async function setModelForAccount(name: string, model: string | null): Promise<void> {
-  if (model && !isValidModelName(model)) {
+  // 〔DUP1 · `设计/90 §3` 判据 2〕写入点先说一句（用户在设置里敲完就知道，不必等下次起会话）—— 但**不手抄规则**：
+  // 读 monitor 从 `shell_quote_core::model_name_ok` 那组常量现生成的式子（`src/generated/judgment-rules.ts`），
+  // 两侧由共用金样逐条对。原先这里调 TS 自己那份 `isValidModelName`〔散文墓碑〕（会拒 `sonnet[1m]`、Bedrock / Vertex 名）。
+  if (model && !modelNameOk(model)) {
     throw new Error(copyText("accounts.setModel.invalid", { model: JSON.stringify(model) }));
   }
   // 〔CFG1〕只动 `accounts.modelByAccount.<name>` 这一条路径：别的账号、`defaultName` 都不经这里。

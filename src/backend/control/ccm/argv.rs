@@ -369,6 +369,12 @@ fn validate(o: &Opts) -> Result<(), Die> {
             &[("sid", &format!("{:?}", o.ccm_sid))],
         ));
     }
+    if !o.model.is_empty() && !shell_quote_core::model_name_ok(&o.model) {
+        return die(copy_text(
+            "beArgv.validate.badModel",
+            &[("model", &format!("{:?}", o.model))],
+        ));
+    }
     if o.action == Action::Resume && crate::control::ccm::resume_flag(&o.agent).is_none() {
         return die(copy_text(
             "beArgv.validate.noResume",

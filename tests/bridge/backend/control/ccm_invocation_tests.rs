@@ -856,3 +856,31 @@ fn an_identifier_is_refused_before_it_becomes_a_ccm_argument() {
         })
     );
 }
+
+/// 〔DUP1 · `INVARIANTS §47` ①〕`--model <名>`：真实模型名全过（主会话 09-26「真实模型名都放行」），
+/// 选项形 / shell 形拒 —— 判定住 `shell_quote_core::model_name_ok`，**正反各一格**。
+#[test]
+fn a_model_name_is_refused_before_it_becomes_a_ccm_argument() {
+    let with = |m: &'static str| {
+        let mut s = base_spec();
+        s.model = Some(m);
+        render_ccm_invocation(&s, &caps_all(), true)
+    };
+    for good in [
+        "sonnet[1m]",
+        "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        "claude-sonnet-4-5@20250929",
+    ] {
+        let cmd = with(good).unwrap_or_else(|e| panic!("真实模型名被拒了：{good:?} ⇒ {e:?}"));
+        assert!(cmd.contains("--model"), "{cmd}");
+    }
+    for bad in ["-x", "opus 4", "a;b"] {
+        assert_eq!(
+            with(bad),
+            Err(Refusal::IdentifierRefused {
+                slot: IdentifierSlot::Model,
+                value: format!("{bad:?}"),
+            })
+        );
+    }
+}

@@ -153,7 +153,7 @@ export function planLauncher(
 // 〔DUP1 · `设计/90 §3` 判据 2〕这里原来有 `validateLocalLaunch`〔散文墓碑〕—— 本机路径在发起 IPC 之前的「前置校验」，
 // 它唯一的一格是 sid 字符集（TS `isValidSessionId`〔散文墓碑〕）。本机拉起那条路上 Rust 侧自己判同一件事
 // （`history.rs` 本机决策那一处，今天调共享那一份 `shell_quote_core::session_id_ok`）⇒ 前端这份删了，四个调用点一起去掉。
-// R07 那段「为什么不真接上本地 IR」的论证原文住 `src/doc/INVARIANTS.md` §36。
+// R07 那段「为什么不真接上本地 IR」的论证原文住 `src/doc/INVARIANTS.md` §36（那一条只绑 Windows 分支）。
 
 /** 原先对应 `remote-launch.ts` 的 `buildAttachCmd`（〔LR2〕那五个 builder 已删，生产走 `buildLaunchRenderRequest` → Rust）：接回一个已存在的 tmux 会话，不启动任何东西。
  *

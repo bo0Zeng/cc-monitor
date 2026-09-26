@@ -435,6 +435,7 @@ const SCAN: &[&str] = &[
     "tests/fork-flow.vitest.ts",
     "tests/generated-boundary-guard.vitest.ts",
     "tests/gray-light-wiring.vitest.ts",
+    "tests/identifier-rules-parity.vitest.ts", // 〔DUP1〕读共用金样（仓内文本）⇒ 扫描层
     "tests/import-cycle-guard.vitest.ts",
     "tests/ipc/chan.vitest.ts",
     "tests/ipc/commands.vitest.ts",
@@ -583,6 +584,8 @@ const INTEGRATION: &[&str] = &[
     // 〔MG1 合 RK1〕SCAN → INTEGRATION：RK1 加的 `the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_home`
     // 铺夹具家目录、起真 `sh` 展开 `$(cat …)` ⇒ 判别器判集成层，照挪。
     "tests/bridge/backend/control/payload_tests.rs",
+    // 〔DUP1〕标识符放行判定的生成物（写 `src/generated/judgment-rules.ts`）＋ 共用金样 ⇒ 写真文件 ⇒ 集成层。
+    "tests/bridge/backend/control/payload_judgment_rules.rs",
     "tests/bridge/backend_layering.rs",
     "tests/bridge/bind_tests.rs",
     "tests/bridge/capability_registry_tests.rs",

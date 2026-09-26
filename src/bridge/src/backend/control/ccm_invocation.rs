@@ -77,6 +77,8 @@ pub enum IdentifierSlot {
     Sid,
     /// `--ccm-sid=`（身份标记；同一条 sid 规则）。
     CcmSid,
+    /// `--model <名>`（`shell_quote_core::model_name_ok`）。
+    Model,
 }
 
 /// [`Refusal::FreeTextRefused`] 是哪一格（各有各的一句话，文案走表）。
@@ -134,6 +136,10 @@ impl Refusal {
                 slot: IdentifierSlot::CcmSid,
                 value,
             } => copy_text("rsCcmInvocation.refusal.idCcmSid", &[("value", value)]),
+            Refusal::IdentifierRefused {
+                slot: IdentifierSlot::Model,
+                value,
+            } => copy_text("rsCcmInvocation.refusal.idModel", &[("value", value)]),
         }
     }
 }
@@ -450,6 +456,13 @@ pub fn render_ccm_invocation(
         return Err(Refusal::IdentifierRefused {
             slot: IdentifierSlot::CcmSid,
             value: format!("{s:?}"),
+        });
+    }
+    // 〔DUP1 · §47 ①〕模型名（`--model <名>` 由下面的 model 维度吐）：共享那一份判，前端那份删了。
+    if let Some(m) = spec.model.filter(|m| !shell_quote_core::model_name_ok(m)) {
+        return Err(Refusal::IdentifierRefused {
+            slot: IdentifierSlot::Model,
+            value: format!("{m:?}"),
         });
     }
     if let Container::Tmux { name, .. } = spec.container {
