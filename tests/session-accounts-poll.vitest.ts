@@ -1,12 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
-import { readFileSync } from "node:fs";
 import {
   HOST_FANOUT_LIMIT,
   mapWithLimit,
   collectAccountRows,
   createEventRefresher,
   accountsChangedItems,
-  ACCOUNTS_CHANGED_KIND,
   type HostFetchers,
 } from "../src/session-accounts-poll";
 import type { Item } from "../src/ipc/chan";
@@ -263,7 +261,8 @@ describe("createEventRefresher（C1：替掉 10 秒轮询）", () => {
 /**
  * 〔DL1〕**账号那一格经通道订**（`accounts-changed`）—— 替掉裸事件 `remote-backend-ready`。
  * 订阅本身与会话行 · tap 同一处（`events.ts::bindEvents`，那一半的判据在 `events-tap.vitest.ts` 的 DL1 那组）；
- * 这里判「一批格是什么意思」（`accountsChangedItems`，纯函数）与两处接线。
+ * 这里判「一批格是什么意思」（`accountsChangedItems`，纯函数）。读源码的两条（kind 串两侧对拍 · main.ts 零裸事件）
+ * 住 `generated-boundary-guard.vitest.ts` 的 DL1 那组（扫描层，`test_tiers` 分区：本文件留在单元层）。
  *
  * 守的要求：`设计/01 §2.2`「前端只有两个动作：`call` · `subscribe`」；`设计/05 §3.3.5`（订阅不失败，看不见 ⇒ `unseen`）·
  * `§3.3.4`（丢必须说：`gap`）。设计与读数：`调研/第四波记录/DL1.md §3`。期望手写。
@@ -287,25 +286,4 @@ describe("accountsChangedItems（DL1：remote-backend-ready 迁 subscribe）", (
     expect(accountsChangedItems([unseen, closed])).toEqual({ changed: false, frames: 0 });
   });
 
-  it("★ kind 串两侧相等：TS 常量 == Rust `event_replay.rs::ACCOUNTS_CHANGED_KIND`（从 Rust 源码抠，异源）", () => {
-    const rs = readFileSync("src/bridge/src/event_replay.rs", "utf8");
-    // 变量名别叫 `m`：`scanning-guard-registry` 按名字认「磁盘语料变量」，同文件里别处的 `m.includes("…")` 会被误算进棘轮。
-    const pinned = rs.match(/pub const ACCOUNTS_CHANGED_KIND: &str = "([^"]+)";/);
-    expect(pinned, "Rust 那一侧的常量抠不出来").not.toBeNull();
-    expect(ACCOUNTS_CHANGED_KIND).toBe(pinned![1]);
-  });
-
-  it("★ 生产段零处再听裸事件 `remote-backend-ready`；main.ts 恰好一处经 `bindEvents` 订它（零命中带正控）", () => {
-    const strip = (t: string): string => t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
-    const main = strip(readFileSync("src/main.ts", "utf8"));
-    // 按处数比（相等），不用裸 `.includes`（`scanning-guard-registry` 那条棘轮只许降）。
-    const count = (hay: string, needle: string): number => hay.split(needle).length - 1;
-    const dead = ["remote", "backend", "ready"].join("-");
-    expect(count(main, `"${dead}"`), "main.ts 又在听那个裸事件").toBe(0);
-    expect(count(main, "accounts: machines,"), "main.ts 不是恰好一处订 accounts-changed（`bindEvents` 的 `accounts`）").toBe(1);
-    expect(count(main, "    onAccountsChanged,\n"), "main.ts 没把处理器交给 `bindEvents`").toBe(1);
-    // 正控：同一个剥法与数法认得出一处真在的裸 listen、认得出一处现造的死事件。
-    expect(count(main, 'listen("remote-session-added"'), "正控失败：数法认不出一处真在的 listen").toBe(1);
-    expect(count(strip(`listen("${dead}", f);`), `"${dead}"`), "正控失败：剥法把代码剥掉了").toBe(1);
-  });
 });
