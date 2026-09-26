@@ -19,6 +19,9 @@ use serde::Serialize;
 /// 哪个 CC sid」的权威信号(pane title 被 Claude 活动标题抢写、不可靠;user option Claude 碰
 /// 不到)。**未设置的会话此列为空串**(老会话 / 未装 wrapper)→ 解析成 `sid: None`,消费方回退
 /// 旧的 path/cmd 匹配,向后兼容。
+// 〔SH1〕生产段今天零处用它（跨 SSH 那条 `tmux ls` 改问后端了）；留着是因为它是与后端 watcher 那一份对拍的双写点
+//   （帧流里推的 raw 就按这个格式串切，`TMUX_LS_FMT_FIELDS` 仍在用）。
+#[cfg_attr(not(test), allow(dead_code))]
 const TMUX_LS_FMT: &str = "#{session_name}\t#{pane_current_path}\t#{pane_current_command}\t#{?session_attached,1,0}\t#{session_windows}\t#{@ccm_sid}";
 
 /// `TMUX_LS_FMT` 的列数 —— [`tmux_tab_underflow`] 的 N。**改格式串必须同步这个数**
