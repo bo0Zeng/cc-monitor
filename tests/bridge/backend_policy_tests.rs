@@ -1211,7 +1211,7 @@ fn the_status_command_hands_the_panel_the_finished_face() {
         start_failure: None,
     };
     let mut sink = CapturingSink::default();
-    record_death(origin, &ev, &mut sink).expect("要记一笔");
+    let _ = record_death(origin, &ev, &mut sink).expect("要记一笔");
     let st =
         crate::backend::control::backend_control::backend_status(origin.into()).expect("查状态");
     let got = st.get("health").expect("状态里没有 health 那一格").clone();
