@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 # cc-agents  列出 cc-spawn 派生的会话(区别于手工起的),标注还活着/已退。
+# cc-agents --tsv  机器可读形(V136:后端 bus-state 读它):首行 `#cc-agents-tsv<TAB>1` ·
+#   每条 `id<TAB>状态<TAB>目录<TAB>派生时间<TAB>任务(余下全部)` · 末行 `#skipped<TAB><坏行数>`;
+#   状态用机器词 live / unknown / exited(与人读表的 活 / 活? / 已退 是同一个判定);坏行 = 有内容但字段 < 4 或 id 不过字符集。
 set -uo pipefail
 BUS="${CC_BUS_HOME:-$HOME/.cc-bus}"
-[ -f "$BUS/spawned.tsv" ] || { echo "(还没 spawn 过会话)"; exit 0; }
+tsv=0; [ "${1:-}" = --tsv ] && tsv=1
+[ "$tsv" = 0 ] || printf '#cc-agents-tsv\t1\n'
+[ -f "$BUS/spawned.tsv" ] || { if [ "$tsv" = 1 ]; then printf '#skipped\t0\n'; else echo "(还没 spawn 过会话)"; fi; exit 0; }
 # ★★ **「同名会话在」不等于「它还活着」**〔08-13〕
 #
 # 这一列原来只判 `tmux has-session -t "=$id"` —— **纯按名字**。而会话名会被重用
@@ -19,20 +24,36 @@ BUS="${CC_BUS_HOME:-$HOME/.cc-bus}"
 # | `已退` | 没有同名会话 |
 #
 # ★ 三态而不是两态：把「核不了」并进「活」是今天这一族所有事故的共同起点。
+# 三态只在这一处算(机器词);人读表与 --tsv 是同一个判定的两种印法。
+_state(){
+  local id="$1" _want _tgt _have
+  if ! tmux has-session -t "=$id" 2>/dev/null; then echo exited; return; fi
+  _want=$(awk -F'\t' -v id="$id" '$1==id{p=$4} END{print p}' "$BUS/agents.tsv" 2>/dev/null || true)
+  _tgt=$(awk -F'\t' -v id="$id" '$1==id{t=$2} END{print t}' "$BUS/agents.tsv" 2>/dev/null || true)
+  if [ -n "${_want:-}" ] && [ -n "${_tgt:-}" ]; then
+    _have=$(tmux display-message -p -t "=$_tgt" '#{pane_pid}' 2>/dev/null || true)
+    if [ "${_have:-}" = "$_want" ]; then echo live; else echo exited; fi
+  else
+    echo unknown
+  fi
+}
+if [ "$tsv" = 1 ]; then
+  bad=0
+  # 按 TAB 精确切(`read` 会把连续 TAB 并成一个,字段数就数不准)。
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=${line%$'\r'}
+    if [[ "$line" != *$'\t'* && -z "${line//[[:space:]]/}" ]]; then continue; fi
+    tabs=${line//[^$'\t']/}; id=${line%%$'\t'*}
+    if [ "${#tabs}" -lt 3 ] || [[ ! "$id" =~ ^[A-Za-z0-9_-]+$ ]]; then bad=$((bad+1)); continue; fi
+    rest=${line#*$'\t'}; dir=${rest%%$'\t'*}; rest=${rest#*$'\t'}; ts=${rest%%$'\t'*}; task=${rest#*$'\t'}
+    printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$(_state "$id")" "$dir" "$ts" "$task"
+  done < "$BUS/spawned.tsv"
+  printf '#skipped\t%s\n' "$bad"
+  exit 0
+fi
 printf '%-18s %-6s %-40s %s\n' ID 状态 目录 初始任务
 while IFS=$'\t' read -r id dir ts task; do
   [ -n "${id:-}" ] || continue
-  if ! tmux has-session -t "=$id" 2>/dev/null; then
-    st=已退
-  else
-    _want=$(awk -F'\t' -v id="$id" '$1==id{p=$4} END{print p}' "$BUS/agents.tsv" 2>/dev/null || true)
-    _tgt=$(awk -F'\t' -v id="$id" '$1==id{t=$2} END{print t}' "$BUS/agents.tsv" 2>/dev/null || true)
-    if [ -n "${_want:-}" ] && [ -n "${_tgt:-}" ]; then
-      _have=$(tmux display-message -p -t "=$_tgt" '#{pane_pid}' 2>/dev/null || true)
-      if [ "${_have:-}" = "$_want" ]; then st=活; else st=已退; fi
-    else
-      st='活?'
-    fi
-  fi
+  case "$(_state "$id")" in live) st=活 ;; unknown) st='活?' ;; *) st=已退 ;; esac
   printf '%-18s %-6s %-40s %s\n' "$id" "$st" "${dir:-}" "${task:-}"
 done < "$BUS/spawned.tsv"
