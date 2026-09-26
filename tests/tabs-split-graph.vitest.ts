@@ -164,13 +164,20 @@ const DEPS: Record<string, readonly string[]> = {
   ],
   // ④ 拖拽：落点算术 ＋ 建组时铸一个集合 id。
   //   〔CP2b〕「松开 → 独立窗口」进了文案表 ⇒ 取文口。
-  "src/tab-bar-drag.ts": ["src/copy-table.ts", "src/tab-collections.ts", "src/tab-drop.ts"],
+  //   〔TL2 · E13〕拖进满了的组 / 建不出组 ⇒ 经落盘偏好那一份的 `sayCollectionRefusal` 说一句。
+  "src/tab-bar-drag.ts": [
+    "src/copy-table.ts",
+    "src/tab-bar-prefs.ts",
+    "src/tab-collections.ts",
+    "src/tab-drop.ts",
+  ],
   // ④ 落盘偏好：集合 / 固定 / 顺序的盘上那一层。
   //   〔U4〕固定复活出来的是「已结束」· 落盘的「最后活动时刻」按活性判。
   //   〔U4〕固定复活的空态文字住文案表（说到会话状态的字一处定）。
+  //   〔TL2 · E13〕集合到上界说那一句的出口（`sayCollectionRefusal`）也住这里。
   "src/tab-bar-prefs.ts": [
     "src/copy-table.ts",
-    "src/error-toast.ts", // 〔CFG1〕分组 / 固定 / 顺序落盘失败出声（INVARIANTS §12）
+    "src/error-toast.ts", // 〔CFG1〕分组 / 固定 / 顺序落盘失败出声（INVARIANTS §12）·〔TL2 · E13〕集合到上界那一句
     "src/tab-bar-state.ts",
     "src/tab-collections.ts",
     "src/tab-session-state.ts",
@@ -185,6 +192,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/ipc/origin.ts", // 〔C4a〕本机 / 远端各给哪几项（原先是 backend-policy 的 LOCAL_ORIGIN ＋ 各处 `=== null`）
     "src/launch-menu.ts",
     "src/remote-launch-run.ts",
+    "src/tab-bar-prefs.ts", // 〔TL2 · E13〕「加入集合 / 新建集合」到上界 ⇒ `sayCollectionRefusal`
     "src/tab-collections.ts",
     "src/tab-context-menu.ts",
     "src/tab-session-actions.ts",

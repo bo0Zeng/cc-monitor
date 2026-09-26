@@ -912,6 +912,86 @@ pub(crate) fn disconnect_removals(
         .collect()
 }
 
+/// 〔TL2 · GP1 问 3〕**重连之后要按新快照重新裁一次的那几条**：上一轮断连时这台的可重连会话里，
+/// 这一轮**没被宣告成活**的（宣告成活的已经由 `session_added` 翻回活了）。保序去重，一律 `Gone`：
+/// emitter 照常用这一轮的 tmux 快照裁 —— `@ccm_sid` 还在 ⇒ `Idle`（前端 说不清 → 可重连）；不在 ⇒ `Archive`（→ 已结束）。
+/// 主会话裁（4D「GP1 问 3」）逐字：「可重连 → 断连 → 重连后，tmux 里还在的那几条重新宣告为可重连（不是落已结束）」。
+pub(crate) fn reannounce_after_reconnect(
+    pending: &[String],
+    is_announced: impl Fn(&str) -> bool,
+) -> Vec<RemovedSid> {
+    let mut seen = std::collections::HashSet::new();
+    pending
+        .iter()
+        .filter(|s| !is_announced(s) && seen.insert(s.as_str()))
+        .map(|s| RemovedSid::gone(s.clone()))
+        .collect()
+}
+
+/// 〔TL2 · GP1 问 3〕收到 `sessions_replayed` 那一刻做什么。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OnReplayed {
+    /// 没有要重新裁的 ⇒ 照原样当场报清单。
+    Listed,
+    /// 有要重新裁的，这一轮的 tmux 快照已经到过 ⇒ 现在就裁、裁完再报（经 emitter）。
+    Reannounce,
+    /// 有要重新裁的，快照还没到 ⇒ 先不报，等这一轮第一帧 `tmux_sessions`。
+    Hold,
+}
+
+/// 〔TL2 · GP1 问 3〕`sessions_replayed` 到达时的决定。**纯函数**。
+pub(crate) fn on_sessions_replayed(pending_empty: bool, tmux_seen: bool) -> OnReplayed {
+    match (pending_empty, tmux_seen) {
+        (true, _) => OnReplayed::Listed,
+        (false, true) => OnReplayed::Reannounce,
+        (false, false) => OnReplayed::Hold,
+    }
+}
+
+/// 〔TL2 · GP1 问 3〕断连那一刻把这台的可重连会话并进「下一轮要重新裁」那一份（保序去重；上一轮没来得及裁的留着）。
+pub(crate) fn merge_pending<'a>(
+    pending: &mut Vec<String>,
+    idle_here: impl IntoIterator<Item = &'a String>,
+) {
+    let mut fresh: Vec<&String> = idle_here.into_iter().collect();
+    fresh.sort(); // 来源是个集合：排一下，让「先到的在前、同一趟里按字典序」可复现
+    for s in fresh {
+        if !pending.contains(s) {
+            pending.push(s.clone());
+        }
+    }
+}
+
+/// 〔TL2 · GP1 问 3〕送出重新裁的那一笔（带 `then_listed`：emitter 裁完再替这台报清单）。
+/// 这一轮的 tmux 观测不可信（`Skip`）⇒ 一条都不宣告（判不了），只报清单 —— 与改之前同一个终态（落已结束）。
+fn send_reannounce(
+    host_label: &str,
+    pending: &mut Vec<String>,
+    announced: &std::collections::HashMap<String, AnnouncedMeta>,
+    observable: bool,
+    session_changes: &std::sync::mpsc::Sender<SessionChange>,
+) {
+    let removed = if observable {
+        reannounce_after_reconnect(pending, |s| announced.contains_key(s))
+    } else {
+        Vec::new()
+    };
+    tracing::info!(
+        "reconnect-reannounce: [{host_label}] 断连前可重连的 {} 条按这一轮的 tmux 快照重新裁（送 {} 条，tmux 可观测={observable}），裁完再报清单",
+        pending.len(),
+        removed.len()
+    );
+    pending.clear();
+    if let Err(e) = session_changes.send(SessionChange {
+        added: vec![],
+        removed,
+        status_changed: vec![],
+        then_listed: Some(host_label.to_string()),
+    }) {
+        tracing::warn!("reconnect-reannounce send failed: {e}");
+    }
+}
+
 /// 〔GP1 · 第四波〕**「那台报完了活会话清单」这本账**：origin → 这条连接上收到过 `sessions_replayed`。
 ///
 /// 写者只有本模块两处：收 `SessionsReplayed` 那一臂记入（[`note_listed`]）· `run()` 每轮连接结束摘掉（[`forget_listed`]）。
@@ -931,6 +1011,19 @@ pub(crate) fn note_listed(origin: &str) {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .insert(origin.to_string());
+}
+
+/// 发前端 `origin-sessions-listed`（那台的活会话清单报完了）。流线程收 `sessions_replayed` 那一臂与
+/// 〔TL2 · GP1 问 3〕emitter 替重连那一笔报的时候共用这一个出口。
+pub(crate) fn emit_origin_listed(app: &tauri::AppHandle, origin: &str) {
+    if let Err(e) = app.emit(
+        crate::bridge::events::ORIGIN_SESSIONS_LISTED,
+        &crate::bridge::OriginSessionsListedPayload {
+            origin: crate::origin::Origin(origin.to_string()),
+        },
+    ) {
+        tracing::warn!("origin-sessions-listed emit failed: {e}");
+    }
 }
 
 /// 那台的连接结束了 ⇒ 它的清单不再算数。
@@ -2443,6 +2536,8 @@ pub async fn run(
     // build_id）。None = 尚未收到能力声明；Some(caps) = 下一轮据此发 flag 升级。
     // 回退清账语义（`:is_some()` 那段）不变。
     let mut hello_confirmed: Option<Vec<String>> = None;
+    // 〔TL2 · GP1 问 3〕上一轮断连时这台的可重连会话 —— 下一轮连上、tmux 快照到了之后重新裁一次（跨轮留着，不进全局表）。
+    let mut pending_idle: Vec<String> = Vec::new();
     loop {
         connected.store(false, Ordering::Release);
         // F05：本轮连接的起点。退避重置的判据是「活过多久」，不是「握没握上手」。
@@ -2462,6 +2557,7 @@ pub async fn run(
             &connected,
             &mut announced,
             &mut hello_confirmed,
+            &mut pending_idle,
         )
         .await;
         // 〔CF2〕这条连接没了 ⇒ 订了这台会话流的那些订阅原位收一格 `Unseen`（不是终点，`05 §4.5.2`）。
@@ -2486,6 +2582,8 @@ pub async fn run(
         // 〔GP1 · 第四波〕这台的「报完了清单」随连接一起作废（F5 对账据它分已结束 / 说不清）。
         forget_listed(&cfg.origin_label());
         let idle_here = snapshot_idle_for_origin(&cfg.origin_label());
+        // 〔TL2 · GP1 问 3〕它们马上要被说成「说不清」；记下来，重连后按新快照重新裁（还在 ⇒ 可重连）。
+        merge_pending(&mut pending_idle, &idle_here);
         if !announced.is_empty() || !idle_here.is_empty() {
             let removed = disconnect_removals(announced.into_keys(), idle_here);
             tracing::info!(
@@ -2498,6 +2596,7 @@ pub async fn run(
                 // 改之前这里逐字「连接断了兜底归档 = 真死（不是被顶替）」、送的是 `gone`。
                 removed,
                 status_changed: vec![], // 本分支无状态变化（F27 起 status 走 SessionAdded/SessionStatus 臂）
+                then_listed: None,
             }) {
                 tracing::warn!("ssh_source final session archival send failed: {e}");
             }
@@ -3040,7 +3139,12 @@ async fn stream_loop(
     connected: &Arc<AtomicBool>,
     announced: &mut std::collections::HashMap<String, AnnouncedMeta>,
     hello_confirmed: &mut Option<Vec<String>>,
+    pending_idle: &mut Vec<String>,
 ) -> Result<(), String> {
+    // 〔TL2 · GP1 问 3〕这一轮：tmux 快照到过没有 / 那一帧可不可信 / 清单是不是压着没报。
+    let mut tmux_seen = false;
+    let mut tmux_observable = false;
+    let mut listed_held = false;
     // issue #15 / #30：远端行的 origin 标签 = 该机器的稳定身份（label，默认 host）。
     // 前端据此给该 Tab 标题加 `[label]` 前缀以区分本地/各远端机器。进 loop 前 clone。
     let host_label = cfg.origin_label();
@@ -3499,6 +3603,7 @@ async fn stream_loop(
                         status,
                         waiting_for,
                     }],
+                    then_listed: None,
                 }) {
                     tracing::warn!("ssh_source session_added send failed: {e}");
                 }
@@ -3539,6 +3644,7 @@ async fn stream_loop(
                         status,
                         waiting_for,
                     }],
+                    then_listed: None,
                 }) {
                     tracing::warn!("ssh_source session_status send failed: {e}");
                 }
@@ -3569,6 +3675,7 @@ async fn stream_loop(
                     // ★ S0：cause 由后端说了算，monitor 不猜（原先靠查会陈旧的 tmux 快照）。
                     removed: vec![RemovedSid { sid, cause }],
                     status_changed: vec![],
+                    then_listed: None,
                 }) {
                     tracing::warn!("ssh_source session_removed send failed: {e}");
                 }
@@ -3643,6 +3750,7 @@ async fn stream_loop(
                             // tmux 会话关了 = 那一格没了，真死。
                             removed: vec![RemovedSid::gone(sid)],
                             status_changed: vec![],
+                            then_listed: None,
                         }) {
                             tracing::warn!("ssh_source tmux_session_closed send failed: {e}");
                         }
@@ -3686,6 +3794,10 @@ async fn stream_loop(
                     &raw,
                     observation.as_deref(),
                 );
+                let observable_now = matches!(
+                    verdict,
+                    crate::backend::control::tmux::TmuxObservation::Backend(_)
+                );
                 let kind = match &verdict {
                     crate::backend::control::tmux::TmuxObservation::Backend(_) => "backend",
                     crate::backend::control::tmux::TmuxObservation::Skip(r) => r.as_str(),
@@ -3719,6 +3831,7 @@ async fn stream_loop(
                             // 对账收割 = tmux 后端已不见它，真死。
                             removed: retire.into_iter().map(RemovedSid::gone).collect(),
                             status_changed: vec![],
+                            then_listed: None,
                         }) {
                             tracing::warn!("ssh_source tmux-reconcile(收帧) send failed: {e}");
                         }
@@ -3726,6 +3839,20 @@ async fn stream_loop(
                 }
                 // 存最新一份原文（emitter 判 idle/archived 时经 snapshot_tmux_by_origin 读；仅存最新）。
                 record_tmux_raw(&host_label, raw);
+                // 〔TL2 · GP1 问 3〕这一轮第一帧快照到了、清单还压着 ⇒ 现在重新裁、裁完报。**必须在 `record_tmux_raw` 之后**：
+                //   emitter 裁的时候读的就是刚存进去的这一份。
+                tmux_seen = true;
+                tmux_observable = observable_now;
+                if listed_held {
+                    listed_held = false;
+                    send_reannounce(
+                        &host_label,
+                        pending_idle,
+                        announced,
+                        tmux_observable,
+                        session_changes,
+                    );
+                }
             }
             // U8a-2a：入方向应答 —— 交给本连接的客户端按 `id` 路由回请求方。
             Some(f @ (InboundFrame::Reply { .. } | InboundFrame::Cancelled { .. })) => {
@@ -3744,18 +3871,32 @@ async fn stream_loop(
             //   与上面 `remote-session-added` 同一条线程、同序 emit ⇒ 前端收到它时，这台全部的活会话都已宣告过。
             //   前端据此把这台「固定、却没被报过」的 tab 从说不清落到已结束（`设计/30 §3.5.7a`）。
             Some(InboundFrame::SessionsReplayed) => {
-                tracing::info!(
-                    "sessions-replayed: [{host_label}] 活会话清单报完了 → 已 emit 给前端"
-                );
-                // 〔GP1 · 第四波〕记进「报完了清单」那本账（F5 对账要重建前端这一格；连接结束时摘）。
-                note_listed(&host_label);
-                if let Err(e) = app.emit(
-                    crate::bridge::events::ORIGIN_SESSIONS_LISTED,
-                    &crate::bridge::OriginSessionsListedPayload {
-                        origin: crate::origin::Origin(host_label.clone()),
-                    },
-                ) {
-                    tracing::warn!("origin-sessions-listed emit failed: {e}");
+                match on_sessions_replayed(pending_idle.is_empty(), tmux_seen) {
+                    OnReplayed::Listed => {
+                        tracing::info!(
+                            "sessions-replayed: [{host_label}] 活会话清单报完了 → 已 emit 给前端"
+                        );
+                        // 〔GP1 · 第四波〕记进「报完了清单」那本账（F5 对账要重建前端这一格；连接结束时摘）。
+                        note_listed(&host_label);
+                        emit_origin_listed(app, &host_label);
+                    }
+                    // 〔TL2 · GP1 问 3〕断连前有可重连的 ⇒ 先按这一轮的 tmux 快照重新裁，裁完再报（经 emitter 保序）。
+                    OnReplayed::Reannounce => {
+                        send_reannounce(
+                            &host_label,
+                            pending_idle,
+                            announced,
+                            tmux_observable,
+                            session_changes,
+                        );
+                    }
+                    OnReplayed::Hold => {
+                        tracing::info!(
+                        "sessions-replayed: [{host_label}] 清单报完了，但断连前有 {} 条可重连要按 tmux 快照重新裁 ⇒ 等这一轮第一帧 tmux_sessions 再报",
+                        pending_idle.len()
+                    );
+                        listed_held = true;
+                    }
                 }
             }
             // 〔SR1a〕链路帧只该出现在**本机后端**那条流上（monitor 只在那里开链路）。
