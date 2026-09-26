@@ -107,6 +107,7 @@ const UNIT: &[&str] = &[
     "tests/bridge/filewin/create_tests.rs",
     "tests/bridge/filewin/editor_tests.rs",
     "tests/bridge/filewin/preview_tests.rs",
+    "tests/bridge/filewin/picker_tests.rs", // 〔W5-FILES〕原生选文件框（假选择框注入）
     "tests/bridge/filewin/rows_tests.rs",
     "tests/bridge/filewin/scale_tests.rs",
     "tests/bridge/filewin/shell_keys_tests.rs",

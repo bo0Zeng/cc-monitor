@@ -331,8 +331,9 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
         // 〔FW34 · 第四波 09-24〕16 → 17，多的是 `bookmarks.rs`（书签栏：☆ / ★ 那颗按钮 · 那一排书签 · 存不了那几句）；
         //   17 → 18，多的是 `workspace.rs`（标签栏 · 双栏 · 复制到另一栏那几句）；
         //   18 → 19，多的是 `preview.rs`（预览面板那几句）。
-        // 〔W5-FILES · 第五波〕19 → 20，多的是 `size.rs`（算大小：菜单那一项 · 在算那一行 · 结局那一句）。
-        20,
+        // 〔W5-FILES · 第五波〕19 → 20，多的是 `size.rs`（算大小：菜单那一项 · 在算那一行 · 结局那一句）；
+        //   20 → 21，多的是 `picker.rs`（原生选文件框；它自己一个字都不画，「浏览…」那颗按钮在 upload.rs / shell.rs 上）。
+        21,
         "人群应当是 10 份（2026-09-21 现打：copy · corpus · entry · **find** · rows · scale · \
          shell · source · transfer · **writeops**；`fonts.rs` 与 `mod.rs` 摘掉了。\
          ⚠ `corpus.rs` 的非 ASCII 字面量是 0，按字符数统计时看不见它 —— \
