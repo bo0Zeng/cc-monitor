@@ -63,47 +63,16 @@ mod tests;
 // ─────────────────────────────────────────────────────────────────────────────
 //
 // 远端那两条（`acct_iso_deploy.rs::check_remote_acct_iso` / `remote_acct_iso_shellinit`）
-// 吃 `RemoteConfig`、经拨号链路跑一串 shell；本机这两条**问本机常驻后端**（帧命令 `acct-iso-status` /
+// 吃 `RemoteConfig`、问那台的后端；本机这两条**问本机常驻后端**（帧命令 `acct-iso-status` /
 // `acct-iso-shellinit`，本体住后端账号域 `accounts/iso.rs`），走 `<local>` 那条长连接 ——
 // `NR2`「claude 真实跑在哪台机器，账号就归那台的后端管」。
 // 出参类型与远端那条**逐字相同**（`AcctIsoStatus` / 片段文本），前端按同一个形状读。
-// ⚠ 远端那两条今天仍是 shell（`05 §14.3` 把 `acct-iso.*` 划进 B 组「与上游选择整体进后端一起做」，
-//   不在 LOC1a 的射程；后端帧命令已在，远端改走它只差那一拍）。
+// 〔LOC1a〕远端那两条也改问那台的后端（同一个 `acct_iso_deploy::status_on` / `snippet_on`），不再经拨号链路跑 shell。
 
-/// 本机两问的期限：`status` 只看文件在不在；`shellinit` 起一次 `cc-acct-iso`（后端那侧自带 20 s 期限）。
-const ACCT_ISO_BUDGET: std::time::Duration = std::time::Duration::from_secs(30);
-
-/// `acct-iso-status` 的结局 → `AcctIsoStatus` —— **纯函数**。
-///
-/// 「没装」是 `Ok(installed:false)`（后端答了「没有」），不是 `Err`；
-/// `Err` 只给「问不出来」的两档（够不着 / 对端说不行 · 应答读不懂），且**不许**说成「没装」。
-pub(crate) fn classify_local_acct_iso(
-    got: Result<serde_json::Value, String>,
-) -> Result<crate::acct_iso_deploy::AcctIsoStatus, String> {
-    let v = got.map_err(|e| copy_text("rsLocalAccounts.acctIso.cannotAsk", &[("e", &e)]))?;
-    let installed = v
-        .get("installed")
-        .and_then(serde_json::Value::as_bool)
-        .ok_or_else(|| copy_text("rsLocalAccounts.acctIso.noInstalled", &[]))?;
-    Ok(crate::acct_iso_deploy::AcctIsoStatus {
-        installed,
-        path: v.get("path").and_then(|p| p.as_str()).map(str::to_string),
-        vendor_id: crate::acct_iso_deploy::vendor_id().to_string(),
-    })
-}
-
-/// `acct-iso.check` 的本机对侧：这台机器装没装 `cc-acct-iso`。
+/// `acct-iso.check` 的本机对侧：这台机器装没装 `cc-acct-iso`（与远端那条同一个 `acct_iso_deploy::status_on`）。
 #[tauri::command]
 pub async fn check_local_acct_iso() -> Result<crate::acct_iso_deploy::AcctIsoStatus, String> {
-    classify_local_acct_iso(
-        crate::backend::control::frame_query::call(
-            &crate::origin::Origin::local(),
-            "acct-iso-status",
-            serde_json::json!({}),
-            ACCT_ISO_BUDGET,
-        )
-        .await,
-    )
+    crate::acct_iso_deploy::status_on(&crate::origin::Origin::local()).await
 }
 
 /// `acct-iso-shellinit` 的结局 → 片段 —— **纯函数**。
@@ -116,12 +85,8 @@ pub(crate) fn classify_local_shellinit(
 ) -> Result<String, String> {
     use crate::acct_iso_deploy::{shellinit_fence_state, FenceState};
     use crate::acct_iso_deploy::{SHELLINIT_FENCE_BEGIN, SHELLINIT_FENCE_END};
-    let v = got.map_err(|e| copy_text("rsLocalAccounts.shellinit.failed", &[("message", &e)]))?;
-    let out = v
-        .get("snippet")
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| copy_text("rsLocalAccounts.shellinit.noSnippet", &[]))?
-        .to_string();
+    let who = crate::backend::control::frame_query::who(&crate::origin::Origin::local());
+    let out = crate::acct_iso_deploy::snippet_of(&who, got)?;
     match shellinit_fence_state(&out) {
         FenceState::Complete => Ok(out),
         FenceState::Truncated => Err(copy_text(
@@ -146,7 +111,7 @@ pub async fn local_acct_iso_shellinit() -> Result<String, String> {
             &crate::origin::Origin::local(),
             "acct-iso-shellinit",
             serde_json::json!({}),
-            ACCT_ISO_BUDGET,
+            crate::acct_iso_deploy::ACCT_ISO_BUDGET,
         )
         .await,
     )

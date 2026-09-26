@@ -28,18 +28,24 @@ mod scripted;
 /// 「问不出来」（够不着 / 对端说不行 / 应答读不懂）是 `Err`，且**不许**说成「没装」。
 #[test]
 fn the_local_acct_iso_status_tells_not_installed_from_cannot_ask() {
-    let yes = classify_local_acct_iso(Ok(serde_json::json!(
-        {"installed": true, "path": "/h/.local/bin/cc-acct-iso", "looked": null}
-    )))
+    let yes = crate::acct_iso_deploy::classify_status(
+        "本机",
+        Ok(serde_json::json!(
+            {"installed": true, "path": "/h/.local/bin/cc-acct-iso", "looked": null}
+        )),
+    )
     .unwrap();
     assert!(yes.installed);
     assert_eq!(yes.path.as_deref(), Some("/h/.local/bin/cc-acct-iso"));
     // vendor 指纹与远端那条同一个来源（前端比「有没有更新」用的是同一个值）。
     assert_eq!(yes.vendor_id, crate::acct_iso_deploy::vendor_id());
 
-    let no = classify_local_acct_iso(Ok(serde_json::json!(
-        {"installed": false, "path": null, "looked": "找不到"}
-    )))
+    let no = crate::acct_iso_deploy::classify_status(
+        "本机",
+        Ok(serde_json::json!(
+            {"installed": false, "path": null, "looked": "找不到"}
+        )),
+    )
     .unwrap();
     assert!(!no.installed && no.path.is_none());
 
@@ -49,7 +55,9 @@ fn the_local_acct_iso_status_tells_not_installed_from_cannot_ask() {
         Ok(serde_json::json!("not an object")),
     ]
     .into_iter()
-    .map(|o| classify_local_acct_iso(o).expect_err("问不出来的那几档必须是 Err"))
+    .map(|o| {
+        crate::acct_iso_deploy::classify_status("本机", o).expect_err("问不出来的那几档必须是 Err")
+    })
     .collect();
     assert!(errs[0].contains("后端没连上"), "{}", errs[0]);
     assert!(errs[1].contains("缺了") && errs[2].contains("缺了"));

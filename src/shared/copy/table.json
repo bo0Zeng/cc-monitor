@@ -12314,6 +12314,26 @@
       "zh": "读远端输出失败：{e}",
       "args": ["e"]
     },
+    "rsAcctIsoDeploy.status.cannotAsk": {
+      "kind": "error",
+      "zh": "查不出{who}装没装 cc-acct-iso：{e}",
+      "args": ["who", "e"]
+    },
+    "rsAcctIsoDeploy.status.noInstalled": {
+      "kind": "error",
+      "zh": "{who}的后端回的 cc-acct-iso 状态缺了「装没装」那一格，多半是两边版本不一样",
+      "args": ["who"]
+    },
+    "rsAcctIsoDeploy.shellinit.failed": {
+      "kind": "error",
+      "zh": "{who}没能产出 rc 片段：{message}",
+      "args": ["who", "message"]
+    },
+    "rsAcctIsoDeploy.shellinit.noSnippet": {
+      "kind": "error",
+      "zh": "{who}的后端回的应答里缺了片段那一格，多半是两边版本不一样",
+      "args": ["who"]
+    },
     "rsAssetSync.call.emptyReply": {
       "kind": "error",
       "zh": "本机后端回了一条空应答",
@@ -14439,26 +14459,6 @@
       "kind": "error",
       "zh": "本机产出的 rc 片段不完整（有 {begin} 但没有 {end}），可能被截断了。别贴：半截片段会让登录 shell 报错。请重试。",
       "args": ["begin", "end"]
-    },
-    "rsLocalAccounts.shellinit.failed": {
-      "kind": "error",
-      "zh": "本机没能产出 rc 片段：{message}",
-      "args": ["message"]
-    },
-    "rsLocalAccounts.shellinit.noSnippet": {
-      "kind": "error",
-      "zh": "本机后端回的应答里缺了片段那一格，多半是两边版本不一样",
-      "args": []
-    },
-    "rsLocalAccounts.acctIso.noInstalled": {
-      "kind": "error",
-      "zh": "本机后端回的 cc-acct-iso 状态缺了「装没装」那一格",
-      "args": []
-    },
-    "rsLocalAccounts.acctIso.cannotAsk": {
-      "kind": "error",
-      "zh": "查不出这台机器装没装 cc-acct-iso：{e}",
-      "args": ["e"]
     },
     "rsFrameQuery.lines.inconsistent": {
       "kind": "error",
