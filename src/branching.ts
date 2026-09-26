@@ -129,8 +129,10 @@ export function computeMainBranch(rawRecords: ReadonlyArray<BranchRecord>): Set<
       remaining.set(r.uuid, c);
     }
   }
-  while (queue.length > 0) {
-    const r = queue.shift()!;
+  // 〔W5-RENDER R1 · `设计/17 §2.10`〕头下标出队，不用 `shift()`（V8 的 left-trim 快路不是无条件的，
+  // 长数组上每次 `shift` 退化成整份搬移）。每条记录恰好进队一次 ⇒ 数组不必压缩，长度 ≤ N。
+  for (let qh = 0; qh < queue.length; qh++) {
+    const r = queue[qh];
     let max = r.timestamp;
     const rIsConv = r.type === "user" || r.type === "assistant";
     // 只统计会话记录（user/assistant）的最新叶子；"" = 自身非会话、暂无会话候选
