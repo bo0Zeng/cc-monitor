@@ -341,23 +341,25 @@ type QuoteRow = (
     &'static str,
 );
 const QUOTE_SITES: &[QuoteRow] = &[
-    ("src/backend/asset_sync.rs", 3, &[],
-     "那台后端的路径（可达表登记来的，源头是用户在机器页填的 `backendPath`）",
+    // 〔TL3 · §47〕那台后端的路径在可达表唯一的写口 `remote_ask::register` 先过放行判定（后端那一份同族判定），第四列清空。
+    ("src/backend/asset_sync.rs", 3, &[("src/backend/observe/accounts_query.rs", "is_safe_config_dir")],
+     "",
      "要推过去的资产目录 JSON（本侧序列化）"),
     ("src/backend/control/ccm/plan.rs", 29, &[("src/backend/control/ccm/plan.rs", "validate_tmux_name")],
      "cwd · 模型名 · `--ccm-sid` · 账号配置目录 · 继承来的 `CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL`（〔US1〕`base_url_word` 认出是我们注入的那一形才拆成前后两段，认不出原样 quote）/ 启动 id · 派生登记的备注（这一层都不判；`qarg` 条件包装也算在这里）",
      "tmux 目标 `=名:` 的形 · 两个提示格式串常量 · cc-bus 脚本路径 · 本侧拼好的载荷"),
     ("src/backend/control/tmux_hook.rs", 2, &[], "",
      "本进程自己的可执行文件路径 · 本侧拼的 hook 命令"),
-    ("src/backend/remote_ask.rs", 2, &[],
-     "那台后端的路径（源头 `backendPath`）· 项目目录名等参数（自由文本）",
+    // 〔TL3 · §47〕路径那一格在 `register` 进门判（第三列）；argv 那一半（自由文本）仍只靠 quote —— 自由文本路径要不要拒元字符待裁（`TL3.md §7.3` 问 1）。
+    ("src/backend/remote_ask.rs", 2, &[("src/backend/observe/accounts_query.rs", "is_safe_config_dir")],
+     "一次性子命令的 argv：项目目录名 · 会话路径 · 搜索词等（自由文本）",
      ""),
     ("src/bridge/src/acct_iso_deploy.rs", 1, &[("src/bridge/src/acct_iso_deploy.rs", "is_safe_remote_acct_iso_dir")], "", ""),
     ("src/bridge/src/backend/control/ccm_invocation.rs", 1, &[],
      "ccm 调用的 argv 元素（条件 quote 包装 `argv`；账号名 · 模型 · cwd 这一层不判）",
      ""),
-    ("src/bridge/src/backend/control/local_backend.rs", 1, &[], "",
-     "本机后端的落点（本侧算的 `~/.cc-monitor/bin/…`）"),
+    ("src/bridge/src/backend/control/local_backend.rs", 1, &[("src/bridge/src/backend/control/payload.rs", "config_dir_command_safe")], "",
+     "本机后端的落点（本侧算的 `~/.cc-monitor/bin/…`）· 〔TL3〕远端那台的后端落点（`sftp.rs::put_ccm_entry` 交进来之前已过 `RemoteConfig::backend_path_for_shell`）"),
     ("src/bridge/src/backend/control/payload.rs", 11,
      &[
          ("src/bridge/src/backend/control/payload.rs", "config_dir_command_safe"),
@@ -375,14 +377,17 @@ const QUOTE_SITES: &[QuoteRow] = &[
     ("src/bridge/src/launch.rs", 1, &[], "",
      "本侧渲染好的整条远端命令（拼它的那几处各自判过；这里只包一层 `bash -lic`）"),
     ("src/bridge/src/pubkey.rs", 1, &[("src/bridge/src/pubkey.rs", "sanitize_public_key")], "", ""),
-    ("src/bridge/src/sftp.rs", 2, &[],
-     "落点路径（那台 SFTP 答的 home ＋ 本侧常量）",
+    // 〔TL3 · §47〕身份扫描那条命令的落点 = 这台的后端路径，经 `RemoteConfig::backend_path_for_shell`（规则 = `config_dir_command_safe`）。
+    ("src/bridge/src/sftp.rs", 2, &[("src/bridge/src/backend/control/payload.rs", "config_dir_command_safe")],
+     "",
      "身份戳正则（构建期常量拼的）"),
     ("src/bridge/src/shell_dialect.rs", 1, &[],
      "别名那一行的 argv 词（条件 quote 包装 `word`；词本身这一层不判，别名名另有 `name_is_valid`）",
      "我们那份别名文件的路径"),
-    ("src/bridge/src/ssh_source.rs", 1, &[],
-     "那台后端的路径（用户在机器页填的 `backendPath`，只判非空）",
+    // 〔TL3 · §47〕1 → 2：测试连接的探针先前把 `backendPath` **原样**当命令串交出去（裸插值，这张表看不见），改走唯一的 quote；
+    //   两处都先过 `RemoteConfig::backend_path_for_shell`（规则 = `config_dir_command_safe`）。
+    ("src/bridge/src/ssh_source.rs", 2, &[("src/bridge/src/backend/control/payload.rs", "config_dir_command_safe")],
+     "",
      ""),
 ];
 
@@ -427,5 +432,49 @@ fn every_file_that_quotes_a_value_into_a_shell_line_is_registered() {
     }
     // 读数（不是判据）：只靠 quote 的文件有几份 —— 报告里要写这个数，改了会在这里看到。
     let open = QUOTE_SITES.iter().filter(|r| !r.3.is_empty()).count();
-    assert_eq!(open, 9, "「有外部值只靠 quote」的文件数变了（登记 9 份；〔LOC1a 合入〕remote_branch.rs 的 exec 那一趟删了 ⇒ 10 → 9）：多了是新缺口，少了是补上了 —— 改这个数并在提交信息里写清是哪份");
+    assert_eq!(open, 6, "「有外部值只靠 quote」的文件数变了（登记 6 份；〔LOC1a 合入〕remote_branch.rs 的 exec 那一趟删了 ⇒ 10 → 9；\
+        〔TL3 · §47〕`backendPath` 一族补上形式判定 ＋ 拒绝集 ⇒ asset_sync.rs · sftp.rs · ssh_source.rs 三份出列 ⇒ 9 → 6）：多了是新缺口，少了是补上了 —— 改这个数并在提交信息里写清是哪份");
+}
+
+/// 〔TL3 · `INVARIANTS §47` ②〕monitor 生产段里读 `.backend_path` 字段的地方 == 登记（两向，含处数）。
+///
+/// 要求住址：`INVARIANTS §47`，逐字「一个值只要**从本进程外面来**（…用户输入…）…… 在它被**拼进 shell 命令串**、
+/// 或被**交给对端去执行 / 去寻址**之前，**本侧**先过一道按这个值的种类写成的放行判定」。`backendPath` 是机器页手填的，
+/// 拼进远端命令的每一处都该经 `RemoteConfig::backend_path_for_shell`（形式 ＋ 拒绝集，规则 = `payload.rs::config_dir_command_safe`）。
+/// ⇒ 直接读那个字段的地方要逐条说清它为什么不是一处拼接：新长一处裸读（例如又一处把它原样交给拨号代理）⇒ 红，逼人回来表态。
+/// 人群按字段访问 `.backend_path` 认（结构体字面量里的 `backend_path:` / 简写不算读）。
+/// 买不到：先把字段拷进一个局部变量再拼（`let p = cfg.backend_path.clone();` 那一处算一次读，之后怎么用看不见）。
+const BACKEND_PATH_READS: &[(&str, usize, &str)] = &[
+    ("src/bridge/src/asset_sync.rs", 1, "登记可达表时交给本机后端（`remote-reach` 的 `backend`）；那一侧唯一的写口 `remote_ask::register` 进门判"),
+    ("src/bridge/src/sftp.rs", 3, "部署 / 手动部署 / 卸载三处先认「含 `~`」「空」那两种最常见的填错、说专门的话；随后都经 `backend_path_for_shell` 取值再拼"),
+    ("src/bridge/src/ssh_source.rs", 2, "`backend_path_for_shell` 本体 · `run` 起头那一行连接日志（只进日志，不拼命令）"),
+];
+
+#[test]
+fn every_read_of_the_backend_path_field_is_registered() {
+    let mut on_disk: BTreeMap<String, usize> = BTreeMap::new();
+    for (rel, body) in production_sources() {
+        if !rel.starts_with("src/bridge/src/") || !rel.ends_with(".rs") {
+            continue;
+        }
+        let n = body.matches(".backend_path").count()
+            - body.matches(".backend_path_for_shell").count();
+        if n > 0 {
+            on_disk.insert(rel, n);
+        }
+    }
+    assert!(
+        on_disk.contains_key("src/bridge/src/ssh_source.rs"),
+        "扫描面里连判定本体住的 ssh_source.rs 都没读到 `.backend_path` —— 认法坏了，下面的相等会空真"
+    );
+    let registered: BTreeMap<String, usize> = BACKEND_PATH_READS
+        .iter()
+        .map(|&(f, n, _)| (f.to_string(), n))
+        .collect();
+    assert_eq!(
+        on_disk, registered,
+        "monitor 里读 `backendPath` 字段的地方与登记对不上（两向，含处数）。\n\
+         多出来的 = 新长的一处裸读：要拼进命令 / 交给对端就改走 `RemoteConfig::backend_path_for_shell`（`INVARIANTS §47` ②）；\
+         只进日志 / 只作标识就登记一行写清。少了 = 收掉了，跟着改表。"
+    );
 }

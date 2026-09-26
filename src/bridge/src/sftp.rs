@@ -525,6 +525,8 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, Deplo
             &[("machine", &(cfg.origin_label()).to_string())],
         )));
     }
+    // 〔TL3 · `INVARIANTS §47` ②〕落点要拼进身份扫描那条远端命令（`stamp_scan_cmd`）、也是写的落点 ⇒ 先过放行判定。
+    let backend = cfg.backend_path_for_shell().map_err(DeployError::Failed)?;
     // 〔DP1〕先问那台是什么机器、再查表；表拒绝 ⇒ `Refused`（那句话由 `byte_table::Refusal::say` 说）。
     let bin = match remote_backend_binary(cfg).await {
         Ok(Ok(b)) => b,
@@ -566,8 +568,8 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, Deplo
     let fs = RemoteFs::open(cfg).await?;
 
     // 〔DP1〕那台上那一份是谁：读它字节里的身份戳（不跑它）；判不了 / 它不肯说 ⇒ 显式失败、一个字节都不写。
-    let id = remote_identity(cfg, &fs, &cfg.backend_path).await?;
-    match identity_decision(&id, bin.build_id, &cfg.origin_label(), &cfg.backend_path)? {
+    let id = remote_identity(cfg, &fs, backend).await?;
+    match identity_decision(&id, bin.build_id, &cfg.origin_label(), backend)? {
         // 〔HX2 · D-b〕不比这一版旧 ⇒ 一个字节不写、照旧连上那一份；回**那台上的**身份（不是这一版的 ——
         //   否则调用方的乐观路径会拿这一版内嵌的能力常量去发 flag），能力由那一份的 hello 自报。
         DeployAction::Keep { theirs, why } => {
@@ -583,12 +585,11 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, Deplo
         }
         DeployAction::Deploy(reason) => {
             tracing::info!(
-                "远端 [{}] 自动部署后端（{reason}）→ {}",
+                "远端 [{}] 自动部署后端（{reason}）→ {backend}",
                 cfg.origin_label(),
-                cfg.backend_path
             );
-            fs.mkdirs(remote_parent(&cfg.backend_path)).await?;
-            upload_verified(&fs, &cfg.backend_path, bin.bytes, 0o700).await?;
+            fs.mkdirs(remote_parent(backend)).await?;
+            upload_verified(&fs, backend, bin.bytes, 0o700).await?;
             tracing::info!(
                 "远端 [{}] backend 部署完成：{}",
                 cfg.origin_label(),
@@ -666,13 +667,15 @@ fn is_safe_remote_backend_path(path: &str) -> bool {
 /// （路径含 `~` / 探测不到 arch / 无该 arch 内嵌）显式报错——手动触发时用户要反馈。
 #[tauri::command]
 pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> {
-    let path = cfg.backend_path.trim().to_string();
-    if path.is_empty() {
+    let raw = cfg.backend_path.trim();
+    if raw.is_empty() {
         return Err(copy_text("rsSftp.deploy.needPath", &[]).into());
     }
-    if path.contains('~') {
+    if raw.contains('~') {
         return Err(copy_text("rsSftp.deploy.tildeRefused", &[]).into());
     }
+    // 〔TL3 · `INVARIANTS §47` ②〕上面两格说的是最常见的两种填错；其余的形式 / 拒绝集由同一道放行判定兜住。
+    let path = cfg.backend_path_for_shell()?.to_string();
     // 〔DP1〕与自动部署同一个取字节口、同一句拒绝的话。
     let bin = match remote_backend_binary(&cfg).await? {
         Ok(b) => b,
@@ -746,10 +749,11 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
 /// 注意：若该机器仍启用，自动部署会在下次连接重新装回——提示见返回消息。
 #[tauri::command]
 pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, String> {
-    let path = cfg.backend_path.trim().to_string();
-    if path.contains('~') {
+    if cfg.backend_path.contains('~') {
         return Err(copy_text("rsSftp.uninstall.tildeRefused", &[]).into());
     }
+    // 〔TL3 · `INVARIANTS §47` ②〕先过放行判定（形式 ＋ 拒绝集），再过下面那道「只删我们自己的落点」。
+    let path = cfg.backend_path_for_shell()?.to_string();
     if !is_safe_remote_backend_path(&path) {
         return Err(copy_text(
             "rsSftp.uninstall.suspicious",
