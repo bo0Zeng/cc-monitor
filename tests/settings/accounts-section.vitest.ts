@@ -224,7 +224,7 @@ describe("account-ux U7 设置账号组：降级分支不被 IA 重排改掉", (
 
   it("未启用多账号 + cc-acct-iso 已装 → 走部署向导，不渲染表", async () => {
     fetchAccountsMock.mockResolvedValue(state({ accounts: [] }));
-    invokeMock.mockResolvedValue({ installed: true }); // check_remote_acct_iso：已装
+    invokeMock.mockResolvedValue({ installed: true }); // acct_iso_status（远端）：已装
     const el = await mount();
     expect(el.querySelector(".accounts-not-enabled")).not.toBeNull();
     expect(el.querySelector(".accounts-wizard")).not.toBeNull();
@@ -234,7 +234,7 @@ describe("account-ux U7 设置账号组：降级分支不被 IA 重排改掉", (
 
   it("F5：未启用 + cc-acct-iso 未装 → 显一键部署（而非直接甩 init 向导）", async () => {
     fetchAccountsMock.mockResolvedValue(state({ accounts: [] }));
-    invokeMock.mockResolvedValue({ installed: false }); // check_remote_acct_iso：没装
+    invokeMock.mockResolvedValue({ installed: false }); // acct_iso_status（远端）：没装
     const el = await mount();
     const deploy = el.querySelector(".accounts-needs-deploy");
     expect(deploy).not.toBeNull();
@@ -521,7 +521,7 @@ describe("Z05：rc 片段一键生成（待贴文本，绝不代写）", () => {
   async function clickRc(resp: unknown, reject = false): Promise<HTMLElement> {
     fetchAccountsMock.mockResolvedValue(ready());
     invokeMock.mockImplementation((cmd: string) =>
-      cmd === "remote_acct_iso_shellinit"
+      cmd === "acct_iso_shellinit"
         ? reject
           ? Promise.reject(new Error(String(resp)))
           : Promise.resolve(resp)
@@ -1155,7 +1155,7 @@ describe("S3：本机页就是本机（配了远端也一样）", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 〔第三波 S3〕A3 那两条本机命令接上界面：`check_local_acct_iso` / `local_acct_iso_shellinit`。
+// 〔第三波 S3〕A3 那两条本机命令接上界面（〔SH1〕今天是带 origin 的 `acct_iso_status` / `acct_iso_shellinit`，本机传 `<local>`）。
 // 两条今天零界面调用点（`设计/96` A3-4「界面接线」）。
 // ─────────────────────────────────────────────────────────────────────────────
 describe("S3：本机那一支接上 A3 的两条本机命令", () => {
@@ -1173,17 +1173,22 @@ describe("S3：本机那一支接上 A3 的两条本机命令", () => {
       cmd in table ? table[cmd]() : Promise.resolve(undefined),
     );
   }
-  const calledWith = (cmd: string): number => invokeMock.mock.calls.filter(([c]) => c === cmd).length;
+  // 〔SH1 · `00 §2.5 ①`〕acct-iso 本机 / 远端合成带 origin 的一条 ⇒ 「问的是本机还是远端」按 `origin` 分。
+  const originOf = (a: unknown): string | undefined => (a as { origin?: string } | undefined)?.origin;
+  const calledLocal = (cmd: string): number =>
+    invokeMock.mock.calls.filter(([c, a]) => c === cmd && originOf(a) === LOCAL_ORIGIN).length;
+  const calledRemote = (cmd: string): number =>
+    invokeMock.mock.calls.filter(([c, a]) => c === cmd && originOf(a) !== LOCAL_ORIGIN).length;
 
   it("★ 空态 · 装了 ⇒ 说装在哪（后端答的路径原样上屏），下一步是在终端里 init", async () => {
     noRemotes();
     answer({
-      check_local_acct_iso: () =>
+      acct_iso_status: () =>
         Promise.resolve({ installed: true, path: "/h/.local/bin/cc-acct-iso", vendor_id: "v" }),
     });
     const el = await mount();
-    expect(calledWith("check_local_acct_iso"), "空态没去问本机装没装").toBe(1);
-    expect(calledWith("check_remote_acct_iso"), "本机那一支去问了远端").toBe(0);
+    expect(calledLocal("acct_iso_status"), "空态没去问本机装没装").toBe(1);
+    expect(calledRemote("acct_iso_status"), "本机那一支去问了远端").toBe(0);
     const iso = el.querySelector(".accounts-local-iso")?.textContent ?? "";
     expect(iso).toBe(copyText("accountsLocal.acctIso.installed", { path: "/h/.local/bin/cc-acct-iso" }));
     expect(el.querySelector(".accounts-local-empty-next")?.textContent).toBe(
@@ -1194,7 +1199,7 @@ describe("S3：本机那一支接上 A3 的两条本机命令", () => {
   it("★ 空态 · 没装 ⇒ 说没装，下一步照旧是「装 + 初始化」那一句", async () => {
     noRemotes();
     answer({
-      check_local_acct_iso: () => Promise.resolve({ installed: false, path: null, vendor_id: "v" }),
+      acct_iso_status: () => Promise.resolve({ installed: false, path: null, vendor_id: "v" }),
     });
     const el = await mount();
     expect(el.querySelector(".accounts-local-iso")?.textContent).toBe(
@@ -1207,7 +1212,7 @@ describe("S3：本机那一支接上 A3 的两条本机命令", () => {
 
   it("★ 空态 · 问不出来 ⇒ 说问不出来 ＋ 原因；不许当成「装了」也不许当成「没装」", async () => {
     noRemotes();
-    answer({ check_local_acct_iso: () => Promise.reject(new Error("本机后端不在")) });
+    answer({ acct_iso_status: () => Promise.reject(new Error("本机后端不在")) });
     const el = await mount();
     const iso = el.querySelector(".accounts-local-iso")?.textContent ?? "";
     expect(iso).toContain("本机后端不在");
@@ -1226,7 +1231,7 @@ describe("S3：本机那一支接上 A3 的两条本机命令", () => {
       () => Promise.reject(new Error("x")),
     ]) {
       noRemotes();
-      answer({ check_local_acct_iso: r });
+      answer({ acct_iso_status: r });
       const el = await mount();
       seen.push(
         `${el.querySelector(".accounts-local-iso")?.textContent}|${el.querySelector(".accounts-local-empty-next")?.textContent}`,
@@ -1240,19 +1245,19 @@ describe("S3：本机那一支接上 A3 的两条本机命令", () => {
     fetchLocalAccountsMock.mockResolvedValue(
       localState({ accounts: [acct({ name: "z" })], defaultName: "z" }),
     );
-    answer({ local_acct_iso_shellinit: () => Promise.resolve(FENCED) });
+    answer({ acct_iso_shellinit: () => Promise.resolve(FENCED) });
     const el = await mount();
-    expect(calledWith("check_local_acct_iso"), "已启用还去问装没装").toBe(0);
+    expect(calledLocal("acct_iso_status"), "已启用还去问装没装").toBe(0);
     const btn = [...el.querySelectorAll<HTMLButtonElement>(".accounts-local button")].find(
       (b) => b.textContent === copyText("accountsLocal.rc.action"),
     );
     expect(btn, "本机那一块没有「生成 rc 片段」").toBeTruthy();
-    expect(calledWith("local_acct_iso_shellinit"), "没点就去抓了").toBe(0);
+    expect(calledLocal("acct_iso_shellinit"), "没点就去抓了").toBe(0);
     btn!.click();
     await new Promise((r) => setTimeout(r, 0));
     await new Promise((r) => setTimeout(r, 0));
-    expect(calledWith("local_acct_iso_shellinit")).toBe(1);
-    expect(calledWith("remote_acct_iso_shellinit"), "本机那一支去抓了远端的片段").toBe(0);
+    expect(calledLocal("acct_iso_shellinit")).toBe(1);
+    expect(calledRemote("acct_iso_shellinit"), "本机那一支去抓了远端的片段").toBe(0);
     expect(el.querySelector<HTMLTextAreaElement>(".accounts-local .paste-block-out")?.value).toBe(FENCED);
     // 待贴块上的三句话也是本机口吻：一个「远端」都没有。
     const txt = el.querySelector(".accounts-local .paste-block")?.textContent ?? "";
@@ -1266,7 +1271,7 @@ describe("S3：本机那一支接上 A3 的两条本机命令", () => {
     fetchLocalAccountsMock.mockResolvedValue(
       localState({ accounts: [acct({ name: "z" })], defaultName: "z" }),
     );
-    answer({ local_acct_iso_shellinit: () => Promise.reject(new Error("没跑过 init")) });
+    answer({ acct_iso_shellinit: () => Promise.reject(new Error("没跑过 init")) });
     const toast = vi.mocked(showActionFailureToast);
     toast.mockClear();
     const el = await mount();

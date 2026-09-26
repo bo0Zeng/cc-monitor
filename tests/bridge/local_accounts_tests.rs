@@ -76,8 +76,12 @@ fn the_local_acct_iso_status_tells_not_installed_from_cannot_ask() {
 fn the_local_shellinit_uses_the_same_fence_judgment_with_local_words() {
     use crate::acct_iso_deploy::{SHELLINIT_FENCE_BEGIN as B, SHELLINIT_FENCE_END as E};
     let whole = format!("{B}\nzcc() {{ :; }}\n{E}\n");
+    // 〔SH1〕本机那一支 = `snippet_of`（取片段，与远端同一个）→ `local_fence`（围栏，话按本机说）。
+    let local = |got: Result<serde_json::Value, String>| {
+        crate::acct_iso_deploy::snippet_of("本机", got).and_then(local_fence)
+    };
     assert_eq!(
-        classify_local_shellinit(Ok(serde_json::json!({ "snippet": whole.clone() }))),
+        local(Ok(serde_json::json!({ "snippet": whole.clone() }))),
         Ok(whole)
     );
     let errs: Vec<String> = [
@@ -88,7 +92,7 @@ fn the_local_shellinit_uses_the_same_fence_judgment_with_local_words() {
         Ok(serde_json::json!({})),
     ]
     .into_iter()
-    .map(|o| classify_local_shellinit(o).expect_err("失败档必须是 Err"))
+    .map(|o| local(o).expect_err("失败档必须是 Err"))
     .collect();
     assert!(errs[0].contains("不完整"));
     assert!(errs[1].contains("没能产出"));
@@ -114,9 +118,11 @@ fn the_local_shellinit_uses_the_same_fence_judgment_with_local_words() {
 }
 
 /// ★ 走**生产入口本体**，〔LOC1a〕两条都真走 `<local>` 长连接、问的是那两条帧命令（异源：数假后端收到的）；
+/// 〔SH1 · `00 §2.5 ①`〕入口今天是带 origin 的那两条（`acct_iso_status` / `acct_iso_shellinit`），本机传 `<local>`；
 /// 通道不在 ⇒ 带理由的 `Err`（不是「空但成功」那种被短路的形状：`Ok(installed:false)` / `Ok("")`）。
 #[test]
 fn the_two_local_acct_iso_commands_really_ask_the_backend() {
+    let local = || crate::origin::Origin::local();
     use crate::acct_iso_deploy::{SHELLINIT_FENCE_BEGIN as B, SHELLINIT_FENCE_END as E};
     let _guard = crate::backend::control::inbound_client::local_origin_test_lock();
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -126,11 +132,11 @@ fn the_two_local_acct_iso_commands_really_ask_the_backend() {
     let _enter = rt.enter();
     // 通道不在
     let st = rt
-        .block_on(check_local_acct_iso())
+        .block_on(crate::acct_iso_deploy::acct_iso_status(local()))
         .expect_err("没有本机后端通道却答出了装没装");
     assert!(st.contains("后端没连上"), "{st}");
     let sn = rt
-        .block_on(local_acct_iso_shellinit())
+        .block_on(crate::acct_iso_deploy::acct_iso_shellinit(local()))
         .expect_err("没有本机后端通道却拿到了片段");
     assert!(sn.contains("后端没连上"), "{sn}");
     // 通道在：真问了那两条
@@ -149,9 +155,14 @@ fn the_two_local_acct_iso_commands_really_ask_the_backend() {
             ),
         ],
     );
-    assert!(rt.block_on(check_local_acct_iso()).expect("装了").installed);
+    assert!(
+        rt.block_on(crate::acct_iso_deploy::acct_iso_status(local()))
+            .expect("装了")
+            .installed
+    );
     assert_eq!(
-        rt.block_on(local_acct_iso_shellinit()).expect("片段"),
+        rt.block_on(crate::acct_iso_deploy::acct_iso_shellinit(local()))
+            .expect("片段"),
         whole
     );
     assert_eq!(

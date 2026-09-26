@@ -485,7 +485,9 @@ fn query_reply(obs: TmuxObservation) -> Result<(bool, Vec<String>), String> {
         TmuxObservation::NoTmux => Ok((false, Vec::new())),
         TmuxObservation::NoServer | TmuxObservation::ServerEmpty => Ok((true, Vec::new())),
         TmuxObservation::Sessions(raw) => Ok((true, raw.lines().map(str::to_string).collect())),
-        TmuxObservation::Unobservable => Err(copy_core::copy_text("beTmuxList.query.unobservable", &[])),
+        TmuxObservation::Unobservable => {
+            Err(copy_core::copy_text("beTmuxList.query.unobservable", &[]))
+        }
     }
 }
 

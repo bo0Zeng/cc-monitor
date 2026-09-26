@@ -501,8 +501,8 @@ export const commands = {
    * 把 `path` 与 `vendor_id` 藏掉了。而 Rust 那两个字段的注释明写「附带回传，
    * 避免以后要它时再加一趟往返」⇒ **是手写镜像把后端的好意抹掉了**。
    */
-  check_remote_acct_iso: (args: { cfg: unknown }) =>
-    invoke<AcctIsoStatus>("check_remote_acct_iso", args),
+  // 〔SH1 · `设计/00 §2.5 ①`〕`acct-iso.check` 本机 / 远端两条合成这一条（带 `origin`；本机是 `"<local>"`）。
+  acct_iso_status: (args: { origin: Origin }) => invoke<AcctIsoStatus>("acct_iso_status", args),
 
   /** 诊断配置（log 开关 / 级别 / error toast / 保留天数）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   get_diagnostics_config: () => invoke<DiagnosticsConfig>("get_diagnostics_config"),
@@ -595,14 +595,9 @@ export const commands = {
   /** 把内嵌的 vendor `cc-acct-iso` 部署到远端。返回人话结果串 ⇒ 原始类型，无需生成物。 */
   deploy_remote_acct_iso: (args: { cfg: unknown; destDir: string }) =>
     invoke<string>("deploy_remote_acct_iso", args),
-  /** Z05：抓远端 `cc-acct-iso shellinit` 的输出（只读）。返回带 BEGIN/END 围栏的 rc 片段。 */
-  remote_acct_iso_shellinit: (args: { cfg: unknown }) =>
-    invoke<string>("remote_acct_iso_shellinit", args),
-  /** 〔`A3` 第二波〕上面两条的**本机**对侧：问本机后端（`--acct-iso-status` / `--acct-iso-shellinit`）。
-   *  出参与远端那条逐字相同。⚠ 今天**还没有界面调用点** —— 设置页账号那一节归 A2+ST1，
-   *  接线在那边；这里先把口开好（账本 `acct-iso.check` / `acct-iso.shellinit` 两笔欠账随之结清）。 */
-  check_local_acct_iso: () => invoke<AcctIsoStatus>("check_local_acct_iso"),
-  local_acct_iso_shellinit: () => invoke<string>("local_acct_iso_shellinit"),
+  /** Z05：抓那台 `cc-acct-iso shellinit` 的输出（只读）。返回带 BEGIN/END 围栏的 rc 片段。
+   *  〔SH1 · `设计/00 §2.5 ①`〕本机 / 远端两条合成这一条（带 `origin`）。 */
+  acct_iso_shellinit: (args: { origin: Origin }) => invoke<string>("acct_iso_shellinit", args),
 
   /** 本机 cc-bus 钩子诊断。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   diagnose_local_cc_bus_hooks: () => invoke<HooksReport>("diagnose_local_cc_bus_hooks"),

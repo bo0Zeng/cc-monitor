@@ -62,31 +62,18 @@ mod tests;
 // 〔`A3` 第二波〕`acct-iso.check` / `acct-iso.shellinit` 的本机对侧
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// 远端那两条（`acct_iso_deploy.rs::check_remote_acct_iso` / `remote_acct_iso_shellinit`）
+// 〔SH1〕今天本机远端合成带 origin 的两条（`acct_iso_deploy.rs::acct_iso_status` / `acct_iso_shellinit`）；当年远端那两条（`check_remote_acct_iso`〔散文墓碑〕 / `remote_acct_iso_shellinit`〔散文墓碑〕）
 // 吃 `RemoteConfig`、问那台的后端；本机这两条**问本机常驻后端**（帧命令 `acct-iso-status` /
 // `acct-iso-shellinit`，本体住后端账号域 `accounts/iso.rs`），走 `<local>` 那条长连接 ——
 // `NR2`「claude 真实跑在哪台机器，账号就归那台的后端管」。
 // 出参类型与远端那条**逐字相同**（`AcctIsoStatus` / 片段文本），前端按同一个形状读。
 // 〔LOC1a〕远端那两条也改问那台的后端（同一个 `acct_iso_deploy::status_on` / `snippet_on`），不再经拨号链路跑 shell。
 
-/// `acct-iso.check` 的本机对侧：这台机器装没装 `cc-acct-iso`（与远端那条同一个 `acct_iso_deploy::status_on`）。
-#[tauri::command]
-pub async fn check_local_acct_iso() -> Result<crate::acct_iso_deploy::AcctIsoStatus, String> {
-    crate::acct_iso_deploy::status_on(&crate::origin::Origin::local()).await
-}
-
-/// `acct-iso-shellinit` 的结局 → 片段 —— **纯函数**。
-///
-/// 围栏校验与远端那条**同一个判定**（`acct_iso_deploy::shellinit_fence_state`），
-/// 只是话按本机说（远端那句「先在『维护』里部署」对本机是一条走不通的路 ——
-/// 本机的安装口今天不存在，`LOCAL_ACCOUNTS_COPY.emptyNext` 逐字写着）。
-pub(crate) fn classify_local_shellinit(
-    got: Result<serde_json::Value, String>,
-) -> Result<String, String> {
+/// 本机那一支的围栏判定（〔SH1〕两条本机命令并进 `acct_iso_deploy::acct_iso_status` / `acct_iso_shellinit`〔散文墓碑〕之后，
+/// 这里只剩「话按本机说」这一格）。判定与远端那条**同一个**（`acct_iso_deploy::shellinit_fence_state`）。
+pub(crate) fn local_fence(out: String) -> Result<String, String> {
     use crate::acct_iso_deploy::{shellinit_fence_state, FenceState};
     use crate::acct_iso_deploy::{SHELLINIT_FENCE_BEGIN, SHELLINIT_FENCE_END};
-    let who = crate::backend::control::frame_query::who(&crate::origin::Origin::local());
-    let out = crate::acct_iso_deploy::snippet_of(&who, got)?;
     match shellinit_fence_state(&out) {
         FenceState::Complete => Ok(out),
         FenceState::Truncated => Err(copy_text(
@@ -101,20 +88,4 @@ pub(crate) fn classify_local_shellinit(
             &[("begin", &format!("{:?}", SHELLINIT_FENCE_BEGIN))],
         )),
     }
-}
-
-/// `acct-iso.shellinit` 的本机对侧：这台机器的 `cc-acct-iso shellinit` 片段（**只读**，不代写 rc）。
-#[tauri::command]
-pub async fn local_acct_iso_shellinit() -> Result<String, String> {
-    classify_local_shellinit(
-        crate::backend::control::frame_query::call(
-            &crate::origin::Origin::local(),
-            "acct-iso-shellinit",
-            serde_json::json!({}),
-            crate::backend::control::frame_query::Deadline::within(
-                crate::acct_iso_deploy::ACCT_ISO_BUDGET,
-            ),
-        )
-        .await,
-    )
 }
