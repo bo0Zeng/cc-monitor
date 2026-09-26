@@ -137,6 +137,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "bus-kill"
                 | "bus-spawn"
                 | "bus-state"
+                // 〔SH1 · V136〕起一个 `cc-log` 子进程并等它退出。
+                | "bus-inbox"
                 // 〔LOC1a · 第四波 4D〕`cc-acct-iso` 两问（`shellinit` 起一次插件进程）· 分叉（读整份 jsonl ＋ `O_EXCL` 写）。
                 | "acct-iso-status"
                 | "acct-iso-shellinit"
@@ -278,6 +280,7 @@ fn every_registered_command_declares_its_run_kind() {
         "bus-kill",
         "bus-spawn",
         "bus-state",
+        "bus-inbox",
         "acct-iso-status",
         "acct-iso-shellinit",
         "session-fork",

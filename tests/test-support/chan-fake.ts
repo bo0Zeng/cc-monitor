@@ -628,6 +628,9 @@ export function ccBusControlShim(
       "bus-kill": "cc_bus_kill",
       "bus-spawn": "cc_bus_spawn",
       "bus-broadcast": "cc_bus_broadcast",
+      // 〔SH1 · V136〕驾驶舱读面那两条（原是 monitor 的 Tauri 命令，今天界面经通道直接问后端）。
+      "bus-state": "read_cc_bus_state",
+      "bus-inbox": "read_cc_bus_inbox",
     };
     const name = old[a.op];
     if (name === undefined) return inner(cmd, args);
@@ -641,7 +644,11 @@ export function ccBusControlShim(
             ? { origin: a.origin, id: body.id }
             : a.op === "bus-spawn"
               ? { origin: a.origin, dir: body.dir, task: body.task, tool: body.tool, account: body.account ?? "" }
-              : { origin: a.origin, text: body.text };
+              : a.op === "bus-state"
+                ? { origin: a.origin }
+                : a.op === "bus-inbox"
+                  ? { origin: a.origin, id: body.id }
+                  : { origin: a.origin, text: body.text };
     let res: unknown;
     try {
       res = await inner(name, oldArgs);
@@ -664,6 +671,17 @@ export function ccBusControlShim(
         const m = /已 spawn: (\S+)/.exec(said);
         return chanReply({ spawned: true, id: m ? m[1] : null, said });
       }
+      case "bus-state": {
+        // 旧形（`pane`）→ 后端成品形（`target` ＋ 身份空间两格）。
+        const st = res as { agents: { id: string; pane: string; registered_at: string }[]; spawned: { id: string; dir: string; spawned_at: string; task: string }[]; skipped: number };
+        return chanReply({
+          agents: st.agents.map((x) => ({ id: x.id, target: x.pane, registered_at: x.registered_at, unread: 0, live: null, ccm_sid: null })),
+          spawned: st.spawned.map((x) => ({ id: x.id, dir: x.dir, spawned_at: x.spawned_at, task: x.task, live: null })),
+          skipped: st.skipped,
+        });
+      }
+      case "bus-inbox":
+        return chanReply({ messages: res, skipped: 0, truncated: false });
       default:
         return chanReply({ sent: 1, skipped_offline: 0, liveness_unknown: false, failed: [] });
     }

@@ -1062,6 +1062,31 @@
       "zh": "问不到 {id} 在不在线：它不在 {machine} 的总线名单里，或者那边问不到 tmux。这是问不到，不是不在线。",
       "args": ["id", "machine"]
     },
+    "ccBus.read.notInstalled": {
+      "kind": "error",
+      "zh": "读不到：那台机器上找不到 cc-bus，或它比后端旧（{detail}）",
+      "args": ["detail"]
+    },
+    "ccBus.read.timedOut": {
+      "kind": "error",
+      "zh": "读不到：读 cc-bus 超时了（{detail}）",
+      "args": ["detail"]
+    },
+    "ccBus.read.badId": {
+      "kind": "error",
+      "zh": "没去读：这个 id 的形状不对（{detail}）",
+      "args": ["detail"]
+    },
+    "ccBus.read.otherCode": {
+      "kind": "error",
+      "zh": "读不到：{code}：{detail}",
+      "args": ["code", "detail"]
+    },
+    "ccBus.read.noReason": {
+      "kind": "error",
+      "zh": "读不到，后端没有给出原因。",
+      "args": []
+    },
     "ccBus.send.empty": {
       "kind": "error",
       "zh": "消息是空的，没有发出去。",
@@ -11294,11 +11319,6 @@
       "zh": "第 {i} 条命中的格式不对：只认字符串或 b16 编码的对象",
       "args": ["i"]
     },
-    "rsCcBus.what.readInbox": {
-      "kind": "body",
-      "zh": "读 inbox",
-      "args": []
-    },
     "rsCcBus.tooOld.for": {
       "kind": "error",
       "zh": "{machine} 的后端版本太旧，不支持这个操作。{outcome}；把这台的后端升到新版就能用。",
@@ -11308,126 +11328,6 @@
       "kind": "body",
       "zh": "本机",
       "args": []
-    },
-    "rsCcBus.local.timeout": {
-      "kind": "error",
-      "zh": "本机{what}超时（{secs} 秒）",
-      "args": ["what", "secs"]
-    },
-    "rsCcBus.local.tooBig": {
-      "kind": "error",
-      "zh": "本机{what}的输出超过 {cap} 字节上限，拒收。截断的结果不能当完整的用。",
-      "args": ["what", "cap"]
-    },
-    "rsCcBus.local.failed": {
-      "kind": "error",
-      "zh": "本机{what}失败：{e}",
-      "args": ["what", "e"]
-    },
-    "rsCcBus.local.noOutput": {
-      "kind": "error",
-      "zh": "本机{what}失败：拿不到输出",
-      "args": ["what"]
-    },
-    "rsCcBus.local.spawnFailed": {
-      "kind": "error",
-      "zh": "本机{what}失败（起不了 bash）：{e}",
-      "args": ["what", "e"]
-    },
-    "rsCcBus.bash.overrideMissing": {
-      "kind": "error",
-      "zh": "{var} 指的路径不存在：{path}\n显式指定过就不再去猜：回落到候选表会让你以为自己这条生效了。",
-      "args": ["var", "path"]
-    },
-    "rsCcBus.bash.systemStub": {
-      "kind": "error",
-      "zh": "{var} 指的是系统目录里那个 bash.exe，它是 WSL 的存根，拒绝用它。没装发行版时它什么都不做就退；装了发行版则跑在另一个文件系统里（$HOME 是 Linux 家目录，不是这台机器的）。\n实得：{path}",
-      "args": ["var", "path"]
-    },
-    "rsCcBus.bash.notFound": {
-      "kind": "error",
-      "zh": "这台机器上找不到可用的 bash，cc-bus 在本机读不了。\n⚠ 这不是「一个 agent 都没有」：清单根本没去读，有没有是不知道。\n已经找过（按优先级）：\n{list}\n不会去 PATH 上碰运气：WSL 功能开着却没装发行版时，Windows 会先找到那个什么都不做的 bash.exe 存根。\n装一份 Git for Windows，或把 {var} 指向你要用的那个 bash.exe。",
-      "args": ["list", "var"]
-    },
-    "rsCcBus.remote.notConfigured": {
-      "kind": "error",
-      "zh": "远端「{origin}」未配置或未启用",
-      "args": ["origin"]
-    },
-    "rsCcBus.cfg.localHasNone": {
-      "kind": "error",
-      "zh": "本机没有远端配置，这是远端专属的操作。",
-      "args": []
-    },
-    "rsCcBus.exec.truncated": {
-      "kind": "body",
-      "zh": "\n输出超过 {cap} 字节，后面截掉了。命令已经执行完，不要重试。",
-      "args": ["cap"]
-    },
-    "rsCcBus.exec.timeout": {
-      "kind": "error",
-      "zh": "远端「{machine}」{what}超时（{secs} 秒）",
-      "args": ["machine", "what", "secs"]
-    },
-    "rsCcBus.exec.tooBig": {
-      "kind": "error",
-      "zh": "{what}的输出超过 {cap} 字节上限，拒收。截断的结果不能当完整的用。",
-      "args": ["what", "cap"]
-    },
-    "rsCcBus.exec.failed": {
-      "kind": "error",
-      "zh": "{what}失败：{e}",
-      "args": ["what", "e"]
-    },
-    "rsCcBus.inbox.badId": {
-      "kind": "error",
-      "zh": "非法 agent id，不能拼进命令：{id}",
-      "args": ["id"]
-    },
-    "rsCcBus.what.readHome": {
-      "kind": "body",
-      "zh": "读 ~/.cc-bus",
-      "args": []
-    },
-    "rsCcBus.read.half": {
-      "kind": "error",
-      "zh": "「{origin}」的 cc-bus 登记表只回来了半份：分隔标记 {marker} 没出现。\n打标记的 printf 是 shell 内建、无条件跑，它不在只可能是命令跑到一半断了（输出被截）。\n半份清单会被当完整的用，所以拒收。",
-      "args": ["origin", "marker"]
-    },
-    "rsCcBus.read.noCat": {
-      "kind": "error",
-      "zh": "读不到「{origin}」的 cc-bus 登记表：那个 shell 里没有 cat，两张表一个字节都读不出来。\n⚠ 这不是「一个 agent 都没有」：~/.cc-bus 这个目录{dir}，有没有 agent 是不知道。\n多半是登录 shell 的 PATH 里没有 /usr/bin（bash -lc 会先过 /etc/profile）。",
-      "args": ["origin", "dir"]
-    },
-    "rsCcBus.read.dirAbsent": {
-      "kind": "body",
-      "zh": "不在",
-      "args": []
-    },
-    "rsCcBus.read.dirPresent": {
-      "kind": "body",
-      "zh": "在",
-      "args": []
-    },
-    "rsCcBus.read.noHeader": {
-      "kind": "error",
-      "zh": "读不到「{origin}」的 cc-bus 登记表：那条读命令没有跑起来。自述头 {marker} 没有原样回来。\n⚠ 这不是「一个 agent 都没有」：清单根本没读到，有没有是不知道。\n多半是那台机器上的 bash 跑不了这段语法（Windows 上没装发行版的 WSL 存根 C:\\\\Windows\\\\System32\\\\bash.exe 就是这样），或者登录 shell 中途就退了。",
-      "args": ["origin", "marker"]
-    },
-    "rsCcBus.remote.timeout": {
-      "kind": "error",
-      "zh": "远端「{machine}」读取超时（30 秒）",
-      "args": ["machine"]
-    },
-    "rsCcBus.remote.tooBig": {
-      "kind": "error",
-      "zh": "远端 ~/.cc-bus 的登记表超过 {cap} 字节上限，拒收。截断的清单不能当完整的用。",
-      "args": ["cap"]
-    },
-    "rsCcBus.remote.readFailed": {
-      "kind": "error",
-      "zh": "读取远端 ~/.cc-bus 失败：{e}",
-      "args": ["e"]
     },
     "rsPayload.outer.attachWithPayload": {
       "kind": "error",
@@ -15293,11 +15193,6 @@
     "rsToolRegistry.env.xdgOpenWhy": {
       "kind": "body",
       "zh": "开链接、开日志目录用它",
-      "args": []
-    },
-    "rsToolRegistry.env.pgrepWhy": {
-      "kind": "body",
-      "zh": "数 cc-bus 的 agent 时用它",
       "args": []
     },
     "rsToolRegistry.env.sshWhy": {

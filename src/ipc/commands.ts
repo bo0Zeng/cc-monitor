@@ -97,8 +97,6 @@ import type { BranchResult } from "../generated/BranchResult";
 //   判据 `tests/ipc/commands.vitest.ts` 末尾「TS 侧 origin 去 null」那一节，全 TS ＋ 生成物）；
 //   〔C4b〕生成物 `RemoteHealthPayload.origin` 那最后一处也改成了 `string`（那一节的 `PENDING` 从此为空）。
 import type { Origin } from "../generated/Origin";
-import type { CcBusMessage } from "../generated/CcBusMessage";
-import type { CcBusState } from "../generated/CcBusState";
 import type { ConnectStage } from "../generated/ConnectStage";
 import type { ConnTestResult } from "../generated/ConnTestResult";
 import type { CcmProbeResult } from "../generated/CcmProbeResult";
@@ -372,12 +370,7 @@ export const commands = {
     onChunk: Channel<JsonlLinePayload[]>;
   }) => invoke<number>("stream_read_session_jsonl", args),
 
-  /** 读某 agent 的 inbox。返回值字段被真消费 ⇒ 生成物（桶③）。 */
-  read_cc_bus_inbox: (args: { origin: string; id: string }) =>
-    invoke<CcBusMessage[]>("read_cc_bus_inbox", args),
-
-  /** 读 bus 的完整状态（agents + spawned + 坏行数）。`skipped: usize` → `number`。 */
-  read_cc_bus_state: (args: { origin: string }) => invoke<CcBusState>("read_cc_bus_state", args),
+  // 〔SH1 · V136〕`read_cc_bus_inbox` / `read_cc_bus_state` 两条退役：驾驶舱读面经通道直接问后端（`src/cc-bus-control.ts`）。
 
   /**
    * 把本机公钥推到远端 `authorized_keys`。返回值字段被真消费 ⇒ 生成物（桶③）。

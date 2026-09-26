@@ -264,64 +264,105 @@ pub(crate) fn parse_list(text: &str) -> Vec<serde_json::Value> {
         .collect()
 }
 
-/// `cc-agents` 状态列的三个字面量 —— **它们是 cc-bus 的输出契约，不是我们的枚举**。
-///
-/// 逐字取自 `src/shared/cc-bus/scripts/cc-agents`（09-13 现打）：`活` / `活?` / `已退`，
-/// 它那张表的头注逐字写着为什么是三态而不是两态 ——「把『核不了』并进『活』是今天
-/// 这一族所有事故的共同起点」。
-///
-/// ⚠ **拿输出当接口的代价就在这三个串上**：cc-bus 换个说法，这里认不出来 ⇒
-/// 那一行**落选**（而不是被当成 `已退`）。落选的方向是刻意选的：宁可少报一个 spawn 记录，
-/// 也不要把一个还活着的会话报成死的。理由与 [`parse_list`] 那句「宁可漏也别把表头当 agent」同一条。
-const SPAWNED_LIVE: &str = "活";
-const SPAWNED_UNVERIFIED: &str = "活?";
-const SPAWNED_EXITED: &str = "已退";
+/// 〔SH1 · V136〕机器可读形的首行标记（`cc-list --tsv` / `cc-agents --tsv` / `cc-log`）。老 cc-bus 不认 `--tsv`、
+/// 照打人读表 ⇒ 见不到标记就明说「cc-bus 比后端旧」，不猜着按人读表解（95 §3.3：命令是接口，接口认不出就说）。
+const ROSTER_TSV_HEAD: &str = "#cc-list-tsv\t1";
+const SPAWNED_TSV_HEAD: &str = "#cc-agents-tsv\t1";
+const LOG_HEAD: &str = "#cc-log\t1";
+/// 两张表的末行：`#skipped<TAB><坏行数>`。缺它 = 只读到半份。
+const SKIPPED_TAIL: &str = "#skipped\t";
 
-/// `cc-agents` 状态列 → `bus-list` 那一套**同一个三态** —— 纯函数。
-///
-/// `true` / `false` / `null`，与 [`join_identity`] 的 `live` **逐字同一套语义**：
-/// `null` = 「不知道」，不是「不在」。`cc-agents` 的 `活?` 正是「核不了」那一档
-///（那份 spawn 台账没有身份列，借不到 pid 就核不动）⇒ 映到 `null`。
-///
-/// 认不出的串回 `None`（= 这不是数据行）。
-fn spawned_live_of(state: &str) -> Option<serde_json::Value> {
-    match state {
-        SPAWNED_LIVE => Some(serde_json::Value::Bool(true)),
-        SPAWNED_EXITED => Some(serde_json::Value::Bool(false)),
-        SPAWNED_UNVERIFIED => Some(serde_json::Value::Null),
-        _ => None,
-    }
+fn too_old(cmd: &str) -> (String, String) {
+    (
+        "failed".to_string(),
+        format!("这台的 cc-bus 比后端旧，重新部署 cc-bus 之后再读（{cmd} 认不出）"),
+    )
 }
 
-/// 把 `cc-agents` 的**人类可读表**变成结构化的行 —— 纯函数。
-///
-/// 今天的形状（`src/shared/cc-bus/scripts/cc-agents` 现打）：
-/// 表头 `ID 状态 目录 初始任务` ＋ 每行 `printf '%-18s %-6s %-40s %s\n' id 状态 目录 任务`。
-///
-/// ⚠⚠ **这一层有一处认不准，写在这里而不是藏起来**：定宽 `printf` 的列之间只有空格，
-/// **没有唯一分隔符** ⇒ 目录名里含空格时，第三列会只取到第一段，余下的并进 `task`。
-/// id 与状态两列不受影响（id 过 `[A-Za-z0-9_-]` 白名单、状态是上面那三个字面量之一）。
-/// ⇒ **要治它得给 cc-bus 加一条机器可读的输出**（`cc_bus_boundary_guard` 的诊断逐字就是
-/// 「正确做法是给 cc-bus 加一条命令，不是绕到它背后读文件」），而那不在 `K-R113` 的写区里。
-///
-/// ⚠ 本函数**不回** spawn 时间：`cc-agents` 读了 `spawned.tsv` 的第 3 列却**不打印它**
-///（现打）⇒ 命令面今天答不出这个字段。同上，要它就得给 cc-bus 加一条命令。
-pub(crate) fn parse_spawned(text: &str) -> Vec<serde_json::Value> {
-    text.lines()
-        .filter_map(|line| {
-            let mut it = line.split_whitespace();
-            let id = it.next()?;
-            let state = it.next()?;
-            if id == "ID" {
-                return None; // 表头
+/// 切出首尾两行之间的数据行 ＋ 末行的坏行数 —— 纯函数。首行不对 ⇒ 老 cc-bus；末行缺 ⇒ 半份，回错、不当完整的用。
+fn framed<'a>(
+    cmd: &str,
+    text: &'a str,
+    head: &str,
+) -> Result<(Vec<&'a str>, usize), (String, String)> {
+    let mut lines: Vec<&str> = text.split('\n').map(|l| l.trim_end_matches('\r')).collect();
+    if lines.last() == Some(&"") {
+        lines.pop();
+    }
+    if lines.first() != Some(&head) {
+        return Err(too_old(cmd));
+    }
+    let skipped = (lines.len() >= 2)
+        .then(|| lines[lines.len() - 1])
+        .and_then(|l| l.strip_prefix(SKIPPED_TAIL))
+        .and_then(|n| n.parse::<usize>().ok())
+        .ok_or_else(|| {
+            (
+                "failed".to_string(),
+                format!("{cmd} 的输出缺末行（`#skipped`）—— 只读到半份，不当完整的用"),
+            )
+        })?;
+    Ok((lines[1..lines.len() - 1].to_vec(), skipped))
+}
+
+/// 名册一行（`cc-list --tsv`）：第 4 列 pane pid 是登记那一刻 pane 根进程的 pid（老格式为空）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RosterRow {
+    pub(crate) id: String,
+    pub(crate) target: String,
+    pub(crate) registered_at: String,
+    pub(crate) pane_pid: Option<u32>,
+    pub(crate) unread: i64,
+}
+
+/// `cc-list --tsv` → `(名册, 坏行数)` —— 纯函数。行的形状归 cc-bus（恰好 5 格）；id 的形状由本侧判
+/// （`INVARIANTS §47`，唯一一份 `bus_id_ok`），过不了的算坏行（`--help` 那种 cc-bus 自己的字符集放得过）。
+pub(crate) fn parse_roster_tsv(text: &str) -> Result<(Vec<RosterRow>, usize), (String, String)> {
+    let (rows, mut skipped) = framed("cc-list --tsv", text, ROSTER_TSV_HEAD)?;
+    let mut out = Vec::new();
+    for l in rows {
+        let f: Vec<&str> = l.split('\t').collect();
+        let unread = f.get(4).and_then(|u| u.parse::<i64>().ok());
+        match unread {
+            Some(unread) if f.len() == 5 && shell_quote_core::bus_id_ok(f[0]) => {
+                out.push(RosterRow {
+                    id: f[0].to_string(),
+                    target: f[1].to_string(),
+                    registered_at: f[2].to_string(),
+                    pane_pid: f[3].parse().ok(),
+                    unread,
+                })
             }
-            // 第二列不是那三个状态之一 ⇒ 这不是数据行（`(还没 spawn 过会话)` 那句就落在这里）
-            let live = spawned_live_of(state)?;
-            let dir = it.next().unwrap_or_default().to_string();
-            let task = it.collect::<Vec<&str>>().join(" ");
-            Some(serde_json::json!({ "id": id, "live": live, "dir": dir, "task": task }))
-        })
-        .collect()
+            _ => skipped += 1,
+        }
+    }
+    Ok((out, skipped))
+}
+
+/// `cc-agents --tsv` → `(台账, 坏行数)` —— 纯函数。状态机器词 → `bus-list` 同一套三态（`null` = 核不了，不是不在）。
+pub(crate) fn parse_spawned_tsv(
+    text: &str,
+) -> Result<(Vec<serde_json::Value>, usize), (String, String)> {
+    let (rows, mut skipped) = framed("cc-agents --tsv", text, SPAWNED_TSV_HEAD)?;
+    let mut out = Vec::new();
+    for l in rows {
+        let f: Vec<&str> = l.splitn(5, '\t').collect();
+        let live = match f.get(1) {
+            Some(&"live") => Some(serde_json::Value::Bool(true)),
+            Some(&"exited") => Some(serde_json::Value::Bool(false)),
+            Some(&"unknown") => Some(serde_json::Value::Null),
+            _ => None,
+        };
+        match live {
+            Some(live) if f.len() == 5 && shell_quote_core::bus_id_ok(f[0]) => {
+                out.push(serde_json::json!({
+                    "id": f[0], "dir": f[2], "spawned_at": f[3], "task": f[4], "live": live
+                }))
+            }
+            _ => skipped += 1,
+        }
+    }
+    Ok((out, skipped))
 }
 
 /// `cc-send` 的退出码 → **语义码** —— 纯函数。
@@ -473,11 +514,9 @@ pub(crate) fn join_identity(
         .collect()
 }
 
-/// 总线名单那一半 —— **`bus-list` 与 `bus-state` 走的是这同一个函数**〔`K-R113` 09-13〕。
-///
-/// 抽出来的理由不是省行数：两条命令各写一遍「转调 `cc-list` → 解析 → 挂身份空间」，
-/// 就是同一份语义两处实现，而它们**必须逐字同形**（`bus-state` 的 `agents` 那一半
-/// 若与 `bus-list` 有一个字段不同，调用方就得知道自己问的是哪一条命令）。
+/// 总线名单（人读表那一形）—— `bus-list` 与 `bus-broadcast` 读它。
+/// 〔SH1〕`bus-state` 改读机器可读形（[`roster`]）；本函数没跟着换：没重部署 cc-bus 的机器上老脚本不认 `--tsv`，
+/// 换了查在线 / 广播就当场失灵 —— 两种印法各一个解析器，待主会话裁（`第四波记录/SH1.md §3` 问 1）。
 fn agents_via_cc_list() -> Result<Vec<serde_json::Value>, (String, String)> {
     let out = run("cc-list", &[]).map_err(|(c, m)| (c.to_string(), m))?;
     if out.timed_out() {
@@ -495,19 +534,33 @@ fn agents_via_cc_list() -> Result<Vec<serde_json::Value>, (String, String)> {
     Ok(join_identity(parse_list(&text), sessions.as_deref()))
 }
 
-/// spawn 台账那一半 —— 转调 `cc-agents`。
-fn spawned_via_cc_agents() -> Result<Vec<serde_json::Value>, (String, String)> {
-    let out = run("cc-agents", &[]).map_err(|(c, m)| (c.to_string(), m))?;
+/// 转调一条只读的 cc-bus 命令、要求它 0 退出，交回 stdout —— `--tsv` 两条与 `cc-log` 共用。
+fn read_via(name: &str, args: &[&str]) -> Result<String, (String, String)> {
+    let out = run(name, args).map_err(|(c, m)| (c.to_string(), m))?;
     if out.timed_out() {
         return Err(timed_out_err());
     }
-    if out.code != Some(0) {
-        return Err((
+    match out.code {
+        Some(0) => Ok(String::from_utf8_lossy(&out.stdout).into_owned()),
+        Some(2) => Err((
+            "invalid_args".to_string(),
+            format!("{name} 拒了这组参数：{}", out.diagnosis()),
+        )),
+        c => Err((
             "failed".to_string(),
-            format!("cc-agents 退出码 {:?}：{}", out.code, out.diagnosis()),
-        ));
+            format!("{name} 退出码 {c:?}：{}", out.diagnosis()),
+        )),
     }
-    Ok(parse_spawned(&String::from_utf8_lossy(&out.stdout)))
+}
+
+/// 〔SH1 · V136〕名册（机器可读形）：`bus-state` 与杀会话顺手注销（D-g）读它。
+pub(crate) fn roster() -> Result<(Vec<RosterRow>, usize), (String, String)> {
+    parse_roster_tsv(&read_via("cc-list", &["--tsv"])?)
+}
+
+/// spawn 台账那一半 —— 转调 `cc-agents --tsv`。
+fn spawned_via_cc_agents() -> Result<(Vec<serde_json::Value>, usize), (String, String)> {
+    parse_spawned_tsv(&read_via("cc-agents", &["--tsv"])?)
 }
 
 pub(crate) fn list_for_inbound() -> Result<serde_json::Value, (String, String)> {
@@ -525,7 +578,7 @@ pub(crate) fn list_reply(agents: Vec<serde_json::Value>) -> serde_json::Value {
 ///
 /// # 为什么它是一条**具名读命令**，而不是让调用方读文件
 ///
-/// monitor 侧 `cc_bus.rs::read_cc_bus_state` 今天走的是一条 shell 串（两次 `cat`
+/// monitor 侧驾驶舱读名册那条 `read_cc_bus_state`〔散文墓碑〕当年走的是一条 shell 串（两次 `cat`
 /// 拼一个分隔标记），它的头注逐字写着解锁条件是「**格式契约稳下来**」，届时
 /// 「正确形状多半**不是**把 shell 串搬过去，而是后端出一条**具名的读命令**」。
 /// **本命令就是那一条。** 而「具名」的实质是：契约面从 *cc-bus 的文件布局*
@@ -542,18 +595,131 @@ pub(crate) fn list_reply(agents: Vec<serde_json::Value>) -> serde_json::Value {
 /// 任何一半失败都回错误，**不回一份看上去完整的半份**。
 /// 半份的失效是静默的：`spawned: []` 与「问不到」在调用方那里长得一模一样。
 ///
-/// # ⚠ 它今天**答不出**哪几个字段（如实写，别让接线的人自己撞）
-///
-/// monitor 那一侧今天渲染的 `registered_at`（登记时间）· `spawned_at`（spawn 时间）·
-/// `skipped`（坏行数）**本命令一个都没有** —— 不是漏了，是 cc-bus 的**命令面**答不出：
-/// `cc-list` 不打印登记时间、`cc-agents` 读了 spawn 时间却不打印它、两者都**静默跳过**坏行。
-/// 要它们，正确做法是**给 cc-bus 加一条机器可读的输出**，不是绕到它背后读那两份 `.tsv`
-///（那条边界由 `cc_bus_boundary_guard` 钉着）。⇒ **接线那一件要先拿这一条去问产品**。
+/// 〔SH1 · V136〕登记时间 · 派生时间 · 坏行数由 cc-bus 新加的机器可读形（`cc-list --tsv` / `cc-agents --tsv`）答，
+/// 仍不读那两份 `.tsv`（`cc_bus_boundary_guard`）；驾驶舱经通道直接问本条（monitor 那条 shell 读退役）。
 pub(crate) fn state_for_inbound() -> Result<serde_json::Value, (String, String)> {
-    Ok(serde_json::json!({
-        "agents": agents_via_cc_list()?,
-        "spawned": spawned_via_cc_agents()?
-    }))
+    let (agents, sk_agents) = roster()?;
+    let (spawned, sk_spawned) = spawned_via_cc_agents()?;
+    let sessions = super::gate::list_sessions().ok();
+    Ok(state_reply(
+        agents,
+        spawned,
+        sk_agents + sk_spawned,
+        sessions.as_deref(),
+    ))
+}
+
+/// 〔SH1 · V136〕`bus-state` 的成品 —— 纯构造器（跨语言金样 `tests/__fixtures__/cc-bus-read.golden.json` 拿它对拍）。
+/// 名册那一半照旧挂到身份空间上（`live` / `ccm_sid`，「登记 ≠ 在线」`95 §3bis`）；pane pid 不上线（界面用不着）。
+pub(crate) fn state_reply(
+    agents: Vec<RosterRow>,
+    spawned: Vec<serde_json::Value>,
+    skipped: usize,
+    sessions: Option<&[(String, String)]>,
+) -> serde_json::Value {
+    let rows = agents
+        .into_iter()
+        .map(|r| {
+            serde_json::json!({
+                "id": r.id, "target": r.target, "registered_at": r.registered_at, "unread": r.unread
+            })
+        })
+        .collect();
+    serde_json::json!({
+        "agents": join_identity(rows, sessions),
+        "spawned": spawned,
+        "skipped": skipped,
+    })
+}
+
+/// 〔SH1 · V136〕`bus-inbox` 缺省看几行 / 最多看几行 / 回显最多带多少字节（超了保尾、说 `truncated`）。
+const INBOX_LINES_DEFAULT: u64 = 200;
+const INBOX_LINES_MAX: u64 = 2000;
+const INBOX_CAP: usize = 4 * 1024 * 1024;
+
+/// `bus-inbox` 的入参 —— 纯函数。id 先过形状判定（`§47`：交给 `cc-log` 之前本侧先判，拒码 `bad_id`、一个进程都不起）。
+pub(crate) fn parse_inbox(args: &serde_json::Value) -> Result<(String, u64), (String, String)> {
+    let obj = args.as_object();
+    let id = obj
+        .and_then(|o| o.get("id"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| ("invalid_args".to_string(), "缺 `id`".to_string()))?;
+    refuse_bad_bus_id(id, |v| format!("收件箱的 id 形状不对：{v}"))
+        .map_err(|(c, m)| (c.to_string(), m))?;
+    let lines = match obj.and_then(|o| o.get("lines")) {
+        None | Some(serde_json::Value::Null) => INBOX_LINES_DEFAULT,
+        Some(v) => v
+            .as_u64()
+            .filter(|n| (1..=INBOX_LINES_MAX).contains(n))
+            .ok_or_else(|| {
+                (
+                    "invalid_args".to_string(),
+                    format!("`lines` 要 1..={INBOX_LINES_MAX} 的整数"),
+                )
+            })?,
+    };
+    Ok((id.to_string(), lines))
+}
+
+/// `bus-inbox`：只读看一个 agent 收件箱的尾巴（转调 `cc-log`，不推已读位置 —— 不是 `bus-recv`，`95 §3.3`）。
+pub(crate) fn inbox_for_inbound(
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, (String, String)> {
+    let (id, lines) = parse_inbox(args)?;
+    let text = read_via("cc-log", &[&id, "-n", &lines.to_string()]).map_err(|(c, m)| {
+        if c == "not_installed" {
+            (
+                c,
+                format!("{m}（有 cc-bus 却没有 cc-log ⇒ 这台的 cc-bus 比后端旧，先重新部署）"),
+            )
+        } else {
+            (c, m)
+        }
+    })?;
+    inbox_reply(&text)
+}
+
+/// `cc-log` 的输出 → `bus-inbox` 成品 —— 纯函数。逐行解析（坏行跳过计数、不抛、不因坏行丢好行）；
+/// 超上限保尾（这是回显，不是清单）并说 `truncated`。
+pub(crate) fn inbox_reply(text: &str) -> Result<serde_json::Value, (String, String)> {
+    let body = match text.split_once('\n') {
+        Some((head, rest)) if head.trim_end_matches('\r') == LOG_HEAD => rest,
+        None if text.trim_end_matches('\r') == LOG_HEAD => "",
+        _ => return Err(too_old("cc-log")),
+    };
+    let (body, truncated) = if body.len() > INBOX_CAP {
+        let cut = body.len() - INBOX_CAP;
+        let from = body[cut..]
+            .find('\n')
+            .map(|i| cut + i + 1)
+            .unwrap_or(body.len());
+        (&body[from..], true)
+    } else {
+        (body, false)
+    };
+    let mut messages = Vec::new();
+    let mut skipped = 0usize;
+    for line in body.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+            skipped += 1;
+            continue;
+        };
+        let get = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
+        let (from, text) = (get("from"), get("text"));
+        // from 与 text 全空 = 这行不是一条消息（可能是别的工具写进来的）。
+        if from.is_empty() && text.is_empty() {
+            skipped += 1;
+            continue;
+        }
+        messages.push(serde_json::json!({
+            "from": from, "ts": get("ts"), "text": text, "class": get("class")
+        }));
+    }
+    Ok(serde_json::json!({ "messages": messages, "skipped": skipped, "truncated": truncated }))
 }
 
 /// 收件人**有没有人会读** —— `(在名单里吗, 会话活着吗)`。

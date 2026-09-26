@@ -11,9 +11,6 @@ src/backend/control/capture_pane.rs:281	缺会话名 —— 这条子命令收�
 src/backend/control/capture_pane.rs:288	多余参数 {:?} —— 这条子命令只收一个位置参数（会话名），\n                 「抓几次」由调用方决定，不由它自己循环	改·§2.2	[对外] 同上一路进界面；「『抓几次』由调用方决定，不由它自己循环」是设计论证 兼§2.4（破折号＋括号）→「只收一个会话名，多给了 {…}」
 src/backend/control/cc_bus.rs:77	cc-bus 装了吗？（装在别处可以用 CC_BUS_BIN_DIR 指过来）	改·§2.4	[可达存疑] 作为 {hint} 拼进 discover::not_installed_message，经 cc-bus 命令的错误回到设置页 cc-bus 区；反问句＋括号里才是正文（91 §2.6 那条「括号里是正文就拿掉括号」）→「没装 cc-bus？装在别处的话设 CC_BUS_BIN_DIR 指过去」
 src/backend/control/cc_bus.rs:238	跑了超过 {} 秒还没退出，已被 timeout 命令结束。cc-bus 的投递走 flock —— \n             多半是锁被别的进程占住了（先看 `cc-list` 与 $CC_BUS_HOME 下的 *.lock）。	改·§2.1	[可达存疑] cc-bus 命令超时的错误回帧；「已被 timeout 命令结束」「投递走 flock」是实现，括号里让用户去看 *.lock 与 cc-list 是派活 兼§2.3 兼§2.4 新词:flock →「cc-bus 超过 {} 秒没响应，可能有别的进程占着它」
-src/backend/control/cc_bus.rs:276	活	保留	[不对外] 解析 cc-agents 输出状态列的匹配串（映射成 true/false/null 进 JSON），不是展示文本
-src/backend/control/cc_bus.rs:277	活?	保留	[不对外] 解析 cc-agents 输出状态列的匹配串（映射成 true/false/null 进 JSON），不是展示文本
-src/backend/control/cc_bus.rs:278	已退	保留	[不对外] 解析 cc-agents 输出状态列的匹配串（映射成 true/false/null 进 JSON），不是展示文本
 src/backend/control/cc_bus.rs:622	已杀会话	保留	[不对外] 在 cc-kill 的 stdout/stderr 里找它自己说的话，匹配串，只决定 killed/stale_only 两个布尔
 src/backend/control/cc_bus.rs:623	已摘掉	保留	[不对外] 在 cc-kill 的 stdout/stderr 里找它自己说的话，匹配串，只决定 killed/stale_only 两个布尔
 src/backend/control/identity_tag.rs:420	起不来 tmux：{e}	保留	[不对外] Outcome::Failed 的载荷；〔W5-VIS〕经 Outcome::failure_note 只进后端 tracing 日志（设计/15 §4.7 S2）
@@ -271,3 +268,5 @@ src/backend/main.rs:751	流结束 ⇒ 这台机器的退出策略是「结束」
 src/bridge/src/tasks.rs:93	{who}的后端回的任务清单认不出来（{e}），多半是两边版本不一样	保留	[不对外] 〔LOC1a〕本机任务 watcher 解成品失败的那一句：只进日志（`tracing::warn!`，这一次不推），界面看不见
 src/bridge/src/filewin/fonts.rs:329	算链	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔W5-FILES〕算大小那几句的字）
 src/bridge/src/filewin/fonts.rs:331	查替	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔W5-FILES〕编辑面查找替换那几句的字）
+src/backend/control/cc_bus.rs:279	这台的 cc-bus 比后端旧，重新部署 cc-bus 之后再读（{cmd} 认不出）	保留	[可达存疑]〔SH1 · V136〕驾驶舱读名册 / 收件箱时那台 cc-bus 还不认机器可读的读法：先说结果（旧了）、再说能做的一步（重新部署），括号里是哪一条没认出，给排障用
+src/backend/control/cc_bus.rs:646	收件箱的 id 形状不对：{v}	保留	[可达存疑]〔SH1 · V136〕`bus-inbox` 在交给 cc-log 之前拒掉坏 id（`bad_id`），界面那一句是「没去读：这个 id 的形状不对（…）」，这里只是细节

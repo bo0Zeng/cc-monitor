@@ -23,7 +23,7 @@
 import { setCurrentMachine, subscribeMachine } from "./machine-context";
 import { commands } from "../ipc/commands";
 // 〔C4e · 第四波 4C〕查在线 · 发消息 · 收掉 · 派生 · 广播五件经通道直接问那台机器的后端（原是五条 Tauri 命令）。
-import { agentOnline, broadcast, killAgent, sendMessage, spawnAgent } from "../cc-bus-control";
+import { agentOnline, broadcast, killAgent, readInbox, readState, sendMessage, spawnAgent, type BusState } from "../cc-bus-control";
 import { saidOfControl } from "../control-said";
 import { showActionFailureToast } from "../error-toast";
 // L2：账号选择复用既有封装——`fetchAccounts` 带 TTL 缓存、`selectableAccounts` 是
@@ -34,11 +34,7 @@ import { fetchAccounts } from "../account-reads";
 // 〔C4b〕`accounts.ts` 先前那个同名的 `"__local__"`（账号面的标记）已退役 —— 全仓只剩这一个本机表示。
 import { LOCAL_ORIGIN } from "../backend-policy";
 
-// C04d 批 5a：四个类型换成生成物（源 `cc_bus.rs`）。手写版与生成物**逐字等价** ⇒ 零漂移，
-// 价值是防将来漂。`CcBusState.skipped` 在 Rust 侧是 `usize`
-// ——**ts-rs 把它映射成 `number` 而不是 `bigint`**，所以 C03 那条大整数性质对它不适用。
-import type { CcBusAgent } from "../generated/CcBusAgent";
-import type { CcBusState } from "../generated/CcBusState";
+// 〔SH1 · V136〕读面经通道直接问后端（`bus-state` / `bus-inbox`），形状由 `cc-bus-control.ts` 的解码器严格收。
 import { askConfirm } from "../ask-dialog";
 import { copyText } from "../copy-table";
 
@@ -67,7 +63,7 @@ export class CcBusSection {
   private broadcastInput!: HTMLInputElement;
   private broadcastBtn!: HTMLButtonElement;
   /** 已加载过的状态；null = 还没读过（**不在构造时预取**）。 */
-  private state: CcBusState | null = null;
+  private state: BusState | null = null;
 
   constructor() {
     this.element = this.build();
@@ -407,12 +403,12 @@ export class CcBusSection {
     this.statusEl.textContent = copyText("ccBus.reload.reading");
     this.listBox.replaceChildren();
     try {
-      this.state = await commands.read_cc_bus_state({ origin });
+      this.state = await readState(origin);
       this.render();
     } catch (e) {
       this.state = null;
       // 失败要说清是哪一步失败，而不是留个空面板让人以为"没有 agent"
-      this.statusEl.textContent = copyText("ccBus.reload.readFailed", { e: String(e) });
+      this.statusEl.textContent = copyText("ccBus.reload.readFailed", { e: saidOfControl(e) });
     } finally {
       this.readBtn.disabled = false;
     }
@@ -458,7 +454,7 @@ export class CcBusSection {
     for (const sp of extra) {
       this.listBox.appendChild(
         this.buildRow(
-          { id: sp.id, pane: "", registered_at: sp.spawned_at },
+          { id: sp.id, registered_at: sp.spawned_at },
           true,
           sp.dir,
           false,
@@ -468,7 +464,7 @@ export class CcBusSection {
   }
 
   private buildRow(
-    a: CcBusAgent,
+    a: { id: string; registered_at: string },
     isSpawned: boolean,
     dir: string | undefined,
     registered: boolean,
@@ -577,7 +573,7 @@ export class CcBusSection {
     box.replaceChildren();
     box.textContent = copyText("ccBus.loadInbox.reading");
     try {
-      const msgs = await commands.read_cc_bus_inbox({ origin, id });
+      const msgs = (await readInbox(origin, id)).messages;
       box.replaceChildren();
       if (msgs.length === 0) {
         box.textContent = copyText("ccBus.inbox.empty");
@@ -591,7 +587,7 @@ export class CcBusSection {
         box.appendChild(line);
       }
     } catch (e) {
-      box.textContent = copyText("ccBus.inbox.failed", { e: String(e) });
+      box.textContent = copyText("ccBus.inbox.failed", { e: saidOfControl(e) });
     } finally {
       btn.disabled = false;
     }
