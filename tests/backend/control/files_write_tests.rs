@@ -2252,3 +2252,79 @@ fn the_write_text_expect_is_required_and_takes_exactly_one_shape() {
     .expect("形状对的那一份该写成");
     assert_eq!(std::fs::read(root.join("a")).unwrap(), b"x");
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+//  〔FW1 · 第四波 4D · 2026-09-25〕`files-delete` 的「只删空目录」一形（主会话裁 SU1 问 2）
+// ═══════════════════════════════════════════════════════════════════════════════════════
+//
+// 要求住址（逐字）：题面 `4d-lanes.md`「主会话本批裁的」「SU1 问 2：后端 `files-delete` 加显式『只删空目录』一形
+// （带 `expect: empty-dir`），卸 skill 最后删空目录」；`设计/60 §3.3` `files-delete` 那一条（`expect` 是删的 CAS）。
+
+/// ★ 空目录删掉；不空 ⇒ `stale`、里面一个字节不动；不在 ⇒ `stale`；是文件 / 指向目录的链接 ⇒ `refused`、原样留着。
+#[test]
+fn the_empty_dir_form_deletes_only_an_empty_real_directory() {
+    let root = temp_root("fw1-emptydir");
+    let r = root.to_str().unwrap();
+    let del = |rel: &str| {
+        answer_wire(
+            "files-delete",
+            &serde_json::json!({"root": r, "rel": rel, "expect": {"empty_dir": true}}),
+        )
+    };
+    std::fs::create_dir_all(root.join("empty")).unwrap();
+    del("empty").expect("空目录该删掉");
+    assert!(!root.join("empty").exists());
+
+    std::fs::create_dir_all(root.join("full")).unwrap();
+    std::fs::write(root.join("full/keep.md"), b"keep").unwrap();
+    let e = del("full").expect_err("不空竟然删了");
+    assert_eq!(e.0, "stale", "{e:?}");
+    assert_eq!(std::fs::read(root.join("full/keep.md")).unwrap(), b"keep");
+
+    let e = del("nope").expect_err("不在竟然成了");
+    assert_eq!(e.0, "stale", "{e:?}");
+
+    std::fs::write(root.join("afile"), b"x").unwrap();
+    let e = del("afile").expect_err("文件竟然按空目录删了");
+    assert_eq!(e.0, "refused", "{e:?}");
+    assert!(root.join("afile").exists());
+
+    #[cfg(unix)]
+    {
+        std::fs::create_dir_all(root.join("realdir")).unwrap();
+        std::os::unix::fs::symlink(root.join("realdir"), root.join("link")).unwrap();
+        let e = del("link").expect_err("指向目录的链接竟然按空目录删了");
+        assert_eq!(e.0, "refused", "{e:?}");
+        assert!(root.join("link").exists() && root.join("realdir").is_dir());
+    }
+}
+
+/// 形状只收恰好 `{"empty_dir": true}`：`false` ⇒ `bad_args`（逐字节形取不出）；多带一个 `b16` ⇒ 不是空目录形，
+/// 按逐字节形取（`{"b16": …}`）⇒ 目标是目录 ⇒ `refused`；与 `recursive` 同给 ⇒ `bad_args`。每一形都一个字节不动。
+#[test]
+fn the_empty_dir_form_takes_exactly_one_shape() {
+    let root = temp_root("fw1-emptydir-shape");
+    let r = root.to_str().unwrap();
+    std::fs::create_dir_all(root.join("d")).unwrap();
+    for (expect, code) in [
+        (serde_json::json!({"empty_dir": false}), "bad_args"),
+        (
+            serde_json::json!({"empty_dir": true, "b16": "00"}),
+            "refused",
+        ),
+    ] {
+        let e = answer_wire(
+            "files-delete",
+            &serde_json::json!({"root": r, "rel": "d", "expect": expect}),
+        )
+        .expect_err("形状不对竟然删了");
+        assert_eq!(e.0, code, "{expect}: {e:?}");
+    }
+    let e = answer_wire(
+        "files-delete",
+        &serde_json::json!({"root": r, "rel": "d", "recursive": true, "expect": {"empty_dir": true}}),
+    )
+    .expect_err("与 recursive 同给竟然收了");
+    assert_eq!(e.0, "bad_args");
+    assert!(root.join("d").is_dir(), "拒了却动了盘");
+}
