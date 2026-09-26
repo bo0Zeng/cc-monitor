@@ -813,3 +813,57 @@ fn hx1_the_staging_dirs_are_born_private_and_an_existing_one_is_left_alone() {
     );
     std::fs::remove_dir_all(&home).ok();
 }
+
+/// 〔W5-FILES〕要求住址：`设计/60 §7 #7`「跨盘提交与非标准 SFTP 起始目录 —— `staging/` 与目标不在同一个盘 ⇒ `EXDEV`，
+/// 上传提交失败原样带回（要做就得『复制 ＋ 删』，一步复制在禁表里）」＋ `§5.1` 那张表「暂存区与目标不同盘 ⇒ `EXDEV` 失败」。
+///
+/// 注入「改名上位回 `EXDEV`」（跨盘在测试里造不出来，如实）：两支（不覆盖 · 覆盖）各一趟 ⇒ 目标逐字节等于暂存件、暂存件被消耗、
+/// 目标目录里不留暂存旁名；覆盖那一支顶掉旧内容。阴性：不注入 ⇒ 走同盘改名那一支（结果同形，证明注入口没把生产那一支换掉）。
+#[test]
+fn a_cross_device_commit_falls_back_to_copy_and_delete() {
+    for (overwrite, tag) in [(false, "xdev-new"), (true, "xdev-over")] {
+        let (home, root) = rig(tag);
+        let body = b"\x00across\xffdisks\n".to_vec();
+        let staged = stage(&home, KEY, &body);
+        if overwrite {
+            std::fs::write(root.join("a.bin"), b"old").unwrap();
+        }
+        let (landed, n) = commit_upload_in(
+            &home,
+            KEY,
+            &root,
+            "a.bin",
+            overwrite,
+            &staged_sha(&home, KEY),
+            true,
+        )
+        .unwrap_or_else(|e| panic!("跨盘那一支没落进去（overwrite={overwrite}）：{e:?}"));
+        assert_eq!(n, body.len() as u64);
+        assert_eq!(
+            std::fs::read(&landed).expect("读落点"),
+            body,
+            "跨盘落进去的字节不对"
+        );
+        assert!(!staged.exists(), "跨盘那一支没消耗暂存件");
+        let side = root.join(format!(".a.bin.ccm-commit-{KEY}.part"));
+        assert!(
+            std::fs::symlink_metadata(&side).is_err(),
+            "目标目录里留下了暂存旁名"
+        );
+    }
+    // 阴性：不注入 ⇒ 同盘改名那一支（结果同形）。
+    let (home, root) = rig("xdev-none");
+    let staged = stage(&home, KEY, b"same");
+    commit_upload_in(
+        &home,
+        KEY,
+        &root,
+        "c.bin",
+        false,
+        &staged_sha(&home, KEY),
+        false,
+    )
+    .expect("同盘那一支该落进去");
+    assert_eq!(std::fs::read(root.join("c.bin")).unwrap(), b"same");
+    assert!(!staged.exists());
+}

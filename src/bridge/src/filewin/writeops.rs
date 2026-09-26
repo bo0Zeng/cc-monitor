@@ -105,7 +105,8 @@
 //!   猜出来的值」：那句的前提是「没有读口」，读口有了。〕
 //! - ✅〔FW5〕~~多选只有删除~~：多选也给「权限」（一个框、一个八进制数、出 N 件、一次问完）。
 //! - ✅〔FW5〕~~有损名一律不许写~~：带着原始字节（`Listed::raw_name`）的有损名能改名 · 删除 · 改权限（相对段发 b16）；
-//!   **进一个有损名的目录 · 复制 / 下载 / 编辑有损名**仍然做不到（那几条用的是整条路径字符串，要把窗口的路径换成字节，单独一刀）。
+//!   〔W5-FILES · 第五波〕进有损名目录 · 复制 / 编辑 / 算大小有损名也做了（窗口发路径改走 `source::RemotePath`，
+//!   写面的根在有损目录里发字节 —— [`apply_remote_in`]）；**下载有损名**仍然做不到（`设计/60 §4.1`：SFTP 库按 UTF-8 有损解码文件名）。
 //! - **往外拖（`sftp_download`）与文本编辑（`sftp_read_text_for_edit`〔散文墓碑〕 /
 //!   `sftp_write_text`）不在本刀射程里**，登记在此：前者是另一个交互题（选目标目录），
 //!   后者要一个编辑器面，而 `设计/60 §5.4b`（大文件编辑改流式）至今没做、形状没定。
@@ -332,7 +333,19 @@ where
 /// ⚠ 回来的 `Err` **原样**带出去（后端路径解析那句拒绝经 [`super::source::said`] 翻成人话），
 /// 由 [`WriteBoard::ui`] 画到窗口上 —— 这一层不改写、不摘要。
 pub async fn apply_remote(line: &Line, origin: &Origin, op: &WriteOp) -> Result<(), String> {
-    let (cmd, args) = match op {
+    apply_remote_in(line, origin, op, None).await
+}
+
+/// 〔W5-FILES · `设计/60 §6.2`「有损名…整条寻址链要换成字节」〕同 [`apply_remote`]，但**根**由调用方给字节：
+/// 窗口的当前目录不是合法 UTF-8 时（`root_raw = Some`），`root` 发 `{"b16": …}`（写操作的对象恒是当前目录的直接子项，
+/// 根就是当前目录）；`None` ⇒ 与 [`apply_remote`] 逐字节同。
+pub async fn apply_remote_in(
+    line: &Line,
+    origin: &Origin,
+    op: &WriteOp,
+    root_raw: Option<&[u8]>,
+) -> Result<(), String> {
+    let (cmd, mut args) = match op {
         WriteOp::Mkdir { path } => (
             "files-mkdir",
             serde_json::json!({ "root": parent_dir(path), "rel": remote_basename(path) }),
@@ -374,6 +387,9 @@ pub async fn apply_remote(line: &Line, origin: &Origin, op: &WriteOp) -> Result<
             }),
         ),
     };
+    if let Some(r) = root_raw {
+        args["root"] = super::source::wire_bytes(r);
+    }
     super::source::ask(line, origin, cmd, &args, budget_for(op))
         .await
         .map(|_| ())

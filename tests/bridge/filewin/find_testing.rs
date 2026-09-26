@@ -194,6 +194,8 @@ pub struct Declared {
     pub browse_watch_cap: u64,
     /// 〔第四波 S4 · Q5〕后端声明的冷启动首建估计。
     pub cold_first_build_secs: u64,
+    /// 〔W5-FILES〕没走进去的挂载点个数。
+    pub skipped_mounts: u64,
 }
 
 impl Default for Declared {
@@ -210,6 +212,7 @@ impl Default for Declared {
             browse_watch_cap: 64,
             // 🔴 同上：**刻意不是 10**（后端今天声明的那个数）。
             cold_first_build_secs: 4747,
+            skipped_mounts: 0,
         }
     }
 }
@@ -521,6 +524,27 @@ impl FakeBackend {
                     ),
                 )
             }
+            // 〔W5-FILES〕算大小：只记下来、回一组定值；`path` 里带 `refuse` ⇒ 按「读不到」拒。
+            "files-size" => {
+                let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                if path.contains("refuse") {
+                    return (
+                        false,
+                        Some("unreadable".into()),
+                        Some("这个路径读不到：PermissionDenied".into()),
+                        None,
+                    );
+                }
+                (
+                    true,
+                    None,
+                    None,
+                    Some(serde_json::json!({
+                        "path": path, "bytes": 2048, "files": 3, "dirs": 2, "links": 1,
+                        "other": 0, "skipped_mounts": 0, "unreadable_dirs": 0,
+                    })),
+                )
+            }
             // 〔F7a · 第三波 09-24〕复制：只记下来、不落盘；`root` 里带 `refuse` ⇒ 按围栏那一档拒，
             //   否则回一个定值字节数（判据要的是「那个数原样带回来」）。
             "files-copy" => {
@@ -533,11 +557,16 @@ impl FakeBackend {
                         None,
                     );
                 }
+                // 〔W5-FILES〕应答照新后端：`files` / `dirs` 恒在；带 `recursive: true` ⇒ 按「一棵」回一组定值。
+                let tree = args.get("recursive").and_then(|v| v.as_bool()) == Some(true);
+                let (files, dirs) = if tree { (3, 2) } else { (1, 0) };
                 (
                     true,
                     None,
                     None,
-                    Some(serde_json::json!({ "path": root, "bytes": 42 })),
+                    Some(
+                        serde_json::json!({ "path": root, "bytes": 42, "files": files, "dirs": dirs }),
+                    ),
                 )
             }
             // 〔F2〕写面五条：**只记下来、不落盘**（判据要的是「窗口发了哪一条、参数长什么样」），
@@ -726,6 +755,7 @@ impl FakeBackend {
             "browse_watches": d.browse_watches,
             "browse_watch_cap": d.browse_watch_cap,
             "cold_first_build_secs": d.cold_first_build_secs,
+            "skipped_mounts": if missing { 0 } else { d.skipped_mounts },
         })
     }
 }

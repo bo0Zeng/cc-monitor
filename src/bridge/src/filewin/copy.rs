@@ -35,7 +35,8 @@
 //!   ⇒ 窗口上**不画**取消那颗按钮（画了就是一颗按了没用的按钮）。大文件复制因此停不下来 —— 如实登记。
 //! - **进度没有了。** 后端一趟做完才回话 ⇒ 窗口上只有「正在复制 …」一行，没有进度条。
 //! - **真机上鼠标点那颗「复制」会不会触发买不到**（本机没有图形会话）。判据喂的是合成事件。
-//! - **目录复制没做** · **多选复制没做** · **复制到别的目录没做**（那个框只改名字，名字里不许带 `/`）。
+//! - 〔W5-FILES〕**目录复制**（后端 `recursive: true`）与**一摞复制到另一栏**（[`run_copy_batch`]）做了；
+//!   「复制为」那个框仍只改名字、仍单选（`设计/60 §6.3`：它要一个名字），名字里不许带 `/`。
 
 use crate::copy_table::copy_text;
 use std::future::Future;
@@ -52,14 +53,20 @@ pub static COPY_LABEL: std::sync::LazyLock<String> =
 /// 这一行能不能复制。**唯一住址** —— 列表画不画那颗按钮（[`super::rows`]）
 /// 与状态机接不接那一跳（[`super::shell::FileWindow::begin_copy`]），问的都是这一个函数。
 ///
-/// 两档不能，理由各不相同：
+/// 〔W5-FILES〕**目录能复制了**：后端 `files-copy` 带 `recursive: true` 复制整棵（逐条目过路径解析，
+/// `设计/60 §7 #6`；设计住 `调研/第四波记录/W5-FILES.md` §2.2）。今天不能的只剩一档：
 ///
-/// - **目录** —— 后端 `files-copy` 只复制普通文件（目录递归没做，理由同删除不递归：
-///   围栏的射程是一条路径）；第三刀那一版的 SFTP `copy-data` 同样只吃文件句柄。
 /// - **有损名** —— 非 UTF-8 文件名经库有损解码之后**寻址不到真字节**，
 ///   一切写操作灰置（同旧面板 `panel.ts::mkRowBtn` 的 `disabled = e.lossyName`）。
 pub fn is_copyable(r: &Row) -> bool {
-    !r.is_dir && !r.lossy_name
+    !r.lossy_name
+}
+
+/// 〔W5-FILES · `设计/60 §6.2`「有损名的…复制」〕**窗口里一行**能不能复制：名字寻址得到，或者有损但带着原始字节
+/// （后端 `files-ls` 送的，`Listed::raw_name`）—— 线上那一形走字节（[`super::source::RemotePath`]）。
+/// 行上那颗按钮、右键菜单、「复制到另一栏」问的都是它；[`is_copyable`] 留着给只有那五格的地方。
+pub fn copyable(l: &super::source::Listed) -> bool {
+    !l.lossy_name || l.raw_name.is_some()
 }
 
 /// 一件待复制：**同一台远端、同一个目录**，`from` → `to`。
@@ -69,6 +76,11 @@ pub struct CopyJob {
     pub to: String,
     /// 显示名（＝ 目标那一侧的 basename）。
     pub name: String,
+    /// 〔W5-FILES〕源是目录 ⇒ 线上带 `recursive: true`（复制整棵）；目录不问覆盖（不合并）。
+    pub is_dir: bool,
+    /// 〔W5-FILES · 有损名全寻址〕`from` / `to` 不是合法 UTF-8 时的**整条路径**原始字节（`None` ⇒ 那个串就是真字节）。
+    pub from_raw: Option<Vec<u8>>,
+    pub to_raw: Option<Vec<u8>>,
 }
 
 impl CopyJob {
@@ -97,7 +109,26 @@ impl CopyJob {
             from: from.to_string(),
             to,
             name: new_name.to_string(),
+            is_dir: false,
+            from_raw: None,
+            to_raw: None,
         })
+    }
+
+    /// 〔W5-FILES〕源的整条路径（显示串 ＋ 可能有的字节）。
+    pub fn from_path(&self) -> super::source::RemotePath {
+        super::source::RemotePath::of(&self.from, self.from_raw.as_deref())
+    }
+
+    /// 〔W5-FILES〕目标的整条路径。
+    pub fn to_path(&self) -> super::source::RemotePath {
+        super::source::RemotePath::of(&self.to, self.to_raw.as_deref())
+    }
+
+    /// 〔W5-FILES〕同一件，标上「源是目录」。
+    pub fn dir(mut self, is_dir: bool) -> Self {
+        self.is_dir = is_dir;
+        self
     }
 
     /// 这一趟**会被盖掉**的是哪一条路径。
@@ -129,6 +160,29 @@ pub enum CopyOutcome {
     },
     /// 起不来 / 半途失败，带原文。
     Failed(String),
+    /// 〔W5-FILES〕一摞（复制到另一栏）跑完的逐件读数。
+    Batch(BatchReport),
+    /// 〔W5-FILES〕一摞里有**目录**撞了名 ⇒ 整摞一件都没做（目录不覆盖、不合并）。带点了名的那句话。
+    Refused(String),
+}
+
+/// 〔W5-FILES〕一件复制成了：几个文件 · 几个目录 · 几个字节。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Copied {
+    pub name: String,
+    pub bytes: u64,
+    pub files: u64,
+    pub dirs: u64,
+}
+
+/// 〔W5-FILES〕一摞复制的逐件结局。**失败不中断后面的件**（同写操作那一摞「一次问完、逐件做」）。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct BatchReport {
+    pub done: Vec<Copied>,
+    /// 撞了名、人答了「都不覆盖」的那几件。
+    pub skipped: Vec<String>,
+    /// `(名字, 原话)`。
+    pub failed: Vec<(String, String)>,
 }
 
 /// 🔴 **正题**：一趟复制的全过程。三段的顺序就是这个函数的结构。
@@ -172,6 +226,67 @@ where
     }
 }
 
+/// 〔W5-FILES〕**一摞复制**（复制到另一栏的多选 / 目录）。三段同 [`run_copy`]，只是「问」是**一次**问完整摞：
+///
+/// ```text
+/// ① probe    每一件的目标在不在（逐件问）
+/// ①'         撞名的里有**目录** ⇒ 整摞不做、点名（目录不覆盖、不合并）—— 一个字节都没动
+/// ② confirm  撞名的**文件**一次交给人（逐件列出）：「覆盖」⇒ 那几件带 `overwrite: true`；「都不覆盖」⇒ 那几件跳过
+/// ③ launch   逐件顺序发（后端阻塞档，一趟一件）；失败记下原话，不中断后面的件
+/// ```
+///
+/// ⚠ `confirm` 是 `FnOnce` —— 「只问一次」有一半由编译器守（同 [`run_copy`]）。
+pub async fn run_copy_batch<P, PFut, C, CFut, L, LFut>(
+    jobs: Vec<CopyJob>,
+    probe: P,
+    confirm: C,
+    launch: L,
+) -> CopyOutcome
+where
+    P: Fn(CopyJob) -> PFut,
+    PFut: Future<Output = bool>,
+    C: FnOnce(Vec<CopyJob>) -> CFut,
+    CFut: Future<Output = bool>,
+    L: Fn(CopyJob, bool) -> LFut,
+    LFut: Future<Output = Result<Copied, String>>,
+{
+    let mut clash: Vec<CopyJob> = Vec::new();
+    for j in &jobs {
+        if probe(j.clone()).await {
+            clash.push(j.clone());
+        }
+    }
+    let dirs: Vec<&str> = clash
+        .iter()
+        .filter(|j| j.is_dir)
+        .map(|j| j.name.as_str())
+        .collect();
+    if !dirs.is_empty() {
+        return CopyOutcome::Refused(copy_text(
+            "rsFilewinCopy.batch.dirClash",
+            &[(
+                "names",
+                &dirs.join(&copy_text("rsFilewinCopy.batch.listSep", &[])),
+            )],
+        ));
+    }
+    let overwrite = !clash.is_empty() && confirm(clash.clone()).await;
+    let mut report = BatchReport::default();
+    for j in jobs {
+        let clashing = clash.contains(&j);
+        if clashing && !overwrite {
+            report.skipped.push(j.name);
+            continue;
+        }
+        let name = j.name.clone();
+        match launch(j, clashing).await {
+            Ok(c) => report.done.push(c),
+            Err(e) => report.failed.push((name, e)),
+        }
+    }
+    CopyOutcome::Batch(report)
+}
+
 /// 一句要画在窗口上的话 ＋ 它的档位。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Notice {
@@ -205,6 +320,44 @@ pub fn outcome_notice(o: &CopyOutcome) -> Notice {
             ),
             loud: false,
         },
+        CopyOutcome::Refused(why) => Notice {
+            text: copy_text("rsFilewinCopy.outcome.refused", &[("why", why)]),
+            loud: true,
+        },
+        CopyOutcome::Batch(r) => {
+            let (files, dirs, bytes) = r.done.iter().fold((0, 0, 0), |(f, d, b), c| {
+                (f + c.files, d + c.dirs, b + c.bytes)
+            });
+            let mut text = copy_text(
+                "rsFilewinCopy.outcome.batchDone",
+                &[
+                    ("n", &r.done.len().to_string()),
+                    ("files", &files.to_string()),
+                    ("dirs", &dirs.to_string()),
+                    ("bytes", &bytes.to_string()),
+                ],
+            );
+            if !r.skipped.is_empty() {
+                text.push_str(&copy_text(
+                    "rsFilewinCopy.outcome.batchSkipped",
+                    &[(
+                        "names",
+                        &r.skipped
+                            .join(&copy_text("rsFilewinCopy.batch.listSep", &[])),
+                    )],
+                ));
+            }
+            for (name, why) in &r.failed {
+                text.push_str(&copy_text(
+                    "rsFilewinCopy.outcome.batchFailed",
+                    &[("name", name), ("why", why)],
+                ));
+            }
+            Notice {
+                text,
+                loud: !r.failed.is_empty(),
+            }
+        }
     }
 }
 
@@ -226,7 +379,8 @@ pub async fn probe_target(
     origin: &super::source::Origin,
     job: &CopyJob,
 ) -> bool {
-    super::transfer::probe_remote(line, origin, job.overwrite_target()).await
+    // 〔W5-FILES〕目标有损 ⇒ 按字节问（`to_path().wire()`；合法 UTF-8 时就是 `overwrite_target()` 那个串）。
+    super::transfer::probe_remote_at(line, origin, job.to_path().wire()).await
 }
 
 /// 复制那条线上命令的名字（后端写面第七条）。
@@ -247,19 +401,53 @@ pub const COPY_BUDGET: std::time::Duration = std::time::Duration::from_secs(600)
 /// 这一道防的是「当前目录」与「那一行的路径」写法不一致（尾斜杠之类）时，
 /// 拼出一条落到别处的路径 —— 那是把文件放到了他没在看的目录里。
 pub fn copy_args(job: &CopyJob, overwrite: bool) -> Result<serde_json::Value, String> {
-    let root = super::source::parent_dir(&job.from);
-    if super::source::parent_dir(&job.to) != root {
+    // 〔W5-FILES · 有损名全寻址〕按**字节**切（合法 UTF-8 时与按串切逐字节同）。
+    let (from, to) = (job.from_path(), job.to_path());
+    let root = from.parent();
+    if to.parent() != root {
         return Err(copy_text(
             "rsFilewinCopy.args.notSameDir",
             &[("from", &job.from.to_string()), ("to", &job.to.to_string())],
         ));
     }
-    Ok(serde_json::json!({
-        "root": root,
-        "from": super::source::remote_basename(&job.from),
-        "to": super::source::remote_basename(&job.to),
+    let mut v = serde_json::json!({
+        "root": root.wire(),
+        "from": from.tail_wire(),
+        "to": to.tail_wire(),
         "overwrite": overwrite,
-    }))
+    });
+    mark_recursive(&mut v, job);
+    Ok(v)
+}
+
+/// 〔W5-FILES〕源是目录 ⇒ 参数里加 `recursive: true`（后端复制整棵；与 `overwrite: true` 同给会被拒 ——
+/// 目录那一件从来不问覆盖，所以这里的 `overwrite` 恒是 `false`）。文件那一形一个键都不多。
+pub fn mark_recursive(v: &mut serde_json::Value, job: &CopyJob) {
+    if job.is_dir {
+        v["recursive"] = serde_json::Value::Bool(true);
+    }
+}
+
+/// 〔W5-FILES〕`files-copy` 的应答 → [`Copied`]。`bytes` 必须在；`files` / `dirs` 是这一波新加的键 ——
+/// 文件那一件在旧后端上没有它们 ⇒ 按「一个文件」记（旧后端只会复制文件）；目录那一件必须有（旧后端根本不会复制目录）。
+pub fn copied_from_reply(job: &CopyJob, d: &serde_json::Value) -> Result<Copied, String> {
+    let bytes = d
+        .get("bytes")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| copy_text("rsFilewinCopy.remote.noBytes", &[]))?;
+    let count = |k: &str, old: u64| -> Result<u64, String> {
+        match d.get(k).and_then(serde_json::Value::as_u64) {
+            Some(n) => Ok(n),
+            None if !job.is_dir => Ok(old),
+            None => Err(copy_text("rsFilewinCopy.remote.noCount", &[("field", k)])),
+        }
+    };
+    Ok(Copied {
+        name: job.name.clone(),
+        bytes,
+        files: count("files", 1)?,
+        dirs: count("dirs", 0)?,
+    })
 }
 
 /// 真起一趟复制 —— 〔F7a · 第三波 2026-09-24〕经通道问后端 `files-copy`。
@@ -301,6 +489,11 @@ pub struct CopyPrompt {
     pub dir: String,
     /// 正在编辑的新名字。
     pub new_name: String,
+    /// 〔W5-FILES〕源是目录（复制整棵）。
+    pub is_dir: bool,
+    /// 〔W5-FILES · 有损名全寻址〕源 / 当前目录不是合法 UTF-8 时的原始字节（窗口按行与当前目录填）。
+    pub from_raw: Option<Vec<u8>>,
+    pub dir_raw: Option<Vec<u8>>,
 }
 
 impl CopyPrompt {
@@ -316,12 +509,26 @@ impl CopyPrompt {
             src_name: r.name.clone(),
             dir: dir.to_string(),
             new_name: Self::suggest(&r.name),
+            is_dir: r.is_dir,
+            from_raw: None,
+            dir_raw: None,
         }
     }
 
     /// 框里那个名字变成一趟真复制。名字不合法 ⇒ `None`（调用方据此**出声**）。
     pub fn to_job(&self) -> Option<CopyJob> {
-        CopyJob::beside(&self.from, &self.dir, &self.new_name)
+        let mut job = CopyJob::beside(&self.from, &self.dir, &self.new_name)?.dir(self.is_dir);
+        // 〔W5-FILES〕有损那一侧：源的字节原样带上；目标 ＝ 当前目录的字节 ＋ `/` ＋ 新名字（新名字恒是框里敲的 UTF-8）。
+        job.from_raw = self.from_raw.clone();
+        if let Some(d) = &self.dir_raw {
+            let mut t = d.clone();
+            if t.last() != Some(&b'/') {
+                t.push(b'/');
+            }
+            t.extend_from_slice(self.new_name.trim().as_bytes());
+            job.to_raw = Some(t);
+        }
+        Some(job)
     }
 }
 
@@ -342,8 +549,8 @@ pub struct CopyBoard {
 
 #[derive(Default)]
 struct Board {
-    /// 正摆在人面前等答复的那一件（`None` = 没在问）。
-    asking: Option<CopyJob>,
+    /// 正摆在人面前等答复的那几件（空 = 没在问）。〔W5-FILES〕一摞复制一次问完，逐件列出。
+    asking: Vec<CopyJob>,
     /// 答复往哪儿送。
     answer: Option<tokio::sync::oneshot::Sender<bool>>,
     /// 在跑的那一件（名字）。〔F7a〕后端一趟做完才回话 ⇒ 没有进度，只有「在跑」。
@@ -355,10 +562,15 @@ struct Board {
 impl CopyBoard {
     /// 摆出「要覆盖吗」，并交出「答复送哪儿」那一头。
     pub fn ask(&self, job: CopyJob) -> tokio::sync::oneshot::Receiver<bool> {
+        self.ask_many(vec![job])
+    }
+
+    /// 〔W5-FILES〕一次摆出「这几件要覆盖吗」。
+    pub fn ask_many(&self, jobs: Vec<CopyJob>) -> tokio::sync::oneshot::Receiver<bool> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         {
             let mut b = self.inner.lock().unwrap();
-            b.asking = Some(job);
+            b.asking = jobs;
             b.answer = Some(tx);
         }
         self.poke(); // 问题要立刻画出来，别等下一次鼠标动
@@ -366,7 +578,7 @@ impl CopyBoard {
     }
 
     pub fn is_asking(&self) -> bool {
-        self.inner.lock().unwrap().asking.is_some()
+        !self.inner.lock().unwrap().asking.is_empty()
     }
 
     /// 把窗口交给它，好让它在有事发生时敲一下。
@@ -397,7 +609,7 @@ impl CopyBoard {
         {
             let mut b = self.inner.lock().unwrap();
             b.running = None;
-            b.asking = None;
+            b.asking.clear();
             b.last = Some(outcome);
         }
         self.rounds.fetch_add(1, Ordering::SeqCst);
@@ -420,7 +632,7 @@ impl CopyBoard {
         let Some(tx) = b.answer.take() else {
             return false;
         };
-        b.asking = None;
+        b.asking.clear();
         drop(b);
         tx.send(overwrite).is_ok()
     }
@@ -431,14 +643,23 @@ impl CopyBoard {
             let b = self.inner.lock().unwrap();
             (b.asking.clone(), b.running.clone(), b.last.clone())
         };
-        if let Some(job) = asking {
+        if !asking.is_empty() {
             let mut answer: Option<bool> = None;
             egui::Modal::new(egui::Id::new("filewin-copy-overwrite")).show(ui.ctx(), |ui| {
-                ui.heading(copy_text(
-                    "rsFilewinCopy.ui.askOverwrite",
-                    &[("name", &job.name.to_string())],
-                ));
-                ui.label(format!("{} → {}", job.from, job.to));
+                if let [job] = asking.as_slice() {
+                    ui.heading(copy_text(
+                        "rsFilewinCopy.ui.askOverwrite",
+                        &[("name", &job.name.to_string())],
+                    ));
+                } else {
+                    ui.heading(copy_text(
+                        "rsFilewinCopy.ui.askOverwriteMany",
+                        &[("n", &asking.len().to_string())],
+                    ));
+                }
+                for job in &asking {
+                    ui.label(format!("{} → {}", job.from, job.to));
+                }
                 ui.horizontal(|ui| {
                     if ui
                         .button(&copy_text("rsFilewinCopy.ui.overwrite", &[]))

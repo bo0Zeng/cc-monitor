@@ -68,3 +68,19 @@ pub(crate) fn current_uid() -> u32 {
 pub(crate) fn current_uid() -> u32 {
     0
 }
+
+/// 〔W5-FILES · 第五波 · `设计/60 §3.7`「不跨文件系统边界那一档没做（设备号要走 `platform/`）」〕
+/// 一个路径（**跟链接**）所在文件系统的设备号 —— 走一棵树时「这一层是不是挂着另一个文件系统」那一判用它
+/// （`files::index::build` · `files::size`）。调用方只把它用在「不跟链接地看过、确是目录」的条目上，跟不跟链接在那里没有差别。
+///
+/// 非 unix ⇒ `None`：那一判在那个平台上**不开口**（全当同一个文件系统），如实登记，不编一个数。
+#[cfg(unix)]
+pub(crate) fn device_of(p: &Path) -> Option<u64> {
+    use std::os::unix::fs::MetadataExt as _;
+    std::fs::metadata(p).ok().map(|m| m.dev())
+}
+
+#[cfg(not(unix))]
+pub(crate) fn device_of(_p: &Path) -> Option<u64> {
+    None
+}
