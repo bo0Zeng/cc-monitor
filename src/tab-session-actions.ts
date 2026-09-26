@@ -19,18 +19,11 @@
  * 换成 `this.host.…`（同一个值，换了个取法）。
  */
 import { openPath } from "@tauri-apps/plugin-opener";
-import {
-  restartLocateFailureMessage,
-  withAccount,
-  type SessionAccount,
-  localLaunchAccountSync,
-  localLaunchAccountNameSync,
-  localLaunchConfigDirSync,
-  recordLocalLaunchAccount,
-  primeLocalLaunchAccounts,
-} from "./accounts";
+import type { SessionAccount } from "./accounts";
+import { withAccount } from "./launch-account";
+import { restartLocateFailureMessage } from "./account-restart";
+import { resumeLocalSession } from "./local-resume";
 import { restartWithAccount, DEFAULT_EXIT_WAIT_MS } from "./account-restart";
-import { validateLocalLaunch } from "./launch-requests";
 import { showActionFailureToast } from "./error-toast";
 import {
   runRemoteResume,
@@ -44,7 +37,7 @@ import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN } from "./ipc/origin";
 import { commands } from "./ipc/commands";
 import { probeSessionRecord, type RecordProbe } from "./session-reads";
 import { lastAccounts } from "./history-reads";
-import { mintSessionTmuxName } from "./remote-launch";
+import { listingFromFetch, mintFromListing, refuseUnmintable } from "./tmux-name-mint";
 import { getBehavior } from "./behavior";
 // F78：远端会话「打开工作目录」→ 用该机配置开文件窗口进入远端 cwd（而非只提示打不开）。〔F7b〕老 SFTP 面板删了。
 import { openFileWindow } from "./file-window";
@@ -242,14 +235,8 @@ export class TabSessionActions {
         },
         {
           sessionId: sid,
-          // audit-fixes F07（I 建议）：显式选号解析不到（登出/目录消失且缓存恰过期）→ 提示而非静默
-          // 落基座（对齐 history.ts:1502；此前 resumeTab 缺此回调，用户明点的"用账号 X resume"被无声吞掉）。
-          onUnselectable: (n) =>
-            showActionFailureToast(
-              copyText("tabSessionActions.unselectable.title"),
-              copyText("tabSessionActions.unselectable.body", { name: n }),
-              { level: "info", durationMs: 6000 },
-            ),
+          // 〔FE1 · D-h〕要的号（显式点的 / 这条会话的 pin）选不了 ⇒ `withAccount` 自己不起、说清、给「用当前账号」的显式选择
+          //   （三处先前各带一份「账号不可用」回调提示，提示完按基座起 —— 与提示说的也不一致）。
           // account-ux U3:未显式选号 → 跟随(lastAccount sticky → 当前账号 → 基座)。显式选号维持 A4。
           // audit-fixes F01(修 B1):pin 现读磁盘,不读内存镜像 accountLastByS（见 readSessionPin）。
           // F01 步骤2:useBase = 显式「用基座 resume」——不注入、不跟随(老会话住基座,别被 follow
@@ -259,71 +246,17 @@ export class TabSessionActions {
       );
       return;
     }
-    if (!(await this.recordStillThere(tab, localLaunchConfigDirSync(sid)))) return;
-    try {
-      // F06：走一遍本地 IR 构造，sid 校验先于 resume_history_session 这次 invoke（不代表本函数
-      // 此前完全没有过 IPC——上面 `getBehavior()` 已经读过一次 config；构造失败与拉起失败分两个
-      // catch，headline 对齐远端 `runRemoteResume` 的"无法构造 resume 命令"/"拉起失败"两分）。
-      validateLocalLaunch({ kind: "resume", sid }, tab.cwd ?? "");
-    } catch (err) {
-      showActionFailureToast(copyText("tabSessionActions.resume.buildFailed"), String(err));
-      return;
-    }
-    // ★★ P3t-Y2b：本机 resume 也进 tmux（POSIX；Windows 那侧后端不读这个名字，`C12`）。
-    //
-    // 名字**必须**由 `mintSessionTmuxName` 铸 —— 它 = 基名 `<项目名>-cc` + `mintTmuxName` 的避让，
-    // 而 `mintTmuxName` 是全仓唯一带撞名避让的铸造口（F13）。
-    // Rust 侧刻意拒绝自己铸名：在那边补一个默认值就是 F13 修掉的坑第三次。
-    //
-    // ⚠ **这里第一版直接写了 `mintTmuxName(`${sid.slice(0,8)}-cc`, …)`** —— 那等于**又抄了一份
-    // 基名规则**，正是 F13 收敛掉的那个重复（我在上一句里刚写完「唯一铸造口」）。
-    // `session_name_registry` 当场判红（它数的就是「谁在产 `-cc` 基名」）。⇒ 改用现成的那个。
-    // 🔴 `K-R96`（用户 09-12 `R55`「要是可读的名字 / 不要id」）：基名从 `<sid8>-cc`
-    //    换成 `<项目名>-cc`（从 cwd 派生）⇒ 这里要给的是 **cwd**，不是 sid。
-    //    sid 一格没丢：它骑在 `@ccm_sid` 上（后端建会话时 `set-option` 写），
-    //    而本仓认会话从来就只问那个、不问名字前缀。
-    //
-    // `existing` 从 `commands.list_local_tmux()` 来（就在下面几行）。
-    // 〔K-R19 订正 09-03〕这里原先写的是 `local_tmux_names()`，**全仓零定义**：
-    // 真名从来就是 `list_local_tmux`（Rust 侧 `tmux.rs::list_local_tmux`）。
-    // ⚠ 它回 `null` 表示**不知道**（本机后端通道
-    // 没起 / 还没推过帧），不是「一个名字都没占」。不知道的时候**不铸名**、不传 `tmuxName`
-    // ⇒ 后端诚实降级回旧路（不进容器）。硬要铸就是「不避让」，那正是 issue #76
-    //「静默接进第一个会话，而用户以为开了新的」。
-    // `D1 阻-1`：**不等待**地把账号快照踢一脚（等它就多一拍，见那个取值口的头注）。
-    primeLocalLaunchAccounts();
-    let tmuxName: string | null = null;
-    try {
-      const sessions = await commands.list_local_tmux();
-      if (sessions)
-        tmuxName = mintSessionTmuxName(tab.cwd ?? "", new Set(sessions.map((s) => s.name)));
-    } catch {
-      // 读不到就当不知道 —— 与上面同一条纪律，绝不退化成空集。
-      tmuxName = null;
-    }
-    try {
-      // ★★ `K-H2b` `D1 阻-1`：**账号这一格先前是空的** —— 这条是 tab 栏那条主路，
-      //    而它一个账号都不传 ⇒ ① 起会话落到 shell rc 里那个默认号上（静默串号）；
-      //    ② 中转那一格永远拼不出路由键（没有账号 id ⇒ 不注入）。
-      //    取值口只有一个（`accounts.ts::localLaunchAccountSync`，就在下面几行调着）：
-      //    〔K-R19 订正 09-03〕原先写的是 `resolveLocalLaunchAccount`，**全仓零定义**；
-      //    钉这件事的那条判据（`commands.vitest.ts`）逐字写的就是 `localLaunchAccountSync`。
-      //    resume 走那条会话上次的 pin，
-      //    说不出就**缺席**（逐字节旧行为），绝不回落到「当前账号」——那是 #75 的形状。
-      await commands.resume_history_session({
-        sessionId: sid,
-        cwd: tab.cwd ?? "",
-        launcher: behavior.resumeCommandLocal || null,
-        tmuxName,
-        account: localLaunchAccountSync(sid),
-      });
-      // `D3 阻-2`：**本机这条路也要往 pin 里写** —— 在此之前 `recordLastAccount` 的两个
-      //   生产调用点结构上只走远端 ⇒ 本机那一份上次账号表恒空 ⇒ 上面那句「pin 优先」
-      //   在本机永远走不到。⚠ 不等待（多一拍会撞那两条只放行一个微任务的 DOM 判据）。
-      recordLocalLaunchAccount(sid, localLaunchAccountNameSync(sid));
-    } catch (err) {
-      showActionFailureToast(copyText("tabSessionActions.resume.failed"), String(err));
-    }
+    // 〔FE1〕本机 resume 的编排只有一份（`local-resume.ts`）：校验 sid → 铸名 → 起 → 记 pin。
+    //   这里先前逐字抄着一份（连同内联的「列本机 tmux → 铸名」六行），注释里记着 #75 · #76 ·
+    //   `D1 阻-1` · `D3 阻-2` 四次「这里修了、那里漏了」。账号跟随这条会话上次的号（同远端 `follow`）。
+    await resumeLocalSession({
+      sid,
+      cwd: tab.cwd ?? "",
+      account: { kind: "follow" },
+      launcher: behavior.resumeCommandLocal,
+      // 〔GP1〕记录还在不在，问的是**这次要用的那个账号根**（账号解析之后、拉起之前；远端那条在 `withAccount` 的 run 里问）。
+      preflight: (configDir) => this.recordStillThere(tab, configDir),
+    });
   }
 
   /**
@@ -364,8 +297,10 @@ export class TabSessionActions {
     // 8s 缓存里的 @ccm_sid 可能已被 /branch 漂移（快照记 N=A，N 此刻跑 B）→ 据陈旧快照 attach
     // 又会撞进漂移会话，正是本刀要修的 bug。故这里**总是新查、不读缓存**（用户主动 resume，一次
     // ssh 可接受；与 resolveAttachMenuItem 的 attach 一律新查对齐），查回来仍写缓存惠及其它路径。
-    // 查询失败（undefined）→ 当作没有会话，走下面 fresh 分支（沿用旧幂等 resume 名，退化不变砖）。
-    const sessions = (await this.fetchTmuxFresh(origin)) ?? null;
+    // 查询失败（undefined）→ 找不到活的那一个，走到下面 fresh 分支；〔FE1〕那一支要铸名，
+    //   而「没问到」不是「零会话」⇒ 在那里拒、说清（先前这里 `?? null` 把两者压成一个，空集铸名 = #76）。
+    const fetched = await this.fetchTmuxFresh(origin);
+    const sessions = fetched ?? null;
     // ① 目标 sid 正活在某 tmux（@ccm_sid 命中）→ 直接 attach 它，回到活的后端，别重开一个。
     // F04（R10）：命中 ≥2 个时**仍 attach 到第一个**（resume 非破坏性、可撤销：重新点一次就能换
     // 目标，不像 kill 一旦选错代价不可逆），但诚实告知——不静默假装只有一个。分级理由见 F04
@@ -409,13 +344,6 @@ export class TabSessionActions {
         },
         {
           sessionId: sid,
-          // F09：显式选号解析不到 → 提示而非静默落基座（对齐 resumeTab 的同类回调）。
-          onUnselectable: (n) =>
-            showActionFailureToast(
-              copyText("tabSessionActions.unselectable.title"),
-              copyText("tabSessionActions.unselectable.body", { name: n }),
-              { level: "info", durationMs: 6000 },
-            ),
           // F04:useBase/显式选号 = 不跟随、不注入（与直连版 resumeTab 的基座逃生口对称，两后端
           // 一致；老会话住基座、别被 follow 注入全局账号 → #75）。
           follow: accountName || useBase ? undefined : { lastAccount: await this.readSessionPin(sid) },
@@ -426,8 +354,12 @@ export class TabSessionActions {
     // ② 目标会话不在任何 tmux（已结束 / 已漂移到别的 sid）→ 起**全新** resume。tmux 名从现有
     // 名里挑一个不撞的，避免复用被 /branch 漂移占着的 `<项目名>-cc`（那正是「resume 进 branch」老 bug）。
     // 🔴 `K-R96`：基名从 cwd 派生（可读），不再是 `<sid8>-cc`。
-    const existing = new Set((sessions ?? []).map((s) => s.name));
-    const name = mintSessionTmuxName(cwd, existing);
+    // 〔FE1〕铸名只经 `tmux-name-mint.ts`；名单没问到 ⇒ 不铸、不起、说清（不拿空集去避让）。
+    const name = mintFromListing(cwd, listingFromFetch(origin, fetched));
+    if (name === null) {
+      refuseUnmintable(origin, copyText("tmuxMint.unknown.notAsked"));
+      return;
+    }
     // account-ux U3:tmux 版归档 resume 也跟随账号(注入 configDir)。① attach 活会话分支不动(账号焊死)。
     await withAccount(
       origin,
@@ -447,13 +379,6 @@ export class TabSessionActions {
       },
       {
         sessionId: sid,
-        // F09：同上——显式选号解析不到时提示而非静默落基座。
-        onUnselectable: (n) =>
-          showActionFailureToast(
-            copyText("tabSessionActions.unselectable.title"),
-            copyText("tabSessionActions.unselectable.body", { name: n }),
-            { level: "info", durationMs: 6000 },
-          ),
         // audit-fixes F01(修 B1):pin 现读磁盘,不读内存镜像 accountLastByS（见 readSessionPin）。
         // F04:useBase/显式选号 = 不跟随、不注入（与直连版 resumeTab 的基座逃生口对称，两后端
         // 一致；老会话住基座、别被 follow 注入全局账号 → #75）。
@@ -640,7 +565,7 @@ export class TabSessionActions {
       // `K-P5g`：这句话原来把**两条成因**并排摆着（「不在本工具 tmux 里」**或**「不是本工具
       // 起的」），而当时没有任何东西分得开它们。现在分得开了——`--session-accounts` 读回来的
       // 身份 token（`launchId`）说得出这条会话是不是从本工具这条路起来的，于是这里**拿它做
-      // 决定**：选哪一条成因、给哪一句补救。判据见 `accounts.ts::restartLocateFailureMessage`
+      // 决定**：选哪一条成因、给哪一句补救。判据见 `account-restart.ts::restartLocateFailureMessage`
       // 头注与 `accounts.vitest.ts`；本处的接线由 `tabs.vitest.ts` 那两条对照钉着。
       const msg = restartLocateFailureMessage(this.host.sessionAccount(sid), {
         local: origin === LOCAL_ORIGIN,

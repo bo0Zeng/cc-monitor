@@ -18,23 +18,15 @@
  * 两边都从那里取。`tabs.ts` 原样 re-export，既有 import 面零改动。
  */
 
-import { commands } from "./ipc/commands";
-// `K-R46`：本机 tmux 名的唯一算法口（铸名过 `mintTmuxName` + 「不知道就不铸」）。
-import { mintLocalTmuxName } from "./ipc/local-tmux-name";
 import { isLocalOrigin, isRemoteOrigin, type Origin } from "./ipc/origin";
 import { showActionFailureToast } from "./error-toast";
 import { getBehavior } from "./behavior";
 import { resolveResumeCommand } from "./remote-config";
-import { validateLocalLaunch } from "./launch-requests";
-import {
-  fetchAccounts,
-  fetchLocalAccounts,
-  fetchSessionAccounts,
-  isSelectable,
-  type Account,
-  type SessionAccount,
-} from "./accounts";
+import { isSelectable, type Account, type SessionAccount } from "./accounts";
+import { fetchAccounts, fetchLocalAccounts, fetchSessionAccounts } from "./account-reads";
 import { findClaudeTmuxMatches, type TmuxSession } from "./tmux-sessions";
+import { resumeLocalSession } from "./local-resume";
+import { readTmuxListing } from "./tmux-name-mint";
 import { askForkLaunch, type ForkAccountOption } from "./fork-ask";
 import { startForkedSession, type ForkStartDeps, type ForkStartOutcome } from "./fork-start";
 import type { ForkLaunchInput } from "./fork-launch";
@@ -61,8 +53,12 @@ export interface ForkSourceFacts {
   source: ForkLaunchInput;
   /** 源会话所在 tmux 名（新名要避开它）。 */
   sourceTmuxName: string | null;
-  /** 远端已占用的全部 tmux 名（新名要避开它们）。 */
-  takenTmuxNames: string[];
+  /**
+   * 远端已占用的全部 tmux 名（新名要避开它们）。
+   * 〔FE1〕**`null` = 名单没问到**（不是「一个都没占」）⇒ 选了 tmux 就不起、说清（`fork-start.ts`）。
+   * 先前这里 `?? []`：远端不可达时拿空集铸 `-fork-cc`，与 #76 同形。
+   */
+  takenTmuxNames: string[] | null;
 }
 
 /**
@@ -95,7 +91,8 @@ export function deriveForkSource(
       liveTmuxName: tmuxName,
     },
     sourceTmuxName: tmuxName,
-    takenTmuxNames: sessions?.map((s) => s.name) ?? [],
+    // 〔FE1〕`null` / `undefined` = 名单没取到 ⇒ `null`，不压成空集（见字段头注）。
+    takenTmuxNames: sessions ? sessions.map((s) => s.name) : null,
   };
 }
 
@@ -129,11 +126,18 @@ export async function collectForkSource(
       takenTmuxNames: [],
     };
   }
-  const [rows, sessions] = await Promise.all([
+  // 〔FE1〕tmux 名单只经 `tmux-name-mint.ts::readTmuxListing` 取（本机远端同一个家）：
+  //   没问到 ⇒ `unknown` ⇒ 这里交 `null`；远端没装 tmux ⇒ 一张确定的空表。
+  const [rows, listing] = await Promise.all([
     fetchSessionAccounts(origin).catch(() => [] as SessionAccount[]),
-    commands.list_remote_tmux({ origin }).catch(() => null),
+    readTmuxListing(origin),
   ]);
-  return deriveForkSource(rows, sessions, sid, cwd);
+  return deriveForkSource(
+    rows,
+    listing.kind === "known" ? [...listing.sessions] : null,
+    sid,
+    cwd,
+  );
 }
 
 /**
@@ -164,46 +168,19 @@ function productionDeps(input: ForkFlowInput): ForkStartDeps {
         defaultUseTmux: isRemoteOrigin(input.origin),
       }),
 
-    startLocal: async (a) => {
-      // F06 纪律（从被顶掉的 `session-viewer.resumeBranch` 原样搬来）：**sid 校验先于任何
-      // IPC 往返**。抛出去由 `runForkFlow` 的 catch 变成 toast，绝不拿一个残缺 sid 去拉终端。
-      validateLocalLaunch({ kind: "resume", sid: a.sessionId }, a.cwd);
-      const behavior = await getBehavior();
-      // ★★ `K-R46`：**名字要算出来传下去** —— 后端故意拒绝自己铸名
-      //    （`history.rs` 的 `NO_TMUX_NAME`），不传 ⇒ 渲染器早退 ⇒ 降级回旧路 ⇒
-      //    分叉出来的会话不在具名容器里。这条路上**这一格尤其贵**：
-      //    分叉是唯一说得出「账号 0」（`{ kind: "base" }`，就在下面几行）的生产路，
-      //    而 POSIX 后端只有那一态渲染得出容器（具名账号与「没表态」都 §35 降级）
-      //    ⇒ 名字没传的时候，这里是**全仓唯一一条本来能建出容器却建不成的路**。
-      //    ⚠ 铸名规则住 `ipc/local-tmux-name.ts`，别在这里重写基名。
-      //    ⚠ 它与远端那条的 `tmuxName` **不是一回事**：远端那个是「避开源会话的名字」
-      //      （`fork-start.ts::forkTmuxName`，本机那条路已被摘掉这一格）；
-      //      这里铸的是**新会话自己**的 `<项目名>-cc`，避让的是本机现有的 tmux 名。
-      //      〔`K-R96` 09-12〕基名从 cwd 派生（用户 `R55`：「要是可读的名字 / 不要id」）。
-      const tmuxName = await mintLocalTmuxName(a.cwd ?? "");
-      await commands.resume_history_session({
-        sessionId: a.sessionId,
+    // 〔FE1〕本机那一跳走 resume 编排的唯一一份（`local-resume.ts`）：sid 校验先于任何 IPC（F06）、
+    //   名字现铸（`K-R46`：后端故意不铸，不传 ⇒ 不进容器；这条路上尤其贵 —— 分叉是全仓唯一说得出
+    //   「账号 0」的生产路，而 POSIX 后端只有那一态渲染得出容器）、账号是**用户在小窗里显式选的**：
+    //   账号 0 ⇒ 显式 `base`（不是省略：省略 = 没表态 = 被 shell rc 里的默认号顶掉），具名 ⇒ 名字说得出才带（`K-R53`）。
+    //   ⚠ 这里铸的是**新会话自己**的 `<项目名>-cc`（避让本机现有名字），与远端那条「避开源会话的名字」
+    //     （`fork-start.ts::forkTmuxName`）不是一回事。失败它自己出声，这里只回布尔（与 `startRemote` 同形）。
+    startLocal: (a) =>
+      resumeLocalSession({
+        sid: a.sessionId,
         cwd: a.cwd,
-        launcher: behavior.resumeCommandLocal || null,
-        tmuxName,
-        // ★ 这条路上「账号 0」是**用户显式选的**（追问小窗的默认位就摆在那儿），
-        //   所以要走 `base` 让后端产出 `unset CLAUDE_CONFIG_DIR` —— **不是省略参数**。
-        //   省略 = 「没表态」= 一个字都不注入，会被 shell rc 里的默认账号顶掉
-        //   （Phase G 抓出的静默串号；远端那条路一直是 unset，本地此前不是）。
-        // ★ `K-R53`：具名那一态**把名字也带上** —— 不带 = 后端说不出 `--account`
-        //   ⇒ 这条路结构上到不了 ccm 那条路（而它是全仓唯一说得出「账号 0」的生产路，
-        //   那一格本来就是通的，具名这一格先前不是）。`accountName` 为 `null` 时
-        //   **原样不传**（`undefined`）：空值 ≠ 未设，见 `accounts.ts` 的 Z01。
-        account:
-          a.configDir === null
-            ? { kind: "base" }
-            : {
-                kind: "named",
-                configDir: a.configDir,
-                ...(a.accountName === null ? {} : { name: a.accountName }),
-              },
-      });
-    },
+        account: { kind: "explicit", configDir: a.configDir, name: a.accountName },
+        failureTitle: copyText("localResume.fork.failed"),
+      }),
 
     startRemote: async (a) => {
       const behavior = await getBehavior();

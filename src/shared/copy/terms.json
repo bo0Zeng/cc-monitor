@@ -76,7 +76,7 @@
       "word": "tmux",
       "tier": "限用",
       "tally": { "re": "\\btmux\\b", "flags": "i" },
-      "inTable": 97,
+      "inTable": 100,
       "meaning": "用户机器上的终端复用程序。",
       "context": "讲用户自己能 attach / 看得见的 tmux 会话时许说（「tmux 会话」比「终端复用会话」清楚）。我们对 tmux 的用法（send-keys · capture-pane · @ccm_sid 这类会话标记）不许露，见禁档。",
       "source": "设计/91 §4 R1b（2026-09-18 裁定）",
