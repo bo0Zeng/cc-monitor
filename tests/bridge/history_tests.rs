@@ -734,7 +734,7 @@ pub(crate) const THE_SIX_WAYS_THE_OLD_PATH_STILL_WINS: &[(&str, CellToday, &str,
         CellToday::StillFallsBack,
         "`NO_TMUX_NAME` —— 名字只许 `remote-launch.ts::mintTmuxName` 铸（F13 那个撞名坑），\
              Rust 这侧不许补默认值。⚠ **这一格今天是半开的**（现打 09-13）：resume 那条\
-             前端已接线（`views/history.ts::mintLocalTmuxName` · `tabs.ts::mintSessionTmuxName`，\
+             前端已接线（〔FE1〕本机 resume 只剩一份编排 `local-resume.ts::resumeLocalSession`，名字经 `tmux-name-mint.ts` 铸，\
              人群由 `tests/ipc/commands.vitest.ts` 那条「每处 `resume_history_session` 都带 `tmuxName`」钉着）；\
              而 `new_local_session` 的 Rust 签名里**根本没有 `tmux_name` 这一格** ⇒ 起新会话恒短路。",
         "给 `new_local_session` 加一个名字参数 ＋ 前端在那条路上也过一次铸造口。\

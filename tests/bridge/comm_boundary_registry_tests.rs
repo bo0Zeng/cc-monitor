@@ -2442,12 +2442,12 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     //    〔F7c 09-24〕`subscribe` 恰好 1 处（`filewin/source.rs::watch`）。
     //    变多 ＝ 窗口里长出了第二处说它的地方（期限 / 撤的住址跟着分家）；
     //    变少 ＝ 那一处没了 —— 上面那条零违例会在零个调用点上**恒绿**。
-    // 〔C4a · 第四波〕`chan.call`（TS，主界面）恰好 2 处：`accounts.ts::fetchSessionAccounts`（`accounts-sessions`）·
+    // 〔C4a · 第四波〕`chan.call`（TS，主界面）恰好 2 处：`account-reads.ts::fetchSessionAccounts`（`accounts-sessions`）·
     //    `views/history-search.ts` 逐台那一问（`history-search`）。**X6 的 TS 人群第一次非空。**
     // 〔C4b · 第四波 4B〕2 → 5：`session-reads.ts` 的三问（`history-index` / `history-user-inputs` / `history-find`，
     //    会话读面那三条从 monitor 的 Tauri 命令改走通道；每处显式给期限）。5 → 6：`settings/plugins-section.ts::fetchSurvey`
     //    （`plugins-marketplaces`）。
-    // 〔C4c · 第四波 4B〕6 → 8：`accounts.ts::fetchAccounts`（`accounts-list`）· `accounts.ts::checkTrust`（`accounts-trust`）——
+    // 〔C4c · 第四波 4B〕6 → 8：`account-reads.ts::fetchAccounts`（`accounts-list`）· `account-reads.ts::checkTrust`（`accounts-trust`）——
     //    账号清单与信任预检从 monitor 的三条 Tauri 命令改走通道；每处显式给期限。
     //    8 → 9：`session-reads.ts::probeSessionRecord`（`history-record`，resume 之前问记录还在不在）。
     //    9 → 11：`settings/backend-section.ts::askExitPolicy` / `putExitPolicy`（「退出行为」问 / 交写）。

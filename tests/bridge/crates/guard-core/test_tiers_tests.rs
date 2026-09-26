@@ -427,6 +427,8 @@ const SCAN: &[&str] = &[
     "tests/ipc/chan.vitest.ts",
     "tests/ipc/commands.vitest.ts",
     "tests/launch-cli-wire.vitest.ts",
+    // 〔FE1〕铸名 / 本机 resume 编排各只有一个家（读生产段全集 ⇒ 扫描层）。
+    "tests/launch-orchestration-single-home.vitest.ts",
     "tests/launch-payload-golden.vitest.ts",
     "tests/launch-render-fallback.vitest.ts",
     "tests/launch-tmux-outer-golden.vitest.ts",
