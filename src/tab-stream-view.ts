@@ -107,6 +107,8 @@ function branchRecordCount(folder: BranchFolder): number {
 export class TabStreamView {
   /** Batch13-F40a:物化/后台 tab 尾段条数(与 F39 viewer TAIL_INITIAL 同语义) */
   private static readonly MATERIALIZE_TAIL_K = 150;
+  /** 〔W5-RENDER R7〕`materializeUntilFilled` **一次同步调用**最多跑几轮（原 `round < 4` 的那个 4；它不再是「到此为止」，没满就下一帧接着补）。 */
+  private static readonly MATERIALIZE_ROUNDS_PER_CALL = 4;
   /** F40b:上翻补批批量/触发距离(沿用 F39 实测值) */
   private static readonly FILL_BATCH = 200;
   private static readonly TOP_TRIGGER_PX = 800;
@@ -530,19 +532,26 @@ export class TabStreamView {
   /**
    * D 审计 R-3:一次 150 条 payload 可能只产出几张卡(tool-group 合并成单卡 34px、
    * skip 记录占配额不产卡)——工具密集会话一轮物化后屏幕仍近空,而 F40a 没有上翻
-   * 补批兜底。有界循环补到**一屏填满**或账本弹尽(≤4 轮防病态会话空转)。
+   * 补批兜底。补到**一屏填满**或账本弹尽。
    * 〔步 3〕停手条件从「滚得动」换成 `contentReachesBottom`——理由见它的头注。
+   *
+   * 〔W5-RENDER R7 · `设计/17 §2.3` · `设计/10 §3.3` B2〕**轮数封顶不再是停手条件**。原来 `round < 4` 一到就收手：
+   * 秤 3 量过最稀疏那一档（每 150 条只出 5 张细条卡）4 轮只补得出 20 张 ⇒ 半屏，而且批结束 / 视口变大这两条入口
+   * 之后**没有任何东西**再补（不可滚的元素不产生 scroll 事件）。现在：一次同步调用仍只跑
+   * {@link MATERIALIZE_ROUNDS_PER_CALL} 轮（每一下的量有界，不把主线程占住），没满、账本还有 ⇒
+   * 下一帧接着补（`scheduleFillContinuation`，与上翻补批同一条 rAF 自链），直到满一屏或账本空。
    */
   private materializeUntilFilled(tab: Tab): void {
     if (tab.skeleton) {
       tab.skeleton.fillVisible(); // 〔`设计/10` 骨架〕同上
       return;
     }
-    for (let round = 0; round < 4; round++) {
+    for (let round = 0; round < TabStreamView.MATERIALIZE_ROUNDS_PER_CALL; round++) {
       if (tab.window.pendingCount === 0) return;
       if (round > 0 && this.contentReachesBottom(tab)) return;
       this.materializeTail(tab);
     }
+    if (tab.window.pendingCount > 0 && !this.contentReachesBottom(tab)) this.scheduleFillContinuation(tab);
   }
 
   /**
@@ -934,12 +943,26 @@ export class TabStreamView {
       el.style.overflowAnchor = "";
       this.renderingFill = false;
     }
+    this.scheduleFillContinuation(tab);
+  }
+
+  /**
+   * 上翻补批 / 补满一屏的**下一帧复检**（rAF 自链的那一跳）：补完一批下一帧再看一眼，仍在触发区 / 仍不可滚 /
+   * 仍没满一屏且账本有余就再补一批（`fillAbove`）；切走了（`activeId` 守卫）或账尽即停。
+   * 〔W5-RENDER R7〕从 `fillAbove` 末尾抽出来，`materializeUntilFilled` 一次调用补不满时也从这里接着补；
+   * 「仍没满一屏」那一问用真实布局（`contentReachesBottom`），不只看滚不滚得动。
+   */
+  private scheduleFillContinuation(tab: Tab): void {
     requestAnimationFrame(() => {
       if (this.store.activeId !== tab.sessionId) return;
       const t = this.store.tabs.get(tab.sessionId);
       if (!t || (t.window.pendingCount === 0 && !t.window.wantsBelow)) return;
       const e = t.streamEl;
-      if (e.scrollTop <= TabStreamView.TOP_TRIGGER_PX || e.scrollHeight - e.clientHeight <= 1) {
+      if (
+        e.scrollTop <= TabStreamView.TOP_TRIGGER_PX ||
+        e.scrollHeight - e.clientHeight <= 1 ||
+        !this.contentReachesBottom(t)
+      ) {
         this.fillAbove(t);
       }
     });
