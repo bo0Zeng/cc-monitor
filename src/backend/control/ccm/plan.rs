@@ -138,7 +138,10 @@ impl Env {
             home,
         }
     }
+}
 
+// 〔W5-ALIAS〕预览那一份单独一个 `impl` 块：`from_process` 那一块的判据按「块尾」截函数体（`plan_tests` 的家目录那条）。
+impl Env {
     /// 〔W5-ALIAS · 第五波先行〕别名预览用的那一份（帧命令 `ccm-print`，`设计/71 §2.3`）：
     /// **「从这台机器家目录里的一个新终端敲这条别名」**。问的人是常驻后端进程，而它的 cwd / 环境
     /// 不是那个终端的 ⇒ 这几格写死、而且写在这一处（判据 `ccm::tests` 的预览那几条逐格钉）：
@@ -151,7 +154,7 @@ impl Env {
     /// 常驻后端的 stderr 进的是日志。
     pub(crate) fn for_preview() -> Self {
         use super::argv::Defaults;
-        let home = std::env::var("HOME").unwrap_or_default();
+        let home = home_of(|k| std::env::var(k).ok());
         let get = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
         let pick = |k: &str, fallback: String| -> String { get(k).unwrap_or(fallback) };
         Env {
@@ -163,7 +166,7 @@ impl Env {
             ccm_env: pick("CCM_ENV", Defaults::ENV.to_string()),
             accts_manifest: pick(
                 "CCM_ACCTS_MANIFEST",
-                format!("{home}/{}", Defaults::ACCTS_MANIFEST_REL),
+                under_home(&home, Defaults::ACCTS_MANIFEST_REL),
             ),
             inherited_config_dir: None,
             account_env: String::new(),

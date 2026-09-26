@@ -780,6 +780,7 @@ fn the_alias_preview_refuses_in_the_words_of_ccm() {
     };
     assert_eq!(said, want, "拒的那句不是 ccm 自己的原话");
     assert_eq!(code(serde_json::json!({ "args": ["--cwd", "/p"] })), "ok");
+}
 
 // ── 〔WIN1 · 第四波 4D · RT1 F7〕`--ccm-probe` 自报的能力 = 这台机器上做得到的那一份 ──────────
 //
