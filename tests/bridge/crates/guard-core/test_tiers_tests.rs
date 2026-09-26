@@ -281,7 +281,6 @@ const SCAN: &[&str] = &[
     "tests/backend/control/cli_control_tests.rs",
     "tests/backend/control/gate_tests.rs",
     "tests/backend/control/kill_tests.rs",
-    "tests/backend/control/launch_tests.rs",
     "tests/backend/control/resolve_query_tests.rs", // 〔TL2 · V126〕UNIT → SCAN：跨仓承诺那一族读冻结金样与 IPC-PROTOCOL
     "tests/backend/dial_sftp_tests.rs",
     "tests/backend/dial_tests.rs",
@@ -356,6 +355,8 @@ const SCAN: &[&str] = &[
     "tests/bridge/event_replay_tests.rs",
     "tests/bridge/e2e_gate_registry_tests.rs",
     "tests/bridge/exec_site_registry_tests.rs",
+    "tests/bridge/frame_tally_tests.rs", // 〔W5-VIS〕丢帧账：账本行为 ＋ 三条读帧循环的接线（剥过的生产文本）
+    "tests/bridge/swallow_registry_tests.rs", // 〔W5-VIS〕业务路径零裸吞：人群从四棵生产源码树派生 == 登记表
     "tests/bridge/fenced_block_tests.rs",
     "tests/bridge/filewin/bigfile_tests.rs",
     "tests/bridge/filewin/boundary_tests.rs",
@@ -534,6 +535,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/control/files_write_tests.rs",
     "tests/backend/control/fork_write_tests.rs",
     "tests/backend/control/identity_tag_tests.rs",
+    "tests/backend/control/launch_tests.rs", // 〔W5-VIS〕由扫描层挪来：S4 那条判据真起一个假 tmux 子进程（`ran` 收 stderr）
     "tests/backend/control/panorama_tests.rs",
     "tests/backend/control/transfer_tests.rs",
     "tests/backend/dial_compress_tests.rs",

@@ -554,7 +554,10 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p4d-acct-iso-cmd**（2026-09-26，第四波 4D DUP2 合并那一拍）：子命令 ＋1 `--acct-iso-cmd`、帧命令 ＋1 `acct-iso-cmd`（建号命令由后端出、
 /// 界面预览 / 弹终端经 `call` 问，TS 零拼 shell 串）。＋ 行为：`bus-send` / `bus-kill` / `bus-spawn` 入口先判 id（`shell_quote_core::bus_id_ok`，拒码 `bad_id`）·
 /// `ccm` 新建会话名走 `gate-core::new_tmux_name_issue`（多拒欺骗字符与超过 128 的名字）· agent 工具名收进共享 crate `agent-tools-core`。
-pub const BUILD_ID: &str = "p4d-acct-iso-cmd";
+///
+/// ★★★ **p4e-failure-visible**（2026-09-26，第五波 W5-VIS 合并那一拍）：行为 —— 备份沿用不上原文件权限位 ⇒ 删备份、整趟拒（`files_write`）·
+/// 读不动的会话逐份 warn、扫完出总数（`search_query`）· 认不出的帧 / 非 UTF-8 行计数出声（`frame_tally`）· 次要动作失败留一行日志。子命令没变，照 p1v 先例不加历史行。
+pub const BUILD_ID: &str = "p4e-failure-visible";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
