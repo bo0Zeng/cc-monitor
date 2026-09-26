@@ -2477,11 +2477,13 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     // 〔TAP〕`session-tap` 与会话行走同一处（`plan` 里多一种流），仍是 1。
     // 〔DL1 · 第五波〕`accounts-changed`（替掉裸事件 `remote-backend-ready`；`设计/01 §2.2`「前端只有两个动作」）同样经这一处
     //    （合并 TAP 时从单独一处 `watchAccountsChanged` 收回 `bindEvents` 的 `plan`，照 TAP 那一形）⇒ 仍是 1。
+    // 〔W5-ALIAS · 第五波先行〕＋1（合并主线 a6b10281 之后 34 → 35；那一拍两边各自写成 34、git 当同一行合了，现打 35）：`settings/machine-aliases.ts::previewAlias` 一处（别名预览 `ccm-print`，
+    //    问本机常驻后端「这条别名实际会执行什么」，`设计/71 §2.3`）；显式给期限（`PREVIEW_BUDGET_MS`）。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 34usize),
+            ("chan.call", 35usize),
             ("chan.subscribe", 1usize),
             ("subscribe", 1usize)
         ]
@@ -2617,8 +2619,8 @@ const TRANSPORT_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
         "〔RW1 · 第四波 09-24〕**原来只差 `C1` 一条，今天一条都不咬了** —— 咬它的那个词随 F11 那条 SFTP 直删\
          （连同它的结构守卫〔散文墓碑〕）改经远端后端删一起走了（`设计/05 §8.1.3` 说的「要清掉那个词得连它一起搬」，\
          搬的是用户裁的 RW1）。🔴 **而它仍然不圈**，这是一次归属判断、不是判据没跑：\
-         本文件今天剩下的是 F08 的**部署**（后端二进制 · 入口 shim · 卸载）与远端 rc 别名块的**规划**\
-         （`merge_profile_block` / `strip_profile_block` / `CCM_WRAPPER_SNIPPET`）—— 都是业务，不是传输；\
+         本文件今天剩下的是 F08 的**部署**（后端二进制 · 入口 shim · 卸载）（〔W5-ALIAS〕远端 rc 别名块的**规划**\
+         `merge_profile_block` / `strip_profile_block` / `CCM_WRAPPER_SNIPPET` 搬去了 `profile_installer.rs`）—— 都是业务，不是传输；\
          SFTP 整体进常驻后端是 4B 的 `SR1b`，这一份的去留归它裁。十一条全绿不等于该圈（`真相源/100 §二` 那一形）。",
     ),
     (

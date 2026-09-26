@@ -62,7 +62,7 @@ DEB="${LBC_DEB:-cc-monitor_3.8.0_amd64.deb}"
 DIR_REAL='.cc-monitor/bin'      # install_local_ccm_entry 的真落点（local_backend.rs:1657）
 DIR_SNIPPET='.local/bin'        # src/shared/ccm-aliases.sh 那行 PATH 加的那个
 
-# 产品写 rc 时用的围栏（`src/bridge/src/sftp.rs` 的 CCM_PROFILE_BEGIN / _END 逐字）。
+# 产品写 rc 时用的围栏（`src/bridge/src/profile_installer.rs` 的 CCM_PROFILE_BEGIN / _END 逐字）。
 FENCE_BEGIN='# === cc-monitor remote ccm BEGIN ==='
 FENCE_END='# === cc-monitor remote ccm END ==='
 
@@ -271,7 +271,7 @@ fi
 if docker exec "$CT" sh -c '[ -f /tmp/ccm-aliases.sh ]' 2>/dev/null; then
   docker exec -u tester -e HOME=/home/tester "$CT" bash -c \
     "printf '\n%s\n' '$FENCE_BEGIN' >> \$HOME/.bashrc && cat /tmp/ccm-aliases.sh >> \$HOME/.bashrc && printf '%s\n' '$FENCE_END' >> \$HOME/.bashrc" >/dev/null 2>&1
-  ok "rc 片段已装（围栏逐字取自 sftp.rs 的 CCM_PROFILE_BEGIN/_END）"
+  ok "rc 片段已装（围栏逐字取自 profile_installer.rs 的 CCM_PROFILE_BEGIN/_END）"
   note "装完之后 rc 里围栏处数：$(tsh "grep -c 'cc-monitor remote ccm BEGIN' \$HOME/.bashrc")"
   for n in ccm cc cct; do
     note "[-lic 交互] $n ⇒ $(probe_name "$n" tsh)"

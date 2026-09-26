@@ -730,7 +730,7 @@ async fn answer<R: AsyncRead + Unpin>(
                         ));
                     }
                 }
-                // 只在需要时补问（与 monitor `interpret_profile_read` 入参同形）：读不出 ⇒ 在不在；读到空 ⇒ 大小。
+                // 只在需要时补问：读不出 ⇒ 在不在；读到空 ⇒ 大小。
                 let (exists, size) = match &data {
                     None => (exists(s, path).await, None),
                     Some(d) if d.is_empty() => (None, metadata_size(s, path).await.flatten()),
