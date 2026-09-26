@@ -121,13 +121,8 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              退役归：哪天窗口改成**常驻一个事件循环**（`设计/60 §4.8` 那个进程形态\
              要重定，见 `99 §4.9` 那条待裁），第二次开窗不再是失败 ⇒ 这一跳就没用了。",
     ),
-    (
-        "src/search.rs",
-        "startup-delay",
-        1,
-        "`build_blocking` 起头让路一次：避开首屏 replay 的磁盘/CPU 争用。\
-             索引不在关键路径，晚几秒就绪没关系（UI 那之前显示「索引中」）。**一次性**。",
-    ),
+    // 〔LOC1b · 第四波 4D〕`src/search.rs` 那一行（`startup-delay` 1 处：`build_blocking` 起头让路 1.5 s）随本机内存索引删了 ——
+    //   本机全文搜索改问本机后端（`history-search`），monitor 不再建索引。
     // 〔C2 09-24〕`src/port_forward.rs` 那一行（accept 瞬时错误 100ms 退避）**删了**：accept 循环整个搬进了
     //   后端的拨号代理（`src/backend/dial/uses.rs::forward`），而后端不许睡 ⇒ 那一侧改成「accept 失败就收工并出声」。
     // ★★ 🔴 `K-R59`（09-11）：**这里原来是本表抓到的第二个真节拍器，那一条今天退役了。**

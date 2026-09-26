@@ -15,8 +15,8 @@
  * - **返回类型**：分**三桶**（Phase D 审计 Z2 订正——原来只写两桶，会把 34 个
  *   返回 `()` 的命令判成 `unknown`，那是净退化）：
  *   ① Rust 返回 `()` / `Result<(), _>` ⇒ `Promise<void>`（**34 个**）；
- *   ② 有 payload 但 TS 侧不读字段 ⇒ `unknown` **并在那一行注明**（**3 个**：
- *      `sftp_stat` · `rebuild_search_index` · `start_forward`）；
+ *   ② 有 payload 但 TS 侧不读字段 ⇒ `unknown` **并在那一行注明**（当时 **3 个**：
+ *      `sftp_stat` · 重建搜索索引那条（〔LOC1b〕随本机内存索引删了）· `start_forward`）；
  *   ③ TS 侧真消费字段 ⇒ 生成物类型（**81 个**）。
  *
  * ## 本文件今天覆盖多少

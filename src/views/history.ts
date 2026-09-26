@@ -13,7 +13,7 @@
  *
  * 搜索两种模式（issue #6）：
  *   - "项目"（默认）：本地即时过滤项目级字段（name / path）+ 已展开项目内的会话标题。
- *   - "全文"：回车触发后端 `search_history` 全文搜索所有会话**内容**（user 输入 +
+ *   - "全文"：回车逐台（本机也是）经通道问那台后端的 `history-search`，全文搜索所有会话**内容**（user 输入 +
  *     Claude 回复；可勾选"含工具内容"附加 tool_use/result/thinking）。结果按 session
  *     分组 + snippet <mark> 高亮，点击进 viewer 滚动定位到命中消息。
  *
@@ -119,10 +119,6 @@ interface SessionTreeNode {
 /** 组内会话排序模式（顶层布局固定按工作目录分组，不是 sort 选项）。 */
 type SortMode = "updated_desc" | "started_desc";
 
-/** issue #6: 全文搜索 —— 单条命中的前/中/后三段（matched 前端包 <mark>）。 */
-
-
-/** issue #6: `search_history` IPC 返回（后端 wire 全 camelCase）。 */
 
 /** issue #6: 历史浏览器的两种模式 —— 项目树过滤 vs 内容全文搜索。 */
 type SearchMode = "tree" | "fulltext";

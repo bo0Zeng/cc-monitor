@@ -74,14 +74,9 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
              〔CF1 · 第四波 09-24〕**3 → 2**：records 那一处随本机 jsonl watcher 一起删了（本机会话内容改走本机后端的 `line` 帧）。\
              ⚠ 与 RM1b / RW1 同形：**不是「收进接口了」**，是桌面侧不再问这件事",
     ),
-    (
-        "search.rs",
-        Face::Facade,
-        3,
-        "本地全文索引的扫描面：记录根 + 记录判定 + 从路径取 sid。\
-             ⚠ `search.rs` 的退役条件另有裁定（`K7` 乙块逐字：backend 侧没索引，迁它是拿性能换账面）\
-             —— 但**耦合处数照样要数**，两件事",
-    ),
+    // 〔LOC1b · 第四波 4D〕`search.rs` 的 `Facade` 那一行（3 处：记录根 ＋ 记录判定 ＋ 从路径取 sid）摘了 ——
+    //   本机全文搜索改问本机后端，monitor 那份内存索引整个删了。主会话 09-25 裁（按 `00 §2.5 ①` · `90 §4 F`），
+    //   那一行自己写的退役条件（「backend 侧也有索引」）**没有兑现**：本机从此每次现扫（读数 `第四波记录/LOC1b.md §3`）。
     // 〔RM1b · 第四波〕`tasks.rs` 那一处门面（1 处，「任务追踪目录（`tasks_dir`）」）摘了：
     //   任务列表整段改问那台机器的后端，monitor 这一侧不再自己解析任务目录。
     // 〔CF1 · 第四波 09-24〕`watcher.rs` 那一行（门面 5 处：「是不是记录文件 ×3 ＋ 从路径取 sid ×2」）摘了：
@@ -141,8 +136,9 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
 /// 整段搬去本机常驻后端。⚠ 同上几笔：**不是「收进接口了」**，是桌面侧不再问这件事（后端那把尺子
 /// `agent_locality_guard` 没涨：Codex 那半进了 `agents/codex/`，经注册表那一格够到）。
 ///
-/// 🔴 〔LOC1b · 第四波 4D〕**18 → 17**：`history.rs` 门面 1 → 0 —— 本机冷读改经本机后端的 `history-read`（本机远端一条路）。
-const COUPLING_BASELINE: usize = 17;
+/// 🔴 〔LOC1b · 第四波 4D〕**18 → 14**：`history.rs` 门面 1 → 0 —— 本机冷读改经本机后端的 `history-read`（本机远端一条路）；
+/// `search.rs` 门面 3 → 0 —— 本机全文搜索改问本机后端，monitor 内存索引删了。⚠ 同上几笔：不是「收进接口了」，是桌面侧不再做这件事。
+const COUPLING_BASELINE: usize = 14;
 
 /// **抹除 kind 的门面**：`adapter.rs` 里那几个「替调用者把 agent 写死」的自由函数。
 ///

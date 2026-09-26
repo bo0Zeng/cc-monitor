@@ -348,12 +348,7 @@ const FEEDERS: &[(&str, &str, Whose, &str)] = &[
         Whose::Given,
         "参数 `origin`，原样交给 `record`",
     ),
-    (
-        "search.rs",
-        "build_one",
-        Whose::Local,
-        "本机搜索索引：只读本机 jsonl",
-    ),
+    // 〔LOC1b · 第四波 4D〕`("search.rs", "build_one", Local)` 那一行摘了：本机搜索改问本机后端，monitor 内存索引删了。
     (
         "session_map.rs",
         "is_interactive",

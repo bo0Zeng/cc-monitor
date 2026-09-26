@@ -2695,6 +2695,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //   点它旧名讲来历的散文逐处挂墓碑。
         ("src/bridge/README.md", "stream_read_remote_session", 2),
         ("src/bridge/src/remote_history.rs", "stream_read_remote_session", 1),
+        // 〔LOC1b〕monitor `search.rs` 删了 ⇒ 它体里还提着的旧名 `search_remote_all` 全仓只剩散文（remote_history.rs 那块 C4a 墓碑）。
+        ("src/bridge/src/remote_history.rs", "search_remote_all", 1),
         ("src/ipc/commands.ts", "stream_read_remote_session", 1),
         ("tests/bridge/byte_cap_registry_tests.rs", "stream_read_remote_session", 1),
         ("tests/bridge/drift_ledger_tests.rs", "stream_read_remote_session", 1),
@@ -4079,7 +4081,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/filewin/fonts.rs", 2), // 〔F9c 第四波 09-24〕0 → 2（探针来路里那两句「存不回去」的函数名随只读一档删了）
         ("src/bridge/src/history.rs", 14), // 〔C4c〕+1：记录那一问的 Tauri 命令与答案形状退役，原处留一块 // 〔RW1〕+1：本机删会话那道路径守卫整段搬去后端 // 〔RW1〕+3：本机分叉的实现（`branch_impl` / `write_branch_file` / `read_jsonl_values`）交给后端 ·〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑 ·〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
         ("src/bridge/src/launch.rs", 1),
-        ("src/bridge/src/lib.rs", 8), // 〔合并 C4d × 主线 cf3277f4〕主线 7 ＋ 本路 +1 ⇒ 8（〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑） // 〔合并 CF2 × 主线 60ace11b〕主线 6 ＋ 本路 +1（独立窗口的定向重放命令退役那一段）// 〔AL1d〕+2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 d07c6d14 按两边增量相加 4 + 2） // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔SR1b 子步 3〕+1：`sftp_move_ledger` 退役 · 〔C4b〕+1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4）
+        ("src/bridge/src/lib.rs", 9), // 〔LOC1b〕+1：`mod search;` 那一行挂一块（本机内存索引删了） // 〔合并 C4d × 主线 cf3277f4〕主线 7 ＋ 本路 +1 ⇒ 8（〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑） // 〔合并 CF2 × 主线 60ace11b〕主线 6 ＋ 本路 +1（独立窗口的定向重放命令退役那一段）// 〔AL1d〕+2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 d07c6d14 按两边增量相加 4 + 2） // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔SR1b 子步 3〕+1：`sftp_move_ledger` 退役 · 〔C4b〕+1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4）
         ("src/bridge/src/local_backend_host.rs", 1),
         ("src/bridge/src/local_origin_registry.rs", 2), // 〔C4c〕+1：分诊债表里账号面那一行还掉了
         ("src/bridge/src/spawn_managed.rs", 2),

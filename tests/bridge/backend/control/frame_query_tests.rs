@@ -184,7 +184,7 @@ const CHANNELED: &[(&str, &str)] = &[
     (
         "history-search",
         "远端那半迁：逐台 fan-out ＋ 补 origin ＋ 与本机索引合并三件事搬到 `src/views/history-search.ts`，\
-         每件只有那一个家；本机索引仍是 monitor 进程内的（`search_history` 只剩本机）",
+         每件只有那一个家。〔LOC1b · 4D〕本机那半也迁了：本机也经通道问本机后端，monitor 内存索引删了",
     ),
     // 〔C4b · 第四波 4B〕会话读面那三条：**解释挪进后端、直接出成品**（`read_face.rs`），monitor 那一份
     //   「核头尾、剥行、失败分档」删了；界面经 `src/session-reads.ts` 问，本机与远端同一条路。
