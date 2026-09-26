@@ -4169,7 +4169,7 @@ fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_
             "patch_config_at",
             "monitor 数据目录（config.json，〔CFG1〕加锁读改写那一处）",
         ),
-        ("session_map.rs", "run_watcher", "被看的那个 sessions 目录"),
+        // 〔合并 LOC1b〕`session_map.rs` 那条 watcher 线程那一行摘了：monitor 自己那份本机判活（连同它盯的 sessions 目录）删了。
         (
             "filewin/bookmarks.rs",
             "lock_store",

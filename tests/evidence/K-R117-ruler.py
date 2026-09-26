@@ -229,8 +229,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("port-forward", (NA, "—", "端口转发")),
     # 〔墓碑 · 第四波 4D US1〕`apikey.routing` 随「这几个账号在 apikey 表里有没有行」改由界面经通道直问后端 `apikey-routing`
     #   （`src/apikey-reads.ts`，跨语言金样 `tests/__fixtures__/apikey.golden.json`）退役；理由同上面几条墓碑（归档表留一个不存在的 id 会让 `R3b` 恒红）。
-    ("search.history", (NA, "—", "搜索")),
-    ("search.index", (NA, "—", "搜索索引（app 自己的索引，不落用户环境）")),
+    # 〔墓碑 · 第四波 4D LOC1b〕`search.history` · `search.index` 随本机搜索改走 `<local>` 的 `history-search`（monitor 内存索引、三条搜索命令与「重新索引」按钮删）退役；理由同上面几条墓碑。
     ("session.activity", (NA, "—", "会话")),
     ("session.forget", (NA, "—", "会话")),
     ("session.launch", (NA, "—", "起会话")),
@@ -609,7 +608,8 @@ CLAIMS_NON_COMMAND_SYMBOLS = {
 # `src/ipc/commands.ts` 包装层的**形状地板**：整份文件里「键: (」这一形现打有多少条。
 # ⚠ 它不是判据，是**反向自检**：形状一变（比如包装层改写成 class 方法），
 #   下面那 22 条会齐刷刷判不到 ⇒ 那时该 CRASH（形状坏了），不该印 22 条红。
-WRAPPER_KEY_FLOOR = 100
+# 〔主会话 09-25 · LOC1b 合并那一拍〕100 → 50：包装层条数随 Tauri 命令迁通道按设计在缩（现打 99）；形状坏了读数会塌到个位数，50 照样逮得住。
+WRAPPER_KEY_FLOOR = 50
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 解析器（全部只读文本；每个都有地板断言）
@@ -1301,9 +1301,13 @@ def main() -> int:
     cmd_addr = scan_tauri_commands(src_dir)
 
     # ── R1 地板（反向自检）：扫不到东西一律 CRASH，不许当「零违例」 ──────────────
+    # 〔主会话 09-25 · LOC1b 合并那一拍〕`LEDGER` 与 `#[tauri::command]` 两格地板 100 → 50：这两格的人群**按设计在缩**
+    #   （Tauri 命令逐批迁到通道 `chan.call`，05 §14.3），LOC1b 合并后 `LEDGER` 现打 99 撞了 100。地板只防「解析器塌了」——
+    #   塌了读数是个位数，50 照样逮得住；它不是计数棘轮（计数由 parity_ledger / commands.vitest 两向钉着）。
+    #   `WRITE_SITES` 同理 20 → 10（monitor 写点随 LOC1b / HX2 等收进后端而减，现打 19）。
     floors = [("TOOLS", len(tools), 5), ("UNMANAGED_ENV", len(unmanaged), 5),
-              ("LEDGER", len(ledger), 100), ("WRITE_SITES", len(sites), 20),
-              ("claims()", len(claims), 5), ("#[tauri::command]", len(cmd_addr), 100)]
+              ("LEDGER", len(ledger), 50), ("WRITE_SITES", len(sites), 10),
+              ("claims()", len(claims), 5), ("#[tauri::command]", len(cmd_addr), 50)]
     print(head("§S0 地板（反向自检 —— 这几个数塌了，下面每一条都会空真地绿）"))
     for name, got, floor in floors:
         print(f"  {name:<20s} 现打 {got:4d}  地板 {floor}")

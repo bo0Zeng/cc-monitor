@@ -17,16 +17,11 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     // 〔C4d · 第四波 4B〕`src/history.rs` 两行摘了：`fence` 2（展开一个项目的路径围栏）与 `no-counterpart` 1（Codex 合成项目）——
     //   本机历史清单整段搬进本机常驻后端（`history-sessions` 出成品；Codex 枚举进后端 `agents/codex/history.rs`，
     //   `no-counterpart` 那一行自己写的退役条件「backend 侧补上 codex 的项目枚举」兑现了）。9 → 6。
-    (
-        "src/history.rs",
-        "fence",
-        1,
-        "`stream_read_session_jsonl`(499) 的**路径围栏** —— 它解析 records 根**只为验\
-             `target.starts_with(&root)`（拒绝越界路径），不读内容。\
-             ⚠ **刻意保留、不属退役范围**：即使把读交给后端，围栏也该两侧各有一道\
-             （backend 侧自己也有 canonicalize 前缀校验）—— 那是纵深防御，同 `remote_branch.rs` \
-             那句「两个 id 已过白名单，仍照常 shell_quote」。",
-    ),
+    // 〔LOC1b · 第四波 4D〕`src/history.rs` 的 `fence` 一行（1 处：`stream_read_session_jsonl` 本机那一支解析 records 根
+    //   只为验 `target.starts_with(&root)`）摘了 —— 那一支删了：本机冷读也经本机后端的 `history-read`，围栏归后端
+    //   （`observe/history_query.rs::validate_session_path`）。那一行写着的「两侧各一道」换成了两侧同一道廉价预检
+    //   （拒 `..` ＋ 必须 `.jsonl`，不解析根）。⚠ 这一行的针只认 `claude_dir` 一族，**从没数到**那一支真正的读
+    //   （`File::open`）—— 那个读者这一拍一起没了（B-decouple §2.2 点名的漏数）。
     // 〔RW1 · 第四波 09-24〕这里原来有 `src/history.rs` 的 `write` 一行（写操作恰好也读 dir 来定位文件：
     //   `delete_history_session` · `create_branch_session`，4 处）。两件都改经后端（删会话 `files-delete-session`
     //   只收 sid · 本机分叉 exec 本机后端 `--fork-session`），本进程不再解析 dir 来定位要写的那一份 ⇒ 4 → 0，摘行。
@@ -58,11 +53,13 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/lib.rs",
         "hub",
-        6,
+        3,
         "启动时解析 `claude_dir` 并派生 sessions/tasks 等目录往下传 —— \
              **一处入口，不读内容**。切后端之后仍要在（得告诉后端读哪儿）⇒ **不属**退役范围。\
              〔CF1 · 第四波 09-24〕**7 → 6**：projects 那一处（喂 monitor 自己那套 jsonl watcher）随 watcher 删了 ——\
-             本机会话内容改走本机后端的 `line` 帧，monitor 这一侧不再需要知道 projects 在哪。",
+             本机会话内容改走本机后端的 `line` 帧，monitor 这一侧不再需要知道 projects 在哪。\
+             〔LOC1b · 第四波 4D〕**6 → 4**：给全文索引构建线程交 `claude_dir` 那两行随本机内存索引删了（本机搜索改问本机后端）；\
+             **4 → 3**：派生 `sessions/` 目录那一行随 monitor 自己那份判活删了（本机判活改由本机后端的帧来）。",
     ),
     (
         "src/paths.rs",
@@ -117,27 +114,12 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     //   「backend 侧补一条 `--list-marketplaces`……那条一落地，本机改走后端、远端那半……也一起补平
     //   —— 一件事同时清两笔账」。落地的名字是帧命令 `plugins-marketplaces`（CLI 面 `--plugins-marketplaces`），
     //   本体从 `plugins.rs` 原样搬进后端 `observe/plugins_query.rs` ⇒ 本文件 0 处，整行摘掉。
-    (
-        "src/search.rs",
-        "reader",
-        4,
-        "全文索引构建时遍历 records 目录。\
-             ⚠ **〔F10b 第三批实测〕这一处刻意不退役，解锁条件明确** —— 它与前几批**不是同一类**：\
-             前几批是「查询直通」（monitor 只是转发 + 反序列化），而本文件维护一个\
-             **本地全文索引**（`build_blocking` 走一遍 records 建内存索引，之后每次搜索走内存）。\
-             而后端的 `--search` **没有索引**：它每次调用用 `WalkDir` 走一遍 \
-             `<claude_dir>/projects/**/*.jsonl`（见 `observe/search_query.rs` 头注）。\
-             ⇒ 迁它 = 把「建一次索引 + 内存查」换成「每次搜索 spawn 一个进程 + 走全部 jsonl」，\
-             **那是用性能换账面**，而本机恰好是用户搜得最多的那一侧。\
-             ★ **退役归「backend 侧也有索引」之后**（或一条能便宜地喂索引的查询）——那就是它的解锁条件。\
-             那对远端同样有价值 —— 今天远端每次搜索也在走全库。已进 `ROADMAP §5`。",
-    ),
-    (
-        "src/adapter.rs",
-        "reader",
-        3,
-        "适配器层的 `records_dir`/`tasks_dir` 解析（哪个 agent 的记录目录）。退役归 F10 本体。",
-    ),
+    // 〔LOC1b · 第四波 4D〕`src/search.rs` 那条 `reader`（4 处：全文索引构建时遍历 records 目录）**退役**，但**不是**按它自己写的
+    //   解锁条件（「backend 侧也有索引」）退的：主会话 09-25 按目标形裁（`00 §2.5 ①` 本机远端同一条代码路径 · `90 §4 F`
+    //   搜索收口到后端），本机搜索改问本机后端的 `history-search`、每次现扫。那一行担心的代价（「用性能换账面」）如实量过：
+    //   `调研/第四波记录/LOC1b.md §3`。本文件 0 处，整行摘掉。
+    // 〔LOC1b · 第四波 4D〕`src/adapter.rs` 那条 `reader`（3 处：`records_dir` / `liveness_dir` 一族的路径解析）**真退役**：
+    //   那几个门面零调用方（冷读 · 判活 · 搜索都改问本机后端），删了 ⇒ 本文件 0 处，整行摘掉。
     // 〔RM1b · 第四波〕`src/tasks.rs` 那条 `reader`（3 处，「读 `tasks/<sid>/*.json`（issue #11 的任务面）。
     //   退役归 F10 本体。」）**真退役**：读任务文件搬进后端 `tasks-list`（本机与远端同一条路），
     //   monitor 那份直读函数与「解析当前任务根」那个小帮手一起删了 ⇒ 本文件 0 处，整行摘掉。
@@ -595,8 +577,8 @@ fn every_reader_names_its_retirement_owner() {
     }
     // 抽取器自检：一条 reader 都没认出来时上面全空转。
     assert_eq!(
-        readers, 6,
-        "`reader` 条数变了（**实测 6 条** —— ⚠ 这句话本身腐过一次：数字从 11 一路走到 7，\
+        readers, 4,
+        "`reader` 条数变了（**实测 4 条** —— ⚠ 这句话本身腐过一次：数字从 11 一路走到 7，\
              而这段文案一直写着「实测 10 条」，是 S11 那族出现在**判据自己的报错文案**里）。这个数就是 **F10 的真实工作面** —— \
              多一条要说明为什么又加了直读点，少一条说明退役了一处（把棘轮往下拧）。\n\
              ⚠ 棘轮史：11 → **10**（F10b 第一批，`usage.rs` 退役 —— 它改走本机后端的 `--usage`）\n\
@@ -639,7 +621,11 @@ fn every_reader_names_its_retirement_owner() {
              `session.tasks` 那笔欠账同拍结清）。本文件处数 3 → 0，整行摘掉。\n\
              → **6**〔RM1b · 第四波〕**真退役**：`plugins.rs` 那条（`P8a` 那次「往上走」加的）\
              按它自己写下的退役条件退掉 —— 后端补了 `plugins-marketplaces`，本机改走后端，\
-             `parity_ledger` `plugins.marketplaces` 同拍结清。本文件处数 5 → 0，整行摘掉。"
+             `parity_ledger` `plugins.marketplaces` 同拍结清。本文件处数 5 → 0，整行摘掉。\n\
+             → **5**〔LOC1b · 第四波 4D〕**退役，但不是按它自己写的解锁条件**：`search.rs` 那条（本机全文索引）——\
+             主会话 09-25 按目标形裁（`00 §2.5 ①` 本机远端同一条代码路径），本机搜索改问本机后端 `history-search`、\
+             每次现扫（「backend 侧也有索引」那个条件没兑现，代价读数在 `第四波记录/LOC1b.md §3`）。本文件处数 4 → 0，整行摘掉。\n\
+             → **4**〔LOC1b · 第四波 4D〕**真退役**：`adapter.rs` 那条（记录目录 / 活性目录的路径解析）—— 那几个门面零调用方、删了。"
     );
 }
 
@@ -707,7 +693,7 @@ fn the_local_backend_contract_has_exactly_one_home_and_f10s_ratchet_is_untouched
     // `/branch` 的灰点 bug 会回来」）。当时成立，是因为本地那条 diff **只产 `Gone`**；
     // P3 刀 0 让它按 `pid + procStart` 判出 `Superseded`（要正面证据，缺 `procStart` 退回 `Gone`）
     // ⇒ 进表之后 `/branch` 会走 `(Some(origin), Superseded)` = 归档，不再是灰点。
-    // 由 `session_map::diff_detects_superseded_only_with_positive_identity_evidence` 钉住。
+    // 〔LOC1b · 4D〕判出它的今天是本机后端（`session_removed.cause`），monitor 这边钉「原样交出去」（`ssh_source_f032_idle_tests` ③）。
     // ★ 留着这段而不是删掉：**限制解除的理由本身是要交代的** ——
     // 否则下一个人只看到限制没了，不知道换了什么在保证它。
 }
