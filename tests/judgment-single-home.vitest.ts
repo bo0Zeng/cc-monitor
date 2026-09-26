@@ -231,7 +231,10 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     // 〔DUP2 · 主会话 09-26 裁 J8 → 甲〕唯一住址 `payload.rs::rbind_token_shape_ok`（字母表 ＋ 长度两个常量同住）；
     //   `bind.rs` 那份逐字同的副本并进来（那边是再导出，`rustGone` 钉它不许长回来）。
     //   铸币口按生成物（字母表 × 长度）**造**，构造上造不错 ⇒ 界面两处自检（维度 `apply` · 铸币口）与 TS 副本删。
-    homes: [`${PAYLOAD_RS}::rbind_token_shape_ok`],
+    // 〔DUP3 · 主会话 09-26 裁〕后端 `control/identity_tag.rs::token_is_safe` 是**同一个令牌**（`CCM_RBIND_TOKEN`）的第三份（读侧、跨半边）⇒
+    //   三份收成一份进共享 crate `shell_quote_core::rbind_token_ok`（§47 ① 标识符那一层；两半都要）；monitor `payload.rs`（`bind.rs` 再转）
+    //   与后端 `identity_tag.rs` 都成它的再导出，`rustGone` 钉三处都不许再长出自己的 `fn`。
+    homes: ["shell-quote-core::rbind_token_ok"],
     status: "generated",
     defs: [],
     gone: ["isValidRbindToken"],
@@ -241,8 +244,18 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       exports: ["RBIND_TOKEN_ALPHABET", "RBIND_TOKEN_LEN"],
       importers: ["src/remote-launch-run.ts"],
     },
-    parity: { via: PAYLOAD_RS, tests: ["tests/rbind-token-shape-parity.vitest.ts"] },
-    rustGone: ["src/bridge/src/bind.rs::rbind_token_shape_ok"],
+    parity: { via: "src/bridge/crates/shell-quote-core/src/lib.rs", tests: ["tests/rbind-token-shape-parity.vitest.ts"] },
+    rustGone: [
+      "src/bridge/src/bind.rs::rbind_token_shape_ok",
+      `${PAYLOAD_RS}::rbind_token_shape_ok`,
+      "src/backend/control/identity_tag.rs::token_is_safe",
+    ],
+    // 字母表字面量只住共享 crate 一处；两半各自的写法不许长回来。
+    rustNeedles: [
+      { file: "src/bridge/crates/shell-quote-core/src/lib.rs", text: '"0123456789abcdef"', count: 1 },
+      { file: PAYLOAD_RS, text: '"0123456789abcdef"', count: 0 },
+      { file: "src/backend/control/identity_tag.rs", text: "(b'a'..=b'f')", count: 0 },
+    ],
   },
   J9: {
     what: "Base URL 形状 ＋ 明文只许回环",
@@ -578,6 +591,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     account_name_ok: "J18",
     // 〔DUP2 · J12〕cc-bus agent id（从 monitor `cc_bus.rs` 搬来，两半共用）。
     bus_id_ok: "J12",
+    // 〔DUP3 · J8〕启动期令牌形状（两半三份收成一份）；两个常量现生成进 `judgment-rules.ts`（生成物不是孪生）⇒ NONE。
+    rbind_token_ok: "J8",
+    RBIND_TOKEN_LEN: NONE,
+    RBIND_TOKEN_ALPHABET: NONE,
   },
 };
 

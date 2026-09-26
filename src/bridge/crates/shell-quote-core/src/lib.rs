@@ -130,6 +130,33 @@ pub fn bus_id_ok(s: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
+/// **启动期令牌**（`CCM_RBIND_TOKEN`）的长度 —— 32 个字符。
+///
+/// 〔DUP3 · 主会话 09-26 裁 · `设计/01 §5` D1〕令牌形状全仓只有这一份（先前两半各一份、规则逐字同：
+/// monitor `backend/control/payload.rs` 的 `rbind_token_shape_ok` · 后端 `control/identity_tag.rs` 的 `token_is_safe`，两个名字今天都是本组的再导出）。
+/// 核过是**同一个令牌**：写侧 monitor 渲 `export CCM_RBIND_TOKEN=<令牌>`（`payload.rs`）、拉起时按它登记窗口（`launch.rs` 握手前奏）；
+/// 读侧后端从 `/proc/<pid>/environ` 读**同一个变量**（`identity_tag.rs::rbind_token_of`）。两半都要 ⇒ 共享 crate；
+/// 形状是闭集字母表 ＋ 定长 = `INVARIANTS §47` ① 标识符那一形 ⇒ 与 sid / 模型名 / 账号名 / bus id 同住。
+/// 前端铸币口按 [`RBIND_TOKEN_ALPHABET`] × 本常量**造**令牌（两个值由 monitor 现生成进 `src/generated/judgment-rules.ts`）。
+pub const RBIND_TOKEN_LEN: usize = 32;
+
+/// 启动期令牌的字母表 —— **小写**十六进制（大写 `A`–`F` 刻意不在里面，见 [`rbind_token_ok`]）。
+pub const RBIND_TOKEN_ALPHABET: &str = "0123456789abcdef";
+
+/// 令牌形状：恰好 [`RBIND_TOKEN_LEN`] 个 [`RBIND_TOKEN_ALPHABET`] 里的字符（32 个**小写**十六进制）。
+///
+/// **fail closed 到这个地步**（不 trim、不认大写、不认长度相近）：令牌的下游用途是**跨机器的 join 键** ——
+/// 本地那张 `token → 窗口` 表与从 `environ` 读回来的串直接相等比较，中间不留归一化步骤（归一化是「两侧各写一遍、
+/// 各写错一遍」的经典落点）；一个「差不多对」的串查不到，与查错一样糟、还更难归因（`设计/80 §8.5 ②`）。
+///
+/// ⚠ 这条**不是转义**：写侧渲染时照样过 [`posix_quote`]。「值的形状」与「拼进 shell 安不安全」是两道闸。
+pub fn rbind_token_ok(token: &str) -> bool {
+    token.len() == RBIND_TOKEN_LEN
+        && token
+            .bytes()
+            .all(|b| RBIND_TOKEN_ALPHABET.as_bytes().contains(&b))
+}
+
 /// POSIX 单引号 quote：整体 `'…'` 包裹，内部 `'` 断开为 `'\''`。
 ///
 /// 与 TS `shell-quote.ts::posixQuote` 逐字节同义（对拍夹具里有带引号的样本）。
