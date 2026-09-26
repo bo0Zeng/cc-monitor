@@ -294,10 +294,9 @@ export class TabStreamView {
     if (next) next.window.retryBelow();
     // Batch13-F40a:命中 virgin tab(启动重放全收纳,还没建过卡)→ 同步物化尾段,
     // 避免切过去一片空白(R-3:有界循环补到可滚,防工具密集会话一轮近空屏)。
-    // 非 virgin tab 不动(上翻补批属 F40b)。
-    if (next && next.window.floorSeq === null && next.window.pendingCount > 0) {
-      this.materializeUntilFilled(next);
-    }
+    // 非 virgin tab 不动(上翻补批属 F40b;它可能有滚动位置要保,走下面那一脚带补偿的 `fillAbove`)。
+    const virginFill = !!next && next.window.floorSeq === null && next.window.pendingCount > 0;
+    if (virginFill) this.materializeUntilFilled(next);
     // F40b:切入即刷新哨兵(非 virgin 但账本非空的 tab 也要见到「还有 N 条」)
     if (next) this.updateSentinel(next);
     // 〔`设计/10` 骨架〕切进来的 tab 要索引（上面刚物化过尾段 ⇒ floor 已钉）
@@ -307,9 +306,15 @@ export class TabStreamView {
     // 不产生 scroll 事件,哨兵可见却"上翻物理不可达")——切入时踢一次,rAF 自链
     // 接管直到可滚或账尽。
     // 〔CF2〕账本空了但下面可能还有（`wantsBelow`）同样没有 scroll 入口 ⇒ 同一脚。
-    if (next && (next.window.pendingCount > 0 || next.window.wantsBelow)) {
+    // 〔W5-RENDER R9 · `设计/10 §3.3` B5〕这一脚原来只按 `scrollHeight` 判「不可滚」：没渲染过的卡贡献的是估值，
+    // 估值把 `scrollHeight` 撑成「滚得动」时它就不踢 ⇒ 钉过水位、真实只有半屏的 tab 停在半屏，只剩用户往上翻一条路。
+    // ⇒ 再问一句真实布局（`contentReachesBottom`）：没满一屏也踢。
+    // 〔W5-RENDER R7〕上面刚为 virgin tab 跑过 `materializeUntilFilled`、账本还有余的不再踢：它补不满时自己排了
+    // 下一帧的接续，这里再同步补一批就把「一次同步调用有界」破了。账本已空（只剩「下面可能还有」）的照旧踢。
+    const continuing = virginFill && next.window.pendingCount > 0;
+    if (next && !continuing && (next.window.pendingCount > 0 || next.window.wantsBelow)) {
       const el = next.streamEl;
-      if (el.scrollHeight - el.clientHeight <= 1) this.fillAbove(next);
+      if (el.scrollHeight - el.clientHeight <= 1 || !this.contentReachesBottom(next)) this.fillAbove(next);
     }
   }
 
@@ -348,13 +353,15 @@ export class TabStreamView {
     }
     // D 审计 S-5:已结束的死会话不进后台物化队列(纯浪费;switchTo 命中 virgin
     // 已有同步物化兜底)。
+    // 〔W5-RENDER R9 · `设计/10 §3.3` B5〕原来只收 `floorSeq === null`（virgin）；钉过水位、账本还压着历史、
+    // **真实布局**没满一屏的后台 tab 同样进队（后台 tab 是 `visibility:hidden`，几何照在）。
     this.materializeQueue = [...this.store.tabs.entries()]
       .filter(
         ([sid, t]) =>
           sid !== this.store.activeId &&
           !isResumeOnly(t.state) &&
-          t.window.floorSeq === null &&
-          t.window.pendingCount > 0,
+          t.window.pendingCount > 0 &&
+          (t.window.floorSeq === null || !this.contentReachesBottom(t)),
       )
       .map(([sid]) => sid);
     this.scheduleIdleMaterialize();
@@ -1059,10 +1066,13 @@ export class TabStreamView {
     const run = (): void => {
       this.materializeScheduled = false;
       const tab = this.store.tabs.get(sid);
-      // 只物化仍是 virgin 的(switchTo 可能已同步物化过);二次 batch 开始则原样跳过,
+      // virgin 的物化尾段(switchTo 可能已同步物化过);二次 batch 开始则原样跳过,
       // 账本继续收纳,批结束会重新排队。
-      if (tab && !this.store.inBatch && tab.window.floorSeq === null) {
-        this.materializeTail(tab);
+      // 〔W5-RENDER R9〕钉过水位、账本有余、真实布局没满一屏的 ⇒ 补一批（`fillAbove`：带选区守卫与滚动补偿，
+      // 后台 tab 不自链 —— 它的 rAF 复检有 `activeId` 守卫；切进来时 `activate` 那一脚接着补）。
+      if (tab && !this.store.inBatch && tab.window.pendingCount > 0) {
+        if (tab.window.floorSeq === null) this.materializeTail(tab);
+        else if (!this.contentReachesBottom(tab)) this.fillAbove(tab);
       }
       this.scheduleIdleMaterialize();
     };
