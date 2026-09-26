@@ -36,6 +36,8 @@ pub struct UploadPrompt {
     ask: Option<String>,
     /// 上一次「确定」被拒的那句话（框**留着**，不清空用户敲的东西）。
     refused: Option<String>,
+    /// 〔W5-FILES · `设计/60 §6.2`〕这一帧点了「选择…」（窗口取走它去起原生选择框，[`super::picker`]）。
+    browse: bool,
 }
 
 /// 判一遍「确定」时框里的东西。
@@ -119,6 +121,27 @@ impl UploadPrompt {
     pub fn cancel(&mut self) {
         self.ask = None;
         self.refused = None;
+        self.browse = false;
+    }
+
+    /// 〔W5-FILES〕这一帧点没点「选择…」（取走即清）。
+    pub fn take_browse(&mut self) -> bool {
+        std::mem::take(&mut self.browse)
+    }
+
+    /// 〔W5-FILES〕原生选择框选到的路径接进框里（一行一个，已有的不动）；没选到 ⇒ 框不动、说一句。
+    /// 框已经收掉了（选的时候人点了取消）⇒ 什么都不做。
+    pub fn take_picked(&mut self, picked: Option<Vec<std::path::PathBuf>>) {
+        let Some(text) = self.ask.as_mut() else {
+            return;
+        };
+        match picked {
+            Some(p) if !p.is_empty() => {
+                *text = super::picker::append_lines(text, &p);
+                self.refused = None;
+            }
+            _ => self.refused = Some(copy_text("rsFilewinPicker.pick.none", &[])),
+        }
     }
 
     /// 「确定」：判一遍。合法 ⇒ 问题收掉、交回那一摞；不合法 ⇒ 框留着、记下那句话、回 `None`。
@@ -152,6 +175,13 @@ impl UploadPrompt {
             ui.label(&copy_text("rsFilewinUpload.ui.paths", &[]));
             if let Some(text) = self.text_mut() {
                 ui.text_edit_multiline(text);
+            }
+            // 〔W5-FILES · `设计/60 §6.2`〕原生选择框：选到的路径填进上面那个框，确定照旧走 `judge_upload`。
+            if ui
+                .button(&copy_text("rsFilewinPicker.ui.browse", &[]))
+                .clicked()
+            {
+                self.browse = true;
             }
             if let Some(why) = &refused {
                 ui.colored_label(egui::Color32::RED, why);

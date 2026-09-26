@@ -96,6 +96,9 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
+# 〔W5-FILES · 第五波 · `设计/60 §6.2`「原生选文件框」〕文件窗口（独立 egui 进程）的上传 / 存到哪儿那两问用操作系统自己的选择框。
+# 与 `tauri-plugin-dialog` 同一个版本、同一组 feature（它的缺省 `gtk3` ＋ `common-controls-v6`）⇒ 锁文件不多一个 crate。
+rfd = { version = "0.16", default-features = false, features = ["gtk3", "common-controls-v6"] }
 # Batch14-F42：turn-end 系统通知（Windows toast / Linux notify）
 tauri-plugin-notification = "2"
 

@@ -127,6 +127,8 @@ pub const COMMANDS: &[&str] = &[
     "files-put",
     "files-read-text",
     "files-rename",
+    // 〔W5-FILES · 第五波〕读族第九条：算目录大小（`设计/60 §6.2`）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
+    "files-size",
     "files-stage-chunk",
     "files-stat",
     "files-write-text",
@@ -1523,7 +1525,18 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "files-copy",
         doc_anchor: Some("#### `files-copy`"),
         codes: &["bad_args", "bad_path", "io_failed", "refused"],
-        fields: &["bytes", "from", "overwrite", "path", "root", "to"],
+        // 〔W5-FILES〕`recursive`（入）· `files` / `dirs`（出）：显式才复制目录。
+        fields: &[
+            "bytes",
+            "dirs",
+            "files",
+            "from",
+            "overwrite",
+            "path",
+            "recursive",
+            "root",
+            "to",
+        ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args)
@@ -1649,7 +1662,17 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "files-browse",
         doc_anchor: Some("#### `files-browse`"),
         codes: &["bad_args", "bad_path"],
-        fields: &["added", "browse_watch_cap", "dirs", "rejected", "removed"],
+        // 〔W5-FILES〕+`watching` · `watch_failed` · `watch_error`（进程里那一个监听器跟上名单，`设计/60 §3.7`）。
+        fields: &[
+            "added",
+            "browse_watch_cap",
+            "dirs",
+            "rejected",
+            "removed",
+            "watch_error",
+            "watch_failed",
+            "watching",
+        ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::files::answer_wire(&r.cmd, &r.args)
@@ -1666,6 +1689,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             "entries",
             "path",
             "resident_bytes",
+            "skipped_mounts",
             "truncated",
             "unreadable_dirs",
         ],
@@ -1711,6 +1735,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             "index_missing",
             "resident_bytes",
             "rewalk_interval_secs",
+            "skipped_mounts",
             "stale",
             "truncated",
             "unreadable_dirs",
@@ -1772,6 +1797,28 @@ pub const REGISTRY: &[CommandSpec] = &[
             "unreadable",
         ],
         fields: &["bytes", "max_bytes", "path", "sha256", "text"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::files::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔W5-FILES · 第五波〕读族第九条：算目录大小（`设计/60 §6.2`）。与同族那几条逐字同形、同在阻塞档。
+    CommandSpec {
+        name: "files-size",
+        doc_anchor: Some("#### `files-size`"),
+        codes: &["bad_path", "unreadable"],
+        fields: &[
+            "bytes",
+            "dirs",
+            "files",
+            "links",
+            "other",
+            "path",
+            "skipped_mounts",
+            "unreadable_dirs",
+        ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::files::answer_wire(&r.cmd, &r.args)

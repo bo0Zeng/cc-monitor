@@ -336,9 +336,8 @@ pub const PROTO_VERSION: u32 = 1;
 ///    `filewin::find::tests` 四条两侧都钉（没索引 ⇒ 恰好 1 条重走、顺序也钉 ·
 ///    **阴性对照**：不过期 ⇒ 一条都不发 · 只差 `stale` 一个布尔的对照 · 连打五趟只发一趟）。
 ///    ⇒ 「后端这棵树钉不住」仍然成立，而**那一格换成由 bridge 那棵树钉着**。〕
-///   🔴 另一条如实登记：`files::browse_watch::BrowseWatcher`（真把 `inotify` 挂上去那一跳）
-///   **仍然零生产调用方** ⇒ `files-browse` 买到的是「发命令那一刻那几个目录是新的」，
-///   不是「此后一有动静就跟着新」。
+///   〔W5-FILES · 09-25 订正〕上一版这里登记「`BrowseWatcher` 零生产调用方」—— 今天 `files-browse`
+///   会让进程里那一个监听器跟上名单（`files::browse_watch::keep_watching`），浏览的目录此后一有动静 overlay 就重列。
 ///   ★ 同 p2d…p2m 如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍，
 ///   本轮**没做** —— 本工作树没铺 `src/bridge/embedded-backends/`，现打
 ///   `bash tests/scripts/re-embed.sh --check` 答的仍是「这棵树上没有一份对不上的字节」。
@@ -532,7 +531,11 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p3x-ccm-print-preview**（2026-09-26，第五波 W5-ALIAS 合并那一拍）：子命令 ＋1 `--ccm-print`、帧命令 ＋1 `ccm-print`（别名预览，与 `ccm --print`
 /// 共用 `plan_of`；预览环境 = 家目录里新开终端、以 `ccm` 调起、不在 tmux、不继承账号目录）。＋ 行为：远端 `ccm` 入口改走 `read_marker` ＋ `upload_verified`（读回坏了删、下次部署补）。
-pub const BUILD_ID: &str = "p3x-ccm-print-preview";
+///
+/// ★★★ **p3y-files-inplace**（2026-09-26，第五波 W5-FILES 合并那一拍）：子命令 ＋1 `--files-size`、帧命令 ＋1 `files-size`。＋ 行为：复制保权限位 ·
+/// `files-copy` 收 `recursive`（计划趟逐条目解析、整趟拒 / 执行趟逐条目再解析、中途失败撤回本趟所建）· 索引不跨文件系统 · `files-browse` 真挂 watcher
+/// （应答多 `watching` / `watch_failed` / `watch_error`）· 暂存件跨盘提交退回「复制后删」（`EXDEV`）· 非 UTF-8 名按字节寻址。
+pub const BUILD_ID: &str = "p3y-files-inplace";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -740,6 +743,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔F7a · 第三波 09-24〕同族第七、第八条（`设计/60 §13`）。登记理由与上面那几条逐字相同。
     "--files-home",
     "--files-read-text",
+    // 〔W5-FILES · 第五波〕读族第九条（算目录大小）。**是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump。
+    "--files-size",
     // 〔SE2 · `设计/10 §6 步 6`〕会话内查找（Ctrl+F）。**是新子命令** ⇒ `build_id_guard` 红是预期的，
     // BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
     "--find-in-session",

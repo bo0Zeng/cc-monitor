@@ -125,9 +125,8 @@
 //!    那一 exec 照旧回 `index_missing: true`（本机 debug 档现打过这两趟）。
 //!    ⇒ CLI 面这两条的用处是**量一趟遍历** ／ 在一个常驻后端进程里换名单，
 //!    不是给下一个 exec 预热。
-//!    ⚠ 另一条如实登记：[`browse_watch::BrowseWatcher`]（真把 `inotify` 挂上去那一跳）
-//!    **仍然零生产调用方** ⇒ `files.browse` 今天买到的是「这几个目录的子项在你发命令
-//!    那一刻是新的」，**不是**「此后一有动静就跟着新」。理由与出路见 [`answer_browse`]。
+//!    〔W5-FILES · 09-25 订正〕上一版这里登记「`BrowseWatcher` 零生产调用方」—— 今天 [`answer_browse`]
+//!    让进程里那一个监听器跟上名单（[`browse_watch::keep_watching`]）；仍然买不到的见那里。
 //! 4. **按内容搜 / 模糊匹配 / 排序** —— `设计/60 §3.5.3` 逐字「一条都没设计」，本件也没做。
 //! 5. **`设计/96 §2` 第 3 层没做，而且它缺的不止一样**〔步 `8a` 如实留账〕：
 //!    - **跨 target 的对等断言**（「所有 target 的能力集**完全相等**，不相等就红，
@@ -145,6 +144,8 @@
 pub mod browse_watch;
 pub mod index;
 pub mod raw;
+// 〔W5-FILES · 第五波〕`files.size`（算目录大小，`设计/60 §6.2`）。
+pub mod size;
 
 /// 这一族的名字。`设计/96 §2.9` 的标题逐字。
 pub const FAMILY: &str = "files-read";
@@ -267,6 +268,8 @@ pub const CAPABILITIES: &[Capability] = &[
             "index_missing",
             "resident_bytes",
             "rewalk_interval_secs",
+            // 〔W5-FILES · `设计/60 §3.7`〕没走进去的挂载点个数。
+            "skipped_mounts",
             "stale",
             "truncated",
             "unreadable_dirs",
@@ -292,6 +295,8 @@ pub const CAPABILITIES: &[Capability] = &[
             "entries",
             "path",
             "resident_bytes",
+            // 〔W5-FILES · `设计/60 §3.7`〕没走进去的挂载点个数。
+            "skipped_mounts",
             "truncated",
             "unreadable_dirs",
         ],
@@ -306,7 +311,16 @@ pub const CAPABILITIES: &[Capability] = &[
         impl_files: &["browse_watch.rs", "mod.rs", "raw.rs"],
         targets: TARGETS,
         args: &["dirs"],
-        fields: &["added", "browse_watch_cap", "rejected", "removed"],
+        // 〔W5-FILES〕+`watching` · `watch_failed` · `watch_error`：监听器真挂上了几个、没挂上的出声（`设计/60 §3.7`）。
+        fields: &[
+            "added",
+            "browse_watch_cap",
+            "rejected",
+            "removed",
+            "watch_error",
+            "watch_failed",
+            "watching",
+        ],
         codes: &["bad_args", "bad_path"],
     },
     // ── 〔F7a · 第三波 · 2026-09-24〕`设计/60 §13`：窗口换走通道的那两问 ────────────
@@ -325,6 +339,27 @@ pub const CAPABILITIES: &[Capability] = &[
         args: &["max_bytes", "path"],
         fields: &["bytes", "path", "sha256", "text"],
         codes: &["bad_args", "bad_path", "not_text", "too_large", "unreadable"],
+    },
+    // ── 〔W5-FILES · 第五波 · 2026-09-25〕`设计/60 §6.2`「算目录大小」：读族第九条 ────────────────
+    //   在那台机器上走一遍、只回几个数（V45 ＋「零流量」）。纯读，整族照旧一个字节不写。
+    Capability {
+        name: "files.size",
+        what: "算一个目录（或文件）有多大 —— 不跟链接、不进别的文件系统，只回几个数",
+        effect: Effect::ReadsOnly,
+        impl_files: &["mod.rs", "raw.rs", "size.rs"],
+        targets: TARGETS,
+        args: &["path"],
+        fields: &[
+            "bytes",
+            "dirs",
+            "files",
+            "links",
+            "other",
+            "path",
+            "skipped_mounts",
+            "unreadable_dirs",
+        ],
+        codes: &["bad_path", "unreadable"],
     },
     Capability {
         name: "files.home",
@@ -640,6 +675,7 @@ fn answer_status() -> Answer {
         "resident_bytes": s.resident_bytes,
         "unreadable_dirs": s.unreadable_dirs,
         "truncated": s.truncated,
+        "skipped_mounts": s.skipped_mounts,
         "age_secs": s.age_secs,
         "rewalk_interval_secs": s.rewalk_interval_secs,
         "stale": s.stale,
@@ -699,20 +735,18 @@ fn answer_index_rebuild(args: &serde_json::Value) -> Answer {
         "resident_bytes": stats.resident_bytes,
         "unreadable_dirs": stats.unreadable_dirs,
         "truncated": stats.truncated,
+        "skipped_mounts": stats.skipped_mounts,
     }))
 }
 
 /// `files.browse` —— 告诉后端「用户现在在看哪几个目录」。
 ///
-/// # ⚠ 它买到的比「那几个目录此后实时」小，**别读宽**
+/// # 它买到的（〔W5-FILES · 09-25〕比上一版多一截）
 ///
-/// [`browse_watch::set_browsing`] 做的是两件事：**登记名单** ＋ **当场把那几个目录
-/// 各重列一遍**（结果进 overlay，查询时盖掉大索引里的对应条目）。
-/// 而真把 `inotify` 挂上去的是 [`browse_watch::BrowseWatcher`]，
-/// **它至今零生产调用方** —— 要有人在后端进程里**长期持有**那个监听器才谈得上
-/// 事件驱动，而「谁持有它、活多久」是生命周期那一维的活，不在本刀里。
-/// ⇒ 今天这条命令买到的是「**这几个目录的子项在你发命令那一刻是新的**」，
-/// **不是**「此后一有动静就跟着新」。如实登记为未做。
+/// [`browse_watch::set_browsing`] 做两件事：**登记名单** ＋ **当场把那几个目录各重列一遍**（结果进 overlay，
+/// 查询时盖掉大索引里的对应条目）。〔W5-FILES〕之后 [`browse_watch::keep_watching`] 让**进程里那一个监听器**
+/// 跟上名单（第一次时起、此后一直持有；新来的挂上、离开的卸掉）⇒ 浏览的目录此后一有动静 overlay 就跟着重列。
+/// ⚠ 仍然买不到：watch 绑 inode 不绑路径 · 内核队列溢出 · 窗口关了没人发空名单（最后那份名单的 watch 留到下一次）。
 ///
 /// ⚠ `rejected` 必须跟着回去（[`browse_watch::Applied::rejected`] 头注逐字）：
 /// 静默截断会让「我明明在看这个目录、新建的文件却要等重走」变成一个查不出原因的现象。
@@ -721,11 +755,16 @@ fn answer_index_rebuild(args: &serde_json::Value) -> Answer {
 fn answer_browse(args: &serde_json::Value) -> Answer {
     let dirs = dirs_arg(args)?;
     let applied = browse_watch::set_browsing(&dirs);
+    // 〔W5-FILES · `设计/60 §3.7`〕名单登记了之后让进程里那一个监听器跟上（此前 `BrowseWatcher` 零生产调用方）。
+    let w = browse_watch::keep_watching();
     Ok(serde_json::json!({
         "added": applied.added,
         "removed": applied.removed,
         "rejected": applied.rejected,
         "browse_watch_cap": browse_watch::MAX_BROWSE_WATCHES,
+        "watching": w.watching,
+        "watch_failed": w.failed,
+        "watch_error": w.error,
     }))
 }
 
@@ -896,6 +935,30 @@ fn answer_read_text(args: &serde_json::Value) -> Answer {
 /// 账号库给 `HOME`、并把 SFTP 子系统的起点放在同一处；后端正是经那条 SSH 以同一个用户起的。
 /// 两者分得开的只有一形：有人在登录脚本里改了 `HOME` —— 那时本命令答的是改过之后的那个，
 /// 而那正是这台机器上其余东西（shell、Claude）认的那个。
+/// 〔W5-FILES〕`files.size` —— 走法与诚实边界住 [`size`] 头注。
+fn answer_size(args: &serde_json::Value) -> Answer {
+    let path = path_arg(args)?;
+    let m = size::measure(&path).map_err(|e| {
+        (
+            "unreadable",
+            copy_core::copy_text(
+                "beFilesRead.size.unreadable",
+                &[("kind", &format!("{:?}", e.kind()))],
+            ),
+        )
+    })?;
+    Ok(serde_json::json!({
+        "path": raw::to_json(raw::path_bytes(&path)),
+        "bytes": m.bytes,
+        "files": m.files,
+        "dirs": m.dirs,
+        "links": m.links,
+        "other": m.other,
+        "skipped_mounts": m.skipped_mounts,
+        "unreadable_dirs": m.unreadable_dirs,
+    }))
+}
+
 fn home_var() -> Option<std::ffi::OsString> {
     let pick = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty());
     #[cfg(windows)]
@@ -954,6 +1017,7 @@ pub fn answer(name: &str, args: &serde_json::Value) -> Answer {
         "files.browse" => answer_browse(args),
         "files.read.text" => answer_read_text(args),
         "files.home" => answer_home(),
+        "files.size" => answer_size(args),
         other => Err(("unknown_capability", format!("`{other}` 不是这一族的能力"))),
     }
 }

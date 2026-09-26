@@ -490,9 +490,10 @@ async fn the_freshness_numbers_the_backend_reports_really_reach_the_frame() {
     //    —— 第一版的跨组缺席断言就是这么假红的（`13247 字节` 里有 `13`）。
     //    ⇒ 裸数字不是一把尺子；带着它所在那一格的措辞才是。
     let mut lines: Vec<(Vec<String>, String)> = Vec::new();
-    for (tag, interval, age, unreadable, entries_hint) in [
-        ("b1-fresh-a", 4242u64, 1234u64, 41u64, 'a'),
-        ("b1-fresh-b", 8765u64, 5678u64, 13u64, 'b'),
+    // 〔W5-FILES · `设计/60 §3.7`〕多一个数：后端没走进去的挂载点（两组各不相同，跨组缺席断言照样罩着它）。
+    for (tag, interval, age, unreadable, mounts, entries_hint) in [
+        ("b1-fresh-a", 4242u64, 1234u64, 41u64, 3u64, 'a'),
+        ("b1-fresh-b", 8765u64, 5678u64, 13u64, 29u64, 'b'),
     ] {
         let tree =
             testing::plant(&format!("fresh-{entries_hint}"), 30, TREE_SEED).expect("造不出那棵树");
@@ -502,6 +503,7 @@ async fn the_freshness_numbers_the_backend_reports_really_reach_the_frame() {
             age_secs: age,
             stale: Some(false),
             unreadable_dirs: unreadable,
+            skipped_mounts: mounts,
             browse_watch_cap: 64,
             ..Declared::default()
         };
@@ -539,6 +541,7 @@ async fn the_freshness_numbers_the_backend_reports_really_reach_the_frame() {
             format!("扫描间隔 {interval} 秒"),
             format!("{age} 秒前扫完"),
             format!("有 {unreadable} 个目录读不进去"),
+            format!("有 {mounts} 个目录在另一个盘上"),
         ];
         for frag in &frags {
             assert!(
@@ -991,6 +994,7 @@ fn a_missing_field_is_a_loud_failure_not_a_silent_zero() {
         "unreadable_dirs": 0, "truncated": false, "age_secs": 7,
         "rewalk_interval_secs": 4242, "stale": false,
         "browse_watches": 1, "browse_watch_cap": 64, "cold_first_build_secs": 47,
+        "skipped_mounts": 0,
     });
     assert!(decode_status(&full).is_ok(), "完整那一份该解析得动");
     for k in STATUS_FIELDS {

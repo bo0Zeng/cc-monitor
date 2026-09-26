@@ -87,6 +87,13 @@ const DIR_CREATORS: &[(&str, &str, &str)] = &[
         "make_parents",
         "用户的目录（`files-put` 显式要了父目录）",
     ),
+    // 〔W5-FILES 与 HX1 合并〕复制目录的执行趟逐条建目录（`files-copy` 的 `recursive: true`，`设计/60 §7 #6`）。
+    //   HX1 立本表时它还在另一棵树上 ⇒ 两边各自绿、合起来才红，按实数 +1。
+    (
+        "control/files_write.rs",
+        "copy_planned",
+        "用户的目录（`files-copy` 复制目录，逐条建）",
+    ),
     (
         "history_annotations.rs",
         "lock_for_write",

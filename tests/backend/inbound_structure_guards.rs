@@ -167,6 +167,8 @@ fn every_registered_command_declares_its_run_kind() {
                 // 〔F7a · 第三波 09-24〕同族第七、第八条同档（同步文件 I/O / 读环境）。
                 | "files-read-text"
                 | "files-home"
+                // 〔W5-FILES〕读族第九条（算目录大小）同档：走一整棵树的同步 I/O。
+                | "files-size"
                 // 〔`C1` · 09-24〕只读查询面八条同为阻塞档：全做文件 I/O，
                 // `history-search` 扫全库、`history-tail` 扫整份会话 —— 不许占 tokio worker。
                 // 〔C4d · 第四波 4B〕`history-projects` / `history-sessions` 出列：出成品、远端那一支要等 ⇒ 真异步
@@ -295,6 +297,7 @@ fn every_registered_command_declares_its_run_kind() {
         "files-index-status",
         "files-read-text",
         "files-home",
+        "files-size",
         "history-projects",
         "history-index",
         "history-user-inputs",

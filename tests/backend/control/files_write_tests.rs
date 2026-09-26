@@ -1116,6 +1116,43 @@ fn copy_lands_a_byte_exact_copy_and_never_overwrites_unless_asked() {
     std::fs::remove_dir_all(&base).ok();
 }
 
+/// 〔W5-FILES〕要求住址：`设计/60 §7 #11`「复制出来的新文件权限位不从源抄」（登记为开着的缺陷）。
+///
+/// 源 `0o751` / `0o600` —— 进程缺省（umask 022 ⇒ `0o644`）给不出来的两个值 ⇒ 抄没抄分得开。
+/// 不覆盖（目标本身新建）与显式覆盖（暂存旁名换名上位）两支各一格；两格目标逐位 == 源。
+#[test]
+#[cfg(unix)]
+fn a_copy_carries_the_source_permission_bits_on_both_branches() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let base = temp_root("cpm");
+    let root = base.join("cfg");
+    std::fs::create_dir_all(&root).expect("建根");
+    let mode = |p: &Path| std::fs::metadata(p).expect("stat").permissions().mode() & 0o7777;
+    for (src, bits) in [("x.sh", 0o751u32), ("secret", 0o600u32)] {
+        std::fs::write(root.join(src), b"s").expect("铺源");
+        std::fs::set_permissions(root.join(src), std::fs::Permissions::from_mode(bits))
+            .expect("设源权限");
+        let fresh = format!("{src}.new");
+        copy_entry(&root, src, &fresh, false).expect("不覆盖那一支被拒");
+        assert_eq!(
+            mode(&root.join(&fresh)),
+            bits,
+            "不覆盖那一支没抄权限位（{src}）"
+        );
+        let old = format!("{src}.old");
+        std::fs::write(root.join(&old), b"o").expect("铺旧目标");
+        std::fs::set_permissions(root.join(&old), std::fs::Permissions::from_mode(0o644))
+            .expect("设旧目标权限");
+        copy_entry(&root, src, &old, true).expect("覆盖那一支被拒");
+        assert_eq!(
+            mode(&root.join(&old)),
+            bits,
+            "覆盖那一支没抄权限位（{src}）"
+        );
+    }
+    std::fs::remove_dir_all(&base).ok();
+}
+
 /// ★ 显式覆盖：目标换成新内容，**不留暂存旁名**；目标是一条链接时顶掉的是**链接本身**，
 /// 它指着的那份会话记录一个字节没动（〔FN1〕这一条不是围栏：复制的目标作用在链接本身上，不跟过去）。
 #[test]
@@ -2125,6 +2162,210 @@ fn the_command_face_takes_expect_only_as_bytes_of_one_file() {
     )
     .expect("旧形被拒");
     assert!(!root.join("y.md").exists());
+    std::fs::remove_dir_all(&base).ok();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  〔W5-FILES · 第五波〕复制目录（`files-copy` 的 `recursive: true`）
+//  要求住址：`设计/60 §7 #6`「递归复制 · 复制目录 …… 递归复制要照递归删的形状逐条目过围栏」
+//  ＋ 用户 V45「我能连 ssh 对机器文件进行什么操作，后端就应该能进行什么操作」。
+//  设计全文 `调研/第四波记录/W5-FILES.md` §2.2。
+// ════════════════════════════════════════════════════════════════════════════
+
+/// 给判据用：一棵树逐条 `(相对段, 内容或 None=目录, 权限位)`，**按名字**问、不列目录
+/// （`scanning_guard_registry` 不许测试段裸遍历目录）。
+#[cfg(unix)]
+fn tree_facts(base: &Path, names: &[&str]) -> Vec<(String, Option<Vec<u8>>, u32)> {
+    use std::os::unix::fs::PermissionsExt as _;
+    names
+        .iter()
+        .map(|n| {
+            let p = base.join(n);
+            let md = std::fs::symlink_metadata(&p).unwrap_or_else(|e| panic!("{n} 不在：{e}"));
+            let body = if md.is_dir() {
+                None
+            } else {
+                Some(std::fs::read(&p).expect("读"))
+            };
+            (n.to_string(), body, md.permissions().mode() & 0o7777)
+        })
+        .collect()
+}
+
+/// 相对 `t` 的那几条（`plant_tree` 的表去掉前缀 `t`）。
+fn tails_of_tree() -> Vec<&'static str> {
+    vec!["a", "a/b", "a/b/three.md", "a/two.md", "empty", "one.md"]
+}
+
+/// ★ 整棵复制：每一条逐字节 ＋ 权限位与源相等（目录权限位也抄，含一个只读目录）；回报的条数 / 字节数与手算相等。
+#[test]
+#[cfg(unix)]
+fn a_recursive_copy_lands_the_whole_tree_with_bytes_and_modes() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let base = temp_root("cpt");
+    let root = base.join("cfg");
+    plant_tree(&root);
+    std::fs::set_permissions(
+        root.join("t/a/two.md"),
+        std::fs::Permissions::from_mode(0o751),
+    )
+    .expect("设权限");
+    std::fs::set_permissions(root.join("t/a/b"), std::fs::Permissions::from_mode(0o555))
+        .expect("设只读目录");
+    let got = copy_tree(&root, "t", "u").expect("干净的复制目录被拒了");
+    assert_eq!(
+        (got.files, got.dirs, got.bytes),
+        (3, 4, 3),
+        "条数 / 字节数与手算不等"
+    );
+    let mut tails = tails_of_tree();
+    tails.insert(0, "");
+    let names: Vec<String> = tails.iter().map(|t| t.to_string()).collect();
+    let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    let src = tree_facts(&root.join("t"), &refs);
+    let dst = tree_facts(&root.join("u"), &refs);
+    assert_eq!(dst, src, "复制出来的那棵与源不逐条相等（内容 / 权限位）");
+    std::fs::set_permissions(root.join("t/a/b"), std::fs::Permissions::from_mode(0o755)).ok();
+    std::fs::set_permissions(root.join("u/a/b"), std::fs::Permissions::from_mode(0o755)).ok();
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// 整趟拒的几形：树里一条链接 · 目标已在 · 目标在源里面 · 超上限 —— 每一形**一个字节都没建**、已在的一个字节没动。
+#[test]
+#[cfg(unix)]
+fn a_recursive_copy_refuses_whole_and_builds_nothing() {
+    let base = temp_root("cptr");
+    let root = base.join("cfg");
+    plant_tree(&root);
+    // ① 链接（指向树里的一份普通文件 —— 不是逃逸，只是「写面没有建链接的动词」）。
+    std::os::unix::fs::symlink(root.join("t/one.md"), root.join("t/a/ln")).expect("铺链接");
+    let e = copy_tree(&root, "t", "u").expect_err("树里有链接却复制成了");
+    assert_eq!(e.code(), "refused", "{e:?}");
+    assert!(
+        e.message().contains("符号链接"),
+        "没点名是链接：{}",
+        e.message()
+    );
+    assert!(
+        std::fs::symlink_metadata(root.join("u")).is_err(),
+        "被拒的那一趟建了东西"
+    );
+    std::fs::remove_file(root.join("t/a/ln")).expect("撤链接");
+    // ② 目标已在：建目录那一步就失败，已在那一份一个字节不动。
+    std::fs::create_dir(root.join("u")).expect("铺已在的目标");
+    std::fs::write(root.join("u/keep"), b"K").expect("铺");
+    let e = copy_tree(&root, "t", "u").expect_err("目标已在却合并进去了");
+    assert_eq!(e.code(), "io_failed", "{e:?}");
+    assert_eq!(std::fs::read(root.join("u/keep")).expect("keep"), b"K");
+    assert!(
+        std::fs::symlink_metadata(root.join("u/one.md")).is_err(),
+        "合并进去了"
+    );
+    // ③ 目标在源里面。
+    let e = copy_tree(&root, "t", "t/a/inner").expect_err("复制进自己里面竟然成了");
+    assert_eq!(e.code(), "refused", "{e:?}");
+    assert!(std::fs::symlink_metadata(root.join("t/a/inner")).is_err());
+    // ④ 超上限（计划 7 条，上限 3）。
+    let e = copy_tree_with(&root, Path::new("t"), Path::new("v"), 3).expect_err("超上限却复制了");
+    assert_eq!(e.code(), "refused", "{e:?}");
+    assert!(
+        std::fs::symlink_metadata(root.join("v")).is_err(),
+        "超上限那一趟建了东西"
+    );
+    // 正控：同一棵、上限够 ⇒ 成。
+    copy_tree_with(&root, Path::new("t"), Path::new("v"), 7).expect("上限恰好够却被拒了");
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// ★ 执行趟中途失败 ⇒ **自己建的全撤掉**、源一个字节没动。注入：一份源文件读不了（计划只看名字与种类，读到它才失败）。
+#[test]
+#[cfg(unix)]
+fn a_recursive_copy_that_fails_midway_undoes_what_it_built() {
+    use std::os::unix::fs::PermissionsExt as _;
+    if unsafe { libc::geteuid() } == 0 {
+        eprintln!("root 读得了 000 的文件 ⇒ 注入不成立，跳过");
+        return;
+    }
+    let base = temp_root("cptu");
+    let root = base.join("cfg");
+    plant_tree(&root);
+    std::fs::set_permissions(
+        root.join("t/a/b/three.md"),
+        std::fs::Permissions::from_mode(0o000),
+    )
+    .expect("设不可读");
+    let e = copy_tree(&root, "t", "u").expect_err("读不了的源却复制成了");
+    assert_eq!(e.code(), "io_failed", "{e:?}");
+    assert!(
+        e.message().contains("都撤掉了"),
+        "没说回滚：{}",
+        e.message()
+    );
+    assert!(
+        std::fs::symlink_metadata(root.join("u")).is_err(),
+        "🔴 半截复制留在了盘上"
+    );
+    std::fs::set_permissions(
+        root.join("t/a/b/three.md"),
+        std::fs::Permissions::from_mode(0o644),
+    )
+    .expect("复原");
+    assert_eq!(
+        std::fs::read(root.join("t/a/b/three.md")).expect("源"),
+        b"3",
+        "源被动了"
+    );
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// 命令面：不带 `recursive` 目录照旧 `refused`；与 `overwrite: true` 同给 ⇒ `bad_args`；带了 ⇒ 回的键 == 声明的 `fields`。
+#[test]
+fn the_command_face_copies_a_directory_only_when_asked() {
+    let base = temp_root("cptc");
+    let root = base.join("cfg");
+    plant_tree(&root);
+    let r = root.to_string_lossy().to_string();
+    let e = answer_wire(
+        "files-copy",
+        &serde_json::json!({"root": r, "from": "t", "to": "u"}),
+    )
+    .expect_err("不带 recursive 复制了目录");
+    assert_eq!(e.0, "refused", "{e:?}");
+    let e = answer_wire(
+        "files-copy",
+        &serde_json::json!({"root": r, "from": "t", "to": "u", "recursive": true, "overwrite": true}),
+    )
+    .expect_err("recursive ＋ overwrite 竟然收了");
+    assert_eq!(e.0, "bad_args", "{e:?}");
+    assert!(std::fs::symlink_metadata(root.join("u")).is_err());
+    let v = answer_wire(
+        "files-copy",
+        &serde_json::json!({"root": r, "from": "t", "to": "u", "recursive": true}),
+    )
+    .expect("带 recursive 的复制目录被拒");
+    let got: std::collections::BTreeSet<&str> = v
+        .as_object()
+        .expect("对象")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    let declared: std::collections::BTreeSet<&str> = MANAGE_COMMANDS
+        .iter()
+        .find(|c| c.name == "files-copy")
+        .expect("在表里")
+        .fields
+        .iter()
+        .copied()
+        .collect();
+    assert_eq!(got, declared);
+    assert_eq!(
+        (v["files"].as_u64(), v["dirs"].as_u64()),
+        (Some(3), Some(4))
+    );
+    assert_eq!(
+        std::fs::read(root.join("u/a/b/three.md")).expect("读"),
+        b"3"
+    );
     std::fs::remove_dir_all(&base).ok();
 }
 
