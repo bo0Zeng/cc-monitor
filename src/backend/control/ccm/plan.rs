@@ -140,6 +140,44 @@ impl Env {
     }
 }
 
+// 〔W5-ALIAS〕预览那一份单独一个 `impl` 块：`from_process` 那一块的判据按「块尾」截函数体（`plan_tests` 的家目录那条）。
+impl Env {
+    /// 〔W5-ALIAS · 第五波先行〕别名预览用的那一份（帧命令 `ccm-print`，`设计/71 §2.3`）：
+    /// **「从这台机器家目录里的一个新终端敲这条别名」**。问的人是常驻后端进程，而它的 cwd / 环境
+    /// 不是那个终端的 ⇒ 这几格写死、而且写在这一处（判据 `ccm::tests` 的预览那几条逐格钉）：
+    /// - `self_argv = ["ccm"]` —— 别名叫的就是 `ccm`（容器路内层要把自己再叫一次，叫法就是它）；
+    /// - `pwd = home` · 不在 tmux 里 · 没有继承来的中转地址 / 启动号 / 令牌；
+    /// - 账号目录变量不继承（由 [`super::plan_of`] 的 `inherit_account = false` 管）。
+    ///
+    /// 其余照这台机器的真值：账号库 manifest · `CCM_ENV` · cc-bus 脚本目录 · `CCM_NO_PRETRUST`。
+    /// ⚠ 与 [`Env::from_process`] 不同，这里**不**对 `$CCM_CONFIG` 出声：那一句是说给终端里的人听的，
+    /// 常驻后端的 stderr 进的是日志。
+    pub(crate) fn for_preview() -> Self {
+        use super::argv::Defaults;
+        let home = home_of(|k| std::env::var(k).ok());
+        let get = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
+        let pick = |k: &str, fallback: String| -> String { get(k).unwrap_or(fallback) };
+        Env {
+            pwd: home.clone(),
+            tmux: None,
+            anthropic_base_url: None,
+            ccm_launch_id: None,
+            launch_token: None,
+            ccm_env: pick("CCM_ENV", Defaults::ENV.to_string()),
+            accts_manifest: pick(
+                "CCM_ACCTS_MANIFEST",
+                under_home(&home, Defaults::ACCTS_MANIFEST_REL),
+            ),
+            inherited_config_dir: None,
+            account_env: String::new(),
+            self_argv: vec![super::SUBCOMMAND_WORD.to_string()],
+            no_pretrust: std::env::var("CCM_NO_PRETRUST").as_deref() == Ok("1"),
+            bus_scripts: discover_bus_scripts(),
+            home,
+        }
+    }
+}
+
 /// 这个文件在不在、而且**跑得起来**吗。
 ///
 /// 🔴 **`is_file()` 不够**〔`K-R48` 第二拍 09-11 实测逮到〕：旧 bash 实现这三处判的全是
@@ -219,7 +257,7 @@ pub(crate) fn under_home(home: &str, rel: &str) -> String {
 /// `~/.cc-monitor/bin/` —— **它旁边永远没有 `cc-bus/`** ⇒ 第二档在真实部署里**恒不命中**，
 /// 而 `PATH` 那一档是唯一还够得着的。首版漏了它（docstring 写着、实现里没有），
 /// 后果是「`--bus-register` 要了登记，却谁也没登记」。
-fn discover_bus_scripts() -> Option<String> {
+pub(crate) fn discover_bus_scripts() -> Option<String> {
     if let Ok(d) = std::env::var("CC_BUS_SCRIPTS") {
         if !d.is_empty() && is_exec(&std::path::Path::new(&d).join("cc-register")) {
             return Some(d);

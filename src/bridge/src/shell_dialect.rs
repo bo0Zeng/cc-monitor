@@ -341,11 +341,11 @@ impl ShellDialect for Posix {
 
     /// 两条路各查一次，报出来的话里带住址，用户才知道自己在盖掉什么：
     /// ① `src/shared/ccm-aliases.sh` 里自带的那几个（今天是 `cc` / `cct`）——**问的是那份文件本身**
-    ///    （`sftp::builtin_alias_names`），不在这里抄一份名字清单；
+    ///    （`profile_installer::builtin_alias_names`），不在这里抄一份名字清单；
     /// ② `PATH` 上真有一个同名程序 —— 🔴 `cc` 在多数机器上是 C 编译器（`/usr/bin/cc`），
     ///    而自带那份别名只检查「有没有同名**函数**」、不检查程序。
     fn name_taken(&self, name: &str) -> Option<String> {
-        if crate::sftp::builtin_alias_names().contains(&name) {
+        if crate::profile_installer::builtin_alias_names().contains(&name) {
             return Some(copy_text(
                 "rsShellDialect.posix.nameTakenBuiltin",
                 &[("name", &name.to_string())],

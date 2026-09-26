@@ -644,6 +644,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "`tasks-list` 读单个任务文件（本机实测几百字节量级）",
         "跳过+说清",
     ),
+    // 〔W5-ALIAS · 第五波先行〕别名预览（`ccm-print`）入参里一个参数最长多少。
+    (
+        "src/backend/control/ccm/mod.rs",
+        "PRINT_MAX_WORD_BYTES",
+        4096,
+        "`ccm-print` 交来的一条别名里一个参数的字节数（别名表单产出的远小于它）",
+        "拒收+回错",
+    ),
     // 〔RM1a · 第四波〕「足迹」的这台机器那一半（`footprint-probe`，只读）那两个数。
     (
         "src/backend/footprint.rs",

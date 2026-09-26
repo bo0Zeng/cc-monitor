@@ -254,6 +254,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "〔B2〕交那台机器写那个值：同上一行（`set_backend_exit_policy` 删了），画的仍是后端写完读回来的那一份",
     ),
     (
+        "ccm-print",
+        "〔W5-ALIAS · 第五波先行〕别名预览：生来就走通道（没有过 monitor 那一条）—— 后端应答就是成品（`ccm --print` 那一行），\
+         界面 `settings/machine-aliases.ts::previewAlias` 原样上屏",
+    ),
+    (
         "assets-catalog",
         "〔AS2 · 4B · V113〕资产目录：生来就走通道（没有过 monitor 那一条）—— 后端应答就是成品（整份目录 ＋「这台缺什么」的判定），\
          界面 `settings/assets-section.ts::decodeCatalog` 按形状收",
