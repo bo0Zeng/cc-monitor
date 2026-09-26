@@ -342,14 +342,18 @@ fn base_url_is_written_with_the_key_and_left_alone_when_only_the_key_changes() {
     .unwrap_err();
     assert_eq!(err.0, "bad_args");
     assert_eq!(std::fs::read(&f).unwrap(), before, "形状不对却动了文件");
-    // 与本机那一侧是**同一条**形状关（同一个函数），不是两份：拿同一组输入问它，结论一致。
-    for s in ["ftp://x", "https://", "https://ok.example"] {
-        assert_eq!(
-            store::check_base_url_shape(s).is_ok(),
-            s == "https://ok.example",
-            "{s:?} 的判法变了"
-        );
-    }
+    // 〔DUP3 · J9〕与装表**同一个谓词**（`upstream_url_core::usable`）：装不进表的（明文非回环）写口当场拒、文件不动。
+    let err = answer_set_at(
+        &f,
+        &json!({"configDir": "/h/accts/work", "key": PLAIN, "baseUrl": "http://api.example.com"}),
+    )
+    .unwrap_err();
+    assert_eq!(err.0, "bad_args");
+    assert_eq!(
+        std::fs::read(&f).unwrap(),
+        before,
+        "装不进表的端点却写进去了"
+    );
     let _ = std::fs::remove_dir_all(&home);
 }
 

@@ -4437,6 +4437,13 @@ mod g6_dependency_signoff {
             UNMEASURED,
             "根证书**数据**（一张常量表）—— 它没有 IO 那条代码路径要谈",
         ),
+        (
+            // 〔DUP3 · J9〕上游 base URL 能不能用的唯一一份（中转解析 · 上游选择装表 · 写口）。
+            "upstream-url-core",
+            DEPS,
+            MEASURED_CLEAN,
+            "上游 base URL 的形状 ＋ 明文只许回环（纯字符串判定）；仓内 crate、零依赖，现打 0 处写面、0 处 I/O",
+        ),
     ];
 
     /// 清单的**依赖段**逐条：`(段名, crate 名, 那一行原文)`。

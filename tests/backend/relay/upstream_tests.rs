@@ -115,7 +115,7 @@ fn the_loopback_predicate_says_yes_only_to_the_local_machine() {
         "http://[::1]:11434/v1",
     ] {
         assert!(
-            Base::parse(yes).expect("该解析得了").host_is_loopback(),
+            upstream_url_core::upstream_is_loopback(&Base::parse(yes).expect("该解析得了").host),
             "这一形是回环，却被说成不是：{yes}"
         );
     }
@@ -128,7 +128,7 @@ fn the_loopback_predicate_says_yes_only_to_the_local_machine() {
         "http://localhost.evil.example",
     ] {
         assert!(
-            !Base::parse(no).expect("该解析得了").host_is_loopback(),
+            !upstream_url_core::upstream_is_loopback(&Base::parse(no).expect("该解析得了").host),
             "这一形不是回环，却被说成是：{no}"
         );
     }

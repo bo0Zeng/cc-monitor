@@ -397,7 +397,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
     ("src/bridge/src/backend/control/payload.rs", 11,
      &[
          ("src/bridge/src/backend/control/payload.rs", "config_dir_command_safe"),
-         ("src/bridge/src/backend/control/payload.rs", "rbind_token_shape_ok"),
+         ("src/bridge/crates/shell-quote-core/src/lib.rs", "rbind_token_ok"), // 〔DUP3 · J8〕payload.rs 里是 `pub use … as rbind_token_shape_ok`
          ("src/bridge/crates/relay-route-core/src/lib.rs", "base_url_shape_ok"), // 〔US1〕payload.rs 里是 `pub use … as relay_base_url_shape_ok`
          ("src/bridge/src/backend/control/payload.rs", "check"),
          ("src/bridge/crates/shell-quote-core/src/lib.rs", "posix_free_path_ok"), // 〔TL3 · §47〕cwd 两处
@@ -406,7 +406,8 @@ const QUOTE_SITES: &[QuoteRow] = &[
      ],
      "",
      "本侧渲染好的载荷整串 · 〔US1〕中转前缀里的中转口地址与钥匙文件路径（本侧的）"),
-    ("src/bridge/src/backend/control/tmux.rs", 1, &[("src/bridge/src/backend/control/tmux.rs", "is_safe_tmux_target")], "", ""),
+    // 〔DUP3〕Gate 1 并进 gate-core 的 tmux 名那一族（已有会话那一条），本侧那个私有谓词删了。
+    ("src/bridge/src/backend/control/tmux.rs", 1, &[("src/bridge/crates/gate-core/src/lib.rs", "existing_tmux_name_issue")], "", ""),
     // 〔TL3 · §47〕文件窗口的当前目录（自由文本路径）拼进 `cd` 之前过 `posix_free_path_ok`（POSIX 绝对 · 无 `..` 段 · 不含 NUL / CR / LF）。
     ("src/bridge/src/filewin/shell.rs", 1, &[("src/bridge/crates/shell-quote-core/src/lib.rs", "posix_free_path_ok")],
      "",

@@ -13,8 +13,10 @@
  *
  * # 本文件做的只有四件（都是调用方那一侧的事）
  *
- * 1. **空目标先拒**（`§34` Gate 1 的本地那一格）：`=:` 会被 tmux 读成「当前会话」，空目标不该先花一次往返。
- *    一个字节都不发。**Gate 2 / 3（身份门 · 窗口门）只在后端 `control/gate.rs`**，本文件不写第二份。
+ * 1. **不判目标名**（〔DUP3 · 主会话 09-26 裁〕`§34` Gate 1 并进 `gate-core` 的 tmux 名那一族，TS 零）：会话名原样交给后端；
+ *    空目标由后端入口拒（`invalid_args`，`=:` 会被 tmux 读成「当前会话」那一格），本文件照各动作那句「后端不接受这个会话名」
+ *    带上后端原话说出来。**Gate 2 / 3（身份门 · 窗口门）只在后端 `control/gate.rs`**，本文件不写第二份。
+ *    （先前这里有一道「空目标就地拒、一个字节都不发」—— 那是 Gate 1 在界面的一份，`设计/90 §3` 判据 2 删了。）
  * 2. **按形状收**：成品恰好是那几格、类型对 ⇒ 收；多一格 / 缺一格 / 类型不对 ⇒ 当成「两边版本对不上」抛，不猜。
  *    破坏性的两件（结束 · 发按键）还要成品**明说做成了**（`killed` / `typed` 为真）—— 形状不对或没说做成
  *    ⇒ 当成「不知道做了没有」，**不当成功、也不换条路重做**。
@@ -61,11 +63,6 @@ const CAPTURE_BUDGET_MS = 20_000;
 /** 结束 / 发按键 / 就地恢复的期限（见头注）。 */
 const CONTROL_BUDGET_MS = 10_000;
 
-/** 空目标先拒（Gate 1 的本地那一格）。 */
-function rejectEmptyTarget(target: string): void {
-  if (target === "") throw new ControlError(copyText("tmuxControl.target.empty"), "empty tmux target, nothing sent");
-}
-
 // ─── 抓一屏 ───
 
 /** 抓屏的拒绝码 ⇒ 一句话。五个码逐一分开（它们的下一步各不相同）；认不出的码原样带出去。 */
@@ -104,7 +101,6 @@ export function decodeCapture(origin: Origin, v: unknown): string {
  * 失败 ⇒ 抛 [`ControlError`]（`message` 是给人看的那一句）。
  */
 export async function capturePane(origin: Origin, target: string): Promise<string> {
-  rejectEmptyTarget(target);
   const payload = jsonBody({ name: target });
   const budget = budgetWithin(CAPTURE_BUDGET_MS);
   const v = await settle(origin, "capture-pane", chan.call(origin, "capture-pane", payload, budget), captureRefusals(target));
@@ -159,7 +155,6 @@ export function decodeKilled(origin: Origin, target: string, v: unknown): void {
  * 后端对**句柄**下手（不是名字）。失败 ⇒ 抛 [`ControlError`]；**没有第二条路可回落**。
  */
 export async function killSession(origin: Origin, target: string): Promise<void> {
-  rejectEmptyTarget(target);
   const payload = jsonBody({ name: target });
   const budget = budgetWithin(CONTROL_BUDGET_MS);
   const v = await settle(origin, "kill", chan.call(origin, "kill", payload, budget), killRefusals(target));
@@ -222,7 +217,6 @@ export function decodeTyped(origin: Origin, target: string, v: unknown): void {
  * 失败 ⇒ 抛 [`ControlError`]；**没有第二条路可回落**。
  */
 export async function sendKeys(origin: Origin, target: string, keys: string, enter = true): Promise<void> {
-  rejectEmptyTarget(target);
   const mode = enter ? "send-into" : "send-keys-raw";
   const payload = jsonBody({ mode, name: target, payload: keys });
   const budget = budgetWithin(CONTROL_BUDGET_MS);
@@ -243,6 +237,8 @@ export type SendIntoOutcome =
  * 会话名或载荷为空 ⇒ `refused`（坏数据不是缺省，也不许拿去渲染整串）。
  */
 export async function sendInto(origin: Origin, name: string, payload: string): Promise<SendIntoOutcome> {
+  // 〔DUP3〕这一格**不是** Gate 1 的孪生（Gate 1 在界面那一份删了，见头注第 1 条）：它守的是「能不能回落到那条整串」——
+  //   通道不在（`hop · NotSent`）⇒ `fallback` ⇒ 调用方拿这个名字 / 载荷去渲整串；坏数据不许拿去渲染整串（`DUP3.md §5 ⑥` 列给主会话）。
   if (name.trim() === "" || payload === "") {
     return { verdict: "refused", reason: copyText("tmuxControl.resume.emptyInput") };
   }

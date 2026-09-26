@@ -898,7 +898,14 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "bus-broadcast",
         doc_anchor: Some("#### `bus-broadcast`"),
-        codes: &["invalid_args", "not_installed", "timed_out", "failed"],
+        // 〔DUP3〕`bad_id`：给的 `from` 形状过不了 `shell_quote_core::bus_id_ok`（交给 `cc-send` 之前先判，一个人都没发）。
+        codes: &[
+            "invalid_args",
+            "not_installed",
+            "timed_out",
+            "failed",
+            "bad_id",
+        ],
         fields: &[
             "detail",
             "error",

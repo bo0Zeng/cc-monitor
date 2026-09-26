@@ -459,4 +459,4 @@ fn hx2_the_monitor_names_no_plaintext_key_on_the_way_to_the_backend() {
 // 〔GP1 · 第四波〕这里原来两条（给了 Base URL 落进那一行、别的不动 · 形状不对整次不写），打的是 monitor 那侧写口；
 // 写者换成那台的后端之后，同一组性质由后端那一份判：
 // `file_face_tests::base_url_is_written_with_the_key_and_left_alone_when_only_the_key_changes`
-// （写入读回 · 只配 key 不动端点 × 三种缺席形 · 四种坏形状拒且文件逐字节不动 · 与形状关 `check_base_url_shape` 同一个）。
+// （写入读回 · 只配 key 不动端点 × 三种缺席形 · 四种坏形状拒且文件逐字节不动 · 〔DUP3〕与装表同一个谓词 `upstream_url_core::usable`）。

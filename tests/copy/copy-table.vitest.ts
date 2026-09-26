@@ -372,7 +372,7 @@ describe("CP2a · 文案表判据自己会不会死（正控）", () => {
  * 〔DUP2 · `设计/01 §6.9`「前端读口 `copy-table.ts::copyText`；Rust 读口只有一份实现 `copy-core::copy_text`」〕
  * **两个读口的插值对拍（TS 这一侧）**：共用金样 `tests/__fixtures__/copy-interpolation.golden.json` 逐条喂给 `copyText`，
  * 期望是金样里手写的；Rust 那一侧 `tests/bridge/crates/copy-core/lib_tests.rs::the_shared_interpolation_golden_agrees_with_this_reader`
- * 读同一份。两侧有意不同的几形（缺键 · 参数对不上 · 值里含别的占位符）登记在金样 `_differences`，不在这里。
+ * 读同一份。两侧有意不同的几形（缺键 · 参数对不上）登记在金样 `_differences`，不在这里（〔DUP3〕「值里含别的占位符」那一形 Rust 改成单趟之后两侧一致，挪进了 `cases`）。
  */
 describe("DUP2 · 两个读口的插值对拍（金样 copy-interpolation.golden.json）", () => {
   const golden = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/copy-interpolation.golden.json"), "utf8")) as {

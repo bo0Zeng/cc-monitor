@@ -108,8 +108,8 @@ pub(crate) fn answer_set_at(path: &Path, args: &Value) -> FileFaceAnswer {
         ));
     }
     // 〔ST2 × RM1a〕Base URL（加账号表单 apikey 那一支的第二格）：缺席 / null / 空串 = **不碰那一格**
-    //   （只配 key 时已有端点原样留着）；给了就先过**与本机那一侧同一条**形状关（`creds_core` 那一份），
-    //   不对 ⇒ 整次不写（key 也不落）。
+    //   （只配 key 时已有端点原样留着）；给了就先过**与装表同一个谓词**（〔DUP3 · J9〕`upstream_url_core::usable`：
+    //   写得进去、却装不进表 ⇒ 那一行永远用不了），不对 ⇒ 整次不写（key 也不落）。
     let base_url = match args.get("baseUrl") {
         None | Some(Value::Null) => None,
         Some(Value::String(s)) if s.trim().is_empty() => None,
@@ -117,7 +117,7 @@ pub(crate) fn answer_set_at(path: &Path, args: &Value) -> FileFaceAnswer {
         Some(_) => return Err(("bad_args", "`baseUrl` 要一个字符串（或不给）".to_string())),
     };
     if let Some(url) = base_url {
-        store::check_base_url_shape(url).map_err(|e| ("bad_args", e))?;
+        super::table::base_if_usable(url).map_err(|why| ("bad_args", why.to_string()))?;
     }
     write_at(path, account, &key, base_url)?;
     // 回的是**盘上的事实**：写完再读一遍，取这一行的掩码与端点。

@@ -66,7 +66,7 @@ import { stripComments } from "./test-support/strip-comments.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7" | "J8"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19";
+  | "J17" | "J18" | "J19" | "J20";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -163,12 +163,19 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     ],
   },
   J3: {
-    what: "launcher 能不能裸拼进载荷",
-    homes: [`${PAYLOAD_RS}::render_payload`],
+    what: "启动器（命令片段）能不能拼进命令（本机 · 远端载荷 · ccm 同一张白名单）",
+    // 〔DUP3 · 主会话 09-26 裁 · INVARIANTS §47 ③〕三处三条规则收成一张白名单，住共享 crate；本机那份私有函数删。
+    homes: ["shell-quote-core::launcher_refused_char"],
     // 〔DUP1 子步 5〕删 `shell-quote.ts::sanitizeRemoteLauncher`（同一字符集、却静默换成 claude —— D4 禁）；前端只留「空白 ⇒ 默认」。
     status: "zero",
     defs: ["sanitizeRemoteLauncher"],
     needles: [{ text: "[;|&$`<>\\r\\n]", count: 0 }],
+    rustGone: ["src/bridge/src/history.rs::sanitize_launcher"],
+    rustNeedles: [
+      { file: PAYLOAD_RS, text: "';' | '|' | '&'", count: 0 },
+      { file: "src/bridge/src/history.rs", text: "'-' | '_' | '.' | ' '", count: 0 },
+      { file: "src/backend/control/ccm/plan.rs", text: "free_text_ok(&o.launcher)", count: 0 },
+    ],
   },
   J4: {
     what: "POSIX 单引号 ＋ cc-acct-iso 那几条命令串",
@@ -203,16 +210,23 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     //   `ccm/plan.rs::validate_tmux_name`（成只管「说哪一句」的薄壳）都调它；TS 两个谓词与两处内联式子删。
     homes: ["gate-core::new_tmux_name_issue", "gate-core::existing_tmux_name_issue"],
     status: "zero",
-    defs: ["isValidTmuxName", "isValidNewTmuxName"],
+    // 〔DUP3 · 主会话 09-26 裁〕§34 Gate 1「只拒空」的两个住址（界面 `tmux-control.ts::rejectEmptyTarget` · monitor `tmux.rs` 的私有谓词）
+    //   并进本行：目标都是已有会话 ⇒ 判定就是 `existing_tmux_name_issue`；界面那一份删（TS 零，空目标原样交给后端，后端入口拒），
+    //   monitor 那一份改调 gate-core。
+    defs: ["isValidTmuxName", "isValidNewTmuxName", "rejectEmptyTarget"],
     needles: [
       { text: "/^[A-Za-z0-9_][A-Za-z0-9_-]*$/", count: 0, file: "src/launch-requests.ts" },
       { text: "[*?=]", count: 0 },
+      { text: 'target === ""', count: 0, file: "src/tmux-control.ts" },
     ],
     // 禁字集字面量只住 gate-core 一处；后端 plan.rs 那份自己的不许长回来。
     rustNeedles: [
       { file: "src/bridge/crates/gate-core/src/lib.rs", text: '"*?.:="', count: 1 },
       { file: "src/backend/control/ccm/plan.rs", text: '"*?.:="', count: 0 },
+      // 〔DUP3〕monitor 的 Gate 1 调的是 gate-core 那一条（恰一处），它自己的私有谓词不许长回来（`rustGone`）。
+      { file: "src/bridge/src/backend/control/tmux.rs", text: "gate_core::existing_tmux_name_issue(", count: 1 },
     ],
+    rustGone: ["src/bridge/src/backend/control/tmux.rs::is_safe_tmux_target"],
   },
   J7: {
     what: "tmux 名派生 ＋ 撞名避让",
@@ -231,7 +245,10 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     // 〔DUP2 · 主会话 09-26 裁 J8 → 甲〕唯一住址 `payload.rs::rbind_token_shape_ok`（字母表 ＋ 长度两个常量同住）；
     //   `bind.rs` 那份逐字同的副本并进来（那边是再导出，`rustGone` 钉它不许长回来）。
     //   铸币口按生成物（字母表 × 长度）**造**，构造上造不错 ⇒ 界面两处自检（维度 `apply` · 铸币口）与 TS 副本删。
-    homes: [`${PAYLOAD_RS}::rbind_token_shape_ok`],
+    // 〔DUP3 · 主会话 09-26 裁〕后端 `control/identity_tag.rs::token_is_safe` 是**同一个令牌**（`CCM_RBIND_TOKEN`）的第三份（读侧、跨半边）⇒
+    //   三份收成一份进共享 crate `shell_quote_core::rbind_token_ok`（§47 ① 标识符那一层；两半都要）；monitor `payload.rs`（`bind.rs` 再转）
+    //   与后端 `identity_tag.rs` 都成它的再导出，`rustGone` 钉三处都不许再长出自己的 `fn`。
+    homes: ["shell-quote-core::rbind_token_ok"],
     status: "generated",
     defs: [],
     gone: ["isValidRbindToken"],
@@ -241,17 +258,45 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       exports: ["RBIND_TOKEN_ALPHABET", "RBIND_TOKEN_LEN"],
       importers: ["src/remote-launch-run.ts"],
     },
-    parity: { via: PAYLOAD_RS, tests: ["tests/rbind-token-shape-parity.vitest.ts"] },
-    rustGone: ["src/bridge/src/bind.rs::rbind_token_shape_ok"],
+    parity: { via: "src/bridge/crates/shell-quote-core/src/lib.rs", tests: ["tests/rbind-token-shape-parity.vitest.ts"] },
+    rustGone: [
+      "src/bridge/src/bind.rs::rbind_token_shape_ok",
+      `${PAYLOAD_RS}::rbind_token_shape_ok`,
+      "src/backend/control/identity_tag.rs::token_is_safe",
+    ],
+    // 字母表字面量只住共享 crate 一处；两半各自的写法不许长回来。
+    rustNeedles: [
+      { file: "src/bridge/crates/shell-quote-core/src/lib.rs", text: '"0123456789abcdef"', count: 1 },
+      { file: PAYLOAD_RS, text: '"0123456789abcdef"', count: 0 },
+      { file: "src/backend/control/identity_tag.rs", text: "(b'a'..=b'f')", count: 0 },
+    ],
   },
   J9: {
-    what: "Base URL 形状 ＋ 明文只许回环",
-    homes: ["creds-core::check_base_url_shape", "src/backend/relay/upstream.rs::host_is_loopback"],
-    status: "open",
+    what: "上游 base URL 能不能用（形状 ＋ 协议闭集 ＋ 明文只许回环）",
+    // 〔DUP3 · 主会话 09-26 裁 J9 → 甲〕三截（写口 creds-core 形状关 · 中转 `Base::parse` · 装表的回环判定）收成一份进新 crate
+    //   `upstream-url-core`；界面 `checkBaseUrl` 成读生成物的薄壳（只剩「空 ⇒ 默认」与「按理由挑一句」）。
+    homes: ["upstream-url-core::usable", "upstream-url-core::parse", "upstream-url-core::upstream_is_loopback"],
+    status: "generated",
     defs: ["checkBaseUrl"],
-    needles: [],
-    owner: "主会话拍（DUP1.md §4 ①）",
-    why: "驱动新建 API 号表单的即时反馈（填错时「创建」逐字变灰）",
+    needles: [
+      { text: "new URL(s)", count: 0, file: "src/settings/account-new-form.ts" },
+      { text: "127(\\.\\d{1,3}){3}", count: 0 },
+    ],
+    gen: {
+      file: "src/generated/judgment-rules.ts",
+      exports: ["BASE_URL_ISSUE_PATTERNS", "baseUrlIssue", "BaseUrlIssue"],
+      importers: ["src/settings/account-new-form.ts"],
+    },
+    parity: {
+      via: "tests/__fixtures__/upstream-url.golden.json",
+      tests: ["tests/bridge/backend/control/payload_judgment_rules.rs", "tests/upstream-url-parity.vitest.ts"],
+    },
+    rustGone: ["src/backend/relay/upstream.rs::host_is_loopback", "src/bridge/crates/creds-core/src/store.rs::check_base_url_shape"],
+    // 中转那份不许再有自己的协议表 / 回环判定。
+    rustNeedles: [
+      { file: "src/backend/relay/upstream.rs", text: '("https", true)', count: 0 },
+      { file: "src/backend/relay/upstream.rs", text: "is_loopback()", count: 0 },
+    ],
   },
   J10: {
     what: "用户消息里的 CLI 注入噪声",
@@ -266,7 +311,8 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     what: "文案表取文 ＋ 插值",
     homes: ["copy-core::copy_text"],
     // 〔DUP2 · 主会话 09-26 裁 J11 → 甲〕设计认可的双读口：登记为镜像 ＋ 插值对拍（只对拍合法插值）。
-    //   两侧有意不同的几形（缺键 TS 抛 / Rust 回 `〔key〕` · 参数对不上 · 值里含别的占位符）照现状登记在金样 `_differences`。
+    //   两侧有意不同的几形（缺键 TS 抛 / Rust 回 `〔key〕` · 参数对不上）照现状登记在金样 `_differences`。
+    // 〔DUP3 · 主会话 09-26 裁〕「值里含别的占位符」那一形不再不同：Rust 读口改成单趟（值不再被扫），金样 `cases` 多一条钉它。
     status: "mirror",
     defs: ["copyText"],
     needles: [],
@@ -413,6 +459,15 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       tests: ["tests/backend/observe/accounts_query_tests.rs", "tests/accounts-decode.vitest.ts"],
     },
   },
+  J20: {
+    what: "中转进门请求的 Host 头是不是回环字面量（防 DNS 重绑）",
+    // 〔DUP3 · 主会话 09-26 裁（丙）〕与 J9 里上游那条回环判定是两个判定：这里只认三个字面量是设计，改名说清、分两行登记，不许并。
+    homes: ["src/backend/relay/door.rs::host_header_is_loopback_literal"],
+    status: "zero",
+    defs: [],
+    needles: [],
+    rustGone: ["src/backend/relay/door.rs::host_is_loopback"],
+  },
 };
 
 /** `NONE` = 登记时逐个读过规则、在 TS 生产段按规则搜过，没有孪生。 */
@@ -470,7 +525,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     ALL: NONE,
     AUTH_STYLE_FIELD: NONE,
     BASE_URL_FIELD: NONE,
-    check_base_url_shape: "J9",
     create_private: NONE,
     DEFAULT: NONE,
     expose_for_auth_header: NONE,
@@ -577,6 +631,23 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     account_name_ok: "J18",
     // 〔DUP2 · J12〕cc-bus agent id（从 monitor `cc_bus.rs` 搬来，两半共用）。
     bus_id_ok: "J12",
+    // 〔DUP3 · J8〕启动期令牌形状（两半三份收成一份）；两个常量现生成进 `judgment-rules.ts`（生成物不是孪生）⇒ NONE。
+    rbind_token_ok: "J8",
+    RBIND_TOKEN_LEN: NONE,
+    RBIND_TOKEN_ALPHABET: NONE,
+    // 〔DUP3 · J3〕启动器命令片段白名单（§47 ③）；两个常量是规则的一部分，TS 不抄 ⇒ NONE。
+    launcher_refused_char: "J3",
+    LAUNCHER_EXTRA: NONE,
+    LAUNCHER_HOME_PREFIX: NONE,
+  },
+  // 〔DUP3 · J9〕上游 base URL 能不能用（新立；中转解析 · 上游选择装表 · 写口 · 界面生成物共用）。
+  "upstream-url-core": {
+    SCHEMES: NONE,
+    LOOPBACK_NAME: NONE,
+    code: NONE,
+    parse: "J9",
+    upstream_is_loopback: "J9",
+    usable: "J9",
   },
 };
 

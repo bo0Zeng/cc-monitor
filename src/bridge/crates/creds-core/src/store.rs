@@ -427,23 +427,7 @@ pub fn merge_account_key(
     out
 }
 
-/// 〔第四波 ST2 · `设计/70 §4.4`〕`base_url` 那一格在**写之前**的形状关：只认 `https://` / `http://` 开头、
-/// 中间没有空白。更细的（明文 http 只许回环、带路径前缀的提示）由上游选择装表时判并出声 ——
-/// 那一层有 `Base::parse`，这里不另写一份解析器（同一条规则一个家）。
-///
-/// 〔RM1a〕从 monitor 的 `creds_store` 搬来：那份文件在**每台机器上**各有一个写者
-/// （本机 monitor · 远端那台的后端），两个写者走**这一条**形状关。纯函数，不碰盘。
-pub fn check_base_url_shape(raw: &str) -> Result<(), String> {
-    let s = raw.trim();
-    let scheme_ok = s.starts_with("https://") || s.starts_with("http://");
-    let host_ok = s.split("://").nth(1).is_some_and(|rest| !rest.is_empty());
-    if !scheme_ok || !host_ok || s.chars().any(char::is_whitespace) {
-        return Err(format!(
-            "Base URL 的形状不对：{s:?} —— 要写成 https://主机[:端口][/路径] 这样，留空就用默认上游"
-        ));
-    }
-    Ok(())
-}
+// 〔DUP3 · J9〕`base_url` 写之前的那一道形状关搬走了：写口与装表同一个谓词，住共享 crate `upstream_url_core::usable`。
 
 /// 〔第四波 ST2 · `设计/70 §4.4`〕把**某一条**的 `base_url` 并进一份刚从盘上读回来的文档，其余键一个不动。
 ///

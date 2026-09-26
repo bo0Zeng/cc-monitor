@@ -114,7 +114,7 @@ fn only_a_loopback_literal_host_gets_in() {
         "[::1]",
         "[::1]:8788",
     ] {
-        assert!(host_is_loopback(h), "{h:?} 是回环字面量");
+        assert!(host_header_is_loopback_literal(h), "{h:?} 是回环字面量");
         assert!(
             matches!(
                 admit(&req(&good, &format!("Host: {h}\r\n")), &k),
@@ -136,7 +136,7 @@ fn only_a_loopback_literal_host_gets_in() {
         "127.0.0.1:80:80",
         "",
     ] {
-        assert!(!host_is_loopback(h), "{h:?} 不是回环字面量");
+        assert!(!host_header_is_loopback_literal(h), "{h:?} 不是回环字面量");
         assert_eq!(
             admit(&req(&good, &format!("Host: {h}\r\n")), &k),
             Verdict::NotLoopbackHost,
