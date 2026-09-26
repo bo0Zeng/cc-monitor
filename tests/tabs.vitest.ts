@@ -5075,8 +5075,9 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     };
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string, args?: unknown) => {
       if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
-      if (cmd === "save_config") {
-        disk = JSON.parse(JSON.stringify((args as { value: unknown }).value));
+      if (cmd === "patch_config") {
+        // 〔CFG1〕写只交补丁；按与 Rust 写口同一份金样的语义应用（`tests/config-patch-fake.ts`）。
+        disk = JSON.parse(applyConfigEdits(JSON.stringify(disk), (args as { edits: Edit[] }).edits));
         return Promise.resolve(undefined);
       }
       return Promise.resolve(undefined);

@@ -1156,7 +1156,7 @@ export class RemoteSection {
     try {
       // ★ S1：**局部合并，不再整表覆盖**。
       //
-      // 老写法是 `writeRemoteConfig(next)` —— 把 `cfg.remote` 整个换成本编辑器手上这份。
+      // 老写法是 `writeRemoteConfig(next)` —— 把 `cfg.remote` 整个换成本编辑器手上这份。 〔散文墓碑〕
       // 它今天之所以不出事，纯粹是因为 `collect()` 恰好映射了**全部**卡片：
       // **正确性来自 UI 的巧合，不是来自构造**。S2 一旦把机器拆成一页一台，
       // 同一句调用就会把不在本页的机器**静默删光**。
@@ -1228,7 +1228,7 @@ export class RemoteSection {
 /** 把一个任意 JSON 对象规整成 RemoteHostConfig（缺失/类型不对走默认）。 */
 // F12：`coerceAddresses` / `coerceHost` / `readRemoteConfig` / `findHostByOrigin` /
 // `resolveRemoteConfigByOrigin` / 写入口已移入 `src/remote-config.ts`（数据层）。
-// S1：写入口 = `patchRemoteConfig`（局部合并）；整表覆盖的 `writeRemoteConfig` 已收回该文件内部、不再导出。
+// S1：写入口 = `patchRemoteConfig`（局部合并）；整表覆盖的 `writeRemoteConfig` 已收回该文件内部、不再导出（〔CFG1〕今天连函数都没了，只剩不导出的 `remoteEdit` 出那一条补丁）。 〔散文墓碑〕
 // `sameHost` / `sameRemote`（下方）是 UI dirty-check，留本文件。
 
 function sameHost(a: RemoteHostConfig, b: RemoteHostConfig): boolean {

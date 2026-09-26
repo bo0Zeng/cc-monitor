@@ -2,7 +2,7 @@
 // 后端按 serde_json::Value 透传，所有字段语义收敛在前端各模块）。
 //
 // 🔴 〔CFG1 · 4D〕**写只交「改哪几条路径」，不交整份。** 从前 9 个模块各自「读整份 → 改自己的键 →
-// `saveConfig(整份)`」，主窗（tab 栏）与设置窗是两个 realm，两次读-改-写一交错，后写的整份就把先写的键
+// `saveConfig(整份)`」，主窗（tab 栏）与设置窗是两个 realm，两次读-改-写一交错，后写的整份就把先写的键 〔散文墓碑〕
 // 盖掉（E §E1：拖放同拍发分组 ＋ 顺序，分组那次没落盘）。现在 [`patchConfig`] 只交 [`ConfigEdit`]，
 // Rust `config.rs::patch_config_at` 在一把进程级锁里现读盘、逐条应用 ⇒ 谁写的键谁的值留在盘上
 // （`设计/30 §4`「各自只写自己那个键」）。判据：`tests/config-lost-update.vitest.ts` · `tests/bridge/config_tests.rs`。
