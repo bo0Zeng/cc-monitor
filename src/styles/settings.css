@@ -588,11 +588,11 @@ body.settings-window-mode .settings-panel {
 
 /* 「确认缺」与「还没测过」**视觉上必须能分开** —— 它们是两种不同的结论，
    混成一个颜色就等于把「不知道」说成了「缺」。 */
-.remote-gap-missing {
+.remote-gap[data-kind="missing"] {
   color: var(--error);
 }
 
-.remote-gap-unknown {
+.remote-gap[data-kind="unknown"] {
   color: var(--text-2);
 }
 
@@ -792,11 +792,11 @@ body.settings-window-mode .settings-panel {
   color: var(--text);
 }
 
-.settings-data-item.kind-dir .settings-data-item-label::before {
+.settings-data-item[data-kind="dir"] .settings-data-item-label::before {
   content: "📁 ";
 }
 
-.settings-data-item.kind-file .settings-data-item-label::before {
+.settings-data-item[data-kind="file"] .settings-data-item-label::before {
   content: "📄 ";
 }
 

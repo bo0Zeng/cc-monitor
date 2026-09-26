@@ -1878,7 +1878,9 @@
   border-radius: 10px;
   padding: 0 8px;
   height: 18px;
-  line-height: 16px;
+  /* 〔W5-AUX · `设计/40 §8` 活规则里的死声明〕这里原有一条 `line-height: 16px`，被紧跟着的 `font: inherit`
+     （简写，连 line-height 一起重设成继承值）整条盖掉 —— 它从来没生效过，删掉外观不变。
+     ⚠ 若本意就是 16px，要把它挪到 `font` 之后 —— 那会改可见样式，要目视，本轮没做。 */
   font: inherit;
   font-size: var(--font-size-small);
   color: var(--text-2);

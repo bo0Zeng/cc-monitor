@@ -350,9 +350,11 @@ const QUOTE_SITES: &[QuoteRow] = &[
      "",
      ""),
     // 〔TL3 · §47〕那台后端的路径在可达表唯一的写口 `remote_ask::register` 先过放行判定（后端那一份同族判定），第四列清空。
-    ("src/backend/asset_sync.rs", 3, &[("src/backend/observe/accounts_query.rs", "is_safe_config_dir")],
+    // 〔W5-AUX · `设计/96 §3.6`〕3 → 1：推那一趟不再把载荷 quote 进命令行（改走 capture 的 stdin 一行，`--stdin-line`），
+    //   后端路径那一格改由 `remote_ask::command_line` 拼（那一份文件的处数不变，它本来就逐格 quote argv）⇒ 本文件只剩拉那一趟的路径。
+    ("src/backend/asset_sync.rs", 1, &[("src/backend/observe/accounts_query.rs", "is_safe_config_dir")],
      "",
-     "要推过去的资产目录 JSON（本侧序列化）"),
+     ""),
     // 〔TL3 · §47 · 主会话 09-26 按 V131 裁〕cwd（绝对 · 无 `..` 段）· 启动器 · 透传参数 · 登记备注 · 继承来的三个变量 → 过 `free_text_gate` /
     //   `inherited_gate`（拒绝集只收 NUL / CR / LF，住 `shell_quote_core::free_text_ok`）。剩下的见第四列。
     ("src/backend/control/ccm/plan.rs", 29, &[

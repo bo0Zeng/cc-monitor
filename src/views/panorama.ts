@@ -1463,7 +1463,9 @@ export class PanoramaView implements OverlayHandle {
       const badges = document.createElement("span");
       badges.className = "panorama-edge-badges";
       const conf = document.createElement("span");
-      conf.className = `panorama-conf conf-${e.confidence.toLowerCase()}`;
+      // 〔W5-AUX · `设计/41 §7`〕置信度是有限枚举 ⇒ 走 `data-conf`（与图里的线型同一个载体），不再拼成 `conf-<值>` 类名族。
+      conf.className = "panorama-conf";
+      conf.dataset.conf = e.confidence.toLowerCase();
       conf.textContent = confidenceLabel(e.confidence);
       conf.title = confidenceHint(e.confidence);
       badges.appendChild(conf);

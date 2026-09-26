@@ -271,3 +271,4 @@ src/backend/main.rs:751	流结束 ⇒ 这台机器的退出策略是「结束」
 src/bridge/src/tasks.rs:93	{who}的后端回的任务清单认不出来（{e}），多半是两边版本不一样	保留	[不对外] 〔LOC1a〕本机任务 watcher 解成品失败的那一句：只进日志（`tracing::warn!`，这一次不推），界面看不见
 src/bridge/src/filewin/fonts.rs:329	算链	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔W5-FILES〕算大小那几句的字）
 src/bridge/src/filewin/fonts.rs:331	查替	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔W5-FILES〕编辑面查找替换那几句的字）
+src/backend/dial/uses.rs:373	远端命令起来了，但交给它的那一行没送过去: {e}	保留	[可达存疑] 〔W5-AUX · 设计/96 §3.6〕capture 带 stdin 那一形：命令起来之后往它的 stdin 写那一行失败（链路断了），ack 的 error 会冒泡到「资产目录同步」那一句；无内部词（不说 stdin / exec / 命令行原文）

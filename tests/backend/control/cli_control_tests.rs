@@ -313,3 +313,52 @@ fn the_cli_entry_does_not_borrow_the_frame_entrys_boundary_reason() {
         "本模块没有 `§安全边界` 那一节 —— P4d-Y4 要求 CLI 入口写下它自己的理由"
     );
 }
+
+// ── 〔W5-AUX · `设计/96 §3.6`〕「只读一行 stdin」的入口 ─────────────────────────────
+//
+// 要求住址：`设计/96 §3.6` 逐字「远端命令走 POSIX shell 管道 …… 远端登录 shell 是 fish 之类就不成立。
+// 根治要给 CLI 面一个『只读一行 stdin』的入口」。capture 那一跳不关远端 stdin ⇒ 这个入口的全部价值是
+// **读到换行就停、不再多要一个字节**（多要一个就挂住，与 `--ping` 那次同一族病）。
+
+/// 读端：先交一段字节（按调用方的缓冲大小分几次交），交完**再被读就炸**
+/// （代替「stdin 永远不关」—— 真管道上那一刻是永远挂住，测试里换成当场红）。
+struct ThenPanic(Option<Vec<u8>>);
+impl std::io::Read for ThenPanic {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let Some(mut bytes) = self.0.take() else {
+            panic!("读过了第一行还在要字节 —— 真管道上这一刻就是永远挂住");
+        };
+        let n = bytes.len().min(buf.len());
+        buf[..n].copy_from_slice(&bytes[..n]);
+        let rest = bytes.split_off(n);
+        if !rest.is_empty() {
+            self.0 = Some(rest);
+        }
+        Ok(n)
+    }
+}
+
+#[test]
+fn the_one_line_entry_stops_at_the_newline_and_never_asks_for_another_byte() {
+    let line = b"{\"path\":\"/\"}\n".to_vec();
+    let got = read_input(std::io::BufReader::new(ThenPanic(Some(line.clone()))), true)
+        .expect("一行入参读不出来");
+    assert_eq!(got.trim(), "{\"path\":\"/\"}");
+    // 阴性对照：默认那一形（读到 EOF）在同一个读端上**会**再要字节 —— 否则上面那条证明不了「只读一行」是旗标买来的。
+    let default_form = std::panic::catch_unwind(|| {
+        let _ = read_input(std::io::BufReader::new(ThenPanic(Some(line))), false);
+    });
+    assert!(
+        default_form.is_err(),
+        "读到 EOF 那一形居然也没再要字节 —— 读端替身坏了，上面那条是空转"
+    );
+    // 上限：没有换行、超过上限 ⇒ 拒（不截断），也不许一直读下去。
+    let big = vec![b'x'; MAX_CLI_STDIN as usize + 10];
+    let r = read_input(std::io::BufReader::new(ThenPanic(Some(big))), true);
+    assert_eq!(r.map_err(|e| e.0), Err("args_too_large"));
+    // 旗标字面量与 `asset_sync` 推那一趟拼的是同一个常量（远端认的就是它）。
+    assert!(crate::asset_sync::push_command("/b").ends_with(&format!(
+        " {}",
+        shell_quote_core::posix_quote(STDIN_LINE_FLAG)
+    )));
+}

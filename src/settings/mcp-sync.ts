@@ -190,7 +190,7 @@ export class McpSyncPanel {
     // 本页读 MCP 那一趟不该顺带把「另一台」的清单也读一遍）。
     const open = document.createElement("button");
     open.type = "button";
-    open.className = "settings-btn settings-btn-secondary";
+    open.className = "settings-btn";
     open.textContent = copyText("mcpSync.panel.open");
     // 折 / 展是「挂不挂进去」，不是 `hidden`（S30 ⑦：被 hidden 切的元素要能静态认出类名）。
     this.body = document.createElement("div");
@@ -237,7 +237,7 @@ export class McpSyncPanel {
     this.dirInput.setAttribute("list", this.datalist.id);
     const go = document.createElement("button");
     go.type = "button";
-    go.className = "settings-btn settings-btn-secondary";
+    go.className = "settings-btn";
     go.textContent = copyText("mcpSync.preview.action");
     go.addEventListener("click", () => void this.preview());
     row.append(dir, this.machineSelect, this.dirInput, this.datalist, go);
@@ -434,7 +434,7 @@ export class McpSyncPanel {
     };
     const toggle = document.createElement("button");
     toggle.type = "button";
-    toggle.className = "settings-btn settings-btn-secondary mcp-json-toggle";
+    toggle.className = "settings-btn mcp-json-toggle";
     toggle.textContent = copyText("mcpSync.row.showConfig");
     toggle.addEventListener("click", () => {
       if (detail.isConnected) {
