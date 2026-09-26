@@ -268,8 +268,8 @@ pub enum Frame {
         /// 对不上就拒、出声（`local_backend_host.rs::hello_verdict`）—— 不接一个会把写落进别的数据目录的后端（审计 E10）。
         ///
         /// **一格都没被交 ⇒ 省略**（远端 · 被 ssh exec 起的 · aterm 连的那些）⇒ 那些 hello 的线上字节**逐字节不变**
-        /// （`production_hello_bytes_do_not_change_when_nothing_was_handed` 钉）。
-        /// 🔴 **监听口的 token 永远不在这里**：名单只有三格、token 不在名单里（`the_listen_token_is_never_echoed` 钉）——
+        /// （`wire_tests.rs::hx2_production_hello_bytes_do_not_change_when_nothing_was_handed` 钉）。
+        /// 🔴 **监听口的 token 永远不在这里**：名单只有三格、token 不在名单里（`wire_tests.rs::hx2_the_listen_token_is_never_echoed` 钉）——
         /// hello 是「只读 hello 就走」那一档谁都读得到的东西。
         #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
         host_env: std::collections::BTreeMap<String, String>,
