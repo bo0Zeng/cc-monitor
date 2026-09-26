@@ -210,9 +210,13 @@ fn w4_the_only_in_place_write_left_is_the_windows_arm_of_swap_in() {
             );
         }
     }
+    // 〔HX1 · 拍板项 2〕两处：`swap_in` 的 Windows 臂 ＋ `overwrite_text` 的「硬链接 / 别人的属主」那一支。
     assert_eq!(
         files,
-        vec!["control/files_write.rs".to_string()],
+        vec![
+            "control/files_write.rs".to_string(),
+            "control/files_write.rs".to_string()
+        ],
         "后端生产段就地写的集合变了"
     );
     // ② 那一处在 `swap_in` 那一段里、且那一段恰好一个 `#[cfg(windows)]`、就地写跟在它后面。
@@ -234,6 +238,85 @@ fn w4_the_only_in_place_write_left_is_the_windows_arm_of_swap_in() {
     assert_eq!(write_calls(seg).len(), 1, "swap_in 里就地写不是恰好一处");
     let win = seg.find("#[cfg(windows)]").expect("Windows 臂");
     assert!(win < write_calls(seg)[0], "就地写不在 Windows 臂里");
+    // ③ 另一处在 `overwrite_text` 里、且在「该不该原子换」那一问（`in_place_reason(`）的答案那一支之内（之后、`swap_in(` 之前）。
+    assert_eq!(prod.matches("pub fn overwrite_text(").count(), 1);
+    let ow = &prod[prod.find("pub fn overwrite_text(").expect("overwrite_text")..];
+    let ow = &ow[..ow.find("\n}\n").expect("overwrite_text 的尾")];
+    assert_eq!(
+        write_calls(ow).len(),
+        1,
+        "overwrite_text 里就地写不是恰好一处"
+    );
+    let asked = ow.find("in_place_reason(").expect("那一问");
+    let swap = ow.find("swap_in(").expect("原子换那一支");
+    let w = write_calls(ow)[0];
+    assert!(asked < w && w < swap, "就地写不在「不该原子换」那一支里");
     // 正控：数法认得出一处就地写。
     assert_eq!(write_calls("std::fs::write(&p, b)").len(), 1);
+}
+
+/// 〔HX1 · 主会话裁拍板项 2〕**有硬链接的目标退回就地写**：两个名字都看得见新内容、inode 不换、链接数不变。
+/// 守的要求：主会话裁「目标 `nlink > 1` 或属主不是后端用户 ⇒ 退回就地写（保住硬链接与属主）」。
+/// 对照：同一目录里没有硬链接的那一份照旧原子换（inode 换了 —— W2 那一形）。
+#[test]
+#[cfg(unix)]
+fn h1_a_hardlinked_target_is_written_in_place_so_both_names_see_it() {
+    use std::os::unix::fs::MetadataExt as _;
+    let root = temp_dir("h1");
+    std::fs::write(root.join("a.txt"), b"old").expect("铺");
+    std::fs::hard_link(root.join("a.txt"), root.join("b.txt")).expect("硬链接");
+    std::fs::write(root.join("solo.txt"), b"old").expect("铺");
+    let ino = |p: &str| std::fs::metadata(root.join(p)).expect("meta").ino();
+    let (a0, solo0) = (ino("a.txt"), ino("solo.txt"));
+    overwrite_text(&root, "a.txt", b"new").expect("覆盖写");
+    overwrite_text(&root, "solo.txt", b"new").expect("覆盖写");
+    assert_eq!(
+        std::fs::read(root.join("b.txt")).expect("读"),
+        b"new",
+        "另一个名字没看见新内容 —— 硬链接被拆开了"
+    );
+    assert_eq!(ino("a.txt"), a0, "有硬链接的那一份 inode 换了");
+    assert_eq!(
+        std::fs::metadata(root.join("a.txt")).expect("meta").nlink(),
+        2
+    );
+    assert_ne!(
+        ino("solo.txt"),
+        solo0,
+        "对照失效：没有硬链接的那一份也没原子换"
+    );
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// 〔HX1 · 拍板项 2〕「该不该原子换」那一问逐格（属主那一格要 root 才造得出真文件，只在纯函数上量 —— 如实登记）；
+/// 接线：`overwrite_text` 问它时交的恰是 `links_and_owner` 与 `current_uid`。
+#[test]
+fn h2_the_in_place_reasons_are_exactly_links_and_owner() {
+    assert_eq!(in_place_reason(1, 1000, 1000), None);
+    let l = in_place_reason(2, 1000, 1000).expect("硬链接");
+    assert!(l.contains("2 个硬链接") && !l.contains("属主"), "{l}");
+    let o = in_place_reason(1, 0, 1000).expect("属主");
+    assert!(
+        o.contains("uid 0") && o.contains("uid 1000") && !o.contains("硬链接"),
+        "{o}"
+    );
+    let both = in_place_reason(3, 0, 1000).expect("两样");
+    assert!(
+        both.contains("3 个硬链接") && both.contains("属主"),
+        "{both}"
+    );
+    let prod = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/control/files_write.rs"
+    ));
+    assert_eq!(
+        prod.matches("in_place_reason(links, owner, crate::platform::paths::current_uid())")
+            .count(),
+        1,
+        "overwrite_text 问的不是这台进程的 uid"
+    );
+    assert_eq!(
+        prod.matches("let links_owner = links_and_owner(&real);")
+            .count(),
+        1
+    );
 }

@@ -240,9 +240,12 @@ src/backend/lib.rs:1227	与帧面 `launch` 那一行是**同一条实现**（CLI
 src/backend/lib.rs:1242	改的是 **unix 权限位**（低 12 位），命令自己声明了 `no_unix_mode` 码。Windows 上没有这套位\n              （那边是 ACL ＋ 只读属性），`change_mode` 在那里回 `no_unix_mode`、一个字节不动。\n              ⇒ 这一条本身**不该跨过去**；Windows 那边若要「改访问权限」，是另一条能力、另立一行〔FW5 分档：结构〕。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
 src/backend/lib.rs:1251	与帧面 `files-chmod` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \n              派生到同一条登记）⇒ 同一个理由：unix 权限位这一条**不该跨过去**。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
 src/bridge/src/filewin/fonts.rs:318	●＋双另右好己底忙标栏自页	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕标签页 ＋ 双栏那几个字；〔W5-FILES〕−1 字 `恰`）
+src/backend/control/files_write.rs:552	`expect` 只收 `{{"sha256": "<{SHA256_HEX_LEN} 位小写十六进制>"}}`（给的是 {v}）	保留	[不对外] 〔FW1 · D-c〕files-write-text / files-commit-text 的 bad_args：调用方（文件窗口）交错了 CAS 摘要的形状，是两段程序之间的契约错，用户按任何键都走不到；说的是线上字段本身
+src/bridge/src/filewin/fonts.rs:324	仍然摘盘	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW1 · D-c〕＋4 字，编辑器存盘 CAS 那几句）
 src/backend/control/files_commit.rs:219	；目标位置留下了一个 0 字节的空文件 {}，没能删掉：{e}。它不是你的数据，删掉后再试	保留	[对外] 〔HX1〕上传提交失败、撤占位也失败时接在报错后面的半句（files-commit-upload 的 io_failed 回到窗口）；先说留下了什么、再说用户能做什么
 src/backend/main.rs:245	常驻后端收到停机信号	保留	[不对外] 〔HX1〕exit_after_drain 的 why，只进后端 tracing 日志
 src/backend/main.rs:361	hello 写不出去	保留	[不对外] 〔HX1〕同上，只进后端日志
 src/backend/main.rs:424	收到停机信号	保留	[不对外] 〔HX1〕同上，只进后端日志
 src/backend/main.rs:429	对端走了（写不出去）	保留	[不对外] 〔HX1〕同上，只进后端日志
 src/backend/main.rs:751	流结束 ⇒ 这台机器的退出策略是「结束」	保留	[不对外] 〔HX1〕同上，只进后端日志
+src/bridge/src/tasks.rs:93	{who}的后端回的任务清单认不出来（{e}），多半是两边版本不一样	保留	[不对外] 〔LOC1a〕本机任务 watcher 解成品失败的那一句：只进日志（`tracing::warn!`，这一次不推），界面看不见

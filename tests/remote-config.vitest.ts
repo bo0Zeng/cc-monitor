@@ -11,8 +11,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-vi.mock("../src/config", () => ({ loadConfig: vi.fn(), saveConfig: vi.fn() }));
-import { loadConfig, saveConfig } from "../src/config";
+// 〔CFG1〕config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`。
+vi.mock("../src/config", async (orig) => (await import("./config-patch-fake")).mockedConfigModule(orig));
+import { loadConfig } from "../src/config";
+import { fakeCfg } from "./config-patch-fake";
+const saveConfig = fakeCfg.saved;
 import { srcDirOf } from "./test-support/repo-root";
 import {
   applyRemoteHostsPatch,
@@ -169,7 +172,7 @@ describe("S1 patchRemoteConfig（走完整 read → 合并 → 序列化 → 落
     // 纯函数那几条钉的是合并逻辑；这一条钉的是**穿过序列化那一层之后**也没丢东西
     //（`serializeHost` 按字段清单挑字段，漏一个就是静默丢失——这个 bug 类已经咬过两次）。
     vi.mocked(loadConfig).mockResolvedValue({
-      // 无关顶层键：writeRemoteConfig 承诺「不动其他字段」，这里把承诺钉住。
+      // 无关顶层键：`remote` 的写只交 `remote` 这一条补丁（〔CFG1〕），「不动其他字段」这里钉住。
       theme: "dark",
       someOtherSection: { a: 1 },
       remote: { enabled: true, hosts: [A, B, C] },
@@ -249,14 +252,27 @@ describe("S4b-3 pickResumeCommand —— per-machine 优先，全局兜底", () 
 });
 
 describe("S1：整表覆盖那条路必须**不可达**", () => {
-  it("writeRemoteConfig 不得被 export", () => {
+  it("整表序列化那一格（`remoteEdit`）不得被 export", () => {
     // 这是 S1 的核心安全性质：局部合并再对，只要还有一个导出的整表覆盖入口，
     // S2 拆页时随手一调就会静默删机器。不导出 ⇒ 类型层面不可达，不靠人记着别用。
     const src = readFileSync(resolve(srcDirOf(__dirname), "remote-config.ts"), "utf8");
     // 反向自检：函数确实还在这个文件里（不是因为改名了才"没导出"）。
-    expect(src).toContain("async function writeRemoteConfig");
-    expect(src).not.toContain("export async function writeRemoteConfig");
-    expect(src).not.toMatch(/export\s*\{[^}]*\bwriteRemoteConfig\b/);
+    // 〔CFG1〕从前叫 `writeRemoteConfig`（读整份 → 换 `remote` → 整份写）；今天只出那一条 `set ["remote"]` 补丁。 〔散文墓碑〕
+    expect(src).toContain("function remoteEdit(");
+    expect(src).not.toMatch(/export\s+(async\s+)?function\s+remoteEdit\b/);
+    expect(src).not.toMatch(/export\s*\{[^}]*\bremoteEdit\b/);
+  });
+
+  it("〔CFG1〕读盘失败 ⇒ `patchRemoteConfig` 抛、一个字节不写（从前读失败回空表，再把空表写回去 ⇒ 机器全没）", async () => {
+    vi.resetAllMocks();
+    // 第一次读失败、之后读得到（瞬时失败）：旧写法第一次那一读被吞成空表，随后照样写 ⇒ B 被删掉。
+    vi.mocked(loadConfig)
+      .mockRejectedValueOnce(new Error("盘坏了"))
+      .mockResolvedValue({ remote: { enabled: true, hosts: [B] } } as unknown as Awaited<
+        ReturnType<typeof loadConfig>
+      >);
+    await expect(patchRemoteConfig({ upsert: [{ key: null, value: A }] })).rejects.toThrow("盘坏了");
+    expect(saveConfig).not.toHaveBeenCalled();
   });
 });
 

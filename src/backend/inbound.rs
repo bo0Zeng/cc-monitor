@@ -85,6 +85,9 @@ pub const COMMANDS: &[&str] = &[
     "accounts-sessions",
     // 〔C4c · 第四波 4B〕换号前的信任预检（替掉最后两条仍逐次拨号的 `--account-trust*`）。
     "accounts-trust",
+    // 〔LOC1a · 第四波 4D〕这台机器的 `cc-acct-iso` 两问（本机那两条从 exec 一次性后端改走 `<local>` 长连接）。
+    "acct-iso-shellinit",
+    "acct-iso-status",
     "apikey-key-set",
     "apikey-read",
     // 〔US1 · 第四波 4D〕界面「这几个号在这台的表里有没有行 · 这台的中转在不在」（成品，界面经 `chan.call` 直接问）。
@@ -165,6 +168,8 @@ pub const COMMANDS: &[&str] = &[
     // 〔C4d · 第四波 4B〕本机后端的可达表：monitor 在每台远端流握手那一刻交「怎么够到那台」（只登记）。
     "remote-reach",
     "resolve",
+    // 〔LOC1a · 第四波 4D〕分叉（`fork_write`，本 crate 唯一的 `O_EXCL` 新建写口）：本机远端同一条长连接。
+    "session-fork",
     // 〔AS2〕skill「装到这台」：来源那台读 · 要被写的那一台判（都只读；写经 `files-put`）。
     "skill-install-plan",
     // 〔SU1 · 第四波 4C · V116〕skill 装记录（第四层）：装完记下写了哪几个 · 卸掉的摘掉。
@@ -205,28 +210,46 @@ struct InFlight {
 //   （[`Disposition::SpawnBlocking`] 头注）——正是它会被做成半截；`Run::Async` 那一档本来就随时可能被 `cancel`
 //   打断，每个 await 点上都得是安全的。⇒ 不另立「哪条算写」的分类表（那是一张会漂的第二份真相）。
 //
-// 🔴 **「有上限」不在这里执行**：后端零定时器（`no_timer_guard`），「最多等多久」由叫它退的那一方给
-//   （`设计/05 §3.3.2`「执行归调用方」）—— 机器页「停」SIGTERM 之后等一段、超时 SIGKILL；
-//   人 / 进程管理器同形；**第二次停机信号 = 立刻退**（[`exit_after_drain`]）。
+// 🔴 **「有上限」**〔主会话 4D 裁 HX1 拍板项 1，按 `INVARIANTS §48.2`「脱离后不留僵尸」〕：后端**自己**兜一个
+//   退出排空期限 [`DRAIN_DEADLINE`]（30 秒）—— 到点仍没排空 ⇒ 记一行说哪几条没做完，然后退。
+//   这是后端零定时器（`no_timer_guard`）**唯一**让位的地方，登记在那张表的 `REGISTERED_EXIT_DEADLINE`（恰好一行）。
+//   为什么非它不可：远端后端在 SSH 断开那一刻没人叫它退、也没人给上限 —— 阻塞在一个挂死的文件系统上的那一条
+//   会把进程无限期留下（一个没有宿主的后端进程）。叫它退的一方仍可以更早：**第二次停机信号 = 立刻退**；
+//   机器页「停」等得比它久一点（`stop_grace.rs`，35 秒），好让后端先把「哪几条没做完」说出来再退。
 
-/// 退出闸：在飞的阻塞命令计数 ＋ 关没关。进程里只有一个（[`DRAIN`]）；判据另造实例。
+/// 退出排空期限（**唯一**一个会让后端自己醒来的构件，只在收场时装一次）。
+///
+/// 取值 30 秒：在飞的阻塞写（存盘 ≤ 8 MiB · 递归删 ≤ 10 万条 · 一次 tmux）在正常盘上都是秒内；30 秒是它们的一个量级以上，
+/// 超过它多半是卡在挂死的文件系统 / 一个不回话的子进程上，再等也等不来。大文件同机复制（`files-copy`，不可取消）
+/// 可能超过它 —— 那一条会被列进「没做完」里说出来。
+pub(crate) const DRAIN_DEADLINE: std::time::Duration = std::time::Duration::from_millis(30_000);
+
+/// 退出闸：在飞的阻塞命令（带名字）＋ 关没关。进程里只有一个（[`DRAIN`]）；判据另造实例。
 pub(crate) struct Drain {
-    /// `(在飞几条, 关了没有)`。锁只在一句里活着，绝不跨 await。
-    state: Mutex<(usize, bool)>,
-    /// 计数归零那一刻叫醒等的人（[`Drain::drained`]）。
+    /// 锁只在一句里活着，绝不跨 await。
+    state: Mutex<DrainState>,
+    /// 在飞的归零那一刻叫醒等的人（[`Drain::drained`]）。
     idle: tokio::sync::Notify,
+}
+
+struct DrainState {
+    /// 下一张票的号。
+    next: u64,
+    /// 在飞的：票号 → 「命令名（id=…）」—— 到点没排空时要说出是哪几条。
+    live: std::collections::BTreeMap<u64, String>,
+    closed: bool,
 }
 
 /// 一张票：拿着它的阻塞命令还在跑。**票 move 进阻塞闭包**，闭包跑完（成功 / 失败 / panic 展开）才落 ——
 /// 外层 async 任务被 `abort` 不影响它（阻塞线程还在跑，票还在它手里）。
-pub(crate) struct Ticket(&'static Drain);
+pub(crate) struct Ticket(&'static Drain, u64);
 
 impl Drop for Ticket {
     fn drop(&mut self) {
         let now_idle = {
             let mut g = self.0.state.lock().unwrap_or_else(|e| e.into_inner());
-            g.0 = g.0.saturating_sub(1);
-            g.0 == 0
+            g.live.remove(&self.1);
+            g.live.is_empty()
         };
         if now_idle {
             self.0.idle.notify_waiters();
@@ -237,31 +260,52 @@ impl Drop for Ticket {
 impl Drain {
     pub(crate) const fn new() -> Self {
         Drain {
-            state: Mutex::new((0, false)),
+            state: Mutex::new(DrainState {
+                next: 0,
+                live: std::collections::BTreeMap::new(),
+                closed: false,
+            }),
             idle: tokio::sync::Notify::const_new(),
         }
     }
 
-    /// 取一张票。闸关了 ⇒ `None`（调用方回 `shutting_down`，一个字节不动）。
-    pub(crate) fn enter(&'static self) -> Option<Ticket> {
+    /// 取一张票（`what` = 这一条是什么，到点没排空时说给人听）。闸关了 ⇒ `None`（调用方回 `shutting_down`，一个字节不动）。
+    pub(crate) fn enter(&'static self, what: String) -> Option<Ticket> {
         let mut g = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if g.1 {
+        if g.closed {
             return None;
         }
-        g.0 += 1;
-        Some(Ticket(self))
+        let key = g.next;
+        g.next += 1;
+        g.live.insert(key, what);
+        Some(Ticket(self, key))
     }
 
     /// 关闸，回关的那一刻在飞几条。关过再关无害。
     pub(crate) fn close(&self) -> usize {
         let mut g = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        g.1 = true;
-        g.0
+        g.closed = true;
+        g.live.len()
     }
 
     /// 此刻在飞几条。
     pub(crate) fn in_flight(&self) -> usize {
-        self.state.lock().unwrap_or_else(|e| e.into_inner()).0
+        self.state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .live
+            .len()
+    }
+
+    /// 此刻在飞的是哪几条（按起跑先后）。
+    pub(crate) fn in_flight_names(&self) -> Vec<String> {
+        self.state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .live
+            .values()
+            .cloned()
+            .collect()
     }
 
     /// 等在飞的归零。先登记等待、再看计数 ⇒ 「看的那一刻还有、紧接着最后一张票落下」那一下不会漏醒。
@@ -292,10 +336,23 @@ pub fn shutdown_listener() -> impl std::future::Future<Output = ()> + Send + 'st
 
 /// 🔴 **流模式后端的收场 —— 三个退出口都走这一个**（`main.rs`：stdio 那条 · 常驻收信号 · 最后一个客户走了且退出行为是「结束」）。
 ///
-/// 关闸 → 说一句在飞几条 → 等它们做完再 `exit(0)`；等的时候**再来一次停机信号 ⇒ 不等了**（说出还剩几条）。
+/// 关闸 → 说一句在飞几条 → 等它们做完再 `exit(0)`；等的时候**再来一次停机信号 ⇒ 不等了**；
+/// **到 [`DRAIN_DEADLINE`] 仍没排空 ⇒ 说出哪几条没做完，退**。
 /// `writer`：还在往对端写的那一路（stdio 载体收信号那一形传进来）—— 排空期间照常跑，在飞命令的最终应答照样有机会写回去；
 /// 它先结束（对端走了）不影响排空。⚠ 不保证最后一条应答一定写出去了：排空完成那一刻就退（「对面可能已经做了」那一句兜）。
 pub async fn exit_after_drain<W>(why: &str, writer: Option<W>) -> !
+where
+    W: std::future::Future<Output = ()>,
+{
+    exit_after_drain_within(why, writer, DRAIN_DEADLINE).await
+}
+
+/// [`exit_after_drain`] 的本体，期限由参数给（生产恒 [`DRAIN_DEADLINE`]；判据给一个短的，量「到点就退」那一形）。
+pub(crate) async fn exit_after_drain_within<W>(
+    why: &str,
+    writer: Option<W>,
+    deadline: std::time::Duration,
+) -> !
 where
     W: std::future::Future<Output = ()>,
 {
@@ -306,8 +363,9 @@ where
         tracing::info!("{why} ⇒ 退出（没有在跑的阻塞命令）");
     } else {
         tracing::info!(
-            "{why} ⇒ 收尾：还有 {left} 条开跑之后停不下来的命令在跑，等它们做完再退；\
-             新来的这一类命令回 {SHUTTING_DOWN}。再发一次停机信号就不等了"
+            "{why} ⇒ 收尾：还有 {left} 条开跑之后停不下来的命令在跑，等它们做完再退（最多 {} 秒）；\
+             新来的这一类命令回 {SHUTTING_DOWN}。再发一次停机信号就不等了",
+            deadline.as_secs()
         );
     }
     let writing = async {
@@ -316,6 +374,8 @@ where
         }
         std::future::pending::<()>().await
     };
+    // 〔HX1 · 主会话裁〕后端零定时器唯一让位的一处（`no_timer_guard::REGISTERED_EXIT_DEADLINE`）：只在收场时装这一次。
+    let expired = tokio::time::sleep(deadline);
     tokio::select! {
         _ = DRAIN.drained() => {
             if left > 0 {
@@ -324,8 +384,17 @@ where
         }
         _ = again => {
             tracing::warn!(
-                "排空时又收到一次停机信号 ⇒ 不等了：还有 {} 条没做完，它们可能只做了一半",
-                DRAIN.in_flight()
+                "排空时又收到一次停机信号 ⇒ 不等了：还有 {} 条没做完（{}），它们可能只做了一半",
+                DRAIN.in_flight(),
+                DRAIN.in_flight_names().join("、")
+            );
+        }
+        _ = expired => {
+            tracing::warn!(
+                "排空期限 {} 秒到了 ⇒ 不等了：还有 {} 条没做完（{}），它们可能只做了一半",
+                deadline.as_secs(),
+                DRAIN.in_flight(),
+                DRAIN.in_flight_names().join("、")
             );
         }
         _ = writing => {}
@@ -555,7 +624,7 @@ async fn handle_line(
         //   `cancellable: false` —— `spawn_blocking` 起的活 abort 不了，说实话。
         Disposition::SpawnBlocking(req, run) => {
             // 〔HX1〕取票在起跑之前：闸关了（进程在收场）⇒ 一个字节不动、回协议级 `shutting_down`。
-            let Some(ticket) = DRAIN.enter() else {
+            let Some(ticket) = DRAIN.enter(format!("{}（id={}）", req.cmd, req.id)) else {
                 send(
                     replies,
                     err(
@@ -1460,8 +1529,10 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "files-write-text",
         doc_anchor: Some("#### `files-write-text`"),
-        codes: &["bad_args", "bad_path", "io_failed", "refused"],
-        fields: &["bytes", "content", "path", "rel", "root"],
+        codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
+        fields: &[
+            "bytes", "content", "expect", "path", "rel", "root", "sha256",
+        ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args)
@@ -1546,8 +1617,10 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "files-commit-text",
         doc_anchor: Some("#### `files-commit-text`"),
-        codes: &["bad_args", "bad_path", "io_failed", "refused"],
-        fields: &["bytes", "chunks", "key", "path", "rel", "root"],
+        codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
+        fields: &[
+            "bytes", "chunks", "expect", "key", "path", "rel", "root", "sha256",
+        ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_commit::answer_wire(&r.cmd, &r.args)
@@ -1558,8 +1631,8 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "files-commit-upload",
         doc_anchor: Some("#### `files-commit-upload`"),
-        codes: &["bad_args", "bad_path", "io_failed", "refused"],
-        fields: &["bytes", "key", "overwrite", "path", "rel", "root"],
+        codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
+        fields: &["bytes", "expect", "key", "overwrite", "path", "rel", "root"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_commit::answer_wire(&r.cmd, &r.args)
@@ -1705,7 +1778,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             "too_large",
             "unreadable",
         ],
-        fields: &["bytes", "max_bytes", "path", "text"],
+        fields: &["bytes", "max_bytes", "path", "sha256", "text"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::files::answer_wire(&r.cmd, &r.args)
@@ -1993,11 +2066,64 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // 〔LOC1a · 第四波 4D〕这台机器的 `cc-acct-iso` 两问 —— 与 CLI `--acct-iso-status` / `--acct-iso-shellinit`
+    //   同一份本体（`accounts/iso.rs`）。`设计/05 §14.6`：本机那几问从「exec 一次性本机后端」改走 `<local>` 长连接。
+    //   `shellinit` 要起一次 `cc-acct-iso`（插件口）⇒ 两条都进阻塞档（`status` 只看文件在不在，同档省一份理由）。
+    CommandSpec {
+        name: "acct-iso-status",
+        doc_anchor: Some("#### `acct-iso-status`"),
+        codes: &[],
+        fields: &["installed", "looked", "path"],
+        takes_input: false,
+        run: Run::Blocking(|_r| {
+            crate::accounts::iso::answer_wire_status()
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "acct-iso-shellinit",
+        doc_anchor: Some("#### `acct-iso-shellinit`"),
+        codes: &["not_installed", "not_run", "timed_out", "tool_failed"],
+        fields: &["snippet"],
+        takes_input: false,
+        run: Run::Blocking(|_r| {
+            crate::accounts::iso::answer_wire_shellinit()
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔LOC1a · 第四波 4D〕分叉：与 CLI `--fork-session` 同一个本体（`control/fork_write.rs::run_inner`，
+    //   读 → `branch-core` 变换 → `O_EXCL` 新建）。本机远端同一条长连接；读整份 jsonl ⇒ 阻塞档。
+    //   ⚠ 名字刻意不是 `fork-session`：自动派生的 CLI 面会与对 aterm 冻结的 `--fork-session`（argv 形）撞名。
+    CommandSpec {
+        name: "session-fork",
+        doc_anchor: Some("#### `session-fork`"),
+        codes: &["bad_args", "fork_failed"],
+        fields: &["jsonlPath", "sessionId", "sid", "uuid"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::fork_face::answer(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     CommandSpec {
         name: "tasks-list",
         doc_anchor: Some("#### `tasks-list`"),
         codes: &["bad_args", "failed", "too_large"],
-        fields: &["lines", "sid"],
+        // 〔LOC1a · 第四波 4D · C4e 批 4〕应答换成成品 `{tasks: [...]}`（原是原样对象的 `lines`）⇒ 后端行为变更，合并那拍 bump。
+        fields: &[
+            "activeForm",
+            "blockedBy",
+            "blocks",
+            "description",
+            "id",
+            "sid",
+            "status",
+            "subject",
+            "tasks",
+        ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::feature_face::answer(&r.cmd, &r.args)
@@ -2330,7 +2456,8 @@ async fn send(replies: &mpsc::Sender<Frame>, frame: Frame) {
 mod tests;
 
 // 〔HX1〕退出排空的判据（闸本体 · 真子进程 ＋ 真信号 · 接线）。
-#[cfg(test)]
+// 〔p3q 门禁 winchk-backend 红后补〕判据里用了 `std::os::unix` / `libc::kill` / FIFO —— 只在 unix 上编；Windows 那一形的排空没量（HX1.md 买不到）。
+#[cfg(all(test, unix))]
 #[path = "../../tests/backend/drain_tests.rs"]
 mod drain_tests;
 

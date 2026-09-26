@@ -88,6 +88,9 @@ pub(crate) trait Door {
     /// 〔RM1e〕带 CAS：`expect` = 读到的那一份，盘上逐字节等于它才删；不等 / 已经不在 ⇒ [`Refused::Stale`]，一个字节不动。
     /// 〔墓碑 —— RM1d 那一版这里写着「没有 CAS（后端这条命令不收 `expect`），调用方先 `peek` 核一遍」。〕
     async fn delete(&self, root: &str, rel: &str, expect: &str) -> Result<(), Refused>;
+    /// 〔FW1 · 第四波 4D · 主会话裁 SU1 问 2〕**只删一个空目录**（同一条 `files-delete`，`expect: {"empty_dir": true}`）：
+    /// 不空 / 已经不在 ⇒ [`Refused::Stale`]，一个字节不动；不是目录 ⇒ 对端 `refused`。今天唯一的用户：卸 skill 收掉装时建的空目录。
+    async fn delete_empty_dir(&self, root: &str, rel: &str) -> Result<(), Refused>;
     async fn chmod(&self, root: &str, rel: &str, mode: u32) -> Result<(), String>;
     async fn delete_session(&self, sid: &str) -> Result<String, String>;
     /// 一个路径**在不在**（`files-stat`）：在 ⇒ `Some(kind)`；对端答「读不到」⇒ `None`。
@@ -265,6 +268,24 @@ fn path_text(v: &serde_json::Value) -> String {
     }
 }
 
+impl BackendDoor {
+    /// 门上**唯一**那一问 `files-delete`（〔RM1e〕判据钉它恰好一处、每次都带 `expect`）：逐字节那一形与〔FW1〕空目录那一形
+    /// 都从这里出去，只是 `expect` 的样子不同（「我看到的是什么」）。
+    async fn delete_expecting(
+        &self,
+        root: &str,
+        rel: &str,
+        expect: serde_json::Value,
+    ) -> Result<(), Refused> {
+        self.ask(
+            "files-delete",
+            serde_json::json!({ "root": root, "rel": rel, "expect": expect }),
+        )
+        .await
+        .map(|_| ())
+    }
+}
+
 impl Door for BackendDoor {
     fn machine(&self) -> String {
         crate::backend::control::cc_bus::machine_label(self.origin.as_wire_str())
@@ -348,12 +369,13 @@ impl Door for BackendDoor {
     }
 
     async fn delete(&self, root: &str, rel: &str, expect: &str) -> Result<(), Refused> {
-        self.ask(
-            "files-delete",
-            serde_json::json!({ "root": root, "rel": rel, "expect": expect }),
-        )
-        .await
-        .map(|_| ())
+        self.delete_expecting(root, rel, serde_json::json!(expect))
+            .await
+    }
+
+    async fn delete_empty_dir(&self, root: &str, rel: &str) -> Result<(), Refused> {
+        self.delete_expecting(root, rel, serde_json::json!({ "empty_dir": true }))
+            .await
     }
 
     async fn chmod(&self, root: &str, rel: &str, mode: u32) -> Result<(), String> {

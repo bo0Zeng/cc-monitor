@@ -1344,7 +1344,7 @@ pub fn run() {
             backend::control::backend_control::backend_start,
             backend::control::backend_control::backend_stop,
             config::load_config,
-            config::save_config,
+            config::patch_config,
             // K-H2a：apikey 表那把 key 的写（`KS10`）。〔US1〕读状态与「表里有没有行」两问走通道（`apikey-read` / `apikey-routing`）。
             write_apikey_credentials_key,
             // 〔RL1 · US1〕起会话那一发注入哪个中转地址：转交那台后端的成品（`launch-endpoint`）＋ 远端用到才起。
@@ -1498,7 +1498,6 @@ pub fn run() {
             search::get_search_index_status,
             search::rebuild_search_index,
             // v2.3.0 issue #11: task 面板初次拉
-            tasks::get_session_tasks,
             // v2.3.0 issue #3 (A 透明化): 设置面板「数据」区列出所有持久路径
             data_paths::get_data_paths,
             // issue #15 Tier 1: SSH 连接 UX —— ~/.ssh/config 导入 + 测试连接 + 指纹固化
@@ -2167,7 +2166,7 @@ async fn bring_monitor_to_front(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 /// issue #23：当前全部本地活跃会话的红绿灯快照。前端启动/F5 后调一次做初始收敛
-/// （session-activity 是稀疏事件、不进 replay buffer，刷新会丢——同 get_session_tasks
+/// （session-activity 是稀疏事件、不进 replay buffer，刷新会丢——同任务快照那一问（`tasks-list`）
 /// 的「快照 + 事件增量」双路收敛模式）。纯内存读（RwLock clone），无需 spawn_blocking。
 #[tauri::command]
 fn list_session_activity(
