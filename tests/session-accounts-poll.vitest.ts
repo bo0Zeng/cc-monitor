@@ -5,13 +5,11 @@ import {
   mapWithLimit,
   collectAccountRows,
   createEventRefresher,
-  watchAccountsChanged,
+  accountsChangedItems,
   ACCOUNTS_CHANGED_KIND,
-  ACCOUNTS_CHANGED_WINDOW,
-  type AccountsChangedChannel,
   type HostFetchers,
 } from "../src/session-accounts-poll";
-import type { Item, Sub } from "../src/ipc/chan";
+import type { Item } from "../src/ipc/chan";
 import type { RemoteHostConfig } from "../src/remote-config";
 import type { AccountsState, SessionAccount } from "../src/accounts";
 
@@ -263,80 +261,30 @@ describe("createEventRefresher（C1：替掉 10 秒轮询）", () => {
 });
 
 /**
- * 〔DL1〕**账号那一格经通道订**（`watchAccountsChanged`）—— 替掉裸事件 `remote-backend-ready`。
+ * 〔DL1〕**账号那一格经通道订**（`accounts-changed`）—— 替掉裸事件 `remote-backend-ready`。
+ * 订阅本身与会话行 · tap 同一处（`events.ts::bindEvents`，那一半的判据在 `events-tap.vitest.ts` 的 DL1 那组）；
+ * 这里判「一批格是什么意思」（`accountsChangedItems`，纯函数）与两处接线。
  *
  * 守的要求：`设计/01 §2.2`「前端只有两个动作：`call` · `subscribe`」；`设计/05 §3.3.5`（订阅不失败，看不见 ⇒ `unseen`）·
- * `§3.3.4`（丢必须说：`gap`）。设计与读数：`调研/第四波记录/DL1.md §3`。
- * 异源：替身 `chan` 只记「订了什么、还了多少 credit」、按用例递格，不经被测代码的任何一行。
+ * `§3.3.4`（丢必须说：`gap`）。设计与读数：`调研/第四波记录/DL1.md §3`。期望手写。
  */
-describe("watchAccountsChanged（DL1：remote-backend-ready 迁 subscribe）", () => {
-  interface Fake {
-    ch: AccountsChangedChannel;
-    subs: { origin: string; kind: string; from: Uint8Array | null; want: number }[];
-    sinks: Map<string, (items: Item[]) => void>;
-    wants: Map<string, number[]>;
-  }
-  function fakeChan(early?: { origin: string; items: Item[] }): Fake {
-    const f: Fake = { ch: null as unknown as AccountsChangedChannel, subs: [], sinks: new Map(), wants: new Map() };
-    f.ch = {
-      subscribe: async (origin, kind, from, want, sink) => {
-        f.subs.push({ origin, kind, from, want });
-        f.sinks.set(origin, sink);
-        f.wants.set(origin, []);
-        // 格可能先于 `subscribe` 的返回到达（`chan.ts` 头注）
-        if (early && early.origin === origin) sink(early.items);
-        const sub: Sub = { want: (n) => f.wants.get(origin)!.push(n), stop: () => {} };
-        return sub;
-      },
-    };
-    return f;
-  }
+describe("accountsChangedItems（DL1：remote-backend-ready 迁 subscribe）", () => {
   const frame: Item = { t: "frame", seq: 0, body: '{"accounts_changed":true}' };
   const seen: Item = { t: "seen", from: null };
   const gap: Item = { t: "gap", fromSeq: 0, toSeq: 2 };
   const unseen: Item = { t: "unseen", at: { idx: 1, tag: "read" }, why: "Dropped" };
   const closed: Item = { t: "closed", by: { ours: "Broken" } };
 
-  it("★ 每台恰好订一条，kind 是约定串、不带续传、一开始给约定的 credit", async () => {
-    const f = fakeChan();
-    await watchAccountsChanged(f.ch, ["<local>", "box-a", "box-b"], () => {});
-    expect(f.subs).toEqual(
-      ["<local>", "box-a", "box-b"].map((origin) => ({ origin, kind: "accounts-changed", from: null, want: ACCOUNTS_CHANGED_WINDOW })),
-    );
+  it("★ seen / frame / gap ⇒ 要刷；unseen / closed ⇒ 不刷（两向）", () => {
+    for (const it of [seen, frame, gap]) expect(accountsChangedItems([it]).changed, it.t).toBe(true);
+    for (const it of [unseen, closed]) expect(accountsChangedItems([it]).changed, it.t).toBe(false);
+    expect(accountsChangedItems([])).toEqual({ changed: false, frames: 0 });
   });
 
-  it("★ seen / frame / gap 各叫一次；unseen / closed 不叫（两向）", async () => {
-    const f = fakeChan();
-    const calls: number[] = [];
-    let n = 0;
-    await watchAccountsChanged(f.ch, ["box-a"], () => calls.push(++n));
-    const sink = f.sinks.get("box-a")!;
-    sink([unseen]);
-    sink([closed]);
-    expect(calls, "unseen / closed 不该刷").toEqual([]);
-    sink([seen]);
-    sink([frame]);
-    sink([gap]);
-    expect(calls, "seen / frame / gap 各该刷一次").toEqual([1, 2, 3]);
-  });
-
-  it("★ 一批里有几格都只叫一次；frame 用掉的 credit 当场还、别的格不还", async () => {
-    const f = fakeChan();
-    let calls = 0;
-    await watchAccountsChanged(f.ch, ["box-a"], () => calls++);
-    f.sinks.get("box-a")!([seen, frame, frame, gap, unseen]);
-    expect(calls).toBe(1);
-    expect(f.wants.get("box-a")).toEqual([2]);
-    f.sinks.get("box-a")!([seen, gap]);
-    expect(f.wants.get("box-a"), "没有 frame 的一批不该还 credit").toEqual([2]);
-  });
-
-  it("★ 先于 subscribe 返回到达的 frame：credit 记着、拿到 Sub 之后还", async () => {
-    const f = fakeChan({ origin: "box-a", items: [frame] });
-    let calls = 0;
-    await watchAccountsChanged(f.ch, ["box-a"], () => calls++);
-    expect(calls).toBe(1);
-    expect(f.wants.get("box-a")).toEqual([1]);
+  it("★ 一批里几格都只算一次「要刷」；只有 frame 占 credit", () => {
+    expect(accountsChangedItems([seen, frame, frame, gap, unseen])).toEqual({ changed: true, frames: 2 });
+    expect(accountsChangedItems([seen, gap])).toEqual({ changed: true, frames: 0 });
+    expect(accountsChangedItems([unseen, closed])).toEqual({ changed: false, frames: 0 });
   });
 
   it("★ kind 串两侧相等：TS 常量 == Rust `event_replay.rs::ACCOUNTS_CHANGED_KIND`（从 Rust 源码抠，异源）", () => {
@@ -347,14 +295,15 @@ describe("watchAccountsChanged（DL1：remote-backend-ready 迁 subscribe）", (
     expect(ACCOUNTS_CHANGED_KIND).toBe(pinned![1]);
   });
 
-  it("★ 生产段零处再听裸事件 `remote-backend-ready`；main.ts 恰好一处经通道订它（零命中带正控）", () => {
+  it("★ 生产段零处再听裸事件 `remote-backend-ready`；main.ts 恰好一处经 `bindEvents` 订它（零命中带正控）", () => {
     const strip = (t: string): string => t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
     const main = strip(readFileSync("src/main.ts", "utf8"));
     // 按处数比（相等），不用裸 `.includes`（`scanning-guard-registry` 那条棘轮只许降）。
     const count = (hay: string, needle: string): number => hay.split(needle).length - 1;
     const dead = ["remote", "backend", "ready"].join("-");
     expect(count(main, `"${dead}"`), "main.ts 又在听那个裸事件").toBe(0);
-    expect(count(main, "watchAccountsChanged(chan, machines,"), "main.ts 不是恰好一处订 accounts-changed").toBe(1);
+    expect(count(main, "accounts: machines,"), "main.ts 不是恰好一处订 accounts-changed（`bindEvents` 的 `accounts`）").toBe(1);
+    expect(count(main, "    onAccountsChanged,\n"), "main.ts 没把处理器交给 `bindEvents`").toBe(1);
     // 正控：同一个剥法与数法认得出一处真在的裸 listen、认得出一处现造的死事件。
     expect(count(main, 'listen("remote-session-added"'), "正控失败：数法认不出一处真在的 listen").toBe(1);
     expect(count(strip(`listen("${dead}", f);`), `"${dead}"`), "正控失败：剥法把代码剥掉了").toBe(1);

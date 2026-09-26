@@ -1,6 +1,10 @@
 /**
  * launch-dimensions.ts / launch-plan.ts 纯函数断言：每个维度的 applies/apply 独立行为（〔LR1〕cliFlags 那一格随 TS 渲染器删了）
  * + 顺序不变量 + buildLaunchPlan 端到端摊平。跑法：`tsx tests/launch-dimensions.test.ts`。
+ *
+ * 〔LR2〕维度的产品是 `plan.env` 那串 `EnvOp`（有序），**渲染成字节归 Rust**（`payload_tests.rs` ＋
+ * 入库夹具 `payload-golden.json` / `tmux-outer-golden.json`）。本文件原来有几条拿 TS 兜底渲染器
+ * 当量具比字节；那份渲染器零生产调用、按 `设计/00 §2.5 ④` 删了 ⇒ 那几条改比 `EnvOp` 序列（相等）。
  */
 import {
   IDENTITY_DIMENSION,
@@ -14,8 +18,7 @@ import {
   __testOnlyAssertDimensionOrderInvariants,
 } from "../src/launch-dimensions.ts";
 import { buildLaunchPlan } from "../src/launch-plan.ts";
-import { renderFallback } from "../src/launch-render-fallback.ts";
-import type { LaunchContext, LaunchDimension, LaunchPlan } from "../src/launch-plan.ts";
+import type { LaunchContext, LaunchDimension, LaunchPlan } from "../src/launch-types.ts";
 
 let failed = 0;
 function test(name: string, fn: () => void): void {
@@ -125,9 +128,9 @@ test("model：非法模型名 → throw（拒绝拼入命令）", () => {
 // 〔LR1 · U8c-3〕这里原来有两条测 `MODEL_DIMENSION.cliFlags`（`--model <名>` · 无偏好不被问到）。
 // 前者随 TS 渲染器删了（今天在 `ccm_invocation_tests.rs::model_dimension_is_conditional_by_design`），
 // 后者与上面「applies 恒假当无 modelOverride」逐字重复。
-// F07 §4 步骤2：renderFallback 整体黄金串——不只锁孤立的 apply() 输出，锁 order=25 在真实渲染
-// 管线里的实际效果（子串位置在 export CLAUDE_CONFIG_DIR 之后、启动命令之前）。
-test("renderFallback：账号 + 模型偏好 → 渲染出的字符串精确含 export ANTHROPIC_MODEL='opus'; ", () => {
+// F07 §4 步骤2：账号 ＋ 模型偏好 ⇒ `export-model`（order=25）排在 `export-config-dir` 之后、
+// 嵌套 env 清理之前。〔LR2〕原来比的是 TS 兜底渲染器的字节位置；渲染归 Rust 之后改比 `EnvOp` 序列（相等）。
+test("账号 + 模型偏好 → EnvOp 序列恰好是 [config-dir, model, nested-env]（order=25 的实际落点）", () => {
   const ctx: LaunchContext = {
     transport: { kind: "ssh" },
     action: { kind: "resume", sid: "s1" },
@@ -138,15 +141,11 @@ test("renderFallback：账号 + 模型偏好 → 渲染出的字符串精确含 
     ccmSid: undefined,
     modelOverride: "opus",
   };
-  const plan = buildLaunchPlan(ctx);
-  const rendered = renderFallback(plan);
-  eq(rendered.includes("export ANTHROPIC_MODEL='opus'; "), true, `rendered=${rendered}`);
-  const configDirIdx = rendered.indexOf("export CLAUDE_CONFIG_DIR");
-  const modelIdx = rendered.indexOf("export ANTHROPIC_MODEL");
-  // 用 "; claude --resume" 精确锚定启动命令本身——不能只找子串 "claude"（configDir 的路径
-  // "/home/u/.claude-accts/z" 本身就含小写 "claude"，会假命中）。
-  const argvIdx = rendered.indexOf("; claude --resume");
-  eq(configDirIdx >= 0 && modelIdx > configDirIdx && argvIdx > modelIdx, true, `order wrong: ${rendered}`);
+  eq(buildLaunchPlan(ctx).env, [
+    { kind: "export-config-dir", value: "/home/u/.claude-accts/z" },
+    { kind: "export-model", value: "opus" },
+    { kind: "unset-nested-env" },
+  ]);
 });
 
 test("nested-env-reset：new/resume 生效，attach 不生效", () => {
@@ -242,8 +241,8 @@ test("buildLaunchPlan：新建 + 已知 sid → identity 生效", () => {
 });
 
 
-// ---- R04③：`unset` 侧收窄为无参变体后，渲染输出必须逐字节不变 ----
-test("R04③：unset-config-dir / unset-nested-env 渲染出的字符串与收窄前逐字节相同", () => {
+// ---- R04③：`unset` 侧收窄为无参变体（〔LR2〕字节那一半归 Rust 的 `payload-golden.json`「账号 0」那条）----
+test("R04③：unset-config-dir / unset-nested-env 两格都出现，且顺序是 config-dir 在前", () => {
   // base 态 + resume 动作 → 两个 unset 都会触发（env-reset 清 CLAUDE_CONFIG_DIR、
   // nested-env-reset 清嵌套 env 全套）。收窄前是维度递 `keys: string[]`，现在由 kind 查表。
   const ctx: LaunchContext = {
@@ -257,14 +256,7 @@ test("R04③：unset-config-dir / unset-nested-env 渲染出的字符串与收�
     launcherOverride: "claude",
     ccmSid: undefined,
   };
-  const rendered = renderFallback(buildLaunchPlan(ctx));
-  eq(
-    rendered.includes(
-      "unset CLAUDE_CONFIG_DIR; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; ",
-    ),
-    true,
-    `两个 unset 的字面输出与顺序都不该变: ${rendered}`,
-  );
+  eq(buildLaunchPlan(ctx).env, [{ kind: "unset-config-dir" }, { kind: "unset-nested-env" }]);
   // 类型层：EnvOp 的 unset 侧已无自由 keys 字段——任何维度都无法再往里塞任意变量名。
   const ops = buildLaunchPlan(ctx).env.filter((o) => o.kind.startsWith("unset"));
   eq(ops.length, 2);
@@ -277,52 +269,18 @@ test("R04③：unset-config-dir / unset-nested-env 渲染出的字符串与收�
   );
 });
 
-// ---- R04④：`WrapSpec` 改纯数据后，折叠仍产出 `( <prelude>; exec <inner> )`，order = 嵌套深度 ----
-// `plan.wrap` 今天恒空（零生产者），所以这条是**给 F04 rbind 落地前先把契约钉住**：
-// 它同时证明「改成纯数据没有丢掉表达能力」——唯一已知用例（rbind + exec 同子 shell）能表达。
-test("R04④：wrap 纯数据折叠——order 升序由内向外，exec 不丢", () => {
-  const ctx: LaunchContext = {
-    transport: { kind: "ssh" },
-    action: { kind: "resume", sid: "s1" },
-    container: { kind: "none" },
-    cwd: null,
-    account: { kind: "base" },
-    launcherOverride: "claude",
-    ccmSid: undefined,
-  };
-  const plan = buildLaunchPlan(ctx);
-  eq(plan.wrap.length, 0, "生产路径今天恒空——这条前提变了就该重新评估 R04④ 的成本");
-  plan.wrap = [
-    { id: "outer", order: 20, prelude: "OUTER" },
-    { id: "rbind", order: 10, prelude: "__ccm_rbind" },
-  ];
-  const rendered = renderFallback(plan);
-  // order 10 先折（最内），20 后折（最外）；`exec` 在每一层都保留（审计 C1：不 exec 则 PID 对不上）。
-  //
-  // **`exec` 后面必须直接跟可执行文件**（R04④ Phase D 审计发现，初稿断言的是坏形态）：
-  // 初稿把整条 payload（含 `unset …` 前缀）一起包，折叠出 `( …; exec unset A B; claude … )`
-  // ——实测 `bash -c '( echo RB; exec unset A B; echo REACHED )'` 是 `exec: unset: 未找到` / rc=127，
-  // launcher 根本起不来。那个断言等于把一个**跑不通的形态**钉进回归。已修 call-site + 本断言。
-  eq(
-    rendered.includes("( OUTER; exec ( __ccm_rbind; exec claude --resume s1 ) )"),
-    true,
-    `exec 必须直接接 launcher、env 前缀须留在包裹外: ${rendered}`,
-  );
-  // env 前缀留在包裹**外**（不被 exec 吃掉）
-  eq(
-    rendered.startsWith("unset "),
-    true,
-    `env 前缀应在包裹外: ${rendered}`,
-  );
-});
+// ---- R04④：`WrapSpec` 折叠 ----
+// 〔LR2〕这里原来有一条「wrap 纯数据折叠 —— order 升序由内向外，exec 不丢」，比的是 TS 兜底渲染器的字节。
+// 折叠是**渲染**那一侧的事，今天只在 Rust（`payload.rs`），由入库夹具 `payload-golden.json`
+// 「wrap 折叠（order 乱序给，必须按升序由内向外）」那条逐字节钉着；`plan.wrap` 生产恒空（零生产者）。
 
 // ═══ `设计/80 §8` 步 1：启动期令牌（`CCM_RBIND_TOKEN`）══════════════════════════
 //
 // 🔴 这一族判据买的是三件**分开的**事，别把它们读成一件：
 //   ① 形状闸真的会拦（大写 / 长度差一 / 非 hex / 空）——不是「看起来校验了」；
 //   ② 顺序契约（令牌排在全部 unset 之后）是**模块加载即崩**的断言，不是注释纪律；
-//   ③ 渲染出来的**字节**就是那一串 —— 这一条与入库金标准
-//      （`payload-golden.json` / `tmux-outer-golden.json`）是两侧独立的说法。
+//   ③ 令牌在 `EnvOp` 序列里的落点（相等）。〔LR2〕渲染成字节那一半归 Rust，
+//      由入库金标准（`payload-golden.json` / `tmux-outer-golden.json`）钉着。
 
 const TOK = "0f1e2d3c4b5a69788796a5b4c3d2e1f0"; // 32 个小写 hex
 
@@ -335,8 +293,8 @@ const tokCtx = (over: Partial<LaunchContext> = {}): LaunchContext => ({
 
 test("rbind-token：没令牌 → 整格不生效（载荷逐字节等于今天，这是步 1 能独立回滚的支点）", () => {
   eq(RBIND_TOKEN_DIMENSION.applies(baseCtx), false);
-  const rendered = renderFallback(buildLaunchPlan(baseCtx));
-  eq(rendered.includes("CCM_RBIND_TOKEN"), false, `不该出现令牌: ${rendered}`);
+  const env = buildLaunchPlan(baseCtx).env;
+  eq(env.some((op) => op.kind === "export-rbind-token"), false, `不该出现令牌: ${JSON.stringify(env)}`);
 });
 
 // 🔴 **空值 ≠ 未设**（Z01 的支点）。这一条是本族**第一次跑就逮到东西**的那条：
@@ -425,7 +383,8 @@ test("buildLaunchPlan：五种 EnvOp 同时出现时，令牌排在全部 unset 
   ]);
 });
 
-test("renderFallback：令牌渲成的字节就是 `export CCM_RBIND_TOKEN='<32hex>'; `（相等，不是包含）", () => {
+// 〔LR2〕「令牌渲成的字节」那一半归 Rust：`payload-golden.json`「只有启动期令牌」逐字节钉着。
+test("令牌那一格在 EnvOp 序列里恰好排在嵌套 env 清理之后（相等，不是包含）", () => {
   // `container:"none"` 那一档 —— `设计/80 §8.4` 表里「今天做不到 ↗ 的那一档」。
   const ctx: LaunchContext = {
     transport: { kind: "ssh" },
@@ -437,11 +396,10 @@ test("renderFallback：令牌渲成的字节就是 `export CCM_RBIND_TOKEN='<32h
     ccmSid: undefined,
     rbindToken: TOK,
   };
-  eq(
-    renderFallback(buildLaunchPlan(ctx)),
-    `unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; export CCM_RBIND_TOKEN='${TOK}'; claude --resume s1`,
-    "整条载荷逐字节",
-  );
+  eq(buildLaunchPlan(ctx).env, [
+    { kind: "unset-nested-env" },
+    { kind: "export-rbind-token", value: TOK },
+  ]);
 });
 
 if (failed > 0) {

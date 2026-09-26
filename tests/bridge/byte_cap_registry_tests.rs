@@ -242,6 +242,11 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              它的意思恰恰是「没有上限」；`pidwatch_windows_shape_tests` 钉着它必须是全 1（零定时器）。",
     ),
     (
+        "WAIT_ABANDONED",
+        "〔HX2〕**Win32 等待结果码**（`WaitForSingleObject` 回「上一个持有者没放就没了」—— `platform/lock.rs` 那把命名互斥量）。\
+             是一个返回码，不是尺寸。",
+    ),
+    (
         "FILETIME_TICKS_BEFORE_UNIX_EPOCH",
         "**时间纪元差**（Win32 FILETIME 的 1601 起点与 Unix 1970 起点相差多少个 100ns tick）。\
              与上面 `NET_EPOCH_TO_WIN32_FILETIME_TICKS` 同族：单位是时间不是字节。",
@@ -788,6 +793,15 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "TEE_DECODE_CAP",
         8388608,
         "tee 侧解码缓冲攒着的那截（SSE 半行 / chunked 还没成形的块长度行）",
+        "丢弃+带身份报告",
+    ),
+    // 〔TAP · V124〕tee 交给 tap 口的**一个 SSE 事件**的原文字节数。超了这一件不交、位置号照占 ⇒
+    // 接收侧看见 `n` 的缺口（身份 = 哪个响应的第几号）；下游的字节一个不少（tap 是抄一份）。
+    (
+        "src/backend/relay/tee.rs",
+        "TAP_DATA_CAP",
+        16384,
+        "tee 交给 tap 口的一个 SSE 事件（`data:` 后那段原文）的字节数",
         "丢弃+带身份报告",
     ),
     // 🔴 **〔条 67 · 2026-09-18〕`ASSET_BYTE_CAP` 与 `RESPONSE_HEAD_BYTE_CAP` 这一对摘了。**

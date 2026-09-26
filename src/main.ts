@@ -20,6 +20,7 @@ import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bindEvents } from "./events";
 import { TabManager } from "./tabs";
+import { paintLiveCards } from "./live-card-view";
 import { mountTabBarResizer } from "./tab-bar-width";
 import { terminalFrontCommand } from "./terminal-front-command";
 import { loadTheme } from "./theme";
@@ -46,8 +47,7 @@ import { LOCAL_MACHINE_KEY, readStatus } from "./settings/machine-status";
 import { hostOs } from "./settings/host-os";
 import { createUnknownKeysBar } from "./settings/unknown-keys-notice";
 import { openSettingsWindow } from "./settings/open-settings"; // ST1：点「设置」有反馈（不 import 设置面板）
-import { collectAccountRows, createEventRefresher, watchAccountsChanged } from "./session-accounts-poll";
-import { chan } from "./ipc/chan";
+import { collectAccountRows, createEventRefresher } from "./session-accounts-poll";
 import { lastAccounts } from "./history-reads";
 import { TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
@@ -180,6 +180,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     tasksPanel,
     agentsPanel,
   );
+  // 〔TAP · V124〕活卡的画法（带 `.module.css`）只由主窗口入口装进来 —— 理由见 `live-card-view.ts` 头注。
+  tabs.setLivePainter(paintLiveCards);
   // P7a-3（#61）：启动时拉一次标签页集合（住 `config.json`，不是 localStorage —— 见
   // `tab-collections.ts` 头注：集合名是用户手写的真相，必须活过一次清缓存）。
   void tabs.loadCollections();
@@ -267,7 +269,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   const accountsRefresher = createEventRefresher(refreshSessionAccounts);
   accountsRefresher.request();
   // 〔DL1〕「某台长连接握手完成 / 那台账号清单变了」⇒ 强制刷账号清单 ＋ chip。原先听裸事件 `remote-backend-ready`；
-  //   今天经通道订每台的 `accounts-changed`（下面 `bindEvents` 之后，`watchAccountsChanged`）。
+  //   今天经通道订每台的 `accounts-changed`（下面 `bindEvents` 的 `accounts` ＋ `onAccountsChanged`）。
   const onAccountsChanged = (): void => {
     accountsRefresher.request(true);
     void accountChip.refresh(true);
@@ -705,6 +707,11 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 〔U4b · 第四波〕活会话的容器（G3）· 某台机器的活会话清单报完了（说不清 → 已结束）。
     onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container),
     onOriginSessionsListed: (origin) => tabs.markOriginSeen(origin),
+    // 〔TAP · V124〕中转抄出来的 SSE 事件（会话流 `session-tap`）→ 活卡（jsonl 到了整轮覆盖）；那台看不见了 ⇒ 活卡全撤。
+    onSessionTap: (e) => tabs.onSessionTap(e),
+    onSessionTapLost: (origin) => tabs.dropLiveCards(origin),
+    // 〔DL1〕那台的长连接又通了 / 那台账号清单变了 ⇒ 强制刷账号清单 ＋ chip（`accounts-changed` 流）。
+    onAccountsChanged,
     // 〔FW1 · 第四波 4D · D-d〕记录文件不见了 / 被改过已从头重读 ⇒ 那个 tab 顶上说一句。
     onSessionFileNotice: recordFile.onSessionFileNotice,
     // 〔GP1 · 第四波〕那台机器看不见了 ⇒ 说不清（不是已结束）。
@@ -768,10 +775,15 @@ window.addEventListener("DOMContentLoaded", async () => {
     onStreamGap: (origin) => tabs.onStreamGap(origin),
   }, {
     streams: machines.map((origin) => ({ origin, kind: "session-lines" })),
+    // 〔TAP · V124〕中转住本机常驻后端（V107）⇒ 只有本机有 tap 来源（远端 tap 是 `调研/第四波记录/TAP.md §8` 题 1）。
+    taps: [LOCAL_ORIGIN],
+    // 〔DL1〕每台一条 `accounts-changed`（替掉裸事件 `remote-backend-ready`）。
+    accounts: machines,
   });
-  // 〔DL1 · `设计/01 §2.2`〕账号那一格经通道订（每台一条 `accounts-changed`）。订阅登记之前那一窗里连上的
-  //   不会有 `seen`（句柄只在状态变时说）⇒ 登记完补刷一次 —— 与「独立窗口的订阅本身就是它的就绪点」同一个道理。
-  void watchAccountsChanged(chan, machines, onAccountsChanged).then(onAccountsChanged);
+  // 〔DL1 · `设计/01 §2.2`〕账号那一格经通道订（每台一条 `accounts-changed`，上面 `bindEvents` 的 `accounts`）。
+  //   订阅登记之前那一窗里连上的不会有 `seen`（句柄只在状态变时说）⇒ `bindEvents` 返回（订阅都登记好了）之后补刷一次 ——
+  //   与「独立窗口的订阅本身就是它的就绪点」同一个道理。
+  onAccountsChanged();
 
   // v2.0.0 (issue #4)：后端 ERROR 级别 tracing → 右下角红色 toast
   bindErrorToast();

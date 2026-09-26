@@ -223,6 +223,7 @@ fn sample_reason(variant: &str) -> String {
         }
         .reason(),
         "NotInstalled" => Refusal::NotInstalled.reason(),
+        "ProbeUnknown" => Refusal::ProbeUnknown("ssh: connection timed out".into()).reason(),
         "NotSsh" => Refusal::NotSsh.reason(),
         "SendIntoHasNoCliForm" => Refusal::SendIntoHasNoCliForm.reason(),
         "AttachNeedsTmux" => Refusal::AttachNeedsTmux.reason(),
@@ -262,6 +263,10 @@ fn refusal_variants() -> Vec<String> {
 fn every_refusal_reason_is_pinned_byte_for_byte() {
     let pairs: &[(Refusal, &str)] = &[
         (Refusal::NotInstalled, "远端还没装后端"),
+        (
+            Refusal::ProbeUnknown("ssh: connection timed out".into()),
+            "这次没探到远端的后端，不等于没装：ssh: connection timed out",
+        ),
         (Refusal::NotSsh, "Windows 本机不用 ccm 命令起会话"),
         (
             Refusal::MissingCap("tmux".into()),
@@ -720,4 +725,27 @@ fn argv_quotes_everything_else_including_the_empty_token() {
     }
     // 单引号自身走内核那份逃逸（`quote_singleton_guard` 钉住只有一个家）。
     assert_eq!(argv("a'b"), shell_quote_core::posix_quote("a'b"));
+}
+
+/// ★ 〔LR2 · R95b〕**「没探出来」与「没装」是两句不同的话**（`设计/80 §9.4`〔R95b〕：「缺的是线，不是措辞」）。
+///
+/// 住址：`设计/80 §9.4` 还开着的那一格 ·  `§9.7` 第 2 条。线上补了第三态之后，`unknown` 必须过线成
+/// `Refusal::ProbeUnknown`，理由里说出「不等于没装」、带上探测那一跳的原话，且与 `NotInstalled` 那句不同。
+/// 生产那一跳（`launch_wire::render_ccm_launch` 的映射臂）由入库夹具 `cli-golden.json`「没探出来」那条逐字节钉着。
+#[test]
+fn not_knowing_is_never_said_as_not_installed() {
+    let unknown = Refusal::ProbeUnknown("ssh: connection timed out".into()).reason();
+    let absent = Refusal::NotInstalled.reason();
+    assert_ne!(
+        unknown, absent,
+        "「没探出来」被说成了「没装」—— R95b 那一形又回来了"
+    );
+    assert!(
+        unknown.contains("不等于没装"),
+        "没说清「不知道 ≠ 没有」：{unknown}"
+    );
+    assert!(
+        unknown.contains("ssh: connection timed out"),
+        "探测那一跳的原话没带上：{unknown}"
+    );
 }

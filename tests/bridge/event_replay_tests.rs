@@ -760,6 +760,88 @@ async fn the_accounts_changed_stream_carries_only_reachability_and_account_notic
     assert_eq!(by_sub(&rec), vec![(1, "unseen", 0), (2, "unseen", 0)]);
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// 〔TAP · V124〕会话流 `session-tap`：同一张订阅表、同一套 credit 与 `Gap`（`设计/05 §15` · `§3.3.4` 级 2），
+// 不进留存（`history`）、不混进会话行那条流。设计住仓外 `调研/第四波记录/TAP.md §1.2 · §2`。期望手写。
+// ═══════════════════════════════════════════════════════════════════════
+
+fn tap(origin: &str, n: u64) -> crate::bridge::SessionTapPayload {
+    crate::bridge::SessionTapPayload {
+        origin: crate::origin::Origin(origin.to_string()),
+        stream: "sid-t".into(),
+        resp: 0,
+        n,
+        data: Some(format!("{{\"i\":{n}}}")),
+        end: None,
+    }
+}
+
+fn tap_what(i: &WItem) -> (&'static str, u64, u64) {
+    match i {
+        WItem::Frame { seq, body } => {
+            let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
+            match v.get("stream") {
+                Some(_) => ("tap", *seq, v["n"].as_u64().unwrap()),
+                None => what(i),
+            }
+        }
+        other => what(other),
+    }
+}
+
+/// T5b：订了 `session-tap` ⇒ 当场就是实时的（没有就绪点、没有重放）；有 credit 交、没 credit 丢且位置照占、`want` 回来原位 `Gap`；
+/// 别的机器的 tap 不交；tap **不进留存**（`stats().history_len` 不变）。
+#[tokio::test]
+async fn tap_frames_ride_the_same_subscription_table_with_credit_and_in_place_gaps() {
+    let (r, rec) = hub();
+    r.origin_seen(&local(), true);
+    r.subscribe("w", 7, &local(), "session-tap", None, 2);
+    rec.clear();
+    for n in 0..3 {
+        r.on_tap(tap("<local>", n));
+    }
+    r.on_tap(tap("pi", 9)); // 别的机器
+    assert_eq!(
+        rec.all().iter().map(tap_what).collect::<Vec<_>>(),
+        vec![("tap", 0, 0), ("tap", 1, 1)]
+    );
+    rec.clear();
+    r.want("w", 7, 4);
+    assert_eq!(
+        rec.all().iter().map(tap_what).collect::<Vec<_>>(),
+        vec![("gap", 2, 3)]
+    );
+    rec.clear();
+    r.on_tap(tap("<local>", 3));
+    assert_eq!(
+        rec.all().iter().map(tap_what).collect::<Vec<_>>(),
+        vec![("tap", 3, 3)]
+    );
+    assert_eq!(r.stats().history_len, 0, "tap 进了重放留存");
+}
+
+/// T5c：两条流互不串：会话行不交给 tap 订阅、tap 不交给会话行订阅（两向）。
+#[tokio::test]
+async fn tap_and_lines_never_cross_into_each_others_subscriptions() {
+    let (r, rec) = hub();
+    r.origin_seen(&local(), true);
+    r.subscribe("w", 1, &local(), "session-lines", None, 100);
+    r.subscribe("w", 2, &local(), "session-tap", None, 100);
+    r.ready_point(None).await;
+    rec.clear();
+    r.on_line_batch_awaited(lines("s", 0..2)).await;
+    r.on_tap(tap("<local>", 0));
+    let got = rec.0.lock().unwrap().clone();
+    let to = |sub: u64| -> Vec<(&'static str, u64, u64)> {
+        got.iter()
+            .filter(|(_, s, _)| *s == sub)
+            .flat_map(|(_, _, i)| i.iter().map(tap_what).collect::<Vec<_>>())
+            .collect()
+    };
+    assert_eq!(to(1), vec![("line", 0, 0), ("line", 1, 1)]);
+    assert_eq!(to(2), vec![("tap", 0, 0)]);
+}
+
 /// 〔FW1 · 第四波 4D · D-d〕记录文件的出声交给**订了那台 / 那一个会话**的实时订阅，占 credit、原位 `Gap` 与行同一套；
 /// 别的机器 / 别的会话的订阅收不到；不进留存（就绪点之后才订的那条，拿不到之前那一句）。
 #[tokio::test]

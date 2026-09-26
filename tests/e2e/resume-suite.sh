@@ -4,8 +4,8 @@
 # `launch.rs::launch_powershell_window` 仅 Windows(`Err("拉起终端窗口仅支持 Windows")`)——headless Linux
 # 的 GUI resume 必回退剪贴板、绝不执行,故 argv 断言的诚实天花板 = 命令级(直接驱真源 builder)。见 tests/e2e/README。
 #
-# 每条边界:①用 `resume-cmd-driver.ts` 取 app **真正会跑**的命令串(import 真实 remote-launch.ts,
-# 不重写);②断言命令形状(复用 cc-<sid8> 名/无 new-session/无 -N/CLAUDE_CONFIG_DIR 前缀);③真把该串
+# 每条边界:①用 `resume-cmd-driver.ts` 取 app **真正会跑**的命令串(〔LR2〕走生产渲染链:生产 plan* →
+# 生产 Rust render_launch_payload,不重写);②断言命令形状(复用 cc-<sid8> 名/无 new-session/无 -N/CLAUDE_CONFIG_DIR 前缀);③真把该串
 # 跑到真 tmux(send-keys 进 idle pane 的 sh);④断言 argv.log(sid 命中行的 CLAUDE_CONFIG_DIR + `--resume`)
 # 与 `tmux list-sessions` 孤儿计数。红线:backend 零改(不跑它) / 隔离 CLAUDE_CONFIG_DIR 绝不碰真 ~/.claude。
 set -euo pipefail
@@ -136,7 +136,7 @@ if [ "$AFTER1" = 1 ] && [ "$ORPH1" = 0 ]; then ok "B1 复用后 $S1 仍在且孤
 echo "-- B2 无 tmux → 新建 resume,注入账号 A 目录(直连 + tmux-new 两形态)--"
 SID2="$(cat /proc/sys/kernel/random/uuid)"; S2="cc-${SID2:0:8}"
 # 直连形态(resumeTab 路径):断言命令构造含账号 A 前缀(直连在前台跑 fake-claude 会阻塞,
-# 执行验证交给下面非阻塞的 tmux-new 形态,两者共用 buildEnvPrefix,注入语义一致)。
+# 执行验证交给下面非阻塞的 tmux-new 形态,两者共用同一个 Rust 载荷渲染,注入语义一致)。
 CMD2D="$(drv direct "$SID2" "$CWD_DIR" "$FAKE" "$ACCT_A")"
 echo "   direct: $CMD2D"
 echo "$CMD2D" | grep -q "export CLAUDE_CONFIG_DIR='$ACCT_A'" && ok "B2 直连命令含 CLAUDE_CONFIG_DIR=$ACCT_A" || bad "B2 直连命令缺账号 A 前缀"

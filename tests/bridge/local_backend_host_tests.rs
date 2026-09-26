@@ -1399,24 +1399,27 @@ fn a_stranger_on_our_port_is_refused_out_loud_not_silently_reused() {
         "{{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b1\",\"host_arch\":\"x86_64\",\
               \"claude_dir\":\"/h/.claude\",\"capabilities\":[],\"emits\":[],\"commands\":[]}}"
     );
-    assert_eq!(hello_verdict(&ours, "b1", "/h/.claude"), HelloVerdict::Ours);
+    assert_eq!(
+        hello_verdict(&ours, "b1", "/h/.claude", &[]),
+        HelloVerdict::Ours
+    );
     // ① 版本不对
-    match hello_verdict(&ours, "b2", "/h/.claude") {
+    match hello_verdict(&ours, "b2", "/h/.claude", &[]) {
         HelloVerdict::Stranger(w) => assert!(w.contains("b1") && w.contains("b2"), "{w}"),
         v => panic!("旧版本的后端被当成了我们的：{v:?}"),
     }
     // ② 看的目录不对（同机两个用户撞了口就是这一形）
-    match hello_verdict(&ours, "b1", "/other/.claude") {
+    match hello_verdict(&ours, "b1", "/other/.claude", &[]) {
         HelloVerdict::Stranger(w) => assert!(w.contains("/other/.claude"), "{w}"),
         v => panic!("另一个数据目录的后端被当成了我们的：{v:?}"),
     }
     // ③ 压根不是我们的协议
     assert!(matches!(
-        hello_verdict("HTTP/1.1 200 OK", "b1", "/h/.claude"),
+        hello_verdict("HTTP/1.1 200 OK", "b1", "/h/.claude", &[]),
         HelloVerdict::Stranger(_)
     ));
     assert!(matches!(
-        hello_verdict("", "b1", "/h/.claude"),
+        hello_verdict("", "b1", "/h/.claude", &[]),
         HelloVerdict::Stranger(_)
     ));
 }
@@ -4021,6 +4024,142 @@ fn with_copy(code: impl AsRef<str>) -> String {
         rest = tail;
     }
     out
+}
+
+// ═══ 〔HX2 · 第四波 4D〕常驻后端身份带数据目录 ═══════════════════════════════════════════════
+//
+// 要求住址：题面 HX2 逐字「常驻后端身份带数据目录（接错了拒并出声）」；`GP1.md §7.6` 第 4 条逐字「要么注解那几条命令也先核路径
+// （照本路 §3），要么常驻后端的身份带上数据目录」；审计 `E-compat.md` §E10（「隔离数据目录的 monitor 写穿到真 profile」）。
+
+/// 🔴 I2：hello 的 `host_env` 与这一趟要交的那几格两向比（期望手写）：等 ⇒ 我们的；值不等 · 它多一格 · 它少一格 ⇒ 拒，
+/// 那句话点名那一格、两边各是什么、说得出下一步；名不在名单里的（`PATH` 之类）不参与比。
+#[test]
+fn hx2_a_backend_started_for_another_data_dir_is_refused_out_loud() {
+    let hello_with = |env: &str| {
+        format!(
+            "{{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b1\",\"host_arch\":\"x86_64\",\
+             \"claude_dir\":\"/h/.claude\"{env}}}"
+        )
+    };
+    let seen = hello_with(",\"host_env\":{\"CCM_APIKEY_CREDENTIALS\":\"/h/.claude/claudecode-frontend/k.json\",\"CCM_RELAY_PORT\":\"8788\"}");
+    let want = |creds: &str| -> Vec<(String, String)> {
+        vec![
+            ("CCM_RELAY_PORT".into(), "8788".into()),
+            ("CCM_APIKEY_CREDENTIALS".into(), creds.into()),
+            ("PATH".into(), "/shim:/usr/bin".into()),
+        ]
+    };
+    assert_eq!(
+        hello_verdict(
+            &seen,
+            "b1",
+            "/h/.claude",
+            &want("/h/.claude/claudecode-frontend/k.json")
+        ),
+        HelloVerdict::Ours,
+        "同一份环境（外加一格不在名单里的 PATH）⇒ 该是我们的"
+    );
+    match hello_verdict(&seen, "b1", "/h/.claude", &want("/tmp/iso/k.json")) {
+        HelloVerdict::Stranger(w) => {
+            assert!(
+                w.contains("CCM_APIKEY_CREDENTIALS")
+                    && w.contains("/h/.claude/claudecode-frontend/k.json")
+                    && w.contains("/tmp/iso/k.json")
+                    && w.contains("CCM_DATA_DIR")
+                    && !w.contains("CCM_RELAY_PORT："),
+                "{w}"
+            );
+        }
+        v => panic!("另一个数据目录起的后端被当成了我们的：{v:?}"),
+    }
+    let mut more = want("/h/.claude/claudecode-frontend/k.json");
+    more.push((
+        "CCM_HISTORY_METADATA".into(),
+        "/tmp/iso/history-metadata.json".into(),
+    ));
+    assert!(
+        matches!(hello_verdict(&seen, "b1", "/h/.claude", &more), HelloVerdict::Stranger(w) if w.contains("CCM_HISTORY_METADATA：它用的是 没有")),
+        "它少一格（没被交注解路径）⇒ 该拒"
+    );
+    assert!(
+        matches!(
+            hello_verdict(&hello_with(""), "b1", "/h/.claude", &want("/x")),
+            HelloVerdict::Stranger(_)
+        ),
+        "hello 里没有 host_env（没被交任何一格）而这一趟要交 ⇒ 该拒"
+    );
+    assert_eq!(
+        hello_verdict(&hello_with(""), "b1", "/h/.claude", &[]),
+        HelloVerdict::Ours,
+        "两边都空 ⇒ 我们的"
+    );
+}
+
+/// 🔴 I3：monitor 交的那几格的名字 == 后端回显的名单（两向；读后端源码现抠，异源）；`relay_host_envs` 交的名 == 名单
+/// （生产那一份不许漏交一格回显不到的，也不许多交一格回显不了的）。
+#[test]
+fn hx2_the_handed_names_are_exactly_what_the_backend_echoes() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../backend");
+    let read = |rel: &str| {
+        guard_core::production_code(
+            &std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| panic!("读 {rel}：{e}")),
+        )
+    };
+    let const_value = |text: &str, decl: &str| -> String {
+        let at = guard_core::find_pinned(text, decl)
+            .unwrap_or_else(|e| panic!("`{decl}` 不是恰好一处：{e}"));
+        let after_decl = &text[at + decl.len()..];
+        after_decl[..after_decl.find('"').expect("常量没收尾")].to_string()
+    };
+    let wire = read("wire.rs");
+    let at = guard_core::find_pinned(&wire, "pub const HOST_ECHO_ENVS: [&str; 3] = [")
+        .expect("后端回显名单不在了");
+    // 名单那几行（到收尾的 `];` 为止；逐行取，不做子串切）。
+    let echo_list: Vec<&str> = wire[at..]
+        .lines()
+        .skip(1)
+        .map(str::trim)
+        .take_while(|l| *l != "];")
+        .collect();
+    let mut backend: Vec<String> = Vec::new();
+    for (needle, file, decl) in [
+        (
+            "crate::relay::ENV_PORT",
+            "relay/listen.rs",
+            "pub(crate) const ENV_PORT: &str = \"",
+        ),
+        (
+            "crate::accounts::upstream::creds::ENV_CREDENTIALS",
+            "accounts/upstream/creds.rs",
+            "pub(crate) const ENV_CREDENTIALS: &str = \"",
+        ),
+        (
+            "crate::history_annotations::ENV_PATH",
+            "history_annotations.rs",
+            "pub(crate) const ENV_PATH: &str = \"",
+        ),
+    ] {
+        assert!(
+            echo_list.contains(&format!("{needle},").as_str()),
+            "后端回显名单里没有 `{needle}`：{echo_list:?}"
+        );
+        backend.push(const_value(&read(file), decl));
+    }
+    assert_eq!(
+        echo_list.len(),
+        3,
+        "后端回显名单不是恰好三格：{echo_list:?}"
+    );
+    let mut mine: Vec<String> = HANDED_ENVS.iter().map(|s| s.to_string()).collect();
+    backend.sort();
+    mine.sort();
+    assert_eq!(mine, backend, "monitor 交的名 ≠ 后端回显的名");
+    let mut handed: Vec<String> = relay_host_envs().into_iter().map(|(k, _)| k).collect();
+    handed.sort();
+    assert_eq!(
+        handed, mine,
+        "生产交的那份环境不是恰好名单那几格（这台机器上数据目录解得出时）"
+    );
 }
 
 /// 〔HX1 · RK1 报 3〕token 取自**内核密码学随机数**，不再从时钟 / pid / 计数器里拼。

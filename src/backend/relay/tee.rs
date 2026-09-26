@@ -55,6 +55,22 @@
 //! 丢掉的**字节数** + 那些行自身的字节数。**丢必须说**：`DoD-3㈠` 要的「`event` 数 ==
 //! 上游事件数」只有在「丢是可见的」时候才对得上账。
 
+//! ## 〔TAP · V124〕第二个落点：**tap**（常驻后端进程内那一份中转）
+//!
+//! `--relay` 独立进程照旧写上面那种 NDJSON 行（stdout，一字不改）。常驻后端进程内那一份中转
+//! （`listen::host`）的 stdout 是 wire（stdio 载体）或 null（脱离载体），不能写行 ⇒ 它的落点是一个
+//! [`TapPort`]：每个 SSE 事件交一个 [`TapEvent`]（**结构体，不是格式串** —— 线上字段名住
+//! `wire.rs::Frame::Tap` 的 serde 名，`05 §9` 第 4 条那道「字段名住哪」的答案），由宿主转成 `tap` 帧。
+//!
+//! - **四样东西**：`stream`（路由第三段原样）· `resp`（本进程第几个响应，与 `__meta__` 的 `seq` 同一个数）·
+//!   `n`（这一个响应里第几个事件，从 0 连续）· 事件原文 / 收尾方式。**不带前两段**：挂载物 ① 不问账号（`20 §11` I2）。
+//! - **丢必须说，而且说在原位**：每个事件**先占号再投递**；投不进（宿主通道满 / 没人连着）、单个事件超
+//!   [`TAP_DATA_CAP`]、解码那一路丢了半行 ⇒ 号照占、事件没了 ⇒ 接收侧看 `n` 连不连得上就知道丢在哪两个号之间
+//!   （`05 §3.3.4` 的 `Gap{from_seq,to_seq}` 那一形，纯算术，不要旁路计数行）。收尾那一件带「一共占了几个号」⇒ 尾巴上的缺口也看得见。
+//! - **永不阻塞转发**：`TapPort::offer` 的契约是「立刻答收没收」（宿主用 `try_send`）。
+//!
+//! 设计与读数住仓外 `调研/第四波记录/TAP.md`。
+
 use std::io::Write;
 
 /// SSE 拆行器 —— 增量喂字节，吐出 `data:` 行的载荷。
@@ -146,17 +162,78 @@ impl SseSplitter {
 ///   那行 `__dropped__` 它同样投不进去（第一版就是那么写的，实测那行永远补不出来）。
 /// - **诚实边界**：进程被杀时队列里还没写出去的行会丢。先前的同步写没有这一格
 ///   —— 这是拿「一条卡住的消费者不再拖垮全部会话」换来的，写在这里，不藏。
+/// 〔TAP〕tee 交给宿主的一件事（[`TapPort::offer`]）。字段语义见本文件头注「第二个落点」。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TapEvent {
+    /// 路由第三段原样（中转不解释它；消费侧拿它对 sid）。
+    pub(crate) stream: String,
+    /// 本进程第几个响应（与 NDJSON 那一形 `__meta__.seq` 同一个计数器）。
+    pub(crate) resp: u64,
+    /// 这一个响应里第几个事件（从 0 连续）；收尾那一件是「一共占了几个号」。
+    pub(crate) n: u64,
+    pub(crate) body: TapBody,
+}
+
+/// 〔TAP〕一件事是什么。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum TapBody {
+    /// 一个 SSE 事件：`data:` 后面那段原文（敌手可控字节，原样；上线时是一个 JSON 串，不参与帧结构）。
+    Data(String),
+    /// 这个响应不会再有事件了。`broken` = 转发以错误收尾（下游 / 上游断了），否则上游正常说完。
+    End { broken: bool },
+}
+
+/// 〔TAP〕tee 的第二个落点的**口**：宿主实现它（常驻后端的 `tap::TapHub`）。
+///
+/// ★ 契约：**立刻答收没收**，永不阻塞 —— 它在转发线程上被调（`pump` 的 `on_chunk` 里），
+/// 阻塞 = 让「有它更好」变成「非它不可」（`05 §4.5.3` ③）。答 `false` 的那一件号已占，接收侧看得见缺口。
+pub(crate) trait TapPort: Send + Sync {
+    fn offer(&self, ev: TapEvent) -> bool;
+}
+
+/// 〔TAP〕单个事件原文的字节上限。超了**不交**、号照占（缺口可见）。
+///
+/// 值怎么定的：Anthropic 的 SSE 是 token 级增量，`message_start` 带整份 usage 也在 KiB 级；
+/// 16 KiB 以上的一个事件只可能来自不正常的上游。它同时把「宿主通道满载」封在 `容量 × 16 KiB`。
+/// 登记住址 `src/bridge/src/byte_cap_registry.rs`（尺寸类常量不登记就红）。
+pub(crate) const TAP_DATA_CAP: usize = 16 * 1024;
+
+/// 〔TAP〕一个响应在 tee 这一侧的游标：`resp` 与下一个要占的号 `n`。由 [`TeeSink::open`] 发出，
+/// 同一个响应的 `event` / `note_dropped_bytes` / `close` 都拿它（响应之间互不相干，所以不放进共享的 `TeeSink`）。
+#[derive(Debug)]
+pub(crate) struct TeeStream {
+    resp: u64,
+    n: u64,
+}
+
+impl TeeStream {
+    /// 占一个号，返回它。
+    fn take(&mut self) -> u64 {
+        let n = self.n;
+        self.n += 1;
+        n
+    }
+}
+
+/// 〔TAP〕tee 的落点：NDJSON 行（`--relay` 的 stdout）· tap 口（常驻后端进程内）。
+enum Landing {
+    Lines {
+        tx: std::sync::mpsc::SyncSender<String>,
+        /// 队列满而被丢掉的**行数** / **字节数**（后者含解码缓冲那一路，见 `note_dropped_bytes`）。
+        ///
+        /// ⚠ 报账的是**写线程**，不是投递方。投递方那一侧是「队列满了」才丢的，
+        /// 它当场**也投不进**那行 `__dropped__` —— 第一版就是那么写的，实测那行永远补不出来
+        /// （逐字：`队列溢出必须在流里留下 __dropped__` 当场红，流里只有事件行）。
+        /// ⇒ 谁有地方写谁报：写线程每写完一行就把账**取空**报一次。
+        dropped_lines: std::sync::Arc<std::sync::atomic::AtomicU64>,
+        dropped_bytes: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    },
+    Tap(std::sync::Arc<dyn TapPort>),
+}
+
 pub(crate) struct TeeSink {
-    tx: std::sync::mpsc::SyncSender<String>,
+    landing: Landing,
     seq: std::sync::atomic::AtomicU64,
-    /// 队列满而被丢掉的**行数** / **字节数**（后者含解码缓冲那一路，见 `note_dropped_bytes`）。
-    ///
-    /// ⚠ 报账的是**写线程**，不是投递方。投递方那一侧是「队列满了」才丢的，
-    /// 它当场**也投不进**那行 `__dropped__` —— 第一版就是那么写的，实测那行永远补不出来
-    /// （逐字：`队列溢出必须在流里留下 __dropped__` 当场红，流里只有事件行）。
-    /// ⇒ 谁有地方写谁报：写线程每写完一行就把账**取空**报一次。
-    dropped_lines: std::sync::Arc<std::sync::atomic::AtomicU64>,
-    dropped_bytes: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }
 
 /// tee 队列能排多少**行**。
@@ -194,10 +271,12 @@ impl TeeSink {
                 }
             });
         Self {
-            tx,
+            landing: Landing::Lines {
+                tx,
+                dropped_lines,
+                dropped_bytes,
+            },
             seq: AtomicU64::new(0),
-            dropped_lines,
-            dropped_bytes,
         }
     }
 
@@ -205,13 +284,16 @@ impl TeeSink {
         Self::new(Box::new(std::io::stdout()))
     }
 
-    /// 〔RL1 · V107〕**丢弃**落点：常驻后端进程内那一份中转用它（`listen::host`）。
+    /// 〔TAP · V124〕**tap 口**落点：常驻后端进程内那一份中转用它（`listen::host`）。
     ///
-    /// 那个进程的 stdout 在 stdio 载体上**就是 wire**（一行一帧，`wire.rs` 头注）—— tee 行写进去当场污染协议；
-    /// 在脱离载体上是 null。两条都不是 tee 的落点。tee 今天**零消费者**（本文件头注现打过）⇒ 丢弃不丢任何人的东西；
-    /// 第一个真消费者出现时，它要的是一条专属通道，不是抢 stdout。
-    pub(crate) fn discard() -> Self {
-        Self::new(Box::new(std::io::sink()))
+    /// 那个进程的 stdout 在 stdio 载体上**就是 wire**（一行一帧，`wire.rs` 头注）—— NDJSON 行写进去当场污染协议；
+    /// 在脱离载体上是 null。⇒ 这一份不写行，把每个事件交给宿主的 [`TapPort`]（宿主转成 `tap` 帧，走它自己那条有界通道）。
+    /// 〔先前这里是 `discard`（丢弃落点，RL1）：tee 零消费者时的形状；第一个消费者来了，它换成这个口。〕
+    pub(crate) fn to_port(port: std::sync::Arc<dyn TapPort>) -> Self {
+        Self {
+            landing: Landing::Tap(port),
+            seq: std::sync::atomic::AtomicU64::new(0),
+        }
     }
 
     /// 一个响应开头写一行 meta，返回这一响应的序号。
@@ -224,8 +306,12 @@ impl TeeSink {
     /// 而写出去的仍然是 `"agent"` / `"account"` / `"key"` 三个字段 ——
     /// **那是线契约**（`src/doc/IPC-PROTOCOL.md` 那一行 ＋ tee 的下游消费者），
     /// 改它就是改行为。⇒ 改的只有**这一层的类型**，线上零变化。
-    pub(crate) fn open(&self, id: super::StreamId<'_>) -> u64 {
+    pub(crate) fn open(&self, id: super::StreamId<'_>) -> TeeStream {
         let seq = self.seq.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        // 〔TAP〕tap 口那一形没有 meta 那一行：`resp` 随每一件事走（接收侧按 `(stream, resp)` 分响应）。
+        if matches!(self.landing, Landing::Tap(_)) {
+            return TeeStream { resp: seq, n: 0 };
+        }
         let line = format!(
             "{{\"__meta__\":{{\"source\":\"relay\",\"proto\":\"passthrough-v0\",\"agent\":{},\"account\":{},\"key\":{},\"seq\":{}}}}}\n",
             json_str(&id.key.seg1),
@@ -234,7 +320,7 @@ impl TeeSink {
             seq
         );
         self.write_line(&line);
-        seq
+        TeeStream { resp: seq, n: 0 }
     }
 
     /// 写一行事件。
@@ -246,7 +332,20 @@ impl TeeSink {
     /// `json.loads` 两侧解重复键都是 **last-wins** ⇒ **这一行的路由键被上游改写**；
     /// 上游发一段不是 JSON 的文本 ⇒ 整行**不可解析**，而 `DoD-3㈠` 的 acceptor
     /// 逐字要「其后每行可解析」。判据见 `an_upstream_payload_cannot_break_out_of_the_event_field`。
-    pub(crate) fn event(&self, id: super::StreamId<'_>, payload: &str) {
+    pub(crate) fn event(&self, id: super::StreamId<'_>, at: &mut TeeStream, payload: &str) {
+        // 〔TAP〕先占号，再投递（投不进 / 超界 ⇒ 号照占，缺口在接收侧可算）。
+        let n = at.take();
+        if let Landing::Tap(port) = &self.landing {
+            if payload.len() <= TAP_DATA_CAP {
+                let _ = port.offer(TapEvent {
+                    stream: id.stream.to_string(),
+                    resp: at.resp,
+                    n,
+                    body: TapBody::Data(payload.to_string()),
+                });
+            }
+            return;
+        }
         let line = format!(
             "{{\"agent\":{},\"account\":{},\"key\":{},\"event\":{}}}\n",
             json_str(&id.key.seg1),
@@ -269,23 +368,49 @@ impl TeeSink {
     ///
     /// 这一支与队列满那一支**不冲突**：这里是「投得进去」（丢的是解码缓冲，不是队列），
     /// 投不进去时把账**原样加回**，留给写线程报。
-    pub(crate) fn note_dropped_bytes(&self, n: u64) {
+    pub(crate) fn note_dropped_bytes(&self, at: &mut TeeStream, n: u64) {
         use std::sync::atomic::Ordering::SeqCst;
         if n == 0 {
             return;
         }
-        self.dropped_bytes.fetch_add(n, SeqCst);
-        let (l, b) = (
-            self.dropped_lines.swap(0, SeqCst),
-            self.dropped_bytes.swap(0, SeqCst),
-        );
+        let (tx, dropped_lines, dropped_bytes) = match &self.landing {
+            // 〔TAP〕tap 口那一形：解码丢掉的那一截里至少有一个事件没成形 ⇒ **占一个号不发**，
+            //   接收侧当场看见缺口（它不需要知道丢了多少字节，只需要知道「这里断过」）。
+            Landing::Tap(_) => {
+                at.take();
+                return;
+            }
+            Landing::Lines {
+                tx,
+                dropped_lines,
+                dropped_bytes,
+            } => (tx, dropped_lines, dropped_bytes),
+        };
+        dropped_bytes.fetch_add(n, SeqCst);
+        let (l, b) = (dropped_lines.swap(0, SeqCst), dropped_bytes.swap(0, SeqCst));
         if l == 0 && b == 0 {
             return;
         }
         let note = format!("{{\"__dropped__\":{{\"lines\":{l},\"bytes\":{b}}}}}\n");
-        if self.tx.try_send(note).is_err() {
-            self.dropped_lines.fetch_add(l, SeqCst);
-            self.dropped_bytes.fetch_add(b, SeqCst);
+        if tx.try_send(note).is_err() {
+            dropped_lines.fetch_add(l, SeqCst);
+            dropped_bytes.fetch_add(b, SeqCst);
+        }
+    }
+
+    /// 〔TAP〕这个响应收尾了。tap 口那一形交一件 `End`（`n` = 一共占了几个号 ⇒ 尾巴上的缺口看得见）；
+    /// **一个号都没占过的响应不交**（非 SSE 的响应：`HEAD /api/hello`、JSON 错误体 —— 接收侧本来也认不出它们）。
+    /// NDJSON 那一形没有收尾行（行格式是契约，一字不改）。
+    pub(crate) fn close(&self, id: super::StreamId<'_>, at: TeeStream, broken: bool) {
+        if let Landing::Tap(port) = &self.landing {
+            if at.n > 0 {
+                let _ = port.offer(TapEvent {
+                    stream: id.stream.to_string(),
+                    resp: at.resp,
+                    n: at.n,
+                    body: TapBody::End { broken },
+                });
+            }
         }
     }
 
@@ -298,9 +423,17 @@ impl TeeSink {
     /// —— 报账要有落点，而那时落点正卡着。
     fn write_line(&self, line: &str) {
         use std::sync::atomic::Ordering::SeqCst;
-        if self.tx.try_send(line.to_string()).is_err() {
-            self.dropped_lines.fetch_add(1, SeqCst);
-            self.dropped_bytes.fetch_add(line.len() as u64, SeqCst);
+        let Landing::Lines {
+            tx,
+            dropped_lines,
+            dropped_bytes,
+        } = &self.landing
+        else {
+            return;
+        };
+        if tx.try_send(line.to_string()).is_err() {
+            dropped_lines.fetch_add(1, SeqCst);
+            dropped_bytes.fetch_add(line.len() as u64, SeqCst);
         }
     }
 }

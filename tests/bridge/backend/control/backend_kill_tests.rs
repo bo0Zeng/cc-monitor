@@ -53,20 +53,17 @@ const CREATION_PATHS: &[(&str, CreationVerdict, &str)] = &[
     //    （会话由 `oneshot-session` 原语铸并建，收尾发帧面的 `kill`）。
     //    ⇒ 它不再是一个「创建路径」⇒ 留着就是幽灵条目，而本表的遍历会当场逮住。
     //    ★ 同 `K-R72` 那次逐字：这一改是**结构性强制的随动**，不是顺手删记录。
+    // 🔴 〔LR2 2026-09-25〕**`src/session-backend.ts` 这一行删了** —— `设计/00 §2.5 ④` 收官那天删的
+    //    就是它（下面那条 Rust 对侧的注释原来逐字预告了这一行）。它原来的理由是「只是渲染器：名字由上游
+    //    `mintTmuxName` 产、由 `src/shell-quote.ts::isValidNewTmuxName` 校验」；那条上游关系今天挂在
+    //    下面那条 Rust 创建路径的理由里（③b 要求每条校验器都有创建路径点它的名）。
     (
-        "src/session-backend.ts",
-        CreationVerdict::UpstreamValidated,
-        "它只是**渲染器**：名字由上游 `mintTmuxName` 产、由 `src/shell-quote.ts::isValidNewTmuxName` 校验（见 `VALIDATORS`）",
-    ),
-    (
-        // 🔴 〔`设计/90 §4 E` 2026-09-19〕**上面那条 TS 渲染器在 Rust 侧的对侧**
-        //    （逐字节对拍住 `launch_tmux_outer_parity.rs`）。两条都在表里**不是重复登记**：
-        //    今天生产走的仍是 TS 那条，Rust 这条只产得出、还没接上 ——
-        //    两份实现同时在盘上，就得两份都表态。`设计/00 §2.5 ④` 收官那天删的是上面那条。
+        // 〔`设计/90 §4 E` 2026-09-19 建 · 步 22b·B 接上生产 · LR2 起是外层三格唯一的家〕
         "src/bridge/src/backend/control/payload.rs",
         CreationVerdict::ValidatesItselfByAllowlist,
-        "与 TS 那条**姿态相反，这是刻意的**：座收的是调用方 quote 好的片段、自陈「不做校验/转义」，\
-             而本侧收生料 ⇒ 自己把门。`TmuxTarget::check` 对 `Raw` 只放行 `[A-Za-z0-9_-]`\
+        "上游先拒一遍：新建路径的名字在生产 TS 那一步过 `src/shell-quote.ts::isValidNewTmuxName`\
+             （`launch-requests.ts::planLauncher`）；本侧收的仍是生料 ⇒ 自己再把一道门\
+             （当年的 TS 座自陈「不做校验/转义」，这一侧从来不是那个姿态）。`TmuxTarget::check` 对 `Raw` 只放行 `[A-Za-z0-9_-]`\
              （构造上产不出 `:` `=` `*` `?` `.` 与控制字符），对 `Quoted` 拒控制符与视觉欺骗字符；\
              `@ccm_sid` 另过 `ccm_sid_safe`（它是**裸拼**的）。三条都由 \
              `launch_tmux_outer_parity::tests::the_rust_side_refuses_what_the_typescript_seat_would_have_concatenated` 钉住",
@@ -337,9 +334,10 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
     // `CREATION_PATHS` 是遍历出来的（少一条会红），`VALIDATORS` 是**手写**的，
     // 少一条不红、**多一条也不红**。
     //
-    // ⇒ 活体形状（现打就摆在盘上）：`src/shell-quote.ts` 这一行今天靠
-    // `src/session-backend.ts` 那条创建路径的理由把它引进来。哪天
-    // `session-backend.ts` 真被删掉（`U8c-3` 的正题），`CREATION_PATHS` 少一行、
+    // ⇒ 活体形状（当年就摆在盘上）：`src/shell-quote.ts` 这一行当时靠
+    // TS 座那条创建路径的理由把它引进来。〔LR2 2026-09-25〕那一天到了：座删了，本条当场按设计要求
+    // 「同一拍把这条校验器一起处置」—— 它**还有人在用**（生产 TS 的 `planLauncher` 过它），
+    // 于是把 `payload.rs` 那条创建路径的理由写全、点了它的名。原先的推演留档如下：`CREATION_PATHS` 少一行、
     // 遍历那条断言照样绿，而 `VALIDATORS` 里 `shell-quote.ts` 这一行
     // **变成一条守着「没有任何创建路径在用的校验器」的判据** ——
     // 它仍然会逐字检查那个禁字集，仍然全绿，**而它守的东西已经不在人群里了**。

@@ -2471,17 +2471,18 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     // 〔LOC1a · 第四波 4D〕〔合并 LOC1a × 主线 66f2b6bf〕主线 31 ＋ 1：`tasks-panel.ts::fetchSessionTasks`（`tasks-list`）——
     //    任务快照从 monitor 的 Tauri 命令改走通道（C4e 批 4）；显式给期限。
     // 〔合并 HX1 × LOC1a〕两路各自 31 ＋ 1 ⇒ 31 ＋ 2 = 33。
+    // 〔HX2 · 4D〕〔合并 HX2 × 主线 290d8c33〕主线 33 ＋ 1 ⇒ 34：`apikey-reads.ts::writeApikeyKey`（`apikey-key-set`，写 key 从 monitor 那条 Tauri 命令改走通道）；显式给期限。
     // 〔CF2 · 第四波 4B〕`chan.subscribe`（TS，主界面）恰好 1 处：`events.ts::bindEvents` 按 `streams` 订会话内容流
     //    （主窗口每台机器一条、独立窗口一条，都经这一处）。
-    // 〔DL1 · 第五波〕1 → 2：`session-accounts-poll.ts::watchAccountsChanged`（每台一条 `accounts-changed`，
-    //    替掉裸事件 `remote-backend-ready`；`设计/01 §2.2`「前端只有两个动作」）。
-    //    〔合并 DL1 × 主线 06b5dc08〕`chan.call` 取主线的 33（DL1 没加 `chan.call`）· `chan.subscribe` 取 DL1 的 2（主线没加）。
+    // 〔TAP〕`session-tap` 与会话行走同一处（`plan` 里多一种流），仍是 1。
+    // 〔DL1 · 第五波〕`accounts-changed`（替掉裸事件 `remote-backend-ready`；`设计/01 §2.2`「前端只有两个动作」）同样经这一处
+    //    （合并 TAP 时从单独一处 `watchAccountsChanged` 收回 `bindEvents` 的 `plan`，照 TAP 那一形）⇒ 仍是 1。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 33usize),
-            ("chan.subscribe", 2usize),
+            ("chan.call", 34usize),
+            ("chan.subscribe", 1usize),
             ("subscribe", 1usize)
         ]
         .into_iter()

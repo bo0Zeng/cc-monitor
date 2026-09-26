@@ -13,7 +13,8 @@
 //!
 //! # 买不到的
 //!
-//! - 两个后端**进程**同时写（常驻那一个 ＋ 一次性 CLI）：后写的整份盖掉先写的，丢一次合并（下次同步补回）。本族只验同进程。
+//! - 〔HX2 · 4D 订正〕两个后端**进程**同时写：读—改—写整段在目录的跨进程锁里（`platform/lock.rs`）⇒ 不再「后写的整份盖掉先写的」。
+//!   本族的锁判据是两个线程各开一次描述（`flock` 锁在打开文件描述上，与两个进程同一种互斥），没有真起第二个进程。
 //! - 🔴 真 Windows：`USERPROFILE` 与 `COMPUTERNAME` 那一支没在 Windows 上跑过。
 
 use super::*;
@@ -422,4 +423,42 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
         homes, want,
         "`{needle}` 在生产代码里的家对不上（多 = 第二个写者；少 = 空转）"
     );
+}
+
+/// 🔴 〔HX2 · 第四波 4D〕L3：**资产目录首建时，第二个写者读到第一个写下的那份、不再生第二个 `self` id**（审计 E14a 幽灵机器）。
+///
+/// 要求住址：题面 HX2 逐字「后端自有状态文件跨进程锁（`flock` 一类，Windows 对应）」；`设计/96 §3.2`「机器身份：每台后端第一次记目录时
+/// 生成一个 id … 之后不变」。
+/// 做法：本线程拿住那个目录的锁（`platform/lock.rs`，与 `update_at` 拿的是同一把），另一线程对一份还不存在的目录文件跑 `update_at`
+/// ⇒ 限期内它不许落盘；本线程在锁里写下一份 `self = "first"` 的目录再放锁 ⇒ 它读到的是那一份，回的 `self` == `"first"`。
+/// （刀：`update_at` 不拿锁 ⇒ 它先读到「没有」、生一个新 id 回来。）
+#[test]
+fn hx2_the_first_catalog_is_born_once_even_when_two_writers_race() {
+    let dir = temp_dir("hx2-race");
+    let path = dir.join(FILE_NAME);
+    let held = crate::platform::lock::hold(&dir).expect("拿不到锁");
+    let (tx, rx) = std::sync::mpsc::channel();
+    let p2 = path.clone();
+    let racer = std::thread::spawn(move || {
+        let v = update_at(&p2, (vec![], vec![]), "racer@x", None).expect("另一个写者失败");
+        tx.send(v).unwrap();
+    });
+    assert!(
+        rx.recv_timeout(std::time::Duration::from_millis(400))
+            .is_err(),
+        "锁还在别人手里，另一个写者就读完写完了"
+    );
+    assert!(!path.exists(), "锁还在别人手里，目录文件就被写出来了");
+    let first = fresh("first".into());
+    std::fs::write(&path, serde_json::to_string(&first).unwrap()).unwrap();
+    drop(held);
+    let v = rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("放了锁，另一个写者还是没做完");
+    racer.join().unwrap();
+    assert_eq!(
+        v["self"], "first",
+        "第二个写者生了自己的 id —— 幽灵机器那一形"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }

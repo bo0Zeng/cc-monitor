@@ -26,9 +26,7 @@ vi.mock("@tauri-apps/api/core", async () => {
   return { invoke: tmuxControlShim(invokeMock, "backend_send_into") };
 });
 vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
-vi.mock("../src/behavior", () => ({
-  getBehavior: vi.fn().mockResolvedValue({ forceLaunchPayloadRenderer: false }),
-}));
+// 〔LR2〕原来这里 mock 了 `../src/behavior`（只为那个已删的逃生口）；`remote-launch-run.ts` 不再读行为配置。
 
 import { runRemoteResumeIntoExistingTmux } from "../src/remote-launch-run";
 import { renderLaunchPayloadStub } from "./test-support/launch-render-ipc-stub.ts";

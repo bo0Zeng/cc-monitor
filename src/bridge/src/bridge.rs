@@ -247,6 +247,29 @@ pub struct SessionContainerPayload {
     pub container: String,
 }
 
+/// 〔TAP · V124〕会话流 `session-tap`（通道 `subscribe`，`设计/05 §15`）里一格的体：后端 `tap` 帧的字段原样 ＋ 哪台机器。
+///
+/// `stream` = 路由第三段（前端拿它对 tab 的 sid，对不上 ⇒ 匿名流、不显示）；`resp` · `n` 见后端 `wire::Frame::Tap`；
+/// `data`（SSE 事件原文，一个 JSON 串）与 `end`（`"done"` / `"broken"`）恰有一个。
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+pub struct SessionTapPayload {
+    pub origin: crate::origin::Origin,
+    pub stream: String,
+    // C03 大整数策略：本进程第几个响应 / 响应里第几个事件，远在 2^53 之内；线上是 JSON 文本，`bigint` 是错的。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub resp: u64,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub n: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub data: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub end: Option<String>,
+}
+
 /// 〔U4b · 第四波〕`origin-sessions-listed` 的 payload：哪台机器的清单报完了。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]

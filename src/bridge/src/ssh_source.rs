@@ -1798,6 +1798,9 @@ pub enum InboundFrame {
         total: u64,
         end: Option<crate::sftp_pool::End>,
     },
+    /// 〔TAP · V124〕中转抄出来的一个 SSE 事件 / 一个响应的收尾（后端 `wire::Frame::Tap`）。只有**本机后端**那条流上会有
+    /// （中转住本机常驻后端），交 `session_tap::deliver`。`data` / `end` 都缺、或 `end` 认不出 ⇒ 整帧 `None`（坏帧）。
+    Tap(crate::session_tap::Tap),
 }
 
 /// 拥塞提示的**措辞**：有没有不可恢复的丢失，说法完全不同〔audit-0805 F21〕。
@@ -2114,6 +2117,25 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
             })
         }
 
+        // 〔TAP · V124〕中转抄出来的 SSE 事件。`data` 与 `end` 恰有一个：先认 `data`（原样，一个串），没有就必须是认得的 `end`。
+        "tap" => {
+            let stream = obj.get("stream")?.as_str()?.to_string();
+            let resp = obj.get("resp")?.as_u64()?;
+            let n = obj.get("n")?.as_u64()?;
+            let body = match obj.get("data") {
+                Some(d) => crate::session_tap::TapBody::Data(d.as_str()?.to_string()),
+                None => crate::session_tap::TapBody::End(crate::session_tap::TapEnd::from_wire(
+                    obj.get("end")?.as_str()?,
+                )?),
+            };
+            Some(InboundFrame::Tap(crate::session_tap::Tap {
+                stream,
+                resp,
+                n,
+                body,
+            }))
+        }
+
         // ── `turn_end` **认识但刻意不消费**（U7-1）。──────────────────────────
         //
         // 「认识」与「消费」是两件事。落进 `_ => None` 的后果不是「忽略」，是
@@ -2152,6 +2174,7 @@ const KNOWN_FRAME_KINDS: &[&str] = &[
     "session_removed",
     "session_status",
     "sessions_replayed",
+    "tap",
     "tmux_session_closed",
     "tmux_sessions",
     "transfer",
@@ -2340,11 +2363,27 @@ fn negotiate_version(reported_v: u64, reported_build_id: &str) -> VersionVerdict
 fn version_warning(reported_v: u64, reported_build_id: &str, label: &str) -> Option<String> {
     match negotiate_version(reported_v, reported_build_id) {
         VersionVerdict::Ok => None,
+        // 〔HX2 · 主会话 D-b〕按新旧分两句（部署只升不降，`sftp::identity_decision`）：
+        //   那台旧 ⇒ 下次连上的部署预检会换掉它；那台不比这一版旧 ⇒ 这个 monitor 不会把它换回去。
+        //   〔墓碑 —— 从前一句话不分新旧（`rsSshSource.version.buildMismatch`：「…建议更新后端（后续将支持自动部署）」），自动部署早已落地。〕
+        VersionVerdict::StaleBuild { reported }
+            if crate::sftp::is_newer(EXPECTED_BACKEND_BUILD_ID, &reported) =>
+        {
+            Some(copy_text(
+                "rsSshSource.version.remoteOlder",
+                &[
+                    ("label", &label.to_string()),
+                    ("reported", &reported.to_string()),
+                    ("mine", &EXPECTED_BACKEND_BUILD_ID.to_string()),
+                ],
+            ))
+        }
         VersionVerdict::StaleBuild { reported } => Some(copy_text(
-            "rsSshSource.version.buildMismatch",
+            "rsSshSource.version.remoteNotOlder",
             &[
                 ("label", &label.to_string()),
                 ("reported", &reported.to_string()),
+                ("mine", &EXPECTED_BACKEND_BUILD_ID.to_string()),
             ],
         )),
         VersionVerdict::Incompatible { .. } => Some(copy_text(
@@ -3730,6 +3769,15 @@ async fn stream_loop(
             Some(InboundFrame::Transfer { id, .. }) => {
                 tracing::warn!(
                     "ssh_source [{host_label}] 远端后端发来了传输帧（id={id}）—— 传输台在本机后端，丢掉"
+                );
+            }
+            // 〔TAP · V124〕远端的中转是脱离的 `--relay`，不在那台的流模式后端进程里 ⇒ 今天远端流上**没有** tap 来源
+            //   （怎么接是设计题，住仓外 `调研/第四波记录/TAP.md §8` 题 1）。真来了：没有设计过它怎么对 sid，不转；
+            //   不按帧刷 warn（token 级的频率会把日志淹掉）—— 记一句 debug。
+            Some(InboundFrame::Tap(t)) => {
+                tracing::debug!(
+                    "ssh_source [{host_label}] 远端后端发来了 tap 帧（stream={}）—— 远端 tap 还没有设计，丢掉",
+                    t.stream
                 );
             }
             None => {

@@ -12,7 +12,7 @@ import type {
   LaunchContext,
   LaunchModifiers,
   LaunchPlan,
-} from "./launch-plan.ts";
+} from "./launch-types.ts";
 import { copyText } from "./copy-table";
 
 export interface LaunchPlanBuild {
@@ -29,7 +29,7 @@ function accountOf(configDir?: string, name?: string): LaunchAccount {
   return configDir ? { kind: "account", name, configDir } : { kind: "base" };
 }
 
-/** 对应 `buildResumeDirectCmd`：无容器（直连），resume 到当前登录 shell。
+/** 原先对应 `remote-launch.ts` 的 `buildResumeDirectCmd`（〔LR2〕那五个 builder 已删，生产走 `buildLaunchRenderRequest` → Rust）：无容器（直连），resume 到当前登录 shell。
  *
  *  🔴 **`设计/80 §8.4` 那张表里「今天做不到 ↗ 的那一档」就是这一格**（`container:{kind:"none"}`，
  *  `§6.1`/`§5 方案 A` 明确不覆盖它，因为它没有 tmux 可以挂 `@ccm_sid`）。
@@ -63,7 +63,7 @@ export function planResumeDirect(
   return { ctx, plan: buildLaunchPlan(ctx) };
 }
 
-/** 对应 `buildResumeTmuxCmd`：新建/幂等接回 tmux，resume 进去。 */
+/** 原先对应 `remote-launch.ts` 的 `buildResumeTmuxCmd`（〔LR2〕那五个 builder 已删，生产走 `buildLaunchRenderRequest` → Rust）：新建/幂等接回 tmux，resume 进去。 */
 export function planResumeTmux(
   sid: string,
   cwd: string,
@@ -106,7 +106,7 @@ export function planResumeTmux(
   return { ctx, plan: buildLaunchPlan(ctx) };
 }
 
-/** 对应 `buildResumeIntoExistingTmuxCmd`：往已存在的 idle tmux 就地送键，不 new-session。 */
+/** 原先对应 `remote-launch.ts` 的 `buildResumeIntoExistingTmuxCmd`（〔LR2〕那五个 builder 已删，生产走 `buildLaunchRenderRequest` → Rust）：往已存在的 idle tmux 就地送键，不 new-session。 */
 export function planResumeIntoExistingTmux(
   sid: string,
   name: string,
@@ -134,7 +134,7 @@ export function planResumeIntoExistingTmux(
   return { ctx, plan: buildLaunchPlan(ctx) };
 }
 
-/** 对应 `buildLauncherCmd`：「在这台机开新 Claude」——新建/幂等接回 tmux，起全新会话。 */
+/** 原先对应 `remote-launch.ts` 的 `buildLauncherCmd`（〔LR2〕那五个 builder 已删，生产走 `buildLaunchRenderRequest` → Rust）：「在这台机开新 Claude」——新建/幂等接回 tmux，起全新会话。 */
 export function planLauncher(
   cwd: string,
   tmuxName: string,
@@ -194,7 +194,7 @@ export function validateLocalLaunch(action: LaunchAction, cwd: string | null): v
   }
 }
 
-/** 对应 `buildAttachCmd`：接回一个已存在的 tmux 会话，不启动任何东西。
+/** 原先对应 `remote-launch.ts` 的 `buildAttachCmd`（〔LR2〕那五个 builder 已删，生产走 `buildLaunchRenderRequest` → Rust）：接回一个已存在的 tmux 会话，不启动任何东西。
  *
  *  ⚠ **刻意不收 `mods`**（原状），于是也**不带启动期令牌** —— 不是漏了：
  *  attach 一个 agent 进程都不起，而令牌的唯一消费者是 agent 进程的 `environ`

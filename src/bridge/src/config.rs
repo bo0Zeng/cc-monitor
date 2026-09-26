@@ -15,8 +15,9 @@
 //!
 //! 现在前端只交「改哪几条路径」（[`ConfigEdit`]），这里在**一把进程级锁里现读盘、逐条应用、原子替换** ——
 //! 主窗 / 设置窗 / `logging.rs` 的诊断写口都走这一个函数，谁写的键谁的值留在盘上。
-//! 射程：锁是进程内的。两个 monitor 进程同写（Linux / macOS 今天没有单实例）仍在锁外；
-//! 那时每一次写仍是「锁内现读 ＋ 只改自己的路径」，丢更新的窗口缩到读与 rename 之间。
+//! 〔HX2 · 4D〕两个 monitor 进程同写（Linux / macOS 今天没有单实例）也串起来了：进程内那把锁里面、现读之前，
+//! 再拿 `config.json` 所在目录的**跨进程**锁（`platform_fs::hold_dir_lock`：unix 对目录 `flock` · Windows 命名互斥量，与后端第四层同一种锁）。
+//! 〔墓碑 —— CFG1 那一版这里写「射程：锁是进程内的。两个 monitor 进程同写仍在锁外；丢更新的窗口缩到读与 rename 之间」。〕
 
 use crate::copy_table::copy_text;
 use crate::paths;
@@ -115,6 +116,13 @@ pub(crate) fn patch_config_at(path: &Path, edits: &[ConfigEdit]) -> Result<(), C
     }
     // ② 串行化。锁中毒（别的写者 panic 了）不妨碍这一次：锁只护「读-改-写」这一段，没有要恢复的内存状态。
     let _guard = WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    // ②b 〔HX2 · 4D〕跨进程：两个 monitor 进程同写也串起来 —— 先保证目录在（锁的就是它），再拿它的锁，锁住之后才现读。
+    let dir = path
+        .parent()
+        .ok_or_else(|| ConfigWriteError::Io(format!("no parent dir for {}", path.display())))?;
+    std::fs::create_dir_all(dir)
+        .map_err(|e| ConfigWriteError::Io(format!("mkdir {}: {e}", dir.display())))?;
+    let _cross = crate::platform_fs::hold_dir_lock(dir).map_err(ConfigWriteError::Io)?;
 
     // ③ 锁内现读。不存在 ⇒ 空对象；读不懂 / 根不是对象 ⇒ 不写。
     let mut root: Map<String, Value> = if path.exists() {
@@ -136,10 +144,7 @@ pub(crate) fn patch_config_at(path: &Path, edits: &[ConfigEdit]) -> Result<(), C
             }
         }
     } else {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| ConfigWriteError::Io(format!("mkdir {}: {e}", parent.display())))?;
-        }
+        // 目录已在 ②b 建过（拿锁之前）。
         Map::new()
     };
 

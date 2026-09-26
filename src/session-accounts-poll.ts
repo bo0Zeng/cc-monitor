@@ -42,15 +42,14 @@
  *    monitor 早就把它们转成 `remote-session-added` / `session-ended` 两个事件。
  *
  * ⇒ 刷新改由事件驱动（{@link createEventRefresher}）：长连接握手完成（〔DL1〕经通道订的 `accounts-changed` 流里那一格 `seen`，
- * 强制刷账号清单；原先是裸事件 `remote-backend-ready`，见 {@link watchAccountsChanged}）· 会话起停 · 本 UI 切号。**零定时器**。
+ * 强制刷账号清单；原先是裸事件 `remote-backend-ready`，见 {@link accountsChangedItems}）· 会话起停 · 本 UI 切号。**零定时器**。
  * 买不到的一格如实写：**另一个 monitor 改了默认账号、而这台上没有任何会话起停** ——
  * 这边的账号清单要等下一次握手 / 会话起停 / 本 UI 操作才刷新（此前最多 30 秒）。
  */
 
 import type { RemoteHostConfig } from "./remote-config";
 import type { Account, AccountsState, SessionAccount } from "./accounts";
-import type { Item, Sub } from "./ipc/chan";
-import type { Origin } from "./ipc/origin";
+import type { Item } from "./ipc/chan";
 
 /**
  * 同时在飞的远端数上限。
@@ -225,63 +224,30 @@ export const ACCOUNTS_CHANGED_KIND = "accounts-changed";
 export const ACCOUNTS_CHANGED_WINDOW = 8;
 
 /**
- * {@link watchAccountsChanged} 要的那一个动作（生产传 `src/ipc/chan.ts` 的 `chan`；判据传替身）。
- * 形参就叫 `chan`：调用点写成 `chan.subscribe(`，`X6` 的入口人群（按全名 `chan.subscribe` 数，`comm_boundary_registry_tests::ENTRIES`）认得出它。
- */
-export interface AccountsChangedChannel {
-  subscribe(
-    origin: Origin,
-    kind: string,
-    from: Uint8Array | null,
-    want: number,
-    sink: (items: Item[]) => void,
-  ): Promise<Sub>;
-}
-
-/**
- * 〔DL1〕**每台机器订一条 `accounts-changed`**（替掉裸事件 `remote-backend-ready`）：
+ * 〔DL1 · 合并 TAP 时收成这一形〕**`accounts-changed` 流里的一批格 ⇒ 要不要刷、还多少 credit**（纯函数）。
+ *
+ * 订阅本身与会话行 · tap 走**同一处** `chan.subscribe`（`events.ts::bindEvents` 的 `plan`，`X6` 调用点恰好一处）；
+ * 这里只答「这一批格是什么意思」：
  *
  * | 格 | 意思 | 这里 |
  * |---|---|---|
- * | `seen` | 那台的长连接（又）通了、能问了 | `onChange()` |
- * | `frame` | 那台后端说账号清单变了（`05 §13.6 ③`） | `onChange()`，用掉的 credit 当场还 |
- * | `gap` | 没 credit 时丢过几格 | 当成变过：`onChange()` |
- * | `unseen` / `closed` | 断了 / 这条订阅没了 | 不叫（断着问不到；连上时会有 `seen`） |
+ * | `seen` | 那台的长连接（又）通了、能问了 | 要刷 |
+ * | `frame` | 那台后端说账号清单变了（`05 §13.6 ③`） | 要刷，占一格 credit（当场还） |
+ * | `gap` | 没 credit 时丢过几格 | 当成变过：要刷 |
+ * | `unseen` / `closed` | 断了 / 这条订阅没了 | 不刷（断着问不到；连上时会有 `seen`） |
  *
- * 一批里有几格都只叫一次。格可能先于 `subscribe` 的返回到达（`chan.ts` 头注）⇒ 欠的 credit 先记着、拿到 `Sub` 再还。
- * ⚠ 订阅登记之前那一窗里连上的，**不会**有 `seen`（订阅时那台已经看得见 ⇒ 句柄不补说）—— 由调用方在返回之后补刷一次。
+ * 一批里有几格都只刷一次（`changed` 是一个布尔）。
  */
-export async function watchAccountsChanged(
-  chan: AccountsChangedChannel,
-  origins: readonly Origin[],
-  onChange: () => void,
-): Promise<Sub[]> {
-  return Promise.all(
-    origins.map(async (origin) => {
-      const hold: { sub: Sub | null; owed: number } = { sub: null, owed: 0 };
-      const sub = await chan.subscribe(origin, ACCOUNTS_CHANGED_KIND, null, ACCOUNTS_CHANGED_WINDOW, (items) => {
-        let changed = false;
-        let frames = 0;
-        for (const it of items) {
-          if (it.t === "frame") {
-            frames += 1;
-            changed = true;
-          } else if (it.t === "seen" || it.t === "gap") {
-            changed = true;
-          }
-        }
-        if (frames > 0) {
-          if (hold.sub) hold.sub.want(frames);
-          else hold.owed += frames;
-        }
-        if (changed) onChange();
-      });
-      hold.sub = sub;
-      if (hold.owed > 0) {
-        sub.want(hold.owed);
-        hold.owed = 0;
-      }
-      return sub;
-    }),
-  );
+export function accountsChangedItems(items: readonly Item[]): { changed: boolean; frames: number } {
+  let changed = false;
+  let frames = 0;
+  for (const it of items) {
+    if (it.t === "frame") {
+      frames += 1;
+      changed = true;
+    } else if (it.t === "seen" || it.t === "gap") {
+      changed = true;
+    }
+  }
+  return { changed, frames };
 }
