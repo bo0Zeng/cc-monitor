@@ -349,7 +349,7 @@ const STILL_SHELL: &[(&str, &str, StillShell, &str)] = &[
     ("sftp.rs", "remote_identity", StillShell::Bootstrap,
      "部署后端之前扫落点那一份的身份戳（判「是不是这一版」、要不要换）—— 被判的正是那台的后端本身"),
     ("pubkey.rs", "push_public_key", StillShell::Bootstrap,
-     "把公钥推进那台 `authorized_keys`：密钥登录建立之前的一步（那台可能还没有后端）；写的是用户文件 ⇒ 装好后端之后该改经 `files-put`，登记在「要主会话拍」"),
+     "把公钥推进那台 `authorized_keys`：只剩**那台后端还不在**那一形（密钥登录建立之前）；〔SH1〕后端在 ⇒ 已改经 `files-put` ＋ `files-chmod`（`pubkey.rs::push_via_backend`）"),
     ("acct_iso_deploy.rs", "exec_collect", StillShell::Deploy,
      "〔LOC1a〕只剩部署那两步（跑 `cc-acct-iso-install.sh` · 核 `~/.local/bin` 看得见它）；装没装 / 片段两问已改问那台后端（`acct-iso-status` / `acct-iso-shellinit`）"),
     // 〔SH1 · V137〕`mcp.rs` 那一行摘了：`agents::Adapter` 长了一格 MCP 读，后端 `mcp-read` 出成品（V137 选的那一条）。

@@ -168,3 +168,71 @@ fn append_respects_newline_boundary_and_idempotent() {
 
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// 〔SH1〕并进 `authorized_keys` 的纯规划：整行相等才算已有（`grep -qxF` 同义）· 末行无换行先补一个 · 空文件 / 不在直接一行。
+#[test]
+fn authorized_keys_plan_matches_the_shell_line() {
+    let k = "ssh-ed25519 AAAAC3Nza me@x";
+    assert_eq!(
+        plan_authorized_keys(None, k),
+        (PushOutcome::Added, Some(format!("{k}\n")))
+    );
+    assert_eq!(
+        plan_authorized_keys(Some(""), k),
+        (PushOutcome::Added, Some(format!("{k}\n")))
+    );
+    assert_eq!(
+        plan_authorized_keys(Some("ssh-rsa AAAA old"), k),
+        (PushOutcome::Added, Some(format!("ssh-rsa AAAA old\n{k}\n"))),
+        "末行没换行 ⇒ 先补一个，不许把两把钥匙粘成一行"
+    );
+    assert_eq!(
+        plan_authorized_keys(Some(&format!("a\n{k}\n")), k),
+        (PushOutcome::Already, None)
+    );
+    assert_eq!(
+        plan_authorized_keys(Some(&format!("{k} extra\n")), k).0,
+        PushOutcome::Added,
+        "前缀相同不算已有（整行相等）"
+    );
+}
+
+/// 〔SH1〕那台后端在 ⇒ 经它的文件管理面写：读改写落在 `<home>/.ssh/authorized_keys`（建父目录）、两次 chmod 700 / 600；
+/// 再推一次同一把 ⇒ `Already`、一个字节不写。
+/// 要求住址：`exec_site_registry_tests::STILL_SHELL` pubkey 那一行「装好后端之后该改经 `files-put`」。
+#[cfg(unix)]
+#[test]
+fn with_a_backend_the_key_lands_through_the_file_face() {
+    use std::os::unix::fs::PermissionsExt;
+    let home = std::env::temp_dir().join(format!("sh1-pubkey-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    std::fs::create_dir_all(&home).unwrap();
+    let door = crate::user_files::tests::DiskDoor::new(&home);
+    let k = "ssh-ed25519 AAAAC3Nza me@x";
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let first = rt.block_on(push_via_backend(&door, k)).expect("第一次推");
+    let second = rt.block_on(push_via_backend(&door, k)).expect("第二次推");
+    let text = std::fs::read_to_string(home.join(".ssh/authorized_keys")).unwrap();
+    let dmode = std::fs::metadata(home.join(".ssh"))
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+    let fmode = std::fs::metadata(home.join(".ssh/authorized_keys"))
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+    let puts = door.puts.borrow().len();
+    let _ = std::fs::remove_dir_all(&home);
+    assert_eq!((first, second), (PushOutcome::Added, PushOutcome::Already));
+    assert_eq!(text, format!("{k}\n"));
+    assert_eq!(
+        (dmode, fmode),
+        (0o700, 0o600),
+        "权限要与 shell 那一串的 chmod 逐条同"
+    );
+    assert_eq!(puts, 1, "第二次是 Already，一个字节都不该写");
+}
