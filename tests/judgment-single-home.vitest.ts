@@ -266,7 +266,8 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     what: "文案表取文 ＋ 插值",
     homes: ["copy-core::copy_text"],
     // 〔DUP2 · 主会话 09-26 裁 J11 → 甲〕设计认可的双读口：登记为镜像 ＋ 插值对拍（只对拍合法插值）。
-    //   两侧有意不同的几形（缺键 TS 抛 / Rust 回 `〔key〕` · 参数对不上 · 值里含别的占位符）照现状登记在金样 `_differences`。
+    //   两侧有意不同的几形（缺键 TS 抛 / Rust 回 `〔key〕` · 参数对不上）照现状登记在金样 `_differences`。
+    // 〔DUP3 · 主会话 09-26 裁〕「值里含别的占位符」那一形不再不同：Rust 读口改成单趟（值不再被扫），金样 `cases` 多一条钉它。
     status: "mirror",
     defs: ["copyText"],
     needles: [],

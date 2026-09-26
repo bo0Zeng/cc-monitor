@@ -49,7 +49,8 @@ fn the_static_form_is_the_same_text_and_lives_forever() {
 /// 〔DUP2 · `设计/01 §6.9`「前端读口 `copy-table.ts::copyText`；Rust 读口只有一份实现 `copy-core::copy_text`」〕
 /// **两个读口的插值对拍**：共用金样 `tests/__fixtures__/copy-interpolation.golden.json` 逐条喂给本读口，
 /// 期望是金样里**手写**的（TS 那一侧 `tests/copy/copy-table.vitest.ts` 读同一份跑 `copyText`）⇒ 两侧各对金样，不是彼此对拍。
-/// 只收合法插值；两侧有意不同的那几形（缺键 · 参数对不上 · 值里含别的占位符）登记在金样 `_differences`，不在这里。
+/// 只收合法插值；两侧有意不同的那几形（缺键 · 参数对不上）登记在金样 `_differences`，不在这里。
+/// 〔DUP3〕「值里含别的占位符」那一形原先也登记在那里（本读口逐个 `replace` 会把值再换一遍）；改成单趟之后两侧一致，挪进 `cases`。
 #[test]
 fn the_shared_interpolation_golden_agrees_with_this_reader() {
     let raw = include_str!("../../../__fixtures__/copy-interpolation.golden.json");
@@ -82,4 +83,39 @@ fn the_shared_interpolation_golden_agrees_with_this_reader() {
         }
     }
     assert_eq!(wrong, Vec::<String>::new(), "Rust 读口与插值金样对不上");
+}
+
+/// 〔DUP3 · 主会话 09-26 裁：插值不该重新解释值〕**单趟**：值里带的 `{名}` 不再被扫；没给的占位符原样留；
+/// 一个不成对 / 不是给了值的 `{` 原样留着、后面的占位符照认。正反各一格（只断「不重扫」的话，把插值焊成「一个都不换」也能绿）。
+#[test]
+fn the_interpolation_is_one_pass_and_never_rescans_a_value() {
+    // 值里带另一个参数的占位符：原样留着（先前逐个 replace ⇒ `[%1] tmux: %1`）。
+    assert_eq!(
+        copy_text(
+            "panePreview.head.title",
+            &[("origin", "{target}"), ("target", "%1")]
+        ),
+        "预览画面 · [{target}] tmux: %1"
+    );
+    // 参数给的顺序反过来也一样（先前的写法只在一个方向上重扫 —— 顺序不该是语义的一部分）。
+    assert_eq!(
+        copy_text(
+            "panePreview.head.title",
+            &[("target", "{origin}"), ("origin", "aya")]
+        ),
+        "预览画面 · [aya] tmux: {origin}"
+    );
+    // 值里带它自己的占位符、带花括号残片：都原样。
+    assert_eq!(
+        copy_text(
+            "panePreview.head.title",
+            &[("origin", "{origin}"), ("target", "{a{b}")]
+        ),
+        "预览画面 · [{origin}] tmux: {a{b}"
+    );
+    // 正控：两个占位符都真换了（不是「一个都不换」）。
+    assert_eq!(
+        copy_text("panePreview.head.title", &[("origin", "aya"), ("target", "%1")]),
+        "预览画面 · [aya] tmux: %1"
+    );
 }

@@ -37,6 +37,11 @@ fn entries() -> &'static serde_json::Map<String, serde_json::Value> {
 ///
 /// 表里没有这个 key ⇒ 回 `〔key〕`（走不到：`copy-table.vitest.ts` 把 `.rs` 的每个调用点与表两向对拍；
 /// 但不许 panic —— 一句话缺了不该拖垮它所在的那条路）。
+///
+/// 〔DUP3 · 主会话 09-26 裁〕**单趟**：从左到右扫一遍模板，`{名}` 且这个名给了值 ⇒ 换成值，**值本身不再被扫**；
+/// 没给的原样留 `{名}`（Rust 读口的处置，`设计/01 §6.9` 认可的两读口差异，金样 `_differences` 登记着）。
+/// 先前逐个参数对整串 `replace` —— 前一个参数的值里若含 `{后一个参数名}`，会被后一个再换一遍：插值重新解释了值。
+/// 与前端读口 `copy-table.ts::copyText` 那一趟同形（金样 `tests/__fixtures__/copy-interpolation.golden.json` 两侧各对）。
 pub fn copy_text(key: &str, args: &[(&str, &str)]) -> String {
     let Some(zh) = entries()
         .get(key)
@@ -45,10 +50,30 @@ pub fn copy_text(key: &str, args: &[(&str, &str)]) -> String {
     else {
         return format!("〔{key}〕");
     };
-    let mut out = zh.to_string();
-    for (name, value) in args {
-        out = out.replace(&format!("{{{name}}}"), value);
+    let mut out = String::with_capacity(zh.len());
+    let mut rest = zh;
+    while let Some(open) = rest.find('{') {
+        out.push_str(&rest[..open]);
+        let after = &rest[open + 1..];
+        let given = after.find('}').and_then(|close| {
+            let name = &after[..close];
+            args.iter()
+                .find(|(n, _)| *n == name)
+                .map(|(_, v)| (close, *v))
+        });
+        match given {
+            Some((close, value)) => {
+                out.push_str(value);
+                rest = &after[close + 1..];
+            }
+            // 不是一个给了值的占位符 ⇒ 这个 `{` 原样留下，从它后面接着扫（`{a{b}` 里的 `{b}` 照样认）。
+            None => {
+                out.push('{');
+                rest = after;
+            }
+        }
     }
+    out.push_str(rest);
     out
 }
 
