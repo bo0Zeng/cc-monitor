@@ -2,7 +2,10 @@
  * F88b（#52）：用量 HUD chip——挂 status-bar，显**活跃会话 context 占用%**（近似：最新一轮
  * assistant 记录的 input+cache token ÷ 模型上限）。逼近上限（≥80%）高亮预警——最可行动的实时信号。
  *
- * 纯前端、零后端：数据来自 live 流（TabManager onLine 捕获活跃会话最新 assistant 的 usage+model）。
+ * 〔STC · `设计/90 §4` 阶段 C〕数据来自后端的会话事实（`history-facts` 的 `usage`：文件序最后一条带有效 usage 的 assistant 记录），
+ * 经 `TabManager.onActiveUsageChanged` 喂进来；上限表与百分比仍在前端（`views/context-limit.ts`，那是排版）。
+ * 从前它由 `onLine` 旁路一条一条攒（`设计/50 §2` ① 那格写的「纯前端、零后端」指的是那时候），F5 之后只看得见重放那一截。
+ * 事实要不到 ⇒ `setUnavailable(原因)`：chip 显示 `ctx —`、提示里说原因（`设计/05 §14.3`「不可用，不是空表」）。
  * **只 token 不 $**（用户 2026-07-17 拍板）。模型上限表在 `views/context-limit.ts`（未知模型显 `?`，不显错%）。
  *
  * 「今日 token」= 后续项（需跨会话聚合，非纯前端；本刀先聚焦 context% 这个最高价值信号）。
@@ -18,6 +21,8 @@ export class UsageHud {
   readonly summaryElement: HTMLButtonElement;
   private model: string | null = null;
   private promptTokens: number | null = null;
+  /** 〔STC〕活跃会话的会话事实要不到的原因（`null` = 可用）。非空时压过上面两格（那两格可能是旧的）。 */
+  private unavailable: string | null = null;
   /** 模型上限用户覆盖表（config.json `contextLimits`）——纠正标准 1M 模型串被当 200k 的 ctx% 误报。 */
   private limitOverrides: ContextLimitOverrides = {};
 
@@ -64,8 +69,21 @@ export class UsageHud {
     this.render();
   }
 
+  /** 〔STC〕活跃会话的会话事实要不到 ⇒ 说出来（`null` = 又可用了 / 切到了可用的会话）。 */
+  setUnavailable(reason: string | null): void {
+    this.unavailable = reason;
+    this.render();
+  }
+
   private render(): void {
     const btn = this.summaryElement;
+    if (this.unavailable !== null) {
+      btn.style.display = "";
+      btn.textContent = "ctx —";
+      btn.title = copyText("usageHud.render.factsUnavailable", { reason: this.unavailable });
+      btn.classList.remove(s.high);
+      return;
+    }
     if (this.promptTokens == null) {
       btn.style.display = "none";
       btn.classList.remove(s.high); // 隐藏时清干净状态，防下次 show 前残留

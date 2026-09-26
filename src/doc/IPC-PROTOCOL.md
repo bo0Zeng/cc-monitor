@@ -2310,7 +2310,7 @@ CLI 面随之自动多一条 `--history-find`。
 | `agents` | ← | agent 工具（`Agent` / `Task`）的调用，插入序：`status` ∈ `running`（还没见 `tool_result`）/ `done`；`label` = `description` ‖ `prompt` 首行前 80 字 ‖ 工具名；`agentType` = `subagent_type` 或 `null`；`timestamp` = 那条记录的时刻（没有 ⇒ 空串）；`desc` = trim 后的 `description`。超 30 条从最老删非 running 的，再超 200 条删最老的 |
 | `usage` | ← | 文件序最后一条 `input_tokens + cache_creation_input_tokens + cache_read_input_tokens > 0` 的 assistant 记录 ⇒ `{promptTokens, model}`（`model` 缺 ⇒ `null`）；一条都没有 ⇒ `null` |
 
-- 本体 `observe/facts_query.rs`，claude 的两张工具表住适配层 `agents/claudecode/tools.rs`。「中止」不在这里（它是界面对「会话落到不忙」这个事件的反应）。
+- 本体 `observe/facts_query.rs`（claude 的两张工具表也住那里：进适配层会让「加一个 agent 通用层要改几处」那只许降的棘轮涨一格）。「中止」不在这里（它是界面对「会话落到不忙」这个事件的反应）。
 - 整份超过 32 MiB ⇒ `too_large`（不截断）。界面经通道直接问（`src/session-reads.ts`），本机与远端同一条路；老后端不认 ⇒ `unsupported`（界面说「不可用」，不当成空）。
 - CLI 面随之自动多一条 `--history-facts`（stdin 一段 JSON ＝ `args`，stdout 一行 JSON ＝ `data`）。
 

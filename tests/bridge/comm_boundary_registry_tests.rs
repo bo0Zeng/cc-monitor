@@ -2466,13 +2466,15 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     // 〔MG1 · 合并 SU1 ＋ C4e〕基数 18 ＋ SU1 增量 2 ＋ C4e 增量 9 = 29（两路各自从 18 起算；上面两段各写各的增量）。
     // 〔US1 · 第四波 4D〕〔合并 US1 × 主线〕主线 29 ＋ 2：`apikey-reads.ts::readApikeyStatus`（`apikey-read`）· `fetchApikeyRouting`（`apikey-routing`）——
     //    API key 那两问从 monitor 的两条 Tauri 命令改走通道；每处显式给期限。
+    // 〔STC · 第四波 4D〕31 → 32：`session-reads.ts::readSessionFacts`（`history-facts`，会话事实出成品 —— 此前是前端 `onLine`
+    //    旁路自己攒的，不是替掉一条 Tauri 命令）；显式给期限（`READ_BUDGET_MS`）。
     // 〔CF2 · 第四波 4B〕`chan.subscribe`（TS，主界面）恰好 1 处：`events.ts::bindEvents` 按 `streams` 订会话内容流
     //    （主窗口每台机器一条、独立窗口一条，都经这一处）。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 31usize),
+            ("chan.call", 32usize),
             ("chan.subscribe", 1usize),
             ("subscribe", 1usize)
         ]

@@ -156,7 +156,7 @@ const UNIT: &[&str] = &[
     "tests/panorama/agent-clip.vitest.ts",
     "tests/panorama/d20-gate.vitest.ts",
     "tests/panorama/layout.vitest.ts",
-    "tests/panorama/session-files.test.ts",
+    // 〔STC〕`tests/panorama/session-files.test.ts` 出列：被测对象（写类工具口径）搬进后端，七条搬成 `tests/backend/observe/facts_query_tests.rs` 里一条。
     "tests/panorama/subgraph-layers.vitest.ts",
     "tests/reconcile-shell.vitest.ts",
     "tests/record-timeline.vitest.ts",

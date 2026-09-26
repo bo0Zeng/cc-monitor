@@ -236,6 +236,13 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
          只在核「恰一行 ＋ 严格形状」—— 核验搬到唯一的消费者 `settings/plugins-section.ts::decodeSurvey`，命令与 `plugins.rs` 删了",
     ),
     // 〔C4c · 第四波 4B〕`C4b.md §6.6` A 组第一批：后端已是成品、monitor 只在转的那一条。
+    // 〔STC · `设计/90 §4` 阶段 C〕生在帧面上、界面直接问的第二条。
+    (
+        "history-facts",
+        "`BORN_ON_FRAME` 那一条：后端出成品 `{end, forkedFrom, touchedFiles, agents, usage}`（`observe/facts_query.rs`），\
+         续传令牌就是上一份成品原样；前端 `src/session-reads.ts::readSessionFacts` 问、`decodeFacts` 按恰好的键集合收，\
+         monitor 这一侧零发送点（它替掉的是前端 `onLine` 上四个旁路记账员，不是一条 monitor 命令）",
+    ),
     (
         "history-record",
         "`BORN_ON_FRAME`（U4b）那一条：后端应答就是成品 `{present, root}`，monitor 那条命令（`probe_session_record`）\

@@ -345,3 +345,68 @@ fn the_two_lookups_answer_from_their_tables() {
     }
     assert_eq!(edit_path_key("Read"), None);
 }
+
+/// 〔STC〕写类工具的口径 —— **逐条搬自前端被删的 `tests/panorama/session-files.test.ts`**（七条，被测对象
+/// `collectEditedFiles` 随搬家删了、口径住进本文件）：Edit / Write / MultiEdit 取 `file_path` · NotebookEdit 取
+/// `notebook_path` · 非写类不收 · 多个全收保序 · 非 assistant 不收 · 畸形静默跳过 · Windows 路径原样收。
+/// （单条记录内的顺序就是块序；去重 / 近因序那一格在 [`the_four_facts_follow_the_moved_rules`]。）
+#[test]
+fn edit_tools_rules_moved_from_the_frontend_suite() {
+    let files = |recs: Vec<Value>| scan_all(&jsonl(&recs)).touched_files;
+    let one = |name: &str, input: Value| files(vec![assistant(vec![tool_use("x", name, input)])]);
+    assert_eq!(one("Edit", json!({"file_path": "/a.ts"})), vec!["/a.ts"]);
+    assert_eq!(one("Write", json!({"file_path": "/b.rs"})), vec!["/b.rs"]);
+    assert_eq!(
+        one("MultiEdit", json!({"file_path": "/c.py"})),
+        vec!["/c.py"]
+    );
+    assert_eq!(
+        one("NotebookEdit", json!({"notebook_path": "/n.ipynb"})),
+        vec!["/n.ipynb"]
+    );
+    assert!(files(vec![assistant(vec![
+        tool_use("1", "Bash", json!({"command": "ls"})),
+        tool_use("2", "Read", json!({"file_path": "/r.ts"})),
+        tool_use("3", "Grep", json!({"pattern": "x"})),
+    ])])
+    .is_empty());
+    assert_eq!(
+        files(vec![assistant(vec![
+            tool_use("1", "Edit", json!({"file_path": "/a"})),
+            tool_use("2", "Bash", json!({"command": "x"})),
+            tool_use("3", "Write", json!({"file_path": "/b"})),
+        ])]),
+        vec!["/a", "/b"]
+    );
+    assert!(files(vec![json!({"type": "user", "message": {"content": [tool_use("x", "Edit", json!({"file_path": "/a"}))]}})]).is_empty());
+    for (what, rec) in [
+        (
+            "无 file_path",
+            assistant(vec![tool_use("x", "Edit", json!({}))]),
+        ),
+        (
+            "非字符串",
+            assistant(vec![tool_use("x", "Edit", json!({"file_path": 123}))]),
+        ),
+        (
+            "空串",
+            assistant(vec![tool_use("x", "Edit", json!({"file_path": ""}))]),
+        ),
+        (
+            "非 tool_use",
+            assistant(vec![json!({"type": "text", "text": "hi"})]),
+        ),
+        ("无 content", json!({})),
+        ("null", json!(null)),
+        (
+            "content 非数组",
+            json!({"type": "assistant", "message": {"content": "notarray"}}),
+        ),
+    ] {
+        assert!(files(vec![rec]).is_empty(), "{what}：应当静默跳过");
+    }
+    assert_eq!(
+        one("Write", json!({"file_path": "C:\\proj\\a.ts"})),
+        vec!["C:\\proj\\a.ts"]
+    );
+}
