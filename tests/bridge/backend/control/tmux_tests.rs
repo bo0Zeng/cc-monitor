@@ -196,7 +196,9 @@ fn ccm_tmux_name_whitelist() {
     assert!(!is_ccm_tmux_name("cc-a$x")); // 元字符
 }
 
-/// F04 Gate 1：**只有空 target** 恒被拒——`=:` 会解析成「当前会话」，是唯一真正危险的默认值。
+/// F04 Gate 1：**空 target** 恒被拒——`=:` 会解析成「当前会话」，是唯一真正危险的默认值。
+/// 〔DUP3 · 主会话 09-26 裁〕Gate 1 并进 `gate-core` 的 tmux 名那一族：判定是「已有会话」那一条
+/// `gate_core::existing_tmux_name_issue`（空 · 控制符 · 视觉欺骗字符），先前本侧与界面各一份的「只拒空」是它的真子集。
 ///
 /// # ⚠ `K-R72`（09-12）：**人群没缩，只是换了住址**
 ///
@@ -204,33 +206,50 @@ fn ccm_tmux_name_whitelist() {
 /// `build_send_keys_remote_cmd` 不在了 —— 但 Gate 1 **不是那两条回落的东西**：  〔散文墓碑〕
 /// 它守的是「任何拿 target 去做事的入口，都得先把空目标拒掉」。⇒ 本条改打
 /// **今天三条路各自真正的入口**，一条都没少：
-/// ① 谓词本体 [`gate1_reject_empty`]（今天只剩 [`exact_target`] 这个跨轨锚点在用）；
+/// ① 谓词本体 [`gate1_admit_target`]（今天只剩 [`exact_target`] 这个跨轨锚点在用）；
 /// ②③④〔C4e · 第四波 4C〕三条路（抓屏 · 送键 · 杀会话）的生产入口原本也在这里真跑一遍、断言在任何 IO 之前就地拒；
 ///    三条整条迁到界面之后（`src/tmux-control.ts`），那一格随入口搬过去：`tests/tmux-control.vitest.ts`
 ///    「空目标就地拒，一个字节都不发」三个入口各一条（Tauri 命令 `tmux_send_keys` / `kill_remote_tmux`〔散文墓碑〕删了）。
 ///
 /// 含 glob/元字符但非空的 target **不**在这一层被拒（`shell_quote` 已安全引号化，
 /// 字符集收紧是〔DUP2〕`gate-core` 那两条（`new_tmux_name_issue` / `existing_tmux_name_issue`）的职责，
-/// 见 `is_safe_tmux_target` 头注）。
+/// 见 `gate1_admit_target` 头注）。
 ///
 /// 〔IV1 · V121〕要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；②形（attach 目标只拒空）。
 #[test]
-fn gate1_rejects_only_empty_target() {
-    // ① 谓词本体（正反各一格 —— 只钉「空的被拒」的话，把它焊死成恒拒也能绿）
+fn gate1_admits_an_existing_target_by_the_one_gate_core_rule() {
+    // ① 谓词本体（正反各一格 —— 只钉「坏的被拒」的话，把它焊死成恒拒也能绿）
     assert!(
-        gate1_reject_empty("").is_err(),
+        gate1_admit_target("").is_err(),
         "空 target 应被 Gate 1 拒绝（谓词本体）"
     );
     assert!(
-        gate1_reject_empty("cc-a b").is_ok(),
+        gate1_admit_target("cc-a b").is_ok(),
         "非空 target 不该被 Gate 1 拒绝（谓词本体）"
     );
-    // 非空、含元字符/glob 的 target 不被 Gate 1 拒（谓词本体那一格已在 ① 里断过；
-    // 这里补一批真实形状 —— 收紧字符集是**另一层**的职责，不许在 Gate 1 顺手做）。
-    for safe_nonempty in ["cc-a b", "cc-a;rm", "cc-a$x", "si*", "a'b"] {
+    // 非空、含元字符/glob 的已有会话名不被 Gate 1 拒（收紧字符集是新建那一条的职责，不许在 Gate 1 顺手做）。
+    for safe_nonempty in ["cc-a b", "cc-a;rm", "cc-a$x", "si*", "a'b", "a=b", "会话"] {
         assert!(
-            gate1_reject_empty(safe_nonempty).is_ok(),
+            gate1_admit_target(safe_nonempty).is_ok(),
             "非空 target {safe_nonempty:?} 不该被 Gate 1 拒绝"
+        );
+    }
+    // 〔DUP3〕并进 gate-core 那一条之后多拒的两类：控制符 · 视觉欺骗字符（V131 ② 的拒绝集），那一句说出是哪个码位。
+    for (bad, cp) in [
+        ("a\nb", "U+000A"),
+        ("a\u{1b}b", "U+001B"),
+        ("a\u{200b}b", "U+200B"),
+        ("a\u{202e}b", "U+202E"),
+    ] {
+        let e = gate1_admit_target(bad).expect_err(bad);
+        assert!(e.contains(cp), "{bad:?}：那一句没说出是哪个字符：{e}");
+    }
+    // 判定真是 gate-core 那一条（不是本侧又写了一份）：两者对同一批样本逐个同答。
+    for v in ["", "x", "si*", "a\u{0}b", "a\u{2060}b", "-lead", "a:b", "a.b"] {
+        assert_eq!(
+            gate1_admit_target(v).is_ok(),
+            gate_core::existing_tmux_name_issue(v).is_none(),
+            "{v:?}：Gate 1 与 gate-core 已有会话那一条答得不一样"
         );
     }
 }

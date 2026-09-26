@@ -867,11 +867,6 @@
       "zh": "本机",
       "args": []
     },
-    "tmuxControl.target.empty": {
-      "kind": "error",
-      "zh": "没有指定 tmux 会话，这次没有执行。",
-      "args": []
-    },
     "control.channel.localDown": {
       "kind": "error",
       "zh": "本机后端没有运行，这次没有执行。本机后端起来之后再试。",
@@ -17388,6 +17383,11 @@
       "kind": "error",
       "zh": "没有广播：{detail}",
       "args": ["detail"]
+    },
+    "rsTmux.target.badChar": {
+      "kind": "error",
+      "zh": "非法 tmux 目标（含控制字符或会被看错的字符 {c}）：{target}",
+      "args": ["target", "c"]
     }
   }
 }
