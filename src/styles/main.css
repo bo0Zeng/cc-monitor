@@ -1173,7 +1173,7 @@
   border: 1px solid var(--border-soft);
 }
 
-.search-hit-kind.kind-user {
+.search-hit-kind[data-kind="user"] {
   color: var(--accent);
 }
 
@@ -1860,17 +1860,17 @@
   white-space: nowrap;
 }
 
-.panorama-conf.conf-exact {
+.panorama-conf[data-conf="exact"] {
   color: var(--success);
   border-color: color-mix(in srgb, var(--success) 45%, transparent);
 }
 
-.panorama-conf.conf-heuristic {
+.panorama-conf[data-conf="heuristic"] {
   color: var(--warn);
   border-color: color-mix(in srgb, var(--warn) 45%, transparent);
 }
 
-.panorama-conf.conf-dynamicguess {
+.panorama-conf[data-conf="dynamicguess"] {
   color: var(--text-faint);
   border-color: var(--border-strong);
 }

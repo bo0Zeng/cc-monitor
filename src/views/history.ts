@@ -978,7 +978,9 @@ export class HistoryView {
     row.className = "search-hit";
 
     const kind = document.createElement("span");
-    kind.className = `search-hit-kind kind-${hit.kind}`;
+    // 〔W5-AUX · `设计/41 §7`〕命中的种类是有限枚举 ⇒ 走 `data-kind`（全仓 `kind` 这个状态名只用这一种载体），不再拼 `kind-<值>` 类名。
+    kind.className = "search-hit-kind";
+    kind.dataset.kind = hit.kind;
     kind.textContent =
       hit.kind === "user" ? copyText("history.searchHit.you") : hit.kind === "assistant" ? "Claude" : copyText("history.searchHit.tool");
     row.appendChild(kind);

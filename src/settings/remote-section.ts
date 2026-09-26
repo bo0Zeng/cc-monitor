@@ -471,7 +471,8 @@ export class RemoteSection {
     list.className = "remote-gaps-list";
     for (const g of gaps) {
       const li = document.createElement("li");
-      li.className = `remote-gap remote-gap-${g.kind} remote-gap-${g.severity}`;
+      // 〔W5-AUX · `设计/41 §7`〕「缺 / 不知道」只由下面那一格 `data-kind` 承载 —— 原先同一个值还拼进了类名 `remote-gap-<kind>`（同一个状态写了两遍）。
+      li.className = `remote-gap remote-gap-${g.severity}`;
       li.dataset.origin = g.origin;
       li.dataset.facet = g.facet;
       li.dataset.kind = g.kind;
