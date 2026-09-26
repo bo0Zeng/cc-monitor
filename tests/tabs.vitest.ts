@@ -5853,3 +5853,145 @@ describe("〔FW1〕记录文件的出声", () => {
     expect(() => rf.onSessionFileNotice("no-such-sid", "gone")).not.toThrow();
   });
 });
+
+// ==========================================================================
+// 〔GRP1〕守 `设计/99 §1` V140 原话「分组不应该单独存会话记录. x就是没了, 不存在还要移出分组」。
+// 题面四条判据：J1 盘上零处会话 id 名单形状的组员表（带正控）· J2 × 之后盘与内存零残留 ·
+// J3 最后一个成员关掉组消失 · J4 重启后只有还在栏里的 tab 带组。真 TabManager ＋ 内存假盘，读盘对拍。
+// ==========================================================================
+/** 盘上所有「装着 `sids` 里某个 sid 的数组」的路径（点分）—— J1 的扫描。 */
+function sidArrays(v: unknown, sids: ReadonlySet<string>, path = ""): string[] {
+  if (Array.isArray(v)) {
+    const here = v.some((x) => typeof x === "string" && sids.has(x)) ? [path] : [];
+    return [...here, ...v.flatMap((x, i) => sidArrays(x, sids, `${path}.${i}`))];
+  }
+  if (v && typeof v === "object") {
+    return Object.entries(v).flatMap(([k, x]) => sidArrays(x, sids, path ? `${path}.${k}` : k));
+  }
+  return [];
+}
+
+describe("〔GRP1 · V140〕组员关系是 tab 自己的属性", () => {
+  let tm: TabManager;
+  let disk: Record<string, unknown>;
+  const flushDisk = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+  const groupOfOnDisk = (): Record<string, string> =>
+    ((disk.tabBar as Record<string, unknown> | undefined)?.groupOf ?? {}) as Record<string, string>;
+  const add = (...sids: string[]): void => {
+    for (const sid of sids) tm.ensureTab(sid, `/w/${sid}`, "p", 0, LOCAL_ORIGIN);
+  };
+  const close = (sid: string): void => {
+    tm.archiveTab(sid); // × 只关已结束的
+    tm.closeTab(sid);
+  };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    disk = {};
+    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string, args?: unknown) => {
+      if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
+      if (cmd === "patch_config") {
+        disk = JSON.parse(applyConfigEdits(JSON.stringify(disk), (args as { edits: Edit[] }).edits));
+      }
+      return Promise.resolve(undefined);
+    }));
+    tm = makeTM();
+  });
+
+  it("J1 · 走遍写组的入口，盘上零处 sid 名单形状的组员表（组表每项恰 {id,name}；装 sid 的数组只有顺序表）", async () => {
+    const sids = new Set(["a", "b", "c", "d"]);
+    disk = { tabCollections: [{ id: "old", name: "旧", members: ["a", "b"] }] };
+    expect(sidArrays(disk, sids), "正控：同一把扫描认得出旧形状").toEqual(["tabCollections.0.members"]);
+    await tm.loadCollections();
+    add("a", "b", "c", "d");
+    const check = async (step: string): Promise<void> => {
+      await flushDisk();
+      for (const g of disk.tabCollections as object[]) expect(Object.keys(g).sort(), step).toEqual(["id", "name"]);
+      expect(sidArrays(disk, sids).filter((p) => p !== "tabBar.order"), step).toEqual([]);
+    };
+    home(tm).dragger.applyDrop("a", { kind: "onto", sid: "b" }); // 拖放现建
+    await check("拖放现建");
+    const g = home(tm).store.tabs.get("a")!.group!;
+    home(tm).dragger.applyDrop("c", { kind: "before", sid: "a" }); // 拖放进组
+    await check("拖放进组");
+    home(tm).dragger.applyDrop("c", { kind: "end" }); // 拖出
+    await check("拖出");
+    void home(tm).prefs.joinGroup("d", g);
+    void home(tm).prefs.renameGroup(g, "改");
+    await check("右键加入 · 改名");
+    close("d");
+    await check("×");
+    void home(tm).prefs.leaveGroup("a");
+    void home(tm).prefs.dissolveGroup("old");
+    await check("右键移出 · 解散");
+    expect(sidArrays(disk, sids), "两向：顺序表确实被扫到了").toEqual(["tabBar.order"]);
+  });
+
+  it("J2 · × 之后盘与内存零残留；同 sid resume 回来是散 tab（正控：意图里的 c 到了照样进组）", async () => {
+    disk = { tabCollections: [{ id: "g", name: "白天" }], tabBar: { groupOf: { a: "g", b: "g", c: "g" } } };
+    await tm.loadCollections();
+    add("a", "b");
+    const hits = (): number =>
+      JSON.stringify({ t: disk.tabCollections, g: groupOfOnDisk() }).split('"a"').length - 1;
+    expect(hits(), "正控：× 之前恰一处 groupOf.a").toBe(1);
+    close("a");
+    await flushDisk();
+    expect(hits()).toBe(0);
+    expect(groupOfOnDisk()).toEqual({ b: "g", c: "g" });
+    expect(home(tm).store.tabs.has("a")).toBe(false);
+    expect(home(tm).prefs.savedGroupOf.has("a")).toBe(false);
+    expect(membersOf(tm, "g")).toEqual(["b"]);
+    add("a", "c");
+    expect(home(tm).store.tabs.get("a")!.group, "resume 回来不许回组").toBeNull();
+    expect(home(tm).store.tabs.get("c")!.group).toBe("g");
+  });
+
+  it("J3 · 组里最后一个在栏里的关掉 ⇒ 组消失（盘 · 内存 · 栏），指向它的意图一并摘；还有成员时不许消失", async () => {
+    disk = { tabCollections: [{ id: "g", name: "白天" }], tabBar: { groupOf: { a: "g", b: "g", x: "g" } } };
+    await tm.loadCollections();
+    add("a", "b");
+    const bar = document.body.firstElementChild as HTMLElement;
+    close("a");
+    await flushDisk();
+    expect(disk.tabCollections, "还有 b ⇒ 组在").toEqual([{ id: "g", name: "白天" }]);
+    expect(bar.querySelectorAll(".tab-group")).toHaveLength(1);
+    close("b");
+    await flushDisk();
+    expect(disk.tabCollections).toEqual([]);
+    expect(groupOfOnDisk(), "没到的 x 指向它的那条也摘").toEqual({});
+    expect(home(tm).prefs.collections).toEqual([]);
+    expect([...home(tm).prefs.savedGroupOf]).toEqual([]);
+    expect(bar.querySelectorAll(".tab-group")).toHaveLength(0);
+  });
+
+  it.each([
+    ["固定复活先于读组表", true],
+    ["读组表先于固定复活", false],
+  ])("J4 · 重启后只有还在栏里的 tab 带组（%s）", async (_label, pinnedFirst) => {
+    disk = {
+      tabCollections: [
+        { id: "G", name: "甲" },
+        { id: "H", name: "乙" },
+      ],
+      tabBar: {
+        groupOf: { a: "G", b: "G", c: "H", p: "H" },
+        pinned: [{ sid: "p", jsonlPath: "/j/p", origin: LOCAL_ORIGIN, title: "P" }],
+      },
+    };
+    if (pinnedFirst) {
+      await tm.loadPinned();
+      await tm.loadCollections();
+    } else {
+      await tm.loadCollections();
+      await tm.loadPinned();
+    }
+    add("a", "c"); // b 不来
+    const carried = Object.fromEntries(
+      [...home(tm).store.tabs.values()].filter((t) => t.group !== null).map((t) => [t.sessionId, t.group]),
+    );
+    expect(carried).toEqual({ a: "G", c: "H", p: "H" });
+    expect(home(tm).store.tabs.has("b")).toBe(false);
+    expect(membersOf(tm, "G")).toEqual(["a"]);
+    expect(membersOf(tm, "H")).toEqual(["p", "c"]);
+  });
+});
