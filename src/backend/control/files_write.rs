@@ -513,6 +513,9 @@ pub fn change_mode(root: &Path, rel: impl AsRef<Path>, mode: u32) -> Result<Path
 ///   换名之后 inode 换了 ⇒ **硬链接**的另一个名字仍指旧内容 · 目标若属**别的用户**、只是给了我们写权限，换完属主变成我们 ·
 ///   Linux 上的 **xattr / ACL** 不跟过来。权限位沿用；跨盘不会（旁名与目标同目录）。
 ///   Windows 臂照旧就地写（`swap_in` 自己那一支，保 ACE —— `设计/60 §3.3` 认过）。
+/// 🔴〔HX1 · 主会话裁拍板项 2〕上面前两格代价**不认**：目标 `nlink > 1`（有硬链接）或属主不是后端这个用户 ⇒
+///   **退回就地写**（保住硬链接与属主），并记一行「这一次不是原子写，因为 …」（[`in_place_reason`]）。
+///   xattr / ACL 不跟过来那一格仍是已知代价（记录 `HX1.md` §6）。
 pub fn overwrite_text(
     root: &Path,
     rel: impl AsRef<Path>,
@@ -528,7 +531,49 @@ pub fn overwrite_text(
             real.display()
         )));
     }
+    let links_owner = links_and_owner(&real);
+    if let Some(why) = links_owner.and_then(|(links, owner)| {
+        in_place_reason(links, owner, crate::platform::paths::current_uid())
+    }) {
+        // 就地写：先截断再写（写到一半失败 / 进程在写的中途被收掉 ⇒ 目标剩半份）—— 换来的是硬链接与属主不被拆开。
+        tracing::warn!(
+            "覆盖写 {}：这一次不是原子写，因为{why}（原子换会把它拆开）—— 改成就地写",
+            real.display()
+        );
+        std::fs::write(&real, bytes).map_err(|e| {
+            WriteRefusal::Io(format!("refuse write: 写 {} 失败：{e}", real.display()))
+        })?;
+        return Ok(real);
+    }
     swap_in(root, rel, bytes, Some(md.permissions()))
+}
+
+/// 〔HX1〕一份文件的 `(硬链接数, 属主 uid)`（跟链接地看）。**非 unix 上没有这两个概念 ⇒ `None`**（那边照原子换 / Windows 臂办）。
+/// 住本模块而不住 `platform/`：读元数据扩展（`MetadataExt`）在只读护栏上是第三层独有的词（同 `kind_and_device`）。
+#[cfg(unix)]
+fn links_and_owner(p: &Path) -> Option<(u64, u32)> {
+    use std::os::unix::fs::MetadataExt as _;
+    std::fs::metadata(p).ok().map(|m| (m.nlink(), m.uid()))
+}
+
+#[cfg(not(unix))]
+fn links_and_owner(_p: &Path) -> Option<(u64, u32)> {
+    None
+}
+
+/// 〔HX1 · 主会话裁拍板项 2〕这一份目标**不该原子换**的原因（`None` = 该原子换）：换名上位会让 inode 换掉 ⇒
+/// 有硬链接（`links > 1`）的另一个名字仍指旧内容；属主不是后端这个用户（只是给了写权限）⇒ 换完属主变成后端用户。
+pub(crate) fn in_place_reason(links: u64, owner: u32, me: u32) -> Option<String> {
+    let mut why: Vec<String> = Vec::new();
+    if links > 1 {
+        why.push(format!("它有 {links} 个硬链接"));
+    }
+    if owner != me {
+        why.push(format!(
+            "它的属主（uid {owner}）不是后端这个用户（uid {me}）"
+        ));
+    }
+    (!why.is_empty()).then(|| why.join("、"))
 }
 
 // ══════════════════════════════════════════════════════════════════════════

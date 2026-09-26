@@ -271,6 +271,9 @@ const OUTWARD: &[(&str, Kind)] = &[
         "agents::claudecode::paths::session_file_for_delete",
         Kind::Fence,
     ),
+    // ── 平台 ────────────────────────────────────────────────────────
+    // 〔HX1 · 主会话裁拍板项 2〕覆盖写「属主不是后端这个用户 ⇒ 退回就地写」要问这台进程的 uid。
+    ("platform::paths::current_uid", Kind::Platform),
     // ── 汇总层的 target 轴（用户那三样之外，条数钉死）─────────────────
     ("TARGETS", Kind::LedgerAxis),
     ("Target", Kind::LedgerAxis),
