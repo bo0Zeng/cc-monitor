@@ -415,6 +415,7 @@ const SCAN: &[&str] = &[
     "tests/bridge/ssh_source_tier1_tests.rs",
     "tests/bridge/ssh_source_tmux_snapshot_exposure_tests.rs",
     "tests/bridge/ssh_source_write_half_guard.rs",
+    "tests/bridge/sync_command_registry_tests.rs", // 〔TL3〕同步 IPC 命令的调用闭包零 `block_on` / 零同步连后端（`INVARIANTS §10`）
     "tests/bridge/tasks_tests.rs",
     "tests/bridge/tmux_backend_gate_guard_tests.rs",
     "tests/bridge/tmux_reconcile_source_of_truth_guard.rs",
@@ -445,6 +446,8 @@ const SCAN: &[&str] = &[
     "tests/launch-tmux-outer-golden.vitest.ts",
     "tests/live-card.vitest.ts", // 〔TAP〕活卡：状态机 · 真 TabManager 三向相等 · 台架夹具（读 `tests/__fixtures__/tap-bench.json`）
     "tests/liveness-process-names-parity.vitest.ts",
+    // 〔TL3〕「是不是本机」只在 `src/ipc/origin.ts` 判（读生产段全集 ⇒ 扫描层）。
+    "tests/origin-single-home.vitest.ts",
     "tests/panorama/api-remote.vitest.ts",
     "tests/panorama/diagram-guards.vitest.ts",
     "tests/paste-block-guard.vitest.ts",
@@ -540,6 +543,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/main_fourth_face_tests.rs",
     "tests/backend/mcp_sync_tests.rs", // 〔AS1〕
     "tests/backend/observe/accounts_query_tests.rs",
+    "tests/backend/observe/fence_tests.rs", // 〔TL3〕读路径围栏一个家（扫 observe 全树）＋ 放行 / 拒绝行为（临时目录 · symlink）
     "tests/backend/observe/history_query_f07_tests.rs",
     "tests/backend/observe/history_query_index_tests.rs",
     "tests/backend/observe/history_query_kr83_tests.rs",

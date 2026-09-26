@@ -550,7 +550,7 @@ export class TabMenu {
     const resumeOnly = isResumeOnly(state);
     // 〔`A3` 第二波〕本机已结束的 tab 不带账号选择（本机 Resume 走那条会话上次的号，
     // 见 `launch-account.ts::localLaunchAccountSync`）⇒ 本机只进下面「换号重启」那一支。
-    if (origin === LOCAL_ORIGIN && resumeOnly) return;
+    if (isLocalOrigin(origin) && resumeOnly) return;
     const gen = menuGeneration(); // 捕获这一代菜单
     const accountOptions = await enumerateAccountModifiers(origin);
     if (gen !== menuGeneration()) return; // 菜单已换/已关

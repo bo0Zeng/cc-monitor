@@ -22,7 +22,7 @@
 import { commands } from "../ipc/commands";
 import { chan } from "../ipc/chan";
 import { budgetWithin, jsonBody, linesOf } from "../ipc/chan-caller";
-import { LOCAL_ORIGIN } from "../ipc/origin";
+import { isLocalOrigin, LOCAL_ORIGIN } from "../ipc/origin";
 
 /**
  * 一条命中（后端 `--search` 行里 `hits` 的一格；形状由 [`parseHit`] 严格收）。
@@ -104,7 +104,8 @@ export function searchArgs(q: FullTextQuery): Record<string, unknown> {
 async function askOne(origin: string, payload: Uint8Array): Promise<SessionHits[]> {
   const budget = budgetWithin(SEARCH_BUDGET_MS);
   const reply = await chan.call(origin, "history-search", payload, budget);
-  return parseSessionHitsLines(linesOf(reply), origin === LOCAL_ORIGIN ? undefined : origin);
+  // 〔TL3 · 🔴-5〕「是不是本机」经 origin.ts 判（合并主线时 `tests/origin-single-home.vitest.ts` 逮到的直比，`设计/00 §2.5 ①`）。
+  return parseSessionHitsLines(linesOf(reply), isLocalOrigin(origin) ? undefined : origin);
 }
 
 async function searchRemotes(payload: Uint8Array): Promise<SessionHits[]> {

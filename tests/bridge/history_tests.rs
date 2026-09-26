@@ -341,7 +341,7 @@ fn the_local_backend_renders_an_attach_that_lands_on_the_session_it_just_created
              它只会拼一个**拉起器** ⇒ 渲出来的是「另起一条 claude」。\n\
              **静默产出比拒绝坏得多**：用户以为接回了原会话，实际两条都在跑。"
     );
-    let spawned = launch_local(&LocalPsAction::Attach, None, None, None, Some(NAME));
+    let spawned = launch_now(&LocalPsAction::Attach, None, None, None, Some(NAME));
     assert!(
         spawned.as_ref().is_err_and(|e| e.contains("自己的终端")),
         "\n★ `launch_local` 收下了 attach：{spawned:?}\n\
@@ -897,7 +897,7 @@ fn observe_one_cell(name: &str) -> CellToday {
                 Ok(())
             }
             let _sink = override_launch_sink(LaunchSink(recorder));
-            launch_local(&act, None, None, Some(&acct), Some(TMUX))
+            launch_now(&act, None, None, Some(&acct), Some(TMUX))
                 .expect("走中转这一趟拉起本身不该失败");
             let sent = SEEN.with(|v| {
                 v.borrow()
@@ -1113,7 +1113,7 @@ fn a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container() {
     for (label, acct) in shapes {
         // 🔴 **真去走生产那条路** —— 上一版在这里自己抄了一份 `launch_local` 的闸
         //    （见头注 `K-R55` 那一节），于是把生产那一行翻掉一个字都不响。
-        launch_local(&act, None, None, acct, Some(TMUX))
+        launch_now(&act, None, None, acct, Some(TMUX))
             .unwrap_or_else(|e| panic!("形状 {label} 这一趟拉起本身就失败了：{e}"));
         let sent = SENT.with(|v| {
             v.borrow()
@@ -2476,7 +2476,7 @@ fn the_launch_side_really_asks_the_backend_and_uses_its_answer() {
     // ① 有行 ＋ 在听 ⇒ 前缀 == 纯函数拿那个地址渲出来的；问了恰好一次、问的是本机、入参逐格对。
     fake_table(&["acct-a", "acct-b"], true);
     let _ = fake_asks();
-    let got = relay_prefix_for_launch(&action, Some(&acct_a)).expect("这一档不该报错");
+    let got = prefix_now(&action, Some(&acct_a)).expect("这一档不该报错");
     let want = relay_prefix_for(Some(&s_url("acct-a", "sid-1")), false);
     assert!(!want.is_empty(), "期望值是空串 —— 下面那条相等断言是空真");
     assert_eq!(got, want, "问是问了，**答案没被用上**（`D5` 那一刀的形状）");
@@ -2493,7 +2493,7 @@ fn the_launch_side_really_asks_the_backend_and_uses_its_answer() {
     );
 
     // ①b 只换一个号 ⇒ 路由键的账号段跟着变（`D6 阻-2`：acct-b 的会话不许拿 acct-a 的 key）。
-    let got_b = relay_prefix_for_launch(&action, Some(&acct_b)).expect("这一档不该报错");
+    let got_b = prefix_now(&action, Some(&acct_b)).expect("这一档不该报错");
     assert!(
         got.contains("/acct-a/") && got_b.contains("/acct-b/"),
         "{got:?} · {got_b:?}"
@@ -2501,29 +2501,28 @@ fn the_launch_side_really_asks_the_backend_and_uses_its_answer() {
 
     // ② 只把「表里有没有这一行」翻过来 ⇒ 空串（不注入，逐字节旧路）。
     fake_table(&["someone-else"], true);
-    assert_eq!(relay_prefix_for_launch(&action, Some(&acct_a)).unwrap(), "");
+    assert_eq!(prefix_now(&action, Some(&acct_a)).unwrap(), "");
 
     // ③ 只把「中转在不在」翻过来 ⇒ `Err`，话里说得出是哪个号、为什么（`KH2B2`②：不许静默）。
     fake_table(&["acct-a"], false);
-    let e = relay_prefix_for_launch(&action, Some(&acct_a)).expect_err("中转不在却照旧起出去了");
+    let e = prefix_now(&action, Some(&acct_a)).expect_err("中转不在却照旧起出去了");
     assert!(e.contains("acct-a") && e.contains("中转没在听"), "{e}");
 
     // ④ 只把「这台机是不是 Windows」翻过来 ⇒ PowerShell 形态（`D6 阻-3`）。
     fake_table(&["acct-a"], true);
     WINDOWS_ANSWER.with(|c| c.set(true));
-    let ps = relay_prefix_for_launch(&action, Some(&acct_a)).unwrap();
+    let ps = prefix_now(&action, Some(&acct_a)).unwrap();
     assert_eq!(ps, relay_prefix_for(Some(&s_url("acct-a", "sid-1")), true));
     WINDOWS_ANSWER.with(|c| c.set(false));
-    assert_ne!(relay_prefix_for_launch(&action, Some(&acct_a)).unwrap(), ps);
+    assert_ne!(prefix_now(&action, Some(&acct_a)).unwrap(), ps);
 
     // ⑤ 「哪一次拉起」：resume 的 `key` 是这一次的 sid（`D7 阻-4` 刀 `S1`）。
     let _ = fake_asks();
-    let r9 = relay_prefix_for_launch(&LocalPsAction::Resume("sid-9".to_string()), Some(&acct_a))
-        .unwrap();
+    let r9 = prefix_now(&LocalPsAction::Resume("sid-9".to_string()), Some(&acct_a)).unwrap();
     assert_eq!(r9, relay_prefix_for(Some(&s_url("acct-a", "sid-9")), false));
     // ⑥ 新开：也真的问、也真的注入（刀 `S2`），`key` 是一次性 nonce（两次不同，也不是哪个 sid）。
-    let n1 = relay_prefix_for_launch(&LocalPsAction::New, Some(&acct_a)).unwrap();
-    let n2 = relay_prefix_for_launch(&LocalPsAction::New, Some(&acct_a)).unwrap();
+    let n1 = prefix_now(&LocalPsAction::New, Some(&acct_a)).unwrap();
+    let n2 = prefix_now(&LocalPsAction::New, Some(&acct_a)).unwrap();
     let keys: Vec<String> = fake_asks()
         .into_iter()
         .map(|(_, a)| a["key"].as_str().unwrap().to_string())
@@ -2555,7 +2554,7 @@ fn a_launch_whose_backend_cannot_be_asked_is_refused_not_guessed() {
             windows: not_win,
             all_sessions: all_sessions_off,
         });
-        let e = relay_prefix_for_launch(&action, Some(&acct)).expect_err("问不到却起出去了");
+        let e = prefix_now(&action, Some(&acct)).expect_err("问不到却起出去了");
         assert!(
             e.contains("问不到本机后端") && e.contains("没有控制通道"),
             "{e}"
@@ -2567,7 +2566,7 @@ fn a_launch_whose_backend_cannot_be_asked_is_refused_not_guessed() {
         all_sessions: all_sessions_off,
     });
     fake_table(&[], true);
-    assert_eq!(relay_prefix_for_launch(&action, Some(&acct)).unwrap(), "");
+    assert_eq!(prefix_now(&action, Some(&acct)).unwrap(), "");
 }
 
 /// ★★★ `D5 阻-1` 的第三格：**生产上插进那条缝的，就是那几个真取值口**（按函数地址，两跳都拍：
@@ -2721,22 +2720,17 @@ fn a_launch_that_needs_the_relay_is_refused_when_the_relay_is_not_running() {
         all_sessions: on,
     });
     fake_table(&["acct-a"], false);
-    let e = relay_prefix_for_launch(&action, Some(&acct_a)).expect_err("中转没起来却照旧渲染");
+    let e = prefix_now(&action, Some(&acct_a)).expect_err("中转没起来却照旧渲染");
     assert!(
         e.contains("中转没在听") && e.contains(LOCAL_RELAY_NOT_LISTENING.as_str()),
         "错误得说出真正的原因：{e}"
     );
     // `/t/` 那一格（账号 0、开关开）同样不在 ⇒ 直连，不拒。
-    assert_eq!(
-        relay_prefix_for_launch(&action, Some(&LaunchAccount::Base)).unwrap(),
-        ""
-    );
+    assert_eq!(prefix_now(&action, Some(&LaunchAccount::Base)).unwrap(), "");
     // 非空对照：只把「中转在不在」翻过来，两格都注入。
     fake_table(&["acct-a"], true);
-    assert!(relay_prefix_for_launch(&action, Some(&acct_a))
-        .unwrap()
-        .contains("/s/"));
-    assert!(relay_prefix_for_launch(&action, Some(&LaunchAccount::Base))
+    assert!(prefix_now(&action, Some(&acct_a)).unwrap().contains("/s/"));
+    assert!(prefix_now(&action, Some(&LaunchAccount::Base))
         .unwrap()
         .contains("/t/claude-code/0/"));
 }
@@ -2825,7 +2819,7 @@ fn the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched() {
         };
         // ① 表里没有这个号 ⇒ 逐字节旧路。这一趟同时是下面那条相等断言的**基准串**。
         answer(&[], true);
-        launch_local(&action, None, None, Some(&account), None).expect("不走中转这一趟不该失败");
+        launch_now(&action, None, None, Some(&account), None).expect("不走中转这一趟不该失败");
         let bare = last_sent();
         assert!(
             !bare.is_empty() && bare.contains(dir),
@@ -2846,7 +2840,7 @@ fn the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched() {
         );
         // 反空真：期望的前缀本来就该是非空的，否则下面那条相等断言是「x == x」。
         assert!(!prefix.is_empty(), "期望前缀是空串 —— 本条按红处理");
-        launch_local(&action, None, None, Some(&account), None).expect("走中转这一趟不该失败");
+        launch_now(&action, None, None, Some(&account), None).expect("走中转这一趟不该失败");
         let routed = last_sent();
         assert_eq!(
             routed,
@@ -2885,7 +2879,7 @@ fn the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched() {
         name: None,
     };
     assert!(
-        launch_local(&action, None, None, Some(&account), None).is_err(),
+        launch_now(&action, None, None, Some(&account), None).is_err(),
         "中转没在跑却照旧起出去了"
     );
     assert_eq!(
@@ -2908,7 +2902,7 @@ fn the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched() {
     };
 
     // ⑤ **`New` 那一支**：送出去的那一串必须也带中转注入，且账号段是这次的号。
-    launch_local(&LocalPsAction::New, None, None, Some(&acct), None)
+    launch_now(&LocalPsAction::New, None, None, Some(&acct), None)
         .expect("新开会话走中转这一趟不该失败");
     let new_sent = last_sent();
     assert!(
@@ -2920,7 +2914,7 @@ fn the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched() {
     );
 
     // ⑥ **`Resume` 那一支的 sid 不是写死的**：换一个 sid，送出去的那一串跟着变。
-    launch_local(
+    launch_now(
         &LocalPsAction::Resume("sid-9".to_string()),
         None,
         None,
@@ -3021,7 +3015,7 @@ fn the_launcher_plants_the_session_identity_into_the_process_environment() {
 
     // ① resume：身份就是这条会话的 sid，逐字节。
     let sid = "0198f0d2-1111-4222-8333-444455556666";
-    launch_local(
+    launch_now(
         &LocalPsAction::Resume(sid.to_string()),
         None,
         None,
@@ -3048,7 +3042,7 @@ fn the_launcher_plants_the_session_identity_into_the_process_environment() {
 
     // ② 换一个 sid ⇒ 身份那一段跟着变（不是常量）。
     let sid9 = "0198f0d2-9999-4222-8333-444455556666";
-    launch_local(
+    launch_now(
         &LocalPsAction::Resume(sid9.to_string()),
         None,
         None,
@@ -3067,13 +3061,11 @@ fn the_launcher_plants_the_session_identity_into_the_process_environment() {
     // ③ **新开**那一支也落身份，而且两趟拿到的是两个不同的 nonce。
     //   `K-P5 §3 三` 现打：5 个起会话方**没有一处**在起新会话时知道 sid
     //   ⇒ 新开这一支才是本件的正主，它落不落身份不能靠 resume 那一支代言。
-    launch_local(&LocalPsAction::New, None, None, Some(&account), None)
-        .expect("新开这一趟不该失败");
+    launch_now(&LocalPsAction::New, None, None, Some(&account), None).expect("新开这一趟不该失败");
     let new_a = identity_segment(&last_sent())
         .expect("新开那一支送出去的串里没有身份 —— `New => String::new()` 那一刀的形状")
         .to_string();
-    launch_local(&LocalPsAction::New, None, None, Some(&account), None)
-        .expect("新开这一趟不该失败");
+    launch_now(&LocalPsAction::New, None, None, Some(&account), None).expect("新开这一趟不该失败");
     let new_b = identity_segment(&last_sent()).expect("同上").to_string();
     assert_ne!(
         new_a, new_b,
@@ -3100,7 +3092,7 @@ fn the_launcher_plants_the_session_identity_into_the_process_environment() {
         !relay_route_core::segment_is_safe(bad),
         "夹具选错了：这个 sid 过得了白名单 ⇒ 下面那条断言是空真"
     );
-    launch_local(
+    launch_now(
         &LocalPsAction::Resume(bad.to_string()),
         None,
         None,
@@ -3122,7 +3114,7 @@ fn the_launcher_plants_the_session_identity_into_the_process_environment() {
     //   写死那一格的生产后果是 Windows 上往 PowerShell 串里塞一句 POSIX `export`
     //   ⇒ 身份注入整个失效（`D6` 刀 `Xb` 在中转那一格上的同一形）。
     WINDOWS_ANSWER.with(|c| c.set(true));
-    launch_local(
+    launch_now(
         &LocalPsAction::Resume(sid.to_string()),
         None,
         None,
@@ -3227,7 +3219,7 @@ fn the_minted_identity_token_is_handed_back_to_the_caller() {
     // ① **新开**那一支：回的那个串就是命令里那个值。
     //    ⚠ 这里刻意**不**拿 `identity_segment` 的整段去比 —— 那样只要回的是
     //    「`CCM_LAUNCH_ID=…` 这一整句」就绿了，而本条要的是**值本身**。
-    let token_a = launch_local(&LocalPsAction::New, None, None, Some(&account), None)
+    let token_a = launch_now(&LocalPsAction::New, None, None, Some(&account), None)
         .expect("新开这一趟不该失败");
     assert!(
         !token_a.trim().is_empty(),
@@ -3246,7 +3238,7 @@ fn the_minted_identity_token_is_handed_back_to_the_caller() {
     );
 
     // ② 两趟新开 ⇒ 两个**不同**的 token（常量刀在这里也红一次，两格互为纵深）。
-    let token_b = launch_local(&LocalPsAction::New, None, None, Some(&account), None)
+    let token_b = launch_now(&LocalPsAction::New, None, None, Some(&account), None)
         .expect("新开这一趟不该失败");
     assert_ne!(
         token_a, token_b,
@@ -3258,7 +3250,7 @@ fn the_minted_identity_token_is_handed_back_to_the_caller() {
     //    ⚠ 这一格**不是**本件的正主（`K-P5g` 现打过它会退化成布尔谓词），
     //    写在这里只为钉住「两支没接反」。
     let sid = "0198f0d2-1111-4222-8333-444455556666";
-    let token_r = launch_local(
+    let token_r = launch_now(
         &LocalPsAction::Resume(sid.to_string()),
         None,
         None,
@@ -3301,7 +3293,7 @@ fn the_minted_identity_token_is_handed_back_to_the_caller() {
 
     // ⑤ 拉起**失败**时不回 token —— 回了会让调用方去等一条根本不存在的会话。
     let _boom = override_launch_sink(LaunchSink(boom));
-    let failed = launch_local(&LocalPsAction::New, None, None, Some(&account), None);
+    let failed = launch_now(&LocalPsAction::New, None, None, Some(&account), None);
     assert!(
         failed.is_err(),
         "拉起失败了却回了 `Ok` —— 失败被吞掉，调用方会去等一条不存在的会话：{failed:?}"
@@ -3360,24 +3352,36 @@ fn the_minted_identity_token_is_handed_back_to_the_caller() {
 //    windows-latest，而 `launch_local` 里 `base` 那一格是 `#[cfg(windows)]` 选的
 //    ⇒ 本族在 CI 上驱动的是 **PowerShell** 那一支，在开发机上才是 POSIX 那一支。〕
 
-thread_local! {
-    /// `D8 阻-1` 三支探针共用的记账台：这一趟真正交出去的 `(命令串, cwd)`。
-    /// **线程局部** ⇒ 三条判据并行跑互不干扰（`cargo test` 一测一线程）。
-    static ENTRY_SENT: std::cell::RefCell<Vec<(String, Option<String>)>> =
-        const { std::cell::RefCell::new(Vec::new()) };
+/// `D8 阻-1` 三支探针共用的记账台：这一趟真正交出去的 `(命令串, cwd)`。
+///
+/// 〔TL3 · 🔴-2〕**跨线程**（先前是线程局部）：三条入口今天是 `async` 命令，同步那一截在 `spawn_blocking`
+/// 的线程上把串交给送法 ⇒ 记账台得在那条线程上也记得到。三条探针共用它 ⇒ 由 [`ENTRY_TURN`] 排队、一次一条。
+static ENTRY_SENT: std::sync::Mutex<Vec<(String, Option<String>)>> =
+    std::sync::Mutex::new(Vec::new());
+/// 三条探针轮流用记账台（`cargo test` 多线程并行跑；上一条炸了也不连坐 ⇒ 毒化照取）。
+static ENTRY_TURN: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn entry_sent() -> std::sync::MutexGuard<'static, Vec<(String, Option<String>)>> {
+    ENTRY_SENT
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 fn entry_recorder(cmd: &str, cwd: Option<&str>) -> Result<(), String> {
-    ENTRY_SENT.with(|v| {
-        v.borrow_mut()
-            .push((cmd.to_string(), cwd.map(str::to_string)))
-    });
+    entry_sent().push((cmd.to_string(), cwd.map(str::to_string)));
     Ok(())
 }
 
-/// 装台：一条会记账的送法 + 一组答案由探针写死的取值口。两个守卫掉出作用域自动还原。
-fn entry_stage() -> (LaunchSinkGuard, InjectFactsGuard) {
-    ENTRY_SENT.with(|v| v.borrow_mut().clear());
+/// 装台：一条会记账的送法 + 一组答案由探针写死的取值口 ＋ 记账台的这一轮。三个守卫掉出作用域自动还原 / 放手。
+fn entry_stage() -> (
+    LaunchSinkGuard,
+    InjectFactsGuard,
+    std::sync::MutexGuard<'static, ()>,
+) {
+    let turn = ENTRY_TURN
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    entry_sent().clear();
     fake_table(&[], true);
     (
         override_launch_sink(LaunchSink(entry_recorder)),
@@ -3387,13 +3391,14 @@ fn entry_stage() -> (LaunchSinkGuard, InjectFactsGuard) {
             windows: platform_is_windows,
             all_sessions: all_sessions_off,
         }),
+        turn,
     )
 }
 fn entry_answer(rows: &[&str]) {
     fake_table(rows, true);
 }
 fn entry_last() -> (String, Option<String>) {
-    ENTRY_SENT.with(|v| v.borrow().last().cloned().expect("这一趟什么都没送出去"))
+    entry_sent().last().cloned().expect("这一趟什么都没送出去")
 }
 
 /// ★★ **探针 ①**〔`D8 阻-1`，`KH2B1`〕：`resume_impl` 这一跳把 `account` / `session_id` / `cwd`
@@ -3405,7 +3410,7 @@ fn entry_last() -> (String, Option<String>) {
 /// **锚点用文本别用行号** —— `^        account,$` 在本文件全文恰好 **1** 处。
 #[test]
 fn the_resume_hop_above_launch_local_carries_the_account_and_the_sid_through() {
-    let (_sink, _facts) = entry_stage();
+    let (_sink, _facts, _turn) = entry_stage();
     let dir = "/h/.claude-alt/acct-r1";
     let account = LaunchAccount::Named {
         config_dir: dir.to_string(),
@@ -3418,7 +3423,14 @@ fn the_resume_hop_above_launch_local_carries_the_account_and_the_sid_through() {
     //    而且它得像一条真的本机拉起（这个号的 configDir 在里面）。
     //    没有这一格，下面那条「有前缀」的断言在「整条链恒空」时会读成假红/假绿。
     entry_answer(&[]);
-    resume_impl("sid-r1", cwd, None, Some(&account), None).expect("不走中转这一趟不该失败");
+    tauri::async_runtime::block_on(resume_impl(
+        "sid-r1".to_string(),
+        cwd.to_string(),
+        None,
+        Some(account.clone()),
+        None,
+    ))
+    .expect("不走中转这一趟不该失败");
     let (bare, bare_cwd) = entry_last();
     assert!(
         bare.contains(dir),
@@ -3436,7 +3448,14 @@ fn the_resume_hop_above_launch_local_carries_the_account_and_the_sid_through() {
 
     // ② 表里有这个号 ⇒ 送出去的那一串带中转注入，账号段与 sid 段都是**这一发**的。
     entry_answer(&["acct-r1"]);
-    resume_impl("sid-r1", cwd, None, Some(&account), None).expect("走中转这一趟不该失败");
+    tauri::async_runtime::block_on(resume_impl(
+        "sid-r1".to_string(),
+        cwd.to_string(),
+        None,
+        Some(account.clone()),
+        None,
+    ))
+    .expect("走中转这一趟不该失败");
     let (routed, _) = entry_last();
     assert!(
         routed.contains("ANTHROPIC_BASE_URL"),
@@ -3490,13 +3509,13 @@ fn the_resume_hop_above_launch_local_carries_the_account_and_the_sid_through() {
 /// 换掉 `launcher` / `tmux_name` / `cwd` 中任何一个，这一格也红。
 #[test]
 fn the_resume_command_the_frontend_calls_hands_all_five_arguments_down_unchanged() {
-    let (_sink, _facts) = entry_stage();
+    let (_sink, _facts, _turn) = entry_stage();
     let dir = "/h/.claude-alt/acct-r2";
     let cwd = "/p/two";
     entry_answer(&["acct-r2"]);
 
     // ① 从**那条 `#[tauri::command]`** 进去。
-    resume_history_session(
+    tauri::async_runtime::block_on(resume_history_session(
         "sid-r2".to_string(),
         cwd.to_string(),
         Some("cc".to_string()),
@@ -3505,7 +3524,7 @@ fn the_resume_command_the_frontend_calls_hands_all_five_arguments_down_unchanged
             name: None,
         }),
         None,
-    )
+    ))
     .expect("这一趟不该失败");
     let (from_cmd, cmd_cwd) = entry_last();
     assert!(
@@ -3526,7 +3545,14 @@ fn the_resume_command_the_frontend_calls_hands_all_five_arguments_down_unchanged
         config_dir: dir.to_string(),
         name: None,
     };
-    resume_impl("sid-r2", cwd, Some("cc"), Some(&account), None).expect("这一趟不该失败");
+    tauri::async_runtime::block_on(resume_impl(
+        "sid-r2".to_string(),
+        cwd.to_string(),
+        Some("cc".to_string()),
+        Some(account),
+        None,
+    ))
+    .expect("这一趟不该失败");
     let (from_impl, impl_cwd) = entry_last();
     assert_eq!(
         from_cmd, from_impl,
@@ -3547,21 +3573,21 @@ fn the_resume_command_the_frontend_calls_hands_all_five_arguments_down_unchanged
 /// 所以本条只钉账号段与 `cwd`；`<key>` 那一维归 `payload` 那一侧的判据。
 #[test]
 fn the_new_session_command_the_frontend_calls_carries_the_account_and_the_cwd_through() {
-    let (_sink, _facts) = entry_stage();
+    let (_sink, _facts, _turn) = entry_stage();
     let tmp = TmpDir::new(); // `new_local_session` 会先核 `cwd` 是不是现存目录
     let cwd = tmp.0.to_string_lossy().into_owned();
     let dir = "/h/.claude-alt/acct-r3";
 
     // ① 反空真：表里没有这个号 ⇒ 不带中转注入，但 configDir 与 cwd 都得走到。
     entry_answer(&[]);
-    new_local_session(
+    tauri::async_runtime::block_on(new_local_session(
         cwd.clone(),
         None,
         Some(LaunchAccount::Named {
             config_dir: dir.to_string(),
             name: None,
         }),
-    )
+    ))
     .expect("不走中转这一趟不该失败");
     let (bare, bare_cwd) = entry_last();
     assert!(
@@ -3580,14 +3606,14 @@ fn the_new_session_command_the_frontend_calls_carries_the_account_and_the_cwd_th
 
     // ② 表里有这个号 ⇒ 带中转注入，且账号段是这一发的号。
     entry_answer(&["acct-r3"]);
-    new_local_session(
+    tauri::async_runtime::block_on(new_local_session(
         cwd.clone(),
         None,
         Some(LaunchAccount::Named {
             config_dir: dir.to_string(),
             name: None,
         }),
-    )
+    ))
     .expect("走中转这一趟不该失败");
     let (routed, routed_cwd) = entry_last();
     assert!(
@@ -3701,6 +3727,27 @@ fn fake_ep_unreachable(host: Option<String>, a: serde_json::Value) -> EpFut {
     Box::pin(async move { Err("没有控制通道".to_string()) })
 }
 
+/// 〔TL3 · 审计 F 🔴-2〕[`relay_prefix_for_launch`] 今天是 `async`（本机起会话链路零 `block_on`，`INVARIANTS §10`）；
+/// 判据在**测试线程**上等它一趟（替身都是线程局部的，`block_on` 在调用线程上轮询那个 future）。
+fn prefix_now(action: &LocalPsAction, account: Option<&LaunchAccount>) -> Result<String, String> {
+    tauri::async_runtime::block_on(relay_prefix_for_launch(action, account))
+}
+
+/// 〔TL3〕「问后端 ＋ 拉起」在测试线程上走一趟：前缀由生产那个取值口现算（[`prefix_now`]），再交给同步那一截
+/// [`launch_local`]；问不到 / 该拒 ⇒ 当场 `Err`、一个字节都不送（与生产 [`launch_local_asking_backend`] 同序）。
+/// 与生产那一趟的差别只有一格：同步那一截不换线程（本文件各条的记账替身多是线程局部的）。
+/// 「换了线程也照样拼上」由命令级那几条探针真走 `spawn_blocking` 钉（`the_resume_command_…` · `the_new_session_command_…`）。
+fn launch_now(
+    action: &LocalPsAction,
+    launcher: Option<&str>,
+    cwd: Option<&str>,
+    account: Option<&LaunchAccount>,
+    tmux_name: Option<&str>,
+) -> Result<String, String> {
+    let relay = prefix_now(action, account)?;
+    launch_local(action, launcher, cwd, account, tmux_name, relay)
+}
+
 /// ★★★ 〔`设计/20 §7` 步 4〕**开关由环境变量那一个值说了算，默认关。**
 ///
 /// 本条只量取值口自己（缝上那一格由上面按地址对拍）。⚠ 它**不去改进程环境**：
@@ -3748,7 +3795,7 @@ fn the_launch_side_asks_the_all_sessions_switch_and_uses_its_answer() {
             all_sessions: all_sessions_off,
         });
         let _ = fake_asks();
-        assert_eq!(relay_prefix_for_launch(&action, Some(&named)).unwrap(), "");
+        assert_eq!(prefix_now(&action, Some(&named)).unwrap(), "");
         assert_eq!(fake_asks()[0].1["allSessions"], serde_json::json!(false));
     }
     let _f = override_inject_facts(InjectFactSources {
@@ -3757,13 +3804,13 @@ fn the_launch_side_asks_the_all_sessions_switch_and_uses_its_answer() {
         all_sessions: on,
     });
     assert_eq!(
-        relay_prefix_for_launch(&action, Some(&named)).unwrap(),
+        prefix_now(&action, Some(&named)).unwrap(),
         "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'\"$(cat \"$HOME/.cc-monitor/relay-key\")\"'/t/claude-code/acct-sub/sid-1'; ",
         "开关开着，订阅号该走 `/t/`"
     );
     assert_eq!(fake_asks()[0].1["allSessions"], serde_json::json!(true));
     // F5：没表态也交出去（`account: null`），由后端答 `_` 那一格。
-    let _ = relay_prefix_for_launch(&action, None).unwrap();
+    let _ = prefix_now(&action, None).unwrap();
     assert_eq!(fake_asks()[0].1["account"], serde_json::Value::Null);
 }
 

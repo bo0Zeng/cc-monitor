@@ -538,3 +538,76 @@ fn winner_address_uses_last_good_then_invalidates_on_config_change() {
         "配置变更失效 last-good"
     );
 }
+
+// === 〔TL3 · `INVARIANTS §47` ②〕后端路径拼进远端命令之前的放行判定 ===
+
+fn cfg_backend(path: &str) -> RemoteConfig {
+    RemoteConfig {
+        backend_path: path.into(),
+        ..cfg_with("bp", "h.example", 22, vec![])
+    }
+}
+
+/// ★ 要求住址：`INVARIANTS §47`，逐字「一个值只要**从本进程外面来** …… 在它被**拼进 shell 命令串**、或被**交给对端去执行**之前，
+/// **本侧**先过一道按这个值的种类写成的放行判定」；②形「唯一的 quote ＋ 形式判定（绝对路径 · 不含 `..` · 不空）＋ 拒绝集权威表」；
+/// 「**拒过头也算违反** ⇒ 守本条的判据都要**正反各一格**（坏值拒、真实好值放）」。
+///
+/// 正：默认落点（`machine-card.ts::defaultBackendPathFor` 那一形）· root 的 · 带空格的自定义落点 · 前后有空白（trim）。
+/// 反：相对 · `~/…` · 根本身 · `..` 段 · 反斜杠 · 每一个 shell 元字符 · 换行 / NUL · 视觉欺骗字符 · 空。
+#[test]
+fn the_backend_path_is_admitted_or_refused_before_it_is_spliced() {
+    for good in [
+        "/home/u/.cc-monitor/bin/cc-monitor-backend",
+        "/root/.cc-monitor/bin/cc-monitor-backend",
+        "/opt/my tools/cc-monitor-backend",
+        "  /home/u/.cc-monitor/bin/cc-monitor-backend  ",
+    ] {
+        assert_eq!(
+            cfg_backend(good).backend_path_for_shell(),
+            Ok(good.trim()),
+            "真实好值被拒了（§47「拒过头也算违反」）：{good:?}"
+        );
+    }
+    let mut bad: Vec<String> = [
+        "",
+        "bin/cc-monitor-backend",
+        "~/.cc-monitor/bin/cc-monitor-backend",
+        "/",
+        "/home/u/../../etc/x",
+        "/home/u/..",
+        "/home/u\\x",
+        "/home/u/x\n--evil",
+        "/home/u/x\u{0}",
+        "/home/u/x\u{202E}",
+        "/home/u/x\u{3000}y", // 夹在中间（放在两头会被 trim 掉 —— 取出来的值本就不含它）
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    for c in crate::backend::control::payload::SHELL_META_COMMON.chars() {
+        bad.push(format!("/home/u/x{c}y"));
+    }
+    for b in &bad {
+        let e = cfg_backend(b)
+            .backend_path_for_shell()
+            .expect_err(&format!("坏值放行了：{b:?}"));
+        assert!(
+            e.contains("bp") && e.contains(&format!("{:?}", b.trim())),
+            "拒了，但那句话没说清哪台 / 哪个值：{e}"
+        );
+    }
+}
+
+/// ★ 流模式那一发：判不过就在**拨号之前**回 `Err`（`connect_and_exec` 第一件事就是它；没有拨号代理也不会去找）。
+#[test]
+fn a_bad_backend_path_is_refused_before_anything_is_dialed() {
+    let e = tauri::async_runtime::block_on(connect_and_exec(
+        &cfg_backend("/home/u/x;reboot"),
+        false,
+        false,
+        false,
+    ))
+    .err()
+    .expect("坏的后端路径照样去拨号了");
+    assert!(e.contains("\"/home/u/x;reboot\""), "{e}");
+}

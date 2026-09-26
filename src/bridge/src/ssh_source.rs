@@ -273,6 +273,29 @@ pub fn parse_address_line(line: &str, default_port: u16) -> Option<Endpoint> {
 }
 
 impl RemoteConfig {
+    /// 〔TL3 · `INVARIANTS §47` ②〕**这台的后端路径，拼进 shell 命令 / 交给对端去执行之前的那一道放行判定。**
+    ///
+    /// `backendPath` 是用户在机器页手填的（从本进程外面来），而它会被拼进远端命令串（流模式 exec · 测试连接的探针 ·
+    /// 自动 / 手动部署 · 卸载 · 身份扫描 · `ccm` 入口）。它是**本仓自管的远端落点**（默认 `~/.cc-monitor/bin/cc-monitor-backend`，
+    /// 远端 Windows 今天不承诺 ⇒ 只收 POSIX 形），于是走 §47 ②形的全套：唯一的 quote（调用方）＋ 形式判定（绝对 · 非 `/` ·
+    /// 无 `..` 段 · 无 `\`）＋ 拒绝集权威表（控制字符 · shell 元字符 · 视觉欺骗字符）—— 规则就是
+    /// [`crate::backend::control::payload::config_dir_command_safe`] 那一条，这里不另写一份。
+    /// 不过 ⇒ 带着「哪台 · 哪个值 · 为什么」的 `Err`，**一个请求都不发**。取值前 trim（与部署 / 卸载那两条既有的口一致）。
+    pub(crate) fn backend_path_for_shell(&self) -> Result<&str, String> {
+        let p = self.backend_path.trim();
+        if crate::backend::control::payload::config_dir_command_safe(p) {
+            Ok(p)
+        } else {
+            Err(copy_text(
+                "rsSshSource.backendPath.refused",
+                &[
+                    ("machine", &self.origin_label()),
+                    ("path", &format!("{p:?}")),
+                ],
+            ))
+        }
+    }
+
     /// origin 标签 = 稳定身份。`label` 为空时回退用 `host`（向后兼容：旧配置 / 前端
     /// 未传 label 时与单机时代 `origin = host` 行为一致）。多机 #30 用作 Tab 前缀 /
     /// 历史分组 / `load_remote_config_by_label` 选台 key。
@@ -501,7 +524,7 @@ pub async fn connect_and_exec(
     // Batch7-F24/Batch8-F26：两个流模式 flag 都由调用方决定（run_stream 里绑定
     // "部署确认为当前版本"，见该处注释）。tail_only=true → backend 不重放历史
     // （历史由本侧旁路快照拉取），实时通道流量趋零。
-    let mut cmd = shell_quote(&cfg.backend_path);
+    let mut cmd = shell_quote(cfg.backend_path_for_shell()?);
     if with_bg {
         cmd.push_str(" --with-bg");
     }
@@ -4342,7 +4365,10 @@ pub async fn test_remote_connection(
             tracing::warn!("connect stage emit failed: {e}");
         }
     };
-    let (link, ack) = match crate::dial_host::probe(&cfg, &cfg.backend_path, &mut to_ui).await {
+    // 〔TL3 · §47〕探针那一发先过放行判定、再走唯一的 quote —— 先前这里把 `backendPath` **原样**当命令串交给拨号代理
+    //   （远端 shell 会解析它；TL2 那张 quote 人群表逮不到裸插值）。判不过 ⇒ 这是「构造不出测试」的硬错，照实回 `Err`。
+    let probe_cmd = shell_quote(cfg.backend_path_for_shell()?);
+    let (link, ack) = match crate::dial_host::probe(&cfg, &probe_cmd, &mut to_ui).await {
         Ok(v) => v,
         Err((e, _seen_fingerprint)) => {
             // 握手失败（含 host key 不匹配被拒）。代理那侧看到过的指纹**刻意不回给前端**：
