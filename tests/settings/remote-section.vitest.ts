@@ -2,8 +2,9 @@
 // 「有固化指纹才显示重置按钮」这条判定,防未来误改成空指纹也显示(重置无意义)。
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // F56：写入/读取都走 config.ts；mock 掉以测 jump write→read 往返。
-// S1：写入口从 writeRemoteConfig（整表覆盖，已取消导出）改为 patchRemoteConfig（局部合并）。
-vi.mock("../../src/config", () => ({ loadConfig: vi.fn(), saveConfig: vi.fn() }));
+// S1：写入口从 writeRemoteConfig（整表覆盖，已取消导出）改为 patchRemoteConfig（局部合并）。 〔散文墓碑〕
+// 〔CFG1〕config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`。
+vi.mock("../../src/config", async (orig) => (await import("../config-patch-fake")).mockedConfigModule(orig));
 // S3：把整个 IPC 面 mock 成一个**会记账的 Proxy** —— 用来钉「渲染机器列表时零次
 // 后端调用」。这比源码扫描强：扫描只能证明「没 import」，证明不了「渲染时没调」。
 const { ipcCalls, ipcReplies } = vi.hoisted(() => ({
@@ -34,7 +35,9 @@ vi.mock("../../src/ipc/commands", () => ({
     },
   ),
 }));
-import { loadConfig, saveConfig } from "../../src/config";
+import { loadConfig } from "../../src/config";
+import { fakeCfg } from "../config-patch-fake";
+const saveConfig = fakeCfg.saved;
 import {
   shouldShowResetFingerprint,
   RemoteSection,

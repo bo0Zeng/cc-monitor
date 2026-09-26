@@ -43,7 +43,10 @@ monitor 自己的设置（主题 / 字体 / claudeDir override / 诊断）。
 
 **位置**：`~/.claude/work/config.json`
 
-**写入方**：monitor 设置面板（前端 `theme.ts` / `paths.ts` / `diagnostics-section.ts` 通过 IPC `save_config` / `set_diagnostics_config`）
+**写入方**：monitor 的主窗与设置窗（前端各模块经 IPC `patch_config`；诊断经 `set_diagnostics_config`）。〔CFG1〕**只有一个写函数** `config.rs::patch_config_at`：
+写者只交「改哪几条路径」（`ConfigEdit`：`{op:"set", path, value}` / `{op:"remove", path}`，`path[0]` 是顶层键），
+它在一把进程级锁里现读盘、逐条应用、原子替换 ⇒ 谁写的键谁的值留在盘上。盘上那份读不懂 / 最外层不是对象 ⇒ 拒写、一个字节不动；
+路径为空 ⇒ 整批拒。整份替换的写口（旧 `save_config`）不存在。 〔散文墓碑〕
 **读取方**：monitor 启动时 `paths::resolve_claude_dir` + 前端启动时 `load_config` + `logging::init()` 读 `diagnostics` 子对象
 
 **Schema**（schema 收敛在 TS 端 / Rust logging 模块；其他 Rust 代码只读写 `serde_json::Value` 不解释）：

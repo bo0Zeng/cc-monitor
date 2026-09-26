@@ -167,6 +167,7 @@ const DEPS: Record<string, readonly string[]> = {
   //   〔U4〕固定复活的空态文字住文案表（说到会话状态的字一处定）。
   "src/tab-bar-prefs.ts": [
     "src/copy-table.ts",
+    "src/error-toast.ts", // 〔CFG1〕分组 / 固定 / 顺序落盘失败出声（INVARIANTS §12）
     "src/tab-bar-state.ts",
     "src/tab-collections.ts",
     "src/tab-session-state.ts",
