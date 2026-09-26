@@ -6,7 +6,7 @@
  * 09-25 补「原地整份改写且变长 …… 从 0 重读并出声（与截短同一句话族）」。
  *
  * 来路：后端 `session_file_gone` / `session_file_reread` 帧 → monitor 会话内容流一格 `{"file_notice": …}`（与行同序）
- * → `events.ts` → `TabManager.noteRecordFile`。这里只管那一句话画在哪、什么时候收：
+ * → `events.ts` → `main.ts` 装的 `recordFileWiring`（查法是 `TabManager.streamElOf`）。这里只管那一句话画在哪、什么时候收：
  * - 画在流容器的第一个孩子（贴顶），不进记录那一层；同一个 tab 只有一句，新的盖旧的。
  * - 「不见了」那句：之后这个会话又来了一行（文件回来了）⇒ 收掉。「已从头重读」那句留着（它说的是已经发生的事）。
  * - ⚠ 不进留存：F5 之后那句话没了（主会话 09-25 认的已知缺口）。
