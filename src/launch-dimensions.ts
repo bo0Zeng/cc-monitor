@@ -129,7 +129,7 @@ export const NESTED_ENV_RESET_DIMENSION: LaunchDimension = {
  *
  * Rust 同侧是 `src/bridge/src/backend/control/payload.rs::rbind_token_shape_ok`
  * （那边是 fail-closed 的 `Err`，不是 `throw`）。两侧形状由
- * `tests/launch-render-fallback.vitest.ts` 的对拍钉住：**改 Rust 的长度或字符集，TS 这边会红**。
+ * `tests/rbind-token-shape-parity.vitest.ts` 的对拍钉住：**改 Rust 的长度或字符集，TS 这边会红**。
  */
 export function isValidRbindToken(token: string): boolean {
   return /^[0-9a-f]{32}$/.test(token);

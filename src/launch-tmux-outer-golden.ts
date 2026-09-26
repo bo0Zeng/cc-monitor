@@ -1,26 +1,23 @@
 /**
- * `设计/90 §4 E`：**外层 tmux 命令那三格的跨语言逐字节金标准**（同 `launch-payload-golden.ts`
+ * `设计/90 §4 E`：**外层 tmux 命令那三格的入库夹具**（同 `launch-payload-golden.ts`
  * 的机制，同一套纪律）。
  *
  * ```text
- *   本文件（真 renderFallback → 真 SESSION_BACKEND）──生成──▶ fixtures/tmux-outer-golden.json
+ *   本文件（用例表 ＋ 手写期望）──生成──▶ fixtures/tmux-outer-golden.json
  *          ▲                                                          │
  *          │ launch-tmux-outer-golden.vitest.ts                        │ launch_tmux_outer_parity.rs
- *          │ 断言「入库的 == 现场渲染的」                                ▼ 断言「Rust 渲染 == 入库的」
- *          └────────────── 改 TS 不重生成 ⇒ 红                     改 Rust ⇒ 红
+ *          │ 断言「入库的 == 现场落盘的」                                ▼ 断言「Rust 生产命令渲染 == 入库的」
+ *          └────────────── 改用例表不重生成 ⇒ 红                   改 Rust ⇒ 红
  * ```
  *
- * # 🔴 它为什么必须先于「动刀」存在
+ * # 〔LR2〕左边从「TS 渲染器 ＋ 座」换成了「手写期望」
  *
- * launch 的渲染结果是**要落到用户 shell 里执行的字符串** —— 一个字节的差异就是行为差异，
- * 而既有判据在这一维上是**瞎的**：`remote-launch.test.ts` 与 `session-backend` 那套测的是
- * 「TS 自己产的串对不对」，`payload-golden.json` 只覆盖**内层**（`container:"none"`）。
- * 把外层那三格搬进 Rust 而不先立这份金标准，「搬过去了但少了一个 `&&`」这一类改动
- * **一条判据都不会红**。⇒ 先立标准，再动刀。
- *
- * ⚠ **左边是「今天线上真在跑的那一支」**，不是一份手写期望值：
- * `renderFallback(plan)` 就是 `remote-launch-run.ts::renderLaunchCommand` 最后那一行调的
- * 同一个函数，它内部再去问座 `session-backend.ts` 要 `tmux …` 那几句。
+ * 22b·B 起生产那三格走 Rust（`render_launch_payload` 带 `outer`）；TS 那份
+ * （`launch-render-fallback.ts` ＋ `session-backend.ts`）零生产调用，照 `设计/00 §2.5 ④` 删了。
+ * `cmd` 是**手写的期望**：值是 TS 那份最后一次跑出、与 Rust 逐字节对过的原样。
+ * `req` 仍由生产的 `buildTmuxOuterRenderRequest` 现产 ⇒ 这份夹具钉的是
+ * 「生产请求构造 → 线 → Rust 反序列化 → 生产命令」这一整条（例如「生产那一格少送 `outer`」
+ * 会让 Rust 渲出一条没有 tmux 的串 ⇒ 与 `cmd` 不等 ⇒ 红）。
  *
  * # 三格 × 覆盖面
  *
@@ -29,15 +26,9 @@
  * - `send-into`：没有 `new-session`、没有短路（治 #76 的那一格）；
  * - `attach`：不带载荷。
  *
- * ⚠ **金标准盖不到的，如实写在这里**：
- * 1. **非法输入两侧姿态不同** —— Rust 侧对空会话名 / 越界 `@ccm_sid` / 空 cwd 一律 `Err`，
- *    TS 座逐字「不做校验/转义」照拼。这一类**结构上进不了金标准**（左边产得出、右边拒），
- *    与 `payload.rs` 头注记的那条「TS 生成夹具这个机制抓不到安全姿态差异」是同一件事。
- * 2. **两侧一致地错，金标准照样绿** —— 它挡的是**单侧静默漂移**。
- *    真正挡「两侧同错」的是各侧自己的语义判据（TS：`session-backend.test.ts`；
- *    Rust：`payload_tests.rs` 里外层那几条）。
+ * ⚠ **金标准盖不到的，如实写在这里**：非法输入（空会话名 / 越界 `@ccm_sid` / 空 cwd）
+ * Rust 一律 `Err`，那一类进不了这份金标准，由 `payload_tests.rs` 外层那几条管。
  */
-import { renderFallback } from "./launch-render-fallback.ts";
 import { AGENT_PROFILE } from "./agent-profile.ts";
 import { buildTmuxOuterRenderRequest } from "./remote-launch-run.ts";
 import type { EnvOp, LaunchPlan, TmuxMode } from "./launch-plan.ts";
@@ -54,6 +45,8 @@ export interface TmuxOuterCase {
   env: EnvOp[];
   launcher: string;
   args: string[];
+  /** **手写**的期望串：生产 `render_launch_payload`（带 `outer`）对这一格该渲出的整条命令。 */
+  cmd: string;
 }
 
 const ACCT = "/home/u/.claude-alt/z";
@@ -71,6 +64,7 @@ const base = (over: Partial<TmuxOuterCase> = {}): TmuxOuterCase => ({
   env: [],
   launcher: "claude",
   args: [],
+  cmd: "",
   ...over,
 });
 
@@ -78,39 +72,47 @@ const base = (over: Partial<TmuxOuterCase> = {}): TmuxOuterCase => ({
  * 用例集。**每加一条 Rust 侧就多比一条** —— 这是这三格对拍面的唯一定义处。
  */
 export const TMUX_OUTER_CASES: readonly TmuxOuterCase[] = [
-  base({ name: "create：裸的（无 cwd、无身份标记）" }),
-  base({ name: "create：带 cwd（-c 落在 new-session 上，内层没有 cd）", cwd: "/w" }),
+  base({ name: "create：裸的（无 cwd、无身份标记）", cmd: "tmux new-session -d -s cc-0f1e2d3c && tmux send-keys -t =cc-0f1e2d3c: 'claude' Enter && tmux attach -t =cc-0f1e2d3c:" }),
+  base({ name: "create：带 cwd（-c 落在 new-session 上，内层没有 cd）",
+    cmd: "tmux new-session -d -s cc-0f1e2d3c -c '/w' && tmux send-keys -t =cc-0f1e2d3c: 'claude' Enter && tmux attach -t =cc-0f1e2d3c:", cwd: "/w" }),
   base({
     name: "create：带 @ccm_sid（setSid + setTitle 两段一起出现）",
+    cmd: "tmux new-session -d -s cc-0f1e2d3c && (tmux set-option -t =cc-0f1e2d3c: @ccm_sid 0f1e2d3c 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles on 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && tmux send-keys -t =cc-0f1e2d3c: 'claude' Enter && tmux attach -t =cc-0f1e2d3c:",
     ccmSid: SID,
   }),
   base({
     name: "create：cwd + @ccm_sid + 具名账号 + 嵌套 env 清理",
+    cmd: "tmux new-session -d -s cc-0f1e2d3c -c '/w' && (tmux set-option -t =cc-0f1e2d3c: @ccm_sid 0f1e2d3c 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles on 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && tmux send-keys -t =cc-0f1e2d3c: 'export CLAUDE_CONFIG_DIR='\\''/home/u/.claude-alt/z'\\''; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; claude' Enter && tmux attach -t =cc-0f1e2d3c:",
     cwd: "/w",
     ccmSid: SID,
     env: [{ kind: "export-config-dir", value: ACCT }, { kind: "unset-nested-env" }],
   }),
   base({
     name: "create：账号 0（显式 unset）+ 模型偏好",
+    cmd: "tmux new-session -d -s cc-0f1e2d3c -c '/w' && tmux send-keys -t =cc-0f1e2d3c: 'unset CLAUDE_CONFIG_DIR; export ANTHROPIC_MODEL='\\''opus'\\''; claude' Enter && tmux attach -t =cc-0f1e2d3c:",
     cwd: "/w",
     env: [{ kind: "unset-config-dir" }, { kind: "export-model", value: "opus" }],
   }),
   base({
     name: "create：quoted 名字（=name: 整段被单引号包住）",
+    cmd: "tmux new-session -d -s '开新 Claude' && (tmux set-option -t '=开新 Claude:' @ccm_sid 0f1e2d3c 2>/dev/null || true) && (tmux set-option -t '=开新 Claude:' set-titles on 2>/dev/null || true) && (tmux set-option -t '=开新 Claude:' set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && tmux send-keys -t '=开新 Claude:' 'claude' Enter && tmux attach -t '=开新 Claude:'",
     tmuxName: "开新 Claude",
     nameQuoting: "quoted",
     ccmSid: SID,
   }),
   base({
     name: "create：cwd 带空格与中文（单引号包裹）",
+    cmd: "tmux new-session -d -s cc-0f1e2d3c -c '/home/用户/带 空格/proj' && tmux send-keys -t =cc-0f1e2d3c: 'claude' Enter && tmux attach -t =cc-0f1e2d3c:",
     cwd: "/home/用户/带 空格/proj",
   }),
   base({
     name: "create：cwd 里有单引号（POSIX 断开转义）",
+    cmd: "tmux new-session -d -s cc-0f1e2d3c -c '/tmp/it'\\''s here' && tmux send-keys -t =cc-0f1e2d3c: 'claude' Enter && tmux attach -t =cc-0f1e2d3c:",
     cwd: "/tmp/it's here",
   }),
   base({
     name: "create：resume（flag 已展开进 argv）",
+    cmd: "tmux new-session -d -s cc-0f1e2d3c -c '/w' && (tmux set-option -t =cc-0f1e2d3c: @ccm_sid 0f1e2d3c 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles on 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && tmux send-keys -t =cc-0f1e2d3c: 'claude --resume abc-123' Enter && tmux attach -t =cc-0f1e2d3c:",
     cwd: "/w",
     ccmSid: SID,
     args: [AGENT_PROFILE.resumeFlag, "abc-123"],
@@ -120,27 +122,32 @@ export const TMUX_OUTER_CASES: readonly TmuxOuterCase[] = [
     //    也进**内层载荷**（被 `posixQuote` 一次塞进 `send-keys`），
     //    不需要在外层 tmux 命令上另开一个槽位。这一条与
     //    `payload-golden.json` 里那两条令牌用例合起来，就是「两条起法同一套机制」的
-    //    逐字节读数：左边是同一个 `renderFallback`，只换了 `container`。
+    //    逐字节读数：右边是同一个 `render_launch_payload`，只换了有没有 `outer`。
     name: "create：启动期令牌（容器无关 —— tmux 那一格也带，且排在 unset 之后）",
+    cmd: "tmux new-session -d -s cc-0f1e2d3c -c '/w' && (tmux set-option -t =cc-0f1e2d3c: @ccm_sid 0f1e2d3c 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles on 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && tmux send-keys -t =cc-0f1e2d3c: 'unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; export CCM_RBIND_TOKEN='\\''0f1e2d3c4b5a69788796a5b4c3d2e1f0'\\''; claude' Enter && tmux attach -t =cc-0f1e2d3c:",
     cwd: "/w",
     ccmSid: SID,
     env: [{ kind: "unset-nested-env" }, { kind: "export-rbind-token", value: RBIND }],
   }),
   base({
     name: "send-into：无 new-session、无短路（治 #76 那一格）",
+    cmd: "tmux send-keys -t =cc-0f1e2d3c: 'unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; claude --resume abc-123' Enter; tmux attach -t =cc-0f1e2d3c:",
     mode: "send-into",
     env: [{ kind: "unset-nested-env" }],
     args: [AGENT_PROFILE.resumeFlag, "abc-123"],
   }),
   base({
     name: "send-into：quoted 名字",
+    cmd: "tmux send-keys -t '=开新 Claude:' 'claude' Enter; tmux attach -t '=开新 Claude:'",
     mode: "send-into",
     tmuxName: "开新 Claude",
     nameQuoting: "quoted",
   }),
-  base({ name: "attach：raw 名字，不带载荷", mode: null }),
+  base({ name: "attach：raw 名字，不带载荷",
+    cmd: "tmux attach -t =cc-0f1e2d3c:", mode: null }),
   base({
     name: "attach：quoted 名字，不带载荷",
+    cmd: "tmux attach -t '=开新 Claude:'",
     mode: null,
     tmuxName: "开新 Claude",
     nameQuoting: "quoted",
@@ -152,7 +159,7 @@ function planOf(c: TmuxOuterCase): LaunchPlan {
     kind: "tmux" as const,
     name: c.tmuxName,
     nameQuoting: c.nameQuoting,
-    // `attach` 那一格在 IR 里的容器 mode 是 `attach-only`（`renderFallback` 先按
+    // `attach` 那一格在 IR 里的容器 mode 是 `attach-only`（`buildTmuxOuterRenderRequest` 先按
     // `action.kind === "attach"` 分流，根本不看 mode）—— 照 `launch-requests.ts::planAttach` 的原样。
     mode: (c.mode ?? "attach-only") as TmuxMode,
   };
@@ -196,7 +203,7 @@ export function renderTmuxOuterFixture(): string {
         // ★ `req` 由**生产形状的构造口**（`buildTmuxOuterRenderRequest`）产出 ——
         //   Rust 侧跑的是真命令 `render_launch_payload`，不是自己重搭一个 spec。
         req: buildTmuxOuterRenderRequest(planOf(c)),
-        cmd: renderFallback(planOf(c)),
+        cmd: c.cmd,
       })),
     },
     null,

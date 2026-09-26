@@ -1,4 +1,9 @@
-//! U8c-1：`backend::control::payload` 的载荷渲染 **↔** TS `launch-render-fallback.ts` 的**逐字节对拍**。
+//! U8c-1：`backend::control::payload` 的载荷渲染 **↔** 入库夹具 `payload-golden.json` 的**逐字节对拍**。
+//!
+//! 〔LR2〕夹具左边原来是 TS 兜底渲染器（`launch-render-fallback.ts`）现场渲的串；那份零生产调用、
+//! 按 `设计/00 §2.5 ④` 删了，左边换成 `src/launch-payload-golden.ts` 用例表里的**手写期望**
+//! （值就是它最后一次渲出、与 Rust 对过的原样）。下面的历史段落照旧留着 —— 它们讲的「自洽夹具」
+//! 纪律今天仍是本对拍的骨架：夹具入库，两侧各自与它比。
 //!
 //! # 为什么这条判据活在 `src/bridge` 而不在 crate 里
 //!
@@ -19,9 +24,9 @@
 //! 那种自洽」—— **那个因果不成立**。Rust 那侧是照着 TS 逐行写的；两边**一致地**错时，
 //! 入库夹具照样全绿（复盘审计用变异实测过）。夹具挡的是**单侧静默漂移**，不是两侧同错。
 //!
-//! 真正挡「两侧同错」的是**各侧自己的语义判据**：TS 的 `launch-render-*.test.ts` +
-//! Rust 侧自己的单测（`ccm_invocation.rs` 那半到 UB-复盘2 才有，此前是 0 条）。
-//! ⚠ 而 TS 那半**排期在 U8c-3 被删** —— 那天一到，本对拍只剩「Rust 跟上次一样」的快照意义。
+//! 真正挡「两侧同错」的是**各侧自己的语义判据**：Rust 侧自己的单测（`payload_tests.rs`）。
+//! 〔LR2〕TS 那半在 U8c-3 删了（LR1 删 CLI 那份、LR2 删兜底这份）—— 本对拍从此是「手写规格 vs Rust 生产」，
+//! 与 `ccm_invocation_tests.rs`「判据自带清单」同一性质。
 
 use serde::Deserialize;
 

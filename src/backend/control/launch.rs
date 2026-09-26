@@ -439,7 +439,8 @@ pub(crate) fn run(req: &LaunchRequest) -> Result<LaunchOutcome, CmdErr> {
                 ));
             }
             // 身份标记与标题是**次要**动作：失败绝不阻断主要动作（键入载荷）。
-            // 与 monitor 侧 `session-backend.ts` 里 `(… 2>/dev/null || true) &&` 同一条纪律。
+            // 与 monitor 侧 `payload.rs::render_tmux_outer` 里 `(… 2>/dev/null || true) &&` 同一条纪律
+            // （〔LR2〕原来点的是 TS 座 `session-backend.ts`，那一份删了）。
             //
             // ★★ **建会话这一刻写的是「意图」，不是「事实」**〔`K-P2` C 第五拍，09-03；
             //    PM `§13 裁三` 裁「候选丙」〕。
@@ -464,7 +465,7 @@ pub(crate) fn run(req: &LaunchRequest) -> Result<LaunchOutcome, CmdErr> {
             // 的 `(写点, 读点, 意图)` 三元组钉住（写点必须恒为 0）。
             //
             // ⚠ **为什么可以现在就改**：这条臂今天**零生产调用方** ——
-            //   `launch_wire::the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold`
+            //   `launch_wire::the_create_or_attach_mode_is_sent_only_by_the_ccm_container_path`
             //   与 `readonly_guard` 的 `g6_staged_zero` 两条判据一起钉着「生产段不发
             //   `create-or-attach`」。⇒ 本改动今天不改变任何一条在跑的路径的行为，
             //   它是把「接线那一拍会踩的那颗雷」在接线之前拆掉。
