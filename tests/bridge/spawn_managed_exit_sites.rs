@@ -137,9 +137,10 @@ const SITES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "local_backend_host.rs",
-        "signal_term",
+        "send_signal",
         "spawn_managed_cmd",
-        "argv 是 `kill -TERM <pid>`，那个 pid 是我们自己算出来的、不吃用户输入 ——\
+        "〔HX1〕原名 `signal_term`；「停」要能升级到强杀 ⇒ 收一个信号参数（`-TERM` / `-KILL`，两个薄壳里的字面量）。\
+         argv 是 `kill -TERM|-KILL <pid>`，那个 pid 是我们自己算出来的、不吃用户输入 ——\
          它只有这里知道。⚠ 这一处**已登记**在 `SPAWNS`（那张表默认拒绝），\
          本条与它不同源、不同粒度，两条都要。",
     ),

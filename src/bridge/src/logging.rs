@@ -22,8 +22,8 @@
 //!   由 `lib.rs` 自己 `app.manage()`。
 //! - ErrorEmitter Layer 通过 closure 注入 emit 行为（`install_error_emitter`），
 //!   避免对 `tauri::Runtime` generic 的依赖泄漏。
-//! - DiagnosticsConfig 字段独立 R/W `config.json` 的 `diagnostics` 子对象，不污染
-//!   现有 `config::load_config / save_config` 接口。
+//! - DiagnosticsConfig 字段读写 `config.json` 的 `diagnostics` 子对象；写经 `config::patch_config_at`
+//!   （`config.json` 唯一的写函数，〔CFG1〕）。
 //!
 //! ## 启动时序
 //!
@@ -493,68 +493,25 @@ fn write_diagnostics_to_config(
     monitor_data_dir: &Path,
     cfg: &DiagnosticsConfig,
 ) -> Result<(), String> {
-    let cfg_path = monitor_data_dir.join("config.json");
-    let mut v: serde_json::Value = if cfg_path.exists() {
-        let raw = std::fs::read_to_string(&cfg_path)
-            .map_err(|e| format!("read {}: {e}", cfg_path.display()))?;
-        // 〔S5 · 第四波 · D4 / D7〕读不懂 ⇒ **不写**，说清为什么。从前这里退成 `{}` 再整份写回 ——
-        //   用户手填的那份（哪怕只是少了一个逗号）连同里面别的设置被静默盖成只剩 `diagnostics` 一格。
-        serde_json::from_str(&raw).map_err(|e| {
-            copy_text(
+    // 〔CFG1 · 4D〕不再自己读-改-写整份：`config.json` 只有一个写函数（`config::patch_config_at`，
+    //   进程级锁 ＋ 只动 `diagnostics` 这一个键）。从前这里与前端的 `save_config` 各读各写， 〔散文墓碑〕
+    //   设置窗存诊断的同一拍主窗存 tab 栏 ⇒ 后写的整份盖掉先写的键。本文件那份 `atomic_replace` 副本随之删了。
+    let value = serde_json::to_value(cfg).map_err(|e| e.to_string())?;
+    let edit = crate::config::ConfigEdit::Set {
+        path: vec!["diagnostics".to_string()],
+        value,
+    };
+    crate::config::patch_config_at(&monitor_data_dir.join("config.json"), &[edit]).map_err(|e| {
+        match e {
+            // 〔S5 · 第四波 · D4 / D7〕读不懂 ⇒ **不写**，说清为什么。从前这里退成 `{}` 再整份写回 ——
+            //   用户手填的那份（哪怕只是少了一个逗号）连同里面别的设置被静默盖成只剩 `diagnostics` 一格。
+            crate::config::ConfigWriteError::Unreadable { path, detail } => copy_text(
                 "rsLogging.diagnostics.badConfig",
-                &[
-                    ("path", &(cfg_path.display()).to_string()),
-                    ("e", &e.to_string()),
-                ],
-            )
-        })?
-    } else {
-        std::fs::create_dir_all(monitor_data_dir)
-            .map_err(|e| format!("mkdir {}: {e}", monitor_data_dir.display()))?;
-        serde_json::json!({})
-    };
-    let obj = v.as_object_mut().ok_or("config.json root not an object")?;
-    obj.insert(
-        "diagnostics".to_string(),
-        serde_json::to_value(cfg).map_err(|e| e.to_string())?,
-    );
-
-    let pretty = serde_json::to_string_pretty(&v).map_err(|e| e.to_string())?;
-    let tmp = cfg_path.with_extension("json.tmp");
-    std::fs::write(&tmp, pretty).map_err(|e| format!("write tmp: {e}"))?;
-    atomic_replace(&tmp, &cfg_path).map_err(|e| format!("replace: {e}"))?;
-    Ok(())
-}
-
-// config.rs::atomic_replace 是 pub(crate) sibling 函数；这里复制一份避免 cross-module
-// 依赖（logging 不该 import config，否则模块图不干净）
-#[cfg(windows)]
-fn atomic_replace(src: &Path, dst: &Path) -> std::io::Result<()> {
-    use std::os::windows::ffi::OsStrExt;
-    use windows::core::PCWSTR;
-    use windows::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_REPLACE_EXISTING};
-
-    let to_wide = |p: &Path| -> Vec<u16> {
-        p.as_os_str()
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect()
-    };
-    let src_w = to_wide(src);
-    let dst_w = to_wide(dst);
-    unsafe {
-        MoveFileExW(
-            PCWSTR(src_w.as_ptr()),
-            PCWSTR(dst_w.as_ptr()),
-            MOVEFILE_REPLACE_EXISTING,
-        )
-        .map_err(|e| std::io::Error::other(e.message().to_string()))
-    }
-}
-
-#[cfg(not(windows))]
-fn atomic_replace(src: &Path, dst: &Path) -> std::io::Result<()> {
-    std::fs::rename(src, dst)
+                &[("path", &path.display().to_string()), ("e", &detail)],
+            ),
+            other => other.to_string(),
+        }
+    })
 }
 
 // ===== 文件信息（IPC get_log_file_info 用） =====

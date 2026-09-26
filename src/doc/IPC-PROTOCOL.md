@@ -43,7 +43,10 @@ monitor 自己的设置（主题 / 字体 / claudeDir override / 诊断）。
 
 **位置**：`~/.claude/claudecode-frontend/config.json`
 
-**写入方**：monitor 设置面板（前端 `theme.ts` / `paths.ts` / `diagnostics-section.ts` 通过 IPC `save_config` / `set_diagnostics_config`）
+**写入方**：monitor 的主窗与设置窗（前端各模块经 IPC `patch_config`；诊断经 `set_diagnostics_config`）。〔CFG1〕**只有一个写函数** `config.rs::patch_config_at`：
+写者只交「改哪几条路径」（`ConfigEdit`：`{op:"set", path, value}` / `{op:"remove", path}`，`path[0]` 是顶层键），
+它在一把进程级锁里现读盘、逐条应用、原子替换 ⇒ 谁写的键谁的值留在盘上。盘上那份读不懂 / 最外层不是对象 ⇒ 拒写、一个字节不动；
+路径为空 ⇒ 整批拒。整份替换的写口（旧 `save_config`）不存在。 〔散文墓碑〕
 **读取方**：monitor 启动时 `paths::resolve_claude_dir` + 前端启动时 `load_config` + `logging::init()` 读 `diagnostics` 子对象
 
 **Schema**（schema 收敛在 TS 端 / Rust logging 模块；其他 Rust 代码只读写 `serde_json::Value` 不解释）：
@@ -869,7 +872,9 @@ pane 处于 **copy-mode**（用户滚了一下轮子）时 `send-keys` **照样�
 **错误码分两层**（U8a-2b 定，趁 `launch` 还没有仓外消费方）：
 **协议级**由 `inbound.rs` 独占 —— `bad_request`（信封 JSON 坏了）· `line_too_long` ·
 `unknown_command` · `duplicate_id` · `handler_panicked` · `not_cancellable`，语义是
-「客户端代码写错了，别重试」；**命令级**由各命令自己定，语义是「参数或环境的问题」。
+「客户端代码写错了，别重试」；〔HX1 · 4D〕另有一个**不是**「写错了」的协议级码 `shutting_down`：后端在收场
+（收到停机信号 / 对端走了 / 最后一个客户走了且退出行为是「结束」，先等在飞的阻塞档命令做完再退），这时新来的阻塞档命令
+一个字节不动、回它 —— 语义是「这一条没执行，重连之后再发」；它与命令无关，同样只有 `inbound.rs` 判得了。**命令级**由各命令自己定，语义是「参数或环境的问题」。
 所以 `launch` 的形状错误叫 `invalid_args` 而**不是** `bad_request`。
 （⚠ `resolve` 今天仍回命令级 `bad_request` —— 它与仓外 aterm 的一次性契约冻结在 2026-07-18，
 两条路复用同一个纯函数，改它会破坏那份契约。如实登记，不顺手改。）
@@ -1345,6 +1350,8 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 
 ⚠ 没有大小上限、没有「写之前那一版」的备份 —— 本面只做「写」这一件，编辑器的那些语义不在它里面。
 
+〔HX1 · 4D〕**原子地换**（主会话 D-a）：unix 上同目录 `O_EXCL` 暂存旁名写满、沿用原权限位、换名上位 ⇒ 写到一半失败或后端在写的中途被收掉，目标原封不动（旁边可能剩一份 `.<名>.ccm-put-<pid>-<序>.part`）。代价：inode 换了 ⇒ 硬链接的另一个名字仍指旧内容；目标属别的用户时属主变成后端那个用户；xattr / ACL 不跟过来。Windows 上照旧就地写（保 ACE）。
+
 #### `files-commit-upload`：把暂存区里一份传完的上传件挪进目标（F7c，2026-09-24）
 
 ```text
@@ -1388,7 +1395,7 @@ SFTP 缩成只做传输之后（`设计/60 §13`），上传**只写** `~/.cc-mo
 ⚠ `O_EXCL` 新建：同一 `key` 的同一块已经在（重发 / 撞键）⇒ `io_failed`，一个字节不盖。写到一半失败 ⇒ 删掉自己刚建的那一份。
 - **CLI 面同样有它**：`--files-stage-chunk`，载荷走 stdin，与帧面的 `args` 同形。
 
-#### `files-commit-text`：按块读回、拼起来、原地覆盖（F9c · 第四波，2026-09-24）
+#### `files-commit-text`：按块读回、拼起来、覆盖写（F9c · 第四波，2026-09-24）
 
 ```text
 → {"id":"w9","cmd":"files-commit-text","args":{"key":"0123456789abcdef0123456789abcdef","chunks":3,"bytes":3000000,"root":"/home/u/docs","rel":"big.log"}}
@@ -1400,7 +1407,7 @@ SFTP 缩成只做传输之后（`设计/60 §13`），上传**只写** `~/.cc-mo
 | `key` | → | 与 `files-stage-chunk` 同一个键 |
 | `chunks` | → | 块数：读回 `0..chunks` 这几块。只收 `1..=bytes`（每块至少 1 字节） |
 | `bytes` | → | 拼起来**必须恰好**这么长；最多 8 MiB（`files-read-text` 一趟的天花板：存得回的要读得回来），超了 ⇒ `bad_args` |
-| `root` / `rel` | → | 目标，语义与 `files-write-text` **完全相同**：必须已经在、是普通文件；跟链接（解到底再判一次）；原地覆盖（权限位 / 属主不变） |
+| `root` / `rel` | → | 目标，语义与 `files-write-text` **完全相同**：必须已经在、是普通文件；跟链接（解到底再判一次）；原子地换（权限位沿用；〔HX1〕属主 / 硬链接不再保留，见 `files-write-text`） |
 | `path` | ← | 解到底的那个真路径 |
 | `bytes` | ← | 写进去的字节数 |
 

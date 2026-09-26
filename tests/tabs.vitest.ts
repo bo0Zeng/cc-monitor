@@ -241,6 +241,7 @@ import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, RECONNECTABLE, UNSE
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { REPO_ROOT } from "./test-support/repo-root.ts";
+import { answerAskDialog, askDialogText } from "./test-support/ask-dialog-driver.ts";
 import type { TabStore } from "../src/tab-store";
 import type { TabBarView } from "../src/tab-bar-view";
 import type { TabBarDrag } from "../src/tab-bar-drag";
@@ -248,6 +249,7 @@ import type { TabBarPrefs } from "../src/tab-bar-prefs";
 import type { TabStreamView } from "../src/tab-stream-view";
 import type { TabSessionActions } from "../src/tab-session-actions";
 import { LOCAL_ORIGIN } from "../src/ipc/origin";
+import { applyConfigEdits, type Edit } from "./config-patch-fake";
 
 // 〔S4 · 第四波〕`TabManager` 拆开之后各样东西住各自的家（store · tab 栏视图 · 拖拽 · 落盘偏好 · 流视图 · 会话动作）。
 // 判据**直接指向新家**；`TabManager` 上不再为旧判据留同名转交。TS 的 `private` 只在编译期，运行时这几个字段就在实例上。仅测试用。
@@ -2439,9 +2441,9 @@ describe("audit-fixes F03 findIdleTmux（sid 命中但 command≠claude 的空 t
   });
 });
 
-// auto-e2e F-E4：可注入 confirm seam（killRemoteTmux）——**行为等价**验证。默认（不传 opts）**必须**
-// 仍调 window.confirm、消息串不变（默认交互零变化，这是 seam 非行为改动）；注入 confirm 才旁路
-// （headless e2e / DEV）。DOM(jsdom) 层是该 TabManager 方法的诚实天花板。
+// auto-e2e F-E4：可注入 confirm seam（killRemoteTmux）。默认（不传 opts）走应用内对话框
+// （〔W5-UI〕真 app 里 `window.confirm` 是插件注入的 async 替身、恒真值 ⇒ 原先这里从来没问过）；
+// 注入 confirm 才旁路（headless e2e / DEV）。DOM(jsdom) 层是该 TabManager 方法的诚实天花板。
 describe("auto-e2e F-E4 可注入 confirm seam（killRemoteTmux 行为等价）", () => {
   let tm: TabManager;
   beforeEach(() => {
@@ -2456,10 +2458,15 @@ describe("auto-e2e F-E4 可注入 confirm seam（killRemoteTmux 行为等价）"
   //   （`src/tmux-control.ts::killSession`）⇒ 这里数的是那一发 `chan_call`，译回旧形参 `[旧名, {origin, target}]`。
   const killCalls = (): unknown[] => killCallsOf(vi.mocked(invoke).mock.calls);
 
-  it("killRemoteTmux 默认（不传 opts）→ 仍调 window.confirm（默认交互零变化）", () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+  it("killRemoteTmux 默认（不传 opts）→ 弹应用内对话框；答之前不杀，答「取消」⇒ 不杀", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm");
     home(tm).actions.killRemoteTmux("hostA", "cc-abc", false);
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    await microFlush();
+    expect(askDialogText(), "没弹应用内对话框").toContain("杀死会话「cc-abc」");
+    expect(killCalls(), "还没答就杀了").toHaveLength(0);
+    await answerAskDialog(false);
+    expect(killCalls()).toHaveLength(0);
+    expect(confirmSpy, "还在用原生 window.confirm").not.toHaveBeenCalled();
     confirmSpy.mockRestore();
   });
 
@@ -2501,7 +2508,7 @@ describe("auto-e2e F-E4 可注入 confirm seam（killRemoteTmux 行为等价）"
   });
 
   // 护栏：live（非 idle）文案必须仍含"正在运行的 Claude"——防日后误改 live 文案不被测出。
-  it("killRemoteTmux 非 idle → 文案含'正在运行的 Claude'（live 路径护栏）", () => {
+  it("killRemoteTmux 非 idle → 文案含'正在运行的 Claude'（live 路径护栏）", async () => {
     const msgs: string[] = [];
     home(tm).actions.killRemoteTmux("hostA", "cc-live1234", false, {
       confirm: (m: string) => {
@@ -2509,6 +2516,7 @@ describe("auto-e2e F-E4 可注入 confirm seam（killRemoteTmux 行为等价）"
         return false;
       },
     });
+    await microFlush();
     expect(msgs).toHaveLength(1);
     expect(msgs[0]).toContain("正在运行的 Claude");
   });
@@ -2588,32 +2596,28 @@ describe("A5+ claudeExited（优雅退出检测：目标 sid 前台是否不再�
 describe("F79 杀死远端 tmux 会话（二次确认 + kill_remote_tmux）", () => {
   beforeEach(() => vi.clearAllMocks());
   it("二次确认通过 → invoke kill_remote_tmux（origin/target 正确，变灰由 #60-A 兜、不主动 archive）", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     const tm = home(makeTM()).actions;
     tm.killRemoteTmux("hostA", "cc-abc", false);
-    await Promise.resolve();
+    await answerAskDialog(true);
     const call = killCallsOf(vi.mocked(invoke).mock.calls)[0];
     expect(call).toBeTruthy();
     expect(call![1]).toMatchObject({ origin: "hostA", target: "cc-abc" });
-    confirmSpy.mockRestore();
   });
-  it("二次确认取消 → 不 invoke", () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+  it("二次确认取消 → 不 invoke", async () => {
     const tm = home(makeTM()).actions;
     tm.killRemoteTmux("hostA", "cc-abc", false);
+    await answerAskDialog(false);
     expect(killCallsOf(vi.mocked(invoke).mock.calls)).toHaveLength(0);
-    confirmSpy.mockRestore();
   });
-  it("F79 审计修复：cwd 回退命中（viaCwd）→ 二次确认加强 caveat（可能杀同目录别的会话）", () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+  it("F79 审计修复：cwd 回退命中（viaCwd）→ 二次确认加强 caveat（可能杀同目录别的会话）", async () => {
     const tm = home(makeTM()).actions;
     tm.killRemoteTmux("hostA", "cc-abc", true);
-    const msg = String(confirmSpy.mock.calls[0]?.[0] ?? "");
+    const msg = askDialogText();
+    await answerAskDialog(false);
     // 〔U2〕按术语表改词：`@ccm_sid` 是禁词（say：不说标记，说后果「认不出是哪个会话」），
     //   这一格随改词同拍改 —— 钉的仍是同一件事（回退命中 ⇒ 确认框里有串味警告）。
     expect(msg).toContain("认不出这是哪个会话"); // 未检测到身份标记
     expect(msg).toContain("同目录"); // 可能杀同目录别的 Claude
-    confirmSpy.mockRestore();
   });
 });
 
@@ -3726,6 +3730,81 @@ describe("P7a-3 集合分组渲染", () => {
     expect(loose).toHaveLength(1);
   });
 
+  // ── 〔W5-UI〕P-extra 组头就地改名（`设计/30 §3.3` 逐字「组头就地 `<input>`：Enter 提交 / Esc 取消 / blur 提交」）──
+  describe("P-extra 组头就地改名", () => {
+    const renameWrites = (): TabCollection[][] =>
+      (home(tm).prefs.commitCollections as unknown as Mock).mock.calls.map((c) => c[0] as TabCollection[]);
+    let promptSpy: ReturnType<typeof vi.spyOn>;
+    const open = (): HTMLInputElement => {
+      tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
+      setCols([{ id: "g1", name: "白天", members: ["a"] }]);
+      flushBar();
+      home(tm).prefs.commitCollections = vi.fn().mockResolvedValue(undefined) as never;
+      bar.querySelector<HTMLElement>(".tab-group-name")!.click();
+      const input = bar.querySelector<HTMLInputElement>(".tab-group-head input")!;
+      expect(input, "组头没换成输入框").toBeTruthy();
+      return input;
+    };
+    const key = (el: HTMLElement, k: string): void => {
+      el.dispatchEvent(new KeyboardEvent("keydown", { key: k, code: k, bubbles: true }));
+    };
+    beforeEach(() => {
+      promptSpy = vi.spyOn(window, "prompt");
+    });
+    afterEach(() => {
+      expect(promptSpy, "还在弹原生 window.prompt").not.toHaveBeenCalled();
+      promptSpy.mockRestore();
+    });
+
+    it("点组头 ⇒ 就地输入框（初值 = 现名、聚焦、全选），名字按钮让位", () => {
+      const input = open();
+      expect(input.value).toBe("白天");
+      expect(document.activeElement).toBe(input);
+      expect([input.selectionStart, input.selectionEnd]).toEqual([0, 2]);
+      expect(bar.querySelector<HTMLElement>(".tab-group-name")!.hidden).toBe(true);
+      key(input, "Escape");
+    });
+
+    it("Enter 提交：恰写一次、写的是新名；输入框收起、名字按钮回来", () => {
+      const input = open();
+      input.value = "  夜里 ";
+      key(input, "Enter");
+      expect(renameWrites()).toHaveLength(1);
+      expect(renameWrites()[0].find((c) => c.id === "g1")!.name).toBe("夜里");
+      expect(bar.querySelector(".tab-group-head input")).toBeNull();
+      expect(bar.querySelector<HTMLElement>(".tab-group-name")!.hidden).toBe(false);
+    });
+
+    it("Esc 取消：零写、名字不变", () => {
+      const input = open();
+      input.value = "夜里";
+      key(input, "Escape");
+      expect(renameWrites()).toHaveLength(0);
+      expect(bar.querySelector(".tab-group-head input")).toBeNull();
+      expect(bar.querySelector(".tab-group-name")!.textContent).toBe("白天");
+    });
+
+    it("blur 提交", () => {
+      const input = open();
+      input.value = "傍晚";
+      input.blur();
+      expect(renameWrites()).toHaveLength(1);
+      expect(renameWrites()[0].find((c) => c.id === "g1")!.name).toBe("傍晚");
+    });
+
+    it("空名 / 与现名相同 ⇒ 不写（只认一次：Enter 之后的 blur 不再写）", () => {
+      let input = open();
+      input.value = "   ";
+      key(input, "Enter");
+      input = (bar.querySelector<HTMLElement>(".tab-group-name")!.click(),
+      bar.querySelector<HTMLInputElement>(".tab-group-head input")!);
+      input.value = "白天";
+      key(input, "Enter");
+      input.blur();
+      expect(renameWrites()).toHaveLength(0);
+    });
+  });
+
   it("★★ P7a3-E：**没拉过集合的实例不许写集合** —— viewer 窗口会把用户已有的全冲掉", () => {
     // 撕离出来的 viewer 窗口也用 TabManager（`main.ts:938`，tab 栏由 .viewer-mode 隐藏），
     // 但它**从不 loadCollections** ⇒ `collections` 恒空。右键菜单里若还留着「新建集合…」，
@@ -3801,7 +3880,7 @@ describe("P7a-3 集合分组渲染", () => {
 //   因为 `archived + pinned` 才是用户的主用例（固定住一个已经跑完的会话）。
 //
 // 🔴 反空真：这一组的 config 是**一份真的在内存里的盘**（走那个已经被 mock 的
-//   `invoke`，`load_config`/`save_config` 两条命令），所以「落盘了没有」是
+//   `invoke`，`load_config`/`patch_config` 两条命令），所以「落盘了没有」是
 //   **读盘对拍**，不是「有没有调过某个函数」。
 // ==========================================================================
 describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
@@ -3826,8 +3905,9 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
     //   判据买到的是那一段的形状（只动自己那个键 · 清洗 · 上界），不是一个 spy。
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string, args?: unknown) => {
       if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
-      if (cmd === "save_config") {
-        disk = JSON.parse(JSON.stringify((args as { value: unknown }).value));
+      if (cmd === "patch_config") {
+        // 〔CFG1〕写只交补丁；按与 Rust 写口同一份金样的语义应用（`tests/config-patch-fake.ts`）。
+        disk = JSON.parse(applyConfigEdits(JSON.stringify(disk), (args as { edits: Edit[] }).edits));
         return Promise.resolve(undefined);
       }
       return Promise.resolve(undefined);
@@ -4443,7 +4523,7 @@ describe("步 17·D ⑤ 停留 250ms 才成组（假手势打真事件链）", (
 //     **`alive` 两侧同源 ⇒ 恒真**（`01 §7.4` 点名的那一形）。
 //
 // 🔴 反空真：这一组的 config 是**一份真的在内存里的盘**（走已被 mock 的 `invoke`,
-//   `load_config`/`save_config`），所以「顺序落没落上」是**读盘对拍**，不是数调用次数。
+//   `load_config`/`patch_config`），所以「顺序落没落上」是**读盘对拍**，不是数调用次数。
 //   全部断言是**逐位相等**（`toEqual` 整张数组），没有「至少有几个 tab」那种地板。
 // ==========================================================================
 describe("步 17·C 顺序落盘：读回来那一半", () => {
@@ -4478,8 +4558,9 @@ describe("步 17·C 顺序落盘：读回来那一半", () => {
     disk = {};
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string, args?: unknown) => {
       if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
-      if (cmd === "save_config") {
-        disk = JSON.parse(JSON.stringify((args as { value: unknown }).value));
+      if (cmd === "patch_config") {
+        // 〔CFG1〕写只交补丁；按与 Rust 写口同一份金样的语义应用（`tests/config-patch-fake.ts`）。
+        disk = JSON.parse(applyConfigEdits(JSON.stringify(disk), (args as { edits: Edit[] }).edits));
         return Promise.resolve(undefined);
       }
       return Promise.resolve(undefined);
@@ -4902,8 +4983,9 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     probe = { present: true, root: "/h/.claude/projects" };
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string, args?: unknown) => {
       if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
-      if (cmd === "save_config") {
-        disk = JSON.parse(JSON.stringify((args as { value: unknown }).value));
+      if (cmd === "patch_config") {
+        // 〔CFG1〕写只交补丁；按与 Rust 写口同一份金样的语义应用（`tests/config-patch-fake.ts`）。
+        disk = JSON.parse(applyConfigEdits(JSON.stringify(disk), (args as { edits: Edit[] }).edits));
         return Promise.resolve(undefined);
       }
       if (cmd === "probe_session_record")
@@ -5071,8 +5153,9 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     };
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string, args?: unknown) => {
       if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
-      if (cmd === "save_config") {
-        disk = JSON.parse(JSON.stringify((args as { value: unknown }).value));
+      if (cmd === "patch_config") {
+        // 〔CFG1〕写只交补丁；按与 Rust 写口同一份金样的语义应用（`tests/config-patch-fake.ts`）。
+        disk = JSON.parse(applyConfigEdits(JSON.stringify(disk), (args as { edits: Edit[] }).edits));
         return Promise.resolve(undefined);
       }
       return Promise.resolve(undefined);

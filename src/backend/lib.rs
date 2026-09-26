@@ -494,7 +494,15 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p3o-upstream-endpoint**（2026-09-25，第四波 4D US1 合并那一拍）：子命令 ＋2 —— `launch-endpoint` · `apikey-routing`
 /// （上游选择出成品：这一发走哪、注入什么由后端答，monitor 只转交执行）。＋ 行为：`apikey-read` 应答去掉 `rows`；
 /// 路由语法 / 端口 / 钥匙路径改住共享 crate `relay-route-core`；无账号的本机会话在全量注入下走 `/t/…/_/…`（开关仍默认关）。
-pub const BUILD_ID: &str = "p3o-upstream-endpoint";
+///
+/// ★★★ **p3p-drain-atomic-stop**（2026-09-25，第四波 4D HX1 合并那一拍）：行为 —— 流模式三个退出口先关闸、等在跑的阻塞命令做完再退
+/// （新来的阻塞命令回 `shutting_down`）· 覆盖写改「同目录临时件 → 沿用权限位 → 改名上位」原子化 · tracing 只在 stderr 是终端时上色。
+/// 子命令没变，照 p1v 先例不加历史行。
+///
+/// ★★★ **p3q-windows-probe-home**（2026-09-25，第四波 4D WIN1 合并那一拍）：行为 —— Windows 上 `ccm --ccm-probe` 不再自报 tmux 那一族能力
+/// （`ccm_launcher_with(TMUX_PLATFORM)`，与能力账同一个内核）· `ccm` 找账号库的家目录 `HOME` 为空退 `USERPROFILE`、路径逐段 join ·
+/// 远端 `uname` 回话不是 UTF-8 时说清而不照抄乱码。子命令没变，照 p1v 先例不加历史行。
+pub const BUILD_ID: &str = "p3q-windows-probe-home";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -1429,7 +1437,14 @@ fn wire_commands_unavailable_on(t: Target) -> Vec<String> {
 /// 「哪几条载体是 tmux」住 `control::ccm::CCM_TMUX_CARRIED`（紧挨着那一面的 `CAPABILITIES`，
 /// 一条能力一个住址）；这里只做「× 平台档」那一步。
 fn ccm_launcher_on(t: Target) -> Vec<&'static str> {
-    let no_tmux = tmux_by_platform(t) == Some(false);
+    ccm_launcher_with(tmux_platform_of(t))
+}
+
+/// 〔WIN1 · RT1 F7〕上面那一步的内核：平台档是**入参**（同 [`tmux_present`] 的做法），
+/// 于是「能力账」（按 [`Target`] 问）与「`ccm --ccm-probe` 自报」（按本二进制的 [`TMUX_PLATFORM`] 问）
+/// 走的是**同一个函数**，不另写名单。
+pub(crate) fn ccm_launcher_with(p: TmuxPlatform) -> Vec<&'static str> {
+    let no_tmux = tmux_present(p, None) == Some(false);
     control::ccm::CAPABILITIES
         .iter()
         .copied()
