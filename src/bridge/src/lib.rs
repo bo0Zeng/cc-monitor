@@ -736,14 +736,11 @@ pub fn run() {
 
             // 〔U4b · 第四波〕`session_facts` 的出口：两条后端流交来的会话事实在这里落地（见那个模块的头注）。
             //   装在两个 emitter 之前 —— 装之前交来的容器事实只记账，`frontend-ready` 对账会整份重发。
-            // 〔TAP · V124〕`session_tap` 的出口：本机后端的 `tap` 帧原样发 `session-tap`（前端直派，可丢）。
+            // 〔TAP · V124〕`session_tap` 的出口：本机后端的 `tap` 帧交给会话流的句柄（`EventReplay::on_tap`），
+            //   订了 `session-tap` 的那几条订阅按 credit 收（`设计/05 §15`：一条帧路 ＋ `subscribe`，不开裸事件）。
             {
-                let handle = app.handle().clone();
-                crate::session_tap::install_sink(move |payload| {
-                    if let Err(e) = handle.emit(bridge::events::SESSION_TAP, &payload) {
-                        tracing::debug!("emit session-tap failed: {e}");
-                    }
-                });
+                let replay = replay.clone();
+                crate::session_tap::install_sink(move |payload| replay.on_tap(payload));
             }
             {
                 let handle = app.handle().clone();

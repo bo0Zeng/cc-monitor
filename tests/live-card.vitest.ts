@@ -11,7 +11,7 @@
  * 分三段：T6 纯状态机（期望手写）· T8 真 TabManager（jsonl 那条路三种 tap 情形下建出的 DOM 逐字相等）·
  * T7 台架夹具（真 claude 写的 jsonl × 真中转抄出来的 tap，按 `message.id` 比正文）。
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -56,6 +56,7 @@ import {
 import { copyText } from "../src/copy-table";
 import { installViewerRig, line, userLine, type RigPayload } from "./test-support/session-viewer-rig";
 import { TabManager } from "../src/tabs";
+import { paintLiveCards } from "../src/live-card-view";
 import { REPO_ROOT } from "./test-support/repo-root.ts";
 
 // ─── 手写的一轮 SSE（期望只从这里来） ─────────────────────────────────────────
@@ -251,6 +252,7 @@ describe("T8 SSE 断 / 丢不碰 jsonl 那条对的路（`05 §4.5.3` ③：抄�
     const streamRootEl = document.createElement("div");
     document.body.append(barEl, streamRootEl);
     const tm = new TabManager(barEl, streamRootEl);
+    tm.setLivePainter(paintLiveCards);
     tm.onLine(jsonl[0] as never);
     for (const t of tapSeq) tm.onSessionTap(t);
     const trailer = (): string =>

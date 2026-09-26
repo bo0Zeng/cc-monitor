@@ -141,6 +141,7 @@ const UNIT: &[&str] = &[
     "tests/e2e-probe.vitest.ts",
     "tests/error-toast.vitest.ts",
     "tests/events-burst.vitest.ts",
+    "tests/events-tap.vitest.ts", // 〔TAP〕session-tap 走 subscribe（不是裸事件）
     "tests/events-yield.vitest.ts",
     "tests/file-window.vitest.ts",
     "tests/fork-ask.vitest.ts",

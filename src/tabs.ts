@@ -53,7 +53,7 @@ export type { DropTarget, TabRect } from "./tab-drop";
 import { TabMenu } from "./tab-menu";
 import { TabStore } from "./tab-store";
 import { TabStreamView } from "./tab-stream-view";
-import { LiveCards, type TapPayload } from "./live-card";
+import { LiveCards, type LivePainter, type TapPayload } from "./live-card";
 import { TabBarPrefs } from "./tab-bar-prefs";
 import { TabBarDrag } from "./tab-bar-drag";
 import { TabBarView } from "./tab-bar-view";
@@ -843,6 +843,16 @@ export class TabManager {
   /** 〔TAP · V124〕`session-tap`：中转抄出来的一个 SSE 事件（`events.ts` 直派）。 */
   onSessionTap(p: TapPayload): void {
     this.live.onTap(p);
+  }
+
+  /** 〔TAP〕装活卡的画法（主窗口入口装；独立查看器不装 ⇒ 只记账不画，见 `live-card.ts::LivePainter`）。 */
+  setLivePainter(p: LivePainter): void {
+    this.live.setPainter(p);
+  }
+
+  /** 〔TAP〕那台机器的 tap 流看不见了 ⇒ 那台的活卡全撤。 */
+  dropLiveCards(origin: string): void {
+    this.live.dropOrigin(origin);
   }
 
   /**
