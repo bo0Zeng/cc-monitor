@@ -107,8 +107,8 @@ struct CommandPlan {
 
 /// 错误信封（exit 2 + stderr 出此 JSON）。
 #[derive(Debug, Serialize)]
-struct ResolveError {
-    code: &'static str,
+struct ResolveError<'a> {
+    code: &'a str,
     message: String,
 }
 
@@ -302,15 +302,24 @@ fn session_name_for(sid: &str, is_codex: bool) -> String {
     format!("{prefix}-{head}")
 }
 
-/// 错误统一出口：stderr 写 `{code,message}` JSON、返 exit code 2。
-fn emit_err(code: &'static str, message: String) -> i32 {
+/// 错误信封：`{code, message}` 一行紧凑 JSON。**纯**，抽出来是为了判得到
+/// —— 〔V126〕它是给 aterm 的跨仓承诺的一部分（`IPC-PROTOCOL §10`「`resolve`」跨仓承诺小节），
+/// 由 `resolve_query_tests.rs` 里带 `〔V126〕` 的那一族钉着。序列化失败兜底纯文本（同形）。
+fn error_envelope(code: &str, message: String) -> String {
     let err = ResolveError { code, message };
-    // stderr（不污染 stdout wire）；序列化失败兜底纯文本。
     match serde_json::to_string(&err) {
-        Ok(s) => eprintln!("{s}"),
-        Err(_) => eprintln!("{{\"code\":\"{code}\",\"message\":\"<unserializable>\"}}"),
+        Ok(s) => s,
+        Err(_) => format!("{{\"code\":\"{code}\",\"message\":\"<unserializable>\"}}"),
     }
-    2
+}
+
+/// 一次性那条的错误退出码。〔V126〕跨仓承诺的一格（aterm `runCatching` 按它认结构化失败）。
+const ERROR_EXIT: i32 = 2;
+
+/// 错误统一出口：stderr 写 `{code,message}` JSON（不污染 stdout wire）、返 [`ERROR_EXIT`]。
+fn emit_err(code: &'static str, message: String) -> i32 {
+    eprintln!("{}", error_envelope(code, message));
+    ERROR_EXIT
 }
 
 #[cfg(test)]

@@ -18,6 +18,9 @@ export default tseslint.config(
       //   `.build/dist/assets/*.js`（打包产物）与 `.build/bridge/**/out/*.js`（Tauri 生成的 API 壳）。
       //   这正是本文件下面那段注释预言的形状：「每新增一个带脚本的目录，洞就复发一次」。
       ".build/**",
+      // 〔主会话 09-26 · DUP1 报备〕施工纪律第 21 条把各路编译产物放 `<工作树>/.scratch/` ⇒ 同一个洞第二次复发：
+      //   cargo 在那里生成的一份 js 被 `eslint .` 扫进来，`eslint-baseline` 假红（多数一条）。
+      ".scratch/**",
       "node_modules/**",
       "src/bridge/**",
       "src/backend/**",
@@ -69,10 +72,11 @@ export default tseslint.config(
     //
     // ⇒ 补上 globals（node + wdio 的 mocha 风格全局），并把 `npm run lint` 放开到 `eslint .`。
     // 补完实测：全仓当时是 7 个，与 `eslint src` 的基线**一致** —— 基线数字不变，覆盖面变大。
-    // 〔AL1d · 第四波 4B · 09-24〕那时剩 3 个：`src/settings/machine-aliases.ts` 里那四处空 catch（原「终端集成」
+    // 〔AL1d · 第四波 4B · 09-24〕那天剩三处：`src/settings/machine-aliases.ts` 里那四处空 catch（原「终端集成」
     //   记住上次选择的 localStorage 写）随那段代码删了（`tests/eslint-baseline.vitest.ts` 的基线常量同拍 7 → 3）。
-    // 〔STC · 第四波〕今天全仓 2 个：`tests/panorama/session-files.test.ts` 随被测对象（写类工具口径搬进后端）整份删了，
-    //   它那一处未用变量跟着没了（基线常量同拍 3 → 2）。
+    // 〔DUP1 · 第四波 4D〕那天剩两处：`src/shell-quote.ts` 那处 `no-control-regex` 随 `isValidConfigDir` 删了（基线常量同拍 3 → 2）。
+    // 〔STC · 第四波 4D〕今天全仓 1 个：`tests/panorama/session-files.test.ts` 随被测对象（写类工具口径搬进后端）整份删了，
+    //   它那一处未用变量跟着没了（合并 DUP1 时按「基数 3 ＋ 两边各 −1」算成 1，eslint 现打核过）。
     files: ["tests/e2e/**/*.mjs"],
     languageOptions: {
       globals: {

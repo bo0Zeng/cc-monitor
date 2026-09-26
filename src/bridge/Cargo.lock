@@ -561,6 +561,7 @@ name = "branch-core"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+ "shell-quote-core",
 ]
 
 [[package]]
@@ -3152,7 +3153,7 @@ dependencies = [
  "notify-debouncer-mini",
  "parking_lot",
  "relay-route-core",
- "search-core",
+ "rfd",
  "serde",
  "serde_json",
  "shell-quote-core",

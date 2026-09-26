@@ -33,7 +33,7 @@ import {
   TERMINAL_FRONT_UNAVAILABLE_DETAIL,
 } from "./terminal-front";
 import { computeTitleFor, isBgKind, type Tab, type TabsSummary } from "./tab-model";
-import { ENDED, LIVE, RECONNECTABLE, isResumeOnly, hasTerminal, nextState, type StateEvent } from "./tab-session-state";
+import { ENDED, LIVE, RECONNECTABLE, isLive, isResumeOnly, hasTerminal, nextState, type StateEvent } from "./tab-session-state";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, originFromWire, type Origin } from "./ipc/origin";
 // 〔U2〕`Tab` 的形状与标题函数搬去了 `tab-model.ts`；这里原样 re-export，既有 import 面零改动。
 export type { Tab, TabsSummary } from "./tab-model";
@@ -53,6 +53,7 @@ export type { DropTarget, TabRect } from "./tab-drop";
 import { TabMenu } from "./tab-menu";
 import { TabStore } from "./tab-store";
 import { TabStreamView } from "./tab-stream-view";
+import { LiveCards, type LivePainter, type TapPayload } from "./live-card";
 import { TabBarPrefs } from "./tab-bar-prefs";
 import { TabBarDrag } from "./tab-bar-drag";
 import { TabBarView } from "./tab-bar-view";
@@ -144,6 +145,18 @@ export class TabManager {
       startForkedSession: (tab, res) => this.startForkedSession(tab, res),
     });
   }
+
+  /**
+   * 〔TAP · V124〕活卡：中转抄出来的 SSE 先上屏，jsonl 那一轮到了整轮覆盖（`live-card.ts`，`设计/20 §8`）。
+   * 路由只认「`stream` 就是这个 tab 的 sid、机器也对得上」；对不上 ⇒ 匿名流，不显示。
+   */
+  private readonly live = new LiveCards(
+    (origin, stream) => {
+      const t = this.store.tabs.get(stream);
+      return t && t.origin === origin ? t.sessionId : null;
+    },
+    (sid) => this.store.tabs.get(sid)?.stream.trailerElement ?? null,
+  );
 
   /**
    * 〔U2 · ④〕tab 栏的三份落盘偏好（集合 · 固定 · 顺序）住 `tab-bar-prefs.ts`。
@@ -317,6 +330,10 @@ export class TabManager {
       if (tab.processedUuids.has(uuid)) return;
       tab.processedUuids.add(uuid);
     }
+
+    // 〔TAP · V124〕jsonl 那一轮到了 ⇒ 同 `message.id` 的活卡整轮覆盖（撤掉）；挂在双重去重**之后**：
+    //   `设计/20 §8`「前端现有的去重层就是吸收层」—— 重投 / 快照重叠区的重复记录不会重复触发。
+    this.live.onRecord(tab.sessionId, payload.message);
 
     // 〔SE1〕大纲：只记一笔「这份会话又长了」（清单问后端要，这里不判、不攒）。
     this.view.noteGrew(tab); // 〔STC〕会话事实同一笔（分叉 · agent · 改动文件 · usage 问后端要，`设计/10 §2.2`）
@@ -748,6 +765,7 @@ export class TabManager {
 
   /** session 退出（~/.claude/sessions/<PID>.json 被删）且容器也没了 —— 已结束，内容保留 */
   archiveTab(sessionId: string): void {
+    this.live.dropTab(sessionId); // 〔TAP〕结束了 ⇒ 它的活卡全撤
     const tab = this.store.tabs.get(sessionId);
     if (!tab) {
       // issue #19：Tab 还没被 ensureTab 建出来（归档信号早于 replay 行到达）——
@@ -803,6 +821,7 @@ export class TabManager {
    * 〔U4〕改之前这里只置 `tmuxIdle = true`、`status` 留在 live —— 活性一轴说了假话。
    */
   markTmuxIdle(sessionId: string): void {
+    this.live.dropTab(sessionId); // 〔TAP〕claude 退了 ⇒ 它的活卡全撤
     const tab = this.store.tabs.get(sessionId);
     if (!tab) {
       this.store.pendingTmuxIdle.add(sessionId);
@@ -812,6 +831,36 @@ export class TabManager {
     if (!this.applyState(tab, "idle")) return;
     this.refreshTabBar();
     this.emitTabStateProbe(tab); // F-E1:可重连(claude 退但 tmux 在)
+  }
+
+  /** 〔TAP · V124〕`session-tap`：中转抄出来的一个 SSE 事件（`events.ts` 直派）。 */
+  onSessionTap(p: TapPayload): void {
+    this.live.onTap(p);
+  }
+
+  /** 〔TAP〕装活卡的画法（主窗口入口装；独立查看器不装 ⇒ 只记账不画，见 `live-card.ts::LivePainter`）。 */
+  setLivePainter(p: LivePainter): void {
+    this.live.setPainter(p);
+  }
+
+  /** 〔TAP〕那台机器的 tap 流看不见了 ⇒ 那台的活卡全撤。 */
+  dropLiveCards(origin: string): void {
+    this.live.dropOrigin(origin);
+  }
+
+  /** 〔FW1 · 第四波 4D · D-e〕这个会话此刻在 tab 栏里是活的吗（历史浏览器删会话前问一句用）。没有这个 tab ⇒ `false`。 */
+  isSessionLive(sessionId: string): boolean {
+    const tab = this.store.tabs.get(sessionId);
+    return tab !== undefined && isLive(tab.state);
+  }
+
+  /**
+   * 〔FW1 · 第四波 4D · D-d〕这个会话的流容器（没有这个 tab ⇒ `null`）—— 记录文件那一句话挂在它顶上
+   * （`record-file-notice.ts`；那个模块只由主窗口 `main.ts` 接线，样式随主窗口的产物走，不进与独立查看窗共用的块）。
+   * **不碰会话状态**（判活不看 jsonl：不误判结束）。
+   */
+  streamElOf(sessionId: string): HTMLElement | null {
+    return this.store.tabs.get(sessionId)?.streamEl ?? null;
   }
 
   /**
@@ -998,6 +1047,7 @@ export class TabManager {
     const fallbackId =
       this.store.orderedIds[idx + 1] ?? this.store.orderedIds[idx - 1] ?? null;
 
+    this.live.dropTab(sessionId); // 〔TAP〕先撤活卡（它的 DOM 随流容器一起走）
     this.view.disposeTab(tab);
     this.store.tasksBySid.delete(sessionId);
     this.store.tabs.delete(sessionId);

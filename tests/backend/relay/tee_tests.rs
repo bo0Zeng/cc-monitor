@@ -137,9 +137,9 @@ fn wait_lines(rx: &std::sync::mpsc::Receiver<()>, n: usize) {
 fn meta_line_then_event_lines() {
     let (sink, buf, rx) = waitable_sink();
     let ka = key_of("agentA", "acctA");
-    let seq = sink.open(id(&ka, "sid-AAA"));
-    assert_eq!(seq, 0);
-    sink.event(id(&ka, "sid-AAA"), "{\"type\":\"x\"}");
+    let mut at = sink.open(id(&ka, "sid-AAA"));
+    assert_eq!(at.resp, 0);
+    sink.event(id(&ka, "sid-AAA"), &mut at, "{\"type\":\"x\"}");
     wait_lines(&rx, 2);
     let raw = buf.lock().expect("lock").clone();
     let text = String::from_utf8(raw).expect("utf8");
@@ -168,9 +168,9 @@ fn seq_is_monotonic_within_one_sink() {
     let (sink, _buf, _rx) = waitable_sink();
     let ka = key_of("a", "acctA");
     let kb = key_of("b", "acctB");
-    assert_eq!(sink.open(id(&ka, "k1")), 0);
-    assert_eq!(sink.open(id(&kb, "k2")), 1);
-    assert_eq!(sink.open(id(&ka, "k1")), 2);
+    assert_eq!(sink.open(id(&ka, "k1")).resp, 0);
+    assert_eq!(sink.open(id(&kb, "k2")).resp, 1);
+    assert_eq!(sink.open(id(&ka, "k1")).resp, 2);
 }
 
 /// ★★ **上游内容是敌手可控的** —— `data:` 后面那一段原样进这一行。
@@ -203,7 +203,7 @@ fn an_upstream_payload_cannot_break_out_of_the_event_field() {
     for payload in hostile {
         let (sink, buf, rx) = waitable_sink();
         let k = key_of("realA", "realAcct");
-        sink.event(id(&k, "sid-AAA"), payload);
+        sink.event(id(&k, "sid-AAA"), &mut TeeStream { resp: 0, n: 0 }, payload);
         wait_lines(&rx, 1);
         let raw = buf.lock().expect("lock").clone();
         let text = String::from_utf8(raw).expect("utf8");
@@ -264,8 +264,9 @@ fn a_full_queue_drops_lines_but_says_so() {
 
     // 灌到必然溢出。**期望值不拿 `TEE_QUEUE_LINES` 算**，只断「丢了 > 0 行」。
     let ka = key_of("agentA", "acctA");
+    let mut at = TeeStream { resp: 0, n: 0 };
     for i in 0..(TEE_QUEUE_LINES + 64) {
-        sink.event(id(&ka, "sid-AAA"), &format!("{{\"i\":{i}}}"));
+        sink.event(id(&ka, "sid-AAA"), &mut at, &format!("{{\"i\":{i}}}"));
     }
     gate_tx.send(()).expect("放行");
     // 等到那行补报出来（等不到就红，不许把「还没写完」读成「没有报」）。

@@ -17,10 +17,13 @@ import {
   addMember,
   collectionOf,
   createCollection,
+  createRefusal,
+  memberRefusal,
   newCollectionId,
   removeMember,
   type TabCollection,
 } from "./tab-collections";
+import { sayCollectionRefusal } from "./tab-bar-prefs";
 import {
   enumerateAccountModifiers,
   type AccountModifierOption,
@@ -47,6 +50,7 @@ import {
   type TabMenuItem,
 } from "./tab-context-menu";
 import { TMUX_CACHE_TTL_MS, type TabSessionActions } from "./tab-session-actions";
+import { askText } from "./ask-dialog";
 
 /** F74c(#60-B)：cwd 回退串味风险提示（attach 到可能是同目录别的会话前）。 */
 function warnCwdFallbackAttach(): void {
@@ -93,19 +97,27 @@ export class TabMenu {
       .filter((col) => col.id !== here?.id)
       .map((col) => ({
         label: col.name,
-        onClick: () => void this.host.commitCollections(addMember(this.host.collections(), col.id, sid)),
+        onClick: () => {
+          // 〔TL2 · E13〕那个集合满了 ⇒ 说出来（`addMember` 照旧原样返回，不写盘）。
+          const why = memberRefusal(this.host.collections(), col.id, sid);
+          if (why) return sayCollectionRefusal(why);
+          void this.host.commitCollections(addMember(this.host.collections(), col.id, sid));
+        },
       }));
     joinItems.push({
       label: copyText("tabMenu.collection.new"),
-      onClick: () => {
-        const name = window.prompt(copyText("tabMenu.collection.namePrompt"));
+      onClick: () => void (async () => {
+        // 〔TL2 · E13〕到上界先说，再问名字（不让用户白填一次）。
+        const full = createRefusal(this.host.collections());
+        if (full) return sayCollectionRefusal(full);
+        const name = await askText(copyText("tabMenu.collection.namePrompt"));
         if (!name?.trim()) return;
         const id = newCollectionId();
         const withNew = createCollection(this.host.collections(), name, id);
         // 名字空/到上界时 `createCollection` 原样返回 ⇒ 别再往一个不存在的集合里塞成员。
         if (withNew.length === this.host.collections().length) return;
         void this.host.commitCollections(addMember(withNew, id, sid));
-      },
+      })(),
     });
     if (this.host.collectionsLoaded()) items.push({ label: copyText("tabMenu.collection.add"), submenu: joinItems });
     // 〔步 17·B · `§B.7`〕固定 —— 与「加入集合」同级。**这是唯一的入口**（不做自动固定）。
@@ -538,7 +550,7 @@ export class TabMenu {
     const resumeOnly = isResumeOnly(state);
     // 〔`A3` 第二波〕本机已结束的 tab 不带账号选择（本机 Resume 走那条会话上次的号，
     // 见 `launch-account.ts::localLaunchAccountSync`）⇒ 本机只进下面「换号重启」那一支。
-    if (origin === LOCAL_ORIGIN && resumeOnly) return;
+    if (isLocalOrigin(origin) && resumeOnly) return;
     const gen = menuGeneration(); // 捕获这一代菜单
     const accountOptions = await enumerateAccountModifiers(origin);
     if (gen !== menuGeneration()) return; // 菜单已换/已关

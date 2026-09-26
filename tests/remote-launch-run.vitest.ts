@@ -13,7 +13,7 @@ vi.mock("@tauri-apps/api/core", async () => {
   return { invoke: tmuxControlShim(invokeMock, "backend_send_into") };
 });
 vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
-vi.mock("../src/behavior", () => ({ getBehavior: vi.fn().mockResolvedValue({ forceLaunchPayloadRenderer: false }) }));
+// 〔LR2〕原来这里 mock 了 `../src/behavior`（只为那个已删的逃生口 `forceLaunchPayloadRenderer`）；`remote-launch-run.ts` 不再读行为配置。
 
 import { showActionFailureToast } from "../src/error-toast";
 import {
@@ -31,7 +31,7 @@ import {
   // 🔴 `K-R109` `KR109D3`：wire 上那两态同形，是「兜底那条路走得到」的第一环。
   buildCliRenderRequest } from "../src/remote-launch-run";
 import { planAttach } from "../src/launch-requests";
-import { renderLaunchPayloadStub } from "./test-support/launch-render-ipc-stub.ts";
+import { renderLaunchPayloadStub, STUB_REFUSE_TAG } from "./test-support/launch-render-ipc-stub.ts";
 import type { PayloadRenderRequest } from "../src/launch-cli-wire.ts";
 
 const toastMock = showActionFailureToast as unknown as ReturnType<typeof vi.fn>;
@@ -389,10 +389,24 @@ describe("F41 runRemoteResume", () => {
     expect(toastMock.mock.calls[0][0]).toBe("拉起失败，已复制 resume 命令");
   });
 
-  it("非法 sid → 构造报错 toast,不 invoke", async () => {
-    invokeMock.mockClear();
+  // 〔DUP1 · `设计/90 §3` 判据 2〕这条原来断「非法 sid ⇒ 前端构造那一步就拒、一次 invoke 都不发」（TS 那份
+  // `isValidSessionId`〔散文墓碑〕判的）。今天前端不判 sid：请求照发给渲染侧、sid 在 `resumeSid` 单报一次，
+  // 渲染侧（`launch_wire.rs`）过 `shell_quote_core::session_id_ok` 拒并打 `REFUSE:` 标 ⇒ 构造报错 toast、终端不起。
+  // 桩不模拟校验闸（见 `launch-render-ipc-stub.ts` 顶注）⇒ 这里直接 mock 一次带标的拒。
+  it("非法 sid 前端不判：请求照发（resumeSid 单报），渲染侧拒 ⇒ 构造报错 toast、不起终端", async () => {
+    const seen: PayloadRenderRequest[] = [];
+    invokeMock.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null);
+      if (cmd === "probe_ccm_cli") return Promise.resolve({ installed: false, version: null, capabilities: [] });
+      if (cmd === "render_launch_payload") {
+        seen.push((args as { req: PayloadRenderRequest }).req);
+        return Promise.reject(`${STUB_REFUSE_TAG} 会话 ID "--evil" 不合形状`);
+      }
+      return Promise.resolve(undefined);
+    });
     await runRemoteResume("aya", "--evil", "/p", "");
-    expect(invokeMock).not.toHaveBeenCalled();
+    expect(seen.map((r) => r.resumeSid)).toEqual(["--evil"]);
+    expect(invokeMock.mock.calls.map((c) => c[0])).not.toContain("launch_remote_terminal");
     expect(toastMock.mock.calls[0][0]).toBe("生成不了 resume 命令");
   });
 });
@@ -563,9 +577,9 @@ describe("K-R109 本机 attach 那一句问后端要", () => {
 //
 // 🔴 **判 A 的结论没变（座留着），而理由换人了 ——** 座今天靠的不是「这条路走得到」，
 // 是「它是逐字节金标准（`tmux-outer-golden.json` / `payload-golden.json`）的**左边**」，
-// 也就是那份「另一种语言的独立说法」。逐处住址与「还站不站在生产路上」两把尺子见
-// `launch_wire_f07_main_path_tests.rs` 的 `TS_FALLBACK_KEEPERS` / `TS_FALLBACK_REACH`
-//（本刀两张都重裁过；座的 Reach 从 `On` 翻成 `Off`）。
+// 也就是那份「另一种语言的独立说法」。〔LR2 2026-09-25〕那条理由也到期了：座连同兜底渲染器按
+// `设计/00 §2.5 ④` 删了，两份夹具的左边换成手写期望；当年量它的两张消费者表随之删。
+// 本组钉的「那一态走到生产入口、落到后端渲的那一串」一个字没动。
 //
 // 〔墓碑〕第二环原名逐字：「★★ 第二环：那一态走到生产入口上 ⇒ 真的落到座产的那一串（tmux …）」
 // —— `tests/evidence/K-R109-deathvalue.md` 里那两行按旧名字记着，**那份留档不动**。
@@ -582,29 +596,23 @@ describe("KR109D3 探不到那一态今天真走得到 —— 判 A 的机检形
     vi.clearAllMocks();
   });
 
-  it("★ 第一环：探测**没探出来**（不是「没装」）⇒ wire 上只剩「拿不到能力集」", () => {
+  it("★ 第一环：探测**没探出来**（不是「没装」）⇒ wire 上是它自己那一态（〔LR2 · R95b〕不再与「没装」同形）", () => {
     // `ctx`/`plan` 由**生产构造口**产（`planAttach`），不手捏 —— 手捏的那份下一次改字段就馊。
     const { ctx, plan } = planAttach("u1-cc");
     const flaky = buildCliRenderRequest(ctx, plan, { state: "unknown", error: "ssh 抖了一下" });
-    // 🔴 这就是 `K-R95` 登记的那个缺口：值那一侧分得开（三态），**线上只有两态**。
-    //    它今天仍然在 ⇒ 「后端拒」这件事**不是只有「真没装」一种来历**。
-    expect(flaky.caps).toBeNull();
-    // 反向锚点：探到了就**不是** null —— 否则上一条是空真（恒 null 照样过）。
+    const notInstalled = buildCliRenderRequest(ctx, plan, { state: "not-installed" });
     const installed = buildCliRenderRequest(ctx, plan, {
       state: "installed",
       version: "9.9.9",
       capabilities: new Set(["tmux"]),
     });
-    expect(installed.caps).not.toBeNull();
-    // ★ 三态里那个 `unknown` **今天还在**。它哪天没了（真的收成两态），
-    //   本条会红 —— 那时第 ⑤ 格才真的只剩幽灵态，`KR109D3` 要回来重判 A/B。
-    //   （`testing.md` 硬规则 11：钉「今天恰好如此」的判据要写清去哪里重新裁定。）
-    const notInstalled = buildCliRenderRequest(ctx, plan, { state: "not-installed" });
-    expect(notInstalled.caps).toBeNull();
-    expect(
-      { unknown: flaky.caps, notInstalled: notInstalled.caps },
-      "wire 上这两态今天同形 —— 它们要是分开了，`K-R95` 那个缺口就补上了，回来重判",
-    ).toEqual({ unknown: null, notInstalled: null });
+    // 〔LR2 · R95b〕这里原来钉的是 `K-R95` 那个缺口「今天还在」（`unknown` 与 `not-installed` 在线上同为 `caps: null`），
+    //   并写着「它们要是分开了，缺口就补上了，回来重判」。补上了：三态一对一过线，`unknown` 带着原话。
+    //   ⇒ 判 A 的前提（「后端拒」不只有「真没装」一种来历）今天由线上第三态直接说出来，不再靠两态同形推。
+    expect(flaky.ccm).toEqual({ state: "unknown", error: "ssh 抖了一下" });
+    expect(notInstalled.ccm).toEqual({ state: "not-installed" });
+    expect(installed.ccm).toEqual({ state: "installed", caps: ["tmux"] });
+    expect(flaky.ccm, "「没探出来」与「没装」在线上又同形了 —— R95b 回潮").not.toEqual(notInstalled.ccm);
   });
 
   it("★★ 第二环：那一态走到生产入口上 ⇒ 落到**后端渲**的那一串，且请求带对的那一格 `outer`", async () => {

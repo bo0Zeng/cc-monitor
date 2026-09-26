@@ -30,6 +30,8 @@ fn a_session_id_that_could_spell_another_path_is_refused() {
     }
     assert!(is_plain_sid(&"a".repeat(64)));
     assert!(!is_plain_sid(&"a".repeat(65)), "上限是 64");
+    // 〔DUP1〕规则收进 `shell_quote_core::session_id_ok` 之后多挡的一样：前导 `-`（选项注入）。
+    assert!(!is_plain_sid("-abc"), "前导 - 该拒");
 }
 
 /// G0：**按真机原生 fork 的形状**造的合成夹具（无任何真实对话内容）。

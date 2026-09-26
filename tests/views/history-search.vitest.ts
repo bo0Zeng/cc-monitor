@@ -1,11 +1,10 @@
 /**
- * 〔C4a · 第四波〕历史全文搜索的「本机 ＋ 各台远端」（`src/views/history-search.ts`）。
+ * 历史全文搜索（`src/views/history-search.ts`）：本机与各台远端同一条路。
  *
- * 合并那四条是从 Rust（`tests/bridge/search_tests.rs` 里原来那一组）**逐条同形**搬来的 ——
- * 合并本身随远端 fan-out 一起搬到了前端，判据跟着它的家走：
- * 拼接排序求和 · 无远端原样 · 远端截断不许在合并处丢掉（`K-R100`）· 本机 indexing 而有远端 ⇒ ready。
- * 外加：后端行的解释（原 `search_tests.rs` 那条反序列化金样同一行）· 远端选项只下发后端认的 ·
- * 逐台并发、逐台失败只跳过、全程经通道（`history-search`）。
+ * 〔C4a · 第四波〕合并与远端 fan-out 从 Rust 搬来时，判据跟着它的家走（原 `tests/bridge/search_tests.rs` 那一组逐条同形）。
+ * 〔LOC1b · 第四波 4D〕本机那一半也改问本机后端（`chan.call(LOCAL_ORIGIN, "history-search")`），monitor 内存索引删了 ⇒
+ * 合并只剩「一组会话行」这一形；「本机 indexing」那两条随那一态删了。
+ * 要求住址：`设计/00 §2.5 ①` 逐字「历史 / 账号 / tmux / MCP 四个面，本机与远端走同一条代码路径」。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -20,12 +19,12 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   mergeSearchResults,
   parseSessionHitsLines,
-  remoteSearchArgs,
+  searchArgs,
   searchAllMachines,
   type FullTextQuery,
+  type SessionHits,
 } from "../../src/views/history-search";
-import type { SearchResponse } from "../../src/generated/SearchResponse";
-import type { SessionHits } from "../../src/generated/SessionHits";
+import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 import { chanArgsJson, isChanCall, linesReply, NO_CHANNEL, type ChanCallArgs } from "../test-support/chan-fake";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -45,29 +44,27 @@ function mk(sid: string, updatedAt: number, hitCount: number, origin?: string): 
   };
 }
 
-function resp(status: string, total: number, sessions: SessionHits[]): SearchResponse {
-  return {
-    status,
-    totalHits: total,
-    sessionCount: sessions.length,
-    truncated: false,
-    indexedSessions: 1,
-    indexedMessages: 1,
-    sessions,
-  };
+/** 后端 `--search` 的一行（不带 origin）。 */
+function row(sid: string, updatedAt: number, hitCount: number): string {
+  return JSON.stringify({
+    sessionId: sid,
+    projectPath: "/p",
+    projectName: "p",
+    jsonlPath: `/${sid}.jsonl`,
+    title: "t",
+    updatedAt,
+    hitCount,
+    hits: [],
+  });
 }
 
 const Q: FullTextQuery = { query: "kw", includeTools: false, scope: null, afterMs: null, limit: 300 };
 
 beforeEach(() => invokeMock.mockReset());
 
-describe("合并（逐条同形，原住 Rust `search.rs`）", () => {
-  it("拼接 + updatedAt 倒序 + 总数相加；远端 origin 保留", () => {
-    const merged = mergeSearchResults(resp("ready", 3, [mk("local-old", 100, 3)]), [
-      mk("rem-new", 300, 2, "pi"),
-      mk("rem-mid", 200, 1, "wsl"),
-    ]);
-    expect(merged.status).toBe("ready");
+describe("合并", () => {
+  it("拼接 + updatedAt 倒序 + 总数相加；远端 origin 保留、本机不带", () => {
+    const merged = mergeSearchResults([mk("local-old", 100, 3), mk("rem-new", 300, 2, "pi"), mk("rem-mid", 200, 1, "wsl")]);
     expect(merged.totalHits).toBe(3 + 2 + 1);
     expect(merged.sessionCount).toBe(3);
     expect(merged.sessions.map((s) => s.sessionId)).toEqual(["rem-new", "rem-mid", "local-old"]);
@@ -75,22 +72,14 @@ describe("合并（逐条同形，原住 Rust `search.rs`）", () => {
     expect(merged.sessions[2].origin).toBeUndefined();
   });
 
-  it("无远端 → 原样返回本机（含 indexing 态不被改写）", () => {
-    const local = resp("indexing", 0, []);
-    expect(mergeSearchResults(local, [])).toBe(local);
+  it("★ `K-R100`：任一台任一会话被截断 ⇒ 整体 truncated（反空真：都没截断时不许乱亮；本机那台同样算）", () => {
+    expect(mergeSearchResults([mk("loc", 100, 1), { ...mk("rem", 200, 12, "pi"), hitsTruncated: true }]).truncated).toBe(true);
+    expect(mergeSearchResults([{ ...mk("loc", 100, 12), hitsTruncated: true }, mk("rem", 200, 1, "pi")]).truncated).toBe(true);
+    expect(mergeSearchResults([mk("loc", 100, 1), mk("rem", 200, 1, "pi")]).truncated).toBe(false);
   });
 
-  it("★ `K-R100`：远端截断不许在合并那一步被丢掉（反空真：远端没截断时不许乱亮）", () => {
-    const rem = { ...mk("rem", 200, 12, "pi"), hitsTruncated: true };
-    expect(mergeSearchResults(resp("ready", 1, [mk("loc", 100, 1)]), [rem]).truncated).toBe(true);
-    expect(mergeSearchResults(resp("ready", 1, [mk("loc", 100, 1)]), [mk("rem", 200, 1, "pi")]).truncated).toBe(false);
-  });
-
-  it("本机 indexing 但有远端结果 → status=ready（不丢远端）", () => {
-    const merged = mergeSearchResults(resp("indexing", 0, []), [mk("rem", 50, 4, "pi")]);
-    expect(merged.status).toBe("ready");
-    expect(merged.totalHits).toBe(4);
-    expect(merged.sessions).toHaveLength(1);
+  it("一条都没有 ⇒ 空结果（不是「索引中」）", () => {
+    expect(mergeSearchResults([])).toEqual({ totalHits: 0, sessionCount: 0, truncated: false, sessions: [] });
   });
 });
 
@@ -103,6 +92,9 @@ describe("后端 `--search` 的逐行", () => {
     expect(sh.hits).toHaveLength(1);
     expect(sh.hitsTruncated, "老后端缺 hitsTruncated ⇒ false").toBe(false);
     expect(sh.origin).toBe("pi");
+    // 〔LOC1b〕本机那一台：不补 origin（界面按「缺 ＝ 本机」画）。
+    const [mine] = parseSessionHitsLines([line], undefined);
+    expect("origin" in mine).toBe(false);
   });
 
   it("坏行跳过、不毁整次（不是 JSON / 缺字段 / 命中里有一格坏）", () => {
@@ -120,33 +112,27 @@ describe("后端 `--search` 的逐行", () => {
   });
 });
 
-describe("远端选项只下发后端认的那几格", () => {
+describe("选项只下发后端认的那几格（本机远端同一份）", () => {
   it("include_tools 只在真时给 · scope 只给 user/assistant · after_ms 只给正数 · limit 原样", () => {
-    expect(remoteSearchArgs(Q)).toEqual({ query: "kw", limit: 300 });
-    expect(remoteSearchArgs({ ...Q, includeTools: true, scope: "user", afterMs: 7 })).toEqual({
+    expect(searchArgs(Q)).toEqual({ query: "kw", limit: 300 });
+    expect(searchArgs({ ...Q, includeTools: true, scope: "user", afterMs: 7 })).toEqual({
       query: "kw",
       limit: 300,
       include_tools: true,
       scope: "user",
       after_ms: 7,
     });
-    expect(remoteSearchArgs({ ...Q, scope: "all", afterMs: 0, limit: null })).toEqual({ query: "kw" });
+    expect(searchArgs({ ...Q, scope: "all", afterMs: 0, limit: null })).toEqual({ query: "kw" });
   });
 });
 
-describe("本机 ＋ 各台远端（经通道）", () => {
-  it("★ 逐台经通道问 `history-search`，一台失败只跳过；本机那半只问本机索引一次", async () => {
+describe("本机 ＋ 各台远端（都经通道）", () => {
+  it("★ 本机也经通道问本机后端 `history-search`（与远端同一个 op、同一份请求体）；远端一台失败只跳过", async () => {
     invokeMock.mockImplementation((cmd: string, args: unknown) => {
-      if (cmd === "search_history") return Promise.resolve(resp("ready", 1, [mk("loc", 100, 1)]));
       if (cmd === "list_remote_mcp_origins") return Promise.resolve(["pi", "down"]);
       if (isChanCall(cmd, args, "history-search")) {
-        return args.origin === "pi"
-          ? Promise.resolve(
-              linesReply([
-                `{"sessionId":"r","projectPath":"/p","projectName":"p","jsonlPath":"/r.jsonl","title":"t","updatedAt":200,"hitCount":2,"hits":[]}`,
-              ]),
-            )
-          : Promise.reject(NO_CHANNEL);
+        if (args.origin === LOCAL_ORIGIN) return Promise.resolve(linesReply([row("loc", 100, 1)]));
+        return args.origin === "pi" ? Promise.resolve(linesReply([row("r", 200, 2)])) : Promise.reject(NO_CHANNEL);
       }
       return Promise.resolve(undefined);
     });
@@ -156,23 +142,41 @@ describe("本机 ＋ 各台远端（经通道）", () => {
       ["loc", undefined],
     ]);
     expect(got.totalHits).toBe(3);
-    expect(invokeMock.mock.calls.filter((c) => c[0] === "search_history")).toHaveLength(1);
-    const asked = invokeMock.mock.calls
-      .filter((c) => c[0] === "chan_call")
-      .map((c) => c[1] as ChanCallArgs);
-    expect(asked.map((a) => [a.origin, a.op])).toEqual([
-      ["pi", "history-search"],
-      ["down", "history-search"],
-    ]);
+    const asked = invokeMock.mock.calls.filter((c) => c[0] === "chan_call").map((c) => c[1] as ChanCallArgs);
+    expect(asked.map((a) => [a.origin, a.op]).sort()).toEqual(
+      [
+        [LOCAL_ORIGIN, "history-search"],
+        ["down", "history-search"],
+        ["pi", "history-search"],
+      ].sort(),
+    );
+    const bodies = asked.map((a) => JSON.stringify(chanArgsJson(a)));
+    expect(new Set(bodies).size, "本机远端同一份请求体").toBe(1);
     expect(chanArgsJson(asked[0])).toEqual({ query: "kw", limit: 300, include_tools: true });
+    // 反空真：monitor 进程内那份索引的命令一次都没被问（它已经不存在了）。
+    expect(invokeMock.mock.calls.some((c) => c[0] === "search_history")).toBe(false);
   });
 
-  it("没配远端 ⇒ 一次都不扇出，原样回本机那一份", async () => {
-    const local = resp("indexing", 0, []);
-    invokeMock.mockImplementation((cmd: string) =>
-      Promise.resolve(cmd === "search_history" ? local : cmd === "list_remote_mcp_origins" ? [] : undefined),
+  it("本机那一台失败 ⇒ 整次失败（本机是必答的那一台，与迁前同形），不装作「只是本机没结果」", async () => {
+    invokeMock.mockImplementation((cmd: string, args: unknown) => {
+      if (cmd === "list_remote_mcp_origins") return Promise.resolve(["pi"]);
+      if (isChanCall(cmd, args, "history-search")) {
+        return args.origin === LOCAL_ORIGIN ? Promise.reject(NO_CHANNEL) : Promise.resolve(linesReply([row("r", 1, 1)]));
+      }
+      return Promise.resolve(undefined);
+    });
+    await expect(searchAllMachines(Q)).rejects.toBeTruthy();
+  });
+
+  it("没配远端 ⇒ 只问本机那一台", async () => {
+    invokeMock.mockImplementation((cmd: string, args: unknown) =>
+      Promise.resolve(
+        cmd === "list_remote_mcp_origins" ? [] : isChanCall(cmd, args, "history-search") ? linesReply([row("loc", 1, 4)]) : undefined,
+      ),
     );
-    expect(await searchAllMachines(Q)).toEqual(local);
-    expect(invokeMock.mock.calls.some((c) => c[0] === "chan_call")).toBe(false);
+    const got = await searchAllMachines(Q);
+    expect(got.totalHits).toBe(4);
+    const asked = invokeMock.mock.calls.filter((c) => c[0] === "chan_call").map((c) => (c[1] as ChanCallArgs).origin);
+    expect(asked).toEqual([LOCAL_ORIGIN]);
   });
 });

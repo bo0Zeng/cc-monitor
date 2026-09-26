@@ -1,10 +1,10 @@
-//! # 要求住址：〔缺址〕🔴 `CCM_DATA_DIR` 这个出口缺条（候选升格：补成 data dir 那条红线的**明文例外**）
+//! # 要求住址：`INVARIANTS §2`（含「唯一的明文例外：`CCM_DATA_DIR`」那一段）
 //!
-//! 只有 `with_nothing_set_it_is_the_documented_default` 点得到：红线族第二条逐字
-//! 「monitor 自己的 data dir 永远是 `~/.claude/claudecode-frontend/`」。
-//! 其余几条判的是那句「永远」的**出口**（`paths.rs::monitor_data_dir_from`）：绝对路径原样用、空串等于没设、
-//! 相对路径拒绝而不退回用户真 profile、全树只经 `paths.rs::resolve_monitor_data_dir` 派生 ——
-//! 这一半哪篇都没写成要求（只在路线图的完成底账里有一行），而红线原文字面是「永远」，与它相抵。〔JA1 点址 2026-09-24〕
+//! `with_nothing_set_it_is_the_documented_default` 点的是 `§2` 正文，逐字「monitor 自己的 data dir 永远是 `~/.claude/claudecode-frontend/`」。
+//! 其余几条判的是那句「永远」的**出口**（`paths.rs::monitor_data_dir_from`），逐字点 `§2` 例外段的四条规矩：
+//! 「只认**绝对路径**；空串 == 没设」·「给了但不合法（相对路径）⇒ **`None`，不退回用户真 profile**」·
+//! 「全树只经 `paths.rs::resolve_monitor_data_dir` 派生」。
+//! 〔JA1 点址 2026-09-24：当时缺条、候选升格 · TL2 2026-09-25 补成 `§2` 的明文例外（IV1 报的第 3 件）〕
 
 use super::*;
 

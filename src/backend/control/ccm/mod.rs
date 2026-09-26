@@ -321,34 +321,7 @@ pub fn run(args: &[String]) -> i32 {
             0
         }
         Parsed::Opts(o) => {
-            // 账号维度的载体名只有**知道是哪一家**才问得出来 ⇒ 解析完 argv 再补这两格。
-            let mut env = env;
-            env.account_env = crate::agents::account_env_of(&o.agent)
-                .unwrap_or_default()
-                .to_string();
-            env.inherited_config_dir = (!env.account_env.is_empty())
-                .then(|| {
-                    std::env::var(&env.account_env)
-                        .ok()
-                        .filter(|v| !v.is_empty())
-                })
-                .flatten();
-            let table = if needs_account_table(&o, &env) {
-                AccountTable::load(&env.accts_manifest)
-            } else {
-                AccountTable::default()
-            };
-            // ★★ `K-R96`（09-12）：**铸名避让在这里就问那张唯一的会话快照**。
-            //
-            // 用户 `R52` 裁定二逐字：「不就是先校验冲突然后取名吗? **搞个 hash 表**不就好了」。
-            // 那张表就是 `common::session_snapshot`（`TakenNames` 的字段模块私有 ⇒
-            // 本文件造不出第二份）。⇒ `--print` 与真跑从此**吐同一个名字**，
-            // 而「纯」的口径改成**相对于快照**（`§0c`）。
-            //
-            // 问不到就 `None` ⇒ **不退让**（诚实降级，见 `plan::build` 头注）。
-            // ⚠ 探测点仍然只有一个（快照那处），`readonly_guard::spawn_registry` 的数不变。
-            let taken = crate::common::session_snapshot::global().taken_names().ok();
-            let plan = match plan::build(&o, &env, &table, taken.as_ref()) {
+            let plan = match plan_of(&o, env, true) {
                 Ok(p) => p,
                 Err(Die(msg)) => return die(&msg),
             };
@@ -359,6 +332,111 @@ pub fn run(args: &[String]) -> i32 {
             execute(plan)
         }
     }
+}
+
+/// 解析好的 argv ＋ 一份环境 ⇒ 那一条计划。**真跑、`--print`、别名预览（[`answer_print`]）都从这里拿计划**，
+/// 三条路结构上不可能各算各的。
+///
+/// `inherit_account`：要不要读**这个进程**环境里继承来的账号目录变量。一次性模式（用户终端里敲的）要；
+/// 别名预览不要 —— 那一问答的是「从一个新终端敲这条别名」，常驻后端进程身上的变量不是那个终端的。
+fn plan_of(o: &argv::Opts, mut env: Env, inherit_account: bool) -> Result<Plan, Die> {
+    // 账号维度的载体名只有**知道是哪一家**才问得出来 ⇒ 解析完 argv 再补这两格。
+    env.account_env = crate::agents::account_env_of(&o.agent)
+        .unwrap_or_default()
+        .to_string();
+    env.inherited_config_dir = (inherit_account && !env.account_env.is_empty())
+        .then(|| {
+            std::env::var(&env.account_env)
+                .ok()
+                .filter(|v| !v.is_empty())
+        })
+        .flatten();
+    let table = if needs_account_table(o, &env) {
+        AccountTable::load(&env.accts_manifest)
+    } else {
+        AccountTable::default()
+    };
+    // ★★ `K-R96`（09-12）：**铸名避让在这里就问那张唯一的会话快照**。
+    //
+    // 用户 `R52` 裁定二逐字：「不就是先校验冲突然后取名吗? **搞个 hash 表**不就好了」。
+    // 那张表就是 `common::session_snapshot`（`TakenNames` 的字段模块私有 ⇒
+    // 本文件造不出第二份）。⇒ `--print` 与真跑从此**吐同一个名字**，
+    // 而「纯」的口径改成**相对于快照**（`§0c`）。
+    //
+    // 问不到就 `None` ⇒ **不退让**（诚实降级，见 `plan::build` 头注）。
+    // ⚠ 探测点仍然只有一个（快照那处），`readonly_guard::spawn_registry` 的数不变。
+    let taken = crate::common::session_snapshot::global().taken_names().ok();
+    plan::build(o, &env, &table, taken.as_ref())
+}
+
+/// 一条别名的预置参数最多几个词、每个词最长多少（帧面入参的上界；别名表单产出的远小于它）。
+const PRINT_MAX_WORDS: usize = 64;
+const PRINT_MAX_WORD_BYTES: usize = 4096;
+
+/// 〔W5-ALIAS · 第五波先行〕帧命令 `ccm-print`：**一条别名实际会执行什么**（`设计/71 §2.3`：
+/// 「`ccm --print` 不跑、吐出等价的一行 shell ⇒ 生成器旁边显示这条别名实际会执行什么，是真验证，不是前端拼串」）。
+///
+/// 入：`{ "args": [..] }`（一条别名的预置参数，原样 ccm argv）。出：`{ "line": "<--print 那一行>" }`。
+/// 与 `ccm --print` 走**同一个** [`plan_of`] ＋ `plan::render`；差别只在环境 —— 用 [`Env::for_preview`]：
+/// 「从这台机器家目录里的一个新终端敲这条别名」（叫的是 `ccm` · 不在 tmux 里 · 不继承账号目录），
+/// 账号表与会话快照照这台机器的真值（撞名退让因此与真跑同一个名字）。
+///
+/// 错误码：`bad_args`（入参形状不对 / 超上界）· `refused`（ccm 自己拒了这组参数 —— 原话带回；
+/// 或给的是 `--help` 这类不起会话的那一形）。只读：不起进程、不写盘。
+pub(crate) fn answer_print(
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, (&'static str, String)> {
+    // 前四种拒是**契约错**（调用方是 monitor，用户手敲不出来）⇒ 英文诊断经 `contract::malformed`；
+    // 「不起会话的那一形」是用户清单里真能出现的（手写进别名文件的 `--help`）⇒ 进表说人话。
+    let words = args
+        .get("args")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed("missing `args` (an array of strings)"),
+            )
+        })?;
+    if words.len() > PRINT_MAX_WORDS {
+        return Err((
+            "bad_args",
+            crate::common::contract::malformed(&format!(
+                "too many args: {} (max {PRINT_MAX_WORDS})",
+                words.len()
+            )),
+        ));
+    }
+    let mut argv = Vec::with_capacity(words.len());
+    for w in words {
+        let w = w.as_str().ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed("every element of `args` must be a string"),
+            )
+        })?;
+        if w.len() > PRINT_MAX_WORD_BYTES {
+            return Err((
+                "bad_args",
+                crate::common::contract::malformed(&format!(
+                    "an arg is too long: {} bytes (max {PRINT_MAX_WORD_BYTES})",
+                    w.len()
+                )),
+            ));
+        }
+        argv.push(w.to_string());
+    }
+    let o = match argv::parse(&argv) {
+        Ok(Parsed::Opts(o)) => o,
+        Ok(Parsed::Early(_)) => {
+            return Err((
+                "refused",
+                copy_core::copy_text("beCcm.preview.noSession", &[]),
+            ))
+        }
+        Err(Die(msg)) => return Err(("refused", msg)),
+    };
+    let plan = plan_of(&o, Env::for_preview(), false).map_err(|Die(msg)| ("refused", msg))?;
+    Ok(serde_json::json!({ "line": plan::render(&plan, resolved(&plan).as_deref()) }))
 }
 
 /// `--base` 与「已继承 `CLAUDE_CONFIG_DIR`」这两条路**不需要账号表** ——
@@ -385,10 +463,23 @@ fn needs_account_table(o: &argv::Opts, env: &Env) -> bool {
 /// ⇒ 本行把身份接到**这个进程自己**身上：能跑它的人直接问它，不看它旁边任何文件。
 /// 〔另一半给「跑不了它的人」——交叉编译出来的 musl 二进制在 Windows 上没法执行 ——
 ///  那一半是 `crate::CC_MONITOR_BUILD_STAMP`（扫字节）。两半同源于 `crate::BUILD_ID`。〕
+///
+/// # 〔WIN1 · RT1 F7〕`capabilities=` 答的是「**在这台机器上**做得到哪几条」
+///
+/// 从前这一行是整张 [`CAPABILITIES`] 原样吐 —— 真 Win11 上 `ccm.exe --ccm-probe` 自报 `tmux` / `attach` /
+/// `detach` / `tmux-size` / `tmux-base` / `bus-register` …（`RT1.md §8` F7），而那几条在 Windows 上
+/// 一条都做不到（`TARGET_GAPS`）。⇒ 改吐本二进制那一档平台上的那一份：
+/// [`crate::ccm_launcher_with`]`(`[`crate::TMUX_PLATFORM`]`)` —— 与能力账按 target 问的是**同一个函数**
+/// （`96 §2`「能力清单从实现派生」），不在这里另写名单。Linux 上逐字不变。
 pub(crate) fn probe_output(self_path: &str) -> String {
+    probe_output_for(self_path, crate::TMUX_PLATFORM)
+}
+
+/// [`probe_output`] 的内核：平台档是入参 ⇒ 本机是 Linux 也能把「Windows 那一份会吐什么」算出来判。
+pub(crate) fn probe_output_for(self_path: &str, platform: crate::TmuxPlatform) -> String {
     format!(
         "name=ccm\nversion={CCM_VERSION}\nself={self_path}\ncapabilities={}\nagents={}\nbuild={}\n",
-        CAPABILITIES.join(","),
+        crate::ccm_launcher_with(platform).join(","),
         AGENTS.join(","),
         crate::BUILD_ID
     )

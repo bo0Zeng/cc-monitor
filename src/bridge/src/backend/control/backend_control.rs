@@ -158,24 +158,35 @@ pub fn backend_status(origin: String) -> Result<serde_json::Value, String> {
 }
 
 /// P2s（`C8`②）：**起这台机的 backend**。已经在跑就是 no-op（`C8`①：每台机只许一个）。
+///
+/// 〔TL3 · `INVARIANTS §10` · 主会话 09-26 裁〕**`async`**：本机那一支（`start_local_backend`）一路会起进程、
+/// 连本机后端口、读 hello、`sleep` 等它绑上口、`attach_stream` 里 `block_on` —— 同步命令跑在 IPC 派发线程上，
+/// 那几秒里别的 IPC 全排队。今天那一支进 `spawn_blocking`（形状照 [`backend_stop`] 本机那一支）；
+/// 远端那一支只是换一个流任务的把手，不等任何东西，照旧就地做。判据 `sync_command_registry_tests`（例外表今天是空的）。
 #[tauri::command]
-pub fn backend_start(origin: String) -> Result<String, String> {
+pub async fn backend_start(origin: String) -> Result<String, String> {
     check_origin(&origin)?;
     if is_local(&origin) {
         // A6：**失败要回 `Err`**。原来三种结局都走 `Ok(reason)`，前端一律 `console.info`，
         // 「没内嵌后端」「释放失败」这两种真失败**一个 toast 都不弹**。
-        use crate::local_backend_host::StartOutcome;
-        return match crate::local_backend_host::start_local_backend() {
-            StartOutcome::Started(p) => Ok(format!("已起：{}", p.display())),
-            StartOutcome::AlreadyRunning => Ok("本机后端已经在跑（C8①：每台机只许一个）".into()),
-            StartOutcome::Failed { reason, looked_at } => Err(copy_text(
-                "rsBackendControl.start.notFound",
-                &[
-                    ("reason", &reason.to_string()),
-                    ("looked", &format!("{:?}", looked_at)),
-                ],
-            )),
-        };
+        return tauri::async_runtime::spawn_blocking(|| {
+            use crate::local_backend_host::StartOutcome;
+            match crate::local_backend_host::start_local_backend() {
+                StartOutcome::Started(p) => Ok(format!("已起：{}", p.display())),
+                StartOutcome::AlreadyRunning => {
+                    Ok("本机后端已经在跑（C8①：每台机只许一个）".into())
+                }
+                StartOutcome::Failed { reason, looked_at } => Err(copy_text(
+                    "rsBackendControl.start.notFound",
+                    &[
+                        ("reason", &reason.to_string()),
+                        ("looked", &format!("{:?}", looked_at)),
+                    ],
+                )),
+            }
+        })
+        .await
+        .map_err(|e| e.to_string())?;
     }
     let mut g = remotes()
         .lock()
@@ -207,11 +218,16 @@ pub fn backend_start(origin: String) -> Result<String, String> {
 /// ⚠ 远端这一侧是 `abort()` 那条流 —— 远端后端随之因管道破裂退出。
 /// 本层**不等它退**（我们在这台机上看不见那个进程），所以返回的是「已断流」不是「已停进程」。
 /// **文案不许把这两件事写成一件**（P2s-Y5）。
+///
+/// 〔HX1 · 4D〕本机那一支今天会**等**（SIGTERM → 最多约 35 秒 → 还在才强杀，`stop_grace`）⇒ 不能再是同步命令
+/// （同步命令跑在主线程上，等的那几秒整个界面卡住）：改成 `async`，等的那一段进阻塞线程池。
 #[tauri::command]
-pub fn backend_stop(origin: String) -> Result<String, String> {
+pub async fn backend_stop(origin: String) -> Result<String, String> {
     check_origin(&origin)?;
     if is_local(&origin) {
-        return crate::local_backend_host::stop_local_backend();
+        return tauri::async_runtime::spawn_blocking(crate::local_backend_host::stop_local_backend)
+            .await
+            .map_err(|e| e.to_string())?;
     }
     let mut g = remotes()
         .lock()

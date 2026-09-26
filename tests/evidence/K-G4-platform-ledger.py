@@ -7,8 +7,12 @@
 
 `设计/01 §7.3` 逐字：「独立进程那个壳要为**每一个我们发布的平台**编得过，且这条要在门禁里。」
 （「折进前端那个壳要能链接进前端」那一半随那一档放弃（`99 §1` V105）作废 —— 见下面 `P4` 的墓志。）
-行数由 **条 63** 定：承诺的是**三格**（本机 Windows x86_64 · 远端 Linux · 本机 Linux），
-(Windows, aarch64) **显式拒绝**。
+行数由 **条 63** 定：承诺的是**三格**（本机 Windows x86_64 · 远端 Linux · 本机 Linux x86_64），
+(Windows, aarch64) **显式拒绝**。〔V132 · 09-25〕本机 (Linux, aarch64) **不承诺**（用户原话
+「不承诺. 适配部分, 即os适配部分后面单独写单独做.」）—— 它不是零脚印（远端那格有 musl 字节），
+所以不进 `REFUSED`，进 `NOT_PROMISED`：代码里 `byte_table::promised` 对它答「否」，由 monitor 侧
+`byte_table_tests.rs::the_promise_face_in_the_ledger_equals_the_code` 把下面 `PROMISE_FACE` / `NOT_PROMISED`
+与代码两向钉住（本文件是承诺面的唯一住址，那条判据读的就是这里）。
 
 ⇒ 本文件判三条：
 
@@ -48,12 +52,33 @@ PROMISED = [
      "`-p monitor` 的生产段 ＋ test 档过 `x86_64-pc-windows-gnu`"),
     ("本机 Windows x86_64", "winchk-backend", "run_gate winchk-backend ",
      "`src/backend` 那个 crate 过 `x86_64-pc-windows-gnu`（`--all-targets`）"),
+    ("本机 Windows x86_64", "winlink", "run_gate winlink ",
+     "`-p monitor` 的两个二进制在 `x86_64-pc-windows-gnu` 上**真链接**（dev；WIN1 · RT1 F1）"),
     ("远端 Linux（musl 两个 arch）", "muslbuild", "run_gate muslbuild ",
      "后端在两个 musl target 上**编得出静态字节**（与 `release.yml` 同一套 zig 版本）"),
-    ("本机 Linux", "cargo", "run_gate_sum cargo ",
+    ("本机 Linux x86_64", "cargo", "run_gate_sum cargo ",
      "host triple 上整个 workspace 编得过并跑得过测试"),
-    ("本机 Linux", "backend", "run_gate backend ",
+    ("本机 Linux x86_64", "backend", "run_gate backend ",
      "后端那个 crate 在 host triple 上编得过并跑得过测试"),
+]
+
+# ── 承诺面（`byte_table::promised` 的真相源；键 = (origin, OS, arch)，只列表 A 里有产线的格）──────
+# 🔴 与代码两向相等（monitor `byte_table_tests.rs::the_promise_face_in_the_ledger_equals_the_code` 读这两张表）：
+#    承诺了而代码不放行、代码放行而这里没写，都红。
+PROMISE_FACE = [
+    ("Local", "Windows", "x86_64"),
+    ("Local", "Linux", "x86_64"),
+    ("Remote", "Linux", "x86_64"),
+    ("Remote", "Linux", "aarch64"),
+]
+
+# ── 不承诺（有产线、却不承诺；与 `REFUSED` 不同：它不是零脚印）────────────────────────
+# 〔V132 · 09-25〕用户原话「不承诺. 适配部分, 即os适配部分后面单独写单独做.」
+NOT_PROMISED = [
+    ("Local", "Linux", "aarch64",
+     "V132：本机 (Linux, aarch64) 不承诺；OS 适配以后单独写设计、单独做。起不来时出声「这台不在承诺里」"),
+    ("Remote", "Windows", "x86_64",
+     "条 63：远端 Windows 目标里有、现在不做（有本机那份原生字节，远端没验过）"),
 ]
 
 # ── 显式拒绝（条 63 待点②：不含 arm64，零成本落地因为盘上零脚印）────────
@@ -128,6 +153,8 @@ def main():
     print()
     for label, needle in REFUSED:
         print(f"🚫 **{label}**：显式拒绝（条 63 待点②）· 全仓 `{needle}` 现打 **0** 处脚印")
+    for route, os_, arch, why in NOT_PROMISED:
+        print(f"⬜ **{route} ({os_}, {arch})**：不承诺 —— {why}")
     print()
     print("⚠ **买不到的，逐条写死**：`check`/`zigbuild` 买「编得过 / 编得出字节」，"
           "**不买**「在那个平台上真跑得起来」，也**不买** MSVC ABI 的链接"

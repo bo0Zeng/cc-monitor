@@ -9,7 +9,13 @@
  * 字段与方法逐字从 `tabs.ts` 搬来，唯一的改写：刷 tab 栏 · 建骨架 tab · resume 三样换成 `this.host.…`。
  * 顺序那份「意图」本身（`savedOrder`）与落位运算住 `TabStore`，这里只管读盘 / 落盘。
  */
-import { getCollections, setCollections, type TabCollection } from "./tab-collections";
+import {
+  collectionRefusalText,
+  getCollections,
+  setCollections,
+  type CollectionRefusal,
+  type TabCollection,
+} from "./tab-collections";
 import {
   getPinned,
   getTabOrder,
@@ -21,8 +27,19 @@ import {
 import type { Tab } from "./tab-model";
 import { ENDED, UNSEEN, isLive } from "./tab-session-state";
 import { copyText } from "./copy-table";
+import { showActionFailureToast } from "./error-toast";
 import type { TabStore } from "./tab-store";
 import type { Origin } from "./ipc/origin";
+
+/**
+ * 〔TL2 · E13〕集合到上界、这一下没做成 ⇒ 说一句（`设计/01 §5 D4`「一条都不许静默忽略」）。
+ * 判定住 `tab-collections.ts`（`createRefusal` / `memberRefusal`）与 `tab-drop.ts::dropRefusal`，句子住文案表；
+ * 两个入口（右键菜单 · 拖放）都经这一处说。
+ */
+export function sayCollectionRefusal(r: CollectionRefusal): void {
+  const { title, body } = collectionRefusalText(r);
+  showActionFailureToast(title, body, { level: "info", durationMs: 6000 });
+}
 
 /** 落盘偏好要宿主做的三件事。 */
 export interface TabBarPrefsHost {
@@ -92,7 +109,7 @@ export class TabBarPrefs {
     this.host.refreshTabBar();
   }
 
-  /** P7a-3：落盘 + 重画。**先改内存再落盘** —— 让 UI 立刻响应，落盘失败只记日志。 */
+  /** P7a-3：落盘 + 重画。**先改内存再落盘** —— 让 UI 立刻响应；落盘失败出声（toast）＋ 记日志。 */
   async commitCollections(next: TabCollection[]): Promise<void> {
     this.collections = next;
     this.host.refreshTabBar();
@@ -102,13 +119,16 @@ export class TabBarPrefs {
   /**
    * 只落盘、不重画。〔步 17·D〕`applyDrop` 要在同一拍里改**顺序 ＋ 归属**，
    * 由它统一重画一次 —— 这里再画一次就是白画（拖动结束那一拍本来就重。`§3 P3`）。
-   * ⚠ 「落盘失败只记日志」这句话只能有一个住址，所以 `commitCollections` 也走这里。
+   * ⚠ 「落盘失败怎么说」这句话只能有一个住址，所以 `commitCollections` 也走这里。
+   * 〔CFG1 · 4D〕从前落盘失败只记日志（`设计/30 §C.3` 原话）——重启后分组没了、当时一句话都没有（E §3.3）。
+   * 主会话 09-25 按 `INVARIANTS §12`（关键失败要出声）认可改成：内存照旧先改 · 落盘失败弹一条 toast · 日志照留。
    */
   async persistCollections(next: readonly TabCollection[]): Promise<void> {
     try {
       await setCollections(next);
     } catch (e) {
       console.warn("[tab-collections] 落盘失败:", e);
+      showActionFailureToast(copyText("tabBar.persist.collectionsFailed"), String(e));
     }
   }
 
@@ -263,6 +283,7 @@ export class TabBarPrefs {
       await setPinned(next);
     } catch (e) {
       console.warn("[tab-bar] 固定落盘失败:", e);
+      showActionFailureToast(copyText("tabBar.persist.pinnedFailed"), String(e)); // 〔CFG1〕同 `persistCollections`
     }
   }
 
@@ -294,7 +315,7 @@ export class TabBarPrefs {
     return (this.store.tabs.get(sid)?.parentPath ?? "") === "";
   }
 
-  /** 把当前顺序写进 `config.json` 的 `tabBar.order`。失败只记日志，不打断交互。 */
+  /** 把当前顺序写进 `config.json` 的 `tabBar.order`。失败出声（toast）＋ 记日志，不打断交互（〔CFG1〕）。 */
   async persistOrder(): Promise<void> {
     // 🔴 **先把内存里那份意图同步掉，再去写盘** —— 用户刚拖出来的这张就是最新的意图。
     //   不同步的话，`savedOrder` 还是启动时读到的那份**旧**顺序，而它每来一个新 tab
@@ -305,6 +326,7 @@ export class TabBarPrefs {
       await setTabOrder(this.store.orderedIds);
     } catch (e) {
       console.warn("[tab-bar] 顺序落盘失败:", e);
+      showActionFailureToast(copyText("tabBar.persist.orderFailed"), String(e)); // 〔CFG1〕同 `persistCollections`
     }
   }
 
