@@ -90,17 +90,19 @@ const TASKS_BUDGET: Duration = Duration::from_secs(30);
 
 /// `tasks-list` 的 `data` → `Vec<TaskEntry>`。**纯函数**：顶层恰好一格 `tasks`，每格按 [`TaskEntry`] 严格收。
 pub(crate) fn decode_tasks(who: &str, data: serde_json::Value) -> Result<Vec<TaskEntry>, String> {
-    let bad = |e: String| format!("{who}的后端回的任务清单形状对不上（{e}）—— 两端契约对不上");
+    let bad = |e: String| format!("{who}的后端回的任务清单认不出来（{e}），多半是两边版本不一样");
     let serde_json::Value::Object(mut o) = data else {
-        return Err(bad("不是一个对象".into()));
+        return Err(bad("not an object".into()));
     };
     if o.len() != 1 {
         return Err(bad(format!(
-            "顶层的键不止 tasks：{:?}",
+            "top-level keys other than `tasks`: {:?}",
             o.keys().collect::<Vec<_>>()
         )));
     }
-    let tasks = o.remove("tasks").ok_or_else(|| bad("缺 tasks".into()))?;
+    let tasks = o
+        .remove("tasks")
+        .ok_or_else(|| bad("missing `tasks`".into()))?;
     serde_json::from_value::<Vec<TaskEntry>>(tasks).map_err(|e| bad(e.to_string()))
 }
 

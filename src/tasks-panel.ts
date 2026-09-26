@@ -275,24 +275,24 @@ const TASK_OPTIONAL_KEYS = ["activeForm", "description"];
  */
 export function decodeTasks(v: unknown): TaskEntry[] {
   const bad = (what: string): never => {
-    throw new Error(`tasks-list 的应答形状对不上：${what}`);
+    throw new Error(`tasks-list reply shape mismatch: ${what}`);
   };
-  if (v === null || typeof v !== "object" || Array.isArray(v)) return bad("不是一个对象");
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return bad("not an object");
   const o = v as Record<string, unknown>;
-  if (Object.keys(o).join(",") !== "tasks" || !Array.isArray(o.tasks)) return bad("顶层不是恰好一格 tasks 数组");
+  if (Object.keys(o).join(",") !== "tasks" || !Array.isArray(o.tasks)) return bad("top level is not exactly one `tasks` array");
   const strs = (x: unknown): x is string[] => Array.isArray(x) && x.every((s) => typeof s === "string");
   return o.tasks.map((raw, i): TaskEntry => {
-    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return bad(`第 ${i} 条不是对象`);
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return bad(`item ${i} is not an object`);
     const t = raw as Record<string, unknown>;
     const keys = Object.keys(t);
     const known = [...TASK_REQUIRED_KEYS, ...TASK_OPTIONAL_KEYS];
     if (!TASK_REQUIRED_KEYS.every((k) => keys.includes(k)) || !keys.every((k) => known.includes(k))) {
-      return bad(`第 ${i} 条的键是 ${keys.sort().join(",")}`);
+      return bad(`item ${i} has keys ${keys.sort().join(",")}`);
     }
     const optOk = TASK_OPTIONAL_KEYS.every((k) => !(k in t) || typeof t[k] === "string");
     if (typeof t.id !== "string" || typeof t.subject !== "string" || typeof t.status !== "string"
       || !strs(t.blocks) || !strs(t.blockedBy) || !optOk) {
-      return bad(`第 ${i} 条有一格类型不对`);
+      return bad(`item ${i} has a field of the wrong type`);
     }
     return t as unknown as TaskEntry;
   });

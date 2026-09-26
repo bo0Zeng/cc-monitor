@@ -142,7 +142,14 @@ pub(crate) fn answer_wire_at(
             .and_then(serde_json::Value::as_str)
             .filter(|s| !s.is_empty())
             .map(str::to_string)
-            .ok_or(("bad_args", format!("`{k}` 缺或不是非空字符串")))
+            .ok_or_else(|| {
+                (
+                    "bad_args",
+                    crate::common::contract::malformed(&format!(
+                        "missing `{k}` (a non-empty string)"
+                    )),
+                )
+            })
     };
     let (sid, uuid) = (field("sid")?, field("uuid")?);
     // `run_inner` 只读第 1、2 格（第 0 格是 argv 形里的子命令名，本入口没有）。

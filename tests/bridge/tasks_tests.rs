@@ -39,7 +39,7 @@ fn the_golden_product_decodes_on_this_side() {
         .is_empty());
 }
 
-/// 按形状**严格**收：多一格 / 缺一格 / 类型不对 / 顶层不对 ⇒ `Err`「两端契约对不上」，**不跳过那一条**
+/// 按形状**严格**收：多一格 / 缺一格 / 类型不对 / 顶层不对 ⇒ `Err`「两边版本不一样」，**不跳过那一条**
 /// （跳过是字段语义，那一份只住后端）。
 #[test]
 fn a_product_of_the_wrong_shape_is_refused_not_skimmed() {
@@ -62,7 +62,7 @@ fn a_product_of_the_wrong_shape_is_refused_not_skimmed() {
         serde_json::json!([]),
     ] {
         let e = decode_tasks("本机", bad.clone()).expect_err("该拒");
-        assert!(e.contains("两端契约对不上"), "{bad} ⇒ {e}");
+        assert!(e.contains("两边版本不一样"), "{bad} ⇒ {e}");
     }
 }
 
