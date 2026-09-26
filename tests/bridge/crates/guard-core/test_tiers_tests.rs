@@ -434,6 +434,7 @@ const SCAN: &[&str] = &[
     "tests/launch-payload-golden.vitest.ts",
     "tests/launch-render-fallback.vitest.ts",
     "tests/launch-tmux-outer-golden.vitest.ts",
+    "tests/live-card.vitest.ts", // 〔TAP〕活卡：状态机 · 真 TabManager 三向相等 · 台架夹具（读 `tests/__fixtures__/tap-bench.json`）
     "tests/liveness-process-names-parity.vitest.ts",
     "tests/panorama/api-remote.vitest.ts",
     "tests/panorama/diagram-guards.vitest.ts",
