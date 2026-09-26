@@ -1925,32 +1925,32 @@ async fn off_the_ipc_thread<T: Send + 'static>(
     .map_err(|e| format!("spawn_blocking join: {e}"))?
 }
 
-/// 生产构建：没有替身可带。
-#[cfg(not(test))]
-fn carried_seams() -> impl FnOnce() + Send {
-    || {}
-}
-
 /// 〔TL3〕调用线程上装着的替身（没装的格是 `None`）→ 一个在别的线程上重装它们的闭包；
-/// 三个守卫掉出作用域各自还原（线程池里的线程会被下一趟复用）。
-/// ⚠ 只这一个 `#[cfg(test)]` 支撑项（`structural_scan` 那张「测试专用支撑项只许降」的棘轮数着它）。
+/// 各守卫装在回来的那个盒子里，盒子掉出作用域就各自还原（线程池里的线程会被下一趟复用）。
+/// 生产构建里三条缝都没有替身可带 ⇒ 回的是一个空盒子（零大小，不分配）。
+/// ⚠ 这里**不立 `#[cfg(test)]` 的 item**（只有按 cfg 取舍的语句）：`structural_scan` 那张「测试专用支撑项只许降」的棘轮数的是 item。
 /// ccm 探测那条缝只在非 Windows 上有（`CcmProbeSource` 挂 `#[cfg(not(windows))]`）⇒ Windows 上那一格是空的。
-#[cfg(test)]
 fn carried_seams() -> impl FnOnce() -> Box<dyn std::any::Any> + Send {
-    #[cfg(not(windows))]
+    #[cfg(all(test, not(windows)))]
     let probe = CCM_PROBE_OVERRIDE.with(std::cell::Cell::get);
+    #[cfg(test)]
     let facts = INJECT_FACTS_OVERRIDE.with(std::cell::Cell::get);
+    #[cfg(test)]
     let sink = LAUNCH_SINK_OVERRIDE.with(std::cell::Cell::get);
     move || {
-        #[cfg(not(windows))]
+        #[cfg(all(test, not(windows)))]
         let probe = probe.map(override_ccm_probe);
-        #[cfg(windows)]
+        #[cfg(all(test, windows))]
         let probe = ();
-        Box::new((
+        #[cfg(test)]
+        let held: Box<dyn std::any::Any> = Box::new((
             probe,
             facts.map(override_inject_facts),
             sink.map(override_launch_sink),
-        ))
+        ));
+        #[cfg(not(test))]
+        let held: Box<dyn std::any::Any> = Box::new(());
+        held
     }
 }
 
