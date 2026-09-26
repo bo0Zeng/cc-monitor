@@ -649,6 +649,7 @@ const INTEGRATION: &[&str] = &[
     "tests/offline-cargo-cache.vitest.ts",
     "tests/backend/observe/search_query_golden_tests.rs", // 〔SX1〕J1 合成语料写临时目录、对冻结金样
     "tests/backend/observe/search_query_reading.rs", // 〔SX1〕秤（真机层那一条）：起 python3 丢页缓存
+    "tests/backend/observe/search_query_index_tests.rs", // 〔SX1〕J2 / J3 临时目录上一串变更
 ];
 
 /// 支撑：测试树里**没有一条测试**的那几份（夹具 / helper）。不是一层，是让分区闭合的补集。
