@@ -4234,7 +4234,7 @@ fn every_prose_tombstone_mark_is_registered() {
     const REGISTERED: &[(&str, usize)] = &[
         // 〔CF2 · 第四波 4B〕重放缓冲分档取消：头注里旧的登记方法名 ＋ 读数那个旧字段名各一块；
         //   会话流收口成 `subscribe`：头注表里 ＋ `ready_point` 文档里点原来那个重放方法名各一块。
-        ("src/bridge/src/event_replay.rs", 5), // 〔GP1〕+1：远端 sid 清单改名（连同 origin 一起交）那一块
+        ("src/bridge/src/event_replay.rs", 6), // 〔GP1〕+1：远端 sid 清单改名（连同 origin 一起交）那一块 〔DL1〕+1：头注点名退役的裸事件常量那一块
         // 〔GP1 · 第四波〕本机凭据文件的写者换成本机常驻后端：monitor 那侧写口 · `platform_fs::make_private` ·
         //   「本机那一臂不发帧」判据退役，讲来历的散文逐处一块；搬去后端的三条判据的出处各一块。
         ("src/bridge/src/apikey_remote.rs", 3),

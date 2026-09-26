@@ -2468,12 +2468,14 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     //    API key 那两问从 monitor 的两条 Tauri 命令改走通道；每处显式给期限。
     // 〔CF2 · 第四波 4B〕`chan.subscribe`（TS，主界面）恰好 1 处：`events.ts::bindEvents` 按 `streams` 订会话内容流
     //    （主窗口每台机器一条、独立窗口一条，都经这一处）。
+    // 〔DL1 · 第五波〕1 → 2：`session-accounts-poll.ts::watchAccountsChanged`（每台一条 `accounts-changed`，
+    //    替掉裸事件 `remote-backend-ready`；`设计/01 §2.2`「前端只有两个动作」）。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
             ("chan.call", 31usize),
-            ("chan.subscribe", 1usize),
+            ("chan.subscribe", 2usize),
             ("subscribe", 1usize)
         ]
         .into_iter()
