@@ -23,6 +23,7 @@ import {
 import { BranchFolder } from "../branch-fold";
 import { type BranchRecord } from "../branching";
 import { RecordTimeline } from "../record-timeline";
+import { releaseEnhanceRoot } from "../render";
 import {
   renderStreamRecord,
   routeMetaAndBranch,
@@ -68,8 +69,11 @@ import { copyText } from "../copy-table";
  */
 export function revealCard(container: HTMLElement, uuid: string): HTMLElement | null {
   // CSS.escape 防 uuid 里有特殊字符破坏选择器
-  const sel = `[data-uuid="${CSS.escape(uuid)}"]`;
-  const el = container.querySelector<HTMLElement>(sel);
+  const key = CSS.escape(uuid);
+  // 〔W5-RENDER R11 · `设计/10 §7` 第 10 条〕卡找不到 ⇒ 再找「被并进工具组 / 被注入进 tool_use」的那一块（`data-member-uuid`）
+  const el =
+    container.querySelector<HTMLElement>(`[data-uuid="${key}"]`) ??
+    container.querySelector<HTMLElement>(`[data-member-uuid="${key}"]`);
   if (!el) return null;
   // 展开所有折叠祖先，确保目标可见。注:ESC 回退段是 div.branch-fold-wrap
   // + .expanded 类(非 <details>)——此前只开 details,命中折叠段内的卡会被
@@ -238,7 +242,7 @@ export class SessionViewer {
       timeline,
       onBranchRecord: () => {},
       onQueueOperation: () => {},
-      observeForLazyEnhance: true,
+      enhanceRoot: this.streamEl, // 〔W5-RENDER R5 · `设计/10 §3.5` D2〕IO 的 root = 查看器自己的滚动容器
       // F62 / **G6**：给每张 user/assistant 卡挂「从这一轮分叉」按钮。**远端也挂**——
       // 远端走后端的 `--fork-session`（只认 sid），不再受"远端 jsonl 本机够不着"所限。
       // F77：子 agent 记录 `suppressBranch` 仍关掉（子 agent jsonl 不是可分支的会话）。
@@ -654,6 +658,7 @@ export class SessionViewer {
 
   private disposeStream(): void {
     this.streamEl?.removeEventListener("scroll", this.onScrollFill);
+    if (this.streamEl) releaseEnhanceRoot(this.streamEl); // 〔W5-RENDER R5〕上一个会话的卡随 IO 一起放掉
     if (this.stream) {
       this.stream.dispose();
       this.stream = null;

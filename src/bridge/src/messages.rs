@@ -217,8 +217,12 @@ pub enum JsonlRecord {
     /// parentUuid 全为 0** —— 即此刻并没有在误折叠，本变体是**保险 + 诚实**：
     /// ①不再静默丢 5.6% 的行；②Claude 哪天发一个带链身份的新类型时自动扛住。
     ///
-    /// 进 `is_displayable()`（照 `Attachment` 先例：**不渲染卡片但进链**）。
-    /// 前端 `cards/index.ts:350` `default => skip` 已能优雅跳过，无需建卡。
+    /// **带链身份的**进 `is_displayable()`（照 `Attachment` 先例：**不渲染卡片但进链**）；
+    /// 前端 `cards/index.ts::renderMessage` 的 `default => skip` 已能优雅跳过，无需建卡。
+    /// 〔W5-RENDER R10 · `设计/17 §1.2`〕**没有链身份的**（uuid 与 parentUuid 都缺 —— 上面实测的那 7 种今天全是）
+    /// 在这里就滤掉、不出 payload：它们不建卡、不进链，前端没有任何读者，却要付每条的固定开销（去重入集合 · sink · 门控），
+    /// 还带着整行原文 `raw` 过线。「不静默」那一半由 `drift_ledger`（`UnknownRecordType` 面，解析时记）接着管 ——
+    /// 诊断面照旧看得见「多了一种没见过的类型」。
     #[serde(rename = "cc-monitor-unrecognized")]
     Unrecognized {
         #[serde(default)]
@@ -319,9 +323,13 @@ impl JsonlRecord {
     ///
     /// 两类记录都返回 true：
     /// 1. 渲染目标：User / Assistant / AiTitle / System —— 前端会建卡 / 改标题等
-    /// 2. 仅链路用：Attachment / Unrecognized —— 不渲染，但 issue #8 ESC 回退主线检测
+    /// 2. 仅链路用：Attachment / **带链身份的** Unrecognized —— 不渲染，但 issue #8 ESC 回退主线检测
     ///    需要完整 uuid+parentUuid 链，attachment 夹在 user/assistant 之间，
     ///    不 emit 会让前端 parent 链断成碎片 → 主线全错 → 全部消息被错折叠
+    ///
+    /// 〔W5-RENDER R10 · `设计/17 §1.2`「纯元数据记录在解析阶段滤掉，不进管线」〕**没有链身份的** Unrecognized
+    /// （`mode` / `atis-latch` / `pr-link` / … 一族，真机普查 9.8% 行 / 0.4% 字节）返回 false：前端零读者。
+    /// 仍进前端的元数据都有读者：`ai-title` / `custom-title`（标题）· `queue-operation`（`enqueue` 喂折叠豁免、`remove` 建卡）。
     ///
     /// **返回 false 的两类要分清**（F63/#49「零信息损失」的口径）：
     /// - `PermissionMode` / `LastPrompt` / `FileHistorySnapshot` = **已知类型的明示
@@ -339,7 +347,9 @@ impl JsonlRecord {
                 | Self::System { .. }
                 | Self::Attachment { .. }
                 | Self::QueueOperation { .. }
-                | Self::Unrecognized { .. }
+        ) || matches!(
+            self,
+            Self::Unrecognized { uuid, parent_uuid, .. } if uuid.is_some() || parent_uuid.is_some()
         )
     }
 }

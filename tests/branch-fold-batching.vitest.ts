@@ -296,3 +296,104 @@ describe("`设计/17 §2.7` 档 3：addQueuedContent 接上帧末合批", () => 
     ).toBe(b.el.innerHTML);
   });
 });
+
+/**
+ * 〔W5-RENDER R13〕`设计/10 §3.4` C1 逐字：「`BranchFolder.rebuild()` 全量 unwrap ＋ 重新包裹」—— 三处「主动放弃增量」的 DOM 操作之一。
+ * 修法：按段差量（恰好等于目标段的现存 wrap 原地不动，只拆 / 建归属变了的段）。
+ * 判据（异源）：随机操作序列（插卡 —— 包括插进折叠段里、按 R6 的 `insertNode` 口径插在锚点前 —— ＋ 换主线集合），
+ * 每一步之后差量重折的 DOM == 同一逻辑序列在**平铺容器**上从零折一遍的 DOM（另一个实例）；
+ * 以及「主线没变 / 只在尾巴长一条」时一个节点都不搬。
+ */
+describe("C1 · 差量重折 == 从零折（`设计/10 §3.4`）", () => {
+  type Priv = { lastMainBranch: Set<string>; rebuild(): void };
+  const priv = (f: BranchFolder): Priv => f as unknown as Priv;
+  function rng(seed: number): () => number {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const card = (uuid: string | null): HTMLElement => {
+    const el = document.createElement("div");
+    el.className = "card";
+    if (uuid) el.dataset.uuid = uuid;
+    el.textContent = uuid ?? "sep";
+    return el;
+  };
+  /** 逻辑序列：顶层子节点，wrap 展开读 inner */
+  const logical = (c: HTMLElement): string[] => {
+    const out: string[] = [];
+    for (const ch of Array.from(c.children)) {
+      if (ch.classList.contains("branch-fold-wrap")) {
+        for (const k of Array.from(ch.querySelector(".branch-fold-body-inner")!.children)) out.push(k.textContent ?? "");
+      } else out.push(ch.textContent ?? "");
+    }
+    return out;
+  };
+
+  it("随机 300 步：每一步差量结果 == 从零折", () => {
+    const r = rng(20260926);
+    const el = document.createElement("div");
+    const folder = new BranchFolder(el);
+    let next = 0;
+    let checked = 0;
+    let foldedSeen = 0;
+    for (let step = 0; step < 300; step++) {
+      const op = r();
+      if (op < 0.45 || el.children.length === 0) {
+        // 插一张卡：末尾，或插在随机一张现有卡前（它若在折叠段里就插进段里 —— R6 口径）
+        const c = card(r() < 0.1 ? null : `u${next++}`);
+        const all = Array.from(el.querySelectorAll<HTMLElement>(".card"));
+        if (all.length === 0 || r() < 0.5) el.appendChild(c);
+        else {
+          const anchor = all[Math.floor(r() * all.length)];
+          anchor.parentElement!.insertBefore(c, anchor);
+        }
+      } else {
+        // 换主线集合：每张卡独立地以 0.7 的概率在主线上
+        const main = new Set<string>();
+        for (const c of Array.from(el.querySelectorAll<HTMLElement>(".card"))) {
+          const u = c.dataset.uuid;
+          if (u && r() < 0.7) main.add(u);
+        }
+        priv(folder).lastMainBranch = main;
+      }
+      priv(folder).rebuild();
+      // 参照：同一逻辑序列的平铺容器，另一个实例从零折
+      const flat = document.createElement("div");
+      for (const t of logical(el)) flat.appendChild(card(t === "sep" ? null : t));
+      const ref = new BranchFolder(flat);
+      priv(ref).lastMainBranch = new Set(priv(folder).lastMainBranch);
+      priv(ref).rebuild();
+      expect(el.innerHTML, `第 ${step} 步`).toBe(flat.innerHTML);
+      foldedSeen += el.querySelectorAll(".branch-fold-wrap").length;
+      checked++;
+    }
+    expect(checked).toBe(300);
+    expect(foldedSeen, "反空真：序列里真出现过折叠段").toBeGreaterThan(50);
+  }, 30_000); // 满载下全量套件里跑过 5 s
+
+  it("主线没变 / 只在尾巴长一条主线卡：零搬动（DOM 一次写都没有）", () => {
+    const el = document.createElement("div");
+    const folder = new BranchFolder(el);
+    for (let i = 0; i < 10; i++) el.appendChild(card(`k${i}`));
+    priv(folder).lastMainBranch = new Set(["k0", "k1", "k5", "k6", "k9"]);
+    priv(folder).rebuild(); // 折出两段：k2–k4 · k7–k8
+    expect(el.querySelectorAll(".branch-fold-wrap").length).toBe(2);
+    const mo = new MutationObserver(() => {});
+    mo.observe(el, { childList: true, subtree: true, attributes: true });
+    priv(folder).rebuild(); // 主线没变
+    el.appendChild(card("k10"));
+    priv(folder).lastMainBranch = new Set([...priv(folder).lastMainBranch, "k10"]);
+    const before = mo.takeRecords().length; // 只有那一次 append
+    priv(folder).rebuild(); // 尾巴长了一条主线卡
+    const after = mo.takeRecords().length;
+    mo.disconnect();
+    expect(before).toBe(1);
+    expect(after).toBe(0);
+  });
+});

@@ -103,21 +103,15 @@ export class MessageStream {
    * 详见类头注释「贴底稳定性」与 INVARIANTS § 21。
    */
   insertNode(node: HTMLElement, anchor: HTMLElement | null): void {
-    // F40a D 审计 R-2 防御:anchor 可能已被折进 .branch-fold-wrap(增量渲染的洞场景
-    // /F40b 补批),直接 insertBefore 会 NotFoundError → 该记录被 drain 的 try/catch
-    // 吞掉永久丢失。爬到 contentEl 直接子层再插——卡粒度顺序仍正确(落在包含
-    // anchor 的 wrap 之前),折叠归属由下一次 rebuild 自愈;anchor 已不在 DOM 则
-    // 降级末尾追加(保数据,顺序由 seq 账本兜底)。
-    if (anchor && anchor.parentElement !== this.contentEl) {
-      let a: HTMLElement | null = anchor;
-      while (a && a.parentElement !== this.contentEl) {
-        a = a.parentElement;
-      }
-      anchor = a;
-    }
-    if (anchor) {
-      this.contentEl.insertBefore(node, anchor);
+    // F40a D 审计 R-2:anchor 可能已被折进 .branch-fold-wrap(增量渲染的洞场景 /F40b 补批)。
+    // 〔W5-RENDER R6 · `设计/10 §3.5` D4〕原来爬到 contentEl 直接子层、插在**整段之前** —— 新卡若该落在
+    // 段中间就错序,而 rebuild 只解开 / 重包、不重排卡,错序不会自愈。现在**就插在 anchor 前**(它在哪层就在哪层):
+    // 顺序逐卡正确;若它其实是主线卡,它进来时 `recordAdded` 排的那次帧末重算会让主线集合变、触发 rebuild 把它摘出段。
+    // anchor 不在本流里(RecordTimeline 已把离场的出账,理论上走不到)⇒ 末尾追加并出声。
+    if (anchor && this.contentEl.contains(anchor) && anchor.parentElement) {
+      anchor.parentElement.insertBefore(node, anchor);
     } else {
+      if (anchor) console.warn("[stream] insertNode 的锚点不在本流里 —— 退回末尾追加（D4）");
       this.contentEl.appendChild(node);
     }
     if (this.stickToBottom && !this.snapSuspended) {

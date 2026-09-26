@@ -219,6 +219,54 @@ type QueueItem =
   | { kind: "file-notice"; sessionId: string; change: string; grant?: StreamHold };
 
 /**
+ * 〔W5-RENDER R1 · `设计/17 §2.10`〕drain 用的 FIFO：**数组 ＋ 头下标**，出队 O(1)。
+ *
+ * 原来是 `Array.prototype.shift()`。V8 的 left-trim 快路不是无条件生效的：秤 5 的 B 段量到
+ * 数组长过 ~15 000 之后每次 `shift` 退化成搬整份（n=20 000 排空 14 ms vs 头指针 0.14 ms），
+ * 而这条队列在生产上就能长到一个 credit 窗口（`STREAM_WINDOW` = 20 000）。
+ * 读数（经生产 `bindEvents` 灌一块 n 条、空壳 `onLine`、排空墙钟）住 `调研/第四波记录/W5-RENDER.md §6`。
+ *
+ * - 出队把那一格置空（不留对已派发条目的引用）；排空时整份复位；头下标过 {@link COMPACT_AT} 且过半时
+ *   压缩一次（摊还 O(1)，队列不会只增不减）。
+ * - 队首插入（突发检测的 `batch-start` 哨兵）：头下标前有空位就放进去，没有才退回 `unshift`
+ *   （一次突发只插一次）。
+ */
+const COMPACT_AT = 4096;
+class DrainQueue<T> {
+  private items: Array<T | undefined> = [];
+  private head = 0;
+
+  /** 还没出队的条数 */
+  get size(): number {
+    return this.items.length - this.head;
+  }
+
+  push(x: T): void {
+    this.items.push(x);
+  }
+
+  /** 插到**剩余**队列的最前面 */
+  pushFront(x: T): void {
+    if (this.head > 0) this.items[--this.head] = x;
+    else this.items.unshift(x);
+  }
+
+  take(): T | undefined {
+    if (this.head >= this.items.length) return undefined;
+    const x = this.items[this.head];
+    this.items[this.head++] = undefined;
+    if (this.head === this.items.length) {
+      this.items.length = 0;
+      this.head = 0;
+    } else if (this.head >= COMPACT_AT && this.head * 2 >= this.items.length) {
+      this.items.splice(0, this.head);
+      this.head = 0;
+    }
+    return x;
+  }
+}
+
+/**
  * 批量调度参数。replay 会一次性 emit 数千条 jsonl-line，同步处理会阻塞 click 派发数秒
  * （鼠标光标卡死、滚动可用——native 滚动绕过主线程）。分批 + 让出后 UI 响应不再被压垮。
  *
@@ -348,7 +396,7 @@ export async function bindEvents(
   const sub = <T>(event: string, handler: EventCallback<T>): Promise<UnlistenFn> =>
     wv ? wv.listen<T>(event, handler) : listen<T>(event, handler);
 
-  const queue: QueueItem[] = [];
+  const queue = new DrainQueue<QueueItem>();
   let scheduled = false;
 
   // batch-end 延迟状态机
@@ -506,8 +554,8 @@ export async function bindEvents(
   const drain = (): void => {
     const start = performance.now();
     let processed = 0;
-    while (queue.length > 0) {
-      const item = queue.shift();
+    while (queue.size > 0) {
+      const item = queue.take();
       if (item) dispatchItem(item);
       processed += 1;
       const elapsed = performance.now() - start;
@@ -521,7 +569,7 @@ export async function bindEvents(
       }
     }
     flushGrants();
-    if (queue.length > 0) {
+    if (queue.size > 0) {
       // 让出主线程一跳再处理下一批（`MessageChannel`，探不到才退回 `setTimeout`）
       yieldToDrain();
     } else {
@@ -537,7 +585,7 @@ export async function bindEvents(
 
 
   const ensureScheduled = (): void => {
-    if (scheduled || queue.length === 0) return;
+    if (scheduled || queue.size === 0) return;
     scheduled = true;
     // 用宏任务而非 queueMicrotask，确保批与批之间真正让出
     // （microtask 同一 tick 内连续清空，无让出效果）。
@@ -580,9 +628,9 @@ export async function bindEvents(
           // （历史上是远端 snapshot 逐帧，未来任何新源）积压到阈值就主动进 batch
           // 模式——哨兵插队到队首，让剩余积压走 defer/lazy 路径而不是逐条全量渲染。
           // 已在 batch 模式或哨兵已入队则不重复；退出走 drain 清空后的 grace 补排。
-          if (!inBatchMode && !burstArmed && queue.length > BURST_ENTER_THRESHOLD) {
+          if (!inBatchMode && !burstArmed && queue.size > BURST_ENTER_THRESHOLD) {
             burstArmed = true;
-            queue.unshift({ kind: "batch-start" });
+            queue.pushFront({ kind: "batch-start" });
           }
         } else if (f !== null && typeof f === "object" && "file_notice" in f) {
           queue.push({

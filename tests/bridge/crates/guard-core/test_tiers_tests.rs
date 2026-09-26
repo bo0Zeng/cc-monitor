@@ -140,6 +140,7 @@ const UNIT: &[&str] = &[
     "tests/cards/diff.test.ts",
     "tests/cards/file-input.vitest.ts",
     "tests/cards/interactive.vitest.ts",
+    "tests/cards/json-prefix.vitest.ts", // 〔W5-RENDER R2〕firstLineOf / jsonPrefix 与原式对拍（纯函数）
     "tests/ccm-probe.vitest.ts",
     "tests/config-fields.vitest.ts",
     "tests/e2e-probe.vitest.ts",
@@ -170,7 +171,6 @@ const UNIT: &[&str] = &[
     "tests/remote-health.test.ts",
     "tests/remote-launch-run.vitest.ts",
     "tests/render-window.vitest.ts",
-    "tests/render.vitest.ts",
     "tests/resume-presets.vitest.ts",
     "tests/route-parity.vitest.ts",
     "tests/send-into-backend.vitest.ts",
@@ -464,6 +464,7 @@ const SCAN: &[&str] = &[
     "tests/remote-config.vitest.ts",
     "tests/rbind-token-shape-parity.vitest.ts", // 〔LR2〕从 launch-render-fallback.vitest.ts 搬来（读 Rust `payload.rs`）
     "tests/replay-tail-keep.vitest.ts",
+    "tests/render.vitest.ts", // 〔W5-RENDER R3〕由 UNIT 挪来：D3 那一格读 `src/render.ts` 源码（顶层零 `let`）
     "tests/scale1-render-cost.vitest.ts",
     "tests/scale2-height-truth.vitest.ts",
     "tests/scale3-one-screen-gate.vitest.ts",
