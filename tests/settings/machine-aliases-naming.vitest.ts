@@ -60,7 +60,7 @@ describe("D1 · tmux 四选的说明与后端退让规则同一张表", () => {
   it("说明里「依次试」出现 ⇔ stepsAside 为真（话与表不许各说各的）", async () => {
     const { TMUX_NAMING } = await import("../../src/settings/machine-aliases");
     for (const [mode, v] of Object.entries(TMUX_NAMING)) {
-      expect(v.text.includes("依次试"), `${mode}：${v.text}`).toBe(v.stepsAside === true);
+      expect(v.text().includes("依次试"), `${mode}：${v.text()}`).toBe(v.stepsAside === true);
     }
   });
 
@@ -71,13 +71,13 @@ describe("D1 · tmux 四选的说明与后端退让规则同一张表", () => {
       [...s.options].some((o) => o.value === "base"),
     );
     expect(sel, "找不到 tmux 那个下拉").toBeTruthy();
-    const hint = w.querySelector(".machine-aliases-tmux-naming");
-    expect(hint?.textContent).toBe(TMUX_NAMING.none.text);
+    const hint = w.querySelector('[data-role="tmux-naming"]');
+    expect(hint?.textContent).toBe(TMUX_NAMING.none.text());
     for (const o of [...sel!.options]) {
-      expect(o.title).toBe(TMUX_NAMING[o.value as keyof typeof TMUX_NAMING].text);
+      expect(o.title).toBe(TMUX_NAMING[o.value as keyof typeof TMUX_NAMING].text());
       sel!.value = o.value;
       sel!.dispatchEvent(new Event("change"));
-      expect(hint?.textContent).toBe(TMUX_NAMING[o.value as keyof typeof TMUX_NAMING].text);
+      expect(hint?.textContent).toBe(TMUX_NAMING[o.value as keyof typeof TMUX_NAMING].text());
     }
   });
 });

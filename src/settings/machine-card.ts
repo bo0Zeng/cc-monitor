@@ -1088,7 +1088,7 @@ export class MachineCard {
     this.recordFacet("backend", { kind: "fail", detail: copyText("machineCard.status.uninstalled") });
   }
 
-  /** ②「卸载别名块」—— 从远端 ~/.bashrc 删掉 cc-monitor 那一块（二次确认）。 */
+  /** ②「卸载 ccm」（V80 · V134：名字按用户原裁；做的事是从远端 ~/.bashrc 删掉 cc-monitor 那一块别名块，二次确认）。 */
   private async onUninstallAliasBlock(): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user) {

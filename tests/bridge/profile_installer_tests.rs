@@ -1929,56 +1929,143 @@ fn strip_aborts_on_malformed_begin_without_end() {
     );
 }
 
-/// **结构性守卫**（〔W5-ALIAS〕随两条命令从 `sftp_tests.rs::profile_read_modify_write_goes_through_the_failsafe_reader`
-/// 分出来，逐字）：远端 rc 的读改写交给 `user_files::edit`（读那一次是那台后端的 `files-peek`：「不存在」与
-/// 「读不出来」分得开、盘上有字节却读到空 ⇒ 拒）；不碰 `RemoteFile`（那是部署那一族的 SFTP 原语）；函数体里不自己读。
+/// 🔴 〔W5-ALIAS · 第五波先行〕**别名块只有一个写口**：`user_files::edit`（→ 那台机器后端的 `files-put`）。
+///
+/// 住址：`设计/71 §3`「写入 —— **那台机器后端的文件管理那一面**（带围栏，本机和远端同一条路）」·
+/// `§4.5`「围栏管理 · 备份 · 原子写 · 写后校验 · 回滚 —— 这些是『判定的规则』，只许一份」· 用户裁 V86 / V88。
+///
+/// 人群（从源码现打，monitor 生产段全树）：函数体里碰「别名块内容」的函数 —— 调合 / 剥 / 计划装卸 / 装卸入口
+/// （`merge_profile_block(` · `strip_profile_block(` · `plan_install(` · `plan_uninstall(` · `install_to_profile(` ·
+/// `uninstall_from_profile(`）的那几个。两向相等于下面这张手写表（异源：表是人按角色写的，右边是源码现扫）：
+/// - **写的**（四个）函数体里必须恰好一处 `crate::user_files::edit(`；
+/// - **纯规划 / 预览**（三个）与**转交**（两条命令，交给写的那两个）一处写原语都不许有；
+/// - 全体都不许碰别的写原语（`.put(` · `std::fs::write` · `fenced_block::apply`〔散文墓碑〕）。
+///
+/// 同波别的路长出新成员时：再加一个碰别名块的函数 ⇒ 集合不等 ⇒ 红，去表里登记它的角色（写的得经 `edit`）。
 #[test]
-fn the_remote_alias_block_commands_edit_through_the_backend_door() {
-    let sftp_prod =
-        guard_core::production_code(include_str!("../../src/bridge/src/profile_installer.rs"));
-    let item = |sig: &str, end: &str| -> String {
-        let i = sftp_prod
-            .find(sig)
-            .unwrap_or_else(|| panic!("找不到 {sig}——守卫失效了"));
-        let j = sftp_prod[i..]
-            .find(end)
-            .map(|k| i + k)
-            .unwrap_or(sftp_prod.len());
-        sftp_prod[i..j].to_string()
-    };
-    let mut checked = 0usize;
-    for (sig, transform) in [
+fn the_alias_block_is_written_through_exactly_one_door() {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Role {
+        Writes,
+        Pure,
+        Delegates,
+    }
+    const TABLE: &[(&str, &str, Role)] = &[
+        ("profile_installer.rs", "plan_install", Role::Pure),
+        ("profile_installer.rs", "plan_uninstall", Role::Pure),
+        ("profile_installer.rs", "render_block", Role::Pure),
+        ("profile_installer.rs", "install_to_profile", Role::Writes),
         (
-            "pub async fn uninstall_remote_alias_block(",
-            "strip_profile_block",
+            "profile_installer.rs",
+            "uninstall_from_profile",
+            Role::Writes,
         ),
         (
-            "pub async fn install_remote_alias_block(",
-            "merge_profile_block",
+            "profile_installer.rs",
+            "install_remote_alias_block",
+            Role::Writes,
         ),
-    ] {
-        let cmd_body = item(sig, "\n}\n");
-        assert!(
-            guard_core::contains_word(&cmd_body, transform),
-            "{sig}: 找不到 {transform}——守卫失效了"
-        );
-        // 〔RW1 · 第四波 09-24〕F10 按用户裁「按推荐改」：两个命令的读改写经**那台远端的后端**
-        //   （`user_files::edit` → `files-peek` / `files-put`），读那一次是后端的 `files-peek`
-        //   （「不存在」与「读不出来」分得开、盘上有字节却读到空 ⇒ 拒）。本条钉「交给 `user_files::edit`、
-        //   不碰 `SftpFile`、函数体里不自己读」三件。
-        guard_core::find_pinned(&cmd_body, "crate::user_files::edit(")
-            .unwrap_or_else(|e| panic!("{sig}: profile 没交给 user_files::edit（{e}）"));
-        assert!(
-            !guard_core::contains_word(&cmd_body, "RemoteFile"),
-            "{sig}: 又把 profile 交给 SFTP 那一路了 —— 用户文件只经后端写"
-        );
-        for reader_prim in ["read_marker", "read_profile_text"] {
+        (
+            "profile_installer.rs",
+            "uninstall_remote_alias_block",
+            Role::Writes,
+        ),
+        ("lib.rs", "aliases_block_install", Role::Delegates),
+        ("lib.rs", "aliases_block_remove", Role::Delegates),
+    ];
+    const TOUCHES: &[&str] = &[
+        "merge_profile_block(",
+        "strip_profile_block(",
+        "plan_install(",
+        "plan_uninstall(",
+        "install_to_profile(",
+        "uninstall_from_profile(",
+    ];
+    const OTHER_WRITES: &[&str] = &[".put(", "std::fs::write", "fenced_block::apply"];
+    let root = crate::guard_support::repo_root().join("src/bridge/src");
+    // `src/bridge/vendor/`（russh 副本）不在 `src/bridge/src` 底下 ⇒ 不用摘。
+    let files = guard_core::scan_tree_excluding(&root, &["rs"], &[]);
+    let mut seen: Vec<(String, String, String)> = Vec::new(); // (文件, 函数, 函数体)
+    let mut fns_scanned = 0usize;
+    for (path, raw) in &files {
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        let prod = guard_core::production_code(raw);
+        // 顶层函数：从 `fn 名(` / `fn 名<` 到下一个列 0 的 `}`。
+        let mut at = 0usize;
+        while let Some(k) = prod[at..].find("fn ") {
+            let s = at + k;
+            at = s + 3;
+            let head_ok = s == 0
+                || prod[..s].ends_with('\n')
+                || prod[..s].ends_with("pub ")
+                || prod[..s].ends_with("async ")
+                || prod[..s].ends_with("pub(crate) ");
+            if !head_ok {
+                continue;
+            }
+            let name: String = prod[s + 3..]
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if name.is_empty() {
+                continue;
+            }
+            let Some(open) = prod[s..].find('{') else {
+                continue;
+            };
+            let end = prod[s..].find("\n}\n").map_or(prod.len(), |e| s + e);
+            let body = &prod[s + open..end.max(s + open)];
+            fns_scanned += 1;
+            if TOUCHES.iter().any(|t| body.contains(t)) {
+                seen.push((rel.clone(), name, body.to_string()));
+            }
+        }
+    }
+    // 反空真：扫描器真的走过一大片函数，而且认得出表里的每一个。
+    assert!(
+        fns_scanned > 500,
+        "只扫到 {fns_scanned} 个函数 —— 扫描器坏了"
+    );
+    let got: std::collections::BTreeSet<(String, String)> = seen
+        .iter()
+        .map(|(f, n, _)| (f.clone(), n.clone()))
+        .collect();
+    let want: std::collections::BTreeSet<(String, String)> = TABLE
+        .iter()
+        .map(|(f, n, _)| (f.to_string(), n.to_string()))
+        .collect();
+    assert_eq!(
+        got, want,
+        "碰别名块内容的函数 != 登记表（两向）—— 新长出来的那个先说清它的角色（写的必须经 `user_files::edit`）"
+    );
+    for (f, n, body) in &seen {
+        let role = TABLE
+            .iter()
+            .find(|(tf, tn, _)| tf == f && tn == n)
+            .unwrap()
+            .2;
+        let edits = body.matches("crate::user_files::edit(").count();
+        match role {
+            Role::Writes => assert_eq!(
+                edits, 1,
+                "{f}::{n} 写别名块却不是恰好一处经 `user_files::edit`"
+            ),
+            Role::Pure | Role::Delegates => {
+                assert_eq!(
+                    edits, 0,
+                    "{f}::{n} 登记成不写，函数体里却有 `user_files::edit`"
+                )
+            }
+        }
+        for w in OTHER_WRITES {
             assert!(
-                !guard_core::contains_word(&cmd_body, reader_prim),
-                "{sig}: 又在函数体里自己读 profile 了（{reader_prim}）—— 读取只许有 RemoteFile::read 那一个住址"
+                !body.contains(w),
+                "{f}::{n} 碰别名块，又用了另一个写原语 `{w}` —— 写口只许一个"
             );
         }
-        checked += 1;
     }
-    assert_eq!(checked, 2, "期望恰好两个 profile 命令，实得 {checked}");
 }

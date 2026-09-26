@@ -149,19 +149,21 @@ export type TmuxMode = "none" | "auto" | "named" | "base";
  * 这里只把那三条取名路的态度说成人话 —— `stepsAside` 那一格与后端逐条对拍
  * （`tests/settings/machine-aliases-naming.vitest.ts` 读后端原文，两向相等），说明里「依次试」出现 ⇔ 它为真。
  */
-export const TMUX_NAMING: Record<TmuxMode, { stepsAside: boolean | null; text: string }> = {
-  none: { stepsAside: null, text: copyText("machineAliases.tmuxNaming.none") },
+// ⚠ `text` 是取文函数、不是模块加载时就取好的串：模块顶层调 `copyText` 算一次副作用，会让打包器把本模块挪进
+//   主窗口也要的共享块（`tests/entry-graphs.vitest.ts` 当场逮到：主窗口因此「挂得上」设置页的一堆类）。
+export const TMUX_NAMING: Record<TmuxMode, { stepsAside: boolean | null; text: () => string }> = {
+  none: { stepsAside: null, text: () => copyText("machineAliases.tmuxNaming.none") },
   auto: {
     stepsAside: true,
-    text: copyText("machineAliases.tmuxNaming.auto"),
+    text: () => copyText("machineAliases.tmuxNaming.auto"),
   },
   named: {
     stepsAside: false,
-    text: copyText("machineAliases.tmuxNaming.named"),
+    text: () => copyText("machineAliases.tmuxNaming.named"),
   },
   base: {
     stepsAside: true,
-    text: copyText("machineAliases.tmuxNaming.base"),
+    text: () => copyText("machineAliases.tmuxNaming.base"),
   },
 };
 
@@ -366,8 +368,10 @@ export function buildAliasManager(opts: {
   ]);
   grid.append(nameIn, cwdIn, acctSel, tmuxSel, tmuxNameIn, agentSel);
   // 〔W5-ALIAS〕选了哪种 tmux，下面一句说清撞名时会怎样（`TMUX_NAMING`）。
-  for (const o of [...tmuxSel.options]) o.title = TMUX_NAMING[o.value as TmuxMode].text;
-  const tmuxHint = el("div", "settings-hint machine-aliases-tmux-naming");
+  for (const o of [...tmuxSel.options]) o.title = TMUX_NAMING[o.value as TmuxMode].text();
+  // 挂钩用 `data-role` 不用类名：这一行的外观就是 `.settings-hint`，多一个没有规则的类名只会让悬空类名那条棘轮多一格。
+  const tmuxHint = el("div", "settings-hint");
+  tmuxHint.dataset.role = "tmux-naming";
 
   const adv = el("details", "ccm-alias-gen");
   adv.appendChild(el("summary", "", copyText("machineAliases.form.more")));
@@ -532,7 +536,7 @@ export function buildAliasManager(opts: {
   }
   const syncEnabled = (): void => {
     const inTmux = tmuxSel.value !== "none";
-    tmuxHint.textContent = TMUX_NAMING[tmuxSel.value as TmuxMode].text;
+    tmuxHint.textContent = TMUX_NAMING[tmuxSel.value as TmuxMode].text();
     tmuxNameIn.disabled = !(tmuxSel.value === "named" || tmuxSel.value === "base");
     sizeIn.disabled = !inTmux;
     detachCk.disabled = !inTmux;
@@ -580,7 +584,7 @@ export function buildAliasManager(opts: {
       row.append(el("code", "", a.name), el("span", "settings-hint", describeArgs(a.args)));
       // 〔W5-ALIAS〕「实际会执行什么」那一行：点「预览」才问后端（`previewAlias`），答案挂在这一条下面。
       const previewOut = document.createElement("pre");
-      previewOut.className = "machine-aliases-preview";
+      previewOut.dataset.role = "alias-preview";
       previewOut.hidden = true;
       row.append(
         button(copyText("machineAliases.aliasPreview.button"), "settings-btn-secondary", () => {

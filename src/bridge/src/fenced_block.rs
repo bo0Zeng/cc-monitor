@@ -7,7 +7,7 @@
 //! | 范式 | 使用者 | 现状 |
 //! |---|---|---|
 //! | 指纹判过期 → 决定装/升/跳过 | backend + cc-acct-iso（2） | **已共享** `sftp::deploy_decision` |
-//! | 备份 → 写 → 读回比对 → 回滚 | 5 处 | **已共享** `verified_write::verify_readback` |
+//! | 备份 → 写 → 读回比对 → 回滚 | 5 处 | **已共享**（〔W5-ALIAS〕今天只住后端 `files_write.rs::put_text`） |
 //! | 围栏块插入/替换/剥离 | ccm 远端 profile + PowerShell 本机 profile（2） | **两套独立实现** ← 本模块 |
 //! | 整份 JSON 覆写 | 项目 MCP（1） | 单例，不抽 |
 //!
@@ -36,7 +36,7 @@
 //! ——包含用户自己的代码——被整段替换掉。写的是用户的 PowerShell `$PROFILE`，
 //! 和远端 `.bashrc` 同性质：写坏了下次开终端就炸。
 //!
-//! 所以本模块取**两者中最强的那一档**（同 T01 对 `verified_write` 的做法：
+//! 所以本模块取**两者中最强的那一档**（同 T01 对写后回读的做法：
 //! 四处实现里本机侧只比长度，统一到内容级比对）。
 
 use crate::copy_table::copy_text;
@@ -85,13 +85,12 @@ pub fn find_pair(
 // 但「配对之后怎么拼」写了三份（`sftp::merge/strip_profile_block` · `profile_installer` 的
 // `replace_or_append_block/strip_block` · `account_aliases::ensure_rc_source_line` 里内联的那一段 —— 〔TL1〕那一跳后来整个退役了），〔散文墓碑〕
 // 「备份 → 原子写 → 回读比对 → 回滚」这个序列写了五个函数体（本机三处 ＋ 远端装/卸）。
-// `verified_write` 头注自己记着为什么远端那几处没收进去：「回滚是 `async` SFTP 操作，塞不进 `impl FnOnce()`」。
+// 当年的回滚写入器头注自己记着为什么远端那几处没收进去：「回滚是 `async` SFTP 操作，塞不进 `impl FnOnce()`」。
 //
 // ⇒ 按 `71 §12.3` 第 4、5 格切：**拼接是规则（留这里，一份）**；「排版」随目标文件的方言走（[`Layout`]）。
 // 〔RW1 · 第四波 09-24〕**序列那一半搬去了后端**（`control/files_write.rs::put_text`）：用户文件（rc ·
 //   `$PROFILE` · 别名文件 · 远端 rc）从此经那台机器的后端写，本机那一份原语 `LocalFile`〔散文墓碑〕随之走了。
-//   [`apply`] ＋ [`Store`] 只剩 F08 部署物那一个用户（`sftp::SftpFile`，见 `put_ccm_entry`）；
-//   方法名刻意不叫 `replace` / `remove` —— 那两个词与 `str::replace`、集合的 `remove` 同名，按名字认写者的判据会把它们认成同一个。
+//   〔W5-ALIAS〕留在这里的那一份序列后来也删了（见下面 `KR62D3` 那一节之前的墓碑）。
 
 /// 排版方言。**规则不分方言**（配对 → 整块替换 / 追加 / 悬空中止；剥离 → 删 / 原样 / 悬空中止），
 /// 分方言的只有排版这一层 —— 由目标文件决定（`profile_installer::flavor_of` 按扩展名答），
@@ -236,137 +235,11 @@ pub(crate) fn splice_out(
     })
 }
 
-/// 落点给的四个原语 —— **规则一个字都不住在实现里**，它们只回答「这台机器上怎么做这件事」。
-///
-/// ⚠ 读必须 fail-closed：说不清「不存在」还是「读不出来」⇒ `Err`。把读不出来当成空文件，
-/// 正是 `sftp::interpret_profile_read` 头注记的那两个数据丢失口（跳过备份 ＋ 整份覆盖）。
-pub(crate) trait Store {
-    /// 给人看的名字（报错里用）。
-    fn label(&self) -> String;
-    /// 原样读。`Ok(None)` = 确定不存在。
-    async fn read(&self) -> Result<Option<String>, String>;
-    /// 把原文另存一份，返回备份的名字（给人看）。
-    async fn save_backup(&self, original: &str) -> Result<String, String>;
-    /// 原子替换成 `content`；落点不存在就新建（含上级目录）。
-    async fn put_atomic(&self, content: &str) -> Result<(), String>;
-    /// 删掉 —— 只在「原本不存在、是我们刚建出来的」那一档回滚时用。
-    async fn delete_created(&self) -> Result<(), String>;
-}
-
-/// 一次 [`apply`] 做了什么。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Applied {
-    /// 算出来的内容与盘上逐字相同（或计划说「没事可做」）⇒ **一个字节都没写**。
-    Unchanged,
-    /// 写了。`backup` = 原文另存在哪（原文为空 / 不存在 / 调用方不要备份时为 `None`）；
-    /// `created` = 这份文件是这一次新建的。
-    Written {
-        backup: Option<String>,
-        created: bool,
-    },
-}
-
-/// 回滚之后那半句话 —— **说的必须是真发生了的事**（从前远端 `existing` 为空时一个回滚都没做，
-/// 文案却无条件说「已尝试回滚原文件」；本机那一侧没有备份时干脆什么都不说）。
-fn undo_note(existed: bool, undone: bool, backup: Option<&str>) -> String {
-    match (existed, undone, backup) {
-        (true, true, _) => copy_text("rsFencedBlock.undo.restored", &[]),
-        (false, true, _) => copy_text("rsFencedBlock.undo.createdRemoved", &[]),
-        (true, false, Some(b)) => copy_text(
-            "rsFencedBlock.undo.restoreFailedBackup",
-            &[("backup", &b.to_string())],
-        ),
-        (true, false, None) => copy_text("rsFencedBlock.undo.restoreFailed", &[]),
-        (false, false, _) => copy_text("rsFencedBlock.undo.createdLeft", &[]),
-    }
-}
-
-/// 🔴 **那一个序列**：读 → 计划 → 相同就不写 → 备份 → 原子替换 → 回读逐字比对 → 不符就回滚。
-///
-/// `plan` 拿到原样读到的文本（`None` = 文件不存在），回 `Some(新内容)` 或 `None`（没事可做）。
-/// 方言相关的一切（BOM、围栏、排版、「不存在算不算错」）都在 `plan` 里答，本函数不认识任何一种。
-/// `keep_backup`：用户的文件（rc / profile）要一份给人看的备份；我们自己的文件
-/// （整份由我们拥有、下一次生成会原样覆盖）不留 —— 回滚用的是内存里那份原文，不靠备份文件。
-pub(crate) async fn apply<S: Store>(
-    store: &S,
-    keep_backup: bool,
-    plan: impl FnOnce(Option<&str>) -> Result<Option<String>, String>,
-) -> Result<Applied, String> {
-    let original = store.read().await?;
-    let Some(next) = plan(original.as_deref())? else {
-        return Ok(Applied::Unchanged);
-    };
-    if original.as_deref() == Some(next.as_str()) {
-        return Ok(Applied::Unchanged);
-    }
-    let label = store.label();
-    let backup = match original.as_deref() {
-        Some(o) if keep_backup && !o.is_empty() => {
-            Some(store.save_backup(o).await.map_err(|e| {
-                copy_text(
-                    "rsFencedBlock.apply.backupFailed",
-                    &[("label", &label.to_string()), ("e", &e.to_string())],
-                )
-            })?)
-        }
-        _ => None,
-    };
-    let existed = original.is_some();
-    let undo = || async {
-        match original.as_deref() {
-            Some(o) => store.put_atomic(o).await.is_ok(),
-            None => store.delete_created().await.is_ok(),
-        }
-    };
-    if let Err(e) = store.put_atomic(&next).await {
-        let undone = undo().await;
-        return Err(copy_text(
-            "rsFencedBlock.apply.writeFailed",
-            &[
-                ("label", &label.to_string()),
-                ("e", &e.to_string()),
-                (
-                    "undo",
-                    &(undo_note(existed, undone, backup.as_deref())).to_string(),
-                ),
-            ],
-        ));
-    }
-    let verdict = match store.read().await {
-        Ok(Some(back)) => crate::verified_write::verify_readback(&next, &back),
-        Ok(None) => crate::verified_write::WriteVerdict::Mismatch {
-            detail: copy_text("rsFencedBlock.verify.missing", &[]),
-        },
-        Err(e) => crate::verified_write::WriteVerdict::Mismatch {
-            detail: copy_text("rsFencedBlock.verify.unreadable", &[("e", &e.to_string())]),
-        },
-    };
-    if let crate::verified_write::WriteVerdict::Mismatch { detail } = verdict {
-        let undone = undo().await;
-        return Err(copy_text(
-            "rsFencedBlock.verify.failed",
-            &[
-                ("detail", &detail.to_string()),
-                (
-                    "undo",
-                    &(undo_note(existed, undone, backup.as_deref())).to_string(),
-                ),
-            ],
-        ));
-    }
-    Ok(Applied::Written {
-        backup,
-        created: !existed,
-    })
-}
-
-// 〔RW1 · 第四波 09-24〕这里原来住着本机那一份原语 `LocalFile`〔散文墓碑〕与它的同步门面
-// `apply_local`〔散文墓碑〕：本机 rc / `$PROFILE` / 别名文件经它们在 monitor 进程里直写。
-// 用户裁「只允许后端的文件管理部分写文件」**也管本机** ⇒ 那几处改走本机后端
-// （`user_files::edit` → `files-peek` / `files-put`），序列（备份 · 原子替换 · 回读 · 回滚）住后端
-// `control/files_write.rs::put_text`，两件零调用方 ⇒ 整块走。
-// ⚠ [`apply`] 与 [`Store`] **还剩一个用户**：F08 部署那一族的 `sftp::put_ccm_entry`（`~/.local/bin/ccm`
-// 那三行入口，用户裁「F08 部署后端留在 SFTP」）—— 它是我们的部署物，不是用户文件，本路不改它的行为。
+// 〔W5-ALIAS · 第五波先行〕这里原来是落盘那一个序列：`apply`〔散文墓碑〕（读 → 计划 → 相同不写 → 备份 → 原子替换 →
+//   回读比对 → 回滚）＋ 它的四个原语 `Store`〔散文墓碑〕＋ 结局 `Applied`〔散文墓碑〕＋ 回滚措辞 `undo_note`〔散文墓碑〕。
+//   RW1 之后用户文件（rc / `$PROFILE` / 别名文件 / 别名块）一律经那台机器的后端写（`user_files::edit` → `files-put`，
+//   序列住后端 `control/files_write.rs::put_text`），它只剩一个用户 —— 远端 `ccm` 入口那三行（部署物，不是用户文件）；
+//   那一处改走部署那一族的 `sftp::upload_verified` 之后零调用方 ⇒ 删。本模块只剩**纯规划**（配对 · 拼接 · 账）。
 
 // ═══════════════════════════════════════════════════════════════════════════
 // `KR62D3`：**同一件事今天有几套形状 —— 一条有住址的账**
