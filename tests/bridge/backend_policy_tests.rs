@@ -220,7 +220,7 @@ fn the_four_deaths_are_told_apart_by_evidence_not_by_name() {
             panic!("「{what}」被判成了「不是一次死亡」—— 它不上账，也就没有任何一行记它")
         });
         kinds.push(death_kind(&d));
-        copies.push(death_copy(&d));
+        copies.push(death_detail(&d));
     }
     let mut uniq = kinds.clone();
     uniq.sort_unstable();
@@ -242,14 +242,17 @@ fn the_four_deaths_are_told_apart_by_evidence_not_by_name() {
             );
         }
     }
-    // 每一条话都得说得下去（掏空成一个短语，上面那条靠「两两不同」照样绿）。
-    for (n, c) in copies.iter().enumerate() {
-        assert!(
-            c.chars().count() >= 30,
-            "第 {n} 条话只有 {} 个字 —— 一句说不出住址与下一步的话，等于只给了个名字",
-            c.chars().count()
-        );
-    }
+    // 〔PB1〕每一条只摆证据（逐字相等，不是「≥ 30 字」那道地板 —— 那道地板要的正是处方）。
+    assert_eq!(
+        copies,
+        vec![
+            "没内嵌后端，exe 旁边也没有；找过 1 处：/甲/乙",
+            "它一个字节都没说就退出了",
+            "说过话之后异常终止",
+            "monitor 这一侧读出错：stream did not contain valid UTF-8",
+        ],
+        "账行的详情不是只摆证据的那四句"
+    );
 }
 
 /// ★★ `B1` 那一刀：**读坏了不许被计成一次崩溃。**
@@ -339,7 +342,7 @@ fn the_start_failure_reason_is_passed_through_verbatim() {
         other => panic!("判成了 {other:?}，而证据说它从来没起来"),
     }
     assert!(
-        death_copy(&d).contains(reason),
+        death_detail(&d).contains(reason),
         "那句原因没被带到账上那一行 —— 账上只剩一个分类名，读的人拿不到下一步"
     );
 }
@@ -1129,7 +1132,7 @@ fn what_reaches_the_settings_panel_carries_no_markdown_no_argument_no_log_format
             "「{what}」的短摘要丢了判定或退出状态：{brief}"
         );
         // 进日志的那四条话也不许再带 markdown / 论证（它们不进界面，但 `70 §7` 步 7 逐字要后端「停止产」）。
-        let copy = death_copy(&d);
+        let copy = death_detail(&d);
         assert!(
             !copy.contains("**") && !copy.contains("放大器") && !copy.contains(".rs"),
             "「{what}」的日志话里还有 markdown / 论证 / 源码住址：{copy}"
