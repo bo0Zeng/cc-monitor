@@ -17,6 +17,8 @@
  */
 
 /** 形态 1：最终失败 → 红色报错卡（kind:"card"，不进工具组）。 */
+import { copyText } from "../copy-table";
+
 export function buildApiErrorCard(args: {
   /** 已格式化的展示时间（调用方 formatTimestampShort 的结果） */
   timeLabel: string;
@@ -34,11 +36,11 @@ export function buildApiErrorCard(args: {
   head.className = "api-error-head";
   const icon = document.createElement("span");
   icon.className = "api-error-icon";
-  icon.textContent = "⛔";
+  icon.textContent = copyText("apiError.card.icon");
   head.appendChild(icon);
   const label = document.createElement("span");
   label.className = "api-error-label";
-  label.textContent = "API 错误 — 本轮已中止";
+  label.textContent = copyText("apiError.card.title");
   head.appendChild(label);
   if (args.category) {
     const chip = document.createElement("span");
@@ -54,7 +56,7 @@ export function buildApiErrorCard(args: {
 
   const body = document.createElement("div");
   body.className = "api-error-body";
-  body.textContent = args.text || "(无错误详情)";
+  body.textContent = args.text || copyText("apiError.card.noDetail");
   card.appendChild(body);
   return card;
 }
@@ -74,9 +76,9 @@ export function buildApiRetryCard(args: {
   // null 会穿过 undefined 判定渲染出"重试 null/null"。
   const retry =
     typeof args.retryAttempt === "number" && typeof args.maxRetries === "number"
-      ? ` · 重试 ${args.retryAttempt}/${args.maxRetries}`
+      ? copyText("apiError.retry.count", { retryAttempt: args.retryAttempt, maxRetries: args.maxRetries })
       : "";
-  line.textContent = `⚠ API 调用失败：${describeRetryError(args.error)}${retry} · ${args.timeLabel}`;
+  line.textContent = copyText("apiError.retry.line", { error: describeRetryError(args.error), retry, time: args.timeLabel });
   return line;
 }
 
@@ -85,7 +87,7 @@ export function buildApiRetryCard(args: {
  * export 供 api-error.test.ts 直测（双 shape 随 CLI 版本漂移，纯逻辑值得锁）。
  */
 export function describeRetryError(error: unknown): string {
-  if (!error || typeof error !== "object") return "网络/服务异常";
+  if (!error || typeof error !== "object") return copyText("apiError.retry.network");
   const e = error as {
     formatted?: unknown;
     status?: unknown;
@@ -106,5 +108,5 @@ export function describeRetryError(error: unknown): string {
   const status = typeof e.status === "number" ? String(e.status) : "";
   const msg = typeof nestedMsg === "string" ? nestedMsg : "";
   const s = [status, msg].filter(Boolean).join(" ");
-  return s || "网络/服务异常";
+  return s || copyText("apiError.retry.network");
 }

@@ -58,6 +58,16 @@ import {
 import { SESSION_BACKEND, type TmuxTarget } from "./session-backend.ts";
 import type { EnvOp, LaunchContainer, LaunchPlan, WrapSpec } from "./launch-plan.ts";
 
+/** 〔RK1〕中转钥匙文件相对家目录的路径 —— 与 `payload.rs::RELAY_KEY_FILE_REL` / 后端 `door.rs::KEY_FILE_REL` 同一个串。 */
+const RELAY_KEY_FILE_REL = ".cc-monitor/relay-key";
+
+/** 〔RK1〕`export ANTHROPIC_BASE_URL='<回环主机:口>/'"$(cat "$HOME/…")"'/s/…'; ` —— URL 不带钥匙，钥匙在 pane shell 里现读。 */
+function relayExportPosix(url: string): string {
+  const m = /^(http:\/\/[^/]*\/)(.*)$/.exec(url);
+  const [origin, path] = m ? [m[1], `/${m[2]}`] : [url, ""];
+  return `export ANTHROPIC_BASE_URL=${posixQuote(origin)}"$(cat "$HOME/${RELAY_KEY_FILE_REL}")"${posixQuote(path)}; `;
+}
+
 function renderEnvOps(ops: EnvOp[]): string {
   return ops
     .map((op) => {
@@ -74,7 +84,8 @@ function renderEnvOps(ops: EnvOp[]): string {
       // （`INVARIANTS §33b`：TS 座「不做校验/转义」，Rust 侧回 `Result`）。
       if (op.kind === "export-rbind-token") return `export CCM_RBIND_TOKEN=${posixQuote(op.value)}; `;
       // 〔RL1〕中转地址。同上：本座不校验，形状闸在 Rust 渲染侧（`payload.rs::relay_base_url_shape_ok`）。
-      if (op.kind === "export-relay-base-url") return `export ANTHROPIC_BASE_URL=${posixQuote(op.value)}; `;
+      // 〔RK1〕钥匙段写成读钥匙文件的命令替换，与 Rust 渲染侧 `payload.rs::relay_env_prefix_posix` 同形（理由在那里）。
+      if (op.kind === "export-relay-base-url") return relayExportPosix(op.value);
       // R04③：`unset` 侧收窄为无参变体后，键表由 kind 在这里查——不再由维度递自由字符串数组。
       // 输出逐字节不变（`unset CLAUDE_CONFIG_DIR; ` / `unset <嵌套env 全套>; `）。
       if (op.kind === "unset-config-dir") return UNSET_CONFIG_DIR_PREFIX;
@@ -87,7 +98,7 @@ function renderEnvOps(ops: EnvOp[]): string {
       // 而收窄版 tsc **0 错**且把它静默渲染成嵌套 env 的 unset。
       // 那与 R04 自己的立意（把注释纪律变成类型上做不到）正好相反，故显式补回穷尽性。
       return ((_exhaustive: never): never => {
-        throw new Error(`未处理的 EnvOp: ${JSON.stringify(_exhaustive)}`);
+        throw new Error(`bug: unhandled EnvOp: ${JSON.stringify(_exhaustive)}`); // 〔CP2b〕程序员错误，刻意英文
       })(op);
     })
     .join("");
@@ -137,7 +148,7 @@ function tmuxTarget(container: Extract<LaunchContainer, { kind: "tmux" }>): Tmux
 
 export function renderFallback(plan: LaunchPlan): string {
   if (plan.action.kind === "attach") {
-    if (plan.container.kind !== "tmux") throw new Error("attach 必须是 tmux 容器");
+    if (plan.container.kind !== "tmux") throw new Error("bug: attach needs a tmux container");
     return SESSION_BACKEND.attach(tmuxTarget(plan.container));
   }
 
@@ -164,6 +175,6 @@ export function renderFallback(plan: LaunchPlan): string {
     case "send-into":
       return SESSION_BACKEND.runInExistingAttach({ target, quotedPayload: posixQuote(payload) });
     case "attach-only":
-      throw new Error("不可达：attach-only 应由 action.kind==='attach' 分支处理");
+      throw new Error("unreachable: attach-only is handled by the action.kind === 'attach' branch");
   }
 }

@@ -204,11 +204,10 @@ fn ccm_tmux_name_whitelist() {
 /// `build_send_keys_remote_cmd` 不在了 —— 但 Gate 1 **不是那两条回落的东西**：  〔散文墓碑〕
 /// 它守的是「任何拿 target 去做事的入口，都得先把空目标拒掉」。⇒ 本条改打
 /// **今天三条路各自真正的入口**，一条都没少：
-/// ① 谓词本体 [`gate1_reject_empty`]（`exact_target` 与两条后端命令共用的那一份）；
-/// ② `capture-pane` 构造器（经 [`exact_target`]，今天唯一还在拼 shell 串的那条）；
-/// ③④ 两条后端命令的**生产入口本体** —— 真调 [`tmux_send_keys`] / [`kill_remote_tmux`]，
-///    断言它在**任何 IO 之前**就地拒。那一句同时是「本地校验先于一切往返」这条性质的读数：
-///    它报的若是「后端通道不在」，就说明 Gate 1 跑到 IO 后面去了。
+/// ① 谓词本体 [`gate1_reject_empty`]（今天只剩 [`exact_target`] 这个跨轨锚点在用）；
+/// ②③④〔C4e · 第四波 4C〕三条路（抓屏 · 送键 · 杀会话）的生产入口原本也在这里真跑一遍、断言在任何 IO 之前就地拒；
+///    三条整条迁到界面之后（`src/tmux-control.ts`），那一格随入口搬过去：`tests/tmux-control.vitest.ts`
+///    「空目标就地拒，一个字节都不发」三个入口各一条（Tauri 命令 `tmux_send_keys` / `kill_remote_tmux`〔散文墓碑〕删了）。
 ///
 /// 含 glob/元字符但非空的 target **不**在这一层被拒（`shell_quote` 已安全引号化，
 /// 字符集收紧是 TS 侧 `isValidNewTmuxName`/`isValidTmuxName` 的职责，
@@ -226,42 +225,6 @@ fn gate1_rejects_only_empty_target() {
         gate1_reject_empty("cc-a b").is_ok(),
         "非空 target 不该被 Gate 1 拒绝（谓词本体）"
     );
-    // ②③④ 三条后端命令：**真跑生产入口**〔`K-R112` 09-13：抓屏从「构造器那一格」
-    //     挪进这一段 —— 它的构造器随那条 SSH 串一起删了，而生产入口比构造器强一格〕。
-    // ⚠ 不必登记入方向通道 —— Gate 1 在 `backend_*` 之前，根本走不到那一步。
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .build()
-        .expect("建不出 runtime —— 本条无从判断，别读成绿");
-    let sk = rt
-        .block_on(tmux_send_keys(
-            "no-such-origin".to_string(),
-            String::new(),
-            "/exit".to_string(),
-            Some(true),
-        ))
-        .expect_err("空 target 的 send-keys 不该报成功");
-    let kill = rt
-        .block_on(kill_remote_tmux(
-            "no-such-origin".to_string(),
-            String::new(),
-        ))
-        .expect_err("空 target 的 kill 不该报成功");
-    let cap = rt
-        .block_on(capture_remote_pane(
-            "no-such-origin".to_string(),
-            String::new(),
-        ))
-        .expect_err("空 target 的 capture-pane 不该报成功");
-    for (label, err) in [("send-keys", &sk), ("kill", &kill), ("capture-pane", &cap)] {
-        assert!(
-            err.contains("非法 tmux 目标（空）"),
-            "{label} 的空 target 没被 Gate 1 就地拒。实得：{err}"
-        );
-        assert!(
-            !err.contains("后端通道不在"),
-            "{label} 走到后端那一步才失败 —— Gate 1 不再先于一切 IO 了。实得：{err}"
-        );
-    }
     // 非空、含元字符/glob 的 target 不被 Gate 1 拒（谓词本体那一格已在 ① 里断过；
     // 这里补一批真实形状 —— 收紧字符集是**另一层**的职责，不许在 Gate 1 顺手做）。
     for safe_nonempty in ["cc-a b", "cc-a;rm", "cc-a$x", "si*", "a'b"] {
@@ -639,397 +602,62 @@ fn every_target_placeholder_comes_from_exact_target() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// `K-R112`（09-13）：抓屏改走 `capture-pane` 帧。下面两条是 `KR112D2` 的机检。
+// `K-R112`（09-13）：抓屏改走 `capture-pane` 帧。〔C4e · 第四波 4C〕抓屏整条迁到界面。
 // ════════════════════════════════════════════════════════════════════════
+//
+// 这里原来住着 `KR112D2` 的两刀机检：「抓屏这条路上没有命令串」（`the_capture_path_asks_the_backend_instead_of_composing_a_shell_line`〔散文墓碑〕，
+// 带一个认命令串形态的谓词 `tmux_shell_line_markers` 与它的活体夹具〔散文墓碑〕）与「本机不再是死胡同」
+// （`the_local_capture_is_no_longer_a_dead_end`〔散文墓碑〕）。抓屏改由界面经通道直接问那台机器的后端之后，
+// monitor 里**那条路本身不在了**（`capture_remote_pane` / `capture_via_backend`〔散文墓碑〕都删了），两刀各自的去处：
+// ① 「没有第二份实现」⇒ 下面这条零命中（整棵 monitor 生产段）＋ `frame_query_tests` 那条「已迁的零发送点」；
+// ② 「本机与远端同一条路、通道不在时两句话不同」⇒ `tests/tmux-control.vitest.ts`（`<local>` 照样经通道问 · 两句话不同）。
 
-/// 「这段代码在**拼 / 跑一条 tmux shell 串**吗」—— 认形态，不认某一个符号。
+/// ★★〔C4e · 第四波 4C〕**monitor 里抓屏一条路都不剩**（零命中 ＋ 正控）。
 ///
-/// 🔴 失效方向（`KR112D2` 逐字点名的那个）：判「源码里还有没有 `Command::new`」是**判写法**，
-/// 它挡不住换个写法再拼一遍。⇒ 本谓词认的是「命令串」这件事的几种形态，
-/// 而它对每一种真的会响这件事，由 [`the_tmux_shell_line_detector_really_sees_each_shape`]
-/// 用活体语料证明。
-fn tmux_shell_line_markers(body: &str) -> Vec<&'static str> {
-    // 逐条：送进远端 shell · 经命令构造器 · 直接写 tmux 命令 · 那两个老哨兵 ·
-    // 为了拼进 shell 才需要的引用 · 问「这台远端怎么连」。
-    [
-        "connect_and_exec_cmd(",
-        "_cmd(",
-        "tmux capture-pane",
-        "command -v tmux",
-        "NO_PANE",
-        "shell_quote(",
-        "load_remote_config_by_label(",
-    ]
-    .into_iter()
-    .filter(|m| body.contains(m))
-    .collect()
-}
-
-/// ★ 上面那个谓词的**活体夹具**：它对每一种形态都得真的响。
+/// 守的要求：`设计/05 §14.3` 逐字「迁到通道之后，业务解释是不是**只有一个家**」——
+/// 抓屏的解释今天只住 `src/tmux-control.ts`；monitor 里再长出一条拼 shell 串抓屏的路，就是同一件事的第二份实现
+/// （`K-R112` 删掉的那一形：`command -v tmux` 门控 ＋ 两个哨兵）。
+/// 帧命令名 `"capture-pane"` 那一格由 `frame_query_tests::the_channeled_ops_are_sent_only_through_the_channel` 管
+/// （`CHANNELED_ELSEWHERE` 那一行：monitor 生产段零字面量），本条管**shell 串那几种形态**。
+/// 正控：同一份语料上认得出今天真在的那条只读 tmux 调用（`list_remote_tmux` 的格式串常量）。
 #[test]
-fn the_tmux_shell_line_detector_really_sees_each_shape() {
-    // 形态一律**现拼**，免得夹具自己被真树上的扫描收进人群。
-    let old = format!(
-        "let cmd = build{u}capture{u}pane{u}cmd(&target)?;\n\
-             let cfg = crate::load{u}remote{u}config{u}by{u}label(&origin)?;\n\
-             let stream = ssh{u}source::connect{u}and{u}exec{u}cmd(&cfg, &cmd).await?;",
-        u = "_"
-    );
-    assert!(
-        tmux_shell_line_markers(&old).len() >= 3,
-        "老那条路（构造器 + 远端配置 + 一次性 exec）没被认出来：{:?}",
-        tmux_shell_line_markers(&old)
-    );
-    let inlined = format!(
-        "let c = format!(\"if command {v} tmux; then tmux capture{d}pane -p -t {{t}}; fi\");",
-        v = "-v",
-        d = "-"
-    );
-    assert!(
-        !tmux_shell_line_markers(&inlined).is_empty(),
-        "**换个写法内联拼一份**没被认出来 —— 那正是「判写法」买不到的那一格"
-    );
-    // 反向：一段真的只调帧面原语的代码不许被误判。
-    let clean = "let reply = client.call(CAPTURE_PANE, capture_pane_args(target), d).await";
-    assert!(
-        tmux_shell_line_markers(clean).is_empty(),
-        "只调原语的代码被误判成拼串：{:?}",
-        tmux_shell_line_markers(clean)
-    );
-}
-
-/// ★★ `KR112D2` 刀①：**抓一屏走的是 `capture-pane` 帧，不是一次性 SSH。**
-///
-/// 判的是**这条路**（`capture_remote_pane` → `capture_via_backend`）上有没有命令串。
-#[test]
-fn the_capture_path_asks_the_backend_instead_of_composing_a_shell_line() {
-    let prod = guard_core::production_code(include_str!(
-        "../../../../src/bridge/src/backend/control/tmux.rs"
-    ));
-    let body_of = |sig: &str| -> String {
-        let at = guard_core::find_pinned(&prod, sig)
-            .unwrap_or_else(|e| panic!("生产段找不到 {sig}（{e}）—— 判据在空转"));
-        prod[at..]
-            .lines()
-            .skip(1)
-            .take_while(|l| *l != "\u{7d}")
-            .collect::<Vec<_>>()
-            .join("\n")
-    };
-    let mut checked = 0usize;
-    for sig in [
-        "pub async fn capture_remote_pane(",
-        "async fn capture_via_backend(",
-    ] {
-        let body = body_of(sig);
-        assert!(
-            body.chars().count() > 60,
-            "`{sig}` 的体只切出 {} 字 —— 抽取器坏了，本条在空转",
-            body.chars().count()
-        );
-        let hits = tmux_shell_line_markers(&body);
-        assert!(
-            hits.is_empty(),
-            "`{sig}` 这条路上又出现了命令串的痕迹 {hits:?}。\n\
-                 抓一屏归后端的 `capture-pane` 原语（`K-R86` 出、`K-R104` 上帧面）——\n\
-                 拼一条 shell 串走 SSH 就是同一件事的第二份实现（`K33`「所有命令只许有一处」）。"
-        );
-        checked += 1;
+fn the_monitor_has_no_capture_path_any_more() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut corpus = String::new();
+    let mut files = 0usize;
+    for (_, one_file) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
+        files += 1;
+        corpus.push_str(&guard_core::strip_comment_lines(
+            &guard_core::production_code(&one_file),
+        ));
+        corpus.push('\n');
     }
-    assert_eq!(checked, 2, "只核到 {checked} 段 —— 本断言在空转");
-    // 它真的调了那条原语，而且能力协商排在抓之前。
-    let via = body_of("async fn capture_via_backend(");
-    let ask = via
-        .find("accepts(CAPTURE_PANE)")
-        .expect("`capture_via_backend` 没有先问一句能力 —— 「这台后端太旧」永远说不出口");
-    let call = via
-        .find("CAPTURE_PANE,")
-        .expect("`capture_via_backend` 没在调那条原语 —— 判据的参照物没了");
-    assert!(ask < call, "能力协商排在真抓之后 —— 那就永远走不到");
-    assert!(
-        via.contains("capture_pane_args(target)"),
-        "参数不是走那份共用的构造器 —— 字段名一漂，症状是「命令发出去了、对面说缺字段」"
-    );
-    // 分流走那唯一的一份（`backend_route` 的登记表逐字要求每个发送端表态）。
-    assert!(
-        via.contains("route_call_error"),
-        "抓屏这个发送端自己在判「要不要回落」—— 那是分流规则的第二份实现"
-    );
-}
-
-/// ★★ `KR112D2` 刀②：**本机那一支从「回一句还看不了」变成真去抓。**
-///
-/// 老行为逐字是：`<local>` 直接早退，回一句「本机还看不了 …的画面预览」。
-/// 那句话当时诚实（backend 没有抓屏原语），今天**前提到期**（`K-R86`/`K-R104`）。
-///
-/// ⚠ **射程写清楚**：本条不证明「本机真抓得到一屏」—— 那要后端在、且有一个真 tmux 会话，
-/// 而沙箱里 `<local>` 上没有入方向通道。本条证的是**两件可判的事**：
-/// ① 那条早退（连同那句话）在盘上没了；② 本机与远端**走的是同一段代码**，
-/// 通道不在时两边只差一个称呼 —— 那正是「本机不再是死胡同」的可判形式。
-#[test]
-fn the_local_capture_is_no_longer_a_dead_end() {
-    let prod = guard_core::production_code(include_str!(
-        "../../../../src/bridge/src/backend/control/tmux.rs"
-    ));
-    let at = guard_core::find_pinned(&prod, "pub async fn capture_remote_pane(")
-        .expect("抓屏入口不在了");
-    let body: String = prod[at..]
-        .lines()
-        .skip(1)
-        .take_while(|l| *l != "\u{7d}")
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(
-        body.contains("capture_via_backend("),
-        "抽到的 `capture_remote_pane` 体里连主路都没有 —— 抽取器坏了，本条空转。实得 {} 字节",
-        body.len()
-    );
-    // ① 那条本机早退没了：`origin` 是入参，不是分支。
-    for forbidden in ["LOCAL_ORIGIN", "origin =="] {
+    assert!(files > 100, "只扫到 {files} 份 monitor 源码 —— 遍历坏了");
+    // 形态现拼，免得本文件自己被别的扫描收进人群。
+    let shapes = [
+        format!("tmux {}", ["capture", "pane"].join("-")),
+        ["NO", "PANE"].join("_"),
+        ["capture", "via", "backend"].join("_"),
+    ];
+    for shape in &shapes {
         assert!(
-            !body.contains(forbidden),
-            "`capture_remote_pane` 里又出现了 `{forbidden}` —— 本机那条早退回潮了。\n\
-                 它回的那句「本机还看不了」在 `K-R86`/`K-R104` 之后是**假话**：\n\
-                 backend 有 `capture-pane` 了，`<local>` 也是一个 origin。"
+            !corpus.contains(shape.as_str()),
+            "monitor 生产段里又出现了 `{shape}` —— 抓屏在 monitor 里长回了一条路；\
+             它只许住界面一处（`src/tmux-control.ts::capturePane`）"
         );
     }
-    // ② 两侧同一段代码：通道不在时只差一个称呼。
-    let _guard = crate::backend::control::inbound_client::local_origin_test_lock();
     assert!(
-        crate::backend::control::inbound_client::client_for(
-            crate::backend::control::inbound_client::LOCAL_ORIGIN
-        )
-        .is_none(),
-        "测试进程里 `<local>` 上居然有入方向通道 —— 本条的前提不成立，下面几句会空转"
-    );
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .build()
-        .expect("建不出 runtime —— 本条无从判断，别读成绿");
-    let local = rt
-        .block_on(capture_remote_pane(
-            crate::backend::control::inbound_client::LOCAL_ORIGIN.to_string(),
-            "cc-abc12345".to_string(),
-        ))
-        .expect_err("本机后端通道不在，这一趟不该报成功");
-    let remote = rt
-        .block_on(capture_remote_pane(
-            "kr112-remote-label".to_string(),
-            "cc-abc12345".to_string(),
-        ))
-        .expect_err("那台远端没配过，这一趟不该报成功");
-    // 🔴 老那句话必须不在了 —— 它是「本机做不到」的字面形式。
-    assert!(
-        !local.contains("还看不了"),
-        "本机仍在回那句「还看不了」—— 前提到期了，那句话今天是假的：{local}"
-    );
-    // 也不许退回那句与真实原因毫无关系的「未找到远端配置」（`P4d-Y5` 收口的那一族）。
-    for e in [&local, &remote] {
-        assert!(
-            !e.contains("未找到远端配置"),
-            "抓屏又报「未找到远端配置」—— 那是 `P4d-Y5` 收口的那一族假话：{e}"
-        );
-    }
-    assert_ne!(
-        local, remote,
-        "本机与远端的「通道不在」共用了同一句话 —— 下一步不同却说同一句，\n\
-             就等于把两件事压成一个读数"
-    );
-    assert!(
-        remote.contains("kr112-remote-label") && !remote.contains("本机"),
-        "远端那句话没点出是哪台机器、或者错用了本机那半。实得：{remote}"
-    );
-    // 空目标那道 Gate 1 仍在本地就地判（不该先花一次往返）。
-    let empty = rt
-        .block_on(capture_remote_pane(
-            "kr112-remote-label".to_string(),
-            String::new(),
-        ))
-        .expect_err("空目标必须被 Gate 1 拒");
-    assert!(
-        empty.contains("非法 tmux 目标"),
-        "空目标不是被 Gate 1 拒的（`=:` 会被 tmux 解析成「当前会话」）：{empty}"
+        guard_core::contains_word(&corpus, "TMUX_LS_FMT"),
+        "正控失败：同一份语料里认不出 `list_remote_tmux` 那条只读 tmux 调用 —— 上面的零命中不可信"
     );
 }
 
-/// ★ **P3 刀 2：本机 kill 不许回落到 SSH**〔08-11〕。
-///
-/// # ⚠ `K-R72`（09-12）：性质**变强了**，判法跟着换 —— 不是这一条死了
-///
-/// 它原来钉的是「那条 SSH 回落**之前**有本机的早退」（比的是两个位置的先后）。
-/// 今天那条 SSH 回落整个没了 ⇒ **「本机不许回落到 SSH」从一条纪律变成一条结构事实**。
-/// 位置判据在一个不存在的东西上无从谈起，但它买的那两件事一件都不许丢：
-/// ① **盘上没有第二条路** —— 生产段里再出现 `connect_and_exec_cmd` 就红（**回潮闸**）；
-/// ② **说的是真实原因** —— 对 `<local>` 报的不许是「未找到远端配置」那句与真实原因
-///    毫无关系的话。**错的诊断比没有诊断更贵。**
-///
-/// ⚠ 射程：本条**不证明**本机 kill 真的杀得掉（那要后端在、且有一个真 tmux 会话）。
-/// 后者今天没有 UI 入口（见 `K-R56#§0j`），所以也没有实测。
-#[test]
-fn the_local_kill_never_falls_back_to_ssh() {
-    let prod = guard_core::production_code(include_str!(
-        "../../../../src/bridge/src/backend/control/tmux.rs"
-    ));
-    let at =
-        guard_core::find_pinned(&prod, "pub async fn kill_remote_tmux(").expect("kill 入口不在了");
-    let body: String = prod[at..]
-        .lines()
-        .skip(1)
-        .take_while(|l| *l != "\u{7d}")
-        .collect::<Vec<_>>()
-        .join("\n");
-    // 抽取器自检：抽空了下面那条就恒绿。
-    assert!(
-        body.contains("backend_kill::backend_kill("),
-        "抽到的 `kill_remote_tmux` 函数体里连主路都没有 —— 抽取器坏了，本条此刻空转。\n\
-             实得 {} 字节",
-        body.len()
-    );
-    // ① 回潮闸：这条命令里**不许再有** SSH 那条路。
-    assert!(
-        !body.contains("connect_and_exec_cmd"),
-        "`kill_remote_tmux` 里又出现了 `connect_and_exec_cmd` —— 那条一次性 SSH 回落回潮了。\n\
-             `K-R54` 表第 2 处判它删：backend 那条先 `admit_destructive` 拿 `#{{session_id}}`\n\
-             **句柄**再杀，而 SSH 那条杀的是 `=name:`（**名字**）—— 破坏性动作对名字下手\n\
-             就把 TOCTOU 窗口留着。要恢复它先回 `K-R54` 重新裁定。"
-    );
-    // ② 真实原因：本机那句话不许说成「未找到远端配置」。
-    let _guard = crate::backend::control::inbound_client::local_origin_test_lock();
-    assert!(
-        crate::backend::control::inbound_client::client_for(
-            crate::backend::control::inbound_client::LOCAL_ORIGIN
-        )
-        .is_none(),
-        "测试进程里 `<local>` 上居然有入方向通道 —— 本条的前提不成立，下面那句会空转"
-    );
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .build()
-        .expect("建不出 runtime —— 本条无从判断，别读成绿");
-    let err = rt
-        .block_on(kill_remote_tmux(
-            crate::backend::control::inbound_client::LOCAL_ORIGIN.to_string(),
-            "cc-abc12345".to_string(),
-        ))
-        .expect_err("本机后端通道不在，这一趟不该报成功");
-    assert!(
-        !err.contains("未找到远端配置"),
-        "本机 kill 报的是「未找到远端配置」—— 那是 SSH 回落那条路的话，\n\
-             而真实原因是本机后端通道不在。实得：{err}"
-    );
-    assert!(
-        err.contains("本机后端通道不在"),
-        "本机那条早退在，但它没说出真实原因。实得：{err}"
-    );
-}
-
-/// ★★ **`send-keys` 这条路上，本机也不许悄悄回落到一次性 SSH**（`K-R56`，09-11 买到）。
-///
-/// # ⚠ `K-R72`（09-12）：性质**变强了**，判法跟着换 —— 不是这一条死了
-///
-/// `K-R56` 立它时，`tmux_send_keys` 有一条 SSH 回落，而 `<local>` 会掉进
-/// `load_remote_config_by_label("<local>")`，报 **「未找到远端配置: `"<local>"`」** ——
-/// 一句与真实原因（本机后端通道不在）毫无关系的话。**错的诊断比没有诊断更贵。**
-/// 今天那条回落整个删了 ⇒ 「本机不许回落到 SSH」从一条纪律变成一条**结构事实**。
-/// 本条因此加一格、并把原来那格保住：
-/// ① **回潮闸**（新）：生产段里再出现 `connect_and_exec_cmd` 就红；
-/// ② **说的是真实原因**（原有那格，一个字没改判法）：真调生产入口 [`tmux_send_keys`]，
-///    看它到底报了哪句话；
-/// ③ **本机与远端的话不许一样**（新）：两条路的下一步不同 —— 一个是「先让本机后端跑起来」，
-///    另一个是「先让那台机器上的后端连上」。压成一句就等于把两个处置合并成一个读数。
-///
-/// # ⚠ 射程，逐条说清（`brief` 12：报一个性质就要说清尺子）
-///
-/// - 钉的是「它报的是真实原因、而且盘上没有第二条路」。
-///   **不证明**本机 send-keys 真的送得到 —— 那要后端在 + 一个真 tmux 会话，
-///   而真 tmux 本区口径禁（`K-R56#§0d`）。
-/// - 🔴 **②③ 比的是 `origin`，不是 `target` 会话名**：判据逐字是
-///   `origin == LOCAL_ORIGIN`（**逐字节相等**）。⇒
-///   · **拦得住**：唯一那个前端/后端约定的哨兵串（`inbound_client::LOCAL_ORIGIN`，
-///     由 `inbound_client_tests.rs::the_local_origin_is_the_same_string_on_both_sides`
-///     钉着它与前端 `backend-policy.ts` 那份逐字相同）。
-///   · **拦不住**：一台 label 起成 `localhost` / `127.0.0.1` / 本机主机名的**远端**
-///     （即便它就是这台机器）—— 走的是远端那句话。⚠ 那**是对的**：它确实是一条远端传输。
-///   · **也拦不住**：大小写 / 前后空白不同的写法（`<LOCAL>`、`" <local>"`）——
-///     但那些今天进不来，`LOCAL_ORIGIN` 是常量、不是用户输入。
-///     真正的撞名口子是 `LOCAL_ORIGIN` 自己头注逐字承认的那条：
-///     「用户理论上可以把某台远端机器的 label 起成这个名字……**不做防御**」。
-///   ⚠ **09-11 自查回打（`K-R56`）**：这一段第一版点的是一个**编出来的**判据名（盘上零处），
-///     被 `structural_scan.rs` 那条「散文点名的名字必须在代码里」的机检当场逮住。
-///     🔴 那个假名字与两趟判定行逐字抄在 `tests/evidence/K-R56-deathvalue.md`，
-///     刻意不抄在这里：抄回来就又是一处「散文点名一个不存在的名字」。
-#[test]
-fn the_local_send_keys_never_falls_back_to_ssh() {
-    // ① 回潮闸：这条命令里**不许再有** SSH 那条路。
-    let prod = guard_core::production_code(include_str!(
-        "../../../../src/bridge/src/backend/control/tmux.rs"
-    ));
-    let at = guard_core::find_pinned(&prod, "pub async fn tmux_send_keys(")
-        .expect("send-keys 入口不在了");
-    let body: String = prod[at..]
-        .lines()
-        .skip(1)
-        .take_while(|l| *l != "\u{7d}")
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(
-        body.contains("backend_send_keys::backend_send_keys("),
-        "抽到的 `tmux_send_keys` 函数体里连主路都没有 —— 抽取器坏了，本条此刻空转。\n\
-             实得 {} 字节",
-        body.len()
-    );
-    assert!(
-        !body.contains("connect_and_exec_cmd"),
-        "`tmux_send_keys` 里又出现了 `connect_and_exec_cmd` —— 那条一次性 SSH 回落回潮了。\n\
-             `K-R54` 表第 1 处判它删（`K-R56` 先把两条路的「探了没有」补齐才删得掉）。\n\
-             要恢复它先回 `K-R54` 重新裁定。"
-    );
-
-    // ②③ 行为：真调生产入口，看它报了哪句话。
-    // 登记表是**进程内全局**的 ⇒ 与别的会在 `<local>` 键上登记通道的用例串起来跑。
-    let _guard = crate::backend::control::inbound_client::local_origin_test_lock();
-    // 前提自检：本条靠「`<local>` 上没有通道」才走得到 `NoChannel` 那一臂。
-    assert!(
-        crate::backend::control::inbound_client::client_for(
-            crate::backend::control::inbound_client::LOCAL_ORIGIN
-        )
-        .is_none(),
-        "测试进程里 `<local>` 上居然有入方向通道 —— 本条的前提不成立，下面那句会空转"
-    );
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .build()
-        .expect("建不出 runtime —— 本条无从判断，别读成绿");
-    let send = |origin: &str| {
-        rt.block_on(tmux_send_keys(
-            origin.to_string(),
-            "cc-abc12345".to_string(),
-            "/compact".to_string(),
-            Some(true),
-        ))
-        .expect_err("后端通道不在，这一趟不该报成功")
-    };
-    let local = send(crate::backend::control::inbound_client::LOCAL_ORIGIN);
-    assert!(
-        !local.contains("未找到远端配置"),
-        "本机 send-keys 报的是「未找到远端配置」—— 那是 SSH 回落那条路的话，\n\
-             而真实原因是本机后端通道不在。**错的诊断比没有诊断更贵。**\n\
-             实得：{local}"
-    );
-    assert!(
-        local.contains("本机后端通道不在"),
-        "本机那条早退在，但它没说出真实原因。实得：{local}"
-    );
-    // ③ 远端那条：话必须不一样，而且也说得出下一步。
-    let remote = send("some-remote-label");
-    assert_ne!(
-        local, remote,
-        "本机与远端的「通道不在」共用了同一句话 —— 处置相同没问题，\n\
-             **下一步不同却说同一句**就等于把两件事压成一个读数（本机是「本机后端没起来」，\n\
-             远端是「那台机器上的后端没连上」）。"
-    );
-    assert!(
-        remote.contains("some-remote-label") && !remote.contains("本机"),
-        "远端那句话没点出是哪台机器、或者错用了本机那半。实得：{remote}"
-    );
-}
+// 〔C4e · 第四波 4C〕这里原来住着「本机杀会话 / 送键不许回落到 SSH」两条（`the_local_kill_never_falls_back_to_ssh`〔散文墓碑〕 /
+//   `the_local_send_keys_never_falls_back_to_ssh`〔散文墓碑〕，P3 刀 2 · K-R56 · K-R72）：回潮闸（生产段里不许再有
+//   `connect_and_exec_cmd`）＋「说真实原因」（对 `<local>` 不报「未找到远端配置」、本机与远端两句话不同）。
+//   两条命令整条迁到界面之后：
+//   ① 回潮闸 ⇒ `tmux_backend_gate_guard` 那两条改钉「monitor 生产段里一处破坏性 tmux 动词都没有」（界面那一侧结构上没有 SSH）；
+//   ② 说真实原因 ⇒ `tests/tmux-control.vitest.ts`「通道不在：本机与远端两句话不同」（结束会话 · 发按键各一遍）。
 
 /// F01 回归：tmux `-t` 目标**必须**精确匹配（`'=<名>:'`），绝不留裸目标。
 ///
@@ -1149,48 +777,9 @@ fn parse_sid_rejects_unexpanded_format_and_garbage() {
     assert_eq!(s2[0].sid.as_deref(), Some("ab_c-12"));
 }
 
-/// ★★ `KR112D2`：**抓不到的五档分得开**，而且「认不出的码」不许被猜成某一档。
-///
-/// ⚠〔`K-R112` 09-13〕它替掉的是原来那条按两个哨兵（`NO_TMUX` / `NO_PANE`）
-/// 判定的测试。那条测的东西今天**不存在**：
-/// 答案不再编码在 stdout 里，所以「屏幕内容恰好等于哨兵串」这个误判形状也随之消失
-/// —— 那正是这一刀买到的东西，不是判据被放宽。
-#[test]
-fn the_five_capture_refusals_stay_apart() {
-    let msgs: Vec<String> = [
-        "no_tmux",
-        "no_server",
-        "no_such_session",
-        "invalid_args",
-        "capture_failed",
-    ]
-    .iter()
-    .map(|c| describe_capture_refusal("cc-x", c, "原话"))
-    .collect();
-    // ① 五句两两不同 —— 一句都不许被另一句吸收掉（老路把其中三件压成 `NO_PANE` 一句）。
-    for (i, a) in msgs.iter().enumerate() {
-        for b in msgs.iter().skip(i + 1) {
-            assert_ne!(a, b, "两档被压成了同一句话");
-        }
-    }
-    // ② 每一句都说得出是哪个会话，而且带上后端的原话（诊断不许被吃掉）。
-    for m in &msgs {
-        assert!(m.contains("cc-x"), "没说是哪个会话：{m}");
-        assert!(m.contains("原话"), "backend 的原话被吃掉了：{m}");
-    }
-    // ③ 🔴 **认不出的码不许猜**：原样带出去，且不许长成任何一句已知档的样子。
-    let unknown = describe_capture_refusal("cc-x", "zzz_new_code", "原话");
-    assert!(
-        unknown.contains("zzz_new_code"),
-        "认不出的码没被原样带出去：{unknown}"
-    );
-    for m in &msgs {
-        assert_ne!(
-            &unknown, m,
-            "认不出的码被猜成了一个已知档 —— 那是拿具体而错误的答案冒充知识"
-        );
-    }
-}
+// 〔C4e · 第四波 4C〕这里原来住着「抓不到的五档分得开、认不出的码不许猜」（`the_five_capture_refusals_stay_apart`〔散文墓碑〕，
+//   驱动 monitor 的 `describe_capture_refusal`〔散文墓碑〕）。那一份说法随抓屏迁到界面：同一条性质住
+//   `tests/tmux-control.vitest.ts`（码集合取自跨语言金样 —— 与后端 `REGISTRY` 那一块对拍过的同一份，不是手抄）。
 
 #[test]
 fn fmt_uses_real_tab_not_literal_backslash_t() {

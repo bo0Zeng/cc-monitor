@@ -37,6 +37,7 @@
 import type { RecordTimeline } from "./record-timeline";
 import { SkeletonLedger } from "./live-window";
 import type { SkeletonFacts } from "./height-estimate";
+import { copyText } from "./copy-table";
 
 /** 视口上下各多物化多少屏（相对视口高）。 */
 const OVERSCAN = 0.5;
@@ -287,6 +288,6 @@ export function ledgerFromIndex(
   res: { available: boolean; reason?: string; end: number; rows: SkeletonFacts[] },
   base = 0,
 ): LedgerFetch {
-  if (!res.available) return { ok: false, reason: res.reason ?? "索引不可用" };
+  if (!res.available) return { ok: false, reason: res.reason ?? copyText("skeletonView.ledgerFromIndex.noIndex") };
   return { ok: true, ledger: new SkeletonLedger(base, res.rows), end: res.end };
 }

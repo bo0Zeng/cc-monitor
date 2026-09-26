@@ -8,14 +8,19 @@
 //! INVARIANTS § 25：本路径是一次性读取（非 at-least-once 行流），SessionViewer
 //! 每次 load 全新实例，无重投幂等义务。
 
+use crate::copy_table::copy_text;
 use crate::ssh_source::RemoteConfig;
 
 // 〔LOC1b · 第四波 4D〕读一整份会话的总量上限 `MAX_SESSION_BYTES` 与超限那句话（F06）搬去了 `history.rs`：
 //   本机冷读也改走那台后端的 `history-read`，本机远端合成一条（`history·rs::stream_read_session_jsonl`）。
 
 pub(crate) fn require_cfg_by_label(label: &str) -> Result<RemoteConfig, String> {
-    crate::load_remote_config_by_label(label)
-        .ok_or_else(|| format!("远端 '{label}' 未配置或未启用"))
+    crate::load_remote_config_by_label(label).ok_or_else(|| {
+        copy_text(
+            "rsRemoteHistory.cfg.missing",
+            &[("label", &label.to_string())],
+        )
+    })
 }
 
 // 〔C4d · 第四波 4B〕逐次拨号那条路（`run_list_query`〔散文墓碑〕与它的老后端识别、超时）删了：

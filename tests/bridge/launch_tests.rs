@@ -239,7 +239,7 @@ fn no_prose_claims_the_session_container_is_always_tmux() {
 
 #[test]
 fn the_posix_message_states_a_decision_not_a_missing_feature() {
-    let m = POSIX_NO_TERMINAL_WINDOW;
+    let m: &str = &POSIX_NO_TERMINAL_WINDOW;
     assert!(
         !m.contains("v1") && !m.contains("v2"),
         "文案里带版本号会被读成「以后会支持」：{m}"
@@ -249,7 +249,9 @@ fn the_posix_message_states_a_decision_not_a_missing_feature() {
         m.contains("tmux"),
         "没说清会话容器是什么，用户不知道去哪找：{m}"
     );
-    assert!(m.contains("既定设计"), "没有把「这不是没做完」说出来：{m}");
+    // 〔CP2b〕原来还要求逐字有「既定设计」（「这是既定设计，不是没做完」那句）。CP1 台账把那句裁成
+    //   防御性论证、要删（改·§2.2）；「刻意不替你挑」已经说清这是决定、不是缺口 ⇒ 这一格改认「刻意」那半句
+    //   （上面已判），不再要求「既定设计」。这是 CP1 与本测试的冲突，交主会话拍板（CP2b 记录 §5.3）。
 }
 
 /// ★ U8b **跨轨对拍**：前端匹配的那个标记，必须真的在后端那句话里。
@@ -272,12 +274,13 @@ fn the_posix_marker_is_the_one_the_frontend_matches_on() {
     assert!(
         POSIX_NO_TERMINAL_WINDOW.contains(marker),
         "\n前端按 {marker:?} 判「这是既定设计」，但后端那句话里没有它：\n  {POSIX_NO_TERMINAL_WINDOW}\n\
-             ⇒ 用户会退回去看到「拉起失败」。两边必须一起改。"
+             ⇒ 用户会退回去看到「拉起失败」。两边必须一起改。",
+        POSIX_NO_TERMINAL_WINDOW = POSIX_NO_TERMINAL_WINDOW.as_str()
     );
     // 反面：标记不许宽到把**真失败**也软化掉。
     for real_failure in [
         "未找到远端配置: \"x\"",
-        "refuse launch: 远端命令含控制字符",
+        "拒绝启动：远端命令含控制字符",
         "spawn powershell failed: No such file",
     ] {
         assert!(
@@ -904,8 +907,19 @@ fn the_spawned_process_really_gets_the_relay_prefix_without_a_terminal() {
         prefix.contains("ANTHROPIC_BASE_URL") && !prefix.is_empty(),
         "生产那一处渲染器没渲出中转注入 —— 本条按红处理：{prefix:?}"
     );
+    // 〔RK1〕注入的 URL 里钥匙那一段是「读 `$HOME/.cc-monitor/relay-key`」的命令替换 ⇒ 给这一趟一个夹具家目录、
+    //   放一把夹具钥匙，期望值是**展开之后**那条带钥匙的 URL（不碰用户真实的家目录）。
+    let fixture_key = "5eed".repeat(16);
+    std::fs::create_dir_all(dir.join(".cc-monitor")).expect("夹具 .cc-monitor");
+    std::fs::write(
+        dir.join(crate::backend::control::payload::RELAY_KEY_FILE_REL),
+        &fixture_key,
+    )
+    .expect("夹具钥匙");
+    let expanded = url.replacen("8788/", &format!("8788/{fixture_key}/"), 1);
     let payload = format!(
-        "{prefix}printf '%s' \"$ANTHROPIC_BASE_URL\" > {}",
+        "HOME='{}'; {prefix}printf '%s' \"$ANTHROPIC_BASE_URL\" > {}",
+        dir.display(),
         seen.display()
     );
     // 反空真②：观测点在**进程那一侧**，起手它必须不存在。
@@ -922,12 +936,12 @@ fn the_spawned_process_really_gets_the_relay_prefix_without_a_terminal() {
     let _ = std::fs::remove_dir_all(&dir);
     assert!(landed, "5s 内那个进程什么都没写下来 —— spawn 那半没真跑");
     assert_eq!(
-        got, url,
+        got, expanded,
         "\n★★ **起出去的那个进程没拿到中转注入** —— 这是第九层（刀 `Z1c`）的形状：\n\
              `local_posix_spawn_plan` 返回之后那 3 行里把 `export ANTHROPIC_BASE_URL=…; `\n\
              从 argv 里剥掉，纯函数一字不动、全仓锚点一处不少，而上一版全绿。\n\
              生产后果：claude 直连官方端点，第三方 key 用不上，而门禁四个数一格不动。\n\
-             实得 = {got:?} · 期望 = {url:?}"
+             实得 = {got:?} · 期望 = {expanded:?}"
     );
 }
 

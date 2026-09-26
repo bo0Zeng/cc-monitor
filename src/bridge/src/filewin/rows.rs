@@ -26,6 +26,7 @@
 //!    断言它在 100 000 行上物化 **100 000** 行 —— 证明这把尺子量得出差别，
 //!    不是两边都恒真。
 
+use crate::copy_table::copy_text;
 use egui::{ScrollArea, Ui};
 
 use super::copy::{is_copyable, COPY_LABEL};
@@ -366,11 +367,11 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Listed, revealed: bool, mark: Ma
         //   `symlink`（后端拿的是 `file_type()`，它不跟链接）⇒ `is_dir` 是 false，
         //   两格不会同时真；写成 `is_dir` 先判也对，但那会让「哪一格说话」依赖后端的实现。
         ui.label(if r.link {
-            "🔗"
+            copy_text("rsFilewinRows.icon.symlink", &[])
         } else if r.is_dir {
-            "📁"
+            copy_text("rsFilewinRows.icon.dir", &[])
         } else {
-            "📄"
+            copy_text("rsFilewinRows.icon.file", &[])
         });
         ui.label(&r.name);
         if !r.is_dir {
@@ -385,14 +386,14 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Listed, revealed: bool, mark: Ma
             // 非 UTF-8 名：显示串寻址不到真字节。
             // 〔FW5〕带着原始字节（后端 `files-ls` 送的）⇒ 三颗写按钮照画（改名 · 删除 · 权限走 b16）；
             //   复制 / 下载 / 编辑那几颗用的是整条路径字符串，照旧不画（`is_copyable` / `is_downloadable` / `is_editable`）。
-            ui.label("⚠");
+            ui.label(&copy_text("rsFilewinRows.icon.warn", &[]));
         }
         // 〔第三刀〕「复制」——**只对能复制的那一档画**。`is_copyable` 是唯一住址，
         // 窗口状态机那一侧（`begin_copy`）问的是同一个函数。
         // ⚠ `small_button`：普通 `Button` 的最小高度是 `interact_size.y`（默认 18），
         //   一行只有 `ROW_HEIGHT` 高，撑高了行与行会叠在一起（下一行就点不准了）。
         let copy = if is_copyable(r) {
-            Some(ui.small_button(COPY_LABEL))
+            Some(ui.small_button(COPY_LABEL.as_str()))
         } else {
             None
         };
@@ -401,9 +402,9 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Listed, revealed: bool, mark: Ma
         //   **刻意不是同一个函数**：目录能改名/删除/改权限，但不能零流量复制。
         let (rename, delete, chmod) = if is_writable(r) {
             (
-                Some(ui.small_button(RENAME_LABEL)),
-                Some(ui.small_button(DELETE_LABEL)),
-                Some(ui.small_button(CHMOD_LABEL)),
+                Some(ui.small_button(RENAME_LABEL.as_str())),
+                Some(ui.small_button(DELETE_LABEL.as_str())),
+                Some(ui.small_button(CHMOD_LABEL.as_str())),
             )
         } else {
             (None, None, None)
@@ -412,7 +413,7 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Listed, revealed: bool, mark: Ma
         //   今天逐行相同但**刻意是两个函数**（理由住 `download::is_downloadable` 头注，
         //   「它们今天一致」由 `download_tests` 那条相等断言钉着）。
         let download = if is_downloadable(r) {
-            Some(ui.small_button(DOWNLOAD_LABEL))
+            Some(ui.small_button(DOWNLOAD_LABEL.as_str()))
         } else {
             None
         };
@@ -421,7 +422,7 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Listed, revealed: bool, mark: Ma
         //   那个静默态的来源）。⚠ 超上限那一档在这儿就不画了，
         //   而**为什么**不画由那一行被点时的那句话给（`begin_edit` 会说）。
         let edit = if is_editable(r) {
-            Some(ui.small_button(EDIT_LABEL))
+            Some(ui.small_button(EDIT_LABEL.as_str()))
         } else {
             None
         };
