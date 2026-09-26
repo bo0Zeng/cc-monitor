@@ -519,7 +519,12 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p3u-local-same-path**（2026-09-25，第四波 4D LOC1b 合并那一拍）：行为 —— `session_added` 多一个 additive 字段 `pid`
 /// （与 `rbind_token` 同闸，只有 `--with-rbind-token` 才带）· 按路径读会话的围栏也认 Codex 的记录根（根由适配层给）·
 /// 本机冷读 / 搜索 / 判活从此都问本机后端（monitor 侧删内存索引、`session_map` 的 notify / `/proc` / 2 s 心跳）。子命令没变，照 p1v 先例不加历史行。
-pub const BUILD_ID: &str = "p3u-local-same-path";
+///
+/// ★★★ **p3v-monotonic-deploy-hostenv**（2026-09-25，第四波 4D HX2 合并那一拍）：行为 / 协议 —— 部署只升不降（`sftp.rs::build_order`，不比这一版旧就 `Keep`）·
+/// `put_atomic` 临时件 / 备份件唯一名 · tmux hook 按实例占段 `[50,100)` 一格、起时摘死槽 · 后端自有状态写口跨进程锁（`platform/lock.rs::hold`）·
+/// hello 多 additive `host_env`（回显宿主交来的端口 / 凭据路径 / 注解路径，token 永不回显）· `apikey-key-set` 入参 `account` → `configDir`（**不兼容**，旧远端连上即判旧重装）。
+/// 子命令没变，照 p1v 先例不加历史行。
+pub const BUILD_ID: &str = "p3v-monotonic-deploy-hostenv";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），

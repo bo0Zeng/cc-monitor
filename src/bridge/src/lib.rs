@@ -1341,7 +1341,6 @@ pub fn run() {
             config::load_config,
             config::patch_config,
             // K-H2a：apikey 表那把 key 的写（`KS10`）。〔US1〕读状态与「表里有没有行」两问走通道（`apikey-read` / `apikey-routing`）。
-            write_apikey_credentials_key,
             // 〔RL1 · US1〕起会话那一发注入哪个中转地址：转交那台后端的成品（`launch-endpoint`）＋ 远端用到才起。
             relay_endpoint_for_launch,
             // 〔AL1 · 2026-09-24〕`设计/71`：别名只有一类（名字 ＋ 一组 ccm 参数），命令面两跳 ——
@@ -1794,55 +1793,11 @@ async fn relay_endpoint_for_launch(
     history::relay_endpoint_on(&origin, account.as_ref(), sid.as_deref()).await
 }
 
-/// `K-H2a` `KS10`：从界面配一把 key。
-///
-/// ⚠ **它和人手编是同一份文件的两个写者** —— 写的那一刻才去读盘，
-/// 未知键一个不吃、字段顺序按名字排、原子替换、出生即只给本人。
-/// 〔GP1 · 第四波〕这几条今天由**那台机器的后端**兑现（本机 ＝ 本机常驻后端，`src/backend/accounts/upstream/file_face.rs`）；
-/// 整段论证住那一份的头注。〔墓碑 —— 从前这里写「整段论证见 `creds_store::write_key`〔散文墓碑〕」：monitor 不再写这份文件。〕
-///
-/// ⚠ **入参是明文，而它一进来就被包成 `SecretKey`**（在那台后端的写口里）。
-/// 这一层的签名收 `String` 是没办法的事：IPC 边界上只有 JSON。
-///
-/// ⚠⚠ **订正措辞〔D1，08-27，PM 采纳审计改判〕**：先前这里写的是「那一段**不在本件的判据面里**」
-/// ——**那个词说小了一格**。「射程外」意思是「本件裁定不管它」，而盘上的事实是
-/// **没人量过**：`KS6` 保的是 key **回**前端那个方向，这里是 **去**后端那个方向，
-/// 那是**另一条路上的另一个值**，本件一条判据都没打过它。
-/// ⇒ 它的身份是 **`判不了`**，不是「射程外」。**这两个词不是一回事**：
-/// 前者欠着一次测量，后者是已经裁过不做。件计划 `§0h` 已按这个身份登记。
-///
-/// # ⚠⚠ `K-H2c` `KH2C1`：**第二个入参是 `configDir`，不是账号名**
-///
-/// 界面手上的账号对象**两个字段都有**（`local_accounts.rs` 的 `RawAccount { name, configDir }`），
-/// 而它们是 manifest 里**两个独立字段、可以漂开**。apikey 表按**账号 id** 索引，
-/// 而那个 id 由 [`history::apikey_account_id_of_dir`] 从 `configDir` 推出来 ——
-/// **全仓只有那一份规则**，起会话那一侧（`history::apikey_account_id`）调的是同一个函数。
-///
-/// ⇒ 这条命令**只收 `configDir`，由 Rust 推 id**。收 `name`、或让 TS 自己
-/// `split('/').pop()`，都是在长出**第二份**规则，而那正是 `KH2C1` 红字禁的那件事
-/// （前端那一侧由 `tests/settings/accounts-section.vitest.ts` 里那条机检钉着 ——
-/// 标题以「KH2C1 机检：前端一个字都不推账号 id」打头的那个 `it`，
-/// 它扫整份 `accounts-section.ts` 找「自己从路径取末段名」的四种写法）。
-/// ⚠ 〔`K-R20` 订正 09-03〕原先点的是
-/// `the_ui_never_derives_the_account_id_itself`〔散文墓碑〕，**那个名字全仓零定义**，
-/// 而这句话是当现状在说。
-///
-/// # 〔RM1a · 第四波〕**收 `origin`**：key 落在会话跑的那台机器上
-///
-/// 两臂同一条路：monitor 推出账号 id、交**那台机器的后端**写（帧面 `apikey-key-set`，后端账号域那一份是那台机器上唯一的写者；
-/// 〔GP1 · 第四波〕本机 ＝ 本机常驻后端，先核它写的就是本 monitor 认的那一份）。分派住 `apikey_remote::write_key_on`。
-/// 明文在本函数体里仍然**只被往下传一次**（`PLAINTEXT_HOPS` 那一行跟着改了住址）。
-#[tauri::command]
-async fn write_apikey_credentials_key(
-    origin: origin::Origin,
-    key: String,
-    config_dir: String,
-    // 〔第四波 ST2 · `设计/70 §4.4`〕加账号表单 apikey 那一支的 Base URL。缺席 = 用默认上游（不碰那一格）。
-    // 〔RM1a〕它与 key 一起按 origin 走，交那台机器的后端（`apikey-key-set` 的 `baseUrl`；〔GP1〕本机也是）。
-    base_url: Option<String>,
-) -> Result<(), String> {
-    apikey_remote::write_key_on(&origin, &config_dir, key, base_url).await
-}
+// 〔HX2 · 第四波 4D〕墓碑：这里从前是 Tauri 命令 `write_apikey_credentials_key`〔散文墓碑〕（`K-H2a` 从界面配一把 key；
+//   〔RM1a〕按 origin 交那台机器的后端；〔GP1〕本机那一臂先核路径）。常驻后端身份带上数据目录之后（`local_backend_host::hello_verdict`
+//   比 hello 的 `host_env`），核路径那一问由连接本身答 ⇒ 界面经通道直接发 `apikey-key-set`（`src/apikey-reads.ts::writeApikeyKey`），
+//   账号 id 由后端推（`acct_core::apikey_account_id_of_dir`）。monitor 里从此没有明文 key 的具名绑定。
+//   `KH2C1` 前端那一侧的机检（它的旧名 `the_ui_never_derives_the_account_id_itself`〔散文墓碑〕）照旧在 `accounts-section.vitest.ts`。
 
 /// 〔AL1 · 2026-09-24〕`设计/71 §12.6` 第①跳：**纯** —— 清单 → 代码。一个字节都不写。
 /// 预览与「复制去手贴」都只调这一条；`dry_run` 那个布尔从此不需要了（「只生成不写」就是只调这一跳）。

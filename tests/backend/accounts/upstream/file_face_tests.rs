@@ -41,7 +41,8 @@ fn a_written_row_is_really_loaded_by_upstream_selection() {
     let home = temp_dir("load");
     let f = file_in(&home);
     std::fs::create_dir_all(&home).unwrap();
-    let got = answer_set_at(&f, &json!({"account": "work", "key": PLAIN})).expect("写应当成功");
+    let got = answer_set_at(&f, &json!({"configDir": "/h/accts/work", "key": PLAIN}))
+        .expect("写应当成功");
     assert_eq!(got["account"], "work");
     assert_eq!(got["path"], f.display().to_string());
     assert_eq!(
@@ -88,14 +89,14 @@ fn other_rows_and_unknown_keys_survive_and_the_disk_is_read_at_write_time() {
   "zzz_unknown": 7
 }"#;
     std::fs::write(&f, hand).unwrap();
-    answer_set_at(&f, &json!({"account": "work", "key": PLAIN})).expect("第一次写");
+    answer_set_at(&f, &json!({"configDir": "/h/accts/work", "key": PLAIN})).expect("第一次写");
     // ★ 写的那一刻读盘：两次写之间**绕过写口**在盘上加一格，第二次写必须留着它。
     let mut doc: Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
     doc["between_writes"] = json!("盘上后来加的");
     std::fs::write(&f, serde_json::to_string(&doc).unwrap()).unwrap();
     answer_set_at(
         &f,
-        &json!({"account": "work", "key": "sk-SECOND-FIXTURE-KEY"}),
+        &json!({"configDir": "/h/accts/work", "key": "sk-SECOND-FIXTURE-KEY"}),
     )
     .expect("第二次写");
 
@@ -127,7 +128,7 @@ fn an_unparseable_file_is_refused_and_left_byte_for_byte() {
     std::fs::create_dir_all(f.parent().unwrap()).unwrap();
     let broken = "{ \"accounts\": { \"work\": { \"api_key\": \"sk-x\" } ";
     std::fs::write(&f, broken).unwrap();
-    let err = answer_set_at(&f, &json!({"account": "work", "key": PLAIN})).unwrap_err();
+    let err = answer_set_at(&f, &json!({"configDir": "/h/accts/work", "key": PLAIN})).unwrap_err();
     assert_eq!(err.0, "bad_file", "解析不了应当回 bad_file，实得 {err:?}");
     assert_eq!(
         std::fs::read_to_string(&f).unwrap(),
@@ -155,17 +156,31 @@ fn bad_arguments_are_refused_before_a_single_byte_is_written() {
     let home = temp_dir("args");
     let f = file_in(&home);
     std::fs::create_dir_all(&home).unwrap();
+    // 〔HX2 · 4D〕入参从 `account` 换成 `configDir`（账号 id 由后端推）：坏形按新入参重写；还给 `account` 那一形也拒。
     let cases = [
-        (json!({"key": PLAIN}), "缺 account"),
-        (json!({"account": "work"}), "缺 key"),
+        (json!({"key": PLAIN}), "缺 configDir"),
+        (json!({"configDir": "/h/accts/work"}), "缺 key"),
         (
-            json!({"account": "../x", "key": PLAIN}),
-            "account 带路径分隔",
+            json!({"configDir": "/h/accts/..", "key": PLAIN}),
+            "configDir 推不出账号 id（最后一段是 ..）",
         ),
-        (json!({"account": "a b", "key": PLAIN}), "account 带空白"),
-        (json!({"account": "", "key": PLAIN}), "account 空"),
-        (json!({"account": "work", "key": "   "}), "key 全空白"),
-        (json!({"account": 3, "key": PLAIN}), "account 不是字符串"),
+        (
+            json!({"configDir": "/h/accts/a b", "key": PLAIN}),
+            "推出的 id 带空白",
+        ),
+        (json!({"configDir": "", "key": PLAIN}), "configDir 空"),
+        (
+            json!({"configDir": "/h/accts/work", "key": "   "}),
+            "key 全空白",
+        ),
+        (
+            json!({"configDir": 3, "key": PLAIN}),
+            "configDir 不是字符串",
+        ),
+        (
+            json!({"configDir": "/h/accts/work", "account": "work", "key": PLAIN}),
+            "还给了 account（旧形状）",
+        ),
     ];
     for (args, what) in cases {
         let err = answer_set_at(&f, &args).unwrap_err();
@@ -185,7 +200,7 @@ fn the_plaintext_never_leaves_in_either_answer() {
     let home = temp_dir("plain");
     let f = file_in(&home);
     std::fs::create_dir_all(&home).unwrap();
-    let set = answer_set_at(&f, &json!({"account": "work", "key": PLAIN})).unwrap();
+    let set = answer_set_at(&f, &json!({"configDir": "/h/accts/work", "key": PLAIN})).unwrap();
     let read = read_at(&f);
     // 正控：同一把尺子（子串）在盘上那份文件里**数得到**它 —— 否则下面的零命中可能是尺子瞎了。
     let on_disk = std::fs::read_to_string(&f).unwrap();
@@ -224,7 +239,7 @@ fn the_written_file_is_owner_only_and_no_temp_file_is_left() {
     let home = temp_dir("perm");
     let f = file_in(&home);
     std::fs::create_dir_all(&home).unwrap();
-    answer_set_at(&f, &json!({"account": "work", "key": PLAIN})).unwrap();
+    answer_set_at(&f, &json!({"configDir": "/h/accts/work", "key": PLAIN})).unwrap();
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -245,7 +260,7 @@ fn a_missing_agent_home_is_said_and_not_created_for_you() {
     let home = temp_dir("nohome");
     // 家目录本身不在：只许建 `claudecode-frontend/` 这一层，不替 agent 建它的家。
     let f = file_in(&home.join("not-there"));
-    let err = answer_set_at(&f, &json!({"account": "work", "key": PLAIN})).unwrap_err();
+    let err = answer_set_at(&f, &json!({"configDir": "/h/accts/work", "key": PLAIN})).unwrap_err();
     assert_eq!(err.0, "io_failed", "实得 {err:?}");
     assert!(!home.join("not-there").exists(), "替 agent 建了家目录");
     let _ = std::fs::remove_dir_all(&home);
@@ -292,7 +307,7 @@ fn base_url_is_written_with_the_key_and_left_alone_when_only_the_key_changes() {
     std::fs::create_dir_all(&home).unwrap();
     let got = answer_set_at(
         &f,
-        &json!({"account": "work", "key": PLAIN, "baseUrl": " https://up.example.invalid/v1 "}),
+        &json!({"configDir": "/h/accts/work", "key": PLAIN, "baseUrl": " https://up.example.invalid/v1 "}),
     )
     .expect("带 Base URL 的写应当成功");
     assert_eq!(
@@ -300,9 +315,9 @@ fn base_url_is_written_with_the_key_and_left_alone_when_only_the_key_changes() {
         "读回的端点不对：{got}"
     );
     for only_key in [
-        json!({"account": "work", "key": "sk-SECOND-FIXTURE"}),
-        json!({"account": "work", "key": "sk-THIRD-FIXTURE", "baseUrl": null}),
-        json!({"account": "work", "key": "sk-FOURTH-FIXTURE", "baseUrl": "  "}),
+        json!({"configDir": "/h/accts/work", "key": "sk-SECOND-FIXTURE"}),
+        json!({"configDir": "/h/accts/work", "key": "sk-THIRD-FIXTURE", "baseUrl": null}),
+        json!({"configDir": "/h/accts/work", "key": "sk-FOURTH-FIXTURE", "baseUrl": "  "}),
     ] {
         let got = answer_set_at(&f, &only_key).expect("只配 key 应当成功");
         assert_eq!(
@@ -314,14 +329,17 @@ fn base_url_is_written_with_the_key_and_left_alone_when_only_the_key_changes() {
     for bad in ["ftp://x", "https://", "up.example.invalid", "https://a b"] {
         let err = answer_set_at(
             &f,
-            &json!({"account": "work", "key": PLAIN, "baseUrl": bad}),
+            &json!({"configDir": "/h/accts/work", "key": PLAIN, "baseUrl": bad}),
         )
         .expect_err("坏形状还写了");
         assert_eq!(err.0, "bad_args", "{bad:?} 应当是 bad_args，实得 {err:?}");
         assert!(!err.1.contains(PLAIN), "报错里带着明文");
     }
-    let err =
-        answer_set_at(&f, &json!({"account": "work", "key": PLAIN, "baseUrl": 3})).unwrap_err();
+    let err = answer_set_at(
+        &f,
+        &json!({"configDir": "/h/accts/work", "key": PLAIN, "baseUrl": 3}),
+    )
+    .unwrap_err();
     assert_eq!(err.0, "bad_args");
     assert_eq!(std::fs::read(&f).unwrap(), before, "形状不对却动了文件");
     // 与本机那一侧是**同一条**形状关（同一个函数），不是两份：拿同一组输入问它，结论一致。
@@ -357,7 +375,11 @@ fn gp1_a_program_write_keeps_everything_the_human_put_there() {
         b"{\n  \"_note\": \"human changed this\",\n  \"my_own\": \"keep me\",\n  \"brand_new\": 7,\n  \"api_key\": \"OLD\"\n}\n",
     )
     .unwrap();
-    answer_set_at(&f, &json!({"account": "acct-x", "key": "NEW-KEY"})).expect("写");
+    answer_set_at(
+        &f,
+        &json!({"configDir": "/h/accts/acct-x", "key": "NEW-KEY"}),
+    )
+    .expect("写");
     let text = std::fs::read_to_string(&f).unwrap();
     let back: Value = serde_json::from_str(&text).unwrap();
     assert_eq!(back["_note"], "human changed this", "人的编辑被盖掉了");
@@ -399,7 +421,11 @@ fn gp1_a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style() {
         b"{\n  \"accounts\": {\n    \"acct-x\": {\n      \"api_key\": \"OLD\",\n      \"auth_style\": \"x-api-key\",\n      \"base_url\": \"https://gw.example.com/anthropic\",\n      \"my_own\": \"keep me\"\n    },\n    \"acct-y\": {\n      \"api_key\": \"Y\"\n    }\n  }\n}\n",
     )
     .unwrap();
-    answer_set_at(&f, &json!({"account": "acct-x", "key": "NEW-KEY"})).expect("写");
+    answer_set_at(
+        &f,
+        &json!({"configDir": "/h/accts/acct-x", "key": "NEW-KEY"}),
+    )
+    .expect("写");
     let back: Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
     let row = &back["accounts"]["acct-x"];
     assert_eq!(
@@ -459,7 +485,11 @@ fn gp1_the_write_side_never_targets_the_legacy_top_level_slot() {
     let home = temp_dir("gp1-legacy-slot");
     let f = file_in(&home);
     std::fs::create_dir_all(f.parent().unwrap()).unwrap();
-    answer_set_at(&f, &json!({"account": "acct-fresh", "key": "KEY-FRESH"})).expect("写");
+    answer_set_at(
+        &f,
+        &json!({"configDir": "/h/accts/acct-fresh", "key": "KEY-FRESH"}),
+    )
+    .expect("写");
     let back: Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
     assert!(
         back.get(store::KEY_FIELD).is_none(),
@@ -576,7 +606,11 @@ fn us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses() {
     )
     .unwrap()["baseUrl"]
         .is_null());
-    answer_set_at(&p, &json!({"account":"acct-one","key":"KEY-FOR-ONE"})).expect("写");
+    answer_set_at(
+        &p,
+        &json!({"configDir":"/h/.claude-accts/acct-one","key":"KEY-FOR-ONE"}),
+    )
+    .expect("写");
     let rows = rows_at_with(&p, &|_| None);
     assert_eq!(
         answer_launch_with(&ask("/h/.claude-accts/acct-one"), &rows, &|_| true).unwrap()["baseUrl"],
@@ -596,4 +630,45 @@ fn us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses() {
         "写口落在 `default` 那一行上：{rows:?}"
     );
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 🔴 〔HX2 · 第四波 4D〕W1：**账号 id 由这台后端按全仓唯一那份规则从 `configDir` 推**（`acct_core::apikey_account_id_of_dir`）。
+///
+/// 要求住址：`第四波记录/US1.md` 表「`creds.apikey` 写 … 迁了要么后端收 configDir、要么前端推 —— 前者可做」＋ `KH2C1`（前端一个字都不推账号 id）；
+/// `设计/05 §14.3` B 组（`creds.apikey` 经 `chan.call`）。期望的 id 由规则那一份现算（异源：不是本模块自己再写一个 basename）。
+#[test]
+fn hx2_the_account_id_is_derived_here_from_the_config_dir() {
+    let home = temp_dir("hx2-derive");
+    let f = file_in(&home);
+    let dir = "/home/u/.claude-accts/zb-work";
+    let want = acct_core::apikey_account_id_of_dir(dir).expect("规则推得出");
+    let got = answer_set_at(&f, &json!({"configDir": dir, "key": PLAIN})).expect("写应当成功");
+    assert_eq!(got["account"], want.as_str());
+    assert_eq!(
+        rows_at(&f),
+        vec![want.clone()],
+        "写进去的那一行不是规则推出的那个 id"
+    );
+    // 〔原 monitor `creds_store_tests` 那一条搬来〕说不出 id ⇒ 报错、不回落到顶层那一格；文件逐字节不变、话里不带明文。
+    let before = std::fs::read(&f).unwrap();
+    for bad in ["", "   ", "/", "/h/accts/.."] {
+        assert_eq!(
+            acct_core::apikey_account_id_of_dir(bad),
+            None,
+            "{bad:?} 规则那一侧推得出 —— 用例选错了"
+        );
+        let err = answer_set_at(&f, &json!({"configDir": bad, "key": "KEY-SHOULD-NOT-LAND"}))
+            .unwrap_err();
+        assert_eq!(err.0, "bad_args", "{bad:?}");
+        assert!(
+            !err.1.contains("KEY-SHOULD-NOT-LAND"),
+            "报错里带着明文：{err:?}"
+        );
+        assert_eq!(
+            std::fs::read(&f).unwrap(),
+            before,
+            "{bad:?} 被拒了，文件却变了"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&home);
 }

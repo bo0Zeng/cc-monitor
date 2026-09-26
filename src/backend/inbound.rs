@@ -1083,7 +1083,8 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "apikey-key-set",
         doc_anchor: Some("#### `apikey-key-set`"),
         codes: &["bad_args", "bad_file", "io_failed"],
-        fields: &["account", "baseUrl", "key", "masked", "path"],
+        // 〔HX2 · 4D〕入 `configDir`（账号 id 由后端推）· 出 `account`（推出来的那个）。
+        fields: &["account", "baseUrl", "configDir", "key", "masked", "path"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::accounts::upstream::file_face::answer_set(&r.args)

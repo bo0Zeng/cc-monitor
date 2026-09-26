@@ -9,7 +9,7 @@
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { emit } from "@tauri-apps/api/event";
 import { commands } from "../ipc/commands";
-import { readApikeyStatus, type ApikeyCredentialsStatus, type ApikeyRoutingView } from "../apikey-reads";
+import { readApikeyStatus, writeApikeyKey, type ApikeyCredentialsStatus, type ApikeyRoutingView } from "../apikey-reads";
 import { LOCAL_ACCOUNTS_COPY, deriveUi, currentWorkingAccount, isSelectable, accountStatusBadge, accountLoginActionLabel, localApikeyEndpointStateFor, type ApikeyEndpointState, type AccountsState, type Account } from "../accounts";
 import { fetchAccounts, fetchLocalAccounts, fetchLocalApikeyRouting, fetchMachineApikeyRouting, invalidateAccountsCache } from "../account-reads";
 import { setDefaultName, getModelForAccount, setModelForAccount } from "../account-prefs";
@@ -1193,12 +1193,8 @@ export class AccountsSection {
     baseUrl?: string,
   ): Promise<void> {
     try {
-      await commands.write_apikey_credentials_key({
-        origin: this.machineOrigin(),
-        key,
-        configDir,
-        ...(baseUrl === undefined ? {} : { baseUrl }),
-      });
+      // 〔HX2 · 4D〕经通道交那台机器的后端（`apikey-key-set`，账号 id 由后端推）；先前是 Tauri 命令 `write_apikey_credentials_key`〔散文墓碑〕。
+      await writeApikeyKey(this.machineOrigin(), configDir, key, baseUrl);
       showActionFailureToast(copyText("accounts.writeApikey.done"), copyText("accounts.writeApikey.doneBody", { name }), {
         level: "info",
         durationMs: 3000,
@@ -1223,7 +1219,7 @@ export class AccountsSection {
    * ② **没有 `configDir` 的账号（账号 0）不给这一格**：起会话那一侧对它逐字回 `None`
    *    （`apikey_account_id` 头注：「说不出 id 就不注入」）⇒ 给它配一把 key 是配了也不生效。
    * ③ 〔RM1a · 第四波〕这一页显的是 `this.origin` 那台机器的账号，读写那份文件的两条命令
-   *    （〔US1〕读：经通道 `apikey-read`；写：`write_apikey_credentials_key`）**按同一台机器**去
+   *    （〔US1〕读：经通道 `apikey-read`；〔HX2〕写：经通道 `apikey-key-set`）**按同一台机器**去
    *    （[`machineOrigin`]）—— 远端页读写的是那台机器上那一份，不再是本机的。
    *    「有没有行」（〔US1〕经通道 `apikey-routing`）同样问这一页那台机器。
    */

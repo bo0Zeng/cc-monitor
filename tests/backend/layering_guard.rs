@@ -708,6 +708,10 @@ mod tests {
             "〔RL1 · V107〕流模式常驻后端**进程内**起中转的入口；上游选择那只手由 `accounts::upstream::host_relay` 递进来",
         ),
         (
+            "listen::ENV_PORT",
+            "〔HX2〕中转端口那个环境变量**名**：hello 回显宿主交来的那几格（`wire::HOST_ECHO_ENVS`）要点它，名字只住 `listen.rs` 一处",
+        ),
+        (
             "listen::run",
             "`--relay` 那一臂的中转入口；上游选择那只手由 `accounts::upstream::run_relay` 递进来",
         ),

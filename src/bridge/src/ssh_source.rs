@@ -2325,11 +2325,27 @@ fn negotiate_version(reported_v: u64, reported_build_id: &str) -> VersionVerdict
 fn version_warning(reported_v: u64, reported_build_id: &str, label: &str) -> Option<String> {
     match negotiate_version(reported_v, reported_build_id) {
         VersionVerdict::Ok => None,
+        // 〔HX2 · 主会话 D-b〕按新旧分两句（部署只升不降，`sftp::identity_decision`）：
+        //   那台旧 ⇒ 下次连上的部署预检会换掉它；那台不比这一版旧 ⇒ 这个 monitor 不会把它换回去。
+        //   〔墓碑 —— 从前一句话不分新旧（`rsSshSource.version.buildMismatch`：「…建议更新后端（后续将支持自动部署）」），自动部署早已落地。〕
+        VersionVerdict::StaleBuild { reported }
+            if crate::sftp::is_newer(EXPECTED_BACKEND_BUILD_ID, &reported) =>
+        {
+            Some(copy_text(
+                "rsSshSource.version.remoteOlder",
+                &[
+                    ("label", &label.to_string()),
+                    ("reported", &reported.to_string()),
+                    ("mine", &EXPECTED_BACKEND_BUILD_ID.to_string()),
+                ],
+            ))
+        }
         VersionVerdict::StaleBuild { reported } => Some(copy_text(
-            "rsSshSource.version.buildMismatch",
+            "rsSshSource.version.remoteNotOlder",
             &[
                 ("label", &label.to_string()),
                 ("reported", &reported.to_string()),
+                ("mine", &EXPECTED_BACKEND_BUILD_ID.to_string()),
             ],
         )),
         VersionVerdict::Incompatible { .. } => Some(copy_text(

@@ -56,7 +56,8 @@ use std::path::{Path, PathBuf};
 
 /// 单元层：不读仓内文本、不碰 OS 的测试文件。
 const UNIT: &[&str] = &[
-    "tests/config-lost-update.vitest.ts", // 〔CFG1〕J1 两 realm 11 写者同拍写 · J5 写者路径集合
+    "tests/bridge/apikey_remote_tests.rs", // 〔HX2〕写臂那几条（读源码对拍）退役，只剩发送口一条行为判据（SCAN → UNIT）
+    "tests/config-lost-update.vitest.ts",  // 〔CFG1〕J1 两 realm 11 写者同拍写 · J5 写者路径集合
     "tests/config-persist-failure.vitest.ts", // 〔CFG1〕J8 落盘失败恰好一条 toast
     "tests/events-stream-closed.vitest.ts", // 〔W5-UI〕会话流 closed 格 ⇒ 恰好一条 toast
     "tests/bridge/local_accounts_tests.rs", // 〔C4d〕从 `INTEGRATION` 挪来（见那一行的墓碑）
@@ -276,7 +277,6 @@ const SCAN: &[&str] = &[
     "tests/backend/control/gate_tests.rs",
     "tests/backend/control/kill_tests.rs",
     "tests/backend/control/launch_tests.rs",
-    "tests/backend/control/tmux_hook_tests.rs",
     "tests/backend/dial_sftp_tests.rs",
     "tests/backend/dial_tests.rs",
     "tests/backend/files/module_boundary_guard.rs",
@@ -309,7 +309,6 @@ const SCAN: &[&str] = &[
     "tests/base-flag-contract-guard.vitest.ts",
     "tests/bridge/acct_iso_deploy_tests.rs",
     "tests/bridge/agent_dispatch_registry_tests.rs",
-    "tests/bridge/apikey_remote_tests.rs",
     "tests/bridge/arch_doc_shape_guard_tests.rs",
     "tests/bridge/asset_sync_tests.rs", // 〔AS2〕
     "tests/bridge/atomic_replace_registry_tests.rs",
@@ -490,6 +489,8 @@ const SCAN: &[&str] = &[
 
 /// 集成层：碰 OS（起进程 · 套接字 · 真文件系统写 · 临时目录）。
 const INTEGRATION: &[&str] = &[
+    "tests/backend/control/tmux_hook_tests.rs", // 〔HX2〕读真 `/proc` 的那一条进来之后判别器判集成（SCAN → INTEGRATION）
+    "tests/backend/platform/lock_tests.rs",     // 〔HX2〕目录锁：真目录、真线程
     "tests/backend/own_dir_tests.rs", // 〔HX1 续〕O1–O3 自家目录一律 0700、建目录调用点两向登记
     "tests/bridge/config_tests.rs",   // 〔CFG1〕J2/J3 12 线程 × 20 轮并发补丁写 · 补丁语义
     "tests/backend/control/overwrite_atomic_tests.rs", // 〔HX1〕W1 ulimit -f 下子进程写到一半被 SIGXFSZ 杀，目标仍是旧整份
@@ -727,6 +728,11 @@ enum Trigger {
 /// 真机层：逐条登记（`(文件, 测试名 / TS 那一处的条件, 触发者)`）。
 /// 人群 = 两棵 Rust 测试树里每一条 `#[ignore]` ＋ TS 测试里每一处 `skipIf` / `runIf` / `.skip(`。
 const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
+    (
+        "tests/backend/control/tmux_hook_tests.rs",
+        "hx2_real_tmux_reading_on_a_private_socket",
+        Trigger::Manual("〔HX2〕读数不是判据：真 tmux 私有 socket（`-L`）上装一趟 hook 看段内格位；跑法住它自己的头注"),
+    ),
     (
         "tests/backend/control/overwrite_atomic_tests.rs",
         "w1_child",

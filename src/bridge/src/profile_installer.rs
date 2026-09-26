@@ -75,6 +75,7 @@ pub struct BlockState {
     pub version: Option<String>,
     /// 〔TL1 · 4C〕块在、而版本串不是这一版模板的那个 ⇒ `true`（只有 PowerShell 那一对有版本串）。
     /// v3 起模板结尾多一行接上别名文件（`设计/71 §6.1`）—— 装着 v2 的人**重装一次**才带上那一行，界面据此提示。
+    /// 〔HX2 · 4D〕v4 起 `__ccm_bind` 找 monitor 数据目录走唯一出口（渲染时填）—— 装着 v3 的人同样重装一次。
     /// 「这一版是哪个」只从模板本身读（[`current_block_version`]），不另写一份字面量。
     pub outdated: bool,
     /// 块外已有的同名函数（与 [`CC_FUNCTION_NAME`] 同名）。
@@ -161,7 +162,10 @@ pub fn plan_install(
 ) -> Result<String, String> {
     match flavor {
         Shell::PowerShell => {
-            let code = render_cc_code(command_name, include_cc_function);
+            // 〔HX2〕数据目录解不出（`CCM_DATA_DIR` 给了但不是绝对路径 / 找不到家目录）⇒ 拒，不往 `$PROFILE` 里写一个猜的路径。
+            let dir = crate::paths::resolve_monitor_data_dir()
+                .ok_or_else(|| copy_text("rsProfileInstaller.ps.noDataDir", &[]))?;
+            let code = render_cc_code(command_name, include_cc_function, &dir);
             replace_or_append_block(existing, &code, what)
         }
         Shell::Posix => {
@@ -954,7 +958,17 @@ pub fn user_path_remove() -> Result<(), String> {
 /// `src/settings/machine-aliases.ts`，是 PowerShell 那一侧的别名块，生成的别名在 PowerShell 上照样不带 tmux 那一族），
 /// 现打 `cct` **零命中**。⇒ **Windows 文案里今天一个 `cct` 都没有，没有东西要摘。**
 /// 读数 · 量法 · 分母住 `tests/evidence/K-R135-摸底.md`。
-pub fn render_cc_code(command_name: &str, include_cc_function: bool) -> String {
+///
+/// 〔HX2 · RT1 F6〕`monitor_data_dir` 填进模板那一格 `{{MONITOR_DATA_DIR}}`（`__ccm_bind` 找 `ps-registry/` · `ps-await/` ·
+/// `auto-launch.json` 的那个目录），按 PowerShell 单引号字面量写。它只有一个出口 —— `paths::resolve_monitor_data_dir`
+/// （跟 `CCM_DATA_DIR`），由 [`plan_install`] 取了交进来。
+/// 〔墓碑 —— 从前模板里自己写死一份 `Join-Path $env:USERPROFILE '.claude\claudecode-frontend'`：数据目录的第二个住址，
+///  `CCM_DATA_DIR` 隔离跑时每次 `cc` 白等 3 s ＋ 一句「绑定超时」（`第四波记录/RT1.md §8` F6）。〕
+pub fn render_cc_code(
+    command_name: &str,
+    include_cc_function: bool,
+    monitor_data_dir: &Path,
+) -> String {
     let safe_name = sanitize_command_name(command_name);
     let cc_block = if include_cc_function {
         // 🔴 `KR135D2`：**这一行就是翻正的落点。** `{word}` 现算自 `CCM_ENTRY_WORD`
@@ -968,7 +982,17 @@ pub fn render_cc_code(command_name: &str, include_cc_function: bool) -> String {
     };
     // 〔`R86`〕这里原先是一个三项拼装：会话级 PATH 那一段 ＋ 它的说明注释 ＋ `cc` 那一块。
     // 前两项删了（理由住上面那段横幅），于是**装进 profile 的东西只剩 `cc` 那一块**。
-    CC_TEMPLATE.replace("{{CC_FUNCTION_BLOCK}}", &cc_block)
+    CC_TEMPLATE
+        .replace("{{CC_FUNCTION_BLOCK}}", &cc_block)
+        .replace(
+            "{{MONITOR_DATA_DIR}}",
+            &ps_single_quoted(&monitor_data_dir.to_string_lossy()),
+        )
+}
+
+/// PowerShell 单引号字面量：`'…'` 包裹，内部 `'` → `''`（同 `launch.rs` 填 `{{AWAIT_DIR}}` 那一格的写法）。
+fn ps_single_quoted(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "''"))
 }
 
 /// idempotent 安装：把 cc function 块写到 profile，已有 ccm 块则原地替换。
