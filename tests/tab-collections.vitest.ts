@@ -147,13 +147,13 @@ describe("〔TL2 · E13〕到上界：为什么没做", () => {
 
   it("拖放：从结果判 —— 满组 · 建不出组 · 进去了 · 落到末尾 · 压在自己身上", () => {
     const full = [fullOf("g", "白天", "b", MEMBER_CAP)];
-    expect(dropRefusal(full, ["a"], { kind: "onto", sid: "b" })).toEqual({ kind: "members-full", name: "白天" });
-    expect(dropRefusal(full, ["a"], { kind: "before", sid: "b" })).toEqual({ kind: "members-full", name: "白天" });
-    expect(dropRefusal(many(1), ["a"], { kind: "onto", sid: "b" })).toEqual({ kind: "collections-full" });
-    expect(dropRefusal([c("g", "白天", ["b", "a"])], ["a"], { kind: "onto", sid: "b" })).toBeNull();
-    expect(dropRefusal(many(1), ["a"], { kind: "before", sid: "b" }), "插到一个散 tab 前 = 本来就不进组").toBeNull();
-    expect(dropRefusal(full, ["a"], { kind: "end" })).toBeNull();
-    expect(dropRefusal(many(1), ["a", "b"], { kind: "onto", sid: "b" })).toBeNull();
+    expect(dropRefusal(full, "a", { kind: "onto", sid: "b" })).toEqual({ kind: "members-full", name: "白天" });
+    expect(dropRefusal(full, "a", { kind: "before", sid: "b" })).toEqual({ kind: "members-full", name: "白天" });
+    expect(dropRefusal(many(1), "a", { kind: "onto", sid: "b" })).toEqual({ kind: "collections-full" });
+    expect(dropRefusal([c("g", "白天", ["b", "a"])], "a", { kind: "onto", sid: "b" })).toBeNull();
+    expect(dropRefusal(many(1), "a", { kind: "before", sid: "b" }), "插到一个散 tab 前 = 本来就不进组").toBeNull();
+    expect(dropRefusal(full, "a", { kind: "end" })).toBeNull();
+    expect(dropRefusal(many(1), "b", { kind: "onto", sid: "b" })).toBeNull();
   });
 
   it("两句话：各说各的、都带上界数、零占位符残留", () => {

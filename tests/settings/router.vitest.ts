@@ -93,7 +93,7 @@ describe("SettingsRouter", () => {
     const r = new SettingsRouter({ landingId: "a" });
     r.addRoute({ id: "a", title: "A", element: page("a") });
     expect(() => r.addRoute({ id: "a", title: "A2", element: page("a2") })).toThrow(
-      /重复注册/,
+      /registered route id .* twice/,
     );
   });
 

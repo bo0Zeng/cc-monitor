@@ -30,6 +30,7 @@
 
 import { dispatcher } from "../keybindings/registry";
 import { CcBusSection } from "../settings/cc-bus-section";
+import { copyText } from "../copy-table";
 
 export class CcBusView {
   private root: HTMLElement;
@@ -51,11 +52,11 @@ export class CcBusView {
     const back = document.createElement("button");
     back.type = "button";
     back.className = "cc-bus-view-back";
-    back.textContent = "← 返回";
+    back.textContent = copyText("ccBusView.build.back");
     back.addEventListener("click", () => this.close());
     const title = document.createElement("span");
     title.className = "cc-bus-view-title";
-    title.textContent = "cc-bus 驾驶舱";
+    title.textContent = copyText("ccBusView.build.title");
     bar.append(back, title);
     view.appendChild(bar);
 

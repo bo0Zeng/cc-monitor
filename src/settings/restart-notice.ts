@@ -53,6 +53,7 @@
  * ⇒ 真重启：`bootId` 变了 ⇒ 条消失（对的，改动已生效）。
  */
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
+import { copyText } from "../copy-table";
 
 type Listener = (reasons: string[]) => void;
 
@@ -172,7 +173,7 @@ export function createRestartBar(): HTMLElement {
       return;
     }
     bar.hidden = false;
-    bar.textContent = `有改动需重启 monitor 才生效：${list.join(" · ")}`;
+    bar.textContent = copyText("restartNotice.render.pending", { list: list.join(copyText("restartNotice.render.listSep")) });
   };
   render(restartReasons());
   subscribeRestart(render);

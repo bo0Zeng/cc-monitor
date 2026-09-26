@@ -14,64 +14,57 @@
 //! 都还在原处。这里只管**人群不许漏**。
 
 use std::collections::BTreeMap;
-use std::path::Path;
 
 /// 仓里要扫的生产源码：`src/` 下（摘掉 `vendor/`）的 Rust · TS · shell（`.sh` 与无后缀带 shebang 的脚本）。
 /// 返回 `(仓内相对路径, 剥掉注释与测试段之后的正文)`。
 fn production_sources() -> Vec<(String, String)> {
     let root = crate::guard_support::repo_root();
     let src = root.join("src");
+    // 遍历口径只有一份（`guard_core`）：带扩展名的那几种 ＋ 整棵 `src/shared/`（cc-bus 脚本没有扩展名）。
+    let mut files = guard_core::scan_tree_excluding(&src, &["rs", "ts", "sh"], &[]);
+    files.extend(guard_core::scan_tree_excluding(
+        &src.join("shared"),
+        &[],
+        &[],
+    ));
     let mut out = Vec::new();
-    let mut stack = vec![src.clone()];
-    while let Some(d) = stack.pop() {
-        for e in std::fs::read_dir(&d).unwrap_or_else(|e| panic!("读目录 {d:?} 失败：{e}")) {
-            let p = e.expect("dir entry").path();
-            let name = p
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default();
-            if p.is_dir() {
-                if !matches!(
-                    name.as_str(),
-                    "vendor" | "node_modules" | "target" | "embedded-backends" | "native-backend"
-                ) {
-                    stack.push(p);
-                }
-                continue;
-            }
-            let rel = p
-                .strip_prefix(&root)
-                .unwrap()
-                .to_string_lossy()
-                .replace('\\', "/");
-            let Ok(raw) = std::fs::read_to_string(&p) else {
-                continue;
-            };
-            let body = if name.ends_with(".rs") {
-                guard_core::strip_comment_lines(&guard_core::production_code(&raw))
-            } else if name.ends_with(".ts") && !name.ends_with(".d.ts") {
-                guard_core::strip_comment_lines(&raw)
-            } else if name.ends_with(".sh")
-                || (!name.contains('.')
-                    && raw
-                        .lines()
-                        .next()
-                        .is_some_and(|l| l.starts_with("#!") && l.contains("sh")))
-            {
-                guard_core::strip_hash_comment_lines(&raw)
-            } else {
-                continue;
-            };
-            out.push((rel, body));
+    for (p, raw) in files {
+        let rel = p
+            .strip_prefix(&root)
+            .unwrap_or(&p)
+            .to_string_lossy()
+            .replace('\\', "/");
+        if rel.contains("/vendor/") || out.iter().any(|(r, _): &(String, String)| *r == rel) {
+            continue;
         }
+        let name = rel.rsplit('/').next().unwrap_or_default().to_string();
+        let body = if name.ends_with(".rs") {
+            guard_core::strip_comment_lines(&guard_core::production_code(&raw))
+        } else if name.ends_with(".ts") && !name.ends_with(".d.ts") {
+            guard_core::strip_comment_lines(&raw)
+        } else if name.ends_with(".sh")
+            || (!name.contains('.')
+                && raw
+                    .lines()
+                    .next()
+                    .is_some_and(|l| l.get(..2) == Some("#!") && l.contains("sh")))
+        {
+            guard_core::strip_hash_comment_lines(&raw)
+        } else {
+            continue;
+        };
+        out.push((rel, body));
     }
     out.sort();
     assert!(
         out.len() > 200
             && out
                 .iter()
-                .any(|(r, _)| r == "src/backend/observe/watcher.rs"),
-        "扫到的生产源码只有 {} 份、或缺 watcher.rs —— 根没对上，下面的相等会空真",
+                .any(|(r, _)| r == "src/backend/observe/watcher.rs")
+            && out
+                .iter()
+                .any(|(r, _)| r == "src/shared/cc-bus/scripts/cc-kill"),
+        "扫到的生产源码只有 {} 份、或缺 watcher.rs / cc-kill —— 根没对上，下面的相等会空真",
         out.len()
     );
     out
@@ -205,7 +198,7 @@ const TMUX_PRINT_SITES: &[(&str, &str, Carry, usize, &str)] = &[
     ("src/backend/observe/watcher.rs", "display-message", Carry::Env, 1, "`sh -c`，同上"),
     ("src/bridge/src/backend/control/tmux.rs", "ls", Carry::Flag, 1, "跨 SSH 串；`tmux_tests.rs` 钉旗在子命令前"),
     ("src/backend/control/ccm/plan.rs", "list-panes", Carry::None, 1, "无害：只读 `#{pane_id}`（`%N`，ASCII，单列、不按 TAB 切）—— IV1 报过"),
-    ("src/backend/control/ccm/mod.rs", "display-message", Carry::None, 2, "🔴 违反·待裁：`BUS_ID_RECIPE` 读 `#S`（会话名，可以非 ASCII）⇒ 非 UTF-8 客户端下 codex 的 cc-bus 身份被改写。另 1 处是一句说明文字里引着这条配方（不是调用点，认法分不开，如实计入）"),
+    ("src/backend/control/ccm/mod.rs", "display-message", Carry::None, 1, "🔴 违反·待裁：`BUS_ID_RECIPE` 读 `#S`（会话名，可以非 ASCII）⇒ 非 UTF-8 客户端下 codex 的 cc-bus 身份被改写"),
     ("src/shared/cc-bus/scripts/cc-bus-adapt-posix.sh", "display-message", Carry::None, 1, "无害：只读 `#{pane_pid}`（数字）"),
     ("src/shared/cc-bus/scripts/cc-kill", "display-message", Carry::None, 2, "无害：`#{pane_pid}` · `#{session_windows}`（数字）"),
     ("src/shared/cc-bus/scripts/cc-kill", "list-panes", Carry::None, 1, "无害：`#{pane_pid}`（数字）"),
@@ -273,10 +266,16 @@ fn quote_aliases(srcs: &[(String, String)]) -> (Vec<String>, Vec<String>) {
                 continue;
             };
             let inner = sig[open + 1..open + close].trim();
-            if inner.starts_with("shell_quote_core::posix_quote(")
-                && inner.ends_with(')')
-                && !inner.contains(';')
-            {
+            // 整个函数体（去空白）恰好是 `shell_quote_core::posix_quote(<一个标识符>)` —— 按段相等比，不做子串匹配。
+            let forwards = inner.split_once('(').is_some_and(|(head, tail)| {
+                head == "shell_quote_core::posix_quote"
+                    && tail.len() > 1
+                    && tail[..tail.len() - 1]
+                        .chars()
+                        .all(|c| c.is_alphanumeric() || c == '_')
+                    && tail.chars().last() == Some(')')
+            });
+            if forwards {
                 if !names.contains(&name) {
                     names.push(name);
                 }
@@ -293,7 +292,12 @@ fn quote_sites() -> (BTreeMap<String, usize>, Vec<String>) {
     let (names, alias_files) = quote_aliases(&srcs);
     let mut out: BTreeMap<String, usize> = BTreeMap::new();
     for (rel, body) in &srcs {
-        if !rel.ends_with(".rs") || rel.starts_with("src/bridge/crates/shell-quote-core/") {
+        if !rel.ends_with(".rs")
+            || rel
+                .split('/')
+                .take(4)
+                .eq(["src", "bridge", "crates", "shell-quote-core"])
+        {
             continue;
         }
         let mut n = 0usize;
@@ -340,8 +344,8 @@ const QUOTE_SITES: &[QuoteRow] = &[
     ("src/backend/asset_sync.rs", 3, &[],
      "那台后端的路径（可达表登记来的，源头是用户在机器页填的 `backendPath`）",
      "要推过去的资产目录 JSON（本侧序列化）"),
-    ("src/backend/control/ccm/plan.rs", 27, &[("src/backend/control/ccm/plan.rs", "validate_tmux_name")],
-     "cwd · 模型名 · `--ccm-sid` · 账号配置目录 · 继承来的 `CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL` / 启动 id · 派生登记的备注（这一层都不判；`qarg` 条件包装也算在这里）",
+    ("src/backend/control/ccm/plan.rs", 29, &[("src/backend/control/ccm/plan.rs", "validate_tmux_name")],
+     "cwd · 模型名 · `--ccm-sid` · 账号配置目录 · 继承来的 `CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL`（〔US1〕`base_url_word` 认出是我们注入的那一形才拆成前后两段，认不出原样 quote）/ 启动 id · 派生登记的备注（这一层都不判；`qarg` 条件包装也算在这里）",
      "tmux 目标 `=名:` 的形 · 两个提示格式串常量 · cc-bus 脚本路径 · 本侧拼好的载荷"),
     ("src/backend/control/tmux_hook.rs", 2, &[], "",
      "本进程自己的可执行文件路径 · 本侧拼的 hook 命令"),
@@ -354,15 +358,15 @@ const QUOTE_SITES: &[QuoteRow] = &[
      ""),
     ("src/bridge/src/backend/control/local_backend.rs", 1, &[], "",
      "本机后端的落点（本侧算的 `~/.cc-monitor/bin/…`）"),
-    ("src/bridge/src/backend/control/payload.rs", 10,
+    ("src/bridge/src/backend/control/payload.rs", 11,
      &[
          ("src/bridge/src/backend/control/payload.rs", "config_dir_command_safe"),
          ("src/bridge/src/backend/control/payload.rs", "rbind_token_shape_ok"),
-         ("src/bridge/src/backend/control/payload.rs", "relay_base_url_shape_ok"),
+         ("src/bridge/crates/relay-route-core/src/lib.rs", "base_url_shape_ok"), // 〔US1〕payload.rs 里是 `pub use … as relay_base_url_shape_ok`
          ("src/bridge/src/backend/control/payload.rs", "check"),
      ],
      "模型名（刻意宽容渲染：渲错了远端 claude 自己报错）· cwd（只拒空串）",
-     "本侧渲染好的载荷整串"),
+     "本侧渲染好的载荷整串 · 〔US1〕中转前缀里的中转口地址与钥匙文件路径（本侧的）"),
     ("src/bridge/src/backend/control/tmux.rs", 1, &[("src/bridge/src/backend/control/tmux.rs", "is_safe_tmux_target")], "", ""),
     ("src/bridge/src/filewin/shell.rs", 1, &[],
      "文件窗口的当前目录（那台列出来的路径，自由文本；只拒空）",

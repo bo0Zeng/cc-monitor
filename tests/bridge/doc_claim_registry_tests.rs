@@ -2538,14 +2538,21 @@ fn section_id_prefix(s: &str) -> String {
 fn invariant_refs_in(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     for (at, _) in text.match_indices("INVARIANTS") {
-        let mut rest = &text[at + "INVARIANTS".len()..];
-        rest = rest.strip_prefix(".md").unwrap_or(rest);
-        rest = rest.strip_prefix('`').unwrap_or(rest);
-        rest = rest.strip_prefix(' ').unwrap_or(rest);
-        let Some(r) = rest.strip_prefix('§') else {
+        // `INVARIANTS` 与 `§` 之间只许有 `.md` · 反引号 · 空格这几样（至多 5 个字符）。
+        let rest = &text[at + "INVARIANTS".len()..];
+        let Some(sect) = rest
+            .char_indices()
+            .take(6)
+            .find(|&(_, c)| c == '§')
+            .map(|(i, _)| i)
+        else {
             continue;
         };
-        let id = section_id_prefix(r.strip_prefix(' ').unwrap_or(r));
+        if !rest[..sect].chars().all(|c| ".md` ".contains(c)) {
+            continue;
+        }
+        let r = rest[sect + '§'.len_utf8()..].trim_start_matches(' ');
+        let id = section_id_prefix(r);
         if !id.is_empty() {
             out.push(id);
         }
@@ -2588,42 +2595,30 @@ fn every_invariants_section_cited_in_code_exists() {
     let root = repo_root();
     let mut total = 0usize;
     let mut bad = Vec::new();
-    let mut stack = vec![root.join("src"), root.join("tests")];
-    while let Some(d) = stack.pop() {
-        for e in std::fs::read_dir(&d).unwrap_or_else(|e| panic!("读目录 {d:?} 失败：{e}")) {
-            let p = e.expect("dir entry").path();
-            let name = p
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default();
-            if p.is_dir() {
-                if !matches!(
-                    name.as_str(),
-                    "vendor" | "node_modules" | "target" | "__fixtures__"
-                ) {
-                    stack.push(p);
-                }
-                continue;
-            }
-            if !["rs", "ts", "mts", "js", "py", "sh"]
-                .iter()
-                .any(|x| name.ends_with(&format!(".{x}")))
-            {
-                continue;
-            }
-            let Ok(text) = std::fs::read_to_string(&p) else {
-                continue;
-            };
-            for id in invariant_refs_in(&text) {
-                total += 1;
-                if !invariant_ref_resolves(&secs, &id) {
-                    let rel = p
-                        .strip_prefix(&root)
-                        .unwrap()
-                        .to_string_lossy()
-                        .replace('\\', "/");
-                    bad.push(format!("{rel}  §{id}"));
-                }
+    let exts = ["rs", "ts", "mts", "js", "py", "sh"];
+    let files = guard_core::scan_tree_excluding(&root.join("src"), &exts, &[])
+        .into_iter()
+        .chain(guard_core::scan_tree_excluding(
+            &root.join("tests"),
+            &exts,
+            &[],
+        ));
+    for (p, text) in files {
+        let rel = p
+            .strip_prefix(&root)
+            .unwrap_or(&p)
+            .to_string_lossy()
+            .replace('\\', "/");
+        if rel.contains("/vendor/")
+            || rel.contains("/node_modules/")
+            || rel.contains("/__fixtures__/")
+        {
+            continue;
+        }
+        for id in invariant_refs_in(&text) {
+            total += 1;
+            if !invariant_ref_resolves(&secs, &id) {
+                bad.push(format!("{rel}  §{id}"));
             }
         }
     }

@@ -109,21 +109,20 @@ fn commit_with_overwrite_replaces_the_target_whole() {
     assert_eq!(std::fs::read(root.join("c.txt")).unwrap(), b"fresh");
 }
 
-/// 🔴🔴 **提交先过围栏**：目标是一份会话文件 / 带上跳段 ⇒ 拒；盘上零新增；暂存件原样。
+/// 🔴🔴 **提交先过路径解析**：目标带上跳段 / 是绝对路径 ⇒ 拒；盘上零新增；暂存件原样。
 ///
 /// 这一条就是 `设计/60 §13.6` 判据 3 的行为那一半：把 `commit_upload` 里那句
-/// 围栏换成「直接拼 `root.join(rel)`」⇒ 会话文件那一格会真的被写进去 ⇒ 红。
+/// 路径解析换成「直接拼 `root.join(rel)`」⇒ 上跳那一格会真的落到根外 ⇒ 红。
+/// 〔FN1 · V119〕从前第一格是「目标是一份会话文件 ⇒ 拒」；用户「文件管理器全部都可以改. 不需要任何围栏」
+/// ⇒ 那一格翻成正控（提交**落得进**会话文件那个位置），见本条末尾。
 #[test]
 fn commit_goes_through_the_fence_and_leaves_the_disk_alone_when_refused() {
     let (home, base) = rig("fence");
-    // 目标根本身合法地落在 `~/.claude/projects/-x` 底下（用户 09-23 裁「可以」），
-    // 而写点拼出来恰好是一份会话文件（`projects/` 下恰 2 段的 jsonl）。
     let proj = base.join(".claude").join("projects").join("-x");
     std::fs::create_dir_all(&proj).unwrap();
     let staged = stage(&home, KEY, b"would clobber a session");
     // ⚠ 「盘上零新增」逐条看**那一次若没被拦会落到哪**（不列目录：扫描型判据不许在测试段裸遍历）。
     for (root, rel, would_land) in [
-        (proj.as_path(), "abc.jsonl", proj.join("abc.jsonl")),
         (
             base.as_path(),
             "../escape.bin",
@@ -139,8 +138,14 @@ fn commit_goes_through_the_fence_and_leaves_the_disk_alone_when_refused() {
             would_land.display()
         );
     }
-    assert!(!proj.join("abc.jsonl").exists());
     assert_eq!(std::fs::read(&staged).unwrap(), b"would clobber a session");
+    // 〔FN1 · V119〕正控：同一份暂存件提交到会话文件那个位置 ⇒ 落得进去。
+    commit_upload(&home, KEY, &proj, "abc.jsonl", false)
+        .expect("🔴 V119：提交到会话文件的位置被拒了");
+    assert_eq!(
+        std::fs::read(proj.join("abc.jsonl")).unwrap(),
+        b"would clobber a session"
+    );
 }
 
 /// ★ 暂存件不在 ⇒ `io_failed`；暂存件是一条链接 ⇒ `refused`（不许挪走链接指向之外的东西）。
@@ -575,7 +580,8 @@ fn a_chunk_is_written_once_and_never_through_a_link() {
     );
 }
 
-/// ★ 提交先过写面那道围栏：会话文件 / 上跳 / 不存在的目标 ⇒ 拒、盘上零改动、块照样删掉。
+/// ★ 提交先过写面那道路径解析：上跳 / 不存在的目标 ⇒ 拒、盘上零改动、块照样删掉。
+/// 〔FN1 · V119〕从前第一格是「会话文件 ⇒ 拒」；今天那一格翻成正控：存盘改得动会话文件。
 #[test]
 fn a_text_commit_goes_through_the_write_fence() {
     let (home, root) = bare_rig("cfence");
@@ -583,17 +589,19 @@ fn a_text_commit_goes_through_the_write_fence() {
     std::fs::create_dir_all(&proj).unwrap();
     let session = proj.join("s.jsonl");
     std::fs::write(&session, b"{}\n").unwrap();
-    for (i, rel) in ["projects/-x/s.jsonl", "../escape.txt", "nope.txt"]
-        .iter()
-        .enumerate()
-    {
+    for (i, rel) in ["../escape.txt", "nope.txt"].iter().enumerate() {
         let key = format!("{:032x}", 0xa0 + i);
         send_chunk(&home, &key, 0, b"payload").unwrap();
         let e = send_commit(&home, &key, 1, 7, &root, rel).expect_err(rel);
         assert!(e.0 == "refused" || e.0 == "io_failed", "{rel}：{e:?}");
         assert!(chunks_left(&home, &key).is_empty(), "{rel}：块没删");
     }
-    assert_eq!(std::fs::read(&session).unwrap(), b"{}\n");
+    let key = format!("{:032x}", 0xaf);
+    send_chunk(&home, &key, 0, b"payload").unwrap();
+    send_commit(&home, &key, 1, 7, &root, "projects/-x/s.jsonl")
+        .expect("🔴 V119：存盘改不动会话文件");
+    assert!(chunks_left(&home, &key).is_empty(), "块没删");
+    assert_eq!(std::fs::read(&session).unwrap(), b"payload");
     assert!(
         !root.join("nope.txt").exists(),
         "不存在的目标被新建了 —— 存盘只改已在的文件"

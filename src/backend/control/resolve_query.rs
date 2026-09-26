@@ -22,6 +22,7 @@
 //! （post-/branch 正确 sid + kind，backend 深层权威）与 aterm `ResumePlan` 模板精确对齐**留 aterm 接
 //! DaemonTransport 时联调**（那时才真消费）。caps 用 tmux/pty 典型档、待后续 backend 探测细化。
 
+use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use std::io::Read;
 use std::path::Path;
@@ -148,8 +149,14 @@ pub fn run(_agent_home: &Path, _args: &[String]) -> i32 {
 /// 流通道那条有 `id`、可取消、不用为一次极小的 RPC 单开一整条 SSH exec。
 pub fn resolve_json_for_inbound(input: &str) -> Result<serde_json::Value, (&'static str, String)> {
     let json = resolve_from_json(input)?;
-    serde_json::from_str(&json)
-        .map_err(|e| ("serialize_failed", format!("CommandPlan 回读失败：{e}")))
+    serde_json::from_str(&json).map_err(|e| {
+        (
+            "serialize_failed",
+            crate::common::contract::malformed(&format!(
+                "reading back the CommandPlan failed: {e}"
+            )),
+        )
+    })
 }
 
 /// 纯：ResumeSpec JSON 串 → CommandPlan JSON 串（或 `(code,message)`）。`run()` 与单测共用——
@@ -173,9 +180,9 @@ fn resolve(spec: &ResumeSpec) -> Result<CommandPlan, (&'static str, String)> {
     if !is_valid_session_id(&spec.session_id) {
         return Err((
             "invalid_session_id",
-            format!(
-                "sessionId 非法（须非空、仅 [0-9a-zA-Z_-]、≤128）：{:?}",
-                spec.session_id
+            copy_text(
+                "beResolveQuery.resolve.badSessionId",
+                &[("id", &format!("{:?}", spec.session_id))],
             ),
         ));
     }
@@ -207,7 +214,10 @@ fn resolve(spec: &ResumeSpec) -> Result<CommandPlan, (&'static str, String)> {
     if !is_shell_safe_base(&base) {
         return Err((
             "unsafe_launch_candidate",
-            format!("launchCandidate 含 shell 元字符/控制字符、拒入 command：{base:?}"),
+            copy_text(
+                "beResolveQuery.resolve.unsafeLauncher",
+                &[("base", &format!("{:?}", base))],
+            ),
         ));
     }
     // command（sid 过 is_valid_session_id、base 过 is_shell_safe_base）。**golden-parity aterm

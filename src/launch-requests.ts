@@ -13,6 +13,7 @@ import type {
   LaunchModifiers,
   LaunchPlan,
 } from "./launch-plan.ts";
+import { copyText } from "./copy-table";
 
 export interface LaunchPlanBuild {
   ctx: LaunchContext;
@@ -46,7 +47,7 @@ export function planResumeDirect(
 ): LaunchPlanBuild {
   const { configDir, accountName, modelOverride, rbindToken } = mods;
   if (!isValidSessionId(sid)) {
-    throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
+    throw new Error(copyText("launchRequests.bad.sid", { value: JSON.stringify(sid) }));
   }
   const ctx: LaunchContext = {
     transport: { kind: "ssh" },
@@ -72,7 +73,7 @@ export function planResumeTmux(
 ): LaunchPlanBuild {
   const { configDir, accountName, modelOverride, rbindToken } = mods;
   if (!isValidSessionId(sid)) {
-    throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
+    throw new Error(copyText("launchRequests.bad.sid", { value: JSON.stringify(sid) }));
   }
   // F13（用户 2026-08-03：「要撞名检查」）：**这里原本有一个产名的默认值，已删。**
   //
@@ -89,7 +90,7 @@ export function planResumeTmux(
   // ⇒ 把这一路的 `name` 全改成必填，让 `tsc` 把「碰巧」变成「不可能」。
   const tmuxName = name;
   if (!/^[A-Za-z0-9_][A-Za-z0-9_-]*$/.test(tmuxName)) {
-    throw new Error(`非法 tmux 会话名（拒绝拼入命令）: ${JSON.stringify(tmuxName)}`);
+    throw new Error(copyText("launchRequests.bad.tmuxName", { value: JSON.stringify(tmuxName) }));
   }
   const ctx: LaunchContext = {
     transport: { kind: "ssh" },
@@ -114,10 +115,10 @@ export function planResumeIntoExistingTmux(
 ): LaunchPlanBuild {
   const { configDir, accountName, modelOverride, rbindToken } = mods;
   if (!isValidSessionId(sid)) {
-    throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
+    throw new Error(copyText("launchRequests.bad.sid", { value: JSON.stringify(sid) }));
   }
   if (!/^[A-Za-z0-9_][A-Za-z0-9_-]*$/.test(name)) {
-    throw new Error(`非法 tmux 会话名（拒绝拼入命令）: ${JSON.stringify(name)}`);
+    throw new Error(copyText("launchRequests.bad.tmuxName", { value: JSON.stringify(name) }));
   }
   const ctx: LaunchContext = {
     transport: { kind: "ssh" },
@@ -143,7 +144,7 @@ export function planLauncher(
   const { configDir, accountName, modelOverride, rbindToken } = mods;
   const name = tmuxName.trim();
   if (!isValidNewTmuxName(name)) {
-    throw new Error(`非法 tmux 会话名（拒绝拼入命令）: ${JSON.stringify(name)}`);
+    throw new Error(copyText("launchRequests.bad.tmuxName", { value: JSON.stringify(name) }));
   }
   const ctx: LaunchContext = {
     transport: { kind: "ssh" },
@@ -189,7 +190,7 @@ export function planLauncher(
 export function validateLocalLaunch(action: LaunchAction, cwd: string | null): void {
   void cwd; // 保留在签名里：调用点按「动作 + 目录」成对传，未来若加 cwd 校验就落在这
   if (action.kind === "resume" && !isValidSessionId(action.sid)) {
-    throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(action.sid)}`);
+    throw new Error(copyText("launchRequests.bad.sid", { value: JSON.stringify(action.sid) }));
   }
 }
 
@@ -201,7 +202,7 @@ export function validateLocalLaunch(action: LaunchAction, cwd: string | null): v
  *  同向的闸（万一将来这里开始收 `mods`，它也不会往 attach 里注一个没人读的敏感值）。 */
 export function planAttach(name: string): LaunchPlanBuild {
   if (!isValidTmuxName(name)) {
-    throw new Error(`非法 tmux 会话名(拒绝拼入命令): ${JSON.stringify(name)}`);
+    throw new Error(copyText("launchRequests.bad.tmuxName", { value: JSON.stringify(name) }));
   }
   const ctx: LaunchContext = {
     transport: { kind: "ssh" },

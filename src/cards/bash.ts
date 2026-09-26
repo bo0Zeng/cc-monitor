@@ -14,6 +14,8 @@
  * 渲染全部 createElement + textContent，零 innerHTML。
  */
 
+import { copyText } from "../copy-table";
+
 export interface BashInput {
   command: string;
 }
@@ -110,7 +112,7 @@ export function buildBashInputCard(
 
   const prompt = document.createElement("span");
   prompt.className = "bash-prompt";
-  prompt.textContent = "❯";
+  prompt.textContent = copyText("bash.input.prompt");
   card.appendChild(prompt);
 
   const cmd = document.createElement("code");
@@ -139,10 +141,10 @@ export function buildBashOutputCard(
   header.className = "bash-output-header";
   const icon = document.createElement("span");
   icon.className = "bash-prompt";
-  icon.textContent = "▤";
+  icon.textContent = copyText("bash.output.icon");
   const label = document.createElement("span");
   label.className = "bash-output-label";
-  label.textContent = "bash 输出";
+  label.textContent = copyText("bash.output.title");
   const ts = document.createElement("span");
   ts.className = "bash-ts";
   ts.textContent = formatTime(timestamp);
@@ -164,7 +166,7 @@ export function buildBashOutputCard(
   if (!stdout && !stderr) {
     const empty = document.createElement("div");
     empty.className = "bash-output-empty";
-    empty.textContent = "（无输出）";
+    empty.textContent = copyText("bash.output.empty");
     card.appendChild(empty);
   }
   return card;
@@ -185,7 +187,7 @@ function buildOutputPre(text: string, cls: string): HTMLElement {
   const expand = document.createElement("button");
   expand.type = "button";
   expand.className = "block-body-show-full";
-  expand.textContent = `显示完整输出 (${lines.length} 行)`;
+  expand.textContent = copyText("bash.output.showAll", { n: lines.length });
   expand.addEventListener(
     "click",
     () => {

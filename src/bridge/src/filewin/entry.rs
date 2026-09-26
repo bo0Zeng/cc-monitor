@@ -50,6 +50,7 @@
 //! **这一刀没碰** —— `src/main.ts` 不在本刀写区。要把原生窗口接到顶栏上，
 //! 得连那颗按钮一起改，那是下一刀的事（而且那一刀正好是「旧面板退役」那一刀）。
 
+use crate::copy_table::copy_text;
 use crate::ssh_source::RemoteConfig;
 
 use super::proc::{open_in_new_process, OpenRequest};
@@ -103,7 +104,10 @@ pub fn plan_target(path: &str, reveal_file: Option<&str>) -> Result<Target, Stri
     };
     let name = super::source::remote_basename(f).to_string();
     if name.is_empty() {
-        return Err(format!("`{f}` 看不出要高亮哪个文件"));
+        return Err(copy_text(
+            "rsFilewinEntry.plan.noTarget",
+            &[("target", &f.to_string())],
+        ));
     }
     // 🔴〔2026-09-23 本机侧退役〕**这里少了一个占位配置，那是买到的东西之一。**
     //    从前 `parent_dir` 的签名吃 `&Source`（两侧不是同一个切法），于是这一行
@@ -170,8 +174,8 @@ pub async fn open_file_window(
         Target::Home => (ask_home(&source).await?, None),
     };
     // 🔴〔F2 · 2026-09-24〕通道没起来 ⇒ 开不了窗（`D11`：窗口只有这一条路够后端）。
-    let handoff = crate::chan::host::handoff()
-        .ok_or_else(|| "主程序的通道口没起来，文件窗口够不着后端".to_string())?;
+    let handoff =
+        crate::chan::host::handoff().ok_or_else(|| copy_text("rsFilewinEntry.open.noHost", &[]))?;
     // ① 先真的列一趟 —— 〔F2〕问那台机器上的后端，**与窗口里那一次走同一条路**：
     //    通道宿主注入给路由器的那个句柄（`chan::host::InboundBackends`）。列不出来就别开窗。
     let rows = list_first_screen(&source, &path).await?;
@@ -194,7 +198,7 @@ pub async fn open_file_window(
         handoff,
         bookmarks,
     })
-    .map_err(|why| format!("窗口没起来：{why}"))?;
+    .map_err(|why| copy_text("rsFilewinEntry.open.failed", &[("why", &why.to_string())]))?;
     tracing::info!("文件窗口起在进程 {pid} 上（{n} 行已经交给它了）");
     Ok(n)
 }
@@ -213,10 +217,10 @@ pub fn carry_legacy(
     legacy: &super::bookmarks::Book,
 ) -> Result<usize, String> {
     let Some(file) = file else {
-        return Err("老面板的书签搬不过来：找不到本程序的数据目录（旧书签还留在原处）".to_string());
+        return Err(copy_text("rsFilewinEntry.legacy.noDataDir", &[]));
     };
     super::bookmarks::carry(file, legacy)
-        .map_err(|e| format!("老面板的书签搬不过来（旧书签还留在原处）：{e}"))
+        .map_err(|e| copy_text("rsFilewinEntry.legacy.failed", &[("e", &e.to_string())]))
 }
 
 /// 开窗之前那一屏 —— 问后端 `files-ls`，经通道宿主的生产句柄（monitor 进程里）。
@@ -256,8 +260,10 @@ async fn host_ask(
 ) -> Result<serde_json::Value, String> {
     use crate::chan::router::Backends as _;
     use crate::chan::wire::{Body, CancelToken, Op};
-    let payload =
-        Body(serde_json::to_vec(args).map_err(|e| format!("`{cmd}` 的参数拼不出来：{e}"))?);
+    let payload = Body(
+        serde_json::to_vec(args)
+            .map_err(|e| copy_text("rsFilewinEntry.ask.badArgs", &[("e", &e.to_string())]))?,
+    );
     let body = crate::chan::host::InboundBackends
         .call(
             source.origin(),
@@ -268,7 +274,8 @@ async fn host_ask(
         )
         .await
         .map_err(|e| super::source::said(cmd, &e))?;
-    serde_json::from_slice(&body.0).map_err(|e| format!("`{cmd}` 的应答读不动：{e}"))
+    serde_json::from_slice(&body.0)
+        .map_err(|e| copy_text("rsFilewinEntry.ask.unreadable", &[("e", &e.to_string())]))
 }
 
 /// 开窗前那两问（home · 第一屏）各自的往返上限（调用方给的期限）。
