@@ -647,6 +647,8 @@ const INTEGRATION: &[&str] = &[
     "tests/naming/account-vs-relay-naming.vitest.ts",
     "tests/node-suite-registry-guard.vitest.ts",
     "tests/offline-cargo-cache.vitest.ts",
+    "tests/backend/observe/search_query_golden_tests.rs", // 〔SX1〕J1 合成语料写临时目录、对冻结金样
+    "tests/backend/observe/search_query_reading.rs", // 〔SX1〕秤（真机层那一条）：起 python3 丢页缓存
 ];
 
 /// 支撑：测试树里**没有一条测试**的那几份（夹具 / helper）。不是一层，是让分区闭合的补集。
@@ -898,6 +900,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "tests/backend/dial_compress_tests.rs",
         "zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced",
         Trigger::Filter { by: "tests/evidence/NT1-net-loopback.py", needle: "zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced" },
+    ),
+    (
+        "tests/backend/observe/search_query_reading.rs",
+        "sx1_real_history_search_reading",
+        Trigger::Manual("〔SX1〕读数不是判据：真规模本机历史只量冷首趟 / 热态耗时与条数；跑法住它自己的头注"),
     ),
 ];
 
