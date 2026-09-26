@@ -20,6 +20,7 @@
 //! | [`copy_across_refuses_what_it_cannot_do_and_sends_nothing`] | 没开双栏 / 没选 / 选中里有有损名 / 两栏同目录 ⇒ 出声、线上零条（带正控：合法那一摞恰好两条） | 零命中读的是线上那本账 |
 //! | [`copy_across_takes_the_whole_selection_and_a_directory_goes_recursive`] | 〔W5-FILES · `设计/60 §6.2`〕一摞（文件 ＋ 目录）⇒ 线上两行逐格相等，目录那行带 `recursive: true` | 期望手写；实得是合成后端真收到的 |
 //! | [`across_args_cuts_paths_at_the_common_directory`] | 公共前缀那一刀逐格相等（含只在根下相交的那一形） | 期望手写 |
+//! | [`dragging_rows_onto_the_other_side_copies_them_and_dropping_back_does_nothing`] | 〔W5-FILES · `设计/60 §6.2`「行拖到另一栏的手势」〕合成指针拖起左栏一行 ⇒ 拖着时画「复制 1 项到另一栏」、松在右栏 ⇒ 线上恰一条 `files-copy`（逐格相等）；阴性：拖回本栏松手 ⇒ 零条 | 实得是合成后端真收到的；期望手写 |
 //! | [`ctrl_t_and_ctrl_w_open_and_close_tabs_on_the_focused_side`] | 〔W5-FILES · `设计/60 §6.2` 标签页快捷键 ＋ `§6.3` 键盘四道闸〕Ctrl+T / Ctrl+W 只作用于焦点那一栏（两栏各自的标签数逐格相等）；有一问摆着 ⇒ 零作用；不按 Ctrl 的 T ⇒ 零作用 | 标签数读的是各栏自己的表；期望手写 |
 //!
 //! ⚠ 买不到：真窗口真画在屏幕上；真的拖一行过去（手势没做，理由住 `super` 头注）。
@@ -612,5 +613,70 @@ fn ctrl_t_and_ctrl_w_open_and_close_tabs_on_the_focused_side() {
         tab_counts(&ws),
         vec![2, 1],
         "焦点换到左栏之后 Ctrl+T 没落在左栏"
+    );
+}
+
+/// 〔W5-FILES〕要求住址：`设计/60 §6.2`「行拖到另一栏的手势 —— 今天只有『复制到另一栏』按钮；行上命中矩形是 `Sense::click()`，
+/// 要换成可拖并带出『从哪一行拖起』」。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dragging_rows_onto_the_other_side_copies_them_and_dropping_back_does_nothing() {
+    let (wired, mut ws) = across_rig("w5-drag").await;
+    let mut d = Drive::new();
+    let name_at = d.find(&mut ws, "x.txt");
+    assert_eq!(name_at.len(), 1, "左栏那一行的名字没画出来");
+    let start = name_at[0].center();
+    let press = |pos: egui::Pos2, pressed: bool| egui::Event::PointerButton {
+        pos,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: egui::Modifiers::NONE,
+    };
+    let right_mid = egui::pos2(SCREEN.x * 0.75, SCREEN.y * 0.5);
+    // ── 阴性：拖起来又松回本栏 ⇒ 什么都不做。
+    d.frame(&mut ws, vec![egui::Event::PointerMoved(start)]);
+    d.frame(&mut ws, vec![press(start, true)]);
+    let back = start + egui::vec2(0.0, 40.0);
+    d.frame(&mut ws, vec![egui::Event::PointerMoved(back)]);
+    assert!(ws.pane_on(0).dragging, "挪过拖动阈值之后没认成「在拖」");
+    d.frame(&mut ws, vec![press(back, false)]);
+    assert!(!ws.pane_on(0).dragging, "松手之后「在拖」没收掉");
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert_eq!(
+        wired.count("files-copy"),
+        0,
+        "松在本栏却复制了：{:?}",
+        wired.cmds()
+    );
+    // ── 正题：拖到右栏松手 ⇒ 复制过去（拖的是按下那一行）。
+    let name_at = d.find(&mut ws, "x.txt");
+    let start = name_at[0].center();
+    d.frame(&mut ws, vec![egui::Event::PointerMoved(start)]);
+    d.frame(&mut ws, vec![press(start, true)]);
+    d.frame(
+        &mut ws,
+        vec![egui::Event::PointerMoved(start + egui::vec2(40.0, 0.0))],
+    );
+    let painted = d.frame(&mut ws, vec![egui::Event::PointerMoved(right_mid)]);
+    assert!(
+        painted.iter().any(|(t, _)| t == "复制 1 项到另一栏"),
+        "拖到另一栏上方时没说「复制 1 项到另一栏」：{:?}",
+        painted.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>()
+    );
+    d.frame(&mut ws, vec![press(right_mid, false)]);
+    settle_copy(ws.pane_on(1)).await;
+    let copies: Vec<serde_json::Value> = wired
+        .log
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|r| r["cmd"] == "files-copy")
+        .map(|r| r["args"].clone())
+        .collect();
+    assert_eq!(
+        copies,
+        vec![
+            serde_json::json!({"root": "/srv", "from": "a/x.txt", "to": "b/x.txt", "overwrite": false})
+        ],
+        "拖过去那一趟线上那一行与期望不等"
     );
 }

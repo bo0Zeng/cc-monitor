@@ -93,6 +93,8 @@ pub struct RenderTally {
     pub picked_click: Option<(usize, egui::Modifiers)>,
     /// 🔴〔FW2〕这一帧哪一行被**右键**点了（`None` = 没有）。菜单摆在哪儿由窗口读指针位置。
     pub menu_clicked: Option<usize>,
+    /// 〔W5-FILES · `设计/60 §6.2`〕这一帧哪一行被**拖起**了（带出「从哪一行拖起」）。
+    pub drag_started: Option<usize>,
     /// 🔴〔FW2〕这一帧被画成「**选中**」的那几行（下标，按画的顺序）。
     ///
     /// 与 [`Self::revealed_row`] 同一条理由：背景色判据看不见 ⇒ 这一格是那件事的
@@ -162,6 +164,8 @@ pub struct RowHit {
     pub picked: Option<egui::Modifiers>,
     /// 〔FW2〕整行那块被**右键**点了。
     pub menu: bool,
+    /// 〔W5-FILES · `设计/60 §6.2`「行拖到另一栏的手势」〕整行那块这一帧**被拖起**了。
+    pub drag_started: bool,
 }
 
 /// 画一屏文件行。**这里是 `show_rows`，改成 `show` 会被判据当场逮住。**
@@ -218,6 +222,9 @@ pub fn show_file_rows(
             }
             if hit.menu {
                 tally.menu_clicked = Some(i);
+            }
+            if hit.drag_started {
+                tally.drag_started = Some(i);
             }
             if hit.activated {
                 tally.clicked = Some(i);
@@ -455,15 +462,18 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Listed, revealed: bool, mark: Ma
     );
     // ⚠ `Id` 按**行下标**造（不是按名字）：下标随滚动是绝对的、且同一行跨帧稳定，
     //   而名字会重（同名文件在不同目录、或列表里刚好两行同名）。
+    // 〔W5-FILES · `设计/60 §6.2`〕`Sense::click()` → `click_and_drag()`：行能被拖起（拖到另一栏 ＝ 复制过去）。
+    //   单击 / 双击 / 右键的手感不变（没挪过拖动阈值的一下照旧是点击）。
     let row = ui.interact(
         full,
         ui.id().with(("filewin-row", index)),
-        egui::Sense::click(),
+        egui::Sense::click_and_drag(),
     );
     let mods = ui.input(|i| i.modifiers);
     RowHit {
         picked: row.clicked().then_some(mods),
         menu: row.secondary_clicked(),
+        drag_started: row.drag_started_by(egui::PointerButton::Primary),
         activated: row.double_clicked(),
         copy: btns.copy.is_some_and(|b| b.clicked()),
         rename: btns.rename.is_some_and(|b| b.clicked()),
