@@ -46,7 +46,7 @@ use serde_json::Value;
 // ⚠ agent 工具名今天有两个 Rust 住址：monitor `adapter.rs::CLAUDE_AGENT_TOOLS`（经生成物
 // `src/generated/agent-profile-table.ts` 喂前端**渲染** agent 卡）与这里（喂**会话事实**）。两半不许在编译期互咬
 // （`设计/90 §0` 的 `C2`），今天没有能放它的共享 crate ⇒ 由一条异源对拍钉住（本文件测试：这里 == 生成物里 claude 那一行
-// 的 `agentTools`）。收成一份归「判定 → 唯一住址」那张表（DUP1），见 `调研/第四波记录/STC.md §1.3`。
+// 的 `agentTools`）。登记在「判定 → 唯一住址」那张表（DUP1，`tests/judgment-single-home.vitest.ts` 的 J19，`open`：收成一份等主会话拍），见 `调研/第四波记录/STC.md §1.3`。
 // 写类工具表**只有这一份**（前端 `panorama/session-files.ts` 整份随搬家删了）。
 
 /// 展开 = 子会话的工具（Claude Code 的 `Task`，新版改名 `Agent`，两个都认）。
