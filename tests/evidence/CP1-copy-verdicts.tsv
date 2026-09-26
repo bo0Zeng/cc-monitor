@@ -239,7 +239,4 @@ src/backend/lib.rs:1219	与帧面 `kill` 那一行是**同一条实现**（CLI �
 src/backend/lib.rs:1227	与帧面 `launch` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \n              派生到同一条登记）⇒ 同一个理由，将来与帧面那一行同拍还，**暂时不做**。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
 src/backend/lib.rs:1242	改的是 **unix 权限位**（低 12 位），命令自己声明了 `no_unix_mode` 码。Windows 上没有这套位\n              （那边是 ACL ＋ 只读属性），`change_mode` 在那里回 `no_unix_mode`、一个字节不动。\n              ⇒ 这一条本身**不该跨过去**；Windows 那边若要「改访问权限」，是另一条能力、另立一行〔FW5 分档：结构〕。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
 src/backend/lib.rs:1251	与帧面 `files-chmod` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \n              派生到同一条登记）⇒ 同一个理由：unix 权限位这一条**不该跨过去**。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
-src/backend/control/files_write.rs:1101	自己建的 {undone} 条都撤掉了	保留	[可达存疑] 〔W5-FILES〕复制目录中途停下时的尾巴（files-copy recursive 的 io_failed 原话，文件窗口原样摆出）：只说事实（建了的都撤了）
-src/backend/control/files_write.rs:1102	撤掉了 {undone}/{} 条，撤不掉的一条：{s}	保留	[可达存疑] 〔W5-FILES〕同上一族：回滚撤不干净时点名那一条
-src/backend/control/files_write.rs:1105	{}\n—— 复制目录停在第 {} 条（共计划 {total} 条）；{tail}	改·§2.4	[可达存疑] 〔W5-FILES〕复制目录中途失败：系统原话 ＋ 破折号补充停在哪、撤了几条 —— 与递归删那一句「递归删删了 N 条之后停在这一条」同形；破折号补充的形状 →「复制目录停在第 N 条（共 M 条），已撤掉自己建的 K 条：<原话>」
 src/bridge/src/filewin/fonts.rs:318	●＋双另右好己底忙标栏自页	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕标签页 ＋ 双栏那几个字；〔W5-FILES〕−1 字 `恰`）

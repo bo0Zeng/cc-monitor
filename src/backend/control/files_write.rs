@@ -110,6 +110,7 @@
 //!    那几处全在本轮写区之外。**「能力在、还没接线」这件事不许被读成「已经能用了」。**
 
 use crate::agents::claudecode::paths::{is_session_record_path, session_file_for_delete};
+use copy_core::copy_text;
 use std::path::{Component, Path, PathBuf};
 
 /// 路径解析①（词法）：**纯路径算术，不碰盘**。过了就返回「打算写到哪」。
@@ -741,9 +742,9 @@ pub fn copy_entry(
     let src_md = std::fs::metadata(&src)
         .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", src.display())))?;
     if !src_md.is_file() {
-        return Err(WriteRefusal::Refused(format!(
-            "refuse write: {} 不是一份普通文件 —— 不带 `recursive` 只复制普通文件（目录要显式 `recursive: true`）",
-            src.display()
+        return Err(WriteRefusal::Refused(copy_text(
+            "beFilesWrite.copy.notRegular",
+            &[("path", &src.display().to_string())],
         )));
     }
     // 落在哪：不覆盖 ⇒ 直接落目标；显式覆盖 ⇒ 先落同目录的暂存旁名（它自己也过一遍路径解析）。
@@ -813,9 +814,9 @@ fn land_copy(
     drop(writer);
     if let Err(e) = std::fs::set_permissions(&land, perms) {
         std::fs::remove_file(&land).ok();
-        return Err(WriteRefusal::Io(format!(
-            "refuse write: 抄权限位到 {} 失败：{e}",
-            land.display()
+        return Err(WriteRefusal::Io(copy_text(
+            "beFilesWrite.copy.modeFailed",
+            &[("path", &land.display().to_string()), ("e", &e.to_string())],
         )));
     }
     Ok((land, n))
@@ -873,9 +874,9 @@ fn copy_kind(p: &Path) -> std::io::Result<(Result<bool, &'static str>, u64)> {
     } else if ft.is_file() {
         Ok(false)
     } else if ft.is_symlink() {
-        Err("一条符号链接")
+        Err("link")
     } else {
-        Err("不是目录也不是普通文件（设备 / 管道 / 套接字）")
+        Err("other")
     };
     Ok((kind, dev))
 }
@@ -885,13 +886,26 @@ pub fn plan_copy(root: &Path, from: impl AsRef<Path>) -> Result<CopyPlan, WriteR
     plan_copy_within(root, from.as_ref(), TREE_ENTRY_CAP)
 }
 
+/// 〔W5-FILES〕[`copy_kind`] 那两档「复制不了的种类」说给人听的那几个字（文案表）。
+fn kind_words(what: &str) -> String {
+    match what {
+        "link" => copy_text("beFilesWrite.copyTree.kindLink", &[]),
+        _ => copy_text("beFilesWrite.copyTree.kindOther", &[]),
+    }
+}
+
+/// 〔W5-FILES〕复制目录那几句话里「这一条」的路径。
+fn shown(p: &Path) -> String {
+    p.display().to_string()
+}
+
 /// **复制目录的计划趟（只读）**。整趟拒的几形都**一个字节不动**（本函数一个改动都没有）。
 pub fn plan_copy_within(root: &Path, from: &Path, cap: usize) -> Result<CopyPlan, WriteRefusal> {
     let real = resolve_existing_in_root(root, from).map_err(WriteRefusal::Refused)?;
     let real_root = std::fs::canonicalize(root).map_err(|e| {
-        WriteRefusal::Refused(format!(
-            "refuse write: 目标根解析不了（{}：{e}）",
-            root.display()
+        WriteRefusal::Refused(copy_text(
+            "beFilesWrite.copyTree.rootUnresolved",
+            &[("path", &shown(root)), ("e", &e.to_string())],
         ))
     })?;
     let src = real
@@ -899,17 +913,21 @@ pub fn plan_copy_within(root: &Path, from: &Path, cap: usize) -> Result<CopyPlan
         .map(Path::to_path_buf)
         .unwrap_or_default();
     if src.as_os_str().is_empty() {
-        return Err(WriteRefusal::Refused(format!(
-            "refuse write: 源就是目标根自己（{}）—— 复制目录要一个根底下的源",
-            real.display()
+        return Err(WriteRefusal::Refused(copy_text(
+            "beFilesWrite.copyTree.srcIsRoot",
+            &[("path", &shown(&real))],
         )));
     }
-    let (top_kind, top_dev) = copy_kind(&real)
-        .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", real.display())))?;
+    let (top_kind, top_dev) = copy_kind(&real).map_err(|e| {
+        WriteRefusal::Io(copy_text(
+            "beFilesWrite.copyTree.unreadable",
+            &[("path", &shown(&real)), ("e", &e.to_string())],
+        ))
+    })?;
     let top_is_dir = top_kind.map_err(|what| {
-        WriteRefusal::Refused(format!(
-            "refuse write: {} 是{what} —— 复制不了",
-            real.display()
+        WriteRefusal::Refused(copy_text(
+            "beFilesWrite.copyTree.cannotCopy",
+            &[("path", &shown(&real)), ("what", &kind_words(what))],
         ))
     })?;
     let mut entries = vec![CopyPlanned {
@@ -925,32 +943,42 @@ pub fn plan_copy_within(root: &Path, from: &Path, cap: usize) -> Result<CopyPlan
         let dir_at =
             resolve_in_root(&real_root, join_tail(&src, &tail)).map_err(WriteRefusal::Refused)?;
         let listing = std::fs::read_dir(&dir_at).map_err(|e| {
-            WriteRefusal::Io(format!("refuse write: 列不出 {}：{e}", dir_at.display()))
+            WriteRefusal::Io(copy_text(
+                "beFilesWrite.copyTree.unlistable",
+                &[("path", &shown(&dir_at)), ("e", &e.to_string())],
+            ))
         })?;
         for item in listing {
             let item = item.map_err(|e| {
-                WriteRefusal::Io(format!("refuse write: 列 {} 时断了：{e}", dir_at.display()))
+                WriteRefusal::Io(copy_text(
+                    "beFilesWrite.copyTree.listBroke",
+                    &[("path", &shown(&dir_at)), ("e", &e.to_string())],
+                ))
             })?;
             let child_tail = tail.join(item.file_name());
             // ★ **逐条目过路径解析**。
             let at = resolve_in_root(&real_root, src.join(&child_tail)).map_err(|m| {
-                WriteRefusal::Refused(format!(
-                    "{m}\n—— 复制目录整趟拒：这棵树里有一条路径解析不过，一个字节都没建"
+                WriteRefusal::Refused(copy_text(
+                    "beFilesWrite.copyTree.entryRefused",
+                    &[("why", &m)],
                 ))
             })?;
             let (kind, dev) = copy_kind(&at).map_err(|e| {
-                WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", at.display()))
+                WriteRefusal::Io(copy_text(
+                    "beFilesWrite.copyTree.unreadable",
+                    &[("path", &shown(&at)), ("e", &e.to_string())],
+                ))
             })?;
             let is_dir = kind.map_err(|what| {
-                WriteRefusal::Refused(format!(
-                    "refuse write: {} 是{what} —— 复制目录只建目录与普通文件（第三层没有建链接的动词），整趟拒、一个字节没建",
-                    at.display()
+                WriteRefusal::Refused(copy_text(
+                    "beFilesWrite.copyTree.entryUncopyable",
+                    &[("path", &shown(&at)), ("what", &kind_words(what))],
                 ))
             })?;
             if dev != top_dev {
-                return Err(WriteRefusal::Refused(format!(
-                    "refuse write: {} 在另一个文件系统上（挂载点）—— 复制目录不走进去，整趟拒、一个字节没建",
-                    at.display()
+                return Err(WriteRefusal::Refused(copy_text(
+                    "beFilesWrite.copyTree.crossMount",
+                    &[("path", &shown(&at))],
                 )));
             }
             entries.push(CopyPlanned {
@@ -958,9 +986,9 @@ pub fn plan_copy_within(root: &Path, from: &Path, cap: usize) -> Result<CopyPlan
                 is_dir,
             });
             if entries.len() > cap {
-                return Err(WriteRefusal::Refused(format!(
-                    "refuse write: {} 底下超过 {cap} 条 —— 一次手势不复制这么多，整趟拒、一个字节没建",
-                    real.display()
+                return Err(WriteRefusal::Refused(copy_text(
+                    "beFilesWrite.copyTree.overCap",
+                    &[("path", &shown(&real)), ("cap", &cap.to_string())],
                 )));
             }
             if is_dir {
@@ -980,23 +1008,29 @@ pub fn copy_planned(plan: &CopyPlan, p: &CopyPlanned, dst_rel: &Path) -> Result<
     let src = resolve_in_root(&plan.root, join_tail(&plan.src, &p.tail))
         .map_err(WriteRefusal::Refused)?;
     let dst = resolve_in_root(&plan.root, dst_rel).map_err(WriteRefusal::Refused)?;
-    let (kind, _) = copy_kind(&src)
-        .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", src.display())))?;
+    let unreadable = |e: std::io::Error| {
+        WriteRefusal::Io(copy_text(
+            "beFilesWrite.copyTree.unreadable",
+            &[("path", &shown(&src)), ("e", &e.to_string())],
+        ))
+    };
+    let (kind, _) = copy_kind(&src).map_err(unreadable)?;
     if kind != Ok(p.is_dir) {
-        return Err(WriteRefusal::Io(format!(
-            "refuse write: {} 在计划与动手之间换了种类 —— 不复制",
-            src.display()
+        return Err(WriteRefusal::Io(copy_text(
+            "beFilesWrite.copyTree.kindChanged",
+            &[("path", &shown(&src))],
         )));
     }
     if p.is_dir {
         std::fs::create_dir(&dst).map_err(|e| {
-            WriteRefusal::Io(format!("refuse write: 建目录 {} 失败：{e}", dst.display()))
+            WriteRefusal::Io(copy_text(
+                "beFilesWrite.copyTree.mkdirFailed",
+                &[("path", &shown(&dst)), ("e", &e.to_string())],
+            ))
         })?;
         return Ok(0);
     }
-    let perms = std::fs::metadata(&src)
-        .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", src.display())))?
-        .permissions();
+    let perms = std::fs::metadata(&src).map_err(unreadable)?.permissions();
     land_copy(&plan.root, dst_rel, &src, perms).map(|(_, n)| n)
 }
 
@@ -1006,12 +1040,17 @@ fn copy_dir_mode(plan: &CopyPlan, p: &CopyPlanned, dst_rel: &Path) -> Result<(),
         .map_err(WriteRefusal::Refused)?;
     let dst = resolve_in_root(&plan.root, dst_rel).map_err(WriteRefusal::Refused)?;
     let perms = std::fs::metadata(&src)
-        .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", src.display())))?
+        .map_err(|e| {
+            WriteRefusal::Io(copy_text(
+                "beFilesWrite.copyTree.unreadable",
+                &[("path", &shown(&src)), ("e", &e.to_string())],
+            ))
+        })?
         .permissions();
     std::fs::set_permissions(&dst, perms).map_err(|e| {
-        WriteRefusal::Io(format!(
-            "refuse write: 抄权限位到 {} 失败：{e}",
-            dst.display()
+        WriteRefusal::Io(copy_text(
+            "beFilesWrite.copy.modeFailed",
+            &[("path", &shown(&dst)), ("e", &e.to_string())],
         ))
     })
 }
@@ -1069,20 +1108,18 @@ pub fn copy_tree_with(
     let plan = plan_copy_within(root, from, cap)?;
     let src_top = plan.root.join(&plan.src);
     if dst_top.starts_with(&src_top) {
-        return Err(WriteRefusal::Refused(format!(
-            "refuse write: 目标 {} 在源 {} 里面 —— 不能把一个目录复制进它自己",
-            dst_top.display(),
-            src_top.display()
+        return Err(WriteRefusal::Refused(copy_text(
+            "beFilesWrite.copyTree.intoItself",
+            &[("dst", &shown(&dst_top)), ("src", &shown(&src_top))],
         )));
     }
     let dst_rel = dst_top
         .strip_prefix(&plan.root)
         .map(Path::to_path_buf)
         .map_err(|_| {
-            WriteRefusal::Refused(format!(
-                "refuse write: 目标 {} 不在目标根 {} 底下",
-                dst_top.display(),
-                plan.root.display()
+            WriteRefusal::Refused(copy_text(
+                "beFilesWrite.copyTree.outsideRoot",
+                &[("dst", &shown(&dst_top)), ("root", &shown(&plan.root))],
             ))
         })?;
     let total = plan.entries.len();
@@ -1098,13 +1135,27 @@ pub fn copy_tree_with(
             Err(e) => {
                 let (undone, stuck) = undo_made(&plan.root, &made);
                 let tail = match stuck {
-                    None => format!("自己建的 {undone} 条都撤掉了"),
-                    Some(s) => format!("撤掉了 {undone}/{} 条，撤不掉的一条：{s}", made.len()),
+                    None => copy_text(
+                        "beFilesWrite.copyTree.undoneAll",
+                        &[("n", &undone.to_string())],
+                    ),
+                    Some(what) => copy_text(
+                        "beFilesWrite.copyTree.undoneSome",
+                        &[
+                            ("n", &undone.to_string()),
+                            ("m", &made.len().to_string()),
+                            ("what", &what),
+                        ],
+                    ),
                 };
-                let said = format!(
-                    "{}\n—— 复制目录停在第 {} 条（共计划 {total} 条）；{tail}",
-                    e.message(),
-                    i + 1
+                let said = copy_text(
+                    "beFilesWrite.copyTree.stopped",
+                    &[
+                        ("why", e.message()),
+                        ("i", &(i + 1).to_string()),
+                        ("total", &total.to_string()),
+                        ("tail", &tail),
+                    ],
                 );
                 return Err(match e {
                     WriteRefusal::Refused(_) => WriteRefusal::Refused(said),
@@ -1116,9 +1167,9 @@ pub fn copy_tree_with(
     for p in plan.entries.iter().rev().filter(|p| p.is_dir) {
         let d = join_tail(&dst_rel, &p.tail);
         copy_dir_mode(&plan, p, &d).map_err(|e| {
-            WriteRefusal::Io(format!(
-                "{}\n—— 内容都复制完了，只是这个目录的权限位没抄上（没回滚：复制出来的东西都在）",
-                e.message()
+            WriteRefusal::Io(copy_text(
+                "beFilesWrite.copyTree.modeNotCopied",
+                &[("why", e.message())],
             ))
         })?;
     }
@@ -1901,8 +1952,7 @@ fn answer_copy(args: &serde_json::Value) -> Answer {
         if overwrite {
             return Err((
                 "bad_args",
-                "`recursive` 与 `overwrite: true` 不能同给 —— 复制目录不合并、不覆盖（目标必须还不存在）"
-                    .to_string(),
+                copy_text("beFilesWrite.copy.recursiveOverwrite", &[]),
             ));
         }
         let t = copy_tree(&root, &from, &to).map_err(refusal)?;

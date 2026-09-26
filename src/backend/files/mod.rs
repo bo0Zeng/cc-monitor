@@ -861,8 +861,15 @@ fn answer_read_text(args: &serde_json::Value) -> Answer {
 /// 〔W5-FILES〕`files.size` —— 走法与诚实边界住 [`size`] 头注。
 fn answer_size(args: &serde_json::Value) -> Answer {
     let path = path_arg(args)?;
-    let m = size::measure(&path)
-        .map_err(|e| ("unreadable", format!("这个路径读不到：{:?}", e.kind())))?;
+    let m = size::measure(&path).map_err(|e| {
+        (
+            "unreadable",
+            copy_core::copy_text(
+                "beFilesRead.size.unreadable",
+                &[("kind", &format!("{:?}", e.kind()))],
+            ),
+        )
+    })?;
     Ok(serde_json::json!({
         "path": raw::to_json(raw::path_bytes(&path)),
         "bytes": m.bytes,
