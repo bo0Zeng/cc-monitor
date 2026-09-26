@@ -12484,6 +12484,16 @@
       "zh": "置可执行位失败：{e}",
       "args": ["e"]
     },
+    "rsPlatformFs.lock.openFailed": {
+      "kind": "error",
+      "zh": "打开 {dir} 失败（拿不到锁）：{e}",
+      "args": ["dir", "e"]
+    },
+    "rsPlatformFs.lock.failed": {
+      "kind": "error",
+      "zh": "锁 {dir} 失败：{e}",
+      "args": ["dir", "e"]
+    },
     "rsPlatformFs.mkdir.failed": {
       "kind": "error",
       "zh": "建目录 {dir} 失败：{e}",
