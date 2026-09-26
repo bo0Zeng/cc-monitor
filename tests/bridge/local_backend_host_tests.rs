@@ -4195,7 +4195,7 @@ fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_
         let mut out = Vec::new();
         let mut cur = String::new();
         for line in prod.lines() {
-            let t = line.trim_start();
+            let head_of_line = line.trim_start();
             for kw in [
                 "pub(crate) async fn ",
                 "pub async fn ",
@@ -4204,7 +4204,7 @@ fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_
                 "async fn ",
                 "fn ",
             ] {
-                if let Some(rest) = t.strip_prefix(kw) {
+                if let Some(rest) = head_of_line.strip_prefix(kw) {
                     cur = rest
                         .chars()
                         .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')

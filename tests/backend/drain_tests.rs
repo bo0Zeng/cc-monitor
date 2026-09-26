@@ -502,8 +502,12 @@ fn d3_the_ticket_is_taken_once_before_the_blocking_spawn_and_every_stream_exit_d
     let within: Vec<usize> = call_sites(&inbound, "exit_after_drain_within");
     assert_eq!(within.len(), 1, "本体只该被生产入口调一处：{within:?}");
     assert_eq!(enclosing_fn(&inbound, within[0]), "exit_after_drain");
-    assert!(
-        inbound[within[0]..].starts_with("exit_after_drain_within(why, writer, DRAIN_DEADLINE)"),
+    assert_eq!(
+        guard_core::find_pinned(
+            &inbound,
+            "exit_after_drain_within(why, writer, DRAIN_DEADLINE)"
+        ),
+        Ok(within[0]),
         "生产入口交的期限不是 DRAIN_DEADLINE"
     );
     // 正控：数法认得出多出来的一处 `exit(`。
