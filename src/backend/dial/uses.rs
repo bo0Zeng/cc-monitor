@@ -363,6 +363,21 @@ async fn serve<R, W>(
                 .await;
                 return;
             }
+            // 〔W5-AUX · `设计/96 §3.6`〕有载荷就写进远端进程的 stdin（不关 —— 收的一侧只读一行）。
+            if let Some(input) = opts.stdin.clone() {
+                if let Err(e) = wr.get().data_bytes(input.into_bytes()).await {
+                    let _ = write_stages_then_ack(
+                        out,
+                        stages,
+                        &DialAck::failed(
+                            format!("往 {} 的 stdin 写载荷失败: {e}", req.command),
+                            fp,
+                        ),
+                    )
+                    .await;
+                    return;
+                }
+            }
             if write_stages_then_ack(out, stages, &ok_ack(&lease.linked))
                 .await
                 .is_err()

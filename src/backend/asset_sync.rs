@@ -12,18 +12,20 @@
 //!   ① 拉：capture `<远端后端> --assets-catalog`            ──▶ 远端现扫、记下、回它的整份
 //!   ② 并：本机 `assets-catalog-merge {catalog: 远端那份}`   （经门递进来的写口；同一台取 gen 大的整份）
 //!   ③ 推：远端缺的 / 比远端新的那几台快照（不含远端自己那格）
-//!          capture `printf '%s\n' '<json>' | <远端后端> --assets-catalog-merge` ──▶ 远端并进它自己的文件（一台一个写者）
+//!          capture `<远端后端> --assets-catalog-merge --stdin-line`，载荷一行写进它的 stdin ──▶ 远端并进它自己的文件（一台一个写者）
 //!   ④ 本机目录因这一趟变了 ⇒ 对可达表里**其余**各台各做一趟 ①–③（只一层，不递归）
 //! ```
 //!
-//! # 为什么是 capture ＋ 管道，不是长流、不是 CLI 读 stdin
+//! # 为什么是 capture ＋「只读一行 stdin」，不是长流
 //!
 //! - **不起远端的流模式**：流模式一起来就往 tmux server 装全局 hook（`control/tmux_hook.rs::install_hooks`，
 //!   载荷里烤着**那个进程**的 pid）—— 一个用完就退的流会把 monitor 那条真流的 hook 盖成一个死 pid。
-//! - **CLI 面读 stdin 读到 EOF**，而 capture 不关远端的 stdin、`stream` 用法「上行一结束就收工」（`dial/uses.rs`）
-//!   ⇒ 入参只能在命令里交：`printf … |` 管进去。⚠ 这假设远端登录 shell 认 POSIX 单引号与管道 ——
-//!   monitor 起远端后端那条命令（`ssh_source::shell_quote`）早就是同一个假设。
-//! - **一趟命令的大小有上限**（`sh -c` 的那一个参数，Linux `MAX_ARG_STRLEN` = 128 KiB）⇒ 推的载荷按台切块，
+//! - **CLI 面默认读 stdin 读到 EOF**，而 capture 不关远端的 stdin ⇒〔W5-AUX · `设计/96 §3.6`〕推那一趟走 CLI 面的
+//!   「只读一行」入口（`lib.rs::STDIN_LINE_FLAG`，`control/cli_control.rs::read_input` 收）：命令行里只有后端路径与两个旗标，载荷一行由 capture 写进远端 stdin。
+//!   此前是 `printf '%s\n' '<json>' | …` 把载荷拼进命令行 —— 那要求远端登录 shell 认 POSIX 单引号与管道（fish 不认），已退役。
+//!   ⚠ 后端路径那一格仍过 POSIX 单引号（`remote_ask::command_line`）：路径里没有 `'` / `\` 时 fish 也认；
+//!   monitor 起远端后端那条命令（`ssh_source::shell_quote`）是同一个口径。
+//! - **一趟的大小有上限**：远端 CLI 面 stdin 的上限（`cli_control::MAX_CLI_STDIN`，1 MiB，超了拒、不截断）⇒ 推的载荷按台切块，
 //!   一块不超过 [`PUSH_MAX_BYTES`]；**单独一台就超了 ⇒ 那一台不推、说出来**（不截断）。
 //!
 //! # 事件，不是定时（`no_timer_guard`）
@@ -46,7 +48,9 @@ use serde_json::{json, Value};
 // 〔C4d〕问远端那一跳与可达表住 `remote_ask`（原样搬过去的）；这里只取用，不再导出。
 use crate::remote_ask::{lock, Reach, Remote, Table, REACH};
 
-/// 一块推的载荷（JSON 本身，引号转义之前）的上限。`sh -c` 那一个参数 128 KiB，留出引号转义与命令本身的余量。
+/// 一块推的载荷（JSON 本身）的上限。
+/// 〔W5-AUX〕原理由是「`sh -c` 那一个参数 128 KiB，留出引号转义的余量」—— 载荷改走 stdin 之后那条上限不在了，
+/// 今天管它的是远端 CLI 面 stdin 的上限（1 MiB，判据钉「本值不超过它」）。值**没动**（放不放大交主会话，见 `W5-AUX.md §7`）。
 pub const PUSH_MAX_BYTES: usize = 96 * 1024;
 
 /// 远端后端的两条一次性子命令（与 `lib.rs::SUBCOMMANDS` 同名，判据钉）。
@@ -62,12 +66,14 @@ pub fn pull_command(backend: &str) -> String {
     format!("{} {PULL_FLAG}", shell_quote_core::posix_quote(backend))
 }
 
-pub fn push_command(backend: &str, payload: &str) -> String {
-    format!(
-        "printf '%s\\n' {} | {} {PUSH_FLAG}",
-        shell_quote_core::posix_quote(payload),
-        shell_quote_core::posix_quote(backend)
-    )
+/// 〔W5-AUX · `设计/96 §3.6`〕推那一趟的命令行：**只有后端路径与两个旗标，不含载荷**；载荷由 [`push_stdin`] 经 capture 写进 stdin。
+pub fn push_command(backend: &str) -> String {
+    crate::remote_ask::command_line(backend, &[PUSH_FLAG, crate::STDIN_LINE_FLAG])
+}
+
+/// 推那一趟写进远端 stdin 的那一行（载荷本身是紧凑 JSON、没有换行 ⇒ 恰好一行）。
+pub fn push_stdin(payload: &str) -> String {
+    format!("{payload}\n")
 }
 
 /// 一趟对一台的结局（线上 `synced[]` 的一行）。
@@ -177,7 +183,7 @@ async fn sync_one(
 ) -> (bool, Value) {
     let mut errors = Vec::new();
     // ① 拉
-    let theirs: Value = match remote.run(&r.dial, pull_command(&r.backend)).await {
+    let theirs: Value = match remote.run(&r.dial, pull_command(&r.backend), None).await {
         Ok(out) => match serde_json::from_str(out.trim()) {
             Ok(v) => v,
             Err(e) => {
@@ -222,7 +228,11 @@ async fn sync_one(
         let n = chunk.len();
         let payload = json!({ "catalog": { "machines": chunk } }).to_string();
         match remote
-            .run(&r.dial, push_command(&r.backend, &payload))
+            .run(
+                &r.dial,
+                push_command(&r.backend),
+                Some(push_stdin(&payload)),
+            )
             .await
         {
             Ok(_) => pushed += n,

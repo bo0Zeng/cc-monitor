@@ -47,11 +47,13 @@ pub const MAX_REACH: usize = 256;
 pub(crate) const HELLO_MARKER: &str = "\"kind\":\"hello\"";
 
 /// 对面：在那台上跑一条一次性命令，交回它的 stdout。生产 = [`DialRemote`]（经 `dial` 的 capture）；判据用替身。
+/// `stdin`〔W5-AUX〕= exec 之后写进那个进程 stdin 的字节（缺席 = 不写）；收的一侧用 CLI 面的「只读一行」入口。
 pub trait Remote: Send + Sync {
     fn run<'a>(
         &'a self,
         dial: &'a Value,
         command: String,
+        stdin: Option<String>,
     ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>>;
 }
 
@@ -174,7 +176,9 @@ pub async fn ask_with(
         .get(machine)
         .cloned()
         .ok_or_else(|| unreachable_message(machine))?;
-    remote.run(&r.dial, command_line(&r.backend, argv)).await
+    remote
+        .run(&r.dial, command_line(&r.backend, argv), None)
+        .await
 }
 
 // ───────────────────────── 生产那一个对面：经 dial 的 capture ─────────────────────────
@@ -210,28 +214,37 @@ async fn capped_line<R: tokio::io::AsyncBufRead + Unpin>(
     Ok(Some(String::from_utf8_lossy(&buf).trim_end().to_string()))
 }
 
+/// 把可达表里那份拨号请求改成「capture 这一条命令」（纯；抽出来是为了判据 —— 载荷真进了 `capture.stdin`，不靠真 sshd 也验得动）。
+pub(crate) fn capture_request(
+    dial: &Value,
+    command: String,
+    stdin: Option<String>,
+) -> Result<crate::dial::DialRequest, String> {
+    let mut v = dial.clone();
+    let obj = v.as_object_mut().ok_or(crate::common::contract::malformed(
+        "dial request is not an object",
+    ))?;
+    obj.insert("use".into(), json!("capture"));
+    obj.insert("command".into(), json!(command));
+    obj.insert(
+        "capture".into(),
+        json!({ "max_bytes": PULL_MAX_BYTES, "abort_marker": HELLO_MARKER, "stdin": stdin }),
+    );
+    obj.insert("stages".into(), json!(false));
+    obj.insert("probe".into(), json!(false));
+    crate::dial::parse_request_value(&v)
+        .map_err(|e| crate::common::contract::malformed(&format!("dial request unreadable: {e}")))
+}
+
 impl Remote for DialRemote {
     fn run<'a>(
         &'a self,
         dial: &'a Value,
         command: String,
+        stdin: Option<String>,
     ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
         Box::pin(async move {
-            let mut v = dial.clone();
-            let obj = v.as_object_mut().ok_or(crate::common::contract::malformed(
-                "dial request is not an object",
-            ))?;
-            obj.insert("use".into(), json!("capture"));
-            obj.insert("command".into(), json!(command));
-            obj.insert(
-                "capture".into(),
-                json!({ "max_bytes": PULL_MAX_BYTES, "abort_marker": HELLO_MARKER }),
-            );
-            obj.insert("stages".into(), json!(false));
-            obj.insert("probe".into(), json!(false));
-            let req = crate::dial::parse_request_value(&v).map_err(|e| {
-                crate::common::contract::malformed(&format!("dial request unreadable: {e}"))
-            })?;
+            let req = capture_request(dial, command, stdin)?;
             pull_over(move |up_r, mut down_w| async move {
                 let stages = crate::dial::StageSink::new(false);
                 crate::dial::uses::run(&req, &stages, up_r, &mut down_w).await;
