@@ -13,6 +13,7 @@
 
 import { makeInfoIcon } from "./info-icon";
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
+import { copyText } from "../copy-table";
 
 export interface CollapsibleGroupOptions {
   /** localStorage key 后缀，必须稳定（不要随翻译改） */
@@ -53,7 +54,7 @@ export class CollapsibleGroup {
 
     this.arrow = document.createElement("span");
     this.arrow.className = "settings-collapsible-arrow";
-    this.arrow.textContent = "▶";
+    this.arrow.textContent = copyText("collapsibleGroup.ctor.arrow");
     this.header.appendChild(this.arrow);
 
     const titleEl = document.createElement("span");

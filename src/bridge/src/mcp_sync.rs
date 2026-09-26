@@ -35,6 +35,7 @@
 
 use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
 use crate::backend::control::inbound_client::{client_for, encode_request};
+use crate::copy_table::copy_text;
 use crate::origin::Origin;
 use crate::user_files::{BackendDoor, Door, Refused, REQUEST_LINE_CAP};
 use serde_json::{json, Map, Value};
@@ -124,8 +125,9 @@ impl Judge for BackendJudge {
                 Routed::NoChannel(s) | Routed::Refused(s) => s,
                 Routed::Done => String::new(),
             };
-            return Err(format!(
-                "{who} 的后端没连上，比对要经它来做（{why}）—— 一个字节都没动"
+            return Err(copy_text(
+                "rsMcpSync.plan.backendDown",
+                &[("who", &who.to_string()), ("why", &why.to_string())],
             ));
         };
         if !client.accepts(CMD) {
@@ -133,25 +135,28 @@ impl Judge for BackendJudge {
                 crate::backend::control::cc_bus::describe_backend_too_old_for(
                     wire,
                     CMD,
-                    "没法比对，一个字节都没动",
+                    &copy_text("rsMcpSync.plan.cannotCompare", &[]),
                 ),
             );
         }
         // 两份原文装进同一行请求：后端一行上限 1 MiB。装不下当场说清，不发。
         let line = encode_request("0", CMD, &args);
         if line.len() > REQUEST_LINE_CAP {
-            return Err(format!(
-                "两份配置合起来太大，一趟装不下（请求一行 {} 字节，上限 {REQUEST_LINE_CAP}）—— 一个字节都没动",
-                line.len()
+            return Err(copy_text(
+                "rsMcpSync.plan.tooBig",
+                &[
+                    ("bytes", &(line.len()).to_string()),
+                    ("cap", &REQUEST_LINE_CAP.to_string()),
+                ],
             ));
         }
         let data = client.call(CMD, args, BUDGET).await.map_err(|e| {
             match route_call_error(&e, |_code, message| format!("{who}：{message}")) {
                 Routed::NoChannel(s) | Routed::Refused(s) => s,
-                Routed::Done => format!("{who}：比对时出了内部错误，没有拿到结果"),
+                Routed::Done => copy_text("rsMcpSync.plan.internal", &[("who", &who.to_string())]),
             }
         })?;
-        data.ok_or_else(|| format!("{who} 的后端对 `{CMD}` 回了一条空应答"))
+        data.ok_or_else(|| copy_text("rsMcpSync.plan.emptyReply", &[("who", &who.to_string())]))
     }
 }
 
@@ -165,8 +170,8 @@ fn servers_in(text: Option<&str>) -> Map<String, Value> {
 
 /// 对面后端的应答认不出来（缺格 / 类型不对）时给人的那句话 —— 几处同一句：对用户来说它们是同一件事。
 /// 多半是两台的后端版本不一样；**不猜默认值**（猜出来的「空差异」会让人以为两边一样）。
-const UNREADABLE_REPLY: &str =
-    "对面的后端答的内容认不出来，多半是两边版本不一样。这一趟什么都没写。";
+static UNREADABLE_REPLY: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsMcpSync.reply.unreadable", &[]));
 
 /// 后端那一行 → 差异表的一行（值由调用方从原文里原样取）。契约对不上 ⇒ 报错，不猜默认值。
 fn row_from_wire(
@@ -213,10 +218,12 @@ pub(crate) async fn preview_with(
     let (root, rel) = crate::mcp::split_target(from_target)?;
     let src = from.peek(root, rel).await?;
     let Some(source_text) = src.text else {
-        return Err(format!(
-            "{} 上没有 {} —— 没有可以拷过去的条目",
-            from.machine(),
-            src.path
+        return Err(copy_text(
+            "rsMcpSync.preview.missing",
+            &[
+                ("from", &(from.machine()).to_string()),
+                ("path", &src.path.to_string()),
+            ],
         ));
     };
     let (root, rel) = crate::mcp::split_target(to_target)?;
@@ -246,8 +253,9 @@ pub(crate) async fn preview_with(
 
 /// 对面在看差异之后变了的那句话。
 fn stale_said(machine: &str) -> String {
-    format!(
-        "{machine} 上那份配置在你看差异之后又被改过了，这一趟一个字节都没写。重新看一次差异再决定。"
+    copy_text(
+        "rsMcpSync.stale.changed",
+        &[("machine", &machine.to_string())],
     )
 }
 
@@ -289,7 +297,7 @@ pub(crate) async fn apply_with(
     let next = crate::mcp::plan_project_mcp(to_target, target_text, &mut |v: &mut Value| {
         for n in &names {
             let server = source.get(n).cloned().ok_or_else(|| {
-                format!("「{n}」不在拷出来的那一份里 —— 两端对不上，一个字节都没写")
+                copy_text("rsMcpSync.apply.notInCopy", &[("name", &n.to_string())])
             })?;
             crate::mcp::upsert_mcp_server_value(v, n.clone(), server)?;
         }
@@ -322,7 +330,7 @@ pub async fn mcp_sync_preview(
     let from_target = crate::mcp::project_mcp_target(&from, "mcp_sync_preview", &from_dir)?;
     let to_target = crate::mcp::project_mcp_target(&to, "mcp_sync_preview", &to_dir)?;
     if from == to && from_target == to_target {
-        return Err("两边是同一份文件 —— 换一台机器或换一个项目目录".to_string());
+        return Err(copy_text("rsMcpSync.preview.sameFile", &[]));
     }
     preview_with(
         &BackendDoor::new(from),

@@ -494,7 +494,14 @@ fn spawned_via_cc_agents() -> Result<Vec<serde_json::Value>, (String, String)> {
 }
 
 pub(crate) fn list_for_inbound() -> Result<serde_json::Value, (String, String)> {
-    Ok(serde_json::json!({ "agents": agents_via_cc_list()? }))
+    Ok(list_reply(agents_via_cc_list()?))
+}
+
+/// 〔C4e · 第四波 4C〕`bus-list` 的成品 `{agents}` —— 从 [`list_for_inbound`] 里原样抽出来（逻辑不动），
+/// 只为让跨语言金样 `tests/__fixtures__/cc-bus-control.golden.json` 拿**同一个**构造器对拍：
+/// 界面（`src/cc-bus-control.ts`）从此直接收这份成品，monitor 那一跳只搬字节。
+pub(crate) fn list_reply(agents: Vec<serde_json::Value>) -> serde_json::Value {
+    serde_json::json!({ "agents": agents })
 }
 
 /// `bus-state`：**一次回全** —— 总线名单 ＋ spawn 台账〔`K-R113` 09-13〕。
@@ -578,14 +585,7 @@ fn recipient_status(to: &str) -> (bool, serde_json::Value) {
 pub(crate) fn kill_for_inbound(
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, (String, String)> {
-    let id = args
-        .as_object()
-        .and_then(|o| o.get("id"))
-        .and_then(|v| v.as_str())
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| ("invalid_args".to_string(), "缺 `id`".to_string()))?
-        .to_string();
+    let id = parse_kill(args)?;
     // ⚠ **不加 `--`**〔08-13 真跑撞出来的〕：`cc-send` 会解析旗标（所以那边要显式结束），
     //   而 `cc-kill` **不解析** —— 它直接取 `$1`。传了 `--` 的后果是它去杀一个名叫 `--`
     //   的 agent（`-` 在它的白名单里，连报错都不会），三种情形全回 `killed:false`
@@ -621,20 +621,54 @@ pub(crate) fn kill_for_inbound(
         String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr);
     let killed = said.contains("已杀会话");
     let stale_only = said.contains("已摘掉");
-    Ok(serde_json::json!({
+    Ok(kill_reply(&id, killed, stale_only))
+}
+
+/// `bus-kill` 的入参 —— 纯函数〔C4e：从 [`kill_for_inbound`] 里原样抽出（逻辑不动），跨语言金样拿它核请求样例〕。
+pub(crate) fn parse_kill(args: &serde_json::Value) -> Result<String, (String, String)> {
+    Ok(args
+        .as_object()
+        .and_then(|o| o.get("id"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| ("invalid_args".to_string(), "缺 `id`".to_string()))?
+        .to_string())
+}
+
+/// 〔C4e · 第四波 4C〕`bus-kill` 的成品 `{id, killed, stale_only}` —— 从 [`kill_for_inbound`] 里原样抽出来（逻辑不动），
+/// 理由同 [`list_reply`]。
+pub(crate) fn kill_reply(id: &str, killed: bool, stale_only: bool) -> serde_json::Value {
+    serde_json::json!({
         "id": id,
         "killed": killed,
         // 身份对不上 ⇒ 只摘了陈旧登记，**会话与收件箱都没动**
         "stale_only": stale_only,
-    }))
+    })
 }
 
 pub(crate) fn send_for_inbound(
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, (String, String)> {
     let (to, text, from) = parse_send(args).map_err(|(c, m)| (c.to_string(), m))?;
+    deliver(&to, &text, from.as_deref())?;
+    // ★ 投出去之后，把「有没有人会读」也一并回答〔用@08-13 那条架构点的另一半〕。
+    //
+    // 病：今天两种「没人会读」都只回 `sent:true` —— ① 收件人**压根没登记**
+    //（cc-send 会在 stderr 警告，但那句话到不了后端的调用方）；
+    // ② 登记过、**会话早没了**（cc-bus 那份名单会过期）。
+    // ⇒ 投递照旧（先发后到是正当用法），但**说清楚**：`registered` + 三态 `live`。
+    let (registered, live) = recipient_status(&to);
+    Ok(send_reply(&to, registered, live, from.as_deref()))
+}
+
+/// 投一条（转调 `cc-send`）—— `bus-send` 与 `bus-broadcast` 共用这**一处**起进程〔C4e：从 [`send_for_inbound`] 里原样抽出〕。
+///
+/// 抽出来的理由：广播逐个投递时不该每一条都再问一遍「有没有人会读」（那是 `recipient_status` 的
+/// 一次 `cc-list` ＋ 一次身份空间查询）—— 广播挑人时已经问过了。起 `cc-send` 的仍只有这一处。
+fn deliver(to: &str, text: &str, from: Option<&str>) -> Result<(), (String, String)> {
     // `--` 显式结束旗标：收件人万一以 `--` 开头也当收件人，不会被 cc-send 当成选项。
-    let out = run_as("cc-send", &["--", &to, &text], from.as_deref()).map_err(|(c, m)| {
+    let out = run_as("cc-send", &["--", to, text], from).map_err(|(c, m)| {
         // 只有这条路带得动大载荷 ⇒ 把**实测长度**补进去（诊断里给数，别让人自己去量）。
         if c == "too_long" {
             return (
@@ -645,21 +679,140 @@ pub(crate) fn send_for_inbound(
         (c.to_string(), m)
     })?;
     let detail = out.diagnosis();
-    classify_send(out.code, &detail)?;
-    // ★ 投出去之后，把「有没有人会读」也一并回答〔用@08-13 那条架构点的另一半〕。
-    //
-    // 病：今天两种「没人会读」都只回 `sent:true` —— ① 收件人**压根没登记**
-    //（cc-send 会在 stderr 警告，但那句话到不了后端的调用方）；
-    // ② 登记过、**会话早没了**（cc-bus 那份名单会过期）。
-    // ⇒ 投递照旧（先发后到是正当用法），但**说清楚**：`registered` + 三态 `live`。
-    let (registered, live) = recipient_status(&to);
-    Ok(serde_json::json!({
+    classify_send(out.code, &detail)
+}
+
+/// 〔C4e · 第四波 4C〕`bus-send` 的成品 —— 从 [`send_for_inbound`] 里原样抽出来（逻辑不动），理由同 [`list_reply`]。
+pub(crate) fn send_reply(
+    to: &str,
+    registered: bool,
+    live: serde_json::Value,
+    from: Option<&str>,
+) -> serde_json::Value {
+    serde_json::json!({
         "to": to, "sent": true, "registered": registered, "live": live,
         // 回显**以谁的身份发的**：不给 `from` 时是 `null`，那时收信人看到的是
         // cc-whoami 在后端处境里解出来的东西（实测：`unknown`）——
         // 回显出来，调用方才看得见这件事，而不是等收信人来问「谁发的」。
         "from": from
-    }))
+    })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// `bus-broadcast`：给总线上**在线**的成员群发一条〔C4e · 第四波 4C〕
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// # 它治的是什么
+//
+// 广播此前是 **monitor 里的组合**（`bus-list` 挑人 ＋ 逐个 `bus-send`，monitor `cc_bus.rs` 的
+// `broadcast_via_backend` / `pick_broadcast_targets`〔散文墓碑〕）。界面改成经通道直接说后端之后
+// （`设计/05 §14.3`：业务解释只有一个家），一个组合要么在界面里再写一遍（第二份挑人规则），要么收进后端 ——
+// 收进来：挑人与逐个投递都在这一台机器上做，界面只收一份成品（三个数分开说）。
+//
+// # 挑人规则（逐字承接 monitor 那一份，P4f 08-13 实测出来的）
+//
+// · 身份空间答得上（有 `true` / `false`）⇒ **只发 `live == true` 的**（老 `cc-broadcast` 发给 `agents.tsv` 的
+//   每一行，用户机器实测 86 行登记、只有 8 个会话还活着 ⇒ 78 个幽灵收件箱）；
+// · 全是 `null`（问不到 tmux）⇒ 退回「发给所有登记的」并标 `liveness_unknown`（「问不到」≠「都不在」）；
+// · 不发给自己（`from`）。
+//
+// # 部分失败不回错
+//
+// 已经投出去一部分之后再失败，**不许**整条回错（调用方会以为一条都没发、再发一遍 ⇒ 一部分人收到两遍）。
+// ⇒ 成品里 `failed` 逐个列出（`{id, error, detail}`，`error` 是 `bus-send` 那一套码），`sent` 数照实。
+// 只有「一条都还没发」的失败（列名单那一步）才整条回错。
+
+/// `bus-broadcast` 的入参 —— 纯函数。`text` 必须非空（空广播不是缺省）；`from` 可选（同 [`parse_send`]）。
+fn parse_broadcast(args: &serde_json::Value) -> Result<(String, Option<String>), CmdErr> {
+    let obj = args
+        .as_object()
+        .ok_or(("invalid_args", "args 不是对象".to_string()))?;
+    let text = obj
+        .get("text")
+        .and_then(|v| v.as_str())
+        .ok_or(("invalid_args", "缺 `text`".to_string()))?;
+    if text.trim().is_empty() {
+        return Err(("invalid_args", "`text` 是空的".to_string()));
+    }
+    let from = obj
+        .get("from")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    Ok((text.to_string(), from))
+}
+
+/// 广播挑出来的人。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BroadcastPlan {
+    pub(crate) targets: Vec<String>,
+    pub(crate) skipped_offline: usize,
+    pub(crate) liveness_unknown: bool,
+}
+
+/// 广播要发给谁 —— **纯函数**（`agents` 是 `bus-list` 那一份，已挂过身份空间）。挑人规则见本节头注。
+pub(crate) fn pick_broadcast_targets(agents: &[serde_json::Value], me: &str) -> BroadcastPlan {
+    let known: bool = agents
+        .iter()
+        .any(|a| a.get("live").map(|v| !v.is_null()).unwrap_or(false));
+    let mut targets = Vec::new();
+    let mut skipped_offline = 0usize;
+    for a in agents {
+        let Some(id) = a.get("id").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        if id == me {
+            continue; // 不发给自己（同 cc-broadcast）
+        }
+        let live = a.get("live").and_then(|v| v.as_bool());
+        if known && live != Some(true) {
+            skipped_offline += 1;
+            continue;
+        }
+        targets.push(id.to_string());
+    }
+    BroadcastPlan {
+        targets,
+        skipped_offline,
+        liveness_unknown: !known,
+    }
+}
+
+/// `bus-broadcast` 的成品 —— 纯函数：三个数分开（发到几个 · 因不在线跳过几个 · 失败几个，失败逐个列）。
+pub(crate) fn broadcast_reply(
+    plan: &BroadcastPlan,
+    sent: usize,
+    failed: Vec<serde_json::Value>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "sent": sent,
+        "skipped_offline": plan.skipped_offline,
+        "liveness_unknown": plan.liveness_unknown,
+        "failed": failed,
+    })
+}
+
+/// `bus-broadcast`：列名单（同 `bus-list` 那一个函数）→ 挑人 → 逐个投递（同 `bus-send` 那一处起进程）。
+pub(crate) fn broadcast_for_inbound(
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, (String, String)> {
+    let (text, from) = parse_broadcast(args).map_err(|(c, m)| (c.to_string(), m))?;
+    let agents = agents_via_cc_list()?;
+    let plan = pick_broadcast_targets(&agents, from.as_deref().unwrap_or(""));
+    let mut sent = 0usize;
+    let mut failed = Vec::new();
+    for id in &plan.targets {
+        match deliver(id, &text, from.as_deref()) {
+            Ok(()) => sent += 1,
+            // ⚠ 键刻意不叫 `code` / `message`：那一对是**整条失败**的错误信封（`readonly_guard` 的信封普查按键认它）；
+            //   这里是一份**成功**成品里逐个列出的投递失败 —— 形状不同的两件事，不借同一对键。
+            Err((error, detail)) => failed.push(serde_json::json!({
+                "id": id, "error": error, "detail": detail
+            })),
+        }
+    }
+    Ok(broadcast_reply(&plan, sent, failed))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -811,11 +964,17 @@ pub(crate) fn spawn_for_inbound(
     let out = run_as("cc-spawn", &refs, None).map_err(|(c, m)| (c.to_string(), m))?;
     classify_spawn(out.code, &out.diagnosis())?;
     let said = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    Ok(serde_json::json!({
+    Ok(spawn_reply(&said))
+}
+
+/// 〔C4e · 第四波 4C〕`bus-spawn` 的成品 `{spawned, id, said}` —— 从 [`spawn_for_inbound`] 里原样抽出来（逻辑不动），
+/// 理由同 [`list_reply`]。
+pub(crate) fn spawn_reply(said: &str) -> serde_json::Value {
+    serde_json::json!({
         "spawned": true,
-        "id": spawned_id_of(&said),
+        "id": spawned_id_of(said),
         "said": said,
-    }))
+    })
 }
 
 /// `cc-spawn` 的退出码 → 语义码 —— 纯函数（表在 [`spawn_for_inbound`] 头注）。

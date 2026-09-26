@@ -29,6 +29,7 @@
 //! 下面那条判据钉住**每一个调用方都已经从「未退役」账上下来了** ——
 //! 一个文件既在调后端、又还记在账上，就是「切了后端但棘轮没动」的假账。
 
+use crate::copy_table::copy_text;
 use std::path::PathBuf;
 
 /// 一次本机查询的结局。**三态**，理由见模块头注。
@@ -63,7 +64,8 @@ pub(crate) fn classify(code: Option<i32>, stdout: String, stderr: String) -> Que
 ///
 /// ⚠ **不做重试、不做超时**：这两件都属调用方的策略（历史面愿意等、UI 探针不愿意），
 /// 而在这一层写死会让两种调用方之一必然错。如实记为诚实边界。
-// F10b 第一批起有生产调用方（`usage.rs`），不再需要 `allow(dead_code)`。
+// 〔AR1〕F10b 第一批起有生产调用方，不再需要 `allow(dead_code)`（第一批那个调用方是用量聚合轴，
+//   已随 `设计/50` 删了；今天的调用方以 `run_query(` 的引用为准，不在这里抄名单）。
 /// ⚠ **`spawn` 是注入进来的**〔`15 §5.1 A3`，09-18〕：起进程那一下的三个答案
 /// （要不要窗口 · 要不要随我死 · 错误往哪去）要落成平台原语，而平台原语进不了本层
 /// （`the_backend_half_stays_platform_agnostic` 的禁针 ＋ 平台例外表的递减棘轮）。
@@ -90,7 +92,16 @@ pub(crate) fn run_query(
     let bin: PathBuf = match crate::backend::control::local_backend::resolve_in_use(target_triple) {
         crate::backend::control::local_backend::Resolved::Found(p) => p,
         crate::backend::control::local_backend::Resolved::Missing { reason, looked_at } => {
-            return QueryOutcome::NoBackend(format!("{reason}；找过 {looked_at:?}"));
+            // 〔CP2b〕照 CP1 台账改：路径列表不再用 Debug 格式（带引号与方括号）上屏，逐条用顿号连。
+            let list = looked_at
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join(&copy_text("rsLocalQuery.noBackend.listSep", &[]));
+            return QueryOutcome::NoBackend(copy_text(
+                "rsLocalQuery.noBackend.lookedAt",
+                &[("reason", &reason), ("list", &list)],
+            ));
         }
     };
     let mut cmd = std::process::Command::new(&bin);
@@ -103,7 +114,10 @@ pub(crate) fn run_query(
         ),
         // 起不来（权限 / 文件损坏 / 架构不符）也算「后端不在」——对调用方的意义相同：
         // 今天这台机器上没有可用的对侧。
-        Err(e) => QueryOutcome::NoBackend(format!("起 {} 失败：{e}", bin.display())),
+        Err(e) => QueryOutcome::NoBackend(copy_text(
+            "rsLocalQuery.noBackend.spawnFailed",
+            &[("bin", &(bin.display()).to_string()), ("e", &e.to_string())],
+        )),
     }
 }
 

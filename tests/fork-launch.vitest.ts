@@ -29,7 +29,7 @@ describe("inferForkLaunch", () => {
     expect(f.cwd).toEqual({
       kind: "known",
       value: "/home/u/p",
-      from: "会话记录里的 cwd",
+      from: "会话记录",
     });
   });
 
@@ -43,7 +43,7 @@ describe("inferForkLaunch", () => {
     expect(f.account).toEqual({
       kind: "known",
       value: "/home/u/.claude-accts/z",
-      from: "源会话进程的 pidfile",
+      from: "原会话的进程",
     });
     expect(f.tmux.kind === "known" && f.tmux.value).toBe(true);
   });
@@ -58,7 +58,7 @@ describe("inferForkLaunch", () => {
     expect(f.account).toEqual({
       kind: "known",
       value: null,
-      from: "源会话进程的 pidfile",
+      from: "原会话的进程",
     });
   });
 
@@ -110,12 +110,12 @@ describe("describeSlot", () => {
       liveConfigDir: null,
     });
     expect(describeSlot("account", live)).toContain("跟原会话一致");
-    expect(describeSlot("account", live)).toContain("pidfile");
+    expect(describeSlot("account", live)).toContain("原会话的进程");
 
     const dead = inferForkLaunch({ sourceIsLive: false, sourceCwd: "/p" });
     const t = describeSlot("account", dead);
     expect(t).toContain("需要你选一次");
-    expect(t).toContain("pidfile"); // 说清为什么答不出
+    expect(t).toContain("查不到它当时用的账号"); // 说清为什么答不出（〔CP2b〕CP1 裁：不说 pidfile，说后果）
   });
 });
 

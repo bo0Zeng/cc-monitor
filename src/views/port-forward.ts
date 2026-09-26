@@ -13,6 +13,7 @@ import { readRemoteConfig } from "../remote-config";
 // `connCount` 走 C03 大整数策略：Rust 是 `u64`，按**累计连接数**量纲算
 // 2^53-1 条（每秒 1000 连接要 28.5 万年）⇒ `number` 够用。
 import type { ForwardStatus } from "../generated/ForwardStatus";
+import { copyText } from "../copy-table";
 
 function mkBtn(label: string, onClick: () => void): HTMLButtonElement {
   const b = document.createElement("button");
@@ -62,10 +63,10 @@ class PortForwardPanel {
     header.className = "pf-header";
     const title = document.createElement("span");
     title.className = "pf-title";
-    title.textContent = "端口转发（-L 本地转发）";
+    title.textContent = copyText("portForward.buildChrome.title");
     header.appendChild(title);
-    header.appendChild(mkBtn("刷新", () => void this.reload()));
-    const close = mkBtn("关闭", () => this.close());
+    header.appendChild(mkBtn(copyText("portForward.buildChrome.refresh"), () => void this.reload()));
+    const close = mkBtn(copyText("portForward.buildChrome.close"), () => this.close());
     close.classList.add("pf-close");
     header.appendChild(close);
     panel.appendChild(header);
@@ -75,18 +76,18 @@ class PortForwardPanel {
     this.originSel = document.createElement("select");
     this.originSel.className = "pf-input";
     form.appendChild(this.originSel);
-    this.localInput = mkInput("本地端口 (如 15432)");
+    this.localInput = mkInput(copyText("portForward.buildChrome.localPort"));
     form.appendChild(this.localInput);
     const arrow = document.createElement("span");
     arrow.className = "pf-arrow";
-    arrow.textContent = "→";
+    arrow.textContent = copyText("portForward.buildChrome.arrow");
     form.appendChild(arrow);
-    this.rhostInput = mkInput("远端 host (如 localhost)");
+    this.rhostInput = mkInput(copyText("portForward.buildChrome.remoteHost"));
     this.rhostInput.value = "localhost";
     form.appendChild(this.rhostInput);
-    this.rportInput = mkInput("远端端口 (如 5432)");
+    this.rportInput = mkInput(copyText("portForward.buildChrome.remotePort"));
     form.appendChild(this.rportInput);
-    const startBtn = mkBtn("启动", () => void this.onStart());
+    const startBtn = mkBtn(copyText("portForward.buildChrome.start"), () => void this.onStart());
     startBtn.classList.add("pf-start");
     form.appendChild(startBtn);
     panel.appendChild(form);
@@ -125,13 +126,13 @@ class PortForwardPanel {
     try {
       forwards = await commands.list_forwards();
     } catch (e) {
-      showActionFailureToast("列转发失败", String(e));
+      showActionFailureToast(copyText("portForward.reload.listFailed"), String(e));
     }
     this.listEl.innerHTML = "";
     if (forwards.length === 0) {
       const empty = document.createElement("div");
       empty.className = "pf-empty";
-      empty.textContent = "(暂无转发。填上方表单启动一条。)";
+      empty.textContent = copyText("portForward.reload.empty");
       this.listEl.appendChild(empty);
       return;
     }
@@ -144,9 +145,9 @@ class PortForwardPanel {
       row.appendChild(dot);
       const desc = document.createElement("span");
       desc.className = "pf-desc";
-      desc.textContent = `[${f.origin}] 127.0.0.1:${f.localPort} → ${f.remoteHost}:${f.remotePort} · ${f.connCount} 连接`;
+      desc.textContent = copyText("portForward.reload.row", { origin: f.origin, localPort: f.localPort, remoteHost: f.remoteHost, remotePort: f.remotePort, connCount: f.connCount });
       row.appendChild(desc);
-      row.appendChild(mkBtn("停止", () => void this.onStop(f.id)));
+      row.appendChild(mkBtn(copyText("portForward.reload.stop"), () => void this.onStop(f.id)));
       this.listEl.appendChild(row);
     }
   }
@@ -157,20 +158,20 @@ class PortForwardPanel {
     const remoteHost = this.rhostInput.value.trim();
     const remotePort = Number.parseInt(this.rportInput.value, 10);
     if (!origin) {
-      showActionFailureToast("启动转发", "请先在设置里配置一台远端主机。");
+      showActionFailureToast(copyText("portForward.onStart.title"), copyText("portForward.onStart.noRemote"));
       return;
     }
     const validPort = (p: number): boolean => Number.isInteger(p) && p > 0 && p <= 65535;
     if (!validPort(localPort)) {
-      showActionFailureToast("启动转发", "本地端口非法（1–65535）。");
+      showActionFailureToast(copyText("portForward.onStart.title"), copyText("portForward.onStart.badLocalPort"));
       return;
     }
     if (!remoteHost) {
-      showActionFailureToast("启动转发", "远端 host 不能为空。");
+      showActionFailureToast(copyText("portForward.onStart.title"), copyText("portForward.onStart.noHost"));
       return;
     }
     if (!validPort(remotePort)) {
-      showActionFailureToast("启动转发", "远端端口非法（1–65535）。");
+      showActionFailureToast(copyText("portForward.onStart.title"), copyText("portForward.onStart.badRemotePort"));
       return;
     }
     try {
@@ -179,7 +180,7 @@ class PortForwardPanel {
       this.rportInput.value = "";
       await this.reload();
     } catch (e) {
-      showActionFailureToast("启动转发失败", String(e));
+      showActionFailureToast(copyText("portForward.onStart.failed"), String(e));
     }
   }
 
@@ -188,7 +189,7 @@ class PortForwardPanel {
       await commands.stop_forward({ id });
       await this.reload();
     } catch (e) {
-      showActionFailureToast("停止转发失败", String(e));
+      showActionFailureToast(copyText("portForward.onStop.failed"), String(e));
     }
   }
 }

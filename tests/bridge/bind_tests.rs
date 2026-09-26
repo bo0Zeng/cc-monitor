@@ -795,8 +795,8 @@ fn the_front_dispatch_goes_token_first_then_title_and_blames_only_the_token_bit(
         assert_eq!(rescans, want_rescans, "{c:?} 现扫次数不对");
         if let Err(msg) = got {
             // ③ 归因只看一个布尔：开头二选一，而且**只**由 has_token 决定。
-            let with = msg.starts_with(FRONT_FAIL_WITH_TOKEN);
-            let without = msg.starts_with(FRONT_FAIL_WITHOUT_TOKEN);
+            let with = msg.starts_with(FRONT_FAIL_WITH_TOKEN.as_str());
+            let without = msg.starts_with(FRONT_FAIL_WITHOUT_TOKEN.as_str());
             assert!(
                 with != without,
                 "{c:?} 的失败说法两种开头都不是 / 都是：{msg}"
@@ -985,7 +985,7 @@ fn the_heartbeat_sweep_takes_a_dead_window_out_of_the_front_dispatch() {
     let after = run();
     let msg = after.expect_err("心跳清掉了那条，↗ 却还按令牌拉到了一个窗口");
     assert!(
-        msg.starts_with(FRONT_FAIL_WITH_TOKEN),
+        msg.starts_with(FRONT_FAIL_WITH_TOKEN.as_str()),
         "清掉之后的归因不是「有令牌」那一句：{msg}"
     );
     assert_eq!(rescans.get(), 1, "清掉之后没有退到标题路去现扫一次");

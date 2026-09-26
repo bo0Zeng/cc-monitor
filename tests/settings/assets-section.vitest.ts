@@ -10,6 +10,11 @@
  * - 机器 id → origin：本机后端的 id ⇒ `<local>`；可达表里的 ⇒ 那台；别的 ⇒ 够不到（一个明说的态，不是空 origin）。
  * - skill 默认只勾「这台没有」的；装不过去的（binary / blocked）不能勾；overwrite = 勾了的里「这台不同」的。
  * - 构造零 I/O、零「装」命令；`loadNow` 之后才同步 ＋ 读目录。
+ * 〔SU1 · 第四波 4C〕守的要求再加：用户裁决 **V116**「要，只删装时写进去的文件」（装完改过的先问）。买到：
+ * - 卸的四态给字表键集 == 后端 `skill_install::UNINSTALL_STATES`（两向，现抠）。
+ * - `skill-installs` / `skill-uninstall-plan` 的应答解码严格（缺格就抛，不猜成「没装过」）。
+ * - 卸的勾选：默认只勾能删且后端没说「要问」的；删不了的不能进 take；confirm = 勾了的里「要问」的。
+ * - loadNow 之后也问这台记着的装记录；构造期照旧零 I/O、不取「卸」命令；点「卸」→ 看 → 勾 → 交的恰是那两张单子 ＋ 看的时候那份原文。
  * 买不到：真机 app 里点一遍（jsdom 之外没量）；真远端。
  */
 import { describe, expect, it, vi, beforeEach } from "vitest";
@@ -30,6 +35,28 @@ vi.mock("../../src/ipc/chan", () => ({
   chan: {
     call: async (origin: string, op: string) => {
       calls.chan.push(`${op}:${origin}`);
+      if (op === "skill-installs") {
+        return new TextEncoder().encode(JSON.stringify({ installs: [{ dir: "/h/.claude/skills/pulled", name: "pulled", files: 2 }] }));
+      }
+      if (op === "skill-uninstall-plan") {
+        return new TextEncoder().encode(
+          JSON.stringify({
+            dir: "/h/.claude/skills/pulled",
+            name: "pulled",
+            rows: [
+              { path: "SKILL.md", state: "intact", created: true, deletable: true, ask: false },
+              { path: "edited.md", state: "modified", created: true, deletable: true, ask: true },
+              { path: "gone.md", state: "gone", created: true, deletable: false, ask: false },
+            ],
+            seen: [
+              { path: "SKILL.md", text: "doc\n" },
+              { path: "edited.md", text: "mine\n" },
+            ],
+            delete: null,
+            forget: null,
+          }),
+        );
+      }
       return new TextEncoder().encode(
         JSON.stringify({
           self: "LOCALID",
@@ -58,6 +85,12 @@ import {
   skillDefaultTake,
   skillSelectable,
   type AssetInstallApi,
+  decodeInstalls,
+  decodeUninstallPlan,
+  UNINSTALL_STATE_TEXT,
+  uninstallApplyArgs,
+  uninstallDefaultTake,
+  type UninstallRow,
 } from "../../src/settings/assets-section";
 import type { SkillInstallRow } from "../../src/generated/SkillInstallRow";
 
@@ -92,6 +125,39 @@ describe("资产目录 · 给字表 == 后端闭集（两向）", () => {
   });
   it("skill 可疑项的种类", () => {
     expect(Object.keys(SKILL_SUSPECT_TEXT).sort()).toEqual(closedSet("src/backend/skill_install.rs", "pub const SUSPECT_KINDS").sort());
+  });
+  it("〔SU1〕卸时一个文件的四态", () => {
+    const got = closedSet("src/backend/skill_install.rs", "pub const UNINSTALL_STATES");
+    expect(got.length).toBe(4);
+    expect(Object.keys(UNINSTALL_STATE_TEXT).sort()).toEqual(got.sort());
+  });
+});
+
+describe("〔SU1〕卸 · 纯函数", () => {
+  it("装记录与卸的判定解码严格：缺格就抛，不猜成「没装过」", () => {
+    expect(decodeInstalls({ installs: [{ dir: "/d", name: "n", files: 1 }] })).toEqual([{ dir: "/d", name: "n", files: 1 }]);
+    for (const bad of [null, {}, { installs: [{ dir: "/d", name: "n" }] }, { installs: [{ dir: 1, name: "n", files: 1 }] }]) {
+      expect(() => decodeInstalls(bad), JSON.stringify(bad)).toThrow();
+    }
+    const good = { dir: "/d", name: "n", rows: [{ path: "a", state: "intact", created: true, deletable: true, ask: false }], seen: [{ path: "a", text: "x" }] };
+    expect(decodeUninstallPlan(good).rows[0].path).toBe("a");
+    for (const bad of [
+      null,
+      { ...good, seen: undefined },
+      { ...good, rows: [{ path: "a", state: "intact", created: true, deletable: true }] },
+      { ...good, rows: [{ path: "a", state: "intact", created: "yes", deletable: true, ask: false }] },
+      { ...good, seen: [{ path: "a" }] },
+    ]) {
+      expect(() => decodeUninstallPlan(bad), JSON.stringify(bad)).toThrow();
+    }
+  });
+
+  it("卸的勾选：默认只勾能删且不用问的；删不了的进不了 take；confirm = 勾了的里要问的", () => {
+    const row = (path: string, deletable: boolean, ask: boolean): UninstallRow => ({ path, state: "x", created: true, deletable, ask });
+    const rows = [row("a", true, false), row("b", true, true), row("c", false, false)];
+    expect([...uninstallDefaultTake(rows)]).toEqual(["a"]);
+    expect(uninstallApplyArgs(rows, new Set(["a", "b", "c"]))).toEqual({ take: ["a", "b"], confirm: ["b"] });
+    expect(uninstallApplyArgs(rows, new Set(["a"]))).toEqual({ take: ["a"], confirm: [] });
   });
 });
 
@@ -158,12 +224,59 @@ describe("资产目录 · 那一块", () => {
     sec.loadNow();
     for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
     expect(calls.invoke).toEqual(["assets_sync:<local>"]);
-    expect(calls.chan).toEqual(["assets-catalog:<local>"]);
+    // 〔SU1〕目录之后再问这台记着的装记录（各问各的）
+    expect(calls.chan).toEqual(["assets-catalog:<local>", "skill-installs:<local>"]);
     expect(api).not.toHaveBeenCalled();
     const text = sec.element.textContent ?? "";
     expect(text).toContain("demo");
     expect(text).toContain("dev"); // 来源经可达表对回 origin
     const buttons = [...sec.element.querySelectorAll("button")].map((b) => b.textContent);
     expect(buttons.filter((t) => t === "装到这台")).toHaveLength(1); // 够不到的那一条（GHOST）没有「装」钮
+  });
+
+  it("〔SU1〕点「卸」→ 看这台的判定 → 勾 → 交的恰是两张单子 ＋ 看的时候那份原文；构造与读列表都不取「卸」命令", async () => {
+    const uninstall = vi.fn(async (a: { to: string; dir: string; seen: unknown[]; take: string[]; confirm: string[] }) => ({
+      dir: a.dir,
+      deleted: a.take,
+      recordFailed: null,
+    }));
+    let fetched = 0;
+    const sec = new AssetsSection(() => {
+      fetched++;
+      return { skillUninstall: uninstall } as unknown as AssetInstallApi;
+    });
+    sec.loadNow();
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(fetched).toBe(0);
+    expect(sec.element.textContent).toContain("pulled");
+    const un = [...sec.element.querySelectorAll("button")].find((b) => b.textContent === "卸");
+    expect(un, "装记录里那一条没有「卸」钮").toBeTruthy();
+    un!.click();
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(calls.chan).toContain("skill-uninstall-plan:<local>");
+    const boxes = [...sec.element.querySelectorAll<HTMLInputElement>("input[type=checkbox]")];
+    expect(boxes.map((b) => [b.checked, b.disabled])).toEqual([
+      [true, false], // intact：默认勾
+      [false, false], // modified：要问 ⇒ 默认不勾
+      [false, true], // gone：删不了
+    ]);
+    // 用户点名：改过的那一个也删（直接改勾 ＋ 发 change —— jsdom 里 label 包着的框 `.click()` 会被 label 再点一次、勾回去）
+    boxes[1].checked = true;
+    boxes[1].dispatchEvent(new Event("change"));
+    const go = [...sec.element.querySelectorAll("button")].find((b) => b.textContent?.startsWith("在 "));
+    go!.click();
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(uninstall).toHaveBeenCalledTimes(1);
+    expect(uninstall.mock.calls[0][0]).toEqual({
+      to: "<local>",
+      dir: "/h/.claude/skills/pulled",
+      seen: [
+        { path: "SKILL.md", text: "doc\n" },
+        { path: "edited.md", text: "mine\n" },
+      ],
+      take: ["SKILL.md", "edited.md"],
+      confirm: ["edited.md"],
+    });
+    expect(sec.element.textContent).toContain("删了 2 个文件");
   });
 });

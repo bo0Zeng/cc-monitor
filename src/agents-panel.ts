@@ -14,6 +14,7 @@
  */
 
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
+import { copyText } from "./copy-table";
 
 export interface AgentEntry {
   /** tool_use id（配对 tool_result 用） */
@@ -62,7 +63,7 @@ export class AgentsPanel {
 
     this.summaryArrow = document.createElement("span");
     this.summaryArrow.className = "status-tasks-arrow";
-    this.summaryArrow.textContent = "▶";
+    this.summaryArrow.textContent = copyText("agentsPanel.arrow.collapsed");
     this.summaryElement.appendChild(this.summaryArrow);
 
     this.summaryText = document.createElement("span");
@@ -86,8 +87,8 @@ export class AgentsPanel {
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
     closeBtn.className = "tasks-popover-close";
-    closeBtn.textContent = "×";
-    closeBtn.title = "关闭";
+    closeBtn.textContent = copyText("agentsPanel.ctor.close");
+    closeBtn.title = copyText("agentsPanel.ctor.closeHint");
     closeBtn.addEventListener("click", () => this.setCollapsed(true));
     popHead.appendChild(closeBtn);
     this.popoverElement.appendChild(popHead);
@@ -114,7 +115,7 @@ export class AgentsPanel {
   }
 
   private applyCollapsedArrow(): void {
-    this.summaryArrow.textContent = this.collapsed ? "▶" : "▼";
+    this.summaryArrow.textContent = this.collapsed ? copyText("agentsPanel.arrow.collapsed") : copyText("agentsPanel.arrow.expanded");
   }
 
   private render(): void {
@@ -129,7 +130,7 @@ export class AgentsPanel {
     const running = this.agents.filter((a) => a.status === "running").length;
     this.summaryText.textContent =
       running > 0
-        ? `${this.agents.length} agents (${running} 运行中)`
+        ? copyText("agentsPanel.render.summary", { n: this.agents.length, running })
         : `${this.agents.length} agents`;
 
     // 全量 replace —— per-tab 上限 30 条（TabManager 侧裁剪）
@@ -168,7 +169,7 @@ export class AgentsPanel {
       const state = document.createElement("span");
       state.className = "agent-state";
       state.textContent =
-        a.status === "running" ? "运行中" : a.status === "done" ? "✓" : "✗ 中止";
+        a.status === "running" ? copyText("agentsPanel.status.running") : a.status === "done" ? copyText("agentsPanel.status.done") : copyText("agentsPanel.status.aborted");
       row.appendChild(state);
 
       row.title = a.label;

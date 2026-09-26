@@ -96,14 +96,15 @@ fn every_unmanaged_entry_names_a_code_address() {
 
     let mut checked = 0usize;
     for u in UNMANAGED_ENV {
-        let addrs = addresses_in(u.why);
+        // 〔CP2b〕住址从 `why`（给人看的话，进了文案表）拆到了 `site`。
+        let addrs = addresses_in(u.site);
         assert!(
             !addrs.is_empty(),
-            "`{}` 的 why 里没有 `<路径>.rs::<符号>` 形态的住址 —— \
+            "`{}` 的 site 里没有 `<路径>.rs::<符号>` 形态的住址 —— \
                  「这东西该由谁装」是一个**设计判断**（不是「这台机器上恰好有」这个读数），\
                  判断必须指得出它长在哪段代码上。\n实得：{}",
             u.id,
-            u.why
+            u.site
         );
         checked += 1;
     }
@@ -249,7 +250,8 @@ fn the_tier_for_owed_installers_is_countable_and_not_empty() {
         );
         // 「有名字、看得见」：档名本身必须说清是**欠的实现**，不是「不该我们装」。
         assert!(
-            e.tier.label().contains("该自带") && e.tier.label().contains("还没有装口"),
+            // 〔CP2b〕「装口」是内部说法（CP1 裁：内部词），档名改说「安装功能」；两半照旧都得在。
+            e.tier.label().contains("该自带") && e.tier.label().contains("还没有安装功能"),
             "这一档的档名读不出「该我们装、而今天还没有装口」两半，实得 {:?} —— \
                  用户会把它读成「不该我们装」",
             e.tier.label()
@@ -411,11 +413,11 @@ fn the_prompt_tier_declares_how_it_will_look() {
             EnvProbe::CannotProbe { why } => {
                 blind += 1;
                 assert!(
-                    why.len() > 30,
+                    why.get().len() > 30,
                     "`{}` 申报「查不动」而理由只有 {} 字节 —— \
                          「查不动」与「懒得查」在表上长得一模一样，理由是唯一分得开的东西",
                     e.id,
-                    why.len()
+                    why.get().len()
                 );
             }
         }

@@ -516,7 +516,7 @@ fn only_three_things_still_need_a_posix_shell_and_the_codex_recipe_is_not_one_of
     assert!(codex_in_tmux.inside_tmux, "夹具没把 `$TMUX` 置上，本格白测");
     assert_eq!(
         needs_shell(&codex_in_tmux, None),
-        Some(WHY_SHELL_BUS_ID),
+        Some(WHY_SHELL_BUS_ID.as_str()),
         "在 tmux 里那段配方要现问一次 tmux ⇒ 这一趟**必须**经 shell（`INVARIANTS §33a` 那条实测例）"
     );
 
@@ -536,18 +536,18 @@ fn only_three_things_still_need_a_posix_shell_and_the_codex_recipe_is_not_one_of
     with_env.ccm_env = "export HTTPS_PROXY=http://x:1".into();
     assert_eq!(
         needs_shell(&with_env, None),
-        Some(WHY_SHELL_CCM_ENV),
+        Some(WHY_SHELL_CCM_ENV.as_str()),
         "`CCM_ENV` 是一段任意 shell，只有 shell 解释得了 —— 这一条不许被收窄掉"
     );
     assert_eq!(
         needs_shell(&codex_bare, Some("claude --resume x")),
-        Some(WHY_SHELL_RESOLVED),
+        Some(WHY_SHELL_RESOLVED.as_str()),
         "后端答出的是一整条命令串，要 shell 拆词（`set -f; exec $cmd`）—— 这一条也不许被收窄掉"
     );
     // 优先级：`CCM_ENV` 先答（它是最外那一段），与 `render_direct` 的拼串顺序同向。
     assert_eq!(
         needs_shell(&with_env, Some("claude --resume x")),
-        Some(WHY_SHELL_CCM_ENV),
+        Some(WHY_SHELL_CCM_ENV.as_str()),
         "两件都在时该先说最外那一段"
     );
 }
@@ -568,11 +568,14 @@ fn every_reason_for_needing_a_shell_is_declared_once_and_used_once() {
     crate::guard_support::assert_no_test_code("control/ccm/mod.rs", &prod);
 
     let reasons: &[(&str, &str)] = &[
-        ("WHY_SHELL_CCM_ENV", WHY_SHELL_CCM_ENV),
-        ("WHY_SHELL_RESOLVED", WHY_SHELL_RESOLVED),
-        ("WHY_SHELL_BUS_ID", WHY_SHELL_BUS_ID),
-        ("WHY_SHELL_ATTACH", WHY_SHELL_ATTACH),
-        ("WHY_SHELL_CONTAINER_TAIL", WHY_SHELL_CONTAINER_TAIL),
+        ("WHY_SHELL_CCM_ENV", WHY_SHELL_CCM_ENV.as_str()),
+        ("WHY_SHELL_RESOLVED", WHY_SHELL_RESOLVED.as_str()),
+        ("WHY_SHELL_BUS_ID", WHY_SHELL_BUS_ID.as_str()),
+        ("WHY_SHELL_ATTACH", WHY_SHELL_ATTACH.as_str()),
+        (
+            "WHY_SHELL_CONTAINER_TAIL",
+            WHY_SHELL_CONTAINER_TAIL.as_str(),
+        ),
     ];
     for (name, text) in reasons {
         assert_eq!(
@@ -620,13 +623,14 @@ fn every_reason_for_needing_a_shell_is_declared_once_and_used_once() {
 fn a_direct_ccm_sid_without_a_carrier_says_so() {
     assert_eq!(
         direct_identity_note(&direct_of(&["--ccm-sid", "s-1"], None)),
-        Some(DIRECT_SID_NO_CARRIER)
+        Some(DIRECT_SID_NO_CARRIER.as_str())
     );
     assert_eq!(direct_identity_note(&direct_of(&[], None)), None);
     assert!(
         DIRECT_SID_NO_CARRIER.contains("CCM_RBIND_TOKEN")
             && DIRECT_SID_NO_CARRIER.contains("照常起"),
-        "那句话得说清靠什么认、以及这一趟照常起：{DIRECT_SID_NO_CARRIER}"
+        "那句话得说清靠什么认、以及这一趟照常起：{}",
+        *DIRECT_SID_NO_CARRIER
     );
 }
 
