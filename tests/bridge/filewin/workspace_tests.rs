@@ -532,6 +532,8 @@ fn across_args_cuts_paths_at_the_common_directory() {
         to: to.into(),
         name: crate::filewin::source::remote_basename(to).into(),
         is_dir: false,
+        from_raw: None,
+        to_raw: None,
     };
     let cases: &[(&str, &str, (&str, &str, &str))] = &[
         ("/srv/a/x", "/srv/b/x", ("/srv", "a/x", "b/x")),
@@ -678,5 +680,23 @@ async fn dragging_rows_onto_the_other_side_copies_them_and_dropping_back_does_no
             serde_json::json!({"root": "/srv", "from": "a/x.txt", "to": "b/x.txt", "overwrite": false})
         ],
         "拖过去那一趟线上那一行与期望不等"
+    );
+}
+
+/// 〔W5-FILES · 有损名全寻址（`设计/60 §6.2`）〕跨目录那一形按**字节**切：源在一个有损名目录里 ⇒ 根照样是按段比的公共前缀，
+/// 有损那一段发 `{"b16": …}`、合法 UTF-8 那一段照旧是字符串（期望手写）。
+#[test]
+fn across_args_cut_lossy_paths_by_their_bytes() {
+    let job = CopyJob {
+        from: "/srv/a\u{FFFD}/x".into(),
+        to: "/srv/b/x".into(),
+        name: "x".into(),
+        is_dir: false,
+        from_raw: Some(b"/srv/a\xff/x".to_vec()),
+        to_raw: None,
+    };
+    assert_eq!(
+        across_args(&job, false).unwrap(),
+        serde_json::json!({ "root": "/srv", "from": { "b16": "61ff2f78" }, "to": "b/x", "overwrite": false })
     );
 }

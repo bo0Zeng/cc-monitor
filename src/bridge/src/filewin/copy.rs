@@ -62,6 +62,13 @@ pub fn is_copyable(r: &Row) -> bool {
     !r.lossy_name
 }
 
+/// 〔W5-FILES · `设计/60 §6.2`「有损名的…复制」〕**窗口里一行**能不能复制：名字寻址得到，或者有损但带着原始字节
+/// （后端 `files-ls` 送的，`Listed::raw_name`）—— 线上那一形走字节（[`super::source::RemotePath`]）。
+/// 行上那颗按钮、右键菜单、「复制到另一栏」问的都是它；[`is_copyable`] 留着给只有那五格的地方。
+pub fn copyable(l: &super::source::Listed) -> bool {
+    !l.lossy_name || l.raw_name.is_some()
+}
+
 /// 一件待复制：**同一台远端、同一个目录**，`from` → `to`。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CopyJob {
@@ -71,6 +78,9 @@ pub struct CopyJob {
     pub name: String,
     /// 〔W5-FILES〕源是目录 ⇒ 线上带 `recursive: true`（复制整棵）；目录不问覆盖（不合并）。
     pub is_dir: bool,
+    /// 〔W5-FILES · 有损名全寻址〕`from` / `to` 不是合法 UTF-8 时的**整条路径**原始字节（`None` ⇒ 那个串就是真字节）。
+    pub from_raw: Option<Vec<u8>>,
+    pub to_raw: Option<Vec<u8>>,
 }
 
 impl CopyJob {
@@ -100,7 +110,19 @@ impl CopyJob {
             to,
             name: new_name.to_string(),
             is_dir: false,
+            from_raw: None,
+            to_raw: None,
         })
+    }
+
+    /// 〔W5-FILES〕源的整条路径（显示串 ＋ 可能有的字节）。
+    pub fn from_path(&self) -> super::source::RemotePath {
+        super::source::RemotePath::of(&self.from, self.from_raw.as_deref())
+    }
+
+    /// 〔W5-FILES〕目标的整条路径。
+    pub fn to_path(&self) -> super::source::RemotePath {
+        super::source::RemotePath::of(&self.to, self.to_raw.as_deref())
     }
 
     /// 〔W5-FILES〕同一件，标上「源是目录」。
@@ -357,7 +379,8 @@ pub async fn probe_target(
     origin: &super::source::Origin,
     job: &CopyJob,
 ) -> bool {
-    super::transfer::probe_remote(line, origin, job.overwrite_target()).await
+    // 〔W5-FILES〕目标有损 ⇒ 按字节问（`to_path().wire()`；合法 UTF-8 时就是 `overwrite_target()` 那个串）。
+    super::transfer::probe_remote_at(line, origin, job.to_path().wire()).await
 }
 
 /// 复制那条线上命令的名字（后端写面第七条）。
@@ -378,17 +401,19 @@ pub const COPY_BUDGET: std::time::Duration = std::time::Duration::from_secs(600)
 /// 这一道防的是「当前目录」与「那一行的路径」写法不一致（尾斜杠之类）时，
 /// 拼出一条落到别处的路径 —— 那是把文件放到了他没在看的目录里。
 pub fn copy_args(job: &CopyJob, overwrite: bool) -> Result<serde_json::Value, String> {
-    let root = super::source::parent_dir(&job.from);
-    if super::source::parent_dir(&job.to) != root {
+    // 〔W5-FILES · 有损名全寻址〕按**字节**切（合法 UTF-8 时与按串切逐字节同）。
+    let (from, to) = (job.from_path(), job.to_path());
+    let root = from.parent();
+    if to.parent() != root {
         return Err(copy_text(
             "rsFilewinCopy.args.notSameDir",
             &[("from", &job.from.to_string()), ("to", &job.to.to_string())],
         ));
     }
     let mut v = serde_json::json!({
-        "root": root,
-        "from": super::source::remote_basename(&job.from),
-        "to": super::source::remote_basename(&job.to),
+        "root": root.wire(),
+        "from": from.tail_wire(),
+        "to": to.tail_wire(),
         "overwrite": overwrite,
     });
     mark_recursive(&mut v, job);
@@ -466,6 +491,9 @@ pub struct CopyPrompt {
     pub new_name: String,
     /// 〔W5-FILES〕源是目录（复制整棵）。
     pub is_dir: bool,
+    /// 〔W5-FILES · 有损名全寻址〕源 / 当前目录不是合法 UTF-8 时的原始字节（窗口按行与当前目录填）。
+    pub from_raw: Option<Vec<u8>>,
+    pub dir_raw: Option<Vec<u8>>,
 }
 
 impl CopyPrompt {
@@ -482,12 +510,25 @@ impl CopyPrompt {
             dir: dir.to_string(),
             new_name: Self::suggest(&r.name),
             is_dir: r.is_dir,
+            from_raw: None,
+            dir_raw: None,
         }
     }
 
     /// 框里那个名字变成一趟真复制。名字不合法 ⇒ `None`（调用方据此**出声**）。
     pub fn to_job(&self) -> Option<CopyJob> {
-        CopyJob::beside(&self.from, &self.dir, &self.new_name).map(|j| j.dir(self.is_dir))
+        let mut job = CopyJob::beside(&self.from, &self.dir, &self.new_name)?.dir(self.is_dir);
+        // 〔W5-FILES〕有损那一侧：源的字节原样带上；目标 ＝ 当前目录的字节 ＋ `/` ＋ 新名字（新名字恒是框里敲的 UTF-8）。
+        job.from_raw = self.from_raw.clone();
+        if let Some(d) = &self.dir_raw {
+            let mut t = d.clone();
+            if t.last() != Some(&b'/') {
+                t.push(b'/');
+            }
+            t.extend_from_slice(self.new_name.trim().as_bytes());
+            job.to_raw = Some(t);
+        }
+        Some(job)
     }
 }
 

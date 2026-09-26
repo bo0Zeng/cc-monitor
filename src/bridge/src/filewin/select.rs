@@ -53,9 +53,9 @@
 use crate::copy_table::copy_text;
 use std::collections::BTreeSet;
 
-use super::copy::is_copyable;
+use super::copy::copyable;
 use super::download::is_downloadable;
-use super::editor::is_editable;
+use super::editor::editable;
 use super::source::Listed;
 use super::writeops::is_writable;
 
@@ -509,17 +509,17 @@ pub fn actions_for(picked: &[&Listed]) -> Vec<Action> {
         [r] => {
             if r.is_dir {
                 out.push(Action::Open);
-            } else if is_editable(r) {
+            } else if editable(r) {
                 out.push(Action::Edit);
             }
-            if is_copyable(r) {
+            if copyable(r) {
                 out.push(Action::Copy);
             }
             if is_downloadable(r) {
                 out.push(Action::Download);
             }
             // 〔W5-FILES〕算大小：名字寻址得到就给（文件也收，后端回它自己）。
-            if !r.lossy_name {
+            if !r.lossy_name || r.raw_name.is_some() {
                 out.push(Action::Size);
             }
             if is_writable(r) {
@@ -530,7 +530,7 @@ pub fn actions_for(picked: &[&Listed]) -> Vec<Action> {
         }
         many => {
             // 〔W5-FILES〕多项也能算大小 —— 同样要**每一项**都寻址得到（`设计/60 §6.3`）。
-            if many.iter().all(|r| !r.lossy_name) {
+            if many.iter().all(|r| !r.lossy_name || r.raw_name.is_some()) {
                 out.push(Action::Size);
             }
             // 🔴 多项只有权限与删除，而且要**每一项都能写**才给：

@@ -910,3 +910,19 @@ fn big_file_mode_has_no_find_and_says_so() {
     assert_eq!(w.replace_in_editor(&ctx, true), 0);
     assert_eq!(w.editing().unwrap().text.len(), big.len());
 }
+
+/// 〔W5-FILES · 有损名全寻址（`设计/60 §6.2`「有损名的…编辑」）〕存盘那一行按字节切：有损目录 ⇒ `root` 发 `{"b16": …}`、
+/// 合法 UTF-8 的尾段照旧是字符串；读文本那一行的 `path` 同理（期望手写）。
+#[test]
+fn a_lossy_path_is_saved_by_its_bytes() {
+    let at = crate::filewin::source::RemotePath::from_bytes(b"/srv/d\xff/f.txt");
+    let v = save_args_at(&at, "x", SHA0);
+    assert_eq!(v["root"], serde_json::json!({ "b16": "2f7372762f64ff" }));
+    assert_eq!(v["rel"], "f.txt");
+    let plain = crate::filewin::source::RemotePath::plain("/srv/a.txt");
+    assert_eq!(
+        save_args_at(&plain, "x", SHA0),
+        save_args("/srv/a.txt", "x", SHA0),
+        "合法 UTF-8 那一形变了"
+    );
+}
