@@ -106,8 +106,9 @@ mod sftp_pool;
 mod skill_host;
 mod skill_install; // 〔AS2 · 第四波 4B · V113〕skill「装到这台」：只编排 I/O（来源那台 skill-read → 被写那台 skill-install-plan 判 → files-put 带 expect），判定住后端
 mod user_files; // RW1（第四波）：monitor 够用户文件的唯一开口 —— 读·算·交给那台机器的后端，自己一个字节不落盘
-mod verified_write; // T01：统一的「备份→写→读回比对→回滚」；本机侧从长度比对升级为内容比对
-                    // SS-D 统一 SFTP 写层（issue #29 自动部署 F08；后续 F11/F10 复用）。
+                // 〔W5-ALIAS · 第五波先行〕`verified_write`〔散文墓碑〕模块删了：它的判定只剩 `fenced_block::apply`〔散文墓碑〕一个调用方，
+                //   那个序列删了之后零调用方；用户文件的回读比对只住后端 `files_write.rs::put_text`，部署物按字节比住 `sftp::verify_readback`。
+                // SS-D 统一 SFTP 写层（issue #29 自动部署 F08；后续 F11/F10 复用）。
 mod sftp;
 // SSH-remote Phase 0 (issue #15)：从 setup() 调用 —— 当 config.json 的
 // `remote.enabled = true` 时，ssh_source::run 作为**附加**数据源与本机那条流

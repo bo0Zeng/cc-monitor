@@ -386,28 +386,41 @@ const PRINT_MAX_WORD_BYTES: usize = 4096;
 pub(crate) fn answer_print(
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, (&'static str, String)> {
+    // 前四种拒是**契约错**（调用方是 monitor，用户手敲不出来）⇒ 英文诊断经 `contract::malformed`；
+    // 「不起会话的那一形」是用户清单里真能出现的（手写进别名文件的 `--help`）⇒ 进表说人话。
     let words = args
         .get("args")
         .and_then(serde_json::Value::as_array)
-        .ok_or(("bad_args", "缺 args（一组字符串）".to_string()))?;
+        .ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed("missing `args` (an array of strings)"),
+            )
+        })?;
     if words.len() > PRINT_MAX_WORDS {
         return Err((
             "bad_args",
-            format!("参数太多（{} 个，上限 {PRINT_MAX_WORDS}）", words.len()),
+            crate::common::contract::malformed(&format!(
+                "too many args: {} (max {PRINT_MAX_WORDS})",
+                words.len()
+            )),
         ));
     }
     let mut argv = Vec::with_capacity(words.len());
     for w in words {
-        let w = w
-            .as_str()
-            .ok_or(("bad_args", "args 里每一个都得是字符串".to_string()))?;
+        let w = w.as_str().ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed("every element of `args` must be a string"),
+            )
+        })?;
         if w.len() > PRINT_MAX_WORD_BYTES {
             return Err((
                 "bad_args",
-                format!(
-                    "有一个参数太长（{} 字节，上限 {PRINT_MAX_WORD_BYTES}）",
+                crate::common::contract::malformed(&format!(
+                    "an arg is too long: {} bytes (max {PRINT_MAX_WORD_BYTES})",
                     w.len()
-                ),
+                )),
             ));
         }
         argv.push(w.to_string());
@@ -417,8 +430,7 @@ pub(crate) fn answer_print(
         Ok(Parsed::Early(_)) => {
             return Err((
                 "refused",
-                "这组参数不起会话（--help / --version / --ccm-probe），没有要预览的命令"
-                    .to_string(),
+                copy_core::copy_text("beCcm.preview.noSession", &[]),
             ))
         }
         Err(Die(msg)) => return Err(("refused", msg)),

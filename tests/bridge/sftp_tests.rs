@@ -964,119 +964,15 @@ fn upload_verify_passes_on_exact_bytes() {
     assert!(verify_readback("/r/d", 7, Some((7, Some(0)))).is_err());
 }
 
-/// Phase G 阻塞①：**「读不出来」绝不能变成「文件是空的」**。
-///
-/// 旧代码是 `read_optional(..).map(from_utf8_lossy).unwrap_or_default()`，
-/// 读失败 → `existing = ""` → install 跳过备份 + 整份覆盖用户 `.bashrc`；
-/// uninstall 回「没有 ccm 块，无需卸载」。
-#[test]
-fn read_failure_is_not_an_empty_file() {
-    // 读失败 + 明确不存在 → 当新建（这条是**反向自检**：不能一律 Err，否则首次安装就废了）
-    assert_eq!(
-        interpret_profile_read("远端 ~/.bashrc", None, Some(false), None),
-        Ok(None)
-    );
-    // 读失败 + 文件确实在 → 必须 Err
-    let e = interpret_profile_read("远端 ~/.bashrc", None, Some(true), None).unwrap_err();
-    assert!(e.contains("读不出"), "{e}");
-    assert!(e.contains("未改动任何文件"), "{e}");
-    // 读失败 + 连"在不在"都问不出来 → 也必须 Err（不许乐观当新建）
-    let e2 = interpret_profile_read("远端 ~/.bashrc", None, None, None).unwrap_err();
-    assert!(e2.contains("读不出"), "{e2}");
-}
-
-/// Phase G 阻塞②：**非 UTF-8 的 profile 必须拒绝，不许有损重写**。
-///
-/// 有损路线的恶性在于它**自带合格证**：备份写的是已经变成 U+FFFD 的那份，
-/// 读回校验两边同样有损 → 逐字节相同 → 校验通过。所以这里断言的是"根本不进那条路"。
-#[test]
-fn non_utf8_profile_is_refused_instead_of_lossily_rewritten() {
-    // GBK 的「中」= 0xD6 0xD0，单独出现不是合法 UTF-8
-    let gbk = b"# \xd6\xd0\xce\xc4\nexport PATH=$PATH\n";
-    let e = interpret_profile_read("远端 ~/.bashrc", Some(gbk), None, None).unwrap_err();
-    assert!(e.contains("不是合法 UTF-8"), "{e}");
-    assert!(e.contains("前 2 字节合法"), "偏移要说清，实得：{e}");
-    assert!(e.contains("未改动任何文件"), "{e}");
-    // 有损重写会把它变成什么——写在这里，好让人一眼看到丢了什么
-    assert_ne!(
-        String::from_utf8_lossy(gbk).into_owned().as_bytes(),
-        gbk,
-        "这条测试的前提没了：这串本来就该是有损的"
-    );
-
-    // **反向自检**：合法的多字节 UTF-8（中文注释）必须原样通过、往返零损失
-    let utf8 = "# 中文注释\nexport PATH=$PATH\n";
-    assert_eq!(
-        interpret_profile_read("远端 ~/.bashrc", Some(utf8.as_bytes()), None, None),
-        Ok(Some(utf8.to_string()))
-    );
-}
-
-/// Phase G：本机侧 v1.7.9 的那道防线（磁盘有字节却读到空）补到远端侧。
-#[test]
-fn bytes_on_disk_but_read_empty_is_refused() {
-    let e = interpret_profile_read("远端 ~/.bashrc", Some(b""), None, Some(120)).unwrap_err();
-    assert!(e.contains("有 120 字节"), "{e}");
-    assert!(e.contains("未改动任何文件"), "{e}");
-    // 反向自检：真的空文件（size 0 / 问不到 size）不能被拦
-    assert_eq!(
-        interpret_profile_read("远端 ~/.bashrc", Some(b""), None, Some(0)),
-        Ok(Some(String::new()))
-    );
-    assert_eq!(
-        interpret_profile_read("远端 ~/.bashrc", Some(b""), None, None),
-        Ok(Some(String::new()))
-    );
-}
-
-/// **结构性守卫**：远端 profile 读-改-写的**初始读取**必须走 fail-safe 读取器。
-///
-/// 〔AL1 · 2026-09-24〕**形状变了，性质没变。** 从前两个命令各自在函数体里先读、再变换，
-/// 本条就去截「函数开头到 `merge/strip_profile_block` 之间」那一段；那一段的订正史
-/// （初版扫整个体撞上写后回读 · 收窄后又撞上 CLI 那一次读）说的是同一条：
-/// **禁的必须是「喂给变换的那一次读取」的确切形态**。
-/// 今天那一次读取只有一个住址 —— `RemoteFile`（〔SR1b〕从前叫 `SftpFile`〔散文墓碑〕）的 `read`（序列 `fenced_block::apply` 先调它、
-/// 把结果交给变换），写后回读也是它（同一份 fail-closed 读取，没有第二条 lossy 的路）。
-/// ⇒ 本条钉三件：`read` 走 `read_profile_text`、不走裸 `read_optional`；
-/// 两个命令都把 profile 交给 `SftpFile` ＋ `fenced_block::apply`（不在函数体里自己读）。
-/// 〔RW1 · 第四波 09-24〕后一半改了：两个命令的读改写经远端后端（`user_files::edit`），
-/// 喂给变换的那一次读是后端的 `files-peek`；`SftpFile::read` 那一半只剩 F08 的入口 shim 在用。
-#[test]
-fn profile_read_modify_write_goes_through_the_failsafe_reader() {
-    // ⚠ 刻意不用裸 `contains`：`needle_anchor_registry` 那条递减棘轮治的正是「匹配单位比事实小」。
-    //   针要么是完整的调用形（`find_pinned`：恰好一处 ＋ 两侧有边界），要么是一个词（`contains_word`）。
-    let sftp_prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
-    let item = |sig: &str, end: &str| -> String {
-        let i = sftp_prod
-            .find(sig)
-            .unwrap_or_else(|| panic!("找不到 {sig}——守卫失效了"));
-        let j = sftp_prod[i..]
-            .find(end)
-            .map(|k| i + k)
-            .unwrap_or(sftp_prod.len());
-        sftp_prod[i..j].to_string()
-    };
-    let reader = item(
-        "async fn read(&self) -> Result<Option<String>, String> {",
-        "\n    }\n",
-    );
-    guard_core::find_pinned(
-        &reader,
-        "read_profile_text(self.fs, &self.path, &self.what)",
-    )
-    .unwrap_or_else(|e| panic!("RemoteFile::read 没走 fail-safe 读取器（{e}）：{reader}"));
-    assert!(
-        !guard_core::contains_word(&reader, "read_marker"),
-        "RemoteFile::read 又直接拿 read_marker 读了——那会把「读不出来」当成空文件，\
-             于是跳过备份 + 整份覆盖 / 谎报无需卸载"
-    );
-    // 〔W5-ALIAS · 第五波先行〕后一半（两条别名块命令交给 `user_files::edit`）随命令搬进了 `profile_installer.rs`，
-    //   判据跟着住到 `profile_installer_tests.rs::the_remote_alias_block_commands_edit_through_the_backend_door`。
-}
+// 〔W5-ALIAS · 第五波先行〕这里原来是远端 profile 读取那一族的四条判据（读不出不当空文件 · 非 UTF-8 拒 ·
+//   有字节读到空拒 · `RemoteFile::read` 走 fail-safe 读取器）。被测对象 `interpret_profile_read`〔散文墓碑〕/
+//   `read_profile_text`〔散文墓碑〕/ `RemoteFile`〔散文墓碑〕随 `fenced_block::apply`〔散文墓碑〕一起删了：它们只剩
+//   远端 `ccm` 入口一个用户，而那一处改走 `upload_verified`（部署物按字节比，不按文本读）。用户文件（rc）的读
+//   经那台后端的 `files-peek`，「不存在 / 读不出 / 有字节读到空」那三分由后端答（`user_files::Peeked`）。
 
 // 〔AL1 · 2026-09-24〕`rollback_note_matches_what_actually_happened` 搬走了〔散文墓碑〕
-// —— 措辞的住址从远端独有的那一份换成了本机远端共用的 `fenced_block::undo_note`，
-// 判据跟着住到 `fenced_block_tests.rs::the_undo_note_says_only_what_really_happened`。
+// —— 措辞的住址从远端独有的那一份换成了本机远端共用的 `fenced_block::undo_note`〔散文墓碑〕，
+// 判据跟着住到 `fenced_block_tests.rs` 那条「撤的措辞只说真发生的事」；〔W5-ALIAS〕那一族后来随序列一起删了。
 
 /// **结构性守卫**：两条 deploy 路径的**内容**上传必须走 verified。
 ///
@@ -1313,14 +1209,9 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     // ② 入口：第一次写、第二次不动
     let e1 = put_ccm_entry(&fs, &backend_path).await.unwrap();
     let e2 = put_ccm_entry(&fs, &backend_path).await.unwrap();
-    assert!(
-        matches!(e1, crate::fenced_block::Applied::Written { .. }),
-        "{e1:?}"
-    );
-    assert!(
-        matches!(e2, crate::fenced_block::Applied::Unchanged),
-        "{e2:?}"
-    );
+    // 〔W5-ALIAS〕回报从 `fenced_block::Applied`〔散文墓碑〕换成「写没写」。
+    assert!(e1, "第一次该放入口");
+    assert!(!e2, "第二次该一个字节都不动");
     assert!(std::path::Path::new(&format!("{rhome}/.cc-monitor/bin/ccm")).is_file());
     // ③ 两个写根之外 ⇒ 后端围栏拒、原话带回、盘上零改动
     let outside = format!("{rhome}/.cc-monitor/elsewhere/cc-monitor-backend");

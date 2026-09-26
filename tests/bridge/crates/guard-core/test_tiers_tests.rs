@@ -126,7 +126,6 @@ const UNIT: &[&str] = &[
     "tests/bridge/tmux_reconcile_tests.rs",
     "tests/bridge/tool_registry_environment_tests.rs",
     "tests/bridge/tool_registry_not_managed_tests.rs",
-    "tests/bridge/verified_write_tests.rs",
     "tests/cards/api-error.test.ts",
     "tests/cards/bash-collapse.vitest.ts",
     "tests/cards/bash.test.ts",

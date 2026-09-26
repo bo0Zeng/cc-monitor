@@ -301,7 +301,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
       { cmd: "chan:ccm-print", args: { origin: "<local>", args: ["--account", "z"] } },
     ]);
     const out = zRow.nextElementSibling as HTMLElement;
-    expect(out.classList.contains("machine-aliases-preview")).toBe(true);
+    expect(out.dataset.role).toBe("alias-preview");
     expect(out.hidden).toBe(false);
     expect(out.textContent).toContain("LINE --account z");
     expect(out.textContent).toContain("alphacc");

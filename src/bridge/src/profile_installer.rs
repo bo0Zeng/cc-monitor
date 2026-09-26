@@ -1295,7 +1295,8 @@ fn remote_profile_name(profile: &str) -> Result<String, String> {
     Ok(p.to_string())
 }
 
-/// 〔MC1 · 2026-09-24〕**别名块**卸载（机器页 ②「别名」里的「卸载别名块」）：从远端 rc 删 BEGIN/END 块。
+/// 〔MC1 · 2026-09-24〕**别名块**卸载（远端机器卡 ②「别名」里那颗按钮 —— 〔V134 · 09-25〕用户选「改回「卸载 ccm」」，
+/// 按钮名照 V80 原裁叫「卸载 ccm」，命令名与做的事不变）：从远端 rc 删 BEGIN/END 块。
 ///
 /// 从前它叫 `uninstall_remote_ccm_helper`〔散文墓碑〕、按钮叫「卸载 ccm」——「ccm 助手」这个词
 /// 盖着两件事（`设计/71 §13.1`：① 推入口 ② 写别名块），而这一条只做过 ②。用户 2026-09-17 逐字
@@ -1312,7 +1313,10 @@ pub async fn uninstall_remote_alias_block(
     //   备份 · 原子替换 · 回读 · 回滚那一份规则住后端（`files-put`），与本机同一条路、只差 origin。
     let door = crate::user_files::BackendDoor::new(crate::origin::Origin(cfg.origin_label()));
     let home = crate::user_files::Door::home(&door).await?;
-    let what = copy_text("rsProfileInstaller.remoteProfile.what", &[("profile", &profile.to_string())]);
+    let what = copy_text(
+        "rsProfileInstaller.remoteProfile.what",
+        &[("profile", &profile.to_string())],
+    );
     let mut missing = false;
     let done =
         crate::user_files::edit(
@@ -1379,7 +1383,10 @@ pub async fn install_remote_alias_block(
     // 损坏块 ⇒ `merge_profile_block` 回 `Err`，不动原文件。
     let door = crate::user_files::BackendDoor::new(crate::origin::Origin(cfg.origin_label()));
     let home = crate::user_files::Door::home(&door).await?;
-    let what = copy_text("rsProfileInstaller.remoteProfile.what", &[("profile", &profile.to_string())]);
+    let what = copy_text(
+        "rsProfileInstaller.remoteProfile.what",
+        &[("profile", &profile.to_string())],
+    );
     let done = crate::user_files::edit(&door, &home, &profile, true, false, |existing| {
         merge_profile_block(existing.unwrap_or(""), CCM_WRAPPER_SNIPPET, &what).map(Some)
     })
@@ -1392,7 +1399,12 @@ pub async fn install_remote_alias_block(
     };
     let backup_note = landed
         .backup
-        .map(|b| copy_text("rsProfileInstaller.remoteAliasBlock.backupNote", &[("b", &b.to_string())]))
+        .map(|b| {
+            copy_text(
+                "rsProfileInstaller.remoteAliasBlock.backupNote",
+                &[("b", &b.to_string())],
+            )
+        })
         .unwrap_or_default();
     tracing::info!("远端 [{}] 已装别名块到 {profile}", cfg.origin_label());
     Ok(copy_text(
