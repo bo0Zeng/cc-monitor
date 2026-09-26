@@ -1100,6 +1100,13 @@ pub fn run() {
                                         tracing::warn!("emit remote session-activity failed: {e}");
                                     }
                                 }
+                                // 〔TL2 · GP1 问 3〕重连那一笔：上面已按这一轮的 tmux 快照把断连前可重连的那几条重新裁过
+                                //（还在 ⇒ `session-idle` ⇒ 前端 说不清 → 可重连），**然后**才替那台报「清单报完了」——
+                                // 同一条线程 ⇒ 前端先收到 idle、再收到 listed；反过来的话，仍说不清的会被 listed 先落成已结束。
+                                if let Some(origin) = change.then_listed {
+                                    ssh_source::note_listed(&origin);
+                                    ssh_source::emit_origin_listed(&handle, &origin);
+                                }
                             }
                         });
                     if let Err(e) = spawned {

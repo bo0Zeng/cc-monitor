@@ -79,6 +79,13 @@ pub struct SessionChange {
     pub removed: Vec<RemovedSid>,
     /// issue #23: 红绿灯——status/waitingFor 变了（含新宣告的初始值）的会话。
     pub status_changed: Vec<SessionActivity>,
+    /// 〔TL2 · GP1 问 3〕这一笔处理完之后，替那台机器报「清单报完了」（`origin-sessions-listed`）。
+    ///
+    /// 只有远端**重连**那一形用：上一轮断连时那台的可重连会话，要先按这一轮的 tmux 快照重新宣告
+    ///（还在 ⇒ 可重连；不在 ⇒ 已结束），**然后**才能报清单 —— 前端收到「报完了」时会把仍说不清的一律落已结束，
+    /// 而转移表里「已结束」收到 `idle` 不动（`设计/30 §3.5.6`）。两件事一个在 emitter 线程、一个原本在流线程，
+    /// 跨线程不保序 ⇒ 让 emitter 一并做。别的来源恒 `None`。
+    pub then_listed: Option<String>,
 }
 
 /// issue #23: 单个会话的红绿灯状态快照（status 直接来自 Claude Code 官方字段，经后端帧转交）。
@@ -170,6 +177,7 @@ impl LocalTable {
                     added: vec![sid],
                     removed: vec![],
                     status_changed: vec![activity],
+                    then_listed: None,
                 })]
             }
             Lifecycle::Status {
