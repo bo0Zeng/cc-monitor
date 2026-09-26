@@ -111,7 +111,7 @@ async function realm(): Promise<{
   const theme = await import("../src/theme");
   const paths = await import("../src/paths");
   const kb = await import("../src/keybindings/store");
-  const acc = await import("../src/accounts");
+  const acc = await import("../src/account-prefs");
   const remote = await import("../src/remote-config");
   return {
     // 主窗：tab 栏那三条（E1 的原形：拖放同拍发分组 ＋ 顺序）

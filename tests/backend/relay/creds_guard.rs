@@ -2,7 +2,7 @@
 //!
 //! # 为什么单住一个文件
 //!
-//! 与隔壁 `bind_guard.rs` / `nodelay_guard.rs` 同一个理由，它的头注逐字写着：
+//! 与隔壁 `bind_guard.rs`（以及〔AR1〕已退役的 `nodelay_guard.rs`）同一个理由，它的头注逐字写着：
 //! monitor 侧 `scanning_guard_registry` 立过一条递减棘轮 —— 扫描型判据不许裸遍历目录，
 //! 要走 `guard_core::scan_tree!`。
 //!
@@ -50,6 +50,10 @@ mod tests {
              不含请求头、与任何一把 key 无关 —— 这几格由 `UpstreamFailure` 的字段集兜着",
         ),
         ("a", "监听地址（`local_addr()`）"),
+        (
+            "status",
+            "〔RK1〕门拒绝那一格的**状态行**（`door::FORBIDDEN` / `door::MISDIRECTED` 两个常量之一）—— 不含请求里的任何字节",
+        ),
         ("port", "端口号"),
         (
             "INFLIGHT_CONNECTIONS",
@@ -150,6 +154,16 @@ mod tests {
             "relay/listen.rs",
             "[relay] cannot bind loopback port",
             "端口起不来",
+        ),
+        (
+            "relay/listen.rs",
+            "[relay] refusing to listen without a relay key",
+            "〔RK1〕绑上口之后拿不到钥匙（家目录解析不出 / 铸不出 / 写不进）⇒ 不起。只带路径与 io 错误文本，**永远没有钥匙值**",
+        ),
+        (
+            "relay/server.rs",
+            "[relay] refused at the door",
+            "〔RK1〕进门三问拒了一条（Origin / Host 非回环 / 钥匙不对）。只印状态行，**不印请求头与路径**（路径里可能正是一把错钥匙）",
         ),
         (
             "relay/listen.rs",
@@ -320,15 +334,23 @@ mod tests {
             lines[0]
         );
 
-        // ★ 非空对照：同一把尺子量 monitor 那份 manifest，**必须数得到**。
-        let theirs = std::fs::read_to_string(
-            crate::guard_support::repo_root().join("src/bridge/Cargo.toml"),
-        )
-        .expect("读不到 monitor 的 Cargo.toml");
-        let theirs = guard_core::strip_hash_comment_lines(&theirs);
+        // ★ 非空对照：同一把尺子量 `creds-core` 自己那份 manifest（定义这个 feature 的那一行），**必须数得到**。
+        //   〔US1 · 4D〕先前量的是 monitor 那份（它当时也开着）；monitor 从此不读不写这份文件、不开它 ⇒ 反过来钉「monitor 零处」。
+        let read_manifest = |rel: &str| {
+            guard_core::strip_hash_comment_lines(
+                &std::fs::read_to_string(crate::guard_support::repo_root().join(rel))
+                    .unwrap_or_else(|e| panic!("读不到 {rel}：{e}")),
+            )
+        };
+        let defining = read_manifest("src/bridge/crates/creds-core/Cargo.toml");
         assert!(
-            theirs.lines().any(|l| l.contains(&feature)),
-            "非空对照失败：monitor 那份 manifest 里也数不到 `{feature}` —— 这把尺子是瞎的"
+            defining.lines().any(|l| l.trim_start().starts_with(&format!("{feature} = ["))),
+            "非空对照失败：`creds-core` 那份 manifest 里数不到定义 `{feature}` 的那一行 —— 这把尺子是瞎的"
+        );
+        let monitor = read_manifest("src/bridge/Cargo.toml");
+        assert!(
+            !monitor.lines().any(|l| l.contains(&feature)),
+            "monitor 又开了 `{feature}` —— 它不写也不读这份文件（写者与读者都是那台后端），写半边该由编译器挡在它外面"
         );
     }
 

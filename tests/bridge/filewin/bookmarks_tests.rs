@@ -342,7 +342,7 @@ async fn the_bar_is_really_clickable_and_the_disk_follows() {
     let ctx = egui::Context::default();
 
     // ① ☆ 加书签 ⇒ 盘上那一格恰好是当前目录；按钮换成 ★。
-    let after = click_label(&ctx, &mut w, ADD_LABEL);
+    let after = click_label(&ctx, &mut w, ADD_LABEL.as_str());
     let _ = after;
     assert_eq!(
         read_book(&file).unwrap(),
@@ -350,11 +350,12 @@ async fn the_bar_is_really_clickable_and_the_disk_follows() {
     );
     let painted = frame(&ctx, &mut w, Vec::new());
     assert_eq!(
-        rects_of(&painted, DROP_LABEL).len(),
+        rects_of(&painted, DROP_LABEL.as_str()).len(),
         1,
-        "加完之后按钮该写「{DROP_LABEL}」"
+        "加完之后按钮该写「{DROP_LABEL}」",
+        DROP_LABEL = DROP_LABEL.as_str()
     );
-    assert_eq!(rects_of(&painted, ADD_LABEL).len(), 0);
+    assert_eq!(rects_of(&painted, ADD_LABEL.as_str()).len(), 0);
 
     // ② 换到 b，点那条书签 ⇒ 真的跳回 a（跳转收在帧尾：同一帧里就换了）。
     w.navigate_to(b.clone());
@@ -363,7 +364,7 @@ async fn the_bar_is_really_clickable_and_the_disk_follows() {
     assert_eq!(w.cwd, a, "点了书签却没跳过去");
 
     // ③ × 删掉 ⇒ 盘上那台机器那一格整个没了。
-    let _ = click_label(&ctx, &mut w, REMOVE_LABEL);
+    let _ = click_label(&ctx, &mut w, REMOVE_LABEL.as_str());
     assert_eq!(read_book(&file).unwrap(), Book::new(), "点了 × 盘上还在");
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -412,15 +413,16 @@ async fn no_data_dir_is_said_on_the_bar() {
     let ctx = egui::Context::default();
     let painted = frame(&ctx, &mut w, Vec::new());
     assert!(
-        painted.iter().any(|(t, _)| t == NO_DATA_DIR),
+        painted.iter().any(|(t, _)| t == NO_DATA_DIR.as_str()),
         "那句话没画出来：{painted:?}"
     );
-    let _ = click_label(&ctx, &mut w, ADD_LABEL);
+    let _ = click_label(&ctx, &mut w, ADD_LABEL.as_str());
     assert!(w.shelf.as_ref().unwrap().list().is_empty());
     // 阴性对照：没接书签（判据直接建的窗口）⇒ 整条书签栏不画。
     let mut bare = window_on(&wired, "/srv");
     let painted = frame(&ctx, &mut bare, Vec::new());
     assert!(
-        rects_of(&painted, ADD_LABEL).is_empty() && !painted.iter().any(|(t, _)| t == NO_DATA_DIR)
+        rects_of(&painted, ADD_LABEL.as_str()).is_empty()
+            && !painted.iter().any(|(t, _)| t == NO_DATA_DIR.as_str())
     );
 }

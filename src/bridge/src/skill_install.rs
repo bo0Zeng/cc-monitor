@@ -20,10 +20,26 @@
 //! - 🔴 **不重读重算**（同 AS1）：用户确认的是他看到的那份差异 ⇒ `stale` 就停，说清前面已经写了哪几个。
 //! - ⚠ **多个文件不是一次原子写**：写到一半停下 ⇒ 前面那几个已经在了，如实列出来（不回滚：回滚本身也是一次写）。
 //!
+//! # 〔SU1 · 第四波 4C · V116〕装完记 · 卸
+//!
+//! 用户裁决 V116〔选〕「**要，只删装时写进去的文件**」—— 装的时候记下写了哪些文件，卸只删这些（装完用户自己改过的先问）。
+//!
+//! ```text
+//! 装    ④ 之后  ⑤ 要被写那台的后端 skill-install-record {op:add, name, files}  （③ 答的 ledger 里真写成了的那几个，原样交回；写到一半停下也记）
+//! 卸    skill_uninstall_apply(to, dir, seen, take, confirm)
+//!   ① 那台后端 skill-uninstall-plan {dir, take, confirm}  （真要删哪几个 ＋ 已经不在要摘的；要问的没点名 ⇒ 整趟拒）
+//!   ② 逐个 files-delete（root = dir，rel = path，expect = 看的时候那一份）      （stale 就停，说清删了哪几个，不重读）
+//!   ③ 那台后端 skill-install-record {op:drop, dir, paths}   （删掉的 ＋ 已经不在的；停在半路也先摘已删的）
+//! ```
+//!
+//! 「看」（`skill-installs` · `skill-uninstall-plan` 不带 `take`）是纯读，界面经 `chan.call` 直问那台后端；这里只管会写的那一半。
+//! 🔴 **空目录留着**：`Door` 没有删空目录的口（`SU1.md §1.4`）—— 只删文件，话里说清。
+//!
 //! # 买不到
 //!
 //! - 🔴 真远端 / 真 Windows：判据用替身门 ＋ 替身后端；Windows 那一台上 `files-chmod` 恒失败 ⇒ 执行位落进 `chmodFailed`（不算整趟失败）。
 
+use crate::copy_table::copy_text;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -37,6 +53,9 @@ use crate::user_files::{BackendDoor, Door, Refused, REQUEST_LINE_CAP};
 /// 后端那两条命令（与 `src/backend/inbound.rs::REGISTRY` 同名，判据现抠对拍）。
 pub(crate) const READ: &str = "skill-read";
 pub(crate) const PLAN: &str = "skill-install-plan";
+/// 〔SU1〕装记录的写口 · 卸的判定（同上，判据现抠对拍）。
+pub(crate) const RECORD: &str = "skill-install-record";
+pub(crate) const UNINSTALL_PLAN: &str = "skill-uninstall-plan";
 
 /// 一趟读 / 判的上限（走目录 ＋ 读几百 KB 文本 ＋ 逐条 stat，秒级；给足余量同时防卡死）。
 const BUDGET: Duration = Duration::from_secs(60);
@@ -109,6 +128,21 @@ pub struct SkillInstallApplied {
     pub written: Vec<String>,
     /// 执行位没设上的那几个（Windows 那一台上恒如此；不算整趟失败）。
     pub chmod_failed: Vec<String>,
+    /// 〔SU1〕装好了但没记下来的原因（这一趟装的文件因此卸不掉）；记下了 ⇒ `null`。
+    pub record_failed: Option<String>,
+}
+
+/// 〔SU1〕卸的结果。
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct SkillUninstallApplied {
+    pub dir: String,
+    /// 真删了的那几个（相对路径，按删的顺序）。
+    pub deleted: Vec<String>,
+    /// 删了（或已经不在）却没从记录里摘掉的原因；摘了 ⇒ `null`。
+    pub record_failed: Option<String>,
 }
 
 /// 问一台后端一条命令（生产 = [`BackendAsk`]；判据用替身）。
@@ -127,36 +161,52 @@ impl Ask for BackendAsk {
                 Routed::NoChannel(s) | Routed::Refused(s) => s,
                 Routed::Done => String::new(),
             };
-            return Err(format!("{who} 的后端没连上（{why}）—— 一个字节都没动"));
+            return Err(copy_text(
+                "rsSkillInstall.ask.backendDown",
+                &[("who", &who.to_string()), ("why", &why.to_string())],
+            ));
         };
         if !client.accepts(cmd) {
+            // 〔SU1〕卸那两条说「卸」（记那一条在装之后问，装已经成了 ⇒ 由 `record_written` 包成「装好了，但没记下来」）。
+            let what = if cmd == UNINSTALL_PLAN {
+                copy_text("rsSkillInstall.ask.uninstallFailed", &[])
+            } else {
+                copy_text("rsSkillInstall.ask.failed", &[])
+            };
             return Err(
-                crate::backend::control::cc_bus::describe_backend_too_old_for(
-                    wire,
-                    cmd,
-                    "装不了 skill，一个字节都没动",
-                ),
+                crate::backend::control::cc_bus::describe_backend_too_old_for(wire, cmd, &what),
             );
         }
         let line = encode_request("0", cmd, &args);
         if line.len() > REQUEST_LINE_CAP {
-            return Err(format!(
-                "这个 skill 的文本合起来太大，一趟装不下（请求一行 {} 字节，上限 {REQUEST_LINE_CAP}）—— 一个字节都没动",
-                line.len()
+            return Err(copy_text(
+                "rsSkillInstall.ask.tooBig",
+                &[
+                    ("bytes", &(line.len()).to_string()),
+                    ("cap", &REQUEST_LINE_CAP.to_string()),
+                ],
             ));
         }
         let data = client.call(cmd, args, BUDGET).await.map_err(|e| {
             match route_call_error(&e, |_code, message| format!("{who}：{message}")) {
                 Routed::NoChannel(s) | Routed::Refused(s) => s,
-                Routed::Done => format!("{who}：装 skill 时出了内部错误，没有拿到结果"),
+                Routed::Done => {
+                    copy_text("rsSkillInstall.ask.internal", &[("who", &who.to_string())])
+                }
             }
         })?;
-        data.ok_or_else(|| format!("{who} 的后端对 `{cmd}` 回了一条空应答"))
+        data.ok_or_else(|| {
+            copy_text(
+                "rsSkillInstall.ask.emptyReply",
+                &[("who", &who.to_string())],
+            )
+        })
     }
 }
 
 /// 后端应答认不出来时的那句话（多半是两边版本不一样）。**不猜默认值**。
-const UNREADABLE_REPLY: &str = "后端答的内容认不出来，多半是两边版本不一样。这一趟什么都没写。";
+static UNREADABLE_REPLY: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsSkillInstall.reply.unreadable", &[]));
 
 fn broken() -> String {
     UNREADABLE_REPLY.to_string()
@@ -256,11 +306,25 @@ pub(crate) async fn preview_with(
 /// 写到一半停下时的那句话：说清停在哪、前面写了哪几个。
 fn stopped_said(machine: &str, at: &str, why: &str, written: &[String]) -> String {
     let done = if written.is_empty() {
-        "一个都还没写".to_string()
+        copy_text("rsSkillInstall.stopped.none", &[])
     } else {
-        format!("前面已经写了 {}", written.join("、"))
+        copy_text(
+            "rsSkillInstall.stopped.some",
+            &[(
+                "list",
+                &(written.join(&copy_text("rsSkillInstall.stopped.listSep", &[]))).to_string(),
+            )],
+        )
     };
-    format!("{machine} 上写「{at}」时停下了：{why}。{done}。")
+    copy_text(
+        "rsSkillInstall.stopped.at",
+        &[
+            ("machine", &machine.to_string()),
+            ("at", &at.to_string()),
+            ("why", &why.to_string()),
+            ("done", &done.to_string()),
+        ],
+    )
 }
 
 /// 写（可测的那一半）。
@@ -297,17 +361,30 @@ pub(crate) async fn apply_with(
         str_of(&plan, "base")?,
         str_of(&plan, "prefix")?,
     );
+    // 〔SU1〕这台判的「每个要写的记什么」（摘要 ＋ 装之前在不在）；写完原样交回，一个字都不在这里算。
+    let ledger = plan
+        .get("ledger")
+        .and_then(Value::as_object)
+        .cloned()
+        .ok_or_else(broken)?;
     let mut written = Vec::new();
     let mut chmod_failed = Vec::new();
+    let mut stopped: Option<String> = None;
     for path in &write {
-        let file = source
-            .iter()
-            .find(|f| &f.path == path)
-            .ok_or_else(|| format!("「{path}」不在拷出来的那一份里 —— 两端对不上，停下了"))?;
-        let text = file
-            .text
-            .as_deref()
-            .ok_or_else(|| format!("「{path}」没有原文 —— 两端对不上，停下了"))?;
+        let Some(file) = source.iter().find(|f| &f.path == path) else {
+            stopped = Some(copy_text(
+                "rsSkillInstall.apply.notInCopy",
+                &[("path", &path.to_string())],
+            ));
+            break;
+        };
+        let Some(text) = file.text.as_deref() else {
+            stopped = Some(copy_text(
+                "rsSkillInstall.apply.noOriginal",
+                &[("path", &path.to_string())],
+            ));
+            break;
+        };
         let expect = target
             .iter()
             .find(|t| &t.path == path)
@@ -316,24 +393,187 @@ pub(crate) async fn apply_with(
         match door.put(&base, &rel, text, expect, false, true).await {
             Ok(_) => written.push(path.clone()),
             Err(Refused::Stale(_)) => {
-                return Err(stopped_said(
+                stopped = Some(stopped_said(
                     &door.machine(),
                     path,
-                    "那一份在你看差异之后又被改过了，重新看一次差异再决定",
+                    &copy_text("rsSkillInstall.apply.stale", &[]),
                     &written,
-                ))
+                ));
+                break;
             }
-            Err(e) => return Err(stopped_said(&door.machine(), path, &e.said(), &written)),
+            Err(e) => {
+                stopped = Some(stopped_said(&door.machine(), path, &e.said(), &written));
+                break;
+            }
         }
         if file.exec && door.chmod(&base, &rel, 0o755).await.is_err() {
             chmod_failed.push(path.clone());
         }
     }
+    // 写到一半停下也记：已经写进去的那几个就是「装时写进去的」，卸时要认得它们。
+    let record_failed = record_written(ask, to, name, &ledger, &written).await;
+    if let Some(why) = stopped {
+        return Err(match record_failed {
+            None => why,
+            Some(r) => format!("{why}{r}"),
+        });
+    }
     Ok(SkillInstallApplied {
         dir,
         written,
         chmod_failed,
+        record_failed,
     })
+}
+
+/// 〔SU1〕把真写成了的那几个交那台后端记下（`ledger` 里那几格原样）。没写成任何一个 ⇒ 不问。记不下 ⇒ 那句话。
+async fn record_written(
+    ask: &impl Ask,
+    to: &Origin,
+    name: &str,
+    ledger: &serde_json::Map<String, Value>,
+    written: &[String],
+) -> Option<String> {
+    if written.is_empty() {
+        return None;
+    }
+    let mut files = serde_json::Map::new();
+    for p in written {
+        match ledger.get(p) {
+            Some(v) => {
+                files.insert(p.clone(), v.clone());
+            }
+            None => {
+                return Some(copy_text(
+                    "rsSkillInstall.record.noLedger",
+                    &[("path", &p.to_string())],
+                ))
+            }
+        }
+    }
+    match ask
+        .ask(
+            to,
+            RECORD,
+            json!({ "op": "add", "name": name, "files": files }),
+        )
+        .await
+    {
+        Ok(_) => None,
+        Err(e) => Some(copy_text(
+            "rsSkillInstall.record.failed",
+            &[("e", &e.to_string())],
+        )),
+    }
+}
+
+/// 〔SU1〕卸（可测的那一半）：问那台判 → 逐个 `files-delete` 带 `expect` → 删掉的 ＋ 已经不在的从记录里摘。
+pub(crate) async fn uninstall_with(
+    ask: &impl Ask,
+    door: &impl Door,
+    to: &Origin,
+    dir: &str,
+    seen: &[SkillTargetText],
+    take: &[String],
+    confirm: &[String],
+) -> Result<SkillUninstallApplied, String> {
+    let plan = ask
+        .ask(
+            to,
+            UNINSTALL_PLAN,
+            json!({ "dir": dir, "take": take, "confirm": confirm }),
+        )
+        .await?;
+    let names = |k: &str| -> Result<Vec<String>, String> {
+        arr_of(&plan, k)?
+            .iter()
+            .map(|n| n.as_str().map(str::to_string))
+            .collect::<Option<_>>()
+            .ok_or_else(broken)
+    };
+    let (delete, forget) = (names("delete")?, names("forget")?);
+    let mut deleted = Vec::new();
+    let mut stopped: Option<String> = None;
+    for path in &delete {
+        let Some(expect) = seen.iter().find(|t| &t.path == path) else {
+            stopped = Some(copy_text(
+                "rsSkillInstall.uninstall.noSeen",
+                &[("path", &path.to_string())],
+            ));
+            break;
+        };
+        match door.delete(dir, path, &expect.text).await {
+            Ok(()) => deleted.push(path.clone()),
+            Err(Refused::Stale(_)) => {
+                stopped = Some(unstopped_said(
+                    &door.machine(),
+                    path,
+                    &copy_text("rsSkillInstall.uninstall.stale", &[]),
+                    &deleted,
+                ));
+                break;
+            }
+            Err(e) => {
+                stopped = Some(unstopped_said(&door.machine(), path, &e.said(), &deleted));
+                break;
+            }
+        }
+    }
+    // 删到一半停下也摘：已经删掉的不再是「装写进去、还在盘上」的。
+    let mut drop: Vec<String> = deleted.clone();
+    drop.extend(forget);
+    let record_failed = if drop.is_empty() {
+        None
+    } else {
+        ask.ask(
+            to,
+            RECORD,
+            json!({ "op": "drop", "dir": dir, "paths": drop }),
+        )
+        .await
+        .err()
+        .map(|e| {
+            copy_text(
+                "rsSkillInstall.uninstall.dropFailed",
+                &[("e", &e.to_string())],
+            )
+        })
+    };
+    if let Some(why) = stopped {
+        return Err(match record_failed {
+            None => why,
+            Some(r) => format!("{why}{r}"),
+        });
+    }
+    Ok(SkillUninstallApplied {
+        dir: dir.to_string(),
+        deleted,
+        record_failed,
+    })
+}
+
+/// 卸到一半停下时的那句话：说清停在哪、前面删了哪几个。
+fn unstopped_said(machine: &str, at: &str, why: &str, deleted: &[String]) -> String {
+    let done = if deleted.is_empty() {
+        copy_text("rsSkillInstall.uninstall.noneDeleted", &[])
+    } else {
+        copy_text(
+            "rsSkillInstall.uninstall.someDeleted",
+            &[(
+                "paths",
+                &deleted.join(&copy_text("rsSkillInstall.uninstall.listSep", &[])),
+            )],
+        )
+    };
+    copy_text(
+        "rsSkillInstall.uninstall.stopped",
+        &[
+            ("machine", &machine.to_string()),
+            ("at", &at.to_string()),
+            ("why", &why.to_string()),
+            ("done", &done),
+        ],
+    )
 }
 
 /// 看差异：`from` 那台的 skill「name」装到 `to` 那台会发生什么（判定由 `to` 那台的后端做）。
@@ -344,7 +584,7 @@ pub async fn skill_install_preview(
     name: String,
 ) -> Result<SkillInstallPreview, String> {
     if from == to {
-        return Err("来源与要装的是同一台 —— 换一台机器".to_string());
+        return Err(copy_text("rsSkillInstall.preview.sameMachine", &[]));
     }
     preview_with(&BackendAsk, &from, &to, &name).await
 }
@@ -369,6 +609,28 @@ pub async fn skill_install_apply(
         &target,
         &take,
         &overwrite,
+    )
+    .await
+}
+
+/// 〔SU1 · V116〕卸：`to` 那台上装记录里 `dir` 那一条，把勾的那几个删掉（`ask` 为真的那几个必须也在 `confirm` 里）。
+/// `seen` 是看的时候那台后端回的现有原文，原样送回来当 CAS 期望。只删文件，目录留着。
+#[tauri::command]
+pub async fn skill_uninstall_apply(
+    to: Origin,
+    dir: String,
+    seen: Vec<SkillTargetText>,
+    take: Vec<String>,
+    confirm: Vec<String>,
+) -> Result<SkillUninstallApplied, String> {
+    uninstall_with(
+        &BackendAsk,
+        &BackendDoor::new(to.clone()),
+        &to,
+        &dir,
+        &seen,
+        &take,
+        &confirm,
     )
     .await
 }

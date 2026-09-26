@@ -21,6 +21,8 @@
 //! 由 `protocol_doc_guard::TERMINAL_SURFACE_FILES` 登记并机检（见那边的头注：
 //! 它换掉了 `dispatch_registry_is_complete` 在本文件上的那一格，不是绕过它）。
 
+use copy_core::copy_text;
+
 /// 每个 `--flag` 的字面量，**唯一住址**。
 pub(crate) mod flag {
     pub(crate) const RESUME: &str = "--resume";
@@ -153,10 +155,17 @@ fn die<T>(msg: impl Into<String>) -> Result<T, Die> {
 /// `--flag <值>` 这一形：下一个 token 缺席、或它本身像个旗标 ⇒ 多半是漏了参数。
 fn need_val(name: &str, next: Option<&String>) -> Result<String, Die> {
     match next {
-        None => die(format!("{name} 需要一个值")),
-        Some(v) if v.is_empty() => die(format!("{name} 需要一个值")),
-        Some(v) if v.starts_with('-') => die(format!(
-            "{name} 需要一个值，但拿到的是 '{v}'（像是漏了参数）"
+        None => die(copy_text(
+            "beArgv.needVal.missing",
+            &[("name", &name.to_string())],
+        )),
+        Some(v) if v.is_empty() => die(copy_text(
+            "beArgv.needVal.missing",
+            &[("name", &name.to_string())],
+        )),
+        Some(v) if v.starts_with('-') => die(copy_text(
+            "beArgv.needVal.looksMissing",
+            &[("name", &name.to_string()), ("v", &v.to_string())],
         )),
         Some(v) => Ok(v.clone()),
     }
@@ -211,7 +220,7 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
                 //（`ccm resume --tmux` 会静默把 `--tmux` 当 sid）。
                 match args.get(1) {
                     Some(v) if !v.starts_with('-') => o.sid = v.clone(),
-                    _ => return die("resume 需要 <sid>"),
+                    _ => return die(&copy_text("beArgv.parse.resumeNeedsId", &[])),
                 }
                 i = 2;
             }
@@ -219,7 +228,7 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
                 o.action = Action::Attach;
                 match args.get(1) {
                     Some(v) if !v.starts_with('-') => o.attach_name = v.clone(),
-                    _ => return die("attach 需要 <会话名>"),
+                    _ => return die(&copy_text("beArgv.parse.attachNeedsName", &[])),
                 }
                 i = 2;
             }
@@ -287,11 +296,15 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
             flag::VERSION => return Ok(Parsed::Early(Early::Version)),
             flag::HELP_LONG | flag::HELP_SHORT => return Ok(Parsed::Early(Early::Help)),
             other if other.starts_with('-') => {
-                return die(format!("未知选项: {other}（用 --help 看用法）"))
+                return die(copy_text(
+                    "beArgv.parse.unknownOption",
+                    &[("other", &other.to_string())],
+                ))
             }
             other => {
-                return die(format!(
-                    "多余的位置参数: {other}（动作只能是 new/resume/attach 且必须在最前）"
+                return die(copy_text(
+                    "beArgv.parse.extraPositional",
+                    &[("other", &other.to_string())],
                 ))
             }
         }
@@ -306,43 +319,47 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
 ///（写了个修饰、看起来生效了、实际被吃掉）。
 fn validate(o: &Opts) -> Result<(), Die> {
     if !crate::control::ccm::AGENTS.contains(&o.agent.as_str()) {
-        return die(format!(
-            "未知 agent: {}（支持 {}）",
-            o.agent,
-            crate::control::ccm::AGENTS.join("|")
+        return die(copy_text(
+            "beArgv.validate.unknownAgent",
+            &[
+                ("agent", &o.agent.to_string()),
+                (
+                    "known",
+                    &(crate::control::ccm::AGENTS.join("|")).to_string(),
+                ),
+            ],
         ));
     }
     if !o.account.is_empty() && o.use_base {
-        return die("--account 与 --base 互斥");
+        return die(&copy_text("beArgv.validate.accountAndBase", &[]));
     }
     if o.detach && !o.use_tmux {
-        return die("--detach 需要配合 --tmux（非容器路径没有会话可 detach）");
+        return die(&copy_text("beArgv.validate.detachNeedsTmux", &[]));
     }
     if !o.tmux_size.is_empty() && !o.use_tmux {
-        return die("--tmux-size 需要配合 --tmux");
+        return die(&copy_text("beArgv.validate.sizeNeedsTmux", &[]));
     }
     if !o.tmux_name.is_empty() && !o.tmux_base.is_empty() {
-        return die(
-            "--tmux=<名> 与 --tmux-base=<基名> 互斥（前者不避让、后者避让，同时给等于没说清要哪个）",
-        );
+        return die(&copy_text("beArgv.validate.nameAndBase", &[]));
     }
     if o.bus_register && !o.detach {
-        return die(
-            "--bus-register 需要配合 --detach（不 detach 那条随后 exec 进 attach，登记做不成）",
-        );
+        return die(&copy_text("beArgv.validate.registerNeedsDetach", &[]));
     }
     if !o.bus_note.is_empty() && !o.bus_register {
-        return die("--bus-note 需要配合 --bus-register（不登记的话这行备注没有去处）");
+        return die(&copy_text("beArgv.validate.noteNeedsRegister", &[]));
     }
     if !o.tmux_size.is_empty() && parse_size(&o.tmux_size).is_none() {
         // 尺寸会被拼进 `tmux new-session -x W -y H`，**必须**只允许纯数字，否则就是一条注入面。
-        return die(format!(
-            "非法 --tmux-size: '{}'（要 <宽>x<高>，如 220x50，且均为正整数）",
-            o.tmux_size
+        return die(copy_text(
+            "beArgv.validate.badSize",
+            &[("size", &o.tmux_size.to_string())],
         ));
     }
     if o.action == Action::Resume && crate::control::ccm::resume_flag(&o.agent).is_none() {
-        return die(format!("agent={} 不支持 resume（无 resume flag）", o.agent));
+        return die(copy_text(
+            "beArgv.validate.noResume",
+            &[("agent", &o.agent.to_string())],
+        ));
     }
     Ok(())
 }

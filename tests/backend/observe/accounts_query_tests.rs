@@ -77,7 +77,7 @@ fn list_accounts_degrades_gracefully() {
     // 缺文件
     let m = meta(&list_accounts(&root.join("nope")));
     assert_eq!(m["enabled"], false);
-    assert!(m["error"].as_str().unwrap().contains("不可读"));
+    assert!(m["error"].as_str().unwrap().contains("读不了"));
     // 坏 JSON
     let a = root.join("bad");
     write_manifest(&a, "{not json");
@@ -1861,7 +1861,7 @@ fn the_list_product_says_when_account_zero_is_missing() {
     let (root, accts) = c4c_fixture("c4c-nozero", false);
     let v = list_product_at(&accts, &[], "claude-code", "claude-code");
     let n = v["notice"].as_str().expect("缺账号 0 却没出那一句");
-    assert!(n.contains("账号 0") && !n.contains("远端"), "{n}");
+    assert!(n.contains("默认账号") && !n.contains("远端"), "{n}");
     let off = list_product_at(&root.join("nope"), &[], "claude-code", "claude-code");
     assert_eq!(off["meta"]["enabled"], false);
     assert!(off["notice"].is_null(), "没启用谈不上缺账号 0");

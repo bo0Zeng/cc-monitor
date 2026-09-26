@@ -19,6 +19,7 @@
  */
 
 import { makeInfoIcon } from "./info-icon";
+import { copyText } from "../copy-table";
 
 export interface SettingsRoute {
   /** 稳定 id（切页、测试、后续持久化都用它）。 */
@@ -93,7 +94,7 @@ export class SettingsRouter {
       "aria-orientation",
       horizontal ? "horizontal" : "vertical",
     );
-    this.nav.setAttribute("aria-label", "设置分类");
+    this.nav.setAttribute("aria-label", copyText("router.ctor.ariaLabel"));
     // ★ 方向键必须实现，不是锦上添花：下面给非当前项设了 `tabIndex = -1`
     // （tablist 的 roving tabindex 惯例），**不配方向键的话那些项就键盘完全不可达了**。
     // 二选一必须成对：要么两个都做，要么两个都别做。
@@ -141,7 +142,7 @@ export class SettingsRouter {
 
   addRoute(route: SettingsRoute): void {
     if (this.routes.has(route.id)) {
-      throw new Error(`SettingsRouter: 重复注册路由 id "${route.id}"`);
+      throw new Error(`bug: SettingsRouter registered route id "${route.id}" twice`);
     }
 
     const tabId = `settings-tab-${route.id}`;

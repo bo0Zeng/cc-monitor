@@ -1,11 +1,14 @@
-//! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md`「上游选择那份凭据文件在「这台机器」上的读写」节（本机这一份的写者就是 monitor）
+//! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md`「上游选择那份凭据文件在「这台机器」上的读写」节
 //!
-//! 核原文：该节逐字「**每台机器上的程序写者恰好一个**：monitor 所在那台是 monitor 自己」·「**路径**与那台机器上 `--relay`
-//! 进程的上游选择**同一个出处**」；`apikey-key-set` 节 `baseUrl` 行逐字「给了就先过与本机那一侧**同一条**形状关」。
-//! 本族判 monitor 这个本机写者：与后端算同一份文件并显式交出去、真写盘不吃人手编内容、出生即只给本人、Base URL 形状错整次不写。
+//! 核原文：该节逐字「**每台机器上的程序写者恰好一个**」·「**路径**与那台机器上 `--relay` 进程的上游选择**同一个出处**」。
+//! 〔GP1 · 第四波〕主会话 09-25 裁那一个写者 ＝ **那台的后端**（本机 ＝ 本机常驻后端），monitor 不再写本机那一份
+//! （`调研/第四波记录/GP1.md §3`）。本族今天判 monitor 这一侧剩下的：与后端算同一份文件并显式交出去 ·
+//! 明文只往下传登记过的那几跳 · 写半边零调用 · 账号 id 只有一份规则。〔US1〕读侧（三态 · 权限提醒）与「写下的那一行
+//! 正是起会话那一侧找的那一行」随读者换成那台后端一起搬去后端那一份判据。写路那几条性质（写的那一刻读盘 · 未知键一个不吃 ·
+//! 出生即只给本人 · Base URL 形状错整次不写）住后端那一份写口的判据（`tests/backend/accounts/upstream/file_face_tests.rs`）。
 //! 明文出口跨三棵树逐处计数那几条守 `设计/20 §6` 第 4 行逐字「明文只有一个出口」（原文点一个，判据登记两个 —— 原文比判据窄）。
-//! ⚠ 「本机写者也照后端那套写法写」是从契约推出来的，不是明文；「key 不进 `config.json`」与 TS 状态类型对拍那几条没有逐字原文。
-//! 与 `crates/creds-core/store_tests.rs` 不重复：那族判纯函数，本族判真写盘那一跳。〔JA1 点址 2026-09-24〕
+//! ⚠ 「key 不进 `config.json`」与 TS 状态类型对拍那几条没有逐字原文。
+//! 与 `crates/creds-core/store_tests.rs` 不重复：那族判纯函数。〔JA1 点址 2026-09-24〕
 
 use super::*;
 
@@ -104,299 +107,22 @@ fn brace_block(src: &str, at: usize) -> Option<&str> {
     None
 }
 
-/// 一个只属于本判据的临时目录。**名字中性**（不含任何被断言的字面）——
-/// 诊断常把路径原样印进输出，那时「输出里含某句话」会靠路径恒真。
-fn tmpdir(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!(
-        "ccm-cs-{}-{}-{tag}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|x| x.as_nanos())
-            .unwrap_or(0)
-    ));
-    std::fs::create_dir_all(&d).expect("建临时目录");
-    d
-}
+// 〔GP1 · 第四波〕这里原来是两条写路判据（`KS10` 交错写不吃人手编的 · `K-R1` 配 key 不吃同一行的
+// `auth_style` / `base_url`），打的是 monitor 那侧的写口。写者换成了那台的后端 ⇒ 两条原样搬去后端那一份写口：
+// `file_face_tests::gp1_a_program_write_keeps_everything_the_human_put_there` ·
+// `file_face_tests::gp1_a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style`。
 
-/// ★★ **`KS10` 的行为那一半**：程序回写不许吃掉人手写的东西。
-///
-/// PM 08-27 点名：**别把它测成「写完能读回来」——那测不到覆盖。**
-/// 这里测的是**交错**：人改了 A，程序写 B，A 还在不在。
-#[test]
-fn a_program_write_keeps_everything_the_human_put_there() {
-    let dir = tmpdir("interleave");
-    let p = dir.join("apikey-credentials.json");
-
-    // ① 人先手写了一份（裸 `fs::write` = 拿编辑器写的）。
-    std::fs::write(
-        &p,
-        b"{\n  \"_note\": \"first\",\n  \"my_own\": \"keep me\",\n  \"api_key\": \"OLD\"\n}\n",
-    )
-    .expect("写夹具");
-    // ② 界面读了一次（这一份马上就会**过期**）。
-    let seen_earlier = read_status_at(&p).expect("读");
-    assert!(seen_earlier.configured);
-
-    // ③ 人又在编辑器里改了 —— 就在界面「保存」之前的那一刻。
-    std::fs::write(
-        &p,
-        b"{\n  \"_note\": \"human changed this\",\n  \"my_own\": \"keep me\",\n  \"brand_new\": 7,\n  \"api_key\": \"OLD\"\n}\n",
-    )
-    .expect("改夹具");
-
-    // ④ 程序这时候才写。
-    write_key_at(&p, "/h/.claude-alt/acct-x", "NEW-KEY", None).expect("写");
-
-    let back: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
-    assert_eq!(
-        back["_note"], "human changed this",
-        "人的编辑被陈旧副本盖掉了"
-    );
-    assert_eq!(back["brand_new"], 7, "人新加的键被吃掉了");
-    assert_eq!(back["my_own"], "keep me");
-    // ★★ `K-H2c` `KH2C1`：新的那一把落在**账号那一格**，不在顶层。
-    assert_eq!(back["accounts"]["acct-x"][store::KEY_FIELD], "NEW-KEY");
-    // ★★ `K-H2c` `KH2C3`：人手写的**顶层那一把一个字节没动** ——
-    //    「不许顺手删它」在**写这条路上**的兑现（读那条路由 `creds-core` 那两条钉）。
-    assert_eq!(
-        back[store::KEY_FIELD],
-        "OLD",
-        "写侧把顶层那一把盖掉了 —— 那是老用户手上那份文件里唯一那把 key"
-    );
-    // 非空对照：界面那一份**确实**是旧的（不是「它碰巧一样」让上面恒真）。
-    assert!(!seen_earlier.masked.is_empty());
-
-    // `KS10②` 顺序稳定：整份文本按键名排序。
-    // ⚠ 挑的这四个键**每个都恰好出现一处** —— `api_key` 今天在两个深度上各有一处
-    //   （顶层 + `accounts.acct-x` 里），拿它当锚点会让 `find_pinned` 直接报「不止一处」。
-    let text = std::fs::read_to_string(&p).expect("读回");
-    let ia = guard_core::find_pinned(&text, "_note").expect("_note 应当恰好出现一处");
-    let ib = guard_core::find_pinned(&text, "accounts").expect("accounts 应当恰好出现一处");
-    let ic = guard_core::find_pinned(&text, "brand_new").expect("brand_new 应当恰好出现一处");
-    let id = guard_core::find_pinned(&text, "my_own").expect("my_own 应当恰好出现一处");
-    assert!(
-        ia < ib && ib < ic && ic < id,
-        "落盘不是按键名排序的：{text}"
-    );
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
-/// ★★★ **`K-R1` 在写侧的那一格**：界面按一次「保存」，**不许**吃掉那一行上
-/// 人手编的 `auth_style` 与 `base_url`。
-///
-/// # 它为什么不是「顺手多测一个字段」
-///
-/// 这两个字段今天**只有手编这一条路**（界面上还没有它们的入口 —— 那要动
-/// `src/ipc/commands.ts` 与 `src/settings/`，**都不在本轮写区**，已抬进上报口）。
-/// ⇒ 「配一次 key 就把手编的那两格清掉」这一形的症状是：
-/// **上游从第三方悄悄退回官方端点、鉴权头悄悄退回默认那一种**，
-/// 而界面上一切正常。它与 `K-H2` `KH2` 逐字禁的那条回落是同一族，
-/// 只是这次的施害者是**写侧**。
-///
-/// ⚠ 它**不**证明 `merge_account_key` 对**所有**字段都不吃
-/// （那条由 `creds-core` 那侧的逐字节判据钉）—— 它证的是
-/// 「走**真的写盘那条路**（含原子替换）之后，这两格还在，而且值没变」。
-#[test]
-fn a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style() {
-    let dir = tmpdir("keep-row-fields");
-    let p = dir.join("apikey-credentials.json");
-
-    // ① 人手编：这一条账号指着一个第三方端点、用非默认的鉴权头形状。
-    //    ⚠ 期望值全是**手写字面量**，不是拿被测代码算出来的。
-    std::fs::write(
-        &p,
-        b"{\n  \"accounts\": {\n    \"acct-x\": {\n      \"api_key\": \"OLD\",\n      \"auth_style\": \"x-api-key\",\n      \"base_url\": \"https://gw.example.com/anthropic\",\n      \"my_own\": \"keep me\"\n    },\n    \"acct-y\": {\n      \"api_key\": \"Y\"\n    }\n  }\n}\n",
-    )
-    .expect("写夹具");
-
-    // ② 界面按「保存」，走的是**生产段那条真实的写路**。
-    write_key_at(&p, "/h/.claude-alt/acct-x", "NEW-KEY", None).expect("写");
-
-    let back: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
-    let row = &back["accounts"]["acct-x"];
-    // ★★ 承重的两格排最前。
-    assert_eq!(
-        row[store::AUTH_STYLE_FIELD],
-        "x-api-key",
-        "写侧把手编的 auth_style 吃掉了 —— 症状是鉴权头悄悄退回默认那一种：{back}"
-    );
-    assert_eq!(
-        row[store::BASE_URL_FIELD],
-        "https://gw.example.com/anthropic",
-        "写侧把手编的 base_url 吃掉了 —— 症状是上游悄悄退回默认端点：{back}"
-    );
-    // key 真的换了（不然上面两格可能只是因为整份文件没被动过）。
-    assert_eq!(row[store::KEY_FIELD], "NEW-KEY", "key 没被换掉：{back}");
-    // 这一条自己的未知键也在。
-    assert_eq!(row["my_own"], "keep me");
-    // ★ 非空对照：**别的那一条**一个字节没动。
-    assert_eq!(back["accounts"]["acct-y"][store::KEY_FIELD], "Y");
-    assert!(
-        back["accounts"]["acct-y"]
-            .get(store::AUTH_STYLE_FIELD)
-            .is_none(),
-        "写侧给没写过 auth_style 的那一条**凭空加**了一格：{back}"
-    );
-
-    // ★★ 而这份文件**装回上游选择那一侧**之后，那两格真的被读了出来
-    //    —— 只断「JSON 里还在」的话，一个读侧的回落（比如把 `auth_style` 忽略掉）
-    //    在本条上**看不见**。
-    let doc = store::parse(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
-    let rows = store::read_accounts(&doc);
-    let x = rows
-        .iter()
-        .find(|e| e.id == "acct-x")
-        .expect("acct-x 该读得出来");
-    assert_eq!(
-        x.auth_style,
-        store::AuthStyleSetting::Known(store::AuthStyle::XApiKey)
-    );
-    assert_eq!(
-        x.base_url.as_deref(),
-        Some("https://gw.example.com/anthropic")
-    );
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
-/// `KS5` 调用点 + `KS11` 门①那半：写完那份文件**立刻只给本人**，
-/// 而读入口在它被放宽时**出声**。
-#[cfg(unix)]
-#[test]
-fn a_written_file_is_owner_only_and_a_widened_one_is_called_out() {
-    use std::os::unix::fs::PermissionsExt;
-    let dir = tmpdir("perm");
-    let p = dir.join("apikey-credentials.json");
-
-    write_key_at(
-        &p,
-        "/h/.claude-alt/acct-perm",
-        "sk-ant-JUST-WRITTEN",
-        None,
-    )
-    .expect("写");
-    let mode = std::fs::metadata(&p).expect("stat").permissions().mode() & 0o777;
-    assert_eq!(mode, 0o600, "写完没有收窄成只给本人（实测 {mode:04o}）");
-    assert!(
-        read_status_at(&p).expect("读").notice.is_none(),
-        "刚写完就报权限问题 —— 那条提醒会变成噪音"
-    );
-
-    // ★ 非空对照：**放宽它，读入口必须出声**（否则上面那条 `is_none` 证不了什么）。
-    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o644)).expect("放宽");
-    let notice = read_status_at(&p)
-        .expect("读")
-        .notice
-        .expect("过宽了必须出声");
-    assert!(notice.contains("chmod 600"), "没说清怎么修：{notice}");
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
-/// 三态：没配 · 配了 · 文件读坏了。**「读坏了」不许退化成「没配」**。
-///
-/// ⚠ 订正〔`K-H2c`〕：第 ② 步先前是 `write_key_at(…)` —— 而写侧今天落的是
-/// `accounts.<id>`，本函数读的是**顶层那一把** ⇒ 那样写这一步会读成「没配」。
-/// ⇒ 第 ② 步改成**人手编那一份**（裸 `fs::write` 一个顶层 `api_key`），
-/// 那恰好就是本函数今天答的那件事：`KS9` 逐字要的「脱离这个前端也能配」的那条路，
-/// 以及老用户手上那份文件。**这不是把判据改弱，是把它对准它真正守的那一格。**
-#[test]
-fn a_broken_file_is_surfaced_instead_of_looking_unconfigured() {
-    let dir = tmpdir("three-states");
-    let p = dir.join("apikey-credentials.json");
-
-    // ① 文件不存在 ⇒ 没配、无问题、无提醒。
-    let s0 = read_status_at(&p).expect("读");
-    assert!(!s0.configured && s0.problem.is_none() && s0.notice.is_none());
-
-    // ② 配了（顶层那一把 —— 手编 / 老文件那一条路）⇒ 只回掩码。
-    std::fs::write(&p, b"{\n  \"api_key\": \"sk-ant-0123456789ABCDEF\"\n}\n").expect("写夹具");
-    let s1 = read_status_at(&p).expect("读");
-    assert!(s1.configured);
-    assert!(!s1.masked.contains("0123456789"), "回了明文：{}", s1.masked);
-    assert!(s1.masked.contains('*'), "掩码里没有遮蔽符：{}", s1.masked);
-
-    // ③ 人手编打错一个逗号 ⇒ **出声**，不是「没配」。
-    std::fs::write(&p, b"{\"api_key\": }").expect("改坏");
-    let s2 = read_status_at(&p).expect("读");
-    assert!(!s2.configured);
-    assert!(
-        s2.problem.expect("读坏了必须有说法").contains("手编"),
-        "没告诉人这是一份手编的文件"
-    );
-    let _ = std::fs::remove_dir_all(&dir);
-}
+// 〔US1 · 第四波 4D〕读侧那两条（`KS11` 权限放宽出声 · 三态「读坏了不许退化成没配」）打的是 monitor 那一份状态读者
+//   （`creds_store::read_status_at`〔散文墓碑〕）。读者换成那台的后端（`apikey-read`）⇒ 两条原样搬去后端那一份读口：
+//   `file_face_tests::us1_a_widened_file_is_called_out_and_an_owner_only_one_is_not` ·
+//   `file_face_tests::us1_a_broken_file_is_surfaced_instead_of_looking_unconfigured`。
 
 // ============================================================ `K-H2c` `KH2C1` / `KH2C3`
 
-/// ★★★ **`KH2C1` 的行为那一半，而且它是跨两半的**：
-/// 写侧落下的那一行，**正是起会话那一侧会去找的那一行**。
-///
-/// # 它为什么不是「写完能读回来」
-///
-/// 「读回来」用的是本文件自己的读法 ⇒ 两边同错就同绿（本仓判过的那族）。
-/// 这里**换一侧的取值口来读**：`history::apikey_rows_at` 是起会话那一侧
-/// **生产上真正用的那一个**（`PRODUCTION_INJECT_FACTS.rows` 指的就是它的无参半），
-/// 判断也用那一侧的 `history::apikey_routed_subset`（`KH2B7` 与徽章共用的那一条）。
-/// ⇒ 绿的含义是「**界面写下的那一行，起会话那一刻找得到**」，不是「我写了我读得到」。
-///
-/// # ⚠ 它买不到什么
-///
-/// 买不到「点了保存按钮之后」那一跳（那是 IPC 与 UI 那两堵墙，由
-/// `the_ui_hands_the_write_command_a_config_dir_not_a_name` 与 `PLAINTEXT_HOPS` 那条分管），
-/// 也买不到「那一发请求真的到了上游」（那是 `KH2C2`，住 `src/backend`）。
-#[test]
-fn what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for() {
-    let dir = tmpdir("same-source");
-    let p = dir.join("apikey-credentials.json");
-    // ⚠ 目录名取中性名：断言里用的是**它派生出来的那个 id**，
-    //   而 `brief` 12 逐字点名过「断言用的子串取自夹具的名字」那一形。
-    let one = "/h/.claude-alt/acct-one";
-    let two = "/h/.claude-alt/acct-two";
-
-    // 非空对照**排最前**：还没写的时候，起会话那一侧说「这个号没有行」。
-    assert!(
-        crate::history::apikey_routed_subset(
-            &[one.to_string()],
-            &crate::history::apikey_rows_at(&p),
-            "claude-code",
-        )
-        .is_empty(),
-        "文件还不存在就说这个号有行了 —— 这把尺子恒真，下面全是空真"
-    );
-
-    write_key_at(&p, one, "KEY-FOR-ONE", None).expect("写");
-
-    // ★ 正题：用**起会话那一侧**的取值口 + 它的判断读这份文件。
-    let rows = crate::history::apikey_rows_at(&p);
-    assert_eq!(
-        crate::history::apikey_routed_subset(&[one.to_string()], &rows, "claude-code"),
-        vec![one.to_string()],
-        "界面写下的那一行，起会话那一侧找不到 —— 「设置里说走 apikey 端点改写、起会话时没走」\n\
-             正是 `apikey_account_id_of_dir` 头注逐字点名的那一形。表里现在是：{rows:?}"
-    );
-    // 只配了一个号 ⇒ 另一个号**不许**被顺带配上（「拿 A 的 key 发 B 的请求」的反面）。
-    assert!(
-        crate::history::apikey_routed_subset(&[two.to_string()], &rows, "claude-code").is_empty(),
-        "只配了一个号，另一个号也说在 apikey 表里有行了：{rows:?}"
-    );
-    // ⚠ 而且它落的**不是** `default` 那一行 —— 那一行谁的会话都命中得了。
-    assert!(
-        !rows.iter().any(|r| r == store::LEGACY_ACCOUNT_ID),
-        "写侧仍然落在 `{}` 那一行上：{rows:?}",
-        store::LEGACY_ACCOUNT_ID
-    );
-
-    // 盘上那一格逐字在 `accounts.<末段名>` 底下（形状那一维，与上面的行为那一维分开）。
-    let back: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
-    assert_eq!(
-        back[store::ACCOUNTS_FIELD]["acct-one"][store::KEY_FIELD],
-        "KEY-FOR-ONE"
-    );
-    let _ = std::fs::remove_dir_all(&dir);
-}
+// 〔US1 · 第四波 4D〕「写侧落下的那一行，正是起会话那一侧会去找的那一行」那条跨两半的判据
+//   （`what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for`〔散文墓碑〕）挪去后端：起会话那一侧找行的读者
+//   今天是那台后端的 `file_face::rows_at`（`launch-endpoint` · `apikey-routing` 读同一份），与写口同一个模块 ⇒
+//   `file_face_tests::us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses`（写口真写 → 成品真答 `/s/`）。
 
 /// ★★ **`KH2C1` 的机检那一半**：写侧**没有第二份**「取末段名」的实现。
 ///
@@ -405,8 +131,9 @@ fn what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for() {
 /// ⇒ 这一条钉的是结构：写侧只许**调**那一份唯一的规则，自己不许再取一次末段名。
 #[test]
 fn the_account_id_rule_is_not_reimplemented_on_the_write_side() {
-    let src = guard_core::production_code(include_str!("../../src/bridge/src/creds_store.rs"));
-    guard_core::assert_no_test_code("creds_store 写侧 id 规则", &src);
+    // 〔GP1 · 第四波〕写侧推 id 的那一半今天住 `apikey_remote.rs`（`send_key`；本机远端两臂同一个），不再住 `creds_store.rs`。
+    let src = guard_core::production_code(include_str!("../../src/bridge/src/apikey_remote.rs"));
+    guard_core::assert_no_test_code("apikey_remote 写侧 id 规则", &src);
     // ① **调**那一份唯一的规则，恰好一处。
     assert_eq!(
         src.matches("apikey_account_id_of_dir(").count(),
@@ -435,57 +162,8 @@ fn the_account_id_rule_is_not_reimplemented_on_the_write_side() {
     );
 }
 
-/// ★★★ **`KH2C3` 后半**：顶层那一把**不再是界面的写入目标**（前半「不许删」由
-/// `creds-core` 那两条钉，见下面那段）。
-///
-/// # 两维一起判，缺一条都能被绕过
-///
-/// · **结构**：写侧生产段里 `store::merge_key(` 恰好 **0** 次 ——
-///   它是「写顶层那一格」的唯一入口，留着一处就是留着一条回落路。
-/// · **行为**：往一份**全新的**文件写一次，顶层那一格**根本不该被创建**。
-///   〔只钉结构会被「换个写法写顶层」绕过；只钉行为会被「平时不写、某条分支写」绕过。〕
-///
-/// # ⚠ 「不许删」那一半**不在这里**，别以为本条也管
-///
-/// 它今天由 `creds-core` 的
-/// `the_legacy_top_level_key_becomes_one_named_row_not_a_default_row` 与
-/// `an_unconfigured_file_yields_no_rows_at_all` 两条钉着（读那条路），
-/// 外加本文件 `a_program_write_keeps_everything_the_human_put_there` 里那条
-/// 「顶层那一把一个字节没动」（写那条路）。**三条各管一格。**
-#[test]
-fn the_write_side_no_longer_targets_the_legacy_top_level_slot() {
-    let src = guard_core::production_code(include_str!("../../src/bridge/src/creds_store.rs"));
-    // 反空真排最前：这把尺子**认得出**那一族名字（不是恒 0）。
-    assert!(
-        src.contains("store::merge_account_key("),
-        "生产段里连新那个写口都没有 —— 取法坏了，下面那条恒 0 地绿"
-    );
-    assert_eq!(
-        src.matches("store::merge_key(").count(),
-        0,
-        "写侧还有一处在写**顶层那一格**。`KH2C3` 逐字：它是读得出来的一行，\n\
-             但**不再是写进去的地方** —— 留着一处，界面配的 key 就还有一条落到 \n\
-             `{}` 那一行上的路，而那一行谁的会话都命中得了。",
-        store::LEGACY_ACCOUNT_ID
-    );
-
-    // 行为那一维：全新文件写一次，顶层那一格不许被创建。
-    let dir = tmpdir("legacy-slot");
-    let p = dir.join("apikey-credentials.json");
-    write_key_at(&p, "/h/.claude-alt/acct-fresh", "KEY-FRESH", None).expect("写");
-    let back: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
-    assert!(
-        back.get(store::KEY_FIELD).is_none(),
-        "一份全新的文件被写出了顶层那一格：{back}"
-    );
-    // 非空对照：这一趟**确实**写进去了（不是整份空着让上面恒真）。
-    assert_eq!(
-        back[store::ACCOUNTS_FIELD]["acct-fresh"][store::KEY_FIELD],
-        "KEY-FRESH"
-    );
-    let _ = std::fs::remove_dir_all(&dir);
-}
+// 〔GP1 · 第四波〕`KH2C3` 后半（顶层那一把不再是写入目标：结构 ＋ 行为两维）打的是 monitor 那侧写口；
+// 写口去了后端 ⇒ 原样搬去 `file_face_tests::gp1_the_write_side_never_targets_the_legacy_top_level_slot`。
 
 /// ★ 说不出 id 的时候**报错，不回落**。
 ///
@@ -494,23 +172,33 @@ fn the_write_side_no_longer_targets_the_legacy_top_level_slot() {
 /// 「查不到就拿默认行顶上」是同一族。
 #[test]
 fn a_config_dir_that_names_no_account_is_refused_instead_of_falling_back() {
-    let dir = tmpdir("no-id");
-    let p = dir.join("apikey-credentials.json");
+    // 〔GP1 · 第四波〕入口换成生产那一个（`apikey_remote::write_key_on`，本机那一臂）：说不出 id ⇒ **一次往返都不做**就拒
+    //   （它排在「核路径」那一问与发帧之前），话里说清原因。
+    let local = crate::origin::Origin(crate::origin::LOCAL.to_string());
     for bad in ["", "   ", "/"] {
-        let e = write_key_at(&p, bad, "KEY-SHOULD-NOT-LAND", None)
-            .expect_err("说不出账号却写成功了 —— 那一把落到哪儿了？");
+        let e = tauri::async_runtime::block_on(crate::apikey_remote::write_key_on(
+            &local,
+            bad,
+            "KEY-SHOULD-NOT-LAND".to_string(),
+            None,
+        ))
+        .expect_err("说不出账号却写成功了 —— 那一把落到哪儿了？");
         assert!(e.contains("说不出这是哪个账号"), "报错没说清原因：{e}");
+        assert!(!e.contains("KEY-SHOULD-NOT-LAND"), "报错里带着明文：{e}");
     }
-    // ★ 正题：那三趟**一个字节都没落盘**（错误路径不许留下半份文件）。
+    // 非空对照：同一个入口喂一个说得出 id 的 configDir ⇒ 过了这一关、走到「问那台后端」那一步
+    //   （判据进程里没有本机那条长连接 ⇒ 报的是别的原因，不是「说不出账号」）。
+    let e = tauri::async_runtime::block_on(crate::apikey_remote::write_key_on(
+        &local,
+        "/h/.claude-alt/acct-ok",
+        "KEY-OK".to_string(),
+        None,
+    ))
+    .expect_err("判据进程里没有本机后端，不该写成");
     assert!(
-        !p.exists(),
-        "被拒的那几趟仍然建出了文件：{}",
-        std::fs::read_to_string(&p).unwrap_or_default()
+        !e.contains("说不出这是哪个账号"),
+        "说得出 id 的也被当成说不出了：{e}"
     );
-    // 非空对照：同一个入口喂一个说得出 id 的 configDir**是**写得进去的。
-    write_key_at(&p, "/h/.claude-alt/acct-ok", "KEY-OK", None).expect("写");
-    assert!(p.exists());
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// 明文两个出口，各自**只许出现在哪棵树的哪个文件里**。
@@ -709,198 +397,56 @@ fn the_definition_table_and_the_call_site_table_name_the_same_exits() {
     );
 }
 
-/// ★ `KS5` 调用点的机检：`write_key_at` 里收窄**恰好两次**（tmp 一次、目标一次）。
+// 〔GP1 · 第四波〕这里原来是两条 `KS5` 源码判据（写口里收窄恰好两次 · tmp 出生即窄），切的是 monitor 那侧写口的函数体；
+// 写口随写者换成那台的后端一起走了。「出生即只给本人」今天由后端那一份的两条兜：写半边只从账号域那一份写口够得着
+// （`readonly_guard::…::the_credentials_write_half_is_reached_only_from_the_account_file_face`）· 写出来的文件是 `0600`
+// 且不留临时文件（`file_face_tests::the_written_file_is_owner_only_and_no_temp_file_is_left`）。
+// monitor 这一侧只剩一条要钉的：**写半边一处都不调**（`gp1_the_monitor_never_reaches_the_credentials_write_half`）。
+
+/// 〔GP1 · 第四波〕**monitor 生产段一处都不够写半边**（`creds_core::perm::create_private` / `make_private`）。
 ///
-/// # 它为什么必须存在（`MU12` 实测：行为判据看不见这一刀）
-///
-/// 08-27 变异台：只把 **tmp 那一次** `make_private` 去掉、留下目标那一次
-/// ⇒ `a_written_file_is_owner_only_and_a_widened_one_is_called_out` **照样绿**
-/// （它量的是**改名之后**那份文件的 mode，而 tmp 那一刻的宽窗口已经过去了、观测不到）。
-/// ⇒ 这一格只能靠机检钉，且**必须钉次数**，不是钉「有没有」。
-///
-/// 两次各守什么：
-/// · **tmp 那次**：临时文件那一刻就是明文，中间那一段不许是宽的。
-///   Windows 上更要紧 —— `MoveFileExW` 会把 tmp 的 ACL 覆盖到目标上，tmp 的 ACL 就是最终的 ACL。
-/// · **目标那次**：非 Windows 上 rename 保留源的位，这一句是**纵深**；
-///   而目标此前若已存在且是宽的，只靠 tmp 那次收不到它。
+/// monitor 仍开着 `harden`（Windows 上读 DACL 要它），编译器因此兜不住「monitor 写不了这份文件」—— 由本条兜：
+/// 人群 = `src/bridge/src` 下全部 `.rs` 的生产段（剥测试段与注释），针两根，**零命中**。
+/// 正控：同一把针在后端那一份写口（`src/backend/accounts/upstream/file_face.rs`）上数得到 —— 针没瞎。
+/// 要求住址：主会话 09-25 裁「每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端」（`GP1.md §3`）。
 #[test]
-fn the_write_path_narrows_both_the_temp_file_and_the_final_one() {
-    let src = guard_core::production_code(include_str!("../../src/bridge/src/creds_store.rs"));
-    let at = guard_core::find_pinned(&src, "pub(crate) fn write_key_at(")
-        .expect("切不出 `write_key_at` —— 本条按红处理，不是绿");
-    let body = brace_block(&src, at).expect("`write_key_at` 的花括号没配平 —— 按红处理");
-    // 反空真自检：窗口不许跨进下一个 item。
+fn gp1_the_monitor_never_reaches_the_credentials_write_half() {
+    let needles = [
+        format!("create_{}(", "private"),
+        format!("make_{}(", "private"),
+    ];
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let files = guard_core::scan_tree_excluding(&root, &["rs"], &[]);
     assert!(
-        !body.contains("\nfn ") && !body.contains("\npub"),
-        "窗口跨进了下一个 item —— 窗口无界，下面的断言不算数"
+        files.len() > 100,
+        "只扫到 {} 份 —— 遍历坏了，零命中是空真",
+        files.len()
     );
-    assert!(body.len() > 300, "窗口只有 {} 字节 —— 切法坏了", body.len());
-
-    let n = body.matches("make_private(").count();
-    assert_eq!(
-        n, 2,
-        "`write_key_at` 里收窄了 {n} 次，应当**恰好 2** 次（tmp 一次 + 目标一次）。\n\
-             ⚠ 少一次是**真缺口而行为判据看不见**：`MU12` 实测只去掉 tmp 那次，\n\
-             `a_written_file_is_owner_only_and_a_widened_one_is_called_out` 照样绿。"
-    );
-    // 顺序也要对：tmp 那次必须在原子替换**之前**。
-    let i_tmp = guard_core::find_pinned(body, "make_private(&tmp)").expect("tmp 那次应当恰好一处");
-    let i_rep = guard_core::find_pinned(body, "atomic_replace(").expect("原子替换应当恰好一处");
-    assert!(
-        i_tmp < i_rep,
-        "tmp 的收窄排在原子替换之后了 —— 那时 tmp 已经变成目标，中间那段宽窗口白留了"
-    );
-}
-
-/// ★★★ **`KS5` 阻-2 回修〔D1，08-27〕：临时文件必须在**出生那一刻**就只给本人。**
-///
-/// # 它替掉的不是一条判据，是一个**站错位置的观测点**
-///
-/// 回修前 `write_key_at` 的顺序是
-/// `fs::write(&tmp, text)` → `make_private(&tmp)` → `atomic_replace` → `make_private(path)`。
-/// **第一步就把明文写进了一个按 umask 建出来的文件。**
-/// D1 审计探针实打：`tmp 刚建出来那一刻 mode=0664，里面已经有明文 = true`
-/// （那台机器 umask 是 `0002`；**常见的 `0022` 下就是 `0644` —— 全机可读**）。
-/// 而 `§0a` 逐字承诺的正是这一条：「**保**：同机器上别的用户读不到」。
-///
-/// ★ **它是 `MU12` 那个形状的第二次**：`MU12` 的补法钉住了「**有没有收窄**」，
-/// 把窗口从「写完到 rename」缩短到「写完到 `make_private`」，**但没有消掉那个窗口**。
-/// 三条既有判据全部量在窗口之外（源码面数次数 · rename 之后的 mode · `make_private` 自己）。
-/// ⇒ 修法不是再加一次收窄，是**让它出生时就不宽**：建文件那一步自己带上权限。
-///
-/// # 本条钉的是「**怎么建**」，行为那一半由 `perm::tests::a_file_created_through_create_private_is_born_owner_only` 钉
-///
-/// ⚠ 这个名字**改过一次**〔D2，08-27〕：先前写的是 `a_temp_file_is_born_owner_only`，
-/// 而盘上**没有这个判据** —— 真名住 `crates/creds-core/src/perm.rs`。
-/// **指向一个不存在的判据，比不指更坏**：读的人会以为那一格有人守着。
-///
-/// 两条各管各的：本条管**过程**（生产段里 tmp 只许经 `create_private` 出生，
-/// 且不许再出现「先写后收」那个形状），那条管**终态**（真建一个出来，立刻 stat）。
-#[test]
-fn the_temp_file_is_created_narrow_not_widened_afterwards() {
-    let src = guard_core::production_code(include_str!("../../src/bridge/src/creds_store.rs"));
-    let at = guard_core::find_pinned(&src, "pub(crate) fn write_key_at(")
-        .expect("切不出 `write_key_at` —— 本条按红处理，不是绿");
-    let body = brace_block(&src, at).expect("`write_key_at` 的花括号没配平 —— 按红处理");
-    assert!(body.len() > 300, "窗口只有 {} 字节 —— 切法坏了", body.len());
-    assert!(
-        !body.contains("\nfn ") && !body.contains("\npub"),
-        "窗口跨进了下一个 item —— 窗口无界，下面的断言不算数"
-    );
-
-    // ① tmp **必须**经 `create_private` 出生，恰好一次。
-    let born = body.matches("create_private(&tmp)").count();
-    assert_eq!(
-        born, 1,
-        "tmp 经 `create_private` 出生的次数是 {born}，应当恰好 1 —— \n\
-             0 次 = 它是被 umask 建出来的，出生那一刻就是宽的，而那一刻里已经有明文。"
-    );
-    // ② **不许**再出现「先按 umask 建、建完再收」那个形状。
-    assert_eq!(
-        body.matches("fs::write(&tmp").count(),
-        0,
-        "`write_key_at` 里还有 `fs::write(&tmp…)` —— 那是按 umask 建文件，\n\
-             D1 审计探针实打：那一刻 mode=0664（umask 0002）/ 0644（umask 0022），里面已经有明文。"
-    );
-    // ③ 出生必须排在**写内容之前**（否则「出生时窄」买到的是空文件窄，没意义）。
-    let i_born =
-        guard_core::find_pinned(body, "create_private(&tmp)").expect("上一条已断言它恰好一处");
-    let i_write = guard_core::find_pinned(body, "write_all(").expect("写内容那一步应当恰好一处");
-    assert!(
-        i_born < i_write,
-        "tmp 的创建排在写内容之后了 —— 那顺序上不成立"
-    );
-}
-
-/// ★ 手写 TS 类型与本结构体**双向**对拍（`KS6` 前端那一半的地基）。
-///
-/// # 它比 `SkillView` 那条现成先例强在哪（如实写，不是贬低那条）
-///
-/// `skill_host::the_ts_view_type_matches_this_struct` 的字段人群是一张**手写清单**
-/// （`for field in ["id", "label", …]`），而它的注释写着「人群从 Rust 这一侧派生」——
-/// **那句话与它的实现对不上**：往 Rust 结构体加一个字段，那条判据不会红。
-/// ⇒ 这里两边都**真派生**，而且**条数相等**：Rust 多一个字段 ⇒ 红；TS 多一个 ⇒ 也红。
-/// 后者是承重的：TS 侧偷偷多一个 `plaintext` 字段，正是 `KS6` 要挡的那一形。
-#[test]
-fn the_ts_status_type_matches_this_struct() {
-    // Rust 侧：从本文件的**生产段**里切出结构体体，派生字段名。
-    let rust_src = guard_core::production_code(include_str!("../../src/bridge/src/creds_store.rs"));
-    // ⚠ 用 `find_pinned` 而不是裸 `.find("…")`：本仓 `needle_anchor_registry` 立着一条递减棘轮
-    //   （语料变量上的裸匹配「与 `contains` 同族同险：needle 被撑大时照样绿」）。
-    //   它额外买两样：**恰好一处** + 两侧有边界。〔08-27 我第一版写裸 `.find` 撞红过它。〕
-    let at = guard_core::find_pinned(&rust_src, "pub struct ApikeyCredentialsStatus {")
-        .expect("切不出结构体 —— 本条按红处理，不是绿");
-    let body = brace_block(&rust_src, at).expect("结构体没闭合 —— 按红处理");
-    let rust_fields: Vec<String> = body
-        .lines()
-        .filter_map(|l| l.trim().strip_suffix(','))
-        .filter_map(|l| l.split_once(':'))
-        .map(|(n, _)| n.trim().trim_start_matches("pub ").to_string())
-        .filter(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_lowercase() || c == '_'))
-        .collect();
-    assert!(
-        rust_fields.len() >= 4,
-        "只派生出 {} 个 Rust 字段 —— 抽取器坏了，本条会零命中地绿：{rust_fields:?}",
-        rust_fields.len()
-    );
-
-    // TS 侧：从 `src/ipc/commands.ts` 里切出接口体，派生字段名。
-    let ts = std::fs::read_to_string(crate::guard_support::repo_src_root().join("ipc/commands.ts"))
-        .expect("读不到 `src/ipc/commands.ts` —— 抽取器坏了，本条会零命中地绿");
-    let tat = guard_core::find_pinned(&ts, "export interface ApikeyCredentialsStatus {")
-        .expect("TS 侧找不到那个接口 —— 它被改名或删了");
-    let tbody = brace_block(&ts, tat).expect("接口没闭合 —— 按红处理");
-    assert!(
-        tbody.len() > 120,
-        "切出来的 TS 接口体只有 {} 字节 —— 切歪了，本条会零命中地绿",
-        tbody.len()
-    );
-    let ts_fields: Vec<String> = tbody
-        .lines()
-        .filter_map(|l| l.trim().strip_suffix(';'))
-        .filter_map(|l| l.split_once(':'))
-        .map(|(n, _)| n.trim().to_string())
-        .filter(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_lowercase() || c == '_'))
-        .collect();
-
-    // ★ **双向**：两边各自缺什么都点名，再加一条条数相等。
-    for f in &rust_fields {
-        assert!(
-            ts_fields.contains(f),
-            "TS 的 `ApikeyCredentialsStatus` 缺字段 `{f}` —— 它是手写类型，没有编译器管：\nRust={rust_fields:?}\nTS={ts_fields:?}"
-        );
+    let mut hits: Vec<String> = Vec::new();
+    for (path, raw) in &files {
+        let code = guard_core::strip_comment_lines(&guard_core::production_code(raw));
+        for n in &needles {
+            if code.contains(n.as_str()) {
+                hits.push(format!("{} · {n}", path.display()));
+            }
+        }
     }
-    for f in &ts_fields {
-        assert!(
-            rust_fields.contains(f),
-            "TS 的 `ApikeyCredentialsStatus` 多了字段 `{f}`，Rust 侧没有它。\n\
-                 ⚠ 这一格是承重的：TS 侧偷偷多一个装明文的字段，正是 `KS6` 要挡的那一形。\nRust={rust_fields:?}\nTS={ts_fields:?}"
-        );
-    }
-    assert_eq!(rust_fields.len(), ts_fields.len(), "两侧字段条数不等");
+    assert!(
+        hits.is_empty(),
+        "monitor 生产段够到了凭据文件的写半边 —— 本机那一份的写者是本机常驻后端，monitor 一个字节都不写：{hits:?}"
+    );
+    let face = guard_core::production_code(include_str!(
+        "../../src/backend/accounts/upstream/file_face.rs"
+    ));
+    assert!(
+        needles.iter().any(|n| face.contains(n.as_str())),
+        "正控失败：后端那一份写口里也数不到 —— 针瞎了"
+    );
 }
 
-/// `KS6` 的后端那一半：**回帧里装不下明文**。
-#[test]
-fn the_status_type_cannot_carry_the_plaintext() {
-    let s = ApikeyCredentialsStatus {
-        configured: true,
-        masked: SecretKey::new("sk-ant-PLAINTEXT-NEVER-ECHOED").masked(),
-        path: "/somewhere/apikey-credentials.json".to_string(),
-        notice: None,
-        problem: None,
-    };
-    let json = serde_json::to_string(&s).expect("序列化");
-    assert!(
-        !json.contains("sk-ant-PLAINTEXT-NEVER-ECHOED"),
-        "回给前端的帧里出现了明文：{json}"
-    );
-    // 非空对照：它确实带了掩码（不是把整条抹成空串就算过）。
-    assert!(json.contains("sk-a"), "掩码里连前缀都没有：{json}");
-    assert!(json.contains('*'), "掩码里没有遮蔽符：{json}");
-    // `Debug` 也不许漏（错误路径最爱 `{:?}`）。
-    assert!(!format!("{s:?}").contains("sk-ant-PLAINTEXT-NEVER-ECHOED"));
-}
+// 〔US1 · 第四波 4D〕`ApikeyCredentialsStatus` 那两条（TS 手写类型双向对拍 · 类型装不下明文）随结构体一起退役：
+//   状态由那台后端出成品（`apikey-read`），「装不下明文」由后端应答的形状（`file_face_tests` · 跨语言金样
+//   `tests/__fixtures__/apikey.golden.json` 的零明文断言）与 TS 解码器的严格收（`tests/apikey-reads.vitest.ts`：多一格就抛）钉着。
 
 // ================================================================ `K-H2` `KH7`
 
@@ -911,9 +457,10 @@ fn the_status_type_cannot_carry_the_plaintext() {
 /// ⚠ **加一行、或给某一行多登一个写法，都是放宽** —— 要先说清多出来的那一处是什么。
 ///
 /// 〔RM1a · 第四波〕这张表从「每跳恰好 1 处」改成「每跳逐处登记」，**只为一格**：
-/// `apikey_remote::write_key_on` 按机器分两臂（本机进 `creds_store`、远端交那台机器的后端），
-/// 两台机器两个写者，明文在那个函数体里**就是**两处。其余每跳仍然恰好 1 处（表里各登一条）。
-/// 远端那条路在 `send_key` 装进 `args` 之后就是通用的帧面编码，本表管到那一跳为止。
+/// `apikey_remote::write_key_on` 按机器分两臂，明文在那个函数体里**就是**两处。其余每跳仍然恰好 1 处（表里各登一条）。
+/// 〔GP1 · 第四波〕两臂今天同一条路（都交 `send_key`，本机那一臂多带一格「该是哪一份文件」）；
+/// 本机那两跳（`creds_store` 的写口）随写者换成本机常驻后端一起退了 ⇒ 表少两行。
+/// `send_key` 装进 `args` 之后就是通用的帧面编码，本表管到那一跳为止。
 const PLAINTEXT_HOPS: &[(&str, &str, &str, &[&str])] = &[
     (
         "lib.rs",
@@ -927,27 +474,15 @@ const PLAINTEXT_HOPS: &[(&str, &str, &str, &[&str])] = &[
         "pub(crate) async fn write_key_on(",
         "key",
         &[
-            "crate::creds_store::write_key(config_dir, &key, base_url.as_deref())",
-            "send_key(host, config_dir, key, base_url)",
+            "send_key(LOCAL, config_dir, key, base_url, Some(local_file()?))",
+            "send_key(host, config_dir, key, base_url, None)",
         ],
     ),
     (
         "apikey_remote.rs",
-        "async fn send_key(",
+        "pub(crate) async fn send_key(",
         "plain",
         &["\"key\": plain"],
-    ),
-    (
-        "creds_store.rs",
-        "pub(crate) fn write_key(",
-        "plain",
-        &["plain,"],
-    ),
-    (
-        "creds_store.rs",
-        "pub(crate) fn write_key_at(",
-        "plain",
-        &["SecretKey::new(plain)"],
     ),
 ];
 
@@ -1012,10 +547,6 @@ fn the_plaintext_argument_is_only_ever_handed_one_hop_further() {
     let sources: &[(&str, &str)] = &[
         ("lib.rs", include_str!("../../src/bridge/src/lib.rs")),
         (
-            "creds_store.rs",
-            include_str!("../../src/bridge/src/creds_store.rs"),
-        ),
-        (
             "apikey_remote.rs",
             include_str!("../../src/bridge/src/apikey_remote.rs"),
         ),
@@ -1070,91 +601,7 @@ fn the_plaintext_argument_is_only_ever_handed_one_hop_further() {
 }
 
 // ── 〔第四波 ST2 · `设计/70 §4.4`〕加账号表单 apikey 那一支的 Base URL ─────────────────
-
-fn st2_dir(tag: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("ccm-st2-baseurl-{}-{tag}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).expect("建临时目录");
-    d
-}
-
-/// ★★ 给了 Base URL ⇒ 落进**那个账号那一格**的 `base_url`（与 key 同一条），别的条、别的键一个不动；
-/// 没给 ⇒ 那一格不碰（已有的 `base_url` 原样留着 —— 只配 key 不许把端点洗掉）。
-#[test]
-fn the_base_url_lands_in_that_accounts_row_and_nothing_else_moves() {
-    let dir = st2_dir("lands");
-    let p = dir.join("apikey-credentials.json");
-    std::fs::write(
-        &p,
-        b"{\n  \"mine\": 1,\n  \"accounts\": {\n    \"other\": { \"api_key\": \"K-OTHER\", \"base_url\": \"https://other.example\" }\n  }\n}\n",
-    )
-    .expect("写夹具");
-    write_key_at(
-        &p,
-        "/h/.claude-alt/acct-x",
-        "K-X",
-        Some(" https://api.example.com/v1 "),
-    )
-    .expect("写");
-    let back: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
-    assert_eq!(back["accounts"]["acct-x"][store::KEY_FIELD], "K-X");
-    assert_eq!(
-        back["accounts"]["acct-x"][store::BASE_URL_FIELD],
-        "https://api.example.com/v1",
-        "Base URL 没落在那个账号那一格（或首尾空白没修掉）"
-    );
-    assert_eq!(
-        back["accounts"]["other"][store::BASE_URL_FIELD],
-        "https://other.example"
-    );
-    assert_eq!(back["accounts"]["other"][store::KEY_FIELD], "K-OTHER");
-    assert_eq!(back["mine"], 1);
-    // 再只配一次 key（不给 Base URL）⇒ 端点原样留着。
-    write_key_at(&p, "/h/.claude-alt/acct-x", "K-X2", None).expect("写");
-    let back: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
-    assert_eq!(back["accounts"]["acct-x"][store::KEY_FIELD], "K-X2");
-    assert_eq!(
-        back["accounts"]["acct-x"][store::BASE_URL_FIELD],
-        "https://api.example.com/v1",
-        "只配 key 把那一行的端点洗掉了"
-    );
-    // 空串 = 不碰（与 None 同）。
-    write_key_at(&p, "/h/.claude-alt/acct-x", "K-X3", Some("  ")).expect("写");
-    let back: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
-    assert_eq!(
-        back["accounts"]["acct-x"][store::BASE_URL_FIELD],
-        "https://api.example.com/v1"
-    );
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
-/// ★★ 形状不对的 Base URL ⇒ **整次写都不做**（key 也不落、文件不建）—— 半截写进去比报错更坏。
-#[test]
-fn a_malformed_base_url_writes_nothing_at_all() {
-    let dir = st2_dir("bad");
-    let p = dir.join("apikey-credentials.json");
-    for bad in [
-        "api.example.com",
-        "ftp://x",
-        "https://",
-        "https://a b.example",
-    ] {
-        let e = write_key_at(&p, "/h/.claude-alt/acct-x", "K-NO", Some(bad))
-            .expect_err(&format!("{bad:?} 被收下了"));
-        assert!(e.contains("Base URL"), "报错没说是哪一格：{e}");
-        assert!(!p.exists(), "{bad:?} 形状不对，文件却已经建出来了");
-    }
-    // 反向对照：形状对的 http 回环照收（明文 http 是不是只许回环由上游选择判，本侧不另写一份）。
-    write_key_at(
-        &p,
-        "/h/.claude-alt/acct-x",
-        "K-OK",
-        Some("http://127.0.0.1:8080"),
-    )
-    .expect("写");
-    assert!(p.exists());
-    let _ = std::fs::remove_dir_all(&dir);
-}
+// 〔GP1 · 第四波〕这里原来两条（给了 Base URL 落进那一行、别的不动 · 形状不对整次不写），打的是 monitor 那侧写口；
+// 写者换成那台的后端之后，同一组性质由后端那一份判：
+// `file_face_tests::base_url_is_written_with_the_key_and_left_alone_when_only_the_key_changes`
+// （写入读回 · 只配 key 不动端点 × 三种缺席形 · 四种坏形状拒且文件逐字节不动 · 与形状关 `check_base_url_shape` 同一个）。

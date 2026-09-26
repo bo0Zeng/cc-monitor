@@ -299,7 +299,7 @@ describe("〔S5 · V41〕remote 段认不出", () => {
       expect(got.hosts, JSON.stringify(remote)).toEqual([]);
       expect(got.unrecognized, JSON.stringify(remote)).toBe(REMOTE_CONFIG_UNRECOGNIZED);
     }
-    expect(REMOTE_CONFIG_UNRECOGNIZED.startsWith("远端配置认不出：")).toBe(true);
+    expect(REMOTE_CONFIG_UNRECOGNIZED.startsWith("认不出远端配置")).toBe(true);
   });
 
   it("对照：hosts: [] 与没有 remote 段都不带那一句", async () => {

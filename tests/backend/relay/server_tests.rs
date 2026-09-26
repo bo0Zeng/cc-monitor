@@ -694,6 +694,7 @@ fn spawn_relay_with_sink(
     let base = Base::parse(&format!("http://127.0.0.1:{}", up.port())).expect("base");
     let relay = Arc::new(Relay::new(
         dest_of(two_accounts_no_key(&base)),
+        door::Key::for_tests(),
         TeeSink::new(w),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
@@ -743,7 +744,9 @@ fn send_request(addr: SocketAddr, target: &str, extra: &str) -> TcpStream {
         .expect("read deadline（风险 5x：把挂住换成红）");
     let body = REQUEST_BODY;
     let req = format!(
-        "POST {target} HTTP/1.1\r\nHost: relay\r\n{extra}Content-Length: {}\r\n\r\n{body}",
+        // 〔RK1〕过门：路径前面挂上夹具那把钥匙、`Host` 用回环字面量（门那三问见 `door.rs`）。
+        "POST /{}{target} HTTP/1.1\r\nHost: 127.0.0.1\r\n{extra}Content-Length: {}\r\n\r\n{body}",
+        door::door_tests::TEST_KEY,
         body.len()
     );
     c.write_all(req.as_bytes()).expect("write req");
@@ -933,7 +936,7 @@ fn a_body_larger_than_the_cap_is_refused_with_413_and_never_reaches_upstream() {
     // 正题：一条 `Content-Length: 1e12`，其余**一个字节都不发**。
     let (got, clean) = send_raw(
         relay_addr,
-        "POST /s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: 1000000000000\r\n\r\n",
+        "POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 1000000000000\r\n\r\n",
     );
     assert!(
         got.starts_with("HTTP/1.1 413"),
@@ -977,7 +980,7 @@ fn an_unparsable_content_length_is_refused_with_400_instead_of_dropping_the_body
 
     let (got, clean) = send_raw(
         relay_addr,
-        "POST /s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: 7abc\r\n\r\n{\"m\":1}",
+        "POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 7abc\r\n\r\n{\"m\":1}",
     );
     assert!(
         got.starts_with("HTTP/1.1 400"),
@@ -1309,7 +1312,7 @@ fn inflight_connections_are_capped_and_the_refusal_is_spoken() {
 
     // ㈠ 半开一条：只发半个请求头，**永不**发结尾空行、不关连接。
     let mut half = TcpStream::connect(relay_addr).expect("connect");
-    half.write_all(b"POST /s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\n")
+    half.write_all(b"POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n")
         .expect("half head");
     half.flush().expect("flush");
     assert!(
@@ -1324,7 +1327,7 @@ fn inflight_connections_are_capped_and_the_refusal_is_spoken() {
         .store(INFLIGHT_CONNECTIONS - 1, Ordering::SeqCst);
     let (got, _clean) = send_raw(
         relay_addr,
-        "POST /s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: 7\r\n\r\n{\"m\":1}",
+        "POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 7\r\n\r\n{\"m\":1}",
     );
     assert!(
         got.starts_with("HTTP/1.1 200"),
@@ -1343,7 +1346,7 @@ fn inflight_connections_are_capped_and_the_refusal_is_spoken() {
     relay.inflight.store(INFLIGHT_CONNECTIONS, Ordering::SeqCst);
     let (got, clean) = send_raw(
         relay_addr,
-        "POST /s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: 7\r\n\r\n{\"m\":1}",
+        "POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 7\r\n\r\n{\"m\":1}",
     );
     assert!(
         got.starts_with("HTTP/1.1 503"),
@@ -1428,6 +1431,8 @@ fn relay_child_process_entry_point() {
 struct RelayChild {
     child: std::process::Child,
     addr: SocketAddr,
+    /// 〔RK1〕子进程的**夹具家目录**（钥匙文件在它底下，预先放好 `door::door_tests::TEST_KEY`）。
+    home: std::path::PathBuf,
     out: Arc<std::sync::Mutex<String>>,
     err: Arc<std::sync::Mutex<String>>,
 }
@@ -1473,6 +1478,18 @@ fn spawn_relay_child(up: SocketAddr) -> RelayChild {
 ///
 /// ★ `KS3` 的金丝雀走的就是这条路：真子进程 · 真文件 · 真转发 —— 不是在一个 crate 里自问自答。
 fn spawn_relay_child_with_creds(up: SocketAddr, creds_path: &std::path::Path) -> RelayChild {
+    // 〔RK1〕中转绑上口之后会去 `$HOME/.cc-monitor/relay-key` 拿钥匙（没有就铸一把落盘）——
+    //   **不给夹具家目录，子进程就会去用户真实的家目录里写**。⇒ 一律给，并预先放好夹具那一把。
+    let home = door::door_tests::seed_test_home(&tmpdir(&format!("child-home-{}", up.port())));
+    spawn_relay_child_at(up, creds_path, home)
+}
+
+/// 同上，家目录由调用方给（〔RK1〕泄露判据要一个**空**家目录：让子进程自己铸一把、判据事后才读到它）。
+fn spawn_relay_child_at(
+    up: SocketAddr,
+    creds_path: &std::path::Path,
+    home: std::path::PathBuf,
+) -> RelayChild {
     let exe = std::env::current_exe().expect("测试二进制自己的路径");
     let mut child = std::process::Command::new(exe)
         .args([
@@ -1493,6 +1510,7 @@ fn spawn_relay_child_with_creds(up: SocketAddr, creds_path: &std::path::Path) ->
             format!("http://127.0.0.1:{}", up.port()),
         )
         .env(creds::ENV_CREDENTIALS, creds_path)
+        .env("HOME", &home)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -1546,6 +1564,7 @@ fn spawn_relay_child_with_creds(up: SocketAddr, creds_path: &std::path::Path) ->
     RelayChild {
         child,
         addr,
+        home,
         out,
         err,
     }
@@ -1708,14 +1727,14 @@ fn the_substituted_key_never_shows_up_in_any_of_the_four_exits() {
     );
 
     // ── 错误路径（`KS3` 逐字：不许只测正常流程）──────────────────────────
-    let (not_found, _) = send_raw(relay.addr, "GET /nope HTTP/1.1\r\nHost: x\r\n\r\n");
+    let (not_found, _) = send_raw(relay.addr, "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/nope HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
     assert!(
         not_found.starts_with("HTTP/1.1 404"),
         "非空对照：这一发该是 404，实得 {not_found:?}"
     );
     let (bad_len, _) = send_raw(
         relay.addr,
-        "POST /s/claude-code/default/sid-AAA/v1/messages HTTP/1.1\r\nHost: x\r\nContent-Length: 7abc\r\n\r\n",
+        "POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/claude-code/default/sid-AAA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 7abc\r\n\r\n",
     );
     assert!(
         bad_len.starts_with("HTTP/1.1 400"),
@@ -1791,6 +1810,7 @@ fn the_substituted_key_never_shows_up_in_any_of_the_four_exits() {
 fn spawn_relay_with_table(table: RoutingTable) -> SocketAddr {
     let relay = Arc::new(Relay::new(
         dest_of(table),
+        door::Key::for_tests(),
         TeeSink::new(Box::new(std::io::sink())),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
@@ -2054,7 +2074,7 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
     // ── ㈡ 表里没有的账号段 ⇒ **两个上游那本账都一次都没涨**，然后才是 404 ──
     let (not_found, _) = send_raw(
         relay.addr,
-        "GET /s/claude-code/acct-nope/sid-x/v1/messages HTTP/1.1\r\nHost: x\r\n\r\n",
+        "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/claude-code/acct-nope/sid-x/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
     );
     assert_eq!(
         up_a.auth_values.lock().expect("lock").len(),
@@ -2074,7 +2094,7 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
     // ── ㈢ **连不上上游那一支**（`K-H2a` 留下的那一格；`设计/20 §3.1a` 之后回 504）──────────
     let (bad_gateway, _) = send_raw(
         relay.addr,
-        "GET /s/claude-code/acct-dead/sid-x/v1/messages HTTP/1.1\r\nHost: x\r\n\r\n",
+        "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/claude-code/acct-dead/sid-x/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
     );
     assert!(
         bad_gateway.starts_with("HTTP/1.1 504"),
@@ -2645,6 +2665,7 @@ fn response_head_keeps_framing_and_forces_close() {
 ///
 /// # 为什么源码扫描不够
 ///
+/// 〔AR1：那条源码扫描 `nodelay_guard` 已按 `设计/15 §2.1` B3 退役，本格是「关了 Nagle」唯一的判据〕
 /// `nodelay_guard` 数的是**文本**：`production_code()` 只剥掉 `#[cfg(test)]` 段与**行首**
 /// `//` 的行，字符串字面量 / 行尾注释 / 块注释里的同形文本**照样被数进去**。
 /// D2 实测（`D2NG1`）：把 `handle` 里真的 `down.set_nodelay(true)?;` **整个删掉**、
@@ -2671,7 +2692,7 @@ fn both_directions_really_disable_nagle_on_the_socket() {
             .expect("read deadline（风险 5x）");
         let body = REQUEST_BODY;
         let req = format!(
-            "POST /s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: {}\r\n\r\n{body}",
+            "POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: {}\r\n\r\n{body}",
             body.len()
         );
         c.write_all(req.as_bytes()).expect("write req");
@@ -2691,6 +2712,7 @@ fn both_directions_really_disable_nagle_on_the_socket() {
     let base = Base::parse(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
     let relay = Relay::new(
         dest_of(two_accounts_no_key(&base)),
+        door::Key::for_tests(),
         TeeSink::new(Box::new(std::io::sink())),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
@@ -2761,7 +2783,7 @@ fn both_peers_really_carry_their_read_and_write_deadline_on_the_socket() {
             .expect("read deadline（风险 5x）");
         let body = REQUEST_BODY;
         let req = format!(
-            "POST /s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: {}\r\n\r\n{body}",
+            "POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: {}\r\n\r\n{body}",
             body.len()
         );
         c.write_all(req.as_bytes()).expect("write req");
@@ -2787,6 +2809,7 @@ fn both_peers_really_carry_their_read_and_write_deadline_on_the_socket() {
     let base = Base::parse(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
     let relay = Relay::new(
         dest_of(two_accounts_no_key(&base)),
+        door::Key::for_tests(),
         TeeSink::new(Box::new(std::io::sink())),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
@@ -2874,7 +2897,7 @@ fn a_socket_deadline_makes_a_half_open_read_return_instead_of_wedging_the_thread
 
     // ── ㈠ 半开：只发半个请求头（**没有**结尾空行），且**不关**连接。
     let mut half = TcpStream::connect(a).expect("connect 半开");
-    half.write_all(b"POST /s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\n")
+    half.write_all(b"POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n")
         .expect("write 半个头");
     half.flush().expect("flush");
     let (mut srv, _p) = l.accept().expect("accept 半开");
@@ -2914,7 +2937,7 @@ fn a_socket_deadline_makes_a_half_open_read_return_instead_of_wedging_the_thread
     // ── ㈡ 非空对照：同一把尺子、同样的期限，一条**发全了**的连接必须走通且明显快。
     let mut whole = TcpStream::connect(a).expect("connect 完整");
     whole
-        .write_all(b"POST /s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\n\r\n")
+        .write_all(b"POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
         .expect("write 完整头");
     whole.flush().expect("flush");
     let (mut srv2, _p2) = l.accept().expect("accept 完整");
@@ -3196,6 +3219,23 @@ printf 'POST %s/v1/messages HTTP/1.1\r\nHost: %s\r\nContent-Length: %d\r\nConnec
 head -n 1 <&3
 "#;
 
+/// 〔RK1〕一条**不带钥匙**的中转 URL（monitor 侧 `payload::relay_base_url_in` 的产物形状）
+/// → 生产渲染器那一形的 `export` 前缀：钥匙那一段是**读钥匙文件的命令替换**，在跑它的 shell 里展开。
+///
+/// ⚠ 与 monitor 侧 `payload::relay_env_prefix_posix` **同形、两处各写一份**（两半之间没有编译期边，
+/// 下面 `KH2B1` 头注那条「没买到的缝」原样成立）；monitor 那一侧由它自己的判据钉「真 shell 展开后等于带钥匙的 URL」。
+fn rendered_export(url: &str) -> String {
+    let (origin, path) = url
+        .strip_prefix("http://")
+        .and_then(|r| r.split_once('/'))
+        .map(|(hp, p)| (format!("http://{hp}/"), format!("/{p}")))
+        .expect("夹具 URL 是 http://主机:口/路径 那一形");
+    format!(
+        "export ANTHROPIC_BASE_URL='{origin}'\"$(cat \"$HOME/{}\")\"'{path}'; ",
+        door::KEY_FILE_REL
+    )
+}
+
 /// ★★★ `KH2B1`。**判定不是「渲染串里含 `ANTHROPIC_BASE_URL`」** ——
 /// 是「假上游真的收到了那一发，且它带的 `Authorization` 是**那个账号那一行**的 key」。
 ///
@@ -3248,11 +3288,9 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_acc
             "http://127.0.0.1:{}/s/claude-code/{acct}/k-0123456789abcdef",
             relay.addr.port()
         );
-        let cmd = format!(
-            "export ANTHROPIC_BASE_URL='{url}'; bash {}",
-            stub.to_string_lossy()
-        );
+        let cmd = format!("{}bash {}", rendered_export(&url), stub.to_string_lossy());
         let out = std::process::Command::new("bash")
+            .env("HOME", &relay.home)
             .arg("-c")
             .arg(&cmd)
             .output()
@@ -3302,9 +3340,11 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_acc
         relay.addr.port()
     );
     let out = std::process::Command::new("bash")
+        .env("HOME", &relay.home)
         .arg("-c")
         .arg(format!(
-            "export ANTHROPIC_BASE_URL='{url}'; bash {}",
+            "{}bash {}",
+            rendered_export(&url),
             stub.to_string_lossy()
         ))
         .output()
@@ -3333,7 +3373,8 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_acc
 /// 手写一份 JSON 只能证「**我以为写侧会产出的那个形状**能走通」——
 /// 写侧哪天换个形状（换个字段名 / 换一层嵌套 / 换个 id），这条判据**照绿**。
 ///
-/// ⇒ 这里调的是 `creds_store::write_key_at` 生产段里逐字那两个纯函数
+/// ⇒ 这里调的是写侧生产段里逐字那两个纯函数（〔GP1 · 第四波〕写侧 ＝ 每台机器那台后端的 `accounts/upstream/file_face.rs`，
+/// 本机也是；monitor 那侧当年的写口 `write_key_at`〔散文墓碑〕删了）
 /// （`store::merge_account_key` + `store::to_pretty_json`），两侧因此**在 `creds-core`
 /// 这个共同祖先上会合**：backend 单向依赖 `src/bridge/crates/*`，够得着它们。
 ///
@@ -3344,12 +3385,12 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_acc
 ///
 /// ⇒ **两条 DoD 合起来才是那条链**，各自都别读宽。这里没有被证到的两跳是：
 /// ① 界面那条 IPC 命令真的被点出去（`KH2C1` 前端那两堵墙，住 `accounts-section` 那一侧）；
-/// ② `write_key_at` 里**写盘那一段**（tmp / 原子替换 / 收窄）——
+/// ② 写口里**写盘那一段**（tmp / 原子替换 / 收窄）——
 ///    本条只走它算内容的那两步，写盘由 monitor 侧那几条既有判据分管。
 ///
 /// ⚠ 另有一跳**本来就不归本条**：id 是怎么从 `configDir` 推出来的
 /// （`history::apikey_account_id_of_dir`，住 monitor，backend 够不着）——
-/// 那一格由 `what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for` 钉。
+/// 那一格由 `file_face_tests::us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses` 钉（〔US1〕写口 → 人群 → 成品，都在后端）。
 /// **本条从「已经有了一个 id」那一刻接手。**
 #[cfg(unix)]
 fn creds_text_the_write_side_would_produce(rows: &[(&str, &str)]) -> String {
@@ -3418,9 +3459,11 @@ fn a_credentials_file_produced_by_the_write_side_routes_that_account_to_the_upst
             relay.addr.port()
         );
         let out = std::process::Command::new("bash")
+            .env("HOME", &relay.home)
             .arg("-c")
             .arg(format!(
-                "export ANTHROPIC_BASE_URL='{url}'; bash {}",
+                "{}bash {}",
+                rendered_export(&url),
                 stub.to_string_lossy()
             ))
             .output()
@@ -3470,9 +3513,11 @@ fn a_credentials_file_produced_by_the_write_side_routes_that_account_to_the_upst
             relay.addr.port()
         );
         let out = std::process::Command::new("bash")
+            .env("HOME", &relay.home)
             .arg("-c")
             .arg(format!(
-                "export ANTHROPIC_BASE_URL='{url}'; bash {}",
+                "{}bash {}",
+                rendered_export(&url),
                 stub.to_string_lossy()
             ))
             .output()
@@ -3719,6 +3764,7 @@ fn spawn_relay_with_upstream_deadline(
     let base = Base::parse(&format!("http://127.0.0.1:{}", up.port())).expect("base");
     let relay = Arc::new(Relay::new(
         dest_of(two_accounts_no_key(&base)),
+        door::Key::for_tests(),
         TeeSink::new(Box::new(std::io::sink())),
         DOWNSTREAM_DEADLINE,
         upstream_deadline,
@@ -3758,7 +3804,7 @@ fn relay_transport_failures_answer_504_saying_who_and_where() {
     let (relay, _r, _t) = spawn_relay(SocketAddr::new(LOOPBACK, dead));
     let (got, _) = send_raw(
         relay,
-        "GET /s/agentA/acctA/sid-1/v1/messages HTTP/1.1\r\nHost: x\r\n\r\n",
+        "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-1/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
     );
     assert!(got.starts_with(STATUS_LINE), "① 连不上该回 504：{got:?}");
     let want = format!("上游 127.0.0.1:{dead} 连不上。卡在建立连接这一步。");
@@ -3769,7 +3815,7 @@ fn relay_transport_failures_answer_504_saying_who_and_where() {
     // ★ 可区分性（`D7`）：**同一个中转**上，表里没有的那一行回的是 404，不是 504。
     let (miss, _) = send_raw(
         relay,
-        "GET /s/agentA/nosuch/sid-1/v1/messages HTTP/1.1\r\nHost: x\r\n\r\n",
+        "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/nosuch/sid-1/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
     );
     assert!(
         miss.starts_with("HTTP/1.1 404 Not Found\r\n"),
@@ -3781,7 +3827,7 @@ fn relay_transport_failures_answer_504_saying_who_and_where() {
     let (relay, _r, _t) = spawn_relay(up);
     let (got, _) = send_raw(
         relay,
-        "GET /s/agentA/acctA/sid-2/v1/messages HTTP/1.1\r\nHost: x\r\n\r\n",
+        "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-2/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
     );
     assert!(
         got.starts_with(STATUS_LINE),
@@ -3798,7 +3844,7 @@ fn relay_transport_failures_answer_504_saying_who_and_where() {
     let relay = spawn_relay_with_upstream_deadline(up, std::time::Duration::from_millis(300));
     let (got, _) = send_raw(
         relay,
-        "GET /s/agentA/acctA/sid-3/v1/messages HTTP/1.1\r\nHost: x\r\n\r\n",
+        "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-3/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
     );
     assert!(
         got.starts_with(STATUS_LINE),
@@ -3812,7 +3858,7 @@ fn relay_transport_failures_answer_504_saying_who_and_where() {
     let (relay, _r, _t) = spawn_relay(up);
     let (got, _) = send_raw(
         relay,
-        "GET /s/agentA/acctA/sid-4/v1/messages HTTP/1.1\r\nHost: x\r\n\r\n",
+        "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/sid-4/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
     );
     assert!(
         got.starts_with(STATUS_LINE),
@@ -3868,6 +3914,13 @@ const STATUS_HOMES: &[(&str, &str, StatusGroup)] = &[
         "504 Gateway Timeout",
         StatusGroup::UpstreamFailed,
     ),
+    // 〔RK1〕门拒绝那两个码：它们住门那一份文件（`door.rs::FORBIDDEN` / `MISDIRECTED`）。
+    ("relay/door.rs", "403 Forbidden", StatusGroup::Door),
+    (
+        "relay/door.rs",
+        "421 Misdirected Request",
+        StatusGroup::Door,
+    ),
 ];
 
 /// 我们自己造的码分几组（`20 §3.1a` 那张表 ＋ 下游请求读不懂那一组）。
@@ -3881,6 +3934,9 @@ enum StatusGroup {
     Busy,
     /// 中转自己的传输失败 —— 上游那侧。
     UpstreamFailed,
+    /// 〔RK1〕门拒绝（没钥匙 / 错钥匙 / 带 Origin ⇒ 403 · Host 非回环 ⇒ 421）。**与 404 不相交** ——
+    /// 「钥匙不对」与「钥匙对、表里没这一行」必须可分（`INVARIANTS §48.1a`）。
+    Door,
 }
 
 /// 一段源码里所有形如 `"NNN Xxx…"` 的字符串字面量（HTTP 状态行的码 ＋ 原因短语）。
@@ -3989,12 +4045,18 @@ fn every_status_we_make_has_one_home_and_the_three_groups_are_disjoint() {
         set(&[400, 411, 413]),
         "请求读不懂那一组"
     );
+    assert_eq!(
+        codes_of(StatusGroup::Door),
+        set(&[403, 421]),
+        "〔RK1〕门拒绝那一组"
+    );
     // ① 两两不相交（`D7`：同码 ⇒ 分不清是我们配错了还是上游挂了）。
     let groups = [
         StatusGroup::Unreadable,
         StatusGroup::NoRoute,
         StatusGroup::Busy,
         StatusGroup::UpstreamFailed,
+        StatusGroup::Door,
     ];
     for (i, a) in groups.iter().enumerate() {
         for b in &groups[i + 1..] {
@@ -4005,4 +4067,269 @@ fn every_status_we_make_has_one_home_and_the_three_groups_are_disjoint() {
             );
         }
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 〔RK1 · `INVARIANTS §48.1a` 中转口的钥匙〕门：走真 socket 的那一半
+//   设计住 `调研/第四波记录/RK1.md §1.3`；纯判定那一半住 `door_tests.rs`。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// 一发带自定头的请求（`Host` 由调用方给，**不**替它补）。
+fn rk1_send(addr: SocketAddr, target: &str, headers: &str) -> String {
+    let body = "{}";
+    send_raw(
+        addr,
+        &format!(
+            "POST {target} HTTP/1.1\r\n{headers}Content-Length: {}\r\n\r\n{body}",
+            body.len()
+        ),
+    )
+    .0
+}
+
+/// ① 没钥匙 / 错钥匙 / 钥匙前缀 / 多一截 / 大小写 / 空段 ⇒ **403**（体里说「relay key」），`/s/` `/t/` 都拒，
+///    **一个字节都不到上游**；钥匙对、表里没这一行 ⇒ **404** —— 两者可分。
+///    ② 钥匙对、表里有这一行 ⇒ 真转发（200），上游收到的请求行**不含**钥匙。
+#[test]
+fn rk1_the_door_refuses_without_the_key_and_that_is_not_a_404() {
+    let up = spawn_fake_upstream(None);
+    let (relay_addr, _relay, _tee) = spawn_relay(up.addr);
+    let k = door::door_tests::TEST_KEY;
+    let wrong = format!("{}0", &k[..k.len() - 1]);
+    let host = "Host: 127.0.0.1\r\n";
+    for target in [
+        "/s/agentA/acctA/sid-1/v1/messages".to_string(),
+        "/t/agentA/acctA/sid-1/v1/messages".to_string(),
+        format!("/{wrong}/s/agentA/acctA/sid-1/v1/messages"),
+        format!("/{}/s/agentA/acctA/sid-1/v1/messages", &k[..32]),
+        format!("/{k}0/s/agentA/acctA/sid-1/v1/messages"),
+        format!(
+            "/{}/s/agentA/acctA/sid-1/v1/messages",
+            k.to_ascii_uppercase()
+        ),
+        "//s/agentA/acctA/sid-1/v1/messages".to_string(),
+        format!("/{k}"),
+    ] {
+        let got = rk1_send(relay_addr, &target, host);
+        assert!(
+            got.starts_with("HTTP/1.1 403 Forbidden\r\n") && got.contains("relay key"),
+            "{target:?} 应被门以 403「relay key」拒，实得 {got:?}"
+        );
+    }
+    assert_eq!(
+        up.seen.lock().expect("lock").len(),
+        0,
+        "门拒掉的那几发漏到上游去了"
+    );
+    // 钥匙对、表里没这一行 ⇒ 404（不是 403）—— 可分。
+    let miss = rk1_send(
+        relay_addr,
+        &format!("/{k}/s/agentA/nosuch/sid-1/v1/messages"),
+        host,
+    );
+    assert!(
+        miss.starts_with("HTTP/1.1 404"),
+        "钥匙对、表里无行 ⇒ 404，实得 {miss:?}"
+    );
+    assert!(
+        !miss.contains("relay key"),
+        "404 那一格不该说钥匙：{miss:?}"
+    );
+    // ② 钥匙对、表里有行 ⇒ 真转发，上游看不到钥匙。
+    let ok = rk1_send(
+        relay_addr,
+        &format!("/{k}/s/agentA/acctA/sid-1/v1/messages"),
+        host,
+    );
+    assert!(
+        ok.starts_with("HTTP/1.1 200"),
+        "钥匙对 ⇒ 真转发，实得 {ok:?}"
+    );
+    let seen = up.seen.lock().expect("lock").clone();
+    assert_eq!(
+        seen,
+        vec!["POST /v1/messages HTTP/1.1 auth=false".to_string()],
+        "上游恰好收到一发、路径剥干净（钥匙与路由键都不上游）"
+    );
+}
+
+/// ③ 带 `Origin` ⇒ 403（体里说 Origin）；`Host` 非回环 / 缺 ⇒ 421；claude CLI 现打的那一形头（`RK1.md §5.1`）⇒ 放行。
+///    拒掉的一发都不到上游。
+#[test]
+fn rk1_browser_and_rebinding_requests_are_refused_but_the_cli_shape_passes() {
+    let up = spawn_fake_upstream(None);
+    let (relay_addr, _relay, _tee) = spawn_relay(up.addr);
+    let target = format!(
+        "/{}/s/agentA/acctA/sid-1/v1/messages",
+        door::door_tests::TEST_KEY
+    );
+    let origin = rk1_send(
+        relay_addr,
+        &target,
+        "Host: 127.0.0.1\r\nOrigin: https://evil.example\r\n",
+    );
+    assert!(
+        origin.starts_with("HTTP/1.1 403 Forbidden\r\n") && origin.contains("Origin"),
+        "带 Origin ⇒ 403，实得 {origin:?}"
+    );
+    for h in [
+        "Host: evil.example\r\n",
+        "Host: evil.example:8788\r\n",
+        "Host: 127.0.0.1.evil.example\r\n",
+        "",
+    ] {
+        let got = rk1_send(relay_addr, &target, h);
+        assert!(
+            got.starts_with("HTTP/1.1 421 Misdirected Request\r\n"),
+            "{h:?} ⇒ 421，实得 {got:?}"
+        );
+    }
+    assert_eq!(up.seen.lock().expect("lock").len(), 0, "拒掉的漏到上游了");
+    // claude CLI 2.1.282 真发的那一形（头名集合现打；值是夹具）：Host 带口、无 Origin、带 SDK 那一串头。
+    let cli = rk1_send(
+        relay_addr,
+        &format!("{target}?beta=true"),
+        &format!(
+            "Host: 127.0.0.1:{}\r\naccept: application/json\r\nanthropic-version: 2023-06-01\r\n\
+             anthropic-dangerous-direct-browser-access: true\r\ncontent-type: application/json\r\n\
+             user-agent: claude-cli/0 (external, cli)\r\nx-app: cli\r\nx-stainless-lang: js\r\n",
+            relay_addr.port()
+        ),
+    );
+    assert!(
+        cli.starts_with("HTTP/1.1 200"),
+        "CLI 那一形被门拒了：{cli:?}"
+    );
+    assert_eq!(
+        up.seen.lock().expect("lock").len(),
+        1,
+        "CLI 那一发恰好到上游一次"
+    );
+}
+
+/// ④ 泄露判据：**真子进程**（`--relay` 那一臂，tee 落 stdout）从**空家目录**起、自己铸一把钥匙；
+///    判据事后从钥匙文件读到那把值，带着它（与一把错的）打几发，然后逐面全文搜那个值 ——
+///    子进程 stdout（tee）· stderr（日志）· `/proc/<pid>/cmdline` · `/proc/<pid>/environ` · 上游收到的全部字节：**零命中**。
+///    正控：钥匙文件里恰好 1 次；判据自己发出去的那一发请求里恰好 1 次；各采集面都是活的。
+#[cfg(target_os = "linux")]
+#[test]
+fn rk1_the_minted_key_never_shows_up_in_logs_tee_argv_env_or_upstream() {
+    // 抓全部字节的假上游：收一条、回一段带 SSE 事件的 200、关。
+    let raw_seen = Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+    let l = TcpListener::bind("127.0.0.1:0").expect("假上游");
+    let up = l.local_addr().expect("地址");
+    let raw_c = Arc::clone(&raw_seen);
+    std::thread::spawn(move || {
+        for s in l.incoming() {
+            let Ok(mut s) = s else { continue };
+            let _ = s.set_read_timeout(Some(std::time::Duration::from_secs(10)));
+            let mut buf = Vec::new();
+            let mut one = [0u8; 1];
+            while !buf.ends_with(b"\r\n\r\n") {
+                match s.read(&mut one) {
+                    Ok(1) => buf.push(one[0]),
+                    _ => break,
+                }
+            }
+            let mut body = [0u8; 2];
+            let _ = s.read_exact(&mut body);
+            buf.extend_from_slice(&body);
+            raw_c.lock().expect("lock").extend_from_slice(&buf);
+            let sse = "data: {\"type\":\"ping\"}\n\n";
+            let _ = s.write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\n\r\n{sse}",
+                    sse.len()
+                )
+                .as_bytes(),
+            );
+        }
+    });
+    let dir = tmpdir("rk1-leak");
+    let creds = dir.join("apikey-credentials.json");
+    std::fs::write(&creds, b"{\n  \"accounts\": {\n    \"acctA\": {}\n  }\n}\n").expect("凭据夹具");
+    let home = dir.join("home");
+    std::fs::create_dir_all(&home).expect("空家目录");
+    let relay = spawn_relay_child_at(up, &creds, home.clone());
+    let key = std::fs::read_to_string(home.join(door::KEY_FILE_REL)).expect("子进程铸的钥匙在盘上");
+    assert!(door::key_shape_ok(&key), "子进程铸出来的钥匙形状不对");
+    assert_ne!(
+        key,
+        door::door_tests::TEST_KEY,
+        "这一条要的是**现铸**的那把，不是夹具值"
+    );
+    let good_req = format!(
+        "POST /{key}/s/claude-code/acctA/sid-leak/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 2\r\n\r\n{{}}"
+    );
+    assert_eq!(
+        good_req.matches(&key).count(),
+        1,
+        "正控：我们发出去的那一发里恰好 1 次"
+    );
+    let (ok, _) = send_raw(relay.addr, &good_req);
+    assert!(
+        ok.starts_with("HTTP/1.1 200"),
+        "带现铸的钥匙 ⇒ 真转发：{ok:?}"
+    );
+    let wrong = format!("{}0", &key[..key.len() - 1]);
+    let (bad, _) = send_raw(
+        relay.addr,
+        &format!("POST /{wrong}/s/claude-code/acctA/sid-leak/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 2\r\n\r\n{{}}"),
+    );
+    assert!(bad.starts_with("HTTP/1.1 403"), "错钥匙 ⇒ 403：{bad:?}");
+    // 等子进程把「门拒了一条」那句日志写出来（异步采集；它是本条 stderr 的活性正控）。
+    let mut waited = 0;
+    while !relay.err().contains("refused at the door") && waited < 100 {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        waited += 1;
+    }
+    let pid = relay.child.id();
+    let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).expect("读 cmdline");
+    let environ = std::fs::read(format!("/proc/{pid}/environ")).expect("读 environ");
+    let (out, err) = (relay.out(), relay.err());
+    let upstream = String::from_utf8_lossy(&raw_seen.lock().expect("lock")).to_string();
+    // 正控：每一面都是活的。
+    assert_eq!(
+        std::fs::read_to_string(home.join(door::KEY_FILE_REL))
+            .expect("读")
+            .matches(&key)
+            .count(),
+        1
+    );
+    assert!(
+        err.contains("listening on") && err.contains("refused at the door"),
+        "stderr 采集面是死的：{err:?}"
+    );
+    assert!(
+        out.contains("__meta__"),
+        "stdout（tee 落点）采集面是死的：{out:?}"
+    );
+    assert!(
+        String::from_utf8_lossy(&cmdline).contains("relay_child_process_entry_point"),
+        "cmdline 读错进程了"
+    );
+    assert!(
+        String::from_utf8_lossy(&environ).contains("CCM_RELAY_PORT"),
+        "environ 读错进程了"
+    );
+    assert!(
+        upstream.contains("/v1/messages"),
+        "上游那一面是死的：{upstream:?}"
+    );
+    // 零命中。
+    for (face, text) in [
+        ("stdout（tee）", out.clone()),
+        ("stderr（日志）", err.clone()),
+        ("cmdline", String::from_utf8_lossy(&cmdline).to_string()),
+        ("environ", String::from_utf8_lossy(&environ).to_string()),
+        ("上游收到的字节", upstream.clone()),
+    ] {
+        assert_eq!(text.matches(&key).count(), 0, "钥匙出现在 {face} 里");
+        assert_eq!(
+            text.matches(&wrong).count(),
+            0,
+            "那把错钥匙出现在 {face} 里（路径被印出去了）"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
 }

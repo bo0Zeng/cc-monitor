@@ -23,6 +23,7 @@ import { computeGaps, summarizeGaps } from "../src/settings/readiness";
 import { LOCAL_MACHINE_KEY, type MachineStatus } from "../src/settings/machine-status";
 
 import { srcDirOf } from "./test-support/repo-root";
+import { copyTableTextsIn } from "./test-support/copy-refs.ts";
 const T = 1_700_000_000_000;
 const ORIGINS = [LOCAL_MACHINE_KEY, "devbox"];
 
@@ -281,9 +282,11 @@ describe("NF3D4 · 没缺口时一个字都不多说", () => {
 describe("〔第四波 ST2〕指路的措辞跟上改名：「诊断」，指向真存在的「设置 → 机器」", () => {
   it("★ 前缀 == 设置面板机器列表页那一块的标题（读 remote-section.ts 对拍，不手抄第二份）", () => {
     const src = readFileSync(join(srcDirOf(__dirname), "settings/remote-section.ts"), "utf8");
-    const m = /title\.textContent = "([^"]+)";\n\s+this\.gapsBox\.appendChild\(title\)/.exec(src);
+    // 〔CP2b〕那块的标题进了文案表：源码里是 copyText("key")，字住 table.json —— 读 key 再去表里取字（仍是异源：一侧是表，一侧是 first-run-hint 自己取的那条）。
+    const m = /title\.textContent = copyText\("([^"]+)"\);\n\s+this\.gapsBox\.appendChild\(title\)/.exec(src);
     expect(m, "remote-section.ts 里找不到那块的标题赋值 —— 形状改了就来改这条").not.toBeNull();
-    expect(FIRST_RUN_HINT_PREFIX).toBe(`${m![1]}：`);
+    const [title] = copyTableTextsIn(`copyText("${m![1]}")`);
+    expect(FIRST_RUN_HINT_PREFIX).toBe(`${title}：`);
   });
 
   it("★ 屏幕上那一行以「诊断：」开头；旧名「还差什么」、不存在的「设置 → 远端」一个都不许在", () => {

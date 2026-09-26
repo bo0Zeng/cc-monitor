@@ -12,14 +12,9 @@ const BACKEND_GATE_MARKERS: &[&str] = &["CCM_GUARD_REJECTED", "wrong_owner"];
 /// **F04a 起：必须存在**（此前是「一个都不该有」）。
 const BACKEND_GATE3_MARKERS: &[&str] = &["session_windows", "kill-session"];
 
-/// **必须**出现在这两个命令里的东西（走后端的标志）。F04c 起是「必须有」而不是「不许有」。
-const BACKEND_CHANNEL_MARKERS: &[&str] = &["backend_route::Routed"];
-
-/// 要看住的两个命令。
-const GUARDED_COMMANDS: &[&str] = &[
-    "pub async fn tmux_send_keys(",
-    "pub async fn kill_remote_tmux(",
-];
+// 〔C4e · 第四波 4C〕这里原来还有两张表：`GUARDED_COMMANDS`（要看住的两个命令：`tmux_send_keys` / `kill_remote_tmux`〔散文墓碑〕）
+//   与 `BACKEND_CHANNEL_MARKERS`（它们走后端的标志 `backend_route::Routed`）。两条命令迁到界面之后，被看住的不再是
+//   「monitor 里那两个函数体」，而是「monitor 里有没有这两件事的路」＋「界面经谁说」—— 见文末两条。
 
 const MONITOR_TMUX: &str = include_str!("../../src/bridge/src/backend/control/tmux.rs");
 
@@ -59,42 +54,6 @@ fn backend_control_production() -> Vec<(String, String)> {
     }
     out.sort();
     out
-}
-
-/// 从函数签名处截到**列 0 的收尾 `}`** —— 顶层函数就是这个形状。
-fn body_of(src: &str, sig: &str) -> String {
-    let at = src
-        .find(sig)
-        .unwrap_or_else(|| panic!("找不到 `{sig}` —— 签名变了就把本护栏一起改"));
-    let rest = &src[at..];
-    let end = rest.find("\n}\n").map(|k| k + 3).unwrap_or(rest.len());
-    rest[..end].to_string()
-}
-
-/// ★ 抽取器自检 A：monitor 那两个函数体真的抽到了。
-///
-/// ⚠ `K-R72`（09-12）**换了哨兵，而且非换不可**：原来那句断的是
-/// `body.contains("connect_and_exec_cmd")` —— 拿「回落那条 SSH 在不在」当
-/// 「抽到没抽到」的代理。今天回落删了，那个代理**恒假** ⇒ 这条自检会把
-/// 「抽取器好好的」报成「抽错了段」。⇒ 改成断 [`BACKEND_CHANNEL_MARKERS`]：
-/// 那是两条命令**今天唯一那条路**的标志，抽错段一样看得见。
-/// 🔴 顺带记下这一形：**一条自检的哨兵长在被测实现上，实现一变自检先假**。
-#[test]
-fn the_two_command_bodies_are_actually_extracted() {
-    for sig in GUARDED_COMMANDS {
-        let body = body_of(MONITOR_TMUX, sig);
-        assert!(
-            body.len() > 400,
-            "`{sig}` 只抽到 {} 字节 —— 抽取坏了",
-            body.len()
-        );
-        for m in BACKEND_CHANNEL_MARKERS {
-            assert!(
-                body.contains(m),
-                "`{sig}` 的函数体里没有 `{m}` —— 抽错了段，或者它已经改走别的路了"
-            );
-        }
-    }
 }
 
 /// 远端 tmux 命令里**只读**的动词。不在这张表里的一律按「有破坏性」处理。
@@ -148,7 +107,7 @@ fn enclosing_fn(src: &str, at: usize) -> (String, String) {
 ///
 /// # 它补的是哪个洞
 ///
-/// 本模块原来只看住**两个写死的签名**（[`GUARDED_COMMANDS`]）。
+/// 本模块原来只看住**两个写死的签名**（`GUARDED_COMMANDS`，〔C4e〕随那两条命令迁到界面一起删了）。
 /// 实测：往 `tmux.rs` 追加一条
 /// `pub async fn tmux_respawn_pane(..)`，里面直接 `format!("tmux respawn-pane -k -t {..}")`
 /// 再 `connect_and_exec_cmd` —— **`respawn-pane -k` 会杀掉 pane 里正在跑的进程**，
@@ -177,6 +136,41 @@ fn enclosing_fn(src: &str, at: usize) -> (String, String) {
 /// 就是一次**误红**。⇒ 现打：`tmux.rs` 生产段里这样的消息串**零处**
 /// （那两处 `tmux kill-session: {..}` / `tmux send-keys: {..}` 随回落一起走了）。
 /// 哪天又长出来，正确处置是把那句消息改得不含裸动词，**不是**把动词塞进只读表。
+/// `tmux ` 之后的动词：先跳过插值占位（`{UTF8_CLIENT_FLAG}`）与 `-x` 形状的全局旗标。
+///
+/// 〔CP2b 09-25〕原来只看紧跟 `tmux ` 的小写字母 ⇒ 真正发出去的那条
+/// `tmux {UTF8_CLIENT_FLAG} ls -F …` 一直读成空动词、**被跳过**；本条的地板 1 其实是一句报错消息
+/// （`CCM_TMUX_UNPARSABLE … tmux ls …`）撑着的。那句消息抽进文案表以后人群归零、地板红了，
+/// 才看见这个洞：`tmux {旗标} respawn-pane` 这种形状同样会被跳过。⇒ 改成跳过占位与旗标再读动词，
+/// 人群回到真命令本身。
+fn verb_after_tmux(rest: &str) -> String {
+    let mut s = rest;
+    loop {
+        s = s.trim_start_matches(' ');
+        if s.starts_with('{') {
+            match s.find('}') {
+                Some(k) => s = &s[k + 1..],
+                None => return String::new(),
+            }
+        } else if s.starts_with('-') {
+            s = s.trim_start_matches(|c: char| !c.is_whitespace());
+        } else {
+            break;
+        }
+    }
+    s.chars()
+        .take_while(|c| c.is_ascii_lowercase() || *c == '-')
+        .collect()
+}
+
+#[test]
+fn verb_after_tmux_skips_placeholders_and_global_flags() {
+    assert_eq!(verb_after_tmux("{UTF8_CLIENT_FLAG} ls -F x"), "ls");
+    assert_eq!(verb_after_tmux("-u respawn-pane -k"), "respawn-pane");
+    assert_eq!(verb_after_tmux("kill-session -t x"), "kill-session");
+    assert_eq!(verb_after_tmux(">/dev/null"), "");
+}
+
 #[test]
 fn every_remote_tmux_verb_is_either_read_only_or_routed_through_the_gate() {
     let prod = guard_core::production_code(MONITOR_TMUX);
@@ -194,10 +188,7 @@ fn every_remote_tmux_verb_is_either_read_only_or_routed_through_the_gate() {
     while let Some(rel) = prod[from..].find("tmux ") {
         let i = from + rel;
         from = i + "tmux ".len();
-        let verb: String = prod[from..]
-            .chars()
-            .take_while(|c| c.is_ascii_lowercase() || *c == '-')
-            .collect();
+        let verb = verb_after_tmux(&prod[from..]);
         if verb.is_empty() {
             continue;
         }
@@ -380,204 +371,116 @@ fn the_backend_now_has_gate3() {
     );
 }
 
-/// ★ **F04b 起翻面：`kill` 必须走后端通道**（此前钉的是「不许走」）。
+// 〔C4e · 第四波 4C〕这里原来住着四条：「`kill` 必须走后端通道」（`kill_now_routes_through_the_backend`〔散文墓碑〕）·
+//   「过门被拒绝绝不回落」（`a_gate_rejection_is_never_laundered_into_the_ssh_fallback`〔散文墓碑〕）·
+//   「`send-keys` 也必须走后端通道」（`send_keys_now_routes_through_the_backend`〔散文墓碑〕）·「两条命令走同一个分流器」
+//   （`both_commands_branch_on_the_same_three_way_verdict`〔散文墓碑〕），外加抽取器自检 A。它们钉的都是 monitor 里
+//   `kill_remote_tmux` / `tmux_send_keys` 那两个函数体（主路走后端 · 回潮闸 · 三态不许压成两态 · `enter` 真传过去）。
+//   两条命令整条迁到界面（`src/tmux-control.ts`）之后，那两个函数体不在了，每一格的去处：
+//   · 主路走后端 ＋ 回潮闸 ⇒ 下面第一条：monitor 生产段里**一处**杀会话的 shell 串都没有（界面那一侧结构上没有 SSH）；
+//   · 界面只经一处说这几条 ⇒ 下面第二条；
+//   · 三态不许压成两态（「门拒绝」与「通道不在」两句话不同）⇒ `tests/tmux-control.vitest.ts`（身份门那一句 ≠ 通道不在那一句）；
+//   · `enter` 真传过去 ⇒ `tests/tmux-control.vitest.ts`（`Escape` 走 `send-keys-raw`、`/exit` 走 `send-into`，逐字比请求体）。
+//   后端那两道门（身份 · 窗口）还在路上 —— 上面两条反向锚点不动，界面从此**只**靠它们。
+
+/// monitor 生产段（剥 `#[cfg(test)]` 与注释行）里的全部 `.rs`，拼成一份语料。
+fn monitor_production_corpus() -> (usize, String) {
+    let root = crate::guard_support::repo_root().join("src/bridge/src");
+    let mut corpus = String::new();
+    let mut files = 0usize;
+    for (_, one_file) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
+        files += 1;
+        corpus.push_str(&guard_core::strip_comment_lines(
+            &guard_core::production_code(&one_file),
+        ));
+        corpus.push('\n');
+    }
+    (files, corpus)
+}
+
+/// ★★〔C4e · 第四波 4C〕**monitor 里没有杀会话的第二条路**（零命中 ＋ 正控）。
 ///
-/// # 这条禁令的理由换过三版，现在它的 kill 那半整个翻面了
-///
-/// · U10 版：「backend 没有身份门」⇒ F03 装了 Gate 2，前提失效；
-/// · F04a 版前：「backend 没有 Gate 3、也没有 kill」⇒ F04a 都搬了，前提又失效；
-/// · F04a 版：「平价账没改 + 真远端那跳验不了 ⇒ 独立一件」⇒ **F04b 就是那一件**。
-///
-/// ⇒ 按前提触发器自己的要求：前提没了就**翻面**，不是删掉（铁律 13）。
-/// 现在它钉「主路不许退回 SSH」。
+/// 守的要求：`INVARIANTS §34`（破坏性动作过三道门，门只住后端 `control/gate.rs`）与定框 `C5`
+/// 「任何改状态的 tmux 命令一律归 `control/`」—— 杀会话今天只剩一条路：界面经通道说后端的 `kill`，
+/// 后端先 `admit_destructive` 拿**句柄**再杀。monitor 里再长出一处自己拼 `kill-session` 的 shell 串，
+/// 就是 `K-R72` 删掉的那条对**名字**下手的回落回来了（TOCTOU 窗口）。
+/// 正控：同一识别器在后端 `control/kill.rs` 的生产段上认得出那个动词。
 #[test]
-fn kill_now_routes_through_the_backend() {
-    let body =
-        guard_core::production_code(&body_of(MONITOR_TMUX, "pub async fn kill_remote_tmux("));
+fn the_monitor_has_no_second_path_that_kills_a_session() {
+    let (files, corpus) = monitor_production_corpus();
+    assert!(files > 100, "只扫到 {files} 份 monitor 源码 —— 遍历坏了");
+    let verb = ["kill", "session"].join("-");
     assert!(
-        body.contains("backend_kill::backend_kill("),
-        "`kill_remote_tmux` 的生产段没有调 `backend_kill::backend_kill(` ——\n\
-             主路退回了「monitor 自己拼一条 SSH 串杀会话」，那是 C5 逐字禁止的\n\
-             （任何改状态的 tmux 命令一律归 `control/`），也把 F04a 搬进后端的\n\
-             「对**句柄**下手」退回成「对**名字**下手」（TOCTOU 窗口）。\n\
-             ⚠ 这不是「换个写法」能满足的判据：C6 那条顺序走到这里就是最后一步。"
+        !guard_core::contains_word(&corpus, &verb),
+        "monitor 生产段里又出现了 `{verb}` —— 杀会话在 monitor 里长回了一条自己拼 shell 串的路。\n\
+         杀会话只许走后端的 `kill`（先过身份门 ＋ 窗口门、对句柄下手）；界面经 `src/tmux-control.ts::killSession` 说它。"
     );
-    // ★★ **`K-R72`（09-12）：这一格翻了面 —— 从「回落必须还在」变成「不许再有」。**
-    //
-    // 原来这里逐字断的是 `body.contains("connect_and_exec_cmd") &&
-    // body.contains("build_kill_session_cmd")`，理由是 `C7`「回落路径在过渡期必须留」。  〔散文墓碑〕
-    // `K-R54` 的裁定表第 2 处把那个过渡期**判结束了**（留后端、删回落），
-    // `K-R72` 执行。⇒ 今天这一格是**回潮闸**：那条路再回来就红。
-    //
-    // ⚠ 这不是「放宽」：`C7` 当初买的是「旧版机器上还没有后端时仍杀得掉」，
-    // 而 `K35`（09-11）逐字裁掉了「没有后端」这回事 —— 前提没了，禁令跟着翻面，
-    // 与本模块头注记的那三次翻面同一条规矩（前提变了就回来重裁，不是悄悄绕过）。
+    let kill_rs = backend_control_production()
+        .into_iter()
+        .find(|(n, _)| n == "kill.rs")
+        .map(|(_, s)| s)
+        .unwrap_or_default();
     assert!(
-        !body.contains("connect_and_exec_cmd"),
-        "`kill_remote_tmux` 里又出现了 `connect_and_exec_cmd` —— 那条一次性 SSH 回落回潮了。\n\
-             它杀的是 `=name:`（**名字**），而后端那条先 `admit_destructive` 拿\n\
-             `#{{session_id}}` **句柄**再杀 —— 破坏性动作对名字下手就把 TOCTOU 窗口留着。\n\
-             ⚠ 要恢复它先回 `K-R54` 重新裁定，别在一次重构里把它带回来。"
+        guard_core::contains_word(&kill_rs, &verb),
+        "正控失败：后端 `control/kill.rs` 的生产段里认不出 `{verb}` —— 识别器瞎了，上面那个零命中不可信"
     );
 }
 
-/// ★★ **本件最要紧的一条**：过门被拒绝**绝不**回落到 SSH。
+/// ★★〔C4e · 第四波 4C〕**界面说这几条控制类帧命令只经一处**：`capture-pane` / `kill` / `launch` 的 `chan.call`
+/// 只住 `src/tmux-control.ts`，`send-keys-raw`（「打断当前回合」那个 mode 名）也只住那里。
 ///
-/// # 为什么值得单独一条判据
-///
-/// 「失败就回落」是这类切换最自然的写法，而它在这里是**错的**：
-/// backend 回 `wrong_owner` / `too_many_windows` 是**门做出的决定**，
-/// 转头用另一条路再杀一次 = 把一次被门拒绝洗成另一条路的成功。
-/// 今天两条路的门恰好等价（都是 §34 三道门）所以功能上看不出差别 ——
-/// **那正是它危险的地方**：哪天有一侧漂了，没有任何判据会红。
-///
-/// 分流规则本体由 `backend_route::only_the_errors_that_prove_nothing_was_sent_allow_a_fallback`
-/// 钉住（纯函数，F04c 起 `kill` 与 `send-keys` 共用一份）；
-/// 本条钉的是**生产段真的按三态分了流**，而不是把三态压成两态。
-///
-/// # ⚠ `K-R72`（09-12）：**名字里那个「ssh_fallback」今天已经不存在了 —— 本条仍然要**
-///
-/// 回落删了之后，「洗成另一条路的成功」这条具体路径**结构上没有了**。
-/// 但本条守的从来不是那条路，是**三态不许压成两态**：`Refused`（门做的决定）与
-/// `NoChannel`（通道不在）今天各自 `return` 一句**不同的话**，
-/// 而把它们并成一臂（`_ => Err(...)`）会让「你不能动这个会话」与「后端没连上」
-/// 变成同一个读数 —— 那正是 `KR72D1` 那条边界要的反面。
-/// ⇒ 本条**加一格**：三条臂都必须自己 `return`，一条都不许穿到函数尾巴上去。
-/// **名字刻意不改**：它记着这条判据当初为什么立，而那段病史今天仍是读懂它的前提。
-///
-/// # 🔴 `K-R72` 第二拍（09-12）：**上一版这一格是空的 —— 实打逮出来的，不是想出来的**
-///
-/// 上一版用的是「从 `Routed::Refused` 往后取 160 字节，看里面有没有 `Err`」＋
-/// 「两个 160 字节窗口逐字不许相同」。那两格**都挡不住真正的压平**：
-/// 把两臂并成 `Routed::Refused(why) | Routed::NoChannel(why) => Err(why),` 之后，
-/// 两个标记**都还在**、窗口里**都有 `Err`**、两个窗口**起点不同所以逐字也不同**
-/// ⇒ 三格全绿。**实打读数**（沙箱，`cargo test -p monitor --lib`）：
-/// 那一刀落在 `kill_remote_tmux` 上 ⇒ `1422 passed; 1 failed`，
-/// 唯一红的是 `tmux::the_local_kill_never_falls_back_to_ssh`（它红是因为
-/// `no_channel_message` 从函数体里没了，**属附带命中，不是本条在守**）；
-/// 同一刀落在 `tmux_send_keys` 上同样只红那一条的 send-keys 版本。
-/// ⇒ **本条当时并没有在守它自称守的那件事。**
-///
-/// 改法（两处一起改，别只补一格）：
-/// ① **按 `=>` 切臂**，不再取定长窗口 —— 一条臂 = 从标记到它自己那个 `=>` 之间的文本；
-///    那段里出现 `|` 或出现另一个标记 ⇒ 两态被并成一臂，当场红。
-/// ② **人群从 1 个命令扩到 [`GUARDED_COMMANDS`] 两个** —— 上一版只看 `kill`，
-///    而 `tmux_send_keys` 那份的三态分流**从来没有判据**。
+/// 守的要求：`设计/05 §14.3`「迁到通道之后，业务解释是不是**只有一个家**」—— 空目标先拒（Gate 1 本地那一格）、
+/// 按形状收、`killed` / `typed` 不为真不当成功、就地 resume 能不能回落（F14），这几件只写在那一份里；
+/// 别处直接 `chan.call(…, "kill", …)` 就是绕过它们的第二条路。`send-keys-raw` 那一格守的是 F04c：
+/// `enter` 落在两个 mode 名上、不是一个字段（旧后端静默忽略字段 ⇒ 「打断」变「提交」）。
+/// 两向相等：出现这几个字面量的文件集合 == `{src/tmux-control.ts}`；正控：那一份里各自恰好几处。
 #[test]
-fn a_gate_rejection_is_never_laundered_into_the_ssh_fallback() {
-    /// 一条 `match` 臂的模式段：从标记起，到它自己那个 `=>` 为止。
-    fn pattern_of<'a>(body: &'a str, marker: &str) -> &'a str {
-        let at = body.find(marker).expect("调用方已断言过存在");
-        let rest = &body[at..];
-        &rest[..rest.find("=>").expect("这条臂没有 `=>` —— match 形状变了")]
+fn the_front_end_speaks_the_tmux_control_ops_only_through_one_module() {
+    let root = crate::guard_support::repo_root();
+    let mut homes: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+    let mut scanned = 0usize;
+    let needles = [
+        "chan.call(origin, \"capture-pane\"",
+        "chan.call(origin, \"kill\"",
+        "chan.call(origin, \"launch\"",
+        "\"send-keys-raw\"",
+    ];
+    let mut counts: std::collections::BTreeMap<&str, usize> = Default::default();
+    for (p, text) in guard_core::scan_tree_excluding(&root.join("src"), &["ts"], &[]) {
+        let rel = p
+            .strip_prefix(&root)
+            .unwrap_or(&p)
+            .to_string_lossy()
+            .replace('\\', "/");
+        scanned += 1;
+        let prod = guard_core::strip_comment_lines(&text);
+        for n in needles {
+            let c = prod.matches(n).count();
+            if c > 0 {
+                homes.entry(n.to_string()).or_default().push(rel.clone());
+                if rel == "src/tmux-control.ts" {
+                    *counts.entry(n).or_default() += c;
+                }
+            }
+        }
     }
-    for sig in GUARDED_COMMANDS {
-        let body = guard_core::production_code(&body_of(MONITOR_TMUX, sig));
-        for arm in ["Routed::Done", "Routed::Refused", "Routed::NoChannel"] {
-            assert!(
-                body.contains(arm),
-                "`{sig}` 的生产段没有 `{arm}` 分支 —— 三态被压成了两态。\n\
-                     三态的分界线是「能不能**证明**这条命令根本没发出去」，不是「成功/失败」。"
-            );
-        }
-        for (arm_name, other, why) in [
-            (
-                "Routed::Refused",
-                "Routed::NoChannel",
-                "一次 `wrong_owner` / `too_many_windows` 是**门做的决定**",
-            ),
-            (
-                "Routed::NoChannel",
-                "Routed::Refused",
-                "「后端通道不在」是**通道的事**，与门无关",
-            ),
-        ] {
-            let pat = pattern_of(&body, arm_name);
-            assert!(
-                !pat.contains('|') && !pat.contains(other),
-                "`{sig}` 里 `{arm_name}` 与别的态并成了同一条臂（{why}）——\n\
-                     「你不能动这个会话」与「后端没连上」从此共用一个读数，\n\
-                     而用户下一步该做的事完全不同。实得这条臂的模式段：{pat:?}"
-            );
-        }
-        // ★ 反向自检：这把尺子在一份**真的压平了**的合成语料上必须分得出来。
-        //   ⚠ 语料里不带本仓任何真实函数名（`6g` 那一族：夹具与断言不许同源）。
-        const FLATTENED: &str = "match r { A::Routed::Done => Ok(()), \
-                 A::Routed::Refused(w) | A::Routed::NoChannel(w) => Err(w), }";
-        assert!(
-            pattern_of(FLATTENED, "Routed::Refused").contains('|'),
-            "尺子瞎了：一份逐字压平的语料没被认出来"
+    assert!(scanned > 100, "只扫到 {scanned} 份前端源码 —— 遍历坏了");
+    for n in needles {
+        assert_eq!(
+            homes.get(n).cloned().unwrap_or_default(),
+            vec!["src/tmux-control.ts".to_string()],
+            "`{n}` 出现在 `src/tmux-control.ts` 之外（或那一份里没有了）—— 界面说这条控制类帧命令的家不止一个"
         );
     }
-}
-
-/// ★ **F04c 起翻面：`send-keys` 也必须走后端通道**（此前钉的是「不许走」）。
-///
-/// # 这条禁令的四版理由，全部被后续功能推翻，最后它自己翻了面
-///
-/// · U10 版：「backend 没有身份门」⇒ F03 装了 Gate 2；
-/// · F04a 版前：「backend 没有 Gate 3、也没有 kill」⇒ F04a 都搬了；
-/// · F04a 版：「平价账没改 + 真远端那跳验不了 ⇒ 独立一件」⇒ F04b 就是那一件；
-/// · F04b 版：「backend 的 `type_payload` **恒附 `Enter`**，`enter=false` 表达不出来」
-///   ⇒ **F04c 给后端补了一个 mode 名**（`send-keys-raw`），缺口没了。
-///
-/// ⚠ **四版理由都是真的、都在当时成立** —— 前提触发器的价值就在这里：
-/// 它让每一次「前提变了」都必须回来重裁一次，而不是让一条过期的禁令继续挡路，
-/// 也不是让人悄悄绕过它。**它红了不是误报，是它的岗位。**
-#[test]
-fn send_keys_now_routes_through_the_backend() {
-    let body = guard_core::production_code(&body_of(MONITOR_TMUX, "pub async fn tmux_send_keys("));
-    assert!(
-        body.contains("backend_send_keys::backend_send_keys("),
-        "`tmux_send_keys` 的生产段没有调 `backend_send_keys::backend_send_keys(` ——\n\
-             主路退回了「monitor 自己拼一条 SSH 串往别人会话里打字」，那是 C5 逐字禁止的。\n\
-             ⚠ 定框 C6 的顺序到 F04c 已经走完，退回去就是把它走反。"
+    // 正控 ＋ 恒等：抓屏 1 · 结束 1 · 送键与就地 resume 各 1 ⇒ launch 2 · 「打断」那个 mode 名 1。
+    assert_eq!(
+        counts.into_iter().collect::<Vec<_>>(),
+        vec![
+            ("\"send-keys-raw\"", 1),
+            ("chan.call(origin, \"capture-pane\"", 1),
+            ("chan.call(origin, \"kill\"", 1),
+            ("chan.call(origin, \"launch\"", 2),
+        ],
+        "`src/tmux-control.ts` 里这几条的处数变了 —— 多一处是长出了第二个调用点，少一处是那条路没了"
     );
-    // ★★ **`K-R72`（09-12）：这一格翻了面 —— 从「回落必须还在」变成「不许再有」。**
-    // 同 [`kill_now_routes_through_the_backend`] 那一格的举证；本条对应
-    // `K-R54` 裁定表第 1 处（`K-R56` 09-11 先把两条路的「探了没有」补齐才删得掉）。
-    assert!(
-        !body.contains("connect_and_exec_cmd"),
-        "`tmux_send_keys` 里又出现了 `connect_and_exec_cmd` —— 那条一次性 SSH 回落回潮了。\n\
-             它在 `cc-*` 形状名上落退化分支（`need_sid`/`need_windows` 双 false），\n\
-             而后端的 `admit` 恒先 `probe` ⇒ 两条路的门不等价。\n\
-             ⚠ 要恢复它先回 `K-R54` 重新裁定。"
-    );
-    // ★ `enter` 必须真的传给 **backend 那条路** —— 不传就等于把 `Escape` 也当成「提交」。
-    //
-    // ⚠ **这条判据的第一版是恒绿的，变异复验才把它抓出来。**
-    // 第一版写的是 `body.contains("&keys, enter,") || body.contains("&keys, enter)")` ——
-    // 那个 `||` 是为了「容忍 rustfmt 的换行」加的，结果第二个分支命中了**回落那条**
-    // （`build_send_keys_remote_cmd(&target, &keys, enter)?`）⇒ 把后端那处改成  〔散文墓碑〕
-    // 硬编码 `true` 时它照样绿。**「扫到了东西，但扫的不是那件事」的又一次**，
-    // 而且这次是我自己为了「稳」加的容错造出来的。⇒ 改成**先切出后端那次调用的实参段**
-    // 再看，容错去掉。
-    let call = "backend_send_keys::backend_send_keys(";
-    let at = body.find(call).expect("上面已断言过存在");
-    let args_seg = &body[at + call.len()..];
-    let args = &args_seg[..args_seg.find(')').expect("找不到实参段的收尾括号")];
-    assert!(
-        args.contains("enter") && !args.contains("true") && !args.contains("false"),
-        "`enter` 没有传给后端那条路（实参段是 {args:?}）—— 那么 `Escape`\n\
-             （打断当前回合）会被当成「键入并提交」，把用户输入框里排队的文本发出去。"
-    );
-}
-
-/// ★ **两条命令都必须走同一个分流器**（不许各写一份「什么时候可以回落」）。
-///
-/// 这条与 `backend_route::both_backend_commands_use_this_one_router` 不重复：
-/// 那条查**发送端**是不是自己 match `CallError`，本条查**命令体**是不是按同一套三态分流。
-#[test]
-fn both_commands_branch_on_the_same_three_way_verdict() {
-    for sig in GUARDED_COMMANDS {
-        let body = guard_core::production_code(&body_of(MONITOR_TMUX, sig));
-        for m in BACKEND_CHANNEL_MARKERS {
-            assert!(
-                body.contains(m),
-                "`{sig}` 的生产段里找不到 `{m}` —— 它要么没走后端，\n\
-                     要么自己另写了一套「什么时候可以回落」。后者更危险：\n\
-                     一次 `wrong_owner` 被判成「backend 不可用」就会被另一条路重做一遍。"
-            );
-        }
-    }
 }

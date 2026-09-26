@@ -957,7 +957,7 @@ async fn pressing_cancel_stops_every_transfer_that_had_not_started_yet() {
          `DropOutcome` 上「取消了」与「传完了」分不开"
     );
     for (_, why) in &out.failed {
-        assert_eq!(why, super::CANCELLED, "被取消那一件报的不是取消");
+        assert_eq!(why, super::CANCELLED.as_str(), "被取消那一件报的不是取消");
     }
     // 收场之后在飞表是空的（每一趟都摘掉了自己的登记）。
     assert_eq!(board.cancels().in_flight_ids(), Vec::<String>::new());

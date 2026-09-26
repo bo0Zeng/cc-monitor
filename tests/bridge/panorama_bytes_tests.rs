@@ -224,7 +224,8 @@ fn asking_what_the_machine_is_lives_in_one_place_and_the_push_goes_through_choos
         "letkey=probe_key(&cfg).await?;",
         ".say(Product::Panorama,label)",
         "choose(Product::Panorama,Route::Local,Key::this_machine())",
-        ".say(Product::Panorama,\"本机\")",
+        // 〔CP2b〕「本机」这个机器名进了文案表（取文口），锚跟着换。
+        ".say(Product::Panorama,&copy_text(\"rsPanoramaBytes.local.machine\",&[]),)",
     ] {
         assert!(
             me.contains(want),
