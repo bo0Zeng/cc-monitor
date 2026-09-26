@@ -22,6 +22,8 @@ const FAMILY: &[&str] = &[
     "history-lines",
     // 〔SR1a × SE2〕会话内查找。
     "history-find",
+    // 〔STC · 第四波〕会话事实出成品（异源是题面 STC「三样由后端出成品」＋ `设计/90 §4` 阶段 C，不是 `inbound.rs`）。
+    "history-facts",
     // 〔C4d · 第四波 4B〕`history-projects` / `history-sessions` 出列：它们出成品（并注解 ＋ 判活 ＋ 远端那一跳），
     //   交给 `history_join`（历史跨机 join 的唯一的家；异源仍是题面 —— 主会话 09-25 裁 C4d 第 2 条）。
     "history-read",
@@ -481,7 +483,27 @@ fn golden_session(home: &Path) -> String {
     p.to_string_lossy().to_string()
 }
 
+/// 〔STC · 第四波〕会话事实那一格的金样夹具：结构占位（id / uuid 按角色命名、正文是无意义占位词），不采任何真会话正文。
+/// 四格各走到一次：分叉（首条 user 记录）· 写类工具 · agent 配对（一个有结果、一个没有）· usage。
+fn golden_facts_session(home: &Path) -> String {
+    let dir = home.join("projects").join("-golden");
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("f.jsonl");
+    let body = [
+        r#"{"type":"user","uuid":"f-1","forkedFrom":{"sessionId":"src-0","messageUuid":"m-0"},"message":{"content":"q"}}"#,
+        r#"{"type":"assistant","uuid":"f-2","timestamp":"t3","message":{"model":"m-g","usage":{"input_tokens":1,"cache_creation_input_tokens":2,"cache_read_input_tokens":3},"content":[{"type":"tool_use","id":"tu-1","name":"Edit","input":{"file_path":"/w/a.ts"}},{"type":"tool_use","id":"tu-2","name":"Task","input":{"description":"scan","subagent_type":"Explore"}}]}}"#,
+        r#"{"type":"user","uuid":"f-3","message":{"content":[{"type":"tool_result","tool_use_id":"tu-2","content":"ok"}]}}"#,
+        r#"{"type":"assistant","uuid":"f-4","timestamp":"t4","message":{"content":[{"type":"tool_use","id":"tu-3","name":"Agent","input":{"prompt":"p1\np2"}}]}}"#,
+    ]
+    .iter()
+    .map(|r| format!("{r}\n"))
+    .collect::<String>();
+    std::fs::write(&p, body).unwrap();
+    p.to_string_lossy().to_string()
+}
+
 /// ★★〔C4b · 第四波 4B〕**跨语言金样**：三条帧命令对同一份夹具会话的成品 == `tests/__fixtures__/session-reads.golden.json`。
+/// 〔STC · 第四波〕＋ 第四条 `history-facts`（对它自己那份夹具 [`golden_facts_session`]）。
 ///
 /// 那份金样的另一个读者是 TS 解码器（`tests/session-reads.vitest.ts` 读同一份文件、逐字段断言）⇒ 两侧**异源**：
 /// 后端改一个键名 ⇒ 本条红；TS 解码器改一个键名 ⇒ 那边红。金样是手写落盘的，不是任一侧跑出来就算数的
@@ -494,6 +516,7 @@ fn the_three_products_match_the_cross_language_golden() {
         "history-index": answer_at(&home, "history-index", &serde_json::json!({"path": path, "offset": 0})).unwrap(),
         "history-user-inputs": answer_at(&home, "history-user-inputs", &serde_json::json!({"path": path, "from": 0})).unwrap(),
         "history-find": answer_at(&home, "history-find", &serde_json::json!({"path": path, "query": "zqx", "include_tools": false, "limit": 500})).unwrap(),
+        "history-facts": answer_at(&home, "history-facts", &serde_json::json!({"path": golden_facts_session(&home)})).unwrap(),
     });
     let want: serde_json::Value =
         serde_json::from_str(include_str!("../__fixtures__/session-reads.golden.json"))
@@ -505,6 +528,69 @@ fn the_three_products_match_the_cross_language_golden() {
         "帧面成品与跨语言金样不一致。现打：\n{}",
         serde_json::to_string_pretty(&got).unwrap()
     );
+}
+
+/// ★〔STC · 第四波〕`history-facts` 经帧面续传：把上一次的应答**原样**当 `prior` 交回（与线上同形：过一遍 JSON 文本），
+/// 文件长了一截之后接着问 == 对长了之后的整份从 0 问（两向：整个值相等）。续点的两道校验：
+/// 截断（续点越过文件尾）⇒ `failed`；改写到续点不在行边界上 ⇒ `failed`；`prior` 形状不对 / 缺 `path` ⇒ `bad_args`。
+#[test]
+fn history_facts_resumes_from_its_own_answer_and_refuses_a_stale_resume_point() {
+    let home = scratch("facts");
+    let path = golden_facts_session(&home);
+    let ask = |args: serde_json::Value| answer_at(&home, "history-facts", &args);
+    let first = ask(serde_json::json!({ "path": path })).unwrap();
+    let wire: serde_json::Value =
+        serde_json::from_str(&first.to_string()).expect("应答过一遍 JSON 文本");
+    let more = r#"{"type":"user","uuid":"f-5","message":{"content":[{"type":"tool_result","tool_use_id":"tu-3","content":"ok"}]}}"#;
+    let mut f = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&path)
+        .unwrap();
+    std::io::Write::write_all(&mut f, format!("{more}\n").as_bytes()).unwrap();
+    drop(f);
+    let resumed = ask(serde_json::json!({ "path": path, "prior": wire })).unwrap();
+    let whole = ask(serde_json::json!({ "path": path })).unwrap();
+    assert_eq!(resumed, whole, "接着问与从 0 问不相等");
+    assert_ne!(
+        resumed, first,
+        "长了的那一截没进成品（夹具那条结果没把 tu-3 翻成 done）"
+    );
+    assert_eq!(whole["agents"][1]["status"], "done");
+
+    // 截断：续点越过文件尾。
+    std::fs::write(&path, "{}\n").unwrap();
+    assert_eq!(
+        ask(serde_json::json!({ "path": path, "prior": wire }))
+            .unwrap_err()
+            .0,
+        "failed"
+    );
+    // 改写：长度够，但续点前一个字节不是换行。
+    let end = wire["end"].as_u64().unwrap() as usize;
+    std::fs::write(&path, "x".repeat(end + 10)).unwrap();
+    let e = ask(serde_json::json!({ "path": path, "prior": wire })).unwrap_err();
+    assert!(e.0 == "failed" && e.1.contains("line boundary"), "{e:?}");
+    // 正控：同一个长度、续点恰在行边界上 ⇒ 接着读（证明上一条红的是「不在行边界」而不是别的）。
+    std::fs::write(&path, format!("{}\n{}\n", "x".repeat(end - 1), "{}")).unwrap();
+    assert!(ask(serde_json::json!({ "path": path, "prior": wire })).is_ok());
+    // 形状不对 / 缺 path。
+    let mut bad = wire.clone();
+    bad.as_object_mut().unwrap().remove("agents");
+    assert_eq!(
+        ask(serde_json::json!({ "path": path, "prior": bad }))
+            .unwrap_err()
+            .0,
+        "bad_args"
+    );
+    assert_eq!(
+        ask(serde_json::json!({ "prior": wire })).unwrap_err().0,
+        "bad_args"
+    );
+    // 围栏同族：`projects` 之外的文件不读。
+    let outside = home.join("outside.jsonl");
+    std::fs::write(&outside, "{}\n").unwrap();
+    assert!(ask(serde_json::json!({ "path": outside.to_string_lossy() })).is_err());
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 /// 〔U4b · 第四波 · B4〕`history-record`：在 ⇒ `present:true`；不在 ⇒ `present:false`（一个答案，不是错误）；

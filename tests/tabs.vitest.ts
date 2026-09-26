@@ -199,13 +199,18 @@ vi.mock("../src/account-restart", async (importOriginal) => ({
 import { invoke } from "@tauri-apps/api/core";
 import {
   accountReadCalls,
+  chanArgsJson,
+  chanReply,
   historyCalls,
+  isChanCall,
   killCallsOf,
   sessionReadCalls,
+  UNSUPPORTED,
   withAccountReads,
   withHistoryReads,
   withSessionReads,
 } from "./test-support/chan-fake";
+import type { SessionFacts } from "../src/session-reads";
 import { restartWithAccount } from "../src/account-restart";
 import { invalidateAccountsCache } from "../src/account-reads";
 import { __resetLocalLaunchSnapshotForTests, __setLocalLaunchSnapshotForTests } from "../src/launch-account";
@@ -369,90 +374,8 @@ describe("TabManager 生命周期", () => {
   });
 
   // === issue #63①：fork 血缘徽标 ===
-
-  it("#63① fork 会话:首条带 forkedFrom → 标题加 ↳ 徽标 + tab 记录来源 sid", () => {
-    tm.onLine({
-      session_id: "fork-sid",
-      cwd: "/home/u/proj",
-      path: "/home/u/proj/fork-sid.jsonl",
-      seq: 0,
-      message: { type: "user", uuid: "u1", forkedFrom: { sessionId: "parent-abcd1234", messageUuid: "m1" } },
-    } as never);
-    const tab = home(tm).store.tabs.get("fork-sid")!;
-    expect(tab.forkedFromSessionId).toBe("parent-abcd1234");
-    expect(tab.title.startsWith("↳ ")).toBe(true); // ★区分:未修则不加徽标
-  });
-
-  it("#63① 非 fork 会话不加徽标(区分性)", () => {
-    tm.onLine({
-      session_id: "plain",
-      cwd: "/home/u/proj",
-      path: "/home/u/proj/plain.jsonl",
-      seq: 0,
-      message: { type: "user", uuid: "u2" },
-    } as never);
-    const tab = home(tm).store.tabs.get("plain")!;
-    expect(tab.forkedFromSessionId).toBeNull();
-    expect(tab.title.startsWith("↳")).toBe(false);
-  });
-
-  it("#63① fork + 后到的 aiTitle → 单个 ↳(不重复叠加,pin 掉 doubling)", () => {
-    tm.onLine({
-      session_id: "f3",
-      cwd: "/home/u/proj",
-      path: "/home/u/proj/f3.jsonl",
-      seq: 0,
-      message: { type: "user", uuid: "a", forkedFrom: { sessionId: "parent-x" } },
-    } as never);
-    const tab = home(tm).store.tabs.get("f3")!;
-    // 直接驱动私有 applyAiTitle(routeMetaAndBranch 被 mock、不会触发 sink);模拟 ai-title 后到。
-    (tm as unknown as { applyAiTitle(t: Tab, s: string): void }).applyAiTitle(tab, "我的功能");
-    expect(tab.title).toBe("↳ [proj] 我的功能"); // 恰一个 ↳、且 aiTitle 合成正确
-    expect((tab.title.match(/↳/g) ?? []).length).toBe(1);
-  });
-
-  it("#63① 远端 fork:↳ 在 [origin] 之外(↳ [pi] …)", () => {
-    tm.onLine({
-      session_id: "fr",
-      cwd: "/home/u/proj",
-      path: "/home/u/proj/fr.jsonl",
-      seq: 0,
-      origin: "pi",
-      message: { type: "user", uuid: "a", forkedFrom: { sessionId: "parent-remote" } },
-    } as never);
-    expect(home(tm).store.tabs.get("fr")!.title.startsWith("↳ [pi] ")).toBe(true);
-  });
-
-  it("#63① tooltip 标出来源 sid(唯一暴露 parent sid 的地方)", () => {
-    tm.onLine({
-      session_id: "ft",
-      cwd: "/home/u/proj",
-      path: "/home/u/proj/ft.jsonl",
-      seq: 0,
-      message: { type: "user", uuid: "a", forkedFrom: { sessionId: "abcd1234-parent" } },
-    } as never);
-    // tab 按钮渲染进 barEl → 其 title 属性含血缘行(前 8 位 sid)
-    const el = document.body.querySelector<HTMLElement>('[title*="从 abcd1234 fork 而来"]');
-    expect(el).not.toBeNull();
-  });
-
-  it("#63① forkedFrom 出现一次即锁定,后续记录不覆盖(同 aiTitle)", () => {
-    tm.onLine({
-      session_id: "f2",
-      cwd: "/p",
-      path: "/p/f2.jsonl",
-      seq: 0,
-      message: { type: "user", uuid: "a", forkedFrom: { sessionId: "first-parent" } },
-    } as never);
-    tm.onLine({
-      session_id: "f2",
-      cwd: "/p",
-      path: "/p/f2.jsonl",
-      seq: 1,
-      message: { type: "user", uuid: "b", forkedFrom: { sessionId: "SHOULD-NOT-WIN" } },
-    } as never);
-    expect(home(tm).store.tabs.get("f2")!.forkedFromSessionId).toBe("first-parent");
-  });
+  // 〔STC〕分叉血缘改由后端出成品（`history-facts`），这一组搬进文件末尾「〔STC〕会话事实」那组（后端给了什么 ⇒ tab 上是什么）；
+  //   「首条锁定 · 只认 user/assistant」那两条口径住后端 `tests/backend/observe/facts_query_tests.rs`。
 
   // === Batch5-F19：last-active 写回 ===
 
@@ -2624,55 +2547,8 @@ describe("F79 杀死远端 tmux 会话（二次确认 + kill_remote_tmux）", ()
   });
 });
 
-describe("F70 会话改动集聚合（onLine → touchedFiles / touchedFilesFor 门控）", () => {
-  const editLine = (
-    sid: string,
-    seq: number,
-    uuid: string,
-    filePath: string,
-    origin: string | null,
-    toolName = "Edit",
-  ): unknown => ({
-    session_id: sid,
-    cwd: "/proj",
-    path: `/proj/${sid}.jsonl`,
-    seq,
-    origin,
-    message: {
-      type: "assistant",
-      uuid,
-      // 真实 jsonl 记录：content 在 message.message.content（trackAgents/collectEditedFiles 同款读法）。
-      message: {
-        content: [{ type: "tool_use", name: toolName, input: { file_path: filePath } }],
-      },
-    },
-  });
-
-  it("本地会话：写类工具 file_path 累进 + 去重；touchedFilesFor 返 files", () => {
-    const tm = makeTM();
-    tm.onLine(editLine("s-local", 1, "u1", "/proj/a.ts", null) as never);
-    tm.onLine(editLine("s-local", 2, "u2", "/proj/b.rs", null, "Write") as never);
-    tm.onLine(editLine("s-local", 3, "u3", "/proj/a.ts", null) as never); // 重复文件 → 去重
-    const info = tm.touchedFilesFor("s-local");
-    expect(info).not.toBeNull();
-    expect(info!.origin).toBe(LOCAL_ORIGIN);
-    expect([...info!.files].sort()).toEqual(["/proj/a.ts", "/proj/b.rs"]);
-  });
-
-  it("远端会话（origin!==null）→ touchedFilesFor 返 null（门控，代码不在本机）", () => {
-    const tm = makeTM();
-    tm.onLine(editLine("s-remote", 1, "r1", "/proj/x.ts", "devbox") as never);
-    expect(tm.touchedFilesFor("s-remote")).toBeNull();
-  });
-
-  it("非写类工具不计入；无此会话 → null", () => {
-    const tm = makeTM();
-    tm.onLine(editLine("s-read", 1, "k1", "/proj/r.ts", null, "Read") as never);
-    // Read 不是写类 → 空集，但 tab 存在（本地有 cwd）→ 返 files:[]
-    expect(tm.touchedFilesFor("s-read")?.files).toEqual([]);
-    expect(tm.touchedFilesFor("does-not-exist")).toBeNull();
-  });
-});
+// 〔STC〕「F70 会话改动集聚合」那一组搬进文件末尾「〔STC〕会话事实」那组：改动文件集由后端出成品（口径 · 去重 · 近因序
+//   住 `tests/backend/observe/facts_query_tests.rs`），前端这边只剩「成品 ⇒ `touchedFilesFor` 的门控与透传」。
 
 describe("F77 getActiveSubagentContext", () => {
   it("活跃本地 tab → { parentPath(=sourcePath), origin: LOCAL_ORIGIN }", () => {
@@ -2745,32 +2621,8 @@ describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", (
     expect(p).toEqual({ model: null, recentFiles: [], agents: [] });
   });
 
-  // F91b-fix(batch18)：touchedFiles 近因序——re-touch 的文件经 onLine delete+add 移到末尾，
-  // 使 peek `recentFiles`（= [...touchedFiles]）尾部是「最近改的」。锁住此行为，防重构退回插入序静默显错文件。
-  it("touchedFiles 近因序：onLine 重触文件移到末尾（peek recentFiles 尾=最近改）", () => {
-    const tm = makeTM();
-    // collectEditedFiles 读 payload.message.message.content（外层 type=记录类型，内层 message=API 消息体）
-    const edit = (seq: number, uuid: string, files: string[]) =>
-      ({
-        session_id: "s",
-        cwd: "/p",
-        path: "/p/s.jsonl",
-        seq,
-        message: {
-          type: "assistant",
-          uuid,
-          message: {
-            content: files.map((f) => ({ type: "tool_use", name: "Edit", input: { file_path: f } })),
-          },
-        },
-      }) as never;
-    tm.onLine(edit(1, "e1", ["/a.ts", "/b.ts", "/c.ts"]));
-    expect(tm.peekSession("s")!.recentFiles).toEqual(["/a.ts", "/b.ts", "/c.ts"]);
-    tm.onLine(edit(2, "e2", ["/a.ts"])); // 重触 a → 移到末尾（近因序）
-    expect(tm.peekSession("s")!.recentFiles).toEqual(["/b.ts", "/c.ts", "/a.ts"]);
-    tm.onLine(edit(3, "e3", ["/d.ts", "/b.ts"])); // 新增 d、重触 b → b 也移末尾
-    expect(tm.peekSession("s")!.recentFiles).toEqual(["/c.ts", "/a.ts", "/d.ts", "/b.ts"]);
-  });
+  // F91b-fix(batch18)：touchedFiles 近因序（peek `recentFiles` 尾部 = 最近改的）。〔STC〕近因序今天由后端排
+  //   （`facts_query_tests.rs::the_four_facts_follow_the_moved_rules`），前端只保序透传 —— 那一条在文件末尾「〔STC〕会话事实」那组。
 });
 
 describe("A5 compact waiter（awaitCompactFor + onLine 检测）", () => {
@@ -5769,6 +5621,225 @@ describe.each([
     tm.createSkeletonTab("sub", "/proj/a", LOCAL_ORIGIN, "interactive", null);
     expect(home(tm).store.tabs.get("sub")!.kind).toBe("interactive");
     expect(order()).toEqual(["host", "sub", "other"]);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  〔STC · `设计/90 §4` 阶段 C · `设计/10 §2.2`〕会话事实：**后端给了什么 ⇒ tab 上是什么**
+// ════════════════════════════════════════════════════════════════════════════
+//
+// 分叉血缘 · agent 列表 · 改动文件集 · 最新 usage 由后端出成品（帧命令 `history-facts`，`session-reads.ts` 第五问）。
+// 口径（首条锁定 · 近因序 · 配对 · 上界 · 取文件序最后一条）全在后端判据（`tests/backend/observe/facts_query_tests.rs`）；
+// 这一组只钉前端那一侧：成品原样落到 tab 上、原样当续传令牌交回去、只刷变了的那几块、中止是事件、要不到就出声。
+// 夹具只造结构（sid / 路径 / 占位 id），不采会话正文。
+describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () => {
+  const facts = (p: Partial<SessionFacts> = {}): SessionFacts => ({
+    end: 100,
+    forkedFrom: null,
+    touchedFiles: [],
+    agents: [],
+    usage: null,
+    ...p,
+  });
+  const agent = (id: string, status: "running" | "done", label = id) => ({
+    id,
+    label,
+    agentType: null,
+    status,
+    timestamp: "t",
+    desc: label,
+  });
+  const line = (sid: string, seq: number, origin: string | null = null) =>
+    ({
+      session_id: sid,
+      cwd: "/home/u/proj",
+      path: `/home/u/proj/${sid}.jsonl`,
+      seq,
+      origin,
+      message: { type: "user", uuid: `${sid}-${seq}` },
+    }) as never;
+  /** 等在途的那几趟通道往返落完（每趟是若干个微任务 ＋ 一次宏任务，多等几轮）。 */
+  const settle = async (): Promise<void> => {
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+  };
+  /** 记下每一问的 `(origin, path, prior)`；答法由 `answer` 现算（抛 ⇒ 通道那一跳的失败形状原样抛）。 */
+  let asked: { origin: string; path: string; prior: unknown }[] = [];
+  const answerFacts = (answer: (path: string, prior: unknown) => unknown): void => {
+    asked = [];
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      if (!isChanCall(cmd, args, "history-facts")) return undefined;
+      const body = chanArgsJson(args) as { path: string; prior?: unknown };
+      asked.push({ origin: args.origin, path: body.path, prior: body.prior ?? null });
+      return chanReply(answer(body.path, body.prior ?? null));
+    });
+  };
+  let tm: TabManager;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tm = makeTM();
+  });
+  afterEach(() => {
+    vi.mocked(invoke).mockReset();
+    vi.mocked(invoke).mockResolvedValue(undefined);
+  });
+
+  it("#63① 成品说是分叉来的 ⇒ tab 记下来源 sid、标题加 ↳；tooltip 标出来源 sid 前 8 位", async () => {
+    answerFacts(() => facts({ forkedFrom: "abcd1234-parent" }));
+    tm.onLine(line("fork-sid", 0));
+    await settle();
+    const tab = home(tm).store.tabs.get("fork-sid")!;
+    expect(tab.forkedFromSessionId).toBe("abcd1234-parent");
+    expect(tab.title.startsWith("↳ ")).toBe(true);
+    expect(document.body.querySelector<HTMLElement>('[title*="从 abcd1234 fork 而来"]')).not.toBeNull();
+  });
+
+  it("#63① 成品说不是分叉 ⇒ 不加徽标（区分性）", async () => {
+    answerFacts(() => facts());
+    tm.onLine(line("plain", 0));
+    await settle();
+    const tab = home(tm).store.tabs.get("plain")!;
+    expect(tab.forkedFromSessionId).toBeNull();
+    expect(tab.title.startsWith("↳")).toBe(false);
+  });
+
+  it("#63① 分叉 ＋ 后到的 aiTitle ⇒ 恰一个 ↳；远端分叉 ↳ 在 [origin] 之外", async () => {
+    answerFacts(() => facts({ forkedFrom: "parent-x" }));
+    tm.onLine(line("f3", 0));
+    tm.onLine(line("fr", 0, "pi"));
+    await settle();
+    const tab = home(tm).store.tabs.get("f3")!;
+    (tm as unknown as { applyAiTitle(t: Tab, s: string): void }).applyAiTitle(tab, "我的功能");
+    expect(tab.title).toBe("↳ [proj] 我的功能");
+    expect((tab.title.match(/↳/g) ?? []).length).toBe(1);
+    expect(home(tm).store.tabs.get("fr")!.title.startsWith("↳ [pi] ")).toBe(true);
+  });
+
+  it("续传：第二问把上一份成品**原样**当 prior 交回去；成品整份替换（后端说什么就是什么）", async () => {
+    let n = 0;
+    const first = facts({ end: 10, forkedFrom: "p1", touchedFiles: ["/a"], agents: [agent("g1", "running")] });
+    const second = facts({ end: 20, forkedFrom: "p1", touchedFiles: ["/b", "/a"], agents: [agent("g1", "done")] });
+    answerFacts(() => (n++ === 0 ? first : second));
+    tm.onLine(line("s", 0));
+    await settle();
+    tm.onLine(line("s", 1));
+    await settle();
+    expect(asked.map((a) => a.prior)).toEqual([null, first]);
+    const tab = home(tm).store.tabs.get("s")!;
+    expect([...tab.touchedFiles]).toEqual(["/b", "/a"]);
+    expect([...tab.agents.values()].map((a) => a.status)).toEqual(["done"]);
+  });
+
+  it("带着 prior 要不到（续点越过文件尾 = 截断 / 重写）⇒ 不带 prior 从 0 重要一趟", async () => {
+    let n = 0;
+    answerFacts((_p, prior) => {
+      n++;
+      if (n === 2 && prior !== null) throw { err: "Refused", body: [...new TextEncoder().encode('{"code":"failed","message":"past EOF"}')] };
+      return facts({ end: n * 10, touchedFiles: [`/f${n}`] });
+    });
+    tm.onLine(line("t", 0));
+    await settle();
+    tm.onLine(line("t", 1));
+    await settle();
+    expect(asked.map((a) => a.prior === null)).toEqual([true, false, true]);
+    expect([...home(tm).store.tabs.get("t")!.touchedFiles]).toEqual(["/f3"]);
+  });
+
+  it("批期不问；批结束每个「没要过或又长了」的 tab 各问一次（不只 active）", async () => {
+    answerFacts((path) => facts({ forkedFrom: path.includes("b1") ? "src" : null }));
+    tm.onBatchStart();
+    tm.onLine(line("b1", 0));
+    tm.onLine(line("b1", 1));
+    tm.onLine(line("b2", 0));
+    await settle();
+    expect(asked).toEqual([]);
+    tm.onBatchEnd();
+    await settle();
+    expect(asked.map((a) => a.path).sort()).toEqual(["/home/u/proj/b1.jsonl", "/home/u/proj/b2.jsonl"]);
+    expect(home(tm).store.tabs.get("b1")!.forkedFromSessionId).toBe("src"); // 后台 tab 也有 ↳
+  });
+
+  it("F70 改动文件集：成品原样透传（近因序由后端排）；远端 / 没有这个会话 ⇒ `touchedFilesFor` 返 null", async () => {
+    answerFacts(() => facts({ touchedFiles: ["/proj/b.rs", "/proj/a.ts"] }));
+    tm.onLine(line("s-local", 0));
+    tm.onLine(line("s-remote", 0, "devbox"));
+    await settle();
+    const info = tm.touchedFilesFor("s-local");
+    expect(info?.origin).toBe(LOCAL_ORIGIN);
+    expect(info?.files).toEqual(["/proj/b.rs", "/proj/a.ts"]);
+    expect(tm.peekSession("s-local")!.recentFiles).toEqual(["/proj/b.rs", "/proj/a.ts"]); // F91b：尾 = 最近改
+    expect(tm.touchedFilesFor("s-remote")).toBeNull();
+    expect(tm.touchedFilesFor("does-not-exist")).toBeNull();
+    expect(asked.find((a) => a.path.includes("s-remote"))?.origin).toBe("devbox"); // 远端问的是那台
+  });
+
+  it("F88b usage：active 的成品一到就推给 HUD；后台 tab 不推；切过去时推那一格", async () => {
+    const seen: [string | null, number | null][] = [];
+    tm.onActiveUsageChanged = (m, t) => seen.push([m, t]);
+    answerFacts((path) =>
+      facts({ usage: path.includes("u1") ? { promptTokens: 42, model: "m-a" } : { promptTokens: 7, model: null } }),
+    );
+    tm.onLine(line("u1", 0)); // 第一个 tab 自动成为 active
+    tm.onLine(line("u2", 0));
+    await settle();
+    // 切换那一格的推送在 rAF 里（`switchTo`），与事实到达谁先谁后不定 ⇒ 等「最后一次」落定，不钉次序。
+    await vi.waitFor(() => expect(seen.at(-1)).toEqual(["m-a", 42]));
+    expect(seen.some(([, t]) => t === 7)).toBe(false); // 后台 tab 的事实到了不推
+    tm.switchTo("u2");
+    await vi.waitFor(() => expect(seen.at(-1)).toEqual([null, 7]));
+    expect(home(tm).store.tabs.get("u2")!.latestPromptTokens).toBe(7); // 监控板那一格读的也是它（`snapshotSessions`）
+    expect(tm.peekSession("u1")!.model).toBe("m-a");
+  });
+
+  it("#23 agent：成品 ⇒ 面板；会话落到 idle ⇒ running 标中止，之后的成品里仍是 running 也照样中止", async () => {
+    const panel = { setSession: vi.fn() };
+    (tm as unknown as { agentsPanel: unknown }).agentsPanel = panel;
+    answerFacts(() => facts({ agents: [agent("g1", "running"), agent("g2", "done")] }));
+    tm.onLine(line("a", 0));
+    await settle();
+    expect(panel.setSession).toHaveBeenLastCalledWith("a", [
+      expect.objectContaining({ id: "g1", status: "running" }),
+      expect.objectContaining({ id: "g2", status: "done" }),
+    ]);
+    tm.updateActivity("a", "idle", null);
+    expect([...home(tm).store.tabs.get("a")!.agents.values()].map((x) => x.status)).toEqual(["aborted", "done"]);
+    answerFacts(() => facts({ end: 200, agents: [agent("g1", "running"), agent("g2", "done"), agent("g3", "running")] }));
+    tm.onLine(line("a", 1));
+    await settle();
+    expect([...home(tm).store.tabs.get("a")!.agents.values()].map((x) => `${x.id}:${x.status}`)).toEqual([
+      "g1:aborted",
+      "g2:done",
+      "g3:running", // 落到 idle 之后才起的那个不受影响
+    ]);
+  });
+
+  it("#23 agent：**第一份**成品到的时候会话已经不忙（F5 之后红绿灯先到）⇒ 当场补判中止", async () => {
+    tm.updateActivity("late", "idle", null); // tab 还没建 ⇒ 暂存，建 tab 时落实
+    answerFacts(() => facts({ agents: [agent("g1", "running")] }));
+    tm.onLine(line("late", 0));
+    await settle();
+    expect([...home(tm).store.tabs.get("late")!.agents.values()].map((x) => x.status)).toEqual(["aborted"]);
+  });
+
+  it("要不到（老后端不认这条命令）⇒ active 的 HUD 出声（原因非空）、此后不再问；可用 ⇒ 说 null", async () => {
+    const said: (string | null)[] = [];
+    tm.onActiveFactsAvailability = (r) => said.push(r);
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      if (isChanCall(cmd, args, "history-facts")) throw UNSUPPORTED;
+      return undefined;
+    });
+    tm.onLine(line("old", 0));
+    await settle();
+    const calls = () => vi.mocked(invoke).mock.calls.filter((c) => isChanCall(c[0] as string, c[1], "history-facts")).length;
+    expect(calls()).toBe(1);
+    expect(said.at(-1)).toMatch(/后端版本旧/);
+    tm.onLine(line("old", 1));
+    await settle();
+    expect(calls()).toBe(1); // 结构性失败 ⇒ 不再问
+    answerFacts(() => facts());
+    tm.onLine(line("fine", 0));
+    await settle();
+    tm.switchTo("fine");
+    await vi.waitFor(() => expect(said.at(-1)).toBeNull()); // 切换那一格的推送在 rAF 里
   });
 });
 

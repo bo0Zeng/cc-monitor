@@ -281,7 +281,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   tabs.onManualSwitch = () => {
     pendingStartupActive = null;
   };
-  // F88b：活跃会话 usage 变化 → 刷新 HUD context% chip（onLine 新 assistant 记录 / switchTo 切会话）
+  // F88b：活跃会话 usage 变化 → 刷新 HUD context% chip（〔STC〕后端的会话事实到了 / switchTo 切会话）
+  // 〔STC〕活跃会话的会话事实要不到 ⇒ chip 说原因（`null` = 可用）。
+  tabs.onActiveFactsAvailability = (reason) => usageHud.setUnavailable(reason);
   tabs.onActiveUsageChanged = (model, promptTokens) => {
     usageHud.setActive(model, promptTokens);
   };

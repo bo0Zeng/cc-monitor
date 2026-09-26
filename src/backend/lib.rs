@@ -546,7 +546,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p4b-single-home-judgments**（2026-09-26，第四波 4D DUP1 合并那一拍）：行为 —— `ccm` 拒不合规的 sid（`resume` / `--resume` / `--ccm-sid`，
 /// `shell-quote-core::session_id_ok`）· `--model`（`model_name_ok`）· `--account`（`account_name_ok`，与 cc-acct-iso 同）；配置目录走 `acct-core` 全表
 /// （`config_dir_posix_ok` / `config_dir_ok`）。`resolve_query::is_valid_session_id` 照 V126 冻结给仓外 aterm、没收。子命令没变，照 p1v 先例不加历史行。
-pub const BUILD_ID: &str = "p4b-single-home-judgments";
+///
+/// ★★★ **p4c-history-facts**（2026-09-26，第四波 4D STC 合并那一拍）：子命令 ＋1 `--history-facts`、帧命令 ＋1 `history-facts`（`90` 阶段 C：
+/// 后端出会话事实成品 `{end, forkedFrom, touchedFiles, agents, usage}`，续传令牌 = 上一份成品原样交回、后端零状态；分叉判定抽成 `history_query::fork_origin`
+/// 与历史树同一个函数）。前端 `onLine` 旁路四个记账员删到只剩真事件。
+pub const BUILD_ID: &str = "p4c-history-facts";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -766,6 +770,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔`C1`〕同上一段：`history-*` 六条帧命令的 CLI 面。
     // 〔SR1a〕+2：`history-index` / `history-user-inputs`（骨架索引与大纲清单上帧面）的 CLI 面，
     //   登记理由同上 —— `is_query_mode` 那道闸门读本表。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 〔STC · `设计/90 §4` 阶段 C〕`history-facts`（会话事实出成品）的 CLI 面（从 `REGISTRY` 派生，`is_query_mode` 那道闸门读本表）。
+    //   **是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    "--history-facts",
     "--history-find",
     "--history-index",
     // 〔CF2 · 第四波 4B〕`history-lines`（按行号取回）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的，
