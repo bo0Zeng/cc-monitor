@@ -189,6 +189,9 @@ pub struct DialAck {
     pub error: Option<String>,
     /// 实际观察到的 host key 指纹 —— 界面侧 TOFU 固化要它（失败时也尽量带上）。
     pub fingerprint: Option<String>,
+    /// 〔VIS2 · `设计/15 §3.4 ①`「保住多地址那一格」〕这一趟报过指纹的每条地址 → 指纹。additive（`ACK_V` 不动）；
+    /// 界面只在各地址一致时自动固化。失败的 ack 恒空（指纹照旧在 `fingerprint`）。
+    pub fingerprints: std::collections::BTreeMap<String, String>,
     /// 竞速胜出的地址（`host:port`）—— 界面记 last-good、测试连接展示「你正连着哪条路」。
     pub endpoint: Option<String>,
     /// 协议版本（[`ACK_V`]）。
@@ -203,6 +206,7 @@ impl DialAck {
             ok: false,
             error: Some(error),
             fingerprint,
+            fingerprints: Default::default(),
             endpoint: None,
             v: ACK_V,
             uses: USES,
