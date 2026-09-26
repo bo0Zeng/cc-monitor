@@ -220,7 +220,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
           available: true,
           error: null,
           meta: { enabled: true, acctsDir: "/h/.claude-alt", manifestPath: "/h/.claude-alt/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null },
-          accounts: [{ name: "z", email: "z@x.edu", configDir: "/h/.claude-alt/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true }],
+          accounts: [{ name: "z", email: "z@x.edu", configDir: "/h/.claude-alt/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true }],
         });
       }
       return Promise.resolve(undefined);

@@ -318,7 +318,7 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
   });
 
   it("Y3 阴性对照③：订阅号有凭据 ⇒「已登录」，且这一行 title 仍是空串（与替换前逐字相同）", async () => {
-    const wei = acct({ name: "wei", loggedIn: true });
+    const wei = acct({ name: "wei", loggedIn: true, authKind: "subscription", authReady: true });
     const items = await menuRows([wei], "wei");
     const row = rowOf(items, "wei");
     expect(statusOf(row)).toBe("已登录");
