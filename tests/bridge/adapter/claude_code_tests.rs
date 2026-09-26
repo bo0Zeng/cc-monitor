@@ -11,9 +11,7 @@ fn claude_layout_locked() {
     let a = ClaudeCodeAdapter;
     assert_eq!(a.id(), "claude-code");
     let l = a.layout();
-    assert_eq!(l.sessions_subdir, "projects");
-    assert_eq!(l.liveness_subdir, "sessions");
+    // 〔LOC1b · 4D〕子目录名 / 活性目录 / 扩展名三格随 monitor 读本机盘那几份实现删了（目录布局归后端 `agents/claudecode/`）。
     assert_eq!(l.tasks_subdir, Some("tasks"));
-    assert_eq!(l.record_ext, "jsonl");
     assert_eq!(l.sid_strategy, SidStrategy::Stem);
 }

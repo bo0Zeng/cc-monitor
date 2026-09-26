@@ -1,0 +1,14 @@
+[package]
+name = "agent-tools-core"
+version = "0.1.0"
+edition = "2021"
+description = "agent 的工具词表：哪些工具名算「展开 = 子会话」（agent 工具）—— monitor 渲染 agent 卡与后端出会话事实共用的唯一一份（无 IO、无平台依赖）。"
+
+# **零依赖**。同 acct-core / gate-core / shell-quote-core 的约束：backend 是 Linux-only 的静态 musl 二进制、
+# 且刻意不在 monitor 的 workspace 里；一旦引入平台相关的东西，共享就破了。
+#
+# 〔DUP2 · 主会话 09-26 裁 J19〕为什么新立一个、不塞进现有的 core：现有十个没有一个的身份是「agent 的工具词表」
+# （`search-core` 是搜索口径、`branch-core` 是分叉记录变换……）—— 硬塞进去就是 `shell-quote-core` 头注批过的那一形
+# 「它不是共享的，是没处放的」。两半都要它（monitor 渲染 · 后端会话事实），而 `设计/90 §0` 的 `C2` 不许两半编译期互咬
+# ⇒ 共享 crate 是唯一合法的家（`设计/90 §3` 目标图 `common/  共用判定（今天的 crates/*-core）`）。
+[dependencies]

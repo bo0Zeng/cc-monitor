@@ -8,10 +8,20 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// 〔LOC1a · 第四波 4D〕任务快照改走通道（`chan.call(origin, "tasks-list", {sid})`，后端出成品 `{tasks}`）。
+//   替身翻译层：那一发 `chan.call` 按旧形状 `{origin, sessionId}` 交给 `getSessionTasks`、把它答的数组包成成品 ——
+//   下面各条原来的断言因此数得到**真发出去**的那一发（不换的话数的是一个没人调的旧命令，恒为 0，会空真地绿）。
 const getSessionTasks = vi.fn();
-vi.mock("../src/ipc/commands", () => ({
-  commands: {
-    get_session_tasks: (a: { origin: string; sessionId: string }) => getSessionTasks(a),
+const chanOps: string[] = [];
+vi.mock("../src/ipc/chan", () => ({
+  chan: {
+    call: async (origin: string, op: string, body: Uint8Array, budget: { until: number }) => {
+      chanOps.push(op);
+      if (typeof budget?.until !== "number") throw new Error("没给期限");
+      const args = JSON.parse(new TextDecoder().decode(body)) as { sid: string };
+      const tasks = await getSessionTasks({ origin, sessionId: args.sid });
+      return new TextEncoder().encode(JSON.stringify({ tasks }));
+    },
   },
 }));
 
@@ -29,6 +39,18 @@ async function settle(): Promise<void> {
 
 beforeEach(() => {
   getSessionTasks.mockReset();
+  chanOps.length = 0;
+});
+
+describe("LOC1a：任务快照经通道问 `tasks-list`", () => {
+  it("发的是 `tasks-list`，不是别的操作名；成品形状不对 ⇒ 当成失败（空表），不猜", async () => {
+    getSessionTasks.mockResolvedValue([task("1")]);
+    expect(await fetchSessionTasks("s1", "aya")).toEqual([task("1")]);
+    expect(chanOps).toEqual(["tasks-list"]);
+    // 后端回了多一格的对象 ⇒ 解码器拒 ⇒ fetch 收成空表（面板自然隐藏）。
+    getSessionTasks.mockResolvedValue([{ ...task("2"), extra: 1 }]);
+    expect(await fetchSessionTasks("s2", "aya")).toEqual([]);
+  });
 });
 
 describe("RM1b：调用带着 origin", () => {

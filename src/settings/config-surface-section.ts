@@ -41,7 +41,7 @@ export type { ConfigSurfaceReport, EnvTier, SettingsScope, SurfaceRow, SurfaceSt
 import { GAP_HEAD, type GapKind } from "./readiness";
 import { makeInfoIcon } from "./info-icon";
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
-import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
+import { isLocalOrigin, isRemoteOrigin, type Origin } from "../ipc/origin";
 import { holdSkeletonHeight, makeSkeleton } from "./skeleton";
 import { withPending } from "./pending";
 import { copyText } from "../copy-table";
@@ -246,7 +246,8 @@ export async function readFootprint(origin: Origin): Promise<ConfigSurfaceReport
 export function answersFor(r: ConfigSurfaceReport, origin: Origin): boolean {
   const said = (r as { origin?: unknown }).origin;
   // 本机：旧读口不带 `origin`（缺省 / null 那是**线上**的旧形，不是 TS 侧的本机表示）或带的是本机，才算数。
-  if (isLocalOrigin(origin)) return said === undefined || said === null || said === LOCAL_ORIGIN;
+  // 〔TL3 · 🔴-5〕带回来的与所问那台相等才算 —— 与远端那一支同一句（进这一支时所问的就是本机），不再直比常量。
+  if (isLocalOrigin(origin)) return said === undefined || said === null || said === origin;
   return said === origin;
 }
 

@@ -457,8 +457,8 @@ pub(crate) fn classify_tmux_observation(raw: &str, observation: Option<&str>) ->
 /// 唯一真正的危险默认值（抓屏刻意不过身份门，见后端 `control/capture_pane.rs` 头注）。
 ///
 /// **只查空串，不额外收紧字符集**——glob/元字符（`*`/`;`/`$`/空格）不在这里挡：`shell_quote`
-/// 已经把任意内容安全引号化（不会脱出 shell），字符集层面的收紧是**另一层职责**（TS 侧
-/// `isValidNewTmuxName` 只在**创建路径**禁 glob，`isValidTmuxName` 对 attach 到已有会话故意
+/// 已经把任意内容安全引号化（不会脱出 shell），字符集层面的收紧是**另一层职责**（〔DUP2〕`gate-core` 那两条：
+/// `new_tmux_name_issue` 只在**创建路径**禁 glob，`existing_tmux_name_issue` 对 attach 到已有会话故意
 /// 宽松——见 INVARIANTS §31a"第二道防线"）。这里若也收紧字符集会让 `si*` 这类合法 attach 目标
 /// （已有会话名里含 glob 字符）在 Gate 1 就被拒，与既有 `tmux_targets_use_exact_match` 测试
 /// 钉死的"glob 名被引号原样包住、不脱出"这一既定行为冲突——**空** 是唯一需要在这一层拦的语义

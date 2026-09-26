@@ -10,6 +10,7 @@ import {
   collectionOf,
   createCollection,
   removeMember,
+  type CollectionRefusal,
   type TabCollection,
 } from "./tab-collections";
 import { copyText } from "./copy-table";
@@ -206,6 +207,24 @@ export function applyDropToCollections(
     hostId = collectionOf(next, target.sid)?.id ?? null;
   }
   return hostId ? addMember(next, hostId, sid) : removeMember(next, sid);
+}
+
+/**
+ * 〔TL2 · E13〕拖放之后，被拖的那个 tab **该进组却没进** ⇒ 为什么（到上界）；进了 / 本来就不该进 ⇒ `null`。
+ *
+ * 从**结果**判，不重算一遍 [`applyDropToCollections`] 的规则（两份规则会漂）：
+ * 落点是某个 tab（`onto` / `before`）且它在 `next` 里有组 ⇒ 被拖的那个得在那一组里，不在 ⇒ 那一组满了；
+ * `onto` 而目标在 `next` 里仍没有组 ⇒ 新组没建出来 ⇒ 集合数到上界了（名字恒非空：`defaultGroupName` 兜 `组 N`）。
+ */
+export function dropRefusal(
+  next: readonly TabCollection[],
+  sid: string,
+  target: DropTarget,
+): CollectionRefusal | null {
+  if (target.kind === "end" || target.sid === sid) return null;
+  const host = collectionOf(next, target.sid);
+  if (!host) return target.kind === "onto" ? { kind: "collections-full" } : null;
+  return host.members.includes(sid) ? null : { kind: "members-full", name: host.name };
 }
 
 /**

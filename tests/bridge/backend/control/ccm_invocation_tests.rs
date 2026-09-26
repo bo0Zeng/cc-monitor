@@ -223,9 +223,20 @@ fn sample_reason(variant: &str) -> String {
         }
         .reason(),
         "NotInstalled" => Refusal::NotInstalled.reason(),
+        "ProbeUnknown" => Refusal::ProbeUnknown("ssh: connection timed out".into()).reason(),
         "NotSsh" => Refusal::NotSsh.reason(),
         "SendIntoHasNoCliForm" => Refusal::SendIntoHasNoCliForm.reason(),
         "AttachNeedsTmux" => Refusal::AttachNeedsTmux.reason(),
+        "FreeTextRefused" => Refusal::FreeTextRefused {
+            slot: FreeTextSlot::Cwd,
+            value: format!("{:?}", "rel/dir"),
+        }
+        .reason(),
+        "IdentifierRefused" => Refusal::IdentifierRefused {
+            slot: IdentifierSlot::Sid,
+            value: format!("{:?}", "--evil"),
+        }
+        .reason(),
         other => panic!(
             "变体 `{other}` 没有代表样本 —— 新变体要在这里给一个，\
                  否则夹具对拍认不出它（这一步刻意不自动化：带占位的理由要人来选值）"
@@ -262,6 +273,10 @@ fn refusal_variants() -> Vec<String> {
 fn every_refusal_reason_is_pinned_byte_for_byte() {
     let pairs: &[(Refusal, &str)] = &[
         (Refusal::NotInstalled, "远端还没装后端"),
+        (
+            Refusal::ProbeUnknown("ssh: connection timed out".into()),
+            "这次没探到远端的后端，不等于没装：ssh: connection timed out",
+        ),
         (Refusal::NotSsh, "Windows 本机不用 ccm 命令起会话"),
         (
             Refusal::MissingCap("tmux".into()),
@@ -282,6 +297,20 @@ fn every_refusal_reason_is_pinned_byte_for_byte() {
                 cap: "model".into(),
             },
             "远端的后端太旧，不认 model 这一项设置（缺 model）",
+        ),
+        (
+            Refusal::FreeTextRefused {
+                slot: FreeTextSlot::Cwd,
+                value: format!("{:?}", "rel/dir"),
+            },
+            "工作目录 \"rel/dir\" 用不了。要绝对路径，不含 .. 段、换行或 NUL",
+        ),
+        (
+            Refusal::IdentifierRefused {
+                slot: IdentifierSlot::Sid,
+                value: format!("{:?}", "--evil"),
+            },
+            "会话 ID \"--evil\" 不合形状（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
         ),
     ];
     // ★ 人群**从枚举派生**，不再手写「七个」这个数。
@@ -334,11 +363,23 @@ fn the_reasons_the_fixture_covers_really_come_from_the_typescript_side() {
     assert!(fx.len() > 1000, "夹具只有 {} 字节，像是坏了", fx.len());
     // ★ 人群**从枚举派生**：每个变体的降级理由都要在夹具里出现，
     //   除非它登记在下面这张豁免表里并写明「谁顶了它」。**默认拒绝。**
-    const NO_FIXTURE_CASE: &[(&str, &str)] = &[(
-        "AttachNeedsTmux",
-        "夹具没有这条用例（模块头注逐字记着它是唯一一条）—— \
+    const NO_FIXTURE_CASE: &[(&str, &str)] = &[
+        (
+            "AttachNeedsTmux",
+            "夹具没有这条用例（模块头注逐字记着它是唯一一条）—— \
              由行为判据 `attaching_into_a_non_tmux_container_is_refused` 顶着",
-    )];
+        ),
+        (
+            "FreeTextRefused",
+            "〔TL3 · §47〕夹具（`cli-golden.json`）里的请求都是好值 —— \
+             由行为判据 `a_free_text_cwd_or_agent_arg_is_refused_before_it_becomes_a_ccm_argument` 顶着（正反各一格）",
+        ),
+        (
+            "IdentifierRefused",
+            "〔DUP1 · §47 ①〕夹具（`cli-golden.json`）里的请求都是好值 —— \
+             由行为判据 `an_identifier_is_refused_before_it_becomes_a_ccm_argument` 顶着（正反各一格）",
+        ),
+    ];
     let variants = refusal_variants();
     assert!(
         variants.len() >= 7,
@@ -720,4 +761,229 @@ fn argv_quotes_everything_else_including_the_empty_token() {
     }
     // 单引号自身走内核那份逃逸（`quote_singleton_guard` 钉住只有一个家）。
     assert_eq!(argv("a'b"), shell_quote_core::posix_quote("a'b"));
+}
+
+/// ★ 〔LR2 · R95b〕**「没探出来」与「没装」是两句不同的话**（`设计/80 §9.4`〔R95b〕：「缺的是线，不是措辞」）。
+///
+/// 住址：`设计/80 §9.4` 还开着的那一格 ·  `§9.7` 第 2 条。线上补了第三态之后，`unknown` 必须过线成
+/// `Refusal::ProbeUnknown`，理由里说出「不等于没装」、带上探测那一跳的原话，且与 `NotInstalled` 那句不同。
+/// 生产那一跳（`launch_wire::render_ccm_launch` 的映射臂）由入库夹具 `cli-golden.json`「没探出来」那条逐字节钉着。
+#[test]
+fn not_knowing_is_never_said_as_not_installed() {
+    let unknown = Refusal::ProbeUnknown("ssh: connection timed out".into()).reason();
+    let absent = Refusal::NotInstalled.reason();
+    assert_ne!(
+        unknown, absent,
+        "「没探出来」被说成了「没装」—— R95b 那一形又回来了"
+    );
+    assert!(
+        unknown.contains("不等于没装"),
+        "没说清「不知道 ≠ 没有」：{unknown}"
+    );
+    assert!(
+        unknown.contains("ssh: connection timed out"),
+        "探测那一跳的原话没带上：{unknown}"
+    );
+}
+
+/// 〔TL3 · `INVARIANTS §47` ②〕ccm 那条路：工作目录与透传给 agent 的参数是自由文本 ⇒ 写成 ccm 参数之前先过放行判定
+/// （工作目录：`shell_quote_core::posix_free_path_ok`；透传参数：`shell_quote_core::free_text_ok`）—— **不拒 shell 元字符**，**正反各一格**。
+/// 要求住址：`INVARIANTS §47` ②；主会话 09-26 按 V131 裁「自由文本……拒绝集只收控制字符（NUL / CR / LF）……不拒 shell 元字符」。
+#[test]
+fn a_free_text_cwd_or_agent_arg_is_refused_before_it_becomes_a_ccm_argument() {
+    let with = |cwd: Option<&'static str>, args: &'static [&'static str]| {
+        let mut s = base_spec();
+        s.cwd = cwd;
+        s.args = args;
+        render_ccm_invocation(&s, &caps_all(), true)
+    };
+    for (cwd, args) in [
+        (Some("/home/u/Bob's notes (2019)"), &["a;b", "c&d"][..]),
+        (Some("/data/照片"), &[][..]),
+    ] {
+        with(cwd, args).unwrap_or_else(|e| panic!("真实好值被拒了：{cwd:?} {args:?} ⇒ {e:?}"));
+    }
+    for bad in ["rel/dir", "/home/u/../etc", "/home/u/x\ny", "/home/u/x\0"] {
+        let bad: &'static str = Box::leak(bad.to_string().into_boxed_str());
+        assert_eq!(
+            with(Some(bad), &[]),
+            Err(Refusal::FreeTextRefused {
+                slot: FreeTextSlot::Cwd,
+                value: format!("{bad:?}"),
+            })
+        );
+    }
+    assert_eq!(
+        with(Some("/w"), &["ok", "bad\rx"]),
+        Err(Refusal::FreeTextRefused {
+            slot: FreeTextSlot::AgentArg,
+            value: format!("{:?}", "bad\rx"),
+        })
+    );
+}
+
+/// 〔DUP1 · `INVARIANTS §47` ①〕ccm 那条路：resume 的 sid 与 `--ccm-sid=` 是标识符 ⇒ 写成 ccm 参数之前先过
+/// `shell_quote_core::session_id_ok`（全仓唯一一份；前端那份按 `设计/90 §3` 判据 2 删了），**正反各一格**。
+/// 要求住址：`INVARIANTS §47` ①「字符集白名单（闭集，默认拒）＋ 不许 `-` 开头（选项注入）＋ 有长度上界的就钉上界」。
+#[test]
+fn an_identifier_is_refused_before_it_becomes_a_ccm_argument() {
+    let resume = |sid: &'static str, ccm_sid: Option<&'static str>| {
+        let mut s = base_spec();
+        s.action = Action::Resume { sid };
+        s.ccm_sid = ccm_sid;
+        render_ccm_invocation(&s, &caps_all(), true)
+    };
+    resume(
+        "0473c3a0-1111-2222-3333-444455556666",
+        Some("0473c3a0-1111-2222-3333-444455556666"),
+    )
+    .unwrap_or_else(|e| panic!("真实 UUID 被拒了：{e:?}"));
+    for bad in ["--dangerously-skip-permissions", "a_b", "", "a;b"] {
+        let bad: &'static str = Box::leak(bad.to_string().into_boxed_str());
+        assert_eq!(
+            resume(bad, None),
+            Err(Refusal::IdentifierRefused {
+                slot: IdentifierSlot::Sid,
+                value: format!("{bad:?}"),
+            })
+        );
+    }
+    assert_eq!(
+        resume("s1", Some("-x")),
+        Err(Refusal::IdentifierRefused {
+            slot: IdentifierSlot::CcmSid,
+            value: format!("{:?}", "-x"),
+        })
+    );
+}
+
+/// 〔DUP1 · `INVARIANTS §47` ①〕`--model <名>`：真实模型名全过（主会话 09-26「真实模型名都放行」），
+/// 选项形 / shell 形拒 —— 判定住 `shell_quote_core::model_name_ok`，**正反各一格**。
+#[test]
+fn a_model_name_is_refused_before_it_becomes_a_ccm_argument() {
+    let with = |m: &'static str| {
+        let mut s = base_spec();
+        s.model = Some(m);
+        render_ccm_invocation(&s, &caps_all(), true)
+    };
+    for good in [
+        "sonnet[1m]",
+        "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        "claude-sonnet-4-5@20250929",
+    ] {
+        let cmd = with(good).unwrap_or_else(|e| panic!("真实模型名被拒了：{good:?} ⇒ {e:?}"));
+        assert!(cmd.contains("--model"), "{cmd}");
+    }
+    for bad in ["-x", "opus 4", "a;b"] {
+        assert_eq!(
+            with(bad),
+            Err(Refusal::IdentifierRefused {
+                slot: IdentifierSlot::Model,
+                value: format!("{bad:?}"),
+            })
+        );
+    }
+}
+
+/// 〔DUP1 · `INVARIANTS §47` ①〕`--account <名>`：与建账号的那个工具（`cc-acct-iso` 的 `name_check`）逐字同的那一份判
+/// （`shell_quote_core::account_name_ok`），**正反各一格**。
+#[test]
+fn an_account_name_is_refused_before_it_becomes_a_ccm_argument() {
+    let with = |n: &'static str| {
+        let mut s = base_spec();
+        s.account = CliAccount::Named { name: Some(n) };
+        render_ccm_invocation(&s, &caps_all(), true)
+    };
+    for good in ["work", "acct-a", "a_b"] {
+        let cmd = with(good).unwrap_or_else(|e| panic!("真实账号名被拒了：{good:?} ⇒ {e:?}"));
+        assert!(cmd.contains("--account"), "{cmd}");
+    }
+    for bad in ["-x", "a.b", "a b", "_a"] {
+        assert_eq!(
+            with(bad),
+            Err(Refusal::IdentifierRefused {
+                slot: IdentifierSlot::Account,
+                value: format!("{bad:?}"),
+            })
+        );
+    }
+}
+
+/// 〔DUP2 · 主会话 09-26 裁 J6〕`--tmux=<名>`（要**新建**的会话名，`§47` ①）与 `attach <名>`（一个**已有**会话，V131 ②）
+/// 写成 ccm 参数之前先过 gate-core 那两条（全仓唯一一份；界面那两个谓词按 `设计/90 §3` 判据 2 删了 —— 这条路此前零判定、
+/// 只靠界面那一道），**正反各一格**。
+#[test]
+fn a_tmux_name_is_judged_before_it_becomes_a_ccm_argument() {
+    let create = |name: &'static str| {
+        let mut s = base_spec();
+        s.container = Container::Tmux {
+            name,
+            send_into: false,
+        };
+        render_ccm_invocation(&s, &caps_all(), true)
+    };
+    for good in ["proj-cc", "my session", "项目"] {
+        let cmd = create(good).unwrap_or_else(|e| panic!("真实会话名被拒了：{good:?} ⇒ {e:?}"));
+        assert!(cmd.contains("--tmux="), "{cmd}");
+    }
+    for bad in [
+        "-x",
+        "a*b",
+        "a?b",
+        "proj=x",
+        "a.b",
+        "a:b",
+        "a\tb",
+        "a\u{202e}b",
+    ] {
+        let bad: &'static str = Box::leak(bad.to_string().into_boxed_str());
+        assert_eq!(
+            create(bad),
+            Err(Refusal::IdentifierRefused {
+                slot: IdentifierSlot::TmuxName,
+                value: format!("{bad:?}"),
+            })
+        );
+    }
+    let attach = |name: &'static str| {
+        let mut s = base_spec();
+        s.action = Action::Attach { name };
+        s.container = Container::Tmux {
+            name,
+            send_into: false,
+        };
+        render_ccm_invocation(&s, &caps_all(), true)
+    };
+    // 已有会话里真有 glob / `=` / 前导 `-` 的名字：照接（ccm 那头按 `=<名>:` 精确寻址）。
+    for good in ["st*ar", "a=b", "-x"] {
+        let cmd = attach(good).unwrap_or_else(|e| panic!("已有会话名被拒了：{good:?} ⇒ {e:?}"));
+        assert!(cmd.contains(" attach "), "{cmd}");
+    }
+    for bad in ["a\nb", "a\u{200b}b"] {
+        let bad: &'static str = Box::leak(bad.to_string().into_boxed_str());
+        assert_eq!(
+            attach(bad),
+            Err(Refusal::FreeTextRefused {
+                slot: FreeTextSlot::AttachTarget,
+                value: format!("{bad:?}"),
+            })
+        );
+    }
+    // 两句话各一格（文案走表，逐字）。
+    assert_eq!(
+        Refusal::IdentifierRefused {
+            slot: IdentifierSlot::TmuxName,
+            value: format!("{:?}", "a*b"),
+        }
+        .reason(),
+        "会话名 \"a*b\" 建不了。不能以 - 开头，不能含 *?.:= 这几个字符，最长 128 个字符"
+    );
+    assert_eq!(
+        Refusal::FreeTextRefused {
+            slot: FreeTextSlot::AttachTarget,
+            value: format!("{:?}", "a\nb"),
+        }
+        .reason(),
+        "要接回的会话名 \"a\\nb\" 用不了。里面不能有控制字符或看不见的字符"
+    );
 }

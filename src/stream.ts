@@ -31,6 +31,8 @@
 export class MessageStream {
   private scrollEl: HTMLElement;
   private contentEl: HTMLElement;
+  /** 〔TAP〕流尾巴上的那一块（活卡住这里）；第一次要的时候才建（见 `trailerElement`）。 */
+  private trailerEl: HTMLElement | null = null;
   /** 是否粘底（用户向上滚动后变 false） */
   private stickToBottom = true;
   /** F40a S-7:物化大批插卡期间暂停逐卡守卫 snap(见 batchInsert) */
@@ -152,6 +154,19 @@ export class MessageStream {
     if (el.scrollHeight - el.clientHeight - el.scrollTop > 1) {
       el.scrollTop = el.scrollHeight;
     }
+  }
+
+  /**
+   * 〔TAP · V124〕**流尾巴上的一块**：挂在 `.stream-content` 之后（全部卡之后），不进时间线 —— 活卡（`live-card.ts`）住这里。
+   * 第一次要的时候才建；建出来就交给同一个 `ResizeObserver` 观察 ⇒ 它长高时照「粘底才贴底」那条规矩走，不另起一套。
+   */
+  get trailerElement(): HTMLElement {
+    if (!this.trailerEl) {
+      this.trailerEl = document.createElement("div");
+      this.scrollEl.appendChild(this.trailerEl);
+      this.resizeObserver.observe(this.trailerEl);
+    }
+    return this.trailerEl;
   }
 
   /**

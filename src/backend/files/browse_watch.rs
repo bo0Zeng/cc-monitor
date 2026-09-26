@@ -239,6 +239,8 @@ pub fn forget_all() {
 /// 重列一个目录是一次 `read_dir`，代价与目录里的项数同阶、与盘的大小无关。
 pub struct BrowseWatcher {
     inner: notify::RecommendedWatcher,
+    /// 〔W5-FILES〕此刻**真挂着** watch 的那几个目录（[`BrowseWatcher::sync`] 按它与名单算差分）。
+    armed: Vec<Vec<u8>>,
 }
 
 impl BrowseWatcher {
@@ -257,7 +259,45 @@ impl BrowseWatcher {
             }
         })
         .map_err(|e| e.to_string())?;
-        Ok(Self { inner })
+        Ok(Self {
+            inner,
+            armed: Vec::new(),
+        })
+    }
+
+    /// 〔W5-FILES · `设计/60 §3.7`「要有人在后端进程里长期持有那个监听器」〕**跟着名单走**：
+    /// 名单上新来的挂上、离开的卸掉（按 [`Self::armed`] 算差分，留下的那几个不重挂）。
+    /// 返回 `(此刻真挂着的个数, 这一趟挂不上的逐条原因)`。卸不掉的不算失败（那个目录多半已经没了）。
+    pub fn sync(&mut self) -> (usize, Vec<String>) {
+        use notify::Watcher;
+        let want: Vec<Vec<u8>> = match WATCHED.read() {
+            Ok(g) => g.iter().map(|w| w.dir.clone()).collect(),
+            Err(_) => Vec::new(),
+        };
+        let gone: Vec<Vec<u8>> = self
+            .armed
+            .iter()
+            .filter(|d| !want.contains(d))
+            .cloned()
+            .collect();
+        for d in &gone {
+            let _ = self.inner.unwatch(&super::raw::to_path_buf(d));
+        }
+        self.armed.retain(|d| want.contains(d));
+        let mut failures = Vec::new();
+        for d in want {
+            if self.armed.contains(&d) {
+                continue;
+            }
+            match self.inner.watch(
+                &super::raw::to_path_buf(&d),
+                notify::RecursiveMode::NonRecursive,
+            ) {
+                Ok(()) => self.armed.push(d),
+                Err(e) => failures.push(e.to_string()),
+            }
+        }
+        (self.armed.len(), failures)
     }
 
     /// 把名单上的目录逐个挂上去。返回挂成功的个数与逐条失败原因。
@@ -277,6 +317,53 @@ impl BrowseWatcher {
             }
         }
         (ok, failures)
+    }
+}
+
+/// 〔W5-FILES〕**进程里那一个监听器**（第一次 [`keep_watching`] 时起，此后一直持有 —— 它一被丢掉 watch 就没了）。
+static LIVE: std::sync::Mutex<Option<BrowseWatcher>> = std::sync::Mutex::new(None);
+
+/// 一趟 [`keep_watching`] 的读数。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Watching {
+    /// 此刻真挂着 `inotify`（或那个平台的对应物）的目录数。
+    pub watching: usize,
+    /// 这一趟没挂上的条数（名单上登记了、当场重列过，但**不会**跟着新）。
+    pub failed: usize,
+    /// 第一条挂不上的原因（监听器本身起不来也落这里）。`None` ＝ 都挂上了。
+    pub error: Option<String>,
+}
+
+/// 〔W5-FILES · `设计/60 §3.7` · `96 §2.9` 仍开着第一条〕让进程里那一个监听器跟上此刻的名单（[`set_browsing`] 之后调）。
+///
+/// 监听器起不来（例如 `inotify` 实例数到顶）⇒ `watching: 0`、`error` 说原因，下一趟再试 —— 不静默。
+/// ⚠ 买不到的与本模块头注同：watch 绑 inode 不绑路径 · 内核队列溢出 · 非 Linux 平台没量。
+pub fn keep_watching() -> Watching {
+    let Ok(mut g) = LIVE.lock() else {
+        return Watching {
+            watching: 0,
+            failed: 0,
+            error: Some("watcher lock poisoned".to_string()),
+        };
+    };
+    if g.is_none() {
+        match BrowseWatcher::start() {
+            Ok(w) => *g = Some(w),
+            Err(e) => {
+                return Watching {
+                    watching: 0,
+                    failed: watched_count(),
+                    error: Some(e),
+                }
+            }
+        }
+    }
+    let w = g.as_mut().expect("刚放进去");
+    let (watching, failures) = w.sync();
+    Watching {
+        watching,
+        failed: failures.len(),
+        error: failures.into_iter().next(),
     }
 }
 

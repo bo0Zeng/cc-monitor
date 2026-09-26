@@ -41,6 +41,8 @@ import {
 } from "./render-stream-record";
 import type { BranchRecord } from "./branching";
 import { commands } from "./ipc/commands";
+import { remaining } from "./ipc/chan";
+import { budgetWithin } from "./ipc/chan-caller";
 import { findInSession, readSessionIndex } from "./session-reads";
 import type { Tab } from "./tab-model";
 import { isResumeOnly } from "./tab-session-state";
@@ -109,6 +111,17 @@ export class TabStreamView {
   /** F40b:上翻补批批量/触发距离(沿用 F39 实测值) */
   private static readonly FILL_BATCH = 200;
   private static readonly TOP_TRIGGER_PX = 800;
+  /**
+   * 〔DL1 · `设计/05 §3.3.2`〕往上翻那一问的期限：60 秒 —— 与它上一个住址（monitor `frame_query::PAGE_BUDGET`，
+   * 一次 `read_session_lines` 各拿一份）同值。一件一问。
+   */
+  private static readonly BELOW_BUDGET_MS = 60_000;
+  /**
+   * 〔DL1〕会话流丢格之后「往后补到末尾」那一**件**的总期限：120 秒（= 一次性远端那一趟的天花板
+   * `dial_host::ONE_SHOT_DEADLINE`，monitor 那一侧读整段 `frame_query::READ_LINES_BUDGET` 同值）。
+   * 开头造一次，之后每一问交剩下的（`remaining`）—— 不再每页各拿一整份（那一形遇上一页一页慢慢吐的对端停不下来）。
+   */
+  private static readonly GAP_FILL_BUDGET_MS = 120_000;
   /** F40b:补批防重入(补偿测量期间嵌套触发会算错差值) */
   private renderingFill = false;
   /** 〔SE2〕每个 tab 的查找面板（关 tab 时摘掉）。`Tab` 上挂的是它的两半：`inputsEl`（整块）与 `inputsPanel`（大纲）。 */
@@ -222,6 +235,7 @@ export class TabStreamView {
     // K-R45 乙：大纲跟着走（〔SE1〕`reset` 也让在途那趟回来后不许回写）。
     // 查找面板是 `streamRootEl` 的直接子节点，不随 `streamEl.remove()` 一起走。
     tab.outline.reset();
+    tab.facts.reset(); // 〔STC〕会话事实同理：在途那趟回来后不许回写
     this.finds.get(tab.sessionId)?.reset(); // 〔SE2〕在途的查找作废、出弹层栈
     this.finds.delete(tab.sessionId);
     tab.inputsEl.remove();
@@ -359,6 +373,10 @@ export class TabStreamView {
     // 〔`设计/10` 骨架〕active tab 此刻一定有渲染后缀了 ⇒ 要索引（在途/要过就不重复）
     if (active) this.requestSkeleton(active);
     if (active?.outline.needsFetch) this.refreshOutline(active); // 〔SE1〕大纲
+    // 〔STC〕会话事实：凡是「没要过或又长了」的 tab 都要一次（F5 之后每个 tab 首次整份扫，之后只读新写的一截）。
+    for (const t of this.store.tabs.values()) {
+      if (t.facts.needsFetch) void t.facts.refresh();
+    }
     return active;
   }
 
@@ -470,14 +488,18 @@ export class TabStreamView {
   }
 
   /**
-   * 〔SE1〕大纲：一条 live 记录到了 —— 记一笔「又长了」（O(1)，不判是不是用户输入）。
-   * 本 tab 是 active、非批期、而且**还一次都没要过**（首个 tab 建出来时路径可能还没到）⇒ 要一次。
+   * 〔SE1 · STC〕一条新记录到了 —— 大纲与会话事实各记一笔「又长了」（O(1)，**不读记录**：判不判、算什么都在后端）。
+   * - 大纲：本 tab 是 active、非批期、而且**还一次都没要过**（首个 tab 建出来时路径可能还没到）⇒ 要一次；
+   * - 会话事实（`设计/10 §2.2`）：非批期 ⇒ 要（不只 active：分叉 `↳` 在 tab 栏上、监控板每格都显示 context% 与 agent 数）；
+   *   在途时再叫只并成一趟（`FactsSource.refresh`），带着上一份成品只读新写的那一截。批期不要 —— 批结束统一要（`batchEnd`）。
    */
-  noteOutlineLine(tab: Tab): void {
+  noteGrew(tab: Tab): void {
     tab.outline.markStale();
+    tab.facts.markStale();
     if (!tab.outline.everFetched && !this.store.inBatch && this.store.activeId === tab.sessionId) {
       void tab.outline.refresh();
     }
+    if (!this.store.inBatch) void tab.facts.refresh();
   }
 
   /**
@@ -813,6 +835,7 @@ export class TabStreamView {
         jsonlPath: tab.parentPath,
         from: range.from,
         until: range.until,
+        leftMs: TabStreamView.BELOW_BUDGET_MS,
       })
       .then((page) => {
         if (this.store.tabs.get(tab.sessionId) !== tab) return; // 期间关掉了
@@ -848,6 +871,9 @@ export class TabStreamView {
    *    丢在已上屏那一段之后的新行从这里回来；多取的（其实到过的）由 `(sid, seq)` 去重吃掉。
    * 取回来的走 `feedHistoryRows`（批语义、不复活远端 tab）。一行都没见过的 tab 不往后取（那会把整份会话拉一遍；
    * 它的内容等下一次宣告 / 下一行，或往上翻按行号取 —— 如实登记）。
+   *
+   * 〔DL1〕往后补是**一件事**：开头造一次期限（{@link TabStreamView.GAP_FILL_BUDGET_MS}），每一问交剩下的；
+   * 到点了还没到末尾 ⇒ 停、记一行（这个 tab 缺的那一截等下一次宣告 / 往上翻再要）。
    */
   recoverFromGap(tab: Tab): void {
     tab.window.dropPending();
@@ -857,9 +883,18 @@ export class TabStreamView {
     for (const s of tab.seenSeqs) if (s > max) max = s;
     this.forwardFills.add(tab);
     const jsonlPath = tab.parentPath;
+    const budget = budgetWithin(TabStreamView.GAP_FILL_BUDGET_MS);
     const step = (from: number): void => {
+      const leftMs = remaining(budget);
+      if (leftMs <= 0) {
+        this.forwardFills.delete(tab);
+        console.warn(
+          `[tabs] 会话流丢格之后往后补没在期限内补完（${tab.sessionId.slice(0, 8)}，停在第 ${from} 行）`,
+        );
+        return;
+      }
       void commands
-        .read_session_lines({ origin: tab.origin, jsonlPath, from })
+        .read_session_lines({ origin: tab.origin, jsonlPath, from, leftMs })
         .then((page) => {
           if (this.store.tabs.get(tab.sessionId) !== tab) return this.forwardFills.delete(tab);
           this.feedHistoryRows(

@@ -19,6 +19,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import { ChanError } from "../src/ipc/chan";
 import {
+  decodeFacts,
   decodeFind,
   decodeIndex,
   decodeRecord,
@@ -28,6 +29,7 @@ import {
   FIND_LIMIT,
   listUserInputs,
   probeSessionRecord,
+  readSessionFacts,
   readSessionIndex,
 } from "../src/session-reads";
 import { REPO_ROOT } from "./test-support/repo-root";
@@ -181,5 +183,63 @@ describe("〔C4c〕记录还在不在：经通道问 `history-record`", () => {
     await expect(probeSessionRecord("aya", "s-1")).rejects.toBeInstanceOf(ChanError);
     invokeMock.mockRejectedValueOnce(UNSUPPORTED);
     await expect(probeSessionRecord("aya", "s-1")).rejects.toBeInstanceOf(ChanError);
+  });
+});
+
+// 〔STC · `设计/90 §4` 阶段 C〕第五问：会话事实（`history-facts`）。金样同一份文件的 `history-facts` 一格，
+// 后端那侧 `read_face_tests::the_three_products_match_the_cross_language_golden` 写它（异源：Rust 造、TS 解）。
+describe("〔STC〕第五问：会话事实", () => {
+  it("★★ 金样：TS 解码器读得懂后端真出的会话事实（逐字段）", () => {
+    const f = decodeFacts(golden["history-facts"]);
+    expect(f).toEqual({
+      end: 729,
+      forkedFrom: "src-0",
+      touchedFiles: ["/w/a.ts"],
+      agents: [
+        { id: "tu-2", label: "scan", agentType: "Explore", status: "done", timestamp: "t3", desc: "scan" },
+        { id: "tu-3", label: "p1", agentType: null, status: "running", timestamp: "t4", desc: "" },
+      ],
+      usage: { promptTokens: 6, model: "m-g" },
+    });
+  });
+
+  it("★ 形状不对 ⇒ 抛：缺一格 / 多一格 / 类型不对 / agent 的态不在两态里（成品要原样当令牌交回去，不能收一份后端不认的）", () => {
+    const good = golden["history-facts"] as Record<string, unknown>;
+    const without = (k: string) => Object.fromEntries(Object.entries(good).filter(([x]) => x !== k));
+    expect(() => decodeFacts(without("usage"))).toThrow(/读不懂/);
+    expect(() => decodeFacts({ ...good, extra: 1 })).toThrow(/读不懂/);
+    expect(() => decodeFacts({ ...good, end: "729" })).toThrow(/读不懂/);
+    expect(() => decodeFacts({ ...good, touchedFiles: [1] })).toThrow(/读不懂/);
+    const agents = good.agents as Record<string, unknown>[];
+    expect(() => decodeFacts({ ...good, agents: [{ ...agents[0], status: "aborted" }] })).toThrow(/读不懂/);
+    expect(() => decodeFacts({ ...good, agents: [{ ...agents[0], more: true }] })).toThrow(/读不懂/);
+    expect(() => decodeFacts({ ...good, usage: { promptTokens: 1 } })).toThrow(/读不懂/);
+    expect(decodeFacts({ ...good, usage: null, forkedFrom: null }).usage).toBeNull(); // null 是合法的「没有」
+  });
+
+  it("★ 说对的帧命令、对的请求体：没有令牌 ⇒ 只带 path；有 ⇒ 令牌原样放进 prior；失败折成 available:false ＋ 种类", async () => {
+    const product = decodeFacts(golden["history-facts"]);
+    invokeMock.mockResolvedValueOnce(chanReply(golden["history-facts"]));
+    const r1 = await readSessionFacts("<local>", "/p/s.jsonl", null);
+    expect(r1).toEqual({ available: true, facts: product });
+    const a1 = invokeMock.mock.calls[0][1] as ChanCallArgs;
+    expect([a1.origin, a1.op]).toEqual(["<local>", "history-facts"]);
+    expect(chanArgsJson(a1)).toEqual({ path: "/p/s.jsonl" });
+
+    invokeMock.mockResolvedValueOnce(chanReply(golden["history-facts"]));
+    await readSessionFacts("pi", "/p/s.jsonl", product);
+    const a2 = invokeMock.mock.calls[1][1] as ChanCallArgs;
+    expect(a2.origin).toBe("pi");
+    expect(chanArgsJson(a2)).toEqual({ path: "/p/s.jsonl", prior: golden["history-facts"] });
+
+    invokeMock.mockRejectedValueOnce(UNSUPPORTED);
+    const r3 = await readSessionFacts("pi", "/p/s.jsonl", null);
+    expect(r3.available).toBe(false);
+    expect(r3.available === false && r3.failure).toBe("oldBackend");
+    expect(r3.available === false && r3.reason).toMatch(/后端版本旧/);
+
+    invokeMock.mockRejectedValueOnce(refusedReply("failed", "past EOF"));
+    const r4 = await readSessionFacts("pi", "/p/s.jsonl", product);
+    expect(r4.available === false && r4.failure).toBe("transport");
   });
 });

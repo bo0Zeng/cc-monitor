@@ -272,7 +272,8 @@ fn only_the_copyable_rows_get_a_copy_button_painted() {
     );
 
     let want = rows.iter().filter(|r| is_copyable(r)).count();
-    assert_eq!(want, 2, "语料自己变了：能复制的行数应当是 2");
+    // 〔W5-FILES〕目录能复制了（`设计/60 §6.2`）⇒ 2 → 3（目录那一行多一颗）。
+    assert_eq!(want, 3, "语料自己变了：能复制的行数应当是 3");
     let got = rects_of(&painted, COPY_LABEL.as_str());
     assert_eq!(
         got.len(),
@@ -282,8 +283,9 @@ fn only_the_copyable_rows_get_a_copy_button_painted() {
         got.len(),
         COPY_LABEL = COPY_LABEL.as_str()
     );
-    // 反空真：它们在两行不同的位置上（不是同一颗被数了两遍）。
+    // 反空真：它们在三行不同的位置上（不是同一颗被数了几遍）。
     assert!(got[0].center().y < got[1].center().y);
+    assert!(got[1].center().y < got[2].center().y);
 }
 
 /// 🔴 **这一刀的核心判据**：点那颗「复制」，回来的是**那一行**的下标。
@@ -303,10 +305,10 @@ fn clicking_the_copy_button_comes_back_as_that_rows_index() {
     let (_, painted) = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.1, Vec::new());
 
     let buttons = rects_of(&painted, COPY_LABEL.as_str());
-    assert_eq!(buttons.len(), 2, "没找到那两颗按钮，下面按坐标点没意义");
+    assert_eq!(buttons.len(), 3, "没找到那三颗按钮，下面按坐标点没意义");
 
-    // 第二颗 = 第 2 行（`two.bin`；第 0 行是目录、第 1 行是 `one.bin`）。
-    let pos = buttons[1].center();
+    // 第三颗 = 第 2 行（`two.bin`；第 0 行是目录、第 1 行是 `one.bin` —— 〔W5-FILES〕目录那一行也有一颗了）。
+    let pos = buttons[2].center();
     let _ = render_headless_with_events(
         &ctx,
         &rows,
@@ -548,12 +550,12 @@ fn xvfb_worker_real_pointer_events_on_a_row() {
     xvfb::emit("b.probe_materialized", probe_tally.rows_materialized);
     assert_eq!(
         buttons.len(),
-        2,
-        "合成台架上没量到那两颗按钮 —— 落点算不出来，这一格判不了"
+        3,
+        "合成台架上没量到那三颗按钮 —— 落点算不出来，这一格判不了"
     );
     assert_eq!(names.len(), 1, "合成台架上没量到那一行的名字 —— 同上");
-    // `mixed_rows` 里能复制的两行是第 1、2 行 ⇒ 第二颗按钮是第 2 行的。
-    let copy_at = buttons[1].center();
+    // `mixed_rows` 里能复制的是第 0、1、2 行（〔W5-FILES〕目录也能复制）⇒ 第三颗按钮是第 2 行的。
+    let copy_at = buttons[2].center();
     let name_at = names[0].center();
     xvfb::emit("b.copy_at", format!("{:.1},{:.1}", copy_at.x, copy_at.y));
     xvfb::emit("b.name_at", format!("{:.1},{:.1}", name_at.x, name_at.y));
@@ -1039,16 +1041,16 @@ fn only_the_writable_rows_get_the_three_write_buttons_painted() {
         assert!(got[0].center().y < got[1].center().y);
         assert!(got[1].center().y < got[2].center().y);
     }
-    // 🔴 目录那一行：三颗写按钮**有**，而「复制」**没有**。两个判准真的不一样。
+    // 〔W5-FILES〕目录那一行：三颗写按钮**有**，「复制」**也有**了（后端 `recursive: true`，`设计/60 §6.2`）。
+    //   在这份语料上两个判准重合（有损名那一行没带字节，两边都不给）；分得开的那一格住 `writeops_tests`（带字节的有损名能写、不能复制）。
     let copies = rects_of(&painted, COPY_LABEL.as_str());
-    assert_eq!(copies.len(), 2, "能复制的行数应当是 2");
+    assert_eq!(copies.len(), 3, "能复制的行数应当是 3");
     let renames = rects_of(&painted, RENAME_LABEL.as_str());
     assert!(
-        renames[0].center().y < copies[0].center().y,
-        "第 0 行（目录）上没有「{}」，或者它上面竟然有「{COPY_LABEL}」—— \
-         目录能改名/删除/改权限，但 `copy-data` 吃的是文件句柄",
+        (renames[0].center().y - copies[0].center().y).abs() < 1.0,
+        "第 0 行（目录）上「{}」与「{}」不在同一行 —— 目录那一行少了一颗",
         RENAME_LABEL.as_str(),
-        COPY_LABEL = COPY_LABEL.as_str()
+        COPY_LABEL.as_str()
     );
 }
 

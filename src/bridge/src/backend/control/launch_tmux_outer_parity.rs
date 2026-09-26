@@ -1,8 +1,10 @@
-//! `设计/90 §4 E`：**外层 tmux 命令那三格**的跨语言逐字节对拍。
+//! `设计/90 §4 E`：**外层 tmux 命令那三格**的逐字节金标准。
 //!
 //! Rust 那半住 [`super::payload::render_tmux_outer`]（并进「Rust 载荷」那一份，不新开模块 ——
-//! `设计/00 §2.5 ④` 要的是**消灭副本**）；TS 那半是今天线上真在跑的
-//! `launch-render-fallback.ts::renderFallback` → `session-backend.ts` 那条。
+//! `设计/00 §2.5 ④` 要的是**消灭副本**）。〔LR2〕夹具左边原来是 TS 兜底渲染器 ＋ 座（`renderFallback`
+//! → `SESSION_BACKEND`）现场渲的串；那一族零生产调用、按 `00 §2.5 ④` 删了，左边换成
+//! `tests/test-support/launch-tmux-outer-golden.ts` 用例表里的**手写期望**（值就是 TS 那份最后一次渲出、与 Rust 对过的原样）。
+//! `req` 仍由生产的 `buildTmuxOuterRenderRequest` 现产 ⇒ 本对拍钉的是「生产请求 → 线 → 生产命令」这一整条。
 //!
 //! # 它与 [`super::launch_payload_parity`] 的分工
 //!
@@ -14,18 +16,14 @@
 //! 两份都跑**生产命令本体** `render_launch_payload`，不是各自重搭一个 spec ——
 //! 复盘实测过一次反例：那条命令本体当时零调用零判据，「清空 `nested_env`」那个变异全绿。
 //!
-//! # 诚实边界（别读成「合完了」）
+//! # 诚实边界
 //!
-//! - **它挡的是单侧静默漂移，不是两侧同错**（同 `launch_payload_parity` 头注那条订正）。
-//!   Rust 那半是照着 TS 逐行写的；两边一致地错时入库夹具照样全绿。
-//! - **非法输入那一维结构上进不了夹具**：Rust 侧对空会话名 / 越界 `@ccm_sid` /
-//!   空 cwd 一律 `Err`，而 TS 座逐字「不做校验/转义」照拼 —— 左边产得出、右边拒的样本
-//!   根本写不进「两侧同一串」的夹具。那一维由本模块自己的语义判据兜
+//! - 〔LR2〕**「两种语言渲出同一串」那一维没了**（TS 那份删了）：左边是手写期望，
+//!   「期望本身写错」只有人读 diff 才看得见 —— 与 `cli-golden.json` 在 LR1 之后同一性质。
+//! - **非法输入那一维进不了夹具**：Rust 侧对空会话名 / 越界 `@ccm_sid` / 空 cwd 一律 `Err`，
+//!   那一维由本模块自己的语义判据兜
 //!   （`the_rust_side_refuses_what_the_typescript_seat_would_have_concatenated`）。
-//! - **生产今天还没切过来**：这一拍只做到「后端产得出，且与线上字节逐字节相同」。
-//!   `remote-launch-run.ts::renderLaunchCommand` 最后那一行仍是 `renderFallback(plan)` ——
-//!   两把尺子的读数（`launch_wire.rs` 的 `TS_FALLBACK_KEEPERS` / `TS_FALLBACK_REACH`）
-//!   因此**一个字节都没动**。⚠ 别把「产得出」读成「在用」，那正是 `K-R105` 治的那个病。
+//! - 生产早已切过来（步 22b·B：`renderLaunchCommand` 那三格走 `render_launch_payload` 带 `outer`）。
 
 use serde::Deserialize;
 
@@ -73,7 +71,7 @@ struct Case {
     mode: String,
     /// ★ **生产 wire 类型**（由 TS 的 `buildTmuxOuterRenderRequest` 构造）。
     req: crate::backend::control::launch_wire::PayloadRenderRequest,
-    /// TS 侧现场渲染出来的那一串（`renderFallback` → `SESSION_BACKEND`）。
+    /// 〔LR2〕用例表里**手写**的期望串（原来是 TS 兜底渲染器现场渲的；那份删了）。
     cmd: String,
 }
 
