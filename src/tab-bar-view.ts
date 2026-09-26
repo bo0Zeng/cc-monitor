@@ -217,8 +217,8 @@ export class TabBarView {
     // 〔步 17·A〕抽屉没了 ⇒ 只剩主栏 ＋ 按集合分的若干组
     // ⇒ 推广成「**每容器一个游标**」。
     // 组容器按集合顺序先摆好（空集合也留着 —— 用户刚建的集合不该看不见）。
-    // 〔GRP1〕「空」今天只剩两种来路：组员都被拖出 / 移出了（`设计/30 §6` 第 12 条「空组也留着」，`GRP1.md` Q1 待拍）·
-    //   重启后组员还没到（意图在 `TabBarPrefs.savedGroupOf`）。× 掉最后一个组员 ⇒ 组已从组表里摘掉，画不出来。
+    // 〔GRP1 · V140〕「空」今天只剩一种来路：重启后组员还没到（意图在 `TabBarPrefs.savedGroupOf`）。
+    //   在栏里的最后一个离开（× · 拖出 · 移出 · 挪组）⇒ 组已从组表里摘掉，画不出来。
     for (const [id, g] of this.groupEls) {
       if (!this.prefs.collections.some((x) => x.id === id)) {
         g.wrap.remove();

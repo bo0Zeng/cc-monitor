@@ -3787,7 +3787,7 @@ describe("P7a-3 集合分组渲染", () => {
     expect(home(tm).store.tabs.get("a")!.group, "〔GRP1〕解散 ⇒ 组员回到散 tab").toBeNull();
   });
 
-  // 〔GRP1〕「空」今天的来路是组员被拖出 / 移出（`设计/30 §6` 第 12 条「空组也留着」；V140 是否也管「离开」待拍，`GRP1.md` Q1）。
+  // 〔GRP1 · V140〕「空」今天只剩一种来路：重启后组员还没到（意图）—— 组表里有它就画。
   it("空集合也留着 —— 刚建的集合不该看不见", () => {
     tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
     setCols([{ id: "g1", name: "空的" }]);
@@ -4281,9 +4281,7 @@ describe("步 17·D ④ 一次落点把顺序与归属**一起**落实（`applyD
     home(tm).dragger.applyDrop("a", { kind: "end" });
     expect(order()).toEqual(["b", "a"]);
     expect(membersOf(tm, "g1")).toEqual([]);
-    expect(colsOf(), "拖出组 ⇒ 组还在（`设计/30 §6` 第 12 条；V140 是否也管「离开」待拍，`GRP1.md` Q1）").toEqual([
-      { id: "g1", name: "白天" },
-    ]);
+    expect(colsOf(), "〔V140 · 主会话裁 Q1〕拖出的是在栏里的最后一个 ⇒ 组消失").toEqual([]);
   });
 
   // 〔TL2 · E13〕要求住址：`设计/01 §5 D4`「一条都不许静默忽略」—— 到上界时这一下没做成，要说出来（正反各一格）。
@@ -5962,6 +5960,30 @@ describe("〔GRP1 · V140〕组员关系是 tab 自己的属性", () => {
     expect(home(tm).prefs.collections).toEqual([]);
     expect([...home(tm).prefs.savedGroupOf]).toEqual([]);
     expect(bar.querySelectorAll(".tab-group")).toHaveLength(0);
+  });
+
+  it("J3b · 拖出 / 右键移出 / 挪去别组：组里在栏里的都走了 ⇒ 组消失（盘 · 内存）；还有一个 ⇒ 在", async () => {
+    disk = {
+      tabCollections: [
+        { id: "g", name: "白天" },
+        { id: "h", name: "夜里" },
+      ],
+      tabBar: { groupOf: { a: "g", b: "g", c: "h", x: "g" } },
+    };
+    await tm.loadCollections();
+    add("a", "b", "c");
+    const ids = (): string[] => (disk.tabCollections as { id: string }[]).map((g) => g.id);
+    home(tm).dragger.applyDrop("a", { kind: "end" }); // 拖出，b 还在
+    await flushDisk();
+    expect(ids(), "还有 b ⇒ g 在").toEqual(["g", "h"]);
+    void home(tm).prefs.leaveGroup("b"); // 右键移出最后一个
+    await flushDisk();
+    expect(ids()).toEqual(["h"]);
+    expect(groupOfOnDisk(), "没到的 x 指向 g 的那条也摘").toEqual({ c: "h" });
+    home(tm).dragger.applyDrop("c", { kind: "onto", sid: "a" }); // 挪去与 a 现建的新组，h 空了
+    await flushDisk();
+    expect(ids().includes("h"), "挪走最后一个 ⇒ h 消失").toBe(false);
+    expect(home(tm).prefs.collections.map((g) => g.id)).toEqual(ids());
   });
 
   it.each([
