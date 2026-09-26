@@ -184,6 +184,21 @@ monitor 进程**一个字节都不直接写用户文件**。rc / `$PROFILE` / �
 - 用户切换 Claude 数据目录后主题 / 字体偏好不丢。
 - profile backup / sid-hwnd-cache / ps-await 等跨进程文件位置稳定，PS 端不需要动态查询。
 
+**唯一的明文例外：`CCM_DATA_DIR`**（`paths.rs::DATA_DIR_ENV`，`P17` 2026-09-22 引入 · 〔TL2 · 4D〕补成本条的例外，此前只在路线图的完成底账里有一行）。
+它**只为「把这个进程整体挪到别处跑」而存在**（跑自动化测试、跑一次性复算），**不是**给用户搬家用的设置面（设置页「数据位置」只读展示）。规矩四条：
+1. 只认**绝对路径**；空串 == 没设（shell 里 `CCM_DATA_DIR=` 是最常见的「取消」写法）。
+2. 给了但不合法（相对路径）⇒ **`None`，不退回用户真 profile** —— 退回去等于让一趟以为自己被隔离了的自动化去写用户的东西，而且没有一句话；宁可各消费者**可见地降级**。
+3. 它挪的是**整个** data dir（`config.json` · 凭据库 · 历史元数据 · 自启 · 全景 …）；全树只经 `paths.rs::resolve_monitor_data_dir` 派生，别处不许自己拼 `~/.claude/work`。
+4. 它**不**改本条的另一半：`claudeDir` 照旧不影响 data dir 的位置。
+
+**谁在守**：`paths_tests.rs::with_nothing_set_it_is_the_documented_default`（本条正文那一半）· `paths_tests.rs::an_absolute_override_is_used_verbatim` ·
+`paths_tests.rs::an_empty_value_means_unset_not_broken` · `paths_tests.rs::a_relative_override_refuses_instead_of_quietly_using_the_real_profile` ·
+`paths_tests.rs::no_home_and_no_override_is_still_none` · `paths_tests.rs::nothing_else_in_the_monitor_tree_builds_that_path_itself`（全树只经一处派生）。
+⚠ **常驻后端那一格**：常驻后端的监听口仍按 Claude **家目录**算，隔离跑的 monitor 会敲到真 profile 那个 monitor 起的常驻后端；
+接不接由宿主比「它的数据身份」—— hello 回显的那几格宿主环境（凭据文件路径 · 历史注解路径）与这一趟要交的逐格相等才接，
+不等 ⇒ 出声拒绝、不接、不另起（〔HX2〕`local_backend_host.rs::hello_verdict`；此前是 E10 / GP1 交主会话第 4 条那个写穿缺口）。
+⇒ 隔离跑要么换 Claude 家目录（`CLAUDE_CONFIG_DIR`，口跟着变），要么先停真 profile 那个。
+
 ### 2.1 真相 vs 缓存必须分得清（F65 / issue #58 单向门④）
 
 data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建时不敢下手」：
@@ -2153,7 +2168,9 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 - **拒过头也算违反**：放行判定写错成「恒拒」，功能在那个平台上就整条没了（见下「违反过几次」第 3 条）。
   ⇒ 守本条的判据都要**正反各一格**（坏值拒、真实好值放），只断「坏的被拒」的判据，把判定焊成恒拒也能绿。
 
-**谁在守**（按值；每一格都是那个值自己那一族判据，**没有一张全集登记表**，见「买不到」）：
+**谁在守**（按值；每一格都是那个值自己那一族判据。〔TL2 · 4D〕**人群那一层**另有一张全集登记表：
+`lib_invariant_population_tests.rs::every_file_that_quotes_a_value_into_a_shell_line_is_registered` —— 生产段里每一份把值 quote 进 shell 串的 Rust 文件
+（quote 与它的纯转发别名，盘上现扫）== 登记表（两向、含处数），每一行写清拼进去的外部值靠哪个放行判定，或是「只靠 quote」（如实登记、待裁）/「只拼本侧值」）：
 
 | 值 | 本侧放行判定 | 判据 |
 |---|---|---|
@@ -2179,8 +2196,8 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
    `N-F1c` 让 monitor 的本机账号清单也来问后端时，后端 `is_safe_config_dir` 面对同一形（不拆就清单恒空），拆成「平台无关的安全性质 ＋ 平台相关的形式」两半。
 
 ⚠ **它买不到的**：
-- **没有人群判据**。上表每一格是那个值自己那一族判据；**第 N+1 个外部值新长出来、没过任何判定就拼进了命令串，一条都不会红** ——
-  本条今天是「每个已知入口各有人守」，不是「全部入口都被数过」（`设计/01 §5 D5` 那条纪律在这里没落地）。
+- **人群判据只数到「拼接点」这一层**〔TL2 · 4D 立，此前一条都没有〕：新长一处 quote ⇒ 红；但**不经 quote 的裸插值**（`format!` 直接把值塞进命令串）它看不见，
+  条件 quote 的包装（`qarg` · `argv` · `word` · `token`）经它的调用方不再逐个数；TS 一侧不在人群里。登记表里「只靠 quote」的文件今天有 9 份（外部值没有拒绝集 / 形式判定那一层），待裁。
 - **②形不是白名单**：拒绝集只挡表里有的；表外的新危险字符（新的 Unicode 视觉欺骗段）要人补表。
 - **不判「这个值是不是外部来的」**：判据按已知入口写，一个被误认成「内部值」而免检的值，本条看不见。
 - **消息正文**（cc-bus 发的那段话）不在本条的放行判定里 —— 它经原语交给后端、不拼命令串，唯一的要求是「不空」。
@@ -2308,8 +2325,10 @@ shell 套件那一侧 `e2e_gate_registry_tests.rs::no_e2e_suite_isolates_with_tm
 都是量出来的，不是用户报的。
 
 ⚠ **它买不到的**：
-- **没有人群判据**：每条判据只管它自己那个模块里的调用点；**新长一处读 tmux 的调用点不带 UTF-8，一条都不会红**。
-  〔`IV1` 升格当天现打〕后端 `ccm/plan.rs` 拼给终端的那段脚本里就有一条 `tmux list-panes … -F '#{pane_id}'` 不带旗 ——
-  今天无害（单列、`pane_id` 是 ASCII、不按 TAB 切），但它正是「人群外」那一形的活样本。
+- **人群判据是按行认的**〔TL2 · 4D 立：`lib_invariant_population_tests.rs::every_tmux_print_site_is_registered_with_how_it_carries_utf8`，
+  两棵树 ＋ 随部署的 shell 脚本里每一处「tmux 打印子命令 ＋ `-F` / `-p`」== 登记表（文件 × 子命令 × 带法 → 处数，两向）〕：一条命令串被拆在两行上它认不到；
+  `show-options` 那类不按格式串读的不在人群里。登记表里**不带** UTF-8 的有两类，如实写着：只读 ASCII 的（pid · 窗口数 · `%N` pane id，今天无害，
+  含 `IV1` 升格当天现打的 `ccm/plan.rs` 那条 `list-panes … -F '#{pane_id}'`）与**读会话名 / 地址的五处**（`ccm/mod.rs` 的 `BUS_ID_RECIPE` · cc-bus 的 `cc-register` · `cc-whoami` ×3）——
+  后者是本条的真违反，待裁（改它们是载荷 / 随部署脚本的字节变更）。
 - **上溢今天仍被丢弃**：`pane_current_path` 里的真 TAB 会多切一段，monitor 的 `!= N` 判法会把那个会话静默丢掉（`tmux_tests.rs::a_dirty_line_underflows_and_an_overflowing_line_is_still_dropped_today` 的名字就写着「今天仍丢」）。本条只要求下溢出声，不管上溢。
 - 旗放错位置是 `rc=1 + unknown flag -u` 的**响错**，而几处调用点刻意不看退出码 ⇒ 那一声在生产里会被压成「一个会话都没有」。位置由各调用点判据单独钉，不由本条的家管。

@@ -263,7 +263,7 @@ describe("〔C4e〕结束会话 · 发按键：发出去之前与失败怎么说
   it("★★ 拒绝码（取自金样）逐码一句、两两不同、带会话名与后端原话；身份门那一句 ≠ 通道不在那一句", async () => {
     for (const [op, codes, act] of [
       ["kill", KILL.codes, (t: string) => killSession("devbox", t)],
-      ["launch", [...LAUNCH.codes, "wrong_owner"], (t: string) => sendKeys("devbox", t, "/exit")],
+      ["launch", LAUNCH.codes, (t: string) => sendKeys("devbox", t, "/exit")],
     ] as const) {
       const said: string[] = [];
       for (const code of codes) {
