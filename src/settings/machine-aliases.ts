@@ -583,12 +583,12 @@ export function buildAliasManager(opts: {
       const row = el("div", "settings-row machine-aliases-row");
       row.append(el("code", "", a.name), el("span", "settings-hint", describeArgs(a.args)));
       // 〔W5-ALIAS〕「实际会执行什么」那一行：点「预览」才问后端（`previewAlias`），答案挂在这一条下面。
+      // 点了才建、才挂（不用 `hidden` 切：会被切的元素要一个静态认得出的类，而这一格的外观没有自己的规则）。
       const previewOut = document.createElement("pre");
       previewOut.dataset.role = "alias-preview";
-      previewOut.hidden = true;
       row.append(
         button(copyText("machineAliases.aliasPreview.button"), "settings-btn-secondary", () => {
-          previewOut.hidden = false;
+          if (!previewOut.isConnected) row.after(previewOut);
           previewOut.textContent = copyText("machineAliases.aliasPreview.asking");
           void previewAlias(a).then((t) => {
             previewOut.textContent = t;
@@ -601,7 +601,7 @@ export function buildAliasManager(opts: {
           void changed();
         }),
       );
-      listBox.append(row, previewOut);
+      listBox.appendChild(row);
     });
   };
 

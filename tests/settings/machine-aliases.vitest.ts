@@ -306,7 +306,6 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     ]);
     const out = zRow.nextElementSibling as HTMLElement;
     expect(out.dataset.role).toBe("alias-preview");
-    expect(out.hidden).toBe(false);
     expect(out.textContent).toContain("LINE --account z");
     expect(out.textContent).toContain("alphacc");
   });

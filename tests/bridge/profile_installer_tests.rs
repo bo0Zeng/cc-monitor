@@ -720,12 +720,12 @@ fn the_posix_arm_borrows_the_remote_implementation_instead_of_growing_a_second_o
     )
     .unwrap_or_else(|e| panic!("本机 POSIX 卸那一臂不再走远端那一份剥块（{e}）"));
     // POSIX 那一对围栏的**字面量**只许一处：那一行 const。
-    assert_eq!(
-        src.matches("remote ccm BEGIN").count(),
-        1,
-        "POSIX 那一对围栏的字面量不是恰好一处 —— 它只许有一个住址\
+    guard_core::find_pinned(&src, "remote ccm BEGIN").unwrap_or_else(|e| {
+        panic!(
+            "POSIX 那一对围栏的字面量不是恰好一处（{e}）—— 它只许有一个住址\
              （`CCM_PROFILE_BEGIN`），抄一份就是 `K13` 那族「一个性质两把尺子」"
-    );
+        )
+    });
 }
 
 /// ★ `KR62D1` 的落盘那一跳：**装完之后用户原有的每一行都还在，而且块是真的块。**
@@ -2048,18 +2048,16 @@ fn the_alias_block_is_written_through_exactly_one_door() {
             .find(|(tf, tn, _)| tf == f && tn == n)
             .unwrap()
             .2;
-        let edits = body.matches("crate::user_files::edit(").count();
         match role {
-            Role::Writes => assert_eq!(
-                edits, 1,
-                "{f}::{n} 写别名块却不是恰好一处经 `user_files::edit`"
-            ),
-            Role::Pure | Role::Delegates => {
-                assert_eq!(
-                    edits, 0,
-                    "{f}::{n} 登记成不写，函数体里却有 `user_files::edit`"
-                )
+            Role::Writes => {
+                guard_core::find_pinned(body, "crate::user_files::edit(").unwrap_or_else(|e| {
+                    panic!("{f}::{n} 写别名块却不是恰好一处经 `user_files::edit`（{e}）")
+                });
             }
+            Role::Pure | Role::Delegates => assert!(
+                !guard_core::contains_word(body, "edit"),
+                "{f}::{n} 登记成不写，函数体里却有 `edit`（读 · 算 · 交那一跳）"
+            ),
         }
         for w in OTHER_WRITES {
             assert!(
