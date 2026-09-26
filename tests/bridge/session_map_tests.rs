@@ -43,6 +43,7 @@ fn an_announcement_enters_the_table_and_reaches_the_emitter_with_its_initial_lig
                 status: Some("busy".into()),
                 waiting_for: None,
             }],
+            then_listed: None,
         })]
     );
     added(&mut t, "a", entry("/p", None, None, None));

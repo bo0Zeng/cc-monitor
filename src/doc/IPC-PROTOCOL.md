@@ -860,6 +860,7 @@ monitor 的 `tmux_send_keys(…, enter=false)` 生产上唯一的用途是**优�
 | `send-into` / `send-keys-raw` 键入成功 | true | — | false / true |
 | tmux 不在 PATH | false | `no_tmux` | 没起成 |
 | `send-into` / `send-keys-raw` 但会话不存在 | false | `no_such_session` | 没起成 |
+| `send-into` / `send-keys-raw` 但会话不是本工具的（§34 Gate 2，〔TL2〕原先这一行漏了） | false | `wrong_owner` | 没起成 —— 没往别人的会话里打字 |
 | 建不出来且也不存在 | false | `create_failed` | 没起成 |
 | 会话在，`send-keys` 失败 | false | `typed_unconfirmed` | **起了但没确认** —— 别重试新建 |
 
@@ -2440,6 +2441,22 @@ CLI 面随之自动多一条 `--history-find`。
 | 取消 | 客户端杀 exec | `cancel` 命令 |
 | 代价 | 为一次极小的 RPC 单开一整条 SSH exec | 复用已有连接 |
 
+##### ★ 跨仓承诺（`V126` · 用户 2026-09-25 裁「留」）—— **这一格的字节不许随手动**
+
+仓内**零调用方**（monitor 那边唯一的调用方随 `K-R48` 删了），仓外 aterm 当时也说「暂不消费」；
+用户裁**留**：它是**给仓外 aterm 的承诺**，契约冻结在 **2026-07-18**（与上面那段说的是同一份），**随时可能开始被消费**。
+⇒ 下面四行列表是那份承诺的全部线上形状，**改任何一格 = 一次跨仓契约变更**，要同轮做三件事：① 改代码；② 改本节与冻结金样 `tests/__fixtures__/resolve-contract.golden.json`；③ **bump `BUILD_ID`**（已部署的后端得被判 stale 重装）—— 并且先问 aterm 那边。
+两条入口**都算承诺的一部分**：流命令 `resolve`（`inbound::REGISTRY`）与一次性 `--resolve`（`main.rs` 分派 ＋ `SUBCOMMANDS`），同一个纯函数、差别只在信封（上表）。
+钉它的判据：`resolve_query_tests.rs` 里带 `〔V126〕` 的那一族（样例逐字节 · 入参字段 · 错误码全集 · 两条入口 · 本节四行列表与金样两向相等）。
+
+- **入参**（stdin / `args`，camelCase）：`sessionId` · `launchCandidates` · `claudeDir` · `fallbackCwd` · `alreadyInTmux` · `agentKind`
+  （`sessionId` 必填；其余缺省。`claudeDir` · `fallbackCwd` · `alreadyInTmux` 今天读进来不用 —— 字段照样冻结，不许改名）
+- **出参**（stdout 一行紧凑 JSON / `data`）：`command` · `mode` · `capabilities` · `sessionName` · `launchLabel` · `substitutedFrom`
+  （后三个缺席即省略；`mode` 今天恒 `PtyInject`，另一个保留值 `ExecOnce`；可信度见 `§10.1`）
+- **`capabilities` 四名**（逐字复用 aterm `SessionCapabilities`）：`supportsSendKeys` · `supportsCapture` · `supportsMultiClient` · `supportsMultiWindow`
+- **错误码**（一次性那条 stderr 一行 `{code, message}` ＋ 退出码 **2**；流那条走 `ok:false` 的 `code` / `message`）：`stdin_read_failed` · `bad_request` · `invalid_session_id` · `unsafe_launch_candidate` · `serialize_failed`
+  （`stdin_read_failed` 只有一次性那条会出；`bad_request` 与协议级那个同名，**刻意不改**：改它就破了这份冻结契约）
+
 #### 链路四条（〔SR1a〕2026-09-24）—— **本机只常驻一个后端，所有 SSH 连接由它持有并复用**
 
 用户裁「改成单一常驻后端」：monitor 不再每条链路起一个 `--dial` 子进程（C2 那一版），而是经它与**本机常驻后端**之间
@@ -2977,7 +2994,8 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 ### 10.1 ★ `--resolve` 的返回值里**哪些是探测出来的、哪些是派生的**（E71）
 
 `--resolve` 读 stdin 的 `ResumeSpec`、往 stdout 写一个 `CommandPlan`。**这三个字段的可信度不一样**，
-而字段名读起来一模一样 —— 消费方（已经有一个了）很容易把派生值当事实用：
+而字段名读起来一模一样 —— 消费方（已经有一个了）很容易把派生值当事实用。
+〔`V126`〕整份线上形状（入参 / 出参 / 错误码）是给 aterm 的**跨仓承诺**，全集与「改了要同轮做哪三件事」住 `§10`「`resolve`」一节的「跨仓承诺」小节：
 
 | 字段 | 它到底是什么 | 能不能当事实用 |
 |---|---|---|

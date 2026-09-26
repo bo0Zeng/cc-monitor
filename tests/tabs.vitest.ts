@@ -236,12 +236,12 @@ import {
   type Tab,
   type TabRect,
 } from "../src/tabs";
-import type { TabCollection } from "../src/tab-collections";
+import { COLLECTION_CAP, MEMBER_CAP, type TabCollection } from "../src/tab-collections";
 import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, RECONNECTABLE, UNSEEN } from "../src/tab-session-state";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { REPO_ROOT } from "./test-support/repo-root.ts";
-import { answerAskDialog, askDialogText } from "./test-support/ask-dialog-driver.ts";
+import { answerAskDialog, answerAskText, askDialogText, noAskDialog } from "./test-support/ask-dialog-driver.ts";
 import type { TabStore } from "../src/tab-store";
 import type { TabBarView } from "../src/tab-bar-view";
 import type { TabBarDrag } from "../src/tab-bar-drag";
@@ -3836,6 +3836,67 @@ describe("P7a-3 集合分组渲染", () => {
     expect(labels.join("|")).toContain("加入集合");
   });
 
+  // 〔TL2 · E13〕要求住址：`设计/01 §5 D4`「一条都不许静默忽略」。右键菜单那两条入口到上界要出声（正反各一格）。
+  it("〔TL2 · E13〕右键「新建集合…」集合数到上界 ⇒ 不弹输入框、说一句；差一个 ⇒ 照常弹", async () => {
+    tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
+    await tm.loadCollections();
+    const clickNew = async (): Promise<void> => {
+      flushBar();
+      const root = [...bar.children].find((e) => e.classList.contains("tab")) as HTMLElement;
+      root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+      const btn = [...document.querySelectorAll(".tab-context-menu button")].find(
+        (e) => e.textContent === "新建集合…",
+      ) as HTMLButtonElement | undefined;
+      expect(btn, "菜单里要有「新建集合…」（否则本判据在空转）").toBeTruthy();
+      btn!.click();
+      document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+    };
+    const many = (n: number): TabCollection[] =>
+      Array.from({ length: n }, (_, i) => ({ id: `c${i}`, name: `组${i}`, members: [] }));
+    setCols(many(COLLECTION_CAP));
+    await clickNew();
+    expect(noAskDialog(), "满了还让用户白填一次名字").toBe(true);
+    expect(vi.mocked(showActionFailureToast).mock.calls.map((c) => String(c[0]))).toEqual(["没有建新集合"]);
+
+    vi.mocked(showActionFailureToast).mockClear();
+    setCols(many(COLLECTION_CAP - 1));
+    await clickNew();
+    expect(noAskDialog(), "没满就该照常问名字（正控）").toBe(false);
+    await answerAskText(null);
+    expect(showActionFailureToast).not.toHaveBeenCalled();
+  });
+
+  it("〔TL2 · E13〕右键「加入集合 › 某组」那一组满了 ⇒ 说一句、不写盘；没满 ⇒ 加进去", async () => {
+    tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
+    await tm.loadCollections();
+    const join = (): void => {
+      flushBar();
+      const root = [...bar.children].find((e) => e.classList.contains("tab")) as HTMLElement;
+      root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+      const btn = [...document.querySelectorAll(".tab-context-menu button")].find(
+        (e) => e.textContent === "满的",
+      ) as HTMLButtonElement | undefined;
+      expect(btn, "菜单里要有那一组（否则本判据在空转）").toBeTruthy();
+      btn!.click();
+      document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
+    };
+    const filled = (n: number): TabCollection[] => [
+      { id: "g", name: "满的", members: Array.from({ length: n }, (_, i) => `m${i}`) },
+    ];
+    setCols(filled(MEMBER_CAP));
+    join();
+    expect(vi.mocked(showActionFailureToast).mock.calls.map((c) => String(c[0]))).toEqual(["没有加进「满的」"]);
+    expect(home(tm).prefs.collections[0].members.includes("a")).toBe(false);
+
+    vi.mocked(showActionFailureToast).mockClear();
+    setCols(filled(MEMBER_CAP - 1));
+    join();
+    await Promise.resolve();
+    expect(showActionFailureToast).not.toHaveBeenCalled();
+    expect(home(tm).prefs.collections[0].members.includes("a"), "没满就该加进去（正控）").toBe(true);
+  });
+
   it("★ P7a3-D：组在前、未归组的在后（DoD 逐字如此，实现不许自己反过来）", () => {
     tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN); // 归组
     tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN); // 散的
@@ -4393,6 +4454,41 @@ describe("步 17·D ④ 一次落点把顺序与归属**一起**落实（`applyD
     home(tm).dragger.applyDrop("a", { kind: "end" });
     expect(order()).toEqual(["b", "a"]);
     expect(colsOf()[0].members).toEqual([]);
+  });
+
+  // 〔TL2 · E13〕要求住址：`设计/01 §5 D4`「一条都不许静默忽略」—— 到上界时这一下没做成，要说出来（正反各一格）。
+  it("〔TL2 · E13〕拖进一个满了的组 ⇒ 说一句「没有加进」；差一个没满 ⇒ 不出声、加进去", () => {
+    const full = Array.from({ length: MEMBER_CAP }, (_, i) => `m${i}`);
+    tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
+    home(tm).prefs.collections = [{ id: "g1", name: "白天", members: ["b", ...full.slice(1)] }];
+    home(tm).dragger.applyDrop("a", { kind: "onto", sid: "b" });
+    expect(colsOf()[0].members.includes("a"), "满了还加进去了 ⇒ 上界没守住").toBe(false);
+    const said = vi.mocked(showActionFailureToast).mock.calls.map((c) => String(c[0]));
+    expect(said, "满了却一句话都没说（E13）").toEqual(["没有加进「白天」"]);
+
+    vi.clearAllMocks();
+    home(tm).prefs.collections = [{ id: "g1", name: "白天", members: ["b", ...full.slice(2)] }];
+    home(tm).dragger.applyDrop("a", { kind: "onto", sid: "b" });
+    expect(colsOf()[0].members.includes("a"), "差一个没满 ⇒ 该加进去").toBe(true);
+    expect(showActionFailureToast, "没满却出声了（正控）").not.toHaveBeenCalled();
+  });
+
+  it("〔TL2 · E13〕集合数到上界时拖放建组 ⇒ 说一句「没有建新集合」；差一个 ⇒ 建出来、不出声", () => {
+    const many = (n: number): TabCollection[] =>
+      Array.from({ length: n }, (_, i) => ({ id: `c${i}`, name: `组${i}`, members: [] }));
+    tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
+    home(tm).prefs.collections = many(COLLECTION_CAP);
+    home(tm).dragger.applyDrop("a", { kind: "onto", sid: "b" });
+    expect(colsOf().length).toBe(COLLECTION_CAP);
+    expect(vi.mocked(showActionFailureToast).mock.calls.map((c) => String(c[0]))).toEqual(["没有建新集合"]);
+
+    vi.clearAllMocks();
+    home(tm).prefs.collections = many(COLLECTION_CAP - 1);
+    home(tm).dragger.applyDrop("a", { kind: "onto", sid: "b" });
+    expect(colsOf().length, "差一个没满 ⇒ 该建出来").toBe(COLLECTION_CAP);
+    expect(showActionFailureToast).not.toHaveBeenCalled();
   });
 
   it("没 `loadCollections` 过的实例：归属一个字不动（顺序照常）", () => {
@@ -5165,6 +5261,32 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     })));
     await tm.loadPinned();
     expect(tabOf("s2").state).toEqual(UNSEEN);
+  });
+
+  // 〔TL2 · GP1 问 3〕要求住址：主会话 4D 裁「可重连 → 断连 → 重连后，tmux 里还在的那几条重新宣告为可重连（不是落已结束）」·
+  // `设计/30 §3.5.6` 转移表（说不清 + idle ⇒ 可重连；已结束 + idle 不动 ⇒ 次序承重）。
+  it("〔TL2 · GP1 问 3〕可重连 → 断连（说不清）→ 重连：先重宣告 idle、再报完清单 ⇒ 可重连；tmux 不在的那条 ⇒ 已结束", () => {
+    tm.ensureTab("k1", "/x", "p", 0, "pi");
+    tm.ensureTab("k2", "/x", "p", 0, "pi");
+    tm.markTmuxIdle("k1");
+    tm.markTmuxIdle("k2");
+    tm.markUnseen("k1");
+    tm.markUnseen("k2");
+    expect([tabOf("k1").state, tabOf("k2").state]).toEqual([UNSEEN, UNSEEN]);
+    // emitter 那一笔：k1 的 tmux 还在 ⇒ session-idle；k2 不在 ⇒ session-ended；**然后**才是 origin-sessions-listed。
+    tm.markTmuxIdle("k1");
+    tm.archiveTab("k2");
+    tm.markOriginSeen("pi");
+    expect([tabOf("k1").state, tabOf("k2").state]).toEqual([RECONNECTABLE, ENDED]);
+    const k1Title = home(tm).bar.tabButtons.get("k1")!.root.title;
+    expect(k1Title, "重连后 tmux 还在的那条被说成已结束了").not.toContain("已结束");
+    // 次序承重的反面（正控）：若先报完清单再宣告 idle ⇒ 已结束收 idle 不动 —— 这正是 monitor 那一侧要保序的理由。
+    tm.ensureTab("k3", "/x", "p", 0, "pi2");
+    tm.markTmuxIdle("k3");
+    tm.markUnseen("k3");
+    tm.markOriginSeen("pi2");
+    tm.markTmuxIdle("k3");
+    expect(tabOf("k3").state, "次序反了就回不来 —— 若这格变了，monitor 侧的保序就不再承重，回来重看").toEqual(ENDED);
   });
 
   it("★ 还没建的 tab 收到 unseen ⇒ 什么都不建", () => {
