@@ -81,6 +81,7 @@ mod single_stream_guard; // K-P1 KPY8：「多客户端的流」明确不做 —
 pub mod skill_install; // 〔AS2 · 第四波 4B · V113〕skill「装到这台」：帧面 `skill-read`（来源那台）/ `skill-install-plan`（要被写的那一台；复用 AS1 的差异与闸）。只读
 pub mod skill_ledger; // 〔SU1 · 第四波 4C · V116〕skill 装记录（后端自有状态 `~/.cc-monitor/skill-installs.json`，第四层）：帧面 `skill-install-record`（装完记 / 卸掉摘）。一个用户文件都不写
 pub mod stderr_log; // 〔NT2 · S1〕脱离常驻那条载体的 stderr 落进一份有上限、滚动的文件（宿主交 `CCM_BACKEND_STDERR_LOG` 才接；第四层自有状态，写口只从 main.rs 进）
+pub mod tap; // 〔TAP · V124〕tee 的消费侧（后端这一半）：进程级 tap 口 → 当前那条流连接的 `tap` 帧（`设计/20 §8`）
 pub mod wire;
 
 /// Streaming wire-protocol major version, reported as `v` in the `Hello` frame.
@@ -524,7 +525,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// `put_atomic` 临时件 / 备份件唯一名 · tmux hook 按实例占段 `[50,100)` 一格、起时摘死槽 · 后端自有状态写口跨进程锁（`platform/lock.rs::hold`）·
 /// hello 多 additive `host_env`（回显宿主交来的端口 / 凭据路径 / 注解路径，token 永不回显）· `apikey-key-set` 入参 `account` → `configDir`（**不兼容**，旧远端连上即判旧重装）。
 /// 子命令没变，照 p1v 先例不加历史行。
-pub const BUILD_ID: &str = "p3v-monotonic-deploy-hostenv";
+///
+/// ★★★ **p3w-relay-tap-stream**（2026-09-25，第四波 W5 TAP 合并那一拍）：行为 —— 进程内中转的 tee 落点由丢弃改交 `TapPort`（新模块 `tap.rs`，
+/// 每条流一条 256 件有界通道、只 `try_send`），新帧 `wire::Frame::Tap{stream,resp,n,data|end}`（`EMITS` 加 `tap`）经会话流 `subscribe` 到前端活卡（V124）。
+/// `--relay` 那一形 stdout 照旧。子命令没变，照 p1v 先例不加历史行；wire 新增帧、`PROTO_VERSION` 不动。
+pub const BUILD_ID: &str = "p3w-relay-tap-stream";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -1634,6 +1639,9 @@ pub const EMITS: &[&str] = &[
     // 〔SR1b〕一趟传输的进度与终局（`control/transfer.rs` 的转发任务真发，登记 = 承诺真发）。
     // 只在客户端 `transfer-start` 之后才出现；旧客户端不认 ⇒ 忽略（additive）。
     "transfer",
+    // 〔TAP · V124〕中转抄出来的 SSE 事件（`tap::attach` 的接收端经 `writer_task` 真发，登记 = 承诺真发）。
+    // 只有进程里住着中转的那个后端（本机常驻）才会有；旧客户端不认 ⇒ 忽略（additive）。
+    "tap",
 ];
 
 /// ① 流模式 flag：出现即剥离并置位，**不影响模式判定**。
