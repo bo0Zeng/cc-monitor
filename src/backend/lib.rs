@@ -703,6 +703,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔`C1`〕同上一段：`history-*` 六条帧命令的 CLI 面。
     // 〔SR1a〕+2：`history-index` / `history-user-inputs`（骨架索引与大纲清单上帧面）的 CLI 面，
     //   登记理由同上 —— `is_query_mode` 那道闸门读本表。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 〔STC · `设计/90 §4` 阶段 C〕`history-facts`（会话事实出成品）的 CLI 面（从 `REGISTRY` 派生，`is_query_mode` 那道闸门读本表）。
+    //   **是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    "--history-facts",
     "--history-find",
     "--history-index",
     // 〔CF2 · 第四波 4B〕`history-lines`（按行号取回）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的，

@@ -577,6 +577,41 @@ pub(crate) fn open_user_inputs_at(
     Ok(std::io::BufReader::new(f))
 }
 
+/// 〔STC〕`history-facts` 的续点：从 `from` 接着读之前先核两件事，任一不成立 ⇒ 报错（调用方从 0 重要一份）：
+/// ① `from` 不越过文件尾（越过 = 截断 / 重写）；② `from > 0` 时文件第 `from-1` 字节是 `\n`
+/// （续点恒是某个完整行的末字节 —— 不在行边界上 = 被重写过，接着读会从半行起、把后面的事实算歪）。
+/// 挡不住的一形：重写成更长、而旧续点恰好也落在新内容的行边界上（与大纲 `设计/10 §7` 第 4 条同一个口子）。
+pub(crate) fn open_facts_at(
+    agent_home: &Path,
+    jsonl_path: &str,
+    from: u64,
+) -> Result<std::io::BufReader<std::fs::File>, String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let target = validate_session_path(agent_home, jsonl_path)?;
+    let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
+    let len = f.metadata().map_err(|e| format!("stat failed: {e}"))?.len();
+    if from > len {
+        return Err(format!(
+            "resume point {from} is past EOF ({len} bytes): file was truncated or rewritten"
+        ));
+    }
+    if from > 0 {
+        f.seek(SeekFrom::Start(from - 1))
+            .map_err(|e| format!("seek failed: {e}"))?;
+        let mut last = [0u8; 1];
+        f.read_exact(&mut last)
+            .map_err(|e| format!("read failed: {e}"))?;
+        if last[0] != b'\n' {
+            return Err(format!(
+                "resume point {from} is not at a line boundary: file was rewritten"
+            ));
+        }
+    }
+    f.seek(SeekFrom::Start(from))
+        .map_err(|e| format!("seek failed: {e}"))?;
+    Ok(std::io::BufReader::new(f))
+}
+
 /// `--find-in-session` 的 argv（〔SE2〕）。
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct FindArgs<'a> {
@@ -1524,7 +1559,7 @@ fn analyze_session(p: &Path) -> serde_json::Value {
                         .and_then(crate::observe::search_query::parse_iso8601_ms);
                 }
                 if forked.is_none() {
-                    forked = forked_from(&v);
+                    forked = fork_origin(&v);
                 }
             }
             match kind {
@@ -1571,6 +1606,19 @@ fn analyze_session(p: &Path) -> serde_json::Value {
         "forkedFromSessionId": forked_sid,
         "forkedFromMessageUuid": forked_uuid,
     })
+}
+
+/// 〔STC · `设计/90 §4` 阶段 C〕**「这条记录说明本会话是从哪个会话分叉来的」的唯一住址**：
+/// `user` / `assistant` 记录上的 `forkedFrom`（两个键都得是串）⇒ (源会话 id, 分叉处的消息 uuid)。
+///
+/// 两个读者调同一个函数：历史会话行（[`analyze_session`] 的 `forkedFromSessionId`）与活 tab 的会话事实
+/// （`facts_query.rs` 的 `forkedFrom`）—— 搬之前活 tab 那一份住前端、口径更松（任何记录、只看 `sessionId`），
+/// 同一个会话会在历史树与 tab 栏上一个认是分叉、一个不认。
+pub(crate) fn fork_origin(v: &serde_json::Value) -> Option<(String, String)> {
+    match v.get("type").and_then(|t| t.as_str()) {
+        Some("user") | Some("assistant") => forked_from(v),
+        _ => None,
+    }
 }
 
 /// 一条记录的 `forkedFrom`（`/branch` 分叉出来的会话，每条复制过来的记录都带着）→ (源会话 id, 分叉处的消息 uuid)。
