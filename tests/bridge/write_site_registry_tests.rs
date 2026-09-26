@@ -118,7 +118,7 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("logging.rs", "build_rolling_appender", None, "monitor 自己的滚动日志"),
     ("logging.rs", "write_diagnostics_to_config", None, "把诊断信息写进 monitor 自己的配置"),
     ("logging.rs", "atomic_replace", None, "原子替换原语的本地副本（头注自陈是从 config.rs 复制的）"),
-    ("session_map.rs", "run_watcher", None, "monitor 自己的会话映射状态"),
+    // 〔LOC1b · 第四波 4D〕`session_map.rs` 那条 watcher 线程那一行摘了：monitor 自己那份判活（连同它写的会话映射状态）删了。
     // 〔SR1b · 2026-09-24〕「下载落到用户选的本机路径」那一行摘了（连同它上面那段 09-21 的订正：「本地缓存」那句是假的、
     //    围栏补在开单那一刻）—— 落地那一下随传输台搬进了本机常驻后端（第三层文件管理写面 `control/transfer.rs`），
     //    monitor 这一侧零写盘。〔AR1 · V119〕上一版还说「开单时那道本机落点围栏照旧在中继里先判一次
@@ -450,7 +450,7 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     ("logging.rs", "build_rolling_appender", Lands::OwnState),
     ("logging.rs", "write_diagnostics_to_config", Lands::OwnState),
     ("logging.rs", "atomic_replace", Lands::OwnState),
-    ("session_map.rs", "run_watcher", Lands::OwnState),
+    // 〔LOC1b · 第四波 4D〕`session_map.rs` 那条 watcher 线程那一行摘了：monitor 自己那份判活（连同它写的会话映射状态）删了。
     // 〔SR1b · 2026-09-24〕「下载落到用户选的本机路径」那一行（指名 SR1b 的待收例外）**收了**：
     //    下载的落地随传输台搬进本机常驻后端（`control/transfer.rs`，第三层文件管理写面；〔AR1 · V119〕当时写「先过会话文件围栏」，
     //    FN1 之后只过路径解析）。

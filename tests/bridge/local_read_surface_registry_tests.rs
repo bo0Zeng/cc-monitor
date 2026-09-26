@@ -53,12 +53,13 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/lib.rs",
         "hub",
-        4,
+        3,
         "启动时解析 `claude_dir` 并派生 sessions/tasks 等目录往下传 —— \
              **一处入口，不读内容**。切后端之后仍要在（得告诉后端读哪儿）⇒ **不属**退役范围。\
              〔CF1 · 第四波 09-24〕**7 → 6**：projects 那一处（喂 monitor 自己那套 jsonl watcher）随 watcher 删了 ——\
              本机会话内容改走本机后端的 `line` 帧，monitor 这一侧不再需要知道 projects 在哪。\
-             〔LOC1b · 第四波 4D〕**6 → 4**：给全文索引构建线程交 `claude_dir` 那两行随本机内存索引删了（本机搜索改问本机后端）。",
+             〔LOC1b · 第四波 4D〕**6 → 4**：给全文索引构建线程交 `claude_dir` 那两行随本机内存索引删了（本机搜索改问本机后端）；\
+             **4 → 3**：派生 `sessions/` 目录那一行随 monitor 自己那份判活删了（本机判活改由本机后端的帧来）。",
     ),
     (
         "src/paths.rs",
@@ -695,7 +696,7 @@ fn the_local_backend_contract_has_exactly_one_home_and_f10s_ratchet_is_untouched
     // `/branch` 的灰点 bug 会回来」）。当时成立，是因为本地那条 diff **只产 `Gone`**；
     // P3 刀 0 让它按 `pid + procStart` 判出 `Superseded`（要正面证据，缺 `procStart` 退回 `Gone`）
     // ⇒ 进表之后 `/branch` 会走 `(Some(origin), Superseded)` = 归档，不再是灰点。
-    // 由 `session_map::diff_detects_superseded_only_with_positive_identity_evidence` 钉住。
+    // 〔LOC1b · 4D〕判出它的今天是本机后端（`session_removed.cause`），monitor 这边钉「原样交出去」（`ssh_source_f032_idle_tests` ③）。
     // ★ 留着这段而不是删掉：**限制解除的理由本身是要交代的** ——
     // 否则下一个人只看到限制没了，不知道换了什么在保证它。
 }

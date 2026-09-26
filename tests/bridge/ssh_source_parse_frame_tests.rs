@@ -372,6 +372,7 @@ fn known_kind_with_extra_fields_still_parses() {
             waiting_for: None,
             rbind_token: None,
             container: None,
+            pid: None,
         }
     );
 }
@@ -396,6 +397,7 @@ fn session_added_metadata_parses() {
             waiting_for: None,
             rbind_token: None,
             container: None,
+            pid: None,
         }
     );
 }
@@ -774,5 +776,31 @@ fn sessions_replayed_is_known() {
     assert_eq!(
         parse_frame(r#"{"kind":"sessions_replayed"}"#),
         Some(InboundFrame::SessionsReplayed)
+    );
+}
+
+/// 〔LOC1b · 第四波 4D〕`session_added.pid` 的读侧：装得进 u32 的非负整数才认，别的一律当没带（缺席 = 老后端 / 没索要）。
+#[test]
+fn loc1b_the_pid_on_session_added_is_read_only_when_it_is_a_real_pid() {
+    let pid_of = |line: &str| match parse_frame(line) {
+        Some(InboundFrame::SessionAdded { pid, .. }) => pid,
+        other => panic!("解不出 session_added：{other:?}"),
+    };
+    assert_eq!(
+        pid_of(r#"{"kind":"session_added","sid":"s","pid":4242}"#),
+        Some(4242)
+    );
+    assert_eq!(pid_of(r#"{"kind":"session_added","sid":"s"}"#), None);
+    assert_eq!(
+        pid_of(r#"{"kind":"session_added","sid":"s","pid":-1}"#),
+        None
+    );
+    assert_eq!(
+        pid_of(r#"{"kind":"session_added","sid":"s","pid":"42"}"#),
+        None
+    );
+    assert_eq!(
+        pid_of(r#"{"kind":"session_added","sid":"s","pid":4294967296}"#),
+        None
     );
 }

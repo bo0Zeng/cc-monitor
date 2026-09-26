@@ -2584,6 +2584,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         waiting_for: None,
         rbind_token: None,
         container: None,
+        pid: None,
     });
     sink.send(Frame::SessionAdded {
         sid: "b".into(),
@@ -2599,6 +2600,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         waiting_for: None,
         rbind_token: None,
         container: None,
+        pid: None,
     });
     assert_eq!(
         sink.dropped, 0,
@@ -2620,6 +2622,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         waiting_for: None,
         rbind_token: None,
         container: None,
+        pid: None,
     });
     sink.send(Frame::SessionAdded {
         sid: "d".into(),
@@ -2635,6 +2638,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         waiting_for: None,
         rbind_token: None,
         container: None,
+        pid: None,
     });
     sink.send(Frame::SessionAdded {
         sid: "e".into(),
@@ -2650,6 +2654,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         waiting_for: None,
         rbind_token: None,
         container: None,
+        pid: None,
     });
     assert_eq!(sink.dropped, 3);
 
@@ -2688,6 +2693,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         waiting_for: None,
         rbind_token: None,
         container: None,
+        pid: None,
     });
     assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { .. })));
 }
@@ -3380,4 +3386,60 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
     let mut state = ReaderState::new(empty.join("projects"), false, false);
     initial_session_scan(&empty.join("sessions"), &mut state, &mut sink);
     assert_eq!(kinds(&mut rx), vec!["sessions_replayed"]);
+}
+
+/// 〔LOC1b · 第四波 4D〕`session_added.pid` 跟令牌**同一道闸**：索要了（`--with-rbind-token`）⇒ 帧上是那个进程的 pid；
+/// 没索要 ⇒ 缺席（没索要的客户端 —— 包括仓外 aterm —— 收到的字节与本字段加进来之前一字不差）。
+///
+/// 要求住址：`INVARIANTS §40` 逐字「我的目的就是把本地当成不走 ssh 的远端」—— 本机判活改由本机后端的帧来之后，
+/// 本机 ↗ 按 pid 绑窗口只能从这一格拿 pid（monitor 不再自己读 pidfile）。
+/// 两组对照：闸开 ⇒ `Some(那个 pid)`（不是别的数）· 闸关 ⇒ `None`（把闸删掉只有这一组红）。
+#[cfg(target_os = "linux")]
+#[test]
+fn loc1b_the_pid_rides_the_session_added_frame_only_behind_the_same_gate_as_the_token() {
+    fn probe(label: &str, asked: bool) -> (u32, Option<u32>) {
+        let dir =
+            std::env::temp_dir().join(format!("ccm-loc1b-pid-{}-{label}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut kid = std::process::Command::new("sleep")
+            .arg("60")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("起不来 `sleep` —— 夹具坏了");
+        let pid = kid.id();
+        let ticks = proc_starttime(pid).expect("子进程的 starttime 读不到 —— 夹具坏了");
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+        let mut sink = FrameSink::new(tx);
+        let mut state = ReaderState::new(dir.join("projects"), false, false);
+        state.with_rbind_token = asked;
+        let path = dir.join(format!("{pid}.json"));
+        std::fs::write(
+            &path,
+            format!(
+                r#"{{"pid":{pid},"sessionId":"pid-{label}","cwd":"/x","kind":"interactive","procStart":"{ticks}"}}"#
+            ),
+        )
+        .unwrap();
+        process_session_added(&path, &mut state, &mut sink);
+        let got = match rx.try_recv() {
+            Ok(Frame::SessionAdded { sid, pid, .. }) => {
+                assert_eq!(sid, format!("pid-{label}"));
+                pid
+            }
+            other => panic!("[{label}] 没收到 `session_added`（实得 {other:?}）"),
+        };
+        let _ = kid.kill();
+        let _ = kid.wait();
+        std::fs::remove_dir_all(&dir).ok();
+        (pid, got)
+    }
+    let (pid, got) = probe("asked", true);
+    assert_eq!(got, Some(pid), "索要了，帧上却不是那个进程的 pid");
+    let (_, got) = probe("unasked", false);
+    assert_eq!(
+        got, None,
+        "没索要却上了 wire —— 没索要的客户端（仓外 aterm）收到的字节变了"
+    );
 }

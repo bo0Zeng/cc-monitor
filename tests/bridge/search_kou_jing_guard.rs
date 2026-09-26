@@ -124,7 +124,10 @@ fn the_search_kou_jing_has_exactly_one_home() {
             .filter(|h| prod.contains(&format!("fn {h}(")))
             .collect();
         if calls || !defs.is_empty() {
-            stray.push(format!("{} （调 core：{calls} · 定义：{defs:?}）", path.display()));
+            stray.push(format!(
+                "{} （调 core：{calls} · 定义：{defs:?}）",
+                path.display()
+            ));
         }
     }
     assert!(
@@ -132,7 +135,10 @@ fn the_search_kou_jing_has_exactly_one_home() {
         "monitor 生产树里又有人在搜会话了：{stray:?}\n\
          本机搜索只许经通道问本机后端 —— 在 monitor 里再建一份就是 LOC1b 删掉的那个第二读者。"
     );
-    let backend = guard_core::production_code(include_str!("../../src/backend/observe/search_query.rs"));
-    assert!(backend.contains("search_core::"), "识别器正控：后端那一份认不出 `search_core::` —— 本条空转");
+    let backend =
+        guard_core::production_code(include_str!("../../src/backend/observe/search_query.rs"));
+    assert!(
+        backend.contains("search_core::"),
+        "识别器正控：后端那一份认不出 `search_core::` —— 本条空转"
+    );
 }
-

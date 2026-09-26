@@ -69,10 +69,11 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
     (
         "lib.rs",
         Face::Facade,
-        2,
+        1,
         "setup 里一次性拼出 liveness / tasks 两个目录 ⇒ 整条发现链的起点在这里定死。\
              〔CF1 · 第四波 09-24〕**3 → 2**：records 那一处随本机 jsonl watcher 一起删了（本机会话内容改走本机后端的 `line` 帧）。\
-             ⚠ 与 RM1b / RW1 同形：**不是「收进接口了」**，是桌面侧不再问这件事",
+             ⚠ 与 RM1b / RW1 同形：**不是「收进接口了」**，是桌面侧不再问这件事。\
+             〔LOC1b · 第四波 4D〕**2 → 1**：liveness 那一处（`sessions/` 目录，喂 monitor 自己那份判活）随本机判活改由本机后端的帧来删了",
     ),
     // 〔LOC1b · 第四波 4D〕`search.rs` 的 `Facade` 那一行（3 处：记录根 ＋ 记录判定 ＋ 从路径取 sid）摘了 ——
     //   本机全文搜索改问本机后端，monitor 那份内存索引整个删了。主会话 09-25 裁（按 `00 §2.5 ①` · `90 §4 F`），
@@ -138,7 +139,8 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
 ///
 /// 🔴 〔LOC1b · 第四波 4D〕**18 → 14**：`history.rs` 门面 1 → 0 —— 本机冷读改经本机后端的 `history-read`（本机远端一条路）；
 /// `search.rs` 门面 3 → 0 —— 本机全文搜索改问本机后端，monitor 内存索引删了。⚠ 同上几笔：不是「收进接口了」，是桌面侧不再做这件事。
-const COUPLING_BASELINE: usize = 14;
+/// 🔴 〔LOC1b · 第四波 4D〕**14 → 13**：`lib.rs` 门面 2 → 1 —— 本机判活改由本机后端的帧来，monitor 不再拼 `sessions/` 目录。
+const COUPLING_BASELINE: usize = 13;
 
 /// **抹除 kind 的门面**：`adapter.rs` 里那几个「替调用者把 agent 写死」的自由函数。
 ///

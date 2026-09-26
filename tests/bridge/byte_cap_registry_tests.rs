@@ -151,10 +151,8 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "NET_EPOCH_TO_WIN32_FILETIME_TICKS",
         "**时间纪元差**（.NET 与 Win32 FILETIME 的起点相差多少个 100ns tick）。单位是时间不是字节。",
     ),
-    (
-        "PROC_START_TOLERANCE_TICKS",
-        "**时间容差**（判进程是不是同一个时允许的启动时刻误差）。单位是时间不是字节。",
-    ),
+    // 〔LOC1b · 第四波 4D〕`PROC_START_TOLERANCE_TICKS` 那一行摘了：它住 monitor 自己那份判活（`session_map.rs` 的 Windows
+    //   进程身份核对），本机判活改由本机后端的帧来，那份实现连同这个常量一起删了。
     (
         "STARTTIME_IDX_AFTER_COMM",
         "**字段下标**（`/proc/<pid>/stat` 里 `starttime` 在 `comm` 之后的第几个字段）。不是量。",
