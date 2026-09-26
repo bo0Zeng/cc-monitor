@@ -74,7 +74,8 @@ const PIN = {
   name: null,
   title: "固定那条",
 };
-const COLS = [{ id: "c1", name: "组一", members: ["sid-a", "sid-b"] }];
+// 〔GRP1 · V140〕组只存 `{id, name}`；组员关系是 tab 自己的属性（`tabBar.groupOf.<sid>`）。
+const COLS = [{ id: "c1", name: "组一" }];
 const BEHAVIOR = {
   autoFollowUserActive: false,
   bringMonitorToFrontOnUserActive: true,
@@ -91,7 +92,7 @@ const KEYS = { "open-settings": "Ctrl+,", "kill-session": null };
 /** 手写期望：全部写者一起发之后，盘上**恰好**是这一份。 */
 const EXPECTED: Record<string, unknown> = {
   tabCollections: COLS,
-  tabBar: { order: ["sid-b", "sid-a"], pinned: [PIN] },
+  tabBar: { order: ["sid-b", "sid-a"], pinned: [PIN], groupOf: { "sid-a": "c1", "sid-b": "c1" } },
   ...BEHAVIOR,
   theme: { bg: "#010203" },
   claudeDir: "/tmp/cfg1-claude",
@@ -105,6 +106,7 @@ async function realm(): Promise<{
   main: () => Promise<unknown>[];
   settings: () => Promise<unknown>[];
 }> {
+  const cfg = await import("../src/config");
   const cols = await import("../src/tab-collections");
   const bar = await import("../src/tab-bar-state");
   const beh = await import("../src/behavior");
@@ -114,9 +116,14 @@ async function realm(): Promise<{
   const acc = await import("../src/account-prefs");
   const remote = await import("../src/remote-config");
   return {
-    // 主窗：tab 栏那三条（E1 的原形：拖放同拍发分组 ＋ 顺序）
+    // 主窗：tab 栏那几条（E1 的原形：拖放同拍发分组 ＋ 顺序）。
+    // 〔GRP1〕分组那一条的形状照 `TabBarPrefs.foundGroup`：组表 ＋ 两个 tab 的组 id 键装进**一次**补丁。
     main: () => [
-      cols.setCollections(COLS),
+      cfg.patchConfig([
+        cols.collectionsEdit(COLS),
+        bar.groupOfEdit("sid-a", "c1"),
+        bar.groupOfEdit("sid-b", "c1"),
+      ]),
       bar.setTabOrder(["sid-b", "sid-a"]),
       bar.setPinned([PIN as never]),
     ],
@@ -154,6 +161,8 @@ describe("CFG1 J1 · 两个 realm × 全部写者同时写，谁写的键谁的�
     expect(sent).toEqual(
       [
         "set tabCollections",
+        "set tabBar.groupOf.sid-a",
+        "set tabBar.groupOf.sid-b",
         "set tabBar.order",
         "set tabBar.pinned",
         ...Object.keys(BEHAVIOR).map((k) => `set ${k}`),
@@ -169,12 +178,13 @@ describe("CFG1 J1 · 两个 realm × 全部写者同时写，谁写的键谁的�
 
   it("同一 realm 连发同一个键两次：盘上是后发的那次（不靠 IPC 到达顺序）", async () => {
     vi.resetModules();
+    const cfg = await import("../src/config");
     const cols = await import("../src/tab-collections");
-    const v1 = [{ id: "c1", name: "旧", members: ["x"] }];
-    const v2 = [{ id: "c1", name: "新", members: ["y"] }];
+    const v1 = [{ id: "c1", name: "旧" }];
+    const v2 = [{ id: "c1", name: "新" }];
     // 第一跳（v1 那次写）晚 20ms 才被处理 ⇒ 两次若同时在飞，v1 会后落盘、盖掉 v2。
     disk.delays = [20];
-    await Promise.all([cols.setCollections(v1), cols.setCollections(v2)]);
+    await Promise.all([cfg.patchConfig([cols.collectionsEdit(v1)]), cfg.patchConfig([cols.collectionsEdit(v2)])]);
     expect((JSON.parse(disk.text) as Record<string, unknown>).tabCollections).toEqual(v2);
   });
 });

@@ -11,12 +11,7 @@
  */
 import { sessionBadge, shouldShowAccountBadge, detectAccountMismatch } from "./accounts";
 import { accountAvatarEl } from "./account-color";
-import {
-  collectionOf,
-  deleteCollection,
-  renameCollection,
-  type TabCollection,
-} from "./tab-collections";
+import type { TabCollection } from "./tab-collections";
 import { activityLightClass } from "./session-status";
 import { terminalFrontAvailable } from "./terminal-front";
 import { isRemoteOrigin } from "./ipc/origin";
@@ -222,6 +217,8 @@ export class TabBarView {
     // 〔步 17·A〕抽屉没了 ⇒ 只剩主栏 ＋ 按集合分的若干组
     // ⇒ 推广成「**每容器一个游标**」。
     // 组容器按集合顺序先摆好（空集合也留着 —— 用户刚建的集合不该看不见）。
+    // 〔GRP1〕「空」今天只剩两种来路：组员都被拖出 / 移出了（`设计/30 §6` 第 12 条「空组也留着」，`GRP1.md` Q1 待拍）·
+    //   重启后组员还没到（意图在 `TabBarPrefs.savedGroupOf`）。× 掉最后一个组员 ⇒ 组已从组表里摘掉，画不出来。
     for (const [id, g] of this.groupEls) {
       if (!this.prefs.collections.some((x) => x.id === id)) {
         g.wrap.remove();
@@ -253,7 +250,9 @@ export class TabBarView {
       this.updateTabButton(refs, sid, tab);
       // 〔步 17·A〕分流从三路（抽屉 / 组 / 主栏）降到**两路**（组 / 主栏）。
       // 「归档优先于集合」那条判定整条消失 ⇒ **灰 tab 也能在组里**（`§A.3` 逐字）。
-      const col = collectionOf(this.prefs.collections, sid);
+      // 〔GRP1 · V140〕在哪个组读 tab 自己的 `group`（组表只有 `{id, name}`，不再扫成员名单）。
+      const col =
+        tab.group === null ? undefined : this.prefs.collections.find((c) => c.id === tab.group);
       const host = col ? this.groupElFor(col) : this.barEl;
       // 排序：希望此 button 出现在**同容器内**前一个之后。
       const prev = cursors.get(host) ?? null;
@@ -314,7 +313,8 @@ export class TabBarView {
       del.textContent = copyText("tabBarView.group.dissolve");
       del.title = copyText("tabBarView.group.dissolveHint");
       del.addEventListener("click", () => {
-        void this.prefs.commitCollections(deleteCollection(this.prefs.collections, col.id));
+        void this.prefs.dissolveGroup(col.id);
+        this.host.refreshTabBar();
       });
       head.append(name, del);
       const list = document.createElement("div");
@@ -363,7 +363,8 @@ export class TabBarView {
       if (!commit || !next) return;
       const now = this.prefs.collections.find((x) => x.id === id);
       if (!now || now.name === next) return;
-      void this.prefs.commitCollections(renameCollection(this.prefs.collections, id, next));
+      void this.prefs.renameGroup(id, next);
+      this.host.refreshTabBar();
     };
     input.addEventListener("keydown", (ev) => {
       if (ev.key === "Enter" && !ev.isComposing) {

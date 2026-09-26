@@ -120,7 +120,8 @@ const DEPS: Record<string, readonly string[]> = {
   "src/tab-model.ts": [],
   // ④ 落点算术：纯函数，只认集合表的增删。
   //   〔CP2b〕默认组名「组 N」进了文案表 ⇒ 取文口。
-  "src/tab-drop.ts": ["src/copy-table.ts", "src/tab-collections.ts"],
+  //   〔GRP1〕组员是 `Tab.group` ⇒ 不再改组表，只回「怎么动」。
+  "src/tab-drop.ts": ["src/copy-table.ts"],
   // ① store：只存东西、只做顺序运算、只有一份订阅。〔U4〕摘要按活性分 ⇒ 要 `isLive` 那一个谓词。
   "src/tab-store.ts": ["src/tab-session-state.ts"],
   // ① 〔U4〕会话状态的两个轴：形状 ＋ 转移 ＋ 谓词 ＋ 呈现。呈现的字只经文案表取（`sessionState.*`）。
@@ -160,7 +161,6 @@ const DEPS: Record<string, readonly string[]> = {
     "src/keybindings/registry.ts", // 〔W5-UI〕组头就地改名：改名时 Esc 走 overlay 栈
     "src/tab-group-rename.module.css", // 〔W5-UI〕组头就地改名那个输入框的样式（UC2：新样式一律 module）
     "src/session-status.ts",
-    "src/tab-collections.ts",
     "src/tab-session-state.ts", // 〔U4〕按钮上的两个状态类 · ↗ / 中键的两道门
     "src/terminal-front.ts",
   ],
@@ -178,6 +178,7 @@ const DEPS: Record<string, readonly string[]> = {
   //   〔U4〕固定复活的空态文字住文案表（说到会话状态的字一处定）。
   //   〔TL2 · E13〕集合到上界说那一句的出口（`sayCollectionRefusal`）也住这里。
   "src/tab-bar-prefs.ts": [
+    "src/config.ts", // 〔GRP1〕分组一次改动的全部补丁一次 `patchConfig`
     "src/copy-table.ts",
     "src/error-toast.ts", // 〔CFG1〕分组 / 固定 / 顺序落盘失败出声（INVARIANTS §12）·〔TL2 · E13〕集合到上界那一句
     "src/tab-bar-state.ts",
@@ -360,8 +361,8 @@ describe("〔U2〕tabs.ts 只剩组装根", () => {
         "tabUnderY",
         "commonDirName",
         "defaultGroupName",
-        "applyDropToCollections",
-        "collectionsEqual",
+        "groupMoveForDrop", // 〔GRP1〕替 applyDropToCollections / collectionsEqual
+        "GroupMove",
         "DWELL_MS",
         "DWELL_MOVE_PX",
         "DropTarget",
