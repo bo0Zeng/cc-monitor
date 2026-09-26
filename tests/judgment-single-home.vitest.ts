@@ -201,7 +201,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     defs: ["isValidBusId"],
     needles: [],
     owner: "主会话拍（DUP1.md §4 ⑥）",
-    why: "C4e 的理由「调用方不能靠对端校验」与 D1 顶着",
+    why: "`INVARIANTS §47`（V121，用户拍）那张「谁在守」表点名界面这一道；后端 bus-* 今天只核非空 —— 与判据 2 相抵",
   },
   J13: {
     what: "一次失败能否证明一个字节没发出",
