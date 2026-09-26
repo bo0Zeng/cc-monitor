@@ -496,7 +496,7 @@ export class BackendSection {
    * ⇒ 现在：操作期间**禁用本行按钮**，然后**轮询到状态落定**（或超时）再放开。
    * ⚠ 超时不是失败：远端断流后对面进程什么时候退，我们在本机看不见（诚实边界 11c）。
    *
-   * 〔HX1 · 4D · D-a〕上面「只发 SIGKILL 就返回」是历史：本机那一支今天先 SIGTERM、等它自己收尾（≤ 约 10 秒）、
+   * 〔HX1 · 4D · D-a〕上面「只发 SIGKILL 就返回」是历史：本机那一支今天先 SIGTERM、等它自己收尾（≤ 约 35 秒；后端自己 30 秒到期会先说清哪几条没做完再退）、
    * 还在才强杀，**等完才返回**（`stop_grace.rs`）⇒ 按钮会禁用那么久；强杀了 / 没停掉 ⇒ 命令回 `Err`，走下面那条失败提示。
    */
   private async act(origin: string, what: "start" | "stop"): Promise<void> {

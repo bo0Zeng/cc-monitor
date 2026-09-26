@@ -1334,7 +1334,7 @@ fn resolve_backend_bin(
 /// 停掉常驻那个。**调用方必须已经持有 [`LOCAL_BACKEND`] 的锁**（锁序，见 [`DETACHED`]）。
 /// `None` = 没有常驻那个；`Some(Ok)` = 干净地停了；`Some(Err)` = 强杀了 / 没停掉（都要到用户眼前）。
 ///
-/// 🔴〔HX1 · 4D · 主会话 D-a〕**先请它自己收尾（SIGTERM）→ 等（≤ 约 10 秒）→ 还在才 SIGKILL**（[`crate::stop_grace`]）。
+/// 🔴〔HX1 · 4D · 主会话 D-a〕**先请它自己收尾（SIGTERM）→ 等（≤ 约 35 秒，比后端自己的退出排空期限多 5 秒）→ 还在才 SIGKILL**（[`crate::stop_grace`]）。
 /// 此前自己起的那个直接 `Child::kill`（SIGKILL）—— 后端正在写的那一条被当场腰斩（E §E2）；
 /// 接管来的那个只发一次 SIGTERM 就说「已停」，不等、不看它是不是真退了。
 /// 后端收到 SIGTERM 会先排空停不下来的那一档再退（`src/backend/inbound.rs::exit_after_drain`）。
@@ -1391,7 +1391,13 @@ fn stop_detached_locked() -> Option<Result<String, String>> {
         )),
         StopEnd::Forced => Err(copy_text(
             "rsLocalBackendHost.stop.forced",
-            &[("pid", &pid_s)],
+            &[
+                ("pid", &pid_s),
+                (
+                    "secs",
+                    &(u128::from(STOP_GRACE_TRIES) * STOP_POLL.as_millis() / 1000).to_string(),
+                ),
+            ],
         )),
         StopEnd::Stuck(why) => {
             let why = why.unwrap_or_else(|| copy_text("rsLocalBackendHost.stop.stillThere", &[]));

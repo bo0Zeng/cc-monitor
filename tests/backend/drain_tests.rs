@@ -31,12 +31,24 @@ fn d1_the_gate_waits_for_every_ticket_and_refuses_after_close() {
         tokio::pin!(w);
         assert!(polled_ready(w.as_mut()), "没有在飞的票，drained 却不完成");
     }
-    let a = d.enter().expect("没关闸时取得到票");
-    let b = d.enter().expect("没关闸时取得到第二张");
+    let a = d
+        .enter("files-put（id=a）".into())
+        .expect("没关闸时取得到票");
+    let b = d
+        .enter("capture-pane（id=b）".into())
+        .expect("没关闸时取得到第二张");
+    assert_eq!(
+        d.in_flight_names(),
+        vec![
+            "files-put（id=a）".to_string(),
+            "capture-pane（id=b）".to_string()
+        ],
+        "在飞的名字（按起跑先后）"
+    );
     assert_eq!(d.in_flight(), 2);
     assert_eq!(d.close(), 2, "close 回的数应 == 关的那一刻在飞的票数");
     assert!(
-        d.enter().is_none(),
+        d.enter("x".into()).is_none(),
         "关闸之后还取得到票 —— 收场期间会再起新的阻塞活"
     );
     let w = d.drained();
@@ -46,6 +58,11 @@ fn d1_the_gate_waits_for_every_ticket_and_refuses_after_close() {
         "还有 2 张票在飞，drained 就完成了"
     );
     drop(a);
+    assert_eq!(
+        d.in_flight_names(),
+        vec!["capture-pane（id=b）".to_string()],
+        "落下的那张要从名单里摘掉"
+    );
     assert!(
         !polled_ready(w.as_mut()),
         "还有 1 张票在飞，drained 就完成了"
@@ -63,6 +80,8 @@ fn d1_the_gate_waits_for_every_ticket_and_refuses_after_close() {
 const CHILD_MARK: &str = "CCM_HX1_DRAIN_CHILD";
 const CHILD_TEST_NAME: &str = "inbound::drain_tests::d2_child_harness";
 const READY_LINE: &str = "HX1-HARNESS-READY";
+/// D4：交给子进程的短期限（毫秒）。
+const CHILD_DEADLINE_MS: &str = "CCM_HX1_DRAIN_DEADLINE_MS";
 
 /// 子进程那一半：与 `main.rs::run_over_stdio` 收信号那一支同形 —— stdin 进 `inbound::spawn`、应答写 stdout，
 /// 收到停机信号 ⇒ `exit_after_drain`（写者照常跑）。**跑的全是生产那几样**：取票的门 · 闸 · 收场函数 · 信号监听 ·
@@ -104,10 +123,16 @@ fn d2_child_harness() {
             }
         };
         tokio::pin!(writer);
+        // 期限：生产那一个（`DRAIN_DEADLINE`）；D4 那一趟交一个短的（量「到点就退」）。
+        let deadline = std::env::var(CHILD_DEADLINE_MS)
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map(std::time::Duration::from_millis)
+            .unwrap_or(DRAIN_DEADLINE);
         tokio::select! {
             _ = &mut writer => {}
             _ = stop => {
-                exit_after_drain("收到停机信号", Some(writer)).await
+                exit_after_drain_within("收到停机信号", Some(writer), deadline).await
             }
         }
     });
@@ -220,6 +245,10 @@ fn lines_of<R: std::io::Read + Send + 'static>(
 }
 
 fn start_child(rig: &Rig) -> Child {
+    start_child_with(rig, None)
+}
+
+fn start_child_with(rig: &Rig, deadline_ms: Option<u64>) -> Child {
     let path = format!(
         "{}:{}",
         rig.dir.join("bin").display(),
@@ -237,6 +266,10 @@ fn start_child(rig: &Rig) -> Child {
         .env("PATH", path)
         .env("HOME", &rig.dir)
         .env("RUST_LOG", "info")
+        .env(
+            CHILD_DEADLINE_MS,
+            deadline_ms.map(|v| v.to_string()).unwrap_or_default(),
+        )
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -307,8 +340,12 @@ const CAPTURE_B: &str = r#"{"id":"b","cmd":"capture-pane","args":{"name":"hx1-b"
 
 /// 起子进程 → 发一条会卡住的阻塞命令 → 等假 tmux 真起来 → SIGTERM → 等到「收尾：还有 1 条」那句。
 fn up_to_draining(tag: &str) -> (Rig, Child) {
+    up_to_draining_with(tag, None)
+}
+
+fn up_to_draining_with(tag: &str, deadline_ms: Option<u64>) -> (Rig, Child) {
     let rig = Rig::new(tag);
-    let mut c = start_child(&rig);
+    let mut c = start_child_with(&rig, deadline_ms);
     send_line(&mut c, CAPTURE_A);
     rig.wait_started();
     sigterm(&c);
@@ -359,6 +396,26 @@ fn d2_a_second_sigterm_stops_waiting() {
         "第二次 SIGTERM 应当不等、并说还剩几条：{err}"
     );
     // 假 tmux 还卡着（它是孙进程，子进程退了它还在）—— 放开它，别留垃圾。
+    rig.release();
+}
+
+// ── D4 ────────────────────────────────────────────────────────────────────
+
+/// 〔HX1 · 主会话裁 HX1 拍板项 1〕**到期限仍没排空 ⇒ 说出哪几条没做完，然后退**（不再无限期留着）。
+/// 守的要求：主会话裁「后端自己兜一个退出排空期限 …… 到点仍未排空 ⇒ 记一行日志说哪几条没做完，然后退出」；
+/// `INVARIANTS §48.2`「脱离后不留僵尸」。形状：同 D2 的真子进程台架，期限交 800ms、gate 一直不放 ⇒
+/// 子进程自己退 0，stderr 里那一行点名 `capture-pane（id=a）`；对照：D2 那一趟（期限是生产的 30 秒）放开之前一直在。
+#[test]
+fn d4_the_drain_deadline_names_what_was_left_and_exits() {
+    let (rig, mut c) = up_to_draining_with("deadline", Some(800));
+    let st = wait_exit(&mut c);
+    assert_eq!(st.code(), Some(0), "{st:?}");
+    let err = c.err_all.lock().unwrap().join("\n");
+    assert!(
+        err.contains("排空期限") && err.contains("capture-pane（id=a）"),
+        "到点了应当说出哪一条没做完：{err}"
+    );
+    assert!(!err.contains("都做完了"), "{err}");
     rig.release();
 }
 
@@ -441,6 +498,14 @@ fn d3_the_ticket_is_taken_once_before_the_blocking_spawn_and_every_stream_exit_d
         "流模式的收场口集合变了"
     );
 
+    // 〔HX1〕生产入口交给本体的期限恰是 `DRAIN_DEADLINE`（判据用短期限走的是同一个本体）。
+    let within: Vec<usize> = call_sites(&inbound, "exit_after_drain_within");
+    assert_eq!(within.len(), 1, "本体只该被生产入口调一处：{within:?}");
+    assert_eq!(enclosing_fn(&inbound, within[0]), "exit_after_drain");
+    assert!(
+        inbound[within[0]..].starts_with("exit_after_drain_within(why, writer, DRAIN_DEADLINE)"),
+        "生产入口交的期限不是 DRAIN_DEADLINE"
+    );
     // 正控：数法认得出多出来的一处 `exit(`。
     let planted = format!("{main}\nfn planted() {{ std::process::exit(0); }}\n");
     assert_eq!(call_sites(&planted, "process::exit").len(), 5);
