@@ -345,21 +345,20 @@ pub async fn create_branch_session(
 /// 缺席（今天所有调用点都缺席）⇒ 渲染器诚实降级回旧路 ⇒ 与本参数存在之前逐字节相同。
 /// 名字必须由前端 `mintTmuxName` 铸（那是全仓唯一带撞名避让的铸造口），所以它只能传进来、
 /// 不能在 Rust 里造。Windows 那一侧**不读它**（`C12`）。
+///
+/// 〔TL3 · 审计 F 🔴-2〕**`async`**（`INVARIANTS §10`）：先前是同步命令，跑在 IPC 派发线程上，
+/// 而链路里要等本机后端答一次 `launch-endpoint`（最长 `apikey_remote::BUDGET` 10 s，当时用 `block_on` 等）
+/// ＋ 同步跑 `bash -lic` 探 ccm ＋ `spawn` 终端 —— 那几秒里别的 IPC 全排队。今天：问后端那一跳 `await`，
+/// 同步那一截进 `spawn_blocking`（[`launch_local_asking_backend`]）。判据 `sync_command_registry_tests`。
 #[tauri::command]
-pub fn resume_history_session(
+pub async fn resume_history_session(
     session_id: String,
     cwd: String,
     launcher: Option<String>,
     account: Option<LaunchAccount>,
     tmux_name: Option<String>,
 ) -> Result<(), String> {
-    resume_impl(
-        &session_id,
-        &cwd,
-        launcher.as_deref(),
-        account.as_ref(),
-        tmux_name.as_deref(),
-    )
+    resume_impl(session_id, cwd, launcher, account, tmux_name).await
 }
 
 // 〔C4c · 第四波 4B〕「resume 之前问记录还在不在」那条 Tauri 命令（`probe_session_record` 与它的答案形状
@@ -1090,16 +1089,20 @@ static ATTACH_IS_NOT_A_SPAWN: std::sync::LazyLock<String> =
 
 /// ⚠ **`Err` 那一支不回 token**：拉起没成功就没有「刚起的那条」可言，
 /// 回一个 token 会让调用方去等一条根本不存在的会话。
+///
+/// 〔TL3 · 审计 F 🔴-2〕`relay` 是**调用方先 `await` 好的**中转前缀（[`relay_prefix_for_launch`]，
+/// 经 [`launch_local_asking_backend`]）：本函数全同步（ccm 探测 · 渲染 · `spawn`），只跑在 `spawn_blocking` 里，
+/// 不再在自己里面 `block_on` 等那台后端。
 fn launch_local(
     action: &LocalPsAction,
     launcher: Option<&str>,
     cwd: Option<&str>,
     account: Option<&LaunchAccount>,
     tmux_name: Option<&str>,
+    relay: String,
 ) -> Result<String, String> {
-    // ★★ `K-H2b`：**这一行就是「那条线」** —— 起会话这一刻把 base URL 指向本机中转。
+    // ★★ `K-H2b`：**`relay` 就是「那条线」** —— 起会话这一刻把 base URL 指向本机中转。
     //    空串 = 这个号不走中转（`§0e` 裁一：官方号一个字节不进中转）。
-    let relay = relay_prefix_for_launch(action, account)?;
     // Windows 那半**逐字不动**（`C12`：「windows不要tmux」）。`tmux_name` 在这一侧
     // 连读都不读 —— 读了就是给「Windows 也进容器」留了个口子。
     #[cfg(windows)]
@@ -1545,11 +1548,15 @@ pub(crate) fn relay_down_refusal(where_: &str, account: Option<&str>, why: &str)
     )
 }
 
-/// 上一条的**本机起会话那一截**（[`launch_local`] 是同步的：两个 `#[tauri::command]` 的同步调用链）：
-/// 在这里等成品（`block_on`），按这台机器是不是 Windows 渲成前缀。
+/// 上一条的**本机起会话那一截**：`await` 那台后端的成品，按这台机器是不是 Windows 渲成前缀。
 ///
-/// ⚠ 事实**只从 [`inject_facts`] 取**（理由见 [`InjectFactSources`] 头注）。
-fn relay_prefix_for_launch(
+/// 〔TL3 · 审计 F 🔴-2〕先前这里是 `block_on` —— 因为调用链（两条 `#[tauri::command]` → [`launch_local`]）是同步的，
+/// 等于在 IPC 派发线程上最长等 10 s（`INVARIANTS §10`）。今天它是 `async`，由 [`launch_local_asking_backend`] 先 `await`、
+/// 再把算好的前缀交给同步那一截；整条起会话链路零 `block_on`。
+///
+/// ⚠ 事实**只从 [`inject_facts`] 取**（理由见 [`InjectFactSources`] 头注）；平台那一格在 `await` 之前取
+/// （判据的替身是线程局部的，取值口不跨 `await`）。
+async fn relay_prefix_for_launch(
     action: &LocalPsAction,
     account: Option<&LaunchAccount>,
 ) -> Result<String, String> {
@@ -1561,12 +1568,9 @@ fn relay_prefix_for_launch(
         #[cfg(not(windows))]
         LocalPsAction::Attach => return Ok(String::new()),
     };
-    let url = tauri::async_runtime::block_on(relay_endpoint_on(
-        &crate::origin::Origin::local(),
-        account,
-        sid,
-    ))?;
-    Ok(relay_prefix_for(url.as_deref(), (inject_facts().windows)()))
+    let windows = (inject_facts().windows)();
+    let url = relay_endpoint_on(&crate::origin::Origin::local(), account, sid).await?;
+    Ok(relay_prefix_for(url.as_deref(), windows))
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1790,27 +1794,109 @@ fn build_resume_ps_command(session_id: &str, launcher: Option<&str>) -> Result<S
 /// Batch14-F41：wt.exe/PowerShell 拉起机械抽到 `launch.rs::launch_powershell_window`
 /// （与远端 resume/attach 族共用），本函数只剩「构造本地 resume 命令体 + 委托拉起」。
 /// 非 Windows：launch 层统一报错（仅 Windows 支持，错误文案改为中文）。
-fn resume_impl(
-    session_id: &str,
-    cwd: &str,
-    launcher: Option<&str>,
-    account: Option<&LaunchAccount>,
-    tmux_name: Option<&str>,
+/// 〔TL3〕随命令一起 `async`：拉起那一趟走 [`launch_local_asking_backend`]（问后端 `await` ＋ 同步那一截挪出 IPC 派发线程）。
+async fn resume_impl(
+    session_id: String,
+    cwd: String,
+    launcher: Option<String>,
+    account: Option<LaunchAccount>,
+    tmux_name: Option<String>,
 ) -> Result<(), String> {
     // 🔴〔`K-P5h`〕**resume 这一支刻意把 token 丢掉，那不是疏忽。**
     // `K-P5g` 现打过：resume 时 token **就是 sid**（`route_key_for_session(Some(sid))` 在 sid
     // 过白名单时原样返回）⇒ 「拿 token 反查 sid」在这一支上退化成
     // 「答案要么是它自己、要么 `None`」，一个布尔谓词，**买不到本件的正题**。
     // 本件的正主是**新开**那一支（见 [`new_local_session`]）—— 那一支才没有 sid。
-    launch_local(
-        &LocalPsAction::Resume(session_id.to_string()),
+    launch_local_asking_backend(
+        LocalPsAction::Resume(session_id.clone()),
         launcher,
         Some(cwd),
         account,
         tmux_name,
-    )?;
+    )
+    .await?;
     tracing::info!("history: resumed sid={session_id}");
     Ok(())
+}
+
+/// 〔TL3 · 审计 F 🔴-2〕两条本机起会话命令共用的那一趟（`INVARIANTS §10`「IPC 命令默认写 `pub async fn`，
+/// 函数体包 `spawn_blocking`」）：
+/// ① 先 **`await`** 那台后端的成品（[`relay_prefix_for_launch`]；不占任何线程等，零 `block_on`）；
+/// ② 同步那一截（ccm 探测 · 渲染 · `spawn` 终端 —— [`launch_local`]）挪出 IPC 派发线程（[`off_the_ipc_thread`]）。
+/// 问不到 / 该拒 ⇒ ① 就回 `Err`，一个字节都不送出去（与先前同）。
+async fn launch_local_asking_backend(
+    action: LocalPsAction,
+    launcher: Option<String>,
+    cwd: Option<String>,
+    account: Option<LaunchAccount>,
+    tmux_name: Option<String>,
+) -> Result<String, String> {
+    let relay = relay_prefix_for_launch(&action, account.as_ref()).await?;
+    off_the_ipc_thread(move || {
+        launch_local(
+            &action,
+            launcher.as_deref(),
+            cwd.as_deref(),
+            account.as_ref(),
+            tmux_name.as_deref(),
+            relay,
+        )
+    })
+    .await
+}
+
+/// 〔TL3〕同步的活挪出 IPC 派发线程：`tokio::task::spawn_blocking`（`INVARIANTS §10` 实施口诀）。
+///
+/// ⚠ 判据那三条缝（[`CcmProbeSource`] · [`InjectFactSources`] · [`LaunchSink`]）是**线程局部**的替身，
+/// 换线程就丢 ⇒ `#[cfg(test)]` 下把调用线程上装着的那几条带过去重装（`CarriedSeams`）。
+/// 生产路没有第二条：`spawn_blocking` 那一跳判据与生产走的是同一条。
+async fn off_the_ipc_thread<T: Send + 'static>(
+    work: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    #[cfg(test)]
+    let seams = CarriedSeams::here();
+    tokio::task::spawn_blocking(move || {
+        #[cfg(test)]
+        let _carried = seams.install();
+        work()
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join: {e}"))?
+}
+
+/// 〔TL3〕调用线程上装着的替身（没装的格是 `None`），随 [`off_the_ipc_thread`] 换线程。
+#[cfg(test)]
+#[derive(Clone, Copy)]
+struct CarriedSeams {
+    probe: Option<CcmProbeSource>,
+    facts: Option<InjectFactSources>,
+    sink: Option<LaunchSink>,
+}
+
+#[cfg(test)]
+impl CarriedSeams {
+    fn here() -> Self {
+        Self {
+            probe: CCM_PROBE_OVERRIDE.with(std::cell::Cell::get),
+            facts: INJECT_FACTS_OVERRIDE.with(std::cell::Cell::get),
+            sink: LAUNCH_SINK_OVERRIDE.with(std::cell::Cell::get),
+        }
+    }
+
+    /// 在当前线程重装；三个守卫掉出作用域各自还原（线程池里的线程会被下一趟复用）。
+    fn install(
+        self,
+    ) -> (
+        Option<CcmProbeGuard>,
+        Option<InjectFactsGuard>,
+        Option<LaunchSinkGuard>,
+    ) {
+        (
+            self.probe.map(override_ccm_probe),
+            self.facts.map(override_inject_facts),
+            self.sink.map(override_launch_sink),
+        )
+    }
 }
 
 /// F96（#62）：本地「在该目录起**新**会话」的 PowerShell 命令体——薄委托（同上，DoD 要求
@@ -1834,8 +1920,11 @@ fn build_new_session_ps_command(launcher: Option<&str>) -> Result<String, String
 /// 在这条会话真的跑起来之后，用 `local-launch-backfill.ts::sidOfLaunch` 从 `--session-accounts`
 /// 的行里把 sid **反查**出来（`KP5HD2`）。
 /// ⚠ **它是个内部 nonce**：不许显示给用户（同 `K-P5g` 那条判据的口径）。
+///
+/// 〔TL3 · 审计 F 🔴-2〕**`async`**，理由同 [`resume_history_session`]（`INVARIANTS §10`）。
+/// 顺序照旧：先核 cwd（文件系统那一下也挪出 IPC 派发线程）、再问后端、再拉起 —— 两件都失败时报的仍是「目录不在」。
 #[tauri::command]
-pub fn new_local_session(
+pub async fn new_local_session(
     cwd: String,
     launcher: Option<String>,
     account: Option<LaunchAccount>,
@@ -1843,12 +1932,14 @@ pub fn new_local_session(
     // F96：起新会话**依赖 cwd 定位**（不像 resume 靠 sid）——cwd 非空且不是现存目录（项目被
     // 移动/删除）就明确报错，别静默在默认目录起会话 + 弹假成功 toast。`launch_powershell_window`
     // 只把存在的 cwd 作窗口起始目录、失效则回落默认，对 resume 无害、对 new-session 是错目录。
-    if !cwd.is_empty() && !std::path::Path::new(&cwd).is_dir() {
-        return Err(copy_text(
-            "rsHistory.newSession.noDir",
-            &[("cwd", &cwd.to_string())],
-        ));
-    }
+    let dir = cwd.clone();
+    off_the_ipc_thread(move || {
+        if !dir.is_empty() && !std::path::Path::new(&dir).is_dir() {
+            return Err(copy_text("rsHistory.newSession.noDir", &[("cwd", &dir)]));
+        }
+        Ok(())
+    })
+    .await?;
     // ★★ `K-H2b` `D1 阻-1`：**账号这一格是本轮加的，加它的理由要写清楚。**
     //
     // 原注释逐字：「起**全新**会话不继承任何账号（那是『新开一个』的语义，不是分叉）」。
@@ -1861,13 +1952,14 @@ pub fn new_local_session(
     //
     // P3t-Y2：起新会话这条**暂不传名字**（`None` ⇒ 渲染器诚实降级回旧路）。
     // 名字只许由 `mintTmuxName` 铸，在这里补一个默认名就是 F13 那个坑的第三次。
-    let launch_id = launch_local(
-        &LocalPsAction::New,
-        launcher.as_deref(),
-        Some(&cwd),
-        account.as_ref(),
+    let launch_id = launch_local_asking_backend(
+        LocalPsAction::New,
+        launcher,
+        Some(cwd.clone()),
+        account,
         None,
-    )?;
+    )
+    .await?;
     // ⚠ **日志里不写 token**：它是身份凭据形态的 nonce，而 tracing 的 ERROR 那一档会被
     //   `bindErrorToast` 刷到界面上 —— 内部 nonce 一个字节都不该往那条路上走。
     tracing::info!("history: new local session in {cwd}");

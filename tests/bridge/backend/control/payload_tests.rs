@@ -1157,7 +1157,8 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
     );
     // 那两段前缀各自是谁渲的 —— 整条链**逐环钉住**（改名当场红）。
     for anchor in [
-        "let relay = relay_prefix_for_launch(action, account)?;",
+        // 〔TL3 · 🔴-2〕前缀先 `await` 好再交给同步那一截（`launch_local` 的 `relay` 参数），链上这一环换了形。
+        "let relay = relay_prefix_for_launch(&action, account.as_ref()).await?;",
         "let identity = launch_identity(action);",
         "relay_env_prefix_posix(u)",
         "let prefix = launch_identity_env_prefix(&token,",

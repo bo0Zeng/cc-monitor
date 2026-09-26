@@ -404,6 +404,7 @@ const SCAN: &[&str] = &[
     "tests/bridge/ssh_source_tier1_tests.rs",
     "tests/bridge/ssh_source_tmux_snapshot_exposure_tests.rs",
     "tests/bridge/ssh_source_write_half_guard.rs",
+    "tests/bridge/sync_command_registry_tests.rs", // 〔TL3〕同步 IPC 命令的调用闭包零 `block_on` / 零同步连后端（`INVARIANTS §10`）
     "tests/bridge/tasks_tests.rs",
     "tests/bridge/tmux_backend_gate_guard_tests.rs",
     "tests/bridge/tmux_reconcile_source_of_truth_guard.rs",
