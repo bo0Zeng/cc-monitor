@@ -167,6 +167,12 @@ impl Rig {
 
 impl Drop for Rig {
     fn drop(&mut self) {
+        // 判据中途红了（panic）也要把卡在 gate 上的假 tmux 放掉：非阻塞地开一次写端 —— 有人在读就放开它，没人读就当场 ENXIO。
+        use std::os::unix::fs::OpenOptionsExt as _;
+        let _ = std::fs::OpenOptions::new()
+            .write(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(&self.gate);
         let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
@@ -178,6 +184,17 @@ struct Child {
     out: std::sync::mpsc::Receiver<String>,
     err: std::sync::mpsc::Receiver<String>,
     err_all: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+/// 判据红了（panic）也收掉子进程（第 21 条：自己起的进程用完收掉）—— 死值验那一趟实测：K1 刀下子进程永远等不到排空，
+/// 父进程红了之后它一直活着、还攥着 cargo 的输出管子。
+impl Drop for Child {
+    fn drop(&mut self) {
+        if matches!(self.proc.try_wait(), Ok(None)) {
+            let _ = self.proc.kill();
+        }
+        let _ = self.proc.wait();
+    }
 }
 
 /// 一个等待的上界（测试侧；后端生产段零定时器那条铁律不管测试段）。只为「坏了的时候别把 CI 挂死」。
