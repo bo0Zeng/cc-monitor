@@ -426,6 +426,8 @@ const SCAN: &[&str] = &[
     "tests/import-cycle-guard.vitest.ts",
     "tests/ipc/chan.vitest.ts",
     "tests/ipc/commands.vitest.ts",
+    // 〔DUP1〕判定只有一个家（`90 §3` 判据 2：读 `*-core` 与 TS 生产段全集 ⇒ 扫描层）。
+    "tests/judgment-single-home.vitest.ts",
     "tests/launch-cli-wire.vitest.ts",
     // 〔FE1〕铸名 / 本机 resume 编排各只有一个家（读生产段全集 ⇒ 扫描层）。
     "tests/launch-orchestration-single-home.vitest.ts",
