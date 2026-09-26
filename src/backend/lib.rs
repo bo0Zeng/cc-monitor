@@ -831,6 +831,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 登记理由同 `C1` 那一段：不在表里 ⇒ `is_query_mode` 当未知 flag ⇒ 静默进流模式。
     // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
     "--tasks-list",
+    // 〔SH1〕帧面 `tmux-list` 自动派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--tmux-list",
     "--tmux-notify",
 ];
 

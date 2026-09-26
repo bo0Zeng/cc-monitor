@@ -198,7 +198,7 @@ const TMUX_PRINT_SITES: &[(&str, &str, Carry, usize, &str)] = &[
     ("src/backend/control/gate.rs", "display-message", Carry::Flag, 1, "argv；`gate_tests.rs` 钉旗在子命令前"),
     ("src/backend/observe/watcher.rs", "ls", Carry::Env, 2, "`sh -c` 一段脚本两支（带 / 不带 timeout），env 一行盖住；`watcher_tests.rs` 钉 env"),
     ("src/backend/observe/watcher.rs", "display-message", Carry::Env, 1, "`sh -c`，同上"),
-    ("src/bridge/src/backend/control/tmux.rs", "ls", Carry::Flag, 1, "跨 SSH 串；`tmux_tests.rs` 钉旗在子命令前"),
+    // 〔SH1〕monitor `tmux.rs` 那条跨 SSH `ls`（Flag）删了：`list_remote_tmux` 改问那台后端 `tmux-list`（那一趟 `ls` 住 `watcher.rs`，env 形）。
     ("src/backend/control/ccm/plan.rs", "list-panes", Carry::None, 1, "无害：只读 `#{pane_id}`（`%N`，ASCII，单列、不按 TAB 切）—— IV1 报过"),
     ("src/backend/control/ccm/mod.rs", "display-message", Carry::Flag, 1, "〔SH1〕`BUS_ID_RECIPE` 读 `#S`（会话名，可以非 ASCII）⇒ 拼进 pane 的命令串，按表用旗；真跑判据 `backend-cc-bus.sh` [SH1-a]"),
     ("src/shared/cc-bus/scripts/cc-bus-adapt-posix.sh", "display-message", Carry::None, 1, "无害：只读 `#{pane_pid}`（数字）"),

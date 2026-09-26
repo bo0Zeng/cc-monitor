@@ -189,6 +189,8 @@ pub const COMMANDS: &[&str] = &[
     "skill-read",
     "skill-uninstall-plan",
     "tasks-list",
+    // 〔SH1〕列这台的 tmux 会话（原样行；monitor `list_remote_tmux` 那条拨号 shell 退役）。
+    "tmux-list",
     // 〔SR1b〕传输四条（`control/transfer.rs`）：传输台住本机常驻后端，SFTP 跟其它 SSH 同一条连接。
     "transfer-download",
     "transfer-start",
@@ -2240,6 +2242,19 @@ pub const REGISTRY: &[CommandSpec] = &[
             "sourcePath",
         ],
         takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::feature_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔SH1〕列这台的 tmux 会话：`{installed, lines}`（原样 `tmux ls -F` 行，与流里推的那份同一个格式串）。阻塞档（起一次 `sh` ＋ `tmux`）。
+    CommandSpec {
+        name: "tmux-list",
+        doc_anchor: Some("#### `tmux-list`"),
+        codes: &["unobservable", "too_large"],
+        fields: &["installed", "lines"],
+        takes_input: false,
         run: Run::Blocking(|r| {
             crate::feature_face::answer(&r.cmd, &r.args)
                 .map(Some)

@@ -182,6 +182,33 @@ fn every_remote_tmux_verb_is_either_read_only_or_routed_through_the_gate() {
              「原子 verify+act 远端 shell 串」的受托者，`K-R72` 把它连同它唯一的两个消费者\n\
              （kill / send-keys 的一次性 SSH 回落）一起删了。要恢复它先回 `K-R54` 重新裁定。"
     );
+    let (seen_read_only, bad) = scan_verbs(&prod);
+    // 〔SH1〕人群归零：`list_remote_tmux` 改问那台后端的 `tmux-list`，monitor 侧**零处**远端 tmux 命令串。
+    //   照 `K-R112` 那段留下的话办：不把地板改成 0 了事，而是**人群恒等 0 ＋ 一份合成坏语料承重**（正控，扫描器认得出违规）。
+    assert_eq!(
+        seen_read_only, 0,
+        "monitor 侧又长出了远端 tmux 只读命令串 —— 列会话今天问那台后端 `tmux-list`"
+    );
+    let (_, caught) =
+        scan_verbs("fn synthetic() { let c = format!(\"tmux {x} kill-session -t =a:\"); }");
+    assert_eq!(
+        caught.len(),
+        1,
+        "正控：扫描器认不出合成语料里那条改状态的 tmux 命令 —— 本条空转"
+    );
+    assert!(
+        bad.is_empty(),
+        "monitor 侧有**不是只读动词**的远端 tmux 命令：\n{}\n\
+             `K-R72` 起 monitor 只许对远端 tmux 下**只读**命令 —— 改状态的一律走后端\n\
+             （`C5` 逐字：任何改状态的 tmux 命令一律归 `control/`）。\n\
+             ⚠ **别把动词加进 `READ_ONLY_VERBS` 来消红** —— 那张表只收真正不改变远端状态的动词。\n\
+             正确动作：把这条命令搬进后端的 `control/`，让它过 `admit` / `admit_destructive`。",
+        bad.join("\n")
+    );
+}
+
+/// 〔SH1〕把「数远端 tmux 动词」那一段抽成函数：真生产段与合成正控语料共用同一把尺子。
+fn scan_verbs(prod: &str) -> (usize, Vec<String>) {
     let mut seen_read_only = 0usize;
     let mut bad: Vec<String> = Vec::new();
     let mut from = 0usize;
@@ -206,19 +233,7 @@ fn every_remote_tmux_verb_is_either_read_only_or_routed_through_the_gate() {
     //    而**归零之后本条就是空真**（`bad` 恒空）—— 到那一拍该做的不是把地板改成 0，
     //    是给它换一份**会漂的活体语料**（同 `tmux_tests.rs::every_target_placeholder_comes_from_exact_target`
     //    今天的做法：人群 0 + 一份合成坏语料承重）。
-    assert!(
-        seen_read_only >= 1,
-        "只数到 {seen_read_only} 处只读动词 —— 抽取器或剥生产段那步坏了，本条此刻空转"
-    );
-    assert!(
-        bad.is_empty(),
-        "monitor 侧有**不是只读动词**的远端 tmux 命令：\n{}\n\
-             `K-R72` 起 monitor 只许对远端 tmux 下**只读**命令 —— 改状态的一律走后端\n\
-             （`C5` 逐字：任何改状态的 tmux 命令一律归 `control/`）。\n\
-             ⚠ **别把动词加进 `READ_ONLY_VERBS` 来消红** —— 那张表只收真正不改变远端状态的动词。\n\
-             正确动作：把这条命令搬进后端的 `control/`，让它过 `admit` / `admit_destructive`。",
-        bad.join("\n")
-    );
+    (seen_read_only, bad)
 }
 
 // 〔`K-R72` 09-12 留档〕上一版判准的另一半住在这里 —— **刻意只留话，不留代码**。
