@@ -45,10 +45,13 @@ fn search_end_to_end_and_rejects_traversal() {
         after_ms: 0,
         limit: 300,
     };
+    // 〔SX1〕会话那一格来自索引：整份读进一格 `FileEntry`，查询对它跑。
+    let mut entry = FileEntry::empty(None, true);
+    entry.take(None, &std::fs::read(&jsonl).expect("读夹具"));
     let mut budget = SnippetBudget::new(opts.limit);
     let hit = session_hits_in(
         &jsonl,
-        &std::fs::read_to_string(&jsonl).expect("读夹具"),
+        &entry,
         "docker",
         &opts,
         &mut budget,
@@ -79,15 +82,8 @@ fn search_end_to_end_and_rejects_traversal() {
         limit: 300,
     };
     let mut budget2 = SnippetBudget::new(opts_u.limit);
-    let hu = session_hits_in(
-        &jsonl,
-        &std::fs::read_to_string(&jsonl).expect("读夹具"),
-        "docker",
-        &opts_u,
-        &mut budget2,
-        1,
-    )
-    .expect("user hits");
+    let hu =
+        session_hits_in(&jsonl, &entry, "docker", &opts_u, &mut budget2, 1).expect("user hits");
     assert_eq!(hu["hitCount"], 1);
 
     std::fs::remove_dir_all(&tmp).ok();
