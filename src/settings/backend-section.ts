@@ -45,13 +45,8 @@ const SETTLE_INTERVAL_MS = 100;
 import { showActionFailureToast } from "../error-toast";
 import { makeInfoIcon } from "./info-icon";
 import {
-  HEALTH_UNKNOWN,
-  HEALTH_UNKNOWN_WHY,
   LOCAL_ORIGIN,
-  describeBackendHealth,
-  describeHealthDetail,
   describeExitBehavior,
-  type BackendHealth,
   type ExitPolicyState,
 } from "../backend-policy";
 import { copyText } from "../copy-table";
@@ -84,7 +79,7 @@ interface ExitAnswer {
 /**
  * 〔B2〕从后端那份不透明 JSON 里取「退出行为」两格。**缺一格 / 形状不对 ⇒ `null`**（= 问不到）。
  *
- * ⚠ 方向与 `readHealth` 一致：**答不出来就说答不出来**，不替后端补一个缺省值 ——
+ * ⚠ **答不出来就说答不出来**，不替后端补一个缺省值 ——
  * 补了就是在一台我们不知道的机器上画一个看起来能用的勾。
  */
 function readExitAnswer(raw: unknown): ExitAnswer | null {
@@ -130,34 +125,37 @@ async function putExitPolicy(origin: Origin, kill: boolean): Promise<unknown> {
 }
 
 /**
- * 从 `backend_status` 那份 JSON 里取死亡账读数。**缺席 / 形状不对 ⇒ `null`**。
- *
- * ⚠ 方向与 `detached` 缺席那一格一致：**答不出来就说答不出来**，不替后端补一个
- * 「四个 0」的读数 —— 那会被 `describeBackendHealth` 说成「一次都没崩过」，
- * 而那两句话（「没崩过」与「没有任何东西在记」）正是 K-P3 §0-1 点名不许混用的。
- *
- * ⚠ 它住在这里而不是 `backend-policy.ts`：那边是**文案与纯函数**的家，
- * 这一段是**wire 解析**（`backend_status` 回的是 `Record<string, unknown>`），
- * 与同文件 `st.detached === true` 那一句同层。
+ * 〔PB1 · `设计/90 §4` 阶段 B〕「健康」那一格的**成品** —— 后端 `backend_policy.rs::health_face` 出，经 `backend_status` 的 `health`。
+ * 本文件只排版：`summary` 进格子 · `state` 原样挂 `data-health`（`70 §2.2`「区分用界面状态表达」；取值集不在这里抄）·
+ * `why` 在就摆 ⓘ · `detail` 在就摆 `[详情]`。哪一档、每一档给什么，**一处都不在前端判**。
+ * 形状由金样 `tests/__fixtures__/backend-health.golden.json` 两侧同读钉住。
  */
-function readHealth(raw: unknown): BackendHealth | null {
-  if (typeof raw !== "object" || raw === null) return null;
-  const h = raw as Record<string, unknown>;
-  const num = (k: string): number | null => (typeof h[k] === "number" ? (h[k] as number) : null);
-  const crashed = num("crashed");
-  const refused = num("refused");
-  const neverStarted = num("neverStarted");
-  const misread = num("misread");
-  if (crashed === null || refused === null || neverStarted === null || misread === null) {
-    return null;
-  }
-  return {
-    crashed,
-    refused,
-    neverStarted,
-    misread,
-    last: typeof h.last === "string" ? h.last : null,
-  };
+export interface HealthFace {
+  state: string;
+  summary: string;
+  why: string | null;
+  detail: string | null;
+}
+
+/** 成品的键集（排好序）。多一格 / 少一格都收不下。 */
+const HEALTH_FACE_KEYS = ["detail", "state", "summary", "why"] as const;
+
+/**
+ * 按形状**严格收**（`设计/05 §14.3`「多一格 / 缺一格 / 类型不对 ⇒ 抛……不猜」）：键集恰好那四个 ·
+ * `state` / `summary` 非空串 · `why` / `detail` 非空串或 `null`。收不下 ⇒ `null`，那一格说「格式不对」。
+ *
+ * ⚠ 收不下**不回落成「— 无记录」**：原来那份读数解析缺格就画无记录，那是一条前端的回落判定；
+ *   `backend_status` 是 monitor 自己的命令、与界面同一个构建，缺格只能是程序错 ⇒ 说出来（D7 / D11），不替后端编一档。
+ */
+export function decodeHealthFace(raw: unknown): HealthFace | null {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+  const v = raw as Record<string, unknown>;
+  const keys = Object.keys(v).sort();
+  if (keys.length !== HEALTH_FACE_KEYS.length || keys.some((k, i) => k !== HEALTH_FACE_KEYS[i])) return null;
+  const text = (x: unknown): x is string => typeof x === "string" && x !== "";
+  const textOrNull = (x: unknown): x is string | null => x === null || text(x);
+  if (!text(v.state) || !text(v.summary) || !textOrNull(v.why) || !textOrNull(v.detail)) return null;
+  return { state: v.state, summary: v.summary, why: v.why, detail: v.detail };
 }
 
 /**
@@ -428,7 +426,7 @@ export class BackendSection {
     exit.className = "backend-row-exit";
     exitCol.appendChild(exit);
 
-    // ★★ `K-P3b KP3W4`：**读数**，另起一格。
+    // ★★ `K-P3b KP3W4`：**读数**，另起一格（〔PB1〕成品由后端出，见 `paintHealth`）。
     // ⚠ **不许接在退出那一句后面**：`describeExitBehavior` 的四张脸被
     // `backend-section.vitest.ts` 用**等号**逐格钉着 —— 那两句话说的是两件事。
     const healthCol = col("health");
@@ -476,40 +474,44 @@ export class BackendSection {
   }
 
   /**
-   * 重画一行的「上次崩没崩」。
+   * 重画一行的「上次崩没崩」：**排版后端给的成品**（[`decodeHealthFace`]）。
    *
-   * `health` **缺席**（旧后端，那份 JSON 里没有这一格）⇒ 画 `HEALTH_UNKNOWN`
-   * —— 方向与 `detached` 缺席那一格一致：**答不出来就说答不出来**。
-   * ⚠ 别在这里退回一个「四个 0」的读数：那会被说成「一次都没崩过」，
-   * 而 K-P3 §0-1 逐字点名这两句话「差得很远，不许混用」。
+   * 🔴 第二刀 步 6（`70 §2.3`）：长的那一半**不进格子** —— 无记录 ⇒ ⓘ 里放那条「为什么这不等于没崩过」
+   *   （`§2.2`：区分保留，只换位置）；记到过事 ⇒ `[详情]` 展开四个计数与完整记录去哪看。
+   *   〔PB1〕哪一档、带不带 ⓘ / `[详情]`、每一句说什么，都是后端定的；这里只看 `why` / `detail` 在不在。
+   *   重画会跑很多遍（`settleStatus` 轮询），所以先把上一次的附件摘掉再挂。
+   * 收不下（形状不对）⇒ 只在这一格说「格式不对」，状态那一格照旧（`70 §1.2` D：失败落在那一块上）。
    */
   private paintHealth(origin: string, raw: unknown): void {
     const col = this.cellHosts.get(origin)?.querySelector<HTMLElement>('[data-col="health"]');
     const el = col?.querySelector<HTMLElement>(".backend-row-health");
     if (!col || !el) return;
-    const h = readHealth(raw);
-    el.textContent = h === null ? HEALTH_UNKNOWN : describeBackendHealth(h);
-    // 🔴 第二刀 步 6（`70 §2.3`）：长的那一半**不进格子**。
-    //   无记录 ⇒ ⓘ 里放那句「为什么这不等于没崩过」（`§2.2`：区分保留，只换位置）；
-    //   记到过事 ⇒ `[详情]` 展开四个计数（分开列）与完整记录去哪看。
-    //   重画会跑很多遍（`settleStatus` 轮询），所以先把上一次的附件摘掉再挂。
     for (const extra of col.querySelectorAll("[data-health-extra]")) extra.remove();
-    const detail = h === null ? null : describeHealthDetail(h);
-    if (detail === null) {
-      const why = makeInfoIcon(HEALTH_UNKNOWN_WHY);
-      why.dataset.healthExtra = "why";
-      col.appendChild(why);
+    const face = decodeHealthFace(raw);
+    if (face === null) {
+      el.textContent = copyText("backend.health.badShape");
+      delete el.dataset.health;
+      console.warn(`[PB1] ${origin} 的健康读数形状不对：${JSON.stringify(raw)}`);
       return;
     }
-    const more = document.createElement("details");
-    more.dataset.healthExtra = "detail";
-    const sum = document.createElement("summary");
-    sum.textContent = copyText("backend.health.detail");
-    const body = document.createElement("div");
-    body.className = "settings-hint";
-    body.textContent = detail;
-    more.append(sum, body);
-    col.appendChild(more);
+    el.textContent = face.summary;
+    el.dataset.health = face.state;
+    if (face.why !== null) {
+      const why = makeInfoIcon(face.why);
+      why.dataset.healthExtra = "why";
+      col.appendChild(why);
+    }
+    if (face.detail !== null) {
+      const more = document.createElement("details");
+      more.dataset.healthExtra = "detail";
+      const sum = document.createElement("summary");
+      sum.textContent = copyText("backend.health.detail");
+      const body = document.createElement("div");
+      body.className = "settings-hint";
+      body.textContent = face.detail;
+      more.append(sum, body);
+      col.appendChild(more);
+    }
   }
 
   /**

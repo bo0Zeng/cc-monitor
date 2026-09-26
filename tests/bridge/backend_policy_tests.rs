@@ -86,77 +86,10 @@ fn without_a_channel_nothing_is_made_up() {
 }
 
 // 〔CP2b · 第四波〕这里原来有三条跨语言逐字对拍（退出行为那张表 · 按清单派生的「每张表都对拍」·
-//   读数那几句「只有一个家」的旧版）。
-//   它们比的是「Rust 那份副本 == TS 那份副本」；文案表立起来之后两侧读**同一条表项**，Rust 副本删了 ——
-//   再比就是同源恒等（恒真），所以连判据一起删，换成下面两条还有东西可比的：
-//   ① 两侧说读数时用的是不是**同一批 key**（逻辑还是两份：哪一档用哪一句，各自写着）；
-//   ② 那几句话的家**只有表一个**（从前的「唯一一个家是 backend-policy.ts」换了家）。
-
-/// 表项 key 的抽取：`copy_text(` / `copyText(` 后面（允许换行缩进）那个以前缀开头的 key，去重。
-fn keys_with_prefix(src: &str, call: &str, prefix: &str) -> std::collections::BTreeSet<String> {
-    let quoted = format!("\"{prefix}");
-    let open = format!("{call}(");
-    let mut out = std::collections::BTreeSet::new();
-    let mut from = 0usize;
-    while let Some(rel) = src[from..].find(&quoted) {
-        let q = from + rel;
-        let at = q + 1;
-        let end = src[at..].find('"').map(|k| at + k).unwrap_or(src.len());
-        if src[..q].trim_end().ends_with(&open) {
-            out.insert(src[at..end].to_string());
-        }
-        from = end;
-    }
-    out
-}
-
-/// ★ ① 两侧说「崩没崩」的读数时，用的是**同一批表项**。
-///
-/// TS 那侧 `describeBackendHealth`（界面）与 Rust 那侧 `describe_health`（日志 / 测试）各写一份三档逻辑；
-/// 句子已经同源，会漂的只剩「哪一档取哪一句」。只在 TS 一侧的两句（ⓘ 那句 `unknownWhy`、
-/// `[详情]` 那句 `detail`）登记在下面，不进比较。
-#[test]
-fn both_sides_describe_health_with_the_same_keys() {
-    const TS_ONLY: &[&str] = &[
-        "backendPolicy.health.unknownWhy",
-        "backendPolicy.health.detail",
-    ];
-    let ts: std::collections::BTreeSet<String> = keys_with_prefix(
-        include_str!("../../src/backend-policy.ts"),
-        "copyText",
-        "backendPolicy.health.",
-    )
-    .into_iter()
-    .filter(|k| !TS_ONLY.contains(&k.as_str()))
-    .collect();
-    let rs = keys_with_prefix(
-        &guard_core::production_code(include_str!("../../src/bridge/src/backend_policy.rs")),
-        "copy_text",
-        "backendPolicy.health.",
-    );
-    // 反空真：今天是四档用的四句（unknown · clean · crashed · lastMissing）。
-    assert_eq!(
-        rs.len(),
-        4,
-        "Rust 那侧读数用到的表项不是 4 条：{rs:?} —— 抽取器坏了或档数变了，回来重判"
-    );
-    assert_eq!(
-        ts, rs,
-        "两侧说读数时用的表项不一样 —— 某一档只有一侧有，或两侧拿了不同的句子"
-    );
-    // 正控：抽取器认得 TS 那侧只在界面用的两句（它们在，只是登记了不比）。
-    let all_ts = keys_with_prefix(
-        include_str!("../../src/backend-policy.ts"),
-        "copyText",
-        "backendPolicy.health.",
-    );
-    for k in TS_ONLY {
-        assert!(
-            all_ts.contains(*k),
-            "TS 那侧找不到登记为只在界面用的 {k} —— 抽取器瞎了或那句删了，回来改登记"
-        );
-    }
-}
+//   读数那几句「只有一个家」的旧版）。文案表立起来之后两侧读**同一条表项**，Rust 副本删了，对拍随之删。
+// 〔PB1 · `设计/90 §4` 阶段 B〕随后留下的那条「两侧说读数时用的是不是同一批 key」也退役了：
+//   读数的三档判定只剩 [`health_face`] 一份（TS 那份删了，`judgment-single-home` 的 J21 钉它零实现），
+//   只剩一侧再比就是恒真。接班的是下面那几条行为判据（三档逐格 · 金样 · 真命令接线）。
 
 /// ★★ ② 退出行为与崩溃读数的那几句话**只有一个家：文案表**。
 ///
@@ -198,14 +131,17 @@ fn the_backend_policy_copy_has_exactly_one_home() {
         .as_object()
         .expect("文案表没有 entries")
         .iter()
-        .filter(|(k, _)| k.starts_with("backendPolicy."))
+        // 〔PB1〕健康那六句的 key 随判定归了本文件的面（`rsBackendPolicy.health.*`，`设计/91 §5.5`），原文一字没改。
+        .filter(|(k, _)| {
+            k.starts_with("backendPolicy.") || k.starts_with("rsBackendPolicy.health.")
+        })
         .map(|(k, v)| (k.clone(), v["zh"].as_str().unwrap_or_default().to_string()))
         .collect();
-    // 反空真：退出行为 4 句 + 读数 6 句（含只在界面用的 ⓘ 与 [详情]）。
+    // 反空真：退出行为 4 句 + 读数 6 句（含 ⓘ 与 [详情] 那两句）。
     assert_eq!(
         lines.len(),
         10,
-        "表里 backendPolicy.* 不是 10 条：{lines:?}"
+        "表里 backendPolicy.* ＋ rsBackendPolicy.health.* 不是 10 条：{lines:?}"
     );
     for (key, zh) in &lines {
         let hit: Vec<&str> = homes
@@ -531,21 +467,23 @@ fn a_refusing_ledger_is_never_silent() {
 /// ★★ `KP3C`：那句「无人监护」后面接得上一个**真读数**，而默认档是**答不出来**。
 ///
 /// ★ 这一条是 `§0-1` 那一格的落点：今天不是「它没崩过」，是「没有任何东西在记」。
-/// 把默认档写成 `HEALTH_CLEAN` ⇒ 本条当场红。
+/// 把默认档写成「没崩过」⇒ 本条当场红。
 #[test]
 fn the_reading_defaults_to_unknown_not_to_clean() {
     let never_touched = health("kp3-从来没被记过的一台机");
     assert_eq!(never_touched.seen(), 0, "这台机的夹具串被别的测试用过了");
+    let face = health_face(&never_touched);
+    assert_eq!(face.state, HealthState::Unknown);
     assert_eq!(
-        describe_health(&never_touched),
-        crate::copy_table::copy_text("backendPolicy.health.unknown", &[]),
+        face.summary,
+        crate::copy_table::copy_text("rsBackendPolicy.health.unknown", &[]),
         "一条记录都没有的机器被说成了别的 —— `§0-1` 逐字：\n\
              「今天不是『它没崩过』，是『没有任何东西在记它崩没崩』…… \
              这两句话差得很远，不许混用」。"
     );
     assert!(
         LEDGER_IS_PROCESS_LOCAL,
-        "这本账变成跨进程的了 —— 那 `HEALTH_UNKNOWN` 那一档的理由就变了，回来重判"
+        "这本账变成跨进程的了 —— 那「无记录」那一档（`health_face` 第一档）的理由就变了，回来重判"
     );
     // 崩过之后读数要跟着走，且带得出次数与最后那一行。
     let origin = "kp3-读数跟着走-甲";
@@ -558,15 +496,16 @@ fn the_reading_defaults_to_unknown_not_to_clean() {
     let mut sink = CapturingSink::default();
     record_death(origin, &ev, &mut sink).expect("要记一笔");
     record_death(origin, &ev, &mut sink).expect("要记第二笔");
-    let said = describe_health(&health(origin));
+    let face = health_face(&health(origin));
+    let said = face.summary.clone();
     assert!(
         said.contains("崩过 2 次") && said.contains("signal 6"),
         "读数没带出次数与最后那一行：{said}"
     );
-    assert_ne!(
-        said,
-        crate::copy_table::copy_text("backendPolicy.health.unknown", &[]),
-        "记了两笔，读数还说「答不出来」—— 那句话就永远只是一句静态承诺了"
+    assert_eq!(
+        face.state,
+        HealthState::Crashed,
+        "记了两笔崩溃，那一格却不是「崩过」—— 那句话就永远只是一句静态承诺了"
     );
     // 占位符必须真的被填掉（漏一个 `replace` 会把 `{crashed}` 原样端到用户眼前）。
     for ph in ["{crashed}", "{last}", "{misread}"] {
@@ -623,32 +562,141 @@ fn the_production_sink_really_hands_the_line_to_the_log() {
     });
 }
 
-/// ★ `KP3C` 的另一半：那三支**真的写在 TS 那份文件里**。
+// 〔PB1〕这里原来有一条逐行钉 TS 三档的源码判据；三档搬进 [`health_face`]、TS 那份删了，它随之退役。
+//   接班：下面两条（判准逐格 · 成品金样）＋ `judgment-single-home` 的 J21（TS 零实现）。
+
+/// 造一份读数（只有四个计数与短摘要要紧；账行那一格给个占位，界面从来不读它）。
+fn reading(
+    crashed: u32,
+    refused: u32,
+    never_started: u32,
+    misread: u32,
+    brief: Option<&str>,
+) -> Health {
+    Health {
+        crashed,
+        refused,
+        never_started,
+        misread,
+        last: brief.map(|b| format!("账行（只落日志）：{b}")),
+        last_brief: brief.map(str::to_string),
+    }
+}
+
+/// ★★ 〔PB1 · P2〕**那条区分的判准**逐格钉死：全零 ⇒ 无记录；四个计数**任一**非零 ⇒ 不是无记录；
+/// 只有 `crashed` 非零才是崩过。
 ///
-/// ⚠ **诚实边界**：本件够不着 vitest 的写区（`tests/backend-policy.vitest.ts` 不在写区，
-/// `settings/backend-section.vitest.ts` 也不在）⇒ TS 那侧的**运行时**行为今天没有判据，
-/// 这一条只证「那三支写在那儿」。要真判它得在前端加一个测试文件，交回里点名了。
+/// 五格缺一不可：只钉全零那一格的话，把判准写成 `crashed == 0` 照样绿 ——
+/// 而那会把一台记到过 2 次读坏了的机器说成「答不出来」（可它明明有账）；
+/// 四个计数各自 = 1 那四格就是这条判准的全部内容（`设计/70 §2.2`：「判准是『账上一条记录都没有』，不是 `crashed === 0`」）。
 #[test]
-fn the_health_reading_branches_are_wired_into_the_typescript() {
-    let ts = include_str!("../../src/backend-policy.ts");
-    assert!(
-        ts.len() > 500,
-        "那份文件只读到 {} 字节 —— 人群坏了",
-        ts.len()
-    );
-    for line in [
-        "export function describeBackendHealth(h: BackendHealth): string {",
-        "if (seen === 0) return HEALTH_UNKNOWN;",
-        // 〔ST2 · 步 6〕读坏了几次挪进 `[详情]`，这一档不再带占位符。
-        "if (h.crashed === 0) return HEALTH_CLEAN;",
-    ] {
-        guard_core::pin_line(ts, line).unwrap_or_else(|why| {
-            panic!(
-                "{why}\n\
-                     ⇒ TS 那侧的读数分支变了。Rust 这侧 `describe_health` 与它\n\
-                     **逐格对应**，而两边漂了不会有任何东西报错。"
+fn the_health_face_is_judged_by_the_whole_ledger_not_by_crashes_alone() {
+    let cells: [(&str, Health, HealthState); 5] = [
+        ("全零", reading(0, 0, 0, 0, None), HealthState::Unknown),
+        (
+            "只崩过 1 次",
+            reading(1, 0, 0, 0, Some("崩了，signal 9")),
+            HealthState::Crashed,
+        ),
+        (
+            "只被拒 1 次",
+            reading(0, 1, 0, 0, Some("被拒了，exit 2")),
+            HealthState::Clean,
+        ),
+        (
+            "只没起来 1 次",
+            reading(0, 0, 1, 0, Some("从来没起来，没有退出状态")),
+            HealthState::Clean,
+        ),
+        (
+            "只读坏 1 次",
+            reading(0, 0, 0, 1, Some("读坏了，退出状态未知")),
+            HealthState::Clean,
+        ),
+    ];
+    for (what, h, want) in &cells {
+        let face = health_face(h);
+        assert_eq!(face.state, *want, "「{what}」判成了 {:?}", face.state);
+        // 每一档给界面的东西也跟着档走：无记录 ⇒ 只有 ⓘ；其余 ⇒ 只有 `[详情]`。
+        match want {
+            HealthState::Unknown => assert!(
+                face.why.is_some() && face.detail.is_none(),
+                "「{what}」是无记录，却没有 ⓘ、或给了 [详情]：{face:?}"
+            ),
+            _ => assert!(
+                face.why.is_none() && face.detail.is_some(),
+                "「{what}」记到过事，却挂着「无记录」的 ⓘ、或没有 [详情]：{face:?}"
+            ),
+        }
+        for s in [Some(&face.summary), face.why.as_ref(), face.detail.as_ref()]
+            .into_iter()
+            .flatten()
+        {
+            assert!(
+                !s.contains('{') && !s.contains('〔'),
+                "「{what}」那一格留着占位符或缺键：{s}"
+            );
+        }
+    }
+}
+
+/// 金样：`tests/__fixtures__/backend-health.golden.json`（TS 解码器读同一份，`settings/backend-section.vitest.ts`）。
+fn health_golden() -> Vec<(String, Health, Value)> {
+    let g: Value = serde_json::from_str(include_str!("../__fixtures__/backend-health.golden.json"))
+        .expect("金样解不开");
+    let cases = g["cases"].as_array().expect("金样没有 cases");
+    cases
+        .iter()
+        .map(|c| {
+            let n = |k: &str| {
+                c["counts"][k]
+                    .as_u64()
+                    .unwrap_or_else(|| panic!("金样缺计数 {k}")) as u32
+            };
+            (
+                c["name"].as_str().expect("金样缺 name").to_string(),
+                reading(
+                    n("crashed"),
+                    n("refused"),
+                    n("neverStarted"),
+                    n("misread"),
+                    c["lastBrief"].as_str(),
+                ),
+                c["face"].clone(),
             )
-        });
+        })
+        .collect()
+}
+
+/// ★★ 〔PB1 · P3〕成品的线上形状两侧同一份：生产的 [`health_face`] 序列化 == 金样（逐格，键集恰好四个）。
+///
+/// 反空真：金样四形、三档都在（少一档，下面那条相等只在剩下的几档上成立）。
+#[test]
+fn the_health_face_matches_the_cross_language_golden() {
+    let golden = health_golden();
+    assert_eq!(golden.len(), 4, "金样不是四形 —— 人群坏了");
+    let states: std::collections::BTreeSet<String> = golden
+        .iter()
+        .map(|(_, _, f)| f["state"].as_str().unwrap_or_default().to_string())
+        .collect();
+    assert_eq!(
+        states.into_iter().collect::<Vec<_>>(),
+        vec!["clean", "crashed", "unknown"],
+        "金样没盖全三档"
+    );
+    for (name, h, want) in &golden {
+        let got = serde_json::to_value(health_face(h)).expect("成品序列化不了");
+        let keys: Vec<&str> = got
+            .as_object()
+            .expect("成品不是对象")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(keys.len(), 4, "「{name}」的成品键集不是四个：{keys:?}");
+        assert_eq!(
+            &got, want,
+            "「{name}」：生产现产的成品与金样对不上 —— 改了文案就照这份更新金样，改了形状就两侧一起改。\n现产：{got}"
+        );
     }
 }
 
@@ -1044,7 +1092,8 @@ fn ui_copy_violations(s: &str) -> Vec<&'static str> {
     out
 }
 
-/// ★★ **进界面的那一格**（`Health::last_brief` → `backend_status` 的 `health.last`）四形全干净，
+/// ★★ **进界面的那一格**（〔PB1〕`backend_status` 的 `health` 成品：`summary` · `why` · `detail` 三句，
+/// 「崩过」那一句接的是 `Health::last_brief`）全干净，
 /// 而**进日志的那一行**（`ledger_line`）照旧带着日志行格式 —— 两边的分工是这条判据的全部内容。
 ///
 /// 反空真：尺子先在一段合成的脏文本上四种全逮到（正控），再在 `ledger_line` 上逮到日志行格式
@@ -1091,9 +1140,25 @@ fn what_reaches_the_settings_panel_carries_no_markdown_no_argument_no_log_format
             "账行不再是日志行格式了 —— 尺子或账行其一坏了"
         );
     }
+    // 〔PB1〕成品里每一句都进界面：金样四形（三档）逐句扫。
+    let golden = health_golden();
+    assert_eq!(golden.len(), 4, "金样少了一形");
+    for (name, h, _) in &golden {
+        let face = health_face(h);
+        for s in [Some(&face.summary), face.why.as_ref(), face.detail.as_ref()]
+            .into_iter()
+            .flatten()
+        {
+            assert_eq!(
+                ui_copy_violations(s),
+                Vec::<&str>::new(),
+                "「{name}」那一格的成品犯了 `70 §2.4`：{s}"
+            );
+        }
+    }
 }
 
-/// ★ 读数里那一格**接的是短摘要，不是账行**：记一笔之后 `describe_health` 说出来的话里
+/// ★ 读数里那一格**接的是短摘要，不是账行**：记一笔之后 [`health_face`] 格子里那一句
 /// 没有日志行格式（原来 `HEALTH_CRASHED` 的 `{last}` 被整条账行填满，截图 2 那一段就是它）。
 #[test]
 fn the_crash_reading_quotes_the_brief_not_the_ledger_line() {
@@ -1116,7 +1181,7 @@ fn the_crash_reading_quotes_the_brief_not_the_ledger_line() {
     );
     let d = verdict(&ev).expect("是死亡");
     assert_eq!(h.last_brief.as_deref(), Some(last_brief(&d).as_str()));
-    let said = describe_health(&h);
+    let said = health_face(&h).summary;
     assert!(
         said.contains("exit -1073741819"),
         "读数里没有退出状态：{said}"
@@ -1128,21 +1193,49 @@ fn the_crash_reading_quotes_the_brief_not_the_ledger_line() {
     );
 }
 
-/// ★ 接线那一半：`backend_status` 那份 JSON 的 `health.last` **接的是短摘要**。
+/// ★★ 〔PB1 · P4〕接线那一半：**真命令** `backend_status` 回的 `health` 就是 [`health_face`] 的成品，
+/// 原料（四个计数 · 短摘要 · 账行）一格都不上线。
 ///
-/// ⚠ 读源码文本（JSON 在 `backend_control.rs` 里拼，要真跑那条命令得起一整条控制通道）——
-/// 如实登记：这是一条接线钉，不是行为判据；行为那半由上面两条纯函数判据管。
+/// 〔PB1〕原来这里是一条钉拼 JSON 那一行的源码判据；远端 origin 那一支不碰通道也不碰进程，
+/// 真命令在测试里跑得动 ⇒ 换成行为判据。
 #[test]
-fn the_status_json_hands_the_panel_the_brief() {
-    let prod = guard_core::production_code(include_str!(
-        "../../src/bridge/src/backend/control/backend_control.rs"
-    ));
-    guard_core::pin_line(&prod, "\"last\": h.last_brief,").unwrap_or_else(|why| {
-        panic!(
-            "{why}\n⇒ `backend_status` 的 `health.last` 不再接 `last_brief` —— \
-             整条账行（日志行格式）又会被拼进设置面板（`70 §2.1` #3）。"
-        )
-    });
+fn the_status_command_hands_the_panel_the_finished_face() {
+    let origin = "pb1-状态接成品-甲";
+    let ev = DeathEvidence {
+        outcome: Outcome::Signalled(9),
+        handshake: Handshake::Spoke,
+        reader: ReaderEnd::CleanEof,
+        start_failure: None,
+    };
+    let mut sink = CapturingSink::default();
+    record_death(origin, &ev, &mut sink).expect("要记一笔");
+    let st =
+        crate::backend::control::backend_control::backend_status(origin.into()).expect("查状态");
+    let got = st.get("health").expect("状态里没有 health 那一格").clone();
+    let want = serde_json::to_value(health_face(&health(origin))).expect("成品序列化不了");
+    assert_eq!(
+        got, want,
+        "`backend_status` 交给界面的不是 `health_face` 的成品"
+    );
+    assert_eq!(
+        got["state"], "crashed",
+        "记了一笔崩溃，交出去的却不是「崩过」那一档：{got}"
+    );
+    let keys: std::collections::BTreeSet<&str> = got
+        .as_object()
+        .expect("health 不是对象")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        keys,
+        ["detail", "state", "summary", "why"].into_iter().collect(),
+        "health 那一格的键不是成品那四个 —— 原料（计数 / 短摘要 / 账行）又上线了，界面就能再判一遍"
+    );
+    // 没记过的那一台：同一条命令回「无记录」那一档（远端今天恒是这一档 —— 那是真话，不是缺席）。
+    let quiet = crate::backend::control::backend_control::backend_status("pb1-没记过的一台".into())
+        .expect("查状态");
+    assert_eq!(quiet["health"]["state"], "unknown");
 }
 
 // ── 〔S5 · 第四波 · `设计/00 §1.5.3`〕死亡账说人话：`0xC000013A` ─────────────────────────

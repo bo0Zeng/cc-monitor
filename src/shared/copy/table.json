@@ -9246,6 +9246,11 @@
       "zh": "详情",
       "args": []
     },
+    "backend.health.badShape": {
+      "kind": "error",
+      "zh": "健康读数的格式不对",
+      "args": []
+    },
     "backend.buildCells.exitKills": {
       "kind": "control",
       "zh": "monitor 退出时结束它",
@@ -13702,32 +13707,32 @@
       "zh": "那台机器上的退出策略读不出来，按默认（不结束）办。这不等于有人这么选过",
       "args": []
     },
-    "backendPolicy.health.unknown": {
+    "rsBackendPolicy.health.unknown": {
       "kind": "body",
       "zh": "— 无记录",
       "args": []
     },
-    "backendPolicy.health.unknownWhy": {
+    "rsBackendPolicy.health.unknownWhy": {
       "kind": "body",
       "zh": "这里只记这次 monitor 开着以来的退出，关掉 monitor 就清零。所以「无记录」不等于「没崩过」。",
       "args": []
     },
-    "backendPolicy.health.clean": {
+    "rsBackendPolicy.health.clean": {
       "kind": "body",
       "zh": "没崩过（这次 monitor 开着以来）",
       "args": []
     },
-    "backendPolicy.health.crashed": {
+    "rsBackendPolicy.health.crashed": {
       "kind": "body",
       "zh": "⚠ 崩过 {crashed} 次 · 最后一次：{last}",
       "args": ["crashed", "last"]
     },
-    "backendPolicy.health.lastMissing": {
+    "rsBackendPolicy.health.lastMissing": {
       "kind": "body",
       "zh": "没留下记录",
       "args": []
     },
-    "backendPolicy.health.detail": {
+    "rsBackendPolicy.health.detail": {
       "kind": "body",
       "zh": "这次 monitor 开着以来：崩了 {crashed} 次 · 被拒 {refused} 次 · 没起来 {neverStarted} 次 · 读坏了 {misread} 次。读坏是 monitor 这一侧的事，不算它崩。每一次的完整记录在日志文件里。",
       "args": ["crashed", "refused", "neverStarted", "misread"]
