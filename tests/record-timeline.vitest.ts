@@ -67,3 +67,56 @@ describe("RecordTimeline F40b 查询扩展", () => {
     expect(tl.maxSeq).toBe(10);
   });
 });
+
+/**
+ * 〔W5-RENDER R6〕`设计/10 §3.5` D4 逐字：「`insertBefore` 的锚点可能已过期 ⇒ 降级成末尾追加，DOM 临时错序
+ * （账本仍对，等下次折叠 rebuild 自愈）」。现打：rebuild **不**重排卡（它只解开 / 重包），错序不会自愈；
+ * 而锚点在折叠段里时，原来爬到顶层、插在整段之前 —— 新卡若该落在段中间，同样错序。
+ * 判据（相等）：两种锚点状态下插一条，**文档序**（按 `#seq` 文本取）== seq 序；已离场的后继被出账。
+ */
+describe("D4 · 锚点离场 / 在折叠段里：插入仍按 seq 序（`设计/10 §3.5`）", () => {
+  const docOrder = (stream: MessageStream): string[] =>
+    [...stream.contentElement.querySelectorAll("[data-t]")].map((e) => e.textContent ?? "");
+  const card = (seq: number): HTMLElement => {
+    const el = document.createElement("div");
+    el.dataset.t = "1";
+    el.textContent = `#${seq}`;
+    return el;
+  };
+
+  it("后继被外部摘出 DOM（没出账）⇒ 新卡插在下一个还在的后继前，离场的出账", () => {
+    const { tl, stream } = setup();
+    const els = new Map<number, HTMLElement>();
+    for (const s of [10, 20, 30]) {
+      const el = card(s);
+      els.set(s, el);
+      tl.insert({ seq: s, element: el, kind: "card", toolGroup: null });
+    }
+    els.get(20)!.remove(); // 摘 DOM、不删账 —— 锚点过期
+    tl.insert({ seq: 15, element: card(15), kind: "card", toolGroup: null });
+    expect(docOrder(stream)).toEqual(["#10", "#15", "#30"]);
+    expect(tl.size).toBe(3); // 20 出账了
+  });
+
+  it("锚点在折叠段里 ⇒ 新卡落在段内它该在的位置（不是整段之前）", () => {
+    const { tl, stream } = setup();
+    const els = new Map<number, HTMLElement>();
+    for (const s of [10, 20, 30, 40]) {
+      const el = card(s);
+      els.set(s, el);
+      tl.insert({ seq: s, element: el, kind: "card", toolGroup: null });
+    }
+    // 照 BranchFolder.wrapRun 的形状把 20、30 包进一个折叠段
+    const wrap = document.createElement("div");
+    wrap.className = "branch-fold-wrap";
+    const body = document.createElement("div");
+    const inner = document.createElement("div");
+    body.appendChild(inner);
+    wrap.appendChild(body);
+    stream.contentElement.insertBefore(wrap, els.get(20)!);
+    inner.appendChild(els.get(20)!);
+    inner.appendChild(els.get(30)!);
+    tl.insert({ seq: 25, element: card(25), kind: "card", toolGroup: null });
+    expect(docOrder(stream)).toEqual(["#10", "#20", "#25", "#30", "#40"]);
+  });
+});

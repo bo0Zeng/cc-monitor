@@ -130,11 +130,11 @@ describe("② 写：只动自己那个键（`B` 落地时不许互相写没）",
   });
 
   it("`tabCollections` 一个字节不碰（`§4` 逐字「不动 tabCollections」）", async () => {
-    mockLoad.mockResolvedValueOnce({ tabCollections: [{ id: "c1", name: "n", members: [] }] } as never);
+    mockLoad.mockResolvedValueOnce({ tabCollections: [{ id: "c1", name: "n" }] } as never);
     await setTabOrder(["a"]);
     const written = mockSave.mock.calls[0][0] as Record<string, unknown>;
     expect(written.tabCollections, "顺序落盘把集合改了 ⇒ `§4`「新的东西住新地方」破了").toEqual([
-      { id: "c1", name: "n", members: [] },
+      { id: "c1", name: "n" },
     ]);
   });
 
@@ -285,11 +285,11 @@ describe("⑥ 写 pinned：只动自己那个键（与 `②` 互为镜像）", (
 
   it("`tabCollections` 一个字节不碰", async () => {
     mockLoad.mockResolvedValueOnce({
-      tabCollections: [{ id: "c1", name: "n", members: [] }],
+      tabCollections: [{ id: "c1", name: "n" }],
     } as never);
     await setPinned([pin()]);
     const written = mockSave.mock.calls[0][0] as Record<string, unknown>;
-    expect(written.tabCollections).toEqual([{ id: "c1", name: "n", members: [] }]);
+    expect(written.tabCollections).toEqual([{ id: "c1", name: "n" }]);
   });
 
   it("写进去的也过一遍清洗（脏值不许经这条路落盘）", async () => {
@@ -310,7 +310,8 @@ describe("⑦ 🔴 两条路交替写一份**真的在内存里**的 config —�
   let disk: Record<string, unknown>;
   beforeEach(() => {
     vi.clearAllMocks();
-    disk = { tabCollections: [{ id: "c1", name: "保留我", members: ["z"] }] };
+    // 〔GRP1 · V140〕组表只有 `{id, name}`；组员关系住同段的 `tabBar.groupOf.<sid>` —— 顺序 / 固定两条路也不许碰它。
+    disk = { tabCollections: [{ id: "c1", name: "保留我" }], tabBar: { groupOf: { z: "c1" } } };
     mockLoad.mockImplementation(async () => JSON.parse(JSON.stringify(disk)) as never);
     mockSave.mockImplementation(async (v: unknown) => {
       disk = JSON.parse(JSON.stringify(v)) as Record<string, unknown>;
@@ -325,9 +326,8 @@ describe("⑦ 🔴 两条路交替写一份**真的在内存里**的 config —�
     const seg = disk.tabBar as Record<string, unknown>;
     expect(seg.order, "最后一趟的顺序没落上").toEqual(["b", "a"]);
     expect(seg.pinned, "🔴 第三趟（写 order）把 `pinned` 冲掉了").toEqual([pin({ sid: "b" })]);
-    expect(disk.tabCollections, "两条路谁把集合动了").toEqual([
-      { id: "c1", name: "保留我", members: ["z"] },
-    ]);
+    expect(disk.tabCollections, "两条路谁把集合动了").toEqual([{ id: "c1", name: "保留我" }]);
+    expect(seg.groupOf, "〔GRP1〕两条路谁把 tab 的组 id 动了").toEqual({ z: "c1" });
   });
 
   it("反向也走一遍：pinned → order → pinned", async () => {

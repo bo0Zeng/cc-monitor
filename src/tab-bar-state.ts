@@ -25,8 +25,12 @@
  *   否则两条路会互相把对方的键写没。
  *   🔴 这条不靠自觉：`writeSegKey` 是**两个键唯一的写口**（下面那个函数），
  *   而 `tests/tab-bar-state.vitest.ts` 对 `order`/`pinned` **各有一格**专盯它。
+ *
+ * 〔GRP1 · `设计/99 §1` V140〕第三个键 `groupOf`：**每个 tab 自己的组 id**（`tabBar.groupOf.<sid> = <组 id>`）。
+ * V140「组员关系是 tab 自己的属性（tab 上带组 id，随 tab 的持久记录一起存）」⇒ 与固定 / 顺序同段；
+ * 它的写**按 tab 一条路径**（[`groupOfEdit`] 是这条路径唯一的造法），不整张重写 —— 于是盘上没有「一个组的成员名单」这种东西。
  */
-import { loadConfig, patchConfig, setAt } from "./config";
+import { loadConfig, patchConfig, removeAt, setAt, type ConfigEdit } from "./config";
 import type { Origin } from "./ipc/origin";
 
 const KEY = "tabBar";
@@ -48,7 +52,7 @@ async function writeSegKey(field: "order" | "pinned", value: unknown): Promise<v
  * 段里两个键唯一的读口。段不是对象（数组 / 字符串 / 缺失）⇒ 回 `undefined`，
  * 由各自的 `sanitize*` 把它变成空表。
  */
-async function readSegKey(field: "order" | "pinned"): Promise<unknown> {
+async function readSegKey(field: "order" | "pinned" | "groupOf"): Promise<unknown> {
   const cfg = (await loadConfig()) as Record<string, unknown>;
   const seg = cfg[KEY];
   if (!seg || typeof seg !== "object" || Array.isArray(seg)) return undefined;
@@ -262,4 +266,44 @@ export async function getPinned(): Promise<PinnedTab[]> {
 /** 写固定表。**只动 `tabBar.pinned` 这一个键**，段里别的键（`order`）原样留着。 */
 export async function setPinned(list: readonly PinnedTab[]): Promise<void> {
   await writeSegKey("pinned", sanitizePinned(list));
+}
+
+// ===== 〔GRP1 · `设计/99 §1` V140〕tab 的组 id（`tabBar.groupOf.<sid>`）=====
+
+/**
+ * 清洗盘上的 `tabBar.groupOf`：`{ <sid>: <组 id> }`。认不出就丢，不抛（照 `sanitizePinned`）。
+ *
+ * - 段不是对象（数组 / 字符串 / 缺失）⇒ 空表。
+ * - 键原样保留（不 `trim`）：它就是写盘那条路径的最后一段，改了它，之后的 `removeAt` 就摘不到原来那条。
+ * - 值必须是非空字符串（一个组 id）；数组 / 对象 / 空串整条丢 —— **这里只认「一个 tab 一个组」**。
+ * ⚠ 「指向的组还在不在」不在这里判（那要组表，住 `tab-bar-prefs.ts::loadCollections`）。
+ */
+export function sanitizeGroupOf(raw: unknown): Map<string, string> {
+  const out = new Map<string, string>();
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const [sid, v] of Object.entries(raw as Record<string, unknown>)) {
+    const gid = typeof v === "string" ? v.trim() : "";
+    if (!sid || !gid) continue;
+    out.set(sid, gid);
+  }
+  return out;
+}
+
+/** 读 `tabBar.groupOf`。读失败**不阻断启动**（`§4` 逐字）：最坏也就是这次 tab 都不带组。 */
+export async function getGroupOf(): Promise<Map<string, string>> {
+  try {
+    return sanitizeGroupOf(await readSegKey("groupOf"));
+  } catch (e) {
+    console.warn("getGroupOf failed:", e);
+    return new Map();
+  }
+}
+
+/**
+ * 🔴 **`tabBar.groupOf.<sid>` 这条路径唯一的造法**：`gid` 非空 ⇒ `set`；`null` ⇒ `remove`（这个 tab 不在任何组里）。
+ *
+ * 不自己写盘：一次分组改动常常要把组表与几个 tab 的这一键**装进同一次** `patchConfig`（`tab-bar-prefs.ts`）。
+ */
+export function groupOfEdit(sid: string, gid: string | null): ConfigEdit {
+  return gid === null ? removeAt([KEY, "groupOf", sid]) : setAt([KEY, "groupOf", sid], gid);
 }

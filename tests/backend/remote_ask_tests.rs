@@ -98,7 +98,9 @@ impl Remote for Recorder {
         &'a self,
         dial: &'a Value,
         command: String,
+        stdin: Option<String>,
     ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
+        assert_eq!(stdin, None, "`ask_with` 只交 argv，不写 stdin");
         self.n.fetch_add(1, Ordering::SeqCst);
         self.calls.lock().unwrap().push((dial.clone(), command));
         Box::pin(async { Ok("答".to_string()) })
@@ -333,4 +335,34 @@ async fn one_shot_argv_refuses_only_what_the_quote_cannot_hold() {
         assert!(e.contains("dev") && e.contains(&format!("{bad:?}")), "{e}");
     }
     assert_eq!(far.n.load(Ordering::SeqCst), 3, "拒了却还是去拨了");
+}
+
+/// 〔W5-AUX · `设计/96 §3.6`〕交给 capture 的 stdin 真进了拨号请求的 `capture.stdin`（缺席 = 一个字节不写），
+/// 命令原样、用法是 capture —— 生产那一个对面（`DialRemote`）就是拿这份请求去跑 `dial::uses::run` 的。
+/// ⚠ 买不到：「写进远端进程 stdin」那一跳要真 sshd（读数见 `W5-AUX.md §7`，不进门禁）。
+#[test]
+fn the_capture_request_carries_the_stdin_line_verbatim_and_only_when_given() {
+    let dial = json!({"host": "h", "port": 22, "user": "u", "key_path": "/k"});
+    let with =
+        crate::remote_ask::capture_request(&dial, "'/b' '--x'".into(), Some("{\"a\":1}\n".into()))
+            .expect("拼得出请求");
+    assert_eq!(with.command, "'/b' '--x'");
+    assert_eq!(with.use_, crate::dial::Use::Capture);
+    let cap = with.capture.expect("capture 参数在");
+    assert_eq!(
+        cap.stdin.as_deref(),
+        Some("{\"a\":1}\n"),
+        "载荷没进 capture.stdin"
+    );
+    assert_eq!(
+        cap.abort_marker.as_deref(),
+        Some(crate::remote_ask::HELLO_MARKER)
+    );
+    let without =
+        crate::remote_ask::capture_request(&dial, "'/b'".into(), None).expect("拼得出请求");
+    assert_eq!(
+        without.capture.expect("capture 参数在").stdin,
+        None,
+        "没给 stdin 却写了"
+    );
 }

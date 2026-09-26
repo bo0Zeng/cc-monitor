@@ -371,6 +371,7 @@ describe("秤 3 · 一屏门控：这杆秤能红吗", () => {
         "     600 条里只有 20 张卡 ⇒ 461px 仍不足一屏。",
         "     ⇒ 改常数只把「虚高提前停」这一半修掉；「轮数封顶」是**另一半**，",
         "       归 `设计/17 §2.3`（门控换判据）。别拿这份读数当「半屏已修复」。",
+        "  〔W5-RENDER R7〕另一半已落：生产门控不再到 4 轮为止，一次调用补不满就下一帧接着补 —— 见本文件「丁」段（驱动真 TabStreamView）。",
       ].join("\n"),
     );
     // 这条不断言判据,它只产读数;上面两条才是判据。
@@ -395,5 +396,290 @@ describe("秤 3 · 一屏门控：这杆秤能红吗", () => {
     );
     // 只产读数,不拿它当门禁 —— 它记的是一条「设计的断言没复现」的事实。
     expect(before.truePx).toBeGreaterThan(CLIENT_HEIGHT);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 丁：驱动**生产的** `TabStreamView`（W5-RENDER R7）
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// 上面的仿真抄的是循环的复制品（`MAX_ROUNDS = 4`），它钉的是「旧门控为什么必须换」的红态，不是今天的行为。
+// 本段让**真的** `TabManager` / `TabStreamView` 跑一次启动重放：jsdom 没有布局 ⇒ 给 `getBoundingClientRect`
+// 装一个按 DOM 序堆叠的假布局（卡高 = 上面同一份 token 手算真高 `TRUE_H_PX`，视口 800 px），
+// 生产的 `contentReachesBottom` 就读得到「最后一张卡够没够到下沿」。
+//
+// 守的要求：`设计/17 §2.3`「判据换成不依赖估值的量；**并连轮数封顶（`round < 4`）一起处置**」·
+// `设计/10 §3.3` B2「物化循环硬上限 4 轮 × 150 条 —— 秤 3 证实最稀疏那一档估高再准也补不满一屏」。
+// 判据：重放结束、帧跑完之后，「真实可见卡高 ≥ 视口」或「账本空了」二者必居其一（稀疏风暴 8 块 × 150 条，每块 5 条 retry）；
+// 同时**一次同步调用**的物化量仍有界（批结束那一下只取 ≤ 4 × 150 条）—— 余下的下一帧接着补。
+
+vi.mock("@tauri-apps/api/core", async () => {
+  const rig = await import("./test-support/session-viewer-rig");
+  const { withSessionReads } = await import("./test-support/chan-fake");
+  return {
+    invoke: vi.fn(
+      withSessionReads(async (cmd: string, args: { [k: string]: unknown }) =>
+        cmd === "list_user_inputs" ? rig.answerListUserInputs(args as { fromOffset: number }) : undefined,
+      ),
+    ),
+  };
+});
+vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("../src/tasks-panel", () => ({ fetchSessionTasks: vi.fn().mockResolvedValue([]) }));
+vi.mock("../src/turn-notify", () => ({ turnEndNotifier: { observe: vi.fn() } }));
+vi.mock("../src/fork-flow", () => ({ runForkFlow: vi.fn().mockResolvedValue(undefined) }));
+
+import { installViewerRig, line as rigLine, withSession, type RigPayload } from "./test-support/session-viewer-rig";
+import { TabManager, type Tab } from "../src/tabs";
+
+describe("秤 3 · 丁：生产门控（驱动真 TabStreamView ＋ 假布局）", () => {
+  const VIEW_H = CLIENT_HEIGHT;
+  const heightOf = (el: Element): number =>
+    el.classList.contains("card-api-retry") ? TRUE_H_PX["card-api-retry"] : 0;
+  const rect = (top: number, h: number): DOMRect =>
+    ({ top, bottom: top + h, height: h, left: 0, right: 780, width: 780, x: 0, y: top, toJSON: () => ({}) }) as DOMRect;
+  let restoreRect: (() => void) | null = null;
+
+  /** 假布局：`.stream` = 视口；`.stream-content` 的直接子节点按 DOM 序堆叠、各取 token 手算真高。 */
+  function installFakeLayout(): void {
+    const proto = HTMLElement.prototype;
+    const orig = proto.getBoundingClientRect;
+    proto.getBoundingClientRect = function (this: HTMLElement): DOMRect {
+      if (this.classList.contains("stream")) return rect(0, VIEW_H);
+      const parent = this.parentElement;
+      if (parent?.classList.contains("stream-content")) {
+        let top = 0;
+        for (const sib of Array.from(parent.children)) {
+          if (sib === this) break;
+          top += heightOf(sib);
+        }
+        return rect(top, heightOf(this));
+      }
+      return rect(0, 0);
+    };
+    restoreRect = () => {
+      proto.getBoundingClientRect = orig;
+    };
+  }
+
+  afterEach(() => {
+    restoreRect?.();
+    restoreRect = null;
+    vi.unstubAllGlobals();
+  });
+
+  const retry = (seq: number): RigPayload =>
+    withSession(
+      rigLine(seq, {
+        type: "system",
+        subtype: "api_error",
+        level: "error",
+        retryAttempt: (seq % 5) + 1,
+        maxRetries: 5,
+        error: { formatted: "Connection error (ECONNRESET)" },
+        timestamp: "2026-09-10T00:00:00.000Z",
+        uuid: `r${seq}`,
+        parentUuid: null,
+      }),
+      "s2",
+    );
+  const skip = (seq: number): RigPayload =>
+    withSession(
+      rigLine(seq, { type: "system", subtype: "informational", timestamp: "2026-09-10T00:00:00.000Z", uuid: `k${seq}` }),
+      "s2",
+    );
+
+  /** 稀疏风暴：`blocks` 块 × 150 条，每块前 `perBlock` 条是 retry、其余不建卡。 */
+  function storm(blocks: number, perBlock: number): RigPayload[][] {
+    const out: RigPayload[][] = [];
+    for (let b = 0; b < blocks; b++) {
+      const blk: RigPayload[] = [];
+      for (let i = 0; i < MATERIALIZE_TAIL_K; i++) {
+        const seq = b * MATERIALIZE_TAIL_K + i;
+        blk.push(i < perBlock ? retry(seq) : skip(seq));
+      }
+      out.push(blk);
+    }
+    return out;
+  }
+
+  interface Reading {
+    /** 批结束那一次同步调用之后：已建卡的真高 / 已出账（建过卡或跳过）的条数 */
+    syncPx: number;
+    syncTaken: number;
+    /** 帧跑完之后 */
+    settledPx: number;
+    settledPending: number;
+    frames: number;
+  }
+
+  function run(blocks: number, perBlock: number): Reading {
+    const rig = installViewerRig();
+    installFakeLayout();
+    const barEl = document.createElement("div");
+    const streamRootEl = document.createElement("div");
+    document.body.append(barEl, streamRootEl);
+    const tm = new TabManager(barEl, streamRootEl);
+    const tabOf = (sid: string): Tab =>
+      (tm as unknown as { store: { tabs: Map<string, Tab> } }).store.tabs.get(sid)!;
+    const blks = storm(blocks, perBlock);
+    const total = blocks * MATERIALIZE_TAIL_K;
+    // 启动重放的到达序：末块先发（钉 floor、直渲），其余块整块收纳
+    tm.onBatchStart();
+    for (const p of blks[blocks - 1]) tm.onLine(p as never);
+    for (let b = 0; b < blocks - 1; b++) for (const p of blks[b]) tm.onLine(p as never);
+    tm.switchTo("s2");
+    tm.onBatchEnd();
+    const tab = tabOf("s2");
+    const px = (): number =>
+      Array.from(tab.stream.contentElement.children).reduce((s, c) => s + heightOf(c), 0);
+    const syncPx = px();
+    const syncTaken = total - tab.window.pendingCount;
+    let frames = 0;
+    for (; frames < 50; frames++) {
+      const before = tab.window.pendingCount;
+      rig.flushRaf(1);
+      if (tab.window.pendingCount === before) break;
+    }
+    return { syncPx, syncTaken, settledPx: px(), settledPending: tab.window.pendingCount, frames };
+  }
+
+  it("稀疏风暴（8 块 × 150 条、每块 5 条 retry）：帧跑完之后满一屏或账本空；一次同步调用 ≤ 末块 ＋ 4 × 150 条", () => {
+    const r = run(8, 5);
+    console.log(
+      `[秤3·丁] 同步：真高 ${r.syncPx.toFixed(0)}px · 出账 ${r.syncTaken} 条 ｜ 帧跑完（${r.frames} 帧）：` +
+        `真高 ${r.settledPx.toFixed(0)}px · 账本余 ${r.settledPending} 条`,
+    );
+    // 反空真：假布局真的被读到了（同步那一下至少末块的 5 张卡在）
+    expect(r.syncPx).toBeGreaterThan(0);
+    // 一次同步调用的量仍有界：末块直渲 150 ＋ 物化 ≤ 4 × 150
+    expect(r.syncTaken).toBeLessThanOrEqual(MATERIALIZE_TAIL_K * (1 + MAX_ROUNDS));
+    // 🔴 判据：满一屏，或者账本空了（真没有更多可补）
+    expect(r.settledPx >= VIEW_H || r.settledPending === 0).toBe(true);
+  });
+});
+
+/**
+ * 〔W5-RENDER R9〕`设计/10 §3.3` B5 逐字：「物化队列重建只收 `floorSeq === null` 的 tab ⇒ 钉过水位但还有 pending 的 tab
+ * 只剩上翻一条路」。判据（两向相等）：批结束后空闲物化真的补到的后台 tab 集合 == 手写期望集合；
+ * 以及切进一个「钉过水位、没满一屏、`scrollHeight` 被估值撑高」的 tab 时，按真实布局补到满一屏。
+ * 同一个假布局台子（本文件「丁」段）：卡高按类 —— retry 23.05 px、assistant 1000 px（一张就满屏）。
+ */
+describe("秤 3 · 戊：B5 空闲物化队列收哪些后台 tab（`设计/10 §3.3`）", () => {
+  const VIEW_H = CLIENT_HEIGHT;
+  const heightOf = (el: Element): number =>
+    el.classList.contains("card-api-retry")
+      ? TRUE_H_PX["card-api-retry"]
+      : el.classList.contains("card-assistant")
+        ? 1000
+        : 0;
+  const rect = (top: number, h: number): DOMRect =>
+    ({ top, bottom: top + h, height: h, left: 0, right: 780, width: 780, x: 0, y: top, toJSON: () => ({}) }) as DOMRect;
+  let restore: Array<() => void> = [];
+
+  function installFakeLayout(): void {
+    const proto = HTMLElement.prototype;
+    const orig = proto.getBoundingClientRect;
+    proto.getBoundingClientRect = function (this: HTMLElement): DOMRect {
+      if (this.classList.contains("stream")) return rect(0, VIEW_H);
+      const parent = this.parentElement;
+      if (parent?.classList.contains("stream-content")) {
+        let top = 0;
+        for (const sib of Array.from(parent.children)) {
+          if (sib === this) break;
+          top += heightOf(sib);
+        }
+        return rect(top, heightOf(this));
+      }
+      return rect(0, 0);
+    };
+    restore.push(() => {
+      proto.getBoundingClientRect = orig;
+    });
+  }
+
+  afterEach(() => {
+    for (const f of restore) f();
+    restore = [];
+    vi.unstubAllGlobals();
+  });
+
+  const sys = (sid: string, seq: number, retryCard: boolean): RigPayload =>
+    withSession(
+      rigLine(
+        seq,
+        retryCard
+          ? { type: "system", subtype: "api_error", level: "error", retryAttempt: 1, maxRetries: 5, error: { formatted: "x" }, timestamp: "2026-09-10T00:00:00.000Z", uuid: `${sid}-r${seq}`, parentUuid: null }
+          : { type: "system", subtype: "informational", timestamp: "2026-09-10T00:00:00.000Z", uuid: `${sid}-k${seq}` },
+      ),
+      sid,
+    );
+  const tall = (sid: string, seq: number): RigPayload =>
+    withSession(
+      rigLine(seq, {
+        type: "assistant",
+        uuid: `${sid}-a${seq}`,
+        timestamp: "2026-09-10T00:00:00.000Z",
+        message: { role: "assistant", content: [{ type: "text", text: "一张很高的卡" }] },
+        sessionId: sid,
+        isSidechain: false,
+        parentUuid: null,
+      }),
+      sid,
+    );
+
+  it("批结束后空闲物化补到的后台 tab == {virgin 的 a, 钉过水位没满屏的 b}；满屏的 c · 账本空的 d · 已结束的 e · 当前的 act 都不补", () => {
+    installViewerRig();
+    installFakeLayout();
+    const idle: IdleRequestCallback[] = [];
+    vi.stubGlobal("requestIdleCallback", (cb: IdleRequestCallback) => idle.push(cb));
+    const barEl = document.createElement("div");
+    const streamRootEl = document.createElement("div");
+    document.body.append(barEl, streamRootEl);
+    const tm = new TabManager(barEl, streamRootEl);
+    const tabOf = (sid: string): Tab =>
+      (tm as unknown as { store: { tabs: Map<string, Tab> } }).store.tabs.get(sid)!;
+    // 非批期：act（第一个 ⇒ 当前）· b（一张细条卡钉水位）· c（一张高卡钉水位）· d（一张细条卡钉水位）
+    tm.onLine(sys("act", 5000, true) as never);
+    tm.onLine(sys("b", 5000, true) as never);
+    tm.onLine(tall("c", 5000) as never);
+    tm.onLine(sys("d", 5000, true) as never);
+    // 批期：a / e 是 virgin 后台 tab；b / c 收到更早的行（seq < floor ⇒ 收纳）
+    tm.onBatchStart();
+    for (const sid of ["a", "b", "c", "e"]) for (let s = 0; s < 150; s++) tm.onLine(sys(sid, s, s % 10 === 0) as never);
+    tm.archiveTab("e");
+    const before = new Map(["a", "b", "c", "d", "e", "act"].map((sid) => [sid, tabOf(sid).window.pendingCount]));
+    tm.onBatchEnd();
+    for (let i = 0; i < 20 && idle.length > 0; i++) idle.shift()!({ didTimeout: false, timeRemaining: () => 50 });
+    const touched = new Set([...before].filter(([sid, n]) => tabOf(sid).window.pendingCount < n).map(([sid]) => sid));
+    console.log(`[秤3·戊] 空闲物化补到：${[...touched].sort().join(",")}`);
+    expect(before.get("b"), "反空真：b 的账本得真压着历史").toBeGreaterThan(0);
+    expect(touched).toEqual(new Set(["a", "b"]));
+  });
+
+  it("切进钉过水位、没满一屏、scrollHeight 被估值撑高的 tab ⇒ 按真实布局补满", () => {
+    const rig = installViewerRig();
+    installFakeLayout();
+    vi.stubGlobal("requestIdleCallback", () => 0); // 空闲队列不跑：只看切进来那一下
+    const barEl = document.createElement("div");
+    const streamRootEl = document.createElement("div");
+    document.body.append(barEl, streamRootEl);
+    const tm = new TabManager(barEl, streamRootEl);
+    const tabOf = (sid: string): Tab =>
+      (tm as unknown as { store: { tabs: Map<string, Tab> } }).store.tabs.get(sid)!;
+    tm.onLine(sys("act", 5000, true) as never);
+    tm.onLine(sys("b", 5000, true) as never);
+    tm.onBatchStart();
+    for (let s = 0; s < 1200; s++) tm.onLine(sys("b", s, s % 30 === 0) as never);
+    tm.onBatchEnd();
+    const b = tabOf("b");
+    // 估值把 scrollHeight 撑成「滚得动」（真浏览器里没渲染过的卡贡献的是估值）
+    Object.defineProperty(b.streamEl, "scrollHeight", { configurable: true, get: () => 5000 });
+    Object.defineProperty(b.streamEl, "clientHeight", { configurable: true, get: () => VIEW_H });
+    tm.switchTo("b");
+    for (let i = 0; i < 50; i++) rig.flushRaf(1);
+    const px = Array.from(b.stream.contentElement.children).reduce((s, c) => s + heightOf(c), 0);
+    console.log(`[秤3·戊] 切进 b 之后：真高 ${px.toFixed(0)}px · 账本余 ${b.window.pendingCount}`);
+    expect(px >= VIEW_H || b.window.pendingCount === 0).toBe(true);
   });
 });

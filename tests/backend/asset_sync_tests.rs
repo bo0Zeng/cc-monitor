@@ -88,29 +88,11 @@ impl Machine {
     }
 }
 
-/// POSIX 单引号词的反解（替身对面用；真 shell 那一向由 `a_real_posix_shell…` 验）。
-fn unquote_word(s: &str) -> (String, &str) {
-    let mut out = String::new();
-    let mut rest = s;
-    loop {
-        if let Some(r) = rest.strip_prefix("\\'") {
-            out.push('\'');
-            rest = r;
-            continue;
-        }
-        let Some(r) = rest.strip_prefix('\'') else {
-            return (out, rest);
-        };
-        let end = r.find('\'').expect("引号没闭合");
-        out.push_str(&r[..end]);
-        rest = &r[end + 1..];
-    }
-}
-
-/// 替身对面：按拨号请求里的 `host` 找到那台，照命令跑同一个写口。记下它收过的每一条命令。
+/// 替身对面：按拨号请求里的 `host` 找到那台，照命令跑同一个写口。记下它收过的每一条命令（连同写进 stdin 的那一行）。
 struct FakeRemotes {
     by_host: BTreeMap<String, Machine>,
     seen: Mutex<Vec<(String, String)>>,
+    stdins: Mutex<Vec<Option<String>>>,
 }
 
 impl Remote for FakeRemotes {
@@ -118,6 +100,7 @@ impl Remote for FakeRemotes {
         &'a self,
         dial: &'a Value,
         command: String,
+        stdin: Option<String>,
     ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
         Box::pin(async move {
             let host = dial["host"].as_str().unwrap().to_string();
@@ -125,20 +108,23 @@ impl Remote for FakeRemotes {
                 .lock()
                 .unwrap()
                 .push((host.clone(), command.clone()));
+            self.stdins.lock().unwrap().push(stdin.clone());
             let m = self.by_host.get(&host).ok_or("没这台")?;
             let backend = "/opt/cc b/ccm";
             if command == pull_command(backend) {
+                assert_eq!(stdin, None, "拉那一趟不写 stdin");
                 return m.update(None).map(|v| v.to_string()).map_err(|e| e.1);
             }
-            let rest = command
-                .strip_prefix("printf '%s\\n' ")
-                .ok_or(format!("认不出的命令：{command}"))?;
-            let (payload, tail) = unquote_word(rest);
-            assert_eq!(
-                tail,
-                format!(" | {}", pull_command(backend).replace(PULL_FLAG, PUSH_FLAG))
-            );
-            let v: Value = serde_json::from_str(&payload).map_err(|e| e.to_string())?;
+            // 〔W5-AUX〕推那一趟：命令行逐字 == `'<后端>' --assets-catalog-merge --stdin-line`（不含载荷），载荷恰好一行进 stdin。
+            if command != push_command(backend) {
+                return Err(format!("认不出的命令：{command}"));
+            }
+            let line = stdin.ok_or("推那一趟没写 stdin")?;
+            let payload = line
+                .strip_suffix('\n')
+                .ok_or("stdin 那一行没有换行收尾（对面只读一行，等不到换行就一直等）")?;
+            assert!(!payload.contains('\n'), "载荷不止一行 ⇒ 对面只读得到第一行");
+            let v: Value = serde_json::from_str(payload).map_err(|e| e.to_string())?;
             m.update(Some(&v["catalog"]))
                 .map(|v| v.to_string())
                 .map_err(|e| e.1)
@@ -176,6 +162,7 @@ async fn one_sync_pulls_merges_and_pushes_exactly_what_the_other_side_lacks() {
     let fakes = FakeRemotes {
         by_host: [("r".to_string(), remote.clone())].into(),
         seen: Mutex::new(vec![]),
+        stdins: Mutex::new(vec![]),
     };
     let table = Table::default();
     let out = answer_with(&sync_args("r"), local.fold(), &fakes, &table)
@@ -238,6 +225,7 @@ async fn a_change_fans_out_once_to_every_other_reachable_machine() {
         ]
         .into(),
         seen: Mutex::new(vec![]),
+        stdins: Mutex::new(vec![]),
     };
     let table = Table::default();
     answer_with(&sync_args("r2"), local.fold(), &fakes, &table)
@@ -298,6 +286,7 @@ async fn a_failing_remote_is_said_and_nothing_is_pushed_to_it() {
     let fakes = FakeRemotes {
         by_host: BTreeMap::new(),
         seen: Mutex::new(vec![]),
+        stdins: Mutex::new(vec![]),
     };
     let table = Table::default();
     let out = answer_with(&sync_args("gone"), local.fold(), &fakes, &table)
@@ -316,6 +305,7 @@ async fn half_given_arguments_are_refused() {
     let fakes = FakeRemotes {
         by_host: BTreeMap::new(),
         seen: Mutex::new(vec![]),
+        stdins: Mutex::new(vec![]),
     };
     let table = Table::default();
     for bad in [
@@ -361,34 +351,64 @@ fn push_plan_chunks_under_the_cap_and_refuses_a_single_oversized_machine() {
     assert!(too_big[0].contains("big"));
 }
 
-/// 推的那一形（`printf … | 后端 --assets-catalog-merge`）交给**真 `sh`**：管进去的字节与载荷逐字相等。
+/// 〔W5-AUX · `设计/96 §3.6`〕推那一趟的**命令行里没有载荷**：不论载荷里有什么（单引号 · 反斜杠 · `$` · 反引号 · 中文），
+/// 命令行逐字 == `command_line(后端, [--assets-catalog-merge, --stdin-line])`；载荷只经 stdin 走、恰好一行。
+///
+/// 要求住址：`设计/96 §3.6` 逐字「远端命令走 POSIX shell 管道：与 monitor 起远端后端同一个假设；远端登录 shell 是 fish 之类就不成立。
+/// 根治要给 CLI 面一个『只读一行 stdin』的入口」。此前的 `printf '%s\n' '<json>' | …` 把载荷过 POSIX 单引号拼进命令行 ——
+/// fish 的单引号里 `\\` 与 `\'` 是转义，JSON 里的反斜杠会被吃掉一个；这一形已退役，本条钉它不回来。
 #[test]
-fn a_real_posix_shell_reads_the_piped_payload_back_verbatim() {
-    let payload =
+fn the_push_command_line_carries_no_payload_and_the_payload_rides_stdin_as_one_line() {
+    let nasty =
         "{\"catalog\":{\"machines\":[{\"label\":\"it's \\\"x\\\" — 中文 $HOME `id` \\\\n\"}]}}";
-    let cmd = push_command("cat", payload);
+    let backend = "/opt/cc b/ccm";
+    let cmd = push_command(backend);
     assert_eq!(
         cmd,
-        format!(
-            "printf '%s\\n' {} | 'cat' {PUSH_FLAG}",
-            shell_quote_core::posix_quote(payload)
-        )
+        crate::remote_ask::command_line(backend, &[PUSH_FLAG, crate::STDIN_LINE_FLAG]),
+        "推那一趟的命令行不是「后端路径 ＋ 两个旗标」"
     );
-    // `cat --assets-catalog-merge` 不是我们要的；换成真 cat 读 stdin，只验管道 ＋ 引号那一半。
-    let probe = cmd.replace(&format!(" {PUSH_FLAG}"), "");
+    for frag in ["printf", "|", "machines", "中文", "$HOME"] {
+        assert!(
+            !cmd.contains(frag),
+            "命令行里出现了 `{frag}` —— 载荷（或管道）又回到命令行里了：{cmd}"
+        );
+    }
+    let line = push_stdin(nasty);
+    assert_eq!(
+        line,
+        format!("{nasty}\n"),
+        "stdin 那一行 == 载荷原样 ＋ 一个换行"
+    );
+    assert_eq!(
+        line.matches('\n').count(),
+        1,
+        "stdin 不是恰好一行 ⇒ 对面「只读一行」读不全"
+    );
+    // 命令行本身交给真 `sh` 也跑得通（后端换成 `echo`，印出来的就是那两个旗标）。
     let out = std::process::Command::new("sh")
         .arg("-c")
-        .arg(&probe)
+        .arg(push_command("echo"))
         .output()
         .expect("起 sh");
-    assert!(out.status.success(), "{:?}", out);
+    assert!(out.status.success(), "{out:?}");
     assert_eq!(
         String::from_utf8(out.stdout).unwrap(),
-        format!("{payload}\n")
+        format!("{PUSH_FLAG} {}\n", crate::STDIN_LINE_FLAG)
     );
     assert_eq!(
         pull_command("/opt/a'b/ccm"),
         "'/opt/a'\\''b/ccm' --assets-catalog"
+    );
+}
+
+/// 一块载荷（连外面那层 `{"catalog":{"machines":[…]}}` 与换行）装得进远端 CLI 面 stdin 的上限 —— 否则切出来的块对面整块拒。
+#[test]
+fn one_push_chunk_fits_under_the_remote_cli_stdin_cap() {
+    let overhead = "{\"catalog\":{\"machines\":[]}}\n".len() as u64;
+    assert!(
+        PUSH_MAX_BYTES as u64 + overhead <= crate::control::cli_control::MAX_CLI_STDIN,
+        "PUSH_MAX_BYTES（{PUSH_MAX_BYTES}）＋ 外层 {overhead} 字节 > 远端 CLI 面 stdin 上限 —— 切块上限要跟着它"
     );
 }
 

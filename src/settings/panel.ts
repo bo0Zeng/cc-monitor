@@ -451,7 +451,7 @@ export class SettingsPanel {
         wrap.className = "settings-preset-wrap";
         const chip = document.createElement("button");
         chip.type = "button";
-        chip.className = "settings-btn settings-btn-secondary settings-preset";
+        chip.className = "settings-btn settings-preset";
         chip.textContent = cmd;
         chip.title = cmd;
         chip.addEventListener("click", () => {
@@ -463,7 +463,7 @@ export class SettingsPanel {
         // 直到被后来的 12 条挤出去。成例抄 SFTP 书签栏那个 `×`（`sftp/panel.ts:595`）。
         const del = document.createElement("button");
         del.type = "button";
-        del.className = "settings-btn settings-btn-secondary settings-preset-del";
+        del.className = "settings-btn settings-preset-del";
         del.textContent = copyText("settingsPanel.preset.remove");
         // ⚠ **正在生效的那条不给移除**：这张表的含义是「用过的命令」，
         // 而移除一条**此刻正在用**的命令是自相矛盾的 —— 保存时它必然又被记回来
@@ -1529,13 +1529,13 @@ export class SettingsPanel {
     row2.className = "settings-row settings-row-end";
     const pickBtn = document.createElement("button");
     pickBtn.type = "button";
-    pickBtn.className = "settings-btn settings-btn-secondary";
+    pickBtn.className = "settings-btn";
     pickBtn.textContent = copyText("settingsPanel.dataDir.browse");
     pickBtn.addEventListener("click", () => void this.pickClaudeDir());
     row2.appendChild(pickBtn);
     const resetBtn = document.createElement("button");
     resetBtn.type = "button";
-    resetBtn.className = "settings-btn settings-btn-secondary";
+    resetBtn.className = "settings-btn";
     resetBtn.textContent = copyText("settingsPanel.dataDir.reset");
     resetBtn.title = copyText("settingsPanel.dataDir.resetHint");
     resetBtn.addEventListener("click", () => this.resetClaudeDir());
@@ -1751,7 +1751,8 @@ export class SettingsPanel {
   ): HTMLElement {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = `settings-btn settings-btn-${variant}`;
+    // 〔W5-AUX · AR1 拍板 3〕`secondary` 就是默认那一种：原先拼出来的 `settings-btn-secondary` 从没有过规则，已摘。
+    btn.className = variant === "primary" ? "settings-btn settings-btn-primary" : "settings-btn";
     btn.textContent = label;
     btn.addEventListener("click", onClick);
     return btn;

@@ -217,16 +217,6 @@
       "zh": "集合已经有 {cap} 个了，这是上限。删掉一个用不上的集合再建。",
       "args": ["cap"]
     },
-    "tabCollections.full.membersTitle": {
-      "kind": "error",
-      "zh": "没有加进「{name}」",
-      "args": ["name"]
-    },
-    "tabCollections.full.membersBody": {
-      "kind": "error",
-      "zh": "这个集合已经有 {cap} 个标签了，这是上限。先从里面移出几个再加。",
-      "args": ["cap"]
-    },
     "sessionState.deleteLive.confirm": {
       "kind": "body",
       "zh": "会话「{label}」还在跑。\n\n删掉之后 Claude 还会往旧文件里写，这些内容之后 resume 不到。仍要删除？",
