@@ -91,10 +91,12 @@ pub(crate) async fn fetch_session_tasks(
     origin: &Origin,
     session_id: &str,
 ) -> Result<Vec<TaskEntry>, String> {
-    let lines = crate::backend::control::frame_query::lines(
+    use crate::backend::control::frame_query::{self, Deadline};
+    let lines = frame_query::lines(
         origin,
         "tasks-list",
         serde_json::json!({ "sid": session_id }),
+        Deadline::within(frame_query::LINES_BUDGET),
     )
     .await?;
     Ok(parse_task_lines(&lines))
