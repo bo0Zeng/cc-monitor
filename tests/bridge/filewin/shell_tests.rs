@@ -350,10 +350,17 @@ fn directories_lossy_names_and_out_of_range_rows_put_up_nothing() {
         lossy_name: true,
     };
     let mut w = remote_window_with_rows("/srv/data", vec![dir, lossy]);
-    assert!(!w.begin_copy(0), "目录也摆出了「复制为」框");
     assert!(!w.begin_copy(1), "有损名也摆出了「复制为」框");
     assert!(!w.begin_copy(99), "越界下标也摆出了框（或者 panic 了）");
     assert!(w.copy_prompt().is_none());
+    // 〔W5-FILES〕目录**摆得出**「复制为」框了（后端 `recursive: true`，`设计/60 §6.2`），框里记着「源是目录」
+    //   ⇒ 那一趟线上带 `recursive: true`（`copy_tests::a_directory_job_says_recursive_and_its_reply_must_count`）。
+    assert!(w.begin_copy(0), "目录摆不出「复制为」框");
+    let job = w
+        .copy_prompt()
+        .and_then(|p| p.to_job())
+        .expect("框里的名字该能用");
+    assert!(job.is_dir, "目录那一件没标成目录 —— 线上不会带 recursive");
 }
 
 /// 接不上就**出声**：远端源 ＋ 没有运行时 ⇒ 不许静默吞掉一趟复制。

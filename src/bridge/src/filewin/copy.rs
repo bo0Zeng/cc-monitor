@@ -35,7 +35,8 @@
 //!   ⇒ 窗口上**不画**取消那颗按钮（画了就是一颗按了没用的按钮）。大文件复制因此停不下来 —— 如实登记。
 //! - **进度没有了。** 后端一趟做完才回话 ⇒ 窗口上只有「正在复制 …」一行，没有进度条。
 //! - **真机上鼠标点那颗「复制」会不会触发买不到**（本机没有图形会话）。判据喂的是合成事件。
-//! - **目录复制没做** · **多选复制没做** · **复制到别的目录没做**（那个框只改名字，名字里不许带 `/`）。
+//! - 〔W5-FILES〕**目录复制**（后端 `recursive: true`）与**一摞复制到另一栏**（[`run_copy_batch`]）做了；
+//!   「复制为」那个框仍只改名字、仍单选（`设计/60 §6.3`：它要一个名字），名字里不许带 `/`。
 
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -50,14 +51,13 @@ pub const COPY_LABEL: &str = "复制";
 /// 这一行能不能复制。**唯一住址** —— 列表画不画那颗按钮（[`super::rows`]）
 /// 与状态机接不接那一跳（[`super::shell::FileWindow::begin_copy`]），问的都是这一个函数。
 ///
-/// 两档不能，理由各不相同：
+/// 〔W5-FILES〕**目录能复制了**：后端 `files-copy` 带 `recursive: true` 复制整棵（逐条目过路径解析，
+/// `设计/60 §7 #6`；设计住 `调研/第四波记录/W5-FILES.md` §2.2）。今天不能的只剩一档：
 ///
-/// - **目录** —— 后端 `files-copy` 只复制普通文件（目录递归没做，理由同删除不递归：
-///   围栏的射程是一条路径）；第三刀那一版的 SFTP `copy-data` 同样只吃文件句柄。
 /// - **有损名** —— 非 UTF-8 文件名经库有损解码之后**寻址不到真字节**，
 ///   一切写操作灰置（同旧面板 `panel.ts::mkRowBtn` 的 `disabled = e.lossyName`）。
 pub fn is_copyable(r: &Row) -> bool {
-    !r.is_dir && !r.lossy_name
+    !r.lossy_name
 }
 
 /// 一件待复制：**同一台远端、同一个目录**，`from` → `to`。
@@ -67,6 +67,8 @@ pub struct CopyJob {
     pub to: String,
     /// 显示名（＝ 目标那一侧的 basename）。
     pub name: String,
+    /// 〔W5-FILES〕源是目录 ⇒ 线上带 `recursive: true`（复制整棵）；目录不问覆盖（不合并）。
+    pub is_dir: bool,
 }
 
 impl CopyJob {
@@ -95,7 +97,14 @@ impl CopyJob {
             from: from.to_string(),
             to,
             name: new_name.to_string(),
+            is_dir: false,
         })
+    }
+
+    /// 〔W5-FILES〕同一件，标上「源是目录」。
+    pub fn dir(mut self, is_dir: bool) -> Self {
+        self.is_dir = is_dir;
+        self
     }
 
     /// 这一趟**会被盖掉**的是哪一条路径。
@@ -127,6 +136,29 @@ pub enum CopyOutcome {
     },
     /// 起不来 / 半途失败，带原文。
     Failed(String),
+    /// 〔W5-FILES〕一摞（复制到另一栏）跑完的逐件读数。
+    Batch(BatchReport),
+    /// 〔W5-FILES〕一摞里有**目录**撞了名 ⇒ 整摞一件都没做（目录不覆盖、不合并）。带点了名的那句话。
+    Refused(String),
+}
+
+/// 〔W5-FILES〕一件复制成了：几个文件 · 几个目录 · 几个字节。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Copied {
+    pub name: String,
+    pub bytes: u64,
+    pub files: u64,
+    pub dirs: u64,
+}
+
+/// 〔W5-FILES〕一摞复制的逐件结局。**失败不中断后面的件**（同写操作那一摞「一次问完、逐件做」）。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct BatchReport {
+    pub done: Vec<Copied>,
+    /// 撞了名、人答了「都不覆盖」的那几件。
+    pub skipped: Vec<String>,
+    /// `(名字, 原话)`。
+    pub failed: Vec<(String, String)>,
 }
 
 /// 🔴 **正题**：一趟复制的全过程。三段的顺序就是这个函数的结构。
@@ -170,6 +202,64 @@ where
     }
 }
 
+/// 〔W5-FILES〕**一摞复制**（复制到另一栏的多选 / 目录）。三段同 [`run_copy`]，只是「问」是**一次**问完整摞：
+///
+/// ```text
+/// ① probe    每一件的目标在不在（逐件问）
+/// ①'         撞名的里有**目录** ⇒ 整摞不做、点名（目录不覆盖、不合并）—— 一个字节都没动
+/// ② confirm  撞名的**文件**一次交给人（逐件列出）：「覆盖」⇒ 那几件带 `overwrite: true`；「都不覆盖」⇒ 那几件跳过
+/// ③ launch   逐件顺序发（后端阻塞档，一趟一件）；失败记下原话，不中断后面的件
+/// ```
+///
+/// ⚠ `confirm` 是 `FnOnce` —— 「只问一次」有一半由编译器守（同 [`run_copy`]）。
+pub async fn run_copy_batch<P, PFut, C, CFut, L, LFut>(
+    jobs: Vec<CopyJob>,
+    probe: P,
+    confirm: C,
+    launch: L,
+) -> CopyOutcome
+where
+    P: Fn(CopyJob) -> PFut,
+    PFut: Future<Output = bool>,
+    C: FnOnce(Vec<CopyJob>) -> CFut,
+    CFut: Future<Output = bool>,
+    L: Fn(CopyJob, bool) -> LFut,
+    LFut: Future<Output = Result<Copied, String>>,
+{
+    let mut clash: Vec<CopyJob> = Vec::new();
+    for j in &jobs {
+        if probe(j.clone()).await {
+            clash.push(j.clone());
+        }
+    }
+    let dirs: Vec<&str> = clash
+        .iter()
+        .filter(|j| j.is_dir)
+        .map(|j| j.name.as_str())
+        .collect();
+    if !dirs.is_empty() {
+        return CopyOutcome::Refused(format!(
+            "另一栏已经有同名的：{} —— 目录不覆盖、不合并，这一摞一件都没做",
+            dirs.join("、")
+        ));
+    }
+    let overwrite = !clash.is_empty() && confirm(clash.clone()).await;
+    let mut report = BatchReport::default();
+    for j in jobs {
+        let clashing = clash.contains(&j);
+        if clashing && !overwrite {
+            report.skipped.push(j.name);
+            continue;
+        }
+        let name = j.name.clone();
+        match launch(j, clashing).await {
+            Ok(c) => report.done.push(c),
+            Err(e) => report.failed.push((name, e)),
+        }
+    }
+    CopyOutcome::Batch(report)
+}
+
 /// 一句要画在窗口上的话 ＋ 它的档位。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Notice {
@@ -200,6 +290,29 @@ pub fn outcome_notice(o: &CopyOutcome) -> Notice {
             text: format!("复制完成：{bytes} 字节，在那台机器上复制的，没经过你这台机器"),
             loud: false,
         },
+        CopyOutcome::Refused(why) => Notice {
+            text: format!("复制没做：{why}"),
+            loud: true,
+        },
+        CopyOutcome::Batch(r) => {
+            let (files, dirs, bytes) = r.done.iter().fold((0, 0, 0), |(f, d, b), c| {
+                (f + c.files, d + c.dirs, b + c.bytes)
+            });
+            let mut text = format!(
+                "复制完成 {} 项（{files} 个文件 · {dirs} 个目录 · {bytes} 字节），在那台机器上复制的，没经过你这台机器",
+                r.done.len()
+            );
+            if !r.skipped.is_empty() {
+                text.push_str(&format!("；没覆盖、跳过了：{}", r.skipped.join("、")));
+            }
+            for (name, why) in &r.failed {
+                text.push_str(&format!("；{name} 复制失败：{why}"));
+            }
+            Notice {
+                text,
+                loud: !r.failed.is_empty(),
+            }
+        }
     }
 }
 
@@ -249,12 +362,44 @@ pub fn copy_args(job: &CopyJob, overwrite: bool) -> Result<serde_json::Value, St
             job.from, job.to
         ));
     }
-    Ok(serde_json::json!({
+    let mut v = serde_json::json!({
         "root": root,
         "from": super::source::remote_basename(&job.from),
         "to": super::source::remote_basename(&job.to),
         "overwrite": overwrite,
-    }))
+    });
+    mark_recursive(&mut v, job);
+    Ok(v)
+}
+
+/// 〔W5-FILES〕源是目录 ⇒ 参数里加 `recursive: true`（后端复制整棵；与 `overwrite: true` 同给会被拒 ——
+/// 目录那一件从来不问覆盖，所以这里的 `overwrite` 恒是 `false`）。文件那一形一个键都不多。
+pub fn mark_recursive(v: &mut serde_json::Value, job: &CopyJob) {
+    if job.is_dir {
+        v["recursive"] = serde_json::Value::Bool(true);
+    }
+}
+
+/// 〔W5-FILES〕`files-copy` 的应答 → [`Copied`]。`bytes` 必须在；`files` / `dirs` 是这一波新加的键 ——
+/// 文件那一件在旧后端上没有它们 ⇒ 按「一个文件」记（旧后端只会复制文件）；目录那一件必须有（旧后端根本不会复制目录）。
+pub fn copied_from_reply(job: &CopyJob, d: &serde_json::Value) -> Result<Copied, String> {
+    let bytes = d
+        .get("bytes")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| format!("`{CMD_COPY}` 的应答里没有 `bytes`，和约定的不一样"))?;
+    let count = |k: &str, old: u64| -> Result<u64, String> {
+        match d.get(k).and_then(serde_json::Value::as_u64) {
+            Some(n) => Ok(n),
+            None if !job.is_dir => Ok(old),
+            None => Err(format!("`{CMD_COPY}` 的应答里没有 `{k}`，和约定的不一样")),
+        }
+    };
+    Ok(Copied {
+        name: job.name.clone(),
+        bytes,
+        files: count("files", 1)?,
+        dirs: count("dirs", 0)?,
+    })
 }
 
 /// 真起一趟复制 —— 〔F7a · 第三波 2026-09-24〕经通道问后端 `files-copy`。
@@ -296,6 +441,8 @@ pub struct CopyPrompt {
     pub dir: String,
     /// 正在编辑的新名字。
     pub new_name: String,
+    /// 〔W5-FILES〕源是目录（复制整棵）。
+    pub is_dir: bool,
 }
 
 impl CopyPrompt {
@@ -311,12 +458,13 @@ impl CopyPrompt {
             src_name: r.name.clone(),
             dir: dir.to_string(),
             new_name: Self::suggest(&r.name),
+            is_dir: r.is_dir,
         }
     }
 
     /// 框里那个名字变成一趟真复制。名字不合法 ⇒ `None`（调用方据此**出声**）。
     pub fn to_job(&self) -> Option<CopyJob> {
-        CopyJob::beside(&self.from, &self.dir, &self.new_name)
+        CopyJob::beside(&self.from, &self.dir, &self.new_name).map(|j| j.dir(self.is_dir))
     }
 }
 
@@ -337,8 +485,8 @@ pub struct CopyBoard {
 
 #[derive(Default)]
 struct Board {
-    /// 正摆在人面前等答复的那一件（`None` = 没在问）。
-    asking: Option<CopyJob>,
+    /// 正摆在人面前等答复的那几件（空 = 没在问）。〔W5-FILES〕一摞复制一次问完，逐件列出。
+    asking: Vec<CopyJob>,
     /// 答复往哪儿送。
     answer: Option<tokio::sync::oneshot::Sender<bool>>,
     /// 在跑的那一件（名字）。〔F7a〕后端一趟做完才回话 ⇒ 没有进度，只有「在跑」。
@@ -350,10 +498,15 @@ struct Board {
 impl CopyBoard {
     /// 摆出「要覆盖吗」，并交出「答复送哪儿」那一头。
     pub fn ask(&self, job: CopyJob) -> tokio::sync::oneshot::Receiver<bool> {
+        self.ask_many(vec![job])
+    }
+
+    /// 〔W5-FILES〕一次摆出「这几件要覆盖吗」。
+    pub fn ask_many(&self, jobs: Vec<CopyJob>) -> tokio::sync::oneshot::Receiver<bool> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         {
             let mut b = self.inner.lock().unwrap();
-            b.asking = Some(job);
+            b.asking = jobs;
             b.answer = Some(tx);
         }
         self.poke(); // 问题要立刻画出来，别等下一次鼠标动
@@ -361,7 +514,7 @@ impl CopyBoard {
     }
 
     pub fn is_asking(&self) -> bool {
-        self.inner.lock().unwrap().asking.is_some()
+        !self.inner.lock().unwrap().asking.is_empty()
     }
 
     /// 把窗口交给它，好让它在有事发生时敲一下。
@@ -392,7 +545,7 @@ impl CopyBoard {
         {
             let mut b = self.inner.lock().unwrap();
             b.running = None;
-            b.asking = None;
+            b.asking.clear();
             b.last = Some(outcome);
         }
         self.rounds.fetch_add(1, Ordering::SeqCst);
@@ -415,7 +568,7 @@ impl CopyBoard {
         let Some(tx) = b.answer.take() else {
             return false;
         };
-        b.asking = None;
+        b.asking.clear();
         drop(b);
         tx.send(overwrite).is_ok()
     }
@@ -426,11 +579,20 @@ impl CopyBoard {
             let b = self.inner.lock().unwrap();
             (b.asking.clone(), b.running.clone(), b.last.clone())
         };
-        if let Some(job) = asking {
+        if !asking.is_empty() {
             let mut answer: Option<bool> = None;
             egui::Modal::new(egui::Id::new("filewin-copy-overwrite")).show(ui.ctx(), |ui| {
-                ui.heading(format!("远端已经有 {} 了，要覆盖吗？", job.name));
-                ui.label(format!("{} → {}", job.from, job.to));
+                if let [job] = asking.as_slice() {
+                    ui.heading(format!("远端已经有 {} 了，要覆盖吗？", job.name));
+                } else {
+                    ui.heading(format!(
+                        "远端已经有这 {} 个同名文件了，要覆盖吗？",
+                        asking.len()
+                    ));
+                }
+                for job in &asking {
+                    ui.label(format!("{} → {}", job.from, job.to));
+                }
                 ui.horizontal(|ui| {
                     if ui.button("覆盖").clicked() {
                         answer = Some(true);

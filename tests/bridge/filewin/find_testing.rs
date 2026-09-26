@@ -485,11 +485,16 @@ impl FakeBackend {
                         None,
                     );
                 }
+                // 〔W5-FILES〕应答照新后端：`files` / `dirs` 恒在；带 `recursive: true` ⇒ 按「一棵」回一组定值。
+                let tree = args.get("recursive").and_then(|v| v.as_bool()) == Some(true);
+                let (files, dirs) = if tree { (3, 2) } else { (1, 0) };
                 (
                     true,
                     None,
                     None,
-                    Some(serde_json::json!({ "path": root, "bytes": 42 })),
+                    Some(
+                        serde_json::json!({ "path": root, "bytes": 42, "files": files, "dirs": dirs }),
+                    ),
                 )
             }
             // 〔F2〕写面五条：**只记下来、不落盘**（判据要的是「窗口发了哪一条、参数长什么样」），

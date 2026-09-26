@@ -8,6 +8,7 @@ fn job() -> CopyJob {
         from: "/srv/data/big.bin".to_string(),
         to: "/srv/data/big.bin.copy".to_string(),
         name: "big.bin.copy".to_string(),
+        is_dir: false,
     }
 }
 
@@ -426,13 +427,14 @@ fn the_suggested_name_matches_the_old_panel() {
     assert_eq!(p.to_job().unwrap().to, "/srv/data/big.bin.copy");
 }
 
-/// 能复制的只有「普通文件 ＋ 名字寻址得到」那一档。**相等断言，逐档。**
+/// 〔W5-FILES〕能复制的是「名字寻址得到」的那一档 —— 文件与**目录**都行（目录经后端 `recursive: true` 复制整棵，
+/// 要求住址 `设计/60 §6.2`「复制目录」· `§7 #6`）。**相等断言，逐档。**
 #[test]
-fn only_plain_files_with_addressable_names_can_be_copied() {
+fn files_and_directories_with_addressable_names_can_be_copied() {
     assert!(is_copyable(&row("big.bin", false, false)));
     assert!(
-        !is_copyable(&row("adir", true, false)),
-        "目录能复制 —— 后端 `files-copy` 只复制普通文件，目录递归不在这一层"
+        is_copyable(&row("adir", true, false)),
+        "目录复制不了 —— 后端 `files-copy` 已经收 `recursive: true`"
     );
     assert!(
         !is_copyable(&row("\u{FFFD}odd", false, true)),
@@ -462,6 +464,7 @@ fn copy_args_split_the_paths_like_the_other_writes_and_refuse_a_second_directory
         from: "/srv/data/big.bin".into(),
         to: "/srv/other/big.bin".into(),
         name: "big.bin".into(),
+        is_dir: false,
     };
     assert!(
         copy_args(&elsewhere, false).is_err(),
@@ -499,6 +502,7 @@ async fn copying_goes_through_the_channel_with_the_overwrite_policy_on_the_wire(
         from: "/srv/refuse/a".into(),
         to: "/srv/refuse/b".into(),
         name: "b".into(),
+        is_dir: false,
     };
     let e = copy_remote(&wired.line, &origin, &fenced, false)
         .await
@@ -559,4 +563,161 @@ fn the_real_adapter_asks_the_backend_and_touches_no_transfer_machinery() {
     }
     // 反空真：这把尺子认得出「有」。
     assert!(prod.contains("source::ask("));
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 〔W5-FILES〕一摞复制（复制到另一栏的多选 / 目录）
+// 要求住址：`设计/60 §6.2`「复制目录 · 批量复制」· `§6.3`「批量…走『一次问完』」「悄悄跳过其中一项正是…反面」。
+// ════════════════════════════════════════════════════════════════════════
+
+fn named(name: &str, is_dir: bool) -> CopyJob {
+    CopyJob {
+        from: format!("/srv/a/{name}"),
+        to: format!("/srv/b/{name}"),
+        name: name.to_string(),
+        is_dir,
+    }
+}
+
+/// 跑一摞：`there` 是目标已在的那几件；`answer` 是那一问的答复；`fail` 是后端会拒的那几件。
+/// 回 `(结局, 问了几次, 问的是哪几件, 发出去的 (名字, overwrite))`。
+async fn batch(
+    jobs: Vec<CopyJob>,
+    there: &[&str],
+    answer: bool,
+    fail: &[&str],
+) -> (CopyOutcome, usize, Vec<String>, Vec<(String, bool)>) {
+    let asked = std::sync::Arc::new(std::sync::Mutex::new((0usize, Vec::<String>::new())));
+    let sent = std::sync::Arc::new(std::sync::Mutex::new(Vec::<(String, bool)>::new()));
+    let there: Vec<String> = there.iter().map(|s| s.to_string()).collect();
+    let fail: Vec<String> = fail.iter().map(|s| s.to_string()).collect();
+    let (a2, s2) = (asked.clone(), sent.clone());
+    let out = run_copy_batch(
+        jobs,
+        move |j| {
+            let hit = there.contains(&j.name);
+            async move { hit }
+        },
+        move |js| {
+            let mut g = a2.lock().unwrap();
+            g.0 += 1;
+            g.1 = js.iter().map(|j| j.name.clone()).collect();
+            async move { answer }
+        },
+        move |j, ow| {
+            s2.lock().unwrap().push((j.name.clone(), ow));
+            let bad = fail.contains(&j.name);
+            async move {
+                if bad {
+                    Err("后端原话".to_string())
+                } else {
+                    Ok(Copied {
+                        name: j.name.clone(),
+                        bytes: 10,
+                        files: if j.is_dir { 3 } else { 1 },
+                        dirs: if j.is_dir { 2 } else { 0 },
+                    })
+                }
+            }
+        },
+    )
+    .await;
+    let g = asked.lock().unwrap().clone();
+    let s = sent.lock().unwrap().clone();
+    (out, g.0, g.1, s)
+}
+
+#[tokio::test]
+async fn a_batch_with_a_clashing_directory_does_nothing_and_asks_nobody() {
+    let (out, asks, _, sent) = batch(
+        vec![named("f", false), named("d", true)],
+        &["f", "d"],
+        true,
+        &[],
+    )
+    .await;
+    assert!(
+        matches!(&out, CopyOutcome::Refused(w) if w.contains('d')),
+        "{out:?}"
+    );
+    assert_eq!((asks, sent.len()), (0, 0), "目录撞名还问了 / 还发了");
+}
+
+#[tokio::test]
+async fn a_batch_asks_once_about_exactly_the_clashing_files() {
+    let jobs = || vec![named("a", false), named("b", false), named("d", true)];
+    // 答「都不覆盖」：撞名那件跳过，其余照发、不带覆盖。
+    let (out, asks, which, sent) = batch(jobs(), &["b"], false, &[]).await;
+    assert_eq!((asks, which), (1, vec!["b".to_string()]));
+    assert_eq!(sent, vec![("a".into(), false), ("d".into(), false)]);
+    let CopyOutcome::Batch(r) = out else {
+        panic!("不是一摞的结局")
+    };
+    assert_eq!(r.skipped, vec!["b".to_string()]);
+    // 答「覆盖」：撞名那件带覆盖，其余照旧不带。
+    let (_, asks, _, sent) = batch(jobs(), &["b"], true, &[]).await;
+    assert_eq!(asks, 1);
+    assert_eq!(
+        sent,
+        vec![("a".into(), false), ("b".into(), true), ("d".into(), false)]
+    );
+    // 不撞名 ⇒ 一次都不问（弹一个空框是噪音）。
+    let (_, asks, _, sent) = batch(jobs(), &[], true, &[]).await;
+    assert_eq!((asks, sent.len()), (0, 3));
+}
+
+#[tokio::test]
+async fn a_failure_in_a_batch_is_named_and_does_not_stop_the_rest() {
+    let (out, _, _, sent) = batch(
+        vec![named("a", false), named("d", true), named("z", false)],
+        &[],
+        false,
+        &["a"],
+    )
+    .await;
+    assert_eq!(sent.len(), 3, "第一件失败之后后面的没发");
+    let n = outcome_notice(&out);
+    assert!(n.loud, "有失败却不是警告档");
+    assert!(
+        n.text
+            .contains("复制完成 2 项（4 个文件 · 2 个目录 · 20 字节）")
+            && n.text.contains("a 复制失败：后端原话"),
+        "{}",
+        n.text
+    );
+}
+
+/// 目录那一件线上多 `recursive: true`；文件那一件一个键都不多。应答解析：文件那件在旧后端（没有 `files` / `dirs`）上按「一个文件」记，目录那件缺键就报错。
+#[test]
+fn a_directory_job_says_recursive_and_its_reply_must_count() {
+    let f = CopyJob::beside("/srv/a/x", "/srv/a", "y").unwrap();
+    let d = CopyJob::beside("/srv/a/x", "/srv/a", "y")
+        .unwrap()
+        .dir(true);
+    assert_eq!(copy_args(&f, false).unwrap().get("recursive"), None);
+    assert_eq!(copy_args(&d, false).unwrap()["recursive"], true);
+    let old = serde_json::json!({"bytes": 5});
+    assert_eq!(
+        copied_from_reply(&f, &old),
+        Ok(Copied {
+            name: "y".into(),
+            bytes: 5,
+            files: 1,
+            dirs: 0
+        })
+    );
+    assert!(
+        copied_from_reply(&d, &old).is_err(),
+        "目录那件缺条数竟然收了"
+    );
+    let new = serde_json::json!({"bytes": 9, "files": 3, "dirs": 2});
+    assert_eq!(
+        copied_from_reply(&d, &new),
+        Ok(Copied {
+            name: "y".into(),
+            bytes: 9,
+            files: 3,
+            dirs: 2
+        })
+    );
 }

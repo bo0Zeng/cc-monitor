@@ -367,7 +367,12 @@ fn what_can_be_done_matches_a_hand_written_table() {
             vec![&file],
             vec![Edit, Copy, Download, Rename, Chmod, Delete],
         ),
-        ("一个目录", vec![&dir], vec![Open, Rename, Chmod, Delete]),
+        // 〔W5-FILES〕目录能复制了（后端 `recursive: true`，`设计/60 §6.2`）⇒ 多一格「复制」。
+        (
+            "一个目录",
+            vec![&dir],
+            vec![Open, Copy, Rename, Chmod, Delete],
+        ),
         (
             "一个超编辑上限的文件",
             vec![&huge],
