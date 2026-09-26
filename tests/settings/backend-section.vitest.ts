@@ -99,24 +99,26 @@ vi.mock("../../src/remote-config", () => ({
 
 vi.mock("../../src/error-toast", () => ({ showActionFailureToast: () => {} }));
 
-import { BACKEND_COLUMNS, BackendSection, stopWarning } from "../../src/settings/backend-section";
+import { BACKEND_COLUMNS, BackendSection, decodeHealthFace, stopWarning } from "../../src/settings/backend-section";
 import type { SessionAccount } from "../../src/accounts";
 import { srcDirOf } from "../test-support/repo-root";
 import COPY_TABLE from "../../src/shared/copy/table.json";
+// 〔PB1〕「健康」那一格的成品金样：Rust 侧由生产的 `health_face` 现产、逐格相等（`backend_policy_tests.rs`），这里读同一份。
+import HEALTH_GOLDEN from "../__fixtures__/backend-health.golden.json";
 import {
   EXIT_KILLS,
   EXIT_SELF_DIES,
   EXIT_UNATTENDED,
   EXIT_UNREADABLE,
-  HEALTH_CLEAN,
-  HEALTH_LAST_MISSING,
-  HEALTH_UNKNOWN,
-  HEALTH_UNKNOWN_WHY,
   LOCAL_ORIGIN,
-  describeBackendHealth,
   describeExitBehavior,
-  describeHealthDetail,
 } from "../../src/backend-policy";
+
+type GoldenFace = { state: string; summary: string; why: string | null; detail: string | null };
+/** 金样里那几形的成品，按名字取（名字就是金样里的 `name`）。 */
+const FACE: Record<string, GoldenFace> = Object.fromEntries(
+  (HEALTH_GOLDEN.cases as { name: string; face: GoldenFace }[]).map((c) => [c.name, c.face]),
+);
 
 /**
  * 人群：这一区的用户可见文案今天住在哪几个文件里。**扩人群是翻转的一半。**
@@ -146,7 +148,8 @@ beforeEach(() => {
   calls.length = 0;
   failNextSet = null;
   exitAnswer = { state: "absent", killOnExit: false, reason: null, path: "x" };
-  status = { channel: true, pid: 42 };
+  // 〔PB1〕`backend_status` 今天恒带 `health` 成品（远端那一格恒是「无记录」）；缺它的那一形单列一格判。
+  status = { channel: true, pid: 42, health: FACE["无记录"] };
   statusQueue = [];
 });
 
@@ -207,18 +210,20 @@ describe("P2s backend 开关区", () => {
     // 〔CP2b〕HEALTH_CRASHED / HEALTH_DETAIL 两个带占位符的模板不再是导出常量（由 copyText 填），直接取表里那一格的原文。
     const tableZh = (key: string): string =>
       (COPY_TABLE.entries as Record<string, { zh: string }>)[key]!.zh;
+    // 〔PB1〕健康那六句的取文口搬到了后端（`backend_policy.rs::health_face`，key 归 `rsBackendPolicy.health.*`）——
+    //   前端这两份里更不许出现它们的原文（界面只排版后端给的成品）。
     const literals = [
       EXIT_KILLS,
       EXIT_UNATTENDED,
       EXIT_SELF_DIES,
       EXIT_UNREADABLE,
-      HEALTH_UNKNOWN,
-      HEALTH_CLEAN,
-      tableZh("backendPolicy.health.crashed"),
-      HEALTH_LAST_MISSING,
+      tableZh("rsBackendPolicy.health.unknown"),
+      tableZh("rsBackendPolicy.health.clean"),
+      tableZh("rsBackendPolicy.health.crashed"),
+      tableZh("rsBackendPolicy.health.lastMissing"),
       // 〔ST2 · 步 6〕长的那一半挪进 ⓘ / `[详情]` 之后多出来的两句，同一条规矩。
-      HEALTH_UNKNOWN_WHY,
-      tableZh("backendPolicy.health.detail"),
+      tableZh("rsBackendPolicy.health.unknownWhy"),
+      tableZh("rsBackendPolicy.health.detail"),
     ];
     for (const lit of literals) {
       const homes = files.filter((f) => visibleOf(f.src).includes(lit)).map((f) => f.name);
@@ -333,9 +338,8 @@ describe("P2s backend 开关区", () => {
   });
 
   it("★★ K-P3b：读数**另起一行**画出来，而退出那一行一个字节不变", async () => {
-    // ⚠ 桩里那四个计数与 `last` 就是后端 `backend_status` 那一格的形状
-    //   （键名与 Rust 侧 `Health` 逐格对齐：crashed / refused / neverStarted / misread / last）。
-    const health = { crashed: 2, refused: 0, neverStarted: 1, misread: 3, last: "甲那一行" };
+    // 〔PB1〕桩里那一格就是后端 `backend_status` 的 `health` 成品（金样「崩过」那一形）。
+    const health = FACE["崩过"];
     status = { channel: true, pid: 42, detached: true, health };
     const s = new BackendSection({ headless: true });
     await flush();
@@ -343,8 +347,8 @@ describe("P2s backend 开关区", () => {
     const row = s.element.querySelector<HTMLElement>(".backend-row")!;
     expect(
       row.querySelector<HTMLElement>(".backend-row-health")?.textContent,
-      "读数那一行画的不是 `describeBackendHealth(那份)` —— 界面上那句话与纯函数分叉了",
-    ).toBe(describeBackendHealth(health));
+      "读数那一行画的不是后端给的那一句 —— 界面在自己说话",
+    ).toBe(health.summary);
     // ★ 同一拍里退出那一行仍然**等于**它自己那句 —— 读数没被接在它后面。
     //   把读数接到 `paintExit` 的串后面 ⇒ 本格与 `:116-123` 那四格一起红。
     expect(
@@ -355,24 +359,38 @@ describe("P2s backend 开关区", () => {
     );
   });
 
-  it("★★ K-P3b：后端**没给** `health`（旧后端）⇒ 说「答不出来」，不说「没崩过」", async () => {
-    // ⚠ 这一格是**负例**，方向与上面 `detached` 缺席那一格一致：
-    //   缺席时替后端补一个「四个 0」的读数 ⇒ `describeBackendHealth` 会说「一次都没崩过」，
-    //   而 `K-P3 §0-1` 逐字：「今天不是『它没崩过』，是『没有任何东西在记它崩没崩』……
-    //   这两句话差得很远，不许混用」。
-    status = { channel: true, pid: 42 };
-    const s = new BackendSection({ headless: true });
-    await flush();
-    await flush();
-    const el = s.element.querySelector<HTMLElement>(".backend-row-health");
-    expect(
-      el?.textContent,
-      "后端没给这一格，界面却说出了一个读数 —— 那个读数没有依据",
-    ).toBe(HEALTH_UNKNOWN);
-    expect(
-      el?.textContent === "",
-      "读数那一行是空的 —— 缺席不是「没什么可说」，缺席正是「答不出来」这句话本身",
-    ).toBe(false);
+  it("★★ 〔PB1 · P5〕`health` 缺席 / 形状不对 ⇒ 只在那一格说「格式不对」，不替后端编一档，状态格照画", async () => {
+    // ⚠ 原来缺席 ⇒ 画「— 无记录」—— 那是一条**前端的回落判定**（缺格当无记录）。
+    //   `backend_status` 是 monitor 自己的命令、与界面同一个构建，缺格只能是程序错 ⇒ 说出来（D7 / D11），
+    //   更不许补一个「四个 0」去让谁判出「没崩过」（`K-P3 §0-1`：「答不出来」与「没崩过」不许混用）。
+    const badShape = (COPY_TABLE.entries as Record<string, { zh: string }>)["backend.health.badShape"]!.zh;
+    const unknown = FACE["无记录"]!;
+    for (const [what, health] of [
+      ["缺席", undefined],
+      ["旧形状（四个计数）", { crashed: 0, refused: 0, neverStarted: 0, misread: 0, last: null }],
+      ["多一格", { ...unknown, crashed: 0 }],
+      ["少一格", { state: unknown.state, summary: unknown.summary, why: unknown.why }],
+      ["summary 不是串", { ...unknown, summary: 3 }],
+      ["summary 是空串", { ...unknown, summary: "" }],
+      ["why 是空串", { ...unknown, why: "" }],
+      ["detail 不是串也不是 null", { ...unknown, detail: false }],
+      ["state 是空串", { ...unknown, state: "" }],
+    ] as const) {
+      status = health === undefined ? { channel: true, pid: 42 } : { channel: true, pid: 42, health };
+      const s = new BackendSection({ headless: true });
+      await flush();
+      await flush();
+      const col = s.element.querySelector<HTMLElement>('.backend-row [data-col="health"]')!;
+      const el = col.querySelector<HTMLElement>(".backend-row-health")!;
+      expect(el.textContent, `「${what}」没说格式不对`).toBe(badShape);
+      expect(el.dataset.health, `「${what}」还挂着一档状态`).toBeUndefined();
+      expect(col.querySelectorAll("[data-health-extra]").length, `「${what}」还挂着 ⓘ / [详情]`).toBe(0);
+      expect(
+        s.element.querySelector(".backend-row-state")?.textContent,
+        `「${what}」把状态那一格也带走了 —— 失败该落在健康那一格上`,
+      ).toBe("已连上（pid 42）");
+      expect(decodeHealthFace(health), `解码器收下了「${what}」`).toBeNull();
+    }
   });
 
   it("★ 存不下就把勾回退——屏上写着 A 而实际是 B 比报错更坏", async () => {
@@ -546,22 +564,24 @@ describe("〔ST2 · 设计/70 第二刀 步 6〕后端开关表格式四栏：�
   });
 
   it("★★ 无记录 ⇒ 格子里只写「— 无记录」，那条区分进 ⓘ（`§2.2`：只换位置，不删义）", async () => {
-    status = { channel: true, pid: 42 };
+    const face = FACE["无记录"]!;
+    status = { channel: true, pid: 42, health: face };
     const s = new BackendSection({ headless: true });
     await flush();
     await flush();
     const col = s.element.querySelector<HTMLElement>('.backend-row [data-col="health"]')!;
-    expect(col.querySelector(".backend-row-health")?.textContent).toBe(HEALTH_UNKNOWN);
+    expect(col.querySelector(".backend-row-health")?.textContent).toBe(face.summary);
+    expect(face.summary).toBe("— 无记录");
     const why = col.querySelector<HTMLElement>('[data-health-extra="why"]');
     expect(why, "无记录那一格没有 ⓘ —— 「无记录 ≠ 没崩过」那条区分被一起扫掉了").not.toBeNull();
-    expect(why!.getAttribute("aria-label")).toBe(HEALTH_UNKNOWN_WHY);
-    expect(HEALTH_UNKNOWN_WHY).toContain("不等于「没崩过」");
+    expect(why!.getAttribute("aria-label")).toBe(face.why);
+    expect(face.why).toContain("不等于「没崩过」");
     expect(col.querySelector('[data-health-extra="detail"]'), "无记录却给了 [详情]").toBeNull();
   });
 
   it("★★ 崩过 ⇒ 格子里一句短话 ＋ [详情] 分开列四个计数；账行 / markdown 一个都不上屏", async () => {
-    const health = { crashed: 4, refused: 1, neverStarted: 0, misread: 2, last: "崩了，exit -1073741819" };
-    status = { channel: true, pid: 42, health };
+    const face = FACE["崩过"]!;
+    status = { channel: true, pid: 42, health: face };
     const s = new BackendSection({ headless: true });
     await flush();
     await flush();
@@ -572,14 +592,15 @@ describe("〔ST2 · 设计/70 第二刀 步 6〕后端开关表格式四栏：�
     const more = col.querySelector<HTMLElement>('[data-health-extra="detail"]')!;
     expect(more.tagName).toBe("DETAILS");
     expect(more.querySelector("summary")?.textContent).toBe("详情");
-    expect(more.textContent).toContain(describeHealthDetail(health)!);
+    expect(more.querySelector(".settings-hint")?.textContent).toBe(face.detail);
+    for (const n of ["崩了 4 次", "被拒 1 次", "没起来 0 次", "读坏了 2 次"]) expect(face.detail).toContain(n);
     expect(col.querySelector('[data-health-extra="why"]'), "有记录还挂着「无记录」的 ⓘ").toBeNull();
     // `70 §2.1` 那五种里后端曾经带进来的三种：markdown · 日志行格式 · 设计论证。
     expect(col.textContent).not.toMatch(/\*\*|\[死亡账\]|origin=|下一步：|放大器/);
   });
 
   it("★ 重画很多遍（起完轮询到落定）⇒ 附件不累积：始终恰好一个", async () => {
-    status = { channel: true, pid: 42, health: { crashed: 1, refused: 0, neverStarted: 0, misread: 0, last: "崩了，exit 3" } };
+    status = { channel: true, pid: 42, health: FACE["崩过但最后一次没留住"] };
     const s = new BackendSection({ headless: true });
     await flush();
     await flush();
@@ -589,20 +610,32 @@ describe("〔ST2 · 设计/70 第二刀 步 6〕后端开关表格式四栏：�
     const col = s.element.querySelector<HTMLElement>('.backend-row [data-col="health"]')!;
     expect(col.querySelectorAll("[data-health-extra]").length).toBe(1);
   });
-});
 
-describe("〔ST2〕（原 describe 的收尾占位，保持文件结构）", () => {
-  it("详情那一段按四个计数分开填，占位符全被填掉", () => {
-    const d = describeHealthDetail({ crashed: 1, refused: 2, neverStarted: 3, misread: 4, last: null })!;
-    expect(d).toContain("崩了 1 次");
-    expect(d).toContain("被拒 2 次");
-    expect(d).toContain("没起来 3 次");
-    expect(d).toContain("读坏了 4 次");
-    expect(d).not.toMatch(/\{\w+\}/);
-    expect(describeHealthDetail({ crashed: 0, refused: 0, neverStarted: 0, misread: 0, last: null })).toBeNull();
+  it("★★ 〔PB1 · P3〕金样每一形：后端给什么就画什么 —— 一句 · 状态 · ⓘ 在不在 · [详情] 在不在，逐格相等", async () => {
+    const cases = HEALTH_GOLDEN.cases as { name: string; face: GoldenFace }[];
+    expect(cases.length, "金样不是四形 —— 下面的逐形比在缩水的人群上成立").toBe(4);
+    expect(new Set(cases.map((c) => c.face.state)).size, "金样没盖全三档").toBe(3);
+    for (const { name, face } of cases) {
+      expect(decodeHealthFace(face), `解码器收不下金样「${name}」`).toEqual(face);
+      status = { channel: true, pid: 42, health: face };
+      const s = new BackendSection({ headless: true });
+      await flush();
+      await flush();
+      const col = s.element.querySelector<HTMLElement>('.backend-row [data-col="health"]')!;
+      const el = col.querySelector<HTMLElement>(".backend-row-health")!;
+      expect(el.textContent, `「${name}」格子里那一句`).toBe(face.summary);
+      expect(el.dataset.health, `「${name}」的界面状态`).toBe(face.state);
+      const why = col.querySelector<HTMLElement>('[data-health-extra="why"]');
+      expect(why?.getAttribute("aria-label") ?? null, `「${name}」的 ⓘ`).toBe(face.why);
+      const more = col.querySelector<HTMLElement>('[data-health-extra="detail"] .settings-hint');
+      expect(more?.textContent ?? null, `「${name}」的 [详情]`).toBe(face.detail);
+    }
   });
 });
 
+// 〔PB1 · `设计/90 §4` 阶段 B〕原来这里是「详情那一段按四个计数分开填」（喂 TS 那份 `describeHealthDetail`）。
+//   `[详情]` 那一句改由后端出（`backend_policy.rs::health_face`），TS 那份删了 ⇒ 这一组退役：
+//   计数分开填 · 占位符填掉由 Rust 侧金样与三档逐格判据管，这里上面那条逐形画、逐格比。
 
 /**
  * 〔HX1 · 主会话裁 HX1 拍板项 3 · D-f〕**停本机后端之前数一数走本机中转的活会话，>0 就先问一句、说几条会断**。
