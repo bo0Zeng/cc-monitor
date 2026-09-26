@@ -148,7 +148,7 @@ pub(crate) fn request(
         "port": cfg.port,
         "user": cfg.user,
         "key_path": cfg.key_path,
-        "host_key_fingerprint": cfg.host_key_fingerprint,
+        "host_key_fingerprint": effective_fingerprint(cfg),
         "endpoints": endpoints,
         "use": use_,
         "agent_sock": agent_sock(),
@@ -405,6 +405,8 @@ async fn open(
     };
     // 〔W5-VIS〕握手做完了 ⇒ 记下这一刻：之后若总时限到点，那句话说得出「握手用了多久、远端跑了多久」。
     r.get_mut().mark_shaken();
+    // 〔VIS2 · `设计/15 §3.4 ①`〕ack 成功 = 后端那边鉴权已过 ⇒ 判要不要自动固化。
+    settle_host_key(cfg, req, &ack);
     // 竞速胜者记成 last-good（下次排首）。
     if let Some(won) = ack
         .endpoint
@@ -422,6 +424,218 @@ async fn open(
         ack.fingerprint
     );
     Ok((DialStream { r }, ack))
+}
+
+// ═══ 〔VIS2 · `设计/15 §3.4 ①`「自动固化 ＋ 默认转严格 ＋ 保住多地址那一格」〕host key 自动固化 ═══════════════
+
+/// 一次成功拨号之后，host key 这一格怎么办。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum PinVerdict {
+    /// 测试连接（`probe`）：不自动固化，机器页那颗按钮照旧。
+    NotAsked,
+    /// 配置里已有指纹：这一趟已是严格校验。
+    AlreadyStrict,
+    /// ack 里没有逐地址指纹（老后端）：判不了「各地址一致」⇒ 不固化。
+    NoneReported,
+    /// 报过指纹的每条地址都是这一个 ⇒ 固化它。
+    Pin(String),
+    /// 各地址报的不一样 ⇒ 不固化，说出来让人选。
+    Differs(std::collections::BTreeMap<String, String>),
+}
+
+/// 🔴 判定只此一处。`configured` = 这一趟请求里交的指纹。
+pub(crate) fn pin_verdict(
+    probe: bool,
+    configured: Option<&str>,
+    reported: &std::collections::BTreeMap<String, String>,
+) -> PinVerdict {
+    if probe {
+        return PinVerdict::NotAsked;
+    }
+    if configured.is_some_and(|f| !f.trim().is_empty()) {
+        return PinVerdict::AlreadyStrict;
+    }
+    let mut fps = reported.values();
+    let Some(first) = fps.next() else {
+        return PinVerdict::NoneReported;
+    };
+    if fps.all(|f| f == first) {
+        PinVerdict::Pin(first.clone())
+    } else {
+        PinVerdict::Differs(reported.clone())
+    }
+}
+
+/// 固化那一次写的结局。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PinWrite {
+    Written,
+    /// 盘上那一台已有指纹（别人刚设过）⇒ 不写。
+    AlreadySet,
+    NotFound,
+    /// 同一个 origin ＋ host 有不止一台 ⇒ 不知道写哪台，不写。
+    Ambiguous,
+}
+
+/// 往 `config.json` 的 `remote.hosts` 里那一台写指纹：现读 → 只改那一台的 `hostKeyFingerprint` → 经补丁口
+/// （`config::patch_config_at`）交 `remote.hosts` 一条。⚠ 补丁口够不着数组元素 ⇒ 整列是锁外算的（报备过）。
+pub(crate) fn pin_host_key_at(
+    path: &std::path::Path,
+    origin: &str,
+    host: &str,
+    fp: &str,
+) -> Result<PinWrite, String> {
+    use serde_json::Value;
+    let raw = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let root: Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+    let Some(hosts) = root.pointer("/remote/hosts").and_then(Value::as_array) else {
+        return Ok(PinWrite::NotFound);
+    };
+    let field = |h: &Value, k: &str| {
+        h.get(k)
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+    // origin 的口径同 `lib.rs::parse_host_obj`：`label` 非空取它，否则 `host`。
+    let hits: Vec<usize> = (0..hosts.len())
+        .filter(|&i| {
+            field(&hosts[i], "label")
+                .or_else(|| field(&hosts[i], "host"))
+                .as_deref()
+                == Some(origin)
+                && field(&hosts[i], "host").as_deref() == Some(host)
+        })
+        .collect();
+    let [i] = hits[..] else {
+        return Ok(if hits.is_empty() {
+            PinWrite::NotFound
+        } else {
+            PinWrite::Ambiguous
+        });
+    };
+    if field(&hosts[i], "hostKeyFingerprint").is_some_and(|f| !f.trim().is_empty()) {
+        return Ok(PinWrite::AlreadySet);
+    }
+    let mut next = hosts.clone();
+    next[i]["hostKeyFingerprint"] = Value::String(fp.to_string());
+    crate::config::patch_config_at(
+        path,
+        &[crate::config::ConfigEdit::Set {
+            path: vec!["remote".into(), "hosts".into()],
+            value: Value::Array(next),
+        }],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(PinWrite::Written)
+}
+
+/// 〔VIS2 · 默认转严格〕这一趟交给后端的指纹：`cfg` 里有就用；没有 ⇒ 盘上同一台（origin 与 host 都相同）的。
+/// `ssh_source::run` 手里那份 `cfg` 是起来时读的 —— 不现读的话，固化之后它的每次重连照旧 TOFU 到重启。
+fn effective_fingerprint(cfg: &RemoteConfig) -> Option<String> {
+    effective_fingerprint_in(cfg, || {
+        crate::load_remote_config_by_label(&cfg.origin_label())
+    })
+}
+
+pub(crate) fn effective_fingerprint_in(
+    cfg: &RemoteConfig,
+    on_disk: impl FnOnce() -> Option<RemoteConfig>,
+) -> Option<String> {
+    let set = |f: Option<&String>| f.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    set(cfg.host_key_fingerprint.as_ref()).or_else(|| {
+        on_disk()
+            .filter(|d| d.host == cfg.host)
+            .and_then(|d| set(d.host_key_fingerprint.as_ref()))
+    })
+}
+
+/// 告知界面的那一件（经 `lib.rs` 装的出口发 `remote-health`，kind 见下面两个常量）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostKeyNotice {
+    pub origin: String,
+    pub kind: &'static str,
+    pub message: String,
+}
+pub const HOST_KEY_PINNED: &str = "host_key_pinned";
+pub const HOST_KEY_DIFFERS: &str = "host_key_differs";
+
+type NoticeSink = Box<dyn Fn(HostKeyNotice) + Send + Sync>;
+static NOTICE_SINK: std::sync::OnceLock<NoticeSink> = std::sync::OnceLock::new();
+
+/// 装出口（`lib.rs` setup 装一次；同 `session_facts::install_sink`）。
+pub fn install_host_key_notice(f: impl Fn(HostKeyNotice) + Send + Sync + 'static) {
+    if NOTICE_SINK.set(Box::new(f)).is_err() {
+        tracing::warn!("host key 告知的出口装了第二次 —— 忽略");
+    }
+}
+
+/// 同一句话本进程只说一次（每条一次性查询都开链路，不去重就刷屏）。
+fn notice(origin: String, kind: &'static str, message: String) {
+    static SAID: std::sync::Mutex<Vec<(String, &str, String)>> = std::sync::Mutex::new(Vec::new());
+    let key = (origin.clone(), kind, message.clone());
+    {
+        let mut said = SAID.lock().unwrap_or_else(|e| e.into_inner());
+        if said.contains(&key) {
+            return;
+        }
+        said.push(key);
+    }
+    tracing::warn!("[{origin}] {message}");
+    if let Some(f) = NOTICE_SINK.get() {
+        f(HostKeyNotice {
+            origin,
+            kind,
+            message,
+        });
+    }
+}
+
+/// 成功拨号之后：判 → 固化 / 说出来。
+fn settle_host_key(cfg: &RemoteConfig, req: &serde_json::Value, ack: &Ack) {
+    let probe = req.get("probe").and_then(serde_json::Value::as_bool) == Some(true);
+    let configured = req
+        .get("host_key_fingerprint")
+        .and_then(serde_json::Value::as_str);
+    let origin = cfg.origin_label();
+    match pin_verdict(probe, configured, &ack.fingerprints) {
+        PinVerdict::Pin(fp) => {
+            let Some(path) = crate::paths::resolve_config_path() else {
+                return;
+            };
+            match pin_host_key_at(&path, &origin, &cfg.host, &fp) {
+                Ok(PinWrite::Written) => notice(
+                    origin.clone(),
+                    HOST_KEY_PINNED,
+                    copy_text(
+                        "rsDialHost.hostKey.pinned",
+                        &[("origin", &origin), ("fingerprint", &fp)],
+                    ),
+                ),
+                Ok(other) => tracing::info!("[{origin}] 没有自动固化 host key：{other:?}"),
+                Err(e) => tracing::warn!("[{origin}] 自动固化 host key 没写成：{e}"),
+            }
+        }
+        PinVerdict::Differs(all) => {
+            let list = all
+                .iter()
+                .map(|(ep, fp)| format!("{ep} {fp}"))
+                .collect::<Vec<_>>()
+                .join(copy_text("rsDialHost.hostKey.listSep", &[]).as_str());
+            notice(
+                origin.clone(),
+                HOST_KEY_DIFFERS,
+                copy_text(
+                    "rsDialHost.hostKey.differs",
+                    &[("origin", &origin), ("list", &list)],
+                ),
+            );
+        }
+        PinVerdict::NoneReported => {
+            tracing::info!("[{origin}] 本机后端没报逐地址指纹（旧版？）⇒ 不自动固化")
+        }
+        PinVerdict::NotAsked | PinVerdict::AlreadyStrict => {}
+    }
 }
 
 /// **一条 exec 的字节流**：远端跑 `cmd`，读端是它的 stdout、写端是它的 stdin。

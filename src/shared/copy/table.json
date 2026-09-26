@@ -17388,6 +17388,21 @@
       "kind": "body",
       "zh": "查不出来",
       "args": []
+    },
+    "rsDialHost.hostKey.pinned": {
+      "kind": "body",
+      "zh": "已记下 {origin} 的 SSH 主机指纹，之后只认它：{fingerprint}",
+      "args": ["origin", "fingerprint"]
+    },
+    "rsDialHost.hostKey.differs": {
+      "kind": "body",
+      "zh": "{origin} 的几个地址报的 SSH 主机指纹不一样，没有自动记下：{list}。请在设置里这台机器上选一个填进去",
+      "args": ["origin", "list"]
+    },
+    "rsDialHost.hostKey.listSep": {
+      "kind": "body",
+      "zh": "；",
+      "args": []
     }
   }
 }
