@@ -184,8 +184,10 @@ fn bus_state_answers_both_halves_from_one_call() {
                  「问不到」在它那儿长得一模一样）。"
         );
     }
+    // 〔C4e · 第四波 4C〕成品那一层抽成了纯构造器 `list_reply`（跨语言金样拿它对拍），数据流一格没变：
+    //   `bus-list` 仍是 `agents_via_cc_list()` 的原样一份。
     assert!(
-        prod.contains("fn list_for_inbound() -> Result<serde_json::Value, (String, String)> {\n    Ok(serde_json::json!({ \"agents\": agents_via_cc_list()? }))"),
+        prod.contains("fn list_for_inbound() -> Result<serde_json::Value, (String, String)> {\n    Ok(list_reply(agents_via_cc_list()?))"),
         "`bus-list` 不再走 `agents_via_cc_list` 了 —— 两条命令的 `agents` 从此会各漂各的"
     );
 }
@@ -433,4 +435,180 @@ fn bus_spawn_timeout_warns_that_the_agent_may_already_be_running() {
     );
     assert_eq!(classify_spawn(Some(1), "x").unwrap_err().0, "failed");
     assert_eq!(classify_spawn(None, "x").unwrap_err().0, "failed");
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  〔C4e · 第四波 4C〕`bus-broadcast`（广播这个组合收进后端）＋ 界面直接收的成品金样
+// ════════════════════════════════════════════════════════════════════════════
+
+/// ★★ **广播不许再打进幽灵收件箱**〔P4f 08-13，用户机器上实测出来的；C4e 随组合从 monitor 搬来〕。
+///
+/// 老路（`cc-broadcast` 脚本）发给 `agents.tsv` 的**每一行**。用户机器实测：
+/// **86 行登记、只有 8 个会话还活着** ⇒ 一次广播打进 **78 个没人读的收件箱**。
+#[test]
+fn broadcast_only_goes_to_the_ones_that_are_actually_there() {
+    use serde_json::json;
+    let me = "cc-monitor";
+    let agents = vec![
+        json!({"id": "a_cc", "live": true}),
+        json!({"id": "b_cc", "live": false}),
+        json!({"id": "c_cc", "live": true}),
+        json!({"id": me, "live": true}),
+    ];
+    let plan = pick_broadcast_targets(&agents, me);
+    assert_eq!(plan.targets, vec!["a_cc", "c_cc"], "只该发给活着的");
+    assert_eq!(plan.skipped_offline, 1, "不在线的要计数，不是悄悄丢掉");
+    assert!(!plan.liveness_unknown);
+    assert!(!plan.targets.iter().any(|t| t == me), "不发给自己");
+}
+
+/// ★ **「问不到」不等于「都不在」**：`live` 全是 `null` ⇒ 发给所有登记的，并标出来是问不到。
+#[test]
+fn unknown_liveness_does_not_silently_become_nobody() {
+    use serde_json::json;
+    let agents = vec![
+        json!({"id": "a_cc", "live": null}),
+        json!({"id": "b_cc", "live": null}),
+    ];
+    let plan = pick_broadcast_targets(&agents, "cc-monitor");
+    assert_eq!(plan.targets.len(), 2, "问不到时不许把人全滤掉");
+    assert!(
+        plan.liveness_unknown,
+        "而且要**标出来**是问不到，不是装作知道"
+    );
+    assert_eq!(plan.skipped_offline, 0);
+}
+
+/// ★ 广播的入参：正文空 ⇒ `invalid_args`（空广播不是缺省）；`from` 可选、空白当没给。
+#[test]
+fn a_broadcast_without_text_is_refused_before_anyone_is_asked() {
+    use serde_json::json;
+    for bad in [
+        json!({}),
+        json!({"text": "  "}),
+        json!({"text": 3}),
+        json!("hi"),
+    ] {
+        let e = parse_broadcast(&bad).expect_err("没正文的广播不许放行");
+        assert_eq!(e.0, "invalid_args", "{bad}");
+    }
+    assert_eq!(
+        parse_broadcast(&json!({"text": "hi", "from": " "})).expect("有正文就放行"),
+        ("hi".to_string(), None)
+    );
+}
+
+/// ★★〔C4e · 第四波 4C〕**跨语言金样**：界面直接收的 cc-bus 那几份成品，两侧读同一份 `tests/__fixtures__/cc-bus-control.golden.json`。
+///
+/// 守的要求：`设计/05 §14.3` 逐字「**成品的两侧对拍**：界面按形状严格收……线上形状由一份跨语言金样钉住
+/// （后端测试产出 == 金样 · TS 解码器读同一份）」。查在线 · 发消息 · 收掉 · 派生 · 广播五件从这一拍起由界面经通道直接说
+/// （`src/cc-bus-control.ts`），monitor 那一跳只搬字节。
+///
+/// 各格异源：请求样例过**生产**解析器（`parse_send` / `parse_kill` / `parse_spawn` / `parse_broadcast`）·
+/// 成品 == **生产**构造器（`bus-list` 由金样里那份 `cc-list` 输出样例经生产的 `parse_list` ＋ `join_identity` 现算；
+/// 广播由同一份名单经生产的 `pick_broadcast_targets` 挑人再经 `broadcast_reply` 装）· 码集合 == `inbound::REGISTRY` 那一块。
+#[test]
+fn the_bus_products_match_the_cross_language_golden() {
+    use serde_json::{json, Value};
+    let g: Value = serde_json::from_str(include_str!(
+        "../../__fixtures__/cc-bus-control.golden.json"
+    ))
+    .expect("金样读不出来");
+    let codes_of = |op: &str| -> Vec<String> {
+        let mut v: Vec<String> = crate::inbound::REGISTRY
+            .iter()
+            .find(|s| s.name == op)
+            .unwrap_or_else(|| panic!("后端登记表里没有 `{op}`"))
+            .codes
+            .iter()
+            .map(|c| c.to_string())
+            .collect();
+        v.sort();
+        v
+    };
+    let golden_codes = |op: &str| -> Vec<String> {
+        let mut v: Vec<String> = g[op]["codes"]
+            .as_array()
+            .unwrap_or_else(|| panic!("金样 `{op}` 缺 `codes`"))
+            .iter()
+            .map(|c| c.as_str().expect("码不是字符串").to_string())
+            .collect();
+        v.sort();
+        v
+    };
+    for op in [
+        "bus-list",
+        "bus-send",
+        "bus-kill",
+        "bus-spawn",
+        "bus-broadcast",
+    ] {
+        assert_eq!(
+            golden_codes(op),
+            codes_of(op),
+            "金样里 `{op}` 的拒绝码与后端登记的不相等 —— 界面那张「码 → 一句话」的表就会漏一档或多一档"
+        );
+    }
+    // bus-list：名单由输入样例现算。
+    let sessions: Vec<(String, String)> = g["input"]["sessions"]
+        .as_array()
+        .expect("输入样例缺 `sessions`")
+        .iter()
+        .map(|p| {
+            (
+                p[0].as_str().expect("会话名").to_string(),
+                p[1].as_str().expect("@ccm_sid").to_string(),
+            )
+        })
+        .collect();
+    let agents = join_identity(
+        parse_list(g["input"]["ccList"].as_str().expect("输入样例缺 `ccList`")),
+        Some(&sessions),
+    );
+    assert_eq!(
+        list_reply(agents.clone()),
+        g["bus-list"]["reply"],
+        "`bus-list` 成品与金样不相等"
+    );
+    // bus-send：请求过解析器；成品 == 构造器。
+    let s = &g["bus-send"];
+    let (to, _text, from) = parse_send(&s["request"]).expect("金样的发消息请求过不了生产解析器");
+    assert_eq!(
+        send_reply(&to, true, json!(true), from.as_deref()),
+        s["reply"],
+        "`bus-send` 成品与金样不相等"
+    );
+    // bus-kill
+    let k = &g["bus-kill"];
+    let id = parse_kill(&k["request"]).expect("金样的收掉请求过不了生产解析器");
+    assert_eq!(
+        kill_reply(&id, true, false),
+        k["reply"],
+        "`bus-kill` 成品与金样不相等"
+    );
+    // bus-spawn：两种账号表态各一份请求；成品由样例回显现算（认名字的也是生产那一个）。
+    let sp = &g["bus-spawn"];
+    let base = parse_spawn(&sp["request"]).expect("金样的派生请求（基座）过不了生产解析器");
+    assert_eq!(base.account, None);
+    let named = parse_spawn(&sp["requestAccount"]).expect("金样的派生请求（账号）过不了生产解析器");
+    assert_eq!(named.account.as_deref(), Some("z"));
+    assert_eq!(
+        spawn_reply(sp["said"].as_str().expect("金样缺 `said`")),
+        sp["reply"],
+        "`bus-spawn` 成品与金样不相等"
+    );
+    // bus-broadcast：同一份名单经生产的挑人规则 ＋ 成品构造器；投递那一步（起 `cc-send`）在沙箱里跑不了，失败那一条取自金样。
+    let b = &g["bus-broadcast"];
+    let (_text, from) = parse_broadcast(&b["request"]).expect("金样的广播请求过不了生产解析器");
+    let plan = pick_broadcast_targets(&agents, from.as_deref().unwrap_or(""));
+    assert_eq!(
+        plan.targets,
+        vec!["alpha_cc", "x_cc"],
+        "挑人规则在金样名单上挑错了人"
+    );
+    assert_eq!(
+        broadcast_reply(&plan, 1, vec![b["failedOne"].clone()]),
+        b["reply"],
+        "`bus-broadcast` 成品与金样不相等"
+    );
 }

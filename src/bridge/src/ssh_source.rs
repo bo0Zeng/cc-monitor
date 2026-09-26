@@ -38,6 +38,7 @@
 // InboundFrame 都是活代码；connect_and_exec 的 ClientHandler 等仍是骨架但已被 run 串起。
 // 个别仅 S6+ 才读的字段（RemoteConfig 反序列化派生）保留 dead_code 容忍。
 
+use crate::copy_table::copy_text;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -521,7 +522,10 @@ pub async fn connect_and_exec(
     }
     // 〔C2〕`connect_and_exec_cmd` 从此只经拨号代理拿链路（它的函数体由 `dial_move_judge` 钉着）——
     // 所以这一行**不再是**「进程内回落」，它就是唯一那条路。
-    connect_and_exec_cmd(cfg, &cmd).await
+    // 〔NT2 · A4〕链路出生带一次性总时限；长连接流是订阅（`设计/05 §3.3.2`：`subscribe` 的期限只盖建流），摘掉它。
+    connect_and_exec_cmd(cfg, &cmd)
+        .await
+        .map(crate::dial_host::DialStream::lives_long)
 }
 
 // 🔴 **这个模块的 `pub(crate)` 是 `K-R74` 的承重件，别顺手收回私有**〔09-12〕：
@@ -855,10 +859,13 @@ pub fn find_local_tmux_origin_for_sid(sid: &str) -> Option<String> {
 /// 据「该 sid 的 tmux 是否仍在」（`find_tmux_origin_for_sid` 的 Option）择一：
 /// `Idle{origin}`=tmux 会话尚在 → 灰灯（mark_idle + emit SESSION_IDLE + **不 forget**）；
 /// `Archive`=tmux 也没了 → 归档（clear_idle + forget + emit SESSION_ENDED）。
+/// 〔GP1 · 第四波〕`Unseen`=那台机器看不见了（断连）→ 说不清（clear_idle + emit `SESSION_UNSEEN`，**不** forget、
+/// **不**发 `SESSION_ENDED`；`设计/30 §3.5.7a`「`Unseen` 不许被显示成已结束」）。
 #[derive(Debug, PartialEq, Eq)]
 pub enum RemovedDisposition {
     Idle { origin: String },
     Archive,
+    Unseen,
 }
 
 /// **纯决策**（可单测，锁住「Some/None 不写反」——emitter 里的实际接线在 run() 闭包内无法单测，
@@ -871,14 +878,92 @@ pub enum RemovedDisposition {
 ///   在 P5 删掉 8s ticker 之后**没有任何事件路径会因 /branch 去刷新它**。
 ///   ⇒ 判成 Idle 就是一个永远消不掉、也 attach 不上的灰点（用户 2026-07-30 实测）。
 /// - [`RemovalCause::Gone`] ⇒ 维持原语义：Some(origin)→Idle；None→Archive。
+/// - 〔GP1〕[`RemovalCause::Unseen`]（断连 flush）⇒ 恒 `Unseen`，同样**不看 `tmux_origin`**：
+///   那台的快照在断连那一刻已经忘了（`forget_tmux_raw`），拿它判只会恒判成 `Archive` —— 那正是改之前
+///   「断连 ⇒ 全落已结束」的成因。机器看不见，说的就只能是「说不清」。
 pub fn classify_removed(tmux_origin: Option<String>, cause: RemovalCause) -> RemovedDisposition {
-    if cause == RemovalCause::Superseded {
-        return RemovedDisposition::Archive;
+    match cause {
+        RemovalCause::Superseded => return RemovedDisposition::Archive,
+        RemovalCause::Unseen => return RemovedDisposition::Unseen,
+        RemovalCause::Gone => {}
     }
     match tmux_origin {
         Some(origin) => RemovedDisposition::Idle { origin },
         None => RemovedDisposition::Archive,
     }
+}
+
+/// 〔GP1 · 第四波〕**断连 flush 送出去的那一摞**：这条连接宣告过的活会话 ∪ 这台的可重连会话，**一律 `Unseen`**。
+///
+/// 改之前这里是 `RemovedSid::gone` ⇒ emitter 查（已经忘掉的）tmux 快照 ⇒ `Archive` ⇒ 前端「已结束」——
+/// 而那一刻我们知道的只是「那台机器看不见了」（`设计/30 §3.5.7a`）。抽成纯函数是为了给「每一条都是 `Unseen`」
+/// 上一条判据（`run()` 的重连循环单测进不去）。
+pub(crate) fn disconnect_removals(
+    announced: impl IntoIterator<Item = String>,
+    idle: impl IntoIterator<Item = String>,
+) -> Vec<RemovedSid> {
+    announced
+        .into_iter()
+        .chain(idle)
+        .map(|sid| RemovedSid {
+            sid,
+            cause: RemovalCause::Unseen,
+        })
+        .collect()
+}
+
+/// 〔GP1 · 第四波〕**「那台报完了活会话清单」这本账**：origin → 这条连接上收到过 `sessions_replayed`。
+///
+/// 写者只有本模块两处：收 `SessionsReplayed` 那一臂记入（[`note_listed`]）· `run()` 每轮连接结束摘掉（[`forget_listed`]）。
+/// 读者：F5 对账（`lib.rs` frontend-ready）—— 那一刻前端的「报完了」全随页面清空，这本账是它唯一能重建的来处：
+/// ① buffer 里有、已不活跃的远端 sid，属于**报完了**的机器 ⇒ 已结束（原样）；属于**没报完**的（断着 / 还在初扫）⇒ 说不清；
+/// ② 报完了的机器重发一次 `origin-sessions-listed`（否则 F5 之后固定复活的 tab 停在说不清，直到下一次重连）。
+static LISTED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+    std::sync::OnceLock::new();
+
+fn listed_registry() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+    LISTED.get_or_init(Default::default)
+}
+
+/// 那台的活会话清单报完了（收到 `sessions_replayed`）。
+pub(crate) fn note_listed(origin: &str) {
+    listed_registry()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(origin.to_string());
+}
+
+/// 那台的连接结束了 ⇒ 它的清单不再算数。
+pub(crate) fn forget_listed(origin: &str) {
+    listed_registry()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(origin);
+}
+
+/// 此刻报完了清单的那几台（只读快照）。
+pub(crate) fn listed_origins() -> std::collections::HashSet<String> {
+    listed_registry()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
+
+/// 〔GP1〕F5 对账的分流（纯函数）：`(sid, origin)` 按 origin 报没报完清单分成 `(已结束, 说不清)` 两摞，各自保持入参顺序。
+pub(crate) fn split_stale(
+    stale: impl IntoIterator<Item = (String, String)>,
+    listed: &std::collections::HashSet<String>,
+) -> (Vec<String>, Vec<String>) {
+    let mut ended = Vec::new();
+    let mut unseen = Vec::new();
+    for (sid, origin) in stale {
+        if listed.contains(&origin) {
+            ended.push(sid);
+        } else {
+            unseen.push(sid);
+        }
+    }
+    (ended, unseen)
 }
 
 // audit-fixes F03.2：`snapshot_announced_by_origin` 已删——其唯一读者是已删的 8s poller。
@@ -1090,8 +1175,12 @@ async fn snapshot_dispatcher(
             let payload = crate::bridge::RemoteHealthPayload {
                 origin: host_label.clone(),
                 kind: "snapshot".to_string(),
-                message: format!(
-                    "会话 {sid_short} 的历史快照拉取失败（{last_err}）——该 Tab 暂只有实时消息，可从历史浏览器查看完整内容。"
+                message: copy_text(
+                    "rsSshSource.snapshot.failed",
+                    &[
+                        ("sid", &sid_short.to_string()),
+                        ("err", &last_err.to_string()),
+                    ],
                 ),
             };
             if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
@@ -1267,16 +1356,23 @@ async fn fetch_snapshot(
     // 完整性校验：`total` 精确对账（F30）—— 续传时对的是「锚之后那一截」。
     let (arrived, want) = (walk.arrived(), walk.want());
     if arrived != want {
-        return Err(format!(
-            "快照不完整：{arrived}/{want} 行（连接中断或后端报错）"
+        return Err(copy_text(
+            "rsSshSource.snapshot.incomplete",
+            &[
+                ("arrived", &arrived.to_string()),
+                ("want", &want.to_string()),
+            ],
         ));
     }
     // 下界：宣告时 prime 的行数 L（`session_added.lines`）—— 文件在宣告之后被截短才会撞上。
     if let Some(expected) = item.expected_lines {
         if plan.total < expected {
-            return Err(format!(
-                "快照不完整：{}/{expected} 行（连接中断或后端报错）",
-                plan.total
+            return Err(copy_text(
+                "rsSshSource.snapshot.incompletePlan",
+                &[
+                    ("total", &plan.total.to_string()),
+                    ("expected", &expected.to_string()),
+                ],
             ));
         }
     }
@@ -1453,10 +1549,12 @@ where
 /// 超限那一行的用户可见说法。**抽成纯函数**的理由与 [`overflow_health_message`] 逐字相同：
 /// 消费点要真 `AppHandle` 测不了，而措辞对不对恰恰是要钉的东西。
 fn line_too_long_health_message(host_label: &str, bytes: u64) -> String {
-    format!(
-        "远端 [{host_label}] 发来一行 {bytes} 字节，超过单行上限 {BACKEND_FRAME_LINE_CAP} 字节，\
-         这一行**已整行丢弃**。这不是网络拥塞 —— 要么该会话里有异常巨大的一条记录，\
-         要么对端不是本工具的后端。重开该会话可看完整历史。"
+    copy_text(
+        "rsSshSource.health.lineTooLong",
+        &[
+            ("host", &host_label.to_string()),
+            ("bytes", &bytes.to_string()),
+        ],
     )
 }
 
@@ -1697,8 +1795,12 @@ fn overflow_health_message(
     lost_truncated: bool,
 ) -> String {
     if lost.is_empty() {
-        return format!(
-            "远端 [{host_label}] 管道拥塞，可能丢失约 {dropped} 条实时行；重开该会话可看完整历史。"
+        return copy_text(
+            "rsSshSource.health.overflowLines",
+            &[
+                ("host", &host_label.to_string()),
+                ("dropped", &dropped.to_string()),
+            ],
         );
     }
     // 主体去重后点名（同一个会话可能连丢好几帧）。
@@ -1711,14 +1813,18 @@ fn overflow_health_message(
         format!("（{}）", subjects.join(" / "))
     };
     let truncated_note = if lost_truncated {
-        "；受影响清单**不全**，建议刷新该来源"
+        &copy_text("rsSshSource.health.overflowTruncated", &[])
     } else {
         ""
     };
-    format!(
-        "远端 [{host_label}] 管道拥塞，丢了约 {dropped} 条帧，其中 {} 条是**会话状态变化**{named}\
-         —— 这部分**重开会话补不回来**，请手动刷新该来源{truncated_note}。",
-        lost.len()
+    copy_text(
+        "rsSshSource.health.overflowLost",
+        &[
+            ("host", &host_label.to_string()),
+            ("count", &(lost.len()).to_string()),
+            ("named", &named.to_string()),
+            ("truncatedNote", &truncated_note.to_string()),
+        ],
     )
 }
 
@@ -2191,15 +2297,30 @@ fn version_warning(reported_v: u64, reported_build_id: &str, label: &str) -> Opt
         VersionVerdict::Ok => None,
         // 〔HX2 · 主会话 D-b〕按新旧分两句（部署只升不降，`sftp::identity_decision`）：
         //   那台旧 ⇒ 下次连上的部署预检会换掉它；那台不比这一版旧 ⇒ 这个 monitor 不会把它换回去。
-        //   〔墓碑 —— 从前一句话不分新旧：「…建议更新后端（后续将支持自动部署）」，自动部署早已落地。〕
-        VersionVerdict::StaleBuild { reported } if crate::sftp::is_newer(EXPECTED_BACKEND_BUILD_ID, &reported) => Some(format!(
-            "远端 [{label}] 上的后端是旧版 {reported}（这个 monitor 是 {EXPECTED_BACKEND_BUILD_ID}），下次连上时会自动换成这一版。"
+        //   〔墓碑 —— 从前一句话不分新旧（`rsSshSource.version.buildMismatch`：「…建议更新后端（后续将支持自动部署）」），自动部署早已落地。〕
+        VersionVerdict::StaleBuild { reported }
+            if crate::sftp::is_newer(EXPECTED_BACKEND_BUILD_ID, &reported) =>
+        {
+            Some(copy_text(
+                "rsSshSource.version.remoteOlder",
+                &[
+                    ("label", &label.to_string()),
+                    ("reported", &reported.to_string()),
+                    ("mine", &EXPECTED_BACKEND_BUILD_ID.to_string()),
+                ],
+            ))
+        }
+        VersionVerdict::StaleBuild { reported } => Some(copy_text(
+            "rsSshSource.version.remoteNotOlder",
+            &[
+                ("label", &label.to_string()),
+                ("reported", &reported.to_string()),
+                ("mine", &EXPECTED_BACKEND_BUILD_ID.to_string()),
+            ],
         )),
-        VersionVerdict::StaleBuild { reported } => Some(format!(
-            "远端 [{label}] 上的后端是 {reported}，不比这个 monitor（{EXPECTED_BACKEND_BUILD_ID}）旧 —— 多半是另一台更新过的 monitor 装的。这个 monitor 不会把它换回去；要一致，就把这个 monitor 也升级。"
-        )),
-        VersionVerdict::Incompatible { reported_v } => Some(format!(
-            "远端 [{label}] backend 协议版本 v={reported_v} 与本机期望 v={EXPECTED_PROTO_V} 不兼容，渲染可能异常，请更新后端。"
+        VersionVerdict::Incompatible { .. } => Some(copy_text(
+            "rsSshSource.version.protoMismatch",
+            &[("label", &label.to_string())],
         )),
     }
 }
@@ -2294,18 +2415,20 @@ pub async fn run(
         // 的 idle-tmux sid 也一并归档（断连=tmux 状态已清[上方 :1853]，idle 会话也该 archived；emitter
         // 处理这些 removed 时 tmux_raw 本 host 已空 → find_tmux_origin_for_sid=None → archived+clear_idle）。
         // **§24 单写者不破**：run() 只**读** snapshot_idle_for_origin，REMOTE_IDLE 的写（clear_idle）仍只在 emitter。
+        // 〔GP1 · 第四波〕这台的「报完了清单」随连接一起作废（F5 对账据它分已结束 / 说不清）。
+        forget_listed(&cfg.origin_label());
         let idle_here = snapshot_idle_for_origin(&cfg.origin_label());
         if !announced.is_empty() || !idle_here.is_empty() {
-            let mut removed: Vec<String> = announced.into_keys().collect();
-            removed.extend(idle_here);
+            let removed = disconnect_removals(announced.into_keys(), idle_here);
             tracing::info!(
-                "ssh_source connection ended; archiving {} remote session(s)",
+                "ssh_source connection ended; {} remote session(s) → 说不清（那台机器看不见了）",
                 removed.len()
             );
             if let Err(e) = session_changes.send(SessionChange {
                 added: vec![],
-                // 连接断了兜底归档 = 真死（不是被顶替）。
-                removed: removed.into_iter().map(RemovedSid::gone).collect(),
+                // 〔GP1 · 第四波〕连接断了 ≠ 会话死了：一律 `Unseen`（`设计/30 §3.5.7a`）。
+                // 改之前这里逐字「连接断了兜底归档 = 真死（不是被顶替）」、送的是 `gone`。
+                removed,
                 status_changed: vec![], // 本分支无状态变化（F27 起 status 走 SessionAdded/SessionStatus 臂）
             }) {
                 tracing::warn!("ssh_source final session archival send failed: {e}");
@@ -2935,6 +3058,8 @@ async fn stream_loop(
                 .as_ref()
                 .is_some_and(|c| c.accepts(crate::asset_sync::REMOTE_NEEDS));
             crate::asset_sync::on_remote_ready(cfg, accepts);
+            // 〔GP1 · 第四波〕升级那一格：连上那一刻后台看一眼旧版 `~/.local/bin/ccm`，认出是我们放的就删（`ccm_legacy`）。
+            crate::ccm_legacy::on_remote_ready(cfg);
         }
 
         match frame {
@@ -3014,9 +3139,7 @@ async fn stream_loop(
                 let next = decide_stream_flags(&capabilities, show_bg);
                 if should_upgrade_reconnect((with_bg, tail_only, with_rbind_token), next) {
                     *hello_confirmed = Some(capabilities.clone());
-                    return Err(format!(
-                        "backend hello 声明能力({capabilities:?})——重连升级流模式(tail-only/with-bg/with-rbind-token)"
-                    ));
+                    return Err(copy_text("rsSshSource.upgrade.reconnect", &[]));
                 }
                 // ⚠ 「旧后端降级可见化」那一格**仍然**留在 `!tail_only` 里 —— 它问的是
                 //   另一件事（「这台后端一条能力都没声明」），口径一个字没动。
@@ -3025,8 +3148,12 @@ async fn stream_loop(
                         let payload = crate::bridge::RemoteHealthPayload {
                             origin: host_label.clone(),
                             kind: "degraded".to_string(),
-                            message: format!(
-                                "远端后端为旧版本({build_id},当前 {EXPECTED_BACKEND_BUILD_ID}),本连接降级运行:后台(bg)会话不可见、历史全量推流(易拥塞)。请在设置里重装该机器的后端。"
+                            message: copy_text(
+                                "rsSshSource.health.degraded",
+                                &[
+                                    ("build", &build_id.to_string()),
+                                    ("expected", &EXPECTED_BACKEND_BUILD_ID.to_string()),
+                                ],
                             ),
                         };
                         if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
@@ -3397,6 +3524,8 @@ async fn stream_loop(
                 tracing::info!(
                     "sessions-replayed: [{host_label}] 活会话清单报完了 → 已 emit 给前端"
                 );
+                // 〔GP1 · 第四波〕记进「报完了清单」那本账（F5 对账要重建前端这一格；连接结束时摘）。
+                note_listed(&host_label);
                 if let Err(e) = app.emit(
                     crate::bridge::events::ORIGIN_SESSIONS_LISTED,
                     &crate::bridge::OriginSessionsListedPayload {
@@ -3502,7 +3631,7 @@ pub async fn list_ssh_host_aliases() -> Result<Vec<String>, String> {
         }
     })
     .await
-    .map_err(|e| format!("读取 ~/.ssh/config 任务调度失败: {e}"))
+    .map_err(|e| copy_text("rsSshSource.aliases.readFailed", &[("e", &e.to_string())]))
 }
 
 /// 从 `~/.ssh/config` 文本里抽出非通配的 host 别名（纯函数，便于单测）。
@@ -3577,10 +3706,13 @@ fn expand_tilde(path: &str) -> std::path::PathBuf {
 pub async fn resolve_ssh_host(alias: String) -> Result<ResolvedHost, String> {
     let alias = alias.trim().to_string();
     if !is_safe_alias(&alias) {
-        return Err(format!("非法的 host 别名（含不安全字符）: {alias}"));
+        return Err(copy_text(
+            "rsSshSource.host.badAlias",
+            &[("alias", &alias.to_string())],
+        ));
     }
     if alias.starts_with('-') {
-        return Err("host 别名不能以 '-' 开头".to_string());
+        return Err(copy_text("rsSshSource.host.dashAlias", &[]));
     }
 
     // FIX 3（INVARIANT §10）：`Command::output()` 是同步阻塞调用，直接在 async fn 里跑会
@@ -3606,12 +3738,18 @@ pub async fn resolve_ssh_host(alias: String) -> Result<ResolvedHost, String> {
         .and_then(|c| c.wait_with_output())
     })
     .await
-    .map_err(|e| format!("ssh -G 任务调度失败: {e}"))?
-    .map_err(|e| format!("运行 ssh -G 失败（OpenSSH client 装了吗？）: {e}"))?;
+    .map_err(|e| copy_text("rsSshSource.host.sshGNotRun", &[("e", &e.to_string())]))?
+    .map_err(|e| copy_text("rsSshSource.host.sshGFailed", &[("e", &e.to_string())]))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("ssh -G {alias} 退出非 0: {}", stderr.trim()));
+        return Err(copy_text(
+            "rsSshSource.host.sshGExit",
+            &[
+                ("alias", &alias.to_string()),
+                ("detail", &(stderr.trim()).to_string()),
+            ],
+        ));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -3837,7 +3975,7 @@ pub async fn test_remote_connection(
             // 握手失败（含 host key 不匹配被拒）。代理那侧看到过的指纹**刻意不回给前端**：
             // 失败时给一个指纹，前端那条「固化指纹」的路就可能把一把失配的 key 固化进去（与改动前同一个取舍）。
             result.ssh_ok = false;
-            result.message = format!("SSH 连接/鉴权失败：{e}");
+            result.message = copy_text("rsSshSource.test.sshFailed", &[("e", &e.to_string())]);
             return Ok(result);
         }
     };
@@ -3856,24 +3994,20 @@ pub async fn test_remote_connection(
         Ok(Some(probe)) => {
             result.backend_ok = true;
             result.message = if probe.control_ok {
-                "SSH 与后端均正常（含控制通道往返）。".to_string()
+                copy_text("rsSshSource.test.ok", &[])
             } else if probe.control_unsupported {
-                "SSH 与后端正常，但该 backend **不支持控制通道**（旧版本）——                 远端起会话等功能不可用，请在设置里重装该机器的后端。"
-                    .to_string()
+                copy_text("rsSshSource.test.noControl", &[])
             } else {
                 // 控制通道真失败：**不许报「均正常」**。这一步就是为了让它在这里显形。
-                "SSH 与后端正常，但**控制通道不通**（详见下方摘要的 control=… 段）——                 远端起会话会失败。"
-                    .to_string()
+                copy_text("rsSshSource.test.controlDown", &[])
             };
             result.backend_hello = Some(probe.summary);
         }
         Ok(None) => {
-            result.message =
-                "SSH 连上了，但后端在超时内未回 hello（未部署 / 路径错 / 启动失败？）。"
-                    .to_string();
+            result.message = copy_text("rsSshSource.test.noHello", &[]);
         }
         Err(e) => {
-            result.message = format!("SSH 连上了，但后端探测失败：{e}");
+            result.message = copy_text("rsSshSource.test.probeFailed", &[("e", &e.to_string())]);
         }
     }
 
@@ -3925,7 +4059,10 @@ async fn probe_backend(link: crate::dial_host::DialStream) -> Result<Option<Back
 
     match read {
         Err(_elapsed) => Ok(None), // 超时
-        Ok(Err(e)) => Err(format!("读 backend stdout 出错: {e}")),
+        Ok(Err(e)) => Err(copy_text(
+            "rsSshSource.probe.readFailed",
+            &[("e", &e.to_string())],
+        )),
         Ok(Ok(CappedLine::Eof)) => Ok(None), // EOF（backend 立即退出 / 未输出）
         // 握手行超限 ⇒ 与「非 hello 帧」同一档：backend 未正常握手。
         // ⚠ 这里**不**发 REMOTE_HEALTH —— 探测阶段还没有 host_label 语境，
@@ -3969,7 +4106,7 @@ fn describe_hello(frame: &InboundFrame) -> String {
             "v={v} build={build_id} arch={host_arch} claude_home={} caps={capabilities:?} cmds={commands:?}",
             claude_home_from_hello(homes, claude_dir)
         ),
-        other => format!("(非 hello 帧: {other:?})"),
+        other => copy_text("rsSshSource.hello.notHello", &[("other", &format!("{:?}", other))]),
     }
 }
 
@@ -4005,7 +4142,7 @@ where
     let client = parked.into_client(witness);
     if !client.accepts("ping") {
         client.close_write();
-        return "control=unsupported(backend 未声明入方向命令)".to_string();
+        return copy_text("rsSshSource.control.unsupported", &[]);
     }
     // 应答走的是同一条流的读半边 —— 起一个只做路由的泵，探完就撤。
     let pump = {

@@ -38,6 +38,7 @@
 //! 与可达表（`origin → {拨号请求, 远端后端路径, 对面的 id}`）原样提到中立住址 `crate::remote_ask`，逻辑一字不改；
 //! 本模块只剩资产目录那一套（拉什么、并什么、推什么、扇不扇出）。历史跨机 join 用的是同一张表、同一个对面。
 
+use copy_core::copy_text;
 use std::collections::BTreeMap;
 
 use serde_json::{json, Value};
@@ -82,8 +83,17 @@ fn outcome(
         "peer": peer,
         "changed": changed,
         "pushed": pushed,
-        "error": if errors.is_empty() { Value::Null } else { json!(errors.join("；")) },
+        "error": if errors.is_empty() { Value::Null } else { json!(errors.join(&copy_text("beAssetSync.report.errorSep", &[]))) },
     })
+}
+
+/// 单独一台就超过一趟上限时那一句（`push_plan` 说出口、记进 `warn!`）。
+fn too_big_to_push(id: &str, len: usize, cap: usize) -> String {
+    let (len, cap) = (len.to_string(), cap.to_string());
+    copy_text(
+        "beAssetSync.pushPlan.tooLarge",
+        &[("id", id), ("len", &len), ("max", &cap)],
+    )
 }
 
 /// 远端缺的 / 比远端新的那几台快照（不含远端自己那格），切成不超过 [`PUSH_MAX_BYTES`] 的块。
@@ -123,9 +133,7 @@ pub fn push_plan(mine: &Value, theirs: &Value) -> (Vec<Vec<Value>>, Vec<String>)
             cur_len = 0;
         }
         if len > PUSH_MAX_BYTES {
-            let why = format!(
-                "机器 {id} 的目录太大（{len} 字节，一趟最多 {PUSH_MAX_BYTES}），这一台没推过去"
-            );
+            let why = too_big_to_push(id, len, PUSH_MAX_BYTES);
             tracing::warn!("资产目录：{why}");
             too_big.push(why);
             continue;
@@ -144,8 +152,18 @@ async fn fold_blocking(fold: &Fold, args: Value) -> Result<Value, String> {
     let f = fold.clone();
     tokio::task::spawn_blocking(move || f(&args))
         .await
-        .map_err(|e| format!("本机目录那一趟没跑完：{e}"))?
-        .map_err(|(c, m)| format!("本机目录（{c}）：{m}"))
+        .map_err(|e| {
+            copy_text(
+                "beAssetSync.foldBlocking.unfinished",
+                &[("e", &e.to_string())],
+            )
+        })?
+        .map_err(|(c, m)| {
+            copy_text(
+                "beAssetSync.foldBlocking.failed",
+                &[("c", &c.to_string()), ("m", &m.to_string())],
+            )
+        })
 }
 
 /// 对一台做一趟 ①–③。`key` 是可达表的键（monitor 交来的 origin 串，本后端只当不透明的键用）。
@@ -165,7 +183,16 @@ async fn sync_one(
             Err(e) => {
                 return (
                     false,
-                    outcome(key, None, false, 0, &[format!("对面答的目录认不出来：{e}")]),
+                    outcome(
+                        key,
+                        None,
+                        false,
+                        0,
+                        &[copy_text(
+                            "beAssetSync.syncOne.unparsable",
+                            &[("e", &e.to_string())],
+                        )],
+                    ),
                 )
             }
         },
@@ -232,7 +259,10 @@ pub async fn answer_with(
         // 〔C4d〕登记那一段原样搬进 `remote_ask::register`（可达表唯一的写口；`remote-reach` 也经它）。
         first = Some(crate::remote_ask::register(table, args)?);
     } else if args.get("dial").is_some() || args.get("backend").is_some() {
-        return Err(("bad_args", "给了 `dial` / `backend` 却没给 `origin`".into()));
+        return Err((
+            "bad_args",
+            crate::common::contract::malformed("`dial` / `backend` given without `origin`").into(),
+        ));
     }
     let rows: Vec<(String, Reach)> = lock(table)
         .iter()

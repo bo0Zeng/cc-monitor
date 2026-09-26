@@ -22,6 +22,7 @@ import {
   type SessionPeek,
 } from "../session-status";
 import { isLive, isResumeOnly, stateView } from "../tab-session-state";
+import { copyText } from "../copy-table";
 
 /** grid 数据源（TabManager 的只读子集——便于测试注入桩）。 */
 export interface GridSource {
@@ -52,7 +53,7 @@ export function groupSessionsByOrigin(sessions: GridSessionSnapshot[]): OriginGr
     }
   }
   const groups: OriginGroup[] = [];
-  if (local.length > 0) groups.push({ origin: LOCAL_ORIGIN, label: "本机", sessions: local });
+  if (local.length > 0) groups.push({ origin: LOCAL_ORIGIN, label: copyText("gridMonitor.groups.local"), sessions: local });
   for (const origin of [...remotes.keys()].sort((a, b) => a.localeCompare(b))) {
     groups.push({ origin, label: origin, sessions: remotes.get(origin)! });
   }
@@ -169,7 +170,7 @@ function renderBadges(s: GridSessionSnapshot, badges: HTMLElement): void {
     const b = document.createElement("span");
     b.className = "grid-monitor-badge badge-agents";
     b.textContent = `▶ ${s.runningAgents} agent`;
-    b.title = `${s.runningAgents} 个 subagent 运行中（共 ${s.totalAgents}）`;
+    b.title = copyText("gridMonitor.renderBadges.agents", { runningAgents: s.runningAgents, totalAgents: s.totalAgents });
     badges.appendChild(b);
   }
   if (s.contextPct != null) {
@@ -178,21 +179,21 @@ function renderBadges(s: GridSessionSnapshot, badges: HTMLElement): void {
     b.className = "grid-monitor-badge badge-ctx";
     if (rounded >= 80) b.classList.add("is-high");
     b.textContent = `ctx ${rounded}%`;
-    b.title = "context 占用近似（最新一轮 prompt token ÷ 模型上限）";
+    b.title = copyText("gridMonitor.renderBadges.ctxHint");
     badges.appendChild(b);
   }
   if (s.unread > 0) {
     const b = document.createElement("span");
     b.className = "grid-monitor-badge badge-unread";
     b.textContent = s.unread > 99 ? "99+" : `${s.unread}`;
-    b.title = `${s.unread} 条未读`;
+    b.title = copyText("gridMonitor.renderBadges.unread", { unread: s.unread });
     badges.appendChild(b);
   }
   if (s.activityStatus === "waiting" && s.waitingFor) {
     const b = document.createElement("span");
     b.className = "grid-monitor-badge badge-waiting";
-    b.textContent = `等待：${s.waitingFor}`;
-    b.title = `等待操作：${s.waitingFor}`;
+    b.textContent = copyText("gridMonitor.renderBadges.waiting", { waitingFor: s.waitingFor });
+    b.title = copyText("gridMonitor.renderBadges.waitingHover", { waitingFor: s.waitingFor });
     badges.appendChild(b);
   }
 }
@@ -234,11 +235,11 @@ export class GridMonitorView {
     const back = document.createElement("button");
     back.type = "button";
     back.className = "grid-monitor-back";
-    back.textContent = "← 返回";
+    back.textContent = copyText("gridMonitor.build.back");
     back.addEventListener("click", () => this.close());
     const title = document.createElement("span");
     title.className = "grid-monitor-title";
-    title.textContent = "多 agent 监控";
+    title.textContent = copyText("gridMonitor.build.title");
     this.summaryEl = document.createElement("span");
     this.summaryEl.className = "grid-monitor-summary";
     bar.append(back, title, this.summaryEl);
@@ -247,7 +248,7 @@ export class GridMonitorView {
     const note = document.createElement("div");
     note.className = "grid-monitor-note";
     note.textContent =
-      "跨机器只读监控：一屏看所有会话的实时状态。点卡片看内容详情（板不关，可连续排查）；详情里「跳转」再切到该会话。（只读——不派发/不驱动 agent。）";
+      copyText("gridMonitor.build.intro");
     view.appendChild(note);
 
     this.bodyEl = document.createElement("div");
@@ -303,7 +304,7 @@ export class GridMonitorView {
       this.summaryEl.textContent =
         sessions.length === 0
           ? ""
-          : `${summary.machines} 台机器 · ${summary.liveSessions} 个活跃会话 · ${summary.runningAgents} 个 agent 运行中`;
+          : copyText("gridMonitor.render.summary", { machines: summary.machines, liveSessions: summary.liveSessions, runningAgents: summary.runningAgents });
     }
 
     // F91b：选中的会话若已消失（归档移除/远端断线）→ 自动清选中、收 peek。
@@ -340,7 +341,7 @@ export class GridMonitorView {
       if (!this.emptyEl) {
         this.emptyEl = document.createElement("div");
         this.emptyEl.className = "grid-monitor-empty";
-        this.emptyEl.textContent = "暂无会话。";
+        this.emptyEl.textContent = copyText("gridMonitor.render.empty");
       }
       if (this.emptyEl.parentNode !== this.bodyEl) this.bodyEl.appendChild(this.emptyEl);
       this.renderPeek(null);
@@ -440,7 +441,7 @@ export class GridMonitorView {
     const jump = document.createElement("button");
     jump.type = "button";
     jump.className = "grid-monitor-peek-jump";
-    jump.textContent = "跳转到该会话 →";
+    jump.textContent = copyText("gridMonitor.renderPeek.jump");
     jump.addEventListener("click", () => {
       this.source.switchTo(selected.sessionId); // 显式导航（旧 cell 点击语义搬到这）
       this.close();
@@ -448,8 +449,8 @@ export class GridMonitorView {
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
     closeBtn.className = "grid-monitor-peek-close";
-    closeBtn.textContent = "✕";
-    closeBtn.title = "收起预览";
+    closeBtn.textContent = copyText("gridMonitor.renderPeek.close");
+    closeBtn.title = copyText("gridMonitor.renderPeek.closeHint");
     closeBtn.addEventListener("click", () => this.select(selected.sessionId)); // toggle off
     head.append(jump, closeBtn);
     this.peekEl.appendChild(head);
@@ -472,16 +473,16 @@ export class GridMonitorView {
       row.append(k, v);
       facts.appendChild(row);
     };
-    if (selected.cwd) addFact("目录", selected.cwd);
+    if (selected.cwd) addFact(copyText("gridMonitor.fact.dir"), selected.cwd);
     const act =
       selected.activityStatus === null
-        ? "未知"
+        ? copyText("gridMonitor.renderPeek.unknown")
         : selected.waitingFor
-          ? `${selected.activityStatus}（等待：${selected.waitingFor}）`
+          ? copyText("gridMonitor.renderPeek.statusWaiting", { activityStatus: selected.activityStatus, waitingFor: selected.waitingFor })
           : selected.activityStatus;
     // 〔U4〕活着 ⇒ 活动状态；死了 ⇒ 状态名（已结束 / 可重连）。原先是「已归档 · <活动>」，死会话的活动是陈旧的。
-    addFact("状态", stateView(selected.state).name ?? act);
-    if (peek?.model) addFact("模型", peek.model);
+    addFact(copyText("gridMonitor.fact.status"), stateView(selected.state).name ?? act);
+    if (peek?.model) addFact(copyText("gridMonitor.fact.model"), peek.model);
     this.peekEl.appendChild(facts);
 
     // subagent 名单（运行中优先）
@@ -491,7 +492,7 @@ export class GridMonitorView {
       const running = peek.agents.filter((a) => a.status === "running").length;
       const k = document.createElement("span");
       k.className = "grid-monitor-peek-k";
-      k.textContent = `subagent（${running} 运行 / ${peek.agents.length} 共）`;
+      k.textContent = copyText("gridMonitor.renderPeek.agentsHead", { running, agentsCount: peek.agents.length });
       agentsWrap.appendChild(k);
       for (const a of peek.agents.slice(0, 8)) {
         const chip = document.createElement("span");
@@ -514,14 +515,14 @@ export class GridMonitorView {
       filesWrap.className = "grid-monitor-peek-files";
       const k = document.createElement("span");
       k.className = "grid-monitor-peek-k";
-      k.textContent = `改过的文件（${peek.recentFiles.length}）`;
+      k.textContent = copyText("gridMonitor.renderPeek.filesHead", { recentFilesCount: peek.recentFiles.length });
       filesWrap.appendChild(k);
       const list = document.createElement("div");
       list.className = "grid-monitor-peek-filelist";
       if (peek.recentFiles.length > 8) {
         const more = document.createElement("span");
         more.className = "grid-monitor-peek-more";
-        more.textContent = `+${peek.recentFiles.length - 8} 个更早改的（未列）`;
+        more.textContent = copyText("gridMonitor.renderPeek.filesMore", { more: peek.recentFiles.length - 8 });
         list.appendChild(more);
       }
       for (const f of peek.recentFiles.slice(-8)) {

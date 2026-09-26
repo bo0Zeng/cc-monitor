@@ -40,6 +40,7 @@
 //! 「写必须过这个集合 + 过 `claude_data_fence::is_protected_claude_data_path` + 过
 //! `verified_write`」那条围栏归 **F03**。⇒ 本模块是纯函数层，**它算得对不等于没人绕过它**。
 
+use crate::copy_table::copy_text;
 use std::path::{Path, PathBuf};
 
 /// 一个 skill 在 cc-monitor 里的接入声明。**恰好四段**。
@@ -49,8 +50,8 @@ use std::path::{Path, PathBuf};
 pub struct SkillSpec {
     /// 稳定标识。**只在本表里出现**，宿主逻辑不认它。
     pub id: &'static str,
-    /// UI 上显示的名字（F03 用）。
-    pub label: &'static str,
+    /// UI 上显示的名字（F03 用）。〔CP2b〕取文口：名字住文案表，这里只放一个取它的函数（常量里调不了函数）。
+    pub label: fn() -> String,
     /// ① 怎么发现它 + 前提探测。
     pub discover: Discover,
     /// ② 产物落点。
@@ -116,15 +117,15 @@ pub enum Install {
     /// （它不由 cc-monitor 装），而 `ccm`/`cc-acct-iso`/… 在那边不在这边（它们不是 skill）。
     /// ⇒ 该钉的是「`ManagedTool(id)` ⇒ id ∈ TOOLS」这**一个方向**，反方向是假命题。
     ManagedTool(&'static str),
-    /// 本轮不支持装，带理由。**如实登记，不假装可装。**
-    NotSupported(&'static str),
+    /// 本轮不支持装，带理由。**如实登记，不假装可装。**〔CP2b〕理由住文案表，这里放取它的函数。
+    NotSupported(fn() -> String),
 }
 
 /// 接入声明全表。**这是「加一个 skill = 加一份声明」的那个「一份」。**
 pub const SKILLS: &[SkillSpec] = &[
     SkillSpec {
         id: "planned-build",
-        label: "计划",
+        label: || copy_text("rsSkillHost.skills.plannedBuildLabel", &[]),
         // 它的入口是 `bin/pb.py`：那个文件在，就说明这个 skill 装好了。
         discover: Discover::ClaudeSkill {
             dir: "planned-build",
@@ -144,8 +145,8 @@ pub const SKILLS: &[SkillSpec] = &[
             //    两处同时馊了：`remote-daemon` 改名成了 `backend`，而条数早就不是 6。
             //    ⇒ 按〔`13b`〕只给住址、不复述成员（这一句是**用户看得见的**文案，
             //    在它里面留一个会烂的基数比不写更坏）。
-            "planned-build 今天不在 tool_registry 那张表里（那张表收哪几条，\
-             唯一住址是 `tool_registry::TOOLS`）。把它变成可装归 devbench F06。",
+            // 〔CP2b〕照 CP1 台账改：不露源码住址与内部工单号。
+            || copy_text("rsSkillHost.skills.plannedBuildNotSupported", &[]),
         ),
     },
     // ★★ **第二份声明的作用是验 schema 装不装得下，不是实现它的 UI**（devbench F02 DoD）。
@@ -153,7 +154,7 @@ pub const SKILLS: &[SkillSpec] = &[
     // ⚠ cc-bus 这份**今天没有 UI 消费者**，这是刻意的 —— 见 F02 §2「不做什么」。
     SkillSpec {
         id: "cc-bus",
-        label: "总线",
+        label: || copy_text("rsSkillHost.skills.ccBusLabel", &[]),
         discover: Discover::ClaudeSkill {
             dir: "cc-bus",
             probe_file: "SKILL.md",
@@ -210,10 +211,14 @@ impl Presence {
     /// 给 UI / 日志的一行人话。**必然含 skill 身份与那条路径。**
     pub fn describe(&self) -> String {
         match self {
-            Presence::Found => "在场".to_string(),
-            Presence::Missing { skill, expected } => {
-                format!("{skill} 的前提没满足：找不到 {}", expected.display())
-            }
+            Presence::Found => copy_text("rsSkillHost.describe.present", &[]),
+            Presence::Missing { skill, expected } => copy_text(
+                "rsSkillHost.describe.missing",
+                &[
+                    ("skill", &skill.to_string()),
+                    ("expected", &(expected.display()).to_string()),
+                ],
+            ),
         }
     }
 }
@@ -300,9 +305,12 @@ pub fn editable_paths(spec: &SkillSpec, cwd: &Path) -> Vec<PathBuf> {
 /// 不存在就拒 —— 那让写面严格等于「声明里那几个真实文件」，而不是「那几个路径名」。
 pub fn resolve_editable(spec: &SkillSpec, cwd: &Path, requested: &Path) -> Result<PathBuf, String> {
     let real = requested.canonicalize().map_err(|e| {
-        format!(
-            "解析路径失败（文件必须已存在）：{} — {e}",
-            requested.display()
+        copy_text(
+            "rsSkillHost.editable.resolveFailed",
+            &[
+                ("requested", &(requested.display()).to_string()),
+                ("e", &e.to_string()),
+            ],
         )
     })?;
 
@@ -312,24 +320,23 @@ pub fn resolve_editable(spec: &SkillSpec, cwd: &Path, requested: &Path) -> Resul
         .collect();
 
     if !allowed.contains(&real) {
-        return Err(format!(
-            "拒绝写入：{} 不在 `{}` 的可编辑集合里。\n\
-             该 skill 声明的可编辑文件是 {:?}（相对 {}）。\n\
-             ⚠ 这是集合判定、且在路径解析之后 —— 符号链接与 `..` 都已解开。",
-            real.display(),
-            spec.id,
-            spec.editable,
-            spec.artifacts.root
+        return Err(copy_text(
+            "rsSkillHost.editable.notInSet",
+            &[
+                ("real", &(real.display()).to_string()),
+                ("id", &spec.id.to_string()),
+                ("editable", &format!("{:?}", spec.editable)),
+                ("root", &spec.artifacts.root.to_string()),
+            ],
         ));
     }
 
     // 纵深防御：即使上面放行，也不许碰 Claude 的数据文件。
     let as_str = real.to_string_lossy();
     if crate::claude_data_fence::is_protected_claude_data_path(&as_str) {
-        return Err(format!(
-            "拒绝写入：{} 是 Claude 的数据文件（jsonl/pidfile）。\n\
-             那是 `src/doc/INVARIANTS.md` 只读铁律的对象 —— 声明表把它列进 editable 也不行。",
-            real.display()
+        return Err(copy_text(
+            "rsSkillHost.editable.protectedData",
+            &[("real", &(real.display()).to_string())],
         ));
     }
     Ok(real)
@@ -374,7 +381,7 @@ fn views(cwd: &Path) -> Vec<SkillView> {
         .iter()
         .map(|spec| SkillView {
             id: spec.id.to_string(),
-            label: spec.label.to_string(),
+            label: (spec.label)(),
             missing_reason: match discover(spec, &claude_dir, cwd) {
                 Presence::Found => None,
                 m @ Presence::Missing { .. } => Some(m.describe()),
@@ -443,7 +450,7 @@ async fn remote_views(
         names.sort();
         out.push(SkillView {
             id: spec.id.to_string(),
-            label: spec.label.to_string(),
+            label: (spec.label)(),
             missing_reason,
             instances: names,
             editable: spec
@@ -468,14 +475,20 @@ pub fn remote_editable_rel(spec: &SkillSpec, cwd: &str, requested: &str) -> Resu
         .iter()
         .find(|f| remote_join(&root, f) == requested)
         .ok_or_else(|| {
-            format!(
-                "拒绝写入：{requested} 不在 `{}` 的可编辑集合里（声明的是 {:?}，相对 {}）",
-                spec.id, spec.editable, spec.artifacts.root
+            copy_text(
+                "rsSkillHost.remote.notInSet",
+                &[
+                    ("requested", &requested.to_string()),
+                    ("id", &spec.id.to_string()),
+                    ("editable", &format!("{:?}", spec.editable)),
+                    ("root", &spec.artifacts.root.to_string()),
+                ],
             )
         })?;
     if crate::claude_data_fence::is_protected_claude_data_path(requested) {
-        return Err(format!(
-            "拒绝写入：{requested} 是 Claude 的数据文件（jsonl/pidfile）—— 声明表把它列进 editable 也不行。"
+        return Err(copy_text(
+            "rsSkillHost.remote.protectedData",
+            &[("requested", &requested.to_string())],
         ));
     }
     Ok(remote_join(spec.artifacts.root, hit)
@@ -493,16 +506,21 @@ fn target_of(
     match route {
         crate::origin::Route::Local => {
             let real = resolve_editable(spec, Path::new(cwd), Path::new(path))?;
-            let root = Path::new(cwd)
-                .canonicalize()
-                .map_err(|e| format!("解析项目目录失败：{cwd} — {e}"))?;
+            let root = Path::new(cwd).canonicalize().map_err(|e| {
+                copy_text(
+                    "rsSkillHost.target.resolveFailed",
+                    &[("cwd", &cwd.to_string()), ("e", &e.to_string())],
+                )
+            })?;
             let rel = real
                 .strip_prefix(&root)
                 .map_err(|_| {
-                    format!(
-                        "拒绝写入：{} 不在项目目录 {} 里",
-                        real.display(),
-                        root.display()
+                    copy_text(
+                        "rsSkillHost.target.outside",
+                        &[
+                            ("real", &(real.display()).to_string()),
+                            ("root", &(root.display()).to_string()),
+                        ],
                     )
                 })?
                 .to_string_lossy()
@@ -522,10 +540,12 @@ fn target_of(
 }
 
 fn spec_of(skill_id: &str) -> Result<&'static SkillSpec, String> {
-    SKILLS
-        .iter()
-        .find(|s| s.id == skill_id)
-        .ok_or_else(|| format!("未知 skill：{skill_id}"))
+    SKILLS.iter().find(|s| s.id == skill_id).ok_or_else(|| {
+        copy_text(
+            "rsSkillHost.spec.unknown",
+            &[("skillId", &skill_id.to_string())],
+        )
+    })
 }
 
 /// 列出所有接入的 skill 及其状态。
@@ -582,9 +602,13 @@ async fn read_editable(
     rel: &str,
 ) -> Result<String, String> {
     door.peek(root, rel).await?.text.ok_or_else(|| {
-        format!(
-            "{} 上没有这份文件：{root}/{rel}（文件必须已存在）",
-            door.machine()
+        copy_text(
+            "rsSkillHost.read.missing",
+            &[
+                ("door", &(door.machine()).to_string()),
+                ("root", &root.to_string()),
+                ("rel", &rel.to_string()),
+            ],
         )
     })
 }
@@ -597,11 +621,14 @@ async fn write_editable(
     content: &str,
     expected: &str,
 ) -> Result<(), String> {
-    match door.put(root, rel, content, Some(expected), false, false).await {
+    match door
+        .put(root, rel, content, Some(expected), false, false)
+        .await
+    {
         Ok(_) => Ok(()),
-        Err(crate::user_files::Refused::Stale(why)) => Err(format!(
-            "收件箱在你打开之后被改过（多半是 agent 处置了其中几条）—— 这次没写，免得把那些改动冲掉。\
-             先把你的改动复制出来，关掉再打开收件箱，再贴回去。（{why}）"
+        Err(crate::user_files::Refused::Stale(why)) => Err(copy_text(
+            "rsSkillHost.write.stale",
+            &[("why", &why.to_string())],
         )),
         Err(e) => Err(e.said()),
     }

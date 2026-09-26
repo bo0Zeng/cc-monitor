@@ -457,7 +457,7 @@ fn ids_are_unique_and_stable() {
     let ids: HashSet<_> = TOOLS.iter().map(|t| t.id).collect();
     assert_eq!(ids.len(), TOOLS.len(), "id 必须唯一（T02 会拿它当键）");
     for t in TOOLS {
-        assert!(!t.id.is_empty() && !t.display_name.is_empty());
+        assert!(!t.id.is_empty() && !t.display_name.get().is_empty());
         // id 用于持久化/UI dataset，限制字符集免得以后踩 B03 那种 `--help` 的坑
         assert!(
             t.id.chars().all(|c| c.is_ascii_lowercase() || c == '-'),
@@ -868,15 +868,19 @@ fn carriers_do_not_mix_ours_and_not_ours() {
     // 反向自检：混合的那一形真的判得出来（合成一条，不动真表）。
     const MIXED: &[Carrier] = &[
         Carrier {
-            what: "自检：我们装的那一份",
+            what: Text(|| "自检：我们装的那一份".to_string()),
             source: ToolSource::Generated,
             destination: ToolDestination::LocalHomeRelative(".x/y"),
             touches: &[],
         },
         Carrier {
-            what: "自检：别人的那一份",
-            source: ToolSource::NotOurs { who: "自检" },
-            destination: ToolDestination::NotInstalledByUs { whose: "自检" },
+            what: Text(|| "自检：别人的那一份".to_string()),
+            source: ToolSource::NotOurs {
+                who: Text(|| "自检".to_string()),
+            },
+            destination: ToolDestination::NotInstalledByUs {
+                whose: Text(|| "自检".to_string()),
+            },
             touches: &[],
         },
     ];
@@ -898,15 +902,15 @@ fn carriers_do_not_mix_ours_and_not_ours() {
 fn every_carrier_says_which_one_it_is() {
     let mut n_multi = 0;
     for t in TOOLS {
-        let mut seen: HashSet<&str> = HashSet::new();
+        let mut seen: HashSet<String> = HashSet::new();
         for c in t.carriers {
             assert!(
-                !c.what.trim().is_empty(),
+                !c.what.get().trim().is_empty(),
                 "`{}` 有一个载体没说自己是哪一份",
                 t.id
             );
             assert!(
-                seen.insert(c.what),
+                seen.insert(c.what.get()),
                 "`{}` 有两个载体说着同一句话（{:?}）—— 那就分不出是哪一份了",
                 t.id,
                 c.what
@@ -1076,7 +1080,26 @@ fn tools_literal_data() -> String {
         }
     }
     assert!(end > start, "配对没找到收尾的 `]`");
-    me[start..end].to_string()
+    let body = &me[start..end];
+    // 〔CP2b · 4C〕表里给人看的那几格进了文案表（`Text(|| copy_text("key", &[]))`）⇒ 「数据」＝
+    // 源码体 ＋ 它引用的那几条表项的原文。只看源码体的话，措辞那一档（`Why::Wording`）
+    // 从此永远数到 0 —— 字搬了家，尺子得跟着去新家量。
+    let mut out = body.to_string();
+    let mut rest = body;
+    let needle = "copy_text(";
+    while let Some(at) = rest.find(needle) {
+        // `cargo fmt` 会把长调用拆行：`copy_text(` 与 key 之间可以隔着换行与缩进。
+        let tail = rest[at + needle.len()..].trim_start();
+        rest = tail;
+        let Some(tail) = tail.strip_prefix('"') else {
+            continue;
+        };
+        let key = &tail[..tail.find('"').expect("取文口的 key 没收尾")];
+        out.push('\n');
+        out.push_str(&crate::copy_table::copy_text(key, &[]));
+        rest = tail;
+    }
+    out
 }
 
 /// ★ `KR81D2` **正面（零命中守卫）**：闭集那张表的**数据里**，旧名字一处都没有。
@@ -1613,7 +1636,8 @@ fn claims() -> Vec<Claim> {
             }),
         },
         // 〔AS2 · 第四波 4B · V113〕资产目录里「装到这台」的 skill：装口是 `skill_install_apply`（经那台后端 `files-put`）；
-        //   **没有卸口**（`uninstall: None`，负向扫描守着：这个家里长出一个 `uninstall… / remove… / strip… / purge…` 就红）。
+        // 〔SU1 · 第四波 4C · V116〕卸口 `skill_uninstall_apply`（只删装记录里那几个文件，经那台后端 `files-delete` 带 `expect`）。
+        //   〔墓碑 —— AS2 那一版这里是 `uninstall: None`，负向扫描守着「家里长出 `uninstall…` 就红」；SU1 落卸口那一拍它当场红了（`uninstall_with`），照它说的登记。〕
         Claim {
             tool: "skill-install",
             home: Some(ImplHome {
@@ -1624,7 +1648,10 @@ fn claims() -> Vec<Claim> {
                 addr: "skill_install.rs::skill_install_apply",
                 definition: "pub async fn skill_install_apply(\n    to: Origin,\n    name: String,\n    source: Vec<SkillFile>,\n    target: Vec<SkillTargetText>,\n    take: Vec<String>,\n    overwrite: Vec<String>,\n) -> Result<SkillInstallApplied, String> {",
             }),
-            uninstall: None,
+            uninstall: Some(ImplSite {
+                addr: "skill_install.rs::skill_uninstall_apply",
+                definition: "pub async fn skill_uninstall_apply(\n    to: Origin,\n    dir: String,\n    seen: Vec<SkillTargetText>,\n    take: Vec<String>,\n    confirm: Vec<String>,\n) -> Result<SkillUninstallApplied, String> {",
+            }),
         },
         Claim {
             tool: "posix-rc-aliases",

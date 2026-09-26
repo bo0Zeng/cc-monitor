@@ -24,6 +24,7 @@
 //! 但**它不是 README** —— 这一格已抬进上报口。
 
 use super::table::{Note, Rejected, WHY_AUTH_STYLE_UNKNOWN};
+use copy_core::copy_text;
 use creds_core::perm::{self, Verdict};
 use creds_core::store::{self, AccountEntry, AuthStyle};
 use std::path::{Path, PathBuf};
@@ -84,7 +85,10 @@ pub(crate) fn load(path: &Path) -> Loaded {
                 path: path.to_path_buf(),
                 accounts: Vec::new(),
                 verdict,
-                problem: Some(format!("读不动凭据文件：{e}")),
+                problem: Some(copy_text(
+                    "beUpstreamCreds.load.unreadable",
+                    &[("e", &e.to_string())],
+                )),
             };
         }
     };
@@ -178,7 +182,10 @@ pub(crate) fn announce(
     //      （`creds_core::store::AuthStyle::ALL`）。在这里再抄一份，加第四个成员的那天
     //      这一行会**静默变旧**，而它是给正在排错的人看的最后一句话。
     //    ⚠ 只在真有一条这么写错的时候印 —— 每次启动都印等于噪音。
-    if rejected.iter().any(|r| r.why == WHY_AUTH_STYLE_UNKNOWN) {
+    if rejected
+        .iter()
+        .any(|r| r.why == WHY_AUTH_STYLE_UNKNOWN.as_str())
+    {
         let legal = AuthStyle::ALL
             .iter()
             .map(|s| s.field_value())

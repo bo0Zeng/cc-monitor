@@ -38,7 +38,7 @@
 //! | **从一个 `Row` 里拿不到 `&Base`** | ⚠ **这条今天不成立了**：`Row::base()` 存在（层间契约要它），但**收成了 `pub(super)`** ⇒ 中转够不到整个 `Row`。旧话：⭐ 编译器（字段私有 · 住 `mod sealed` · 无 `base()` 访问器） | 这是编译器**真正**买到的**唯一**一条 |
 //! | ⚠ **另一半（`&SecretKey`）根本不在这张表的保护面里** | **没有人** —— [`Row::key`] 就是一个 `pub(crate)` 访问器 | 〔`D2` `§五-2`，`C-补` 08-28 补的话，**不是新缺陷**〕`Row` 两个半边**不对称**：`base` 那半没访问器（要「有意重建」，见 `D1-M1`），`key` 那半**一个方法调用**就够 ⇒ 「拿 B 的 key」不需要重建任何东西。⚠ 它下游那一跳另有人守：把 `&SecretKey` 变成明文的地方由 `creds_guard` ㈢（`expose_for_auth_header(` 恰好 1 处）钉着 —— 但那守的是**明文出口**，**不是**「谁拿得到这个值」 |
 //! | 上游与 key「只能同源」 | **只有行为判据** | `D1-M2`：两行同时在作用域、A 连 B 渲染 ⇒ **编译通过**（我复打过）。`D1-M1`：换签名收 `host: &str` + 用 `row.host_header()` **重建 `Base`** 去连 ⇒ **488 passed / 0 failed** |
-//! | 进程里「没有默认上游可回落」 | ⚠ **今天换人守了**：那个进程级常量先搬进上游选择、条 59 又把它**整删**成每 agent 一行的表（`super::AGENT_UPSTREAMS`），`table_guard::the_relay_has_no_default_upstream_to_fall_back_to` 两向相等断言钉着「中转零处 · 上游选择恰好登记那几处」。旧话：只有一条文本棘轮（禁 `Relay` 里出现 `base:` / `key:` 字面） | **假**（那一拍）：那个默认上游常量当时是**中转的** crate 常量（当时的住址见本表下面那一段），`Base` 三个字段全 `pub(crate)`、`Base::parse` 也是 ⇒ 一行就能造一个。⚠ **后半句今天仍成立** —— 中转有意去 `Base::parse` 现造一个，没人拦得住 |
+//! | 进程里「没有默认上游可回落」 | ⚠ **今天换人守了**：那个进程级常量先搬进上游选择、条 59 又把它**整删**成每 agent 一行的表（`agents::Adapter::upstream`，〔NT2 · V25〕跟着适配层），`table_guard::the_relay_has_no_default_upstream_to_fall_back_to` 两向相等断言钉着「中转零处 · 上游选择恰好登记那几处」。旧话：只有一条文本棘轮（禁 `Relay` 里出现 `base:` / `key:` 字面） | **假**（那一拍）：那个默认上游常量当时是**中转的** crate 常量（当时的住址见本表下面那一段），`Base` 三个字段全 `pub(crate)`、`Base::parse` 也是 ⇒ 一行就能造一个。⚠ **后半句今天仍成立** —— 中转有意去 `Base::parse` 现造一个，没人拦得住 |
 //! | 装表**只有一处**做 | **文本判据**（`table_guard.rs` 那几条相等断言；⚠ 「`sealed` 里面」那一格今天改成「`accounts/` 里面」） | `D1-M4`：㈠ 那根针在它自称「真正的人群」（`sealed` 里面）**恰恰最弱** —— **一个字面量能焊出任意多行**，数字面量数不出「焊了几行、每行装了什么」。实测多行焊接 + 把回落整个加回来 ⇒ `table_guard` 单跑 **10 passed / 0 failed** |
 //!
 //! ⚠⚠ **上表第 4 行那个「当时的住址」是 `server.rs:24`** —— 逐条说清它为什么还写着行号：
@@ -60,13 +60,14 @@
 //!
 //! # ⚠ 「这一行的 `base_url` 缺席」与「这一行不在表里」是两件事
 //!
-//! - 缺席 ⇒ 用**这一行所属那个 agent** 的默认上游（每 agent 一行，`super::AGENT_UPSTREAMS`）。
+//! - 缺席 ⇒ 用**这一行所属那个 agent** 的默认上游（每 agent 一行，`agents::Adapter::upstream`，〔NT2 · V25〕跟着适配层）。
 //!   它是**一行已经存在**的行的一个字段取默认值，**不是**回落。
 //! - 不在表里 ⇒ **404，一个字节都不发上游**。
 //!
 //! 这两句读起来像，差别正是 `KH2` 要守的全部。
 
 use crate::relay::{segment_is_safe, Base};
+use copy_core::copy_text;
 use creds_core::store::{AccountEntry, AuthStyle, AuthStyleSetting};
 
 // ★★ 🔴 〔`设计/20 §7` 步 2〕**`mod sealed` 删掉了** —— 换来的东西写在这里
@@ -218,6 +219,15 @@ impl RoutingTable {
         self.rows.get(&(agent.to_string(), account.to_string()))
     }
 
+    /// 〔US1〕这一家在表里有哪几条账号 id（有序）。**「表里有哪几行」的唯一出处**（`file_face::rows_at`）。
+    pub(crate) fn ids_of(&self, agent: &str) -> Vec<String> {
+        self.rows
+            .keys()
+            .filter(|(a, _)| a == agent)
+            .map(|(_, id)| id.clone())
+            .collect()
+    }
+
     /// 表里有几行。只给日志与判据用。
     pub(crate) fn len(&self) -> usize {
         self.rows.len()
@@ -251,8 +261,8 @@ pub(crate) struct Note {
 }
 
 /// 账号 id 当不了路由段。
-pub(crate) const WHY_ID_UNUSABLE: &str =
-    "账号 id 当不了路由段（只许字母数字与 - _，最长 128 字节）";
+pub(crate) static WHY_ID_UNUSABLE: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beUpstreamTable.whyIdUnusable.say", &[]));
 
 /// 🔴 **明文 http 只许连回环**〔`K-R1`；`裁-1` 08-25「只准 TLS」的那一格例外〕。
 ///
@@ -260,40 +270,40 @@ pub(crate) const WHY_ID_UNUSABLE: &str =
 /// ⇒ 回环上的明文放行。而**非回环 + 明文** = 那一行的 key 明着过网线
 /// ⇒ 拒掉并出声，不是「出声之后照发」：出声照发这一档在这里等于
 /// 「我告诉过你了」，而代价由用户付。
-pub(crate) const WHY_PLAINTEXT_OFF_LOOPBACK: &str =
-    "base_url 是明文 http 而主机不是本机回环 —— 那会把这一行的 key 明着发上网线。要么换 https，要么把上游放到本机回环上";
+pub(crate) static WHY_PLAINTEXT_OFF_LOOPBACK: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beUpstreamTable.whyPlaintextOffLoopback.say", &[]));
 
 /// `auth_style` 写了一个认不出的词。**刻意不回落成默认值**。
-pub(crate) const WHY_AUTH_STYLE_UNKNOWN: &str =
-    "auth_style 写的不是后端认得的值之一（认得的那几个见下面那行现算的清单）";
+pub(crate) static WHY_AUTH_STYLE_UNKNOWN: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beUpstreamTable.whyAuthStyleUnknown.say", &[]));
 
 /// `auth_style` 说「一个鉴权头都不发」，而同一行又配了一把 key。
 ///
 /// 两句话说的是相反的事 ⇒ **不猜哪一句是他的意思**：猜「用 key」就把一把真 key
 /// 发给一个声明了不要鉴权的端点；猜「不发」就让人以为配好的 key 在生效。
 /// ⇒ 拒掉并出声，让人自己删掉其中一句。
-pub(crate) const WHY_NO_AUTH_WITH_KEY: &str =
-    "这一条的 auth_style 说不发任何鉴权头，同一条却配了 api_key —— 两句话说的是相反的事，删掉其中一句";
+pub(crate) static WHY_NO_AUTH_WITH_KEY: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beUpstreamTable.whyNoAuthWithKey.say", &[]));
 
 /// 这一行的 `base_url` 带了路径前缀。
-pub(crate) const NOTE_PATH_PREFIX: &str =
-    "base_url 带路径前缀 ⇒ 上游收到的是「那个前缀 + 客户端自己的真路径」。若前缀与客户端的路径头一段重了，上游会看到重复的那一段（中转不替你合并）";
+pub(crate) static NOTE_PATH_PREFIX: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beUpstreamTable.notePathPrefix.say", &[]));
 
 /// 这一行用 `Authorization: Bearer` 换头。
 ///
 /// ⚠ 今天它**印不出来** —— 那正是 `AuthStyle::DEFAULT`，而默认那个不出声。
 /// 留着它不是仪式：`note_for_auth_style` 里那个穷尽 `match` 要求每个成员都有话说，
 /// 而把这一支写成「借用隔壁那句」的话，默认值哪天换了，它就开始报一句**假话**。
-pub(crate) const NOTE_AUTH_STYLE_BEARER: &str =
-    "这一条用 Authorization: Bearer 头把 key 交给上游，而客户端自带的鉴权头会被丢掉";
+pub(crate) static NOTE_AUTH_STYLE_BEARER: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beUpstreamTable.noteAuthStyleBearer.say", &[]));
 
 /// 这一行用 `x-api-key` 换头。
-pub(crate) const NOTE_AUTH_STYLE_X_API_KEY: &str =
-    "这一条用 x-api-key 头把 key 交给上游（不是默认那种），而客户端自带的鉴权头会被丢掉";
+pub(crate) static NOTE_AUTH_STYLE_X_API_KEY: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beUpstreamTable.noteAuthStyleXApiKey.say", &[]));
 
 /// 这一行一个鉴权头都不发。
-pub(crate) const NOTE_AUTH_STYLE_NO_AUTH: &str =
-    "这一条一个鉴权头都不发，客户端自带的那份也不转发 —— 这是给不校验凭据的本地部署用的那一档";
+pub(crate) static NOTE_AUTH_STYLE_NO_AUTH: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beUpstreamTable.noteAuthStyleNoAuth.say", &[]));
 
 /// 一个**非默认**的鉴权头形状该报哪一句；默认那个 ⇒ `None`（每次都印等于噪音）。
 ///
@@ -306,15 +316,15 @@ fn note_for_auth_style(style: AuthStyle) -> Option<&'static str> {
     }
     // ⚠ 穷尽 `match`：加一个成员**编译不过**，而不是静默地不出声。
     Some(match style {
-        AuthStyle::Bearer => NOTE_AUTH_STYLE_BEARER,
-        AuthStyle::XApiKey => NOTE_AUTH_STYLE_X_API_KEY,
-        AuthStyle::NoAuth => NOTE_AUTH_STYLE_NO_AUTH,
+        AuthStyle::Bearer => NOTE_AUTH_STYLE_BEARER.as_str(),
+        AuthStyle::XApiKey => NOTE_AUTH_STYLE_X_API_KEY.as_str(),
+        AuthStyle::NoAuth => NOTE_AUTH_STYLE_NO_AUTH.as_str(),
     })
 }
 
 /// 把文件里读出来的那些条，装成一张表。**每一条都挂在 `agent` 名下**（条 49）。
 ///
-/// `default_base` 是 **`agent` 那一家**的默认上游（每 agent 一行，住 `super::AGENT_UPSTREAMS`），
+/// `default_base` 是 **`agent` 那一家**的默认上游（每 agent 一行，住 `agents::Adapter::upstream`，〔NT2 · V25〕跟着适配层），
 /// 不是进程级的某一个 —— 它只给「这一行没写 `base_url`」那一格取值，**不是**回落。
 ///
 /// # 「装不进去」的判断都在这里，都出声 —— **条数别写死，数下面那几条**
@@ -368,7 +378,7 @@ pub(crate) fn build(
         if !segment_is_safe(&e.id) {
             rejected.push(Rejected {
                 id: e.id,
-                why: WHY_ID_UNUSABLE,
+                why: WHY_ID_UNUSABLE.as_str(),
             });
             continue;
         }
@@ -393,7 +403,7 @@ pub(crate) fn build(
         if !base.tls && !base.host_is_loopback() {
             rejected.push(Rejected {
                 id: e.id,
-                why: WHY_PLAINTEXT_OFF_LOOPBACK,
+                why: WHY_PLAINTEXT_OFF_LOOPBACK.as_str(),
             });
             continue;
         }
@@ -403,7 +413,7 @@ pub(crate) fn build(
             AuthStyleSetting::Unknown => {
                 rejected.push(Rejected {
                     id: e.id,
-                    why: WHY_AUTH_STYLE_UNKNOWN,
+                    why: WHY_AUTH_STYLE_UNKNOWN.as_str(),
                 });
                 continue;
             }
@@ -411,7 +421,7 @@ pub(crate) fn build(
         if auth_style == AuthStyle::NoAuth && e.key.is_some() {
             rejected.push(Rejected {
                 id: e.id,
-                why: WHY_NO_AUTH_WITH_KEY,
+                why: WHY_NO_AUTH_WITH_KEY.as_str(),
             });
             continue;
         }
@@ -419,7 +429,7 @@ pub(crate) fn build(
         if !base.path.is_empty() {
             notes.push(Note {
                 id: e.id.clone(),
-                what: NOTE_PATH_PREFIX,
+                what: NOTE_PATH_PREFIX.as_str(),
             });
         }
         if let Some(what) = note_for_auth_style(auth_style) {
