@@ -36,7 +36,6 @@
 //! `设计/01 §6.7b` 用户 09-18 拍的落点；自带别名块把 `~/.cc-monitor/bin` 加进 PATH）。
 
 use crate::copy_table::copy_text;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::dial_host::{Readback, RemoteFs};
 use crate::ssh_source::RemoteConfig;
@@ -134,82 +133,6 @@ pub(crate) async fn put_marker(
 /// 标记 / 入口这类小文件一次最多读多少（它们都是几十字节；超了是那台机器上的东西不对）。
 const MARKER_READ_MAX: u64 = 64 * 1024;
 
-/// **远端 profile 的读取结论**（Phase G 审阅修复）：把 `read_optional` 的 `Option<Vec<u8>>`
-/// 拆成三态，取代原先的 `read_optional(..).map(from_utf8_lossy).unwrap_or_default()`。
-///
-/// 那一行有两个各自独立的数据丢失口，而**本机侧同一操作两个口都堵着**
-/// （`profile_installer::install_to_profile`：`read_to_string` 遇非 UTF-8 直接 `Err`；
-/// `on_disk_size > 0 && raw.is_empty()` 直接 `Err`，后者是 v1.7.9 事故的修法）：
-///
-/// 1. **`unwrap_or_default()` 把「读不出来」当成「文件是空的」**。于是 install 走
-///    `if !existing.is_empty()` 时**跳过备份**、把用户整份 `.bashrc` 换成只含 ccm 块的
-///    `merged`，无任何可恢复副本；uninstall 则 `stripped == existing` 成立 →
-///    对着一份读不出来的文件回「没有 ccm 块，无需卸载」——正是
-///    `strip_profile_block` 头注亲自定义为 bug 的形态（"它主动告诉用户没问题"），
-///    上一轮只修到纯函数一层，根因在这个读取行。
-/// 2. **`from_utf8_lossy` 在有损字符串空间里做读-改-写**。非 UTF-8 字节（GBK 注释、
-///    latin-1 人名、误粘的 `\xa0`）变 U+FFFD → **备份写的是已经有损的那份**，原字节
-///    从此不可恢复；而读回校验拿同样有损的两份比对，**逐字节相同、校验通过**，
-///    整套「备份 + 读回 + 回滚」为这次损坏出具合格证。[`verify_readback`] 的头注
-///    自己写着"按字节而不是按字符串"，那条纪律只落到了后端二进制那条路。
-///
-/// 修法与本机侧对齐成 **fail-safe**：说不清就 `Err` 中止、不动原文件。
-/// `Ok(None)` = 文件真的不存在（`try_exists` 明确说 false）；`Ok(Some(s))` = 读到了且是
-/// 合法 UTF-8；`Err` = 读不出来 / 非 UTF-8 / 有字节数却读到空。
-pub(crate) fn interpret_profile_read(
-    what: &str,
-    bytes: Option<&[u8]>,
-    exists: Option<bool>,
-    size: Option<u64>,
-) -> Result<Option<String>, String> {
-    let Some(bytes) = bytes else {
-        // read 失败。只有 `try_exists` **明确说不存在**才当新建；"问不出来"归到 Err，
-        // 因为把无权限/被占用当成空文件正是上面第 1 条的病灶。
-        return if exists == Some(false) {
-            Ok(None)
-        } else {
-            Err(copy_text(
-                "rsSftp.profile.unreadable",
-                &[("what", &what.to_string())],
-            ))
-        };
-    };
-    if bytes.is_empty() {
-        if let Some(n) = size.filter(|n| *n > 0) {
-            return Err(copy_text(
-                "rsSftp.profile.emptyRead",
-                &[("what", &what.to_string()), ("n", &n.to_string())],
-            ));
-        }
-        return Ok(Some(String::new()));
-    }
-    String::from_utf8(bytes.to_vec()).map(Some).map_err(|e| {
-        copy_text(
-            "rsSftp.profile.notUtf8",
-            &[
-                ("what", &what.to_string()),
-                ("validBytes", &(e.utf8_error().valid_up_to()).to_string()),
-            ],
-        )
-    })
-}
-
-// 〔AL1 · 2026-09-24〕这里原来是 `rollback_note`〔散文墓碑〕（「回滚措辞必须与实际发生的事一致」）。
-// 它记的那条未收项 ——「首次安装失败就删掉新建的文件是行为新增（要在远端 `remove`），不在验收轮里做」——
-// 在 `fenced_block::apply` 里收了：原本不存在的文件写坏了就 `Store::delete_created`，措辞由
-// `fenced_block::undo_note` 按**真发生了的事**说，本机远端同一份。
-
-/// [`interpret_profile_read`] 的取样：〔SR1b〕一问（`RemoteFs::read`）带回三样 —— 字节 ·
-/// 读不出时补问的「在不在」· 读到空时补问的大小（后端**只在需要时**补问，不为常见路径多加往返）。
-async fn read_profile_text(
-    fs: &RemoteFs,
-    path: &str,
-    what: &str,
-) -> Result<Option<String>, String> {
-    let (bytes, exists, size) = fs.read(path, MARKER_READ_MAX).await?;
-    interpret_profile_read(what, bytes.as_deref(), exists, size)
-}
-
 /// 远端那台要的那一份后端（〔DP1〕字节从 `byte_table` 按那台的 (OS, arch) 取，`include_bytes!` 不在本文件）。
 pub struct BackendBinary {
     /// 🔴 `K-R70`：**这份字节自报的身份**（`build.rs` 从二进制里扫 `CC_MONITOR_BUILD_STAMP`
@@ -283,7 +206,7 @@ pub fn deploy_decision(remote_build_id: Option<&str>, expected: &str) -> DeployA
 
 /// 部署落点那个文件**本身**的取样结论（〔DP1〕[`remote_identity`] 的第一步：没有 / 0 字节就不必再问它是谁）。
 ///
-/// 与 [`interpret_profile_read`] 同一条纪律：**「问不出来」不许读成上面任何一个确定答案**
+/// 纪律：**「问不出来」不许读成上面任何一个确定答案**
 /// ——把无权限/传输失败当成「不在」会变成每次连接都重传（把版本门控拆了），
 /// 当成「在」则退回本枚举要治的那个静默。**所以它不是 `bool`。**
 /// ⚠ 成员就在下面，别在散文里复述一份基数 —— 那份字面量会在加成员那天变成假话。
@@ -510,14 +433,13 @@ fn remote_parent(path: &str) -> &str {
 
 /// [`probe_target_binary`] 那两次取样的**解释**（纯函数，可单测 —— K-W4b）。
 ///
-/// 与 [`interpret_profile_read`] 同一形状：**吃两次调用各自的结果，不吃会话**。
+/// 形状：**吃两次调用各自的结果，不吃会话**。
 /// 拆出来的理由是一个具体缺陷，不是行数：解释这一半原先焊在 async 体里，
 /// 四个状态的映射规则因此一条判据都没有 —— 把那个体换成恒答 `Present`，
 /// 全量 cargo **0 红**（09-06 沙箱实测，`tests/evidence/K-W4b-readings.md`），
 /// 而部署决策当场退回「只看 `.build_id`」的老病。
 ///
-/// 入参就是两次调用**降解之后**的结果（与 [`read_profile_text`] 传给
-/// [`interpret_profile_read`] 的那几个入参同一路数）：
+/// 入参就是两次调用**降解之后**的结果：
 /// - `metadata_size`：`None` = `metadata` 那次调用失败；`Some(inner)` = 成功，
 ///   `inner` 是服务器给的 size —— ⚠ `Some(None)` 是**服务器没给 size**，不是 0 字节。
 /// - `exists`：`metadata` 失败时补问 `try_exists` 的结果（`None` = 它也答不出来）。
@@ -546,7 +468,7 @@ pub(crate) fn interpret_target_probe(
 ///
 /// 不 `read` 它 —— 那是 2.3 MB 的二进制，为判存在把它拉回来是白花带宽；
 /// `metadata` 一次往返就够。取样与判定分开（纯函数可单测）是本模块既有的形状，
-/// 见 [`read_profile_text`] / [`interpret_profile_read`]；本函数只取样，
+/// 本函数只取样，
 /// 四态怎么映射住 [`interpret_target_probe`]。
 ///
 /// `metadata` 失败才补问 `try_exists`（〔SR1b〕这一问住后端 `stat`，一趟带回两样）：要区分「明确不在」与
@@ -797,9 +719,10 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
     //   后端没就位时放入口等于给一条当场报错的命令。**只在这颗按钮上放**，连接时的自动部署
     //   （[`ensure_backend_deployed`]）不碰入口 —— 那是用户点了才发生的事。
     //   〔SR1b〕入口落在 `~/.cc-monitor/bin/ccm`（两个写根之内；`设计/01 §6.7b` 的落点）。
-    let entry = match put_ccm_entry(&fs, &path).await? {
-        crate::fenced_block::Applied::Unchanged => copy_text("rsSftp.ccmEntry.ready", &[]),
-        crate::fenced_block::Applied::Written { .. } => copy_text("rsSftp.ccmEntry.placed", &[]),
+    let entry = if put_ccm_entry(&fs, &path).await? {
+        copy_text("rsSftp.ccmEntry.placed", &[])
+    } else {
+        copy_text("rsSftp.ccmEntry.ready", &[])
     };
     // 〔GP1 · 第四波〕`设计/01 §6.7b` 迁移 ② ③：旧版放在 `~/.local/bin/ccm` 的那一份，认出是我们放的就删
     //   （经那台的后端、带 CAS；那一格在 SFTP 两个写根之外）。没东西 ⇒ 不多说一句；查不成 ⇒ 说出来，不挡部署。
@@ -863,74 +786,9 @@ pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, Strin
 // 「哪几份才许删」那一问的住址从此是 `src/backend/agents/claudecode/paths.rs::session_file_for_delete`。
 // ============================================================================
 
-// ============================================================================
-// F10：远端 cc/bash 集成——一键把 ccm wrapper 装进远端 ~/.bashrc（SS-H）。
-// 写 ~/.bashrc 不是 Claude 数据（不触 INVARIANT §1），与本地 PowerShell profile 安装同性质。
-// ============================================================================
-
-/// 远端 ccm 块的 BEGIN/END 标记（镜像本地 profile_installer 的 `# === cc-monitor BEGIN/END`）。
-/// 重装时整块替换、卸载时整块删；用户在块外的内容绝不动。
-///
-/// ⚠ `K-R62` 起是 `pub(crate)`：**本机 POSIX 那条路装的是同一个块**
-/// （`profile_installer::plan_install` 的 `PosixRc` 臂走 [`merge_profile_block`]）。
-/// 在那边抄一对同样的字符串就是第二个住址 —— 而「同一件事有两个住址」正是
-/// `KR62D1` 那条「不许变成第四套」要挡的东西。名字里的 `remote` 是历史，
-/// 今天它的意思是「**POSIX rc 里那一对围栏**」，本机远端共用。
-pub(crate) const CCM_PROFILE_BEGIN: &str = "# === cc-monitor remote ccm BEGIN ===";
-pub(crate) const CCM_PROFILE_END: &str = "# === cc-monitor remote ccm END ===";
-
-/// 远端 ↗ 拉前用的 `ccm` wrapper（**后端拥有**，install 写它而非前端传入——见审计 S-1：
-/// 写进 ~/.bashrc 的是被 shell **执行**的代码，绝不能让前端注入任意 bash）。
-///
-/// **必须与前端 `remote-section.ts::CCM_WRAPPER_SNIPPET`（面板展示/手动复制用）逐字一致。**
-/// **单一来源**：`src/shared/ccm-aliases.sh`——前端 `remote-section.ts` 经 `?raw` import
-/// 同一文件（修复历史漂移：Batch7 重构时只改了前端展示版，装进远端的还是老版）。
-///
-/// **F02 起本块只剩「别名层」**；`K-R48` 第二拍起它指向的那个 `ccm` 是 [`ccm_entry_shim`]
-/// （三行入口，转给后端本体），不再是一份 bash 实现。
-/// 理由：shell 函数**优先于 PATH**，装成函数则与用户已有同名函数硬冲突且必然被遮蔽（实测）；
-/// 且远端是 zsh/fish 时 `.bashrc` 根本不被 source，函数形态拿不到（审计 D2）。
-/// ⚠ `K-R49` 起它是 `pub(crate)`：`account_aliases::collision_note` 要问
-/// 「`cc` / `cct` 这几个名字是不是已经被自带的别名块占了」，
-/// 而那个答案**只有这份文件说了算** —— 在那边抄一份名字清单就是第二个住址。
-/// 〔`K-R58` 09-11：`cch` 从这份文件里删了 ⇒ 它**不再**被当作「已被占用」，
-/// 用户可以自己定义一个 `cch`。**多一格自由，不是回归。**〕
-pub(crate) const CCM_WRAPPER_SNIPPET: &str = include_str!("../../shared/ccm-aliases.sh");
-
-/// 自带别名块里**今天定义了哪几个名字** —— 现算，不写死（`13b`：闭集只许有一个住址，
-/// 那个住址就是 `src/shared/ccm-aliases.sh` 自己）。
-///
-/// `account_aliases` 的撞名判据与本文件的文档对账判据都拿它当人群，
-/// 于是「删/加一个别名」这件事**不需要同时去改两份名单**（改漏一份正是 `KR58D1`
-/// 的失效方向）。
-///
-/// 🔴 〔`K-R62` 09-11〕**它从 `#[cfg(test)]` 转正了**，因为多了一个生产使用者：
-/// `profile_installer::render_manual_cleanup_hint` 要回答「你 rc 里那几行裸的
-/// `cc()` / `cct()`，会不会把我们装的那一块遮蔽掉」—— 那个答案**只有这份文件说了算**，
-/// 在提示文案里抄一份名字清单就是第二个住址。转正**没有放宽任何东西**：
-/// 它仍然现算自 [`CCM_WRAPPER_SNIPPET`]，一个字节的名单都没写死。
-///
-/// ⚠ **它认的形状写死在这里**：`<名>() {`（`()` 与 `{` 之间允许空白）。
-/// 注释行里那两条示例（`#   zcc()  { … }`）靠「名字只许 `[A-Za-z0-9_]`」被剔掉 ——
-/// 换一种写法（`function cc {`）它会**漏**，而漏出来的形状是「人群变空」，
-/// 调用处一律先断 `!is_empty()`，不让它静默变成空真。
-pub(crate) fn builtin_alias_names() -> Vec<&'static str> {
-    let mut v: Vec<&'static str> = CCM_WRAPPER_SNIPPET
-        .lines()
-        .filter_map(|l| {
-            let (name, rest) = l.split_once("()")?;
-            if !rest.trim_start().starts_with('{') {
-                return None;
-            }
-            let name = name.trim();
-            (!name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
-                .then_some(name)
-        })
-        .collect();
-    v.sort_unstable();
-    v.dedup();
-    v
-}
+// 〔W5-ALIAS · 第五波先行〕F10（别名块）这一段搬去了 `profile_installer.rs`（B §2 第 12 条：本文件已经不做 SFTP，
+//   别名块的真相 —— 围栏那一对 · 块的内容 · 自带的名字 · 合 / 剥 · 远端装 / 卸两条命令 —— 归别名域）。
+//   本文件只剩部署：后端字节 · 身份 · 读回 · `ccm` 入口。
 
 /// 🔴 **`K-R48` 第二拍（09-11）：`CCM_CLI_SCRIPT` 没了，这里是它的墓碑。**
 ///
@@ -965,239 +823,6 @@ use crate::backend::control::local_backend::ccm_entry_shim;
 /// 〔墓碑 —— SR1b 那一版这里写「旧的 `~/.local/bin/ccm` **不删也不再更新**」。〕
 const CCM_CLI_REMOTE_PATH: &str = ".cc-monitor/bin/ccm";
 
-/// 纯函数：把 `snippet` 合进 profile 内容的 BEGIN/END 块（可单测）。
-/// - 已有**配对**块（BEGIN 后能找到 END）→ **整块替换**（幂等：`merge(merge(x))==merge(x)`）。
-/// - 无 BEGIN → **追加**（块外内容原样保留）。
-/// - **有 BEGIN 但其后无 END（损坏/截断/上次安装中断）→ `Err` 中止**（审计 B1：绝不用独立
-///   `find` 误配前面的 END 而吞掉用户内容；宁可报错让用户手修，也不破坏文件）。
-pub fn merge_profile_block(existing: &str, snippet: &str, what: &str) -> Result<String, String> {
-    // **T04 第二步：配对判定改走 `fenced_block::find_pair`，与本机 profile 共用同一条规则。**
-    //
-    // **更正我原话「判定本身是对的…判定没变」——被实测证伪，9 个边界里 3 个变了**
-    // （T04 审计②，它把旧 byte-find 实现逐字复制成 `old_merge` 并列对拍）：
-    //   1. **行内 marker**（用户 profile 里有 `echo "…BEGIN…"` / `echo "…END…"`）：
-    //      旧实现会**切断那个 echo 行、并把第二个 echo 行整行吃掉** —— 远端侧一个
-    //      **我未申报就修掉了的数据丢失**。新实现按行 `trim_start().starts_with` 判，改成追加。
-    //   2. **BEGIN 与 END 同一行**：旧能正确替换该行 → 新直接 Err（`find_pair` 认到 BEGIN
-    //      就 `continue`，同行的 END 被跳过）。**这是退化**，虽符合"宁可报错"但当时未文档化未测试。
-    //   3. **缩进 marker**：旧"保留 BEGIN 行缩进、丢 END 缩进"（不自洽）→ 新统一归一到列 0。
-    // 三条现在都有测试锁死（见 `remote_merge_boundary_semantics_after_migration`）。
-    //
-    // 原实现是自己 `find(BEGIN)` 再在其后 `find(END)`——
-    // 但本机侧漏了同一道保护，于是两侧对"围栏损坏"处置不一致、本机那边会**吃掉用户内容**。
-    // 现在两侧同一个函数，判定不可能再漂移。
-    // 〔AL1 · 2026-09-24〕配对之后怎么拼，**也只剩一份**：`fenced_block::splice_in`（`71 §12.5`）。
-    //   本函数只答「POSIX rc 里这一块长什么样」（方言的内容与围栏），不再自己切行拼接。
-    let block = format!(
-        "{CCM_PROFILE_BEGIN}\n{}\n{CCM_PROFILE_END}\n",
-        snippet.trim()
-    );
-    crate::fenced_block::splice_in(
-        existing,
-        CCM_PROFILE_BEGIN,
-        CCM_PROFILE_END,
-        &block,
-        what,
-        crate::fenced_block::Layout::Posix,
-    )
-}
-
-/// 纯函数：从 profile 内容删掉 cc-monitor 的 BEGIN/END 块（可单测）。
-/// - 有**配对**块（BEGIN 后找得到 END）→ 整块删，块前后用户内容原样保留。
-/// - 无 BEGIN，或 BEGIN 后无 END（损坏）→ **原样返回**（宁可不删也不破坏文件）。
-pub fn strip_profile_block(existing: &str, what: &str) -> Result<String, String> {
-    // **T04 审计阻塞：这里原先没迁移，于是「卸」那半边被我从"两侧一致"改成了"两侧不一致"。**
-    // 原实现在悬空 BEGIN 时 `return existing.to_string()` → 调用方判 `stripped == existing`
-    // → 打印「远端 {profile} 里没有 ccm 块，无需卸载」。**那正是我在同一个 commit 里
-    // 定义为 bug 的形态**，而且比本机那边更糟：它主动告诉用户"没问题"。
-    //
-    // 更要紧的是这是我**新造的漂移**：`af21ffb~1` 时两侧卸载都"原样返回"（一致），
-    // `af21ffb` 之后本机 Err、远端静默 no-op（不一致）。我 commit 里那句
-    // 「两侧不可能再漂移」**只对 install 半边成立，对 uninstall 半边方向相反**。
-    // 现在两侧的装与卸四条路全走 `find_pair`。
-    // 〔AL1〕拼接走 `fenced_block::splice_out`（与装那一半同一份，`71 §12.5`）。
-    crate::fenced_block::splice_out(
-        existing,
-        CCM_PROFILE_BEGIN,
-        CCM_PROFILE_END,
-        what,
-        crate::fenced_block::Layout::Posix,
-    )
-}
-
-/// 〔AL1 · 2026-09-24〕远端那一份原语（`fenced_block::Store`）。**规则不住这里** ——
-/// 「读 → 备份 → 原子替换 → 回读比对 → 回滚」那一个序列是 `fenced_block::apply`，
-/// 本机那一份原语是 `fenced_block::LocalFile`。这里只回答「这台远端上怎么做这四件事」。
-///
-/// 路径是远端 home 下的相对路径。读走 [`read_profile_text`]（fail-closed：
-/// 读不出 / 非 UTF-8 / 有字节却读到空 一律 `Err`，理由在 [`interpret_profile_read`] 头注）。
-/// 〔SR1b〕四件事都经本机常驻后端那条 `files` 链路（[`RemoteFs`]）；写只许两处 ⇒ 今天唯一的用户
-/// （`ccm` 入口，`~/.cc-monitor/bin/ccm`）落在部署那一根里。〔墓碑 —— 从前它叫 `SftpFile`〔散文墓碑〕、手里拿一条 SFTP 会话。〕
-pub(crate) struct RemoteFile<'a> {
-    pub fs: &'a RemoteFs,
-    pub path: String,
-    /// 新写入时的权限位（可执行的入口是 `0o755`）。
-    pub mode: u32,
-    /// 给人看的名字（报错用），如「远端 ~/.cc-monitor/bin/ccm」。
-    pub what: String,
-}
-
-impl crate::fenced_block::Store for RemoteFile<'_> {
-    fn label(&self) -> String {
-        self.what.clone()
-    }
-
-    async fn read(&self) -> Result<Option<String>, String> {
-        read_profile_text(self.fs, &self.path, &self.what).await
-    }
-
-    async fn save_backup(&self, original: &str) -> Result<String, String> {
-        let ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0);
-        let backup = format!("{}.ccm-backup-{ms}", self.path);
-        self.fs
-            .put(&backup, original.as_bytes(), 0o600, false)
-            .await?;
-        Ok(backup)
-    }
-
-    async fn put_atomic(&self, content: &str) -> Result<(), String> {
-        // 上级目录逐级建（相对 home；每一级都过后端那道围栏）。
-        if let Some((parent, _)) = self.path.rsplit_once('/') {
-            self.fs.mkdirs(parent).await?;
-        }
-        self.fs
-            .put(&self.path, content.as_bytes(), self.mode, false)
-            .await
-            .map(|_| ())
-    }
-
-    async fn delete_created(&self) -> Result<(), String> {
-        self.fs.remove(&self.path).await.map(|_| ())
-    }
-}
-
-/// `profile` 只许是远端 home 下的一个文件名。空 ⇒ `.bashrc`。
-fn remote_profile_name(profile: &str) -> Result<String, String> {
-    let p = profile.trim();
-    let p = if p.is_empty() { ".bashrc" } else { p };
-    if p.contains('/') || p.contains('\\') || p.contains("..") {
-        return Err(copy_text("rsSftp.profile.badName", &[]));
-    }
-    Ok(p.to_string())
-}
-
-/// 〔MC1 · 2026-09-24〕**别名块**卸载（机器页 ②「别名」里的「卸载别名块」）：从远端 rc 删 BEGIN/END 块。
-///
-/// 从前它叫 `uninstall_remote_ccm_helper`〔散文墓碑〕、按钮叫「卸载 ccm」——「ccm 助手」这个词
-/// 盖着两件事（`设计/71 §13.1`：① 推入口 ② 写别名块），而这一条只做过 ②。用户 2026-09-17 逐字
-/// 「装/卸 ccm 助手是假的，删掉这个东西」⇒ 名字跟着它真做的事走。
-/// 〔RW1〕读改写经那台远端的后端（`files-peek` / `files-put`）：没有块 ⇒ 一个字节都不写；否则
-/// **先备份**（`.ccm-backup-<ms>-<序号>`）→ 写 → **读回逐字比对**，不符则回滚（规则住后端）。
-#[tauri::command]
-pub async fn uninstall_remote_alias_block(
-    cfg: RemoteConfig,
-    profile: String,
-) -> Result<String, String> {
-    let profile = remote_profile_name(&profile)?;
-    // 〔RW1 · 第四波 09-24〕F10 按推荐改：**经那台远端的后端**写（`user_files`），不再 SFTP 直写 rc。
-    //   备份 · 原子替换 · 回读 · 回滚那一份规则住后端（`files-put`），与本机同一条路、只差 origin。
-    let door = crate::user_files::BackendDoor::new(crate::origin::Origin(cfg.origin_label()));
-    let home = crate::user_files::Door::home(&door).await?;
-    let what = copy_text("rsSftp.profile.what", &[("profile", &profile.to_string())]);
-    let mut missing = false;
-    let done =
-        crate::user_files::edit(
-            &door,
-            &home,
-            &profile,
-            true,
-            false,
-            |existing| match existing {
-                None => {
-                    missing = true;
-                    Ok(None)
-                }
-                Some(t) => strip_profile_block(t, &what).map(Some),
-            },
-        )
-        .await?;
-    let crate::user_files::Edited::Written(landed) = done else {
-        return Ok(if missing {
-            copy_text(
-                "rsSftp.aliasBlock.noProfile",
-                &[("profile", &profile.to_string())],
-            )
-        } else {
-            copy_text(
-                "rsSftp.aliasBlock.noBlock",
-                &[("profile", &profile.to_string())],
-            )
-        });
-    };
-    tracing::info!("远端 [{}] 已卸载别名块（{profile}）", cfg.origin_label());
-    Ok(match landed.backup {
-        Some(b) => copy_text(
-            "rsSftp.aliasBlock.removedWithBackup",
-            &[("profile", &profile.to_string()), ("b", &b.to_string())],
-        ),
-        None => copy_text(
-            "rsSftp.aliasBlock.removed",
-            &[("profile", &profile.to_string())],
-        ),
-    })
-}
-
-/// 〔MC1 · 2026-09-24〕**别名块**装进远端 rc（机器页 ②「别名」里的「装别名块」）。
-///
-/// 从前它叫 `install_remote_ccm_helper`〔散文墓碑〕，一次做两件事：① 推 `ccm` 入口到
-/// `~/.local/bin/ccm` ② 把别名块合进 rc。`设计/71 §13.3`：① 并进「部署后端」（本文件
-/// [`deploy_remote_backend`]），② 并进「别名」⇒ 本函数只剩 ②。
-///
-/// `profile` 默认 `.bashrc`（相对远端后端的 home；拒 `/`、`\`、`..` 防写 home 外）。
-/// 写入的 snippet 是**后端拥有**的 [`CCM_WRAPPER_SNIPPET`]（审计 S-1：不接受前端传入可执行
-/// bash）。〔RW1〕读改写经那台远端的后端（与本机同一条路）：相同则不写；否则
-/// 备份 → 原子写 → 读回逐字比对 → 不符回滚。别名块引用 `ccm` —— 那条入口由「部署后端」放。
-///
-/// 注：〔RW1〕替换沿用原文件的权限位（从前 SFTP 那一路统一写 `0o644`，`chmod 600` 的 rc 会被归一 —— 那一形没了）；
-/// rc 是一条链接（dotfiles 仓）⇒ 改的是真文件，链接留着。
-#[tauri::command]
-pub async fn install_remote_alias_block(
-    cfg: RemoteConfig,
-    profile: String,
-) -> Result<String, String> {
-    let profile = remote_profile_name(&profile)?;
-    // 〔RW1 · 第四波 09-24〕F10 按推荐改：经那台远端的后端写（同 `uninstall_remote_alias_block`）。
-    // 损坏块 ⇒ `merge_profile_block` 回 `Err`，不动原文件。
-    let door = crate::user_files::BackendDoor::new(crate::origin::Origin(cfg.origin_label()));
-    let home = crate::user_files::Door::home(&door).await?;
-    let what = copy_text("rsSftp.profile.what", &[("profile", &profile.to_string())]);
-    let done = crate::user_files::edit(&door, &home, &profile, true, false, |existing| {
-        merge_profile_block(existing.unwrap_or(""), CCM_WRAPPER_SNIPPET, &what).map(Some)
-    })
-    .await?;
-    let crate::user_files::Edited::Written(landed) = done else {
-        return Ok(copy_text(
-            "rsSftp.aliasBlock.upToDate",
-            &[("profile", &profile.to_string())],
-        ));
-    };
-    let backup_note = landed
-        .backup
-        .map(|b| copy_text("rsSftp.aliasBlock.backupNote", &[("b", &b.to_string())]))
-        .unwrap_or_default();
-    tracing::info!("远端 [{}] 已装别名块到 {profile}", cfg.origin_label());
-    Ok(copy_text(
-        "rsSftp.aliasBlock.written",
-        &[
-            ("profile", &profile.to_string()),
-            ("backupNote", &backup_note.to_string()),
-        ],
-    ))
-}
-
 /// 〔MC1 · 2026-09-24〕把 `ccm` 入口放到远端（〔SR1b〕`~/.cc-monitor/bin/ccm`，[`deploy_remote_backend`] 的后半）。
 ///
 /// 🔴 **它仍是那三行 shim**（[`ccm_entry_shim`]）。`设计/01 §6.7b` 的目标是「`ccm` 就是后端
@@ -1206,23 +831,18 @@ pub async fn install_remote_alias_block(
 /// 「basename ＝ `ccm` ⇒ 进一次性 ccm 模式」⇒ 把后端文件名改成 `ccm`，探针那一发会变成
 /// 「在当前目录起一个 agent」。改哪一侧都在本路写区外（摸底住 `tests/evidence/MC1-AL1-摸底.md`）。
 /// ⇒ 本拍只做**界面与动作的归一**：装后端与放入口是**一个按钮、一次调用**，不再分成两颗。
-async fn put_ccm_entry(
-    fs: &RemoteFs,
-    backend_path: &str,
-) -> Result<crate::fenced_block::Applied, String> {
-    let entry = RemoteFile {
-        fs,
-        path: CCM_CLI_REMOTE_PATH.to_string(),
-        mode: 0o755,
-        what: copy_text(
-            "rsSftp.ccmEntry.what",
-            &[("ccmCliRemotePath", &CCM_CLI_REMOTE_PATH.to_string())],
-        ),
-    };
-    // 走同一个序列：从前它写完只比对、**不回滚**（坏的入口会留在远端）；
-    // 今天比对不上就恢复成原来那份（原来没有就删掉）。入口是我们自己的文件 ⇒ 不留备份。
+async fn put_ccm_entry(fs: &RemoteFs, backend_path: &str) -> Result<bool, String> {
+    // 〔W5-ALIAS · 第五波先行〕从前这里走 `fenced_block::apply`〔散文墓碑〕（读 → 相同不写 → 原子替换 → 回读 → 回滚）；
+    //   那一个序列在 monitor 里只剩这一个用户，而这一份是**部署物**、不是用户文件 ⇒ 改走部署那一族的原语：
+    //   先读（相同就不写）· 再 `upload_verified`（读回逐字节比对，不对当场删掉 —— 下一次部署重放，与后端本体同一条规矩）。
+    //   回报「写没写」：`true` = 这一次放了（或换了）。
     let shim = ccm_entry_shim(backend_path);
-    crate::fenced_block::apply(&entry, false, |_| Ok(Some(shim))).await
+    if read_marker(fs, CCM_CLI_REMOTE_PATH).await?.as_deref() == Some(shim.as_bytes()) {
+        return Ok(false);
+    }
+    fs.mkdirs(remote_parent(CCM_CLI_REMOTE_PATH)).await?;
+    upload_verified(fs, CCM_CLI_REMOTE_PATH, shim.as_bytes(), 0o755).await?;
+    Ok(true)
 }
 
 #[cfg(test)]

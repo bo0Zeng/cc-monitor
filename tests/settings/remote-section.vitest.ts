@@ -854,7 +854,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
         .map((b) => b.textContent ?? "");
     // 〔ST2 · 协调方转主会话裁〕别名统一放「工具」栏：远端那一块与本机「工具 → 别名」同一个位置。
     expect(labels(got.components)).toEqual(["部署后端", "卸载后端"]);
-    expect(labels(got.tools)).toEqual(["装别名块", "卸载别名块"]);
+    // 〔V134 · 用户 09-25 选「改回「卸载 ccm」」〕卸那一颗按 V80 原裁叫「卸载 ccm」（做的事不变：从远端 ~/.bashrc 删别名块）。
+    expect(labels(got.tools)).toEqual(["装别名块", "卸载 ccm"]);
     expect(got.tools.textContent).toContain("别名");
     expect(labels(got.connection).filter((t) => t !== "重置主机指纹")).toEqual([
       "测试连接",

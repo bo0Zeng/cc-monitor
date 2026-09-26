@@ -70,8 +70,8 @@ fn write_sites() -> Vec<(String, String)> {
             // ⚠ **不许用前缀白名单**〔本条首跑就红在这里〕：第一版列了
             // `["pub async fn ", "pub fn ", "async fn ", "fn "]`，**漏掉 `pub(crate) async fn`** ——
             // 于是 `sftp.rs` 里那个逐级建目录的助手（正是这个可见性；〔SR1b〕它随执行那一半搬去了本机后端）没起新作用域，
-            // 它那处 `create_dir` 被记到**上一个函数** `read_profile_text` 头上，
-            // 而那个函数一个写原语都没有。诊断当场点名了 `read_profile_text`。
+            // 它那处 `create_dir` 被记到**上一个函数** `read_profile_text`〔散文墓碑〕头上，
+            // 而那个函数一个写原语都没有。诊断当场点名了 `read_profile_text`〔散文墓碑〕（〔W5-ALIAS〕那个函数后来也删了）。
             // ⇒ 改成**按结构判**：在 `fn ` 之前的东西必须全是可见性/修饰符 token。
             // 这样 `pub(in crate::x) const unsafe fn` 之类的写法也认得。
             if let Some((head, rest)) = t.split_once("fn ") {

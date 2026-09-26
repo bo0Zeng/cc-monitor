@@ -205,6 +205,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "relay-status"
                 // 〔RM1a · 第四波〕足迹那一条：一批 stat / 读几份小文件，同步文件 I/O。
                 | "footprint-probe"
+                // 〔W5-ALIAS〕别名预览：读账号库 manifest ＋ 问会话快照（同步 I/O），不起进程。
+                | "ccm-print"
                 // 〔AS1 · 第四波 4B〕MCP 同步的判定：对可疑路径逐条 stat、在 PATH 上找名字（同步文件 I/O）。
                 | "mcp-sync-plan"
                 // 〔AS2 · 第四波 4B〕资产目录两条：扫 skill 目录 / 读项目 `.mcp.json` ＋ 原子写目录文件，同步文件 I/O。
@@ -322,6 +324,8 @@ fn every_registered_command_declares_its_run_kind() {
         "relay-ensure",
         "relay-status",
         "footprint-probe",
+        // 〔W5-ALIAS〕别名预览（阻塞档，理由在上面 `expected_blocking`）。
+        "ccm-print",
         // 〔AS2 · 第四波 4B〕资产目录两条（阻塞档，理由在上面 `expected_blocking`）。
         "assets-catalog",
         "assets-catalog-merge",
