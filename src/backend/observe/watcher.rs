@@ -2103,6 +2103,8 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         },
         // 〔U4b〕判不了 ⇒ `None` ⇒ 不上线（与本字段加进来之前逐字节相同）。
         container,
+        // 〔LOC1b〕与令牌同一道闸（见 `wire::Frame::SessionAdded::pid`）。pid 与 verdict 核过的是同一个进程。
+        pid: state.with_rbind_token.then_some(pid),
     });
     if !state.tail_only {
         for p in &jsonls {
