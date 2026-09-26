@@ -55,7 +55,7 @@
  * - `guard-core` 的 dev-only 现核只看下面 [`CARGO_TOMLS`] 列的那几份；仓里新长一份 `Cargo.toml` 不会自动进来。
  */
 import { existsSync, readFileSync } from "node:fs";
-import { basename, posix, resolve } from "node:path";
+import { posix, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -302,7 +302,9 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     needles: [],
     parity: {
       via: "tests/__fixtures__/reach-collapse.golden.json",
-      tests: ["tests/bridge/backend/control/backend_route_tests.rs", "tests/tmux-control.vitest.ts"],
+      // Rust 侧读金样对拍 `route_call_error` 的是 `chan/webview_tests.rs`（`backend_route_tests.rs` 只在注释里提到它 ——
+      //   ⑥ 只认代码里的提及，第一版登记成那一份时 ⑥ 没逮到，改成只认代码之后才逮到）。
+      tests: ["tests/bridge/chan/webview_tests.rs", "tests/tmux-control.vitest.ts"],
     },
     why: "`设计/01 §5` D7「失败要显式、归因要准确」：这是调用方对自己那一次调用的归因，失败时恰恰问不了对端 —— 只能在调用方判，两份由金样钉",
   },
@@ -668,6 +670,17 @@ function resolvesTo(file: string, spec: string, target: string): boolean {
   return joined === target.replace(/\.ts$/, "");
 }
 
+/**
+ * 〔DUP2〕⑥ 在对拍测试的代码里找的那一截：`via` 路径的末两段（`__fixtures__/x.golden.json` · `control/payload.rs`）；
+ * 文件名太泛（`lib.rs` / `mod.rs` / `main.rs`）时取末三段（`agent-tools-core/src/lib.rs`）。
+ * 用后缀不用全路径：Rust 侧读金样常是 `include_str!("../../__fixtures__/…")` 这种相对写法。
+ */
+function viaNeedle(via: string): string {
+  const seg = via.split("/");
+  const k = /^(lib|mod|main)\.rs$/.test(seg[seg.length - 1] ?? "") ? 3 : 2;
+  return seg.slice(-k).join("/");
+}
+
 /** 〔DUP2〕剥过注释的 Rust 生产文件文本。 */
 function rustCode(file: string): string {
   return stripComments(readFileSync(resolve(REPO_ROOT, file), "utf8"), "rust");
@@ -801,7 +814,7 @@ describe("DUP1 判定只有一个家（设计/90 §3 判据 2）", () => {
     expect(bad).toEqual([]);
   });
 
-  it("⑥ generated / mirror 行：对拍接着线（via 在盘上，每个对拍测试都在、都提到它）", () => {
+  it("⑥ generated / mirror 行：对拍接着线（via 在盘上，每个对拍测试都在、都在**代码里**提到它）", () => {
     const bad: string[] = [];
     let seen = 0;
     for (const [id, j] of Object.entries(JUDGMENTS)) {
@@ -812,8 +825,9 @@ describe("DUP1 判定只有一个家（设计/90 §3 判据 2）", () => {
       for (const t of j.parity.tests) {
         const p = resolve(REPO_ROOT, t);
         if (!existsSync(p)) bad.push(`${id}：对拍测试 ${t} 不在盘上`);
-        else if (!readFileSync(p, "utf8").includes(basename(j.parity.via))) {
-          bad.push(`${id}：对拍测试 ${t} 没提到 ${basename(j.parity.via)}（线断了）`);
+        // 剥掉注释再找：只在注释里提到金样的文件不算对拍（它没读它）。字符串留着 —— 读金样的那一句就是一个路径串。
+        else if (!stripComments(readFileSync(p, "utf8"), t.endsWith(".rs") ? "rust" : "ts").includes(viaNeedle(j.parity.via))) {
+          bad.push(`${id}：对拍测试 ${t} 的代码里没提到 ${viaNeedle(j.parity.via)}（只在注释里提到不算；线断了）`);
         }
       }
     }
@@ -871,6 +885,13 @@ describe("DUP1 判定只有一个家（设计/90 §3 判据 2）", () => {
     expect(resolvesTo("src/x.ts", "./generated/judgment-rules", "src/generated/judgment-rules.ts")).toBe(true);
     expect(resolvesTo("src/settings/y.ts", "../generated/judgment-rules.ts", "src/generated/judgment-rules.ts")).toBe(true);
     expect(resolvesTo("src/x.ts", "./elsewhere", "src/generated/judgment-rules.ts")).toBe(false);
+    // ⑥ 的「代码里提到」：注释里的提及剥掉、字符串里的留着（两种语言各一格）。
+    expect(stripComments('// 读 a.golden.json\nlet x = 1;', "rust").includes("a.golden.json")).toBe(false);
+    expect(stripComments('let p = "tests/a.golden.json";', "rust").includes("a.golden.json")).toBe(true);
+    expect(stripComments('/** a.golden.json */\nconst x = 1;', "ts").includes("a.golden.json")).toBe(false);
+    expect(stripComments('readFileSync("tests/a.golden.json")', "ts").includes("a.golden.json")).toBe(true);
+    expect(viaNeedle("tests/__fixtures__/a.golden.json")).toBe("__fixtures__/a.golden.json");
+    expect(viaNeedle("src/bridge/crates/agent-tools-core/src/lib.rs")).toBe("agent-tools-core/src/lib.rs");
     // `mirror` 的设计住址形状：认得出两种、认不出空话。
     expect(DESIGN_ADDRESS.test("`设计/01 §6.9` 逐字")).toBe(true);
     expect(DESIGN_ADDRESS.test("INVARIANTS §47")).toBe(true);
