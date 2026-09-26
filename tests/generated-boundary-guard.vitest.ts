@@ -224,6 +224,7 @@ describe("C01 边界生成物", () => {
       //   直接问后端 `history-record`，形状改住 `src/session-reads.ts::RecordProbe`（手写，跨语言由后端判据钉）。
       "SessionStartedPayload.ts", //  C02
       "SessionStreamFrame.ts", //     〔CF2 · 第四波 4B〕会话内容流里一格的体（`{"line": …}` / `{"batch": …}`）
+      "SessionTapPayload.ts", // 〔TAP · V124〕中转抄出来的一个 SSE 事件（`session-tap`，活卡）
       "SessionUnseenPayload.ts", //   〔GP1 · 第四波〕那台机器看不见了 ⇒ 说不清（`session-unseen`）
       "SettingsScope.ts", //          C04d 批2（ConfigSurfaceReport 的传递依赖）
       "Shell.ts", //                  〔AL1c · 4B〕别名三条命令的 shell 方言入参（`shell_dialect.rs`）
@@ -381,7 +382,7 @@ describe("C01 边界生成物", () => {
     // ——对面那份二进制自报的构建身份（`--ccm-probe` 的 `build=` 行）。同一条理由：
     // **缺席与 `null` 语义不同** —— 缺席 = 那份后端是 `p2f-build-stamp` 之前的旧版、
     // 它压根不吐这一行；写成 `| null` 会把「它没说」与「它说了个空」混成一格。
-    expect(checked, `期望恰好 13 处 skip_serializing_if，实得 ${checked}`).toBe(6); // 〔LOC1b · 第四波 4D〕−1（`SessionHits.origin`：`search.rs` 删了） // 〔C4d · 第四波 4B〕子步 6 −4（`HistoryProject.origin` · `HistorySessionEntry.origin` / `.forked_from_session_id` / `.forked_from_message_uuid`：两个形状随历史清单改走本机后端删了，TS 手写在 `src/history-reads.ts`） // 〔C4d · 第四波 4B〕子步 3 −2（`RemoteAccount.authKind` / `.authReady`：随 `accounts.rs` 整份删了） // 〔C4b · 第四波 4B〕−4（`FindResult.reason` · `UserInputsResult.reason` / `.failure` · `SessionIndexResult.reason`：三个回包类型随会话读面三条改走通道删了）； // 〔SE2〕+1（`FindResult.reason`：缺席 = 查得了）； 〔SE1〕+2（`UserInputsResult.reason` / `.failure`：缺席 = 清单可用）； 〔`设计/10` 骨架 · 子步 3〕+1（`SessionIndexResult.reason`：缺席 = 索引可用）
+    expect(checked, `期望恰好 13 处 skip_serializing_if，实得 ${checked}`).toBe(8); // 〔合并 TAP × 主线 06b5dc08〕主线 6 ＋ TAP ＋2（`SessionTapPayload.data` / `.end`）⇒ 8 // 〔LOC1b · 第四波 4D〕−1（`SessionHits.origin`：`search.rs` 删了） // 〔C4d · 第四波 4B〕子步 6 −4（`HistoryProject.origin` · `HistorySessionEntry.origin` / `.forked_from_session_id` / `.forked_from_message_uuid`：两个形状随历史清单改走本机后端删了，TS 手写在 `src/history-reads.ts`） // 〔C4d · 第四波 4B〕子步 3 −2（`RemoteAccount.authKind` / `.authReady`：随 `accounts.rs` 整份删了） // 〔C4b · 第四波 4B〕−4（`FindResult.reason` · `UserInputsResult.reason` / `.failure` · `SessionIndexResult.reason`：三个回包类型随会话读面三条改走通道删了）； // 〔SE2〕+1（`FindResult.reason`：缺席 = 查得了）； 〔SE1〕+2（`UserInputsResult.reason` / `.failure`：缺席 = 清单可用）； 〔`设计/10` 骨架 · 子步 3〕+1（`SessionIndexResult.reason`：缺席 = 索引可用）
   });
 
   it("每一个 u64/i64 字段都配了 ts(type = …)——C03 的大整数策略，打在源上", () => {
@@ -461,7 +462,7 @@ describe("C01 边界生成物", () => {
     //    （`UsageTotals` 的 `input`/`cache_creation`/`cache_read`/`output`）。
     //    ⚠ **这个数变小不是放宽**：它是「有多少个大整数字段被 `ts(type=…)` 策略盖住」，
     //    人群小了是因为被盖的对象少了，策略本身一个字没松。
-    expect(checked, `期望恰好 22 个大整数字段，实得 ${checked}`).toBe(11); // 〔LOC1b · 第四波 4D〕−3（`Hit.ts_ms` · `SessionHits.updated_at` · `SearchIndexStatus.built_at_ms`：`search.rs` 删了；跑出来核过） // 〔合并 C4d × 主线 cf3277f4〕主线 18 ＋ 本路 -4 ⇒ 14 // 〔C4d · 第四波 4B〕−4（`HistoryProject.last_activity` · `HistorySessionEntry.started_at` / `.updated_at` · `EntryMetadata.updated_at`：随那三个形状删了） // 〔合并 CF2 × 主线 28a5f652〕主线 16 ＋ 本路 ＋2（`SessionLinesPage.from` / `.next`）⇒ 18 // 〔合并 AS2 × RM1f〕主线 16 ＋ AS2 +1 ＋ RM1f −1 ⇒ 16（跑出来核过） // 〔合并 AS2〕主线 16 ＋ AS2 +1（`AssetsSyncRow.pushed`：推过去几台快照，量纲是「机器台数」） // 〔AL1d · 4B〕−1（`ProfileScan.size_bytes` 随那个类型删了；合并主线 d07c6d14 按两边增量相加 17 − 1） // 〔C4b · 第四波 4B〕−5（`FindResult.total` · `UserInputsResult.from` / `.end` · `SessionIndexResult.from` / `.end`：随那三个回包类型删了）； // 〔SE2〕+1（`FindResult.total`：命中条数）； 〔第四波 S4〕−2（`TransferProgress.transferred` / `.total` 随那个类型删了）； 〔F7c 收尾 09-24〕−1（`SftpEntry.size` 随那个类型删了）； 〔SE1〕+2（`UserInputsResult.from` / `.end`：字节偏移）； 〔`设计/10` 骨架 · 子步 3〕+2（`SessionIndexResult.from` / `.end`：字节偏移）
+    expect(checked, `期望恰好 22 个大整数字段，实得 ${checked}`).toBe(13); // 〔合并 TAP × 主线 06b5dc08〕主线 11 ＋ TAP ＋2（`SessionTapPayload.resp` / `.n`）⇒ 13 // 〔LOC1b · 第四波 4D〕−3（`Hit.ts_ms` · `SessionHits.updated_at` · `SearchIndexStatus.built_at_ms`：`search.rs` 删了；跑出来核过） // 〔合并 C4d × 主线 cf3277f4〕主线 18 ＋ 本路 -4 ⇒ 14 // 〔C4d · 第四波 4B〕−4（`HistoryProject.last_activity` · `HistorySessionEntry.started_at` / `.updated_at` · `EntryMetadata.updated_at`：随那三个形状删了） // 〔合并 CF2 × 主线 28a5f652〕主线 16 ＋ 本路 ＋2（`SessionLinesPage.from` / `.next`）⇒ 18 // 〔合并 AS2 × RM1f〕主线 16 ＋ AS2 +1 ＋ RM1f −1 ⇒ 16（跑出来核过） // 〔合并 AS2〕主线 16 ＋ AS2 +1（`AssetsSyncRow.pushed`：推过去几台快照，量纲是「机器台数」） // 〔AL1d · 4B〕−1（`ProfileScan.size_bytes` 随那个类型删了；合并主线 d07c6d14 按两边增量相加 17 − 1） // 〔C4b · 第四波 4B〕−5（`FindResult.total` · `UserInputsResult.from` / `.end` · `SessionIndexResult.from` / `.end`：随那三个回包类型删了）； // 〔SE2〕+1（`FindResult.total`：命中条数）； 〔第四波 S4〕−2（`TransferProgress.transferred` / `.total` 随那个类型删了）； 〔F7c 收尾 09-24〕−1（`SftpEntry.size` 随那个类型删了）； 〔SE1〕+2（`UserInputsResult.from` / `.end`：字节偏移）； 〔`设计/10` 骨架 · 子步 3〕+2（`SessionIndexResult.from` / `.end`：字节偏移）
   });
 
   it("`Option<大整数>` 配 ts(type) 时不许丢掉 `| null`（除非同时有 ts(optional)）", () => {
@@ -630,6 +631,7 @@ describe("C02 事件名钉死", () => {
     // `ORIGIN_SESSIONS_LISTED`（"origin-sessions-listed"，某台的活会话清单报完了）。两条都由 `events.ts` 订阅。
     // 〔CF2 · 第四波 4B〕14 → 12：`JSONL_LINE` / `JSONL_BATCH` 退役（会话内容改走通道 `subscribe`，交格的事件名
     //   `chan-items` 住 `chan/webview.rs::ITEMS_EVENT`、由 `src/ipc/chan.ts` 听 —— 它是通道那一跳的，不是 `bridge.rs` 的业务事件）。
+    // 〔TAP · V124〕不加事件名：tap 走通道 `subscribe`（会话流 `session-tap`，`设计/05 §15`），不开裸 Tauri 事件（`01 §2.2`）。
     // 〔GP1 · 第四波〕12 → 13：`SESSION_UNSEEN`（"session-unseen"，那台机器看不见了 ⇒ 说不清）。由 `events.ts` 订阅。
     expect(pairs.length, `期望恰好 13 个事件名常量，实得 ${pairs.length}`).toBe(13);
 

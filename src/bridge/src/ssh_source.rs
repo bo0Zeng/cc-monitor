@@ -1783,6 +1783,9 @@ pub enum InboundFrame {
         total: u64,
         end: Option<crate::sftp_pool::End>,
     },
+    /// 〔TAP · V124〕中转抄出来的一个 SSE 事件 / 一个响应的收尾（后端 `wire::Frame::Tap`）。只有**本机后端**那条流上会有
+    /// （中转住本机常驻后端），交 `session_tap::deliver`。`data` / `end` 都缺、或 `end` 认不出 ⇒ 整帧 `None`（坏帧）。
+    Tap(crate::session_tap::Tap),
 }
 
 /// 拥塞提示的**措辞**：有没有不可恢复的丢失，说法完全不同〔audit-0805 F21〕。
@@ -2099,6 +2102,25 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
             })
         }
 
+        // 〔TAP · V124〕中转抄出来的 SSE 事件。`data` 与 `end` 恰有一个：先认 `data`（原样，一个串），没有就必须是认得的 `end`。
+        "tap" => {
+            let stream = obj.get("stream")?.as_str()?.to_string();
+            let resp = obj.get("resp")?.as_u64()?;
+            let n = obj.get("n")?.as_u64()?;
+            let body = match obj.get("data") {
+                Some(d) => crate::session_tap::TapBody::Data(d.as_str()?.to_string()),
+                None => crate::session_tap::TapBody::End(crate::session_tap::TapEnd::from_wire(
+                    obj.get("end")?.as_str()?,
+                )?),
+            };
+            Some(InboundFrame::Tap(crate::session_tap::Tap {
+                stream,
+                resp,
+                n,
+                body,
+            }))
+        }
+
         // ── `turn_end` **认识但刻意不消费**（U7-1）。──────────────────────────
         //
         // 「认识」与「消费」是两件事。落进 `_ => None` 的后果不是「忽略」，是
@@ -2137,6 +2159,7 @@ const KNOWN_FRAME_KINDS: &[&str] = &[
     "session_removed",
     "session_status",
     "sessions_replayed",
+    "tap",
     "tmux_session_closed",
     "tmux_sessions",
     "transfer",
@@ -3740,6 +3763,15 @@ async fn stream_loop(
             Some(InboundFrame::Transfer { id, .. }) => {
                 tracing::warn!(
                     "ssh_source [{host_label}] 远端后端发来了传输帧（id={id}）—— 传输台在本机后端，丢掉"
+                );
+            }
+            // 〔TAP · V124〕远端的中转是脱离的 `--relay`，不在那台的流模式后端进程里 ⇒ 今天远端流上**没有** tap 来源
+            //   （怎么接是设计题，住仓外 `调研/第四波记录/TAP.md §8` 题 1）。真来了：没有设计过它怎么对 sid，不转；
+            //   不按帧刷 warn（token 级的频率会把日志淹掉）—— 记一句 debug。
+            Some(InboundFrame::Tap(t)) => {
+                tracing::debug!(
+                    "ssh_source [{host_label}] 远端后端发来了 tap 帧（stream={}）—— 远端 tap 还没有设计，丢掉",
+                    t.stream
                 );
             }
             None => {

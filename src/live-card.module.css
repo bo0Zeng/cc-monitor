@@ -1,0 +1,27 @@
+/*
+ * 〔TAP · V124〕活卡（`live-card.ts`）：中转抄出来的 SSE 先上屏的那一张临时卡，挂在流容器尾巴上、不进时间线。
+ * 新组件一律 `.module.css`（UC2）。长相刻意与定稿的卡分开：虚线左边框 ＋ 顶上一行小字说「生成中 / 等待写入记录」，
+ * 正文纯文本（`pre-wrap`）—— 定稿那一张走渲染管线，二者一眼分得开。
+ */
+@layer components {
+  .card {
+    margin: 8px 0;
+    padding: 6px 10px;
+    border-left: 2px dashed var(--accent);
+    color: var(--text);
+  }
+
+  .card.awaiting {
+    opacity: 0.6;
+  }
+
+  .head {
+    font-size: var(--font-size-xs);
+    color: var(--text-faint);
+  }
+
+  .body {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}

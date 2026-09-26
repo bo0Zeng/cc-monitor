@@ -20,6 +20,7 @@ import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bindEvents } from "./events";
 import { TabManager } from "./tabs";
+import { paintLiveCards } from "./live-card-view";
 import { mountTabBarResizer } from "./tab-bar-width";
 import { terminalFrontCommand } from "./terminal-front-command";
 import { loadTheme } from "./theme";
@@ -179,6 +180,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     tasksPanel,
     agentsPanel,
   );
+  // 〔TAP · V124〕活卡的画法（带 `.module.css`）只由主窗口入口装进来 —— 理由见 `live-card-view.ts` 头注。
+  tabs.setLivePainter(paintLiveCards);
   // P7a-3（#61）：启动时拉一次标签页集合（住 `config.json`，不是 localStorage —— 见
   // `tab-collections.ts` 头注：集合名是用户手写的真相，必须活过一次清缓存）。
   void tabs.loadCollections();
@@ -702,6 +705,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 〔U4b · 第四波〕活会话的容器（G3）· 某台机器的活会话清单报完了（说不清 → 已结束）。
     onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container),
     onOriginSessionsListed: (origin) => tabs.markOriginSeen(origin),
+    // 〔TAP · V124〕中转抄出来的 SSE 事件（会话流 `session-tap`）→ 活卡（jsonl 到了整轮覆盖）；那台看不见了 ⇒ 活卡全撤。
+    onSessionTap: (e) => tabs.onSessionTap(e),
+    onSessionTapLost: (origin) => tabs.dropLiveCards(origin),
     // 〔FW1 · 第四波 4D · D-d〕记录文件不见了 / 被改过已从头重读 ⇒ 那个 tab 顶上说一句。
     onSessionFileNotice: recordFile.onSessionFileNotice,
     // 〔GP1 · 第四波〕那台机器看不见了 ⇒ 说不清（不是已结束）。
@@ -765,6 +771,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     onStreamGap: (origin) => tabs.onStreamGap(origin),
   }, {
     streams: machines.map((origin) => ({ origin, kind: "session-lines" })),
+    // 〔TAP · V124〕中转住本机常驻后端（V107）⇒ 只有本机有 tap 来源（远端 tap 是 `调研/第四波记录/TAP.md §8` 题 1）。
+    taps: [LOCAL_ORIGIN],
   });
 
   // v2.0.0 (issue #4)：后端 ERROR 级别 tracing → 右下角红色 toast
