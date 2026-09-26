@@ -119,9 +119,11 @@ fn the_non_linux_arm_is_wired_into_the_source() {
 #[test]
 fn the_caveat_says_out_loud_that_there_is_no_self_healing() {
     // 承重词**运行时拼** —— 写成整串会让本条命中本文件自己的散文。
-    let no_leg = format!("没有{}", "「进程死了会有人被叫醒」这条腿");
-    let structural = format!("结构性{}", "不成立");
-    for needle in [no_leg.as_str(), structural.as_str()] {
+    // 〔CP2c〕句子进了文案表、照 CP1 裁词去掉内部推理（「这条腿」「pidfd」「如实降级」—— `91 §2.2`）；
+    //   要它说出口的两个「没有」照旧：没人发现它退出了 · 不会自己重启。
+    let no_one_notices = format!("没人{}", "发现");
+    let no_restart = format!("不会自动{}", "重启");
+    for needle in [no_one_notices.as_str(), no_restart.as_str()] {
         assert!(
             NO_DEATH_EVENTS_HERE.contains(needle),
             "那句话里没有 `{needle}` —— `KP3D` 买的是「说出口」，\

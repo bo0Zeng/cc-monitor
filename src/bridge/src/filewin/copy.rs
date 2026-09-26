@@ -5,7 +5,7 @@
 //! 第三刀那一版走的是 SFTP 池子那条零流量复制命令（`copy-data` 扩展，协商不到就退回中转、
 //! 字节经过用户这台机器一去一回）。窗口成了只经通道说话的独立前端之后，那一条是
 //! 「后端缺命令」那一类欠账（`设计/60 §12.3`）。现在后端有了 `files-copy`
-//! （写面第七条：三条路径各过会话数据围栏、缺省 `O_EXCL` 不覆盖、显式 `overwrite` 才经暂存旁名原子顶掉）
+//! （写面第七条：三条路径各过路径解析〔FN1：会话数据围栏 V119 拿掉了〕、缺省 `O_EXCL` 不覆盖、显式 `overwrite` 才经暂存旁名原子顶掉）
 //! ⇒ 本层只剩三件：**问一次 · 起一趟 · 把结局摆出来**，一行复制逻辑都没有。
 //!
 //! 🔴 **「退路必须在界面上出声」那一格因此不在了 —— 不是被删了，是那一形不存在了。**
@@ -37,6 +37,7 @@
 //! - **真机上鼠标点那颗「复制」会不会触发买不到**（本机没有图形会话）。判据喂的是合成事件。
 //! - **目录复制没做** · **多选复制没做** · **复制到别的目录没做**（那个框只改名字，名字里不许带 `/`）。
 
+use crate::copy_table::copy_text;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -45,7 +46,8 @@ use super::source::Row;
 
 /// 行上那颗按钮的字面。**唯一住址** —— 判据按同一个常量去找它画出来的那几个字，
 /// 不在判据里手抄第二份（抄一份就会漂）。
-pub const COPY_LABEL: &str = "复制";
+pub static COPY_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinCopy.label.copy", &[]));
 
 /// 这一行能不能复制。**唯一住址** —— 列表画不画那颗按钮（[`super::rows`]）
 /// 与状态机接不接那一跳（[`super::shell::FileWindow::begin_copy`]），问的都是这一个函数。
@@ -189,15 +191,18 @@ pub struct Notice {
 pub fn outcome_notice(o: &CopyOutcome) -> Notice {
     match o {
         CopyOutcome::Skipped => Notice {
-            text: "上一趟：没覆盖，一个字节都没动".to_string(),
+            text: copy_text("rsFilewinCopy.outcome.skipped", &[]),
             loud: false,
         },
         CopyOutcome::Failed(e) => Notice {
-            text: format!("复制失败：{e}"),
+            text: copy_text("rsFilewinCopy.outcome.failed", &[("e", &e.to_string())]),
             loud: true,
         },
         CopyOutcome::Done { bytes, asked: _ } => Notice {
-            text: format!("复制完成：{bytes} 字节，在那台机器上复制的，没经过你这台机器"),
+            text: copy_text(
+                "rsFilewinCopy.outcome.done",
+                &[("bytes", &bytes.to_string())],
+            ),
             loud: false,
         },
     }
@@ -244,9 +249,9 @@ pub const COPY_BUDGET: std::time::Duration = std::time::Duration::from_secs(600)
 pub fn copy_args(job: &CopyJob, overwrite: bool) -> Result<serde_json::Value, String> {
     let root = super::source::parent_dir(&job.from);
     if super::source::parent_dir(&job.to) != root {
-        return Err(format!(
-            "复制只在同一个目录里做：{} 与 {} 不在同一个目录",
-            job.from, job.to
+        return Err(copy_text(
+            "rsFilewinCopy.args.notSameDir",
+            &[("from", &job.from.to_string()), ("to", &job.to.to_string())],
         ));
     }
     Ok(serde_json::json!({
@@ -259,7 +264,7 @@ pub fn copy_args(job: &CopyJob, overwrite: bool) -> Result<serde_json::Value, St
 
 /// 真起一趟复制 —— 〔F7a · 第三波 2026-09-24〕经通道问后端 `files-copy`。
 ///
-/// 回复制了几个字节。**围栏在后端**（三条路径各过一次会话数据围栏），本层不自己判一遍
+/// 回复制了几个字节。**路径解析在后端**（三条路径各过一次；〔FN1〕会话数据围栏 V119 拿掉了），本层不自己判一遍
 /// （判定只有一个家）；踩线时那句拒绝原样变成 [`CopyOutcome::Failed`]。
 ///
 /// ⚠ 上一版这里调的是 SFTP 池子那条零流量复制命令（同进程直调一个 Tauri 命令，
@@ -274,7 +279,7 @@ pub async fn copy_remote(
     let d = super::source::ask(line, origin, CMD_COPY, &args, COPY_BUDGET).await?;
     d.get("bytes")
         .and_then(serde_json::Value::as_u64)
-        .ok_or_else(|| format!("`{CMD_COPY}` 的应答里没有 `bytes`，和约定的不一样"))
+        .ok_or_else(|| copy_text("rsFilewinCopy.remote.noBytes", &[]))
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -429,13 +434,22 @@ impl CopyBoard {
         if let Some(job) = asking {
             let mut answer: Option<bool> = None;
             egui::Modal::new(egui::Id::new("filewin-copy-overwrite")).show(ui.ctx(), |ui| {
-                ui.heading(format!("远端已经有 {} 了，要覆盖吗？", job.name));
+                ui.heading(copy_text(
+                    "rsFilewinCopy.ui.askOverwrite",
+                    &[("name", &job.name.to_string())],
+                ));
                 ui.label(format!("{} → {}", job.from, job.to));
                 ui.horizontal(|ui| {
-                    if ui.button("覆盖").clicked() {
+                    if ui
+                        .button(&copy_text("rsFilewinCopy.ui.overwrite", &[]))
+                        .clicked()
+                    {
                         answer = Some(true);
                     }
-                    if ui.button("别覆盖").clicked() {
+                    if ui
+                        .button(&copy_text("rsFilewinCopy.ui.keep", &[]))
+                        .clicked()
+                    {
                         answer = Some(false);
                     }
                 });
@@ -447,7 +461,10 @@ impl CopyBoard {
         if let Some(name) = &running {
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label(format!("正在那台机器上复制 {name} …"));
+                ui.label(copy_text(
+                    "rsFilewinCopy.ui.copying",
+                    &[("name", &name.to_string())],
+                ));
             });
         }
         if let Some(o) = &last {

@@ -28,6 +28,7 @@
 //! （`history::create_branch_session`）也收 sid 了，「找那份文件」两侧同一份实现。
 //! ⇒ 下面那句「与本地那条的差异」也跟着少了一条 —— 只剩「活儿在哪台机器上干」。
 
+use crate::copy_table::copy_text;
 use crate::history::BranchResult;
 use crate::ssh_source::{self, RemoteExec};
 
@@ -48,8 +49,8 @@ fn looks_like_old_backend(stdout: &str) -> bool {
     stdout.contains(HELLO_MARKER) || stdout.contains(HELLO_MARKER_SPACED)
 }
 
-const OLD_BACKEND_MSG: &str =
-    "远端后端版本过旧（不支持远端分叉）——请重新部署后端后再试（src/doc/REMOTE-PHASE0-DEPLOY.md）";
+static OLD_BACKEND_MSG: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsRemoteBranch.fork.oldBackend", &[]));
 
 /// backend 失败时 stderr 上的信封。字段少写/多写都容忍不了 —— 认不出就退回展示原文，
 /// **绝不**把「认不出的错误」静默成成功。
@@ -72,10 +73,16 @@ fn validate_fork_id(what: &str, s: &str) -> Result<(), String> {
     // 上限与共享那份 `branch_core::is_plain_sid` 对齐（Phase G 审计：原来这边 128、那边 64，
     // 65..=128 的 id 会白跑一趟 ssh 才被拒；注释里引的函数名 `valid_sid` 也不存在）。
     if s.is_empty() || s.len() > 64 {
-        return Err(format!("{what} 长度非法（1..=64）"));
+        return Err(copy_text(
+            "rsRemoteBranch.forkId.badLength",
+            &[("what", &what.to_string())],
+        ));
     }
     if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
-        return Err(format!("{what} 含非法字符（只许字母/数字/连字符）"));
+        return Err(copy_text(
+            "rsRemoteBranch.forkId.badChar",
+            &[("what", &what.to_string())],
+        ));
     }
     Ok(())
 }
@@ -133,19 +140,24 @@ fn interpret_fork_exec(ex: &RemoteExec) -> Result<BranchResult, String> {
                 }
             }
             Err(if saw_any {
-                "远端分叉：backend 报成功，但输出里找不到结果 JSON（远端 shell 是不是打了 banner？）"
-                    .to_string()
+                copy_text("rsRemoteBranch.fork.noResultJson", &[])
             } else {
-                "远端分叉：backend 报成功却没有输出结果".to_string()
+                copy_text("rsRemoteBranch.fork.noOutput", &[])
             })
         }
         Some(code) => Err(match stderr_detail() {
-            Some(d) => format!("远端分叉失败：{d}"),
-            None => format!("远端分叉失败（backend 退出码 {code}，且没有给出原因）"),
+            Some(d) => copy_text("rsRemoteBranch.fork.failed", &[("d", &d.to_string())]),
+            None => copy_text(
+                "rsRemoteBranch.fork.failedNoReason",
+                &[("code", &code.to_string())],
+            ),
         }),
         None => Err(match stderr_detail() {
-            Some(d) => format!("远端分叉失败（没收到退出码，连接可能中断）：{d}"),
-            None => "远端分叉失败：没收到退出码，连接可能中断".to_string(),
+            Some(d) => copy_text(
+                "rsRemoteBranch.fork.noExitCodeWith",
+                &[("d", &d.to_string())],
+            ),
+            None => copy_text("rsRemoteBranch.fork.noExitCode", &[]),
         }),
     }
 }
@@ -166,10 +178,20 @@ pub(crate) async fn create_remote_branch_session(
     source_session_id: &str,
     message_uuid: &str,
 ) -> Result<BranchResult, String> {
-    validate_fork_id("源会话 id", source_session_id)?;
-    validate_fork_id("消息 uuid", message_uuid)?;
-    let cfg = crate::load_remote_config_by_label(host)
-        .ok_or_else(|| format!("远端 '{host}' 未配置或未启用"))?;
+    validate_fork_id(
+        &copy_text("rsRemoteBranch.what.sourceId", &[]),
+        source_session_id,
+    )?;
+    validate_fork_id(
+        &copy_text("rsRemoteBranch.what.messageId", &[]),
+        message_uuid,
+    )?;
+    let cfg = crate::load_remote_config_by_label(host).ok_or_else(|| {
+        copy_text(
+            "rsRemoteBranch.remote.notConfigured",
+            &[("machine", &host.to_string())],
+        )
+    })?;
 
     let cmd = build_fork_cmd(&cfg.backend_path, source_session_id, message_uuid);
     let ex = tokio::time::timeout(
@@ -177,7 +199,12 @@ pub(crate) async fn create_remote_branch_session(
         ssh_source::connect_and_exec_capture(&cfg, &cmd, Some(HELLO_MARKER)),
     )
     .await
-    .map_err(|_| format!("远端分叉超时（{}s）", FORK_TIMEOUT.as_secs()))??;
+    .map_err(|_| {
+        copy_text(
+            "rsRemoteBranch.fork.timeout",
+            &[("secs", &(FORK_TIMEOUT.as_secs()).to_string())],
+        )
+    })??;
 
     let res = interpret_fork_exec(&ex)?;
     tracing::info!(
@@ -198,8 +225,14 @@ pub(crate) async fn create_local_branch_session(
     source_session_id: &str,
     message_uuid: &str,
 ) -> Result<BranchResult, String> {
-    validate_fork_id("源会话 id", source_session_id)?;
-    validate_fork_id("消息 uuid", message_uuid)?;
+    validate_fork_id(
+        &copy_text("rsRemoteBranch.what.sourceId", &[]),
+        source_session_id,
+    )?;
+    validate_fork_id(
+        &copy_text("rsRemoteBranch.what.messageId", &[]),
+        message_uuid,
+    )?;
     let (sid, uuid) = (source_session_id.to_string(), message_uuid.to_string());
     let outcome = tokio::task::spawn_blocking(move || {
         crate::backend::observe::local_query::run_query(
@@ -234,8 +267,9 @@ fn local_fork_exec(
             stderr,
             exit_status: code.and_then(|c| u32::try_from(c).ok()),
         }),
-        QueryOutcome::NoBackend(why) => Err(format!(
-            "本机后端不在，分叉要经它来写 —— 一个字节都没动（{why}）"
+        QueryOutcome::NoBackend(why) => Err(copy_text(
+            "rsRemoteBranch.local.backendDown",
+            &[("why", &why.to_string())],
         )),
     }
 }

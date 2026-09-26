@@ -1,12 +1,13 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-/// 账本里「起一条会话」的那两项能力。
+/// 账本里「起一条会话」的能力。
 ///
-/// 两项而不是一项：`session.launch` 是三条**从界面起**的路，
-/// `launch.send-into` 是「往**已存在**的 tmux 送载荷」那条（它不在 `session.launch` 里，
-/// 但它同样会让一个 agent 进程出生 ⇒ 同属本表的人群）。
-const LAUNCH_CAPS: &[&str] = &["session.launch", "launch.send-into"];
+/// `session.launch` 是**从界面起**的那几条路。〔C4e · 第四波 4C〕原来还有第二项 `launch.send-into`
+/// （「往**已存在**的 tmux 送载荷」那条，它同样会让一个 agent 进程出生 ⇒ 同属本表的人群）：
+/// 它唯一的命令 `backend_send_into`〔散文墓碑〕迁到界面（`src/tmux-control.ts::sendInto` 经通道直接说后端的 `launch`），
+/// 那项能力随之从账本里没了 ⇒ `L3` 从「账本那半」挪到「锚点那半」（人群一个没少，见 `REGISTERED` 那一行）。
+const LAUNCH_CAPS: &[&str] = &["session.launch"];
 
 /// `L1` 那条路今天的行为判据 —— 它没了，本表也要红。
 ///
@@ -73,9 +74,11 @@ const REGISTERED: &[Launcher] = &[
                   **归 PM 下一拍（写区要含前端）。**",
     },
     Launcher {
-        label: "L3 · 往已存在的 tmux 送载荷（`backend_launch.rs::backend_send_into`）",
-        ledger_cmds: &["backend_send_into"],
-        anchors: &[],
+        // 〔C4e · 第四波 4C〕住址换了：monitor 的 Tauri 命令 `backend_send_into`〔散文墓碑〕→ 界面 `src/tmux-control.ts::sendInto`
+        //   （经通道直接说后端的 `launch{mode:"send-into"}`）。它不再是 Tauri 命令 ⇒ 进不了账本，改成人点的锚点。
+        label: "L3 · 往已存在的 tmux 送载荷（`src/tmux-control.ts::sendInto`）",
+        ledger_cmds: &[],
+        anchors: &[("src/tmux-control.ts", "export async function sendInto(", 1)],
         plants: false,
         why: "今天没落，理由是**它不是「起一条新会话」**：send-into 把载荷送进一条\
                   **已经存在**的 tmux 会话，那条会话的身份在它**建的时候**就该打过了 —— \
@@ -180,8 +183,12 @@ fn the_ledger_half_of_the_launcher_population_matches_the_registry() {
     let rows = ledger_rows(&raw);
 
     // 抽取器自检 ①：抠得到东西（否则下面是空真）。
+    // 〔C4e · 第四波 4C〕地板 100 → 99：抓屏 · 杀会话 · 送键 · 就地 resume 四条命令退役，单行三元组人群真少了 4 行（现打 99）。
+    // 〔C4e 批 3b〕地板 99 → 94：cc-bus 查在线 · 发消息 · 派生 · 广播 · 收掉五条命令退役，单行三元组人群真少了 5 行（现打 94）。
+    // 〔US1 · 第四波 4D〕地板 94 → 93：`read_apikey_credentials_status` / `apikey_routing_for` 两条退役（单行三元组人群真少了；现打 93）。
+    // 〔LOC1b · 第四波 4D〕地板 93 → 90：全文搜索 · 查索引状态 · 重建索引三条退役（本机搜索改问本机后端；单行三元组人群真少了 3 行，现打 90）。
     assert!(
-        rows.len() >= 100,
+        rows.len() >= 90,
         "只从账本里抠到 {} 行单行三元组（09-02 现打 116）—— 抽取器坏了，本条会零命中地绿",
         rows.len()
     );

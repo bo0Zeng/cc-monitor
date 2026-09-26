@@ -121,4 +121,13 @@ export default tseslint.config(
       globals: { ...globals.node },
     },
   },
+  {
+    // 〔MG1 · 第四波 4C 合并 RT1〕`tests/evidence/RT1-cdp.mjs`（经 WebView2 远程调试口在真页里求值的台架）
+    // 是 `tests/evidence/` 下第一份 `.mjs` —— V7-3 那个洞的第三次复发形态（新目录、没有 globals 块，
+    // 11 条 `no-undef: process/console/fetch/WebSocket` 一次性把基线 3 顶成 14）。照上一块止血。
+    files: ["tests/evidence/**/*.mjs"],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+  },
 );

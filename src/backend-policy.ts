@@ -20,6 +20,12 @@
 //
 // ★★ 「无人监护」这半是用户裁定的一半，不许省（DECISIONS K14 逐字：
 // 「第一档必须在 UI 上如实说『继续跑，无人监护』，这是本裁定的一半，不许只做常驻不做这句话」）。
+//
+// 〔CP2b · 第四波〕下面那几句话的**家搬进了文案表**（`src/shared/copy/table.json` 的 `backendPolicy.*`）。
+//   这里的导出名照旧（界面与测试按名字取），值从表里取；Rust 那侧从前那份「同名同值、逐字对拍」的副本
+//   随之删掉 —— 两侧读的是同一条表项，第二份副本与对拍一起没了（`backend_policy.rs::describe_health` 直接取同一批 key）。
+
+import { copyText } from "./copy-table";
 
 
 /**
@@ -44,9 +50,7 @@ export const LOCAL_ORIGIN = "<local>";
  * ⇒ 文案搬家 / 拼串 / 进一张 i18n 表就**零命中地绿**。
  * 翻转时同轮扩了人群（backend-section.ts + backend-policy.ts），并配了一个今天真会红的反向锚点。
  *
- * ⚠ Rust 侧 `src/bridge/src/backend_policy.rs` 有同名同值的四条 const，
- * 由 `the_exit_copy_is_the_same_string_on_both_sides` 逐字对拍
- * （形状抄 `the_local_origin_is_the_same_string_on_both_sides`）。**两边漂了不会报错。**
+ * 〔CP2b〕Rust 侧从前有同名同值的四条 const 与一条逐字对拍；家搬进文案表之后两侧读同一条表项，副本与对拍一起删了。
  */
 /**
  * ① 勾上「退出时结束它」。
@@ -56,12 +60,11 @@ export const LOCAL_ORIGIN = "<local>";
  * 写成同一个串的话，「那四句只许有一个家」那条判据会把复选框的标签算成第二个家 ——
  * 而那**不是误报**：两处一模一样的串，下一次改文案时一定只会改到一处。
  */
-export const EXIT_KILLS = "monitor 退出时会结束它";
+export const EXIT_KILLS = copyText("backendPolicy.exit.kills");
 /** ② 勾掉 + **真脱离了**。★ 「无人监护」是 K14 背书的那半，不许删。 */
-export const EXIT_UNATTENDED =
-  "monitor 退出后它继续跑，无人监护：崩了不会自动重起；下次开 monitor 会接上它，接不上才起一个新的";
+export const EXIT_UNATTENDED = copyText("backendPolicy.exit.unattended");
 /** ③ 勾掉 + **没脱离**（平台不支持 / 被关掉了 / 脱离失败）⇒ 保持今天那句，一字不改。 */
-export const EXIT_SELF_DIES = "monitor 不主动结束它；它仍会在 monitor 退出后很快自行退出";
+export const EXIT_SELF_DIES = copyText("backendPolicy.exit.selfDies");
 /**
  * ④〔B2 · 条 66 · `设计/01 §3.3b ⑤`〕那台机器上的值**读不出来** ⇒ 按缺省（不结束）办 ——
  * **并且说出来这不是谁选的**。
@@ -70,8 +73,7 @@ export const EXIT_SELF_DIES = "monitor 不主动结束它；它仍会在 monitor
  * 读不出来是「有一份东西在那儿、我们读不懂」，照缺省办，但不许装作那是一个选择。
  * 同一条道理仓里立过一次：`HEALTH_UNKNOWN` 逐字「『答不出来』不等于『没崩过』」。
  */
-export const EXIT_UNREADABLE =
-  "那台机器上的退出策略读不出来，按默认（不结束）办 —— 这不等于有人这么选过";
+export const EXIT_UNREADABLE = copyText("backendPolicy.exit.unreadable");
 
 // ══════════════════════════════════════════════════════════════════════════
 // K-P3 KP3C（09-04）：**那句「无人监护」后面接的那个读数。**
@@ -91,12 +93,8 @@ export const EXIT_UNREADABLE =
 //   「不是「包含」而是「等于」——「包含」会放过「在正确那句后面又加了一句错的」」），
 //   在它后面接一句就是当场红那四格。⇒ 读数是**另一句话**，由界面另起一行说。
 //
-// ⚠ 占位符（{misread} / {crashed} / {last}）是**两侧共用的字面**：Rust 那侧
-//   `backend_policy.rs` 有同名同值的四条 const，由
-//   `every_cross_language_table_is_compared_on_both_sides` 逐字对拍
-//   （形状抄 `the_exit_copy_is_the_same_string_on_both_sides`，只是人群从
-//   `CROSS_LANGUAGE_COPY` 那张清单派生 ⇒ 加一张新表不配对拍会当场红）。
-//   **两边漂了不会报错**，所以改文案要同一拍改两处。
+// 〔CP2b〕占位符（{crashed} / {last} …）住表项里，由 copyText 填；Rust 那侧 `describe_health` 取的是同一批 key，
+//   两侧用的 key 集合由 `backend_policy_tests.rs::both_sides_describe_health_with_the_same_keys` 比。
 // ══════════════════════════════════════════════════════════════════════════
 
 /**
@@ -111,26 +109,25 @@ export const EXIT_UNREADABLE =
  * `§2.2` 逐字：**区分本身是对的，不能一起扫掉** ⇒ 区分保留、换成界面状态：
  * 格子里只写「— 无记录」，那句「为什么这不等于没崩过」进 ⓘ（[`HEALTH_UNKNOWN_WHY`]）。
  */
-export const HEALTH_UNKNOWN = "— 无记录";
+export const HEALTH_UNKNOWN = copyText("backendPolicy.health.unknown");
 /**
  * ①′ 「无记录」那一格的 ⓘ —— **那条区分的全部内容住这里**（`§2.2`：不许一起扫掉）。
  * 只在 TS 这一侧（Rust 那侧的 `describe_health` 不产它），所以不进跨语言表。
  */
-export const HEALTH_UNKNOWN_WHY =
-  "这里只记这次 monitor 开着以来的退出，关掉 monitor 就清零。所以「无记录」不等于「没崩过」。";
+export const HEALTH_UNKNOWN_WHY = copyText("backendPolicy.health.unknownWhy");
 /** ② 记到过事，但**一次崩溃都没有**。读坏了几次、被拒几次进 `[详情]`（[`HEALTH_DETAIL`]）。 */
-export const HEALTH_CLEAN = "没崩过（这次 monitor 开着以来）";
+export const HEALTH_CLEAN = copyText("backendPolicy.health.clean");
 /** ③ 崩过。带次数与最后那一次的**短摘要**（判定 ＋ 退出状态，后端 `last_brief`，不是账行）。 */
-export const HEALTH_CRASHED = "⚠ 崩过 {crashed} 次 · 最后一次：{last}";
+export function healthCrashed(crashed: number, last: string): string {
+  return copyText("backendPolicy.health.crashed", { crashed: String(crashed), last });
+}
 /** ④ 崩过但那一次没留住（表被清过 / 锁毒化）—— 也要说出口，不许拿空串糊过去。 */
-export const HEALTH_LAST_MISSING = "没留下记录";
+export const HEALTH_LAST_MISSING = copyText("backendPolicy.health.lastMissing");
 /**
  * ⑤ `[详情]` 里那一段：四个计数**分开**列（「读坏了」不许被算成一次崩溃），外加完整记录去哪看。
  * 只在 TS 这一侧（界面专用），不进跨语言表。
  */
-// ⚠ 一个字面量写完、不拆成两段相加：「只许有一个家」那条判据按整串找它（拆开就零命中地红）。
-export const HEALTH_DETAIL =
-  "这次 monitor 开着以来：崩了 {crashed} 次 · 被拒 {refused} 次 · 没起来 {neverStarted} 次 · 读坏了 {misread} 次。读坏是 monitor 这一侧的事，不算它崩。每一次的完整记录在日志文件里。";
+// 〔CP2b〕整句住文案表 `backendPolicy.health.detail`（四个计数是它的占位符）。
 
 /**
  * 一台机的死亡账**读数**。四个计数分开装 —— 「读坏了」不许被算成一次崩溃。
@@ -158,10 +155,7 @@ export function describeBackendHealth(h: BackendHealth): string {
   const seen = h.crashed + h.refused + h.neverStarted + h.misread;
   if (seen === 0) return HEALTH_UNKNOWN;
   if (h.crashed === 0) return HEALTH_CLEAN;
-  return HEALTH_CRASHED.replace("{crashed}", String(h.crashed)).replace(
-    "{last}",
-    h.last ?? HEALTH_LAST_MISSING,
-  );
+  return healthCrashed(h.crashed, h.last ?? HEALTH_LAST_MISSING);
 }
 
 /**
@@ -170,10 +164,12 @@ export function describeBackendHealth(h: BackendHealth): string {
 export function describeHealthDetail(h: BackendHealth): string | null {
   const seen = h.crashed + h.refused + h.neverStarted + h.misread;
   if (seen === 0) return null;
-  return HEALTH_DETAIL.replace("{crashed}", String(h.crashed))
-    .replace("{refused}", String(h.refused))
-    .replace("{neverStarted}", String(h.neverStarted))
-    .replace("{misread}", String(h.misread));
+  return copyText("backendPolicy.health.detail", {
+    crashed: String(h.crashed),
+    refused: String(h.refused),
+    neverStarted: String(h.neverStarted),
+    misread: String(h.misread),
+  });
 }
 
 /** 那个值现读出来的三态（与后端 `exit_policy::Read::state` 逐字对齐）。 */

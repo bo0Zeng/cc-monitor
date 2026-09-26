@@ -23,7 +23,7 @@ Renders the real-time conversation written by Claude Code CLI to `~/.claude/proj
 ### Real-time rendering
 - Watches `~/.claude/projects/**/*.jsonl`; new lines appear in window within 200ms
 - Multi-tab: one tab per active Claude session, title `[project] aiTitle`
-- After a session exits, its tab is archived (grayed out), closable via `W` / middle-click / `×`; a **local session auto-revives to live when you `/resume` it** (no F5 needed)
+- After a session exits, its tab **stays in place, dimmed**, marked "ended" (a session that ran inside tmux is marked "reconnectable" and can be re-attached); ended tabs are closable via `W` / middle-click / `×`; a **local session auto-revives when you `/resume` it** (no F5 needed)
 - **Tab in independent window** (issue #10): right-click a tab → "Open in new window" / `N`, **or just drag the tab below the tab bar and drop** (tear-off), mirrors the session into a standalone read-only window (dual-monitor / long-running tasks), synced live with the main window
 - **Session status lights** (issue #23): each local tab's status dot reflects Claude's live state — 🟢 running / 🟡 waiting for your decision (permission / dialog, breathing blink) / 🔴 done, awaiting input; the agents expander gives each subagent its own light
 
@@ -98,7 +98,7 @@ Five collapsible groups (only "Behavior" expanded by default):
 |---|---|
 | **]** / **[** | Next / previous tab |
 | **1** .. **9** | Jump to tab N |
-| **W** | Close current archived tab |
+| **W** | Close current ended tab |
 | **E** | Open the current tab's working directory in Explorer |
 | **`** (backtick) | Bring current tab's terminal to front |
 | **H** | Toggle history browser |

@@ -1,16 +1,24 @@
 //! **哪些路径是 Claude 自己的数据，不许我们写。**
 //! 〔`设计/99 §2 Q2`，用户 2026-09-21 逐字裁「拆」〕
 //!
+//! # 🔴〔FN1 · 第四波 4C · 2026-09-25 · 用户 V119〕文件管理器那一半的用户**全走了**
+//!
+//! 用户原话「**文件管理器全部都可以改. 不需要任何围栏**」⇒ 文件窗口的本地预判（`filewin::writeops` 那一道）·
+//! 传输台开下载单那一判（`sftp_pool::transfer_call` 里那次拒绝）· 后端写面那一份逐字副本的写侧用法**全删了**；
+//! 拒绝那一半（`guard_write`）随它最后一个调用方一起删。
+//! 本模块今天**只剩 F03b 那一个用户**：skill 收件箱编辑的纵深（`skill_host::resolve_editable` /
+//! `remote_editable_rel`：声明表写歪了也不许碰会话记录）。它不是文件管理器，本刀一个字节没动它 ——
+//! 要不要一起拿掉是另一件事（`调研/第四波记录/FN1.md` §4 拍板 1）。下面讲 F47 那一半的段落是**历史**。
+//!
 //! # 本模块只有这一件事
 //!
-//! 一个判定（[`is_protected_claude_data_path`]）＋ 它的拒绝（[`guard_write`]）。
+//! 一个判定（[`is_protected_claude_data_path`]）＋ 它的拒绝（`guard_write`，〔FN1〕随最后一个调用方删了）。
 //! 没有别的。它的语料是**一个路径字符串**，没有连接、没有 IO、没有 `async`
 //! ⇒ 「这条路径被挡住」这件事在一台**没有任何连接**的机器上判得动，
 //! 而 `guard_write` 的 `Err` 是在任何一次往返**之前**就出来的。
 //!
-//! 那个「之前」不是散文：`remote_write_registry_tests` 的
-//! `a_fenced_write_refuses_before_it_touches_the_wire` 逐条要求池子里那七条写命令
-//! 的函数体里 `guard_write` 出现在拿连接（`pool_for` / 借通道）**之前**；
+//! 那个「之前」从前不是散文：`remote_write_registry_tests` 里有一条判据逐条要求池子里那七条写命令
+//! 的函数体里 `guard_write` 出现在拿连接（`pool_for` / 借通道）**之前**（〔FN1〕池子零条写命令、那道拒绝也删了，那条判据随之退役）；
 //! 本模块「够不着线」这件事由 `claude_data_fence_tests` 的
 //! `the_fence_cannot_reach_the_wire` 从另一侧钉着（本文件生产段里零传输符号）。
 //!
@@ -20,7 +28,7 @@
 //!
 //! | 澄清段 | 谁在用 | 用法 |
 //! |---|---|---|
-//! | **F47**（SFTP 文件面板） | `sftp_pool` 那七条写命令 · `filewin::writeops::fenced_path` | 面板/窗口写**任意用户选的路径** ⇒ 拒碰 Claude 的 jsonl/pidfile |
+//! | ~~**F47**（SFTP 文件面板）~~ | 〔FN1 · V119〕**零**（从前：`sftp_pool` 那七条写命令 · `filewin::writeops::fenced_path`） | 用户「文件管理器全部都可以改. 不需要任何围栏」 |
 //! | **F03b**（收件箱编辑） | `skill_host::resolve_editable` 的第②道 | **纵深**：即使声明表写歪了，也不许碰 Claude 的数据 |
 //!
 //! ⇒ 两段澄清共用**一个**判定，这是它有独立住址的第一个理由：在它搬出来之前，
@@ -36,7 +44,7 @@
 //! [`is_protected_claude_data_path`] 的函数体是从 `sftp_pool` **原样**搬过来的
 //! （结构判定：`<任意>/projects/<proj>/<sid>.jsonl` 恰 2 段 · `<任意>/sessions/<x>.json`
 //! 恰 1 段；batch20 那次审计修闭的 `CLAUDE_CONFIG_DIR` 重定位缺口也原样在内）。
-//! [`guard_write`] 的拒绝原话同样原样。⇒ **本轮变的是它住哪、谁能看见它、谁在数它**，
+//! `guard_write`（〔FN1〕已删）的拒绝原话当时同样原样。⇒ **本轮变的是它住哪、谁能看见它、谁在数它**，
 //! 不是它判什么。想改判定的射程，那是另一件、要用户拍。
 //!
 //! # ⚠ 它**不**管什么（只登记，不扩射程）
@@ -78,20 +86,9 @@ pub fn is_protected_claude_data_path(path: &str) -> bool {
     jsonl_protected || json_protected
 }
 
-/// 拒 Claude 数据源路径的写守卫（返回 `Err` 便于 `?`）。
-///
-/// 🔴 **这是围栏的另一半，刻意与判定同住** —— 判定说「是不是」，它说「那就不做，
-/// 并且这么告诉人」。分居两处的代价是具体的：拒绝的原话会长出第二份
-/// （`filewin::writeops::fence_notice` 那一份是**刻意**的第二份文案，
-/// 因为窗口那一层要自己说话；但**判定与拒绝**这一对不许再分）。
-pub fn guard_write(path: &str) -> Result<(), String> {
-    if is_protected_claude_data_path(path) {
-        return Err(format!(
-            "拒绝写 Claude 数据源文件({path})——管理会话文件请用历史浏览器"
-        ));
-    }
-    Ok(())
-}
+// 〔FN1 · V119〕这里原来是 `guard_write`（「拒 Claude 数据源路径的写守卫」，与判定同住的拒绝那一半）。
+//   它最后一个调用方是传输台开下载单那一判（`sftp_pool::transfer_call`），V119 删了 ⇒ 它一起删。
+//   skill 收件箱那两处自己说拒绝的话（它们要点名声明表），从来不经它。
 
 #[cfg(test)]
 #[path = "../../../tests/bridge/claude_data_fence_tests.rs"]

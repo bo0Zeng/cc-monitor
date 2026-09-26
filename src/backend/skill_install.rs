@@ -1,4 +1,5 @@
 //! 〔AS2 · 第四波 4B · V113〕**skill「装到这台」** —— 两条只读帧命令：读来源那台的 skill · 在要被写的那一台上判。
+//! 〔SU1 · 第四波 4C · V116〕又多两条只读帧命令：`skill-installs`（这台记着哪几个从别处装来的）· `skill-uninstall-plan`（卸：判在被卸的那一台）—— 见文件末尾那一段。
 //!
 //! # 用户裁决（逐字）
 //!
@@ -41,8 +42,8 @@ const MAX_PATHS_PER_FILE: usize = 8;
 /// 这一族的应答。
 pub type Answer = Result<Value, (&'static str, String)>;
 
-/// skill 名：一段目录名（不许带分隔符 / `..` / 点开头 / NUL）。
-fn valid_name(name: &str) -> bool {
+/// skill 名：一段目录名（不许带分隔符 / `..` / 点开头 / NUL）。〔SU1〕装记录的写口也用它（`skill_ledger::record_at`）。
+pub(crate) fn valid_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 128
         && !name.starts_with('.')
@@ -404,6 +405,23 @@ pub(crate) fn answer_plan_with(facts: &dyn Facts, root: Option<&Path>, args: &Va
             Some(mcp_sync::plan(&rows, &t, &overwrite.unwrap_or_default())?)
         }
     };
+    // 〔SU1 · V116〕真要写的那几个各自「装时写进去的那一份」的摘要 ＋ 装之前在不在（`new` ⇒ 新建；`differs` ⇒ 盖掉原有的）。
+    //   monitor 写完把真写成了的那几个原样交回 `skill-install-record`（摘要与新旧是**这台**判的，不由 monitor 算）。
+    let ledger = write.as_ref().map(|w| {
+        let states: BTreeMap<&str, State> = rows.iter().map(|(p, s)| (p.as_str(), *s)).collect();
+        w.iter()
+            .filter_map(|p| {
+                let text = source.get(p)?.text.as_deref()?;
+                Some((
+                    p.clone(),
+                    json!({
+                        "digest": crate::skill_ledger::digest_of(text),
+                        "created": states.get(p.as_str()) == Some(&State::New),
+                    }),
+                ))
+            })
+            .collect::<Map<String, Value>>()
+    });
     // 只交这一趟拷的那几个路径在这台上的原文（写的时候当 CAS 期望）；只在这台有的那几个不碰，也不回传。
     // 写的落点：`files-put` 的 `root` 必须已在 ⇒ skill 根在就用它，不在就用它的上一层（配置根）、让 `parents` 建出来。
     let base = if root.is_dir() {
@@ -437,6 +455,170 @@ pub(crate) fn answer_plan_with(facts: &dyn Facts, root: Option<&Path>, args: &Va
         "rows": rows_json,
         "target": target,
         "write": write,
+        "ledger": ledger,
+    }))
+}
+
+// ═══════════════════════ 〔SU1 · 第四波 4C · V116〕卸 ═══════════════════════
+//
+// 用户裁决 V116〔选〕「要，只删装时写进去的文件」：卸只删装记录（`skill_ledger.rs`）里那几个文件；
+// 装完用户自己改过的先问（`SU1.md §1.3`）。两条只读命令，判定都在**被卸的那一台**：
+// `skill-installs`（这台记着哪几个从别处装来的 skill）· `skill-uninstall-plan`（逐文件四态 ＋ 要不要问 ＋ 给了 `take` 才答删哪几个）。
+// 一个字节都不写：删经 monitor → 这台后端 `files-delete`（`expect` = 这里回的 `seen` 那一份）；摘记录经 `skill-install-record`。
+
+/// 卸时一个记着的文件在盘上的样子（线上名）。**闭集**：界面文案表按它逐键给字。
+// ⚠ 逐字写成字面量（不引用下面四个常量）：界面与 monitor 的判据按「这一行的引号」从源码现抠人群。
+//   四个常量与这一行对不上由 `uninstall_judges_every_recorded_file_as_it_is_on_disk_now` 的闭集两向那一条逮。
+pub const UNINSTALL_STATES: &[&str] = &["gone", "intact", "modified", "unreadable"];
+/// 已经不在了（从记录里摘掉就行）。
+pub const UNINSTALL_GONE: &str = "gone";
+/// 在、是文本、摘要 == 装时写进去的那一份。
+pub const UNINSTALL_INTACT: &str = "intact";
+/// 在、摘要不同 —— 装完被改过（删之前要问）。
+pub const UNINSTALL_MODIFIED: &str = "modified";
+/// 不是普通文件 / 不是文本 / 读不出来 —— 没法按原文 CAS 删（不删）。
+pub const UNINSTALL_UNREADABLE: &str = "unreadable";
+
+fn ledger_file() -> Result<PathBuf, (&'static str, String)> {
+    crate::skill_ledger::ledger_path().ok_or((
+        "io_failed",
+        "家目录解析不出来（HOME / USERPROFILE 都没有）—— 不猜装记录在哪".to_string(),
+    ))
+}
+
+/// `skill-installs`：这台记着的、从别的机器装来的 skill。
+pub fn answer_installs(_args: &Value) -> Answer {
+    answer_installs_at(&ledger_file()?)
+}
+
+/// [`answer_installs`] 的本体：记录文件可喂。
+pub fn answer_installs_at(ledger: &Path) -> Answer {
+    let l = crate::skill_ledger::load_at(ledger)?;
+    let installs: Vec<Value> = l
+        .installs
+        .iter()
+        .map(|(dir, i)| json!({ "dir": dir, "name": i.name, "files": i.files.len() }))
+        .collect();
+    Ok(json!({ "installs": installs }))
+}
+
+/// 一个记着的文件现在的样子：`(state, 现有原文)`（原文只在 `intact` / `modified` 上有）。
+fn on_disk_now(
+    abs: &Path,
+    recorded: &crate::skill_ledger::Recorded,
+) -> (&'static str, Option<String>) {
+    // ⚠ `metadata` 跟链接（`symlink_metadata` 不在本模块能用的只读动词里，`readonly_guard` 白名单）：
+    //   装完被换成指向一份同样文本的链接 ⇒ 这里判 `intact`，而后端 `files-delete` 带 `expect` 只删普通文件 ⇒ 那一下拒、什么都不删。
+    //   悬空的链接 ⇒ `gone`（从记录里摘掉；链接本身不是装写进去的，不碰）。
+    match std::fs::metadata(abs) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (UNINSTALL_GONE, None),
+        Err(_) => (UNINSTALL_UNREADABLE, None),
+        // 目录 / 特殊文件：装写进去的是一份普通文件，现在换了种类 ⇒ 不按原文删它。
+        Ok(m) if !m.is_file() => (UNINSTALL_UNREADABLE, None),
+        Ok(_) => match read_text(abs) {
+            (Some(t), _) if crate::skill_ledger::digest_of(&t) == recorded.digest => {
+                (UNINSTALL_INTACT, Some(t))
+            }
+            (Some(t), _) => (UNINSTALL_MODIFIED, Some(t)),
+            (None, _) => (UNINSTALL_UNREADABLE, None),
+        },
+    }
+}
+
+/// `skill-uninstall-plan`：帧面入口。
+pub fn answer_uninstall_plan(args: &Value) -> Answer {
+    answer_uninstall_plan_at(&ledger_file()?, args)
+}
+
+/// [`answer_uninstall_plan`] 的本体：记录文件可喂（判据拿临时目录喂）。
+pub fn answer_uninstall_plan_at(ledger: &Path, args: &Value) -> Answer {
+    let dir = args.get("dir").and_then(Value::as_str).ok_or((
+        "bad_args",
+        "少了 `dir`（装记录里那个 skill 目录）".to_string(),
+    ))?;
+    let take = mcp_sync::names_arg(args.get("take"), "take")?;
+    let confirm = mcp_sync::names_arg(args.get("confirm"), "confirm")?;
+    if take.is_none() && confirm.is_some() {
+        return Err((
+            "bad_args",
+            "给了 `confirm` 没给 `take` —— 两张单子对不上".to_string(),
+        ));
+    }
+    let l = crate::skill_ledger::load_at(ledger)?;
+    let install = l.installs.get(dir).ok_or((
+        "not_found",
+        format!("这台没有记着从别处装到 {dir} 的 skill —— 只卸装时记下来的那几个文件"),
+    ))?;
+    let base = Path::new(dir);
+    let mut rows = Vec::new();
+    let mut seen = Vec::new();
+    // (state, deletable, ask)，按路径。
+    let mut judged: BTreeMap<&str, (&'static str, bool, bool)> = BTreeMap::new();
+    for (path, rec) in &install.files {
+        let (state, text) = on_disk_now(&base.join(path), rec);
+        let deletable = state == UNINSTALL_INTACT || state == UNINSTALL_MODIFIED;
+        // 要问：装完被改过的 · 装之前就在（装时盖掉了原有那一份，删了回不到装之前）。
+        let ask = deletable && (state == UNINSTALL_MODIFIED || !rec.created);
+        judged.insert(path, (state, deletable, ask));
+        rows.push(json!({
+            "path": path,
+            "state": state,
+            "created": rec.created,
+            "deletable": deletable,
+            "ask": ask,
+        }));
+        if let Some(t) = text {
+            seen.push(json!({ "path": path, "text": t }));
+        }
+    }
+    let (delete, forget) = match take {
+        None => (Value::Null, Value::Null),
+        Some(take) => {
+            let confirm = confirm.unwrap_or_default();
+            if let Some(p) = confirm.iter().find(|p| !take.contains(*p)) {
+                return Err((
+                    "bad_args",
+                    format!("「{p}」在 `confirm` 里却不在 `take` 里 —— 两张单子对不上"),
+                ));
+            }
+            for p in &take {
+                match judged.get(p.as_str()) {
+                    None => {
+                        return Err((
+                            "bad_args",
+                            format!("「{p}」不在这个 skill 的装记录里 —— 只卸装时写进去的那几个，这一趟一个都没删"),
+                        ))
+                    }
+                    Some((state, false, _)) => {
+                        return Err((
+                            "bad_args",
+                            format!("「{p}」现在是 {state}，删不了 —— 这一趟一个都没删"),
+                        ))
+                    }
+                    Some((_, true, true)) if !confirm.contains(p) => {
+                        return Err((
+                            "needs_consent",
+                            format!("「{p}」装完被改过、或装之前就在 —— 要你点名确认才删；这一趟一个都没删"),
+                        ))
+                    }
+                    Some(_) => {}
+                }
+            }
+            let forget: Vec<&str> = judged
+                .iter()
+                .filter(|(_, (s, _, _))| *s == UNINSTALL_GONE)
+                .map(|(p, _)| *p)
+                .collect();
+            (json!(take), json!(forget))
+        }
+    };
+    Ok(json!({
+        "dir": dir,
+        "name": install.name,
+        "rows": rows,
+        "seen": seen,
+        "delete": delete,
+        "forget": forget,
     }))
 }
 

@@ -512,7 +512,7 @@ fn every_target_gap_names_a_capability_that_really_exists() {
 #[test]
 fn every_target_gap_says_why_and_what_happens_next() {
     for gap in TARGET_GAPS {
-        let why = gap.why;
+        let why = gap.rationale;
         assert!(
             why.chars().count() >= 24,
             "`{} / {}` 那条豁免的理由只有 {} 个字 —— 太短，答不出「为什么」＋「将来怎么办」两件事。\n\

@@ -246,7 +246,8 @@ fn home_form_warns_when_the_path_is_not_on_disk() {
     let sn = snippet(true, &probe);
     let w = sn.warning.expect("显式路径形态 + 路径不存在 → 必须警示");
     assert!(w.contains("$HOME/.local/bin/"), "要指名那个路径：{w}");
-    assert!(w.contains("path-missing"), "要说清后果：{w}");
+    // 〔CP2b〕原来靠诊断内部码 path-missing 说后果；CP1 台账裁掉内部码，后果改用人话「用不了」。
+    assert!(w.contains("用不了"), "要说清后果：{w}");
     // **闭环验证后果是真的**：把这段喂回自己的诊断，`exists` 说不存在 → 真的 PathMissing
     let d = diagnose(Some(&sn.text), &|_| false);
     assert!(

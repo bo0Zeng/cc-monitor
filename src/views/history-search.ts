@@ -145,14 +145,13 @@ function parseHit(v: unknown): Hit | null {
  * 其余各格必有且类型对，否则整行坏。
  */
 export function parseSessionHitsLines(lines: string[], origin: string | undefined): SessionHits[] {
-  const who = origin === undefined ? "本机" : `远端 [${origin}]`;
   const out: SessionHits[] = [];
   for (const line of lines) {
     let v: unknown;
     try {
       v = JSON.parse(line);
     } catch (e) {
-      console.warn(`${who} 搜索结果行解析失败（跳过）:`, e);
+      console.warn(`[${origin ?? LOCAL_ORIGIN}] 搜索结果行解析失败（跳过）:`, e);
       continue;
     }
     const o = (v !== null && typeof v === "object" ? v : {}) as Record<string, unknown>;
@@ -170,7 +169,7 @@ export function parseSessionHitsLines(lines: string[], origin: string | undefine
       hits.some((h) => h === null) ||
       !(o.hitsTruncated === undefined || typeof o.hitsTruncated === "boolean")
     ) {
-      console.warn(`${who} 搜索结果行形状不对（跳过）`);
+      console.warn(`[${origin ?? LOCAL_ORIGIN}] 搜索结果行形状不对（跳过）`);
       continue;
     }
     out.push({
