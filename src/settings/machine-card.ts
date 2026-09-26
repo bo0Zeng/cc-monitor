@@ -13,6 +13,7 @@
  * 3. `setPageMode()` —— 进入独占一页的形态（去折叠箭头与删除按钮）。
  */
 import { Channel } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { commands } from "../ipc/commands";
 import { open } from "@tauri-apps/plugin-dialog";
 import { homeDir, join } from "@tauri-apps/api/path";
@@ -20,7 +21,7 @@ import { openFileWindow } from "../file-window";
 import { invalidateCcmProbeCache } from "../ccm-probe";
 import { buildRemoteAliasPaste } from "./machine-aliases"; // 〔MC1〕② 别名：远端那一半只给手贴
 import { recordFacet, type MachineFacet } from "./machine-status";
-import { hostKey, type RemoteHostConfig } from "../remote-config";
+import { hostKey, resolveRemoteConfigByOrigin, type RemoteHostConfig } from "../remote-config";
 import { parseAddressLines } from "../remote-config";
 // E80：`ConnectStage` 直连生成物，不再绕道 `remote-section`（那条绕道是 import 环的一半）。
 import type { ConnectStage } from "../generated/ConnectStage";
@@ -190,6 +191,24 @@ export interface MachineCardParts {
 /** 按钮结果写在哪一栏。 */
 type ResultArea = "conn" | "comp" | "tools";
 
+/** 〔VIS2 · `设计/15 §3.4 ①`〕后端那边自动固化 / 各地址指纹不一 ⇒ 既有的 `remote-health` 上这两个 kind（`dial_host.rs`）。 */
+export const HOST_KEY_NOTICE_KINDS: readonly string[] = ["host_key_pinned", "host_key_differs"];
+export interface HostKeyNotice {
+  origin: string;
+  kind: string;
+  message: string;
+}
+const liveCards = new Set<MachineCard>();
+let hostKeyNoticesBound = false;
+/** 整个设置窗只订一次，按 origin 分给各张卡。 */
+function bindHostKeyNotices(): void {
+  if (hostKeyNoticesBound) return;
+  hostKeyNoticesBound = true;
+  listen<HostKeyNotice>("remote-health", (e) => {
+    for (const c of liveCards) void c.onHostKeyNotice(e.payload);
+  }).catch((e: unknown) => console.warn("订不上 remote-health（host key 告知）", e));
+}
+
 export class MachineCard {
   readonly element: HTMLElement;
   private legend!: HTMLElement;
@@ -253,6 +272,29 @@ export class MachineCard {
     this.syncInputs(initial);
     this.updateLegend();
     this.setCollapsed(collapsed);
+    liveCards.add(this);
+    bindHostKeyNotices();
+  }
+
+  /**
+   * 〔VIS2〕只认自己那台：固化了 ⇒ 从盘上把指纹同步进输入框（机器页保存是整台 upsert，不同步会用空值盖回去）；
+   * 各地址不一 ⇒ 把那句话（带逐地址指纹）说在结果区，让人在指纹那一栏选一个填上。
+   */
+  async onHostKeyNotice(n: HostKeyNotice): Promise<void> {
+    if (!HOST_KEY_NOTICE_KINDS.includes(n.kind)) return;
+    if (n.origin !== (this.persistedKey ?? hostKey(this.collect()))) return;
+    if (n.kind === "host_key_pinned") {
+      const disk = await resolveRemoteConfigByOrigin(n.origin);
+      if (disk?.hostKeyFingerprint) {
+        this.fingerprintInput.value = disk.hostKeyFingerprint;
+        this.syncResetFpVisibility();
+      }
+    }
+    this.testResult.style.display = "block";
+    const line = document.createElement("div");
+    line.className = `remote-test-line ${n.kind === "host_key_pinned" ? "remote-test-ok" : "remote-test-caution"}`;
+    line.textContent = n.message;
+    this.testResult.appendChild(line);
   }
 
   /** 读出本卡片的 RemoteHostConfig（trim；port 兜底 22）。 */

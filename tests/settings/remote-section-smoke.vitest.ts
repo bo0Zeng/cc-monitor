@@ -15,6 +15,8 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 
 import { RemoteSection } from "../../src/settings/remote-section";
+import { MachineCard } from "../../src/settings/machine-card";
+import { HOST_DEFAULTS } from "../../src/remote-config";
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -69,5 +71,38 @@ describe("RemoteSection 真构造一次（此前 0 次执行）", () => {
   it("挂在已有规则的那个 class 上（T04 审计⑤：改名让 styles.css 那条规则失去了宿主）", () => {
     const s = new RemoteSection({ headless: true });
     expect(s.element.querySelector(".remote-wrapper-snippet")).not.toBeNull();
+  });
+});
+
+// 〔VIS2 · `设计/15 §3.4 ①`〕后端自动固化 / 各地址不一 ⇒ 机器页那张卡跟着刷新、说出来（期望手写）。
+describe("VIS2 机器页收 host key 告知", () => {
+  it("★ 固化了 ⇒ 指纹栏从盘上同步、说一行；别台的不理；各地址不一 ⇒ 说出来、指纹栏不动", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "load_config"
+        ? Promise.resolve({
+            remote: {
+              enabled: true,
+              hosts: [{ label: "aya", host: "h", user: "u", backendPath: "/b", hostKeyFingerprint: "SHA256:disk" }],
+            },
+          })
+        : Promise.resolve([]),
+    );
+    const card = new MachineCard(
+      { ...HOST_DEFAULTS, label: "aya", host: "h", user: "u" },
+      { onChange: vi.fn(), onRemove: vi.fn() },
+      false,
+      "aya",
+    );
+    const text = () =>
+      [card.element, ...Object.values(card.parts())].map((e) => e.textContent ?? "").join("\n");
+    await card.onHostKeyNotice({ origin: "other", kind: "host_key_pinned", message: "别台" });
+    expect(card.collect().hostKeyFingerprint).toBe("");
+    expect(text()).not.toContain("别台");
+    await card.onHostKeyNotice({ origin: "aya", kind: "host_key_differs", message: "几个地址不一样：a SHA256:x；b SHA256:y" });
+    expect(card.collect().hostKeyFingerprint, "不一致时不该替人填").toBe("");
+    expect(text()).toContain("几个地址不一样：a SHA256:x；b SHA256:y");
+    await card.onHostKeyNotice({ origin: "aya", kind: "host_key_pinned", message: "已记下" });
+    expect(card.collect().hostKeyFingerprint).toBe("SHA256:disk");
+    expect(text()).toContain("已记下");
   });
 });
