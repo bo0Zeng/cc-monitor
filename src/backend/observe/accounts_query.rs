@@ -403,7 +403,7 @@ const LAUNCH_ID_ENV: &str = "CCM_LAUNCH_ID";
 
 /// 身份 token 的字符集 —— **fail closed**，形状不对就不往下游递。
 ///
-/// 与铸法那一侧同一条：`payload::relay_segment_is_safe` 逐字是
+/// 与铸法那一侧同一条：段闸 `relay_route_core::segment_is_safe`（〔US1〕从 monitor `payload.rs` 搬进共享 crate）逐字是
 /// 「只许字母数字与 `-` `_`，1..=128 字节」，而 `route_key_for_session` 铸出来的
 /// 要么是 UUID v4（`[0-9a-f-]`，36 字节）、要么是过了那条白名单的 sid ⇒ 两种都在集内。
 ///

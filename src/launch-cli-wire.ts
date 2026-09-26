@@ -57,7 +57,7 @@ export type WireEnvOp =
   | { kind: "export-model"; value: string }
   /** `设计/80 §8` 步 1：启动期令牌。Rust 渲染侧对 `[0-9a-f]{32}` 之外的值 fail-closed 拒。 */
   | { kind: "export-rbind-token"; value: string }
-  /** 〔RL1〕中转地址。Rust 渲染侧只收 `relay_base_url_in` 产得出的那一形，别的 fail-closed 拒。 */
+  /** 〔RL1〕中转地址。Rust 渲染侧只收构造口（`relay_route_core::base_url`）产得出的那一形（`base_url_shape_ok`），别的 fail-closed 拒。 */
   | { kind: "export-relay-base-url"; value: string }
   | { kind: "unset-config-dir" }
   | { kind: "unset-nested-env" };

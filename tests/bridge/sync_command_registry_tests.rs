@@ -542,23 +542,24 @@ impl S {
 fn g_ambiguous() { rt.block_on(x) }
 "#;
     let c_rs = "fn g_ambiguous() {}\n";
+    // 夹具的「文件名」刻意不带 `.rs`：带了的话下面那几串键会被 `structural_scan` 的住址解析当成源码里的真符号地址。
     let files = [
-        ("a.rs".to_string(), a_rs.to_string()),
-        ("b.rs".to_string(), b_rs.to_string()),
-        ("c.rs".to_string(), c_rs.to_string()),
+        ("fixture-a".to_string(), a_rs.to_string()),
+        ("fixture-b".to_string(), b_rs.to_string()),
+        ("fixture-c".to_string(), c_rs.to_string()),
     ];
     let got = analyze(&files);
     assert_eq!((got.attrs, got.cmd_items), (3, 3));
     assert_eq!(
         got.sync_cmds,
-        BTreeSet::from(["a.rs::a_sync".to_string(), "a.rs::f_clean".to_string()])
+        BTreeSet::from(["fixture-a::a_sync".to_string(), "fixture-a::f_clean".to_string()])
     );
-    assert_eq!(got.async_cmds, BTreeSet::from(["a.rs::d_async".to_string()]));
+    assert_eq!(got.async_cmds, BTreeSet::from(["fixture-a::d_async".to_string()]));
     assert_eq!(
         got.reach,
         BTreeMap::from([(
-            "a.rs::a_sync".to_string(),
-            BTreeSet::from(["b.rs::method_c".to_string()])
+            "fixture-a::a_sync".to_string(),
+            BTreeSet::from(["fixture-b::method_c".to_string()])
         )]),
         "分析器没恰好报出那条三跳链（或把阴性格报了出来）"
     );

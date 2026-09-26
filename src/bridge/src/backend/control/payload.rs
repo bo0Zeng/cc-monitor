@@ -200,10 +200,12 @@ pub enum EnvOp<'a> {
         value: &'a str,
     },
     /// 〔RL1 · 第四波〕中转地址 `ANTHROPIC_BASE_URL`：远端（与本机「就地 resume」那一格）拉起时，
-    /// 值由 [`relay_endpoint_for`] 那个唯一判断口答出、经 tauri `relay_endpoint_for_launch` 交给前端、再原样放进载荷。
+    /// 值由那台机器的后端出成品（帧命令 `launch-endpoint`，决策表 `accounts/upstream/endpoint.rs::decide_launch`），
+    /// 经 `history::relay_endpoint_on` → tauri `relay_endpoint_for_launch` 交给前端、再原样放进载荷。
+    /// 〔TL3 · 审计 F 🔴-3〕先前这里链到 monitor 的 `relay_endpoint_for`〔散文墓碑〕—— US1 把那张表整块搬进了后端。
     ///
     /// ⚠ 形状校验在 [`render_env_ops`] 里、**fail-closed**（[`relay_base_url_shape_ok`]）：只收
-    /// [`relay_base_url_in`] 产得出的那一形。渲错了的症状是「claude 每一发都连不上」，与网络故障同形 ——
+    /// 构造口（`relay_route_core::base_url`，后端上游选择调它）产得出的那一形。渲错了的症状是「claude 每一发都连不上」，与网络故障同形 ——
     /// 与启动期令牌那一格同一条理由（静默的错不许渲）。渲染只经 [`relay_env_prefix_posix`]
     /// （本文件唯一产出那句 `export` 的地方，判据数着）。
     ExportRelayBaseUrl {
