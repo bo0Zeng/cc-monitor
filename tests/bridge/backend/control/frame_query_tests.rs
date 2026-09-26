@@ -640,3 +640,113 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
 
 // 〔C4c · 第四波 4B〕`history-record` 应答解释那条判据（`parse_record`〔散文墓碑〕）随发送端删了；同一条口径
 //   「缺一格是契约坏了，**绝不**读成『不在』」搬到 TS 那一侧 `session-reads.ts::decodeRecord`（`tests/session-reads.vitest.ts`）。
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 〔LOC1a · 第四波 4D〕本机查询接的是**正在跑的那份**常驻后端（WIN1 撤回的 F2 由本件接住）
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// 要求住址：`设计/05 §14.6` 逐字「本机那几问从『exec 一次性本机后端』改走 `<local>` 长连接」·
+// `设计/01 §5 D11`「后端是给定的、不留退路」。RT1 F2 读数：旧那条 `run_query` 只认 exe 旁边那一份文件、
+// 不认自释放之后正在跑的那一份 ⇒ Windows 上本机那几问一直「后端不在」。
+// 三格，异源各在一处：
+// ① 发送：本机那几问只经 `inbound_client::client_for("<local>")`（行为判据在 `subagent_tests` / `remote_branch_tests` /
+//    `local_accounts_tests`：假后端那一侧真收到了帧命令）；
+// ② 谁能登记在 `<local>` 上：生产段里 `register(LOCAL_ORIGIN, …)` 的文件集合 == 两个载体（常驻回环 · stdio 监护），
+//    两处都是拿**已经回了 hello 的那条活连接**造客户端 ⇒ 登记在那里的就是正在跑的那一份；
+// ③ 谁还在「找 exe 旁那份文件」：生产段里 `resolve_beside_this_exe(` 的调用点集合 == {给终端窗口导环境那一处 ·
+//    起 / 自释放常驻后端那两处}（都不是查询；一条查询路径都不许再用它）。两向相等，带正控。
+
+/// 生产段里含 `needle` 的「文件::外层函数」集合（按行往回找最近的 `fn `）。
+fn loc1a_sites(needle: &str) -> std::collections::BTreeSet<String> {
+    let root = crate::guard_support::crate_src_root();
+    let mut out = std::collections::BTreeSet::new();
+    for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
+        let prod = guard_core::production_code(&src);
+        let lines: Vec<&str> = prod.lines().collect();
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        for (i, l) in lines.iter().enumerate() {
+            if !l.contains(needle) || l.trim_start().starts_with("pub fn ") {
+                continue;
+            }
+            let f = lines[..=i]
+                .iter()
+                .rev()
+                .find_map(|x| {
+                    x.split(" fn ")
+                        .nth(1)
+                        .or_else(|| x.strip_prefix("fn "))
+                        .map(|r| {
+                            r.chars()
+                                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                                .collect::<String>()
+                        })
+                        .filter(|n| !n.is_empty())
+                })
+                .unwrap_or_default();
+            out.insert(format!("{rel}::{f}"));
+        }
+    }
+    out
+}
+
+#[test]
+fn local_queries_reach_the_running_resident_backend_not_a_file_beside_the_exe() {
+    // ② 谁能登记在 `<local>` 上（多行调用：`register(` 与 `LOCAL_ORIGIN` 分两行 ⇒ 按「函数里两样都有」认）。
+    let registers = loc1a_sites("inbound_client::register(");
+    let with_local: std::collections::BTreeSet<String> = registers
+        .into_iter()
+        .filter(|site| {
+            let (file, _) = site.split_once("::").unwrap();
+            let src =
+                std::fs::read_to_string(crate::guard_support::crate_src_root().join(file)).unwrap();
+            guard_core::production_code(&src).contains(
+                "register(\n        crate::backend::control::inbound_client::LOCAL_ORIGIN",
+            ) || guard_core::production_code(&src).contains(
+                "register(\n            crate::backend::control::inbound_client::LOCAL_ORIGIN",
+            )
+        })
+        .collect();
+    let want: std::collections::BTreeSet<String> = [
+        "backend/control/local_backend.rs::local_stdio_consumer",
+        "local_backend_host.rs::attach_stream",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    let files = |s: &std::collections::BTreeSet<String>| -> std::collections::BTreeSet<String> {
+        s.iter()
+            .map(|x| x.split("::").next().unwrap().to_string())
+            .collect()
+    };
+    assert_eq!(
+        files(&with_local),
+        files(&want),
+        "能登记在 `<local>` 上的生产文件变了 —— 只许是两个载体（拿活连接的 hello 造客户端的那两处）"
+    );
+    // ③ 谁还在找 exe 旁那份文件：只剩给终端窗口导环境那一处。
+    let beside = loc1a_sites("resolve_beside_this_exe(");
+    let beside: std::collections::BTreeSet<String> = beside
+        .into_iter()
+        .filter(|s| !s.ends_with("::resolve_beside_this_exe"))
+        .collect();
+    assert_eq!(
+        beside,
+        [
+            // 给用户开的终端窗口导「后端在哪」那个环境变量（不是查询）。
+            "backend/control/local_backend.rs::backend_bin_env_for_window",
+            // 起本机常驻后端 / 自释放内嵌那份之前先看旁边有没有（起它，不是问它）。
+            "backend/control/local_backend.rs::resolve_or_extract",
+            "backend/control/local_backend.rs::start_if_present",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect(),
+        "又有代码去找 exe 旁那份后端了 —— 本机查询只许问登记在 `<local>` 上的那条活连接（RT1 F2 那一形）"
+    );
+    // 正控：同一把尺子数得到一处明摆着的调用。
+    assert!(loc1a_sites("fn backend_bin_env_for_window(").len() == 1);
+}
