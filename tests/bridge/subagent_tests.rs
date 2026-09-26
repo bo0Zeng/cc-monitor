@@ -98,7 +98,7 @@ fn the_candidate_set_comes_from_the_backend_not_from_this_machines_disk() {
              ⇒ 候选是它**自己从盘上枚举**出来的，不是后端给的（`KR94D1` 第 ③ 刀）。",
     );
     assert!(
-        err.contains("没有可用的控制通道"),
+        err.contains("本机") && err.contains("后端没连上"),
         "报错没说清是「本机后端够不着」（定框 §5：它与「查询失败」对用户是两种处境）：{err}"
     );
 }

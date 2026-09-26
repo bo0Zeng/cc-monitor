@@ -27,6 +27,7 @@
 //! 那个 sid 的目录**不存在** ⇒ 空表（诚实的空：这个会话没用过任务）。
 //! 目录**在但读不了** ⇒ 命令级 `failed`：回空表就与上一行长得一模一样。
 
+use copy_core::copy_text;
 use std::path::Path;
 
 /// 单个任务文件的读上限。本机实测任务文件是几百字节量级（一条 subject ＋ 一段 description）；
@@ -58,7 +59,10 @@ fn check_sid(sid: &str) -> Result<(), Refusal> {
         || sid.contains('\\')
         || sid.contains('\0');
     if bad {
-        return Err(("bad_args", format!("`sid` 不是一个会话 id：{sid:?}")));
+        return Err((
+            "bad_args",
+            crate::common::contract::malformed(&format!("`sid` is not a session id: {sid:?}")),
+        ));
     }
     Ok(())
 }
@@ -70,8 +74,15 @@ pub(crate) fn session_task_lines(home: &Path, sid: &str) -> Result<Vec<String>, 
     if !dir.is_dir() {
         return Ok(Vec::new());
     }
-    let entries = std::fs::read_dir(&dir)
-        .map_err(|e| ("failed", format!("读不了任务目录 `{}`：{e}", dir.display())))?;
+    let entries = std::fs::read_dir(&dir).map_err(|e| {
+        (
+            "failed",
+            copy_text(
+                "beTasksQuery.sessionTaskLines.unreadable",
+                &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
+            ),
+        )
+    })?;
 
     let mut out: Vec<(u64, String)> = Vec::new();
     for entry in entries.flatten() {

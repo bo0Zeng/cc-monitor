@@ -71,6 +71,8 @@
 //! （macOS 等，`01 §7` 表 B），仍是那个诚实的空壳。
 //! 🚫 Windows 那一份**只买到编得过 ＋ 源码对拍**；真机零读数（本路不碰 Win11 虚拟机）。
 
+use copy_core::copy_text;
+
 #[cfg(not(any(target_os = "linux", windows)))]
 mod fallback;
 #[cfg(target_os = "linux")]
@@ -156,10 +158,8 @@ pub(crate) const fn death_events_available() -> bool {
 /// 而「静默当成有」正是这一条要挡的东西（`§0-4` 代价 1 逐字：
 /// 「非 Linux 上『有没有自愈』这件事要说出口，不许静默当成有」）。
 #[allow(dead_code)] // 同上。
-pub(crate) const NO_DEATH_EVENTS_HERE: &str =
-    "本平台没有「进程死了会有人被叫醒」这条腿：进程看守只在 Linux（pidfd）与 \
-     Windows（进程句柄）上有 ⇒ 后端崩了不会有任何东西发现它，\
-     也不会有任何一行账记下来。自愈在本平台上结构性不成立 —— 这是如实降级，不是漏洞。";
+pub(crate) static NO_DEATH_EVENTS_HERE: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("bePidwatch.noDeathEventsHere.say", &[]));
 
 /// 这台机此刻该不该说那句话。`None` = 有那条腿，没什么要声明的。
 ///
@@ -170,7 +170,7 @@ pub(crate) fn self_healing_caveat() -> Option<&'static str> {
     if death_events_available() {
         None
     } else {
-        Some(NO_DEATH_EVENTS_HERE)
+        Some(NO_DEATH_EVENTS_HERE.as_str())
     }
 }
 

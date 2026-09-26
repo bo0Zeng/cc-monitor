@@ -224,7 +224,7 @@ export interface LaunchContext {
   account: LaunchAccount;
   launcherOverride: string | undefined;
   ccmSid: string | undefined;
-  /** F07：该账号配置的默认模型（本机 `config.json` 偏好，见 `accounts.ts::getModelForAccount`）。
+  /** F07：该账号配置的默认模型（本机 `config.json` 偏好，见 `account-prefs.ts::getModelForAccount`）。
    *  未设置 = `undefined`，`MODEL_DIMENSION.applies` 据此判断是否要注入——不是恒真，见
    *  `features/F07-per-account-model.md` §2 第1条：这个维度的默认态（不触发）就是用户的期望
    *  （该账号自身已配置好的默认模型），不是 F05 修的那种"沉默=意外身份切换"。 */

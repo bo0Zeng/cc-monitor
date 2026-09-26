@@ -26,6 +26,7 @@
 
 use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
 use crate::backend::control::inbound_client;
+use crate::copy_table::copy_text;
 use crate::origin::Origin;
 use serde_json::{json, Value};
 use std::time::Duration;
@@ -84,28 +85,34 @@ pub(crate) async fn call(
     let who = who(origin);
     let origin = origin.as_wire_str();
     let Some(client) = inbound_client::client_for(origin) else {
-        return Err(said(no_channel(origin)));
+        // 〔LOC1a〕说「谁」用同一个 [`who`]：本机那几问改走 `<local>` 之后，不许把 `<local>` 这个键原样说给人看。
+        return Err(said(no_channel(&who)));
     };
     // 能力协商放在发之前（同 `tmux::capture_via_backend`）：「这台的后端太旧」是问得出答案的，
     // 不许与超时同形。
     if !client.accepts(cmd) {
-        return Err(format!(
-            "{who} 的后端还不认 `{cmd}` —— 这条查询是后来才上长连接的，重装那台机器的后端就有了"
-        ));
+        return Err(copy_text("rsFrameQuery.call.tooOld", &[("who", &who)]));
     }
     let data = client.call(cmd, args, budget).await.map_err(|e| {
         said(route_call_error(&e, |code, message| {
-            format!("{who} 查询失败（{code}）：{message}")
+            copy_text(
+                "rsFrameQuery.call.failed",
+                &[
+                    ("who", &who),
+                    ("code", &code.to_string()),
+                    ("message", &message.to_string()),
+                ],
+            )
         }))
     })?;
-    data.ok_or_else(|| format!("{who} `{cmd}` 的应答没有 data —— 两端契约对不上"))
+    data.ok_or_else(|| copy_text("rsFrameQuery.reply.badShape", &[("who", &who)]))
 }
 
 /// 三态里给人看的那句话。`Done` 在本族走不到（查询不产「已完成」这一档）。
 fn said(r: Routed) -> String {
     match r {
         Routed::NoChannel(s) | Routed::Refused(s) => s,
-        Routed::Done => "查询出了内部错误，没有拿到结果".to_string(),
+        Routed::Done => copy_text("rsFrameQuery.said.internal", &[]),
     }
 }
 
@@ -115,9 +122,12 @@ fn said(r: Routed) -> String {
 /// 不许把本机说成「远端 [<local>]」。
 pub(crate) fn who(origin: &Origin) -> String {
     if origin.is_local() {
-        "本机".to_string()
+        copy_text("rsFrameQuery.who.local", &[])
     } else {
-        format!("远端 [{}]", origin.as_wire_str())
+        copy_text(
+            "rsFrameQuery.who.remote",
+            &[("machine", origin.as_wire_str())],
+        )
     }
 }
 
@@ -128,7 +138,7 @@ pub(crate) async fn lines(origin: &Origin, cmd: &str, args: Value) -> Result<Vec
     let rows = data
         .get("lines")
         .and_then(Value::as_array)
-        .ok_or_else(|| format!("{who} `{cmd}` 的应答没有 `lines` —— 两端契约对不上"))?;
+        .ok_or_else(|| copy_text("rsFrameQuery.reply.badShape", &[("who", &who)]))?;
     Ok(rows
         .iter()
         .filter_map(Value::as_str)
@@ -160,7 +170,7 @@ pub(crate) async fn tail(origin: &Origin, path: &str, n: u64) -> Result<TailPlan
     let num = |k: &str| {
         data.get(k)
             .and_then(Value::as_u64)
-            .ok_or_else(|| format!("{who} `history-tail` 的应答缺 `{k}`"))
+            .ok_or_else(|| copy_text("rsFrameQuery.reply.badShape", &[("who", &who)]))
     };
     let plan = TailPlan {
         total: num("total")?,
@@ -169,7 +179,10 @@ pub(crate) async fn tail(origin: &Origin, path: &str, n: u64) -> Result<TailPlan
         end: num("end")?,
     };
     if plan.tail_from > plan.total || plan.split_at > plan.end {
-        return Err(format!("{who} `history-tail` 的应答自相矛盾：{plan:?}"));
+        return Err(copy_text(
+            "rsFrameQuery.reply.inconsistent",
+            &[("who", &who), ("plan", &format!("{:?}", plan))],
+        ));
     }
     Ok(plan)
 }
@@ -207,13 +220,12 @@ pub(crate) async fn read_page(
     let next = data.get("next").and_then(Value::as_u64);
     let eof = data.get("eof").and_then(Value::as_bool);
     let (Some(text), Some(next), Some(eof)) = (text, next, eof) else {
-        return Err(format!(
-            "{who} `history-read` 的应答缺 `text`/`next`/`eof` —— 两端契约对不上"
-        ));
+        return Err(copy_text("rsFrameQuery.reply.badShape", &[("who", &who)]));
     };
     if !eof && next <= offset {
-        return Err(format!(
-            "{who} `history-read` 在偏移 {offset} 处不前进 —— 停下，不空转"
+        return Err(copy_text(
+            "rsFrameQuery.readPage.stuck",
+            &[("who", &who), ("offset", &offset.to_string())],
         ));
     }
     Ok(Page {
@@ -261,26 +273,29 @@ pub(crate) fn parse_session_lines(
     asked: u64,
     data: &Value,
 ) -> Result<LinesPage, String> {
-    let origin = origin.as_wire_str();
+    let who = who(origin);
     let from = data.get("from").and_then(Value::as_u64);
     let next = data.get("next").and_then(Value::as_u64);
     let eof = data.get("eof").and_then(Value::as_bool);
     let lines = data.get("lines").and_then(Value::as_array);
     let (Some(from), Some(next), Some(eof), Some(lines)) = (from, next, eof, lines) else {
-        return Err(format!(
-            "[{origin}] `history-lines` 的应答缺 `from`/`next`/`eof`/`lines` —— 两端契约对不上"
-        ));
+        return Err(copy_text("rsFrameQuery.reply.badShape", &[("who", &who)]));
     };
     let lines: Vec<String> = lines
         .iter()
         .map(|l| l.as_str().map(str::to_string))
         .collect::<Option<_>>()
-        .ok_or_else(|| format!("[{origin}] `history-lines` 的 `lines` 里有不是字符串的一格"))?;
+        .ok_or_else(|| copy_text("rsFrameQuery.reply.badShape", &[("who", &who)]))?;
     if from != asked || next != from + lines.len() as u64 || (!eof && lines.is_empty()) {
-        return Err(format!(
-            "[{origin}] `history-lines` 的应答自相矛盾（问第 {asked} 行起，答 from={from} next={next} \
-             条数={} eof={eof}）—— 停下，不落错行号",
-            lines.len()
+        return Err(copy_text(
+            "rsFrameQuery.lines.inconsistent",
+            &[
+                ("who", &who),
+                ("asked", &asked.to_string()),
+                ("from", &from.to_string()),
+                ("next", &next.to_string()),
+                ("count", &(lines.len()).to_string()),
+            ],
         ));
     }
     Ok(LinesPage {

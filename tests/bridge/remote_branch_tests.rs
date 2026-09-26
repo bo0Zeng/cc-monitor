@@ -23,7 +23,7 @@ fn fork_ids_are_whitelisted() {
     assert!(validate_fork_id("sid", &"a".repeat(64)).is_ok());
 }
 
-/// 结果严格收：缺一格 / 类型不对 ⇒ 当场说「两端契约对不上」，**不返回空壳**。
+/// 结果严格收：缺一格 / 类型不对 ⇒ 当场说「两边版本不一样、先别重试」，**不返回空壳**。
 #[test]
 fn the_fork_product_is_read_strictly() {
     let r = decode_fork(
@@ -42,7 +42,10 @@ fn the_fork_product_is_read_strictly() {
         serde_json::json!(null),
     ] {
         let e = decode_fork("本机", bad.clone()).expect_err("该拒");
-        assert!(e.contains("两端契约对不上"), "{bad} ⇒ {e}");
+        assert!(
+            e.contains("两边版本不一样") && e.contains("先别重试"),
+            "{bad} ⇒ {e}"
+        );
     }
 }
 

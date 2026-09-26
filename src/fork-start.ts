@@ -26,6 +26,7 @@ import {
   type ForkLaunchInput,
 } from "./fork-launch";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
+import { copyText } from "./copy-table";
 
 /** 用户在追问小窗里给的答案。只覆盖 `unknown` 的那几格。 */
 export interface ForkChoices {
@@ -64,7 +65,7 @@ export interface ForkStartDeps {
      *    ⇒ 如实交 `null`，后端诚实短路回旧路，**不许在任何一侧从目录名反推**。
      */
     accountName: string | null;
-  }) => Promise<void>;
+  }) => Promise<boolean>;
   /**
    * 起远端。**返回「真的拉起来了吗」** —— 远端那两条路（`runRemoteResume*`）失败时
    * 自己弹 toast + 回退剪贴板并 `return false`，**不抛**。丢掉这个布尔就等于把失败
@@ -88,8 +89,12 @@ export interface ForkStartInput {
   source: ForkLaunchInput;
   /** 源会话所在的 tmux 名（用来取一个**不同**的新名）。 */
   sourceTmuxName?: string | null;
-  /** 已被占用的 tmux 名（避让）。 */
-  takenTmuxNames?: readonly string[];
+  /**
+   * 已被占用的 tmux 名（避让）。〔FE1〕**必填**，`null` = 名单没问到：选了 tmux 就不起
+   * （抛，由 `runForkFlow` 出声）—— 空集铸名就是「不避让」，#76 的形状。
+   * 先前是可选 ＋ `?? []`：不传就等于没查，而它「看起来有查」（`forkTmuxName` 那个默认值 F13 删过一次，同一个坑）。
+   */
+  takenTmuxNames: readonly string[] | null;
 }
 
 /** `failed` 与 `cancelled` 必须分开：前者要报错，后者是用户自己收手、不该再弹任何东西。 */
@@ -153,16 +158,23 @@ export async function startForkedSession(
   if (isLocalOrigin(input.origin)) {
     // 本机：G3b-1 给 `resume_history_session` 加的 `configDir` 走这里。
     // 本机路径不管 tmux（那是 PowerShell/POSIX 拉起器自己的事）。
-    await deps.startLocal({
+    // 〔FE1〕与远端同形：失败时它已经出过声、回 `false` ⇒ `failed`（调用方不再叠成功提示）。
+    const launched = await deps.startLocal({
       sessionId: input.newSessionId,
       cwd,
       configDir,
       accountName,
     });
-    return "started";
+    return launched ? "started" : "failed";
   }
 
   // 远端：tmux 名**必须与原会话不同**，否则 ccm 会 attach 进原窗口。
+  if (useTmux && input.takenTmuxNames === null) {
+    throw new Error(copyText("tmuxMint.refused.body", {
+      machine: input.origin,
+      reason: copyText("tmuxMint.unknown.notAsked"),
+    }));
+  }
   const tmuxName = useTmux
     ? forkTmuxName(input.sourceTmuxName ?? cwd ?? "fork", input.takenTmuxNames ?? [])
     : null;

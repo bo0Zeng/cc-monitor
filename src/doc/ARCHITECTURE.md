@@ -225,11 +225,15 @@ monitor 侧今天登记着 3 条，全部出自那一处跨线引用（本机一
 
 两条**改状态**的远端 tmux 命令都已切到后端：`kill_remote_tmux` → `control/kill.rs` ·
 `tmux_send_keys` → `control/launch.rs` 的 `send-into` / `send-keys-raw`。
+〔C4e · 第四波 4C〕再往前一步：那两条（连同抓屏、就地 resume）不再是 monitor 的 Tauri 命令 ——
+界面经通道直接说后端的 `kill` / `launch` / `capture-pane`（`src/tmux-control.ts`），monitor 那一跳只搬字节；
+「能不能回落」那条判定在界面那一侧同义一份（`src/ipc/chan-caller.ts::provablyNotSent`），
+与 Rust `backend_route::route_call_error` 由跨语言金样 `tests/__fixtures__/reach-collapse.golden.json` 对拍。
 
 🔴 **订正（`K-R106` 2026-09-13 现打）**：这里原来写着「一次性 SSH 那两条降为**过渡期**的
 第二条路」—— 那两条 **`K-R72`（2026-09-12）整块删了**（`K-R54` 裁定表第 1 · 2 处），
 今天**盘上只有后端这一条**；回潮闸住 `tmux_backend_gate_guard.rs`
-（那两条命令的生产段里再出现 `connect_and_exec_cmd` 就红）。
+（〔C4e〕monitor 生产段里再出现 `kill-session` 就红；界面只经 `src/tmux-control.ts` 一处说这几条）。
 「通道不在时怎么办」的判定**只有一份**（`backend/control/backend_route.rs`，三态
 `Done` / `Refused` / `NoChannel`），而**过门被拒绝一律不另找一条路**
 （另找一条 = 把一次被门拒绝洗成另一条路的成功）。
@@ -392,7 +396,7 @@ F40b 上翻补批：active tab 滚到顶部 800px 内自动从 `TailWindow` 弹 
 
 **前端族**（`src/account-*.ts` + `settings/acct-deploy.ts`）：`account-chip.ts` 徽章 + 切号菜单（mismatch/align 状态）；`account-commands.ts`(A4) 「按会话选账号起/Resume」的 `withAccount`（账号解析 + `lastAccount` 记账）；`account-restart.ts`(A5) 「换号对齐当前会话」的**破坏性**重启编排。
 
-**A4 `withAccount` 与 A5 restart 为何分离**（架构审计裁定，防重新纠结）：语义天然不兼容——① 不可选账号时 withAccount **降级默认起**、restart **中止**（破坏性重启绝不退化用默认号）；② withAccount run 后**无条件**记 lastAccount、restart **仅 kill+resume 全成后**才记。硬合需给 withAccount 加三个开关、复杂度净增。二者已共用 `accounts.ts` 同一批原语（`fetchAccounts`/`accountConfigDir`/`recordLastAccount`），无逻辑漂移。**失败语义**严格照 DESIGN §5.2：换号重启先请求优雅退出（`Escape` 打断当前轮 → `/exit` → 有界等待 → 兜底 kill）；compact 失败/超时**不阻断**、kill 失败**必须中止**（绝不续 resume，否则新旧两进程抢同一会话）。
+**A4 `withAccount` 与 A5 restart 为何分离**（架构审计裁定，防重新纠结）：语义天然不兼容——① 〔FE1 · D-h 09-25 订正〕不可选账号时两者今天都**不起、说清原因**：withAccount 另给一个可点的显式选择（用当前账号 / 都选不了时「不指定账号」），restart 直接**中止**（破坏性重启绝不退化用默认号）；原先 withAccount「降级默认起」那一形已删（`01 §6.2` · D4）；② withAccount run 后**无条件**记 lastAccount、restart **仅 kill+resume 全成后**才记。硬合需给 withAccount 加三个开关、复杂度净增。二者已共用同一批原语（`account-reads.ts::fetchAccounts` · `accountConfigDir` · `recordLastAccount`；FE1 把 `accounts.ts` 按域拆开之后各住其所），无逻辑漂移。**失败语义**严格照 DESIGN §5.2：换号重启先请求优雅退出（`Escape` 打断当前轮 → `/exit` → 有界等待 → 兜底 kill）；compact 失败/超时**不阻断**、kill 失败**必须中止**（绝不续 resume，否则新旧两进程抢同一会话）。
 
 ### session 探活双重校验（PID + procStart，procStart 可缺）
 `OpenProcess(QUERY_LIMITED) + GetExitCodeProcess == STILL_ACTIVE` + 当 sessions/<PID>.json 含 `procStart` 字段时再加 `GetProcessTimes` creation FILETIME 100ms 容差比对。

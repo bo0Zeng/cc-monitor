@@ -2,7 +2,7 @@
 //!
 //! # 为什么单住一个文件
 //!
-//! 与隔壁 `creds_guard.rs` / `bind_guard.rs` / `nodelay_guard.rs` 同一个理由，
+//! 与隔壁 `creds_guard.rs` / `bind_guard.rs`（以及〔AR1〕已退役的 `nodelay_guard.rs`）同一个理由，
 //! 它们的头注逐字写着：扫描型判据要走 `guard_core::scan_tree!`
 //! ⇒ **判据与被扫的代码必须不在同一个文件**，否则「摘掉自己」正好把靶子摘了
 //!（⚠ 那一刀经 `#[path]` 挂载时**不生效**，也就是本仓今天的全部判据 —— 详见下一段）。
@@ -396,52 +396,64 @@ mod tests {
     #[test]
     fn the_relay_has_no_default_upstream_to_fall_back_to() {
         let files = crate_production();
-        // 上游选择的人群：`accounts/` 底下那几份。中转 = `relay/` 里**除它之外**的。
+        // 上游选择的人群：`accounts/upstream/` 底下那几份。中转 = `relay/` 里**除它之外**的。
+        // 〔NT2 · V25〕适配层（`agents/`）是默认上游那一格今天的住址（用户 V25「写死, 跟着适配层」）。
         let is_upstream_selection =
             |p: &str| p.contains("accounts/upstream/") || p.contains("accounts\\upstream\\"); // 〔`A3` 第二波〕上游选择收窄到 `accounts/upstream/`（`accounts/iso.rs` 不是上游选择）
+        let in_adapter = |p: &str| p.contains("agents/") || p.contains("agents\\");
         let in_relay = |p: &str| p.contains("relay/") || p.contains("relay\\");
 
-        // 两根针：常量名 ＋ 它的值。**两根都数**，免得有人只搬走名字、把字面量留在原地。
+        // 两根针：读那一格的唯一入口 ＋ 那个值。**两根都数**，免得有人只搬走名字、把字面量留在原地。
         // 期望处数是**显式登记的**（不是「>0 就算」）—— 多一处就要来加一行，说清它是什么。
-        const UPSTREAM_SELECTION_SITES: &[(&str, usize, &str)] = &[
+        // `(针, 上游选择里的处数, 适配层里的处数, 为什么)`
+        const SITES: &[(&str, usize, usize, &str)] = &[
             (
-                "AGENT_UPSTREAMS",
-                2,
-                "①每 agent 一行的那张表的声明本身 ②`Upstreams::from_env` 里那一次遍历",
+                "default_upstreams(",
+                1,
+                1,
+                "〔NT2 · V25〕上游选择里 `Upstreams::from_env` 那一次遍历 · 适配层里它的定义",
             ),
             (
                 "https://api.anthropic.com",
+                0,
                 1,
-                "那条 URL 字面量只出现在表里 claude-code 那一行",
+                "〔NT2 · V25〕那条 URL 字面量只出现在适配层 claude-code 那一格（`agents/claudecode` 的 `UPSTREAM`）",
             ),
         ];
         // 〔条 59〕先前那个**进程级**常量（`DEFAULT_UPSTREAM`）整删了 —— 它对每一个 `seg1`
         // 都成立，于是「codex 的请求发给 Anthropic」在上游选择里也写得出来。
-        // ⇒ 它的名字在**整个 crate** 的生产段里零处（不只中转）。反空真由上面那张表的
-        //   第一行担：同一把尺子在上游选择数得到它的继任者（恰好 2 处），它才不是瞎的。
-        let revived = sites(&files, "DEFAULT_UPSTREAM");
-        assert!(
-            revived.is_empty(),
-            "进程级的默认上游常量又回来了：{revived:?}\n\
-             🔴 默认上游是**每 agent 一行**（`accounts::upstream::AGENT_UPSTREAMS`）；一个对所有 agent \
-             都成立的值，就是「未登记的 agent 回落到某一家」那条被明禁的路。"
-        );
-        for (needle, want, why) in UPSTREAM_SELECTION_SITES {
-            let hits = sites(&files, needle);
+        // 〔NT2 · V25〕上游选择自己那张每 agent 一行的表（`AGENT_UPSTREAMS`）也整删了（搬回适配层）——
+        // 两个名字在**整个 crate** 的代码里零处（注释里的墓碑不算：剥掉注释再数）。
+        // ⇒ 反空真由上面那张表的第一行担：同一把尺子数得到继任者，它才不是瞎的。
+        let code: Vec<(String, String)> = files
+            .iter()
+            .map(|(p, prod)| (p.clone(), guard_core::strip_comment_lines(prod)))
+            .collect();
+        for gone in ["DEFAULT_UPSTREAM", "AGENT_UPSTREAMS"] {
+            let revived = sites(&code, gone);
+            assert!(
+                revived.is_empty(),
+                "`{gone}` 又回来了：{revived:?}\n\
+                 🔴 默认上游是**每 agent 一格、跟着适配层**（`agents::Adapter::upstream`）；一个对所有 agent \
+                 都成立的值，就是「未登记的 agent 回落到某一家」那条被明禁的路；另起一张表，就是「跟着适配层」又不在同一格。"
+            );
+        }
+        for (needle, want_sel, want_adapter, why) in SITES {
+            let hits = sites(&code, needle);
             let selection: Vec<&String> =
                 hits.iter().filter(|p| is_upstream_selection(p)).collect();
+            let adapter: Vec<&String> = hits.iter().filter(|p| in_adapter(p)).collect();
             let relay_side: Vec<&String> = hits
                 .iter()
                 .filter(|p| in_relay(p) && !is_upstream_selection(p))
                 .collect();
-            // ★ 非空对照（这一条**先断**）：尺子在上游选择里数得到，它才不是瞎的。
+            // ★ 非空对照（这一条**先断**）：尺子在适配层里数得到，它才不是瞎的。
             assert_eq!(
-                selection.len(),
-                *want,
-                "`{needle}` 在上游选择（`relay/accounts/`）里应当**恰好 {want} 处**（{why}），\
-                 实得 {}：{selection:?}\n\
-                 数不到 ⇒ 这把尺子是瞎的，下面那条「中转零处」就是空真。",
-                selection.len()
+                (selection.len(), adapter.len()),
+                (*want_sel, *want_adapter),
+                "`{needle}` 在（上游选择, 适配层）里应当**恰好** ({want_sel}, {want_adapter}) 处（{why}），\
+                 实得 上游选择 {selection:?} · 适配层 {adapter:?}\n\
+                 数不到 ⇒ 这把尺子是瞎的，下面那条「中转零处」就是空真。"
             );
             assert!(
                 relay_side.is_empty(),

@@ -23,6 +23,7 @@
 //!   整份超过 [`crate::read_face::LINES_CAP_BYTES`] ⇒ `too_large`（不截断）。
 //! - 不拨号、不起进程、不写盘。
 
+use copy_core::copy_text;
 use serde_json::{json, Value};
 
 /// 本族的应答：`data` 或 `(code, message)`。
@@ -37,10 +38,10 @@ pub(crate) fn answer(cmd: &str, args: &Value) -> Answer {
 fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
     match cmd {
         "tasks-list" => {
-            let sid = args
-                .get("sid")
-                .and_then(Value::as_str)
-                .ok_or(("bad_args", "缺 `sid`（要一个字符串）".to_string()))?;
+            let sid = args.get("sid").and_then(Value::as_str).ok_or((
+                "bad_args",
+                crate::common::contract::malformed("missing `sid` (a string)"),
+            ))?;
             // 〔LOC1a · 第四波 4D · C4e 批 4〕应答**是成品** `{tasks: [...]}`（此前是原样对象的 `lines`，字段由 monitor 解）。
             capped(json!({ "tasks": crate::observe::tasks_query::session_tasks(home, sid)? }))
         }
@@ -52,21 +53,33 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
         "plugins-marketplaces" => {
             let survey = crate::observe::plugins_query::survey_marketplaces_in(home)
                 .map_err(|e| ("failed", e))?;
-            let v = serde_json::to_value(&survey)
-                .map_err(|e| ("failed", format!("序列化 marketplace 清单失败：{e}")))?;
+            let v = serde_json::to_value(&survey).map_err(|e| {
+                (
+                    "failed",
+                    crate::common::contract::malformed(&format!(
+                        "serializing the marketplace list failed: {e}"
+                    )),
+                )
+            })?;
             let size = v.to_string().len();
             if size > crate::read_face::LINES_CAP_BYTES {
                 return Err((
                     "too_large",
-                    format!(
-                        "结果超过 {} 字节上限，没有返回（{size} 字节）",
-                        crate::read_face::LINES_CAP_BYTES
+                    copy_text(
+                        "beFeatureFace.answerAt.tooLarge",
+                        &[
+                            ("size", &size.to_string()),
+                            ("cap", &(crate::read_face::LINES_CAP_BYTES).to_string()),
+                        ],
                     ),
                 ));
             }
             Ok(v)
         }
-        other => Err(("bad_args", format!("本族不认识 `{other}`"))),
+        other => Err((
+            "bad_args",
+            crate::common::contract::malformed(&format!("this face has no command `{other}`")),
+        )),
     }
 }
 
@@ -76,9 +89,12 @@ fn capped(v: Value) -> Answer {
     if size > crate::read_face::LINES_CAP_BYTES {
         return Err((
             "too_large",
-            format!(
-                "结果超过 {} 字节上限，没有返回（{size} 字节）",
-                crate::read_face::LINES_CAP_BYTES
+            copy_text(
+                "beFeatureFace.answerAt.tooLarge",
+                &[
+                    ("size", &size.to_string()),
+                    ("cap", &(crate::read_face::LINES_CAP_BYTES).to_string()),
+                ],
             ),
         ));
     }

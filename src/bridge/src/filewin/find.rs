@@ -146,6 +146,7 @@
 //!   转交那一跳不在**（合成后端就挂在那一跳的位置上）——那一跳由 `chan_tests` 与
 //!   `inbound_client_tests` 各自那一摞判。
 
+use crate::copy_table::copy_text;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -292,19 +293,19 @@ pub struct IndexStatus {
 fn field(d: &Value, k: &str) -> Result<Value, String> {
     d.get(k)
         .cloned()
-        .ok_or_else(|| format!("应答里少了 `{k}` —— 后端与这一侧的契约漂了"))
+        .ok_or_else(|| copy_text("rsFilewinFind.reply.missingField", &[("k", &k.to_string())]))
 }
 
 fn need_u64(d: &Value, k: &str) -> Result<u64, String> {
     field(d, k)?
         .as_u64()
-        .ok_or_else(|| format!("`{k}` 不是一个非负整数"))
+        .ok_or_else(|| copy_text("rsFilewinFind.reply.notU64", &[("k", &k.to_string())]))
 }
 
 fn need_bool(d: &Value, k: &str) -> Result<bool, String> {
     field(d, k)?
         .as_bool()
-        .ok_or_else(|| format!("`{k}` 不是一个布尔"))
+        .ok_or_else(|| copy_text("rsFilewinFind.reply.notBool", &[("k", &k.to_string())]))
 }
 
 /// 十六进制（大小写都认）→ 字节。奇数长度 / 非十六进制字符 ⇒ `None`。
@@ -350,11 +351,11 @@ pub fn decode_find(d: &Value) -> Result<FindOutcome, String> {
     let raw = field(d, "hits")?;
     let arr = raw
         .as_array()
-        .ok_or_else(|| "`hits` 不是一个数组".to_string())?;
+        .ok_or_else(|| copy_text("rsFilewinFind.hits.notArray", &[]))?;
     let mut hits = Vec::with_capacity(arr.len());
     for (i, one) in arr.iter().enumerate() {
         let bytes = decode_path(one).ok_or_else(|| {
-            format!("第 {i} 条命中的形状不对 —— 只认字符串或 `{{\"{HEX_KEY}\": …}}`")
+            copy_text("rsFilewinFind.decodeFind.badHit", &[("i", &i.to_string())])
         })?;
         hits.push(Hit { path: bytes });
     }
@@ -387,7 +388,8 @@ pub fn decode_status(d: &Value) -> Result<IndexStatus, String> {
 
 /// `files-index-rebuild` 的 `data` → 它真的走了哪个根（原样回送的那一份）。
 pub fn decode_rebuilt_root(d: &Value) -> Result<String, String> {
-    let bytes = decode_path(&field(d, "path")?).ok_or_else(|| "`path` 的形状不对".to_string())?;
+    let bytes = decode_path(&field(d, "path")?)
+        .ok_or_else(|| copy_text("rsFilewinFind.rebuilt.badPath", &[]))?;
     Ok(String::from_utf8_lossy(&bytes).to_string())
 }
 
@@ -421,7 +423,8 @@ pub fn browse_args(dirs: &[String]) -> Value {
 // ═══════════════════════════════════════════════════════════════════
 
 /// 还没问过后端时那一行。
-pub const FRESHNESS_UNKNOWN: &str = "索引：还没问过这台机器";
+pub static FRESHNESS_UNKNOWN: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinFind.freshness.unknown", &[]));
 
 /// 🔴 **把后端报的那几个数摆成一行字。纯函数。**
 ///
@@ -432,31 +435,31 @@ pub const FRESHNESS_UNKNOWN: &str = "索引：还没问过这台机器";
 /// 要的恰好是「后端报的那个数」。人话好看那一档是文案的事，不是本函数的事。
 pub fn freshness_line(s: &IndexStatus) -> String {
     if s.index_missing {
-        return format!(
-            "索引还没建过（后端声明的重走周期 {} 秒）",
-            s.rewalk_interval_secs
-        );
+        return copy_text("rsFilewinFind.freshness.notBuilt", &[]);
     }
-    let mut t = format!(
-        "索引 {} 条 · {} 字节 · {} 秒前走完 · 后端声明的重走周期 {} 秒",
-        s.entries, s.resident_bytes, s.age_secs, s.rewalk_interval_secs
+    let mut t = copy_text(
+        "rsFilewinFind.freshness.line",
+        &[
+            ("entries", &s.entries.to_string()),
+            ("residentBytes", &s.resident_bytes.to_string()),
+            ("ageSecs", &s.age_secs.to_string()),
+            ("interval", &s.rewalk_interval_secs.to_string()),
+        ],
     );
     if s.stale {
-        t.push_str(" · 后端说该重走了");
+        t.push_str(&copy_text("rsFilewinFind.freshness.stale", &[]));
     }
     if s.unreadable_dirs > 0 {
-        t.push_str(&format!(
-            " · 有 {} 个目录读不进去，这份索引有洞",
-            s.unreadable_dirs
+        t.push_str(&copy_text(
+            "rsFilewinFind.freshness.holes",
+            &[("unreadableDirs", &s.unreadable_dirs.to_string())],
         ));
     }
     if s.truncated {
-        t.push_str(" · 上一趟撞到条目上限没走完，这份索引不完整");
+        t.push_str(&copy_text("rsFilewinFind.freshness.truncated", &[]));
     }
-    t.push_str(&format!(
-        " · 浏览中的目录挂着 {} 个监听（上限 {}）",
-        s.browse_watches, s.browse_watch_cap
-    ));
+    // 〔CP2b · CP1 裁「改·§2.1」〕原先这里还接一段「浏览中的目录挂着 N 个监听（上限 M）」—— 监听数 / 上限是
+    //   内部资源读数，用户用不上 ⇒ 删去（裁词原话「删去这段」）。
     t
 }
 
@@ -466,21 +469,31 @@ pub fn freshness_line(s: &IndexStatus) -> String {
 /// 「首次」二字是承重的：只有后端说「还没建过」（`index_missing`）的那一趟才画它 ——
 /// 周期性重走是热的，那个数不适用（[`one_round`] 那一段）。
 pub fn first_build_line(cold_first_build_secs: u64) -> String {
-    format!("正在建索引（首次约 {cold_first_build_secs} 秒）")
+    copy_text(
+        "rsFilewinFind.firstBuild.line",
+        &[("coldFirstBuildSecs", &cold_first_build_secs.to_string())],
+    )
 }
 
 /// 命中那一摞上面那一行。**`scanned` 一定画出来** ——
 /// 「没命中」与「索引是空的」在屏幕上本来一模一样。
 pub fn hits_line(o: &FindOutcome) -> String {
     if o.index_missing {
-        return "这台机器上的索引还没建过 —— 那不是「没搜到」".to_string();
+        return copy_text("rsFilewinFind.hits.noIndex", &[]);
     }
-    let mut t = format!(
-        "命中 {} 条（这一趟扫了 {} 条，索引 {} 秒前建的）",
-        o.total_hits, o.scanned, o.index_age_secs
+    let mut t = copy_text(
+        "rsFilewinFind.hits.line",
+        &[
+            ("totalHits", &o.total_hits.to_string()),
+            ("scanned", &o.scanned.to_string()),
+            ("indexAgeSecs", &o.index_age_secs.to_string()),
+        ],
     );
     if o.truncated {
-        t.push_str(&format!(" · 只回送了 {} 条，还有更多", o.hits.len()));
+        t.push_str(&copy_text(
+            "rsFilewinFind.hits.more",
+            &[("hitsCount", &(o.hits.len()).to_string())],
+        ));
     }
     t
 }
@@ -679,14 +692,22 @@ pub(super) async fn call_one(
 }
 
 /// 后端拒绝时那句话。**逐档对着 `src/doc/IPC-PROTOCOL.md §10` 的错误码写。**
-pub(super) fn refusal(cmd: &str, code: &str, message: &str) -> String {
+/// 〔CP2b · CP1 裁「改·§2.1」〕对外那句不再点内部命令名（参数留着：调用方不动，改口只在这一处）。
+pub(super) fn refusal(_cmd: &str, code: &str, message: &str) -> String {
     let hint = match code {
-        "bad_args" => "这条命令的参数形状不对（多半是两侧契约漂了）",
-        "bad_path" => "这个路径后端不认",
-        "unreadable" => "这个目录后端打不开（权限，或者它不在那台机器上）",
-        _ => "后端拒了这一趟",
+        "bad_args" => &copy_text("rsFilewinFind.refusal.badArgs", &[]),
+        "bad_path" => &copy_text("rsFilewinFind.refusal.badPath", &[]),
+        "unreadable" => &copy_text("rsFilewinFind.refusal.cannotOpen", &[]),
+        _ => &copy_text("rsFilewinFind.refusal.other", &[]),
     };
-    format!("`{cmd}` 被拒（{code}）：{hint}。后端原话：{message}")
+    copy_text(
+        "rsFilewinFind.refusal.line",
+        &[
+            ("hint", &hint.to_string()),
+            ("code", &code.to_string()),
+            ("message", &message.to_string()),
+        ],
+    )
 }
 
 /// 🔴 **一趟搜索的全部编排。** `§3.5.2a` 那三层在这个函数里各占一段。
@@ -739,7 +760,10 @@ async fn one_round(
         Ok(v) => match decode_status(&v) {
             Ok(s) => round.status = Some(s),
             Err(e) => {
-                round.notice = Some(format!("`{CMD_INDEX_STATUS}` 的应答读不动：{e}"));
+                round.notice = Some(copy_text(
+                    "rsFilewinFind.round.statusFailed",
+                    &[("e", &e.to_string())],
+                ));
                 return round;
             }
         },
@@ -760,7 +784,8 @@ async fn one_round(
     // ⚠ 代价如实记：每一趟查询多一次往返 ＋ 后端那侧多 `read_dir` 一个目录。
     let dirs = vec![root.to_string()];
     if let Err(r) = call_one(line, origin, CMD_BROWSE, browse_args(&dirs), call_timeout()).await {
-        round.notice = Some(format!("浏览名单没送到（{r}）"));
+        // 〔CP2b · CP1 裁「改·§2.1」〕「浏览名单」是内部机制名，裁词「这条对用户可不报」⇒ 不上界面，只进日志。
+        tracing::warn!("filewin: browse list not delivered: {r}");
     }
 
     // ③ 要不要重走 —— **判据是后端自己算的那两个布尔**，不是这一侧的一个周期。
@@ -795,7 +820,10 @@ async fn one_round(
                 match decode_rebuilt_root(&v) {
                     Ok(p) => round.indexed_root = Some(p),
                     Err(e) => {
-                        round.notice = Some(format!("`{CMD_INDEX_REBUILD}` 的应答读不动：{e}"))
+                        round.notice = Some(copy_text(
+                            "rsFilewinFind.round.rebuildFailed",
+                            &[("e", &e.to_string())],
+                        ))
                     }
                 }
                 // 重走完那几个数变了 —— 界面上那一行要是新的。
@@ -827,7 +855,12 @@ async fn one_round(
         match call_one(line, origin, CMD_FIND, find_args(needle), call_timeout()).await {
             Ok(v) => match decode_find(&v) {
                 Ok(o) => round.outcome = Some(o),
-                Err(e) => round.notice = Some(format!("`{CMD_FIND}` 的应答读不动：{e}")),
+                Err(e) => {
+                    round.notice = Some(copy_text(
+                        "rsFilewinFind.round.findFailed",
+                        &[("e", &e.to_string())],
+                    ))
+                }
             },
             Err(r) => round.notice = Some(r),
         }
@@ -879,12 +912,15 @@ impl SearchBoard {
                     }
                 }
                 None => {
-                    ui.label(FRESHNESS_UNKNOWN);
+                    ui.label(FRESHNESS_UNKNOWN.as_str());
                 }
             }
         }
         if let Some(root) = &s.indexed_root {
-            ui.label(format!("索引走的那个根：{root}"));
+            ui.label(copy_text(
+                "rsFilewinFind.ui.root",
+                &[("root", &root.to_string())],
+            ));
         }
         if let Some(n) = &s.notice {
             ui.colored_label(egui::Color32::RED, n);

@@ -716,7 +716,7 @@ fn population_claimed_in_prose(module_src: &str) -> usize {
 const UPSTREAM_SELECTION_PREFIX: &str = "src/backend/accounts/upstream/"; // 〔`A3` 第二波〕上游选择从账号域根收窄到 `upstream/` 子树（`accounts/iso.rs` 不是上游选择）
 
 /// 上游选择今天有几份文件。**相等，不是地板** —— 多一份就回来改这个数并重读下面那条。
-const UPSTREAM_SELECTION_FILES: usize = 5; // 〔RM1a · 第四波〕4 → 5：多了 `file_face.rs`（这台机器上那份凭据文件的帧面读写口，上游选择自己的状态）。〔`A3` 第二波〕中途 4 → 5（`acct_iso.rs` 当时落在上游选择根底下）→ 回到 4：上游选择收进 `accounts/upstream/` 子树，`accounts/iso.rs` 不在这个前缀里。
+const UPSTREAM_SELECTION_FILES: usize = 6; // 〔US1 · 4D〕5 → 6：多了 `endpoint.rs`（起会话那一发走哪、注入什么 · 界面「表里有没有行」，`设计/20 §3.2` 那张表从 monitor 搬来）。〔RM1a · 第四波〕4 → 5：多了 `file_face.rs`（这台机器上那份凭据文件的帧面读写口，上游选择自己的状态）。〔`A3` 第二波〕中途 4 → 5（`acct_iso.rs` 当时落在上游选择根底下）→ 回到 4：上游选择收进 `accounts/upstream/` 子树，`accounts/iso.rs` 不在这个前缀里。
 
 /// ★★ **成员资格说的是「这份文件里的代码属于中转」，不是「它的模块子树都属于中转」。**
 ///
@@ -2442,12 +2442,12 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     //    〔F7c 09-24〕`subscribe` 恰好 1 处（`filewin/source.rs::watch`）。
     //    变多 ＝ 窗口里长出了第二处说它的地方（期限 / 撤的住址跟着分家）；
     //    变少 ＝ 那一处没了 —— 上面那条零违例会在零个调用点上**恒绿**。
-    // 〔C4a · 第四波〕`chan.call`（TS，主界面）恰好 2 处：`accounts.ts::fetchSessionAccounts`（`accounts-sessions`）·
+    // 〔C4a · 第四波〕`chan.call`（TS，主界面）恰好 2 处：`account-reads.ts::fetchSessionAccounts`（`accounts-sessions`）·
     //    `views/history-search.ts` 逐台那一问（`history-search`）。**X6 的 TS 人群第一次非空。**
     // 〔C4b · 第四波 4B〕2 → 5：`session-reads.ts` 的三问（`history-index` / `history-user-inputs` / `history-find`，
     //    会话读面那三条从 monitor 的 Tauri 命令改走通道；每处显式给期限）。5 → 6：`settings/plugins-section.ts::fetchSurvey`
     //    （`plugins-marketplaces`）。
-    // 〔C4c · 第四波 4B〕6 → 8：`accounts.ts::fetchAccounts`（`accounts-list`）· `accounts.ts::checkTrust`（`accounts-trust`）——
+    // 〔C4c · 第四波 4B〕6 → 8：`account-reads.ts::fetchAccounts`（`accounts-list`）· `account-reads.ts::checkTrust`（`accounts-trust`）——
     //    账号清单与信任预检从 monitor 的三条 Tauri 命令改走通道；每处显式给期限。
     //    8 → 9：`session-reads.ts::probeSessionRecord`（`history-record`，resume 之前问记录还在不在）。
     //    9 → 11：`settings/backend-section.ts::askExitPolicy` / `putExitPolicy`（「退出行为」问 / 交写）。
@@ -2455,13 +2455,26 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     // 〔C4d · 第四波 4B〕12 → 18：`history-reads.ts` 六处（`history-projects` 本机 · 逐台远端两处 · `history-sessions` ·
     //    `history-annotate` · `history-forget` · `history-last-accounts`）—— 历史清单与注解从 monitor 的五条 Tauri 命令改走通道，
     //    一律问本机常驻后端（远端那台由它去问）；每处显式给期限。
+    // 〔SU1 · 第四波 4C〕18 → 20：`settings/assets-section.ts` 问那台记着的「从别处装来的 skill」（`skill-installs`）·
+    //    点「卸」之后问那台的卸判定（`skill-uninstall-plan`）；两处都显式给期限。
+    // 〔C4e · 第四波 4C〕18 → 19：`tmux-control.ts::capturePane`（`capture-pane`，预览窗抓一屏从 monitor 的 Tauri 命令改走通道；
+    //    显式给期限）。
+    //    〔C4e〕19 → 22：`tmux-control.ts` 的 `killSession`（`kill`）· `sendKeys` · `sendInto`（都是 `launch`）——
+    //    杀会话 / 送键 / 就地 resume 三条 Tauri 命令改走通道；每处显式给期限（操作名留在调用点写字面量，见 `settle` 头注）。
+    //    〔C4e〕22 → 27：`cc-bus-control.ts` 五处（`bus-list` 查在线 · `bus-send` · `bus-kill` · `bus-spawn` · `bus-broadcast`）——
+    //    cc-bus 驾驶舱的写面从 monitor 的五条 Tauri 命令改走通道；每处显式给期限。
+    // 〔MG1 · 合并 SU1 ＋ C4e〕基数 18 ＋ SU1 增量 2 ＋ C4e 增量 9 = 29（两路各自从 18 起算；上面两段各写各的增量）。
+    // 〔US1 · 第四波 4D〕〔合并 US1 × 主线〕主线 29 ＋ 2：`apikey-reads.ts::readApikeyStatus`（`apikey-read`）· `fetchApikeyRouting`（`apikey-routing`）——
+    //    API key 那两问从 monitor 的两条 Tauri 命令改走通道；每处显式给期限。
+    // 〔LOC1a · 第四波 4D〕〔合并 LOC1a × 主线 66f2b6bf〕主线 31 ＋ 1：`tasks-panel.ts::fetchSessionTasks`（`tasks-list`）——
+    //    任务快照从 monitor 的 Tauri 命令改走通道（C4e 批 4）；显式给期限。
     // 〔CF2 · 第四波 4B〕`chan.subscribe`（TS，主界面）恰好 1 处：`events.ts::bindEvents` 按 `streams` 订会话内容流
     //    （主窗口每台机器一条、独立窗口一条，都经这一处）。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 18usize),
+            ("chan.call", 32usize),
             ("chan.subscribe", 1usize),
             ("subscribe", 1usize)
         ]

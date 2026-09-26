@@ -20,6 +20,7 @@
 //! ⚠ **它不买「HTTP 解析对不对」** —— 那由 `tests/backend/relay/http1_tests.rs` 与
 //! `wire_golden` 的逐字节金标准负责。本标记只买「它没在这一层里长出业务 / 伸手去拿东西」。
 
+use copy_core::copy_text;
 use std::io::{BufRead, Read};
 
 /// `Content-Length` 读出来的三张脸。**刻意不是 `Option<usize>`** —— 理由见
@@ -378,7 +379,7 @@ pub(crate) fn read_exact_body<R: BufRead>(
     if body.len() != n {
         return Err(std::io::Error::new(
             std::io::ErrorKind::UnexpectedEof,
-            "请求体比 Content-Length 声明的短",
+            copy_text("beHttp1.readExactBody.shortBody", &[]),
         ));
     }
     Ok(Some(body))

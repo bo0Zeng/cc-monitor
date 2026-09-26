@@ -21,6 +21,7 @@
 //!   remote_cmd 直接拒绝**——PowerShell 5.1 向 native 程序传参对内嵌 `"` 有历史畸变，
 //!   拒绝后前端自动走剪贴板回退（launcher 需要引号参数时用单引号写法）。
 
+use crate::copy_table::copy_text;
 use crate::ssh_source::RemoteConfig;
 
 /// 远端命令长度上限（防 IPC 侧异常输入；正常 resume 命令 <300 字节）。
@@ -56,13 +57,15 @@ fn valid_host(h: &str) -> bool {
 /// 纯函数便于单测;跳板 user/host 过与主机同款非法字符校验。
 fn build_jump_arg(jump_user: &str, jump_host: &str, jump_port: u16) -> Result<String, String> {
     if !valid_user(jump_user) {
-        return Err(format!(
-            "refuse launch: 跳板 user 含非法字符: {jump_user:?}"
+        return Err(copy_text(
+            "rsLaunch.refuse.jumpUser",
+            &[("jumpUser", &format!("{:?}", jump_user))],
         ));
     }
     if !valid_host(jump_host) {
-        return Err(format!(
-            "refuse launch: 跳板 host 含非法字符: {jump_host:?}"
+        return Err(copy_text(
+            "rsLaunch.refuse.jumpHost",
+            &[("jumpHost", &format!("{:?}", jump_host))],
         ));
     }
     let port_suffix = if jump_port == 22 {
@@ -83,16 +86,26 @@ fn build_jump_arg(jump_user: &str, jump_host: &str, jump_port: u16) -> Result<St
 /// 把它一并搬进来，等于把一个 Windows 怪癖套到 Linux 上 —— 判据要落在性质上。
 fn validate_launch_cmd(cmd: &str, what: &str) -> Result<(), String> {
     if cmd.trim().is_empty() {
-        return Err(format!("refuse launch: {what}为空"));
+        return Err(copy_text(
+            "rsLaunch.refuse.empty",
+            &[("what", &what.to_string())],
+        ));
     }
     if cmd.len() > MAX_REMOTE_CMD {
-        return Err(format!(
-            "refuse launch: {what}过长（{} > {MAX_REMOTE_CMD}）",
-            cmd.len()
+        return Err(copy_text(
+            "rsLaunch.refuse.tooLong",
+            &[
+                ("what", &what.to_string()),
+                ("len", &(cmd.len()).to_string()),
+                ("max", &MAX_REMOTE_CMD.to_string()),
+            ],
         ));
     }
     if cmd.chars().any(|c| c.is_control()) {
-        return Err(format!("refuse launch: {what}含控制字符"));
+        return Err(copy_text(
+            "rsLaunch.refuse.control",
+            &[("what", &what.to_string())],
+        ));
     }
     Ok(())
 }
@@ -107,7 +120,7 @@ fn validate_launch_cmd(cmd: &str, what: &str) -> Result<(), String> {
 /// 同一个 `cmd`，本地是 `bash -lic <cmd>`，远端是把这同一串再包进 ssh。
 /// 有测试逐字节钉住这条（`local_and_remote_share_the_same_payload`）。
 pub fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, String> {
-    validate_launch_cmd(cmd, "本地命令")?;
+    validate_launch_cmd(cmd, &copy_text("rsLaunch.what.localCmd", &[]))?;
     Ok(vec!["bash".into(), "-lic".into(), cmd.into()])
 }
 
@@ -340,7 +353,7 @@ fn launch_local_posix_via(cmd: &str, cwd: Option<&str>, term: Option<&str>) -> R
         Lifetime::Detached,
         StderrSink::Null,
     )
-    .map_err(|e| format!("spawn 本地命令失败: {e}"))?;
+    .map_err(|e| copy_text("rsLaunch.local.spawnFailed", &[("e", &e.to_string())]))?;
     std::thread::spawn(move || {
         let _ = child.wait();
     });
@@ -359,7 +372,7 @@ fn launch_local_posix_via(cmd: &str, cwd: Option<&str>, term: Option<&str>) -> R
 /// 保留同名同签名，是为了让调用点不必自己写 `cfg`（平台差异收在这一层）。
 #[cfg(windows)]
 pub fn launch_local_posix(_cmd: &str, _cwd: Option<&str>) -> Result<(), String> {
-    Err("POSIX 本地拉起不适用于 Windows 宿主（Windows 本地属 L2 的 PowerShell 分支）".into())
+    Err(copy_text("rsLaunch.local.notOnWindows", &[]).into())
 }
 
 /// `设计/80 §8.7` 步 3 收尾（第二波 T4）：**本地半的生产写入方**的模板。见文件头注。
@@ -385,9 +398,8 @@ pub(crate) fn render_rbind_bind_prelude(
     token: &str,
     monitor_data_dir: &std::path::Path,
 ) -> Result<String, String> {
-    let marker = crate::bind::rbind_token_marker(token).ok_or_else(|| {
-        "refuse launch: 启动令牌形状不对（应为 32 个小写十六进制字符）".to_string()
-    })?;
+    let marker = crate::bind::rbind_token_marker(token)
+        .ok_or_else(|| copy_text("rsLaunch.refuse.badToken", &[]))?;
     let await_dir = monitor_data_dir.join(crate::bind::AWAIT_SUBDIR);
     let body: String = RBIND_BIND_PRELUDE_TPL
         .lines()
@@ -417,7 +429,7 @@ pub(crate) fn with_rbind_bind_prelude(
     };
     let Some(dir) = monitor_data_dir else {
         if !crate::bind::rbind_token_shape_ok(tok) {
-            return Err("refuse launch: 启动令牌形状不对（应为 32 个小写十六进制字符）".into());
+            return Err(copy_text("rsLaunch.refuse.badToken", &[]).into());
         }
         tracing::warn!(
             "launch: 解析不出 monitor 数据目录 —— 本次拉起不接令牌握手前奏（↗ 将按令牌找不到窗口）"
@@ -435,23 +447,25 @@ pub(crate) fn with_rbind_bind_prelude(
 /// 形态：`& ssh -t[ -J <跳板>] -p <port> [-i '<key>'] <user>@<host> -- '<bash -lic ''…''>'`
 /// （F45 竞发落地后 host 换成连接大脑当前胜者地址；F56 jump 有值插 `-J`——本函数签名不变。）
 pub fn build_remote_ssh_ps_command(cfg: &RemoteConfig, remote_cmd: &str) -> Result<String, String> {
-    validate_launch_cmd(remote_cmd, "远端命令")?;
+    validate_launch_cmd(remote_cmd, &copy_text("rsLaunch.what.remoteCmd", &[]))?;
     if remote_cmd.contains('"') {
-        return Err(
-            "refuse launch: 远端命令含双引号（PowerShell 5.1 native 传参畸变面）。\
-             launcher 参数请改用单引号写法，或使用复制粘贴回退"
-                .into(),
-        );
+        return Err(copy_text("rsLaunch.refuse.doubleQuote", &[]).into());
     }
     if !valid_user(&cfg.user) {
-        return Err(format!("refuse launch: user 含非法字符: {:?}", cfg.user));
+        return Err(copy_text(
+            "rsLaunch.refuse.user",
+            &[("user", &format!("{:?}", cfg.user))],
+        ));
     }
     // F45：拨号地址取连接大脑当前胜者（已连过 = last-good 胜者;否则 = host）。让
     // PowerShell 的 ssh 走与 russh 数据源同一条路,避免 monitor 连内网 IP、终端却盲连
     // 可能已死的 host 字段。
     let winner = crate::ssh_source::winner_address(cfg);
     if !valid_host(&winner.host) {
-        return Err(format!("refuse launch: host 含非法字符: {:?}", winner.host));
+        return Err(copy_text(
+            "rsLaunch.refuse.host",
+            &[("host", &format!("{:?}", winner.host))],
+        ));
     }
 
     // 尾 `\` 剥掉：key 是文件路径不应以 \ 结尾，而 PS<7.3 给含空格参数加壳时
@@ -469,10 +483,14 @@ pub fn build_remote_ssh_ps_command(cfg: &RemoteConfig, remote_cmd: &str) -> Resu
     let jump_part = match cfg.jump.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         Some(jump_label) => {
             if jump_label == cfg.origin_label() {
-                return Err("refuse launch: 跳板不能指向自己".into());
+                return Err(copy_text("rsLaunch.refuse.jumpSelf", &[]).into());
             }
-            let jump_cfg = crate::load_remote_config_by_label(jump_label)
-                .ok_or_else(|| format!("refuse launch: 跳板配置未找到: {jump_label:?}"))?;
+            let jump_cfg = crate::load_remote_config_by_label(jump_label).ok_or_else(|| {
+                copy_text(
+                    "rsLaunch.refuse.jumpNotFound",
+                    &[("jumpLabel", &format!("{:?}", jump_label))],
+                )
+            })?;
             build_jump_arg(&jump_cfg.user, &jump_cfg.host, jump_cfg.port)?
         }
         None => String::new(),
@@ -681,7 +699,7 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
 /// 登记在 **U8a-2c**。今天硬补只能 fire-and-forget，而那会**静默失败**（见 U8b 计划）。
 #[cfg(not(windows))]
 pub fn launch_powershell_window(_ps_command: &str, _local_cwd: Option<&str>) -> Result<(), String> {
-    Err(POSIX_NO_TERMINAL_WINDOW.into())
+    Err(POSIX_NO_TERMINAL_WINDOW.to_string())
 }
 
 /// 非 Windows 上「不开终端窗口」的**唯一**说法。前后端共用同一句话的口径
@@ -694,9 +712,8 @@ pub fn launch_powershell_window(_ps_command: &str, _local_cwd: Option<&str>) -> 
 /// 「你自己的 bash」，标记那半句原样保留。**不挑终端模拟器**与**shell 用 bash**
 /// 是两件事，不冲突。
 #[cfg(any(not(windows), test))]
-pub const POSIX_NO_TERMINAL_WINDOW: &str =
-    "本机不是 Windows：cc-monitor **刻意不替你挑终端模拟器**（会话容器是 tmux）——\
-     命令已复制，在你自己的 bash 里粘贴执行即可。这是既定设计，不是没做完。";
+pub static POSIX_NO_TERMINAL_WINDOW: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsLaunch.posix.noTerminalWindow", &[]));
 
 /// Windows 本机 ssh.exe 可用性预检：缺 OpenSSH 客户端时 spawn 出的窗口只会报
 /// "not recognized"（spawn 本身成功→前端误报成功）——预检失败直接 Err 走剪贴板回退。
@@ -760,20 +777,21 @@ pub async fn launch_remote_terminal(
             Ok::<(), String>(())
         })
         .await
-        .map_err(|e| format!("拉起终端任务失败: {e}"))?;
+        .map_err(|e| copy_text("rsLaunch.remote.taskFailed", &[("e", &e.to_string())]))?;
     }
     // §10（Phase G 对齐）:体含 `where.exe .output()`(阻塞)+ 进程 spawn 等阻塞 OS 调用,
     // 挪到阻塞线程池,不堵 IPC 派发线程(与本地 resume 命令 issue #12 同处理,批内唯一
     // 遗留的 sync tauri 命令——F41 从 history.rs 抽 launch.rs 时漏跟)。
     tokio::task::spawn_blocking(move || {
-        let cfg = crate::load_remote_config_by_label(&origin)
-            .ok_or_else(|| format!("未找到远端配置: {origin:?}"))?;
+        let cfg = crate::load_remote_config_by_label(&origin).ok_or_else(|| {
+            copy_text(
+                "rsLaunch.remote.noConfig",
+                &[("machine", &format!("{:?}", origin))],
+            )
+        })?;
         #[cfg(windows)]
         if !ssh_client_available() {
-            return Err(
-                "本机未检测到 OpenSSH 客户端（ssh.exe）——请安装 Windows 可选功能「OpenSSH 客户端」"
-                    .into(),
-            );
+            return Err(copy_text("rsLaunch.remote.noOpenSsh", &[]).into());
         }
         let ps_command = build_remote_ssh_ps_command(&cfg, &remote_cmd)?;
         let data_dir = crate::paths::resolve_monitor_data_dir();
@@ -784,7 +802,7 @@ pub async fn launch_remote_terminal(
         Ok(())
     })
     .await
-    .map_err(|e| format!("拉起终端任务失败: {e}"))?
+    .map_err(|e| copy_text("rsLaunch.remote.taskFailed", &[("e", &e.to_string())]))?
 }
 
 #[cfg(test)]

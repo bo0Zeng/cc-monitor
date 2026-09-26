@@ -36,6 +36,7 @@ import { commands, type SkillView } from "../ipc/commands";
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
 import { LOCAL_ORIGIN, type Origin } from "../ipc/origin";
+import { copyText } from "../copy-table";
 
 type CwdGetter = () => { cwd: string; origin: Origin } | null;
 
@@ -67,7 +68,7 @@ export class InboxView implements OverlayHandle {
   async open(): Promise<void> {
     const info = this.getRepo();
     if (!info) {
-      showActionFailureToast("打不开收件箱", "当前 tab 没有工作目录。");
+      showActionFailureToast(copyText("inboxView.open.failed"), copyText("inboxView.open.noCwd"));
       return;
     }
     // 〔RW1 · 第四波 09-24〕用户裁：远端项目的收件箱也能编辑 —— 经那台机器的后端读写，
@@ -88,7 +89,7 @@ export class InboxView implements OverlayHandle {
   /** 拉一次 skill 列表并把「第一个有可编辑文件的」装进编辑区。 */
   private async reload(): Promise<void> {
     if (!this.statusEl || !this.textarea || !this.pathEl || !this.saveBtn) return;
-    this.statusEl.textContent = "读取中…";
+    this.statusEl.textContent = copyText("inboxView.reload.loading");
     this.textarea.value = "";
     this.textarea.disabled = true;
     this.saveBtn.disabled = true;
@@ -98,22 +99,22 @@ export class InboxView implements OverlayHandle {
     try {
       skills = await commands.list_skills({ origin: this.origin, cwd: this.cwd });
     } catch (e) {
-      this.statusEl.textContent = `读不到 skill 列表：${String(e)}`;
+      this.statusEl.textContent = copyText("inboxView.reload.listFailed", { e: String(e) });
       return;
     }
 
     // 状态行：每个 skill 一句。★ 缺席的**原样显示后端给的带身份原因**（C6）。
     this.statusEl.textContent = skills
       .map((s) => {
-        const where = s.missing_reason ?? `在场（${s.instances.length} 个实例）`;
+        const where = s.missing_reason ?? copyText("inboxView.reload.present", { instancesCount: s.instances.length });
         return `${s.label}：${where}`;
       })
-      .join(" ｜ ");
+      .join(copyText("inboxView.reload.sep"));
 
     const editable = skills.find((s) => s.missing_reason === null && s.editable.length > 0);
     if (!editable) {
       this.pathEl.textContent = "";
-      this.statusEl.textContent += " ｜ 没有可编辑的收件箱";
+      this.statusEl.textContent += copyText("inboxView.reload.noEditable");
       return;
     }
     const path = editable.editable[0];
@@ -127,7 +128,7 @@ export class InboxView implements OverlayHandle {
       });
       this.textarea.value = this.loaded;
     } catch (e) {
-      this.statusEl.textContent += ` ｜ 读文件失败：${String(e)}`;
+      this.statusEl.textContent += copyText("inboxView.reload.readFailed", { e: String(e) });
       return;
     }
     this.target = { skillId: editable.id, path };
@@ -150,10 +151,10 @@ export class InboxView implements OverlayHandle {
         expected: this.loaded,
       });
       this.loaded = content;
-      this.statusEl.textContent = "已保存（后端已读回逐字节比对）";
+      this.statusEl.textContent = copyText("inboxView.save.saved");
     } catch (e) {
       // ⚠ 写面围栏拒绝时后端给的是**带理由的**错误（哪条围栏、为什么）——原样显示。
-      showActionFailureToast("保存失败", String(e));
+      showActionFailureToast(copyText("inboxView.save.failed"), String(e));
     } finally {
       this.saveBtn.disabled = false;
     }
@@ -170,12 +171,12 @@ export class InboxView implements OverlayHandle {
     const head = document.createElement("div");
     head.className = "inbox-head";
     const title = document.createElement("span");
-    title.textContent = "收件箱 — 写给下一轮的 agent";
+    title.textContent = copyText("inboxView.ensureDom.title");
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
     closeBtn.className = "inbox-close";
-    closeBtn.setAttribute("aria-label", "关闭");
-    closeBtn.textContent = "关闭";
+    closeBtn.setAttribute("aria-label", copyText("inboxView.ensureDom.close"));
+    closeBtn.textContent = copyText("inboxView.ensureDom.close");
     closeBtn.addEventListener("click", () => this.close());
     head.append(title, closeBtn);
 
@@ -187,14 +188,14 @@ export class InboxView implements OverlayHandle {
     const ta = document.createElement("textarea");
     ta.className = "inbox-text";
     ta.spellcheck = false;
-    ta.placeholder = "一行一条：新需求 / 改进 / 纠正。下一轮 agent 会读它、处置它、清空它。";
+    ta.placeholder = copyText("inboxView.ensureDom.hint");
 
     const foot = document.createElement("div");
     foot.className = "inbox-foot";
     const save = document.createElement("button");
     save.type = "button";
     save.className = "inbox-save";
-    save.textContent = "保存";
+    save.textContent = copyText("inboxView.ensureDom.save");
     save.addEventListener("click", () => void this.save());
     foot.append(save);
 

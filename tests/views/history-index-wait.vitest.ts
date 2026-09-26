@@ -152,7 +152,7 @@ describe("索引等待期间不许再扇出远端（audit-0805 F14 第四刀）"
       "★ 超过上限还在问 —— 此前这条链**一个上限都没有**：索引若永远建不好它会一直转",
     ).toBeLessThanOrEqual(120);
     const text = inner.statusEl.textContent ?? "";
-    expect(text, `停下来了但没说为什么。实际文案：「${text}」`).toContain("已停止自动重试");
+    expect(text, `停下来了但没说为什么。实际文案：「${text}」`).toContain("不再自动重试");
     expect(
       text,
       `只说了停，没告诉用户能做什么（E4：静默失败给身份）。实际文案：「${text}」`,
@@ -167,7 +167,7 @@ describe("索引等待期间不许再扇出远端（audit-0805 F14 第四刀）"
     await vi.advanceTimersByTimeAsync(3000);
 
     const text = inner.statusEl.textContent ?? "";
-    expect(text, `查状态失败却没吭声。实际文案：「${text}」`).toContain("索引状态查询失败");
+    expect(text, `查状态失败却没吭声。实际文案：「${text}」`).toContain("索引状态没查到");
     expect(
       count("get_search_index_status"),
       "查状态失败之后还在一秒一次地重试 —— 那是把一个持续失败拖成后台噪声",

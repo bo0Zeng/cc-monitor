@@ -12,7 +12,7 @@
 //! 一个新文件 —— 虽然是纯新增（见 INVARIANTS §1 里 F62/G6 那两段澄清），但把它塞进一个
 //! 自称只读的模块里，等于让那句头注开始说谎。**注释撒谎比没有注释更贵**，所以分家。
 //!
-//! # 契约（帧命令，与后端 `fork_write.rs::answer_wire` 对表）
+//! # 契约（帧命令，与后端 `fork_write.rs::answer_wire_at`（宿主壳 `fork_face.rs::answer`）对表）
 //!
 //! ```text
 //! → {"cmd":"session-fork","args":{"sid":"<源会话 sid>","uuid":"<消息 uuid>"}}
@@ -22,6 +22,7 @@
 //! **后端只收 sid、不收路径**（见 `branch_core::find_session_file` 头注）：少一个可被构造的路径入参
 //! 就少一条路径穿越的攻击面。所以 monitor 这边拿到的 jsonl 路径**不往回传**，只传 sid。
 
+use crate::copy_table::copy_text;
 use crate::history::BranchResult;
 
 /// 分叉的期限。读一份 jsonl + 写一份新文件，正常是毫秒级；30s 是给巨型会话与慢链路留的余量。
@@ -40,19 +41,28 @@ fn validate_fork_id(what: &str, s: &str) -> Result<(), String> {
     // 上限与共享那份 `branch_core::is_plain_sid` 对齐（Phase G 审计：原来这边 128、那边 64，
     // 65..=128 的 id 会白跑一趟才被拒；注释里引的函数名 `valid_sid` 也不存在）。
     if s.is_empty() || s.len() > 64 {
-        return Err(format!("{what} 长度非法（1..=64）"));
+        return Err(copy_text(
+            "rsRemoteBranch.forkId.badLength",
+            &[("what", &what.to_string())],
+        ));
     }
     if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
-        return Err(format!("{what} 含非法字符（只许字母/数字/连字符）"));
+        return Err(copy_text(
+            "rsRemoteBranch.forkId.badChar",
+            &[("what", &what.to_string())],
+        ));
     }
     Ok(())
 }
 
-/// `session-fork` 的 `data` → [`BranchResult`]。**纯函数**，严格收：缺一格 / 类型不对 ⇒ 报「两端契约对不上」，
+/// `session-fork` 的 `data` → [`BranchResult`]。**纯函数**，严格收：缺一格 / 类型不对 ⇒ 报「两边版本对不上」，
 /// **绝不**返回一个空壳结果（分叉已经落盘而这边读不出结果时，用户重试会多出一份孤儿分支 —— 所以说清楚是契约问题）。
 pub(crate) fn decode_fork(who: &str, data: serde_json::Value) -> Result<BranchResult, String> {
     serde_json::from_value::<BranchResult>(data).map_err(|e| {
-        format!("{who}的后端报分叉成功，但结果读不懂（{e}）—— 两端契约对不上，先别重试，刷新会话列表看看")
+        copy_text(
+            "rsRemoteBranch.fork.badProduct",
+            &[("who", who), ("e", &e.to_string())],
+        )
     })
 }
 
@@ -62,8 +72,14 @@ async fn fork_on(
     source_session_id: &str,
     message_uuid: &str,
 ) -> Result<BranchResult, String> {
-    validate_fork_id("源会话 id", source_session_id)?;
-    validate_fork_id("消息 uuid", message_uuid)?;
+    validate_fork_id(
+        &copy_text("rsRemoteBranch.what.sourceId", &[]),
+        source_session_id,
+    )?;
+    validate_fork_id(
+        &copy_text("rsRemoteBranch.what.messageId", &[]),
+        message_uuid,
+    )?;
     let who = crate::backend::control::frame_query::who(origin);
     let data = crate::backend::control::frame_query::call(
         origin,

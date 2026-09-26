@@ -90,7 +90,8 @@ fn starting_reports_failure_as_failure_and_finished_streams_as_not_running() {
         )
     });
     assert!(
-        body.contains("Err(format!"),
+        // 〔CP2b〕那句失败的话进了文案表：`Err(format!(…))` 换成了 `Err(copy_text(…))`，都算「回 Err」。
+        body.contains("Err(format!") || body.contains("Err(copy_text("),
         "本机「起」的失败那一格不回 `Err` —— 那就是把失败说成了成功。"
     );
 }
@@ -132,7 +133,7 @@ fn an_empty_origin_is_refused_by_every_port() {
 fn an_unknown_remote_origin_says_so_instead_of_pretending() {
     let e = backend_stop("从没注册过的机器".into()).unwrap_err();
     assert!(
-        e.contains("没有这台机的把手"),
+        e.contains("没有这台机器的记录"),
         "对不认识的 origin 应当明说没有把手，而不是返回一句像成功的话：{e}"
     );
 }

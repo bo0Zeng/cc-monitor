@@ -78,6 +78,8 @@ pub mod remote_ask; // 〔C4d · 第四波 4B〕本机后端问远端后端的�
 #[path = "../../tests/backend/single_stream_guard.rs"]
 mod single_stream_guard; // K-P1 KPY8：「多客户端的流」明确不做 —— 三处「恰好一个客户端」的触发器（整体 #[cfg(test)]）
 pub mod skill_install; // 〔AS2 · 第四波 4B · V113〕skill「装到这台」：帧面 `skill-read`（来源那台）/ `skill-install-plan`（要被写的那一台；复用 AS1 的差异与闸）。只读
+pub mod skill_ledger; // 〔SU1 · 第四波 4C · V116〕skill 装记录（后端自有状态 `~/.cc-monitor/skill-installs.json`，第四层）：帧面 `skill-install-record`（装完记 / 卸掉摘）。一个用户文件都不写
+pub mod stderr_log; // 〔NT2 · S1〕脱离常驻那条载体的 stderr 落进一份有上限、滚动的文件（宿主交 `CCM_BACKEND_STDERR_LOG` 才接；第四层自有状态，写口只从 main.rs 进）
 pub mod wire;
 
 /// Streaming wire-protocol major version, reported as `v` in the `Hello` frame.
@@ -270,7 +272,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   起因是产品裁定：用量的**聚合轴**（后端服务端聚合 `--usage`）与**探针轴**
 ///   （一次性会话跑 `/usage` 抓屏）两轴整轴不做了；`oneshot-session` 这条原语当初
 ///   （`K-R87`）就是为探针建的，探针没了它零生产调用方 ⇒ 随之退役。
-///   ⚠ **`capture-pane` 不在这一刀里**：拉屏预览真在用它（`tmux.rs::capture_via_backend`）。
+///   ⚠ **`capture-pane` 不在这一刀里**：拉屏预览真在用它（〔C4e〕今天由界面 `src/tmux-control.ts::capturePane` 经通道直接问）。
 ///   ⚠ **必须 bump，而这一次的理由与前九次相反**：前九次是「新能力在旧后端上休眠」，
 ///   这一次是**旧后端上那三条还在**，而新 monitor 不再调它们 ——
 ///   真正会出事的是**反向**：一台装着新后端的远端，旧 monitor 仍会去调
@@ -418,7 +420,8 @@ pub const PROTO_VERSION: u32 = 1;
 /// ＋ 行为：后端开 `creds-core` 的 `harden`（远端要写那份文件；「后端写不了」从编译期收窄成两条判据）。C4a 不动后端。
 ///
 /// ★★★ **p2x-user-files-put**（2026-09-24，第四波 RW1 合并那一拍）：子命令 ＋3 ——
-/// `files-peek` / `files-put`（读改写，CAS）· `files-delete-session`（只收 sid 的会话文件围栏例外），两个命令面都动。
+/// `files-peek` / `files-put`（读改写，CAS）· `files-delete-session`（只收 sid 的会话文件围栏例外 —— 当时的说法；
+/// 〔AR1〕V119（FN1）之后写面已无会话文件围栏，它只剩自己「只许删会话形状」那道限制），两个命令面都动。
 /// ＋ 行为：后端开始写**用户**文件（别名 / `$PROFILE` / `.mcp.json` / skill `INBOX.txt` / cc-bus skill 部署），
 /// 本机分叉与删历史会话改走后端 —— 旧后端不认这三条 ⇒ 这些按钮在旧后端上会明确报错，所以必须判 stale。
 ///
@@ -478,7 +481,20 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p3m-ssh-zlib**（2026-09-25，第四波 CZ1 合并那一拍）：行为 —— russh 换成仓内打补丁的副本（`src/bridge/vendor/russh`，
 /// 修 zlib 解压一包只交出约 2 倍包长的缺陷），闸 `RUSSH_ZLIB_SOUND` 开 ⇒ 判准下「远」的链路从此真走 zlib@openssh.com。
 /// 子命令没变，照 p1v 先例不加历史行。
-pub const BUILD_ID: &str = "p3m-ssh-zlib";
+///
+/// ★★★ **p3n-channel-bus-skill-key**（2026-09-25，第四波 4C 合并列车 MG1：RT1 · RK1 · FN1 · GP1 · NT2 · SU1 · C4e · CP2b · CP2c 那一拍）：
+/// 子命令 ＋4 —— SU1 `--skill-install-record` · `--skill-installs` · `--skill-uninstall-plan`（skill 卸载，两个命令面）·
+/// C4e `--bus-broadcast`（cc-bus 广播的挑人与逐个投递挪进后端，两个命令面）。
+/// ＋ 行为：RK1 中转口要钥匙（`~/.cc-monitor/relay-key` 0600、跨重起不变；进门三问 403 / 421；`relay-*` 多 `not_ours`）·
+/// FN1 文件管理面不再拦会话文件（V119，无围栏，只剩删会话认会话形状）·
+/// GP1 `files.stat` 回 `mode` · `history-record` 收 `configDir` · 本机凭据文件的写者换成本机常驻后端 ·
+/// NT2 capture 放弃时关通道、`remote_ask` 内层随外层收 · 被交 `CCM_BACKEND_STDERR_LOG` 时 stderr 落有上限、滚动的文件 ·
+/// SU1 `skill-install-plan` 带 `take` 时多答 `ledger` · CP2c 后端对外的句子经文案表（`copy-core`）出、契约错改英文诊断。
+///
+/// ★★★ **p3o-upstream-endpoint**（2026-09-25，第四波 4D US1 合并那一拍）：子命令 ＋2 —— `launch-endpoint` · `apikey-routing`
+/// （上游选择出成品：这一发走哪、注入什么由后端答，monitor 只转交执行）。＋ 行为：`apikey-read` 应答去掉 `rows`；
+/// 路由语法 / 端口 / 钥匙路径改住共享 crate `relay-route-core`；无账号的本机会话在全量注入下走 `/t/…/_/…`（开关仍默认关）。
+pub const BUILD_ID: &str = "p3o-upstream-endpoint";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -571,6 +587,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 不在表里 ⇒ 当成未知 flag ⇒ 打一行 warn 之后**照常进流模式**，
     // CLI 面看上去"存在"却永远调不到（08-13 实测到了这个形状）。
     // ⇒ 现由 `cli_control::tests::every_cli_exposed_command_is_in_the_query_mode_gate` 钉住。
+    // 〔C4e · 第四波 4C〕广播（`inbound::REGISTRY` 的 `bus-broadcast`）：原是 monitor 里的组合（列名单 ＋ 逐个发），
+    //   界面改经通道直接说后端之后收进后端。登记理由同下面那几条；⚠ 加这一行逼出一次 `BUILD_ID` bump
+    //   （`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
+    "--bus-broadcast",
     "--bus-kill",
     "--bus-list",
     "--bus-send",
@@ -593,6 +613,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 不收 argv —— argv 在同机任何用户的 `ps` 里都看得见。加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
     "--apikey-key-set",
     "--apikey-read",
+    // 〔US1 · 第四波 4D〕上游选择出的两份成品（`inbound::REGISTRY` 的 `apikey-routing` / `launch-endpoint`）自动派生的 CLI 面。
+    // 只读（读一份凭据文件 ＋ 回环上探一次中转），入参从 stdin 读。加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
+    "--apikey-routing",
+    "--launch-endpoint",
     // 〔RM1a · 第四波〕中转那两条（`inbound::REGISTRY` 的 `relay-*`）自动派生的 CLI 面。
     // 入参只有端口，从 stdin 读。同上：加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
     "--relay-ensure",
@@ -612,6 +636,11 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔AS2〕skill「装到这台」那两条（`skill-read` / `skill-install-plan`）派生的 CLI 面。只读，入参从 stdin 读。
     "--skill-read",
     "--skill-install-plan",
+    // 〔SU1 · 第四波 4C〕skill 卸那三条（`skill-install-record` / `skill-installs` / `skill-uninstall-plan`）派生的 CLI 面。
+    // 加这三行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
+    "--skill-install-record",
+    "--skill-installs",
+    "--skill-uninstall-plan",
     // 〔C4d · 第四波 4B〕可达表登记（`inbound::REGISTRY` 的 `remote-reach`）派生的 CLI 面，入参从 stdin 读。
     // ⚠ 一次性进程的可达表随进程退出就空 —— 真正的用法是常驻后端的帧面。加这一行会逼出一次 `BUILD_ID` bump，本路**不 bump**。
     "--remote-reach",
@@ -1018,7 +1047,7 @@ pub enum GapKind {
 ///
 /// ⚠ **「暂时不做」是一种合法答复，但必须写出来** —— 用户那一拍逐字
 /// 「**做得到. 除非暂时不做. windows用windows自己的后台服务. 后面在做**」。
-/// ⇒ [`TargetGap::why`] 要同时答两件：**今天为什么做不到** ＋ **将来怎么办**。
+/// ⇒ [`TargetGap::rationale`] 要同时答两件：**今天为什么做不到** ＋ **将来怎么办**。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TargetGap {
     /// 哪一面。必须是 [`CAPABILITY_FACES`] 或 [`COMMAND_FACES`] 里真有的族名。
@@ -1030,7 +1059,11 @@ pub struct TargetGap {
     /// 🔴 **哪一档**：结构上没有 · 欠着。两档不许合成一档（[`GapKind`] 头注）。
     pub kind: GapKind,
     /// 🔴 **为什么做不到 ＋ 将来怎么办。** 不许留空（判据有长度地板）。
-    pub why: &'static str,
+    ///
+    /// 〔CP2c · 第四波 4C〕字段名 `why` → `rationale`：它是**设计登记的理由散文**（只给判据读，从不上界面），
+    /// 而普查的字段出口按字段名认文案（`why:` / `reason:` / `what:` …）—— 叫 `why` 就被数成了对外文案。
+    /// 改名让字段说实话（`调研/第四波记录/CP2c.md §3` 第 5 类），不是给它开豁免。
+    pub rationale: &'static str,
 }
 
 /// 🔴 **全部逐能力豁免 —— 唯一住址。**
@@ -1064,28 +1097,28 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "tmux",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "Windows 上没有 tmux（也不打算装）。将来由 **Windows 自己的后台服务**               承担「会话活在前端之外」这件事〔用户 2026-09-21 拍板〕，**暂时不做**。",
+        rationale: "Windows 上没有 tmux（也不打算装）。将来由 **Windows 自己的后台服务**               承担「会话活在前端之外」这件事〔用户 2026-09-21 拍板〕，**暂时不做**。",
     },
     TargetGap {
         family: "ccm-launcher",
         capability: "attach",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "「接回一个还活着的会话」今天的实现是 `tmux attach`。Windows 上那条路不存在               ⇒ 等那个后台服务落地时一并给出等价物〔同上裁决〕，**暂时不做**。",
+        rationale: "「接回一个还活着的会话」今天的实现是 `tmux attach`。Windows 上那条路不存在               ⇒ 等那个后台服务落地时一并给出等价物〔同上裁决〕，**暂时不做**。",
     },
     TargetGap {
         family: "ccm-launcher",
         capability: "detach",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "「把会话留在后台」今天是 `tmux detach`。同 `attach`，等那个后台服务，**暂时不做**。",
+        rationale: "「把会话留在后台」今天是 `tmux detach`。同 `attach`，等那个后台服务，**暂时不做**。",
     },
     TargetGap {
         family: "ccm-launcher",
         capability: "tmux-size",
         target: Target::Windows,
         kind: GapKind::Structural,
-        why: "给 tmux 那个窗格定尺寸。没有 tmux 就没有这一格；将来那个后台服务里              「会话的终端多大」是另一种形状，**不照搬这一条** ⇒ 这一条本身不跨过去；\
+        rationale: "给 tmux 那个窗格定尺寸。没有 tmux 就没有这一格；将来那个后台服务里              「会话的终端多大」是另一种形状，**不照搬这一条** ⇒ 这一条本身不跨过去；\
               那个后台服务里的尺寸若要有，是**另一条**能力、另立一行〔PR1 分档：结构〕。",
     },
     TargetGap {
@@ -1093,7 +1126,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "tmux-base",
         target: Target::Windows,
         kind: GapKind::Structural,
-        why: "tmux 的窗格编号基数（`base-index`）。它是 tmux 自己的配置面，              Windows 上连对应概念都没有 ⇒ **不是推后，是这一条本身不该跨过去**。",
+        rationale: "tmux 的窗格编号基数（`base-index`）。它是 tmux 自己的配置面，              Windows 上连对应概念都没有 ⇒ **不是推后，是这一条本身不该跨过去**。",
     },
     // ── `ccm-launcher` × Windows：**真机现打补上的三条**〔2026-09-21〕 ───────
     //
@@ -1110,7 +1143,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "bus-register",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "**硬链在 tmux 上，不是自己做不到**：`argv.rs` 两道闸串着 —— \
+        rationale: "**硬链在 tmux 上，不是自己做不到**：`argv.rs` 两道闸串着 —— \
               `--bus-register` 要 `--detach`，而 `--detach` 要 `--tmux`。\
               真机现打（Win11）把两个 bus 脚本都种齐、排掉「脚本缺失」这个变量之后，\
               仍然 `EXIT=4 no_tmux` ⇒ **唯一闸门就是 tmux**。\
@@ -1122,7 +1155,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "ccm-sid",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "〔S5 · 第四波 09-24〕**直路语义已定，Windows 上仍欠在读侧。** \
+        rationale: "〔S5 · 第四波 09-24〕**直路语义已定，Windows 上仍欠在读侧。** \
               从前：`--ccm-sid` 只在容器（tmux）那条路上被消费（`Container.ccm_sid` → \
               `tmux set-option @ccm_sid_expect`），直路上被接受、零效果、不出声。\
               主会话裁：**不报错**（报错 ＝ 让它依赖 tmux，撞 V63），直路语义走启动期令牌 \
@@ -1169,7 +1202,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "base-url-across-tmux",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "把中转地址跨 tmux 会话传下去。载体没了这一条就没了；              将来那个后台服务要自己回答「地址怎么传给它起的会话」，**暂时不做**。",
+        rationale: "把中转地址跨 tmux 会话传下去。载体没了这一条就没了；              将来那个后台服务要自己回答「地址怎么传给它起的会话」，**暂时不做**。",
     },    // ── 〔PR1 · 2026-09-24〕命令面 × Windows：**不是新裁的，是第一次被看见** ────────────
     //
     // 这六行在 PR1 之前就是真的（`K-P4` 那一拍 `unavailable_from` 在 Windows 上就会列出这三条），
@@ -1183,7 +1216,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "capture-pane",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "抓一屏今天就是起一次 `tmux capture-pane`（命令自己声明了 `no_tmux` 码）。\
+        rationale: "抓一屏今天就是起一次 `tmux capture-pane`（命令自己声明了 `no_tmux` 码）。\
               Windows 上没有 tmux ⇒ 平台默认做不到。将来由那个 Windows 后台服务给出\
               「看一眼会话画面」的等价物〔用户 2026-09-21 拍板〕，**暂时不做**。",
     },
@@ -1192,7 +1225,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "kill",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "结束会话今天是起一次 `tmux kill-session`（命令自己声明了 `no_tmux` 码）。\
+        rationale: "结束会话今天是起一次 `tmux kill-session`（命令自己声明了 `no_tmux` 码）。\
               Windows 上没有 tmux ⇒ 平台默认做不到。将来由那个 Windows 后台服务\
               管会话的生死〔用户 2026-09-21 拍板〕，**暂时不做**。",
     },
@@ -1201,7 +1234,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "launch",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "起会话今天是在 tmux 里开一个新会话（命令自己声明了 `no_tmux` 码）。\
+        rationale: "起会话今天是在 tmux 里开一个新会话（命令自己声明了 `no_tmux` 码）。\
               Windows 上没有 tmux ⇒ 平台默认做不到。将来由那个 Windows 后台服务\
               承担「会话活在前端之外」〔用户 2026-09-21 拍板〕，**暂时不做**。",
     },
@@ -1210,7 +1243,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "--capture-pane",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "与帧面 `capture-pane` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
+        rationale: "与帧面 `capture-pane` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
               派生到同一条登记）⇒ 同一个理由，将来与帧面那一行同拍还，**暂时不做**。",
     },
     TargetGap {
@@ -1218,7 +1251,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "--kill",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "与帧面 `kill` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
+        rationale: "与帧面 `kill` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
               派生到同一条登记）⇒ 同一个理由，将来与帧面那一行同拍还，**暂时不做**。",
     },
     TargetGap {
@@ -1226,7 +1259,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "--launch",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "与帧面 `launch` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
+        rationale: "与帧面 `launch` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
               派生到同一条登记）⇒ 同一个理由，将来与帧面那一行同拍还，**暂时不做**。",
     },
     // ── 〔FW5 · 第四波 · 2026-09-24〕`files-chmod` × Windows：`设计/96 §8.5` 待拍 3 ────────────
@@ -1241,7 +1274,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "files-chmod",
         target: Target::Windows,
         kind: GapKind::Structural,
-        why: "改的是 **unix 权限位**（低 12 位），命令自己声明了 `no_unix_mode` 码。Windows 上没有这套位\
+        rationale: "改的是 **unix 权限位**（低 12 位），命令自己声明了 `no_unix_mode` 码。Windows 上没有这套位\
               （那边是 ACL ＋ 只读属性），`change_mode` 在那里回 `no_unix_mode`、一个字节不动。\
               ⇒ 这一条本身**不该跨过去**；Windows 那边若要「改访问权限」，是另一条能力、另立一行〔FW5 分档：结构〕。",
     },
@@ -1250,7 +1283,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "--files-chmod",
         target: Target::Windows,
         kind: GapKind::Structural,
-        why: "与帧面 `files-chmod` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
+        rationale: "与帧面 `files-chmod` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
               派生到同一条登记）⇒ 同一个理由：unix 权限位这一条**不该跨过去**。",
     },
 ];
