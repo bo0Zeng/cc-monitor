@@ -11,7 +11,7 @@
 //!
 //! # 身份那一半是照搬，不是新写
 //!
-//! monitor 侧 `src/bridge/src/session_map.rs::is_process_alive` 的 `cfg(windows)` 那支
+//! monitor 侧当年 `session_map.rs` 那份进程判活（〔LOC1b · 4D〕随本机判活改由本机后端的帧来删了）的 `cfg(windows)` 那支
 //! （`OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` ＋ `GetExitCodeProcess == STILL_ACTIVE`
 //! ＋ `GetProcessTimes`）在 Windows 用户机上跑过很久（`tests/bridge/rust_timer_registry_tests.rs`
 //! 那条「F12 解锁闹钟」的头注逐字）。本文件用的是**同一组 Win32 调用、同一个访问掩码**。

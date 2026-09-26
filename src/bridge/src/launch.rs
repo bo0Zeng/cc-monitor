@@ -333,9 +333,9 @@ fn launch_local_posix_via(cmd: &str, cwd: Option<&str>, term: Option<&str>) -> R
     // F06b-1d（C9）：backend 把后端路径交给它亲手开的这个窗口 —— 窗口里那次 `ccm resume`
     // 据此去调 `--resolve`（旧 `shared/ccm::resolve_from_backend` 〔散文墓碑〕，`K-R48` 已删；
     // 今天那一问在后端进程内直接答）。local_backend 不在就不设。
-    if let Some((k, v)) = crate::backend::control::local_backend::backend_bin_env_for_window(env!(
-        "CCM_TARGET_TRIPLE"
-    )) {
+    if let Some((k, v)) = crate::backend::control::local_backend::backend_bin_env_for_window(
+        crate::local_backend_host::running_backend_bin(),
+    ) {
         builder.env(k, v);
     }
     builder.stdin(Stdio::null()).stdout(Stdio::null());
@@ -620,9 +620,9 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
     // ⚠ **这一格的诚实边界**：`wt.exe` 多半只是把请求转交给**已在跑的** Windows Terminal 进程，
     //   新标签的环境来自那个进程、不是本次 spawn ⇒ **这里设的 env 未必落得进去**。
     //   下面 Plan B（CREATE_NEW_CONSOLE 直起 powershell）是真正会继承的那条。
-    let backend_env = crate::backend::control::local_backend::backend_bin_env_for_window(env!(
-        "CCM_TARGET_TRIPLE"
-    ));
+    let backend_env = crate::backend::control::local_backend::backend_bin_env_for_window(
+        crate::local_backend_host::running_backend_bin(),
+    );
     let mut wt = Command::new("wt.exe");
     wt.args(&wt_args);
     if let Some((k, v)) = backend_env.clone() {

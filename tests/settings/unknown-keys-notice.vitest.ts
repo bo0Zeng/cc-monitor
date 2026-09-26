@@ -39,7 +39,7 @@ vi.mock("../../src/ipc/commands", () => ({
               ? Promise.reject(new Error("读不到 config.json"))
               : Promise.resolve(store.cfg);
         }
-        if (name === "save_config") return () => Promise.resolve();
+        if (name === "patch_config") return () => Promise.resolve(); // 〔CFG1〕写口换成按键补丁
         return () => Promise.reject(new Error(`[录音机] ${name} 没有真后端`));
       },
     },

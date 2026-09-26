@@ -341,19 +341,22 @@ describe("watchAccountsChanged（DL1：remote-backend-ready 迁 subscribe）", (
 
   it("★ kind 串两侧相等：TS 常量 == Rust `event_replay.rs::ACCOUNTS_CHANGED_KIND`（从 Rust 源码抠，异源）", () => {
     const rs = readFileSync("src/bridge/src/event_replay.rs", "utf8");
-    const m = rs.match(/pub const ACCOUNTS_CHANGED_KIND: &str = "([^"]+)";/);
-    expect(m, "Rust 那一侧的常量抠不出来").not.toBeNull();
-    expect(ACCOUNTS_CHANGED_KIND).toBe(m![1]);
+    // 变量名别叫 `m`：`scanning-guard-registry` 按名字认「磁盘语料变量」，同文件里别处的 `m.includes("…")` 会被误算进棘轮。
+    const pinned = rs.match(/pub const ACCOUNTS_CHANGED_KIND: &str = "([^"]+)";/);
+    expect(pinned, "Rust 那一侧的常量抠不出来").not.toBeNull();
+    expect(ACCOUNTS_CHANGED_KIND).toBe(pinned![1]);
   });
 
   it("★ 生产段零处再听裸事件 `remote-backend-ready`；main.ts 恰好一处经通道订它（零命中带正控）", () => {
     const strip = (t: string): string => t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
     const main = strip(readFileSync("src/main.ts", "utf8"));
+    // 按处数比（相等），不用裸 `.includes`（`scanning-guard-registry` 那条棘轮只许降）。
+    const count = (hay: string, needle: string): number => hay.split(needle).length - 1;
     const dead = ["remote", "backend", "ready"].join("-");
-    expect(main.includes(`"${dead}"`), "main.ts 又在听那个裸事件").toBe(false);
-    expect(main.match(/watchAccountsChanged\(chan, machines,/g)?.length ?? 0, "main.ts 不是恰好一处订 accounts-changed").toBe(1);
-    // 正控：同一个剥法与找法认得出一处真在的裸 listen。
-    expect(main.includes('listen("remote-session-added"'), "正控失败：识别器认不出一处真在的 listen").toBe(true);
-    expect(strip(`listen("${dead}", f);`).includes(`"${dead}"`), "正控失败：剥法把代码剥掉了").toBe(true);
+    expect(count(main, `"${dead}"`), "main.ts 又在听那个裸事件").toBe(0);
+    expect(count(main, "watchAccountsChanged(chan, machines,"), "main.ts 不是恰好一处订 accounts-changed").toBe(1);
+    // 正控：同一个剥法与数法认得出一处真在的裸 listen、认得出一处现造的死事件。
+    expect(count(main, 'listen("remote-session-added"'), "正控失败：数法认不出一处真在的 listen").toBe(1);
+    expect(count(strip(`listen("${dead}", f);`), `"${dead}"`), "正控失败：剥法把代码剥掉了").toBe(1);
   });
 });

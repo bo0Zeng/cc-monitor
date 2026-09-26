@@ -356,6 +356,16 @@ pub enum Frame {
         /// 与本字段加进来之前一字不差。缺席的意思是「不知道」，**不是** `none`。
         #[serde(skip_serializing_if = "Option::is_none")]
         container: Option<SessionContainer>,
+        /// 〔LOC1b · 第四波 4D，additive〕那个 claude 进程的 **pid**。
+        ///
+        /// 给谁：本机 monitor 的「↗ 拉前」—— 本机判活改由本机后端的帧来之后（monitor 不再自己读 pidfile），
+        /// 它按 pid 找父 PowerShell 去绑窗口（`bind::SidHwndCache::record`，Windows）只能从这一格拿 pid。
+        ///
+        /// **与 [`Self::SessionAdded::rbind_token`] 同一道闸**：只在客户端发了 `--with-rbind-token` 时才带
+        /// （`ReaderState::with_rbind_token`）—— 两格是同一件事（给 ↗ 绑窗口的材料）的两半；没索要的客户端
+        /// 收到的字节与本字段加进来之前一字不差（仓外 aterm 那份按精确字节对的 fixture 因此不受影响，hello 也不变）。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pid: Option<u32>,
     },
     /// Batch9-F27：会话 status 变化（pidfile modify diff；CC 仅状态转换时重写，
     /// 天然稀疏）。远端红绿灯数据源；旧 monitor 未知 kind 忽略（additive）。
@@ -499,6 +509,23 @@ pub enum Frame {
     /// 之后的增减照旧走 `session_added` / `session_removed`。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
     SessionsReplayed,
 
+    /// 〔FW1 · 第四波 4D · 主会话裁 D-d〕**活会话的记录文件不见了**（被删 / 被改名走了）。
+    ///
+    /// V119 之后文件管理器改得动活会话的 jsonl；观察侧当它是「看的、不是管的」：不崩、不误判结束（判活不看 jsonl），
+    /// 出声一次 —— 每次「在 → 不在」只发一帧；同名文件再出现（agent 按路径追加重建）从 0 读、行号接着往上，之后再不见才再发。
+    /// 旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    SessionFileGone { session_id: String, path: String },
+
+    /// 〔FW1 · 第四波 4D · 主会话裁 D-d〕**活会话的记录文件被改过了，已从头重读**（截短 · 或游标之前被原地改写）。
+    ///
+    /// 紧跟在这一趟重读出来的 `line` 帧**之前**（同一个 sink、同一条线程）。重读的行号照旧往上（`INVARIANTS §25`），
+    /// 前端按 uuid 去重（`设计/10 §3.2` `processedUuids`）⇒ 已画的不重复、新的照接；这一帧只负责出声。
+    SessionFileReread {
+        session_id: String,
+        path: String,
+        why: RereadWhy,
+    },
+
     /// 〔SR1a · 2026-09-24〕**一条链路的下行字节**（`dial/link.rs`）。
     ///
     /// 用户裁「改成单一常驻后端」：本机只常驻一个后端，到各远端的 SSH 连接由它持有并复用；
@@ -540,12 +567,27 @@ pub enum Frame {
     },
 }
 
+/// 〔FW1 · 第四波 4D〕[`Frame::SessionFileReread`] 的「为什么从头重读」。线上两个字面量。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RereadWhy {
+    /// 变短了（比读到过的最长还短）。
+    Truncated,
+    /// 没变短，但游标之前那一截被原地改写过（末尾指纹对不上）。
+    Rewritten,
+}
+
 /// 〔SR1b〕一趟传输怎么收场的（[`Frame::Transfer`] 的 `end`）。
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum TransferEnd {
-    /// 传完了。
-    Done { bytes: u64 },
+    /// 传完了。〔FW1 · 第四波 4D〕上传那一路带 `sha256`（整份本机文件的摘要，窗口提交 `files-commit-upload` 时原样交回当
+    /// `expect`，远端后端改名上位之前对暂存件核一遍）；下载那一路没有（不上线）。
+    Done {
+        bytes: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        sha256: Option<String>,
+    },
     /// 失败（带下层原话）。上传那一路的暂存件**留着**给续传；下载那一路的 `.part` 删了。
     Failed { why: String },
     /// 撤了（`transfer-stop` / 本机流断了）。上传那一路的暂存件已删；下载那一路的 `.part` 留着。
@@ -603,6 +645,9 @@ impl Frame {
             // 〔U4b〕一次性的标记，没有「下一次必然重发」⇒ 丢了客户端就一直停在「说不清」
             //   （保守的那一侧：不会把一条说不清的会话说成已结束）。按不可恢复报身份，客户端才知道要重连。
             Frame::SessionsReplayed => false,
+            // 〔FW1〕一次性的出声，没有「下一次必然重发」⇒ 丢了那个 tab 就不说那句话（内容本身照旧对：游标已按它处置）。
+            Frame::SessionFileGone { .. } => false,
+            Frame::SessionFileReread { .. } => false,
             // 〔SR1a〕链路字节：丢一块 = 那条链路上的数据坏了，别处没有第二份。
             // 与上面两个同理，它们**不走**会丢帧的那条通道（走应答通道、阻塞发送）。
             Frame::LinkData { .. } => false,
@@ -630,6 +675,12 @@ impl Frame {
             Frame::Cancelled { id } => ("cancelled", Some(id.clone())),
             Frame::AccountsChanged => ("accounts_changed", None),
             Frame::SessionsReplayed => ("sessions_replayed", None),
+            Frame::SessionFileGone { session_id, .. } => {
+                ("session_file_gone", Some(session_id.clone()))
+            }
+            Frame::SessionFileReread { session_id, .. } => {
+                ("session_file_reread", Some(session_id.clone()))
+            }
             Frame::LinkData { link, .. } => ("link_data", Some(link.clone())),
             Frame::LinkEnd { link, .. } => ("link_end", Some(link.clone())),
             Frame::Transfer { id, .. } => ("transfer", Some(id.clone())),

@@ -33,7 +33,7 @@ import {
   TERMINAL_FRONT_UNAVAILABLE_DETAIL,
 } from "./terminal-front";
 import { computeTitleFor, isBgKind, type Tab, type TabsSummary } from "./tab-model";
-import { ENDED, LIVE, RECONNECTABLE, isResumeOnly, hasTerminal, nextState, type StateEvent } from "./tab-session-state";
+import { ENDED, LIVE, RECONNECTABLE, isLive, isResumeOnly, hasTerminal, nextState, type StateEvent } from "./tab-session-state";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, originFromWire, type Origin } from "./ipc/origin";
 // 〔U2〕`Tab` 的形状与标题函数搬去了 `tab-model.ts`；这里原样 re-export，既有 import 面零改动。
 export type { Tab, TabsSummary } from "./tab-model";
@@ -819,6 +819,21 @@ export class TabManager {
     if (!this.applyState(tab, "idle")) return;
     this.refreshTabBar();
     this.emitTabStateProbe(tab); // F-E1:可重连(claude 退但 tmux 在)
+  }
+
+  /** 〔FW1 · 第四波 4D · D-e〕这个会话此刻在 tab 栏里是活的吗（历史浏览器删会话前问一句用）。没有这个 tab ⇒ `false`。 */
+  isSessionLive(sessionId: string): boolean {
+    const tab = this.store.tabs.get(sessionId);
+    return tab !== undefined && isLive(tab.state);
+  }
+
+  /**
+   * 〔FW1 · 第四波 4D · D-d〕这个会话的流容器（没有这个 tab ⇒ `null`）—— 记录文件那一句话挂在它顶上
+   * （`record-file-notice.ts`；那个模块只由主窗口 `main.ts` 接线，样式随主窗口的产物走，不进与独立查看窗共用的块）。
+   * **不碰会话状态**（判活不看 jsonl：不误判结束）。
+   */
+  streamElOf(sessionId: string): HTMLElement | null {
+    return this.store.tabs.get(sessionId)?.streamEl ?? null;
   }
 
   /**

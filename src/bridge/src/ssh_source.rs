@@ -1722,9 +1722,19 @@ pub enum InboundFrame {
         /// 缺席 / 不认识的取值 ⇒ `None` = 不知道（**不是**「不在 tmux 里」）。
         /// 交给 `session_facts::note_container`（本机那条流同一个口）。
         container: Option<crate::session_facts::Container>,
+        /// 〔LOC1b · 第四波 4D，additive〕那个 claude 进程的 pid。本机活会话表（`session_map::LiveEntry::pid`）
+        /// 拿它给本机 ↗ 绑窗口（`bind::SidHwndCache::record`）；老后端不带 ⇒ `None`。远端那一支不读它。
+        pid: Option<u32>,
     },
     /// 〔U4b · 第四波〕后端的活会话清单报完了（Phase 1 走完）。无载荷。
     SessionsReplayed,
+    /// 〔FW1 · 第四波 4D · D-d〕活会话的记录文件不见了（`session_file_gone`）/ 被改过已从头重读（`session_file_reread`）。
+    /// 两个 kind 收成一形：下游只关心「哪个会话、怎么了」。
+    SessionFileNotice {
+        sid: String,
+        path: String,
+        change: FileChange,
+    },
     /// Batch9-F27：会话 status 变化（p1g backend；远端红绿灯）。
     SessionStatus {
         sid: String,
@@ -1959,10 +1969,26 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
                 container: opt("container")
                     .as_deref()
                     .and_then(crate::session_facts::Container::from_wire),
+                // 〔LOC1b〕只认装得进 u32 的非负整数；别的一律当没带。
+                pid: obj
+                    .get("pid")
+                    .and_then(|v| v.as_u64())
+                    .and_then(|n| u32::try_from(n).ok()),
             })
         }
         // 〔U4b · 第四波〕additive 新帧，无载荷。旧后端不发 ⇒ 这条分支永不命中，固定的 tab 停在「说不清」。
         "sessions_replayed" => Some(InboundFrame::SessionsReplayed),
+        // 〔FW1 · 第四波 4D〕additive 新帧。`why` 认不出 ⇒ 整帧当坏帧跳过（不猜成哪一种）。
+        "session_file_gone" => Some(InboundFrame::SessionFileNotice {
+            sid: obj.get("session_id")?.as_str()?.to_string(),
+            path: obj.get("path")?.as_str()?.to_string(),
+            change: FileChange::Gone,
+        }),
+        "session_file_reread" => Some(InboundFrame::SessionFileNotice {
+            sid: obj.get("session_id")?.as_str()?.to_string(),
+            path: obj.get("path")?.as_str()?.to_string(),
+            change: FileChange::reread_from_wire(obj.get("why")?.as_str()?)?,
+        }),
         "session_status" => {
             let sid = obj.get("sid")?.as_str()?.to_string();
             let opt = |k: &str| obj.get(k).and_then(|v| v.as_str()).map(str::to_string);
@@ -2121,6 +2147,8 @@ const KNOWN_FRAME_KINDS: &[&str] = &[
     "overflow",
     "reply",
     "session_added",
+    "session_file_gone",
+    "session_file_reread",
     "session_removed",
     "session_status",
     "sessions_replayed",
@@ -2137,6 +2165,8 @@ fn transfer_end(e: &serde_json::Value) -> Option<crate::sftp_pool::End> {
     Some(match e.get("state")?.as_str()? {
         "done" => crate::sftp_pool::End::Done {
             bytes: e.get("bytes")?.as_u64()?,
+            // 〔FW1〕可缺席（下载那一路没有）；在就原样带着（窗口提交时交回，形状由后端那一关判）。
+            sha256: e.get("sha256").and_then(|v| v.as_str()).map(str::to_string),
         },
         "failed" => crate::sftp_pool::End::Failed(e.get("why")?.as_str()?.to_string()),
         "cancelled" => crate::sftp_pool::End::Cancelled,
@@ -2629,10 +2659,56 @@ impl LineIntake {
         }
     }
 
+    /// 〔FW1 · 第四波 4D · D-d〕一个会话的记录文件不见了 / 被改过已从头重读：残批先冲（出声那一格排在它之前的行后面、
+    /// 重读出来的行前面 —— 后端发它就在重读的行之前），再交那个会话的内容流一格。
+    async fn notice(&mut self, sid: &str, path: &str, change: FileChange) {
+        self.flush().await;
+        self.replay
+            .on_session_notice(crate::bridge::SessionFileNoticePayload {
+                session_id: sid.to_string(),
+                origin: self.origin_label.clone(),
+                path: path.to_string(),
+                change: change.as_wire().to_string(),
+            })
+            .await;
+    }
+
     /// 一个会话走了：撤它的快照（排队的摘掉、在飞的打取消标记）、续点作废（再宣告时整份拉）。
     fn removed(&self, sid: &str) {
         self.snapshots.cancel(sid);
         crate::snapshot_resume::forget(&crate::origin::Origin(self.origin_label.clone()), sid);
+    }
+}
+
+/// 〔FW1 · 第四波 4D · D-d〕活会话的记录文件怎么了。线上（后端 `session_file_gone` / `session_file_reread.why`）与交前端的
+/// 那一格（`SessionFileNoticePayload.change`）同一组字面量。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileChange {
+    /// 不见了（删了 / 改名走了）。
+    Gone,
+    /// 变短了，已从头重读。
+    Truncated,
+    /// 游标之前被原地改写过，已从头重读。
+    Rewritten,
+}
+
+impl FileChange {
+    /// `session_file_reread.why` → 那一形；认不出 ⇒ `None`（整帧跳过，不猜）。
+    pub fn reread_from_wire(why: &str) -> Option<Self> {
+        match why {
+            "truncated" => Some(FileChange::Truncated),
+            "rewritten" => Some(FileChange::Rewritten),
+            _ => None,
+        }
+    }
+
+    /// 交前端那一格的字面量。
+    pub fn as_wire(self) -> &'static str {
+        match self {
+            FileChange::Gone => "gone",
+            FileChange::Truncated => "truncated",
+            FileChange::Rewritten => "rewritten",
+        }
     }
 }
 
@@ -2663,6 +2739,12 @@ pub(crate) enum LocalStep {
     },
     /// 冲掉残批，再进 [`LineIntake::removed`]。
     Remove { sid: String },
+    /// 〔FW1〕进 [`LineIntake::notice`]（冲掉残批、交一格出声）。
+    Notice {
+        sid: String,
+        path: String,
+        change: FileChange,
+    },
     /// 这一件不进内容流（被藏起来的 bg 会话的行 / 宣告，或不是内容帧）。
     Skip,
     /// 冲掉残批、换一个新的 [`LineIntake`]（下一条流从头来）。
@@ -2673,6 +2755,82 @@ pub(crate) enum LocalStep {
 /// `kind` 在且不是 `interactive` 才算非交互；旧 CC 不写 kind ⇒ 当交互。
 fn local_hides(kind: Option<&str>, show_bg: bool) -> bool {
     !show_bg && kind.is_some_and(|k| k != "interactive")
+}
+
+/// 〔LOC1b · 第四波 4D〕本机那条流上的一件东西 ⇒ 本机活会话表的一件起停事实（**纯**；藏起来的 bg 会话不进）。
+///
+/// 与 [`local_step`] 读同一件东西、同一个「藏不藏」口径（[`local_hides`]），但**先于**它跑（它会改 `hidden`）。
+/// 远端那一支的同一件事住 [`stream_loop`] 的三个起停帧臂；两边交给 emitter 的是同一种 `SessionChange`、同一个裁决。
+/// `local_idle` = 此刻本机的可重连会话：流断时与表里的活会话并成一摞 `Unseen`（与远端断连 flush 同一个函数）。
+pub(crate) fn local_lifecycle(
+    item: &LocalItem,
+    show_bg: bool,
+    hidden: &std::collections::HashSet<String>,
+    local_idle: &[String],
+) -> Option<crate::session_map::Lifecycle> {
+    use crate::session_map::{Lifecycle, LiveEntry};
+    match item {
+        LocalItem::StreamEnded => Some(Lifecycle::StreamEnded {
+            idle: local_idle.to_vec(),
+        }),
+        LocalItem::Frame(InboundFrame::SessionAdded {
+            sid,
+            session_kind,
+            cwd,
+            name,
+            status,
+            waiting_for,
+            pid,
+            ..
+        }) => (!local_hides(session_kind.as_deref(), show_bg)).then(|| Lifecycle::Added {
+            sid: sid.clone(),
+            entry: LiveEntry {
+                cwd: cwd.clone(),
+                kind: session_kind.clone(),
+                name: name.clone(),
+                status: status.clone(),
+                waiting_for: waiting_for.clone(),
+                pid: *pid,
+            },
+        }),
+        LocalItem::Frame(InboundFrame::SessionStatus {
+            sid,
+            status,
+            waiting_for,
+        }) => (!hidden.contains(sid)).then(|| Lifecycle::Status {
+            sid: sid.clone(),
+            status: status.clone(),
+            waiting_for: waiting_for.clone(),
+        }),
+        LocalItem::Frame(InboundFrame::SessionRemoved { sid, cause }) => (!hidden.contains(sid))
+            .then(|| Lifecycle::Removed {
+                sid: sid.clone(),
+                cause: *cause,
+            }),
+        LocalItem::Frame(InboundFrame::SessionsReplayed) => Some(Lifecycle::Listed),
+        LocalItem::Frame(_) => None,
+    }
+}
+
+/// 〔LOC1b · 第四波 4D〕本机宣告的会话 `kind` 既不是 `interactive` 也不是 `bg` ⇒ 记一笔漂移账（记在本机名下）。
+///
+/// 这一笔从前住 `session_map·rs::is_interactive`〔散文墓碑〕（monitor 自己扫 pidfile 时顺手记）；本机判活改由本机后端的帧来之后，
+/// 本机那条流是唯一看得见 `kind` 的地方。**排他 ≠ 无声**（U-CC1）：只记账，不改行为。
+fn book_unknown_local_kind(item: &LocalItem) {
+    if let LocalItem::Frame(InboundFrame::SessionAdded {
+        session_kind: Some(k),
+        ..
+    }) = item
+    {
+        if k != "interactive" && k != "bg" {
+            crate::drift_ledger::record(
+                &crate::origin::Origin::local(),
+                crate::drift_ledger::DriftFace::UnknownSessionKind,
+                k,
+                None,
+            );
+        }
+    }
 }
 
 /// 〔CF1〕本机消费者的**纯分派核**：一件东西 × 「显示 bg 吗」× 「藏起来的 sid」⇒ 怎么处置。
@@ -2727,6 +2885,14 @@ pub(crate) fn local_step(
             hidden.remove(&sid);
             LocalStep::Remove { sid }
         }
+        // 〔FW1〕藏起来的 bg 会话照旧不出声（它的行也不进内容流）。
+        LocalItem::Frame(InboundFrame::SessionFileNotice { sid, path, change }) => {
+            if hidden.contains(&sid) {
+                LocalStep::Skip
+            } else {
+                LocalStep::Notice { sid, path, change }
+            }
+        }
         LocalItem::Frame(_) => LocalStep::Skip,
     }
 }
@@ -2741,7 +2907,9 @@ pub(crate) const LOCAL_STREAM_TAIL_ONLY: bool = true;
 /// 下一条流换新的 —— 与远端「每条连接一套」同形。本机后端重连之后会重新宣告每个活会话，
 /// 旁路快照按续点接着拉（`snapshot_resume`）。
 ///
-/// ⚠ **本机流断不归档会话**（远端那条 `run` 会）：本机会话的起停今天归 `session_map`，本路只改内容行从哪来。
+/// 〔LOC1b · 第四波 4D〕**本机会话的起停也从这条流来**（[`local_lifecycle`] ⇒ `session_map::feed`）；
+/// 流断 ⇒ 本机的活会话与可重连会话一律 `Unseen`（说不清，与远端断连 flush 同一个函数），不归档。
+/// 〔此前这里写「本机流断不归档会话（远端那条 `run` 会）：本机会话的起停今天归 `session_map`」—— 那是本机自己判活的时候。〕
 /// ⚠ 本任务**绝不**等一个经本机通道的应答（快照那几问在分发器的任务里）：读循环可能正停在往本通道送东西上，
 ///   这里要是也等它 ⇒ 互等。
 pub(crate) async fn consume_local(
@@ -2766,6 +2934,25 @@ pub(crate) async fn consume_local(
                 seen = true;
                 replay.origin_seen(&crate::origin::Origin(label.clone()), true);
             }
+            // 〔LOC1b · 4D〕本机起停：先交本机活会话表（它按 `hidden` 滤，而下面 `local_step` 会改 `hidden`）。
+            //   流断那一件先冲掉残批再交（与远端同序：行先落、再说「看不见了」）。
+            book_unknown_local_kind(&item);
+            if matches!(item, LocalItem::StreamEnded) {
+                intake.flush().await;
+            }
+            let local_idle: Vec<String> = if matches!(item, LocalItem::StreamEnded) {
+                let mut v: Vec<String> =
+                    snapshot_idle_for_origin(crate::backend::control::inbound_client::LOCAL_ORIGIN)
+                        .into_iter()
+                        .collect();
+                v.sort();
+                v
+            } else {
+                Vec::new()
+            };
+            if let Some(ev) = local_lifecycle(&item, show_bg, &hidden, &local_idle) {
+                crate::session_map::feed(ev);
+            }
             match local_step(item, show_bg, &mut hidden) {
                 LocalStep::Line {
                     session_id,
@@ -2787,6 +2974,7 @@ pub(crate) async fn consume_local(
                     intake.flush().await;
                     intake.removed(&sid);
                 }
+                LocalStep::Notice { sid, path, change } => intake.notice(&sid, &path, change).await,
                 LocalStep::Skip => {}
                 LocalStep::StreamEnded => {
                     intake.flush().await;
@@ -3186,6 +3374,8 @@ async fn stream_loop(
                 waiting_for,
                 rbind_token,
                 container,
+                // 〔LOC1b〕pid 只给本机那条流用（本机 ↗ 绑窗口）；远端这一支不读。
+                pid: _,
             }) => {
                 // 🔴 〔`设计/80 §8.7` 步 4，第二波 T4〕**记进令牌账本 —— ↗ 从此按它分派。**
                 //
@@ -3506,6 +3696,10 @@ async fn stream_loop(
             // 〔DL1〕经通道 `subscribe`：订了这台 `accounts-changed` 的订阅收一格 `Frame`（原先是一个裸 Tauri 事件）。
             Some(InboundFrame::AccountsChanged) => {
                 replay.accounts_changed(&crate::origin::Origin(host_label.clone()));
+            }
+            // 〔FW1 · 第四波 4D · D-d〕那台一条活会话的记录文件不见了 / 被改过已从头重读 ⇒ 残批先冲、再交那个会话的内容流一格。
+            Some(InboundFrame::SessionFileNotice { sid, path, change }) => {
+                intake.notice(&sid, &path, change).await;
             }
             // 〔U4b · 第四波〕那台的活会话清单报完了 ⇒ 发前端 `origin-sessions-listed`。
             //   与上面 `remote-session-added` 同一条线程、同序 emit ⇒ 前端收到它时，这台全部的活会话都已宣告过。

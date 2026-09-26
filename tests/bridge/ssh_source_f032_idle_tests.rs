@@ -190,13 +190,23 @@ fn the_tmux_cache_has_one_writer_and_only_origin_keys() {
     }
 
     // ③ 本地进表的**前置**必须还在：本地要判得出 `Superseded`。
-    let sm = guard_core::production_code(include_str!("../../src/bridge/src/session_map.rs"));
-    let verb = format!("RemovedSid::{}", "superseded");
+    //   〔LOC1b · 第四波 4D〕判出它的从 monitor 自己那份 diff（`session_map.rs`，已删）换成了**本机后端**
+    //   （`session_removed.cause`，与远端同一格）⇒ 前置改钉「本机那条流把后端说的 cause 原样交出去」：
+    //   本机起停核 `ssh_source::local_lifecycle` 的摘除臂交的是帧上的 `cause`，不是写死的 `Gone`。
+    let ss = guard_core::production_code(include_str!("../../src/bridge/src/ssh_source.rs"));
+    let at = ss
+        .find("pub(crate) fn local_lifecycle(")
+        .expect("找不到本机起停核 —— 本条空转");
+    let body = &ss[at..at + ss[at..].find("\n}\n").expect("函数尾")];
+    let arm = body
+        .find("InboundFrame::SessionRemoved { sid, cause }")
+        .expect("本机起停核里没有摘除那一臂");
+    let arm = &body[arm..body.len().min(arm + 400)];
     assert!(
-        sm.contains(verb.as_str()),
-        "`session_map.rs` 不产 `Superseded` 了，而本地 sid **已经在这张表里**。\n\
+        arm.contains("cause: *cause") && !arm.contains("RemovalCause::Gone"),
+        "本机那条流不再把后端说的 cause 原样交出去了，而本地 sid **已经在这张表里**。\n\
              ⇒ `/branch` 会走 `(Some(<local>), Gone)` = `Idle` ⇒ 「永远消不掉、也 attach 不上的灰点」回来。\n\
-             这正是 F01b 当年那个 bug。刀 0 是刀 1 的硬前置，**不许只回退刀 0**。"
+             这正是 F01b 当年那个 bug。刀 0 是刀 1 的硬前置，**不许只回退刀 0**。\n{arm}"
     );
 }
 
