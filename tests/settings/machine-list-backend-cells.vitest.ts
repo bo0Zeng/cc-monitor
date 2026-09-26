@@ -14,7 +14,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("../../src/config", () => ({ loadConfig: vi.fn(), saveConfig: vi.fn() }));
+vi.mock("../../src/config", () => ({ loadConfig: vi.fn(), patchConfig: vi.fn(), patchConfigFrom: vi.fn() })); // 〔CFG1〕写口换成按键补丁
 vi.mock("@tauri-apps/api/core", () => ({
   Channel: class {
     onmessage: ((v: unknown) => void) | null = null;

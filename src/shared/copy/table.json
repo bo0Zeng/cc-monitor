@@ -12867,6 +12867,16 @@
       "zh": "主题 / 字体 / Claude 配置目录 / 诊断开关",
       "args": []
     },
+    "rsConfig.write.unreadable": {
+      "kind": "error",
+      "zh": "{path} 读不懂（{e}），这次的设置没有存。写回去会把这份文件里别的设置一起盖掉，先把它改成合法的 JSON",
+      "args": ["path", "e"]
+    },
+    "rsConfig.write.notAnObject": {
+      "kind": "error",
+      "zh": "最外层不是一个对象",
+      "args": []
+    },
     "rsLogging.diagnostics.badConfig": {
       "kind": "error",
       "zh": "{path} 读不懂（{e}），诊断设置没有存。写回去会把这份文件里别的设置一起盖掉，先把它改成合法的 JSON",
@@ -16848,6 +16858,46 @@
       "kind": "error",
       "zh": "读不到这项设置：{e}",
       "args": ["e"]
+    },
+    "tabBar.persist.collectionsFailed": {
+      "kind": "error",
+      "zh": "分组没存上，重启后会回到上次存下的分组",
+      "args": []
+    },
+    "tabBar.persist.pinnedFailed": {
+      "kind": "error",
+      "zh": "固定没存上，重启后会回到上次存下的固定",
+      "args": []
+    },
+    "tabBar.persist.orderFailed": {
+      "kind": "error",
+      "zh": "顺序没存上，重启后会回到上次存下的顺序",
+      "args": []
+    },
+    "settings.behavior.saveFailed": {
+      "kind": "error",
+      "zh": "行为设置没存上",
+      "args": []
+    },
+    "keybindings.persist.failed": {
+      "kind": "error",
+      "zh": "快捷键没存上，重启后会回到上次存下的键位",
+      "args": []
+    },
+    "history.star.failed": {
+      "kind": "error",
+      "zh": "星标没改成",
+      "args": []
+    },
+    "history.rename.failed": {
+      "kind": "error",
+      "zh": "标题没改成",
+      "args": []
+    },
+    "history.hide.failed": {
+      "kind": "error",
+      "zh": "隐藏没改成",
+      "args": []
     }
   }
 }

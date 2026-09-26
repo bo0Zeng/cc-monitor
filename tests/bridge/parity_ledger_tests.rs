@@ -86,7 +86,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     ("backend_start", "backend.lifecycle", Side::Both),
     ("backend_stop", "backend.lifecycle", Side::Both),
     ("load_config", "app.config", Side::Both),
-    ("save_config", "app.config", Side::Both),
+    ("patch_config", "app.config", Side::Both), // 〔CFG1〕整份替换的 `save_config` 换成按键补丁，一换一、计数不变 〔散文墓碑〕
     ("get_data_paths", "app.data-paths", Side::Both),
     ("forget_session", "session.forget", Side::Both),
     // 〔U3b〕同一件事的另一半：`forget_session` 把一个会话的重放缓冲全丢，这一条丢到只剩尾巴
