@@ -51,7 +51,7 @@ src/bridge/
     ├── event_replay.rs # F5 重放（v2.6 起出锁 emit、顺序靠前端按 seq 排；非旧「持锁严格按序」）
     ├── history.rs     # 历史浏览器：两级懒加载 + 元数据 + 删除 + resume
     ├── launch.rs      # B14-F41 终端拉起单一入口（wt.exe→PowerShell）+ 远端 ssh 拉起（本地 resume 与 F41/F51/F52/F53 共用）
-    ├── search.rs      # issue #6 历史全文搜索：后台建内存索引 + substring 查询（含远端结果合并）
+    ├── （search.rs 〔LOC1b〕已删：本机全文搜索也问本机后端 `history-search`）
     ├── mcp.rs         # F87 MCP 管理：跨 scope 宽容读 / 只写项目 .mcp.json（SS-14 读写分界）
     ├── panorama_call.rs # 〔RM1c · RM1f〕全景（本机远端同一条）：按 origin 问那台后端的 `panorama` 帧命令（后端经插件口起独立全景小程序）· 撤票
     ├── ssh_source.rs  # russh 远端数据源：连接/鉴权/指纹校验 + 后端流帧解析 + 版本协商 + ssh-config 导入 + 测试连接 + B14-F59 daemonless 降级读取(纯 tail 轮询)
@@ -248,8 +248,10 @@ src/bridge/
 
 改用系统自带 `powershell.exe -NoExit -EncodedCommand <base64>`：**不带 `-NoProfile`** → 加载 profile → 代理 / `cc` 生效；命令体 `if (Get-Command cc) { cc --resume <sid> } else { claude --resume <sid> }`（装了 wrapper 走 `cc`，没装回退 `claude`，回退也在加载了 profile 的真 PowerShell 里）；`-NoExit` 让 claude 退出后窗口保留且 `cc` 可继续用。命令经 `utils::powershell_encoded_command` 编码（UTF-16LE base64）透过 wt.exe / cmd 多层 shell（绕开引号 / `;` 分隔符），并对 `session_id` 做注入校验（仅 `[A-Za-z0-9_-]`，抽成可测试的 `build_resume_ps_command`）。
 
-### `session_map` 双触发（事件 + 2s 心跳）
-仅靠 notify 文件事件不够：用户强杀 claude.exe 时 `~/.claude/sessions/<PID>.json` 不会被 Claude Code 退出 hook 删 → notify 永不触发 → 死 Tab 永远 live。2s 心跳对当前内存中每个 PID 跑 `is_process_alive`，捕获这种"文件还在但进程死了"的状态。
+### ~~`session_map` 双触发（事件 + 2s 心跳）~~ 〔LOC1b · 第四波 4D〕退役
+monitor 不再自己判本机会话活不活：本机活会话表由本机常驻后端的 `session_added` / `session_removed` 帧喂（后端 pidfd 看守 ＋
+Windows 的死亡事件，RT1 F9 真机读数：强杀 claude 之后后端 1 ms 就醒）。这一节原来论证的「强杀时 pidfile 不删 ⇒ 要心跳兜底」
+那一形由后端的进程级看守接住，monitor 那条 2 s 心跳连同 notify 监听一起删了。
 
 ### `bind.rs` 用 marker 字符串而非 PID 反查窗口
 PowerShell 进程**不直接拥有终端窗口**（Windows Terminal 是单独进程；conhost 是另一个进程；VSCode integrated terminal 又是另一个）。`EnumWindows + GetWindowThreadProcessId` 反查 owner 会找到 WT / conhost / VSCode 进程，不会找到 PS 自己。改让 PS 把自己窗口标题改成 unique marker（`ccm-bind-<PID>-<8 字符 GUID>`）+ monitor `EnumWindows` 反查 title `contains(marker)` 是唯一可靠的跨进程握手方式。

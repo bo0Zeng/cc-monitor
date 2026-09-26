@@ -274,7 +274,10 @@ jsonl watcher 与它的第二套游标 / seq 已删，本机会话的行也是�
 
 ## 6. session 探活双重校验（PID + procStart）
 
-`is_session_active(sid)` = `OpenProcess(QUERY_LIMITED) + GetExitCodeProcess == STILL_ACTIVE` + `GetProcessTimes` creation FILETIME 与 sessions/<PID>.json 里 `procStart` 字段（= .NET `DateTime.ToFileTime()` 字符串）100ms 容差比对。
+〔LOC1b · 第四波 4D〕这一格今天住**后端**（本机远端同一份）：`observe/watcher.rs` 宣告前的冒名检查（procStart 逐位相等 / 容差）＋
+`platform/pidwatch`（Linux pidfd · Windows 死亡事件）。monitor 那份 `is_session_active`〔散文墓碑〕（`OpenProcess(QUERY_LIMITED) + GetExitCodeProcess == STILL_ACTIVE`
+＋ `GetProcessTimes` creation FILETIME 与 sessions/<PID>.json 里 `procStart` 字段 100ms 容差比对）随本机判活改由本机后端的帧来删了；
+原则不变：判「同一个进程」要 PID ＋ 启动时刻两样。
 
 **为什么不能松动**：Windows PID 短期复用非常常见。仅靠 STILL_ACTIVE 会把"旧 PID 已被无关进程占用"误判为活跃 session → 僵尸 Tab。
 
