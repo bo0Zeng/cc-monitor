@@ -19,10 +19,16 @@ export type CliWireContainer =
 /** `name` 缺失 = 只有 configDir 没有名字 ⇒ 说不出 `--account` ⇒ §35 短路。 */
 export type CliWireAccount = { kind: "base" } | { kind: "account"; name: string | null };
 
+/** 〔LR2 · R95b〕远端 `ccm` 探测结果的**三态**（Rust 对侧 `launch_wire.rs::WireCcmProbe`，按 `state` 判别）。
+ *  原来这一格是 `caps: string[] | null` 两态，「没探出来」一过线就被说成「没装」（`设计/80 §9.4`）。 */
+export type CliWireCcmProbe =
+  | { state: "installed"; caps: string[] }
+  | { state: "not-installed" }
+  | { state: "unknown"; error: string };
+
 export interface CliRenderRequest {
   isSsh: boolean;
-  /** `null` = 未装 ccm。 */
-  caps: string[] | null;
+  ccm: CliWireCcmProbe;
   action: CliWireAction;
   container: CliWireContainer;
   cwd: string | null;

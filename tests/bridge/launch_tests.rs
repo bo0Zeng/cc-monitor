@@ -251,7 +251,31 @@ fn the_posix_message_states_a_decision_not_a_missing_feature() {
     );
     // 〔CP2b〕原来还要求逐字有「既定设计」（「这是既定设计，不是没做完」那句）。CP1 台账把那句裁成
     //   防御性论证、要删（改·§2.2）；「刻意不替你挑」已经说清这是决定、不是缺口 ⇒ 这一格改认「刻意」那半句
-    //   （上面已判），不再要求「既定设计」。这是 CP1 与本测试的冲突，交主会话拍板（CP2b 记录 §5.3）。
+    //   （上面已判），不再要求「既定设计」。
+    // 〔LR2 · 主会话 4D 裁：按 CP1 裁词改〕那句防御性论证不许回来 —— 零命中，不是「少了一个要求」：
+    //   `设计/91 §2.2`「防御性论证」一类（替自己辩护「这不是没做完」）与 `§2.x` 去 markdown。
+    //   正控：同一把尺子在 CP2b 之前那句原文上必须命中（否则零命中是尺子瞎了）。
+    const DEFENSIVE: &[&str] = &["既定设计", "不是没做完", "**"];
+    let hits = |s: &str| -> Vec<&str> {
+        DEFENSIVE
+            .iter()
+            .copied()
+            .filter(|d| s.contains(d))
+            .collect()
+    };
+    let before_cp2b =
+        "本机不是 Windows：cc-monitor **刻意不替你挑终端模拟器**（会话容器是 tmux）——\
+                       命令已复制，在你自己的 bash 里粘贴执行即可。这是既定设计，不是没做完。";
+    assert_eq!(
+        hits(before_cp2b),
+        DEFENSIVE.to_vec(),
+        "正控：尺子在旧原文上量不出那三样"
+    );
+    assert!(
+        hits(m).is_empty(),
+        "POSIX 那句又带上了防御性论证 / markdown：{:?}\n原文：{m}",
+        hits(m)
+    );
 }
 
 /// ★ U8b **跨轨对拍**：前端匹配的那个标记，必须真的在后端那句话里。

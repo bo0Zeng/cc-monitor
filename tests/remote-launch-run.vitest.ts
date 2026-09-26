@@ -13,7 +13,7 @@ vi.mock("@tauri-apps/api/core", async () => {
   return { invoke: tmuxControlShim(invokeMock, "backend_send_into") };
 });
 vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
-vi.mock("../src/behavior", () => ({ getBehavior: vi.fn().mockResolvedValue({ forceLaunchPayloadRenderer: false }) }));
+// 〔LR2〕原来这里 mock 了 `../src/behavior`（只为那个已删的逃生口 `forceLaunchPayloadRenderer`）；`remote-launch-run.ts` 不再读行为配置。
 
 import { showActionFailureToast } from "../src/error-toast";
 import {
@@ -582,29 +582,23 @@ describe("KR109D3 探不到那一态今天真走得到 —— 判 A 的机检形
     vi.clearAllMocks();
   });
 
-  it("★ 第一环：探测**没探出来**（不是「没装」）⇒ wire 上只剩「拿不到能力集」", () => {
+  it("★ 第一环：探测**没探出来**（不是「没装」）⇒ wire 上是它自己那一态（〔LR2 · R95b〕不再与「没装」同形）", () => {
     // `ctx`/`plan` 由**生产构造口**产（`planAttach`），不手捏 —— 手捏的那份下一次改字段就馊。
     const { ctx, plan } = planAttach("u1-cc");
     const flaky = buildCliRenderRequest(ctx, plan, { state: "unknown", error: "ssh 抖了一下" });
-    // 🔴 这就是 `K-R95` 登记的那个缺口：值那一侧分得开（三态），**线上只有两态**。
-    //    它今天仍然在 ⇒ 「后端拒」这件事**不是只有「真没装」一种来历**。
-    expect(flaky.caps).toBeNull();
-    // 反向锚点：探到了就**不是** null —— 否则上一条是空真（恒 null 照样过）。
+    const notInstalled = buildCliRenderRequest(ctx, plan, { state: "not-installed" });
     const installed = buildCliRenderRequest(ctx, plan, {
       state: "installed",
       version: "9.9.9",
       capabilities: new Set(["tmux"]),
     });
-    expect(installed.caps).not.toBeNull();
-    // ★ 三态里那个 `unknown` **今天还在**。它哪天没了（真的收成两态），
-    //   本条会红 —— 那时第 ⑤ 格才真的只剩幽灵态，`KR109D3` 要回来重判 A/B。
-    //   （`testing.md` 硬规则 11：钉「今天恰好如此」的判据要写清去哪里重新裁定。）
-    const notInstalled = buildCliRenderRequest(ctx, plan, { state: "not-installed" });
-    expect(notInstalled.caps).toBeNull();
-    expect(
-      { unknown: flaky.caps, notInstalled: notInstalled.caps },
-      "wire 上这两态今天同形 —— 它们要是分开了，`K-R95` 那个缺口就补上了，回来重判",
-    ).toEqual({ unknown: null, notInstalled: null });
+    // 〔LR2 · R95b〕这里原来钉的是 `K-R95` 那个缺口「今天还在」（`unknown` 与 `not-installed` 在线上同为 `caps: null`），
+    //   并写着「它们要是分开了，缺口就补上了，回来重判」。补上了：三态一对一过线，`unknown` 带着原话。
+    //   ⇒ 判 A 的前提（「后端拒」不只有「真没装」一种来历）今天由线上第三态直接说出来，不再靠两态同形推。
+    expect(flaky.ccm).toEqual({ state: "unknown", error: "ssh 抖了一下" });
+    expect(notInstalled.ccm).toEqual({ state: "not-installed" });
+    expect(installed.ccm).toEqual({ state: "installed", caps: ["tmux"] });
+    expect(flaky.ccm, "「没探出来」与「没装」在线上又同形了 —— R95b 回潮").not.toEqual(notInstalled.ccm);
   });
 
   it("★★ 第二环：那一态走到生产入口上 ⇒ 落到**后端渲**的那一串，且请求带对的那一格 `outer`", async () => {

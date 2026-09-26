@@ -320,7 +320,7 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   //    `panel.ts` 上游删了它的 import / OS 门常量 / 挂载那几行与「不适用」替身。三处照旧是 `b.el` 与两处
   //    `perMachineFallbackHint`，语义一字未动。
   // 〔AS2 · 4B〕`792 → 793` / `1288 → 1297` / `1301 → 1310`：`panel.ts` 多了资产目录那一行 import 与那一块登记，三处语义一字未动。
-  "src/settings/panel.ts:785": // 〔CP2b〕同上
+  "src/settings/panel.ts:778": // 〔CP2b〕同上 · 〔LR2〕行号 −7：逃生口 forceLaunchPayloadRenderer 那段缓存字段删了
     "`b.el` —— `b` 来自 `this.perMachineBlocks` 数组，元素由各 section 自己建，跨文件",
   // 🔴 〔步 20 · `设计/70 §1.3 C`〕兜底态那块提示的显隐。它的类名是
   //    `skeleton.ts::makeSkeleton` 挂上去的（`settings-hint`），**跨文件** ——
@@ -328,9 +328,9 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   //    ⚠ 顺带说清它安不安全：`settings-hint` 在 `src/styles.css` 里**没有 display 规则**
   //      ⇒ UA 的 `[hidden] { display: none }` 不会被压过，那两句不是空写。
   //      这一条是**人工核过的**，不是这把尺子判的 —— 所以它在登记表里，不在绿里。
-  "src/settings/panel.ts:1289": // 〔CP2b〕行号 −6：字面量进表后几段多行拼接收成一行
+  "src/settings/panel.ts:1282": // 〔CP2b〕行号 −6：字面量进表后几段多行拼接收成一行 · 〔LR2〕再 −7（同上）
     "`this.perMachineFallbackHint` —— 类名由 `skeleton.ts::makeSkeleton` 挂，跨文件",
-  "src/settings/panel.ts:1302": // 〔CP2b〕同上
+  "src/settings/panel.ts:1295": // 〔CP2b〕同上 · 〔LR2〕−7
     "`this.perMachineFallbackHint` —— 同上（兜底态亮出来那一支）",
   // 🔴 〔步 20 · `设计/70 §10.1`〕「足迹」那一块里，本机那一整套的显隐包装。
   //    它**刻意不挂任何类**：只负责显隐、不要样式。挂了类就得在 CSS 里给它写规则
