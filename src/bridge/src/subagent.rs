@@ -123,9 +123,15 @@ impl Backend {
                             &[("machine", &(cfg.origin_label()).to_string())],
                         )));
                     }
-                    return crate::backend::control::frame_query::run_routed(&origin, route)
-                        .await
-                        .map_err(QueryError::transport);
+                    // 〔DL1〕这一件的期限在这里造一次（按行一问 / 读整段各自的值见 `ArgvRoute::budget`），
+                    //   分页读的每一页都拿同一个时刻去等。
+                    let deadline =
+                        crate::backend::control::frame_query::Deadline::within(route.budget());
+                    return crate::backend::control::frame_query::run_routed(
+                        &origin, route, deadline,
+                    )
+                    .await
+                    .map_err(QueryError::transport);
                 }
                 // 〔C4d · 第四波 4B〕认不出的形状从前落到逐次拨号那条路（`run_list_query`〔散文墓碑〕），而那条路的
                 //   放行表 C4c 起就是空的 ⇒ 结局本来就是被拒。主会话 09-25 裁删那条路：这里**当场说**，不拨号、不回落。

@@ -13,9 +13,12 @@ use crate::messages::JsonlRecord;
 use crate::parser::parse_line;
 use crate::ssh_source::RemoteConfig;
 
-/// 读单会话：不设整体超时（会话可能大、合法耗时），总字节上限兜底。
+/// 读单会话：总字节上限兜底。
 /// 〔`C1` · 09-24〕单次读的期限从此是**每一页**的期限（`frame_query` 的 `PAGE_BUDGET`，60s，
 /// 与原来这里的单次 `read_line` 超时同值）；原先那个常量随逐次拨号一起删了。
+/// 〔DL1 订正〕上面两句（「不设整体超时」「每一页的期限」）已不成立：读一整份是一件事、一个总期限
+/// （`frame_query::read_budget(MAX_SESSION_BYTES)`，在 [`stream_read_remote_session`] 里读第一页之前造一次），
+/// 每页不再重新计时（`设计/05 §3.3.2`：「每 59 s 吐一页的对端」从前能拖到无限）。
 ///
 /// ⚠〔audit-0805 F06〕**这里原本还有一句「正常会话毫秒级、远小于上限」——那句今天是假的。**
 /// 实测本机最大会话 **270,103,105 字节 / 92,967 行**（就是那次审计对话本身），
@@ -117,12 +120,18 @@ pub(crate) async fn stream_read_remote_session(
     // 〔U3b〕seq = **可计行号**（同本机那一支，住址 `session_skeleton·rs::LineNumberer`）
     let mut numberer = crate::session_skeleton::LineNumberer::default();
     let mut offset: u64 = 0;
+    // 〔DL1 · `设计/05 §3.3.2`〕读一整份是**一件事**：期限在读第一页之前造一次，每一页都拿同一个时刻去等。
+    //   大小事先不知道 ⇒ 按字节上限给（`frame_query::read_budget(MAX_SESSION_BYTES)`）。
+    let deadline = crate::backend::control::frame_query::Deadline::within(
+        crate::backend::control::frame_query::read_budget(MAX_SESSION_BYTES),
+    );
     loop {
         let page = crate::backend::control::frame_query::read_page(
             &wire_origin,
             &jsonl_path,
             offset,
             None,
+            deadline,
         )
         .await?;
         read_bytes += page.next - offset;

@@ -14570,6 +14570,11 @@
       "zh": "远端 [{origin}] 查询失败（{code}）：{message}",
       "args": ["origin", "code", "message"]
     },
+    "rsFrameQuery.call.overdue": {
+      "kind": "error",
+      "zh": "远端 [{origin}] 没在 {secs} 秒内答完，已停下",
+      "args": ["origin", "secs"]
+    },
     "rsFrameQuery.call.tooOld": {
       "kind": "error",
       "zh": "远端 [{origin}] 的后端太旧，还不认这条查询。重装那台机器的后端就有了",

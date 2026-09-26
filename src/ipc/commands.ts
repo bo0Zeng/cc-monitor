@@ -690,9 +690,10 @@ export const commands = {
 
   /**
    * 〔CF2 · 第四波 4B〕**按行号取一段正文** `[from, until)`（`until` 缺 ＝ 到末尾）—— 不依赖骨架索引的那条取回路。
-   * 唯一调用点：`TabStreamView.fetchBelow`（没接骨架的 tab 往上翻过了账本里最老那一条）。
+   * 调用点：`TabStreamView.fetchBelow`（没接骨架的 tab 往上翻过了账本里最老那一条）· `TabStreamView.recoverFromGap`（会话流丢格之后往后补）。
+   * 〔DL1〕`leftMs`：那一**件**事还剩多少毫秒（`设计/05 §3.3.2` 一件事一个绝对时刻；多问的那一件每问交剩下的，不重新计时）。
    */
-  read_session_lines: (args: { origin: Origin; jsonlPath: string; from: number; until?: number }) =>
+  read_session_lines: (args: { origin: Origin; jsonlPath: string; from: number; until?: number; leftMs: number }) =>
     invoke<SessionLinesPage>("read_session_lines", args),
 
   // 〔CF2 · 第四波 4B〕「接上骨架 ⇒ 重放缓冲只留尾巴」那一条（`replay_keep_tail_only`〔散文墓碑〕）退役：

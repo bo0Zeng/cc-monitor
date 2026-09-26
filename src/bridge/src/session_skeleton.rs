@@ -204,18 +204,29 @@ pub struct SessionLinesPage {
 ///
 /// 解析住 monitor（`parse_line`，ts-rs 类型的来源）—— 与 `frame_query_tests::HELD_BACK` 里 `history-read`
 /// 那一行同一个理由；帧命令本身（`history-lines`）后端出的是可计行原文。
+///
+/// 〔DL1 · `设计/05 §3.3.2`〕`left_ms` 是前端那一**件**事还剩多少（与 `chan/webview.rs::chan_call` 的 `left_ms` 同形：
+/// 跨进程那一段传「还剩多少」，进来立刻换回绝对时刻）。往上翻是一件一问；会话流丢格之后往后补到末尾是一件多问 ——
+/// 前端在那一件开头造一次期限、每问交剩下的（`tab-stream-view.ts::recoverFromGap`），这里不重新计时。
 #[tauri::command]
 pub async fn read_session_lines(
     origin: crate::origin::Origin,
     jsonl_path: String,
     from: u64,
     until: Option<u64>,
+    left_ms: u64,
 ) -> Result<SessionLinesPage, String> {
     origin.route("read_session_lines")?;
     precheck(&jsonl_path)?;
-    let page =
-        crate::backend::control::frame_query::session_lines(&origin, &jsonl_path, from, until)
-            .await?;
+    use crate::backend::control::frame_query::{self, Deadline};
+    let page = frame_query::session_lines(
+        &origin,
+        &jsonl_path,
+        from,
+        until,
+        Deadline::within(std::time::Duration::from_millis(left_ms)),
+    )
+    .await?;
     Ok(lines_page(page, &jsonl_path, &origin))
 }
 

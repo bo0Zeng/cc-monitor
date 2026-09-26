@@ -627,3 +627,428 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
 
 // 〔C4c · 第四波 4B〕`history-record` 应答解释那条判据（`parse_record`〔散文墓碑〕）随发送端删了；同一条口径
 //   「缺一格是契约坏了，**绝不**读成『不在』」搬到 TS 那一侧 `session-reads.ts::decodeRecord`（`tests/session-reads.vitest.ts`）。
+
+// ════════════════════════════════════════════════════════════════════════════
+//  〔DL1 · 第五波〕一件事一个总期限（分页读逐页收紧，不重新计时）
+//
+//  守的要求（`设计/05 §3.3.2`，逐字）：「**一次调用一个绝对时刻**，不是每跳一个 `Duration`」·
+//  「`Duration` 跨跳传递时每一跳都会重新开始计时 —— 那正是病 2 的机制。绝对时刻只能收紧、不能放宽」·
+//  「**造**期限的那一手住调用方」。设计与读数：`调研/第四波记录/DL1.md §2`。
+// ════════════════════════════════════════════════════════════════════════════
+
+use crate::backend::control::inbound_client::{park, BackendHello, InboundClient};
+use tokio::io::AsyncBufReadExt;
+
+/// 一个真 `InboundClient` 接一根内存双工管子，登记在全局表里一个**只有本用例用**的 origin 名下；
+/// 对端（后端）由用例扮演：从管子里读请求行、经 `route_reply` 把应答交回（同生产里读循环做的那一步）。
+fn client_for_test(
+    origin: &str,
+    commands: &[&str],
+) -> (
+    std::sync::Arc<InboundClient>,
+    tokio::io::BufReader<tokio::io::DuplexStream>,
+) {
+    let (mine, theirs) = tokio::io::duplex(64 * 1024);
+    let hello = BackendHello::from_hello_frame(&crate::ssh_source::InboundFrame::Hello {
+        v: 1,
+        build_id: "test".into(),
+        host_arch: "x86_64".into(),
+        claude_dir: "/tmp".into(),
+        homes: vec![],
+        capabilities: vec![],
+        commands: commands.iter().map(|s| s.to_string()).collect(),
+    })
+    .expect("是 Hello 帧");
+    let client = park(mine).into_client(hello);
+    inbound_client::register(origin, client.clone());
+    (client, tokio::io::BufReader::new(theirs))
+}
+
+/// 读对端收到的下一行请求；`within` 内没有 ⇒ `None`。
+async fn next_request(
+    peer: &mut tokio::io::BufReader<tokio::io::DuplexStream>,
+    within: Duration,
+) -> Option<Value> {
+    let mut line = String::new();
+    match tokio::time::timeout(within, peer.read_line(&mut line)).await {
+        Ok(Ok(n)) if n > 0 => Some(serde_json::from_str(line.trim_end()).expect("请求行是 JSON")),
+        _ => None,
+    }
+}
+
+/// 扮演后端：每一页过 `per_page` 才答；`eof_at` 那一页说到头（`None` = 永不到头）。返回答过几页。
+fn serve_pages(
+    client: std::sync::Arc<InboundClient>,
+    mut peer: tokio::io::BufReader<tokio::io::DuplexStream>,
+    per_page: Duration,
+    eof_at: Option<u64>,
+) -> tokio::task::JoinHandle<u64> {
+    tokio::spawn(async move {
+        let mut pages = 0u64;
+        while let Some(req) = next_request(&mut peer, Duration::from_secs(5)).await {
+            if req["cmd"] != "history-read" {
+                continue;
+            }
+            let id = req["id"].as_str().expect("id").to_string();
+            let offset = req["args"]["offset"].as_u64().expect("offset");
+            pages += 1;
+            tokio::time::sleep(per_page).await;
+            let text = format!("page-{pages}\n");
+            let next = offset + text.len() as u64;
+            client.route_reply(
+                &id,
+                true,
+                None,
+                None,
+                Some(json!({"text": text, "next": next, "eof": eof_at == Some(pages)})),
+            );
+            if eof_at == Some(pages) {
+                break;
+            }
+        }
+        pages
+    })
+}
+
+/// D2 ★ **分页读一件事一个总期限**：对端每一页都答、每一页都在「一页」该等的时间之内、永不到头 ⇒
+/// 到**总**期限就停（停在第 ⌈总 / 每页⌉ 页附近），那句话是「没在 N 秒内答完」、N 是这件事当初给的秒数。
+/// 同一个对端在第 2 页说到头 ⇒ 两页的行都拿到（正控：期限没把正常的读掐断）。
+///
+/// 反向：DL1 之前的形状（每页各拿一整份 `PAGE_BUDGET`）在这个对端上**永远不停** —— 外面那层看门狗判它。
+#[tokio::test]
+async fn a_paged_read_stops_at_the_one_deadline_it_was_given() {
+    // ① 永不到头：总期限 1.5 s，每页 300 ms。
+    let origin = Origin("dl1-d2-never-ends".into());
+    let (client, peer) = client_for_test(origin.as_wire_str(), &["history-read"]);
+    let server = serve_pages(client.clone(), peer, Duration::from_millis(300), None);
+    let deadline = Deadline::within(Duration::from_millis(1500));
+    let started = std::time::Instant::now();
+    let got = tokio::time::timeout(
+        Duration::from_secs(10),
+        read_lines(&origin, "/p/s.jsonl", 0, None, deadline),
+    )
+    .await
+    .expect("10 s 还没停 —— 分页读没有总期限（每页重新计时）");
+    let took = started.elapsed();
+    inbound_client::unregister(origin.as_wire_str(), &client);
+    let pages = server.await.expect("对端任务");
+    assert_eq!(
+        got.expect_err("永不到头的读却成功了"),
+        copy_text(
+            "rsFrameQuery.call.overdue",
+            &[("origin", &origin.0), ("secs", &"1".to_string())]
+        ),
+        "到点那句话不对"
+    );
+    assert!(
+        took >= Duration::from_millis(1500) && took < Duration::from_millis(3500),
+        "停的时刻不在总期限附近：{took:?}"
+    );
+    assert!(
+        (4..=6).contains(&pages),
+        "对端答了 {pages} 页 —— 总期限 1.5 s、每页 0.3 s 应当停在第 5 页附近"
+    );
+
+    // ② 正控：第 2 页到头 ⇒ 全拿到。
+    let origin = Origin("dl1-d2-ends".into());
+    let (client, peer) = client_for_test(origin.as_wire_str(), &["history-read"]);
+    let server = serve_pages(client.clone(), peer, Duration::from_millis(50), Some(2));
+    let got = read_lines(
+        &origin,
+        "/p/s.jsonl",
+        0,
+        None,
+        Deadline::within(Duration::from_secs(5)),
+    )
+    .await;
+    inbound_client::unregister(origin.as_wire_str(), &client);
+    assert_eq!(server.await.expect("对端任务"), 2);
+    assert_eq!(
+        got.expect("两页、在期限之内到头"),
+        vec!["page-1".to_string(), "page-2".to_string()]
+    );
+}
+
+/// D3 ★ **期限已经过了 ⇒ 一个字节都不发**（同 `src/ipc/chan.ts`「已经过了 ⇒ 一个字节都不发」）；
+/// 还没过 ⇒ 恰好发一行（正控：同一个对端、同一个读法认得出一行）。
+#[tokio::test]
+async fn an_expired_deadline_sends_nothing() {
+    let origin = Origin("dl1-d3-expired".into());
+    let (client, mut peer) = client_for_test(origin.as_wire_str(), &["history-tail"]);
+    let gone = Deadline::within(Duration::ZERO);
+    let err = tail(&origin, "/p/s.jsonl", 10, gone)
+        .await
+        .expect_err("期限已过却问成了");
+    assert_eq!(
+        err,
+        copy_text(
+            "rsFrameQuery.call.overdue",
+            &[("origin", &origin.0), ("secs", &"0".to_string())]
+        )
+    );
+    assert!(
+        next_request(&mut peer, Duration::from_millis(150))
+            .await
+            .is_none(),
+        "期限已过还是发出去了"
+    );
+
+    // 正控：期限还远 ⇒ 恰好一行、就是这一问。
+    let c = client.clone();
+    let o = origin.clone();
+    let asking = tokio::spawn(async move {
+        tail(
+            &o,
+            "/p/s.jsonl",
+            10,
+            Deadline::within(Duration::from_secs(5)),
+        )
+        .await
+    });
+    let req = next_request(&mut peer, Duration::from_secs(5))
+        .await
+        .expect("期限还远却一行都没发");
+    assert_eq!(req["cmd"], "history-tail");
+    c.route_reply(
+        req["id"].as_str().expect("id"),
+        true,
+        None,
+        None,
+        Some(json!({"total": 3, "tail_from": 0, "split_at": 0, "end": 30})),
+    );
+    assert!(asking.await.expect("task").is_ok());
+    assert!(
+        next_request(&mut peer, Duration::from_millis(150))
+            .await
+            .is_none(),
+        "一问发了不止一行"
+    );
+    inbound_client::unregister(origin.as_wire_str(), &client);
+}
+
+/// D4 ★ **本模块只用、不造**：`Deadline` 的构造恰好一处（`within`），生产段零处另起截止时刻
+/// （`Instant::now() +` 恰好一处且在 `within` 里）；出口函数的签名里零个 `Duration` 形参（期限一律是 `Deadline`）。
+/// 正控：同一识别器在合成语料里认得出一个带 `Duration` 形参的出口、一处多出来的 `now() +`。
+#[test]
+fn this_module_uses_the_deadline_it_is_given_and_never_makes_one() {
+    let prod = guard_core::strip_comment_lines(&guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/frame_query.rs"
+    )));
+    let adds = |code: &str| code.matches("Instant::now() +").count();
+    // 字段是私有的 ⇒ 结构体字面量只可能写在本文件里；`until:` 恰好两处 = 字段定义一处 ＋ 构造一处。
+    let builds = |code: &str| code.matches("until:").count();
+    let duration_params = |code: &str| -> Vec<String> {
+        code.split("pub(crate) async fn ")
+            .skip(1)
+            .filter_map(|f| {
+                let sig = f.split('{').next()?;
+                sig.contains(": Duration")
+                    .then(|| f.split('(').next().unwrap_or("").to_string())
+            })
+            .collect()
+    };
+    assert_eq!(
+        adds(&prod),
+        1,
+        "起算截止时刻的地方不是恰好一处（只许在 `Deadline::within` 里）"
+    );
+    assert_eq!(
+        builds(&prod),
+        2,
+        "`Deadline` 的构造不是恰好一处（`until:` 应是字段定义 ＋ 构造各一处）"
+    );
+    let within = guard_core::find_pinned(&prod, "pub(crate) fn within(")
+        .unwrap_or_else(|e| panic!("`Deadline::within` 不是恰好一处：{e}"));
+    let body = &prod[within..within + prod[within..].find("\n    }\n").expect("within 的函数体")];
+    assert_eq!(adds(body), 1, "那唯一一处起算不在 `within` 里");
+    assert_eq!(
+        duration_params(&prod),
+        Vec::<String>::new(),
+        "这几个出口又收 `Duration` 了 —— 期限得是发起方造好的 `Deadline`"
+    );
+    // 正控
+    let synthetic = "pub(crate) async fn page(o: &Origin, budget: Duration) -> R {\n    let u = Instant::now() + budget;\n}\n";
+    assert_eq!(
+        duration_params(synthetic),
+        vec!["page".to_string()],
+        "识别器认不出 `Duration` 形参"
+    );
+    assert_eq!(adds(synthetic), 1, "识别器认不出 `now() +`");
+}
+
+/// D5 登记表：**造期限的那一手**（`Deadline::within(` 的调用点，按「所在函数」记）。每行写理由。
+/// 多一处 = 又长出一个发起点（进表、写这件事是什么、值给多少）；少一处 = 那件事不再有期限了（或者搬了家没改表）。
+const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
+    (
+        "tasks.rs",
+        "fetch_session_tasks",
+        1,
+        "问一个会话的任务（`tasks-list`）：按行一问，`LINES_BUDGET`",
+    ),
+    (
+        "subagent.rs",
+        "query",
+        1,
+        "远端 subagent 那一问：按行一问（`LINES_BUDGET`）或读整段（分页，`READ_LINES_BUDGET`），值由 `ArgvRoute::budget` 给",
+    ),
+    (
+        "ssh_source.rs",
+        "fetch_snapshot",
+        2,
+        "快照是两件事：先问图（一问，`PAGE_BUDGET`）· 读正文（分页，问图之后按要读的字节数给 `read_budget`）",
+    ),
+    (
+        "remote_history.rs",
+        "stream_read_remote_session",
+        1,
+        "历史浏览器读一整份远端会话（分页）：大小事先不知道 ⇒ 按字节上限给 `read_budget(MAX_SESSION_BYTES)`",
+    ),
+    (
+        "session_skeleton.rs",
+        "read_session_lines",
+        1,
+        "按行号取一段（一次 invoke 一问）：前端交「那一件还剩多少」（`left_ms`），过进程边界在这里换回绝对时刻 —— \
+         造那一件期限的一手在前端（`tab-stream-view.ts` 的往上翻 / 丢格之后往后补）",
+    ),
+];
+
+/// 一份生产段里 `Deadline::within(` 的每一处，按「所在的最近一个 `fn` 名」记账（定义那一行不算）。
+/// 形状照 `dial_host_tests::lives_long_sites`（同一种「按所在函数 × 处数」的登记表）。
+fn deadline_makers(file: &str, prod: &str) -> Vec<(String, String)> {
+    let code = guard_core::strip_comment_lines(prod);
+    let mut out = Vec::new();
+    let mut current_fn = String::new();
+    for line in code.lines() {
+        let t = line.trim_start();
+        if let Some((head, rest)) = t.split_once("fn ") {
+            if head
+                .split_whitespace()
+                .all(|w| matches!(w, "pub" | "pub(crate)" | "async" | "const" | "unsafe"))
+            {
+                current_fn = rest
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .collect();
+            }
+        }
+        for _ in 0..t.matches("Deadline::within(").count() {
+            out.push((file.to_string(), current_fn.clone()));
+        }
+    }
+    out
+}
+
+/// D5 ★ **造期限的调用点 == 登记表**（两向，按所在函数与处数）。
+/// 正控：合成语料里多种一处必被认出、且认对所在函数。
+#[test]
+fn every_deadline_is_made_where_its_job_begins_and_only_there() {
+    let root = crate::guard_support::crate_src_root();
+    let mut got: Vec<(String, String)> = Vec::new();
+    let mut scanned = 0usize;
+    for (path, file_text) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
+        scanned += 1;
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        got.extend(deadline_makers(
+            &rel,
+            &guard_core::production_code(&file_text),
+        ));
+    }
+    assert!(
+        scanned > 100,
+        "只扫到 {scanned} 份 monitor 源码 —— 遍历坏了"
+    );
+    let mut want: Vec<(String, String)> = DEADLINE_MAKERS
+        .iter()
+        .flat_map(|(f, func, n, why)| {
+            assert!(
+                why.chars().count() >= 15,
+                "`{f}::{func}` 没写清这件事是什么"
+            );
+            std::iter::repeat_n((f.to_string(), func.to_string()), *n)
+        })
+        .collect();
+    got.sort();
+    want.sort();
+    assert_eq!(
+        got, want,
+        "造 `Deadline` 的地方与登记的发起点对不上。\n\
+         多出来的 ⇒ 新长了一个发起点：进 `DEADLINE_MAKERS`、写清这件事是什么、值给多少；\n\
+         少了的 ⇒ 那件事不再在开头造期限了（分页读会退回每页重新计时）"
+    );
+    let synthetic = "pub(crate) async fn fetch_x() {\n    let d = frame_query::Deadline::within(PAGE_BUDGET);\n}\n";
+    assert_eq!(
+        deadline_makers("x.rs", synthetic),
+        vec![("x.rs".to_string(), "fetch_x".to_string())],
+        "识别器瞎了 —— 上面那条相等不可信"
+    );
+}
+
+/// D5b ★ **分页读的那两件，期限在翻页循环之外造**（第一页之前一次）—— 造在循环里就是每页重新计时，
+/// 而 D5 按「所在函数 × 处数」数不出这一形（搬进循环处数不变）。
+/// 正控：同一个找法在一份把造期限挪进循环的合成函数上报出来。
+#[test]
+fn paged_jobs_make_their_deadline_before_the_first_page() {
+    // `(源码, 函数头, 翻页循环的起头)`：循环起头取各自生产代码里那一行的原文。
+    let cases: [(&str, &str, &str); 2] = [
+        (
+            include_str!("../../../../src/bridge/src/ssh_source.rs"),
+            "async fn fetch_snapshot(",
+            "'read: for ",
+        ),
+        (
+            include_str!("../../../../src/bridge/src/remote_history.rs"),
+            "async fn stream_read_remote_session(",
+            "\n    loop {",
+        ),
+    ];
+    fn made_after_loop(prod: &str, head: &str, loop_head: &str) -> Result<bool, String> {
+        let at = guard_core::find_pinned(prod, head)?;
+        let rest = &prod[at..];
+        let end = rest[1..]
+            .find("\nasync fn ")
+            .into_iter()
+            .chain(rest[1..].find("\nfn "))
+            .chain(rest[1..].find("\npub"))
+            .min()
+            .map_or(rest.len(), |e| e + 1);
+        let body = guard_core::strip_comment_lines(&rest[..end]);
+        let last_make = body
+            .rfind("Deadline::within(")
+            .ok_or_else(|| format!("`{head}` 里一处造期限都没有"))?;
+        let first_loop = body
+            .find(loop_head)
+            .ok_or_else(|| format!("`{head}` 里找不到翻页循环 `{loop_head}`"))?;
+        Ok(last_make > first_loop)
+    }
+    for (src, head, loop_head) in cases {
+        let prod = guard_core::production_code(src);
+        assert_eq!(
+            made_after_loop(&prod, head, loop_head),
+            Ok(false),
+            "`{head}` 的期限造在翻页循环里（或找不到）—— 每页重新计时回来了"
+        );
+    }
+    let synthetic = "async fn fetch_snapshot(x: u8) {\n    'read: for p in pages {\n        let d = Deadline::within(PAGE_BUDGET);\n    }\n}\n";
+    assert_eq!(
+        made_after_loop(synthetic, "async fn fetch_snapshot(", "'read: for "),
+        Ok(true),
+        "识别器瞎了 —— 上面那条不可信"
+    );
+}
+
+/// D6 分页读的总时限：下界是一页的期限、随字节数单调、在两个字节上限处等于手算的秒数
+/// （历史浏览器 256 MiB ⇒ 60 ＋ 512 = 572 s；快照 512 MiB ⇒ 60 ＋ 1024 = 1084 s）；读整段那一件 == 一次性远端那一趟的天花板。
+#[test]
+fn the_read_budget_grows_with_the_bytes_from_one_page_up() {
+    assert_eq!(read_budget(0), PAGE_BUDGET);
+    assert_eq!(read_budget(1), PAGE_BUDGET + Duration::from_secs(1));
+    assert!(read_budget(10 << 20) < read_budget(11 << 20));
+    assert_eq!(read_budget(256 << 20), Duration::from_secs(572));
+    assert_eq!(read_budget(512 << 20), Duration::from_secs(1084));
+    assert_eq!(READ_LINES_BUDGET, Duration::from_secs(120));
+    assert_eq!(READ_LINES_BUDGET, crate::dial_host::ONE_SHOT_DEADLINE);
+}

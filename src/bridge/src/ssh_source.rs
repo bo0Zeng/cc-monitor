@@ -1275,7 +1275,15 @@ async fn fetch_snapshot(
     let sid = &item.sid;
     let path = &item.path;
     let origin = crate::origin::Origin(host_label.to_string());
-    let plan = frame_query::tail(&origin, path, SNAPSHOT_TAIL_LINES as u64).await?;
+    // 〔DL1 · `设计/05 §3.3.2`〕快照是两件事、各一个期限：先问图（一问，`PAGE_BUDGET`）；
+    //   读正文（分页）在知道要读多少字节之后再造、按大小给（`frame_query::read_budget`），每一页都拿同一个时刻去等。
+    let plan = frame_query::tail(
+        &origin,
+        path,
+        SNAPSHOT_TAIL_LINES as u64,
+        frame_query::Deadline::within(frame_query::PAGE_BUDGET),
+    )
+    .await?;
     // 〔C2 · U3 第 3 件〕断线重连后从续点接着拉（`snapshot_resume` 头注），续点对不上才整份。
     let how = crate::snapshot_resume::plan_read(
         crate::snapshot_resume::cursor_of(&origin, sid).as_ref(),
@@ -1298,10 +1306,17 @@ async fn fetch_snapshot(
     let mut total_bytes: u64 = 0;
     let mut chunk: Vec<JsonlLine> = Vec::with_capacity(SNAPSHOT_CHUNK_LINES);
     let mut cancelled = false;
-    'read: for (from, upto) in walk.segments().to_vec() {
+    let segments = walk.segments().to_vec();
+    let body_bytes: u64 = segments
+        .iter()
+        .map(|(from, upto)| upto.saturating_sub(*from))
+        .sum();
+    let body =
+        frame_query::Deadline::within(frame_query::read_budget(body_bytes.min(SNAPSHOT_MAX_BYTES)));
+    'read: for (from, upto) in segments {
         let mut offset = from;
         while offset < upto {
-            let page = frame_query::read_page(&origin, path, offset, Some(upto)).await?;
+            let page = frame_query::read_page(&origin, path, offset, Some(upto), body).await?;
             total_bytes += page.next - offset;
             if total_bytes > SNAPSHOT_MAX_BYTES {
                 // 防御上限：不再继续拉（完整性校验会把截断判为失败 → toast）。
