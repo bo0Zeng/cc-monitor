@@ -6,6 +6,9 @@
 // （与 launch.rs 的 remote_cmd 双引号/控制字符拒收对齐＝双层防线）。构建失败返回可读原因、不抛。
 
 import { copyText } from "../copy-table";
+// 〔DUP2 · `设计/90 §3` 判据 2〕账号名规则只有一份（`shell_quote_core::account_name_ok`，与建账号的工具 `cc-acct-iso` 逐字同）；
+// 这里读它现生成的那份（`src/generated/judgment-rules.ts`），不手抄。
+import { ACCOUNT_NAME_MAX, accountNameOk } from "../generated/judgment-rules";
 
 const TOOL = "cc-acct-iso";
 
@@ -36,16 +39,15 @@ function sq(s: string): string {
 
 export type NameCheck = { ok: true } | { ok: false; reason: string };
 
-/** 账号名校验：非空、≤64、只含 `[A-Za-z0-9._-]`、不以 `-`/`.` 开头。 */
+/**
+ * 账号名能不能用 —— **按生成物求值的薄壳**（DUP2 · J18）：规则 = `accountNameOk`（生成物），这里只多说一句「空」。
+ *
+ * 〔DUP2〕这里原来手写了一份更宽的规则（放行 `.`、≤64、只禁 `-` / `.` 开头）—— 比建账号的那个工具宽：
+ * 表单放行的名字，工具在终端里拒。今天与工具、与 Rust 那一份（`ccm …` 的 `--account` · 后端 ccm argv）是同一条。
+ */
 export function validateAcctName(name: string): NameCheck {
   if (!name) return { ok: false, reason: copyText("acctDeploy.name.empty") };
-  if (name.length > 64) return { ok: false, reason: copyText("acctDeploy.name.tooLong") };
-  if (!/^[A-Za-z0-9._-]+$/.test(name)) {
-    return { ok: false, reason: copyText("acctDeploy.name.badChars") };
-  }
-  if (name.startsWith("-") || name.startsWith(".")) {
-    return { ok: false, reason: copyText("acctDeploy.name.badStart") };
-  }
+  if (!accountNameOk(name)) return { ok: false, reason: copyText("acctDeploy.name.shape", { max: ACCOUNT_NAME_MAX }) };
   return { ok: true };
 }
 

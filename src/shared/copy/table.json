@@ -5695,20 +5695,10 @@
       "zh": "{label}不能为空",
       "args": ["label"]
     },
-    "acctDeploy.name.badStart": {
+    "acctDeploy.name.shape": {
       "kind": "error",
-      "zh": "账号名不能以「-」或「.」开头",
-      "args": []
-    },
-    "acctDeploy.name.badChars": {
-      "kind": "error",
-      "zh": "账号名只能含字母、数字、点、下划线、连字符",
-      "args": []
-    },
-    "acctDeploy.name.tooLong": {
-      "kind": "error",
-      "zh": "账号名过长（≤64）",
-      "args": []
+      "zh": "账号名不合规。只能用字母、数字、下划线和连字符，以字母或数字开头，最长 {max} 个字符",
+      "args": ["max"]
     },
     "acctDeploy.name.empty": {
       "kind": "error",

@@ -319,11 +319,23 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     what: "账号名（`--account <名>`）",
     // 〔DUP1 子步 8〕Rust 侧接上：`ccm …` 的 `--account` · 后端 ccm argv（此前只靠 quote ＋ 名单成员检查）。
     homes: ["shell-quote-core::account_name_ok"],
-    status: "open",
+    // 〔DUP2 · 主会话 09-26 裁 J18 → 甲〕新建账号表单那一句读生成物（`validateAcctName` 成薄壳：只多说一句「空」）；
+    //   顺带修掉「比 cc-acct-iso 宽」—— 旧的手写规则放行 `.` 与 33–64 位，两根指纹钉它不许回来。
+    status: "generated",
     defs: ["validateAcctName"],
-    needles: [],
-    owner: "主会话拍（DUP1.md §4 ①：新建账号表单逐字反馈 —— 生成物 / 镜像 ＋ 对拍二选一）",
-    why: "TS 那份比建账号的工具宽（放行 `.` 与 33–64 位，建时由那个工具在终端里拒）；Rust 那份与工具逐字同",
+    needles: [
+      { text: "name.length > 64", count: 0 },
+      { text: 'name.startsWith(".")', count: 0 },
+    ],
+    gen: {
+      file: "src/generated/judgment-rules.ts",
+      exports: ["accountNameOk", "ACCOUNT_NAME_PATTERN", "ACCOUNT_NAME_MAX"],
+      importers: ["src/settings/acct-deploy.ts"],
+    },
+    parity: {
+      via: "tests/__fixtures__/identifier-rules.golden.json",
+      tests: ["tests/bridge/backend/control/payload_judgment_rules.rs", "tests/identifier-rules-parity.vitest.ts"],
+    },
   },
   J19: {
     what: "哪些工具名算「展开 = 子会话」（agent 工具）",
@@ -341,11 +353,23 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J16: {
     what: "账号种类的取值集",
     homes: ["acct-core::AUTH_KINDS"],
-    status: "open",
-    defs: ["AUTH_KINDS"],
-    needles: [],
-    owner: "主会话拍（DUP1.md §4 ⑧）",
-    why: "收成品时的白名单，金样 accounts.golden.json 钉着；要一个家可走 generated",
+    // 〔DUP2 · 主会话 09-26 裁 J16 → 甲〕解码白名单与 `AuthKind` 类型都读生成物（`acct_core::AUTH_KINDS` 现生成）；手写字面量两形钉零。
+    status: "generated",
+    defs: [],
+    gone: ["AUTH_KINDS"],
+    needles: [
+      { text: '"subscription", "api-key"', count: 0 },
+      { text: '"subscription" | "api-key"', count: 0 },
+    ],
+    gen: {
+      file: "src/generated/judgment-rules.ts",
+      exports: ["AUTH_KINDS", "AuthKind"],
+      importers: ["src/accounts-decode.ts", "src/accounts.ts"],
+    },
+    parity: {
+      via: "tests/__fixtures__/accounts.golden.json",
+      tests: ["tests/backend/observe/accounts_query_tests.rs", "tests/accounts-decode.vitest.ts"],
+    },
   },
 };
 
@@ -496,6 +520,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     MODEL_NAME_EXTRA: NONE,
     model_name_ok: "J17",
     ACCOUNT_NAME_MAX: NONE,
+    // 〔DUP2〕规则的一部分（放行的标点），现生成进 `judgment-rules.ts`（生成物不是孪生）⇒ NONE。
+    ACCOUNT_NAME_EXTRA: NONE,
     account_name_ok: "J18",
   },
 };

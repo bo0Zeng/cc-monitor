@@ -2,15 +2,26 @@
 import { describe, it, expect } from "vitest";
 import { validateAcctName, buildAcctIsoCmd, deriveAcctIsoDir } from "../../src/settings/acct-deploy";
 
+// 〔DUP2 · J18〕validateAcctName 成了读生成物的薄壳（规则 = `shell_quote_core::account_name_ok`，与建账号的工具逐字同）：
+//   旧的手写规则放行 `.` 与 33–64 位（工具在终端里才拒）⇒ 这两形今天在表单里就拒。
 describe("validateAcctName", () => {
   it("合法名放行", () => {
-    for (const n of ["z", "b", "work", "z.edu", "a_b-c", "A1"]) {
+    for (const n of ["z", "b", "work", "a_b-c", "A1", "a".repeat(32)]) {
       expect(validateAcctName(n)).toEqual({ ok: true });
     }
   });
+  it("空 → 那一句；其余不合规 → 带上界的那一句", () => {
+    expect(validateAcctName("")).toEqual({ ok: false, reason: "账号名不能为空" });
+    expect(validateAcctName("z.edu")).toEqual({
+      ok: false,
+      reason: "账号名不合规。只能用字母、数字、下划线和连字符，以字母或数字开头，最长 32 个字符",
+    });
+  });
   it("空 / 过长 / 非法字符 / 前导符 → 拒并给原因", () => {
     expect(validateAcctName("")).toMatchObject({ ok: false });
-    expect(validateAcctName("a".repeat(65))).toMatchObject({ ok: false });
+    expect(validateAcctName("a".repeat(33))).toMatchObject({ ok: false }); // 〔DUP2〕上界 32（与建号工具同）
+    expect(validateAcctName("z.edu")).toMatchObject({ ok: false }); // 〔DUP2〕`.` 不再放行
+    expect(validateAcctName("_x")).toMatchObject({ ok: false }); // 〔DUP2〕首字符要字母数字
     expect(validateAcctName("a b")).toMatchObject({ ok: false }); // 空格
     expect(validateAcctName("a;rm")).toMatchObject({ ok: false }); // 元字符
     expect(validateAcctName("a$x")).toMatchObject({ ok: false });
