@@ -428,20 +428,20 @@ pub async fn resume_history_session(
 //   `SessionRecordProbe`〔散文墓碑〕）退役：monitor 那一跳只是「转一条 `history-record`、核两格」，后端早已出成品 ⇒
 //   界面经通道直接问（`src/session-reads.ts::probeSessionRecord`，本机与远端同一条路），这里一行都不留。
 
-/// F34：用户自定义 resume 启动命令（设置面板「本地 resume 命令」）。
-/// 拼进 shell 前必须校验——只允许命令名+简单参数形态（字母数字 `-_.` 与空格），
-/// 杜绝 `;`/`|`/`$()` 等注入面。空/纯空白视为未设置。
-fn sanitize_launcher(launcher: Option<&str>) -> Result<Option<String>, String> {
+/// F34：用户自定义 resume 启动命令（设置面板「本地 resume 命令」）。空 / 纯空白 = 没设（用默认启动器，D3 缺省）。
+///
+/// 〔DUP3 · 主会话 09-26 裁 · `INVARIANTS §47` ③〕拼进 PowerShell / bash **之前**过全仓那一张命令片段白名单
+/// `shell_quote_core::launcher_refused_char`（本机远端同一条，`设计/01 §6.8`）。先前这里自己一张白名单（字母数字 `-_.` 空格，
+/// **不许 `/`**）、远端载荷另一张拒绝集、后端 ccm 第三条 —— 那条「不许 `/`」没有自己的理由，是白名单的副产物（DUP2 核过），
+/// 今天路径（`/usr/local/bin/claude`）与家目录下（`~/bin/claude`）都放行。拒就说清是哪一个字符，不静默换成默认。
+fn checked_launcher(launcher: Option<&str>) -> Result<Option<String>, String> {
     let Some(l) = launcher.map(str::trim).filter(|l| !l.is_empty()) else {
         return Ok(None);
     };
-    let valid = l
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ' '));
-    if !valid {
+    if let Some(c) = shell_quote_core::launcher_refused_char(l) {
         return Err(copy_text(
             "rsHistory.launcher.badChars",
-            &[("launcher", &format!("{:?}", l))],
+            &[("launcher", &format!("{l:?}")), ("c", &format!("{c:?}"))],
         ));
     }
     Ok(Some(l.to_string()))
@@ -776,7 +776,7 @@ fn local_launch_choice(
         }
     };
     // F34：设了自定义命令就直接用（不再别名自动检测——用户显式选择优先）
-    if let Some(l) = sanitize_launcher(launcher)? {
+    if let Some(l) = checked_launcher(launcher)? {
         return Ok(LocalLaunchChoice::Fixed(suffix(&l)));
     }
     let def = agent.default_launcher();
@@ -965,7 +965,7 @@ fn render_local_ccm_with(
     let Some(name) = tmux_name.filter(|n| !n.is_empty()) else {
         return Err(NO_TMUX_NAME.to_string());
     };
-    let sanitized = sanitize_launcher(launcher)?;
+    let sanitized = checked_launcher(launcher)?;
     let agent = crate::adapter::active();
     let default_launcher = agent.default_launcher();
     let (sid_owned, cli_action) = match action {

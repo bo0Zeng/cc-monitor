@@ -138,17 +138,13 @@ fn every_business_rejection_is_tagged() {
 /// 那是**调用约定**，不是这一侧的保证：wire 那条路（`launch_wire.rs`）把
 /// `&req.launcher` 原样传了进来，中间没有任何净化。
 ///
-/// # 为什么用「拒绝这几个字符」而不是复用别处的白名单
+/// # 为什么先前用「拒绝这几个字符」、今天换成白名单
 ///
-/// 仓里已有两份 launcher 策略，**各自服务不同的合法形状**：
-/// · TS 的 `sanitizeRemoteLauncher`〔散文墓碑〕：拒 ``[;|&$`<>\r\n]`` ⇒ 回落默认 launcher（〔DUP1〕按 `设计/90 §3` 判据 2 删了 —— 同一字符集、处置却是静默换掉；今天字符集只在本函数）；
-/// · Rust 的 `history::sanitize_launcher`：白名单（字母数字 `- _ .` 空格）⇒ `Err`。
-///
-/// 后者**排掉了 `/`**，而远端 launcher 合法地可以是 `/usr/local/bin/claude`；
-/// 直接复用它会把正当用法判死（**收太紧 = 把一个洞换成一个回归**，第 86 件的教训）。
-/// ⇒ 这里镜像**今天真正管着这条路**的那份策略（TS 那条）的字符集，
-/// 但按本函数的既有惯例**返回 `Err` 而不是静默回落** —— 与 `args` 那一支一致：
-/// 拒绝要让调用方看得见，静默替换会让人以为自己填的生效了。
+/// 先前仓里两份 launcher 策略，**各自服务不同的合法形状**：TS 那份拒绝集（`sanitizeRemoteLauncher`〔散文墓碑〕，〔DUP1〕删了）·
+/// 本机那份白名单（字母数字 `- _ .` 空格 —— **排掉了 `/`**，而远端 launcher 合法地可以是 `/usr/local/bin/claude`）。
+/// 〔DUP3 · 主会话 09-26 裁 · `INVARIANTS §47` ③〕收成**一张**对 POSIX 与 PowerShell 都安全的命令片段白名单
+/// `shell_quote_core::launcher_refused_char`（放行路径与前导 `~/`），本机 · 远端 · 后端 ccm 同一条。
+/// 处置照旧**返回 `Err` 而不是静默回落** —— 与 `args` 那一支一致：拒绝要让调用方看得见，静默替换会让人以为自己填的生效了。
 #[test]
 fn the_launcher_is_refused_when_it_carries_injection_chars() {
     for bad in [
@@ -158,6 +154,13 @@ fn the_launcher_is_refused_when_it_carries_injection_chars() {
         "claude $(id)",
         "claude\nrm -rf /",
         "claude > /etc/passwd",
+        // 〔DUP3〕拒绝集漏掉、白名单拒下的几形（PowerShell 那一边的元字符 · 引号 · glob · 非 ASCII · 不在打头的 `~`）。
+        "claude (x)",
+        "claude {x}",
+        "cla'ude",
+        "claude *",
+        "clé",
+        "a~b",
     ] {
         let r = super::render_payload(&super::PayloadSpec {
             env: &[],
@@ -182,6 +185,8 @@ fn the_launcher_is_refused_when_it_carries_injection_chars() {
         "/usr/local/bin/claude",
         "wsl claude",
         "claude-code.exe",
+        "ccr code",
+        "~/bin/claude --x",
     ] {
         let r = super::render_payload(&super::PayloadSpec {
             env: &[],

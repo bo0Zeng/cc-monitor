@@ -407,14 +407,11 @@ pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
     // 真正的边界在别处：backend 的 `admit`（会话身份）+ 前端执行面（CSP / 能力表）。
     //
     // 字符集当年镜像 TS 的 `sanitizeRemoteLauncher`〔散文墓碑〕（〔DUP1〕那份按 `设计/90 §3` 判据 2 删了：同一字符集、
-    // 处置却是静默换成默认 launcher ⇒ **今天这里是这条判定唯一的家**），按本函数的既有惯例**返回 `Err` 而不是静默回落**：拒绝要让调用方看得见。
-    // ⚠ 刻意**不复用** `history::sanitize_launcher` 的白名单 —— 它排掉了 `/`，
-    // 而远端 launcher 合法地可以是 `/usr/local/bin/claude`（收太紧 = 把一个洞换成一个回归）。
-    if let Some(c) = spec
-        .launcher
-        .chars()
-        .find(|c| matches!(c, ';' | '|' | '&' | '$' | '`' | '<' | '>' | '\n' | '\r'))
-    {
+    // 处置却是静默换成默认 launcher），按本函数的既有惯例**返回 `Err` 而不是静默回落**：拒绝要让调用方看得见。
+    // 〔DUP3 · 主会话 09-26 裁 · `INVARIANTS §47` ③〕这里先前是一张**拒绝集**（`; | & $ \` < > 换行`），本机那条是另一张白名单（不许 `/`）——
+    // 今天两条与后端 ccm 那一格都调全仓那一张命令片段白名单 `shell_quote_core::launcher_refused_char`（本机远端同一条，`设计/01 §6.8`）：
+    // 路径（`/usr/local/bin/claude`）与带参数的片段照放，拒绝集漏掉的 `( ) { } ' " * ? #` 与非 ASCII 从此也拒。
+    if let Some(c) = shell_quote_core::launcher_refused_char(spec.launcher) {
         return Err(refuse(copy_text(
             "rsPayload.launcher.injection",
             &[

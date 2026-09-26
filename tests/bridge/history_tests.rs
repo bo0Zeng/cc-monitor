@@ -2168,21 +2168,40 @@ fn resume_cmd_rejects_injection() {
 }
 
 /// F34：自定义 launcher——合法形态放行、注入面拒绝、空视为未设置。
+/// 〔DUP3 · `INVARIANTS §47` ③〕判定是全仓那一张命令片段白名单（`shell_quote_core::launcher_refused_char`）：
+/// 路径与前导 `~/` 从此放行（先前本机这一份不许 `/`）；拒的那一句说出是哪个字符。正反各一格。
 #[test]
-fn sanitize_launcher_allows_simple_reject_injection() {
-    assert_eq!(sanitize_launcher(None).unwrap(), None);
-    assert_eq!(sanitize_launcher(Some("")).unwrap(), None);
-    assert_eq!(sanitize_launcher(Some("   ")).unwrap(), None);
+fn a_custom_launcher_goes_through_the_one_command_fragment_whitelist() {
+    assert_eq!(checked_launcher(None).unwrap(), None);
+    assert_eq!(checked_launcher(Some("")).unwrap(), None);
+    assert_eq!(checked_launcher(Some("   ")).unwrap(), None);
     assert_eq!(
-        sanitize_launcher(Some("cct")).unwrap().as_deref(),
+        checked_launcher(Some("cct")).unwrap().as_deref(),
         Some("cct")
     );
     assert_eq!(
-        sanitize_launcher(Some(" cc -p 8 ")).unwrap().as_deref(),
+        checked_launcher(Some(" cc -p 8 ")).unwrap().as_deref(),
         Some("cc -p 8")
     );
-    for bad in ["cc; calc", "cc|id", "cc$(id)", "cc`id`", "cc&&x", "cc\"x"] {
-        assert!(sanitize_launcher(Some(bad)).is_err(), "应拒绝: {bad:?}");
+    for good in ["/usr/local/bin/claude", "~/bin/claude --x", "ccr code"] {
+        assert_eq!(
+            checked_launcher(Some(good)).unwrap().as_deref(),
+            Some(good),
+            "真实启动器被拒了：{good:?}"
+        );
+    }
+    for (bad, c) in [
+        ("cc; calc", ';'),
+        ("cc|id", '|'),
+        ("cc$(id)", '$'),
+        ("cc`id`", '`'),
+        ("cc&&x", '&'),
+        ("cc\"x", '"'),
+        ("cc (x)", '('),
+        ("a~b", '~'),
+    ] {
+        let e = checked_launcher(Some(bad)).expect_err(bad);
+        assert!(e.contains(&format!("{c:?}")), "{bad:?}：那一句没说出是哪个字符：{e}");
     }
 }
 

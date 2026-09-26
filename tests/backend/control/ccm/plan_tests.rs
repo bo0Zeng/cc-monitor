@@ -1429,3 +1429,41 @@ fn a_config_dir_from_the_manifest_goes_through_the_full_table() {
         .expect("带 `$` 的配置目录拼进去了（自由文本那一层不拒元字符，全表拒）");
     assert!(e.0.contains("a$b"), "拒了，但没说清是哪个目录：{}", e.0);
 }
+
+/// 〔DUP3 · 主会话 09-26 裁 · `INVARIANTS §47` ③〕`--launcher` 是**命令片段**，过全仓那一张白名单
+/// （`shell_quote_core::launcher_refused_char`，与 monitor 本机 · 远端载荷同一条）—— 先前这一格只拒 NUL / CR / LF。
+/// 正反各一格：真实启动器（带参数 · 路径 · 家目录下）建得出计划；白名单外的字符拒，那一句点出是哪一格、哪一个字符。
+#[test]
+fn a_launcher_is_one_command_fragment_from_the_shared_whitelist() {
+    let build_of = |launcher: &str| {
+        let a: Vec<String> = ["--cwd", "/p", "--launcher", launcher]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        match parse(&a).expect("该解析得动") {
+            Parsed::Opts(o) => build(&o, &env(), &AccountTable::default(), None),
+            other => panic!("{other:?}"),
+        }
+    };
+    for good in [
+        "claude",
+        "ccr code",
+        "/usr/local/bin/claude",
+        "~/bin/claude --x",
+    ] {
+        build_of(good).unwrap_or_else(|e| panic!("真实启动器被拒了：{good:?} ⇒ {}", e.0));
+    }
+    for (bad, c) in [
+        ("claude;rm", ';'),
+        ("cla'ude", '\''),
+        ("$(x)", '$'),
+        ("a~b", '~'),
+        ("clé", 'é'),
+    ] {
+        let e = build_of(bad)
+            .err()
+            .unwrap_or_else(|| panic!("坏启动器拼进去了：{bad:?}"));
+        assert!(e.0.contains("--launcher"), "没说清是哪一格：{}", e.0);
+        assert!(e.0.contains(&format!("{c:?}")), "{bad:?}：没说出是哪个字符：{}", e.0);
+    }
+}
