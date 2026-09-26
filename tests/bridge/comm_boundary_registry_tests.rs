@@ -2474,13 +2474,13 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     // 〔HX2 · 4D〕〔合并 HX2 × 主线 290d8c33〕主线 33 ＋ 1 ⇒ 34：`apikey-reads.ts::writeApikeyKey`（`apikey-key-set`，写 key 从 monitor 那条 Tauri 命令改走通道）；显式给期限。
     // 〔CF2 · 第四波 4B〕`chan.subscribe`（TS，主界面）恰好 1 处：`events.ts::bindEvents` 按 `streams` 订会话内容流
     //    （主窗口每台机器一条、独立窗口一条，都经这一处）。
-    // 〔W5-ALIAS · 第五波先行〕＋1（合并主线 06b5dc08 之后 33 → 34）：`settings/machine-aliases.ts::previewAlias` 一处（别名预览 `ccm-print`，
+    // 〔W5-ALIAS · 第五波先行〕＋1（合并主线 a6b10281 之后 34 → 35；那一拍两边各自写成 34、git 当同一行合了，现打 35）：`settings/machine-aliases.ts::previewAlias` 一处（别名预览 `ccm-print`，
     //    问本机常驻后端「这条别名实际会执行什么」，`设计/71 §2.3`）；显式给期限（`PREVIEW_BUDGET_MS`）。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 34usize),
+            ("chan.call", 35usize),
             ("chan.subscribe", 1usize),
             ("subscribe", 1usize)
         ]
