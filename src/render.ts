@@ -1,4 +1,4 @@
-import { marked } from "marked";
+import { Marked, type MarkedExtension } from "marked";
 import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/common";
 import markedKatex from "marked-katex-extension";
@@ -6,15 +6,10 @@ import "highlight.js/styles/github-dark-dimmed.css";
 import "katex/dist/katex.min.css";
 import { copyText } from "./copy-table";
 
-marked.setOptions({
-  gfm: true,
-  breaks: false,
-});
-
 /**
  * v2.3.1 (issue #1 性能): lazy 模式 ——
- * - **false**（默认 / live 模式）：renderMarkdown 走全功能 pipeline（hljs 同步高亮）
- * - **true**（batch 重放期）：marked + DOMPurify + KaTeX 同步出 HTML，但代码块
+ * - **急**（默认 / live 模式）：renderMarkdown 走全功能 pipeline（hljs 同步高亮）
+ * - **惰**（batch 重放期）：marked + DOMPurify + KaTeX 同步出 HTML，但代码块
  *   hljs **不跑**——留 `<div class="code-block code-pending">` 占位。IntersectionObserver
  *   在卡片进可视区时调 enhanceCard 跑 hljs。
  *
@@ -23,13 +18,12 @@ marked.setOptions({
  * - KaTeX 触发条件严（只有 `$..$` 才会进 markedKatex），多数消息不含 LaTeX 跳过快
  * - markedKatex 是 marked 扩展深度集成的，拆 lazy 复杂度高，收益小
  *
- * P5.5 B 重构：lazy 完全走 caller 参数 `renderMarkdown(md, { lazy })`，删了原
- * setRenderLazyMode + currentLazy 全局 flag。模块内仍用 currentLazy 供 marked
- * code renderer 闭包访问（marked.use renderer 是 module singleton），但用
- * save/restore 模式同步调用栈内 try/finally 严格恢复——SessionViewer / Subagent
- * 不会被 tabs batch 期间错误共享 lazy 状态。
+ * 〔W5-RENDER R3 · `设计/10 §3.5` D3〕急 / 惰是**两个 `Marked` 实例**，各带各的代码块渲染器；
+ * 本模块里零可变状态。原来是一个全局 `marked` ＋ 一个模块级 `currentLazy` 标志、靠
+ * 「同步调用栈里 save / restore」撑着 —— `设计/10 §3.5` D3 逐字「安全性依赖『同步调用栈』这条隐式不变量」。
+ * 两个实例之间没有任何共享的开关，谁先谁后、谁嵌套谁都串不了。
+ * 判据：`tests/render.vitest.ts`「D3」一组（模块顶层零 `let` ＋ 两个实例互不串味）。
  */
-let currentLazy = false;
 
 /**
  * KaTeX 扩展：
@@ -37,12 +31,10 @@ let currentLazy = false;
  * - `nonStandard: true` 才认 `$...$`（默认只认 `\(...\)`，README 示例那是误导）
  * - throwOnError: false → 错误 LaTeX 渲染成红色源码而不是抛异常
  */
-marked.use(
-  markedKatex({
-    throwOnError: false,
-    nonStandard: true,
-  }),
-);
+const KATEX_OPTIONS = {
+  throwOnError: false,
+  nonStandard: true,
+} as const;
 
 /**
  * 代码块渲染：
@@ -56,69 +48,71 @@ marked.use(
 // replay 大量代码块时累积秒级阻塞主线程（鼠标光标卡死的次要根因）。
 // 改为：有显式 lang 才高亮；无 lang 直接转义当 plain text，保持代码块视觉但零开销。
 /**
- * 代码块渲染：
- * - **renderLazyMode = false**：现状路径，hljs 同步高亮
- * - **renderLazyMode = true**：留占位 `<div class="code-block code-pending" data-lang="X">`，
+ * 代码块渲染（两个实例各一个）：
+ * - **急**：现状路径，hljs 同步高亮
+ * - **惰**：留占位 `<div class="code-block code-pending" data-lang="X">`，
  *   `<code class="language-X">` 内是 escape 过的纯文本，等 enhanceCard 时跑 hljs
  *
  * 占位也写完整 code-block / code-bar DOM 结构，让 CSS / 复制按钮立刻能 work。
  */
-marked.use({
-  renderer: {
-    code(token) {
-      const lang = (token.lang ?? "").trim().split(/\s+/)[0];
-      const code = token.text ?? "";
+function codeRenderer(lazy: boolean): MarkedExtension {
+  return {
+    renderer: {
+      code(token) {
+        const lang = (token.lang ?? "").trim().split(/\s+/)[0];
+        const code = token.text ?? "";
 
-      if (currentLazy) {
-        // lazy 路径：转义即可，hljs 留给 enhanceCard
-        const cls = lang ? `language-${lang}` : "";
+        if (lazy) {
+          // lazy 路径：转义即可，hljs 留给 enhanceCard
+          const cls = lang ? `language-${lang}` : "";
+          const langLabel = lang || "text";
+          return (
+            `<div class="code-block code-pending"${lang ? ` data-lang="${escapeHtml(lang)}"` : ""}>` +
+            `<div class="code-bar">` +
+            `<span class="code-lang">${escapeHtml(langLabel)}</span>` +
+            `<button type="button" class="code-copy" data-copy>${copyText("render.codeBlock.copy")}</button>` +
+            `</div>` +
+            `<pre><code class="${cls}">${escapeHtml(code)}</code></pre>` +
+            `</div>`
+          );
+        }
+
+        // 默认路径：同步 hljs
+        let highlighted: string;
+        try {
+          if (lang && hljs.getLanguage(lang)) {
+            highlighted = hljs.highlight(code, {
+              language: lang,
+              ignoreIllegals: true,
+            }).value;
+          } else {
+            // 不再 highlightAuto —— 改为转义后原样输出
+            highlighted = escapeHtml(code);
+          }
+        } catch {
+          highlighted = escapeHtml(code);
+        }
+        const cls = lang ? `language-${lang} hljs` : "hljs";
         const langLabel = lang || "text";
         return (
-          `<div class="code-block code-pending"${lang ? ` data-lang="${escapeHtml(lang)}"` : ""}>` +
+          `<div class="code-block">` +
           `<div class="code-bar">` +
           `<span class="code-lang">${escapeHtml(langLabel)}</span>` +
           `<button type="button" class="code-copy" data-copy>${copyText("render.codeBlock.copy")}</button>` +
           `</div>` +
-          `<pre><code class="${cls}">${escapeHtml(code)}</code></pre>` +
+          `<pre><code class="${cls}">${highlighted}</code></pre>` +
           `</div>`
         );
-      }
-
-      // 默认路径：同步 hljs
-      let highlighted: string;
-      try {
-        if (lang && hljs.getLanguage(lang)) {
-          highlighted = hljs.highlight(code, {
-            language: lang,
-            ignoreIllegals: true,
-          }).value;
-        } else {
-          // 不再 highlightAuto —— 改为转义后原样输出
-          highlighted = escapeHtml(code);
-        }
-      } catch {
-        highlighted = escapeHtml(code);
-      }
-      const cls = lang ? `language-${lang} hljs` : "hljs";
-      const langLabel = lang || "text";
-      return (
-        `<div class="code-block">` +
-        `<div class="code-bar">` +
-        `<span class="code-lang">${escapeHtml(langLabel)}</span>` +
-        `<button type="button" class="code-copy" data-copy>${copyText("render.codeBlock.copy")}</button>` +
-        `</div>` +
-        `<pre><code class="${cls}">${highlighted}</code></pre>` +
-        `</div>`
-      );
+      },
     },
-  },
-});
+  };
+}
 
 // v2.4.3 issue #13: 外链由系统默认浏览器打开。renderer 阶段给 http/https/mailto
 // 链接打 data-external 标记 + target=_blank + rel=noopener noreferrer；main.ts
 // 全局 click delegation 捕获 data-external 调 openUrl(). 相对路径 / 锚点保留
 // 默认行为（默认就是站内导航，无 target）。
-marked.use({
+const LINK_RENDERER: MarkedExtension = {
   renderer: {
     link(token) {
       const href = token.href ?? "";
@@ -133,7 +127,7 @@ marked.use({
       return `<a href="${safeHref}"${titleAttr}>${text}</a>`;
     },
   },
-});
+};
 
 // #71：GFM strikethrough 规范允许**单**波浪号(`~x~`),marked 默认据此把成对单 `~` 之间的字划成
 // `<del>`——静默改内容。触发要**闭合 `~` 贴非空白**(GFM flanking):`见 ~/foo~/bar`、`cd ~/a~/b`、
@@ -142,7 +136,7 @@ marked.use({
 // **`undefined`**(★必须 undefined、**不能 `false`**——marked 的 `use()` 包装只在 `=== false` 时回退内建
 // del、会复活单 `~` 把本修复静默还原)→ 词法器把单 `~` 当普通文本。真·删除线 `~~text~~` 仍渲染。
 // (`~~~` 围栏是块级,由 preprocessMath/marked 代码 tokenizer 处理,不进本行内路径。)
-marked.use({
+const DEL_TOKENIZER: MarkedExtension = {
   tokenizer: {
     del(src: string) {
       // 要求 `~~` 紧邻非空白（GFM:定界符不与内容间留空）,内容非贪婪、结尾非空白。
@@ -156,7 +150,24 @@ marked.use({
       };
     },
   },
-});
+};
+
+/**
+ * 建一个实例：两个实例的扩展与顺序**逐项相同**（KaTeX → 代码块 → 外链 → `del`，与原来全局 `marked.use` 的顺序一致），
+ * 只有代码块渲染器按 `lazy` 分叉。
+ */
+function makeMarked(lazy: boolean): Marked {
+  return new Marked(
+    { gfm: true, breaks: false },
+    markedKatex(KATEX_OPTIONS),
+    codeRenderer(lazy),
+    LINK_RENDERER,
+    DEL_TOKENIZER,
+  );
+}
+
+const EAGER = makeMarked(false);
+const LAZY = makeMarked(true);
 
 export interface RenderMarkdownOptions {
   /** true = lazy hljs（启动 batch 期间用，避免 N 个代码块同步阻塞主线程） */
@@ -257,20 +268,14 @@ export function preprocessMathUnguarded(md: string): string {
 }
 
 export function renderMarkdown(md: string, opts: RenderMarkdownOptions = {}): string {
-  const prevLazy = currentLazy;
-  // P5.5 B 重构：lazy 必须 caller 显式传（不传默认 false）；同步调用栈 save/restore
-  // 防止 marked.use renderer 单例的 closure 看到错误 state。
-  currentLazy = opts.lazy ?? false;
-  try {
-    // F73：数学预处理（多行块公式规整 + \[..\]/\(..\) 翻译）后再交给 marked。
-    const raw = marked.parse(preprocessMath(md), { async: false }) as string;
-    return DOMPurify.sanitize(raw, {
-      USE_PROFILES: { html: true, svg: true, mathMl: true },
-      ADD_ATTR: ["target", "rel", "data-copy", "data-external"],
-    });
-  } finally {
-    currentLazy = prevLazy;
-  }
+  // lazy 必须 caller 显式传（不传默认 false）；〔W5-RENDER R3〕选实例，不再改任何共享状态。
+  const m = opts.lazy ? LAZY : EAGER;
+  // F73：数学预处理（多行块公式规整 + \[..\]/\(..\) 翻译）后再交给 marked。
+  const raw = m.parse(preprocessMath(md), { async: false }) as string;
+  return DOMPurify.sanitize(raw, {
+    USE_PROFILES: { html: true, svg: true, mathMl: true },
+    ADD_ATTR: ["target", "rel", "data-copy", "data-external"],
+  });
 }
 
 /** 纯文本（用户消息保守模式）：转义 + 保留换行 */

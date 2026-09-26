@@ -1,6 +1,8 @@
 // F73（issue #42）：多行块级 LaTeX 公式渲染。preprocessMath 纯函数（规整 + \[..\]/\(..\) 翻译 +
 // 代码保护）+ renderMarkdown 端到端（真 marked+katex，jsdom）。
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   needsMathPreprocess,
   preprocessMath,
@@ -286,5 +288,43 @@ describe("`设计/17 §2.6` preprocessMath 前置闸：快路必须与慢路逐�
     const plain = renderMarkdown("这一段里一个数学记号都没有。");
     expect(plain.includes("katex")).toBe(false);
     expect(plain.includes("这一段里一个数学记号都没有")).toBe(true);
+  });
+});
+
+/**
+ * 〔W5-RENDER R3〕`设计/10 §3.5` D3 逐字：「`currentLazy` 是模块单例，安全性依赖『同步调用栈』这条隐式不变量」。
+ * 修法：急 / 惰是两个 `Marked` 实例，模块里没有任何可变状态可串。
+ * 两格：① 源码顶层零 `let`（剥注释；正控：改之前那一行原文数得出 1）；② 两个实例交错调用互不串味。
+ */
+describe("D3 · 急 / 惰两个实例、模块零可变状态（`设计/10 §3.5`）", () => {
+  /** 剥注释后，数**顶格**（模块顶层）的 `let` 声明。 */
+  const topLevelLets = (src: string): number =>
+    src
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/[^\n]*/g, "")
+      .split("\n")
+      .filter((l) => /^let\s/.test(l)).length;
+
+  it("正控：改之前那一行原文数得出 1，缩进的局部 let 不算", () => {
+    expect(topLevelLets("let currentLazy = false;\nfunction f() {\n  let x = 1;\n}\n")).toBe(1);
+    expect(topLevelLets("// let a = 1;\n/* let b = 2; */\n")).toBe(0);
+  });
+
+  it("src/render.ts 模块顶层零 `let`", () => {
+    const src = readFileSync(resolve(__dirname, "../src/render.ts"), "utf8");
+    expect(src.length, "src/render.ts 读出来是空的 —— 本条会零命中地绿").toBeGreaterThan(1000);
+    expect(topLevelLets(src), "render.ts 又长出了模块级可变状态 —— `设计/10 §3.5` D3").toBe(0);
+  });
+
+  it("交错调用：急路恒同步高亮、惰路恒留占位", () => {
+    const md = "```ts\nconst a = 1;\n```";
+    for (let i = 0; i < 4; i++) {
+      const lazy = renderMarkdown(md, { lazy: true });
+      const eager = renderMarkdown(md);
+      expect(lazy).toContain("code-pending");
+      expect(lazy).not.toContain("hljs");
+      expect(eager).toContain("hljs");
+      expect(eager).not.toContain("code-pending");
+    }
   });
 });

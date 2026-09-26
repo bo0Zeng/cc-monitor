@@ -165,7 +165,6 @@ const UNIT: &[&str] = &[
     "tests/remote-launch-run.vitest.ts",
     "tests/remote-launch.test.ts",
     "tests/render-window.vitest.ts",
-    "tests/render.vitest.ts",
     "tests/resume-presets.vitest.ts",
     "tests/route-parity.vitest.ts",
     "tests/send-into-backend.vitest.ts",
@@ -440,6 +439,7 @@ const SCAN: &[&str] = &[
     "tests/paste-block.vitest.ts",
     "tests/remote-config.vitest.ts",
     "tests/replay-tail-keep.vitest.ts",
+    "tests/render.vitest.ts", // 〔W5-RENDER R3〕由 UNIT 挪来：D3 那一格读 `src/render.ts` 源码（顶层零 `let`）
     "tests/scale1-render-cost.vitest.ts",
     "tests/scale2-height-truth.vitest.ts",
     "tests/scale3-one-screen-gate.vitest.ts",
