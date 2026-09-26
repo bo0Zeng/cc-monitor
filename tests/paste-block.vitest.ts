@@ -46,7 +46,7 @@ describe("三句话是这个组件存在的理由", () => {
       expect(() => buildPasteBlock(spec({ [k]: "" }))).toThrow(
         `PasteSpec.${k}`,
       );
-      expect(() => buildPasteBlock(spec({ [k]: "   " }))).toThrow("三句话");
+      expect(() => buildPasteBlock(spec({ [k]: "   " }))).toThrow("where / how to merge / when it takes effect");
     },
   );
 

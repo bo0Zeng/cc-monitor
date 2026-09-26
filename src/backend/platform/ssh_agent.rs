@@ -9,6 +9,7 @@
 //!
 //! ⚠ Windows 那一臂只在交叉编译上编得过，**零真机读数**。
 
+use copy_core::copy_text;
 use russh::keys::agent::client::{AgentClient, AgentStream};
 
 /// 连上的 agent（两个平台的流类型抹成同一个）。
@@ -31,14 +32,15 @@ pub(crate) async fn connect(sock: Option<&str>) -> Result<Agent, String> {
                 .await
                 .map(AgentClient::dynamic)
                 .map_err(|e| {
-                    format!("连不上界面交过来的 agent 套接字 {path}（agent 没起？）: {e}")
+                    copy_text(
+                        "beSshAgent.connect.givenSocket",
+                        &[("path", &path.to_string()), ("e", &e.to_string())],
+                    )
                 }),
             None => AgentClient::connect_env()
                 .await
                 .map(AgentClient::dynamic)
-                .map_err(|e| {
-                    format!("连不上 SSH_AUTH_SOCK 指的 agent（agent 没起？变量没设？）: {e}")
-                }),
+                .map_err(|e| copy_text("beSshAgent.connect.authSock", &[("e", &e.to_string())])),
         }
     }
     #[cfg(windows)]
@@ -47,11 +49,19 @@ pub(crate) async fn connect(sock: Option<&str>) -> Result<Agent, String> {
         AgentClient::connect_named_pipe(OPENSSH_AGENT_PIPE)
             .await
             .map(AgentClient::dynamic)
-            .map_err(|e| format!("连不上 {OPENSSH_AGENT_PIPE}（agent 未运行？）: {e}"))
+            .map_err(|e| {
+                copy_text(
+                    "beSshAgent.connect.pipe",
+                    &[
+                        ("pipe", &OPENSSH_AGENT_PIPE.to_string()),
+                        ("e", &e.to_string()),
+                    ],
+                )
+            })
     }
     #[cfg(not(any(unix, windows)))]
     {
         let _ = sock;
-        Err("本平台没有 ssh-agent 接法".to_string())
+        Err(copy_text("beSshAgent.connect.unsupported", &[]))
     }
 }

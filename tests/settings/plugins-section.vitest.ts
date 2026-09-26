@@ -36,6 +36,7 @@ import { LOCAL_ORIGIN } from "../../src/backend-policy";
 import type { MarketplaceEntry } from "../../src/settings/plugins-section";
 
 import { REPO_ROOT, srcDirOf } from "../test-support/repo-root";
+import { copyTableTextsIn } from "../test-support/copy-refs.ts";
 function entry(over: Partial<MarketplaceEntry> = {}): MarketplaceEntry {
   return {
     id: "mk",
@@ -80,7 +81,8 @@ describe("P8a-Y2：null 不是 0", () => {
   it("后端漏了理由时**说破**，不假装读到了", () => {
     const t = declaredPluginsText(entry({ declared_plugins: null, declared_error: null }));
     expect(t).toContain("读不到");
-    expect(t).toContain("bug");
+    // 〔CP2b · CP1 裁「改·§2.2」〕原先说「那是个 bug」（把我们的缺陷判断说给用户）→ 说「原因未知」。
+    expect(t).toContain("原因未知");
   });
 });
 
@@ -136,7 +138,9 @@ describe("P8a-Y1：「没有」与「读不到」在界面上分得开", () => {
 });
 
 describe("P8a-Y3：界面不声称安装/启用", () => {
-  const src = readFileSync(resolve(srcDirOf(__dirname), "plugins-section.ts"), "utf8");
+  // 〔CP2b〕界面文字进了文案表：「这份源码说的话」= 源码 ＋ 它经 copyText 取的表条目。
+  const raw = readFileSync(resolve(srcDirOf(__dirname), "plugins-section.ts"), "utf8");
+  const src = [raw, ...copyTableTextsIn(raw)].join("\n");
 
   it("★★ 那几个词一个都不许出现在文案里", () => {
     // ⚠ 只能扫**给用户看的字符串**：模块头注里必须能写「一个写着『已装 39 个插件』的界面
@@ -292,7 +296,7 @@ describe("〔C4b〕plugins-marketplaces 的成品按形状收（`decodeSurvey`�
       ["a-good", "github:o/r", 2],
       ["b-bad", null, null],
     ]);
-    expect(s.entries[1].declared_error).toContain("落点里没有");
+    expect(s.entries[1].declared_error).toContain("插件市场目录里没有");
     expect(decodeSurvey({ entries: [], file_absent: true })).toEqual({ entries: [], file_absent: true });
   });
 

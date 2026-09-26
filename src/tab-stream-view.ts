@@ -45,6 +45,7 @@ import { findInSession, readSessionIndex } from "./session-reads";
 import type { Tab } from "./tab-model";
 import { isResumeOnly } from "./tab-session-state";
 import type { TabStore } from "./tab-store";
+import { copyText } from "./copy-table";
 
 /** 〔U3b〕只问「这条是不是 meta」、不喂任何账的空 sink（骨架按偏移取回**见过**的行时用）。 */
 const NOOP_META: MetaSink = { onBranchRecord: () => {}, onQueueOperation: () => {} };
@@ -148,12 +149,12 @@ export class TabStreamView {
       search: async (query, includeTools) => {
         const t = this.store.tabs.get(sessionId);
         if (!t?.parentPath) {
-          return { available: false, reason: "这个会话的文件位置还没收到", hits: [], total: 0 };
+          return { available: false, reason: copyText("tabStreamView.search.noFile"), hits: [], total: 0 };
         }
         return findInSession(t.origin, t.parentPath, query, includeTools);
       },
       jumpTo: (uuid) => this.jumpInTab(sessionId, streamEl, uuid),
-      unjumpableHint: "这一条还没加载出来 —— 往上翻到更早的消息之后再点",
+      unjumpableHint: copyText("tabStreamView.search.notLoaded"),
     });
     this.finds.set(sessionId, find);
     const inputsEl = find.el;
@@ -1002,11 +1003,11 @@ export class TabStreamView {
       n > 0 || floor === null || floor <= 0
         ? null
         : below.kind === "maybe"
-          ? "↑ 更早的消息 · 上翻加载"
+          ? copyText("tabStreamView.sentinel.more")
           : below.kind === "fetching"
-            ? "↑ 正在取更早的消息…"
+            ? copyText("tabStreamView.sentinel.loading")
             : below.kind === "failed"
-              ? `↑ 更早的消息这次没取回来：${below.reason}`
+              ? copyText("tabStreamView.sentinel.failed", { reason: below.reason })
               : null;
     // 〔`设计/10` 骨架〕接上了 ⇒ 占位本身就是「上面还有」，哨兵退场
     if ((n === 0 && belowText === null) || tab.skeleton) {
@@ -1018,7 +1019,7 @@ export class TabStreamView {
       el.className = "stream-more-above";
       content.prepend(el);
     }
-    el.textContent = n > 0 ? `↑ 还有 ${n} 条更早消息 · 上翻加载` : (belowText ?? "");
+    el.textContent = n > 0 ? copyText("tabStreamView.sentinel.moreCount", { n }) : (belowText ?? "");
   }
 
   /** F40a:virgin 后台 tab 的空闲物化队列(串行;rIC 缺失时 setTimeout 兜底) */

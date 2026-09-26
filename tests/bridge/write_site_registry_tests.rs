@@ -121,7 +121,8 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("session_map.rs", "run_watcher", None, "monitor 自己的会话映射状态"),
     // 〔SR1b · 2026-09-24〕「下载落到用户选的本机路径」那一行摘了（连同它上面那段 09-21 的订正：「本地缓存」那句是假的、
     //    围栏补在开单那一刻）—— 落地那一下随传输台搬进了本机常驻后端（第三层文件管理写面 `control/transfer.rs`），
-    //    monitor 这一侧零写盘；开单时那道本机落点围栏照旧在中继里先判一次（`sftp_pool.rs::transfer_call`）。
+    //    monitor 这一侧零写盘。〔AR1 · V119〕上一版还说「开单时那道本机落点围栏照旧在中继里先判一次
+    //    （`sftp_pool.rs::transfer_call`）」—— FN1 把那一判删了（后端那道也没了，本地那道是它的出声早副本）。
     ("utils.rs", "atomic_write_json", None, "通用原子写原语，调用方各自申报"),
     // 〔FW34 · 第四波 09-24〕文件窗口的书签：锁旁件（空文件，只拿来上锁）＋ 它所在的目录。
     //   书签文件本身走上面那条原子写原语（`filewin/bookmarks.rs::mutate`）。
@@ -140,9 +141,14 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
           它**不是**真相源（真相源永远是「那个口连不连得上」），只在**停**那一步用，\
           且用之前还要过一道 `/proc/<pid>/exe` 的身份核对。\
           没有它，接管来的那个实例按不动「停」——那时按钮就成了一句骗人的话"),
+    // ── 〔NT2 · S1〕起脱离那条载体之前建好后端 stderr 诊断文件那一层目录。**不是安装动作**。
+    ("local_backend_host.rs", "spawn_detached", None,
+     "建 `<monitor 数据目录>/logs/backend/`（`create_dir_all`，只建目录）—— 脱离常驻的本机后端把自己的 stderr 落在\
+          这一层里（后端只 `O_EXCL` 新建文件、不建目录，`src/backend/stderr_log.rs`）。写的是 monitor 自己的日志目录"),
     // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来有 `history.rs::delete_history_session` 一行（**删用户数据**：
     //    本进程 `fs::remove_file` 删 `~/.claude/projects/**` 下的会话文件）。用户裁「只允许后端的文件管理部分写文件」
-    //    也管本机 ⇒ 删历史会话改成后端一条只收 sid 的命令（`files-delete-session`，会话文件围栏唯一的例外），
+    //    也管本机 ⇒ 删历史会话改成后端一条只收 sid 的命令（`files-delete-session`；当时说「会话文件围栏唯一的例外」，
+    //    〔AR1 · V119〕FN1 之后写面已无那道围栏），
     //    本进程一个字节不删 ⇒ 摘行。那条「入口真的过了围栏」的端到端判据随之换成后端那一族与本侧的一致性闸判据。
 ];
 
@@ -446,7 +452,8 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     ("logging.rs", "atomic_replace", Lands::OwnState),
     ("session_map.rs", "run_watcher", Lands::OwnState),
     // 〔SR1b · 2026-09-24〕「下载落到用户选的本机路径」那一行（指名 SR1b 的待收例外）**收了**：
-    //    下载的落地随传输台搬进本机常驻后端（`control/transfer.rs`，第三层文件管理写面，先过会话文件围栏）。
+    //    下载的落地随传输台搬进本机常驻后端（`control/transfer.rs`，第三层文件管理写面；〔AR1 · V119〕当时写「先过会话文件围栏」，
+    //    FN1 之后只过路径解析）。
     // 通用原语：它自己不定落点，调用方各自申报（今天的调用方全是 monitor 自己的状态文件，
     // 下面第 ② 道把「搬走写盘的那几份文件」里调它也算成一处写）。
     ("utils.rs", "atomic_write_json", Lands::OwnState),
@@ -457,6 +464,8 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
         Lands::OwnState,
     ),
     ("local_backend_host.rs", "write_listen_pid", Lands::OwnState),
+    // 〔NT2 · S1〕monitor 自己的日志目录下那一层（后端 stderr 诊断文件住那里）。
+    ("local_backend_host.rs", "spawn_detached", Lands::OwnState),
     // 〔合并 FW34〕文件窗口书签的锁旁件（`<monitor 数据目录>/filewin-bookmarks.json.lock`）——
     //   书签是 monitor 自己的状态（FW34 头注逐字「不是用户文件 ⇒ 不走后端写面」）。
     ("bookmarks.rs", "lock_store", Lands::OwnState),

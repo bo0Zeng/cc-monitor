@@ -526,3 +526,90 @@ fn the_multi_open_judge_lives_in_one_function() {
     );
     assert!(place_fn.contains(extra.as_str()));
 }
+
+// ═══ 〔NT2 · A4〕capture 那一臂：被丢 ⇒ 远端那条通道被关 ═══════════════════════════════════════
+//
+// 守的要求（住址，纪律 19）：`设计/15 §3.2` 第 4 条红线（逐字）「复用后它占掉共享连接一个槽永不释放，局部卡死升级成全局卡死」·
+// `设计/05 §3.3.3`（逐字）「**本地撤单**与**对端撤活**是两件事」。现打与设计：`调研/第四波记录/NT2.md §0.1 旁支 · §1.2`。
+
+/// 一个记账的「写半边」：被关一次记一次。
+struct CountingHalf(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+
+impl super::uses::Closable for CountingHalf {
+    fn close_it(self) -> impl std::future::Future<Output = ()> + Send {
+        async move {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+}
+
+/// A5 ★ 守着写半边的那一层被丢 ⇒ **恰好**发一次关（行为：替身记账；异源：不看源码）；没被丢之前一次都不发（另一向）。
+#[tokio::test]
+async fn dropping_the_guard_closes_the_channel_exactly_once() {
+    let n = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let g = super::uses::CloseOnDrop::new(CountingHalf(n.clone()));
+    for _ in 0..8 {
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(
+        n.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "还攥着就关了"
+    );
+    let _ = g.get();
+    drop(g);
+    for _ in 0..64 {
+        if n.load(std::sync::atomic::Ordering::SeqCst) > 0 {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    for _ in 0..8 {
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(
+        n.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "被丢之后没有恰好发一次关 —— 远端那条通道（与它上面的进程）会留着，本地预算却把格还了"
+    );
+}
+
+/// A5 接线（文本，如实登记：按行为量要真 sshd）：capture 那一臂拿到通道之后**先 `split`、写半边交给守卫**，
+/// exec 走守卫里那一半、收全走读半边；裸通道（`&channel` / `&mut channel`）在那一臂里零处。
+#[test]
+fn the_capture_arm_holds_its_channel_under_the_close_guard() {
+    let src = crate::guard_support::production_code(include_str!("../../src/backend/dial/uses.rs"));
+    let at = guard_core::find_pinned(&src, "Use::Capture => {")
+        .unwrap_or_else(|e| panic!("capture 那一臂不是恰好一处：{e}"));
+    let end = guard_core::find_pinned(&src, "Use::Forward => {")
+        .unwrap_or_else(|e| panic!("forward 那一臂不是恰好一处：{e}"));
+    let arm = &src[at..end];
+    for need in [
+        "channel.split()",
+        "CloseOnDrop::new(wr)",
+        "exec_half(wr.get(),",
+        "collect(&mut rd,",
+    ] {
+        assert_eq!(
+            arm.matches(need).count(),
+            1,
+            "capture 臂里 `{need}` 不是恰好一处"
+        );
+    }
+    for bare in ["exec(&channel", "&mut channel"] {
+        assert_eq!(
+            arm.matches(bare).count(),
+            0,
+            "capture 臂里又拿裸通道干活了：`{bare}`"
+        );
+    }
+    // 正控：同一切法在 stream 臂里看得见裸 exec（识别器没瞎）。
+    let st = guard_core::find_pinned(&src, "Use::Stream => {")
+        .unwrap_or_else(|e| panic!("stream 那一臂不是恰好一处：{e}"));
+    let stream = &src[st..at];
+    assert_eq!(
+        stream.matches("exec(&channel").count(),
+        1,
+        "正控失败：stream 臂里认不出 `exec(&channel`"
+    );
+}

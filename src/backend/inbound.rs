@@ -33,6 +33,7 @@
 //! 坏行只回错误、**绝不结束进程**。
 
 use crate::wire::{Frame, Request};
+use copy_core::copy_text;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -86,11 +87,14 @@ pub const COMMANDS: &[&str] = &[
     "accounts-trust",
     "apikey-key-set",
     "apikey-read",
+    // 〔US1 · 第四波 4D〕界面「这几个号在这台的表里有没有行 · 这台的中转在不在」（成品，界面经 `chan.call` 直接问）。
+    "apikey-routing",
     // 〔AS2 · 第四波 4B · V113〕资产目录（后端自有状态，第四层）：现扫 ＋ 记 · 并进别处的整份。
     "assets-catalog",
     "assets-catalog-merge",
     // 〔AS2〕本机常驻后端沿池里那条 SSH 拉 / 并 / 推远端的目录（事件触发：连上 · 看机器页）。
     "assets-sync",
+    "bus-broadcast",
     "bus-kill",
     "bus-list",
     "bus-send",
@@ -143,6 +147,8 @@ pub const COMMANDS: &[&str] = &[
     "history-user-inputs",
     "kill",
     "launch",
+    // 〔US1 · 第四波 4D〕「这个号这一发走哪、注入什么」（上游选择出成品，`设计/20 §3.2` 那张表搬进后端）。
+    "launch-endpoint",
     // 〔SR1a〕链路四条（`dial/link.rs`）：本机常驻后端替 monitor 持有并复用到各远端的 SSH 连接。
     "link-close",
     "link-credit",
@@ -161,7 +167,12 @@ pub const COMMANDS: &[&str] = &[
     "resolve",
     // 〔AS2〕skill「装到这台」：来源那台读 · 要被写的那一台判（都只读；写经 `files-put`）。
     "skill-install-plan",
+    // 〔SU1 · 第四波 4C · V116〕skill 装记录（第四层）：装完记下写了哪几个 · 卸掉的摘掉。
+    "skill-install-record",
+    // 〔SU1〕这台记着的、从别处装来的 skill · 卸的判定（都只读；删经 `files-delete` 带 `expect`）。
+    "skill-installs",
     "skill-read",
+    "skill-uninstall-plan",
     "tasks-list",
     // 〔SR1b〕传输四条（`control/transfer.rs`）：传输台住本机常驻后端，SFTP 跟其它 SSH 同一条连接。
     "transfer-download",
@@ -251,7 +262,9 @@ where
                     err(
                         &overflow_id,
                         "line_too_long",
-                        &format!("单行超过上限 {MAX_LINE_BYTES} 字节，已整行丢弃"),
+                        &crate::common::contract::malformed(&format!(
+                            "request line over {MAX_LINE_BYTES} bytes, dropped whole"
+                        )),
                     ),
                 )
                 .await;
@@ -405,7 +418,7 @@ async fn handle_line(
                     Ok(res) => res,
                     Err(e) => Err((
                         "handler_panicked".to_string(),
-                        format!("阻塞处理器没能正常结束：{e}"),
+                        copy_text("beInbound.handleLine.internal", &[("e", &e.to_string())]),
                     )),
                 }
             };
@@ -513,8 +526,7 @@ fn dispatch(
                 let _ = replies.try_send(err(
                     &req.id,
                     "not_cancellable",
-                    "这条命令是同步阻塞的（已经在起进程/动 tmux），停不下来 —— \
-                     等它自己的应答，别当它没发生",
+                    &copy_text("beInbound.dispatch.cannotCancel", &[]),
                 ));
                 return Disposition::Done;
             }
@@ -549,13 +561,19 @@ fn dispatch(
                 Run::Builtin => Disposition::Reply(err(
                     &req.id,
                     "unknown_command",
-                    &format!("内建命令 `{other}` 没有在 dispatch 里被处理 —— 这是本后端的 bug"),
+                    &copy_text(
+                        "beInbound.dispatch.unhandled",
+                        &[("other", &other.to_string())],
+                    ),
                 )),
             },
             None => Disposition::Reply(err(
                 &req.id,
                 "unknown_command",
-                &format!("未知命令 `{other}`"),
+                &copy_text(
+                    "beInbound.dispatch.unknown",
+                    &[("other", &other.to_string())],
+                ),
             )),
         },
     }
@@ -637,6 +655,28 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &["agents", "ccm_sid", "id", "live", "target", "unread"],
         takes_input: false,
         run: Run::Blocking(|_r| crate::control::cc_bus::list_for_inbound().map(Some)),
+    },
+    // 〔C4e · 第四波 4C〕广播：列名单（同 `bus-list` 那一个函数）→ 挑在线的 → 逐个投递（同 `bus-send` 那一处起进程）。
+    //   原是 monitor 里的组合；界面改经通道直接说后端（`src/cc-bus-control.ts`），组合收进这一侧（业务解释只有一个家）。
+    //   起子进程并等它们退出 ⇒ 阻塞档，同下面几条。部分投递失败**不整条回错**（成品里逐个列），
+    //   只有「一条都还没发」的那一步（列名单）失败才回码。
+    CommandSpec {
+        name: "bus-broadcast",
+        doc_anchor: Some("#### `bus-broadcast`"),
+        codes: &["invalid_args", "not_installed", "timed_out", "failed"],
+        fields: &[
+            "detail",
+            "error",
+            "failed",
+            "from",
+            "id",
+            "liveness_unknown",
+            "sent",
+            "skipped_offline",
+            "text",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| crate::control::cc_bus::broadcast_for_inbound(&r.args).map(Some)),
     },
     CommandSpec {
         name: "bus-kill",
@@ -828,10 +868,37 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "apikey-read",
         doc_anchor: Some("#### `apikey-read`"),
         codes: &[],
-        fields: &["configured", "masked", "notice", "path", "problem", "rows"],
+        // 〔US1〕`rows` 退出线上：「表里有哪几行」只在这台后端里用（`file_face::rows_at`，三处读者同一份）。
+        fields: &["configured", "masked", "notice", "path", "problem"],
         takes_input: false,
         run: Run::Blocking(|_r| {
             crate::accounts::upstream::file_face::answer_read()
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔US1 · 第四波 4D〕上游选择出的两份成品（`accounts/upstream/endpoint.rs`）。
+    //   阻塞档：读一次凭据文件、装一次表；要注入时在回环上探一次中转（RK1 的差分探针，每发一次读期限）。
+    CommandSpec {
+        name: "launch-endpoint",
+        doc_anchor: Some("#### `launch-endpoint`"),
+        codes: &["bad_args"],
+        fields: &["account", "baseUrl", "listening", "whenDown"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::accounts::upstream::endpoint::answer_launch(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "apikey-routing",
+        doc_anchor: Some("#### `apikey-routing`"),
+        codes: &["bad_args"],
+        fields: &["routed", "running"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::accounts::upstream::endpoint::answer_routing(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -1055,10 +1122,74 @@ pub const REGISTRY: &[CommandSpec] = &[
             "take",
             "target",
             "write",
+            // 〔SU1〕给了 `take` 才有：真要写的那几个的摘要 ＋ 装之前在不在（装完原样交回 `skill-install-record`）。
+            "ledger",
         ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::skill_install::answer_plan(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔SU1 · 第四波 4C · V116〕**skill 卸**（「要，只删装时写进去的文件」）：
+    //   `skill-install-record` 是装记录 `~/.cc-monitor/skill-installs.json` 的写口（第四层；装完记 `add` · 卸掉的摘 `drop`），
+    //   `skill-installs` 列这台记着的 · `skill-uninstall-plan` 在被卸的那一台判（逐文件四态 ＋ 要不要问 ＋ 删哪几个）。
+    //   后两条只读；删经 `files-delete`（CAS）。三条都是阻塞档（读写一份小文件 · 逐个读盘比摘要）。
+    CommandSpec {
+        name: "skill-install-record",
+        doc_anchor: Some("#### `skill-install-record`"),
+        codes: &[
+            "bad_args",
+            "io_failed",
+            "ledger_unreadable",
+            "not_found",
+            "too_large",
+        ],
+        fields: &[
+            "changed",
+            "dir",
+            "files",
+            "name",
+            "op",
+            "paths",
+            "remaining",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::skill_ledger::answer_record(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "skill-installs",
+        doc_anchor: Some("#### `skill-installs`"),
+        codes: &["io_failed", "ledger_unreadable"],
+        fields: &["installs"],
+        takes_input: false,
+        run: Run::Blocking(|r| {
+            crate::skill_install::answer_installs(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "skill-uninstall-plan",
+        doc_anchor: Some("#### `skill-uninstall-plan`"),
+        codes: &[
+            "bad_args",
+            "io_failed",
+            "ledger_unreadable",
+            "needs_consent",
+            "not_found",
+        ],
+        fields: &[
+            "confirm", "delete", "dir", "forget", "name", "rows", "seen", "take",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::skill_install::answer_uninstall_plan(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -1183,7 +1314,9 @@ pub const REGISTRY: &[CommandSpec] = &[
     // 🔴 用户裁「只允许后端的文件管理部分写文件」**只管用户的文件、本机也管** ⇒ monitor 进程
     //   不再直接写用户文件；本机与远端都经这三条（`call(origin, …)`，同一条路）。处理器同住
     //   `control/files_write.rs`（第三层），本文件照旧是那一层唯一的门。阻塞档（同步文件 I/O）。
-    //   `files-delete-session` 是会话文件围栏**唯一的例外**，只收 sid（理由住那个模块的 `delete_session`）。
+    //   `files-delete-session` 只收 sid（理由住那个模块的 `delete_session`）。
+    //   〔AR1 · V119〕上一版说它是「会话文件围栏**唯一的例外**」—— FN1 之后文件管理写面已不设会话文件围栏，
+    //   这一条「只许删会话形状那一份」的限制是它自己的，不是谁的例外。
     CommandSpec {
         name: "files-peek",
         doc_anchor: Some("#### `files-peek`"),
@@ -1904,7 +2037,11 @@ async fn spawn_handler<F, Fut>(
     if lock(&running).contains_key(&id) {
         send(
             &replies,
-            err(&id, "duplicate_id", "同一个 id 还有命令在跑；换一个"),
+            err(
+                &id,
+                "duplicate_id",
+                &crate::common::contract::malformed("a command with this id is still running"),
+            ),
         )
         .await;
         return;
@@ -1960,7 +2097,7 @@ async fn spawn_handler<F, Fut>(
                 .send(err(
                     &id_sup,
                     "handler_panicked",
-                    "命令处理器 panic 了；backend 仍在跑",
+                    &copy_text("beInbound.spawnHandler.crashed", &[]),
                 ))
                 .await;
         }

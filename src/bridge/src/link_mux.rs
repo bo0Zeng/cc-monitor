@@ -31,6 +31,7 @@
 //! - 一条没人读的链路不还信用 ⇒ 后端那一侧停在信号量上，**堵不住**本机那条流上别的东西。
 //! - 上行一次一块：`poll_write` 等上一块的应答回来才收下一块。
 
+use crate::copy_table::copy_text;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -44,11 +45,14 @@ use crate::backend::control::inbound_client::{CallError, InboundClient};
 /// 一次链路命令失败 ⇒ 给人看的那句话。**走共用分流器**（`backend_route`）：链路没有第二条路可回落
 /// （`D11`），但分流规则只许有一份 —— 同 `frame_query` / `cc_bus` 那几个发送端的理由。
 fn said(e: &CallError) -> String {
-    match route_call_error(e, |code, message| {
-        format!("本机后端拒了（{code}）：{message}")
+    match route_call_error(e, |_code, message| {
+        copy_text(
+            "rsLinkMux.said.refused",
+            &[("message", &message.to_string())],
+        )
     }) {
         Routed::NoChannel(s) | Routed::Refused(s) => s,
-        Routed::Done => "链路命令出了内部错误".to_string(),
+        Routed::Done => copy_text("rsLinkMux.said.internal", &[]),
     }
 }
 
@@ -129,9 +133,9 @@ pub(crate) fn deliver_data(link: &str, bytes: Vec<u8>) {
     if now > LINK_WINDOW_BYTES {
         // 对端不守约（在途字节超过了还给它的信用）。**出声并结束这条链路**，不涨内存。
         if let Some(slot) = g.remove(link) {
-            let _ = slot.tx.send(Piece::End(Some(format!(
-                "本机后端在链路 {link} 上发了 {now} 字节却没等信用（窗口 {LINK_WINDOW_BYTES}）—— 协议对不上，链路已断开"
-            ))));
+            let _ = slot
+                .tx
+                .send(Piece::End(Some(copy_text("rsLinkMux.data.noCredit", &[]))));
         }
         tracing::warn!("link_mux: 链路 {link} 超窗（{now} > {LINK_WINDOW_BYTES}），已判坏");
         return;
@@ -218,7 +222,10 @@ impl LinkStream {
         let args = serde_json::json!({ "link": id, "window": LINK_WINDOW_BYTES, "dial": dial });
         if let Err(e) = client.call("link-open", args, budget).await {
             lock().remove(&id);
-            return Err(format!("本机后端没接下这条链路：{}", said(&e)));
+            return Err(copy_text(
+                "rsLinkMux.open.refused",
+                &[("said", &(said(&e)).to_string())],
+            ));
         }
         Ok(LinkStream {
             id,
@@ -334,7 +341,10 @@ impl LinkStream {
         self.flight = None;
         Poll::Ready(match r {
             Ok(inner) => inner,
-            Err(e) => Err(std::io::Error::other(format!("链路上行的任务没跑完：{e}"))),
+            Err(e) => Err(std::io::Error::other(copy_text(
+                "rsLinkMux.flight.unfinished",
+                &[("e", &e.to_string())],
+            ))),
         })
     }
 }
@@ -349,7 +359,7 @@ impl tokio::io::AsyncWrite for LinkStream {
         if self.closed {
             return Poll::Ready(Err(std::io::Error::new(
                 std::io::ErrorKind::BrokenPipe,
-                "链路已经关了",
+                copy_text("rsLinkMux.write.closed", &[]),
             )));
         }
         std::task::ready!(self.poll_flight(cx))?;
@@ -367,7 +377,12 @@ impl tokio::io::AsyncWrite for LinkStream {
                 .call("link-data", args, budget)
                 .await
                 .map(|_| ())
-                .map_err(|e| std::io::Error::other(format!("链路上行没送到：{}", said(&e))))
+                .map_err(|e| {
+                    std::io::Error::other(copy_text(
+                        "rsLinkMux.write.notSent",
+                        &[("said", &(said(&e)).to_string())],
+                    ))
+                })
         }));
         Poll::Ready(Ok(n))
     }
@@ -422,7 +437,10 @@ pub(crate) fn b64_encode(bytes: &[u8]) -> String {
 pub(crate) fn b64_decode(text: &str) -> Result<Vec<u8>, String> {
     let s = text.as_bytes();
     if s.len() % 4 != 0 {
-        return Err(format!("base64 长度 {} 不是 4 的倍数", s.len()));
+        return Err(copy_text(
+            "rsLinkMux.b64.badLength",
+            &[("len", &(s.len()).to_string())],
+        ));
     }
     let val = |c: u8| -> Option<u32> { B64.iter().position(|&x| x == c).map(|p| p as u32) };
     let mut out = Vec::with_capacity(s.len() / 4 * 3);
@@ -430,12 +448,16 @@ pub(crate) fn b64_decode(text: &str) -> Result<Vec<u8>, String> {
     for (qi, q) in s.chunks(4).enumerate() {
         let pad = q.iter().rev().take_while(|&&c| c == b'=').count();
         if pad > 2 || (pad > 0 && qi + 1 != quads) {
-            return Err("base64 补位不在末尾".to_string());
+            return Err(copy_text("rsLinkMux.b64.badPadding", &[]));
         }
         let mut n: u32 = 0;
         for &c in &q[..4 - pad] {
-            let v =
-                val(c).ok_or_else(|| format!("base64 里有字母表外的字符 {:?}", char::from(c)))?;
+            let v = val(c).ok_or_else(|| {
+                copy_text(
+                    "rsLinkMux.b64.badChar",
+                    &[("char", &format!("{:?}", char::from(c)))],
+                )
+            })?;
             n = (n << 6) | v;
         }
         n <<= 6 * pad as u32;

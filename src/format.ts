@@ -11,6 +11,8 @@
  */
 
 /** 输入 ISO 字符串或 unix ms，返回 `hh:mm`（解析失败返原值字符串）。 */
+import { copyText } from "./copy-table";
+
 export function formatTimestampShort(input: string | number): string {
   try {
     const d = typeof input === "number" ? new Date(input) : new Date(input);
@@ -23,7 +25,7 @@ export function formatTimestampShort(input: string | number): string {
 
 /** 输入 unix ms，当天显示 `hh:mm`，跨天显示完整 `yyyy-MM-dd hh:mm`；0/NaN 返 "—"。 */
 export function formatTimestampSmart(ms: number): string {
-  if (!ms) return "—";
+  if (!ms) return copyText("format.formatTimestampSmart.empty");
   try {
     const d = new Date(ms);
     if (Number.isNaN(d.getTime())) return String(ms);

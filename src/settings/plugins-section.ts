@@ -42,6 +42,7 @@ import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { chan } from "../ipc/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
 import type { Origin } from "../ipc/origin";
+import { copyText } from "../copy-table";
 
 /**
  * 一个 marketplace（后端 `plugins_query::MarketplaceEntry`，键名一字不差）。**每个字段读不出就是 `null`，不编默认值。**
@@ -76,7 +77,7 @@ const ENTRY_KEYS = ["declared_error", "declared_plugins", "id", "install_locatio
 export function decodeSurvey(v: unknown): MarketplaceSurvey {
   const bad = (what: string): never => {
     console.warn(`[plugins-section] plugins-marketplaces 的应答形状不对：${what}`);
-    throw new Error("插件市场清单的形状对不上（后端与界面版本不一致？重装那台机器的后端试试）");
+    throw new Error(copyText("plugins.bad.shape"));
   };
   if (v === null || typeof v !== "object" || Array.isArray(v)) return bad("不是一个对象");
   const o = v as Record<string, unknown>;
@@ -108,7 +109,7 @@ export async function fetchSurvey(origin: Origin): Promise<MarketplaceSurvey> {
     const reply = await chan.call(origin, "plugins-marketplaces", body, budget);
     return decodeSurvey(readJson(reply));
   } catch (e) {
-    throw new Error(saidOf(e, "那台机器上的后端版本旧，还读不了插件市场（重装后端之后就有）"));
+    throw new Error(saidOf(e, copyText("plugins.fetchSurvey.oldBackend")));
   }
 }
 
@@ -119,18 +120,18 @@ export async function fetchSurvey(origin: Origin): Promise<MarketplaceSurvey> {
  */
 export function declaredPluginsText(e: MarketplaceEntry): string {
   if (e.declared_plugins === null) {
-    const why = e.declared_error ?? "（没说原因 —— 那是个 bug）";
-    return `读不到插件数：${why}`;
+    const why = e.declared_error ?? copyText("plugins.declared.noReason");
+    return copyText("plugins.declared.unreadable", { why });
   }
-  return `声明 ${e.declared_plugins} 个插件`;
+  return copyText("plugins.declared.count", { declaredPlugins: e.declared_plugins });
 }
 
 /** 更新时间给人看的形态；读不出就说读不出，不填今天。 */
 export function lastUpdatedText(e: MarketplaceEntry): string {
-  if (!e.last_updated) return "更新时间：未记";
+  if (!e.last_updated) return copyText("plugins.updated.unknown");
   const d = new Date(e.last_updated);
-  if (Number.isNaN(d.getTime())) return `更新时间：${e.last_updated}`;
-  return `更新时间：${d.toLocaleString()}`;
+  if (Number.isNaN(d.getTime())) return copyText("plugins.updated.raw", { lastUpdated: e.last_updated });
+  return copyText("plugins.updated.date", { d: d.toLocaleString() });
 }
 
 export class PluginsSection {
@@ -178,17 +179,14 @@ export class PluginsSection {
     // ⚠ 这段话是本页的正题，**不是装饰**：它是「界面不许声称安装/启用」那条 DoD
     // 在用户那一侧的兑现。改它之前先读模块头注。
     hint.textContent =
-      "这一页列出这台机器上登记的 Claude Code marketplace，以及每个 marketplace " +
-      "自己声明的插件数。它回答的是「有哪些插件可以装」，" +
-      "不是「装了哪些 / 启用了哪些」—— 后者今天在盘上没有真相源，" +
-      "与其猜一个数字给你看，不如说清这一点。只读、按需读一次，不后台轮询。";
+      copyText("plugins.build.intro");
     root.appendChild(hint);
 
     const bar = document.createElement("div");
     bar.className = "settings-row";
     const refreshBtn = document.createElement("button");
     refreshBtn.className = "btn";
-    refreshBtn.textContent = "重新读取";
+    refreshBtn.textContent = copyText("plugins.build.reread");
     refreshBtn.addEventListener("click", () => void this.refresh());
     bar.appendChild(refreshBtn);
     root.appendChild(bar);
@@ -210,7 +208,7 @@ export class PluginsSection {
       this.body.textContent = "";
       const err = document.createElement("div");
       err.className = "settings-hint plugins-error";
-      err.textContent = `读不到 marketplace 登记表：${e instanceof Error ? e.message : String(e)}（这不等于「没有」）`;
+      err.textContent = copyText("plugins.refresh.failed", { message: e instanceof Error ? e.message : String(e) });
       this.body.appendChild(err);
       return;
     }
@@ -224,14 +222,14 @@ export class PluginsSection {
       const none = document.createElement("div");
       none.className = "settings-hint plugins-empty";
       none.textContent =
-        "这台机器没有登记任何 marketplace（`~/.claude/plugins/known_marketplaces.json` 不存在）。";
+        copyText("plugins.render.none");
       this.body.appendChild(none);
       return;
     }
     if (survey.entries.length === 0) {
       const none = document.createElement("div");
       none.className = "settings-hint plugins-empty";
-      none.textContent = "登记表在，但里面一个 marketplace 都没有。";
+      none.textContent = copyText("plugins.render.emptyRegistry");
       this.body.appendChild(none);
       return;
     }
@@ -254,10 +252,10 @@ export class PluginsSection {
       const meta = document.createElement("div");
       meta.className = "settings-hint plugins-row-meta";
       meta.textContent = [
-        e.source ? `来源：${e.source}` : "来源：未记",
-        e.install_location ? `落点：${e.install_location}` : "落点：未记",
+        e.source ? copyText("plugins.render.source", { source: e.source }) : copyText("plugins.render.sourceUnknown"),
+        e.install_location ? copyText("plugins.render.location", { path: e.install_location }) : copyText("plugins.render.locationUnknown"),
         lastUpdatedText(e),
-      ].join(" · ");
+      ].join(copyText("plugins.render.sep"));
       row.appendChild(meta);
 
       this.body.appendChild(row);

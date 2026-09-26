@@ -22,7 +22,7 @@ import type { SessionState } from "./tab-session-state";
 
 export interface Tab {
   sessionId: string;
-  /** Batch7-F24：会话类型（"interactive"/"bg"/null=未知视为交互）。bg → ⚙ 标题 + 树状挂宿主后。 */
+  /** Batch7-F24：会话类型（"interactive"/"bg"/null=未知视为交互）。bg → ⚙ 标题（〔BG1〕不再挂树，见 `isBgKind`）。 */
   kind: string | null;
   /** Batch7-F24：bg 任务名（pidfile name 字段）；bg 标题优先用它。 */
   bgName: string | null;
@@ -210,6 +210,17 @@ function projectNameFromCwd(cwd: string): string | null {
 }
 
 /**
+ * 〔BG1 · V125「删掉树」〕「这是不是 bg 会话」在 tab 代码里的**唯一**判法（原先同一条式子散写四处：
+ * 树状落位 · 拖拽块 · `.tab-bg` 类 · 标题）。kind 缺失（旧 CC）恒视为交互。
+ *
+ * 树删了之后按它分叉的只剩两处，都不是 tab 栏：标题的 `⚙`（`computeTitleFor`）与同 sid 两份身份的
+ * 升格（`tabs.ts::ensureTab`）。tab 栏通用代码（落位 · 拖拽 · 集合 · 渲染）零处 —— `tests/bg-flat.vitest.ts`。
+ */
+export function isBgKind(kind: string | null): boolean {
+  return kind !== null && kind !== "interactive";
+}
+
+/**
  * 标题格式（决策见 project_monitor_decisions.md）：
  *   aiTitle 有 + cwd 有 → `[项目] aiTitle`
  *   aiTitle 有 + cwd 无 → `aiTitle`
@@ -236,8 +247,8 @@ export function computeTitleFor(
   // issue #63①:fork 会话在最终标题前加 `↳ ` 血缘徽标——与原会话(同名)区分开。
   const mark = (s: string): string => (forkedFromSessionId ? `↳ ${s}` : s);
   const project = cwd ? projectNameFromCwd(cwd) : null;
-  // Batch7-F24：bg 任务 → ⚙ + 任务名（缩进/⌞ 由 .tab-bg 样式承担）
-  if (kind !== null && kind !== "interactive") {
+  // Batch7-F24：bg 任务 → ⚙ + 任务名（〔BG1〕原先还有缩进 / ⌞ 的 `.tab-bg` 样式，随树一起删了）
+  if (isBgKind(kind)) {
     const base = `⚙ ${bgName ?? aiTitle ?? project ?? sessionId.slice(0, 8)}`;
     return mark(remoteLabel !== null ? `[${remoteLabel}] ${base}` : base);
   }
