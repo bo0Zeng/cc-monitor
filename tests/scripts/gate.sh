@@ -1592,8 +1592,11 @@ deadcode_t0=$(date +%s)
 #    它们「只为与 TS 那份逐字对拍而存在」；文案表立起来之后两侧读同一条表项（`backendPolicy.*`），Rust 副本与逐字对拍一起删了。
 #    ⚠ 现打：本工作树 `w4/cp2b` 的 `cargo check -p monitor --message-format=short | grep -c "never used"` = 23，
 #    与删之前那份 34 条逐行 diff 只差这 11 行（其余 23 条原样在）。本路不跑 gate，这个数是写区外动的，已报备。
-run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 23，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
-         bash -c 'pin=23; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
+# 🔴 **2026-09-26（第四波 4D SH1）：23 → 22，现打，逐条记**：少的那一条是 cc-bus 驾驶舱远端读 `exec_read` 里那句
+#    「value assigned to `overflowed` is never read」—— 那个函数随读面改问后端整个删了。同拍新长的三条零生产调用项
+#    （monitor `tmux.rs::TMUX_LS_FMT` 双写点 · `spawn_managed` 的 async 出口两项）各带 `cfg_attr(not(test), allow(dead_code))` 与理由，不进这个数。
+run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 22，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
+         bash -c 'pin=22; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
 n=$(printf "%s\n" "$out" | grep -c "never used"); \
 printf "%s\n" "$out" | tail -5; \
 if [ "$rc" -ne 0 ]; then printf "deadcode: cargo check 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \
