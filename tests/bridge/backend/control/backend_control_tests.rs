@@ -67,8 +67,8 @@ fn starting_reports_failure_as_failure_and_finished_streams_as_not_running() {
     let src = guard_core::production_code(include_str!(
         "../../../../src/bridge/src/backend/control/backend_control.rs"
     ));
-    let at =
-        guard_core::find_pinned(&src, "pub async fn backend_start(origin: String)").expect("起口不在了");
+    let at = guard_core::find_pinned(&src, "pub async fn backend_start(origin: String)")
+        .expect("起口不在了");
     let body: String = src[at..]
         .lines()
         .skip(1)
