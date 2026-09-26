@@ -231,6 +231,9 @@ pub struct FakeBackend {
     pub committed: std::sync::Arc<std::sync::Mutex<Option<(String, String)>>>,
     /// 〔F9c〕第几块（块号）起按「盘满」那一档拒（演「送到一半断了」）。
     pub refuse_stage_at: Option<u64>,
+    /// 〔FW1〕合成后端的「盘」：完整路径 → 此刻那份文本（没登记的路径 = `text of <path>`）。
+    /// 读交出这一份的摘要，存盘（`files-write-text` / `files-commit-text`）按 CAS 比它 —— 判据改它就是「别人在这期间写了」。
+    pub disk: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, String>>>,
     /// 〔第四波 S4 · Q5〕给了 ⇒ `files-index-rebuild` 的**应答扣住**，等用例放行才回。
     /// 索引照常当场建好（与后端「走完才回」的时序不同，但窗口只看应答什么时候到）——
     /// 判据要在「重走还在飞」那一刻跑一帧，看首建那一行在不在。
@@ -247,7 +250,50 @@ impl FakeBackend {
             chunks: Default::default(),
             committed: Default::default(),
             refuse_stage_at: None,
+            disk: Default::default(),
             hold_rebuild: None,
+        }
+    }
+
+    /// 〔FW1〕合成盘上此刻那一份。
+    fn on_disk(&self, path: &str) -> String {
+        self.disk
+            .lock()
+            .unwrap()
+            .get(path)
+            .cloned()
+            .unwrap_or_else(|| format!("text of {path}"))
+    }
+
+    /// 〔FW1〕CAS 那一关（同后端 `overwrite_text_expecting` 的形状）：`expect.sha256` 必须等于盘上那份的摘要。
+    fn cas(
+        &self,
+        path: &str,
+        args: &serde_json::Value,
+    ) -> Result<
+        (),
+        (
+            bool,
+            Option<String>,
+            Option<String>,
+            Option<serde_json::Value>,
+        ),
+    > {
+        let want = args["expect"]["sha256"].as_str();
+        match want {
+            None => Err((
+                false,
+                Some("bad_args".into()),
+                Some("少了 `expect`".into()),
+                None,
+            )),
+            Some(w) if w != fake_sha256(&self.on_disk(path)) => Err((
+                false,
+                Some("stale".into()),
+                Some(format!("refuse write: {path} 在你打开之后被改过了")),
+                None,
+            )),
+            Some(_) => Ok(()),
         }
     }
 
@@ -464,13 +510,15 @@ impl FakeBackend {
                         return (false, Some(code.into()), Some(format!("{code}：{p}")), None);
                     }
                 }
-                let text = format!("text of {p}");
+                let text = self.on_disk(p);
                 let n = text.len();
                 (
                     true,
                     None,
                     None,
-                    Some(serde_json::json!({ "path": p, "text": text, "bytes": n })),
+                    Some(
+                        serde_json::json!({ "path": p, "text": text, "bytes": n, "sha256": fake_sha256(&text) }),
+                    ),
                 )
             }
             // 〔F7a · 第三波 09-24〕复制：只记下来、不落盘；`root` 里带 `refuse` ⇒ 按围栏那一档拒，
@@ -494,8 +542,34 @@ impl FakeBackend {
             }
             // 〔F2〕写面五条：**只记下来、不落盘**（判据要的是「窗口发了哪一条、参数长什么样」），
             //   `root` 里带 `refuse` 的一律按后端围栏那一档拒（`refused`）。
-            "files-mkdir" | "files-delete" | "files-rename" | "files-chmod"
-            | "files-write-text" => {
+            // 〔FW1〕存盘那一条：先过 CAS（盘上那份 == 打开时那份），过了才记进合成盘、交新摘要。
+            "files-write-text" => {
+                let root = args.get("root").and_then(|v| v.as_str()).unwrap_or("");
+                let rel = args.get("rel").and_then(|v| v.as_str()).unwrap_or("");
+                if root.contains("refuse") {
+                    return (
+                        false,
+                        Some("refused".into()),
+                        Some("refuse write: 围栏".into()),
+                        None,
+                    );
+                }
+                let at = format!("{root}/{rel}");
+                if let Err(e) = self.cas(&at, args) {
+                    return e;
+                }
+                let content = args["content"].as_str().unwrap_or("").to_string();
+                let sha = fake_sha256(&content);
+                let n = content.len();
+                self.disk.lock().unwrap().insert(at.clone(), content);
+                (
+                    true,
+                    None,
+                    None,
+                    Some(serde_json::json!({ "path": at, "bytes": n, "sha256": sha })),
+                )
+            }
+            "files-mkdir" | "files-delete" | "files-rename" | "files-chmod" => {
                 let root = args.get("root").and_then(|v| v.as_str()).unwrap_or("");
                 if root.contains("refuse") {
                     return (
@@ -605,12 +679,17 @@ impl FakeBackend {
                     );
                 }
                 let at = format!("{root}/{rel}");
+                if let Err(e) = self.cas(&at, args) {
+                    return e;
+                }
+                let sha = fake_sha256(&whole);
+                self.disk.lock().unwrap().insert(at.clone(), whole.clone());
                 *self.committed.lock().unwrap() = Some((at.clone(), whole));
                 (
                     true,
                     None,
                     None,
-                    Some(serde_json::json!({ "path": at, "bytes": bytes })),
+                    Some(serde_json::json!({ "path": at, "bytes": bytes, "sha256": sha })),
                 )
             }
             other => (
@@ -971,4 +1050,17 @@ pub async fn settle(board: &crate::filewin::find::SearchBoard, before: u64, who:
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
     panic!("{who}：等了 3 秒那块板子还是没有新答案（rounds 仍是 {before}）");
+}
+
+/// 〔FW1〕合成后端的「摘要」：64 位小写十六进制、内容不同就不同（判据只要这两条；窗口把它当不透明令牌）。
+/// 不是 SHA-256 —— 窗口从不自己算，算法对不对由后端那一侧的判据对拍 `sha2`。
+pub fn fake_sha256(text: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    (0..4u8)
+        .map(|salt| {
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            (salt, text).hash(&mut h);
+            format!("{:016x}", h.finish())
+        })
+        .collect()
 }

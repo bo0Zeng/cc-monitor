@@ -756,3 +756,40 @@ async fn tap_and_lines_never_cross_into_each_others_subscriptions() {
     assert_eq!(to(1), vec![("line", 0, 0), ("line", 1, 1)]);
     assert_eq!(to(2), vec![("tap", 0, 0)]);
 }
+
+/// 〔FW1 · 第四波 4D · D-d〕记录文件的出声交给**订了那台 / 那一个会话**的实时订阅，占 credit、原位 `Gap` 与行同一套；
+/// 别的机器 / 别的会话的订阅收不到；不进留存（就绪点之后才订的那条，拿不到之前那一句）。
+#[tokio::test]
+async fn a_session_file_notice_goes_to_the_subscribers_of_that_session_only() {
+    let (r, rec) = hub();
+    r.origin_seen(&local(), true);
+    r.subscribe("w", 1, &local(), "session-lines", None, 10);
+    r.subscribe("w", 2, &local(), "session-lines/other", None, 10);
+    r.subscribe(
+        "w",
+        3,
+        &crate::origin::Origin("far".into()),
+        "session-lines",
+        None,
+        10,
+    );
+    r.ready_point(None).await;
+    rec.clear();
+    r.on_session_notice(crate::bridge::SessionFileNoticePayload {
+        session_id: "s".into(),
+        origin: crate::origin::LOCAL.into(),
+        path: "/p/s.jsonl".into(),
+        change: "gone".into(),
+    })
+    .await;
+    let got = rec.all();
+    assert_eq!(got.len(), 1, "不是恰好交给订了本机整台的那一条：{got:?}");
+    match &got[0] {
+        WItem::Frame { body, .. } => {
+            let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
+            assert_eq!(v["file_notice"]["session_id"], "s");
+            assert_eq!(v["file_notice"]["change"], "gone");
+        }
+        other => panic!("{other:?}"),
+    }
+}

@@ -169,14 +169,13 @@ fn write_at(path: &Path, kill: bool) -> Result<(), String> {
             &[("path", &(path.display()).to_string())],
         )
     })?;
-    if let Err(e) = std::fs::create_dir(dir) {
-        if e.kind() != std::io::ErrorKind::AlreadyExists {
-            return Err(copy_text(
-                "beExitPolicy.writeAt.mkdirFailed",
-                &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
-            ));
-        }
-    }
+    // 〔HX1〕只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。
+    crate::own_dir::ensure_private_dir(dir).map_err(|e| {
+        copy_text(
+            "beExitPolicy.writeAt.mkdirFailed",
+            &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
+        )
+    })?;
     let tmp = dir.join(format!("{FILE_NAME}.{}.tmp", std::process::id()));
     let result = (|| {
         let mut f = std::fs::OpenOptions::new()

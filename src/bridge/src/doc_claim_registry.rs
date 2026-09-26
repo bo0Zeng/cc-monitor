@@ -170,9 +170,9 @@ const MEASURE_CENSUS: &[(&str, MeasureShape, Verdict, &str)] = &[
     ),
     (
         "monitor-backend-observe-landed",
-        MeasureShape::PinsTheOneResident,
+        MeasureShape::LineHasResidents,
         Verdict::Holds,
-        "〔`K-R71` 09-12 按 `R29` 裁定一从裸 `is_dir()` 收窄成钉住那个唯一的读面传输〕。         代价与 `control/` 那格逐字相同。⚠ **`K-R73` 一个字都没动它**",
+        "〔`K-R71` 09-12 按 `R29` 裁定一从裸 `is_dir()` 收窄成钉住那个唯一的读面传输〕。         〔LOC1a 09-25〕那个唯一住户（`local_query.rs`〔散文墓碑〕）随本机读面改走 `<local>` 长连接删了 ⇒          改成与 `platform/` 同形的量法（目录在 ∧ 真有住户），空壳 `mod.rs` 不算",
     ),
     (
         "monitor-backend-platform-landed",
@@ -364,10 +364,12 @@ const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
     // （本文件那个测试模块**里面**的字面量剥得掉 —— 同文件别处几处带本机数据目录名的串就在
     //  里面、从来没被数进去过；剥不掉的恰恰是模块**外面**的这三张表。这个不对称是全部成因。）
     // ⇒ 这张表里的每一个锚点，都要按「它会被全仓的字面量计数判据看见」来挑。
+    // 〔HX1 · 4D〕`Asserts` → `Quotes`：那一条是**发版记录**（说的是它那一版发出去时读几个键 —— 那时确实两个），
+    //   `ANTHROPIC_BASE_URL` 那个第三键进来之后它照旧是真的历史；改写发版记录去追今天的计数不对。当下的断言住 INVARIANTS / IPC-PROTOCOL。
     (
         "CHANGELOG.md",
         "绝不回传整个环境快照 —— 那里面有用户全部的密钥类环境变量",
-        EnvKeyClaim::Asserts,
+        EnvKeyClaim::Quotes,
     ),
     // ── 在引述那句话本身的那几份（逐字带着旧说法是故意的）────────────────
     (

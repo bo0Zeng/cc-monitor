@@ -1,69 +1,37 @@
-//! G6（branch-anywhere）：**远端分叉** —— monitor 侧。
+//! G6（branch-anywhere）：**分叉** —— monitor 侧（本机与远端同一条路）。
 //!
-//! 本地分叉从前在 `history::create_branch_session`（读本机 jsonl、写本机新文件）；
-//! 〔RW1 · 第四波 09-24〕今天本机那一支也在本模块（[`create_local_branch_session`]：exec 本机后端 `--fork-session`），
-//! 与远端同一条子命令、同一份结果解释 —— 差别只剩「在哪台机器上起那个后端」。
-//! 远端会话的 jsonl 在**另一台机器上**，monitor 够不着 —— 所以远端这条路是
-//! 「经 ssh 让后端自己在那台机器上分叉」，monitor 只收结果。
+//! 〔LOC1a · 第四波 4D〕两支**连传输都是同一条**：问那台机器常驻后端的帧命令 `session-fork {sid, uuid}`
+//! （本机 = `<local>` 长连接，远端 = 那台的长连接），后端就地读 → `branch-core` 变换 → `O_EXCL` 新建
+//! （`src/backend/control/fork_write.rs`，与 CLI `--fork-session` 同一份本体），monitor 只按形状收结果。
+//! 此前本机那一支每次 exec 一个本机后端（`local_query`〔散文墓碑〕）、远端那一支经拨号链路 capture exec
+//! `--fork-session` 再解 stdout / stderr / 退出码（`interpret_fork_exec`〔散文墓碑〕）—— 两条都删了（`设计/05 §14.6`）。
 //!
 //! # 为什么另起一个模块，而不是塞进 `remote_history.rs`
 //!
-//! 那个模块的头注写着「只读铁律（INVARIANT § 1）：本模块只读远端」。分叉在远端**写**了
+//! 那个模块的头注写着「只读铁律（INVARIANT § 1）：本模块只读远端」。分叉在那台机器上**写**了
 //! 一个新文件 —— 虽然是纯新增（见 INVARIANTS §1 里 F62/G6 那两段澄清），但把它塞进一个
 //! 自称只读的模块里，等于让那句头注开始说谎。**注释撒谎比没有注释更贵**，所以分家。
 //!
-//! # 契约（与 backend `fork_write.rs` 对表；发版后冻结、已知会 aterm）
+//! # 契约（帧命令，与后端 `fork_write.rs::answer_wire_at`（宿主壳 `fork_face.rs::answer`）对表）
 //!
 //! ```text
-//! <backend> --fork-session <source-sid> <message-uuid>
-//!   成功: exit 0 + stdout 一行 {"sessionId":"…","jsonlPath":"…"}
-//!   失败: exit 2 + stderr 一行 {"code":"…","message":"…"}
+//! → {"cmd":"session-fork","args":{"sid":"<源会话 sid>","uuid":"<消息 uuid>"}}
+//! ← data {"sessionId":"…","jsonlPath":"…"}      失败码：bad_args · fork_failed
 //! ```
 //!
-//! **backend 只收 sid、不收路径**（见 `branch_core::find_session_file` 头注）：backend 是被
-//! ssh 远程调起来的，少一个可被构造的路径入参就少一条路径穿越的攻击面。所以 monitor 这边
-//! 拿到的远端 jsonl 路径**不往回传**，只传 sid。
-//!
-//! ★〔`K-R88` 09-13〕**这条收窄今天两侧都吃**：本机那条命令
-//! （`history::create_branch_session`）也收 sid 了，「找那份文件」两侧同一份实现。
-//! ⇒ 下面那句「与本地那条的差异」也跟着少了一条 —— 只剩「活儿在哪台机器上干」。
+//! **后端只收 sid、不收路径**（见 `branch_core::find_session_file` 头注）：少一个可被构造的路径入参
+//! 就少一条路径穿越的攻击面。所以 monitor 这边拿到的 jsonl 路径**不往回传**，只传 sid。
 
 use crate::copy_table::copy_text;
 use crate::history::BranchResult;
-use crate::ssh_source::{self, RemoteExec};
 
-/// 分叉整体限时。读一份 jsonl + 写一份新文件，正常是毫秒级；30s 是给巨型会话
-/// 与慢链路留的余量，同 `remote_history::LIST_TIMEOUT` 的量级。
-const FORK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+/// 分叉的期限。读一份 jsonl + 写一份新文件，正常是毫秒级；30s 是给巨型会话与慢链路留的余量。
+const FORK_BUDGET: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// 旧后端掉进流模式的判据：查询模式的输出不可能含 wire 的 `"kind":"hello"`。
+/// 交给那台后端的 id 一律先过白名单。
 ///
-/// **两种写法都要认**（Phase G 审计：原来只认无空格那条，而 `remote_history::is_old_backend_hello`〔散文墓碑〕（C4d 已删）
-/// 认两条 —— 注释却写着「同一判据」，是句错话）。序列化器今天产的是无空格那条，
-/// 所以 `abort_marker` 用它（`abort_marker` 只能给一个子串，且要能在**半行**上命中、不等换行）；
-/// 判定时两条都查，免得哪天序列化器换了写法就退化成「等 30s 超时」。
-const HELLO_MARKER: &str = r#""kind":"hello""#;
-const HELLO_MARKER_SPACED: &str = r#""kind": "hello""#;
-
-fn looks_like_old_backend(stdout: &str) -> bool {
-    stdout.contains(HELLO_MARKER) || stdout.contains(HELLO_MARKER_SPACED)
-}
-
-static OLD_BACKEND_MSG: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsRemoteBranch.fork.oldBackend", &[]));
-
-/// backend 失败时 stderr 上的信封。字段少写/多写都容忍不了 —— 认不出就退回展示原文，
-/// **绝不**把「认不出的错误」静默成成功。
-#[derive(serde::Deserialize)]
-struct ForkErrEnvelope {
-    code: String,
-    message: String,
-}
-
-/// 拼进远端命令的 id 一律先过白名单。
-///
-/// 两个参数最终都会经 `shell_quote` 单引号包裹，所以这里**不是**注入防线的最后一道；
-/// 它的作用是 **fail-fast**：一个明显不是 sid/uuid 的串没必要跑一趟 ssh 才被后端拒。
+/// 后端那一侧（`branch_core::find_session_file` 按 sid 在记录树里找）还会再判一次，所以这里**不是**最后一道；
+/// 它的作用是 **fail-fast**：一个明显不是 sid/uuid 的串没必要走一趟长连接才被后端拒。
 /// 字符集与共享那份 `branch_core::is_plain_sid` 一致（`[A-Za-z0-9-]`，长度 1..=64）。
 ///
 /// ⚠ **这里刻意没有改成直接调它**，理由如实写：本函数要把「长度不对」与「有非法字符」
@@ -71,7 +39,7 @@ struct ForkErrEnvelope {
 /// 改成调它就得把两句话压成一句。⇒ **登记成一处已知的形状重复**，不假装收干净了。
 fn validate_fork_id(what: &str, s: &str) -> Result<(), String> {
     // 上限与共享那份 `branch_core::is_plain_sid` 对齐（Phase G 审计：原来这边 128、那边 64，
-    // 65..=128 的 id 会白跑一趟 ssh 才被拒；注释里引的函数名 `valid_sid` 也不存在）。
+    // 65..=128 的 id 会白跑一趟才被拒；注释里引的函数名 `valid_sid` 也不存在）。
     if s.is_empty() || s.len() > 64 {
         return Err(copy_text(
             "rsRemoteBranch.forkId.badLength",
@@ -87,191 +55,79 @@ fn validate_fork_id(what: &str, s: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// 拼远端命令。两个 id 已过白名单，仍照常 `shell_quote`（纵深防御，同 `--search`）。
-fn build_fork_cmd(backend_path: &str, source_sid: &str, message_uuid: &str) -> String {
-    format!(
-        "{} --fork-session {} {}",
-        ssh_source::shell_quote(backend_path),
-        ssh_source::shell_quote(source_sid),
-        ssh_source::shell_quote(message_uuid),
+/// `session-fork` 的 `data` → [`BranchResult`]。**纯函数**，严格收：缺一格 / 类型不对 ⇒ 报「两边版本对不上」，
+/// **绝不**返回一个空壳结果（分叉已经落盘而这边读不出结果时，用户重试会多出一份孤儿分支 —— 所以说清楚是契约问题）。
+pub(crate) fn decode_fork(who: &str, data: serde_json::Value) -> Result<BranchResult, String> {
+    serde_json::from_value::<BranchResult>(data).map_err(|e| {
+        copy_text(
+            "rsRemoteBranch.fork.badProduct",
+            &[("who", who), ("e", &e.to_string())],
+        )
+    })
+}
+
+/// 在 `origin` 那台机器上分叉：两个 id 先过白名单，再问那台后端的 `session-fork`。**本机与远端同一个函数。**
+async fn fork_on(
+    origin: &crate::origin::Origin,
+    source_session_id: &str,
+    message_uuid: &str,
+) -> Result<BranchResult, String> {
+    validate_fork_id(
+        &copy_text("rsRemoteBranch.what.sourceId", &[]),
+        source_session_id,
+    )?;
+    validate_fork_id(
+        &copy_text("rsRemoteBranch.what.messageId", &[]),
+        message_uuid,
+    )?;
+    let who = crate::backend::control::frame_query::who(origin);
+    let data = crate::backend::control::frame_query::call(
+        origin,
+        "session-fork",
+        serde_json::json!({ "sid": source_session_id, "uuid": message_uuid }),
+        FORK_BUDGET,
     )
+    .await?;
+    let res = decode_fork(&who, data)?;
+    tracing::info!(
+        "branch: {who}后端分叉 {source_session_id}@{message_uuid} → {}",
+        res.session_id
+    );
+    Ok(res)
 }
 
-/// 把一次 exec 的三样东西（stdout/stderr/退出码）判成「分叉结果」或**人话错误**。
+/// G6：在远端从某条消息分叉出新会话 —— [`crate::history::create_branch_session`] 的远端那一支。
 ///
-/// 纯函数，故可直测 —— 这是本模块真正要守的判断，SSH 那半只是搬运。
-///
-/// 判定顺序刻意如此：
-/// 1. **先看旧 backend** —— 它 stdout 有内容、可能还 exit 0，不先拦会被误读成「输出解析失败」。
-/// 2. **`exit_status == None` 归失败**。没拿到退出码 = 连接被掐/服务端不守规矩，
-///    把它当 0 正好把「没跑成」读成「跑成了」。
-/// 3. exit 0 才解析 stdout；解析不出来仍是失败（**绝不返回一个空壳 `BranchResult`**）。
-fn interpret_fork_exec(ex: &RemoteExec) -> Result<BranchResult, String> {
-    if looks_like_old_backend(&ex.stdout) {
-        return Err(OLD_BACKEND_MSG.to_string());
-    }
-
-    // ★ Phase G 审计：**扫所有行**，不是只看第一条非空行。
-    // 远端 `~/.bashrc` 打一行 banner 是常见配置（而本仓的部署流程本来就会动 `.bashrc`），
-    // 命令又是经登录 shell 执行的 ⇒ 第一行很可能是噪声。只看第一行的后果是：
-    // 分叉**已经成功、文件已落盘、exit 0**，monitor 却报「结果解析失败」，用户重试 ⇒
-    // 远端多出一份孤儿分支文件（`O_EXCL` 拦不住，新 sid 不同）。
-    let stderr_detail = || -> Option<String> {
-        let mut first_nonempty: Option<&str> = None;
-        for line in ex.stderr.lines().map(str::trim).filter(|l| !l.is_empty()) {
-            if first_nonempty.is_none() {
-                first_nonempty = Some(line);
-            }
-            if let Ok(env) = serde_json::from_str::<ForkErrEnvelope>(line) {
-                return Some(format!("{}（{}）", env.message, env.code));
-            }
-        }
-        // 一条信封都认不出 → 把第一行原样带出（截断防刷屏），比吞掉强。
-        first_nonempty.map(|l| l.chars().take(400).collect())
-    };
-
-    match ex.exit_status {
-        Some(0) => {
-            let mut saw_any = false;
-            for line in ex.stdout.lines().map(str::trim).filter(|l| !l.is_empty()) {
-                saw_any = true;
-                if let Ok(r) = serde_json::from_str::<BranchResult>(line) {
-                    return Ok(r);
-                }
-            }
-            Err(if saw_any {
-                copy_text("rsRemoteBranch.fork.noResultJson", &[])
-            } else {
-                copy_text("rsRemoteBranch.fork.noOutput", &[])
-            })
-        }
-        Some(code) => Err(match stderr_detail() {
-            Some(d) => copy_text("rsRemoteBranch.fork.failed", &[("d", &d.to_string())]),
-            None => copy_text(
-                "rsRemoteBranch.fork.failedNoReason",
-                &[("code", &code.to_string())],
-            ),
-        }),
-        None => Err(match stderr_detail() {
-            Some(d) => copy_text(
-                "rsRemoteBranch.fork.noExitCodeWith",
-                &[("d", &d.to_string())],
-            ),
-            None => copy_text("rsRemoteBranch.fork.noExitCode", &[]),
-        }),
-    }
-}
-
-/// G6：在远端从某条消息分叉出新会话。
-///
-/// 🔴 **〔步 12·C 2026-09-20〕它不再是一条 Tauri 命令。**
-/// 上线的那一条是 [`crate::history::create_branch_session`]，本函数是它的远端那一支。
-/// 这一行原先逐字写着「与本地那条的差异**今天只剩一处：活儿在远端干**」——
-/// 那句话正是合并的判据：**差别只剩一处，而那一处就是 `origin` 本身。**
-/// 〔`K-R88` 09-13〕入参形状两侧早已统一成 sid；返回体同形（`G6`），
-/// 所以前端两条路本来就共用同一段成功处理。
-///
-/// ⚠ 名字**刻意没改**：`local_origin_registry` 按「文件::函数」登记着这一处，
-/// 改名会让那张表静默失配。
+/// ⚠ 名字**刻意没改**：`local_origin_registry` 按「文件::函数」登记着这一处，改名会让那张表静默失配。
+/// 它收的是**已经分过本机**的机器名（`host: &str`），不收 `Origin`（`history_tests` 钉着）。
 pub(crate) async fn create_remote_branch_session(
     host: &str,
     source_session_id: &str,
     message_uuid: &str,
 ) -> Result<BranchResult, String> {
-    validate_fork_id(
-        &copy_text("rsRemoteBranch.what.sourceId", &[]),
+    fork_on(
+        &crate::origin::Origin(host.to_string()),
         source_session_id,
-    )?;
-    validate_fork_id(
-        &copy_text("rsRemoteBranch.what.messageId", &[]),
         message_uuid,
-    )?;
-    let cfg = crate::load_remote_config_by_label(host).ok_or_else(|| {
-        copy_text(
-            "rsRemoteBranch.remote.notConfigured",
-            &[("machine", &host.to_string())],
-        )
-    })?;
-
-    let cmd = build_fork_cmd(&cfg.backend_path, source_session_id, message_uuid);
-    let ex = tokio::time::timeout(
-        FORK_TIMEOUT,
-        ssh_source::connect_and_exec_capture(&cfg, &cmd, Some(HELLO_MARKER)),
     )
     .await
-    .map_err(|_| {
-        copy_text(
-            "rsRemoteBranch.fork.timeout",
-            &[("secs", &(FORK_TIMEOUT.as_secs()).to_string())],
-        )
-    })??;
-
-    let res = interpret_fork_exec(&ex)?;
-    tracing::info!(
-        "remote_branch: [{host}] 分叉 {source_session_id}@{message_uuid} → {}",
-        res.session_id
-    );
-    Ok(res)
 }
 
-/// 〔RW1 · 第四波 · 2026-09-24〕**本机那一支**：exec 本机后端的 `--fork-session`（与远端同一条子命令、
-/// 同一份结果解释 [`interpret_fork_exec`]），本进程一个字节不写。
+/// 〔RW1 · 第四波 · 2026-09-24 → LOC1a〕**本机那一支**：与远端同一个 [`fork_on`]，origin = `<local>`。
 ///
-/// 用户裁「只允许后端的文件管理部分写文件」**也管本机** ⇒ 本机分叉从前在 monitor 进程里 `O_EXCL` 写新会话
-/// （`history::write_branch_file`〔散文墓碑〕）；分叉出来的是 `~/.claude/projects/` 下的新会话 —— 用户数据树 ——
-/// ⇒ 改成与远端同一条路：活儿交给那台机器上的后端（`control/fork_write.rs`，白名单层早就在），monitor 只收结果。
-/// ⚠ 本机后端不在 ⇒ 明确说，不回落到本进程写（`D11`）。
+/// 用户裁「只允许后端的文件管理部分写文件」**也管本机** ⇒ 分叉出来的新会话由本机常驻后端写
+/// （`control/fork_write.rs`，写盘白名单层那一处 `O_EXCL`），本进程一个字节不写。
+/// ⚠ 本机后端够不着 ⇒ 明确说（「没有可用的控制通道」），不回落到本进程写（`D11`）。
 pub(crate) async fn create_local_branch_session(
     source_session_id: &str,
     message_uuid: &str,
 ) -> Result<BranchResult, String> {
-    validate_fork_id(
-        &copy_text("rsRemoteBranch.what.sourceId", &[]),
+    fork_on(
+        &crate::origin::Origin::local(),
         source_session_id,
-    )?;
-    validate_fork_id(
-        &copy_text("rsRemoteBranch.what.messageId", &[]),
         message_uuid,
-    )?;
-    let (sid, uuid) = (source_session_id.to_string(), message_uuid.to_string());
-    let outcome = tokio::task::spawn_blocking(move || {
-        crate::backend::observe::local_query::run_query(
-            env!("CCM_TARGET_TRIPLE"),
-            &["--fork-session", &sid, &uuid],
-            &*crate::spawn_managed::local_backend_one_shot_query(),
-        )
-    })
+    )
     .await
-    .map_err(|e| format!("spawn_blocking join: {e}"))?;
-    let res = interpret_fork_exec(&local_fork_exec(outcome)?)?;
-    tracing::info!(
-        "branch: 本机后端分叉 {source_session_id}@{message_uuid} → {}",
-        res.session_id
-    );
-    Ok(res)
-}
-
-/// 本机那一趟的三态 → 与远端那一趟同形的 [`RemoteExec`]（好让结果只有一份解释）。纯函数，可直测。
-fn local_fork_exec(
-    outcome: crate::backend::observe::local_query::QueryOutcome,
-) -> Result<RemoteExec, String> {
-    use crate::backend::observe::local_query::QueryOutcome;
-    match outcome {
-        QueryOutcome::Ok(stdout) => Ok(RemoteExec {
-            stdout,
-            stderr: String::new(),
-            exit_status: Some(0),
-        }),
-        QueryOutcome::Failed { code, stderr } => Ok(RemoteExec {
-            stdout: String::new(),
-            stderr,
-            exit_status: code.and_then(|c| u32::try_from(c).ok()),
-        }),
-        QueryOutcome::NoBackend(why) => Err(copy_text(
-            "rsRemoteBranch.local.backendDown",
-            &[("why", &why.to_string())],
-        )),
-    }
 }
 
 #[cfg(test)]

@@ -1,7 +1,9 @@
 import { listen, type EventCallback, type UnlistenFn } from "@tauri-apps/api/event";
 import { commands } from "./ipc/commands";
 import { chan, type Item, type Sub } from "./ipc/chan";
-import type { Origin } from "./ipc/origin";
+import { isLocalOrigin, type Origin } from "./ipc/origin";
+import { copyText } from "./copy-table";
+import { showActionFailureToast } from "./error-toast";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 // C02（rust-ts-boundary）：这 5 个 payload 类型**改成从生成物 re-export**，不再手写。
 // 源是 `src/bridge/src/bridge.rs` 的 `#[cfg_attr(test, derive(ts_rs::TS))]`。
@@ -104,6 +106,11 @@ export interface EventHandlers {
    */
   onSessionTapLost?: (origin: Origin) => void;
   /**
+   * 〔FW1 · 第四波 4D · D-d〕活会话的记录文件不见了（`change` = `"gone"`）/ 被改过已从头重读（`"truncated"` / `"rewritten"`）。
+   * 会话流里的一格（`{"file_notice": …}`），与行同序：重读出来的行排在它后面。
+   */
+  onSessionFileNotice?: (sessionId: string, change: string) => void;
+  /**
    * 〔GP1 · 第四波〕这条会话所在的那台机器看不见了（`session-unseen`：连接断了 / F5 时那台还没报完清单）⇒ 说不清。
    * 进 queue：与行 / `remote-added` / `listed` 保序（断连那一刻之前的行先落，重连之后的重宣告与清单后到）。
    */
@@ -201,7 +208,9 @@ type QueueItem =
   | { kind: "container"; sessionId: string; container: string }
   | { kind: "listed"; origin: string }
   // 〔GP1 · 第四波〕那台机器看不见了 —— 同一 queue 保序（见 EventHandlers.onSessionUnseen）。
-  | { kind: "unseen"; sessionId: string };
+  | { kind: "unseen"; sessionId: string }
+  // 〔FW1 · 第四波 4D · D-d〕记录文件不见了 / 被改过已从头重读 —— 流里的一格，与行同序（见 EventHandlers.onSessionFileNotice）。
+  | { kind: "file-notice"; sessionId: string; change: string; grant?: StreamHold };
 
 /**
  * 批量调度参数。replay 会一次性 emit 数千条 jsonl-line，同步处理会阻塞 click 派发数秒
@@ -463,6 +472,8 @@ export async function bindEvents(
         handlers.onOriginSessionsListed?.(item.origin);
       } else if (item.kind === "unseen") {
         handlers.onSessionUnseen?.(item.sessionId);
+      } else if (item.kind === "file-notice") {
+        handlers.onSessionFileNotice?.(item.sessionId, item.change);
       } else if (item.kind === "gap") {
         handlers.onStreamGap?.(item.origin);
       }
@@ -562,6 +573,13 @@ export async function bindEvents(
             burstArmed = true;
             queue.unshift({ kind: "batch-start" });
           }
+        } else if (f !== null && typeof f === "object" && "file_notice" in f) {
+          queue.push({
+            kind: "file-notice",
+            sessionId: f.file_notice.session_id,
+            change: f.file_notice.change,
+            grant: hold,
+          });
         } else if (f !== null && typeof f === "object" && "batch" in f) {
           if (f.batch === "start") {
             if (perf.firstJsonlBatch === undefined) {
@@ -588,6 +606,14 @@ export async function bindEvents(
         console.info(`[events] 会话流 [${origin}]：又看得见了`);
       } else {
         console.warn(`[events] 会话流 [${origin}] 关了：`, it.by);
+        // 〔W5-UI · E §3.3〕这条流是这台机器会话更新的唯一来源；关了之后什么都不会再来 ⇒ 必须让人知道
+        //   （原先只打 console：界面照旧，看起来只是「没动静」）。句柄只在拒绝 / 出错时关，正常收尾不走这里。
+        showActionFailureToast(
+          copyText("events.stream.closedTitle"),
+          isLocalOrigin(origin)
+            ? copyText("events.stream.closedLocal")
+            : copyText("events.stream.closedRemote", { machine: origin }),
+        );
       }
     }
     ensureScheduled();

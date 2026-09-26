@@ -359,6 +359,35 @@ impl EventReplay {
     /// 〔CF1 · 2026-09-24〕原来还有一份不 await、把块序列 spawn 出去的孪生（只供本机 watcher 那条
     /// std 线程用，`真相源/10 §7.2`「五段逻辑字面重复」）。本机内容改走后端的帧之后它零调用方，删了；
     /// 名字里的 `_awaited` 留着是为了不在十几路同时改的时候改一个到处被点名的符号。
+    /// 〔FW1 · 第四波 4D · D-d〕一个会话的记录文件不见了 / 被改过已从头重读：交给订了那台（或那一个会话）的实时订阅一格。
+    ///
+    /// 与行同一套记账（占 credit、占位置、没 credit 就原位记 `Gap`）；**不进留存**（F5 不重放这句话，主会话 09-25 认的已知缺口）。
+    pub async fn on_session_notice(&self, notice: crate::bridge::SessionFileNoticePayload) {
+        let body = body_of(&SessionStreamFrame::FileNotice(notice.clone()));
+        let (sink, plans) = {
+            let mut inner = self.inner.lock();
+            let Some(sink) = inner.sink.clone() else {
+                return;
+            };
+            let mut plans: Vec<(String, u64, Vec<Item>)> = Vec::new();
+            for sub in inner.subs.iter_mut().filter(|s| s.live) {
+                if sub.origin != notice.origin
+                    || sub.only.as_deref().is_some_and(|s| s != notice.session_id)
+                {
+                    continue;
+                }
+                let items = plan_live(sub, vec![body.clone()]);
+                if !items.is_empty() {
+                    plans.push((sub.label.clone(), sub.id, items));
+                }
+            }
+            (sink, plans)
+        };
+        for (label, id, items) in plans {
+            sink.deliver(&label, id, items);
+        }
+    }
+
     pub async fn on_line_batch_awaited(&self, payloads: Vec<JsonlLinePayload>) {
         if payloads.is_empty() {
             return;
