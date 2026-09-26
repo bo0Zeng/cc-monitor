@@ -536,7 +536,7 @@ export class BackendSection {
     const btns = cells ? [...cells.querySelectorAll("button")] : [];
     for (const b of btns) b.disabled = true;
     // 〔HX1 · D-f〕停**本机**后端之前：有走本机中转的活会话 ⇒ 先问一句、说几条会断（远端的中转是那台上另一个进程，停那条流不碰它）。
-    if (what === "stop" && origin === LOCAL_ORIGIN) {
+    if (what === "stop" && isLocalOrigin(origin)) {
       const warn = stopWarning(await this.sessions(origin));
       if (warn !== null && !(await this.confirm(warn))) {
         for (const b of btns) b.disabled = false;
