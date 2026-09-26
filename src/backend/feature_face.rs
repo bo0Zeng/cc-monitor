@@ -76,6 +76,30 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
             }
             Ok(v)
         }
+        // 〔SH1 · V137〕MCP 列表出成品：读法住适配层那一格（`agents::mcp_read`，注册表里第一家认得 MCP 的），这里只换壳。
+        "mcp-read" => {
+            let dir = match args.get("projectDir") {
+                None | Some(Value::Null) => None,
+                Some(v) => {
+                    let d = v.as_str().unwrap_or("");
+                    // `INVARIANTS §47` ②：项目目录是外来的路径 —— 绝对 · 不空 · 拒 NUL / CR / LF。
+                    if d.is_empty()
+                        || !std::path::Path::new(d).is_absolute()
+                        || !shell_quote_core::free_text_ok(d)
+                    {
+                        return Err((
+                            "bad_args",
+                            crate::common::contract::malformed(
+                                "`projectDir` must be an absolute path",
+                            ),
+                        ));
+                    }
+                    Some(std::path::PathBuf::from(d))
+                }
+            };
+            let read = crate::agents::mcp_read(dir.as_deref()).unwrap_or_default();
+            capped(mcp_reply(&read))
+        }
         other => Err((
             "bad_args",
             crate::common::contract::malformed(&format!("this face has no command `{other}`")),
@@ -99,6 +123,16 @@ fn capped(v: Value) -> Answer {
         ));
     }
     Ok(v)
+}
+
+/// 〔SH1 · V137〕`mcp-read` 的成品 —— 纯构造器（跨语言金样 `tests/__fixtures__/mcp-read.golden.json` 拿它对拍）。
+pub(crate) fn mcp_reply(r: &crate::agents::McpRead) -> Value {
+    let entries: Vec<Value> = r
+        .entries
+        .iter()
+        .map(|e| json!({ "scope": e.scope, "name": e.name, "server": e.server, "sourcePath": e.source }))
+        .collect();
+    json!({ "entries": entries, "dirs": r.dirs, "problems": r.problems })
 }
 
 #[cfg(test)]

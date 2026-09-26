@@ -331,9 +331,7 @@ pub fn resolves_on_path(
 
 // ===== IPC 层：本机与远端各读一次 settings.json。**全程只读。** =====
 //
-// 远端形状照抄 `mcp.rs::fetch_remote_claude_json`：定值命令（零用户输入拼接 → 零注入面）、
-// 30s 超时、大小上限（⚠ **超限拒收+回错**，devbench F10b —— 不是「宽容解析」那一档）。
-// 本机直接 `read_to_string`。
+// 〔SH1〕远端那一条今天问那台后端（见下面 `diagnose_remote_cc_bus_hooks`）；本机直接 `read_to_string`。
 // **本模块没有任何写路径**——下方 `this_module_never_writes` 那条测试把它变成门禁，
 // 而不是只靠我记得。
 

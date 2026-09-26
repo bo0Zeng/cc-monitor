@@ -469,13 +469,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     // 〔BS1b 09-24〕这里原先登记着 `cc_bus.rs` 的控制类回显上限（发消息 / spawn 的回显，64 KiB，截断+说清）。
     //   发消息 `K-R98`、派生 BS1b 先后改走后端原语，那两条回显不再经 SSH 读 ⇒ 常量随最后一个用户删了。
     //   「截断没毒、回 Err 有毒（用户会重试、再起一个 agent）」那条理由今天住在 `OnOverflow::Truncate` 的头注里。
-    (
-        "src/bridge/src/mcp.rs",
-        "REMOTE_CLAUDE_JSON_CAP",
-        32 * 1024 * 1024,
-        "读远端 `.claude.json`",
-        "拒收+回错",
-    ),
+    // 〔SH1 · V137〕`mcp.rs` 读远端 `.claude.json` 那条 `REMOTE_CLAUDE_JSON_CAP`〔散文墓碑〕（32 MiB）删了：改问那台后端 `mcp-read`（后端那份读上限是 `MAX_CONFIG_BYTES`）。
     // 〔SH1〕`hooks_diag.rs` 读远端 `settings.json` 那条 `REMOTE_SETTINGS_CAP`〔散文墓碑〕（4 MiB）删了：改经那台后端 `files-peek`（上限归后端 `PEEK_MAX_BYTES`，已在表里）。
     // 第七条不是内联字面量，是**压根没有上限**：backend 出方向单行此前走无界 `read_line`。
     // ⚠ 它的数**刻意不等于** backend 侧的 `MAX_LINE_BYTES`（1 MiB，入方向命令信封）——
@@ -1697,9 +1691,9 @@ fn every_uncapped_stream_read_has_an_owner() {
     //    `check_cc_bus_agent_online`〔散文墓碑〕（`cc_bus.rs`，〔C4e〕已迁到界面）与 `capture_remote_pane`〔散文墓碑〕（`tmux.rs`，〔C4e〕已迁到界面）
     //    那两处 `read_to_end`（一次性 SSH 的 stdout）随两条命令改走后端帧面而
     //    **不存在了** ⇒ 人群**恰好少两处**。⚠ 同样不是「挡路就放宽」。
-    // 〔SH1 · 4D〕地板 11 → **10**：钩子诊断远端那处 `read_to_end`（一次性 SSH 的 stdout）随改问那台后端不存在了。
+    // 〔SH1 · 4D〕地板 11 → **10**：钩子诊断远端那处 `read_to_end`（一次性 SSH 的 stdout）随改问那台后端不存在了；→ **9**：MCP 远端那处同理。
     assert!(
-        population >= 10,
+        population >= 9,
         "只扫到 {population} 处异步流读（08-10 G 审计后实测 18，`K-R104` 09-13 现打 13，\
              `K-R112` 09-13 现打 11，SH1 09-26 现打 10）—— 抽取器坏了，本条此刻是空转的"
     );

@@ -2357,6 +2357,23 @@ BEGIN/END 围栏由 monitor 那侧校验（本命令不再写第二份围栏常�
 - CLI 面同样自动派生（`--tasks-list` · `--plugins-marketplaces`），已进 `SUBCOMMANDS`。
 - 全在阻塞档（同步文件 I/O）⇒ `cancel` 命中回 `not_cancellable`。
 
+#### `mcp-read`：这台机器的 MCP 列表成品（SH1 · V137，09-26，**只读**）
+
+```text
+→ {"id":"m2","cmd":"mcp-read","args":{"projectDir":"/home/u/proj"}}
+← {"kind":"reply","id":"m2","ok":true,"data":{"entries":[{"scope":"user","name":"fs","server":{"command":"/opt/fs"},"sourcePath":"/home/u/.claude.json"}],"dirs":["/home/u/proj"],"problems":[]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `projectDir` | → | 可缺席 / `null`。给了就必须是绝对路径（拒 NUL / CR / LF）⇒ 多读 local 段（`.claude.json` 的 `projects[<它>].mcpServers`）与 project 段（`<它>/.mcp.json`） |
+| `entries` | ← | `{scope, name, server, sourcePath}`：`scope` 闭集 `user` · `local` · `project`；`server` 原样（未知字段不丢） |
+| `dirs` | ← | `.claude.json` 里那张项目表的键（排序）—— 「用过的项目目录」 |
+| `problems` | ← | 在而读不出 / 不是 JSON 的那几份各一句（「这台没有」与「那份坏了」不合成一句）；不在的静默 |
+
+读法住适配层（`agents::Adapter.mcp`，Claude 那一格 `agents/claudecode/mcp.rs`；`.claude.json` 找哪一份与资产目录同一处）。
+错误码：`bad_args`（`projectDir` 不是绝对路径）· `too_large`（成品超过一帧上限，不截断）。⚠ **CLI 面也有它**（`--mcp-read`，入参从 stdin 读）。
+
 #### `tasks-list`：一个会话的任务列表
 
 ```text
@@ -2754,6 +2771,8 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 `--session-fork`（读 stdin）—— 见上面各自那一小节。同上，与帧面同一个 `run`。
 
 **SH1 追加一条（09-26）**：`--bus-inbox` —— 只读看一个 agent 收件箱的尾巴（见上面它自己那一小节）。同上，与帧面同一个 `run`；**读 stdin**（`{id, lines?}`）。
+
+**SH1 追加一条（09-26）**：`--mcp-read` —— 这台机器的 MCP 列表成品（见上面它自己那一小节）。同上，与帧面同一个 `run`；**读 stdin**（`{projectDir?}`）。
 
 **步 `24f` 追加四条（09-20）**：`--files-ls` / `--files-stat` / `--files-find` /
 `--files-index-status` —— `files-read` 这一族的 CLI 面（逐条见上面各自那一小节）。
