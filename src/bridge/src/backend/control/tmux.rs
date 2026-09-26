@@ -456,35 +456,43 @@ pub(crate) fn classify_tmux_observation(raw: &str, observation: Option<&str>) ->
 /// F04 Gate 1（恒强制）：**空 target 必须被拒**——`=:` 会被 tmux 解析成「当前会话」，是本模块
 /// 唯一真正的危险默认值（抓屏刻意不过身份门，见后端 `control/capture_pane.rs` 头注）。
 ///
-/// **只查空串，不额外收紧字符集**——glob/元字符（`*`/`;`/`$`/空格）不在这里挡：`shell_quote`
-/// 已经把任意内容安全引号化（不会脱出 shell），字符集层面的收紧是**另一层职责**（〔DUP2〕`gate-core` 那两条：
-/// `new_tmux_name_issue` 只在**创建路径**禁 glob，`existing_tmux_name_issue` 对 attach 到已有会话故意
-/// 宽松——见 INVARIANTS §31a"第二道防线"）。这里若也收紧字符集会让 `si*` 这类合法 attach 目标
-/// （已有会话名里含 glob 字符）在 Gate 1 就被拒，与既有 `tmux_targets_use_exact_match` 测试
-/// 钉死的"glob 名被引号原样包住、不脱出"这一既定行为冲突——**空** 是唯一需要在这一层拦的语义
-/// 陷阱（`=:` 落到当前会话），其余交给引号化 + 上层校验。
-fn is_safe_tmux_target(target: &str) -> bool {
-    !target.is_empty()
-}
-
-/// Gate 1（恒强制）的**谓词本体**：**只拒空 target**——`=:` 会被 tmux 解析成「当前会话」，
-/// 是唯一真正需要在这一层拦的语义陷阱（判据 [`tests::gate1_rejects_only_empty_target`]）。
+/// 〔DUP3 · 主会话 09-26 裁〕Gate 1 **并进 `gate-core` 的 tmux 名那一族**：目标都是**已有会话**（抓屏 · 结束 · 送键），
+/// 判定就是那一族里「已有会话」那一条 `gate_core::existing_tmux_name_issue`（V131 ②：空 · 控制符 · 视觉欺骗字符）——
+/// 先前这里的「只拒空」（本文件一个私有谓词 ＋ 界面 `tmux-control.ts` 一份）是它的真子集，两份住址并成那一份。
+/// **仍然不收紧 glob / 元字符**（`*` / `;` / `$` / 空格）：`shell_quote` 已安全引号化，已有会话名里真有 glob 字符
+/// （`si*` 这类合法目标，`tmux_targets_use_exact_match` 钉着「glob 名被引号原样包住、不脱出」）；
+/// 新建路径禁 glob 是 `new_tmux_name_issue` 的事（INVARIANTS §31a「第二道防线」）。
 ///
-/// ⚠ `K-R72`（09-12）把它从 [`exact_target`] 里**分出来（不是复制一份）**：
-/// `exact_target` 产的是**给 shell 用的**精确串 `'=<名>:'`，而送键 / 杀会话今天走后端、
-/// 不拼任何 shell 串 —— 让它们为了一次校验去要一个用不上的串，就是本区反复判过的那条
-/// 「一个值装了两件事」。⇒ **谓词一份，住这里**；[`exact_target`] 调它。
-/// 〔C4e · 第四波 4C〕三条路（抓屏 · 送键 · 杀会话）整条迁到界面之后，它们的 Gate 1 住
-/// `src/tmux-control.ts::rejectEmptyTarget`（同一个判定：只拒空串）；本侧这一份只剩 [`exact_target`] 这个
-/// 跨轨对拍锚点在用（下面那段写着为什么锚点还得留着）。
-fn gate1_reject_empty(target: &str) -> Result<(), String> {
-    if !is_safe_tmux_target(target) {
-        return Err(copy_text(
+/// ⚠ `K-R72`（09-12）把这一问从 [`exact_target`] 里**分出来（不是复制一份）**：`exact_target` 产的是**给 shell 用的**
+/// 精确串 `'=<名>:'`，让别的入口为一次校验去要一个用不上的串就是「一个值装了两件事」。今天它只剩 [`exact_target`]
+/// 这个跨轨对拍锚点在用（下面那段写着为什么锚点还得留着）；抓屏 · 送键 · 杀会话三条的目标名由后端入口判
+/// （界面那一份 TS 零，`DUP3.md §5 ⑦` 记着后端那两份还不是 `gate-core` 这一条）。
+/// 判据 `tests::gate1_admits_an_existing_target_by_the_one_gate_core_rule`（正反各一格）。
+fn gate1_admit_target(target: &str) -> Result<(), String> {
+    match gate_core::existing_tmux_name_issue(target) {
+        None => Ok(()),
+        Some(gate_core::TmuxNameIssue::Empty) => Err(copy_text(
             "rsTmux.target.empty",
             &[("target", &format!("{:?}", target))],
-        ));
+        )),
+        Some(
+            gate_core::TmuxNameIssue::Control(c) | gate_core::TmuxNameIssue::Deceptive(c),
+        ) => Err(copy_text(
+            "rsTmux.target.badChar",
+            &[
+                ("target", &format!("{:?}", target)),
+                ("c", &format!("U+{:04X}", c as u32)),
+            ],
+        )),
+        // 「已有会话」那一条只回上面三种（前导 `-` · 目标语法 · 超长是新建那一条的事）。
+        Some(other) => Err(copy_text(
+            "rsTmux.target.badChar",
+            &[
+                ("target", &format!("{:?}", target)),
+                ("c", &format!("{other:?}")),
+            ],
+        )),
     }
-    Ok(())
 }
 
 // ★★ `K-R112`（09-13）：**这里原来住着 `build_capture_pane_cmd`**（抓屏那条 SSH 串的构造器）。〔散文墓碑〕
@@ -498,9 +506,9 @@ fn gate1_reject_empty(target: &str) -> Result<(), String> {
 // 「Gate 1（`=name:` 精确匹配）—— 裸 `-t <名>` 会被 tmux 按『精确名 → 名字开头 → glob』解析」，
 // 它调的是后端自己那份 `launch::exact_target`，与 `kill` 共用同一份。
 //
-// **Gate 1 的空目标那一格仍在调用方那一侧就地判**：`=:` 会被 tmux 解析成「当前会话」，
-// 而**空目标不该先花一次往返**才被拒。〔C4e〕三条命令（抓屏 / 送键 / 杀会话）迁到界面之后，
-// 那一格住 `src/tmux-control.ts::rejectEmptyTarget`，同一个判定。
+// **Gate 1 的空目标那一格**：`=:` 会被 tmux 解析成「当前会话」。〔C4e〕三条命令（抓屏 / 送键 / 杀会话）迁到界面之后
+// 那一格曾在界面就地判；〔DUP3〕Gate 1 并进 `gate-core` 那一族、TS 零 —— 空目标原样交给后端，由后端入口拒
+// （`kill.rs::parse_name` · `launch.rs::parse_request`，`invalid_args`）。
 
 /// F04：`exact_target` 是 fallible——Gate 1 折进这一个函数本身。
 ///
@@ -523,7 +531,7 @@ fn gate1_reject_empty(target: &str) -> Result<(), String> {
 /// 不在本件写区（归 `K-R113`）。**已上报，别当它没有主人。**
 #[allow(dead_code)]
 pub(crate) fn exact_target(target: &str) -> Result<String, String> {
-    gate1_reject_empty(target)?;
+    gate1_admit_target(target)?;
     Ok(ssh_source::shell_quote(&format!("={target}:")))
 }
 
@@ -544,14 +552,14 @@ pub(crate) fn exact_target(target: &str) -> Result<String, String> {
 // 1、2 删完它自动成为死代码」。而 `KR72D1` 逐字禁止「把回落改成恒失败的桩留在原地」——
 // **那不是删，那是把一份实现变成一句谎话**。
 //
-// **§34 那三道门没有消失，只是只剩一个家**：Gate 1 住调用方那一侧（〔C4e〕`src/tmux-control.ts::rejectEmptyTarget`，
-// 三条路共用）· Gate 2 / Gate 3 住后端的 `control/gate.rs`
+// **§34 那三道门没有消失，只是只剩一个家**：Gate 1 的判定住 `gate-core`（〔DUP3〕已有会话那一条；三条路的空目标今天由
+// 后端入口拒，界面那一份删了）· Gate 2 / Gate 3 住后端的 `control/gate.rs`
 // （`admit` / `admit_destructive`，判定本体转调 `gate-core`，金表 `gate2-golden.tsv`
 // 由后端侧与 `backend/control/gate2_parity.rs` 两条轨道共读）。
 // 回潮闸在 `tmux_backend_gate_guard`：〔C4e〕monitor 生产段里再长出一处破坏性的 tmux 动词（`kill-session` / `send-keys`）就红。
 
 // 〔C4e · 第四波 4C〕这里原来住着抓屏的发送端 `capture_via_backend` 与 Tauri 命令 `capture_remote_pane`〔散文墓碑〕：
-//   空目标先拒 · 预问那台后端认不认 · 转 `capture-pane` · 取 `screen`。那四件事今天只在界面一处
+//   空目标先拒（〔DUP3〕这一件今天归后端入口，界面那一份删了）· 预问那台后端认不认 · 转 `capture-pane` · 取 `screen`。其余三件今天只在界面一处
 //   （`src/tmux-control.ts::capturePane`），monitor 那一跳只搬字节（`chan/webview.rs::chan_call`）。
 //   `K-R112` 买到的三样（本机也能预览 · 五档分开 · 精确形态只剩后端一份）一样没丢：本机仍经 `<local>` 那条长连接、
 //   五档在 TS 逐码分开、`=name:` 仍只住后端 `control/capture_pane.rs::capture_on`。
@@ -559,7 +567,7 @@ pub(crate) fn exact_target(target: &str) -> Result<String, String> {
 // 〔C4e · 第四波 4C〕这里原来住着杀会话与送键两条 Tauri 命令 `kill_remote_tmux` / `tmux_send_keys`〔散文墓碑〕
 //   （F79 / A5；`K-R72` 起只剩后端一条路、三态分流）。两条迁到界面：`src/tmux-control.ts::killSession` /
 //   `sendKeys` 经通道直接说后端的 `kill` / `launch`（`send-into` · `send-keys-raw` 两个 mode 名的理由随之搬过去）。
-//   **它们买到的东西一样没丢**：Gate 1 空目标仍就地拒（TS 那一份）· Gate 2 / 3 仍只在后端 `control/gate.rs` ·
+//   **它们买到的东西一样没丢**：Gate 1 空目标仍被拒（〔DUP3〕由后端入口拒，界面那一份删了）· Gate 2 / 3 仍只在后端 `control/gate.rs` ·
 //   `Refused` 与 `NoChannel` 仍是两句话 · 仍然没有第二条路（界面那一侧结构上没有 SSH）。
 
 /// 本工具建的 tmux 会话名判定：`<X>-cc[-N]` 后缀形（今天产的那种）**或**老的 `cc-` 前缀形，

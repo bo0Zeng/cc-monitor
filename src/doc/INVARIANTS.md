@@ -1309,15 +1309,19 @@ U8c-1 摸底后拆成三步：
 
 **三道门**（⚠ **F04b 2026-08-04**：`kill` 主路切到后端；**F04c** 切 `send-keys`；
 **`K-R72` 2026-09-12**：两条回落删净）：
-1. **Gate 1（恒强制）** —— 家在调用方那一侧（〔C4e〕`src/tmux-control.ts::rejectEmptyTarget`，抓屏 · 送键 · 杀会话三条共用；
-   monitor 的 `src/bridge/src/backend/control/tmux.rs::gate1_reject_empty` 同一判定，今天只剩跨轨锚点 `exact_target` 在用）：只拒**空** target
-   （`=:` 会被 tmux 解析成「当前会话」，是唯一真正危险的默认值）。**不额外收紧字符集**——
-   glob/元字符交给 `shell_quote` 安全引号化，字符集收紧是 `gate-core` 那两条的职责（〔DUP2〕新建 `new_tmux_name_issue` /
-   attach 故意宽松的 `existing_tmux_name_issue`；原先是 TS 侧两个谓词），见 §31a「第二道防线」。
+1. **Gate 1（恒强制）** —— 〔DUP3 · 主会话 09-26 裁〕判定**并进 `gate-core` 的 tmux 名那一族**：目标都是已有会话 ⇒
+   就是「已有会话」那一条 `gate_core::existing_tmux_name_issue`（空 · 控制符 · 视觉欺骗字符，V131 ②）。
+   先前「只拒空」有两个住址（〔C4e〕界面 `tmux-control.ts` 的一个谓词，抓屏 · 送键 · 杀会话三条共用 · monitor `tmux.rs` 的私有谓词），
+   都是它的真子集：界面那一份删了（`设计/90 §3` 判据 2，TS 零 —— 空目标原样交给后端，由后端入口拒：
+   `src/backend/control/kill.rs::parse_name`（kill · capture 共用）· `src/backend/control/launch.rs::parse_request`，`invalid_args`，
+   界面照各动作那句「后端不接受这个会话名」带后端原话说）；monitor 那一份改调 gate-core（`tmux.rs::gate1_admit_target`，
+   今天只剩跨轨锚点 `exact_target` 在用）。⚠ 后端那两个入口今天仍是各自的一份（trim 空 · 控制符 · `:` `=`），
+   不是 gate-core 那一条 —— 报主会话（`调研/第四波记录/DUP3.md §5 ⑦`）。
+   空 target（`=:` 会被 tmux 解析成「当前会话」）是唯一真正危险的默认值。**不额外收紧 glob / 元字符**——
+   交给 `shell_quote` 安全引号化，禁 glob 是新建那一条 `new_tmux_name_issue` 的职责，见 §31a「第二道防线」。
    ⚠ **`K-R72` 把这个谓词从 `exact_target` 里分出来（不是复制一份）**：`exact_target` 产的是
    给 shell 用的精确串 `'=<名>:'`，而送键 / 杀会话今天不拼 shell 串 —— 让它们为一次校验去要
-   一个用不上的串就是「一个值装了两件事」。〔C4e〕三条路（capture-pane · send-keys · kill）迁到界面之后
-   调的是界面那一个谓词、报的是同一句话（文案表 `tmuxControl.target.empty`）。
+   一个用不上的串就是「一个值装了两件事」。
 2. **Gate 2（identity，union）** —— 判定本体的唯一家是 `gate-core`（`gate_singleton_guard`
    钉着「全仓只有一份」）；**执行面今天只在后端** 的 `control/gate.rs::admit`。
    `is_ccm_tmux_name`（本地、零 IO，前缀命中）**或** `@ccm_sid` 已设（远端核验）。**`is_ccm_tmux_name` 不删除**——F02 之前的老 `cc-*` 会话没有 `@ccm_sid`，
@@ -2194,7 +2198,7 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 | 端口转发规格（①） | `port_forward.rs::validate_spec` | `port_forward_tests.rs::validate_spec_guards` |
 | 账号配置目录（②） | 〔DUP1〕全表住 `acct-core`（`config_dir_posix_ok` · `config_dir_ok` · `config_dir_char_unsafe`，全仓唯一一份）；`payload.rs::config_dir_command_safe` 与后端 `accounts_query.rs::is_safe_config_dir` 是转手的薄壳；后端 `ccm/plan.rs` 直接用 `config_dir_ok`（`control → observe` 那条禁止边不用破）· `history.rs::validate_config_dir_ps`（Windows 形） | `history_tests.rs::the_config_dir_validator_rejects_every_injection_shape` · `accounts_query_tests.rs::unsafe_config_dirs_are_dropped` · `accounts_query_tests.rs::every_group_of_deceptive_characters_is_rejected_in_a_config_dir` |
 | 远端落点路径（②） | `mcp.rs::is_safe_remote_mcp_json` · `acct_iso_deploy.rs::is_safe_remote_acct_iso_dir` | `mcp_tests.rs::remote_mcp_path_guard_rejects_traversal_and_nonabsolute` · `acct_iso_deploy_tests.rs::safe_dir_rejects_dangerous` |
-| tmux attach 目标（②，只拒空） | `tmux.rs::is_safe_tmux_target` | `tmux_tests.rs::gate1_rejects_only_empty_target` |
+| tmux 目标（已有会话：抓屏 · 结束 · 送键的 §34 Gate 1；〔DUP3〕并进本表 tmux 名那一行的「已有会话」那一条） | `gate_core::existing_tmux_name_issue`：monitor `tmux.rs::gate1_admit_target`（跨轨锚点 `exact_target`）；三条路的空目标由后端入口拒（`kill.rs::parse_name` · `launch.rs::parse_request`，⚠ 各自一份、还不是 gate-core 那一条，`DUP3.md §5 ⑦`） | `tmux_tests.rs::gate1_admits_an_existing_target_by_the_one_gate_core_rule` · `tests/tmux-control.vitest.ts`（界面不判、原样交；后端拒了照原话说） |
 | 自由文本（②：工作目录 · 文件窗口当前目录 · 远端一次性子命令的 argv · 透传给 agent 的参数 · 启动器 · 登记备注 · ccm 继承来的三个变量；〔TL3 · 主会话 09-26 按 V131 裁〕拒绝集**只收 NUL / CR / LF**、**不拒 shell 元字符**，形式按各自语境） | 拒绝集 `shell-quote-core::free_text_ok`（与唯一的 quote 同住）· POSIX 路径形式 `shell-quote-core::posix_free_path_ok`（载荷两处 cwd · `ccm_invocation` 的 `--cwd` · 文件窗口「在此打开终端」）· 后端 `ccm/plan.rs::free_text_gate` / `inherited_gate`（本机语境的「绝对」）· `remote_ask.rs::ask_with` | `shell-quote-core lib_tests::free_text_refuses_exactly_nul_cr_lf_and_lets_real_names_through` · `plan_tests.rs::free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold` · `remote_ask_tests.rs::one_shot_argv_refuses_only_what_the_quote_cannot_hold` · `shell_tests.rs::the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold` · `payload_tests.rs::a_free_text_cwd_passes_real_names_and_refuses_what_quote_cannot_hold` |
 | 远端后端路径 `backendPath`（②，本仓自管的远端落点；〔TL3〕） | monitor `ssh_source.rs::RemoteConfig::backend_path_for_shell`（规则就是 `payload.rs::config_dir_command_safe`；流模式 · 测试连接的探针 · 部署 / 卸载 / 身份扫描都经它）· 后端 `remote_ask.rs::register`（可达表唯一写口，`accounts_query.rs::is_safe_config_dir`） | `ssh_source_tier1_tests.rs::the_backend_path_is_admitted_or_refused_before_it_is_spliced` · `ssh_source_tier1_tests.rs::a_bad_backend_path_is_refused_before_anything_is_dialed` · `remote_ask_tests.rs::the_reach_table_refuses_a_backend_path_that_must_not_be_spliced` · 读点人群 `lib_invariant_population_tests.rs::every_read_of_the_backend_path_field_is_registered` |
 

@@ -203,16 +203,23 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     //   `ccm/plan.rs::validate_tmux_name`（成只管「说哪一句」的薄壳）都调它；TS 两个谓词与两处内联式子删。
     homes: ["gate-core::new_tmux_name_issue", "gate-core::existing_tmux_name_issue"],
     status: "zero",
-    defs: ["isValidTmuxName", "isValidNewTmuxName"],
+    // 〔DUP3 · 主会话 09-26 裁〕§34 Gate 1「只拒空」的两个住址（界面 `tmux-control.ts::rejectEmptyTarget` · monitor `tmux.rs` 的私有谓词）
+    //   并进本行：目标都是已有会话 ⇒ 判定就是 `existing_tmux_name_issue`；界面那一份删（TS 零，空目标原样交给后端，后端入口拒），
+    //   monitor 那一份改调 gate-core。
+    defs: ["isValidTmuxName", "isValidNewTmuxName", "rejectEmptyTarget"],
     needles: [
       { text: "/^[A-Za-z0-9_][A-Za-z0-9_-]*$/", count: 0, file: "src/launch-requests.ts" },
       { text: "[*?=]", count: 0 },
+      { text: 'target === ""', count: 0, file: "src/tmux-control.ts" },
     ],
     // 禁字集字面量只住 gate-core 一处；后端 plan.rs 那份自己的不许长回来。
     rustNeedles: [
       { file: "src/bridge/crates/gate-core/src/lib.rs", text: '"*?.:="', count: 1 },
       { file: "src/backend/control/ccm/plan.rs", text: '"*?.:="', count: 0 },
+      // 〔DUP3〕monitor 的 Gate 1 调的是 gate-core 那一条（恰一处），它自己的私有谓词不许长回来（`rustGone`）。
+      { file: "src/bridge/src/backend/control/tmux.rs", text: "gate_core::existing_tmux_name_issue(", count: 1 },
     ],
+    rustGone: ["src/bridge/src/backend/control/tmux.rs::is_safe_tmux_target"],
   },
   J7: {
     what: "tmux 名派生 ＋ 撞名避让",
