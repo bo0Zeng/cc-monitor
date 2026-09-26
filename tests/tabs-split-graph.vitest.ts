@@ -143,6 +143,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/ipc/commands.ts",
     "src/record-timeline.ts",
     "src/render-stream-record.ts",
+    "src/render.ts", // 〔W5-RENDER R5〕关 tab 时 `releaseEnhanceRoot`：lazy 补算的 IO 按滚动容器分（`设计/10 §3.5` D2）
     "src/session-reads.ts", // 〔C4b〕会话读面三问改走通道：骨架索引 ＋ 会话内查找经它问那台后端（替掉包装层那两条）
     "src/skeleton-view.ts",
     "src/stream.ts",

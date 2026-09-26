@@ -211,7 +211,7 @@ function freshCtx(): RenderContext {
 /**
  * 把一遍语料喂进 `renderContentRecord`。
  *
- * 口径：`observeForLazyEnhance` 取 **false**（= live 路 / SessionViewer 路的默认），
+ * 口径：`enhanceRoot` 缺省（不交给任何 IO；〔W5-RENDER R5〕原字段 `observeForLazyEnhance` 取 false 的那一形），
  * 对应 `ctx.lazy === false` 的 eager 渲染 —— batch 期那条 lazy 路本秤没量。
  */
 function drivePass(lines: string[]): void {

@@ -1,35 +1,32 @@
-import { marked } from "marked";
+import { Marked, type MarkedExtension } from "marked";
 import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/common";
+import katex from "katex";
 import markedKatex from "marked-katex-extension";
 import "highlight.js/styles/github-dark-dimmed.css";
 import "katex/dist/katex.min.css";
 import { copyText } from "./copy-table";
 
-marked.setOptions({
-  gfm: true,
-  breaks: false,
-});
-
 /**
  * v2.3.1 (issue #1 性能): lazy 模式 ——
- * - **false**（默认 / live 模式）：renderMarkdown 走全功能 pipeline（hljs 同步高亮）
- * - **true**（batch 重放期）：marked + DOMPurify + KaTeX 同步出 HTML，但代码块
+ * - **急**（默认 / live 模式）：renderMarkdown 走全功能 pipeline（hljs 同步高亮）
+ * - **惰**（batch 重放期）：marked + DOMPurify + KaTeX 同步出 HTML，但代码块
  *   hljs **不跑**——留 `<div class="code-block code-pending">` 占位。IntersectionObserver
  *   在卡片进可视区时调 enhanceCard 跑 hljs。
  *
- * 为什么单独 lazy hljs 而不 lazy KaTeX：
- * - 实测 hljs 是主要耗时（每代码块 0.5-5ms，含代码块的消息占 ~25%）
- * - KaTeX 触发条件严（只有 `$..$` 才会进 markedKatex），多数消息不含 LaTeX 跳过快
- * - markedKatex 是 marked 扩展深度集成的，拆 lazy 复杂度高，收益小
+ * 〔W5-RENDER R4 · `设计/10 §3.5` D1〕**数学也 lazy 了**。原来这里写着「为什么单独 lazy hljs 而不 lazy KaTeX」
+ * 三条理由（hljs 是大头 · KaTeX 触发条件严 · 拆 lazy 复杂度高收益小）；D1 逐字「KaTeX 从不 lazy —— 含 `$$` 的
+ * 长公式在重放期同步阻塞主线程」。现打：40 个块公式 ＋ 40 个行内公式的一条 7 KB 消息，惰路 `renderMarkdown`
+ * 518 ms（jsdom，每个公式 ~6.5 ms），期间 `katex.renderToString` 80 次。拆 lazy 并不复杂：惰实例对
+ * `inlineKatex` / `blockKatex` 两个 token 另挂一个同名渲染器（marked 的同名扩展后注册者先试），
+ * 只出一个带 TeX 原文的占位，`enhanceCard` 进视口时再算。
  *
- * P5.5 B 重构：lazy 完全走 caller 参数 `renderMarkdown(md, { lazy })`，删了原
- * setRenderLazyMode + currentLazy 全局 flag。模块内仍用 currentLazy 供 marked
- * code renderer 闭包访问（marked.use renderer 是 module singleton），但用
- * save/restore 模式同步调用栈内 try/finally 严格恢复——SessionViewer / Subagent
- * 不会被 tabs batch 期间错误共享 lazy 状态。
+ * 〔W5-RENDER R3 · `设计/10 §3.5` D3〕急 / 惰是**两个 `Marked` 实例**，各带各的代码块渲染器；
+ * 本模块里零可变状态。原来是一个全局 `marked` ＋ 一个模块级 `currentLazy` 标志、靠
+ * 「同步调用栈里 save / restore」撑着 —— `设计/10 §3.5` D3 逐字「安全性依赖『同步调用栈』这条隐式不变量」。
+ * 两个实例之间没有任何共享的开关，谁先谁后、谁嵌套谁都串不了。
+ * 判据：`tests/render.vitest.ts`「D3」一组（模块顶层零 `let` ＋ 两个实例互不串味）。
  */
-let currentLazy = false;
 
 /**
  * KaTeX 扩展：
@@ -37,12 +34,42 @@ let currentLazy = false;
  * - `nonStandard: true` 才认 `$...$`（默认只认 `\(...\)`，README 示例那是误导）
  * - throwOnError: false → 错误 LaTeX 渲染成红色源码而不是抛异常
  */
-marked.use(
-  markedKatex({
-    throwOnError: false,
-    nonStandard: true,
-  }),
-);
+const KATEX_OPTIONS = {
+  throwOnError: false,
+  nonStandard: true,
+} as const;
+
+/** 急路与 `enhanceCard` 补算共用的同一套清洗配置（补算出来的 KaTeX 片段必须过同一道）。 */
+const SANITIZE_OPTIONS = {
+  USE_PROFILES: { html: true, svg: true, mathMl: true },
+  ADD_ATTR: ["target", "rel", "data-copy", "data-external"],
+};
+
+/**
+ * 〔W5-RENDER R4〕惰实例的数学：不算，出占位 `<span data-math-pending="display|inline">转义后的 TeX</span>`
+ * （块级末尾照原渲染器补 `\n`）。用 data 属性、不用类名：`tests/css-ledger.vitest.ts` 的悬空类棘轮只许降。
+ * `enhanceCard` 读 `textContent`（转义往返无损）与 `data-math-pending` 补算，补算后的 DOM 与急路逐字相同
+ * （`tests/render.vitest.ts`「D1」）。
+ */
+function mathPlaceholder(tex: string, displayMode: boolean, newlineAfter: boolean): string {
+  return (
+    `<span data-math-pending="${displayMode ? "display" : "inline"}">${escapeHtml(tex)}</span>` +
+    (newlineAfter ? "\n" : "")
+  );
+}
+
+const LAZY_MATH: MarkedExtension = {
+  extensions: [
+    {
+      name: "inlineKatex",
+      renderer: (token) => mathPlaceholder(String(token.text ?? ""), token.displayMode === true, false),
+    },
+    {
+      name: "blockKatex",
+      renderer: (token) => mathPlaceholder(String(token.text ?? ""), token.displayMode === true, true),
+    },
+  ],
+};
 
 /**
  * 代码块渲染：
@@ -56,69 +83,71 @@ marked.use(
 // replay 大量代码块时累积秒级阻塞主线程（鼠标光标卡死的次要根因）。
 // 改为：有显式 lang 才高亮；无 lang 直接转义当 plain text，保持代码块视觉但零开销。
 /**
- * 代码块渲染：
- * - **renderLazyMode = false**：现状路径，hljs 同步高亮
- * - **renderLazyMode = true**：留占位 `<div class="code-block code-pending" data-lang="X">`，
+ * 代码块渲染（两个实例各一个）：
+ * - **急**：现状路径，hljs 同步高亮
+ * - **惰**：留占位 `<div class="code-block code-pending" data-lang="X">`，
  *   `<code class="language-X">` 内是 escape 过的纯文本，等 enhanceCard 时跑 hljs
  *
  * 占位也写完整 code-block / code-bar DOM 结构，让 CSS / 复制按钮立刻能 work。
  */
-marked.use({
-  renderer: {
-    code(token) {
-      const lang = (token.lang ?? "").trim().split(/\s+/)[0];
-      const code = token.text ?? "";
+function codeRenderer(lazy: boolean): MarkedExtension {
+  return {
+    renderer: {
+      code(token) {
+        const lang = (token.lang ?? "").trim().split(/\s+/)[0];
+        const code = token.text ?? "";
 
-      if (currentLazy) {
-        // lazy 路径：转义即可，hljs 留给 enhanceCard
-        const cls = lang ? `language-${lang}` : "";
+        if (lazy) {
+          // lazy 路径：转义即可，hljs 留给 enhanceCard
+          const cls = lang ? `language-${lang}` : "";
+          const langLabel = lang || "text";
+          return (
+            `<div class="code-block code-pending"${lang ? ` data-lang="${escapeHtml(lang)}"` : ""}>` +
+            `<div class="code-bar">` +
+            `<span class="code-lang">${escapeHtml(langLabel)}</span>` +
+            `<button type="button" class="code-copy" data-copy>${copyText("render.codeBlock.copy")}</button>` +
+            `</div>` +
+            `<pre><code class="${cls}">${escapeHtml(code)}</code></pre>` +
+            `</div>`
+          );
+        }
+
+        // 默认路径：同步 hljs
+        let highlighted: string;
+        try {
+          if (lang && hljs.getLanguage(lang)) {
+            highlighted = hljs.highlight(code, {
+              language: lang,
+              ignoreIllegals: true,
+            }).value;
+          } else {
+            // 不再 highlightAuto —— 改为转义后原样输出
+            highlighted = escapeHtml(code);
+          }
+        } catch {
+          highlighted = escapeHtml(code);
+        }
+        const cls = lang ? `language-${lang} hljs` : "hljs";
         const langLabel = lang || "text";
         return (
-          `<div class="code-block code-pending"${lang ? ` data-lang="${escapeHtml(lang)}"` : ""}>` +
+          `<div class="code-block">` +
           `<div class="code-bar">` +
           `<span class="code-lang">${escapeHtml(langLabel)}</span>` +
           `<button type="button" class="code-copy" data-copy>${copyText("render.codeBlock.copy")}</button>` +
           `</div>` +
-          `<pre><code class="${cls}">${escapeHtml(code)}</code></pre>` +
+          `<pre><code class="${cls}">${highlighted}</code></pre>` +
           `</div>`
         );
-      }
-
-      // 默认路径：同步 hljs
-      let highlighted: string;
-      try {
-        if (lang && hljs.getLanguage(lang)) {
-          highlighted = hljs.highlight(code, {
-            language: lang,
-            ignoreIllegals: true,
-          }).value;
-        } else {
-          // 不再 highlightAuto —— 改为转义后原样输出
-          highlighted = escapeHtml(code);
-        }
-      } catch {
-        highlighted = escapeHtml(code);
-      }
-      const cls = lang ? `language-${lang} hljs` : "hljs";
-      const langLabel = lang || "text";
-      return (
-        `<div class="code-block">` +
-        `<div class="code-bar">` +
-        `<span class="code-lang">${escapeHtml(langLabel)}</span>` +
-        `<button type="button" class="code-copy" data-copy>${copyText("render.codeBlock.copy")}</button>` +
-        `</div>` +
-        `<pre><code class="${cls}">${highlighted}</code></pre>` +
-        `</div>`
-      );
+      },
     },
-  },
-});
+  };
+}
 
 // v2.4.3 issue #13: 外链由系统默认浏览器打开。renderer 阶段给 http/https/mailto
 // 链接打 data-external 标记 + target=_blank + rel=noopener noreferrer；main.ts
 // 全局 click delegation 捕获 data-external 调 openUrl(). 相对路径 / 锚点保留
 // 默认行为（默认就是站内导航，无 target）。
-marked.use({
+const LINK_RENDERER: MarkedExtension = {
   renderer: {
     link(token) {
       const href = token.href ?? "";
@@ -133,7 +162,7 @@ marked.use({
       return `<a href="${safeHref}"${titleAttr}>${text}</a>`;
     },
   },
-});
+};
 
 // #71：GFM strikethrough 规范允许**单**波浪号(`~x~`),marked 默认据此把成对单 `~` 之间的字划成
 // `<del>`——静默改内容。触发要**闭合 `~` 贴非空白**(GFM flanking):`见 ~/foo~/bar`、`cd ~/a~/b`、
@@ -142,7 +171,7 @@ marked.use({
 // **`undefined`**(★必须 undefined、**不能 `false`**——marked 的 `use()` 包装只在 `=== false` 时回退内建
 // del、会复活单 `~` 把本修复静默还原)→ 词法器把单 `~` 当普通文本。真·删除线 `~~text~~` 仍渲染。
 // (`~~~` 围栏是块级,由 preprocessMath/marked 代码 tokenizer 处理,不进本行内路径。)
-marked.use({
+const DEL_TOKENIZER: MarkedExtension = {
   tokenizer: {
     del(src: string) {
       // 要求 `~~` 紧邻非空白（GFM:定界符不与内容间留空）,内容非贪婪、结尾非空白。
@@ -156,7 +185,25 @@ marked.use({
       };
     },
   },
-});
+};
+
+/**
+ * 建一个实例：两个实例的扩展与顺序**逐项相同**（KaTeX → 代码块 → 外链 → `del`，与原来全局 `marked.use` 的顺序一致），
+ * 只有代码块渲染器按 `lazy` 分叉；惰实例在 KaTeX 之后多挂一层同名数学渲染器（`LAZY_MATH`，出占位）。
+ */
+function makeMarked(lazy: boolean): Marked {
+  return new Marked(
+    { gfm: true, breaks: false },
+    markedKatex(KATEX_OPTIONS),
+    ...(lazy ? [LAZY_MATH] : []),
+    codeRenderer(lazy),
+    LINK_RENDERER,
+    DEL_TOKENIZER,
+  );
+}
+
+const EAGER = makeMarked(false);
+const LAZY = makeMarked(true);
 
 export interface RenderMarkdownOptions {
   /** true = lazy hljs（启动 batch 期间用，避免 N 个代码块同步阻塞主线程） */
@@ -257,20 +304,11 @@ export function preprocessMathUnguarded(md: string): string {
 }
 
 export function renderMarkdown(md: string, opts: RenderMarkdownOptions = {}): string {
-  const prevLazy = currentLazy;
-  // P5.5 B 重构：lazy 必须 caller 显式传（不传默认 false）；同步调用栈 save/restore
-  // 防止 marked.use renderer 单例的 closure 看到错误 state。
-  currentLazy = opts.lazy ?? false;
-  try {
-    // F73：数学预处理（多行块公式规整 + \[..\]/\(..\) 翻译）后再交给 marked。
-    const raw = marked.parse(preprocessMath(md), { async: false }) as string;
-    return DOMPurify.sanitize(raw, {
-      USE_PROFILES: { html: true, svg: true, mathMl: true },
-      ADD_ATTR: ["target", "rel", "data-copy", "data-external"],
-    });
-  } finally {
-    currentLazy = prevLazy;
-  }
+  // lazy 必须 caller 显式传（不传默认 false）；〔W5-RENDER R3〕选实例，不再改任何共享状态。
+  const m = opts.lazy ? LAZY : EAGER;
+  // F73：数学预处理（多行块公式规整 + \[..\]/\(..\) 翻译）后再交给 marked。
+  const raw = m.parse(preprocessMath(md), { async: false }) as string;
+  return DOMPurify.sanitize(raw, SANITIZE_OPTIONS);
 }
 
 /** 纯文本（用户消息保守模式）：转义 + 保留换行 */
@@ -292,16 +330,21 @@ function escapeHtml(s: string): string {
  *
  * 没 pending 时是 fast path：单次 querySelector 找不到东西后立即标记返回。
  *
- * **不处理 LaTeX**：KaTeX 在 markedKatex 扩展里同步处理过了，已经是最终 DOM。
+ * 〔W5-RENDER R4〕**也补数学**：惰路留下的 `[data-math-pending]` 占位在这里算 KaTeX、过同一道清洗、原位替换
+ * （原来这里写「不处理 LaTeX：KaTeX 在 markedKatex 扩展里同步处理过了」—— D1 之后不再成立）。
  */
 export function enhanceCard(el: HTMLElement): void {
   if (el.dataset.enhanced === "1") return;
   el.dataset.enhanced = "1";
 
-  const pendings = el.querySelectorAll<HTMLElement>(".code-block.code-pending");
-  if (pendings.length === 0) return; // fast path: 该卡片没代码块
+  const pendings = el.querySelectorAll<HTMLElement>(".code-block.code-pending, [data-math-pending]");
+  if (pendings.length === 0) return; // fast path: 该卡片没代码块、没公式
 
   for (const block of pendings) {
+    if (block.hasAttribute("data-math-pending")) {
+      enhanceMath(block);
+      continue;
+    }
     const lang = block.dataset.lang ?? "";
     const codeEl = block.querySelector("code");
     if (!codeEl) {
@@ -327,35 +370,69 @@ export function enhanceCard(el: HTMLElement): void {
   }
 }
 
-/**
- * 全局 IntersectionObserver：观察 stream 内的卡片，进可视区调 enhanceCard，
- * 然后 unobserve（一次性，不来回触发）。
- *
- * rootMargin: 300px 让卡片在快滚到时就预先 enhance，避免视觉看到 hljs "弹"出来。
- */
-const enhanceObserver =
-  typeof IntersectionObserver !== "undefined"
-    ? new IntersectionObserver(
-        (entries) => {
-          for (const e of entries) {
-            if (e.isIntersecting && e.target instanceof HTMLElement) {
-              enhanceCard(e.target);
-              enhanceObserver?.unobserve(e.target);
-            }
-          }
-        },
-        { rootMargin: "300px" },
-      )
-    : null;
+/** 〔W5-RENDER R4〕一个数学占位 → KaTeX（与急路同一组选项、同一道清洗），原位替换。 */
+function enhanceMath(ph: HTMLElement): void {
+  const displayMode = ph.getAttribute("data-math-pending") === "display";
+  const tex = ph.textContent ?? "";
+  let html: string;
+  try {
+    html = katex.renderToString(tex, { ...KATEX_OPTIONS, displayMode });
+  } catch (e) {
+    // throwOnError:false 下不该走到这里；真走到就留着原文、去掉标记（不反复重试）
+    console.warn("[enhance] katex failed:", e);
+    ph.removeAttribute("data-math-pending");
+    return;
+  }
+  const tpl = document.createElement("template");
+  tpl.innerHTML = DOMPurify.sanitize(html, SANITIZE_OPTIONS);
+  ph.replaceWith(...Array.from(tpl.content.childNodes));
+}
 
 /**
- * 让一个卡片接受 lazy enhance 调度。TabManager 在 lazy 渲染期间挂卡片时调。
- * `enhanceObserver` 可能为 null（极老浏览器）→ 退化到立即 enhance。
+ * 〔W5-RENDER R5 · `设计/10 §3.5` D2〕**每个滚动容器一个** IntersectionObserver（root = 那个容器）：
+ * 观察容器内的卡片，进可视区（± 300px）调 enhanceCard，然后 unobserve（一次性，不来回触发）。
+ *
+ * 原来是**一个**模块级 IO、没有 root ⇒ 量的是浏览器视口，而真正的滚动容器是 `.stream` —— D2 逐字
+ * 「查看器里几何不同 ⇒ lazy 高亮触发时机不可靠」；主窗里各 tab 的 `.stream` 叠在同一块区域（后台 tab 是
+ * `visibility:hidden`，仍有几何），视口 root 分不清卡属于哪一条流。
+ *
+ * - root 必填（类型上就交不出「没有 root」）；同一个 root 复用一个 IO（`WeakMap`，root 被摘掉即可回收）。
+ * - 容器销毁时调 {@link releaseEnhanceRoot} 断开它的 IO（`TabStreamView.disposeTab` · `SessionViewer`）。
+ * - 没有 IO 的环境（jsdom / 极老浏览器）⇒ 退化到立即 enhance。
+ * rootMargin: 300px 让卡片在快滚到时就预先 enhance，避免视觉看到 hljs "弹"出来。
  */
-export function observeForEnhance(el: HTMLElement): void {
-  if (enhanceObserver) {
-    enhanceObserver.observe(el);
-  } else {
+const enhanceObservers = new WeakMap<HTMLElement, IntersectionObserver>();
+
+/**
+ * 让一个卡片接受 lazy enhance 调度（`root` = 它所在的滚动容器）。实时 tab 与查看器在 lazy 渲染期间挂卡片时调。
+ */
+export function observeForEnhance(el: HTMLElement, root: HTMLElement): void {
+  if (typeof IntersectionObserver === "undefined") {
     enhanceCard(el);
+    return;
   }
+  let io = enhanceObservers.get(root);
+  if (!io) {
+    io = new IntersectionObserver(
+      (entries, obs) => {
+        for (const e of entries) {
+          if (e.isIntersecting && e.target instanceof HTMLElement) {
+            enhanceCard(e.target);
+            obs.unobserve(e.target);
+          }
+        }
+      },
+      { root, rootMargin: "300px" },
+    );
+    enhanceObservers.set(root, io);
+  }
+  io.observe(el);
+}
+
+/** 滚动容器销毁：断开它那一个 IO（还没进过视口的卡不再补，容器都没了）。 */
+export function releaseEnhanceRoot(root: HTMLElement): void {
+  const io = enhanceObservers.get(root);
+  if (!io) return;
+  io.disconnect();
+  enhanceObservers.delete(root);
 }

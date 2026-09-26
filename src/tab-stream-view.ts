@@ -8,8 +8,8 @@
  *
  * 方法体逐字从 `tabs.ts` 搬来（原是 `TabManager` 的私有方法，或 `ensureTab` / `closeTab` /
  * `switchTo` / `onBatchEnd` / `onLine` 里的整段），唯一的改写：上面六样换成 `this.host.…`，
- * 三个静态常量的类名换成本类。**`materializeUntilFilled` 与 `MATERIALIZE_TAIL_K` 的写法一字未动** ——
- * `replay-tail-keep.vitest.ts` 按原文抽这两个数对拍 Rust 侧的 `REPLAY_TAIL_KEEP`。
+ * 三个静态常量的类名换成本类。`replay-tail-keep.vitest.ts` 按原文抽 `MATERIALIZE_TAIL_K` 与
+ * `MATERIALIZE_ROUNDS_PER_CALL`（〔W5-RENDER R7〕原先是 `materializeUntilFilled` 循环里的字面量 `4`）对拍 Rust 侧的 `REPLAY_TAIL_KEEP`。
  */
 import { MessageStream } from "./stream";
 import { reconcilePendingToolResults, type RenderContext } from "./cards";
@@ -41,6 +41,7 @@ import {
 } from "./render-stream-record";
 import type { BranchRecord } from "./branching";
 import { commands } from "./ipc/commands";
+import { releaseEnhanceRoot } from "./render";
 import { remaining } from "./ipc/chan";
 import { budgetWithin } from "./ipc/chan-caller";
 import { findInSession, readSessionIndex } from "./session-reads";
@@ -108,6 +109,8 @@ function branchRecordCount(folder: BranchFolder): number {
 export class TabStreamView {
   /** Batch13-F40a:物化/后台 tab 尾段条数(与 F39 viewer TAIL_INITIAL 同语义) */
   private static readonly MATERIALIZE_TAIL_K = 150;
+  /** 〔W5-RENDER R7〕`materializeUntilFilled` **一次同步调用**最多跑几轮（原 `round < 4` 的那个 4；它不再是「到此为止」，没满就下一帧接着补）。 */
+  private static readonly MATERIALIZE_ROUNDS_PER_CALL = 4;
   /** F40b:上翻补批批量/触发距离(沿用 F39 实测值) */
   private static readonly FILL_BATCH = 200;
   private static readonly TOP_TRIGGER_PX = 800;
@@ -230,6 +233,7 @@ export class TabStreamView {
 
   /** 关 tab 时拆它的流 DOM、断大对象引用、摘监听（原是 `closeTab` 里的一段，逐字）。 */
   disposeTab(tab: Tab): void {
+    releaseEnhanceRoot(tab.streamEl); // 〔W5-RENDER R5〕本 tab 那一个 IO 断开
     tab.stream.dispose();
     tab.streamEl.remove();
     // K-R45 乙：大纲跟着走（〔SE1〕`reset` 也让在途那趟回来后不许回写）。
@@ -304,10 +308,9 @@ export class TabStreamView {
     if (next) next.window.retryBelow();
     // Batch13-F40a:命中 virgin tab(启动重放全收纳,还没建过卡)→ 同步物化尾段,
     // 避免切过去一片空白(R-3:有界循环补到可滚,防工具密集会话一轮近空屏)。
-    // 非 virgin tab 不动(上翻补批属 F40b)。
-    if (next && next.window.floorSeq === null && next.window.pendingCount > 0) {
-      this.materializeUntilFilled(next);
-    }
+    // 非 virgin tab 不动(上翻补批属 F40b;它可能有滚动位置要保,走下面那一脚带补偿的 `fillAbove`)。
+    const virginFill = !!next && next.window.floorSeq === null && next.window.pendingCount > 0;
+    if (virginFill) this.materializeUntilFilled(next);
     // F40b:切入即刷新哨兵(非 virgin 但账本非空的 tab 也要见到「还有 N 条」)
     if (next) this.updateSentinel(next);
     // 〔`设计/10` 骨架〕切进来的 tab 要索引（上面刚物化过尾段 ⇒ floor 已钉）
@@ -317,9 +320,15 @@ export class TabStreamView {
     // 不产生 scroll 事件,哨兵可见却"上翻物理不可达")——切入时踢一次,rAF 自链
     // 接管直到可滚或账尽。
     // 〔CF2〕账本空了但下面可能还有（`wantsBelow`）同样没有 scroll 入口 ⇒ 同一脚。
-    if (next && (next.window.pendingCount > 0 || next.window.wantsBelow)) {
+    // 〔W5-RENDER R9 · `设计/10 §3.3` B5〕这一脚原来只按 `scrollHeight` 判「不可滚」：没渲染过的卡贡献的是估值，
+    // 估值把 `scrollHeight` 撑成「滚得动」时它就不踢 ⇒ 钉过水位、真实只有半屏的 tab 停在半屏，只剩用户往上翻一条路。
+    // ⇒ 再问一句真实布局（`contentReachesBottom`）：没满一屏也踢。
+    // 〔W5-RENDER R7〕上面刚为 virgin tab 跑过 `materializeUntilFilled`、账本还有余的不再踢：它补不满时自己排了
+    // 下一帧的接续，这里再同步补一批就把「一次同步调用有界」破了。账本已空（只剩「下面可能还有」）的照旧踢。
+    const continuing = virginFill && next.window.pendingCount > 0;
+    if (next && !continuing && (next.window.pendingCount > 0 || next.window.wantsBelow)) {
       const el = next.streamEl;
-      if (el.scrollHeight - el.clientHeight <= 1) this.fillAbove(next);
+      if (el.scrollHeight - el.clientHeight <= 1 || !this.contentReachesBottom(next)) this.fillAbove(next);
     }
   }
 
@@ -358,13 +367,15 @@ export class TabStreamView {
     }
     // D 审计 S-5:已结束的死会话不进后台物化队列(纯浪费;switchTo 命中 virgin
     // 已有同步物化兜底)。
+    // 〔W5-RENDER R9 · `设计/10 §3.3` B5〕原来只收 `floorSeq === null`（virgin）；钉过水位、账本还压着历史、
+    // **真实布局**没满一屏的后台 tab 同样进队（后台 tab 是 `visibility:hidden`，几何照在）。
     this.materializeQueue = [...this.store.tabs.entries()]
       .filter(
         ([sid, t]) =>
           sid !== this.store.activeId &&
           !isResumeOnly(t.state) &&
-          t.window.floorSeq === null &&
-          t.window.pendingCount > 0,
+          t.window.pendingCount > 0 &&
+          (t.window.floorSeq === null || !this.contentReachesBottom(t)),
       )
       .map(([sid]) => sid);
     this.scheduleIdleMaterialize();
@@ -395,7 +406,7 @@ export class TabStreamView {
         this.host.userActive(sid);
         this.refreshOutline(tab); // 〔SE1〕真用户输入上屏 ⇒ 大纲要新的一截
       },
-      observeForLazyEnhance: this.store.inBatch,
+      enhanceRoot: this.store.inBatch ? tab.streamEl : null, // 〔W5-RENDER R5〕批期 lazy ⇒ 交本 tab 的滚动容器
       // G4（branch-anywhere）：实时会话也挂「从这一轮分叉」按钮。
       // 钩子本来就在共享的 `render-stream-record.ts` 里，此前**只有历史查看器传了它**
       // ⇒ 实时 tab 上没有入口。按钮本体是共享组件（off-main 的呈现区分也在那里）。
@@ -550,19 +561,26 @@ export class TabStreamView {
   /**
    * D 审计 R-3:一次 150 条 payload 可能只产出几张卡(tool-group 合并成单卡 34px、
    * skip 记录占配额不产卡)——工具密集会话一轮物化后屏幕仍近空,而 F40a 没有上翻
-   * 补批兜底。有界循环补到**一屏填满**或账本弹尽(≤4 轮防病态会话空转)。
+   * 补批兜底。补到**一屏填满**或账本弹尽。
    * 〔步 3〕停手条件从「滚得动」换成 `contentReachesBottom`——理由见它的头注。
+   *
+   * 〔W5-RENDER R7 · `设计/17 §2.3` · `设计/10 §3.3` B2〕**轮数封顶不再是停手条件**。原来 `round < 4` 一到就收手：
+   * 秤 3 量过最稀疏那一档（每 150 条只出 5 张细条卡）4 轮只补得出 20 张 ⇒ 半屏，而且批结束 / 视口变大这两条入口
+   * 之后**没有任何东西**再补（不可滚的元素不产生 scroll 事件）。现在：一次同步调用仍只跑
+   * {@link MATERIALIZE_ROUNDS_PER_CALL} 轮（每一下的量有界，不把主线程占住），没满、账本还有 ⇒
+   * 下一帧接着补（`scheduleFillContinuation`，与上翻补批同一条 rAF 自链），直到满一屏或账本空。
    */
   private materializeUntilFilled(tab: Tab): void {
     if (tab.skeleton) {
       tab.skeleton.fillVisible(); // 〔`设计/10` 骨架〕同上
       return;
     }
-    for (let round = 0; round < 4; round++) {
+    for (let round = 0; round < TabStreamView.MATERIALIZE_ROUNDS_PER_CALL; round++) {
       if (tab.window.pendingCount === 0) return;
       if (round > 0 && this.contentReachesBottom(tab)) return;
       this.materializeTail(tab);
     }
+    if (tab.window.pendingCount > 0 && !this.contentReachesBottom(tab)) this.scheduleFillContinuation(tab);
   }
 
   /**
@@ -591,7 +609,7 @@ export class TabStreamView {
       timeline: tab.timeline,
       onBranchRecord: () => {},
       onQueueOperation: () => {},
-      observeForLazyEnhance: true,
+      enhanceRoot: tab.streamEl, // 〔W5-RENDER R5〕IO 的 root = 本 tab 的滚动容器
       // G6：**远端也挂**。〔`K-R88` 09-13〕本机那条命令也收 sid 了 ⇒
       // **两条路都只要 sid**，「本机拿不到 jsonl 路径就不能分叉」这道门跟着没了
       // （原先那个随迭代更新的路径游标也一并去掉：没人再要那个值）。
@@ -967,12 +985,26 @@ export class TabStreamView {
       el.style.overflowAnchor = "";
       this.renderingFill = false;
     }
+    this.scheduleFillContinuation(tab);
+  }
+
+  /**
+   * 上翻补批 / 补满一屏的**下一帧复检**（rAF 自链的那一跳）：补完一批下一帧再看一眼，仍在触发区 / 仍不可滚 /
+   * 仍没满一屏且账本有余就再补一批（`fillAbove`）；切走了（`activeId` 守卫）或账尽即停。
+   * 〔W5-RENDER R7〕从 `fillAbove` 末尾抽出来，`materializeUntilFilled` 一次调用补不满时也从这里接着补；
+   * 「仍没满一屏」那一问用真实布局（`contentReachesBottom`），不只看滚不滚得动。
+   */
+  private scheduleFillContinuation(tab: Tab): void {
     requestAnimationFrame(() => {
       if (this.store.activeId !== tab.sessionId) return;
       const t = this.store.tabs.get(tab.sessionId);
       if (!t || (t.window.pendingCount === 0 && !t.window.wantsBelow)) return;
       const e = t.streamEl;
-      if (e.scrollTop <= TabStreamView.TOP_TRIGGER_PX || e.scrollHeight - e.clientHeight <= 1) {
+      if (
+        e.scrollTop <= TabStreamView.TOP_TRIGGER_PX ||
+        e.scrollHeight - e.clientHeight <= 1 ||
+        !this.contentReachesBottom(t)
+      ) {
         this.fillAbove(t);
       }
     });
@@ -1069,10 +1101,13 @@ export class TabStreamView {
     const run = (): void => {
       this.materializeScheduled = false;
       const tab = this.store.tabs.get(sid);
-      // 只物化仍是 virgin 的(switchTo 可能已同步物化过);二次 batch 开始则原样跳过,
+      // virgin 的物化尾段(switchTo 可能已同步物化过);二次 batch 开始则原样跳过,
       // 账本继续收纳,批结束会重新排队。
-      if (tab && !this.store.inBatch && tab.window.floorSeq === null) {
-        this.materializeTail(tab);
+      // 〔W5-RENDER R9〕钉过水位、账本有余、真实布局没满一屏的 ⇒ 补一批（`fillAbove`：带选区守卫与滚动补偿，
+      // 后台 tab 不自链 —— 它的 rAF 复检有 `activeId` 守卫；切进来时 `activate` 那一脚接着补）。
+      if (tab && !this.store.inBatch && tab.window.pendingCount > 0) {
+        if (tab.window.floorSeq === null) this.materializeTail(tab);
+        else if (!this.contentReachesBottom(tab)) this.fillAbove(tab);
       }
       this.scheduleIdleMaterialize();
     };

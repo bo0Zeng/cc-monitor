@@ -554,17 +554,21 @@ describe("秤 4 每帧账本", () => {
     expect(led.rebuilds, "每条都改了主线 ⇒ 每条都重折一次").toBe(N);
     expect(led.rebuildSamples.length).toBe(N);
     const last = led.rebuildSamples[led.rebuildSamples.length - 1];
+    // 〔W5-RENDER R13 · `设计/10 §3.4` C1〕重折改成按段差量：末次那一条只是主线在尾巴上长了一条，折叠归属一张卡都没变
+    //   ⇒ 读 69 张卡（含折叠里的 12 张）、一个节点都不搬。改之前这一格是「解开 3 个 wrap 的 12 张卡、再折回 12 张」。
     expect(
       { ...last, frame: 0 },
-      "最后一次 rebuild：扫 69 个顶层子节点，解开上一轮 3 个 wrap 里的 12 张卡，再折回 3 个 wrap、12 张卡",
+      "最后一次 rebuild：读 69 张卡、归属没变 ⇒ 零搬动（差量重折）",
     ).toEqual({
       scanned: N,
-      unwrapped: F * BACK,
-      unwrappedWraps: F,
-      wrapped: F * BACK,
-      wraps: F,
+      unwrapped: 0,
+      unwrappedWraps: 0,
+      wrapped: 0,
+      wraps: 0,
       frame: 0,
     });
+    // 累计：只有 3 个分叉点各把自己那段旧分支（BACK 张）包一次 —— 搬动总数 == 折叠归属变了的卡数（相等）
+    expect(led.rebuildNodesMoved, "累计搬动 == 3 个分叉各折一次 BACK 张").toBe(F * BACK);
     expect(led.standaloneUnwraps, "本路径不走裸 unwrapAll()").toBe(0);
 
     const moves = led.rebuildSamples.map((s) => s.unwrapped + s.wrapped);
