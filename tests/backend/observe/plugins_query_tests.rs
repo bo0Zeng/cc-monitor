@@ -55,7 +55,7 @@ fn a_broken_file_is_an_error_not_an_empty_list() {
         "{ 这不是 json",
     );
     let err = survey_marketplaces_in(&t.0).expect_err("解析失败必须回 Err");
-    assert!(err.contains("解析失败"), "错误里要说清是解析失败：{err}");
+    assert!(err.contains("读不懂"), "错误里要说清是解析失败：{err}");
 }
 
 /// `P8a-Y1`：顶层不是对象 —— 同样是 `Err`，不是空表。
@@ -167,7 +167,7 @@ fn a_missing_install_location_is_explained() {
         .declared_error
         .as_deref()
         .unwrap_or("")
-        .contains("installLocation"));
+        .contains("装在哪"));
 }
 
 /// ★ 本模块**不许**去数快照目录 —— 那 39 个不是用户安装的。

@@ -37,6 +37,7 @@
 
 use crate::plugin::invoke::Done;
 use crate::plugin::invoke::NotRun;
+use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
 /// 那个工具的命令名。
@@ -61,7 +62,7 @@ fn locate() -> Result<PathBuf, String> {
         TOOL,
         &fixed_candidates(home.as_deref()),
         true,
-        "这台机器上还没装 cc-acct-iso。",
+        &copy_text("beIso.locate.notInstalled", &[]),
     )
 }
 
@@ -98,19 +99,32 @@ pub(crate) fn shellinit_outcome(
         Ok(done) if done.code == Some(0) => Ok(String::from_utf8_lossy(&done.stdout).into_owned()),
         Ok(done) if done.timed_out() => Err((
             "timed_out",
-            format!("{TOOL} shellinit 超过 {SHELLINIT_DEADLINE_SECS} 秒没有返回"),
+            copy_text(
+                "beIso.shellinitOutcome.timedOut",
+                &[
+                    ("tool", &TOOL.to_string()),
+                    ("secs", &SHELLINIT_DEADLINE_SECS.to_string()),
+                ],
+            ),
         )),
         Ok(done) => Err((
             "tool_failed",
-            format!(
-                "{TOOL} shellinit 没有产出片段（退出码 {:?}）：{}",
-                done.code,
-                done.diagnosis()
+            copy_text(
+                "beIso.shellinitOutcome.noOutput",
+                &[
+                    ("tool", &TOOL.to_string()),
+                    ("exit", &format!("{:?}", done.code)),
+                    ("detail", &(done.diagnosis()).to_string()),
+                ],
             ),
         )),
-        Err(NotRun::ArgListTooLong) => {
-            Err(("not_run", format!("{TOOL} shellinit 没能起来：参数过长")))
-        }
+        Err(NotRun::ArgListTooLong) => Err((
+            "not_run",
+            copy_text(
+                "beIso.shellinitOutcome.argsTooLong",
+                &[("tool", &TOOL.to_string())],
+            ),
+        )),
         Err(NotRun::Failed(why)) => Err(("not_run", why)),
     }
 }

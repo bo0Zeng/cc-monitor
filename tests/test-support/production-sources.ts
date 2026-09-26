@@ -51,6 +51,14 @@ export function productionRsFiles(subdir: string): ProductionSource[] {
   return collect(subdir, ".rs");
 }
 
+/**
+ * 〔BG1 · 第四波 4D〕同一套遍历，收 `.css`（`bg-flat.vitest.ts` 要看「`.tab-bg` 在全部样式里零处」）。
+ * CSS 里没有判据住着 ⇒ 读不到自己按构造成立；借这一个家是为了不在测试里另写一份目录遍历（`scanning-guard-registry` 那条棘轮）。
+ */
+export function productionCssFiles(subdir = "src"): ProductionSource[] {
+  return collect(subdir, ".css");
+}
+
 function collect(subdir: string, ext: string): ProductionSource[] {
   const root = resolve(REPO_ROOT, subdir);
   const out: ProductionSource[] = [];

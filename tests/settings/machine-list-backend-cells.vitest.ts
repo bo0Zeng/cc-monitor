@@ -149,7 +149,7 @@ describe("〔ST2 · 步 14〕DAEMON 开关并进机器列表行", () => {
     const { sec } = await mount([mkH("甲机", "1.1.1.1")]);
     const cells = sec.element.querySelector<HTMLElement>('[data-backend-cells="甲机"]')!;
     expect(cells.querySelector(".backend-row-state")?.textContent).toBe("未登记");
-    expect(cells.querySelector("[aria-label]")?.getAttribute("aria-label")).toBe(BACKEND_UNREGISTERED_WHY);
+    expect(cells.querySelector("[aria-label]")?.getAttribute("aria-label")).toBe(BACKEND_UNREGISTERED_WHY());
     expect(cells.querySelectorAll("button").length, "没有把手的一台还摆着起 / 停").toBe(0);
     expect(cells.querySelector(".backend-row-kill")).toBeNull();
     const asked = ipc.calls

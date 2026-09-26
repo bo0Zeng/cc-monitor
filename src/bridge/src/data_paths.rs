@@ -15,6 +15,7 @@
 //! - WebView2 UserDataFolder 推断路径（基于 Tauri 默认约定）
 //! - PowerShell profile 最近备份目录（如果装过 cc 集成）
 
+use crate::copy_table::copy_text;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
@@ -152,7 +153,7 @@ fn monitor_entries(monitor_data_dir: &Path) -> Vec<DataPathInfo> {
         probe_file(
             monitor_data_dir.join("config.json"),
             "config.json",
-            "主题 / 字体 / claudeDir override / 诊断开关",
+            &copy_text("rsDataPaths.monitor.config", &[]),
             DataClass::Truth,
         ),
         // 🔴 〔ST2 · `70 §6.2`〕原文「cc 集成的 sid → 终端 HWND 持久绑定」—— `sid` / `HWND`
@@ -160,38 +161,38 @@ fn monitor_entries(monitor_data_dir: &Path) -> Vec<DataPathInfo> {
         probe_file(
             monitor_data_dir.join("sid-hwnd-cache.json"),
             "sid-hwnd-cache.json",
-            "每个会话在哪个终端窗口里（cc 集成用来拉前终端）",
+            &copy_text("rsDataPaths.monitor.bindings", &[]),
             DataClass::Cache,
         ),
         probe_file(
             monitor_data_dir.join("auto-launch.json"),
             "auto-launch.json",
-            "auto-launch monitor 开关 + 当前 monitor exe 路径",
+            &copy_text("rsDataPaths.monitor.autoLaunch", &[]),
             // 开关是你选的（真相）；exe 路径每次启动自愈重写（派生）⇒ 整份按真相记（见 `DataClass`）。
             DataClass::Truth,
         ),
         probe_file(
             monitor_data_dir.join("history-metadata.json"),
             "history-metadata.json",
-            "历史浏览器：star / 重命名 / 隐藏",
+            &copy_text("rsDataPaths.monitor.historyMeta", &[]),
             DataClass::Truth,
         ),
         probe_dir(
             monitor_data_dir.join("ps-await"),
             "ps-await/",
-            "cc 集成短期 IPC：PS 通知 monitor 找窗口（写时存在，握手后被删）",
+            &copy_text("rsDataPaths.monitor.integrationSignal", &[]),
             DataClass::Cache,
         ),
         probe_dir(
             monitor_data_dir.join("ps-registry"),
             "ps-registry/",
-            "cc 集成短期 IPC：monitor 把绑定结果告诉 PS（PS 进程同寿）",
+            &copy_text("rsDataPaths.monitor.psRegistry", &[]),
             DataClass::Cache,
         ),
         probe_dir(
             monitor_data_dir.join("logs"),
             LOGS_DIR_LABEL,
-            "诊断日志（按天滚动，保留 3 天）",
+            &copy_text("rsDataPaths.monitor.logs", &[]),
             DataClass::Cache,
         ),
     ]
@@ -244,7 +245,7 @@ fn detect_webview_data_dir(handle: &AppHandle) -> Option<DataPathInfo> {
     Some(probe_dir(
         webview_dir,
         "WebView2 / EBWebView/",
-        "WebView2 cache / localStorage / IndexedDB / cookies。由 WebView2 Runtime 管理。",
+        &copy_text("rsDataPaths.webview.dataDir", &[]),
         // 里面有 localStorage（界面偏好）⇒ 删了会丢东西，按真相记。
         DataClass::Truth,
     ))
@@ -265,8 +266,8 @@ fn detect_profile_backup_dirs() -> Vec<DataPathInfo> {
         if has_backup_in_dir(&dir) {
             out.push(probe_dir(
                 dir,
-                "PowerShell profile 备份目录",
-                "v1.7.10+ 装 cc 集成时自动备份到 <profile>.ccm-backup-<时间戳>",
+                &copy_text("rsDataPaths.backup.title", &[]),
+                &copy_text("rsDataPaths.backup.note", &[]),
                 // 你原来那份 profile 的唯一副本 ⇒ 删了就回不去了。
                 DataClass::Truth,
             ));

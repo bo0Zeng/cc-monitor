@@ -21,6 +21,7 @@
  * 而藏起来，Windows 用户就**再也找不到**这颗按钮；错判成 Windows 而显示，就是加这道门之前的样子。
  */
 import { hostOsAllows, type HostOs } from "./settings/host-os";
+import { copyText } from "./copy-table";
 
 /** ↗ 真能用的 OS。**只有一个** —— 见头注。 */
 export const TERMINAL_FRONT_HOST_OS: readonly HostOs[] = ["windows"];
@@ -31,5 +32,5 @@ export function terminalFrontAvailable(): boolean {
 }
 
 /** 快捷键 / 命令面板走到 ↗ 而本机不是 Windows 时说的话（标题 · 正文）。 */
-export const TERMINAL_FRONT_UNAVAILABLE_TITLE = "本机不能切到终端窗口";
-export const TERMINAL_FRONT_UNAVAILABLE_DETAIL = "只有 Windows 上的 cc-monitor 能把会话的终端窗口切到前台。";
+export const TERMINAL_FRONT_UNAVAILABLE_TITLE = copyText("terminalFront.unavailable.title");
+export const TERMINAL_FRONT_UNAVAILABLE_DETAIL = copyText("terminalFront.unavailable.detail");

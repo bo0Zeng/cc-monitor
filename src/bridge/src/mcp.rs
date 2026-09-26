@@ -11,6 +11,7 @@
 //! `~/.claude.json` 路径有变体（`CLAUDE_CONFIG_DIR` vs `$HOME`），故 `claude_json_candidates` 取多候选、
 //! 读第一个存在的——防御式，schema 真机可能变，不硬假设完整。
 
+use crate::copy_table::copy_text;
 use crate::origin::{Origin, Route};
 use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
@@ -199,8 +200,12 @@ pub async fn list_mcp_project_dirs(origin: Origin) -> Result<Vec<String>, String
 /// ② 大解析进 spawn_blocking（对齐 §10）。
 #[tauri::command]
 pub async fn read_remote_mcp_servers(origin: String) -> Result<Vec<McpServerEntry>, String> {
-    let cfg = crate::load_remote_config_by_label(&origin)
-        .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))?;
+    let cfg = crate::load_remote_config_by_label(&origin).ok_or_else(|| {
+        copy_text(
+            "rsMcp.remote.notConfigured",
+            &[("machine", &origin.to_string())],
+        )
+    })?;
     let claude_json = fetch_remote_claude_json(&cfg).await?;
     let src = format!("[{}] ~/.claude.json", cfg.origin_label());
     Ok(collect_entries(claude_json.as_ref(), &src, None, "", None))
@@ -229,17 +234,23 @@ async fn fetch_remote_claude_json(
             .take(REMOTE_CLAUDE_JSON_CAP + 1)
             .read_to_end(&mut buf)
             .await
-            .map_err(|e| format!("读取远端 ~/.claude.json 失败: {e}"))?;
+            .map_err(|e| copy_text("rsMcp.remote.readFailed", &[("e", &e.to_string())]))?;
         if buf.len() as u64 > REMOTE_CLAUDE_JSON_CAP {
-            return Err(format!(
-                "远端 ~/.claude.json 超过 {REMOTE_CLAUDE_JSON_CAP} 字节上限 —— 拒收，不拿截断的 JSON 去解析"
+            return Err(copy_text(
+                "rsMcp.remote.tooBig",
+                &[("cap", &REMOTE_CLAUDE_JSON_CAP.to_string())],
             ));
         }
         Ok::<Vec<u8>, String>(buf)
     };
     let raw = tokio::time::timeout(std::time::Duration::from_secs(30), read)
         .await
-        .map_err(|_| format!("远端 '{}' 读取超时（30s）", cfg.origin_label()))??;
+        .map_err(|_| {
+            copy_text(
+                "rsMcp.remote.timeout",
+                &[("machine", &(cfg.origin_label()).to_string())],
+            )
+        })??;
     tokio::task::spawn_blocking(move || {
         let text = String::from_utf8_lossy(&raw);
         serde_json::from_str::<Value>(text.trim_start_matches('\u{feff}')).ok()
@@ -255,8 +266,12 @@ async fn fetch_remote_claude_json(
 /// `local_origin_registry::TRIAGE_DEBT` 按「文件::函数」登记着这一处，
 /// 改名会让那张表静默失配（那条判据的 `stale` 断言逐字治这件事）。
 pub(crate) async fn list_remote_mcp_project_dirs(host: &str) -> Result<Vec<String>, String> {
-    let cfg = crate::load_remote_config_by_label(host)
-        .ok_or_else(|| format!("远端 '{host}' 未配置或未启用"))?;
+    let cfg = crate::load_remote_config_by_label(host).ok_or_else(|| {
+        copy_text(
+            "rsMcp.remote.notConfigured",
+            &[("machine", &host.to_string())],
+        )
+    })?;
     let claude_json = fetch_remote_claude_json(&cfg).await?;
     Ok(claude_json
         .map(|v| project_dirs_from(&v))
@@ -285,10 +300,13 @@ pub async fn list_remote_mcp_origins() -> Result<Vec<String>, String> {
 fn mcp_json_path(project_dir: &str) -> Result<PathBuf, String> {
     let d = project_dir.trim();
     if d.is_empty() {
-        return Err("project_dir 为空，拒绝写".into());
+        return Err(copy_text("rsMcp.path.emptyDir", &[]).into());
     }
     if !Path::new(d).is_absolute() {
-        return Err(format!("项目目录须为绝对路径（实得 {d:?}）"));
+        return Err(copy_text(
+            "rsMcp.path.notAbsolute",
+            &[("dir", &format!("{:?}", d))],
+        ));
     }
     Ok(Path::new(d).join(".mcp.json"))
 }
@@ -300,17 +318,17 @@ pub(crate) fn upsert_mcp_server_value(
     server: Value,
 ) -> Result<(), String> {
     if name.trim().is_empty() {
-        return Err("server 名为空".into());
+        return Err(copy_text("rsMcp.upsert.emptyName", &[]).into());
     }
     let obj = root
         .as_object_mut()
-        .ok_or_else(|| ".mcp.json 根不是对象".to_string())?;
+        .ok_or_else(|| copy_text("rsMcp.mcpJson.rootNotObject", &[]))?;
     let servers = obj
         .entry("mcpServers")
         .or_insert_with(|| Value::Object(Map::new()));
     let smap = servers
         .as_object_mut()
-        .ok_or_else(|| "mcpServers 不是对象".to_string())?;
+        .ok_or_else(|| copy_text("rsMcp.mcpJson.serversNotObject", &[]))?;
     smap.insert(name, server);
     Ok(())
 }
@@ -319,7 +337,7 @@ pub(crate) fn upsert_mcp_server_value(
 fn remove_mcp_server_value(root: &mut Value, name: &str) -> Result<bool, String> {
     let obj = root
         .as_object_mut()
-        .ok_or_else(|| ".mcp.json 根不是对象".to_string())?; // 根对象守卫（对齐 write）
+        .ok_or_else(|| copy_text("rsMcp.mcpJson.rootNotObject", &[]))?; // 根对象守卫（对齐 write）
     Ok(obj
         .get_mut("mcpServers")
         .and_then(|m| m.as_object_mut())
@@ -340,11 +358,14 @@ fn is_safe_remote_mcp_json(path: &str) -> bool {
 fn remote_mcp_json_path(project_dir: &str) -> Result<String, String> {
     let d = project_dir.trim().trim_end_matches('/');
     if d.is_empty() || !d.starts_with('/') {
-        return Err("远端项目目录须为绝对路径".into());
+        return Err(copy_text("rsMcp.remote.pathNotAbsolute", &[]).into());
     }
     let p = format!("{d}/.mcp.json");
     if !is_safe_remote_mcp_json(&p) {
-        return Err(format!("拒绝写非法远端路径：{p}"));
+        return Err(copy_text(
+            "rsMcp.remote.pathIllegal",
+            &[("path", &p.to_string())],
+        ));
     }
     Ok(p)
 }
@@ -380,7 +401,12 @@ pub(crate) fn split_target(target: &str) -> Result<(&str, &str), String> {
     target
         .rsplit_once(['/', '\\'])
         .filter(|(r, n)| !r.is_empty() && !n.is_empty())
-        .ok_or_else(|| format!("拒绝写：{target} 切不出项目目录"))
+        .ok_or_else(|| {
+            copy_text(
+                "rsMcp.target.noProjectDir",
+                &[("target", &target.to_string())],
+            )
+        })
 }
 
 /// 🔴 **`.mcp.json` 的原文怎么变成新原文 —— 只有这一处**（纯）：不存在 ⇒ 从骨架算起；已存在但解析失败 ⇒
@@ -395,8 +421,12 @@ pub(crate) fn plan_project_mcp(
 ) -> Result<Option<String>, String> {
     let mut v = match existing {
         None => serde_json::json!({ "mcpServers": {} }),
-        Some(t) => serde_json::from_str(t.trim_start_matches('\u{feff}'))
-            .map_err(|e| format!("{what} 解析失败（拒绝覆盖）: {e}"))?,
+        Some(t) => serde_json::from_str(t.trim_start_matches('\u{feff}')).map_err(|e| {
+            copy_text(
+                "rsMcp.plan.parseFailed",
+                &[("what", &what.to_string()), ("e", &e.to_string())],
+            )
+        })?,
     };
     if !change(&mut v)? {
         return Ok(None);
@@ -482,13 +512,22 @@ pub async fn read_remote_project_mcp(
     origin: String,
     project_dir: String,
 ) -> Result<Vec<McpServerEntry>, String> {
-    let cfg = crate::load_remote_config_by_label(&origin)
-        .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))?;
+    let cfg = crate::load_remote_config_by_label(&origin).ok_or_else(|| {
+        copy_text(
+            "rsMcp.remote.notConfigured",
+            &[("machine", &origin.to_string())],
+        )
+    })?;
     let path = remote_mcp_json_path(&project_dir)?;
     let (root_dir, rel) = path
         .rsplit_once('/')
         .filter(|(r, n)| !r.is_empty() && !n.is_empty())
-        .ok_or_else(|| format!("{path} 切不出项目目录"))?;
+        .ok_or_else(|| {
+            copy_text(
+                "rsMcp.target.pathNoProjectDir",
+                &[("path", &path.to_string())],
+            )
+        })?;
     let door = crate::user_files::BackendDoor::new(crate::origin::Origin(cfg.origin_label()));
     // 读侧宽容：不存在 / 读不出 / 坏 → 空（不像写侧那样 Err）。
     let root = crate::user_files::Door::peek(&door, root_dir, rel)

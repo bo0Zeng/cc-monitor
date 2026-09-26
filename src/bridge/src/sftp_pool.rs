@@ -24,6 +24,7 @@
 //! - 本机那条流断了 ⇒ 后端的票表随它一起丢、在册的一律撤；这一侧开在那条流上的中继一律收场（`failed`，原因说清），
 //!   不让看的人干等（[`fail_owned_by`]，两条本机读循环结束时各调一次，同 `link_mux::fail_owned_by`）。
 
+use crate::copy_table::copy_text;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
@@ -32,7 +33,6 @@ use tokio::sync::watch;
 
 use crate::backend::control::backend_route::{route_call_error, Routed};
 use crate::backend::control::inbound_client::InboundClient;
-use crate::claude_data_fence::guard_write;
 use crate::ssh_source::RemoteConfig;
 
 /// 开单：上传。载荷 `{"local_path"}`，回 `{"id","key"}`（`key` 是暂存件的键，提交时交给远端后端）。
@@ -123,22 +123,29 @@ pub async fn transfer_call(
             .map(str::to_string)
             .ok_or((
                 "bad_args".to_string(),
-                format!("`{op}` 少了 `{k}`，或者它不是一个字符串"),
+                copy_text(
+                    "rsSftpPool.call.missingField",
+                    &[("op", &op.to_string()), ("k", &k.to_string())],
+                ),
             ))
     };
     let dial = crate::dial_host::transfer_dial(&cfg).map_err(|e| ("bad_args".to_string(), e))?;
     let args = match op {
         TRANSFER_UPLOAD => serde_json::json!({ "dial": dial, "local_path": text("local_path")? }),
-        TRANSFER_DOWNLOAD => {
-            let local = text("local_path")?;
-            // 本机落点那道围栏：开单时就在这一侧判一次（出声早，形状同从前）；权威在后端（起跑时它再判）。
-            guard_write(&local).map_err(|e| ("refused".to_string(), e))?;
-            serde_json::json!({ "dial": dial, "remote_path": text("remote_path")?, "local_path": local })
-        }
+        // 〔FN1 · V119〕这里原来先判一次本机落点是不是 Claude 会话数据（开单时出声早）。用户「文件管理器全部都可以改.
+        //   不需要任何围栏」⇒ 删了；落点的路径解析（绝对路径 · 父目录在盘上）在本机常驻后端 `transfer-download` 开单那一判。
+        TRANSFER_DOWNLOAD => serde_json::json!({
+            "dial": dial,
+            "remote_path": text("remote_path")?,
+            "local_path": text("local_path")?,
+        }),
         other => {
             return Err((
                 "bad_args".to_string(),
-                format!("`{other}` 不是传输台的命令"),
+                copy_text(
+                    "rsSftpPool.call.notTransfer",
+                    &[("other", &other.to_string())],
+                ),
             ))
         }
     };
@@ -155,7 +162,7 @@ pub async fn transfer_call(
         .and_then(serde_json::Value::as_str)
         .ok_or((
             "backend".to_string(),
-            format!("本机后端开了单却没回票号：{v}"),
+            copy_text("rsSftpPool.call.noTicket", &[("v", &v.to_string())]),
         ))?
         .to_string();
     let (tx, _rx) = watch::channel::<Snap>(Snap::default());
@@ -213,12 +220,15 @@ pub fn watch_ticket(
     let (state, owner) = {
         let mut g = relays();
         let Some(r) = g.get_mut(id).filter(|r| r.origin == *origin) else {
-            return Err(("no-such-transfer", format!("没有这一趟传输（{id}）")));
+            return Err((
+                "no-such-transfer",
+                copy_text("rsSftpPool.watch.unknown", &[("id", &id.to_string())]),
+            ));
         };
         if r.watched {
             return Err((
                 "already-watched",
-                format!("这一趟传输已经有人在看了（{id}）"),
+                copy_text("rsSftpPool.watch.taken", &[("id", &id.to_string())]),
             ));
         }
         r.watched = true;
@@ -232,7 +242,9 @@ pub fn watch_ticket(
         let id = id.to_string();
         tokio::spawn(async move {
             let Some(client) = owner.upgrade() else {
-                state.send_modify(|s| s.end = Some(End::Failed("本机后端的流断了".to_string())));
+                state.send_modify(|s| {
+                    s.end = Some(End::Failed(copy_text("rsSftpPool.watch.streamGone", &[])))
+                });
                 return;
             };
             if let Err(e) = client
@@ -259,7 +271,7 @@ pub fn watch_ticket(
             if !first && rx.changed().await.is_err() {
                 // 发送端在守卫里 ⇒ 这一支到不了；到了就当它收场了。
                 let snap = Snap {
-                    end: Some(End::Failed("这一趟传输的状态丢了".to_string())),
+                    end: Some(End::Failed(copy_text("rsSftpPool.watch.lost", &[]))),
                     ..Snap::default()
                 };
                 return Some((snap, (rx, guard, false, true)));

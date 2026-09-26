@@ -31,6 +31,7 @@
 //! ⚠ 两条各自**认不出**什么（具名常量来自本层与 control/observe 之外 · 非 `i32` 的码 ·
 //! 运行期从数据里读的表 · `mod.rs` 本身不在扫描面），逐条写在它们自己的头注里 —— 别读成全覆盖。
 
+use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -217,7 +218,10 @@ fn not_run(bin: &Path, e: std::io::Error) -> NotRun {
     if e.raw_os_error() == Some(libc::E2BIG) {
         return NotRun::ArgListTooLong;
     }
-    NotRun::Failed(format!("起不来 `{}`：{e}", bin.display()))
+    NotRun::Failed(copy_text(
+        "beInvoke.notRun.failed",
+        &[("bin", &(bin.display()).to_string()), ("e", &e.to_string())],
+    ))
 }
 
 /// 起它、**同步**等它退出（阻塞档的调用方用：它们本来就跑在 `spawn_blocking` 的线程上）。
@@ -292,8 +296,12 @@ pub(crate) async fn run_abortable(
     );
     // 收过尸了 ⇒ 组号可能被复用，从这一刻起守卫不许再开枪。
     guard.group = None;
-    let status =
-        status.map_err(|e| NotRun::Failed(format!("等 `{}` 退出时出错：{e}", bin.display())))?;
+    let status = status.map_err(|e| {
+        NotRun::Failed(copy_text(
+            "beInvoke.runAbortable.waitFailed",
+            &[("bin", &(bin.display()).to_string()), ("e", &e.to_string())],
+        ))
+    })?;
     Ok(Done {
         code: status.code(),
         stdout,

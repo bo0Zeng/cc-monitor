@@ -55,12 +55,10 @@ import { installGlobalClickDelegation } from "./entry-render-common";
 import { AccountChip } from "./account-chip";
 import { buildAccountCommands } from "./account-commands";
 import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
-import {
-  fetchSessionAccounts,
-  fetchAccounts,
-  currentAccountForBadge,
-  resolvePendingLocalLaunches,
-} from "./accounts";
+import { currentAccountForBadge } from "./accounts";
+import { fetchSessionAccounts, fetchAccounts } from "./account-reads";
+import { resolvePendingLocalLaunches } from "./local-launch-backfill";
+import { copyText } from "./copy-table";
 
 // === 启动 perf 测量 ===
 // performance.now() 自页面 navigation start 起；前端各阶段时间点。
@@ -132,11 +130,11 @@ window.addEventListener("DOMContentLoaded", async () => {
   status.innerHTML = "";
   const statusMsg = document.createElement("span");
   statusMsg.className = "status-msg";
-  statusMsg.textContent = "M2 · 等待活跃 Claude Code 会话…";
+  statusMsg.textContent = copyText("main.status.waiting");
   status.appendChild(statusMsg);
   const statusCount = document.createElement("span");
   statusCount.className = "status-count";
-  statusCount.textContent = "活跃 0";
+  statusCount.textContent = copyText("main.status.count", { live: 0 });
   status.appendChild(statusCount);
 
   // issue #11: Task 面板的 summary chip 嵌入 status bar 右侧（活跃数右边）；
@@ -158,7 +156,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   const empty = document.createElement("div");
   empty.className = "empty-state";
-  empty.innerHTML = `暂无活跃会话<br><small>打开终端跑 <code>claude</code> 后将自动出现</small>`;
+  empty.innerHTML = copyText("main.empty.noSessions");
   streamRoot.appendChild(empty);
 
   // Batch5-F19：上次所在 tab 是远端会话时，等它的 remote-session-added 到达再切
@@ -171,9 +169,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     tabBar,
     streamRoot,
     ({ total, live }) => {
-      statusCount.textContent = `活跃 ${live}`;
+      statusCount.textContent = copyText("main.status.count", { live });
       statusMsg.textContent =
-        live > 0 ? "M2 · 监听中" : "M2 · 等待活跃 Claude Code 会话…";
+        live > 0 ? copyText("main.status.watching") : copyText("main.status.waiting");
       empty.style.display = total > 0 ? "none" : "";
     },
     tasksPanel,
@@ -334,7 +332,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         });
         agentViewerMount.focus?.(); // 让 Esc keydown 能落到挂载壳
       } catch (e) {
-        showActionFailureToast("加载 subagent 记录失败", String(e));
+        showActionFailureToast(copyText("main.subagent.loadFailed"), String(e));
       }
     })();
   };
@@ -375,7 +373,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       }
       const resizer = document.createElement("div");
       resizer.id = "tab-bar-resizer";
-      resizer.title = "拖拽调整 tab 栏宽度";
+      resizer.title = copyText("main.tabBar.resizeHint");
       // 拖动期间**不能**实时改 --tab-bar-w：网格列宽一变，消息区整棵布局树重排，
       // 而切 tab 零卡顿方案让所有 tab 的 DOM 都 visibility 保活在布局树里——每次
       // mousemove 全量重排 = 拖动巨卡。改为拖动时只画 fixed 参考线（repaint-only），
@@ -433,8 +431,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   const settingsTrigger = document.createElement("button");
   settingsTrigger.type = "button";
   settingsTrigger.className = "settings-trigger";
-  settingsTrigger.title = "设置 (,)";
-  settingsTrigger.setAttribute("aria-label", "打开设置");
+  settingsTrigger.title = copyText("main.topbar.settingsHint");
+  settingsTrigger.setAttribute("aria-label", copyText("main.cmd.openSettings"));
   settingsTrigger.addEventListener("click", () => {
     void openSettingsWindow(settingsTrigger); // F82a：开独立设置窗口（非浮层）· ST1：点了有反馈
   });
@@ -446,8 +444,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   const historyTrigger = document.createElement("button");
   historyTrigger.type = "button";
   historyTrigger.className = "history-trigger";
-  historyTrigger.title = "历史会话浏览器 (H)";
-  historyTrigger.setAttribute("aria-label", "打开历史会话浏览器");
+  historyTrigger.title = copyText("main.topbar.historyHint");
+  historyTrigger.setAttribute("aria-label", copyText("main.topbar.openHistory"));
   // 纯字符的时钟符号（U+25F7），避免 emoji 跨平台/字体差异
   historyTrigger.addEventListener("click", () => {
     if (historyView.isVisible()) {
@@ -477,8 +475,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   const panoramaTrigger = document.createElement("button");
   panoramaTrigger.type = "button";
   panoramaTrigger.className = "panorama-trigger";
-  panoramaTrigger.title = "代码全景 (G)";
-  panoramaTrigger.setAttribute("aria-label", "打开代码全景");
+  panoramaTrigger.title = copyText("main.topbar.panoramaHint");
+  panoramaTrigger.setAttribute("aria-label", copyText("main.cmd.openPanorama"));
   panoramaTrigger.addEventListener("click", () => {
     if (panoramaView.isVisible()) panoramaView.close();
     else void panoramaView.open();
@@ -491,8 +489,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   const gridTrigger = document.createElement("button");
   gridTrigger.type = "button";
   gridTrigger.className = "grid-monitor-trigger";
-  gridTrigger.title = "多 agent 监控（跨机器只读并排）";
-  gridTrigger.setAttribute("aria-label", "打开多 agent 监控");
+  gridTrigger.title = copyText("main.topbar.gridHint");
+  gridTrigger.setAttribute("aria-label", copyText("main.cmd.openGrid"));
   gridTrigger.addEventListener("click", () => {
     if (gridMonitorView.isVisible()) gridMonitorView.close();
     else gridMonitorView.open();
@@ -504,8 +502,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   const sftpTrigger = document.createElement("button");
   sftpTrigger.type = "button";
   sftpTrigger.className = "sftp-trigger";
-  sftpTrigger.title = "远端文件（浏览 / 上传 / 下载）";
-  sftpTrigger.setAttribute("aria-label", "打开文件窗口");
+  sftpTrigger.title = copyText("main.topbar.filesHint");
+  sftpTrigger.setAttribute("aria-label", copyText("main.cmd.openFiles"));
   sftpTrigger.addEventListener("click", () => void openSftpFromTopbar(sftpTrigger));
   document.getElementById("app")?.appendChild(sftpTrigger);
 
@@ -528,21 +526,21 @@ window.addEventListener("DOMContentLoaded", async () => {
       return raw ? KeybindingDispatcher.prettyChord(raw) : undefined;
     };
     const cmds: Command[] = [
-      { id: "open-history", title: "打开历史浏览器", keywords: "history 历史", hint: chordHint("app.toggle-history"), run: () => { if (!historyView.isVisible()) void historyView.open(); } },
-      { id: "open-panorama", title: "打开代码全景", keywords: "panorama 全景 code", hint: chordHint("app.toggle-panorama"), run: () => { if (!panoramaView.isVisible()) void panoramaView.open(); } },
+      { id: "open-history", title: copyText("main.cmd.openHistory"), keywords: copyText("main.cmd.historyKeywords"), hint: chordHint("app.toggle-history"), run: () => { if (!historyView.isVisible()) void historyView.open(); } },
+      { id: "open-panorama", title: copyText("main.cmd.openPanorama"), keywords: copyText("main.cmd.panoramaKeywords"), hint: chordHint("app.toggle-panorama"), run: () => { if (!panoramaView.isVisible()) void panoramaView.open(); } },
       // devbench F03b：**开 overlay 属命令面板首刀允许的只读动作**（写发生在 overlay 内的保存上）。
-      { id: "open-inbox", title: "打开收件箱", keywords: "inbox 收件箱 计划 planned-build 注入", run: () => { if (!inboxView.isVisible()) void inboxView.open(); } },
-      { id: "open-cc-bus", title: "打开 cc-bus 驾驶舱", keywords: "cc-bus bus agent 驾驶舱 通信", run: () => { if (!ccBusView.isVisible()) ccBusView.open(); } },
-      { id: "open-grid", title: "打开多 agent 监控", keywords: "grid monitor 监控 agent 并排", run: () => { if (!gridMonitorView.isVisible()) gridMonitorView.open(); } },
-      { id: "open-settings", title: "打开设置", keywords: "settings 设置 preferences", hint: chordHint("app.open-settings"), run: () => void openSettingsWindow() },
-      { id: "open-sftp", title: "打开文件窗口", keywords: "sftp file 文件 传输", run: () => void openSftpFromTopbar(sftpTrigger) },
-      { id: "win-minimize", title: "最小化窗口", keywords: "minimize 最小化", hint: chordHint("app.minimize"), run: () => void getCurrentWindow().minimize() },
-      { id: "win-fullscreen", title: "切换全屏", keywords: "fullscreen 全屏", hint: chordHint("app.toggle-fullscreen"), run: () => { const w = getCurrentWindow(); void w.isFullscreen().then((f) => w.setFullscreen(!f)).catch((e) => console.warn("toggle-fullscreen failed:", e)); } },
+      { id: "open-inbox", title: copyText("main.cmd.openInbox"), keywords: copyText("main.cmd.inboxKeywords"), run: () => { if (!inboxView.isVisible()) void inboxView.open(); } },
+      { id: "open-cc-bus", title: copyText("main.cmd.openCcBus"), keywords: copyText("main.cmd.ccBusKeywords"), run: () => { if (!ccBusView.isVisible()) ccBusView.open(); } },
+      { id: "open-grid", title: copyText("main.cmd.openGrid"), keywords: copyText("main.cmd.gridKeywords"), run: () => { if (!gridMonitorView.isVisible()) gridMonitorView.open(); } },
+      { id: "open-settings", title: copyText("main.cmd.openSettings"), keywords: copyText("main.cmd.settingsKeywords"), hint: chordHint("app.open-settings"), run: () => void openSettingsWindow() },
+      { id: "open-sftp", title: copyText("main.cmd.openFiles"), keywords: copyText("main.cmd.filesKeywords"), run: () => void openSftpFromTopbar(sftpTrigger) },
+      { id: "win-minimize", title: copyText("main.cmd.minimize"), keywords: copyText("main.cmd.minimizeKeywords"), hint: chordHint("app.minimize"), run: () => void getCurrentWindow().minimize() },
+      { id: "win-fullscreen", title: copyText("main.cmd.fullscreen"), keywords: copyText("main.cmd.fullscreenKeywords"), hint: chordHint("app.toggle-fullscreen"), run: () => { const w = getCurrentWindow(); void w.isFullscreen().then((f) => w.setFullscreen(!f)).catch((e) => console.warn("toggle-fullscreen failed:", e)); } },
       // 〔U2〕↗ 那一项只在 ↗ 真能用的机器上列出来（非 Windows 不列；门与 tab 上那颗按钮是同一道，见 `terminal-front-command.ts`）。
-      ...terminalFrontCommand({ id: "term-front", title: "把对应终端窗口拉到前台", keywords: "terminal 终端 front", hint: chordHint("terminal.bring-front"), run: () => tabs.bringActiveTerminalToFront() }),
-      { id: "toggle-tasks", title: "开 / 关 Task 面板", keywords: "task 任务 panel", hint: chordHint("panel.toggle-tasks"), run: () => tasksPanel.toggle() },
-      { id: "tab-next", title: "切到下一个 Tab", keywords: "next tab 下一个", hint: chordHint("tab.next"), run: () => tabs.cycleActive(1) },
-      { id: "tab-prev", title: "切到上一个 Tab", keywords: "prev tab 上一个", hint: chordHint("tab.prev"), run: () => tabs.cycleActive(-1) },
+      ...terminalFrontCommand({ id: "term-front", title: copyText("main.cmd.terminalFront"), keywords: copyText("main.cmd.terminalFrontKeywords"), hint: chordHint("terminal.bring-front"), run: () => tabs.bringActiveTerminalToFront() }),
+      { id: "toggle-tasks", title: copyText("main.cmd.tasks"), keywords: copyText("main.cmd.tasksKeywords"), hint: chordHint("panel.toggle-tasks"), run: () => tasksPanel.toggle() },
+      { id: "tab-next", title: copyText("main.cmd.tabNext"), keywords: copyText("main.cmd.tabNextKeywords"), hint: chordHint("tab.next"), run: () => tabs.cycleActive(1) },
+      { id: "tab-prev", title: copyText("main.cmd.tabPrev"), keywords: copyText("main.cmd.tabPrevKeywords"), hint: chordHint("tab.prev"), run: () => tabs.cycleActive(-1) },
     ];
     // A3/U8：账号命令。构造逻辑在 account-commands.ts（纯函数，可测——原先长在这个闭包里，
     // "命令何时出现"完全测不到，把判定改成恒 true 也不会红）。这里只喂快照与动作。
@@ -559,8 +557,8 @@ window.addEventListener("DOMContentLoaded", async () => {
       const originTag = isRemoteOrigin(s.origin) ? `[${s.origin}] ` : "";
       cmds.push({
         id: `switch-${s.sessionId}`,
-        title: `切到会话：${originTag}${s.title}`,
-        keywords: `switch session 切换 会话 ${s.cwd ?? ""} ${isRemoteOrigin(s.origin) ? s.origin : ""}`,
+        title: copyText("main.cmd.switchSession", { originTag, title: s.title }),
+        keywords: copyText("main.cmd.switchSessionKeywords", { cwd: s.cwd ?? "", machine: isRemoteOrigin(s.origin) ? s.origin : "" }),
         run: () => tabs.switchTo(s.sessionId),
       });
     }
@@ -580,7 +578,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     icon.setAttribute("aria-hidden", "true"); // F84b-fix：图标纯装饰，屏读器别念 U+2328 字形名
     cmdkHint.appendChild(icon);
     const label = document.createElement("span");
-    label.textContent = "命令";
+    label.textContent = copyText("main.cmdk.label");
     cmdkHint.appendChild(label);
     // F84b-fix：kbd 抽成可重建——改键热应用后经 refreshCmdkChord 刷新，不再教死键。
     refreshCmdkChord = (): void => {
@@ -593,7 +591,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       }
     };
     refreshCmdkChord();
-    cmdkHint.title = "打开命令面板：搜索并执行所有操作";
+    cmdkHint.title = copyText("main.cmdk.hint");
     cmdkHint.addEventListener("click", () => {
       cmdkHint.classList.remove("first-run"); // 点过即消掉首运行高亮
       commandBar.toggle();
@@ -760,6 +758,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     onOriginSessionsListed: (origin) => tabs.markOriginSeen(origin),
     // 〔TAP · V124〕中转抄出来的 SSE 事件 → 活卡（jsonl 到了整轮覆盖）。
     onSessionTap: (e) => tabs.onSessionTap(e),
+    // 〔GP1 · 第四波〕那台机器看不见了 ⇒ 说不清（不是已结束）。
+    onSessionUnseen: (sessionId) => tabs.markUnseen(sessionId),
     // 会话复活（resume）：后端 liveness 门控后才发，复活已归档的本地 Tab，免 F5。
     // Batch7-F24：无 Tab（= 运行中途**新出现**的本地会话）→ 建骨架——bg 会话必须
     // 从这条通道拿 kind/name（首行 onLine→ensureTab 不带 kind，会建成无 ⚙ 普通 tab）。
@@ -796,7 +796,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     onSessionActivity: (e) =>
       tabs.updateActivity(e.session_id, e.status, e.waiting_for),
     // Batch5-F18：远端会话宣告 → 骨架 Tab。Batch7-F24：p1e backend 附 cwd/kind/name
-    // ——骨架标题即时完整（bg → ⚙ + 树状挂宿主后）；旧后端缺省照旧 sid 前缀。
+    // ——骨架标题即时完整（bg → ⚙ ＋ 任务名；〔BG1〕不再挂宿主排成树）；旧后端缺省照旧 sid 前缀。
     onRemoteSessionAdded: (sessionId, origin, meta) => {
       tabs.createSkeletonTab(
         sessionId,
@@ -911,8 +911,8 @@ async function openSftpFromTopbar(anchor: HTMLElement): Promise<void> {
   if (hosts.length === 0) {
     // 这是引导提示不是失败 → info 级（非红色错误）。
     showActionFailureToast(
-      "无可用远端主机",
-      "先在设置 → 连接 配好 host / user，再打开文件窗口。",
+      copyText("main.sftp.noMachine"),
+      copyText("main.sftp.noMachineHint"),
       { level: "info" },
     );
     return;

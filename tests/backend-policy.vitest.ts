@@ -21,7 +21,7 @@ import { stripComments } from "./test-support/strip-comments";
 import {
   describeBackendHealth,
   HEALTH_CLEAN,
-  HEALTH_CRASHED,
+  healthCrashed,
   HEALTH_LAST_MISSING,
   HEALTH_UNKNOWN,
   type BackendHealth,
@@ -107,13 +107,15 @@ describe("K-P3 那句读数 —— 三档逐格钉死", () => {
   });
 
   it("★ 第三档：崩过 ⇒ 带次数与最后那一行；那一行没留住也要说出口", () => {
-    expect(describeBackendHealth({ ...NONE, crashed: 3, last: "甲那一行" })).toBe(
-      HEALTH_CRASHED.replace("{crashed}", "3").replace("{last}", "甲那一行"),
-    );
+    // 〔CP2b〕那句模板住文案表，取文口是 healthCrashed；另判一次次数与那一行真进了句子（不只是同一个函数自比）。
+    const got = describeBackendHealth({ ...NONE, crashed: 3, last: "甲那一行" });
+    expect(got).toBe(healthCrashed(3, "甲那一行"));
+    expect(got).toContain("3");
+    expect(got).toContain("甲那一行");
     expect(
       describeBackendHealth({ ...NONE, crashed: 1, last: null }),
       "崩过、而那一行没留住 —— 这一格不许拿空串糊过去",
-    ).toBe(HEALTH_CRASHED.replace("{crashed}", "1").replace("{last}", HEALTH_LAST_MISSING));
+    ).toBe(healthCrashed(1, HEALTH_LAST_MISSING));
   });
 
   it("★ 占位符必须真的被填掉 —— 漏一个 replace 就把 `{crashed}` 端到用户眼前", () => {

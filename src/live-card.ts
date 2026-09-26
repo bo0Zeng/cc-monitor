@@ -320,7 +320,7 @@ export function renderCardText(card: LiveCardState): { head: string; body: strin
       ? copyText("liveCard.state.streaming")
       : copyText("liveCard.state.awaitingRecord");
   const parts: string[] = [];
-  if (card.clipped) parts.push("…");
+  if (card.clipped) parts.push(copyText("liveCard.body.clipped"));
   for (const b of card.blocks) {
     if (!b) continue;
     if (b.kind === "text") parts.push(b.text);

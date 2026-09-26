@@ -13,24 +13,35 @@
  * **买不到**：它不判断这些数「多不多」—— 那是读图的人的事。
  */
 import type { DiagramHonesty } from "./types";
+import { copyText } from "../copy-table";
 
 type Cell = (h: DiagramHonesty) => string;
 
-const count = (v: number | null, name: string, unit: string): string =>
-  v === null ? `${name}：不适用` : `${name} ${v} ${unit}`;
+/** 〔CP2b〕不适用 / 有数 两句各自整句进表（不再拼「名 ＋ 数 ＋ 量词」三截碎片）。 */
+const count = (v: number | null, na: string, some: (n: number) => string): string => (v === null ? na : some(v));
 
 /** 字段 → 人话。**键集合 == 上游 `Honesty` 的字段**（判据两向钉）。顺序即显示顺序。 */
 export const HONESTY_CELLS: Record<keyof DiagramHonesty, Cell> = {
-  unresolved_calls: (h) => count(h.unresolved_calls, "看不见", "处调用"),
-  ambiguous_calls: (h) => count(h.ambiguous_calls, "分不清", "处调用"),
-  filtered_guess_links: (h) => count(h.filtered_guess_links, "滤掉", "条全靠名字凑的连接"),
-  excluded_test_symbols: (h) => count(h.excluded_test_symbols, "排除", "个测试符号"),
+  unresolved_calls: (h) =>
+    count(h.unresolved_calls, copyText("diagramHonesty.unresolved.na"), (n) => copyText("diagramHonesty.unresolved.some", { n })),
+  ambiguous_calls: (h) =>
+    count(h.ambiguous_calls, copyText("diagramHonesty.ambiguous.na"), (n) => copyText("diagramHonesty.ambiguous.some", { n })),
+  filtered_guess_links: (h) =>
+    count(h.filtered_guess_links, copyText("diagramHonesty.filtered.na"), (n) => copyText("diagramHonesty.filtered.some", { n })),
+  excluded_test_symbols: (h) =>
+    count(h.excluded_test_symbols, copyText("diagramHonesty.excluded.na"), (n) => copyText("diagramHonesty.excluded.some", { n })),
   omitted: (h) =>
     h.omitted === null
-      ? "省略：不适用"
-      : `省略 ${h.omitted.nodes} 个节点（${h.omitted.symbols} 个符号）、${h.omitted.links} 条连接`,
+      ? copyText("diagramHonesty.omitted.na")
+      : copyText("diagramHonesty.omitted.some", {
+          nodes: h.omitted.nodes,
+          symbols: h.omitted.symbols,
+          links: h.omitted.links,
+        }),
   db_errors: (h) =>
-    h.db_errors.length === 0 ? "读索引没出错" : `读索引出错 ${h.db_errors.length} 处，这张图不完整`,
+    h.db_errors.length === 0
+      ? copyText("diagramHonesty.dbErrors.none")
+      : copyText("diagramHonesty.dbErrors.some", { n: h.db_errors.length }),
 };
 
 /** 逐格的人话（按表的顺序）。 */
@@ -40,5 +51,5 @@ export function honestyCells(h: DiagramHonesty): string[] {
 
 /** 常驻的那一行。 */
 export function honestyLine(h: DiagramHonesty): string {
-  return honestyCells(h).join(" · ");
+  return honestyCells(h).join(copyText("diagramHonesty.line.sep"));
 }

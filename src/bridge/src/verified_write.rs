@@ -29,6 +29,8 @@
 //! 落点（本机 fs / 远端 SFTP）是**实现**，校验与回滚语义才是**共享**的。
 //! 差异（远端要防传输损坏、要设权限位；本机不用）留在落点里，不上提到这里。
 
+use crate::copy_table::copy_text;
+
 /// 一次写入尝试的结果判定。纯逻辑，不碰 I/O ——这样它才好测。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WriteVerdict {
@@ -53,17 +55,20 @@ pub fn verify_readback(expected: &str, actual: &str) -> WriteVerdict {
             .zip(actual.bytes())
             .position(|(a, b)| a != b)
             .unwrap_or(0);
-        format!(
-            "长度相同（{} 字节）但内容不同，首个差异在第 {} 字节。\
-             这类损坏（字节翻转 / 编码变形 / CRLF↔LF 等长替换）只比长度是查不出来的。",
-            expected.len(),
-            at
+        copy_text(
+            "rsVerifiedWrite.verify.sameLenDiff",
+            &[
+                ("bytes", &(expected.len()).to_string()),
+                ("at", &at.to_string()),
+            ],
         )
     } else {
-        format!(
-            "长度不匹配：期望 {} 字节，实际 {} 字节。",
-            expected.len(),
-            actual.len()
+        copy_text(
+            "rsVerifiedWrite.verify.lenMismatch",
+            &[
+                ("expected", &(expected.len()).to_string()),
+                ("actual", &(actual.len()).to_string()),
+            ],
         )
     };
     WriteVerdict::Mismatch { detail }
