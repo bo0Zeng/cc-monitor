@@ -2665,6 +2665,7 @@ fn response_head_keeps_framing_and_forces_close() {
 ///
 /// # 为什么源码扫描不够
 ///
+/// 〔AR1：那条源码扫描 `nodelay_guard` 已按 `设计/15 §2.1` B3 退役，本格是「关了 Nagle」唯一的判据〕
 /// `nodelay_guard` 数的是**文本**：`production_code()` 只剥掉 `#[cfg(test)]` 段与**行首**
 /// `//` 的行，字符串字面量 / 行尾注释 / 块注释里的同形文本**照样被数进去**。
 /// D2 实测（`D2NG1`）：把 `handle` 里真的 `down.set_nodelay(true)?;` **整个删掉**、
@@ -3389,7 +3390,7 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_acc
 ///
 /// ⚠ 另有一跳**本来就不归本条**：id 是怎么从 `configDir` 推出来的
 /// （`history::apikey_account_id_of_dir`，住 monitor，backend 够不着）——
-/// 那一格由 `what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for` 钉。
+/// 那一格由 `file_face_tests::us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses` 钉（〔US1〕写口 → 人群 → 成品，都在后端）。
 /// **本条从「已经有了一个 id」那一刻接手。**
 #[cfg(unix)]
 fn creds_text_the_write_side_would_produce(rows: &[(&str, &str)]) -> String {

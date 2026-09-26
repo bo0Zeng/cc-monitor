@@ -419,7 +419,8 @@ pub const PROTO_VERSION: u32 = 1;
 /// ＋ 行为：后端开 `creds-core` 的 `harden`（远端要写那份文件；「后端写不了」从编译期收窄成两条判据）。C4a 不动后端。
 ///
 /// ★★★ **p2x-user-files-put**（2026-09-24，第四波 RW1 合并那一拍）：子命令 ＋3 ——
-/// `files-peek` / `files-put`（读改写，CAS）· `files-delete-session`（只收 sid 的会话文件围栏例外），两个命令面都动。
+/// `files-peek` / `files-put`（读改写，CAS）· `files-delete-session`（只收 sid 的会话文件围栏例外 —— 当时的说法；
+/// 〔AR1〕V119（FN1）之后写面已无会话文件围栏，它只剩自己「只许删会话形状」那道限制），两个命令面都动。
 /// ＋ 行为：后端开始写**用户**文件（别名 / `$PROFILE` / `.mcp.json` / skill `INBOX.txt` / cc-bus skill 部署），
 /// 本机分叉与删历史会话改走后端 —— 旧后端不认这三条 ⇒ 这些按钮在旧后端上会明确报错，所以必须判 stale。
 ///
@@ -488,7 +489,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// GP1 `files.stat` 回 `mode` · `history-record` 收 `configDir` · 本机凭据文件的写者换成本机常驻后端 ·
 /// NT2 capture 放弃时关通道、`remote_ask` 内层随外层收 · 被交 `CCM_BACKEND_STDERR_LOG` 时 stderr 落有上限、滚动的文件 ·
 /// SU1 `skill-install-plan` 带 `take` 时多答 `ledger` · CP2c 后端对外的句子经文案表（`copy-core`）出、契约错改英文诊断。
-pub const BUILD_ID: &str = "p3n-channel-bus-skill-key";
+///
+/// ★★★ **p3o-upstream-endpoint**（2026-09-25，第四波 4D US1 合并那一拍）：子命令 ＋2 —— `launch-endpoint` · `apikey-routing`
+/// （上游选择出成品：这一发走哪、注入什么由后端答，monitor 只转交执行）。＋ 行为：`apikey-read` 应答去掉 `rows`；
+/// 路由语法 / 端口 / 钥匙路径改住共享 crate `relay-route-core`；无账号的本机会话在全量注入下走 `/t/…/_/…`（开关仍默认关）。
+pub const BUILD_ID: &str = "p3o-upstream-endpoint";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -605,6 +610,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 不收 argv —— argv 在同机任何用户的 `ps` 里都看得见。加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
     "--apikey-key-set",
     "--apikey-read",
+    // 〔US1 · 第四波 4D〕上游选择出的两份成品（`inbound::REGISTRY` 的 `apikey-routing` / `launch-endpoint`）自动派生的 CLI 面。
+    // 只读（读一份凭据文件 ＋ 回环上探一次中转），入参从 stdin 读。加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
+    "--apikey-routing",
+    "--launch-endpoint",
     // 〔RM1a · 第四波〕中转那两条（`inbound::REGISTRY` 的 `relay-*`）自动派生的 CLI 面。
     // 入参只有端口，从 stdin 读。同上：加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
     "--relay-ensure",

@@ -44,8 +44,11 @@
 //!   🔴 **其余 `kind` 照旧一条流都没有**：`inbound_client` 只有「一问一答」，后端推上来的帧今天走
 //!   `ssh_source` 的 Tauri 事件那条路 ⇒ [`InboundBackends::subscribe`] 对别的 `kind` 仍原位回
 //!   `Closed{Peer(…)}`（对端说「没有这条流」），**不装作订阅成功**。
-//! - **不买对端撤活**：外部前端撤单 ⇒ 路由器拨下撤单手柄 ⇒ 本适配器丢掉那次 `inbound_client` 调用；
-//!   `inbound_client` 那一侧补发 `cancel` 的那一手是它的私有函数，今天够不着 ⇒ 后端可能照跑完。
+//! - **对端撤活是尽力的**：外部前端撤单 ⇒ 路由器丢掉本 future（`router::run_call`）⇒ 那次 `inbound_client`
+//!   调用随之被丢 ⇒ 它的 `AbandonGuard` 补发一条 `cancel{target}`（〔RM1f〕best-effort、不等应答；判据
+//!   `inbound_client_tests::abandoning_the_wait_fires_one_cancel_and_finishing_fires_none`）。后端可取消档
+//!   （`Run::Async`）真停下；阻塞档回 `not_cancellable`、照跑完。〔AR1 订正〕上一版写「补发 `cancel` 那一手是
+//!   `inbound_client` 的私有函数，今天够不着 ⇒ 后端可能照跑完」—— RM1f 之后丢 future 就会补发，不用够着它。
 //! - **不买同机其它用户的隔离之外的东西**：回环口上同一台机器的任何进程都能**连**，
 //!   挡它们的只有那把钥匙；钥匙在子进程 stdin 管子里走一次，之后只在两边内存里。
 //!   能读 monitor 进程内存的人（同用户 root / ptrace）本来就能直接驱动后端，不在本文件射程。

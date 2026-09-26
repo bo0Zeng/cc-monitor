@@ -15,12 +15,12 @@
 // `fetchLocalAccounts`，并且那几行的徽章带上「这个号走不走 apikey 端点改写」的三态
 // （`accountStatusBadge` 的 `{scope:"local",…}`）。在此之前 `KH2B7` 那三态
 // **在用户看得见的地方一处都没落地**（两个取值函数生产调用方各 0）。
+import type { ApikeyRoutingView } from "./apikey-reads";
 import {
   fetchAccounts,
   fetchLocalAccounts,
   fetchLocalApikeyRouting,
   localApikeyEndpointStateFor,
-  type ApikeyRoutingView,
   deriveUi,
   currentWorkingAccount,
   accountColorsActive,

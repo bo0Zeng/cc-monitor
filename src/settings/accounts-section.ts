@@ -8,7 +8,8 @@
 // emit(SETTINGS_APPLIED_EVENT) 让主窗状态栏 chip 同步。
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { emit } from "@tauri-apps/api/event";
-import { commands, type ApikeyCredentialsStatus } from "../ipc/commands";
+import { commands } from "../ipc/commands";
+import { readApikeyStatus, type ApikeyCredentialsStatus, type ApikeyRoutingView } from "../apikey-reads";
 import {
   fetchAccounts,
   // `N-F1b`：本机那条路。**读口与文案都不是本件新造的** —— `fetchLocalAccounts` 自
@@ -23,9 +24,9 @@ import {
   setDefaultName,
   // K-H2c：「这几个号在不在apikey 表里」问后端要 —— 前端不推账号 id、也不读那份凭据文件。
   fetchLocalApikeyRouting,
+  fetchMachineApikeyRouting,
   localApikeyEndpointStateFor,
   type ApikeyEndpointState,
-  type ApikeyRoutingView,
   getModelForAccount,
   setModelForAccount,
   invalidateAccountsCache,
@@ -663,7 +664,7 @@ export class AccountsSection {
   }
 
   /**
-   * 〔第三波 S3〕本机那两格事实：问后端（`apikey_routing_for`，只答本机）。
+   * 〔第三波 S3〕本机那两格事实：问本机后端（〔US1〕经通道 `apikey-routing`）。
    *
    * ⚠ **问不到就是 `null`，不是「表里没有」**：`null` 让徽章走「没被告知 ⇒ 不替它下判断」那一支；
    * 当成空表的话，一个其实配好了的号会被说成「apikey 凭据文件里没有这个账号的一行」。
@@ -685,7 +686,7 @@ export class AccountsSection {
    *
    * 〔第三波 S3〕徽章的 `endpoint` 从这一拍起**传本机那一半**（`{ scope: "local", … }`，
    * 由 `localApikeyEndpointStateFor` 从后端答的两格事实摊出来）。原先这里不传，理由是「那要多一条 IPC，属下一件」
-   * —— 那条命令（`apikey_routing_for`）早在盘上了，只是这一支没去问。
+   * —— 那一问早在盘上了，只是这一支没去问（〔US1〕今天经通道问 `apikey-routing`）。
    * 问不到 / 账号 0（没有 configDir）⇒ 仍然不传，徽章照旧「不替它下判断」。
    * 🔴 **千万别顺手传 `{ scope: "remote" }`** —— 那会让一台本机的号被解释成远端那一半，
    * 文案里当场出现「远端」两个字；`NF1bD2` 那条判据正是钉这个的。
@@ -1239,9 +1240,9 @@ export class AccountsSection {
    * ② **没有 `configDir` 的账号（账号 0）不给这一格**：起会话那一侧对它逐字回 `None`
    *    （`apikey_account_id` 头注：「说不出 id 就不注入」）⇒ 给它配一把 key 是配了也不生效。
    * ③ 〔RM1a · 第四波〕这一页显的是 `this.origin` 那台机器的账号，读写那份文件的两条命令
-   *    （`read_apikey_credentials_status` / `write_apikey_credentials_key`）**按同一台机器**去
+   *    （〔US1〕读：经通道 `apikey-read`；写：`write_apikey_credentials_key`）**按同一台机器**去
    *    （[`machineOrigin`]）—— 远端页读写的是那台机器上那一份，不再是本机的。
-   *    「有没有行」（`apikey_routing_for`）同样问这一页那台机器（远端由那台的后端答 `apikey-read`）。
+   *    「有没有行」（〔US1〕经通道 `apikey-routing`）同样问这一页那台机器。
    */
   private async readApikeyState(
     accounts: Account[],
@@ -1250,9 +1251,7 @@ export class AccountsSection {
     let routed: string[] = [];
     try {
       // 〔RM1a〕问**这一页那台机器**（远端由那台的后端答），不再问本机。
-      routed = dirs.length
-        ? (await commands.apikey_routing_for({ origin: this.machineOrigin(), configDirs: dirs })).routed
-        : [];
+      routed = dirs.length ? (await fetchMachineApikeyRouting(this.machineOrigin(), dirs)).routed : [];
     } catch {
       // 口径①：这一格失败只让状态那一行说「还没有它那一行」，不挡配 key。
     }
@@ -1261,9 +1260,7 @@ export class AccountsSection {
       .map((a) => ({ name: a.name, configDir: a.configDir, routed: routed.includes(a.configDir) }));
     let fileBlock: HTMLElement;
     try {
-      fileBlock = renderApikeyFileBlock(
-        await commands.read_apikey_credentials_status({ origin: this.machineOrigin() }),
-      );
+      fileBlock = renderApikeyFileBlock(await readApikeyStatus(this.machineOrigin()));
     } catch (e) {
       fileBlock = document.createElement("div");
       fileBlock.className = "apikey-file-problem";

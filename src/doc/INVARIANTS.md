@@ -645,7 +645,7 @@ Batch8-F25/26 起（p1f 后端 + tail-only）：后端连接时把各文件 seq 
 `kind:"bg"` 的取舍史：F21 一刀切不算会话 → 用户实测"工作跑在 bg 里但 tab 停住"（可观测性洞）→ F24 反转为**标注而非过滤**。三条子规则：
 
 - **kind 缺失恒视为交互**（旧 CC 兼容），双端一字一致。
-- **bg 门在数据层生效**（本地 scan_dir 过滤 / 远端后端 `--with-bg` 参数），不是前端隐藏——关掉 = bg 数据完全不流（省带宽与 buffer，bg 历史可达 10MB+）。开（默认）= bg 建 Tab 带 ⚙ + 树状挂同 (cwd, origin) 交互宿主后。
+- **bg 门在数据层生效**（本地 scan_dir 过滤 / 远端后端 `--with-bg` 参数），不是前端隐藏——关掉 = bg 数据完全不流（省带宽与 buffer，bg 历史可达 10MB+）。开（默认）= bg 建 Tab 带 ⚙，与普通 Tab 平铺（〔BG1 · V125「删掉树」〕原「树状挂同 (cwd, origin) 交互宿主后」删）。
 - **后端任何新增流模式 flag 必须在一次性查询模式判定之前从 args 剥离**（`lib.rs::split_stream_flags` 先 `retain` 再判 `!args.is_empty()`）——否则 flag 落进 query 分支，后端打印查询结果退出，monitor 无 hello 死循环。既有实例：`--with-bg`（F24）、`--tail-only`（Batch8-F25）。
 - **monitor 只对「声明了对应能力」的后端发该 flag**（F66/#58③ 起，**取代**原来的「build_id 精确匹配」门控）：后端在 hello 帧自报 `capabilities` token 集，monitor 按声明发 flag。**护栏靠「声明 ⟹ 会剥离」成立**——只有会先 `split_stream_flags` 剥离某 flag 的后端才声明对应能力（老到不剥离未知 flag 的后端也老到不声明）。这条约定**由 `every_capability_token_is_strippable` 测试代码强制**（后端侧）：`CAPABILITIES` 每个 token 的 flag 必须被 `split_stream_flags` 剥离，否则测试红。**加新能力 token = 同时加剥离分支**，不然埋死循环。
   - **能力 ≠ 身份（两轴正交，呼应 §28）**：`build_id`（身份，SS-B 单源）管 staleness / 重部署提示；`capabilities`（能力，加法式）管发什么 flag；`v`（proto version）只留破坏性变更（F66 **绝不 bump**）。**2026-07-09 事故的根因正是把「能干什么」错编码成「是不是那个精确构建」**——身份链一环断（发布流水线漏拷清单）就全能力静默关。F66 拆开三者：能力由后端自报，即使身份确认不了也照开。**新原则：绝不用身份匹配代理能力声明。**
@@ -2203,7 +2203,7 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 
 **谁在守**：`door_tests.rs::only_the_exact_key_as_the_first_segment_gets_in` · `door_tests.rs::any_origin_header_is_refused_before_the_key_is_looked_at` ·
 `door_tests.rs::only_a_loopback_literal_host_gets_in` · `door_tests.rs::the_three_refusals_are_distinct_faces` ·
-`door_tests.rs::the_key_file_is_minted_once_private_and_read_back_across_restarts`（`0600` · 跨重起同一把 · 坏文件换新）· `door_tests.rs::the_key_file_is_the_same_path_on_both_halves`（跨半边对拍）·
+`door_tests.rs::the_key_file_is_minted_once_private_and_read_back_across_restarts`（`0600` · 跨重起同一把 · 坏文件换新）· `door_tests.rs::the_key_file_and_the_key_shape_come_from_the_shared_crate`（〔US1〕钥匙路径与形状只住共享 crate `relay-route-core`，两半同一个 const）·
 `server_tests.rs::rk1_the_door_refuses_without_the_key_and_that_is_not_a_404` · `server_tests.rs::rk1_browser_and_rebinding_requests_are_refused_but_the_cli_shape_passes` ·
 `server_tests.rs::rk1_the_minted_key_never_shows_up_in_logs_tee_argv_env_or_upstream`（真子进程 · 零命中带正控）·
 `machine_tests.rs::ensure_starts_nothing_when_our_relay_already_listens` · `machine_tests.rs::a_port_held_by_something_else_is_not_ours_and_ensure_says_so`；
