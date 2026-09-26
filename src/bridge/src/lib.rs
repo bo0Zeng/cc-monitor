@@ -204,8 +204,10 @@ mod shell_lint_registry; // audit-0805 08-08：每个 shell 脚本要么进 shel
 #[cfg(test)]
 mod structural_scan;
 mod subagent;
+// TL3（审计 F 🔴-2）：同步 IPC 命令的调用闭包里零 `block_on` / 零同步连后端（`INVARIANTS §10`；整体 cfg(test)）。
+//   注释写在上一行：行尾注释会让 rustfmt 把下一行的注释块缩进对齐过去（同 `local_read_surface_registry` 那一段）。
 #[cfg(test)]
-mod sync_command_registry; // TL3（审计 F 🔴-2）：同步 IPC 命令的调用闭包里零 `block_on` / 零同步连后端（`INVARIANTS §10`；整体 cfg(test)）
+mod sync_command_registry;
 // 〔`设计/10` 骨架 · 子步 3〕monitor 侧「从偏移读」：骨架索引 ＋ 按偏移取一段正文。
 mod session_skeleton;
 // 〔C4b · 第四波 4B〕大纲清单与会话内查找两个模块（`session_outline` / `session_find`）删了：
