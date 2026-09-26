@@ -162,9 +162,16 @@ pub const UNSET_CONFIG_DIR_PREFIX: &str = "unset CLAUDE_CONFIG_DIR; ";
 /// （`tests/rbind-token-shape-parity.vitest.ts`，〔LR2〕从已删的兜底渲染器判据文件搬来）。改这个数 ⇒ TS 那条对拍当场红。
 pub const RBIND_TOKEN_LEN: usize = 32;
 
-/// 令牌形状：恰好 [`RBIND_TOKEN_LEN`] 个**小写**十六进制字符。
+/// 启动期令牌的字母表 —— **小写**十六进制（大写 `A`–`F` 刻意不在里面，见 [`rbind_token_shape_ok`]）。
 ///
-/// **不收大写**（`b'A'..=b'F'` 刻意不在放行集里）：形状只有一种写法，
+/// 〔DUP2 · `设计/90 §3` 判据 2〕单独提成常量：前端铸币口按它与 [`RBIND_TOKEN_LEN`] **造**令牌
+/// （两个值现生成进 `src/generated/judgment-rules.ts`，构造上造不出坏形状），不再各自写一份形状再自检。
+pub const RBIND_TOKEN_ALPHABET: &str = "0123456789abcdef";
+
+/// 令牌形状：恰好 [`RBIND_TOKEN_LEN`] 个 [`RBIND_TOKEN_ALPHABET`] 里的字符（32 个**小写**十六进制）。
+/// **全仓 monitor 这一侧唯一的一份**（〔DUP2〕`bind.rs` 原来那份逐字同的副本并进来了，那边是再导出）。
+///
+/// **不收大写**（`A`–`F` 刻意不在字母表里）：形状只有一种写法，
 /// 好让本地那张 `token → HWND` 表与从 `environ` 读回来的串能直接相等比较，
 /// 中间不留归一化步骤 —— 归一化是「两侧各写一遍、各写错一遍」的经典落点。
 ///
@@ -174,7 +181,7 @@ pub fn rbind_token_shape_ok(token: &str) -> bool {
     token.len() == RBIND_TOKEN_LEN
         && token
             .bytes()
-            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+            .all(|b| RBIND_TOKEN_ALPHABET.as_bytes().contains(&b))
 }
 
 /// 载荷里的一条环境操作。

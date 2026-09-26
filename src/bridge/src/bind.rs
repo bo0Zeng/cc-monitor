@@ -272,31 +272,11 @@ pub fn rbind_token_marker(token: &str) -> Option<String> {
     rbind_token_shape_ok(token).then(|| format!("{RBIND_TOKEN_MARKER_PREFIX}{token}"))
 }
 
-/// 令牌的字符数 —— **32**。
-///
-/// 🔴 **这是一个跨三处的双写点**，三处必须同一个数：本常量 ·
-/// 载荷侧 `backend::control::payload::RBIND_TOKEN_LEN` ·
-/// 后端读侧 `control::identity_tag`。那三处各自有判据，**别在这里再抄一个 32 出去**。
-const RBIND_TOKEN_LEN: usize = 32;
-
-/// 令牌形状：恰好 [`RBIND_TOKEN_LEN`] 个**小写**十六进制字符。
-///
-/// 与载荷侧 `payload::rbind_token_shape_ok` 是**同一条形状**（那边是渲染前的闸，
-/// 这边是绑定时的闸）。不收大写、不 `trim`、不认 `0x` 前缀 ——
-/// 只有一种写法，本地这张 `token → HWND` 表与从远端 `environ` 读回来的串
-/// 才能**直接相等比较**，中间不留归一化步骤（归一化是「两侧各写一遍、
-/// 各写错一遍」的经典落点，`launch-dimensions.ts::isValidRbindToken` 的头注同话）。
-///
-/// 🔴 **本 crate 里只许有这一份**：`ssh_source::parse_frame` 读 wire 上那个
-/// `rbind_token` 字段时过的也是这一条（`设计/80 §8.7` 步 3/步 4 同拍）。
-/// 「本地表的键」与「wire 上读回来的串」形状一旦不同源，
-/// join 就会在某些取值上静默失配 —— 而失配的表现是「拉不到窗口」，与「没有令牌」同形。
-pub(crate) fn rbind_token_shape_ok(token: &str) -> bool {
-    token.len() == RBIND_TOKEN_LEN
-        && token
-            .bytes()
-            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
-}
+// 〔DUP2 · `设计/01 §5` D1〕令牌形状**只有一份**：`backend::control::payload::rbind_token_shape_ok`（字母表 ＋ 长度两个常量也住那里）。
+// 这里原来逐字抄了一份（连同一个私有的长度常量），头注自称「本 crate 里只许有这一份」—— 而载荷那边同时也有一份。
+// 今天是再导出：`crate::bind::rbind_token_shape_ok` 这个名字留着（`ssh_source::parse_frame` · `launch.rs` 的调用点一个不动），
+// 背后是同一个函数 ⇒ 「本地表的键」与「wire 上读回来的串」按构造同源（`设计/80 §8.7` 步 3 / 步 4 要的那件事）。
+pub(crate) use crate::backend::control::payload::rbind_token_shape_ok;
 
 /// 从一个 marker 里解出启动期令牌。**不是**这一种 marker ⇒ `None`（Era 2 的
 /// `ccm-bind-…` 走的就是这条，行为与从前一字不差）。

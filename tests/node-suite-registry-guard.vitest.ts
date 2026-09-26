@@ -112,7 +112,7 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   //    （−5：account 两条 · model 两条 · rbind-token 一条；identity 那条只删了 cliFlags 那一行断言）。
   // 🔴 〔LR2〕**33 → 32**：wrap 折叠那条（比的是 TS 兜底渲染器的字节）删了 —— 折叠只在 Rust，
   //    由 `payload-golden.json`「wrap 折叠」钉着；另四条比字节的改比 `EnvOp` 序列（条数不变）。
-  ["test:launch-dimensions", "tests/launch-dimensions.test.ts", 32],
+  ["test:launch-dimensions", "tests/launch-dimensions.test.ts", 31], // 〔DUP2〕−1：令牌形状闸逐格那条随 TS 副本删
   // 🔴 〔LR1 · U8c-3〕原先这里有 `["test:launch-render-cli", "tests/launch-render-cli.test.ts", 30]`。
   // TS 那份 `ccm …` 调用行渲染器删了 ⇒ 套件整删（**被测对象没了**）；它测的行为逐条由
   // Rust `ccm_invocation_tests.rs` 与入库夹具 `cli-golden.json` 接着（对照见 `调研/第四波记录/LR1.md`）。
@@ -145,7 +145,9 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
 // 〔DUP1 · 第二轮〕**199 → 198**，同上（被测对象没了）：`remote-launch.test.ts` 里 `isValidSessionId` 那条随函数删（J5）。
 // 〔STC〕**198 → 191**，同上（**被测对象没了**）：`tests/panorama/session-files.test.ts` 整份删除（7 条，写类工具口径搬进后端
 // `observe/facts_query.rs`，七条逐条搬成 Rust 判据）。合并时按「主线 198 − STC 7」算、删后现打 191 ⇒ 棘到现打值。
-const TOTAL_FLOOR = 191;
+// 〔DUP2〕**191 → 190**，同上（**被测对象没了**）：`launch-dimensions.test.ts` −1（「rbind-token：形状闸逐格」那条 —— TS 的
+// `isValidRbindToken` 与维度 `apply` 里那道自检按 `设计/90 §3` 判据 2 删了，逐格坏样本归 Rust `payload_tests.rs`）。删后现打 190 ⇒ 棘到现打值。
+const TOTAL_FLOOR = 190;
 
 /** 判定一条 npm 命令是不是「用 tsx 跑某个 `.test.ts`」。`tsx …` 与 `npx tsx …` 都算。 */
 const TSX_SUITE_CMD = /(^|\s)(npx\s+)?tsx\s+(--\S+\s+)*(\S+\.test\.ts)\s*$/;

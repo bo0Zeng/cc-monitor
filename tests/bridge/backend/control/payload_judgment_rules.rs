@@ -80,7 +80,9 @@ fn render_judgment_rules() -> String {
     s.push_str(
         "\n/** 账号名（`--account <名>`）能不能用 —— 规则住 `shell_quote_core::account_name_ok`（与建账号的工具逐字同）。 */\n",
     );
-    s.push_str(&format!("export const ACCOUNT_NAME_PATTERN = {acct_pat};\n"));
+    s.push_str(&format!(
+        "export const ACCOUNT_NAME_PATTERN = {acct_pat};\n"
+    ));
     s.push_str(&format!(
         "export const ACCOUNT_NAME_MAX = {ACCOUNT_NAME_MAX};\n\n"
     ));
@@ -94,6 +96,19 @@ fn render_judgment_rules() -> String {
     s.push_str(&format!("export const AUTH_KINDS = {kinds} as const;\n"));
     s.push_str("/** 见 [`AUTH_KINDS`]。 */\n");
     s.push_str("export type AuthKind = (typeof AUTH_KINDS)[number];\n");
+    // 〔DUP2 · J8〕启动期令牌：前端铸币口按字母表与长度**造**（构造上造不出坏形状），不再自己写一份形状再自检。
+    let alphabet =
+        serde_json::to_string(super::RBIND_TOKEN_ALPHABET).expect("字符串序列化不会失败");
+    s.push_str(
+        "\n/** 启动期令牌的字母表与长度 —— 形状住 `payload.rs::rbind_token_shape_ok`（铸币口按它们造）。 */\n",
+    );
+    s.push_str(&format!(
+        "export const RBIND_TOKEN_ALPHABET = {alphabet};\n"
+    ));
+    s.push_str(&format!(
+        "export const RBIND_TOKEN_LEN = {};\n",
+        super::RBIND_TOKEN_LEN
+    ));
     s
 }
 

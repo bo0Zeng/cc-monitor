@@ -215,12 +215,21 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J8: {
     what: "启动期令牌形状",
-    homes: [`${PAYLOAD_RS}::rbind_token_shape_ok`, "src/bridge/src/bind.rs::rbind_token_shape_ok"],
-    status: "open",
-    defs: ["isValidRbindToken"],
-    needles: [],
-    owner: "主会话拍（DUP1.md §4 ③）",
-    why: "维度那格是纯副本；铸币口那格是 D7「归因要准确」的明写理由 —— D1 与 D7 顶着",
+    // 〔DUP2 · 主会话 09-26 裁 J8 → 甲〕唯一住址 `payload.rs::rbind_token_shape_ok`（字母表 ＋ 长度两个常量同住）；
+    //   `bind.rs` 那份逐字同的副本并进来（那边是再导出，`rustGone` 钉它不许长回来）。
+    //   铸币口按生成物（字母表 × 长度）**造**，构造上造不错 ⇒ 界面两处自检（维度 `apply` · 铸币口）与 TS 副本删。
+    homes: [`${PAYLOAD_RS}::rbind_token_shape_ok`],
+    status: "generated",
+    defs: [],
+    gone: ["isValidRbindToken"],
+    needles: [{ text: "[0-9a-f]{32}", count: 0 }],
+    gen: {
+      file: "src/generated/judgment-rules.ts",
+      exports: ["RBIND_TOKEN_ALPHABET", "RBIND_TOKEN_LEN"],
+      importers: ["src/remote-launch-run.ts"],
+    },
+    parity: { via: PAYLOAD_RS, tests: ["tests/rbind-token-shape-parity.vitest.ts"] },
+    rustGone: ["src/bridge/src/bind.rs::rbind_token_shape_ok"],
   },
   J9: {
     what: "Base URL 形状 ＋ 明文只许回环",
