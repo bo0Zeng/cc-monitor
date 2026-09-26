@@ -111,10 +111,11 @@ const TS_CORPUS: &[&str] = &[
     "src/remote-config.ts",
     "src/settings/machine-card.ts",
     "src/remote-launch.ts",
-    "src/launch-payload-golden.ts",
     // 〔LR2〕原来这里的注释讲的是「TS 兜底路的消费者各自登记在哪」；那一族删了，
     // 这几份留在语料里只为一件事：`production_ts` 的行尾截断在它们上面安全（不含 `://`）。
-    "src/launch-tmux-outer-golden.ts",
+    // 两份夹具用例表挪出了 `src/`（`设计/90 §3` 条 1：`src/**` 零 shell 串），住址跟着改。
+    "tests/test-support/launch-payload-golden.ts",
+    "tests/test-support/launch-tmux-outer-golden.ts",
 ];
 
 /// ★ 量具自检：`production_ts` 真的在剥，而不是原样返回；且行尾截断在本组语料上安全。
@@ -350,7 +351,7 @@ const PARITY_SRC: &str = concat!(
 );
 
 /// 对拍**左边**那个真相源的源码。同上，编译期嵌。
-const GOLDEN_SRC: &str = include_str!("../../../../src/launch-payload-golden.ts");
+const GOLDEN_SRC: &str = include_str!("../../../test-support/launch-payload-golden.ts");
 
 /// 对拍那条判据**被绕过**的三种形状。**用变体，不用一句话** ——
 /// 棘轮要断言「这一刀触发的是**哪一格**」，按格认不按文字认
@@ -375,7 +376,7 @@ impl ParityBypass {
             ParityBypass::LeftNoLongerFromTheFixture => {
                 "对拍的**左边**不再取自入库夹具的 `payload` 字段了 ——\n\
                      若它改成了「Rust 现场再渲染一次」，这条对拍就成了自洽夹具（`U7-4` 的病根），\n\
-                     逐字禁令住 `src/launch-payload-golden.ts` 的头注。\n\
+                     逐字禁令住 `tests/test-support/launch-payload-golden.ts` 的头注。\n\
                      ★ 这是 `K-R89` 09-13 逮到的那一形（`want` 被写死成 `got`）。"
                     .to_string()
             }
@@ -598,7 +599,7 @@ fn the_parity_guard_counts_bindings_it_does_not_merely_look_for_them() {
 ///
 /// # 它守的是什么形状
 ///
-/// `src/launch-payload-golden.ts` 是 Rust 那条逐字节对拍的**左边**：
+/// `tests/test-support/launch-payload-golden.ts` 是 Rust 那条逐字节对拍的**左边**：
 /// 〔LR2〕它原来调真的 TS 兜底渲染器产 `fixtures/payload-golden.json`，那份渲染器删了之后
 /// 落盘的是用例表里的**手写期望**，
 /// Rust 侧 [`super::super::launch_payload_parity`] 拿自己渲染的结果与**入库的那份**比。
@@ -678,7 +679,7 @@ fn the_byte_for_byte_parity_still_has_two_independent_sides() {
         assert!(
             !PARITY_SRC.contains(forbidden),
             "`launch_payload_parity.rs` 里出现了 `{forbidden}` ——\n\
-                 那是「让 Rust 侧去调 TS 现场生成」的形状，而 `src/launch-payload-golden.ts`\n\
+                 那是「让 Rust 侧去调 TS 现场生成」的形状，而 `tests/test-support/launch-payload-golden.ts`\n\
                  的头注逐字禁掉它：「不能让 Rust 侧去调 TS 现场生成（那就成了自洽夹具）」。\n\
                  夹具必须**入库**，两侧各自与它比。"
         );
@@ -754,7 +755,7 @@ fn the_byte_for_byte_parity_still_has_two_independent_sides() {
 // 那一格换成了用例表里的手写期望（`src/launch-cli-golden.ts` 头注写了为什么夹具本身不删）。
 // 🔴 〔LR2 · U8c-3 后一半〕**4 → 2，到了 `LAUNCH_RENDERER_TARGET`**：TS 兜底渲染器（`renderFallback`）
 // 与它的座（`TMUX_BACKEND`）两行删了 —— 零生产调用，最后只剩「两份夹具的左边」一个用途，
-// 那一格同样换成了用例表里的手写期望（`src/launch-payload-golden.ts` / `launch-tmux-outer-golden.ts` 头注）。
+// 那一格同样换成了用例表里的手写期望（`tests/test-support/launch-payload-golden.ts` / `launch-tmux-outer-golden.ts` 头注）。
 const LAUNCH_RENDERERS: &[(&str, &str, &str, &str)] = &[
     (
         "src/bridge/src/backend/control/ccm_invocation.rs",

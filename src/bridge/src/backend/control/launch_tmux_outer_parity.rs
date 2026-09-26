@@ -3,7 +3,7 @@
 //! Rust 那半住 [`super::payload::render_tmux_outer`]（并进「Rust 载荷」那一份，不新开模块 ——
 //! `设计/00 §2.5 ④` 要的是**消灭副本**）。〔LR2〕夹具左边原来是 TS 兜底渲染器 ＋ 座（`renderFallback`
 //! → `SESSION_BACKEND`）现场渲的串；那一族零生产调用、按 `00 §2.5 ④` 删了，左边换成
-//! `src/launch-tmux-outer-golden.ts` 用例表里的**手写期望**（值就是 TS 那份最后一次渲出、与 Rust 对过的原样）。
+//! `tests/test-support/launch-tmux-outer-golden.ts` 用例表里的**手写期望**（值就是 TS 那份最后一次渲出、与 Rust 对过的原样）。
 //! `req` 仍由生产的 `buildTmuxOuterRenderRequest` 现产 ⇒ 本对拍钉的是「生产请求 → 线 → 生产命令」这一整条。
 //!
 //! # 它与 [`super::launch_payload_parity`] 的分工

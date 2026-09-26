@@ -10,16 +10,14 @@
  * TS 兜底一族（`launch-render-fallback.ts` · `session-backend.ts` · `remote-launch.ts` 五个 builder）
  * 零生产调用、LR2 按 `00 §2.5 ④` 删了 ⇒ 豁免没了，射程从「只认 `tmux <动词> -`」补上 `&&`。
  *
- * # 人群（按执行链取，不按文件名取）
+ * # 人群：`src/**\/*.ts` 全集，不开例外
  *
- * **前端 = 三个窗口入口的 import 闭包**（`src/entry-main.ts` · `entry-settings.ts` · `entry-viewer.ts`，
- * 与 `vite.config.ts` 的 `input` 表、`tests/entry-graphs.vitest.ts` 同一组入口）。
- * 为什么不是「`src/` 下所有 `.ts`」：入库夹具的用例表（`launch-payload-golden.ts` ·
- * `launch-tmux-outer-golden.ts`）住 `src/` 是为了让 tsc 看得见它们（`tests/` 不在 `tsconfig` 的 include 里），
- * 它们的**手写期望**本来就是 Rust 该渲出的整条命令 —— 那是规格，不是前端在拼串。
- * ⇒ 它们不在任何入口的闭包里；本文件用一条**两向相等**把「闭包外、却有命中的文件」钉成恰好这两份，
- *   谁把它们 import 进生产、或者别的闭包外文件长出 shell 串，都会红。
- *
+ * 照 `90 §3` 原文的射程：`src/` 下每一份生产 `.ts`（排掉 `*.test.ts` / `*.vitest.ts` —— 判据住那里，
+ * 读到自己会恒绿；排掉 `src/generated/` —— ts-rs 生成的线上类型，不是人写的，它们只有类型没有字面量）。
+ * 共享遍历 `test-support/production-sources.ts` 按构造做这两件事。
+ * 〔LR2〕两份夹具用例表（`launch-payload-golden.ts` · `launch-tmux-outer-golden.ts`）的手写期望逐字就是整条命令，
+ * 原来住 `src/`；它们不是前端，挪进了 `tests/test-support/`（主会话 09-25 裁：射程取全集、不开例外表）。
+
  * # 命中的口径
  *
  * 剥注释之后，**字符串字面量**（`"…"` / `'…'` / 模板串的静态部分）里出现：
@@ -30,15 +28,13 @@
  *   代码里的 `a && b`（不在字面量里）按构造不算。
  */
 import { describe, it, expect } from "vitest";
-import { dirname, posix } from "node:path";
+
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import { productionTsFiles } from "./test-support/production-sources";
+import { REPO_ROOT } from "./test-support/repo-root";
 import { stripComments } from "./test-support/strip-comments";
-
-const ENTRIES = ["src/entry-main.ts", "src/entry-settings.ts", "src/entry-viewer.ts"];
-
-/** 闭包外、却有命中的文件 —— 恰好这两份入库夹具的用例表（理由见头注）。 */
-const FIXTURE_TABLES_OUTSIDE_THE_FRONTEND = ["src/launch-payload-golden.ts", "src/launch-tmux-outer-golden.ts"];
 
 const TMUX_VERBS = [
   "new-session",
@@ -154,33 +150,8 @@ function hitsIn(text: string): string[] {
   return stringLiterals(stripComments(text, "ts")).flatMap(shellHits);
 }
 
-/** 三个入口的静态 import 闭包（相对路径的 `import … from` / `import(…)` / `export … from`）。 */
-function frontendClosure(files: Map<string, string>): Set<string> {
-  const seen = new Set<string>();
-  const stack = [...ENTRIES];
-  const spec = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)["'](\.{1,2}\/[^"']+)["']/g;
-  while (stack.length > 0) {
-    const f = stack.pop() as string;
-    if (seen.has(f)) continue;
-    const text = files.get(f);
-    if (text === undefined) continue;
-    seen.add(f);
-    for (const m of stripComments(text, "ts").matchAll(spec)) {
-      const base = posix.normalize(posix.join(dirname(f), m[1]));
-      for (const cand of [base, `${base}.ts`, `${base}/index.ts`]) {
-        if (files.has(cand)) {
-          stack.push(cand);
-          break;
-        }
-      }
-    }
-  }
-  return seen;
-}
-
 describe("设计/90 §3 条 1：前端零 shell 串", () => {
   const all = new Map(productionTsFiles("src").map((s) => [s.file, s.text] as const));
-  const closure = frontendClosure(all);
 
   it("量具自检：抽字面量 ＋ 口径在一段已知语料上恰好命中该命中的（正控），代码里的 && 与注释不算", () => {
     const corpus = [
@@ -196,32 +167,33 @@ describe("设计/90 §3 条 1：前端零 shell 串", () => {
     expect(hitsIn(corpus)).toEqual(["tmux attach -", "&&", "tmux new-session -"]);
   });
 
-  it("量具自检：闭包真的走到了生产的深处（否则零命中是因为人群空了）", () => {
-    for (const e of ENTRIES) expect(all.has(e), `入口 ${e} 不在盘上`).toBe(true);
-    // 起会话那条链上的几份必须在闭包里 —— 它们正是本条要看的东西。
-    for (const f of ["src/remote-launch-run.ts", "src/launch-requests.ts", "src/settings/panel.ts"]) {
-      expect(closure.has(f), `${f} 不在前端闭包里 —— import 解析坏了`).toBe(true);
+  it("量具自检：人群真的是 src/ 生产段全集（否则零命中是因为人群空了）", () => {
+    // 起会话那条链上的几份必须在人群里 —— 它们正是本条要看的东西；测试文件与生成物必须不在。
+    for (const f of ["src/remote-launch-run.ts", "src/launch-requests.ts", "src/settings/panel.ts", "src/entry-main.ts"]) {
+      expect(all.has(f), `${f} 不在人群里 —— 遍历坏了`).toBe(true);
     }
-    expect(closure.size).toBeGreaterThan(100);
+    expect([...all.keys()].some((f) => f.includes(".vitest.") || f.includes(".test.") || f.startsWith("src/generated/"))).toBe(false);
+    expect(all.size).toBeGreaterThan(150); // 抽取器自检（不是判据）：09-25 现打 171
   });
 
-  it("★★ 前端（三个入口的闭包）里零 shell 命令串字面量", () => {
+  it("★★ src/**/*.ts 生产段里零 shell 命令串字面量（不开例外）", () => {
     const hits: string[] = [];
-    for (const f of [...closure].sort()) {
+    for (const f of [...all.keys()].sort()) {
       for (const h of hitsIn(all.get(f) as string)) hits.push(`${f}  ${h}`);
     }
     expect(
       hits,
       "前端拼了 shell 串 —— `设计/90 §3` 条 1 逐字禁这件事（`00 §2.5 ④`：命令串只留 Rust 那两份）。\n" +
-        "改成交结构化请求给后端渲染（`render_launch_payload` / `render_ccm_launch`）。\n",
+        "改成交结构化请求给后端渲染（`render_launch_payload` / `render_ccm_launch`）；\n" +
+        "若它是规格 / 夹具（不是前端），它就不该住 `src/`。\n",
     ).toEqual([]);
   });
 
-  it("★ 闭包外有命中的文件恰好是那两份夹具用例表（两向相等）", () => {
-    const outside = [...all.keys()]
-      .filter((f) => !closure.has(f) && hitsIn(all.get(f) as string).length > 0)
-      .sort();
-    expect(outside).toEqual([...FIXTURE_TABLES_OUTSIDE_THE_FRONTEND].sort());
+  it("★ 正控：挪出去的那两份夹具用例表确实满是命令串 —— 同一把尺子量得到它们（否则上一条的零是尺子瞎了）", () => {
+    for (const f of ["tests/test-support/launch-payload-golden.ts", "tests/test-support/launch-tmux-outer-golden.ts"]) {
+      const text = readFileSync(resolve(REPO_ROOT, f), "utf8");
+      expect(hitsIn(text).length, `${f} 用同一把尺子量不出命中`).toBeGreaterThan(5);
+    }
   });
 
   it("★ TS 兜底一族不许回来：文件不在盘上、导出名在 src/ 生产段零命中", () => {

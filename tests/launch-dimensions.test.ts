@@ -18,7 +18,7 @@ import {
   __testOnlyAssertDimensionOrderInvariants,
 } from "../src/launch-dimensions.ts";
 import { buildLaunchPlan } from "../src/launch-plan.ts";
-import type { LaunchContext, LaunchDimension, LaunchPlan } from "../src/launch-plan.ts";
+import type { LaunchContext, LaunchDimension, LaunchPlan } from "../src/launch-types.ts";
 
 let failed = 0;
 function test(name: string, fn: () => void): void {

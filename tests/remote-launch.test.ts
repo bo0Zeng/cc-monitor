@@ -34,7 +34,7 @@ import {
   planAttach,
 } from "../src/launch-requests.ts";
 import { buildLaunchRenderRequest } from "../src/remote-launch-run.ts";
-import type { LaunchPlan } from "../src/launch-plan.ts";
+import type { LaunchPlan } from "../src/launch-types.ts";
 
 let failed = 0;
 function test(name: string, fn: () => void): void {

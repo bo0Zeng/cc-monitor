@@ -12,7 +12,7 @@ import type {
   LaunchContext,
   LaunchModifiers,
   LaunchPlan,
-} from "./launch-plan.ts";
+} from "./launch-types.ts";
 import { copyText } from "./copy-table";
 
 export interface LaunchPlanBuild {

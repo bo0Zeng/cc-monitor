@@ -22,7 +22,7 @@ import {
   planLauncher,
   planAttach,
 } from "./launch-requests";
-import type { LaunchModifiers } from "./launch-plan";
+import type { LaunchModifiers } from "./launch-types";
 import { isValidRbindToken } from "./launch-dimensions";
 // 🔴 〔步 22b·B 2026-09-20〕**这里原来 `import { renderFallback } from "./launch-render-fallback"`。**
 // `设计/90 §4 E` 收官：外层 tmux 那三格切到 `backend::control::payload::render_tmux_outer`
@@ -47,7 +47,7 @@ import { AGENT_PROFILE } from "./agent-profile";
 // 〔FE1〕起新会话的名字只从一个家取：`tmux-name-mint.ts`（列名单 ＋ 铸名 ＋ 「列不出 ⇒ 不起」）。
 import { mintFreshTmuxName, refuseUnmintable } from "./tmux-name-mint";
 import { LOCAL_LAUNCH_ACCOUNT_WIRE as ACCOUNT_WIRE } from "./generated/launch-render-facts";
-import type { LaunchContext, LaunchPlan } from "./launch-plan";
+import type { LaunchContext, LaunchPlan } from "./launch-types";
 import { copyText } from "./copy-table";
 
 /** P1：Rust 侧 `payload::refuse()` 给业务拒绝打的标。**跨语言双写点** ——
@@ -365,7 +365,7 @@ export function buildCliRenderRequest(
  * 🔴 **〔步 22b·B 2026-09-20〕生产接过来了。** 这里原来逐字写着「生产调用方今天是 0
  * 〔本轮只搬了『后端产得出』那一半〕，唯一的调用者是金标准发生器」——
  * 那是 22b·A 的读数。今天的调用方有两个：`renderLaunchCommand` 最后那一格（**生产**）
- * 与 `src/launch-tmux-outer-golden.ts`（金标准发生器）。
+ * 与 `tests/test-support/launch-tmux-outer-golden.ts`（金标准发生器）。
  *
  * ⚠ **最要紧的一条**：生产那一格送出去的 `req` **必须带 `outer`**。
  * 少送它不会有任何一道闸响 —— 后端会老老实实渲一条**只有内层载荷**的串

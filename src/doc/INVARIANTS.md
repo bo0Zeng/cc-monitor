@@ -837,7 +837,7 @@ tmux → **接不上**，会话池当场劈成两半。而「桌面起、手机�
 ⇒ 现在它是**机检**：`tests/session-backend-gate.vitest.ts` 扫**整个前端生产段**（排掉座本身、
 测试文件与注释行），并反向自检「座里那些语法还在」（否则会因为「哪儿都没有」而假绿）。
 〔LR2 2026-09-25〕座删了，那份机检随之换成 `tests/launch-no-shell-in-ts.vitest.ts`（`设计/90 §3` 条 1）：
-人群按执行链取（三个窗口入口的 import 闭包），**零** `tmux <动词> -` / `&&` 字面量、不再豁免任何一份。
+人群是 `src/**/*.ts` 生产段全集（排掉测试与 `generated/`），**零** `tmux <动词> -` / `&&` 字面量、不开例外（两份夹具用例表挪出了 `src/`）。
 ★ 教训比这条规则本身通用：**门禁写成「盯某个文件」，就会在文件被拆的那天失效**，
 而拆文件的人不会想到去改一段散文。**本阶段不做后端探测/协商**（`SESSION_BACKEND` 恒等 `TMUX_BACKEND`、
 无运行时选择）——那是阶段②（§9 轨道二后端在场，才补得了 abduco/dtach 缺的 `send-keys`）。
@@ -988,7 +988,7 @@ attach 已有会话走宽松的 `isValidTmuxName`：那些名字不是我们建�
 **「表达不了就放弃、强制走载荷渲染器」这条今天的分流点**是 `remote-launch-run.ts::renderLaunchCommand`：
 `render_ccm_launch` 回 `ok:false` ⇒ 走 `render_launch_payload`（请求由 `buildLaunchRenderRequest` 挑形状）。
 载荷那一侧的字节由 `payload-golden.json` / `tmux-outer-golden.json` 两份入库夹具逐字节钉着（左边是
-`src/launch-payload-golden.ts` / `src/launch-tmux-outer-golden.ts` 用例表里的手写期望）。
+`tests/test-support/launch-payload-golden.ts` / `tests/test-support/launch-tmux-outer-golden.ts` 用例表里的手写期望）。
 
 ## 33a. `ccm --print` 是平价预言机——它对**环境变量**说的必须逐条等于真跑做的（U9a / unified-backend）
 
@@ -1098,7 +1098,7 @@ U8c-1 摸底后拆成三步：
 > `remote-launch.ts` 那五个 builder（连同只给它们用的 `shell-quote.ts` 三件拼串原语）删了。**
 > 依据 `设计/00 §2.5 ④`「同一条命令串只留 Rust 那两份（CLI ＋ 载荷）；TS 的只供对拍、排期删」。
 > 两份夹具（`payload-golden.json` · `tmux-outer-golden.json`）**留着、字节一个没变**，左边照 LR1 的办法
-> 换成用例表里的**手写期望**（`src/launch-payload-golden.ts` / `src/launch-tmux-outer-golden.ts` 头注），
+> 换成用例表里的**手写期望**（`tests/test-support/launch-payload-golden.ts` / `tests/test-support/launch-tmux-outer-golden.ts` 头注），
 > `req` 仍由生产的请求构造现产 ⇒ 它们钉的是「生产请求 → 线 → 生产命令」这一整条。已知代价：
 > 「两种语言渲出同一串」那一维没了（与 LR1 同一句话）。三套真 tmux e2e（`resume-suite` ·
 > `resume-backend-frames` · `tmux-target-acceptance`）改走生产渲染链（`tests/e2e/launch-render-driver.ts`）。
@@ -1257,7 +1257,7 @@ U8c-1 摸底后拆成三步：
 **入库夹具 + 两侧各自与它比**，不是注释：
 
 ```text
-  src/launch-payload-golden.ts（真 renderFallback）
+  tests/test-support/launch-payload-golden.ts（〔LR2〕用例表 ＋ 手写期望；原住 src/、原先调真 renderFallback）
         │ npm run gen:payload-golden
         ▼
   src/bridge/src/backend/control/fixtures/payload-golden.json   ← 入库（P4b 起）
@@ -1549,7 +1549,7 @@ documented rationale"——三条轴两种机制的不对称依然存在，但�
 ① 闭包让 `LaunchPlan` 不可序列化、不可结构比较——黄金串测试只能断言"渲染出来的字符串"，
 无法断言"这个 plan 的 wrap 意图是什么"，也就无法对拍；
 ② 闭包能做任意事，等于在 IR 里开一个"绕过渲染器自己拼字符串"的后门，
-与 `launch-plan.ts` 头注"绝不拼字符串——字符串化是渲染器的事"直接冲突；
+与 `launch-plan.ts` 头注"绝不拼字符串——字符串化是渲染器的事"（〔LR2〕那句今天住 `launch-types.ts::LaunchDimension` 的头注）直接冲突；
 ③ 折叠逻辑（`( prelude; exec inner )`、`order` = 嵌套深度）属于渲染器职责，本就不该住在 IR 里。
 
 R04④ 之所以**现在**做：`plan.wrap` 今天恒为 `[]`（全仓唯一赋值点是 `buildLaunchPlan` 的
@@ -1614,7 +1614,7 @@ Linux 本地是 POSIX + tmux + `ccm`，跟远端那条路**只差一跳 ssh**。
 
 ### 怎么做
 
-**类型已经在了**：`src/launch-plan.ts:97,158` 的 `transport: {kind:"local"} | {kind:"ssh"}`
+**类型已经在了**：`src/launch-plan.ts:97,158`（〔LR2〕类型今天住 `src/launch-types.ts` 的 `LaunchPlan` / `LaunchContext`）的 `transport: {kind:"local"} | {kind:"ssh"}`
 是一个零 payload 标记（`origin` 不进 transport，见该文件头注第 14 行）。
 两个渲染器已经在按它分支。所以这条约束的落地不是新建抽象，是**让 `{kind:"local"}` 真正有含义**：
 
