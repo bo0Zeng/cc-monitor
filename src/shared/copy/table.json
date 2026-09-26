@@ -792,9 +792,14 @@
       "zh": "在 {machine} 上删掉勾了的",
       "args": ["machine"]
     },
+    "assets.uninstall.doneDirRemoved": {
+      "kind": "body",
+      "zh": "删了 {n} 个文件，目录 {dir} 空了，也删掉了。",
+      "args": ["n", "dir"]
+    },
     "assets.uninstall.done": {
       "kind": "body",
-      "zh": "删了 {n} 个文件，目录 {dir} 还在。",
+      "zh": "删了 {n} 个文件，目录 {dir} 还在（里面还有别的东西）。",
       "args": ["n", "dir"]
     },
     "assets.uninstall.failed": {
@@ -15664,6 +15669,11 @@
       "kind": "body",
       "zh": "、",
       "args": []
+    },
+    "rsSkillInstall.uninstall.dirFailed": {
+      "kind": "error",
+      "zh": "文件删完了，收空目录 {path} 时没成：{e}",
+      "args": ["path", "e"]
     },
     "rsSkillInstall.uninstall.stopped": {
       "kind": "error",

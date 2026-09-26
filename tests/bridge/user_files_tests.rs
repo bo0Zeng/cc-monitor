@@ -31,6 +31,8 @@ pub(crate) struct DiskDoor {
     pub deleted_sids: RefCell<Vec<String>>,
     /// 〔RM1d〕`delete`（`files-delete`）收到的相对段 ＋〔RM1e〕交过去的 `expect`。
     pub deleted: RefCell<Vec<(String, String)>>,
+    /// 〔FW1〕`delete_empty_dir` 收到的 `(root, rel)`（按到达顺序）。
+    pub emptied: RefCell<Vec<(String, String)>>,
     /// 〔RM1e〕`peek` 被问了几次（删那一支不该再先 `peek`：CAS 在写口闭合）。
     pub peeked: RefCell<usize>,
     /// `list_dir` 的答案，由判据**事先摆好**（替身不去遍历盘上的目录 ——
@@ -46,6 +48,7 @@ impl DiskDoor {
             puts: RefCell::new(Vec::new()),
             deleted_sids: RefCell::new(Vec::new()),
             deleted: RefCell::new(Vec::new()),
+            emptied: RefCell::new(Vec::new()),
             peeked: RefCell::new(0),
             listings: RefCell::new(std::collections::BTreeMap::new()),
         }
@@ -155,6 +158,28 @@ impl Door for DiskDoor {
         }
         std::fs::remove_file(&p)
             .map_err(|e| Refused::Other(format!("替身：删 {} 失败：{e}", p.display())))
+    }
+
+    async fn delete_empty_dir(&self, root: &str, rel: &str) -> Result<(), Refused> {
+        let p = Self::at(root, rel);
+        self.emptied
+            .borrow_mut()
+            .push((root.to_string(), rel.to_string()));
+        // 〔FW1〕同后端 `files_write::delete_empty_dir`：不在 / 不空 ⇒ stale；不是目录 ⇒ 拒。
+        match std::fs::symlink_metadata(&p) {
+            Err(_) => return Err(Refused::Stale(format!("替身：{} 不在了", p.display()))),
+            Ok(m) if !m.is_dir() => {
+                return Err(Refused::Other(format!("替身：{} 不是目录", p.display())))
+            }
+            Ok(_) => {}
+        }
+        std::fs::remove_dir(&p).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::DirectoryNotEmpty {
+                Refused::Stale(format!("替身：{} 不空", p.display()))
+            } else {
+                Refused::Other(format!("替身：删 {} 失败：{e}", p.display()))
+            }
+        })
     }
 
     async fn chmod(&self, root: &str, rel: &str, mode: u32) -> Result<(), String> {

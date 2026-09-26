@@ -472,6 +472,57 @@ pub fn delete_file_expecting(
     Ok(target)
 }
 
+/// 〔FW1 · 第四波 4D · SU1 问 2〕**只删一个空目录**（`files-delete` 带 `expect: {"empty_dir": true}`）：
+/// 「我看到的是一个空目录，删它」—— 与带逐字节 `expect` 删文件那一形对称的 CAS。
+///
+/// - 目标（不跟链接地看）必须是一个**真目录**：是文件 / 链接 / 别的 ⇒ `Refused`（这一形只对目录）。
+/// - 不在 ⇒ `Stale`（看的时候还在）；**不空 ⇒ `Stale`**：`remove_dir` 自己就是原子的「空才删」，系统拒非空、
+///   本函数只把那一下翻成 `stale`（说的是「你看的时候它空，此刻不空了」）—— 没有先看后删的窗。
+/// - 删的动词与 [`delete_entry`] 删空目录那一支同一个（闭集里的「删空目录」），路径解析同一道。
+pub fn delete_empty_dir(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, WriteRefusal> {
+    let target = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
+    let md = match std::fs::symlink_metadata(&target) {
+        Ok(m) => m,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(WriteRefusal::Stale(format!(
+                "refuse delete: {} 已经不在了（看的时候还在）—— 什么都没删",
+                target.display()
+            )))
+        }
+        Err(e) => {
+            return Err(WriteRefusal::Io(format!(
+                "refuse write: 读不到 {}：{e}",
+                target.display()
+            )))
+        }
+    };
+    if !md.is_dir() {
+        return Err(WriteRefusal::Refused(format!(
+            "refuse delete: {} 不是一个目录 —— 「只删空目录」这一形只收目录（不收文件、不收链接）",
+            target.display()
+        )));
+    }
+    match std::fs::remove_dir(&target) {
+        Ok(()) => Ok(target),
+        Err(e) if e.kind() == std::io::ErrorKind::DirectoryNotEmpty => {
+            Err(WriteRefusal::Stale(format!(
+                "refuse delete: {} 里面还有东西 —— 只删空目录，一个字节没动",
+                target.display()
+            )))
+        }
+        Err(e) => Err(WriteRefusal::Io(format!(
+            "refuse write: 删目录 {} 失败：{e}",
+            target.display()
+        ))),
+    }
+}
+
+/// `files-delete` 的 `expect` 那一格（给了的话）：逐字节那一形 · 〔FW1〕「只删空目录」那一形。
+enum DeleteExpect {
+    Bytes(Vec<u8>),
+    EmptyDir,
+}
+
 /// 改 unix 权限位（只收低 12 位）。**跟链接** ⇒ 走 [`resolve_existing_in_root`]。
 ///
 /// ⚠ 非 unix 平台上**如实回失败**，不假装改成了（`Permissions` 在那边只有一个只读位）。
@@ -1442,7 +1493,8 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
         what:
             "删一个文件或一个**空**目录（删的是链接本身，不跟过去）；〔FW5〕显式 `recursive: true` \
                才删整棵树 —— 逐条目过路径解析，任一条被拒整趟不动（`delete_tree`）；〔RM1e〕给了 `expect` \
-               ⇒ 只删一份普通文件、且盘上逐字节等于它才删（否则 `stale`，一个字节不动）",
+               ⇒ 只删一份普通文件、且盘上逐字节等于它才删（否则 `stale`，一个字节不动）；〔FW1〕`expect: {\"empty_dir\": true}` \
+               ⇒ 只删一个空目录（不空 / 不在 ⇒ `stale`；不是目录 ⇒ `refused`）",
         args: &["expect", "recursive", "rel", "root"],
         fields: &["path", "removed"],
         codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
@@ -1617,7 +1669,13 @@ fn answer_delete(args: &serde_json::Value) -> Answer {
                 "`expect` 不收 `null` —— 带 `expect` 的删说的是「读到的是这一份，删它」，不在就没有可删的".to_string(),
             ))
         }
-        Some(v) => Some(bytes_of(v, "expect")?),
+        // 〔FW1 · SU1 问 2〕恰好 `{"empty_dir": true}` ⇒ 只删空目录；别的对象形照旧按逐字节那一形取（`{"b16": …}`，认不出 ⇒ `bad_args`）。
+        Some(serde_json::Value::Object(o))
+            if o.len() == 1 && o.get("empty_dir") == Some(&serde_json::Value::Bool(true)) =>
+        {
+            Some(DeleteExpect::EmptyDir)
+        }
+        Some(v) => Some(DeleteExpect::Bytes(bytes_of(v, "expect")?)),
     };
     if recursive && expect.is_some() {
         return Err((
@@ -1628,11 +1686,12 @@ fn answer_delete(args: &serde_json::Value) -> Answer {
     }
     let (done, removed) = if recursive {
         delete_tree(&root, &rel).map_err(refusal)?
-    } else if let Some(want) = expect.as_deref() {
-        (
-            delete_file_expecting(&root, &rel, want).map_err(refusal)?,
-            1,
-        )
+    } else if let Some(want) = expect {
+        let done = match want {
+            DeleteExpect::Bytes(b) => delete_file_expecting(&root, &rel, &b),
+            DeleteExpect::EmptyDir => delete_empty_dir(&root, &rel),
+        };
+        (done.map_err(refusal)?, 1)
     } else {
         (delete_entry(&root, &rel).map_err(refusal)?, 1)
     };
