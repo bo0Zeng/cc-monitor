@@ -185,11 +185,8 @@ const TYPE_CYCLE_EXEMPT: ReadonlyArray<readonly [members: readonly string[], why
     "纯类型边闭合（`cards/subagent.ts` 回头 `import type { JsonlRecord, RenderContext, RenderResult } from \"./index\"`）；" +
       "上面那条运行期判据的头注点过名。不在 FE1 写区：拆法是把那三个类型挪进卡片系的一个叶子，归卡片那一片的主人。",
   ],
-  [
-    ["src/launch-dimensions.ts", "src/launch-plan.ts"],
-    "纯类型边闭合（`launch-dimensions.ts` 回头 `import type { LaunchDimension } from \"./launch-plan.ts\"`）；" +
-      "`src/launch-*` 是 LR2 的写区（起会话收口），不在 FE1 写区。拆法同上：类型挪进叶子。",
-  ],
+  // 〔LR2〕`launch-dimensions ⇄ launch-plan` 那一行摘了：IR 的类型拆进纯类型叶子 `src/launch-types.ts`，
+  //   `launch-dimensions.ts` 改 `import type { LaunchDimension } from "./launch-types.ts"` ⇒ 环断（本行登记时写明归 LR2 摘）。
 ];
 
 /** 返回找到的第一个环（按文件顺序确定性遍历），没有则 null。 */

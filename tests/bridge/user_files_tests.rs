@@ -31,6 +31,8 @@ pub(crate) struct DiskDoor {
     pub deleted_sids: RefCell<Vec<String>>,
     /// 〔RM1d〕`delete`（`files-delete`）收到的相对段 ＋〔RM1e〕交过去的 `expect`。
     pub deleted: RefCell<Vec<(String, String)>>,
+    /// 〔FW1〕`delete_empty_dir` 收到的 `(root, rel)`（按到达顺序）。
+    pub emptied: RefCell<Vec<(String, String)>>,
     /// 〔RM1e〕`peek` 被问了几次（删那一支不该再先 `peek`：CAS 在写口闭合）。
     pub peeked: RefCell<usize>,
     /// `list_dir` 的答案，由判据**事先摆好**（替身不去遍历盘上的目录 ——
@@ -46,6 +48,7 @@ impl DiskDoor {
             puts: RefCell::new(Vec::new()),
             deleted_sids: RefCell::new(Vec::new()),
             deleted: RefCell::new(Vec::new()),
+            emptied: RefCell::new(Vec::new()),
             peeked: RefCell::new(0),
             listings: RefCell::new(std::collections::BTreeMap::new()),
         }
@@ -155,6 +158,28 @@ impl Door for DiskDoor {
         }
         std::fs::remove_file(&p)
             .map_err(|e| Refused::Other(format!("替身：删 {} 失败：{e}", p.display())))
+    }
+
+    async fn delete_empty_dir(&self, root: &str, rel: &str) -> Result<(), Refused> {
+        let p = Self::at(root, rel);
+        self.emptied
+            .borrow_mut()
+            .push((root.to_string(), rel.to_string()));
+        // 〔FW1〕同后端 `files_write::delete_empty_dir`：不在 / 不空 ⇒ stale；不是目录 ⇒ 拒。
+        match std::fs::symlink_metadata(&p) {
+            Err(_) => return Err(Refused::Stale(format!("替身：{} 不在了", p.display()))),
+            Ok(m) if !m.is_dir() => {
+                return Err(Refused::Other(format!("替身：{} 不是目录", p.display())))
+            }
+            Ok(_) => {}
+        }
+        std::fs::remove_dir(&p).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::DirectoryNotEmpty {
+                Refused::Stale(format!("替身：{} 不空", p.display()))
+            } else {
+                Refused::Other(format!("替身：删 {} 失败：{e}", p.display()))
+            }
+        })
     }
 
     async fn chmod(&self, root: &str, rel: &str, mode: u32) -> Result<(), String> {
@@ -406,4 +431,44 @@ fn every_command_the_door_sends_is_registered_on_the_backend_and_the_new_trio_ha
         .collect(),
         "门经后端写面发的命令变了"
     );
+}
+
+/// 〔FW1 · 第四波 4D · 主会话裁 SU1 问 2〕门发的「只删空目录」那一形的键 == 后端认的那一个（两侧源码现抠，异源）。
+/// 替身门（`DiskDoor`）不走线上，这一格只有源码对拍看得见：键拼错 ⇒ 后端按逐字节形取、取不出 ⇒ `bad_args`，卸 skill 收空目录那一步整个失效。
+#[test]
+fn the_door_s_empty_dir_expect_key_is_the_one_the_backend_recognizes() {
+    let root = crate::guard_support::repo_src_root();
+    let door = guard_core::production_code(
+        &std::fs::read_to_string(root.join("bridge/src/user_files.rs")).expect("读门"),
+    );
+    let back = guard_core::production_code(
+        &std::fs::read_to_string(root.join("backend/control/files_write.rs")).expect("读后端写面"),
+    );
+    let between = |src: &str, pre: &str, post: &str| -> Vec<String> {
+        src.match_indices(pre)
+            .filter_map(|(i, _)| {
+                let rest = &src[i + pre.len()..];
+                rest.find(post).map(|j| rest[..j].to_string())
+            })
+            // 键只可能是一个标识符形的词；跨到别处的长片段（`pre` 撞上别的 `json!` 起头）不算。
+            .filter(|k| !k.is_empty() && k.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'))
+            .collect()
+    };
+    let ours = between(&door, "serde_json::json!({ \"", "\": true })");
+    let theirs = between(
+        &back,
+        "o.get(\"",
+        "\") == Some(&serde_json::Value::Bool(true))",
+    );
+    assert_eq!(
+        ours.len(),
+        1,
+        "门上「只删空目录」那一形不是恰好一处：{ours:?}"
+    );
+    assert_eq!(
+        theirs.len(),
+        1,
+        "后端认「只删空目录」那一形不是恰好一处：{theirs:?}"
+    );
+    assert_eq!(ours, theirs, "门发的键与后端认的键对不上");
 }

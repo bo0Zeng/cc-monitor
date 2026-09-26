@@ -33,8 +33,9 @@
 //!   随用量 ③ 轴整轴退役。〕
 //! - **Windows 分支不在这里** —— `$env:CLAUDE_CONFIG_DIR=$null; ` 与它自己那套
 //!   「什么算绝对路径」（盘符 / UNC / `\` 分隔）是刻意的平台特化。
-//! - TS 侧还剩 `launch-render-fallback.ts` 一个产出点（U8c-3 删除）。跨语言一致性由
-//!   `fixtures/payload-golden.json` 的**逐字节对拍**保证（TS 生成并入库、Rust 读同一份自己渲染再比）。
+//! - 〔LR2〕TS 侧那个产出点（`launch-render-fallback.ts`）U8c-3 已删 —— 本文件是载荷与外层三格唯一的家。
+//!   `fixtures/payload-golden.json` / `tmux-outer-golden.json` 仍入库，左边是用例表里的手写期望
+//!   （`tests/test-support/launch-*-golden.ts`），Rust 读同一份自己渲染再逐字节比。
 
 /// P1：**业务拒绝的唯一构造口** —— 所有「渲染不出来，且这是坏输入」的 `Err` 都必须经这里。
 ///
@@ -147,13 +148,13 @@ pub fn config_dir_prefix_posix(account: Option<&Account>) -> Result<String, Stri
 /// 「**显式不注入** `CLAUDE_CONFIG_DIR`」这条前缀 —— 也就是账号 0 的起法。
 ///
 /// 逐字节形态被 e2e 探针用 `grep -q "unset CLAUDE_CONFIG_DIR;"` 断言，且与 TS
-/// `shell-quote.ts::UNSET_CONFIG_DIR_PREFIX` 同源（对拍夹具覆盖）。
+/// 〔LR2〕TS 那份同名常量随兜底渲染器删了；逐字节由 `payload-golden.json`「账号 0」那条夹具钉着。
 pub const UNSET_CONFIG_DIR_PREFIX: &str = "unset CLAUDE_CONFIG_DIR; ";
 
 /// 启动期令牌的长度 —— **32 个字符**。
 ///
 /// 单独提成常量是为了让 TS 那侧的对拍判据**从本文件抽这个数**、而不是手抄一个 32
-/// （`tests/launch-render-fallback.vitest.ts`）。改这个数 ⇒ TS 那条对拍当场红。
+/// （`tests/rbind-token-shape-parity.vitest.ts`，〔LR2〕从已删的兜底渲染器判据文件搬来）。改这个数 ⇒ TS 那条对拍当场红。
 pub const RBIND_TOKEN_LEN: usize = 32;
 
 /// 令牌形状：恰好 [`RBIND_TOKEN_LEN`] 个**小写**十六进制字符。
@@ -173,7 +174,7 @@ pub fn rbind_token_shape_ok(token: &str) -> bool {
 
 /// 载荷里的一条环境操作。
 ///
-/// **刻意是窄变体而不是通用 `{op, key, value}`**（照搬 TS `launch-plan.ts::EnvOp` 的裁决）：
+/// **刻意是窄变体而不是通用 `{op, key, value}`**（照搬 TS `launch-types.ts::EnvOp` 的裁决）：
 /// 通用形态等于给任何上游开一个「往命令里塞任意变量名」的口子，
 /// 而实际产出者的键集合全是代码里写死的。把「清哪些变量」从**数据**移进**变体名**之后，
 /// 那件事在类型层不可表达。
@@ -187,7 +188,7 @@ pub enum EnvOp<'a> {
     },
     /// `设计/80 §8` 步 1：启动期令牌 `CCM_RBIND_TOKEN`（`[0-9a-f]{32}`）。
     ///
-    /// 「买到什么 / **买不到什么**」逐字住 TS `launch-plan.ts::EnvOp` 那一段。
+    /// 「买到什么 / **买不到什么**」逐字住 TS `launch-types.ts::EnvOp` 那一段。
     /// 本侧只重复一句要害：**它只是一个不可猜的关联 id，不许承载任何权限语义** ——
     /// 它会进远端的 `/proc/<pid>/environ` 与 `cmdline`，拿到它顶多能让某人的
     /// `↗` 拉错窗口，不能越权。
@@ -199,10 +200,12 @@ pub enum EnvOp<'a> {
         value: &'a str,
     },
     /// 〔RL1 · 第四波〕中转地址 `ANTHROPIC_BASE_URL`：远端（与本机「就地 resume」那一格）拉起时，
-    /// 值由 [`relay_endpoint_for`] 那个唯一判断口答出、经 tauri `relay_endpoint_for_launch` 交给前端、再原样放进载荷。
+    /// 值由那台机器的后端出成品（帧命令 `launch-endpoint`，决策表 `accounts/upstream/endpoint.rs::decide_launch`），
+    /// 经 `history::relay_endpoint_on` → tauri `relay_endpoint_for_launch` 交给前端、再原样放进载荷。
+    /// 〔TL3 · 审计 F 🔴-3〕先前这里链到 monitor 的 `relay_endpoint_for`〔散文墓碑〕—— US1 把那张表整块搬进了后端。
     ///
     /// ⚠ 形状校验在 [`render_env_ops`] 里、**fail-closed**（[`relay_base_url_shape_ok`]）：只收
-    /// [`relay_base_url_in`] 产得出的那一形。渲错了的症状是「claude 每一发都连不上」，与网络故障同形 ——
+    /// 构造口（`relay_route_core::base_url`，后端上游选择调它）产得出的那一形。渲错了的症状是「claude 每一发都连不上」，与网络故障同形 ——
     /// 与启动期令牌那一格同一条理由（静默的错不许渲）。渲染只经 [`relay_env_prefix_posix`]
     /// （本文件唯一产出那句 `export` 的地方，判据数着）。
     ExportRelayBaseUrl {

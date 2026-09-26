@@ -57,6 +57,12 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "READ_FLOOR_BPS",
+        "〔DL1 · 第五波〕**速率**（字节 / 秒）不是体量：`frame_query·rs::read_budget` 拿它把「要读多少字节」折成分页读那一件的\
+             总时限（`设计/05 §3.3.2` 一件事一个绝对时刻）。它不限任何字节总量、不截任何东西 —— 限总量的是各自的字节上限\
+             （`SNAPSHOT_MAX_BYTES` / `MAX_SESSION_BYTES`）。",
+    ),
+    (
         "PRIVATE_DIR_MODE",
         "〔HX1 · 4D〕**权限位**不是体量：后端 `control/files_commit·rs` 建 `~/.cc-monitor` 与暂存区那一下给的 unix 权限（0o700，只给本人），\
              不限任何字节总量、不截任何东西。",
@@ -156,10 +162,8 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "NET_EPOCH_TO_WIN32_FILETIME_TICKS",
         "**时间纪元差**（.NET 与 Win32 FILETIME 的起点相差多少个 100ns tick）。单位是时间不是字节。",
     ),
-    (
-        "PROC_START_TOLERANCE_TICKS",
-        "**时间容差**（判进程是不是同一个时允许的启动时刻误差）。单位是时间不是字节。",
-    ),
+    // 〔LOC1b · 第四波 4D〕`PROC_START_TOLERANCE_TICKS` 那一行摘了：它住 monitor 自己那份判活（`session_map.rs` 的 Windows
+    //   进程身份核对），本机判活改由本机后端的帧来，那份实现连同这个常量一起删了。
     (
         "STARTTIME_IDX_AFTER_COMM",
         "**字段下标**（`/proc/<pid>/stat` 里 `starttime` 在 `comm` 之后的第几个字段）。不是量。",
@@ -238,6 +242,11 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              它的意思恰恰是「没有上限」；`pidwatch_windows_shape_tests` 钉着它必须是全 1（零定时器）。",
     ),
     (
+        "WAIT_ABANDONED",
+        "〔HX2〕**Win32 等待结果码**（`WaitForSingleObject` 回「上一个持有者没放就没了」—— `platform/lock.rs` 那把命名互斥量）。\
+             是一个返回码，不是尺寸。",
+    ),
+    (
         "FILETIME_TICKS_BEFORE_UNIX_EPOCH",
         "**时间纪元差**（Win32 FILETIME 的 1601 起点与 Unix 1970 起点相差多少个 100ns tick）。\
              与上面 `NET_EPOCH_TO_WIN32_FILETIME_TICKS` 同族：单位是时间不是字节。",
@@ -263,11 +272,12 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     //   monitor 这一侧不再有它们。
     // 〔C4d · 第四波 4B〕`local_accounts.rs` 的 `MANIFEST_CAP`（本机读账号 manifest，「降级+说清」）那一行出列：
     //   那份零生产调用方的本机参照实现删了，读 manifest 只剩后端一处（`MAX_MANIFEST_BYTES`，登记在后端那一段）。
+    // 〔LOC1b · 第四波 4D〕住址 `remote_history.rs` → `history.rs`：本机冷读也经那台后端，本机远端同一条上限。
     (
-        "src/bridge/src/remote_history.rs",
+        "src/bridge/src/history.rs",
         "MAX_SESSION_BYTES",
         256 * 1024 * 1024,
-        "读一整份远端会话 jsonl",
+        "读一整份会话 jsonl（本机远端同一条）",
         "截断+说清",
     ),
     // 🔴〔第十二刀 2026-09-22〕**它管的不是字节，是条目数** —— 如实登记这一点。
@@ -634,6 +644,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "`tasks-list` 读单个任务文件（本机实测几百字节量级）",
         "跳过+说清",
     ),
+    // 〔W5-ALIAS · 第五波先行〕别名预览（`ccm-print`）入参里一个参数最长多少。
+    (
+        "src/backend/control/ccm/mod.rs",
+        "PRINT_MAX_WORD_BYTES",
+        4096,
+        "`ccm-print` 交来的一条别名里一个参数的字节数（别名表单产出的远小于它）",
+        "拒收+回错",
+    ),
     // 〔RM1a · 第四波〕「足迹」的这台机器那一半（`footprint-probe`，只读）那两个数。
     (
         "src/backend/footprint.rs",
@@ -783,6 +801,15 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "TEE_DECODE_CAP",
         8388608,
         "tee 侧解码缓冲攒着的那截（SSE 半行 / chunked 还没成形的块长度行）",
+        "丢弃+带身份报告",
+    ),
+    // 〔TAP · V124〕tee 交给 tap 口的**一个 SSE 事件**的原文字节数。超了这一件不交、位置号照占 ⇒
+    // 接收侧看见 `n` 的缺口（身份 = 哪个响应的第几号）；下游的字节一个不少（tap 是抄一份）。
+    (
+        "src/backend/relay/tee.rs",
+        "TAP_DATA_CAP",
+        16384,
+        "tee 交给 tap 口的一个 SSE 事件（`data:` 后那段原文）的字节数",
         "丢弃+带身份报告",
     ),
     // 🔴 **〔条 67 · 2026-09-18〕`ASSET_BYTE_CAP` 与 `RESPONSE_HEAD_BYTE_CAP` 这一对摘了。**
@@ -1091,7 +1118,7 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
     //   `observe/accounts_query.rs::MAX_MANIFEST_BYTES` 一处，「两侧漂开」在结构上不再可能（同对 D 的处置）。
 
     // 对 B：两边都是「一整份会话 jsonl」这同一个量 ⇒ 钉相等。
-    let b1 = by("src/bridge/src/remote_history.rs", "MAX_SESSION_BYTES");
+    let b1 = by("src/bridge/src/history.rs", "MAX_SESSION_BYTES");
     let b2 = by(
         "src/backend/control/fork_write.rs",
         "MAX_SESSION_JSONL_BYTES",
@@ -1110,8 +1137,9 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
     // （`search-core`）⇒ **「两侧漂开」在结构上不再可能**，一条对拍相等的判据也就无从谈起
     // （它会变成「同一个数等于它自己」，恒绿）。
     // 把这件事焊住的判据换了个形状，住
-    // `src/bridge/src/search.rs::kou_jing_guard::the_search_kou_jing_has_exactly_one_home`：
-    // 它断言两侧生产段**都不许**再出现 `const MAIN_CAP` / `const TOOL_CAP` 之类的定义。
+    // `tests/bridge/search_kou_jing_guard.rs` 的 `the_search_kou_jing_has_exactly_one_home`：
+    // 它断言搜索那一侧（〔LOC1b〕今天只剩后端）生产段**不许**再出现 `const MAIN_CAP` / `const TOOL_CAP` 之类的定义，
+    // 并断言 monitor 生产树里零处再搜。
     // ⇒ 这两个数搬回任何一侧，当场红。
 
     // 对 E〔F9 续 09-24 立；F9c 第四波改钉〕：窗口的编辑上限**就是**后端读 / 提交存盘的天花板 ⇒ 钉相等。
@@ -1625,7 +1653,7 @@ fn every_uncapped_stream_read_has_an_owner() {
     //
     // 漏出来的是活的：逐次拨号那条路 `run_list_query`〔散文墓碑〕（C4d 已删）当年无界 `read_line`
     // （只有外层 30s 超时兜着），三个 `#[tauri::command]` 调用方，生产路径；
-    // 以及 `stream_read_remote_session` —— 它有 `MAX_SESSION_BYTES` 总量，
+    // 以及 `stream_read_remote_session`〔散文墓碑〕 —— 它有 `MAX_SESSION_BYTES` 总量，
     // 但那是**读完再判**，一条超大行在 `read_line` 返回前就把内存吃光了。
     // 两处都已改走 `ssh_source::read_capped_line`。
     //

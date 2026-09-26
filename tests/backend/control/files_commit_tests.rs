@@ -15,6 +15,16 @@
 //! - 真远端（同写面那一族：全在本机文件系统上）；跨盘（`EXDEV`）那一支本机造不出来 —— 没判。
 
 use super::*;
+use crate::control::files_write::overwrite_text;
+
+/// 〔FW1〕此刻暂存区里这个键那份暂存件的整份摘要（提交时的 `expect`）。没有 / 键不合法 ⇒ 全零串（那几条判的是别的拒）。
+fn staged_sha(home: &Path, key: &str) -> String {
+    staged_path(home, key)
+        .ok()
+        .and_then(|p| std::fs::read(p).ok())
+        .map(|b| content_sha256(&b))
+        .unwrap_or_else(|| "0".repeat(crate::control::files_write::SHA256_HEX_LEN))
+}
 
 /// 一个本轮独占的临时目录（`tag` 区分用例，`pid` 区分并发跑的进程）。
 fn temp_dir(tag: &str) -> PathBuf {
@@ -67,7 +77,8 @@ fn commit_without_overwrite_lands_the_staged_bytes_and_consumes_them() {
     let (home, root) = rig("land");
     let body = b"\x00staged\xffbytes\n".to_vec();
     let staged = stage(&home, KEY, &body);
-    let (landed, n) = commit_upload(&home, KEY, &root, "a.bin", false).expect("该落进去");
+    let (landed, n) = commit_upload(&home, KEY, &root, "a.bin", false, &staged_sha(&home, KEY))
+        .expect("该落进去");
     assert_eq!(n, body.len() as u64);
     assert_eq!(std::fs::read(&landed).expect("读落点"), body);
     assert!(
@@ -82,7 +93,8 @@ fn commit_without_overwrite_refuses_an_existing_target_and_touches_nothing() {
     let (home, root) = rig("clash");
     let staged = stage(&home, KEY, b"new");
     std::fs::write(root.join("a.txt"), b"old").unwrap();
-    let e = commit_upload(&home, KEY, &root, "a.txt", false).expect_err("该拒");
+    let e = commit_upload(&home, KEY, &root, "a.txt", false, &staged_sha(&home, KEY))
+        .expect_err("该拒");
     assert_eq!(
         e.code(),
         "io_failed",
@@ -92,7 +104,8 @@ fn commit_without_overwrite_refuses_an_existing_target_and_touches_nothing() {
     assert_eq!(std::fs::read(root.join("a.txt")).unwrap(), b"old");
     assert_eq!(std::fs::read(&staged).unwrap(), b"new", "暂存件被动了");
     // 换个名字再提交 ⇒ 成（暂存件还在，就是为这一步留的）。
-    commit_upload(&home, KEY, &root, "b.txt", false).expect("换名再提交该成");
+    commit_upload(&home, KEY, &root, "b.txt", false, &staged_sha(&home, KEY))
+        .expect("换名再提交该成");
     assert_eq!(std::fs::read(root.join("b.txt")).unwrap(), b"new");
 }
 
@@ -102,10 +115,11 @@ fn commit_with_overwrite_replaces_the_target_whole() {
     let (home, root) = rig("over");
     stage(&home, KEY, b"new-content");
     std::fs::write(root.join("a.txt"), b"old-and-longer-content").unwrap();
-    commit_upload(&home, KEY, &root, "a.txt", true).expect("该换掉");
+    commit_upload(&home, KEY, &root, "a.txt", true, &staged_sha(&home, KEY)).expect("该换掉");
     assert_eq!(std::fs::read(root.join("a.txt")).unwrap(), b"new-content");
     stage(&home, KEY, b"fresh");
-    commit_upload(&home, KEY, &root, "c.txt", true).expect("目标不在也该落");
+    commit_upload(&home, KEY, &root, "c.txt", true, &staged_sha(&home, KEY))
+        .expect("目标不在也该落");
     assert_eq!(std::fs::read(root.join("c.txt")).unwrap(), b"fresh");
 }
 
@@ -130,7 +144,8 @@ fn commit_goes_through_the_fence_and_leaves_the_disk_alone_when_refused() {
         ),
         (base.as_path(), "/abs.bin", PathBuf::from("/abs.bin")),
     ] {
-        let e = commit_upload(&home, KEY, root, rel, true).expect_err("该被围栏拒");
+        let e = commit_upload(&home, KEY, root, rel, true, &staged_sha(&home, KEY))
+            .expect_err("该被围栏拒");
         assert_eq!(e.code(), "refused", "`{rel}` 不是围栏拒的：{}", e.message());
         assert!(
             !would_land.exists(),
@@ -140,8 +155,15 @@ fn commit_goes_through_the_fence_and_leaves_the_disk_alone_when_refused() {
     }
     assert_eq!(std::fs::read(&staged).unwrap(), b"would clobber a session");
     // 〔FN1 · V119〕正控：同一份暂存件提交到会话文件那个位置 ⇒ 落得进去。
-    commit_upload(&home, KEY, &proj, "abc.jsonl", false)
-        .expect("🔴 V119：提交到会话文件的位置被拒了");
+    commit_upload(
+        &home,
+        KEY,
+        &proj,
+        "abc.jsonl",
+        false,
+        &staged_sha(&home, KEY),
+    )
+    .expect("🔴 V119：提交到会话文件的位置被拒了");
     assert_eq!(
         std::fs::read(proj.join("abc.jsonl")).unwrap(),
         b"would clobber a session"
@@ -152,7 +174,8 @@ fn commit_goes_through_the_fence_and_leaves_the_disk_alone_when_refused() {
 #[test]
 fn a_missing_or_linked_staged_file_is_refused() {
     let (home, root) = rig("missing");
-    let e = commit_upload(&home, KEY, &root, "a.bin", false).expect_err("没有暂存件");
+    let e = commit_upload(&home, KEY, &root, "a.bin", false, &staged_sha(&home, KEY))
+        .expect_err("没有暂存件");
     assert_eq!(e.code(), "io_failed", "{}", e.message());
     assert!(
         !root.join("a.bin").exists(),
@@ -167,7 +190,8 @@ fn a_missing_or_linked_staged_file_is_refused() {
             home.join(STAGING_DIR).join(format!("{KEY}{PART_SUFFIX}")),
         )
         .unwrap();
-        let e = commit_upload(&home, KEY, &root, "b.bin", true).expect_err("链接当源");
+        let e = commit_upload(&home, KEY, &root, "b.bin", true, &staged_sha(&home, KEY))
+            .expect_err("链接当源");
         assert_eq!(e.code(), "refused", "{}", e.message());
         assert!(!root.join("b.bin").exists());
         assert_eq!(std::fs::read(&secret).unwrap(), b"not yours");
@@ -179,7 +203,8 @@ fn a_missing_or_linked_staged_file_is_refused() {
 fn a_bad_key_is_refused_before_anything_lands() {
     let (home, root) = rig("badkey");
     for bad in ["../../x", "ABCDEF0123456789ABCDEF0123456789", "short"] {
-        let e = commit_upload(&home, bad, &root, "a.bin", false).expect_err("该拒");
+        let e = commit_upload(&home, bad, &root, "a.bin", false, &staged_sha(&home, bad))
+            .expect_err("该拒");
         assert_eq!(e.code(), "refused", "{bad:?}：{}", e.message());
     }
     assert!(
@@ -293,6 +318,7 @@ fn a_successful_commit_is_the_event_that_sweeps() {
             "root": root.to_string_lossy(),
             "rel": "landed.bin",
             "overwrite": false,
+            "expect": {"sha256": content_sha256(b"payload")},
         }),
     )
     .expect("提交该成");
@@ -329,11 +355,16 @@ fn send_chunk(home: &Path, key: &str, seq: u64, bytes: &[u8]) -> Answer {
 
 /// 经线上那一面提交。
 fn send_commit(home: &Path, key: &str, chunks: u64, bytes: u64, root: &Path, rel: &str) -> Answer {
+    // 〔FW1〕CAS 必给：交「此刻盘上那一份」的摘要（读不到就交一个全零串 —— 那一形由判据自己看码）。
+    let expect = std::fs::read(root.join(rel))
+        .map(|b| content_sha256(&b))
+        .unwrap_or_else(|_| "0".repeat(crate::control::files_write::SHA256_HEX_LEN));
     answer_commit_text_at(
         home,
         &serde_json::json!({
             "key": key, "chunks": chunks, "bytes": bytes,
             "root": root.to_string_lossy(), "rel": rel,
+            "expect": {"sha256": expect},
         }),
     )
 }
@@ -589,11 +620,15 @@ fn a_text_commit_goes_through_the_write_fence() {
     std::fs::create_dir_all(&proj).unwrap();
     let session = proj.join("s.jsonl");
     std::fs::write(&session, b"{}\n").unwrap();
-    for (i, rel) in ["../escape.txt", "nope.txt"].iter().enumerate() {
+    // 〔FW1 · 第四波 4D〕不存在的目标从前是 `refused`（解不到底）；带了 CAS 之后是 `stale`（「你打开的时候还在」）—— 逐格钉码。
+    for (i, (rel, code)) in [("../escape.txt", "refused"), ("nope.txt", "stale")]
+        .iter()
+        .enumerate()
+    {
         let key = format!("{:032x}", 0xa0 + i);
         send_chunk(&home, &key, 0, b"payload").unwrap();
         let e = send_commit(&home, &key, 1, 7, &root, rel).expect_err(rel);
-        assert!(e.0 == "refused" || e.0 == "io_failed", "{rel}：{e:?}");
+        assert_eq!(e.0, *code, "{rel}：{e:?}");
         assert!(chunks_left(&home, &key).is_empty(), "{rel}：块没删");
     }
     let key = format!("{:032x}", 0xaf);
@@ -662,6 +697,77 @@ fn the_sweep_also_collects_stale_chunks() {
     }
 }
 
+/// 〔FW1 · 第四波 4D〕**分块那一支同一道 CAS**（主会话裁 D-c；两支存盘同一种结果）：盘上那份在读之后被改了 ⇒ `stale`，
+/// 目标一个字节没动、块照样删掉；拿「此刻那一份」的摘要 ⇒ 写成，应答交新摘要 == 写进去那份的。
+#[test]
+fn a_chunked_save_over_a_changed_file_is_stale_like_the_one_line_save() {
+    let (home, root) = bare_rig("fw1-commit-cas");
+    std::fs::write(root.join("t.txt"), b"old").unwrap();
+    let seen = content_sha256(b"old");
+    std::fs::write(root.join("t.txt"), b"old + someone else").unwrap();
+    let whole = body(3000, 7);
+    for (i, p) in whole.chunks(1000).enumerate() {
+        send_chunk(&home, KEY, i as u64, p).expect("送块");
+    }
+    let e = answer_commit_text_at(
+        &home,
+        &serde_json::json!({
+            "key": KEY, "chunks": 3, "bytes": 3000,
+            "root": root.to_string_lossy(), "rel": "t.txt",
+            "expect": {"sha256": seen},
+        }),
+    )
+    .expect_err("盘上已经变了，竟然提交成了");
+    assert_eq!(e.0, "stale", "{e:?}");
+    assert_eq!(
+        std::fs::read(root.join("t.txt")).unwrap(),
+        b"old + someone else"
+    );
+    assert!(chunks_left(&home, KEY).is_empty(), "stale 之后块没删");
+    for (i, p) in whole.chunks(1000).enumerate() {
+        send_chunk(&home, KEY, i as u64, p).expect("再送块");
+    }
+    let got =
+        send_commit(&home, KEY, 3, 3000, &root, "t.txt").expect("拿此刻那一份的摘要提交，该成");
+    assert_eq!(got["sha256"], content_sha256(&whole));
+    assert_eq!(std::fs::read(root.join("t.txt")).unwrap(), whole);
+    // 缺 `expect` ⇒ `bad_args`（没有「不问就盖」这一形）。
+    let e = answer_commit_text_at(
+        &home,
+        &serde_json::json!({"key": KEY, "chunks": 1, "bytes": 1, "root": root.to_string_lossy(), "rel": "t.txt"}),
+    )
+    .expect_err("没给 expect 竟然收了");
+    assert_eq!(e.0, "bad_args");
+}
+
+/// 〔FW1 · 第四波 4D〕提交的整份摘要：**必给**（缺 ⇒ `bad_args`）；对不上 ⇒ `stale`、目标一个字节没动、坏暂存件删掉；
+/// 对得上 ⇒ 照旧上位。要求住址：主会话裁 09-25「`files-commit-upload` 必给 `expect:{sha256}` → 远端后端改名上位前核，
+/// 不等 ⇒ stale、删坏暂存件」· `设计/60 §7` 第 8 条。
+#[test]
+fn the_commit_checks_the_whole_staged_file_against_the_digest_it_is_given() {
+    let (home, root) = rig("fw1-digest");
+    let body = b"the whole staged file".to_vec();
+    let staged = stage(&home, KEY, &body);
+    let e = answer_commit_at(
+        &home,
+        &serde_json::json!({"key": KEY, "root": root.to_string_lossy(), "rel": "a.bin", "overwrite": false}),
+    )
+    .expect_err("没给 expect 竟然上位了");
+    assert_eq!(e.0, "bad_args");
+    assert!(staged.exists(), "参数拒了却动了暂存件");
+    let mut wrong = body.clone();
+    wrong[3] ^= 1;
+    let e = commit_upload(&home, KEY, &root, "a.bin", false, &content_sha256(&wrong))
+        .expect_err("摘要对不上竟然上位了");
+    assert_eq!(e.code(), "stale", "{}", e.message());
+    assert!(!root.join("a.bin").exists(), "摘要对不上却落进了目标");
+    assert!(!staged.exists(), "坏暂存件没删");
+    let staged = stage(&home, KEY, &body);
+    commit_upload(&home, KEY, &root, "a.bin", false, &content_sha256(&body)).expect("对得上该上位");
+    assert_eq!(std::fs::read(root.join("a.bin")).unwrap(), body);
+    assert!(!staged.exists());
+}
+
 /// 〔HX1 · RK1 小尾巴〕后端**这一趟建出来的** `~/.cc-monitor` 与暂存区是 0700（不按 umask）；**已在的**不动。
 /// 守的要求：RK1 报备 §5.4 最后一条「`~/.cc-monitor` 这一层目录若由中转第一个建出来，权限是 umask 默认（本机现打 0775）」，
 /// `4d-lanes.md` HX1 出处「RK1 小尾巴（`~/.cc-monitor` 首建权限按 umask ⇒ 0700）」。形状：两向（新建 ⇒ 0700 · 已在 0755 ⇒ 仍 0755）。
@@ -677,8 +783,14 @@ fn hx1_the_staging_dirs_are_born_private_and_an_existing_one_is_left_alone() {
     std::fs::remove_dir_all(&home).ok();
     std::fs::create_dir_all(&home).expect("家");
     stage_chunk(&home, key, 0, b"x").expect("写一块");
-    assert_eq!(mode(&home.join(".cc-monitor")), PRIVATE_DIR_MODE);
-    assert_eq!(mode(&home.join(STAGING_DIR)), PRIVATE_DIR_MODE);
+    assert_eq!(
+        mode(&home.join(".cc-monitor")),
+        crate::own_dir::PRIVATE_DIR_MODE
+    );
+    assert_eq!(
+        mode(&home.join(STAGING_DIR)),
+        crate::own_dir::PRIVATE_DIR_MODE
+    );
     std::fs::remove_dir_all(&home).ok();
 
     let home = std::env::temp_dir().join(format!("ccm-hx1-stg-old-{}", std::process::id()));
@@ -695,6 +807,63 @@ fn hx1_the_staging_dirs_are_born_private_and_an_existing_one_is_left_alone() {
         0o755,
         "已在的那一层被改了权限"
     );
-    assert_eq!(mode(&home.join(STAGING_DIR)), PRIVATE_DIR_MODE);
+    assert_eq!(
+        mode(&home.join(STAGING_DIR)),
+        crate::own_dir::PRIVATE_DIR_MODE
+    );
     std::fs::remove_dir_all(&home).ok();
+}
+
+/// 〔W5-FILES〕要求住址：`设计/60 §7 #7`「跨盘提交与非标准 SFTP 起始目录 —— `staging/` 与目标不在同一个盘 ⇒ `EXDEV`，
+/// 上传提交失败原样带回（要做就得『复制 ＋ 删』，一步复制在禁表里）」＋ `§5.1` 那张表「暂存区与目标不同盘 ⇒ `EXDEV` 失败」。
+///
+/// 注入「改名上位回 `EXDEV`」（跨盘在测试里造不出来，如实）：两支（不覆盖 · 覆盖）各一趟 ⇒ 目标逐字节等于暂存件、暂存件被消耗、
+/// 目标目录里不留暂存旁名；覆盖那一支顶掉旧内容。阴性：不注入 ⇒ 走同盘改名那一支（结果同形，证明注入口没把生产那一支换掉）。
+#[test]
+fn a_cross_device_commit_falls_back_to_copy_and_delete() {
+    for (overwrite, tag) in [(false, "xdev-new"), (true, "xdev-over")] {
+        let (home, root) = rig(tag);
+        let body = b"\x00across\xffdisks\n".to_vec();
+        let staged = stage(&home, KEY, &body);
+        if overwrite {
+            std::fs::write(root.join("a.bin"), b"old").unwrap();
+        }
+        let (landed, n) = commit_upload_in(
+            &home,
+            KEY,
+            &root,
+            "a.bin",
+            overwrite,
+            &staged_sha(&home, KEY),
+            true,
+        )
+        .unwrap_or_else(|e| panic!("跨盘那一支没落进去（overwrite={overwrite}）：{e:?}"));
+        assert_eq!(n, body.len() as u64);
+        assert_eq!(
+            std::fs::read(&landed).expect("读落点"),
+            body,
+            "跨盘落进去的字节不对"
+        );
+        assert!(!staged.exists(), "跨盘那一支没消耗暂存件");
+        let side = root.join(format!(".a.bin.ccm-commit-{KEY}.part"));
+        assert!(
+            std::fs::symlink_metadata(&side).is_err(),
+            "目标目录里留下了暂存旁名"
+        );
+    }
+    // 阴性：不注入 ⇒ 同盘改名那一支（结果同形）。
+    let (home, root) = rig("xdev-none");
+    let staged = stage(&home, KEY, b"same");
+    commit_upload_in(
+        &home,
+        KEY,
+        &root,
+        "c.bin",
+        false,
+        &staged_sha(&home, KEY),
+        false,
+    )
+    .expect("同盘那一支该落进去");
+    assert_eq!(std::fs::read(root.join("c.bin")).unwrap(), b"same");
+    assert!(!staged.exists());
 }

@@ -20,6 +20,8 @@
 //! 条数由 `crate::layering_guard` 钉住 —— **多一个就红**，逼人回答「这条也该跨层吗」。
 
 pub mod accounts_query;
+// 〔TL3 · 审计 F 🔴-6〕读路径越界围栏的唯一住址（`设计/15 §4.2` · `§5.3 C5`）：`history_query` 与 `search_query` 都经它。
+pub(crate) mod fence;
 pub(crate) mod fs;
 pub mod history_query;
 pub mod search_query;

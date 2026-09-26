@@ -218,7 +218,7 @@ fn truncation_is_stated_not_left_to_an_empty_array() {
 /// （`search` → `build_session_hits` → `search_core::make_snippet`）来。
 /// · 改 core 的 `SNIPPET_CTX` ⇒ 实际与期望**一起动**，本条仍绿（＝行为跟着变了）；
 /// · 本侧哪天自己写回一个 `const SNIPPET_CTX = 48` ⇒ 实际不动、期望动 ⇒ **当场红**。
-/// monitor 侧有一条同形的（`search_tests.rs::the_snippet_window_comes_from_core`）。
+/// monitor 侧原有一条同形的（〔LOC1b · 4D〕随 monitor 内存索引一起删了：本机搜索也走本条测的这一份）。
 #[test]
 fn the_snippet_window_comes_from_core() {
     let ctx = search_core::SNIPPET_CTX;

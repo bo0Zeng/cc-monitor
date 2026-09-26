@@ -2,8 +2,9 @@
 // 「有固化指纹才显示重置按钮」这条判定,防未来误改成空指纹也显示(重置无意义)。
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // F56：写入/读取都走 config.ts；mock 掉以测 jump write→read 往返。
-// S1：写入口从 writeRemoteConfig（整表覆盖，已取消导出）改为 patchRemoteConfig（局部合并）。
-vi.mock("../../src/config", () => ({ loadConfig: vi.fn(), saveConfig: vi.fn() }));
+// S1：写入口从 writeRemoteConfig（整表覆盖，已取消导出）改为 patchRemoteConfig（局部合并）。 〔散文墓碑〕
+// 〔CFG1〕config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`。
+vi.mock("../../src/config", async (orig) => (await import("../config-patch-fake")).mockedConfigModule(orig));
 // S3：把整个 IPC 面 mock 成一个**会记账的 Proxy** —— 用来钉「渲染机器列表时零次
 // 后端调用」。这比源码扫描强：扫描只能证明「没 import」，证明不了「渲染时没调」。
 const { ipcCalls, ipcReplies } = vi.hoisted(() => ({
@@ -34,7 +35,9 @@ vi.mock("../../src/ipc/commands", () => ({
     },
   ),
 }));
-import { loadConfig, saveConfig } from "../../src/config";
+import { loadConfig } from "../../src/config";
+import { fakeCfg } from "../config-patch-fake";
+const saveConfig = fakeCfg.saved;
 import {
   shouldShowResetFingerprint,
   RemoteSection,
@@ -477,6 +480,28 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(last.keepMe).toBe(1);
   });
 
+  // 〔W5-UI · 设计/70 §7 #4〕读 `~/.ssh/config` 失败与「真没有别名」原先同形（空下拉 ＋「未找到」）。
+  it("导入下拉：读别名清单失败 ⇒ 说读不了（原因原样），不说「未找到」；真没有 ⇒ 说未找到（正控）", async () => {
+    // 从 section 自己的 DOM 里取（不是私有字段）：那块提示原先根本没挂进 DOM —— 取字段会假绿。
+    const hint = (sec: RemoteSection): string =>
+      [...sec.element.querySelectorAll<HTMLElement>(".settings-hint")].map((e) => e.textContent ?? "").join("|");
+    ipcReplies.set("list_ssh_host_aliases", new Error("perm-denied-sshcfg"));
+    try {
+      const bad = await mount([mkH("a", "1.1.1.1")]);
+      await new Promise((r) => setTimeout(r, 0));
+      expect(hint(bad)).toContain("读不了 ~/.ssh/config");
+      expect(hint(bad)).toContain("perm-denied-sshcfg");
+      expect(hint(bad)).not.toContain("未在 ~/.ssh/config 找到");
+      ipcReplies.set("list_ssh_host_aliases", []);
+      const none = await mount([mkH("a", "1.1.1.1")]);
+      await new Promise((r) => setTimeout(r, 0));
+      expect(hint(none)).toContain("未在 ~/.ssh/config 找到");
+      expect(hint(none)).not.toContain("读不了");
+    } finally {
+      ipcReplies.delete("list_ssh_host_aliases");
+    }
+  });
+
   it("★ 渲染机器列表：后端调用**不随机器数增长**（状态灯绝不引入轮询）", async () => {
     // 主计划 §1-2 的红线。「打开设置时顺便把 N 台机器都探一遍」听起来不像轮询，
     // 但它是同一件事的另一种说法：一次 UI 动作扇出 N 次 ssh 往返，用户没要求过。
@@ -829,7 +854,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
         .map((b) => b.textContent ?? "");
     // 〔ST2 · 协调方转主会话裁〕别名统一放「工具」栏：远端那一块与本机「工具 → 别名」同一个位置。
     expect(labels(got.components)).toEqual(["部署后端", "卸载后端"]);
-    expect(labels(got.tools)).toEqual(["装别名块", "卸载别名块"]);
+    // 〔V134 · 用户 09-25 选「改回「卸载 ccm」」〕卸那一颗按 V80 原裁叫「卸载 ccm」（做的事不变：从远端 ~/.bashrc 删别名块）。
+    expect(labels(got.tools)).toEqual(["装别名块", "卸载 ccm"]);
     expect(got.tools.textContent).toContain("别名");
     expect(labels(got.connection).filter((t) => t !== "重置主机指纹")).toEqual([
       "测试连接",

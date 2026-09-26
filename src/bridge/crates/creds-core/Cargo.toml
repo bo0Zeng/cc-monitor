@@ -21,9 +21,9 @@ description = "K-H2a：第三方 API key 的**唯一**住址——装它的类�
 # 平台 cfg（`cfg(windows)` / `cfg(unix)` / `cfg(target_os`）全树 **0 处**。⇒ 本 crate 是第一个。
 #
 # **化解办法是把平台那半做成可选 feature，默认不开**：
-#   · `src/bridge` 开 `harden`（它是**唯一**会写这份文件的一侧）；
-#   · backend **不开**（`K-H2a` 裁四：backend 只许读那份文件，不许写 —— `readonly_guard.rs`
-#     扫后端生产段断言不含任何文件系统变更调用，白名单恰好一个模块 `control/fork_write.rs`）。
+#   · backend 开 `harden`（〔RM1a · GP1〕每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端账号域，`apikey-key-set`）；
+#   · `src/bridge` **不开**（〔US1〕monitor 既不写也不读这份文件 —— 写半边在它那一侧连编都编不进来）。
+#   〔TL3 · 审计 F 🔴-3〕先前这两行正好说反（monitor 开、backend 不开）：那是 `K-H2a` 裁四「backend 只许读」时的分工，RM1a / GP1 / US1 之后倒过来了。
 # ⇒ 默认构建下本 crate **零依赖、零平台 cfg**，那条共享约束原样成立；
 #   平台原语只在开了 `harden` 的那一侧存在。
 # ⚠ **这句话是要被判据钉的，不是自述**：见 `perm.rs` 的 `the_default_build_has_no_platform_dependency`。
