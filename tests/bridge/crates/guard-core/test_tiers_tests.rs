@@ -433,6 +433,8 @@ const SCAN: &[&str] = &[
     "tests/launch-render-fallback.vitest.ts",
     "tests/launch-tmux-outer-golden.vitest.ts",
     "tests/liveness-process-names-parity.vitest.ts",
+    // 〔TL3〕「是不是本机」只在 `src/ipc/origin.ts` 判（读生产段全集 ⇒ 扫描层）。
+    "tests/origin-single-home.vitest.ts",
     "tests/panorama/api-remote.vitest.ts",
     "tests/panorama/diagram-guards.vitest.ts",
     "tests/paste-block-guard.vitest.ts",

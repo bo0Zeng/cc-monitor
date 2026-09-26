@@ -33,7 +33,7 @@ import {
 } from "./remote-launch-run";
 // 〔C4a · `设计/05 §8` 步 2〕本机 = `LOCAL_ORIGIN`（`"<local>"`，与 Rust `origin.rs::LOCAL` 跨语言对拍）；
 // 「是不是本机」只经 `ipc/origin.ts` 判。`accounts.ts` 那个同名的 `"__local__"` 已退役 —— 全仓只剩一个本机表示。
-import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN } from "./ipc/origin";
+import { isLocalOrigin, isRemoteOrigin } from "./ipc/origin";
 import { commands } from "./ipc/commands";
 import { probeSessionRecord, type RecordProbe } from "./session-reads";
 import { lastAccounts } from "./history-reads";
@@ -419,7 +419,7 @@ export class TabSessionActions {
       //（`<local>` 拿去查远端配置只会报「未找到远端配置」，与真实原因毫无关系）。
       // 这就是 `C1`「差别只允许出现在传输这一跳」在读面上的样子：同一个返回类型、同一批消费者。
       const sessions =
-        origin === LOCAL_ORIGIN
+        isLocalOrigin(origin)
           ? await commands.list_local_tmux()
           : await commands.list_remote_tmux({ origin });
       // 只缓存确定结果（成功列表 / NO_TMUX=null）；瞬时 ssh 失败不缓存，免 8s 内抑制重试（D-Sug3）。
@@ -568,7 +568,7 @@ export class TabSessionActions {
       // 决定**：选哪一条成因、给哪一句补救。判据见 `account-restart.ts::restartLocateFailureMessage`
       // 头注与 `accounts.vitest.ts`；本处的接线由 `tabs.vitest.ts` 那两条对照钉着。
       const msg = restartLocateFailureMessage(this.host.sessionAccount(sid), {
-        local: origin === LOCAL_ORIGIN,
+        local: isLocalOrigin(origin),
       });
       showActionFailureToast(msg.title, msg.body, { level: "info", durationMs: 8000 });
       return false;
@@ -580,7 +580,7 @@ export class TabSessionActions {
       tmuxName: live.name,
       accountName,
       launcher:
-        origin === LOCAL_ORIGIN
+        isLocalOrigin(origin)
           ? behavior.resumeCommandLocal
           : await resolveResumeCommand(origin, behavior.resumeCommandRemote),
       compactFirst,
@@ -614,7 +614,7 @@ export class TabSessionActions {
     // ★ P3 刀 2 UI：本机也会走到这里 ⇒ 文案不能再写死「远端」。
     // 这不是措辞洁癖：一个说「将终止**远端**……」的确认框，用在本机会话上是**在说假话**，
     // 而它恰好是个不可恢复的破坏性动作的最后一道人工闸。
-    const isLocal = origin === LOCAL_ORIGIN;
+    const isLocal = isLocalOrigin(origin);
     const where = isLocal ? copyText("tabSessionActions.who.local") : copyText("tabSessionActions.who.remoteShort");
     const body = opts?.idle
       ? copyText("sessionState.killIdle.confirm")

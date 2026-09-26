@@ -37,7 +37,7 @@
 import { commands } from "../ipc/commands";
 import { chan } from "../ipc/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
-import type { Origin } from "../ipc/origin";
+import { isLocalOrigin, type Origin } from "../ipc/origin";
 
 /** 起/停之后轮询状态的次数与间隔 —— 命令是「发出去就返回」的，不轮询看到的是操作前的状态。 */
 const SETTLE_TRIES = 30;
@@ -306,7 +306,7 @@ export class BackendSection {
       const origins = await commands.backend_machines();
       return origins.map((origin) => ({
         origin,
-        title: origin === LOCAL_ORIGIN ? copyText("backend.machine.local") : origin,
+        title: isLocalOrigin(origin) ? copyText("backend.machine.local") : origin,
       }));
     } catch (e) {
       console.warn(`[P2s] 问后端要机器清单失败，只显示本机：${String(e)}`);
