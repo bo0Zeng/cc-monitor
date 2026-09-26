@@ -167,7 +167,7 @@ export class TabBarPrefs {
         const t = this.store.tabs.get(p.sid);
         if (!t) continue;
         // 没有活进程 ⇒ 灰着。`archiveTab` 那条路要求 tab 已在事件流里，这里是**凭空造**，
-        // 所以直接置位；两者最终形态一致（`.tab.archived` 那条 CSS 本来就有）。
+        // 所以直接置位；两者最终形态一致（`.tab.ended` 那条 CSS 本来就有；〔U4〕原名 `.tab.archived`）。
         // 〔U4b · 说不清〕那台机器还没把活会话清单报完 ⇒ **说不清**，不是已结束（`设计/30 §3.5.7a`：
         //   `Unseen` 不许被显示成已结束）；报完了（`markOriginSeen` 已经来过）⇒ 已结束 —— 它若活着，
         //   清单里就会有它、tab 早被建成活的了（上面那个 `existed` 分支）。
@@ -212,7 +212,7 @@ export class TabBarPrefs {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "pin-revived-hint-btn";
-      btn.textContent = "Resume 这个会话";
+      btn.textContent = copyText("tabBarPrefs.pin.resume");
       // 与右键菜单的「Resume」同一个动作、同一个住址 —— 这里只是把入口放在用户正看着的地方。
       btn.addEventListener("click", () => void this.host.resumeTab(sid));
       box.appendChild(btn);

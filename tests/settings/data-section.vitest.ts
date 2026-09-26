@@ -83,6 +83,7 @@ describe("数据位置：给路径，不给删 / 清空", () => {
       "../local-storage": ["enumeratePrefix"],
       "../format": ["formatBytes"],
       "./skeleton": ["holdSkeletonHeight", "makeSkeleton"],
+      "../copy-table": ["copyText"], // 〔CP2b〕取文口：只读一张表，不是效应
     });
     expect(face.storageWrites).toEqual([]);
   });

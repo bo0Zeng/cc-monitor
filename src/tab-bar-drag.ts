@@ -15,7 +15,7 @@ import {
   collectionsEqual,
   dropRefusal,
   defaultGroupName,
-  moveTabBlock,
+  moveTab,
   pickDropTarget,
   tabUnderY,
   DWELL_MS,
@@ -26,6 +26,7 @@ import {
 import { newCollectionId } from "./tab-collections";
 import type { TabStore } from "./tab-store";
 import { sayCollectionRefusal, type TabBarPrefs } from "./tab-bar-prefs";
+import { copyText } from "./copy-table";
 
 /** 拖拽要宿主做的两件事。 */
 export interface TabBarDragHost {
@@ -231,7 +232,7 @@ export class TabBarDrag {
       if (d.ghost) {
         d.ghost.classList.toggle("armed", armed);
         d.ghost.textContent = armed
-          ? "松开 → 独立窗口"
+          ? copyText("tabBarDrag.onDragMove.detachHint")
           : (this.store.tabs.get(d.sid)?.title ?? "");
       }
     }
@@ -274,7 +275,7 @@ export class TabBarDrag {
     return pickDropTarget(
       this.dragRects(),
       clientY,
-      new Set(this.dragBlockOf(d.sid)),
+      d.sid,
       d.dwellArmed,
     );
   }
@@ -291,7 +292,7 @@ export class TabBarDrag {
   private updateDwell(clientX: number, clientY: number): void {
     const d = this.drag;
     if (!d) return;
-    const hovered = tabUnderY(this.dragRects(), clientY, new Set(this.dragBlockOf(d.sid)));
+    const hovered = tabUnderY(this.dragRects(), clientY, d.sid);
     const moved = Math.hypot(clientX - d.dwellX, clientY - d.dwellY);
     if (hovered === d.dwellSid && moved < DWELL_MOVE_PX) return; // 还在攒，别打断计时
     d.dwellSid = hovered;
@@ -312,31 +313,6 @@ export class TabBarDrag {
       cur.dropTarget = { kind: "onto", sid: hovered };
       if (!cur.armed) this.markDropTarget(cur.dropTarget);
     }, DWELL_MS);
-  }
-
-  /**
-   * P7a-2：被拖的那一块 —— 交互 tab 连同它**紧跟其后**的同 `(cwd, origin)` bg 子串。
-   *
-   * ★ 为什么必须带上子串：`placeInOrder` 维护的那棵树不是装饰，它表达
-   * 「这些后台任务属于那个会话」（还带着 D-R3 的审计账）。
-   * 一次拖动就把树拆散，比不能拖更坏。
-   */
-  private dragBlockOf(sid: string): string[] {
-    const host = this.store.tabs.get(sid);
-    if (!host) return [sid];
-    const hostIsInteractive = host.kind === null || host.kind === "interactive";
-    if (!hostIsInteractive) return [sid];
-    const out = [sid];
-    const at = this.store.orderedIds.indexOf(sid);
-    for (let i = at + 1; i < this.store.orderedIds.length; i++) {
-      const t = this.store.tabs.get(this.store.orderedIds[i]);
-      if (!t) break;
-      const isBg = t.kind !== null && t.kind !== "interactive";
-      if (isBg && t.cwd !== null && t.cwd === host.cwd && t.origin === host.origin) {
-        out.push(this.store.orderedIds[i]);
-      } else break;
-    }
-    return out;
   }
 
   /**
@@ -372,13 +348,14 @@ export class TabBarDrag {
    *   在这之前这里叫 `applyReorder`，只管顺序、`if (没变化) return` 直接结束。
    */
   applyDrop(sid: string, target: DropTarget): void {
-    const block = this.dragBlockOf(sid);
+    // 〔BG1 · V125「删掉树」〕只拖被按下的那一个：原先这里先算「一块」（交互 tab 连同紧跟其后的
+    //   同 `(cwd, origin)` bg 子串）再整块改顺序与归属 —— 树删了，bg tab 与普通 tab 拖法相同。
     // ① 集合归属跟着落点宿主走（`§D.7` 的「拖出组」与「拖进组」是同一条规则的两侧）。
     if (this.prefs.collectionsLoaded) {
       const other = target.kind === "end" ? null : this.store.tabs.get(target.sid);
       const nextCols = applyDropToCollections(
         this.prefs.collections,
-        block,
+        sid,
         target,
         defaultGroupName(
           this.store.tabs.get(sid)?.cwd ?? null,
@@ -388,7 +365,7 @@ export class TabBarDrag {
         newCollectionId(),
       );
       // 〔TL2 · E13〕该进组却没进（到上界）⇒ 说出来；顺序那一半照常做。
-      const why = dropRefusal(nextCols, block, target);
+      const why = dropRefusal(nextCols, sid, target);
       if (why) sayCollectionRefusal(why);
       // 没变就不写盘：拖动是高频动作，每拖一下都改一次 `config.json` 是白写。
       if (!collectionsEqual(this.prefs.collections, nextCols)) {
@@ -399,9 +376,9 @@ export class TabBarDrag {
     // ② 顺序。`onto` 的落位 = 插到目标**之前**（组里成员的相对次序由 `orderedIds` 定，
     //    见 `refreshTabBar`）；`end` 是末尾。
     const beforeSid = target.kind === "end" ? null : target.sid;
-    const next = moveTabBlock(this.store.orderedIds, block, beforeSid);
+    const next = moveTab(this.store.orderedIds, sid, beforeSid);
     if (next.length !== this.store.orderedIds.length) {
-      this.host.refreshTabBar(); // 防御：块算错了就只重画（①可能已经改了归属）
+      this.host.refreshTabBar(); // 防御：被拖的 sid 已不在顺序里（拖拽中 tab 没了）就只重画（①可能已经改了归属）
       return;
     }
     if (next.every((x, i) => x === this.store.orderedIds[i])) {

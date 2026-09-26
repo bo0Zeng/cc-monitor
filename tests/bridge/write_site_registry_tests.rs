@@ -110,10 +110,9 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("bind.rs", "process_await_file", None, "monitor 自己的等待文件"),
     ("bind.rs", "cleanup_dead", None, "清理 monitor 自己留下的死文件"),
     ("config.rs", "save_config", None, "monitor 自己的配置文件"),
-    // K-H2a：第三方 API key 那份文件。**monitor 自己的文件**（不是用户的、也不是某个工具的安装动作）。
-    // ⚠ 它与人手编是同一份文件的两个写者 ⇒ 写的那一刻才读盘、未知键一个不吃、
-    //   字段顺序按名字排、原子替换（复用 `config::atomic_replace`）、写完立刻收窄成只给本人。
-    ("creds_store.rs", "write_key_at", None, "monitor 自己的凭据文件（账号的第三方 API key，apikey 表）"),
+    // ── 〔GP1 · 第四波〕这里原来有一行 `creds_store.rs` 的凭据写口（K-H2a：账号的第三方 API key 那份文件）。
+    //    主会话 09-25 裁「每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端」⇒ 本机那一份也交本机常驻后端写
+    //    （`apikey-key-set` → `src/backend/accounts/upstream/file_face.rs`，第四层后端自有状态），本进程一个字节不落 ⇒ 摘行。
     ("config.rs", "atomic_replace", None, "原子替换原语的本地副本（同上，归 `atomic_replace_registry` 判）"),
     ("lib.rs", "open_log_dir", None, "打开日志目录前确保它存在"),
     ("logging.rs", "build_rolling_appender", None, "monitor 自己的滚动日志"),
@@ -122,7 +121,8 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("session_map.rs", "run_watcher", None, "monitor 自己的会话映射状态"),
     // 〔SR1b · 2026-09-24〕「下载落到用户选的本机路径」那一行摘了（连同它上面那段 09-21 的订正：「本地缓存」那句是假的、
     //    围栏补在开单那一刻）—— 落地那一下随传输台搬进了本机常驻后端（第三层文件管理写面 `control/transfer.rs`），
-    //    monitor 这一侧零写盘；开单时那道本机落点围栏照旧在中继里先判一次（`sftp_pool.rs::transfer_call`）。
+    //    monitor 这一侧零写盘。〔AR1 · V119〕上一版还说「开单时那道本机落点围栏照旧在中继里先判一次
+    //    （`sftp_pool.rs::transfer_call`）」—— FN1 把那一判删了（后端那道也没了，本地那道是它的出声早副本）。
     ("utils.rs", "atomic_write_json", None, "通用原子写原语，调用方各自申报"),
     // 〔FW34 · 第四波 09-24〕文件窗口的书签：锁旁件（空文件，只拿来上锁）＋ 它所在的目录。
     //   书签文件本身走上面那条原子写原语（`filewin/bookmarks.rs::mutate`）。
@@ -141,9 +141,14 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
           它**不是**真相源（真相源永远是「那个口连不连得上」），只在**停**那一步用，\
           且用之前还要过一道 `/proc/<pid>/exe` 的身份核对。\
           没有它，接管来的那个实例按不动「停」——那时按钮就成了一句骗人的话"),
+    // ── 〔NT2 · S1〕起脱离那条载体之前建好后端 stderr 诊断文件那一层目录。**不是安装动作**。
+    ("local_backend_host.rs", "spawn_detached", None,
+     "建 `<monitor 数据目录>/logs/backend/`（`create_dir_all`，只建目录）—— 脱离常驻的本机后端把自己的 stderr 落在\
+          这一层里（后端只 `O_EXCL` 新建文件、不建目录，`src/backend/stderr_log.rs`）。写的是 monitor 自己的日志目录"),
     // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来有 `history.rs::delete_history_session` 一行（**删用户数据**：
     //    本进程 `fs::remove_file` 删 `~/.claude/projects/**` 下的会话文件）。用户裁「只允许后端的文件管理部分写文件」
-    //    也管本机 ⇒ 删历史会话改成后端一条只收 sid 的命令（`files-delete-session`，会话文件围栏唯一的例外），
+    //    也管本机 ⇒ 删历史会话改成后端一条只收 sid 的命令（`files-delete-session`；当时说「会话文件围栏唯一的例外」，
+    //    〔AR1 · V119〕FN1 之后写面已无那道围栏），
     //    本进程一个字节不删 ⇒ 摘行。那条「入口真的过了围栏」的端到端判据随之换成后端那一族与本侧的一致性闸判据。
 ];
 
@@ -439,7 +444,7 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     ("bind.rs", "process_await_file", Lands::OwnState),
     ("bind.rs", "cleanup_dead", Lands::OwnState),
     ("config.rs", "save_config", Lands::OwnState),
-    ("creds_store.rs", "write_key_at", Lands::OwnState),
+    // 〔GP1 · 第四波〕`creds_store.rs` 的凭据写口那一行摘了（理由同上一张表）。
     ("config.rs", "atomic_replace", Lands::OwnState),
     ("lib.rs", "open_log_dir", Lands::OwnState),
     ("logging.rs", "build_rolling_appender", Lands::OwnState),
@@ -447,7 +452,8 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     ("logging.rs", "atomic_replace", Lands::OwnState),
     ("session_map.rs", "run_watcher", Lands::OwnState),
     // 〔SR1b · 2026-09-24〕「下载落到用户选的本机路径」那一行（指名 SR1b 的待收例外）**收了**：
-    //    下载的落地随传输台搬进本机常驻后端（`control/transfer.rs`，第三层文件管理写面，先过会话文件围栏）。
+    //    下载的落地随传输台搬进本机常驻后端（`control/transfer.rs`，第三层文件管理写面；〔AR1 · V119〕当时写「先过会话文件围栏」，
+    //    FN1 之后只过路径解析）。
     // 通用原语：它自己不定落点，调用方各自申报（今天的调用方全是 monitor 自己的状态文件，
     // 下面第 ② 道把「搬走写盘的那几份文件」里调它也算成一处写）。
     ("utils.rs", "atomic_write_json", Lands::OwnState),
@@ -458,6 +464,8 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
         Lands::OwnState,
     ),
     ("local_backend_host.rs", "write_listen_pid", Lands::OwnState),
+    // 〔NT2 · S1〕monitor 自己的日志目录下那一层（后端 stderr 诊断文件住那里）。
+    ("local_backend_host.rs", "spawn_detached", Lands::OwnState),
     // 〔合并 FW34〕文件窗口书签的锁旁件（`<monitor 数据目录>/filewin-bookmarks.json.lock`）——
     //   书签是 monitor 自己的状态（FW34 头注逐字「不是用户文件 ⇒ 不走后端写面」）。
     ("bookmarks.rs", "lock_store", Lands::OwnState),

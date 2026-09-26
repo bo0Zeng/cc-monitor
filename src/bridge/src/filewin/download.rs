@@ -16,10 +16,12 @@
 //!
 //! # 🔴〔F7c · 第三波 09-24〕窗口不碰 SFTP：下载经通道开单、订阅进度（[`pull_one`]）
 //!
-//! 下面第二、三节说的「池子那一层」今天住 **monitor 里的传输台**（`sftp_pool::transfer_call` 开单时
-//! 先过本机落点那道围栏，起跑时 `download_inner` 之前再过一次）；窗口这一侧照旧只把那句拒绝原样带给用户。
+//! 下面第二、三节说的「池子那一层」今天住 **monitor 里的传输台**（`sftp_pool::transfer_call` 开单、本机常驻后端起跑）；
+//! 窗口这一侧照旧只把那句拒绝原样带给用户。
+//! 〔FN1 · V119〕本机落点那道 Claude 数据围栏（开单时一道、后端起跑时一道）**两道都删了**（用户「文件管理器全部都可以改.
+//! 不需要任何围栏」）；后端那一侧只剩路径解析（绝对路径 · 有文件名 · 父目录在盘上）。第二节是历史。
 //!
-//! # 🔴 二、围栏在池子那一层，不在这儿
+//! # 二、〔FN1 · 历史〕围栏在池子那一层，不在这儿
 //!
 //! 本机落点那道围栏 2026-09-21 补在了 `sftp_pool::sftp_download` 的第一行
 //! （`guard_write(&local_path)`）—— 逐条来历住那段注释（三张账首尾相接推诿、
@@ -52,13 +54,15 @@
 //! 4. **真的「拖」出去没做** —— 这一刀是一颗按钮。窗口之间互拖、拖到别的应用里，
 //!    那要平台的拖放协议，与本刀不是一件事。
 
+use crate::copy_table::copy_text;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use super::source::Row;
 
 /// 行上那颗按钮。
-pub const DOWNLOAD_LABEL: &str = "下载";
+pub static DOWNLOAD_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinDownload.label.download", &[]));
 
 /// 这一行**拉得下来**吗。
 ///
@@ -99,12 +103,15 @@ pub fn is_downloadable(r: &Row) -> bool {
 pub fn plan_dest(typed: &str, src_name: &str) -> Result<String, String> {
     let t = typed.trim();
     if t.is_empty() {
-        return Err("要存到哪儿？落点是空的".into());
+        return Err(copy_text("rsFilewinDownload.plan.empty", &[]).into());
     }
     let ends_with_sep = t.ends_with('/') || (cfg!(windows) && t.ends_with('\\'));
     if ends_with_sep {
         if src_name.trim().is_empty() {
-            return Err(format!("`{t}` 看起来是个目录，可这一行没有名字能接上去"));
+            return Err(copy_text(
+                "rsFilewinDownload.plan.noName",
+                &[("path", &t.to_string())],
+            ));
         }
         return Ok(format!("{}/{}", t.trim_end_matches(['/', '\\']), src_name));
     }
@@ -198,7 +205,7 @@ pub fn judge_dest(ask: &Ask, exists: impl Fn(&str) -> bool) -> DestVerdict {
     else {
         // 第二问那一态不该走到这儿来。回一句能读的，而不是 panic ——
         // 这个窗口崩掉等于用户丢掉整个文件管理器（release 是 `panic = "abort"`）。
-        return DestVerdict::Rejected("内部状态不对：现在问的不是落点".into());
+        return DestVerdict::Rejected(copy_text("rsFilewinDownload.judge.wrongState", &[]).into());
     };
     let dest = match plan_dest(text, src_name) {
         Ok(d) => d,

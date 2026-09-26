@@ -68,7 +68,6 @@ const UNIT: &[&str] = &[
     "tests/backend/agents/claudecode/resume_tests.rs",
     "tests/backend/agents/codex/parse_tests.rs",
     "tests/backend/agents/codex/resume_tests.rs",
-    "tests/backend/control/resolve_query_tests.rs",
     "tests/backend/dial_pool_tests.rs",
     "tests/backend/observe/history_query_tail_tests.rs",
     "tests/backend/observe/turn_detect_tests.rs",
@@ -76,6 +75,7 @@ const UNIT: &[&str] = &[
     "tests/backend/platform/shell_tests.rs",
     "tests/backend/plugin/probe_tests.rs",
     "tests/backend/relay/http1_tests.rs",
+    "tests/backend/relay/route_tests.rs", // 〔US1〕跨半边抠 monitor 源码那几条退役 ⇒ 只剩纯解析 ＋ 成品→决策表（SCAN → UNIT）
     "tests/backend/relay/tee_tests.rs",
     "tests/backend/relay/upstream_tests.rs",
     "tests/branch-button.vitest.ts",
@@ -93,6 +93,7 @@ const UNIT: &[&str] = &[
     "tests/bridge/crates/codex-token-core/lib_tests.rs",
     "tests/bridge/crates/creds-core/store_tests.rs",
     "tests/bridge/crates/gate-core/lib_tests.rs",
+    "tests/bridge/crates/relay-route-core/lib_tests.rs", // 〔US1〕中转门牌共享 crate
     "tests/bridge/crates/search-core/lib_tests.rs",
     "tests/bridge/crates/shell-quote-core/lib_tests.rs",
     "tests/bridge/filewin/corpus_tests.rs",
@@ -216,6 +217,7 @@ const UNIT: &[&str] = &[
     "tests/views/history-cache.test.ts",
     "tests/views/history-close-stops-retry.vitest.ts",
     "tests/views/history-counted.vitest.ts",
+    "tests/views/history-state-chip.vitest.ts", // 〔AR1〕历史状态词只住 sessionState.*
     "tests/views/history-filter-collapse.vitest.ts",
     "tests/views/history-index-wait.vitest.ts",
     "tests/views/history-prefs.test.ts",
@@ -242,10 +244,12 @@ const UNIT: &[&str] = &[
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
 const SCAN: &[&str] = &[
+    "tests/bg-flat.vitest.ts", // 〔BG1〕V125：tab 栏通用代码零 bg 分叉（扫 `src/tabs.ts` ＋ `src/tab-*.ts`）· CSS 零 `.tab-bg`
     "tests/account-availability-guard.vitest.ts",
     "tests/account-base-semantics.vitest.ts",
     "tests/account-chip.vitest.ts",
     "tests/accounts-decode.vitest.ts", // 〔C4c〕读跨语言金样（`tests/__fixtures__/accounts.golden.json`）
+    "tests/apikey-reads.vitest.ts", // 〔US1〕读跨语言金样（`tests/__fixtures__/apikey.golden.json`）
     "tests/history-reads.vitest.ts", // 〔C4d〕读跨语言金样（`tests/__fixtures__/history-products.golden.json`）
     "tests/agent-profile-parity.vitest.ts",
     "tests/app-grid-claims.vitest.ts",
@@ -264,6 +268,7 @@ const SCAN: &[&str] = &[
     "tests/backend/control/gate_tests.rs",
     "tests/backend/control/kill_tests.rs",
     "tests/backend/control/launch_tests.rs",
+    "tests/backend/control/resolve_query_tests.rs", // 〔TL2 · V126〕UNIT → SCAN：跨仓承诺那一族读冻结金样与 IPC-PROTOCOL
     "tests/backend/control/tmux_hook_tests.rs",
     "tests/backend/dial_sftp_tests.rs",
     "tests/backend/dial_tests.rs",
@@ -291,8 +296,6 @@ const SCAN: &[&str] = &[
     "tests/backend/relay/bind_guard.rs",
     "tests/backend/relay/creds_guard.rs",
     "tests/backend/relay/framer_tests.rs",
-    "tests/backend/relay/nodelay_guard.rs",
-    "tests/backend/relay/route_tests.rs",
     "tests/backend/relay/table_guard.rs",
     "tests/backend/single_stream_guard.rs",
     "tests/backend/target_parity_guard.rs",
@@ -305,16 +308,13 @@ const SCAN: &[&str] = &[
     "tests/bridge/atomic_replace_registry_tests.rs",
     "tests/bridge/backend/control/agent_profile_parity_tests.rs",
     "tests/bridge/backend/control/backend_control_tests.rs",
-    "tests/bridge/backend/control/backend_kill_tests.rs",
-    "tests/bridge/backend/control/backend_launch_tests.rs",
+    "tests/bridge/backend/control/backend_kill_tests.rs", // 〔C4e〕挂载点从 `backend_kill.rs` 换成 `backend/control/mod.rs`（发送端删了，判据留着）；同拍 `backend_launch_tests.rs` / `backend_send_keys_tests.rs` 随发送端删掉、摘了
     "tests/bridge/backend/control/backend_route_tests.rs",
-    "tests/bridge/backend/control/backend_send_keys_tests.rs",
     "tests/bridge/backend/control/ccm_invocation_tests.rs",
     "tests/bridge/backend/control/frame_query_tests.rs",
     "tests/bridge/backend/control/gate2_parity_tests.rs",
     "tests/bridge/backend/control/inbound_client_tests.rs",
     "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
-    "tests/bridge/backend/control/payload_tests.rs",
     "tests/bridge/backend/control/tmux_tests.rs",
     "tests/bridge/backend/observe/local_query_tests.rs",
     "tests/bridge/backend_policy_tests.rs",
@@ -328,7 +328,9 @@ const SCAN: &[&str] = &[
     "tests/bridge/claude_data_fence_tests.rs",
     "tests/bridge/config_surface_tests.rs",
     "tests/bridge/copy_table_tests.rs",
+    "tests/bridge/creds_store_tests.rs", // 〔US1〕读侧那几条（读真文件）搬去后端 ⇒ 只剩源码扫描（INTEGRATION → SCAN）
     "tests/bridge/crates/acct-core/lib_tests.rs",
+    "tests/bridge/crates/copy-core/lib_tests.rs",
     "tests/bridge/crates/creds-core/lib_tests.rs",
     "tests/bridge/crates/guard-core/lib_tests.rs",
     "tests/bridge/crates/guard-core/test_tiers_tests.rs",
@@ -426,6 +428,8 @@ const SCAN: &[&str] = &[
     "tests/ipc/chan.vitest.ts",
     "tests/ipc/commands.vitest.ts",
     "tests/launch-cli-wire.vitest.ts",
+    // 〔FE1〕铸名 / 本机 resume 编排各只有一个家（读生产段全集 ⇒ 扫描层）。
+    "tests/launch-orchestration-single-home.vitest.ts",
     "tests/launch-payload-golden.vitest.ts",
     "tests/launch-render-fallback.vitest.ts",
     "tests/launch-tmux-outer-golden.vitest.ts",
@@ -446,6 +450,8 @@ const SCAN: &[&str] = &[
     "tests/session-backend-gate.vitest.ts",
     "tests/session-backend.test.ts",
     "tests/session-reads.vitest.ts", // 〔C4b〕读跨语言金样（`tests/__fixtures__/session-reads.golden.json`）
+    "tests/tmux-control.vitest.ts", // 〔C4e〕读跨语言金样（`tests/__fixtures__/tmux-control.golden.json`）
+    "tests/cc-bus-control.vitest.ts", // 〔C4e 批 3b〕读跨语言金样（`tests/__fixtures__/cc-bus-control.golden.json`）
     "tests/settings/accounts-section.vitest.ts",
     "tests/settings/backend-section.vitest.ts",
     "tests/settings/base-wording-guard.vitest.ts",
@@ -479,6 +485,7 @@ const SCAN: &[&str] = &[
 /// 集成层：碰 OS（起进程 · 套接字 · 真文件系统写 · 临时目录）。
 const INTEGRATION: &[&str] = &[
     "tests/backend/accounts/upstream/creds_tests.rs",
+    "tests/backend/accounts/upstream/endpoint_tests.rs", // 〔US1〕上游选择出的两份成品（金样那条读夹具文件）
     "tests/backend/accounts/upstream/file_face_tests.rs",
     "tests/backend/agents/claudecode/assets_tests.rs", // 〔AS2〕
     "tests/backend/agents/fake_tests.rs",
@@ -530,10 +537,16 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/plugin/invoke_tests.rs",
     "tests/backend/plugin_walk_fixture.rs",
     "tests/backend/read_face_tests.rs",
+    // 〔MG1 合 RK1〕中转口的门（403 / 421）：铺真钥匙文件、起真监听 ⇒ 判别器判集成层。
+    "tests/backend/relay/door_tests.rs",
     "tests/backend/relay/host_tests.rs",
     "tests/backend/relay/machine_tests.rs",
     "tests/backend/relay/server_tests.rs",
     "tests/backend/relay/wire_golden.rs",
+    // 〔NT2 · S1〕L2 真起子进程（re-exec 本测试二进制，fd 2 真被换走）
+    // 〔MG1 合 SU1〕skill 装记录：临时家目录里真写 / 读 / 摘 `~/.cc-monitor/skill-installs.json` ⇒ 判别器判集成层。
+    "tests/backend/skill_ledger_tests.rs",
+    "tests/backend/stderr_log_tests.rs",
     "tests/backend/wire_tests.rs",
     "tests/bridge/account_aliases_tests.rs",
     "tests/bridge/adapter_tests.rs",
@@ -542,13 +555,17 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/backend/control/cc_bus_tests.rs",
     "tests/bridge/backend/control/launch_wire_k_r95_launch_render_facts.rs",
     "tests/bridge/backend/control/local_backend_tests.rs",
+    // 〔MG1 合 RK1〕SCAN → INTEGRATION：RK1 加的 `the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_home`
+    // 铺夹具家目录、起真 `sh` 展开 `$(cat …)` ⇒ 判别器判集成层，照挪。
+    "tests/bridge/backend/control/payload_tests.rs",
     "tests/bridge/backend_layering.rs",
     "tests/bridge/bind_tests.rs",
     "tests/bridge/capability_registry_tests.rs",
     "tests/bridge/chan/chan_tests.rs",
     "tests/bridge/comm_boundary_registry_tests.rs",
     "tests/bridge/crates/creds-core/perm_tests.rs",
-    "tests/bridge/creds_store_tests.rs",
+    // 〔GP1 · 第四波〕旧版 `~/.local/bin/ccm` 那一份：替身门在临时目录上真读真删。
+    "tests/bridge/ccm_legacy_tests.rs",
     "tests/bridge/data_paths_tests.rs",
     "tests/bridge/dial_home_registry_tests.rs",
     "tests/bridge/dial_host_tests.rs",
@@ -590,6 +607,9 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/utils_tests.rs",
     // 〔CF1 · 09-24〕`tests/bridge/watcher_tests.rs` 随 monitor 自己那套 jsonl watcher 一起删了（本机会话内容改走本机后端的 `line` 帧）。
     "tests/copy-verdicts-ledger.vitest.ts",
+    "tests/copy/backend-copy-pending.vitest.ts",
+    // 〔MG1 合 CP2b〕CP2b 待办表判据：起 python3 子进程跑 `CP2b-copy-pending.py --json` ⇒ 判别器判集成层（CP2b 分支上漏登记）。
+    "tests/copy/copy-pending.vitest.ts",
     "tests/eslint-baseline.vitest.ts",
     "tests/naming/account-vs-relay-naming.vitest.ts",
     "tests/node-suite-registry-guard.vitest.ts",
@@ -706,6 +726,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "tests/backend/relay/host_tests.rs",
         "hosted_relay_child_entry_point",
         Trigger::Filter { by: "tests/backend/relay/host_tests.rs", needle: "relay::listen::host_tests::hosted_relay_child_entry_point" },
+    ),
+    (
+        "tests/backend/stderr_log_tests.rs",
+        "stderr_log_child_entry_point",
+        Trigger::Filter { by: "tests/backend/stderr_log_tests.rs", needle: "stderr_log::tests::stderr_log_child_entry_point" },
     ),
     (
         "tests/backend/relay/machine_tests.rs",

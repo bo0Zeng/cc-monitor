@@ -221,3 +221,58 @@ fn a_real_posix_shell_reads_every_argument_back_verbatim() {
         tricky.iter().map(|s| s.to_string()).collect::<Vec<_>>()
     );
 }
+
+// ═══ 〔NT2 · A4〕外层被丢 ⇒ 内层服务任务一起收 ═══════════════════════════════════════════════════
+//
+// 守的要求（住址，纪律 19）：`设计/15 §3.2` 第 4 条红线（逐字）「复用后它占掉共享连接一个槽永不释放，局部卡死升级成全局卡死」·
+// `设计/05 §3.3.3`（逐字）「在飞槽位一定回收」。现打：`调研/第四波记录/NT2.md §0.1` 第 7 行
+//（`spawn` 出去的任务，句柄被丢 = 脱钩；`task.abort()` 只写在正常返回那一支）。
+
+/// 一个会在被丢时报信的哨兵（代表内层任务手里攥着的那一格）。
+struct Sentinel(Option<tokio::sync::oneshot::Sender<()>>);
+impl Drop for Sentinel {
+    fn drop(&mut self) {
+        if let Some(t) = self.0.take() {
+            let _ = t.send(());
+        }
+    }
+}
+
+/// A4 ★ 远端永不答：外层 future 被丢（= 后端收到 `cancel` 打断了外层）⇒ 内层任务被收、那一格放掉。
+/// 另一向：内层正常答完 ⇒ 结果照常、那一格同样放掉。异源：真 tokio 任务 ＋ 哨兵（不看源码）。
+#[tokio::test]
+async fn an_abandoned_ask_takes_its_inner_task_down_with_it() {
+    // ① 永不答：内层攥着哨兵、永远等上行（上行那根管子外层一个字节都不写）。
+    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    let outer = pull_over(move |mut up_r, down_w| async move {
+        let _slot = Sentinel(Some(tx));
+        let _keep = down_w; // 下行不关：外层就一直等 ack（远端不答的那一形）
+        let mut b = [0u8; 1];
+        let _ = tokio::io::AsyncReadExt::read(&mut up_r, &mut b).await;
+        std::future::pending::<()>().await;
+    });
+    // 外层等一会儿还没答 ⇒ 调用方期限到点 ⇒ 外层被丢（`timeout` 到点即丢它）。
+    let gave_up = tokio::time::timeout(std::time::Duration::from_millis(200), outer).await;
+    assert!(gave_up.is_err(), "永不答的那一趟竟然答了");
+    tokio::time::timeout(std::time::Duration::from_secs(10), rx)
+        .await
+        .expect("外层被丢 10 秒了，内层任务还攥着那一格 —— 它脱钩了（格永远占着）")
+        .expect("哨兵没报信就没了");
+
+    // ② 另一向：正常答完 ⇒ 结果照常，那一格同样放掉。
+    let (tx2, rx2) = tokio::sync::oneshot::channel::<()>();
+    let got = pull_over(move |_up_r, mut down_w| async move {
+        let _slot = Sentinel(Some(tx2));
+        let ack = "{\"ok\":true}\n";
+        let res = "{\"stdout\":\"答\",\"stderr\":\"\",\"exit_status\":0}\n";
+        let _ = tokio::io::AsyncWriteExt::write_all(&mut down_w, ack.as_bytes()).await;
+        let _ = tokio::io::AsyncWriteExt::write_all(&mut down_w, res.as_bytes()).await;
+        std::future::pending::<()>().await;
+    })
+    .await;
+    assert_eq!(got, Ok("答".to_string()));
+    tokio::time::timeout(std::time::Duration::from_secs(10), rx2)
+        .await
+        .expect("答完 10 秒了，内层任务还在")
+        .expect("哨兵没报信就没了");
+}

@@ -50,6 +50,7 @@
 //! 点一个就等于选中两个 —— 删一个删掉两个。⇒ 选中态的键走 [`pick_key`]：无损名 = 名字本身；
 //! 有损名 = `\0b16:<十六进制>`（名字里不可能有 NUL，与任何真名字都撞不上）。
 
+use crate::copy_table::copy_text;
 use std::collections::BTreeSet;
 
 use super::copy::is_copyable;
@@ -467,7 +468,8 @@ pub enum Action {
 
 /// 「打开」那一项的字。另外六项**复用**行上那几颗按钮的字（各自的唯一住址），
 /// 不在这儿另写一份 —— 两份字漂开的症状是「菜单上叫一个名字，行上叫另一个」。
-pub const OPEN_LABEL: &str = "打开";
+pub static OPEN_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinSelect.label.open", &[]));
 
 impl Action {
     /// 菜单上那一项的字。`n` = 选中了几项（只有「删除」对多项说话时要它）。
@@ -478,9 +480,13 @@ impl Action {
             Action::Copy => super::copy::COPY_LABEL.to_string(),
             Action::Download => super::download::DOWNLOAD_LABEL.to_string(),
             Action::Rename => super::writeops::RENAME_LABEL.to_string(),
-            Action::Chmod if n > 1 => format!("改这 {n} 项的权限"),
+            Action::Chmod if n > 1 => {
+                copy_text("rsFilewinSelect.label.chmodMany", &[("n", &n.to_string())])
+            }
             Action::Chmod => super::writeops::CHMOD_LABEL.to_string(),
-            Action::Delete if n > 1 => format!("删除这 {n} 项"),
+            Action::Delete if n > 1 => {
+                copy_text("rsFilewinSelect.label.deleteMany", &[("n", &n.to_string())])
+            }
             Action::Delete => super::writeops::DELETE_LABEL.to_string(),
         }
     }
@@ -531,12 +537,20 @@ pub fn actions_for(picked: &[&Listed]) -> Vec<Action> {
 /// 某一件做不了时，屏幕上说的那一句（**不许静默**：按了 F2 没反应与「改完了」同形）。
 pub fn refusal(action: Action, n: usize) -> String {
     match (action, n) {
-        (_, 0) => "还没有选中任何一项".to_string(),
-        (Action::Delete, _) => "选中的里有名字读不出来的，这几项删不了".to_string(),
-        (Action::Chmod, _) if n > 1 => "选中的里有名字读不出来的，这几项改不了权限".to_string(),
-        (Action::Open | Action::Edit, _) => format!("一次只能打开一项，现在选中了 {n} 项"),
-        (Action::Rename, _) if n > 1 => format!("一次只能改一个名字，现在选中了 {n} 项"),
-        (a, _) => format!("「{}」对选中的这几项做不了", a.label(n)),
+        (_, 0) => copy_text("rsFilewinSelect.refusal.none", &[]),
+        (Action::Delete, _) => copy_text("rsFilewinSelect.refusal.deleteBadNames", &[]),
+        (Action::Chmod, _) if n > 1 => copy_text("rsFilewinSelect.refusal.chmodBadNames", &[]),
+        (Action::Open | Action::Edit, _) => {
+            copy_text("rsFilewinSelect.refusal.openOne", &[("n", &n.to_string())])
+        }
+        (Action::Rename, _) if n > 1 => copy_text(
+            "rsFilewinSelect.refusal.renameOne",
+            &[("n", &n.to_string())],
+        ),
+        (a, _) => copy_text(
+            "rsFilewinSelect.refusal.cannot",
+            &[("label", &(a.label(n)).to_string())],
+        ),
     }
 }
 

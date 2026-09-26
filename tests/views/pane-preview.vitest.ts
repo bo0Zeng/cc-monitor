@@ -21,10 +21,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 const capture = vi.fn<(args: { origin: string; target: string }) => Promise<string>>();
 const toast = vi.fn();
 
-vi.mock("../../src/ipc/commands", () => ({
-  commands: {
-    capture_remote_pane: (args: { origin: string; target: string }) => capture(args),
-  },
+// 〔C4e · 第四波 4C〕抓屏从 monitor 的 `capture_remote_pane`〔散文墓碑〕换成界面直接经通道问（`src/tmux-control.ts`）：
+//   本文件只关心「回包晚于关闭」这条竞态，于是把那一问整个替掉（通道那一跳的判据在 `tests/tmux-control.vitest.ts`）。
+vi.mock("../../src/tmux-control", () => ({
+  capturePane: (origin: string, target: string) => capture({ origin, target }),
+  saidOfControl: (e: unknown) => (e instanceof Error ? e.message : String(e)),
 }));
 vi.mock("../../src/error-toast", () => ({
   showActionFailureToast: (...a: unknown[]) => toast(...a),

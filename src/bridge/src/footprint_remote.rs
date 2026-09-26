@@ -28,6 +28,7 @@ use crate::config_surface::{
     build_rows, build_settings_scopes, ConfigSurfaceReport, FsProbe, SurfaceEnv, Vantage,
     HOOK_PROGRAMS,
 };
+use crate::copy_table::copy_text;
 use serde_json::{json, Value};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -168,22 +169,33 @@ fn run(
 
 /// 第 1 步的应答 → 环境。`home` 缺 ⇒ 报错（没有家目录就解不了任何 `~/…`，**不猜**）。
 pub(crate) fn env_from_wire(host: &str, d: &Value) -> Result<RemoteEnv, String> {
-    let e = d
-        .get("env")
-        .ok_or_else(|| format!("[{host}] `{CMD}` 的应答里没有 `env` —— 两端契约对不上"))?;
-    let s = |k: &str| e.get(k).and_then(Value::as_str).map(str::to_string);
-    let home = s("home").ok_or_else(|| {
-        format!(
-            "[{host}] 那台后端进程没有 HOME（也没有 USERPROFILE）—— 解不了 `~/…`，这台的足迹查不了"
+    let e = d.get("env").ok_or_else(|| {
+        copy_text(
+            "rsFootprintRemote.wire.noEnv",
+            &[("host", &host.to_string())],
         )
     })?;
-    let agent_home = s("agentHome")
-        .ok_or_else(|| format!("[{host}] `{CMD}` 的应答里没有 `agentHome` —— 两端契约对不上"))?;
+    let s = |k: &str| e.get(k).and_then(Value::as_str).map(str::to_string);
+    let home = s("home").ok_or_else(|| {
+        copy_text(
+            "rsFootprintRemote.wire.noHome",
+            &[("host", &host.to_string())],
+        )
+    })?;
+    let agent_home = s("agentHome").ok_or_else(|| {
+        copy_text(
+            "rsFootprintRemote.wire.noAgentHome",
+            &[("host", &host.to_string())],
+        )
+    })?;
     let agent_home_is_dir = e
         .get("agentHomeIsDir")
         .and_then(Value::as_bool)
         .ok_or_else(|| {
-            format!("[{host}] `{CMD}` 的应答里没有 `agentHomeIsDir` —— 两端契约对不上")
+            copy_text(
+                "rsFootprintRemote.wire.noAgentHomeIsDir",
+                &[("host", &host.to_string())],
+            )
         })?;
     Ok(RemoteEnv {
         home: PathBuf::from(home),
@@ -207,12 +219,17 @@ pub(crate) fn native_path_list(remote: &str) -> Option<String> {
 
 /// 第 3 步的应答 → 答案。`null` 那几格（不在 / 读不动）不进表 ⇒ 探针答 `None`。
 pub(crate) fn answers_from_wire(host: &str, d: &Value) -> Result<Answers, String> {
-    let bad = |what: &str| format!("[{host}] `{CMD}` 的应答形状不对：{what} —— 两端契约对不上");
+    let bad = |what: &str| {
+        copy_text(
+            "rsFootprintRemote.wire.badShape",
+            &[("host", &host.to_string()), ("what", &what.to_string())],
+        )
+    };
     let mut a = Answers::default();
     let stat = d
         .get("stat")
         .and_then(Value::as_object)
-        .ok_or_else(|| bad("`stat` 不是对象"))?;
+        .ok_or_else(|| bad(&copy_text("rsFootprintRemote.wire.statNotObject", &[])))?;
     for (p, v) in stat {
         if v.is_null() {
             continue;
@@ -220,12 +237,17 @@ pub(crate) fn answers_from_wire(host: &str, d: &Value) -> Result<Answers, String
         let kind = v
             .get("kind")
             .and_then(Value::as_str)
-            .ok_or_else(|| bad("`kind` 缺了"))?;
+            .ok_or_else(|| bad(&copy_text("rsFootprintRemote.wire.kindMissing", &[])))?;
         let size = v.get("size").and_then(Value::as_u64).unwrap_or(0);
         let is_dir = match kind {
             "dir" => true,
             "file" => false,
-            other => return Err(bad(&format!("`kind` 是 {other:?}"))),
+            other => {
+                return Err(bad(&copy_text(
+                    "rsFootprintRemote.wire.kindOther",
+                    &[("other", &format!("{:?}", other))],
+                )))
+            }
         };
         a.meta.insert(p.clone(), (is_dir, size));
         if let Some(names) = v.get("entries").and_then(Value::as_array) {
@@ -235,14 +257,15 @@ pub(crate) fn answers_from_wire(host: &str, d: &Value) -> Result<Answers, String
                 .collect();
             a.list.insert(
                 p.clone(),
-                names.ok_or_else(|| bad("`entries` 里有一项不是字符串"))?,
+                names
+                    .ok_or_else(|| bad(&copy_text("rsFootprintRemote.wire.entryNotString", &[])))?,
             );
         }
     }
     let hooks = d
         .get("hooks")
         .and_then(Value::as_object)
-        .ok_or_else(|| bad("`hooks` 不是对象"))?;
+        .ok_or_else(|| bad(&copy_text("rsFootprintRemote.wire.hooksNotObject", &[])))?;
     for (p, v) in hooks {
         if let Some(b) = v.as_bool() {
             a.hooks.insert(p.clone(), b);
@@ -257,23 +280,35 @@ async fn call(host: &str, args: Value) -> Result<Value, String> {
         return Err(said(no_channel(host)));
     };
     if !client.accepts(CMD) {
-        return Err(format!(
-            "[{host}] 的后端还不认 `{CMD}` —— 远端的足迹要后端答，重装那台机器的后端就有了"
+        return Err(copy_text(
+            "rsFootprintRemote.call.tooOld",
+            &[("host", &host.to_string())],
         ));
     }
     let data = client.call(CMD, args, BUDGET).await.map_err(|e| {
-        said(route_call_error(&e, |code, message| {
-            format!("[{host}] `{CMD}` 失败（{code}）：{message}")
+        said(route_call_error(&e, |_code, message| {
+            copy_text(
+                "rsFootprintRemote.call.failed",
+                &[
+                    ("host", &host.to_string()),
+                    ("message", &message.to_string()),
+                ],
+            )
         }))
     })?;
-    data.ok_or_else(|| format!("[{host}] `{CMD}` 的应答没有 data —— 两端契约对不上"))
+    data.ok_or_else(|| {
+        copy_text(
+            "rsFootprintRemote.call.noData",
+            &[("host", &host.to_string())],
+        )
+    })
 }
 
 /// 三态里给人看的那句话。`Done` 在本族走不到。
 fn said(r: Routed) -> String {
     match r {
         Routed::NoChannel(s) | Routed::Refused(s) => s,
-        Routed::Done => "查这台机器的足迹时出了内部错误，没有拿到结果".to_string(),
+        Routed::Done => copy_text("rsFootprintRemote.call.internal", &[]),
     }
 }
 

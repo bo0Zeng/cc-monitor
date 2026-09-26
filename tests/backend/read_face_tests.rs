@@ -92,11 +92,11 @@ fn every_member_has_its_own_arm_and_strangers_do_not() {
     let home = scratch("arms");
     for n in FAMILY {
         if let Err((_, m)) = answer_at(&home, n, &serde_json::json!({})) {
-            assert!(!m.contains("本族不认识"), "`{n}` 落进了兜底臂：{m}");
+            assert!(!m.contains("has no command"), "`{n}` 落进了兜底臂：{m}");
         }
     }
     match answer_at(&home, "history-nope", &serde_json::json!({})) {
-        Err((c, m)) => assert!(c == "bad_args" && m.contains("本族不认识"), "{c}: {m}"),
+        Err((c, m)) => assert!(c == "bad_args" && m.contains("has no command"), "{c}: {m}"),
         Ok(v) => panic!("陌生命令被答了：{v}"),
     }
     let _ = std::fs::remove_dir_all(&home);
@@ -538,6 +538,51 @@ fn history_record_answers_present_absent_and_refuses_a_bad_sid() {
         Err(("bad_args", _))
     ));
     std::fs::remove_dir_all(&home).ok();
+}
+
+/// 〔GP1 · 第四波 · H1〕`history-record` 按**这次 resume 要用的账号根**查（`设计/30 §8` 第 4 条 · `GP1.md §4`）。
+///
+/// 夹具两棵树：这台的家（`home`）与一个账号目录（`acct`），sid 只在账号目录里。
+/// 不带 `configDir` ⇒ 答不在（与改之前逐字同一问）；带了 ⇒ 答在，`root` == 那棵树的 `projects`（两向）。
+/// 坏 `configDir`（相对 · 上跳 · shell 元字符 · 非字符串）⇒ `bad_args`，且**不碰盘**：同一个坏参数配一个
+/// 不存在的目录也是 `bad_args`（碰了盘就会答「不在」而不是拒）。结构夹具，不采会话正文。
+#[test]
+fn gp1_history_record_looks_in_the_account_root_it_is_given() {
+    let home = scratch("record-gp1-home");
+    let acct = scratch("record-gp1-acct");
+    session(&acct, "-p", "cccc-3333", 1, false);
+    let ask = |args: serde_json::Value| answer_at(&home, "history-record", &args);
+    let home_root = home.join("projects").to_string_lossy().into_owned();
+    let acct_root = acct.join("projects").to_string_lossy().into_owned();
+    let acct_dir = acct.to_string_lossy().into_owned();
+    assert_eq!(
+        ask(serde_json::json!({ "sid": "cccc-3333" })).unwrap(),
+        serde_json::json!({ "present": false, "root": home_root }),
+        "不带 configDir ⇒ 查这台的家目录"
+    );
+    assert_eq!(
+        ask(serde_json::json!({ "sid": "cccc-3333", "configDir": null })).unwrap(),
+        serde_json::json!({ "present": false, "root": home_root }),
+        "null == 缺席"
+    );
+    assert_eq!(
+        ask(serde_json::json!({ "sid": "cccc-3333", "configDir": acct_dir })).unwrap(),
+        serde_json::json!({ "present": true, "root": acct_root }),
+        "带了 configDir ⇒ 在那棵树里找"
+    );
+    for bad in [
+        serde_json::json!("relative/acct"),
+        serde_json::json!(format!("{acct_dir}/../x")),
+        serde_json::json!(format!("{acct_dir}$(id)")),
+        serde_json::json!(7),
+    ] {
+        match ask(serde_json::json!({ "sid": "cccc-3333", "configDir": bad })) {
+            Err(("bad_args", _)) => {}
+            other => panic!("坏 configDir {bad} 应当 bad_args，实得 {other:?}"),
+        }
+    }
+    std::fs::remove_dir_all(&home).ok();
+    std::fs::remove_dir_all(&acct).ok();
 }
 
 // ════════════════════════════════════════════════════════════════════════════

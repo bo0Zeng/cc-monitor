@@ -30,6 +30,7 @@
 //! ⚠ **ok 与 refusal 两类都要覆盖** —— 只比 ok 的话，「该降级却渲染出来了」抓不到，
 //! 而那正是 §33 铁律要防的形态。
 
+use crate::copy_table::copy_text;
 use std::collections::BTreeSet;
 
 /// 渲染不出 ccm 调用行时的**理由**。它是一等返回值，不是 `None`（见模块头注）。
@@ -57,27 +58,30 @@ impl Refusal {
     /// 降级理由。入库夹具 `cli-golden.json` 的 refusal 用例逐字节比它（夹具那一侧是手写期望）。
     pub fn reason(&self) -> String {
         match self {
-            Refusal::NotInstalled => "远端未装 ccm".into(),
+            Refusal::NotInstalled => copy_text("rsCcmInvocation.refusal.notInstalled", &[]),
             // ⚠ **P3t 之后这句话比事实宽**（登记在案的诚实边界，不是没看见）：
             // Rust 侧现在只在 `!is_ssh && !local_posix` 时回它，也就是**Windows 本机**。
             // 它今天**产不出来**：两个活着的 Rust 调用方一个恒 `is_ssh: true`
             // （`launch_wire`，前端只在 ssh 时才调），一个恒 `local_posix: true`
             // （`history.rs::render_local_ccm`，整个函数挂在 `cfg(not(windows))` 下）。
             // 〔LR1 · U8c-3〕原先挡着改字的那条（与 TS 渲染器逐字节对拍）随 TS 那份删了；
-            // 改成「Windows 本机…」归本文件的对外字面量进文案表那一拍（CP1 台账已裁「改·§2.1」），
-            // 连同 `src/launch-cli-golden.ts` 里「本地 transport」那条用例的期望一起改。
-            Refusal::NotSsh => "本地路径不走 CLI 渲染器".into(),
-            Refusal::MissingCap(c) => format!("远端 ccm 缺能力 {c}"),
-            Refusal::SendIntoHasNoCliForm => {
-                "send-into（idle-tmux 就地复用）无 CLI 等价语法，诚实降级".into()
-            }
-            Refusal::AttachNeedsTmux => "attach 必须是 tmux 容器".into(),
-            Refusal::DimensionCannotSpeak(id) => {
-                format!("维度 {id} 无法用 CLI 语法表达（cliFlags 返回 null）")
-            }
-            Refusal::DimensionNeedsCap { dim, cap } => {
-                format!("维度 {dim} 需要远端 ccm 能力 {cap}，但它不支持")
-            }
+            // 〔CP2b〕进文案表那一拍按 CP1 裁词（改·§2.1）改成说「Windows 本机」，
+            // `src/launch-cli-golden.ts` 里「本地 transport」那条用例的期望同拍改。
+            Refusal::NotSsh => copy_text("rsCcmInvocation.refusal.windowsLocal", &[]),
+            Refusal::MissingCap(c) => copy_text(
+                "rsCcmInvocation.refusal.missingCap",
+                &[("c", &c.to_string())],
+            ),
+            Refusal::SendIntoHasNoCliForm => copy_text("rsCcmInvocation.refusal.sendInto", &[]),
+            Refusal::AttachNeedsTmux => copy_text("rsCcmInvocation.refusal.attachNeedsTmux", &[]),
+            Refusal::DimensionCannotSpeak(id) => copy_text(
+                "rsCcmInvocation.refusal.cannotSpeak",
+                &[("id", &id.to_string())],
+            ),
+            Refusal::DimensionNeedsCap { dim, cap } => copy_text(
+                "rsCcmInvocation.refusal.dimensionNeedsCap",
+                &[("dim", &dim.to_string()), ("cap", &cap.to_string())],
+            ),
         }
     }
 }
