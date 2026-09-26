@@ -4,6 +4,7 @@ import hljs from "highlight.js/lib/common";
 import markedKatex from "marked-katex-extension";
 import "highlight.js/styles/github-dark-dimmed.css";
 import "katex/dist/katex.min.css";
+import { copyText } from "./copy-table";
 
 marked.setOptions({
   gfm: true,
@@ -76,7 +77,7 @@ marked.use({
           `<div class="code-block code-pending"${lang ? ` data-lang="${escapeHtml(lang)}"` : ""}>` +
           `<div class="code-bar">` +
           `<span class="code-lang">${escapeHtml(langLabel)}</span>` +
-          `<button type="button" class="code-copy" data-copy>复制</button>` +
+          `<button type="button" class="code-copy" data-copy>${copyText("render.codeBlock.copy")}</button>` +
           `</div>` +
           `<pre><code class="${cls}">${escapeHtml(code)}</code></pre>` +
           `</div>`
@@ -104,7 +105,7 @@ marked.use({
         `<div class="code-block">` +
         `<div class="code-bar">` +
         `<span class="code-lang">${escapeHtml(langLabel)}</span>` +
-        `<button type="button" class="code-copy" data-copy>复制</button>` +
+        `<button type="button" class="code-copy" data-copy>${copyText("render.codeBlock.copy")}</button>` +
         `</div>` +
         `<pre><code class="${cls}">${highlighted}</code></pre>` +
         `</div>`

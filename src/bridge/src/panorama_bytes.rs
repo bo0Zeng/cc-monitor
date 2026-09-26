@@ -21,6 +21,8 @@
 //! 〔DP1〕今天后端与全景小程序都经 `byte_table` 按 (OS, arch) 取：远端是 Windows 的那天，这里答「没有」，
 //! 而不是把一份 Linux ELF 推过去（`build.rs::embed_native_backend` 头注那条真机读数就是这个形状）。
 
+use crate::copy_table::copy_text;
+
 /// 〔RM1f〕本机那一份在盘上的文件名：[`PROGRAM_NAME`] ＋ **目标平台**的可执行后缀
 /// （`build.rs` 按 `TARGET` 算好的 `CCM_TARGET_EXE_SUFFIX`，同本机后端释放名那条来路）
 /// == 本机后端 `control/panorama.rs::program_file_name()`（后端就跑在这台上，它的后缀就是这台的；判据对拍）。
@@ -40,7 +42,12 @@ pub(crate) fn local_panorama_binary() -> Result<&'static [u8], String> {
     use crate::byte_table::{choose, Key, Product, Route};
     choose(Product::Panorama, Route::Local, Key::this_machine())
         .map(|p| p.bytes)
-        .map_err(|r| r.say(Product::Panorama, "本机"))
+        .map_err(|r| {
+            r.say(
+                Product::Panorama,
+                &copy_text("rsPanoramaBytes.local.machine", &[]),
+            )
+        })
 }
 
 // 〔TL1 · 4C〕墓碑：这里从前有一个按「那台答的系统 / 架构两个词」直接取字节的函数（DP1 那一拍只改了函数体、委托 `byte_table`）。
@@ -75,11 +82,15 @@ pub(crate) async fn push_to(origin: &crate::origin::Origin) -> Result<(), String
     if origin.as_wire_str() == crate::backend::control::inbound_client::LOCAL_ORIGIN {
         return tokio::task::spawn_blocking(place_local)
             .await
-            .map_err(|e| format!("放本机代码全景组件的任务没能跑完：{e}"))?;
+            .map_err(|e| copy_text("rsPanoramaBytes.push.taskFailed", &[("e", &e.to_string())]))?;
     }
     let label = origin.as_wire_str();
-    let cfg = crate::load_remote_config_by_label(label)
-        .ok_or_else(|| format!("找不到 {label} 的远端配置"))?;
+    let cfg = crate::load_remote_config_by_label(label).ok_or_else(|| {
+        copy_text(
+            "rsPanoramaBytes.push.noConfig",
+            &[("label", &label.to_string())],
+        )
+    })?;
     use crate::byte_table::{choose, probe_key, Product, Route};
     let key = probe_key(&cfg).await?;
     // 只进日志（拒绝时上面那一步已经带着话返回了，走到日志那一行时键一定问出来了）。
@@ -111,7 +122,7 @@ fn place_local() -> Result<(), String> {
     // 与推到远端同一个落点（[`PUSH_DIR`]，判据对拍后端的第二个候选）。
     let dir = dirs::home_dir()
         .map(|h| PUSH_DIR.split('/').fold(h, |p, seg| p.join(seg)))
-        .ok_or_else(|| "找不到家目录 —— 不知道把代码全景组件放到哪".to_string())?;
+        .ok_or_else(|| copy_text("rsPanoramaBytes.local.noHome", &[]))?;
     let placed = crate::backend::control::local_backend::place_local_panorama(
         &dir,
         &local_file_name(),

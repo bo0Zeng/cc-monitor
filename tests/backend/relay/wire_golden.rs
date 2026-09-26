@@ -225,7 +225,7 @@ const GOLDEN: &[Golden] = &[
     // ⑥ 直通模式 ＋ 表里**没有这一行** ⇒ **502**，一个字节都不到上游。
     //    🔴 `20 §3.1` 第 4 行逐字「不许回落到某一个写死的常量」：那一格要「按 `seg1`
     //    取该 agent 的默认上游」。那张每 agent 一行的表（条 59）今天落了
-    //    （`accounts::upstream::AGENT_UPSTREAMS`），而本格的 `seg1`（`GOLDEN_AGENT`）**不在表里**
+    //    （`agents::Adapter::upstream`，〔NT2 · V25〕跟着适配层），而本格的 `seg1`（`GOLDEN_AGENT`）**不在表里**
     //    ⇒ 未登记 ⇒ 502。理由整段住 `accounts::upstream::decide`；登记过的那一半由
     //    `table_tests` 那条「登记过的走自己那一行、未登记的拒」量（不经网络）。
     //    ⚠ 它与 ③ 的 404 **刻意不同码**：404 答的是「代入模式要求表里有这一行」，

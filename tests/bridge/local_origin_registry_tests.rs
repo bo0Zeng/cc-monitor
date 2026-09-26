@@ -125,7 +125,7 @@ fn every_remote_config_lookup_deals_with_the_local_origin_first() {
     //    ⚠ 地板守的是「抽取器还够得到东西」；人群真的少了一个成员时不跟着改，
     //    才是让它替真判据挡枪（`K-G8`）。
     // 🔴 `K-R112`（09-13）：地板 19 → **17**，理由与上面 `K-R104` 那一条**同形**：
-    //    `cc_bus.rs::check_cc_bus_agent_online` 与 `tmux.rs::capture_remote_pane`
+    //    `check_cc_bus_agent_online`〔散文墓碑〕（`cc_bus.rs`，〔C4e〕已迁到界面）与 `capture_remote_pane`〔散文墓碑〕（`tmux.rs`，〔C4e〕已迁到界面）
     //    不再自己去查远端配置（两条都整条走后端通道，`client_for(origin)` 对 `<local>`
     //    与远端一视同仁）⇒ 这个人群**恰好少两处**。
     // 🔴 〔SR1b · 09-24〕地板 17 → **16**：`inproc_dial.rs` 里跳板那一跳的 `connect_via_jump`〔散文墓碑〕（查配置，只服务 SFTP）
@@ -151,7 +151,7 @@ fn every_remote_config_lookup_deals_with_the_local_origin_first() {
     // ★ 存量表**只许变短**：等号不是地板。
     // 地板在「变大」这个方向上是瞎的 —— 这个仓因为这件事栽过三次
     // （`shell_lint_registry` 的账逐字：「`≥` 正是它落后三次的成因」）。
-    // K-R56（09-11）：16 → 15，`tmux.rs::tmux_send_keys` 真去分了本机。
+    // K-R56（09-11）：16 → 15，`tmux_send_keys`〔散文墓碑〕真去分了本机（〔C4e〕那条命令后来整个迁到界面）。
     // 🔴 `K-R104`（09-13）：15 → **14**。用量探针那一条
     //    随编排搬上帧面而**真的还掉了**（理由逐字在表里那条注释）。
     //    〔`设计/50`：那一族今天连功能都不在了 —— 这个数**不动**，因为它当时就已经出表了。〕

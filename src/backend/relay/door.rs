@@ -21,7 +21,7 @@
 //! monitor 渲染 `export ANTHROPIC_BASE_URL=…` 时，钥匙那一段写成**读这个文件的命令替换**，
 //! 在那台机器的 pane shell 里展开（`src/bridge/src/backend/control/payload.rs::relay_env_prefix_posix`）。
 //! ⇒ 钥匙只从这个文件进 agent 进程自己的 env；载荷、`tmux send-keys` 的 argv、shell 历史、webview 里都只有那几个字。
-//! 两半的相对路径由 `door_tests::the_key_file_is_the_same_path_on_both_halves` 现抠对拍。
+//! 〔US1〕两半的相对路径是同一个 const（共享 crate `relay_route_core::KEY_FILE_REL`），不再各写一份再对拍。
 //!
 //! # 进门三问（[`admit`]，顺序固定，都在读请求体之前）
 //!
@@ -39,10 +39,9 @@
 use super::http1::RequestHead;
 use std::path::{Path, PathBuf};
 
-/// 钥匙文件相对家目录的路径。**跨半边字面量**：monitor 那一份是
-/// `src/bridge/src/backend/control/payload.rs::RELAY_KEY_FILE_REL`（渲染器拼 `$(cat "$HOME/…")` 用它），
-/// 由 `door_tests::the_key_file_is_the_same_path_on_both_halves` 现抠对拍。
-pub(crate) const KEY_FILE_REL: &str = ".cc-monitor/relay-key";
+/// 钥匙文件相对家目录的路径。〔US1 · 4D〕值只住共享 crate `relay_route_core::KEY_FILE_REL`：
+/// monitor 渲染 `$(cat "$HOME/…")` 用的 `payload::RELAY_KEY_FILE_REL` 是同一个 const（先前两处各写字面量、判据现抠对拍）。
+pub(crate) const KEY_FILE_REL: &str = relay_route_core::KEY_FILE_REL;
 
 /// 钥匙的熵：32 字节 = 256 位（题面要 ≥128 位）。落盘是 64 个小写十六进制字符。
 const KEY_BYTES: usize = 32;
@@ -75,10 +74,9 @@ impl std::fmt::Debug for Key {
     }
 }
 
-/// 钥匙的形状：恰好 `2 × KEY_BYTES` 个小写十六进制字符。
-pub(crate) fn key_shape_ok(s: &str) -> bool {
-    s.len() == 2 * KEY_BYTES && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
-}
+/// 钥匙的形状：恰好 `2 × KEY_BYTES` 个小写十六进制字符。〔US1〕唯一住址是共享 crate（`ccm` 认继承来的地址也用它）；
+/// 本模块铸的长度与它对得上由 `door_tests` 那条「铸出来的过形状闸」钉着。
+pub(crate) use relay_route_core::key_shape_ok;
 
 /// 这台机器上钥匙文件的路径：`HOME`，没有再退 `USERPROFILE`（同 `control::exit_policy::policy_path`）。
 /// 取值器是注入的 ⇒ 判据喂夹具家目录，不碰进程环境。

@@ -143,7 +143,12 @@ console.log("\nall session-backend tests passed");
 // （形状抄 `history.rs::the_local_launch_tries_the_renderer_before_the_old_path`：钉顺序/数据流，
 //  不钉「调用过某函数」——后者「调了但没用返回值」就骗过去了。）
 test("P3s-Y2：新造名字的路径，deriveTmuxName 的结果必须过铸造口", () => {
-  const files = ["remote-launch-run.ts", "settings/machine-card.ts"];
+  // 〔FE1〕「列名单 → 铸名」收进 `tmux-name-mint.ts` 之后，那两个入口（`remote-launch-run.ts` 起新会话 ·
+  //   `settings/machine-card.ts` 开新 Claude）不再自己派生名字，派生只剩 `remote-launch.ts::mintSessionTmuxName`
+  //   那一行（= `mintTmuxName(deriveTmuxName(cwd), existing)`，由 `tmux-name-mint.ts` 唯一调用，
+  //   `tests/launch-orchestration-single-home.vitest.ts` K1 两向钉）。⇒ 人群 = 三份文件里所有产名的那一行，
+  //   现打恰好 1（地板 `< 2` 换成相等：两个入口任一处又自己派生 ⇒ 数变 ⇒ 红）。
+  const files = ["remote-launch-run.ts", "settings/machine-card.ts", "remote-launch.ts"];
   let checked = 0;
   for (const f of files) {
     // 〔src/test 分离〕被守对象住 `src/`，本文件住 `tests/` ⇒ 经 `srcDirOf` 换树。
@@ -155,11 +160,14 @@ test("P3s-Y2：新造名字的路径，deriveTmuxName 的结果必须过铸造�
       const code = line.trim();
       if (code.startsWith("//") || code.startsWith("*") || code.startsWith("/*")) continue;
       if (!code.includes("deriveTmuxName(")) continue;
+      if (code.includes("function deriveTmuxName(")) continue; // 定义处，不是产名
       // ⚠ **UI 文案不算产名** —— 第二次假阳：`machine-card` 里那句
       //   「留空则用 ${deriveTmuxName(cwd)}」只是给用户看**建议名**，不流进 name 位。
       //   ⇒ 人群是「**产出一个会被用作会话名的值**」，不是「出现过这个函数」。
       //   判法：那一行要么是赋值/传参（`=` 或 `,` 结尾），要么就是展示。
-      if (code.includes("`") && !code.includes("mintTmuxName(")) continue;
+      //   〔CP2b · 4C〕文案进了文案表之后那句展示长成 `copyText("…", { name: deriveTmuxName(…) })`，
+      //   不再是模板串 ⇒ 取文口调用同样算「展示」。
+      if ((code.includes("`") || code.includes("copyText(")) && !code.includes("mintTmuxName(")) continue;
       checked += 1;
       if (!code.includes("mintTmuxName(")) {
         const before = code;
@@ -172,5 +180,9 @@ test("P3s-Y2：新造名字的路径，deriveTmuxName 的结果必须过铸造�
     }
   }
   // 完备性自检：一处都没扫到 = 抽取器坏了（人群空时「全过」与「没测」长得一样）。
-  if (checked < 2) throw new Error(`只扫到 ${checked} 处 deriveTmuxName( —— 抽取器坏了，本条此刻无效`);
+  if (checked !== 1)
+    throw new Error(
+      `扫到 ${checked} 处产名的 deriveTmuxName(（现打应为 1：remote-launch.ts::mintSessionTmuxName）` +
+        ` —— 0 = 抽取器坏了；> 1 = 有入口又自己派生名字了（该走 tmux-name-mint.ts）`,
+    );
 });

@@ -236,7 +236,7 @@ fn run_tmux(args: &[String]) -> Result<(bool, String), String> {
     ))
 }
 
-/// 读全段现状（三个事件各问一次）。任何一问没答成 ⇒ `Err`（判不了就不清、不挑）。
+/// 读全段现状（三个事件各问一次）。任何一问没答成 ⇒ `Err(那个事件名 / 起不来的原因)`（判不了就不清、不挑；只进日志）。
 fn read_board(run: TmuxRun<'_>) -> Result<Board, String> {
     let mut board = Board::new();
     for (ev, event) in HOOK_EVENTS.iter().enumerate() {
@@ -246,7 +246,7 @@ fn read_board(run: TmuxRun<'_>) -> Result<Board, String> {
                     board.insert((ev, slot), occ);
                 }
             }
-            (false, _) => return Err(format!("`tmux show-hooks -g {event}` 没答成")),
+            (false, _) => return Err(format!("show-hooks -g {event}")),
         }
     }
     Ok(board)

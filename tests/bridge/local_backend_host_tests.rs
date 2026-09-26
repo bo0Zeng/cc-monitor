@@ -59,42 +59,13 @@ fn the_strip_rule_this_file_leans_on_is_still_on_disk() {
     );
 }
 
-/// 〔RL1 · V107〕M3：**`relay_running` 真的去连那个口**，不是一个常量、也不是一张内存表。
-///
-/// 先前它读 monitor 自己的句柄表（`真相源/70 §7b`：跨 monitor 重启认不出上一次那一个）。
-/// 中转住进本机常驻后端之后，monitor 手里没有句柄 ⇒ 判准换成「回环上那个口有没有人在听」
-/// （与远端 `relay-status` 同一个判准）。
-///
-/// ① 行为：本条自己开一个口 ⇒ `relay_listening_at` 答真；关掉 ⇒ 答假（异源：口是本条开的，不是被测函数开的）。
-/// ② 生产那一格问的是**注入侧那个常量**（`payload::RELAY_PORT`）：⚠ 这一格是**文本**，如实登记 ——
-///    按行为量要在判据里去碰 8788，而这台机器上用户自己的中转可能正听着它（红线：不碰用户的东西）。
-///    绕过形态：把 `RELAY_PORT` 换成另一个常量 ⇒ 本格红；在函数体里算出来扔掉、另问一个口 ⇒ 本格照绿。
-#[test]
-fn relay_running_really_asks_the_loopback_port() {
-    let l = std::net::TcpListener::bind("127.0.0.1:0").expect("开一个口");
-    let port = l.local_addr().expect("地址").port();
-    assert!(relay_listening_at(port), "口上明明有人在听，它说没有");
-    drop(l);
-    assert!(
-        !relay_listening_at(port),
-        "口已经关了，它还说有人在听 —— 那是一个常量"
-    );
-
-    let prod =
-        guard_core::production_code(include_str!("../../src/bridge/src/local_backend_host.rs"));
-    let body = braced_block(&prod, "pub fn relay_running() -> bool", 0, 400);
-    assert_eq!(
-        body.trim_matches(|c: char| c == '{' || c == '}' || c.is_whitespace()),
-        "relay_listening_at(crate::backend::control::payload::RELAY_PORT)",
-        "`relay_running` 问的不再只是注入侧那个口"
-    );
-}
+// 〔US1 · 第四波 4D〕M3（`relay_running_really_asks_the_loopback_port`〔散文墓碑〕）随 `relay_running` 一起退役：
+//   本机中转在不在由本机常驻后端自己答（RK1 的差分探针），monitor 这一侧不再连回环口。
 
 // ★★★ `D5 阻-1`：**`the_two_inputs_at_the_call_site_are_still_the_two_take_points`
-//    这条判据整条删了**，新住址是 `history.rs` 里那**三条**判据
-//    （行为：`the_launch_side_really_asks_those_two_take_points_and_uses_their_answers` ·
-//     `the_ui_status_side_asks_those_two_take_points_and_uses_their_answers`；
-//     按函数地址对拍：`the_production_relay_facts_are_those_two_take_points`）。
+//    这条判据整条删了**，新住址是 `history.rs` 里那几条判据
+//    （〔US1〕行为：`the_launch_side_really_asks_the_backend_and_uses_its_answer`；
+//     按函数地址对拍：`the_production_relay_facts_are_those_take_points`）。
 //
 // 删它的理由是一个实测读数，不是风格：它量的是「`relay_prefix_for_launch` 的体切出
 // 700 字节，那个窗口里**有没有**那两段文本」。`D5` 现打：在同一个窗口里加一行把那两段
@@ -107,8 +78,7 @@ fn relay_running_really_asks_the_loopback_port() {
 //   而两轮的量法都是「量文本」。这一族已经连着五层了，出路是**不量文本**：
 //   两个事实走 `history.rs::InjectFactSources` 那条缝，判据喂替身、断言前缀随答案变。
 //
-// ⚠ 本文件上一条 `relay_running_really_asks_the_loopback_port`〔RL1 换掉了先前读句柄表那一条〕
-//   买的是另一半（那个取值口自己真的去连那个口），两者不重叠。
+// ⚠ 〔US1〕先前本文件上一条买的是另一半（那个取值口自己真的去连那个口）；那个取值口随「本机中转在不在由本机后端答」一起退役。
 
 /// 〔RL1 · V107〕M2：**两条载体起本机后端时交的是同一份环境，且恰好是中转那两格**。
 ///
@@ -2902,7 +2872,7 @@ fn the_auto_start_refusal_is_not_only_a_log_line() {
     // ⚠ 标记带上 `=> {`：裸的 `Adopt::Refused(why) =>` 在生产段里**命中 2 处**
     //   （另一处是 `probe_and_attach_after_spawn` 的 `=> Err(why),`），
     //   而 `braced_block` 今天会断言唯一 ⇒ 不加这两个字符本条当场红。
-    let refused = braced_block(&me, "Adopt::Refused(why) => {", 300, 3000);
+    let refused = with_copy(braced_block(&me, "Adopt::Refused(why) => {", 300, 3000));
     assert!(
         refused.contains("note_start_refusal("),
         "那条记录不再写在 `Adopt::Refused` 那一臂里 —— \
@@ -3022,9 +2992,9 @@ fn the_user_actionable_start_failures_all_reach_the_user() {
         token_lane.contains("looked_at: vec![token_path(&dir)]"),
         "拿 token 失败那一格不再把 token 文件放进 `looked_at`"
     );
-    let ensure = body_of(&prod, "fn ensure_listen_token(");
+    let ensure = with_copy(body_of(&prod, "fn ensure_listen_token("));
     assert!(
-        ensure.contains("**下一步：删掉这个文件再起一次**"),
+        ensure.contains("下一步：删掉这个文件再起一次"),
         "`ensure_listen_token` 空文件支那句话不再说「下一步」——\n\
              ★ 这句话现在是**直接转交给用户**的（不再只进日志），\n\
              它少了「下一步」这三个字，用户拿到的就只是一句「它坏了」。"
@@ -4020,6 +3990,35 @@ fn the_annotation_path_env_name_is_the_one_the_backend_reads() {
     assert!(!envs.iter().any(|(k, _)| k == "CCM_HISTORY_METADATA_X"));
 }
 
+/// 〔CP2b · 4C〕给人看的话进了文案表（`copy_text("key", …)`）⇒ 「这一段代码说了什么」＝
+/// 代码本身 ＋ 它取的那几条表项的原文（占位符原样留着）。只看代码的话，「那句话说没说下一步」
+/// 这一类判据从此永远读不到那句话 —— 字搬了家，尺子跟着去新家量。
+fn with_copy(code: impl AsRef<str>) -> String {
+    let code = code.as_ref();
+    let table: serde_json::Value =
+        serde_json::from_str(include_str!("../../src/shared/copy/table.json"))
+            .expect("文案表读不懂");
+    let mut out = code.to_string();
+    let needle = "copy_text(";
+    let mut rest = code;
+    while let Some(at) = rest.find(needle) {
+        // `cargo fmt` 会把长调用拆行：`copy_text(` 与 key 之间可以隔着换行与缩进。
+        let tail = rest[at + needle.len()..].trim_start();
+        rest = tail;
+        let Some(tail) = tail.strip_prefix('"') else {
+            continue;
+        };
+        let key = &tail[..tail.find('"').expect("取文口的 key 没收尾")];
+        let zh = table["entries"][key]["zh"]
+            .as_str()
+            .unwrap_or_else(|| panic!("表里没有 {key}"));
+        out.push('\n');
+        out.push_str(zh);
+        rest = tail;
+    }
+    out
+}
+
 // ═══ 〔HX2 · 第四波 4D〕常驻后端身份带数据目录 ═══════════════════════════════════════════════
 //
 // 要求住址：题面 HX2 逐字「常驻后端身份带数据目录（接错了拒并出声）」；`GP1.md §7.6` 第 4 条逐字「要么注解那几条命令也先核路径
@@ -4072,7 +4071,7 @@ fn hx2_a_backend_started_for_another_data_dir_is_refused_out_loud() {
         "/tmp/iso/history-metadata.json".into(),
     ));
     assert!(
-        matches!(hello_verdict(&seen, "b1", "/h/.claude", &more), HelloVerdict::Stranger(w) if w.contains("CCM_HISTORY_METADATA") && w.contains("（没有）")),
+        matches!(hello_verdict(&seen, "b1", "/h/.claude", &more), HelloVerdict::Stranger(w) if w.contains("CCM_HISTORY_METADATA：它用的是 没有")),
         "它少一格（没被交注解路径）⇒ 该拒"
     );
     assert!(

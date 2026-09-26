@@ -1,0 +1,19 @@
+{
+  "apikey-read": {
+    "configured": false,
+    "masked": "",
+    "notice": null,
+    "path": "<root>/apikey-credentials.json",
+    "problem": null
+  },
+  "apikey-routing": {
+    "routed": ["/h/.claude-accts/work"],
+    "running": true
+  },
+  "launch-endpoint": {
+    "account": "work",
+    "baseUrl": "http://127.0.0.1:8788/s/claude-code/work/k-1",
+    "listening": false,
+    "whenDown": "refuse"
+  }
+}

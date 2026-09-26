@@ -225,6 +225,7 @@ describe("C01 边界生成物", () => {
       //   直接问后端 `history-record`，形状改住 `src/session-reads.ts::RecordProbe`（手写，跨语言由后端判据钉）。
       "SessionStartedPayload.ts", //  C02
       "SessionStreamFrame.ts", //     〔CF2 · 第四波 4B〕会话内容流里一格的体（`{"line": …}` / `{"batch": …}`）
+      "SessionUnseenPayload.ts", //   〔GP1 · 第四波〕那台机器看不见了 ⇒ 说不清（`session-unseen`）
       "SettingsScope.ts", //          C04d 批2（ConfigSurfaceReport 的传递依赖）
       "Shell.ts", //                  〔AL1c · 4B〕别名三条命令的 shell 方言入参（`shell_dialect.rs`）
       "SkillFile.ts", // 〔AS2〕skill「装到这台」的形状
@@ -233,6 +234,7 @@ describe("C01 边界生成物", () => {
       "SkillInstallRow.ts", // 〔AS2〕skill「装到这台」的形状
       "SkillInstallSuspect.ts", // 〔AS2〕skill「装到这台」的形状
       "SkillTargetText.ts", // 〔AS2〕skill「装到这台」的形状
+      "SkillUninstallApplied.ts", // 〔SU1 · 第四波 4C〕skill 卸的结果（删了哪几个 ＋ 记录没摘成的原因）
       // 〔F7c 收尾 09-24〕"SftpEntry.ts" 走了（它的 Rust 源随池子那条列目录命令一起删了）。
       "Snippet.ts", //                C04d 批3
       "StartupFile.ts", //            〔AL1d · 4B〕启动文件候选（别名文件那一行 ＋ 别名块共用一份，原 `AccountAliasRc.ts`）
@@ -629,7 +631,8 @@ describe("C02 事件名钉死", () => {
     // `ORIGIN_SESSIONS_LISTED`（"origin-sessions-listed"，某台的活会话清单报完了）。两条都由 `events.ts` 订阅。
     // 〔CF2 · 第四波 4B〕14 → 12：`JSONL_LINE` / `JSONL_BATCH` 退役（会话内容改走通道 `subscribe`，交格的事件名
     //   `chan-items` 住 `chan/webview.rs::ITEMS_EVENT`、由 `src/ipc/chan.ts` 听 —— 它是通道那一跳的，不是 `bridge.rs` 的业务事件）。
-    expect(pairs.length, `期望恰好 12 个事件名常量，实得 ${pairs.length}`).toBe(12);
+    // 〔GP1 · 第四波〕12 → 13：`SESSION_UNSEEN`（"session-unseen"，那台机器看不见了 ⇒ 说不清）。由 `events.ts` 订阅。
+    expect(pairs.length, `期望恰好 13 个事件名常量，实得 ${pairs.length}`).toBe(13);
 
     // 每个字面量必须在 TS 侧真的被订阅/emit（剥注释后再找，防散文里提过就算）
     const tsFiles = ["src/events.ts", "src/main.ts", "src/remote-health.ts"];

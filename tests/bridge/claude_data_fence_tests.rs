@@ -12,6 +12,14 @@
 //! 新：① 判定**只有一个家**（人群按事实取样，不是按谁调了它）·
 //! ② 围栏**够不着线** · ③ 旧住址的**递减棘轮**。
 //!
+//! # 〔FN1 · 第四波 4C · 2026-09-25〕守的要求多了一条反向的：用户 **V119**
+//!
+//! 用户原话「**文件管理器全部都可以改. 不需要任何围栏**」（`设计/99 §1` V119）⇒ 文件窗口的本地预判 ·
+//! 传输台开下载单那一判 · 拒绝那一半（`guard_write`）全删了。本族新立一条
+//! [`the_file_manager_no_longer_asks_the_fence_and_only_the_inbox_editor_does`]：
+//! 生产树里**调**这个判定的文件，集合恒等于 `{skill_host.rs}`（F03b 收件箱编辑那道纵深）；
+//! 文件窗口（`filewin/**`）与传输台（`sftp_pool.rs`）零命中，带正控。
+//!
 //! # ⚠ 为什么第一条的人群不能是「谁调了这个函数」
 //!
 //! 那样取样是**恒真**的：凡是调 `is_protected_claude_data_path` 的地方，
@@ -100,13 +108,13 @@ const FENCE_BOUNDARY_PAIRS: &[(&str, &str, &str)] = &[
 /// # 「不过网」那一半在哪
 ///
 /// 本条只喂字符串、不起任何连接 —— 这件事本身由 [`the_fence_cannot_reach_the_wire`]
-/// 从结构上钉住（本模块生产段里零传输符号），
-/// 而「池子那七条命令**先判后拨**」由
-/// `remote_write_registry_tests::a_fenced_write_refuses_before_it_touches_the_wire` 钉住。
-/// 三条各管一段，别把其中任何一条读成全部。
+/// 从结构上钉住（本模块生产段里零传输符号）。
+/// 〔FN1 · V119〕从前还有第三段「池子那七条命令**先判后拨**」（`remote_write_registry_tests` 里那一条），
+/// 池子零条命令、拒绝那一半也删了，那一条随之退役。
 #[test]
 fn the_fence_refuses_every_protected_shape_and_passes_every_ordinary_one() {
-    use crate::claude_data_fence::{guard_write, is_protected_claude_data_path};
+    // 〔FN1 · V119〕拒绝那一半（`guard_write`）删了：两个方向今天只判判定本身。
+    use crate::claude_data_fence::is_protected_claude_data_path;
 
     // 反空真：样本表空了，下面两条相等断言就是 `0 == 0`。
     assert!(
@@ -115,10 +123,10 @@ fn the_fence_refuses_every_protected_shape_and_passes_every_ordinary_one() {
         FENCE_BOUNDARY_PAIRS.len()
     );
 
-    // ── 方向一：受保护的必须被挡（判定为真 **且** `guard_write` 真的回 `Err`）──
+    // ── 方向一：受保护的必须被判出来 ──
     let blocked: Vec<&str> = FENCE_BOUNDARY_PAIRS
         .iter()
-        .filter(|(p, ..)| is_protected_claude_data_path(p) && guard_write(p).is_err())
+        .filter(|(p, ..)| is_protected_claude_data_path(p))
         .map(|(p, ..)| *p)
         .collect();
     let leaked: Vec<&(&str, &str, &str)> = FENCE_BOUNDARY_PAIRS
@@ -129,16 +137,15 @@ fn the_fence_refuses_every_protected_shape_and_passes_every_ordinary_one() {
         blocked.len(),
         FENCE_BOUNDARY_PAIRS.len(),
         "这几条 Claude 数据路径**没被挡住**：{leaked:?}\n\n\
-         ★ 后果是具体的：那台机器上**正被 Claude 打开**的会话文件能被文件面板\n\
-         删掉 / 改走 / 覆盖 / 改成不可读，而 monitor 这边只会看到会话突然坏了。\n\
-         ⚠ 这是 `src/doc/INVARIANTS.md` `§1` 底下 F47 与 F03b 两段澄清\n\
-         **共同**依赖的那一个判定 —— 它松一格，两段澄清同时失去依据。"
+         ★ 后果是具体的：skill 收件箱编辑那道纵深（F03b）在声明表写歪时拦不住会话记录；\n\
+         后端删会话那一条（逐字副本）也会跟着认错「哪一份是会话」。\n\
+         〔FN1 · V119〕文件管理器（F47 那一段）今天不再问它。"
     );
 
-    // ── 方向二：普通路径必须过（判定为假 **且** `guard_write` 真的回 `Ok`）──
+    // ── 方向二：普通路径必须不被判成会话记录 ──
     let passed: Vec<&str> = FENCE_BOUNDARY_PAIRS
         .iter()
-        .filter(|(_, q, _)| !is_protected_claude_data_path(q) && guard_write(q).is_ok())
+        .filter(|(_, q, _)| !is_protected_claude_data_path(q))
         .map(|(_, q, _)| *q)
         .collect();
     let hurt: Vec<&(&str, &str, &str)> = FENCE_BOUNDARY_PAIRS
@@ -149,8 +156,7 @@ fn the_fence_refuses_every_protected_shape_and_passes_every_ordinary_one() {
         passed.len(),
         FENCE_BOUNDARY_PAIRS.len(),
         "这几条**普通用户文件**被误伤了：{hurt:?}\n\n\
-         ★ 误伤方向同样贵：F47 面板的正题是「浏览/传输任意用户文件」，\n\
-         围栏宽一格就是一件用户做不了的事，而报错只会说「拒绝写 Claude 数据源文件」。\n\
+         ★ 误伤方向同样贵：判定宽一格，收件箱编辑就拒一份普通文件、删会话就认一份不是会话的文件。\n\
          ⚠ 每一对的第三栏写着它俩**差在哪** —— 先读那一栏，再决定是判定错了还是样本错了。"
     );
 
@@ -196,13 +202,13 @@ const LAYOUT_READERS: &[(&str, &str, &str)] = &[
     (
         FENCE_HOME,
         "claude_data_fence：**禁写**向的那一道",
-        "本族唯一的那个判定。`INVARIANTS §1` 底下 F47（SFTP 面板 / 原生文件窗口）\
-         与 F03b（收件箱编辑的纵深②）两段澄清共用它。",
+        "本族唯一的那个判定。`INVARIANTS §1` 底下 F03b（收件箱编辑的纵深②）用它；\
+         〔FN1 · V119〕F47（SFTP 面板 / 原生文件窗口）那一段从前也用，用户「文件管理器不需要任何围栏」之后不用了。",
     ),
     (
         // 🔴 〔波 5 ㈢ · 2026-09-23〕后端那一侧的**逐字副本**。
         "src/backend/agents/claudecode/paths.rs",
-        "paths::is_protected_session_file：**同一个判定**在后端那个 crate 里的逐字副本",
+        "paths::is_session_record_file：**同一个判定**在后端那个 crate 里的逐字副本（〔FN1〕后端只剩删会话那一条在问它）",
         "用户 2026-09-23 逐字裁「文件管理器该不该能改 `~/.claude` 里的东西. **可以.**」         ⇒ `设计/60 §8.7` 那道「两道栅栏宽窄不同」按**丙**（统一成同一个判定）裁，         统一到**窄的那一档** —— 后端写侧此前问的是 `paths::is_inside_tree`         （拒**整棵 `~/.claude*` 树**），今天问的是本行这一份。         🔴 **为什么它不是第二份判定**：两个 crate 之间**没有共享落点** ——         `src/backend` 刻意不在 monitor 那个 workspace 里（它有自己的 `Cargo.lock`，         那条隔离是真架构约束，见它 `Cargo.toml` 头注），而新立一个共享 crate 会动         门禁那句 `run_gate_sum cargo 9`，并且 `设计/60 §8.8` 记着上一次         「把围栏搬成共享 crate」**当天就被撤回**。         ⇒ 处置：函数体**逐字节相同**，并由          [`the_backend_copy_of_this_fence_is_byte_identical`] 钉成相等断言；         后端那棵树里还有一份同形的（`files_write_tests` 里那条），两侧各自跑得起来。         ⚠ 两侧刻意**不同名**：同名会让下面那条「`pub fn is_protected_claude_data_path`         全仓恰好一次」的断言红，而那条断言是对的。",
     ),
     // 〔RW1 · 第四波 09-24〕这里原来有 `sftp.rs` 那一行（远端删会话那道结构守卫，**方向相反**：「只许删
@@ -223,7 +229,7 @@ const LAYOUT_READERS: &[(&str, &str, &str)] = &[
 ///
 /// # 它钉的是函数体，不是函数名
 ///
-/// 两侧刻意不同名（`is_protected_claude_data_path` ↔ `is_protected_session_file`）——
+/// 两侧刻意不同名（`is_protected_claude_data_path` ↔ `is_session_record_file`）——
 /// 同名会让 [`the_protected_path_judgement_has_exactly_one_home`] 那条
 /// 「定义恰好一处」红，而那条断言是对的：桥这一侧的**住址**仍然只有一个。
 ///
@@ -256,7 +262,7 @@ fn the_backend_copy_of_this_fence_is_byte_identical() {
         &mine,
         &format!("pub fn is_protected_claude_{}_path(", "data"),
     );
-    let b = body(&theirs, &format!("pub fn is_protected_session_{}(", "file"));
+    let b = body(&theirs, &format!("pub fn is_session_record_{}(", "file"));
     // 反空真：抽出来的必须是真代码（`rfind` 是这段判定的骨架）。
     assert!(
         a.len() > 400 && a.contains("rfind"),
@@ -411,8 +417,8 @@ fn the_protected_path_judgement_has_exactly_one_home() {
 /// ⇒ 本条把「够不着线」钉成结构事实：本模块的生产段里
 /// **零传输符号、零 `async`、零文件 IO**。判定的语料只有一个 `&str`。
 ///
-/// ⚠ 它钉不了「调用方先判后拨」—— 那一半在
-/// `remote_write_registry_tests::a_fenced_write_refuses_before_it_touches_the_wire`。
+/// ⚠ 它钉不了「调用方先判后拨」—— 那一半从前在 `remote_write_registry_tests` 里一条判据上
+/// （〔FN1 · V119〕池子零条命令、拒绝那一半删了，那一条随之退役）。
 #[test]
 fn the_fence_cannot_reach_the_wire() {
     let raw = std::fs::read_to_string(repo_root().join(FENCE_HOME))
@@ -452,13 +458,81 @@ fn the_fence_cannot_reach_the_wire() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+//  三½、〔FN1 · V119〕文件管理器不再问这道围栏 —— 调用方恒等于收件箱编辑那一家
+// ════════════════════════════════════════════════════════════════════════════
+
+/// 🔴〔FN1 · 第四波 4C · 2026-09-25〕**生产树里调这个判定的文件，恒等于 `{skill_host.rs}`。**
+///
+/// 住址：用户裁决 **V119**（`设计/99 §1`）原话「文件管理器全部都可以改. 不需要任何围栏」；
+/// 留下的那一家是 `INVARIANTS §1` F03b 段「过 `claude_data_fence::is_protected_claude_data_path`（**纵深**）」。
+///
+/// # 两向相等，人群按事实取样
+///
+/// 人群：`src/bridge/src` 生产段里出现「调用形」（判定名紧跟左括号）的文件，**不算定义它的本家**。
+/// 期望：`{src/bridge/src/skill_host.rs}` —— 取自 F03b 那一段（异源：不是从本家或任何调用方现推的）。
+/// 多一份 ⇒ 有人把围栏接回了文件管理器（窗口 / 传输台 / 别处）；少一份 ⇒ 收件箱那道纵深被拿掉了，
+/// 那是另一件要用户拍的事（`调研/第四波记录/FN1.md` §4 拍板 1），登记表跟着改。
+///
+/// 正控：同一个谓词在一段合成的「窗口里又调了它」上必须命中（否则零命中不可信）。
+#[test]
+fn the_file_manager_no_longer_asks_the_fence_and_only_the_inbox_editor_does() {
+    let root = repo_root();
+    // 拼出来的针（同上）：调用形 = 判定名 ＋ 左括号。
+    let call = format!("is_protected_claude_{}_path(", "data");
+    let def = format!("fn is_protected_claude_{}_path(", "data");
+    let calls_it = |prod: &str| {
+        prod.lines()
+            .any(|l| l.contains(call.as_str()) && !l.contains(def.as_str()))
+    };
+    // 正控：合成的「窗口又问了一次」必须被认出来；定义那一行不算调用。
+    let fake = format!("fn x(p: &str) -> bool {{\n    crate::claude_data_fence::{call}p)\n}}\n");
+    assert!(
+        calls_it(&guard_core::production_code(&fake)),
+        "谓词在合成的调用上都不命中 —— 下面那个集合不可信"
+    );
+    assert!(
+        !calls_it(&format!("pub {def}path: &str) -> bool {{")),
+        "谓词把定义行当成了调用"
+    );
+    let files = guard_core::scan_tree!(&root.join("src/bridge/src"), &["rs"]);
+    assert!(
+        files.len() >= 100,
+        "`src/bridge/src` 只采到 {} 份 `.rs` —— 扫描面坏了",
+        files.len()
+    );
+    let mut callers: Vec<String> = files
+        .iter()
+        .map(|(path, src)| {
+            (
+                path.strip_prefix(&root)
+                    .unwrap_or(path)
+                    .to_string_lossy()
+                    .replace('\\', "/"),
+                guard_core::production_code(src),
+            )
+        })
+        .filter(|(rel, prod)| rel != FENCE_HOME && calls_it(prod))
+        .map(|(rel, _)| rel)
+        .collect();
+    callers.sort();
+    assert_eq!(
+        callers,
+        vec!["src/bridge/src/skill_host.rs".to_string()],
+        "🔴 调这道围栏的生产文件不再恰是收件箱编辑那一家。\n\
+         多出来的（文件窗口 / 传输台 / 别处 ⇒ 有人把围栏接回了文件管理器，而用户 V119 原话是\n\
+         「文件管理器全部都可以改. 不需要任何围栏」）；少了 `skill_host.rs`（⇒ 收件箱那道纵深被拿掉了，\n\
+         那是另一件要用户拍的事，改这张期望之前先去 `调研/第四波记录/FN1.md` §4 看拍板）。"
+    );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 //  四、旧住址的递减棘轮
 // ════════════════════════════════════════════════════════════════════════════
 
 /// 🔴 **旧住址那条递减棘轮走到底了：零。**
 ///
 /// 〔步 H2 09-21〕拆出本家之后，`sftp_pool` 里留过一行 `pub use`（转出住址），只为一个还没改过来的
-/// 消费者（`filewin/writeops.rs::fenced_path`）。〔第四波 S4〕那一处改指本家，那行转出**同一拍删掉**
+/// 消费者（窗口那道本地预判，〔FN1 · V119〕已删）。〔第四波 S4〕那一处改指本家，那行转出**同一拍删掉**
 /// ——「棘轮只许往下走，不许留死别名」。本条从「恰好一份」改成钉终点：
 /// ① `src/bridge/src` 生产段里旧写法（`sftp_pool::` 前缀那一种）**零命中**，带同一个谓词的正控；
 /// ② `sftp_pool.rs` 里**既没有**转出、**也没有**第二份定义。

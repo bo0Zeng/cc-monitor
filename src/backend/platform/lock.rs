@@ -26,6 +26,7 @@
 //! 阻塞等一个条件（别人放锁），不醒来、不驱动循环（`no_timer_guard` 管的是节拍）。持锁段只有一次读—改—写，
 //! 别人放锁是毫秒级的事。⚠ 买不到：一个持锁的后端卡死在读—改—写中间 ⇒ 等它的那一个也跟着等（没有期限）。
 
+use copy_core::copy_text;
 use std::path::Path;
 
 /// 持着的那把锁。落地即放。
@@ -41,8 +42,12 @@ pub(crate) struct DirLock {
 #[cfg(unix)]
 pub(crate) fn hold(dir: &Path) -> Result<DirLock, String> {
     use std::os::unix::io::AsRawFd;
-    let f = std::fs::File::open(dir)
-        .map_err(|e| format!("打开 {} 失败（拿不到锁）：{e}", dir.display()))?;
+    let f = std::fs::File::open(dir).map_err(|e| {
+        copy_text(
+            "bePlatformLock.hold.openFailed",
+            &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
+        )
+    })?;
     loop {
         // SAFETY: `f` 活着、描述有效；`flock` 只读这个整数。
         let rc = unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX) };
@@ -51,7 +56,10 @@ pub(crate) fn hold(dir: &Path) -> Result<DirLock, String> {
         }
         let e = std::io::Error::last_os_error();
         if e.kind() != std::io::ErrorKind::Interrupted {
-            return Err(format!("锁 {} 失败：{e}", dir.display()));
+            return Err(copy_text(
+                "bePlatformLock.hold.lockFailed",
+                &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
+            ));
         }
     }
 }
@@ -101,10 +109,12 @@ pub(crate) fn hold(dir: &Path) -> Result<DirLock, String> {
         }
     }
     if handle.is_null() {
-        return Err(format!(
-            "锁 {} 失败：{}",
-            dir.display(),
-            std::io::Error::last_os_error()
+        return Err(copy_text(
+            "bePlatformLock.hold.lockFailed",
+            &[
+                ("dir", &dir.display().to_string()),
+                ("e", &std::io::Error::last_os_error().to_string()),
+            ],
         ));
     }
     // SAFETY: `handle` 是刚拿到的互斥量句柄。
@@ -113,7 +123,13 @@ pub(crate) fn hold(dir: &Path) -> Result<DirLock, String> {
         other => {
             // SAFETY: 同上；没拿到就只关句柄。
             unsafe { CloseHandle(handle) };
-            Err(format!("锁 {} 失败（等待回 {other:#x}）", dir.display()))
+            Err(copy_text(
+                "bePlatformLock.hold.waitFailed",
+                &[
+                    ("dir", &dir.display().to_string()),
+                    ("status", &format!("{other:#x}")),
+                ],
+            ))
         }
     }
 }

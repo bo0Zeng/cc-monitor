@@ -39,6 +39,7 @@ import { invoke } from "@tauri-apps/api/core";
 // 〔C4d〕历史清单改走通道（问本机常驻后端）：旧命令名照旧当「哪一问」的名字，译法住 chan-fake。
 import { withHistoryReads } from "../test-support/chan-fake";
 import { HistoryView } from "../../src/views/history";
+import { copyText } from "../../src/copy-table";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
@@ -118,7 +119,7 @@ describe("KR92D1 ④：HistoryView 不把「不知道」当 0 读", () => {
     view.close();
   });
 
-  it("组头 chip：算过了才说话 —— 不知道那一档不冒出 `★ 0` / `● live`", async () => {
+  it("组头 chip：算过了才说话 —— 不知道那一档不冒出 `★ 0` / `● 运行中`", async () => {
     invokeMock.mockImplementation(withHistoryReads((cmd: string) => {
       if (cmd === "list_history_projects")
         return Promise.resolve([proj("不知道", null, null), proj("有星标", true, 2)]);
@@ -128,11 +129,12 @@ describe("KR92D1 ④：HistoryView 不把「不知道」当 0 读", () => {
     }));
     const view = new HistoryView();
     await view.open();
-    expect(statsOf("有星标")).toContain("● live");
+    // 〔AR1〕组头这一格原先是英文 `● live`；今天的字取自文案表 `sessionState.live.name`（`设计/30 §3.5.2`）。
+    expect(statsOf("有星标")).toContain(`● ${copyText("sessionState.live.name")}`);
     expect(statsOf("有星标")).toContain("★ 2");
     // 不知道那一格：不许把没人查过的值说成「没有星标」「没有活会话」，也不许假装有。
     expect(statsOf("不知道")).not.toContain("★");
-    expect(statsOf("不知道")).not.toContain("live");
+    expect(statsOf("不知道")).not.toContain(copyText("sessionState.live.name"));
     view.close();
   });
 

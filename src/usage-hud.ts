@@ -11,6 +11,7 @@
 import { contextPercent, normalizeModel, type ContextLimitOverrides } from "./views/context-limit";
 import { loadConfig } from "./config";
 import s from "./usage-hud.module.css";
+import { copyText } from "./copy-table";
 
 export class UsageHud {
   /** 挂 status-bar 的 chip。 */
@@ -75,13 +76,13 @@ export class UsageHud {
     const tok = this.promptTokens.toLocaleString("en-US");
     if (pct == null) {
       btn.textContent = "ctx ?";
-      btn.title = `活跃会话 context 占用：模型「${normalizeModel(this.model)}」上限未知（${tok} tokens）`;
+      btn.title = copyText("usageHud.render.unknownLimit", { model: normalizeModel(this.model), tok });
       btn.classList.remove(s.high);
       return;
     }
     const rounded = Math.round(pct);
     btn.textContent = `ctx ${rounded}%`;
-    btn.title = `活跃会话 context 占用 ≈ ${rounded}%（${normalizeModel(this.model)}，最新一轮 ${tok} tokens ÷ 模型上限）。近似值。`;
+    btn.title = copyText("usageHud.render.approx", { rounded, model: normalizeModel(this.model), tok });
     btn.classList.toggle(s.high, rounded >= 80); // 逼近自动 compact 时预警
   }
 }

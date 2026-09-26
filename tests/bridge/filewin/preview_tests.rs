@@ -142,7 +142,7 @@ async fn what_is_not_read_says_why_and_sends_nothing() {
     .await;
     let mut p = Preview::default();
     p.follow(&w, None);
-    assert_eq!(p.view(), &View::Idle(PICK_ONE.into()), "没选时那一句");
+    assert_eq!(p.view(), &View::Idle(PICK_ONE.to_string()), "没选时那一句");
     let step = |w: &mut FileWindow, p: &mut Preview| {
         w.apply_intent(
             Intent::Step {
