@@ -127,6 +127,28 @@ pub struct Unavailable {
     pub code: String,
 }
 
+/// 〔HX2〕hello 回显哪几格宿主交来的环境（[`Frame::Hello`] 的 `host_env`）。**名单只有这三格** —— 中转端口 ·
+/// 凭据文件路径 · 历史注解路径，都是本机 monitor 起常驻后端时交的（monitor 那一侧 `local_backend_host::HANDED_ENVS`，
+/// 两向对拍）。监听口的 token 永远不在这里。
+pub const HOST_ECHO_ENVS: [&str; 3] = [
+    crate::relay::ENV_PORT,
+    crate::accounts::upstream::creds::ENV_CREDENTIALS,
+    crate::history_annotations::ENV_PATH,
+];
+
+/// 按 [`HOST_ECHO_ENVS`] 从环境里取回显的那几格（没被交 / 空串的那一格不回显）。**纯函数**：环境由调用方给。
+pub fn host_env_from(
+    get: impl Fn(&str) -> Option<String>,
+) -> std::collections::BTreeMap<String, String> {
+    HOST_ECHO_ENVS
+        .iter()
+        .filter_map(|name| {
+            let v = get(name).filter(|v| !v.is_empty())?;
+            Some((name.to_string(), v))
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Frame {
@@ -238,6 +260,19 @@ pub enum Frame {
         /// ③ **bump `BUILD_ID`**（那天线上字节真的变了，已部署的远端得被判 stale 重装）。
         #[serde(skip_serializing_if = "Vec::is_empty")]
         unavailable: Vec<Unavailable>,
+        /// 〔HX2 · 第四波 4D，additive〕**起我的宿主交给我的那几格环境，原样回显**（`{名: 值}`，名单 [`HOST_ECHO_ENVS`]）。
+        ///
+        /// 它回答的是「这个后端是替**哪个数据目录**干活的」：本机常驻后端被 monitor 起时交了中转端口 ＋ 凭据文件路径 ＋
+        /// 历史注解路径（后两格就是 monitor 数据目录落到后端身上的全部）。常驻后端按 Claude 家目录分口、不按数据目录分
+        /// ⇒ 一个 `CCM_DATA_DIR` 隔离跑的 monitor 会连上真 profile 起的那个；它读完 hello 拿这一格与自己要交的那份比，
+        /// 对不上就拒、出声（`local_backend_host.rs::hello_verdict`）—— 不接一个会把写落进别的数据目录的后端（审计 E10）。
+        ///
+        /// **一格都没被交 ⇒ 省略**（远端 · 被 ssh exec 起的 · aterm 连的那些）⇒ 那些 hello 的线上字节**逐字节不变**
+        /// （`wire_tests.rs::hx2_production_hello_bytes_do_not_change_when_nothing_was_handed` 钉）。
+        /// 🔴 **监听口的 token 永远不在这里**：名单只有三格、token 不在名单里（`wire_tests.rs::hx2_the_listen_token_is_never_echoed` 钉）——
+        /// hello 是「只读 hello 就走」那一档谁都读得到的东西。
+        #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+        host_env: std::collections::BTreeMap<String, String>,
     },
     /// One raw JSONL line tailed from a session file.
     Line {
@@ -565,6 +600,39 @@ pub enum Frame {
         #[serde(skip_serializing_if = "Option::is_none")]
         end: Option<TransferEnd>,
     },
+
+    /// 〔TAP · V124 · `设计/20 §8`〕**中转抄出来的一个 SSE 事件**（或一个响应的收尾）。
+    ///
+    /// 只有**本机常驻后端**会发（中转住在它进程里，`relay::host`；远端的中转是脱离的 `--relay`，没有 wire 可走）。
+    /// 四样东西，**没有业务词**（字段名就是 `05 §9` 第 4 条「tee 线上字段名住哪」的答案：住这里，serde 名）：
+    /// - `stream`：路由第三段原样（resume ⇒ 那条会话的 sid；新开 ⇒ 起会话时铸的 nonce）。后端不解释它。
+    /// - `resp`：本进程第几个响应（跨响应单调，后端重启从 0 起）。
+    /// - `n`：这一个响应里第几个事件，**从 0 连续**。后端每个事件先占号再投递 ⇒ 丢了的号不出现 ⇒
+    ///   接收侧看 `n` 连不连得上就知道缺在哪（`设计/05 §3.3.4` 的 `Gap{from_seq,to_seq}` 那一形，原位、纯算术）。
+    /// - `data`（与 `end` 恰有一个）：SSE `data:` 后面那段原文，**一个 JSON 串**（上游字节敌手可控，不参与帧结构）。
+    /// - `end`：这个响应不会再有事件了（`done` 上游说完 · `broken` 转发以错误收尾）；这一帧的 `n` = 一共占了几个号。
+    ///
+    /// 🔴 **可丢**：走后端自己那条有界 tap 通道（`tap::TAP_CAPACITY`），满了就丢，不回推中转、不挤出方向的内容帧。
+    /// SSE 只保快，jsonl 保对（V24）。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    Tap {
+        stream: String,
+        resp: u64,
+        n: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        data: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        end: Option<TapEnd>,
+    },
+}
+
+/// 〔TAP〕一个响应怎么收场的（[`Frame::Tap`] 的 `end`）。
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TapEnd {
+    /// 上游把响应说完了（转发正常收尾）。
+    Done,
+    /// 转发以错误收尾：下游走了（claude 被 Esc 打断）· 上游断了 · 写不动。
+    Broken,
 }
 
 /// 〔FW1 · 第四波 4D〕[`Frame::SessionFileReread`] 的「为什么从头重读」。线上两个字面量。
@@ -654,6 +722,9 @@ impl Frame {
             Frame::LinkEnd { .. } => false,
             // 〔SR1b〕传输的进度 / 终局：丢了终局那一帧，看的人永远等下去；也走应答通道。
             Frame::Transfer { .. } => false,
+            // 〔TAP〕SSE 只保快：它说的事 jsonl 那一侧都有（落盘保对，V24），丢了由位置号 `n` 原位说出来。
+            // ⚠ 它**不走**出方向那条通道（走 tap 自己那条），列在这里只为穷尽。
+            Frame::Tap { .. } => true,
         }
     }
 
@@ -684,6 +755,7 @@ impl Frame {
             Frame::LinkData { link, .. } => ("link_data", Some(link.clone())),
             Frame::LinkEnd { link, .. } => ("link_end", Some(link.clone())),
             Frame::Transfer { id, .. } => ("transfer", Some(id.clone())),
+            Frame::Tap { stream, .. } => ("tap", Some(stream.clone())),
         };
         LostFrame { kind, subject }
     }

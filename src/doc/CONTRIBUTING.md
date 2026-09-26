@@ -303,7 +303,7 @@ dispatcher.bind("app.open-command-bar", () => commandBar.toggle());
 > | `kill` | 后端 RPC（F04b；〔C4e〕界面经通道直接说） | `src/tmux-control.ts::killSession`（门在后端 `src/backend/control/gate.rs`）；**盘上没有第二条路** |
 > | `send-keys` | 后端 RPC（F04c；〔C4e〕界面经通道直接说） | `src/tmux-control.ts::sendKeys`（两个 mode 名的理由在它头注里）；同上 |
 > | `attach`（**本机**） | 🔴 **本机后端**〔`K-R106` 2026-09-13，用户逐字「归本机后端就好了啊」〕 | `src/bridge/src/history.rs::render_local_attach` ⇒ `ccm attach <名>`（走 `render_local_ccm` 那条既有渲染路）。⚠ 前端那条 `↗` 还没改成问它要 |
-> | `attach` / `new-session`（**远端兜底**） | 🔴 **后端渲染器**〔步 22b·B 2026-09-20，`设计/90 §4 E` 收官〕 | `src/bridge/src/backend/control/payload.rs::render_tmux_outer`（外层三格）＋ `render_payload`（内层载荷），同一条 tauri 命令 `render_launch_payload`（`outer` 缺席 = `container:"none"`，带 `outer` = tmux 那三格）。**改完必须重生成入库夹具**：`npm run gen:payload-golden`。⚠ 它今天靠哪几个消费者站着，两把尺子都在 `launch_wire_f07_main_path_tests.rs`（`TS_FALLBACK_KEEPERS` 数处数 · `TS_FALLBACK_REACH` 判有没有生产调用方），**从源码派生，别在这里抄一份数** |
+> | `attach` / `new-session`（**远端兜底**） | 🔴 **后端渲染器**〔步 22b·B 2026-09-20，`设计/90 §4 E` 收官〕 | `src/bridge/src/backend/control/payload.rs::render_tmux_outer`（外层三格）＋ `render_payload`（内层载荷），同一条 tauri 命令 `render_launch_payload`（`outer` 缺席 = `container:"none"`，带 `outer` = tmux 那三格）。**改完必须改用例表的手写期望并重生成入库夹具**：`npm run gen:payload-golden`。〔LR2 2026-09-25〕TS 那份（`session-backend.ts` ＋ `launch-render-fallback.ts`）已删，这是唯一一份 |
 >
 > 🔴🔴 **订正三（步 22b·B 2026-09-20）：下面那四条「步骤」整段过期了，别照着做。**
 > 它们写的是「改命令语法 → 只改 `src/session-backend.ts`」，而那条路
@@ -316,8 +316,9 @@ dispatcher.bind("app.open-command-bar", () => commandBar.toggle());
 >    （`render_tmux_outer` 外层三格 · `render_payload` 内层载荷）。
 >    ⚠ **不许单开模块**：`设计/00 §2.5 ④` 要的是「5 个渲染实现 → 2 个」，
 >    单开一个就让盘上从 5 变 6，方向是反的（`the_launch_renderers_on_disk_are_exactly_these` 钉着）。
-> 2. **跟着改 TS 那一份**（`src/session-backend.ts` ＋ `src/launch-render-fallback.ts`）——
->    它今天的身份是**跨语言逐字节对拍的左边**，不是生产路。两侧不同步 ⇒ 夹具对拍红。
+> 2. **改用例表里的手写期望**（`tests/test-support/launch-payload-golden.ts` / `tests/test-support/launch-tmux-outer-golden.ts` 的 `payload` / `cmd`）——
+>    〔LR2 2026-09-25〕原来这一步是「跟着改 TS 那一份」（`session-backend.ts` ＋ `launch-render-fallback.ts`），
+>    那一族零生产调用、按 `设计/00 §2.5 ④` 删了，夹具左边换成手写期望。期望与 Rust 产出不同步 ⇒ 夹具对拍红。
 > 3. **重生成入库夹具** → `npm run gen:payload-golden`
 >    （产 `payload-golden.json` 与 `tmux-outer-golden.json` 两份）。
 >    ⚠ **不重生成会红，那是设计**：`tests/launch-tmux-outer-golden.vitest.ts` 断「入库的 == 现场渲染的」。
@@ -325,16 +326,15 @@ dispatcher.bind("app.open-command-bar", () => commandBar.toggle());
 >    ＋ `cargo test -p monitor --lib launch_tmux_outer_parity`。
 >
 > ⚠ **§31 最终形态第①条一个字没松**：前端仍然绝不硬编码后端命令字面量
->（`tests/session-backend-gate.vitest.ts` 扫整个前端生产段）。变的是「问谁要」——
+>（〔LR2〕`tests/launch-no-shell-in-ts.vitest.ts`，`设计/90 §3` 条 1：`src/**/*.ts` 生产段零 `tmux <动词> -` / `&&` 字面量、不开例外）。变的是「问谁要」——
 > 从「问前端座要」变成「问后端要」，那正是第①条括号里写的**阶段②**。
 
 
 **目标**：改「在远端起/接会话」的命令（resume/launcher/attach）。守 **INVARIANTS §31（SS-12）**：
-前端**绝不硬编码后端命令字面量**，命令语法一律经 `src/session-backend.ts` 座（`SESSION_BACKEND`）。
+前端**绝不硬编码后端命令字面量**，命令语法一律问后端要（`render_launch_payload` / `render_ccm_launch`）。
 
-〔以下四步 **2026-09-20 起留档** —— 今天的版本在上面那块「订正三」里。
-留着是因为它们仍然是**阶段①**（座还在盘上、仍是夹具的左边）那一侧的正确做法，
-而且第 2 步那条 grep 门禁今天由 `tests/session-backend-gate.vitest.ts` 机检着，没有过期。〕
+〔以下四步 **2026-09-20 起留档**，〔LR2 2026-09-25〕起**整段作废** —— 它们说的座（`src/session-backend.ts`）
+与它的判据（`tests/session-backend-gate.vitest.ts` · `tests/session-backend.test.ts`）都删了。今天的版本在上面那块「订正三」里。〕
 
 **步骤**：
 

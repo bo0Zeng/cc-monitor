@@ -57,10 +57,9 @@ pub mod events {
     /// 让 batch mode 事件驱动（回填在途不提前退出），替代纯 300ms 静默启发式。
     /// 不进 replay buffer。
     pub const SNAPSHOT_INFLIGHT: &str = "snapshot-inflight";
-    /// 〔`C1` · 2026-09-24〕某台远端的长连接握手完成、入方向能问话了（`{origin}`）。
-    /// 前端的账号刷新（替掉那个 10 秒轮询）据此强制拉一次 —— 在这之前问只会拿到「没有控制通道」。
-    /// 每次（重）连上各发一次；不进 replay buffer。
-    pub const REMOTE_BACKEND_READY: &str = "remote-backend-ready";
+    // 〔DL1 · 第五波〕「某台远端的长连接握手完成、能问话了」那个事件（`remote-backend-ready`）退役：
+    //   前端经通道 `subscribe(origin, "accounts-changed")` 收同一件事（`Seen` ＝ 能问了 · `Frame` ＝ 那台账号清单变了），
+    //   句柄是 `event_replay`（头注那张 kind 表）。`设计/01 §2.2`「前端只有两个动作」。
     /// 〔U4b · 第四波〕**这条活会话住在什么容器里**（`{session_id, container: "tmux" | "none"}`）。
     ///
     /// 来源是后端 `session_added.container`（打标那一次探测的结局）。本机那条流与远端流**同一个口**
@@ -246,6 +245,29 @@ pub struct RemoteSessionAddedPayload {
 pub struct SessionContainerPayload {
     pub session_id: String,
     pub container: String,
+}
+
+/// 〔TAP · V124〕会话流 `session-tap`（通道 `subscribe`，`设计/05 §15`）里一格的体：后端 `tap` 帧的字段原样 ＋ 哪台机器。
+///
+/// `stream` = 路由第三段（前端拿它对 tab 的 sid，对不上 ⇒ 匿名流、不显示）；`resp` · `n` 见后端 `wire::Frame::Tap`；
+/// `data`（SSE 事件原文，一个 JSON 串）与 `end`（`"done"` / `"broken"`）恰有一个。
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+pub struct SessionTapPayload {
+    pub origin: crate::origin::Origin,
+    pub stream: String,
+    // C03 大整数策略：本进程第几个响应 / 响应里第几个事件，远在 2^53 之内；线上是 JSON 文本，`bigint` 是错的。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub resp: u64,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub n: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub data: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub end: Option<String>,
 }
 
 /// 〔U4b · 第四波〕`origin-sessions-listed` 的 payload：哪台机器的清单报完了。

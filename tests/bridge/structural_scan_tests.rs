@@ -2669,6 +2669,17 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// `tool_registry`（→ `tool_registry_environment_tests.rs`）。
     /// 另有**真新增的一条**（退役判据留下的墓碑），挂在本表末尾、单独写了理由。
     const TOMBSTONED: &[(&str, &str, usize)] = &[
+        // 〔LR2〕U8c-3「前提触发器」改写成只管 `create-or-attach` 两棵树、改了名；两处散文点它的原名讲沿革。
+        (
+            "src/doc/INVARIANTS.md",
+            "the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold",
+            1,
+        ),
+        (
+            "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
+            "the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold",
+            1,
+        ),
         // 〔LOC1b · 第四波 4D〕读一整份会话本机远端合成一条（`history·rs::stream_read_session_jsonl`），远端那一支的函数删了；
         //   点它旧名讲来历的散文逐处挂墓碑。
         ("src/bridge/README.md", "stream_read_remote_session", 2),
@@ -2709,6 +2720,47 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "stream_read_remote_session",
             3,
         ),
+        // 〔HX2 · 第四波 4D〕写 key 改走通道 `apikey-key-set`：monitor 那一半（Tauri 命令 ＋ `apikey_remote` 写臂）与钉它们的判据退役。
+        ("src/bridge/src/apikey_remote.rs", "path_from_wire", 1),
+        ("src/bridge/src/apikey_remote.rs", "write_key_on", 1),
+        ("src/bridge/src/creds_store.rs", "write_key_on", 2),
+        (
+            "tests/bridge/apikey_remote_tests.rs",
+            "gp1_a_backend_writing_another_file_gets_no_key",
+            1,
+        ),
+        (
+            "tests/bridge/apikey_remote_tests.rs",
+            "gp1_the_local_write_checks_the_file_then_hands_the_key_to_the_backend",
+            1,
+        ),
+        (
+            "tests/bridge/apikey_remote_tests.rs",
+            "gp1_the_read_arms_stay_local_and_the_write_arm_goes_to_that_machines_backend",
+            1,
+        ),
+        (
+            "tests/bridge/apikey_remote_tests.rs",
+            "the_command_names_are_the_ones_the_backend_registers",
+            1,
+        ),
+        (
+            "tests/bridge/apikey_remote_tests.rs",
+            "the_remote_arm_says_what_went_wrong_without_the_plaintext",
+            1,
+        ),
+        ("tests/bridge/apikey_remote_tests.rs", "write_key_on", 1),
+        (
+            "tests/bridge/creds_store_tests.rs",
+            "a_config_dir_that_names_no_account_is_refused_instead_of_falling_back",
+            1,
+        ),
+        (
+            "tests/bridge/creds_store_tests.rs",
+            "the_plaintext_argument_is_only_ever_handed_one_hop_further",
+            1,
+        ),
+        ("tests/bridge/creds_store_tests.rs", "write_key_on", 2),
         // 〔C4e 批 3b〕cc-bus 驾驶舱写面五条迁到界面（`src/cc-bus-control.ts`）：monitor 那一份解释（发送端 · 说法 · 形状校验）
         //   与钉它们的判据退役，原处与点它们的散文挂墓碑；后端那一节头注点的 monitor 组合（`broadcast_via_backend`）同拍死了。
         ("src/backend/control/cc_bus.rs", "broadcast_via_backend", 1),
@@ -3498,12 +3550,9 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_daemonless_remote_still_needs_the_ts_fallback_renderer",
             1,
         ),
-        (
-            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
-            "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
-            "the_daemonless_remote_still_needs_the_ts_fallback_renderer",
-            2,
-        ),
+        // 〔LR2 2026-09-25〕`launch_wire_f07_main_path_tests.rs` 里点
+        //   `the_daemonless_remote_still_needs_the_ts_fallback_renderer` 的两处墓碑删了：它们住在
+        //   「那份换人手续」与「U8c-3 前提触发器」两段头注里，那两条判据随 TS 兜底一族整条退役（被守的事整轴没了）。
         // 🔴 〔`K-R96` 09-12〕**这一行删了 —— 盘上那句墓碑随被墓碑的那件事一起走了。**
         //
         // 它盖的是 `plan.rs::Container::avoid_collision` 的头注里那句
@@ -3514,12 +3563,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // 问同一张会话快照，`--print` 与真跑吐同一个名字）⇒ 连带那个字段与那句头注
         // 一起删。⇒ 按本表头注那条纪律：「登记的那一处盘上已经没有了 ⇒ 删掉它，
         // 别让表替真判据挡枪」。
-        (
-            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
-            "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
-            "ccm_reaches_the_backend_through_one_shot_subcommands",
-            1,
-        ),
+        // 〔LR2 2026-09-25〕同上：点 `ccm_reaches_the_backend_through_one_shot_subcommands` 的那处墓碑住在
+        //   U8c-3 前提触发器的头注里，那条判据改写成只管 `create-or-attach` 两棵树之后，那段头注整段删了。
         (
             // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
             "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
@@ -4307,21 +4352,21 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/settings/remote-section.ts", 2),
         ("tests/config-lost-update.vitest.ts", 1),
         ("tests/remote-config.vitest.ts", 1),
-        ("tests/settings/accounts-section.vitest.ts", 1),
+        ("tests/settings/accounts-section.vitest.ts", 2), // 〔HX2 · 4D〕+1：写 key 改走通道那一段点旧命令名
         ("tests/settings/remote-section.vitest.ts", 1),
         // 〔CF2 · 第四波 4B〕重放缓冲分档取消：头注里旧的登记方法名 ＋ 读数那个旧字段名各一块；
         //   会话流收口成 `subscribe`：头注表里 ＋ `ready_point` 文档里点原来那个重放方法名各一块。
-        ("src/bridge/src/event_replay.rs", 5), // 〔GP1〕+1：远端 sid 清单改名（连同 origin 一起交）那一块
+        ("src/bridge/src/event_replay.rs", 6), // 〔GP1〕+1：远端 sid 清单改名（连同 origin 一起交）那一块 〔DL1〕+1：头注点名退役的裸事件常量那一块
         // 〔GP1 · 第四波〕本机凭据文件的写者换成本机常驻后端：monitor 那侧写口 · `platform_fs::make_private` ·
         //   「本机那一臂不发帧」判据退役，讲来历的散文逐处一块；搬去后端的三条判据的出处各一块。
-        ("src/bridge/src/apikey_remote.rs", 3),
+        ("src/bridge/src/apikey_remote.rs", 8), // 〔HX2 · 4D〕3 → 8：头注重写（写 key 那一半删了，墓碑点四个旧名 ＋ 旧命令名；旧的三块墓碑并进头注照留）
         ("src/bridge/src/config.rs", 2), // 〔CFG1〕+1：整份写口 `save_config` 删了，讲来历那一句挂墓碑
-        ("src/bridge/src/creds_store.rs", 4),
+        ("src/bridge/src/creds_store.rs", 6), // 〔HX2 · 4D〕+2：两处「GP1 那一版经 `write_key_on`」
         ("src/bridge/src/platform_fs.rs", 1),
         ("tests/backend/accounts/upstream/file_face_tests.rs", 6),
         ("tests/backend/relay/server_tests.rs", 1),
-        ("tests/bridge/apikey_remote_tests.rs", 2),
-        ("tests/bridge/creds_store_tests.rs", 2),
+        ("tests/bridge/apikey_remote_tests.rs", 9), // 〔HX2 · 4D〕2 → 9：写臂那几条判据随写臂删了，头注逐条挂墓碑（旧的两块照留）
+        ("tests/bridge/creds_store_tests.rs", 11), // 〔HX2 · 4D〕2 → 11：明文逐跳那一条 · 说不出 id 那一条 · `brace_block` 退役，原处与点它们的散文挂墓碑
         // 〔CF2〕`jsonl-line` / `jsonl-batch` 退役：头注点旧载荷名一块 · 独立窗口入口头注点旧定向重放命令一块 ·
         //   状态消费者矩阵那一行一块。
         ("src/bridge/src/bridge.rs", 1),
@@ -4429,7 +4474,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/filewin/fonts.rs", 2), // 〔F9c 第四波 09-24〕0 → 2（探针来路里那两句「存不回去」的函数名随只读一档删了）
         ("src/bridge/src/history.rs", 19), // 〔合并 LOC1a〕主线 18 ＋ LOC1a +1（分叉 exec 那一趟的结果解释删了）// 〔合并 US1 × 主线〕主线 15 ＋ US1 +3 // 〔C4e 批 2〕+1：本机 kill 那句点的旧发送端 // 〔C4c〕+1：记录那一问的 Tauri 命令与答案形状退役，原处留一块 // 〔RW1〕+1：本机删会话那道路径守卫整段搬去后端 // 〔RW1〕+3：本机分叉的实现（`branch_impl` / `write_branch_file` / `read_jsonl_values`）交给后端 ·〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑 ·〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
         ("src/bridge/src/launch.rs", 1),
-        ("src/bridge/src/lib.rs", 13), // 〔LOC1b〕+2：本机判活那一段（`SessionMap::load_with_changes` 起步 · `app.manage(session_map)`）删了，原处各挂一块 // 〔合并 LOC1b × 主线 66f2b6bf〕主线 10 ＋ LOC1b +1（`mod search;` 那一行挂一块，本机内存索引删了） // 〔US1〕+1 // 〔GP1〕+1：`write_apikey_credentials_key` 头注里「整段论证见」那个旧写口 // 〔合并 C4d × 主线 cf3277f4〕主线 7 ＋ 本路 +1 ⇒ 8（〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑） // 〔合并 CF2 × 主线 60ace11b〕主线 6 ＋ 本路 +1（独立窗口的定向重放命令退役那一段）// 〔AL1d〕+2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 d07c6d14 按两边增量相加 4 + 2） // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔SR1b 子步 3〕+1：`sftp_move_ledger` 退役 · 〔C4b〕+1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4）
+        ("src/bridge/src/lib.rs", 13), // 〔合并 HX2 × 主线 06b5dc08〕基数 10 ＋ LOC1b +3 ＋ HX2 ±0 ⇒ 13。LOC1b 原注：〔LOC1b〕+2：本机判活那一段（`SessionMap::load_with_changes` 起步 · `app.manage(session_map)`）删了，原处各挂一块 // 〔合并 LOC1b × 主线 66f2b6bf〕主线 10 ＋ LOC1b +1（`mod search;` 那一行挂一块，本机内存索引删了） // 〔US1〕+1 // 〔GP1〕+1：`write_apikey_credentials_key` 头注里「整段论证见」那个旧写口 // 〔合并 C4d × 主线 cf3277f4〕主线 7 ＋ 本路 +1 ⇒ 8（〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑） // 〔合并 CF2 × 主线 60ace11b〕主线 6 ＋ 本路 +1（独立窗口的定向重放命令退役那一段）// 〔AL1d〕+2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 d07c6d14 按两边增量相加 4 + 2） // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔SR1b 子步 3〕+1：`sftp_move_ledger` 退役 · 〔C4b〕+1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4） ｜ HX2 原注：〔HX2 · 4D〕±0：`write_apikey_credentials_key` 整条删，原处换一块墓碑（点旧命令名 ＋ `KH2C1` 那条旧判据名）// 〔US1〕+1 // 〔GP1〕+1：`write_apikey_credentials_key` 头注里「整段论证见」那个旧写口 // 〔合并 C4d × 主线 cf3277f4〕主线 7 ＋ 本路 +1 ⇒ 8（〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑） // 〔合并 CF2 × 主线 60ace11b〕主线 6 ＋ 本路 +1（独立窗口的定向重放命令退役那一段）// 〔AL1d〕+2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 d07c6d14 按两边增量相加 4 + 2） // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔SR1b 子步 3〕+1：`sftp_move_ledger` 退役 · 〔C4b〕+1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4）
         ("src/bridge/src/local_backend_host.rs", 3), // 〔US1〕+1：`relay_running` 一族退役那一块 // 〔HX1〕+1：`fresh_token` 头注里「不需要密码学随机数」那一段整段删，原处留一块（合并按两边增量相加：1 ＋ 1 ＋ 1）
         // 〔LOC1b · 第四波 4D〕monitor 自己那份本机判活整份删了（本机活会话表改由本机后端的帧喂），头注点旧实现的几个名字各挂一块。
         ("src/bridge/src/session_map.rs", 4),
@@ -4440,10 +4485,14 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/spawn_managed.rs", 4), // 〔LOC1a〕+2：一次性本机查询那一格删了，点旧名的散文挂墓碑
         ("src/bridge/src/structural_scan.rs", 1),
         ("src/doc/ARCHITECTURE.md", 2), // 〔LOC1a〕+1：本机一次性 exec / 任务行解释 / 分叉 exec 那几条路删了，点旧名的散文挂墓碑
-        ("src/doc/INVARIANTS.md", 7), // 〔LOC1b〕+1：§6 探活双重校验那一格搬去后端，点 monitor 旧函数名那句挂一块 // 〔RW1〕+2：§1 例外 3 那道远端删会话守卫 · 例外 1 本机那道路径守卫（`validate_delete_target`）
+        ("src/doc/INVARIANTS.md", 10), // 〔LOC1b〕+1：§6 探活双重校验那一格搬去后端，点 monitor 旧函数名那句挂一块 // 〔RW1〕+2：§1 例外 3 那道远端删会话守卫 · 例外 1 本机那道路径守卫（`validate_delete_target`）
+        //   〔LR2〕+3：§33b 产出方表 `session-backend.ts` 那格 · 三问表 ③ 那格 · 「删掉座的代价也换人了」那段 —— 点着随 TS 兜底一族删掉 / 改写的判据
+        //   ⇒ 6（基）＋1（LOC1b）＋3（LR2）= 10
         ("src/doc/IPC-PROTOCOL.md", 5), // 〔CFG1〕+1：整份写口 `save_config` 删了，讲来历那一句挂墓碑
         // 〔AL1 · 2026-09-24〕+1：别名那一块搬走时留的墓碑（`buildAccountAliasBlock`）。
-        ("src/settings/accounts-section.ts", 2),
+        ("src/settings/accounts-section.ts", 3),
+        ("src/apikey-reads.ts", 1), // 〔HX2 · 4D〕写 key 改走通道：头注点旧命令名
+        ("src/settings/account-new-form.ts", 1), // 〔HX2 · 4D〕同上 // 〔HX2 · 4D〕+1：写 key 改走通道那一行点旧命令名
         ("tests/backend/control/gate_tests.rs", 1),
         ("tests/backend/no_timer_guard.rs", 1),
         // 〔SR1b · 2026-09-24〕2 → 3：远端写那一层「今天一处远端写都没有」那条判据随 V89 改写成
@@ -4457,8 +4506,10 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/backend/control/cc_bus_tests.rs", 22), // 〔C4e 批 3b〕7 → 22：写面五条迁到界面，钉它们的 18 条判据退役（两块整段墓碑逐行标）＋ 更早几块墓碑里指向它们的住址逐行补标
         ("tests/bridge/backend/control/inbound_client_tests.rs", 4), // 〔C4e 批 2〕+3：`launch_args` 两条对拍退役 ＋ e2e 那条改指金样，原处与点旧名的散文各一块
         (
+            // 〔LR2〕4 → 2：TS 兜底一族退役，两段带墓碑的头注（换人手续 · 前提触发器的旧头注）整段删了；
+            //   留下的两处：`launch_via_backend` 那句 ＋ 本拍新贴的「本条原名 …」那句。
             "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
-            5, // 〔C4e 批 2〕+1：送键 mode 名的家从 monitor 搬到界面，点旧住址
+            3, // 〔C4e 批 2〕+1：送键 mode 名的家从 monitor 搬到界面，点旧住址 · 〔LR2〕−2（见上）⇒ 4 +1 −2 = 3
         ),
         ("tests/bridge/backend/control/tmux_tests.rs", 12), // 〔C4e 批 2〕+3：本机杀会话 / 送键不许回落那两条退役 ＋ Gate 1 那条的说明点旧命令名 // 〔C4e〕+6：抓屏迁到界面，`KR112D2` 两刀 ＋ 五档那条随 monitor 那一份退役，原处与 Gate 1 那条的说明里点旧名
         ("tests/bridge/backend_tests.rs", 1),
@@ -4483,7 +4534,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/filewin/source_tests.rs", 2), // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         // 〔AL1 · 2026-09-24〕+5：`write_account_aliases` 退役那一行 ＋ 增量账里它那一行 ＋ 合并主线时
         //   三个计数旁的增量注（`EXPECTED_LOCAL_OR_BOTH` · `LEDGER.len()` · 增量账）。
-        ("tests/bridge/parity_ledger_tests.rs", 39), // 〔合并 LOC1a × 主线 1c2c4c97〕主线 37 ＋ LOC1a +2（`get_session_tasks` 退役：LEDGER 那一行 ＋ 理由表那一行）// 〔CFG1〕+1：整份写口 `save_config` 删了，讲来历那一句挂墓碑 // 〔合并 US1 × 主线〕主线 35 ＋ US1 +1 // 〔C4e 批 3b〕33 → 35（cc-bus 写面五条退役：LEDGER 那一块 ＋ `FRAME_PLANE_VERDICTS` 那三行） // 〔C4e 批 2〕28 → 33（杀会话 · 送键 · 就地 resume 三条命令退役：LEDGER 两处 ＋ `FRAME_PLANE_VERDICTS` 那一行 ＋ `tmux.manage` 那条理由第七次订正 ＋ `设计/50` 那一层点的送键命令） // 〔C4e〕23 → 28（抓屏那条命令退役：LEDGER 那一行 · `FRAME_PLANE_VERDICTS` 那一行 · 地板那段 · `tmux.manage` 那条理由里 `设计/50` 那一层点的发送端 ＋ 第七次订正） // 〔合并 C4d × 主线 cf3277f4〕主线 22 ＋ 本路 +1 ⇒ 23（〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑） // 〔合并 CF2 × 主线 28a5f652〕主线 18 ＋ 本路 +4（`replay_keep_tail_only` / `replay_session_to_window` 各退役：LEDGER 那一行 ＋ Local/Both 账那一句）⇒ 22 // 〔合并 RM1f × 主线 60ace11b〕主线 17 ＋ 本路 1 ⇒ 18（PN1b 那行增量账里 `panorama_diagram_kinds` 随内嵌引擎退役，挂墓碑） // 〔C4c〕16 → 17（「退出行为」两条退役，`ORIGIN_TAKING_BOTH` 摘掉处一块） // 〔合并 C4c × 主线 6b375621〕12 ＋ 本路 2 ＋ AL1d 2 ⇒ 16 // 〔C4c〕12 → 14（信任预检 · 记录那一问两条命令退役，`ORIGIN_TAKING_BOTH` 那两条摘掉处各挂一块） // 〔AL1d〕12 → 14（「终端集成」退役的两行 LEDGER 注释挂墓碑） // 〔C4a · 第四波〕11 → 12（E79 那条本机会话账号命令退役，账本那一行挂墓碑） // 〔F7c 收尾 09-24〕10 → 11（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
+        ("tests/bridge/parity_ledger_tests.rs", 40), // 〔合并 HX2 × 主线 290d8c33〕主线 39 ＋ HX2 +1（写 key 那条命令退役） // 〔合并 LOC1a × 主线 1c2c4c97〕主线 37 ＋ LOC1a +2（`get_session_tasks` 退役：LEDGER 那一行 ＋ 理由表那一行）// 〔CFG1〕+1：整份写口 `save_config` 删了，讲来历那一句挂墓碑 // 〔合并 US1 × 主线〕主线 35 ＋ US1 +1 // 〔C4e 批 3b〕33 → 35（cc-bus 写面五条退役：LEDGER 那一块 ＋ `FRAME_PLANE_VERDICTS` 那三行） // 〔C4e 批 2〕28 → 33（杀会话 · 送键 · 就地 resume 三条命令退役：LEDGER 两处 ＋ `FRAME_PLANE_VERDICTS` 那一行 ＋ `tmux.manage` 那条理由第七次订正 ＋ `设计/50` 那一层点的送键命令） // 〔C4e〕23 → 28（抓屏那条命令退役：LEDGER 那一行 · `FRAME_PLANE_VERDICTS` 那一行 · 地板那段 · `tmux.manage` 那条理由里 `设计/50` 那一层点的发送端 ＋ 第七次订正） // 〔合并 C4d × 主线 cf3277f4〕主线 22 ＋ 本路 +1 ⇒ 23（〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑） // 〔合并 CF2 × 主线 28a5f652〕主线 18 ＋ 本路 +4（`replay_keep_tail_only` / `replay_session_to_window` 各退役：LEDGER 那一行 ＋ Local/Both 账那一句）⇒ 22 // 〔合并 RM1f × 主线 60ace11b〕主线 17 ＋ 本路 1 ⇒ 18（PN1b 那行增量账里 `panorama_diagram_kinds` 随内嵌引擎退役，挂墓碑） // 〔C4c〕16 → 17（「退出行为」两条退役，`ORIGIN_TAKING_BOTH` 摘掉处一块） // 〔合并 C4c × 主线 6b375621〕12 ＋ 本路 2 ＋ AL1d 2 ⇒ 16 // 〔C4c〕12 → 14（信任预检 · 记录那一问两条命令退役，`ORIGIN_TAKING_BOTH` 那两条摘掉处各挂一块） // 〔AL1d〕12 → 14（「终端集成」退役的两行 LEDGER 注释挂墓碑） // 〔C4a · 第四波〕11 → 12（E79 那条本机会话账号命令退役，账本那一行挂墓碑） // 〔F7c 收尾 09-24〕10 → 11（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("tests/bridge/plugin_class_registry_tests.rs", 3), // 〔RM1f〕2 → 3：`code-picture` 那一格对上之后，旧测试名挂墓碑
         ("src/panorama-engine/main.rs", 1), // 〔RM1f〕monitor 那份按文件列符号的旧函数名（随内嵌引擎删了）
         ("tests/bridge/panorama_seam_registry_tests.rs", 1), // 〔RM1f〕PN1b 那一行增量账里的旧命令名（随内嵌引擎退役）
@@ -4508,7 +4559,7 @@ fn every_prose_tombstone_mark_is_registered() {
         //   点它们旧名的来历段各挂一块（包装层两段 · 新住址头注 · 骨架模块头注 · 判据替身头注）。
         ("src/bridge/src/session_skeleton.rs", 2), // 〔CF2〕+1：`replay_keep_tail_only` 退役那一段
         ("src/bridge/src/snapshot_resume.rs", 1),
-        ("src/ipc/commands.ts", 7), // 〔合并 LOC1b × 主线 290d8c33〕基数 5 ＋ LOC1b +1（流式读会话那一行点的远端读会话函数删了）＋ CFG1 +1（整份写口 `save_config` 删了）⇒ 7 · 会话读面两段 ＋ 插件市场一段 ＋〔CF2〕`replay_keep_tail_only` · `replay_session_to_window` 退役各一段
+        ("src/ipc/commands.ts", 8), // 〔合并 HX2 × 主线 06b5dc08〕基数 6 ＋ LOC1b +1 ＋ HX2 +1 ⇒ 8。LOC1b 原注：〔合并 LOC1b × 主线 290d8c33〕基数 5 ＋ LOC1b +1（流式读会话那一行点的远端读会话函数删了）＋ CFG1 +1（整份写口 `save_config` 删了）⇒ 7 · 会话读面两段 ＋ 插件市场一段 ＋〔CF2〕`replay_keep_tail_only` · `replay_session_to_window` 退役各一段 ｜ HX2 原注：〔合并 HX2 × 主线 8ffc6bdf〕主线 6 ＋ HX2 +1（写 key 那条包装退役） // 〔CFG1〕+1：整份写口 `save_config` 删了，讲来历那一句挂墓碑 // 会话读面两段 ＋ 插件市场一段 ＋〔CF2〕`replay_keep_tail_only` · `replay_session_to_window` 退役各一段
         ("src/session-reads.ts", 3), // 〔C4c〕+2：第四问（记录还在不在）头注点名它替掉的命令与发送端
         ("src/settings/plugins-section.ts", 1),
         ("tests/settings/plugins-section.vitest.ts", 1),
@@ -4544,7 +4595,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/local_accounts_tests.rs", 3), // 〔C4d〕+1：本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑
         // 〔C4c · 第四波 4B〕记录那一问（`history-record`）改走通道：monitor 的发送端与它的判据删了，原处各一块。
         ("src/bridge/src/backend/control/frame_query.rs", 2), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
-        ("tests/bridge/backend/control/frame_query_tests.rs", 5), // 〔C4e 批 3b〕+1：`CHANNELED_ELSEWHERE` 的 cc-bus 那一块点删掉的五条命令 // 〔C4e 批 2〕+1：`kill` / `launch` 两行点删掉的三条命令 // 〔C4e〕+1：`CHANNELED_ELSEWHERE` 的 `capture-pane` 那一行点删掉的发送端 // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
+        ("tests/bridge/backend/control/frame_query_tests.rs", 8), // 〔HX2 · 4D〕+3：`apikey-read` 那一行说核路径那一问删了 · `apikey-key-set` 新行点删掉的命令 · `ASKED_BY_MONITOR_ITSELF` 退役那一行 // 〔C4e 批 3b〕+1：`CHANNELED_ELSEWHERE` 的 cc-bus 那一块点删掉的五条命令 // 〔C4e 批 2〕+1：`kill` / `launch` 两行点删掉的三条命令 // 〔C4e〕+1：`CHANNELED_ELSEWHERE` 的 `capture-pane` 那一行点删掉的发送端 // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         // 〔C4c · 第四波 4B〕「退出行为」问 / 交写改走通道：monitor 那两条命令与它们的期限删了，原处各一块；设置页头注点它们旧名。
         ("src/bridge/src/backend_policy.rs", 2),
         ("src/settings/backend-section.ts", 1),

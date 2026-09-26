@@ -84,7 +84,7 @@ const BEHAVIOR = {
   resumeCommandLocalPresets: [],
   resumeCommandRemotePresets: [],
   notifyTurnEnd: true,
-  forceLaunchPayloadRenderer: false,
+  // 〔LR2〕`forceLaunchPayloadRenderer` 退役，行为配置里没有这一格了。
 };
 const KEYS = { "open-settings": "Ctrl+,", "kill-session": null };
 

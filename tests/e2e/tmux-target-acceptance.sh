@@ -4,7 +4,7 @@
 # 与黄金串的分工：黄金串断言「命令串长什么样」，本脚本断言「这条命令在真 tmux 上干了什么」。
 # 二者缺一不可——上一轮修复三门禁全绿却让 send-keys 完全失效，正是因为只有前者。
 #
-# 输入 = 真 builder 产出的生产命令串（tests/e2e/tmux-target-emit.mts）。
+# 输入 = 生产渲染链产出的命令串（tests/e2e/tmux-target-emit.mts → launch-render-driver.ts → Rust render_launch_payload）。
 # 隔离 -L socket + tmux shim，不碰用户任何真实会话。
 # 跑法：bash tests/e2e/tmux-target-acceptance.sh   （需要 tmux；npm run test:tmux-target）
 set -o pipefail
@@ -12,7 +12,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 SP="$(mktemp -d)"
 trap 'rm -rf "$SP"' EXIT
-# 生产命令串来自**真 builder**（不手搓等价命令）——见 tmux-target-emit.mts 头注
+# 生产命令串来自**生产渲染链**（不手搓等价命令）——见 tmux-target-emit.mts 头注
 (cd "$REPO" && npx tsx tests/e2e/tmux-target-emit.mts) > "$SP/f01-cmds.tsv"
 SOCK=ccmF01
 # 缺 tmux 必须硬失败（Phase G 审阅）：原先这行**完全没有守卫**，`TMUX_BIN` 会是空串，

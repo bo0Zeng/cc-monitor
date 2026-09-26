@@ -1275,7 +1275,15 @@ async fn fetch_snapshot(
     let sid = &item.sid;
     let path = &item.path;
     let origin = crate::origin::Origin(host_label.to_string());
-    let plan = frame_query::tail(&origin, path, SNAPSHOT_TAIL_LINES as u64).await?;
+    // 〔DL1 · `设计/05 §3.3.2`〕快照是两件事、各一个期限：先问图（一问，`PAGE_BUDGET`）；
+    //   读正文（分页）在知道要读多少字节之后再造、按大小给（`frame_query::read_budget`），每一页都拿同一个时刻去等。
+    let plan = frame_query::tail(
+        &origin,
+        path,
+        SNAPSHOT_TAIL_LINES as u64,
+        frame_query::Deadline::within(frame_query::PAGE_BUDGET),
+    )
+    .await?;
     // 〔C2 · U3 第 3 件〕断线重连后从续点接着拉（`snapshot_resume` 头注），续点对不上才整份。
     let how = crate::snapshot_resume::plan_read(
         crate::snapshot_resume::cursor_of(&origin, sid).as_ref(),
@@ -1298,10 +1306,17 @@ async fn fetch_snapshot(
     let mut total_bytes: u64 = 0;
     let mut chunk: Vec<JsonlLine> = Vec::with_capacity(SNAPSHOT_CHUNK_LINES);
     let mut cancelled = false;
-    'read: for (from, upto) in walk.segments().to_vec() {
+    let segments = walk.segments().to_vec();
+    let body_bytes: u64 = segments
+        .iter()
+        .map(|(from, upto)| upto.saturating_sub(*from))
+        .sum();
+    let body =
+        frame_query::Deadline::within(frame_query::read_budget(body_bytes.min(SNAPSHOT_MAX_BYTES)));
+    'read: for (from, upto) in segments {
         let mut offset = from;
         while offset < upto {
-            let page = frame_query::read_page(&origin, path, offset, Some(upto)).await?;
+            let page = frame_query::read_page(&origin, path, offset, Some(upto), body).await?;
             total_bytes += page.next - offset;
             if total_bytes > SNAPSHOT_MAX_BYTES {
                 // 防御上限：不再继续拉（完整性校验会把截断判为失败 → toast）。
@@ -1783,6 +1798,9 @@ pub enum InboundFrame {
         total: u64,
         end: Option<crate::sftp_pool::End>,
     },
+    /// 〔TAP · V124〕中转抄出来的一个 SSE 事件 / 一个响应的收尾（后端 `wire::Frame::Tap`）。只有**本机后端**那条流上会有
+    /// （中转住本机常驻后端），交 `session_tap::deliver`。`data` / `end` 都缺、或 `end` 认不出 ⇒ 整帧 `None`（坏帧）。
+    Tap(crate::session_tap::Tap),
 }
 
 /// 拥塞提示的**措辞**：有没有不可恢复的丢失，说法完全不同〔audit-0805 F21〕。
@@ -2099,6 +2117,25 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
             })
         }
 
+        // 〔TAP · V124〕中转抄出来的 SSE 事件。`data` 与 `end` 恰有一个：先认 `data`（原样，一个串），没有就必须是认得的 `end`。
+        "tap" => {
+            let stream = obj.get("stream")?.as_str()?.to_string();
+            let resp = obj.get("resp")?.as_u64()?;
+            let n = obj.get("n")?.as_u64()?;
+            let body = match obj.get("data") {
+                Some(d) => crate::session_tap::TapBody::Data(d.as_str()?.to_string()),
+                None => crate::session_tap::TapBody::End(crate::session_tap::TapEnd::from_wire(
+                    obj.get("end")?.as_str()?,
+                )?),
+            };
+            Some(InboundFrame::Tap(crate::session_tap::Tap {
+                stream,
+                resp,
+                n,
+                body,
+            }))
+        }
+
         // ── `turn_end` **认识但刻意不消费**（U7-1）。──────────────────────────
         //
         // 「认识」与「消费」是两件事。落进 `_ => None` 的后果不是「忽略」，是
@@ -2137,6 +2174,7 @@ const KNOWN_FRAME_KINDS: &[&str] = &[
     "session_removed",
     "session_status",
     "sessions_replayed",
+    "tap",
     "tmux_session_closed",
     "tmux_sessions",
     "transfer",
@@ -2325,11 +2363,27 @@ fn negotiate_version(reported_v: u64, reported_build_id: &str) -> VersionVerdict
 fn version_warning(reported_v: u64, reported_build_id: &str, label: &str) -> Option<String> {
     match negotiate_version(reported_v, reported_build_id) {
         VersionVerdict::Ok => None,
+        // 〔HX2 · 主会话 D-b〕按新旧分两句（部署只升不降，`sftp::identity_decision`）：
+        //   那台旧 ⇒ 下次连上的部署预检会换掉它；那台不比这一版旧 ⇒ 这个 monitor 不会把它换回去。
+        //   〔墓碑 —— 从前一句话不分新旧（`rsSshSource.version.buildMismatch`：「…建议更新后端（后续将支持自动部署）」），自动部署早已落地。〕
+        VersionVerdict::StaleBuild { reported }
+            if crate::sftp::is_newer(EXPECTED_BACKEND_BUILD_ID, &reported) =>
+        {
+            Some(copy_text(
+                "rsSshSource.version.remoteOlder",
+                &[
+                    ("label", &label.to_string()),
+                    ("reported", &reported.to_string()),
+                    ("mine", &EXPECTED_BACKEND_BUILD_ID.to_string()),
+                ],
+            ))
+        }
         VersionVerdict::StaleBuild { reported } => Some(copy_text(
-            "rsSshSource.version.buildMismatch",
+            "rsSshSource.version.remoteNotOlder",
             &[
                 ("label", &label.to_string()),
                 ("reported", &reported.to_string()),
+                ("mine", &EXPECTED_BACKEND_BUILD_ID.to_string()),
             ],
         )),
         VersionVerdict::Incompatible { .. } => Some(copy_text(
@@ -3217,14 +3271,10 @@ async fn stream_loop(
         if let Some(client) = attach_inbound_client(&host_label, &mut parked, frame.as_ref()) {
             inbound_guard.1 = Some(client.clone());
             inbound = Some(client);
-            // 〔`C1` · 09-24〕告诉前端「这台的长连接能问话了」：账号那两条查询从此走它，
-            // 前端的账号刷新（替掉那个 10 秒轮询的事件驱动刷新器）在这一刻强制拉一次。
-            if let Err(e) = app.emit(
-                crate::bridge::events::REMOTE_BACKEND_READY,
-                &serde_json::json!({ "origin": host_label }),
-            ) {
-                tracing::warn!("remote-backend-ready emit failed: {e}");
-            }
+            // 〔`C1` · 09-24〕「这台的长连接能问话了」—— 前端的账号刷新在这一刻强制拉一次。
+            // 〔DL1〕原先这里发一个裸 Tauri 事件（`remote-backend-ready`）；今天由下面 Hello 臂里既有的
+            //   `replay.origin_seen(.., true)` 说（订了这台 `accounts-changed` 的订阅原位收 `Seen`，`event_replay` 头注那张表）——
+            //   同一个时刻、同一个事实，只留一个家。
             // 〔AS2 · V113〕连上那一刻：让本机常驻后端沿池里那条 SSH 同步资产目录（后台跑，零判定）。
             let accepts = inbound
                 .as_ref()
@@ -3681,15 +3731,10 @@ async fn stream_loop(
             Some(f @ (InboundFrame::Reply { .. } | InboundFrame::Cancelled { .. })) => {
                 route_inbound_frame(&host_label, inbound.as_ref(), f);
             }
-            // 〔SR1a · `设计/05 §13.6 ③`〕那台的账号清单变了 ⇒ 发前端既有的「这台就绪」那一个事件
-            //   （账号表与 chip 听的就是它，`main.ts`），多带一个 `reason` 说清这一次为什么（additive）。
+            // 〔SR1a · `设计/05 §13.6 ③`〕那台的账号清单变了 ⇒ 告诉前端（账号表与 chip 据此重取）。
+            // 〔DL1〕经通道 `subscribe`：订了这台 `accounts-changed` 的订阅收一格 `Frame`（原先是一个裸 Tauri 事件）。
             Some(InboundFrame::AccountsChanged) => {
-                if let Err(e) = app.emit(
-                    crate::bridge::events::REMOTE_BACKEND_READY,
-                    &serde_json::json!({ "origin": host_label, "reason": "accounts_changed" }),
-                ) {
-                    tracing::warn!("remote-backend-ready（accounts_changed）emit failed: {e}");
-                }
+                replay.accounts_changed(&crate::origin::Origin(host_label.clone()));
             }
             // 〔FW1 · 第四波 4D · D-d〕那台一条活会话的记录文件不见了 / 被改过已从头重读 ⇒ 残批先冲、再交那个会话的内容流一格。
             Some(InboundFrame::SessionFileNotice { sid, path, change }) => {
@@ -3724,6 +3769,15 @@ async fn stream_loop(
             Some(InboundFrame::Transfer { id, .. }) => {
                 tracing::warn!(
                     "ssh_source [{host_label}] 远端后端发来了传输帧（id={id}）—— 传输台在本机后端，丢掉"
+                );
+            }
+            // 〔TAP · V124〕远端的中转是脱离的 `--relay`，不在那台的流模式后端进程里 ⇒ 今天远端流上**没有** tap 来源
+            //   （怎么接是设计题，住仓外 `调研/第四波记录/TAP.md §8` 题 1）。真来了：没有设计过它怎么对 sid，不转；
+            //   不按帧刷 warn（token 级的频率会把日志淹掉）—— 记一句 debug。
+            Some(InboundFrame::Tap(t)) => {
+                tracing::debug!(
+                    "ssh_source [{host_label}] 远端后端发来了 tap 帧（stream={}）—— 远端 tap 还没有设计，丢掉",
+                    t.stream
                 );
             }
             None => {

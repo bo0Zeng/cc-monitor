@@ -584,6 +584,50 @@ async fn an_undeclared_command_is_refused_without_writing_anything() {
     assert!(read.is_err(), "被拒的命令却发出去了：{buf:?}");
 }
 
+/// 〔DL1 · D1〕**一个截止时刻管好几问：后一问只剩前一问没用完的那一点**。
+///
+/// 守的要求：`设计/05 §3.3.2` 逐字「**一次调用一个绝对时刻**，不是每跳一个 `Duration`」「`Duration` 跨跳传递时
+/// 每一跳都会重新开始计时 —— 那正是病 2 的机制。绝对时刻只能收紧、不能放宽」。
+///
+/// 异源：真 `InboundClient` 接一根内存双工管子，对端由本用例扮演（不经 `frame_query`，不看源码）。
+/// 两向：第一问截止时刻还远 ⇒ 照常拿到应答（正控）；第二问拿**同一个**时刻 ⇒ 只等剩下那一截就报超时，
+/// 而且真等到了点（不是提前放弃）。今天之前的形状（每问 `now + 一整份`）在第二问上会再等一整份 ⇒ 红。
+#[tokio::test]
+async fn two_asks_under_one_deadline_share_it_and_the_second_gets_only_the_rest() {
+    let (client, mut peer) = client_on_duplex(&["ping"]);
+    let whole = Duration::from_millis(1500);
+    let until = tokio::time::Instant::now() + whole;
+
+    // 第一问：对端过 1000 ms 才答 —— 吃掉大半，但在截止之前（正控：远没到点时照常拿到）。
+    let c = client.clone();
+    let first = tokio::spawn(async move { c.call_until("ping", Value::Null, until).await });
+    let line = next_line(&mut peer).await;
+    let id = serde_json::from_str::<Value>(line.trim_end()).expect("JSON")["id"]
+        .as_str()
+        .expect("id")
+        .to_string();
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+    assert!(client.route_reply(&id, true, None, None, None));
+    assert!(first.await.expect("task").is_ok(), "截止之前答了却没拿到");
+
+    // 第二问：同一个截止时刻，对端不答。
+    let t2 = tokio::time::Instant::now();
+    let second = client.call_until("ping", Value::Null, until).await;
+    let waited = t2.elapsed();
+    assert!(
+        matches!(second, Err(CallError::Timeout { .. })),
+        "{second:?}"
+    );
+    assert!(
+        tokio::time::Instant::now() >= until,
+        "没到截止时刻就放弃了（等了 {waited:?}）"
+    );
+    assert!(
+        waited < Duration::from_millis(1200),
+        "第二问又等了一整份（{waited:?}，整份 {whole:?}）—— 截止时刻被重新计时了"
+    );
+}
+
 /// 超时 ⇒ `Timeout`，且**自动补发一条 `cancel`**（backend 别白跑）。
 #[tokio::test]
 async fn a_timeout_fires_a_cancel_for_the_abandoned_id() {

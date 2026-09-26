@@ -162,10 +162,20 @@ pub async fn stream_read_session_jsonl(
     let mut chunk: Vec<crate::bridge::JsonlLinePayload> = Vec::with_capacity(CHUNK_SIZE);
     let mut total = 0u32;
     let mut offset: u64 = 0;
+    // 〔DL1 · `设计/05 §3.3.2`〕读一整份是**一件事**：期限在读第一页之前造一次，每一页都拿同一个时刻去等（不重新计时）。
+    //   大小事先不知道 ⇒ 按字节上限给（`frame_query::read_budget(MAX_SESSION_BYTES)`）。
+    let deadline = crate::backend::control::frame_query::Deadline::within(
+        crate::backend::control::frame_query::read_budget(MAX_SESSION_BYTES),
+    );
     loop {
-        let page =
-            crate::backend::control::frame_query::read_page(&origin, &jsonl_path, offset, None)
-                .await?;
+        let page = crate::backend::control::frame_query::read_page(
+            &origin,
+            &jsonl_path,
+            offset,
+            None,
+            deadline,
+        )
+        .await?;
         read_bytes += page.next - offset;
         if read_bytes > MAX_SESSION_BYTES {
             // F06：**不许静默截断**。同一份数据走后端的 `--fork-session` 会硬报错，

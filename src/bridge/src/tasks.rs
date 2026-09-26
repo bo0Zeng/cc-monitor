@@ -79,7 +79,7 @@ pub(crate) async fn fetch_session_tasks(
         origin,
         "tasks-list",
         serde_json::json!({ "sid": session_id }),
-        TASKS_BUDGET,
+        crate::backend::control::frame_query::Deadline::within(TASKS_BUDGET),
     )
     .await?;
     decode_tasks(&who, data)

@@ -57,6 +57,12 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "READ_FLOOR_BPS",
+        "〔DL1 · 第五波〕**速率**（字节 / 秒）不是体量：`frame_query·rs::read_budget` 拿它把「要读多少字节」折成分页读那一件的\
+             总时限（`设计/05 §3.3.2` 一件事一个绝对时刻）。它不限任何字节总量、不截任何东西 —— 限总量的是各自的字节上限\
+             （`SNAPSHOT_MAX_BYTES` / `MAX_SESSION_BYTES`）。",
+    ),
+    (
         "PRIVATE_DIR_MODE",
         "〔HX1 · 4D〕**权限位**不是体量：后端 `control/files_commit·rs` 建 `~/.cc-monitor` 与暂存区那一下给的 unix 权限（0o700，只给本人），\
              不限任何字节总量、不截任何东西。",
@@ -234,6 +240,11 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "WAIT_FOREVER",
         "**「一直等」的哨兵值**（`WaitForSingleObject` 的 `INFINITE`，全 1）。不是时长上限、更不是字节量 —— \
              它的意思恰恰是「没有上限」；`pidwatch_windows_shape_tests` 钉着它必须是全 1（零定时器）。",
+    ),
+    (
+        "WAIT_ABANDONED",
+        "〔HX2〕**Win32 等待结果码**（`WaitForSingleObject` 回「上一个持有者没放就没了」—— `platform/lock.rs` 那把命名互斥量）。\
+             是一个返回码，不是尺寸。",
     ),
     (
         "FILETIME_TICKS_BEFORE_UNIX_EPOCH",
@@ -782,6 +793,15 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "TEE_DECODE_CAP",
         8388608,
         "tee 侧解码缓冲攒着的那截（SSE 半行 / chunked 还没成形的块长度行）",
+        "丢弃+带身份报告",
+    ),
+    // 〔TAP · V124〕tee 交给 tap 口的**一个 SSE 事件**的原文字节数。超了这一件不交、位置号照占 ⇒
+    // 接收侧看见 `n` 的缺口（身份 = 哪个响应的第几号）；下游的字节一个不少（tap 是抄一份）。
+    (
+        "src/backend/relay/tee.rs",
+        "TAP_DATA_CAP",
+        16384,
+        "tee 交给 tap 口的一个 SSE 事件（`data:` 后那段原文）的字节数",
         "丢弃+带身份报告",
     ),
     // 🔴 **〔条 67 · 2026-09-18〕`ASSET_BYTE_CAP` 与 `RESPONSE_HEAD_BYTE_CAP` 这一对摘了。**

@@ -1654,6 +1654,10 @@ pub(crate) fn absorb_local_frame(
             total,
             end,
         } => crate::sftp_pool::deliver(&id, got, total, end),
+        // 〔TAP · V124〕中转住本机常驻后端：它抄出来的 SSE 事件原样转前端（`session_tap::deliver`，从不阻塞、不进内容通道）。
+        InboundFrame::Tap(t) => {
+            crate::session_tap::deliver(crate::backend::control::inbound_client::LOCAL_ORIGIN, t)
+        }
         // 〔CF1〕内容三种（`session_added` 在上面那一臂记完容器也交回）：交回读循环，送进本机内容通道。
         // 〔LOC1b · 第四波 4D〕起停另两种（`session_status` 红绿灯 · `sessions_replayed` 清单报完了）也交回：
         //   本机会话的起停改由本机后端的帧来（`session_map` 的本机活会话表），与内容走同一条有序通道 ——

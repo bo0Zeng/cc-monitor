@@ -249,30 +249,9 @@ export const commands = {
    * 判定的真相源只有 `skill_host::resolve_editable` / `remote_editable_rel`。
    * `expected` = 打开时读到的那一份（CAS：盘上那份在这之后被改过 ⇒ 一个字节不写）。
    */
-  /**
-   * `K-H2a` `KS10`：从界面配一把 key。
-   *
-   * ⚠ 它和**人手编那份文件**是同一份文件的两个写者 —— 后端在**写的那一刻**才读盘，
-   * 未知键一个不吃、字段顺序按名字排、原子替换、写完立刻把文件收窄成只给本人。
-   *
-   * ⚠⚠ `K-H2c` `KH2C1`：**`configDir` 是承重的入参，别换成账号名。**
-   * 那把 key 落进 `accounts.<账号 id>` 那一格，而 `<账号 id>` 由 Rust 用**全仓唯一那份规则**
-   * （`history::apikey_account_id_of_dir`）从 `configDir` 推 —— 起会话那一侧调的是同一个函数。
-   * 前端**一个字都不许自己推那个 id**（`split('/').pop()` 那一形）：那是在长第二份规则，
-   * 漂开的那天症状是「设置里说走 apikey 端点改写、起会话时没走」，而两边看起来都没错。
-   *
-   * 〔RM1a · 第四波〕**收 `origin`**：key 落在会话跑的**那台机器**上 —— 本机进 monitor 自己那一份，
-   * 远端交那台机器的后端写（`apikey-key-set`）。先前远端账号页配的 key 落在本机，远端会话用不上。
-   */
-  // 〔第四波 ST2〕`baseUrl`：加账号表单 apikey 那一支的 Base URL（`设计/70 §4.4`）；缺席 = 用默认上游。
-  // 〔RM1a〕`origin`：key 与 Base URL 一起落在那台机器上（本机进 monitor 那一份，远端交那台的后端）。
-  write_apikey_credentials_key: (args: {
-    origin: Origin;
-    key: string;
-    configDir: string;
-    baseUrl?: string | null;
-  }) =>
-    invoke<void>("write_apikey_credentials_key", args),
+  // 〔HX2 · 第四波 4D〕墓碑：这里从前是 `write_apikey_credentials_key`〔散文墓碑〕（`K-H2a` `KS10`：从界面配一把 key）。
+  //   写 key 改走通道 `apikey-key-set`（`src/apikey-reads.ts::writeApikeyKey`），交那台机器的后端；`KH2C1` 那一条照旧成立 ——
+  //   前端交 `configDir`，账号 id 由后端按全仓唯一那份规则（`acct_core::apikey_account_id_of_dir`）推。
 
   write_skill_file: (args: {
     origin: Origin;
@@ -674,9 +653,10 @@ export const commands = {
 
   /**
    * 〔CF2 · 第四波 4B〕**按行号取一段正文** `[from, until)`（`until` 缺 ＝ 到末尾）—— 不依赖骨架索引的那条取回路。
-   * 唯一调用点：`TabStreamView.fetchBelow`（没接骨架的 tab 往上翻过了账本里最老那一条）。
+   * 调用点：`TabStreamView.fetchBelow`（没接骨架的 tab 往上翻过了账本里最老那一条）· `TabStreamView.recoverFromGap`（会话流丢格之后往后补）。
+   * 〔DL1〕`leftMs`：那一**件**事还剩多少毫秒（`设计/05 §3.3.2` 一件事一个绝对时刻；多问的那一件每问交剩下的，不重新计时）。
    */
-  read_session_lines: (args: { origin: Origin; jsonlPath: string; from: number; until?: number }) =>
+  read_session_lines: (args: { origin: Origin; jsonlPath: string; from: number; until?: number; leftMs: number }) =>
     invoke<SessionLinesPage>("read_session_lines", args),
 
   // 〔CF2 · 第四波 4B〕「接上骨架 ⇒ 重放缓冲只留尾巴」那一条（`replay_keep_tail_only`〔散文墓碑〕）退役：

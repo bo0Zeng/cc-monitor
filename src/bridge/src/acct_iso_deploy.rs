@@ -127,7 +127,7 @@ pub(crate) async fn status_on(origin: &crate::origin::Origin) -> Result<AcctIsoS
             origin,
             "acct-iso-status",
             serde_json::json!({}),
-            ACCT_ISO_BUDGET,
+            crate::backend::control::frame_query::Deadline::within(ACCT_ISO_BUDGET),
         )
         .await,
     )
@@ -160,7 +160,7 @@ pub(crate) async fn snippet_on(origin: &crate::origin::Origin) -> Result<String,
             origin,
             "acct-iso-shellinit",
             serde_json::json!({}),
-            ACCT_ISO_BUDGET,
+            crate::backend::control::frame_query::Deadline::within(ACCT_ISO_BUDGET),
         )
         .await,
     )
@@ -279,6 +279,8 @@ pub async fn deploy_remote_acct_iso(cfg: RemoteConfig, dest_dir: String) -> Resu
                 ("dest", &dest.to_string()),
             ],
         )),
+        // 〔HX2〕`deploy_decision` 不产这一格（只有后端身份那条 `identity_decision` 分新旧）；照它的话原样回。
+        DeployAction::Keep { why, .. } => Ok(why),
         DeployAction::Deploy(reason) => {
             // 建目录树：<dest>/scripts/test、<dest>/examples。
             fs.mkdirs(&format!("{dest}/scripts/test")).await?;

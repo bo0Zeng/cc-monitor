@@ -85,7 +85,7 @@ async fn fork_on(
         origin,
         "session-fork",
         serde_json::json!({ "sid": source_session_id, "uuid": message_uuid }),
-        FORK_BUDGET,
+        crate::backend::control::frame_query::Deadline::within(FORK_BUDGET),
     )
     .await?;
     let res = decode_fork(&who, data)?;

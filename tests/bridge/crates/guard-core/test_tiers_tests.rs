@@ -56,7 +56,8 @@ use std::path::{Path, PathBuf};
 
 /// 单元层：不读仓内文本、不碰 OS 的测试文件。
 const UNIT: &[&str] = &[
-    "tests/config-lost-update.vitest.ts", // 〔CFG1〕J1 两 realm 11 写者同拍写 · J5 写者路径集合
+    "tests/bridge/apikey_remote_tests.rs", // 〔HX2〕写臂那几条（读源码对拍）退役，只剩发送口一条行为判据（SCAN → UNIT）
+    "tests/config-lost-update.vitest.ts",  // 〔CFG1〕J1 两 realm 11 写者同拍写 · J5 写者路径集合
     "tests/config-persist-failure.vitest.ts", // 〔CFG1〕J8 落盘失败恰好一条 toast
     "tests/events-stream-closed.vitest.ts", // 〔W5-UI〕会话流 closed 格 ⇒ 恰好一条 toast
     "tests/bridge/local_accounts_tests.rs", // 〔C4d〕从 `INTEGRATION` 挪来（见那一行的墓碑）
@@ -82,6 +83,8 @@ const UNIT: &[&str] = &[
     "tests/backend/relay/route_tests.rs", // 〔US1〕跨半边抠 monitor 源码那几条退役 ⇒ 只剩纯解析 ＋ 成品→决策表（SCAN → UNIT）
     "tests/backend/relay/tee_tests.rs",
     "tests/backend/relay/upstream_tests.rs",
+    "tests/backend/tap_tests.rs",         // 〔TAP〕hub 与帧转换
+    "tests/backend/writer_task_tests.rs", // 〔TAP〕写者优先序（tap 最低）
     "tests/branch-button.vitest.ts",
     "tests/branch-fold-batching.vitest.ts",
     "tests/branching.test.ts",
@@ -142,6 +145,7 @@ const UNIT: &[&str] = &[
     "tests/e2e-probe.vitest.ts",
     "tests/error-toast.vitest.ts",
     "tests/events-burst.vitest.ts",
+    "tests/events-tap.vitest.ts", // 〔TAP〕session-tap 走 subscribe（不是裸事件）
     "tests/events-yield.vitest.ts",
     "tests/file-window.vitest.ts",
     "tests/fork-ask.vitest.ts",
@@ -165,7 +169,6 @@ const UNIT: &[&str] = &[
     "tests/record-timeline.vitest.ts",
     "tests/remote-health.test.ts",
     "tests/remote-launch-run.vitest.ts",
-    "tests/remote-launch.test.ts",
     "tests/render-window.vitest.ts",
     "tests/render.vitest.ts",
     "tests/resume-presets.vitest.ts",
@@ -247,6 +250,7 @@ const UNIT: &[&str] = &[
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
 const SCAN: &[&str] = &[
+    "tests/remote-launch.test.ts", // 〔LR2〕UNIT → SCAN：五个 builder 删后剩下的格读源码 / 夹具（判别器判 SCAN）
     "tests/tasks-decode.vitest.ts", // 〔LOC1a〕读跨语言金样 tasks-list.golden.json
     "tests/bridge/remote_branch_tests.rs", // 〔LOC1a〕UNIT → SCAN：改走 `<local>` 长连接后判据读源码 / 脚本假后端（判别器判 SCAN）
     "tests/record-file-notice.vitest.ts", // 〔FW1〕D-d：活会话 jsonl 不见了 / 被截短 / 被改写 ⇒ tab 顶一行提示
@@ -277,7 +281,6 @@ const SCAN: &[&str] = &[
     "tests/backend/control/gate_tests.rs",
     "tests/backend/control/kill_tests.rs",
     "tests/backend/control/launch_tests.rs",
-    "tests/backend/control/tmux_hook_tests.rs",
     "tests/backend/dial_sftp_tests.rs",
     "tests/backend/dial_tests.rs",
     "tests/backend/files/module_boundary_guard.rs",
@@ -310,7 +313,6 @@ const SCAN: &[&str] = &[
     "tests/base-flag-contract-guard.vitest.ts",
     "tests/bridge/acct_iso_deploy_tests.rs",
     "tests/bridge/agent_dispatch_registry_tests.rs",
-    "tests/bridge/apikey_remote_tests.rs",
     "tests/bridge/arch_doc_shape_guard_tests.rs",
     "tests/bridge/asset_sync_tests.rs", // 〔AS2〕
     "tests/bridge/atomic_replace_registry_tests.rs",
@@ -435,17 +437,19 @@ const SCAN: &[&str] = &[
     "tests/ipc/chan.vitest.ts",
     "tests/ipc/commands.vitest.ts",
     "tests/launch-cli-wire.vitest.ts",
+    "tests/launch-no-shell-in-ts.vitest.ts", // 〔LR2〕`设计/90 §3` 条 1（接替 session-backend-gate）
     // 〔FE1〕铸名 / 本机 resume 编排各只有一个家（读生产段全集 ⇒ 扫描层）。
     "tests/launch-orchestration-single-home.vitest.ts",
     "tests/launch-payload-golden.vitest.ts",
-    "tests/launch-render-fallback.vitest.ts",
     "tests/launch-tmux-outer-golden.vitest.ts",
+    "tests/live-card.vitest.ts", // 〔TAP〕活卡：状态机 · 真 TabManager 三向相等 · 台架夹具（读 `tests/__fixtures__/tap-bench.json`）
     "tests/liveness-process-names-parity.vitest.ts",
     "tests/panorama/api-remote.vitest.ts",
     "tests/panorama/diagram-guards.vitest.ts",
     "tests/paste-block-guard.vitest.ts",
     "tests/paste-block.vitest.ts",
     "tests/remote-config.vitest.ts",
+    "tests/rbind-token-shape-parity.vitest.ts", // 〔LR2〕从 launch-render-fallback.vitest.ts 搬来（读 Rust `payload.rs`）
     "tests/replay-tail-keep.vitest.ts",
     "tests/scale1-render-cost.vitest.ts",
     "tests/scale2-height-truth.vitest.ts",
@@ -454,8 +458,6 @@ const SCAN: &[&str] = &[
     "tests/scale5-replay-queue-depth.vitest.ts",
     "tests/scale6-memory-ledger.vitest.ts",
     "tests/scanning-guard-registry.vitest.ts",
-    "tests/session-backend-gate.vitest.ts",
-    "tests/session-backend.test.ts",
     "tests/session-reads.vitest.ts", // 〔C4b〕读跨语言金样（`tests/__fixtures__/session-reads.golden.json`）
     "tests/tmux-control.vitest.ts", // 〔C4e〕读跨语言金样（`tests/__fixtures__/tmux-control.golden.json`）
     "tests/cc-bus-control.vitest.ts", // 〔C4e 批 3b〕读跨语言金样（`tests/__fixtures__/cc-bus-control.golden.json`）
@@ -471,7 +473,6 @@ const SCAN: &[&str] = &[
     "tests/settings/remote-section.vitest.ts",
     "tests/settings/settings-source-markdown.vitest.ts",
     "tests/shell-quote-deceptive-parity.vitest.ts",
-    "tests/shell-quote-posix-parity.vitest.ts",
     "tests/tab-session-state.vitest.ts",
     "tests/tabs-copy-terms.vitest.ts",
     "tests/tabs-split-graph.vitest.ts",
@@ -491,6 +492,8 @@ const SCAN: &[&str] = &[
 
 /// 集成层：碰 OS（起进程 · 套接字 · 真文件系统写 · 临时目录）。
 const INTEGRATION: &[&str] = &[
+    "tests/backend/control/tmux_hook_tests.rs", // 〔HX2〕读真 `/proc` 的那一条进来之后判别器判集成（SCAN → INTEGRATION）
+    "tests/backend/platform/lock_tests.rs",     // 〔HX2〕目录锁：真目录、真线程
     "tests/backend/own_dir_tests.rs", // 〔HX1 续〕O1–O3 自家目录一律 0700、建目录调用点两向登记
     "tests/bridge/config_tests.rs",   // 〔CFG1〕J2/J3 12 线程 × 20 轮并发补丁写 · 补丁语义
     "tests/backend/control/overwrite_atomic_tests.rs", // 〔HX1〕W1 ulimit -f 下子进程写到一半被 SIGXFSZ 杀，目标仍是旧整份
@@ -677,6 +680,7 @@ const E2E_SUPPORT: &[&str] = &[
     "tests/e2e/fake-backend.sh",
     "tests/e2e/fake-claude",
     "tests/e2e/gen-idle-tmux.sh",
+    "tests/e2e/launch-render-emit.sh", // 〔LR2〕生产 Rust 渲染器给 e2e 的出口（`launch-render-driver.ts` 调它）
     "tests/e2e/local-backend-container/build-image.sh",
     "tests/e2e/local-backend-container/guard-run-netns.sh",
     "tests/e2e/local-backend-container/rig.sh",
@@ -729,6 +733,11 @@ enum Trigger {
 /// 真机层：逐条登记（`(文件, 测试名 / TS 那一处的条件, 触发者)`）。
 /// 人群 = 两棵 Rust 测试树里每一条 `#[ignore]` ＋ TS 测试里每一处 `skipIf` / `runIf` / `.skip(`。
 const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
+    (
+        "tests/backend/control/tmux_hook_tests.rs",
+        "hx2_real_tmux_reading_on_a_private_socket",
+        Trigger::Manual("〔HX2〕读数不是判据：真 tmux 私有 socket（`-L`）上装一趟 hook 看段内格位；跑法住它自己的头注"),
+    ),
     (
         "tests/backend/control/overwrite_atomic_tests.rs",
         "w1_child",
@@ -823,6 +832,13 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "tests/bridge/filewin/shell_tests.rs",
         "xvfb_worker_opens_with_no_x_server_at_all",
         Trigger::Filter { by: "tests/bridge/filewin/shell_tests.rs", needle: "filewin::shell::tests::xvfb_worker_opens_with_no_x_server_at_all" },
+    ),
+    (
+        // 〔LR2〕生产命令 `render_launch_payload` 给 e2e 的数据出口（`resume-suite` · `resume-backend-frames` ·
+        //   `tmux-target-acceptance` 三套经这个驱动取「app 真正会跑的那一串」）。
+        "tests/bridge/backend/control/launch_tmux_outer_parity_tests.rs",
+        "emit_launch_render_for_e2e",
+        Trigger::Filter { by: "tests/e2e/launch-render-emit.sh", needle: "emit_launch_render_for_e2e" },
     ),
     (
         "tests/bridge/history_tests.rs",
@@ -1821,13 +1837,26 @@ fn root_anchored_literals(rel: &str, raw: &str) -> Vec<(usize, String, String)> 
     out
 }
 
-/// T2：扫描层每一处以仓内根为基的路径字面量都指得到盘上东西。
+/// 〔主会话 09-25 · 合并 LR2〕**按设计必须不在**的路径字面量：判据用它钉「这个文件删了、长回来就红」（`!root.join(..).is_file()`），
+/// 下面那条「字面量必须解析得到」对它们反着核 —— 在表里的必须**不存在**，存在了就红；表里的行在盘上用不到也红（两向）。
+/// 加一行 = 显式声明「这一处是反向量法」，不是给路径断了的扫描开后门。
+const ABSENT_BY_DESIGN: &[(&str, &str)] = &[
+    // LR2：TS 座 `session-backend.ts` 按 `设计/00 §2.5 ④` 删了；`doc_claim_registry_tests.rs` 两处量「它必须不在」。
+    (
+        "tests/bridge/doc_claim_registry_tests.rs",
+        "src/session-backend.ts",
+    ),
+];
+
+/// T2：扫描层每一处以仓内根为基的路径字面量都指得到盘上东西（`ABSENT_BY_DESIGN` 里的反着核）。
 #[test]
 fn scan_tier_every_root_anchored_path_literal_resolves() {
     let root = repo();
     let rust = rust_test_files(&root);
     let mut bad = reach_violations(&root, SCAN);
     let mut checked = 0usize;
+    let mut absent_seen: std::collections::BTreeSet<(&str, String)> =
+        std::collections::BTreeSet::new();
     // 人群：三层里**每一份** Rust 测试文件（一份既扫源码又起进程的文件按层归集成，但它的扫描照样会扫空集）。
     for f in UNIT
         .iter()
@@ -1839,12 +1868,29 @@ fn scan_tier_every_root_anchored_path_literal_resolves() {
         for (line, func, lit) in root_anchored_literals(f, raw) {
             let base = root_fn_base(f, &func).expect("上面筛过");
             checked += 1;
+            if ABSENT_BY_DESIGN
+                .iter()
+                .any(|(af, al)| af == f && *al == lit)
+            {
+                absent_seen.insert((*f, lit.clone()));
+                if root.join(base).join(&lit).exists() {
+                    bad.push(format!(
+                        "  `{f}` 第 {line} 行 `{lit}` 登记在 `ABSENT_BY_DESIGN`（按设计必须不在），可它在盘上 —— 删掉的东西长回来了"
+                    ));
+                }
+                continue;
+            }
             if !root.join(base).join(&lit).exists() {
                 bad.push(format!(
                     "  `{f}` 第 {line} 行 `{func}().join(\"{lit}\")` ⇒ `{base}/{lit}` 盘上不存在 —— \
                      这条扫描此刻在扫空集"
                 ));
             }
+        }
+    }
+    for (af, al) in ABSENT_BY_DESIGN {
+        if !absent_seen.contains(&(*af, (*al).to_string())) {
+            bad.push(format!("  `ABSENT_BY_DESIGN` 里 `{af}` → `{al}` 这一行在盘上没有对应的字面量 —— 表在腐烂，删掉这一行"));
         }
     }
     // 抽取器自检：一处都没抽到 ⇒ 抽取器在真文件上瞎了（合成夹具那条管不到真文件的写法漂移）⇒ 下面的零命中不携带信息。
