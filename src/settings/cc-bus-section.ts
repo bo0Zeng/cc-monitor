@@ -111,7 +111,7 @@ export class CcBusSection {
     row.appendChild(bcast);
     const bcastBtn = document.createElement("button");
     bcastBtn.type = "button";
-    bcastBtn.className = "settings-btn settings-btn-secondary cc-bus-broadcast";
+    bcastBtn.className = "settings-btn cc-bus-broadcast";
     bcastBtn.textContent = copyText("ccBus.build.broadcast");
     bcastBtn.addEventListener("click", () => void this.doBroadcast());
     this.broadcastBtn = bcastBtn;
@@ -119,7 +119,7 @@ export class CcBusSection {
 
     this.readBtn = document.createElement("button");
     this.readBtn.type = "button";
-    this.readBtn.className = "settings-btn settings-btn-secondary cc-bus-read";
+    this.readBtn.className = "settings-btn cc-bus-read";
     this.readBtn.textContent = copyText("ccBus.build.read");
     this.readBtn.addEventListener("click", () => void this.reload());
     row.appendChild(this.readBtn);
@@ -133,7 +133,7 @@ export class CcBusSection {
     //   与 `cc-kill` 那种不可撤销的破坏性动作不是一档 —— 那里两步是必需的，这里不是。
     const deployBtn = document.createElement("button");
     deployBtn.type = "button";
-    deployBtn.className = "settings-btn settings-btn-secondary cc-bus-deploy";
+    deployBtn.className = "settings-btn cc-bus-deploy";
     deployBtn.textContent = copyText("ccBus.build.install");
     deployBtn.title =
       copyText("ccBus.build.installHint");
@@ -285,7 +285,7 @@ export class CcBusSection {
 
     this.spawnBtn = document.createElement("button");
     this.spawnBtn.type = "button";
-    this.spawnBtn.className = "settings-btn settings-btn-secondary cc-bus-spawn-go";
+    this.spawnBtn.className = "settings-btn cc-bus-spawn-go";
     this.spawnBtn.textContent = copyText("ccBus.spawn.go");
     this.spawnBtn.addEventListener("click", () => void this.doSpawn());
     box.appendChild(this.spawnBtn);
@@ -504,7 +504,7 @@ export class CcBusSection {
 
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "settings-btn settings-btn-secondary cc-bus-check";
+    btn.className = "settings-btn cc-bus-check";
     btn.textContent = copyText("ccBus.row.check");
     btn.addEventListener("click", () => void this.checkOne(a.id, stateEl, btn));
     row.appendChild(btn);
@@ -516,7 +516,7 @@ export class CcBusSection {
 
     const inboxBtn = document.createElement("button");
     inboxBtn.type = "button";
-    inboxBtn.className = "settings-btn settings-btn-secondary cc-bus-inbox";
+    inboxBtn.className = "settings-btn cc-bus-inbox";
     inboxBtn.textContent = copyText("ccBus.row.inbox");
     inboxBtn.addEventListener("click", () => void this.loadInbox(a.id, detail, inboxBtn));
     row.appendChild(inboxBtn);
@@ -529,7 +529,7 @@ export class CcBusSection {
 
     const sendBtn = document.createElement("button");
     sendBtn.type = "button";
-    sendBtn.className = "settings-btn settings-btn-secondary cc-bus-send";
+    sendBtn.className = "settings-btn cc-bus-send";
     sendBtn.textContent = copyText("ccBus.row.send");
     sendBtn.addEventListener("click", () => void this.sendTo(a.id, msg, detail, sendBtn));
     row.appendChild(sendBtn);
@@ -538,7 +538,7 @@ export class CcBusSection {
     // ⇒ 两步确认，抄 spawn 那条先例；第二步的文案**逐字带上 id**（回显真名，别让人杀错）。
     const killBtn = document.createElement("button");
     killBtn.type = "button";
-    killBtn.className = "settings-btn settings-btn-secondary cc-bus-kill";
+    killBtn.className = "settings-btn cc-bus-kill";
     killBtn.textContent = copyText("ccBus.row.kill");
     killBtn.title = copyText("ccBus.row.killHint");
     killBtn.addEventListener("click", () => void this.killOne(a.id, detail, killBtn));

@@ -216,7 +216,7 @@ export class McpSection {
     this.datalist.id = "mcp-project-dirs";
     const readBtn = document.createElement("button");
     readBtn.type = "button";
-    readBtn.className = "settings-btn settings-btn-secondary";
+    readBtn.className = "settings-btn";
     readBtn.textContent = copyText("mcp.build.read");
     readBtn.addEventListener("click", () => void this.refresh());
     this.dirInput.addEventListener("keydown", (e) => {
@@ -279,7 +279,7 @@ export class McpSection {
       this.datalist.appendChild(opt);
       const chip = document.createElement("button");
       chip.type = "button";
-      chip.className = "settings-btn settings-btn-secondary mcp-dir-chip";
+      chip.className = "settings-btn mcp-dir-chip";
       chip.textContent = d;
       chip.title = d; // 路径可能很长（实测最长 111 字符），悬停看全
       chip.addEventListener("click", () => {
@@ -421,7 +421,7 @@ export class McpSection {
       line.textContent = copyText("mcp.remoteProject.failed", { machine: origin, e: String(e) });
       const retry = document.createElement("button");
       retry.type = "button";
-      retry.className = "settings-btn settings-btn-secondary";
+      retry.className = "settings-btn";
       retry.textContent = copyText("mcp.reloadRemoteProject.retry");
       retry.addEventListener(
         "click",
@@ -507,7 +507,7 @@ export class McpSection {
     box.appendChild(line);
     const retry = document.createElement("button");
     retry.type = "button";
-    retry.className = "settings-btn settings-btn-secondary";
+    retry.className = "settings-btn";
     retry.textContent = copyText("mcp.renderRemoteError.retry");
     retry.addEventListener("click", () => void this.reloadRemote(origin));
     box.appendChild(retry);
@@ -526,7 +526,7 @@ export class McpSection {
     const refresh = document.createElement("button");
     refresh.type = "button";
     refresh.className =
-      "settings-btn settings-btn-secondary mcp-remote-refresh";
+      "settings-btn mcp-remote-refresh";
     refresh.textContent = copyText("mcp.remote.reread");
     refresh.addEventListener("click", () => void this.reloadRemote(origin));
     head.append(note, refresh);
@@ -602,7 +602,7 @@ export class McpSection {
 
       const jsonBtn = document.createElement("button");
       jsonBtn.type = "button";
-      jsonBtn.className = "settings-btn settings-btn-secondary mcp-json-toggle";
+      jsonBtn.className = "settings-btn mcp-json-toggle";
       jsonBtn.textContent = "JSON";
       jsonBtn.title = copyText("mcp.scope.detailHint");
       jsonBtn.addEventListener("click", () => {
@@ -619,7 +619,7 @@ export class McpSection {
       if (writable) {
         const edit = document.createElement("button");
         edit.type = "button";
-        edit.className = "settings-btn settings-btn-secondary mcp-edit";
+        edit.className = "settings-btn mcp-edit";
         edit.textContent = copyText("mcp.scope.edit");
         edit.title = copyText("mcp.scope.editHint");
         edit.addEventListener("click", () => this.beginEdit(e.name, e.server));
@@ -656,7 +656,7 @@ export class McpSection {
     banner.appendChild(bLabel);
     const cancelBtn = document.createElement("button");
     cancelBtn.type = "button";
-    cancelBtn.className = "settings-btn settings-btn-secondary";
+    cancelBtn.className = "settings-btn";
     cancelBtn.textContent = copyText("mcp.form.cancelEdit");
     cancelBtn.addEventListener("click", () => this.cancelEdit());
     banner.appendChild(cancelBtn);

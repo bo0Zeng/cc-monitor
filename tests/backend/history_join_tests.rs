@@ -195,7 +195,9 @@ impl Remote for Far {
         &'a self,
         _dial: &'a Value,
         command: String,
+        stdin: Option<String>,
     ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
+        assert_eq!(stdin, None, "历史跨机那几问全在 argv 里，不写 stdin");
         self.seen.lock().unwrap().push(command.clone());
         let out = if command.contains("--list-projects") {
             projects_stdout()

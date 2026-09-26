@@ -917,6 +917,267 @@ fn every_declared_arg_is_really_read_by_the_parser() {
     );
 }
 
+// ── 〔W5-AUX · 96 #13〕`args` 的另一个方向：**解析器读的键，都在声明里** ──────────────────
+//
+// 要求住址：`设计/96 §2.9`「仍开着」逐字「能力声明里的 `args` 没有东西拿它去对真解析器（`fields` 那一侧有）」。
+// 上面那条差分买的是「**声明了的都真被读**」（鬼影那一向）；本条补「**真被读的都声明了**」（漏登那一向）——
+// 解析器偷偷多认一个键而声明与 `IPC-PROTOCOL.md §10` 都没有它，调用方就永远不知道那个开关存在。
+// 两条合起来才是「`args` == 解析器真读的键」的两向相等。
+//
+// # 怎么取「解析器读的键」：从 `files/mod.rs` 的**生产段**现抽，异源于声明表
+//
+// 分派 `answer` 的每一臂 `"<能力>" => <函数>(args)` 定出入口；从入口起，沿「把 `args` 原样递下去的调用」
+// （`path_arg(args)` / `limit_of(args)` 那一族，只认本文件里定义了的函数）走完，收每个函数体里
+// `args.get("<键>")` 与 `args["<键>"]` 的字面量。函数体按大括号配平，字符串与字符字面量里的括号跳过。
+//
+// # ⚠ 买不到（如实）
+//
+// - 只认 `args.get("…")` / `args["…"]` 两种读法、只认参数就叫 `args`、只认原样递 `args` 的调用；
+//   改成 `serde_json::from_value::<某结构>(args)` 之类的读法它看不见 —— 那一形今天零处（下面「读法只有这两种」那一格在数）。
+// - 只看 `files/mod.rs` 一份：解析今天全在这里（其余三份只收已经解析好的结构，如 `index::FindArgs`）。
+
+/// 一份生产段里 `fn <名>(` → 函数体（大括号配平；跳过字符串 / 原始字符串 / 字符字面量）。
+fn fn_bodies(prod: &str) -> std::collections::BTreeMap<String, String> {
+    let b = prod.as_bytes();
+    let mut out = std::collections::BTreeMap::new();
+    let mut search = 0;
+    while let Some(off) = prod[search..].find("fn ") {
+        let at = search + off;
+        search = at + 3;
+        // 前一个字符得是分词边界（别把 `xfn ` 认成定义）。
+        if at > 0 && (b[at - 1].is_ascii_alphanumeric() || b[at - 1] == b'_') {
+            continue;
+        }
+        let name: String = prod[at + 3..]
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if name.is_empty() {
+            continue;
+        }
+        let Some(open_rel) = prod[at..].find('{') else {
+            break;
+        };
+        // 签名里遇到 `;`（trait 里的声明 / 外部函数）⇒ 没有体。
+        if prod[at..at + open_rel].contains(';') {
+            continue;
+        }
+        let open = at + open_rel;
+        let mut depth = 0i32;
+        let mut i = open;
+        let mut end = prod.len();
+        while i < b.len() {
+            match b[i] {
+                b'"' => {
+                    // 原始字符串 `r#"…"#`：前面是 `r` 或 `r#…`。
+                    let mut hashes = 0;
+                    let mut k = i;
+                    while k > 0 && b[k - 1] == b'#' {
+                        hashes += 1;
+                        k -= 1;
+                    }
+                    let raw = k > 0 && b[k - 1] == b'r';
+                    i += 1;
+                    if raw {
+                        let close = format!("\"{}", "#".repeat(hashes));
+                        i = prod[i..]
+                            .find(&close)
+                            .map(|x| i + x + close.len())
+                            .unwrap_or(b.len());
+                    } else {
+                        while i < b.len() && b[i] != b'"' {
+                            if b[i] == b'\\' {
+                                i += 1;
+                            }
+                            i += 1;
+                        }
+                        i += 1;
+                    }
+                    continue;
+                }
+                b'\'' => {
+                    // 字符字面量 `'x'` / `'\n'`；否则是生命周期，照常往下走。
+                    if i + 2 < b.len() && b[i + 1] != b'\\' && b[i + 2] == b'\'' {
+                        i += 3;
+                        continue;
+                    }
+                    if i + 3 < b.len() && b[i + 1] == b'\\' {
+                        if let Some(x) = prod[i + 2..].find('\'') {
+                            i = i + 2 + x + 1;
+                            continue;
+                        }
+                    }
+                }
+                b'{' => depth += 1,
+                b'}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = i + 1;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        out.entry(name)
+            .or_insert_with(|| prod[open..end].to_string());
+        search = end.min(prod.len()).max(search);
+    }
+    out
+}
+
+/// 从入口函数起，沿「原样递 `args`」的调用收 `args.get("…")` / `args["…"]` 的键。纯。
+fn keys_read_from(
+    entry: &str,
+    bodies: &std::collections::BTreeMap<String, String>,
+) -> std::collections::BTreeSet<String> {
+    let mut keys = std::collections::BTreeSet::new();
+    let mut seen = std::collections::BTreeSet::new();
+    let mut todo = vec![entry.to_string()];
+    while let Some(f) = todo.pop() {
+        if !seen.insert(f.clone()) {
+            continue;
+        }
+        let Some(body) = bodies.get(&f) else { continue };
+        // 空白全挤掉再找：`args\n    .get("…")` 这种 rustfmt 折行（`answer_find` 的 `ignore_ascii_case` 就是这样写的）照样认得出。
+        let body: String = body.chars().filter(|c| !c.is_whitespace()).collect();
+        for pat in ["args.get(\"", "args[\""] {
+            let mut rest = body.as_str();
+            while let Some(p) = rest.find(pat) {
+                let tail = &rest[p + pat.len()..];
+                let key: String = tail.chars().take_while(|c| *c != '"').collect();
+                if !key.is_empty() {
+                    keys.insert(key);
+                }
+                rest = &rest[p + pat.len()..];
+            }
+        }
+        for name in bodies.keys() {
+            for call in [
+                format!("{name}(args)"),
+                format!("{name}(args,"),
+                format!("{name}(&args"),
+            ] {
+                if body.contains(&call) {
+                    todo.push(name.clone());
+                }
+            }
+        }
+    }
+    keys
+}
+
+/// `answer` 的分派臂：能力名 → 入口函数名。纯。
+fn answer_arms(
+    bodies: &std::collections::BTreeMap<String, String>,
+) -> std::collections::BTreeMap<String, String> {
+    let body = bodies
+        .get("answer")
+        .expect("`files/mod.rs` 生产段里找不到 `fn answer` —— 分派改名了，本条跟着改");
+    let mut out = std::collections::BTreeMap::new();
+    for line in body.lines() {
+        let t = line.trim();
+        let Some(rest) = t.strip_prefix('"') else {
+            continue;
+        };
+        let Some(q) = rest.find('"') else { continue };
+        let cap = &rest[..q];
+        let Some(arrow) = rest[q..].find("=>") else {
+            continue;
+        };
+        let callee: String = rest[q + arrow + 2..]
+            .trim()
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if cap.starts_with("files.") && !callee.is_empty() {
+            out.insert(cap.to_string(), callee);
+        }
+    }
+    out
+}
+
+fn files_mod_prod() -> String {
+    let path = crate::guard_support::src_root()
+        .join("files")
+        .join("mod.rs");
+    guard_core::production_code(&std::fs::read_to_string(&path).expect("读 files/mod.rs"))
+}
+
+#[test]
+fn every_key_the_parser_reads_is_a_declared_arg() {
+    let prod = files_mod_prod();
+    let bodies = fn_bodies(&prod);
+    let arms = answer_arms(&bodies);
+    // 分派臂 == 声明表（两向；本条的人群就是这张表，塌了下面的全称恒真）。
+    let caps: std::collections::BTreeSet<&str> = CAPABILITIES.iter().map(|c| c.name).collect();
+    let armed: std::collections::BTreeSet<&str> = arms.keys().map(String::as_str).collect();
+    assert_eq!(
+        armed, caps,
+        "`answer` 的分派臂与 `CAPABILITIES` 对不上 —— 抽臂坏了，或者真漏了一条"
+    );
+    for cap in CAPABILITIES {
+        let read = keys_read_from(&arms[cap.name], &bodies);
+        let declared: std::collections::BTreeSet<String> =
+            cap.args.iter().map(|s| s.to_string()).collect();
+        assert_eq!(
+            read, declared,
+            "\n能力 `{}` 的解析器（`{}` 起、沿原样递 `args` 的调用）**真读的键**与它声明的 `args` 不相等。\n\
+             读了而没声明 ⇒ 🔴 一个调用方永远不知道的开关（`IPC-PROTOCOL.md §10` 是冻结的线上契约，读者在仓外）——\n\
+             把它补进 `args` 与 `§10`（并补上面那条差分的探针），或者别读它。\n\
+             声明了而没读 ⇒ 上面那条差分也会红（`files.ls` 的 `ignore_ascii_case` 鬼影那一形）。",
+            cap.name, arms[cap.name]
+        );
+    }
+    // 读法只有两种：出现第三种（反序列化成结构体）本条就看不见了，先在这里出声。
+    for (name, body) in &bodies {
+        assert!(
+            !(body.contains("from_value") && body.contains("args")),
+            "`files/mod.rs::{name}` 把 `args` 交给 `from_value` 反序列化 —— 本条只认 `args.get(\"…\")` / `args[\"…\"]`，\
+             那一形的键它收不到（会把漏登判成干净）。改本条的取法，别让它悄悄变瞎。"
+        );
+    }
+}
+
+/// 🔴 正反两控：取法在合成源码上认得出「经 helper 递下去的读」，也不把别的值上的 `.get` 算进来。
+#[test]
+fn the_parser_key_ruler_sees_a_synthetic_read_and_ignores_other_values() {
+    let src = r#"
+fn helper(args: &serde_json::Value) -> u32 { args.get("depth").map(|_| 1).unwrap_or(0) }
+fn answer_x(args: &serde_json::Value) -> u32 {
+    let other = serde_json::json!({"ghost": 1});
+    let _ = other.get("ghost");
+    let s = format!("{{literal braces}} {}", 1);
+    let c = '{';
+    helper(args) + args["path"].as_u64().unwrap_or(0) as u32 + s.len() as u32 + c as u32
+}
+pub fn answer(name: &str, args: &serde_json::Value) -> u32 {
+    match name {
+        "files.x" => answer_x(args),
+        _ => 0,
+    }
+}
+"#;
+    let bodies = fn_bodies(src);
+    assert_eq!(
+        answer_arms(&bodies).get("files.x").map(String::as_str),
+        Some("answer_x")
+    );
+    let got = keys_read_from("answer_x", &bodies);
+    let want: std::collections::BTreeSet<String> =
+        ["depth", "path"].iter().map(|s| s.to_string()).collect();
+    assert_eq!(
+        got, want,
+        "经 helper 递下去的 `depth` 与直接下标的 `path` 要收到；别的值上的 `.get(\"ghost\")` 不许收（字符串 / 字符里的大括号不许把函数体配歪）"
+    );
+    // 活样本锚：`files.find` 真读 `ignore_ascii_case`，`files.ls` 不读（当年那个鬼影的两面）。
+    let live = fn_bodies(&files_mod_prod());
+    let arms = answer_arms(&live);
+    assert!(keys_read_from(&arms["files.find"], &live).contains("ignore_ascii_case"));
+    assert!(!keys_read_from(&arms["files.ls"], &live).contains("ignore_ascii_case"));
+}
+
 // ══════════════════════ 边界② 跨 target ══════════════════════
 
 /// 🔴 **判的是「能力在不在」，不是「新鲜度一样」**（`设计/96 §2.9` 边界② 逐字）。

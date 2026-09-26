@@ -291,8 +291,9 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return e;
 }
 
+// 〔W5-AUX · AR1 拍板 3〕`variant` 空串 = 默认那一种按钮（原先挂一个从没有过规则的 `settings-btn-secondary`，已摘）。
 function button(label: string, variant: string, onClick: () => void): HTMLButtonElement {
-  const b = el("button", `settings-btn ${variant}`, label);
+  const b = el("button", variant ? `settings-btn ${variant}` : "settings-btn", label);
   b.type = "button";
   b.addEventListener("click", onClick);
   return b;
@@ -394,8 +395,8 @@ export function buildAliasManager(opts: {
 
   const formRow = el("div", "settings-row settings-row-actions");
   const saveBtn = button(copyText("machineAliases.form.save"), "settings-btn-primary", () => onSave());
-  const clearBtn = button(copyText("machineAliases.form.clear"), "settings-btn-secondary", () => fillForm(emptyForm(), -1));
-  const perAcctBtn = button(copyText("machineAliases.form.perAccount"), "settings-btn-secondary", () => void onPerAccount());
+  const clearBtn = button(copyText("machineAliases.form.clear"), "", () => fillForm(emptyForm(), -1));
+  const perAcctBtn = button(copyText("machineAliases.form.perAccount"), "", () => void onPerAccount());
   perAcctBtn.title = copyText("machineAliases.form.perAccountHint");
   formRow.append(saveBtn, clearBtn, perAcctBtn);
   wrap.append(grid, tmuxHint, adv, formRow);
@@ -433,7 +434,7 @@ export function buildAliasManager(opts: {
   const otherIn = el("input", "settings-input settings-input-wide ccm-rc-other");
   otherIn.type = "text";
   otherIn.placeholder = copyText("machineAliases.rc.other");
-  const otherBtn = button(copyText("machineAliases.rc.useOther"), "settings-btn-secondary", () => void onOther());
+  const otherBtn = button(copyText("machineAliases.rc.useOther"), "", () => void onOther());
   const otherErr = el("div", "settings-hint");
   otherRow.append(otherIn, otherBtn, otherErr);
   const writeBtn = button(copyText("machineAliases.rc.write"), "settings-btn-primary", () => void onWrite());
@@ -470,23 +471,23 @@ export function buildAliasManager(opts: {
   withCcRow.hidden = shell !== "powershell";
   const rcWarn = el("div", "");
   const rcButtons = el("div", "settings-cc-profile-buttons");
-  const installBtn = button(copyText("machineAliases.rc.install"), "settings-btn-secondary", () =>
+  const installBtn = button(copyText("machineAliases.rc.install"), "", () =>
     void runRc("install", (path) => commands.aliases_block_install({ rcPath: path, withCc: withCc.checked })),
   );
   installBtn.title = copy.blockInstallTitle;
   const uninstallBtn = document.createElement("button");
   uninstallBtn.type = "button";
-  uninstallBtn.className = "settings-btn settings-btn-secondary";
+  uninstallBtn.className = "settings-btn";
   uninstallBtn.textContent = copyText("machineAliases.rc.uninstall");
   uninstallBtn.addEventListener("click", () =>
     void runRc("remove", (path) => commands.aliases_block_remove({ rcPath: path })),
   );
   uninstallBtn.title = copyText("machineAliases.rc.uninstallHint");
-  const previewBtn = button(copyText("machineAliases.rc.preview"), "settings-btn-secondary", () => void onPreview());
+  const previewBtn = button(copyText("machineAliases.rc.preview"), "", () => void onPreview());
   previewBtn.title = copyText("machineAliases.rc.previewHint");
-  const openBtn = button(copyText("machineAliases.rc.open"), "settings-btn-secondary", () => void onOpenRc());
+  const openBtn = button(copyText("machineAliases.rc.open"), "", () => void onOpenRc());
   openBtn.title = copyText("machineAliases.rc.openHint");
-  const rescanBtn = button(copyText("machineAliases.rc.rescan"), "settings-btn-secondary", () => void readBack(true));
+  const rescanBtn = button(copyText("machineAliases.rc.rescan"), "", () => void readBack(true));
   rescanBtn.title = copyText("machineAliases.rc.rescanHint");
   rcButtons.append(installBtn, uninstallBtn, previewBtn, openBtn, rescanBtn);
   const rcLegacy = document.createElement("pre");
@@ -587,15 +588,15 @@ export function buildAliasManager(opts: {
       const previewOut = document.createElement("pre");
       previewOut.dataset.role = "alias-preview";
       row.append(
-        button(copyText("machineAliases.aliasPreview.button"), "settings-btn-secondary", () => {
+        button(copyText("machineAliases.aliasPreview.button"), "", () => {
           if (!previewOut.isConnected) row.after(previewOut);
           previewOut.textContent = copyText("machineAliases.aliasPreview.asking");
           void previewAlias(a).then((t) => {
             previewOut.textContent = t;
           });
         }),
-        button(copyText("machineAliases.list.edit"), "settings-btn-secondary", () => fillForm(aliasToForm(a), i)),
-        button(copyText("machineAliases.list.delete"), "settings-btn-secondary", () => {
+        button(copyText("machineAliases.list.edit"), "", () => fillForm(aliasToForm(a), i)),
+        button(copyText("machineAliases.list.delete"), "", () => {
           list = list.filter((_, j) => j !== i);
           if (editing === i) fillForm(emptyForm(), -1);
           void changed();
@@ -978,12 +979,12 @@ export function buildUserPathBlock(): HTMLElement {
   addBtn.textContent = copyText("machineAliases.userPath.add");
   const delBtn = document.createElement("button");
   delBtn.type = "button";
-  delBtn.className = "settings-btn settings-btn-secondary ccm-user-path-remove";
+  delBtn.className = "settings-btn ccm-user-path-remove";
   delBtn.textContent = copyText("machineAliases.userPath.remove");
   delBtn.title = copyText("machineAliases.userPath.removeHint");
   const refreshBtn = document.createElement("button");
   refreshBtn.type = "button";
-  refreshBtn.className = "settings-btn settings-btn-secondary ccm-user-path-refresh";
+  refreshBtn.className = "settings-btn ccm-user-path-refresh";
   refreshBtn.textContent = copyText("machineAliases.userPath.refresh");
   refreshBtn.title = copyText("machineAliases.userPath.refreshHint");
   btnRow.append(addBtn, delBtn, refreshBtn);
@@ -1204,7 +1205,7 @@ function showPreviewModal(titleText: string, code: string): void {
   modal.appendChild(pre);
   const closeBtn = document.createElement("button");
   closeBtn.type = "button";
-  closeBtn.className = "settings-btn settings-btn-secondary";
+  closeBtn.className = "settings-btn";
   closeBtn.textContent = copyText("machineAliases.preview.close");
   closeBtn.addEventListener("click", () => backdrop.remove());
   const buttons = document.createElement("div");

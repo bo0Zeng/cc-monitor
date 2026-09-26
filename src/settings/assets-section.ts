@@ -280,7 +280,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: s
 }
 
 function button(text: string, onClick: () => void): HTMLButtonElement {
-  const b = el("button", "settings-btn settings-btn-secondary", text);
+  const b = el("button", "settings-btn", text);
   b.type = "button";
   b.addEventListener("click", onClick);
   return b;

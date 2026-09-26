@@ -250,7 +250,7 @@ export class DiagnosticsSection {
     backendRow.appendChild(this.backendSpan);
     this.openBackendBtn = document.createElement("button");
     this.openBackendBtn.type = "button";
-    this.openBackendBtn.className = "settings-btn settings-btn-secondary";
+    this.openBackendBtn.className = "settings-btn";
     this.openBackendBtn.textContent = copyText("diagnostics.backend.open");
     this.openBackendBtn.disabled = true;
     this.openBackendBtn.addEventListener("click", () =>
@@ -263,7 +263,7 @@ export class DiagnosticsSection {
     btnRow.className = "settings-cc-profile-buttons";
     this.openFileBtn = document.createElement("button");
     this.openFileBtn.type = "button";
-    this.openFileBtn.className = "settings-btn settings-btn-secondary";
+    this.openFileBtn.className = "settings-btn";
     this.openFileBtn.textContent = copyText("diagnostics.build.openFile");
     // 步 4·E（`70 §1.3 E`）：这三个都会走一次 IPC，期间按住对应的按钮。
     this.openFileBtn.addEventListener("click", () =>
@@ -273,7 +273,7 @@ export class DiagnosticsSection {
 
     const openDirBtn = document.createElement("button");
     openDirBtn.type = "button";
-    openDirBtn.className = "settings-btn settings-btn-secondary";
+    openDirBtn.className = "settings-btn";
     openDirBtn.textContent = copyText("diagnostics.build.openDir");
     openDirBtn.addEventListener("click", () =>
       void withPending(openDirBtn, copyText("diagnostics.build.opening"), () => this.openDir()),
@@ -282,7 +282,7 @@ export class DiagnosticsSection {
 
     const refreshBtn = document.createElement("button");
     refreshBtn.type = "button";
-    refreshBtn.className = "settings-btn settings-btn-secondary";
+    refreshBtn.className = "settings-btn";
     refreshBtn.textContent = copyText("diagnostics.build.refresh");
     refreshBtn.title = copyText("diagnostics.build.refreshHint");
     refreshBtn.addEventListener("click", () =>

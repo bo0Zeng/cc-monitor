@@ -257,7 +257,9 @@ export class DataSection {
 
   private buildItemRow(info: DataPathInfo): HTMLElement {
     const li = document.createElement("li");
-    li.className = `settings-data-item kind-${info.kind} ${info.exists ? "exists" : "absent"}`;
+    // 〔W5-AUX · `设计/41 §7`〕条目种类是有限枚举 ⇒ 走 `data-kind`（全仓 `kind` 这个状态名只用这一种载体），不再拼 `kind-<值>` 类名。
+    li.className = `settings-data-item ${info.exists ? "exists" : "absent"}`;
+    li.dataset.kind = info.kind;
 
     const label = document.createElement("span");
     label.className = "settings-data-item-label";

@@ -29,9 +29,11 @@
 //! 4. **档分得对不对判不了** —— 只判「`why` 的措辞与档不自相矛盾」（判准住 `lib.rs::GapKind` 头注）。
 //! 5. **`CCM_TMUX_CARRIED` 是一条手写的机制声明**：往 `ccm-launcher` 加一条靠 tmux 活着的新能力
 //!    却没登记进它 ⇒ 那条能力在 Windows 上被现推成「做得到」，本条看不见。
-//!    帧面**同形**：一条新命令真起 `tmux` 却没在 `codes` 里声明 `no_tmux`，本条同样看不见 ——
-//!    今天没有判据拿 `codes` 去对「谁真 `Command::new("tmux")`」（现打：`main_fourth_face_tests`
-//!    只判「声明了的码在 `codes` 里」，不判反方向）。
+//!    帧面**同形**：一条新命令真起 `tmux` 却没在 `codes` 里声明 `no_tmux`，本条同样看不见。
+//!    〔W5-AUX · 96 #7〕这两形的反方向判据已补在本文件末尾（本条仍只读声明，那两条从实现那一侧对声明）：
+//!    [`every_frame_command_that_can_reach_tmux_declares_no_tmux`]（文件级可达 ＋ 登记「tmux 可选」）·
+//!    [`every_ccm_capability_that_rides_tmux_is_declared_tmux_carried`]（真解析器 ＋ 真计划现推 ＋ 登记例外）。
+//!    它们自己的「买不到」写在那一段的段首。
 
 use super::super::{
     capabilities_on, parity_faces, tmux_platform_of, unix_mode_bits_on, GapKind, Target,
@@ -508,5 +510,584 @@ fn every_target_has_the_same_capabilities_except_the_registered_gaps() {
          ⇒ 已经做到了 ⇒ 删那一行（同 `P19` 删 `agent`：减一条要写清根因没了、真机那一维买没买到）；\n\
            或者声明侧把这件事丢了 ⇒ 把它补回声明里。\n\n\
          🚫 **不许**把登记表改成从 `capabilities_on` 算出来的东西 —— 两侧同源，本条当场恒真。"
+    );
+}
+
+// ══════════════ 〔W5-AUX · 96 #7〕机制声明的反方向（本文件头注「买不到」第 5 条的兑现）══════════════
+//
+// 要求住址：`设计/96 §2.3`「买不到」第 2 条逐字「**机制声明没有反方向判据**：`CCM_TMUX_CARRIED` 漏登一条靠 tmux 的新能力、
+// 或一条新命令真起 `tmux` 却没声明 `no_tmux`，看不见」。现推（`capabilities_on`）只读声明 —— 声明漏一格，
+// 那条能力在 Windows 上就被现推成「做得到」，而上面那条两向相等照样绿。下面两条从**实现**那一侧去对声明：
+//
+// - **帧面**：`inbound::REGISTRY` 每条命令的处理器（`run:` 闭包里点名的 `crate::…` 路径）所在文件，沿**文件级引用图**
+//   （`use` / `crate::` / `super::` / 本文件声明的子模块）能不能走到一份**真起 `tmux`** 的生产文件（`Command::new("tmux")`，
+//   或经 `platform::shell::posix_shell` 送一段带 `tmux ` 的脚本）。够得着的 == 声明 `no_tmux` 的 ∪ 登记的「够得着但 tmux 只是可选的」。
+// - **ccm 面**：`CAPABILITIES` 每一条配一个最小探针 argv，经**真解析器 ＋ 真计划**（`argv::parse` → `plan::build`，纯、不起进程）
+//   看它落在哪条路上：接回 / 容器 ⇒ 靠 tmux；直路 ⇒ 它在直路上必须**有效果**（计划与基线不同），否则它离了 tmux 什么都不做。
+//   靠 tmux 的 ∪ 登记的例外 == `CCM_TMUX_CARRIED`。
+//
+// ⚠ 买不到（如实）：
+// - 帧面的引用图是**文件级**的（拿不到函数级调用图）：同一份文件里「只用了一个常量」也算够得着 ⇒ 多判不少判，
+//   多出来的进登记表逐条写理由；经函数指针 / trait 对象注入的调用（`inbound` 递给处理器的闭包）看不见。
+// - `Run::Builtin` 与就地应答的那几条没有 `crate::` 路径，不在射程（逐条登记，新来一条没路径的会红）。
+// - ccm 面判的是「落在哪条路上」与「直路上有没有效果」，**不是**「在 Windows 上真跑得起来」（真机维一格没有）；
+//   平台原语那一层（读别的进程的环境）计划里看不见 —— `ccm-sid` 正是这一形，登记在例外表里。
+
+/// 一棵源码树：相对路径 → 生产段（剥注释与测试段）。纯数据，判据与合成正控共用下面那几个函数。
+type Tree = std::collections::BTreeMap<String, String>;
+
+/// 后端 crate 的库那棵树（`main.rs` 是二进制根，不在库的模块树里 ⇒ 不收）。
+fn backend_tree() -> Tree {
+    // 走仓里唯一的遍历口径（`scanning_guard_registry` 那条纪律）；本文件住 `tests/backend/`，不在被扫的树里。
+    let root = crate::guard_support::src_root();
+    guard_core::scan_tree!(&root, &["rs"])
+        .into_iter()
+        .map(|(p, raw)| {
+            let rel = p
+                .strip_prefix(&root)
+                .expect("在根下")
+                .to_string_lossy()
+                .replace('\\', "/");
+            (rel, guard_core::production_code(&raw))
+        })
+        .filter(|(rel, _)| rel != "main.rs")
+        .collect()
+}
+
+/// `control/gate.rs` → `["control", "gate"]`；`files/mod.rs` → `["files"]`；`lib.rs` → `[]`。
+fn module_of(rel: &str) -> Vec<String> {
+    let mut segs: Vec<String> = rel
+        .trim_end_matches(".rs")
+        .split('/')
+        .map(String::from)
+        .collect();
+    if matches!(segs.last().map(String::as_str), Some("mod") | Some("lib")) {
+        segs.pop();
+    }
+    segs
+}
+
+/// 一条路径的最长模块前缀落在哪份文件。
+fn file_of(
+    mods: &std::collections::BTreeMap<Vec<String>, String>,
+    path: &[String],
+) -> Option<String> {
+    (1..=path.len())
+        .rev()
+        .find_map(|n| mods.get(&path[..n]).cloned())
+}
+
+/// `use a::{b, c::{d, e}};` 展开成 `a::b` · `a::c::d` · `a::c::e`（输入已去空白）。
+fn expand_use(u: &str) -> Vec<String> {
+    let Some(open) = u.find('{') else {
+        return vec![u.to_string()];
+    };
+    let Some(close) = u.rfind('}').filter(|c| *c > open) else {
+        return vec![u.to_string()];
+    };
+    let (pre, inner) = (&u[..open], &u[open + 1..close]);
+    let mut parts = Vec::new();
+    let (mut depth, mut cur) = (0i32, String::new());
+    for c in inner.chars() {
+        match c {
+            '{' => depth += 1,
+            '}' => depth -= 1,
+            ',' if depth == 0 => {
+                parts.push(std::mem::take(&mut cur));
+                continue;
+            }
+            _ => {}
+        }
+        cur.push(c);
+    }
+    if !cur.is_empty() {
+        parts.push(cur);
+    }
+    parts
+        .iter()
+        .flat_map(|p| expand_use(&format!("{pre}{p}")))
+        .collect()
+}
+
+/// 一份文件的生产段里提到的路径（`crate::…` / `super::…` / `self::…` / 本文件 `mod x;` 声明的子模块 `x::…`），
+/// 以及 `use` 语句展开后的每一条。返回解析成绝对模块路径之后的段列表。
+fn paths_in(me: &[String], src: &str) -> Vec<Vec<String>> {
+    let children: std::collections::BTreeSet<String> = src
+        .split("mod ")
+        .skip(1)
+        .filter_map(|t| {
+            let name: String = t
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            t[name.len()..]
+                .trim_start()
+                .starts_with(';')
+                .then_some(name)
+        })
+        .collect();
+    let absolutize = |segs: Vec<String>| -> Option<Vec<String>> {
+        let first = segs.first()?.as_str();
+        match first {
+            "crate" => Some(segs[1..].to_vec()),
+            "super" | "self" => {
+                let mut base = me.to_vec();
+                let mut i = 0;
+                while i < segs.len() && (segs[i] == "super" || segs[i] == "self") {
+                    if segs[i] == "super" {
+                        base.pop();
+                    }
+                    i += 1;
+                }
+                base.extend(segs[i..].iter().cloned());
+                Some(base)
+            }
+            c if children.contains(c) => {
+                let mut base = me.to_vec();
+                base.extend(segs.iter().cloned());
+                Some(base)
+            }
+            _ => None,
+        }
+    };
+    let mut out = Vec::new();
+    // ① `use …;` 展开（花括号分组）。只认语句开头的 `use`（前一个字符是空白 / `;` / `{` / `}` / `)`），
+    //    而且 `;` 之前只许是路径字符 —— 字符串里一句 `… use …` 的散文不算。
+    let bytes = src.as_bytes();
+    let mut from = 0;
+    while let Some(off) = src[from..].find("use ") {
+        let at = from + off;
+        from = at + 4;
+        if at > 0
+            && !matches!(
+                bytes[at - 1],
+                b' ' | b'\n' | b'\t' | b';' | b'{' | b'}' | b')'
+            )
+        {
+            continue;
+        }
+        let Some(end) = src[at + 4..].find(';') else {
+            break;
+        };
+        let u: String = src[at + 4..at + 4 + end]
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        if u.is_empty()
+            || !u.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+            || !u
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "_:{},*".contains(c))
+        {
+            continue;
+        }
+        for e in expand_use(&u) {
+            let segs: Vec<String> = e
+                .split("::")
+                .filter(|s| !s.is_empty() && *s != "*")
+                .map(String::from)
+                .collect();
+            if let Some(p) = absolutize(segs) {
+                out.push(p);
+            }
+        }
+    }
+    // ② 代码里的 `a::b::c` 链。
+    let b = src.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        let c = b[i];
+        let start_ok = c.is_ascii_alphabetic()
+            && (i == 0
+                || !(b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'_' || b[i - 1] == b':'));
+        if !start_ok {
+            i += 1;
+            continue;
+        }
+        let mut segs = Vec::new();
+        let mut j = i;
+        loop {
+            let s = j;
+            while j < b.len() && (b[j].is_ascii_alphanumeric() || b[j] == b'_') {
+                j += 1;
+            }
+            segs.push(src[s..j].to_string());
+            if j + 2 < b.len()
+                && b[j] == b':'
+                && b[j + 1] == b':'
+                && (b[j + 2].is_ascii_alphabetic() || b[j + 2] == b'_')
+            {
+                j += 2;
+                continue;
+            }
+            break;
+        }
+        if segs.len() > 1 {
+            if let Some(p) = absolutize(segs) {
+                out.push(p);
+            }
+        }
+        i = j.max(i + 1);
+    }
+    out
+}
+
+/// 文件级引用图：文件 → 它引用的别的文件。
+fn file_edges(
+    tree: &Tree,
+) -> std::collections::BTreeMap<String, std::collections::BTreeSet<String>> {
+    let mods: std::collections::BTreeMap<Vec<String>, String> =
+        tree.keys().map(|r| (module_of(r), r.clone())).collect();
+    tree.iter()
+        .map(|(rel, src)| {
+            let me = module_of(rel);
+            let to = paths_in(&me, src)
+                .into_iter()
+                .filter_map(|p| file_of(&mods, &p))
+                .filter(|f| f != rel)
+                .collect();
+            (rel.clone(), to)
+        })
+        .collect()
+}
+
+/// 真起 `tmux` 的生产文件：直呼 `Command::new("tmux")`，或经 shell 适配口送一段带 `tmux ` 的脚本。
+fn tmux_spawning_files(tree: &Tree) -> std::collections::BTreeSet<String> {
+    tree.iter()
+        .filter(|(_, src)| {
+            let squeezed: String = src.chars().filter(|c| !c.is_whitespace()).collect();
+            squeezed.contains("Command::new(\"tmux\")")
+                || (src.contains("posix_shell(") && src.contains("tmux "))
+        })
+        .map(|(r, _)| r.clone())
+        .collect()
+}
+
+/// 从一组起点文件沿引用图走完，交回够得着的文件（含起点）。
+fn reachable(
+    edges: &std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
+    from: &std::collections::BTreeSet<String>,
+) -> std::collections::BTreeSet<String> {
+    let mut seen = std::collections::BTreeSet::new();
+    let mut todo: Vec<String> = from.iter().cloned().collect();
+    while let Some(f) = todo.pop() {
+        if seen.insert(f.clone()) {
+            todo.extend(edges.get(&f).into_iter().flatten().cloned());
+        }
+    }
+    seen
+}
+
+/// `inbound.rs` 生产段里 `REGISTRY` 每一条的 `run:` 闭包点名的 `crate::…` 路径所在文件（命令名 → 文件集）。
+fn handler_files(
+    tree: &Tree,
+) -> std::collections::BTreeMap<String, std::collections::BTreeSet<String>> {
+    let src = tree.get("inbound.rs").expect("后端树里没有 inbound.rs");
+    let at = src
+        .find("pub const REGISTRY: &[CommandSpec] = &[")
+        .expect("`inbound.rs` 里锚不住 REGISTRY");
+    let mods: std::collections::BTreeMap<Vec<String>, String> =
+        tree.keys().map(|r| (module_of(r), r.clone())).collect();
+    let mut out = std::collections::BTreeMap::new();
+    for block in src[at..].split("CommandSpec {").skip(1) {
+        let Some(n) = block.find("name: \"") else {
+            continue;
+        };
+        let name: String = block[n + 7..].chars().take_while(|c| *c != '"').collect();
+        let Some(r) = block.find("run:") else {
+            continue;
+        };
+        let run = &block[r..];
+        let files: std::collections::BTreeSet<String> = paths_in(&[], run)
+            .into_iter()
+            .filter_map(|p| file_of(&mods, &p))
+            .filter(|f| f != "inbound.rs")
+            .collect();
+        out.insert(name, files);
+    }
+    out
+}
+
+/// 够得着 tmux、却**不**声明 `no_tmux` 的命令 —— 逐条写理由（tmux 在它那里是可选的：问不到就降级，命令本身照做）。
+const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
+    ("bus-broadcast", "同 `bus-list`：挑在线的那一步读 `live`，问不到 tmux 就当「不知道谁在线」如实回，不回 `no_tmux`"),
+    ("bus-kill", "同 `bus-list`（转调 `cc-kill`；tmux 只用来挂 `live`）"),
+    ("bus-list", "`control/cc_bus.rs::agents_via_cc_list` 经 `gate::list_sessions().ok()` 挂「还活着吗」那一栏 —— 问不到回 `live: null`（「不假装知道」），命令本身照做；它的能力是转调 cc-bus，不是 tmux"),
+    ("bus-send", "同 `bus-list`（投递转调 `cc-send`；tmux 只用来挂 `live`）"),
+    ("bus-spawn", "同 `bus-list`（转调 `cc-spawn`；那个子进程自己起 tmux，本进程只经 gate 挂 `live`）"),
+    ("bus-state", "同 `bus-list`（`agents` 那一半就是 `bus-list` 那一个函数）"),
+    (
+        "ccm-print",
+        "〔合并主线时本条当场点出〕W5-ALIAS 的别名预览：`control/ccm/mod.rs::plan_of` 经 \
+         `session_snapshot::global().taken_names().ok()` 问一次会话快照做铸名避让 —— 问不到 ⇒ `None` ⇒ 不退让\
+         （`plan::build` 头注的诚实降级），预览照出；它的能力是渲计划，不是 tmux",
+    ),
+];
+
+/// `run:` 里没有 `crate::…` 路径的命令（`Run::Builtin` 与就地应答）—— 不在射程，逐条登记。
+const NO_HANDLER_PATH: &[(&str, &str)] = &[
+    (
+        "cancel",
+        "`Run::Builtin`：`inbound::dispatch` 的硬臂，只动在飞表",
+    ),
+    (
+        "link-close",
+        "`Run::Builtin`：链路四条住 `inbound::dispatch` 的硬臂（〔SR1a〕）",
+    ),
+    ("link-credit", "同上"),
+    ("link-data", "同上"),
+    ("link-open", "同上"),
+    ("ping", "就地应答"),
+    (
+        "transfer-download",
+        "传输台那几条住 `inbound::dispatch` 的硬臂",
+    ),
+    ("transfer-start", "同上"),
+    ("transfer-stop", "同上"),
+    ("transfer-upload", "同上"),
+];
+
+/// 🔴 帧面：够得着 tmux 的命令 == 声明 `no_tmux` 的 ∪ 登记的「tmux 可选」。
+#[test]
+fn every_frame_command_that_can_reach_tmux_declares_no_tmux() {
+    use std::collections::BTreeSet;
+    let tree = backend_tree();
+    assert!(
+        tree.len() >= 60,
+        "后端树只收到 {} 份 —— 遍历坏了，下面全称恒真",
+        tree.len()
+    );
+    let edges = file_edges(&tree);
+    let spawners = tmux_spawning_files(&tree);
+    // 地板只防人群塌成空集；主锚是下面两向相等。现打（立格那一拍）：7 份直呼 + 1 份经 shell（`observe/watcher.rs`）。
+    assert!(
+        spawners.len() >= 5,
+        "真起 tmux 的文件只找到 {spawners:?} —— 取法坏了"
+    );
+    let handlers = handler_files(&tree);
+    let names: BTreeSet<&str> = crate::inbound::REGISTRY.iter().map(|s| s.name).collect();
+    assert_eq!(
+        handlers.keys().map(String::as_str).collect::<BTreeSet<_>>(),
+        names,
+        "从源码里抽到的命令名与 `REGISTRY` 不一致 —— 抽块坏了"
+    );
+    let unresolved: BTreeSet<&str> = handlers
+        .iter()
+        .filter(|(_, f)| f.is_empty())
+        .map(|(n, _)| n.as_str())
+        .collect();
+    assert_eq!(
+        unresolved,
+        NO_HANDLER_PATH.iter().map(|(n, _)| *n).collect::<BTreeSet<_>>(),
+        "`run:` 里没有 `crate::…` 路径的命令变了 —— 新来的那条它的处理器住哪、够不够得着 tmux，本条看不见：\
+         登记进 `NO_HANDLER_PATH` 并写清为什么不起 tmux，或者把处理器挪进一个模块"
+    );
+    let reach: BTreeSet<&str> = handlers
+        .iter()
+        .filter(|(_, from)| !reachable(&edges, from).is_disjoint(&spawners))
+        .map(|(n, _)| n.as_str())
+        .collect();
+    let declared: BTreeSet<&str> = crate::inbound::REGISTRY
+        .iter()
+        .filter(|s| s.codes.contains(&super::super::NO_TMUX))
+        .map(|s| s.name)
+        .collect();
+    let excused: BTreeSet<&str> = REACHES_TMUX_WITHOUT_NO_TMUX
+        .iter()
+        .map(|(n, _)| *n)
+        .collect();
+    assert!(
+        declared.is_disjoint(&excused),
+        "登记成「tmux 可选」的命令又声明了 `no_tmux`：{:?} —— 两句话自相矛盾，删一句",
+        declared.intersection(&excused).collect::<Vec<_>>()
+    );
+    let want: BTreeSet<&str> = declared.union(&excused).copied().collect();
+    let undeclared: Vec<_> = reach.difference(&want).collect();
+    let ghosts: Vec<_> = want.difference(&reach).collect();
+    assert!(
+        undeclared.is_empty() && ghosts.is_empty(),
+        "\n帧面「真够得着 tmux」与声明对不上。\n\
+         ① 够得着、却既没声明 `no_tmux` 也没登记：{undeclared:?}\n\
+            ⇒ 🔴 它在 Windows 上会被现推成「做得到」（`capabilities_on` 只读声明）。tmux 是它的必需品 ⇒ 在 `codes` 里声明 `no_tmux`；\
+         只是可选的（问不到就降级、命令照做）⇒ 登记进 `REACHES_TMUX_WITHOUT_NO_TMUX` 写清降级成什么。\n\
+         ② 声明了 / 登记了、却根本够不着：{ghosts:?}\n\
+            ⇒ 声明是鬼影（它会把一条在 Windows 上做得到的命令报成做不到），或者引用图取法坏了。\n\
+         真起 tmux 的文件：{spawners:?}"
+    );
+}
+
+/// 🔴 正反两控：引用图在合成树上认得出 `use` 分组 / `super::` / `crate::` 链 / 子模块，也不乱连。
+#[test]
+fn the_tmux_reach_ruler_works_on_a_synthetic_tree() {
+    let tree: Tree = [
+        ("lib.rs", "pub mod a; pub mod b; pub mod c; pub mod d;"),
+        ("a.rs", "use crate::{c, b::inner};\npub fn h() { c::go(); }"),
+        ("b/mod.rs", "pub mod inner;\npub fn quiet() {}"),
+        ("b/inner.rs", "pub fn go() { super::super::d::spawn(); }"),
+        ("c.rs", "pub fn go() {}"),
+        (
+            "d.rs",
+            "pub fn spawn() { let _ = std::process::Command::new(\"tmux\"); }",
+        ),
+        ("e.rs", "pub fn lonely() {}"),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_string(), v.to_string()))
+    .collect();
+    let edges = file_edges(&tree);
+    let spawners = tmux_spawning_files(&tree);
+    assert_eq!(
+        spawners.into_iter().collect::<Vec<_>>(),
+        vec!["d.rs".to_string()]
+    );
+    let from = |f: &str| std::iter::once(f.to_string()).collect();
+    // 阳：a 经 `use crate::{…, b::inner}` → inner 经 `super::super::d` → d。
+    assert!(
+        reachable(&edges, &from("a.rs")).contains("d.rs"),
+        "分组 use ＋ super 链没接上：{edges:?}"
+    );
+    // 阴：c 与 e 谁也不引用 ⇒ 够不着。
+    assert!(!reachable(&edges, &from("c.rs")).contains("d.rs"));
+    assert!(!reachable(&edges, &from("e.rs")).contains("d.rs"));
+    // 阴：b/mod.rs 只声明了子模块 `inner`、没用它 ⇒ 不连（「声明子模块」不等于「引用它」）。
+    assert!(
+        !edges["b/mod.rs"].contains("b/inner.rs"),
+        "只声明没使用的子模块被当成了引用"
+    );
+}
+
+/// ccm 面每条能力的最小探针（位置动作 ＋ 旗标；`carriers` = 探针里为了让它起得来而**必须**带上的 tmux 载体旗标）。
+const CCM_PROBES: &[(&str, &[&str], &[&str])] = &[
+    ("account", &["--account", "acct-x"], &[]),
+    ("account-via-backend", &["--account", "acct-x"], &[]),
+    ("agent", &["--agent", "codex"], &[]),
+    ("attach", &["attach", "foo"], &[]),
+    (
+        "backend-discover",
+        &["resume", "11111111-2222-3333-4444-555555555555"],
+        &[],
+    ),
+    (
+        "bus-register",
+        &["--tmux", "--detach", "--bus-register"],
+        &["--tmux", "--detach"],
+    ),
+    ("cwd", &["--cwd", "/srv"], &[]),
+    ("detach", &["--tmux", "--detach"], &["--tmux"]),
+    ("launcher", &["--launcher", "claude-nightly"], &[]),
+    ("model", &["--model", "opus"], &[]),
+    (
+        "resume",
+        &["resume", "11111111-2222-3333-4444-555555555555"],
+        &[],
+    ),
+    ("tmux", &["--tmux"], &[]),
+    ("tmux-base", &["--tmux-base", "proj"], &[]),
+    (
+        "tmux-size",
+        &["--tmux", "--tmux-size", "80x24"],
+        &["--tmux"],
+    ),
+];
+
+/// 计划那一层判不了的几条：`(能力, 算不算靠 tmux, 为什么)`。
+const CCM_TMUX_EXCEPTIONS: &[(&str, bool, &str)] = &[
+    (
+        "base-url-across-tmux",
+        true,
+        "不是一个旗标，是容器路的一条性质（`plan.rs` 容器分支把 `ANTHROPIC_BASE_URL` 显式带进载荷内侧）—— 名字就是跨 tmux 的边界，探针非带 `--tmux` 不可、带了就恒判「靠 tmux」，判了等于没判",
+    ),
+    (
+        "ccm-sid",
+        true,
+        "直路上**有**效果（〔S5〕启动期令牌，计划与基线不同 ⇒ 计划层判它「不靠 tmux」），但 Windows 上后端读不到别的进程的环境 ⇒ 认不回 agent 进程 —— 平台原语那一层计划里看不见，归 tmux 档（`control/ccm/mod.rs::CCM_TMUX_CARRIED` 那一行的依据）",
+    ),
+    ("new", false, "默认动作本身：探针与基线同形是定义使然（「直路上有没有效果」对它不成立）"),
+    ("print", false, "渲染方式（吐出计划还是执行它），不进计划 —— 计划与基线同形是定义使然"),
+];
+
+/// 🔴 ccm 面：真靠 tmux 的能力（真解析器 ＋ 真计划现推）∪ 登记的例外 == `CCM_TMUX_CARRIED`。
+#[test]
+fn every_ccm_capability_that_rides_tmux_is_declared_tmux_carried() {
+    use crate::control::ccm::argv::{parse, Parsed};
+    use crate::control::ccm::plan::{build, Account, AccountTable, Env, Plan};
+    use std::collections::BTreeSet;
+    let env = Env {
+        home: "/home/pi".into(),
+        pwd: "/p".into(),
+        accts_manifest: "/nonexistent/accounts.json".into(),
+        account_env: "CLAUDE_CONFIG_DIR".into(),
+        self_argv: vec!["/usr/local/bin/ccm".into()],
+        ..Default::default()
+    };
+    // 账号那一格要一个**真在盘上**的目录（`resolve_account` 会看它在不在）：借后端源码根（一定在，不建不删 ——
+    // 建临时目录会让本文件在测试层分区里从「源码扫描」升成「集成」，`test_tiers` 那张表跟着要挪）。
+    let acct_dir = crate::guard_support::src_root();
+    let table = AccountTable::from_accounts(vec![Account {
+        name: "acct-x".into(),
+        config_dir: Some(acct_dir.to_string_lossy().into_owned()),
+        is_default: false,
+    }]);
+    let plan_of = |args: &[&str]| -> Result<Plan, String> {
+        let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        match parse(&a) {
+            Ok(Parsed::Opts(o)) => build(&o, &env, &table, None).map_err(|d| d.0),
+            Ok(Parsed::Early(e)) => Err(format!("落进了立即结束那一支：{e:?}")),
+            Err(d) => Err(d.0),
+        }
+    };
+    let caps: BTreeSet<&str> = crate::control::ccm::CAPABILITIES.iter().copied().collect();
+    let probed: BTreeSet<&str> = CCM_PROBES.iter().map(|(c, ..)| *c).collect();
+    let excepted: BTreeSet<&str> = CCM_TMUX_EXCEPTIONS.iter().map(|(c, ..)| *c).collect();
+    assert!(
+        probed.is_disjoint(&excepted),
+        "同一条能力既有探针又登记成例外：{:?}",
+        probed.intersection(&excepted).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        probed.union(&excepted).copied().collect::<BTreeSet<_>>(),
+        caps,
+        "探针表 ∪ 例外表 与 `ccm-launcher` 的 `CAPABILITIES` 不相等 —— 新加的能力要配一个探针（或进例外表写清为什么计划层判不了）"
+    );
+    let baseline = plan_of(&[]).expect("基线（什么都不给）起不来 —— 夹具坏了");
+    let mut derived: BTreeSet<&str> = BTreeSet::new();
+    for (cap, argv, carriers) in CCM_PROBES {
+        let p = plan_of(argv)
+            .unwrap_or_else(|e| panic!("能力 `{cap}` 的探针 {argv:?} 起不来：{e} —— 探针写错了"));
+        for c in *carriers {
+            let without: Vec<&str> = argv.iter().copied().filter(|t| t != c).collect();
+            assert!(
+                plan_of(&without).is_err(),
+                "能力 `{cap}` 的探针带了载体旗标 `{c}`，拿掉它照样起得来 ⇒ 那个旗标是白带的，本条会把它判成「靠 tmux」而冤枉它"
+            );
+        }
+        let rides = matches!(p, Plan::Attach { .. } | Plan::Container(_));
+        if !rides {
+            assert_ne!(
+                p, baseline,
+                "能力 `{cap}` 的探针 {argv:?} 落在直路上，而计划与基线一模一样 ⇒ 离了 tmux 它什么都不做：\
+                 要么它其实靠 tmux（登记进 `CCM_TMUX_CARRIED`），要么它是个声明了却不起作用的鬼影"
+            );
+        }
+        if rides {
+            derived.insert(cap);
+        }
+    }
+    let want: BTreeSet<&str> = derived
+        .union(
+            &CCM_TMUX_EXCEPTIONS
+                .iter()
+                .filter(|(_, t, _)| *t)
+                .map(|(c, ..)| *c)
+                .collect(),
+        )
+        .copied()
+        .collect();
+    let declared: BTreeSet<&str> = CCM_TMUX_CARRIED.iter().copied().collect();
+    assert_eq!(
+        want, declared,
+        "\n真靠 tmux 的 ccm 能力（真解析器 ＋ 真计划现推，∪ 登记的例外）与 `CCM_TMUX_CARRIED` 不相等。\n\
+         多出来的（现推靠 tmux、却没登记）⇒ 🔴 它在 Windows 上被现推成「做得到」—— 补进 `control/ccm/mod.rs::CCM_TMUX_CARRIED`。\n\
+         少了的（登记了、现推却落在直路上且有效果）⇒ 那一行登记冤枉了它，或者它的依据在计划层看不见（进例外表写清）。"
     );
 }
