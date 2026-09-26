@@ -290,19 +290,25 @@ fn check_snapshot_path(p: &str) -> Result<(), (&'static str, String)> {
 }
 
 /// [`Step`] ⇒ 终端里那一行（**纯函数**；值一律过唯一的 quote `shell_quote_core::posix_quote`）。
+///
+/// ⚠ 刻意**逐处直呼** `shell_quote_core::posix_quote(…)`、不起一个局部别名：`INVARIANTS §47` 的人群判据
+/// （`lib_invariant_population_tests.rs` 的 `QUOTE_SITES`）按 `posix_quote(` 的调用形数拼接点，局部别名它看不见。
 pub(crate) fn render_cmd(step: &Step) -> String {
-    let q = shell_quote_core::posix_quote;
     match step {
-        Step::InitPreview(n) => format!("{TOOL} init {}", q(n)),
-        Step::InitApply(n) => format!("{TOOL} init {} --apply", q(n)),
+        Step::InitPreview(n) => format!("{TOOL} init {}", shell_quote_core::posix_quote(n)),
+        Step::InitApply(n) => format!("{TOOL} init {} --apply", shell_quote_core::posix_quote(n)),
         Step::Verify => format!("{TOOL} verify"),
         Step::Shellinit => format!("{TOOL} shellinit"),
         Step::SyncApply => format!("{TOOL} sync --apply"),
         Step::AddApply { name, cred_file } => match cred_file {
-            Some(p) => format!("{TOOL} add {} --from-credentials {} --apply", q(name), q(p)),
-            None => format!("{TOOL} add {} --apply", q(name)),
+            Some(p) => format!(
+                "{TOOL} add {} --from-credentials {} --apply",
+                shell_quote_core::posix_quote(name),
+                shell_quote_core::posix_quote(p)
+            ),
+            None => format!("{TOOL} add {} --apply", shell_quote_core::posix_quote(name)),
         },
-        Step::Login(n) => format!("{TOOL} run {}", q(n)),
+        Step::Login(n) => format!("{TOOL} run {}", shell_quote_core::posix_quote(n)),
     }
 }
 
