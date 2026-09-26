@@ -15,6 +15,8 @@
 // 〔C4b〕`accounts.ts` 先前那个同名的 `"__local__"` 已退役 —— 全仓只剩这一个本机表示。
 import { LOCAL_ORIGIN } from "./backend-policy";
 import { commands } from "./ipc/commands";
+// 〔TL3 · 审计 F 🔴-5〕「是不是本机」只经 `ipc/origin.ts` 判（`设计/00 §2.5 ①`）。
+import { isLocalOrigin } from "./ipc/origin";
 import {
   planResumeDirect,
   planResumeTmux,
@@ -496,7 +498,7 @@ async function invokeLaunchOrCopyFallback(
         : toasts.failureNotCopied;
     // ★ 本机没有 ssh 那一跳，文案不能照抄远端那句〔08-12〕。
     const where =
-      origin === LOCAL_ORIGIN ? copyText("remoteLaunchRun.copyFallback.runLocal") : copyText("remoteLaunchRun.copyFallback.runRemote", { machine: origin });
+      isLocalOrigin(origin) ? copyText("remoteLaunchRun.copyFallback.runLocal") : copyText("remoteLaunchRun.copyFallback.runRemote", { machine: origin });
     showActionFailureToast(
       headline,
       `${String(err)}\n${where}\n${cmd}`,

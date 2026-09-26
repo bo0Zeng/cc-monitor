@@ -19,7 +19,8 @@ import { getModelForAccount } from "./account-prefs";
 import { recordLastAccount } from "./launch-account";
 import { showActionFailureToast } from "./error-toast";
 // 〔`A3` 第二波〕本机那一侧：`origin` 是 backend 的 `<local>`（〔C4b〕账号面那个第二种写法已退役，只剩这一个）。
-import { LOCAL_ORIGIN } from "./backend-policy";
+// 〔TL3 · 审计 F 🔴-5〕「是不是本机」只经 `ipc/origin.ts` 判（`设计/00 §2.5 ①`），这里不再自己比常量。
+import { isLocalOrigin } from "./ipc/origin";
 // 〔FE1〕本机那一跳走 resume 编排的唯一一份（原 `account-restart-local.ts` 并进去了）。
 import { resumeLocalSession } from "./local-resume";
 import { copyText } from "./copy-table";
@@ -203,7 +204,7 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   // | 模型偏好 | 交（`modelOverride`） | **交不了** —— 本机那条的载荷里没有模型这一格（如实登记，不假装），所以这里不去查它 |
   //
   // ⚠ 账号**不走**跟随（`follow`）：换号重启的正题恰恰是换成另一个号，跟随会把用户的选择丢了。
-  const isLocal = origin === LOCAL_ORIGIN;
+  const isLocal = isLocalOrigin(origin);
   const launched = isLocal
     ? await resumeLocalSession({
         sid: sessionId,
