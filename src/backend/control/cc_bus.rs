@@ -769,6 +769,13 @@ pub(crate) fn kill_for_inbound(
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, (String, String)> {
     let id = parse_kill(args)?;
+    kill_id(&id)
+}
+
+/// 转调 `cc-kill <id>` 并读出它到底动了什么 —— `bus-kill` 与杀会话顺手注销（D-g）共用这一处。
+/// ⚠ 调用方先过 `bus_id_ok`（`INVARIANTS §47`：交给 `cc-kill` 之前本侧先判）。
+fn kill_id(id: &str) -> Result<serde_json::Value, (String, String)> {
+    let id = id.to_string();
     // ⚠ **不加 `--`**〔08-13 真跑撞出来的〕：`cc-send` 会解析旗标（所以那边要显式结束），
     //   而 `cc-kill` **不解析** —— 它直接取 `$1`。传了 `--` 的后果是它去杀一个名叫 `--`
     //   的 agent（`-` 在它的白名单里，连报错都不会），三种情形全回 `killed:false`
@@ -805,6 +812,40 @@ pub(crate) fn kill_for_inbound(
     let killed = said.contains("已杀会话");
     let stale_only = said.contains("已摘掉");
     Ok(kill_reply(&id, killed, stale_only))
+}
+
+/// 〔SH1 · D-g〕名册里**登记在这组 pane 上**的 id —— 纯函数。认人核第 4 列 pane pid（登记那一刻 pane 根进程的 pid），
+/// 不按会话名猜（主会话裁 TL2 A）；第 4 列空的老格式行核不了 ⇒ 不挑；id 形状不过 `bus_id_ok` 的不挑（`§47`）。
+pub(crate) fn ids_on_panes(rows: &[RosterRow], pane_pids: &[u32]) -> Vec<String> {
+    rows.iter()
+        .filter(|r| r.pane_pid.is_some_and(|p| pane_pids.contains(&p)))
+        .filter(|r| shell_quote_core::bus_id_ok(&r.id))
+        .map(|r| r.id.clone())
+        .collect()
+}
+
+/// 〔SH1 · D-g〕monitor 杀会话成功之后：对登记在那个会话 pane 上的每个 id 调 `cc-kill`（名册 · 台账 · 状态 · 收件箱一起清）。
+/// 这一步不改杀会话的结局：cc-bus 没装就安静跳过；读不到名册 / 某个 `cc-kill` 失败 ⇒ warn 一句说清。
+pub(crate) fn unregister_panes(session: &str, pane_pids: &[u32]) {
+    if pane_pids.is_empty() {
+        return;
+    }
+    let rows = match roster() {
+        Ok((rows, _)) => rows,
+        Err((code, _)) if code == "not_installed" => return,
+        Err((code, msg)) => {
+            tracing::warn!("杀了会话 {session:?}，但读不到 cc-bus 名册（{code}：{msg}）—— 登记在它上面的 id 没注销");
+            return;
+        }
+    };
+    for id in ids_on_panes(&rows, pane_pids) {
+        match kill_id(&id) {
+            Ok(v) => tracing::info!("杀了会话 {session:?}，顺手从 cc-bus 收掉登记在它上面的 {id}：{v}"),
+            Err((code, msg)) => tracing::warn!(
+                "杀了会话 {session:?}，但从 cc-bus 收掉 {id} 失败（{code}：{msg}）—— 名册里那一行还在"
+            ),
+        }
+    }
 }
 
 /// `bus-kill` 的入参 —— 纯函数〔C4e：从 [`kill_for_inbound`] 里原样抽出（逻辑不动），跨语言金样拿它核请求样例〕。

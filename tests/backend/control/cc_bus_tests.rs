@@ -251,6 +251,28 @@ fn the_cockpit_read_products_match_the_cross_language_golden() {
     }
 }
 
+/// 〔SH1 · D-g〕杀会话顺手注销：只认名册第 4 列 pane pid 落在那个会话 pane 上的 id（主会话裁 TL2 A：不按会话名猜）。
+/// 要求住址：`4d-lanes.md` AL3「〔09-26 追加进 SH1〕D-g …… 认人核 `agents.tsv` 第 4 列的 pane pid（不按会话名猜）」。
+#[test]
+fn only_ids_registered_on_the_killed_panes_are_unregistered() {
+    let row = |id: &str, target: &str, pid: Option<u32>| RosterRow {
+        id: id.to_string(),
+        target: target.to_string(),
+        registered_at: String::new(),
+        pane_pid: pid,
+        unread: 0,
+    };
+    let rows = [
+        row("mine_cc", "proj-cc:0.0", Some(4242)),
+        row("second_cc", "proj-cc:0.1", Some(4343)),
+        row("namesake_cc", "proj-cc:0.0", Some(9999)), // 同一个会话名、pid 不是被杀的那组 ⇒ 不是它
+        row("old_cc", "proj-cc:0.0", None),            // 老格式核不了 ⇒ 不动
+        row("--help", "proj-cc:0.0", Some(4242)),      // 形状不过 `bus_id_ok` ⇒ 不交给 cc-kill
+    ];
+    assert_eq!(ids_on_panes(&rows, &[4242, 4343]), ["mine_cc", "second_cc"]);
+    assert!(ids_on_panes(&rows, &[]).is_empty());
+}
+
 /// 〔SH1 · V136〕老 cc-bus（不认 `--tsv` / 没有 `cc-log`）与半份输出都**明说**，不猜着解成一份空名单。
 #[test]
 fn an_old_cc_bus_or_a_half_read_is_said_not_read_as_empty() {

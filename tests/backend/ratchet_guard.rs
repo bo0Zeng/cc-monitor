@@ -65,9 +65,11 @@ mod tests {
     const PINS: &[(&str, &str, usize, &str)] = &[
         (
             "readonly_guard.rs",
-            "const SPAWN_SITES_TODAY: usize = 12;",
+            "const SPAWN_SITES_TODAY: usize = 13;",
             1,
             "backend 侧起进程登记表的**相等断言**（不是地板）。\
+             〔SH1 · D-g：`12` → **13**，往**上**走一格：`control/kill.rs` 多一处只读 `tmux list-panes`（杀之前读 pane 根进程 pid）；\
+             `readonly_guard` 那条 `assert_eq!` 自己先红了，本针跟着记新值。〕\
              〔RM1a · 第四波：`11` → **12**，往**上**走一格：`relay/machine.rs` 那一处（远端那台上起一个脱离的 `--relay`）\
              ——**真的新面，不是搬家**，`ALLOWED` 里已逐条写明它起什么、为什么不违反收窄后的铁律。\
              往上走**不是本针在放宽**：`readonly_guard` 那条 `assert_eq!` 自己先红了，本针跟着记新值。〕\

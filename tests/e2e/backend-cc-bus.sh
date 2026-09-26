@@ -546,6 +546,23 @@ env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$_old" CC_BUS_ID
 chk "★ 老 cc-bus ⇒ failed 且说「重新部署」" "$(jq -r '.code + " " + (.message | contains("重新部署") | tostring)' < "$SANDBOX/err.txt" 2>/dev/null)" "failed true"
 rm -f "$BUS/agents.tsv" "$BUS/spawned.tsv"
 
+echo "[SH1-c] ★ D-g：monitor 杀会话成功 ⇒ 对登记在那个会话 pane 上的 id 调 cc-kill（认 pane pid，不按会话名猜）"
+: > "$BUS/agents.tsv"
+_dg="$SANDBOX/dg"; mkdir -p "$_dg"
+tmux new-session -d -s dg-cc -c /tmp env CC_BUS_HOME="$BUS" SCRIPTS="$SCRIPTS" OUT="$_dg" sh -c '
+  "$SCRIPTS/cc-register" dg_cc >/dev/null 2>&1; touch "$OUT/a"; exec sleep 60' 2>/dev/null
+tmux new-session -d -s dgother-cc -c /tmp env CC_BUS_HOME="$BUS" SCRIPTS="$SCRIPTS" OUT="$_dg" sh -c '
+  "$SCRIPTS/cc-register" dgother_cc >/dev/null 2>&1; touch "$OUT/b"; exec sleep 60' 2>/dev/null
+for _i in $(seq 1 100); do [ -f "$_dg/a" ] && [ -f "$_dg/b" ] && break; sleep 0.1; done
+printf '{"from":"x","text":"占位"}\n' >> "$BUS/inbox/dg_cc.jsonl"
+chk "  台架：两个会话都登记上了（带 pane pid）" "$(awk -F'\t' '$4!=""{n++} END{print n+0}' "$BUS/agents.tsv")" "2"
+out="$(printf '{"name":"dg-cc"}' | d --kill)"
+chk "杀会话本身照旧成功、应答形状不变" "$(printf '%s' "$out" | jq -c '[.session, .killed]')" '["dg-cc",true]'
+chk "★ 登记在被杀会话上的 dg_cc 从名册里没了" "$(awk -F'\t' '$1=="dg_cc"' "$BUS/agents.tsv" | wc -l | tr -d ' ')" "0"
+chk "★ 它的收件箱也清了（cc-bus「收掉成员」的全套）" "$([ -e "$BUS/inbox/dg_cc.jsonl" ] && echo 在 || echo 没了)" "没了"
+chk "★ 别的会话上登记的 dgother_cc 原样在" "$(awk -F'\t' '$1=="dgother_cc"' "$BUS/agents.tsv" | wc -l | tr -d ' ')" "1"
+tmux kill-session -t '=dgother-cc' 2>/dev/null || true
+
 "$REALTMUX" -L "$_SOCK" kill-server 2>/dev/null || true
 
 echo

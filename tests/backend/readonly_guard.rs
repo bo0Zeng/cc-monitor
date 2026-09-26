@@ -2463,7 +2463,9 @@ mod spawn_registry {
             "control/kill.rs",
             "tmux",
             "F04a：`kill-session`（argv 直传）。**破坏性**，但改的是 **tmux server 的运行期状态**，\
-             不是后端自己写用户既有数据；且必须先过 §34 三道门（Gate 3 = 单窗口）",
+             不是后端自己写用户既有数据；且必须先过 §34 三道门（Gate 3 = 单窗口）。\
+             〔SH1 · D-g〕同一份文件另有一处**只读**的 `list-panes -F '#{pane_pid}'`（过门之后、杀之前读这个会话的 pane 根进程 pid，\
+             杀成之后按它从 cc-bus 名册认人 ⇒ `cc-kill` 经 `plugin/invoke.rs` 那条转调，写面记在那一条里）",
             "缩性质",
             "§34 那三道门有任何一道被拆掉、或「杀会话」不再由后端发起的那天，\
              这一条要回来重判（它是本表里唯一**破坏性**的 tmux 动作）。",
@@ -2747,7 +2749,9 @@ mod spawn_registry {
         //    （拉屏预览在用），下面 `found` 的实测清单里看得见。
         // 〔RM1a · 第四波〕**11 → 12**：`relay/machine.rs` 那一处（远端那台上起一个脱离的 `--relay`）。
         //    ⚠ 真的新面，不是搬家：远端起中转这件事此前后端侧一处都没有（`ALLOWED` 里那条新登记写了它起什么）。
-        const SPAWN_SITES_TODAY: usize = 12;
+        // 〔SH1 · D-g〕**12 → 13**：`control/kill.rs` 多一处只读的 `tmux list-panes`（杀之前记下 pane 根进程 pid，杀成之后按它认 cc-bus 名册）。
+        //    键 `(control/kill.rs, tmux)` 不变，那条 `ALLOWED` 的理由同拍补了这一处。
+        const SPAWN_SITES_TODAY: usize = 13;
         assert_eq!(
             found.len(),
             SPAWN_SITES_TODAY,
