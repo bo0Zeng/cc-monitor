@@ -12,7 +12,8 @@ fn the_three_ports_are_one_command_each_and_all_take_origin() {
     const PORTS: &[&str] = &["backend_status", "backend_start", "backend_stop"];
     for p in PORTS {
         // 〔HX1〕`backend_stop` 本机那一支要等（SIGTERM → ≤ 约 10 秒 → 强杀）⇒ 它是 `async`（同步命令跑在主线程上）。
-        let sig = if *p == "backend_stop" {
+        // 〔TL3 · INVARIANTS §10〕`backend_start` 本机那一支也要等（起进程 · 连口 · 读 hello · 等绑上口）⇒ 同样 `async`。
+        let sig = if *p == "backend_stop" || *p == "backend_start" {
             format!("pub async fn {p}(origin: String)")
         } else {
             format!("pub fn {p}(origin: String)")
@@ -67,7 +68,7 @@ fn starting_reports_failure_as_failure_and_finished_streams_as_not_running() {
         "../../../../src/bridge/src/backend/control/backend_control.rs"
     ));
     let at =
-        guard_core::find_pinned(&src, "pub fn backend_start(origin: String)").expect("起口不在了");
+        guard_core::find_pinned(&src, "pub async fn backend_start(origin: String)").expect("起口不在了");
     let body: String = src[at..]
         .lines()
         .skip(1)
@@ -124,7 +125,8 @@ fn the_startup_path_really_registers_remote_handles() {
 fn an_empty_origin_is_refused_by_every_port() {
     for r in [
         backend_status("  ".into()).map(|_| ()),
-        backend_start(" ".into()).map(|_| ()),
+        // 〔TL3〕`backend_start` 也改成 `async` ⇒ 同样就地跑完它。
+        tauri::async_runtime::block_on(backend_start(" ".into())).map(|_| ()),
         // 〔HX1〕`backend_stop` 改成 `async`（本机那一支要等）⇒ 就地跑完它。
         tauri::async_runtime::block_on(backend_stop("".into())).map(|_| ()),
     ] {

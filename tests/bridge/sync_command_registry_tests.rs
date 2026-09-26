@@ -21,7 +21,8 @@
 //!
 //! **正控**：① [`the_reach_analyzer_sees_a_three_hop_chain_and_only_that`]：合成的几份源码（三跳链 · 方法调用 ·
 //! `async` 命令 · 字面量里的针 · 同名歧义）⇒ 分析器恰好报出那一条；② 真仓：本机起会话那两条被认成 **async** 命令
-//! （扫描器看得见属性 ＋ `async` 那一格）；③ 例外表非空的日子里，它自己就是真仓上的阳性对照。
+//! （扫描器看得见属性 ＋ `async` 那一格；〔主会话 09-26 裁〕`backend_start` 改 async 之后它也在这张单子上）；
+//! ③ 例外表今天是空的 ⇒ 真仓上的阳性对照只剩 ② —— 合成夹具 ① 管「分析器看得见链」，② 管「扫描器读得到真仓的属性」。
 //!
 //! # 名字级闭包怎么算（规则写全，改规则就是改判据）
 //!
@@ -49,16 +50,11 @@ const NEEDLES: &[&str] = &["block_on(", "TcpStream::connect"];
 ///
 /// ⚠ **登记 ≠ 认可**。这里每一行都是**偏离 `INVARIANTS §10`**、由 TL3 报备、等主会话裁（改 `async` ＋
 /// `spawn_blocking`，或在 `§10` 登记例外）。裁掉一行 ⇒ 从这里删那一行（本条两向相等，删了不改代码会红）。
-const PENDING: &[(&str, &[&str], &str)] = &[(
-    "backend/control/backend_control.rs::backend_start",
-    &[
-        "local_backend_host.rs::attach_stream",
-        "local_backend_host.rs::probe_listen_port",
-    ],
-    "〔TL3 报备 · 待主会话裁〕机器页「起」：同步命令一路 `start_local_backend → start_detached → adopt_with`，\
-     在 IPC 派发线程上连本机后端口（`probe_listen_port` 的 `TcpStream::connect`）、读 hello、\
-     `thread::sleep` 等绑定、`attach_stream` 里 `block_on` —— 与 🔴-2 同形，不在 TL3 题面写区。",
-)];
+///
+/// 〔TL3 · 主会话 09-26 裁〕今天**空**：原先那一行 `backend_control::backend_start`（机器页「起」：同步命令一路
+/// `start_local_backend → start_detached → adopt_with`，在 IPC 派发线程上连本机后端口、读 hello、`sleep` 等绑定、
+/// `attach_stream` 里 `block_on`）主会话裁「改 async」，本机那一支进了 `spawn_blocking` ⇒ 摘掉。
+const PENDING: &[(&str, &[&str], &str)] = &[];
 
 // ───────────────────────────── 分析器 ─────────────────────────────
 
@@ -501,6 +497,7 @@ fn the_two_local_launch_commands_are_seen_as_async_commands() {
     for cmd in [
         "history.rs::resume_history_session",
         "history.rs::new_local_session",
+        "backend/control/backend_control.rs::backend_start",
     ] {
         assert!(
             a.async_cmds.contains(cmd) && !a.sync_cmds.contains(cmd),
