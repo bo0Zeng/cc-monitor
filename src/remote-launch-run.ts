@@ -22,18 +22,15 @@ import {
   planLauncher,
   planAttach,
 } from "./launch-requests";
-import type { LaunchModifiers } from "./launch-plan";
+import type { LaunchModifiers } from "./launch-types";
 import { isValidRbindToken } from "./launch-dimensions";
 // 🔴 〔步 22b·B 2026-09-20〕**这里原来 `import { renderFallback } from "./launch-render-fallback"`。**
 // `设计/90 §4 E` 收官：外层 tmux 那三格切到 `backend::control::payload::render_tmux_outer`
 // 之后，本文件是 `renderFallback` **最后一个生产消费者** —— 那一行随之退役。
-// ⚠ 那两个文件（`launch-render-fallback.ts` / `session-backend.ts`）**没删**：
-// 它们今天是逐字节金标准（`payload-golden.json` / `tmux-outer-golden.json`）的**左边**，
-// 也就是「另一种语言的独立实现」；删它们等于把跨语言对拍降级成「Rust 没变」的冻结快照
-// —— 〔LR1〕`ccm …` 调用行那一份 TS 渲染器曾按同一条理由留着，U8c-3 已删
-// （它的夹具换成「生产请求 ＋ 手写期望」，见 `launch-cli-golden.ts` 头注）；这一族还没动。
-// 逐处住址与「还站不站在生产路上」两把尺子见 `launch_wire_f07_main_path_tests.rs` 的
-// `TS_FALLBACK_KEEPERS` / `TS_FALLBACK_REACH`，**本刀两张都重裁过**。
+// 〔LR2 2026-09-25〕那两个文件（`launch-render-fallback.ts` / `session-backend.ts`）连同
+// `remote-launch.ts` 那五个 builder 也删了（`设计/00 §2.5 ④`）：两份夹具（`payload-golden.json` /
+// `tmux-outer-golden.json`）的左边照 LR1 的办法换成手写期望，`req` 仍由本文件的请求构造现产。
+// 「这一族不许回来」由 `tests/launch-no-shell-in-ts.vitest.ts` 管（`设计/90 §3` 条 1）。
 // 〔LR1 · U8c-3〕`ccm …` 调用行的 TS 渲染器（原 `launch-render-cli.ts`）已删 ——
 // 生产从 U8c-2c-2 起就只走 Rust（`renderCliViaBackend` → `render_ccm_launch`），
 // 它最后只剩「产夹具的 `out`」一个用途，而那一格改成了手写期望。
@@ -43,14 +40,13 @@ import type { CliRenderRequest, PayloadRenderRequest } from "./launch-cli-wire.t
 import type { CcmProbeResult } from "./ccm-probe.ts";
 import { sanitizeRemoteLauncher } from "./shell-quote.ts";
 import { probeCcm } from "./ccm-probe";
-import { getBehavior } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
 import { sendInto, type SendIntoOutcome } from "./tmux-control";
 import { AGENT_PROFILE } from "./agent-profile";
 // 〔FE1〕起新会话的名字只从一个家取：`tmux-name-mint.ts`（列名单 ＋ 铸名 ＋ 「列不出 ⇒ 不起」）。
 import { mintFreshTmuxName, refuseUnmintable } from "./tmux-name-mint";
 import { LOCAL_LAUNCH_ACCOUNT_WIRE as ACCOUNT_WIRE } from "./generated/launch-render-facts";
-import type { LaunchContext, LaunchPlan } from "./launch-plan";
+import type { LaunchContext, LaunchPlan } from "./launch-types";
 import { copyText } from "./copy-table";
 
 /** P1：Rust 侧 `payload::refuse()` 给业务拒绝打的标。**跨语言双写点** ——
@@ -174,24 +170,19 @@ export async function withRelayEndpoint(
   return url === null ? plan : { ...plan, env: [...plan.env, { kind: "export-relay-base-url", value: url }] };
 }
 
-/** 挑渲染器：`forceLegacyLaunchRenderer` 手动逃生口（MASTERPLAN R2）短路到载荷那条；否则探测到 ccm
- *  且该 plan 的全部维度都能表达成 CLI 语法 → 走 CLI；探测失败/未装/能力不足/含 CLI 表达不了的
- *  维度（如账号、idle-tmux 复用）→ 安全降级，绝不因为渲染器选择本身而让启动失败。
+/** 挑渲染器：探测到 ccm 且该 plan 的全部维度都能表达成 CLI 语法 → 走 CLI；探测失败/未装/能力不足/
+ *  含 CLI 表达不了的维度（如账号、idle-tmux 复用）→ 安全降级，绝不因为渲染器选择本身而让启动失败。
  *
  *  🔴 〔步 22b·B 2026-09-20〕**两条分支今天都在 Rust 里**（`设计/90 §4 E` 收官）：
  *  `render_ccm_launch`（`ccm …` 调用行）与 `render_launch_payload`（内层载荷 ＋ 外层 tmux 三格）。
- *  ✅ 〔`P12` 2026-09-21 收完〕那个键此前叫 `forceLegacyLaunchRenderer`，而**名字里没有一个词是真的**
- *  （legacy 那一头在 `22b·B` 之后已经不存在）⇒ 改成 `forceLaunchPayloadRenderer`：
- *  保留「强制挑哪个渲染器」这个语义槽位，把宾语换成一个**真住址**（`render_launch_payload`）。
- *  🔴 那一拍顺带治了一个**比改名值钱得多**的毛病：config.json 里**未知键此前是静默忽略的**
- *  ——「关掉了」与「过了」在终端上一模一样。现在旧键出现会在设置面板顶上**指名喊出来**，
- *  并有会红的判据钉着（`tests/config-unknown-keys.vitest.ts`）。裁定住 `设计/99 §2.5 P12`。 */
+ *  〔LR2 2026-09-25〕这里原来还有一道手动逃生口 `forceLaunchPayloadRenderer`（`P12` 由 `forceLegacyLaunchRenderer`
+ *  改名而来，MASTERPLAN R2）：「探测说能也强制走载荷那条」。无界面入口、设置面板为它开特判
+ *  （`D-bolted-on §D4`），两条路又都在 Rust、同一排闸 ⇒ 删；为什么删写在 `src/behavior.ts` 那段注释里。 */
 async function renderLaunchCommand(
   origin: string,
   ctx: LaunchContext,
   plan: LaunchPlan,
 ): Promise<string> {
-  const behavior = await getBehavior();
   // 🔴 `设计/80 §8` 步 1：**带启动期令牌的 plan 不许去试 `ccm …` 调用行那条路。**
   //
   // `ccm` 今天没有承接 `CCM_RBIND_TOKEN` 的 flag，而**生产的 CLI 渲染在 Rust 那侧**
@@ -214,7 +205,7 @@ async function renderLaunchCommand(
       `[launch] 载荷带启动期令牌，\`ccm …\` 调用行说不出它 ⇒ 直接走后端载荷渲染（origin=${origin}）`,
     );
   }
-  if (!behavior.forceLaunchPayloadRenderer && ctx.transport.kind === "ssh" && !payloadCarriesRbindToken) {
+  if (ctx.transport.kind === "ssh" && !payloadCarriesRbindToken) {
     const probe = await probeCcm(origin);
     // R04①：一次调用同时回答"能不能"与"渲染成什么"。拿不到 `ok:true` 就走兜底——
     // 不存在"渲染出来了但悄悄丢了某个修饰"这个中间态（R04① 之前 TS 渲染器对说不出的维度
@@ -246,7 +237,7 @@ async function renderLaunchCommand(
   // （`backend::control::payload::render_payload`）。
   if (plan.container.kind === "none" && plan.action.kind !== "attach") {
     try {
-      return await commands.render_launch_payload({ req: buildPayloadRenderRequest(plan) });
+      return await commands.render_launch_payload({ req: buildLaunchRenderRequest(plan) });
     } catch (e) {
       // 后端拒了（非法 configDir / 会裂的 arg）⇒ **不静默用 TS 版糊过去**：
       // 那等于把一次 fail-closed 变成 fail-open。原样抛给调用方的 catch（它会 toast）。
@@ -277,7 +268,7 @@ async function renderLaunchCommand(
   // 没有 tmux 容器的串 —— 那时用户的会话根本不在 tmux 里，而两侧的闸一个都不响）。
   // 那一条由 `tests/remote-launch-run.vitest.ts` 的 `W22B` 组逐格钉着。
   try {
-    return await commands.render_launch_payload({ req: buildTmuxOuterRenderRequest(plan) });
+    return await commands.render_launch_payload({ req: buildLaunchRenderRequest(plan) });
   } catch (e) {
     // 同上一格：带 `REFUSE:` 标的是坏输入（换条路渲染只会糊过去），不带标的是通道异常；
     // 两者在这一格的处置**相同** —— 因为这里已经没有第二条路了。
@@ -326,11 +317,15 @@ export function buildCliRenderRequest(
 ): CliRenderRequest {
   return {
     isSsh: plan.transport.kind === "ssh",
-    // `K-R53` `KR53D3`：**肯定式** —— `null` 的两种来历（真没装 · 没探出来）在这条 wire 上
-    // 本来就同形（都是「拿不到能力集」⇒ Rust 侧 `installed = caps.is_some()` 为 false ⇒ 降级），
-    // 而**值**那一侧已经分得开了（`ccm-probe.ts` 的三态）。这里刻意不把 `unknown` 写成
-    // `installed:false` 再传下去 —— 降级是处置，不是事实。
-    caps: probe.state === "installed" ? [...probe.capabilities] : null,
+    // 〔LR2 · R95b〕三态一对一过线（`ccm-probe.ts::CcmProbeResult` → `launch_wire.rs::WireCcmProbe`）。
+    // 原来这一格是 `caps: … | null`，`unknown` 与 `not-installed` 在线上同形 ⇒ Rust 那边只能说「没装」
+    // （`设计/80 §9.4`〔R95b〕）。现在 `unknown` 带着探测那一跳的原话过去，Rust 回「没探到，不等于没装」。
+    ccm:
+      probe.state === "installed"
+        ? { state: "installed", caps: [...probe.capabilities] }
+        : probe.state === "not-installed"
+          ? { state: "not-installed" }
+          : { state: "unknown", error: probe.error },
     action:
       plan.action.kind === "resume"
         ? { kind: "resume", sid: plan.action.sid }
@@ -368,7 +363,7 @@ export function buildCliRenderRequest(
  * 🔴 **〔步 22b·B 2026-09-20〕生产接过来了。** 这里原来逐字写着「生产调用方今天是 0
  * 〔本轮只搬了『后端产得出』那一半〕，唯一的调用者是金标准发生器」——
  * 那是 22b·A 的读数。今天的调用方有两个：`renderLaunchCommand` 最后那一格（**生产**）
- * 与 `src/launch-tmux-outer-golden.ts`（金标准发生器）。
+ * 与 `tests/test-support/launch-tmux-outer-golden.ts`（金标准发生器）。
  *
  * ⚠ **最要紧的一条**：生产那一格送出去的 `req` **必须带 `outer`**。
  * 少送它不会有任何一道闸响 —— 后端会老老实实渲一条**只有内层载荷**的串
@@ -416,6 +411,23 @@ export function buildTmuxOuterRenderRequest(plan: LaunchPlan): PayloadRenderRequ
             quoting: plan.container.nameQuoting,
           },
   };
+}
+
+/**
+ * 〔LR2〕**这份 plan 交给 `render_launch_payload` 的那个请求** —— 「挑哪个请求构造」的唯一住址。
+ *
+ * `container:"none"`（且不是 attach）⇒ 内层载荷那一形（[`buildPayloadRenderRequest`]）；
+ * 其余三格（tmux `create` / `send-into` / `attach`）⇒ 带 `outer` 那一形（[`buildTmuxOuterRenderRequest`]）。
+ *
+ * 抽出来是为了让 e2e 验的就是生产那一行：`tests/e2e/launch-render-driver.ts` 调**同一个函数**
+ * 产请求、交给生产 Rust 命令渲染（`emit_launch_render_for_e2e`）。挑法要是在 e2e 里另写一份，
+ * 两边一漂，e2e 验的又是一份副本。`renderLaunchCommand` 那两格都经它取请求，
+ * 两格的分支只剩「报错说哪一层」这一件事。
+ */
+export function buildLaunchRenderRequest(plan: LaunchPlan): PayloadRenderRequest {
+  return plan.container.kind === "none" && plan.action.kind !== "attach"
+    ? buildPayloadRenderRequest(plan)
+    : buildTmuxOuterRenderRequest(plan);
 }
 
 export function buildPayloadRenderRequest(plan: LaunchPlan): PayloadRenderRequest {
@@ -581,8 +593,8 @@ export async function runRemoteResumeTmux(
  *
  *  # ★★ F14 为什么把两态改成三态
  *
- *  原来「任何一步不顺都回落」。而那条整串（`session-backend.ts` 的
- *  `tmux send-keys -t '=name:' … ; tmux attach …`）**没有 §34 的门** —— 既无 `display-message`
+ *  原来「任何一步不顺都回落」。而那条整串（外层 send-into 那一格：
+ *  `tmux send-keys -t '=name:' … ; tmux attach …`，今天由 Rust `payload::render_tmux_outer` 产）**没有 §34 的门** —— 既无 `display-message`
  *  探测也无 `CCM_GUARD_REJECTED`。于是：
  *
  *  - 一次 `wrong_owner`（门说「这不是本工具的会话」）会被那条**无门**的路重做一遍；
@@ -770,7 +782,8 @@ export async function runLocalResumeIntoExistingTmux(
   //   出的就是 `tmux attach -t '=<name>:'`），换的是**谁拥有这条语法**。
   //   ⚠ 那条门禁此前只是散文里的一条手工 grep，**且只盯 `remote-launch.ts` 一个文件** ——
   //   本文件是后来从它拆出去的，门禁没跟着拆 ⇒ 这处违反因此躺了下来。
-  //   现在它有机检了（`session-backend-gate.vitest.ts`），扫**整个前端生产段**。
+  //   现在它有机检了（当时是 `session-backend-gate.vitest.ts`；〔LR2〕接替它的是
+  //   `launch-no-shell-in-ts.vitest.ts`，`设计/90 §3` 条 1），扫**整个前端生产段**。
   //
   // 🔴🔴 〔`K-R109` 2026-09-13〕**接过去了 —— 这一处不再问座要。**
   //   用户逐字裁「新起一个会话之后，把你的终端接进那个会话那一句 `tmux attach`，

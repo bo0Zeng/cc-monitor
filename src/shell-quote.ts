@@ -1,21 +1,14 @@
 /**
- * shell 转义 / 校验原语（纯函数，零依赖叶子模块）。
+ * 起会话输入的校验原语（纯函数，零依赖叶子模块）：sid · launcher · configDir · 模型名 · tmux 会话名。
  *
- * F03（LaunchPlan IR）从 `remote-launch.ts` 搬出——渲染器（`launch-render-fallback.ts`）
- * 需要复用这些原语，而 `remote-launch.ts` 又需要复用渲染器，若原语留在 `remote-launch.ts`
- * 会造成 `remote-launch.ts → launch-render-fallback.ts → remote-launch.ts` 的运行时循环
- * import。本模块零 import、零副作用，是拓扑序的根，两边都能安全依赖它。
- *
- * `remote-launch.ts` 对外仍 `export {...} from "./shell-quote.ts"` 原样透出这五个符号
- * ——`remote-launch.test.ts` 等既有 import 面零改动。
+ * 〔LR2〕这里原来还有三件**拼 shell 串**的东西：`posixQuote`（单引号包裹）、`buildEnvPrefix`
+ * （`export CLAUDE_CONFIG_DIR='…'; `）与 `UNSET_CONFIG_DIR_PREFIX`。它们只给 TS 兜底渲染器
+ * （`launch-render-fallback.ts` ＋ `session-backend.ts`）用；那一族零生产调用、按 `设计/00 §2.5 ④` 删了，
+ * 三件随之删 —— 拼串今天只在 Rust（`shell_quote_core::posix_quote` · `payload.rs`），
+ * 前端零 shell 串（`设计/90 §3` 条 1，判据 `tests/launch-no-shell-in-ts.vitest.ts`）。
+ * 留下的只做**校验**（拒绝拼入命令），真正拼进命令的那一步不在这里。
  */
 import { AGENT_PROFILE } from "./agent-profile.ts";
-import { copyText } from "./copy-table";
-
-/** POSIX 单引号 quote：整体 `'…'` 包裹，内部 `'` 断开为 `'\''`。 */
-export function posixQuote(s: string): string {
-  return `'${s.replace(/'/g, `'\\''`)}'`;
-}
 
 /** sessionId 白名单（UUID 及其变体形态）。拒前导 `-`：防伪造 sid 注入选项
  * （如 `--dangerously-skip-permissions` 会被 claude 当参数吃掉）。 */
@@ -65,32 +58,6 @@ export function isValidConfigDir(dir: string): boolean {
 }
 
 /**
- * A4：账号前缀。空 configDir → `""`（与旧载荷逐字节相同，保证"无账号=旧行为"）。
- * 非空则校验后 `export CLAUDE_CONFIG_DIR='<dir>'; `（posixQuote 包裹，前缀拼在 unset 之前）。
- * 非法即 throw（调用方 toast 报错，绝不拼进命令）。
- */
-/**
- * Z03：「**显式不注入** `CLAUDE_CONFIG_DIR`」这条前缀 —— 也就是**账号 0 的起法**。
- *
- * **绝不能用「什么都不加」代替它**：远端 rc 里那句 `export CLAUDE_CONFIG_DIR=<默认账号>`
- *（`cc-acct-iso shellinit` 生成的就是它）会让「什么都不加」落到默认账号上 = 静默串号。
- *
- * 逐字节形态由两处消费：`launch-render-fallback.ts` 的 `unset-config-dir` op（e2e 探针
- * 用 `grep -q "unset CLAUDE_CONFIG_DIR;"` 断言这个精确子串）与用量探针载荷。
- * CLI 渲染路径上的同一语义由 `shared/ccm` 的 `--base` 承担，那条跨语言契约由
- * `base-flag-contract-guard.vitest.ts` 钉住。
- */
-export const UNSET_CONFIG_DIR_PREFIX = "unset CLAUDE_CONFIG_DIR; ";
-
-export function buildEnvPrefix(configDir?: string): string {
-  if (!configDir) return "";
-  if (!isValidConfigDir(configDir)) {
-    throw new Error(copyText("shellQuote.bad.configDir", { value: JSON.stringify(configDir) }));
-  }
-  return `export CLAUDE_CONFIG_DIR=${posixQuote(configDir)}; `;
-}
-
-/**
  * F07（unify-launch）：模型名白名单——覆盖"claude-opus-4-5-20260101"这类完整 ID 与"opus"这类
  * 简写别名，拒一切 shell 元字符。只做注入安全校验，不做"这是不是真实存在的模型"的语义校验
  * （远端 `claude` 自己会在模型名不存在时报错，那是它的职责）。
@@ -103,13 +70,13 @@ export function isValidModelName(name: string): boolean {
  * F51:tmux 会话名合法性——非空、无控制字符(含 TAB 0x09 / 换行,防破坏 ls 解析或命令结构)、
  * **无 tmux 保留字符 `.`/`:`**(它们是 `session:window.pane` 目标分隔符,new-session 会拒)、
  * **无 glob 元字符 `*`/`?`**(见下)、≤128。
- * 允许空格等其余可打印字符(`posixQuote` 会安全包裹)。真正的注入边界是 `posixQuote`;此校验
+ * 允许空格等其余可打印字符(引号由 Rust 渲染侧 `shell_quote_core::posix_quote` 安全包裹,那才是注入边界);此校验
  * 兼防运行时 tmux 报错(F53 把会话名开成用户自由输入后,`.`/`:` 会静默失败,故在此拦)。
  *
- * **本函数刻意不禁 glob 字符**(`*`/`?`)——见 `isValidNewTmuxName`。它同时把守 `buildAttachCmd`,
+ * **本函数刻意不禁 glob 字符**(`*`/`?`)——见 `isValidNewTmuxName`。它同时把守 attach 那条(`planAttach`),
  * 而那条路径的输入是 `list_remote_tmux` 列出的**用户自己已存在的会话名**(tabs.ts 的 attach 项)。
  * tmux 允许 `st*ar` 这类名字;在此禁掉只会把「attach 到这类已存在会话」从可用变成 throw,
- * 而**挡不住任何东西**——`exactTarget` 的 `=name:` 已经把 glob 这一级彻底关闭(实测
+ * 而**挡不住任何东西**——渲染侧 `-t` 一律用的 `=name:` 已经把 glob 这一级彻底关闭(实测
  * `-t '=st*ar:'` rc=0 且精确命中)。D 审计判定为行为回归,故拆成两个谓词。
  */
 export function isValidTmuxName(name: string): boolean {
@@ -121,10 +88,10 @@ export function isValidTmuxName(name: string): boolean {
  * F01 第二道防线:**创建**新会话时额外禁 glob 元字符 `*`/`?`。
  *
  * tmux 的 `-t` 解析含 **glob** 一级——实测(tmux 3.6)`kill-session -t 'a*a'` 会命中并杀掉 `alpha`。
- * 第一道防线是 `session-backend.ts` 的 `exactTarget()`(`=name:` 强制精确);此处是第二道:
+ * 第一道防线是渲染侧 `-t` 一律 `=name:` 强制精确(今天在 Rust `payload.rs` 的外层那三格);此处是第二道:
  * **本工具永远不把 glob 字符建进会话名**,于是即便将来某条路径漏了精确前缀也炸不出 glob 误伤。
  *
- * **只用在创建路径**(`buildLauncherCmd`/`planLauncher`)。attach 已有会话走 `isValidTmuxName`——
+ * **只用在创建路径**(`planLauncher`)。attach 已有会话走 `isValidTmuxName`——
  * 那些名字不是我们建的,禁它既无收益又是回归(见上)。二者独立、职责不同。
  * (Rust 侧 `is_ccm_tmux_name` 的字符集今天顺带挡住这一面,但那是**身份**白名单、F04 会重构它,
  * 不能依赖它兼职做字符集防线。)

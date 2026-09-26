@@ -89,8 +89,8 @@ const DIR_CREATORS: &[(&str, &str, &str)] = &[
     ),
     (
         "history_annotations.rs",
-        "write_at",
-        "monitor 数据目录那一层（注解文件由 monitor 交路径）",
+        "lock_for_write",
+        "monitor 数据目录那一层（注解文件由 monitor 交路径；〔HX2〕在拿跨进程锁之前建，锁的是这个目录）",
     ),
     (
         "accounts/upstream/file_face.rs",

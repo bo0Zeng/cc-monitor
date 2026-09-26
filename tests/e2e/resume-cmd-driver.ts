@@ -1,27 +1,29 @@
 // auto-e2e F-E2:resume 命令**真源驱动器**（测试 fixture，非生产改动）。
 //
-// 目的:让 bash 套件拿到「app 真正会跑的 resume 命令串 / 账号解析结果」——直接 import
-// src/ 里的**真实**纯函数(remote-launch.ts 命令构造 + accounts.ts 账号解析),绝不在 shell 里
+// 目的:让 bash 套件拿到「app 真正会跑的 resume 命令串 / 账号解析结果」——绝不在 shell 里
 // 重写一份(那样测的是复制品、不是被测代码)。#75(CLAUDE_CONFIG_DIR 注入) / #76(复用 cc-<sid8>
-// 名不产 -N 孤儿) 的修复都活在这些函数里,套件据本驱动器的 stdout 断言并真跑到 tmux。
+// 名不产 -N 孤儿) 的修复都活在生产那条链上,套件据本驱动器的 stdout 断言并真跑到 tmux。
+//
+// 〔LR2〕命令串的三个 mode 改走**生产那条链**（`launch-render-driver.ts`：生产 `plan*` →
+// 生产 `buildLaunchRenderRequest` → 生产 Rust `render_launch_payload`）。此前 import 的是
+// `remote-launch.ts` 那五个 builder —— 步 22b·B 之后它们零生产调用，本驱动器从那天起验的是副本。
 //
 // 用法(每个 mode 打印一行 stdout):
-//   into-existing <sid> <name> <launcher> [configDir]   -> buildResumeIntoExistingTmuxCmd
-//   tmux-new      <sid> <cwd> <launcher> <name> [configDir] -> buildResumeTmuxCmd
-//   direct        <sid> <cwd> <launcher> [configDir]      -> buildResumeDirectCmd
+//   into-existing <sid> <name> <launcher> [configDir]   -> planResumeIntoExistingTmux → 生产渲染
+//   tmux-new      <sid> <cwd> <launcher> <name> [configDir] -> planResumeTmux → 生产渲染
+//   direct        <sid> <cwd> <launcher> [configDir]      -> planResumeDirect → 生产渲染
 //   mint-name     <cwd> <existing-comma-list>             -> mintSessionTmuxName（K-R96）
-//   env-prefix    [configDir]                             -> buildEnvPrefix
 //   follow        <lastAccount|-> <current|-> <stateJson> -> resolveFollowAccount(名或 "<base>")
 //   acct-dir      <name> <stateJson>                      -> accountConfigDir(路径或 "<none>")
 //
 // configDir 传字面 "-" 或省略 = undefined(基座,无账号注入)。
+import { mintSessionTmuxName } from "../../src/remote-launch.ts";
 import {
-  buildResumeIntoExistingTmuxCmd,
-  buildResumeTmuxCmd,
-  buildResumeDirectCmd,
-  mintSessionTmuxName,
-  buildEnvPrefix,
-} from "../../src/remote-launch.ts";
+  planResumeIntoExistingTmux,
+  planResumeTmux,
+  planResumeDirect,
+} from "../../src/launch-requests.ts";
+import { renderCmdViaProduction } from "./launch-render-driver.ts";
 import { resolveFollowAccount, accountConfigDir } from "../../src/accounts.ts";
 
 function opt(v: string | undefined): string | undefined {
@@ -33,16 +35,23 @@ try {
   switch (mode) {
     case "into-existing":
       process.stdout.write(
-        buildResumeIntoExistingTmuxCmd(a[0], a[1], a[2], opt(a[3])) + "\n",
+        renderCmdViaProduction(
+          planResumeIntoExistingTmux(a[0], a[1], a[2], { configDir: opt(a[3]) }).plan,
+        ) + "\n",
       );
       break;
     case "tmux-new":
       process.stdout.write(
-        buildResumeTmuxCmd(a[0], a[1], a[2], a[3], opt(a[4])) + "\n",
+        renderCmdViaProduction(
+          planResumeTmux(a[0], a[1], a[2], a[3], { configDir: opt(a[4]) }).plan,
+        ) + "\n",
       );
       break;
     case "direct":
-      process.stdout.write(buildResumeDirectCmd(a[0], a[1], a[2], opt(a[3])) + "\n");
+      process.stdout.write(
+        renderCmdViaProduction(planResumeDirect(a[0], a[1], a[2], { configDir: opt(a[3]) }).plan) +
+          "\n",
+      );
       break;
     case "mint-name": {
       // `K-R96`（用户 09-12 `R55`）：名字从 **cwd** 派生（`<项目名>-cc`），不再带 sid。
@@ -50,9 +59,6 @@ try {
       process.stdout.write(mintSessionTmuxName(a[0] ?? "", existing) + "\n");
       break;
     }
-    case "env-prefix":
-      process.stdout.write(buildEnvPrefix(opt(a[0])) + "\n");
-      break;
     case "follow": {
       // resolveFollowAccount(state, {lastAccount, current}) -> 名 or null(基座)
       const state = JSON.parse(a[2] ?? "{}");

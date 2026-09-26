@@ -235,6 +235,12 @@ mod tests {
              **零写盘**：注解只读（`history_annotations::load`）",
         ),
         (
+            "tap",
+            "〔TAP · V124〕tee 的消费侧（后端这一半）：进程级 tap 口 ＋ 每条流连接一条有界通道 ＋ 事件 → `tap` 帧。\
+             它归 backend-core 是因为中转住本机常驻后端这个进程（V107），帧从这个进程的 wire 出去。\
+             **零写盘**：只在内存里递事件",
+        ),
+        (
             "stderr_log",
             "〔NT2 · 第四波 4C · S1〕脱离常驻那条载体的后端：stderr 落进一份有上限、滚动的文件（`设计/15 §4.7 S1`）。\
              它归 backend-core 是因为那些诊断（host key 警告 · 中转起不来的原因 · watch 失败）**只在这个进程里**说得出来。\
@@ -1330,6 +1336,73 @@ mod tests {
         );
         for (p, why) in OWN_STATE_MODULES.iter().chain(OWN_STATE_DOORS) {
             assert!(why.trim().chars().count() >= 20, "`{p}` 没写清为什么");
+        }
+    }
+
+    /// 〔HX2〕第四层里**不做读—改—写、所以不拿跨进程锁**的那几份（`(模块, 为什么)`）。每一条都要答「两个进程同时写它会不会丢东西」。
+    const OWN_STATE_LOCK_EXEMPT: &[(&str, &str)] = &[(
+        "stderr_log.rs",
+        "〔NT2 · S1〕这是后端自己的 stderr **日志落点**，不是一份被读—改—写的状态：写它的只有 fd 2 指着它的那一个进程\
+         （路径由 monitor 起脱离那条载体时交，一台一个常驻后端 ⇒ 一份一个写者），`O_EXCL` 新建 ＋ 滚动时原子挪；\
+         没有「读出来、改一格、整份写回」那一步 ⇒ 没有「后写的盖掉先写的」可丢。在每一行 `tracing` 写之前拿目录锁只会白加一次系统调用",
+    ),
+    (
+        "own_dir.rs",
+        "〔HX1 · 4D〕后端建自家目录的那一个函数（`ensure_private_dir`）：只有「建一层目录、已在不动」这一个动词，没有一份文件被读—改—写；\
+         而且它正是拿锁之前那一步（锁的就是它建出来的目录）—— 它自己再拿锁是先有鸡还是先有蛋",
+    )];
+
+    /// 🔴 〔HX2 · 第四波 4D〕**第四层判据 ⑥：每一份都在跨进程锁里写 —— 人群两向相等。**
+    ///
+    /// 要求住址：题面 HX2 逐字「后端自有状态文件跨进程锁（`flock` 一类，Windows 对应）」；审计 `E-compat.md` §E6 · E14 · §3.1
+    /// （第四层读—改—写只有进程内锁 ⇒ 两个后端进程同时写，后写的整份盖掉先写的；资产目录首建生出幽灵机器；skill 装记录丢了补不回来）。
+    ///
+    /// 生产段里拿 `platform::lock::hold` 那把锁的后端文件 == 第四层登记的模块（两向；每份**恰好一处**）。
+    /// 同波别的路给第四层加一份（SU1 的 `skill_ledger.rs`）而没在写之前拿锁 ⇒ 这一条红（它本来就该红）。
+    /// ⚠ 判不了「锁拿在读之前」（数据流）—— 那一半靠各模块自己的行为判据（资产目录首建那一条）。
+    #[test]
+    fn hx2_every_own_state_module_writes_under_the_cross_process_lock() {
+        let root = crate::guard_support::src_root();
+        let needle = "platform::lock::hold(";
+        let mut holders: std::collections::BTreeMap<String, usize> = Default::default();
+        for path in core_files() {
+            let rel = path
+                .strip_prefix(&root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let src = std::fs::read_to_string(&path).expect("read rs file");
+            let n = guard_core::production_code(&src).matches(needle).count();
+            if n > 0 {
+                holders.insert(rel, n);
+            }
+        }
+        // 〔NT2 合进来之后〕登记的例外：第四层里**不做读—改—写**的那几份（`(模块, 为什么不用锁)`）。
+        let exempt: std::collections::BTreeSet<String> = OWN_STATE_LOCK_EXEMPT
+            .iter()
+            .map(|(p, _)| p.to_string())
+            .collect();
+        for (p, why) in OWN_STATE_LOCK_EXEMPT {
+            assert!(is_own_state(p), "锁的例外 `{p}` 不在第四层登记里 —— 挂空号");
+            assert!(why.chars().count() >= 20, "`{p}` 没写清为什么不用锁");
+        }
+        let want: std::collections::BTreeSet<String> = OWN_STATE_MODULES
+            .iter()
+            .map(|(p, _)| p.to_string())
+            .filter(|p| !exempt.contains(p))
+            .collect();
+        let got: std::collections::BTreeSet<String> = holders.keys().cloned().collect();
+        assert_eq!(
+            got, want,
+            "拿跨进程锁的模块 ≠ 第四层登记的模块。\n\
+             少了 ⇒ 那一份的读—改—写没有跨进程锁（两个后端进程同时写，后写的整份盖掉先写的）；\n\
+             多了 ⇒ 第四层之外有人拿这把锁（它只为后端自有状态文件存在）。"
+        );
+        for (m, n) in &holders {
+            assert_eq!(
+                *n, 1,
+                "`{m}` 里拿了 {n} 处锁 —— 每份一处（写口一个，锁一处）"
+            );
         }
     }
 
@@ -3402,8 +3475,10 @@ mod g6_staged_zero {
     /// `(住址, 符号或判据名, 被钉的那个「零」逐字是什么, 今天钉它的判据（`—` = 今天没有）, 本 crate 够不够得着)`
     const STAGED_ZERO: &[(&str, &str, &str, &str, &str)] = &[
         (
-            "src/bridge/src/backend/control/launch_wire.rs",
-            "the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold",
+            // 〔LR2〕判据改名（原名说的「U8c-3 删不得」那半随 TS 兜底一族删了，只剩 `create-or-attach` 这一半）、
+            //   住址跟着判据走（剖分之后它就住 `tests/` 这份，旧住址是它当年的生产段宿主）。
+            "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
+            "the_create_or_attach_mode_is_sent_only_by_the_ccm_container_path",
             "生产段**不发** `create-or-attach` 这个 mode 串（运行时拼串防自指，配抽取器自检）",
             "自己就是那条判据",
             "跨 crate",

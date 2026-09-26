@@ -4,6 +4,7 @@ import { chan, type Item, type Sub } from "./ipc/chan";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { showActionFailureToast } from "./error-toast";
+import { ACCOUNTS_CHANGED_KIND, ACCOUNTS_CHANGED_WINDOW, accountsChangedItems } from "./session-accounts-poll";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 // C02（rust-ts-boundary）：这 5 个 payload 类型**改成从生成物 re-export**，不再手写。
 // 源是 `src/bridge/src/bridge.rs` 的 `#[cfg_attr(test, derive(ts_rs::TS))]`。
@@ -32,6 +33,7 @@ import type { TasksUpdatePayload } from "./generated/TasksUpdatePayload";
 import type { SessionActivityPayload } from "./generated/SessionActivityPayload";
 import type { RemoteSessionAddedPayload } from "./generated/RemoteSessionAddedPayload";
 import type { SessionContainerPayload } from "./generated/SessionContainerPayload";
+import type { SessionTapPayload } from "./generated/SessionTapPayload";
 import type { OriginSessionsListedPayload } from "./generated/OriginSessionsListedPayload";
 import type { SessionUnseenPayload } from "./generated/SessionUnseenPayload";
 // 本文件内部也用这些名字（8 处），所以 import + re-export 都要有：
@@ -95,6 +97,21 @@ export interface EventHandlers {
    */
   onOriginSessionsListed?: (origin: string) => void;
   /**
+   * 〔TAP · V124 · `设计/20 §8`〕中转抄出来的一个 SSE 事件：会话流 `session-tap`（通道 `subscribe`，`设计/05 §15`）里的一格。
+   * **不进 queue**：活卡是临时态，与行 / 起停事件之间不需要顺序（jsonl 那一轮到了整轮覆盖、墓碑挡迟到的 tap）；
+   * 进 queue 反倒会让 token 级的洪峰排在行前面。credit 在本格处理完当场还。
+   */
+  onSessionTap?: (e: SessionTapPayload) => void;
+  /**
+   * 〔TAP〕那台机器的 tap 流看不见了（订阅里的 `Unseen`：本机后端那条流断了）⇒ 那台上还开着的响应不会再有下文，活卡全撤。
+   */
+  onSessionTapLost?: (origin: Origin) => void;
+  /**
+   * 〔DL1 · `设计/01 §2.2`〕某台机器的账号清单**可能**变了（`accounts-changed` 流里的 `seen` / `frame` / `gap`，
+   * 一批只叫一次）⇒ 强制刷账号清单与 chip。替掉裸 Tauri 事件 `remote-backend-ready`。
+   */
+  onAccountsChanged?: () => void;
+  /**
    * 〔FW1 · 第四波 4D · D-d〕活会话的记录文件不见了（`change` = `"gone"`）/ 被改过已从头重读（`"truncated"` / `"rewritten"`）。
    * 会话流里的一格（`{"file_notice": …}`），与行同序：重读出来的行排在它后面。
    */
@@ -149,6 +166,13 @@ export interface EventHandlers {
  * 落后超过一整个窗口的实时行被句柄丢掉、原位报 `gap`（`onStreamGap` 按行号补）。
  */
 export const STREAM_WINDOW = 20_000;
+
+/**
+ * 〔TAP · V124〕`session-tap` 订阅的 credit 窗口（格）：webview 这一跳在途的 tap 最多这么多格，超了 monitor 那一侧丢、
+ * 位置照占、原位 `Gap`（`05 §3.3.4` 级 2）。每格处理完当场还 ⇒ 正常节奏下窗口永远不会见底；只有 webview 卡住（最小化、
+ * 长任务）时才丢 —— 丢了由活卡的位置号 `n` 看出缺口、撤卡，jsonl 定稿。值与后端 tap 通道同一个量级（256）。
+ */
+export const TAP_WINDOW = 256;
 
 /** 〔CF2〕一条会话流订阅在本文件里的账：还没还的 credit。`sub` 在登记那一跳回来之前是 `null`。 */
 interface StreamHold {
@@ -293,6 +317,16 @@ export interface BindEventsOptions {
    * `bindEvents` 返回时 monitor 那一侧已经登记好（主界面接着发 `frontend-ready` 就是它们的就绪点）。
    */
   streams?: ReadonlyArray<{ origin: Origin; kind: string }>;
+  /**
+   * 〔TAP · V124〕要订 `session-tap` 的机器（中转住本机常驻后端 ⇒ 今天只有本机那一台有来源）。
+   * 与会话行同一条帧路、同一套 credit（`设计/05 §15`）；窗口是 {@link TAP_WINDOW}。
+   */
+  taps?: ReadonlyArray<Origin>;
+  /**
+   * 〔DL1〕要订 `accounts-changed` 的机器（那台的长连接又通了 / 那台后端说账号清单变了 ⇒ {@link EventHandlers.onAccountsChanged}）。
+   * 与会话行 · tap 同一条帧路、同一处 `chan.subscribe`；窗口是 `ACCOUNTS_CHANGED_WINDOW`。
+   */
+  accounts?: ReadonlyArray<Origin>;
 }
 
 /**
@@ -695,14 +729,69 @@ export async function bindEvents(
   // 等所有 listener 在 Rust 侧注册完成再返回（防 emit-before-listen 丢事件）。
   await Promise.all(registrations);
 
+  // 〔TAP · V124〕`session-tap`：一格 = 一个 tap 事件（`SessionTapPayload`），当场交活卡、当场还 credit；
+  //   `Gap` 不补（位置号 `n` 在活卡那一侧看得出缺口）；`Unseen` / `Closed` ⇒ 那台的活卡全撤（开着的响应不会再有下文）。
+  const onTapItems = (origin: Origin, hold: StreamHold, items: Item[]): void => {
+    let used = 0;
+    for (const it of items) {
+      if (it.t === "frame") {
+        used += 1;
+        let p: SessionTapPayload | null = null;
+        try {
+          p = JSON.parse(it.body) as SessionTapPayload;
+        } catch {
+          p = null;
+        }
+        if (p !== null && typeof p === "object" && typeof p.stream === "string") {
+          handlers.onSessionTap?.(p);
+        } else {
+          console.warn("[events] tap 流里一格读不懂，跳过：", it.body.slice(0, 200));
+        }
+      } else if (it.t === "gap") {
+        console.info(`[events] tap 流 [${origin}] 丢了第 ${it.fromSeq}..${it.toSeq} 格（前端落后了）—— 活卡按位置号自己撤`);
+      } else if (it.t === "unseen") {
+        handlers.onSessionTapLost?.(origin);
+      } else if (it.t === "closed") {
+        console.warn(`[events] tap 流 [${origin}] 关了：`, it.by);
+        handlers.onSessionTapLost?.(origin);
+      }
+    }
+    if (used > 0) hold.sub?.want(used);
+  };
+
+  // 〔DL1〕`accounts-changed`：一批格 ⇒ 要不要刷（`accountsChangedItems` 答）；`frame` 占的 credit 当场还
+  //   （格可能先于 `subscribe` 的返回到达 ⇒ 那时欠着，下一批一起还）。
+  const onAccountsItems = (_origin: Origin, hold: StreamHold, items: Item[]): void => {
+    const { changed, frames } = accountsChangedItems(items);
+    if (frames > 0) {
+      if (hold.sub) {
+        hold.sub.want(frames + hold.owed);
+        hold.owed = 0;
+      } else {
+        hold.owed += frames;
+      }
+    }
+    if (changed) handlers.onAccountsChanged?.();
+  };
+
   // 〔CF2 · 第四波 4B〕会话流：起停那几个事件的监听都在了之后再订（订阅一登记，句柄就可能开始交格）。
   //   返回时 monitor 那一侧已经登记好 ⇒ 主界面接着发 `frontend-ready`（就绪点）不会落空。
+  // 〔TAP〕`session-tap` 与会话行走**同一处** `chan.subscribe`（前端对通信层入口的调用点各恰好一处，`X6`）：
+  //   两种流只差窗口与这一格怎么交。
+  const plan: { origin: Origin; kind: string; window: number; feed: typeof onStreamItems }[] = [
+    ...(opts.streams ?? []).map(({ origin, kind }) => ({ origin, kind, window: STREAM_WINDOW, feed: onStreamItems })),
+    ...(opts.taps ?? []).map((origin) => ({ origin, kind: "session-tap", window: TAP_WINDOW, feed: onTapItems })),
+    ...(opts.accounts ?? []).map((origin) => ({
+      origin,
+      kind: ACCOUNTS_CHANGED_KIND,
+      window: ACCOUNTS_CHANGED_WINDOW,
+      feed: onAccountsItems,
+    })),
+  ];
   await Promise.all(
-    (opts.streams ?? []).map(async ({ origin, kind }) => {
+    plan.map(async ({ origin, kind, window, feed }) => {
       const hold: StreamHold = { sub: null, owed: 0 };
-      hold.sub = await chan.subscribe(origin, kind, null, STREAM_WINDOW, (items) =>
-        onStreamItems(origin, hold, items),
-      );
+      hold.sub = await chan.subscribe(origin, kind, null, window, (items) => feed(origin, hold, items));
     }),
   );
 }
