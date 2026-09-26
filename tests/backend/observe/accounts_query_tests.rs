@@ -2159,7 +2159,7 @@ fn hx1_via_relay_says_which_live_sessions_point_at_the_local_relay_and_never_lea
     let sessions = claude.join("sessions");
     fs::create_dir_all(&sessions).unwrap();
     let key = "0123456789abcdef".repeat(4);
-    let keyed = format!("http://127.0.0.1:8788/{key}/s/claude-code/acct1/sid-a");
+    let keyed = format!("http://127.0.0.1:8788/{key}/s/claude-code/acct1");
     let cases: [(&str, Option<String>, serde_json::Value); 3] = [
         ("sid-relay", Some(keyed.clone()), serde_json::json!(true)),
         (

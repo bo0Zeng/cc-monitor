@@ -417,7 +417,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | `link_data` | `link`, `data` | **〔SR1a〕一条链路的下行字节**（`data` = base64，标准字母表带补位；解码后 ≤ 32 KiB）。只在客户端开了链路（`link-open`）之后才出现；链路上的字节与 C2 拨号代理的 stdout 逐字节同形。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的「链路四条」 |
 | `link_end` | `link`, `error?` | **〔SR1a〕这条链路不会再有字节了**，后端已忘掉这个 id。`error` 缺席 = 正常收尾；在 = 非正常收尾的人话。拨不通**不**走这里（那是链路字节里那一行失败的 ack） |
 | `transfer` | `id`, `got`, `total`, `end?` | **〔SR1b〕一趟传输此刻的样子**（`transfer-start` 之后才出现）：每一帧是整份快照（`got` / `total` 字节），不是增量 ⇒ 后端按变更合并、堵住时只合并不堆积。带 `end` 的那一帧是这一趟的**最后一帧**：`{"state":"done","bytes","sha256"?}` · `{"state":"failed","why"}` · `{"state":"cancelled"}`（〔FW1 · 第四波 4D〕`sha256` 只有上传那一路有：整份本机文件的摘要，窗口提交 `files-commit-upload` 时原样交回当 `expect`）。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的「传输四条」 |
-| `tap` | `stream`, `resp`, `n`, `data?`, `end?` | **〔TAP · V124 · `设计/20 §8`〕中转抄出来的一个 SSE 事件**（或一个响应的收尾）。只有**进程里住着中转的那个后端**（本机常驻）会发。`stream` = 路由第三段原样（resume ⇒ sid；新开 ⇒ 起会话时铸的 nonce），后端不解释；`resp` = 本进程第几个响应；`n` = 这一个响应里第几个事件，**从 0 连续** —— 每个事件先占号再投递，丢了的号不出现 ⇒ 接收侧看 `n` 连不连得上就知道缺在哪（原位缺口，`设计/05 §3.3.4`）。`data`（SSE `data:` 后那段原文，**一个 JSON 串**）与 `end`（`"done"` 上游说完 · `"broken"` 转发以错误收尾；这一帧的 `n` = 一共占了几个号）恰有一个。一个事件都没有的响应（非 SSE）不发。**可丢**：走后端自己那条有界 tap 通道（256 件、单件原文 ≤ 16 KiB），不挤出方向的内容帧、不回推中转；SSE 只保快，jsonl 保对（V24） |
+| `tap` | `stream`, `resp`, `n`, `data?`, `end?` | **〔TAP · V124 · `设计/20 §8`〕中转抄出来的一个 SSE 事件**（或一个响应的收尾）。只有**进程里住着中转的那个后端**（本机常驻）会发。`stream` = 〔V141〕claude 请求头 `x-claude-code-session-id` 的值（== 它的 sid，新开 / resume / 分叉同一形；没带 / 过不了段闸 ⇒ 空串），后端不解释；`resp` = 本进程第几个响应；`n` = 这一个响应里第几个事件，**从 0 连续** —— 每个事件先占号再投递，丢了的号不出现 ⇒ 接收侧看 `n` 连不连得上就知道缺在哪（原位缺口，`设计/05 §3.3.4`）。`data`（SSE `data:` 后那段原文，**一个 JSON 串**）与 `end`（`"done"` 上游说完 · `"broken"` 转发以错误收尾；这一帧的 `n` = 一共占了几个号）恰有一个。一个事件都没有的响应（非 SSE）不发。**可丢**：走后端自己那条有界 tap 通道（256 件、单件原文 ≤ 16 KiB），不挤出方向的内容帧、不回推中转；SSE 只保快，jsonl 保对（V24） |
 
 ### 入方向：流连接上的命令信封（U6b-1）
 
@@ -1687,15 +1687,14 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 起会话那一侧（本机与远端同一条）问一次：往 `ANTHROPIC_BASE_URL` 里写哪个中转地址，或者不写。决策表是 `设计/20 §3.2` 那一张（上游选择 `accounts/upstream/endpoint.rs::decide_launch` 是唯一实现）。
 
 ```text
-→ {"id":"k4","cmd":"launch-endpoint","args":{"agent":"claude-code","account":{"kind":"named","configDir":"/h/.claude-accts/work"},"key":"<sid 或 nonce>","allSessions":false}}
-← {"kind":"reply","id":"k4","ok":true,"data":{"baseUrl":"http://127.0.0.1:8788/s/claude-code/work/<key>","listening":true,"whenDown":"refuse","account":"work"}}
+→ {"id":"k4","cmd":"launch-endpoint","args":{"agent":"claude-code","account":{"kind":"named","configDir":"/h/.claude-accts/work"},"allSessions":false}}
+← {"kind":"reply","id":"k4","ok":true,"data":{"baseUrl":"http://127.0.0.1:8788/s/claude-code/work","listening":true,"whenDown":"refuse","account":"work"}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `agent` | → | 这一家 agent 的路由名（第 1 段）|
 | `account` | → | `{"kind":"named","configDir":…}` · `{"kind":"base"}` · 缺席 / `null`（没表态）|
-| `key` | → | 第 3 段（流标签）：resume ⇒ sid；新开 ⇒ 起会话那一侧铸的 nonce。过不了段闸 ⇒ `bad_args` |
 | `allSessions` | → | 全量注入开关（`/t/` 那几格；monitor 那一侧默认开）|
 | `baseUrl` | ← | 注入的地址（不带钥匙；渲染成 `$(cat "$HOME/.cc-monitor/relay-key")` 那一形是起会话那一侧的事）；`null` = 不注入 |
 | `listening` | ← | 这台机器上我们的中转在不在听（只在 `baseUrl` 非空时探；为空时 `false`）|
@@ -2813,10 +2812,11 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
   而**明文 + 非回环**的那一行会被装表那一步**拒掉并出声**
   （判据 `accounts::table::tests::a_plaintext_upstream_is_only_allowed_on_loopback`；上游选择 2026-09-24 搬出了 `relay/`）。
   `裁-1`「只准 TLS」**没有被推翻**，升的只有回环这一格。
-- 路由：`claude` 把 `ANTHROPIC_BASE_URL` 指到 `http://127.0.0.1:<port>/s/<agent>/<account>/<key>`
-  （**代入**：apikey 表里有这一行，换上这一行的 key）或 `…/t/<agent>/<account>/<key>`
+- 路由：`claude` 把 `ANTHROPIC_BASE_URL` 指到 `http://127.0.0.1:<port>/s/<agent>/<account>`
+  （**代入**：apikey 表里有这一行，换上这一行的 key）或 `…/t/<agent>/<account>`
   （**直通**〔`设计/20 §2`〕：永不代入，下游那份鉴权头逐字节原样上去；表里没这一行时发到那个 agent 自己的默认上游），
-  中转把前缀与三段剥掉、其余路径与查询串**原样**转给上游。
+  中转把前缀与两段剥掉、其余路径与查询串**原样**转给上游。〔V141〕地址里没有会话段（先前的 `<key>`：resume 时是 sid、
+  新开时是启动器铸的 nonce）：会话 id 归 claude，中转从它请求头 `x-claude-code-session-id` 认会话、给 tee / tap 打标签。
   ⚠ **那一行的基址若带路径前缀，前缀会被接在这段原样路径的前面**〔`K-R1`，住址
   `upstream::Base::upstream_target`〕—— 前缀为空时与改前**逐字节相同**。
   🔴 中转**不查重、不合并重复的段**：配了 `<host>/v1` 而客户端发 `/v1/messages` 的人
@@ -2824,11 +2824,10 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
   ⚠ **`<account>` 那一段是 `K-H2` 加的**。〔条 49，2026-09-24 订正：先前这里写「中转……只拿 `<account>` 查表」，
   拆键之后不准了〕apikey 表的键是 **`<agent>` ＋ `<account>` 两段**（claude-code 的 3 号与 codex 的 3 号是两行）：
   `/s/` 表里查不到那一对 ⇒ **404，一个字节都不发上游**（不回落到别的账号的 key，
-  也不回落到默认上游）。三段对**中转**仍然都是不透明串 —— 它不解释它们，原样交给上游选择去查。
-  ⚠ 线上字节一个没变，变的是查表语义。
-  ⚠⚠ **老的三段形状 `/s/<agent>/<key>/…` 不会被解析器拒掉**，它会被重读成
-  `account=<key>`；挡住它的是「表里查不到」那一格，不是解析器
-  （判据 `route::tests::the_old_three_segment_shape_is_not_rejected_here_it_is_reread_as_a_different_route`）。
+  也不回落到默认上游）。两段对**中转**都是不透明串 —— 它不解释它们，原样交给上游选择去查。
+  ⚠⚠ 〔V141〕**退役的会话段 `/s/<agent>/<account>/<sid>/…` 不会被解析器拒掉**，它会被读成真路径的一截
+  （上游收到 `/<sid>/v1/messages` ⇒ 上游 404）；升级之前起的、带老地址的会话要重起
+  （判据 `route::tests::the_retired_session_segment_is_not_rejected_here_it_becomes_part_of_the_real_path`）。
 - 谁设 `ANTHROPIC_BASE_URL`〔2026-09-24 订正；先前这里是 08-28 的读数「生产代码 0 处、没有入口」，`K-H2b` 之后不成立。
   〔TL3 · 审计 F 🔴-3〕再订正：先前这里写「monitor 起本机会话时判（`payload::relay_endpoint_for`）· 远端机器那一半不注入」，
   US1（4D）之后两句都反了〕：

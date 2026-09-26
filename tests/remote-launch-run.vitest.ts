@@ -1159,7 +1159,7 @@ describe("RL1 中转地址进远端载荷", () => {
     vi.clearAllMocks();
   });
 
-  const URL_FROM_BACKEND = "http://127.0.0.1:8788/s/claude-code/acct-a/11111111-2222-3333-4444-555555555555";
+  const URL_FROM_BACKEND = "http://127.0.0.1:8788/s/claude-code/acct-a";
 
   function route(relay: (args: unknown) => Promise<unknown>): {
     asked: unknown[];
@@ -1225,14 +1225,14 @@ describe("RL1 中转地址进远端载荷", () => {
     }
   });
 
-  it("★ resume 交 sid、开新交 null；没选账号 ⇒ 账号那一格是 base（键名取生成物）", async () => {
+  it("★ 〔V141〕resume 与开新问的入参相同（不带会话身份）；没选账号 ⇒ 账号那一格是 base（键名取生成物）", async () => {
     const { asked } = route(() => Promise.resolve(null));
     stubClipboard(vi.fn().mockResolvedValue(undefined));
     await runRemoteResume("aya", "sid-s1", "/w", "");
     await runRemoteLauncher("aya", "/w", "s2-cc", "claude");
     expect(asked).toEqual([
-      { origin: "aya", account: { kind: "base" }, sid: "sid-s1" },
-      { origin: "aya", account: { kind: "base" }, sid: null },
+      { origin: "aya", account: { kind: "base" } },
+      { origin: "aya", account: { kind: "base" } },
     ]);
   });
 
@@ -1244,7 +1244,6 @@ describe("RL1 中转地址进远端载荷", () => {
       {
         origin: "aya",
         account: { kind: "named", configDir: "/home/u/.claude-accts/acct-a", name: "acct-a" },
-        sid: "sid-n1",
       },
     ]);
   });

@@ -7,7 +7,7 @@
 //!
 //! - E1 决策表：每一格 × 账号三态 × 开关 × 登记与否 == 手写期望（期望不由 `decide_launch` 现算）。
 //! - E11 F5：没表态 ⇒ `/t/…/_/…`；与 `_` 同名的行 ⇒ 不注入。
-//! - 线上形状：两条应答的键集恒定（注入与不注入同一组键）；入参闸（缺字段 · 坏 `key` · 坏 `account`）。
+//! - 线上形状：两条应答的键集恒定（注入与不注入同一组键）；入参闸（缺字段 · 坏 `account`）。〔V141〕入参没有 `key`。
 //! - `listening` 只在要注入时才探（不注入就一次都不连）。
 //!
 //! # 买不到的
@@ -45,14 +45,14 @@ fn us1_the_launch_table_matches_the_hand_written_one() {
             named("/h/.claude-accts/acct-a"),
             false,
             true,
-            inject(&format!("{s}/acct-a/k1"), WhenDown::Refuse, Some("acct-a")),
+            inject(&format!("{s}/acct-a"), WhenDown::Refuse, Some("acct-a")),
         ),
         (
             "claude-code",
             named("/h/.claude-accts/acct-a"),
             true,
             true,
-            inject(&format!("{s}/acct-a/k1"), WhenDown::Refuse, Some("acct-a")),
+            inject(&format!("{s}/acct-a"), WhenDown::Refuse, Some("acct-a")),
         ),
         // 别家 agent 拿同一个 id：表里那一行不是它的 ⇒ 不走 /s/；开关开且登记了 ⇒ /t/ 但撞名 ⇒ 不注
         (
@@ -92,14 +92,14 @@ fn us1_the_launch_table_matches_the_hand_written_one() {
             named("/h/.claude-accts/acct-b"),
             true,
             true,
-            inject(&format!("{t}/acct-b/k1"), WhenDown::Direct, None),
+            inject(&format!("{t}/acct-b"), WhenDown::Direct, None),
         ),
         (
             "claude-code",
             LaunchAccount::Base,
             true,
             true,
-            inject(&format!("{t}/0/k1"), WhenDown::Direct, None),
+            inject(&format!("{t}/0"), WhenDown::Direct, None),
         ),
         // E11 F5：没表态 ⇒ `_`
         (
@@ -107,7 +107,7 @@ fn us1_the_launch_table_matches_the_hand_written_one() {
             LaunchAccount::Undeclared,
             true,
             true,
-            inject(&format!("{t}/_/k1"), WhenDown::Direct, None),
+            inject(&format!("{t}/_"), WhenDown::Direct, None),
         ),
         // ④ 推不出 id（空 configDir）⇒ 不注
         ("claude-code", named(""), true, true, Endpoint::None),
@@ -121,7 +121,7 @@ fn us1_the_launch_table_matches_the_hand_written_one() {
         ),
     ];
     for (agent, account, all, reg, want) in cases {
-        let got = decide_launch(agent, &account, "k1", all, &rows, reg);
+        let got = decide_launch(agent, &account, all, &rows, reg);
         assert_eq!(
             got, want,
             "agent={agent} account={account:?} 开关={all} 登记={reg}"
@@ -131,7 +131,7 @@ fn us1_the_launch_table_matches_the_hand_written_one() {
     for (label_row, account) in [("0", LaunchAccount::Base), ("_", LaunchAccount::Undeclared)] {
         let rows = vec![label_row.to_string()];
         assert_eq!(
-            decide_launch("claude-code", &account, "k1", true, &rows, true),
+            decide_launch("claude-code", &account, true, &rows, true),
             Endpoint::None,
             "标签 {label_row} 与表里一行同名却注入了"
         );
@@ -141,7 +141,6 @@ fn us1_the_launch_table_matches_the_hand_written_one() {
         decide_launch(
             "claude-code",
             &LaunchAccount::Base,
-            "k1",
             true,
             &["x".to_string()],
             true
@@ -167,7 +166,7 @@ fn us1_the_launch_answer_always_has_the_same_four_keys_and_probes_only_when_inje
     };
     let want_keys = vec!["account", "baseUrl", "listening", "whenDown"];
     let none = answer_launch_with(
-        &json!({"agent":"claude-code","account":{"kind":"base"},"key":"k1","allSessions":false}),
+        &json!({"agent":"claude-code","account":{"kind":"base"},"allSessions":false}),
         &rows,
         &probe,
     )
@@ -179,7 +178,7 @@ fn us1_the_launch_answer_always_has_the_same_four_keys_and_probes_only_when_inje
     );
     assert_eq!(probes.get(), 0, "不注入也去探了中转");
     let s = answer_launch_with(
-        &json!({"agent":"claude-code","account":{"kind":"named","configDir":"/h/.claude-accts/acct-a","name":"a"},"key":"k1","allSessions":false}),
+        &json!({"agent":"claude-code","account":{"kind":"named","configDir":"/h/.claude-accts/acct-a","name":"a"},"allSessions":false}),
         &rows,
         &probe,
     )
@@ -187,18 +186,18 @@ fn us1_the_launch_answer_always_has_the_same_four_keys_and_probes_only_when_inje
     assert_eq!(keys(&s), want_keys);
     assert_eq!(
         s,
-        json!({"baseUrl":"http://127.0.0.1:8788/s/claude-code/acct-a/k1","listening":true,"whenDown":"refuse","account":"acct-a"})
+        json!({"baseUrl":"http://127.0.0.1:8788/s/claude-code/acct-a","listening":true,"whenDown":"refuse","account":"acct-a"})
     );
     assert_eq!(probes.get(), 1);
     let t = answer_launch_with(
-        &json!({"agent":"claude-code","key":"k1","allSessions":true}),
+        &json!({"agent":"claude-code","allSessions":true}),
         &rows,
         &|_| false,
     )
     .unwrap();
     assert_eq!(
         t,
-        json!({"baseUrl":"http://127.0.0.1:8788/t/claude-code/_/k1","listening":false,"whenDown":"direct","account":null})
+        json!({"baseUrl":"http://127.0.0.1:8788/t/claude-code/_","listening":false,"whenDown":"direct","account":null})
     );
 }
 
@@ -207,15 +206,12 @@ fn us1_the_launch_answer_always_has_the_same_four_keys_and_probes_only_when_inje
 fn us1_bad_launch_args_are_refused_before_anything_is_probed() {
     let probe = |_: u16| -> bool { panic!("入参不对还去探了中转") };
     for bad in [
-        json!({"account":null,"key":"k1","allSessions":true}),
-        json!({"agent":"claude-code","allSessions":true}),
-        json!({"agent":"claude-code","key":"a/b","allSessions":true}),
-        json!({"agent":"claude-code","key":"","allSessions":true}),
-        json!({"agent":"claude-code","key":"k1"}),
-        json!({"agent":"claude-code","key":"k1","allSessions":"yes"}),
-        json!({"agent":"claude-code","key":"k1","allSessions":true,"account":{"kind":"named"}}),
-        json!({"agent":"claude-code","key":"k1","allSessions":true,"account":{"kind":"other"}}),
-        json!({"agent":"claude-code","key":"k1","allSessions":true,"account":"base"}),
+        json!({"account":null,"allSessions":true}),
+        json!({"agent":"claude-code"}),
+        json!({"agent":"claude-code","allSessions":"yes"}),
+        json!({"agent":"claude-code","allSessions":true,"account":{"kind":"named"}}),
+        json!({"agent":"claude-code","allSessions":true,"account":{"kind":"other"}}),
+        json!({"agent":"claude-code","allSessions":true,"account":"base"}),
     ] {
         let got = answer_launch_with(&bad, &[], &probe);
         assert!(matches!(got, Err(("bad_args", _))), "{bad} ⇒ {got:?}");
@@ -279,7 +275,7 @@ fn us1_the_apikey_products_match_the_cross_language_golden() {
             &json!({"agent":"claude-code","configDirs":["/h/.claude-accts/work","/h/.claude-accts/bad-url","/h/.claude-accts/me"]}),
             &rows, &|_| true).unwrap(),
         "launch-endpoint": answer_launch_with(
-            &json!({"agent":"claude-code","account":{"kind":"named","configDir":"/h/.claude-accts/work","name":"work"},"key":"k-1","allSessions":false}),
+            &json!({"agent":"claude-code","account":{"kind":"named","configDir":"/h/.claude-accts/work","name":"work"},"allSessions":false}),
             &rows, &|_| false).unwrap(),
     });
     let got: Value = serde_json::from_str(

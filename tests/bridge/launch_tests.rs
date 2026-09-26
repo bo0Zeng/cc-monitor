@@ -556,10 +556,10 @@ fn the_local_argv_hands_the_command_through_byte_for_byte_prefix_and_all() {
         // ① 不带中转前缀的那一形（隔壁那条判据今天只喂这一形）。
         "unset CLAUDE_CONFIG_DIR; ccm --tmux claude --resume s1",
         // ② 带中转前缀 —— 第八层就长在「没人喂这一形」上。
-        "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a/sid-1'; \
+        "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a'; \
              export CLAUDE_CONFIG_DIR='/h/.claude-accts/acct-a'; claude --resume s1",
         // ③ **另一个号** —— 「哪个号」这一维也不许在这一跳上被抹平。
-        "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-b/sid-2'; \
+        "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-b'; \
              export CLAUDE_CONFIG_DIR='/h/.claude-accts/acct-b'; claude --resume s2",
     ];
     // 反空真：这三形本来就该是三个不同的串（否则下面三条里有两条是同一条）。
@@ -924,7 +924,7 @@ fn spawn_fake_terminal(
 fn the_spawned_process_really_gets_the_relay_prefix_without_a_terminal() {
     let dir = scratch_dir("nowin");
     let seen = dir.join("what-the-process-saw");
-    let url = "http://127.0.0.1:8788/s/claude-code/acct-a/sid-1";
+    let url = "http://127.0.0.1:8788/s/claude-code/acct-a";
     let prefix = relay_probe_prefix(url);
     // 反空真①：前缀本来就该非空且真的是一段 env 注入，否则下面整条是「空 == 空」。
     assert!(
@@ -1010,7 +1010,7 @@ fn the_terminal_we_hand_the_command_to_really_gets_the_relay_prefix() {
         ),
     );
 
-    let url = "http://127.0.0.1:8788/s/claude-code/acct-b/sid-2";
+    let url = "http://127.0.0.1:8788/s/claude-code/acct-b";
     let prefix = relay_probe_prefix(url);
     // 反空真①：同上，前缀本来就该非空。
     assert!(

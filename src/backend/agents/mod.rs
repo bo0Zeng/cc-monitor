@@ -135,11 +135,27 @@ pub(crate) struct DefaultUpstream {
     pub(crate) env: &'static str,
     /// 没配 `env` 时这一家发到哪儿。
     pub(crate) fallback: &'static str,
+    /// 〔V141〕这一家的请求里**它自己带着会话标识**的那个头（中转拿它给流打标签）。`None` = 说不出 ⇒ 流不带标签。
+    pub(crate) session_header: Option<&'static str>,
 }
 
 /// 〔NT2 · V25〕登记了默认上游的每一家：`(路由名, 那一格)`。**上游选择读默认上游的唯一入口**。
 pub(crate) fn default_upstreams() -> impl Iterator<Item = &'static DefaultUpstream> {
     REGISTRY.iter().filter_map(|a| a.upstream.as_ref())
+}
+
+/// 〔V141〕各家登记的会话标识头（注册序、去重）：中转经上游选择拿到这份名单，按它从请求里认会话 —— 会话 id 归 agent 自己。
+pub(crate) fn session_headers() -> Vec<&'static str> {
+    let mut v: Vec<&'static str> = Vec::new();
+    for h in REGISTRY
+        .iter()
+        .filter_map(|a| a.upstream.as_ref()?.session_header)
+    {
+        if !v.contains(&h) {
+            v.push(h);
+        }
+    }
+    v
 }
 
 /// 〔C4d〕一家的合成历史面：函数指针（同 [`Adapter::home`]，不立 trait）。

@@ -579,11 +579,8 @@ fn the_relay_url_env_op_renders_through_the_one_exporter_and_refuses_every_other
     let mut good = Vec::new();
     for mode in relay_route_core::RouteMode::ALL {
         for port in [1u16, RELAY_PORT, 65535] {
-            for (a, b, c) in [
-                ("claude-code", "acct-a", "k-0123456789abcdef"),
-                ("claude-code", "0", "11111111-2222-3333-4444-555555555555"),
-            ] {
-                good.push(relay_route_core::base_url(port, mode, a, b, c).expect("构造口"));
+            for (a, b) in [("claude-code", "acct-a"), ("claude-code", "0")] {
+                good.push(relay_route_core::base_url(port, mode, a, b).expect("构造口"));
             }
         }
     }
@@ -607,20 +604,20 @@ fn the_relay_url_env_op_renders_through_the_one_exporter_and_refuses_every_other
     }
     for bad in [
         "",
-        "http://localhost:8788/s/claude-code/acct-a/k", // 不是那个回环字面量
-        "https://127.0.0.1:8788/s/claude-code/acct-a/k", // 协议
-        "http://127.0.0.1:0/s/claude-code/acct-a/k",    // 端口 0
-        "http://127.0.0.1:70000/s/claude-code/acct-a/k", // 端口越界
-        "http://127.0.0.1:/s/claude-code/acct-a/k",     // 端口空
-        "http://127.0.0.1:+88/s/claude-code/acct-a/k",  // 端口带符号
-        "http://127.0.0.1:8788/x/claude-code/acct-a/k", // 别的前缀
-        "http://127.0.0.1:8788/s/claude-code/acct-a",   // 少一段
-        "http://127.0.0.1:8788/s/claude-code/acct-a/k/v1", // 多一段
-        "http://127.0.0.1:8788/s/claude-code/acct-a/k/", // 尾斜杠
-        "http://127.0.0.1:8788/s/claude-code/acct-a/k?x=1", // 查询串
-        "http://127.0.0.1:8788/s/claude-code/acct'a/k", // 引号
-        "http://127.0.0.1:8788/s/claude-code/../k",     // 点段
-        "http://127.0.0.1:8788/s/claude-code/acct-a/k; rm -rf ~", // 注入形
+        "http://localhost:8788/s/claude-code/acct-a", // 不是那个回环字面量
+        "https://127.0.0.1:8788/s/claude-code/acct-a", // 协议
+        "http://127.0.0.1:0/s/claude-code/acct-a",    // 端口 0
+        "http://127.0.0.1:70000/s/claude-code/acct-a", // 端口越界
+        "http://127.0.0.1:/s/claude-code/acct-a",     // 端口空
+        "http://127.0.0.1:+88/s/claude-code/acct-a",  // 端口带符号
+        "http://127.0.0.1:8788/x/claude-code/acct-a", // 别的前缀
+        "http://127.0.0.1:8788/s/claude-code",        // 少一段
+        "http://127.0.0.1:8788/s/claude-code/acct-a/k", // 多一段（〔V141〕退役的会话段）
+        "http://127.0.0.1:8788/s/claude-code/acct-a/", // 尾斜杠
+        "http://127.0.0.1:8788/s/claude-code/acct-a?x=1", // 查询串
+        "http://127.0.0.1:8788/s/claude-code/acct'a", // 引号
+        "http://127.0.0.1:8788/s/claude-code/..",     // 点段
+        "http://127.0.0.1:8788/s/claude-code/acct-a; rm -rf ~", // 注入形
     ] {
         assert!(!relay_base_url_shape_ok(bad), "坏形 {bad:?} 被校验口收了");
         let spec = PayloadSpec {
@@ -1208,7 +1205,7 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
     // 文本 ↔ 行为 对拍：中转那截**真跑一遍**，名字必须与从体里读出来的是同一个。
     assert_eq!(
         exported_var_names(&[relay_env_prefix_posix(
-            "http://127.0.0.1:8788/s/claude-code/acct-a/sid-1"
+            "http://127.0.0.1:8788/s/claude-code/acct-a"
         )]),
         vec![left[0].clone()],
         "中转那个渲染器**跑出来**的变量名与从它体里读出来的不是同一个 —— \
@@ -1467,12 +1464,12 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
     // ★ 反面：本文件的 POSIX 那一处**必须真的接上了**（不然上面整张表可以全是「没接」）。
     // 〔RK1〕钥匙段是读钥匙文件的命令替换（形状理由在 `RELAY_KEY_FILE_REL` 头注）。
     assert_eq!(
-        relay_env_prefix_posix("http://127.0.0.1:8788/s/a/b/c"),
-        "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'\"$(cat \"$HOME/.cc-monitor/relay-key\")\"'/s/a/b/c'; "
+        relay_env_prefix_posix("http://127.0.0.1:8788/s/a/b"),
+        "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'\"$(cat \"$HOME/.cc-monitor/relay-key\")\"'/s/a/b'; "
     );
     assert_eq!(
-        relay_env_prefix_ps("http://127.0.0.1:8788/s/a/b/c"),
-        "$env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/' + (Get-Content -Raw -LiteralPath (Join-Path $HOME '.cc-monitor/relay-key')).Trim() + '/s/a/b/c'; "
+        relay_env_prefix_ps("http://127.0.0.1:8788/s/a/b"),
+        "$env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/' + (Get-Content -Raw -LiteralPath (Join-Path $HOME '.cc-monitor/relay-key')).Trim() + '/s/a/b'; "
     );
 }
 
@@ -1502,7 +1499,6 @@ fn the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_hom
         relay_route_core::RouteMode::Substitute,
         "claude-code",
         "acct-a",
-        "sid-1",
     )
     .expect("构造口");
     let prefix = relay_env_prefix_posix(&url);
@@ -1521,7 +1517,7 @@ fn the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_hom
     std::fs::create_dir_all(&home).expect("夹具家目录");
     assert_eq!(
         run(&home),
-        "http://127.0.0.1:8788//s/claude-code/acct-a/sid-1",
+        "http://127.0.0.1:8788//s/claude-code/acct-a",
         "钥匙文件不在时应展开成空段（中转以 403 拒），不是别的"
     );
     // 文件在 ⇒ 逐字节 == 带钥匙的 URL。
@@ -1529,7 +1525,7 @@ fn the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_hom
     std::fs::write(home.join(RELAY_KEY_FILE_REL), &key).expect("写夹具钥匙");
     assert_eq!(
         run(&home),
-        format!("http://127.0.0.1:8788/{key}/s/claude-code/acct-a/sid-1"),
+        format!("http://127.0.0.1:8788/{key}/s/claude-code/acct-a"),
         "真 shell 展开之后不是带钥匙的那条 URL"
     );
     // `/t/` 那一形同样。
@@ -1538,7 +1534,6 @@ fn the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_hom
         relay_route_core::RouteMode::Passthrough,
         "claude-code",
         "0",
-        "sid-2",
     )
     .expect("构造口");
     let out = std::process::Command::new("sh")
@@ -1552,7 +1547,7 @@ fn the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_hom
         .expect("起 sh");
     assert_eq!(
         String::from_utf8_lossy(&out.stdout),
-        format!("http://127.0.0.1:8788/{key}/t/claude-code/0/sid-2")
+        format!("http://127.0.0.1:8788/{key}/t/claude-code/0")
     );
     let _ = std::fs::remove_dir_all(&home);
 }

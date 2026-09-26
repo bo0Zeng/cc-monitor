@@ -614,7 +614,7 @@ fn us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses() {
     let rows = rows_at_with(&p, &|_| None);
     assert_eq!(
         answer_launch_with(&ask("/h/.claude-accts/acct-one"), &rows, &|_| true).unwrap()["baseUrl"],
-        json!("http://127.0.0.1:8788/s/claude-code/acct-one/k-1"),
+        json!("http://127.0.0.1:8788/s/claude-code/acct-one"),
         "写口写下的那一行，起会话的成品没用上（表里：{rows:?}）"
     );
     assert!(

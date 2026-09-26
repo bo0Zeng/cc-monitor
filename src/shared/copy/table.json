@@ -11501,7 +11501,7 @@
     },
     "rsPayload.relayUrl.bad": {
       "kind": "error",
-      "zh": "中转地址格式不对，不能拼进命令：{value}（要 http://127.0.0.1:<端口>/s|t/<三段>）",
+      "zh": "中转地址格式不对，不能拼进命令：{value}（要 http://127.0.0.1:<端口>/s|t/<两段>）",
       "args": ["value"]
     },
     "rsPayload.rbindToken.bad": {
@@ -16993,11 +16993,6 @@
       "kind": "error",
       "zh": "base_url 是明文 http，而主机不是本机。那会把这一行的 key 明着发上网线；要么换 https，要么把上游放到本机上。",
       "args": []
-    },
-    "beUpstreamEndpoint.key.notSegment": {
-      "kind": "error",
-      "zh": "流标签 {key} 里有不许用的字符（只许字母数字与 - _，1 到 128 个字节）",
-      "args": ["key"]
     },
     "beUpstreamEndpoint.args.missingBool": {
       "kind": "error",

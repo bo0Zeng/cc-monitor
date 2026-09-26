@@ -249,7 +249,7 @@ pub struct SessionContainerPayload {
 
 /// 〔TAP · V124〕会话流 `session-tap`（通道 `subscribe`，`设计/05 §15`）里一格的体：后端 `tap` 帧的字段原样 ＋ 哪台机器。
 ///
-/// `stream` = 路由第三段（前端拿它对 tab 的 sid，对不上 ⇒ 匿名流、不显示）；`resp` · `n` 见后端 `wire::Frame::Tap`；
+/// `stream` = claude 请求头里自带的会话标识（〔V141〕== 它的 sid；前端拿它对 tab 的 sid，对不上 / 空 ⇒ 匿名流、不显示）；`resp` · `n` 见后端 `wire::Frame::Tap`；
 /// `data`（SSE 事件原文，一个 JSON 串）与 `end`（`"done"` / `"broken"`）恰有一个。
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
