@@ -51,6 +51,8 @@ pub(crate) struct Fs {
     pub(crate) yield_per_write: usize,
     /// 〔DP1〕每一次 `READ` 的偏移（下载续传那一格判「前缀没有被重新读一遍」）。
     pub(crate) read_offsets: Vec<u64>,
+    /// 〔HX1〕目录上被 `SETSTAT` 设过的权限位（`目录 → permissions`）—— 部署建出来的那几层收没收窄。
+    pub(crate) dir_modes: BTreeMap<String, u32>,
 }
 
 impl Fs {
@@ -415,11 +417,16 @@ impl russh_sftp::server::Handler for Server {
         &mut self,
         id: u32,
         path: String,
-        _attrs: FileAttributes,
+        attrs: FileAttributes,
     ) -> impl std::future::Future<Output = Result<Status, Self::Error>> + Send {
         let fs = self.fs.clone();
         async move {
-            fs.lock().unwrap().touch("setstat", &rel(&path));
+            let mut fs = fs.lock().unwrap();
+            let p = rel(&path);
+            fs.touch("setstat", &p);
+            if let (true, Some(m)) = (fs.dirs.contains(&p), attrs.permissions) {
+                fs.dir_modes.insert(p, m);
+            }
             Ok(ok(id))
         }
     }

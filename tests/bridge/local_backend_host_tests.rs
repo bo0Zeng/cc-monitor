@@ -4068,7 +4068,7 @@ fn hx1_the_monitor_home_dir_is_born_private_and_an_existing_one_is_left_alone() 
     std::fs::remove_dir_all(&base).ok();
     std::fs::create_dir_all(&base).expect("base");
     let fresh = base.join("new").join(".cc-monitor");
-    ensure_private_dir(&fresh).expect("建");
+    crate::platform_fs::ensure_private_dir(&fresh).expect("建");
     assert_eq!(mode(&fresh), 0o700);
     // 生产那一条真路：token 文件落进一个还不存在的目录 ⇒ 那一层是 0700。
     let via_token = base.join("tok").join(".cc-monitor");
@@ -4077,7 +4077,7 @@ fn hx1_the_monitor_home_dir_is_born_private_and_an_existing_one_is_left_alone() 
     let old = base.join("old");
     std::fs::create_dir_all(&old).expect("预置");
     std::fs::set_permissions(&old, std::fs::Permissions::from_mode(0o755)).expect("chmod");
-    ensure_private_dir(&old).expect("已在");
+    crate::platform_fs::ensure_private_dir(&old).expect("已在");
     assert_eq!(mode(&old), 0o755, "已在的那一层被改了权限");
     std::fs::remove_dir_all(&base).ok();
 }
@@ -4135,5 +4135,121 @@ fn hx1_a_busy_stream_is_told_as_another_monitor_not_as_a_version_mismatch() {
     assert!(
         !arm.contains("start.refused"),
         "Busy 那一臂又取了 refused 的话"
+    );
+}
+
+/// 〔HX1 · 主会话裁 HX1 拍板项 4〕**monitor 生产段每一处建目录都登记在案，建后端自家目录（`~/.cc-monitor` 一族）的只有
+/// `platform_fs::ensure_private_dir` 一处**（本机起后端前 · token / pid 那一层 · 释放二进制 / 全景小程序 / ccm 入口那几处经注入）。
+/// 守的要求：主会话裁「建自家目录收成一个小函数 …… 判据：生产段建 `~/.cc-monitor` 的调用点 == 那个函数一处（两向，带正控）」。
+/// 形状：`src/bridge/src` 生产段里 `fs::create_dir(` / `fs::create_dir_all(` / `fs::DirBuilder::new(` 的所在 (文件, 函数) == 登记表（两向）；
+/// 登记表里「后端自家目录」那一格恰好是那一个函数；正控：合成语料里多一处必被认出。后端那一半另有一份（`own_dir_tests`）。
+#[test]
+fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_home() {
+    const OWN_HOME: &str = "后端自家目录";
+    const DIR_CREATORS: &[(&str, &str, &str)] = &[
+        ("platform_fs.rs", "ensure_private_dir", OWN_HOME),
+        (
+            "logging.rs",
+            "build_rolling_appender",
+            "monitor 数据目录下的 logs（滚动日志）",
+        ),
+        (
+            "logging.rs",
+            "write_diagnostics_to_config",
+            "monitor 数据目录（诊断写进 config）",
+        ),
+        (
+            "lib.rs",
+            "open_log_dir",
+            "monitor 数据目录下的 logs（「打开日志目录」）",
+        ),
+        ("bind.rs", "spawn", "monitor 数据目录（绑定表）"),
+        (
+            "utils.rs",
+            "atomic_write_json",
+            "调用方给的 JSON 文件的父目录（monitor 数据目录一族）",
+        ),
+        (
+            "config.rs",
+            "save_config",
+            "monitor 数据目录（config.json）",
+        ),
+        ("session_map.rs", "run_watcher", "被看的那个 sessions 目录"),
+        (
+            "filewin/bookmarks.rs",
+            "lock_store",
+            "monitor 数据目录（书签）",
+        ),
+        (
+            "local_backend_host.rs",
+            "spawn_detached",
+            "monitor 数据目录下的 logs/backend（交给脱离后端的 stderr 文件）",
+        ),
+    ];
+    fn creations(rel: &str, prod: &str) -> Vec<(String, String)> {
+        let needles = [
+            "fs::create_dir(",
+            "fs::create_dir_all(",
+            "fs::DirBuilder::new(",
+        ];
+        let mut out = Vec::new();
+        let mut cur = String::new();
+        for line in prod.lines() {
+            let t = line.trim_start();
+            for kw in [
+                "pub(crate) async fn ",
+                "pub async fn ",
+                "pub(crate) fn ",
+                "pub fn ",
+                "async fn ",
+                "fn ",
+            ] {
+                if let Some(rest) = t.strip_prefix(kw) {
+                    cur = rest
+                        .chars()
+                        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                        .collect();
+                    break;
+                }
+            }
+            if needles.iter().any(|n| line.contains(n)) {
+                out.push((rel.to_string(), cur.clone()));
+            }
+        }
+        out
+    }
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let files: Vec<(std::path::PathBuf, String)> = guard_core::scan_tree!(&root, &["rs"]);
+    assert!(files.len() >= 100, "只扫到 {} 份 —— 遍历坏了", files.len());
+    let mut found: Vec<(String, String)> = Vec::new();
+    for (path, src) in &files {
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        found.extend(creations(&rel, &guard_core::production_code(src)));
+    }
+    found.sort();
+    found.dedup();
+    let mut want: Vec<(String, String)> = DIR_CREATORS
+        .iter()
+        .map(|(f, n, _)| ((*f).to_string(), (*n).to_string()))
+        .collect();
+    want.sort();
+    assert_eq!(found, want, "monitor 生产段建目录的地方与登记表对不上 —— 建的若是 `~/.cc-monitor` 一族，改走 `platform_fs::ensure_private_dir`");
+    let home: Vec<&str> = DIR_CREATORS
+        .iter()
+        .filter(|(_, _, w)| *w == OWN_HOME)
+        .map(|(f, _, _)| *f)
+        .collect();
+    assert_eq!(home, vec!["platform_fs.rs"]);
+    // 正控。
+    assert_eq!(
+        creations(
+            "x.rs",
+            "fn sneaky() {\n    std::fs::create_dir_all(p).ok();\n}\n"
+        ),
+        vec![("x.rs".to_string(), "sneaky".to_string())]
     );
 }

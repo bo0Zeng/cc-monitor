@@ -1095,6 +1095,8 @@ pub fn extract_embedded_to(
     build_id: &str,
     bytes: &[u8],
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
+    // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform_fs::ensure_private_dir`）。
+    ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
 ) -> Result<PathBuf, String> {
     let dest = dir.join(local_extract_name(build_id));
     // 已经在且大小对得上 ⇒ 幂等跳过（不重写，省一次 IO，也不动 mtime）。
@@ -1103,12 +1105,7 @@ pub fn extract_embedded_to(
             return Ok(dest);
         }
     }
-    std::fs::create_dir_all(dir).map_err(|e| {
-        copy_text(
-            "rsLocalBackend.extract.mkdirFailed",
-            &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
-        )
-    })?;
+    ensure_dir(dir)?;
     // 先写临时文件再 rename：半截文件不许被当成可执行的后端（rename 在同一文件系统上原子）。
     // ★★ 临时名**带 pid**〔`P2t` 摸底 08-12〕：原来是**固定名**，两个同版本 monitor 同时释放
     // 会写同一个 `.partial` —— 一个写到一半、另一个 `rename` 走，出来的可能是**半截文件**，
@@ -1170,6 +1167,8 @@ pub fn place_local_panorama(
     file: &str,
     bytes: &[u8],
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
+    // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform_fs::ensure_private_dir`）。
+    ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
 ) -> Result<PathBuf, String> {
     let dest = dir.join(file);
     if let Ok(m) = std::fs::metadata(&dest) {
@@ -1180,12 +1179,7 @@ pub fn place_local_panorama(
             return Ok(dest);
         }
     }
-    std::fs::create_dir_all(dir).map_err(|e| {
-        copy_text(
-            "rsLocalBackend.extract.mkdirFailed",
-            &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
-        )
-    })?;
+    ensure_dir(dir)?;
     let tmp = dir.join(format!(".{file}.{}.partial", std::process::id()));
     sweep_stale_partials(dir, file);
     std::fs::write(&tmp, bytes).map_err(|e| {
@@ -1315,6 +1309,8 @@ pub fn install_local_ccm_entry(
     dir: &Path,
     backend_bin: &Path,
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
+    // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform_fs::ensure_private_dir`）。
+    ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
 ) -> Result<PathBuf, String> {
     let name = local_ccm_entry_name();
     let dest = dir.join(&name);
@@ -1336,12 +1332,7 @@ pub fn install_local_ccm_entry(
             return Ok(dest);
         }
     }
-    std::fs::create_dir_all(dir).map_err(|e| {
-        copy_text(
-            "rsLocalBackend.extract.mkdirFailed",
-            &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
-        )
-    })?;
+    ensure_dir(dir)?;
     let tmp = dir.join(format!(".{}.{}.partial", name, std::process::id()));
     sweep_stale_partials(dir, &name);
     std::fs::copy(backend_bin, &tmp).map_err(|e| {
@@ -1979,6 +1970,8 @@ pub fn resolve_or_extract(
     extract_dir: &Path,
     embedded: Result<(&str, &[u8]), String>,
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
+    // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform_fs::ensure_private_dir`）。
+    ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
 ) -> Resolved {
     // 🔴 `K-R69`：整段解析包进一个**带标号的块**，只为在返回之前多做一件事
     //    （放本机那条 `ccm` 入口）。**刻意不抽成第二个函数** ——
@@ -2002,7 +1995,7 @@ pub fn resolve_or_extract(
                 };
             }
         };
-        match extract_embedded_to(extract_dir, build_id, bytes, make_executable) {
+        match extract_embedded_to(extract_dir, build_id, bytes, make_executable, ensure_dir) {
             Ok(p) => Resolved::Found(p),
             Err(e) => {
                 // 🔴 `K-R42` 硬要求①：**这一支不许被读成「这份产物没带后端」。**
@@ -2030,7 +2023,7 @@ pub fn resolve_or_extract(
     //    两份手写实现之间只会漂，而漂开的后果是同一台机器上两条路给出不同的答案。
     // ⚠ **它失败不许拖垮后端**：少一条终端命令 ≠ 后端起不来。诚实吼一声，照常返回。
     if let Resolved::Found(bin) = &resolved {
-        if let Err(e) = install_local_ccm_entry(extract_dir, bin, make_executable) {
+        if let Err(e) = install_local_ccm_entry(extract_dir, bin, make_executable, ensure_dir) {
             tracing::warn!("本机 ccm 入口没放下来（后端本身没事，只是终端里少一条 `ccm`）：{e}");
         }
     }
@@ -2047,12 +2040,20 @@ pub fn start_or_extract(
     extract_dir: &Path,
     embedded: Result<(&str, &[u8]), String>,
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
+    // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform_fs::ensure_private_dir`）。
+    ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
     on_event: Arc<dyn Fn(SuperviseEvent) + Send + Sync>,
     spawn: Arc<crate::spawn_managed::ManagedSpawn>,
     // 〔RL1 · V107〕交给后端的环境（中转端口 ＋ 凭据路径）由**宿主**给 —— 本层不认识中转，只原样转交。
     envs: Vec<(String, String)>,
 ) -> (Resolved, Option<SuperviseHandle>) {
-    let resolved = resolve_or_extract(target_triple, extract_dir, embedded, make_executable);
+    let resolved = resolve_or_extract(
+        target_triple,
+        extract_dir,
+        embedded,
+        make_executable,
+        ensure_dir,
+    );
     let Resolved::Found(bin) = resolved else {
         // 诚实降级：`reason` / `looked_at` 原样交回，这一层不再包一句自己的话。
         return (resolved, None);

@@ -253,6 +253,11 @@ enum Kind {
     /// （[`the_only_edge_outside_the_three_allowed_kinds_is_the_target_axis`]）；传输台**只经** `dial/sftp.rs`
     /// 够到拨号（手里不拿 `DialRequest`，拿的是那一份包出来的 `Dial`）。
     Transport,
+    /// 🔴 〔HX1 · 4D · 主会话裁〕**用户那三样之外的第三类**：后端建自家目录的那一个函数（`own_dir::ensure_private_dir`）。
+    ///
+    /// 暂存区（`~/.cc-monitor/staging`）是后端自己的目录、不是用户的；主会话裁「建自家目录收成一个小函数（0700、已存在不动）」
+    /// ⇒ 写面建暂存区那两层时调它，而不是自己按 umask 建。只许这一个符号，条数钉死 1。
+    OwnHome,
 }
 
 /// ★ **登记表**：模块生产段够到外面的符号，**逐条**。
@@ -271,6 +276,8 @@ const OUTWARD: &[(&str, Kind)] = &[
         "agents::claudecode::paths::session_file_for_delete",
         Kind::Fence,
     ),
+    // ── 〔HX1〕后端建自家目录（暂存区那两层）──────────────────────────
+    ("own_dir::ensure_private_dir", Kind::OwnHome),
     // ── 平台 ────────────────────────────────────────────────────────
     // 〔HX1 · 主会话裁拍板项 2〕覆盖写「属主不是后端这个用户 ⇒ 退回就地写」要问这台进程的 uid。
     ("platform::paths::current_uid", Kind::Platform),
@@ -418,6 +425,7 @@ fn the_only_edge_outside_the_three_allowed_kinds_is_the_target_axis() {
             Kind::Fence => THE_FENCES.contains(path),
             Kind::LedgerAxis => *path == "Target" || *path == "TARGETS",
             Kind::Transport => has_prefix(path, "dial::sftp::") || has_prefix(path, "wire::"),
+            Kind::OwnHome => *path == "own_dir::ensure_private_dir",
         };
         assert!(
             ok,
@@ -439,6 +447,12 @@ fn the_only_edge_outside_the_three_allowed_kinds_is_the_target_axis() {
         .iter()
         .filter(|(_, k)| *k == Kind::Transport)
         .count();
+    // 〔HX1〕建自家目录那一类：**相等**，恰好那一个函数。
+    let own_home = OUTWARD.iter().filter(|(_, k)| *k == Kind::OwnHome).count();
+    assert_eq!(
+        own_home, 1,
+        "建自家目录那一类的外向边从 1 条变成了 {own_home} 条"
+    );
     assert_eq!(
         transport, 4,
         "传输台的外向边从 4 条变成了 {transport} 条 —— 它只该要一条 sftp 会话（经 `dial/sftp.rs` 的 \

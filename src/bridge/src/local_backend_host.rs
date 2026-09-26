@@ -235,7 +235,7 @@ fn ensure_listen_token(dir: &std::path::Path) -> Result<String, String> {
             return Ok(t);
         }
     }
-    ensure_private_dir(dir)?;
+    crate::platform_fs::ensure_private_dir(dir)?;
     let token = fresh_token()?;
     // `create_new` = O_EXCL：两个 monitor 同时起时只有一个写得成，另一个回头读它写的那份。
     let mut opts = std::fs::OpenOptions::new();
@@ -309,27 +309,8 @@ fn fresh_token() -> Result<String, String> {
     Ok(buf.iter().map(|b| format!("{b:02x}")).collect())
 }
 
-/// 〔HX1 · RK1 小尾巴〕`~/.cc-monitor` 这一层（token · 「谁在听」· 释放出来的后端二进制都住这里）**建的那一下**就只给本人：
-/// unix 上 `0700`（`DirBuilder` 的 mode 在创建时生效，没有「先按 umask 建出来、再收窄」的那一段）。**已在的不动**
-/// —— 那可能是用户自己设的。别的平台照旧（那边不是 unix 权限位这一问）。
-fn ensure_private_dir(dir: &std::path::Path) -> Result<(), String> {
-    if dir.is_dir() {
-        return Ok(());
-    }
-    let mut b = std::fs::DirBuilder::new();
-    b.recursive(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt as _;
-        b.mode(0o700);
-    }
-    b.create(dir).map_err(|e| {
-        copy_text(
-            "rsLocalBackendHost.fs.mkdirFailed",
-            &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
-        )
-    })
-}
+// 〔HX1 · 拍板项 4〕`~/.cc-monitor` 这一层建的那一下就只给本人：那个函数住 `platform_fs::ensure_private_dir`，
+//   与释放后端二进制那几处（`backend/control/local_backend.rs`，经注入）共用一份。
 
 /// 记下「谁在听那个口」。**只有起它的那个宿主写**。
 ///
@@ -348,7 +329,7 @@ fn write_listen_pid(
     pid: u32,
     bin: &std::path::Path,
 ) -> Result<(), String> {
-    ensure_private_dir(dir)?;
+    crate::platform_fs::ensure_private_dir(dir)?;
     let p = pid_path(dir, port);
     let mut opts = std::fs::OpenOptions::new();
     opts.write(true).create(true).truncate(true);
@@ -1325,6 +1306,7 @@ fn resolve_backend_bin(
         embedded,
         // `backend-split` 的 C10：平台知识由宿主注入。
         &crate::platform_fs::make_executable,
+        &crate::platform_fs::ensure_private_dir,
     ) {
         Resolved::Found(p) => Ok(p),
         Resolved::Missing { reason, looked_at } => Err((reason, looked_at)),
@@ -1697,7 +1679,7 @@ pub fn start_local_backend() -> StartOutcome {
     // 〔HX1 · RK1 小尾巴〕本机上第一个建 `~/.cc-monitor` 的就是这里（释放后端二进制之前）⇒ 先把这一层按「只给本人」建好；
     //   `bin/` 那一层由释放那一步照旧建。建不了不挡起后端（释放那一步会出声说它自己的失败）。
     if let Some(home_dir) = extract_dir.parent() {
-        if let Err(e) = ensure_private_dir(home_dir) {
+        if let Err(e) = crate::platform_fs::ensure_private_dir(home_dir) {
             tracing::warn!("{e}");
         }
     }
@@ -1747,6 +1729,7 @@ pub fn start_local_backend() -> StartOutcome {
         embedded,
         // `backend-split` 的 C10：平台知识由宿主注入，backend 那半不认识 `#[cfg(unix)]`。
         &crate::platform_fs::make_executable,
+        &crate::platform_fs::ensure_private_dir,
         // ★ `K-P3b`：backend 这条监护路的死亡账**就记在这个闭包里**（见它的头注）。
         backend_supervise_events(),
         // ★ `15 §5.1 A3`：起进程那一下的三条答案由**宿主**给（backend 那半不认识平台）。
