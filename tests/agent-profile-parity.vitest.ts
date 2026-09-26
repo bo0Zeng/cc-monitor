@@ -297,6 +297,18 @@ const PROFILE_TS = "src/agent-profile.ts";
  * 下面那条对拍会**当场红**而不是零命中地绿。
  */
 function rustStaticList(name: string): string[] {
+  // 〔DUP2 · J19〕agent 工具名那一张搬进了共享 crate `agent-tools-core`（后端会话事实用同一份）：`adapter.rs` 那一行是它的别名
+  //   （`static CLAUDE_AGENT_TOOLS: &[&str] = &agent_tools_core::CLAUDE_AGENT_TOOLS;`）⇒ 先核别名真指着它，再去它的家抠值。
+  if (name === "CLAUDE_AGENT_TOOLS") {
+    expect(
+      read(ADAPTER_RS),
+      `${ADAPTER_RS} 的 claude agent 工具名不再是共享 crate 那一份的别名 —— 又长出第二份了？`,
+    ).toMatch(/^static CLAUDE_AGENT_TOOLS: &\[&str\] = &agent_tools_core::CLAUDE_AGENT_TOOLS;$/m);
+    const home = "src/bridge/crates/agent-tools-core/src/lib.rs";
+    const m = /^pub const CLAUDE_AGENT_TOOLS: \[&str; \d+\] = \[(.*)\];$/m.exec(read(home));
+    expect(m, `在 ${home} 里抠不到 \`pub const CLAUDE_AGENT_TOOLS: [&str; N] = […];\``).toBeTruthy();
+    return [...(m?.[1] ?? "").matchAll(/"([^"]*)"/g)].map((x) => x[1]);
+  }
   const src = read(ADAPTER_RS);
   const decl = new RegExp(String.raw`^static ${name}: &\[&str\] = &\[(.*)\];$`, "m");
   const m = decl.exec(src);

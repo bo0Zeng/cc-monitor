@@ -137,6 +137,10 @@ fn every_registered_command_declares_its_run_kind() {
                 | "bus-kill"
                 | "bus-spawn"
                 | "bus-state"
+                // 〔LOC1a · 第四波 4D〕`cc-acct-iso` 两问（`shellinit` 起一次插件进程）· 分叉（读整份 jsonl ＋ `O_EXCL` 写）。
+                | "acct-iso-status"
+                | "acct-iso-shellinit"
+                | "session-fork"
                 | "capture-pane"
                 | "files-browse"
                 | "files-create"
@@ -163,6 +167,8 @@ fn every_registered_command_declares_its_run_kind() {
                 // 〔F7a · 第三波 09-24〕同族第七、第八条同档（同步文件 I/O / 读环境）。
                 | "files-read-text"
                 | "files-home"
+                // 〔W5-FILES〕读族第九条（算目录大小）同档：走一整棵树的同步 I/O。
+                | "files-size"
                 // 〔`C1` · 09-24〕只读查询面八条同为阻塞档：全做文件 I/O，
                 // `history-search` 扫全库、`history-tail` 扫整份会话 —— 不许占 tokio worker。
                 // 〔C4d · 第四波 4B〕`history-projects` / `history-sessions` 出列：出成品、远端那一支要等 ⇒ 真异步
@@ -170,6 +176,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "history-index"
                 | "history-user-inputs"
                 | "history-find"
+                | "history-facts" // 〔STC〕会话事实：扫一份会话（首次整份，续传只读新写的一截），同档
                 | "history-read"
                 | "history-lines" // 〔CF2〕按行号取回：从文件头数，同档
                 | "history-record" // 〔U4b〕记录还在不在：一次目录枚举，同档
@@ -199,6 +206,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "relay-status"
                 // 〔RM1a · 第四波〕足迹那一条：一批 stat / 读几份小文件，同步文件 I/O。
                 | "footprint-probe"
+                // 〔W5-ALIAS〕别名预览：读账号库 manifest ＋ 问会话快照（同步 I/O），不起进程。
+                | "ccm-print"
                 // 〔AS1 · 第四波 4B〕MCP 同步的判定：对可疑路径逐条 stat、在 PATH 上找名字（同步文件 I/O）。
                 | "mcp-sync-plan"
                 // 〔AS2 · 第四波 4B〕资产目录两条：扫 skill 目录 / 读项目 `.mcp.json` ＋ 原子写目录文件，同步文件 I/O。
@@ -257,6 +266,8 @@ fn every_registered_command_declares_its_run_kind() {
         "link-open",
         "ping",
         "resolve",
+        // 〔DUP2 · J4〕cc-acct-iso 步骤那一行：纯函数（校验 ＋ 唯一的 quote），不起进程不碰盘 ⇒ 不进阻塞档。
+        "acct-iso-cmd",
         // 〔AS2 · 第四波 4B〕资产目录的同步：真异步（拨号 / 等远端 capture），在 await 点可取消。
         "assets-sync",
         // 〔C4d · 第四波 4B〕可达表登记：纯内存，普通 spawn。
@@ -267,6 +278,9 @@ fn every_registered_command_declares_its_run_kind() {
         "bus-kill",
         "bus-spawn",
         "bus-state",
+        "acct-iso-status",
+        "acct-iso-shellinit",
+        "session-fork",
         "capture-pane",
         "files-browse",
         "files-create",
@@ -286,10 +300,12 @@ fn every_registered_command_declares_its_run_kind() {
         "files-index-status",
         "files-read-text",
         "files-home",
+        "files-size",
         "history-projects",
         "history-index",
         "history-user-inputs",
         "history-find",
+        "history-facts", // 〔STC〕
         "history-read",
         "history-lines",  // 〔CF2〕
         "history-record", // 〔U4b〕
@@ -312,6 +328,8 @@ fn every_registered_command_declares_its_run_kind() {
         "relay-ensure",
         "relay-status",
         "footprint-probe",
+        // 〔W5-ALIAS〕别名预览（阻塞档，理由在上面 `expected_blocking`）。
+        "ccm-print",
         // 〔AS2 · 第四波 4B〕资产目录两条（阻塞档，理由在上面 `expected_blocking`）。
         "assets-catalog",
         "assets-catalog-merge",

@@ -51,7 +51,7 @@ fn the_registry_hands_exactly_this_family_to_this_host() {
 }
 
 #[test]
-fn tasks_list_answers_in_lines_and_refuses_a_missing_sid() {
+fn tasks_list_answers_the_product_and_refuses_a_missing_sid() {
     let h = scratch("tasks");
     let dir = crate::observe::tasks_query::tasks_root(&h).join("s");
     std::fs::create_dir_all(&dir).unwrap();
@@ -61,8 +61,10 @@ fn tasks_list_answers_in_lines_and_refuses_a_missing_sid() {
     )
     .unwrap();
     let v = answer_at(&h, "tasks-list", &json!({"sid": "s"})).unwrap();
-    let rows = v["lines"].as_array().expect("lines");
+    // 〔LOC1a〕应答是成品 `{tasks}`，不再是原样对象的 `lines`。
+    let rows = v["tasks"].as_array().expect("tasks");
     assert_eq!(rows.len(), 1);
+    assert!(v.get("lines").is_none(), "还在回原始行：{v}");
     // 反向：缺 sid ⇒ bad_args；sid 走出任务根 ⇒ bad_args（围栏在本体里，这里只证它透得上来）。
     assert_eq!(
         answer_at(&h, "tasks-list", &json!({})).unwrap_err().0,
@@ -140,4 +142,30 @@ fn the_survey_product_matches_the_cross_language_golden() {
         "帧面成品与跨语言金样不一致。现打：\n{}",
         serde_json::to_string_pretty(&got).unwrap()
     );
+}
+
+/// 〔LOC1a · 第四波 4D · C4e 批 4〕★ `tasks-list` 的成品 == 跨语言金样（`tests/__fixtures__/tasks-list.golden.json`）。
+///
+/// 要求住址：`设计/05 §14.3`「正路是把解释挪进后端、直接出成品……线上形状由一份跨语言金样钉住（后端测试产出 == 金样 ·
+/// TS 解码器读同一份）」。异源：金样里的 `files` 由**生产**路径（`answer_at` → `session_tasks` → `task_entry`）现算，
+/// 与手写的 `product` 逐格相等；界面那一侧（`tests/tasks-decode.vitest.ts`）读同一份。
+/// 金样的 `files` 覆盖了旧口径（serde `TaskEntry`）的每一档：多余键不带 · BOM · `null` 可选格不出现 · id 不是串 / blocks 是 null /
+/// 缺必填 / 半截 JSON / 不是数字名 ⇒ 都不算任务。
+#[test]
+fn the_tasks_product_matches_the_cross_language_golden() {
+    let g: serde_json::Value =
+        serde_json::from_str(include_str!("../__fixtures__/tasks-list.golden.json")).unwrap();
+    let h = scratch("tasks-golden");
+    let sid = g["request"]["sid"].as_str().unwrap();
+    let dir = crate::observe::tasks_query::tasks_root(&h).join(sid);
+    std::fs::create_dir_all(&dir).unwrap();
+    for f in g["files"].as_array().unwrap() {
+        std::fs::write(
+            dir.join(f["name"].as_str().unwrap()),
+            f["body"].as_str().unwrap(),
+        )
+        .unwrap();
+    }
+    let got = answer_at(&h, "tasks-list", &g["request"]).unwrap();
+    assert_eq!(got, g["product"], "成品与金样对不上");
 }

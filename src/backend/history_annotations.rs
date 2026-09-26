@@ -35,7 +35,6 @@
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -152,8 +151,31 @@ pub fn load() -> Loaded {
     }
 }
 
-/// 同一进程里的读—改—写串起来（阻塞档的命令并发跑在线程池上）。
-static LOCK: Mutex<()> = Mutex::new(());
+/// 〔HX2〕读—改—写的锁：先建那一层目录，再拿它的**跨进程**锁（`platform/lock.rs`）。
+/// 〔墓碑 —— 从前是一把进程内 `Mutex`：只挡同一进程，两个后端进程（常驻 ＋ 一次性 CLI）同时改注解，后写的整份盖掉先写的。〕
+fn lock_for_write(path: &Path) -> Result<crate::platform::lock::DirLock, (&'static str, String)> {
+    let dir = path.parent().ok_or_else(|| {
+        (
+            "io_failed",
+            copy_text(
+                "beHistoryAnnotations.writeAt.noParent",
+                &[("path", &(path.display()).to_string())],
+            ),
+        )
+    })?;
+    if let Err(e) = std::fs::create_dir(dir) {
+        if e.kind() != std::io::ErrorKind::AlreadyExists {
+            return Err((
+                "io_failed",
+                copy_text(
+                    "beHistoryAnnotations.writeAt.mkdirFailed",
+                    &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
+                ),
+            ));
+        }
+    }
+    crate::platform::lock::hold(dir).map_err(|e| ("io_failed", e))
+}
 
 /// 一次改动（线上 `patch`）—— 语义逐格照搬 monitor 从前那份 `MetadataPatch` ＋ `update_history_metadata`：
 /// 缺格 / `null` = 不改；标题 / 账号名给空白串 = 清空。
@@ -250,7 +272,7 @@ fn put_entry(raw: &mut Value, sid: &str, entry: Option<&Entry>) {
     }
 }
 
-/// **唯一的写者**：`O_EXCL` 新建临时文件 → 写满 → `sync` → 原子挪过去；目录不在就建那一层；失败删临时文件。
+/// **唯一的写者**：`O_EXCL` 新建临时文件 → 写满 → `sync` → 原子挪过去；失败删临时文件（目录由 [`lock_for_write`] 建）。
 /// 序列化口径同 monitor 从前那份（`to_string_pretty`）。
 fn write_at(path: &Path, raw: &Value) -> Result<(), String> {
     use std::io::Write as _;
@@ -260,14 +282,6 @@ fn write_at(path: &Path, raw: &Value) -> Result<(), String> {
             &[("path", &(path.display()).to_string())],
         )
     })?;
-    if let Err(e) = std::fs::create_dir(dir) {
-        if e.kind() != std::io::ErrorKind::AlreadyExists {
-            return Err(copy_text(
-                "beHistoryAnnotations.writeAt.mkdirFailed",
-                &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
-            ));
-        }
-    }
     let body = serde_json::to_string_pretty(raw).map_err(|e| {
         crate::common::contract::malformed(&format!("serializing the annotations failed: {e}"))
     })?;
@@ -346,7 +360,7 @@ pub fn answer_annotate_at(
             ))
         }
     };
-    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _g = lock_for_write(path)?;
     let (doc, mut raw) = read_for_write(path)?;
     let mut entry = doc.entries.get(sid).cloned().unwrap_or_default();
     if let Some(s) = patch.starred {
@@ -375,7 +389,7 @@ pub fn answer_forget(args: &Value) -> Result<Value, (&'static str, String)> {
 /// [`answer_forget`] 的本体。
 pub fn answer_forget_at(path: &Path, args: &Value) -> Result<Value, (&'static str, String)> {
     let sid = sid_arg(args)?;
-    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _g = lock_for_write(path)?;
     let (doc, mut raw) = read_for_write(path)?;
     if !doc.entries.contains_key(sid) {
         return Ok(json!({ "removed": false }));

@@ -32,11 +32,11 @@
 //! # ⚠ 买不到什么
 //!
 //! - 真窗口真画在屏幕上（要图形会话）；判据跑的是生产那个 [`Workspace::frame`]，读这一帧画出来的字。
-//! - 真的**拖**一行到另一栏：行上那块命中矩形是 `Sense::click()`（`rows.rs`，不在本路写区）
-//!   ⇒ 这一刀只做按钮「复制到另一栏」，拖的手势登记为欠账。
+//! - 〔W5-FILES〕**拖**一行到另一栏做了（行上命中矩形换成 `click_and_drag`，松手落在另一栏 ⇒ 同一个「复制到另一栏」入口，
+//!   [`Workspace::settle_drag`]）；判据喂的是合成指针事件，真鼠标买不到。
 //! - 后台标签（不在任何一栏上）的「一问」要切回去才看得见；标签名前那个「●」就是为这个。
 
-use super::copy::{is_copyable, CopyJob};
+use super::copy::CopyJob;
 use super::shell::FileWindow;
 use super::source::Listed;
 use crate::copy_table::copy_text;
@@ -79,6 +79,39 @@ pub static CLOSE_TAB_LABEL: std::sync::LazyLock<String> =
 /// 后台标签手上有事等你（有一问摆着 / 有活在跑）时，标签名前那个记号。
 pub static BUSY_MARK: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinWorkspace.label.busyMark", &[]));
+
+/// 〔W5-FILES · `设计/60 §6.2`〕标签页快捷键想干什么。**只是意图**，做不做由 [`Workspace::apply_tab_keys`] 过闸。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TabKey {
+    /// Ctrl+T（macOS ⌘T）＝ 焦点那一栏的「＋」。
+    New,
+    /// Ctrl+W（macOS ⌘W）＝ 焦点那一栏当前标签的「×」（关的是标签页，不是窗口）。
+    Close,
+}
+
+/// 这一帧的事件 → 标签页快捷键（按到达顺序，只认按下）。
+///
+/// ⚠ 与 `select::intents` 分住两处是**归属**，不是风格：列表的键归那个目录视图，标签页归工作区
+/// （一个目录视图不知道自己在哪一栏、有几个兄弟）。两张键位表不相交（`select` 那张里带 Ctrl 的只有 Ctrl+A），
+/// Ctrl 按着时 egui-winit 不发 `Text` ⇒ 也不会同时触发打字跳转。
+pub fn tab_keys(events: &[egui::Event]) -> Vec<TabKey> {
+    events
+        .iter()
+        .filter_map(|ev| match ev {
+            egui::Event::Key {
+                key,
+                pressed: true,
+                modifiers: m,
+                ..
+            } if m.command && !m.shift && !m.alt => match key {
+                egui::Key::T => Some(TabKey::New),
+                egui::Key::W => Some(TabKey::Close),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect()
+}
 
 impl Workspace {
     /// 从开窗那一个标签页起步（它身上已经挂好了通道 · 运行时 · 书签 · 字体）。
@@ -287,59 +320,89 @@ impl Workspace {
         true
     }
 
+    /// 〔W5-FILES〕这一帧的 Ctrl+T / Ctrl+W。回值 ＝ 认出了几件（做不了的那几形由 `open_tab` / `close_tab` 出声）。
+    ///
+    /// 🔴 **闸与列表同一道**：焦点那一栏当前那个标签的 `keys_blocked`（`设计/60 §6.3` 四道闸 ——
+    /// 模态框 · 右键菜单 · 搜索命中那一摞 · 控件拿着键盘焦点）。不另立一道：分成两份的症状是
+    /// 「框开着，按 Ctrl+W 把框底下那个标签关了」。
+    pub fn apply_tab_keys(&mut self, ctx: &egui::Context) -> usize {
+        if self.pane_on(self.focus).keys_blocked(ctx) {
+            return 0;
+        }
+        let keys = ctx.input(|i| tab_keys(&i.events));
+        for k in &keys {
+            let side = self.focus;
+            match k {
+                TabKey::New => {
+                    self.open_tab(side);
+                }
+                TabKey::Close => {
+                    let i = self.active_on(side);
+                    self.close_tab(side, i);
+                }
+            }
+        }
+        keys.len()
+    }
+
     /// 开 / 关预览。关 ＝ 整块状态扔掉（在飞的那一趟回来没人收，无害）。
     pub fn set_preview(&mut self, on: bool) {
         self.preview = on.then(super::preview::Preview::default);
     }
 
-    /// 🔴 **复制到另一栏**：焦点那一栏选中的恰好一个文件 → 另一栏当前目录、同名。
+    /// 🔴 **复制到另一栏**：焦点那一栏选中的**那一摞**（文件与目录都行）→ 另一栏当前目录、同名。
     ///
-    /// 走现成那条复制流水线（先探目标 → 已在就问一次覆盖 → 才动手；后端 `files-copy`，围栏在后端），
-    /// 只是参数换成跨目录那一形（[`across_args`]），**起在目标那一栏上**
-    /// ⇒ 问与结局画在目标那一侧，跑完那一栏重列目录。回值 ＝ 真的起来了。
+    /// 〔W5-FILES · `设计/60 §6.2`「复制目录 · 批量复制」〕此前只收「恰好一个文件」。今天走一摞复制
+    /// （[`super::copy::run_copy_batch`]：逐件探目标 → 撞名的目录整摞不做 → 撞名的文件一次问完 → 逐件发），
+    /// 后端 `files-copy`（目录带 `recursive: true`），**起在目标那一栏上** ⇒ 问与结局画在那一侧，跑完那一栏重列目录。
+    /// `§6.3`：每一项都能复制才给（有损名那一项在，整摞不做、出声）。回值 ＝ 真的起来了。
     pub fn copy_to_other(&mut self, ctx: Option<egui::Context>) -> bool {
         if self.sides.len() != 2 {
             self.notice = Some(copy_text("rsFilewinWorkspace.copyToOther.needSplit", &[]).into());
             return false;
         }
         let from = self.pane_on(self.focus);
-        let name = match from.picked_name() {
-            Ok(n) => n,
-            Err(n) => {
-                self.notice = Some(copy_text(
-                    "rsFilewinWorkspace.copyToOther.needOne",
-                    &[("n", &n.to_string())],
-                ));
-                return false;
-            }
-        };
-        let Some(row) = from.row_named(&name) else {
-            self.notice = Some(copy_text(
-                "rsFilewinWorkspace.copyToOther.gone",
-                &[("name", &name.to_string())],
-            ));
+        let rows = from.picked_rows();
+        if rows.is_empty() {
+            self.notice = Some(copy_text("rsFilewinSelect.refusal.none", &[]));
             return false;
-        };
-        if !is_copyable(&row) {
+        }
+        if let Some(r) = rows.iter().find(|r| !super::copy::copyable(r)) {
             self.notice = Some(copy_text(
-                "rsFilewinWorkspace.copyToOther.notFile",
-                &[("name", &name.to_string())],
+                "rsFilewinWorkspace.copyToOther.unaddressable",
+                &[("name", &r.name.to_string())],
             ));
             return false;
         }
         let other = 1 - self.focus;
         let dest_dir = self.pane_on(other).cwd.clone();
-        if dest_dir == from.cwd {
+        let dest_path = self.pane_on(other).cwd_path();
+        if dest_path == from.cwd_path() {
             self.notice = Some(copy_text("rsFilewinWorkspace.copyToOther.sameDir", &[]).into());
             return false;
         }
-        let job = CopyJob {
-            from: row.path.clone(),
-            to: super::writeops::join_remote(&dest_dir, &name),
-            name,
-        };
+        let jobs: Vec<CopyJob> = rows
+            .iter()
+            .map(|r| {
+                // 〔W5-FILES · 有损名全寻址〕源 ＝ 源那一栏当前目录的字节 ＋ 名字的字节；目标 ＝ 另一栏当前目录的字节 ＋ 同一个名字。
+                let src = from.row_path(r);
+                let dst = super::shell::join_path(&dest_path, &super::shell::name_bytes(r));
+                CopyJob {
+                    from: src.shown.clone(),
+                    to: if dst.is_lossy() {
+                        dst.shown.clone()
+                    } else {
+                        super::writeops::join_remote(&dest_dir, &r.name)
+                    },
+                    name: r.name.clone(),
+                    is_dir: r.is_dir,
+                    from_raw: src.raw,
+                    to_raw: dst.raw,
+                }
+            })
+            .collect();
         self.notice = None;
-        self.pane_on_mut(other).start_copy_across(job, ctx)
+        self.pane_on_mut(other).start_copy_batch(jobs, ctx)
     }
 
     /// 标签上写什么：当前目录的最后一段（根就写 `/`）；手上有事的前面加「●」。
@@ -356,6 +419,9 @@ impl Workspace {
 
     /// 🔴 **每一帧的正文**（`eframe::App::ui` 只剩一句委派，判据直接喂它 —— 同 `FileWindow::frame_body`）。
     pub fn frame(&mut self, ui: &mut egui::Ui) {
+        // ── 〔W5-FILES〕标签页快捷键：先于两栏的正文（那里才是列表接键盘的地方）──
+        let ctx = ui.ctx().clone();
+        self.apply_tab_keys(&ctx);
         // ── 工具条：双栏 · 预览 · 复制到另一栏 ──
         let mut split: Option<bool> = None;
         let mut preview: Option<bool> = None;
@@ -409,11 +475,13 @@ impl Workspace {
                 .flatten()
         });
         let mut focus_to: Option<usize> = None;
+        let mut rects: Vec<egui::Rect> = Vec::with_capacity(n);
         for k in 0..n {
             let rect = egui::Rect::from_min_size(
                 egui::pos2(whole.left() + k as f32 * (w + gap), whole.top()),
                 egui::vec2(w, whole.height()),
             );
+            rects.push(rect);
             if pressed_at.is_some_and(|p| rect.contains(p)) {
                 focus_to = Some(k);
             }
@@ -430,6 +498,51 @@ impl Workspace {
             if k != self.focus {
                 self.focus_side(k);
             }
+        }
+        self.settle_drag(ui, &rects);
+    }
+
+    /// 〔W5-FILES · `设计/60 §6.2`「行拖到另一栏的手势」〕有一栏在拖：拖着时在指针旁说一句「复制 N 项到另一栏」
+    /// （只在指针落在另一栏里时说）；**松手**那一帧落在另一栏 ⇒ 走「复制到另一栏」**那一个入口**（[`Self::copy_to_other`]，
+    /// 不另起一条复制路）；落在本栏 / 窗外 ⇒ 什么都不做。只有一栏时没有「另一栏」，拖了也不做（与按钮同）。V122：不往 OS 拖出。
+    fn settle_drag(&mut self, ui: &mut egui::Ui, rects: &[egui::Rect]) {
+        let Some(k) = (0..self.sides.len()).find(|&k| self.pane_on(k).dragging) else {
+            return;
+        };
+        let (released, pos) = ui.input(|i| {
+            (
+                i.pointer.any_released(),
+                i.pointer.interact_pos().or(i.pointer.latest_pos()),
+            )
+        });
+        let over_other = self.sides.len() == 2
+            && pos.is_some_and(|p| rects.get(1 - k).is_some_and(|r| r.contains(p)));
+        if released {
+            for s in 0..self.sides.len() {
+                self.pane_on_mut(s).dragging = false;
+            }
+            if over_other {
+                self.focus_side(k);
+                let ctx = ui.ctx().clone();
+                self.copy_to_other(Some(ctx));
+            }
+            return;
+        }
+        if let (true, Some(p)) = (over_other, pos) {
+            let n = self.pane_on(k).selection().len();
+            let hint = copy_text("rsFilewinWorkspace.drag.hint", &[("n", &n.to_string())]);
+            ui.ctx()
+                .layer_painter(egui::LayerId::new(
+                    egui::Order::Tooltip,
+                    egui::Id::new("filewin-drag-hint"),
+                ))
+                .text(
+                    p + egui::vec2(14.0, 14.0),
+                    egui::Align2::LEFT_TOP,
+                    hint,
+                    egui::FontId::proportional(14.0),
+                    ui.visuals().strong_text_color(),
+                );
         }
     }
 
@@ -505,36 +618,41 @@ pub fn common_dir(a: &str, b: &str) -> String {
 ///   「那一行的路径」写法不一致时拼到别处去）—— 这里是另一件事（用户明说「放到另一栏那个目录」），
 ///   所以另起一个，不去放宽那一道。后端的 `from` / `to` 本来就收多段相对路径（逐段过词法围栏）。
 pub fn across_args(job: &CopyJob, overwrite: bool) -> Result<serde_json::Value, String> {
-    let root = common_dir(
-        &super::source::parent_dir(&job.from),
-        &super::source::parent_dir(&job.to),
-    );
-    let rel = |p: &str| -> Result<String, String> {
-        p.strip_prefix(root.as_str())
-            .map(|r| r.trim_start_matches('/').to_string())
-            .filter(|r| !r.is_empty())
-            .ok_or_else(|| {
-                copy_text(
-                    "rsFilewinWorkspace.acrossArgs.notUnder",
-                    &[("path", &p.to_string()), ("root", &root.to_string())],
-                )
-            })
+    // 〔W5-FILES · 有损名全寻址〕按**字节**切（合法 UTF-8 时与按串切逐字节同：`common_dir` 与它同一个按段比的口径）。
+    let (from, to) = (job.from_path(), job.to_path());
+    let root = super::source::common_dir_bytes(&from.parent().bytes(), &to.parent().bytes());
+    let root_path = super::source::RemotePath::from_bytes(&root);
+    let rel = |p: &super::source::RemotePath| -> Result<serde_json::Value, String> {
+        let b = p.bytes();
+        let cut = if root == b"/" { 1 } else { root.len() + 1 };
+        (b.starts_with(&root)
+            && b.len() > cut
+            && (root == b"/" || b.get(root.len()) == Some(&b'/')))
+        .then(|| super::source::wire_bytes(&b[cut..]))
+        .ok_or_else(|| {
+            copy_text(
+                "rsFilewinWorkspace.acrossArgs.notUnder",
+                &[("path", &p.shown), ("root", &root_path.shown)],
+            )
+        })
     };
-    Ok(serde_json::json!({
-        "root": root,
-        "from": rel(&job.from)?,
-        "to": rel(&job.to)?,
+    let mut v = serde_json::json!({
+        "root": root_path.wire(),
+        "from": rel(&from)?,
+        "to": rel(&to)?,
         "overwrite": overwrite,
-    }))
+    });
+    super::copy::mark_recursive(&mut v, job);
+    Ok(v)
 }
 
-/// 跨目录复制那一趟（经通道问后端 `files-copy`）。回复制了几个字节。
+/// 跨目录复制那一趟（经通道问后端 `files-copy`）。回这一件复制了什么（〔W5-FILES〕目录那一件是整棵）。
 pub async fn copy_across(
     line: &super::source::Line,
     origin: &super::source::Origin,
     job: &CopyJob,
     overwrite: bool,
-) -> Result<u64, String> {
+) -> Result<super::copy::Copied, String> {
     let args = across_args(job, overwrite)?;
     let d = super::source::ask(
         line,
@@ -544,9 +662,7 @@ pub async fn copy_across(
         super::copy::COPY_BUDGET,
     )
     .await?;
-    d.get("bytes")
-        .and_then(serde_json::Value::as_u64)
-        .ok_or_else(|| copy_text("rsFilewinWorkspace.copyAcross.noBytes", &[]))
+    super::copy::copied_from_reply(job, &d)
 }
 
 impl eframe::App for Workspace {

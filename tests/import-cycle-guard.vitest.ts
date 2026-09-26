@@ -185,11 +185,8 @@ const TYPE_CYCLE_EXEMPT: ReadonlyArray<readonly [members: readonly string[], why
     "纯类型边闭合（`cards/subagent.ts` 回头 `import type { JsonlRecord, RenderContext, RenderResult } from \"./index\"`）；" +
       "上面那条运行期判据的头注点过名。不在 FE1 写区：拆法是把那三个类型挪进卡片系的一个叶子，归卡片那一片的主人。",
   ],
-  [
-    ["src/launch-dimensions.ts", "src/launch-plan.ts"],
-    "纯类型边闭合（`launch-dimensions.ts` 回头 `import type { LaunchDimension } from \"./launch-plan.ts\"`）；" +
-      "`src/launch-*` 是 LR2 的写区（起会话收口），不在 FE1 写区。拆法同上：类型挪进叶子。",
-  ],
+  // 〔LR2〕`launch-dimensions ⇄ launch-plan` 那一行摘了：IR 的类型拆进纯类型叶子 `src/launch-types.ts`，
+  //   `launch-dimensions.ts` 改 `import type { LaunchDimension } from "./launch-types.ts"` ⇒ 环断（本行登记时写明归 LR2 摘）。
 ];
 
 /** 返回找到的第一个环（按文件顺序确定性遍历），没有则 null。 */
@@ -250,10 +247,10 @@ describe("E80：生产代码不许有运行期 import 环", () => {
     const generatedTargets = [...new Set([...graph.values()].flat())].filter(isGenerated);
     expect(
       generatedTargets.length,
-      "今天有 2 份生成物被**运行期** import（`agent-profile-table`，K-R93；" +
-        "`launch-render-facts`，K-R95）—— " +
+      "今天有 3 份生成物被**运行期** import（`agent-profile-table`，K-R93；" +
+        "`launch-render-facts`，K-R95；`judgment-rules`，〔DUP1〕模型名的放行式子，零 import 的叶子）—— " +
         "这个数变了就在这里红一次，好让新的那一份也过一遍「它是不是叶子」",
-    ).toBe(2);
+    ).toBe(3);
     for (const g of generatedTargets) {
       expect(runtimeDeps(g), `${rel(g)} 不再是叶子 —— 它开始 import 别人了，可能成环`).toEqual([]);
     }

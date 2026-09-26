@@ -240,6 +240,7 @@ fn a_brand_new_agent_is_discovered_and_announced_with_zero_general_layer_change(
         commands: vec![],
         // `K-P4`（09-04）：同上 —— 空表省略，期望字节不变。
         unavailable: vec![],
+        host_env: Default::default(),
     })
     .expect("填了第三家的 hello 必须序列化得出来");
     assert_eq!(

@@ -27,10 +27,15 @@
  * - **不判表里的文案写得好不好**：规矩住 `src/shared/copy/rules.json`，判据住 `copy-rules.vitest.ts`。
  * - **不判全集**：没抽进表的文案今天仍是散在源码里的字面量，归普查（K-T68）与 CP1 台账管。
  */
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
+import { copyText, type CopyKey } from "../../src/copy-table.ts";
 import { productionRsFiles, productionTsFiles } from "../test-support/production-sources.ts";
+import { REPO_ROOT } from "../test-support/repo-root.ts";
 import { loadTable, NAMED_PH, type Table } from "./copy-support.ts";
 
 const KINDS = new Set(["title", "control", "action", "body", "error"]);
@@ -360,5 +365,32 @@ describe("CP2a · 文案表判据自己会不会死（正控）", () => {
     expect(crossCheck({ ...t, "a.b.d": t["a.b.c"] }, r).unreferenced).toEqual(["a.b.d"]);
     expect(crossCheck(t, [...r, { file: "y", key: "z.z.z", args: [] }]).unknown).toEqual(["y z.z.z"]);
     expect(crossCheck(t, [{ file: "x", key: "a.b.c", args: [] }]).badArgs.length).toBe(1);
+  });
+});
+
+/**
+ * 〔DUP2 · `设计/01 §6.9`「前端读口 `copy-table.ts::copyText`；Rust 读口只有一份实现 `copy-core::copy_text`」〕
+ * **两个读口的插值对拍（TS 这一侧）**：共用金样 `tests/__fixtures__/copy-interpolation.golden.json` 逐条喂给 `copyText`，
+ * 期望是金样里手写的；Rust 那一侧 `tests/bridge/crates/copy-core/lib_tests.rs::the_shared_interpolation_golden_agrees_with_this_reader`
+ * 读同一份。两侧有意不同的几形（缺键 · 参数对不上 · 值里含别的占位符）登记在金样 `_differences`，不在这里。
+ */
+describe("DUP2 · 两个读口的插值对拍（金样 copy-interpolation.golden.json）", () => {
+  const golden = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/copy-interpolation.golden.json"), "utf8")) as {
+    cases: { key: string; zh: string; args: Record<string, string>; want: string }[];
+  };
+  const table = loadTable();
+
+  it("金样读得出（反空真）", () => {
+    expect(golden.cases.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("每条：表里还是那一句，copyText 插出来 == 手写的 want", () => {
+    const wrong: string[] = [];
+    for (const c of golden.cases) {
+      expect(table[c.key]?.zh, `${c.key} 在表里的原文变了 —— 照新句子改金样的 zh 与 want`).toBe(c.zh);
+      const got = copyText(c.key as CopyKey, c.args);
+      if (got !== c.want) wrong.push(`${c.key}: ${JSON.stringify(got)}`);
+    }
+    expect(wrong).toEqual([]);
   });
 });

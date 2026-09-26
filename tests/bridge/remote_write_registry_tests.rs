@@ -70,8 +70,8 @@ fn write_sites() -> Vec<(String, String)> {
             // ⚠ **不许用前缀白名单**〔本条首跑就红在这里〕：第一版列了
             // `["pub async fn ", "pub fn ", "async fn ", "fn "]`，**漏掉 `pub(crate) async fn`** ——
             // 于是 `sftp.rs` 里那个逐级建目录的助手（正是这个可见性；〔SR1b〕它随执行那一半搬去了本机后端）没起新作用域，
-            // 它那处 `create_dir` 被记到**上一个函数** `read_profile_text` 头上，
-            // 而那个函数一个写原语都没有。诊断当场点名了 `read_profile_text`。
+            // 它那处 `create_dir` 被记到**上一个函数** `read_profile_text`〔散文墓碑〕头上，
+            // 而那个函数一个写原语都没有。诊断当场点名了 `read_profile_text`〔散文墓碑〕（〔W5-ALIAS〕那个函数后来也删了）。
             // ⇒ 改成**按结构判**：在 `fn ` 之前的东西必须全是可见性/修饰符 token。
             // 这样 `pub(in crate::x) const unsafe fn` 之类的写法也认得。
             if let Some((head, rest)) = t.split_once("fn ") {
@@ -506,7 +506,9 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
         // 〔FW34 · 第四波 09-24〕20 → 21，多的是 `bookmarks.rs`（书签：monitor 自己的状态文件，一个池子符号都不碰）；
         //   21 → 22，多的是 `workspace.rs`（标签页 ＋ 双栏 ＋ 复制到另一栏；复制经通道问后端 `files-copy`，一个池子符号都不碰）。
         //   22 → 23，多的是 `preview.rs`（预览：经通道问后端 `files-read-text`，一个池子符号都不碰）。
-        23,
+        // 〔W5-FILES · 第五波〕23 → 24，多的是 `size.rs`（算大小：经通道问后端 `files-size`，一个池子符号都不碰）；
+        //   24 → 25，多的是 `picker.rs`（原生选文件框：只碰本机选择框，一个池子符号都不碰）。
+        25,
         "`filewin/` 那棵树现扫到 {} 份 `.rs`（2026-09-22 现打 14：copy · corpus · **download** · **editor** · entry · \
          find · fonts · mod · rows · scale · shell · source · transfer · writeops）\
          〔第十三刀 09-23：14 → 16，多的是 **proc** 与 **win_main**（窗口改独立进程：\

@@ -260,26 +260,26 @@ use super::*;
 
 #[test]
 fn render_cc_code_with_function() {
-    let out = render_cc_code("ccm", true);
+    let out = render_cc_code("ccm", true, std::path::Path::new("/_"));
     assert!(out.contains("function ccm"));
     assert!(out.contains("__ccm_bind"));
     assert!(!out.contains("{{CC_FUNCTION_BLOCK}}"));
     // 〔TL1 · 4C〕v2 → v3：块结尾多了接上别名文件那一行（`71 §6.1`）。
-    assert!(out.contains("BEGIN v3"));
+    assert!(out.contains("BEGIN v4"));
     assert!(out.contains("cc-monitor END"));
 }
 
 #[test]
 fn render_cc_code_helper_only() {
     // 用户已有自定义 function cc 时只装 __ccm_bind helper，不生成 function cc
-    let out = render_cc_code("cc", false);
+    let out = render_cc_code("cc", false, std::path::Path::new("/_"));
     assert!(out.contains("__ccm_bind"));
     // 按词，不按子串〔§5 2l〕：同族的 `strip_block_removes_only_block` 已实测过
     // 这个陷阱 —— 语料里一出现 `function ccm`，`contains` 就假红。这里今天还碰不到，
     // 但**同一种写法只该有一个答案**，不留一处等着下次踩。
     assert!(!guard_core::contains_word(&out, "function cc"));
     assert!(!out.contains("{{CC_FUNCTION_BLOCK}}"));
-    assert!(out.contains("BEGIN v3"));
+    assert!(out.contains("BEGIN v4"));
 }
 
 #[test]
@@ -328,15 +328,21 @@ fn find_block_version_v1() {
 #[test]
 fn an_older_powershell_block_is_flagged_and_a_fresh_one_is_not() {
     let cur = current_block_version().expect("模板第一行读不出版本串");
+    // 〔HX2 · 4D〕v3 → v4：`__ccm_bind` 找 monitor 数据目录改走唯一出口（渲染时填，跟 `CCM_DATA_DIR`）——
+    //   块内容变了就抬版本，装着 v3 的人在机器页看到「重装一次」（主会话 4D 审计 F 裁）。
     assert_eq!(
-        cur, "v3",
+        cur, "v4",
         "模板版本串变了就来改这里（并想清楚：旧块的人要不要重装）"
     );
     let ps = std::path::Path::new("/h/p.ps1");
-    let old = "# === cc-monitor BEGIN v2 ===\nfunction __ccm_bind {}\n# === cc-monitor END ===\n";
-    let b = block_state(ps, old);
-    assert!(b.present && b.outdated, "{b:?}");
-    let fresh = render_cc_code("cc", false);
+    for old_ver in ["v2", "v3"] {
+        let old = format!(
+            "# === cc-monitor BEGIN {old_ver} ===\nfunction __ccm_bind {{}}\n# === cc-monitor END ===\n"
+        );
+        let b = block_state(ps, &old);
+        assert!(b.present && b.outdated, "{old_ver}：{b:?}");
+    }
+    let fresh = render_cc_code("cc", false, std::path::Path::new("/_"));
     let b = block_state(ps, &fresh);
     assert!(b.present && !b.outdated, "刚渲染的那一份被判成旧的：{b:?}");
     assert!(!block_state(ps, "# nothing\n").outdated, "块不在也报旧");
@@ -631,9 +637,12 @@ fn the_local_posix_port_is_byte_for_byte_the_remote_one() {
     let what = "/home/u/.bashrc";
     for existing in ["", "export A=1\n", BARE_RC] {
         let got = plan_install(Shell::Posix, existing, "cc", true, what).expect("本机 POSIX 装口");
-        let want =
-            crate::sftp::merge_profile_block(existing, crate::sftp::CCM_WRAPPER_SNIPPET, what)
-                .expect("远端那个口");
+        let want = crate::profile_installer::merge_profile_block(
+            existing,
+            crate::profile_installer::CCM_WRAPPER_SNIPPET,
+            what,
+        )
+        .expect("远端那个口");
         assert_eq!(
             got, want,
             "本机 POSIX 装进 rc 的东西与远端那个口不再是同一份 —— \
@@ -644,7 +653,7 @@ fn the_local_posix_port_is_byte_for_byte_the_remote_one() {
         let back = plan_uninstall(Shell::Posix, &got, what).expect("本机 POSIX 卸口");
         assert_eq!(
             back,
-            crate::sftp::strip_profile_block(&got, what).expect("远端卸口"),
+            crate::profile_installer::strip_profile_block(&got, what).expect("远端卸口"),
             "卸那一半漂了 —— 装与卸必须是同一对围栏，否则装得进去卸不干净"
         );
     }
@@ -673,40 +682,56 @@ fn the_alias_snippet_has_exactly_one_home_in_the_rust_tree() {
     }
     assert_eq!(
         homes,
-        vec!["sftp.rs".to_string()],
-        "`src/shared/ccm-aliases.sh` 在 Rust 侧的住址应当**恰好一处**（`sftp.rs` 的 \
+        // 〔W5-ALIAS〕住址从 `sftp.rs` 搬进了本模块（别名块的真相归别名域，B §2 第 12 条）。
+        vec!["profile_installer.rs".to_string()],
+        "`src/shared/ccm-aliases.sh` 在 Rust 侧的住址应当**恰好一处**（`profile_installer.rs` 的 \
              `CCM_WRAPPER_SNIPPET`），实得 {homes:?}。多一处就是第二份 snippet —— \
              它们会各自漂，而漂了之后本机与远端装进去的东西就不是同一个了。"
     );
 }
 
-/// ★★ `KR62D1`：**本模块没有第二套 merge/strip，也没有第二对 POSIX 围栏。**
+/// ★★ `KR62D1`：**没有第二套 merge/strip，也没有第二对 POSIX 围栏。**
 ///
-/// 死值验：在本模块里另写一个 `fn merge_posix_block(...)` 并让 `plan_install` 调它 ⇒
-/// 下面第一条断言（POSIX 那一臂必须调远端那两个函数）当场红。
+/// 〔W5-ALIAS · 第五波先行〕从前这条钉「本模块借 `sftp.rs` 那一份（跨文件调用恰好一次）」；
+/// 那一份今天搬进了本模块（`sftp.rs` 已经不做 SFTP，B §2 第 12 条），性质不变、量法换成：
+/// ① 合 / 剥两个函数在本模块的生产段里**各定义恰好一次**（多一个 `fn merge_…` 就是第二套）；
+/// ② 本机 POSIX 那一臂（[`plan_install`] / [`plan_uninstall`] 的函数体）**调的就是它们**；
+/// ③ POSIX 那一对围栏的字面量全模块**恰好一处**（那一行 `const`）。
+///
+/// 死值验：在本模块里另写一个 `fn merge_posix_block(...)` 并让 `plan_install` 调它 ⇒ ② 当场红。
 #[test]
 fn the_posix_arm_borrows_the_remote_implementation_instead_of_growing_a_second_one() {
     let src =
         guard_core::production_code(include_str!("../../src/bridge/src/profile_installer.rs"));
-    for call in [
-        "crate::sftp::merge_profile_block(",
-        "crate::sftp::strip_profile_block(",
-        "crate::sftp::CCM_WRAPPER_SNIPPET",
-    ] {
-        assert_eq!(
-            src.matches(call).count(),
-            1,
-            "`{call}` 在本模块的生产段里应当恰好出现 1 次 —— \
-                 0 次 = 本机那条路不再借远端那一份（第四套长出来了）；\
-                 >1 次 = 有第二个调用点，那是下一个漂移源"
-        );
+    for def in ["pub fn merge_profile_block(", "pub fn strip_profile_block("] {
+        guard_core::find_pinned(&src, def).unwrap_or_else(|e| {
+            panic!("`{def}` 在本模块的生产段里应当恰好定义一次（{e}）—— 多一个就是第二套合 / 剥")
+        });
     }
-    // POSIX 那一对围栏的**字面量**不许在本模块出现：出现即第二个住址。
-    assert!(
-        !src.contains("remote ccm BEGIN"),
-        "本模块里出现了 POSIX 那一对围栏的字面量 —— 它只许有一个住址\
-             （`sftp::CCM_PROFILE_BEGIN`），抄一份进来就是 `K13` 那族「一个性质两把尺子」"
-    );
+    let body = |sig: &str| -> String {
+        let i = src
+            .find(sig)
+            .unwrap_or_else(|| panic!("找不到 {sig} —— 判据够不着被测对象了"));
+        let j = src[i..].find("\n}\n").map(|k| i + k).unwrap_or(src.len());
+        src[i..j].to_string()
+    };
+    guard_core::find_pinned(
+        &body("pub fn plan_install("),
+        "merge_profile_block(existing, CCM_WRAPPER_SNIPPET, what)",
+    )
+    .unwrap_or_else(|e| panic!("本机 POSIX 装那一臂不再走远端那一份合块（{e}）—— 第四套长出来了"));
+    guard_core::find_pinned(
+        &body("pub fn plan_uninstall("),
+        "strip_profile_block(existing, what)",
+    )
+    .unwrap_or_else(|e| panic!("本机 POSIX 卸那一臂不再走远端那一份剥块（{e}）"));
+    // POSIX 那一对围栏的**字面量**只许一处：那一行 const。
+    guard_core::find_pinned(&src, "remote ccm BEGIN").unwrap_or_else(|e| {
+        panic!(
+            "POSIX 那一对围栏的字面量不是恰好一处（{e}）—— 它只许有一个住址\
+             （`CCM_PROFILE_BEGIN`），抄一份就是 `K13` 那族「一个性质两把尺子」"
+        )
+    });
 }
 
 /// ★ `KR62D1` 的落盘那一跳：**装完之后用户原有的每一行都还在，而且块是真的块。**
@@ -724,7 +749,7 @@ fn installing_into_a_posix_rc_keeps_every_user_line() {
         );
     }
     // 装进去的确实是那份 snippet（按整行比，不按子串）。
-    for line in crate::sftp::CCM_WRAPPER_SNIPPET.trim().lines() {
+    for line in crate::profile_installer::CCM_WRAPPER_SNIPPET.trim().lines() {
         assert!(pinned(&after, line), "别名块少了一行：{line:?}");
     }
     // 幂等：再装一次一个字节都不变。
@@ -790,8 +815,8 @@ fn bare_lines_with_no_fence_at_all_are_named_line_by_line() {
     assert_eq!(
         crate::fenced_block::find_pair(
             BARE_RC,
-            crate::sftp::CCM_PROFILE_BEGIN,
-            crate::sftp::CCM_PROFILE_END,
+            crate::profile_installer::CCM_PROFILE_BEGIN,
+            crate::profile_installer::CCM_PROFILE_END,
             "夹具"
         ),
         Ok(None),
@@ -898,7 +923,7 @@ fn the_hint_names_every_line_and_the_product_deletes_nothing() {
     }
     // 「会盖过 cc-monitor 那一段」这一格现算自 `src/shared/ccm-aliases.sh`，不是抄的名单。
     // 〔CP2b〕原措辞「会赢过我们那一块」照 CP1 台账改（去「我们」、去 declare -f 的实现说法）。
-    let builtin = crate::sftp::builtin_alias_names();
+    let builtin = crate::profile_installer::builtin_alias_names();
     assert!(
         !builtin.is_empty(),
         "自带别名名单是空的 —— 下面那一格会变成空真"
@@ -1010,7 +1035,7 @@ fn scanning_a_rc_changes_not_a_single_byte_on_disk() {
 fn the_powershell_block_never_touches_the_session_path_again() {
     let word = crate::backend::control::local_backend::CCM_ENTRY_WORD;
     for include_cc in [true, false] {
-        let out = render_cc_code("cc", include_cc);
+        let out = render_cc_code("cc", include_cc, std::path::Path::new("/_"));
         // ── 地板①：这份东西本身得是真的 ──────────────────────────────
         assert!(
             !out.trim().is_empty(),
@@ -1381,7 +1406,7 @@ fn the_user_path_status_uses_the_same_equality_as_the_generated_commands() {
 ///
 /// `src/shared/ccm-aliases.sh` 是**一份文件、两个消费者**：本机走
 /// [`plan_install`] 的 POSIX 方言合进用户选的那份 rc，远端走
-/// `sftp::install_remote_alias_block` 合进远端 rc —— **合进去的是逐字同一份文本**。
+/// `profile_installer::install_remote_alias_block` 合进远端 rc —— **合进去的是逐字同一份文本**。
 /// 而两边的 `ccm` 落点**不是同一个目录**（`tool_registry::TOOLS` 现算：
 /// 本机 `.cc-monitor/bin`、远端 `.local/bin`）。
 /// ⇒ 那一行只写一个目录时，**它只可能对其中一边是对的**。
@@ -1433,7 +1458,7 @@ fn the_shared_alias_snippet_really_puts_both_ccm_dirs_on_path_local_first() {
     let home = td.0.join("h");
     std::fs::create_dir_all(&home).expect("造假家目录");
     let snip = td.0.join("snippet.sh");
-    std::fs::write(&snip, crate::sftp::CCM_WRAPPER_SNIPPET).expect("写 snippet");
+    std::fs::write(&snip, crate::profile_installer::CCM_WRAPPER_SNIPPET).expect("写 snippet");
 
     // **量真实输出，不量源码**（`brief` 第 5 条）：真 source 一趟，问 `$PATH`。
     let run = |times: usize| -> String {
@@ -1536,7 +1561,7 @@ fn the_shared_alias_snippet_really_puts_both_ccm_dirs_on_path_local_first() {
 #[test]
 fn the_powershell_cc_goes_through_ccm_exactly_like_the_posix_one() {
     let word = crate::backend::control::local_backend::CCM_ENTRY_WORD;
-    let out = render_cc_code("cc", true);
+    let out = render_cc_code("cc", true, std::path::Path::new("/_"));
     assert!(
         pinned(&out, "function cc {"),
         "地板没了：这一支本来就该生成 `function cc`\n{out}"
@@ -1551,8 +1576,9 @@ fn the_powershell_cc_goes_through_ccm_exactly_like_the_posix_one() {
     );
     // ── 反面：这一块里**只许有这一条**调用行 ─────────────────────────
     //
-    // ⚠ 不写成 `!out.contains("claude")`：模板里本来就有两处 `claude`
-    //   （`.claude\work` 这个路径、以及一句注释）⇒ 那样写第一天就是红的，
+    // ⚠ 不写成 `!out.contains("claude")`：模板里本来就有 `claude`
+    //   （从前是 `.claude\work` 这个路径 ＋ 一句注释；〔HX2〕路径改由渲染时填，
+    //   渲染产物里仍带着数据目录 ＋ 那句注释）⇒ 那样写第一天就是红的，
     //   而「第一天就红的判据」的唯一出路是放宽它。⇒ 人群收成「调用行」这一形。
     let invokes: Vec<String> = out
         .lines()
@@ -1568,14 +1594,17 @@ fn the_powershell_cc_goes_through_ccm_exactly_like_the_posix_one() {
     );
     // ── POSIX 那一臂现读，不抄：抄一份就是第二个住址 ──────────────────
     assert!(
-        crate::sftp::CCM_WRAPPER_SNIPPET
+        crate::profile_installer::CCM_WRAPPER_SNIPPET
             .lines()
             .any(|l| l.trim_start().starts_with("cc()") && guard_core::contains_word(l, word)),
         "POSIX 那一臂的 `cc` 不走 `{word}` 了 —— 本判据钉的是**两臂一致**，\
              一致地错也是红"
     );
     // ── `cct`：这一臂不发明它 ────────────────────────────────────────
-    for rendered in [render_cc_code("cc", true), render_cc_code("cc", false)] {
+    for rendered in [
+        render_cc_code("cc", true, std::path::Path::new("/_")),
+        render_cc_code("cc", false, std::path::Path::new("/_")),
+    ] {
         assert!(
             !guard_core::contains_word(&rendered, "function cct"),
             "这一臂生成了 `cct`，而 Windows 上没有 tmux —— 见本判据头注"
@@ -1686,7 +1715,7 @@ fn the_block_preview_is_byte_for_byte_what_an_install_writes() {
             // 反空真：两边都是空串也「逐字相等」—— 预览必须真是一块围栏（首行就是那个方言的 BEGIN）。
             let fence = match shell {
                 Shell::PowerShell => BEGIN_MARKER,
-                Shell::Posix => crate::sftp::CCM_PROFILE_BEGIN,
+                Shell::Posix => crate::profile_installer::CCM_PROFILE_BEGIN,
             };
             assert!(
                 preview.lines().next().is_some_and(|l| l.starts_with(fence)),
@@ -1702,5 +1731,400 @@ fn the_block_preview_is_byte_for_byte_what_an_install_writes() {
     assert_ne!(
         render_block(Shell::PowerShell, false),
         render_block(Shell::PowerShell, true)
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 〔W5-ALIAS · 第五波先行〕别名块的内容与合 / 剥 —— 这几条随被测对象从 `sftp_tests.rs` 搬来（逐字，只改住址）
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// 单一来源漂移守卫①：写进远端 profile 的**别名块**。
+/// F02 起本块只剩组合层别名；`K-R48` 第二拍起实现住后端本体
+/// （远端那个 `~/.local/bin/ccm` 是 [`ccm_entry_shim`]，见下一条判据）。
+#[test]
+fn ccm_aliases_snippet_has_required_elements() {
+    for needle in [
+        ".local/bin", // CLI 落点必须进 PATH，否则别名全指向不存在的命令
+        "cc()",       // 裸起（`K-R58` 起 = 就在当前目录，ccm 不再替用户挑）
+        "cct()",      // tmux 版
+        "ccm --tmux", // 别名只做组合，不自己建容器
+        "declare -f", // 防覆盖用户已有同名函数
+    ] {
+        assert!(
+            CCM_WRAPPER_SNIPPET.contains(needle),
+            "别名块缺关键要素: {needle}"
+        );
+    }
+    // 别名块**不得**再含实现（那是 CLI 的事；混回来就又变成两套实现）。
+    for forbidden in ["__ccm_rbind()", "exec claude", "tmux new-session"] {
+        assert!(
+            !CCM_WRAPPER_SNIPPET.contains(forbidden),
+            "别名块不该含实现细节 {forbidden}——实现属于 ~/.local/bin/ccm"
+        );
+    }
+}
+
+/// `KR58D2` —— `src/doc/IPC-PROTOCOL.md` §11 里描述别名块的那一句，**行数与名单同句**。
+///
+/// 本区最高频的那条病就是「数与名单同句、只改一半」⇒ 这里**两样一起对**，
+/// 而且两样都**现算**自真相源 [`CCM_WRAPPER_SNIPPET`]（= `src/shared/ccm-aliases.sh` 本身），
+/// 判据里不抄第二份名单、不写死行数。
+///
+/// ⚠ **它买到的射程只有这一句**：§11 其余部分（`shared/ccm` · `CCM_CLI_SCRIPT`）
+/// 在 `K-R48` 第二拍之后已经是**存量馊话**，本判据够不着，也不假装够得着。
+///
+/// ⚠ 判据够不着被测对象时必须**响亮地红**，不许变成空真 ⇒ 找不到那一句就 panic。
+#[test]
+fn the_protocol_doc_sentence_about_the_alias_block_matches_the_file() {
+    const IPC_DOC: &str = include_str!("../../src/doc/IPC-PROTOCOL.md");
+    let want_names = crate::profile_installer::builtin_alias_names();
+    assert!(
+        !want_names.is_empty(),
+        "从 src/shared/ccm-aliases.sh 里一个别名都没解析出来 —— 判据够不着被测对象了，先修判据"
+    );
+    let want_lines = CCM_WRAPPER_SNIPPET.lines().count();
+
+    let sent = IPC_DOC
+        .lines()
+        .find(|l| l.contains("src/shared/ccm-aliases.sh`，**"))
+        .expect(
+            "src/doc/IPC-PROTOCOL.md 里描述别名块的那一句找不到了 —— \
+                 要么它被改写了、要么被删了；无论哪种，这条对账现在是瞎的",
+        );
+    let bold = sent
+        .split("**")
+        .nth(1)
+        .expect("那一句里的粗体段没了 —— 对账抓不到数与名单");
+
+    assert!(
+        bold.contains(&format!("{want_lines} 行")),
+        "行数对不上：src/shared/ccm-aliases.sh 现在 {want_lines} 行，而文档那句写的是「{bold}」"
+    );
+    assert!(
+        bold.contains(&format!("这 {} 个", want_names.len())),
+        "别名个数对不上：现在 {} 个（{}），而文档那句写的是「{bold}」",
+        want_names.len(),
+        want_names.join(" / ")
+    );
+    let mut doc_names: Vec<&str> = bold.split('`').skip(1).step_by(2).collect();
+    doc_names.sort_unstable();
+    assert_eq!(
+        doc_names, want_names,
+        "名单对不上：文档那句列的是 {doc_names:?}，盘上真有的是 {want_names:?}"
+    );
+}
+
+#[test]
+fn merge_profile_block_append_replace_idempotent() {
+    let snippet = "ccm() { :; }";
+    // 空 existing → 仅块。
+    let m1 = merge_profile_block("", snippet, "远端 ~/.bashrc").unwrap();
+    assert!(m1.contains(CCM_PROFILE_BEGIN));
+    assert!(m1.contains("ccm() { :; }"));
+    assert!(m1.contains(CCM_PROFILE_END));
+
+    // 无块 → 追加，原内容保留在前。
+    let existing = "export PATH=/x\nalias ll='ls -l'\n";
+    let m2 = merge_profile_block(existing, snippet, "远端 ~/.bashrc").unwrap();
+    assert!(m2.starts_with(existing), "块外内容保留在前");
+    assert!(m2.contains(CCM_PROFILE_BEGIN));
+
+    // 幂等：同 snippet 再 merge 不变。
+    assert_eq!(
+        merge_profile_block(&m2, snippet, "远端 ~/.bashrc").unwrap(),
+        m2,
+        "merge∘merge == merge"
+    );
+
+    // 重装（换 snippet 内容）→ 整块替换，只有一个块，块外内容仍保留。
+    let m3 = merge_profile_block(&m2, "ccm() { echo new; }", "远端 ~/.bashrc").unwrap();
+    assert!(m3.starts_with(existing), "重装仍保留块外内容");
+    assert!(
+        m3.contains("echo new") && !m3.contains("{ :; }"),
+        "块被整块替换"
+    );
+    assert_eq!(m3.matches(CCM_PROFILE_BEGIN).count(), 1, "重装不重复加块");
+}
+
+/// 审计 B1 回归：块外内容（含块**后**的用户内容）在替换时绝不丢。
+#[test]
+fn merge_profile_block_preserves_content_after_block() {
+    let existing =
+        format!("head_line\n{CCM_PROFILE_BEGIN}\nold()\n{CCM_PROFILE_END}\ntail_user_line\n");
+    let m = merge_profile_block(&existing, "ccm() { echo new; }", "远端 ~/.bashrc").unwrap();
+    assert!(m.contains("head_line"), "块前内容保留");
+    assert!(
+        m.contains("tail_user_line"),
+        "块后用户内容保留（B1 不能吞掉）"
+    );
+    assert!(m.contains("echo new") && !m.contains("old()"), "块整块替换");
+    assert_eq!(m.matches(CCM_PROFILE_BEGIN).count(), 1);
+}
+
+/// 审计 B1 核心：BEGIN 存在但其后无 END（损坏/截断）→ Err 中止，**绝不**误配前面的 END
+/// 而吞掉用户内容。
+#[test]
+fn merge_profile_block_aborts_on_orphan_begin() {
+    // END 在前、孤立 BEGIN 在后无配对 END：独立 find 会误配 → 旧实现吞内容。新实现报错。
+    let corrupt = format!("{CCM_PROFILE_END}\nuser_a\n{CCM_PROFILE_BEGIN}\nuser_b\n");
+    assert!(
+        merge_profile_block(&corrupt, "ccm() { :; }", "远端 ~/.bashrc").is_err(),
+        "孤立 BEGIN（其后无 END）必须中止而非吞内容"
+    );
+    // 纯孤立 BEGIN（截断的安装）→ Err。
+    let truncated = format!("user_x\n{CCM_PROFILE_BEGIN}\nhalf");
+    assert!(merge_profile_block(&truncated, "ccm() { :; }", "远端 ~/.bashrc").is_err());
+}
+
+#[test]
+fn strip_removes_paired_block_keeps_surrounding() {
+    let s = format!("head\n{CCM_PROFILE_BEGIN}\nccm() {{ :; }}\n{CCM_PROFILE_END}\ntail\n");
+    let out = strip_profile_block(&s, "远端 ~/.bashrc").unwrap();
+    assert_eq!(out, "head\ntail\n");
+    assert!(!out.contains(CCM_PROFILE_BEGIN));
+    // 幂等：再 strip 不变
+    assert_eq!(strip_profile_block(&out, "远端 ~/.bashrc").unwrap(), out);
+}
+
+#[test]
+fn strip_noop_when_no_block() {
+    let s = "just user content\nno block here\n";
+    assert_eq!(strip_profile_block(s, "远端 ~/.bashrc").unwrap(), s);
+}
+
+/// **T04 审计②：迁移后远端这三个边界的语义确实变了，逐条锁死。**
+/// 我原话"判定没变"已被实测证伪——写在这里免得下次又当成"没变"。
+#[test]
+fn remote_merge_boundary_semantics_after_migration() {
+    let snip = "ccm() { :; }";
+    // ① 行内 marker 不再命中 → 追加，且**用户那两行 echo 一个字节都不动**
+    //    （旧实现会切断第一行、吃掉第二行——远端一个未申报就修掉的数据丢失）
+    let inline =
+        format!("a\necho \"{CCM_PROFILE_BEGIN}\"\necho \"{CCM_PROFILE_END}\"\nuser code\n");
+    let got = merge_profile_block(&inline, snip, "远端 ~/.bashrc").unwrap();
+    assert!(got.starts_with(&inline), "块外内容必须逐字保留：{got}");
+    assert!(got.contains(snip));
+    // ② BEGIN 与 END 同一行 → 现在 Err（**退化，如实记**：旧实现能替换该行）
+    let same_line = format!("a\n{CCM_PROFILE_BEGIN} {CCM_PROFILE_END}\nb\n");
+    let e = merge_profile_block(&same_line, snip, "远端 ~/.bashrc").unwrap_err();
+    assert!(e.contains("找不到配对的 END"), "{e}");
+    // ③ 缩进 marker → 归一到列 0（旧实现保留 BEGIN 缩进、丢 END 缩进，不自洽）
+    let indented = format!("a\n  {CCM_PROFILE_BEGIN}\nold\n\t{CCM_PROFILE_END}\nb\n");
+    let got = merge_profile_block(&indented, snip, "远端 ~/.bashrc").unwrap();
+    assert!(
+        got.contains(&format!("\n{CCM_PROFILE_BEGIN}\n")),
+        "缩进应归一到列 0：{got}"
+    );
+    assert!(
+        got.starts_with("a\n") && got.ends_with("b\n"),
+        "块外保留：{got}"
+    );
+}
+
+#[test]
+fn strip_aborts_on_malformed_begin_without_end() {
+    // **这条测试原先把 bug 编码进去了**（T04 审计阻塞）：它断言悬空 BEGIN 时
+    // strip 是 no-op，而调用方据此打印「远端 … 没有 ccm 块，无需卸载」——
+    // 那正是同一个 commit 里被定义为 bug 的形态，只是发生在「卸」这半边。
+    // 现在两侧的装与卸四条路全走 `find_pair`，此处必须 Err 中止。
+    let corrupt = format!("a\n{CCM_PROFILE_BEGIN}\nccm() {{ :; }}\nuser code\n");
+    let e = strip_profile_block(&corrupt, "远端 ~/.bashrc").unwrap_err();
+    assert!(e.contains("找不到配对的 END"), "{e}");
+    assert!(e.contains("已中止"), "要让用户知道我们没动文件：{e}");
+    assert!(e.contains("远端 ~/.bashrc"), "要说清是哪个文件：{e}");
+    // 而**没有** BEGIN 时仍是正常的 no-op（别把这条也变成错误）
+    assert_eq!(
+        strip_profile_block("just user code\n", "远端 ~/.bashrc").unwrap(),
+        "just user code\n"
+    );
+}
+
+/// 🔴 〔W5-ALIAS · 第五波先行〕**别名块只有一个写口**：`user_files::edit`（→ 那台机器后端的 `files-put`）。
+///
+/// 住址：`设计/71 §3`「写入 —— **那台机器后端的文件管理那一面**（带围栏，本机和远端同一条路）」·
+/// `§4.5`「围栏管理 · 备份 · 原子写 · 写后校验 · 回滚 —— 这些是『判定的规则』，只许一份」· 用户裁 V86 / V88。
+///
+/// 人群（从源码现打，monitor 生产段全树）：函数体里碰「别名块内容」的函数 —— 调合 / 剥 / 计划装卸 / 装卸入口
+/// （`merge_profile_block(` · `strip_profile_block(` · `plan_install(` · `plan_uninstall(` · `install_to_profile(` ·
+/// `uninstall_from_profile(`）的那几个。两向相等于下面这张手写表（异源：表是人按角色写的，右边是源码现扫）：
+/// - **写的**（四个）函数体里必须恰好一处 `crate::user_files::edit(`；
+/// - **纯规划 / 预览**（三个）与**转交**（两条命令，交给写的那两个）一处写原语都不许有；
+/// - 全体都不许碰别的写原语（`.put(` · `std::fs::write` · `fenced_block::apply`〔散文墓碑〕）。
+///
+/// 同波别的路长出新成员时：再加一个碰别名块的函数 ⇒ 集合不等 ⇒ 红，去表里登记它的角色（写的得经 `edit`）。
+#[test]
+fn the_alias_block_is_written_through_exactly_one_door() {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Role {
+        Writes,
+        Pure,
+        Delegates,
+    }
+    const TABLE: &[(&str, &str, Role)] = &[
+        ("profile_installer.rs", "plan_install", Role::Pure),
+        ("profile_installer.rs", "plan_uninstall", Role::Pure),
+        ("profile_installer.rs", "render_block", Role::Pure),
+        ("profile_installer.rs", "install_to_profile", Role::Writes),
+        (
+            "profile_installer.rs",
+            "uninstall_from_profile",
+            Role::Writes,
+        ),
+        (
+            "profile_installer.rs",
+            "install_remote_alias_block",
+            Role::Writes,
+        ),
+        (
+            "profile_installer.rs",
+            "uninstall_remote_alias_block",
+            Role::Writes,
+        ),
+        ("lib.rs", "aliases_block_install", Role::Delegates),
+        ("lib.rs", "aliases_block_remove", Role::Delegates),
+    ];
+    const TOUCHES: &[&str] = &[
+        "merge_profile_block(",
+        "strip_profile_block(",
+        "plan_install(",
+        "plan_uninstall(",
+        "install_to_profile(",
+        "uninstall_from_profile(",
+    ];
+    const OTHER_WRITES: &[&str] = &[".put(", "std::fs::write", "fenced_block::apply"];
+    let root = crate::guard_support::repo_root().join("src/bridge/src");
+    // `src/bridge/vendor/`（russh 副本）不在 `src/bridge/src` 底下 ⇒ 不用摘。
+    let files = guard_core::scan_tree_excluding(&root, &["rs"], &[]);
+    let mut seen: Vec<(String, String, String)> = Vec::new(); // (文件, 函数, 函数体)
+    let mut fns_scanned = 0usize;
+    for (path, raw) in &files {
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        let prod = guard_core::production_code(raw);
+        // 顶层函数：从 `fn 名(` / `fn 名<` 到下一个列 0 的 `}`。
+        let mut at = 0usize;
+        while let Some(k) = prod[at..].find("fn ") {
+            let s = at + k;
+            at = s + 3;
+            let head_ok = s == 0
+                || prod[..s].ends_with('\n')
+                || prod[..s].ends_with("pub ")
+                || prod[..s].ends_with("async ")
+                || prod[..s].ends_with("pub(crate) ");
+            if !head_ok {
+                continue;
+            }
+            let name: String = prod[s + 3..]
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if name.is_empty() {
+                continue;
+            }
+            let Some(open) = prod[s..].find('{') else {
+                continue;
+            };
+            let end = prod[s..].find("\n}\n").map_or(prod.len(), |e| s + e);
+            let body = &prod[s + open..end.max(s + open)];
+            fns_scanned += 1;
+            if TOUCHES.iter().any(|t| body.contains(t)) {
+                seen.push((rel.clone(), name, body.to_string()));
+            }
+        }
+    }
+    // 反空真：扫描器真的走过一大片函数，而且认得出表里的每一个。
+    assert!(
+        fns_scanned > 500,
+        "只扫到 {fns_scanned} 个函数 —— 扫描器坏了"
+    );
+    let got: std::collections::BTreeSet<(String, String)> = seen
+        .iter()
+        .map(|(f, n, _)| (f.clone(), n.clone()))
+        .collect();
+    let want: std::collections::BTreeSet<(String, String)> = TABLE
+        .iter()
+        .map(|(f, n, _)| (f.to_string(), n.to_string()))
+        .collect();
+    assert_eq!(
+        got, want,
+        "碰别名块内容的函数 != 登记表（两向）—— 新长出来的那个先说清它的角色（写的必须经 `user_files::edit`）"
+    );
+    for (f, n, body) in &seen {
+        let role = TABLE
+            .iter()
+            .find(|(tf, tn, _)| tf == f && tn == n)
+            .unwrap()
+            .2;
+        match role {
+            Role::Writes => {
+                guard_core::find_pinned(body, "crate::user_files::edit(").unwrap_or_else(|e| {
+                    panic!("{f}::{n} 写别名块却不是恰好一处经 `user_files::edit`（{e}）")
+                });
+            }
+            Role::Pure | Role::Delegates => assert!(
+                !guard_core::contains_word(body, "edit"),
+                "{f}::{n} 登记成不写，函数体里却有 `edit`（读 · 算 · 交那一跳）"
+            ),
+        }
+        for w in OTHER_WRITES {
+            assert!(
+                !body.contains(w),
+                "{f}::{n} 碰别名块，又用了另一个写原语 `{w}` —— 写口只许一个"
+            );
+        }
+    }
+}
+
+/// 🔴 〔HX2 · RT1 F6〕C1：**`__ccm_bind` 找 monitor 数据目录只有一个住址**（`paths::resolve_monitor_data_dir`，跟 `CCM_DATA_DIR`）。
+///
+/// 要求住址：`INVARIANTS §2`「monitor 自己的 data dir 永远是 `~/.claude/work/`」那一节的出口
+/// （`paths.rs` 头注：`CCM_DATA_DIR` 只为「把这个进程整体挪到别处跑」而存在）；`第四波记录/RT1.md §8` F6（模板写死一份 ⇒ 数据目录的第二个住址）。
+/// ① 渲染出来的块里 `$ccmDir =` 恰一行、值 == 喂进去的那个目录（带单引号的路径逐字转义成 PowerShell 字面量）；
+/// ② 模板源码里零处 `work` 字面量（正控：渲染产物里用默认目录喂时数得到）；
+/// ③ 装那一跳交的就是唯一出口算出来的那个（源码：`plan_install` 的 PowerShell 臂恰一处 `resolve_monitor_data_dir()`）。
+#[test]
+fn hx2_the_bind_helper_finds_the_monitor_data_dir_through_the_one_exit() {
+    let dir = std::path::Path::new("C:\\Users\\o'brien\\iso data");
+    for include_cc in [true, false] {
+        let out = render_cc_code("cc", include_cc, dir);
+        let lines: Vec<&str> = out
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.starts_with("$ccmDir ="))
+            .collect();
+        assert_eq!(
+            lines,
+            vec!["$ccmDir = 'C:\\Users\\o''brien\\iso data'"],
+            "{out}"
+        );
+        assert!(!out.contains("{{"), "有占位符没填：{out}");
+    }
+    let tpl = include_str!("../../src/bridge/scripts/cc.ps1.tpl");
+    assert_eq!(
+        tpl.matches("work").count(),
+        0,
+        "模板里又写死了一份数据目录"
+    );
+    assert_eq!(tpl.matches("{{MONITOR_DATA_DIR}}").count(), 1);
+    let default_dir = std::path::Path::new("/home/u/.claude/work");
+    assert_eq!(
+        render_cc_code("cc", true, default_dir)
+            .matches("work")
+            .count(),
+        1,
+        "正控：喂默认目录时产物里数得到那一个"
+    );
+    let prod =
+        guard_core::production_code(include_str!("../../src/bridge/src/profile_installer.rs"));
+    let at = guard_core::find_pinned(&prod, "pub fn plan_install(").expect("装那一跳不在了");
+    let body = &prod[at..at + prod[at..].find("\n}\n").expect("没收尾")];
+    assert_eq!(
+        body.matches("crate::paths::resolve_monitor_data_dir()")
+            .count(),
+        1,
+        "{body}"
     );
 }

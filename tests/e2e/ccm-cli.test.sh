@@ -77,9 +77,12 @@ RECIPE() { # RECIPE <sid> <本地兜底的 exec 串>
   printf 'set -f; %s' "$2"
 }
 
-ck "零修饰（--cwd .）：最终 exec 与今天 ccm() 逐字节一致" \
-   "$UNSET; cd '.' && exec claude" \
-   "$(ccm --cwd . --print)"
+# 〔主会话 09-26 · `INVARIANTS §47` 形式判定「绝对路径 · 不含 `..` · 不空」〕这条原来用 `--cwd .` 钉工作目录；
+#   §47 ② 落地后相对路径在 `plan.rs::free_text_gate` 就被拒（拒绝那一格由 `plan_tests.rs::free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold` 盯），
+#   ⇒ 改用绝对路径钉 —— 这条测的是「零修饰」，`.` 只是占位，意图不变。
+ck "零修饰（--cwd /p）：最终 exec 与今天 ccm() 逐字节一致" \
+   "$UNSET; cd '/p' && exec claude" \
+   "$(ccm --cwd /p --print)"
 ck "resume <sid>" \
    "$UNSET; cd '/p' && $(RECIPE abc-123 "exec claude --resume abc-123")" \
    "$(ccm resume abc-123 --cwd /p --print)"

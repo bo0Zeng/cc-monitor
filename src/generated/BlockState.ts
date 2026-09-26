@@ -19,6 +19,7 @@ version: string | null,
 /**
  * 〔TL1 · 4C〕块在、而版本串不是这一版模板的那个 ⇒ `true`（只有 PowerShell 那一对有版本串）。
  * v3 起模板结尾多一行接上别名文件（`设计/71 §6.1`）—— 装着 v2 的人**重装一次**才带上那一行，界面据此提示。
+ * 〔HX2 · 4D〕v4 起 `__ccm_bind` 找 monitor 数据目录走唯一出口（渲染时填）—— 装着 v3 的人同样重装一次。
  * 「这一版是哪个」只从模板本身读（[`current_block_version`]），不另写一份字面量。
  */
 outdated: boolean, 

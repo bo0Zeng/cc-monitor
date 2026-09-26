@@ -90,7 +90,10 @@ impl Env {
     /// **这不是等价**，登记在模块头注。
     pub(crate) fn from_process() -> Self {
         use super::argv::Defaults;
-        let home = std::env::var("HOME").unwrap_or_default();
+        // 〔WIN1〕家目录：`HOME`，没有再退 `USERPROFILE` —— 与本 crate 其余各处同一个口径
+        //   （`exit_policy::policy_path` · `asset_catalog` · `panorama`）。从前只认 `HOME`：Windows 上
+        //   默认没有它 ⇒ 账号库落成 `/.claude-alt/accounts.json`（当前盘的根），找不到号还说「不在那个文件里」。
+        let home = home_of(|k| std::env::var(k).ok());
         let get = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
         // 🔴 **`$CCM_CONFIG` 这一层本实现不认，而且不许静默不认。**
         //
@@ -99,8 +102,7 @@ impl Env {
         // 而用户不会知道），要么起一个 shell 去 source 它（那就把刚删掉的 bash 请回来了）。
         // ⇒ 选第三条：**发现它存在就说一句，然后照常跑**。
         // 静默忽略正是本工作区反复消灭的那类病（写了个配置、看起来生效了、其实被吃掉）。
-        let cfg_path =
-            get("CCM_CONFIG").unwrap_or_else(|| format!("{home}/{}", Defaults::CONFIG_REL));
+        let cfg_path = get("CCM_CONFIG").unwrap_or_else(|| under_home(&home, Defaults::CONFIG_REL));
         if std::path::Path::new(&cfg_path).is_file() {
             eprintln!(
                 "ccm: {cfg_path} 在，但本实现**不读它**（旧版是 source 一段 bash，原生实现没有等价物）。\n                 里面那两个值请改成环境变量：CCM_ACCTS_MANIFEST / CCM_ENV。\n                 （`CCM_WORKSPACE` 不用改了：`K-R58` 起 ccm 不再替你跳目录，不给 --cwd 就是当前目录。）"
@@ -118,7 +120,7 @@ impl Env {
             ccm_env: pick("CCM_ENV", Defaults::ENV.to_string()),
             accts_manifest: pick(
                 "CCM_ACCTS_MANIFEST",
-                format!("{home}/{}", Defaults::ACCTS_MANIFEST_REL),
+                under_home(&home, Defaults::ACCTS_MANIFEST_REL),
             ),
             // 继承值与载体名一样，要等**解析完 argv 知道是哪一家**才填得了 ⇒ 由 `mod.rs` 补。
             inherited_config_dir: None,
@@ -131,6 +133,44 @@ impl Env {
             //   CC1 之后入口② 自己就带得上那个词 ⇒ **shim 制造的那个问题没了，补丁也就不需要了**
             //   （`设计/01 §6.7b` 逐字「`CCM_SELF` 这个环境变量随之删掉」）。
             self_argv: super::self_invocation(&std::env::args().collect::<Vec<_>>()),
+            no_pretrust: std::env::var("CCM_NO_PRETRUST").as_deref() == Ok("1"),
+            bus_scripts: discover_bus_scripts(),
+            home,
+        }
+    }
+}
+
+// 〔W5-ALIAS〕预览那一份单独一个 `impl` 块：`from_process` 那一块的判据按「块尾」截函数体（`plan_tests` 的家目录那条）。
+impl Env {
+    /// 〔W5-ALIAS · 第五波先行〕别名预览用的那一份（帧命令 `ccm-print`，`设计/71 §2.3`）：
+    /// **「从这台机器家目录里的一个新终端敲这条别名」**。问的人是常驻后端进程，而它的 cwd / 环境
+    /// 不是那个终端的 ⇒ 这几格写死、而且写在这一处（判据 `ccm::tests` 的预览那几条逐格钉）：
+    /// - `self_argv = ["ccm"]` —— 别名叫的就是 `ccm`（容器路内层要把自己再叫一次，叫法就是它）；
+    /// - `pwd = home` · 不在 tmux 里 · 没有继承来的中转地址 / 启动号 / 令牌；
+    /// - 账号目录变量不继承（由 [`super::plan_of`] 的 `inherit_account = false` 管）。
+    ///
+    /// 其余照这台机器的真值：账号库 manifest · `CCM_ENV` · cc-bus 脚本目录 · `CCM_NO_PRETRUST`。
+    /// ⚠ 与 [`Env::from_process`] 不同，这里**不**对 `$CCM_CONFIG` 出声：那一句是说给终端里的人听的，
+    /// 常驻后端的 stderr 进的是日志。
+    pub(crate) fn for_preview() -> Self {
+        use super::argv::Defaults;
+        let home = home_of(|k| std::env::var(k).ok());
+        let get = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
+        let pick = |k: &str, fallback: String| -> String { get(k).unwrap_or(fallback) };
+        Env {
+            pwd: home.clone(),
+            tmux: None,
+            anthropic_base_url: None,
+            ccm_launch_id: None,
+            launch_token: None,
+            ccm_env: pick("CCM_ENV", Defaults::ENV.to_string()),
+            accts_manifest: pick(
+                "CCM_ACCTS_MANIFEST",
+                under_home(&home, Defaults::ACCTS_MANIFEST_REL),
+            ),
+            inherited_config_dir: None,
+            account_env: String::new(),
+            self_argv: vec![super::SUBCOMMAND_WORD.to_string()],
             no_pretrust: std::env::var("CCM_NO_PRETRUST").as_deref() == Ok("1"),
             bus_scripts: discover_bus_scripts(),
             home,
@@ -152,10 +192,61 @@ fn is_exec(p: &std::path::Path) -> bool {
             .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
             .unwrap_or(false);
     }
+    // 〔WIN1 · WN1 件 G〕从前这一臂是 `p.is_file()` ⇒ Windows 上「可执行」退化成「存在」
+    //   （`真相源/106 §3.4`：种一个两行文本的 `cc-register`，照样被认了）。Windows 上「跑得起来」
+    //   看的是扩展名在不在 `PATHEXT` 里 —— 判定住 [`runnable_on_windows`]（纯函数，Linux 上直接测）。
     #[cfg(not(unix))]
     {
-        p.is_file()
+        runnable_on_windows(p.is_file(), p, std::env::var("PATHEXT").ok().as_deref())
     }
+}
+
+/// Windows 上「这个文件跑得起来吗」：**是文件，且扩展名在 `PATHEXT` 里**（大小写不敏感）。
+///
+/// `PATHEXT` 缺席 / 空 ⇒ 用 Windows 自己的默认值（`.COM;.EXE;.BAT;.CMD`）—— 不是猜，
+/// 那是 `cmd.exe` 在这个变量没设时认的那一份。没有扩展名的文件（例如 POSIX 的 `cc-register`）
+/// 在 Windows 上**不是**可执行的 ⇒ 判 `false`。
+#[cfg(any(not(unix), test))]
+pub(crate) fn runnable_on_windows(
+    is_file: bool,
+    p: &std::path::Path,
+    pathext: Option<&str>,
+) -> bool {
+    if !is_file {
+        return false;
+    }
+    let Some(ext) = p.extension().and_then(|e| e.to_str()) else {
+        return false;
+    };
+    let list = pathext
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(".COM;.EXE;.BAT;.CMD");
+    list.split(';')
+        .map(|e| e.trim().trim_start_matches('.'))
+        .any(|e| !e.is_empty() && e.eq_ignore_ascii_case(ext))
+}
+
+/// 从一组环境变量里取家目录：`HOME`，空 / 缺席再退 `USERPROFILE`；两个都没有 ⇒ 空串（照旧）。
+/// 纯函数（`get` 注入），两平台的判定表在 Linux 上直接测。
+pub(crate) fn home_of(get: impl Fn(&str) -> Option<String>) -> String {
+    get("HOME")
+        .filter(|h| !h.is_empty())
+        .or_else(|| get("USERPROFILE").filter(|h| !h.is_empty()))
+        .unwrap_or_default()
+}
+
+/// 家目录下一个 `/` 分隔的相对路径 → 本平台的完整路径（逐段 `join`，Windows 上不再 `\` 与 `/` 混拼）。
+/// 家目录为空时照旧拼成 `/<rel>`（与改之前逐字相同 —— 这一格不是本件要改的行为）。
+pub(crate) fn under_home(home: &str, rel: &str) -> String {
+    if home.is_empty() {
+        return format!("/{rel}");
+    }
+    rel.split('/')
+        .filter(|s| !s.is_empty())
+        .fold(std::path::PathBuf::from(home), |p, s| p.join(s))
+        .to_string_lossy()
+        .into_owned()
 }
 
 /// cc-bus 的脚本目录：`CC_BUS_SCRIPTS` → 本二进制旁边的 `cc-bus/scripts` → `PATH`。
@@ -166,7 +257,7 @@ fn is_exec(p: &std::path::Path) -> bool {
 /// `~/.cc-monitor/bin/` —— **它旁边永远没有 `cc-bus/`** ⇒ 第二档在真实部署里**恒不命中**，
 /// 而 `PATH` 那一档是唯一还够得着的。首版漏了它（docstring 写着、实现里没有），
 /// 后果是「`--bus-register` 要了登记，却谁也没登记」。
-fn discover_bus_scripts() -> Option<String> {
+pub(crate) fn discover_bus_scripts() -> Option<String> {
     if let Ok(d) = std::env::var("CC_BUS_SCRIPTS") {
         if !d.is_empty() && is_exec(&std::path::Path::new(&d).join("cc-register")) {
             return Some(d);
@@ -511,27 +602,33 @@ fn next_free_name(base: &str, taken: &[String]) -> String {
     }
 }
 
-/// 会话名的形状校验（**唯一一份** —— 显式名与基名都过这里）。
+/// 会话名的形状校验 —— 显式名与基名都过这里（`ccm` 要**新建**的会话名）。
+///
+/// 〔DUP2 · 主会话 09-26 裁 J6〕**规则只有一份**，住共享 crate（`gate_core::new_tmux_name_issue`：非空 · 不以 `-` 开头 ·
+/// 无 `*?.:=` · 无控制符与视觉欺骗字符 · ≤128）；monitor 的载荷外层与 `ccm …` 调用行调的是同一个函数。本函数只剩「说哪一句」。
+/// 这里原来自己写了一份（自称「唯一一份」，而 monitor 与界面各还有一份、规则各不相同）；比那一份多出来的两格
+/// （欺骗字符 · 超长）是三份取交集时从 monitor 载荷那一份与界面那一份带进来的。
 pub(crate) fn validate_tmux_name(n: &str) -> Result<(), Die> {
-    if n.is_empty() || n.starts_with('-') {
-        return Err(Die(copy_text(
-            "bePlan.validateTmuxName.emptyOrDash",
-            &[("name", &n.to_string())],
-        )));
-    }
-    if n.chars().any(|c| "*?.:=".contains(c)) {
-        return Err(Die(copy_text(
-            "bePlan.validateTmuxName.targetSyntax",
-            &[("name", &n.to_string())],
-        )));
-    }
-    if n.chars().any(|c| c.is_control()) {
-        return Err(Die(copy_text(
-            "bePlan.validateTmuxName.control",
-            &[("name", &n.to_string())],
-        )));
-    }
-    Ok(())
+    use gate_core::TmuxNameIssue as I;
+    let said = match gate_core::new_tmux_name_issue(n) {
+        None => return Ok(()),
+        Some(I::Empty | I::LeadingDash) => {
+            copy_text("bePlan.validateTmuxName.emptyOrDash", &[("name", n)])
+        }
+        Some(I::TargetSyntax(_)) => {
+            copy_text("bePlan.validateTmuxName.targetSyntax", &[("name", n)])
+        }
+        Some(I::Control(_)) => copy_text("bePlan.validateTmuxName.control", &[("name", n)]),
+        Some(I::Deceptive(_)) => copy_text("bePlan.validateTmuxName.deceptive", &[("name", n)]),
+        Some(I::TooLong) => copy_text(
+            "bePlan.validateTmuxName.tooLong",
+            &[
+                ("name", n),
+                ("max", &gate_core::NEW_TMUX_NAME_MAX.to_string()),
+            ],
+        ),
+    };
+    Err(Die(said))
 }
 
 /// 不给 `--cwd` 时的落点。**今天它是恒等**：调用方站在哪儿，会话就起在哪儿。
@@ -621,6 +718,67 @@ pub(crate) fn resolve_account(
     }
 }
 
+/// 〔TL3 · `INVARIANTS §47` ② · 主会话 09-26 按 V131 裁〕**自由文本**那几格拼进 shell（`--print` 那一串 · pane 里键入的载荷 ·
+/// 收尾那几段 `sh -c`）之前的放行判定：
+///
+/// | 格 | 形式（按本机语境） | 拒绝集 |
+/// |---|---|---|
+/// | 工作目录（`--cwd` / 当前目录） | 绝对路径（`Path::is_absolute`，Windows 上认 `C:\` 那一形）· 没有 `..` 段 | NUL / CR / LF |
+/// | 启动器 · 透传给 agent 的参数 · 登记备注 · 继承来的 `CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL` / `CCM_LAUNCH_ID` | — | NUL / CR / LF |
+///
+/// **不拒 shell 元字符**（`Bob's` · `(2019)` 照放，交给唯一的 quote）。拒绝集住 `shell_quote_core::free_text_ok`。
+/// ⚠ 模型名与 `--ccm-sid` **不在这里**：主会话裁交 DUP1（判定唯一住址那一路）统一定规则（`调研/第四波记录/TL3.md §7.3`）。
+/// ⚠ 继承来的那三个只在它们真会被拼进去的时候才判（容器路把它们显式化进载荷，[`inherited_gate`]）：
+///   环境里一个用不上的怪值不该挡住起会话（拒过头）。
+fn free_text_gate(cwd: &str, o: &Opts) -> Result<(), Die> {
+    let p = std::path::Path::new(cwd);
+    if !p.is_absolute()
+        || p.components().any(|c| c == std::path::Component::ParentDir)
+        || !shell_quote_core::free_text_ok(cwd)
+    {
+        return Err(refuse(flag::CWD, cwd));
+    }
+    if !shell_quote_core::free_text_ok(&o.launcher) {
+        return Err(refuse(flag::LAUNCHER, &o.launcher));
+    }
+    if let Some(a) = o
+        .passthru
+        .iter()
+        .find(|a| !shell_quote_core::free_text_ok(a))
+    {
+        return Err(refuse(flag::END, a));
+    }
+    if !shell_quote_core::free_text_ok(&o.bus_note) {
+        return Err(refuse(flag::BUS_NOTE, &o.bus_note));
+    }
+    Ok(())
+}
+
+/// 容器路要把继承来的那三个显式化进载荷（tmux 边界会吃掉它们）⇒ 那一刻才判（见 [`free_text_gate`]）。
+fn inherited_gate(env: &Env) -> Result<(), Die> {
+    for (what, v) in [
+        (
+            env.account_env.as_str(),
+            env.inherited_config_dir.as_deref(),
+        ),
+        ("ANTHROPIC_BASE_URL", env.anthropic_base_url.as_deref()),
+        ("CCM_LAUNCH_ID", env.ccm_launch_id.as_deref()),
+    ] {
+        if let Some(v) = v.filter(|v| !shell_quote_core::free_text_ok(v)) {
+            return Err(refuse(what, v));
+        }
+    }
+    Ok(())
+}
+
+/// 自由文本那几格判不过时的那句话（哪一格 · 原值）。
+fn refuse(what: &str, v: &str) -> Die {
+    Die(copy_text(
+        "bePlan.build.freeTextRefused",
+        &[("what", &what.to_string()), ("value", &format!("{v:?}"))],
+    ))
+}
+
 /// 从 [`Opts`] ＋ 外界 ⇒ [`Plan`]。**这是计划面的唯一入口。**
 ///
 /// `taken` = 那一刻**已被占用的会话名**（`R52` 裁定二那张 hash 表），
@@ -653,7 +811,14 @@ pub(crate) fn build(
     }
 
     let cwd = resolve_cwd(o, env);
+    free_text_gate(&cwd, o)?;
     let (config_dir, account) = resolve_account(o, env, table)?;
+    // 〔TL3 · §47〕账号配置目录（manifest 里来的）是本仓自管的路径，该走全表。
+    // 〔DUP1〕全表原先住 `observe/accounts_query.rs`（`control → observe` 是禁止方向，TL3 在这里先只过了自由文本那一层）；
+    //   今天整份搬进共享 crate（`acct_core::config_dir_ok`，全仓唯一一份），这里直接用。空串 = 账号 0 / 继承，不注入、不判。
+    if !config_dir.is_empty() && !acct_core::config_dir_ok(&config_dir) {
+        return Err(refuse(&env.account_env, &config_dir));
+    }
     let launcher = if o.launcher.is_empty() {
         super::default_launcher(&o.agent).to_string()
     } else {
@@ -672,6 +837,7 @@ pub(crate) fn build(
     }
 
     if use_tmux {
+        inherited_gate(env)?;
         let (base, step_aside) = if !o.tmux_base.is_empty() {
             validate_tmux_name(&o.tmux_base)?;
             (o.tmux_base.clone(), true)
@@ -777,7 +943,8 @@ pub(crate) fn build(
                         is_exec(&std::path::Path::new(d).join("cc-spawned-record"));
                     if !has_spawned_record {
                         eprintln!(
-                            "ccm: {d}/cc-spawned-record 不可执行 —— 会话照建、也会登记，但**不进 spawn 台账**（孤儿检测看不到它）"
+                            "ccm: {} 不可执行 —— 会话照建、也会登记，但**不进 spawn 台账**（孤儿检测看不到它）",
+                            std::path::Path::new(d).join("cc-spawned-record").display()
                         );
                     }
                     Some(BusRegister {

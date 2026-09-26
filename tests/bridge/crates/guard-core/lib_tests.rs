@@ -255,7 +255,7 @@ fn a_bodyless_cfg_test_mod_declaration_swallows_nothing() {
 
 /// ★ U8a-2a 逮出的那条：`#[cfg(all(test, target_os = "linux"))]` 也是测试模块。
 ///
-/// 病灶原样照抄 `session_map.rs::linux_liveness`（U7d 加的）：只认逐字 `#[cfg(test)]`
+/// 病灶原样照抄当年 `session_map.rs` 那个 Linux 判活测试模块（U7d 加的；〔LOC1b〕已随那份判活删了）：只认逐字 `#[cfg(test)]`
 /// 的锚点会漏掉它，那 5 个 `#[test]` 就留在「生产段」里了。
 #[test]
 fn strips_test_modules_behind_a_compound_cfg() {

@@ -21,17 +21,17 @@ use crate::copy_table::copy_text;
 
 /// cc-bus id 合法性。**照抄 `shared/ccm:358-362` 的判据，不另发明一套。**
 ///
+/// 违反此约束见 `src/doc/INVARIANTS.md` § 47（外部值拼进 shell / 交给对端之前本侧先过放行判定；〔TL2〕照「修改本文档」第 2 条补的反指）。
+///
 /// 关键的一条是 **拒绝前导 `-`**：写这段时我第一版用的是「只含 `[A-Za-z0-9_-]`」，
 /// 实测 **`--help` 通过了**——因为 `-` 本来就在字符类里，`[A-Za-z0-9_-]+` 完整匹配 `--help`。
 /// 而 id 会被拼进命令行（`cc-send <id> …`、`tmux has-session -t =<id>`），
 /// `-` 开头会被下游当成选项解析。ccm 那边同样的理由写着
 /// `""|-*) die "非法 tmux 会话名（空或以 - 开头）"`。
-pub fn is_valid_bus_id(s: &str) -> bool {
-    !s.is_empty()
-        && !s.starts_with('-')
-        && s.chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-}
+///
+/// 〔DUP2 · J12〕实现搬进了共享 crate（`shell_quote_core::bus_id_ok`，规则逐字不变）：后端 `bus-*` 入口也要判同一条，
+/// 两半编译期不许互咬（`设计/90 §0` C2）⇒ 共享 crate 是唯一合法的家。这里留原名的再导出，读收件箱那两处不动。
+pub use shell_quote_core::bus_id_ok as is_valid_bus_id;
 
 /// `agents.tsv` 的一行：id / pane 地址 / 登记时间。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -424,7 +424,9 @@ pub async fn read_cc_bus_state(origin: String) -> Result<CcBusState, String> {
 // 「把回落改成恒失败的桩留在原地 —— 那不是删，那是把一份实现变成一句谎话」。
 //
 // **那道 id 白名单没有丢，换了住址**：搬进 `online_via_backend`（同 `K-R98` 给发消息那条的手法）。〔散文墓碑〕
-// 〔C4e〕那一处也走了：查在线迁到界面，id 白名单今天住 `src/cc-bus-control.ts` 的 `isValidBusId`（发出之前先核）。
+// 〔C4e〕那一处也走了：查在线迁到界面，id 白名单当时住界面（发出之前先核）。
+// 〔DUP2 · J12〕今天住后端 `bus-*` 的入口（`shell_quote_core::bus_id_ok`，交给 `cc-send` / `cc-kill` / `cc-spawn` 之前判）；
+//   查在线不把 id 交给任何人，不判。
 
 /// 读某个 agent 的 inbox。只取尾部 200 行：inbox 是只增文件，全量读会随时间越来越慢，
 /// 而驾驶舱只看最近的。

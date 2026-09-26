@@ -314,3 +314,45 @@ fn the_real_watcher_arms_and_delivers() {
          ⇒ 要么回调没接上，要么事件被内核丢了（后者本判据分不出来，如实登记）。"
     );
 }
+
+/// 〔W5-FILES〕要求住址：`设计/60 §3.7`「`browse_watch::BrowseWatcher` **零生产调用方** ⇒ `files-browse` 买到的是『发命令那一刻重列一遍』，
+/// 不是『一有动静就跟着新』（要有人在后端进程里长期持有那个监听器）」＋ `设计/96 §2.9` 仍开着第一条。
+///
+/// 走的是**线上那一面**（`files-browse`），不直接碰 `BrowseWatcher`：名单登记之后造一份文件，
+/// 有界等待里 overlay 必须出现它 —— 没有那个长期持有的监听器，overlay 只有登记那一刻的重列，永远等不到。
+/// 换名单之后 `watching` 两向跟着变（挂一个 ⇒ 1，空名单 ⇒ 0）。
+#[test]
+fn files_browse_keeps_a_live_watcher_that_follows_the_list() {
+    let _lock = resident_lock();
+    let fx = make_tree("livewatch", 2, 1, 0);
+    let dir = fx.root.join("d0000");
+    let p = |x: &std::path::Path| serde_json::Value::String(x.to_string_lossy().to_string());
+    let v = crate::files::answer_wire("files-browse", &serde_json::json!({ "dirs": [p(&dir)] }))
+        .expect("files-browse 被拒");
+    assert_eq!(
+        (
+            v["watching"].as_u64(),
+            v["watch_failed"].as_u64(),
+            v["watch_error"].is_null()
+        ),
+        (Some(1), Some(0), true),
+        "名单一个目录，真挂着的不是 1：{v}"
+    );
+    std::fs::File::create(dir.join("seen-live")).expect("造文件");
+    let want = crate::files::raw::path_bytes(&dir.join("seen-live")).to_vec();
+    let mut found = false;
+    for _ in 0..250 {
+        if overlay_snapshot().iter().any(|e| e == want.as_slice()) {
+            found = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(
+        found,
+        "登记之后新建的文件 5 秒内没进 overlay —— 没有人在后端进程里持有那个监听器"
+    );
+    let v = crate::files::answer_wire("files-browse", &serde_json::json!({ "dirs": [] }))
+        .expect("空名单被拒");
+    assert_eq!(v["watching"].as_u64(), Some(0), "空名单之后还挂着：{v}");
+}

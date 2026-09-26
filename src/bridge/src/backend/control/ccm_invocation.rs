@@ -37,6 +37,10 @@ use std::collections::BTreeSet;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Refusal {
     NotInstalled,
+    /// 〔LR2 · R95b〕**没探出来**（探测那一跳出错：ssh 抖动 / 远端不可达），`String` 是那一跳的原话。
+    /// 与 `NotInstalled` 是两件事：不知道 ≠ 知道没有（`设计/80 §9.4`，`K-R53` 那条在线上的延续）。
+    /// 只由 `launch_wire::render_ccm_launch` 按线上第三态产（本机那条路永远知道装没装）。
+    ProbeUnknown(String),
     NotSsh,
     MissingCap(String),
     /// #76 防线：`send-into`（idle-tmux 就地复用）**没有 CLI 等价语法**。
@@ -52,6 +56,42 @@ pub enum Refusal {
         dim: String,
         cap: String,
     },
+    /// 〔TL3 · `INVARIANTS §47` ②〕一个自由文本值过不了拼进命令之前的放行判定
+    /// （工作目录：POSIX 绝对 · 无 `..` 段 · 不含 NUL / CR / LF；透传参数：不含 NUL / CR / LF）。`value` = 原值（`{:?}` 形）。
+    FreeTextRefused {
+        slot: FreeTextSlot,
+        value: String,
+    },
+    /// 〔DUP1 · `INVARIANTS §47` ①〕一个**标识符**值过不了拼进命令之前的放行判定（闭集白名单 ＋ 不许 `-` 开头 ＋ 钉上界，
+    /// 判定住 `shell-quote-core`，全仓唯一一份）。`value` = 原值（`{:?}` 形）。
+    IdentifierRefused {
+        slot: IdentifierSlot,
+        value: String,
+    },
+}
+
+/// [`Refusal::IdentifierRefused`] 是哪一格（各有各的一句话，文案走表）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IdentifierSlot {
+    /// `resume <sid>`（`shell_quote_core::session_id_ok`）。
+    Sid,
+    /// `--ccm-sid=`（身份标记；同一条 sid 规则）。
+    CcmSid,
+    /// `--model <名>`（`shell_quote_core::model_name_ok`）。
+    Model,
+    /// `--account <名>`（`shell_quote_core::account_name_ok`）。
+    Account,
+    /// 〔DUP2 · J6〕`--tmux=<名>`：本工具要**新建**的会话名（`gate_core::new_tmux_name_issue`）。
+    TmuxName,
+}
+
+/// [`Refusal::FreeTextRefused`] 是哪一格（各有各的一句话，文案走表）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FreeTextSlot {
+    Cwd,
+    AgentArg,
+    /// 〔DUP2 · J6〕`attach <名>`：一个**已有**会话的名字（V131 ②：`gate_core::existing_tmux_name_issue`，拒绝集 ＋ 非空）。
+    AttachTarget,
 }
 
 impl Refusal {
@@ -59,6 +99,10 @@ impl Refusal {
     pub fn reason(&self) -> String {
         match self {
             Refusal::NotInstalled => copy_text("rsCcmInvocation.refusal.notInstalled", &[]),
+            Refusal::ProbeUnknown(e) => copy_text(
+                "rsCcmInvocation.refusal.probeUnknown",
+                &[("e", &e.to_string())],
+            ),
             // ⚠ **P3t 之后这句话比事实宽**（登记在案的诚实边界，不是没看见）：
             // Rust 侧现在只在 `!is_ssh && !local_posix` 时回它，也就是**Windows 本机**。
             // 它今天**产不出来**：两个活着的 Rust 调用方一个恒 `is_ssh: true`
@@ -81,6 +125,48 @@ impl Refusal {
             Refusal::DimensionNeedsCap { dim, cap } => copy_text(
                 "rsCcmInvocation.refusal.dimensionNeedsCap",
                 &[("dim", &dim.to_string()), ("cap", &cap.to_string())],
+            ),
+            Refusal::FreeTextRefused {
+                slot: FreeTextSlot::Cwd,
+                value,
+            } => copy_text("rsCcmInvocation.refusal.freeTextCwd", &[("value", value)]),
+            Refusal::FreeTextRefused {
+                slot: FreeTextSlot::AgentArg,
+                value,
+            } => copy_text("rsCcmInvocation.refusal.freeTextArg", &[("value", value)]),
+            Refusal::FreeTextRefused {
+                slot: FreeTextSlot::AttachTarget,
+                value,
+            } => copy_text(
+                "rsCcmInvocation.refusal.freeTextAttach",
+                &[("value", value)],
+            ),
+            Refusal::IdentifierRefused {
+                slot: IdentifierSlot::Sid,
+                value,
+            } => copy_text("rsCcmInvocation.refusal.idSid", &[("value", value)]),
+            Refusal::IdentifierRefused {
+                slot: IdentifierSlot::CcmSid,
+                value,
+            } => copy_text("rsCcmInvocation.refusal.idCcmSid", &[("value", value)]),
+            Refusal::IdentifierRefused {
+                slot: IdentifierSlot::Model,
+                value,
+            } => copy_text("rsCcmInvocation.refusal.idModel", &[("value", value)]),
+            Refusal::IdentifierRefused {
+                slot: IdentifierSlot::Account,
+                value,
+            } => copy_text("rsCcmInvocation.refusal.idAccount", &[("value", value)]),
+            Refusal::IdentifierRefused {
+                slot: IdentifierSlot::TmuxName,
+                value,
+            } => copy_text(
+                "rsCcmInvocation.refusal.idTmuxName",
+                &[
+                    ("value", value),
+                    ("refused", gate_core::NEW_TMUX_NAME_REFUSED),
+                    ("max", &gate_core::NEW_TMUX_NAME_MAX.to_string()),
+                ],
             ),
         }
     }
@@ -374,6 +460,14 @@ pub fn render_ccm_invocation(
             return Err(Refusal::AttachNeedsTmux);
         };
         let _ = name;
+        // 〔DUP2 · J6 · `INVARIANTS §47` ②〕一个已有会话的名字：拒绝集（控制符 · 欺骗字符）＋ 非空，规则住 gate-core（全仓唯一一份）。
+        //   ccm 那头按 `=<名>:` 精确寻址（`plan.rs` 的 attach 那一行），`*` `?` 不被当通配。界面那份删了之后这条路自己判。
+        if gate_core::existing_tmux_name_issue(cname).is_some() {
+            return Err(Refusal::FreeTextRefused {
+                slot: FreeTextSlot::AttachTarget,
+                value: format!("{cname:?}"),
+            });
+        }
         tokens.push("attach".into());
         tokens.push(cname.to_string());
         return Ok(tokens.iter().map(|t| argv(t)).collect::<Vec<_>>().join(" "));
@@ -381,24 +475,80 @@ pub fn render_ccm_invocation(
 
     match spec.action {
         Action::Resume { sid } => {
+            // 〔DUP1 · §47 ①〕resume 的 sid 是标识符：共享那一份判（前端那份删了，`设计/90 §3` 判据 2）。
+            if !shell_quote_core::session_id_ok(sid) {
+                return Err(Refusal::IdentifierRefused {
+                    slot: IdentifierSlot::Sid,
+                    value: format!("{sid:?}"),
+                });
+            }
             tokens.push("resume".into());
             tokens.push(sid.to_string());
         }
         _ => tokens.push("new".into()),
     }
+    // 〔DUP1 · §47 ①〕身份标记同一条 sid 规则（`--ccm-sid=` 由下面的 identity 维度吐）。
+    if let Some(s) = spec.ccm_sid.filter(|s| !shell_quote_core::session_id_ok(s)) {
+        return Err(Refusal::IdentifierRefused {
+            slot: IdentifierSlot::CcmSid,
+            value: format!("{s:?}"),
+        });
+    }
+    // 〔DUP1 · §47 ①〕账号名（`--account <名>` 由下面的 account 维度吐）：与建账号的那个工具逐字同的那一份判。
+    if let CliAccount::Named { name: Some(n) } = spec.account {
+        if !shell_quote_core::account_name_ok(n) {
+            return Err(Refusal::IdentifierRefused {
+                slot: IdentifierSlot::Account,
+                value: format!("{n:?}"),
+            });
+        }
+    }
+    // 〔DUP1 · §47 ①〕模型名（`--model <名>` 由下面的 model 维度吐）：共享那一份判，前端那份删了。
+    if let Some(m) = spec.model.filter(|m| !shell_quote_core::model_name_ok(m)) {
+        return Err(Refusal::IdentifierRefused {
+            slot: IdentifierSlot::Model,
+            value: format!("{m:?}"),
+        });
+    }
     if let Container::Tmux { name, .. } = spec.container {
+        // 〔DUP2 · J6 · `INVARIANTS §47` ①〕`--tmux=<名>` 是要**新建**的会话名：新建那一条（gate-core，全仓唯一一份）。
+        //   今天之前这条路零判定、只靠界面那道 TS 谓词 —— 那份删了，这里接上（「对端会校验」不是理由）。
+        if gate_core::new_tmux_name_issue(name).is_some() {
+            return Err(Refusal::IdentifierRefused {
+                slot: IdentifierSlot::TmuxName,
+                value: format!("{name:?}"),
+            });
+        }
         tokens.push(format!("--tmux={name}"));
     }
 
     tokens.extend(dimension_flags(spec, caps)?);
 
     if let Some(cwd) = spec.cwd {
+        // 〔TL3 · §47 ②〕工作目录是自由文本路径：形式 ＋ 拒绝集（与载荷那条路同一个判定 `shell_quote_core::posix_free_path_ok`）。
+        if !shell_quote_core::posix_free_path_ok(cwd) {
+            return Err(Refusal::FreeTextRefused {
+                slot: FreeTextSlot::Cwd,
+                value: format!("{cwd:?}"),
+            });
+        }
         tokens.push("--cwd".into());
         tokens.push(cwd.to_string());
     }
     if spec.launcher != spec.default_launcher {
         tokens.push("--launcher".into());
         tokens.push(spec.launcher.to_string());
+    }
+    // 〔TL3 · §47 ②〕透传给 agent 的参数是自由文本：拒绝集只收 NUL / CR / LF（元字符交给 `argv` 里那一处 quote）。
+    if let Some(a) = spec
+        .args
+        .iter()
+        .find(|a| !shell_quote_core::free_text_ok(a))
+    {
+        return Err(Refusal::FreeTextRefused {
+            slot: FreeTextSlot::AgentArg,
+            value: format!("{a:?}"),
+        });
     }
     if !spec.args.is_empty() {
         tokens.push("--".into());

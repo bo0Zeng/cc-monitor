@@ -661,7 +661,7 @@ impl RemoteFs {
         Ok((meta, v.get("exists").and_then(serde_json::Value::as_bool)))
     }
 
-    /// 整份读回来：`(字节, 读不出时补问的 exists, 读到空时补问的 size)` —— 与 `sftp::interpret_profile_read` 入参同形。
+    /// 整份读回来：`(字节, 读不出时补问的 exists, 读到空时补问的 size)`。
     pub(crate) async fn read(
         &self,
         path: &str,

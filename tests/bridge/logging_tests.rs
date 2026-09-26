@@ -155,8 +155,10 @@ fn a_config_we_cannot_parse_is_left_alone_not_overwritten() {
         broken,
         "读不懂的那份被改了 —— 用户手填的内容没了"
     );
+    // 〔CFG1〕临时件名带 pid 了（`config.json.<pid>.tmp`，写口 `config::patch_config_at`）。
     assert!(
-        !tmp.join("config.json.tmp").exists(),
+        !tmp.join(format!("config.json.{}.tmp", std::process::id()))
+            .exists(),
         "临时文件都写出来了 —— 「不写」要在写之前就停"
     );
     assert!(
