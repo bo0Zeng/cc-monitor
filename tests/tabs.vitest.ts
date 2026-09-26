@@ -5263,6 +5263,32 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     expect(tabOf("s2").state).toEqual(UNSEEN);
   });
 
+  // 〔TL2 · GP1 问 3〕要求住址：主会话 4D 裁「可重连 → 断连 → 重连后，tmux 里还在的那几条重新宣告为可重连（不是落已结束）」·
+  // `设计/30 §3.5.6` 转移表（说不清 + idle ⇒ 可重连；已结束 + idle 不动 ⇒ 次序承重）。
+  it("〔TL2 · GP1 问 3〕可重连 → 断连（说不清）→ 重连：先重宣告 idle、再报完清单 ⇒ 可重连；tmux 不在的那条 ⇒ 已结束", () => {
+    tm.ensureTab("k1", "/x", "p", 0, "pi");
+    tm.ensureTab("k2", "/x", "p", 0, "pi");
+    tm.markTmuxIdle("k1");
+    tm.markTmuxIdle("k2");
+    tm.markUnseen("k1");
+    tm.markUnseen("k2");
+    expect([tabOf("k1").state, tabOf("k2").state]).toEqual([UNSEEN, UNSEEN]);
+    // emitter 那一笔：k1 的 tmux 还在 ⇒ session-idle；k2 不在 ⇒ session-ended；**然后**才是 origin-sessions-listed。
+    tm.markTmuxIdle("k1");
+    tm.archiveTab("k2");
+    tm.markOriginSeen("pi");
+    expect([tabOf("k1").state, tabOf("k2").state]).toEqual([RECONNECTABLE, ENDED]);
+    const k1Title = home(tm).bar.tabButtons.get("k1")!.root.title;
+    expect(k1Title, "重连后 tmux 还在的那条被说成已结束了").not.toContain("已结束");
+    // 次序承重的反面（正控）：若先报完清单再宣告 idle ⇒ 已结束收 idle 不动 —— 这正是 monitor 那一侧要保序的理由。
+    tm.ensureTab("k3", "/x", "p", 0, "pi2");
+    tm.markTmuxIdle("k3");
+    tm.markUnseen("k3");
+    tm.markOriginSeen("pi2");
+    tm.markTmuxIdle("k3");
+    expect(tabOf("k3").state, "次序反了就回不来 —— 若这格变了，monitor 侧的保序就不再承重，回来重看").toEqual(ENDED);
+  });
+
   it("★ 还没建的 tab 收到 unseen ⇒ 什么都不建", () => {
     tm.markUnseen("nobody");
     expect(home(tm).store.tabs.has("nobody")).toBe(false);
