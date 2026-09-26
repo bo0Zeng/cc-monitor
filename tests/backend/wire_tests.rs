@@ -246,6 +246,7 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
                 emits: vec!["line".into(), "session_status".into()],
                 commands: vec![],
                 unavailable: vec![],
+                host_env: Default::default(),
             },
             "hello",
         ),
@@ -601,6 +602,7 @@ fn hello_with(caps: Vec<String>, emits: Vec<String>) -> Frame {
         emits,
         commands: vec![],
         unavailable: vec![],
+        host_env: Default::default(),
     }
 }
 
@@ -794,6 +796,7 @@ fn the_backend_can_already_discover_homes_it_just_does_not_send_them() {
         emits: vec![],
         commands: vec![],
         unavailable: vec![],
+        host_env: Default::default(),
     })
     .expect("填了 homes 的 hello 必须序列化得出来");
     assert_eq!(
@@ -855,6 +858,7 @@ fn dg3_codex_fields_serialize_when_present() {
         emits: vec![],
         commands: vec![],
         unavailable: vec![],
+        host_env: Default::default(),
     })
     .unwrap();
     // ★ 精确字节（aterm fixture 交叉核真值）：字段按声明序，`homes` 在 `claude_dir` 之后；
@@ -914,6 +918,7 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
         emits: vec![],
         commands: vec![],
         unavailable: vec![],
+        host_env: Default::default(),
     })
     .unwrap();
     assert_eq!(
@@ -984,6 +989,7 @@ fn hello_unavailable_is_additive_present_and_absent() {
         emits: vec![],
         commands: vec![],
         unavailable: vec![],
+        host_env: Default::default(),
     })
     .unwrap();
     assert_eq!(
@@ -1009,6 +1015,7 @@ fn hello_unavailable_is_additive_present_and_absent() {
             command: "kill".into(),
             code: "no_tmux".into(),
         }],
+        host_env: Default::default(),
     })
     .unwrap();
     assert_eq!(
@@ -1197,5 +1204,95 @@ fn loc1b_session_added_pid_is_additive() {
     assert_eq!(
         frame(Some(4242)),
         "{\"kind\":\"session_added\",\"sid\":\"s\",\"pid\":4242}\n"
+    );
+}
+
+// ═══ 〔HX2 · 第四波 4D〕hello 回显宿主交来的那几格（`host_env`）═══════════════════════════════
+//
+// 要求住址：题面 HX2 逐字「常驻后端身份带数据目录（接错了拒并出声）」；`INVARIANTS §42` → `IPC-PROTOCOL.md §10` hello 那一行
+// （additive：空表省略、线上字节不变）。审计 `E-compat.md` §E10 · `GP1.md §7.6` 第 4 条。
+
+/// 🔴 I1a：回显恰是名单内被交了的那几格、原样（手写期望）；没交 / 空串的那一格不回显；token 与无关变量即使在环境里也不回显。
+#[test]
+fn hx2_host_env_echoes_exactly_the_handed_names_and_never_the_token() {
+    let env: std::collections::HashMap<&str, &str> = [
+        ("CCM_RELAY_PORT", "8788"),
+        ("CCM_APIKEY_CREDENTIALS", "/d/apikey-credentials.json"),
+        ("CCM_HISTORY_METADATA", ""),
+        (crate::listen::ENV_TOKEN, "s3cret-token"),
+        ("HOME", "/home/u"),
+    ]
+    .into_iter()
+    .collect();
+    let got = crate::wire::host_env_from(|n| env.get(n).map(|v| v.to_string()));
+    let want: std::collections::BTreeMap<String, String> = [
+        ("CCM_RELAY_PORT".to_string(), "8788".to_string()),
+        (
+            "CCM_APIKEY_CREDENTIALS".to_string(),
+            "/d/apikey-credentials.json".to_string(),
+        ),
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(got, want);
+    assert!(crate::wire::host_env_from(|_| None).is_empty());
+}
+
+/// 🔴 I1b：token 那个变量名不在回显名单里（名单三格 == 手写；token 名不在其中）—— hello 谁都读得到。
+#[test]
+fn hx2_the_listen_token_is_never_echoed() {
+    let names: std::collections::BTreeSet<&str> = crate::wire::HOST_ECHO_ENVS.into_iter().collect();
+    let want: std::collections::BTreeSet<&str> = [
+        "CCM_RELAY_PORT",
+        "CCM_APIKEY_CREDENTIALS",
+        "CCM_HISTORY_METADATA",
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(names, want);
+    assert!(!names.contains(crate::listen::ENV_TOKEN) && !names.contains(crate::listen::ENV_PORT));
+}
+
+/// 🔴 I1c：空表 ⇒ 省略（线上字节与既有冻结串逐字节相同）；有值 ⇒ 落在最后、键按名排序。生产那一行恰好一处、读的是真环境。
+#[test]
+fn hx2_production_hello_bytes_do_not_change_when_nothing_was_handed() {
+    let hello = |host_env: std::collections::BTreeMap<String, String>| {
+        to_line(&Frame::Hello {
+            v: 1,
+            build_id: "b".into(),
+            host_arch: "x86_64".into(),
+            claude_dir: "/c".into(),
+            homes: vec![],
+            capabilities: vec![],
+            emits: vec![],
+            commands: vec![],
+            unavailable: vec![],
+            host_env,
+        })
+        .unwrap()
+    };
+    assert_eq!(
+        hello(Default::default()),
+        "{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/c\"}\n"
+    );
+    let present = hello(
+        [
+            ("CCM_RELAY_PORT".to_string(), "8788".to_string()),
+            ("CCM_APIKEY_CREDENTIALS".to_string(), "/d/k".to_string()),
+        ]
+        .into_iter()
+        .collect(),
+    );
+    assert_eq!(
+        present,
+        "{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/c\",\
+         \"host_env\":{\"CCM_APIKEY_CREDENTIALS\":\"/d/k\",\"CCM_RELAY_PORT\":\"8788\"}}\n"
+    );
+    let main = guard_core::production_code(include_str!("../../src/backend/main.rs"));
+    assert_eq!(
+        main.matches("host_env: wire::host_env_from(|name| std::env::var(name).ok()),")
+            .count(),
+        1,
+        "生产 hello 那一格不是「从真环境按名单回显」那一行"
     );
 }

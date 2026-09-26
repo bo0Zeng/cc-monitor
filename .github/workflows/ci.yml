@@ -680,7 +680,10 @@ jobs:
           # **2026-09-24 TQ1 棘到 81** —— 新增 `tests/scripts/rust-coverage.sh`（Rust 覆盖率量具，不进门禁）；
           #   `tests/scripts/*.sh` 那组 4 → 5。同拍加文件、同拍棘。
           # **81 = 上面 80 ＋ tests/scripts/rust-coverage.sh 1**。
-          [ "$N" -ge 81 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 81）"; exit 1; }
+          # **2026-09-25 LR2 棘到 82** —— 新增 `tests/e2e/launch-render-emit.sh`（生产 Rust 渲染器给 e2e 的出口，
+          #   `launch-render-driver.ts` 调它）；`tests/e2e/*.sh` 那组 +1。同拍加文件、同拍棘。
+          # **82 = 上面 81 ＋ tests/e2e/launch-render-emit.sh 1**。
+          [ "$N" -ge 82 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 82）"; exit 1; }
           # shellcheck disable=SC2086
           shellcheck --severity=error $FILES
 

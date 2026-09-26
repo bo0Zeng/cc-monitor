@@ -134,7 +134,9 @@ fn every_fixture_case_really_rendered_a_tmux_command() {
 
 /// ★ Rust 侧**拒**掉 TS 座会照拼的那几类坏输入。
 ///
-/// 座的头注逐字「座只在这些**已安全**的片段外拼后端语法，不做校验/转义」——
+/// 〔LR2〕那个 TS 座（`session-backend.ts`）已删；本条留着，因为它钉的是 **Rust 这一侧自己把门**，
+/// 与 TS 在不在无关（函数名里的「TS 座」是立它时的对照物，不改名 —— 别处散文按名点它）。
+/// 座当年的头注逐字「座只在这些**已安全**的片段外拼后端语法，不做校验/转义」——
 /// 它收的是调用方 quote 好的片段，安全靠一句调用约定。本侧收生料 ⇒ 自己把门。
 ///
 /// ⚠ **这一维进不了金标准**：左边（TS）产得出、右边（Rust）拒，
@@ -343,4 +345,37 @@ fn a_request_without_outer_still_renders_the_plain_payload() {
         crate::backend::control::launch_wire::render_launch_payload(req).expect("老形态渲不出来"),
         "unset CLAUDE_CONFIG_DIR; cd '/w' && claude"
     );
+}
+
+/// ★★ 〔LR2〕**把生产命令 `render_launch_payload` 的真输出交给 e2e**（数据出口，不是判据）。
+///
+/// `resume-suite` · `resume-backend-frames` · `tmux-target-acceptance` 三套 e2e 要证的是
+/// 「app 真正会跑的那一串在真 tmux 上干了什么」。步 22b·B 之后那一串由 Rust 渲染，
+/// 而三套 e2e 此前 import 的是 TS 那五个 builder —— 从那天起它们验的是一份不在执行链上的副本。
+/// ⇒ 请求由 e2e 那一侧用**生产 TS 的** `plan*` ＋ `buildLaunchRenderRequest` 产
+/// （`tests/e2e/launch-render-driver.ts`），经环境变量 `CCM_E2E_RENDER_REQ` 递进来，
+/// 这里拿**生产 wire 类型**反序列化、跑**生产命令本体**，原样吐出去。
+///
+/// 输出：渲得出 ⇒ `LAUNCH_RENDER<<<命令>>>`；被拒 ⇒ `LAUNCH_RENDER_ERR<<<理由>>>`
+/// （e2e 有「该拒」的用例，拒绝本身就是读数，所以不 panic）。
+/// **请求缺失 / 解析不了 ⇒ panic**：那是 e2e 那一侧坏了，吐空串会被读成「渲出了空命令」。
+///
+/// 跑法：`cargo test --lib emit_launch_render_for_e2e -- --ignored --nocapture`（`src/bridge` 下）。
+#[test]
+#[ignore]
+fn emit_launch_render_for_e2e() {
+    let raw = std::env::var("CCM_E2E_RENDER_REQ")
+        .expect("缺 CCM_E2E_RENDER_REQ —— 本出口只给 tests/e2e/launch-render-driver.ts 用");
+    let req: crate::backend::control::launch_wire::PayloadRenderRequest =
+        serde_json::from_str(&raw).unwrap_or_else(|e| panic!("请求解析不了（{e}）：{raw}"));
+    match crate::backend::control::launch_wire::render_launch_payload(req) {
+        Ok(cmd) => {
+            assert!(
+                !cmd.contains('\n'),
+                "渲出来的命令带换行，标记行会被截断：{cmd:?}"
+            );
+            println!("LAUNCH_RENDER<<<{cmd}>>>");
+        }
+        Err(e) => println!("LAUNCH_RENDER_ERR<<<{}>>>", e.replace('\n', " ")),
+    }
 }

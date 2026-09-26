@@ -301,11 +301,6 @@ export class SettingsPanel {
   private resumeRemotePresets: string[] = [];
   private remoteLauncherWarning!: HTMLElement; // F08：越层启动器诊断提示（只诊断，不代改）
   private bringFrontCheckbox!: HTMLInputElement;
-  /** F03（unify-launch）：载荷渲染器那个逃生口（落盘键 `forceLaunchPayloadRenderer`）
-   *  无 UI 暴露（手改 config.json），但 `onBehaviorToggle` 每次都要交一份完整
-   *  `BehaviorConfig`——缓存 open() 时读到的值原样带回，防止面板任何一个勾选框变动
-   *  都把它悄悄重置成 DEFAULTS 里的 false。 */
-  private forceLaunchPayloadRenderer = false;
   private onBehaviorChange?: (cfg: BehaviorConfig) => void;
   /** F82a：见 SettingsPanelOptions.windowMode。 */
   private readonly windowMode: boolean;
@@ -387,7 +382,6 @@ export class SettingsPanel {
     this.resumeRemotePresets = behavior.resumeCommandRemotePresets ?? [];
     this.renderResumePresets();
     this.updateRemoteLauncherWarning();
-    this.forceLaunchPayloadRenderer = behavior.forceLaunchPayloadRenderer;
     this.updateBringFrontEnabled();
     this.banner.textContent = "";
     this.banner.classList.remove("settings-banner-show");
@@ -516,7 +510,6 @@ export class SettingsPanel {
         this.resumeRemoteInput.value,
       ),
       notifyTurnEnd: this.notifyTurnEndCheckbox.checked,
-      forceLaunchPayloadRenderer: this.forceLaunchPayloadRenderer,
     };
     try {
       await setBehavior(next);

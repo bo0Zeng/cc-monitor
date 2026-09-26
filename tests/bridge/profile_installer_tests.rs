@@ -260,26 +260,26 @@ use super::*;
 
 #[test]
 fn render_cc_code_with_function() {
-    let out = render_cc_code("ccm", true);
+    let out = render_cc_code("ccm", true, std::path::Path::new("/_"));
     assert!(out.contains("function ccm"));
     assert!(out.contains("__ccm_bind"));
     assert!(!out.contains("{{CC_FUNCTION_BLOCK}}"));
     // 〔TL1 · 4C〕v2 → v3：块结尾多了接上别名文件那一行（`71 §6.1`）。
-    assert!(out.contains("BEGIN v3"));
+    assert!(out.contains("BEGIN v4"));
     assert!(out.contains("cc-monitor END"));
 }
 
 #[test]
 fn render_cc_code_helper_only() {
     // 用户已有自定义 function cc 时只装 __ccm_bind helper，不生成 function cc
-    let out = render_cc_code("cc", false);
+    let out = render_cc_code("cc", false, std::path::Path::new("/_"));
     assert!(out.contains("__ccm_bind"));
     // 按词，不按子串〔§5 2l〕：同族的 `strip_block_removes_only_block` 已实测过
     // 这个陷阱 —— 语料里一出现 `function ccm`，`contains` 就假红。这里今天还碰不到，
     // 但**同一种写法只该有一个答案**，不留一处等着下次踩。
     assert!(!guard_core::contains_word(&out, "function cc"));
     assert!(!out.contains("{{CC_FUNCTION_BLOCK}}"));
-    assert!(out.contains("BEGIN v3"));
+    assert!(out.contains("BEGIN v4"));
 }
 
 #[test]
@@ -328,15 +328,21 @@ fn find_block_version_v1() {
 #[test]
 fn an_older_powershell_block_is_flagged_and_a_fresh_one_is_not() {
     let cur = current_block_version().expect("模板第一行读不出版本串");
+    // 〔HX2 · 4D〕v3 → v4：`__ccm_bind` 找 monitor 数据目录改走唯一出口（渲染时填，跟 `CCM_DATA_DIR`）——
+    //   块内容变了就抬版本，装着 v3 的人在机器页看到「重装一次」（主会话 4D 审计 F 裁）。
     assert_eq!(
-        cur, "v3",
+        cur, "v4",
         "模板版本串变了就来改这里（并想清楚：旧块的人要不要重装）"
     );
     let ps = std::path::Path::new("/h/p.ps1");
-    let old = "# === cc-monitor BEGIN v2 ===\nfunction __ccm_bind {}\n# === cc-monitor END ===\n";
-    let b = block_state(ps, old);
-    assert!(b.present && b.outdated, "{b:?}");
-    let fresh = render_cc_code("cc", false);
+    for old_ver in ["v2", "v3"] {
+        let old = format!(
+            "# === cc-monitor BEGIN {old_ver} ===\nfunction __ccm_bind {{}}\n# === cc-monitor END ===\n"
+        );
+        let b = block_state(ps, &old);
+        assert!(b.present && b.outdated, "{old_ver}：{b:?}");
+    }
+    let fresh = render_cc_code("cc", false, std::path::Path::new("/_"));
     let b = block_state(ps, &fresh);
     assert!(b.present && !b.outdated, "刚渲染的那一份被判成旧的：{b:?}");
     assert!(!block_state(ps, "# nothing\n").outdated, "块不在也报旧");
@@ -1029,7 +1035,7 @@ fn scanning_a_rc_changes_not_a_single_byte_on_disk() {
 fn the_powershell_block_never_touches_the_session_path_again() {
     let word = crate::backend::control::local_backend::CCM_ENTRY_WORD;
     for include_cc in [true, false] {
-        let out = render_cc_code("cc", include_cc);
+        let out = render_cc_code("cc", include_cc, std::path::Path::new("/_"));
         // ── 地板①：这份东西本身得是真的 ──────────────────────────────
         assert!(
             !out.trim().is_empty(),
@@ -1555,7 +1561,7 @@ fn the_shared_alias_snippet_really_puts_both_ccm_dirs_on_path_local_first() {
 #[test]
 fn the_powershell_cc_goes_through_ccm_exactly_like_the_posix_one() {
     let word = crate::backend::control::local_backend::CCM_ENTRY_WORD;
-    let out = render_cc_code("cc", true);
+    let out = render_cc_code("cc", true, std::path::Path::new("/_"));
     assert!(
         pinned(&out, "function cc {"),
         "地板没了：这一支本来就该生成 `function cc`\n{out}"
@@ -1570,8 +1576,9 @@ fn the_powershell_cc_goes_through_ccm_exactly_like_the_posix_one() {
     );
     // ── 反面：这一块里**只许有这一条**调用行 ─────────────────────────
     //
-    // ⚠ 不写成 `!out.contains("claude")`：模板里本来就有两处 `claude`
-    //   （`.claude\claudecode-frontend` 这个路径、以及一句注释）⇒ 那样写第一天就是红的，
+    // ⚠ 不写成 `!out.contains("claude")`：模板里本来就有 `claude`
+    //   （从前是 `.claude\claudecode-frontend` 这个路径 ＋ 一句注释；〔HX2〕路径改由渲染时填，
+    //   渲染产物里仍带着数据目录 ＋ 那句注释）⇒ 那样写第一天就是红的，
     //   而「第一天就红的判据」的唯一出路是放宽它。⇒ 人群收成「调用行」这一形。
     let invokes: Vec<String> = out
         .lines()
@@ -1594,7 +1601,10 @@ fn the_powershell_cc_goes_through_ccm_exactly_like_the_posix_one() {
              一致地错也是红"
     );
     // ── `cct`：这一臂不发明它 ────────────────────────────────────────
-    for rendered in [render_cc_code("cc", true), render_cc_code("cc", false)] {
+    for rendered in [
+        render_cc_code("cc", true, std::path::Path::new("/_")),
+        render_cc_code("cc", false, std::path::Path::new("/_")),
+    ] {
         assert!(
             !guard_core::contains_word(&rendered, "function cct"),
             "这一臂生成了 `cct`，而 Windows 上没有 tmux —— 见本判据头注"
@@ -2066,4 +2076,55 @@ fn the_alias_block_is_written_through_exactly_one_door() {
             );
         }
     }
+}
+
+/// 🔴 〔HX2 · RT1 F6〕C1：**`__ccm_bind` 找 monitor 数据目录只有一个住址**（`paths::resolve_monitor_data_dir`，跟 `CCM_DATA_DIR`）。
+///
+/// 要求住址：`INVARIANTS §2`「monitor 自己的 data dir 永远是 `~/.claude/claudecode-frontend/`」那一节的出口
+/// （`paths.rs` 头注：`CCM_DATA_DIR` 只为「把这个进程整体挪到别处跑」而存在）；`第四波记录/RT1.md §8` F6（模板写死一份 ⇒ 数据目录的第二个住址）。
+/// ① 渲染出来的块里 `$ccmDir =` 恰一行、值 == 喂进去的那个目录（带单引号的路径逐字转义成 PowerShell 字面量）；
+/// ② 模板源码里零处 `claudecode-frontend` 字面量（正控：渲染产物里用默认目录喂时数得到）；
+/// ③ 装那一跳交的就是唯一出口算出来的那个（源码：`plan_install` 的 PowerShell 臂恰一处 `resolve_monitor_data_dir()`）。
+#[test]
+fn hx2_the_bind_helper_finds_the_monitor_data_dir_through_the_one_exit() {
+    let dir = std::path::Path::new("C:\\Users\\o'brien\\iso data");
+    for include_cc in [true, false] {
+        let out = render_cc_code("cc", include_cc, dir);
+        let lines: Vec<&str> = out
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.starts_with("$ccmDir ="))
+            .collect();
+        assert_eq!(
+            lines,
+            vec!["$ccmDir = 'C:\\Users\\o''brien\\iso data'"],
+            "{out}"
+        );
+        assert!(!out.contains("{{"), "有占位符没填：{out}");
+    }
+    let tpl = include_str!("../../src/bridge/scripts/cc.ps1.tpl");
+    assert_eq!(
+        tpl.matches("claudecode-frontend").count(),
+        0,
+        "模板里又写死了一份数据目录"
+    );
+    assert_eq!(tpl.matches("{{MONITOR_DATA_DIR}}").count(), 1);
+    let default_dir = std::path::Path::new("/home/u/.claude/claudecode-frontend");
+    assert_eq!(
+        render_cc_code("cc", true, default_dir)
+            .matches("claudecode-frontend")
+            .count(),
+        1,
+        "正控：喂默认目录时产物里数得到那一个"
+    );
+    let prod =
+        guard_core::production_code(include_str!("../../src/bridge/src/profile_installer.rs"));
+    let at = guard_core::find_pinned(&prod, "pub fn plan_install(").expect("装那一跳不在了");
+    let body = &prod[at..at + prod[at..].find("\n}\n").expect("没收尾")];
+    assert_eq!(
+        body.matches("crate::paths::resolve_monitor_data_dir()")
+            .count(),
+        1,
+        "{body}"
+    );
 }

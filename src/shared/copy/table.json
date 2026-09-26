@@ -4727,11 +4727,6 @@
       "zh": "那台机器的后端回的内容读不懂。多半是两边版本对不上，重装那台机器的后端试试。",
       "args": []
     },
-    "shellQuote.bad.configDir": {
-      "kind": "error",
-      "zh": "非法 CLAUDE_CONFIG_DIR，不能拼进命令：{value}",
-      "args": ["value"]
-    },
     "skeletonView.ledgerFromIndex.noIndex": {
       "kind": "error",
       "zh": "索引不可用",
@@ -9504,6 +9499,16 @@
       "zh": "那台上还没有后端",
       "args": []
     },
+    "rsSftp.identity.notOlder": {
+      "kind": "body",
+      "zh": "{machine} 上是 {s}，不比这一版 {expected} 旧，没有换它。多半是另一台更新过的 monitor 装的。",
+      "args": ["machine", "s", "expected"]
+    },
+    "rsSftp.deploy.keptNotOlder": {
+      "kind": "body",
+      "zh": "{why}要换成这一版：先在机器页点「卸载后端」删掉它，再部署。",
+      "args": ["why"]
+    },
     "rsSftp.identity.handsOff": {
       "kind": "body",
       "zh": "没有覆盖它。要换成这一版：先在机器页点「卸载后端」删掉它，再部署。",
@@ -11958,6 +11963,11 @@
       "zh": "反斜杠只允许出现在 '\\'' 这一形里",
       "args": []
     },
+    "rsProfileInstaller.ps.noDataDir": {
+      "kind": "error",
+      "zh": "找不到 monitor 的数据目录，没写别名块。别名块要知道 monitor 的绑定文件在哪。",
+      "args": []
+    },
     "rsProfileInstaller.userPath.removeNoDir": {
       "kind": "error",
       "zh": "问不出本机 ccm 的安装目录，不会拿猜出来的目录去改用户 PATH",
@@ -12409,6 +12419,16 @@
       "zh": "置可执行位失败：{e}",
       "args": ["e"]
     },
+    "rsPlatformFs.lock.openFailed": {
+      "kind": "error",
+      "zh": "打开 {dir} 失败（拿不到锁）：{e}",
+      "args": ["dir", "e"]
+    },
+    "rsPlatformFs.lock.failed": {
+      "kind": "error",
+      "zh": "锁 {dir} 失败：{e}",
+      "args": ["dir", "e"]
+    },
     "rsPlatformFs.mkdir.failed": {
       "kind": "error",
       "zh": "建目录 {dir} 失败：{e}",
@@ -12783,11 +12803,6 @@
       "kind": "error",
       "zh": "[{host}] 读写 API key 失败：{message}",
       "args": ["host", "message"]
-    },
-    "rsApikeyRemote.send.noAccount": {
-      "kind": "error",
-      "zh": "说不出这是哪个账号（配置目录是 {dir}），不往 [{host}] 的表里写。写进去的那一行谁也命中不了",
-      "args": ["dir", "host"]
     },
     "rsRemoteRelay.call.internal": {
       "kind": "error",
@@ -13467,10 +13482,15 @@
       "zh": "远端 [{label}] 的后端版本不兼容，请在设置里更新",
       "args": ["label"]
     },
-    "rsSshSource.version.buildMismatch": {
+    "rsSshSource.version.remoteOlder": {
       "kind": "body",
-      "zh": "远端 [{label}] 的后端版本过旧（{reported}），请在设置里更新",
-      "args": ["label", "reported"]
+      "zh": "远端 [{label}] 的后端是旧版 {reported}，下次连上时自动换成这一版（{mine}）。",
+      "args": ["label", "reported", "mine"]
+    },
+    "rsSshSource.version.remoteNotOlder": {
+      "kind": "body",
+      "zh": "远端 [{label}] 上的后端是 {reported}，不比这个 monitor（{mine}）旧 —— 多半是另一台更新过的 monitor 装的。这个 monitor 不会把它换回去；要一致，就把这个 monitor 也升级。",
+      "args": ["label", "reported", "mine"]
     },
     "rsSshSource.health.overflowLost": {
       "kind": "body",
@@ -13761,6 +13781,11 @@
       "kind": "error",
       "zh": "远端还没装后端",
       "args": []
+    },
+    "rsCcmInvocation.refusal.probeUnknown": {
+      "kind": "error",
+      "zh": "这次没探到远端的后端，不等于没装：{e}",
+      "args": ["e"]
     },
     "history.entry.deleteHint": {
       "kind": "body",
@@ -14398,6 +14423,11 @@
     "apikeyReads.status.badShape": {
       "kind": "error",
       "zh": "读不懂那台后端回的凭据文件状态，两端版本对不上",
+      "args": []
+    },
+    "apikeyReads.write.badShape": {
+      "kind": "error",
+      "zh": "读不懂那台后端回的写入结果，两端版本对不上",
       "args": []
     },
     "apikeyReads.routing.badShape": {
@@ -15145,6 +15175,26 @@
       "zh": "「远端 (SSH)」：monitor 经 SSH 连到远端主机，把那台机器上的会话也列进来。远端会话和本机会话显示方式相同。\n\n默认关闭，这时一切走本地，不受影响。启用或修改任意远端设置后，需重启 monitor 才生效。配置不完整时，比如缺主机、用户或后端路径，后端自动回退本地模式。",
       "args": []
     },
+    "rsLocalBackendHost.dataDir.absent": {
+      "kind": "body",
+      "zh": "没有",
+      "args": []
+    },
+    "rsLocalBackendHost.dataDir.slot": {
+      "kind": "body",
+      "zh": "{name}：它用的是 {theirs}，这个 monitor 要的是 {ours}",
+      "args": ["name", "theirs", "ours"]
+    },
+    "rsLocalBackendHost.dataDir.slotSep": {
+      "kind": "body",
+      "zh": "；",
+      "args": []
+    },
+    "rsLocalBackendHost.dataDir.otherDataDir": {
+      "kind": "error",
+      "zh": "这个口上的后端属于另一个数据目录，没有接它。{diffs}。接上它，凭据与历史注解会写进那个数据目录。多半是用 CCM_DATA_DIR 隔离跑的 monitor 碰上了平常那个 monitor 起的后端：换一个 CLAUDE_CONFIG_DIR 跑，或者先把那个后端停掉。",
+      "args": ["diffs"]
+    },
     "rsLocalBackendHost.stop.notRunning": {
       "kind": "body",
       "zh": "本机后端本来就没在跑",
@@ -15424,21 +15474,6 @@
       "kind": "body",
       "zh": "装到哪台就记在哪台。那台后端自己的装记录：每个装写进去的文件的摘要，和装之前在不在。卸只认这里记着的，卸掉的从这里摘掉",
       "args": []
-    },
-    "rsApikeyRemote.local.noDataDir": {
-      "kind": "error",
-      "zh": "没有写。找不到 monitor 的数据目录，说不出本机那份凭据文件该在哪",
-      "args": []
-    },
-    "rsApikeyRemote.send.notSameFile": {
-      "kind": "error",
-      "zh": "没有写：两份凭据文件不是同一个。[{host}] 的后端写的是 {got}，而这个 monitor 用的是 {want}。\n多半是这个 monitor 隔离跑（CCM_DATA_DIR）而接上了别的数据目录起的那个后端；停掉那个后端、让这个 monitor 自己起一个，再配",
-      "args": ["host", "got", "want"]
-    },
-    "rsApikeyRemote.read.noPath": {
-      "kind": "error",
-      "zh": "[{host}] 的后端回答里没有 path 字段，说不出它写哪一份 —— 没有写",
-      "args": ["host"]
     },
     "rsCcmLegacy.say.removed": {
       "kind": "body",
@@ -15987,6 +16022,21 @@
       "kind": "error",
       "zh": "这台后端不知道星标和改名记在哪，没有写。它不是 cc-monitor 起的那一个。",
       "args": []
+    },
+    "bePlatformLock.hold.openFailed": {
+      "kind": "error",
+      "zh": "打开 {dir} 失败（拿不到锁）：{e}",
+      "args": ["dir", "e"]
+    },
+    "bePlatformLock.hold.lockFailed": {
+      "kind": "error",
+      "zh": "锁 {dir} 失败：{e}",
+      "args": ["dir", "e"]
+    },
+    "bePlatformLock.hold.waitFailed": {
+      "kind": "error",
+      "zh": "锁 {dir} 失败（等待回 {status}）",
+      "args": ["dir", "status"]
     },
     "beHistoryAnnotations.writeAt.renameFailed": {
       "kind": "error",
