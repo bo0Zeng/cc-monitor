@@ -6,7 +6,8 @@
 //! 买到：临时目录上真读真写 —— add 并进去的逐格相等（新路径加 · 旧路径换摘要 · `created` 取第一次）· drop 逐格相等（剩零整条摘）·
 //! 目录由记录那一侧按 `skills 根 / name` 自己算（调用方给的路径不收）· 坏入参拒且文件逐字节不变 · 读不懂 / 另一版本的不覆盖 ·
 //! 没变不写（逐字节 ＋ inode 不换）· 文件名在全部生产代码里恰好一个家（两向 ＋ 正控）。
-//! 买不到：两个后端**进程**同时写（进程内那把锁挡不住）· 真 Windows 上 `rename` 覆盖既有文件。
+//! 买不到：〔HX2 · 4D 订正〕两个后端进程同时写 —— 今天读—改—写在目录的跨进程锁里（`platform/lock.rs`），
+//! 本族那一条用两个线程各开一次描述量（与两个进程同一种 `flock` 互斥），没有真起第二个进程 · 真 Windows 上 `rename` 覆盖既有文件。
 
 use super::*;
 
@@ -318,4 +319,63 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
     let planted =
         crate::guard_support::production_code(&format!("const X: &str = \"{needle}\";\n"));
     assert!(planted.contains(needle.as_str()));
+}
+
+/// 🔴 〔HX2 · 第四波 4D〕L4：**别人在锁里记了一条，这一趟记的不会把它盖掉**（审计 `E-compat.md` §E6：丢了补不回来）。
+///
+/// 要求住址：题面 HX2 逐字「后端自有状态文件跨进程锁（`flock` 一类，Windows 对应）」；用户裁决 V116「装的时候记下写了哪些文件，卸只删这些」
+/// （记录丢一条 ⇒ 那一趟装的文件卸不掉）。
+/// 做法：本线程拿住那个目录的锁（与 `record_at` 拿的是同一把），另一线程记 `beta` ⇒ 限期内不许记完；本线程在锁里直接落一份
+/// 只含 `alpha` 的记录文件（不经写口：写口自己也要拿锁，同一线程再拿会自锁），放锁 ⇒ 另一线程读到的是这一份 ⇒ 两条都在。
+/// （刀：`record_at` 不拿锁 ⇒ 它先读到空、写下只含 `beta` 的那一份，`alpha` 被盖掉。）
+#[test]
+fn hx2_a_record_written_under_someone_elses_lock_is_not_overwritten() {
+    let d = temp_dir("hx2-race");
+    let state = d.join("state");
+    std::fs::create_dir_all(&state).unwrap();
+    let file = state.join("skill-installs.json");
+    let root = d.join("skills");
+    let held = crate::platform::lock::hold(&state).expect("拿不到锁");
+    let (tx, rx) = std::sync::mpsc::channel();
+    let (f2, r2) = (file.clone(), root.clone());
+    let racer = std::thread::spawn(move || {
+        let v = record_at(
+            &f2,
+            Some(&r2),
+            &json!({"op": "add", "name": "beta", "files": {"SKILL.md": rec(D2, true)}}),
+        );
+        tx.send(v.is_ok()).unwrap();
+    });
+    assert!(
+        rx.recv_timeout(std::time::Duration::from_millis(400))
+            .is_err(),
+        "锁还在别人手里，另一趟就记完了"
+    );
+    let mut alpha = Ledger::default();
+    add(
+        &mut alpha,
+        &root.join("alpha").display().to_string(),
+        "alpha",
+        [(
+            "SKILL.md".to_string(),
+            Recorded {
+                digest: D1.into(),
+                created: true,
+            },
+        )]
+        .into_iter()
+        .collect(),
+    );
+    std::fs::write(&file, serde_json::to_string(&alpha).unwrap()).unwrap();
+    drop(held);
+    assert!(
+        rx.recv_timeout(std::time::Duration::from_secs(10))
+            .expect("放了锁还没记完"),
+        "另一趟记失败了"
+    );
+    racer.join().unwrap();
+    let l = read_ok(&file);
+    let names: Vec<&str> = l.installs.values().map(|i| i.name.as_str()).collect();
+    assert_eq!(names.len(), 2, "有一条被盖掉了：{names:?}");
+    let _ = std::fs::remove_dir_all(&d);
 }

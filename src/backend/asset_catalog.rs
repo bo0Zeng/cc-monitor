@@ -25,7 +25,6 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -537,15 +536,13 @@ pub fn read_at(path: &Path) -> Read {
     }
 }
 
-/// **全仓唯一的写者**：`O_EXCL` 新建临时文件 → 写满 → `sync` → 原子挪过去；目录不在就建那一层；失败删临时文件。
+/// **全仓唯一的写者**：`O_EXCL` 新建临时文件 → 写满 → `sync` → 原子挪过去；失败删临时文件。
+/// 目录由 [`update_at`] 在拿锁之前建（那一层）。
 fn write_at(path: &Path, cat: &Catalog) -> Result<(), String> {
     use std::io::Write as _;
     let dir = path
         .parent()
         .ok_or_else(|| format!("{} 没有父目录", path.display()))?;
-    // 〔HX1〕只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。
-    crate::own_dir::ensure_private_dir(dir)
-        .map_err(|e| format!("建 {} 失败：{e}", dir.display()))?;
     let body = serde_json::to_string(cat).map_err(|e| format!("目录序列化失败：{e}"))?;
     let tmp = dir.join(format!("{FILE_NAME}.{}.tmp", std::process::id()));
     let result = (|| {
@@ -568,10 +565,9 @@ fn write_at(path: &Path, cat: &Catalog) -> Result<(), String> {
     result
 }
 
-/// 同一进程里的读—改—写串起来（阻塞档的命令会并发跑在线程池上；临时文件名按 pid 起，两个同时写会撞 `O_EXCL`）。
-/// ⚠ 只挡**同一进程**：两个后端进程（常驻那一个 ＋ 一次性 CLI）同时写，后写的整份盖掉先写的 ——
-/// 丢的只是一次合并，下一次同步补回来（代数单调）。如实登记在 `AS2.md`。
-static LOCK: Mutex<()> = Mutex::new(());
+// 〔HX2 · 第四波 4D〕墓碑：这里从前是一把**进程内** `Mutex`（头注逐字「只挡同一进程：两个后端进程同时写，后写的整份盖掉先写的」）。
+//   今天读—改—写整段在那个目录的**跨进程**锁里（`platform/lock.rs`，[`update_at`] 开头拿）：首建时第二个进程读到第一个写下的
+//   `self`，不再生出第二个 id（幽灵机器，审计 E14a）；同一台两个进程各自 +1 代数变成串行（E14b）。
 
 /// 这台机器现扫一次、并进 `incoming`（若有）、真变了才落盘。**可喂夹具**：路径与扫描结果由调用方给。
 pub fn update_at(
@@ -580,7 +576,13 @@ pub fn update_at(
     label: &str,
     incoming: Option<BTreeMap<String, Snapshot>>,
 ) -> Result<Value, (&'static str, String)> {
-    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = path
+        .parent()
+        .ok_or(("io_failed", format!("{} 没有父目录", path.display())))?;
+    // 〔HX1〕只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。〔HX2〕挪到拿锁之前：锁的是这个目录，它得先在。
+    crate::own_dir::ensure_private_dir(dir)
+        .map_err(|e| ("io_failed", format!("建 {} 失败：{e}", dir.display())))?;
+    let _lock = crate::platform::lock::hold(dir).map_err(|e| ("io_failed", e))?;
     let mut cat = match read_at(path) {
         Read::Ok(c) => c,
         Read::Absent => fresh(new_machine_id()),

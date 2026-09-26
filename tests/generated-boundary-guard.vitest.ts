@@ -47,6 +47,7 @@ const read = (p: string) => readFileSync(resolve(ROOT, p), "utf8");
 // 具体四例记在那个文件的头注里。
 import { REPO_ROOT } from "./test-support/repo-root";
 import { stripComments } from "./test-support/strip-comments";
+import { ACCOUNTS_CHANGED_KIND } from "../src/session-accounts-poll";
 
 /**
  * 剥注释——**方言必须显式给**（C04a Phase D 审计：Rust 的 `'a` 生命周期与 TS 的 `'…'`
@@ -224,6 +225,7 @@ describe("C01 边界生成物", () => {
       //   直接问后端 `history-record`，形状改住 `src/session-reads.ts::RecordProbe`（手写，跨语言由后端判据钉）。
       "SessionStartedPayload.ts", //  C02
       "SessionStreamFrame.ts", //     〔CF2 · 第四波 4B〕会话内容流里一格的体（`{"line": …}` / `{"batch": …}`）
+      "SessionTapPayload.ts", // 〔TAP · V124〕中转抄出来的一个 SSE 事件（`session-tap`，活卡）
       "SessionUnseenPayload.ts", //   〔GP1 · 第四波〕那台机器看不见了 ⇒ 说不清（`session-unseen`）
       "SettingsScope.ts", //          C04d 批2（ConfigSurfaceReport 的传递依赖）
       "Shell.ts", //                  〔AL1c · 4B〕别名三条命令的 shell 方言入参（`shell_dialect.rs`）
@@ -381,7 +383,7 @@ describe("C01 边界生成物", () => {
     // ——对面那份二进制自报的构建身份（`--ccm-probe` 的 `build=` 行）。同一条理由：
     // **缺席与 `null` 语义不同** —— 缺席 = 那份后端是 `p2f-build-stamp` 之前的旧版、
     // 它压根不吐这一行；写成 `| null` 会把「它没说」与「它说了个空」混成一格。
-    expect(checked, `期望恰好 13 处 skip_serializing_if，实得 ${checked}`).toBe(6); // 〔LOC1b · 第四波 4D〕−1（`SessionHits.origin`：`search.rs` 删了） // 〔C4d · 第四波 4B〕子步 6 −4（`HistoryProject.origin` · `HistorySessionEntry.origin` / `.forked_from_session_id` / `.forked_from_message_uuid`：两个形状随历史清单改走本机后端删了，TS 手写在 `src/history-reads.ts`） // 〔C4d · 第四波 4B〕子步 3 −2（`RemoteAccount.authKind` / `.authReady`：随 `accounts.rs` 整份删了） // 〔C4b · 第四波 4B〕−4（`FindResult.reason` · `UserInputsResult.reason` / `.failure` · `SessionIndexResult.reason`：三个回包类型随会话读面三条改走通道删了）； // 〔SE2〕+1（`FindResult.reason`：缺席 = 查得了）； 〔SE1〕+2（`UserInputsResult.reason` / `.failure`：缺席 = 清单可用）； 〔`设计/10` 骨架 · 子步 3〕+1（`SessionIndexResult.reason`：缺席 = 索引可用）
+    expect(checked, `期望恰好 13 处 skip_serializing_if，实得 ${checked}`).toBe(8); // 〔合并 TAP × 主线 06b5dc08〕主线 6 ＋ TAP ＋2（`SessionTapPayload.data` / `.end`）⇒ 8 // 〔LOC1b · 第四波 4D〕−1（`SessionHits.origin`：`search.rs` 删了） // 〔C4d · 第四波 4B〕子步 6 −4（`HistoryProject.origin` · `HistorySessionEntry.origin` / `.forked_from_session_id` / `.forked_from_message_uuid`：两个形状随历史清单改走本机后端删了，TS 手写在 `src/history-reads.ts`） // 〔C4d · 第四波 4B〕子步 3 −2（`RemoteAccount.authKind` / `.authReady`：随 `accounts.rs` 整份删了） // 〔C4b · 第四波 4B〕−4（`FindResult.reason` · `UserInputsResult.reason` / `.failure` · `SessionIndexResult.reason`：三个回包类型随会话读面三条改走通道删了）； // 〔SE2〕+1（`FindResult.reason`：缺席 = 查得了）； 〔SE1〕+2（`UserInputsResult.reason` / `.failure`：缺席 = 清单可用）； 〔`设计/10` 骨架 · 子步 3〕+1（`SessionIndexResult.reason`：缺席 = 索引可用）
   });
 
   it("每一个 u64/i64 字段都配了 ts(type = …)——C03 的大整数策略，打在源上", () => {
@@ -461,7 +463,7 @@ describe("C01 边界生成物", () => {
     //    （`UsageTotals` 的 `input`/`cache_creation`/`cache_read`/`output`）。
     //    ⚠ **这个数变小不是放宽**：它是「有多少个大整数字段被 `ts(type=…)` 策略盖住」，
     //    人群小了是因为被盖的对象少了，策略本身一个字没松。
-    expect(checked, `期望恰好 22 个大整数字段，实得 ${checked}`).toBe(11); // 〔LOC1b · 第四波 4D〕−3（`Hit.ts_ms` · `SessionHits.updated_at` · `SearchIndexStatus.built_at_ms`：`search.rs` 删了；跑出来核过） // 〔合并 C4d × 主线 cf3277f4〕主线 18 ＋ 本路 -4 ⇒ 14 // 〔C4d · 第四波 4B〕−4（`HistoryProject.last_activity` · `HistorySessionEntry.started_at` / `.updated_at` · `EntryMetadata.updated_at`：随那三个形状删了） // 〔合并 CF2 × 主线 28a5f652〕主线 16 ＋ 本路 ＋2（`SessionLinesPage.from` / `.next`）⇒ 18 // 〔合并 AS2 × RM1f〕主线 16 ＋ AS2 +1 ＋ RM1f −1 ⇒ 16（跑出来核过） // 〔合并 AS2〕主线 16 ＋ AS2 +1（`AssetsSyncRow.pushed`：推过去几台快照，量纲是「机器台数」） // 〔AL1d · 4B〕−1（`ProfileScan.size_bytes` 随那个类型删了；合并主线 d07c6d14 按两边增量相加 17 − 1） // 〔C4b · 第四波 4B〕−5（`FindResult.total` · `UserInputsResult.from` / `.end` · `SessionIndexResult.from` / `.end`：随那三个回包类型删了）； // 〔SE2〕+1（`FindResult.total`：命中条数）； 〔第四波 S4〕−2（`TransferProgress.transferred` / `.total` 随那个类型删了）； 〔F7c 收尾 09-24〕−1（`SftpEntry.size` 随那个类型删了）； 〔SE1〕+2（`UserInputsResult.from` / `.end`：字节偏移）； 〔`设计/10` 骨架 · 子步 3〕+2（`SessionIndexResult.from` / `.end`：字节偏移）
+    expect(checked, `期望恰好 22 个大整数字段，实得 ${checked}`).toBe(13); // 〔合并 TAP × 主线 06b5dc08〕主线 11 ＋ TAP ＋2（`SessionTapPayload.resp` / `.n`）⇒ 13 // 〔LOC1b · 第四波 4D〕−3（`Hit.ts_ms` · `SessionHits.updated_at` · `SearchIndexStatus.built_at_ms`：`search.rs` 删了；跑出来核过） // 〔合并 C4d × 主线 cf3277f4〕主线 18 ＋ 本路 -4 ⇒ 14 // 〔C4d · 第四波 4B〕−4（`HistoryProject.last_activity` · `HistorySessionEntry.started_at` / `.updated_at` · `EntryMetadata.updated_at`：随那三个形状删了） // 〔合并 CF2 × 主线 28a5f652〕主线 16 ＋ 本路 ＋2（`SessionLinesPage.from` / `.next`）⇒ 18 // 〔合并 AS2 × RM1f〕主线 16 ＋ AS2 +1 ＋ RM1f −1 ⇒ 16（跑出来核过） // 〔合并 AS2〕主线 16 ＋ AS2 +1（`AssetsSyncRow.pushed`：推过去几台快照，量纲是「机器台数」） // 〔AL1d · 4B〕−1（`ProfileScan.size_bytes` 随那个类型删了；合并主线 d07c6d14 按两边增量相加 17 − 1） // 〔C4b · 第四波 4B〕−5（`FindResult.total` · `UserInputsResult.from` / `.end` · `SessionIndexResult.from` / `.end`：随那三个回包类型删了）； // 〔SE2〕+1（`FindResult.total`：命中条数）； 〔第四波 S4〕−2（`TransferProgress.transferred` / `.total` 随那个类型删了）； 〔F7c 收尾 09-24〕−1（`SftpEntry.size` 随那个类型删了）； 〔SE1〕+2（`UserInputsResult.from` / `.end`：字节偏移）； 〔`设计/10` 骨架 · 子步 3〕+2（`SessionIndexResult.from` / `.end`：字节偏移）
   });
 
   it("`Option<大整数>` 配 ts(type) 时不许丢掉 `| null`（除非同时有 ts(optional)）", () => {
@@ -630,8 +632,11 @@ describe("C02 事件名钉死", () => {
     // `ORIGIN_SESSIONS_LISTED`（"origin-sessions-listed"，某台的活会话清单报完了）。两条都由 `events.ts` 订阅。
     // 〔CF2 · 第四波 4B〕14 → 12：`JSONL_LINE` / `JSONL_BATCH` 退役（会话内容改走通道 `subscribe`，交格的事件名
     //   `chan-items` 住 `chan/webview.rs::ITEMS_EVENT`、由 `src/ipc/chan.ts` 听 —— 它是通道那一跳的，不是 `bridge.rs` 的业务事件）。
+    // 〔TAP · V124〕不加事件名：tap 走通道 `subscribe`（会话流 `session-tap`，`设计/05 §15`），不开裸 Tauri 事件（`01 §2.2`）。
     // 〔GP1 · 第四波〕12 → 13：`SESSION_UNSEEN`（"session-unseen"，那台机器看不见了 ⇒ 说不清）。由 `events.ts` 订阅。
-    expect(pairs.length, `期望恰好 13 个事件名常量，实得 ${pairs.length}`).toBe(13);
+    // 〔DL1 · 第五波〕13 → 12：`REMOTE_BACKEND_READY`（"remote-backend-ready"）退役 —— 前端经通道订每台的 `accounts-changed`
+    //   （`events.ts::bindEvents` 的 `accounts` 那一种流，句柄 `event_replay.rs`），`设计/01 §2.2`「前端只有两个动作」。
+    expect(pairs.length, `期望恰好 12 个事件名常量，实得 ${pairs.length}`).toBe(12);
 
     // 每个字面量必须在 TS 侧真的被订阅/emit（剥注释后再找，防散文里提过就算）
     const tsFiles = ["src/events.ts", "src/main.ts", "src/remote-health.ts"];
@@ -643,5 +648,34 @@ describe("C02 事件名钉死", () => {
       missing,
       `这些事件名在 Rust 侧声明了，TS 侧却没有任何订阅/emit——要么漏接，要么该删常量`,
     ).toEqual([]);
+  });
+});
+
+/**
+ * 〔DL1 · 第五波〕**最后一个裸事件 `remote-backend-ready` 迁 `subscribe`**（`accounts-changed`）—— 读源码的那两条（扫描层）。
+ * 守的要求：`设计/01 §2.2`「前端只有两个动作：`call` · `subscribe`」。行为那一半在 `events-tap.vitest.ts` 的 DL1 那组与
+ * `session-accounts-poll.vitest.ts`（纯函数）；Rust 句柄那一半在 `event_replay_tests::the_accounts_changed_stream_…`。设计 `调研/第四波记录/DL1.md §3`。
+ */
+describe("〔DL1〕accounts-changed：两侧同一个串 · 零裸事件", () => {
+  it("★ kind 串两侧相等：TS 常量 == Rust `event_replay.rs::ACCOUNTS_CHANGED_KIND`（从 Rust 源码抠，异源）", () => {
+    const rs = read("src/bridge/src/event_replay.rs");
+    // 变量名别叫 `m`：`scanning-guard-registry` 按名字认「磁盘语料变量」，同文件里别处的 `m.includes("…")` 会被误算进棘轮。
+    const pinned = rs.match(/pub const ACCOUNTS_CHANGED_KIND: &str = "([^"]+)";/);
+    expect(pinned, "Rust 那一侧的常量抠不出来").not.toBeNull();
+    expect(ACCOUNTS_CHANGED_KIND).toBe(pinned![1]);
+  });
+
+  it("★ 生产段零处再听裸事件 `remote-backend-ready`；main.ts 恰好一处经 `bindEvents` 订它（零命中带正控）", () => {
+    const strip = (t: string): string => t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+    const main = strip(read("src/main.ts"));
+    // 按处数比（相等），不用裸 `.includes`（`scanning-guard-registry` 那条棘轮只许降）。
+    const count = (hay: string, needle: string): number => hay.split(needle).length - 1;
+    const dead = ["remote", "backend", "ready"].join("-");
+    expect(count(main, `"${dead}"`), "main.ts 又在听那个裸事件").toBe(0);
+    expect(count(main, "accounts: machines,"), "main.ts 不是恰好一处订 accounts-changed（`bindEvents` 的 `accounts`）").toBe(1);
+    expect(count(main, "    onAccountsChanged,\n"), "main.ts 没把处理器交给 `bindEvents`").toBe(1);
+    // 正控：同一个剥法与数法认得出一处真在的裸 listen、认得出一处现造的死事件。
+    expect(count(main, 'listen("remote-session-added"'), "正控失败：数法认不出一处真在的 listen").toBe(1);
+    expect(count(strip(`listen("${dead}", f);`), `"${dead}"`), "正控失败：剥法把代码剥掉了").toBe(1);
   });
 });

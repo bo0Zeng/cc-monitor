@@ -13,7 +13,7 @@
  */
 import { isValidConfigDir, isValidModelName, isValidSessionId } from "./shell-quote.ts";
 import { AGENT_PROFILE } from "./agent-profile.ts";
-import type { LaunchDimension } from "./launch-plan.ts";
+import type { LaunchDimension } from "./launch-types.ts";
 import { copyText } from "./copy-table";
 
 /** identity：身份打标。只在调用方已知道 sid 时才生效（今天只有 tmux-create-resume 这条路径
@@ -130,7 +130,7 @@ export const NESTED_ENV_RESET_DIMENSION: LaunchDimension = {
  *
  * Rust 同侧是 `src/bridge/src/backend/control/payload.rs::rbind_token_shape_ok`
  * （那边是 fail-closed 的 `Err`，不是 `throw`）。两侧形状由
- * `tests/launch-render-fallback.vitest.ts` 的对拍钉住：**改 Rust 的长度或字符集，TS 这边会红**。
+ * `tests/rbind-token-shape-parity.vitest.ts` 的对拍钉住：**改 Rust 的长度或字符集，TS 这边会红**。
  */
 export function isValidRbindToken(token: string): boolean {
   return /^[0-9a-f]{32}$/.test(token);
@@ -139,7 +139,7 @@ export function isValidRbindToken(token: string): boolean {
 /**
  * 🔴 **rbind-token（`设计/80 §8` 步 1，2026-09-23）：启动期令牌 `CCM_RBIND_TOKEN`。**
  *
- * 「买到什么 / **买不到什么**」逐字住 `launch-plan.ts::EnvOp` 那一段
+ * 「买到什么 / **买不到什么**」逐字住 `launch-types.ts::EnvOp` 那一段
  * （要害一句：**令牌不许承载任何权限语义** —— 它会进 `/proc/<pid>/environ`、
  * `cmdline` 与 shell 历史）。这里只记三件与**维度机制**有关的事：
  *

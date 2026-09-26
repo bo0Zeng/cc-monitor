@@ -111,7 +111,9 @@ pub async fn local_acct_iso_shellinit() -> Result<String, String> {
             &crate::origin::Origin::local(),
             "acct-iso-shellinit",
             serde_json::json!({}),
-            crate::acct_iso_deploy::ACCT_ISO_BUDGET,
+            crate::backend::control::frame_query::Deadline::within(
+                crate::acct_iso_deploy::ACCT_ISO_BUDGET,
+            ),
         )
         .await,
     )

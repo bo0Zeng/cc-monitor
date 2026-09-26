@@ -60,7 +60,6 @@ function behaviorPanel(): { onBehaviorToggle(): Promise<void> } {
     resumeRemoteInput: input(),
     resumeLocalPresets: [],
     resumeRemotePresets: [],
-    forceLaunchPayloadRenderer: false,
     showBgOriginal: false,
   }) as unknown as { onBehaviorToggle(): Promise<void> };
 }
