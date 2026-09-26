@@ -28,7 +28,8 @@ import { saidOfControl } from "../control-said";
 import { showActionFailureToast } from "../error-toast";
 // L2：账号选择复用既有封装——`fetchAccounts` 带 TTL 缓存、`selectableAccounts` 是
 // 「可选账号」的单一判据（`accounts.ts:130` 注释明写"别各处再 filter 一遍"）。
-import { fetchAccounts, selectableAccounts } from "../accounts";
+import { selectableAccounts } from "../accounts";
+import { fetchAccounts } from "../account-reads";
 // 本机 origin：`backend-policy.ts` 的 `"<local>"`（与 Rust 侧 `inbound_client::LOCAL_ORIGIN` 逐字相同，跨语言钉住）。
 // 〔C4b〕`accounts.ts` 先前那个同名的 `"__local__"`（账号面的标记）已退役 —— 全仓只剩这一个本机表示。
 import { LOCAL_ORIGIN } from "../backend-policy";

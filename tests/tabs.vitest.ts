@@ -188,7 +188,10 @@ vi.mock("../src/behavior", () => ({
   }),
 }));
 // A5：换号重启编排（单测在 account-restart.vitest）——这里 mock 成 spy，只验 tabs 侧守卫是否放行。
-vi.mock("../src/account-restart", () => ({
+// 〔FE1〕`restartLocateFailureMessage`（换号重启定位不到时那句话）从 `accounts.ts` 搬来了这里 —— 它是纯函数，用真身；
+//   只桩编排器本体。
+vi.mock("../src/account-restart", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/account-restart")>()),
   restartWithAccount: vi.fn().mockResolvedValue(undefined),
   DEFAULT_EXIT_WAIT_MS: 10_000, // tabs.ts awaitExitFor 默认参用；mock 需导出，否则 undefined
 }));
@@ -204,11 +207,8 @@ import {
   withSessionReads,
 } from "./test-support/chan-fake";
 import { restartWithAccount } from "../src/account-restart";
-import {
-  invalidateAccountsCache,
-  __resetLocalLaunchSnapshotForTests,
-  __setLocalLaunchSnapshotForTests,
-} from "../src/accounts";
+import { invalidateAccountsCache } from "../src/account-reads";
+import { __resetLocalLaunchSnapshotForTests, __setLocalLaunchSnapshotForTests } from "../src/launch-account";
 import { showActionFailureToast } from "../src/error-toast";
 import { __setHostOsForTests, type HostOs } from "../src/settings/host-os";
 import {
@@ -1150,21 +1150,26 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
     expect(invoke).not.toHaveBeenCalledWith("resume_history_session", expect.anything());
   });
 
-  it("A4/F07：resumeTab 带账号名但账号库不可用 → 退化默认 + **onUnselectable toast（不静默吞）**", async () => {
+  // 〔FE1 · D-h〕先前这一条钉的是「退化默认 ＋ 提示」—— 提示完**按基座起**（提示说的「改用上次的账号 / 当前账号」与做的还不一致）。
+  //   今天：**不起**，提示说清读不到清单，点了才以「不指定账号」起（`设计/01 §6.2` ＋ D4）。
+  it("★ 〔FE1 · D-h〕resumeTab 带账号名但账号库不可用 → **不起**、一条提示；点了才以「不指定账号」起", async () => {
     tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
     tm.archiveTab("r1");
-    // tabs.vitest 的 invoke 默认返 undefined → fetchAccounts 视作不可用 → withAccount 退化默认。
-    // （accounts.vitest 的 withAccount 套件覆盖了"resolveAccount 自己的决策逻辑"，
-    // 但不覆盖"tabs.ts 的 run 回调是否真把 accountName 转传给了 runRemoteResume"这条
-    // 集成层接线——F05 Phase D 审计发现的真实覆盖缺口，下面新增一条测试补上。）
+    // tabs.vitest 的 invoke 默认返 undefined → fetchAccounts 视作不可用。
     await home(tm).actions.resumeTab("r1", "z");
-    expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", { configDir: undefined, accountName: undefined, modelOverride: undefined });
+    expect(runRemoteResume, "要的号说不清还起了 —— 静默换号").not.toHaveBeenCalled();
     expect(historyCalls(vi.mocked(invoke).mock.calls, "update_history_metadata")).toHaveLength(0);
-    // F07：显式选号解析不到 → 提示，别静默落基座（对齐 history.ts）。变异锚点：删 onUnselectable 回调 → 此测红。
-    expect(showActionFailureToast).toHaveBeenCalledWith(
-      "账号不可用",
-      expect.stringContaining("账号「z」现在选不了"),
-      expect.anything(),
+    const calls = vi.mocked(showActionFailureToast).mock.calls;
+    const hit = calls.find((c) => c[0] === "账号现在选不了，没有起会话");
+    expect(hit, "没有说清为什么没起").toBeTruthy();
+    expect(hit![1]).toContain("「z」");
+    hit![2]!.onClick!();
+    await vi.waitFor(() =>
+      expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", {
+        configDir: undefined,
+        accountName: undefined,
+        modelOverride: undefined,
+      }),
     );
   });
 
@@ -1253,7 +1258,12 @@ describe("audit-fixes F01 follow-resume pin 现读磁盘（修 B1 内存脏读�
     // 内存镜像里种一个**陈旧**值,证明 resume 不依赖它;磁盘(list_last_accounts)才是真相源。
     tm.setSessionAccounts([], new Map(), new Map([["r1", "STALE"]]));
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_last_accounts" ? Promise.resolve({ r1: "z" }) : Promise.resolve(undefined),
+      cmd === "list_last_accounts"
+        ? Promise.resolve({ r1: "z" })
+        // 〔FE1〕零会话 = 空表（线上真形状）；`undefined` 线上不存在，铸名会把它读成「没问到」而不起。
+        : cmd === "list_remote_tmux"
+          ? Promise.resolve([])
+          : Promise.resolve(undefined),
     ));
   });
 
@@ -1291,8 +1301,22 @@ describe("audit-fixes F01 follow-resume pin 现读磁盘（修 B1 内存脏读�
 
   // F04：tmux 后端的基座逃生口，与直连对称（两后端一致）。useBase → 不跟随、不读 pin、不注入。
   // 变异锚点：resumeTabTmux 的 follow 去掉 `useBase ?` → 又读 pin → list_last_accounts 被 invoke → 红。
+  // 〔FE1〕`设计/01 §5` D4：全新 resume 那一支要铸名，而 tmux 名单**没问到**（`list_remote_tmux` reject）
+  //   不是「零会话」—— 先前 `?? null` 把两者压成一个、空集铸名（#76 的形状）。⇒ 不起、出声。
+  //   正控就是上下那两条：名单回空表 ⇒ 照起、名字 = 基名 `proj-cc`。
+  it("★ 〔FE1〕tmux 全新 resume：名单没问到 ⇒ 不起、出声（不拿空集铸名）", async () => {
+    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
+      cmd === "list_remote_tmux" ? Promise.reject(new Error("ssh 抖动")) : Promise.resolve(undefined),
+    ));
+    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
+    tm.archiveTab("r1");
+    await home(tm).actions.resumeTabTmux("r1", undefined, true);
+    expect(runRemoteResumeTmux, "名单没问到还起了 —— 名字没避让").not.toHaveBeenCalled();
+    expect(vi.mocked(showActionFailureToast).mock.calls.map((c) => c[0])).toContain("没有起会话");
+  });
+
   it("用基座 resume（tmux，useBase）→ 不读 pin、不注入（起全新 tmux resume，cd undefined）", async () => {
-    // 默认 invoke 返 undefined → list_remote_tmux 无活会话/无 idle → 走 ② 全新 resume。
+    // list_remote_tmux 回空表 → 无活会话/无 idle → 走 ② 全新 resume。
     tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
     tm.archiveTab("r1");
     await home(tm).actions.resumeTabTmux("r1", undefined, true);
@@ -1916,7 +1940,11 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
               { name: extraName ?? "b", email: "b@x", configDir: `/h/${extraName ?? "b"}`, isDefault: false, mode: "isolated", exists: true, loggedIn: true },
             ],
           })
-        : Promise.resolve(undefined),
+        // 〔FE1〕`list_remote_tmux` 回真实线上形状（零会话 = 空表）。先前落进 `undefined`（线上不存在的值），
+        //   铸名那一格把它读成「没问到」⇒ 不起 —— 桩要说一个真答案，别让它碰巧走通。
+        : cmd === "list_remote_tmux"
+          ? Promise.resolve([])
+          : Promise.resolve(undefined),
     )));
 
   const openArchivedMenu = async (): Promise<void> => {

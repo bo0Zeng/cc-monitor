@@ -1501,7 +1501,7 @@ documented rationale"——三条轴两种机制的不对称依然存在，但�
 
 **给 UI 层"枚举可用修饰"的启示**：即便 `account`/`model` 已注册进 `LAUNCH_DIMENSIONS`，
 `LaunchDimension` 接口本身也从未回答过"这个维度当前有哪些可选值"——`ACCOUNT_DIMENSION`
-能在 UI 上显示成列表，靠的是 `src/accounts.ts::fetchAccounts`/`isSelectable` 现查，不是遍历
+能在 UI 上显示成列表，靠的是 `src/account-reads.ts::fetchAccounts`/`isSelectable` 现查，不是遍历
 `LAUNCH_DIMENSIONS`。F09 的 `src/launch-menu.ts` 因此是一个独立于 `LaunchDimension`
 的新发现层，account 组手写调 `fetchAccounts`/`selectableAccounts`——这不是"该注册就注册"没做完，
 是这条轴本来就该用另一种方式回答"有哪些可选值"这个问题。

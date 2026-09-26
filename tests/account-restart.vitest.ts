@@ -14,16 +14,30 @@ vi.mock("../src/remote-launch-run", () => ({
   runRemoteResumeTmux: vi.fn().mockResolvedValue(true),
 }));
 vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
-vi.mock("../src/accounts", () => ({
-  fetchAccounts: vi.fn().mockResolvedValue({ accounts: [] }),
+// 〔FE1〕`accounts.ts` 按域拆开：规则（`accountConfigDir`）留在 `accounts.ts`，读面去了 `account-reads.ts`，
+//   偏好去了 `account-prefs.ts`，记 pin 去了 `launch-account.ts` —— 各在真住的模块上桩；
+//   本机那一跳（`local-resume.ts`）要的载荷形状（`explicitLocalAccountWire`，键名来自生成物）用真身。
+vi.mock("../src/accounts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/accounts")>()),
   accountConfigDir: vi.fn(),
-  recordLastAccount: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("../src/account-reads", () => ({
+  fetchAccounts: vi.fn().mockResolvedValue({ accounts: [] }),
   checkTrust: vi.fn().mockResolvedValue({ available: true, trusted: true, known: true, error: null }),
+}));
+vi.mock("../src/account-prefs", () => ({
   getModelForAccount: vi.fn().mockResolvedValue(undefined), // F07：默认无模型偏好
+}));
+vi.mock("../src/launch-account", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/launch-account")>()),
+  recordLastAccount: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { runRemoteResumeTmux } from "../src/remote-launch-run";
-import { accountConfigDir, recordLastAccount, checkTrust, getModelForAccount } from "../src/accounts";
+import { accountConfigDir } from "../src/accounts";
+import { checkTrust } from "../src/account-reads";
+import { getModelForAccount } from "../src/account-prefs";
+import { recordLastAccount } from "../src/launch-account";
 import { restartWithAccount, type RestartWithAccountOpts } from "../src/account-restart";
 import { showActionFailureToast } from "../src/error-toast";
 
