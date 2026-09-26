@@ -298,3 +298,139 @@ export function displayVerdict(facts: CssFacts, cls: string): DisplayVerdict {
   }
   return { bare, guarded };
 }
+
+// ─────────────── ⑧ 同一个状态名不许同现于两种载体（〔W5-AUX〕`设计/41 §7` 一般形式）───────────────
+
+/**
+ * 〔W5-AUX · 41 #19〕状态的两种**有名字的**载体：类名 · `data-*`。
+ *
+ * `设计/41 §7` 逐字：「状态只用**一种**载体承载，不许同一个状态在类名、`data-*`、内联 `style` 三处各写一遍」·
+ * 「**没判的**：一般形式『同一个状态名不得同时出现在两种载体里』今天没有判据」。
+ *
+ * 两种形都量（缺一种就有一族看不见，现打各逮到一例）：
+ * - **名字形**：一个状态名既当类名用（`classList` 切的字面量 · 模板拼的类名族 `<名>-${值}` · CSS 复合选择器里挂在后面的修饰类），
+ *   又当 `data-<名>` 用。类名去掉 `is-` / `has-` 前缀再比（`.is-open` 与 `data-open` 是同一个名字）。
+ * - **同一处写两遍形**：同一个接收者（逐字整段比，同 `hiddenSites` 那条纪律），同一个值表达式，
+ *   既拼进了类名模板的洞（或 `classList.toggle` 的第二个实参），又写进了 `data-*`（`dataset.x = …` / `setAttribute("data-x", …)`）。
+ *   这一形名字对不上（类名族叫 `remote-gap-…`、属性叫 `data-kind`），只有按值认得出来。
+ */
+export interface StateCarriers {
+  /** 当类名用的状态名（已去 `is-` / `has-`）→ 住址（`文件 · 原类名`）。 */
+  classNames: Map<string, string[]>;
+  /** `data-*` 的名字（去掉 `data-`，驼峰已转回连字符）→ 住址。 */
+  dataNames: Map<string, string[]>;
+  /** `classList.*(…)` 的实参里一个字符串字面量都没有的调用点 —— 静态认不出切的是哪个类（`文件 · 调用原文`）。 */
+  unresolved: string[];
+  /** 同一处写两遍：同一接收者、同一值表达式进了两种载体。 */
+  sameWrite: string[];
+  /** 分母：扫过的 TS / CSS / HTML 份数。 */
+  scanned: { ts: number; css: number; html: number };
+}
+
+/** 类名 → 状态名：去掉 `is-` / `has-` 前缀（`.is-active` 与 `data-active` 是同一个名字）。 */
+export const stateNameOfClass = (c: string): string => c.replace(/^(?:is|has)-/, "");
+/** `dataset.fooBar` 的键 → `foo-bar`（与 `data-foo-bar` 同名）。 */
+export const kebabOfDatasetKey = (k: string): string => k.replace(/[A-Z]/g, (x) => `-${x.toLowerCase()}`);
+
+/** 名字形的判定（纯）：两种载体都出现过的状态名 → 两边的住址。 */
+export function stateNameCollisions(c: Pick<StateCarriers, "classNames" | "dataNames">): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const [name, sites] of c.classNames) {
+    const d = c.dataNames.get(name);
+    if (d) out.set(name, [...new Set(sites.map((s) => `类名 ${s}`))].concat([...new Set(d.map((s) => `data-${name} ${s}`))]));
+  }
+  return out;
+}
+
+const RECV = "(?:this\\.)?[A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)*";
+
+/** 从一份去过注释的 TS 里收两种载体 ＋ 同一处写两遍（纯；`rel` 只用来写住址）。 */
+export function stateCarriersOfTs(
+  rel: string,
+  text: string,
+  into: Pick<StateCarriers, "classNames" | "dataNames" | "unresolved" | "sameWrite">,
+): void {
+  const push = (m: Map<string, string[]>, k: string, site: string): void => pushSite(m, k, site);
+  // ① `classList.add/remove/toggle/replace(…)` 的字符串字面量（`toggle` 只有第一个实参是类名）。
+  for (const m of text.matchAll(/\bclassList\.(add|remove|toggle|replace)\(([^)\n]*)\)/g)) {
+    const lits = [...m[2].matchAll(/"([^"\n$]*)"|'([^'\n$]*)'|`([^`\n$]*)`/g)].map((x) => x[1] ?? x[2] ?? x[3] ?? "");
+    if (lits.length === 0) {
+      into.unresolved.push(`${rel} · ${m[0]}`);
+      continue;
+    }
+    for (const l of m[1] === "toggle" ? lits.slice(0, 1) : lits) {
+      for (const t of l.split(/\s+/).filter(Boolean)) push(into.classNames, stateNameOfClass(t), `${rel} · ${t}`);
+    }
+  }
+  // ② 类名模板里紧挨着洞的 `<名>-${…}` ⇒ 那一族类名的状态名就是 `<名>`。
+  const classTpl = new RegExp(`(${RECV})\\.className\\s*(?:=|\\+=)\\s*\`([^\`]*)\``, "g");
+  const holes: { recv: string; expr: string }[] = [];
+  for (const m of text.matchAll(classTpl)) {
+    for (const h of m[2].matchAll(/(?:^|\s)([A-Za-z][\w-]*-)?\$\{([^}]*)\}/g)) {
+      if (h[1]) push(into.classNames, stateNameOfClass(h[1].slice(0, -1)), `${rel} · ${h[1]}\${…}`);
+      holes.push({ recv: m[1], expr: h[2].trim() });
+    }
+  }
+  for (const m of text.matchAll(new RegExp(`(${RECV})\\.classList\\.toggle\\(\\s*["'\`][^"'\`]*["'\`]\\s*,\\s*([^)\\n]+)\\)`, "g"))) {
+    holes.push({ recv: m[1], expr: m[2].trim() });
+  }
+  // ③ `data-*`：`dataset.x` · `*Attribute("data-x"` · 字符串里的 `[data-x` / `data-x=`（选择器与 HTML 片段）。
+  const dataWrites: { recv: string; name: string; expr: string }[] = [];
+  for (const m of text.matchAll(/\bdataset\.([A-Za-z_$][\w$]*)/g)) push(into.dataNames, kebabOfDatasetKey(m[1]), rel);
+  for (const m of text.matchAll(/\b(?:set|get|remove|toggle|has)Attribute\(\s*["'`]data-([\w-]+)["'`]/g)) push(into.dataNames, m[1], rel);
+  for (const m of text.matchAll(/\[data-([\w-]+)/g)) push(into.dataNames, m[1], rel);
+  for (const m of text.matchAll(/\bdata-([\w-]+)=/g)) push(into.dataNames, m[1], rel);
+  // 属性表对象的键（`svgEl("g", { "data-conf": … })` 那一形）。
+  for (const m of text.matchAll(/["'`]data-([\w-]+)["'`]\s*:/g)) push(into.dataNames, m[1], rel);
+  for (const m of text.matchAll(new RegExp(`(${RECV})\\.dataset\\.([A-Za-z_$][\\w$]*)\\s*=(?!=)\\s*([^;\\n]+)`, "g"))) {
+    dataWrites.push({ recv: m[1], name: kebabOfDatasetKey(m[2]), expr: m[3].trim() });
+  }
+  for (const m of text.matchAll(new RegExp(`(${RECV})\\.setAttribute\\(\\s*["'\`]data-([\\w-]+)["'\`]\\s*,\\s*([^)\\n]+)\\)`, "g"))) {
+    dataWrites.push({ recv: m[1], name: m[2], expr: m[3].trim() });
+  }
+  // ④ 同一处写两遍：同一接收者 × 同一值表达式。
+  for (const h of holes) {
+    for (const d of dataWrites) {
+      if (d.recv === h.recv && d.expr === h.expr) into.sameWrite.push(`${rel} · ${h.recv}：类名模板里的 \${${h.expr}} 与 data-${d.name} 写的是同一个值`);
+    }
+  }
+}
+
+/** CSS 复合选择器里挂在后面的修饰类（`.tab.ended` 里的 `ended`）；`[data-x` 属性选择器的名字。纯。 */
+export function stateCarriersOfCss(rel: string, src: string, into: Pick<StateCarriers, "classNames" | "dataNames">): void {
+  const clean = stripCssComments(src);
+  for (const m of clean.matchAll(/([^{};]+)\{/g)) {
+    const sel = m[1].trim();
+    if (sel === "" || sel.startsWith("@")) continue;
+    for (const compound of sel.split(/[\s,>+~]+/)) {
+      const cls = [...compound.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map((x) => x[1]);
+      for (const c of cls.slice(1)) pushSite(into.classNames, stateNameOfClass(c), `${rel} · .${c}`);
+    }
+    for (const a of sel.matchAll(/\[data-([\w-]+)/g)) pushSite(into.dataNames, a[1], rel);
+  }
+}
+
+/** 走 `src/` 的 TS（去注释）与 CSS、仓根三份 HTML，把两种载体收齐。 */
+export function stateCarriers(root: string, stripTs: (src: string) => string): StateCarriers {
+  const out: StateCarriers = {
+    classNames: new Map(),
+    dataNames: new Map(),
+    unresolved: [],
+    sameWrite: [],
+    scanned: { ts: 0, css: 0, html: 0 },
+  };
+  for (const s of tsSources(root)) {
+    stateCarriersOfTs(s.rel, stripTs(s.text), out);
+    out.scanned.ts++;
+  }
+  for (const p of walk(join(root, "src"), (x) => x.endsWith(".css"))) {
+    stateCarriersOfCss(relOf(root, p), readFileSync(p, "utf8"), out);
+    out.scanned.css++;
+  }
+  for (const h of ["index.html", "settings.html", "viewer.html"]) {
+    const text = readFileSync(join(root, h), "utf8");
+    for (const m of text.matchAll(/\bdata-([\w-]+)=/g)) pushSite(out.dataNames, m[1], h);
+    out.scanned.html++;
+  }
+  return out;
+}

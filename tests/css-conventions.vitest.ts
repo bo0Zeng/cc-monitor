@@ -22,6 +22,7 @@
  * | ⑤ | 自定义属性对账，**两个方向** | **恒等**（两向集合相等） | `设计/40 §7` 步 9 ① |
  * | ⑥ | `transition` 只许动白名单里那几个属性 | **恒等**（实测集合 == 白名单 ∪ 例外） | `设计/41 §10` · 件 9 |
  * | ⑦ | 会被 `hidden` 切的元素，CSS 里不许裸写 `display` | **恒等**（违例集合 == 登记表） | `设计/41 §7` 约定 1 · 件 7 |
+ * | ⑧ | 同一个状态名不许同现于类名与 `data-*` 两种载体（名字形 ＋ 同一处写两遍形） | **恒等**（违例集合 == 登记表，今天空）＋ 正反两控 | `设计/41 §7` 一般形式〔W5-AUX〕 |
  *
  * ## 🔴 为什么是 vitest 而不是 stylelint 插件 / 规则
  *
@@ -53,10 +54,16 @@ import {
   displayVerdict,
   hiddenSites,
   setPropertyVars,
+  stateCarriers,
+  stateCarriersOfCss,
+  stateCarriersOfTs,
+  stateNameCollisions,
   themeTokens,
   type CssFacts,
   type HiddenSite,
+  type StateCarriers,
 } from "./evidence/S30-css-conventions.ts";
+import { stripCodeComments } from "./evidence/S25-class-ledger.ts";
 import { REPO_ROOT } from "./test-support/repo-root.ts";
 
 const FACTS: CssFacts = cssFacts(REPO_ROOT);
@@ -346,7 +353,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   "src/settings/config-surface-section.ts:442": // 〔CP2b〕同上
     "同一个包装，远端那台答不了时收起来（`showUnanswered`）",
   // 〔C4d〕行号随上方历史清单那几段改走通道挪了（1635 → 1617），那一处本身没动。
-  "src/views/history.ts:1612":
+  // 〔W5-AUX〕1612 → 1614：上游搜索命中那一格改走 `data-kind`（多一行注释、一句拆两句），这一处本身没动。
+  "src/views/history.ts:1614":
     "`e.hidden = updated.hidden` —— 这一处根本不是「切某个组件的显隐」，是在把一条会话记录的 `hidden` 字段往回写",
 } as const;
 
@@ -458,5 +466,119 @@ describe("S30 ⑦ 会被 hidden 切的元素，CSS 不许在它身上裸写 disp
       sorted(Object.keys(HIDDEN_KNOWN_BAD).filter((k) => !stillBad.has(k))),
       "这些登记成「已知违例」的类今天已经不违例了 ⇒ 把那一行删掉",
     ).toEqual([]);
+  });
+});
+
+// ───────────────── ⑧ 同一个状态名不许同现于两种载体（〔W5-AUX〕`设计/41 §7` 一般形式）─────────────────
+//
+// 要求住址：`设计/41 §7` 逐字「状态只用**一种**载体承载，不许同一个状态在类名、`data-*`、内联 `style` 三处各写一遍」，
+// 以及同节「**没判的**：一般形式『同一个状态名不得同时出现在两种载体里』今天没有判据」—— 本格补的就是这一句。
+// 量具 `tests/evidence/S30-css-conventions.ts::stateCarriers`（两种形的定义与取法写在那边的头注）。
+//
+// 🔴 立格那一拍现打逮到三处，**当拍改掉，没有登记**（外观不变：选择器特异度逐条同档或无竞争者，见 `W5-AUX.md §2`）：
+//   · 名字形 `conf`：`views/panorama.ts` 把置信档拼成 `conf-<值>` 类名族，而全景图里同一个状态名走 `data-conf` ⇒ 改走 `data-conf`；
+//   · 名字形 `kind`：`views/history.ts` · `settings/data-section.ts` 拼 `kind-<值>` 类名族，而另三处走 `data-kind` ⇒ 改走 `data-kind`；
+//   · 同一处写两遍：`settings/remote-section.ts` 的缺口行把 `g.kind` 同时拼进类名 `remote-gap-<kind>` 又写进 `data-kind` ⇒ 类名那一份摘掉。
+//
+// ⚠ 买不到（如实）：
+//   · **内联 `style` 那一种载体不在这里**：它没有「状态名」可比（`style.display = …` 写的是属性不是名字）。
+//     「会被 `hidden` 切的元素不许裸写 `display`」是 ⑦ 管的那一形，其余「拿内联 style 表达状态」本格看不见。
+//   · 类名族只认「`<名>-${…}` 紧挨着洞」那一形；族名与属性名不同的（`remote-gap-${g.kind}` 对 `data-kind`）只有「同一处写两遍」
+//     那一形认得出，而它要求**同一个接收者、同一个值表达式逐字相同**（换个局部变量转一手就看不见）。
+//   · 修饰类只取 CSS 复合选择器里挂在后面的那几个（`.tab.ended` 的 `ended`）；只由 TS `className` 字面量挂、CSS 里单独成规则的状态类，
+//     名字形看不见（要么经 `classList` 切 —— 那一族收了 —— 要么就是组件类，不是状态）。
+
+const CARRIERS: StateCarriers = stateCarriers(REPO_ROOT, stripCodeComments);
+
+/**
+ * `classList.*(…)` 实参里一个字符串字面量都没有的调用点 —— 静态认不出切的是哪个类。逐处登记。
+ * 键是「文件 · 调用原文」（不按行号 —— ⑦ 那张表逐轮漂行号的教训）。
+ */
+const STATE_CLASS_UNRESOLVED: Readonly<Record<string, string>> = {
+  "src/tab-bar-drag.ts · classList.toggle(cls, on)":
+    "拖拽落点标记只动新旧两个（P3）：`cls` 是 `drop-before` / `drop-onto` 之一（同文件的常量），不是一个状态名的载体选择",
+  "src/usage-hud.ts · classList.remove(s.high)":
+    "CSS Modules（`usage-hud.module.css`）：`s.high` 是构建时哈希过的类名，不进全局命名空间，与 `data-*` 撞不了名",
+  "src/usage-hud.ts · classList.toggle(s.high, rounded >= 80)": "同上（逼近自动 compact 时的预警态）",
+} as const;
+
+/** 名字形的已知违例（今天空：立格那一拍逮到的两处已改）。 */
+const STATE_NAME_KNOWN_BAD: Readonly<Record<string, string>> = {} as const;
+/** 同一处写两遍的已知违例（今天空：立格那一拍逮到的一处已改）。 */
+const STATE_SAME_WRITE_KNOWN_BAD: Readonly<Record<string, string>> = {} as const;
+
+describe("S30 ⑧ 同一个状态名不许同现于类名与 data-* 两种载体（设计/41 §7 一般形式）", () => {
+  it("分母：扫过的份数与两种载体的人群（地板只防人群塌成空集，主锚是下面的恒等）", () => {
+    expect(CARRIERS.scanned.ts, "一份 TS 都没扫到").toBeGreaterThanOrEqual(150);
+    expect(CARRIERS.scanned.css, "CSS 份数塌了").toBeGreaterThanOrEqual(FLOORS.cssFiles);
+    expect(CARRIERS.scanned.html).toBe(3);
+    // 现打（立格那一拍）：类名那一侧 89 个状态名 · `data-*` 那一侧 61 个。
+    expect(CARRIERS.classNames.size, "类名那一侧一个状态名都没收到 ⇒ 名字形恒绿").toBeGreaterThanOrEqual(60);
+    expect(CARRIERS.dataNames.size, "`data-*` 那一侧一个都没收到 ⇒ 名字形恒绿").toBeGreaterThanOrEqual(40);
+    // 活样本锚：量具认得出今天真在用的两种载体（`data-state` 是 AR1 把在线状态三个类改过去的那一处）。
+    expect(CARRIERS.dataNames.has("state"), "`data-state` 都没认出来 ⇒ 取法坏了").toBe(true);
+    expect(CARRIERS.classNames.has("open"), "`classList` 切的 `open` 都没认出来 ⇒ 取法坏了").toBe(true);
+  });
+
+  it("解析不出类名的 classList 调用 == 登记表（不许静默跳过）", () => {
+    expect(
+      sorted(new Set(CARRIERS.unresolved)),
+      "「静态认不出切的是哪个类」的调用点变了：多出来的要么登记进 STATE_CLASS_UNRESOLVED（写清为什么它不是状态名的第二种载体），\n" +
+        "要么把实参写成字面量；少了的把登记删掉。",
+    ).toEqual(sorted(Object.keys(STATE_CLASS_UNRESOLVED)));
+  });
+
+  it("名字形：两种载体都出现过的状态名 == 已知违例表", () => {
+    const hits = stateNameCollisions(CARRIERS);
+    const detail = [...hits].map(([k, v]) => `  ${k}\n    ${v.join("\n    ")}`).join("\n");
+    expect(
+      sorted(hits.keys()),
+      "这些状态名同时当类名与 `data-*` 用 —— `设计/41 §7`：状态只用一种载体。\n" +
+        "  有限枚举（几种值）⇒ 走 `data-<名>`；只有有 / 无两态的布尔开关 ⇒ 走类名。改成一种，别两种都留。\n" +
+        `现打：\n${detail}`,
+    ).toEqual(sorted(Object.keys(STATE_NAME_KNOWN_BAD)));
+  });
+
+  it("同一处写两遍：同一接收者、同一值表达式既进类名又进 data-* == 已知违例表", () => {
+    expect(
+      sorted(CARRIERS.sameWrite),
+      "同一个值写进了两种载体（类名模板的洞 / `classList.toggle` 的第二个实参，与 `dataset.x` / `setAttribute(\"data-x\")`）。\n" +
+        "  留一种：CSS 与判据都照那一种选。",
+    ).toEqual(sorted(Object.keys(STATE_SAME_WRITE_KNOWN_BAD)));
+  });
+
+  // 正反两控：合成样本，不依赖盘上任何一个活样本（⑦ 那条「活样本会被删掉」的教训）。
+  it("🔴 正反两控：量具对合成样本认得出两种形、也不乱报", () => {
+    const fresh = (): Pick<StateCarriers, "classNames" | "dataNames" | "unresolved" | "sameWrite"> => ({
+      classNames: new Map(),
+      dataNames: new Map(),
+      unresolved: [],
+      sameWrite: [],
+    });
+    // 名字形 · 阳：`is-` 前缀剥掉后与 `dataset.open` 同名。
+    const a = fresh();
+    stateCarriersOfTs("<合成>", 'x.classList.add("is-open");\ny.dataset.open = "1";\n', a);
+    expect([...stateNameCollisions(a).keys()], "`is-open` 与 `data-open` 是同一个状态名，认不出 ⇒ 名字形恒绿").toEqual(["open"]);
+    // 名字形 · 阳（类名族）：`tone-${…}` 族与 `[data-tone` 选择器同名。
+    const b = fresh();
+    stateCarriersOfTs("<合成>", "el.className = `pill tone-${t}`;\n", b);
+    stateCarriersOfCss("<合成>.css", '.pill[data-tone="ok"] { color: red; }\n', b);
+    expect([...stateNameCollisions(b).keys()], "类名族 `tone-${…}` 与 `data-tone` 同名，认不出 ⇒ 立格逮到的那两处会漏").toEqual(["tone"]);
+    // 名字形 · 阳（CSS 修饰类）：`.row.busy` 与 `data-busy`。
+    const c = fresh();
+    stateCarriersOfCss("<合成>.css", ".row.busy { opacity: .5 }\n[data-busy] { cursor: wait }\n", c);
+    expect([...stateNameCollisions(c).keys()]).toEqual(["busy"]);
+    // 名字形 · 阴：名字不同 ⇒ 不报（「什么都报」的坏尺子过不了这一格）。
+    const d = fresh();
+    stateCarriersOfTs("<合成>", 'x.classList.add("open");\ny.dataset.shut = "1";\nz.className = `row kind-${k}`;\n', d);
+    stateCarriersOfCss("<合成>.css", ".row.busy {}\n[data-idle] {}\n", d);
+    expect([...stateNameCollisions(d).keys()], "名字不同也报 ⇒ 这把尺子不可信").toEqual([]);
+    // 同一处写两遍 · 阳 / 阴。
+    const e = fresh();
+    stateCarriersOfTs("<合成>", "li.className = `gap gap-${g.kind}`;\nli.dataset.kind = g.kind;\n", e);
+    expect(e.sameWrite.length, "同一接收者同一值写了两遍，认不出 ⇒ `remote-gap` 那一形会漏").toBe(1);
+    const f = fresh();
+    stateCarriersOfTs("<合成>", "li.className = `gap gap-${g.kind}`;\nother.dataset.kind = g.kind;\nli.dataset.kind = g.other;\n", f);
+    expect(f.sameWrite, "接收者或值不同也报 ⇒ 这把尺子不可信").toEqual([]);
   });
 });

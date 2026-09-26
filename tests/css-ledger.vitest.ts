@@ -150,6 +150,9 @@ const FLOORS = {
  *
  * ⇒ 真正需要靠前缀才解释得通的，现打就是下面这 **10** 条（比那份 11 个清单还少一条：
  * `paste-block` 不在这里，当时的理由见 `KNOWN_DEAD` —— 那条死规则〔AR1〕已删）。**每条都带住址与理由，缺一条本表就不该有它。**
+ * 〔W5-AUX · `设计/41 §7` · 10 → 7〕`conf-` · `kind-` · `remote-gap-` 三族摘了：它们是**有限枚举状态拼成的类名族**，
+ *   按约定改走 `data-conf` / `data-kind`（`css-conventions` ⑧「同一个状态名不许同现于两种载体」逮到的，
+ *   `remote-gap-` 那一族同一个值还同时写进了 `data-kind`）⇒ 拼接点与 CSS 类都没了，前缀随之是死条目。
  *
  * ⚠ 本表有两条自检（见「登记表不许有死条目」那一格）：
  * ① 每条前缀今天仍要在代码里派生得出来（候选表里有）；
@@ -170,20 +173,8 @@ const ALLOWED_PREFIXES: readonly { prefix: string; why: string }[] = [
     why: "`src/cards/diff.ts:311` 按 diff 行的增删拼 `block-diff-add` / `-del`。",
   },
   {
-    prefix: "conf-",
-    why: "`src/views/panorama.ts:1201` 把全景节点的置信档拼成类名（exact/heuristic/dynamicguess），档位来自 code-picture 的返回。",
-  },
-  {
-    prefix: "kind-",
-    why: "`src/settings/data-section.ts:188` 按条目种类拼（dir/file/user）。",
-  },
-  {
     prefix: "pf-dot-",
     why: "`src/views/port-forward.ts:142` 按端口转发的健康状态拼（ok/err）。",
-  },
-  {
-    prefix: "remote-gap-",
-    why: "`src/settings/remote-section.ts:391` 按远端能力缺口的成因拼（missing/unknown）。",
   },
   {
     prefix: "remote-status-",
