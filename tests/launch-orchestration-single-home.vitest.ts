@@ -174,6 +174,8 @@ describe("K4 · D-h：本机跟随时 pin 那个号选不了 ⇒ 不起、说清
     mode: "isolated",
     exists: true,
     loggedIn: ok,
+    authKind: "subscription",
+    authReady: ok,
   });
   const snapshot = (accounts: Account[], defaultName: string | null): AccountsState =>
     ({

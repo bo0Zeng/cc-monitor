@@ -66,6 +66,8 @@ function acct(p: Partial<Account>): Account {
     mode: "isolated",
     exists: true,
     loggedIn: true,
+    authKind: "subscription",
+    authReady: true,
     ...p,
   };
 }
@@ -199,7 +201,7 @@ describe("account-ux U8 chip 头像休眠", () => {
   it("2 个账号但只有 1 个可选 → 仍休眠（数可选数，不是总数）", async () => {
     const chip = await mountWith(
       state({
-        accounts: [acct({ name: "wei" }), acct({ name: "amy", loggedIn: false })],
+        accounts: [acct({ name: "wei" }), acct({ name: "amy", loggedIn: false, authReady: false })],
         defaultName: "wei",
       }),
     );
@@ -303,7 +305,7 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
   });
 
   it("Y3 阴性对照②：订阅号缺凭据 ⇒ 仍是「未登录」那一档（没被这次改动一起放宽）", async () => {
-    const old = acct({ name: "old", loggedIn: false });
+    const old = acct({ name: "old", loggedIn: false, authReady: false });
     const items = await menuRows([old, acct({ name: "wei" })], "wei");
     const row = rowOf(items, "old");
     expect(statusOf(row)).toBe("未登录");
@@ -353,7 +355,7 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
     // 那不再是 delta 登记，是一条**反悔要显式**的护栏。同理第二句钉住 in-place 那句 title
     // 不许悄悄退回旧文案（要退就得改这一行，那是显式动作）。
     const esc = acct({ name: "esc", mode: "in-place" });
-    const old = acct({ name: "old", loggedIn: false });
+    const old = acct({ name: "old", loggedIn: false, authReady: false });
     const items = await menuRows([esc, old], "old");
     // Δ① text：⚠ 没了
     expect(statusOf(rowOf(items, "old"))).not.toBe("未登录 ⚠");

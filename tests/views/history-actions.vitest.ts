@@ -125,6 +125,8 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
       mode: "isolated",
       exists: true,
       loggedIn: true,
+      authKind: "subscription" as const,
+      authReady: true,
     };
     invokeMock.mockImplementation(withHistoryReads(withAccountReads((cmd: string, args: unknown) => {
       // ★ 会话真的跑起来了 —— 两条行里只有一条带着我们那个 token。
