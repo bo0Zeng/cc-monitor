@@ -95,6 +95,11 @@ export interface EventHandlers {
    */
   onOriginSessionsListed?: (origin: string) => void;
   /**
+   * 〔FW1 · 第四波 4D · D-d〕活会话的记录文件不见了（`change` = `"gone"`）/ 被改过已从头重读（`"truncated"` / `"rewritten"`）。
+   * 会话流里的一格（`{"file_notice": …}`），与行同序：重读出来的行排在它后面。
+   */
+  onSessionFileNotice?: (sessionId: string, change: string) => void;
+  /**
    * 〔GP1 · 第四波〕这条会话所在的那台机器看不见了（`session-unseen`：连接断了 / F5 时那台还没报完清单）⇒ 说不清。
    * 进 queue：与行 / `remote-added` / `listed` 保序（断连那一刻之前的行先落，重连之后的重宣告与清单后到）。
    */
@@ -185,7 +190,9 @@ type QueueItem =
   | { kind: "container"; sessionId: string; container: string }
   | { kind: "listed"; origin: string }
   // 〔GP1 · 第四波〕那台机器看不见了 —— 同一 queue 保序（见 EventHandlers.onSessionUnseen）。
-  | { kind: "unseen"; sessionId: string };
+  | { kind: "unseen"; sessionId: string }
+  // 〔FW1 · 第四波 4D · D-d〕记录文件不见了 / 被改过已从头重读 —— 流里的一格，与行同序（见 EventHandlers.onSessionFileNotice）。
+  | { kind: "file-notice"; sessionId: string; change: string; grant?: StreamHold };
 
 /**
  * 批量调度参数。replay 会一次性 emit 数千条 jsonl-line，同步处理会阻塞 click 派发数秒
@@ -442,6 +449,8 @@ export async function bindEvents(
         handlers.onOriginSessionsListed?.(item.origin);
       } else if (item.kind === "unseen") {
         handlers.onSessionUnseen?.(item.sessionId);
+      } else if (item.kind === "file-notice") {
+        handlers.onSessionFileNotice?.(item.sessionId, item.change);
       } else if (item.kind === "gap") {
         handlers.onStreamGap?.(item.origin);
       }
@@ -541,6 +550,13 @@ export async function bindEvents(
             burstArmed = true;
             queue.unshift({ kind: "batch-start" });
           }
+        } else if (f !== null && typeof f === "object" && "file_notice" in f) {
+          queue.push({
+            kind: "file-notice",
+            sessionId: f.file_notice.session_id,
+            change: f.file_notice.change,
+            grant: hold,
+          });
         } else if (f !== null && typeof f === "object" && "batch" in f) {
           if (f.batch === "start") {
             if (perf.firstJsonlBatch === undefined) {

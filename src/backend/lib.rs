@@ -501,7 +501,12 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p3q-windows-probe-home**（2026-09-25，第四波 4D WIN1 合并那一拍）：行为 —— Windows 上 `ccm --ccm-probe` 不再自报 tmux 那一族能力
 /// （`ccm_launcher_with(TMUX_PLATFORM)`，与能力账同一个内核）· `ccm` 找账号库的家目录 `HOME` 为空退 `USERPROFILE`、路径逐段 join ·
 /// 远端 `uname` 回话不是 UTF-8 时说清而不照抄乱码。子命令没变，照 p1v 先例不加历史行。
-pub const BUILD_ID: &str = "p3q-windows-probe-home";
+///
+/// ★★★ **p3r-cas-digest-filegone**（2026-09-25，第四波 4D FW1 合并那一拍）：行为 / 协议 —— `files-read-text` 回 `sha256`，
+/// `files-write-text` / `files-commit-text` / `files-commit-upload` 必带 `expect:{sha256}`（不等 ⇒ `stale`、零写；上传暂存件不等即删）·
+/// `files-delete` 多一形 `expect:{"empty_dir":true}` · 传输 done 帧带 `sha256` · 新帧 `session_file_gone` / `session_file_reread`
+/// （活会话 jsonl 被删 / 截短 / 原地改写变长）。子命令没变，照 p1v 先例不加历史行；旧远端后端会被判旧、自动重装。
+pub const BUILD_ID: &str = "p3r-cas-digest-filegone";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -1592,6 +1597,10 @@ pub const EMITS: &[&str] = &[
     // 〔U4b · 第四波〕活会话清单报完了（watch_loop Phase 1 走完那一刻发一次，登记 = 承诺真发，已接线）。
     // 固定复活的 tab 靠它分「说不清」与「已结束」（`设计/30 §3.5.7a`）。
     "sessions_replayed",
+    // 〔FW1 · 第四波 4D · D-d〕活会话的记录文件不见了 / 被改过已从头重读（`process_jsonl` 真发，登记 = 承诺真发，已接线）。
+    // 旧 monitor / 仓外 aterm 不认 ⇒ 忽略（additive）。
+    "session_file_gone",
+    "session_file_reread",
     // 〔SR1a〕链路的下行字节与收尾（`dial/link.rs` 的两台泵真发，登记 = 承诺真发）。
     // 只在 monitor 开了链路之后才出现；旧 monitor / 仓外 aterm 不认这两个 kind ⇒ 忽略（additive）。
     "link_data",

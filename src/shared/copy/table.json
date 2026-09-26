@@ -207,6 +207,31 @@
       "zh": "现在看不见那台机器，说不清这个会话还在不在",
       "args": []
     },
+    "sessionState.deleteLive.confirm": {
+      "kind": "body",
+      "zh": "会话「{label}」还在跑。\n\n删掉之后 Claude 还会往旧文件里写，这些内容之后 resume 不到。仍要删除？",
+      "args": ["label"]
+    },
+    "sessionState.deleteUnknown.confirm": {
+      "kind": "body",
+      "zh": "说不清会话「{label}」还在不在跑。\n\n它若还在跑，删掉之后 Claude 还会往旧文件里写，这些内容之后 resume 不到。仍要删除？",
+      "args": ["label"]
+    },
+    "sessionState.recordFile.gone": {
+      "kind": "body",
+      "zh": "记录文件不见了。它被删掉或改了名，会话本身还在跑；文件回来后接着显示。",
+      "args": []
+    },
+    "sessionState.recordFile.truncated": {
+      "kind": "body",
+      "zh": "记录文件被改短了，已从头重读。",
+      "args": []
+    },
+    "sessionState.recordFile.rewritten": {
+      "kind": "body",
+      "zh": "记录文件被改过了，已从头重读。",
+      "args": []
+    },
     "sessionState.recordGone.title": {
       "kind": "error",
       "zh": "没法 resume：记录已不在",
@@ -767,9 +792,14 @@
       "zh": "在 {machine} 上删掉勾了的",
       "args": ["machine"]
     },
+    "assets.uninstall.doneDirRemoved": {
+      "kind": "body",
+      "zh": "删了 {n} 个文件，目录 {dir} 空了，也删掉了。",
+      "args": ["n", "dir"]
+    },
     "assets.uninstall.done": {
       "kind": "body",
-      "zh": "删了 {n} 个文件，目录 {dir} 还在。",
+      "zh": "删了 {n} 个文件，目录 {dir} 还在（里面还有别的东西）。",
       "args": ["n", "dir"]
     },
     "assets.uninstall.failed": {
@@ -10434,6 +10464,16 @@
       "zh": "；",
       "args": []
     },
+    "rsFilewinTransfer.ui.redone": {
+      "kind": "error",
+      "zh": "传上去的那份中间有坏的一段，已整份重传：{names}",
+      "args": ["names"]
+    },
+    "rsFilewinTransfer.upload.noDigest": {
+      "kind": "error",
+      "zh": "传输台没交回摘要，没法比对，没有写进目标。请重开 app 再传。",
+      "args": []
+    },
     "rsFilewinTransfer.ui.failed": {
       "kind": "body",
       "zh": "上一趟 {n} 件失败：{failed}",
@@ -10658,6 +10698,41 @@
       "kind": "error",
       "zh": "存到第 {seq} 段（共 {total} 段）时断了：{why}",
       "args": ["seq", "total", "why"]
+    },
+    "rsFilewinEditor.stale.notice": {
+      "kind": "error",
+      "zh": "盘上那份在你打开后被改过了，这次没有存（{why}）",
+      "args": ["why"]
+    },
+    "rsFilewinEditor.stale.overwrite": {
+      "kind": "action",
+      "zh": "仍然覆盖",
+      "args": []
+    },
+    "rsFilewinEditor.stale.reopen": {
+      "kind": "action",
+      "zh": "丢掉改动，重新打开",
+      "args": []
+    },
+    "rsFilewinEditor.reply.noDigest": {
+      "kind": "error",
+      "zh": "那台机器上的后端太旧，存不回去，就没有打开。读文本的回答里没有这份内容的摘要。",
+      "args": []
+    },
+    "rsFilewinEditor.saved.noDigest": {
+      "kind": "error",
+      "zh": "已经存进去了，可后端没交回新摘要。再存一次会被当成盘上被改过，请关掉重新打开再改。",
+      "args": []
+    },
+    "rsFilewinEditor.overwrite.notText": {
+      "kind": "error",
+      "zh": "盘上那份现在不是能编辑的文本（{why}），覆盖不了。编辑框里的字还在。",
+      "args": ["why"]
+    },
+    "rsFilewinEditor.overwrite.readFailed": {
+      "kind": "error",
+      "zh": "为了覆盖先读一趟盘上那份，没读到：{why}。编辑框里的字还在。",
+      "args": ["why"]
     },
     "rsFilewinEditor.overCap.notice": {
       "kind": "error",
@@ -15629,6 +15704,11 @@
       "kind": "body",
       "zh": "、",
       "args": []
+    },
+    "rsSkillInstall.uninstall.dirFailed": {
+      "kind": "error",
+      "zh": "文件删完了，收空目录 {path} 时没成：{e}",
+      "args": ["path", "e"]
     },
     "rsSkillInstall.uninstall.stopped": {
       "kind": "error",

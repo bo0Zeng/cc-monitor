@@ -713,6 +713,7 @@ function moduleStacking(
 const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/usage-hud.module.css": { stacked: true, why: "`.chip` 叠在全局 `.status-tasks` 上（usage-hud.ts 里 btn.className 同时挂 status-tasks 与 s.chip）" },
   "src/ask-dialog.module.css": { stacked: false, why: "应用内对话框：遮罩 / 面板 / 正文 / 文本框 / 按钮行只挂自己的哈希类" },
+  "src/record-file-notice.module.css": { stacked: false, why: "〔FW1 · D-d〕tab 顶上「记录文件不见了 / 已从头重读」那一句：只挂自己的哈希类 `.notice`（不叠全局类）" },
   "src/tab-group-rename.module.css": { stacked: false, why: "组头就地改名的输入框只挂自己的哈希类" },
 };
 
