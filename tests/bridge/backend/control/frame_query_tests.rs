@@ -1050,8 +1050,9 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
     (
         "ssh_source.rs",
         "fetch_snapshot",
-        2,
-        "快照是两件事：先问图（一问，`PAGE_BUDGET`）· 读正文（分页，问图之后按要读的字节数给 `read_budget`）",
+        3,
+        "快照是两件事：先问图（一问，`PAGE_BUDGET`）· 读正文（分页，问图之后按要读的字节数给 `read_budget`）；\
+         〔W5-VIS〕续传时多一件：读正文之前先读回续点那一行核见证（一问，`PAGE_BUDGET`）—— 2 → 3，多的就是这一处",
     ),
     (
         "history.rs",

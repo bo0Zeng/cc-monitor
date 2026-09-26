@@ -2040,7 +2040,13 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     //
     // 〔U4b · 第四波〕这一次探测的**结局**不再丢：它同时就是「这条会话住在什么容器里」的答案
     // （`identity_tag::Outcome::container`，随下面的 `session_added` 报出去）—— 零新进程、零新节拍。
-    let container = crate::control::identity_tag::tag(pid, &sid).container();
+    // 〔W5-VIS · `设计/15 §4.7 S2`〕打不上的那两形（tmux 报错 / sid 形状不对）**说出来** —— 标没写上的会话
+    // 之后过不了身份门，而「为什么」原先整条链零线索。
+    let outcome = crate::control::identity_tag::tag(pid, &sid);
+    if let Some(note) = outcome.failure_note(pid, &sid) {
+        tracing::warn!("{note}");
+    }
+    let container = outcome.container();
     // P2：给这个进程实例挂 pidfd 看守（取代原先每 2s 一遍的判活扫描）。
     // `start` 就是上面 verdict 用过的那次 /proc 读，不再多读一次。
     arm_pid_watcher(&key_for_watch, pid, start, state);

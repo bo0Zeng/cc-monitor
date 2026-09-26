@@ -1066,6 +1066,8 @@ fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Stri
         // ★ `K-P3b`：**我们这一侧的读端怎么结束的**。初值只在真读到 EOF 时才成立 ——
         //   下面那条 `Err` 支会把它换掉，两个出口各写各的。
         let mut reader_end = crate::backend_policy::ReaderEnd::CleanEof;
+        // 〔W5-VIS · `设计/15 §3.4 ②`〕这条载体上丢了几行 / 几帧 —— 原先两处裸 `continue` 一声不吭；记账，流结束出总账。
+        let mut tally = crate::frame_tally::FrameTally::new("本机常驻后端（脱离载体）");
         loop {
             match crate::ssh_source::read_capped_line(&mut reader, &mut buf, BACKEND_FRAME_LINE_CAP)
                 .await
@@ -1086,9 +1088,15 @@ fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Stri
                 }
             }
             let Ok(line) = std::str::from_utf8(&buf) else {
+                if let Some(n) = tally.note_bad_utf8(&buf) {
+                    tracing::warn!("{n}");
+                }
                 continue;
             };
             let Some(f) = crate::ssh_source::parse_frame(line) else {
+                if let Some(n) = tally.note_unparsed(line) {
+                    tracing::warn!("{n}");
+                }
                 continue;
             };
             // 本机的 tmux 帧（`P3` 刀 1）·〔SR1a〕应答 · 链路帧 —— 与 stdio 那条载体**同一个吸收点**，

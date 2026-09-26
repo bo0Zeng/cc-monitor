@@ -5625,6 +5625,21 @@
       "zh": "本机",
       "args": []
     },
+    "readiness.gaps.blocking": {
+      "kind": "body",
+      "zh": "必需：{parts}",
+      "args": ["parts"]
+    },
+    "readiness.gaps.optional": {
+      "kind": "body",
+      "zh": "可选：{parts}",
+      "args": ["parts"]
+    },
+    "readiness.gaps.groupSep": {
+      "kind": "body",
+      "zh": "；",
+      "args": []
+    },
     "readiness.gaps.sep": {
       "kind": "body",
       "zh": "，",
@@ -15947,7 +15962,12 @@
     },
     "rsDialHost.deadline.expired": {
       "kind": "error",
-      "zh": "超过 {secs}s 还没做完，放弃这一趟",
+      "zh": "这一趟 {secs} 秒没做完，已放弃。连上那台机器用了 {shake} 秒，之后在那边跑了 {run} 秒。",
+      "args": ["secs", "shake", "run"]
+    },
+    "rsDialHost.deadline.expiredInShake": {
+      "kind": "error",
+      "zh": "这一趟 {secs} 秒还没连上那台机器，放弃了",
       "args": ["secs"]
     },
     "rsFilewinShell.mode.reading": {

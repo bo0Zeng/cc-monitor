@@ -1401,11 +1401,41 @@ async fn fetch_snapshot(
     )
     .await?;
     // 〔C2 · U3 第 3 件〕断线重连后从续点接着拉（`snapshot_resume` 头注），续点对不上才整份。
-    let how = crate::snapshot_resume::plan_read(
-        crate::snapshot_resume::cursor_of(&origin, sid).as_ref(),
-        path,
-        &plan,
-    );
+    let cursor = crate::snapshot_resume::cursor_of(&origin, sid);
+    let mut how = crate::snapshot_resume::plan_read(cursor.as_ref(), path, &plan);
+    // 〔W5-VIS · `设计/15 §3.4 ②`〕续传之前先核锚那一行还是不是那一行（`snapshot_resume` 头注「截断 / 改写检测」）：
+    //   断线期间被整份改写而且变长的文件，上面那道「文件没变短」拦不住。对不上 ⇒ 续点作废、整份重读、交那个会话一格「被改过」。
+    if let (crate::snapshot_resume::Read::Resume { .. }, Some(w)) =
+        (&how, cursor.as_ref().and_then(|c| c.witness.clone()))
+    {
+        let page = frame_query::read_page(
+            &origin,
+            path,
+            w.start,
+            Some(w.end),
+            frame_query::Deadline::within(frame_query::PAGE_BUDGET),
+        )
+        .await?;
+        // 一页没读满那一行（`next < end` 且没到头）⇒ 核不了，照续传（不许把「没读全」说成「被改过」）。
+        let whole = page.eof || page.next >= w.end;
+        if whole && !crate::snapshot_resume::witness_holds(&w, &page.text) {
+            tracing::warn!(
+                "snapshot [{host_label}] {sid}: 续点那一行（字节 {}–{}）与上次不是同一行 —— 记录文件在断线期间被改写过，整份重读",
+                w.start,
+                w.end
+            );
+            crate::snapshot_resume::forget(&origin, sid);
+            replay
+                .on_session_notice(crate::bridge::SessionFileNoticePayload {
+                    session_id: sid.to_string(),
+                    origin: host_label.to_string(),
+                    path: path.to_string(),
+                    change: FileChange::Rewritten.as_wire().to_string(),
+                })
+                .await;
+            how = crate::snapshot_resume::Read::Full;
+        }
+    }
     if let crate::snapshot_resume::Read::Resume {
         from_byte,
         upto,
@@ -1419,6 +1449,8 @@ async fn fetch_snapshot(
         );
     }
     let mut walk = crate::snapshot_resume::Walk::new(&how, &plan);
+    // 〔W5-VIS〕走读时顺手挑下一次续传要核的那一行（文件最后一个可计行）。
+    let mut pick = crate::snapshot_resume::WitnessPick::default();
     let mut total_bytes: u64 = 0;
     let mut chunk: Vec<JsonlLine> = Vec::with_capacity(SNAPSHOT_CHUNK_LINES);
     let mut cancelled = false;
@@ -1441,11 +1473,11 @@ async fn fetch_snapshot(
                 );
                 break 'read;
             }
-            for line in page.text.split('\n') {
-                let line = line.trim_end_matches('\r');
+            for (line, span) in crate::snapshot_resume::page_lines(offset, &page.text) {
                 if !snapshot_line_countable(line) {
                     continue;
                 }
+                pick.see(upto, plan.end, line, span);
                 let Some(seq) = walk.step() else {
                     continue; // 续传：锚到续点之间的行前端已有，数掉不发
                 };
@@ -1509,6 +1541,7 @@ async fn fetch_snapshot(
     }
     // `[0, total)` 全到了（整份：刚发完；续传：锚之前的早有、之后的刚发完）⇒ 立锚。
     crate::snapshot_resume::note_snapshot_done(&origin, sid, path, &plan);
+    crate::snapshot_resume::note_witness(&origin, sid, pick.done());
     Ok(FetchOutcome::Done(arrived))
 }
 
@@ -3294,6 +3327,8 @@ async fn stream_loop(
     // 退出路径随 `intake` 被丢掉而关闭队列——已入队项仍会被分发器拉完，独立连接自灭）。
     // 〔CF1〕攒批 ＋ 静默窗 ＋ 旁路快照收成 [`LineIntake`]，本机那条流用的是同一个。
     let mut intake = LineIntake::open(host_label.clone(), tail_only, replay, app);
+    // 〔W5-VIS · `设计/15 §3.4 ②`〕这条流上跳过了几帧认不出的（读任务那边另有一本记非 UTF-8 行）。
+    let mut tally = crate::frame_tally::FrameTally::new(format!("ssh_source {host_label}"));
 
     // Batch5-F17：帧读取挪进独立 task、经 channel 交回——攒批需要"带静默窗口
     // 的读"，而 tokio 的 read_line **不是 cancellation-safe**（timeout 取消会
@@ -3310,6 +3345,8 @@ async fn stream_loop(
         // ★ F10b：从无界 `read_line` 换成 [`read_capped_line`] —— 无界读遇「一条永远不结束
         // 的行」就是无界堆分配，而对端是**远端进程**（它坏掉或不是我们的后端都可能）。
         let mut buf: Vec<u8> = Vec::new();
+        // 〔W5-VIS · `设计/15 §3.4 ②`〕这条流上有几行不是合法 UTF-8（按替换字符读的）—— 计数、按 2 的幂次说、流结束出总账。
+        let mut tally = crate::frame_tally::FrameTally::new(format!("ssh_source {reader_host}"));
         loop {
             match read_capped_line(&mut reader, &mut buf, BACKEND_FRAME_LINE_CAP).await {
                 Ok(CappedLine::Eof) => {
@@ -3339,7 +3376,12 @@ async fn stream_loop(
                     }
                 }
                 Ok(CappedLine::Line) => {
-                    // 非 UTF-8 不该让整条连接死掉（与全批 exec 输出读取同一取舍）。
+                    // 非 UTF-8 不该让整条连接死掉（与全批 exec 输出读取同一取舍）—— 但**记账、说出来**（W5-VIS）。
+                    if std::str::from_utf8(&buf).is_err() {
+                        if let Some(n) = tally.note_bad_utf8(&buf) {
+                            tracing::warn!("{n}");
+                        }
+                    }
                     let text = String::from_utf8_lossy(&buf);
                     let line = text.trim_end_matches(['\n', '\r']);
                     if line.is_empty() {
@@ -3946,7 +3988,10 @@ async fn stream_loop(
             }
             None => {
                 // 未知 kind / 坏帧 / 非 JSON：跳过，绝不 panic、绝不中断流。
-                tracing::warn!("ssh_source skipping unparseable/unknown frame: {line}");
+                // 〔W5-VIS · `设计/15 §3.4 ②`〕记账：按 2 的幂次说（带累计数），流结束出总账（原先逐帧一行、从不计数）。
+                if let Some(n) = tally.note_unparsed(line) {
+                    tracing::warn!("{n}");
+                }
             }
         }
     }

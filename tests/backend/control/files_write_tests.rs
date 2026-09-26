@@ -2165,6 +2165,72 @@ fn the_command_face_takes_expect_only_as_bytes_of_one_file() {
     std::fs::remove_dir_all(&base).ok();
 }
 
+/// 〔W5-VIS · E 吞错普查点名 `files_write` 那一处 `.ok();`〕**备份沿用不上原文件的权限位 ⇒ 删掉那份备份、整趟拒**（两向）：
+/// 注入一个会失败的 chmod ⇒ `Io` 拒绝、话里带原因、备份那份不在了；成功的 chmod ⇒ `Ok`、备份还在。
+/// 接线：`land_backup` 经 `keep_mode`，生产段零处 `set_permissions(…).ok()`。
+///
+/// 要求住址：`设计/15 §4.7 S5`（逐字）「处置不是别吞，是吞了要留一行日志」—— 这一处连日志都不够：一份权限放宽了的备份要当场收回。
+#[cfg(unix)]
+#[test]
+fn w5vis_a_backup_that_cannot_keep_the_original_mode_is_removed_and_refused() {
+    let base = std::env::temp_dir().join(format!("ccm-w5vis-keepmode-{}", std::process::id()));
+    std::fs::create_dir_all(&base).unwrap();
+    let bak = base.join("x.ccm-backup-1");
+    std::fs::write(&bak, b"secret").unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    let e = keep_mode(
+        &bak,
+        std::fs::Permissions::from_mode(0o600),
+        |_, _| Err(std::io::Error::other("w5vis 注入的 chmod 失败")),
+        |b| std::fs::remove_file(b),
+    )
+    .expect_err("chmod 失败却放行了");
+    match e {
+        WriteRefusal::Io(m) => {
+            assert!(
+                m.contains("w5vis 注入的 chmod 失败") && m.contains("原文件没动"),
+                "{m}"
+            )
+        }
+        other => panic!("不是 Io 拒绝：{other:?}"),
+    }
+    assert!(!bak.exists(), "沿用不上权限位的那份备份还留在盘上");
+    // 另一向：chmod 成功 ⇒ 放行、备份还在、权限位就是交进来的那个。
+    std::fs::write(&bak, b"secret").unwrap();
+    keep_mode(
+        &bak,
+        std::fs::Permissions::from_mode(0o600),
+        |b, p| std::fs::set_permissions(b, p),
+        |b| std::fs::remove_file(b),
+    )
+    .expect("chmod 成功却拒了");
+    assert_eq!(
+        std::fs::metadata(&bak).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    // 接线。
+    let prod = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/control/files_write.rs"
+    ));
+    assert_eq!(
+        prod.matches("set_permissions(&bak, p).ok()").count(),
+        0,
+        "那一处 `.ok()` 又回来了"
+    );
+    assert_eq!(
+        prod.matches("keep_mode(").count(),
+        2,
+        "`keep_mode` 该恰好两处（定义 ＋ `land_backup` 里那一次）"
+    );
+    let at = prod.find("fn land_backup(").expect("land_backup 不在了");
+    let body = &prod[at..at + prod[at..].find("\n}\n").expect("切不出 land_backup")];
+    assert!(
+        body.contains("keep_mode("),
+        "`land_backup` 没经 `keep_mode`"
+    );
+    std::fs::remove_dir_all(&base).ok();
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 //  〔W5-FILES · 第五波〕复制目录（`files-copy` 的 `recursive: true`）
 //  要求住址：`设计/60 §7 #6`「递归复制 · 复制目录 …… 递归复制要照递归删的形状逐条目过围栏」
