@@ -38,6 +38,57 @@ fn exec(
     Box::pin(channel.exec(true, cmd))
 }
 
+/// 〔NT2 · A4〕同上，但给**写半边**（capture 那一臂先 `split` 再 exec：读半边交给 [`collect`]，写半边交给 [`CloseOnDrop`]）。
+fn exec_half(
+    w: &russh::ChannelWriteHalf<russh::client::Msg>,
+    cmd: Vec<u8>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), russh::Error>> + Send + '_>> {
+    Box::pin(w.exec(true, cmd))
+}
+
+/// 〔NT2 · A4〕能被「关掉」的那一半（生产 = russh 的 `ChannelWriteHalf`；判据用记账替身）。
+pub(crate) trait Closable: Send + 'static {
+    fn close_it(self) -> impl std::future::Future<Output = ()> + Send;
+}
+
+impl Closable for russh::ChannelWriteHalf<russh::client::Msg> {
+    fn close_it(self) -> impl std::future::Future<Output = ()> + Send {
+        async move {
+            let _ = self.close().await;
+        }
+    }
+}
+
+/// 〔NT2 · A4〕**被丢 ⇒ 向远端发一次关通道**（与 russh 自己给 `into_stream` 那一形的 `ChannelCloseOnDrop` 同形）。
+///
+/// 为什么要它：russh 0.61 的裸 `Channel` 被丢**不发 `CHANNEL_CLOSE`**（只有 `into_stream` 那一形会发）。
+/// capture 那一臂拿的是裸通道 ⇒ 链路被关（调用方期限到点 / 界面走了）或 `abort_marker` 提前收工（老后端掉进流模式）时，
+/// 本地那一格已经还回预算，远端那条 session 通道与它上面的进程却还开着 ⇒ 下一次开通道被远端回拒、这条连接的上限被**学小**。
+/// 关通道是**尽力**的（`设计/05 §3.3.3`：对端撤活只是尽力）：发出去了，对面怎么收场是它的事。
+pub(crate) struct CloseOnDrop<W: Closable>(Option<W>);
+
+impl<W: Closable> CloseOnDrop<W> {
+    pub(crate) fn new(w: W) -> Self {
+        CloseOnDrop(Some(w))
+    }
+
+    pub(crate) fn get(&self) -> &W {
+        self.0.as_ref().expect("CloseOnDrop 只在 Drop 里取走")
+    }
+}
+
+impl<W: Closable> Drop for CloseOnDrop<W> {
+    fn drop(&mut self) {
+        let Some(w) = self.0.take() else {
+            return;
+        };
+        // Drop 里不能 await ⇒ 交一个任务去发（同 russh `ChannelCloseOnDrop`）。没有运行时（进程在收尾）就不发了。
+        if let Ok(rt) = tokio::runtime::Handle::try_current() {
+            rt.spawn(w.close_it());
+        }
+    }
+}
+
 /// 一条 session 通道（或一条隧道）走哪一道 —— 〔NT1〕住 `pool.rs`（放置要按它判），这里转一手。
 pub(crate) use super::pool::Lane;
 
@@ -293,14 +344,17 @@ async fn serve<R, W>(
                 .await;
                 return;
             };
-            let (mut channel, _permit) = match lease.session_channel(req, stages).await {
+            let (channel, _permit) = match lease.session_channel(req, stages).await {
                 Ok(c) => c,
                 Err(e) => {
                     let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
                     return;
                 }
             };
-            if let Err(e) = exec(&channel, req.command.as_bytes().to_vec()).await {
+            // 〔NT2 · A4〕读半边收全，写半边被守着：本臂无论怎么收场（收全 · 提前收工 · 链路被关 ⇒ abort），远端那条通道都被关。
+            let (mut rd, wr) = channel.split();
+            let wr = CloseOnDrop::new(wr);
+            if let Err(e) = exec_half(wr.get(), req.command.as_bytes().to_vec()).await {
                 let _ = write_stages_then_ack(
                     out,
                     stages,
@@ -315,7 +369,7 @@ async fn serve<R, W>(
             {
                 return;
             }
-            let got = collect(&mut channel, &opts).await;
+            let got = collect(&mut rd, &opts).await;
             let _ = write_line(out, &got).await;
         }
         Use::Forward => {
@@ -377,7 +431,7 @@ async fn serve<R, W>(
 
 /// 收全 stdout / stderr / 退出码。EOF 之后服务端才送 exit-status ⇒ **不能见 Eof 就收**，
 /// 收到 Close / 通道关闭才算完。`abort_marker` 一出现就提前收（老后端掉进流模式永不 EOF）。
-async fn collect(channel: &mut russh::Channel<russh::client::Msg>, opts: &CaptureOpts) -> Captured {
+async fn collect(channel: &mut russh::ChannelReadHalf, opts: &CaptureOpts) -> Captured {
     let mut out: Vec<u8> = Vec::new();
     let mut err: Vec<u8> = Vec::new();
     let mut status: Option<u32> = None;

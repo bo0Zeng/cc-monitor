@@ -18,6 +18,7 @@
  */
 import { commands } from "../ipc/commands";
 import { showActionFailureToast } from "../error-toast";
+import { copyText } from "../copy-table";
 
 let inFlight: Promise<void> | null = null;
 
@@ -34,7 +35,7 @@ export function openSettingsWindow(trigger?: HTMLButtonElement | null): Promise<
   inFlight = commands
     .open_settings_window()
     .catch((e: unknown) => {
-      showActionFailureToast("打开设置失败", String(e), { level: "error" });
+      showActionFailureToast(copyText("openSettings.openSettingsWindow.failed"), String(e), { level: "error" });
     })
     .finally(() => {
       inFlight = null;

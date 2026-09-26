@@ -17,7 +17,7 @@
 //! # 它在 `readonly_guard` 第三层上（第二个登记的模块）
 //!
 //! 第三层的四条对本模块逐条成立：改动动词只用闭集里那几个 · 表外改动照旧禁 ·
-//! **每个会改动的函数先过围栏**（围栏本体借 `files_write` 那一份，一个字节不抄）·
+//! **每个会改动的函数先过路径解析**（路径解析本体借 `files_write` 那一份，一个字节不抄）·
 //! 后端生产树里引用得到本模块的**只有** `inbound.rs` 那一条命令。
 //!
 //! # 提交的两支（`overwrite` 由调用方**显式**给，不给默认值）
@@ -60,7 +60,7 @@
 //! 由 [`sweep_stale`] 按同一个期限收（它认得两种形状）。
 
 use crate::control::files_write::{
-    fenced_target, overwrite_text, Answer, ManageCommand, WriteRefusal,
+    overwrite_text, resolve_in_root, Answer, ManageCommand, WriteRefusal,
 };
 use std::path::{Path, PathBuf};
 
@@ -104,7 +104,7 @@ pub const COMMIT_COMMANDS: &[ManageCommand] = &[
     ManageCommand {
         name: "files-commit-upload",
         what:
-            "把暂存区里一份传完的上传件挪进用户指定的目标（先过围栏；不覆盖时 `O_EXCL` 占位再改名上位）",
+            "把暂存区里一份传完的上传件挪进用户指定的目标（先过路径解析；不覆盖时 `O_EXCL` 占位再改名上位）",
         args: &["key", "overwrite", "rel", "root"],
         fields: &["bytes", "path"],
         codes: &["bad_args", "bad_path", "io_failed", "refused"],
@@ -143,7 +143,7 @@ pub fn is_key(key: &str) -> bool {
 /// 暂存件的绝对路径。`key` 不合法 ⇒ 拒（**不**猜、不清洗）。
 pub fn staged_path(home: &Path, key: &str) -> Result<PathBuf, WriteRefusal> {
     if !is_key(key) {
-        return Err(WriteRefusal::Fenced(format!(
+        return Err(WriteRefusal::Refused(format!(
             "refuse write: 暂存件的键只收 {KEY_LEN} 位小写十六进制（给的是 {key:?}）"
         )));
     }
@@ -152,7 +152,7 @@ pub fn staged_path(home: &Path, key: &str) -> Result<PathBuf, WriteRefusal> {
 
 /// **提交**：暂存件 → 目标。成功回 `(落点, 字节数)`。
 ///
-/// 第一件事是过围栏（第三层 ③ 逐函数扫这个顺序）。
+/// 第一件事是过路径解析（第三层 ③ 逐函数扫这个顺序）。
 pub fn commit_upload(
     home: &Path,
     key: &str,
@@ -160,7 +160,7 @@ pub fn commit_upload(
     rel: &str,
     overwrite: bool,
 ) -> Result<(PathBuf, u64), WriteRefusal> {
-    let dest = fenced_target(root, rel).map_err(WriteRefusal::Fenced)?;
+    let dest = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     let staged = staged_path(home, key)?;
     // 不跟链接地看暂存件一眼：它必须是一份普通文件（一条链接当「源」＝ 挪走链接指向之外的东西，不许）。
     let meta = std::fs::symlink_metadata(&staged).map_err(|e| {
@@ -170,7 +170,7 @@ pub fn commit_upload(
         ))
     })?;
     if !meta.file_type().is_file() {
-        return Err(WriteRefusal::Fenced(format!(
+        return Err(WriteRefusal::Refused(format!(
             "refuse write: 暂存件不是一份普通文件（{}）",
             staged.display()
         )));
@@ -211,12 +211,12 @@ pub fn commit_upload(
 
 /// 暂存区在盘上的位置；不在就建（两层：`~/.cc-monitor` 与它底下的 `staging`，已在不算错）。
 ///
-/// 每一层**先过围栏**（以上一层为根）再建 —— 第三层 ③ 逐函数扫这个顺序。
+/// 每一层**先过路径解析**（以上一层为根）再建 —— 第三层 ③ 逐函数扫这个顺序。
 /// ⚠ `~/.cc-monitor` 若是用户自己放的一条链接，跟过去（后端自己的家，与第四层 `exit_policy` 同一个家）。
 fn ensure_staging(home: &Path) -> Result<PathBuf, WriteRefusal> {
     let mut at = home.to_path_buf();
     for seg in STAGING_DIR.split('/') {
-        let next = fenced_target(&at, seg).map_err(WriteRefusal::Fenced)?;
+        let next = resolve_in_root(&at, seg).map_err(WriteRefusal::Refused)?;
         if let Err(e) = std::fs::create_dir(&next) {
             if e.kind() != std::io::ErrorKind::AlreadyExists {
                 return Err(WriteRefusal::Io(format!(
@@ -226,7 +226,7 @@ fn ensure_staging(home: &Path) -> Result<PathBuf, WriteRefusal> {
             }
         }
         if !std::fs::metadata(&next).is_ok_and(|m| m.is_dir()) {
-            return Err(WriteRefusal::Fenced(format!(
+            return Err(WriteRefusal::Refused(format!(
                 "refuse write: {} 在，但不是一个目录 —— 暂存区放不进去",
                 next.display()
             )));
@@ -242,12 +242,12 @@ fn ensure_staging(home: &Path) -> Result<PathBuf, WriteRefusal> {
 pub fn stage_chunk(home: &Path, key: &str, seq: u64, bytes: &[u8]) -> Result<u64, WriteRefusal> {
     use std::io::Write as _;
     if !is_key(key) {
-        return Err(WriteRefusal::Fenced(format!(
+        return Err(WriteRefusal::Refused(format!(
             "refuse write: 暂存件的键只收 {KEY_LEN} 位小写十六进制（给的是 {key:?}）"
         )));
     }
     let dir = ensure_staging(home)?;
-    let at = fenced_target(&dir, &chunk_name(key, seq)).map_err(WriteRefusal::Fenced)?;
+    let at = resolve_in_root(&dir, &chunk_name(key, seq)).map_err(WriteRefusal::Refused)?;
     let mut f = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -273,7 +273,7 @@ pub fn stage_chunk(home: &Path, key: &str, seq: u64, bytes: &[u8]) -> Result<u64
 /// **纯读**（不跟链接地看每一块一眼：它必须是一份普通文件）。
 fn gather_chunks(home: &Path, key: &str, chunks: u64, bytes: u64) -> Result<Vec<u8>, WriteRefusal> {
     if !is_key(key) {
-        return Err(WriteRefusal::Fenced(format!(
+        return Err(WriteRefusal::Refused(format!(
             "refuse write: 暂存件的键只收 {KEY_LEN} 位小写十六进制（给的是 {key:?}）"
         )));
     }
@@ -289,7 +289,7 @@ fn gather_chunks(home: &Path, key: &str, chunks: u64, bytes: u64) -> Result<Vec<
             ))
         })?;
         if !meta.file_type().is_file() {
-            return Err(WriteRefusal::Fenced(format!(
+            return Err(WriteRefusal::Refused(format!(
                 "refuse write: 第 {seq} 块不是一份普通文件（{}）",
                 p.display()
             )));
@@ -322,7 +322,7 @@ fn gather_chunks(home: &Path, key: &str, chunks: u64, bytes: u64) -> Result<Vec<
 }
 
 /// 删掉这个键的**全部**块（列暂存区、按名字认 —— 不按块号数：说错块数、中间缺一块时照样删干净）。
-/// 尽力而为，删不掉不挡调用方（孤儿扫会收）。每一处删之前先过以暂存区为根的围栏；链接不删
+/// 尽力而为，删不掉不挡调用方（孤儿扫会收）。每一处删之前先过以暂存区为根的路径解析；链接不删
 /// （那不是我们放的一块）。
 fn drop_chunks(home: &Path, key: &str) {
     let dir = home.join(STAGING_DIR);
@@ -336,7 +336,7 @@ fn drop_chunks(home: &Path, key: &str) {
         if parse_chunk_name(&name).is_none_or(|(k, _)| k != key) {
             continue;
         }
-        let Ok(at) = fenced_target(&dir, &name) else {
+        let Ok(at) = resolve_in_root(&dir, &name) else {
             continue;
         };
         if std::fs::symlink_metadata(&at).is_ok_and(|m| m.file_type().is_file()) {
@@ -345,7 +345,7 @@ fn drop_chunks(home: &Path, key: &str) {
     }
 }
 
-/// **提交存盘**：读回 `0..chunks` 块 ⇒ 原地覆盖 `root/rel`（写面那一份原语，围栏在它里面）。
+/// **提交存盘**：读回 `0..chunks` 块 ⇒ 原地覆盖 `root/rel`（写面那一份原语，路径解析在它里面）。
 /// 回 `(落点, 字节数)`。**不论成败**都删掉这一次的块。
 pub fn commit_text(
     home: &Path,
@@ -377,7 +377,7 @@ pub const STAGING_STALE_SECS: u64 = 7 * 24 * 3600;
 /// - 只认**我们自己的形状**：`<32 位十六进制>.part` 与〔F9c〕`<32 位十六进制>.<块号>.chunk`；
 ///   别的名字一个不碰（那不是我们放的）。
 /// - `keep` 那一个不碰（调用方此刻手上的那一份）。
-/// - 每一处删之前**先过围栏**（以暂存区为根的 [`fenced_target`]）—— 第三层 ③ 逐函数扫这个顺序；
+/// - 每一处删之前**先过路径解析**（以暂存区为根的 [`resolve_in_root`]）—— 第三层 ③ 逐函数扫这个顺序；
 ///   它在这里拦的是「暂存区里被人放了一条指出去的链接」那一形（解父目录之后跑出了暂存区 ⇒ 不删）。
 /// - 尽力而为：列不出、删不掉都不挡调用方（孤儿多留一轮不伤人）。
 ///
@@ -402,7 +402,7 @@ pub fn sweep_stale(home: &Path, now_secs: u64, keep: &str) -> Vec<String> {
         if !is_key(key) || key == keep {
             continue;
         }
-        let Ok(at) = fenced_target(&dir, &name) else {
+        let Ok(at) = resolve_in_root(&dir, &name) else {
             continue;
         };
         let Ok(meta) = std::fs::symlink_metadata(&at) else {

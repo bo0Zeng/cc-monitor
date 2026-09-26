@@ -6,7 +6,7 @@
 //! | 命令 | `args` | 应答 | |
 //! |---|---|---|---|
 //! | `transfer-upload` | `{dial, local_path}` | `{id, key}` | 开单（不起跑）；`key` = 暂存件的键，提交时交给远端后端 `files-commit-upload` |
-//! | `transfer-download` | `{dial, remote_path, local_path}` | `{id}` | 开单；本机落点**当场**过围栏（出声早），起跑时再过一次 |
+//! | `transfer-download` | `{dial, remote_path, local_path}` | `{id}` | 开单；本机落点**当场**过路径解析（出声早），起跑时再过一次 |
 //! | `transfer-start` | `{id}` | — | 起跑；进度走出方向 `transfer` 帧（`wire.rs`） |
 //! | `transfer-stop` | `{id}` | — | 撤（幂等）。上传删暂存件；下载留 `.part` |
 //!
@@ -17,7 +17,7 @@
 //!
 //! 下载要写**本机**用户选的落点（`.part` ＋ 改名上位）⇒ 那是一次用户文件的写，按 `INVARIANTS §41.6` 只许住文件管理那一面：
 //! 本模块登记在 `readonly_guard::MUTATING_FACE_MODULES`，改动动词只用闭集里的（`O_EXCL` 新建 · 接着写 · 改名 · 删文件），
-//! **每一处改动之前先过 `files_write::fenced_target`**（借用、不抄）；门仍只有 `inbound.rs`。
+//! **每一处改动之前先过 `files_write::resolve_in_root`**（借用、不抄）；门仍只有 `inbound.rs`。
 //! 远端那一半（暂存区的写）一行都不在这里 —— 全经 `dial/sftp.rs` 的写原语（只许两处、先过 `fenced_remote`）。
 //!
 //! # 存亡规矩（逐字沿用旧传输台，`设计/60 §4.3` 那张表）
@@ -44,7 +44,7 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::{mpsc, watch, Notify};
 
 use crate::control::files_commit::{KEY_LEN, PART_SUFFIX};
-use crate::control::files_write::fenced_target;
+use crate::control::files_write::resolve_in_root;
 use crate::dial::sftp::{self, Dial, Session};
 use crate::wire::{Frame, TransferEnd};
 
@@ -103,9 +103,9 @@ pub fn staging_part(key: &str) -> String {
     format!("{}/{key}{PART_SUFFIX}", sftp::STAGING_ROOT)
 }
 
-// ═══ 本机落点（第三层：每一处改动先过围栏）══════════════════════════════════════════════
+// ═══ 本机落点（第三层：每一处改动先过路径解析）══════════════════════════════════════════════
 
-/// 本机落点拆成 `(父目录 = 围栏的根, 文件名, 半成品名)`。必须是绝对路径、有文件名。
+/// 本机落点拆成 `(父目录 = 路径解析的根, 文件名, 半成品名)`。必须是绝对路径、有文件名。
 fn land_parts(local_path: &str) -> Result<(PathBuf, String, String), String> {
     let p = Path::new(local_path);
     if !p.is_absolute() {
@@ -124,17 +124,17 @@ fn land_parts(local_path: &str) -> Result<(PathBuf, String, String), String> {
     Ok((root, name, part))
 }
 
-/// 开单时的那一判（不动盘）：落点与它的半成品都过得了围栏。
+/// 开单时的那一判（不动盘）：落点与它的半成品都过得了路径解析。
 pub fn land_check(local_path: &str) -> Result<(), String> {
     let (root, name, part) = land_parts(local_path)?;
-    fenced_target(&root, &name)?;
-    fenced_target(&root, &part)?;
+    resolve_in_root(&root, &name)?;
+    resolve_in_root(&root, &part)?;
     Ok(())
 }
 
 /// 从 0 开一份半成品：旧的在就先删（它的尾块已经对不上了），再 `O_EXCL` 新建。
 fn land_open_fresh(root: &Path, part: &str) -> Result<std::fs::File, String> {
-    let at = fenced_target(root, part)?;
+    let at = resolve_in_root(root, part)?;
     if std::fs::symlink_metadata(&at).is_ok() {
         std::fs::remove_file(&at).map_err(|e| format!("删旧半成品 {} 失败: {e}", at.display()))?;
     }
@@ -149,9 +149,9 @@ fn land_open_fresh(root: &Path, part: &str) -> Result<std::fs::File, String> {
 /// 旧半成品改名成 `<名>.old` → `O_EXCL` 新建 `<名>` → 把前 `keep` 字节从旧的抄过来 → 删旧的。
 /// 回来的句柄游标停在 `keep`。代价如实记：前缀在本机盘上多抄一遍（本机盘速，不走网）。
 fn land_carry_over(root: &Path, part: &str, keep: u64) -> Result<std::fs::File, String> {
-    let at = fenced_target(root, part)?;
+    let at = resolve_in_root(root, part)?;
     let old_name = format!("{part}.old");
-    let old = fenced_target(root, &old_name)?;
+    let old = resolve_in_root(root, &old_name)?;
     if std::fs::symlink_metadata(&old).is_ok() {
         std::fs::remove_file(&old).map_err(|e| format!("删残留 {} 失败: {e}", old.display()))?;
     }
@@ -176,14 +176,14 @@ fn land_carry_over(root: &Path, part: &str, keep: u64) -> Result<std::fs::File, 
 
 /// 传完：半成品改名上位。
 fn land_commit(root: &Path, part: &str, name: &str) -> Result<(), String> {
-    let from = fenced_target(root, part)?;
-    let to = fenced_target(root, name)?;
+    let from = resolve_in_root(root, part)?;
+    let to = resolve_in_root(root, name)?;
     std::fs::rename(&from, &to).map_err(|e| format!("落地 {} 失败: {e}", to.display()))
 }
 
 /// 失败（不是撤）：删掉半成品。
 fn land_discard(root: &Path, part: &str) {
-    if let Ok(at) = fenced_target(root, part) {
+    if let Ok(at) = resolve_in_root(root, part) {
         let _ = std::fs::remove_file(&at);
     }
 }
@@ -370,7 +370,7 @@ pub(crate) async fn upload_to_staging(
     }
 }
 
-/// **下载**：远端只读；本机落点 `<落点>.part` ＋ 改名上位（第三层：每一处改动先过围栏）。回落地的字节数。
+/// **下载**：远端只读；本机落点 `<落点>.part` ＋ 改名上位（第三层：每一处改动先过路径解析）。回落地的字节数。
 pub(crate) async fn download_to_local(
     s: &Session,
     remote_path: &str,
@@ -622,7 +622,7 @@ impl Desk {
         }
     }
 
-    /// `transfer-download`：开单；本机落点当场过围栏。
+    /// `transfer-download`：开单；本机落点当场过路径解析。
     fn download(&self, id: &str, args: &serde_json::Value) -> Frame {
         let parsed = dial_of(args).and_then(|d| {
             Ok((

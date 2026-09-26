@@ -54,8 +54,8 @@ function warnCwdFallbackAttach(): void {
   showActionFailureToast(
     // 〔U2 · 按 `terms.json` 改词〕不说标记（`@ccm_sid` 禁：说后果「认不出是哪个会话」），
     //   不派「重装 ccm 助手」这件用户做了也未必好的活（「ccm 助手」禁；CP1 口径 §2.3）。
-    "认不出这是哪个会话",
-    "这个 tmux 会话是按工作目录匹配到的，可能是同目录里的另一个会话。",
+    copyText("tabMenu.cwdFallback.title"),
+    copyText("tabMenu.cwdFallback.body"),
     { level: "info", durationMs: 8000 },
   );
 }
@@ -85,7 +85,7 @@ export class TabMenu {
   open(e: MouseEvent, sid: string): void {
     const t = this.host.tab(sid);
     const items: TabMenuItem[] = [
-      { label: "在新窗口打开", onClick: () => void this.actions.openInNewWindow(sid) },
+      { label: copyText("tabMenu.open.openInWindow"), onClick: () => void this.actions.openInNewWindow(sid) },
     ];
     // P7a-3（#61）：集合 —— **纯手动**〔用 08-11「手动建, 不要自动, 纯手动」〕。
     // 二级 flyout：现有集合各一条 + 「新建集合…」；已归组的再给一条「移出集合」。
@@ -97,9 +97,9 @@ export class TabMenu {
         onClick: () => void this.host.commitCollections(addMember(this.host.collections(), col.id, sid)),
       }));
     joinItems.push({
-      label: "新建集合…",
+      label: copyText("tabMenu.collection.new"),
       onClick: () => void (async () => {
-        const name = await askText("新集合名:");
+        const name = await askText(copyText("tabMenu.collection.namePrompt"));
         if (!name?.trim()) return;
         const id = newCollectionId();
         const withNew = createCollection(this.host.collections(), name, id);
@@ -108,12 +108,12 @@ export class TabMenu {
         void this.host.commitCollections(addMember(withNew, id, sid));
       })(),
     });
-    if (this.host.collectionsLoaded()) items.push({ label: "加入集合", submenu: joinItems });
+    if (this.host.collectionsLoaded()) items.push({ label: copyText("tabMenu.collection.add"), submenu: joinItems });
     // 〔步 17·B · `§B.7`〕固定 —— 与「加入集合」同级。**这是唯一的入口**（不做自动固定）。
     // ⚠ `pinnedLoaded` 那道门与集合同一条理由：没读过盘就改，等于把用户上次固定的清空。
     if (t && this.host.pinnedLoaded()) {
       items.push({
-        label: t.pinned ? "取消固定" : "📌 固定此标签",
+        label: t.pinned ? copyText("tabMenu.pin.unpin") : copyText("tabMenu.pin.pin"),
         // 〔U4〕说到会话状态的句子住文案表 `sessionState.*`；原句里的「变灰」「灰着」是禁用词（`设计/91 §4`）。
         title: t.pinned
           ? copyText("sessionState.pin.unpinHint")
@@ -123,7 +123,7 @@ export class TabMenu {
     }
     if (here) {
       items.push({
-        label: `移出「${here.name}」`,
+        label: copyText("tabMenu.collection.remove", { name: here.name }),
         onClick: () => void this.host.commitCollections(removeMember(this.host.collections(), sid)),
       });
     }
@@ -131,7 +131,7 @@ export class TabMenu {
     // code-picture 索引不到）/ 无改动 都不显示（门控之一，另两道在 touchedFilesFor + highlightSession）。
     if (t && isLocalOrigin(t.origin) && t.touchedFiles.size > 0) {
       items.push({
-        label: "在全景高亮本会话改动",
+        label: copyText("tabMenu.open.panoramaHighlight"),
         onClick: () => this.host.requestPanoramaHighlight(sid),
       });
     }
@@ -174,14 +174,14 @@ export class TabMenu {
           items.push({
             id: "attach",
             label: cachedAmbiguous
-              ? `Attach（tmux: ${m.name}，⚠还有 ${cachedMatches.length - 1} 个同身份会话）`
+              ? copyText("tabMenu.attach.dupes", { name: m.name, others: cachedMatches.length - 1 })
               : `Attach（tmux: ${m.name}）`,
             onClick: () => {
               if (viaCwd) warnCwdFallbackAttach();
               if (cachedAmbiguous) {
                 showActionFailureToast(
-                  "检测到多个同身份会话",
-                  `该会话身份（sid）同时活在 ${cachedMatches.length} 个 tmux 里，本次接入其中一个（${m.name}）；建议手动到终端核实其余会话是否需要清理。`,
+                  copyText("tabMenu.dupes.title"),
+                  copyText("tabMenu.dupes.body", { n: cachedMatches.length, name: m.name }),
                   { level: "info", durationMs: 8000 },
                 );
               }
@@ -191,14 +191,14 @@ export class TabMenu {
           // F60：同一 tmux 会话可只读预览画面（capture-pane 快照，不 attach）——只读，不受影响。
           items.push({
             id: "preview",
-            label: "预览画面",
+            label: copyText("tabMenu.open.preview"),
             onClick: () => void openPanePreview(remote, m.name),
           });
           // F79：杀死会话——命中 ≥2 个时拒绝提供（破坏性，选错代价不可逆）。
           if (cachedAmbiguous) {
             items.push({
               id: "kill",
-              label: `杀死会话（检测到 ${cachedMatches.length} 个同身份会话，请到终端手动处理）`,
+              label: copyText("tabMenu.kill.dupes", { n: cachedMatches.length }),
               danger: true,
               enabled: false,
               onClick: () => {},
@@ -206,7 +206,7 @@ export class TabMenu {
           } else {
             items.push({
               id: "kill",
-              label: "杀死会话（kill tmux）",
+              label: copyText("tabMenu.kill.plain"),
               danger: true,
               onClick: () => this.actions.killRemoteTmux(remote, m.name, viaCwd),
             });
@@ -220,13 +220,13 @@ export class TabMenu {
           if (idle) {
             items.push({
               id: "attach",
-              label: `Attach（空 tmux ${idle.name}，无 claude）`,
+              label: copyText("tabMenu.attach.idle", { name: idle.name }),
               onClick: () => void runRemoteAttach(remote, idle.name),
             });
             // UX 审计 #1：灰态(idle-tmux)也给 kill——杀空 tmux → tab 转归档 → 可 Resume（给死角一个出口）。
             items.push({
               id: "kill",
-              label: `杀死会话（kill 空 tmux ${idle.name}）`,
+              label: copyText("tabMenu.kill.idle", { name: idle.name }),
               danger: true,
               onClick: () => this.actions.killRemoteTmux(remote, idle.name, false, { idle: true }),
             });
@@ -235,19 +235,19 @@ export class TabMenu {
       } else {
         items.push({
           id: "attach",
-          label: "Attach（检测 tmux…）",
+          label: copyText("tabMenu.attach.probing"),
           enabled: false,
           onClick: () => {},
         });
         items.push({
           id: "preview",
-          label: "预览画面（检测 tmux…）",
+          label: copyText("tabMenu.preview.probing"),
           enabled: false,
           onClick: () => {},
         });
         items.push({
           id: "kill",
-          label: "杀死会话（检测 tmux…）",
+          label: copyText("tabMenu.kill.probing"),
           enabled: false,
           danger: true,
           onClick: () => {},
@@ -264,7 +264,7 @@ export class TabMenu {
     if (t !== undefined && isLocalOrigin(t.origin) && hasTerminal(t.state)) {
       items.push({
         id: "kill",
-        label: "杀死会话（检测 tmux…）",
+        label: copyText("tabMenu.kill.probing"),
         enabled: false,
         danger: true,
         onClick: () => {},
@@ -272,7 +272,7 @@ export class TabMenu {
       // P3 刀 3 的占位：查回来是空 tmux 才留下，否则移除。
       items.push({
         id: "resume-into",
-        label: "就地 resume（检测 tmux…）",
+        label: copyText("tabMenu.inPlace.probing"),
         enabled: false,
         onClick: () => {},
       });
@@ -326,14 +326,14 @@ export class TabMenu {
       const behavior = await getBehavior();
       updateTabContextMenuItem("kill", {
         id: "kill",
-        label: `杀死会话（kill 空 tmux ${idle.name}）`,
+        label: copyText("tabMenu.kill.idle", { name: idle.name }),
         danger: true,
         onClick: () => this.actions.killRemoteTmux(LOCAL_ORIGIN, idle.name, false, { idle: true }),
       });
       // 就地 resume 是**非破坏性**的，与 kill 并列给出（远端那侧同样两格并列）。
       updateTabContextMenuItem("resume-into", {
         id: "resume-into",
-        label: `就地 resume（复用空 tmux ${idle.name}）`,
+        label: copyText("tabMenu.inPlace.idle", { name: idle.name }),
         onClick: () =>
           void runLocalResumeIntoExistingTmux(
             sid,
@@ -354,7 +354,7 @@ export class TabMenu {
     if (matches.length > 1) {
       updateTabContextMenuItem("kill", {
         id: "kill",
-        label: `杀死会话（检测到 ${matches.length} 个同身份会话，拒绝）`,
+        label: copyText("tabMenu.kill.dupesRefused", { n: matches.length }),
         enabled: false,
         danger: true,
         onClick: () => {},
@@ -364,7 +364,7 @@ export class TabMenu {
     const name = matches[0].name;
     updateTabContextMenuItem("kill", {
       id: "kill",
-      label: `杀死会话（kill tmux ${name}）`,
+      label: copyText("tabMenu.kill.named", { name }),
       danger: true,
       onClick: () => this.actions.killRemoteTmux(LOCAL_ORIGIN, name, false),
     });
@@ -400,13 +400,13 @@ export class TabMenu {
     if (match) {
       updateTabContextMenuItem("attach", {
         id: "attach",
-        label: ambiguous ? `Attach（tmux: ${match.name}，⚠还有 ${matches.length - 1} 个同身份会话）` : `Attach（tmux: ${match.name}）`,
+        label: ambiguous ? copyText("tabMenu.attach.dupes", { name: match.name, others: matches.length - 1 }) : `Attach（tmux: ${match.name}）`,
         onClick: () => {
           if (viaCwd) warnCwdFallbackAttach();
           if (ambiguous) {
             showActionFailureToast(
-              "检测到多个同身份会话",
-              `该会话身份（sid）同时活在 ${matches.length} 个 tmux 里，本次接入其中一个（${match.name}）；建议手动到终端核实其余会话是否需要清理。`,
+              copyText("tabMenu.dupes.title"),
+              copyText("tabMenu.dupes.body", { n: matches.length, name: match.name }),
               { level: "info", durationMs: 8000 },
             );
           }
@@ -416,14 +416,14 @@ export class TabMenu {
       // F60：预览项与 attach 同门(同一 tmux 会话),一并就绪——只读，不受"命中多个"影响。
       updateTabContextMenuItem("preview", {
         id: "preview",
-        label: "预览画面",
+        label: copyText("tabMenu.resolveAttachMenuItem.preview"),
         onClick: () => void openPanePreview(origin, match.name),
       });
       // F79：杀死会话——命中 ≥2 个时拒绝提供（破坏性操作，选错的代价不可逆，不像 attach 可撤销）。
       if (ambiguous) {
         updateTabContextMenuItem("kill", {
           id: "kill",
-          label: `杀死会话（检测到 ${matches.length} 个同身份会话，请到终端手动处理）`,
+          label: copyText("tabMenu.kill.dupes", { n: matches.length }),
           danger: true,
           enabled: false,
           onClick: () => {},
@@ -431,7 +431,7 @@ export class TabMenu {
       } else {
         updateTabContextMenuItem("kill", {
           id: "kill",
-          label: "杀死会话（kill tmux）",
+          label: copyText("tabMenu.kill.plain"),
           danger: true,
           onClick: () => this.actions.killRemoteTmux(origin, match.name, viaCwd),
         });
@@ -445,14 +445,14 @@ export class TabMenu {
       if (idle) {
         updateTabContextMenuItem("attach", {
           id: "attach",
-          label: `Attach（空 tmux ${idle.name}，无 claude）`,
+          label: copyText("tabMenu.attach.idle", { name: idle.name }),
           onClick: () => void runRemoteAttach(origin, idle.name),
         });
         removeTabContextMenuItem("preview"); // 空 shell 无 claude 画面可预览
         // UX 审计 #1：灰态(idle-tmux)也给 kill——杀空 tmux → tab 转归档 → 可 Resume（给死角一个出口）。
         updateTabContextMenuItem("kill", {
           id: "kill",
-          label: `杀死会话（kill 空 tmux ${idle.name}）`,
+          label: copyText("tabMenu.kill.idle", { name: idle.name }),
           danger: true,
           onClick: () => this.actions.killRemoteTmux(origin, idle.name, false, { idle: true }),
         });
@@ -474,7 +474,7 @@ export class TabMenu {
   private buildResumeSubmenu(sid: string, accountOptions: AccountModifierOption[]): TabMenuItem[] {
     const containerLeaves = (accountName: string | undefined, useBase: boolean): TabMenuItem[] => [
       { label: "tmux", onClick: () => void this.actions.resumeTabTmux(sid, accountName, useBase) },
-      { label: "直连（不建 tmux）", onClick: () => void this.actions.resumeTab(sid, accountName, useBase) },
+      { label: copyText("tabMenu.containerLeaves.direct"), onClick: () => void this.actions.resumeTab(sid, accountName, useBase) },
     ];
     const items: TabMenuItem[] = [...containerLeaves(undefined, false)];
     if (accountOptions.length > 0) {
@@ -506,18 +506,18 @@ export class TabMenu {
       // F09 Phase D 审计（UX，建议）：这里没有「基座」选项——不是遗漏，是有意为之（restart 面对
       // 的是已在某账号下运行的活会话，不是待迁移的老会话）；hover 到账号名这一层就能看到解释，
       // 不用先读设计文档才知道这不是 bug。
-      title: `重启到「${a.label}」——不提供「不指定账号」这一项：重启作用于已在某账号下运行的活会话，不是待迁移的老会话`,
+      title: copyText("tabMenu.restart.accountHint", { label: a.label }),
       submenu: [
         {
-          label: "直接重启",
+          label: copyText("tabMenu.restart.direct"),
           danger: true,
-          title: `杀掉旧进程，用账号「${a.name}」resume 同一会话（中断当前回合、丢进程内状态）`,
+          title: copyText("tabMenu.restart.directHint", { name: a.name }),
           onClick: () => void this.actions.restartTabWithAccount(sid, a.name, false),
         },
         {
-          label: "先压缩上下文再重启",
+          label: copyText("tabMenu.restart.compactFirst"),
           danger: true,
-          title: `先在【旧账号】上 /compact（命中旧缓存更省）再换号重启——比换号后再压缩便宜`,
+          title: copyText("tabMenu.restart.compactFirstHint"),
           onClick: () => void this.actions.restartTabWithAccount(sid, a.name, true),
         },
       ],
@@ -538,7 +538,7 @@ export class TabMenu {
     // 〔U4〕「给 Resume 还是给换号重启」按 `isResumeOnly` 分，与菜单主体那一格同一个谓词（原先是 `status === "archived"`）。
     const resumeOnly = isResumeOnly(state);
     // 〔`A3` 第二波〕本机已结束的 tab 不带账号选择（本机 Resume 走那条会话上次的号，
-    // 见 `accounts.ts::localLaunchAccountSync`）⇒ 本机只进下面「换号重启」那一支。
+    // 见 `launch-account.ts::localLaunchAccountSync`）⇒ 本机只进下面「换号重启」那一支。
     if (origin === LOCAL_ORIGIN && resumeOnly) return;
     const gen = menuGeneration(); // 捕获这一代菜单
     const accountOptions = await enumerateAccountModifiers(origin);
@@ -569,7 +569,7 @@ export class TabMenu {
     // UI 提前说实话）。
     appendTabContextMenuItem({
       id: "restart",
-      label: "Restart（换号重启）",
+      label: copyText("tabMenu.restart.menu"),
       danger: true,
       enabled: !this.actions.restartingSids.has(sid),
       submenu: this.buildRestartSubmenu(sid, realAccounts),

@@ -29,6 +29,9 @@ export interface Term {
   source?: string;
   note?: string;
   ask?: string;
+  /** 〔CP2b〕限用词计数棘轮：计数正则（不是 `scan`）与文案表里命中它的条数（`91 §4` R1b「计数只许变少」）。 */
+  tally?: { re: string; flags: string };
+  inTable?: number;
 }
 
 export function loadTerms(path = TERMS_PATH): Term[] {
@@ -70,6 +73,13 @@ export interface Entry {
   waive?: Record<string, string>;
 }
 export type Table = Record<string, Entry>;
+
+/** 〔CP2b〕限用词在文案表里的命中条数（对 `speech()` 跑：占位符名不算文字）。 */
+export function tallyOf(t: Term, table: Table): number {
+  if (!t.tally) return 0;
+  const rx = new RegExp(t.tally.re, t.tally.flags.replace(/g/g, ""));
+  return Object.values(table).filter((e) => rx.test(speech(e.zh))).length;
+}
 
 export function loadTable(path = TABLE_PATH): Table {
   return (JSON.parse(readFileSync(path, "utf8")) as { entries?: Table }).entries ?? {};

@@ -43,6 +43,7 @@
 //!   一个都不问那一列，而 watcher 那条路（`TMUX_LS_FMT`）里根本没有它 ——
 //!   带一列谁都不用、且有一半发布者填不出来的值，就是下一处静默的空串。
 
+use copy_core::copy_text;
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock};
 
@@ -175,7 +176,10 @@ fn probe_tmux() -> Result<Vec<SessionRow>, CmdErr> {
         .map_err(|e| {
             (
                 "no_tmux",
-                format!("起不来 tmux（远端装了吗？PATH 里有吗？）：{e}"),
+                copy_text(
+                    "beSessionSnapshot.probeTmux.noTmux",
+                    &[("e", &e.to_string())],
+                ),
             )
         })?;
     Ok(parse_rows(&String::from_utf8_lossy(&out.stdout)))

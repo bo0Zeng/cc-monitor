@@ -290,9 +290,9 @@ describe("S30 ⑥ transition 只许动白名单里那几个属性（设计/41 §
  */
 const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   // 〔SE2〕查找面板按模式切大纲清单的开合（大纲那一半的 `hidden` 从 `UserInputPanel` 自己手里交给了面板）。
-  "src/views/session-find.ts:236": // 〔C4b〕行号 −1：两条类型 import 并成一条（`../session-reads`）
+  "src/views/session-find.ts:237": // 〔C4b〕行号 −1：两条类型 import 并成一条（`../session-reads`）·〔CP2b〕+1：加了 copyText 的 import
     "`this.outline.panel` —— 大纲清单那块，由 `UserInputPanel` 建（类 `.user-inputs`；`styles.css` 里那条规则头注逐字「绝不许出现 display」）",
-  "src/error-toast.ts:135":
+  "src/error-toast.ts:136": // 〔CP2b〕+1：加了 copyText 的 import
     "`existing.countEl` —— `existing` 是从一张 Map 里取回来的旧 toast，它的 countEl 在别处建的",
   // ⚠ 〔2026-09-19〕`606 → 614`：我在这份文件上方加了一段注释，**行号就漂了**。
   //    这条登记按**裸行号**做键 —— 那是它的固有脆弱：住址没变、内容没变，只因为
@@ -320,8 +320,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   //    `panel.ts` 上游删了它的 import / OS 门常量 / 挂载那几行与「不适用」替身。三处照旧是 `b.el` 与两处
   //    `perMachineFallbackHint`，语义一字未动。
   // 〔AS2 · 4B〕`792 → 793` / `1288 → 1297` / `1301 → 1310`：`panel.ts` 多了资产目录那一行 import 与那一块登记，三处语义一字未动。
-  // 〔W5-UI〕`793 → 798` / `1297 → 1302` / `1310 → 1315`：`panel.ts` 多两行 import（应用内对话框 · 文案表）＋ 选目录失败那处 catch 多三行出声，三处语义一字未动。
-  "src/settings/panel.ts:798":
+  // 〔W5-UI〕`785 → 789` / `1289 → 1293` / `1302 → 1306`：`panel.ts` 多一行 import（应用内对话框）＋ 选目录失败那处 catch 多三行出声，三处语义一字未动。
+  "src/settings/panel.ts:789": // 〔CP2b〕同上
     "`b.el` —— `b` 来自 `this.perMachineBlocks` 数组，元素由各 section 自己建，跨文件",
   // 🔴 〔步 20 · `设计/70 §1.3 C`〕兜底态那块提示的显隐。它的类名是
   //    `skeleton.ts::makeSkeleton` 挂上去的（`settings-hint`），**跨文件** ——
@@ -329,9 +329,9 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   //    ⚠ 顺带说清它安不安全：`settings-hint` 在 `src/styles.css` 里**没有 display 规则**
   //      ⇒ UA 的 `[hidden] { display: none }` 不会被压过，那两句不是空写。
   //      这一条是**人工核过的**，不是这把尺子判的 —— 所以它在登记表里，不在绿里。
-  "src/settings/panel.ts:1302":
+  "src/settings/panel.ts:1293": // 〔CP2b〕行号 −6：字面量进表后几段多行拼接收成一行
     "`this.perMachineFallbackHint` —— 类名由 `skeleton.ts::makeSkeleton` 挂，跨文件",
-  "src/settings/panel.ts:1315":
+  "src/settings/panel.ts:1306": // 〔CP2b〕同上
     "`this.perMachineFallbackHint` —— 同上（兜底态亮出来那一支）",
   // 🔴 〔步 20 · `设计/70 §10.1`〕「足迹」那一块里，本机那一整套的显隐包装。
   //    它**刻意不挂任何类**：只负责显隐、不要样式。挂了类就得在 CSS 里给它写规则
@@ -342,13 +342,13 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   // 〔第四波 ST2〕远端也有真栏之后，这个包装本机与远端都用；显隐切两处：`applyOriginGate`（摆出来）
   //    与 `showUnanswered`（远端那台答不了时收起来）。同一个包装、同一个理由。
   // 〔合并 RM1a〕440/447 → 436/443：`readFootprint` 去掉那一道 `as unknown as`（命令签名本来就收 `{ origin }`），上移 4 行。
-  "src/settings/config-surface-section.ts:436":
+  "src/settings/config-surface-section.ts:435": // 〔CP2b〕行号 −1：字面量进表后收行
     "那一整套的显隐包装（本机与远端都用），刻意不挂类名（没有类就不会有裸 display 压过 [hidden]）",
-  "src/settings/config-surface-section.ts:443":
+  "src/settings/config-surface-section.ts:442": // 〔CP2b〕同上
     "同一个包装，远端那台答不了时收起来（`showUnanswered`）",
   // 〔C4d〕行号随上方历史清单那几段改走通道挪了（1635 → 1617），那一处本身没动。
-  // 〔W5-UI〕`1617 → 1618`：`history.ts` 多一行 import（应用内对话框），那一处本身没动。
-  "src/views/history.ts:1618":
+  // 〔W5-UI〕`1612 → 1613`：`history.ts` 多一行 import（应用内对话框），那一处本身没动。
+  "src/views/history.ts:1613":
     "`e.hidden = updated.hidden` —— 这一处根本不是「切某个组件的显隐」，是在把一条会话记录的 `hidden` 字段往回写",
 } as const;
 
@@ -404,7 +404,7 @@ describe("S30 ⑦ 会被 hidden 切的元素，CSS 不许在它身上裸写 disp
       "这些元素会被 TS 用 `hidden` 切，而 CSS 又在它们**自己身上**写了 `display` ——\n" +
         "作者样式里的任何一条 `display` 都会压过 UA 的 `[hidden] { display: none }`，\n" +
         "那句 `x.hidden = …` 于是成了空写：**看起来在切，其实从来没切过**。\n" +
-        "  修法：补一条 `.<类名>[hidden] { display: none; }`（`.tab-archive` 就是这么修的）。\n" +
+        "  修法：补一条 `.<类名>[hidden] { display: none; }`。\n" +
         `现打：\n${detail}`,
     ).toEqual(sorted(Object.keys(HIDDEN_KNOWN_BAD)));
   });

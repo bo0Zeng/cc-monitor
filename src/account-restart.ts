@@ -5,26 +5,33 @@
 // 依赖经 import（vitest 可 vi.mock）；confirm / awaitCompact 两个交互点可注入，便于纯逻辑单测。
 //
 // **为何另起、不复用 A4 的 `withAccount`**（D 架构审计裁定，防下轮重新纠结）：两者语义天然不兼容——
-//   ① 不可选账号时：withAccount **降级默认起**；restart **中止**（破坏性重启绝不能退化用默认号）。
+//   ① 不可选账号时：restart **中止**（破坏性重启绝不能退化用默认号）。〔FE1 · D-h〕withAccount 今天同样不起
+//      （先前是「降级默认起」），但它的出口是「说清 ＋ 给一个显式选择再起」，restart 这里没有那一步。
 //   ② 记 lastAccount 条件：withAccount run 后**无条件**记；restart **仅 kill+resume 全成后**才记
 //      （kill 失败提前 return、绝不记，见 §5.2 + vitest ④）。硬合需给 withAccount 加 abort-vs-degrade /
 //      条件记账 / run 前置 compact&kill 钩子三个开关，复杂度净增、收益为负。二者已共用 accounts.ts
 //      **同一批原语**（fetchAccounts / accountConfigDir / recordLastAccount），无逻辑漂移。故维持分离。
 import { askConfirm, type ConfirmFn } from "./ask-dialog";
-import { commands } from "./ipc/commands";
+import { killSession, saidOfControl, sendKeys } from "./tmux-control";
 import { runRemoteResumeTmux } from "./remote-launch-run";
-import { fetchAccounts, accountConfigDir, recordLastAccount, checkTrust, getModelForAccount } from "./accounts";
+import { accountConfigDir, type SessionAccount } from "./accounts";
+import { fetchAccounts, checkTrust } from "./account-reads";
+import { getModelForAccount } from "./account-prefs";
+import { recordLastAccount } from "./launch-account";
 import { showActionFailureToast } from "./error-toast";
 // 〔`A3` 第二波〕本机那一侧：`origin` 是 backend 的 `<local>`（〔C4b〕账号面那个第二种写法已退役，只剩这一个）。
 import { LOCAL_ORIGIN } from "./backend-policy";
-import { runLocalRestartResume } from "./account-restart-local";
+// 〔FE1〕本机那一跳走 resume 编排的唯一一份（原 `account-restart-local.ts` 并进去了）。
+import { resumeLocalSession } from "./local-resume";
+import { copyText } from "./copy-table";
 
 export interface RestartWithAccountOpts {
   origin: string;
   sessionId: string;
   cwd: string;
-  /** 本工具的会话名（send-keys / kill 目标；后端 `tmux_send_keys` 与
-   *  `kill_remote_tmux` 白名单都只认 `*-cc`——audit-fixes F02 后 kill 也对称加了守卫）。
+  /** 本工具的会话名（send-keys / kill 目标；后端的身份门对发按键与结束会话都只认 `*-cc`
+   *  ——audit-fixes F02 后 kill 也对称加了守卫）。〔C4e〕此前这里点的是 monitor 的 `tmux_send_keys` /〔散文墓碑〕
+   *  `kill_remote_tmux`〔散文墓碑〕；今天两件经 `src/tmux-control.ts` 直接问那台机器的后端，门只在后端。
    *
    *  ⚠ 〔`K-R96` 09-12 订正〕这两句**原本都写反了**：写的是「`cc-<sid8>` 会话名」＋
    *  「白名单都只认 `cc-*`」。真实形状是 **`<X>-cc` 后缀**（S4b-3b，用户 2026-07-31 把
@@ -75,8 +82,8 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   const configDir = accountConfigDir(state, accountName);
   if (!configDir) {
     showActionFailureToast(
-      "账号不可用",
-      `账号「${accountName}」当前不可选（未登录 / 非隔离 / 目录缺失），无法用它重启。`,
+      copyText("accountRestart.unselectable.title"),
+      copyText("accountRestart.unselectable.body", { name: accountName }),
       { level: "info", durationMs: 6000 },
     );
     return false;
@@ -86,7 +93,7 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   try {
     const t = await checkTrust(origin, configDir, cwd);
     if (t.available && t.known && !t.trusted) {
-      trustWarn = "\n注意：该账号尚未信任此目录，CC 可能在弹出的终端里询问是否信任。";
+      trustWarn = copyText("accountRestart.confirm.trustWarn");
     }
   } catch {
     /* trust 查询失败不影响主流程 */
@@ -96,36 +103,32 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   // 〔W5-UI〕默认走应用内对话框：真 app 里 `window.confirm` 是插件注入的 async 替身（返回 Promise，恒真值）。
   const confirmFn: ConfirmFn = opts.confirm ?? askConfirm;
   const msg =
-    `用账号「${accountName}」重启此会话？\n\n` +
-    `会中断当前回合：先请求会话优雅退出（最多等 ~10s），再结束旧进程（tmux 会话 ${tmuxName}），` +
-    `然后用新账号 resume 同一会话。` +
-    (opts.compactFirst
-      ? "\n将先在【旧账号】上 /compact（命中旧缓存更省），可能耗时数分钟。"
-      : "") +
-    trustWarn;
+    copyText("accountRestart.confirm.body", { name: accountName, tmuxName, compact: (opts.compactFirst
+      ? copyText("accountRestart.confirm.compactNote")
+      : ""), trust: trustWarn });
   if (!(await confirmFn(msg))) return false;
 
   // ③ [可选] 在【旧账号】上 compact（换号前，命中旧缓存——§5.1）。失败/超时不阻断（§5.2）。
   if (opts.compactFirst) {
     showActionFailureToast(
-      "正在压缩上下文…",
-      "已在旧账号上发送 /compact（命中旧缓存更省），完成后换号重启。",
+      copyText("accountRestart.compact.running"),
+      copyText("accountRestart.compact.sent"),
       { level: "info", durationMs: 8000 },
     );
     try {
-      await commands.tmux_send_keys({ origin, target: tmuxName, keys: "/compact" });
+      await sendKeys(origin, tmuxName, "/compact");
       const done = opts.awaitCompact
         ? await opts.awaitCompact()
         : await delay(DEFAULT_COMPACT_WAIT_MS).then(() => false);
       if (!done) {
         showActionFailureToast(
-          "压缩可能未完成",
-          "等待超时——仍继续换号重启（compact 是优化非必需）。",
+          copyText("accountRestart.compact.timeoutTitle"),
+          copyText("accountRestart.compact.timeout"),
           { level: "info", durationMs: 6000 },
         );
       }
     } catch (e) {
-      showActionFailureToast("压缩未执行", `${String(e)}——跳过，继续换号重启。`, {
+      showActionFailureToast(copyText("accountRestart.compact.skippedTitle"), copyText("accountRestart.compact.skipped", { e: saidOfControl(e) }), {
         level: "info",
         durationMs: 6000,
       });
@@ -138,7 +141,7 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   //      Enter**——否则可能误提交输入框里的队列文本），短暂间隔后键入 `/exit`（文档化的干净退出）。
   //      send-keys 发不出去**不中止**——落到 ④c 的 kill 兜底。
   //   ④b 有界等 CC 真的退出（awaitExit：轮询该 tmux 前台是否不再是 claude）；超时 → §5.2 ④ 降级 kill。
-  //   ④c kill_remote_tmux：**清场**（会话跑的是交互 shell，CC 退出后 shell 仍占着会话名，会让 ⑤ 的
+  //   ④c 结束旧会话（`tmux-control.ts::killSession`）：**清场**（会话跑的是交互 shell，CC 退出后 shell 仍占着会话名，会让 ⑤ 的
   //      `new-session -d ... 2>/dev/null && send-keys` 短路成只 attach 到没有 claude 的旧 shell）+ 优雅
   //      退出超时时的**兜底 SIGKILL**。**失败 → 中止不续 ⑤**（避免新旧两进程抢同一会话；§5.2 ④ 语义不变）。
   try {
@@ -149,35 +152,35 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
     // 那与 ④a 逐字写着的「send-keys 发不出去**不中止**」直接矛盾：**代码与它自己声明的意图不符**
     // （Phase G 的 `/full-audit` 逮到的）。⇒ `Escape` 是 best-effort，它失败**不许**影响 `/exit`。
     try {
-      await commands.tmux_send_keys({ origin, target: tmuxName, keys: "Escape", enter: false });
+      await sendKeys(origin, tmuxName, "Escape", false);
     } catch (e) {
-      console.debug(`[F12] Escape（打断当前回合）发不出去，继续走 /exit：${String(e)}`);
+      console.debug(`[F12] Escape（打断当前回合）发不出去，继续走 /exit：${saidOfControl(e)}`);
     }
     await delay(EXIT_INTERRUPT_GAP_MS);
-    await commands.tmux_send_keys({ origin, target: tmuxName, keys: "/exit", enter: true });
+    await sendKeys(origin, tmuxName, "/exit", true);
     const exited = opts.awaitExit
       ? await opts.awaitExit()
       : await delay(DEFAULT_EXIT_WAIT_MS).then(() => false);
     if (!exited) {
       showActionFailureToast(
-        "优雅退出超时",
-        "等待会话自行退出超时——改为强制结束（当前回合已中断）。",
+        copyText("accountRestart.exit.timeoutTitle"),
+        copyText("accountRestart.exit.timeout"),
         { level: "info", durationMs: 6000 },
       );
     }
   } catch (e) {
     // send-keys 发不出去（会话已没了 / tmux 异常等）——不中止，交给 ④c kill 收场。
-    showActionFailureToast("优雅退出未完成", `${String(e)}——改为强制结束旧会话。`, {
+    showActionFailureToast(copyText("accountRestart.exit.failedTitle"), copyText("accountRestart.exit.failed", { e: saidOfControl(e) }), {
       level: "info",
       durationMs: 5000,
     });
   }
   try {
-    await commands.kill_remote_tmux({ origin, target: tmuxName });
+    await killSession(origin, tmuxName);
   } catch (e) {
     showActionFailureToast(
-      "重启已中止",
-      `结束旧会话失败：${String(e)}。未继续 resume（避免新旧两个进程抢同一会话）。`,
+      copyText("accountRestart.aborted.title"),
+      copyText("accountRestart.aborted.body", { e: saidOfControl(e) }),
       { level: "error", durationMs: 10000 },
     );
     return false;
@@ -190,13 +193,28 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   // F07：同样补查一次该账号的模型偏好（withAccount 内部也做同一次查询——两条并列路径各自补
   // 一次，同 F05 对 accountName 的处理模式）。
   //
-  // 〔`A3` 第二波〕**本机那一跳**：编排上面五步两侧逐字共用（`tmux_send_keys` / `kill_remote_tmux`
+  // 〔`A3` 第二波〕**本机那一跳**：编排上面五步两侧逐字共用（发按键 / 结束会话
   // 都按 origin 分流、`<local>` 走得通；账号清单与信任预检也按 origin 分流到本机后端），
-  // 只有「resume」这一跳两侧起法不同 —— 见 `account-restart-local.ts` 头注那张表。
-  // ⚠ 本机那一跳**交不了模型偏好**（本机载荷里没有那一格），所以这里不去查它。
+  // 只有「resume」这一跳两侧起法不同：
+  //
+  // | | 远端 | 本机 |
+  // |---|---|---|
+  // | 起法 | `runRemoteResumeTmux`（渲一条 ssh 命令、开终端，失败回退剪贴板） | `local-resume.ts::resumeLocalSession`（本机后端直接起，**没有剪贴板那条回退**） |
+  // | 账号怎么交 | `LaunchModifiers.configDir / accountName` | 载荷上的 `account`（用户点的那个具名号：目录 ＋ 名字，`K-R53`） |
+  // | tmux 名 | 复用被 kill 让出来的旧名 | 同左 |
+  // | 模型偏好 | 交（`modelOverride`） | **交不了** —— 本机那条的载荷里没有模型这一格（如实登记，不假装），所以这里不去查它 |
+  //
+  // ⚠ 账号**不走**跟随（`follow`）：换号重启的正题恰恰是换成另一个号，跟随会把用户的选择丢了。
   const isLocal = origin === LOCAL_ORIGIN;
   const launched = isLocal
-    ? await runLocalRestartResume({ sessionId, cwd, launcher, tmuxName, configDir, accountName })
+    ? await resumeLocalSession({
+        sid: sessionId,
+        cwd,
+        account: { kind: "explicit", configDir, name: accountName },
+        tmuxName,
+        launcher,
+        failureTitle: copyText("localResume.restart.failed"),
+      })
     : await runRemoteResumeTmux(origin, sessionId, cwd, launcher, tmuxName, {
         configDir,
         accountName,
@@ -209,21 +227,86 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   // 那种情况下会话已被 kill 却没起来,还被钉上"上次用账号 X 起"、被批量对齐计成成功。
   if (!launched) {
     showActionFailureToast(
-      "旧会话已结束，但新会话未能自动拉起",
+      copyText("accountRestart.relaunch.failedTitle"),
       isLocal
         ? // 本机没有剪贴板那条回退 —— 不许照抄远端那句「到远端终端粘贴」。
-          `会话内容不会丢，可以在标签页上右键 Resume 重新拉起。本次没有记下账号归属。`
-        : `已用「${accountName}」的命令回退到剪贴板——请到远端终端粘贴执行，会话内容不会丢（jsonl 续写）。` +
-          `未记账本次账号归属。`,
+          copyText("accountRestart.relaunch.failedBody")
+        : copyText("accountRestart.relaunch.copied", { name: accountName }),
       { level: "error", durationMs: 12000 },
     );
     return false;
   }
   void recordLastAccount(sessionId, accountName);
   showActionFailureToast(
-    "已用新账号重启",
-    `已用「${accountName}」重启此会话；若 CC 询问是否信任该目录，请在弹出的终端里确认。`,
+    copyText("accountRestart.done.title"),
+    copyText("accountRestart.done.body", { name: accountName }),
     { level: "info", durationMs: 8000 },
   );
   return true;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 〔FE1 · 第四波 4D〕从 `accounts.ts` 搬来：换号重启定位不到会话时的那句话（起停域）。
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * `K-P5g`：**读回来的身份 token 的第一个生产消费者。**
+ * 换号重启定位不到 tmux 时，用它在**两条互斥的成因**里选一条说给用户听。
+ *
+ * # 它买的是「决定」，不是「显示」
+ *
+ * `K-P5f` 把 `launchId` 从 `/proc/<pid>/environ` 一路读到了前端类型上，交回时自己逐字写着
+ * 「有人读、没人用 —— 没有任何生产代码拿它做决定」。本函数是那最后一跳：
+ * 它**不把 token 显示出来**（那是个内部 nonce，给用户看毫无意义），而是拿它**判一件
+ * token 里没有的事**——这条会话是从哪条路起来的——再据此改口。
+ *
+ * # 为什么这件事今天只有 token 答得出
+ *
+ * `CCM_LAUNCH_ID` 全树**只有一处写**（`src/bridge/src/history.rs` 里那个
+ * `LAUNCH_ID_VAR`，`launcher_identity_registry` 那张棘轮表数着它，多一处就红）
+ * ⇒ 进程环境里带着它，就说明这条会话是从本工具这条路起来的。
+ * 而 `--session-accounts` 出参里其余每一格（`configDir` / `account` / `bare` /
+ * `alive` / `cwd` / `pid`）**一格都答不了这个问题**：它们说的是「跑在哪个账号下、
+ * 活没活着」，不是「谁把它拉起来的」。⇒ 掐掉这一格，下面那句话就只能回到
+ * 「不在 tmux 里**或**不是本工具起的」这种**两条成因并排摆着**的说法。
+ *
+ * # ⚠ 它答不到的（照抄 `K-P5f` 已登记的那格残留洞，别在这里悄悄拓宽）
+ *
+ * `launchId` 是**继承型**环境变量：在一条本工具起的会话里手敲 `claude` 起出来的孩子
+ * 也带着同一个 token。backend 挡得住「同一个 token 同时落在一条以上活会话上」
+ * （那种涉事的全置 `null`），**挡不住父会话已经退出**的那一格。
+ * ⇒ 本函数的「是」精确读作「**这个进程的环境里带着本工具铸的身份标记**」，
+ * 不读作「一定是本工具直接拉起的」。文案也按这个强度写，不许写强。
+ */
+export function restartLocateFailureMessage(
+  row: SessionAccount | undefined,
+  opts: { local?: boolean } = {},
+): {
+  title: string;
+  body: string;
+} {
+  // ⚠ `undefined`（老后端不出这个键）与 `null`（backend 说「不作数」）在这里是同一件事。
+  const carriesOurLaunchMark = Boolean(row && row.alive && row.launchId);
+  // 〔`A3` 第二波〕最后那句补救**只对远端成立**：本机归档 tab 的 Resume 不带账号选择
+  // （走 `localLaunchAccountSync`，沿用这条会话上次的号），「把此会话切到账号 X」在本机不存在。
+  // 对本机说那句话，是在指一条走不通的路。
+  const tail = opts.local
+    ? copyText("accounts.restartLocate.tailLocal")
+    : copyText("accounts.restartLocate.tailRemote");
+  if (carriesOurLaunchMark) {
+    return {
+      title: copyText("accounts.restartLocate.markLostTitle"),
+      body:
+        copyText("accounts.restartLocate.markLost", { tail }),
+    };
+  }
+  return {
+    title: copyText("accounts.restartLocate.title"),
+    body:
+      copyText("accounts.restartLocate.body", { tail }),
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// `K-P5h`：**拿身份 token 反查出新会话的 sid**（`KP5HD2` / `KP5HD3`）
+// ═══════════════════════════════════════════════════════════════════════════

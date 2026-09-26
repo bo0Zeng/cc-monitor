@@ -1,0 +1,55 @@
+{
+  "说明": [
+    "〔C4e · 第四波 4C〕界面直接说的 cc-bus 写面 ＋ 查在线那几条帧命令：输入样例 · 请求样例 · 成品样例 · 拒绝码集合。",
+    "后端侧（tests/backend/control/cc_bus_tests.rs::the_bus_products_match_the_cross_language_golden）：请求样例过各自的生产解析器 · 成品 == 生产构造器（bus-list / bus-broadcast 由同一份输入样例现算）· 码集合 == inbound::REGISTRY 那一块。",
+    "界面侧（tests/cc-bus-control.vitest.ts）：请求体 == 这里那一份 · 解码器读同一份成品 · 同一份码集合逐码说出一句各不相同的话。",
+    "内容是结构占位（agent 名 alpha_cc / gone_cc / x_cc，正文 hi），不含真会话正文。"
+  ],
+  "ids": {
+    "ok": ["alpha_cc", "proj_cc-2", "a", "A_1", "cc-monitor"],
+    "bad": ["", "--help", "-x", "a b", "a;rm", "a$x", "a:b", "a.b", "a/b", "é"]
+  },
+  "input": {
+    "ccList": "ID               TMUX              待读\nalpha_cc         alpha_cc:0.0      2\ngone_cc          gone_cc:0.0       0\nx_cc             x_cc:0.0          1\n",
+    "sessions": [["alpha_cc", "sid-1"], ["x_cc", ""]]
+  },
+  "bus-list": {
+    "request": {},
+    "reply": {
+      "agents": [
+        { "id": "alpha_cc", "target": "alpha_cc:0.0", "unread": 2, "live": true, "ccm_sid": "sid-1" },
+        { "id": "gone_cc", "target": "gone_cc:0.0", "unread": 0, "live": false, "ccm_sid": null },
+        { "id": "x_cc", "target": "x_cc:0.0", "unread": 1, "live": true, "ccm_sid": null }
+      ]
+    },
+    "codes": ["not_installed", "timed_out", "failed"]
+  },
+  "bus-send": {
+    "request": { "to": "alpha_cc", "text": "hi", "from": "cc-monitor" },
+    "reply": { "to": "alpha_cc", "sent": true, "registered": true, "live": true, "from": "cc-monitor" },
+    "codes": ["invalid_args", "not_installed", "rejected", "timed_out", "too_long", "failed"]
+  },
+  "bus-kill": {
+    "request": { "id": "alpha_cc" },
+    "reply": { "id": "alpha_cc", "killed": true, "stale_only": false },
+    "codes": ["invalid_args", "not_installed", "timed_out", "failed"]
+  },
+  "bus-spawn": {
+    "request": { "tool": "claude", "dir": "/w/proj", "task": "t", "base": true },
+    "requestAccount": { "tool": "claude", "dir": "/w/proj", "task": "t", "account": "z" },
+    "said": "已 spawn: proj_cc   (目录: /w/proj)",
+    "reply": { "spawned": true, "id": "proj_cc", "said": "已 spawn: proj_cc   (目录: /w/proj)" },
+    "codes": ["invalid_args", "not_installed", "timed_out", "failed"]
+  },
+  "bus-broadcast": {
+    "request": { "text": "hi", "from": "cc-monitor" },
+    "failedOne": { "id": "x_cc", "error": "timed_out", "detail": "d" },
+    "reply": {
+      "sent": 1,
+      "skipped_offline": 1,
+      "liveness_unknown": false,
+      "failed": [{ "id": "x_cc", "error": "timed_out", "detail": "d" }]
+    },
+    "codes": ["invalid_args", "not_installed", "timed_out", "failed"]
+  }
+}

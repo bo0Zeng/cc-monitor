@@ -241,9 +241,9 @@ enum Kind {
     // 〔F7a · 第三波 09-24〕这里原来还有一类「后端今天没有这条命令」（同机复制：池子那条复制命令 ＋
     //   它的裁决类型，2 条）。后端有了 `files-copy` 之后两条都换走了通道 ⇒ 这一类清零，随之删掉
     //   （`every_declared_edge_falls_in_a_live_category` 逐字要求「一条边都没有就从 `Kind` 里删掉」）。
-    /// 本地预判的那道围栏（踩线的那一件**一个字节都不上线**）。权威在后端写面那一侧；
-    /// 本地这一份的去留钉在写区外那条「旧住址最后一个消费者」判据上，交主会话。
-    Fence,
+    // 〔FN1 · 第四波 4C · V119〕这里原来还有一类「本地预判的那道围栏」（1 条：窗口借围栏本家那个判定）。
+    //   用户「文件管理器全部都可以改. 不需要任何围栏」⇒ 窗口那道预判删了，这一类清零，随之删掉
+    //   （`every_declared_edge_falls_in_a_live_category` 逐字要求「一条边都没有就从 `Kind` 里删掉」）。
     /// 「在此打开终端」—— **本机**动作（在用户面前这台机器上开一个窗口），后端在对面，够不着。
     /// 为什么它不归 `Spawn`：那是原语，这是一层编排（按 origin 读落盘的远端配置 ＋ 一条平台裁决）。
     Terminal,
@@ -251,6 +251,10 @@ enum Kind {
     /// 它不是欠账：书签不是用户文件（不归后端写面管），是这个程序自己存下的东西，
     /// 与 `config.json` 同一族；写口只有 `bookmarks::mutate` 一处（上锁 → 现读 → 改 → 原子换）。
     OwnState,
+    /// 〔CP2b · 第四波 4C〕**对外文案表的取文口**（`copy_table::copy_text`）。它不是欠账：
+    /// `设计/01 §6.9`「所有对外文案与报错都从一张表来」—— 表是编译期内嵌的一份 JSON，窗口进程与 app 读同一份字节，
+    /// 取文口是纯函数（查表 ＋ 填占位符），不碰进程外任何东西。
+    Copy,
     /// monitor 那一侧：通道宿主（交接件 · 生产句柄）。
     Host,
     /// monitor 那一侧：起进程那个全仓唯一出口（`exec_site_registry` 管着）。
@@ -306,16 +310,13 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     //   （`设计/60 §13`）⇒ `sftp_upload` · `sftp_download` · `TRANSFER_LANE_CAP` 三行走掉；
     //   `sftp_cancel_transfer`〔散文墓碑〕 随复制走后端（F7a，不可取消）一起走掉（`transfer::forward_cancel` 删了）。
     ("ssh_source::RemoteConfig", Kind::Transfer),
-    // ── 本地预判围栏 ──
-    // 〔第四波 S4〕改指围栏本家（池子里那行转出住址删了）；仍是同一个函数、同一笔欠账。
-    (
-        "claude_data_fence::is_protected_claude_data_path",
-        Kind::Fence,
-    ),
+    // ── 本地预判围栏 ──〔FN1 · V119〕那一行（围栏本家那个判定）随窗口那道预判删了：这一类清零。
     // ── 本机动作 ──
     ("launch::launch_remote_terminal", Kind::Terminal),
     // ── monitor 自己的状态 ──
     ("utils::atomic_write_json", Kind::OwnState),
+    // ── 对外文案表（CP2b）──
+    ("copy_table::copy_text", Kind::Copy),
 ];
 
 /// ★ **monitor 那一侧**（`entry.rs` ＋ [`MONITOR_FNS`]）够得到的 app 侧符号，逐条。
@@ -333,6 +334,8 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("spawn_managed::spawn_managed_cmd", Kind::Spawn),
     ("ssh_source::RemoteConfig", Kind::Config),
     ("paths::resolve_monitor_data_dir", Kind::DataDir),
+    // 〔CP2b〕monitor 那一侧（entry.rs）的报错也从文案表取。
+    ("copy_table::copy_text", Kind::Copy),
 ];
 
 /// 一段生产代码 → `(函数名, 那一块)`。函数外的行归 `""`。
@@ -509,7 +512,6 @@ fn every_declared_edge_falls_in_a_live_category() {
         (Channel, WINDOW_SIDE),
         (Wire, WINDOW_SIDE),
         (Transfer, WINDOW_SIDE),
-        (Fence, WINDOW_SIDE),
         (Terminal, WINDOW_SIDE),
         (OwnState, WINDOW_SIDE),
         (Host, MONITOR_SIDE),
@@ -536,12 +538,13 @@ fn every_declared_edge_falls_in_a_live_category() {
     //    变少 ＝ 有一笔欠账还了 —— 好事，但要同拍改这里并写清是哪一笔。
     let debt = |k: Kind| WINDOW_SIDE.iter().filter(|(_, kk)| *kk == k).count();
     assert_eq!(
-        (debt(Transfer), debt(Fence), debt(Terminal)),
+        (debt(Transfer), debt(Terminal)),
         // 〔F7c · 合主线 ＋ 收尾 09-24〕传输 5 → 1：`sftp_upload` · `sftp_download` · `TRANSFER_LANE_CAP`
         //   （上传下载经通道开单、订阅进度）· `sftp_cancel_transfer`〔散文墓碑〕（复制那一腿的取消，随复制走后端删了）走掉；
         //   剩 `RemoteConfig`（窗口进程拿着那台机器的配置当种子）。
-        (1, 1, 1),
-        "窗口进程里「还不是通道」的那几类条数变了（传输 · 本地围栏 · 本机动作）\
+        // 〔FN1 · V119〕本地围栏 1 → 0（类别删了）：窗口那道预判随「文件管理器不需要任何围栏」删了。
+        (1, 1),
+        "窗口进程里「还不是通道」的那几类条数变了（传输 · 本机动作）\
          〔F7a 09-24〕传输 7 → 5：编辑器读文本那两条（池子那条读文本命令 ＋ 它的上限常量）换成后端 \
          `files-read-text`，上限常量搬回窗口（`editor::MAX_EDIT_BYTES`）；\
          后端缺命令 2 → 0（类别删了）：同机复制那两条换成后端 `files-copy`"

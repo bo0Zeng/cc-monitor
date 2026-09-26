@@ -56,7 +56,9 @@ export function localShell(): Shell {
 }
 
 /** 平台那几格的措辞（写死在一处，组件里按 `platform` 取）。 */
-const PLATFORM_COPY: Record<
+// 〔CP2b〕做成函数、用到时才取文：模块顶层一句取文口调用都不留 —— 顶层有调用，Rollup 就把这份（连同 paste-block / info-icon）
+//   从设置窗口的入口 chunk 挪进主窗也加载的共享 chunk，主窗的样式清单就对不上了（entry-graphs 那条判据现打逮到）。
+const platformCopy = (): Record<
   Shell,
   {
     pasteTarget: string;
@@ -68,31 +70,29 @@ const PLATFORM_COPY: Record<
     blockInstallTitle: string;
     blockAfterInstall: string;
   }
-> = {
+> => ({
   posix: {
-    pasteTarget: "~/.bashrc（或你实际用的 shell 配置文件）",
-    pasteActivation: "source 它，或开一个新终端。",
-    rcLabel: "这台机器的 shell 配置（别名块装进哪份）：",
-    nameHint: "名字，如 zcct",
-    blockWhat: "cc / cct 这一族",
+    pasteTarget: copyText("machineAliases.posix.pasteTarget"),
+    pasteActivation: copyText("machineAliases.posix.pasteActivation"),
+    rcLabel: copyText("machineAliases.posix.rcLabel"),
+    nameHint: copyText("machineAliases.posix.nameHint"),
+    blockWhat: copyText("machineAliases.posix.blockWhat"),
     blockInstallTitle:
-      "把 cc / cct 与「接上别名文件」那一行（src/shared/ccm-aliases.sh）装进你选的那份配置：" +
-      "只动 cc-monitor 那一小块，写前先备份、写后回读比对、不对就恢复。",
-    blockAfterInstall: "装好了。开一个新终端，或在当前终端 source 那份配置。",
+      copyText("machineAliases.posix.blockInstallTitle"),
+    blockAfterInstall: copyText("machineAliases.posix.blockAfterInstall"),
   },
   powershell: {
-    pasteTarget: "$PROFILE（PowerShell 启动时读的那份脚本）",
-    pasteActivation: "开一个新的 PowerShell 窗口。",
-    rcLabel: "这台机器的 PowerShell 配置（别名块装进哪份 $PROFILE）：",
-    nameHint: "名字，如 zcc",
-    blockWhat: "拉前握手那一小段",
+    pasteTarget: copyText("machineAliases.powershell.pasteTarget"),
+    pasteActivation: copyText("machineAliases.powershell.pasteActivation"),
+    rcLabel: copyText("machineAliases.powershell.rcLabel"),
+    nameHint: copyText("machineAliases.powershell.nameHint"),
+    blockWhat: copyText("machineAliases.powershell.blockWhat"),
     blockInstallTitle:
-      "把拉前握手那一小段（勾了「同时装 cc 函数」再加一个 cc 函数）装进你选的那份 $PROFILE：" +
-      "只动 cc-monitor 那一小块，写前先备份、写后回读比对、不对就恢复。",
+      copyText("machineAliases.powershell.blockInstallTitle"),
     blockAfterInstall:
-      "装好了。开一个新的 PowerShell 窗口生效；没勾「同时装 cc 函数」的话，在你自己的 cc / claude 函数开头加一行 __ccm_bind。",
+      copyText("machineAliases.powershell.blockAfterInstall"),
   },
-};
+});
 
 /**
  * `K-R49`：一个账号叫什么名字，「为每个账号加一条」给它起的名字就叫什么（`<名>cc`）。
@@ -220,7 +220,7 @@ export function aliasToForm(a: Alias): AliasForm {
 
 /** 给人看的那一串参数（带空格的值加引号）。**只是显示**，写进 shell 的那一份由后端渲染。 */
 export function describeArgs(args: readonly string[]): string {
-  if (!args.length) return "（不带参数）";
+  if (!args.length) return copyText("machineAliases.describeArgs.none");
   return args.map((a) => (/[\s'"]/.test(a) ? JSON.stringify(a) : a)).join(" ");
 }
 
@@ -253,15 +253,15 @@ export function buildAliasManager(opts: {
   loadAccounts: () => Promise<string[]>;
 }): HTMLElement {
   const shell = opts.platform;
-  const copy = PLATFORM_COPY[shell];
+  const copy = platformCopy()[shell];
   const wrap = el("details", "ccm-alias-gen machine-aliases");
   wrap.dataset.shell = shell;
-  wrap.appendChild(el("summary", "", "别名"));
+  wrap.appendChild(el("summary", "", copyText("machineAliases.manager.title")));
   wrap.appendChild(
     el(
       "p",
       "ccm-alias-gen-hint",
-      "一条别名是一个名字加一组 ccm 参数：在终端里敲这个名字，就等于敲 ccm 加上这组参数，后面还能再接别的参数。",
+      copyText("machineAliases.manager.intro"),
     ),
   );
 
@@ -293,49 +293,49 @@ export function buildAliasManager(opts: {
     }
     return s;
   };
-  const nameIn = text(copy.nameHint, "在终端里敲的那个词");
-  const cwdIn = text("工作目录（留空＝当前目录）");
+  const nameIn = text(copy.nameHint, copyText("machineAliases.form.nameHint"));
+  const cwdIn = text(copyText("machineAliases.form.cwd"));
   const acctSel = select([
-    ["", "账号：不指定"],
-    [BASE_CHOICE, "账号：显式不带（--base）"],
+    ["", copyText("machineAliases.form.accountNone")],
+    [BASE_CHOICE, copyText("machineAliases.form.accountBase")],
   ]);
   const tmuxSel = select([
-    ["none", "不进 tmux"],
-    ["auto", "进 tmux，自动取名"],
-    ["named", "进 tmux，用指定的名字"],
-    ["base", "进 tmux，以某个名字为底"],
+    ["none", copyText("machineAliases.form.tmuxNone")],
+    ["auto", copyText("machineAliases.form.tmuxAuto")],
+    ["named", copyText("machineAliases.form.tmuxNamed")],
+    ["base", copyText("machineAliases.form.tmuxBase")],
   ]);
-  const tmuxNameIn = text("tmux 会话名");
+  const tmuxNameIn = text(copyText("machineAliases.form.tmuxName"));
   const agentSel = select([
-    ["", `agent：不指定（默认 ${ACTIVE_AGENT}）`],
+    ["", copyText("machineAliases.form.agentNone", { agent: ACTIVE_AGENT })],
     ...listAgents().map((a): [string, string] => [a, `agent：${a}`]),
   ]);
   grid.append(nameIn, cwdIn, acctSel, tmuxSel, tmuxNameIn, agentSel);
 
   const adv = el("details", "ccm-alias-gen");
-  adv.appendChild(el("summary", "", "更多参数"));
+  adv.appendChild(el("summary", "", copyText("machineAliases.form.more")));
   const advGrid = el("div", "ccm-alias-gen-grid");
-  const modelIn = text("--model（留空＝不带）");
-  const launcherIn = text("--launcher（留空＝不带）");
-  const sizeIn = text("--tmux-size，如 200x50");
+  const modelIn = text(copyText("machineAliases.form.model"));
+  const launcherIn = text(copyText("machineAliases.form.launcher"));
+  const sizeIn = text(copyText("machineAliases.form.tmuxSize"));
   const detachCk = el("input", "");
   detachCk.type = "checkbox";
   const detachLabel = el("label", "");
-  detachLabel.append(detachCk, " 建完就返回（--detach）");
+  detachLabel.append(detachCk, copyText("machineAliases.form.detach"));
   const busCk = el("input", "");
   busCk.type = "checkbox";
   const busLabel = el("label", "");
-  busLabel.append(busCk, " 登记到 cc-bus（--bus-register）");
-  const busNoteIn = text("cc-bus 备注");
-  const passIn = text("透传给 agent 的参数（-- 之后）");
+  busLabel.append(busCk, copyText("machineAliases.form.busRegister"));
+  const busNoteIn = text(copyText("machineAliases.form.busNote"));
+  const passIn = text(copyText("machineAliases.form.passthru"));
   advGrid.append(modelIn, launcherIn, sizeIn, detachLabel, busLabel, busNoteIn, passIn);
   adv.appendChild(advGrid);
 
   const formRow = el("div", "settings-row settings-row-actions");
-  const saveBtn = button("加进清单", "settings-btn-primary", () => onSave());
-  const clearBtn = button("清空表单", "settings-btn-secondary", () => fillForm(emptyForm(), -1));
-  const perAcctBtn = button("为每个账号加一条", "settings-btn-secondary", () => void onPerAccount());
-  perAcctBtn.title = "一次性的：每个还没有别名的账号加一条「<名>cc → --account <名>」。以后加了账号不会自动多一条。";
+  const saveBtn = button(copyText("machineAliases.form.save"), "settings-btn-primary", () => onSave());
+  const clearBtn = button(copyText("machineAliases.form.clear"), "settings-btn-secondary", () => fillForm(emptyForm(), -1));
+  const perAcctBtn = button(copyText("machineAliases.form.perAccount"), "settings-btn-secondary", () => void onPerAccount());
+  perAcctBtn.title = copyText("machineAliases.form.perAccountHint");
   formRow.append(saveBtn, clearBtn, perAcctBtn);
   wrap.append(grid, adv, formRow);
 
@@ -346,13 +346,13 @@ export function buildAliasManager(opts: {
   const paste = buildPasteBlock({
     text: () => rendered?.code ?? "",
     target: copy.pasteTarget,
-    mergeNote: "整段贴到文件末尾；以后改了清单，再贴一次换掉上一次那段。",
+    mergeNote: copyText("machineAliases.paste.mergeNote"),
     activation: copy.pasteActivation,
     invalidReason: () =>
       rendered === null
-        ? "还没生成。"
+        ? copyText("machineAliases.invalid.notYet")
         : rendered.problems.length
-          ? "清单里有不合格的，先改好。"
+          ? copyText("machineAliases.invalid.fixFirst")
           : null,
     multiline: true,
     rows: 6,
@@ -371,12 +371,12 @@ export function buildAliasManager(opts: {
   const otherRow = el("div", "settings-row");
   const otherIn = el("input", "settings-input settings-input-wide ccm-rc-other");
   otherIn.type = "text";
-  otherIn.placeholder = "其它文件（绝对路径，或 ~/ 开头）";
-  const otherBtn = button("用这份", "settings-btn-secondary", () => void onOther());
+  otherIn.placeholder = copyText("machineAliases.rc.other");
+  const otherBtn = button(copyText("machineAliases.rc.useOther"), "settings-btn-secondary", () => void onOther());
   const otherErr = el("div", "settings-hint");
   otherRow.append(otherIn, otherBtn, otherErr);
-  const writeBtn = button("写入", "settings-btn-primary", () => void onWrite());
-  writeBtn.title = "写到 cc-monitor 自己那份别名文件；选了 shell 配置的话，看它接没接上（不往里写）。";
+  const writeBtn = button(copyText("machineAliases.rc.write"), "settings-btn-primary", () => void onWrite());
+  writeBtn.title = copyText("machineAliases.rc.writeHint");
   const result = el("pre", "ccm-acct-alias-out");
   wrap.append(rcRow, otherRow, writeBtn, result);
 
@@ -395,11 +395,10 @@ export function buildAliasManager(opts: {
   const withCc = el("input", "settings-checkbox");
   withCc.type = "checkbox";
   withCc.checked = false; // 默认只装握手那一小段，不抢你已有的 `cc`
-  withCcLabel.append(withCc, el("span", "settings-checkbox-label", "同时装 cc 函数"));
+  withCcLabel.append(withCc, el("span", "settings-checkbox-label", copyText("machineAliases.rc.withCc")));
   withCcLabel.appendChild(
     makeInfoIcon(
-      "不勾：只装 __ccm_bind（拉前握手）。你自己已有的 cc / claude 函数开头加一行 __ccm_bind，Tab ↗ 就能拉对终端窗口。\n\n" +
-        "勾选：再装一个 function cc（走 ccm）。你 $PROFILE 里若已有 function cc，会被这一块盖掉（PowerShell 后定义的同名函数赢）。",
+      copyText("machineAliases.rc.withCcHint"),
     ),
   );
   // ⚠ `hidden` 切的是外面这层 div 而不是那个 label：`.settings-row` / `.settings-row-checkbox` 在 CSS 里写了 `display`，
@@ -410,24 +409,24 @@ export function buildAliasManager(opts: {
   withCcRow.hidden = shell !== "powershell";
   const rcWarn = el("div", "");
   const rcButtons = el("div", "settings-cc-profile-buttons");
-  const installBtn = button("装别名块", "settings-btn-secondary", () =>
-    void runRc("装", (path) => commands.aliases_block_install({ rcPath: path, withCc: withCc.checked })),
+  const installBtn = button(copyText("machineAliases.rc.install"), "settings-btn-secondary", () =>
+    void runRc("install", (path) => commands.aliases_block_install({ rcPath: path, withCc: withCc.checked })),
   );
   installBtn.title = copy.blockInstallTitle;
   const uninstallBtn = document.createElement("button");
   uninstallBtn.type = "button";
   uninstallBtn.className = "settings-btn settings-btn-secondary";
-  uninstallBtn.textContent = "卸载别名块";
+  uninstallBtn.textContent = copyText("machineAliases.rc.uninstall");
   uninstallBtn.addEventListener("click", () =>
-    void runRc("卸", (path) => commands.aliases_block_remove({ rcPath: path })),
+    void runRc("remove", (path) => commands.aliases_block_remove({ rcPath: path })),
   );
-  uninstallBtn.title = "只删 cc-monitor 那一小块，你写的任何一行都不动。";
-  const previewBtn = button("预览别名块", "settings-btn-secondary", () => void onPreview());
-  previewBtn.title = "看一眼装进去的那一块长什么样（与装的那一下是同一份渲染）";
-  const openBtn = button("打开这份文件", "settings-btn-secondary", () => void onOpenRc());
-  openBtn.title = "用系统默认编辑器打开选中的那份";
-  const rescanBtn = button("重新读一遍", "settings-btn-secondary", () => void readBack(true));
-  rescanBtn.title = "重新读这台机器上的别名文件与这几份启动文件";
+  uninstallBtn.title = copyText("machineAliases.rc.uninstallHint");
+  const previewBtn = button(copyText("machineAliases.rc.preview"), "settings-btn-secondary", () => void onPreview());
+  previewBtn.title = copyText("machineAliases.rc.previewHint");
+  const openBtn = button(copyText("machineAliases.rc.open"), "settings-btn-secondary", () => void onOpenRc());
+  openBtn.title = copyText("machineAliases.rc.openHint");
+  const rescanBtn = button(copyText("machineAliases.rc.rescan"), "settings-btn-secondary", () => void readBack(true));
+  rescanBtn.title = copyText("machineAliases.rc.rescanHint");
   rcButtons.append(installBtn, uninstallBtn, previewBtn, openBtn, rescanBtn);
   const rcLegacy = document.createElement("pre");
   rcLegacy.className = "ccm-rc-block-legacy";
@@ -472,7 +471,7 @@ export function buildAliasManager(opts: {
   if (!hasTmux) {
     tmuxSel.value = "none";
     tmuxSel.disabled = true;
-    tmuxSel.title = "这台机器上没有 tmux";
+    tmuxSel.title = copyText("machineAliases.buildAliasManager.noTmux");
   }
   const syncEnabled = (): void => {
     const inTmux = tmuxSel.value !== "none";
@@ -487,7 +486,7 @@ export function buildAliasManager(opts: {
   const ensureAccountOption = (name: string): void => {
     if (!name || name === BASE_CHOICE) return;
     if ([...acctSel.options].some((o) => o.value === name)) return;
-    const o = el("option", "", `账号：${name}`);
+    const o = el("option", "", copyText("machineAliases.form.accountNamed", { name }));
     o.value = name;
     acctSel.appendChild(o);
   };
@@ -508,22 +507,22 @@ export function buildAliasManager(opts: {
     busCk.checked = f.busRegister;
     busNoteIn.value = f.busNote;
     passIn.value = f.passthru;
-    saveBtn.textContent = index >= 0 ? "更新这一条" : "加进清单";
+    saveBtn.textContent = index >= 0 ? copyText("machineAliases.form.update") : copyText("machineAliases.form.save");
     syncEnabled();
   };
 
   const renderList = (): void => {
     listBox.textContent = "";
     if (!list.length) {
-      listBox.appendChild(el("div", "settings-hint", "清单是空的。"));
+      listBox.appendChild(el("div", "settings-hint", copyText("machineAliases.list.empty")));
       return;
     }
     list.forEach((a, i) => {
       const row = el("div", "settings-row machine-aliases-row");
       row.append(el("code", "", a.name), el("span", "settings-hint", describeArgs(a.args)));
       row.append(
-        button("改", "settings-btn-secondary", () => fillForm(aliasToForm(a), i)),
-        button("删", "settings-btn-secondary", () => {
+        button(copyText("machineAliases.list.edit"), "settings-btn-secondary", () => fillForm(aliasToForm(a), i)),
+        button(copyText("machineAliases.list.delete"), "settings-btn-secondary", () => {
           list = list.filter((_, j) => j !== i);
           if (editing === i) fillForm(emptyForm(), -1);
           void changed();
@@ -540,7 +539,7 @@ export function buildAliasManager(opts: {
       rendered = await commands.aliases_render({ aliases: list, shell });
     } catch (e) {
       rendered = null;
-      problemsBox.textContent = `生成失败：${String(e)}`;
+      problemsBox.textContent = copyText("machineAliases.changed.failed", { e: String(e) });
       paste.refresh();
       return;
     }
@@ -566,7 +565,7 @@ export function buildAliasManager(opts: {
     try {
       names = await opts.loadAccounts();
     } catch (e) {
-      problemsBox.textContent = `读不到这台机器上的账号：${String(e)}`;
+      problemsBox.textContent = copyText("machineAliases.perAccount.failed", { e: String(e) });
       return;
     }
     const have = new Set(list.map((a) => a.name));
@@ -587,14 +586,14 @@ export function buildAliasManager(opts: {
   const fillRcOptions = (list: readonly StartupFile[]): void => {
     const keep = rcSel.value;
     rcSel.textContent = "";
-    const none = el("option", "", "不动我的 shell 配置");
+    const none = el("option", "", copyText("machineAliases.rc.none"));
     none.value = "";
     rcSel.appendChild(none);
     for (const c of list) {
       const tags: string[] = [];
-      if (c.sourced) tags.push("已经接上了");
-      if (c.block.present) tags.push("已装别名块");
-      if (!c.exists) tags.push("还不存在，写入时新建");
+      if (c.sourced) tags.push(copyText("machineAliases.rc.tagSourced"));
+      if (c.block.present) tags.push(copyText("machineAliases.rc.tagBlock"));
+      if (!c.exists) tags.push(copyText("machineAliases.rc.tagNew"));
       const o = el("option", "", tags.length ? `${c.path}（${tags.join("；")}）` : c.path);
       o.value = c.path;
       rcSel.appendChild(o);
@@ -612,15 +611,15 @@ export function buildAliasManager(opts: {
       const got = await commands.aliases_read({ shell, rcPath: otherRc });
       if (!keepList) list = got.aliases;
       const head = got.exists
-        ? `${got.aliasPath}：${got.aliases.length} 条`
-        : `${got.aliasPath} 还不存在`;
-      const bad = got.unparsed.map((u) => `认不出这一行，写入时它会被去掉：${u}`);
+        ? copyText("machineAliases.readBack.count", { path: got.aliasPath, n: got.aliases.length })
+        : copyText("machineAliases.readBack.missing", { path: got.aliasPath });
+      const bad = got.unparsed.map((u) => copyText("machineAliases.readBack.unknownLine", { u }));
       status.textContent = [head, ...bad].join("\n");
       cands = got.rcCandidates;
       fillRcOptions(cands);
       psExtras?.setBound(got.boundTerminals);
     } catch (e) {
-      status.textContent = `读不了这台机器上的别名文件：${String(e)}`;
+      status.textContent = copyText("machineAliases.readBack.failed", { e: String(e) });
     }
     refreshRc();
   };
@@ -635,7 +634,7 @@ export function buildAliasManager(opts: {
         pathCcm.textContent = st.message;
       } catch (e) {
         pathCcm.hidden = false;
-        pathCcm.textContent = `问不到本机 ccm 这一格：${String(e)}`;
+        pathCcm.textContent = copyText("machineAliases.load.ccmFailed", { e: String(e) });
       }
     }
     await readBack(false);
@@ -650,11 +649,11 @@ export function buildAliasManager(opts: {
         rcPath: rcSel.value || null,
         shell,
       });
-      result.textContent = [r.wroteAliasFile ? `已写入 ${r.aliasPath}。` : "", ...r.notes]
+      result.textContent = [r.wroteAliasFile ? copyText("machineAliases.write.done", { path: r.aliasPath }) : "", ...r.notes]
         .filter(Boolean)
         .join("\n");
     } catch (e) {
-      result.textContent = `写入失败：${String(e)}`;
+      result.textContent = copyText("machineAliases.write.failed", { e: String(e) });
     }
     // 成功失败都重读：**盘上现在是什么样，就显示什么样**。
     await load();
@@ -673,7 +672,7 @@ export function buildAliasManager(opts: {
       psExtras?.setBound(got.boundTerminals);
       if (got.otherRc) rcSel.value = got.otherRc;
     } catch (e) {
-      otherErr.textContent = `用不了这份：${String(e)}`;
+      otherErr.textContent = copyText("machineAliases.other.failed", { e: String(e) });
     }
     refreshRc();
   };
@@ -687,18 +686,20 @@ export function buildAliasManager(opts: {
     if (!c) return;
     const b = c.block;
     if (b.present) {
-      rcStatus.textContent = `✓ ${c.path}：别名块已经装了${b.version ? `（${b.version}）` : ""}`;
+      const version = b.version ? `（${b.version}）` : "";
       // 〔TL1 · 4C〕旧版块（PowerShell v2）没有接上别名文件那一行 —— 重装一次就带上（`71 §6.1`）。
-      if (b.outdated) rcStatus.textContent += "。这是旧版的别名块，点「重装别名块」换成新版（新版会自动接上你的别名）";
+      rcStatus.textContent = b.outdated
+        ? copyText("machineAliases.rcStatus.installedOutdated", { path: c.path, version })
+        : copyText("machineAliases.rcStatus.installed", { path: c.path, version });
       rcStatus.className = "ccm-rc-block-status settings-cc-profile-badge settings-cc-badge-ok";
     } else if (!c.exists) {
-      rcStatus.textContent = `○ ${c.path} 还不存在（装的时候新建）`;
+      rcStatus.textContent = copyText("machineAliases.rcStatus.newFile", { path: c.path });
       rcStatus.className = "ccm-rc-block-status settings-cc-profile-badge settings-cc-badge-info";
     } else {
-      rcStatus.textContent = `✗ ${c.path}：还没有别名块（${copy.blockWhat}）`;
+      rcStatus.textContent = copyText("machineAliases.rcStatus.absent", { path: c.path, blockWhat: copy.blockWhat });
       rcStatus.className = "ccm-rc-block-status settings-cc-profile-badge settings-cc-badge-warn";
     }
-    installBtn.textContent = b.present ? "重装别名块" : "装别名块";
+    installBtn.textContent = b.present ? copyText("machineAliases.rc.reinstall") : copyText("machineAliases.rc.install");
     uninstallBtn.hidden = !b.present;
     // 「你配置里这几行是旧的」：后端逐行指名，产品自己一个字节都不删。
     rcLegacy.hidden = !b.manualCleanupHint;
@@ -709,38 +710,37 @@ export function buildAliasManager(opts: {
     if (withCc.checked && !b.present && b.conflictingFunctions.length > 0) {
       rcWarn.className = "settings-cc-profile-warn";
       rcWarn.textContent =
-        `⚠ 这份文件里已有 function ${b.conflictingFunctions.join(", ")}。勾了「同时装 cc 函数」的话，` +
-        "装上之后 PowerShell 用的是别名块里那一个（它排在后面）。想留你自己的：取消勾选，在你那个函数开头加一行 __ccm_bind。";
+        copyText("machineAliases.rcStatus.conflict", { names: b.conflictingFunctions.join(", ") });
     }
     const others = cands.filter((x) => x.block.present && x.path !== c.path).map((x) => x.path);
     rcElsewhere.hidden = others.length === 0;
     rcElsewhere.textContent = others.length
-      ? `别名块还装在这几份里：\n${others.join("\n")}\n同一台机器上装一份就够；多的那几份可以在下拉里选中后卸掉。`
+      ? copyText("machineAliases.rcStatus.duplicates", { others: others.join("\n") })
       : "";
   };
   withCc.addEventListener("change", () => refreshRc());
 
   const runRc = async (
-    verb: "装" | "卸",
+    verb: "install" | "remove", // 〔CP2b〕原先拿「装」「卸」两个字当动作名再拼进句子里 —— 拆成整句各自进表
     act: (path: string) => Promise<void>,
   ): Promise<void> => {
     const path = rcSel.value;
     if (!path) return;
     installBtn.disabled = true;
     uninstallBtn.disabled = true;
-    rcStatus.textContent = `${verb}别名块中…`;
+    rcStatus.textContent = verb === "install" ? copyText("machineAliases.runRc.installing") : copyText("machineAliases.runRc.removing");
     let failed: string | null = null;
     try {
       await act(path);
     } catch (e) {
-      failed = `${verb}失败：${String(e)}`;
+      failed = verb === "install" ? copyText("machineAliases.runRc.installFailed", { e: String(e) }) : copyText("machineAliases.runRc.removeFailed", { e: String(e) });
     }
     installBtn.disabled = false;
     uninstallBtn.disabled = false;
     // 成功失败都重读：盘上现在是什么样，就显示什么样（清单那一格不动 —— 人可能还没写入）。
     await readBack(true);
     if (failed) rcStatus.textContent = failed;
-    rcNote.textContent = !failed && verb === "装" ? copy.blockAfterInstall : "";
+    rcNote.textContent = !failed && verb === "install" ? copy.blockAfterInstall : "";
   };
 
   /** 〔AL1d〕预览别名块：与装那一下同一份渲染（后端 `plan_install`），方言由选中那份文件定。 */
@@ -749,9 +749,9 @@ export function buildAliasManager(opts: {
     if (!path) return;
     try {
       const code = await commands.aliases_block_render({ rcPath: path, withCc: withCc.checked });
-      showPreviewModal(`将装进 ${path} 的别名块`, code);
+      showPreviewModal(copyText("machineAliases.preview.title", { path }), code);
     } catch (e) {
-      showActionFailureToast("预览失败", String(e));
+      showActionFailureToast(copyText("machineAliases.preview.failed"), String(e));
     }
   };
 
@@ -761,7 +761,7 @@ export function buildAliasManager(opts: {
     try {
       await openPath(path);
     } catch (e) {
-      showActionFailureToast("打开失败", `${String(e)}\n路径：${path}`);
+      showActionFailureToast(copyText("machineAliases.openRc.failed"), copyText("machineAliases.openRc.failedBody", { e: String(e), path }));
     }
   };
 
@@ -796,17 +796,17 @@ export function buildAliasManager(opts: {
  */
 export function buildRemoteAliasPaste(): HTMLElement {
   const wrap = el("details", "ccm-alias-gen");
-  wrap.appendChild(el("summary", "", "把本机的别名清单复制过去"));
+  wrap.appendChild(el("summary", "", copyText("machineAliases.remote.copyTitle")));
   const status = el("div", "settings-hint");
   wrap.appendChild(status);
   let code = "";
   let bad = "";
   const paste = buildPasteBlock({
     text: () => code,
-    target: "这台机器的 ~/.bashrc（或它实际用的 shell 配置文件）",
-    mergeNote: "整段贴到文件末尾；以后本机的清单改了，再贴一次换掉上一次那段。",
-    activation: "在那台机器上 source 它，或重连一次 ssh。",
-    invalidReason: () => bad || (code ? null : "还没生成。"),
+    target: copyText("machineAliases.remote.pasteTarget"),
+    mergeNote: copyText("machineAliases.remote.mergeNote"),
+    activation: copyText("machineAliases.remote.activation"),
+    invalidReason: () => bad || (code ? null : copyText("machineAliases.invalid.notYet")),
     multiline: true,
     rows: 6,
     className: "ccm-alias-gen-out",
@@ -822,10 +822,10 @@ export function buildRemoteAliasPaste(): HTMLElement {
         const got = await commands.aliases_read({ shell: localShell() });
         const r = await commands.aliases_render({ aliases: got.aliases, shell: "posix" });
         code = r.code;
-        bad = r.problems.length ? "本机那份清单里有不合格的，先在「本机 → 工具 → 别名」里改好。" : "";
-        status.textContent = `本机那份清单：${got.aliases.length} 条。`;
+        bad = r.problems.length ? copyText("machineAliases.remote.fixFirst") : "";
+        status.textContent = copyText("machineAliases.remote.count", { n: got.aliases.length });
       } catch (e) {
-        status.textContent = `读不了本机的别名清单：${String(e)}`;
+        status.textContent = copyText("machineAliases.remote.readFailed", { e: String(e) });
       }
       paste.refresh();
     })();
@@ -861,25 +861,24 @@ export function buildUserPathBlock(): HTMLElement {
 
   const heading = document.createElement("div");
   heading.className = "settings-group-title";
-  heading.textContent = "这台机器的 ccm 命令（用户级 PATH）";
+  heading.textContent = copyText("machineAliases.userPath.title");
   wrap.appendChild(heading);
 
   const hint = document.createElement("div");
   hint.className = "settings-hint";
   hint.textContent =
-    "把 cc-monitor 放 ccm 的那个目录加到你的用户级 PATH 上，三种终端（PowerShell / cmd / Git Bash）就都敲得到 ccm。" +
-    "只改你自己的用户级 PATH：不需要管理员、不碰系统 PATH、不碰别的用户。改完要重开终端才生效。";
+    copyText("machineAliases.userPath.intro");
   wrap.appendChild(hint);
 
   const statusRow = document.createElement("div");
   statusRow.className = "settings-row";
   const statusLabel = document.createElement("span");
   statusLabel.className = "settings-label";
-  statusLabel.textContent = "现在状态";
+  statusLabel.textContent = copyText("machineAliases.userPath.statusLabel");
   statusRow.appendChild(statusLabel);
   const statusValue = document.createElement("span");
   statusValue.className = "settings-cc-stat-value ccm-user-path-status";
-  statusValue.textContent = "—";
+  statusValue.textContent = copyText("machineAliases.userPath.empty");
   statusRow.appendChild(statusValue);
   wrap.appendChild(statusRow);
 
@@ -887,14 +886,14 @@ export function buildUserPathBlock(): HTMLElement {
   dirRow.className = "settings-row settings-row-stack";
   const dirLabel = document.createElement("span");
   dirLabel.className = "settings-label";
-  dirLabel.textContent = "那个目录";
+  dirLabel.textContent = copyText("machineAliases.userPath.dirLabel");
   dirRow.appendChild(dirLabel);
   const dirValue = document.createElement("span");
   dirValue.className = "settings-cc-autolaunch-path-value ccm-user-path-dir";
   dirValue.style.fontFamily = "var(--font-mono, monospace)";
   dirValue.style.fontSize = "11px";
   dirValue.style.wordBreak = "break-all";
-  dirValue.textContent = "—";
+  dirValue.textContent = copyText("machineAliases.userPath.empty");
   dirRow.appendChild(dirValue);
   wrap.appendChild(dirRow);
 
@@ -903,17 +902,17 @@ export function buildUserPathBlock(): HTMLElement {
   const addBtn = document.createElement("button");
   addBtn.type = "button";
   addBtn.className = "settings-btn settings-btn-primary ccm-user-path-add";
-  addBtn.textContent = "加到用户级 PATH";
+  addBtn.textContent = copyText("machineAliases.userPath.add");
   const delBtn = document.createElement("button");
   delBtn.type = "button";
   delBtn.className = "settings-btn settings-btn-secondary ccm-user-path-remove";
-  delBtn.textContent = "从用户级 PATH 撤掉";
-  delBtn.title = "只摘掉我们自己那一格，你 PATH 上别的东西一个字节都不动。";
+  delBtn.textContent = copyText("machineAliases.userPath.remove");
+  delBtn.title = copyText("machineAliases.userPath.removeHint");
   const refreshBtn = document.createElement("button");
   refreshBtn.type = "button";
   refreshBtn.className = "settings-btn settings-btn-secondary ccm-user-path-refresh";
-  refreshBtn.textContent = "刷新";
-  refreshBtn.title = "重新读一次你的用户级 PATH（现算，不缓存）";
+  refreshBtn.textContent = copyText("machineAliases.userPath.refresh");
+  refreshBtn.title = copyText("machineAliases.userPath.refreshHint");
   btnRow.append(addBtn, delBtn, refreshBtn);
   wrap.appendChild(btnRow);
 
@@ -921,7 +920,7 @@ export function buildUserPathBlock(): HTMLElement {
   // 🔴 它与按钮跑的是**同一份字节**（后端同一个 render 函数），所以这里敢这么说。
   const cmdNote = document.createElement("div");
   cmdNote.className = "settings-hint ccm-user-path-cmd-note";
-  cmdNote.textContent = "不想点按钮？下面这段就是按钮会跑的那一段，复制到 PowerShell 里自己跑一次也一样：";
+  cmdNote.textContent = copyText("machineAliases.userPath.cmdNote");
   cmdNote.hidden = true;
   wrap.appendChild(cmdNote);
   const cmdPre = document.createElement("pre");
@@ -939,11 +938,11 @@ export function buildUserPathBlock(): HTMLElement {
     setBusy(true);
     try {
       const st = await commands.ccm_user_path_status();
-      dirValue.textContent = st.dir ?? "—";
+      dirValue.textContent = st.dir ?? copyText("machineAliases.userPath.empty");
       if (!st.supported) {
         // 不隐藏，说清它与别名块那一格的关系（见本函数头注第 3 条下面那一段）。
         statusValue.textContent =
-          "这一档只有 Windows 有。这台机器上让终端找到 ccm 的，是「本机 → 工具 → 别名」里那个别名块。";
+          copyText("machineAliases.userPath.notWindows");
         addBtn.hidden = true;
         delBtn.hidden = true;
         cmdNote.hidden = true;
@@ -952,14 +951,14 @@ export function buildUserPathBlock(): HTMLElement {
       }
       if (st.error) {
         // 🔴 探不动 ≠ 不在 PATH 上。原话上屏，两个按钮都不给点。
-        statusValue.textContent = `读不出来：${st.error}`;
+        statusValue.textContent = copyText("machineAliases.userPath.readFailed", { error: st.error });
         addBtn.disabled = true;
         delBtn.disabled = true;
         return;
       }
       statusValue.textContent = st.onUserPath
-        ? "✓ 已经在你的用户级 PATH 上"
-        : "✗ 还不在你的用户级 PATH 上（三种终端里都敲不到 ccm）";
+        ? copyText("machineAliases.userPath.on")
+        : copyText("machineAliases.userPath.off");
       addBtn.disabled = st.onUserPath;
       delBtn.disabled = !st.onUserPath;
       const text = st.onUserPath ? st.removeCommand : st.addCommand;
@@ -967,7 +966,7 @@ export function buildUserPathBlock(): HTMLElement {
       cmdNote.hidden = !text;
       cmdPre.hidden = !text;
     } catch (e) {
-      statusValue.textContent = `读不出来：${String(e)}`;
+      statusValue.textContent = copyText("machineAliases.userPath.readFailed", { error: String(e) });
       addBtn.disabled = true;
       delBtn.disabled = true;
     } finally {
@@ -982,7 +981,7 @@ export function buildUserPathBlock(): HTMLElement {
       else await commands.ccm_user_path_remove();
     } catch (e) {
       showActionFailureToast(
-        what === "add" ? "加到用户级 PATH 失败" : "从用户级 PATH 撤掉失败",
+        what === "add" ? copyText("machineAliases.userPath.addFailed") : copyText("machineAliases.userPath.removeFailed"),
         String(e),
       );
     }
@@ -1021,11 +1020,10 @@ function buildPsExtras(): PsExtras {
 
   const heading = document.createElement("div");
   heading.className = "settings-group-title";
-  heading.textContent = "PowerShell 集成";
+  heading.textContent = copyText("machineAliases.ps.title");
   heading.appendChild(
     makeInfoIcon(
-      "别名块里的 __ccm_bind：启动 claude 时把当前终端窗口登记给 monitor，" +
-        "之后 Tab ↗ 跳焦能精确拉对应终端窗口。不装也能用 monitor，但拉前不工作。",
+      copyText("machineAliases.ps.titleHint"),
     ),
   );
   group.appendChild(heading);
@@ -1035,17 +1033,16 @@ function buildPsExtras(): PsExtras {
   statRow.className = "settings-cc-stat-row";
   const statLabel = document.createElement("span");
   statLabel.className = "settings-cc-stat-label";
-  statLabel.textContent = "已注册 PowerShell session";
+  statLabel.textContent = copyText("machineAliases.ps.registered");
   statLabel.appendChild(
     makeInfoIcon(
-      "正在跟 monitor 握手成功、可被 Tab ↗ 拉前的 PowerShell 进程数。\n" +
-        "数字 0 ≠ 没装好：只要你那个 PS 窗口最近没跑过 cc/__ccm_bind，就不会出现在这里。",
+      copyText("machineAliases.ps.registeredHint"),
     ),
   );
   statRow.appendChild(statLabel);
   const regCountSpan = document.createElement("span");
   regCountSpan.className = "settings-cc-stat-value";
-  regCountSpan.textContent = "—";
+  regCountSpan.textContent = copyText("machineAliases.ps.empty");
   statRow.appendChild(regCountSpan);
   group.appendChild(statRow);
 
@@ -1060,24 +1057,23 @@ function buildPsExtras(): PsExtras {
   row.appendChild(autoLaunchCheckbox);
   const label = document.createElement("span");
   label.className = "settings-checkbox-label";
-  label.textContent = "用 cc 启动 claude 时自动打开 monitor";
+  label.textContent = copyText("machineAliases.ps.autoLaunch");
   row.appendChild(label);
   row.appendChild(
     makeInfoIcon(
-      "勾选后：跑 cc / __ccm_bind 时如果 monitor 没在跑，PowerShell 会自动启动它（路径下方显示）。\n" +
-        "不勾选：必须先手动开 monitor 再跑 cc，否则握手超时（3s）。",
+      copyText("machineAliases.ps.autoLaunchHint"),
     ),
   );
   wrap.appendChild(row);
   const hint = document.createElement("div");
   hint.className = "settings-cc-autolaunch-path";
   const pathLabel = document.createElement("span");
-  pathLabel.textContent = "monitor 路径: ";
+  pathLabel.textContent = copyText("machineAliases.ps.pathLabel");
   pathLabel.style.color = "var(--text-faint)";
   hint.appendChild(pathLabel);
   const autoLaunchPathSpan = document.createElement("span");
   autoLaunchPathSpan.className = "settings-cc-autolaunch-path-value";
-  autoLaunchPathSpan.textContent = "—";
+  autoLaunchPathSpan.textContent = copyText("machineAliases.ps.empty");
   hint.appendChild(autoLaunchPathSpan);
   wrap.appendChild(hint);
   group.appendChild(wrap);
@@ -1086,7 +1082,7 @@ function buildPsExtras(): PsExtras {
     try {
       const cfg = await commands.cc_get_auto_launch();
       autoLaunchCheckbox.checked = cfg.auto_launch_enabled;
-      autoLaunchPathSpan.textContent = cfg.monitor_exe_path ?? "(未记录，启动一次 monitor 后自动记录)";
+      autoLaunchPathSpan.textContent = cfg.monitor_exe_path ?? copyText("machineAliases.ps.pathUnknown");
       autoLaunchPathSpan.title = cfg.monitor_exe_path ?? "";
     } catch (e) {
       console.warn("cc_get_auto_launch failed:", e);
@@ -1103,7 +1099,7 @@ function buildPsExtras(): PsExtras {
       try {
         await commands.cc_set_auto_launch({ enabled });
       } catch (e) {
-        showActionFailureToast("保存失败", String(e));
+        showActionFailureToast(copyText("machineAliases.ps.saveFailed"), String(e));
         autoLaunchCheckbox.checked = !enabled;
       }
     })();
@@ -1136,7 +1132,7 @@ function showPreviewModal(titleText: string, code: string): void {
   const closeBtn = document.createElement("button");
   closeBtn.type = "button";
   closeBtn.className = "settings-btn settings-btn-secondary";
-  closeBtn.textContent = "关闭";
+  closeBtn.textContent = copyText("machineAliases.preview.close");
   closeBtn.addEventListener("click", () => backdrop.remove());
   const buttons = document.createElement("div");
   buttons.className = "settings-cc-modal-buttons";

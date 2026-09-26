@@ -225,7 +225,7 @@ const GOLDEN: &[Golden] = &[
     // ⑥ 直通模式 ＋ 表里**没有这一行** ⇒ **502**，一个字节都不到上游。
     //    🔴 `20 §3.1` 第 4 行逐字「不许回落到某一个写死的常量」：那一格要「按 `seg1`
     //    取该 agent 的默认上游」。那张每 agent 一行的表（条 59）今天落了
-    //    （`accounts::upstream::AGENT_UPSTREAMS`），而本格的 `seg1`（`GOLDEN_AGENT`）**不在表里**
+    //    （`agents::Adapter::upstream`，〔NT2 · V25〕跟着适配层），而本格的 `seg1`（`GOLDEN_AGENT`）**不在表里**
     //    ⇒ 未登记 ⇒ 502。理由整段住 `accounts::upstream::decide`；登记过的那一半由
     //    `table_tests` 那条「登记过的走自己那一行、未登记的拒」量（不经网络）。
     //    ⚠ 它与 ③ 的 404 **刻意不同码**：404 答的是「代入模式要求表里有这一行」，
@@ -370,6 +370,7 @@ fn spawn_relay(up: SocketAddr) -> (SocketAddr, TeeTap) {
             table,
             crate::accounts::upstream::Upstreams::from_env(&|_| None).expect("内置默认"),
         )),
+        super::door::Key::for_tests(),
         TeeSink::new(Box::new(Sink(Arc::clone(&buf), tick))),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
@@ -388,7 +389,10 @@ fn one_shot(relay: SocketAddr, target: &str) -> String {
     c.set_read_timeout(Some(std::time::Duration::from_secs(10)))
         .expect("读期限");
     let req = format!(
-        "POST {target} HTTP/1.1\r\nHost: relay\r\nAuthorization: Bearer {CLIENT_TOKEN}\r\nContent-Length: {}\r\n\r\n{CLIENT_BODY}",
+        // 〔RK1〕过门：钥匙段挂在最前、`Host` 用回环字面量。金标准比的是**上游那一侧**收到的字节
+        //   与下游拿回的字节 —— 钥匙段在门里就被剥掉，所以期望一个字节都不用动（这正是「钥匙不上游」的一格）。
+        "POST /{}{target} HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {CLIENT_TOKEN}\r\nContent-Length: {}\r\n\r\n{CLIENT_BODY}",
+        super::door::door_tests::TEST_KEY,
         CLIENT_BODY.len()
     );
     c.write_all(req.as_bytes()).expect("写请求");

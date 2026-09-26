@@ -56,9 +56,9 @@ const OWED_MARKS: &[&str] = &["暂时不做", "将来", "后面"];
 fn every_gap_speaks_in_the_voice_of_its_own_tier() {
     let mut bad = Vec::new();
     for g in TARGET_GAPS {
-        let structural = STRUCTURAL_MARKS.iter().any(|m| g.why.contains(m));
-        let owed_word = g.why.contains("暂时不做");
-        let owed = OWED_MARKS.iter().any(|m| g.why.contains(m));
+        let structural = STRUCTURAL_MARKS.iter().any(|m| g.rationale.contains(m));
+        let owed_word = g.rationale.contains("暂时不做");
+        let owed = OWED_MARKS.iter().any(|m| g.rationale.contains(m));
         let ok = match g.kind {
             GapKind::Structural => structural && !owed_word,
             GapKind::Owed => owed && !structural,

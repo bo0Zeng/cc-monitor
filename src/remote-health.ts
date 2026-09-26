@@ -23,26 +23,27 @@ import { shouldShowHealthToast } from "./remote-health-throttle";
 // camelCase 与 snake_case 在这里看不出区别**，所以那句注释既没错也没用；
 // 现在字段名由生成物负责，不必再靠注释提醒。
 import type { RemoteHealthPayload } from "./generated/RemoteHealthPayload";
+import { copyText } from "./copy-table";
 
 /** kind → toast 标题（未知 kind 回退到通用「远端提示」）。 */
 function headlineFor(kind: string): string {
   switch (kind) {
     case "overflow":
-      return "⚠ 远端管道拥塞";
+      return copyText("remoteHealth.head.congested");
     case "version":
-      return "⚠ 远端后端版本不符";
+      return copyText("remoteHealth.head.versionMismatch");
     case "degraded":
-      return "远端降级模式";
+      return copyText("remoteHealth.head.degraded");
     case "snapshot":
-      return "⚠ 远端历史快照拉取失败";
+      return copyText("remoteHealth.head.historyFailed");
     // 〔DP1 · 第四波〕连接前那一步自动部署没成（那台机器不要这份后端 / 这一版没带 / 装不上），正文是那句原因。
     case "deploy":
-      return "⚠ 远端后端没装上";
+      return copyText("remoteHealth.head.notDeployed");
     // 〔RM1f〕推代码全景组件之前那一句（`panorama_call.rs::install_notice`）。不是故障，所以不带 ⚠。
     case "panorama-install":
-      return "正在装代码全景组件";
+      return copyText("remoteHealth.head.panoramaInstalling");
     default:
-      return "⚠ 远端提示";
+      return copyText("remoteHealth.head.notice");
   }
 }
 
@@ -59,7 +60,7 @@ export function bindRemoteHealthToast(): void {
     const now = Date.now();
     if (!shouldShowHealthToast(lastShown.get(key), now)) return;
     lastShown.set(key, now);
-    showActionFailureToast(headlineFor(p.kind), p.message || "(无消息)", {
+    showActionFailureToast(headlineFor(p.kind), p.message || copyText("remoteHealth.bindRemoteHealthToast.noMessage"), {
       level: "info",
       durationMs: 8000,
     });

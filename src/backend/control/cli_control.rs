@@ -40,6 +40,7 @@
 //! · **错**：exit 2 + stderr 一行 `{"code","message"}`。
 //! · **exec 模型**：1 exec = 1 请求 1 响应 1 退出，**无 request-id**（`resolve_query` 头注逐字）。
 
+use crate::common::contract;
 use crate::inbound::{CommandSpec, Run, REGISTRY};
 use crate::wire::Request;
 use std::io::Read;
@@ -151,7 +152,10 @@ pub async fn run(args: &[String]) -> i32 {
     let Some(spec) = spec_for(flag) else {
         // 走不到（`main` 只把已知 flag 派到这里），但**不许 panic**：
         // backend 的一次性模式对未知参数的既定行为是 exit 2 + 结构化 stderr。
-        return emit_err("unknown_command", format!("CLI 控制面不认识 {flag}"));
+        return emit_err(
+            "unknown_command",
+            contract::malformed(&format!("unknown CLI flag {flag}")),
+        );
     };
     let mut input = String::new();
     if reads_stdin(spec) {
@@ -165,7 +169,10 @@ pub async fn run(args: &[String]) -> i32 {
         if input.len() as u64 > MAX_CLI_STDIN {
             return emit_err(
                 "args_too_large",
-                format!("args JSON 超过 {MAX_CLI_STDIN} 字节上限，已拒收（不截断：截半的 JSON 会被报成 bad_request，那句话与真实原因无关）"),
+                // 不截断：截半的 JSON 会被报成 bad_request，那句话与真实原因无关。
+                contract::malformed(&format!(
+                    "args JSON over the {MAX_CLI_STDIN}-byte cap, refused (not truncated)"
+                )),
             );
         }
     }
@@ -187,7 +194,12 @@ pub async fn run(args: &[String]) -> i32 {
     let outcome = match spec.run {
         Run::Blocking(f) => f(req),
         Run::Async(f) => f(req).await,
-        Run::Builtin => return emit_err("not_available_in_cli", "这条命令只在帧面可用"),
+        Run::Builtin => {
+            return emit_err(
+                "not_available_in_cli",
+                contract::malformed("this command is only served on the frame channel"),
+            )
+        }
     };
     match outcome {
         Ok(v) => {

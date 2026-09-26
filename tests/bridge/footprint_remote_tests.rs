@@ -130,11 +130,11 @@ fn the_remote_vantage_drops_the_monitor_machine_rows_and_really_probes_the_rest(
             .clone()
     };
     assert_eq!(
-        pick(&absent.rows, remote, "~/.cc-monitor/bin/ccm"),
+        pick(&absent.rows, &remote, "~/.cc-monitor/bin/ccm"),
         SurfaceState::Absent
     );
     assert!(matches!(
-        pick(&present.rows, remote, "~/.cc-monitor/bin/ccm"),
+        pick(&present.rows, &remote, "~/.cc-monitor/bin/ccm"),
         SurfaceState::Present { .. }
     ));
     let ccm = absent
@@ -150,7 +150,7 @@ fn the_remote_vantage_drops_the_monitor_machine_rows_and_really_probes_the_rest(
     // ③ 「本机或远端」答不在 ⇒ 未确定（也可能在另一台上），不说「缺」。
     assert!(
         matches!(
-            pick(&absent.rows, either, "~/.claude/skills/cc-bus"),
+            pick(&absent.rows, &either, "~/.claude/skills/cc-bus"),
             SurfaceState::Undetermined { .. }
         ),
         "「本机或远端」那一行在这台上没找到，被说成了「缺」"

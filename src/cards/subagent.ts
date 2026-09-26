@@ -18,6 +18,7 @@ import type { JsonlRecord, RenderContext, RenderResult } from "./index";
 // ——那一轮把 `JsonlRecord` 变成生成物的投资，在这里第一次收息（否则这一批还得先啃它）。
 import type { SubagentLoadResult } from "../generated/SubagentLoadResult";
 import type { Origin } from "../ipc/origin";
+import { copyText } from "../copy-table";
 
 /** Agent tool_use 块的 input 形状（部分字段，按实测保留） */
 interface AgentInput {
@@ -79,7 +80,7 @@ export function buildAgentCard(
     // description 匹配与按时间戳挑最近**留在后端本侧**，与本机那条共用同一个 `pick_closest`
     //（定框 `C1`：别长第二套语义）。⇒ 这里只需把 origin 传下去。
     loading = true;
-    bodyEl.textContent = "加载 subagent…";
+    bodyEl.textContent = copyText("subagent.loadAndRender.loading");
 
     try {
       const result: SubagentLoadResult = await commands.load_subagent({
@@ -97,12 +98,12 @@ export function buildAgentCard(
       bodyEl.replaceChildren();
       const errMsg = document.createElement("div");
       errMsg.className = "block-agent-error";
-      errMsg.textContent = `加载失败：${String(e)}`;
+      errMsg.textContent = copyText("subagent.loadAndRender.failed", { e: String(e) });
       bodyEl.appendChild(errMsg);
       const retry = document.createElement("button");
       retry.type = "button";
       retry.className = "block-agent-retry";
-      retry.textContent = "重试";
+      retry.textContent = copyText("subagent.loadAndRender.retry");
       retry.addEventListener("click", (ev) => {
         ev.preventDefault();
         ev.stopPropagation();
@@ -125,7 +126,7 @@ function renderSubagentBody(
 ): void {
   const header = document.createElement("div");
   header.className = "block-agent-header";
-  header.textContent = `agent-${result.agent_id.slice(0, 12)}  ·  ${result.records.length} 条记录`;
+  header.textContent = copyText("subagent.renderSubagentBody.header", { agentId: result.agent_id.slice(0, 12), n: result.records.length });
   body.appendChild(header);
 
   // 嵌套渲染时把 ctx.parentPath 切到 subagent 自己的 JSONL 路径，
