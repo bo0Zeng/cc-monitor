@@ -62,8 +62,8 @@
 //! 由 [`sweep_stale`] 按同一个期限收（它认得两种形状）。
 
 use crate::control::files_write::{
-    change_mode, content_sha256, overwrite_text_expecting, resolve_in_root, sha256_expect_of,
-    Answer, ManageCommand, WriteRefusal,
+    content_sha256, overwrite_text_expecting, resolve_in_root, sha256_expect_of, Answer,
+    ManageCommand, WriteRefusal,
 };
 use std::path::{Path, PathBuf};
 
@@ -257,29 +257,17 @@ pub(crate) fn placeholder_note(dest: &Path, undo: &std::io::Result<()>) -> Strin
 ///
 /// 每一层**先过路径解析**（以上一层为根）再建 —— 第三层 ③ 逐函数扫这个顺序。
 /// ⚠ `~/.cc-monitor` 若是用户自己放的一条链接，跟过去（后端自己的家，与第四层 `exit_policy` 同一个家）。
-/// 〔HX1〕后端自己的目录（`~/.cc-monitor` 与暂存区）**建的那一下**给的权限位：只给本人。
-pub const PRIVATE_DIR_MODE: u32 = 0o700;
-
 fn ensure_staging(home: &Path) -> Result<PathBuf, WriteRefusal> {
     let mut at = home.to_path_buf();
     for seg in STAGING_DIR.split('/') {
         let next = resolve_in_root(&at, seg).map_err(WriteRefusal::Refused)?;
-        match std::fs::create_dir(&next) {
-            // 〔HX1 · RK1 小尾巴〕**这一趟建出来的**那一层当场收成只给本人（0700）—— 不然按 umask（常见 0755 / 0775），
-            //   同机别的用户列得出暂存区里有哪些上传。已在的一层不动（那可能是用户自己设的）。
-            //   借写面那一个改权限原语（`files_write::change_mode`，先过路径解析）；没有 unix 权限位的平台照旧（那边不是这一问）。
-            Ok(()) => match change_mode(&at, seg, PRIVATE_DIR_MODE) {
-                Ok(_) | Err(WriteRefusal::Unsupported(_)) => {}
-                Err(e) => return Err(e),
-            },
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(e) => {
-                return Err(WriteRefusal::Io(format!(
-                    "refuse write: 建暂存区 {} 失败：{e}",
-                    next.display()
-                )))
-            }
-        }
+        // 〔HX1〕这一趟建出来的那一层建的那一下就是 0700、已在的不动（`own_dir`：后端建自家目录的那一个函数）。
+        crate::own_dir::ensure_private_dir(&next).map_err(|e| {
+            WriteRefusal::Io(format!(
+                "refuse write: 建暂存区 {} 失败：{e}",
+                next.display()
+            ))
+        })?;
         if !std::fs::metadata(&next).is_ok_and(|m| m.is_dir()) {
             return Err(WriteRefusal::Refused(format!(
                 "refuse write: {} 在，但不是一个目录 —— 暂存区放不进去",

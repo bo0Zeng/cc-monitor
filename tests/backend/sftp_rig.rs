@@ -53,6 +53,8 @@ pub(crate) struct Fs {
     pub(crate) read_offsets: Vec<u64>,
     /// 〔FW1〕服务端**交出去**的读字节数（逐条 `READ` 应答里 `data` 的长度之和）—— 「同一段字节有没有被要了两遍」。
     pub(crate) served_bytes: u64,
+    /// 〔HX1〕目录上被 `SETSTAT` 设过的权限位（`目录 → permissions`）—— 部署建出来的那几层收没收窄。
+    pub(crate) dir_modes: BTreeMap<String, u32>,
 }
 
 impl Fs {
@@ -416,11 +418,16 @@ impl russh_sftp::server::Handler for Server {
         &mut self,
         id: u32,
         path: String,
-        _attrs: FileAttributes,
+        attrs: FileAttributes,
     ) -> impl std::future::Future<Output = Result<Status, Self::Error>> + Send {
         let fs = self.fs.clone();
         async move {
-            fs.lock().unwrap().touch("setstat", &rel(&path));
+            let mut fs = fs.lock().unwrap();
+            let p = rel(&path);
+            fs.touch("setstat", &p);
+            if let (true, Some(m)) = (fs.dirs.contains(&p), attrs.permissions) {
+                fs.dir_modes.insert(p, m);
+            }
             Ok(ok(id))
         }
     }

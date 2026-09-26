@@ -97,9 +97,13 @@ async fn a_staging_upload_writes_nothing_outside_the_staging_area() {
     sftp::make_dir(&s, ".cc-monitor/bin")
         .await
         .expect("正控：bin 是另一个根");
+    // 〔HX1〕新建的那一层随即收成只给本人（SETSTAT）—— 同一个根外的第二条改动。
     assert_eq!(
         outside_staging(&fs),
-        vec![("mkdir".to_string(), ".cc-monitor/bin".to_string())],
+        vec![
+            ("mkdir".to_string(), ".cc-monitor/bin".to_string()),
+            ("setstat".to_string(), ".cc-monitor/bin".to_string())
+        ],
         "正控没被认出来 —— 这张表是瞎的"
     );
 }

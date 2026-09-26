@@ -55,6 +55,25 @@ import {
   type ExitPolicyState,
 } from "../backend-policy";
 import { copyText } from "../copy-table";
+import { askConfirm, type ConfirmFn } from "../ask-dialog";
+import { fetchSessionAccountsOrNull } from "../account-reads";
+import type { SessionAccount } from "../accounts";
+
+/**
+ * 〔HX1 · 主会话 D-f〕停本机后端之前**要不要先问一句**：走本机中转的活会话在后端停了之后每一次请求都会失败（中转住在后端进程里）。
+ * 回要问的那句话；`null` = 不用问（问到了、而且一条走中转的活会话都没有）。
+ * - 问不到（`rows === null`）⇒ 照样问，说「不知道有几条」（出声，不把「问不到」当成「没有」）；
+ * - 活着但说不清走不走中转的（`viaRelay` 缺 / `null`）⇒ 连同确定的几条一起说出来。
+ */
+export function stopWarning(rows: SessionAccount[] | null): string | null {
+  if (rows === null) return copyText("backend.stop.relayUnknown");
+  const live = rows.filter((r) => r.alive);
+  const n = live.filter((r) => r.viaRelay === true).length;
+  const k = live.filter((r) => r.viaRelay === null || r.viaRelay === undefined).length;
+  if (k > 0) return copyText("backend.stop.relayMaybe", { n, k });
+  if (n > 0) return copyText("backend.stop.relayConfirm", { n });
+  return null;
+}
 
 /** 后端 `exit-policy-read` / `exit-policy-set` 回的那一份里，本区要用的两格。 */
 interface ExitAnswer {
@@ -182,8 +201,21 @@ export class BackendSection {
   /** 后端清单（`backend_machines`）。`null` = 还没问到 —— 那时寄居的四格先不画。 */
   private registered: Set<string> | null = null;
 
-  constructor(opts: { headless?: boolean; hosted?: boolean } = {}) {
+  /** 〔HX1 · D-f〕停之前那一问 · 数会话那一问（注入缝：判据换成同步答 / 假数据）。 */
+  private readonly confirm: ConfirmFn;
+  private readonly sessions: (origin: Origin) => Promise<SessionAccount[] | null>;
+
+  constructor(
+    opts: {
+      headless?: boolean;
+      hosted?: boolean;
+      confirm?: ConfirmFn;
+      sessions?: (origin: Origin) => Promise<SessionAccount[] | null>;
+    } = {},
+  ) {
     this.hosted = opts.hosted ?? false;
+    this.confirm = opts.confirm ?? askConfirm;
+    this.sessions = opts.sessions ?? fetchSessionAccountsOrNull;
     this.element = document.createElement("div");
     this.element.className = "settings-section backend-section";
     if (!opts.headless) {
@@ -496,13 +528,21 @@ export class BackendSection {
    * ⇒ 现在：操作期间**禁用本行按钮**，然后**轮询到状态落定**（或超时）再放开。
    * ⚠ 超时不是失败：远端断流后对面进程什么时候退，我们在本机看不见（诚实边界 11c）。
    *
-   * 〔HX1 · 4D · D-a〕上面「只发 SIGKILL 就返回」是历史：本机那一支今天先 SIGTERM、等它自己收尾（≤ 约 10 秒）、
+   * 〔HX1 · 4D · D-a〕上面「只发 SIGKILL 就返回」是历史：本机那一支今天先 SIGTERM、等它自己收尾（≤ 约 35 秒；后端自己 30 秒到期会先说清哪几条没做完再退）、
    * 还在才强杀，**等完才返回**（`stop_grace.rs`）⇒ 按钮会禁用那么久；强杀了 / 没停掉 ⇒ 命令回 `Err`，走下面那条失败提示。
    */
   private async act(origin: string, what: "start" | "stop"): Promise<void> {
     const cells = this.cellHosts.get(origin);
     const btns = cells ? [...cells.querySelectorAll("button")] : [];
     for (const b of btns) b.disabled = true;
+    // 〔HX1 · D-f〕停**本机**后端之前：有走本机中转的活会话 ⇒ 先问一句、说几条会断（远端的中转是那台上另一个进程，停那条流不碰它）。
+    if (what === "stop" && origin === LOCAL_ORIGIN) {
+      const warn = stopWarning(await this.sessions(origin));
+      if (warn !== null && !(await this.confirm(warn))) {
+        for (const b of btns) b.disabled = false;
+        return;
+      }
+    }
     try {
       const msg =
         what === "start"

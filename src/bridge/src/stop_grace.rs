@@ -6,8 +6,8 @@
 //! （`设计/05 §3.3.2`「执行归调用方」）—— 就是本模块的 [`STOP_GRACE_TRIES`] × [`STOP_POLL`]。
 //!
 //! ⚠ 值住 monitor：`05 §3.3.2`「值归后端」这一格没做到（与 `dial_host::ACK_DEADLINE` 同形，如实登记）。
-//! 取值：在飞的阻塞写（存盘 ≤ 8 MiB · 递归删 ≤ 10 万条 · 一次 tmux）本机都是秒内；大文件同机复制
-//! （`files-copy`，没有进度、不可取消）可能超过它 ⇒ 被强杀的那一格由调用方说出来。
+//! 取值：比后端自己的退出排空期限（`inbound::DRAIN_DEADLINE`，30 秒）多 5 秒 —— 正常情形后端自己先退（排空完或到期说清），
+//! 这边的强杀只兜后端连那一步都走不到的形状。大文件同机复制（`files-copy`，没有进度、不可取消）可能超过它 ⇒ 被列进「没做完」。
 //! ⚠ 本模块只管「怎么等」，**不认识任何平台原语**：发信号 · 看它还在不在 · 强杀，三样都由调用方注入
 //! （自己起的那个 = `Child`；接管来的那个 = 按 pid 并核身份，见 `local_backend_host.rs`）。
 
@@ -15,8 +15,12 @@ use std::time::Duration;
 
 /// 看一眼「它还在不在」的间隔。
 pub(crate) const STOP_POLL: Duration = Duration::from_millis(100);
-/// 最多看几眼（× [`STOP_POLL`] ≈ 10 秒）。**一次性条件，有次数上限** —— 登记在 `rust_timer_registry`（wait-for-condition）。
-pub(crate) const STOP_GRACE_TRIES: u32 = 100;
+/// 最多看几眼（× [`STOP_POLL`] ≈ 35 秒）。**一次性条件，有次数上限** —— 登记在 `rust_timer_registry`（wait-for-condition）。
+///
+/// 〔HX1 · 主会话裁拍板项 1〕后端自己兜了一个退出排空期限（`src/backend/inbound.rs::DRAIN_DEADLINE`，30 秒）⇒
+/// 这里要**比它久一点**：好让后端先把「哪几条没做完」说出来、自己退；这边的强杀只兜后端连那一步都走不到的情形。
+/// 两边的关系由 `stop_grace_tests::s4_the_monitor_waits_a_little_longer_than_the_backend_drains` 跨半边钉住。
+pub(crate) const STOP_GRACE_TRIES: u32 = 350;
 
 /// 「停」的结局。**三态**：干净地停了 · 等不到、强杀了（在跑的写可能只做了一半）· 连强杀都没成。
 #[derive(Debug, PartialEq, Eq)]

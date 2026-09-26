@@ -9146,6 +9146,21 @@
       "zh": "停后端失败",
       "args": []
     },
+    "backend.stop.relayConfirm": {
+      "kind": "body",
+      "zh": "有 {n} 条会话在走本机中转。停了本机后端之后，它们的每一次请求都会失败，直到再起后端。仍然停？",
+      "args": ["n"]
+    },
+    "backend.stop.relayMaybe": {
+      "kind": "body",
+      "zh": "有 {n} 条会话在走本机中转，另有 {k} 条说不清走不走。停了本机后端之后，走中转的会话每一次请求都会失败，直到再起后端。仍然停？",
+      "args": ["k", "n"]
+    },
+    "backend.stop.relayUnknown": {
+      "kind": "body",
+      "zh": "问不到现在有几条会话在走本机中转。停了本机后端之后，走中转的会话每一次请求都会失败，直到再起后端。仍然停？",
+      "args": []
+    },
     "backend.start.failed": {
       "kind": "error",
       "zh": "起后端失败",
@@ -11149,11 +11164,6 @@
       "zh": "把后端 {bin} 复制成本机 ccm 入口失败：{e}",
       "args": ["bin", "e"]
     },
-    "rsLocalBackend.extract.mkdirFailed": {
-      "kind": "error",
-      "zh": "建目录 {dir} 失败：{e}",
-      "args": ["dir", "e"]
-    },
     "rsLocalBackend.ccmEntry.readFailed": {
       "kind": "error",
       "zh": "读不到后端程序 {bin}：{e}",
@@ -12458,6 +12468,11 @@
       "kind": "error",
       "zh": "置可执行位失败：{e}",
       "args": ["e"]
+    },
+    "rsPlatformFs.mkdir.failed": {
+      "kind": "error",
+      "zh": "建目录 {dir} 失败：{e}",
+      "args": ["dir", "e"]
     },
     "rsChanWire.hop.unreachable": {
       "kind": "error",
@@ -15382,8 +15397,8 @@
     },
     "rsLocalBackendHost.stop.forced": {
       "kind": "error",
-      "zh": "本机后端 10 秒内没收完手上的活，已强制结束（pid={pid}）。那一刻在跑的写可能没做完。",
-      "args": ["pid"]
+      "zh": "本机后端 {secs} 秒内没收完手上的活，已强制结束（pid={pid}）。那一刻在跑的写可能没做完。",
+      "args": ["pid", "secs"]
     },
     "rsLocalBackendHost.stop.stillThere": {
       "kind": "error",
@@ -15549,11 +15564,6 @@
       "kind": "error",
       "zh": "写 {path} 失败：{e}",
       "args": ["path", "e"]
-    },
-    "rsLocalBackendHost.fs.mkdirFailed": {
-      "kind": "error",
-      "zh": "建目录 {dir} 失败：{e}",
-      "args": ["dir", "e"]
     },
     "rsLocalBackendHost.token.noRandom": {
       "kind": "error",
