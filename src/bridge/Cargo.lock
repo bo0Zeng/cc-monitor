@@ -142,6 +142,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
+name = "agent-tools-core"
+version = "0.1.0"
+
+[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -561,6 +565,7 @@ name = "branch-core"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+ "shell-quote-core",
 ]
 
 [[package]]
@@ -1863,6 +1868,9 @@ dependencies = [
 [[package]]
 name = "gate-core"
 version = "0.1.0"
+dependencies = [
+ "acct-core",
+]
 
 [[package]]
 name = "gdk"
@@ -3138,6 +3146,7 @@ name = "monitor"
 version = "3.8.1"
 dependencies = [
  "acct-core",
+ "agent-tools-core",
  "branch-core",
  "codex-token-core",
  "copy-core",
@@ -3152,7 +3161,7 @@ dependencies = [
  "notify-debouncer-mini",
  "parking_lot",
  "relay-route-core",
- "search-core",
+ "rfd",
  "serde",
  "serde_json",
  "shell-quote-core",

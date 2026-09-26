@@ -40,3 +40,142 @@ pub fn make_executable(p: &Path) -> Result<(), String> {
     }
     Ok(())
 }
+
+/// 〔HX1 · 4D · 主会话裁 HX1 拍板项 4〕**monitor 建后端自家目录（`~/.cc-monitor` 与它底下几层）的那一个函数**：
+/// 建的那一下就是只给本人（unix：`DirBuilder` 的 mode 在创建时生效，没有「先按 umask 建出来、再收窄」的那一段），
+/// 缺的中间几层一并这样建；**已在的不动**（那可能是用户自己设的）。别的平台照常建（那边不是 unix 权限位这一问）。
+///
+/// 与后端那一份（`src/backend/own_dir.rs::ensure_private_dir`）是两个 crate 各一份：两个 crate 没有能放平台原语的共享落点
+/// （`creds-core` 的平台那半是 `harden` feature，monitor 不开）—— 权限位同一个值（0700），各自的判据各钉一半。
+/// 这是 `backend/control/local_backend.rs` 那几处释放的注入参数（`C10`：那一半不认识平台），宿主自己也直接调。
+pub fn ensure_private_dir(dir: &Path) -> Result<(), String> {
+    if dir.is_dir() {
+        return Ok(());
+    }
+    let mut b = std::fs::DirBuilder::new();
+    b.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt as _;
+        b.mode(0o700);
+    }
+    b.create(dir).map_err(|e| {
+        copy_text(
+            "rsPlatformFs.mkdir.failed",
+            &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
+        )
+    })
+}
+
+/// 〔HX2 · 第四波 4D〕**monitor 自有状态文件的跨进程锁**：锁那份文件所在的**目录**（不是文件：文件每写一次就被原子挪换成新 inode）。
+///
+/// 守的要求：主会话 4D 追加「CFG1 把 `config.json` 收成单一写口 …… 两个 monitor 进程同写没有跨进程锁 —— 用你那一族同一套 `flock`
+/// （Windows 对应）把它也包上」。与后端那一份（`src/backend/platform/lock.rs::hold`）是**同一种锁**、两个 crate 各一份
+/// （理由同 [`ensure_private_dir`]：没有能放平台原语的共享落点）：
+/// - unix：只读打开目录 ＋ std `File::lock`（Linux 上就是 `flock(LOCK_EX)`，与后端 `libc::flock` 进内核同一张表 ⇒ 两边互斥）；
+///   锁在打开文件描述上 ⇒ 同一进程两个线程各开一次也互斥；守卫落地即关描述即放锁，进程被杀内核替它放。
+/// - Windows：`Global\ccm-own-state-<FNV-1a(小写路径)>` 命名互斥量（名字拼法与后端逐字相同，判据对拍）。🔴 真 Windows 上没跑过。
+///
+/// 阻塞等到拿到为止（等的是别人放锁，不是节拍）。`dir` 必须已经在（这里不建：建目录是调用方的事）。
+pub struct DirLock {
+    #[cfg(unix)]
+    _dir: std::fs::File,
+    #[cfg(windows)]
+    mutex: std::os::windows::io::RawHandle,
+}
+
+#[cfg(unix)]
+pub fn hold_dir_lock(dir: &Path) -> Result<DirLock, String> {
+    let f = std::fs::File::open(dir).map_err(|e| {
+        copy_text(
+            "rsPlatformFs.lock.openFailed",
+            &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
+        )
+    })?;
+    f.lock().map_err(|e| {
+        copy_text(
+            "rsPlatformFs.lock.failed",
+            &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
+        )
+    })?;
+    Ok(DirLock { _dir: f })
+}
+
+#[cfg(windows)]
+#[link(name = "kernel32")]
+extern "system" {
+    fn CreateMutexW(
+        attrs: *const core::ffi::c_void,
+        initial_owner: i32,
+        name: *const u16,
+    ) -> std::os::windows::io::RawHandle;
+    fn WaitForSingleObject(handle: std::os::windows::io::RawHandle, milliseconds: u32) -> u32;
+    fn ReleaseMutex(handle: std::os::windows::io::RawHandle) -> i32;
+    fn CloseHandle(handle: std::os::windows::io::RawHandle) -> i32;
+}
+
+/// 互斥量的名字（与后端 `platform/lock.rs::mutex_name` 逐字同一种拼法：小写路径的 FNV-1a）。
+#[cfg(windows)]
+fn dir_lock_name(namespace: &str, dir: &Path) -> Vec<u16> {
+    let key = dir.to_string_lossy().to_ascii_lowercase();
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in key.as_bytes() {
+        h ^= u64::from(*b);
+        h = h.wrapping_mul(0x1000_0000_01b3);
+    }
+    format!("{namespace}\\ccm-own-state-{h:016x}")
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect()
+}
+
+#[cfg(windows)]
+pub fn hold_dir_lock(dir: &Path) -> Result<DirLock, String> {
+    const WAIT_FOREVER: u32 = 0xFFFF_FFFF;
+    const WAIT_OBJECT_0: u32 = 0;
+    const WAIT_ABANDONED: u32 = 0x80;
+    let mut handle = std::ptr::null_mut();
+    for ns in ["Global", "Local"] {
+        let name = dir_lock_name(ns, dir);
+        // SAFETY: `name` 以 0 结尾、活到调用结束；安全属性给空 = 默认。
+        handle = unsafe { CreateMutexW(std::ptr::null(), 0, name.as_ptr()) };
+        if !handle.is_null() {
+            break;
+        }
+    }
+    if handle.is_null() {
+        return Err(copy_text(
+            "rsPlatformFs.lock.failed",
+            &[
+                ("dir", &dir.display().to_string()),
+                ("e", &std::io::Error::last_os_error().to_string()),
+            ],
+        ));
+    }
+    // SAFETY: `handle` 是刚拿到的互斥量句柄。
+    match unsafe { WaitForSingleObject(handle, WAIT_FOREVER) } {
+        WAIT_OBJECT_0 | WAIT_ABANDONED => Ok(DirLock { mutex: handle }),
+        other => {
+            // SAFETY: 同上；没拿到就只关句柄。
+            unsafe { CloseHandle(handle) };
+            Err(copy_text(
+                "rsPlatformFs.lock.failed",
+                &[
+                    ("dir", &dir.display().to_string()),
+                    ("e", &format!("{other:#x}")),
+                ],
+            ))
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for DirLock {
+    fn drop(&mut self) {
+        // SAFETY: 句柄由 `hold_dir_lock` 拿到、只在这里放一次。
+        unsafe {
+            ReleaseMutex(self.mutex);
+            CloseHandle(self.mutex);
+        }
+    }
+}

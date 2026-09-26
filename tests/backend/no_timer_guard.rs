@@ -686,6 +686,14 @@ mod tests {
         "「测试连接」不再走代理、或探活改由界面侧期限兜住的那天。",
     ),
         (
+        "inbound.rs",
+        "Duration::from_millis(30_000)",
+        "〔HX1 · 4D〕流模式收场的**退出排空期限**（`inbound::DRAIN_DEADLINE`）。它**是**一个会醒来的构件 —— \
+         零定时器在这里让位，那一处的调用另登记在 `REGISTERED_EXIT_DEADLINE`（恰好一行）。只在进程要退时装一次。",
+        "缩性质",
+        "后端的收场改由外部（宿主 / 进程管理器）保证上限、远端也有人叫它退的那天 —— 那时这一条与 `REGISTERED_EXIT_DEADLINE` 一起摘。",
+    ),
+        (
         // 〔RK1 · 第四波 4C 新增〕
         "relay/machine.rs",
         "Duration::from_millis(2_000)",
@@ -699,6 +707,32 @@ mod tests {
     )];
 
     use crate::guard_support::production_code;
+
+    /// 🔴〔HX1 · 4D · 主会话裁 HX1 拍板项 1〕**唯一**一处会让后端自己醒来的构件：**退出排空期限**。
+    ///
+    /// `(文件, 生产段里的片段——恰好一处, why——为什么零定时器在这里让位)`。**类型就是一行**（不是表）：
+    /// 想再加第二处，得先把这个类型改成表 —— 那一改本身就是一次会被看见的放宽。
+    ///
+    /// 它在收场时（流模式后端要退了）装一次、到点就退，不驱动任何循环、不产生节拍；上面两条扫描都**只**对这一处的这一个片段让位
+    /// （剥掉这一个片段之后照常扫同一份文件）。性质的出处：`INVARIANTS §48.2`「脱离后不留僵尸」—— 远端后端在 SSH 断开那一刻
+    /// 没人叫它退、也没人给上限，一条阻塞在挂死文件系统上的写会把一个没有宿主的进程无限期留下。
+    pub(super) const REGISTERED_EXIT_DEADLINE: (&str, &str, &str) = (
+        "inbound.rs",
+        "tokio::time::sleep(deadline)",
+        "流模式收场（`inbound::exit_after_drain_within`）等在飞的阻塞命令做完的**上限**（`DRAIN_DEADLINE` 30 秒）：\
+         到点仍没排空 ⇒ 说出哪几条没做完、退出。只装一次、只在进程要退时装；它是一个一次性的期限，不是节拍器。\
+         零定时器在这里让位的理由：排空要有上限（主会话 D-a），而远端后端 SSH 断开时**没有**别的一方能给它上限。",
+    );
+
+    /// 按 [`REGISTERED_EXIT_DEADLINE`] 剥掉那一个片段（恰好一处；文件对不上就原样返回）。
+    pub(super) fn without_exit_deadline(name: &str, code: &str) -> String {
+        let (file, snippet, _) = REGISTERED_EXIT_DEADLINE;
+        if matches_registered(name, file) {
+            code.replacen(snippet, "", 1)
+        } else {
+            code.to_string()
+        }
+    }
 
     /// 遍历 `src/` 下**全部**（含子目录）`.rs`，返回 `(相对路径, 生产段)`。
     ///
@@ -918,6 +952,8 @@ mod tests {
         // 补的是**调用形态**（名字要是完整的词、后面紧跟 `(`），与怎么导入无关。
         // ⚠ 补之前量过误红面：这八个名字在后端生产段今天**全为 0 处**。
         for (name, code) in &files {
+            // 〔HX1〕唯一的退出期限让位（只剥那一个片段，同一份文件其余照扫）。
+            let code = &without_exit_deadline(name, code);
             for call in [
                 "sleep",
                 "interval",
@@ -942,6 +978,7 @@ mod tests {
             }
         }
         for (name, code) in &files {
+            let code = &without_exit_deadline(name, code);
             for pat in periodic_wake_patterns() {
                 assert!(
                     !code.contains(&pat),
@@ -992,6 +1029,60 @@ mod tests {
                 hit,
                 "登记表里的 {file} / `{snippet}` 已经不在生产代码里了，请清理登记"
             );
+        }
+    }
+
+    /// 〔HX1 · 4D〕**唯一的退出期限还在盘上、恰好一处、只在它登记的那份文件里**；而且让位只让了它 ——
+    /// 剥掉登记的片段之后，那份文件的生产段对两条扫描都干净；**不剥**的话调用形态那一条当场认得出它（正控：让位是真在让）。
+    /// 守的要求：主会话裁 HX1 拍板项 1「在 `no_timer_guard` 开一个登记口（登记表一行，写明它是唯一的退出期限）」。
+    #[test]
+    fn the_exit_deadline_is_the_one_registered_wake_and_nothing_else_hides_behind_it() {
+        let (file, snippet, why) = REGISTERED_EXIT_DEADLINE;
+        assert!(why.chars().count() >= 40, "登记没写清为什么让位");
+        let hits: Vec<(String, usize)> = backend_sources()
+            .into_iter()
+            .map(|(n, code)| {
+                let c = code.matches(snippet).count();
+                (n, c)
+            })
+            .filter(|(_, c)| *c > 0)
+            .collect();
+        assert_eq!(hits.len(), 1, "登记的片段应当恰好住一份文件：{hits:?}");
+        assert!(
+            matches_registered(&hits[0].0, file) && hits[0].1 == 1,
+            "{hits:?}"
+        );
+        let code = backend_sources()
+            .into_iter()
+            .find(|(n, _)| matches_registered(n, file))
+            .map(|(_, c)| c)
+            .expect("那份文件");
+        // 正控：不剥 ⇒ 调用形态认得出（`sleep(`）。
+        assert!(
+            code.lines().any(|l| is_call_of(l, "sleep")),
+            "正控失效：没剥的时候也认不出那一处"
+        );
+        // 剥掉那一个片段 ⇒ 两条扫描都干净（别的会醒来的构件没有借这个口子躲进来）。
+        let rest = without_exit_deadline(&hits[0].0, &code);
+        for call in [
+            "sleep",
+            "interval",
+            "interval_at",
+            "recv_timeout",
+            "park_timeout",
+            "wait_timeout",
+            "timeout",
+            "tick",
+        ] {
+            assert!(
+                !rest
+                    .lines()
+                    .any(|l| !l.trim_start().starts_with("//") && is_call_of(l, call)),
+                "{file} 剥掉退出期限之后仍有 `{call}(`"
+            );
+        }
+        for pat in periodic_wake_patterns() {
+            assert!(!rest.contains(&pat), "{file} 剥掉退出期限之后仍有 `{pat}`");
         }
     }
 
@@ -1146,9 +1237,11 @@ mod g6_reach {
         //   那条一次性连接的 inactivity 上限，从界面侧搬进拨号代理）。keepalive 那一条只是换了住址。
         // 〔RK1 · 第四波 4C〕5 → **6**：多的那一条是 `relay/machine.rs` 的 `PROBE_DEADLINE`（远端「口上是不是我们的中转」
         //   那两发差分探针的一次阻塞上限）。同族于中转那两条 socket 期限，不驱动任何循环。
+        // 〔HX1 · 4D〕6 → **7**：多的那一条是 `inbound.rs` 的 `DRAIN_DEADLINE`（退出排空期限）—— 它是本表第一条
+        //   **真会醒来**的登记（cell `缩性质`），调用那一处另住 `REGISTERED_EXIT_DEADLINE`。
         assert_eq!(
-            registered, 6,
-            "登记表从 6 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
+            registered, 7,
+            "登记表从 7 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
              改它等于改判据的射程"
         );
     }
@@ -1221,6 +1314,8 @@ mod g6_reach {
         let pats = periodic_wake_patterns();
         let mut hits: Vec<String> = Vec::new();
         for (name, code) in &files {
+            // 〔HX1〕唯一的退出期限让位（与正题那条同一个剥法：`tests::without_exit_deadline`）。
+            let code = super::tests::without_exit_deadline(name, code);
             for pat in &pats {
                 if code.contains(pat.as_str()) {
                     hits.push(format!("  {name}: {pat}"));

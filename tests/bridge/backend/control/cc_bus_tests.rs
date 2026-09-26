@@ -414,8 +414,9 @@ fn quote_roundtrip_is_the_real_property() {
 // ⚠〔`K-R98` 09-13〕发消息那条**不在这里了**：它没有命令构造器可言（改走后端原语）。
 //   那道 id 白名单**没有丢，换了住址** —— 搬进 `send_via_backend`，〔散文墓碑〕
 //   由 `the_send_path_asks_the_backend_instead_of_composing_a_shell_line` 按源码钉着。〔散文墓碑〕
-//   〔C4e〕发消息迁到界面：白名单今天住 `src/cc-bus-control.ts` 的 `sendMessage` 发出之前；两份 id 规则由
-//   `the_bus_id_rule_agrees_with_the_front_end_on_the_shared_samples` 对拍。
+//   〔C4e〕发消息迁到界面：白名单当时住 `src/cc-bus-control.ts` 的 `sendMessage` 发出之前。
+//   〔DUP2 · J12〕今天住后端 `bus-send` / `bus-kill` / `bus-spawn` 的入口（共享 crate 那一份 `shell_quote_core::bus_id_ok`，
+//   本侧 [`is_valid_bus_id`] 是它的再导出），对金样那条是 `the_bus_id_rule_agrees_with_the_shared_samples`。
 #[test]
 fn builders_reject_bad_ids_at_the_call_site() {
     for bad in ["--help", "-t", "a b", "a;id", "", "a'b", "a/b"] {
@@ -1824,13 +1825,14 @@ fn the_front_end_speaks_the_bus_ops_only_through_one_module() {
     }
 }
 
-/// ★〔C4e · 第四波 4C〕**agent id 的规则两份对拍**：monitor [`is_valid_bus_id`]（读收件箱那一条还在用）与界面
-/// `src/cc-bus-control.ts::isValidBusId`（发消息 / 收掉 / 查在线前先核）读同一份 `ids`（跨语言金样 `cc-bus-control.golden.json`）。
+/// ★〔C4e · 第四波 4C〕**agent id 的规则对金样**：monitor [`is_valid_bus_id`]（读收件箱那一条）读跨语言金样
+/// `cc-bus-control.golden.json` 的 `ids`。
 ///
-/// 守的要求：同一条规则（非空 · 不以 `-` 开头 · 只含 `[A-Za-z0-9_-]`）两处实现，漂开的那天 `--help` 这种 id 会从一侧溜过去
-/// （它在盘上真出现过）。本侧逐条判 == 金样；TS 侧在 `tests/cc-bus-control.vitest.ts` 判同一份。
+/// 〔DUP2 · J12〕界面那一份（`src/cc-bus-control.ts` 里的 TS 副本）删了，实现搬进共享 crate（`shell_quote_core::bus_id_ok`），
+/// 这里的 [`is_valid_bus_id`] 是它的再导出；后端 `bus-*` 入口用同一个函数判同一份 `ids`
+/// （`tests/backend/control/cc_bus_tests.rs::bus_ids_are_judged_here_before_they_reach_cc_bus`）。本条留着：读收件箱这一侧对金样。
 #[test]
-fn the_bus_id_rule_agrees_with_the_front_end_on_the_shared_samples() {
+fn the_bus_id_rule_agrees_with_the_shared_samples() {
     let g: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(
             crate::guard_support::repo_root().join("tests/__fixtures__/cc-bus-control.golden.json"),

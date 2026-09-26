@@ -69,82 +69,6 @@ fn both_remote_path_sinks_still_ask_their_fence() {
 }
 use super::*;
 
-/// 单一来源漂移守卫①：写进远端 profile 的**别名块**。
-/// F02 起本块只剩组合层别名；`K-R48` 第二拍起实现住后端本体
-/// （远端那个 `~/.local/bin/ccm` 是 [`ccm_entry_shim`]，见下一条判据）。
-#[test]
-fn ccm_aliases_snippet_has_required_elements() {
-    for needle in [
-        ".local/bin", // CLI 落点必须进 PATH，否则别名全指向不存在的命令
-        "cc()",       // 裸起（`K-R58` 起 = 就在当前目录，ccm 不再替用户挑）
-        "cct()",      // tmux 版
-        "ccm --tmux", // 别名只做组合，不自己建容器
-        "declare -f", // 防覆盖用户已有同名函数
-    ] {
-        assert!(
-            CCM_WRAPPER_SNIPPET.contains(needle),
-            "别名块缺关键要素: {needle}"
-        );
-    }
-    // 别名块**不得**再含实现（那是 CLI 的事；混回来就又变成两套实现）。
-    for forbidden in ["__ccm_rbind()", "exec claude", "tmux new-session"] {
-        assert!(
-            !CCM_WRAPPER_SNIPPET.contains(forbidden),
-            "别名块不该含实现细节 {forbidden}——实现属于 ~/.local/bin/ccm"
-        );
-    }
-}
-
-/// `KR58D2` —— `src/doc/IPC-PROTOCOL.md` §11 里描述别名块的那一句，**行数与名单同句**。
-///
-/// 本区最高频的那条病就是「数与名单同句、只改一半」⇒ 这里**两样一起对**，
-/// 而且两样都**现算**自真相源 [`CCM_WRAPPER_SNIPPET`]（= `src/shared/ccm-aliases.sh` 本身），
-/// 判据里不抄第二份名单、不写死行数。
-///
-/// ⚠ **它买到的射程只有这一句**：§11 其余部分（`shared/ccm` · `CCM_CLI_SCRIPT`）
-/// 在 `K-R48` 第二拍之后已经是**存量馊话**，本判据够不着，也不假装够得着。
-///
-/// ⚠ 判据够不着被测对象时必须**响亮地红**，不许变成空真 ⇒ 找不到那一句就 panic。
-#[test]
-fn the_protocol_doc_sentence_about_the_alias_block_matches_the_file() {
-    const IPC_DOC: &str = include_str!("../../src/doc/IPC-PROTOCOL.md");
-    let want_names = crate::sftp::builtin_alias_names();
-    assert!(
-        !want_names.is_empty(),
-        "从 src/shared/ccm-aliases.sh 里一个别名都没解析出来 —— 判据够不着被测对象了，先修判据"
-    );
-    let want_lines = CCM_WRAPPER_SNIPPET.lines().count();
-
-    let sent = IPC_DOC
-        .lines()
-        .find(|l| l.contains("src/shared/ccm-aliases.sh`，**"))
-        .expect(
-            "src/doc/IPC-PROTOCOL.md 里描述别名块的那一句找不到了 —— \
-                 要么它被改写了、要么被删了；无论哪种，这条对账现在是瞎的",
-        );
-    let bold = sent
-        .split("**")
-        .nth(1)
-        .expect("那一句里的粗体段没了 —— 对账抓不到数与名单");
-
-    assert!(
-        bold.contains(&format!("{want_lines} 行")),
-        "行数对不上：src/shared/ccm-aliases.sh 现在 {want_lines} 行，而文档那句写的是「{bold}」"
-    );
-    assert!(
-        bold.contains(&format!("这 {} 个", want_names.len())),
-        "别名个数对不上：现在 {} 个（{}），而文档那句写的是「{bold}」",
-        want_names.len(),
-        want_names.join(" / ")
-    );
-    let mut doc_names: Vec<&str> = bold.split('`').skip(1).step_by(2).collect();
-    doc_names.sort_unstable();
-    assert_eq!(
-        doc_names, want_names,
-        "名单对不上：文档那句列的是 {doc_names:?}，盘上真有的是 {want_names:?}"
-    );
-}
-
 /// 单一来源漂移守卫②：部署为远端 `~/.local/bin/ccm` 的 **CLI 本体**。
 ///
 /// 这些不是"要素清单"而是**血的教训清单**，每条对应一个真实踩过的坑：
@@ -265,68 +189,6 @@ fn the_remote_ccm_entry_is_an_entry_not_an_implementation() {
         tricky.contains(&shell_quote_core::posix_quote("/home/用户/带 空格/it's")),
         "backend_path 没经 `shell_quote_core::posix_quote` —— 带空格的路径会被拆成两个词。\n{tricky}"
     );
-}
-
-#[test]
-fn merge_profile_block_append_replace_idempotent() {
-    let snippet = "ccm() { :; }";
-    // 空 existing → 仅块。
-    let m1 = merge_profile_block("", snippet, "远端 ~/.bashrc").unwrap();
-    assert!(m1.contains(CCM_PROFILE_BEGIN));
-    assert!(m1.contains("ccm() { :; }"));
-    assert!(m1.contains(CCM_PROFILE_END));
-
-    // 无块 → 追加，原内容保留在前。
-    let existing = "export PATH=/x\nalias ll='ls -l'\n";
-    let m2 = merge_profile_block(existing, snippet, "远端 ~/.bashrc").unwrap();
-    assert!(m2.starts_with(existing), "块外内容保留在前");
-    assert!(m2.contains(CCM_PROFILE_BEGIN));
-
-    // 幂等：同 snippet 再 merge 不变。
-    assert_eq!(
-        merge_profile_block(&m2, snippet, "远端 ~/.bashrc").unwrap(),
-        m2,
-        "merge∘merge == merge"
-    );
-
-    // 重装（换 snippet 内容）→ 整块替换，只有一个块，块外内容仍保留。
-    let m3 = merge_profile_block(&m2, "ccm() { echo new; }", "远端 ~/.bashrc").unwrap();
-    assert!(m3.starts_with(existing), "重装仍保留块外内容");
-    assert!(
-        m3.contains("echo new") && !m3.contains("{ :; }"),
-        "块被整块替换"
-    );
-    assert_eq!(m3.matches(CCM_PROFILE_BEGIN).count(), 1, "重装不重复加块");
-}
-
-/// 审计 B1 回归：块外内容（含块**后**的用户内容）在替换时绝不丢。
-#[test]
-fn merge_profile_block_preserves_content_after_block() {
-    let existing =
-        format!("head_line\n{CCM_PROFILE_BEGIN}\nold()\n{CCM_PROFILE_END}\ntail_user_line\n");
-    let m = merge_profile_block(&existing, "ccm() { echo new; }", "远端 ~/.bashrc").unwrap();
-    assert!(m.contains("head_line"), "块前内容保留");
-    assert!(
-        m.contains("tail_user_line"),
-        "块后用户内容保留（B1 不能吞掉）"
-    );
-    assert!(m.contains("echo new") && !m.contains("old()"), "块整块替换");
-    assert_eq!(m.matches(CCM_PROFILE_BEGIN).count(), 1);
-}
-
-/// 审计 B1 核心：BEGIN 存在但其后无 END（损坏/截断）→ Err 中止，**绝不**误配前面的 END
-/// 而吞掉用户内容。
-#[test]
-fn merge_profile_block_aborts_on_orphan_begin() {
-    // END 在前、孤立 BEGIN 在后无配对 END：独立 find 会误配 → 旧实现吞内容。新实现报错。
-    let corrupt = format!("{CCM_PROFILE_END}\nuser_a\n{CCM_PROFILE_BEGIN}\nuser_b\n");
-    assert!(
-        merge_profile_block(&corrupt, "ccm() { :; }", "远端 ~/.bashrc").is_err(),
-        "孤立 BEGIN（其后无 END）必须中止而非吞内容"
-    );
-    // 纯孤立 BEGIN（截断的安装）→ Err。
-    let truncated = format!("user_x\n{CCM_PROFILE_BEGIN}\nhalf");
-    assert!(merge_profile_block(&truncated, "ccm() { :; }", "远端 ~/.bashrc").is_err());
 }
 
 /// F08b：仅当交叉编译产物已放进 embedded-backends/（build.rs 置了 `embedded_backends` cfg）
@@ -686,7 +548,7 @@ fn deploy_decision_truth_table() {
 /// I1：六形逐形（期望取自 `96 §7.2.4` 那张表 ＋ 0 字节那一格按「没装」）。
 #[test]
 fn identity_decision_answers_each_state_without_merging_them() {
-    const EXPECT: &str = "p9-sample";
+    const EXPECT: &str = "p9b-sample";
     let d = |id: RemoteIdentity| identity_decision(&id, EXPECT, "devbox", "/h/.cc-monitor/bin/ccm");
     assert!(
         matches!(d(RemoteIdentity::Missing), Ok(DeployAction::Deploy(_))),
@@ -701,11 +563,11 @@ fn identity_decision_answers_each_state_without_merging_them() {
         Ok(DeployAction::Skip),
         "同一版 ⇒ 复用"
     );
-    let Ok(DeployAction::Deploy(why)) = d(RemoteIdentity::Stamp("p8-older".into())) else {
-        panic!("另一版 ⇒ 该换");
+    let Ok(DeployAction::Deploy(why)) = d(RemoteIdentity::Stamp("p8z-older".into())) else {
+        panic!("更旧的一版 ⇒ 该换");
     };
     assert!(
-        why.contains("p8-older") && why.contains(EXPECT),
+        why.contains("p8z-older") && why.contains(EXPECT),
         "换的理由没说清两边各是哪一版：{why}"
     );
     // 三种「判不清它是谁」：显式失败，而且三句话互不相同（下一步不同：一个没身份、一个身份不唯一、一个判不了）。
@@ -1030,22 +892,6 @@ fn remote_parent_and_marker() {
     // 〔DP1〕旁挂标记的路径拼法随标记一起退役（后端那条路读字节自己的身份戳）。
 }
 
-#[test]
-fn strip_removes_paired_block_keeps_surrounding() {
-    let s = format!("head\n{CCM_PROFILE_BEGIN}\nccm() {{ :; }}\n{CCM_PROFILE_END}\ntail\n");
-    let out = strip_profile_block(&s, "远端 ~/.bashrc").unwrap();
-    assert_eq!(out, "head\ntail\n");
-    assert!(!out.contains(CCM_PROFILE_BEGIN));
-    // 幂等：再 strip 不变
-    assert_eq!(strip_profile_block(&out, "远端 ~/.bashrc").unwrap(), out);
-}
-
-#[test]
-fn strip_noop_when_no_block() {
-    let s = "just user content\nno block here\n";
-    assert_eq!(strip_profile_block(s, "远端 ~/.bashrc").unwrap(), s);
-}
-
 /// **T04 审计⑤**：抽出来的谓词要对两个消费者都成立，且**标记词是必需条件**
 /// ——那是防误删的关键（把"这是 cc-monitor 管的目录"变成路径本身的性质）。
 #[test]
@@ -1071,35 +917,6 @@ fn safe_managed_path_requires_a_marker() {
     assert!(is_safe_remote_managed_path("/opt/cc-acct-iso", m));
     assert!(is_safe_remote_managed_path("/home/u/.cc-monitor/ai", m));
     assert!(!is_safe_remote_managed_path("/opt/other", m));
-}
-
-/// **T04 审计②：迁移后远端这三个边界的语义确实变了，逐条锁死。**
-/// 我原话"判定没变"已被实测证伪——写在这里免得下次又当成"没变"。
-#[test]
-fn remote_merge_boundary_semantics_after_migration() {
-    let snip = "ccm() { :; }";
-    // ① 行内 marker 不再命中 → 追加，且**用户那两行 echo 一个字节都不动**
-    //    （旧实现会切断第一行、吃掉第二行——远端一个未申报就修掉的数据丢失）
-    let inline =
-        format!("a\necho \"{CCM_PROFILE_BEGIN}\"\necho \"{CCM_PROFILE_END}\"\nuser code\n");
-    let got = merge_profile_block(&inline, snip, "远端 ~/.bashrc").unwrap();
-    assert!(got.starts_with(&inline), "块外内容必须逐字保留：{got}");
-    assert!(got.contains(snip));
-    // ② BEGIN 与 END 同一行 → 现在 Err（**退化，如实记**：旧实现能替换该行）
-    let same_line = format!("a\n{CCM_PROFILE_BEGIN} {CCM_PROFILE_END}\nb\n");
-    let e = merge_profile_block(&same_line, snip, "远端 ~/.bashrc").unwrap_err();
-    assert!(e.contains("找不到配对的 END"), "{e}");
-    // ③ 缩进 marker → 归一到列 0（旧实现保留 BEGIN 缩进、丢 END 缩进，不自洽）
-    let indented = format!("a\n  {CCM_PROFILE_BEGIN}\nold\n\t{CCM_PROFILE_END}\nb\n");
-    let got = merge_profile_block(&indented, snip, "远端 ~/.bashrc").unwrap();
-    assert!(
-        got.contains(&format!("\n{CCM_PROFILE_BEGIN}\n")),
-        "缩进应归一到列 0：{got}"
-    );
-    assert!(
-        got.starts_with("a\n") && got.ends_with("b\n"),
-        "块外保留：{got}"
-    );
 }
 
 // ===== T04 审计① 上传读回判据（此前这条路完全没有读回）=====
@@ -1147,152 +964,15 @@ fn upload_verify_passes_on_exact_bytes() {
     assert!(verify_readback("/r/d", 7, Some((7, Some(0)))).is_err());
 }
 
-/// Phase G 阻塞①：**「读不出来」绝不能变成「文件是空的」**。
-///
-/// 旧代码是 `read_optional(..).map(from_utf8_lossy).unwrap_or_default()`，
-/// 读失败 → `existing = ""` → install 跳过备份 + 整份覆盖用户 `.bashrc`；
-/// uninstall 回「没有 ccm 块，无需卸载」。
-#[test]
-fn read_failure_is_not_an_empty_file() {
-    // 读失败 + 明确不存在 → 当新建（这条是**反向自检**：不能一律 Err，否则首次安装就废了）
-    assert_eq!(
-        interpret_profile_read("远端 ~/.bashrc", None, Some(false), None),
-        Ok(None)
-    );
-    // 读失败 + 文件确实在 → 必须 Err
-    let e = interpret_profile_read("远端 ~/.bashrc", None, Some(true), None).unwrap_err();
-    assert!(e.contains("读不出"), "{e}");
-    assert!(e.contains("未改动任何文件"), "{e}");
-    // 读失败 + 连"在不在"都问不出来 → 也必须 Err（不许乐观当新建）
-    let e2 = interpret_profile_read("远端 ~/.bashrc", None, None, None).unwrap_err();
-    assert!(e2.contains("读不出"), "{e2}");
-}
-
-/// Phase G 阻塞②：**非 UTF-8 的 profile 必须拒绝，不许有损重写**。
-///
-/// 有损路线的恶性在于它**自带合格证**：备份写的是已经变成 U+FFFD 的那份，
-/// 读回校验两边同样有损 → 逐字节相同 → 校验通过。所以这里断言的是"根本不进那条路"。
-#[test]
-fn non_utf8_profile_is_refused_instead_of_lossily_rewritten() {
-    // GBK 的「中」= 0xD6 0xD0，单独出现不是合法 UTF-8
-    let gbk = b"# \xd6\xd0\xce\xc4\nexport PATH=$PATH\n";
-    let e = interpret_profile_read("远端 ~/.bashrc", Some(gbk), None, None).unwrap_err();
-    assert!(e.contains("不是合法 UTF-8"), "{e}");
-    assert!(e.contains("前 2 字节合法"), "偏移要说清，实得：{e}");
-    assert!(e.contains("未改动任何文件"), "{e}");
-    // 有损重写会把它变成什么——写在这里，好让人一眼看到丢了什么
-    assert_ne!(
-        String::from_utf8_lossy(gbk).into_owned().as_bytes(),
-        gbk,
-        "这条测试的前提没了：这串本来就该是有损的"
-    );
-
-    // **反向自检**：合法的多字节 UTF-8（中文注释）必须原样通过、往返零损失
-    let utf8 = "# 中文注释\nexport PATH=$PATH\n";
-    assert_eq!(
-        interpret_profile_read("远端 ~/.bashrc", Some(utf8.as_bytes()), None, None),
-        Ok(Some(utf8.to_string()))
-    );
-}
-
-/// Phase G：本机侧 v1.7.9 的那道防线（磁盘有字节却读到空）补到远端侧。
-#[test]
-fn bytes_on_disk_but_read_empty_is_refused() {
-    let e = interpret_profile_read("远端 ~/.bashrc", Some(b""), None, Some(120)).unwrap_err();
-    assert!(e.contains("有 120 字节"), "{e}");
-    assert!(e.contains("未改动任何文件"), "{e}");
-    // 反向自检：真的空文件（size 0 / 问不到 size）不能被拦
-    assert_eq!(
-        interpret_profile_read("远端 ~/.bashrc", Some(b""), None, Some(0)),
-        Ok(Some(String::new()))
-    );
-    assert_eq!(
-        interpret_profile_read("远端 ~/.bashrc", Some(b""), None, None),
-        Ok(Some(String::new()))
-    );
-}
-
-/// **结构性守卫**：远端 profile 读-改-写的**初始读取**必须走 fail-safe 读取器。
-///
-/// 〔AL1 · 2026-09-24〕**形状变了，性质没变。** 从前两个命令各自在函数体里先读、再变换，
-/// 本条就去截「函数开头到 `merge/strip_profile_block` 之间」那一段；那一段的订正史
-/// （初版扫整个体撞上写后回读 · 收窄后又撞上 CLI 那一次读）说的是同一条：
-/// **禁的必须是「喂给变换的那一次读取」的确切形态**。
-/// 今天那一次读取只有一个住址 —— `RemoteFile`（〔SR1b〕从前叫 `SftpFile`〔散文墓碑〕）的 `read`（序列 `fenced_block::apply` 先调它、
-/// 把结果交给变换），写后回读也是它（同一份 fail-closed 读取，没有第二条 lossy 的路）。
-/// ⇒ 本条钉三件：`read` 走 `read_profile_text`、不走裸 `read_optional`；
-/// 两个命令都把 profile 交给 `SftpFile` ＋ `fenced_block::apply`（不在函数体里自己读）。
-/// 〔RW1 · 第四波 09-24〕后一半改了：两个命令的读改写经远端后端（`user_files::edit`），
-/// 喂给变换的那一次读是后端的 `files-peek`；`SftpFile::read` 那一半只剩 F08 的入口 shim 在用。
-#[test]
-fn profile_read_modify_write_goes_through_the_failsafe_reader() {
-    // ⚠ 刻意不用裸 `contains`：`needle_anchor_registry` 那条递减棘轮治的正是「匹配单位比事实小」。
-    //   针要么是完整的调用形（`find_pinned`：恰好一处 ＋ 两侧有边界），要么是一个词（`contains_word`）。
-    let sftp_prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
-    let item = |sig: &str, end: &str| -> String {
-        let i = sftp_prod
-            .find(sig)
-            .unwrap_or_else(|| panic!("找不到 {sig}——守卫失效了"));
-        let j = sftp_prod[i..]
-            .find(end)
-            .map(|k| i + k)
-            .unwrap_or(sftp_prod.len());
-        sftp_prod[i..j].to_string()
-    };
-    let reader = item(
-        "async fn read(&self) -> Result<Option<String>, String> {",
-        "\n    }\n",
-    );
-    guard_core::find_pinned(
-        &reader,
-        "read_profile_text(self.fs, &self.path, &self.what)",
-    )
-    .unwrap_or_else(|e| panic!("RemoteFile::read 没走 fail-safe 读取器（{e}）：{reader}"));
-    assert!(
-        !guard_core::contains_word(&reader, "read_marker"),
-        "RemoteFile::read 又直接拿 read_marker 读了——那会把「读不出来」当成空文件，\
-             于是跳过备份 + 整份覆盖 / 谎报无需卸载"
-    );
-    let mut checked = 0usize;
-    for (sig, transform) in [
-        (
-            "pub async fn uninstall_remote_alias_block(",
-            "strip_profile_block",
-        ),
-        (
-            "pub async fn install_remote_alias_block(",
-            "merge_profile_block",
-        ),
-    ] {
-        let cmd_body = item(sig, "\n}\n");
-        assert!(
-            guard_core::contains_word(&cmd_body, transform),
-            "{sig}: 找不到 {transform}——守卫失效了"
-        );
-        // 〔RW1 · 第四波 09-24〕F10 按用户裁「按推荐改」：两个命令的读改写经**那台远端的后端**
-        //   （`user_files::edit` → `files-peek` / `files-put`），读那一次是后端的 `files-peek`
-        //   （「不存在」与「读不出来」分得开、盘上有字节却读到空 ⇒ 拒）。本条钉「交给 `user_files::edit`、
-        //   不碰 `SftpFile`、函数体里不自己读」三件。
-        guard_core::find_pinned(&cmd_body, "crate::user_files::edit(")
-            .unwrap_or_else(|e| panic!("{sig}: profile 没交给 user_files::edit（{e}）"));
-        assert!(
-            !guard_core::contains_word(&cmd_body, "RemoteFile"),
-            "{sig}: 又把 profile 交给 SFTP 那一路了 —— 用户文件只经后端写"
-        );
-        for reader_prim in ["read_marker", "read_profile_text"] {
-            assert!(
-                !guard_core::contains_word(&cmd_body, reader_prim),
-                "{sig}: 又在函数体里自己读 profile 了（{reader_prim}）—— 读取只许有 RemoteFile::read 那一个住址"
-            );
-        }
-        checked += 1;
-    }
-    assert_eq!(checked, 2, "期望恰好两个 profile 命令，实得 {checked}");
-}
+// 〔W5-ALIAS · 第五波先行〕这里原来是远端 profile 读取那一族的四条判据（读不出不当空文件 · 非 UTF-8 拒 ·
+//   有字节读到空拒 · `RemoteFile::read` 走 fail-safe 读取器）。被测对象 `interpret_profile_read`〔散文墓碑〕/
+//   `read_profile_text`〔散文墓碑〕/ `RemoteFile`〔散文墓碑〕随 `fenced_block::apply`〔散文墓碑〕一起删了：它们只剩
+//   远端 `ccm` 入口一个用户，而那一处改走 `upload_verified`（部署物按字节比，不按文本读）。用户文件（rc）的读
+//   经那台后端的 `files-peek`，「不存在 / 读不出 / 有字节读到空」那三分由后端答（`user_files::Peeked`）。
 
 // 〔AL1 · 2026-09-24〕`rollback_note_matches_what_actually_happened` 搬走了〔散文墓碑〕
-// —— 措辞的住址从远端独有的那一份换成了本机远端共用的 `fenced_block::undo_note`，
-// 判据跟着住到 `fenced_block_tests.rs::the_undo_note_says_only_what_really_happened`。
+// —— 措辞的住址从远端独有的那一份换成了本机远端共用的 `fenced_block::undo_note`〔散文墓碑〕，
+// 判据跟着住到 `fenced_block_tests.rs` 那条「撤的措辞只说真发生的事」；〔W5-ALIAS〕那一族后来随序列一起删了。
 
 /// **结构性守卫**：两条 deploy 路径的**内容**上传必须走 verified。
 ///
@@ -1360,24 +1040,6 @@ fn deploy_paths_use_verified_upload_for_content() {
 }
 
 #[test]
-fn strip_aborts_on_malformed_begin_without_end() {
-    // **这条测试原先把 bug 编码进去了**（T04 审计阻塞）：它断言悬空 BEGIN 时
-    // strip 是 no-op，而调用方据此打印「远端 … 没有 ccm 块，无需卸载」——
-    // 那正是同一个 commit 里被定义为 bug 的形态，只是发生在「卸」这半边。
-    // 现在两侧的装与卸四条路全走 `find_pair`，此处必须 Err 中止。
-    let corrupt = format!("a\n{CCM_PROFILE_BEGIN}\nccm() {{ :; }}\nuser code\n");
-    let e = strip_profile_block(&corrupt, "远端 ~/.bashrc").unwrap_err();
-    assert!(e.contains("找不到配对的 END"), "{e}");
-    assert!(e.contains("已中止"), "要让用户知道我们没动文件：{e}");
-    assert!(e.contains("远端 ~/.bashrc"), "要说清是哪个文件：{e}");
-    // 而**没有** BEGIN 时仍是正常的 no-op（别把这条也变成错误）
-    assert_eq!(
-        strip_profile_block("just user code\n", "远端 ~/.bashrc").unwrap(),
-        "just user code\n"
-    );
-}
-
-#[test]
 fn safe_backend_path_accepts_convention_rejects_suspicious() {
     assert!(is_safe_remote_backend_path(
         "/home/pi/.cc-monitor/bin/cc-monitor-backend"
@@ -1398,7 +1060,7 @@ fn safe_backend_path_accepts_convention_rejects_suspicious() {
 ///
 /// 两向：`deploy_remote_backend` 的函数体里**恰好一处** `put_ccm_entry(` 调用；
 /// 全文件生产段里推入口的原语（`ccm_entry_shim(`）**恰好一处**、就住 `put_ccm_entry` 里 ——
-/// 装别名块那条（`install_remote_alias_block`）**零命中**（从前它一次做两件事，`71 §13.1` 那个 ① ②）。
+/// 装别名块那条（`install_remote_alias_block`，〔W5-ALIAS〕今天住 `profile_installer.rs`）所在的文件**零命中**（从前它一次做两件事，`71 §13.1` 那个 ① ②）。
 ///
 /// 死值验：把 `deploy_remote_backend` 里那一句 `put_ccm_entry(&fs, &path)` 摘掉 ⇒ 第一条红。
 #[test]
@@ -1414,11 +1076,15 @@ fn deploying_the_backend_also_puts_the_ccm_entry_and_nothing_else_does() {
     let deploy = body_of("pub async fn deploy_remote_backend(");
     guard_core::find_pinned(&deploy, "put_ccm_entry(&fs, &path)")
         .unwrap_or_else(|e| panic!("部署后端没有连同 ccm 入口一起放（{e}）"));
-    let block = body_of("pub async fn install_remote_alias_block(");
+    // 〔W5-ALIAS〕装别名块那条搬进了 `profile_installer.rs`：那份文件的生产段里推入口的原语**零命中**。
+    let alias_home =
+        guard_core::production_code(include_str!("../../src/bridge/src/profile_installer.rs"));
+    guard_core::find_pinned(&alias_home, "pub async fn install_remote_alias_block(")
+        .unwrap_or_else(|e| panic!("装别名块那条不在别名域了 —— 判据够不着被测对象（{e}）"));
     for prim in ["ccm_entry_shim", "put_ccm_entry", "CCM_CLI_REMOTE_PATH"] {
         assert!(
-            !guard_core::contains_word(&block, prim),
-            "装别名块那条又在推入口了（{prim}）—— 那是「部署后端」的事"
+            !guard_core::contains_word(&alias_home, prim),
+            "别名域又在推入口了（{prim}）—— 那是「部署后端」的事"
         );
     }
     let helper = body_of("async fn put_ccm_entry(");
@@ -1543,14 +1209,9 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     // ② 入口：第一次写、第二次不动
     let e1 = put_ccm_entry(&fs, &backend_path).await.unwrap();
     let e2 = put_ccm_entry(&fs, &backend_path).await.unwrap();
-    assert!(
-        matches!(e1, crate::fenced_block::Applied::Written { .. }),
-        "{e1:?}"
-    );
-    assert!(
-        matches!(e2, crate::fenced_block::Applied::Unchanged),
-        "{e2:?}"
-    );
+    // 〔W5-ALIAS〕回报从 `fenced_block::Applied`〔散文墓碑〕换成「写没写」。
+    assert!(e1, "第一次该放入口");
+    assert!(!e2, "第二次该一个字节都不动");
     assert!(std::path::Path::new(&format!("{rhome}/.cc-monitor/bin/ccm")).is_file());
     // ③ 两个写根之外 ⇒ 后端围栏拒、原话带回、盘上零改动
     let outside = format!("{rhome}/.cc-monitor/elsewhere/cc-monitor-backend");
@@ -1585,11 +1246,12 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         .pop()
         .unwrap();
     let want = std::fs::read(&up).unwrap();
-    assert_eq!(
-        last.end,
-        Some(crate::sftp_pool::End::Done {
-            bytes: want.len() as u64
-        })
+    // 〔FW1〕上传那一路的传完带整份摘要（64 位十六进制；算法对不对由后端那一侧对拍 `sha2`）。
+    assert!(
+        matches!(&last.end, Some(crate::sftp_pool::End::Done { bytes, sha256: Some(h) })
+            if *bytes == want.len() as u64 && h.len() == 64),
+        "{:?}",
+        last.end
     );
     let staged = std::fs::read(format!("{rhome}/.cc-monitor/staging/{key}.part")).unwrap();
     assert!(staged == want, "暂存件不是本机那份的字节");
@@ -1713,4 +1375,163 @@ fn a_bad_readback_removes_the_upload_it_just_made() {
     let rm = guard_core::find_pinned(&body, "fs.remove(remote_path)")
         .unwrap_or_else(|e| panic!("读回不对那一支没有恰好一次删掉那一份（{e}）：\n{body}"));
     assert!(put < bad && bad < rm, "次序不是「传 → 判 → 删」：\n{body}");
+}
+
+/// 🔴 〔W5-ALIAS · 第五波先行〕**A1：别名块的真相不住 `sftp.rs`**（`audit/B-decouple.md` §2 第 12 条：
+/// 「别名块真相从 `sftp.rs` 搬到别名域；`sftp.rs` 已不做 SFTP」；`设计/71 §3`「渲染 · 读回 · 启动文件归方言，
+/// 写入 … 那台机器后端的文件管理那一面」—— 部署那一族管不着别名块）。
+///
+/// 两向：那 6 个符号的**定义**与两条别名块命令在 `sftp.rs` 生产段里**零命中**；正控：同一把尺子
+/// （`find_pinned`：恰好一处 ＋ 两侧边界）量 `profile_installer.rs`，8 个全量得出。
+/// 人群会怎么长：别的路往 `sftp.rs` 加一个别名块相关的定义 ⇒ 这里不红（名单是这 8 个）——
+/// 它钉的是「这几样搬走了、没搬回来」，不是「`sftp.rs` 里没有任何与 rc 有关的东西」。
+#[test]
+fn the_alias_block_truth_no_longer_lives_in_sftp() {
+    let sftp = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
+    let alias_home =
+        guard_core::production_code(include_str!("../../src/bridge/src/profile_installer.rs"));
+    let defs = [
+        "pub(crate) const CCM_PROFILE_BEGIN: &str",
+        "pub(crate) const CCM_PROFILE_END: &str",
+        "pub(crate) const CCM_WRAPPER_SNIPPET: &str",
+        "pub(crate) fn builtin_alias_names(",
+        "pub fn merge_profile_block(",
+        "pub fn strip_profile_block(",
+        "pub async fn install_remote_alias_block(",
+        "pub async fn uninstall_remote_alias_block(",
+    ];
+    let stayed: Vec<&str> = defs.iter().copied().filter(|d| sftp.contains(d)).collect();
+    assert!(
+        stayed.is_empty(),
+        "别名块的真相又住回 `sftp.rs` 了：{stayed:?} —— 那份文件只管部署"
+    );
+    for d in defs {
+        guard_core::find_pinned(&alias_home, d).unwrap_or_else(|e| {
+            panic!("正控：`profile_installer.rs` 里量不出 `{d}`（{e}）—— 这把尺子是瞎的")
+        });
+    }
+}
+
+// ═══ 〔HX2 · 主会话 D-b〕部署只升不降：`BUILD_ID` 可比序 ═══════════════════════════════════
+//
+// 要求住址：主会话 4D 裁 D-b 逐字「多个 monitor 连同一远端：部署只在「我的比盘上的新」时才换（BUILD_ID 可比序）」；
+// 它改写 `设计/01 §6.7a` 规矩 2「对就复用，不对就换」与 `96 §7.2.4`「恰一个戳 ≠ ⇒ 换」那一格（设计篇由主会话收口时改）。
+// 审计 `E-compat.md` §E3（两个不同版本的 monitor 连同一台远端，互相重部署）。
+
+/// B1a：序键手写表 —— 合法形 · 多位代号 · 缺字母 · 大写 · 缺名 · 缺前缀。
+#[test]
+fn hx2_build_order_reads_generation_and_letter_and_refuses_other_shapes() {
+    let cases: &[(&str, Option<(u32, u8)>)] = &[
+        ("p1a-history", Some((1, b'a'))),
+        ("p3m-ssh-zlib", Some((3, b'm'))),
+        ("p2z-relay-in-resident", Some((2, b'z'))),
+        ("p12c-x", Some((12, b'c'))),
+        ("p3-x", None),
+        ("p3M-x", None),
+        ("p3m", None),
+        ("p3m-", None),
+        ("3m-x", None),
+        ("sr1b-id", None),
+        ("", None),
+    ];
+    for (id, want) in cases {
+        assert_eq!(build_order(id), *want, "{id:?}");
+    }
+    assert!(is_newer("p3n-a", "p3m-b") && is_newer("p4a-a", "p3z-b"));
+    assert!(!is_newer("p3m-a", "p3m-b"), "同序不同名 ⇒ 不算新");
+    assert!(
+        !is_newer("p3m-a", "p3n-b") && !is_newer("p3n-a", "junk") && !is_newer("junk", "p1a-x")
+    );
+}
+
+/// 🔴 B1b：**出过的每一个 `BUILD_ID` 都有序、历史表按表序严格爬升、现在这个不低于最后一行**（读后端源码，异源）。
+/// 下一次 bump 写出一个解不出序的形状（或比历史低）⇒ 当场红 —— 那一版部署出去就永远不会被判「更新」而换上。
+#[test]
+fn hx2_every_build_id_ever_shipped_has_an_order_and_the_history_climbs() {
+    let guard = include_str!("../../tests/backend/build_id_guard.rs");
+    let start = guard
+        .find("const SUBCOMMAND_HISTORY")
+        .expect("历史表不在了 —— 本条的对照物没了");
+    let end = start + guard[start..].find("\n    ];").expect("历史表没有收尾");
+    let ids: Vec<&str> = guard[start..end]
+        .lines()
+        .map(str::trim)
+        .filter_map(|l| l.strip_prefix('"')?.split('"').next())
+        .filter(|s| s.starts_with('p') && !s.contains('\n') && !s.starts_with("--"))
+        .collect();
+    assert!(
+        ids.len() >= 30,
+        "历史表只抠出 {} 个 id —— 抠法坏了：{ids:?}",
+        ids.len()
+    );
+    let mut prev: Option<(u32, u8)> = None;
+    for id in &ids {
+        let o = build_order(id).unwrap_or_else(|| panic!("历史表里的 {id:?} 解不出序"));
+        if let Some(p) = prev {
+            assert!(o > p, "历史表没有按表序严格爬升：{id:?} 不高于上一行");
+        }
+        prev = Some(o);
+    }
+    let now = env!("BACKEND_BUILD_ID");
+    let o = build_order(now).unwrap_or_else(|| {
+        panic!("现在的 BUILD_ID {now:?} 解不出序 —— 照 `p<代号><小写字母>-<名>` 起名（D-b：部署按这个序只升不降）")
+    });
+    assert!(
+        o >= prev.unwrap(),
+        "现在的 BUILD_ID {now:?} 比历史表最后一行还低"
+    );
+}
+
+/// 🔴 B2：`identity_decision` 的「另一版」那一格按新旧拆开（期望手写）：旧 ⇒ 换；新 · 同序不同名 · 解不出 ⇒ 不动。
+#[test]
+fn hx2_a_different_build_is_replaced_only_when_it_is_older() {
+    const MINE: &str = "p3n-mine";
+    let d = |s: &str| {
+        identity_decision(
+            &RemoteIdentity::Stamp(s.into()),
+            MINE,
+            "devbox",
+            "/h/.cc-monitor/bin/ccm",
+        )
+    };
+    assert!(
+        matches!(d("p3m-older"), Ok(DeployAction::Deploy(_))),
+        "旧 ⇒ 换"
+    );
+    assert!(
+        matches!(d("p2z-older"), Ok(DeployAction::Deploy(_))),
+        "旧一代 ⇒ 换"
+    );
+    assert_eq!(d(MINE), Ok(DeployAction::Skip), "同一版 ⇒ 复用");
+    for theirs in ["p3o-newer", "p4a-newer", "p3n-sibling", "hand-built"] {
+        match d(theirs) {
+            Ok(DeployAction::Keep { theirs: t, why }) => {
+                assert_eq!(t, theirs, "Keep 回的不是那台上的身份");
+                assert!(
+                    why.contains(theirs) && why.contains(MINE) && why.contains("devbox"),
+                    "{why}"
+                );
+            }
+            other => panic!("{theirs:?} 不比 {MINE} 旧 ⇒ 该不动它，却是 {other:?}"),
+        }
+    }
+}
+
+/// 🔴 B2b：自动部署那条路遇到「不动」⇒ 回**那台上的**身份（源码切臂：`Keep` 臂里 `return Ok(theirs)`，不落到回这一版 id 的那一行）。
+#[test]
+fn hx2_keeping_a_newer_backend_reports_its_identity_not_ours() {
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
+    let f = guard_core::find_pinned(&prod, "pub async fn ensure_backend_deployed(")
+        .expect("自动部署那个函数不在了");
+    let body = &prod[f..];
+    let arm = guard_core::find_pinned(body, "DeployAction::Keep { theirs, why } => {")
+        .expect("自动部署那条路没有 Keep 臂");
+    let arm_end = arm + body[arm..].find("\n        }").expect("Keep 臂没收尾");
+    let arm_body = &body[arm..arm_end];
+    assert_eq!(
+        arm_body.matches("return Ok(theirs);").count(),
+        1,
+        "Keep 臂没回那台上的身份：{arm_body}"
+    );
+    assert!(!arm_body.contains("upload_verified"), "Keep 臂里写了字节");
 }

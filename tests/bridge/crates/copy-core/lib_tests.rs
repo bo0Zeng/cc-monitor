@@ -45,3 +45,41 @@ fn the_static_form_is_the_same_text_and_lives_forever() {
         "同一个调用点取两次不是同一块内存"
     );
 }
+
+/// 〔DUP2 · `设计/01 §6.9`「前端读口 `copy-table.ts::copyText`；Rust 读口只有一份实现 `copy-core::copy_text`」〕
+/// **两个读口的插值对拍**：共用金样 `tests/__fixtures__/copy-interpolation.golden.json` 逐条喂给本读口，
+/// 期望是金样里**手写**的（TS 那一侧 `tests/copy/copy-table.vitest.ts` 读同一份跑 `copyText`）⇒ 两侧各对金样，不是彼此对拍。
+/// 只收合法插值；两侧有意不同的那几形（缺键 · 参数对不上 · 值里含别的占位符）登记在金样 `_differences`，不在这里。
+#[test]
+fn the_shared_interpolation_golden_agrees_with_this_reader() {
+    let raw = include_str!("../../../__fixtures__/copy-interpolation.golden.json");
+    let g: serde_json::Value = serde_json::from_str(raw).expect("金样不是合法 JSON");
+    let cases = g["cases"].as_array().expect("金样缺 cases");
+    assert!(cases.len() >= 5, "金样只有 {} 条 —— 读坏了", cases.len());
+    let mut wrong = Vec::new();
+    for c in cases {
+        let key = c["key"].as_str().expect("key 是字符串");
+        let zh = entries()
+            .get(key)
+            .and_then(|e| e.get("zh"))
+            .and_then(|z| z.as_str())
+            .unwrap_or_else(|| panic!("金样里的 {key} 不在表里"));
+        assert_eq!(
+            zh,
+            c["zh"].as_str().expect("zh 是字符串"),
+            "{key} 在表里的原文变了 —— 照新句子改金样的 zh 与 want"
+        );
+        let args: Vec<(String, String)> = c["args"]
+            .as_object()
+            .expect("args 是对象")
+            .iter()
+            .map(|(k, v)| (k.clone(), v.as_str().expect("参数是字符串").to_string()))
+            .collect();
+        let pairs: Vec<(&str, &str)> = args.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+        let got = copy_text(key, &pairs);
+        if got != c["want"].as_str().expect("want 是字符串") {
+            wrong.push(format!("{key}: {got:?}"));
+        }
+    }
+    assert_eq!(wrong, Vec::<String>::new(), "Rust 读口与插值金样对不上");
+}

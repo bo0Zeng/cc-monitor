@@ -109,16 +109,16 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("bind.rs", "spawn", None, "monitor 自己的运行时目录/落地文件"),
     ("bind.rs", "process_await_file", None, "monitor 自己的等待文件"),
     ("bind.rs", "cleanup_dead", None, "清理 monitor 自己留下的死文件"),
-    ("config.rs", "save_config", None, "monitor 自己的配置文件"),
+    ("config.rs", "patch_config_at", None, "monitor 自己的配置文件（〔CFG1〕唯一写口：进程级锁内现读 ＋ 按键补丁；整份替换的 `save_config` 删了）"), // 〔散文墓碑〕
     // ── 〔GP1 · 第四波〕这里原来有一行 `creds_store.rs` 的凭据写口（K-H2a：账号的第三方 API key 那份文件）。
     //    主会话 09-25 裁「每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端」⇒ 本机那一份也交本机常驻后端写
     //    （`apikey-key-set` → `src/backend/accounts/upstream/file_face.rs`，第四层后端自有状态），本进程一个字节不落 ⇒ 摘行。
     ("config.rs", "atomic_replace", None, "原子替换原语的本地副本（同上，归 `atomic_replace_registry` 判）"),
     ("lib.rs", "open_log_dir", None, "打开日志目录前确保它存在"),
     ("logging.rs", "build_rolling_appender", None, "monitor 自己的滚动日志"),
-    ("logging.rs", "write_diagnostics_to_config", None, "把诊断信息写进 monitor 自己的配置"),
-    ("logging.rs", "atomic_replace", None, "原子替换原语的本地副本（头注自陈是从 config.rs 复制的）"),
-    ("session_map.rs", "run_watcher", None, "monitor 自己的会话映射状态"),
+    // 〔CFG1 · 4D〕`logging.rs` 那两行（`write_diagnostics_to_config` · `atomic_replace` 副本）摘了：诊断写口改经
+    //   `config::patch_config_at`，本文件零写盘。
+    // 〔LOC1b · 第四波 4D〕`session_map.rs` 那条 watcher 线程那一行摘了：monitor 自己那份判活（连同它写的会话映射状态）删了。
     // 〔SR1b · 2026-09-24〕「下载落到用户选的本机路径」那一行摘了（连同它上面那段 09-21 的订正：「本地缓存」那句是假的、
     //    围栏补在开单那一刻）—— 落地那一下随传输台搬进了本机常驻后端（第三层文件管理写面 `control/transfer.rs`），
     //    monitor 这一侧零写盘。〔AR1 · V119〕上一版还说「开单时那道本机落点围栏照旧在中继里先判一次
@@ -372,7 +372,7 @@ fn every_write_site_is_declared_and_installers_name_a_real_tool() {
         );
     }
     // 常驻自检：一条安装动作都没有时，上面那个循环空转，而它看起来照样绿。
-    // 〔RW1 · 第四波 09-24〕5 → 1（地板改成相等）：`ccm` 的三行（`fenced_block.rs::put_atomic` 与
+    // 〔RW1 · 第四波 09-24〕5 → 1（地板改成相等）：`ccm` 的三行（远端入口那一份落点原语与
     //   `profile_installer.rs` 两个原语）· `project-mcp` 的一行 · `cc-bus` 的一行（`cc_bus_deploy.rs::deploy_into`）
     //   随「用户文件改经后端写」走了，剩 `local_backend.rs::install_local_ccm_entry`（`ccm`，写的是我们自己的目录）。
     assert_eq!(
@@ -443,14 +443,13 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     ("bind.rs", "spawn", Lands::OwnState),
     ("bind.rs", "process_await_file", Lands::OwnState),
     ("bind.rs", "cleanup_dead", Lands::OwnState),
-    ("config.rs", "save_config", Lands::OwnState),
+    ("config.rs", "patch_config_at", Lands::OwnState),
     // 〔GP1 · 第四波〕`creds_store.rs` 的凭据写口那一行摘了（理由同上一张表）。
     ("config.rs", "atomic_replace", Lands::OwnState),
     ("lib.rs", "open_log_dir", Lands::OwnState),
     ("logging.rs", "build_rolling_appender", Lands::OwnState),
-    ("logging.rs", "write_diagnostics_to_config", Lands::OwnState),
-    ("logging.rs", "atomic_replace", Lands::OwnState),
-    ("session_map.rs", "run_watcher", Lands::OwnState),
+    // 〔CFG1〕`logging.rs` 两行随写盘一起摘（见 `WRITE_SITES` 同处）。
+    // 〔LOC1b · 第四波 4D〕`session_map.rs` 那条 watcher 线程那一行摘了：monitor 自己那份判活（连同它写的会话映射状态）删了。
     // 〔SR1b · 2026-09-24〕「下载落到用户选的本机路径」那一行（指名 SR1b 的待收例外）**收了**：
     //    下载的落地随传输台搬进本机常驻后端（`control/transfer.rs`，第三层文件管理写面；〔AR1 · V119〕当时写「先过会话文件围栏」，
     //    FN1 之后只过路径解析）。

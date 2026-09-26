@@ -88,8 +88,13 @@ pub(crate) enum Refusal {
     OsUnknown { why: String },
     /// 问不出 arch。
     ArchUnknown { why: String },
-    /// 那一格有产线，但这个 origin 今天不承诺那种机器（表 B；例：远端 Windows）。
-    NotPromisedHere { os: String },
+    /// 那一格有产线，但这个 origin 今天不承诺那种机器（表 B；例：远端 Windows · 〔V132〕本机 (Linux, aarch64)）。
+    /// 带着 `route`：同一形对「推到远端」与「本机自己」要说两句话（远端那句「只在本机用得上」对本机是假话，`D7`）。
+    NotPromisedHere {
+        os: String,
+        arch: String,
+        route: Route,
+    },
     /// 那一格有产线、也承诺，但**这一版产物没带**那份字节（开发构建 / 没铺字节）。
     /// `96 §7.1.4b` 的四个 key 里没有它 —— 并进前四个就把「换一版产物」说成了「不支持这台机器」（`D7`）。
     NotCarried { os: String, arch: String },
@@ -115,9 +120,27 @@ impl Refusal {
                 "deploy.refused.archUnknown",
                 &[("machine", machine), ("why", why)],
             ),
-            (Product::Backend, Refusal::NotPromisedHere { os }) => copy_text(
+            (
+                Product::Backend,
+                Refusal::NotPromisedHere {
+                    os,
+                    route: Route::Remote,
+                    ..
+                },
+            ) => copy_text(
                 "deploy.refused.notPromisedHere",
                 &[("machine", machine), ("os", os)],
+            ),
+            (
+                Product::Backend,
+                Refusal::NotPromisedHere {
+                    os,
+                    arch,
+                    route: Route::Local,
+                },
+            ) => copy_text(
+                "deploy.refused.notPromisedLocal",
+                &[("machine", machine), ("os", os), ("arch", arch)],
             ),
             (Product::Backend, Refusal::NotCarried { os, arch }) => copy_text(
                 "deploy.refused.notCarried",
@@ -135,9 +158,27 @@ impl Refusal {
                 "panorama.refused.archUnknown",
                 &[("machine", machine), ("why", why)],
             ),
-            (Product::Panorama, Refusal::NotPromisedHere { os }) => copy_text(
+            (
+                Product::Panorama,
+                Refusal::NotPromisedHere {
+                    os,
+                    route: Route::Remote,
+                    ..
+                },
+            ) => copy_text(
                 "panorama.refused.notPromisedHere",
                 &[("machine", machine), ("os", os)],
+            ),
+            (
+                Product::Panorama,
+                Refusal::NotPromisedHere {
+                    os,
+                    arch,
+                    route: Route::Local,
+                },
+            ) => copy_text(
+                "panorama.refused.notPromisedLocal",
+                &[("machine", machine), ("os", os), ("arch", arch)],
             ),
             (Product::Panorama, Refusal::NotCarried { os, arch }) => copy_text(
                 "panorama.refused.notCarried",
@@ -276,11 +317,19 @@ pub(crate) const LINES: &[(Product, Key)] = &[
     ),
 ];
 
-/// 表 B：这个 origin 今天承诺哪几种 OS（`01 §6.7a`：本机 Windows · 本机 Linux〔用户 09-18「算」〕· 远端 Linux）。
-pub(crate) fn promised(route: Route, os: Os) -> bool {
+/// 表 B：这个 origin 今天承诺哪几种机器（`01 §6.7a`：本机 Windows x86_64 · 本机 Linux〔用户 09-18「算」〕· 远端 Linux 两个 arch）。
+///
+/// 〔V132 · 09-25〕用户原话「不承诺. 适配部分, 即os适配部分后面单独写单独做.」⇒ **本机 (Linux, aarch64) 不承诺**
+/// （`96 §7.1.5` 那句「建议本机 Linux 限定 x86_64、本机侧走「不承诺」那一形」，即 [`Refusal::NotPromisedHere`]）。于是本表不再只按 OS 分：
+/// 本机那两行都钉到 x86_64（本机 Windows arm64 本来就不在产线里，`V31`），远端 Linux 两个 arch 照旧。
+/// 承诺面的唯一住址是 `tests/evidence/K-G4-platform-ledger.py` 的 `PROMISE_FACE`；本函数与它两向相等
+/// 由 `byte_table_tests.rs::the_promise_face_in_the_ledger_equals_the_code` 钉着。
+pub(crate) fn promised(route: Route, key: Key) -> bool {
     matches!(
-        (route, os),
-        (Route::Local, Os::Windows) | (Route::Local, Os::Linux) | (Route::Remote, Os::Linux)
+        (route, key.os, key.arch),
+        (Route::Local, Os::Windows, Arch::X86_64)
+            | (Route::Local, Os::Linux, Arch::X86_64)
+            | (Route::Remote, Os::Linux, _)
     )
 }
 
@@ -419,8 +468,8 @@ pub(crate) fn choose(
     if !LINES.contains(&(product, key)) {
         return Err(Refusal::UnsupportedMachine { os, arch });
     }
-    if !promised(route, key.os) {
-        return Err(Refusal::NotPromisedHere { os });
+    if !promised(route, key) {
+        return Err(Refusal::NotPromisedHere { os, arch, route });
     }
     pick(product, key).ok_or(Refusal::NotCarried { os, arch })
 }
@@ -442,6 +491,8 @@ pub(crate) fn key_from_uname(
         return Err(Refusal::OsUnknown {
             why: if said.is_empty() {
                 copy_text("rsByteTable.key.noAnswer", &[])
+            } else if not_utf8(said) {
+                copy_text("rsByteTable.key.notUtf8", &[])
             } else {
                 copy_text("rsByteTable.key.said", &[("said", &said.to_string())])
             },
@@ -452,6 +503,9 @@ pub(crate) fn key_from_uname(
         [] => key_of("", ""),
         [os] => key_of(os, ""),
         [os, arch] => key_of(os, arch),
+        _ if not_utf8(stdout) => Err(Refusal::OsUnknown {
+            why: copy_text("rsByteTable.key.notUtf8", &[]),
+        }),
         _ => Err(Refusal::OsUnknown {
             why: copy_text(
                 "rsByteTable.key.unreadable",
@@ -459,6 +513,19 @@ pub(crate) fn key_from_uname(
             ),
         }),
     }
+}
+
+/// 〔WIN1 · RT1 F4〕那台机器的回话**不是 UTF-8** ⇒ 说 `rsByteTable.key.notUtf8` 那半句（接在「查了什么：问过它，」后面），
+/// 不照抄原文。
+///
+/// 真 Win11 现打（`第四波记录/RT1.md §1.2` 第 3 跳）：Windows 默认 shell 是 PowerShell，它按控制台代码页
+/// （中文系统是 GBK）报「无法将 uname 项识别为 cmdlet…」；回话在后端那一跳按 UTF-8 **有损**解
+/// （`dial/uses.rs`，认不出的字节成了 U+FFFD）⇒ 原样照抄进界面就是一串乱码。
+/// ⇒ 不照抄、也不猜代码页（GBK / Shift-JIS / 1252 都有可能，猜错了一样是乱码），只说「不是 UTF-8」
+/// 与它多半是什么。拒绝本身不变（`96 §7.1.4` 第 4 条：问不出 OS ＝ 拒绝）。
+/// 回话里有 U+FFFD ⇒ 那几个字节在后端按 UTF-8 解时就没解出来（有损解留下的记号）。
+fn not_utf8(s: &str) -> bool {
+    s.contains('\u{FFFD}')
 }
 
 /// 问远端那台的键。链路本身没通 ⇒ `Err`（普通失败：连都连不上，后面的流也起不来）；问得出答案 ⇒ `Ok(键或拒绝)`。

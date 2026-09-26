@@ -12,7 +12,7 @@
 import { describe, expect, test } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { TMUX_OUTER_CASES, renderTmuxOuterFixture } from "../src/launch-tmux-outer-golden.ts";
+import { TMUX_OUTER_CASES, renderTmuxOuterFixture } from "./test-support/launch-tmux-outer-golden.ts";
 
 // `import.meta.url` 在 vitest 里不是 `file:` scheme —— 照本仓既有做法用 `resolve(__dirname, "..")`。
 const FIXTURE_PATH = resolve(

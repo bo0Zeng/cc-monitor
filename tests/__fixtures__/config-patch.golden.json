@@ -1,0 +1,79 @@
+{
+  "说明": "〔CFG1〕config.json 按键补丁的语义金样：手写。Rust 写口（tests/bridge/config_tests.rs::the_golden_cases_hold）与前端测试用的假盘（tests/config-patch-fake.ts，由 tests/config-patch-fake.vitest.ts 对拍）各跑一遍同一份。before 是盘上原文；refused 非空 ⇒ 整批拒、盘上字节不变。",
+  "cases": [
+    {
+      "name": "段内一个子键：兄弟键不动",
+      "before": "{\"tabBar\":{\"order\":[\"a\"],\"pinned\":[1]},\"tabCollections\":[]}",
+      "edits": [{ "op": "set", "path": ["tabBar", "order"], "value": ["b", "a"] }],
+      "after": { "tabBar": { "order": ["b", "a"], "pinned": [1] }, "tabCollections": [] }
+    },
+    {
+      "name": "中间段不是对象 ⇒ 换成对象；缺失 ⇒ 建出来",
+      "before": "{\"accounts\":\"坏的\"}",
+      "edits": [
+        { "op": "set", "path": ["accounts", "modelByAccount", "a1"], "value": "opus" },
+        { "op": "set", "path": ["tabBar", "pinned"], "value": [] }
+      ],
+      "after": { "accounts": { "modelByAccount": { "a1": "opus" } }, "tabBar": { "pinned": [] } }
+    },
+    {
+      "name": "整键替换：旧子键不留；值里的 null 原样存",
+      "before": "{\"keybindings\":{\"old\":\"Ctrl+O\"},\"theme\":{\"bg\":\"#111\",\"text\":\"#eee\"}}",
+      "edits": [
+        { "op": "set", "path": ["keybindings"], "value": { "x": null, "y": "Ctrl+Y" } },
+        { "op": "set", "path": ["theme"], "value": { "bg": "#000" } }
+      ],
+      "after": { "keybindings": { "x": null, "y": "Ctrl+Y" }, "theme": { "bg": "#000" } }
+    },
+    {
+      "name": "删：在的删掉；不在的不建空段",
+      "before": "{\"claudeDir\":\"/x\",\"accounts\":{\"defaultName\":\"a1\",\"modelByAccount\":{\"a1\":\"opus\",\"a2\":\"haiku\"}}}",
+      "edits": [
+        { "op": "remove", "path": ["claudeDir"] },
+        { "op": "remove", "path": ["accounts", "modelByAccount", "a1"] },
+        { "op": "remove", "path": ["nope", "deeper"] },
+        { "op": "remove", "path": ["accounts", "defaultName", "notAnObject"] }
+      ],
+      "after": { "accounts": { "defaultName": "a1", "modelByAccount": { "a2": "haiku" } } }
+    },
+    {
+      "name": "删：路上断了 ⇒ 停在断处的那一层也不许删同名的键",
+      "before": "{\"accounts\":{\"defaultName\":\"a1\"},\"defaultName\":\"顶层那个\"}",
+      "edits": [
+        { "op": "remove", "path": ["accounts", "nope", "defaultName"] },
+        { "op": "remove", "path": ["nope", "defaultName"] }
+      ],
+      "after": { "accounts": { "defaultName": "a1" }, "defaultName": "顶层那个" }
+    },
+    {
+      "name": "同一批里后一条盖前一条",
+      "before": "{}",
+      "edits": [
+        { "op": "set", "path": ["theme"], "value": { "bg": "#1" } },
+        { "op": "set", "path": ["theme", "bg"], "value": "#2" }
+      ],
+      "after": { "theme": { "bg": "#2" } }
+    },
+    {
+      "name": "空路径 = 整份替换换了个名字 ⇒ 整批拒",
+      "before": "{\"keep\":1}",
+      "edits": [
+        { "op": "set", "path": ["a"], "value": 1 },
+        { "op": "set", "path": [], "value": {} }
+      ],
+      "refused": "bad_edit"
+    },
+    {
+      "name": "读不懂 ⇒ 不写",
+      "before": "{\"a\":1 \"b\":2}",
+      "edits": [{ "op": "set", "path": ["a"], "value": 9 }],
+      "refused": "unreadable"
+    },
+    {
+      "name": "最外层不是对象 ⇒ 不写",
+      "before": "[1,2]",
+      "edits": [{ "op": "set", "path": ["a"], "value": 9 }],
+      "refused": "unreadable"
+    }
+  ]
+}

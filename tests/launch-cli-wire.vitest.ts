@@ -69,9 +69,11 @@ describe("ccm 调用行的 wire 形状（U8c-2c-2）", () => {
     // ⚠ `WireQuoting` **不在这里**，那不是漏：它是个无字段的单元枚举，
     // 没有「未知字段」这回事，挂 `deny_unknown_fields` 对它是句空话。
     "WireTmuxOuter",
+    // 〔LR2 · R95b〕探测结果的三态（`CliRenderRequest.ccm`）—— 加它那一拍下面那条计数当场红，登记在这里。
+    "WireCcmProbe",
   ];
 
-  test("Rust 侧八个入方向 wire 类型都带 deny_unknown_fields（多送字段必须被拒，不静默吞）", () => {
+  test("Rust 侧九个入方向 wire 类型都带 deny_unknown_fields（多送字段必须被拒，不静默吞）", () => {
     // 数量自检：将来加第九个类型时这条红，提醒把它加进上面的清单 ——
     // 只看**属性里**的，因为这些类型的文档注释里就写着这个词（M3 抓到过）。
     //

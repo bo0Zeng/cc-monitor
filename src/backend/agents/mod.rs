@@ -149,6 +149,9 @@ pub(crate) struct HistoryFace {
     pub(crate) sessions: fn() -> Vec<SynthSession>,
     /// 一份会话的首条真用户话（列表摘要）。
     pub(crate) excerpt: fn(&Path) -> String,
+    /// 〔LOC1b · 4D〕这一家会话记录的根（没装 / 说不出 ⇒ `None`）。按路径读会话那几条命令（`history-read` 等）的
+    /// 围栏认它 —— 历史清单列出来的这一家的会话，要能按同一条路打开（本机冷读也走后端之后，本机 Codex 会话靠它）。
+    pub(crate) root: fn() -> Option<PathBuf>,
 }
 
 /// 〔C4d〕合成历史里的一个会话（通用层按 `cwd` 分组成项目）。
@@ -166,6 +169,15 @@ pub(crate) fn history_faces() -> Vec<(&'static str, HistoryFace)> {
     REGISTRY
         .iter()
         .filter_map(|a| a.history.map(|h| (a.kind, h)))
+        .collect()
+}
+
+/// 〔LOC1b · 4D〕注册表里每一家合成历史面给的记录根（注册序；说不出的跳过）。按路径读会话的围栏在 Claude 的
+/// `projects/` 之外还认这几个（`observe/history_query.rs::validate_session_path`）。
+pub(crate) fn history_roots() -> Vec<PathBuf> {
+    history_faces()
+        .into_iter()
+        .filter_map(|(_, h)| (h.root)())
         .collect()
 }
 

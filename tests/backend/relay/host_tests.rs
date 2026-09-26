@@ -46,6 +46,11 @@ fn fake_upstream() -> SocketAddr {
     addr
 }
 
+/// 〔TAP〕这几条只量「起没起来 / 转没转发」，不看 tee 抄了什么 ⇒ 给一个自己的 hub（不碰进程级那一个）。
+fn no_tap() -> std::sync::Arc<dyn super::super::TapPort> {
+    std::sync::Arc::new(crate::tap::TapHub::default())
+}
+
 /// 一次性目录（判据绝不碰用户真实的凭据文件）。
 fn tmpdir(tag: &str) -> std::path::PathBuf {
     let d = std::env::temp_dir().join(format!(
@@ -115,6 +120,7 @@ fn a_process_that_was_not_handed_a_port_hosts_no_relay() {
             &env_of(port, None, &creds),
             std::path::Path::new("/nonexistent"),
             &crate::accounts::upstream::Boot,
+            no_tap(),
         );
         assert!(
             matches!(got, Hosted::NotAsked),
@@ -136,6 +142,7 @@ fn a_handed_port_really_listens_and_forwards_the_upstream_sse_byte_for_byte() {
         ),
         std::path::Path::new("/nonexistent"),
         &crate::accounts::upstream::Boot,
+        no_tap(),
     );
     let Hosted::Listening(addr) = got else {
         panic!("交了端口 0 ⇒ 应在听，得 {got:?}");
@@ -159,6 +166,7 @@ fn a_handed_port_that_is_taken_fails_loudly_without_taking_the_process_down() {
         &env_of(Some(&port.to_string()), None, &creds),
         std::path::Path::new("/nonexistent"),
         &crate::accounts::upstream::Boot,
+        no_tap(),
     );
     match got {
         Hosted::Failed(why) => {
@@ -177,6 +185,7 @@ fn an_unreadable_port_is_refused_rather_than_defaulted() {
             &env_of(Some(junk), None, &creds),
             std::path::Path::new("/nonexistent"),
             &crate::accounts::upstream::Boot,
+            no_tap(),
         );
         match got {
             Hosted::Failed(why) => assert!(why.contains(junk), "理由里要带那个原串：{why}"),
@@ -201,6 +210,7 @@ fn a_bad_upstream_config_fails_before_any_port_is_bound() {
         ),
         std::path::Path::new("/nonexistent"),
         &crate::accounts::upstream::Boot,
+        no_tap(),
     );
     assert!(
         matches!(got, Hosted::Failed(_)),
@@ -349,4 +359,223 @@ fn main_hosts_the_relay_exactly_once_between_the_one_shot_dispatch_and_the_carri
         dispatch < call && call < carrier,
         "顺序应是 一次性分派({dispatch}) < 起中转({call}) < 选载体({carrier})"
     );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  〔TAP · V124〕tee 的第二个落点：进程内中转抄出来的 SSE 事件交到 tap 口
+//  （设计住仓外 `调研/第四波记录/TAP.md §1.1 · §3`；出处 `设计/20 §8` · `设计/05 §4.5.3` ③）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// 手写的一轮上游 SSE：`event:` 行、`data:` 行、空行、`ping`、`[DONE]` 都有（期望值只从这张表来，异源）。
+const TAP_EVENTS: &[&str] = &[
+    r#"{"type":"message_start","message":{"id":"msg_tap_1","model":"m"}}"#,
+    r#"{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#,
+    r#"{"type":"ping"}"#,
+    r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"你好，"}}"#,
+    r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"tap"}}"#,
+    r#"{"type":"content_block_stop","index":0}"#,
+    r#"{"type":"message_stop"}"#,
+];
+
+fn tap_body() -> String {
+    let mut b = String::new();
+    for e in TAP_EVENTS {
+        // 每个事件前带一行 `event:`（切行器只认 `data:`），事件之间空行。
+        b.push_str("event: x\ndata: ");
+        b.push_str(e);
+        b.push_str("\n\n");
+    }
+    b
+}
+
+/// 假上游：读完整条请求（头 ＋ 定长体 —— 不读体就关 ⇒ 内核发 RST，中转那一侧会把收尾读成「断了」），
+/// 回给定的那一整段（定长），关连接。
+fn fake_upstream_with(body: String) -> SocketAddr {
+    let l = TcpListener::bind("127.0.0.1:0").expect("假上游 bind");
+    let addr = l.local_addr().expect("假上游地址");
+    std::thread::spawn(move || {
+        for s in l.incoming() {
+            let Ok(mut s) = s else { continue };
+            let _ = s.set_read_timeout(Some(Duration::from_secs(10)));
+            let mut head = Vec::new();
+            let mut one = [0u8; 1];
+            while !head.ends_with(b"\r\n\r\n") {
+                match s.read(&mut one) {
+                    Ok(1) => head.push(one[0]),
+                    _ => break,
+                }
+            }
+            let text = String::from_utf8_lossy(&head).to_ascii_lowercase();
+            let len = text
+                .lines()
+                .find_map(|l| l.strip_prefix("content-length:"))
+                .and_then(|v| v.trim().parse::<usize>().ok())
+                .unwrap_or(0);
+            let mut req_body = vec![0u8; len];
+            let _ = s.read_exact(&mut req_body);
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = s.write_all(resp.as_bytes());
+            let _ = s.flush();
+        }
+    });
+    addr
+}
+
+/// 起一个进程内中转，tee 落给定的 tap 口；回在听的地址。
+fn hosted_with_tap(
+    tag: &str,
+    up: SocketAddr,
+    tap: std::sync::Arc<dyn super::super::TapPort>,
+) -> SocketAddr {
+    let creds = creds_fixture(tag);
+    match host(
+        &env_of(
+            Some("0"),
+            Some(format!("http://127.0.0.1:{}", up.port())),
+            &creds,
+        ),
+        std::path::Path::new("/nonexistent"),
+        &crate::accounts::upstream::Boot,
+        tap,
+    ) {
+        Hosted::Listening(a) => a,
+        other => panic!("交了端口 0 ⇒ 应在听，得 {other:?}"),
+    }
+}
+
+/// 把 tap 接收端里此刻已有的全部取出来（`through` 返回时中转那条线程已经收尾：下游 EOF 在 `close` 之后）。
+fn drain(
+    rx: &mut tokio::sync::mpsc::Receiver<super::super::TapEvent>,
+) -> Vec<super::super::TapEvent> {
+    let mut v = Vec::new();
+    while let Ok(ev) = rx.try_recv() {
+        v.push(ev);
+    }
+    v
+}
+
+/// T1：真中转 ＋ 假上游 ⇒ tap 口收到的事件 **==** 上游那一串 `data:`（逐字节、同序；`[DONE]` 与空行不算事件），
+/// 位置号 `n` == 0..k 连续，最后一件是 `End{broken:false}` 且 `n == k`；`stream` == 路由第三段；
+/// 下游收到的字节照旧 == 上游发的（抄一份不动主路）。
+#[test]
+fn tap_gets_every_sse_data_payload_in_order_with_contiguous_positions_and_a_clean_end() {
+    let body = tap_body();
+    let up = fake_upstream_with(body.clone());
+    let hub = std::sync::Arc::new(crate::tap::TapHub::default());
+    let mut rx = hub.attach();
+    let addr = hosted_with_tap("tap1", up, hub.clone());
+
+    let resp = through(addr);
+    let (_, down) = resp.split_once("\r\n\r\n").expect("应答成形");
+    assert_eq!(down, body, "抄 tap 不许动下游字节");
+
+    let got = drain(&mut rx);
+    let k = TAP_EVENTS.len() as u64;
+    let mut want: Vec<super::super::TapEvent> = TAP_EVENTS
+        .iter()
+        .enumerate()
+        .map(|(i, e)| super::super::TapEvent {
+            stream: "k-rl1".into(),
+            resp: got.first().map(|g| g.resp).unwrap_or(u64::MAX),
+            n: i as u64,
+            body: super::super::TapBody::Data((*e).to_string()),
+        })
+        .collect();
+    want.push(super::super::TapEvent {
+        stream: "k-rl1".into(),
+        resp: got.first().map(|g| g.resp).unwrap_or(u64::MAX),
+        n: k,
+        body: super::super::TapBody::End { broken: false },
+    });
+    assert_eq!(got, want, "tap 收到的事件序列与上游发的不等");
+}
+
+/// T2：tap 那一侧跟不上（通道只容 1 件、接收端不读）⇒ **下游字节一个不少**；收到的那几件的位置号
+/// 是 0..k 的**真子集**、`End.n == k` ⇒ 缺在哪两号之间，接收侧纯算术算得出（`05 §3.3.4` 的 `Gap` 形）。
+/// 同一趟里「没人连着」（发送端不在）⇒ 转发照常、一件都收不到。
+#[test]
+fn a_tap_that_cannot_keep_up_loses_positions_visibly_and_never_touches_the_forwarded_bytes() {
+    let body = tap_body();
+    let k = TAP_EVENTS.len() as u64;
+
+    // ① 容量 1、不读：第一件进去之后全满 ⇒ 只剩第 0 号；收尾那一件也投不进（尾巴也会丢 ——
+    //    接收侧拿「0 号之后再没有东西」判不出断没断，那一格由前端的撤卡规则兜，见 TAP.md §4）。
+    let up = fake_upstream_with(body.clone());
+    let hub = std::sync::Arc::new(crate::tap::TapHub::default());
+    let mut rx = hub.attach_bounded(1);
+    let addr = hosted_with_tap("tap2", up, hub.clone());
+    let resp = through(addr);
+    assert_eq!(
+        resp.split_once("\r\n\r\n").expect("成形").1,
+        body,
+        "tap 满了也不许动下游字节"
+    );
+    let got = drain(&mut rx);
+    let ns: Vec<u64> = got.iter().map(|e| e.n).collect();
+    assert_eq!(
+        ns,
+        vec![0],
+        "容量 1、不读 ⇒ 恰好只剩第 0 号（其余全丢、号照占）：{got:?}"
+    );
+
+    // ② 没人连着：hub 里没有发送端 ⇒ 转发照常。
+    let up = fake_upstream_with(body.clone());
+    let lonely = std::sync::Arc::new(crate::tap::TapHub::default());
+    let addr = hosted_with_tap("tap3", up, lonely);
+    let resp = through(addr);
+    assert_eq!(
+        resp.split_once("\r\n\r\n").expect("成形").1,
+        body,
+        "没人连着也不许动下游字节"
+    );
+
+    // ③ 容量够但中途丢一件（第 2 号超单件上限）⇒ 收到的号 == 0..k 去掉 2，`End.n == k`。
+    let mut fat: Vec<String> = TAP_EVENTS.iter().map(|s| s.to_string()).collect();
+    fat[2] = format!(
+        r#"{{"type":"ping","pad":"{}"}}"#,
+        "x".repeat(super::super::tee::TAP_DATA_CAP)
+    );
+    let mut b = String::new();
+    for e in &fat {
+        b.push_str("data: ");
+        b.push_str(e);
+        b.push_str("\n\n");
+    }
+    let up = fake_upstream_with(b.clone());
+    let hub = std::sync::Arc::new(crate::tap::TapHub::default());
+    let mut rx = hub.attach();
+    let addr = hosted_with_tap("tap4", up, hub.clone());
+    let resp = through(addr);
+    assert_eq!(
+        resp.split_once("\r\n\r\n").expect("成形").1,
+        b,
+        "超上限的那件不许动下游字节"
+    );
+    let got = drain(&mut rx);
+    let ns: Vec<u64> = got.iter().map(|e| e.n).collect();
+    let mut want: Vec<u64> = (0..k).filter(|&i| i != 2).collect();
+    want.push(k);
+    assert_eq!(
+        ns, want,
+        "超上限那一件的号要空着（缺口原位可见），收尾那件带总数"
+    );
+    assert_eq!(
+        got.last().map(|e| e.body.clone()),
+        Some(super::super::TapBody::End { broken: false })
+    );
+}
+
+/// T2b：非 SSE 的应答（一个事件都没有）⇒ tap 一件都不交（连 `End` 都不交：接收侧本来也认不出它）。
+#[test]
+fn a_response_without_sse_events_hands_nothing_to_the_tap() {
+    let up = fake_upstream_with("{\"type\":\"error\"}".to_string());
+    let hub = std::sync::Arc::new(crate::tap::TapHub::default());
+    let mut rx = hub.attach();
+    let addr = hosted_with_tap("tap5", up, hub.clone());
+    let resp = through(addr);
+    assert!(resp.ends_with("{\"type\":\"error\"}"), "{resp:?}");
+    assert_eq!(drain(&mut rx), Vec::new());
 }

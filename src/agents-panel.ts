@@ -5,9 +5,9 @@
  * 一枚 chip（`N agents (M 运行中)`，0 agent 隐藏；F80 去纯装饰 🤖）+ 点击展开 popover，每行
  * 一个 agent：灯（🟢 运行中 / ✓ 完成 / ✗ 中止）+ [类型] 描述。
  *
- * 数据纯前端推断（零后端改动）：TabManager 在 jsonl 流里配对 Task/Agent 的
- * tool_use（注册，running）与 tool_result（done）；会话变 idle/归档时把仍
- * running 的标 aborted（ESC 打断/崩溃不会有 result，防僵尸绿灯）。
+ * 〔STC · `设计/90 §4` 阶段 C〕数据是后端的会话事实（`history-facts` 的 `agents`：后端读一遍文件配对 Task/Agent 的
+ * tool_use（running）与 tool_result（done））；前端只做一件事：会话变 idle/归档时把仍
+ * running 的标 aborted（ESC 打断/崩溃不会有 result，防僵尸绿灯 —— 那是事件，`tab-session-facts.ts::abortRunningAgents`）。
  *
  * UI 外壳复用 tasks-popover 的 CSS 类（同形态零新外壳样式）；行样式 .agents-* 自有。
  * 折叠状态写 localStorage（LS_KEYS.agentsPanelCollapsed，全局单例）。
