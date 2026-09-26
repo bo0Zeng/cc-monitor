@@ -189,3 +189,16 @@ fn a_model_name_is_judged_before_it_goes_anywhere() {
         );
     }
 }
+
+/// 〔DUP1 · `INVARIANTS §47` ①〕`--account`：与建账号的那个工具逐字同的那一份判（`shell_quote_core::account_name_ok`），**正反各一格**。
+#[test]
+fn an_account_name_is_judged_before_it_goes_anywhere() {
+    assert_eq!(ok(&["new", "--account", "work"]).account, "work");
+    for bad in ["a.b", "_a", "a b"] {
+        let arg = format!("--account={bad}");
+        assert!(
+            err(&["new", &arg]).contains("用不了"),
+            "坏账号名 {bad:?} 放行了"
+        );
+    }
+}
