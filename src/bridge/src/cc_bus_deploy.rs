@@ -115,6 +115,11 @@ const FILES: &[(&str, &[u8])] = &[
         "scripts/cc-list",
         include_bytes!("../../shared/cc-bus/scripts/cc-list"),
     ),
+    // 〔SH1 · V136〕只读看收件箱尾巴（后端 `bus-inbox` 转调它）。
+    (
+        "scripts/cc-log",
+        include_bytes!("../../shared/cc-bus/scripts/cc-log"),
+    ),
     (
         "scripts/cc-recv",
         include_bytes!("../../shared/cc-bus/scripts/cc-recv"),
