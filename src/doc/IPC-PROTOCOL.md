@@ -1696,7 +1696,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 | `agent` | → | 这一家 agent 的路由名（第 1 段）|
 | `account` | → | `{"kind":"named","configDir":…}` · `{"kind":"base"}` · 缺席 / `null`（没表态）|
 | `key` | → | 第 3 段（流标签）：resume ⇒ sid；新开 ⇒ 起会话那一侧铸的 nonce。过不了段闸 ⇒ `bad_args` |
-| `allSessions` | → | 全量注入开关（`/t/` 那几格；默认关）|
+| `allSessions` | → | 全量注入开关（`/t/` 那几格；monitor 那一侧默认开）|
 | `baseUrl` | ← | 注入的地址（不带钥匙；渲染成 `$(cat "$HOME/.cc-monitor/relay-key")` 那一形是起会话那一侧的事）；`null` = 不注入 |
 | `listening` | ← | 这台机器上我们的中转在不在听（只在 `baseUrl` 非空时探；为空时 `false`）|
 | `whenDown` | ← | 中转不在时：`refuse`（`/s/`，拒绝起会话）· `direct`（`/t/`，照旧直连）；`baseUrl` 为空时 `null` |
@@ -2837,7 +2837,7 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
   （`设计/20 §3.2`），monitor 只转交入参、照成品执行：
   那台的 apikey 表里有 (agent, 账号) 这一行 ⇒ 注入 `/s/`（`whenDown: refuse`：中转不在 ⇒ 远端先 `relay-status` → `relay-ensure` 有界等，
   仍不在 ⇒ **拒绝起会话**；本机那一个住在本机常驻后端里，起不了第二个 ⇒ 拒）；没有这一行 ⇒ 默认**不注入**。
-  全量注入（订阅号 · 不带账号的本机会话也注 `/t/`）**带开关、默认关**：monitor 进程环境里 `CCM_RELAY_ALL_SESSIONS=1` 才开
+  全量注入（订阅号 · 不带账号的本机会话也注 `/t/`）**带开关、默认开**（RL2：V135 真跑过一次）：monitor 进程环境里 `CCM_RELAY_ALL_SESSIONS=0` 才关
   （随 `allSessions` 交给那台后端）；开了也只给登记了默认上游的 agent 注（codex 不注）；`/t/` 那一格中转不在 ⇒ 照旧直连（`whenDown: direct`，不拒绝）。
   问不到那台后端 ⇒ **拒绝起会话**并说清（不猜、不退回「自己读凭据文件」）。
 - 中转**自己造**的状态码〔`设计/20 §3.1a`，每个码只有一处常量，三组两两不相交〕：

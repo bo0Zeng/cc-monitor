@@ -1479,15 +1479,12 @@ pub(crate) struct InjectFactSources {
     pub(crate) all_sessions: fn() -> bool,
 }
 
-/// 全量注入开关的生产取值口：环境变量 [`RELAY_ALL_SESSIONS_ENV`] 恰好是 `1` 才算开。
+/// 全量注入开关的生产取值口：**默认开**，环境变量 [`RELAY_ALL_SESSIONS_ENV`] 恰好是 `0` 才关。
 ///
-/// # 为什么是一个环境变量、为什么默认关（`设计/20 §7` 步 4 逐字「必须带开关，默认关；真机验过再默认开」）
-///
-/// - **默认关**：没设 / 设成别的值 ⇒ 关 ⇒ 起会话的命令逐字节与本件之前相同。
-/// - **环境变量**：真机验证那一趟要能不重编就翻（`CCM_NO_DEVTOOLS` / `CCM_CJK_FONT` 同形）。
-/// - ⚠ 它**不是**设置页上的一个开关：「真机验过再默认开」那一天要做的是把默认值翻过来，不是加一个界面。
+/// 〔RL2 · V120 · V135〕并发真机量过（RT1）、真 claude 走过一次「无账号 → `/t/…/_/…`」（RL2，读数住 `调研/第四波记录/RELAY.md §1.1`）⇒ 翻成默认开；
+/// 旋钮留作退路（不重编就能关），它不是设置页上的开关。
 pub(crate) fn relay_all_sessions_switch() -> bool {
-    std::env::var(RELAY_ALL_SESSIONS_ENV).is_ok_and(|v| v == "1")
+    std::env::var(RELAY_ALL_SESSIONS_ENV).map_or(true, |v| v != "0")
 }
 
 /// 全量注入开关的环境变量名。
