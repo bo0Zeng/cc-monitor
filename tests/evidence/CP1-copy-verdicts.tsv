@@ -248,3 +248,4 @@ src/backend/main.rs:361	hello 写不出去	保留	[不对外] 〔HX1〕同上，
 src/backend/main.rs:424	收到停机信号	保留	[不对外] 〔HX1〕同上，只进后端日志
 src/backend/main.rs:429	对端走了（写不出去）	保留	[不对外] 〔HX1〕同上，只进后端日志
 src/backend/main.rs:751	流结束 ⇒ 这台机器的退出策略是「结束」	保留	[不对外] 〔HX1〕同上，只进后端日志
+src/bridge/src/tasks.rs:93	{who}的后端回的任务清单认不出来（{e}），多半是两边版本不一样	保留	[不对外] 〔LOC1a〕本机任务 watcher 解成品失败的那一句：只进日志（`tracing::warn!`，这一次不推），界面看不见

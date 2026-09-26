@@ -137,6 +137,10 @@ fn every_registered_command_declares_its_run_kind() {
                 | "bus-kill"
                 | "bus-spawn"
                 | "bus-state"
+                // 〔LOC1a · 第四波 4D〕`cc-acct-iso` 两问（`shellinit` 起一次插件进程）· 分叉（读整份 jsonl ＋ `O_EXCL` 写）。
+                | "acct-iso-status"
+                | "acct-iso-shellinit"
+                | "session-fork"
                 | "capture-pane"
                 | "files-browse"
                 | "files-create"
@@ -267,6 +271,9 @@ fn every_registered_command_declares_its_run_kind() {
         "bus-kill",
         "bus-spawn",
         "bus-state",
+        "acct-iso-status",
+        "acct-iso-shellinit",
+        "session-fork",
         "capture-pane",
         "files-browse",
         "files-create",

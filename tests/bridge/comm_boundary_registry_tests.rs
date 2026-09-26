@@ -2468,13 +2468,16 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     //    API key 那两问从 monitor 的两条 Tauri 命令改走通道；每处显式给期限。
     // 〔HX1 · 4D · D-f〕31 → 32：`account-reads.ts::fetchSessionAccountsOrNull`（`accounts-sessions`，机器页「停」本机后端之前
     //    现问一次走中转的活会话；不走缓存、问不到回 `null`）；显式给期限。
+    // 〔LOC1a · 第四波 4D〕〔合并 LOC1a × 主线 66f2b6bf〕主线 31 ＋ 1：`tasks-panel.ts::fetchSessionTasks`（`tasks-list`）——
+    //    任务快照从 monitor 的 Tauri 命令改走通道（C4e 批 4）；显式给期限。
+    // 〔合并 HX1 × LOC1a〕两路各自 31 ＋ 1 ⇒ 31 ＋ 2 = 33。
     // 〔CF2 · 第四波 4B〕`chan.subscribe`（TS，主界面）恰好 1 处：`events.ts::bindEvents` 按 `streams` 订会话内容流
     //    （主窗口每台机器一条、独立窗口一条，都经这一处）。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 32usize),
+            ("chan.call", 33usize),
             ("chan.subscribe", 1usize),
             ("subscribe", 1usize)
         ]

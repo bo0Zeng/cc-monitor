@@ -170,9 +170,9 @@ const MEASURE_CENSUS: &[(&str, MeasureShape, Verdict, &str)] = &[
     ),
     (
         "monitor-backend-observe-landed",
-        MeasureShape::PinsTheOneResident,
+        MeasureShape::LineHasResidents,
         Verdict::Holds,
-        "〔`K-R71` 09-12 按 `R29` 裁定一从裸 `is_dir()` 收窄成钉住那个唯一的读面传输〕。         代价与 `control/` 那格逐字相同。⚠ **`K-R73` 一个字都没动它**",
+        "〔`K-R71` 09-12 按 `R29` 裁定一从裸 `is_dir()` 收窄成钉住那个唯一的读面传输〕。         〔LOC1a 09-25〕那个唯一住户（`local_query.rs`〔散文墓碑〕）随本机读面改走 `<local>` 长连接删了 ⇒          改成与 `platform/` 同形的量法（目录在 ∧ 真有住户），空壳 `mod.rs` 不算",
     ),
     (
         "monitor-backend-platform-landed",

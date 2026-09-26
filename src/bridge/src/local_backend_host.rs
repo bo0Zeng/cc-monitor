@@ -698,6 +698,33 @@ pub struct DetachedHandle {
 /// ⇒ `LOCAL_BACKEND` 的锁是**两条路共用的那道门**，本表只在门内动。
 pub static DETACHED: std::sync::Mutex<Option<DetachedHandle>> = std::sync::Mutex::new(None);
 
+/// 〔LOC1a · 第四波 4D〕被监护那条路（非常驻：Windows / `CCM_NO_DETACH`）起来的那一份二进制。
+/// 常驻那条的记在 [`DETACHED`] 里（`bin`）；这一格只为被监护那条补上同一个事实。
+/// **锁序同 `DETACHED`**：只在持有 [`LOCAL_BACKEND`] 的锁时取。
+static SUPERVISED_BIN: std::sync::Mutex<Option<std::path::PathBuf>> = std::sync::Mutex::new(None);
+
+/// 〔LOC1a · 第四波 4D〕**正在跑的那份**本机常驻后端的二进制 —— 给终端窗口导 `CCM_BACKEND_BIN`（`D11`）。
+///
+/// 常驻那条（起的 / 接管的）⇒ `DETACHED.bin`（接管来的从 pid 文件第二行读回；读不回是空的 ⇒ `None`，不猜）；
+/// 被监护那条 ⇒ 起它时解析出的那一份。都不在 ⇒ `None`（窗口里不设，同「本机后端不在」）。
+/// 此前窗口那一格自己去找 exe 旁边那份文件，不认自释放之后正在跑的那一份（RT1 F2 / WIN1 报备）。
+pub(crate) fn running_backend_bin() -> Option<std::path::PathBuf> {
+    let g = LOCAL_BACKEND.lock().unwrap_or_else(|e| e.into_inner());
+    {
+        let d = DETACHED.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(h) = d.as_ref() {
+            return (!h.bin.as_os_str().is_empty()).then(|| h.bin.clone());
+        }
+    }
+    if g.is_none() {
+        return None;
+    }
+    SUPERVISED_BIN
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
+
 /// `K-P1-D1` `重-2`：**上一次「那个口上有东西，但接不上它」的下一步该干什么。**
 ///
 /// # 为什么要有这么一个格子
@@ -1739,6 +1766,10 @@ pub fn start_local_backend() -> StartOutcome {
     );
     if let Some(h) = sup {
         *g = Some(h);
+        // 〔LOC1a〕记下被监护那一份的二进制（给窗口导 `CCM_BACKEND_BIN`，见 [`running_backend_bin`]）。
+        if let Resolved::Found(p) = &resolved {
+            *SUPERVISED_BIN.lock().unwrap_or_else(|e| e.into_inner()) = Some(p.clone());
+        }
     }
     // ★ `K-P3b`：另一个返回 `Failed` 的出口，同样从 `note_never_started` 过。
     note_never_started(match resolved {
@@ -1830,6 +1861,7 @@ pub fn stop_local_backend() -> Result<String, String> {
         Some(h) => {
             let pid = h.current_pid();
             h.stop();
+            *SUPERVISED_BIN.lock().unwrap_or_else(|e| e.into_inner()) = None;
             Ok(copy_text("rsLocalBackendHost.stop.local", &[]))
         }
         None => Ok(copy_text("rsLocalBackendHost.stop.notRunning", &[]).into()),
