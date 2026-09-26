@@ -504,24 +504,31 @@ pub fn change_mode(root: &Path, rel: impl AsRef<Path>, mode: u32) -> Result<Path
 ///
 /// ⚠ 只覆盖**普通文件**：目标是目录或不存在 ⇒ 拒。新建一份请走 [`create_new_file`]
 /// （那条是 `O_EXCL`，两条路刻意分开 —— 「新建」与「改既有」是两件风险不同的事）。
+///
+/// 🔴〔HX1 · 4D〕**原子地换**：走 [`swap_in`]（同目录 `O_EXCL` 暂存旁名 → 写满 → 沿用原权限位 → 换名上位；
+/// 最后一段是链接 ⇒ 解到底、改真文件）。主会话 D-a 裁「覆盖写一律『临时件 ＋ rename』原子化」，出处 E §E2：
+/// 此前是就地先截断再写 —— 写到一半失败、或后端在写的中途被收掉，目标剩半份或 0 字节。
+/// 今天那两形下目标原封不动（旁边可能剩一份 `.<名>.ccm-put-<pid>-<序>.part`，它不是用户数据）。
+/// ⚠ 认下的代价（D-a 的代价，`调研/第四波记录/HX1.md` §2.1，`设计/60 §5.5`「刻意不换语义」那句要随 D0 并入改）：
+///   换名之后 inode 换了 ⇒ **硬链接**的另一个名字仍指旧内容 · 目标若属**别的用户**、只是给了我们写权限，换完属主变成我们 ·
+///   Linux 上的 **xattr / ACL** 不跟过来。权限位沿用；跨盘不会（旁名与目标同目录）。
+///   Windows 臂照旧就地写（`swap_in` 自己那一支，保 ACE —— `设计/60 §3.3` 认过）。
 pub fn overwrite_text(
     root: &Path,
     rel: impl AsRef<Path>,
     bytes: &[u8],
 ) -> Result<PathBuf, WriteRefusal> {
+    let rel = rel.as_ref();
     let real = resolve_existing_in_root(root, rel).map_err(WriteRefusal::Refused)?;
-    let is_file = std::fs::metadata(&real)
-        .map(|m| m.is_file())
+    let md = std::fs::metadata(&real)
         .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", real.display())))?;
-    if !is_file {
+    if !md.is_file() {
         return Err(WriteRefusal::Refused(format!(
             "refuse write: {} 不是一份普通文件 —— 覆盖写只收普通文件",
             real.display()
         )));
     }
-    std::fs::write(&real, bytes)
-        .map_err(|e| WriteRefusal::Io(format!("refuse write: 写 {} 失败：{e}", real.display())))?;
-    Ok(real)
+    swap_in(root, rel, bytes, Some(md.permissions()))
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1683,3 +1690,8 @@ pub fn answer_wire(wire_name: &str, args: &serde_json::Value) -> Answer {
 #[cfg(test)]
 #[path = "../../../tests/backend/control/files_write_tests.rs"]
 mod tests;
+
+// 〔HX1〕覆盖写原子化的判据（写到一半被收掉 · 权限位 / 链接 / 旁名 · 生产段 `fs::write(` 只剩 Windows 臂）。
+#[cfg(test)]
+#[path = "../../../tests/backend/control/overwrite_atomic_tests.rs"]
+mod overwrite_atomic_tests;
