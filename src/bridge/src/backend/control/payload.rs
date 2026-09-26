@@ -292,6 +292,15 @@ fn render_env_ops(ops: &[EnvOp]) -> Result<String, String> {
                 );
             }
             EnvOp::ExportModel { value } => {
+                // 〔DUP1 · `INVARIANTS §47` ①〕模型名是标识符：共享那一份判（`shell_quote_core::model_name_ok`，
+                // 真实模型名全过 —— `sonnet[1m]` · Bedrock `…-v1:0` · Vertex `…@2025…` · 网关 `anthropic/…`）。
+                // 这里原来「刻意宽容渲染」、只靠 quote；前端那份 `isValidModelName`〔散文墓碑〕删了（`设计/90 §3` 判据 2）。
+                if !shell_quote_core::model_name_ok(value) {
+                    return Err(refuse(copy_text(
+                        "rsPayload.model.bad",
+                        &[("value", &format!("{:?}", value))],
+                    )));
+                }
                 let _ = write!(
                     out,
                     "export ANTHROPIC_MODEL={}; ",
@@ -811,3 +820,8 @@ pub fn relay_env_prefix_ps(base_url: &str) -> String {
 #[cfg(test)]
 #[path = "../../../../../tests/bridge/backend/control/payload_tests.rs"]
 mod tests;
+
+// 〔DUP1〕标识符放行判定的生成物（`src/generated/judgment-rules.ts`）与共用金样（`INVARIANTS §47` ①）。
+#[cfg(test)]
+#[path = "../../../../../tests/bridge/backend/control/payload_judgment_rules.rs"]
+mod judgment_rules;

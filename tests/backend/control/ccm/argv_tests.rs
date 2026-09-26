@@ -171,3 +171,21 @@ fn a_session_id_is_judged_before_it_goes_anywhere() {
     assert!(err(&["new", "--ccm-sid", "a_b"]).contains("不合形状"));
     assert!(err(&["resume", &"a".repeat(65)]).contains("不合形状"));
 }
+
+/// 〔DUP1 · `INVARIANTS §47` ①〕`--model`：真实模型名全过、选项形 / shell 形拒（`shell_quote_core::model_name_ok`），**正反各一格**。
+#[test]
+fn a_model_name_is_judged_before_it_goes_anywhere() {
+    assert_eq!(ok(&["new", "--model", "sonnet[1m]"]).model, "sonnet[1m]");
+    assert_eq!(
+        ok(&["new", "--model", "claude-sonnet-4-5@20250929"]).model,
+        "claude-sonnet-4-5@20250929"
+    );
+    // `=` 形：`--model -x` 那样分开写会先在取值那一关被当成漏了参数拒，走不到形状判定。
+    for bad in ["-x", "opus 4", "a;b"] {
+        let arg = format!("--model={bad}");
+        assert!(
+            err(&["new", &arg]).contains("用不了"),
+            "坏模型名 {bad:?} 放行了"
+        );
+    }
+}

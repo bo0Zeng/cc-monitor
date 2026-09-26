@@ -1,5 +1,5 @@
 /**
- * 起会话输入的校验原语（纯函数，零依赖叶子模块）：模型名 · tmux 会话名。
+ * 起会话输入的校验原语（纯函数，零依赖叶子模块）：tmux 会话名。
  *
  * 〔LR2〕这里原来还有三件**拼 shell 串**的东西：`posixQuote`（单引号包裹）、`buildEnvPrefix`
  * （`export CLAUDE_CONFIG_DIR='…'; `）与 `UNSET_CONFIG_DIR_PREFIX`。它们只给 TS 兜底渲染器
@@ -15,16 +15,8 @@
  * 登记表 `tests/judgment-single-home.vitest.ts`（J2 · J3）。
  * 〔DUP1 · 第二轮〕`isValidSessionId`〔散文墓碑〕同理删了（J5）：sid 规则只有一份，住 `shell_quote_core::session_id_ok`，
  * 渲染侧（载荷 · 外层 · `ccm …` 调用行 · 本机拉起）与后端 ccm 各自在拼进命令之前判。
+ * `isValidModelName`〔散文墓碑〕也删了（J17）：规则住 `shell_quote_core::model_name_ok`；设置里写入点那一句读生成物。
  */
-
-/**
- * F07（unify-launch）：模型名白名单——覆盖"claude-opus-4-5-20260101"这类完整 ID 与"opus"这类
- * 简写别名，拒一切 shell 元字符。只做注入安全校验，不做"这是不是真实存在的模型"的语义校验
- * （远端 `claude` 自己会在模型名不存在时报错，那是它的职责）。
- */
-export function isValidModelName(name: string): boolean {
-  return /^[A-Za-z0-9._-]{1,128}$/.test(name);
-}
 
 /**
  * F51:tmux 会话名合法性——非空、无控制字符(含 TAB 0x09 / 换行,防破坏 ls 解析或命令结构)、

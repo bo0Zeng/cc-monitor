@@ -391,6 +391,14 @@ describe("modelByAccount config 读写（F07）", () => {
     await expect(setModelForAccount("z", "Claude Opus 4.5")).rejects.toThrow(/模型名不合法/); // 空格非法
     expect(saveCfg).not.toHaveBeenCalled();
   });
+  // 〔DUP1〕规则换成共享那一份（生成物）之后，真实模型名都放行（主会话 09-26「真实模型名都放行」）：
+  // 原先 TS 那份会拒这几条。正例的全集在共用金样 `identifier-rules.golden.json`（`identifier-rules-parity.vitest.ts`）。
+  it("真实模型名（`sonnet[1m]` · Bedrock · Vertex）写得进去", async () => {
+    loadCfg.mockResolvedValue({ accounts: {} });
+    for (const m of ["sonnet[1m]", "us.anthropic.claude-sonnet-4-5-20250929-v1:0", "claude-sonnet-4-5@20250929"]) {
+      await expect(setModelForAccount("z", m)).resolves.toBeUndefined();
+    }
+  });
   it("清除（null）不受校验约束——恒允许", async () => {
     loadCfg.mockResolvedValue({ accounts: { modelByAccount: { z: "opus" } } });
     await expect(setModelForAccount("z", null)).resolves.toBeUndefined();

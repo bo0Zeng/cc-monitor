@@ -127,10 +127,13 @@ test("model：apply 对合法模型名推入 export-model", () => {
   MODEL_DIMENSION.apply(plan, ctx);
   eq(plan.env, [{ kind: "export-model", value: "claude-opus-4-5-20260101" }]);
 });
-test("model：非法模型名 → throw（拒绝拼入命令）", () => {
+// 〔DUP1 · `设计/90 §3` 判据 2〕这条原来是「非法模型名 → throw」（TS 那份 `isValidModelName`〔散文墓碑〕判的）。
+// 今天前端不判：原样推，渲染侧与后端 ccm 过 `shell_quote_core::model_name_ok`（`payload_tests` · `ccm_invocation_tests` 钉）。
+test("model：模型名前端不判，原样推进 plan（判它的是 Rust 渲染侧）", () => {
   const ctx: LaunchContext = { ...baseCtx, modelOverride: "opus; rm -rf /" };
   const plan: LaunchPlan = { transport: ctx.transport, action: ctx.action, container: ctx.container, cwd: ctx.cwd, env: [], launcher: "", args: [], wrap: [] };
-  throws(() => MODEL_DIMENSION.apply(plan, ctx));
+  MODEL_DIMENSION.apply(plan, ctx);
+  eq(plan.env, [{ kind: "export-model", value: "opus; rm -rf /" }]);
 });
 // 〔LR1 · U8c-3〕这里原来有两条测 `MODEL_DIMENSION.cliFlags`（`--model <名>` · 无偏好不被问到）。
 // 前者随 TS 渲染器删了（今天在 `ccm_invocation_tests.rs::model_dimension_is_conditional_by_design`），

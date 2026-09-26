@@ -11,7 +11,6 @@
  * 是**静默账号被抹掉**，所以钉成模块加载即崩的断言（下方 `assertDimensionOrderInvariants`），
  * 而非留作注释纪律。
  */
-import { isValidModelName } from "./shell-quote.ts";
 import { AGENT_PROFILE } from "./agent-profile.ts";
 import type { LaunchDimension } from "./launch-types.ts";
 import { copyText } from "./copy-table";
@@ -93,9 +92,8 @@ export const MODEL_DIMENSION: LaunchDimension = {
   applies: (ctx) => !!ctx.modelOverride,
   apply: (plan, ctx) => {
     if (!ctx.modelOverride) return;
-    if (!isValidModelName(ctx.modelOverride)) {
-      throw new Error(copyText("launchDimensions.bad.model", { value: JSON.stringify(ctx.modelOverride) }));
-    }
+    // 〔DUP1 · `设计/90 §3` 判据 2〕这里原来先过 TS 的 `isValidModelName`〔散文墓碑〕（它还会拒 `sonnet[1m]`、Bedrock / Vertex 名）。
+    // 今天原样推：规则只有一份（`shell_quote_core::model_name_ok`），渲染侧与后端 ccm 在拼进命令之前判。
     plan.env.push({ kind: "export-model", value: ctx.modelOverride });
   },
   // 〔LR1 · U8c-3〕`cliFlags`（`--model <名>`）与 `requiredCaps`（`["model"]`）两格随 TS 渲染器删了；
