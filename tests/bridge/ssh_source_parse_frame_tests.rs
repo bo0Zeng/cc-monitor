@@ -285,6 +285,32 @@ fn version_warning_messages() {
     assert!(incompat.contains("wsl") && incompat.contains("不兼容"));
 }
 
+/// 〔HX2 · 主会话 D-b〕B4：版本不同那句按新旧分两句（期望手写）—— 那台旧 ⇒「下次连上时自动换成这一版」；
+/// 那台不比这一版旧 ⇒「不会把它换回去」、叫人升级**这个** monitor。两句互不相同，都不再说过期的「后续将支持自动部署」。
+/// 要求住址：主会话 4D 裁 D-b 逐字「部署只在「我的比盘上的新」时才换（BUILD_ID 可比序）」。
+#[test]
+fn hx2_the_version_warning_says_which_side_is_older() {
+    let older = version_warning(EXPECTED_PROTO_V, "p1a-history", "pi").expect("旧的该提示");
+    assert!(
+        older.contains("旧版 p1a-history") && older.contains("下次连上时自动换成这一版"),
+        "{older}"
+    );
+    let newer = version_warning(EXPECTED_PROTO_V, "p99a-future", "pi").expect("新的该提示");
+    assert!(
+        newer.contains("p99a-future") && newer.contains("不会把它换回去") && newer.contains("升级"),
+        "{newer}"
+    );
+    let odd = version_warning(EXPECTED_PROTO_V, "hand-built", "pi").expect("解不出序的也该提示");
+    assert!(
+        odd.contains("不会把它换回去"),
+        "解不出序 ⇒ 按「不比这一版旧」说：{odd}"
+    );
+    for m in [&older, &newer, &odd] {
+        assert!(!m.contains("后续将支持"), "过期的那句回来了：{m}");
+    }
+    assert_ne!(older, newer);
+}
+
 /// 两条 line 帧：逐字段断言 session_id / path / seq / raw 都原样取出。
 #[test]
 fn parses_two_line_frames_with_all_fields() {

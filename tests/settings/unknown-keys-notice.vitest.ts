@@ -140,7 +140,7 @@ describe("P12：那条常驻条（`createUnknownKeysBar`）", () => {
   });
 
   it("★ 反空真：配置干净 ⇒ 条是藏着的、正文是空的（不是「永远亮着」）", async () => {
-    store.cfg = { theme: {}, notifyTurnEnd: true, forceLaunchPayloadRenderer: false };
+    store.cfg = { theme: {}, notifyTurnEnd: true, autoFollowUserActive: false }; // 〔LR2〕原来第三个键是已退役的 forceLaunchPayloadRenderer
     const bar = createUnknownKeysBar();
     await tick();
     expect(

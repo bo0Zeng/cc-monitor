@@ -319,6 +319,8 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
         // `the_answer_is_a_function_of_the_machine_not_of_the_build` 钉的是另一半 ——
         // **空表不等于这个字段是个编译期常量**。
         unavailable: Vec::new(),
+        // 〔HX2〕回显起我的宿主交来的那几格（名单 `wire::HOST_ECHO_ENVS`）；一格都没交 ⇒ 省略、线上字节不变。
+        host_env: wire::host_env_from(|name| std::env::var(name).ok()),
     }
 }
 
@@ -622,9 +624,9 @@ async fn serve_listening(
         Err(e) => {
             let in_use = e.kind() == std::io::ErrorKind::AddrInUse;
             // ★★ **绑不上就退出，绝不自己换端口。**
-            // 换端口 = 每台机 N 个后端，各自往 tmux server 装 `[50]` 槽位的全局 hook
-            // 互相盖（`control/tmux_hook.rs::install_hooks`，**没有关掉它的开关**，
-            // 载荷里烤着那一个后端的 pid+starttime）⇒ 比今天更糟。
+            // 换端口 = 每台机 N 个后端（中转口与全部 SSH 各 N 份）⇒ 比今天更糟。
+            // 〔HX2〕从前这里还写着「各自往 tmux server 装 `[50]` 槽位的全局 hook 互相盖」—— 今天 hook 按实例一格
+            // （`control/tmux_hook.rs::install_hooks`），那一条不成立了。
             tracing::error!(
                 "绑不上 {addr}（{e}）⇒ 退出。\n\
                  这个口上已经有东西了：宿主该**连上去读一行 hello 比对**，\n\

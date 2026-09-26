@@ -195,7 +195,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("assets.catalog", (NA, "—", "资产目录（V113「目录自动同步，装要你点」）：只同步「有哪些、定义是什么」，不装")),
     ("audit.drift-ledger", (NA, "—", "漂移账本的读侧")),
     ("cc-bus.cockpit", (NA, "—", "cc-bus 驾驶舱的读 / 发消息，不是装 cc-bus")),
-    ("creds.apikey", (NA, "—", "账号的第三方 API key —— 上游选择自己的状态文件（本机 monitor 写，远端那台的后端写，〔RM1a〕），不是往用户环境里装东西")),
+    # 〔墓碑 · 第四波 4D HX2〕`creds.apikey` 随本机写 key 改由界面经通道直发后端 `apikey-key-set`（`apikey-reads.ts::writeApikeyKey`）、monitor 那条 Tauri 命令与 `apikey_remote` 写臂删了而退役；理由同上面几条墓碑。
     ("backend.lifecycle", (NA, "—", "起 / 停 / 列后端进程 —— 是**跑**它，不是**装**它")),
     ("backend.status", (NA, "—", "问后端活没活 —— 同上，不是查装态")),
     # 〔RL1 · 第四波〕`relay.machine`（`relay_ensure`）退役，换成 `relay.launch-endpoint`：

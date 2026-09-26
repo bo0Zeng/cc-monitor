@@ -2471,6 +2471,7 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     // 〔LOC1a · 第四波 4D〕〔合并 LOC1a × 主线 66f2b6bf〕主线 31 ＋ 1：`tasks-panel.ts::fetchSessionTasks`（`tasks-list`）——
     //    任务快照从 monitor 的 Tauri 命令改走通道（C4e 批 4）；显式给期限。
     // 〔合并 HX1 × LOC1a〕两路各自 31 ＋ 1 ⇒ 31 ＋ 2 = 33。
+    // 〔HX2 · 4D〕〔合并 HX2 × 主线 290d8c33〕主线 33 ＋ 1 ⇒ 34：`apikey-reads.ts::writeApikeyKey`（`apikey-key-set`，写 key 从 monitor 那条 Tauri 命令改走通道）；显式给期限。
     // 〔CF2 · 第四波 4B〕`chan.subscribe`（TS，主界面）恰好 1 处：`events.ts::bindEvents` 按 `streams` 订会话内容流
     //    （主窗口每台机器一条、独立窗口一条，都经这一处）。
     // 〔W5-ALIAS · 第五波先行〕＋1（合并主线 06b5dc08 之后 33 → 34）：`settings/machine-aliases.ts::previewAlias` 一处（别名预览 `ccm-print`，

@@ -276,7 +276,7 @@ mod wire_golden; // `设计/20 §7` 步 1–3：「零行为变化」的字节�
 
 /// `--relay` 的中转入口。**上游选择那只手由调用方递进来**（`accounts::upstream::run_relay`）——
 /// 本层叫不出它的名字（`upstream_selection_guard` ㈢ 零命中）。
-pub(crate) use listen::{host, run};
+pub(crate) use listen::{host, run, ENV_PORT};
 
 /// 〔US1 · 4D〕「这台机器上我们的中转在不在听」—— 上游选择出成品时问它（`launch-endpoint` · `apikey-routing`）。
 /// 与 `relay-status` 同一个判准；只收端口、只回布尔。

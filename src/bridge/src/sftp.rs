@@ -178,6 +178,10 @@ pub enum DeployAction {
     Skip,
     /// 需要部署，附人读原因。
     Deploy(String),
+    /// 〔HX2 · 主会话 D-b〕那台上是**另一版、但不比这一版旧**（更新 · 同序不同名 · 序解不出）⇒ **不动它**，
+    /// 照旧连上那一份。`theirs` = 那台上那一份自报的身份；`why` = 人读原因（点名两边各是哪一版）。
+    /// 只有 [`identity_decision`] 产这一格。
+    Keep { theirs: String, why: String },
 }
 
 /// 比对远端版本标记与期望 build_id，决定是否（重）部署。
@@ -305,9 +309,39 @@ pub(crate) fn interpret_stamp_scan(
     }
 }
 
+/// 〔HX2 · 主会话 D-b「部署只在『我的比盘上的新』时才换（BUILD_ID 可比序）」〕**`BUILD_ID` 的序键** —— 唯一实现。
+///
+/// 形状 `p<代号>` ＋ `<一个小写字母>` ＋ `-<名>`（`p1a-history` … `p3m-ssh-zlib`）⇒ 序键 `(代号, 字母)`。
+/// 解不出 ⇒ `None`（**不可比**，不是「最旧」也不是「最新」）。下一次 bump 写出解不出的形状由
+/// `sftp_tests::hx2_every_build_id_ever_shipped_has_an_order_and_the_history_climbs` 当场红（它读后端源码里的历史表）。
+/// **纯函数**。
+pub(crate) fn build_order(id: &str) -> Option<(u32, u8)> {
+    let rest = id.strip_prefix('p')?;
+    let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
+    if digits == 0 {
+        return None;
+    }
+    let generation: u32 = rest[..digits].parse().ok()?;
+    let tail = rest[digits..].as_bytes();
+    match tail {
+        [letter, b'-', name @ ..] if letter.is_ascii_lowercase() && !name.is_empty() => {
+            Some((generation, *letter))
+        }
+        _ => None,
+    }
+}
+
+/// 「手上这一版比那台上的新」—— 两边都解得出序键、且这一版的严格大。解不出任何一边 ⇒ `false`（不可比 ⇒ 不换）。
+pub(crate) fn is_newer(mine: &str, theirs: &str) -> bool {
+    matches!((build_order(mine), build_order(theirs)), (Some(m), Some(t)) if m > t)
+}
+
 /// 要不要（重）部署 —— **对照物是手上那份字节自报的身份**（`96 §7.2.3`），不是源码常量。**纯函数**。
 ///
 /// `Err` = 显式失败、**一个字节都不写**（出路交给用户：机器页「卸载后端」删掉那个文件，就是明确授权覆盖）。
+///
+/// 〔HX2 · D-b〕「另一版」那一格按 [`build_order`] 拆两格：那台上的**比这一版旧** ⇒ 换；**不比这一版旧** ⇒ [`DeployAction::Keep`]
+/// （两个不同版本的 monitor 连同一台远端，从此只会升不会降，不再每次连上互相换掉 —— 审计 E3）。
 pub(crate) fn identity_decision(
     id: &RemoteIdentity,
     expected: &str,
@@ -325,10 +359,21 @@ pub(crate) fn identity_decision(
             &[],
         ))),
         RemoteIdentity::Stamp(s) if s == expected => Ok(DeployAction::Skip),
-        RemoteIdentity::Stamp(s) => Ok(DeployAction::Deploy(copy_text(
+        RemoteIdentity::Stamp(s) if is_newer(expected, s) => Ok(DeployAction::Deploy(copy_text(
             "rsSftp.identity.other",
             &[("s", &s.to_string()), ("expected", &expected.to_string())],
         ))),
+        RemoteIdentity::Stamp(s) => Ok(DeployAction::Keep {
+            theirs: s.clone(),
+            why: copy_text(
+                "rsSftp.identity.notOlder",
+                &[
+                    ("machine", &machine.to_string()),
+                    ("s", &s.to_string()),
+                    ("expected", &expected.to_string()),
+                ],
+            ),
+        }),
         RemoteIdentity::NoStamp => Err(copy_text(
             "rsSftp.identity.unstamped",
             &[
@@ -523,6 +568,12 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, Deplo
     // 〔DP1〕那台上那一份是谁：读它字节里的身份戳（不跑它）；判不了 / 它不肯说 ⇒ 显式失败、一个字节都不写。
     let id = remote_identity(cfg, &fs, &cfg.backend_path).await?;
     match identity_decision(&id, bin.build_id, &cfg.origin_label(), &cfg.backend_path)? {
+        // 〔HX2 · D-b〕不比这一版旧 ⇒ 一个字节不写、照旧连上那一份；回**那台上的**身份（不是这一版的 ——
+        //   否则调用方的乐观路径会拿这一版内嵌的能力常量去发 flag），能力由那一份的 hello 自报。
+        DeployAction::Keep { theirs, why } => {
+            tracing::info!("远端 [{}] 不部署：{why}", cfg.origin_label());
+            return Ok(theirs);
+        }
         DeployAction::Skip => {
             tracing::info!(
                 "远端 [{}] backend 已是 {}，跳过部署",
@@ -634,6 +685,8 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
     // 〔DP1〕与自动部署同一条判定：读那台上那一份字节自报的身份，不读旁挂标记。
     let id = remote_identity(&cfg, &fs, &path).await?;
     let backend_msg = match identity_decision(&id, bin.build_id, &cfg.origin_label(), &path)? {
+        // 〔HX2 · D-b〕手动点也不降级：出路与「它不说自己是谁」那一格同一句（先卸载再部署 = 明确授权覆盖）。
+        DeployAction::Keep { why, .. } => copy_text("rsSftp.deploy.keptNotOlder", &[("why", &why)]),
         DeployAction::Skip => copy_text(
             "rsSftp.deploy.upToDate",
             &[

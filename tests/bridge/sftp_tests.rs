@@ -548,7 +548,7 @@ fn deploy_decision_truth_table() {
 /// I1：六形逐形（期望取自 `96 §7.2.4` 那张表 ＋ 0 字节那一格按「没装」）。
 #[test]
 fn identity_decision_answers_each_state_without_merging_them() {
-    const EXPECT: &str = "p9-sample";
+    const EXPECT: &str = "p9b-sample";
     let d = |id: RemoteIdentity| identity_decision(&id, EXPECT, "devbox", "/h/.cc-monitor/bin/ccm");
     assert!(
         matches!(d(RemoteIdentity::Missing), Ok(DeployAction::Deploy(_))),
@@ -563,11 +563,11 @@ fn identity_decision_answers_each_state_without_merging_them() {
         Ok(DeployAction::Skip),
         "同一版 ⇒ 复用"
     );
-    let Ok(DeployAction::Deploy(why)) = d(RemoteIdentity::Stamp("p8-older".into())) else {
-        panic!("另一版 ⇒ 该换");
+    let Ok(DeployAction::Deploy(why)) = d(RemoteIdentity::Stamp("p8z-older".into())) else {
+        panic!("更旧的一版 ⇒ 该换");
     };
     assert!(
-        why.contains("p8-older") && why.contains(EXPECT),
+        why.contains("p8z-older") && why.contains(EXPECT),
         "换的理由没说清两边各是哪一版：{why}"
     );
     // 三种「判不清它是谁」：显式失败，而且三句话互不相同（下一步不同：一个没身份、一个身份不唯一、一个判不了）。
@@ -1410,4 +1410,128 @@ fn the_alias_block_truth_no_longer_lives_in_sftp() {
             panic!("正控：`profile_installer.rs` 里量不出 `{d}`（{e}）—— 这把尺子是瞎的")
         });
     }
+}
+
+// ═══ 〔HX2 · 主会话 D-b〕部署只升不降：`BUILD_ID` 可比序 ═══════════════════════════════════
+//
+// 要求住址：主会话 4D 裁 D-b 逐字「多个 monitor 连同一远端：部署只在「我的比盘上的新」时才换（BUILD_ID 可比序）」；
+// 它改写 `设计/01 §6.7a` 规矩 2「对就复用，不对就换」与 `96 §7.2.4`「恰一个戳 ≠ ⇒ 换」那一格（设计篇由主会话收口时改）。
+// 审计 `E-compat.md` §E3（两个不同版本的 monitor 连同一台远端，互相重部署）。
+
+/// B1a：序键手写表 —— 合法形 · 多位代号 · 缺字母 · 大写 · 缺名 · 缺前缀。
+#[test]
+fn hx2_build_order_reads_generation_and_letter_and_refuses_other_shapes() {
+    let cases: &[(&str, Option<(u32, u8)>)] = &[
+        ("p1a-history", Some((1, b'a'))),
+        ("p3m-ssh-zlib", Some((3, b'm'))),
+        ("p2z-relay-in-resident", Some((2, b'z'))),
+        ("p12c-x", Some((12, b'c'))),
+        ("p3-x", None),
+        ("p3M-x", None),
+        ("p3m", None),
+        ("p3m-", None),
+        ("3m-x", None),
+        ("sr1b-id", None),
+        ("", None),
+    ];
+    for (id, want) in cases {
+        assert_eq!(build_order(id), *want, "{id:?}");
+    }
+    assert!(is_newer("p3n-a", "p3m-b") && is_newer("p4a-a", "p3z-b"));
+    assert!(!is_newer("p3m-a", "p3m-b"), "同序不同名 ⇒ 不算新");
+    assert!(
+        !is_newer("p3m-a", "p3n-b") && !is_newer("p3n-a", "junk") && !is_newer("junk", "p1a-x")
+    );
+}
+
+/// 🔴 B1b：**出过的每一个 `BUILD_ID` 都有序、历史表按表序严格爬升、现在这个不低于最后一行**（读后端源码，异源）。
+/// 下一次 bump 写出一个解不出序的形状（或比历史低）⇒ 当场红 —— 那一版部署出去就永远不会被判「更新」而换上。
+#[test]
+fn hx2_every_build_id_ever_shipped_has_an_order_and_the_history_climbs() {
+    let guard = include_str!("../../tests/backend/build_id_guard.rs");
+    let start = guard
+        .find("const SUBCOMMAND_HISTORY")
+        .expect("历史表不在了 —— 本条的对照物没了");
+    let end = start + guard[start..].find("\n    ];").expect("历史表没有收尾");
+    let ids: Vec<&str> = guard[start..end]
+        .lines()
+        .map(str::trim)
+        .filter_map(|l| l.strip_prefix('"')?.split('"').next())
+        .filter(|s| s.starts_with('p') && !s.contains('\n') && !s.starts_with("--"))
+        .collect();
+    assert!(
+        ids.len() >= 30,
+        "历史表只抠出 {} 个 id —— 抠法坏了：{ids:?}",
+        ids.len()
+    );
+    let mut prev: Option<(u32, u8)> = None;
+    for id in &ids {
+        let o = build_order(id).unwrap_or_else(|| panic!("历史表里的 {id:?} 解不出序"));
+        if let Some(p) = prev {
+            assert!(o > p, "历史表没有按表序严格爬升：{id:?} 不高于上一行");
+        }
+        prev = Some(o);
+    }
+    let now = env!("BACKEND_BUILD_ID");
+    let o = build_order(now).unwrap_or_else(|| {
+        panic!("现在的 BUILD_ID {now:?} 解不出序 —— 照 `p<代号><小写字母>-<名>` 起名（D-b：部署按这个序只升不降）")
+    });
+    assert!(
+        o >= prev.unwrap(),
+        "现在的 BUILD_ID {now:?} 比历史表最后一行还低"
+    );
+}
+
+/// 🔴 B2：`identity_decision` 的「另一版」那一格按新旧拆开（期望手写）：旧 ⇒ 换；新 · 同序不同名 · 解不出 ⇒ 不动。
+#[test]
+fn hx2_a_different_build_is_replaced_only_when_it_is_older() {
+    const MINE: &str = "p3n-mine";
+    let d = |s: &str| {
+        identity_decision(
+            &RemoteIdentity::Stamp(s.into()),
+            MINE,
+            "devbox",
+            "/h/.cc-monitor/bin/ccm",
+        )
+    };
+    assert!(
+        matches!(d("p3m-older"), Ok(DeployAction::Deploy(_))),
+        "旧 ⇒ 换"
+    );
+    assert!(
+        matches!(d("p2z-older"), Ok(DeployAction::Deploy(_))),
+        "旧一代 ⇒ 换"
+    );
+    assert_eq!(d(MINE), Ok(DeployAction::Skip), "同一版 ⇒ 复用");
+    for theirs in ["p3o-newer", "p4a-newer", "p3n-sibling", "hand-built"] {
+        match d(theirs) {
+            Ok(DeployAction::Keep { theirs: t, why }) => {
+                assert_eq!(t, theirs, "Keep 回的不是那台上的身份");
+                assert!(
+                    why.contains(theirs) && why.contains(MINE) && why.contains("devbox"),
+                    "{why}"
+                );
+            }
+            other => panic!("{theirs:?} 不比 {MINE} 旧 ⇒ 该不动它，却是 {other:?}"),
+        }
+    }
+}
+
+/// 🔴 B2b：自动部署那条路遇到「不动」⇒ 回**那台上的**身份（源码切臂：`Keep` 臂里 `return Ok(theirs)`，不落到回这一版 id 的那一行）。
+#[test]
+fn hx2_keeping_a_newer_backend_reports_its_identity_not_ours() {
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
+    let f = guard_core::find_pinned(&prod, "pub async fn ensure_backend_deployed(")
+        .expect("自动部署那个函数不在了");
+    let body = &prod[f..];
+    let arm = guard_core::find_pinned(body, "DeployAction::Keep { theirs, why } => {")
+        .expect("自动部署那条路没有 Keep 臂");
+    let arm_end = arm + body[arm..].find("\n        }").expect("Keep 臂没收尾");
+    let arm_body = &body[arm..arm_end];
+    assert_eq!(
+        arm_body.matches("return Ok(theirs);").count(),
+        1,
+        "Keep 臂没回那台上的身份：{arm_body}"
+    );
+    assert!(!arm_body.contains("upload_verified"), "Keep 臂里写了字节");
 }
