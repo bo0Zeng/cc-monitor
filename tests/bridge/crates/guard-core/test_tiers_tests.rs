@@ -343,6 +343,7 @@ const SCAN: &[&str] = &[
     "tests/bridge/event_replay_tests.rs",
     "tests/bridge/e2e_gate_registry_tests.rs",
     "tests/bridge/exec_site_registry_tests.rs",
+    "tests/bridge/frame_tally_tests.rs", // 〔W5-VIS〕丢帧账：账本行为 ＋ 三条读帧循环的接线（剥过的生产文本）
     "tests/bridge/fenced_block_tests.rs",
     "tests/bridge/filewin/bigfile_tests.rs",
     "tests/bridge/filewin/boundary_tests.rs",

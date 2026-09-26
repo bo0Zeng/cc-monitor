@@ -1457,10 +1457,13 @@ pub fn start_if_present(
 /// 三次之后**整个进程周期不再起来**，日志写「崩了 3 次」——**一个错误的诊断**。
 /// 远端那条路早就明确取了相反的取舍（`ssh_source` 里 `from_utf8_lossy`，注释逐字
 /// 「非 UTF-8 不该让整条连接死掉」），本机这条当时把它漏了。
+///
+/// 〔W5-VIS · `设计/15 §3.4 ②`〕行旁边多回一位「这一行不是合法 UTF-8、按替换字符读的」，
+/// 让调用方记进丢帧账（`frame_tally`）—— lossy 这条取舍不动，只是不再静默。
 fn read_capped_line_sync<R: std::io::BufRead>(
     rd: &mut R,
     cap: usize,
-) -> std::io::Result<Option<String>> {
+) -> std::io::Result<Option<(String, bool)>> {
     let mut buf: Vec<u8> = Vec::new();
     let mut seen: usize = 0;
     let mut overflowed = false;
@@ -1474,9 +1477,9 @@ fn read_capped_line_sync<R: std::io::BufRead>(
             return Ok(if seen == 0 {
                 None // 真 EOF
             } else if overflowed {
-                Some(String::new())
+                Some((String::new(), false))
             } else {
-                Some(String::from_utf8_lossy(&buf).into_owned())
+                Some(decode_line(buf))
             });
         }
         let (take, done) = match chunk.iter().position(|&c| c == b'\n') {
@@ -1494,11 +1497,19 @@ fn read_capped_line_sync<R: std::io::BufRead>(
         rd.consume(consume);
         if done {
             return Ok(if overflowed {
-                Some(String::new())
+                Some((String::new(), false))
             } else {
-                Some(String::from_utf8_lossy(&buf).into_owned())
+                Some(decode_line(buf))
             });
         }
+    }
+}
+
+/// 一行字节 → 字符串 ＋「是不是按替换字符读的」（非 UTF-8 ⇒ `from_utf8_lossy`，理由见上）。
+fn decode_line(buf: Vec<u8>) -> (String, bool) {
+    match String::from_utf8(buf) {
+        Ok(s) => (s, false),
+        Err(e) => (String::from_utf8_lossy(e.as_bytes()).into_owned(), true),
     }
 }
 
@@ -1768,9 +1779,18 @@ pub(crate) fn local_stdio_consumer(
     let mut reader_end = crate::backend_policy::ReaderEnd::CleanEof;
 
     let mut rd = std::io::BufReader::new(stdout);
+    // 〔W5-VIS · `设计/15 §3.4 ②`〕这条载体上跳过了几帧认不出的、几行不是合法 UTF-8 —— 记账，流结束出总账。
+    let mut tally = crate::frame_tally::FrameTally::new("本机后端（stdio 载体）");
     loop {
         let line = match read_capped_line_sync(&mut rd, crate::ssh_source::BACKEND_FRAME_LINE_CAP) {
-            Ok(Some(l)) => l,
+            Ok(Some((l, lossy))) => {
+                if lossy {
+                    if let Some(n) = tally.note_bad_utf8(l.as_bytes()) {
+                        tracing::warn!("{n}");
+                    }
+                }
+                l
+            }
             Ok(None) => break, // EOF = 流结束 = 判死
             Err(e) => {
                 // 真读错误（不是坏字节 —— 那条已被 `from_utf8_lossy` 吸收）。
@@ -1787,6 +1807,9 @@ pub(crate) fn local_stdio_consumer(
             continue; // 超长行已整行丢弃，或空行
         }
         let Some(frame) = crate::ssh_source::parse_frame(&line) else {
+            if let Some(n) = tally.note_unparsed(&line) {
+                tracing::warn!("{n}");
+            }
             continue;
         };
         // 还没登记时先看它是不是 hello；不是 hello（或已经登记过了）⇒ 交吸收点。

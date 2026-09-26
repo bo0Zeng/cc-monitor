@@ -2925,6 +2925,8 @@ async fn stream_loop(
     // 退出路径随 `intake` 被丢掉而关闭队列——已入队项仍会被分发器拉完，独立连接自灭）。
     // 〔CF1〕攒批 ＋ 静默窗 ＋ 旁路快照收成 [`LineIntake`]，本机那条流用的是同一个。
     let mut intake = LineIntake::open(host_label.clone(), tail_only, replay, app);
+    // 〔W5-VIS · `设计/15 §3.4 ②`〕这条流上跳过了几帧认不出的（读任务那边另有一本记非 UTF-8 行）。
+    let mut tally = crate::frame_tally::FrameTally::new(format!("ssh_source {host_label}"));
 
     // Batch5-F17：帧读取挪进独立 task、经 channel 交回——攒批需要"带静默窗口
     // 的读"，而 tokio 的 read_line **不是 cancellation-safe**（timeout 取消会
@@ -2941,6 +2943,8 @@ async fn stream_loop(
         // ★ F10b：从无界 `read_line` 换成 [`read_capped_line`] —— 无界读遇「一条永远不结束
         // 的行」就是无界堆分配，而对端是**远端进程**（它坏掉或不是我们的后端都可能）。
         let mut buf: Vec<u8> = Vec::new();
+        // 〔W5-VIS · `设计/15 §3.4 ②`〕这条流上有几行不是合法 UTF-8（按替换字符读的）—— 计数、按 2 的幂次说、流结束出总账。
+        let mut tally = crate::frame_tally::FrameTally::new(format!("ssh_source {reader_host}"));
         loop {
             match read_capped_line(&mut reader, &mut buf, BACKEND_FRAME_LINE_CAP).await {
                 Ok(CappedLine::Eof) => {
@@ -2970,7 +2974,12 @@ async fn stream_loop(
                     }
                 }
                 Ok(CappedLine::Line) => {
-                    // 非 UTF-8 不该让整条连接死掉（与全批 exec 输出读取同一取舍）。
+                    // 非 UTF-8 不该让整条连接死掉（与全批 exec 输出读取同一取舍）—— 但**记账、说出来**（W5-VIS）。
+                    if std::str::from_utf8(&buf).is_err() {
+                        if let Some(n) = tally.note_bad_utf8(&buf) {
+                            tracing::warn!("{n}");
+                        }
+                    }
                     let text = String::from_utf8_lossy(&buf);
                     let line = text.trim_end_matches(['\n', '\r']);
                     if line.is_empty() {
@@ -3534,7 +3543,10 @@ async fn stream_loop(
             }
             None => {
                 // 未知 kind / 坏帧 / 非 JSON：跳过，绝不 panic、绝不中断流。
-                tracing::warn!("ssh_source skipping unparseable/unknown frame: {line}");
+                // 〔W5-VIS · `设计/15 §3.4 ②`〕记账：按 2 的幂次说（带累计数），流结束出总账（原先逐帧一行、从不计数）。
+                if let Some(n) = tally.note_unparsed(line) {
+                    tracing::warn!("{n}");
+                }
             }
         }
     }
