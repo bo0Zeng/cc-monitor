@@ -478,6 +478,9 @@ pub struct FileWindow {
     /// `false` ⇒ 不接键盘、不接拖入（[`Self::keys_blocked`] / [`Self::take_drops`]）。缺省 `true`：
     /// 单独建出来的目录视图（判据里那几百个）就是唯一那一个。谁来改它：[`super::workspace`]。
     pub focused: bool,
+    /// 〔W5-FILES · `设计/60 §6.2`「行拖到另一栏的手势」〕有一行（连同它所在的那一摞选中）被拖起、还没松手。
+    ///   松在哪儿由 [`super::workspace::Workspace`] 看（它才知道另一栏在哪）；它收摊时清掉这一格。
+    pub dragging: bool,
     /// 〔FW34〕起过几摞写操作（与 `write_board.rounds()` 比 ⇒ 有没有还没回话的；关标签那一问用）。
     writes_started: u64,
 }
@@ -574,6 +577,7 @@ impl FileWindow {
             new_file: None,
             shelf: None,
             focused: true,
+            dragging: false,
             writes_started: 0,
         }
     }
@@ -2472,6 +2476,21 @@ impl FileWindow {
         true
     }
 
+    /// 〔W5-FILES · `设计/60 §6.2`〕**胶水**：列表说「第 `i` 行被拖起了」→ 拖的是哪一摞（它在选中里 ⇒ 整摞；
+    /// 不在 ⇒ 改成只选它 —— 与右键同一个手感，[`select::Selection::pick_for_menu`]）→ 记下「在拖」。
+    /// 松手落在另一栏 ⇒ 工作区走「复制到另一栏」那一个入口（不另起一条复制路）。
+    pub fn apply_drag_start(&mut self) -> bool {
+        let Some(i) = self.tally.drag_started else {
+            return false;
+        };
+        {
+            let rows = self.listing.rows.lock().unwrap();
+            self.selection.pick_for_menu(&rows, i);
+        }
+        self.dragging = true;
+        true
+    }
+
     /// 🔴 **胶水**：列表说「第 `i` 行被右键点了」→ 选中态按右键的手感变 → 摆出菜单。
     ///
     /// `at` = 菜单摆在哪儿（指针那一刻的位置；判据直接喂）。
@@ -2811,6 +2830,8 @@ impl FileWindow {
         self.apply_edit_click(Some(ctx.clone()));
         // 🔴〔FW2〕第六、七条胶水：单击改选中 · 右键摆菜单。然后画菜单（它在最上层）。
         self.apply_pick_click();
+        // 〔W5-FILES〕第八条胶水：拖起一行。
+        self.apply_drag_start();
         let at = ctx.input(|i| i.pointer.interact_pos()).unwrap_or_default();
         self.apply_menu_click(at);
         self.menu_ui(ui);

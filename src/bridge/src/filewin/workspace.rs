@@ -32,8 +32,8 @@
 //! # ⚠ 买不到什么
 //!
 //! - 真窗口真画在屏幕上（要图形会话）；判据跑的是生产那个 [`Workspace::frame`]，读这一帧画出来的字。
-//! - 真的**拖**一行到另一栏：行上那块命中矩形是 `Sense::click()`（`rows.rs`，不在本路写区）
-//!   ⇒ 这一刀只做按钮「复制到另一栏」，拖的手势登记为欠账。
+//! - 〔W5-FILES〕**拖**一行到另一栏做了（行上命中矩形换成 `click_and_drag`，松手落在另一栏 ⇒ 同一个「复制到另一栏」入口，
+//!   [`Workspace::settle_drag`]）；判据喂的是合成指针事件，真鼠标买不到。
 //! - 后台标签（不在任何一栏上）的「一问」要切回去才看得见；标签名前那个「●」就是为这个。
 
 use super::copy::{is_copyable, CopyJob};
@@ -463,11 +463,13 @@ impl Workspace {
                 .flatten()
         });
         let mut focus_to: Option<usize> = None;
+        let mut rects: Vec<egui::Rect> = Vec::with_capacity(n);
         for k in 0..n {
             let rect = egui::Rect::from_min_size(
                 egui::pos2(whole.left() + k as f32 * (w + gap), whole.top()),
                 egui::vec2(w, whole.height()),
             );
+            rects.push(rect);
             if pressed_at.is_some_and(|p| rect.contains(p)) {
                 focus_to = Some(k);
             }
@@ -484,6 +486,51 @@ impl Workspace {
             if k != self.focus {
                 self.focus_side(k);
             }
+        }
+        self.settle_drag(ui, &rects);
+    }
+
+    /// 〔W5-FILES · `设计/60 §6.2`「行拖到另一栏的手势」〕有一栏在拖：拖着时在指针旁说一句「复制 N 项到另一栏」
+    /// （只在指针落在另一栏里时说）；**松手**那一帧落在另一栏 ⇒ 走「复制到另一栏」**那一个入口**（[`Self::copy_to_other`]，
+    /// 不另起一条复制路）；落在本栏 / 窗外 ⇒ 什么都不做。只有一栏时没有「另一栏」，拖了也不做（与按钮同）。V122：不往 OS 拖出。
+    fn settle_drag(&mut self, ui: &mut egui::Ui, rects: &[egui::Rect]) {
+        let Some(k) = (0..self.sides.len()).find(|&k| self.pane_on(k).dragging) else {
+            return;
+        };
+        let (released, pos) = ui.input(|i| {
+            (
+                i.pointer.any_released(),
+                i.pointer.interact_pos().or(i.pointer.latest_pos()),
+            )
+        });
+        let over_other = self.sides.len() == 2
+            && pos.is_some_and(|p| rects.get(1 - k).is_some_and(|r| r.contains(p)));
+        if released {
+            for s in 0..self.sides.len() {
+                self.pane_on_mut(s).dragging = false;
+            }
+            if over_other {
+                self.focus_side(k);
+                let ctx = ui.ctx().clone();
+                self.copy_to_other(Some(ctx));
+            }
+            return;
+        }
+        if let (true, Some(p)) = (over_other, pos) {
+            let n = self.pane_on(k).selection().len();
+            let hint = copy_text("rsFilewinWorkspace.drag.hint", &[("n", &n.to_string())]);
+            ui.ctx()
+                .layer_painter(egui::LayerId::new(
+                    egui::Order::Tooltip,
+                    egui::Id::new("filewin-drag-hint"),
+                ))
+                .text(
+                    p + egui::vec2(14.0, 14.0),
+                    egui::Align2::LEFT_TOP,
+                    hint,
+                    egui::FontId::proportional(14.0),
+                    ui.visuals().strong_text_color(),
+                );
         }
     }
 

@@ -10654,6 +10654,11 @@
       "zh": " · 有 {n} 个目录在另一个盘上，没进去，那底下的搜不到",
       "args": ["n"]
     },
+    "rsFilewinWorkspace.drag.hint": {
+      "kind": "body",
+      "zh": "复制 {n} 项到另一栏",
+      "args": ["n"]
+    },
     "rsFilewinCopy.ui.askOverwriteMany": {
       "kind": "body",
       "zh": "远端已经有这 {n} 个同名文件了，要覆盖吗？",
