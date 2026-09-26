@@ -753,6 +753,20 @@ pub fn run() {
                 let replay = replay.clone();
                 crate::session_tap::install_sink(move |payload| replay.on_tap(payload));
             }
+            // 〔VIS2 · `设计/15 §3.4 ①`〕host key 自动固化 / 各地址不一 ⇒ 经既有的 `remote-health` 告知（机器页据此刷新）。
+            {
+                let handle = app.handle().clone();
+                crate::dial_host::install_host_key_notice(move |n| {
+                    let payload = bridge::RemoteHealthPayload {
+                        origin: n.origin,
+                        kind: n.kind.to_string(),
+                        message: n.message,
+                    };
+                    if let Err(e) = handle.emit(bridge::events::REMOTE_HEALTH, payload) {
+                        tracing::warn!("emit remote-health(host key) failed: {e}");
+                    }
+                });
+            }
             {
                 let handle = app.handle().clone();
                 crate::session_facts::install_sink(move |fact| match fact {
