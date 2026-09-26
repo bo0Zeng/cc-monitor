@@ -9,6 +9,8 @@
 //! 两件事：
 //! 1. [`export_bindings_judgment_rules`]：`npm run gen:types`（= `cargo test --lib export_bindings`）重写生成物；
 //!    门禁第六格 `generated` 的 `git diff --exit-code` 盖住它 ⇒ 改了规则不重跑生成就红。
+//!    ⚠ 刻意**没有**「盘上那份 == 现算的」那条读回判据：同一趟 `cargo test` 里生成器与它并行跑，读到的可能是写到一半的文件
+//!    （死值验时实测到生成器先把刀后的式子写了回去）—— 「生成物不陈旧」只交给门禁那一格的 `git diff`。
 //! 2. [`the_shared_golden_agrees_with_the_one_rule`]：共用金样 `tests/__fixtures__/identifier-rules.golden.json`
 //!    的每一条都喂给 Rust 那一份（`session_id_ok` · `model_name_ok` · `account_name_ok`），期望是金样里**手写**的；
 //!    TS 那一侧 `tests/identifier-rules-parity.vitest.ts` 拿同一份金样喂生成出来的式子 ⇒ 两侧逐条对同一份，不是彼此对拍。
@@ -104,17 +106,4 @@ fn the_shared_golden_agrees_with_the_one_rule() {
     }
     assert!(seen > 30, "金样只有 {seen} 条 —— 读坏了");
     assert_eq!(wrong, Vec::<String>::new(), "Rust 那一份与共用金样对不上");
-}
-
-/// 生成物里的那一份 == 从常量现算的（改了常量不重跑 `npm run gen:types` ⇒ 红，门禁第六格之外的第二道）。
-#[test]
-fn the_generated_file_is_what_the_constants_say() {
-    let repo = crate::guard_support::repo_root();
-    let on_disk = std::fs::read_to_string(repo.join("src/generated/judgment-rules.ts"))
-        .expect("读不到生成物 —— 跑 npm run gen:types");
-    assert_eq!(
-        on_disk,
-        render_judgment_rules(),
-        "生成物陈旧：跑 npm run gen:types"
-    );
 }
