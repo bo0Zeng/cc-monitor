@@ -734,6 +734,18 @@ mod tests {
         (
             "upstream::Base",
             "中转的传输原语：一行的上游是什么，上游选择解析它、焊进行里、原样交回",
+        ),        // 〔TAP · V124〕tee 的第二个落点（三条同一个口：口本身 ＋ 它交出去的那件事的两半）。
+        (
+            "tee::TapPort",
+            "〔TAP〕tee 的第二个落点的口：宿主（`crate::tap::TapHub`）实现它，进程内中转经 `listen::host` 收它",
+        ),
+        (
+            "tee::TapEvent",
+            "〔TAP〕tee 交给 tap 口的一件事（`stream` · `resp` · `n` · 事件原文 / 收尾），宿主转成 `tap` 帧",
+        ),
+        (
+            "tee::TapBody",
+            "〔TAP〕`TapEvent` 的两形：一个 SSE 事件原文 · 这个响应收尾了（`broken`）",
         ),
     ];
 

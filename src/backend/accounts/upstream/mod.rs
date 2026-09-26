@@ -144,8 +144,10 @@ pub fn run_relay(home: &std::path::Path, args: &[String]) -> i32 {
 /// 与 [`run_relay`] 同一条理由住上游选择：装配要同时叫得出两层，依赖只许上游选择 → 中转。
 /// 交没交端口、起没起来由中转答（`relay::Hosted`）；本函数一行逻辑都没有，只做接线 ——
 /// 取值器是**真环境**（与 `--relay` 那条 `run` 同一个来源）。回一句给宿主日志看的话。
+/// 〔TAP · V124〕tee 的落点是进程级那一个 tap 口（`crate::tap::port`）—— 本函数只递，上游选择不碰它交出去的任何一件事
+/// （`设计/20 §11` I2：② 不碰响应体）。
 pub fn host_relay(home: &std::path::Path) -> String {
-    crate::relay::host(&|k| std::env::var(k).ok(), home, &Boot).to_string()
+    crate::relay::host(&|k| std::env::var(k).ok(), home, &Boot, crate::tap::port()).to_string()
 }
 
 /// 上游选择在 `--relay` 启动路径上交给中转的那一只手（[`Startup`]）。

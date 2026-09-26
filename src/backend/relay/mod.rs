@@ -119,8 +119,9 @@
 //!   它的 stdout 不与流式那条 wire 流共享。⚠ 而「谁在同一个进程里既跑流式又跑中转」
 //!   **今天没有任何判据挡着**（那条「只有一个写者」的判据人群只有三个文件，**不含 `relay/`**）。
 //! - 〔RL1 · V107〕**那一格今天真的出现了**：常驻后端的流模式进程里也起中转（`listen::host`，
-//!   `main.rs` 流模式那一处）。⇒ 进程内那一份的 tee **不落 stdout**，落丢弃（`TeeSink::discard`）——
-//!   stdio 载体上 stdout 就是 wire。挡着它的判据：`host_tests::the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout`
+//!   `main.rs` 流模式那一处）。⇒ 进程内那一份的 tee **不落 stdout** —— stdio 载体上 stdout 就是 wire。
+//!   〔TAP · V124〕它先前落丢弃（tee 零消费者）；今天落宿主交下来的 tap 口（`TeeSink::to_port`，宿主 `crate::tap`），
+//!   事件变成 `tap` 帧走 wire 自己那条有界通道。挡着它的判据：`host_tests::the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout`
 //!   （真子进程走生产接线，转发之后 stdout 上零 tee 行）。上面「写 stdout」那一段只对 `--relay` 那一形成立。
 //!
 //! ## ㈡ 每行**不带 `t_ns`**（`裁-3`）
@@ -135,7 +136,16 @@
 //!
 //! 参考实现收窄成 `gzip` 并自己流式解压，因此要一条解压依赖。Rust 重写改成收窄成
 //! `identity`：tee 侧拿到的直接是明文 SSE，**整条解压依赖不需要**。
-//! 代价是上游那一跳不再压缩（真实带宽，不是回环）。
+//! 代价是上游那一跳的**响应体**不再压缩（真实带宽，不是回环）。
+//!
+//! 〔TAP · V124 · 2026-09-25 本路裁：**保留**〕审计 B §3 说这是「为一个没人读的功能放弃了压缩」——tee 今天有了第一个消费者
+//! （`tap` 帧 → 前端活卡），那条前提没了。保留的理由（读数与全文住仓外 `调研/第四波记录/TAP.md §6`）：
+//! 1. `Accept-Encoding` 只管**响应**那一半；请求体（整份上下文）由 claude 自己决定、中转原样搬。本机语料按 `message.id`
+//!    去重的 `usage`：请求侧 token : 响应侧 token ≈ **330 : 1** ⇒ 就算 SSE 压 5–10 倍，省下的不到这一跳字节的 0.3%；
+//! 2. 上游若对 `text/event-stream` 做 gzip，压缩器按块攒字节会推迟 token 到下游的时刻 —— 伤的正是本层唯一的技术点
+//!    「逐块透传绝不缓冲」；这一形要真上游才量得到，本仓零读数；
+//! 3. 恢复压缩要在 tee 那一份上流式解压并在解压流上重证「不缓冲」（`设计/15 §5.4 D6` 立件的事），不是顺手的；
+//! 4. 可逆：改动只在 `server.rs::render_upstream_request` 那一行 ＋ tee 解码一处。
 //!
 //! # 还有一条**没做**的，写在这里免得被读成「做了」
 //!
@@ -277,6 +287,10 @@ mod wire_golden; // `设计/20 §7` 步 1–3：「零行为变化」的字节�
 /// `--relay` 的中转入口。**上游选择那只手由调用方递进来**（`accounts::upstream::run_relay`）——
 /// 本层叫不出它的名字（`upstream_selection_guard` ㈢ 零命中）。
 pub(crate) use listen::{host, run, ENV_PORT};
+
+/// 〔TAP · V124〕tee 的第二个落点的口与它交出去的那件事（宿主 `crate::tap` 实现口、把事件转成 `tap` 帧）。
+/// 字段语义与「位置号原位说缺口」住 `tee.rs` 头注「第二个落点」。
+pub(crate) use tee::{TapBody, TapEvent, TapPort};
 
 /// 〔US1 · 4D〕「这台机器上我们的中转在不在听」—— 上游选择出成品时问它（`launch-endpoint` · `apikey-routing`）。
 /// 与 `relay-status` 同一个判准；只收端口、只回布尔。

@@ -366,6 +366,17 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
             "transfer",
         ),
         (Frame::SessionsReplayed, "sessions_replayed"),
+        // 〔TAP〕中转抄出来的 SSE 事件（逐字节形状另由 `tap_frames_have_exactly_these_bytes` 钉）。
+        (
+            Frame::Tap {
+                stream: "s".into(),
+                resp: 0,
+                n: 0,
+                data: Some("{}".into()),
+                end: None,
+            },
+            "tap",
+        ),
         // 〔FW1 · 第四波 4D〕活会话的记录文件不见了 / 被改过已从头重读（逐字节形状另由
         //   `watcher_tests::the_two_session_file_frames_have_exactly_these_bytes` 钉）。
         (
@@ -503,6 +514,51 @@ fn transfer_frames_have_exactly_these_bytes() {
     for (frame, want) in cases {
         assert_eq!(to_line(&frame).unwrap(), want);
         assert!(!frame.loss_is_recoverable(), "传输帧被判成丢了可恢复");
+    }
+}
+
+/// 〔TAP · V124〕`tap` 两形的逐字节线上形状（期望是手写字面量；monitor 侧 `parse_frame` 拿同样的串核自己）。
+/// `data` 是**一个 JSON 串**（上游字节敌手可控，不参与帧结构）；`data` 与 `end` 恰有一个。可丢（SSE 只保快，V24）。
+#[test]
+fn tap_frames_have_exactly_these_bytes() {
+    let cases = [
+        (
+            Frame::Tap {
+                stream: "0b6c1f7e-sid".into(),
+                resp: 12,
+                n: 3,
+                data: Some("{\"type\":\"ping\"}".into()),
+                end: None,
+            },
+            "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"resp\":12,\"n\":3,\"data\":\"{\\\"type\\\":\\\"ping\\\"}\"}\n",
+        ),
+        (
+            Frame::Tap {
+                stream: "0b6c1f7e-sid".into(),
+                resp: 12,
+                n: 9,
+                data: None,
+                end: Some(crate::wire::TapEnd::Done),
+            },
+            "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"resp\":12,\"n\":9,\"end\":\"done\"}\n",
+        ),
+        (
+            Frame::Tap {
+                stream: "0b6c1f7e-sid".into(),
+                resp: 12,
+                n: 9,
+                data: None,
+                end: Some(crate::wire::TapEnd::Broken),
+            },
+            "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"resp\":12,\"n\":9,\"end\":\"broken\"}\n",
+        ),
+    ];
+    for (frame, want) in cases {
+        assert_eq!(to_line(&frame).unwrap(), want);
+        assert!(
+            frame.loss_is_recoverable(),
+            "tap 帧可丢（jsonl 保对），却被判成不可恢复"
+        );
     }
 }
 

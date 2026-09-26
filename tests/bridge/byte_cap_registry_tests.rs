@@ -797,6 +797,15 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "tee 侧解码缓冲攒着的那截（SSE 半行 / chunked 还没成形的块长度行）",
         "丢弃+带身份报告",
     ),
+    // 〔TAP · V124〕tee 交给 tap 口的**一个 SSE 事件**的原文字节数。超了这一件不交、位置号照占 ⇒
+    // 接收侧看见 `n` 的缺口（身份 = 哪个响应的第几号）；下游的字节一个不少（tap 是抄一份）。
+    (
+        "src/backend/relay/tee.rs",
+        "TAP_DATA_CAP",
+        16384,
+        "tee 交给 tap 口的一个 SSE 事件（`data:` 后那段原文）的字节数",
+        "丢弃+带身份报告",
+    ),
     // 🔴 **〔条 67 · 2026-09-18〕`ASSET_BYTE_CAP` 与 `RESPONSE_HEAD_BYTE_CAP` 这一对摘了。**
     // 它们管的是「backend 给自己拉一个可执行文件」那一跳，而那一跳随 `sidecars/` 整棵删了
     // （用户逐字「不在现在设计里的全部删掉」）。
