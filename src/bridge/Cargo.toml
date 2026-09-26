@@ -40,7 +40,7 @@ categories = ["development-tools", "visualization"]
 
 [lib]
 name = "monitor_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["rlib"]
 
 # 主二进制。🔴 **明写出来**：下面多了第二个 `[[bin]]`，而「自动发现 + 明写混用」
 # 是一个读起来要去查 cargo 文档才知道答案的形状 —— 两个都写死，谁都不用猜。
@@ -96,6 +96,9 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
+# 〔W5-FILES · 第五波 · `设计/60 §6.2`「原生选文件框」〕文件窗口（独立 egui 进程）的上传 / 存到哪儿那两问用操作系统自己的选择框。
+# 与 `tauri-plugin-dialog` 同一个版本、同一组 feature（它的缺省 `gtk3` ＋ `common-controls-v6`）⇒ 锁文件不多一个 crate。
+rfd = { version = "0.16", default-features = false, features = ["gtk3", "common-controls-v6"] }
 # Batch14-F42：turn-end 系统通知（Windows toast / Linux notify）
 tauri-plugin-notification = "2"
 
@@ -132,10 +135,9 @@ relay-route-core = { path = "crates/relay-route-core" }
 # monitor 与后端共用同一份判定（定框 C1），防「把 send-keys/kill 搬进后端时静默丢掉一道门」。
 gate-core = { path = "crates/gate-core" }
 
-# K-R100：**历史全文搜索口径的唯一实现**（12 个同名助手 + 4 个口径常量 + snippet 预算）。
-# 收口前 monitor `src/search.rs` 与 backend `observe/search_query.rs` 各写一遍，逐字相同、
-# 零判据对拍 —— 「今天没漂」不是保障。判据住 `search.rs::the_search_kou_jing_has_exactly_one_home`。
-search-core = { path = "crates/search-core" }
+# 〔LOC1b · 第四波 4D〕`search-core` 不再是 monitor 的依赖：本机全文搜索也问本机后端（`history-search`），
+# monitor 进程内那份索引删了。它仍是本 workspace 的成员（后端经路径依赖用它，测试在这里跑）；
+# 「monitor 生产树里零处再搜」由 `tests/bridge/search_kou_jing_guard.rs` ③ 钉。
 
 notify = "6"
 notify-debouncer-mini = "0.4"

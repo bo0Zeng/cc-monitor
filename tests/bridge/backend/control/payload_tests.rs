@@ -255,7 +255,7 @@ fn the_payload_cd_prefix_is_assembled_in_exactly_one_place() {
     //   ② 它**进不了 `render_payload`**：那个函数对每个 arg 过 `arg_is_join_safe` 白名单，
     //      而这一串的尾巴 `exec ${SHELL:-bash} -l` 里 `$` `{` `}` 都不在放行集 ⇒ 当场 `Err`；
     //      为它放宽白名单等于给真正的载荷开同一扇门。
-    //   ③ 它与旧面板 TS 那一份 `buildOpenTerminalCmd` 逐字节相同（`shell_tests` 现读 TS 黄金样例对拍）。
+    //   ③ 〔LR2〕旧面板 TS 那一份删了，它是唯一一份；三种形状由 `shell_tests` 的手写期望逐字节钉着。
     //   ⇒ 那一处单独登记、**条数恒等 1**；载荷这一族照旧恰好一处。
     let terminal: Vec<&String> = sites
         .iter()
@@ -1345,22 +1345,22 @@ fn the_outside_export_gate_really_reddens_on_a_live_breach() {
 /// 的那个进程 `.env(k, v)`。⚠ **刻意不写成「grep 源码里有没有 `ANTHROPIC_BASE_URL`」**
 /// —— 那把尺子在构造上量不出「它会不会咬这一格」（`K-H2a` 那一族人群换了四版的来历）。
 ///
-/// # 今天的人群是 5 处，逐处登记它接没接上（**默认拒绝：不登记就红**）
+/// # 今天的人群是 4 处，逐处登记它接没接上（**默认拒绝：不登记就红**）
 ///
 /// | # | 住址 | 接上了吗 |
 /// |---|---|---|
 /// | A | 本文件 `relay_env_prefix_posix` | **接上**（`history.rs` 的 POSIX 分支用它） |
 /// | B | `history.rs` 的 `$env:` 分支 | **接上**（`relay_env_prefix_ps`），⚠ 只到「编得过」 |
 /// | C | `shared/ccm` | **没接** —— 见下面 `NOT_WIRED` 里的理由 |
-/// | D | `src/shell-quote.ts::buildEnvPrefix`（`launch-render-fallback.ts` 的真发射点） | **没接** |
+/// | ~~D~~ | ~~TS 兜底渲染器那一处~~ | 〔LR2 2026-09-25〕那一族连同它的发射点删了（`设计/00 §2.5 ④`）⇒ 人群 5 → 4 |
 /// | E | `src/bridge/src/launch.rs` 的 `.env(k, v)`（开窗那一跳，进程级） | **没接** |
 ///
 /// ⚠ **本条钉的是「决定点的个数」，不是「每一处都接上了」** ——
-/// 没接上的那三处（C · D · E）各有一条写下来的理由。
+/// 没接上的那两处（C · E）各有一条写下来的理由。
 ///
 /// # 🔴 它抓得到什么、抓不到什么（`D5 阻-3`，这一句被点了三次名才改）
 ///
-/// 本条是一张**五个文件的闭表**（`sites` 5 格 + `sites.len() == 5` 这个常量）。
+/// 本条是一张**闭表**（`sites` 的格数 + `sites.len()` 那个常量；〔LR2〕今天 4 格）。
 /// - **抓得到**：这五个文件里某一处的发射点消失 / 多出一处（`n != want` ⇒ 红）；
 ///   有人把 `sites` 改成 4 格或 6 格（`sites.len()` ⇒ 红）。
 /// - 🔴 **抓不到**：**一个新文件**里出现第 6 个 env 前缀渲染器 —— 本条一个字节都不会动
@@ -1390,9 +1390,6 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
              写进载荷内侧，否则在 tmux 边界被吃掉）—— 「不当收口点」≠「不许碰它」，\
              那一格由 `the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary` \
              钉着，与本条数的是两件事。";
-    const NOT_WIRED_TS: &str =
-        "TS 兜底渲染器服务的是**远端**那族（`ccm …` 调用行渲染拒了之后的回落），\
-             而本件 `§0e` 裁四明写只保本机、远端那一半 `判不了`（要先给 `creds.apikey` 找到主人）。";
     const NOT_WIRED_WINDOW: &str =
         "开窗那一跳给的是**终端进程**的 env（`backend_bin_env_for_window`），\
              而 agent 进程的 env 由它里面那条命令串自己带 ⇒ 同一件事在 A/B 两处已经做了，\
@@ -1426,15 +1423,9 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
             want: 1,
             wired: Some(NOT_WIRED_CCM),
         },
-        Site {
-            what: "D · src/shell-quote.ts",
-            src: include_str!("../../../../src/shell-quote.ts"),
-            // ⚠ 针取的是**发射点的形状**（拼进模板串的那一处），不是散文里的同一串
-            //    —— 裸 `export CLAUDE_CONFIG_DIR=` 在本文件里另有 2 处注释命中。
-            needle: "export CLAUDE_CONFIG_DIR=${posixQuote(",
-            want: 1,
-            wired: Some(NOT_WIRED_TS),
-        },
+        // 〔LR2 2026-09-25〕这里原来有 `D · src/shell-quote.ts` 一格（TS 兜底渲染器的真发射点，
+        //   针 `export CLAUDE_CONFIG_DIR=${posixQuote(`，登记为「没接」）。那一族零生产调用、按
+        //   `设计/00 §2.5 ④` 删了，发射点随之没了 ⇒ 人群 5 → 4（决定点少了一个，方向是对的）。
         Site {
             what: "E · launch.rs（进程级，开窗那一跳）",
             src: include_str!("../../../../src/bridge/src/launch.rs"),
@@ -1447,9 +1438,9 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
     ];
     assert_eq!(
         sites.len(),
-        5,
-        "人群从 5 处变了 —— 先回来读本条头注那张表，再决定新那一处要不要接中转。\n\
-             ⚠ 这是一张**闭表**：它数的是这五个文件，**新文件里的第 6 个渲染器它看不见**\n\
+        4, // 〔LR2〕5 → 4：TS 那一处（D）随兜底渲染器删了
+        "人群从 4 处变了 —— 先回来读本条头注那张表，再决定新那一处要不要接中转。\n\
+             ⚠ 这是一张**闭表**：它数的是这几个文件，**新文件里的下一个渲染器它看不见**\n\
              （头注「抓不到什么」那一节记着这条诚实边界与它的解锁条件）。"
     );
     for s in &sites {

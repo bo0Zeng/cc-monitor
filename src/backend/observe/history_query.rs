@@ -21,7 +21,7 @@
 // `projects_root` 跨 observe/control 两层 ⇒ `common/`；`mtime_ms` 两个调用点同属 observe
 // ⇒ U3 按 `common/` 自己的「≥2 层」门槛搬回 `observe/`。
 use crate::agents::claudecode::paths::projects_root;
-use crate::observe::fence::fence_under_projects;
+use crate::observe::fence::{fence_under_projects, Fence};
 use crate::observe::fs::mtime_ms;
 use copy_core::copy_text;
 use std::io::Write;
@@ -226,6 +226,8 @@ pub(crate) fn list_sessions_into(
 // `fence_under_projects` 的本体（「全文件唯一的一处 `canonicalize` + 前缀校验」，audit-0805 08-06 定框 E3 从
 // `list_sessions` 的内联副本收成一份）。E3 只收到了**本文件**，`search_query` 里还有一份内联的（头注逐字「复刻 history_query」）
 // ⇒ 那道围栏连名字搬去 observe 内部唯一的家，本文件三条按路径读的路照旧调它（`use` 在文件头），报错原话逐字不变。
+// 〔合并 LOC1b〕LOC1b 在这里把本体提成了「根是参数」的 `fence_under_root`（为各家合成历史面给的记录根）—— 那一形就是
+// `observe/fence.rs::Fence::at(根)?.admit(候选)`（报错取根目录名，与 LOC1b 那一版逐字同形），下面 [`validate_session_path_among`] 改调它。
 
 /// P7c-1：列一个父会话的 **subagent 候选**。
 ///
@@ -329,11 +331,34 @@ pub(crate) fn list_subagents_into(
     Ok(())
 }
 
+/// 按路径读一份会话之前的围栏：Claude 的 `projects/` ∪ 注册表里各家合成历史面给的记录根（〔LOC1b · 4D〕）。
 fn validate_session_path(
     agent_home: &Path,
     jsonl_path: &str,
 ) -> Result<std::path::PathBuf, String> {
-    let target = fence_under_projects(agent_home, Path::new(jsonl_path))?;
+    validate_session_path_among(agent_home, &crate::agents::history_roots(), jsonl_path)
+}
+
+/// [`validate_session_path`] 的本体，「另外认哪几个根」是参数（判据喂临时目录，不去动进程环境）。
+///
+/// 〔LOC1b · 4D〕历史浏览器本机远端都会列出 Codex 会话（C4d 起后端合成），而本机冷读也改走后端之后，
+/// 这道围栏只认 `projects/` ⇒ 列得出、打不开。根由适配层给（`HistoryFace.root`），这里不写死路径。
+/// 另外那几个根**只收绝对路径**（相对路径的意思只在 `projects/` 下有定义）；
+/// 都不在 ⇒ 回 `projects/` 那一句拒绝（它是今天所有调用方认得的那一句）。
+fn validate_session_path_among(
+    agent_home: &Path,
+    extra_roots: &[std::path::PathBuf],
+    jsonl_path: &str,
+) -> Result<std::path::PathBuf, String> {
+    let candidate = Path::new(jsonl_path);
+    let target = match fence_under_projects(agent_home, candidate) {
+        Ok(t) => t,
+        Err(refused) if candidate.is_absolute() => extra_roots
+            .iter()
+            .find_map(|r| Fence::at(r).and_then(|f| f.admit(candidate)).ok())
+            .ok_or(refused)?,
+        Err(refused) => return Err(refused),
+    };
     if !crate::agents::claudecode::records::is_session_file(&target) {
         return Err("refusing to read non-jsonl file".into());
     }

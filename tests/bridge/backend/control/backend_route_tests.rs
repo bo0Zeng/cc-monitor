@@ -309,7 +309,10 @@ fn every_backend_sender_is_registered_and_uses_the_one_router() {
     //   ★ 扩面当场逮出**第四个真实发送端**（`ssh_source.rs` 的探测 ping），此前整个在扫描面之外。
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     // 目录里所有「走后端」的文件：生产段出现 `.call(` 的。
+    // 〔DL1〕另一个动词 `.call_until(`（`InboundClient::call_until`：截止时刻由调用方给的那一形）同样是发送 ——
+    //   只认 `.call(` 的话，改用它的发送端会整个逃出扫描面（`frame_query.rs` 改成它的那一拍当场从人群里消失，本条因此红过）。
     let verb = format!(".call({}", "");
+    let verb_until = format!(".call_until({}", "");
     let mut senders: Vec<String> = Vec::new();
     // ⚠ 发现阶段就把生产段留下：下面按名字取时**不能再用 `dir.join(name)`**，
     //   扩面之后 `dir` 是整棵 `src/`，而发送端散在子目录里（第一版就栽在这，
@@ -319,7 +322,7 @@ fn every_backend_sender_is_registered_and_uses_the_one_router() {
     for (p, src) in guard_core::scan_tree!(&dir, &["rs"]) {
         let prod = guard_core::production_code(&src);
         all_prod.push((p.to_string_lossy().replace('\\', "/"), prod.clone()));
-        if prod.contains(verb.as_str()) {
+        if prod.contains(verb.as_str()) || prod.contains(verb_until.as_str()) {
             senders.push(p.file_name().unwrap().to_string_lossy().to_string());
             by_name.insert(
                 p.file_name().unwrap().to_string_lossy().to_string(),

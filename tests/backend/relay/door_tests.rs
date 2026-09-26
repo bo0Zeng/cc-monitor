@@ -23,7 +23,10 @@ impl Key {
 /// 判据用：在一个**夹具家目录**里预先放好 [`TEST_KEY`]（`0600`，走生产段那一份落盘），回这个家目录。
 /// 起真中转的判据都要它 —— 不给的话中转会去**用户真实的家目录**里铸钥匙。
 pub(crate) fn seed_test_home(home: &Path) -> PathBuf {
-    write_key(&home.join(KEY_FILE_REL), &Key::for_tests()).expect("写夹具钥匙");
+    let path = home.join(KEY_FILE_REL);
+    // 〔HX2〕那一层目录由生产段 `ensure_key` 在拿锁之前建（`write_key` 不再建）⇒ 夹具这里自己建。
+    std::fs::create_dir_all(path.parent().expect("钥匙路径有父目录")).expect("建夹具目录");
+    write_key(&path, &Key::for_tests()).expect("写夹具钥匙");
     home.to_path_buf()
 }
 

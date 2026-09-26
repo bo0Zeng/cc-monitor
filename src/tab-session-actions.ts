@@ -18,6 +18,7 @@
  * 不碰 tab 栏、不碰流 DOM。方法体逐字从 `tabs.ts` 搬来，唯一的改写是 `this.tabs.get(` 等四处宿主读数
  * 换成 `this.host.…`（同一个值，换了个取法）。
  */
+import { askConfirm, type ConfirmFn } from "./ask-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import type { SessionAccount } from "./accounts";
 import { withAccount } from "./launch-account";
@@ -498,7 +499,7 @@ export class TabSessionActions {
     sid: string,
     accountName: string,
     compactFirst: boolean,
-    confirmFn?: (msg: string) => boolean,
+    confirmFn?: ConfirmFn,
   ): Promise<boolean> {
     const tab = this.host.tab(sid);
     if (!tab) return false;
@@ -534,7 +535,7 @@ export class TabSessionActions {
     tab: Tab,
     accountName: string,
     compactFirst: boolean,
-    confirmFn?: (msg: string) => boolean,
+    confirmFn?: ConfirmFn,
   ): Promise<boolean> {
     // 〔`A3` 第二波〕本机会话的 origin 是 `<local>`：下面每一跳（tmux 快照 / send-keys / kill /
     // 账号清单 / 信任预检）都按 origin 分流，本机走得通；resume 那一跳在 `restartWithAccount` 里分。
@@ -602,7 +603,7 @@ export class TabSessionActions {
     origin: string,
     tmuxName: string,
     viaCwd: boolean,
-    opts?: { confirm?: (message: string) => boolean; idle?: boolean },
+    opts?: { confirm?: ConfirmFn; idle?: boolean },
   ): void {
     const caveat = viaCwd
       ? // 〔U2 · 按 `terms.json` ＋ CP1 台账改词〕不说标记、不派「重装 ccm 助手」；「可能杀到别的 Claude」这条后果必须留着。
@@ -619,14 +620,12 @@ export class TabSessionActions {
     const body = opts?.idle
       ? copyText("sessionState.killIdle.confirm")
       : copyText("tabSessionActions.kill.body", { where });
-    // auto-e2e F-E4：可注入 confirm seam（对齐 account-restart.ts 的 `opts.confirm ?? window.confirm`）。
-    // 默认（不传 opts）走 `window.confirm`，交互零变化——headless e2e/DEV 才注入 ()=>true/false。
-    const confirmFn = opts?.confirm ?? ((m: string) => window.confirm(m));
-    const ok = confirmFn(
-      copyText("tabSessionActions.kill.confirm", { name: tmuxName, machine: isLocal ? copyText("tabSessionActions.who.local") : origin, body, caveat }),
-    );
-    if (!ok) return;
+    // auto-e2e F-E4：可注入 confirm seam（对齐 account-restart.ts 的 `opts.confirm ?? askConfirm`）。
+    // 〔W5-UI〕默认走应用内对话框（真 app 里 `window.confirm` 返回 Promise、恒真值 ⇒ 从前这里根本没问）。
+    const confirmFn: ConfirmFn = opts?.confirm ?? askConfirm;
+    const message = copyText("tabSessionActions.kill.confirm", { name: tmuxName, machine: isLocal ? copyText("tabSessionActions.who.local") : origin, body, caveat });
     void (async () => {
+      if (!(await confirmFn(message))) return;
       try {
         await killSession(origin, tmuxName);
         const who = isLocal ? copyText("tabSessionActions.who.local") : copyText("tabSessionActions.who.remote", { machine: origin });

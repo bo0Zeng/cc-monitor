@@ -83,6 +83,12 @@ export interface SessionAccount {
    * 而消费方一律把 `undefined` 与 `null` 当同一件事。
    */
   launchId?: string | null;
+  /**
+   * 〔HX1 · D-f〕这条会话的上游地址是不是**本机中转**那一形（后端从 `/proc/<pid>/environ` 的 `ANTHROPIC_BASE_URL` 折出的一个布尔，
+   * 值本身带中转钥匙、不出参）。`null` = 不知道（进程已死 / 环境这一刻取不到 / 老后端没有这个键）。
+   * 读者：机器页「停」本机后端之前数几条会断（`settings/backend-section.ts::stopWarning`）。
+   */
+  viaRelay?: boolean | null;
 }
 
 /** 账号功能在某台远端的整体状态（UI 直接消费）。 */

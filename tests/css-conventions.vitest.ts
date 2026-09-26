@@ -320,7 +320,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   //    `panel.ts` 上游删了它的 import / OS 门常量 / 挂载那几行与「不适用」替身。三处照旧是 `b.el` 与两处
   //    `perMachineFallbackHint`，语义一字未动。
   // 〔AS2 · 4B〕`792 → 793` / `1288 → 1297` / `1301 → 1310`：`panel.ts` 多了资产目录那一行 import 与那一块登记，三处语义一字未动。
-  "src/settings/panel.ts:785": // 〔CP2b〕同上
+  // 〔W5-UI ＋ CFG1 合并〕W5-UI 那三处 +4 与 CFG1 +3 叠加（`panel.ts` 785 → 792 · 1289 → 1296 · 1302 → 1309；`history.ts` 1612 → 1616），语义一字未动。原注：〔W5-UI〕`785 → 789` / `1289 → 1293` / `1302 → 1306`：`panel.ts` 多一行 import（应用内对话框）＋ 选目录失败那处 catch 多三行出声，三处语义一字未动。
+  "src/settings/panel.ts:785": // 〔CP2b〕同上 · 〔LR2〕−7：逃生口 forceLaunchPayloadRenderer 那段缓存字段删了
     "`b.el` —— `b` 来自 `this.perMachineBlocks` 数组，元素由各 section 自己建，跨文件",
   // 🔴 〔步 20 · `设计/70 §1.3 C`〕兜底态那块提示的显隐。它的类名是
   //    `skeleton.ts::makeSkeleton` 挂上去的（`settings-hint`），**跨文件** ——
@@ -328,9 +329,9 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   //    ⚠ 顺带说清它安不安全：`settings-hint` 在 `src/styles.css` 里**没有 display 规则**
   //      ⇒ UA 的 `[hidden] { display: none }` 不会被压过，那两句不是空写。
   //      这一条是**人工核过的**，不是这把尺子判的 —— 所以它在登记表里，不在绿里。
-  "src/settings/panel.ts:1289": // 〔CP2b〕行号 −6：字面量进表后几段多行拼接收成一行
+  "src/settings/panel.ts:1289": // 〔CP2b〕行号 −6：字面量进表后几段多行拼接收成一行 · 〔LR2〕再 −7（同上）
     "`this.perMachineFallbackHint` —— 类名由 `skeleton.ts::makeSkeleton` 挂，跨文件",
-  "src/settings/panel.ts:1302": // 〔CP2b〕同上
+  "src/settings/panel.ts:1302": // 〔CP2b〕同上 · 〔LR2〕−7
     "`this.perMachineFallbackHint` —— 同上（兜底态亮出来那一支）",
   // 🔴 〔步 20 · `设计/70 §10.1`〕「足迹」那一块里，本机那一整套的显隐包装。
   //    它**刻意不挂任何类**：只负责显隐、不要样式。挂了类就得在 CSS 里给它写规则
@@ -346,7 +347,9 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   "src/settings/config-surface-section.ts:442": // 〔CP2b〕同上
     "同一个包装，远端那台答不了时收起来（`showUnanswered`）",
   // 〔C4d〕行号随上方历史清单那几段改走通道挪了（1635 → 1617），那一处本身没动。
-  "src/views/history.ts:1612":
+  // 〔W5-UI〕`1612 → 1613`：`history.ts` 多一行 import（应用内对话框）；〔FW1〕再 +5：`liveInTabs` 那一格；
+  // 〔LOC1b · 4D〕上方「重新索引」按钮与等索引那一族删掉 ⇒ 行号挪了（合并主线后现打 1505）。那一处本身没动。
+  "src/views/history.ts:1505":
     "`e.hidden = updated.hidden` —— 这一处根本不是「切某个组件的显隐」，是在把一条会话记录的 `hidden` 字段往回写",
 } as const;
 

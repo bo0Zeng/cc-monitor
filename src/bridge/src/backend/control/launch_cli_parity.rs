@@ -28,7 +28,7 @@ const FIXTURE: &str = include_str!("fixtures/cli-golden.json");
 ///
 /// 🔴 〔LR1〕16 → 20：`ccm-print-parity` 那四个场景搬进来当用例（那套 e2e 从本夹具按名取行，
 /// 取代它原先现场跑的 TS 渲染器）。原 16 例一例没少。
-const EXPECT_CASES: usize = 20;
+const EXPECT_CASES: usize = 21; // 〔LR2 · R95b〕20 → 21：+「没探出来（不等于没装）」那条 refusal
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
