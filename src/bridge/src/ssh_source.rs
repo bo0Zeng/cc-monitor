@@ -3044,14 +3044,10 @@ async fn stream_loop(
         if let Some(client) = attach_inbound_client(&host_label, &mut parked, frame.as_ref()) {
             inbound_guard.1 = Some(client.clone());
             inbound = Some(client);
-            // 〔`C1` · 09-24〕告诉前端「这台的长连接能问话了」：账号那两条查询从此走它，
-            // 前端的账号刷新（替掉那个 10 秒轮询的事件驱动刷新器）在这一刻强制拉一次。
-            if let Err(e) = app.emit(
-                crate::bridge::events::REMOTE_BACKEND_READY,
-                &serde_json::json!({ "origin": host_label }),
-            ) {
-                tracing::warn!("remote-backend-ready emit failed: {e}");
-            }
+            // 〔`C1` · 09-24〕「这台的长连接能问话了」—— 前端的账号刷新在这一刻强制拉一次。
+            // 〔DL1〕原先这里发一个裸 Tauri 事件（`remote-backend-ready`）；今天由下面 Hello 臂里既有的
+            //   `replay.origin_seen(.., true)` 说（订了这台 `accounts-changed` 的订阅原位收 `Seen`，`event_replay` 头注那张表）——
+            //   同一个时刻、同一个事实，只留一个家。
             // 〔AS2 · V113〕连上那一刻：让本机常驻后端沿池里那条 SSH 同步资产目录（后台跑，零判定）。
             let accepts = inbound
                 .as_ref()
@@ -3506,15 +3502,10 @@ async fn stream_loop(
             Some(f @ (InboundFrame::Reply { .. } | InboundFrame::Cancelled { .. })) => {
                 route_inbound_frame(&host_label, inbound.as_ref(), f);
             }
-            // 〔SR1a · `设计/05 §13.6 ③`〕那台的账号清单变了 ⇒ 发前端既有的「这台就绪」那一个事件
-            //   （账号表与 chip 听的就是它，`main.ts`），多带一个 `reason` 说清这一次为什么（additive）。
+            // 〔SR1a · `设计/05 §13.6 ③`〕那台的账号清单变了 ⇒ 告诉前端（账号表与 chip 据此重取）。
+            // 〔DL1〕经通道 `subscribe`：订了这台 `accounts-changed` 的订阅收一格 `Frame`（原先是一个裸 Tauri 事件）。
             Some(InboundFrame::AccountsChanged) => {
-                if let Err(e) = app.emit(
-                    crate::bridge::events::REMOTE_BACKEND_READY,
-                    &serde_json::json!({ "origin": host_label, "reason": "accounts_changed" }),
-                ) {
-                    tracing::warn!("remote-backend-ready（accounts_changed）emit failed: {e}");
-                }
+                replay.accounts_changed(&crate::origin::Origin(host_label.clone()));
             }
             // 〔U4b · 第四波〕那台的活会话清单报完了 ⇒ 发前端 `origin-sessions-listed`。
             //   与上面 `remote-session-added` 同一条线程、同序 emit ⇒ 前端收到它时，这台全部的活会话都已宣告过。

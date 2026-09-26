@@ -41,6 +41,11 @@
 //! |---|---|---|
 //! | `session-lines` | `origin` 那台机器的全部会话 | **就绪点**（主界面的 `frontend-ready`）：宣告重发之后、对账之前 —— 顺序与原来 `replay_and_mark_ready`〔散文墓碑〕一致 |
 //! | `session-lines/<sid>` | 只那一个会话（独立窗口） | 订阅当场 |
+//! | `accounts-changed` | 〔DL1〕那台机器上「账号清单可能变了」：`Seen`（长连接又通了、能问了）· `Frame`（那台后端说账号清单变了）· `Unseen` · `Gap` | 没有留存（不重放）；订阅当场就收实时的 |
+//!
+//! 〔DL1 · `设计/01 §2.2`「前端只有两个动作」〕`accounts-changed` 顶掉的是最后一个裸 Tauri 事件 `remote-backend-ready`
+//! （原常量 `REMOTE_BACKEND_READY`〔散文墓碑〕，住 `bridge.rs` 的 `events`）。它与 `session-lines` 住同一张订阅表，因为「那台看不看得见」
+//! 只有一个家（下面的 `seen`）—— 另起一个句柄就得再养一份同样的表、在 `ssh_source` 同样的几处再喂一遍。
 //!
 //! 一格 = 一行（[`crate::bridge::SessionStreamFrame`]：`{"line": …}` 或成批那一段的边界 `{"batch": …}`）；
 //! `Item::Frame.seq` 是这条订阅里的**位置**（0, 1, 2 …，连续），不是行号。
@@ -72,6 +77,13 @@ pub trait ItemSink: Send + Sync {
 
 /// 〔CF2〕本文件认的流标签：一台机器的全部会话 / （带 `/<sid>`）只一个会话。
 pub const SESSION_LINES_KIND: &str = "session-lines";
+
+/// 〔DL1〕本文件认的另一个流标签：那台机器上「账号清单可能变了」（见头注那张表）。
+/// TS 那一侧的同一个串住 `src/session-accounts-poll.ts::ACCOUNTS_CHANGED_KIND`（两侧对拍在 `session-accounts-poll.vitest.ts`）。
+pub const ACCOUNTS_CHANGED_KIND: &str = "accounts-changed";
+
+/// 〔DL1〕`accounts-changed` 流里那一格 `Frame` 的体（不透明于通道；前端只认「来了一格」，体给日志看）。
+const ACCOUNTS_CHANGED_BODY: &[u8] = br#"{"accounts_changed":true}"#;
 
 pub struct EventReplay {
     inner: Mutex<Inner>,
@@ -108,6 +120,8 @@ struct Sub {
     generation: u64,
     /// 订的是哪台机器（线上串：本机 `<local>`）。
     origin: String,
+    /// 〔DL1〕这条订阅收不收会话行：`session-lines` 一族收；`accounts-changed` 不收（它只收看得见 / 看不见与账号那一格）。
+    lines: bool,
     /// `session-lines/<sid>` 那一形：只要这一个会话。
     only: Option<String>,
     /// 还能交几格 `Frame`（`want` 累加）。
@@ -125,7 +139,9 @@ struct Sub {
 impl Sub {
     fn wants(&self, p: &JsonlLinePayload) -> bool {
         let origin = p.origin.as_deref().unwrap_or(crate::origin::LOCAL);
-        origin == self.origin && self.only.as_deref().is_none_or(|s| s == p.session_id)
+        self.lines
+            && origin == self.origin
+            && self.only.as_deref().is_none_or(|s| s == p.session_id)
     }
 }
 
@@ -292,16 +308,27 @@ fn refused(code: &str, message: String) -> Item {
     }
 }
 
-/// 〔CF2〕`kind` ⇒ `None`（整台机器）/ `Some(sid)`（一个会话）。认不出 ⇒ `Err`。
-fn parse_kind(kind: &str) -> Result<Option<String>, ()> {
+/// 〔CF2〕一个流标签说的是哪一种流。
+enum Stream {
+    /// `session-lines`：`None` = 整台机器 / `Some(sid)` = 一个会话。
+    Lines(Option<String>),
+    /// 〔DL1〕`accounts-changed`。
+    AccountsChanged,
+}
+
+/// 〔CF2〕`kind` ⇒ 哪一种流。认不出 ⇒ `Err`。
+fn parse_kind(kind: &str) -> Result<Stream, ()> {
     if kind == SESSION_LINES_KIND {
-        return Ok(None);
+        return Ok(Stream::Lines(None));
+    }
+    if kind == ACCOUNTS_CHANGED_KIND {
+        return Ok(Stream::AccountsChanged);
     }
     match kind
         .strip_prefix(SESSION_LINES_KIND)
         .and_then(|r| r.strip_prefix('/'))
     {
-        Some(sid) if !sid.is_empty() => Ok(Some(sid.to_string())),
+        Some(sid) if !sid.is_empty() => Ok(Stream::Lines(Some(sid.to_string()))),
         _ => Err(()),
     }
 }
@@ -506,8 +533,9 @@ impl EventReplay {
             sink.deliver(label, id, vec![item]);
             return;
         }
-        let only = match parse_kind(kind) {
-            Ok(o) => o,
+        let (lines, only) = match parse_kind(kind) {
+            Ok(Stream::Lines(o)) => (true, o),
+            Ok(Stream::AccountsChanged) => (false, None),
             Err(()) => {
                 let item = refused("no-such-stream", format!("没有叫 `{kind}` 的流"));
                 sink.deliver(label, id, vec![item]);
@@ -528,12 +556,14 @@ impl EventReplay {
             inner.generation += 1;
             let generation = inner.generation;
             let seen = inner.seen.get(origin).copied().unwrap_or(false);
-            let immediate = only.is_some() || inner.ready_labels.contains(label);
+            // 〔DL1〕`accounts-changed` 没有留存可重放 ⇒ 不等就绪点，订阅当场就收实时的。
+            let immediate = !lines || only.is_some() || inner.ready_labels.contains(label);
             let sub = Sub {
                 label: label.to_string(),
                 id,
                 generation,
                 origin: origin.to_string(),
+                lines,
                 only,
                 credit: u64::from(want),
                 next: 0,
@@ -541,7 +571,7 @@ impl EventReplay {
                 live: immediate,
                 told_seen: seen,
             };
-            let job = immediate.then(|| {
+            let job = (immediate && lines).then(|| {
                 let mine: Vec<JsonlLinePayload> = inner
                     .history
                     .iter()
@@ -633,6 +663,32 @@ impl EventReplay {
             for (label, id) in told {
                 sink.deliver(&label, id, vec![seen_item(seen, false)]);
             }
+        }
+    }
+
+    /// 〔DL1〕那台机器的后端说「账号清单变了」（`accounts_changed` 帧，`设计/05 §13.6 ③`）⇒ 订了那台 `accounts-changed` 的
+    /// 每条订阅收一格 `Frame`（有 credit 当场交；没有 ⇒ 丢、位置照占、下一次交之前原位 `Gap` —— 与实时行同一套）。
+    pub fn accounts_changed(&self, origin: &crate::origin::Origin) {
+        let origin = origin.as_wire_str();
+        let (sink, plans) = {
+            let mut inner = self.inner.lock();
+            let Some(sink) = inner.sink.clone() else {
+                return;
+            };
+            let plans: Vec<(String, u64, Vec<Item>)> = inner
+                .subs
+                .iter_mut()
+                .filter(|s| !s.lines && s.origin == origin)
+                .map(|s| {
+                    let items = plan_live(s, vec![Body(ACCOUNTS_CHANGED_BODY.to_vec())]);
+                    (s.label.clone(), s.id, items)
+                })
+                .filter(|(_, _, items)| !items.is_empty())
+                .collect();
+            (sink, plans)
+        };
+        for (label, id, items) in plans {
+            sink.deliver(&label, id, items);
         }
     }
 

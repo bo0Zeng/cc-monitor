@@ -44,7 +44,8 @@ import { LOCAL_MACHINE_KEY, readStatus } from "./settings/machine-status";
 import { hostOs } from "./settings/host-os";
 import { createUnknownKeysBar } from "./settings/unknown-keys-notice";
 import { openSettingsWindow } from "./settings/open-settings"; // ST1：点「设置」有反馈（不 import 设置面板）
-import { collectAccountRows, createEventRefresher } from "./session-accounts-poll";
+import { collectAccountRows, createEventRefresher, watchAccountsChanged } from "./session-accounts-poll";
+import { chan } from "./ipc/chan";
 import { lastAccounts } from "./history-reads";
 import { TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
@@ -257,16 +258,18 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 🔴 〔`C1` · 2026-09-24〕那个 10 秒轮询**删了**（理由整段在 `session-accounts-poll.ts` 头注）：
   // 两条查询搬上了已有的长连接，而「会话 ↔ 账号」只在会话起停时变 —— 那本来就有事件。
   // ⇒ 刷新改由事件驱动，零定时器：
-  //   · `remote-backend-ready`：某台远端的长连接握手完成（启动 / 重连）⇒ 强制刷账号清单，
-  //     账号 chip 也在这一刻重取（在那之前问只会拿到「没有控制通道」）；
+  //   · 某台的长连接握手完成（启动 / 重连）或那台账号清单变了 ⇒ 强制刷账号清单，
+  //     账号 chip 也在这一刻重取（在那之前问只会拿到「没有控制通道」）—— 〔DL1〕经通道订的 `accounts-changed`；
   //   · `remote-session-added` / `session-ended`：会话起停；
   //   · 本 UI 切号：上面 `onDefaultChanged`。
   const accountsRefresher = createEventRefresher(refreshSessionAccounts);
   accountsRefresher.request();
-  void listen("remote-backend-ready", () => {
+  // 〔DL1〕「某台长连接握手完成 / 那台账号清单变了」⇒ 强制刷账号清单 ＋ chip。原先听裸事件 `remote-backend-ready`；
+  //   今天经通道订每台的 `accounts-changed`（下面 `bindEvents` 之后，`watchAccountsChanged`）。
+  const onAccountsChanged = (): void => {
     accountsRefresher.request(true);
     void accountChip.refresh(true);
-  });
+  };
   void listen("remote-session-added", () => accountsRefresher.request());
   void listen("session-ended", () => accountsRefresher.request());
 
@@ -818,6 +821,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   }, {
     streams: machines.map((origin) => ({ origin, kind: "session-lines" })),
   });
+  // 〔DL1 · `设计/01 §2.2`〕账号那一格经通道订（每台一条 `accounts-changed`）。订阅登记之前那一窗里连上的
+  //   不会有 `seen`（句柄只在状态变时说）⇒ 登记完补刷一次 —— 与「独立窗口的订阅本身就是它的就绪点」同一个道理。
+  void watchAccountsChanged(chan, machines, onAccountsChanged).then(onAccountsChanged);
 
   // v2.0.0 (issue #4)：后端 ERROR 级别 tracing → 右下角红色 toast
   bindErrorToast();
