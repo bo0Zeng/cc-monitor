@@ -1832,14 +1832,15 @@ fn aliases_render(
     aliases: Vec<account_aliases::Alias>,
     shell: shell_dialect::Shell,
 ) -> account_aliases::AliasRender {
-    account_aliases::render(&aliases, shell)
+    account_aliases::render(&aliases, shell, &origin::Origin::local())
 }
 
 /// 〔AL1〕读回口：这台机器上那份别名文件今天有哪几条（`设计/70 §3.1` 「列出现在有哪些命令」）。
 /// 〔AL1c〕按 `shell` 读那一种的文件（`aliases.sh` / `aliases.ps1`）与那一种的启动文件候选。
 /// 〔AL1d · 第四波 4B〕启动文件候选各带**别名块**的现状（从前要另问终端集成那两条：列 `$PROFILE` · 扫一份），
 /// 外加这台机器上完成了拉前握手的终端数（`BindRegistry`）。`rc_path` = 人另指的一份（过围栏后并进候选）。
-/// 读若干份文件 ⇒ `spawn_blocking`（同步命令会占住主线程）。
+/// 〔AL2 · 第四波 4D〕事实全问那台机器的后端（`user_files::BackendDoor`：`files-home` / `files-peek` / `files-stat`），
+/// monitor 进程一个字节的盘都不读（从前这里 `dirs::home_dir()` ＋ `spawn_blocking` 直读）。
 #[tauri::command]
 async fn aliases_read(
     shell: shell_dialect::Shell,
@@ -1847,12 +1848,9 @@ async fn aliases_read(
     bind_state: tauri::State<'_, Arc<bind::BindRegistry>>,
 ) -> Result<account_aliases::AliasListing, String> {
     let bound = u32::try_from(bind_state.registration_count()).unwrap_or(u32::MAX);
-    tokio::task::spawn_blocking(move || {
-        let home = dirs::home_dir().ok_or_else(|| copy_text("rsLib.aliases.noHome", &[]))?;
-        account_aliases::read_in(&home, shell, rc_path.as_deref(), bound)
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking join error: {e}"))?
+    let at = origin::Origin::local();
+    let door = user_files::BackendDoor::new(at.clone());
+    account_aliases::read_via(&door, &at, shell, rc_path.as_deref(), bound).await
 }
 
 /// 〔AL1〕第②跳：**唯一的副作用**。收的是清单不是代码 —— 写进 shell 的文本只由后端渲染
@@ -1867,8 +1865,9 @@ async fn aliases_install(
     rc_path: Option<String>,
     shell: shell_dialect::Shell,
 ) -> Result<account_aliases::AliasInstallReport, String> {
-    let door = user_files::BackendDoor::new(origin::Origin::local());
-    account_aliases::install_in(&door, &aliases, rc_path.as_deref(), shell).await
+    let at = origin::Origin::local();
+    let door = user_files::BackendDoor::new(at.clone());
+    account_aliases::install_in(&door, &at, &aliases, rc_path.as_deref(), shell).await
 }
 
 /// 〔AL1d · 第四波 4B〕**别名块**的第①跳：纯 —— 块 → 代码（「装进一份空文件会写成什么」，BOM 除外）。
@@ -1886,18 +1885,27 @@ fn aliases_block_render(rc_path: String, with_cc: bool) -> Result<String, String
 /// 幂等：已有块就整块替换。落盘经本机后端的文件管理那一面（`user_files::BackendDoor`），本进程不写。
 #[tauri::command]
 async fn aliases_block_install(rc_path: String, with_cc: bool) -> Result<(), String> {
-    let p = profile_installer::fence_profile_path(&rc_path)?;
-    let door = user_files::BackendDoor::new(origin::Origin::local());
-    profile_installer::install_to_profile(&door, &p, profile_installer::CC_FUNCTION_NAME, with_cc)
-        .await
+    let at = origin::Origin::local();
+    let door = user_files::BackendDoor::new(at.clone());
+    let home = user_files::Door::home(&door).await?;
+    let p = profile_installer::fence_on(&at, &home, &rc_path)?;
+    profile_installer::install_to_profile(
+        &door,
+        std::path::Path::new(&p),
+        profile_installer::CC_FUNCTION_NAME,
+        with_cc,
+    )
+    .await
 }
 
 /// 〔AL1d〕**别名块**卸掉（整块删，块外一个字节不动；围栏损坏 ⇒ 中止）。经本机后端写。
 #[tauri::command]
 async fn aliases_block_remove(rc_path: String) -> Result<(), String> {
-    let p = profile_installer::fence_profile_path(&rc_path)?;
-    let door = user_files::BackendDoor::new(origin::Origin::local());
-    profile_installer::uninstall_from_profile(&door, &p).await
+    let at = origin::Origin::local();
+    let door = user_files::BackendDoor::new(at.clone());
+    let home = user_files::Door::home(&door).await?;
+    let p = profile_installer::fence_on(&at, &home, &rc_path)?;
+    profile_installer::uninstall_from_profile(&door, std::path::Path::new(&p)).await
 }
 
 #[tauri::command]

@@ -43,9 +43,11 @@
 //! `~/.cc-monitor/aliases.ps1`，各自由那个 shell 的别名块里那一行 source 接上。
 
 use crate::copy_table::copy_text;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use crate::shell_dialect::Shell;
+use crate::origin::Origin;
+use crate::shell_dialect::{Listed, Shell};
+use crate::user_files::Door;
 
 // 〔TL1 · 4C〕墓碑：这里从前有一对**写进用户 rc / `$PROFILE`** 的围栏常量（`# === cc-monitor aliases BEGIN v1 ===` 那一对），
 //   包着 [`install_in`] 代装的那一行 source。那一步退役（`71 §6.1`），这对围栏随之删 —— 盘上已有的那一块不读不删。
@@ -74,20 +76,20 @@ pub struct StartupFile {
     pub exists: bool,
     /// 〔AL1d〕这份文件里别名块的现状（不在盘上 ⇒ 全空）。
     pub block: crate::profile_installer::BlockState,
+    /// 〔AL2〕在盘上、可那台后端读不了它（非 UTF-8 · 太大 · 解到 home 外 · I/O）—— 后端原话；`None` = 读得了或不在。
+    /// 从前本机直读时这一形被吞成「没有别名块」。
+    pub unreadable: Option<String>,
 }
 
 /// 生成文件的绝对路径。`home` 由调用方给 —— 测试拿临时目录当 home，**绝不碰真实家目录**。
 ///
-/// 〔WIN1 · RT1 F8〕**逐段** `join`：`our_alias_file_rel` 是 `/` 分隔的（交给后端的 `rel` 就是它，那一侧不动），
-/// 而这里拼的是**给人看、也写进 `$PROFILE` 那一行**的本机绝对路径。整串一次 `join` 在 Windows 上
+/// 〔WIN1 · RT1 F8〕**逐段**拼：`our_alias_file_rel` 是 `/` 分隔的（交给后端的 `rel` 就是它，那一侧不动），
+/// 而这里拼的是**给人看、也写进 `$PROFILE` 那一行**的那台机器上的绝对路径。整串一次拼在 Windows 上
 /// 会得到 `C:\Users\user\.cc-monitor/aliases.ps1`（真机读数，`RT1.md §8` F8）—— 两种分隔符混着。
-pub fn alias_file_in(home: &Path, shell: Shell) -> PathBuf {
-    shell
-        .dialect()
-        .our_alias_file_rel()
-        .split('/')
-        .filter(|s| !s.is_empty())
-        .fold(home.to_path_buf(), |p, seg| p.join(seg))
+/// 〔AL2 · 第四波 4D〕`home` 是**那台机器**的后端答的字符串，拼法跟它自己的分隔符走（`user_files::join_under`）：
+/// 从前 `Path::join` 用的是 monitor 这台的分隔符 —— Windows 上的 monitor 拼远端 `/home/user` 会得到 `/home/user\.cc-monitor\aliases.sh`。
+pub fn alias_file_in(home: &str, shell: Shell) -> String {
+    crate::user_files::join_under(home, shell.dialect().our_alias_file_rel())
 }
 
 /// 整份生成文件的内容（**编码前**：BOM 那一层在落盘那一跳按方言加）。
@@ -244,6 +246,54 @@ impl Caps {
     }
 }
 
+/// 〔AL2 · 第四波 4D〕**这台机器今天承诺说这种方言吗**（`设计/01 §6.7b` 表 B ＋ D7「显式拒绝，不许静默推一份跑不起来的东西」）。
+///
+/// 事实只有一个住址：表 B 住 `byte_table::promised`（「这个 origin 今天承诺哪几种机器」），这里**只问它**，不抄一份
+/// 「远端只有 Linux」。方言 → 机器那一格与 [`Caps::of`] 同一条事实：**PowerShell ⇔ Windows**；POSIX 在三种 OS 上都有人说
+/// （Windows 上是 Git Bash）。⇒ 远端（表 B 只承诺 Linux）拿 PowerShell ⇒ 拒。
+///
+/// 为什么要这一道：清单三条的 `shell` 是界面给的（远端卡恒 `posix`，`第四波记录/W5-ALIAS.md §2.2`），
+/// 而别名块三条的方言按**目标文件扩展名**定（`71 §4.4`）—— 远端「其它文件」填一个 `.ps1` 就会走 PowerShell 那一臂，
+/// 把**本机** monitor 的数据目录填进模板写到远端（`profile_installer::plan_install`）。`71 §4.4` 与表 B 两句同时成立的解只有「显式拒」。
+/// 哪天表 B 多了远端 Windows：改 `byte_table::promised` 一处，这里自动放行（`AL2.md §2.3`）。
+pub fn dialect_promised(origin: &Origin, shell: Shell) -> Result<(), String> {
+    use crate::byte_table::{promised, Arch, Key, Os, Route};
+    let route = if origin.is_local() {
+        Route::Local
+    } else {
+        Route::Remote
+    };
+    let speakers: &[Os] = match shell {
+        Shell::PowerShell => &[Os::Windows],
+        Shell::Posix => &[Os::Linux, Os::Mac, Os::Windows],
+    };
+    let ok = speakers.iter().any(|&os| {
+        [Arch::X86_64, Arch::Aarch64]
+            .into_iter()
+            .any(|arch| promised(route, Key { os, arch }))
+    });
+    if ok {
+        return Ok(());
+    }
+    Err(copy_text(
+        "rsAccountAliases.dialect.notPromised",
+        &[
+            (
+                "machine",
+                &crate::backend::control::cc_bus::machine_label(origin.as_wire_str()),
+            ),
+            (
+                "shell",
+                &match shell {
+                    Shell::Posix => "POSIX",
+                    Shell::PowerShell => "PowerShell",
+                }
+                .to_string(),
+            ),
+        ],
+    ))
+}
+
 /// 一条别名合不合格。**这些是「判定的规则」**（`71 §4.3` 第 6、7 格），与哪种 shell 无关；
 /// 方言只回答两个读法问题：名字的字符集、一个值能不能原样传到 ccm。
 pub fn check_alias(a: &Alias, shell: Shell) -> Result<(), String> {
@@ -353,7 +403,10 @@ pub fn render_line(a: &Alias, shell: Shell) -> String {
 }
 
 /// ① **纯**：清单 → 代码。一个字节都不写、一个文件都不读（撞名检查读的是自带片段 / 模板与 `PATH`）。
-pub fn render(aliases: &[Alias], shell: Shell) -> AliasRender {
+///
+/// 〔AL2 · 第四波 4D〕`origin` 只决定一件事：撞名那一格查不查 `PATH`（[`collision_note`]）。其余一个字不看它 ——
+/// 本机与远端同一份规则、同一种方言（`71 §6`「`origin` 是本机还是远端，对这些命令没有区别」）。
+pub fn render(aliases: &[Alias], shell: Shell, origin: &Origin) -> AliasRender {
     let d = shell.dialect();
     let mut lines = Vec::new();
     let mut problems = Vec::new();
@@ -378,7 +431,7 @@ pub fn render(aliases: &[Alias], shell: Shell) -> AliasRender {
     let collisions = aliases
         .iter()
         .filter(|a| d.name_is_valid(&a.name))
-        .filter_map(|a| collision_note(&a.name, shell))
+        .filter_map(|a| collision_note(&a.name, shell, origin))
         .collect();
     AliasRender {
         code: render_file(shell, &lines),
@@ -391,34 +444,39 @@ pub fn render(aliases: &[Alias], shell: Shell) -> AliasRender {
 /// **读回口**：盘上那份别名文件 → 清单 ＋ 启动文件候选（各带别名块的现状）。只读。
 ///
 /// 〔AL1d〕`extra_rc`：人在界面上指的「其它文件」（从前是终端集成那一块的「自定义路径」）。给了就过
-/// `profile_installer::fence_path_under`（只许落在 home 之内）、并进候选一起扫；过不了围栏 ⇒ `Err`。
-pub fn read_in(
-    home: &Path,
+/// `profile_installer::fence_on`（只许落在 home 之内）、并进候选一起扫；过不了围栏 ⇒ `Err`。
+///
+/// 〔AL2 · 第四波 4D〕**事实全问那台机器的后端**（`71 §4.1`「怎么读到这个事实 → 下沉」· `第四波记录/W5-ALIAS.md §2.2`）：
+/// home（`files-home`）· 别名文件（`files-peek`）· 候选各一次（`files-peek`，PS 7 那两份的目录 `files-stat`）。
+/// 从前这里 `std::fs::read_to_string` 读 monitor 这台的盘 —— 只答得了本机；今天本机远端同一个函数，只差门的 `origin`。
+/// `origin` 只进围栏（符号链接那一步只对本机）。`bound_terminals` 由调用方给（它住 monitor 进程里的 `BindRegistry`，远端恒 0）。
+pub async fn read_via<D: Door>(
+    door: &D,
+    origin: &Origin,
     shell: Shell,
     extra_rc: Option<&str>,
     bound_terminals: u32,
 ) -> Result<AliasListing, String> {
+    let home = door.home().await?;
     let extra = extra_rc
-        .map(|raw| crate::profile_installer::fence_path_under(home, raw))
+        .map(|raw| crate::profile_installer::fence_on(origin, &home, raw))
         .transpose()?;
-    let path = alias_file_in(home, shell);
-    let (exists, text) = match std::fs::read_to_string(&path) {
-        Ok(t) => (true, t),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (false, String::new()),
-        Err(e) => {
+    let path = alias_file_in(&home, shell);
+    let text = match look(door, &home, &path).await? {
+        Look::Text(t) => Some(t),
+        Look::Absent => None,
+        Look::Unreadable(e) => {
             return Err(copy_text(
                 "rsAccountAliases.read.failed",
-                &[
-                    ("path", &(path.display()).to_string()),
-                    ("e", &e.to_string()),
-                ],
+                &[("path", &path), ("e", &e)],
             ))
         }
     };
+    let exists = text.is_some();
     let mut aliases = Vec::new();
     let mut unparsed = Vec::new();
     let d = shell.dialect();
-    for got in d.parse_file(d.decode_from_disk(&text)) {
+    for got in d.parse_file(d.decode_from_disk(text.as_deref().unwrap_or(""))) {
         match got {
             Ok((name, args)) => {
                 let a = Alias { name, args };
@@ -431,14 +489,38 @@ pub fn read_in(
         }
     }
     Ok(AliasListing {
-        alias_path: path.display().to_string(),
+        alias_path: path,
         exists,
         aliases,
         unparsed,
-        rc_candidates: rc_candidates_in(home, shell, extra.as_deref()),
+        rc_candidates: rc_candidates_via(door, &home, shell, extra.as_deref()).await?,
         bound_terminals,
-        other_rc: extra.map(|p| p.display().to_string()),
+        other_rc: extra,
     })
+}
+
+/// 那台机器上一份**可能不在**的文件，问一次看到了什么。
+enum Look {
+    Text(String),
+    /// 不在（父目录不在也算：那台后端答「这个路径读不到」）。
+    Absent,
+    /// 在，但读不了 —— 后端原话。
+    Unreadable(String),
+}
+
+/// 先 `files-peek`；它报错时再问一次 `files-stat`：那台答「这个路径读不到」⇒ 当不在（`files-peek` 在**父目录不在**时
+/// 也报错 —— 它先解父目录 —— 而那一形就是「不在」），答得出 ⇒ 在但读不了、带回 `peek` 的原话。
+/// ⚠ `files-stat` 的「读不到」与「不存在」分不开（权限不够也是它）⇒ 权限不够的那一份会被说成「不在」—— 那一形今天从
+/// peek 那一步就先报了原话，走不到这里的只有 `stat` 也读不到的那几种。
+async fn look<D: Door>(door: &D, home: &str, abs: &str) -> Result<Look, String> {
+    let rel = crate::user_files::rel_under(home, abs)?;
+    match door.peek(home, &rel).await {
+        Ok(p) => Ok(p.text.map_or(Look::Absent, Look::Text)),
+        Err(said) => Ok(match door.stat_kind(abs).await? {
+            None => Look::Absent,
+            Some(_) => Look::Unreadable(said),
+        }),
+    }
 }
 
 /// ② **唯一的副作用**：把 [`render`] 的产物整份写进别名文件。给了 `rc` ⇒ **只查**它接没接上（`71 §6.1`：不代装）。
@@ -446,13 +528,15 @@ pub fn read_in(
 ///
 /// 〔RW1 · 第四波 09-24〕两处写都经 `door`（生产 = 本机后端的文件管理那一面）；home 也问它
 /// （写落在后端认的那个 home 底下，两边的 home 不许各算各的）。
-pub async fn install_in<D: crate::user_files::Door>(
+/// 〔AL2 · 第四波 4D〕门按 `origin` 取（本机 / 远端同一个函数）；`origin` 在这里只进 `rc` 那一道围栏（符号链接那步只对本机）。
+pub async fn install_in<D: Door>(
     door: &D,
+    origin: &Origin,
     aliases: &[Alias],
     rc: Option<&str>,
     shell: Shell,
 ) -> Result<AliasInstallReport, String> {
-    let r = render(aliases, shell);
+    let r = render(aliases, shell, origin);
     if !r.problems.is_empty() {
         let why: Vec<String> = r
             .problems
@@ -471,16 +555,16 @@ pub async fn install_in<D: crate::user_files::Door>(
         ));
     }
     let home = door.home().await?;
-    let path = alias_file_in(Path::new(&home), shell);
+    let path = alias_file_in(&home, shell);
     // 先查 rc（只读）再写：rc 路径过不了围栏 ⇒ 整趟停下、一个字节不写（同「有一条不合格整批不写」）。
     let rc_note = match rc {
         None => None,
-        Some(rc_raw) if rc_sources_our_file(door, &home, rc_raw).await? => Some(copy_text(
+        Some(rc_raw) if rc_sources_our_file(door, origin, &home, rc_raw).await? => Some(copy_text(
             "rsAccountAliases.install.sourceExists",
             &[("rc", &rc_raw.to_string())],
         )),
         Some(rc_raw) => {
-            let line = shell.dialect().source_line(&path.display().to_string());
+            let line = shell.dialect().source_line(&path);
             Some(copy_text(
                 "rsAccountAliases.install.sourceMissing",
                 &[("rc", &rc_raw.to_string()), ("line", &line.to_string())],
@@ -495,10 +579,10 @@ pub async fn install_in<D: crate::user_files::Door>(
     notes.extend(rc_note);
     notes.push(copy_text(
         "rsAccountAliases.install.nextStep",
-        &[("path", &(path.display()).to_string())],
+        &[("path", &path)],
     ));
     Ok(AliasInstallReport {
-        alias_path: path.display().to_string(),
+        alias_path: path,
         wrote_alias_file,
         notes,
     })
@@ -506,38 +590,62 @@ pub async fn install_in<D: crate::user_files::Door>(
 
 /// 这个名字是不是已经被占了。**只出声、不拦** —— 见 `§0c 问三`。怎么查由方言答（POSIX 查自带片段与 `PATH`；
 /// PowerShell 查终端集成模板与 `PATH` 上的 `.exe` / `.cmd` / …）。
-pub fn collision_note(name: &str, shell: Shell) -> Option<String> {
-    shell.dialect().name_taken(name)
+///
+/// 〔AL2 · 第四波 4D〕`PATH` 那一格查的是 **monitor 这个进程**的 `PATH`（`shell_dialect.rs::on_path` 头注自认会漏报）——
+/// 拿去说远端是**错的**（会把本机的 `/usr/bin/foo` 报成远端撞名）⇒ 只在本机查；远端只查自带别名块，
+/// 界面远端那一块多一句静态说明（`第四波记录/W5-ALIAS.md §2.2`，不为这一格加帧命令）。
+pub fn collision_note(name: &str, shell: Shell, origin: &Origin) -> Option<String> {
+    shell.dialect().name_taken(name, origin.is_local())
 }
 
 /// 候选启动文件的现状。列哪几份由方言答（POSIX 只列在的；PowerShell 的 `$PROFILE` 不在也列）——
-/// 🔴 〔AL1d〕**`$PROFILE` 在哪，全仓只有 `ShellDialect::startup_files` 答**（`AL1d.md §2.3`）。
-/// `extra` 是人另指的那一份（已过围栏），与方言给的重了就不重复列。
+/// 🔴 〔AL1d〕**`$PROFILE` 在哪，全仓只有 `ShellDialect::startup_candidates` 答**（`AL1d.md §2.3`）。
+/// `extra` 是人另指的那一份（已过围栏；不在也列），与方言给的重了就不重复列。
 ///
 /// 每份读**一次**：别名文件那一行接没接上（`sourced`）与别名块的现状（`block`）出自同一次读。
-pub fn rc_candidates_in(home: &Path, shell: Shell, extra: Option<&Path>) -> Vec<StartupFile> {
+/// 〔AL2 · 第四波 4D〕那一次读问**那台机器的后端**（[`look`]）：方言只给路径与列法（`shell_dialect::Listed`），
+/// 在不在、里面是什么、PS 7 的目录在不在（`files-stat`）都由门答。读不了的那一份照列、带后端原话（`unreadable`）。
+pub async fn rc_candidates_via<D: Door>(
+    door: &D,
+    home: &str,
+    shell: Shell,
+    extra: Option<&str>,
+) -> Result<Vec<StartupFile>, String> {
     let d = shell.dialect();
-    let mut paths = d.startup_files(home);
+    let mut cands = d.startup_candidates(home);
     if let Some(x) = extra {
-        if !paths.iter().any(|p| p == x) {
-            paths.push(x.to_path_buf());
+        if !cands.iter().any(|c| c.path == x) {
+            cands.push(crate::shell_dialect::StartupCandidate {
+                path: x.to_string(),
+                listed: Listed::Always,
+            });
         }
     }
-    paths
-        .into_iter()
-        .map(|p| {
-            let text = std::fs::read_to_string(&p).ok();
-            StartupFile {
-                path: p.display().to_string(),
-                sourced: text.as_deref().is_some_and(|s| d.sources_our_file(s)),
-                exists: text.is_some() || p.is_file(),
-                block: text
-                    .as_deref()
-                    .map(|t| crate::profile_installer::block_state(&p, t))
-                    .unwrap_or_default(),
+    let mut out = Vec::new();
+    for c in cands {
+        if let Listed::IfDirExists(dir) = &c.listed {
+            if door.stat_kind(dir).await?.as_deref() != Some("dir") {
+                continue;
             }
-        })
-        .collect()
+        }
+        let (text, exists, unreadable) = match look(door, home, &c.path).await? {
+            Look::Text(t) => (Some(t), true, None),
+            Look::Absent if c.listed == Listed::IfFileExists => continue,
+            Look::Absent => (None, false, None),
+            Look::Unreadable(e) => (None, true, Some(e)),
+        };
+        out.push(StartupFile {
+            sourced: text.as_deref().is_some_and(|s| d.sources_our_file(s)),
+            exists,
+            block: text
+                .as_deref()
+                .map(|t| crate::profile_installer::block_state(Path::new(&c.path), t))
+                .unwrap_or_default(),
+            unreadable,
+            path: c.path,
+        });
+    }
+    Ok(out)
 }
 
 /// 把生成文件写下去。**内容一致就一个字节都不写。**
@@ -545,7 +653,7 @@ pub fn rc_candidates_in(home: &Path, shell: Shell, extra: Option<&Path>) -> Vec<
 /// 〔RW1 · 第四波 09-24〕经 `door`（本机后端）写：生成文件是**我们自己**的东西 ⇒ 不留备份文件；
 /// `~/.cc-monitor` 还不在就逐级补（`parents`）。回读 · 回滚那一份规则住后端。
 /// 〔AL1c〕落盘那一份按方言编码（PowerShell 加 BOM）。
-async fn write_alias_file<D: crate::user_files::Door>(
+async fn write_alias_file<D: Door>(
     door: &D,
     home: &str,
     shell: Shell,
@@ -562,17 +670,18 @@ async fn write_alias_file<D: crate::user_files::Door>(
 
 /// 用户指定的那份启动文件**接没接上**我们那份别名文件。**只读**（〔TL1 · 4C〕从前这里是代装那一行的 `ensure_…` 一跳，退役）。
 ///
-/// 路径过 `profile_installer::fence_path_under`（只许落在 home 之内 —— 同一道围栏，不另立一份）；读经 `door`
-/// （生产 = 本机后端 `files-peek`）。这份文件是哪种 shell 由**它自己**（扩展名）定；「接上了」由那种方言认
+/// 路径过 `profile_installer::fence_on`（只许落在 home 之内 —— 同一道围栏，不另立一份）；读经 `door`
+/// （生产 = 那台机器后端的 `files-peek`）。这份文件是哪种 shell 由**它自己**（扩展名）定；「接上了」由那种方言认
 /// （任何一种写法都认，别按整行比 —— POSIX 别名块那一行写的是 `$HOME/…`，没展开）。文件不在 ⇒ 没接上。
-async fn rc_sources_our_file<D: crate::user_files::Door>(
+async fn rc_sources_our_file<D: Door>(
     door: &D,
+    origin: &Origin,
     home: &str,
     rc_raw: &str,
 ) -> Result<bool, String> {
-    let path = crate::profile_installer::fence_path_under(Path::new(home), rc_raw)?;
-    let rel = crate::user_files::rel_under(home, &path.display().to_string())?;
-    let d = Shell::of_target(&path).dialect();
+    let path = crate::profile_installer::fence_on(origin, home, rc_raw)?;
+    let rel = crate::user_files::rel_under(home, &path)?;
+    let d = Shell::of_target(Path::new(&path)).dialect();
     let got = door.peek(home, &rel).await?;
     Ok(got
         .text
