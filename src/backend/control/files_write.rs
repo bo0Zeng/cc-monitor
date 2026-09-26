@@ -1193,9 +1193,38 @@ fn land_backup(
     }
     drop(f);
     if let Some(p) = perms {
-        std::fs::set_permissions(&bak, p).ok();
+        keep_mode(
+            &bak,
+            p,
+            |b, p| std::fs::set_permissions(b, p),
+            |b| std::fs::remove_file(b),
+        )?;
     }
     Ok(bak)
+}
+
+/// 〔W5-VIS · E 吞错普查点名〕备份**沿用原文件的权限位**；沿用不上 ⇒ 删掉这份备份、整趟拒（此刻原文件还没动）。
+///
+/// 原先一个 `.ok()` 吞掉：一份 0600 的原文件（钥匙、令牌一类）可能留下一份按 umask 建出来的 0644 备份，
+/// 而一句话都没有。两个动作都由调用方交进来（生产 = `set_permissions` / `remove_file`，写在 `land_backup` 里 ——
+/// 那里先过了路径解析，`readonly_guard` 第三层的判准就落在那个函数上）；判据交一个会失败的 chmod。
+fn keep_mode(
+    bak: &Path,
+    perms: std::fs::Permissions,
+    chmod: impl FnOnce(&Path, std::fs::Permissions) -> std::io::Result<()>,
+    remove: impl FnOnce(&Path) -> std::io::Result<()>,
+) -> Result<(), WriteRefusal> {
+    let Err(e) = chmod(bak, perms) else {
+        return Ok(());
+    };
+    let gone = match remove(bak) {
+        Ok(()) => "这份备份已删掉".to_string(),
+        Err(re) => format!("这份备份也没删掉（{re}），它可能比原文件更多人读得到，请手动删"),
+    };
+    Err(WriteRefusal::Io(format!(
+        "refuse write: 备份 {} 没能沿用原文件的权限位（{e}）；{gone}；原文件没动",
+        bak.display()
+    )))
 }
 
 /// 回滚那一支：删掉**这一趟自己刚建出来**的那一份（只在「原来不存在」时调）。

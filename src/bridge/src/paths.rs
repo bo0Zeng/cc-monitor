@@ -138,8 +138,25 @@ fn read_user_override() -> Option<PathBuf> {
     if !cfg.exists() {
         return None;
     }
-    let raw = std::fs::read_to_string(&cfg).ok()?;
-    let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    // 〔W5-VIS · E 吞错普查点名〕文件在而读不动 / 不是 JSON ⇒ 设置里那条「Claude 目录」覆盖这一次**不生效**、回到默认目录。
+    // 原先两个 `.ok()?` 把它折成「没设」—— 用户以为改了目录，实际读的是默认那一份，一句话都没有。
+    // 这个函数调用得很勤（每次解析 Claude 目录都读一遍）⇒ 同一个进程里只说一次。
+    let value: serde_json::Value = match std::fs::read_to_string(&cfg)
+        .map_err(|e| e.to_string())
+        .and_then(|raw| serde_json::from_str(&raw).map_err(|e| e.to_string()))
+    {
+        Ok(v) => v,
+        Err(e) => {
+            static SAID: std::sync::Once = std::sync::Once::new();
+            SAID.call_once(|| {
+                tracing::warn!(
+                    "设置里的 Claude 目录覆盖这一次没生效：{} 读不动或不是 JSON（{e}）—— 用的是默认目录",
+                    cfg.display()
+                );
+            });
+            return None;
+        }
+    };
     let dir_str = value.get("claudeDir")?.as_str()?;
     if dir_str.trim().is_empty() {
         return None;
