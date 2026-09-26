@@ -145,6 +145,8 @@
 pub mod browse_watch;
 pub mod index;
 pub mod raw;
+// 〔W5-FILES · 第五波〕`files.size`（算目录大小，`设计/60 §6.2`）。
+pub mod size;
 
 /// 这一族的名字。`设计/96 §2.9` 的标题逐字。
 pub const FAMILY: &str = "files-read";
@@ -325,6 +327,27 @@ pub const CAPABILITIES: &[Capability] = &[
         args: &["max_bytes", "path"],
         fields: &["bytes", "path", "text"],
         codes: &["bad_args", "bad_path", "not_text", "too_large", "unreadable"],
+    },
+    // ── 〔W5-FILES · 第五波 · 2026-09-25〕`设计/60 §6.2`「算目录大小」：读族第九条 ────────────────
+    //   在那台机器上走一遍、只回几个数（V45 ＋「零流量」）。纯读，整族照旧一个字节不写。
+    Capability {
+        name: "files.size",
+        what: "算一个目录（或文件）有多大 —— 不跟链接、不进别的文件系统，只回几个数",
+        effect: Effect::ReadsOnly,
+        impl_files: &["mod.rs", "raw.rs", "size.rs"],
+        targets: TARGETS,
+        args: &["path"],
+        fields: &[
+            "bytes",
+            "dirs",
+            "files",
+            "links",
+            "other",
+            "path",
+            "skipped_mounts",
+            "unreadable_dirs",
+        ],
+        codes: &["bad_path", "unreadable"],
     },
     Capability {
         name: "files.home",
@@ -835,6 +858,23 @@ fn answer_read_text(args: &serde_json::Value) -> Answer {
 /// 账号库给 `HOME`、并把 SFTP 子系统的起点放在同一处；后端正是经那条 SSH 以同一个用户起的。
 /// 两者分得开的只有一形：有人在登录脚本里改了 `HOME` —— 那时本命令答的是改过之后的那个，
 /// 而那正是这台机器上其余东西（shell、Claude）认的那个。
+/// 〔W5-FILES〕`files.size` —— 走法与诚实边界住 [`size`] 头注。
+fn answer_size(args: &serde_json::Value) -> Answer {
+    let path = path_arg(args)?;
+    let m = size::measure(&path)
+        .map_err(|e| ("unreadable", format!("这个路径读不到：{:?}", e.kind())))?;
+    Ok(serde_json::json!({
+        "path": raw::to_json(raw::path_bytes(&path)),
+        "bytes": m.bytes,
+        "files": m.files,
+        "dirs": m.dirs,
+        "links": m.links,
+        "other": m.other,
+        "skipped_mounts": m.skipped_mounts,
+        "unreadable_dirs": m.unreadable_dirs,
+    }))
+}
+
 fn home_var() -> Option<std::ffi::OsString> {
     let pick = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty());
     #[cfg(windows)]
@@ -893,6 +933,7 @@ pub fn answer(name: &str, args: &serde_json::Value) -> Answer {
         "files.browse" => answer_browse(args),
         "files.read.text" => answer_read_text(args),
         "files.home" => answer_home(),
+        "files.size" => answer_size(args),
         other => Err(("unknown_capability", format!("`{other}` 不是这一族的能力"))),
     }
 }

@@ -225,9 +225,8 @@ fn inward_edges(prod: &str) -> BTreeSet<String> {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Kind {
     /// `platform/` —— 唯一允许平台原语的层。
-    /// ⚠ **今天零条边**（2026-09-24 现打）：这个模块直接用 `std` 与 `notify`，
-    /// 没走 `platform/`。零本身是读数，不是空类别 —— 允许它、今天不用它。
-    #[allow(dead_code)]
+    /// 〔W5-FILES · 第五波〕**第一条边**：设备号（`platform::paths::device_of`，`设计/60 §3.7`「设备号要走 `platform/`」）——
+    /// 算目录大小与建索引都要判「这一层是不是挂着另一个文件系统」。此前 2026-09-24 现打是零条。
     Platform,
     /// `common/` —— 两边都要、不含平台原语的纯工具。⚠ 今天同样零条边。
     #[allow(dead_code)]
@@ -271,6 +270,9 @@ const OUTWARD: &[(&str, Kind)] = &[
         "agents::claudecode::paths::session_file_for_delete",
         Kind::Fence,
     ),
+    // ── platform ──────────────────────────────────────────────────────
+    // 〔W5-FILES〕设备号（`设计/60 §3.7`）。
+    ("platform::paths::device_of", Kind::Platform),
     // ── 汇总层的 target 轴（用户那三样之外，条数钉死）─────────────────
     ("TARGETS", Kind::LedgerAxis),
     ("Target", Kind::LedgerAxis),
