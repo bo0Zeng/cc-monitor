@@ -9,11 +9,7 @@
  * 字段与方法逐字从 `tabs.ts` 搬来（`refreshTabBar` 的主体成了 `refresh`，拖拽守卫留在 `TabManager` 那一层；
  * `scheduleTabBarRefresh` 成了 `scheduleRefresh`），唯一的改写：按钮上那几处转交换成 `this.host.…`。
  */
-import {
-  sessionBadge,
-  shouldShowAccountBadge,
-  detectAccountMismatch,
-} from "./accounts";
+import { sessionBadge, shouldShowAccountBadge, detectAccountMismatch } from "./accounts";
 import { accountAvatarEl } from "./account-color";
 import {
   collectionOf,
