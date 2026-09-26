@@ -265,7 +265,7 @@ fn render_cc_code_with_function() {
     assert!(out.contains("__ccm_bind"));
     assert!(!out.contains("{{CC_FUNCTION_BLOCK}}"));
     // 〔TL1 · 4C〕v2 → v3：块结尾多了接上别名文件那一行（`71 §6.1`）。
-    assert!(out.contains("BEGIN v3"));
+    assert!(out.contains("BEGIN v4"));
     assert!(out.contains("cc-monitor END"));
 }
 
@@ -279,7 +279,7 @@ fn render_cc_code_helper_only() {
     // 但**同一种写法只该有一个答案**，不留一处等着下次踩。
     assert!(!guard_core::contains_word(&out, "function cc"));
     assert!(!out.contains("{{CC_FUNCTION_BLOCK}}"));
-    assert!(out.contains("BEGIN v3"));
+    assert!(out.contains("BEGIN v4"));
 }
 
 #[test]
@@ -328,14 +328,20 @@ fn find_block_version_v1() {
 #[test]
 fn an_older_powershell_block_is_flagged_and_a_fresh_one_is_not() {
     let cur = current_block_version().expect("模板第一行读不出版本串");
+    // 〔HX2 · 4D〕v3 → v4：`__ccm_bind` 找 monitor 数据目录改走唯一出口（渲染时填，跟 `CCM_DATA_DIR`）——
+    //   块内容变了就抬版本，装着 v3 的人在机器页看到「重装一次」（主会话 4D 审计 F 裁）。
     assert_eq!(
-        cur, "v3",
+        cur, "v4",
         "模板版本串变了就来改这里（并想清楚：旧块的人要不要重装）"
     );
     let ps = std::path::Path::new("/h/p.ps1");
-    let old = "# === cc-monitor BEGIN v2 ===\nfunction __ccm_bind {}\n# === cc-monitor END ===\n";
-    let b = block_state(ps, old);
-    assert!(b.present && b.outdated, "{b:?}");
+    for old_ver in ["v2", "v3"] {
+        let old = format!(
+            "# === cc-monitor BEGIN {old_ver} ===\nfunction __ccm_bind {{}}\n# === cc-monitor END ===\n"
+        );
+        let b = block_state(ps, &old);
+        assert!(b.present && b.outdated, "{old_ver}：{b:?}");
+    }
     let fresh = render_cc_code("cc", false, std::path::Path::new("/_"));
     let b = block_state(ps, &fresh);
     assert!(b.present && !b.outdated, "刚渲染的那一份被判成旧的：{b:?}");
