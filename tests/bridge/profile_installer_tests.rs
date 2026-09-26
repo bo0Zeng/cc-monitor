@@ -4,7 +4,11 @@
 /// （用户指 `~/.config/fish/config.fish` 这种），那是把一个洞换成一个回归。
 #[test]
 fn the_profile_fence_keeps_writes_inside_home() {
+    // 〔AL2 · 第四波 4D〕围栏拆成词法（两侧）＋ 符号链接（只本机）两层，入口是 `fence_on(origin, home, raw)`；
+    //   本条量的是**本机**那一侧（两层都过），用真 home 当基准只为「父目录真存在」那一格（只解路径、不读不写）。
     let home = dirs::home_dir().expect("测试需要 home");
+    let home_s = home.display().to_string();
+    let fence = |raw: &str| super::fence_on(&crate::origin::Origin::local(), &home_s, raw);
     // 正例：home 下的裸文件名 · home 子目录 · `~` 前缀（用户会手打）· 不存在的新文件
     for ok in [
         home.join(".bashrc").to_string_lossy().to_string(),
@@ -17,7 +21,7 @@ fn the_profile_fence_keeps_writes_inside_home() {
             .to_string(),
     ] {
         assert!(
-            super::fence_profile_path(&ok).is_ok(),
+            fence(&ok).is_ok(),
             "围栏拒了一个合法路径：{ok:?} —— 收太紧会砍掉「其它文件」这个特性"
         );
     }
@@ -36,7 +40,7 @@ fn the_profile_fence_keeps_writes_inside_home() {
             home.to_string_lossy()
         ),
     ] {
-        let r = super::fence_profile_path(&bad);
+        let r = fence(&bad);
         assert!(
             r.is_err(),
             "围栏放行了 {bad:?} —— 那三条命令会往它写/重写/探测存在性"
@@ -82,7 +86,8 @@ fn every_profile_command_passes_through_the_fence() {
     .expect("读不到 lib.rs");
     let prod = guard_core::production_code(&lib);
     const CMDS: &[&str] = &["aliases_block_install", "aliases_block_remove"];
-    let fence = format!("{}_profile_path", "fence");
+    // 〔AL2 · 第四波 4D〕围栏入口今天是 `fence_on`（home 问那台后端，符号链接那一步只对本机）。
+    let fence = format!("{}_on(", "fence");
     for cmd in CMDS {
         let at = prod
             .find(&format!("fn {cmd}("))
@@ -257,6 +262,7 @@ fn damaged_fence_aborts_instead_of_eating_user_content() {
     //   → `function cc { }` **被吃掉**。
 }
 use super::*;
+use std::path::PathBuf;
 
 #[test]
 fn render_cc_code_with_function() {
@@ -959,7 +965,15 @@ fn scanning_a_rc_changes_not_a_single_byte_on_disk() {
 
     // 〔AL1d〕扫一份今天走读回口那一趟（`account_aliases::rc_candidates_in`：读一次、算块的现状），
     //   把这份 rc 当「其它文件」递进去 —— 那正是界面上扫它的那条路。
-    let cands = crate::account_aliases::rc_candidates_in(&td.0, Shell::Posix, Some(&p));
+    //   〔AL2 · 第四波 4D〕那一趟改走门（`rc_candidates_via`，读经那台后端的 `files-peek`）；这里的门是落在临时目录上的替身。
+    let door = crate::user_files::tests::DiskDoor::new(&td.0);
+    let cands = futures::executor::block_on(crate::account_aliases::rc_candidates_via(
+        &door,
+        &td.0.display().to_string(),
+        Shell::Posix,
+        Some(&p.display().to_string()),
+    ))
+    .expect("替身门读候选");
     let scan = &cands
         .iter()
         .find(|c| c.path == p.display().to_string())

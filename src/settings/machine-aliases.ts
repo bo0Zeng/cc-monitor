@@ -758,7 +758,11 @@ export function buildAliasManager(opts: {
     rcBlock.hidden = !c;
     if (!c) return;
     const b = c.block;
-    if (b.present) {
+    if (c.unreadable) {
+      // 〔AL2〕在盘上、那台后端却读不了 ⇒ 照实说（别把「读不了」说成「没有别名块」）。
+      rcStatus.textContent = copyText("machineAliases.rcStatus.unreadable", { path: c.path, why: c.unreadable });
+      rcStatus.className = "ccm-rc-block-status settings-cc-profile-badge settings-cc-badge-warn";
+    } else if (b.present) {
       const version = b.version ? `（${b.version}）` : "";
       // 〔TL1 · 4C〕旧版块（PowerShell v2）没有接上别名文件那一行 —— 重装一次就带上（`71 §6.1`）。
       rcStatus.textContent = b.outdated

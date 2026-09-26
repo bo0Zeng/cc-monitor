@@ -5234,6 +5234,11 @@
       "zh": "✗ {path}：还没有别名块（{blockWhat}）",
       "args": ["path", "blockWhat"]
     },
+    "machineAliases.rcStatus.unreadable": {
+      "kind": "error",
+      "zh": "⚠ {path}：这台机器的后端读不了它（{why}）",
+      "args": ["path", "why"]
+    },
     "machineAliases.rcStatus.newFile": {
       "kind": "body",
       "zh": "○ {path} 还不存在（装的时候新建）",
@@ -12197,6 +12202,11 @@
       "zh": "读不了 {path}：{e}",
       "args": ["path", "e"]
     },
+    "rsAccountAliases.dialect.notPromised": {
+      "kind": "error",
+      "zh": "{machine} 上不写 {shell} 写法的别名：远端机器今天只支持 Linux（bash / zsh 的写法）",
+      "args": ["machine", "shell"]
+    },
     "rsAccountAliases.render.duplicate": {
       "kind": "body",
       "zh": "同一个名字出现了两次 —— 后一条会盖掉前一条",
@@ -12427,11 +12437,6 @@
       "kind": "error",
       "zh": "拒绝写这个配置文件：必须是绝对路径（实得 {raw}）",
       "args": ["raw"]
-    },
-    "rsProfileInstaller.fence.noHome": {
-      "kind": "error",
-      "zh": "找不到 home 目录 —— 拒绝写任何 profile",
-      "args": []
     },
     "rsProfileInstaller.hint.whereToEdit": {
       "kind": "body",
@@ -13670,11 +13675,6 @@
     "rsLib.settings.windowTitle": {
       "kind": "title",
       "zh": "cc-monitor 设置",
-      "args": []
-    },
-    "rsLib.aliases.noHome": {
-      "kind": "error",
-      "zh": "找不到 home 目录",
       "args": []
     },
     "rsLib.run.localBackendDown": {

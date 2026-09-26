@@ -40,7 +40,7 @@
 
 use crate::copy_table::copy_text;
 use serde::Serialize;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::shell_dialect::Shell;
 
@@ -389,7 +389,7 @@ pub fn render_manual_cleanup_hint(what: &str, hits: &[LegacyRcLine]) -> String {
 /// 从前叫 `cc_integration_*`〔散文墓碑〕）收的是 **webview 给的字符串**（前端那一格是用户可输入的
 /// 文本框），此前**原样** `PathBuf::from` 就交给了安装器：装往那里写、
 /// 文件不存在还会创建；卸会重写它；扫是任意路径的存在性探针。
-/// 而**远端**那条同名功能一直有围栏（`sftp.rs`：「profile 只能是 home 下的文件名」）。
+/// 而**远端**那条同名功能一直有围栏（从前 `sftp.rs`：「profile 只能是 home 下的文件名」）。
 ///
 /// # 为什么是「home 之内」而不是「home 下的裸文件名」
 ///
@@ -397,46 +397,46 @@ pub fn render_manual_cleanup_hint(what: &str, hits: &[LegacyRcLine]) -> String {
 /// 而「其它文件」是产品特性（用户可以指 `~/.config/fish/config.fish`）。
 /// ⇒ 围栏只挡「跑出 home」这一类，**不缩小功能**。
 ///
-/// 三条规则：① `~` / `~/x` 先展开（用户会手打这种）；② 必须是绝对路径；
-/// ③ 不许含 `..`（不做「消解后再看」——直接拒绝更简单也更难绕）；④ 前缀必须是 home。
-/// 另外：父目录若已存在，用它的 canonical 形态再查一次前缀 —— 挡掉
-/// `~/link -> /etc` 这种**符号链接逃逸**（`install` 会跟着链接写过去）。
-pub fn fence_profile_path(raw: &str) -> Result<PathBuf, String> {
-    let home = dirs::home_dir().ok_or_else(|| copy_text("rsProfileInstaller.fence.noHome", &[]))?;
-    fence_path_under(&home, raw)
-}
-
-/// 同一道围栏，**home 由调用方给**。
+/// # 〔AL2 · 第四波 4D〕拆成两层：**词法**（本函数，两侧都过）＋ **符号链接**（[`fence_on`]，只对本机）
 ///
-/// ⚠ `K-R49` 起抽出这一层，理由是**可测性**而不是通用性：调用方拿一个临时目录当 home，
-/// 围栏的四条规则就能在**碰不到真实家目录**的前提下被真跑一遍
-/// （〔用 08-29〕「你只能做产品, 不能动机器」）。上面那个入口一个字节的语义都没变 ——
-/// 它只是把 `dirs::home_dir()` 填进来。
-pub fn fence_path_under(home: &std::path::Path, raw: &str) -> Result<PathBuf, String> {
-    let home = home.to_path_buf();
-    let expanded: PathBuf = if raw == "~" {
-        home.clone()
+/// 词法四条：① `~` / `~/x` 先展开（用户会手打这种）；② 必须是绝对路径；
+/// ③ 不许含 `..`（不做「消解后再看」——直接拒绝更简单也更难绕）；④ 前缀必须是 home。
+/// 全是**字符串**上的判断（与 `user_files::rel_under` 同一种算法）：`home` 是**那台机器**的后端答的
+/// （`files-home`），而那台可能不是 monitor 这台 —— `std::path::Path::is_absolute` 在 Windows 上把 `/home/zbl/.bashrc`
+/// 判成相对（没有盘符），`Path::join` 又用本机分隔符（`第四波记录/W5-ALIAS.md §2.2` · `AL2.md §2.5`）。
+pub fn fence_lexical(home: &str, raw: &str) -> Result<String, String> {
+    let expanded = if raw == "~" {
+        home.to_string()
     } else if let Some(rest) = raw.strip_prefix("~/").or_else(|| raw.strip_prefix("~\\")) {
-        home.join(rest)
+        crate::user_files::join_under(home, rest)
     } else {
-        PathBuf::from(raw)
+        raw.to_string()
     };
-    if !expanded.is_absolute() {
+    let b = expanded.as_bytes();
+    let absolute = expanded.starts_with('/')
+        || expanded.starts_with("\\\\")
+        || (b.len() >= 3
+            && b[0].is_ascii_alphabetic()
+            && b[1] == b':'
+            && matches!(b[2], b'/' | b'\\'));
+    if !absolute {
         return Err(copy_text(
             "rsProfileInstaller.fence.notAbsolute",
             &[("raw", &format!("{:?}", raw))],
         ));
     }
-    if expanded
-        .components()
-        .any(|c| matches!(c, std::path::Component::ParentDir))
-    {
+    if expanded.split(['/', '\\']).any(|seg| seg == "..") {
         return Err(copy_text(
             "rsProfileInstaller.fence.dotdot",
             &[("raw", &format!("{:?}", raw))],
         ));
     }
-    if !expanded.starts_with(&home) {
+    let norm = |s: &str| s.replace('\\', "/");
+    let h = norm(home);
+    let h = h.trim_end_matches('/');
+    let a = norm(&expanded);
+    let inside = !h.is_empty() && (a == h || a.starts_with(&format!("{h}/")));
+    if !inside {
         return Err(copy_text(
             "rsProfileInstaller.fence.outsideHome",
             &[
@@ -445,17 +445,31 @@ pub fn fence_path_under(home: &std::path::Path, raw: &str) -> Result<PathBuf, St
             ],
         ));
     }
-    // 符号链接逃逸：父目录已存在时用它的真身再查一次。
-    if let Some(parent) = expanded.parent() {
-        if let (Ok(real_parent), Ok(real_home)) = (parent.canonicalize(), home.canonicalize()) {
-            if !real_parent.starts_with(&real_home) {
-                return Err(copy_text(
-                    "rsProfileInstaller.fence.symlinkEscape",
-                    &[
-                        ("raw", &format!("{:?}", raw)),
-                        ("realParent", &format!("{:?}", real_parent)),
-                    ],
-                ));
+    Ok(expanded)
+}
+
+/// 同一道围栏按**这台机器是谁**过：词法（[`fence_lexical`]）两侧都过；**符号链接逃逸**那一步只对本机做。
+///
+/// 符号链接那一步：父目录已存在时用它的真身再查一次前缀 —— 挡掉 `~/link -> /etc` 这种逃逸（`install` 会跟着链接写过去）。
+/// 它量的是 **monitor 这台的盘**（`canonicalize`）⇒ 只有那台就是本机时才说得了；远端那一步由那台后端管
+/// （`files-peek` / `files-put` 先过 `control/files_write.rs::resolve_existing_in_root`：解到底之后跑出 home 就拒）。
+/// 从前这一步对远端路径也量本机盘：远端 `/home/zbl` 恰好在本机也存在时，量到的是本机的链接（`W5-ALIAS.md §2.2`）。
+pub fn fence_on(origin: &crate::origin::Origin, home: &str, raw: &str) -> Result<String, String> {
+    let expanded = fence_lexical(home, raw)?;
+    if origin.is_local() {
+        let (at, home_p) = (Path::new(&expanded), Path::new(home));
+        if let Some(parent) = at.parent() {
+            if let (Ok(real_parent), Ok(real_home)) = (parent.canonicalize(), home_p.canonicalize())
+            {
+                if !real_parent.starts_with(&real_home) {
+                    return Err(copy_text(
+                        "rsProfileInstaller.fence.symlinkEscape",
+                        &[
+                            ("raw", &format!("{:?}", raw)),
+                            ("realParent", &format!("{:?}", real_parent)),
+                        ],
+                    ));
+                }
             }
         }
     }

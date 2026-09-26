@@ -324,7 +324,7 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "data_paths.rs",
         "candidate_profile_dirs",
         "PowerShell profile 的候选目录",
-        "profile 安装面；路径围栏在 `profile_installer::fence_profile_path`",
+        "profile 安装面；路径围栏在 `profile_installer::fence_on`",
     ),
     (
         "hooks_diag.rs",
@@ -332,14 +332,8 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "cc-bus 钩子的安装位置",
         "只读诊断；本文件另有 `this_module_never_writes` 守着不写",
     ),
-    // 〔AL1 · 2026-09-24〕`设计/71` 别名两跳里要落盘 / 读回的那两条。纯渲染那一条不碰 home。
-    (
-        "lib.rs",
-        "aliases_read",
-        "`~/.cc-monitor/aliases.sh`（读回口：那份别名文件今天有哪几条）",
-        "只读。monitor 自己的目录，用 `home_dir()` 只为「每个用户各一份」；\
-             `home_dir()` 在这里而不在 `account_aliases.rs` 里 —— 那边把 `home` 当参数收，测试拿临时目录当 home。",
-    ),
+    // 〔AL2 · 第四波 4D〕这里原来有 `lib.rs::aliases_read` 一行（它自己 `home_dir()` 再直读）。读回口改问那台后端
+    //   （`files-home` / `files-peek`，本机远端同一条），这一条不再伸手进用户 home ⇒ 摘行。
     // 〔RW1 · 第四波 09-24〕这里原来还有 `lib.rs::aliases_install` 一行（它自己 `home_dir()`、再交本进程落盘）。
     //   写改走本机后端之后，home 由后端答（`user_files::Door::home`），这一条不再伸手进用户 home ⇒ 摘行。
     (
@@ -401,12 +395,7 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "`~/.claude/claudecode-frontend`",
         "monitor 自己的数据目录；写侧在 `write_site_registry`",
     ),
-    (
-        "profile_installer.rs",
-        "fence_profile_path",
-        "home 本身（当**围栏基准**）",
-        "它不是「伸手拿东西」，是**拿 home 来划界** —— 第 86 件加的那道围栏",
-    ),
+    // 〔AL2 · 第四波 4D〕`profile_installer.rs` 那一行（围栏拿 `home_dir()` 当基准）摘了：围栏的 home 今天问那台后端（`fence_on`）。
     (
         // 〔`设计/60 §5.4e` · `24e` 第二刀 · 09-20〕原生文件管理窗口那颗「本机」按钮的落脚点。
         "shell.rs",
@@ -415,7 +404,7 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "它不是「伸手拿东西」，是给那个窗口一个开始浏览的地方 —— \
              之后列哪个目录**由用户走到哪决定**，而列目录那一条是 \
              `filewin::source::list_local`（只读 `read_dir` ＋ `metadata`，不落盘）。\
-             ⚠ 与 `profile_installer.rs::fence_profile_path` 那一行**不是同一类**：\
+             ⚠ 与 profile 围栏（`profile_installer.rs::fence_on`）**不是同一类**：\
              那一条拿 home 划界（围栏），这一条只是起点，**它不围任何东西** —— \
              也就是说「用户能在这个窗口里浏览到 home 之外」是设计如此，不是漏了围栏。\
              写侧归 `filewin::transfer`（〔F7c 09-24〕上传经通道：monitor 的传输台只写远端暂存区，\
