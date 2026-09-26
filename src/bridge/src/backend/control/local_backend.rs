@@ -1523,9 +1523,13 @@ fn read_capped_line_sync<R: std::io::BufRead>(
 /// - `--with-bg`：bg 会话也宣告、也发行 —— 本机会话内容从这条流来之后，少了它 bg 会话的内容就静默没了
 ///   （monitor 的 `showBgSessions` 缺省是开的）。显示与否在 monitor 那一侧按 `session_kind` 定。
 ///
-/// 两个字面量都必须是后端 `lib.rs::STREAM_FLAGS` 的成员（后端据它剥旗标；不认的会被当成一次性查询跑完就退）——
+/// - 〔LOC1b · 第四波 4D〕`--with-rbind-token`：索要给 ↗ 绑窗口的材料 —— `session_added` 带上 `pid`（与令牌同一道闸，
+///   `wire::Frame::SessionAdded::pid`）。本机判活改由本机后端的帧来之后，monitor 不再自己读 pidfile，
+///   本机 ↗ 按 pid 找父 PowerShell 绑窗口（`bind::SidHwndCache::record`）只能从这一格拿 pid。
+///
+/// 几个字面量都必须是后端 `lib.rs::STREAM_FLAGS` 的成员（后端据它剥旗标；不认的会被当成一次性查询跑完就退）——
 /// 由判据对拍后端源码。
-pub(crate) const LOCAL_STREAM_ARGS: &[&str] = &["--tail-only", "--with-bg"];
+pub(crate) const LOCAL_STREAM_ARGS: &[&str] = &["--tail-only", "--with-bg", "--with-rbind-token"];
 
 /// P3 刀 1 的**唯一**吸收点：本机后端推来的帧里，哪些要进账本。
 ///
@@ -1615,7 +1619,8 @@ pub(crate) fn absorb_local_frame(
         }
         // 〔U4b · 第四波 · G3〕本机活会话的容器事实：与远端流同一个口（`session_facts`）、同一个事件。
         // 〔CF1 · 2026-09-24〕记完容器，这一帧**照样交回**读循环 —— 它的 `path` / `lines` 是本机旁路快照的起点
-        //   （本机会话的行从此走这条流，见下面内容三种那一臂）；本机会话的起停仍归 `session_map`。
+        //   （本机会话的行从此走这条流，见下面内容三种那一臂）。
+        //   〔LOC1b · 第四波 4D〕本机会话的起停也从这一帧起（`ssh_source::local_lifecycle` ⇒ `session_map::feed`）。
         f @ InboundFrame::SessionAdded { .. } => {
             if let InboundFrame::SessionAdded { sid, container, .. } = &f {
                 crate::session_facts::note_container(sid, *container);
@@ -1650,11 +1655,16 @@ pub(crate) fn absorb_local_frame(
             end,
         } => crate::sftp_pool::deliver(&id, got, total, end),
         // 〔CF1〕内容三种（`session_added` 在上面那一臂记完容器也交回）：交回读循环，送进本机内容通道。
+        // 〔LOC1b · 第四波 4D〕起停另两种（`session_status` 红绿灯 · `sessions_replayed` 清单报完了）也交回：
+        //   本机会话的起停改由本机后端的帧来（`session_map` 的本机活会话表），与内容走同一条有序通道 ——
+        //   「清单报完了」必须排在它前面那些宣告之后才有意义。此前这两种落在最后那个 `_ => {}` 里丢掉。
         // 〔FW1 · D-d〕记录文件不见了 / 被改过 ⇒ 同一条内容通道（与行同序）。
         f @ (InboundFrame::Line { .. }
         | InboundFrame::SessionRemoved { .. }
+        | InboundFrame::SessionStatus { .. }
+        | InboundFrame::SessionsReplayed
         | InboundFrame::SessionFileNotice { .. }) => return Some(f),
-        // 其余帧（hello · 会话状态 · 溢出 …）本机这条流今天不消费。
+        // 其余帧（hello · 溢出 …）本机这条流今天不消费。
         _ => {}
     }
     None

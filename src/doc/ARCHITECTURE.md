@@ -34,7 +34,7 @@
    │   本机后端 line 帧 ─local_lines─► LineIntake ─► messages::JsonlRecord│
    │       │ (与远端同一个收口，CF1)                 │                   │
    │       ▼                                        ▼                   │
-   │   session_map.rs (PID 探活)    event_replay::on_line_batch_awaited │
+   │   session_map.rs (本机活会话表，帧喂) event_replay::on_line_batch_awaited │
    │       │                                       │  交进各条订阅（CF2）│
    │       │                                       │  小→逐行格         │
    │       │                                       │  大→切块＋batch边界│
@@ -335,7 +335,7 @@ monitor 与外部进程的所有通信都在 `~/.claude/work/` 下：
 | 路径 | 写入方 | 读取方 | 用途 |
 |---|---|---|---|
 | `<claude_dir>/projects/<encoded-cwd>/<sid>.jsonl` | Claude Code CLI | 本机后端（`line` 帧，CF1 起）/ monitor `history.rs` | session 消息流，monitor 实时增量 + 历史浏览 |
-| `<claude_dir>/sessions/<PID>.json` | Claude Code CLI | monitor `session_map.rs` | 活跃 session 探活（PID + procStart 双校验；procStart 缺失时自动降级仅 STILL_ACTIVE，详 INVARIANTS § 18） |
+| `<claude_dir>/sessions/<PID>.json` | Claude Code CLI | 本机后端 `observe/watcher.rs`（〔LOC1b · 4D〕monitor 不再读：本机判活改由本机后端的 `session_added` / `session_removed` 帧来，与远端同一条） | 活跃 session 探活（PID + procStart 双校验，详 INVARIANTS § 18） |
 | `<claude_dir>/tasks/<sid>/<id>.json` (v2.3) | Claude Code CLI (`TaskCreate`/`TaskUpdate`/`TaskStop` 工具) | monitor `tasks.rs` | Tab task 面板数据源；附 `.lock` / `.highwatermark` 控制文件需忽略 |
 
 每个文件的字段定义、编码约束（UTF-8 无 BOM）、写入方原子性语义、握手时序图 → [IPC-PROTOCOL.md](IPC-PROTOCOL.md)。

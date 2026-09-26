@@ -75,17 +75,13 @@ fn the_search_kou_jing_has_exactly_one_home() {
              `--limit 50` 下两侧给出的 3 个会话**只重合 1 个**"
     );
 
-    // ── ② 两侧：不许自己再有一份，且必须真的调 core。
-    for (name, raw) in [
-        (
-            "monitor src/search.rs",
-            include_str!("../../src/bridge/src/search.rs"),
-        ),
-        (
-            "backend observe/search_query.rs",
-            include_str!("../../src/backend/observe/search_query.rs"),
-        ),
-    ] {
+    // ── ② 搜索的那一侧：不许自己再有一份，且必须真的调 core。
+    //   〔LOC1b · 第四波 4D〕从前是两侧（monitor `search.rs` 的内存索引 ＋ 后端 `--search`）；本机搜索改问本机后端之后
+    //   monitor 那一侧删了 ⇒ 只剩后端这一侧，另一半的「一个家」由下面 ③ 钉：monitor 生产树里零处再搜。
+    for (name, raw) in [(
+        "backend observe/search_query.rs",
+        include_str!("../../src/backend/observe/search_query.rs"),
+    )] {
         let prod = guard_core::production_code(raw);
         let redefined: Vec<&str> = HELPERS
             .iter()
@@ -112,4 +108,37 @@ fn the_search_kou_jing_has_exactly_one_home() {
             );
         }
     }
+
+    // ── ③〔LOC1b · 第四波 4D〕monitor 那一侧**不再搜**：生产树里零处调 `search_core::`、零处定义那 12 个助手。
+    //   要求住址：`设计/00 §2.5 ①` 逐字「历史 / 账号 / tmux / MCP 四个面，本机与远端走同一条代码路径」·
+    //   `90 §4 F`「搜索收口到 search-core ＋ 后端」。本机搜索今天经通道问本机后端（`src/views/history-search.ts`）。
+    //   正控：同一个识别器在后端那一份上认得出调用（否则零命中是空真）。
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut stray: Vec<String> = Vec::new();
+    for (path, raw) in guard_core::scan_tree!(&root, &["rs"]) {
+        let prod = guard_core::production_code(&raw);
+        let calls = prod.contains("search_core::");
+        let defs: Vec<&str> = HELPERS
+            .iter()
+            .copied()
+            .filter(|h| prod.contains(&format!("fn {h}(")))
+            .collect();
+        if calls || !defs.is_empty() {
+            stray.push(format!(
+                "{} （调 core：{calls} · 定义：{defs:?}）",
+                path.display()
+            ));
+        }
+    }
+    assert!(
+        stray.is_empty(),
+        "monitor 生产树里又有人在搜会话了：{stray:?}\n\
+         本机搜索只许经通道问本机后端 —— 在 monitor 里再建一份就是 LOC1b 删掉的那个第二读者。"
+    );
+    let backend =
+        guard_core::production_code(include_str!("../../src/backend/observe/search_query.rs"));
+    assert!(
+        backend.contains("search_core::"),
+        "识别器正控：后端那一份认不出 `search_core::` —— 本条空转"
+    );
 }
