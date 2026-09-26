@@ -17,7 +17,7 @@ import {
 } from "../src/launch-requests";
 import { buildLaunchPlan } from "../src/launch-plan.ts";
 import { buildLaunchRenderRequest } from "../src/remote-launch-run.ts";
-import type { LaunchAction, LaunchContext } from "../src/launch-plan.ts";
+import type { LaunchAction, LaunchContext } from "../src/launch-types.ts";
 
 /** `设计/80 §8` 步 1：形状合法的启动期令牌（32 个小写 hex）。 */
 const TOK = "0f1e2d3c4b5a69788796a5b4c3d2e1f0";

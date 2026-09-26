@@ -28,7 +28,7 @@
  */
 import { buildLaunchPlan } from "./launch-plan.ts";
 import { AGENT_PROFILE } from "./agent-profile.ts";
-import type { LaunchContext } from "./launch-plan.ts";
+import type { LaunchContext } from "./launch-types.ts";
 import type { CcmProbeResult } from "./ccm-probe.ts";
 import { buildCliRenderRequest } from "./remote-launch-run.ts";
 

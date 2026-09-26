@@ -43,7 +43,7 @@ export interface CliRenderResponse {
 
 /** U8a-2c-pre：兜底那支 `container:"none"` 的载荷渲染入参。
  *
- *  ⚠ 与 TS `launch-plan.ts::EnvOp` **同名同序**（那边是 IR，这边是上线形状）。
+ *  ⚠ 与 TS `launch-types.ts::EnvOp` **同名同序**（那边是 IR，这边是上线形状）。
  *  Rust 对侧 `launch_wire.rs::WireEnvOp` 带 `deny_unknown_fields` ⇒ 少一个变体
  *  就是一次「反序列化失败 → 静默走另一条渲染路」，所以两边必须一起加。 */
 export type WireEnvOp =

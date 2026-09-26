@@ -33,12 +33,14 @@
  * - **launcher 的 sanitize 也在 TS**（`sanitizeRemoteLauncher`）：Rust 侧收的是净化后的值。
  *   用例只用干净 launcher。
  *
- * ⚠ 留在 `src/` 而不在 `tests/`：`tests/` 不在 `tsconfig.json` 的 `include` 里，
- * `LaunchPlan` 改了形状 tsc 看不见这张表。
+ * 〔LR2〕住址从 `src/` 挪到 `tests/test-support/`：它的手写期望逐字就是整条 shell 命令，而 `设计/90 §3` 条 1
+ * 要 `src/**\/*.ts` 零 shell 串（判据 `tests/launch-no-shell-in-ts.vitest.ts`，不开例外）。当年留在 `src/` 的理由
+ * 「`tests/` 不在 `tsconfig.json` 的 include 里、`LaunchPlan` 改形状 tsc 看不见这张表」重组之后已不成立
+ * （`include` 今天是 `["src", "tests"]`）⇒ 挪过来 tsc 照样看得见。
  */
-import { AGENT_PROFILE } from "./agent-profile.ts";
-import { buildPayloadRenderRequest } from "./remote-launch-run.ts";
-import type { EnvOp, LaunchPlan } from "./launch-plan.ts";
+import { AGENT_PROFILE } from "../../src/agent-profile.ts";
+import { buildPayloadRenderRequest } from "../../src/remote-launch-run.ts";
+import type { EnvOp, LaunchPlan } from "../../src/launch-types.ts";
 
 /** 一条用例：Rust `PayloadSpec` 的字段 + 手写的期望载荷。 */
 export interface GoldenCase {
@@ -198,7 +200,7 @@ function planOf(c: GoldenCase): LaunchPlan {
 export function renderGoldenFixture(): string {
   return `${JSON.stringify(
     {
-      _: "由 src/launch-payload-golden.ts 生成，勿手改。重生成：npm run gen:payload-golden",
+      _: "由 tests/test-support/launch-payload-golden.ts 生成，勿手改。重生成：npm run gen:payload-golden",
       nestedEnvKeys: AGENT_PROFILE.nestedEnvVars,
       cases: GOLDEN_CASES.map((c) => ({
         name: c.name,

@@ -26,12 +26,14 @@
  * - `send-into`：没有 `new-session`、没有短路（治 #76 的那一格）；
  * - `attach`：不带载荷。
  *
+ * 〔LR2〕住址从 `src/` 挪到 `tests/test-support/`，理由同 `launch-payload-golden.ts` 头注末段（`设计/90 §3` 条 1）。
+ *
  * ⚠ **金标准盖不到的，如实写在这里**：非法输入（空会话名 / 越界 `@ccm_sid` / 空 cwd）
  * Rust 一律 `Err`，那一类进不了这份金标准，由 `payload_tests.rs` 外层那几条管。
  */
-import { AGENT_PROFILE } from "./agent-profile.ts";
-import { buildTmuxOuterRenderRequest } from "./remote-launch-run.ts";
-import type { EnvOp, LaunchPlan, TmuxMode } from "./launch-plan.ts";
+import { AGENT_PROFILE } from "../../src/agent-profile.ts";
+import { buildTmuxOuterRenderRequest } from "../../src/remote-launch-run.ts";
+import type { EnvOp, LaunchPlan, TmuxMode } from "../../src/launch-types.ts";
 
 /** 一条用例：`LaunchPlan` 里与这三格有关的那几个字段。 */
 export interface TmuxOuterCase {
@@ -195,7 +197,7 @@ function planOf(c: TmuxOuterCase): LaunchPlan {
 export function renderTmuxOuterFixture(): string {
   return `${JSON.stringify(
     {
-      _: "由 src/launch-tmux-outer-golden.ts 生成，勿手改。重生成：npm run gen:payload-golden",
+      _: "由 tests/test-support/launch-tmux-outer-golden.ts 生成，勿手改。重生成：npm run gen:payload-golden",
       nestedEnvKeys: AGENT_PROFILE.nestedEnvVars,
       cases: TMUX_OUTER_CASES.map((c) => ({
         name: c.name,

@@ -314,7 +314,7 @@ dispatcher.bind("app.open-command-bar", () => commandBar.toggle());
 >    （`render_tmux_outer` 外层三格 · `render_payload` 内层载荷）。
 >    ⚠ **不许单开模块**：`设计/00 §2.5 ④` 要的是「5 个渲染实现 → 2 个」，
 >    单开一个就让盘上从 5 变 6，方向是反的（`the_launch_renderers_on_disk_are_exactly_these` 钉着）。
-> 2. **改用例表里的手写期望**（`src/launch-payload-golden.ts` / `src/launch-tmux-outer-golden.ts` 的 `payload` / `cmd`）——
+> 2. **改用例表里的手写期望**（`tests/test-support/launch-payload-golden.ts` / `tests/test-support/launch-tmux-outer-golden.ts` 的 `payload` / `cmd`）——
 >    〔LR2 2026-09-25〕原来这一步是「跟着改 TS 那一份」（`session-backend.ts` ＋ `launch-render-fallback.ts`），
 >    那一族零生产调用、按 `设计/00 §2.5 ④` 删了，夹具左边换成手写期望。期望与 Rust 产出不同步 ⇒ 夹具对拍红。
 > 3. **重生成入库夹具** → `npm run gen:payload-golden`
@@ -324,7 +324,7 @@ dispatcher.bind("app.open-command-bar", () => commandBar.toggle());
 >    ＋ `cargo test -p monitor --lib launch_tmux_outer_parity`。
 >
 > ⚠ **§31 最终形态第①条一个字没松**：前端仍然绝不硬编码后端命令字面量
->（〔LR2〕`tests/launch-no-shell-in-ts.vitest.ts`，`设计/90 §3` 条 1：三个入口的 import 闭包里零 `tmux <动词> -` / `&&` 字面量）。变的是「问谁要」——
+>（〔LR2〕`tests/launch-no-shell-in-ts.vitest.ts`，`设计/90 §3` 条 1：`src/**/*.ts` 生产段零 `tmux <动词> -` / `&&` 字面量、不开例外）。变的是「问谁要」——
 > 从「问前端座要」变成「问后端要」，那正是第①条括号里写的**阶段②**。
 
 

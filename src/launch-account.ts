@@ -9,7 +9,7 @@
  * 从 `accounts.ts` 拆出来（审计 B §6 必须拆 4：那个文件跨账号 · 起停 · 历史三个域）。
  * 守的要求：`设计/01 §5` D1「一个判定只有一个家」· `设计/01 §6.2`「「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」。
  */
-import type { LaunchModifiers } from "./launch-plan";
+import type { LaunchModifiers } from "./launch-types";
 // 🔴 `K-R95`（定框 `K28`：前端不许自己发明对外行为）：本机拉起载荷里「哪个号」那一格的
 // **wire 键名从后端来**，前端不再自己写 `{ kind: "named", configDir, name }` 这三个字面量。
 // 源：`src/bridge/src/backend/control/launch_wire.rs::export_bindings_launch_render_facts`

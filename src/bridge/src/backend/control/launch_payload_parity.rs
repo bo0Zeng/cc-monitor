@@ -1,7 +1,7 @@
 //! U8c-1：`backend::control::payload` 的载荷渲染 **↔** 入库夹具 `payload-golden.json` 的**逐字节对拍**。
 //!
 //! 〔LR2〕夹具左边原来是 TS 兜底渲染器（`launch-render-fallback.ts`）现场渲的串；那份零生产调用、
-//! 按 `设计/00 §2.5 ④` 删了，左边换成 `src/launch-payload-golden.ts` 用例表里的**手写期望**
+//! 按 `设计/00 §2.5 ④` 删了，左边换成 `tests/test-support/launch-payload-golden.ts` 用例表里的**手写期望**
 //! （值就是它最后一次渲出、与 Rust 对过的原样）。下面的历史段落照旧留着 —— 它们讲的「自洽夹具」
 //! 纪律今天仍是本对拍的骨架：夹具入库，两侧各自与它比。
 //!
@@ -86,7 +86,7 @@ struct Case {
     payload: String,
 }
 
-/// 与 TS `launch-plan.ts::EnvOp` 的 wire 形状一一对应（`kind` 判别式 + 可选 `value`）。
+/// 与 TS `launch-types.ts::EnvOp` 的 wire 形状一一对应（`kind` 判别式 + 可选 `value`）。
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 enum FixtureEnvOp {

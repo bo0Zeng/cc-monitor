@@ -185,11 +185,7 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string();
-            // 〔LR2〕`src/launch-*-golden.ts` 是入库夹具的**用例表**：TS 渲染器删了之后，它们的期望串
-            //   是手写的整条命令（逐字就是 `tmux new-session -d …`）—— 那是规格，不是创建路径。
-            //   同一条排除在 `tests/launch-no-shell-in-ts.vitest.ts` 里是两向相等钉着的（闭包外有命中的恰好是它们）。
-            if name.contains(".test.") || name.contains(".vitest.") || name.ends_with("-golden.ts")
-            {
+            if name.contains(".test.") || name.contains(".vitest.") {
                 continue;
             }
             let ext = p.extension().and_then(|x| x.to_str()).unwrap_or("");
