@@ -11079,11 +11079,6 @@
       "zh": "把后端 {bin} 复制成本机 ccm 入口失败：{e}",
       "args": ["bin", "e"]
     },
-    "rsLocalBackend.extract.mkdirFailed": {
-      "kind": "error",
-      "zh": "建目录 {dir} 失败：{e}",
-      "args": ["dir", "e"]
-    },
     "rsLocalBackend.ccmEntry.readFailed": {
       "kind": "error",
       "zh": "读不到后端程序 {bin}：{e}",
@@ -12388,6 +12383,11 @@
       "kind": "error",
       "zh": "置可执行位失败：{e}",
       "args": ["e"]
+    },
+    "rsPlatformFs.mkdir.failed": {
+      "kind": "error",
+      "zh": "建目录 {dir} 失败：{e}",
+      "args": ["dir", "e"]
     },
     "rsChanWire.hop.unreachable": {
       "kind": "error",
@@ -15464,11 +15464,6 @@
       "kind": "error",
       "zh": "写 {path} 失败：{e}",
       "args": ["path", "e"]
-    },
-    "rsLocalBackendHost.fs.mkdirFailed": {
-      "kind": "error",
-      "zh": "建目录 {dir} 失败：{e}",
-      "args": ["dir", "e"]
     },
     "rsLocalBackendHost.token.noRandom": {
       "kind": "error",

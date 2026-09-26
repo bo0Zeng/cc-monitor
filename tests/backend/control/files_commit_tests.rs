@@ -677,8 +677,14 @@ fn hx1_the_staging_dirs_are_born_private_and_an_existing_one_is_left_alone() {
     std::fs::remove_dir_all(&home).ok();
     std::fs::create_dir_all(&home).expect("家");
     stage_chunk(&home, key, 0, b"x").expect("写一块");
-    assert_eq!(mode(&home.join(".cc-monitor")), PRIVATE_DIR_MODE);
-    assert_eq!(mode(&home.join(STAGING_DIR)), PRIVATE_DIR_MODE);
+    assert_eq!(
+        mode(&home.join(".cc-monitor")),
+        crate::own_dir::PRIVATE_DIR_MODE
+    );
+    assert_eq!(
+        mode(&home.join(STAGING_DIR)),
+        crate::own_dir::PRIVATE_DIR_MODE
+    );
     std::fs::remove_dir_all(&home).ok();
 
     let home = std::env::temp_dir().join(format!("ccm-hx1-stg-old-{}", std::process::id()));
@@ -695,6 +701,9 @@ fn hx1_the_staging_dirs_are_born_private_and_an_existing_one_is_left_alone() {
         0o755,
         "已在的那一层被改了权限"
     );
-    assert_eq!(mode(&home.join(STAGING_DIR)), PRIVATE_DIR_MODE);
+    assert_eq!(
+        mode(&home.join(STAGING_DIR)),
+        crate::own_dir::PRIVATE_DIR_MODE
+    );
     std::fs::remove_dir_all(&home).ok();
 }
