@@ -546,6 +546,7 @@ async fn zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced() {
             let checker = Checker {
                 expected: None,
                 observed: Default::default(),
+                reported: Default::default(),
                 stages: StageSink::new(false),
                 endpoint: format!("{host}:{port}"),
             };
@@ -691,4 +692,98 @@ impl tokio::io::AsyncWrite for Counting {
     ) -> std::task::Poll<std::io::Result<()>> {
         std::pin::Pin::new(&mut self.inner).poll_shutdown(cx)
     }
+}
+
+/// 〔VIS2 · `设计/15 §3.4 ①`「保住多地址那一格」〕一趟里每个地址的校验器都把「地址 → 实得指纹」记进同一格：
+/// 接受支与拒绝支都记；两把钥匙 ⇒ 两格不同，同一把 ⇒ 两格相同（期望手写，指纹取钥匙本身）。
+#[tokio::test]
+async fn vis2_every_checker_of_one_run_writes_its_address_into_the_shared_book() {
+    use russh::client::Handler as _;
+    let key = |n: u8| {
+        russh::keys::PrivateKey::from(russh::keys::ssh_key::private::Ed25519Keypair::from_seed(
+            &[n; 32],
+        ))
+        .public_key()
+        .clone()
+    };
+    let fp = |k: &PublicKey| k.fingerprint(HashAlg::Sha256).to_string();
+    async fn one_run(
+        legs: Vec<(&'static str, PublicKey, Option<String>)>,
+    ) -> (BTreeMap<String, String>, Vec<bool>) {
+        let book: Arc<Mutex<BTreeMap<String, String>>> = Arc::default();
+        let mut verdicts = Vec::new();
+        for (ep, k, expected) in legs {
+            let mut c = Checker {
+                expected,
+                observed: Arc::default(),
+                reported: Arc::clone(&book),
+                stages: StageSink::new(false),
+                endpoint: ep.to_string(),
+            };
+            verdicts.push(c.check_server_key(&k).await.unwrap());
+        }
+        let got = book.lock().unwrap().clone();
+        (got, verdicts)
+    }
+    let (a, b) = (key(1), key(2));
+    assert_ne!(fp(&a), fp(&b), "夹具坏了：两把钥匙同一个指纹");
+    let (got, verdicts) = one_run(vec![
+        ("a:22", a.clone(), None),
+        ("b:22", b.clone(), Some(fp(&a))),
+    ])
+    .await;
+    assert_eq!(
+        verdicts,
+        vec![true, false],
+        "b 那一支配了对不上的期望，该拒"
+    );
+    assert_eq!(
+        got,
+        BTreeMap::from([("a:22".to_string(), fp(&a)), ("b:22".to_string(), fp(&b))]),
+        "拒掉的那一支也要记下它报的指纹"
+    );
+    let (got, _) = one_run(vec![("a:22", a.clone(), None), ("b:2222", a.clone(), None)]).await;
+    assert_eq!(
+        got,
+        BTreeMap::from([("a:22".to_string(), fp(&a)), ("b:2222".to_string(), fp(&a))])
+    );
+}
+
+/// 〔VIS2〕接线：目标那一趟的竞速与经跳板那一次握手都记进同一格、那一格进 `Linked`；跳板自己那一趟另开一格。带正控。
+#[test]
+fn vis2_the_target_run_and_only_it_feeds_the_linked_book() {
+    let prod =
+        crate::guard_support::production_code(include_str!("../../src/backend/dial/connect.rs"));
+    let at = prod
+        .find("pub(crate) async fn establish(")
+        .expect("establish 不在了");
+    let body = &prod[at..];
+    let n = |t: &str, needle: &str| t.matches(needle).count();
+    assert_eq!(
+        n(body, "                &reported,\n"),
+        1,
+        "目标那一趟的竞速没拿到那一格"
+    );
+    assert_eq!(n(body, "&Arc::default(),"), 1, "跳板那一趟该另开一格");
+    assert_eq!(
+        n(body, "reported: Arc::clone(&reported),"),
+        1,
+        "经跳板那一次握手没记进那一格"
+    );
+    assert_eq!(
+        n(body, "let fingerprints = reported.lock()"),
+        1,
+        "那一格没交进 `Linked`"
+    );
+    let race_at = prod.find("async fn race(").expect("race 不在了");
+    assert_eq!(
+        n(&prod[race_at..at], "let reported = Arc::clone(reported);"),
+        1,
+        "竞速里每个地址的校验器没拿同一格"
+    );
+    assert_eq!(
+        n(&format!("{body}\n&Arc::default(),"), "&Arc::default(),"),
+        2,
+        "量具正控"
+    );
 }
