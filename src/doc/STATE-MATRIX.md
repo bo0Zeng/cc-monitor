@@ -55,7 +55,7 @@
 本机全文搜索改问本机后端（帧命令 `history-search`，界面经通道问，与远端同一条路）；monitor 进程内那份索引与它的三条命令一起删了，这一格 State 不再有。
 
 ### 无 State 依赖（自包含 / 用 path 解析）
-- `config::load_config / save_config`（用 `paths::resolve_config_path`）
+- `config::load_config / patch_config`（用 `paths::resolve_config_path`；写经进程级锁，见 `config.rs::patch_config_at`）
 - `launch::launch_remote_terminal`（B14-F41；用 `lib::load_remote_config_by_label` 读配置文件）
 - `subagent::load_subagent`
 - `aliases_block_render / aliases_block_install / aliases_block_remove`（`rc_path` 参数直接进；装 / 卸经本机后端写）

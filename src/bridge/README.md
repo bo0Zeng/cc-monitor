@@ -64,7 +64,7 @@ src/bridge/
     ├── tmux_reconcile.rs # F74c(#60-A) tmux 存活对账 poller：带外杀 tmux → tab 有界变灰（retire 送 remote_tx 单写者）
     ├── tasks.rs       # v2.3.0 (issue #11) Claude task tracker 文件 ~/.claude/tasks/<sid>/ 监听 + IPC
     ├── data_paths.rs  # v2.3.0 (issue #3 A) 透明化：枚举所有持久数据路径 + WebView2 + profile 备份
-    ├── config.rs      # load/save_config + Windows 原子写
+    ├── config.rs      # load_config + patch_config（config.json 唯一写口：进程级锁 ＋ 按键补丁）+ Windows 原子写
     ├── logging.rs     # v2.0.0 (issue #4) 滚动 log + EnvFilter reload + ErrorEmitterLayer
     ├── bridge.rs      # IPC 事件常量
     └── utils.rs       # ⭐ v2.6 跨模块共享 helper（日期/时间换算 + newtype + 目录扫 + 原子写 + PS EncodedCommand）
@@ -101,7 +101,7 @@ src/bridge/
 | **sftp.rs** (SS-D, issue #29) | 统一 SFTP 写层（复用 ssh_source 鉴权起 sftp 子系统）：F08 后端自动部署（arch 探测 + build_id 版本门控 + 原子上传）+ F11 远端历史 jsonl 删除（双重路径白名单 + realpath 防 symlink 逃逸）+ F10 远端 ccm 装进 `~/.bashrc`（BEGIN/END 块 + 备份 + 写后校验）+ **F89a 远端项目 `.mcp.json` 增改删（`mcp.rs` 经 `upload_atomic`，`is_safe_remote_mcp_json` 守卫，SS-14 只 .mcp.json）**。`upload_atomic` 加固：tmp 用 EXCLUDE 防 symlink clobber + 旧目标备份 `.bak`（失败可恢复、成功即清）。只读铁律豁免（穷举）见 `src/`src/doc/INVARIANTS.md` §1` + 模块文档 | `ensure_backend_deployed() / remove_remote_file() / upload_atomic()` + IPC `install_remote_alias_block`（〔MC1〕从前叫 `install_remote_ccm_helper`〔散文墓碑〕；〔步 12·C 收尾 09-20〕原先这里还列着 `write_remote_mcp_server`，它**已不是 IPC** —— 今天是 `mcp::write_project_mcp_server` 的远端分支） |
 | **tasks.rs** (v2.3.0 issue #11；〔RM1b〕读法归后端) | Claude Code CLI 的 task 列表：按 `origin` 问那台机器的后端 `tasks-list`（本机与远端同一条路；读 `<tasks>/<sid>/<数字>.json` 那一段住后端 `observe/tasks_query.rs`），本侧只剩字段语义与本机 watcher：notify-debouncer 100ms 监听整个 tasks 目录递归；变更 → 反推 sid → 经本机后端重读 → emit `task-update`。tasks_root 不存在时静默不 spawn | `parse_task_lines() / spawn_task_watcher()` + IPC `get_session_tasks(origin, sessionId)` |
 | **data_paths.rs** (v2.3.0 issue #3 A) | 透明化展示：枚举 monitor 所有持久路径（config / sid-hwnd-cache / auto-launch / history-metadata / ps-await / ps-registry / logs）+ WebView2 UserDataFolder（用 `app_local_data_dir().join("EBWebView")` 推断）+ PowerShell profile 备份目录。stat 不递归算大小，避免大目录卡 IPC | `collect()` + IPC `get_data_paths` |
-| **config.rs** | monitor 自己的 config.json R/W（Windows MoveFileExW 原子） | IPC `load_config / save_config` |
+| **config.rs** | monitor 自己的 config.json R/W（Windows MoveFileExW 原子）。〔CFG1〕写只有 `patch_config_at` 一个函数（进程级锁内现读 → 逐条 set/remove → 原子替换；读不懂不写），`logging.rs` 的诊断写口也经它 | `patch_config_at()` + IPC `load_config / patch_config` |
 | **logging.rs** (v2.0.0+) | tracing init（在 `tauri::Builder` 之前）+ 滚动 log 文件 + EnvFilter reload Handle + ErrorEmitterLayer（拦 ERROR emit `monitor-error` 给前端弹 toast）+ DiagnosticsConfig R/W | `init() / install_error_emitter() / update_config() / log_file_info()` + 5 个 IPC |
 | **bridge.rs** | 事件 / payload 常量与 schema。**v2.6 `JsonlLinePayload` 加 `seq: u64`** 字段（后端给的 per-file 行号，前端 RecordTimeline 按 seq 排到 DOM）。〔CF2〕会话内容不再是事件：流里一格的体是 `SessionStreamFrame`（`{"line": …}` / `{"batch": "start"｜"end"}`） | `events::SESSION_ENDED / TASKS_UPDATE / SESSION_ACTIVITY …`，`JsonlLinePayload { session_id, cwd, path, seq, origin?, message } / SessionStreamFrame / SessionEndedPayload / TasksUpdatePayload / SessionActivityPayload` |
 | **utils.rs** ⭐ v2.6 大归并 | 跨模块共享 helper：`days_from_civil` (日期换算) / `NetTicks` + `FileTime` newtype (procStart 单位隔离) / `parse_iso8601_ms` + `systime_to_ms` + `now_ms` (时间换算，归并 history/subagent/bind 三处) / `scan_dir_jsons<T, K, F>` (泛型目录扫，归并 session_map+bind 两处) / `atomic_write_json<T>` (Windows ReplaceFileW + dst-not-exist rename fallback) / **v2.8.1** `powershell_encoded_command` (命令 → UTF-16LE base64，给 resume 的 `-EncodedCommand` 用，穿 wt/cmd 不被引号/`;` 切碎，零依赖) | (pub items 完整列表见模块 doc 注释) |
@@ -113,7 +113,7 @@ src/bridge/
 | 命令 | 参数 | 返回 | 调用方 |
 |---|---|---|---|
 | `load_config` | — | `Value` | 启动时 / 设置面板打开时 |
-| `save_config` | `{ value: Value }` | `()` | 设置面板保存时 |
+| `patch_config` | `{ edits: ConfigEdit[] }` | `()` | 前端各模块存设置时（只交改哪几条路径） |
 | `read_mcp_servers` (F87 #50) | `{ projectDir? }` | `McpServerEntry[]` | MCP 段打开：跨 scope 宽容读（用户 `~/.claude.json` / local / 项目 `.mcp.json`；缺/坏跳过） |
 | `list_mcp_project_dirs` (F87 #50) | — | `String[]` | MCP 段项目目录输入框 datalist（用过的项目自动补全） |
 | `write_project_mcp_server` (F87 #51) | `{ origin, projectDir, name, server }` | `()` | 增/改项目 `<dir>/.mcp.json` 的一个 server（**只写 .mcp.json**）。〔步 12·C 收尾 09-20〕**吃 `origin`，两侧一条**；本机逐字送 `"<local>"` |

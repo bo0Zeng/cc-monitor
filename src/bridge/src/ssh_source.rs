@@ -1713,6 +1713,13 @@ pub enum InboundFrame {
     },
     /// 〔U4b · 第四波〕后端的活会话清单报完了（Phase 1 走完）。无载荷。
     SessionsReplayed,
+    /// 〔FW1 · 第四波 4D · D-d〕活会话的记录文件不见了（`session_file_gone`）/ 被改过已从头重读（`session_file_reread`）。
+    /// 两个 kind 收成一形：下游只关心「哪个会话、怎么了」。
+    SessionFileNotice {
+        sid: String,
+        path: String,
+        change: FileChange,
+    },
     /// Batch9-F27：会话 status 变化（p1g backend；远端红绿灯）。
     SessionStatus {
         sid: String,
@@ -1956,6 +1963,17 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
         }
         // 〔U4b · 第四波〕additive 新帧，无载荷。旧后端不发 ⇒ 这条分支永不命中，固定的 tab 停在「说不清」。
         "sessions_replayed" => Some(InboundFrame::SessionsReplayed),
+        // 〔FW1 · 第四波 4D〕additive 新帧。`why` 认不出 ⇒ 整帧当坏帧跳过（不猜成哪一种）。
+        "session_file_gone" => Some(InboundFrame::SessionFileNotice {
+            sid: obj.get("session_id")?.as_str()?.to_string(),
+            path: obj.get("path")?.as_str()?.to_string(),
+            change: FileChange::Gone,
+        }),
+        "session_file_reread" => Some(InboundFrame::SessionFileNotice {
+            sid: obj.get("session_id")?.as_str()?.to_string(),
+            path: obj.get("path")?.as_str()?.to_string(),
+            change: FileChange::reread_from_wire(obj.get("why")?.as_str()?)?,
+        }),
         "session_status" => {
             let sid = obj.get("sid")?.as_str()?.to_string();
             let opt = |k: &str| obj.get(k).and_then(|v| v.as_str()).map(str::to_string);
@@ -2114,6 +2132,8 @@ const KNOWN_FRAME_KINDS: &[&str] = &[
     "overflow",
     "reply",
     "session_added",
+    "session_file_gone",
+    "session_file_reread",
     "session_removed",
     "session_status",
     "sessions_replayed",
@@ -2130,6 +2150,8 @@ fn transfer_end(e: &serde_json::Value) -> Option<crate::sftp_pool::End> {
     Some(match e.get("state")?.as_str()? {
         "done" => crate::sftp_pool::End::Done {
             bytes: e.get("bytes")?.as_u64()?,
+            // 〔FW1〕可缺席（下载那一路没有）；在就原样带着（窗口提交时交回，形状由后端那一关判）。
+            sha256: e.get("sha256").and_then(|v| v.as_str()).map(str::to_string),
         },
         "failed" => crate::sftp_pool::End::Failed(e.get("why")?.as_str()?.to_string()),
         "cancelled" => crate::sftp_pool::End::Cancelled,
@@ -2622,10 +2644,56 @@ impl LineIntake {
         }
     }
 
+    /// 〔FW1 · 第四波 4D · D-d〕一个会话的记录文件不见了 / 被改过已从头重读：残批先冲（出声那一格排在它之前的行后面、
+    /// 重读出来的行前面 —— 后端发它就在重读的行之前），再交那个会话的内容流一格。
+    async fn notice(&mut self, sid: &str, path: &str, change: FileChange) {
+        self.flush().await;
+        self.replay
+            .on_session_notice(crate::bridge::SessionFileNoticePayload {
+                session_id: sid.to_string(),
+                origin: self.origin_label.clone(),
+                path: path.to_string(),
+                change: change.as_wire().to_string(),
+            })
+            .await;
+    }
+
     /// 一个会话走了：撤它的快照（排队的摘掉、在飞的打取消标记）、续点作废（再宣告时整份拉）。
     fn removed(&self, sid: &str) {
         self.snapshots.cancel(sid);
         crate::snapshot_resume::forget(&crate::origin::Origin(self.origin_label.clone()), sid);
+    }
+}
+
+/// 〔FW1 · 第四波 4D · D-d〕活会话的记录文件怎么了。线上（后端 `session_file_gone` / `session_file_reread.why`）与交前端的
+/// 那一格（`SessionFileNoticePayload.change`）同一组字面量。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileChange {
+    /// 不见了（删了 / 改名走了）。
+    Gone,
+    /// 变短了，已从头重读。
+    Truncated,
+    /// 游标之前被原地改写过，已从头重读。
+    Rewritten,
+}
+
+impl FileChange {
+    /// `session_file_reread.why` → 那一形；认不出 ⇒ `None`（整帧跳过，不猜）。
+    pub fn reread_from_wire(why: &str) -> Option<Self> {
+        match why {
+            "truncated" => Some(FileChange::Truncated),
+            "rewritten" => Some(FileChange::Rewritten),
+            _ => None,
+        }
+    }
+
+    /// 交前端那一格的字面量。
+    pub fn as_wire(self) -> &'static str {
+        match self {
+            FileChange::Gone => "gone",
+            FileChange::Truncated => "truncated",
+            FileChange::Rewritten => "rewritten",
+        }
     }
 }
 
@@ -2656,6 +2724,12 @@ pub(crate) enum LocalStep {
     },
     /// 冲掉残批，再进 [`LineIntake::removed`]。
     Remove { sid: String },
+    /// 〔FW1〕进 [`LineIntake::notice`]（冲掉残批、交一格出声）。
+    Notice {
+        sid: String,
+        path: String,
+        change: FileChange,
+    },
     /// 这一件不进内容流（被藏起来的 bg 会话的行 / 宣告，或不是内容帧）。
     Skip,
     /// 冲掉残批、换一个新的 [`LineIntake`]（下一条流从头来）。
@@ -2796,6 +2870,14 @@ pub(crate) fn local_step(
             hidden.remove(&sid);
             LocalStep::Remove { sid }
         }
+        // 〔FW1〕藏起来的 bg 会话照旧不出声（它的行也不进内容流）。
+        LocalItem::Frame(InboundFrame::SessionFileNotice { sid, path, change }) => {
+            if hidden.contains(&sid) {
+                LocalStep::Skip
+            } else {
+                LocalStep::Notice { sid, path, change }
+            }
+        }
         LocalItem::Frame(_) => LocalStep::Skip,
     }
 }
@@ -2877,6 +2959,7 @@ pub(crate) async fn consume_local(
                     intake.flush().await;
                     intake.removed(&sid);
                 }
+                LocalStep::Notice { sid, path, change } => intake.notice(&sid, &path, change).await,
                 LocalStep::Skip => {}
                 LocalStep::StreamEnded => {
                     intake.flush().await;
@@ -3607,6 +3690,10 @@ async fn stream_loop(
                 ) {
                     tracing::warn!("remote-backend-ready（accounts_changed）emit failed: {e}");
                 }
+            }
+            // 〔FW1 · 第四波 4D · D-d〕那台一条活会话的记录文件不见了 / 被改过已从头重读 ⇒ 残批先冲、再交那个会话的内容流一格。
+            Some(InboundFrame::SessionFileNotice { sid, path, change }) => {
+                intake.notice(&sid, &path, change).await;
             }
             // 〔U4b · 第四波〕那台的活会话清单报完了 ⇒ 发前端 `origin-sessions-listed`。
             //   与上面 `remote-session-added` 同一条线程、同序 emit ⇒ 前端收到它时，这台全部的活会话都已宣告过。

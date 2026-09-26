@@ -166,3 +166,76 @@ fn new_session_id_has_uuid_shape_and_varies() {
 fn sargs(v: &[&str]) -> Vec<String> {
     v.iter().map(|s| s.to_string()).collect()
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 〔LOC1a · 第四波 4D〕帧面 `session-fork`：与 CLI `--fork-session` 同一份本体
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// 要求住址：`设计/05 §14.6`「本机那几问从『exec 一次性本机后端』改走 `<local>` 长连接」—— 分叉上了帧面之后，
+// 帧面与 CLI 两个入口必须是**同一份**实现（`设计/05 §14.3`「业务解释只有一个家」）。
+
+/// ★ J3：同一份夹具会话、同一个 uuid，帧面 `answer_wire_at` 与 CLI `run_inner` 落盘的**内容**逐字相同（只差新 sid），
+/// 帧面的 `data` 键集 == CLI 那一行的键集（两个入口，一份形状）；金样 `tests/__fixtures__/session-fork.golden.json`
+/// 的 `product` 键集 == 真产出的键集（monitor 那一侧读同一份金样解码）。
+#[test]
+fn the_frame_face_and_the_cli_face_are_one_fork() {
+    let root = tmp("wire");
+    seed(&root, "srcsid");
+    let via_cli = run_inner(&root, &sargs(&["--fork-session", "srcsid", "u2"])).unwrap();
+    let via_wire =
+        answer_wire_at(&root, &serde_json::json!({"sid": "srcsid", "uuid": "u2"})).unwrap();
+    let cli_v = serde_json::to_value(&via_cli).unwrap();
+    let keys = |v: &serde_json::Value| -> Vec<String> {
+        let mut k: Vec<String> = v.as_object().unwrap().keys().cloned().collect();
+        k.sort();
+        k
+    };
+    assert_eq!(keys(&via_wire), keys(&cli_v), "两个入口的形状不一样了");
+    let read_rows = |p: &str, sid: &str| -> String {
+        std::fs::read_to_string(p).unwrap().replace(sid, "<SID>")
+    };
+    assert_eq!(
+        read_rows(
+            via_wire["jsonlPath"].as_str().unwrap(),
+            via_wire["sessionId"].as_str().unwrap()
+        ),
+        read_rows(&via_cli.jsonl_path, &via_cli.session_id),
+        "帧面与 CLI 落盘的内容不是同一份变换"
+    );
+    let golden: serde_json::Value =
+        serde_json::from_str(include_str!("../../__fixtures__/session-fork.golden.json")).unwrap();
+    assert_eq!(
+        keys(&golden["product"]),
+        keys(&via_wire),
+        "金样的成品键集与真产出对不上"
+    );
+    assert_eq!(
+        keys(&golden["request"]),
+        vec!["sid".to_string(), "uuid".to_string()]
+    );
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// 入参缺 / 空 / 不是串 ⇒ `bad_args`，一个字节都不写；找不到 ⇒ `fork_failed`（原因原样带回）。
+#[test]
+fn the_frame_face_refuses_bad_args_before_touching_the_disk() {
+    let root = tmp("wirebad");
+    seed(&root, "srcsid");
+    let src = root.join("projects").join("proj").join("srcsid.jsonl");
+    let before = std::fs::read(&src).unwrap();
+    for bad in [
+        serde_json::json!({}),
+        serde_json::json!({"sid": "srcsid"}),
+        serde_json::json!({"sid": "", "uuid": "u2"}),
+        serde_json::json!({"sid": 1, "uuid": "u2"}),
+    ] {
+        let (code, _) = answer_wire_at(&root, &bad).expect_err("该拒");
+        assert_eq!(code, "bad_args", "{bad}");
+    }
+    let (code, msg) =
+        answer_wire_at(&root, &serde_json::json!({"sid": "nosuch", "uuid": "u2"})).unwrap_err();
+    assert_eq!(code, "fork_failed");
+    assert!(msg.contains("nosuch"), "{msg}");
+    assert_eq!(std::fs::read(&src).unwrap(), before, "拒了却动了源文件");
+    std::fs::remove_dir_all(&root).ok();
+}

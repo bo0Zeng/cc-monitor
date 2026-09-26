@@ -161,6 +161,23 @@ const SESSION_ACCOUNTS_BUDGET_MS = 30_000;
 const optStr = (v: unknown): v is string | null | undefined =>
   v === undefined || v === null || typeof v === "string";
 const optBool = (v: unknown): v is boolean | undefined => v === undefined || typeof v === "boolean";
+const optBoolOrNull = (v: unknown): v is boolean | null | undefined => v === null || optBool(v);
+
+/**
+ * 〔HX1 · D-f〕「停本机后端之前数一数」那一问：**现问**（不走 [`fetchSessionAccounts`] 的缓存），而且**问不到就是 `null`**
+ * —— 不像那一条把失败折成空表：这里空表的意思是「没有会话会断」，问不到折成空表就是一句假话（出声不静默）。
+ */
+export async function fetchSessionAccountsOrNull(origin: Origin): Promise<SessionAccount[] | null> {
+  try {
+    const empty = jsonBody({});
+    const budget = budgetWithin(SESSION_ACCOUNTS_BUDGET_MS);
+    const reply = await chan.call(origin, "accounts-sessions", empty, budget);
+    return parseSessionAccountLines(linesOf(reply));
+  } catch (e) {
+    console.warn(`fetchSessionAccountsOrNull(${origin}) failed:`, e);
+    return null;
+  }
+}
 
 /**
  * `accounts-sessions`（= `--session-accounts`）的逐行 ⇒ [`SessionAccount`]。**坏行跳过**（`console.warn`），不毁整次。
@@ -196,7 +213,8 @@ export function parseSessionAccountLines(lines: string[]): SessionAccount[] {
       !optStr(o.account) ||
       !optBool(o.bare) ||
       !optBool(o.alive) ||
-      !optStr(o.launchId)
+      !optStr(o.launchId) ||
+      !optBoolOrNull(o.viaRelay)
     ) {
       console.warn("session-accounts 行字段类型不对（跳过）");
       continue;
@@ -210,6 +228,7 @@ export function parseSessionAccountLines(lines: string[]): SessionAccount[] {
       bare: o.bare ?? false,
       alive: o.alive ?? false,
       launchId: o.launchId ?? null,
+      viaRelay: o.viaRelay ?? null,
     });
   }
   return out;

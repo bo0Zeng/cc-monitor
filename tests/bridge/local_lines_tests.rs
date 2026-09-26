@@ -6,7 +6,7 @@
 //!
 //! | # | 判什么 | 异源 / 两向 |
 //! |---|---|---|
-//! | F1 | 本机吸收点交回的帧种类 == {line, session_added, session_removed} ∪〔LOC1b〕{session_status, sessions_replayed}；喂的种类 == `parse_frame` 认得的全部种类 | 帧是手写线上 JSON；种类全集从 `parse_frame` 源码里摘（两向） |
+//! | F1 | 本机吸收点交回的帧种类 == {line, session_added, session_removed} ∪〔LOC1b〕{session_status, sessions_replayed} ∪〔FW1〕{session_file_gone, session_file_reread}；喂的种类 == `parse_frame` 认得的全部种类 | 帧是手写线上 JSON；种类全集从 `parse_frame` 源码里摘（两向） |
 //! | F2 | 本机消费者的纯分派核真值表 | 期望手写 |
 //! | F3 | 两条读循环各恰好一处把交回的帧送进本机内容通道（送法各按载体）、各恰好一处送「流结束」 | 源码锚，恰好一处 |
 //! | F4 | 内容出口的调用方集合（`batch_to_payloads` / `on_line_batch_awaited` / `flush_lines` / `LineIntake::open` / `Batcher::new` / `SnapshotQueue::new`） | 全仓生产段扫描，两向集合相等 |
@@ -172,6 +172,15 @@ const FRAMES: &[(&str, &str)] = &[
     // 〔合并主线 8f9263c3〕U4b 的「A 的清单报完了」与 SR1b 的传输进度 —— 都不是会话内容。
     //   〔LOC1b · 4D〕「清单报完了」从此交回（本机活会话表要它，且要排在它前面那些宣告之后）；传输进度仍就地吸收。
     ("sessions_replayed", r#"{"kind":"sessions_replayed"}"#),
+    // 〔FW1 · 第四波 4D · D-d〕记录文件不见了 / 被改过 —— **是**会话内容那一族（与行同序进内容通道）。
+    (
+        "session_file_gone",
+        r#"{"kind":"session_file_gone","session_id":"s1","path":"/h/.claude/projects/p/s1.jsonl"}"#,
+    ),
+    (
+        "session_file_reread",
+        r#"{"kind":"session_file_reread","session_id":"s1","path":"/h/.claude/projects/p/s1.jsonl","why":"rewritten"}"#,
+    ),
     (
         "transfer",
         r#"{"kind":"transfer","id":"cf1-no-such-ticket","got":1,"total":2}"#,
@@ -208,6 +217,10 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
                     | (&"session_removed", InboundFrame::SessionRemoved { .. })
                     | (&"session_status", InboundFrame::SessionStatus { .. })
                     | (&"sessions_replayed", InboundFrame::SessionsReplayed)
+                    | (
+                        &("session_file_gone" | "session_file_reread"),
+                        InboundFrame::SessionFileNotice { .. }
+                    )
             );
             assert!(same, "喂的是 `{kind}`，交回来的是别的：{back:?}");
             handed_back.insert(kind.to_string());
@@ -220,12 +233,15 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
             "session_added",
             "session_removed",
             "session_status",
-            "sessions_replayed"
+            "sessions_replayed",
+            // 〔FW1〕记录文件的出声（同一条内容通道，与行同序）。
+            "session_file_gone",
+            "session_file_reread",
         ]
         .iter()
         .map(|s| s.to_string())
         .collect::<BTreeSet<_>>(),
-        "本机吸收点交回的帧种类 ≠ 内容三种 ＋ 起停两种（〔LOC1b〕红绿灯 · 清单报完了：本机活会话表由这条流喂）：\
+        "本机吸收点交回的帧种类 ≠ 内容三种 ＋ 起停两种（〔LOC1b〕红绿灯 · 清单报完了：本机活会话表由这条流喂）＋ 记录文件出声两种（〔FW1〕）：\
          多交 ⇒ 别的帧混进来；少交 ⇒ 本机那一种又被就地丢了（`真相源/10 §7.1` 那一形）"
     );
 }
@@ -732,5 +748,33 @@ fn the_local_lifecycle_core_matches_the_hand_written_table() {
     assert!(
         local_lifecycle(&frame(REM_B), false, &none, &[]).is_some(),
         "正控：没藏的照进"
+    );
+}
+
+/// 〔FW1 · 第四波 4D · D-d〕本机分派核：记录文件的出声交 `Notice`；藏起来的 bg 会话照旧不出声。
+#[test]
+fn a_session_file_notice_is_dispatched_unless_the_session_is_hidden() {
+    const GONE: &str = r#"{"kind":"session_file_gone","session_id":"a","path":"/p/a.jsonl"}"#;
+    const REREAD_B: &str =
+        r#"{"kind":"session_file_reread","session_id":"b","path":"/p/b.jsonl","why":"truncated"}"#;
+    const ADD_B_BG: &str = r#"{"kind":"session_added","sid":"b","session_kind":"bg"}"#;
+    let mut h = HashSet::new();
+    assert_eq!(
+        local_step(frame(GONE), false, &mut h),
+        LocalStep::Notice {
+            sid: "a".into(),
+            path: "/p/a.jsonl".into(),
+            change: crate::ssh_source::FileChange::Gone,
+        }
+    );
+    assert_eq!(local_step(frame(ADD_B_BG), false, &mut h), LocalStep::Skip);
+    assert_eq!(local_step(frame(REREAD_B), false, &mut h), LocalStep::Skip);
+    assert_eq!(
+        local_step(frame(REREAD_B), true, &mut HashSet::new()),
+        LocalStep::Notice {
+            sid: "b".into(),
+            path: "/p/b.jsonl".into(),
+            change: crate::ssh_source::FileChange::Truncated,
+        }
     );
 }

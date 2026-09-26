@@ -33,7 +33,9 @@
 //! ```
 //!
 //! 「看」（`skill-installs` · `skill-uninstall-plan` 不带 `take`）是纯读，界面经 `chan.call` 直问那台后端；这里只管会写的那一半。
-//! 🔴 **空目录留着**：`Door` 没有删空目录的口（`SU1.md §1.4`）—— 只删文件，话里说清。
+//! 〔FW1 订正〕SU1 那一版这里写的是「空目录留着：门没有删空目录的口（`SU1.md §1.4`）」。
+//! 〔FW1 · 第四波 4D · 主会话裁 SU1 问 2〕门多了 `delete_empty_dir`（同一条 `files-delete`，`expect: {"empty_dir": true}`）：
+//! 文件删完之后由深到浅收空目录、最后 skill 目录自己（[`remove_emptied_dirs`]）；不空的留着。
 //!
 //! # 买不到
 //!
@@ -143,6 +145,10 @@ pub struct SkillUninstallApplied {
     pub deleted: Vec<String>,
     /// 删了（或已经不在）却没从记录里摘掉的原因；摘了 ⇒ `null`。
     pub record_failed: Option<String>,
+    /// 〔FW1 · 第四波 4D · 主会话裁 SU1 问 2〕skill 目录自己也删掉了（删完文件之后它空了）。`false` ⇒ 还在（里面还有别的 / 没走到这一步）。
+    pub dir_removed: bool,
+    /// 〔FW1〕收空目录那一步出了「不空 / 不在」之外的错（原话）；没有 ⇒ `null`。
+    pub dir_failed: Option<String>,
 }
 
 /// 问一台后端一条命令（生产 = [`BackendAsk`]；判据用替身）。
@@ -492,6 +498,7 @@ pub(crate) async fn uninstall_with(
             .ok_or_else(broken)
     };
     let (delete, forget) = (names("delete")?, names("forget")?);
+    let recorded: Vec<String> = delete.iter().chain(forget.iter()).cloned().collect();
     let mut deleted = Vec::new();
     let mut stopped: Option<String> = None;
     for path in &delete {
@@ -545,11 +552,57 @@ pub(crate) async fn uninstall_with(
             Some(r) => format!("{why}{r}"),
         });
     }
+    // 〔FW1 · 主会话裁 SU1 问 2〕文件删完（没停在半路）⇒ 最后收空目录：装时 `parents` 建出来的子目录由深到浅、再 skill 目录自己，
+    //   每个都是「只删空目录」那一形（不空 ⇒ 留着、不当错）。
+    let (dir_removed, dir_failed) = remove_emptied_dirs(door, dir, &recorded).await;
     Ok(SkillUninstallApplied {
         dir: dir.to_string(),
         deleted,
         record_failed,
+        dir_removed,
+        dir_failed,
     })
+}
+
+/// 〔FW1〕卸完之后收空目录：`files`（记录里的相对路径）的祖先目录由深到浅逐个「只删空目录」，最后 `dir` 自己。
+/// 不空 / 已经不在 ⇒ 留着、接着收下一个（兄弟目录可能是空的）；别的错 ⇒ 停、原话交回。回 `(skill 目录删掉了没有, 出错原话)`。
+async fn remove_emptied_dirs(
+    door: &impl Door,
+    dir: &str,
+    files: &[String],
+) -> (bool, Option<String>) {
+    let mut subs: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for f in files {
+        let mut at = std::path::Path::new(f).parent();
+        while let Some(p) = at.filter(|p| !p.as_os_str().is_empty()) {
+            subs.insert(p.to_string_lossy().replace('\\', "/"));
+            at = p.parent();
+        }
+    }
+    let mut order: Vec<String> = subs.into_iter().collect();
+    order.sort_by_key(|s| std::cmp::Reverse(s.matches('/').count()));
+    let failed = |at: &str, e: Refused| {
+        copy_text(
+            "rsSkillInstall.uninstall.dirFailed",
+            &[("path", &at.to_string()), ("e", &e.said())],
+        )
+    };
+    for sub in &order {
+        match door.delete_empty_dir(dir, sub).await {
+            Ok(()) | Err(Refused::Stale(_)) => {}
+            Err(e) => return (false, Some(failed(sub, e))),
+        }
+    }
+    let here = std::path::Path::new(dir);
+    let (Some(parent), Some(name)) = (here.parent(), here.file_name()) else {
+        return (false, None);
+    };
+    let (parent, name) = (parent.to_string_lossy(), name.to_string_lossy());
+    match door.delete_empty_dir(&parent, &name).await {
+        Ok(()) => (true, None),
+        Err(Refused::Stale(_)) => (false, None),
+        Err(e) => (false, Some(failed(dir, e))),
+    }
 }
 
 /// 卸到一半停下时的那句话：说清停在哪、前面删了哪几个。
@@ -614,7 +667,7 @@ pub async fn skill_install_apply(
 }
 
 /// 〔SU1 · V116〕卸：`to` 那台上装记录里 `dir` 那一条，把勾的那几个删掉（`ask` 为真的那几个必须也在 `confirm` 里）。
-/// `seen` 是看的时候那台后端回的现有原文，原样送回来当 CAS 期望。只删文件，目录留着。
+/// `seen` 是看的时候那台后端回的现有原文，原样送回来当 CAS 期望。只删文件；〔FW1〕删完之后空了的目录也收掉（不空的留着）。
 #[tauri::command]
 pub async fn skill_uninstall_apply(
     to: Origin,

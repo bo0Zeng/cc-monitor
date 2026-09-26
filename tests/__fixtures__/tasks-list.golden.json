@@ -1,0 +1,21 @@
+{
+  "_doc": "〔LOC1a · 第四波 4D · C4e 批 4〕帧命令 tasks-list 的线上形状（设计/05 §14.3「业务解释只有一个家」）。后端 feature_face_tests::the_tasks_product_matches_the_cross_language_golden 把 files 写进夹具家目录、现算 == product；界面 tests/tasks-decode.vitest.ts 读同一份解码。结构占位，不含真会话正文。",
+  "request": { "sid": "s" },
+  "files": [
+    { "name": "2.json", "body": "{\"id\":\"2\",\"subject\":\"占位乙\",\"status\":\"in_progress\",\"activeForm\":\"占位乙中\",\"blockedBy\":[\"1\"],\"extra\":7}" },
+    { "name": "1.json", "body": "﻿{\"id\":\"1\",\"subject\":\"占位甲\",\"description\":\"说明\",\"status\":\"completed\",\"blocks\":[\"2\"],\"description2\":null}" },
+    { "name": "3.json", "body": "{\"id\":\"3\",\"subject\":\"占位丙\",\"status\":\"pending\",\"description\":null}" },
+    { "name": "4.json", "body": "{\"id\":4,\"subject\":\"id 不是串\",\"status\":\"pending\"}" },
+    { "name": "5.json", "body": "{\"id\":\"5\",\"subject\":\"blocks 是 null\",\"status\":\"pending\",\"blocks\":null}" },
+    { "name": "6.json", "body": "{\"id\":\"6\",\"status\":\"pending\"}" },
+    { "name": "7.json", "body": "{\"id\":\"7\",\"subj" },
+    { "name": "notes.txt", "body": "不是任务" }
+  ],
+  "product": {
+    "tasks": [
+      { "id": "1", "subject": "占位甲", "status": "completed", "blocks": ["2"], "blockedBy": [], "description": "说明" },
+      { "id": "2", "subject": "占位乙", "status": "in_progress", "blocks": [], "blockedBy": ["1"], "activeForm": "占位乙中" },
+      { "id": "3", "subject": "占位丙", "status": "pending", "blocks": [], "blockedBy": [] }
+    ]
+  }
+}

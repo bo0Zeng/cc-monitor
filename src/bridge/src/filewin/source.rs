@@ -831,7 +831,7 @@ pub async fn watch(
     kind: &str,
     stop: &crate::chan::wire::CancelToken,
     mut on: impl FnMut(u64, u64),
-) -> Result<u64, String> {
+) -> Result<Watched, String> {
     use crate::chan::wire::{By, Comms, Item, Kind, Sub};
     use futures::StreamExt as _;
     let mut sub = line.subscribe(origin, &Kind(kind.to_string()), None, WATCH_CREDIT);
@@ -872,10 +872,13 @@ pub async fn watch(
                 let v = json(&body.0);
                 let text = |k: &str| v.get(k).and_then(serde_json::Value::as_str).unwrap_or("");
                 return match text("state") {
-                    "done" => Ok(v
-                        .get("bytes")
-                        .and_then(serde_json::Value::as_u64)
-                        .unwrap_or(0)),
+                    "done" => Ok(Watched {
+                        bytes: v
+                            .get("bytes")
+                            .and_then(serde_json::Value::as_u64)
+                            .unwrap_or(0),
+                        sha256: v.get("sha256").and_then(|s| s.as_str()).map(str::to_string),
+                    }),
                     "failed" => Err(text("why").to_string()),
                     "cancelled" => Err(super::transfer::CANCELLED.to_string()),
                     _ => Err(super::find::refusal(kind, text("code"), text("message"))),
@@ -883,6 +886,13 @@ pub async fn watch(
             }
         }
     }
+}
+
+/// 一趟传输看完了（[`watch`] 的成功那一形）：字节数 ＋〔FW1〕上传那一路的整份摘要（提交时的 `expect`）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Watched {
+    pub bytes: u64,
+    pub sha256: Option<String>,
 }
 
 /// 对端拒了的那一形里，它给的那个码。别的形一律 `None`（**不猜**）。

@@ -365,6 +365,23 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
             "transfer",
         ),
         (Frame::SessionsReplayed, "sessions_replayed"),
+        // 〔FW1 · 第四波 4D〕活会话的记录文件不见了 / 被改过已从头重读（逐字节形状另由
+        //   `watcher_tests::the_two_session_file_frames_have_exactly_these_bytes` 钉）。
+        (
+            Frame::SessionFileGone {
+                session_id: "s".into(),
+                path: "/p".into(),
+            },
+            "session_file_gone",
+        ),
+        (
+            Frame::SessionFileReread {
+                session_id: "s".into(),
+                path: "/p".into(),
+                why: crate::wire::RereadWhy::Rewritten,
+            },
+            "session_file_reread",
+        ),
     ];
 
     // ★ 人群自检：**样本必须覆盖 `Frame` 的每一个变体**〔audit-0805 08-06〕。
@@ -459,8 +476,19 @@ fn transfer_frames_have_exactly_these_bytes() {
             "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000}\n",
         ),
         (
-            f(Some(crate::wire::TransferEnd::Done { bytes: 1000000 })),
+            f(Some(crate::wire::TransferEnd::Done {
+                bytes: 1000000,
+                sha256: None,
+            })),
             "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"done\",\"bytes\":1000000}}\n",
+        ),
+        // 〔FW1 · 第四波 4D〕上传那一路的传完带整份摘要（提交时的对拍依据）；下载那一路没有 ⇒ 上一格原样不上线。
+        (
+            f(Some(crate::wire::TransferEnd::Done {
+                bytes: 1000000,
+                sha256: Some("ab".repeat(32)),
+            })),
+            "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"done\",\"bytes\":1000000,\"sha256\":\"abababababababababababababababababababababababababababababababab\"}}\n",
         ),
         (
             f(Some(crate::wire::TransferEnd::Failed { why: "写暂存件失败".into() })),

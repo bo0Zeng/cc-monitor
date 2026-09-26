@@ -107,6 +107,47 @@ fn uname_answers_map_to_a_key_or_a_named_refusal() {
     ));
 }
 
+/// 〔WIN1 · 第四波 4D · RT1 F4〕Windows 那台用本地代码页（GBK）回话 ⇒ 界面上**不照抄乱码**，拒绝照旧。
+///
+/// 要求住址：`设计/96 §7.1.4` 第 2 条逐字「**拒绝是一个会到达用户的结论，不是一行 `debug` 日志**；文案照 `01 §6.9`」
+/// 与第 4 条「**OS 问不出 ＝ 拒绝，不是回落**」；读数出处 `第四波记录/RT1.md §8` F4 逐字
+/// 「Windows 远端 `uname` 的回话在 toast / 日志里是**乱码**：PowerShell 按控制台代码页（GBK）吐错误，我们按 UTF-8 解」。
+/// 异源：语料是**手写的 GBK 字节**（「无法将“uname”」），走与后端 `dial/uses.rs` 同一种有损解（`from_utf8_lossy`）；
+/// 期望是「整句里零个 U+FFFD」＋「说得出不是 UTF-8」，不从被测常量里抠。正控：UTF-8 的回话照旧原样带出。
+#[test]
+fn an_answer_that_is_not_utf8_is_not_parroted_as_mojibake() {
+    // 「uname : 无法将“uname”项识别为…」的 GBK 字节（前半段）。
+    let gbk: &[u8] = b"uname : \xce\xde\xb7\xa8\xbd\xab\xa1\xb0uname\xa1\xb1";
+    let lossy = String::from_utf8_lossy(gbk).into_owned();
+    assert!(
+        lossy.contains('\u{FFFD}'),
+        "语料自检：GBK 字节按 UTF-8 解应当留下 U+FFFD"
+    );
+    for (exit, out, err) in [(Some(1), "", lossy.as_str()), (Some(0), lossy.as_str(), "")] {
+        let r = key_from_uname(exit, out, err);
+        let Err(refusal @ Refusal::OsUnknown { .. }) = &r else {
+            panic!("不是 UTF-8 的回话照样该是「问不出 OS」：{r:?}");
+        };
+        for product in [Product::Backend, Product::Panorama] {
+            let said = refusal.say(product, "vmself");
+            assert!(!said.contains('\u{FFFD}'), "界面那句里照抄了乱码：{said}");
+            assert!(
+                said.contains("不是 UTF-8"),
+                "那句话没说出「不是 UTF-8」：{said}"
+            );
+            assert!(said.contains("vmself"), "{said}");
+        }
+    }
+    // 正控：UTF-8 的回话（英文 Windows / 真 POSIX 的报错）照旧原样带出 —— 本件不许把它们也吞掉。
+    match key_from_uname(Some(1), "", "'uname' is not recognized") {
+        Err(Refusal::OsUnknown { why }) => {
+            assert!(why.contains("'uname' is not recognized"), "{why}");
+            assert!(!why.contains("不是 UTF-8"), "{why}");
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
 // ═══ 拒绝点：六键 × 两路 × 两类字节的全表 ═══════════════════════════════════════════════
 
 #[derive(Debug, Clone, Copy, PartialEq)]
