@@ -269,6 +269,8 @@ pub const CAPABILITIES: &[Capability] = &[
             "index_missing",
             "resident_bytes",
             "rewalk_interval_secs",
+            // 〔W5-FILES · `设计/60 §3.7`〕没走进去的挂载点个数。
+            "skipped_mounts",
             "stale",
             "truncated",
             "unreadable_dirs",
@@ -294,6 +296,8 @@ pub const CAPABILITIES: &[Capability] = &[
             "entries",
             "path",
             "resident_bytes",
+            // 〔W5-FILES · `设计/60 §3.7`〕没走进去的挂载点个数。
+            "skipped_mounts",
             "truncated",
             "unreadable_dirs",
         ],
@@ -663,6 +667,7 @@ fn answer_status() -> Answer {
         "resident_bytes": s.resident_bytes,
         "unreadable_dirs": s.unreadable_dirs,
         "truncated": s.truncated,
+        "skipped_mounts": s.skipped_mounts,
         "age_secs": s.age_secs,
         "rewalk_interval_secs": s.rewalk_interval_secs,
         "stale": s.stale,
@@ -722,6 +727,7 @@ fn answer_index_rebuild(args: &serde_json::Value) -> Answer {
         "resident_bytes": stats.resident_bytes,
         "unreadable_dirs": stats.unreadable_dirs,
         "truncated": stats.truncated,
+        "skipped_mounts": stats.skipped_mounts,
     }))
 }
 
