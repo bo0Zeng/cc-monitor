@@ -235,7 +235,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("session.forget", (NA, "—", "会话")),
     ("session.launch", (NA, "—", "起会话")),
     ("session.list-active", (NA, "—", "会话")),
-    ("session.tasks", (NA, "—", "会话")),
+    # 〔墓碑 · 第四波 4D LOC1a〕`session.tasks` 随任务快照改由界面经通道直问后端 `tasks-list`（成品 `{tasks}`，跨语言金样 `tasks-list.golden.json`）、`get_session_tasks` 包装退役；理由同上面几条墓碑。
     ("sftp.file-panel", (NA, "—", "文件面板（用户自己搬文件，不是产品装东西）")),
     ("ssh.host-config", (NA, "—", "ssh 主机配置 / 推公钥 —— 连得上那一层，不是装我们的东西")),
     ("subagent.load", (NA, "—", "读 subagent 定义")),

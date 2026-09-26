@@ -464,6 +464,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "bus-spawn",
         "bus-state",
         "capture-pane",
+        // 〔LOC1a · 第四波 4D〕起插件进程 / 读写整份 jsonl。
+        "acct-iso-status",
+        "acct-iso-shellinit",
+        "session-fork",
     ] {
         assert!(
             matches!(d(c), Disposition::SpawnBlocking(..)),
@@ -587,6 +591,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "bus-spawn",
         "bus-state",
         "capture-pane",
+        "acct-iso-status",
+        "acct-iso-shellinit",
+        "session-fork",
         "files-create",
         "files-commit-upload",
         "files-stage-chunk",

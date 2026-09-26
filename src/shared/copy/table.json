@@ -12409,6 +12409,26 @@
       "zh": "读远端输出失败：{e}",
       "args": ["e"]
     },
+    "rsAcctIsoDeploy.status.cannotAsk": {
+      "kind": "error",
+      "zh": "查不出{who}装没装 cc-acct-iso：{e}",
+      "args": ["who", "e"]
+    },
+    "rsAcctIsoDeploy.status.noInstalled": {
+      "kind": "error",
+      "zh": "{who}的后端答的状态缺了「装没装」那一格。多半是两边版本不一样",
+      "args": ["who"]
+    },
+    "rsAcctIsoDeploy.shellinit.failed": {
+      "kind": "error",
+      "zh": "{who}没能产出 rc 片段：{message}",
+      "args": ["who", "message"]
+    },
+    "rsAcctIsoDeploy.shellinit.noSnippet": {
+      "kind": "error",
+      "zh": "{who}的后端答的应答里缺了片段。多半是两边版本不一样",
+      "args": ["who"]
+    },
     "rsAssetSync.call.emptyReply": {
       "kind": "error",
       "zh": "本机后端回了一条空应答",
@@ -12854,16 +12874,6 @@
       "zh": "一台机器的名字；本机要写成 \"{local}\"",
       "args": ["local"]
     },
-    "rsLocalQuery.noBackend.lookedAt": {
-      "kind": "error",
-      "zh": "{reason}；找过：{list}",
-      "args": ["reason", "list"]
-    },
-    "rsLocalQuery.noBackend.listSep": {
-      "kind": "body",
-      "zh": "、",
-      "args": []
-    },
     "rsApikeyRemote.call.internal": {
       "kind": "error",
       "zh": "读写第三方 API key 时出了内部错误，没有拿到结果",
@@ -12996,11 +13006,6 @@
       "kind": "error",
       "zh": "非法会话路径：{path}",
       "args": ["path"]
-    },
-    "rsLocalQuery.noBackend.spawnFailed": {
-      "kind": "error",
-      "zh": "起 {bin} 失败：{e}",
-      "args": ["bin", "e"]
     },
     "rsLaunch.remote.taskFailed": {
       "kind": "error",
@@ -13602,11 +13607,6 @@
       "zh": "会话 {sid} 的历史快照没拉下来（{err}）。这个标签页暂时只有实时消息，完整内容可到历史浏览器查看。",
       "args": ["sid", "err"]
     },
-    "rsRemoteBranch.local.backendDown": {
-      "kind": "error",
-      "zh": "本机后端不在，分叉要经它来写 —— 一个字节都没动（{why}）",
-      "args": ["why"]
-    },
     "rsRemoteBranch.what.messageId": {
       "kind": "body",
       "zh": "消息 ID",
@@ -13615,46 +13615,6 @@
     "rsRemoteBranch.what.sourceId": {
       "kind": "body",
       "zh": "源会话 id",
-      "args": []
-    },
-    "rsRemoteBranch.fork.timeout": {
-      "kind": "error",
-      "zh": "远端分叉超时（{secs} 秒）",
-      "args": ["secs"]
-    },
-    "rsRemoteBranch.remote.notConfigured": {
-      "kind": "error",
-      "zh": "远端「{machine}」未配置或未启用",
-      "args": ["machine"]
-    },
-    "rsRemoteBranch.fork.noExitCode": {
-      "kind": "error",
-      "zh": "远端分叉失败：没收到退出码，连接可能中断",
-      "args": []
-    },
-    "rsRemoteBranch.fork.noExitCodeWith": {
-      "kind": "error",
-      "zh": "远端分叉失败（没收到退出码，连接可能中断）：{d}",
-      "args": ["d"]
-    },
-    "rsRemoteBranch.fork.failedNoReason": {
-      "kind": "error",
-      "zh": "远端分叉失败（后端退出码 {code}，且没有给出原因）",
-      "args": ["code"]
-    },
-    "rsRemoteBranch.fork.failed": {
-      "kind": "error",
-      "zh": "远端分叉失败：{d}",
-      "args": ["d"]
-    },
-    "rsRemoteBranch.fork.noOutput": {
-      "kind": "error",
-      "zh": "远端分叉：后端报成功却没有输出结果",
-      "args": []
-    },
-    "rsRemoteBranch.fork.noResultJson": {
-      "kind": "error",
-      "zh": "远端分叉：后端报成功，但输出里找不到结果 JSON。远端 shell 是不是打了 banner？",
       "args": []
     },
     "rsRemoteBranch.forkId.badChar": {
@@ -13667,10 +13627,10 @@
       "zh": "{what} 长度非法（1..=64）",
       "args": ["what"]
     },
-    "rsRemoteBranch.fork.oldBackend": {
+    "rsRemoteBranch.fork.badProduct": {
       "kind": "error",
-      "zh": "远端后端版本过旧，不支持分叉。请在设置里重装这台机器的后端",
-      "args": []
+      "zh": "{who}的后端说分叉成功了，但结果认不出来（{e}）。多半是两边版本不一样，先别重试，刷新会话列表看看有没有多出来的那一条",
+      "args": ["who", "e"]
     },
     "historyActions.menu.delete": {
       "kind": "action",
@@ -14620,11 +14580,6 @@
       "zh": "这个会话超过 {max} 字节上限，后面的内容没有显示。只读到了前 {read} 字节（{lines} 行），完整的会话记录仍在远端。",
       "args": ["max", "read", "lines"]
     },
-    "rsLocalAccounts.shellinit.notFinished": {
-      "kind": "error",
-      "zh": "本机 rc 片段查询没能跑完：{e}",
-      "args": ["e"]
-    },
     "rsLocalAccounts.shellinit.noFence": {
       "kind": "error",
       "zh": "本机没能产出 rc 片段（输出里没有 {begin}）。常见原因：这台机器还没跑过 cc-acct-iso init。",
@@ -14635,75 +14590,50 @@
       "zh": "本机产出的 rc 片段不完整（有 {begin} 但没有 {end}），可能被截断了。别贴：半截片段会让登录 shell 报错。请重试。",
       "args": ["begin", "end"]
     },
-    "rsLocalAccounts.shellinit.failed": {
-      "kind": "error",
-      "zh": "本机没能产出 rc 片段：{message}",
-      "args": ["message"]
-    },
-    "rsLocalAccounts.shellinit.noBackend": {
-      "kind": "error",
-      "zh": "本机后端不在，拿不到这台机器的 rc 片段：{reason}",
-      "args": ["reason"]
-    },
-    "rsLocalAccounts.acctIso.notFinished": {
-      "kind": "error",
-      "zh": "本机 cc-acct-iso 查询没能跑完：{e}",
-      "args": ["e"]
-    },
-    "rsLocalAccounts.acctIso.noInstalled": {
-      "kind": "error",
-      "zh": "本机后端回的 cc-acct-iso 状态缺了「装没装」那一格",
-      "args": []
-    },
-    "rsLocalAccounts.acctIso.unreadable": {
-      "kind": "error",
-      "zh": "本机后端回的 cc-acct-iso 状态读不懂：{e}",
-      "args": ["e"]
-    },
-    "rsLocalAccounts.acctIso.failed": {
-      "kind": "error",
-      "zh": "本机后端查不出 cc-acct-iso 装没装（退出码 {code}）：{message}",
-      "args": ["code", "message"]
-    },
-    "rsLocalAccounts.acctIso.noBackend": {
-      "kind": "error",
-      "zh": "本机后端不在，查不出这台机器装没装 cc-acct-iso：{reason}",
-      "args": ["reason"]
-    },
     "rsFrameQuery.lines.inconsistent": {
       "kind": "error",
-      "zh": "远端 [{origin}] 的应答前后对不上，已停下。问的是第 {asked} 行起，答的是第 {from} 到 {next} 行、{count} 条",
-      "args": ["origin", "asked", "from", "next", "count"]
+      "zh": "{who}的应答前后对不上，已停下。问的是第 {asked} 行起，答的是第 {from} 到 {next} 行、{count} 条",
+      "args": ["who", "asked", "from", "next", "count"]
     },
     "rsFrameQuery.reply.badShape": {
       "kind": "error",
-      "zh": "远端 [{origin}] 的应答认不出来，多半是两边版本不一样",
-      "args": ["origin"]
+      "zh": "{who}的应答认不出来，多半是两边版本不一样",
+      "args": ["who"]
     },
     "rsFrameQuery.readPage.stuck": {
       "kind": "error",
-      "zh": "远端 [{origin}] 读会话时在偏移 {offset} 处不再前进，已停下",
-      "args": ["origin", "offset"]
+      "zh": "{who}读会话时在偏移 {offset} 处不再前进，已停下",
+      "args": ["who", "offset"]
     },
     "rsFrameQuery.reply.inconsistent": {
       "kind": "error",
-      "zh": "远端 [{origin}] 的应答前后对不上：{plan}",
-      "args": ["origin", "plan"]
+      "zh": "{who}的应答前后对不上：{plan}",
+      "args": ["who", "plan"]
     },
     "rsFrameQuery.said.internal": {
       "kind": "error",
       "zh": "查询出了内部错误，没有拿到结果",
       "args": []
     },
+    "rsFrameQuery.who.local": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
+    },
+    "rsFrameQuery.who.remote": {
+      "kind": "body",
+      "zh": "远端 [{machine}]",
+      "args": ["machine"]
+    },
     "rsFrameQuery.call.failed": {
       "kind": "error",
-      "zh": "远端 [{origin}] 查询失败（{code}）：{message}",
-      "args": ["origin", "code", "message"]
+      "zh": "{who}查询失败（{code}）：{message}",
+      "args": ["who", "code", "message"]
     },
     "rsFrameQuery.call.tooOld": {
       "kind": "error",
-      "zh": "远端 [{origin}] 的后端太旧，还不认这条查询。重装那台机器的后端就有了",
-      "args": ["origin"]
+      "zh": "{who}的后端太旧，还不认这条查询。重装那台机器的后端就有了",
+      "args": ["who"]
     },
     "rsSubagent.load.notFound": {
       "kind": "error",
@@ -14715,35 +14645,15 @@
       "zh": "父会话路径不对：{path}",
       "args": ["path"]
     },
-    "rsSubagent.localQuery.failed": {
-      "kind": "error",
-      "zh": "本机后端 {sub} 查询失败（退出码 {code}）：{msg}",
-      "args": ["sub", "code", "msg"]
-    },
-    "rsSubagent.localQuery.noBackend": {
-      "kind": "error",
-      "zh": "本机后端不在：{reason}",
-      "args": ["reason"]
-    },
     "rsSubagent.query.noFrameCmd": {
       "kind": "error",
-      "zh": "这是 cc-monitor 的缺陷，不是远端 [{machine}] 的问题。{argv} 这条查询没有对应的后端命令",
-      "args": ["argv", "machine"]
+      "zh": "这是 cc-monitor 的缺陷，不是{who}的问题。{argv} 这条查询没有对应的后端命令",
+      "args": ["argv", "who"]
     },
     "rsSubagent.query.tooOld": {
       "kind": "error",
-      "zh": "远端 [{machine}] 的后端太旧，还不认这条查询。重装那台机器的后端就有了",
-      "args": ["machine"]
-    },
-    "rsSubagent.whose.remote": {
-      "kind": "body",
-      "zh": "远端 [{machine}]",
-      "args": ["machine"]
-    },
-    "rsSubagent.whose.local": {
-      "kind": "body",
-      "zh": "本机",
-      "args": []
+      "zh": "{who}的后端太旧，还不认这条查询。重装那台机器的后端就有了",
+      "args": ["who"]
     },
     "accounts.oldBackend.trust": {
       "kind": "error",

@@ -89,49 +89,105 @@ pub(crate) fn sq(s: &str) -> String {
     shell_quote_core::posix_quote(s)
 }
 
-/// 探测远端有没有装 `cc-acct-iso`（`command -v`）。**非交互 ssh 的 PATH 常不含 `~/.local/bin`**，
-/// 故显式前置。只做一次 exec、不连 SFTP（D 审计 S2：读远端 marker 前端用不到、白握手一次）；
-/// 不需要 dest_dir，故前端任何配置下都能探测（D 审计 S5：dest 推不出也不留 command-not-found 残角）。
-#[tauri::command]
-pub async fn check_remote_acct_iso(cfg: RemoteConfig) -> Result<AcctIsoStatus, String> {
-    // command -v 命中即打印路径；未命中打印空行。PATH 显式含 ~/.local/bin（安装落点）。
-    let probe = exec_collect(
-        &cfg,
-        "PATH=\"$HOME/.local/bin:$PATH\" command -v cc-acct-iso 2>/dev/null || true",
-    )
-    .await?;
-    let path = probe
-        .lines()
-        .next()
-        .map(str::trim)
-        .filter(|s| !s.is_empty());
+/// 〔LOC1a · 第四波 4D〕`acct-iso.*` 两问的期限（本机远端同一个）：`status` 只看文件在不在；
+/// `shellinit` 起一次 `cc-acct-iso`（后端那侧自带 20 s 期限）。
+pub(crate) const ACCT_ISO_BUDGET: Duration = Duration::from_secs(30);
+
+/// `acct-iso-status` 的结局 → `AcctIsoStatus` —— **纯函数**，本机远端同一份。
+///
+/// 「没装」是 `Ok(installed:false)`（后端答了「没有」），不是 `Err`；
+/// `Err` 只给「问不出来」的两档（够不着 / 对端说不行 · 应答缺格），且**不许**说成「没装」。
+pub(crate) fn classify_status(
+    who: &str,
+    got: Result<serde_json::Value, String>,
+) -> Result<AcctIsoStatus, String> {
+    let v = got.map_err(|e| {
+        copy_text(
+            "rsAcctIsoDeploy.status.cannotAsk",
+            &[("who", who), ("e", &e)],
+        )
+    })?;
+    let installed = v
+        .get("installed")
+        .and_then(serde_json::Value::as_bool)
+        .ok_or_else(|| copy_text("rsAcctIsoDeploy.status.noInstalled", &[("who", who)]))?;
     Ok(AcctIsoStatus {
-        installed: path.is_some(),
-        path: path.map(str::to_string),
+        installed,
+        path: v.get("path").and_then(|p| p.as_str()).map(str::to_string),
         vendor_id: vendor_id().to_string(),
     })
+}
+
+/// 问 `origin` 那台机器的后端：装没装 `cc-acct-iso`（帧命令 `acct-iso-status`）。**本机远端同一个函数。**
+pub(crate) async fn status_on(origin: &crate::origin::Origin) -> Result<AcctIsoStatus, String> {
+    let who = crate::backend::control::frame_query::who(origin);
+    classify_status(
+        &who,
+        crate::backend::control::frame_query::call(
+            origin,
+            "acct-iso-status",
+            serde_json::json!({}),
+            ACCT_ISO_BUDGET,
+        )
+        .await,
+    )
+}
+
+/// `acct-iso-shellinit` 的结局 → 片段原文（围栏还没判）—— **纯函数**，本机远端同一份。
+pub(crate) fn snippet_of(
+    who: &str,
+    got: Result<serde_json::Value, String>,
+) -> Result<String, String> {
+    let v = got.map_err(|e| {
+        copy_text(
+            "rsAcctIsoDeploy.shellinit.failed",
+            &[("who", who), ("message", &e)],
+        )
+    })?;
+    v.get("snippet")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| copy_text("rsAcctIsoDeploy.shellinit.noSnippet", &[("who", who)]))
+}
+
+/// 问 `origin` 那台机器的后端：`cc-acct-iso shellinit` 的片段原文（帧命令 `acct-iso-shellinit`）。**本机远端同一个函数**；
+/// 围栏由各自的调用方判（话不同：远端说「先在『维护』里部署」，本机今天没有那个口）。
+pub(crate) async fn snippet_on(origin: &crate::origin::Origin) -> Result<String, String> {
+    let who = crate::backend::control::frame_query::who(origin);
+    snippet_of(
+        &who,
+        crate::backend::control::frame_query::call(
+            origin,
+            "acct-iso-shellinit",
+            serde_json::json!({}),
+            ACCT_ISO_BUDGET,
+        )
+        .await,
+    )
+}
+
+/// 远端装没装 `cc-acct-iso`。
+///
+/// 〔LOC1a · 第四波 4D〕**问那台机器的后端**（帧命令 `acct-iso-status`，与本机那条同一个 [`status_on`]），
+/// monitor 只转交。此前这里经拨号链路跑一串 shell（`PATH="$HOME/.local/bin:$PATH" command -v cc-acct-iso`），
+/// 那串的知识（先查 `~/.local/bin`、再查 `PATH`）今天住后端 `accounts/iso.rs::fixed_candidates` 一处（`设计/05 §14.3` B 组）。
+/// ⚠ 行为变化：那台的长连接不在 ⇒ 说「没连上」（前端照旧落到向导那一支），不再单拨一条 SSH；老后端 ⇒ 说「后端太旧」。
+#[tauri::command]
+pub async fn check_remote_acct_iso(cfg: RemoteConfig) -> Result<AcctIsoStatus, String> {
+    status_on(&crate::origin::Origin(cfg.origin_label())).await
 }
 
 /// Z05：抓远端 `cc-acct-iso shellinit` 的输出，交给前端做「待贴文本」。
 ///
 /// **为什么是抓远端而不是在 TS 里重新生成一份**：片段的形态（`export CLAUDE_CONFIG_DIR=<默认号>`
 /// + 每账号一个 `<名>cc()` + Z01 的 `0cc()` 逃生口）是 `cc-acct-iso` 的知识。在 TS 里照抄一份
-/// 就多一个**跨语言双写点** —— 那正是本工作区反复在治的病（`TMUX_LS_FMT` / `NATIVE_IDENTITY` /
-/// `--base`）。抓输出则**单一来源留在 bash**，一处都不用同步。
+/// 就多一个**跨语言双写点**。抓输出则**单一来源留在 bash**，一处都不用同步。
 ///
-/// **只读**：`cmd_shellinit` 全是 `printf`，不写任何文件（已逐行核过）。
-/// 它更**不会**去动用户的 `~/.bashrc` —— 贴不贴由用户自己决定，这是明令的红线。
-///
-/// `2>/dev/null` 丢掉 warn（比如「manifest 里没有默认账号」）：那些混进 stdout 会让片段贴了就坏。
-/// 真出问题由下面的围栏校验兜住，并把可执行的下一步写进错误文案。
+/// 〔LOC1a · 第四波 4D〕**问那台机器的后端**（帧命令 `acct-iso-shellinit`，与本机那条同一个 [`snippet_on`]），
+/// 此前经拨号链路跑 `cc-acct-iso shellinit`。**只读**：`cmd_shellinit` 全是 `printf`；warn 走 stderr、后端不混进片段。
 #[tauri::command]
 pub async fn remote_acct_iso_shellinit(cfg: RemoteConfig) -> Result<String, String> {
-    let out = exec_collect(
-        &cfg,
-        "PATH=\"$HOME/.local/bin:$PATH\" cc-acct-iso shellinit 2>/dev/null || true",
-    )
-    .await?;
-    validate_shellinit_output(out)
+    validate_shellinit_output(snippet_on(&crate::origin::Origin(cfg.origin_label())).await?)
 }
 
 /// `remote_acct_iso_shellinit` 的**fail-closed 校验**，抽成纯函数好单测（SSH 那半测不了）。
