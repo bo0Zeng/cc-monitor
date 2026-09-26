@@ -77,8 +77,17 @@ pub struct StartupFile {
 }
 
 /// 生成文件的绝对路径。`home` 由调用方给 —— 测试拿临时目录当 home，**绝不碰真实家目录**。
+///
+/// 〔WIN1 · RT1 F8〕**逐段** `join`：`our_alias_file_rel` 是 `/` 分隔的（交给后端的 `rel` 就是它，那一侧不动），
+/// 而这里拼的是**给人看、也写进 `$PROFILE` 那一行**的本机绝对路径。整串一次 `join` 在 Windows 上
+/// 会得到 `C:\Users\user\.cc-monitor/aliases.ps1`（真机读数，`RT1.md §8` F8）—— 两种分隔符混着。
 pub fn alias_file_in(home: &Path, shell: Shell) -> PathBuf {
-    home.join(shell.dialect().our_alias_file_rel())
+    shell
+        .dialect()
+        .our_alias_file_rel()
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .fold(home.to_path_buf(), |p, seg| p.join(seg))
 }
 
 /// 整份生成文件的内容（**编码前**：BOM 那一层在落盘那一跳按方言加）。

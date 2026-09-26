@@ -13167,6 +13167,11 @@
       "zh": "它没有答",
       "args": []
     },
+    "rsByteTable.key.notUtf8": {
+      "kind": "error",
+      "zh": "它的回答不是 UTF-8 编码，多半是 Windows 的 PowerShell 或 cmd 在说没有 uname 这个命令",
+      "args": []
+    },
     "rsFootprintRemote.call.internal": {
       "kind": "error",
       "zh": "查这台机器的足迹时出了内部错误，没有拿到结果",
