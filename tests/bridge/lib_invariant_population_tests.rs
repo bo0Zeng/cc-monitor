@@ -210,6 +210,7 @@ const TMUX_PRINT_SITES: &[(&str, &str, Carry, usize, &str)] = &[
     ("src/shared/cc-bus/scripts/cc-whoami", "display-message", Carry::Flag, 1, "〔SH1〕读 `#{session_name}` 当身份 ⇒ 旗（非 UTF-8 客户端下中文被改写成 `_`，消毒之后与 UTF-8 客户端下的身份不同）；真跑判据 `backend-cc-bus.sh` [SH1-a]"),
     ("src/shared/cc-bus/scripts/cc-whoami", "list-sessions", Carry::Flag, 1, "〔SH1〕`#{session_id} #{session_name}` ⇒ 旗（同上）"),
     ("src/shared/cc-bus/scripts/cc-whoami", "list-panes", Carry::Flag, 1, "〔SH1〕`#{pane_pid} #{session_name}` ⇒ 旗（同上）"),
+    ("src/backend/control/kill.rs", "list-panes", Carry::Flag, 1, "〔SH1 · D-g〕argv；杀之前读这个会话全部 pane 的根进程 pid（数字，照表仍带旗）"),
 ];
 
 /// 〔TL2〕`INVARIANTS §49` 人群判据：盘上每一处「tmux 打印子命令 ＋ 读打印通道的旗」== 登记表（两向，含处数与带法）。
