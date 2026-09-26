@@ -216,7 +216,9 @@ const KNOWN_DEAD: readonly { name: string; why: string }[] = [];
 //   （`rgba` → `rgb`；那一份 7 → 4，现打，不是 39−3 算的：全仓 `npx stylelint` 现打 36）。
 // 〔UC2 09-24〕`no-descending-specificity` 打开（`设计/41 §3` / `§12` 待拍 2）。它的命中**不进**本棘轮 ——
 //   另由 ④b 的两向相等登记表管（比棘轮严）；本上限仍是「除它以外」的报错总数，数值不动（现打 36）。
-const STYLELINT_CEILING = 36;
+// 〔W5-AUX · `设计/40 §8` 棘 36 → 35〕`styles.css` 的 `.status-tasks` 里那条被 `font: inherit` 整条盖掉的 `line-height: 16px` 删了
+//   （`css-conventions` ⑨「活规则里的死声明」逮到的；stylelint 的 `declaration-block-no-shorthand-property-overrides` 正是它，现打 35）。
+const STYLELINT_CEILING = 35;
 
 /**
  * ★ 〔UC2〕**`no-descending-specificity` 的例外登记表**（④b · `设计/41 §3` 待拍 2 · `设计/40 §8`「特异度冲突」）。

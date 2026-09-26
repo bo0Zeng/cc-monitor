@@ -434,3 +434,254 @@ export function stateCarriers(root: string, stripTs: (src: string) => string): S
   }
   return out;
 }
+
+// ─────────────── ⑨ 活规则里的死声明（〔W5-AUX〕`设计/40 §8`）───────────────
+
+/**
+ * 〔W5-AUX · 40 #15〕一条声明在它所在的规则里。**只收样式规则**（选择器 ＋ 声明块），at-rule 的头不收。
+ *
+ * `设计/40 §8` 逐字把它列在「没查的」里：「**活规则里的死声明** —— 规则在用，但某条声明被后面的规则覆盖了」。
+ * 本量具收的是**机械上判得死**的那一形（判定见 [`deadDeclarations`]），跨选择器的覆盖（要真 DOM 才知道两个选择器
+ * 落不落在同一个元素上）不在射程里。
+ */
+export interface CssDecl {
+  file: string;
+  line: number;
+  /** 所在的级联层（`@layer X {` 的 `X`；不在任何层里 = `""`，按规范它赢过所有有层的）。 */
+  layer: string;
+  /** 条件链（`@media …` / `@supports …` / `@container …` 的头，外到内拼起来）；空 = 无条件。 */
+  cond: string;
+  /** 规则的选择器表（逗号拆开、空白收成一个）。 */
+  sels: string[];
+  /** 规则在本文件里的序号（同一文件里谁在后）。 */
+  rule: number;
+  /** 声明在规则里的序号。 */
+  idx: number;
+  prop: string;
+  value: string;
+  important: boolean;
+}
+
+/** 选择器收成可比较的形：空白收一个、组合符两侧的空白去掉。 */
+export const normSelector = (s: string): string =>
+  s.trim().replace(/\s+/g, " ").replace(/\s*([>+~])\s*/g, "$1").replace(/\(\s+/g, "(").replace(/\s+\)/g, ")");
+
+/** 在一段（已去注释的）CSS 里按顶层 `;` 拆声明，括号与引号里的 `;` 不算（`url("data:…;base64,…")`）。纯。 */
+function splitDecls(body: string): { text: string; off: number }[] {
+  const out: { text: string; off: number }[] = [];
+  let depth = 0;
+  let quote = "";
+  let start = 0;
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (quote) {
+      if (ch === "\\") i++;
+      else if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+    else if (ch === ";" && depth === 0) {
+      out.push({ text: body.slice(start, i), off: start });
+      start = i + 1;
+    }
+  }
+  if (body.slice(start).trim()) out.push({ text: body.slice(start), off: start });
+  return out;
+}
+
+/** 一份 CSS 的全部声明（带层与条件）。纯；`rel` 只写住址。 */
+export function cssDeclsOf(rel: string, src: string, anomalies?: string[]): CssDecl[] {
+  const clean = stripCssComments(src);
+  const out: CssDecl[] = [];
+  const stack: { kind: "layer" | "cond" | "other"; text: string }[] = [];
+  let preludeStart = 0;
+  let quote = "";
+  let rule = 0;
+  for (let i = 0; i < clean.length; i++) {
+    const ch = clean[i];
+    if (quote) {
+      if (ch === "\\") i++;
+      else if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (ch === ";") {
+      preludeStart = i + 1; // `@layer a, b;` / `@import …;` 这类无块的 at-rule
+      continue;
+    }
+    if (ch === "}") {
+      stack.pop();
+      preludeStart = i + 1;
+      continue;
+    }
+    if (ch !== "{") continue;
+    const prelude = clean.slice(preludeStart, i).trim();
+    if (prelude.startsWith("@")) {
+      const m = /^@([\w-]+)\s*(.*)$/s.exec(prelude);
+      const name = m?.[1] ?? "";
+      const rest = (m?.[2] ?? "").trim().replace(/\s+/g, " ");
+      stack.push(
+        name === "layer"
+          ? { kind: "layer", text: rest }
+          : name === "media" || name === "supports" || name === "container"
+            ? { kind: "cond", text: `@${name} ${rest}` }
+            : { kind: "other", text: `@${name} ${rest}` },
+      );
+      preludeStart = i + 1;
+      continue;
+    }
+    // 样式规则：找配对的 `}`（规则体里没有嵌套块 —— 本仓 CSS 不用原生嵌套，判据那边有一条自检）。
+    let j = i + 1;
+    let q = "";
+    for (; j < clean.length; j++) {
+      const c = clean[j];
+      if (q) {
+        if (c === "\\") j++;
+        else if (c === q) q = "";
+        continue;
+      }
+      if (c === '"' || c === "'") q = c;
+      else if (c === "}" || c === "{") break;
+    }
+    if (clean[j] === "{") anomalies?.push(`${rel}:${lineAt(clean, j)} 规则体里又开了一个块（原生嵌套？）—— 本量具按「规则体不嵌套」拆声明`);
+    const body = clean.slice(i + 1, j);
+    const layer = [...stack].reverse().find((s) => s.kind === "layer")?.text ?? "";
+    const cond = stack.filter((s) => s.kind !== "layer").map((s) => s.text).join(" ∧ ");
+    const sels = prelude.split(",").map(normSelector).filter(Boolean);
+    const bodyLine = lineAt(clean, i);
+    splitDecls(body).forEach((d, idx) => {
+      const k = d.text.indexOf(":");
+      if (k < 0) return;
+      const prop = d.text.slice(0, k).trim().toLowerCase();
+      let value = d.text.slice(k + 1).trim().replace(/\s+/g, " ");
+      if (!prop) return;
+      const important = /!\s*important\s*$/i.test(value);
+      if (important) value = value.replace(/!\s*important\s*$/i, "").trim();
+      out.push({
+        file: rel,
+        line: bodyLine + (body.slice(0, d.off).match(/\n/g)?.length ?? 0) + (/^\s*\n/.test(d.text) ? (d.text.match(/^\s*/)?.[0].match(/\n/g)?.length ?? 0) : 0),
+        layer,
+        cond,
+        sels,
+        rule,
+        idx,
+        prop,
+        value,
+        important,
+      });
+    });
+    rule++;
+    // 规则体已吞掉；`j` 指着那个 `}`（或异常的 `{`），交回主循环照常出栈 / 记账。
+    stack.push({ kind: "other", text: "<rule>" });
+    i = j - 1;
+    preludeStart = j;
+  }
+  return out;
+}
+
+/**
+ * 简写 → 它盖住的长写。**只收会被「后面的简写」整条盖掉的那几族**；表外的简写（`grid`、`mask`…）当它只盖同名那一条（保守：少判死，不多判）。
+ * 逻辑属性族（`margin-block` 等）按同一个道理进表。
+ */
+const SHORTHAND: Readonly<Record<string, readonly string[]>> = {
+  margin: ["margin-top", "margin-right", "margin-bottom", "margin-left", "margin-block", "margin-inline", "margin-block-start", "margin-block-end", "margin-inline-start", "margin-inline-end"],
+  padding: ["padding-top", "padding-right", "padding-bottom", "padding-left", "padding-block", "padding-inline", "padding-block-start", "padding-block-end", "padding-inline-start", "padding-inline-end"],
+  inset: ["top", "right", "bottom", "left"],
+  gap: ["row-gap", "column-gap"],
+  overflow: ["overflow-x", "overflow-y"],
+  flex: ["flex-grow", "flex-shrink", "flex-basis"],
+  "flex-flow": ["flex-direction", "flex-wrap"],
+  background: ["background-color", "background-image", "background-position", "background-size", "background-repeat", "background-attachment", "background-origin", "background-clip"],
+  font: ["font-style", "font-variant", "font-weight", "font-stretch", "font-size", "line-height", "font-family"],
+  border: ["border-width", "border-style", "border-color", "border-top", "border-right", "border-bottom", "border-left", "border-top-width", "border-right-width", "border-bottom-width", "border-left-width", "border-top-style", "border-right-style", "border-bottom-style", "border-left-style", "border-top-color", "border-right-color", "border-bottom-color", "border-left-color"],
+  "border-top": ["border-top-width", "border-top-style", "border-top-color"],
+  "border-right": ["border-right-width", "border-right-style", "border-right-color"],
+  "border-bottom": ["border-bottom-width", "border-bottom-style", "border-bottom-color"],
+  "border-left": ["border-left-width", "border-left-style", "border-left-color"],
+  "border-color": ["border-top-color", "border-right-color", "border-bottom-color", "border-left-color"],
+  "border-width": ["border-top-width", "border-right-width", "border-bottom-width", "border-left-width"],
+  "border-style": ["border-top-style", "border-right-style", "border-bottom-style", "border-left-style"],
+  "border-radius": ["border-top-left-radius", "border-top-right-radius", "border-bottom-right-radius", "border-bottom-left-radius"],
+  outline: ["outline-width", "outline-style", "outline-color"],
+  transition: ["transition-property", "transition-duration", "transition-timing-function", "transition-delay"],
+  animation: ["animation-name", "animation-duration", "animation-timing-function", "animation-delay", "animation-iteration-count", "animation-direction", "animation-fill-mode", "animation-play-state"],
+  "list-style": ["list-style-type", "list-style-position", "list-style-image"],
+  "text-decoration": ["text-decoration-line", "text-decoration-style", "text-decoration-color", "text-decoration-thickness"],
+  "place-items": ["align-items", "justify-items"],
+  "place-content": ["align-content", "justify-content"],
+  "place-self": ["align-self", "justify-self"],
+};
+
+/** 后写的 `later` 这条会不会整条盖掉先写的 `earlier` 那个属性。纯。 */
+export const covers = (later: string, earlier: string): boolean =>
+  later === earlier || (SHORTHAND[later]?.includes(earlier) ?? false);
+
+/** 一扇窗口的 CSS 清单（`<link rel="stylesheet">` 的顺序）。 */
+export function windowSheets(root: string): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const h of ["index.html", "settings.html", "viewer.html"]) {
+    const text = readFileSync(join(root, h), "utf8");
+    out.set(h, [...text.matchAll(/<link\s+rel="stylesheet"\s+href="\/([^"]+)"/g)].map((m) => m[1]));
+  }
+  return out;
+}
+
+/** `layers.css` 里那一句 `@layer a, b, …;` 的层序（先写的优先级低）。 */
+export function layerOrder(root: string): string[] {
+  const text = stripCssComments(readFileSync(join(root, "src/styles/layers.css"), "utf8"));
+  const m = /@layer\s+([^;{]+);/.exec(text);
+  return m ? m[1].split(",").map((x) => x.trim()) : [];
+}
+
+/**
+ * 判死（纯）：声明 `d` 是死的 ⇔ 对它的**每一个**选择器，在**每一扇**载入它那份文件的窗口里，
+ * 都有另一条声明 `e` —— 同一个选择器、同一条件链、`e` 的属性整条盖住 `d` 的属性，而且按级联 `e` 赢：
+ * ① 重要性：`d` 带 `!important` 而 `e` 不带 ⇒ `e` 不赢；
+ * ② 层：不在层里的赢过所有层；同为有层的，层序靠后的赢；
+ * ③ 同层：窗口清单里靠后的文件赢；同一文件里靠后的规则赢；同一规则里靠后的声明赢。
+ * 选择器逐字相同 ⇒ 特异度相同、命中的元素相同 ⇒ 这一步不需要 DOM。
+ */
+export function deadDeclarations(
+  decls: readonly CssDecl[],
+  windows: ReadonlyMap<string, readonly string[]>,
+  layers: readonly string[],
+): CssDecl[] {
+  const layerRank = (l: string): number => (l === "" ? layers.length : layers.indexOf(l));
+  const wins = (e: CssDecl, d: CssDecl, sheets: readonly string[]): boolean => {
+    if (d.important && !e.important) return false;
+    if (e.important && !d.important) return true;
+    const le = layerRank(e.layer);
+    const ld = layerRank(d.layer);
+    if (le !== ld) return (e.important ? le < ld : le > ld);
+    const fe = sheets.indexOf(e.file);
+    const fd = sheets.indexOf(d.file);
+    if (fe !== fd) return fe > fd;
+    if (e.rule !== d.rule) return e.rule > d.rule;
+    return e.idx > d.idx;
+  };
+  const bySel = new Map<string, CssDecl[]>();
+  for (const x of decls) for (const s of x.sels) {
+    const k = `${x.cond}\u0000${s}`;
+    (bySel.get(k) ?? bySel.set(k, []).get(k)!).push(x);
+  }
+  return decls.filter((d) => {
+    const inWindows = [...windows.values()].filter((w) => w.includes(d.file));
+    if (inWindows.length === 0) return false; // 不进任何窗口清单的（CSS Modules）不在射程里
+    return d.sels.every((s) => {
+      const rivals = (bySel.get(`${d.cond}\u0000${s}`) ?? []).filter((e) => e !== d && covers(e.prop, d.prop));
+      return inWindows.every((w) => rivals.some((e) => w.includes(e.file) && wins(e, d, w)));
+    });
+  });
+}
+
+/** 走 `src/` 的全部 CSS，收声明。 */
+export function cssDeclarations(root: string, anomalies?: string[]): CssDecl[] {
+  return walk(join(root, "src"), (p) => p.endsWith(".css")).flatMap((p) =>
+    cssDeclsOf(relOf(root, p), readFileSync(p, "utf8"), anomalies),
+  );
+}
