@@ -17,10 +17,12 @@ use std::path::{Path, PathBuf};
 /// 一条没人数的合法边会长成一张网 —— backend 那份头注逐字记着这句话。
 const ALLOWED_OBSERVE_TO_CONTROL: &[(&str, &str)] = &[
     (
-        "crate::backend::control::local_backend::resolve_beside_this_exe",
+        "crate::backend::control::local_backend::resolve_in_use",
         "读面起本机后端拿 stdout 之前，先要知道那份本机后端在哪。\
              「装在哪、找过哪儿、算不算找到」是控制面立的事实（起进程与看住它的那半住在那里），\
-             读面自己再解析一份路径就是第二个权威源",
+             读面自己再解析一份路径就是第二个权威源。\
+             〔WIN1 · RT1 F2〕从 `resolve_beside_this_exe` 换成它：「这个进程正在用的那份」也是控制面记下的事实，\
+             只问 exe 旁边在裸 exe 的机器上恒答「不在」（D11 的反面）。换一格、条数不变",
     ),
     (
         "crate::backend::control::local_backend::Resolved::Found",
