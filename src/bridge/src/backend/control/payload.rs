@@ -426,6 +426,13 @@ pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
     let inner = argv.join(" ");
     let cd = match spec.cwd {
         Some("") => return Err(refuse(&copy_text("rsPayload.cwd.empty", &[]))),
+        // 〔TL3 · §47 ②〕工作目录是从本进程外面来的自由文本路径 ⇒ 先过形式 ＋ 拒绝集，再走唯一的 quote。
+        Some(c) if !shell_quote_core::posix_free_path_ok(c) => {
+            return Err(refuse(copy_text(
+                "rsPayload.cwd.bad",
+                &[("value", &format!("{c:?}"))],
+            )))
+        }
         Some(c) => format!("cd {} && ", shell_quote_core::posix_quote(c)),
         None => String::new(),
     };
@@ -611,6 +618,13 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
             };
             let cflag = match cwd {
                 Some("") => return Err(refuse(&copy_text("rsPayload.cwd.empty", &[]))),
+                // 〔TL3 · §47 ②〕同 `render_payload` 那一格。
+                Some(c) if !shell_quote_core::posix_free_path_ok(c) => {
+                    return Err(refuse(copy_text(
+                        "rsPayload.cwd.bad",
+                        &[("value", &format!("{c:?}"))],
+                    )))
+                }
                 Some(c) => format!(" -c {}", shell_quote_core::posix_quote(c)),
                 None => String::new(),
             };

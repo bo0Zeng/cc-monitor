@@ -1934,3 +1934,51 @@ fn the_launch_token_env_var_has_the_same_name_on_both_halves() {
 // 〔US1 · 第四波 4D〕`设计/20 §7` 步 4（全量注入带开关、codex 不注、撞名不注、两种降级分开）那一组判据随决策表搬进后端：
 //   `tests/backend/accounts/upstream/endpoint_tests.rs::us1_the_launch_table_matches_the_hand_written_one`（逐格手写期望）；
 //   「登记了默认上游的 agent」只在适配层那一格（NT2 · V25），monitor 这一侧的那份登记表整删。
+
+/// 〔TL3 · `INVARIANTS §47` ②〕工作目录是自由文本路径：载荷的 `cd` 与外层 `new-session -c` 两处、以及 ccm 那条路的 `--cwd`，
+/// 都过 `posix_free_path_ok`（POSIX 绝对 · 无 `..` 段 · 不含 NUL / CR / LF）—— **不拒 shell 元字符**，**正反各一格**。
+/// 要求住址：`INVARIANTS §47` ②；主会话 09-26 按 V131 裁「自由文本路径的拒绝集只收控制字符（NUL / CR / LF）、
+/// 形式判定按各自语境（cwd / 目录要绝对路径等）、然后唯一一处 quote」。
+#[test]
+fn a_free_text_cwd_passes_real_names_and_refuses_what_quote_cannot_hold() {
+    let payload = |cwd: &str| {
+        render_payload(&PayloadSpec {
+            env: &[],
+            cwd: Some(cwd),
+            launcher: "claude",
+            args: &[],
+            wrap: &[],
+        })
+    };
+    let outer = |cwd: &str| {
+        render_tmux_outer(
+            &TmuxOuter::Create {
+                target: TmuxTarget::Raw("cc-x"),
+                cwd: Some(cwd),
+                ccm_sid: None,
+            },
+            Some("claude"),
+        )
+    };
+    for good in ["/home/u/Bob's notes", "/data/照片 (2019)", "/srv/a&b;c"] {
+        let p = payload(good).unwrap_or_else(|e| panic!("真实好值被拒了：{good:?} ⇒ {e}"));
+        assert!(p.contains(&shell_quote_core::posix_quote(good)), "{p}");
+        outer(good).unwrap_or_else(|e| panic!("外层那一格拒了真实好值：{good:?} ⇒ {e}"));
+    }
+    for bad in [
+        "rel/dir",
+        "~/proj",
+        "/home/u/../etc",
+        "/home/u/x\ny",
+        "/home/u/x\ry",
+        "/home/u/x\0",
+    ] {
+        for (which, r) in [("载荷", payload(bad)), ("外层", outer(bad))] {
+            let e = r.expect_err(&format!("{which}那一格把坏值拼进去了：{bad:?}"));
+            assert!(
+                e.starts_with(REFUSE_TAG) && e.contains(&format!("{bad:?}")),
+                "{which}：拒了，但没打「拒」的标或没说清是哪个值：{e}"
+            );
+        }
+    }
+}

@@ -311,3 +311,26 @@ fn the_reach_table_refuses_a_backend_path_that_must_not_be_spliced() {
     }
     assert!(!lock(&t).contains_key("bad"), "拒了，却还是登进了可达表");
 }
+
+/// ★ 〔TL3 · `INVARIANTS §47` ②〕一次性子命令的 argv 是自由文本：拒绝集只收 NUL / CR / LF（**不拒 shell 元字符**），
+/// 判不过一次都不拨；真实名字（带 `'` `(` `&` 的目录名 · 中文 · 空格）照发。要求住址：`INVARIANTS §47` ②；
+/// 主会话 09-26 按 V131 裁「自由文本路径……拒绝集只收控制字符（NUL / CR / LF）……不拒 shell 元字符（拒过头同样违反 §47）」。
+#[tokio::test]
+async fn one_shot_argv_refuses_only_what_the_quote_cannot_hold() {
+    let table = Table::default();
+    answer_reach_with(&reach_args("dev", "10.0.0.2", "/opt/b"), &table).unwrap();
+    let far = Recorder::default();
+    for good in ["-home-u-Bob's notes", "照片 (2019)", "a & b; c"] {
+        ask_with("dev", &["--list-sessions", good], &table, &far)
+            .await
+            .unwrap_or_else(|e| panic!("真实好值被拒了：{good:?} ⇒ {e}"));
+    }
+    assert_eq!(far.n.load(Ordering::SeqCst), 3);
+    for bad in ["a\nb", "a\rb", "a\0b"] {
+        let e = ask_with("dev", &["--search", bad], &table, &far)
+            .await
+            .expect_err(&format!("坏值拼进远端命令了：{bad:?}"));
+        assert!(e.contains("dev") && e.contains(&format!("{bad:?}")), "{e}");
+    }
+    assert_eq!(far.n.load(Ordering::SeqCst), 3, "拒了却还是去拨了");
+}

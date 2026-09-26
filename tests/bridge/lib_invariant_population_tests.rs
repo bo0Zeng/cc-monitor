@@ -345,18 +345,32 @@ const QUOTE_SITES: &[QuoteRow] = &[
     ("src/backend/asset_sync.rs", 3, &[("src/backend/observe/accounts_query.rs", "is_safe_config_dir")],
      "",
      "要推过去的资产目录 JSON（本侧序列化）"),
-    ("src/backend/control/ccm/plan.rs", 29, &[("src/backend/control/ccm/plan.rs", "validate_tmux_name")],
-     "cwd · 模型名 · `--ccm-sid` · 账号配置目录 · 继承来的 `CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL`（〔US1〕`base_url_word` 认出是我们注入的那一形才拆成前后两段，认不出原样 quote）/ 启动 id · 派生登记的备注（这一层都不判；`qarg` 条件包装也算在这里）",
+    // 〔TL3 · §47 · 主会话 09-26 按 V131 裁〕cwd（绝对 · 无 `..` 段）· 启动器 · 透传参数 · 登记备注 · 继承来的三个变量 → 过 `free_text_gate` /
+    //   `inherited_gate`（拒绝集只收 NUL / CR / LF，住 `shell_quote_core::free_text_ok`）。剩下的见第四列。
+    ("src/backend/control/ccm/plan.rs", 29, &[
+        ("src/backend/control/ccm/plan.rs", "validate_tmux_name"),
+        ("src/backend/control/ccm/plan.rs", "free_text_gate"),
+        ("src/backend/control/ccm/plan.rs", "inherited_gate"),
+        ("src/bridge/crates/shell-quote-core/src/lib.rs", "free_text_ok"),
+     ],
+     "模型名 · `--ccm-sid`（主会话 09-26 裁：交 DUP1 统一定规则）· 账号配置目录（本仓自管、该走全表 —— 全表住 `observe/`，`control → observe` 禁止；挪家待 DUP1 J2，今天只过自由文本那一层）",
      "tmux 目标 `=名:` 的形 · 两个提示格式串常量 · cc-bus 脚本路径 · 本侧拼好的载荷"),
     ("src/backend/control/tmux_hook.rs", 2, &[], "",
      "本进程自己的可执行文件路径 · 本侧拼的 hook 命令"),
-    // 〔TL3 · §47〕路径那一格在 `register` 进门判（第三列）；argv 那一半（自由文本）仍只靠 quote —— 自由文本路径要不要拒元字符待裁（`TL3.md §7.3` 问 1）。
-    ("src/backend/remote_ask.rs", 2, &[("src/backend/observe/accounts_query.rs", "is_safe_config_dir")],
-     "一次性子命令的 argv：项目目录名 · 会话路径 · 搜索词等（自由文本）",
+    // 〔TL3 · §47〕路径那一格在 `register` 进门判；argv（自由文本）在 `ask_with` 拼之前过拒绝集（只收 NUL / CR / LF，主会话 09-26 按 V131 裁）。
+    ("src/backend/remote_ask.rs", 2, &[
+        ("src/backend/observe/accounts_query.rs", "is_safe_config_dir"),
+        ("src/bridge/crates/shell-quote-core/src/lib.rs", "free_text_ok"),
+     ],
+     "",
      ""),
     ("src/bridge/src/acct_iso_deploy.rs", 1, &[("src/bridge/src/acct_iso_deploy.rs", "is_safe_remote_acct_iso_dir")], "", ""),
-    ("src/bridge/src/backend/control/ccm_invocation.rs", 1, &[],
-     "ccm 调用的 argv 元素（条件 quote 包装 `argv`；账号名 · 模型 · cwd 这一层不判）",
+    // 〔TL3 · §47〕cwd（`shell_quote_core::posix_free_path_ok`）· 透传参数（`free_text_ok`）进门判；剩下的见第四列。
+    ("src/bridge/src/backend/control/ccm_invocation.rs", 1, &[
+        ("src/bridge/crates/shell-quote-core/src/lib.rs", "posix_free_path_ok"),
+        ("src/bridge/crates/shell-quote-core/src/lib.rs", "free_text_ok"),
+     ],
+     "模型名 · resume 的 sid（主会话 09-26 裁：交 DUP1）· 账号名（① 标识符，本次裁决没点到）",
      ""),
     ("src/bridge/src/backend/control/local_backend.rs", 1, &[("src/bridge/src/backend/control/payload.rs", "config_dir_command_safe")], "",
      "本机后端的落点（本侧算的 `~/.cc-monitor/bin/…`）· 〔TL3〕远端那台的后端落点（`sftp.rs::put_ccm_entry` 交进来之前已过 `RemoteConfig::backend_path_for_shell`）"),
@@ -366,12 +380,14 @@ const QUOTE_SITES: &[QuoteRow] = &[
          ("src/bridge/src/backend/control/payload.rs", "rbind_token_shape_ok"),
          ("src/bridge/crates/relay-route-core/src/lib.rs", "base_url_shape_ok"), // 〔US1〕payload.rs 里是 `pub use … as relay_base_url_shape_ok`
          ("src/bridge/src/backend/control/payload.rs", "check"),
+         ("src/bridge/crates/shell-quote-core/src/lib.rs", "posix_free_path_ok"), // 〔TL3 · §47〕cwd 两处
      ],
-     "模型名（刻意宽容渲染：渲错了远端 claude 自己报错）· cwd（只拒空串）",
+     "模型名（今天「刻意宽容渲染」；主会话 09-26 裁：交 DUP1 统一定规则）",
      "本侧渲染好的载荷整串 · 〔US1〕中转前缀里的中转口地址与钥匙文件路径（本侧的）"),
     ("src/bridge/src/backend/control/tmux.rs", 1, &[("src/bridge/src/backend/control/tmux.rs", "is_safe_tmux_target")], "", ""),
-    ("src/bridge/src/filewin/shell.rs", 1, &[],
-     "文件窗口的当前目录（那台列出来的路径，自由文本；只拒空）",
+    // 〔TL3 · §47〕文件窗口的当前目录（自由文本路径）拼进 `cd` 之前过 `posix_free_path_ok`（POSIX 绝对 · 无 `..` 段 · 不含 NUL / CR / LF）。
+    ("src/bridge/src/filewin/shell.rs", 1, &[("src/bridge/crates/shell-quote-core/src/lib.rs", "posix_free_path_ok")],
+     "",
      ""),
     ("src/bridge/src/history.rs", 1, &[], "", "本侧铸的启动 id"),
     ("src/bridge/src/launch.rs", 1, &[], "",
@@ -381,8 +397,10 @@ const QUOTE_SITES: &[QuoteRow] = &[
     ("src/bridge/src/sftp.rs", 2, &[("src/bridge/src/backend/control/payload.rs", "config_dir_command_safe")],
      "",
      "身份戳正则（构建期常量拼的）"),
-    ("src/bridge/src/shell_dialect.rs", 1, &[],
-     "别名那一行的 argv 词（条件 quote 包装 `word`；词本身这一层不判，别名名另有 `name_is_valid`）",
+    // 〔TL3 · §47〕订正：词本身**是判了的** —— 渲染只经 `account_aliases::render`，它先过 `check_alias`（拒控制字符 · `arg_is_passable` · 旗表闭集），
+    //   不过的那一条进 `problems`、不渲。那道拒绝集收的是全部控制字符（比主会话 09-26 裁的 NUL / CR / LF 宽一点，既有、没放松）。
+    ("src/bridge/src/shell_dialect.rs", 1, &[("src/bridge/src/account_aliases.rs", "check_alias")],
+     "",
      "我们那份别名文件的路径"),
     // 〔TL3 · §47〕1 → 2：测试连接的探针先前把 `backendPath` **原样**当命令串交出去（裸插值，这张表看不见），改走唯一的 quote；
     //   两处都先过 `RemoteConfig::backend_path_for_shell`（规则 = `config_dir_command_safe`）。
@@ -432,8 +450,10 @@ fn every_file_that_quotes_a_value_into_a_shell_line_is_registered() {
     }
     // 读数（不是判据）：只靠 quote 的文件有几份 —— 报告里要写这个数，改了会在这里看到。
     let open = QUOTE_SITES.iter().filter(|r| !r.3.is_empty()).count();
-    assert_eq!(open, 6, "「有外部值只靠 quote」的文件数变了（登记 6 份；〔LOC1a 合入〕remote_branch.rs 的 exec 那一趟删了 ⇒ 10 → 9；\
-        〔TL3 · §47〕`backendPath` 一族补上形式判定 ＋ 拒绝集 ⇒ asset_sync.rs · sftp.rs · ssh_source.rs 三份出列 ⇒ 9 → 6）：多了是新缺口，少了是补上了 —— 改这个数并在提交信息里写清是哪份");
+    assert_eq!(open, 3, "「有外部值只靠 quote」的文件数变了（登记 3 份；〔LOC1a 合入〕remote_branch.rs 的 exec 那一趟删了 ⇒ 10 → 9；\
+        〔TL3 · §47〕`backendPath` 一族补上形式判定 ＋ 拒绝集 ⇒ asset_sync.rs · sftp.rs · ssh_source.rs 三份出列 ⇒ 9 → 6；\
+        〔TL3 · 主会话 09-26 按 V131 裁〕自由文本那一层补上 ⇒ remote_ask.rs · filewin/shell.rs · shell_dialect.rs（订正）三份出列 ⇒ 6 → 3，\
+        余下 plan.rs · payload.rs · ccm_invocation.rs 卡在模型名 / sid（交 DUP1）与账号名 / 配置目录的家）：多了是新缺口，少了是补上了 —— 改这个数并在提交信息里写清是哪份");
 }
 
 /// 〔TL3 · `INVARIANTS §47` ②〕monitor 生产段里读 `.backend_path` 字段的地方 == 登记（两向，含处数）。
