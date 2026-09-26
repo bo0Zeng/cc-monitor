@@ -10824,6 +10824,16 @@
       "zh": "在此打开终端",
       "args": []
     },
+    "beFilesCommit.exdev.noName": {
+      "kind": "error",
+      "zh": "目标 {rel} 没有文件名",
+      "args": ["rel"]
+    },
+    "beFilesCommit.exdev.copyFailed": {
+      "kind": "error",
+      "zh": "暂存区与目标不在同一个盘上，改走复制也没成：{e}。目标没动，暂存件还在",
+      "args": ["e"]
+    },
     "rsFilewinCopy.ui.askOverwriteMany": {
       "kind": "body",
       "zh": "远端已经有这 {n} 个同名文件了，要覆盖吗？",
