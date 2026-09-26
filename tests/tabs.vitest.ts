@@ -5499,7 +5499,8 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
     vi.mocked(invoke).mockImplementation(((cmd: string, a?: { from: number }) =>
       Promise.resolve(
         cmd === "read_session_lines"
-          ? { from: a!.from, next: a!.from + 1, eof: false, payloads: [mk("dl", a!.from)] }
+          ? // 第 30 行到头：期限一直在的话（每页重新计时那一形）会一路问到这里 —— 问 20 次、干净地红，而不是无限问下去把 worker 撑爆
+            { from: a!.from, next: a!.from + 1, eof: a!.from >= 30, payloads: [mk("dl", a!.from)] }
           : undefined,
       )) as never);
     tm.onLine(mk("dl", 10));
