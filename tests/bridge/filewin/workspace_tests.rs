@@ -17,8 +17,11 @@
 //! | [`splitting_and_unsplitting`] | 开双栏 ⇒ 右栏落在焦点那栏的目录上、焦点给它；收 ⇒ 回一栏 | 期望手写 |
 //! | [`right_click_menus_open_on_both_sides`] | 两栏各右键一次，两次菜单**都真的摆出来**（序号是进程级的，两栏不撞） | 菜单那一块的矩形从 egui 的内存里读 |
 //! | [`copy_across_speaks_files_copy_with_a_common_root`] | 线上那一行 `files-copy` 的 `root` / `from` / `to` 逐格相等（合成后端） | 期望手写；实得是合成后端真收到的那一行 |
-//! | [`copy_across_refuses_what_it_cannot_do_and_sends_nothing`] | 没开双栏 / 选了两项 / 选了目录 / 两栏同目录 ⇒ 出声、线上零条（带正控：合法那一形恰好一条） | 零命中读的是线上那本账 |
+//! | [`copy_across_refuses_what_it_cannot_do_and_sends_nothing`] | 没开双栏 / 没选 / 选中里有有损名 / 两栏同目录 ⇒ 出声、线上零条（带正控：合法那一摞恰好两条） | 零命中读的是线上那本账 |
+//! | [`copy_across_takes_the_whole_selection_and_a_directory_goes_recursive`] | 〔W5-FILES · `设计/60 §6.2`〕一摞（文件 ＋ 目录）⇒ 线上两行逐格相等，目录那行带 `recursive: true` | 期望手写；实得是合成后端真收到的 |
 //! | [`across_args_cuts_paths_at_the_common_directory`] | 公共前缀那一刀逐格相等（含只在根下相交的那一形） | 期望手写 |
+//! | [`dragging_rows_onto_the_other_side_copies_them_and_dropping_back_does_nothing`] | 〔W5-FILES · `设计/60 §6.2`「行拖到另一栏的手势」〕合成指针拖起左栏一行 ⇒ 拖着时画「复制 1 项到另一栏」、松在右栏 ⇒ 线上恰一条 `files-copy`（逐格相等）；阴性：拖回本栏松手 ⇒ 零条 | 实得是合成后端真收到的；期望手写 |
+//! | [`ctrl_t_and_ctrl_w_open_and_close_tabs_on_the_focused_side`] | 〔W5-FILES · `设计/60 §6.2` 标签页快捷键 ＋ `§6.3` 键盘四道闸〕Ctrl+T / Ctrl+W 只作用于焦点那一栏（两栏各自的标签数逐格相等）；有一问摆着 ⇒ 零作用；不按 Ctrl 的 T ⇒ 零作用 | 标签数读的是各栏自己的表；期望手写 |
 //!
 //! ⚠ 买不到：真窗口真画在屏幕上；真的拖一行过去（手势没做，理由住 `super` 头注）。
 
@@ -435,6 +438,8 @@ async fn copy_across_speaks_files_copy_with_a_common_root() {
     assert_eq!(ws.pane_on(0).copy_board.rounds(), 0);
 }
 
+/// 〔W5-FILES〕做不了的那几形：没开双栏 / 一项都没选 / 选了有损名 / 两栏同目录 ⇒ 出声、线上零条（带正控）。
+/// 〔FW34 那一版〕「选了目录」「选了两项」也在这里 —— 今天那两形**做得了**（见下一条），从阴性挪成了正控。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn copy_across_refuses_what_it_cannot_do_and_sends_nothing() {
     use crate::filewin::select::Intent;
@@ -446,40 +451,29 @@ async fn copy_across_refuses_what_it_cannot_do_and_sends_nothing() {
     // ② 一项都没选。
     ws.focus_side(0);
     assert!(!ws.copy_to_other(None));
-    // ③ 选了目录（第二行）。
-    ws.pane_on_mut(0).apply_intent(
-        Intent::Step {
-            by: 1,
-            extend: false,
-        },
-        0.0,
-        None,
-    );
-    ws.pane_on_mut(0).apply_intent(
-        Intent::Step {
-            by: 1,
-            extend: false,
-        },
-        0.0,
-        None,
-    );
-    assert_eq!(ws.pane_on(0).picked_name(), Ok("d".to_string()));
-    assert!(!ws.copy_to_other(None));
-    // ④ 两项。
+    assert!(ws.notice().is_some());
+    // ③ 选中的一摞里有一个有损名 ⇒ 整摞不做。
+    {
+        let mut rows = ws.pane_on(0).listing.rows.lock().unwrap();
+        rows.push(
+            Row {
+                lossy_name: true,
+                ..file("\u{FFFD}odd", "/srv/a")
+            }
+            .into(),
+        );
+    }
     ws.pane_on_mut(0).apply_intent(Intent::SelectAll, 0.0, None);
-    assert_eq!(ws.pane_on(0).picked_name(), Err(2));
     assert!(!ws.copy_to_other(None));
-    // ⑤ 两栏同一个目录。
-    ws.pane_on_mut(1).navigate_to("/srv/a".into());
-    ws.pane_on_mut(0).apply_intent(
-        Intent::Step {
-            by: -1,
-            extend: false,
-        },
-        0.0,
-        None,
+    assert!(
+        ws.notice().unwrap_or("").contains("\u{FFFD}odd"),
+        "没点名是哪一项：{:?}",
+        ws.notice()
     );
-    assert_eq!(ws.pane_on(0).picked_name(), Ok("x.txt".to_string()));
+    ws.pane_on(0).listing.rows.lock().unwrap().pop();
+    // ④ 两栏同一个目录。
+    ws.pane_on_mut(1).navigate_to("/srv/a".into());
+    ws.pane_on_mut(0).apply_intent(Intent::SelectAll, 0.0, None);
     assert!(!ws.copy_to_other(None));
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     assert_eq!(
@@ -488,11 +482,47 @@ async fn copy_across_refuses_what_it_cannot_do_and_sends_nothing() {
         "做不了的那几形上了线：{:?}",
         wired.cmds()
     );
-    // 正控：换回别的目录 ⇒ 恰好一条。
+    // 正控：换回别的目录 ⇒ 两项（一个文件、一个目录）各恰好一条。
     ws.pane_on_mut(1).navigate_to("/srv/b".into());
-    assert!(ws.copy_to_other(None));
+    assert!(ws.copy_to_other(None), "起不来：{:?}", ws.notice());
     settle_copy(ws.pane_on(1)).await;
-    assert_eq!(wired.count("files-copy"), 1);
+    assert_eq!(wired.count("files-copy"), 2);
+}
+
+/// 〔W5-FILES〕要求住址：`设计/60 §6.2`「复制目录 · 批量复制」＋ `§6.3`「多选时要每一项都能…才给」。
+///
+/// 左栏选中一个文件 ＋ 一个目录 ⇒ 线上两行 `files-copy` 逐格相等：文件那一行与 FW34 那一形逐字同（不多一个键），
+/// 目录那一行多 `recursive: true`、`overwrite: false`；结局一句把两件的条数加起来（合成后端：文件 1/0、目录 3/2）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn copy_across_takes_the_whole_selection_and_a_directory_goes_recursive() {
+    let (wired, mut ws) = across_rig("w5-across-batch").await;
+    ws.focus_side(0);
+    ws.pane_on_mut(0)
+        .apply_intent(crate::filewin::select::Intent::SelectAll, 0.0, None);
+    assert!(ws.copy_to_other(None), "起不来：{:?}", ws.notice());
+    settle_copy(ws.pane_on(1)).await;
+    let copies: Vec<serde_json::Value> = wired
+        .log
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|r| r["cmd"] == "files-copy")
+        .map(|r| r["args"].clone())
+        .collect();
+    assert_eq!(
+        copies,
+        vec![
+            serde_json::json!({"root": "/srv", "from": "a/x.txt", "to": "b/x.txt", "overwrite": false}),
+            serde_json::json!({"root": "/srv", "from": "a/d", "to": "b/d", "overwrite": false, "recursive": true}),
+        ],
+        "线上那两行与期望不等"
+    );
+    let last = ws.pane_on(1).copy_board.last().expect("没有结局");
+    let said = crate::filewin::copy::outcome_notice(&last).text;
+    assert!(
+        said.contains("复制完成：2 项，4 个文件、2 个目录、84 字节"),
+        "结局那句没把两件加起来：{said}"
+    );
 }
 
 #[test]
@@ -501,6 +531,9 @@ fn across_args_cuts_paths_at_the_common_directory() {
         from: from.into(),
         to: to.into(),
         name: crate::filewin::source::remote_basename(to).into(),
+        is_dir: false,
+        from_raw: None,
+        to_raw: None,
     };
     let cases: &[(&str, &str, (&str, &str, &str))] = &[
         ("/srv/a/x", "/srv/b/x", ("/srv", "a/x", "b/x")),
@@ -521,5 +554,149 @@ fn across_args_cuts_paths_at_the_common_directory() {
         common_dir("/srv/ab", "/srv/a"),
         "/srv",
         "按段比，不按字符前缀比"
+    );
+}
+
+fn ctrl(k: egui::Key) -> egui::Event {
+    egui::Event::Key {
+        key: k,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::COMMAND,
+    }
+}
+
+fn tab_counts(ws: &Workspace) -> Vec<usize> {
+    (0..ws.sides()).map(|k| ws.tabs_on(k)).collect()
+}
+
+/// 〔W5-FILES〕要求住址：`设计/60 §6.2`「标签页快捷键（Ctrl+T / Ctrl+W）」＋ `§6.3`「键盘归谁，四道闸」。
+#[test]
+fn ctrl_t_and_ctrl_w_open_and_close_tabs_on_the_focused_side() {
+    let mut ws = two_sides(pane("/l", &["a"]), pane("/r", &["b"]));
+    let mut d = Drive::new();
+    assert_eq!(ws.focus(), 1);
+    d.frame(&mut ws, vec![ctrl(egui::Key::T)]);
+    assert_eq!(tab_counts(&ws), vec![1, 2], "Ctrl+T 没落在焦点那一栏");
+    assert_eq!(ws.active_on(1), 1, "开完没切过去");
+    assert_eq!(ws.pane_on(1).cwd, "/r", "新标签没落在这一栏当前的目录上");
+    d.frame(&mut ws, vec![ctrl(egui::Key::W)]);
+    assert_eq!(
+        tab_counts(&ws),
+        vec![1, 1],
+        "Ctrl+W 没关掉焦点那一栏的当前标签"
+    );
+    // 最后一个关不掉，并且出声。
+    d.frame(&mut ws, vec![ctrl(egui::Key::W)]);
+    assert_eq!(tab_counts(&ws), vec![1, 1]);
+    assert!(ws.notice().is_some(), "最后一个标签关不掉却没说为什么");
+    // 阴性一：不按 Ctrl 的 T（打字跳转那一路）⇒ 不开标签。
+    d.frame(
+        &mut ws,
+        vec![egui::Event::Key {
+            key: egui::Key::T,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }],
+    );
+    assert_eq!(tab_counts(&ws), vec![1, 1], "不带 Ctrl 的 T 开了标签");
+    // 阴性二：焦点那一栏有一问摆着（新建空文件那个框）⇒ 键归那个框，Ctrl+T 零作用。
+    assert!(ws.pane_on_mut(1).begin_new_file());
+    d.frame(&mut ws, vec![ctrl(egui::Key::T)]);
+    assert_eq!(tab_counts(&ws), vec![1, 1], "框开着时 Ctrl+T 还是开了标签");
+    ws.pane_on_mut(1).cancel_new_file();
+    // 正控：框收掉之后同一个键开得出来；焦点换到左栏之后落在左栏。
+    ws.focus_side(0);
+    d.frame(&mut ws, vec![ctrl(egui::Key::T)]);
+    assert_eq!(
+        tab_counts(&ws),
+        vec![2, 1],
+        "焦点换到左栏之后 Ctrl+T 没落在左栏"
+    );
+}
+
+/// 〔W5-FILES〕要求住址：`设计/60 §6.2`「行拖到另一栏的手势 —— 今天只有『复制到另一栏』按钮；行上命中矩形是 `Sense::click()`，
+/// 要换成可拖并带出『从哪一行拖起』」。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dragging_rows_onto_the_other_side_copies_them_and_dropping_back_does_nothing() {
+    let (wired, mut ws) = across_rig("w5-drag").await;
+    let mut d = Drive::new();
+    let name_at = d.find(&mut ws, "x.txt");
+    assert_eq!(name_at.len(), 1, "左栏那一行的名字没画出来");
+    let start = name_at[0].center();
+    let press = |pos: egui::Pos2, pressed: bool| egui::Event::PointerButton {
+        pos,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: egui::Modifiers::NONE,
+    };
+    let right_mid = egui::pos2(SCREEN.x * 0.75, SCREEN.y * 0.5);
+    // ── 阴性：拖起来又松回本栏 ⇒ 什么都不做。
+    d.frame(&mut ws, vec![egui::Event::PointerMoved(start)]);
+    d.frame(&mut ws, vec![press(start, true)]);
+    let back = start + egui::vec2(0.0, 40.0);
+    d.frame(&mut ws, vec![egui::Event::PointerMoved(back)]);
+    assert!(ws.pane_on(0).dragging, "挪过拖动阈值之后没认成「在拖」");
+    d.frame(&mut ws, vec![press(back, false)]);
+    assert!(!ws.pane_on(0).dragging, "松手之后「在拖」没收掉");
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert_eq!(
+        wired.count("files-copy"),
+        0,
+        "松在本栏却复制了：{:?}",
+        wired.cmds()
+    );
+    // ── 正题：拖到右栏松手 ⇒ 复制过去（拖的是按下那一行）。
+    let name_at = d.find(&mut ws, "x.txt");
+    let start = name_at[0].center();
+    d.frame(&mut ws, vec![egui::Event::PointerMoved(start)]);
+    d.frame(&mut ws, vec![press(start, true)]);
+    d.frame(
+        &mut ws,
+        vec![egui::Event::PointerMoved(start + egui::vec2(40.0, 0.0))],
+    );
+    let painted = d.frame(&mut ws, vec![egui::Event::PointerMoved(right_mid)]);
+    assert!(
+        painted.iter().any(|(t, _)| t == "复制 1 项到另一栏"),
+        "拖到另一栏上方时没说「复制 1 项到另一栏」：{:?}",
+        painted.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>()
+    );
+    d.frame(&mut ws, vec![press(right_mid, false)]);
+    settle_copy(ws.pane_on(1)).await;
+    let copies: Vec<serde_json::Value> = wired
+        .log
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|r| r["cmd"] == "files-copy")
+        .map(|r| r["args"].clone())
+        .collect();
+    assert_eq!(
+        copies,
+        vec![
+            serde_json::json!({"root": "/srv", "from": "a/x.txt", "to": "b/x.txt", "overwrite": false})
+        ],
+        "拖过去那一趟线上那一行与期望不等"
+    );
+}
+
+/// 〔W5-FILES · 有损名全寻址（`设计/60 §6.2`）〕跨目录那一形按**字节**切：源在一个有损名目录里 ⇒ 根照样是按段比的公共前缀，
+/// 有损那一段发 `{"b16": …}`、合法 UTF-8 那一段照旧是字符串（期望手写）。
+#[test]
+fn across_args_cut_lossy_paths_by_their_bytes() {
+    let job = CopyJob {
+        from: "/srv/a\u{FFFD}/x".into(),
+        to: "/srv/b/x".into(),
+        name: "x".into(),
+        is_dir: false,
+        from_raw: Some(b"/srv/a\xff/x".to_vec()),
+        to_raw: None,
+    };
+    assert_eq!(
+        across_args(&job, false).unwrap(),
+        serde_json::json!({ "root": "/srv", "from": { "b16": "61ff2f78" }, "to": "b/x", "overwrite": false })
     );
 }

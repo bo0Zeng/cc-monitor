@@ -9,7 +9,7 @@
 import { describe, expect, test } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { GOLDEN_CASES, renderGoldenFixture } from "../src/launch-payload-golden.ts";
+import { GOLDEN_CASES, renderGoldenFixture } from "./test-support/launch-payload-golden.ts";
 import { renderCliGoldenFixture } from "../src/launch-cli-golden.ts";
 
 // `import.meta.url` 在 vitest 里不是 `file:` scheme（实测 `The URL must be of scheme file`）——
@@ -44,7 +44,7 @@ describe("载荷黄金串夹具（U8c-1 跨语言对拍的 TS 半边）", () => 
   });
 
   // ⚠ 这是**相等**不是包含 —— 反空真：`EnvOp` 加了变体却没加用例 ⇒ 红；删了用例也红。
-  //   清单跟着 `src/launch-plan.ts::EnvOp` 走，改一侧必须回来改这里。
+  //   清单跟着 `src/launch-types.ts::EnvOp` 走，改一侧必须回来改这里。
   test("五种 EnvOp 每一种都至少被一条用例覆盖", () => {
     const seen = new Set(GOLDEN_CASES.flatMap((c) => c.env.map((op) => op.kind)));
     expect([...seen].sort()).toEqual(

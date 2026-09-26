@@ -100,6 +100,21 @@ pub(crate) fn register(table: &Table, args: &Value) -> Result<String, (&'static 
                 "`origin` given without `backend` (the backend path on that machine)",
             ),
         ))?;
+    // 〔TL3 · `INVARIANTS §47` ②〕可达表是这台后端往远端拼命令时「那台后端在哪」的唯一出处（`command_line` ·
+    //   `asset_sync::{pull_command, push_command}` 都读它）⇒ 在这扇唯一的写口先过放行判定，判不过一条都不登记。
+    //   规则是本后端里那一份同族判定（形式 ＋ 拒绝集，`accounts_query::is_safe_config_dir`），不另写。
+    if !crate::observe::accounts_query::is_safe_config_dir(backend) {
+        return Err((
+            "bad_args",
+            copy_text(
+                "beRemoteAsk.register.backendPathRefused",
+                &[
+                    ("origin", &o.to_string()),
+                    ("path", &format!("{backend:?}")),
+                ],
+            ),
+        ));
+    }
     let mut t = lock(table);
     if !t.contains_key(o) && t.len() >= MAX_REACH {
         return Err((

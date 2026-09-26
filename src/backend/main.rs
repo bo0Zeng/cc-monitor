@@ -152,11 +152,8 @@ async fn main() {
             // 而 monitor 的账号 0 路径**真的在发这条命令**。
             // 测试当时抓不到，是因为它们直接调 `observe::accounts_query::run`、**绕过了本处调度**。
             // 现由 `observe::accounts_query::tests::main_dispatches_every_subcommand_we_handle` 钉住。
-            // 〔`A3` 第二波〕本机那一侧的 `cc-acct-iso` 两问 —— 住账号域（不住 `observe/`：shellinit 要起进程）。
-            // ⚠ 两条臂各写一行（不合成 `A | B`）：合起来超宽，`cargo fmt` 会把臂体折成块，
-            //   而 `argv_table_guard` 按行取臂体、块体会被判成「不是一次调用」。
-            Some("--acct-iso-status") => emit_answer(accounts::iso::answer(&args)),
-            Some("--acct-iso-shellinit") => emit_answer(accounts::iso::answer(&args)),
+            // 〔LOC1a · 第四波 4D〕`cc-acct-iso` 两问的 argv 形两臂退役：它们上了帧面（`acct-iso-status` /
+            //   `acct-iso-shellinit`），CLI 面由帧面自动派生、走下面 `cli_control` 那一臂（同名 flag）。
             Some("--list-accounts")
             | Some("--session-accounts")
             | Some("--account-trust")
@@ -271,19 +268,6 @@ async fn main() {
 
 /// 造那一帧 hello。**抽出来是因为两条载体都要发它**，而它必须只有一份 ——
 /// 两份 hello 会各自漂，而这一帧是仓外 aterm 按精确字节在读的东西。
-/// 〔`A3` 第二波〕把账号域产出的一次查询答案写出去 —— 进程的 stdout / stderr 归入口这一处。
-///
-/// 账号域（`accounts/`）不自己 `print`：其中的上游选择同时挂在 `--relay` 进程上，它的每一条输出都在
-/// 中转日志白名单底下（`relay::creds_guard`），而查询的输出不是日志。理由全文见
-/// `accounts::iso::Answer` 头注。
-fn emit_answer(a: accounts::iso::Answer) -> i32 {
-    print!("{}", a.stdout);
-    if let Some(e) = a.stderr {
-        eprintln!("{e}");
-    }
-    a.code
-}
-
 fn build_hello(agent_home: &std::path::Path) -> Frame {
     Frame::Hello {
         v: PROTO_VERSION,
@@ -335,6 +319,8 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
         // `the_answer_is_a_function_of_the_machine_not_of_the_build` 钉的是另一半 ——
         // **空表不等于这个字段是个编译期常量**。
         unavailable: Vec::new(),
+        // 〔HX2〕回显起我的宿主交来的那几格（名单 `wire::HOST_ECHO_ENVS`）；一格都没交 ⇒ 省略、线上字节不变。
+        host_env: wire::host_env_from(|name| std::env::var(name).ok()),
     }
 }
 
@@ -403,7 +389,9 @@ async fn run_over_stdio(
     // 〔HX1〕收信号那一支**不丢写者**：排空期间它照常把在飞命令的最终应答写回去（`inbound::exit_after_drain`）；
     //   入方向 reader 也留着 —— 新来的阻塞命令要有人回它一句 `shutting_down`。
     let stop = inbound::shutdown_listener();
-    let writer = writer_task(stdout, rx, reply_rx);
+    // 〔TAP · V124〕这条流连接的 tap 接收端（中转抄出来的 SSE 事件，最低优先、可丢）。
+    let tap_rx = tap::attach();
+    let writer = writer_task(stdout, rx, reply_rx, tap_rx);
     tokio::pin!(writer);
     let signalled = tokio::select! {
         _ = &mut writer => {
@@ -638,9 +626,9 @@ async fn serve_listening(
         Err(e) => {
             let in_use = e.kind() == std::io::ErrorKind::AddrInUse;
             // ★★ **绑不上就退出，绝不自己换端口。**
-            // 换端口 = 每台机 N 个后端，各自往 tmux server 装 `[50]` 槽位的全局 hook
-            // 互相盖（`control/tmux_hook.rs::install_hooks`，**没有关掉它的开关**，
-            // 载荷里烤着那一个后端的 pid+starttime）⇒ 比今天更糟。
+            // 换端口 = 每台机 N 个后端（中转口与全部 SSH 各 N 份）⇒ 比今天更糟。
+            // 〔HX2〕从前这里还写着「各自往 tmux server 装 `[50]` 槽位的全局 hook 互相盖」—— 今天 hook 按实例一格
+            // （`control/tmux_hook.rs::install_hooks`），那一条不成立了。
             tracing::error!(
                 "绑不上 {addr}（{e}）⇒ 退出。\n\
                  这个口上已经有东西了：宿主该**连上去读一行 hello 比对**，\n\
@@ -706,6 +694,8 @@ async fn serve_listening(
                 let (reply_tx, reply_rx) =
                     tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
                 let mut inbound_task = inbound::spawn(reader, reply_tx.clone(), hello_flushed);
+                // 〔TAP · V124〕这条流连接的 tap 接收端：上一条连接的那一条随之作废（hub 里只装此刻这一条）。
+                let tap_rx = tap::attach();
                 let done = done_tx.clone();
                 tracing::info!("一条流已接上（认证通过）");
                 tokio::spawn(async move {
@@ -722,7 +712,7 @@ async fn serve_listening(
                     // socket 的对端关了就是走了，而 stdio 那边刻意对写端关闭不敏感
                     //（那是为了不让一次误关掉整个 backend —— 两条载体的取舍不同，写清楚）。
                     tokio::select! {
-                        _ = writer_task(writer, rx, reply_rx) => {
+                        _ = writer_task(writer, rx, reply_rx, tap_rx) => {
                             tracing::info!("流结束：写不出去了（客户端走了）");
                         }
                         _ = &mut inbound_task => {
@@ -792,6 +782,7 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
     mut out: W,
     mut rx: tokio::sync::mpsc::Receiver<Frame>,
     mut reply_rx: tokio::sync::mpsc::Receiver<Frame>,
+    mut tap_rx: impl tap::TapSource,
 ) {
     // ★ 应答优先，但**有预算**。
     //
@@ -808,6 +799,10 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
     const REPLY_BURST: u32 = 8;
     let mut burst = 0u32;
     loop {
+        // 〔TAP · V124〕tap 帧**排在最后**（`biased` 按书写顺序问）：只有出方向与应答此刻都没有东西时才轮到它。
+        //   它可丢（SSE 只保快，jsonl 保对），而出方向里的 `line` 帧不许因为它晚到或被挤掉 —— tap 走自己那条
+        //   有界通道（`tap::TAP_CAPACITY`），满了在中转那一侧当场丢、位置号原位说。
+        //   tap 通道被换掉（又一条流连接接上了）⇒ `recv` 回 `None`，这一臂的模式不匹配、本轮不参与，不会空转。
         let frame = if burst < REPLY_BURST {
             tokio::select! {
                 biased;
@@ -816,6 +811,7 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
                     Some(f) => { burst = 0; f }
                     None => return, // 出方向通道关了 = 寿终
                 },
+                Some(f) = tap_rx.next() => f,
             }
         } else {
             burst = 0;
@@ -826,6 +822,7 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
                     None => return,
                 },
                 Some(f) = reply_rx.recv() => f,
+                Some(f) = tap_rx.next() => f,
             }
         };
         if let Err(e) = write_frame(&mut out, &frame).await {
@@ -868,3 +865,7 @@ fn resolve_agent_home() -> PathBuf {
 
 // 🪦〔HX1 · 4D〕这里原有 `shutdown_signal`（等一次 SIGTERM / SIGINT，别处 Ctrl-C）—— 下沉到 `platform/signal.rs::shutdown_listener`〔散文墓碑〕：
 //   平台 cfg 只许住那一层，而流模式的收场（`inbound::exit_after_drain`）也要它（排空时再来一次 ⇒ 不等了）。
+
+#[cfg(test)]
+#[path = "../../tests/backend/writer_task_tests.rs"]
+mod writer_task_tests; // 〔TAP〕写者的优先序：tap 灌满时内容帧一条不少、顺序不变

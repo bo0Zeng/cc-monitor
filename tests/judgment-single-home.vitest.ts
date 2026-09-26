@@ -66,6 +66,8 @@ interface Judgment {
   status: "zero" | "open";
   /** TS 孪生的符号名（`function X` / `const X` …）。 */
   defs: string[];
+  /** 已经删掉的孪生名（一行里删了一部分时用）：不论本行状态，都必须**零处定义**。 */
+  gone?: string[];
   needles: Needle[];
   /** `open` 必填：谁在做 / 等谁拍。 */
   owner?: string;
@@ -119,10 +121,12 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     what: "POSIX 单引号",
     homes: ["shell-quote-core::posix_quote"],
     status: "open",
-    defs: ["posixQuote", "sq"],
-    needles: [{ text: "'\\\\''", count: 2 }],
-    owner: "posixQuote：LR2（删 TS 兜底一族）· sq：主会话拍（DUP1.md §4 ①）",
-    why: "posixQuote 只剩兜底渲染器在用（LR2 在删）；acct-deploy.ts::sq 驱动新建账号表单的逐字预览（即时反馈）",
+    defs: ["sq"],
+    // 〔LR2 合入〕`shell-quote.ts::posixQuote` 随 TS 兜底一族删了 ⇒ 挪进 gone、指纹 2 → 1。
+    gone: ["posixQuote"],
+    needles: [{ text: "'\\\\''", count: 1 }],
+    owner: "主会话拍（DUP1.md §4 ①）",
+    why: "acct-deploy.ts::sq 驱动新建账号表单的逐字预览（即时反馈）",
   },
   J5: {
     what: "session id 形状",
@@ -215,11 +219,10 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J14: {
     what: "中转钥匙文件的相对路径",
     homes: ["relay-route-core::KEY_FILE_REL"],
-    status: "open",
+    // 〔LR2 合入〕`launch-render-fallback.ts` 整份删了 ⇒ open → zero。
+    status: "zero",
     defs: ["RELAY_KEY_FILE_REL"],
     needles: [],
-    owner: "LR2（删 launch-render-fallback.ts 整份）",
-    why: "只剩兜底渲染器（零生产调用）在用",
   },
   J15: {
     what: "全文搜索条数上限 ＋ 多机合并排序",
@@ -517,6 +520,10 @@ describe("DUP1 判定只有一个家（设计/90 §3 判据 2）", () => {
         const want = j.status === "zero" ? 0 : 1;
         if (n !== want) bad.push(`${id}（${j.status}）：TS 生产段里 \`${d}\` 定义 ${n} 处（要 ${want}）`);
       }
+      for (const d of j.gone ?? []) {
+        const n = tsDefCount(tsAll, d);
+        if (n !== 0) bad.push(`${id}：已删的孪生 \`${d}\` 又在 TS 生产段里定义了 ${n} 处`);
+      }
       for (const nd of j.needles) {
         const hay = nd.file ? (tsByFile.get(nd.file) ?? "") : tsAll;
         if (nd.file && !tsByFile.has(nd.file)) bad.push(`${id}：指纹点着 ${nd.file}，它不在扫到的生产文件里`);
@@ -535,7 +542,7 @@ describe("DUP1 判定只有一个家（设计/90 §3 判据 2）", () => {
     // ⇒ 每个登记名各造一份最小定义、每根指纹各夹进一段代码，喂给同一个探测器，必须恰好抓到一次。
     const blind: string[] = [];
     for (const [id, j] of Object.entries(JUDGMENTS)) {
-      for (const d of j.defs) {
+      for (const d of [...j.defs, ...(j.gone ?? [])]) {
         for (const form of [`export function ${d}(x: string) {}`, `const ${d} = 1;`]) {
           if (tsDefCount(`let a = 0;\n${form}\nlet b = 0;`, d) !== 1) blind.push(`${id}：认不出 ${JSON.stringify(form)}`);
         }

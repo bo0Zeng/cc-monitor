@@ -4,13 +4,10 @@
 use super::{AgentAdapter, SessionLayout, SidStrategy};
 use std::path::PathBuf;
 
-/// CC 会话源布局:`~/.claude/{projects,sessions,tasks}`;记录 `<projects>/<enc(cwd)>/<sid>.jsonl`
-/// (读侧只 WalkDir 扫 + `file_stem`=sid,不算 enc);子会话在 `/subagents/` 段跳过。
+/// CC 会话源布局:`~/.claude/{projects,sessions,tasks}`;记录 `<projects>/<enc(cwd)>/<sid>.jsonl`。
+/// 〔LOC1b · 4D〕monitor 这一侧只剩任务目录与取 sid 的策略两格（会话子目录 / 活性目录 / 扩展名随 monitor 读本机盘那几份实现删了）。
 static CLAUDE_LAYOUT: SessionLayout = SessionLayout {
-    sessions_subdir: "projects",
-    liveness_subdir: "sessions",
     tasks_subdir: Some("tasks"),
-    record_ext: "jsonl",
     sid_strategy: SidStrategy::Stem,
 };
 

@@ -1,4 +1,5 @@
 use super::*;
+use crate::filewin::source::parent_dir;
 use crate::filewin::source::Row;
 
 /// 合成一份远端配置。**全字段合成**，不读任何真配置 ——
@@ -282,7 +283,7 @@ fn finishing_a_drop_round_triggers_exactly_one_reload() {
         asked: 0,
         skipped: 0,
         ok: 1,
-        failed: Vec::new(),
+        ..Default::default()
     });
     assert!(w.settle_finished_drops(), "跑完一趟却不重列");
     assert!(!w.settle_finished_drops(), "同一趟重列了第二次");
@@ -350,10 +351,17 @@ fn directories_lossy_names_and_out_of_range_rows_put_up_nothing() {
         lossy_name: true,
     };
     let mut w = remote_window_with_rows("/srv/data", vec![dir, lossy]);
-    assert!(!w.begin_copy(0), "目录也摆出了「复制为」框");
     assert!(!w.begin_copy(1), "有损名也摆出了「复制为」框");
     assert!(!w.begin_copy(99), "越界下标也摆出了框（或者 panic 了）");
     assert!(w.copy_prompt().is_none());
+    // 〔W5-FILES〕目录**摆得出**「复制为」框了（后端 `recursive: true`，`设计/60 §6.2`），框里记着「源是目录」
+    //   ⇒ 那一趟线上带 `recursive: true`（`copy_tests::a_directory_job_says_recursive_and_its_reply_must_count`）。
+    assert!(w.begin_copy(0), "目录摆不出「复制为」框");
+    let job = w
+        .copy_prompt()
+        .and_then(|p| p.to_job())
+        .expect("框里的名字该能用");
+    assert!(job.is_dir, "目录那一件没标成目录 —— 线上不会带 recursive");
 }
 
 /// 接不上就**出声**：远端源 ＋ 没有运行时 ⇒ 不许静默吞掉一趟复制。
@@ -1298,8 +1306,9 @@ fn the_window_starts_a_batch_through_the_shared_three_step_function() {
         "`writeops::run_writes(` 在 `shell.rs` 生产段里不是恰好一处 —— \
          多了就是长出了第二条确认流，少了就是这一条被绕过了"
     );
+    // 〔W5-FILES〕落点换成 `apply_remote_in`（根可以是当前目录的字节，有损名全寻址）；`apply_remote` 是它根为串时的那一形。
     assert_eq!(
-        prod.matches("writeops::apply_remote(").count(),
+        prod.matches("writeops::apply_remote_in(").count(),
         1,
         "做一件的落点不是恰好一处"
     );
@@ -1900,6 +1909,7 @@ async fn closing_a_dirty_pane_asks_before_throwing_the_typing_away() {
         path: "/srv/data/app.conf".into(),
         name: "app.conf".into(),
         text: "a=1\n".into(),
+        sha256: crate::filewin::find::testing::fake_sha256(""),
     });
     assert!(w.settle_opened_edits(), "到货了却没立起编辑面");
     assert!(w.editing().is_some());
@@ -1915,6 +1925,7 @@ async fn closing_a_dirty_pane_asks_before_throwing_the_typing_away() {
         path: "/srv/data/app.conf".into(),
         name: "app.conf".into(),
         text: "a=1\n".into(),
+        sha256: crate::filewin::find::testing::fake_sha256(""),
     });
     assert!(w.settle_opened_edits());
     *w.editing_text_mut().expect("编辑面不见了") = "a=2\n".into();
@@ -1964,6 +1975,7 @@ async fn a_refused_save_shows_the_reason_and_keeps_the_text() {
         path: jsonl.into(),
         name: "s.jsonl".into(),
         text: "{}\n".into(),
+        sha256: crate::filewin::find::testing::fake_sha256(""),
     });
     assert!(w.settle_opened_edits());
     *w.editing_text_mut().unwrap() = "改坏它\n".into();
@@ -2371,41 +2383,169 @@ fn opening_a_terminal_with_no_runtime_says_so_on_the_window() {
     );
 }
 
-/// 🔴 **「在此打开终端」拼出来的那一串与旧面板逐字节相同 —— 跨语言对拍。**
+/// 🔴 **「在此打开终端」拼出来的那一串 —— 三种形状，期望串手写。**
 ///
-/// 两侧不同源：期望串**现读** `tests/remote-launch.test.ts` 里旧面板那条判据的三行
-/// （`buildOpenTerminalCmd` 的黄金样例），本侧喂同样的三个入参。
-/// TS 那一份哪天改了行为（它的判据也就跟着改了），这里当场红 —— 不再是「有账、没自动对拍」。
+/// 〔LR2〕这里原来是一条跨语言对拍：期望串现读 `tests/remote-launch.test.ts` 里旧面板那条判据的三行
+/// （TS `buildOpenTerminalCmd` 的黄金样例）。那份 TS 实现生产调用方 0（旧面板已退役），
+/// 主会话按 `设计/00 §2.5 ④` ＋ `90 §3`（前端零 shell 串）裁删 ⇒ 本函数成了唯一一份，
+/// 那三行的字节**原样**搬进来当期望（行为零变化）。
 #[test]
-fn the_open_terminal_command_equals_the_old_panels_byte_for_byte() {
-    const TS: &str = include_str!("../../../tests/remote-launch.test.ts");
-    const SHELL_LINE: &str = "const shell = \"exec ${SHELL:-bash} -l\";";
-    const GOLDEN: &[(&str, &str, &str)] = &[
-        (
-            "eq(buildOpenTerminalCmd(\"/home/pi/p\"), `cd '/home/pi/p' && ${shell}`);",
-            "/home/pi/p",
-            "cd '/home/pi/p' && exec ${SHELL:-bash} -l",
-        ),
-        (
-            "eq(buildOpenTerminalCmd(\"  \"), shell);",
-            "  ",
-            "exec ${SHELL:-bash} -l",
-        ),
-        (
-            "eq(buildOpenTerminalCmd(\"/a b/c\"), `cd '/a b/c' && ${shell}`);",
-            "/a b/c",
-            "cd '/a b/c' && exec ${SHELL:-bash} -l",
-        ),
+fn the_open_terminal_command_keeps_its_three_shapes() {
+    const GOLDEN: &[(&str, &str)] = &[
+        ("/home/pi/p", "cd '/home/pi/p' && exec ${SHELL:-bash} -l"),
+        ("  ", "exec ${SHELL:-bash} -l"),
+        ("/a b/c", "cd '/a b/c' && exec ${SHELL:-bash} -l"),
     ];
-    guard_core::pin_line(TS, SHELL_LINE).expect("TS 那条黄金样例里 `shell` 那一行变了");
-    for (ts_line, input, want) in GOLDEN {
-        guard_core::pin_line(TS, ts_line)
-            .unwrap_or_else(|e| panic!("TS 那一侧的黄金样例变了 —— 两份漂开了：{e}"));
+    for (input, want) in GOLDEN {
         assert_eq!(build_open_terminal_cmd(input), *want, "入参 {input:?}");
     }
     // ⚠ 双引号那一条：模板自己**一个都不带**（`launch.rs` 拒掉含双引号的 `remote_cmd`）；
     //   路径里自带的双引号会原样进单引号里 ⇒ 那一形由 `launch.rs` 拒、窗口出声，不在这里兜。
     assert!(!build_open_terminal_cmd("").contains('"'));
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 〔FW1 · 第四波 4D · 2026-09-25〕编辑器存盘 CAS（主会话裁 D-c ＋ 09-25 认可「stale 让用户选 仍然覆盖 / 丢掉重开」）
+// 要求住址：题面 `4d-lanes.md`「主会话本批裁的」D-c；`设计/60 §3.3`「读的那一刻与写的那一刻之间被别人改了 ⇒ stale，一个字节不写」。
+// ════════════════════════════════════════════════════════════════════════
+
+/// 真点一颗按钮（按它画出来的字找位置）：先一帧建 widget 表，再移过去，再点。
+fn click_label(ctx: &egui::Context, w: &mut FileWindow, label: &str, t0: f64) {
+    let _ = crate::filewin::find::testing::frame_text(ctx, w, Vec::new());
+    let painted = crate::filewin::copy::testing::painted_text(
+        ctx,
+        egui::vec2(1280.0, 800.0),
+        t0,
+        Vec::new(),
+        |ui| w.frame_body(ui),
+    );
+    let at = crate::filewin::copy::testing::rects_of(&painted, label);
+    assert_eq!(at.len(), 1, "这一帧上「{label}」不是恰好一颗：{at:?}");
+    let pos = at[0].center();
+    let _ = crate::filewin::copy::testing::painted_text(
+        ctx,
+        egui::vec2(1280.0, 800.0),
+        t0 + 0.1,
+        vec![egui::Event::PointerMoved(pos)],
+        |ui| w.frame_body(ui),
+    );
+    let _ = crate::filewin::copy::testing::painted_text(
+        ctx,
+        egui::vec2(1280.0, 800.0),
+        t0 + 0.2,
+        crate::filewin::rows::testing::click_at(pos),
+        |ui| w.frame_body(ui),
+    );
+}
+
+async fn until(what: &str, mut f: impl FnMut() -> bool) {
+    for _ in 0..400 {
+        if f() {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    panic!("等了 2 秒还没等到：{what}");
+}
+
+/// ★★ **E §E11 那一形**：窗口开着一份文件 → 别人（机器页写别名块 / agent）在这期间写了它 → 回窗口存
+/// ⇒ **不盖**：stale、编辑框一个字不动、盘上还是别人那一份、摆出「仍然覆盖」「丢掉改动，重新打开」两颗按钮；
+/// 真点「仍然覆盖」⇒ 先重读拿此刻那一份的摘要再存 ⇒ 盘上 == 我的字、不再 dirty；
+/// 再来一次、真点「丢掉改动，重新打开」⇒ 编辑框换成盘上此刻那一份。
+/// 合成后端按 CAS 答（`find_testing::FakeBackend::cas`），走真通道、真点击。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_save_over_a_file_someone_else_changed_asks_instead_of_overwriting() {
+    use crate::filewin::editor::{OVERWRITE_LABEL, REOPEN_LABEL};
+    let path = "/srv/data/app.conf";
+    let mut w = FileWindow::seeded(
+        Source::remote(synth_cfg("edit-cas")),
+        "/srv/data".to_string(),
+        tokio::runtime::Handle::try_current().ok(),
+        vec![Row {
+            name: "app.conf".into(),
+            path: path.into(),
+            is_dir: false,
+            size: 20,
+            lossy_name: false,
+        }],
+    );
+    let be = crate::filewin::find::testing::FakeBackend::new(
+        &["files-read-text", "files-write-text"],
+        crate::filewin::find::testing::Declared::default(),
+    );
+    let disk = be.disk.clone();
+    disk.lock().unwrap().insert(path.into(), "a=1\n".into());
+    let wired = crate::filewin::find::testing::wire_up("edit-cas", be).await;
+    w.attach_line(wired.line.clone());
+    let ctx = egui::Context::default();
+
+    assert!(w.begin_edit(0, None), "打开那一趟没发出去");
+    until("打开到货", || w.edits.opens() > 0).await;
+    assert!(w.settle_opened_edits());
+    *w.editing_text_mut().unwrap() = "a=2\n".into();
+
+    // 别人在这期间写了。
+    disk.lock()
+        .unwrap()
+        .insert(path.into(), "a=1\nalias x=y\n".into());
+    assert!(w.save_edit(None));
+    until("存的结局到货", || w.edits.saves() > 0).await;
+    assert!(w.settle_saved_edits());
+    {
+        let p = w.editing().expect("stale 之后编辑面不见了");
+        assert!(p.stale, "盘上被改过了，却没摆出让人选的那一步");
+        assert_eq!(p.text, "a=2\n", "stale 把用户敲的字弄丢了");
+        assert!(p.dirty());
+        match p.last_save.clone() {
+            Some(Err(why)) => assert!(why.contains("被改过"), "那句话没说清：{why}"),
+            other => panic!("{other:?}"),
+        }
+    }
+    assert_eq!(
+        disk.lock().unwrap()[path],
+        "a=1\nalias x=y\n",
+        "stale 却盖掉了别人那一份"
+    );
+
+    // 真点「仍然覆盖」。
+    click_label(&ctx, &mut w, &OVERWRITE_LABEL, 1.0);
+    until("覆盖那一趟的结局", || w.edits.saves() > 1).await;
+    assert!(w.settle_saved_edits());
+    let p = w.editing().unwrap();
+    assert_eq!(p.last_save, Some(Ok(())), "仍然覆盖没存成");
+    assert!(!p.stale && !p.dirty());
+    assert_eq!(
+        disk.lock().unwrap()[path],
+        "a=2\n",
+        "点了仍然覆盖，盘上不是我的字"
+    );
+    let cmds = wired.cmds();
+    assert_eq!(
+        cmds,
+        vec![
+            "files-read-text",
+            "files-write-text",
+            "files-read-text",
+            "files-write-text"
+        ],
+        "仍然覆盖不是「先重读拿摘要、再带它存」"
+    );
+
+    // 再撞一次 stale，这回真点「丢掉改动，重新打开」。
+    *w.editing_text_mut().unwrap() = "a=3\n".into();
+    disk.lock().unwrap().insert(path.into(), "theirs\n".into());
+    assert!(w.save_edit(None));
+    until("第三趟存的结局", || w.edits.saves() > 2).await;
+    assert!(w.settle_saved_edits());
+    assert!(w.editing().unwrap().stale);
+    let opens = w.edits.opens();
+    click_label(&ctx, &mut w, &REOPEN_LABEL, 2.0);
+    until("重新打开到货", || w.edits.opens() > opens).await;
+    assert!(w.settle_opened_edits());
+    let p = w.editing().expect("重新打开之后编辑面不见了");
+    assert_eq!(p.text, "theirs\n", "重新打开之后编辑框不是盘上此刻那一份");
+    assert!(!p.stale && !p.dirty());
+    assert_eq!(disk.lock().unwrap()[path], "theirs\n", "丢掉重开却动了盘");
 }
 
 /// 〔GP1 · 第四波〕改权限那个框：没有运行时 / 没有通道 ⇒ 现值那一趟**当场**落「读不到」（框上说出来，不静默、不猜），
@@ -2463,4 +2603,161 @@ async fn gp1_the_mode_probe_asks_files_stat_per_target_over_the_wire() {
         .collect();
     assert_eq!(asked, paths, "逐项各问一次、按序");
     std::fs::remove_dir_all(&dir).ok();
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 〔W5-FILES · 第五波〕有损名全寻址
+// 要求住址：`设计/60 §6.2`「有损名的进目录 / 复制 / 下载 / 编辑 —— 窗口的当前目录与这几条用的是整条路径字符串，
+// 整条寻址链要换成字节（`source.rs` 头注那一刀）；改名成正常名之后就都能做」。下载那一格按 `§4.1`（SFTP 库寻址不到）维持不做。
+// ════════════════════════════════════════════════════════════════════════
+
+fn hex(b: &[u8]) -> String {
+    b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
+async fn wait_for(wired: &crate::filewin::find::testing::Wired, cmd: &str, n: usize) {
+    for _ in 0..600 {
+        if wired.count(cmd) >= n {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    panic!("等了 3 秒线上还没有第 {n} 条 `{cmd}`：{:?}", wired.cmds());
+}
+
+fn last_args(wired: &crate::filewin::find::testing::Wired, cmd: &str) -> serde_json::Value {
+    wired
+        .log
+        .lock()
+        .unwrap()
+        .iter()
+        .rev()
+        .find(|r| r["cmd"] == cmd)
+        .map(|r| r["args"].clone())
+        .unwrap_or_else(|| panic!("线上没有 `{cmd}`"))
+}
+
+/// 进一个有损名目录（按字节）⇒ 列目录发 `{"b16": …}`；里面一个有损名文件：算大小 / 读文本 / 复制为 / 删除，
+/// 线上的路径（或根 ＋ 尾段）逐格等于手算的字节；上一级按字节回到 `/srv`；有损目录里上传 / 搜索 / 开终端出声、不上线。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_bytes() {
+    use crate::filewin::find::testing::{window_on, wire_up, Declared, FakeBackend};
+    use crate::filewin::select::{Action, Intent};
+    let wired = wire_up(
+        "w5-lossy",
+        FakeBackend::new(
+            &[
+                "files-ls",
+                "files-size",
+                "files-read-text",
+                "files-copy",
+                "files-stat",
+                "files-delete",
+            ],
+            Declared::default(),
+        ),
+    )
+    .await;
+    let mut w = window_on(&wired, "/srv");
+    let b16 = |b: &[u8]| serde_json::json!({ "b16": hex(b) });
+    let dir = Listed {
+        raw_name: Some(b"d\xff".to_vec()),
+        ..Listed::from(Row {
+            name: "d\u{FFFD}".into(),
+            path: "/srv/d\u{FFFD}".into(),
+            is_dir: true,
+            size: 0,
+            lossy_name: true,
+        })
+    };
+    *w.listing.rows.lock().unwrap() = vec![dir];
+    let before = wired.count("files-ls");
+    assert!(w.activate(0), "有损名目录（带字节）进不去");
+    assert_eq!(w.cwd_raw.as_deref(), Some(&b"/srv/d\xff"[..]));
+    wait_for(&wired, "files-ls", before + 1).await;
+    assert_eq!(last_args(&wired, "files-ls")["path"], b16(b"/srv/d\xff"));
+    // 里面一个有损名文件。
+    let file = Listed {
+        raw_name: Some(b"f\xfe".to_vec()),
+        ..Listed::from(Row {
+            name: "f\u{FFFD}".into(),
+            path: "/srv/d\u{FFFD}/f\u{FFFD}".into(),
+            is_dir: false,
+            size: 3,
+            lossy_name: true,
+        })
+    };
+    *w.listing.rows.lock().unwrap() = vec![file];
+    w.apply_intent(Intent::SelectAll, 0.0, None);
+    // 算大小。
+    assert!(w.perform(Action::Size, None), "{:?}", w.key_notice());
+    wait_for(&wired, "files-size", 1).await;
+    assert_eq!(
+        last_args(&wired, "files-size")["path"],
+        b16(b"/srv/d\xff/f\xfe")
+    );
+    // 读文本（编辑）。
+    assert!(
+        w.begin_edit(0, None),
+        "{:?}",
+        w.listing.error.lock().unwrap()
+    );
+    wait_for(&wired, "files-read-text", 1).await;
+    assert_eq!(
+        last_args(&wired, "files-read-text")["path"],
+        b16(b"/srv/d\xff/f\xfe")
+    );
+    // 复制为（同目录，新名字 g）。
+    assert!(w.begin_copy(0));
+    w.copy_prompt.as_mut().unwrap().new_name = "g".into();
+    assert!(w.confirm_copy(None));
+    wait_for(&wired, "files-copy", 1).await;
+    assert_eq!(
+        last_args(&wired, "files-copy"),
+        serde_json::json!({ "root": b16(b"/srv/d\xff"), "from": b16(b"f\xfe"), "to": "g", "overwrite": false })
+    );
+    assert_eq!(
+        last_args(&wired, "files-stat")["path"],
+        b16(b"/srv/d\xff/g"),
+        "探目标没按字节"
+    );
+    // 删除（写面：根是当前目录的字节）。
+    assert!(w.perform(Action::Delete, None));
+    for _ in 0..600 {
+        if w.write_board.is_asking() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert!(w.write_board.settle(true), "删除那一问没摆出来");
+    wait_for(&wired, "files-delete", 1).await;
+    assert_eq!(
+        last_args(&wired, "files-delete"),
+        serde_json::json!({ "root": b16(b"/srv/d\xff"), "rel": b16(b"f\xfe") })
+    );
+    // 有损目录里做不了的三件：出声、一条都不上线。
+    let sent = wired.cmds().len();
+    assert!(!w.fire_search(None, true));
+    assert!(!w.open_terminal_here(None));
+    assert!(!w.start_drop(
+        vec![crate::filewin::transfer::Pending::into_remote_dir("/tmp/x", "/srv").unwrap()],
+        None
+    ));
+    assert!(w
+        .listing
+        .error
+        .lock()
+        .unwrap()
+        .as_deref()
+        .unwrap_or("")
+        .contains("不是合法 UTF-8"));
+    assert_eq!(
+        wired.cmds().len(),
+        sent,
+        "做不了的那几件上了线：{:?}",
+        wired.cmds()
+    );
+    // 上一级：按字节回到 `/srv`（它是合法 UTF-8 ⇒ 字节那一格清掉）。
+    w.navigate_up();
+    assert_eq!((w.cwd.as_str(), w.cwd_raw.clone()), ("/srv", None));
 }

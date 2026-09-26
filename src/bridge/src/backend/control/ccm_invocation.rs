@@ -37,6 +37,10 @@ use std::collections::BTreeSet;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Refusal {
     NotInstalled,
+    /// 〔LR2 · R95b〕**没探出来**（探测那一跳出错：ssh 抖动 / 远端不可达），`String` 是那一跳的原话。
+    /// 与 `NotInstalled` 是两件事：不知道 ≠ 知道没有（`设计/80 §9.4`，`K-R53` 那条在线上的延续）。
+    /// 只由 `launch_wire::render_ccm_launch` 按线上第三态产（本机那条路永远知道装没装）。
+    ProbeUnknown(String),
     NotSsh,
     MissingCap(String),
     /// #76 防线：`send-into`（idle-tmux 就地复用）**没有 CLI 等价语法**。
@@ -59,6 +63,10 @@ impl Refusal {
     pub fn reason(&self) -> String {
         match self {
             Refusal::NotInstalled => copy_text("rsCcmInvocation.refusal.notInstalled", &[]),
+            Refusal::ProbeUnknown(e) => copy_text(
+                "rsCcmInvocation.refusal.probeUnknown",
+                &[("e", &e.to_string())],
+            ),
             // ⚠ **P3t 之后这句话比事实宽**（登记在案的诚实边界，不是没看见）：
             // Rust 侧现在只在 `!is_ssh && !local_posix` 时回它，也就是**Windows 本机**。
             // 它今天**产不出来**：两个活着的 Rust 调用方一个恒 `is_ssh: true`

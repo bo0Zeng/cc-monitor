@@ -304,7 +304,7 @@ fn the_rc_path_cannot_escape_home() {
 /// ★★〔TL1 · 4C〕**两种方言对称：别名块里恰好一行接上别名文件**（`71 §6.1`「source 那一行只许一处装」；
 /// `AL1d.md §5` 第 4 条：从前 PowerShell 的别名块不接，那一侧只剩代装那一处）。
 ///
-/// 人群：POSIX 别名块 = `sftp::CCM_WRAPPER_SNIPPET`（就是 `src/shared/ccm-aliases.sh`）；PowerShell 别名块 =
+/// 人群：POSIX 别名块 = `profile_installer::CCM_WRAPPER_SNIPPET`（就是 `src/shared/ccm-aliases.sh`）；PowerShell 别名块 =
 /// `profile_installer::render_block`（带 / 不带 `cc` 两形）。每一份里「那种方言认得出的接上行」恰好一行（零 = 不接，二 = 两处）。
 /// 另一半：本模块生产段里写用户文件的口恰好一处（`user_files::edit(` —— 写别名文件那一处；代装 rc 那一处退役）。
 #[test]
@@ -316,7 +316,7 @@ fn the_alias_block_is_the_one_place_that_sources_the_alias_file_in_both_dialects
             .count()
     };
     assert_eq!(
-        count(crate::sftp::CCM_WRAPPER_SNIPPET, P),
+        count(crate::profile_installer::CCM_WRAPPER_SNIPPET, P),
         1,
         "POSIX 别名块"
     );
@@ -339,12 +339,12 @@ fn the_alias_block_is_the_one_place_that_sources_the_alias_file_in_both_dialects
 /// 🔴 `§0c 问三`：`cc` 在多数机器上是 C 编译器 —— 撞了要**出声**。
 ///
 /// ⚠ 这一条断的是「自带别名块里那几个名字会被认出来」，人群取自
-/// `sftp::CCM_WRAPPER_SNIPPET`（= `src/shared/ccm-aliases.sh` 本身），**不抄第二份名单** ——
-/// `KR58D1` 起这句话**真的兑现了**：人群由 `sftp::builtin_alias_names()` 现算，
+/// `profile_installer::CCM_WRAPPER_SNIPPET`（= `src/shared/ccm-aliases.sh` 本身），**不抄第二份名单** ——
+/// `KR58D1` 起这句话**真的兑现了**：人群由 `profile_installer::builtin_alias_names()` 现算，
 /// 上一版这里手写着 `["cc", "cch", "cct"]`，那就是第二个住址。
 #[test]
 fn a_name_that_is_already_taken_gets_a_note() {
-    let taken = crate::sftp::builtin_alias_names();
+    let taken = crate::profile_installer::builtin_alias_names();
     assert!(
         !taken.is_empty(),
         "自带别名块里一个函数都没解析出来 —— 这一条会变成空真，先修人群"
@@ -374,7 +374,7 @@ fn a_name_that_is_already_taken_gets_a_note() {
 #[test]
 fn cch_is_gone_and_the_name_is_free_for_the_user() {
     assert!(
-        !crate::sftp::builtin_alias_names().contains(&"cch"),
+        !crate::profile_installer::builtin_alias_names().contains(&"cch"),
         "`cch` 还定义在 src/shared/ccm-aliases.sh 里 —— 用户逐字说的是「这个不要。删掉。」"
     );
     if let Some(note) = collision_note("cch", P) {
@@ -945,4 +945,36 @@ fn another_startup_file_goes_through_the_fence_before_it_is_read() {
     assert_eq!(ok.other_rc.as_deref(), Some(want.as_str()));
     assert!(ok.rc_candidates.iter().any(|c| c.path == want && !c.exists));
     assert_eq!(ok.bound_terminals, 7, "握手数原样带回（调用方给的）");
+}
+
+/// 〔WIN1 · 第四波 4D · RT1 F8〕别名文件那条**给人看、也写进启动文件那一行**的绝对路径逐段拼。
+///
+/// 要求住址：`设计/01 §3.1` 逐字「「怎么读到这个事实」   → platform      （各平台读法不同）」——
+/// `our_alias_file_rel` 是 `/` 分隔的**通用层结构**（交给后端的 `rel`），翻成本机路径是平台那一步；
+/// 读数出处 `第四波记录/RT1.md §8` F8 逐字「`aliases_read` 回的路径分隔符混用：`C:\Users\zbl\.cc-monitor/aliases.ps1`」。
+/// ⚠ 本机（Linux）上整串 `join` 与逐段 `join` 的结果逐字相同 ⇒ 行为这一半只能在真 Windows 上看
+///   （`第四波记录/WIN1.md` 虚拟机读数）；这里钉 ① Linux 上结果不变（两种 shell 各一格）② 生产那一口逐段拼的形状。
+#[test]
+fn the_alias_file_path_is_joined_segment_by_segment() {
+    let home = Path::new("/home/pi");
+    for sh in [Shell::Posix, Shell::PowerShell] {
+        assert_eq!(
+            alias_file_in(home, sh),
+            home.join(sh.dialect().our_alias_file_rel()),
+            "{sh:?}：本机上逐段拼与整串拼应当逐字相同"
+        );
+    }
+    let body = guard_core::production_code(include_str!("../../src/bridge/src/account_aliases.rs"));
+    let f = body
+        .split("pub fn alias_file_in(home: &Path, shell: Shell) -> PathBuf {")
+        .nth(1)
+        .and_then(|b| b.split("\n}\n").next())
+        .expect("找不到 `alias_file_in` 的函数体 —— 抽取器坏了");
+    guard_core::pin_line(f, ".split('/')").expect("逐段拼那一步（按 `/` 切开 `rel`）不在了");
+    guard_core::pin_line(f, ".fold(home.to_path_buf(), |p, seg| p.join(seg))")
+        .expect("逐段 `join` 那一步不在了");
+    assert!(
+        !guard_core::contains_word(f, "home.join(shell.dialect().our_alias_file_rel())"),
+        "又整串 `join` 了 —— Windows 上就是 `C:\\…\\.cc-monitor/aliases.ps1`"
+    );
 }

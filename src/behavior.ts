@@ -11,7 +11,7 @@
  * 不解释 schema，所有 schema 收敛在前端 TS。
  */
 
-import { loadConfig, saveConfig } from "./config";
+import { loadConfig, patchConfig, setAt } from "./config";
 
 const KEY_AUTO_FOLLOW = "autoFollowUserActive";
 const KEY_BRING_FRONT = "bringMonitorToFrontOnUserActive";
@@ -67,24 +67,11 @@ function readPresets(raw: unknown): string[] {
 
 const KEY_NOTIFY_TURN_END = "notifyTurnEnd";
 
-/**
- * 🔴 〔`设计/99 §2.5 P12` 2026-09-21〕**这个落盘键改名了**：
- * `forceLegacyLaunchRenderer` → `forceLaunchPayloadRenderer`。
- *
- * 旧名字说的是「强制走 legacy 渲染器」，而 `22b·B`（`设计/90 §4 E`）把 launch 渲染链
- * 整条切到后端之后，**两条分支今天都在 Rust 里**：`render_ccm_invocation`（`ccm …` 调用行）
- * 与 `render_launch_payload`（裸载荷 ＋ 外层 tmux 编排串）。它短路掉的不再是
- * 「Rust 渲染器 → TS 渲染器」，是「`ccm` 调用行 → 裸载荷/tmux 编排串」
- * ⇒ 旧名字是一句**住在住址上的假话**。新名字指着它真正逼出来的那个渲染器。
- *
- * **不留别名**（`no-legacy-compat`：只有一个用户）。旧名字从今天起是个**未知键** ——
- * 而未知键不再被静默忽略：`config.ts` 每次读盘都会把它数出来，设置里那条常驻条
- * 指名道姓地把它喊出来。「退役」的意思是**它出现时出声**，不是「静默当不存在」。
- *
- * ⚠ 改名当天盘上**没有** config.json（现打：`~/.claude/claudecode-frontend/` 下只有
- * `auto-launch.json` / `logs` / `ps-await` / `ps-registry`）⇒ 零迁移风险。
- */
-const KEY_FORCE_LAUNCH_PAYLOAD_RENDERER = "forceLaunchPayloadRenderer";
+// 〔LR2 2026-09-25〕这里原来有落盘键 `forceLaunchPayloadRenderer`（`设计/99 §2.5 P12` 由 `forceLegacyLaunchRenderer` 改名而来）：
+//   「强制远端启动走载荷渲染器、绕开 `ccm …` 调用行」的手动逃生口，无界面入口、只能手改 config.json，
+//   而设置面板为了不把它冲掉专门缓存一份原样带回（`D-bolted-on §D4`：通用代码为某功能开的特判）。
+//   两条渲染路今天都在 Rust、同一排闸，降级本来就是自动的 ⇒ 删（设计 `30`–`99` 零提及；盘上 config.json 现打不存在该键）。
+//   **不留别名**（`no-legacy-compat`）：旧 config.json 里若还写着它，`config.ts` 的未知键提示条会指名喊出来。
 
 export interface BehaviorConfig {
   /** 用户在 claude 里敲键发送消息时自动切到对应 monitor tab。默认 true。 */
@@ -121,21 +108,6 @@ export interface BehaviorConfig {
    * 默认 true。热更：turn-notify.ts 每次判定读缓存，设置保存时刷新缓存。
    */
   notifyTurnEnd: boolean;
-  /**
-   * F03（unify-launch）：手动逃生口 —— 强制远端启动走**载荷渲染器**
-   *（`render_launch_payload`：裸载荷 ＋ 外层 tmux 编排串），绕开 ccm 探测与
-   * `ccm …` 调用行那条路。默认 false（探测失败/未装/能力不足本来就会自动降级到它，
-   * 本开关只是 "even if 探测说能，我也不想走" 的人工逃生口，见 MASTERPLAN R2）。
-   * 无 UI 暴露，需手改 config.json。落盘键名 = `forceLaunchPayloadRenderer`。
-   *
-   * ✅ 〔2026-09-21 收账〕**TS 字段名已跟着落盘键一起改完** —— 落盘键与字段名
-   * 从此是同一个词，没有「两个名字指同一件事」这种住址。
-   * ⚠ 收的过程如实记：`P12` 那一刀的写区逐字只有 `src/behavior.ts` 与
-   * `src/settings/panel.ts`，而唯一的生产消费者住 `src/remote-launch-run.ts`
-   * ⇒ 做那一刀的人按「写区外停下报备」办、只改了落盘键；字段名这一半由
-   * 拿得到那个写区的人（同拍的 PM）在它交回后立刻收，**没有攒成欠账**。
-   */
-  forceLaunchPayloadRenderer: boolean;
 }
 
 const DEFAULTS: BehaviorConfig = {
@@ -147,7 +119,6 @@ const DEFAULTS: BehaviorConfig = {
   resumeCommandLocalPresets: [],
   resumeCommandRemotePresets: [],
   notifyTurnEnd: true,
-  forceLaunchPayloadRenderer: false,
 };
 
 /** 读行为字段；缺失 / 类型不对走默认值，永不抛。 */
@@ -181,10 +152,6 @@ export async function getBehavior(): Promise<BehaviorConfig> {
         typeof cfg[KEY_NOTIFY_TURN_END] === "boolean"
           ? (cfg[KEY_NOTIFY_TURN_END] as boolean)
           : DEFAULTS.notifyTurnEnd,
-      forceLaunchPayloadRenderer:
-        typeof cfg[KEY_FORCE_LAUNCH_PAYLOAD_RENDERER] === "boolean"
-          ? (cfg[KEY_FORCE_LAUNCH_PAYLOAD_RENDERER] as boolean)
-          : DEFAULTS.forceLaunchPayloadRenderer,
     };
   } catch (e) {
     console.warn("getBehavior failed:", e);
@@ -192,17 +159,16 @@ export async function getBehavior(): Promise<BehaviorConfig> {
   }
 }
 
-/** 保存行为字段。merge 进现有 config 顶层，不动 theme / diagnostics 等。 */
+/** 保存行为字段。只交这 9 个顶层键（〔CFG1〕按键补丁），不动 theme / diagnostics 等。 */
 export async function setBehavior(next: BehaviorConfig): Promise<void> {
-  const cfg = (await loadConfig()) as Record<string, unknown>;
-  cfg[KEY_AUTO_FOLLOW] = next.autoFollowUserActive;
-  cfg[KEY_BRING_FRONT] = next.bringMonitorToFrontOnUserActive;
-  cfg[KEY_SHOW_BG] = next.showBgSessions;
-  cfg[KEY_RESUME_LOCAL] = next.resumeCommandLocal;
-  cfg[KEY_RESUME_REMOTE] = next.resumeCommandRemote;
-  cfg[KEY_RESUME_LOCAL_PRESETS] = next.resumeCommandLocalPresets;
-  cfg[KEY_RESUME_REMOTE_PRESETS] = next.resumeCommandRemotePresets;
-  cfg[KEY_NOTIFY_TURN_END] = next.notifyTurnEnd;
-  cfg[KEY_FORCE_LAUNCH_PAYLOAD_RENDERER] = next.forceLaunchPayloadRenderer;
-  await saveConfig(cfg);
+  await patchConfig([
+    setAt([KEY_AUTO_FOLLOW], next.autoFollowUserActive),
+    setAt([KEY_BRING_FRONT], next.bringMonitorToFrontOnUserActive),
+    setAt([KEY_SHOW_BG], next.showBgSessions),
+    setAt([KEY_RESUME_LOCAL], next.resumeCommandLocal),
+    setAt([KEY_RESUME_REMOTE], next.resumeCommandRemote),
+    setAt([KEY_RESUME_LOCAL_PRESETS], next.resumeCommandLocalPresets),
+    setAt([KEY_RESUME_REMOTE_PRESETS], next.resumeCommandRemotePresets),
+    setAt([KEY_NOTIFY_TURN_END], next.notifyTurnEnd),
+  ]);
 }

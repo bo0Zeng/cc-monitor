@@ -1399,24 +1399,27 @@ fn a_stranger_on_our_port_is_refused_out_loud_not_silently_reused() {
         "{{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b1\",\"host_arch\":\"x86_64\",\
               \"claude_dir\":\"/h/.claude\",\"capabilities\":[],\"emits\":[],\"commands\":[]}}"
     );
-    assert_eq!(hello_verdict(&ours, "b1", "/h/.claude"), HelloVerdict::Ours);
+    assert_eq!(
+        hello_verdict(&ours, "b1", "/h/.claude", &[]),
+        HelloVerdict::Ours
+    );
     // ① 版本不对
-    match hello_verdict(&ours, "b2", "/h/.claude") {
+    match hello_verdict(&ours, "b2", "/h/.claude", &[]) {
         HelloVerdict::Stranger(w) => assert!(w.contains("b1") && w.contains("b2"), "{w}"),
         v => panic!("旧版本的后端被当成了我们的：{v:?}"),
     }
     // ② 看的目录不对（同机两个用户撞了口就是这一形）
-    match hello_verdict(&ours, "b1", "/other/.claude") {
+    match hello_verdict(&ours, "b1", "/other/.claude", &[]) {
         HelloVerdict::Stranger(w) => assert!(w.contains("/other/.claude"), "{w}"),
         v => panic!("另一个数据目录的后端被当成了我们的：{v:?}"),
     }
     // ③ 压根不是我们的协议
     assert!(matches!(
-        hello_verdict("HTTP/1.1 200 OK", "b1", "/h/.claude"),
+        hello_verdict("HTTP/1.1 200 OK", "b1", "/h/.claude", &[]),
         HelloVerdict::Stranger(_)
     ));
     assert!(matches!(
-        hello_verdict("", "b1", "/h/.claude"),
+        hello_verdict("", "b1", "/h/.claude", &[]),
         HelloVerdict::Stranger(_)
     ));
 }
@@ -4023,6 +4026,142 @@ fn with_copy(code: impl AsRef<str>) -> String {
     out
 }
 
+// ═══ 〔HX2 · 第四波 4D〕常驻后端身份带数据目录 ═══════════════════════════════════════════════
+//
+// 要求住址：题面 HX2 逐字「常驻后端身份带数据目录（接错了拒并出声）」；`GP1.md §7.6` 第 4 条逐字「要么注解那几条命令也先核路径
+// （照本路 §3），要么常驻后端的身份带上数据目录」；审计 `E-compat.md` §E10（「隔离数据目录的 monitor 写穿到真 profile」）。
+
+/// 🔴 I2：hello 的 `host_env` 与这一趟要交的那几格两向比（期望手写）：等 ⇒ 我们的；值不等 · 它多一格 · 它少一格 ⇒ 拒，
+/// 那句话点名那一格、两边各是什么、说得出下一步；名不在名单里的（`PATH` 之类）不参与比。
+#[test]
+fn hx2_a_backend_started_for_another_data_dir_is_refused_out_loud() {
+    let hello_with = |env: &str| {
+        format!(
+            "{{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b1\",\"host_arch\":\"x86_64\",\
+             \"claude_dir\":\"/h/.claude\"{env}}}"
+        )
+    };
+    let seen = hello_with(",\"host_env\":{\"CCM_APIKEY_CREDENTIALS\":\"/h/.claude/claudecode-frontend/k.json\",\"CCM_RELAY_PORT\":\"8788\"}");
+    let want = |creds: &str| -> Vec<(String, String)> {
+        vec![
+            ("CCM_RELAY_PORT".into(), "8788".into()),
+            ("CCM_APIKEY_CREDENTIALS".into(), creds.into()),
+            ("PATH".into(), "/shim:/usr/bin".into()),
+        ]
+    };
+    assert_eq!(
+        hello_verdict(
+            &seen,
+            "b1",
+            "/h/.claude",
+            &want("/h/.claude/claudecode-frontend/k.json")
+        ),
+        HelloVerdict::Ours,
+        "同一份环境（外加一格不在名单里的 PATH）⇒ 该是我们的"
+    );
+    match hello_verdict(&seen, "b1", "/h/.claude", &want("/tmp/iso/k.json")) {
+        HelloVerdict::Stranger(w) => {
+            assert!(
+                w.contains("CCM_APIKEY_CREDENTIALS")
+                    && w.contains("/h/.claude/claudecode-frontend/k.json")
+                    && w.contains("/tmp/iso/k.json")
+                    && w.contains("CCM_DATA_DIR")
+                    && !w.contains("CCM_RELAY_PORT："),
+                "{w}"
+            );
+        }
+        v => panic!("另一个数据目录起的后端被当成了我们的：{v:?}"),
+    }
+    let mut more = want("/h/.claude/claudecode-frontend/k.json");
+    more.push((
+        "CCM_HISTORY_METADATA".into(),
+        "/tmp/iso/history-metadata.json".into(),
+    ));
+    assert!(
+        matches!(hello_verdict(&seen, "b1", "/h/.claude", &more), HelloVerdict::Stranger(w) if w.contains("CCM_HISTORY_METADATA：它用的是 没有")),
+        "它少一格（没被交注解路径）⇒ 该拒"
+    );
+    assert!(
+        matches!(
+            hello_verdict(&hello_with(""), "b1", "/h/.claude", &want("/x")),
+            HelloVerdict::Stranger(_)
+        ),
+        "hello 里没有 host_env（没被交任何一格）而这一趟要交 ⇒ 该拒"
+    );
+    assert_eq!(
+        hello_verdict(&hello_with(""), "b1", "/h/.claude", &[]),
+        HelloVerdict::Ours,
+        "两边都空 ⇒ 我们的"
+    );
+}
+
+/// 🔴 I3：monitor 交的那几格的名字 == 后端回显的名单（两向；读后端源码现抠，异源）；`relay_host_envs` 交的名 == 名单
+/// （生产那一份不许漏交一格回显不到的，也不许多交一格回显不了的）。
+#[test]
+fn hx2_the_handed_names_are_exactly_what_the_backend_echoes() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../backend");
+    let read = |rel: &str| {
+        guard_core::production_code(
+            &std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| panic!("读 {rel}：{e}")),
+        )
+    };
+    let const_value = |text: &str, decl: &str| -> String {
+        let at = guard_core::find_pinned(text, decl)
+            .unwrap_or_else(|e| panic!("`{decl}` 不是恰好一处：{e}"));
+        let after_decl = &text[at + decl.len()..];
+        after_decl[..after_decl.find('"').expect("常量没收尾")].to_string()
+    };
+    let wire = read("wire.rs");
+    let at = guard_core::find_pinned(&wire, "pub const HOST_ECHO_ENVS: [&str; 3] = [")
+        .expect("后端回显名单不在了");
+    // 名单那几行（到收尾的 `];` 为止；逐行取，不做子串切）。
+    let echo_list: Vec<&str> = wire[at..]
+        .lines()
+        .skip(1)
+        .map(str::trim)
+        .take_while(|l| *l != "];")
+        .collect();
+    let mut backend: Vec<String> = Vec::new();
+    for (needle, file, decl) in [
+        (
+            "crate::relay::ENV_PORT",
+            "relay/listen.rs",
+            "pub(crate) const ENV_PORT: &str = \"",
+        ),
+        (
+            "crate::accounts::upstream::creds::ENV_CREDENTIALS",
+            "accounts/upstream/creds.rs",
+            "pub(crate) const ENV_CREDENTIALS: &str = \"",
+        ),
+        (
+            "crate::history_annotations::ENV_PATH",
+            "history_annotations.rs",
+            "pub(crate) const ENV_PATH: &str = \"",
+        ),
+    ] {
+        assert!(
+            echo_list.contains(&format!("{needle},").as_str()),
+            "后端回显名单里没有 `{needle}`：{echo_list:?}"
+        );
+        backend.push(const_value(&read(file), decl));
+    }
+    assert_eq!(
+        echo_list.len(),
+        3,
+        "后端回显名单不是恰好三格：{echo_list:?}"
+    );
+    let mut mine: Vec<String> = HANDED_ENVS.iter().map(|s| s.to_string()).collect();
+    backend.sort();
+    mine.sort();
+    assert_eq!(mine, backend, "monitor 交的名 ≠ 后端回显的名");
+    let mut handed: Vec<String> = relay_host_envs().into_iter().map(|(k, _)| k).collect();
+    handed.sort();
+    assert_eq!(
+        handed, mine,
+        "生产交的那份环境不是恰好名单那几格（这台机器上数据目录解得出时）"
+    );
+}
+
 /// 〔HX1 · RK1 报 3〕token 取自**内核密码学随机数**，不再从时钟 / pid / 计数器里拼。
 /// 守的要求：`INVARIANTS §48.1` 逐字「钥匙由宿主生成（新生成时 128 位随机）」；RK1 报备 §5.7 第 4 条（纳秒 ⊕ pid ⊕ 计数器 ＋ mtime 泄露铸造时刻）。
 /// 形状：生产段 `fresh_token` 体内零命中那几样可推的熵源、恰好读 `/dev/urandom` 一处（零富余，带正控）。
@@ -4068,7 +4207,7 @@ fn hx1_the_monitor_home_dir_is_born_private_and_an_existing_one_is_left_alone() 
     std::fs::remove_dir_all(&base).ok();
     std::fs::create_dir_all(&base).expect("base");
     let fresh = base.join("new").join(".cc-monitor");
-    ensure_private_dir(&fresh).expect("建");
+    crate::platform_fs::ensure_private_dir(&fresh).expect("建");
     assert_eq!(mode(&fresh), 0o700);
     // 生产那一条真路：token 文件落进一个还不存在的目录 ⇒ 那一层是 0700。
     let via_token = base.join("tok").join(".cc-monitor");
@@ -4077,7 +4216,7 @@ fn hx1_the_monitor_home_dir_is_born_private_and_an_existing_one_is_left_alone() 
     let old = base.join("old");
     std::fs::create_dir_all(&old).expect("预置");
     std::fs::set_permissions(&old, std::fs::Permissions::from_mode(0o755)).expect("chmod");
-    ensure_private_dir(&old).expect("已在");
+    crate::platform_fs::ensure_private_dir(&old).expect("已在");
     assert_eq!(mode(&old), 0o755, "已在的那一层被改了权限");
     std::fs::remove_dir_all(&base).ok();
 }
@@ -4135,5 +4274,116 @@ fn hx1_a_busy_stream_is_told_as_another_monitor_not_as_a_version_mismatch() {
     assert!(
         !arm.contains("start.refused"),
         "Busy 那一臂又取了 refused 的话"
+    );
+}
+
+/// 〔HX1 · 主会话裁 HX1 拍板项 4〕**monitor 生产段每一处建目录都登记在案，建后端自家目录（`~/.cc-monitor` 一族）的只有
+/// `platform_fs::ensure_private_dir` 一处**（本机起后端前 · token / pid 那一层 · 释放二进制 / 全景小程序 / ccm 入口那几处经注入）。
+/// 守的要求：主会话裁「建自家目录收成一个小函数 …… 判据：生产段建 `~/.cc-monitor` 的调用点 == 那个函数一处（两向，带正控）」。
+/// 形状：`src/bridge/src` 生产段里 `fs::create_dir(` / `fs::create_dir_all(` / `fs::DirBuilder::new(` 的所在 (文件, 函数) == 登记表（两向）；
+/// 登记表里「后端自家目录」那一格恰好是那一个函数；正控：合成语料里多一处必被认出。后端那一半另有一份（`own_dir_tests`）。
+#[test]
+fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_home() {
+    const OWN_HOME: &str = "后端自家目录";
+    const DIR_CREATORS: &[(&str, &str, &str)] = &[
+        ("platform_fs.rs", "ensure_private_dir", OWN_HOME),
+        (
+            "logging.rs",
+            "build_rolling_appender",
+            "monitor 数据目录下的 logs（滚动日志）",
+        ),
+        (
+            "lib.rs",
+            "open_log_dir",
+            "monitor 数据目录下的 logs（「打开日志目录」）",
+        ),
+        ("bind.rs", "spawn", "monitor 数据目录（绑定表）"),
+        (
+            "utils.rs",
+            "atomic_write_json",
+            "调用方给的 JSON 文件的父目录（monitor 数据目录一族）",
+        ),
+        (
+            "config.rs",
+            "patch_config_at",
+            "monitor 数据目录（config.json，〔CFG1〕加锁读改写那一处）",
+        ),
+        // 〔合并 LOC1b〕`session_map.rs` 那条 watcher 线程那一行摘了：monitor 自己那份本机判活（连同它盯的 sessions 目录）删了。
+        (
+            "filewin/bookmarks.rs",
+            "lock_store",
+            "monitor 数据目录（书签）",
+        ),
+        (
+            "local_backend_host.rs",
+            "spawn_detached",
+            "monitor 数据目录下的 logs/backend（交给脱离后端的 stderr 文件）",
+        ),
+    ];
+    fn creations(rel: &str, prod: &str) -> Vec<(String, String)> {
+        let needles = [
+            "fs::create_dir(",
+            "fs::create_dir_all(",
+            "fs::DirBuilder::new(",
+        ];
+        let mut out = Vec::new();
+        let mut cur = String::new();
+        for line in prod.lines() {
+            let head_of_line = line.trim_start();
+            for kw in [
+                "pub(crate) async fn ",
+                "pub async fn ",
+                "pub(crate) fn ",
+                "pub fn ",
+                "async fn ",
+                "fn ",
+            ] {
+                if let Some(rest) = head_of_line.strip_prefix(kw) {
+                    cur = rest
+                        .chars()
+                        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                        .collect();
+                    break;
+                }
+            }
+            if needles.iter().any(|n| line.contains(n)) {
+                out.push((rel.to_string(), cur.clone()));
+            }
+        }
+        out
+    }
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let files: Vec<(std::path::PathBuf, String)> = guard_core::scan_tree!(&root, &["rs"]);
+    assert!(files.len() >= 100, "只扫到 {} 份 —— 遍历坏了", files.len());
+    let mut found: Vec<(String, String)> = Vec::new();
+    for (path, src) in &files {
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        found.extend(creations(&rel, &guard_core::production_code(src)));
+    }
+    found.sort();
+    found.dedup();
+    let mut want: Vec<(String, String)> = DIR_CREATORS
+        .iter()
+        .map(|(f, n, _)| ((*f).to_string(), (*n).to_string()))
+        .collect();
+    want.sort();
+    assert_eq!(found, want, "monitor 生产段建目录的地方与登记表对不上 —— 建的若是 `~/.cc-monitor` 一族，改走 `platform_fs::ensure_private_dir`");
+    let home: Vec<&str> = DIR_CREATORS
+        .iter()
+        .filter(|(_, _, w)| *w == OWN_HOME)
+        .map(|(f, _, _)| *f)
+        .collect();
+    assert_eq!(home, vec!["platform_fs.rs"]);
+    // 正控。
+    assert_eq!(
+        creations(
+            "x.rs",
+            "fn sneaky() {\n    std::fs::create_dir_all(p).ok();\n}\n"
+        ),
+        vec![("x.rs".to_string(), "sneaky".to_string())]
     );
 }

@@ -1,11 +1,11 @@
-# === cc-monitor BEGIN v3 ===
+# === cc-monitor BEGIN v4 ===
 # 自动生成 — 卸载请用 cc-monitor 设置面板 [卸载]，或手动删除 BEGIN/END 之间所有内容。
 # 文档: https://github.com/bo0Zeng/cc-monitor
 
 function __ccm_bind {
     # 在这个 PowerShell session 里向 cc-monitor 注册 (PS_PID -> 当前 console hwnd) 映射。
     # 已注册 + 进程指纹一致 → 直接返回（avoid title flicker on every invocation）。
-    $ccmDir = Join-Path $env:USERPROFILE '.claude\claudecode-frontend'
+    $ccmDir = {{MONITOR_DATA_DIR}}
     $regFile = Join-Path $ccmDir "ps-registry\$PID.json"
     $autoLaunchFile = Join-Path $ccmDir 'auto-launch.json'
 

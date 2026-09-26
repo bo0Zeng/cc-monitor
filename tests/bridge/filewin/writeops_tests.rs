@@ -598,10 +598,14 @@ fn every_box_says_what_it_is_asking() {
 /// （`copy-data` 吃文件句柄），要么目录上少了「删除」和「改名」——
 /// 而那正是这一刀要补的东西。
 #[test]
-fn a_directory_can_be_written_but_not_copied() {
+fn a_directory_can_be_written_and_copied_but_a_lossy_name_with_bytes_only_written() {
     let dir = row("adir", true, false);
     let file = row("a.bin", false, false);
     let lossy = row("\u{FFFD}odd", false, true);
+    let lossy_raw = Listed {
+        raw_name: Some(b"\xffodd".to_vec()),
+        ..row("\u{FFFD}odd", false, true)
+    };
 
     assert!(is_writable(&dir), "目录不能改名/删除/改权限？");
     assert!(is_writable(&file));
@@ -610,16 +614,15 @@ fn a_directory_can_be_written_but_not_copied() {
         "有损名能写 —— 那个名字寻址不到真字节，删中的是另一个文件"
     );
 
-    assert!(
-        !crate::filewin::copy::is_copyable(&dir),
-        "目录能零流量复制？`copy-data` 吃的是文件句柄"
-    );
+    // 〔W5-FILES〕目录能复制了（后端 `recursive: true`，`设计/60 §6.2`）。
+    assert!(crate::filewin::copy::is_copyable(&dir), "目录复制不了？");
     assert!(crate::filewin::copy::is_copyable(&file));
-    // 两个判准**真的不等价**（否则上面那几条在一个函数上也全绿）。
+    // 两个判准**真的不等价**（否则上面那几条在一个函数上也全绿）：带字节的有损名能写（写面收 b16），复制照旧不收。
+    assert!(is_writable(&lossy_raw));
     assert_ne!(
-        is_writable(&dir),
-        crate::filewin::copy::is_copyable(&dir),
-        "两个判准在目录这一档上给了同一个答案 —— 那它们就该合成一个，\
+        is_writable(&lossy_raw),
+        crate::filewin::copy::is_copyable(&lossy_raw),
+        "两个判准在带字节的有损名这一档上给了同一个答案 —— 那它们就该合成一个，\
          或者其中一个错了"
     );
 }

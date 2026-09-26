@@ -9,7 +9,7 @@
 //! |---|---|---|
 //! | [`read_session_range`] | `--read-session-from-offset <p> <offset> --until <end>` | 前端「只物化可见区」：按索引里的行边界取**那一段**正文 |
 //!
-//! 走 [`crate::subagent::Backend`]（本机 exec 本机后端 / 远端 ssh exec 同一个二进制）——
+//! 走 [`crate::subagent::Backend`]（〔LOC1a〕本机与远端同一条：那台机器常驻后端的长连接，本机 = `<local>`）——
 //! 「这条查询谁去跑」全仓只有那一处分流。
 //!
 //! 〔C4b · 第四波 4B〕**骨架索引那一条（`read_session_index`〔散文墓碑〕）不在这里了**：后端帧命令 `history-index`
@@ -21,7 +21,7 @@
 //!
 //! - **续传没接到断线重连上**：重连路住 `ssh_source.rs`。续传要的两半（骨架索引的 `end` 就是续传令牌、
 //!   [`read_session_range`] 就是按偏移续拉）都在，剩下的是在 `ssh_source` 的重连处把「从 seq 0 重发」换成调这两条。
-//! - **远端整体 30s 超时**（帧面按行那一档的期限）：弱网上超大的一段可能撞上。
+//! - **整体 30s 超时**（帧面按行那一档的期限，〔LOC1a〕本机远端同一个）：弱网上超大的一段可能撞上。
 
 use crate::copy_table::copy_text;
 use crate::parser::parse_line;
@@ -40,7 +40,7 @@ pub(crate) fn range_argv(jsonl_path: &str, offset: u64, until: u64) -> Vec<Strin
     ]
 }
 
-/// 路径的廉价预检（与 `load_subagent` / `stream_read_remote_session` 同一条纪律）：
+/// 路径的廉价预检（与 `load_subagent` / `history·rs::stream_read_session_jsonl` 同一条纪律）：
 /// 真正的越权读由后端 `fence_under_projects` 兜底。
 fn precheck(jsonl_path: &str) -> Result<(), String> {
     if jsonl_path.contains("..") || !jsonl_path.ends_with(".jsonl") {
@@ -53,8 +53,8 @@ fn precheck(jsonl_path: &str) -> Result<(), String> {
 }
 
 /// 〔U3b〕**monitor 侧「这一行占不占 seq」的唯一住址** —— 与后端 `history_query·rs::line_counts`
-/// 同一口径（剥 BOM 再 `trim`，空了就不占号）。三个调用方：本机历史读（`history·rs::stream_read_session_jsonl`）·
-/// 远端历史读（`remote_history·rs::stream_read_remote_session`）· 按偏移取正文（[`range_payloads`]）。
+/// 同一口径（剥 BOM 再 `trim`，空了就不占号）。两个调用方：读一整份会话（`history·rs::SessionPager`，
+/// 〔LOC1b · 4D〕本机远端合成一条 —— 从前是本机 / 远端两个读者各调一次）· 按偏移取正文（[`range_payloads`]）。
 ///
 /// # 为什么要有它
 ///
@@ -204,18 +204,29 @@ pub struct SessionLinesPage {
 ///
 /// 解析住 monitor（`parse_line`，ts-rs 类型的来源）—— 与 `frame_query_tests::HELD_BACK` 里 `history-read`
 /// 那一行同一个理由；帧命令本身（`history-lines`）后端出的是可计行原文。
+///
+/// 〔DL1 · `设计/05 §3.3.2`〕`left_ms` 是前端那一**件**事还剩多少（与 `chan/webview.rs::chan_call` 的 `left_ms` 同形：
+/// 跨进程那一段传「还剩多少」，进来立刻换回绝对时刻）。往上翻是一件一问；会话流丢格之后往后补到末尾是一件多问 ——
+/// 前端在那一件开头造一次期限、每问交剩下的（`tab-stream-view.ts::recoverFromGap`），这里不重新计时。
 #[tauri::command]
 pub async fn read_session_lines(
     origin: crate::origin::Origin,
     jsonl_path: String,
     from: u64,
     until: Option<u64>,
+    left_ms: u64,
 ) -> Result<SessionLinesPage, String> {
     origin.route("read_session_lines")?;
     precheck(&jsonl_path)?;
-    let page =
-        crate::backend::control::frame_query::session_lines(&origin, &jsonl_path, from, until)
-            .await?;
+    use crate::backend::control::frame_query::{self, Deadline};
+    let page = frame_query::session_lines(
+        &origin,
+        &jsonl_path,
+        from,
+        until,
+        Deadline::within(std::time::Duration::from_millis(left_ms)),
+    )
+    .await?;
     Ok(lines_page(page, &jsonl_path, &origin))
 }
 

@@ -235,6 +235,7 @@ dependencies = [
  "notify",
  "notify-debouncer-mini",
  "relay-route-core",
+ "ring",
  "russh",
  "russh-sftp",
  "rustls",
