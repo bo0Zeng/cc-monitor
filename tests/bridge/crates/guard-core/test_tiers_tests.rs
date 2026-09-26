@@ -359,6 +359,7 @@ const SCAN: &[&str] = &[
     "tests/bridge/history_title_coverage.rs",
     "tests/bridge/hooks_diag_tests.rs",
     "tests/bridge/launcher_identity_registry_tests.rs",
+    "tests/bridge/lib_invariant_population_tests.rs", // 〔TL2〕§47 / §49 人群判据（读仓内源码）
     "tests/bridge/lib_mod_decl_hygiene_tests.rs",
     "tests/bridge/lib_remote_bind_prescan_tests.rs",
     "tests/bridge/lib_window_lifecycle_tests.rs",

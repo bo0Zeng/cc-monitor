@@ -320,7 +320,7 @@ pub(crate) const LINES: &[(Product, Key)] = &[
 /// 表 B：这个 origin 今天承诺哪几种机器（`01 §6.7a`：本机 Windows x86_64 · 本机 Linux〔用户 09-18「算」〕· 远端 Linux 两个 arch）。
 ///
 /// 〔V132 · 09-25〕用户原话「不承诺. 适配部分, 即os适配部分后面单独写单独做.」⇒ **本机 (Linux, aarch64) 不承诺**
-/// （`96 §7.1.5` 那句「建议本机 Linux 限定 x86_64、本机侧走 `not_promised_here`」）。于是本表不再只按 OS 分：
+/// （`96 §7.1.5` 那句「建议本机 Linux 限定 x86_64、本机侧走「不承诺」那一形」，即 [`Refusal::NotPromisedHere`]）。于是本表不再只按 OS 分：
 /// 本机那两行都钉到 x86_64（本机 Windows arm64 本来就不在产线里，`V31`），远端 Linux 两个 arch 照旧。
 /// 承诺面的唯一住址是 `tests/evidence/K-G4-platform-ledger.py` 的 `PROMISE_FACE`；本函数与它两向相等
 /// 由 `byte_table_tests.rs::the_promise_face_in_the_ledger_equals_the_code` 钉着。

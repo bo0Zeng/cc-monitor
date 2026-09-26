@@ -2483,3 +2483,8 @@ mod window_lifecycle_tests;
 #[cfg(test)]
 #[path = "../../../tests/bridge/lib_remote_bind_prescan_tests.rs"]
 mod remote_bind_prescan_tests;
+
+// 〔TL2 · 4D〕`INVARIANTS §47` / `§49` 的人群判据（盘上全集派生，与登记表两向相等）。
+#[cfg(test)]
+#[path = "../../../tests/bridge/lib_invariant_population_tests.rs"]
+mod invariant_population_tests;
