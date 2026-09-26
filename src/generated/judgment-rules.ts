@@ -32,6 +32,6 @@ export const AUTH_KINDS = ["subscription","api-key"] as const;
 /** 见 [`AUTH_KINDS`]。 */
 export type AuthKind = (typeof AUTH_KINDS)[number];
 
-/** 启动期令牌的字母表与长度 —— 形状住 `payload.rs::rbind_token_shape_ok`（铸币口按它们造）。 */
+/** 启动期令牌的字母表与长度 —— 形状住 `shell_quote_core::rbind_token_ok`（铸币口按它们造）。 */
 export const RBIND_TOKEN_ALPHABET = "0123456789abcdef";
 export const RBIND_TOKEN_LEN = 32;

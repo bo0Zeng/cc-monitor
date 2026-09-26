@@ -519,7 +519,7 @@ pub(crate) enum DirectIdentity {
     NoCarrier,
 }
 
-/// 直路上 `--ccm-sid` 交给谁。形状判定只住 `identity_tag::token_is_safe` 一处。
+/// 直路上 `--ccm-sid` 交给谁。形状判定只有一份（〔DUP3〕`shell_quote_core::rbind_token_ok`，这里经 `identity_tag::token_is_safe` 那个再导出名调它）。
 pub(crate) fn direct_identity(ccm_sid: &str, launch_token: Option<&str>) -> DirectIdentity {
     if ccm_sid.is_empty() {
         return DirectIdentity::NotAsked;

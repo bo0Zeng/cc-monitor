@@ -395,7 +395,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
     ("src/bridge/src/backend/control/payload.rs", 11,
      &[
          ("src/bridge/src/backend/control/payload.rs", "config_dir_command_safe"),
-         ("src/bridge/src/backend/control/payload.rs", "rbind_token_shape_ok"),
+         ("src/bridge/crates/shell-quote-core/src/lib.rs", "rbind_token_ok"), // 〔DUP3 · J8〕payload.rs 里是 `pub use … as rbind_token_shape_ok`
          ("src/bridge/crates/relay-route-core/src/lib.rs", "base_url_shape_ok"), // 〔US1〕payload.rs 里是 `pub use … as relay_base_url_shape_ok`
          ("src/bridge/src/backend/control/payload.rs", "check"),
          ("src/bridge/crates/shell-quote-core/src/lib.rs", "posix_free_path_ok"), // 〔TL3 · §47〕cwd 两处

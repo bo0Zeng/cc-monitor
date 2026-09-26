@@ -331,12 +331,11 @@ const RBIND_TOKEN_ENV: &str = "CCM_RBIND_TOKEN";
 ///
 /// ⚠ 与 [`pane_of`] 的 `trim` 刻意不同：pane id 是 tmux 注的、历史上见过带空白的读法；
 /// 令牌是**我们自己注的**，我们知道它长什么样，没有任何理由去宽容它。
-pub(crate) fn token_is_safe(token: &str) -> bool {
-    token.len() == 32
-        && token
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-}
+///
+/// 〔DUP3 · 主会话 09-26 裁 · `设计/01 §5` D1〕判定本体不在这里：写侧（monitor 渲 `export CCM_RBIND_TOKEN=…`）与本读侧
+/// 核的是**同一个令牌**，形状全仓只有一份 —— `shell_quote_core::rbind_token_ok`（先前这里手写一份 `[0-9a-f]{32}`，
+/// 与 monitor `payload.rs` 那份逐字同、各自为政）。`token_is_safe` 这个名字是它的再导出（`ccm/plan.rs` 的调用点一个不动）。
+pub(crate) use shell_quote_core::rbind_token_ok as token_is_safe;
 
 /// 〔S5 · 第四波〕令牌那个变量名，给 `ccm` 直路读**自己**的环境用（`control/ccm/plan.rs::Env::from_process`）。
 ///

@@ -692,7 +692,8 @@ fn the_rbind_token_shape_gate_is_fail_closed_and_lowercase_only() {
     assert!(rbind_token_shape_ok(TOK));
     assert!(!rbind_token_shape_ok(""));
     assert_eq!(
-        RBIND_TOKEN_LEN, 32,
+        shell_quote_core::RBIND_TOKEN_LEN,
+        32,
         "长度常量变了 —— TS 侧那条对拍会跟着红，两处一起改"
     );
 }

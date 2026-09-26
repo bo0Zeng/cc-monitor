@@ -156,33 +156,14 @@ pub fn config_dir_prefix_posix(account: Option<&Account>) -> Result<String, Stri
 /// 〔LR2〕TS 那份同名常量随兜底渲染器删了；逐字节由 `payload-golden.json`「账号 0」那条夹具钉着。
 pub const UNSET_CONFIG_DIR_PREFIX: &str = "unset CLAUDE_CONFIG_DIR; ";
 
-/// 启动期令牌的长度 —— **32 个字符**。
-///
-/// 单独提成常量是为了让 TS 那侧的对拍判据**从本文件抽这个数**、而不是手抄一个 32
-/// （`tests/rbind-token-shape-parity.vitest.ts`，〔LR2〕从已删的兜底渲染器判据文件搬来）。改这个数 ⇒ TS 那条对拍当场红。
-pub const RBIND_TOKEN_LEN: usize = 32;
-
-/// 启动期令牌的字母表 —— **小写**十六进制（大写 `A`–`F` 刻意不在里面，见 [`rbind_token_shape_ok`]）。
-///
-/// 〔DUP2 · `设计/90 §3` 判据 2〕单独提成常量：前端铸币口按它与 [`RBIND_TOKEN_LEN`] **造**令牌
-/// （两个值现生成进 `src/generated/judgment-rules.ts`，构造上造不出坏形状），不再各自写一份形状再自检。
-pub const RBIND_TOKEN_ALPHABET: &str = "0123456789abcdef";
-
-/// 令牌形状：恰好 [`RBIND_TOKEN_LEN`] 个 [`RBIND_TOKEN_ALPHABET`] 里的字符（32 个**小写**十六进制）。
-/// **全仓 monitor 这一侧唯一的一份**（〔DUP2〕`bind.rs` 原来那份逐字同的副本并进来了，那边是再导出）。
-///
-/// **不收大写**（`A`–`F` 刻意不在字母表里）：形状只有一种写法，
-/// 好让本地那张 `token → HWND` 表与从 `environ` 读回来的串能直接相等比较，
-/// 中间不留归一化步骤 —— 归一化是「两侧各写一遍、各写错一遍」的经典落点。
+/// 启动期令牌的形状判定 —— 〔DUP3 · 主会话 09-26 裁 · `设计/01 §5` D1〕**全仓唯一的一份住共享 crate**
+/// （`shell_quote_core::rbind_token_ok`，长度与字母表两个常量同住；后端 `identity_tag.rs` 里的 `token_is_safe` 读的是同一个令牌
+/// `CCM_RBIND_TOKEN`，先前两半各写一份、规则逐字同）。这里是再导出：`rbind_token_shape_ok` 这个名字留着
+/// （本文件渲染前那道闸 · `bind.rs` · 判据的调用点一个不动）。
 ///
 /// ⚠ 这条**不是转义**：渲染时照样过 `posix_quote`（同 `ExportModel`）。
 /// 「值的形状」与「拼进 shell 安不安全」在本仓是两道闸，不许合并成一道。
-pub fn rbind_token_shape_ok(token: &str) -> bool {
-    token.len() == RBIND_TOKEN_LEN
-        && token
-            .bytes()
-            .all(|b| RBIND_TOKEN_ALPHABET.as_bytes().contains(&b))
-}
+pub use shell_quote_core::rbind_token_ok as rbind_token_shape_ok;
 
 /// 载荷里的一条环境操作。
 ///

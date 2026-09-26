@@ -7,7 +7,7 @@
 //! - `INVARIANTS §47` ①「字符集白名单（闭集，默认拒）＋ 不许 `-` 开头（选项注入）＋ 有长度上界的就钉上界」。
 //!
 //! 〔DUP2 · 第四波 4D〕同一份生成物又多三样：账号名（J18，`shell_quote_core::account_name_ok` 那组常量）·
-//! 账号种类取值集（J16，`acct_core::AUTH_KINDS`）· 启动期令牌的字母表与长度（J8，`payload.rs` 那两个常量）。
+//! 账号种类取值集（J16，`acct_core::AUTH_KINDS`）· 启动期令牌的字母表与长度（J8，〔DUP3〕`shell_quote_core` 那两个常量）。
 //!
 //! 两件事：
 //! 1. [`export_bindings_judgment_rules`]：`npm run gen:types`（= `cargo test --lib export_bindings`）重写生成物；
@@ -97,17 +97,18 @@ fn render_judgment_rules() -> String {
     s.push_str("/** 见 [`AUTH_KINDS`]。 */\n");
     s.push_str("export type AuthKind = (typeof AUTH_KINDS)[number];\n");
     // 〔DUP2 · J8〕启动期令牌：前端铸币口按字母表与长度**造**（构造上造不出坏形状），不再自己写一份形状再自检。
-    let alphabet =
-        serde_json::to_string(super::RBIND_TOKEN_ALPHABET).expect("字符串序列化不会失败");
+    // 〔DUP3〕两个常量与形状判定住共享 crate（`shell_quote_core::rbind_token_ok`，两半同一份）。
+    let alphabet = serde_json::to_string(shell_quote_core::RBIND_TOKEN_ALPHABET)
+        .expect("字符串序列化不会失败");
     s.push_str(
-        "\n/** 启动期令牌的字母表与长度 —— 形状住 `payload.rs::rbind_token_shape_ok`（铸币口按它们造）。 */\n",
+        "\n/** 启动期令牌的字母表与长度 —— 形状住 `shell_quote_core::rbind_token_ok`（铸币口按它们造）。 */\n",
     );
     s.push_str(&format!(
         "export const RBIND_TOKEN_ALPHABET = {alphabet};\n"
     ));
     s.push_str(&format!(
         "export const RBIND_TOKEN_LEN = {};\n",
-        super::RBIND_TOKEN_LEN
+        shell_quote_core::RBIND_TOKEN_LEN
     ));
     s
 }
