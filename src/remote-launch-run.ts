@@ -40,7 +40,6 @@ import type { CliRenderRequest, PayloadRenderRequest } from "./launch-cli-wire.t
 import type { CcmProbeResult } from "./ccm-probe.ts";
 import { sanitizeRemoteLauncher } from "./shell-quote.ts";
 import { probeCcm } from "./ccm-probe";
-import { getBehavior } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
 import { sendInto, type SendIntoOutcome } from "./tmux-control";
 import { AGENT_PROFILE } from "./agent-profile";
@@ -171,24 +170,19 @@ export async function withRelayEndpoint(
   return url === null ? plan : { ...plan, env: [...plan.env, { kind: "export-relay-base-url", value: url }] };
 }
 
-/** 挑渲染器：`forceLegacyLaunchRenderer` 手动逃生口（MASTERPLAN R2）短路到载荷那条；否则探测到 ccm
- *  且该 plan 的全部维度都能表达成 CLI 语法 → 走 CLI；探测失败/未装/能力不足/含 CLI 表达不了的
- *  维度（如账号、idle-tmux 复用）→ 安全降级，绝不因为渲染器选择本身而让启动失败。
+/** 挑渲染器：探测到 ccm 且该 plan 的全部维度都能表达成 CLI 语法 → 走 CLI；探测失败/未装/能力不足/
+ *  含 CLI 表达不了的维度（如账号、idle-tmux 复用）→ 安全降级，绝不因为渲染器选择本身而让启动失败。
  *
  *  🔴 〔步 22b·B 2026-09-20〕**两条分支今天都在 Rust 里**（`设计/90 §4 E` 收官）：
  *  `render_ccm_launch`（`ccm …` 调用行）与 `render_launch_payload`（内层载荷 ＋ 外层 tmux 三格）。
- *  ✅ 〔`P12` 2026-09-21 收完〕那个键此前叫 `forceLegacyLaunchRenderer`，而**名字里没有一个词是真的**
- *  （legacy 那一头在 `22b·B` 之后已经不存在）⇒ 改成 `forceLaunchPayloadRenderer`：
- *  保留「强制挑哪个渲染器」这个语义槽位，把宾语换成一个**真住址**（`render_launch_payload`）。
- *  🔴 那一拍顺带治了一个**比改名值钱得多**的毛病：config.json 里**未知键此前是静默忽略的**
- *  ——「关掉了」与「过了」在终端上一模一样。现在旧键出现会在设置面板顶上**指名喊出来**，
- *  并有会红的判据钉着（`tests/config-unknown-keys.vitest.ts`）。裁定住 `设计/99 §2.5 P12`。 */
+ *  〔LR2 2026-09-25〕这里原来还有一道手动逃生口 `forceLaunchPayloadRenderer`（`P12` 由 `forceLegacyLaunchRenderer`
+ *  改名而来，MASTERPLAN R2）：「探测说能也强制走载荷那条」。无界面入口、设置面板为它开特判
+ *  （`D-bolted-on §D4`），两条路又都在 Rust、同一排闸 ⇒ 删；为什么删写在 `src/behavior.ts` 那段注释里。 */
 async function renderLaunchCommand(
   origin: string,
   ctx: LaunchContext,
   plan: LaunchPlan,
 ): Promise<string> {
-  const behavior = await getBehavior();
   // 🔴 `设计/80 §8` 步 1：**带启动期令牌的 plan 不许去试 `ccm …` 调用行那条路。**
   //
   // `ccm` 今天没有承接 `CCM_RBIND_TOKEN` 的 flag，而**生产的 CLI 渲染在 Rust 那侧**
@@ -211,7 +205,7 @@ async function renderLaunchCommand(
       `[launch] 载荷带启动期令牌，\`ccm …\` 调用行说不出它 ⇒ 直接走后端载荷渲染（origin=${origin}）`,
     );
   }
-  if (!behavior.forceLaunchPayloadRenderer && ctx.transport.kind === "ssh" && !payloadCarriesRbindToken) {
+  if (ctx.transport.kind === "ssh" && !payloadCarriesRbindToken) {
     const probe = await probeCcm(origin);
     // R04①：一次调用同时回答"能不能"与"渲染成什么"。拿不到 `ok:true` 就走兜底——
     // 不存在"渲染出来了但悄悄丢了某个修饰"这个中间态（R04① 之前 TS 渲染器对说不出的维度
@@ -323,11 +317,15 @@ export function buildCliRenderRequest(
 ): CliRenderRequest {
   return {
     isSsh: plan.transport.kind === "ssh",
-    // `K-R53` `KR53D3`：**肯定式** —— `null` 的两种来历（真没装 · 没探出来）在这条 wire 上
-    // 本来就同形（都是「拿不到能力集」⇒ Rust 侧 `installed = caps.is_some()` 为 false ⇒ 降级），
-    // 而**值**那一侧已经分得开了（`ccm-probe.ts` 的三态）。这里刻意不把 `unknown` 写成
-    // `installed:false` 再传下去 —— 降级是处置，不是事实。
-    caps: probe.state === "installed" ? [...probe.capabilities] : null,
+    // 〔LR2 · R95b〕三态一对一过线（`ccm-probe.ts::CcmProbeResult` → `launch_wire.rs::WireCcmProbe`）。
+    // 原来这一格是 `caps: … | null`，`unknown` 与 `not-installed` 在线上同形 ⇒ Rust 那边只能说「没装」
+    // （`设计/80 §9.4`〔R95b〕）。现在 `unknown` 带着探测那一跳的原话过去，Rust 回「没探到，不等于没装」。
+    ccm:
+      probe.state === "installed"
+        ? { state: "installed", caps: [...probe.capabilities] }
+        : probe.state === "not-installed"
+          ? { state: "not-installed" }
+          : { state: "unknown", error: probe.error },
     action:
       plan.action.kind === "resume"
         ? { kind: "resume", sid: plan.action.sid }

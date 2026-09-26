@@ -40,8 +40,8 @@ const ALL_CAPS = [
 
 export interface CliGoldenCase {
   name: string;
-  /** 探测结果：`null` = 未装。 */
-  caps: string[] | null;
+  /** 探测结果：`null` = 未装；`{ unknown }` = 没探出来（〔LR2 · R95b〕线上第三态，带探测那一跳的原话）。 */
+  caps: string[] | null | { unknown: string };
   ctx: LaunchContext;
   /** 期望：渲得出（`true`，`out` 是命令）还是诚实降级（`false`，`out` 是降级理由）。 */
   ok: boolean;
@@ -89,6 +89,9 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
     ok: true, out: "ccm new --base --cwd '/home/用户/带 空格'" },
   // ---- refusal 类（§33：表达不了就必须放弃） ----
   { name: "未装 ccm", caps: null, ctx: base(), ok: false, out: "远端还没装后端" },
+  // 〔LR2 · R95b〕`设计/80 §9.4`：「没探出来」不许被说成「没装」—— 线上第三态，Rust 回 `Refusal::ProbeUnknown`。
+  { name: "没探出来（不等于没装）", caps: { unknown: "ssh: connection timed out" }, ctx: base(), ok: false,
+    out: "这次没探到远端的后端，不等于没装：ssh: connection timed out" },
   { name: "本地 transport", caps: ALL_CAPS, ctx: base({ transport: { kind: "local" } }),
     ok: false, out: "Windows 本机不用 ccm 命令起会话" },
   { name: "缺静态能力 tmux", caps: ALL_CAPS.filter((c) => c !== "tmux"), ctx: base(),
@@ -125,12 +128,12 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
     }), ok: true, out: "ccm resume p1 --tmux=cc-p1 --ccm-sid=p1 --base --model opus --cwd /tmp" },
 ];
 
-function probeOf(caps: string[] | null): CcmProbeResult {
-  // `K-R53`：`caps === null` 在这份夹具里逐字是「**未装**」（见 `CliGoldenCase.caps` 的注释），
-  // 不是「没探出来」——夹具喂的是确定的输入，`unknown` 那一态在这里没有位置。
-  return caps === null
-    ? { state: "not-installed" }
-    : { state: "installed", version: "2", capabilities: new Set(caps) };
+function probeOf(caps: CliGoldenCase["caps"]): CcmProbeResult {
+  // `K-R53`：`caps === null` 在这份夹具里逐字是「**未装**」；〔LR2 · R95b〕「没探出来」有了自己的输入形
+  // （`{ unknown }`），线上也有了自己的一态 —— 两者从此各走各的，不再同形。
+  if (caps === null) return { state: "not-installed" };
+  if (!Array.isArray(caps)) return { state: "unknown", error: caps.unknown };
+  return { state: "installed", version: "2", capabilities: new Set(caps) };
 }
 
 export function renderCliGoldenFixture(): string {

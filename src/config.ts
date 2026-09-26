@@ -56,7 +56,7 @@ export const CONFIG_KEY_OWNERS: Readonly<Record<string, string>> = {
   resumeCommandLocalPresets: "src/behavior.ts",
   resumeCommandRemotePresets: "src/behavior.ts",
   notifyTurnEnd: "src/behavior.ts",
-  forceLaunchPayloadRenderer: "src/behavior.ts",
+  // 〔LR2〕`forceLaunchPayloadRenderer` 退役（`src/behavior.ts` 那段注释写了为什么）⇒ 这一键删掉，盘上还写着它就当未知键点名。
 };
 
 /** [`CONFIG_KEY_OWNERS`] 的键集合。判据与运行期共用同一份，不另抄第二份。 */

@@ -13727,6 +13727,11 @@
       "zh": "远端还没装后端",
       "args": []
     },
+    "rsCcmInvocation.refusal.probeUnknown": {
+      "kind": "error",
+      "zh": "这次没探到远端的后端，不等于没装：{e}",
+      "args": ["e"]
+    },
     "history.entry.deleteHint": {
       "kind": "body",
       "zh": "删除这份会话记录（不可恢复）",
