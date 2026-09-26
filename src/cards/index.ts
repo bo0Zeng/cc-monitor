@@ -761,6 +761,12 @@ export function reconcilePendingToolResults(ctx: RenderContext): HTMLElement[] {
     // 已有 host → 重新调注入（injectOrBuildToolResult 走"已 host"分支，返 null）
     const reInjected = injectOrBuildToolResult(block, ctx);
     if (reInjected === null) {
+      // 〔W5-RENDER R11〕fallback 身上的落点标记（`render-stream-record.ts::markMemberUuids` 记的）跟着搬到注入出来的结果区块上
+      const member = element.dataset.memberUuid;
+      if (member) {
+        const inline = ctx.toolUseElements.get(toolUseId)?.querySelector<HTMLElement>(".block-tool-result-inline");
+        if (inline) inline.dataset.memberUuid = member;
+      }
       // 注入成功 → 删除原 fallback;宿主组必须在 remove **之前**取(摘除后 closest 断链)
       const host = element.closest<HTMLElement>(".card-tool-group");
       element.remove();

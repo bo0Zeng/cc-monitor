@@ -69,8 +69,11 @@ import { copyText } from "../copy-table";
  */
 export function revealCard(container: HTMLElement, uuid: string): HTMLElement | null {
   // CSS.escape 防 uuid 里有特殊字符破坏选择器
-  const sel = `[data-uuid="${CSS.escape(uuid)}"]`;
-  const el = container.querySelector<HTMLElement>(sel);
+  const key = CSS.escape(uuid);
+  // 〔W5-RENDER R11 · `设计/10 §7` 第 10 条〕卡找不到 ⇒ 再找「被并进工具组 / 被注入进 tool_use」的那一块（`data-member-uuid`）
+  const el =
+    container.querySelector<HTMLElement>(`[data-uuid="${key}"]`) ??
+    container.querySelector<HTMLElement>(`[data-member-uuid="${key}"]`);
   if (!el) return null;
   // 展开所有折叠祖先，确保目标可见。注:ESC 回退段是 div.branch-fold-wrap
   // + .expanded 类(非 <details>)——此前只开 details,命中折叠段内的卡会被

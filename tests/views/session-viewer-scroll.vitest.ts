@@ -38,6 +38,7 @@ import { MessageStream } from "../../src/stream";
 import {
   installViewerRig,
   expectLoaded,
+  line,
   userLine,
   viewerRig,
   type RigPayload,
@@ -209,5 +210,67 @@ describe("D2 · lazy 补算的 IO 以查看器自己的滚动容器为 root（`�
     expect(new Set(io.observed)).toEqual(new Set(cards));
     v.dispose();
     expect(io.disconnected).toBe(true);
+  });
+});
+
+/**
+ * 〔W5-RENDER R11〕`设计/10 §7` 第 10 条逐字：「命中落在工具结果里（`--include-tools`）时那条记录可能被并进工具组卡、
+ * 找不到 `[data-uuid]` ⇒ 标『跳不过去』」。修法：被并入 / 被注入的记录给落点记 `data-member-uuid`，`revealCard` 两种键都认。
+ * 判据（集合相等）：一条典型工具链（tool_use → tool_result → 又一个 tool_use 并进同一组 → 它的 tool_result）里，
+ * 四条记录的 uuid 全都跳得到，而且跳到的元素是它自己那一块（不是整组外壳）。
+ */
+describe("R11 · 工具组里被并入 / 被注入的记录也跳得到（`设计/10 §7` 第 10 条）", () => {
+  const ts = (s: number): string => `2026-09-10T00:00:${String(s).padStart(2, "0")}.000Z`;
+  const use = (seq: number, uuid: string, id: string, cmd: string): RigPayload =>
+    line(seq, {
+      type: "assistant",
+      uuid,
+      timestamp: ts(seq),
+      message: { role: "assistant", content: [{ type: "tool_use", id, name: "Bash", input: { command: cmd } }] },
+      sessionId: "s1",
+      isSidechain: false,
+      parentUuid: null,
+    });
+  const res = (seq: number, uuid: string, id: string, out: string): RigPayload =>
+    line(seq, {
+      type: "user",
+      uuid,
+      timestamp: ts(seq),
+      message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: out }] },
+      sessionId: "s1",
+      isSidechain: false,
+      isMeta: false,
+      parentUuid: null,
+    });
+
+  it("四条记录的 uuid 全跳得到，落点是各自那一块", async () => {
+    const v = await mount([
+      use(1, "a1", "t1", "echo one"),
+      res(2, "r1", "t1", "one-out"),
+      use(3, "a2", "t2", "echo two"),
+      res(4, "r2", "t2", "two-out"),
+    ]);
+    // 台子自检：真的并成了**一个**工具组（不然本条测的不是「被并入」）
+    expect(v.element.querySelectorAll(".card-tool-group").length).toBe(1);
+    const got = new Map<string, string>();
+    for (const uuid of ["a1", "r1", "a2", "r2"]) {
+      const el = (v as unknown as { scrollToMessage(u: string): HTMLElement | null }).scrollToMessage(uuid);
+      if (el) got.set(uuid, el.textContent ?? "");
+    }
+    expect([...got.keys()].sort()).toEqual(["a1", "a2", "r1", "r2"]);
+    expect(got.get("r1")).toContain("one-out");
+    expect(got.get("a2")).toContain("echo two");
+    expect(got.get("r2")).toContain("two-out");
+    expect(got.get("r2")).not.toContain("one-out");
+  });
+
+  it("结果先于调用到（先建 fallback、收尾对账时注入）：落点标记跟着搬过去，照样跳得到", async () => {
+    // r9 的 fallback 并进 a0 那个组（标记记在 fallback 单元上）；a9 到了之后收尾对账把结果注入 a9 那一块、摘掉 fallback
+    const v = await mount([use(1, "a0", "t0", "echo first"), res(2, "r9", "t9", "early-out"), use(3, "a9", "t9", "echo late")]);
+    // 台子自检：对账真的发生了（fallback 独立条已摘掉、结果进了 tool_use 那一块）
+    expect(v.element.querySelector(".block-tool-result:not(.block-tool-result-inline)")).toBeNull();
+    const el = (v as unknown as { scrollToMessage(u: string): HTMLElement | null }).scrollToMessage("r9");
+    expect(el?.classList.contains("block-tool-result-inline")).toBe(true);
+    expect(el?.textContent).toContain("early-out");
   });
 });
