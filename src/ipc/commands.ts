@@ -487,7 +487,7 @@ export const commands = {
      * 🔴 `K-R53`（09-11）：`named` 那一态**说得出名字就一起传**。后端那条 ccm 路只会
      * `--account <名字>`（`shared/ccm:606`）⇒ 不传名字 = 那次拉起**结构上到不了后端那条路**，
      * 必然落回第二实现（`history.rs::build_local_posix_command`，没有 tmux 容器）。
-     * 取值口只有一个：`accounts.ts::localLaunchAccountSync`（名字与目录同源）。
+     * 取值口只有一个：`launch-account.ts::localLaunchAccountSync`（名字与目录同源）。
      * `name` 缺席是**合法的**（例：分叉时继承的是源会话的目录、没有名字）—— 那时后端诚实短路，
      * **绝不从目录名反推**（推错 ⇒ `shared/ccm` 当场 `die`，一次能起的会话变成一条报错）。
      */
@@ -571,7 +571,7 @@ export const commands = {
   }) => invoke<BranchResult>("create_branch_session", args),
 
   // 〔C4a · 子步 3〕E79 那条本机版「某会话跑在哪个账号下」退役：
-  //   本机与远端同一条路 —— `accounts.ts::fetchSessionAccounts` 经通道 `chan.call(origin, "accounts-sessions", …)`。
+  //   本机与远端同一条路 —— `account-reads.ts::fetchSessionAccounts` 经通道 `chan.call(origin, "accounts-sessions", …)`。
 
   /**
    * 删历史会话。**桶①**。
@@ -782,7 +782,7 @@ export const commands = {
    *
    * Rust 侧从 `Result<(), String>` 改成 `Result<String, String>` ⇒ 这里从 `invoke<void>`
    * 改成 `invoke<string>`。`K-P5 §3 三` 现打「5 处起会话方没有一处在起新会话时知道 sid」——
-   * 这个 token 就是为那件事存在的：拿它去 `accounts.ts::sidOfLaunch` 反查，
+   * 这个 token 就是为那件事存在的：拿它去 `local-launch-backfill.ts::sidOfLaunch` 反查，
    * 起会话方才说得出「我刚起的那条是哪个会话」。
    * ⚠ 它是**内部 nonce**：不许显示给用户，也不许当 sid 用。
    */
@@ -945,7 +945,7 @@ export const commands = {
 
   // 〔C4a · 子步 3〕远端那条「某会话跑在哪个账号下」退役（子步 2 刚收进来，子步 3 连同本机那条一起改走通道）。
   // 〔C4c · 第四波 4B〕账号清单两条（远端 / 本机）与换号前的信任预检退役：前端经通道直接说帧命令
-  //   `accounts-list` / `accounts-trust`（`src/accounts.ts::fetchAccounts` / `checkTrust`），后端出成品。
+  //   `accounts-list` / `accounts-trust`（`src/account-reads.ts::fetchAccounts` / `checkTrust`），后端出成品。
 
   /** issue #23：红绿灯快照（启动 / F5 后拉一次做初始收敛）。**桶③**（生成物）。 */
   list_session_activity: () => invoke<SessionActivityPayload[]>("list_session_activity"),

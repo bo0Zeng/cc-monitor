@@ -142,12 +142,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { HistoryView } from "../../src/views/history";
 import { TabManager } from "../../src/tabs";
 import type { TabSessionActions } from "../../src/tab-session-actions";
-import {
-  primeLocalLaunchAccounts,
-  __resetLocalLaunchSnapshotForTests,
-  __resetAccountsCacheForTest,
-  type Account,
-} from "../../src/accounts";
+import type { Account } from "../../src/accounts";
+import { __resetAccountsCacheForTest } from "../../src/account-reads";
+import { primeLocalLaunchAccounts, __resetLocalLaunchSnapshotForTests } from "../../src/launch-account";
 import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 import { historyCalls, withAccountReads, withHistoryReads } from "../test-support/chan-fake";
 
@@ -482,19 +479,19 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
   it("★ 每一处起本机会话的调用都带 `account`（人群 = 现打出来的那几处）", () => {
     const sites = localLaunchCallSites();
     // 抽取器自检：一处都没扫到 = 正则坏了，下面整条在空转。
-    expect(sites.length, "一处本机起会话的调用都没扫到 —— 抽取器坏了").toBeGreaterThan(3);
+    expect(sites.length, "一处本机起会话的调用都没扫到 —— 抽取器坏了").toBeGreaterThan(0);
     // ⚠ 分母写下来：这是**现打**的处数，不是「所有起会话的路」。
     //   多一条新主路 ⇒ 这个数变 ⇒ 红一次，逼人回来看要不要传账号。
     expect(
       sites.length,
-      `起本机会话的调用点从 5 变成了 ${sites.length}：\n${sites.map((s) => s.file).join("\n")}`,
-    ).toBe(5); // 〔`A3` 第二波〕4 → 5：`account-restart-local.ts`（本机换号重启的 resume 那一跳；账号是用户点的那个，带着）
+      `起本机会话的调用点从 2 变成了 ${sites.length}：\n${sites.map((s) => s.file).join("\n")}`,
+    ).toBe(2); // 〔FE1〕5 → 2：四处 `resume_history_session`（tab 栏 · 历史页 · 分叉 · 换号重启）收成 `local-resume.ts` 一处；另一处是历史页起新会话的 `new_local_session` // 〔`A3` 第二波〕4 → 5：`account-restart-local.ts`（本机换号重启的 resume 那一跳；账号是用户点的那个，带着）
     const missing = sites.filter((s) => !/\baccount\s*:/.test(s.text)).map((s) => s.file);
     expect(
       missing,
       "这些主路没把账号说出来 ⇒ ① 起会话落到 shell rc 那个默认号上（静默串号）；\n" +
         "② 中转那一格拼不出路由键（没有账号 id ⇒ 不注入）。\n" +
-        "取值口只有一个：`accounts.ts::localLaunchAccountSync`。",
+        "取值口只有一个：`launch-account.ts::localLaunchAccountSync`（跟随）/ `explicitLocalAccountWire`（用户显式选的）。",
     ).toEqual([]);
   });
 
@@ -522,9 +519,9 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
     // 抽取器自检：分成两族之后任一族空掉 = 上面那个正则坏了，下面在空转。
     expect(
       resumeSites.length,
-      `\`resume_history_session\` 的调用点从 4 变成了 ${resumeSites.length}：\n` +
+      `\`resume_history_session\` 的调用点从 1 变成了 ${resumeSites.length}：\n` +
         resumeSites.map((s) => s.file).join("\n"),
-    ).toBe(4); // 〔`A3` 第二波〕3 → 4：`account-restart-local.ts`（带 `tmuxName` —— 复用被 kill 让出来的旧名）
+    ).toBe(1); // 〔FE1〕4 → 1：本机 resume 的编排只剩 `local-resume.ts` 一份（它的「只此一家」由 `tests/launch-orchestration-single-home.vitest.ts` K2 两向钉） // 〔`A3` 第二波〕3 → 4：`account-restart-local.ts`（带 `tmuxName` —— 复用被 kill 让出来的旧名）
     expect(
       sites.length - resumeSites.length,
       "`new_local_session` 的调用点数变了 —— 它今天没有 `tmux_name` 参数位（Rust 侧签名里就没有），" +
@@ -537,36 +534,28 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
         "如实降级回旧路 ⇒ 起出来的会话**不在具名 tmux 容器里**，于是 `list_local_tmux`\n" +
         "那一族（右键「杀死会话（kill tmux …）」/「就地 resume（复用空 tmux …）」）对它\n" +
         "一条都给不出来。名字只许过 `remote-launch.ts::mintTmuxName`（全仓唯一铸造口），\n" +
-        "算法口住 `ipc/local-tmux-name.ts`。",
+        "算法口住 `tmux-name-mint.ts`（〔FE1〕原 `ipc/local-tmux-name.ts` 并进去了）。",
     ).toEqual([]);
   });
 
   it("★ 铸名只有一个算法口（不许哪条路自己现查一遍 `list_local_tmux` 再拼）", () => {
-    // ⚠ **分母 3，今天 2/3 走口、1/3 内联** —— `src/tabs.ts` 那条 tab 栏 resume 自己
-    //   写着同样的六行，而 `src/tabs.ts` 不在 `K-R46` 的写区 ⇒ 收不进来，如实钉住现状。
-    //   这个 1 只许变小、不许变大：多一条内联的就红。
-    const inline: string[] = [];
+    // 〔FE1〕先前这里钉着「1 处内联」（tab 栏那条 resume 自己写着六行，`K-R46` 收不进来）；
+    //   本机远端的「列名单 → 铸名」收进 `tmux-name-mint.ts` 之后，调 `mintSessionTmuxName(` 的生产文件恰好是它一个。
+    //   ⚠ 两向：`tmux-name-mint.ts` 不在名单里（它不调了）⇒ 也红（正控：这条不是零命中地绿）。
+    const callers: string[] = [];
     for (const f of walk(resolve(REPO_ROOT, "src"), ".ts")) {
       if (f.includes(".test.") || f.includes(".vitest.")) continue;
-      if (f.endsWith("/ipc/local-tmux-name.ts")) continue; // 算法口本体
       if (f.endsWith("/remote-launch.ts")) continue; // `mintSessionTmuxName` 的定义处
       const code = stripComments(readFileSync(f, "utf8"), "ts");
       // ⚠ 用**整个标识符**做匹配单位（`\b` + 收尾括号），不是裸子串 —— 那正是
-      //   `scanning-guard-registry.vitest.ts` 那条递减棘轮盯的东西。
-      //   第一版在这里对语料变量做了一次裸的存在性子串判断，门禁当场把上限 8 顶到 9。
-      //   ⚠⚠ **连这条注释都不许把那个写法逐字抄下来** —— 那个棘轮扫的是**原始源码**、
-      //     不剥注释，散文里写一遍就照样被数进去（本轮实测：改成正则之后仍红 1 处，
-      //     红的就是这句注释里那份逐字副本）。本文件 `:440` 那条头注记的是同一族病。
-      if (/\bmintSessionTmuxName\s*\(/.test(code)) inline.push(f.slice(REPO_ROOT.length + 1));
+      //   `scanning-guard-registry.vitest.ts` 那条递减棘轮盯的东西（散文里逐字抄一遍都会被数进去）。
+      if (/\bmintSessionTmuxName\s*\(/.test(code)) callers.push(f.slice(REPO_ROOT.length + 1));
     }
-    inline.sort();
-    // 〔U2 · 第三波〕那条 tab 栏 resume 随会话动作整块搬进了 `src/tab-session-actions.ts`，
-    //   六行内联逐字随行 ⇒ 名单里的住址换了，条数仍是 1（没收掉，也没多）。
+    callers.sort();
     expect(
-      inline,
-      "本机铸名自己写了一遍的地方变了。算法口是 `src/ipc/local-tmux-name.ts`；\n" +
-        "`src/tab-session-actions.ts`（原 `src/tabs.ts` 那条 tab 栏 resume）是 `K-R46` 收不进来的那一处，收掉它要另立一件。",
-    ).toEqual(["src/tab-session-actions.ts"]);
+      callers,
+      "铸名的家变了。起会话的 tmux 名只许经 `src/tmux-name-mint.ts`（列名单 ＋ 避让 ＋ 列不出就不铸）。",
+    ).toEqual(["src/tmux-name-mint.ts"]);
   });
 
   it("★★ 本机 resume 那两条也往 pin 里写（`D3 阻-2`：写入口先前结构上只走远端）", () => {
@@ -576,7 +565,8 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
     // ⇒ 本机的 `list_last_accounts` **恒空** ⇒ 取值口那条「pin 优先」在本机永远走不到，
     //   而那正是「参数位有、值恒空」那一形的另一半。
     // 〔U2〕tab 栏那条本机 resume 从 `src/tabs.ts` 搬到了 `src/tab-session-actions.ts`（逐字随行）。
-    for (const f of ["src/tab-session-actions.ts", "src/views/history.ts"]) {
+    // 〔FE1〕那两条（tab 栏 · 历史页）的编排收进了 `local-resume.ts`（跟随那一态记 pin）。
+    for (const f of ["src/local-resume.ts"]) {
       const code = stripComments(readFileSync(resolve(REPO_ROOT, f), "utf8"), "ts");
       expect(
         (code.match(/recordLocalLaunchAccount\(/g) ?? []).length,
@@ -622,10 +612,16 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
     // 三条主路走那个唯一取值口；fork 那条是**用户在小窗里显式选的**，
     // 它有自己的语义（选了账号 0 就要显式 `base`），所以不走这个口 —— 如实记，不强求。
     // 〔U2〕tab 栏那条本机 resume 从 `src/tabs.ts` 搬到了 `src/tab-session-actions.ts`（逐字随行）。
-    for (const f of ["src/tab-session-actions.ts", "src/views/history.ts"]) {
+    // 〔FE1〕tab 栏 · 历史页那两条的编排收进了 `local-resume.ts`；跟随那一态走 `localFollowPlan(`
+    //   （它就是 `localLaunchAccountSync` 那条规则，只多拆出 D-h 的「pin 选不了」一格），它自己住 `launch-account.ts`
+    //   （〔FE1 子步 5〕起停那一格从 `accounts.ts` 拆出来的住址）。
+    for (const [f, entry] of [
+      ["src/local-resume.ts", /localFollowPlan\(/g],
+      ["src/launch-account.ts", /localLaunchAccountSync\(/g],
+    ] as const) {
       const code = readFileSync(resolve(REPO_ROOT, f), "utf8");
       expect(
-        (code.match(/localLaunchAccountSync\(/g) ?? []).length,
+        (code.match(entry) ?? []).length,
         `${f} 里没调那个唯一取值口`,
       ).toBeGreaterThan(0);
       // 取值是同步的，**不许**有人给它加 `await`（那会多一拍，撞两条只放行一个微任务的判据）。
@@ -634,9 +630,10 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
       );
     }
     // 阴性对照：`fork-flow.ts` 那条**刻意**不走它（它是用户显式选的那一格）。
+    // 〔FE1〕它交的是 `{ kind: "explicit", … }`，载荷形状（账号 0 ⇒ `base`）由 `launch-account.ts::explicitLocalAccountWire` 用生成物的键产。
     const fork = readFileSync(resolve(REPO_ROOT, "src/fork-flow.ts"), "utf8");
     expect(fork).not.toContain("localLaunchAccountSync");
-    expect(fork).toContain('{ kind: "base" }');
+    expect(fork).toContain('kind: "explicit"');
   });
 });
 
@@ -651,7 +648,7 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
 //     ⇒ **`1502 passed` 全绿**（那一行字还在，值没了）；
 //     ⚠ 这里**刻意不逐字复述那个锚点** —— 复述一次，下一个照「全仓 N 处一起切」的人
 //     就会把本段一起切掉（`阻-1` 那条病的形状，别在治它的这一拍里再长一次）。
-//   · 刀 `A2`：`accounts.ts::recordLocalLaunchAccount` 的函数体掏空成永不生效、
+//   · 刀 `A2`：`launch-account.ts::recordLocalLaunchAccount` 的函数体掏空成永不生效、
 //     **调用文本一个字不动** ⇒ **`1502 passed` 全绿**（本机 pin 从此恒不写）。
 //
 // ⇒ 本组一律走**真的 `HistoryView`**：造一行、开右键菜单、点那两条，然后
@@ -1126,7 +1123,7 @@ const PENDING: Record<string, string> = {
 };
 
 /** 基线之后现打的人群条数（带类型标注、名字带 origin 的声明）。 */
-const POPULATION = 263; // 〔合并 US1 × 主线 06880369〕主线 262 ＋ US1 净 +1 ⇒ 263 // 〔C4e 批 3b〕+4：`cc-bus-control.ts` 新进九处（`decodeAgents` / `agentOnline` / `saidOfDelivery` / `sendMessage` / `saidOfKill` / `killAgent` / `spawnAgent` / `saidOfBroadcast` / `broadcast`）· `control-said.ts` 新进四处（`machineName` / `unreadable` / `saidOfTransport` / `settle`，从 `tmux-control.ts` 搬来，那边 −4）· `commands.ts` 五条包装退役 −5 // 〔C4e 批 2〕+3：`tmux-control.ts` 新进六处（`settle` / `decodeKilled` / `killSession` / `decodeTyped` / `sendKeys` / `sendInto` 的 `origin: Origin`）＋6 · 包装层 `kill_remote_tmux` / `tmux_send_keys` 的 `args.origin` −2 · `launch-cli-wire.ts::SendIntoRequest.origin` 随类型退役 −1（全是 `Origin` / `string`、零可空；跑出来核过） // 〔C4e · 第四波 4C〕+4：`tmux-control.ts` 五处（`machineName` / `unreadable` / `saidOfTransport` / `decodeCapture` / `capturePane` 的 `origin: Origin`）＋5 · 包装层 `capture_remote_pane` 的 `args.origin` 随命令退役 −1（全是 `Origin` / `string`、零可空；跑出来核过） // 〔合并 CF2 × 主线 28a5f652〕主线 240 ＋ 本路 +11 ⇒ 251 // 〔合并 AS2〕主线 235 ＋ AS2 +5（包装层 assets_sync 的 args.origin · 生成物 AssetsSyncRow.origin / AssetsReach.origin · assets-section.ts 的 machineName(origin) / render(origin)，全是 Origin / string、零可空） // 〔合并 C4c × 主线 6b375621〕主线 237 ＋ 本路 −2 ⇒ 235（跑出来核过） // 〔C4c · 第四波 4B〕−2：包装层 `list_remote_accounts` / `check_account_trust` 的 `args.origin` 随两条退役；`accounts.ts::checkTrust` 的 `origin` 从 `string` 改 `Origin`（换型不换数）；`probe_session_record` 包装退役 −1 与 `session-reads.ts::probeSessionRecord` 的 `origin` ＋1 净 0（跑出来核过） // 〔合并 AS1〕+2（全是 `Origin`、零可空）：`settings/mcp-sync.ts` 的 `machineName(origin)` ＋ `McpSyncPanel` 构造参数 `here` 的返回形状 `{ origin: Origin; dir }`；主线 235 ＋ 2 // 〔RM1d · 第四波〕+1：包装层 `panorama_edit` 的 `args.origin`（`api.ts` 那一侧读的是 `at.origin`，不是新声明）（合并主线按两边增量相加） // 〔合并 U4b〕228 ＋ U4b 6 ⇒ 234 // 〔U4b · 第四波〕+6：`tabs.ts::TabManager.markOriginSeen` 的 `origin: Origin` · 生成物 `OriginSessionsListedPayload.origin` · 包装层 `probe_session_record` 的 `args.origin` · `events.ts` 的 `onOriginSessionsListed` 与它的 `origin` 参数 ＋ 队列项 `listed.origin`（全是 `string` / `Origin`，零处装得下 null）； // 〔合并 ST3〕212 ＋ RL1 1 ＋ RM1c 11 ＋ ST3 4 ⇒ 228 // 〔ST3 · 第四波 4B〕+4：包装层 `drift_ledger_report` 的 `args.origin` ＋1 · 生成物 `DriftLedgerReport.origin` ＋1 · `drift-ledger-section.ts` 里 ST2 那两处（`onMachineChanged(origin)` / `applyMachine(origin)`）退场 −2、新进 `machineName(origin)` / `formatReport(…, origin)` / `answersFor(…, origin)` / `DriftLedgerSection.lastOrigin` ＋4（全是 `Origin`，不可空；跑出来核过）； 〔合并 RW1〕+4：`commands.ts` 的 `list_skills` / `read_skill_file` / `write_skill_file` 各一处 `origin: Origin` ＋ `views/inbox-view.ts::InboxView.origin`（远端项目的收件箱也能编辑）；  // 〔RM1c · 第四波〕+11（全是 `Origin`、零可空）：`commands.ts` 包装层 `panorama_call` 的 args ×1 · `panorama/api.ts` 的 `RepoAt.origin` · `remote()` 的 at 形参 · `diagramKinds(origin)` ×3 · `views/panorama.ts` 的 `loadedOrigin` / `origin` 两个字段 ＋ `showRepo` / `switchRepo` 两个形参 ×4 · `panorama/diagram-view.ts` 的 `kindsOrigin` 字段 ＋ `ensureKinds` / `repoChanged` 里两个 `const origin: Origin` ×3；合并时按两边增量相加、跑出来核过 // 〔RL1〕+1（`remote-launch-run.ts::withRelayEndpoint` 的 `origin: string`；包装层 `relay_ensure` → `relay_endpoint_for_launch` 换名不换数）// 〔合并 RW1〕+4：`commands.ts` 的 `list_skills` / `read_skill_file` / `write_skill_file` 各一处 `origin: Origin` ＋ `views/inbox-view.ts::InboxView.origin`（远端项目的收件箱也能编辑）； // 〔合并 RM1a〕+7（RM1a 新代码里带类型的 origin 声明，全是 `Origin`：`commands.ts` 包装层 `write_apikey_credentials_key` 的 args 形状（多行写法那一处）· `read_apikey_credentials_status` / `apikey_routing_for` / `relay_ensure` / `config_surface_report` 四条的 `args.origin` · 生成物 `ConfigSurfaceReport.origin` · `accounts-section.ts` 里 `pendingKeys` 的值形状；不可空那条判据照旧只剩 PENDING 一处，跑出来核过）// 〔合并主线 a0b9a8e0〕+20（主线新代码里带类型的 origin 声明，全都已是 `Origin` / `string`：ST2 的 backend-section 四处 · config-surface-section 三处 · drift-ledger 两处 · remote-section 两处；RM1b 的 tasks-panel 三处；UP1 的 grid-monitor 两处 ＋ 包装层 RM1b / SE2 带 origin 的三条；S4 拆掉 tabs.ts 的 fetchTmuxFresh / killRemoteTmux 转交 −2 —— 跑出来核过）； 〔C4a 子步 3〕+3：`chan.ts::chan.call` 的 `origin` · 包装层 `chan_call` 的 `origin`（远端会话账号那条的 `origin` 随它退役 −1）· `history-search.ts` 的 `parseSessionHitsLines(…, origin)` 与 `origins` 那一格；// 〔C4a 子步 2〕+3：包装层新进的 list_remote_accounts / list_remote_session_accounts / check_account_trust 各带一个 `origin: Origin`
+const POPULATION = 267; // 〔合并 FE1 × 主线 68400328〕主线 263（US1 净 +1）＋ FE1 +4 ⇒ 267 // 〔合并 FE1 × 主线 b1046d40〕主线 262 ＋ FE1 +4 ⇒ 266 // 〔FE1 子步 1〕+4（全是 `Origin`、零可空）：`tmux-name-mint.ts` 的 `readTmuxListing(origin)` · `listingFromFetch(origin, …)` · `mintFreshTmuxName(origin, …)` · `refuseUnmintable(origin, …)` // 〔C4e 批 3b〕+4：`cc-bus-control.ts` 新进九处（`decodeAgents` / `agentOnline` / `saidOfDelivery` / `sendMessage` / `saidOfKill` / `killAgent` / `spawnAgent` / `saidOfBroadcast` / `broadcast`）· `control-said.ts` 新进四处（`machineName` / `unreadable` / `saidOfTransport` / `settle`，从 `tmux-control.ts` 搬来，那边 −4）· `commands.ts` 五条包装退役 −5 // 〔C4e 批 2〕+3：`tmux-control.ts` 新进六处（`settle` / `decodeKilled` / `killSession` / `decodeTyped` / `sendKeys` / `sendInto` 的 `origin: Origin`）＋6 · 包装层 `kill_remote_tmux` / `tmux_send_keys` 的 `args.origin` −2 · `launch-cli-wire.ts::SendIntoRequest.origin` 随类型退役 −1（全是 `Origin` / `string`、零可空；跑出来核过） // 〔C4e · 第四波 4C〕+4：`tmux-control.ts` 五处（`machineName` / `unreadable` / `saidOfTransport` / `decodeCapture` / `capturePane` 的 `origin: Origin`）＋5 · 包装层 `capture_remote_pane` 的 `args.origin` 随命令退役 −1（全是 `Origin` / `string`、零可空；跑出来核过） // 〔合并 CF2 × 主线 28a5f652〕主线 240 ＋ 本路 +11 ⇒ 251 // 〔合并 AS2〕主线 235 ＋ AS2 +5（包装层 assets_sync 的 args.origin · 生成物 AssetsSyncRow.origin / AssetsReach.origin · assets-section.ts 的 machineName(origin) / render(origin)，全是 Origin / string、零可空） // 〔合并 C4c × 主线 6b375621〕主线 237 ＋ 本路 −2 ⇒ 235（跑出来核过） // 〔C4c · 第四波 4B〕−2：包装层 `list_remote_accounts` / `check_account_trust` 的 `args.origin` 随两条退役；`accounts.ts::checkTrust` 的 `origin` 从 `string` 改 `Origin`（换型不换数）；`probe_session_record` 包装退役 −1 与 `session-reads.ts::probeSessionRecord` 的 `origin` ＋1 净 0（跑出来核过） // 〔合并 AS1〕+2（全是 `Origin`、零可空）：`settings/mcp-sync.ts` 的 `machineName(origin)` ＋ `McpSyncPanel` 构造参数 `here` 的返回形状 `{ origin: Origin; dir }`；主线 235 ＋ 2 // 〔RM1d · 第四波〕+1：包装层 `panorama_edit` 的 `args.origin`（`api.ts` 那一侧读的是 `at.origin`，不是新声明）（合并主线按两边增量相加） // 〔合并 U4b〕228 ＋ U4b 6 ⇒ 234 // 〔U4b · 第四波〕+6：`tabs.ts::TabManager.markOriginSeen` 的 `origin: Origin` · 生成物 `OriginSessionsListedPayload.origin` · 包装层 `probe_session_record` 的 `args.origin` · `events.ts` 的 `onOriginSessionsListed` 与它的 `origin` 参数 ＋ 队列项 `listed.origin`（全是 `string` / `Origin`，零处装得下 null）； // 〔合并 ST3〕212 ＋ RL1 1 ＋ RM1c 11 ＋ ST3 4 ⇒ 228 // 〔ST3 · 第四波 4B〕+4：包装层 `drift_ledger_report` 的 `args.origin` ＋1 · 生成物 `DriftLedgerReport.origin` ＋1 · `drift-ledger-section.ts` 里 ST2 那两处（`onMachineChanged(origin)` / `applyMachine(origin)`）退场 −2、新进 `machineName(origin)` / `formatReport(…, origin)` / `answersFor(…, origin)` / `DriftLedgerSection.lastOrigin` ＋4（全是 `Origin`，不可空；跑出来核过）； 〔合并 RW1〕+4：`commands.ts` 的 `list_skills` / `read_skill_file` / `write_skill_file` 各一处 `origin: Origin` ＋ `views/inbox-view.ts::InboxView.origin`（远端项目的收件箱也能编辑）；  // 〔RM1c · 第四波〕+11（全是 `Origin`、零可空）：`commands.ts` 包装层 `panorama_call` 的 args ×1 · `panorama/api.ts` 的 `RepoAt.origin` · `remote()` 的 at 形参 · `diagramKinds(origin)` ×3 · `views/panorama.ts` 的 `loadedOrigin` / `origin` 两个字段 ＋ `showRepo` / `switchRepo` 两个形参 ×4 · `panorama/diagram-view.ts` 的 `kindsOrigin` 字段 ＋ `ensureKinds` / `repoChanged` 里两个 `const origin: Origin` ×3；合并时按两边增量相加、跑出来核过 // 〔RL1〕+1（`remote-launch-run.ts::withRelayEndpoint` 的 `origin: string`；包装层 `relay_ensure` → `relay_endpoint_for_launch` 换名不换数）// 〔合并 RW1〕+4：`commands.ts` 的 `list_skills` / `read_skill_file` / `write_skill_file` 各一处 `origin: Origin` ＋ `views/inbox-view.ts::InboxView.origin`（远端项目的收件箱也能编辑）； // 〔合并 RM1a〕+7（RM1a 新代码里带类型的 origin 声明，全是 `Origin`：`commands.ts` 包装层 `write_apikey_credentials_key` 的 args 形状（多行写法那一处）· `read_apikey_credentials_status` / `apikey_routing_for` / `relay_ensure` / `config_surface_report` 四条的 `args.origin` · 生成物 `ConfigSurfaceReport.origin` · `accounts-section.ts` 里 `pendingKeys` 的值形状；不可空那条判据照旧只剩 PENDING 一处，跑出来核过）// 〔合并主线 a0b9a8e0〕+20（主线新代码里带类型的 origin 声明，全都已是 `Origin` / `string`：ST2 的 backend-section 四处 · config-surface-section 三处 · drift-ledger 两处 · remote-section 两处；RM1b 的 tasks-panel 三处；UP1 的 grid-monitor 两处 ＋ 包装层 RM1b / SE2 带 origin 的三条；S4 拆掉 tabs.ts 的 fetchTmuxFresh / killRemoteTmux 转交 −2 —— 跑出来核过）； 〔C4a 子步 3〕+3：`chan.ts::chan.call` 的 `origin` · 包装层 `chan_call` 的 `origin`（远端会话账号那条的 `origin` 随它退役 −1）· `history-search.ts` 的 `parseSessionHitsLines(…, origin)` 与 `origins` 那一格；// 〔C4a 子步 2〕+3：包装层新进的 list_remote_accounts / list_remote_session_accounts / check_account_trust 各带一个 `origin: Origin`
 
 interface Decl {
   /** `文件::宿主.名字`（宿主 = 外层接口 / 类 / 类型别名 / 函数名；顶层是 `<top>`）。 */

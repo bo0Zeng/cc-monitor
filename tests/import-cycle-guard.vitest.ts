@@ -26,6 +26,16 @@
  *   它**不该**被这条守卫拦 —— 拦了就是逼人为一条不存在的运行期依赖做重构。）
  * - `export … from "../src/x"` 是**运行期**再导出，算边。
  * - 不解析动态 `import()`（本仓生产侧没有）。
+ *
+ * # 〔FE1 · 第四波 4D〕第二条：**连类型边一起算**的全图，强连通分量 == 豁免表（两向）
+ *
+ * 上面那条「`import type` 不算边」的理由对**运行期**成立；但审计 B §4 现打出一个 7 模块的类型环
+ * （`accounts · accounts-decode · config · history-reads · ipc/chan · ipc/chan-caller · ipc/commands`），
+ * 只靠 `ipc/commands.ts` 为一个返回类型回头 `import type` 账号域闭合 —— **通信层在类型上依赖账号域**，
+ * 那是分层反了，不是「不存在的依赖」。FE1 的题面要「import 图无环（现打全图）」、「类型住被依赖的一侧」。
+ * ⇒ 第二条判据量全图（值边 ＋ 类型边），强连通分量集合 == [`TYPE_CYCLE_EXEMPT`]（两向：新长一个环 ⇒ 红；
+ * 豁免的那个环被拆了而表没摘 ⇒ 红）。守的要求：`设计/01 §5` D1「一个判定只有一个家」（类型住被依赖的一侧，
+ * 一个形状不在两个域各有一份说法）。
  */
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -99,6 +109,88 @@ function runtimeDeps(file: string): string[] {
   }
   return out;
 }
+
+/**
+ * 〔FE1〕抠出一个文件的**全部**相对 import 目标（值边 ＋ 类型边 ＋ `export … from`）。
+ * 与 [`runtimeDeps`] 同一套抠法，只是不跳过 type-only。
+ */
+function allDeps(file: string): string[] {
+  const code = stripComments(readFileSync(file, "utf8"), "ts");
+  const out = new Set<string>();
+  const re = /(?:^|\n)\s*(import|export)\s+([^;]*?)\s*from\s*["'](\.[^"']+)["']/g;
+  for (const m of code.matchAll(re)) {
+    const spec = m[3].replace(/\.ts$/, "");
+    const base = resolve(dirname(file), spec);
+    for (const cand of [`${base}.ts`, join(base, "index.ts")]) {
+      try {
+        if (statSync(cand).isFile()) {
+          out.add(cand);
+          break;
+        }
+      } catch {
+        /* 下一个候选 */
+      }
+    }
+  }
+  return [...out];
+}
+
+/** 〔FE1〕强连通分量（Tarjan）：只回「真成环」的那些（≥2 个成员，或自指）。每个分量内部按路径排序。 */
+function cycleComponents(graph: Map<string, string[]>): string[][] {
+  let index = 0;
+  const idx = new Map<string, number>();
+  const low = new Map<string, number>();
+  const onStack = new Set<string>();
+  const stack: string[] = [];
+  const out: string[][] = [];
+  const strong = (v: string): void => {
+    idx.set(v, index);
+    low.set(v, index);
+    index += 1;
+    stack.push(v);
+    onStack.add(v);
+    for (const w of graph.get(v) ?? []) {
+      if (!graph.has(w)) continue;
+      if (!idx.has(w)) {
+        strong(w);
+        low.set(v, Math.min(low.get(v)!, low.get(w)!));
+      } else if (onStack.has(w)) {
+        low.set(v, Math.min(low.get(v)!, idx.get(w)!));
+      }
+    }
+    if (low.get(v) === idx.get(v)) {
+      const comp: string[] = [];
+      let w: string;
+      do {
+        w = stack.pop()!;
+        onStack.delete(w);
+        comp.push(w);
+      } while (w !== v);
+      if (comp.length > 1 || (graph.get(v) ?? []).includes(v)) out.push(comp.sort());
+    }
+  };
+  for (const v of [...graph.keys()].sort()) if (!idx.has(v)) strong(v);
+  return out.sort((a, b) => a[0].localeCompare(b[0]));
+}
+
+/**
+ * 〔FE1〕全图（含类型边）里**今天还在**的环 —— 逐条写清为什么还在、归谁拆。不是豁免清单：两向相等，
+ * 拆掉了不摘 ⇒ 红；新长一个 ⇒ 红。
+ */
+const TYPE_CYCLE_EXEMPT: ReadonlyArray<readonly [members: readonly string[], why: string]> = [
+  // 〔FE1 子步 5〕`accounts-decode ⇄ accounts` 那一行摘了：`accounts.ts` 拆成模型（纯）＋ 读面（`account-reads.ts`）之后，
+  //   值 import 解码器的是读面，解码器 `import type` 的是模型 ⇒ 环断（子步 4 登记时写明归本路摘）。
+  [
+    ["src/cards/index.ts", "src/cards/subagent.ts"],
+    "纯类型边闭合（`cards/subagent.ts` 回头 `import type { JsonlRecord, RenderContext, RenderResult } from \"./index\"`）；" +
+      "上面那条运行期判据的头注点过名。不在 FE1 写区：拆法是把那三个类型挪进卡片系的一个叶子，归卡片那一片的主人。",
+  ],
+  [
+    ["src/launch-dimensions.ts", "src/launch-plan.ts"],
+    "纯类型边闭合（`launch-dimensions.ts` 回头 `import type { LaunchDimension } from \"./launch-plan.ts\"`）；" +
+      "`src/launch-*` 是 LR2 的写区（起会话收口），不在 FE1 写区。拆法同上：类型挪进叶子。",
+  ],
+];
 
 /** 返回找到的第一个环（按文件顺序确定性遍历），没有则 null。 */
 function findCycle(graph: Map<string, string[]>): string[] | null {
@@ -196,5 +288,56 @@ describe("E80：生产代码不许有运行期 import 环", () => {
     const mc = join(SRC, "settings", "machine-card.ts");
     const deps = graph.get(mc) ?? [];
     expect(deps.some((d) => d.includes("generated"))).toBe(false);
+  });
+});
+
+describe("〔FE1〕全图（值边 ＋ 类型边）的环 == 登记表（两向）", () => {
+  const files = productionTsFiles(SRC).sort();
+  const graph = new Map<string, string[]>(files.map((f) => [f, allDeps(f)]));
+  const rel = (p: string) => relative(REPO_ROOT, p).replace(/\\/g, "/");
+
+  it("★ 反向自检：全图比运行期图多出类型边（否则下面那条量的就是同一张图）", () => {
+    const all = [...graph.values()].reduce((n, v) => n + v.length, 0);
+    const runtime = files.reduce((n, f) => n + runtimeDeps(f).length, 0);
+    expect(all, "全图一条边都没有 —— 抠法坏了").toBeGreaterThan(200);
+    expect(all, "全图与运行期图一样大 —— 类型边没抠进来").toBeGreaterThan(runtime);
+  });
+
+  it("★★ 环的集合 == 登记表（新长的环 ⇒ 红；拆掉了没摘 ⇒ 红）", () => {
+    const got = cycleComponents(graph).map((c) => c.map(rel).join(" ⇄ "));
+    const want = TYPE_CYCLE_EXEMPT.map(([m]) => [...m].sort().join(" ⇄ ")).sort();
+    expect(
+      got,
+      "import 全图（含 `import type`）的环变了。新长的那一个：类型该住**被依赖的一侧**" +
+        "（通常是挪进一个零 import 的叶子，照 `src/apikey-reads.ts` 收 `ApikeyRoutingView` 的做法），别在两个域之间来回 import。",
+    ).toEqual(want);
+  });
+
+  it("★ 判据真的会抓人：人造一条类型回边，多出一个环；自指也算", () => {
+    const a = "/fake/a.ts";
+    const b = "/fake/b.ts";
+    const c = "/fake/c.ts";
+    expect(cycleComponents(new Map([[a, [b]], [b, [c]], [c, []]]))).toEqual([]);
+    expect(cycleComponents(new Map([[a, [b]], [b, [c]], [c, [a]]]))).toEqual([[a, b, c]]);
+    expect(cycleComponents(new Map([[a, [a]]]))).toEqual([[a]]);
+    // 真图上注一条回边（`ipc/commands.ts` 回头依赖账号域的读面 —— 读面本来就依赖包装层），必须多出一个环。
+    //   ⚠ 注的是 `account-reads.ts` 而不是 `accounts.ts`：子步 5 之后账号模型（`accounts.ts`）零 IO、不依赖包装层，
+    //   往它身上注一条边成不了环 —— 那恰恰是拆分要的结果，不是判据瞎了。
+    const injected = new Map(graph);
+    const commands = join(SRC, "ipc", "commands.ts");
+    const accounts = join(SRC, "account-reads.ts");
+    injected.set(commands, [...(injected.get(commands) ?? []), accounts]);
+    expect(
+      cycleComponents(injected).some((c) => c.includes(commands) && c.includes(accounts)),
+      "注了 `ipc/commands.ts → account-reads.ts` 这条回边，判据却没看见它们成环",
+    ).toBe(true);
+    expect(cycleComponents(graph).some((c) => c.includes(commands))).toBe(false);
+  });
+
+  it("每条登记都写清为什么还在、归谁拆", () => {
+    for (const [m, why] of TYPE_CYCLE_EXEMPT) {
+      expect(why.length, `${m.join(" ⇄ ")} 的理由像占位`).toBeGreaterThan(40);
+      expect(/写区|归/.test(why), `${m.join(" ⇄ ")} 没说归谁拆`).toBe(true);
+    }
   });
 });

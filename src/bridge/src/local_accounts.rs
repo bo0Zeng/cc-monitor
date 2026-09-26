@@ -29,7 +29,7 @@ mod tests;
 
 // 〔C4c · 第四波 4B〕本机的「这个账号信任过这个目录吗」（`accounts.trust` 的本机对侧）退役〔散文墓碑〕：`local_trust_argv` /
 //   `classify_local_trust` / `local_account_trust` 三个函数随之删了〔散文墓碑〕；信任预检上了帧面（`accounts-trust`），
-//   本机与远端同一条路（前端 `accounts.ts::checkTrust` 经通道问）。
+//   本机与远端同一条路（前端 `account-reads.ts::checkTrust` 经通道问）。
 
 // ─────────────────────────────────────────────────────────────────────────────
 // E79：本机的「某个 sid 现在跑在哪个账号下」
@@ -54,7 +54,7 @@ mod tests;
 //   它每问一次 exec 一个本机后端 `--session-accounts`、再把行解析一遍 —— 与远端那条
 //   （`accounts.rs` 里 A2 那条，同拍退役）是**同一套解析、两种传输**。
 //   现在两侧收成一条路：前端经通道（`chan::webview::chan_call`）问那台机器的后端 `accounts-sessions`
-//   （本机由 `<local>` 那条长连接答），逐行解释只剩 `src/accounts.ts::parseSessionAccountLines` 一处。
+//   （本机由 `<local>` 那条长连接答），逐行解释只剩 `src/account-reads.ts::parseSessionAccountLines` 一处。
 //   上一版头注里记着的边界（本机后端不在 ⇒ 说原因、不伪造空表；Windows 上后端明说观测不到）
 //   换成通道的三层错误：没有控制通道 / 后端不认 / 对端说不行，前端一律按「这一次没问出来」。
 
