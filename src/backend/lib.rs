@@ -560,7 +560,11 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p4f-stdin-line**（2026-09-26，第五波 W5-AUX 合并那一拍）：行为 / 协议 —— CLI 修饰 `--stdin-line` ＋ `capture.stdin`：资产目录推送的载荷改经 stdin 一行交，
 /// 命令行不再带载荷（旧远端后端收到 `--stdin-line` 会一直读到 EOF、卡到调用方期限 ⇒ 必须 bump 让它被换掉）。`build_id_guard` 的指纹不数 `SUBCOMMAND_OPTIONS` ⇒ 没红，手动 bump。
-pub const BUILD_ID: &str = "p4f-stdin-line";
+///
+/// ★★★ **p4g-single-home-3**（2026-09-26，第四波 4D DUP3 合并那一拍）：行为 —— `bus-broadcast` / `bus-send` 的 from 与收件人过 `bus_id_ok`（拒码 `bad_id`）·
+/// 启动器一张白名单 `launcher_refused_char`（本机 / 远端载荷 / ccm 同一条）· base URL 写口与装表同一个谓词（新 crate `upstream-url-core`）· tmux Gate 1 并进 gate-core。
+/// 子命令没变，照 p1v 先例不加历史行。
+pub const BUILD_ID: &str = "p4g-single-home-3";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），

@@ -35,6 +35,7 @@ import { askAcctIsoCmd, validateAcctName } from "./acct-deploy";
 // 〔AL1〕`suggestAliasName` 随别名那一块搬进了 `machine-aliases.ts`（机器页「别名」）。
 import { suggestAliasName } from "./machine-aliases";
 import { copyText } from "../copy-table";
+import { baseUrlIssue, type BaseUrlIssue } from "../generated/judgment-rules";
 import { saidOfControl } from "../control-said";
 import type { Origin } from "../ipc/origin";
 
@@ -47,31 +48,28 @@ export type NewAccountRequest =
   | { name: string; access: "apikey"; key: string; baseUrl?: string };
 
 /**
- * 〔第四波 ST2 · `70 §4.4` 线框里那一格〕Base URL 的**表单侧**形状关：留空合法（= 默认上游）；
- * 要写就得是 `https://…`，或者连本机回环的 `http://…`（明文 http 发出去的是那把 key ——
- * 上游选择装表时的同一条规矩，`upstream/table.rs` 那句「base_url 是明文 http 而主机不是本机回环」）。
- *
- * ⚠ 这是**提前说**，不是唯一的关：后端写口还有一道形状关，上游选择装表时还会再判一次并出声。
- * 这里只为让「创建」在填错时是灰的，不让用户建完号才发现端点没配上。
+ * 〔第四波 ST2 · `70 §4.4` 线框里那一格〕Base URL 的**表单侧**那一句：留空合法（= 默认上游，D3 缺省）；
+ * 「能不能用」〔DUP3 · J9〕读生成物 `baseUrlIssue`（规则住 `upstream_url_core::usable`，与后端写口 · 上游选择装表同一条），
+ * 这里只按理由挑一句话 —— 让「创建」在填错时是灰的，不让用户建完号才发现端点没配上。
  */
 export function checkBaseUrl(raw: string): { ok: true; value: string | undefined } | { ok: false; reason: string } {
   const s = raw.trim();
   if (s === "") return { ok: true, value: undefined };
-  let u: URL;
-  try {
-    u = new URL(s);
-  } catch {
-    return { ok: false, reason: copyText("accountNewForm.baseUrl.shape") };
+  const issue = baseUrlIssue(s);
+  if (issue === null) return { ok: true, value: s };
+  return { ok: false, reason: baseUrlSaid(issue) };
+}
+
+/** 用不了的理由 ⇒ 表单那一句（三句一字没改）。 */
+function baseUrlSaid(issue: BaseUrlIssue): string {
+  switch (issue) {
+    case "plaintextOffLoopback":
+      return copyText("accountNewForm.baseUrl.plainHttp");
+    case "badScheme":
+      return copyText("accountNewForm.baseUrl.scheme");
+    default:
+      return copyText("accountNewForm.baseUrl.shape");
   }
-  if (u.protocol === "https:") return { ok: true, value: s };
-  if (u.protocol === "http:") {
-    const h = u.hostname.replace(/^\[|\]$/g, "");
-    const loopback = h === "localhost" || h === "::1" || /^127(\.\d{1,3}){3}$/.test(h);
-    return loopback
-      ? { ok: true, value: s }
-      : { ok: false, reason: copyText("accountNewForm.baseUrl.plainHttp") };
-  }
-  return { ok: false, reason: copyText("accountNewForm.baseUrl.scheme") };
 }
 
 /** 表单上给用户看的字。集中在一处，判据按这张表逐条对（不在断言里手抄第二份）。 */

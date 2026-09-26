@@ -591,7 +591,7 @@ pane 根进程 pid）+ 登记的完整地址。08-13 实测过不核的后果：
 | 码 | 什么情况 | 来源 |
 |---|---|---|
 | `invalid_args` | 缺 `to`/`text`，或 cc-send 判定收件人非法 | 形状校验 / `cc-send` rc=2 |
-| `bad_id` | 〔DUP2〕收件人的形状过不了 `shell_quote_core::bus_id_ok`（空 · `-` 开头 · `[A-Za-z0-9_-]` 以外的字符）—— **交给 `cc-send` 之前**就拒（`INVARIANTS §47` ①） | 后端入口 |
+| `bad_id` | 〔DUP2〕收件人的形状过不了 `shell_quote_core::bus_id_ok`（空 · `-` 开头 · `[A-Za-z0-9_-]` 以外的字符）—— **交给 `cc-send` 之前**就拒（`INVARIANTS §47` ①）；〔DUP3〕给了的 `from` 同样判（它作 `CC_BUS_ID` 交给 `cc-send`） | 后端入口 |
 | `rejected` | 被路由层拦下（ACL / 限流 / 去重 / 灭环），`bus.log` 里有对应一行 | `cc-send` rc=3 |
 | `not_installed` | 找不到 `cc-send` | 查找规则全落空 |
 | `timed_out` | 子进程跑过了期限被结束（默认 10 秒，`CC_BUS_TIMEOUT_SECS` 可调） | 子进程退出码 124 |
@@ -633,7 +633,10 @@ pane 根进程 pid）+ 登记的完整地址。08-13 实测过不核的后果：
 `{id, error, detail}`，`error` 是 `bus-send` 那一套码；键刻意不叫 `code` / `message` —— 那一对是整条失败的错误信封）。⚠ **部分失败不整条回错**：已经投出去一部分之后再失败，整条回错会让
 调用方以为一条都没发、再发一遍 ⇒ 一部分人收到两遍。
 
-错误码（整条失败，一条都还没发）：`invalid_args`（`text` 缺 / 空）· `not_installed` · `timed_out` · `failed`（列名单那一步）。
+错误码（整条失败，一条都还没发）：`invalid_args`（`text` 缺 / 空）· `not_installed` · `timed_out` · `failed`（列名单那一步）·
+`bad_id`（〔DUP3〕给的 `from` 形状过不了 `shell_quote_core::bus_id_ok` —— **交给 `cc-send` 之前**就拒，`INVARIANTS §47`）。
+〔DUP3〕名单里的收件人（`cc-list` 的输出，对端来的值）也在交给 `cc-send` 之前逐个过同一个判定：过不了的**不发**、照实列进 `failed`
+（`{id, error:"bad_id", detail}`），不整条回错（可能已经投出去几个了）。
 
 #### `bus-state`：总线名单 ＋ spawn 台账**一次回全**（`K-R113`，09-13）
 
@@ -1640,7 +1643,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 | `configDir` | → | 〔HX2 · 4D〕这个号的账号目录。账号 id 由**这台后端**按全仓唯一那份规则推（`acct_core::apikey_account_id_of_dir`，起会话那一侧同一个）；推不出 ⇒ `bad_args`。还给旧的 `account` ⇒ `bad_args`（不为旧形状留兼容） |
 | `account` | ← | 推出来的账号 id。必须当得了路由段 —— 与上游选择装表时**同一个谓词**，写得进去却装不进表 = 那一行永远 404 |
 | `key` | → | 明文。空串拒 |
-| `baseUrl` | ↔ | 入（可选）：这个账号的第三方端点。缺席 / `null` / 空串 = **不碰那一格**（只配 key 时已有端点原样留着）；给了就先过**那一条**形状关（`creds_core::store::check_base_url_shape`；〔GP1〕写者只剩后端这一处），不对 ⇒ `bad_args`、整次不写。出：写完读回这一行的端点（没有 ⇒ `null`） |
+| `baseUrl` | ↔ | 入（可选）：这个账号的第三方端点。缺席 / `null` / 空串 = **不碰那一格**（只配 key 时已有端点原样留着）；给了就先过**那一条**判定（〔DUP3 · J9〕`upstream_url_core::usable`，与上游选择装表同一个：形状 ＋ 明文只许回环；〔GP1〕写者只剩后端这一处），不对 ⇒ `bad_args`、整次不写。出：写完读回这一行的端点（没有 ⇒ `null`） |
 | `masked` | ← | 写完**再读一遍**、这一行 key 的掩码（盘上的事实） |
 | `path` | ← | 那份文件的绝对路径 |
 

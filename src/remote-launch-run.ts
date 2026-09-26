@@ -98,7 +98,7 @@ const REFUSE_TAG = "REFUSE:";
 
 /**
  * 铸一个启动期令牌：**按生成物造**（〔DUP2 · J8〕字母表 `RBIND_TOKEN_ALPHABET` × 长度 `RBIND_TOKEN_LEN`，
- * 两个值由 monitor 从 `payload.rs` 那两个常量现生成，形状的唯一一份是 `payload.rs::rbind_token_shape_ok`）。
+ * 两个值由 monitor 从 Rust 那两个常量现生成，形状的唯一一份是〔DUP3〕共享 crate 的 `shell_quote_core::rbind_token_ok`）。
  * 每一位从平台 CSPRNG 取一个字节、按拒绝采样落到字母表里（不假设字母表大小整除 256 ⇒ 每一位均匀）；
  * 今天字母表 16 个字符 × 32 位 = 128 位熵。
  *

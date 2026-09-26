@@ -24,6 +24,8 @@ members = [
     "crates/copy-core",
     # 〔DUP2 · J19〕agent 的工具词表（哪些工具名算「展开 = 子会话」）—— monitor 渲染与后端会话事实共用的唯一一份。
     "crates/agent-tools-core",
+    # 〔DUP3 · J9〕上游 base URL 能不能用 —— 后端中转 · 上游选择 · 写口与界面生成物共用的唯一一份。
+    "crates/upstream-url-core",
 ]
 exclude = ["vendor/code-picture-core"]
 
@@ -244,6 +246,8 @@ winit = "0.30"
 # 供应链增量本来就小（`ts-rs` + `ts-rs-macros` + `termcolor`，后两者是 proc-macro/构建期），
 # 但「codegen 工具不进产物」是正确的依赖方向。
 ts-rs = "12.0.1"
+# 〔DUP3 · J9〕上游 base URL 能不能用：monitor 生产树零引用，只有生成器（`export_bindings_judgment_rules`）与金样那条判据用它 ⇒ dev 侧。
+upstream-url-core = { path = "crates/upstream-url-core" }
 # U8a-2a：源码扫描型守卫的「只留生产段」剥法，与远端后端共用同一份。
 # **必须是 dev-dependency** —— 守卫全在 `cfg(test)` 里，它没有理由进发布二进制。
 # 起因：monitor 侧的守卫此前各写便宜近似（`split("\n#[cfg(test)]").next()`），

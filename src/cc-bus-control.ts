@@ -299,6 +299,9 @@ function broadcastRefusals(): Refusals {
           return copyText("ccBus.broadcast.notInstalled", { detail });
         case "timed_out":
           return copyText("ccBus.broadcast.timedOut", { detail });
+        // 〔DUP3〕给的 `from` 形状不对（后端交给 `cc-send` 之前先判，一个人都没发）；后端原话说是哪个值。
+        case "bad_id":
+          return copyText("ccBus.broadcast.badId", { detail });
         default:
           return copyText("ccBus.broadcast.otherCode", { code, detail });
       }

@@ -519,7 +519,7 @@ pub(crate) enum DirectIdentity {
     NoCarrier,
 }
 
-/// 直路上 `--ccm-sid` 交给谁。形状判定只住 `identity_tag::token_is_safe` 一处。
+/// 直路上 `--ccm-sid` 交给谁。形状判定只有一份（〔DUP3〕`shell_quote_core::rbind_token_ok`，这里经 `identity_tag::token_is_safe` 那个再导出名调它）。
 pub(crate) fn direct_identity(ccm_sid: &str, launch_token: Option<&str>) -> DirectIdentity {
     if ccm_sid.is_empty() {
         return DirectIdentity::NotAsked;
@@ -724,7 +724,11 @@ pub(crate) fn resolve_account(
 /// | 格 | 形式（按本机语境） | 拒绝集 |
 /// |---|---|---|
 /// | 工作目录（`--cwd` / 当前目录） | 绝对路径（`Path::is_absolute`，Windows 上认 `C:\` 那一形）· 没有 `..` 段 | NUL / CR / LF |
-/// | 启动器 · 透传给 agent 的参数 · 登记备注 · 继承来的 `CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL` / `CCM_LAUNCH_ID` | — | NUL / CR / LF |
+/// | 透传给 agent 的参数 · 登记备注 · 继承来的 `CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL` / `CCM_LAUNCH_ID` | — | NUL / CR / LF |
+///
+/// 〔DUP3 · 主会话 09-26 裁 · `INVARIANTS §47` ③〕**启动器不在上表**：它是命令片段（带参数 · alias · 路径），不是自由文本 ——
+/// 过全仓那一张白名单 `shell_quote_core::launcher_refused_char`（与 monitor 本机 `history.rs` · 远端载荷 `payload.rs` 同一条，
+/// `设计/01 §6.8`；先前这一格只拒 NUL / CR / LF）。空 = 没给（下面用这个 agent 的默认启动器）。
 ///
 /// **不拒 shell 元字符**（`Bob's` · `(2019)` 照放，交给唯一的 quote）。拒绝集住 `shell_quote_core::free_text_ok`。
 /// ⚠ 模型名与 `--ccm-sid` **不在这里**：主会话裁交 DUP1（判定唯一住址那一路）统一定规则（`调研/第四波记录/TL3.md §7.3`）。
@@ -738,8 +742,15 @@ fn free_text_gate(cwd: &str, o: &Opts) -> Result<(), Die> {
     {
         return Err(refuse(flag::CWD, cwd));
     }
-    if !shell_quote_core::free_text_ok(&o.launcher) {
-        return Err(refuse(flag::LAUNCHER, &o.launcher));
+    if let Some(c) = shell_quote_core::launcher_refused_char(&o.launcher) {
+        return Err(Die(copy_text(
+            "bePlan.build.launcherRefused",
+            &[
+                ("what", &flag::LAUNCHER.to_string()),
+                ("value", &format!("{:?}", o.launcher)),
+                ("c", &format!("{c:?}")),
+            ],
+        )));
     }
     if let Some(a) = o
         .passthru

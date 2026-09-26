@@ -4,14 +4,14 @@
  * 守的要求：`设计/05 §14.3` 逐字「正路是**把解释挪进后端、直接出成品**：后端帧命令的应答就是界面要的那个形状，
  * 前端经 `chan.call` 直接问、按形状收（不解释），monitor 那一份解释与发送点一起删」·「成品的两侧对拍：界面按形状严格收
  * （多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」，不猜）；线上形状由一份跨语言金样钉住」。
- * 另守 `§34` Gate 1 的本地那一格（空目标不许发出去：`=:` 会被 tmux 读成「当前会话」）与 `设计/01 §5 D7`
+ * 另守 `§34` Gate 1 〔DUP3〕「界面不判目标名」（Gate 1 并进 `gate-core` 那一族、TS 零：空目标原样交给后端，后端拒了照原话说）与 `设计/01 §5 D7`
  * 「失败要显式、归因要准确」（本机与远端的下一步不同，话就不许一样）。
  *
  * | 性质 | 判据 |
  * |---|---|
  * | TS 解码器读得懂后端真出的成品 —— 同一份跨语言金样，后端那侧 `capture_pane_tests::the_capture_product_matches_the_cross_language_golden` 对拍它（异源：Rust 构造器造、TS 解） | 「金样」 |
  * | 形状不对 ⇒ 抛（多一格 / 缺一格 / 类型不对），不猜 | 「形状不对」 |
- * | 空目标就地拒，一个字节都不发 | 「空目标」 |
+ * | 〔DUP3〕界面不判目标名：空目标原样交给后端；后端 `invalid_args` ⇒ 各动作那句「后端不接受这个会话名」带后端原话 | 「空目标」 |
  * | 本机与远端同一条路（`<local>` 照样经通道问），通道不在时两句话不同、远端那句点得出是哪台 | 「本机」「通道不在」 |
  * | 拒绝码逐码一句、两两不同、带上会话名与后端原话；认不出的码原样带出去、不被猜成已知档（码集合取自金样，不是手抄） | 「拒绝码」 |
  * | 〔批 2〕结束会话 / 发按键：请求体 == 金样；`enter` 落在两个 mode 名上；`killed` / `typed` 不为真不当成功；门拒绝 ≠ 通道不在 | 「结束会话 · 发按键」两组 |
@@ -123,11 +123,12 @@ describe("〔C4e〕抓一屏：按形状收", () => {
 });
 
 describe("〔C4e〕抓一屏：发出去之前", () => {
-  it("★ 空目标就地拒，一个字节都不发（`=:` 会被 tmux 读成「当前会话」）", async () => {
-    answer({ ok: CAP.reply });
+  it("★ 〔DUP3〕空目标不在界面判：原样交给后端（Gate 1 住 gate-core / 后端入口），后端拒了照原话说", async () => {
+    answer({ fail: refusedReply("invalid_args", "`name` 为空") });
     const said = await saidBy("devbox", "");
-    expect(said).toMatch(/没有指定 tmux 会话/);
-    expect(invokeMock, "空目标也发出去了").not.toHaveBeenCalled();
+    expect(sentCalls(), "界面自己把空目标拦下了 —— Gate 1 在界面又长了一份").toEqual([["devbox", "capture-pane", { name: "" }]]);
+    expect(said).toMatch(/后端不接受这个会话名/);
+    expect(said).toContain("`name` 为空");
   });
 
   it("★ 本机照样经通道问（`<local>` 也是一台机器），不是死胡同", async () => {
@@ -239,12 +240,17 @@ describe("〔C4e〕结束会话 · 发按键：按形状收", () => {
 });
 
 describe("〔C4e〕结束会话 · 发按键：发出去之前与失败怎么说", () => {
-  it("★ 空目标就地拒，一个字节都不发（两个动作各一遍）", async () => {
-    answer({ ok: KILL.reply });
+  it("★ 〔DUP3〕空目标不在界面判：原样交给后端，后端拒了照原话说（两个动作各一遍）", async () => {
+    answer({ fail: refusedReply("invalid_args", "`name` 为空") });
     for (const [label, act] of ACTIONS) {
-      expect(await saidOf(() => act("devbox", "")), label).toMatch(/没有指定 tmux 会话/);
+      const said = await saidOf(() => act("devbox", ""));
+      expect(said, label).toMatch(/后端不接受/);
+      expect(said, label).toContain("`name` 为空");
     }
-    expect(invokeMock, "空目标也发出去了").not.toHaveBeenCalled();
+    expect(sentCalls().map(([, op, body]) => [op, (body as { name?: unknown }).name]), "界面自己把空目标拦下了").toEqual([
+      ["kill", ""],
+      ["launch", ""],
+    ]);
   });
 
   it("★★ 通道不在：本机与远端两句话不同、远端点得出是哪台（两个动作各一遍）；本机照样经通道问", async () => {

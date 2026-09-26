@@ -405,13 +405,28 @@ fn parse_send(args: &serde_json::Value) -> Result<(String, String, Option<String
     // ★ `from` 可选：**不给就是今天的行为**（cc-whoami 在后端的处境里解不出身份 ⇒ `unknown`）。
     //   给了就以那个身份发 —— 收信人才知道是谁，回复才有地方去。
     //   ⚠ 合法性仍归 cc-bus（`cc-whoami` 自己会消毒成 `[A-Za-z0-9_-]`），这里只判形状。
+    let from = given_sender(obj)?;
+    Ok((to.to_string(), text.to_string(), from))
+}
+
+/// `from`（以谁的身份发）：可选；给了就在交给 `cc-send`（作 `CC_BUS_ID`）**之前**先过同一个形状判定（[`refuse_bad_bus_id`]）。
+///
+/// 〔DUP3 · 主会话 09-26 裁 · `INVARIANTS §47`「交给对端之前本侧先判」〕先前 `from` 原样交给 `cc-send`、一格都不判 ——
+/// 它与收件人是同一种值（agent id），同样是交给对端去寻址的。`bus-send` 与 `bus-broadcast` 共用这一处。
+fn given_sender(
+    obj: &serde_json::Map<String, serde_json::Value>,
+) -> Result<Option<String>, CmdErr> {
     let from = obj
         .get("from")
         .and_then(|v| v.as_str())
         .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string());
-    Ok((to.to_string(), text.to_string(), from))
+        .filter(|s| !s.is_empty());
+    if let Some(f) = from {
+        refuse_bad_bus_id(f, |v| {
+            copy_core::copy_text("beCcBus.parse.badSender", &[("id", v)])
+        })?;
+    }
+    Ok(from.map(|s| s.to_string()))
 }
 
 /// 从总线地址（`proj_cc:0.0`）里取**会话名**那一段 —— 纯函数。
@@ -756,12 +771,8 @@ fn parse_broadcast(args: &serde_json::Value) -> Result<(String, Option<String>),
     if text.trim().is_empty() {
         return Err(("invalid_args", "`text` 是空的".to_string()));
     }
-    let from = obj
-        .get("from")
-        .and_then(|v| v.as_str())
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string());
+    // 〔DUP3〕`from` 给了就先判（同 `bus-send` 那一处）：判不过 ⇒ 整条 `bad_id`，一个人都没发。
+    let from = given_sender(obj)?;
     Ok((text.to_string(), from))
 }
 
@@ -801,6 +812,19 @@ pub(crate) fn pick_broadcast_targets(agents: &[serde_json::Value], me: &str) -> 
     }
 }
 
+/// 广播名单里的一个收件人过不过形状判定 —— 纯函数：过 ⇒ `None`；不过 ⇒ 成品 `failed` 里那一格（`{id, error:"bad_id", detail}`）。
+///
+/// 〔DUP3 · 主会话 09-26 裁 · `INVARIANTS §47`〕名单是 `cc-list` 的输出 —— **对端来的**值（「这是我们自己的数据」不是理由：
+/// 盘上真出现过 `--help.jsonl`）。先前原样交给 `cc-send`；今天与 `bus-send` 的收件人同一个判定（[`refuse_bad_bus_id`]）。
+/// 不整条回错：到这一步时可能已经投出去几个了（本节头注「部分失败不回错」那一条），判不过的这一个照实列进 `failed`。
+pub(crate) fn recipient_refused(id: &str) -> Option<serde_json::Value> {
+    refuse_bad_bus_id(id, |v| {
+        copy_core::copy_text("beCcBus.parse.badRecipient", &[("id", v)])
+    })
+    .err()
+    .map(|(error, detail)| serde_json::json!({ "id": id, "error": error, "detail": detail }))
+}
+
 /// `bus-broadcast` 的成品 —— 纯函数：三个数分开（发到几个 · 因不在线跳过几个 · 失败几个，失败逐个列）。
 pub(crate) fn broadcast_reply(
     plan: &BroadcastPlan,
@@ -825,6 +849,11 @@ pub(crate) fn broadcast_for_inbound(
     let mut sent = 0usize;
     let mut failed = Vec::new();
     for id in &plan.targets {
+        // 〔DUP3〕名单里的收件人（`cc-list` 的输出，对端来的）交给 `cc-send` 之前先判形状；判不过的不发、进 `failed`（不静默跳过）。
+        if let Some(entry) = recipient_refused(id) {
+            failed.push(entry);
+            continue;
+        }
         match deliver(id, &text, from.as_deref()) {
             Ok(()) => sent += 1,
             // ⚠ 键刻意不叫 `code` / `message`：那一对是**整条失败**的错误信封（`readonly_guard` 的信封普查按键认它）；
