@@ -371,6 +371,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     truncate_plain: NONE,
   },
   "shell-quote-core": {
+    // 〔合并 TL3 续做〕`INVARIANTS §47` ② 自由文本那一层（拒绝集只收 NUL / CR / LF）进了本 crate：TS 侧零处拼 shell、零处判它 ⇒ NONE。
+    FREE_TEXT_REFUSED: NONE,
+    free_text_ok: NONE,
+    posix_free_path_ok: NONE,
     posix_quote: "J4",
   },
 };
