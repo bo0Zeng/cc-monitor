@@ -137,3 +137,30 @@ fn the_command_face_answers_exactly_the_declared_fields() {
     assert_eq!(e.0, "bad_path");
     std::fs::remove_dir_all(&base).ok();
 }
+
+/// 〔W5-FILES〕要求住址：`设计/60 §3.7`「不跨文件系统边界那一档没做（设备号要走 `platform/`）」。
+///
+/// 索引那一侧同一个判法：注入「这个子目录在另一个设备上」⇒ 那个目录本身在索引里、它底下的不在、`skipped_mounts == 1`；
+/// 正控：不注入 ⇒ 底下的在、`skipped_mounts == 0`。期望手写（真挂载点造不出来，如实）。
+#[test]
+fn the_index_does_not_walk_into_another_filesystem() {
+    let base = temp_root("idxmnt");
+    let t = plant(&base);
+    let mounted = t.join("m");
+    let has = |snap: &crate::files::index::Snapshot, p: &std::path::Path| {
+        let want = crate::files::raw::path_bytes(p).to_vec();
+        snap.iter().any(|e| e == want.as_slice())
+    };
+    let snap = crate::files::index::build_with(&t, |p| Some(if p == mounted { 2 } else { 1 }));
+    assert_eq!(snap.stats().skipped_mounts, 1);
+    assert!(has(&snap, &mounted), "挂载点那个目录本身该在索引里");
+    assert!(!has(&snap, &mounted.join("z.bin")), "走进了另一个文件系统");
+    assert!(has(&snap, &t.join("d/e/c.bin")), "同一个文件系统里的丢了");
+    let all = crate::files::index::build_with(&t, |_| Some(1));
+    assert_eq!(all.stats().skipped_mounts, 0);
+    assert!(
+        has(&all, &mounted.join("z.bin")),
+        "正控：不注入时底下的该在"
+    );
+    std::fs::remove_dir_all(&base).ok();
+}
