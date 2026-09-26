@@ -42,7 +42,7 @@ describe("decodeTasks：形状不对一律抛，不跳过那一条", () => {
   ];
   for (const [what, v] of cases) {
     it(what, () => {
-      expect(() => decodeTasks(v)).toThrow(/形状对不上/);
+      expect(() => decodeTasks(v)).toThrow(/shape mismatch/);
     });
   }
 });

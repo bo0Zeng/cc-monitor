@@ -653,8 +653,9 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
 //    `local_accounts_tests`：假后端那一侧真收到了帧命令）；
 // ② 谁能登记在 `<local>` 上：生产段里 `register(LOCAL_ORIGIN, …)` 的文件集合 == 两个载体（常驻回环 · stdio 监护），
 //    两处都是拿**已经回了 hello 的那条活连接**造客户端 ⇒ 登记在那里的就是正在跑的那一份；
-// ③ 谁还在「找 exe 旁那份文件」：生产段里 `resolve_beside_this_exe(` 的调用点集合 == {给终端窗口导环境那一处 ·
-//    起 / 自释放常驻后端那两处}（都不是查询；一条查询路径都不许再用它）。两向相等，带正控。
+// ③ 谁还在「找 exe 旁那份文件」：生产段里 `resolve_beside_this_exe(` 的调用点集合 == {起 / 自释放常驻后端那两处}
+//    （都不是查询；一条查询路径都不许再用它）。两向相等，带正控。
+// ④〔WIN1 报备〕给终端窗口的 `CCM_BACKEND_BIN` 同病：两处都交 `local_backend_host::running_backend_bin()`。
 
 /// 生产段里含 `needle` 的「文件::外层函数」集合（按行往回找最近的 `fn `）。
 fn loc1a_sites(needle: &str) -> std::collections::BTreeSet<String> {
@@ -736,8 +737,6 @@ fn local_queries_reach_the_running_resident_backend_not_a_file_beside_the_exe() 
     assert_eq!(
         beside,
         [
-            // 给用户开的终端窗口导「后端在哪」那个环境变量（不是查询）。
-            "backend/control/local_backend.rs::backend_bin_env_for_window",
             // 起本机常驻后端 / 自释放内嵌那份之前先看旁边有没有（起它，不是问它）。
             "backend/control/local_backend.rs::resolve_or_extract",
             "backend/control/local_backend.rs::start_if_present",
@@ -746,6 +745,21 @@ fn local_queries_reach_the_running_resident_backend_not_a_file_beside_the_exe() 
         .map(|s| s.to_string())
         .collect(),
         "又有代码去找 exe 旁那份后端了 —— 本机查询只许问登记在 `<local>` 上的那条活连接（RT1 F2 那一形）"
+    );
+    // ④ 给终端窗口导 `CCM_BACKEND_BIN` 的那一格（WIN1 报备的同病）：两处调用都交**正在跑的那一份**。
+    //    两向：`backend_bin_env_for_window(` 的生产调用点 == 实参是 `running_backend_bin()` 的那几处。
+    let launch = guard_core::production_code(include_str!("../../../../src/bridge/src/launch.rs"));
+    let calls = launch.matches("backend_bin_env_for_window(").count();
+    let running = launch
+        .matches("backend_bin_env_for_window(\n        crate::local_backend_host::running_backend_bin(),")
+        .count();
+    assert!(
+        calls >= 1,
+        "尺子瞎了：launch.rs 里一处 `backend_bin_env_for_window(` 都没数到"
+    );
+    assert_eq!(
+        calls, running,
+        "给终端窗口的后端路径有一处不是「正在跑的那一份」（`running_backend_bin`）"
     );
     // 正控：同一把尺子数得到一处明摆着的调用。
     assert!(loc1a_sites("fn backend_bin_env_for_window(").len() == 1);

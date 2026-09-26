@@ -922,20 +922,18 @@ pub fn supervise_with_stdio(
 ///
 /// **local_backend 不在就不设** —— 导一个指向空处的路径不会让 ccm 更聪明（它那边 `[ -x ]` 一样过不了），
 /// 只会让「这台机到底有没有本机后端」这个问题多一个假阳性来源。⇒ 空值 ≠ 未设（Z01 那条支点）。
-pub(crate) fn backend_bin_env_for_window(target_triple: &str) -> Option<(&'static str, String)> {
-    env_from_resolved(resolve_beside_this_exe(target_triple))
-}
-
-/// 上面那个函数的**纯**内核 —— 抽出来是为了两个分支都测得到。
 ///
-/// ⚠ 不抽的话判据只走得到 `Missing`（测试环境旁边没有本机后端），
-/// 于是「`Found` 时用的是 [`BACKEND_BIN_ENV`] 这个名字」这半**永远验不了** ——
-/// 那正是「判据的探针改变了被观察的路」的近亲：**探针到不了的分支等于没判据**。
-fn env_from_resolved(r: Resolved) -> Option<(&'static str, String)> {
-    match r {
-        Resolved::Found(p) => Some((BACKEND_BIN_ENV, p.to_string_lossy().into_owned())),
-        _ => None,
-    }
+/// # 〔LOC1a · 第四波 4D〕给的是**正在跑的那一份**，不是「exe 旁边那一份」
+///
+/// 此前这里自己 `resolve_beside_this_exe`：只认 exe 同目录那份文件，**不认自释放之后正在跑的那一份**
+/// （RT1 F2 / WIN1 报备：Windows 发版包里旁边没有 ⇒ 窗口里 `CCM_BACKEND_BIN` 一直不设）。
+/// 今天路径由**宿主**交进来：`local_backend_host::running_backend_bin` —— 常驻那条记在 `DETACHED`
+/// （起的 / 接管的都记着那份二进制），被监护那条记着起它时解析出的那一份（`D11`：后端是给定的，不另找一份）。
+/// 本层不认识宿主的句柄表 ⇒ 注入形，与 [`start_or_extract`] 的 `make_executable` 同一个先例。
+pub(crate) fn backend_bin_env_for_window(
+    running: Option<std::path::PathBuf>,
+) -> Option<(&'static str, String)> {
+    running.map(|p| (BACKEND_BIN_ENV, p.to_string_lossy().into_owned()))
 }
 
 pub fn resolve_beside_this_exe(target_triple: &str) -> Resolved {
