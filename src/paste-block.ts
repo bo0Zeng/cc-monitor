@@ -120,7 +120,7 @@ export function buildPasteBlock(spec: PasteSpec): PasteBlock {
   btnRow.className = "settings-row settings-row-end paste-block-actions";
   const copyBtn = document.createElement("button");
   copyBtn.type = "button";
-  copyBtn.className = "settings-btn settings-btn-secondary paste-block-copy";
+  copyBtn.className = "settings-btn paste-block-copy";
   copyBtn.textContent = copyText("pasteBlock.buildPasteBlock.copy");
   btnRow.appendChild(copyBtn);
   root.appendChild(btnRow);

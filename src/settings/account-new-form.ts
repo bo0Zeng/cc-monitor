@@ -235,7 +235,7 @@ export function renderNewAccountForm(
   btns.className = "accounts-new-btns";
   const cancel = document.createElement("button");
   cancel.type = "button";
-  cancel.className = "settings-btn settings-btn-secondary";
+  cancel.className = "settings-btn";
   cancel.textContent = C.cancel;
   const create = document.createElement("button");
   create.type = "button";
