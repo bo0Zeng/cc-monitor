@@ -4029,13 +4029,13 @@ fn the_annotation_path_env_name_is_the_one_the_backend_reads() {
 /// 那句话点名那一格、两边各是什么、说得出下一步；名不在名单里的（`PATH` 之类）不参与比。
 #[test]
 fn hx2_a_backend_started_for_another_data_dir_is_refused_out_loud() {
-    let line = |env: &str| {
+    let hello_with = |env: &str| {
         format!(
             "{{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b1\",\"host_arch\":\"x86_64\",\
              \"claude_dir\":\"/h/.claude\"{env}}}"
         )
     };
-    let real = line(",\"host_env\":{\"CCM_APIKEY_CREDENTIALS\":\"/h/.claude/work/k.json\",\"CCM_RELAY_PORT\":\"8788\"}");
+    let seen = hello_with(",\"host_env\":{\"CCM_APIKEY_CREDENTIALS\":\"/h/.claude/work/k.json\",\"CCM_RELAY_PORT\":\"8788\"}");
     let want = |creds: &str| -> Vec<(String, String)> {
         vec![
             ("CCM_RELAY_PORT".into(), "8788".into()),
@@ -4045,7 +4045,7 @@ fn hx2_a_backend_started_for_another_data_dir_is_refused_out_loud() {
     };
     assert_eq!(
         hello_verdict(
-            &real,
+            &seen,
             "b1",
             "/h/.claude",
             &want("/h/.claude/work/k.json")
@@ -4053,7 +4053,7 @@ fn hx2_a_backend_started_for_another_data_dir_is_refused_out_loud() {
         HelloVerdict::Ours,
         "同一份环境（外加一格不在名单里的 PATH）⇒ 该是我们的"
     );
-    match hello_verdict(&real, "b1", "/h/.claude", &want("/tmp/iso/k.json")) {
+    match hello_verdict(&seen, "b1", "/h/.claude", &want("/tmp/iso/k.json")) {
         HelloVerdict::Stranger(w) => {
             assert!(
                 w.contains("CCM_APIKEY_CREDENTIALS")
@@ -4072,18 +4072,18 @@ fn hx2_a_backend_started_for_another_data_dir_is_refused_out_loud() {
         "/tmp/iso/history-metadata.json".into(),
     ));
     assert!(
-        matches!(hello_verdict(&real, "b1", "/h/.claude", &more), HelloVerdict::Stranger(w) if w.contains("CCM_HISTORY_METADATA") && w.contains("（没有）")),
+        matches!(hello_verdict(&seen, "b1", "/h/.claude", &more), HelloVerdict::Stranger(w) if w.contains("CCM_HISTORY_METADATA") && w.contains("（没有）")),
         "它少一格（没被交注解路径）⇒ 该拒"
     );
     assert!(
         matches!(
-            hello_verdict(&line(""), "b1", "/h/.claude", &want("/x")),
+            hello_verdict(&hello_with(""), "b1", "/h/.claude", &want("/x")),
             HelloVerdict::Stranger(_)
         ),
         "hello 里没有 host_env（没被交任何一格）而这一趟要交 ⇒ 该拒"
     );
     assert_eq!(
-        hello_verdict(&line(""), "b1", "/h/.claude", &[]),
+        hello_verdict(&hello_with(""), "b1", "/h/.claude", &[]),
         HelloVerdict::Ours,
         "两边都空 ⇒ 我们的"
     );
@@ -4099,16 +4099,22 @@ fn hx2_the_handed_names_are_exactly_what_the_backend_echoes() {
             &std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| panic!("读 {rel}：{e}")),
         )
     };
-    let const_value = |src: &str, decl: &str| -> String {
-        let at = guard_core::find_pinned(src, decl)
+    let const_value = |text: &str, decl: &str| -> String {
+        let at = guard_core::find_pinned(text, decl)
             .unwrap_or_else(|e| panic!("`{decl}` 不是恰好一处：{e}"));
-        let rest = &src[at + decl.len()..];
-        rest[..rest.find('"').expect("常量没收尾")].to_string()
+        let after_decl = &text[at + decl.len()..];
+        after_decl[..after_decl.find('"').expect("常量没收尾")].to_string()
     };
     let wire = read("wire.rs");
     let at = guard_core::find_pinned(&wire, "pub const HOST_ECHO_ENVS: [&str; 3] = [")
         .expect("后端回显名单不在了");
-    let body = &wire[at..at + wire[at..].find("];").unwrap()];
+    // 名单那几行（到收尾的 `];` 为止；逐行取，不做子串切）。
+    let echo_list: Vec<&str> = wire[at..]
+        .lines()
+        .skip(1)
+        .map(str::trim)
+        .take_while(|l| *l != "];")
+        .collect();
     let mut backend: Vec<String> = Vec::new();
     for (needle, file, decl) in [
         (
@@ -4128,15 +4134,15 @@ fn hx2_the_handed_names_are_exactly_what_the_backend_echoes() {
         ),
     ] {
         assert!(
-            body.contains(needle),
-            "后端回显名单里没有 `{needle}`：{body}"
+            echo_list.contains(&format!("{needle},").as_str()),
+            "后端回显名单里没有 `{needle}`：{echo_list:?}"
         );
         backend.push(const_value(&read(file), decl));
     }
     assert_eq!(
-        body.matches("crate::").count(),
+        echo_list.len(),
         3,
-        "后端回显名单不是恰好三格：{body}"
+        "后端回显名单不是恰好三格：{echo_list:?}"
     );
     let mut mine: Vec<String> = HANDED_ENVS.iter().map(|s| s.to_string()).collect();
     backend.sort();

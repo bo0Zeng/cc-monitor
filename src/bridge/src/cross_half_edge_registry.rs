@@ -190,6 +190,16 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
+        "tests/bridge/sftp_tests.rs",
+        "tests/backend/build_id_guard.rs",
+        "〔HX2 · 第四波 4D · 主会话 D-b〕**部署只升不降要 `BUILD_ID` 可比序**：`sftp::build_order` 住 monitor，\
+         而出过的每一个 `BUILD_ID` 只在后端那张 `SUBCOMMAND_HISTORY` 历史表里（每次加子命令追加一行）。\
+         `hx2_every_build_id_ever_shipped_has_an_order_and_the_history_climbs` 读它：每一行都解得出序、按表序严格爬升 ——\
+         下一次 bump 写出一个解不出序的形状，部署出去就永远不会被判「更新」而换上（两边各自绿、线上静默）。\
+         只能同时读序键实现（monitor）与历史表（后端测试树）才验得了。",
+    ),
+    (
+        "monitor→backend",
         "tests/bridge/search_kou_jing_guard.rs",
         "src/backend/observe/search_query.rs",
         "★★〔`K-R100` 09-13 新增〕**搜索口径的跨轨对拍** —— \

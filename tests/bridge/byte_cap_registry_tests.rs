@@ -233,6 +233,11 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              它的意思恰恰是「没有上限」；`pidwatch_windows_shape_tests` 钉着它必须是全 1（零定时器）。",
     ),
     (
+        "WAIT_ABANDONED",
+        "〔HX2〕**Win32 等待结果码**（`WaitForSingleObject` 回「上一个持有者没放就没了」—— `platform/lock.rs` 那把命名互斥量）。\
+             是一个返回码，不是尺寸。",
+    ),
+    (
         "FILETIME_TICKS_BEFORE_UNIX_EPOCH",
         "**时间纪元差**（Win32 FILETIME 的 1601 起点与 Unix 1970 起点相差多少个 100ns tick）。\
              与上面 `NET_EPOCH_TO_WIN32_FILETIME_TICKS` 同族：单位是时间不是字节。",
