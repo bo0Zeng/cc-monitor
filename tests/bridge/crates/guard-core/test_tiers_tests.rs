@@ -83,6 +83,8 @@ const UNIT: &[&str] = &[
     "tests/backend/relay/route_tests.rs", // 〔US1〕跨半边抠 monitor 源码那几条退役 ⇒ 只剩纯解析 ＋ 成品→决策表（SCAN → UNIT）
     "tests/backend/relay/tee_tests.rs",
     "tests/backend/relay/upstream_tests.rs",
+    "tests/backend/tap_tests.rs",         // 〔TAP〕hub 与帧转换
+    "tests/backend/writer_task_tests.rs", // 〔TAP〕写者优先序（tap 最低）
     "tests/branch-button.vitest.ts",
     "tests/branch-fold-batching.vitest.ts",
     "tests/branching.test.ts",
@@ -142,6 +144,7 @@ const UNIT: &[&str] = &[
     "tests/e2e-probe.vitest.ts",
     "tests/error-toast.vitest.ts",
     "tests/events-burst.vitest.ts",
+    "tests/events-tap.vitest.ts", // 〔TAP〕session-tap 走 subscribe（不是裸事件）
     "tests/events-yield.vitest.ts",
     "tests/file-window.vitest.ts",
     "tests/fork-ask.vitest.ts",
@@ -438,6 +441,7 @@ const SCAN: &[&str] = &[
     "tests/launch-orchestration-single-home.vitest.ts",
     "tests/launch-payload-golden.vitest.ts",
     "tests/launch-tmux-outer-golden.vitest.ts",
+    "tests/live-card.vitest.ts", // 〔TAP〕活卡：状态机 · 真 TabManager 三向相等 · 台架夹具（读 `tests/__fixtures__/tap-bench.json`）
     "tests/liveness-process-names-parity.vitest.ts",
     "tests/panorama/api-remote.vitest.ts",
     "tests/panorama/diagram-guards.vitest.ts",

@@ -95,6 +95,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/error-toast.ts", // bringActiveTerminalToFront：非 Windows 说一句实话
     "src/fork-flow.ts", // startForkedSession（E78：fork-flow.vitest 钉「tabs.ts 调 runForkFlow」）
     "src/ipc/origin.ts", // 〔C4a〕本机 / 远端只经这一处判（线上缺省 = 本机的那一下表示法转换也在这里）
+    "src/live-card.ts", // 〔TAP · V124〕中转抄出的流式活卡：tap 格进状态机、同 message.id 的 jsonl 落盘即撤卡
     "src/live-window.ts", // ensureTab：新 tab 的尾部窗口
     "src/tab-bar-drag.ts",
     "src/tab-bar-prefs.ts",
