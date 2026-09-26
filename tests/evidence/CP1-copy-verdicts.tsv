@@ -94,7 +94,7 @@ src/backend/footprint.rs:131	读不到：{:?}	保留	[不对外] 同上
 src/backend/footprint.rs:138	读不动：{:?}	保留	[不对外] 同上
 src/bridge/src/fenced_block.rs:123	远端 POSIX 的 ~/<用户选的那份 rc>	保留	[不对外] FENCE_SHAPES：只被 #[cfg(test)] 判据读的登记表（pub const 但生产代码无读者）
 src/bridge/src/fenced_block.rs:124	整块别名 snippet（src/shared/ccm-aliases.sh）	保留	[不对外] FENCE_SHAPES 登记表字段
-src/bridge/src/fenced_block.rs:129	落盘走 SFTP（upload_atomic + 远端备份），本机那两套走本地原子替换	保留	[不对外] FENCE_SHAPES 登记表字段
+src/bridge/src/fenced_block.rs:129	与本机那一套同一个装口，只差门的 origin（经那台远端后端 files-put 写）	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:133	本机 Windows 的 PowerShell profile	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:134	整块 PowerShell 代码（scripts/cc.ps1.tpl 渲染）	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:144	本机 POSIX 的 ~/<用户选的那份 rc>	保留	[不对外] FENCE_SHAPES 登记表字段

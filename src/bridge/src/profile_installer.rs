@@ -18,7 +18,7 @@
 //!
 //! | 面 | 本机 Windows | 本机 POSIX（本件之前） | 远端 POSIX |
 //! |---|---|---|---|
-//! | 装「别名块」 | [`install_to_profile`] | 🔴 **零口** | `sftp::install_remote_ccm_helper`〔散文墓碑〕（〔MC1〕`install_remote_alias_block`；〔W5-ALIAS〕今天与下面几样一起住本模块尾部） |
+//! | 装「别名块」 | [`install_to_profile`] | 🔴 **零口** | `sftp::install_remote_ccm_helper`〔散文墓碑〕（〔AL2〕今天就是 [`install_to_profile`]，带远端 `origin`） |
 //! | 查「你 rc 里那几行是旧的」 | `scan_legacy_profiles`〔散文墓碑〕（〔AL1d〕删了：每份候选各带块的现状） | 🔴 **零口** | —— |
 //!
 //! 补法有两条硬边界，两条都是**这件事的一半价值**：
@@ -1323,136 +1323,8 @@ pub fn strip_profile_block(existing: &str, what: &str) -> Result<String, String>
     )
 }
 
-/// `profile` 只许是远端 home 下的一个文件名。空 ⇒ `.bashrc`。
-fn remote_profile_name(profile: &str) -> Result<String, String> {
-    let p = profile.trim();
-    let p = if p.is_empty() { ".bashrc" } else { p };
-    if p.contains('/') || p.contains('\\') || p.contains("..") {
-        return Err(copy_text("rsProfileInstaller.remoteProfile.badName", &[]));
-    }
-    Ok(p.to_string())
-}
-
-/// 〔MC1 · 2026-09-24〕**别名块**卸载（远端机器卡 ②「别名」里那颗按钮 —— 〔V134 · 09-25〕用户选「改回「卸载 ccm」」，
-/// 按钮名照 V80 原裁叫「卸载 ccm」，命令名与做的事不变）：从远端 rc 删 BEGIN/END 块。
-///
-/// 从前它叫 `uninstall_remote_ccm_helper`〔散文墓碑〕、按钮叫「卸载 ccm」——「ccm 助手」这个词
-/// 盖着两件事（`设计/71 §13.1`：① 推入口 ② 写别名块），而这一条只做过 ②。用户 2026-09-17 逐字
-/// 「装/卸 ccm 助手是假的，删掉这个东西」⇒ 名字跟着它真做的事走。
-/// 〔RW1〕读改写经那台远端的后端（`files-peek` / `files-put`）：没有块 ⇒ 一个字节都不写；否则
-/// **先备份**（`.ccm-backup-<ms>-<序号>`）→ 写 → **读回逐字比对**，不符则回滚（规则住后端）。
-#[tauri::command]
-pub async fn uninstall_remote_alias_block(
-    cfg: crate::ssh_source::RemoteConfig,
-    profile: String,
-) -> Result<String, String> {
-    let profile = remote_profile_name(&profile)?;
-    // 〔RW1 · 第四波 09-24〕F10 按推荐改：**经那台远端的后端**写（`user_files`），不再 SFTP 直写 rc。
-    //   备份 · 原子替换 · 回读 · 回滚那一份规则住后端（`files-put`），与本机同一条路、只差 origin。
-    let door = crate::user_files::BackendDoor::new(crate::origin::Origin(cfg.origin_label()));
-    let home = crate::user_files::Door::home(&door).await?;
-    let what = copy_text(
-        "rsProfileInstaller.remoteProfile.what",
-        &[("profile", &profile.to_string())],
-    );
-    let mut missing = false;
-    let done =
-        crate::user_files::edit(
-            &door,
-            &home,
-            &profile,
-            true,
-            false,
-            |existing| match existing {
-                None => {
-                    missing = true;
-                    Ok(None)
-                }
-                Some(t) => strip_profile_block(t, &what).map(Some),
-            },
-        )
-        .await?;
-    let crate::user_files::Edited::Written(landed) = done else {
-        return Ok(if missing {
-            copy_text(
-                "rsProfileInstaller.remoteAliasBlock.noProfile",
-                &[("profile", &profile.to_string())],
-            )
-        } else {
-            copy_text(
-                "rsProfileInstaller.remoteAliasBlock.noBlock",
-                &[("profile", &profile.to_string())],
-            )
-        });
-    };
-    tracing::info!("远端 [{}] 已卸载别名块（{profile}）", cfg.origin_label());
-    Ok(match landed.backup {
-        Some(b) => copy_text(
-            "rsProfileInstaller.remoteAliasBlock.removedWithBackup",
-            &[("profile", &profile.to_string()), ("b", &b.to_string())],
-        ),
-        None => copy_text(
-            "rsProfileInstaller.remoteAliasBlock.removed",
-            &[("profile", &profile.to_string())],
-        ),
-    })
-}
-
-/// 〔MC1 · 2026-09-24〕**别名块**装进远端 rc（机器页 ②「别名」里的「装别名块」）。
-///
-/// 从前它叫 `install_remote_ccm_helper`〔散文墓碑〕，一次做两件事：① 推 `ccm` 入口到
-/// `~/.local/bin/ccm` ② 把别名块合进 rc。`设计/71 §13.3`：① 并进「部署后端」（本文件
-/// `sftp::deploy_remote_backend`），② 并进「别名」⇒ 本函数只剩 ②。
-///
-/// `profile` 默认 `.bashrc`（相对远端后端的 home；拒 `/`、`\`、`..` 防写 home 外）。
-/// 写入的 snippet 是**后端拥有**的 [`CCM_WRAPPER_SNIPPET`]（审计 S-1：不接受前端传入可执行
-/// bash）。〔RW1〕读改写经那台远端的后端（与本机同一条路）：相同则不写；否则
-/// 备份 → 原子写 → 读回逐字比对 → 不符回滚。别名块引用 `ccm` —— 那条入口由「部署后端」放。
-///
-/// 注：〔RW1〕替换沿用原文件的权限位（从前 SFTP 那一路统一写 `0o644`，`chmod 600` 的 rc 会被归一 —— 那一形没了）；
-/// rc 是一条链接（dotfiles 仓）⇒ 改的是真文件，链接留着。
-#[tauri::command]
-pub async fn install_remote_alias_block(
-    cfg: crate::ssh_source::RemoteConfig,
-    profile: String,
-) -> Result<String, String> {
-    let profile = remote_profile_name(&profile)?;
-    // 〔RW1 · 第四波 09-24〕F10 按推荐改：经那台远端的后端写（同 `uninstall_remote_alias_block`）。
-    // 损坏块 ⇒ `merge_profile_block` 回 `Err`，不动原文件。
-    let door = crate::user_files::BackendDoor::new(crate::origin::Origin(cfg.origin_label()));
-    let home = crate::user_files::Door::home(&door).await?;
-    let what = copy_text(
-        "rsProfileInstaller.remoteProfile.what",
-        &[("profile", &profile.to_string())],
-    );
-    let done = crate::user_files::edit(&door, &home, &profile, true, false, |existing| {
-        merge_profile_block(existing.unwrap_or(""), CCM_WRAPPER_SNIPPET, &what).map(Some)
-    })
-    .await?;
-    let crate::user_files::Edited::Written(landed) = done else {
-        return Ok(copy_text(
-            "rsProfileInstaller.remoteAliasBlock.upToDate",
-            &[("profile", &profile.to_string())],
-        ));
-    };
-    let backup_note = landed
-        .backup
-        .map(|b| {
-            copy_text(
-                "rsProfileInstaller.remoteAliasBlock.backupNote",
-                &[("b", &b.to_string())],
-            )
-        })
-        .unwrap_or_default();
-    tracing::info!("远端 [{}] 已装别名块到 {profile}", cfg.origin_label());
-    Ok(copy_text(
-        "rsProfileInstaller.remoteAliasBlock.written",
-        &[
-            ("profile", &profile.to_string()),
-            ("backupNote", &backup_note.to_string()),
-        ],
-    ))
-}
+// 〔AL2 · 第四波 4D〕远端装 / 卸别名块那两条 Tauri 命令（连同只收 home 下裸文件名的那道小围栏）删了：
+//   并进 `lib.rs` 的 `aliases_block_install` / `_remove`（带 `origin`，本机远端同一条）。
 
 #[cfg(test)]
 #[path = "../../../tests/bridge/profile_installer_tests.rs"]

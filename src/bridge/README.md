@@ -98,7 +98,7 @@ src/bridge/
 | **port_forward.rs** (B14-F58) | 本地端口转发(-L)管理台后端:每转发一条独立 `connect_session`（继承竞速/跳板）+ 本地 `TcpListener` + accept 循环,每连接开 `channel_open_direct_tcpip` + `copy_bidirectional`；session 存 `Arc` 注册表保活（russh Handle 不 Clone）；停 = abort accept + **`session.disconnect` 主动断连**（仅 drop 关不掉连接:Handle::drop no-op + 在飞连接持 sender clone,D 审计实证）。v1 即席不持久化 | `start_forward()/stop_forward()/list_forwards()` + 同名 IPC |
 | **tmux.rs** (B14-F51/F60) | tmux 反查（tab 右键 attach）+ **F60 画面预览**：`parse_tmux_ls`（**真 TAB 分列**，调研 03 §3.1 坑）+ `list_remote_tmux`（`command -v tmux` 门控→哨兵 NO_TMUX 返 None）+ ~~`capture_remote_pane`~~（〔C4e〕抓屏整条迁到界面 `src/tmux-control.ts`，界面经通道直接问后端的 `capture-pane`）；均走 `connect_and_exec_cmd` 只消费不改形，target 经 `shell_quote`。前端按 cwd+`pane_current_command∈{claude,node}` 反查，命中并列「Attach」+「预览画面」。（F52 resume-tmux 短路门未扩本模块） | `parse_tmux_ls() / classify_capture_output()` + IPC `list_remote_tmux / capture_remote_pane` |
 | **tmux_reconcile.rs** (F74c issue #60-A) | tmux 存活对账 poller：补一条独立 tmux 存活信号，让带外（`Ctrl-b &` / `tmux kill-session`）杀掉某会话 tmux 后端时对应 tab 有界变灰。**§24 单写者不破**——retire 的 sid 当 `SessionChange{removed}` 送进 `remote_tx` 的一个 clone、由唯一写者处理；source-agnostic（`reconcile_step` 吃裸 HashSet，F90 可整段 lift）；三重防误判（ever_bound 门 + debounce + /branch 漂移剔除） | `reconcile_step()`（纯函数）+ poller |
-| **sftp.rs** (SS-D, issue #29) | 统一 SFTP 写层（复用 ssh_source 鉴权起 sftp 子系统）：F08 后端自动部署（arch 探测 + build_id 版本门控 + 原子上传）+ F11 远端历史 jsonl 删除（双重路径白名单 + realpath 防 symlink 逃逸）（〔W5-ALIAS〕F10 远端别名块搬去了 `profile_installer.rs`）+ **F89a 远端项目 `.mcp.json` 增改删（`mcp.rs` 经 `upload_atomic`，`is_safe_remote_mcp_json` 守卫，SS-14 只 .mcp.json）**。`upload_atomic` 加固：tmp 用 EXCLUDE 防 symlink clobber + 旧目标备份 `.bak`（失败可恢复、成功即清）。只读铁律豁免（穷举）见 `src/`src/doc/INVARIANTS.md` §1` + 模块文档 | `ensure_backend_deployed() / remove_remote_file() / upload_atomic()` + IPC `install_remote_alias_block`（〔MC1〕从前叫 `install_remote_ccm_helper`〔散文墓碑〕；〔步 12·C 收尾 09-20〕原先这里还列着 `write_remote_mcp_server`，它**已不是 IPC** —— 今天是 `mcp::write_project_mcp_server` 的远端分支） |
+| **sftp.rs** (SS-D, issue #29) | 统一 SFTP 写层（复用 ssh_source 鉴权起 sftp 子系统）：F08 后端自动部署（arch 探测 + build_id 版本门控 + 原子上传）+ F11 远端历史 jsonl 删除（双重路径白名单 + realpath 防 symlink 逃逸）（〔W5-ALIAS〕F10 远端别名块搬去了 `profile_installer.rs`）+ **F89a 远端项目 `.mcp.json` 增改删（`mcp.rs` 经 `upload_atomic`，`is_safe_remote_mcp_json` 守卫，SS-14 只 .mcp.json）**。`upload_atomic` 加固：tmp 用 EXCLUDE 防 symlink clobber + 旧目标备份 `.bak`（失败可恢复、成功即清）。只读铁律豁免（穷举）见 `src/`src/doc/INVARIANTS.md` §1` + 模块文档 | `ensure_backend_deployed() / remove_remote_file() / upload_atomic()` + 〔AL2〕远端别名块已并进 `aliases_block_*`（带 origin；〔MC1〕更早叫 `install_remote_ccm_helper`〔散文墓碑〕；〔步 12·C 收尾 09-20〕原先这里还列着 `write_remote_mcp_server`，它**已不是 IPC** —— 今天是 `mcp::write_project_mcp_server` 的远端分支） |
 | **tasks.rs** (v2.3.0 issue #11；〔RM1b〕读法归后端) | Claude Code CLI 的 task 列表：按 `origin` 问那台机器的后端 `tasks-list`（本机与远端同一条路；读 `<tasks>/<sid>/<数字>.json` 那一段住后端 `observe/tasks_query.rs`），本侧只剩字段语义与本机 watcher：notify-debouncer 100ms 监听整个 tasks 目录递归；变更 → 反推 sid → 经本机后端重读 → emit `task-update`。tasks_root 不存在时静默不 spawn | `parse_task_lines() / spawn_task_watcher()` + IPC `get_session_tasks(origin, sessionId)` |
 | **data_paths.rs** (v2.3.0 issue #3 A) | 透明化展示：枚举 monitor 所有持久路径（config / sid-hwnd-cache / auto-launch / history-metadata / ps-await / ps-registry / logs）+ WebView2 UserDataFolder（用 `app_local_data_dir().join("EBWebView")` 推断）+ PowerShell profile 备份目录。stat 不递归算大小，避免大目录卡 IPC | `collect()` + IPC `get_data_paths` |
 | **config.rs** | monitor 自己的 config.json R/W（Windows MoveFileExW 原子）。〔CFG1〕写只有 `patch_config_at` 一个函数（进程级锁内现读 → 逐条 set/remove → 原子替换；读不懂不写），`logging.rs` 的诊断写口也经它 | `patch_config_at()` + IPC `load_config / patch_config` |
@@ -158,10 +158,10 @@ src/bridge/
 | `list_session_activity` (issue #23) | — | `SessionActivityPayload[]` | 启动/F5 后拉一次红绿灯快照（增量走 `session-activity` 事件，双路收敛） |
 | `list_active_sessions` (Batch5-F18) | — | `ActiveSessionPayload[] {session_id, cwd}` | frontend-ready 前拉一次本地活跃清单建骨架 Tab（按 (cwd,sid) 排序防 tab 栏洗牌；远端骨架走 `remote-session-added` 事件） |
 | `bring_monitor_to_front` (v2.4.0 issue #2) | — | `()` | watcher 反推用户在终端输入时，可选拉前 monitor 自身窗口（unminimize + show + set_focus） |
-| `aliases_read` (〔AL1d〕并进了原「终端集成」的状态 / 扫一份) | `{ shell, rcPath? }` | `AliasListing` | 展开「别名」：清单 ＋ 启动文件候选（各带别名块现状）＋ 握手终端数 |
-| `aliases_block_render` | `{ rcPath, withCc }` | `string` | [预览别名块] 按钮（方言按那份文件的扩展名定） |
-| `aliases_block_install` | `{ rcPath, withCc }` | `()` | [装别名块] 按钮（写入 BEGIN/END 块，经本机后端） |
-| `aliases_block_remove` | `{ rcPath }` | `()` | [卸载别名块] 按钮（删除 BEGIN/END 块，经本机后端） |
+| `aliases_read` (〔AL1d〕并进了原「终端集成」的状态 / 扫一份) | `{ origin, shell, rcPath? }` | `AliasListing` | 展开「别名」：清单 ＋ 启动文件候选（各带别名块现状）＋ 握手终端数 |
+| `aliases_block_render` | `{ origin, rcPath, withCc }` | `string` | [预览别名块] 按钮（方言按那份文件的扩展名定） |
+| `aliases_block_install` | `{ origin, rcPath, withCc }` | `()` | [装别名块] 按钮（写入 BEGIN/END 块，经那台后端；〔AL2〕本机远端同一条） |
+| `aliases_block_remove` | `{ origin, rcPath }` | `()` | [卸载别名块] / 远端卡「卸载 ccm」按钮（删除 BEGIN/END 块，经那台后端） |
 | `cc_get_auto_launch` | — | `AutoLaunchConfig` | 设置面板加载 auto-launch 状态 |
 | `cc_set_auto_launch` | `{ enabled }` | `()` | 用户勾选/取消 auto-launch |
 | `get_diagnostics_config` (v2.0.0+) | — | `DiagnosticsConfig` | 设置面板「诊断」区拉当前配置 |
@@ -177,8 +177,7 @@ src/bridge/
 它们并进了本机那三条同名能力，`origin` 成了参数（见下面「本机历史」那张表）。
 ⚠ 它们作为**函数**还在 `remote_history.rs` 里（合并后那条命令的远端分支），
 只是不再是 IPC 命令 —— 别把「函数还在」读成「命令还在」。
-| `install_remote_alias_block` (F10，经远端后端；住 `profile_installer.rs`) | `{ cfg, profile }` | `String` | 把别名块写进远端 rc（BEGIN/END 块 + 备份 + 写后校验）。〔MC1〕从前叫 `install_remote_ccm_helper`〔散文墓碑〕，推入口那一半并进了 `deploy_remote_backend` |
-| `uninstall_remote_alias_block` (F10，经远端后端；住 `profile_installer.rs`) | `{ cfg, profile }` | `String` | 从远端 rc 删别名块（备份 + 写后校验回滚；块外内容不动） |
+| 〔AL2 · 第四波 4D〕远端装 / 卸别名块两条已删 | — | — | 并进上面 `aliases_block_install` / `aliases_block_remove`（带 `origin`，本机远端同一条）。〔MC1〕更早叫 `install_remote_ccm_helper`〔散文墓碑〕 |
 | `deploy_remote_backend` (F08c, SFTP) | `{ cfg }` | `String` | 设置面板「安装后端」：按远端 arch 选内嵌二进制 + build_id 版本门控 + SFTP 原子上传到 backendPath（已最新则跳过）；返回人读结果，无 arch/路径含 `~` 等显式报错 |
 | `uninstall_remote_backend` (F08c, SFTP) | `{ cfg }` | `String` | 设置面板「卸载后端」：删远端后端二进制 + 同目录 `.build_id`（`is_safe_remote_backend_path` 守卫；机器仍启用会自动装回的提示） |
 | `list_ssh_host_aliases` (issue #15) | — | `String[]` | 设置面板「从 ~/.ssh/config 导入」下拉 |

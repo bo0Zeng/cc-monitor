@@ -5126,44 +5126,9 @@
       "zh": "这台机器的 ccm 命令 · 用户级 PATH",
       "args": []
     },
-    "machineAliases.remote.readFailed": {
-      "kind": "error",
-      "zh": "读不了本机的别名清单：{e}",
-      "args": ["e"]
-    },
-    "machineAliases.remote.count": {
-      "kind": "body",
-      "zh": "本机那份清单：{n} 条。",
-      "args": ["n"]
-    },
-    "machineAliases.remote.fixFirst": {
-      "kind": "body",
-      "zh": "本机那份清单里有不合格的，先在「本机 → 工具 → 别名」里改好。",
-      "args": []
-    },
     "machineAliases.invalid.notYet": {
       "kind": "body",
       "zh": "还没生成。",
-      "args": []
-    },
-    "machineAliases.remote.activation": {
-      "kind": "body",
-      "zh": "在那台机器上 source 它，或重连一次 ssh。",
-      "args": []
-    },
-    "machineAliases.remote.mergeNote": {
-      "kind": "body",
-      "zh": "整段贴到文件末尾；以后本机的清单改了，再贴一次换掉上一次那段。",
-      "args": []
-    },
-    "machineAliases.remote.pasteTarget": {
-      "kind": "body",
-      "zh": "这台机器的 ~/.bashrc（或它实际用的 shell 配置文件）",
-      "args": []
-    },
-    "machineAliases.remote.copyTitle": {
-      "kind": "title",
-      "zh": "把本机的别名清单复制过去",
       "args": []
     },
     "machineAliases.openRc.failedBody": {
@@ -5233,6 +5198,11 @@
       "kind": "body",
       "zh": "✗ {path}：还没有别名块（{blockWhat}）",
       "args": ["path", "blockWhat"]
+    },
+    "machineAliases.remote.pathUnchecked": {
+      "kind": "body",
+      "zh": "撞名只核了自带别名块里的名字；那台机器 PATH 上的同名程序没查。",
+      "args": []
     },
     "machineAliases.rcStatus.unreadable": {
       "kind": "error",
@@ -5860,21 +5830,6 @@
       "zh": "已卸载",
       "args": []
     },
-    "machineCard.aliases.uninstalling": {
-      "kind": "body",
-      "zh": "卸载别名块中",
-      "args": []
-    },
-    "machineCard.aliases.uninstallConfirm": {
-      "kind": "body",
-      "zh": "确认从 {host} 的 ~/.bashrc 删掉别名块？\n（只删 cc-monitor 那一小块，块外内容不动，会先备份原文件。）",
-      "args": ["host"]
-    },
-    "machineCard.aliases.uninstallNeedHost": {
-      "kind": "error",
-      "zh": "请先填好 host / user 再卸载别名块。",
-      "args": []
-    },
     "machineCard.uninstall.running": {
       "kind": "body",
       "zh": "卸载后端中",
@@ -6010,16 +5965,6 @@
       "zh": "请先填好 host / user 再推送公钥。",
       "args": []
     },
-    "machineCard.aliases.installing": {
-      "kind": "body",
-      "zh": "装别名块中",
-      "args": []
-    },
-    "machineCard.aliases.needHost": {
-      "kind": "error",
-      "zh": "请先填好 host / user 再装别名块。",
-      "args": []
-    },
     "machineCard.test.unreachable": {
       "kind": "body",
       "zh": "连不上",
@@ -6080,29 +6025,9 @@
       "zh": "▸",
       "args": []
     },
-    "machineCard.aliases.uninstallHint": {
-      "kind": "body",
-      "zh": "从远端 ~/.bashrc 删掉 cc-monitor 那一块（先备份；块外内容不动）",
-      "args": []
-    },
     "machineCard.aliases.uninstall": {
       "kind": "action",
       "zh": "卸载 ccm",
-      "args": []
-    },
-    "machineCard.aliases.installHint": {
-      "kind": "body",
-      "zh": "把 cc / cct 那一块装进远端 ~/.bashrc（幂等，可重装）",
-      "args": []
-    },
-    "machineCard.aliases.install": {
-      "kind": "action",
-      "zh": "装别名块",
-      "args": []
-    },
-    "machineCard.aliases.intro": {
-      "kind": "body",
-      "zh": "别名块把 cc / cct 和「接上别名文件」那一行装进这台机器的 ~/.bashrc。只动 cc-monitor 那一小块，写前先备份，写完回读比对。你自己的别名清单今天只能在本机写好、复制过来贴上。",
       "args": []
     },
     "machineCard.aliases.title": {
@@ -9435,51 +9360,6 @@
       "kind": "error",
       "zh": "文件窗口的启动参数写不出来：{e}",
       "args": ["e"]
-    },
-    "rsProfileInstaller.remoteAliasBlock.written": {
-      "kind": "body",
-      "zh": "别名块已写进 {profile}{backupNote}。重连 ssh 之后，终端里就有 cc / cct，以及「别名」里生成的那几条。",
-      "args": ["profile", "backupNote"]
-    },
-    "rsProfileInstaller.remoteAliasBlock.backupNote": {
-      "kind": "body",
-      "zh": "，原文件备份在 {b}",
-      "args": ["b"]
-    },
-    "rsProfileInstaller.remoteAliasBlock.upToDate": {
-      "kind": "body",
-      "zh": "{profile} 里的别名块已是最新，没有改动。",
-      "args": ["profile"]
-    },
-    "rsProfileInstaller.remoteProfile.what": {
-      "kind": "body",
-      "zh": "远端 ~/{profile}",
-      "args": ["profile"]
-    },
-    "rsProfileInstaller.remoteAliasBlock.removed": {
-      "kind": "body",
-      "zh": "已从远端 {profile} 删掉别名块。",
-      "args": ["profile"]
-    },
-    "rsProfileInstaller.remoteAliasBlock.removedWithBackup": {
-      "kind": "body",
-      "zh": "已从远端 {profile} 删掉别名块（原文件备份在 {b}）。",
-      "args": ["profile", "b"]
-    },
-    "rsProfileInstaller.remoteAliasBlock.noBlock": {
-      "kind": "body",
-      "zh": "远端 {profile} 里没有别名块，不用卸载。",
-      "args": ["profile"]
-    },
-    "rsProfileInstaller.remoteAliasBlock.noProfile": {
-      "kind": "body",
-      "zh": "远端 {profile} 不存在，没有别名块可卸载。",
-      "args": ["profile"]
-    },
-    "rsProfileInstaller.remoteProfile.badName": {
-      "kind": "error",
-      "zh": "profile 只能是 home 下的文件名（如 .bashrc / .zshrc）",
-      "args": []
     },
     "rsSftp.uninstall.absent": {
       "kind": "body",
