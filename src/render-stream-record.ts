@@ -368,6 +368,7 @@ export function renderContentRecord(
   if (window.__ccmPerf) window.__ccmPerf.recordsRendered = (window.__ccmPerf.recordsRendered ?? 0) + 1;
   const result = renderMessage(message, ctx);
   const tRender = probe ? performance.now() : 0;
+  markMemberUuids(message, ctx, result); // 〔W5-RENDER R11〕在秤 1 的 render 段之外（那一段只夹 renderMessage）
 
   switch (result.kind) {
     case "skip":
@@ -490,6 +491,32 @@ export function renderContentRecord(
       }
       return;
     }
+  }
+}
+
+/**
+ * 〔W5-RENDER R11 · `设计/10 §7` 第 10 条〕**落点标记**：一条记录若没有自己的卡（工具单元并进左邻居的工具组 ·
+ * tool_result 被注入进它那个 tool_use 的单元里），就在它真正落下的那一块上记 `data-member-uuid`，
+ * 会话内查找 / 大纲命中它时 `revealCard` 找得到（原来找不到 `[data-uuid]` ⇒ 标「跳不过去」）。
+ * - 工具组的单元（新建组与并入左邻居两支都记；新建组的外壳另有 `data-uuid`）；
+ * - user 记录里的 tool_result 块：注入到了哪个 tool_use 单元的结果区块，就记在那个区块上。
+ * 不用 `data-uuid`：那是 `BranchFolder` 认卡、切折叠段的键。放在管线这一层、不放进 `renderMessage`：
+ * 后者的产物是秤 2 金标准的 DOM 指纹，落点是管线的事。
+ */
+function markMemberUuids(message: JsonlRecord, ctx: RenderContext, result: ReturnType<typeof renderMessage>): void {
+  const uuid = (message as { uuid?: unknown }).uuid;
+  if (typeof uuid !== "string" || uuid === "") return;
+  if (result.kind === "tool-group") {
+    for (const u of result.units) if (!u.dataset.memberUuid) u.dataset.memberUuid = uuid;
+  }
+  if (message.type !== "user") return;
+  const content = (message.message as { content?: unknown }).content;
+  if (!Array.isArray(content)) return;
+  for (const b of content) {
+    const id = (b as { type?: unknown; tool_use_id?: unknown }).tool_use_id;
+    if ((b as { type?: unknown }).type !== "tool_result" || typeof id !== "string") continue;
+    const inline = ctx.toolUseElements.get(id)?.querySelector<HTMLElement>(".block-tool-result-inline");
+    if (inline) inline.dataset.memberUuid = uuid;
   }
 }
 
