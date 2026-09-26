@@ -178,6 +178,19 @@ monitor 进程**一个字节都不直接写用户文件**。rc / `$PROFILE` / �
 - 用户切换 Claude 数据目录后主题 / 字体偏好不丢。
 - profile backup / sid-hwnd-cache / ps-await 等跨进程文件位置稳定，PS 端不需要动态查询。
 
+**唯一的明文例外：`CCM_DATA_DIR`**（`paths.rs::DATA_DIR_ENV`，`P17` 2026-09-22 引入 · 〔TL2 · 4D〕补成本条的例外，此前只在路线图的完成底账里有一行）。
+它**只为「把这个进程整体挪到别处跑」而存在**（跑自动化测试、跑一次性复算），**不是**给用户搬家用的设置面（设置页「数据位置」只读展示）。规矩四条：
+1. 只认**绝对路径**；空串 == 没设（shell 里 `CCM_DATA_DIR=` 是最常见的「取消」写法）。
+2. 给了但不合法（相对路径）⇒ **`None`，不退回用户真 profile** —— 退回去等于让一趟以为自己被隔离了的自动化去写用户的东西，而且没有一句话；宁可各消费者**可见地降级**。
+3. 它挪的是**整个** data dir（`config.json` · 凭据库 · 历史元数据 · 自启 · 全景 …）；全树只经 `paths.rs::resolve_monitor_data_dir` 派生，别处不许自己拼 `~/.claude/work`。
+4. 它**不**改本条的另一半：`claudeDir` 照旧不影响 data dir 的位置。
+
+**谁在守**：`paths_tests.rs::with_nothing_set_it_is_the_documented_default`（本条正文那一半）· `paths_tests.rs::an_absolute_override_is_used_verbatim` ·
+`paths_tests.rs::an_empty_value_means_unset_not_broken` · `paths_tests.rs::a_relative_override_refuses_instead_of_quietly_using_the_real_profile` ·
+`paths_tests.rs::no_home_and_no_override_is_still_none` · `paths_tests.rs::nothing_else_in_the_monitor_tree_builds_that_path_itself`（全树只经一处派生）。
+⚠ **它买不到的**：常驻后端按**家目录**认、不按数据目录 ⇒ 一个隔离跑的 monitor 会接上真 profile 那个 monitor 起的常驻后端，经它写的几样（历史注解 · 上游选择那份凭据文件）就可能写穿到真 profile。
+本机凭据文件那一路已由 GP1「先核路径再写」挡住；历史注解那一路与「常驻后端身份带上数据目录」是 HX2 的件（`GP1.md` 交主会话第 4 条）。
+
 ### 2.1 真相 vs 缓存必须分得清（F65 / issue #58 单向门④）
 
 data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建时不敢下手」：
