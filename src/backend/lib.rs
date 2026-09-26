@@ -333,9 +333,8 @@ pub const PROTO_VERSION: u32 = 1;
 ///    `filewin::find::tests` 四条两侧都钉（没索引 ⇒ 恰好 1 条重走、顺序也钉 ·
 ///    **阴性对照**：不过期 ⇒ 一条都不发 · 只差 `stale` 一个布尔的对照 · 连打五趟只发一趟）。
 ///    ⇒ 「后端这棵树钉不住」仍然成立，而**那一格换成由 bridge 那棵树钉着**。〕
-///   🔴 另一条如实登记：`files::browse_watch::BrowseWatcher`（真把 `inotify` 挂上去那一跳）
-///   **仍然零生产调用方** ⇒ `files-browse` 买到的是「发命令那一刻那几个目录是新的」，
-///   不是「此后一有动静就跟着新」。
+///   〔W5-FILES · 09-25 订正〕上一版这里登记「`BrowseWatcher` 零生产调用方」—— 今天 `files-browse`
+///   会让进程里那一个监听器跟上名单（`files::browse_watch::keep_watching`），浏览的目录此后一有动静 overlay 就重列。
 ///   ★ 同 p2d…p2m 如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍，
 ///   本轮**没做** —— 本工作树没铺 `src/bridge/embedded-backends/`，现打
 ///   `bash tests/scripts/re-embed.sh --check` 答的仍是「这棵树上没有一份对不上的字节」。

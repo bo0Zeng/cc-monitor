@@ -125,9 +125,8 @@
 //!    那一 exec 照旧回 `index_missing: true`（本机 debug 档现打过这两趟）。
 //!    ⇒ CLI 面这两条的用处是**量一趟遍历** ／ 在一个常驻后端进程里换名单，
 //!    不是给下一个 exec 预热。
-//!    ⚠ 另一条如实登记：[`browse_watch::BrowseWatcher`]（真把 `inotify` 挂上去那一跳）
-//!    **仍然零生产调用方** ⇒ `files.browse` 今天买到的是「这几个目录的子项在你发命令
-//!    那一刻是新的」，**不是**「此后一有动静就跟着新」。理由与出路见 [`answer_browse`]。
+//!    〔W5-FILES · 09-25 订正〕上一版这里登记「`BrowseWatcher` 零生产调用方」—— 今天 [`answer_browse`]
+//!    让进程里那一个监听器跟上名单（[`browse_watch::keep_watching`]）；仍然买不到的见那里。
 //! 4. **按内容搜 / 模糊匹配 / 排序** —— `设计/60 §3.5.3` 逐字「一条都没设计」，本件也没做。
 //! 5. **`设计/96 §2` 第 3 层没做，而且它缺的不止一样**〔步 `8a` 如实留账〕：
 //!    - **跨 target 的对等断言**（「所有 target 的能力集**完全相等**，不相等就红，
@@ -312,7 +311,16 @@ pub const CAPABILITIES: &[Capability] = &[
         impl_files: &["browse_watch.rs", "mod.rs", "raw.rs"],
         targets: TARGETS,
         args: &["dirs"],
-        fields: &["added", "browse_watch_cap", "rejected", "removed"],
+        // 〔W5-FILES〕+`watching` · `watch_failed` · `watch_error`：监听器真挂上了几个、没挂上的出声（`设计/60 §3.7`）。
+        fields: &[
+            "added",
+            "browse_watch_cap",
+            "rejected",
+            "removed",
+            "watch_error",
+            "watch_failed",
+            "watching",
+        ],
         codes: &["bad_args", "bad_path"],
     },
     // ── 〔F7a · 第三波 · 2026-09-24〕`设计/60 §13`：窗口换走通道的那两问 ────────────
@@ -733,15 +741,12 @@ fn answer_index_rebuild(args: &serde_json::Value) -> Answer {
 
 /// `files.browse` —— 告诉后端「用户现在在看哪几个目录」。
 ///
-/// # ⚠ 它买到的比「那几个目录此后实时」小，**别读宽**
+/// # 它买到的（〔W5-FILES · 09-25〕比上一版多一截）
 ///
-/// [`browse_watch::set_browsing`] 做的是两件事：**登记名单** ＋ **当场把那几个目录
-/// 各重列一遍**（结果进 overlay，查询时盖掉大索引里的对应条目）。
-/// 而真把 `inotify` 挂上去的是 [`browse_watch::BrowseWatcher`]，
-/// **它至今零生产调用方** —— 要有人在后端进程里**长期持有**那个监听器才谈得上
-/// 事件驱动，而「谁持有它、活多久」是生命周期那一维的活，不在本刀里。
-/// ⇒ 今天这条命令买到的是「**这几个目录的子项在你发命令那一刻是新的**」，
-/// **不是**「此后一有动静就跟着新」。如实登记为未做。
+/// [`browse_watch::set_browsing`] 做两件事：**登记名单** ＋ **当场把那几个目录各重列一遍**（结果进 overlay，
+/// 查询时盖掉大索引里的对应条目）。〔W5-FILES〕之后 [`browse_watch::keep_watching`] 让**进程里那一个监听器**
+/// 跟上名单（第一次时起、此后一直持有；新来的挂上、离开的卸掉）⇒ 浏览的目录此后一有动静 overlay 就跟着重列。
+/// ⚠ 仍然买不到：watch 绑 inode 不绑路径 · 内核队列溢出 · 窗口关了没人发空名单（最后那份名单的 watch 留到下一次）。
 ///
 /// ⚠ `rejected` 必须跟着回去（[`browse_watch::Applied::rejected`] 头注逐字）：
 /// 静默截断会让「我明明在看这个目录、新建的文件却要等重走」变成一个查不出原因的现象。
@@ -750,11 +755,16 @@ fn answer_index_rebuild(args: &serde_json::Value) -> Answer {
 fn answer_browse(args: &serde_json::Value) -> Answer {
     let dirs = dirs_arg(args)?;
     let applied = browse_watch::set_browsing(&dirs);
+    // 〔W5-FILES · `设计/60 §3.7`〕名单登记了之后让进程里那一个监听器跟上（此前 `BrowseWatcher` 零生产调用方）。
+    let w = browse_watch::keep_watching();
     Ok(serde_json::json!({
         "added": applied.added,
         "removed": applied.removed,
         "rejected": applied.rejected,
         "browse_watch_cap": browse_watch::MAX_BROWSE_WATCHES,
+        "watching": w.watching,
+        "watch_failed": w.failed,
+        "watch_error": w.error,
     }))
 }
 

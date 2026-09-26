@@ -1090,7 +1090,7 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 ```text
 → {"id":"f6","cmd":"files-browse","args":{"dirs":["/home/u/p","/home/u/q"]}}
 ← {"kind":"reply","id":"f6","ok":true,"data":{
-     "added":2,"removed":0,"rejected":0,"browse_watch_cap":64}}
+     "added":2,"removed":0,"rejected":0,"browse_watch_cap":64,"watching":2,"watch_failed":0,"watch_error":null}}
 ```
 
 它是**保鲜的另一半**（`设计/60 §3.5.2` 那张三段表的第二段）：把「用户眼前那几个目录」
@@ -1104,6 +1104,8 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 | `removed` | ← | 这一趟卸掉几个（用户不再看它们了） |
 | `rejected` | ← | 超过上限被**拒掉**几个。🔴 它必须是个数、必须回给调用方：静默截断会让「这个目录我明明在看、新建的文件却要等重走」变成一个查不出原因的现象 |
 | `browse_watch_cap` | ← | 上限（今天 64）。只回一个 `rejected` 而不说上限是多少，调用方没法判该少送几个 |
+| `watching` | ← | 〔W5-FILES〕此刻**真挂着** watch 的目录数（进程里那一个监听器，跟着名单挂 / 卸） |
+| `watch_failed` / `watch_error` | ← | 〔W5-FILES〕这一趟没挂上的条数 ＋ 第一条原因（`null` ＝ 都挂上了）。没挂上的那几个登记了、当场重列了，但**不会**跟着新 —— 出声，不静默；监听器本身起不来（如 `inotify` 实例数到顶）也落这里，下一趟再试 |
 
 ⚠ **收的是「整份名单」，不是「再加一个」。** 空数组**合法**，语义是
 「用户现在什么都没在看」⇒ 全卸（`removed` 说出来卸了几个）。
@@ -1111,11 +1113,11 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 
 🔴 **它今天买到的比「那几个目录此后实时」小，逐条别读宽：**
 
-- 它做的是**登记名单 ＋ 当场把那几个目录各重列一遍**。真把 `inotify` 挂上去那一跳
-  （后端侧的 `BrowseWatcher`）**至今零生产调用方** —— 那要有人在后端进程里**长期持有**
-  那个监听器，是生命周期那一维的活。
-  ⇒ 今天这条命令买到的是「**这几个目录的子项在你发命令那一刻是新的**」，
-  **不是**「此后一有动静就跟着新」。要更新就再发一次。
+- 它做的是**登记名单 ＋ 当场把那几个目录各重列一遍 ＋ 让后端进程里那一个监听器跟上名单**
+  （〔W5-FILES · 2026-09-25〕此前 `BrowseWatcher` 零生产调用方；今天第一次 `files-browse` 时起、此后一直持有）。
+  ⇒ 买到的是「**这几个目录此后一有动静，overlay 就跟着重列**」（`watching` 说挂上了几个）。
+  ⚠ 仍然不是全部：watch 绑 inode 不绑路径（浏览的目录删了重建成同名新目录 ⇒ 那一格瞎到下一次 `files-browse`）·
+  内核事件队列溢出没判 · 窗口关了没人发空名单 ⇒ 最后那一份名单的 watch 留到下一次 `files-browse`（上限 64 管着）。
 - **只盯直接子项**（不递归）：浏览的目录**底下**那棵子树里新建的东西仍然等重走那一档。
 - 三个平台的保鲜机制**本来就不是一件事**（Linux `inotify` / Windows
   `ReadDirectoryChangesW` / macOS `FSEvents`，最后一格是文献读数、没实测）。
