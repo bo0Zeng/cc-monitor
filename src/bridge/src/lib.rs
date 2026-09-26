@@ -1344,7 +1344,7 @@ pub fn run() {
             backend::control::backend_control::backend_start,
             backend::control::backend_control::backend_stop,
             config::load_config,
-            config::save_config,
+            config::patch_config,
             // K-H2a：apikey 表那把 key 的写（`KS10`）。〔US1〕读状态与「表里有没有行」两问走通道（`apikey-read` / `apikey-routing`）。
             write_apikey_credentials_key,
             // 〔RL1 · US1〕起会话那一发注入哪个中转地址：转交那台后端的成品（`launch-endpoint`）＋ 远端用到才起。

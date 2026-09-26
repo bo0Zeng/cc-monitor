@@ -20,6 +20,7 @@ import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bindEvents } from "./events";
 import { TabManager } from "./tabs";
+import { mountTabBarResizer } from "./tab-bar-width";
 import { terminalFrontCommand } from "./terminal-front-command";
 import { loadTheme } from "./theme";
 import { SETTINGS_APPLIED_EVENT } from "./settings";
@@ -362,72 +363,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     void accountChip.refresh(true); // A3：远端配置/默认账号可能变了，刷新账号 chip
     refreshFirstRunHint(); // N-F3：账本/远端列表可能变了 → 「还差什么」现算一遍
   });
-  // Batch11-F33：竖直 tab 栏——右缘拖拽调宽（localStorage 记忆）+ 窄窗折叠图标条。
-  {
-    const appEl = document.getElementById("app");
-    if (appEl) {
-      const KEY = "cc-monitor.tab-bar-w";
-      const clampW = (w: number): number => Math.min(340, Math.max(110, w));
-      const saved = Number(localStorage.getItem(KEY));
-      if (Number.isFinite(saved) && saved > 0) {
-        appEl.style.setProperty("--tab-bar-w", `${clampW(saved)}px`);
-      }
-      const resizer = document.createElement("div");
-      resizer.id = "tab-bar-resizer";
-      resizer.title = copyText("main.tabBar.resizeHint");
-      // 拖动期间**不能**实时改 --tab-bar-w：网格列宽一变，消息区整棵布局树重排，
-      // 而切 tab 零卡顿方案让所有 tab 的 DOM 都 visibility 保活在布局树里——每次
-      // mousemove 全量重排 = 拖动巨卡。改为拖动时只画 fixed 参考线（repaint-only），
-      // 松手一次性提交宽度。
-      resizer.addEventListener("mousedown", (e) => {
-        if (e.button !== 0) return;
-        e.preventDefault();
-        const barLeft = document.getElementById("tab-bar")?.getBoundingClientRect().left ?? 0;
-        const guide = document.createElement("div");
-        guide.className = "tab-bar-resize-guide";
-        const applyGuide = (clientX: number): number => {
-          const w = clampW(clientX - barLeft);
-          guide.style.left = `${barLeft + w}px`;
-          return w;
-        };
-        let lastW = applyGuide(e.clientX);
-        document.body.appendChild(guide);
-        resizer.classList.add("resizing");
-        const finish = (commit: boolean): void => {
-          document.removeEventListener("mousemove", onMove);
-          document.removeEventListener("mouseup", onUp);
-          window.removeEventListener("blur", onBlur);
-          guide.remove();
-          resizer.classList.remove("resizing");
-          if (commit) {
-            appEl.style.setProperty("--tab-bar-w", `${lastW}px`);
-            localStorage.setItem(KEY, String(lastW));
-          }
-        };
-        const onMove = (ev: MouseEvent): void => {
-          // 主键已松开（窗外释放 / 切走时 mouseup 丢失）→ 取消收尾。否则 document
-          // 级 mousemove 监听永久泄漏，之后选中文字都在触发它（同 tab 撕离的容错）。
-          if ((ev.buttons & 1) === 0) {
-            finish(false);
-            return;
-          }
-          lastW = applyGuide(ev.clientX);
-        };
-        const onUp = (): void => finish(true);
-        // alt-tab / 点别的窗口切走 → 落点不可信，直接取消（回来不会带着幽灵拖拽）。
-        const onBlur = (): void => finish(false);
-        document.addEventListener("mousemove", onMove);
-        document.addEventListener("mouseup", onUp);
-        window.addEventListener("blur", onBlur);
-      });
-      appEl.appendChild(resizer);
-      // 窄窗折叠（内容列 780px + 栏 + 呼吸空间放不下 → 图标条 44px）现在**整条在 CSS 里**：
-      // `styles.css` 的 `@media (width < 980px)`（`设计/40 §7` 步 5 · S24）。
-      // 这里原本是一个 `resize` 监听往 body 上挂 `.tabbar-collapsed`，而那个类
-      // **只被写、从没被读**（唯一读者就是那几条 CSS 规则）⇒ 纯视觉断点绕一圈 JS，
-      // 白付一次「窄窗启动先闪一下宽栏」。删掉监听不留等价物，别再加回来。
-    }
-  }
+  // Batch11-F33：竖直 tab 栏——右缘拖拽调宽。〔CFG1〕整段搬进 tab 栏自己的模块（`tab-bar-width.ts`），
+  // 宽度经 `LS_KEYS` ＋ `safeGet/safeSet` 记忆（D §D5：原先住这里、直调 localStorage、键不在登记里）。
+  mountTabBarResizer();
 
   const settingsTrigger = document.createElement("button");
   settingsTrigger.type = "button";
