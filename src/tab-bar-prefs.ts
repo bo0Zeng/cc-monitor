@@ -80,7 +80,8 @@ export class TabBarPrefs {
    * 「已经没了的会话」与「还没宣告到的会话」长得一模一样。
    * tab 到达（[`adoptGroup`]）⇒ 它的组 id 从这里**挪到** `Tab.group`（此后真相只在 tab 身上一处）；
    * 组没了（× 掉最后一个 · 解散）⇒ 指向它的条目从这里连同盘上一起摘。
-   * ⚠ 从没到过的 tab 的条目**留着**（盘上也留着）—— 何时能判它「不会再来」设计里没答（`GRP1.md` Q2 待拍）。
+   * ⚠ 从没到过的 tab 的条目**留着**（盘上也留着）—— 主会话裁 Q2 取乙（真关窗时摘），但 monitor 主窗今天没有关窗钩子，
+   *   加一个就改了退出次序 ⇒ 按裁定退回丙（维持），`GRP1.md` 记着。
    */
   savedGroupOf = new Map<string, string>();
   /**
@@ -172,12 +173,15 @@ export class TabBarPrefs {
     if (next.length === this.collections.length) return null;
     this.collections = next;
     const edits: ConfigEdit[] = [collectionsEdit(next)];
+    const left = new Set<string | null>();
     for (const sid of sids) {
       const t = this.store.tabs.get(sid);
       if (!t) continue;
+      left.add(t.group);
       t.group = id;
       edits.push(groupOfEdit(sid, id));
     }
+    for (const old of left) edits.push(...this.dropIfEmpty(old));
     void this.writeGroups(edits);
     return null;
   }
@@ -186,20 +190,18 @@ export class TabBarPrefs {
   joinGroup(sid: string, gid: string): Promise<void> {
     const t = this.store.tabs.get(sid);
     if (!t || t.group === gid || !this.collections.some((c) => c.id === gid)) return Promise.resolve();
+    const old = t.group;
     t.group = gid;
-    return this.writeGroups([groupOfEdit(sid, gid)]);
+    return this.writeGroups([groupOfEdit(sid, gid), ...this.dropIfEmpty(old)]);
   }
 
-  /**
-   * 〔GRP1〕右键「移出」/ 拖出组：`sid` 回到散 tab。
-   * ⚠ 组里因此一个 tab 都不剩时**组留着**（`设计/30 §6` 第 12 条「空组也留着」）——
-   *   V140「组里最后一个 tab 没了组自己消失」是否也管「离开」设计里两说，`GRP1.md` Q1 待拍；今天只有 × 触发组消失。
-   */
+  /** 〔GRP1〕右键「移出」/ 拖出组：`sid` 回到散 tab；组里因此一个在栏里的都不剩 ⇒ 组没（主会话裁 Q1，与 × 同一判定）。 */
   leaveGroup(sid: string): Promise<void> {
     const t = this.store.tabs.get(sid);
     if (!t || t.group === null) return Promise.resolve();
+    const old = t.group;
     t.group = null;
-    return this.writeGroups([groupOfEdit(sid, null)]);
+    return this.writeGroups([groupOfEdit(sid, null), ...this.dropIfEmpty(old)]);
   }
 
   /**
@@ -214,9 +216,7 @@ export class TabBarPrefs {
     const gid = tab.group;
     if (gid === null) return Promise.resolve();
     tab.group = null;
-    const edits: ConfigEdit[] = [groupOfEdit(tab.sessionId, null)];
-    if (!this.hasMemberInBar(gid)) edits.push(...this.dropGroup(gid));
-    return this.writeGroups(edits);
+    return this.writeGroups([groupOfEdit(tab.sessionId, null), ...this.dropIfEmpty(gid)]);
   }
 
   /** 〔GRP1〕组头 ×：解散。**只去掉分组，一个 tab 都不动**（集合是个视图，不是容器）。 */
@@ -241,10 +241,14 @@ export class TabBarPrefs {
     return this.writeGroups([collectionsEdit(next)]);
   }
 
-  /** 栏里还有没有 tab 带着这个组 id。 */
-  private hasMemberInBar(gid: string): boolean {
-    for (const t of this.store.tabs.values()) if (t.group === gid) return true;
-    return false;
+  /**
+   * 〔V140「组里最后一个 tab 没了组自己消失」〕组 `gid` 在栏里一个 tab 都不带了 ⇒ 组没（× · 拖出 · 移出 · 挪组共用这一判定）。
+   * 回要落盘的补丁（内存已改）；`null` / 还有成员 ⇒ 空。
+   */
+  private dropIfEmpty(gid: string | null): ConfigEdit[] {
+    if (gid === null) return [];
+    for (const t of this.store.tabs.values()) if (t.group === gid) return [];
+    return this.dropGroup(gid);
   }
 
   /** 组表去掉 `gid`，指向它的意图一并摘 —— 回要落盘的那几条（内存已改）。 */
