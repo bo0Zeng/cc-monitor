@@ -1440,16 +1440,16 @@ describe("N-F2 本机那两格真的被写进账本", () => {
     const led = await localLedgerAfter(threeLocal());
     expect(shape(led)).toEqual({
       accounts: { kind: "ok", detail: "3 个" },
-      acctIso: { kind: "ok", detail: "已启用" },
+      acctIso: { kind: "ok", detail: "已装" },
     });
   });
 
-  it("★ NF2D2 档一（读出来了·零个号）：清单读到了 = ok，隔离没启用 = fail —— 两格不许合成一句", async () => {
-    // 「读到了但一个号都没有」与「读不出来」是两件事：前者 accounts 该绿。
+  it("★ NF2D2 档一（读出来了·零个号）：清单读到了 = ok；装没装问不出来 = fail —— 两格不许合成一句", async () => {
+    // 「读到了但一个号都没有」与「读不出来」是两件事：前者 accounts 该绿。〔VIS2〕acctIso 记装没装（本文件默认桩答 `undefined` ⇒ 问不出来）。
     const led = await localLedgerAfter(localState({ accounts: [] }));
     expect(shape(led)).toEqual({
       accounts: { kind: "ok", detail: "已读取" },
-      acctIso: { kind: "fail", detail: "未启用" },
+      acctIso: { kind: "fail", detail: "查不出来" },
     });
   });
 
@@ -1469,6 +1469,52 @@ describe("N-F2 本机那两格真的被写进账本", () => {
       accounts: { kind: "fail", detail: "读不动" },
       acctIso: { kind: "fail", detail: "读不动" },
     });
+  });
+
+  /** 〔VIS2 · `设计/15 §4.5` 缺口二，主会话裁乙〕`acctIso` 记「装没装」，「启用没启用」记在 `accounts`（没启用 ⇒ fail「多账号没启用」）。期望逐行手写。 */
+  it("★ VIS2 缺口二：acctIso 记装没装、启用没启用记在 accounts —— 远端本机逐行", async () => {
+    const off = (p: Partial<AccountsState> = {}) => ({
+      ...p,
+      meta: { ...state({}).meta!, enabled: false },
+    });
+    const probe = (cmd: string, r: () => Promise<unknown>) =>
+      invokeMock.mockImplementation((c: string) => (c === cmd ? r() : Promise.resolve(undefined)));
+    const remote = async (st: AccountsState, r: () => Promise<unknown>) => {
+      localStorage.clear();
+      readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host()] });
+      setCurrentMachine("devbox");
+      fetchAccountsMock.mockReset().mockResolvedValue(st);
+      probe("check_remote_acct_iso", r);
+      await mount();
+      return shape(readStatus(host().label));
+    };
+    const local = async (st: AccountsState, r: () => Promise<unknown>) => {
+      localStorage.clear();
+      probe("check_local_acct_iso", r);
+      return shape(await localLedgerAfter(st));
+    };
+    const yes = () => Promise.resolve({ installed: true, path: "/p", vendor_id: "v" });
+    const no = () => Promise.resolve({ installed: false, path: null, vendor_id: "v" });
+    const boom = () => Promise.reject(new Error("ssh down"));
+    const multiOff = { kind: "fail", detail: "多账号没启用" };
+    const got = [
+      await remote(state(off()), yes),
+      await remote(state(off()), no),
+      await remote(state(off()), boom),
+      await remote(state({ accounts: [acct({ name: L1 })], defaultName: L1 }), boom),
+      await local(localState(off()), yes),
+      await local(localState(off()), no),
+      await local(threeLocal(), boom),
+    ];
+    expect(got).toEqual([
+      { accounts: multiOff, acctIso: { kind: "ok", detail: "已装" } },
+      { accounts: multiOff, acctIso: { kind: "fail", detail: "没装" } },
+      { accounts: multiOff, acctIso: { kind: "fail", detail: "查不出来" } },
+      { accounts: { kind: "ok", detail: "1 个" }, acctIso: { kind: "ok", detail: "已装" } },
+      { accounts: multiOff, acctIso: { kind: "ok", detail: "已装" } },
+      { accounts: multiOff, acctIso: { kind: "fail", detail: "没装" } },
+      { accounts: { kind: "ok", detail: "3 个" }, acctIso: { kind: "ok", detail: "已装" } },
+    ]);
   });
 
   it("★ NF2D2 三档两两不同 —— 只断「调了 recordFacet」的话，三档写成同一个值也全绿", async () => {
@@ -1567,7 +1613,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
       "未启用那一支",
     ).toEqual({
       accounts: { kind: "ok", detail: "已读取" },
-      acctIso: { kind: "fail", detail: "未启用" },
+      acctIso: { kind: "fail", detail: "查不出来" },
     });
 
     expect(
@@ -1579,7 +1625,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
       "已启用那一支",
     ).toEqual({
       accounts: { kind: "ok", detail: "2 个" },
-      acctIso: { kind: "ok", detail: "已启用" },
+      acctIso: { kind: "ok", detail: "已装" },
     });
   });
 
@@ -1594,7 +1640,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
     const led = await localLedgerAfter(threeLocal());
     expect(shape(led), "前提没成立：这一次面板运行没把两格写绿").toEqual({
       accounts: { kind: "ok", detail: "3 个" },
-      acctIso: { kind: "ok", detail: "已启用" },
+      acctIso: { kind: "ok", detail: "已装" },
     });
     // ⚠ 第三格（`K-R59` 新算数的 `backend`）**不归本分节写**：它的生产写点是
     //   `remote-section.ts::noteLocalBackend`，由 `remote-section.vitest.ts` 用真的一次
