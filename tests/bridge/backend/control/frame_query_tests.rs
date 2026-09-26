@@ -1111,6 +1111,13 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         1,
         "远端 cc-bus 钩子诊断问那台后端的三趟（`footprint-probe` ×2 ＋ `files-peek`）共用 `REMOTE_DIAG_BUDGET`（30 s）",
     ),
+    // 〔SH1 · V137〕MCP 列表问那台后端（本机远端同一条 `mcp-read`，一问）。
+    (
+        "mcp.rs",
+        "mcp_on",
+        1,
+        "MCP 列表问那台后端（`mcp-read`，一问；值 `MCP_READ_BUDGET` 30 s —— 读一份 `.claude.json`，重度用户可数 MB）",
+    ),
 ];
 
 /// 一份生产段里 `Deadline::within(` 的每一处，按「所在的最近一个 `fn` 名」记账（定义那一行不算）。

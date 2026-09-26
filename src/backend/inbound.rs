@@ -165,6 +165,8 @@ pub const COMMANDS: &[&str] = &[
     "link-credit",
     "link-data",
     "link-open",
+    // 〔SH1 · V137〕MCP 列表出成品（读法住适配层那一格 `agents::Adapter.mcp`）。
+    "mcp-read",
     // 〔AS1 · 第四波 4B〕MCP 资产同步的判定（只读；写经文件管理那一面 `files-put`）。
     "mcp-sync-plan",
     // 〔RM1c · 第四波〕代码全景（V108 选 B）：后端经插件口起独立小程序，只说查询语义。
@@ -2218,6 +2220,28 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::fork_face::answer(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔SH1 · V137〕MCP 列表成品：user / local / project 三段 ＋ 用过的项目目录 ＋ 读不出来的那几份。阻塞档（同步文件 I/O）。
+    CommandSpec {
+        name: "mcp-read",
+        doc_anchor: Some("#### `mcp-read`"),
+        codes: &["bad_args", "too_large"],
+        fields: &[
+            "dirs",
+            "entries",
+            "name",
+            "problems",
+            "projectDir",
+            "scope",
+            "server",
+            "sourcePath",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::feature_face::answer(&r.cmd, &r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),

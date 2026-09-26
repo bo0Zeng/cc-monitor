@@ -648,6 +648,7 @@ const INTEGRATION: &[&str] = &[
     "tests/node-suite-registry-guard.vitest.ts",
     "tests/offline-cargo-cache.vitest.ts",
     "tests/backend/control/ccm_tests.rs", // 〔SH1〕SCAN → INTEGRATION：多了一条隔离 socket 真 tmux 判据（`BUS_ID_RECIPE` 读会话名走 UTF-8 客户端）
+    "tests/backend/agents/claudecode/mcp_tests.rs", // 〔SH1 · V137〕Claude 的 MCP 布局读法（临时目录夹具 ＋ 跨语言金样 mcp-read.golden.json）
 ];
 
 /// 支撑：测试树里**没有一条测试**的那几份（夹具 / helper）。不是一层，是让分区闭合的补集。

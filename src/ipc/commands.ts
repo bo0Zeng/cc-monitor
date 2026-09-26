@@ -670,7 +670,7 @@ export const commands = {
   /**
    * 有 `.mcp.json` 的项目目录候选（`~/.claude.json` 的 `projects` 键）。
    *
-   * 🔴 **〔步 12·C〕`list_remote_mcp_project_dirs` 已退役，两条收成这一条。**
+   * 🔴 **〔步 12·C〕`list_remote_mcp_project_dirs`〔散文墓碑〕 已退役，两条收成这一条。**
    * 两侧算它的那一份代码本来就只有一份（Rust `project_dirs_from`），
    * 差别只在「那份 `~/.claude.json` 的字节从哪来」。
    */

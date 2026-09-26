@@ -11889,6 +11889,21 @@
       "zh": "{path} 切不出项目目录",
       "args": ["path"]
     },
+    "beMcp.read.statFailed": {
+      "kind": "error",
+      "zh": "看 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beMcp.read.readFailed": {
+      "kind": "error",
+      "zh": "读 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "rsMcp.read.shape": {
+      "kind": "error",
+      "zh": "{who}的 MCP 列表形状对不上（{why}）—— 两边版本不一样，先别重试",
+      "args": ["who", "why"]
+    },
     "rsMcp.remote.notConfigured": {
       "kind": "error",
       "zh": "远端「{machine}」未配置或未启用",
@@ -11941,21 +11956,6 @@
       "kind": "error",
       "zh": "项目目录为空，拒绝写",
       "args": []
-    },
-    "rsMcp.remote.timeout": {
-      "kind": "error",
-      "zh": "远端「{machine}」读取超时（30 秒）",
-      "args": ["machine"]
-    },
-    "rsMcp.remote.tooBig": {
-      "kind": "error",
-      "zh": "远端 ~/.claude.json 超过 {cap} 字节上限，拒收。截断的 JSON 不能拿去解析。",
-      "args": ["cap"]
-    },
-    "rsMcp.remote.readFailed": {
-      "kind": "error",
-      "zh": "读取远端 ~/.claude.json 失败：{e}",
-      "args": ["e"]
     },
     "rsMcpSync.preview.sameFile": {
       "kind": "error",

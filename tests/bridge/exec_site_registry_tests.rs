@@ -36,7 +36,7 @@ const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     // ── 整条命令是常量/无插值字面量
     // 〔SH1 · V136〕`cc_bus.rs / fetch_remote_cc_bus`（`CC_BUS_CAT_CMD`）出去了：驾驶舱读名册改走后端 `bus-state`。
     // 〔SH1〕`hooks_diag.rs / diagnose_remote_cc_bus_hooks` 出去了：事实改问那台后端（`footprint-probe` ＋ `files-peek`）。
-    ("mcp.rs", "fetch_remote_claude_json", Origin::Const, "`CMD`：读远端 ~/.claude.json"),
+    // 〔SH1 · V137〕`mcp.rs / fetch_remote_claude_json` 出去了：MCP 列表改问那台后端 `mcp-read`。
     ("ccm_probe.rs", "probe_ccm_cli", Origin::Const, "`CCM_PROBE_CMD`：字面量，零插值。P3t-Y2 起本机探针与它**共用同一个常量**"),
     // 〔DP1 · 第四波〕`sftp.rs` 里只问 `uname -m` 的那一处走了：部署前问机器改问 `uname -s -m`（`byte_table::probe_key`），
     //   走的是 `connect_and_exec_capture`（收全、有上限、带退出码）⇒ 不在本表人群（本表只数 `connect_and_exec_cmd(`）。
@@ -187,8 +187,8 @@ fn every_remote_exec_declares_where_its_command_came_from() {
     }
     assert!(
         // 〔C4d · 第四波 4B〕逐次拨号那条路（`remote_history.rs` 那一处）删了 ⇒ −1；〔合并 C4d × 主线 cf3277f4〕主线 11（DP1 −1）＋ 本路 −1 ⇒ 10。
-        // 〔SH1〕驾驶舱两条 shell 读删了 ⇒ 10 → 8；钩子诊断远端那条改问后端 ⇒ 7。
-        found.len() >= 7,
+        // 〔SH1〕驾驶舱两条 shell 读删了 ⇒ 10 → 8；钩子诊断远端那条改问后端 ⇒ 7；MCP 远端读改问后端 ⇒ 6。
+        found.len() >= 6,
         "全树只找到 {} 处 `connect_and_exec_cmd(` 调用（08-07 实测 16；\
              **`K-R112` 09-13 现打 14** —— 查在线与抓屏那两处改走后端帧面之后各少一处；\
              **`C1` 09-24 现打 12** —— 读会话与快照那两处改走长连接之后各少一处；\
@@ -328,8 +328,7 @@ const STILL_SHELL: &[(&str, &str, StillShell, &str)] = &[
      "把公钥推进那台 `authorized_keys`：密钥登录建立之前的一步（那台可能还没有后端）；写的是用户文件 ⇒ 装好后端之后该改经 `files-put`，登记在「要主会话拍」"),
     ("acct_iso_deploy.rs", "exec_collect", StillShell::Deploy,
      "〔LOC1a〕只剩部署那两步（跑 `cc-acct-iso-install.sh` · 核 `~/.local/bin` 看得见它）；装没装 / 片段两问已改问那台后端（`acct-iso-status` / `acct-iso-shellinit`）"),
-    ("mcp.rs", "fetch_remote_claude_json", StillShell::Pending("适配层接口：`agents::Adapter` 长一格 MCP 读（或主会话裁抬 `agent_locality` 棘轮）"),
-     "读那台 `~/.claude.json` 的 `mcpServers`（用户级）—— 后端要出成品得问适配层要 `.claude.json` 的布局，而通用层直呼适配层是只许降的棘轮；`files-peek` 上限 256 KiB 装不下重度用户的整份"),
+    // 〔SH1 · V137〕`mcp.rs` 那一行摘了：`agents::Adapter` 长了一格 MCP 读，后端 `mcp-read` 出成品（V137 选的那一条）。
     // 〔SH1〕`hooks_diag.rs` 那一行摘了：换成那台后端的 `files-peek` ＋ `footprint-probe`（解锁条件兑现）。
     // 〔W5-ALIAS · 现打后写清〕这一问答的是「那台**交互 shell** 的 PATH 上敲 `ccm` 找不找得到、是哪一版、会哪些」
     //   （`remote-launch-run.ts` 据此选 CLI 渲染器 —— pane 里敲的就是那个名字）。那台后端进程答不了交互 shell 的 PATH

@@ -95,7 +95,7 @@
       "word": "git",
       "tier": "限用",
       "tally": { "re": "\\bgit\\b", "flags": "i" },
-      "inTable": 2,
+      "inTable": 1,
       "meaning": "版本控制程序。",
       "context": "讲仓库、分支时许说。",
       "source": "设计/91 §4 R1b"
