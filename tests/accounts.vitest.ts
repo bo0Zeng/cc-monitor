@@ -515,6 +515,7 @@ describe("parseSessionAccountLines（`--session-accounts` 的逐行）", () => {
       "[1,2]",
       `{"sessionId":"no-pid"}`,
       `{"pid":2,"bare":"yes"}`,
+      `{"pid":4,"viaRelay":"yes"}`,
       `{"pid":3}`,
     ]);
     expect(rows.map((r) => r.pid)).toEqual([3]);
@@ -527,7 +528,19 @@ describe("parseSessionAccountLines（`--session-accounts` 的逐行）", () => {
       bare: false,
       alive: false,
       launchId: null,
+      // 〔HX1 · D-f〕老后端没有这个键 ⇒ null（不知道），不是坏行。
+      viaRelay: null,
     });
+  });
+  it("〔HX1 · D-f〕`viaRelay`：true / false / null 逐字带回；缺 ⇒ null；类型不对 ⇒ 整行坏", () => {
+    const [t, f, n, gone] = parseSessionAccountLines([
+      `{"pid":1,"alive":true,"viaRelay":true}`,
+      `{"pid":2,"alive":true,"viaRelay":false}`,
+      `{"pid":3,"alive":true,"viaRelay":null}`,
+      `{"pid":4,"alive":true}`,
+    ]);
+    expect([t.viaRelay, f.viaRelay, n.viaRelay, gone.viaRelay]).toEqual([true, false, null, null]);
+    expect(parseSessionAccountLines([`{"pid":5,"viaRelay":1}`])).toEqual([]);
   });
 });
 

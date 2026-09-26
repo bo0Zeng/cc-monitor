@@ -1270,7 +1270,13 @@ fn the_local_ccm_entry_is_a_copy_of_the_backend_itself() {
         marked.lock().unwrap().push(p.to_path_buf());
         Ok(())
     };
-    let dest = install_local_ccm_entry(&base, &backend, &mark).expect("放本机 ccm 入口");
+    let dest = install_local_ccm_entry(
+        &base,
+        &backend,
+        &mark,
+        &crate::platform_fs::ensure_private_dir,
+    )
+    .expect("放本机 ccm 入口");
 
     assert_eq!(
         dest.file_name().and_then(|s| s.to_str()),
@@ -1292,7 +1298,13 @@ fn the_local_ccm_entry_is_a_copy_of_the_backend_itself() {
     );
     // 幂等：再放一次不重写（长度相同、且不比后端旧）。
     let before = std::fs::metadata(&dest).and_then(|m| m.modified()).ok();
-    let again = install_local_ccm_entry(&base, &backend, &mark).expect("第二趟");
+    let again = install_local_ccm_entry(
+        &base,
+        &backend,
+        &mark,
+        &crate::platform_fs::ensure_private_dir,
+    )
+    .expect("第二趟");
     assert_eq!(again, dest);
     assert_eq!(
         std::fs::metadata(&dest).and_then(|m| m.modified()).ok(),
@@ -1304,7 +1316,13 @@ fn the_local_ccm_entry_is_a_copy_of_the_backend_itself() {
     assert_ne!(newer, bytes, "夹具自己塌了：两版字节竟然相同");
     std::fs::write(&backend, &newer).expect("换一版后端");
     filetime_bump(&backend);
-    install_local_ccm_entry(&base, &backend, &mark).expect("第三趟");
+    install_local_ccm_entry(
+        &base,
+        &backend,
+        &mark,
+        &crate::platform_fs::ensure_private_dir,
+    )
+    .expect("第三趟");
     assert_eq!(
         std::fs::read(&dest).expect("读回"),
         newer,
@@ -1384,14 +1402,17 @@ fn the_resolution_path_really_puts_the_local_ccm_entry_down() {
             )
         },
     );
-    guard_core::find_pinned(&sect, "install_local_ccm_entry(extract_dir, bin, make_executable)")
+    guard_core::find_pinned(
+        &sect,
+        "install_local_ccm_entry(extract_dir, bin, make_executable, ensure_dir)",
+    )
         .unwrap_or_else(|e| {
             panic!(
                 "那一处调用喂进去的不是解析出来的那份后端（{e}）。\n\
                      🔴 这正是 PM 09-12 刀 T 切中的那道缝：接线还在、函数没改，\n\
                      而实参换成别的路径 ⇒ **静默放下一份不是后端的文件**，\n\
                      `--ccm-probe` 探它会失败，而**失败长得像「没装」**。\n\
-                     期望逐字：`install_local_ccm_entry(extract_dir, bin, make_executable)`\n逐字：{sect}"
+                     期望逐字：`install_local_ccm_entry(extract_dir, bin, make_executable, ensure_dir)`（〔HX1〕第四个实参是宿主注入的建目录）\n逐字：{sect}"
             )
         });
 }
@@ -1426,6 +1447,7 @@ fn the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved() {
         &base,
         Ok(("kr69wire", &bytes)),
         &mark,
+        &crate::platform_fs::ensure_private_dir,
     );
     // ① 反向自检：真的走到了「释放出来并 Found」那一支。
     let Resolved::Found(bin) = r.clone() else {
@@ -1765,8 +1787,14 @@ fn a_directory_it_cannot_create_really_takes_the_loud_path() {
     std::fs::write(&blocker, b"x").expect("写占位文件");
     let dir = blocker.join("bin");
 
-    let err = extract_embedded_to(&dir, "p2e-dial", b"not-a-real-backend", &|_| Ok(()))
-        .expect_err("目标目录的父路径是个普通文件，它居然报了成功");
+    let err = extract_embedded_to(
+        &dir,
+        "p2e-dial",
+        b"not-a-real-backend",
+        &|_| Ok(()),
+        &crate::platform_fs::ensure_private_dir,
+    )
+    .expect_err("目标目录的父路径是个普通文件，它居然报了成功");
     let reason = extraction_failure_reason(&dir, &err);
     assert!(
         reason.contains(EXTRACTION_REFUSED_MARKER.as_str()),
@@ -3441,7 +3469,13 @@ fn a_refusal_from_the_byte_table_reaches_the_missing_reason_and_writes_nothing()
     std::fs::create_dir_all(&base).expect("建夹具目录");
     let mark = |_: &Path| Ok(());
     let said = "本机 是 macOS / arm64 的机器（夹具句）";
-    let r = resolve_or_extract("no-such-target-triple", &base, Err(said.to_string()), &mark);
+    let r = resolve_or_extract(
+        "no-such-target-triple",
+        &base,
+        Err(said.to_string()),
+        &mark,
+        &crate::platform_fs::ensure_private_dir,
+    );
     let Resolved::Missing { reason, .. } = r else {
         panic!("取不到字节竟然 Found 了：{r:?}");
     };

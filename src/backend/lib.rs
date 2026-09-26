@@ -53,6 +53,7 @@ pub mod mcp_sync; // 〔AS1 · 第四波 4B〕MCP 资产同步的判定：帧面
 #[path = "../../tests/backend/no_timer_guard.rs"]
 mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
 pub mod observe; // U3：观测面 —— 读，不改变世界
+pub mod own_dir; // 〔HX1 · 4D〕后端建自家目录（`~/.cc-monitor` 与它底下后端自己的几层）的那一个函数：建的那一下就是 0700、已在的不动（第四层；门只有 `control/files_commit.rs` 建暂存区那一处）
 #[cfg(test)]
 #[path = "../../tests/backend/panorama_locus_guard.rs"]
 mod panorama_locus_guard; // K-W2D KW2D3：全景的解析发生在哪个进程的地址空间（整体 #[cfg(test)]）
@@ -506,7 +507,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// `files-write-text` / `files-commit-text` / `files-commit-upload` 必带 `expect:{sha256}`（不等 ⇒ `stale`、零写；上传暂存件不等即删）·
 /// `files-delete` 多一形 `expect:{"empty_dir":true}` · 传输 done 帧带 `sha256` · 新帧 `session_file_gone` / `session_file_reread`
 /// （活会话 jsonl 被删 / 截短 / 原地改写变长）。子命令没变，照 p1v 先例不加历史行；旧远端后端会被判旧、自动重装。
-pub const BUILD_ID: &str = "p3r-cas-digest-filegone";
+///
+/// ★★★ **p3s-drain-deadline-viarelay**（2026-09-25，第四波 4D HX1 续做合并那一拍）：行为 —— 退出排空加 30 s 期限（`inbound::DRAIN_DEADLINE`，
+/// 后端零定时器唯一登记让位的一处；到点记哪几条没做完再退）· 覆盖写遇硬链接 / 别人属主退回就地写并说明 · 自家目录一律 `own_dir::ensure_private_dir`
+/// 建成 0700（远端部署新建目录 SETSTAT 0700）· `accounts-sessions` 每行多一格 `viaRelay`。子命令没变，照 p1v 先例不加历史行。
+pub const BUILD_ID: &str = "p3s-drain-deadline-viarelay";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），

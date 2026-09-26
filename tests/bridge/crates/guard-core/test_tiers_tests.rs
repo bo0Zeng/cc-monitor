@@ -490,7 +490,8 @@ const SCAN: &[&str] = &[
 
 /// 集成层：碰 OS（起进程 · 套接字 · 真文件系统写 · 临时目录）。
 const INTEGRATION: &[&str] = &[
-    "tests/bridge/config_tests.rs", // 〔CFG1〕J2/J3 12 线程 × 20 轮并发补丁写 · 补丁语义
+    "tests/backend/own_dir_tests.rs", // 〔HX1 续〕O1–O3 自家目录一律 0700、建目录调用点两向登记
+    "tests/bridge/config_tests.rs",   // 〔CFG1〕J2/J3 12 线程 × 20 轮并发补丁写 · 补丁语义
     "tests/backend/control/overwrite_atomic_tests.rs", // 〔HX1〕W1 ulimit -f 下子进程写到一半被 SIGXFSZ 杀，目标仍是旧整份
     "tests/backend/drain_tests.rs", // 〔HX1〕D2 真子进程 ＋ 真 SIGTERM：在飞阻塞命令做完才退
     "tests/bridge/stop_grace_tests.rs", // 〔HX1〕S1 真 sh 两形：trap exit ⇒ Stopped · trap '' ⇒ Forced

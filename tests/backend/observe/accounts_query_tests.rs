@@ -1338,22 +1338,30 @@ fn the_launch_id_env_var_matches_the_monitor_side_home() {
 /// `control::identity_tag::tests::the_env_keys_this_file_reads_are_exactly_two_named_constants`。
 /// **本条的分母一格没动**：两把尺子各量一个文件，不是同一条铁律的两个住址。
 ///
-/// 守的性质：`/proc/<pid>/environ` 只抠**两个常量键**，键名**不许成为一维参数**。
+/// 守的性质：`/proc/<pid>/environ` 只抠**三个常量键**（〔HX1 · D-f〕第三个 `ANTHROPIC_BASE_URL` 只折成 `viaRelay` 一个布尔），键名**不许成为一维参数**。
 /// 多一处 `proc_env_var(pid, …)` ⇒ 红，来这里回答「新那个键是什么、为什么它不
 /// 把本查询变成任意环境变量读原语」。
 #[test]
 fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
     let prod = production_text();
     let total = prod.matches("proc_env_var(pid, ").count();
+    // 〔HX1 · D-f〕2 → 3：`ANTHROPIC_BASE_URL`（只折成 `viaRelay` 一个布尔，值带钥匙、不出参）。
     assert_eq!(
-        total, 2,
-        "\n本文件生产段里 `proc_env_var(pid, …)` 有 {total} 处（登记 2 处）。\n\
+        total, 3,
+        "\n本文件生产段里 `proc_env_var(pid, …)` 有 {total} 处（登记 3 处）。\n\
              **多了** ⇒ 又读了第三个环境变量：来模块头注那一格写清它是什么、\n\
              以及为什么这条查询仍然不是「任意环境变量读」原语。\n\
              **少了** ⇒ 有一条读回路被摘掉了。"
     );
+    // 〔HX1 · D-f〕两个适配层的键（账号 · 上游地址）收成一处向适配层要（`SESSION_ENV_KEYS`），键名仍是常量、不是参数。
     assert_eq!(
-        prod.matches("proc_env_var(pid, crate::agents::claudecode::paths::CONFIG_DIR_ENV)")
+        prod.matches("let env_keys = crate::agents::claudecode::paths::SESSION_ENV_KEYS;")
+            .count(),
+        1,
+        "向适配层要那两个键的那一处不见了 / 变形了"
+    );
+    assert_eq!(
+        prod.matches("proc_env_var(pid, env_keys.config_dir)")
             .count(),
         1,
         "抠 `CLAUDE_CONFIG_DIR` 那一处不见了 / 变形了"
@@ -1362,6 +1370,11 @@ fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
         prod.matches("proc_env_var(pid, LAUNCH_ID_ENV)").count(),
         1,
         "抠身份 token 那一处不见了 / 变形了（`K-P5f` 读侧的正主）"
+    );
+    assert_eq!(
+        prod.matches("proc_env_var(pid, env_keys.base_url)").count(),
+        1,
+        "抠 `ANTHROPIC_BASE_URL` 那一处不见了 / 变形了（〔HX1 · D-f〕`viaRelay` 的读侧）"
     );
 }
 
@@ -1424,8 +1437,8 @@ fn the_protocol_doc_row_for_session_accounts_matches_what_we_emit() {
     }
     assert_eq!(
         keys.len(),
-        8,
-        "从出参 `json!` 只抠到 {} 个键（09-02 现打 8）—— 抽取器坏了，下面那格会零命中地绿：{keys:?}",
+        9,
+        "从出参 `json!` 只抠到 {} 个键（09-02 现打 8；〔HX1〕+`viaRelay` ⇒ 9）—— 抽取器坏了，下面那格会零命中地绿：{keys:?}",
         keys.len()
     );
     let table = format!("{{{}}}", keys.join(","));
@@ -1452,7 +1465,7 @@ fn the_protocol_doc_row_for_session_accounts_matches_what_we_emit() {
         ("src/doc/IPC-PROTOCOL.md 那一行", row),
         ("本文件头注", header.as_str()),
     ] {
-        for key in ["CLAUDE_CONFIG_DIR", LAUNCH_ID_ENV] {
+        for key in ["CLAUDE_CONFIG_DIR", LAUNCH_ID_ENV, "ANTHROPIC_BASE_URL"] {
             assert!(
                 hay.contains(key),
                 "\n★ {what} 里没点名 `{key}` —— 「`/proc/<pid>/environ` 只抠哪几个键」\n\
@@ -1496,6 +1509,7 @@ fn row(pid: u32, sid: &str, launch: Option<&str>) -> SessionRow {
         // 这几条纯函数用例喂的是**已经读完之后**的 rows ⇒ 那一次读是成功的。
         cfg_env_unreadable: false,
         launch_id: launch.map(str::to_string),
+        via_relay: Some(false),
     }
 }
 
@@ -2130,4 +2144,79 @@ fn live_session_ids_are_the_pidfiles_whose_process_is_still_there() {
     fs::write(sessions.join(format!("{me}.json")), r#"{"cwd":"/w"}"#).unwrap();
     assert!(live_session_ids(&home).is_empty());
     let _ = fs::remove_dir_all(&home);
+}
+
+/// 〔HX1 · 主会话裁 HX1 拍板项 3 · D-f〕**`viaRelay` 答的是「这条活会话的进程环境里，上游地址是不是本机中转那一形」**：
+/// 带钥匙段的回环中转地址 ⇒ `true`；别的地址（直连 / 没带钥匙的旧形状）⇒ `false`；没设 ⇒ `false`；进程已死 ⇒ `null`。
+/// 而且**值本身不出参**（它带着中转钥匙）。守的要求：主会话裁「`session_accounts` 多读 `ANTHROPIC_BASE_URL` ·
+/// `accounts-sessions` 每行加 `viaRelay: true|false|null`」；`INVARIANTS §48.1a`「钥匙 …… `relay-status` 应答里也没有它」同族。
+/// 形状：真子进程（`sleep`，各带一份环境）＋ 真 pidfile（`procStart` 对得上）⇒ 逐条相等；输出全文零命中钥匙（正控：钥匙在子进程环境里）。
+#[test]
+#[cfg(target_os = "linux")]
+fn hx1_via_relay_says_which_live_sessions_point_at_the_local_relay_and_never_leaks_the_url() {
+    let root = tmpdir("viarelay");
+    let claude = root.join("claude");
+    let sessions = claude.join("sessions");
+    fs::create_dir_all(&sessions).unwrap();
+    let key = "0123456789abcdef".repeat(4);
+    let keyed = format!("http://127.0.0.1:8788/{key}/s/claude-code/acct1/sid-a");
+    let cases: [(&str, Option<String>, serde_json::Value); 3] = [
+        ("sid-relay", Some(keyed.clone()), serde_json::json!(true)),
+        (
+            "sid-direct",
+            Some("https://api.example.invalid".into()),
+            serde_json::json!(false),
+        ),
+        ("sid-unset", None, serde_json::json!(false)),
+    ];
+    let mut kids = Vec::new();
+    for (sid, url, _) in &cases {
+        let mut cmd = std::process::Command::new("sleep");
+        cmd.arg("30").env_remove("ANTHROPIC_BASE_URL");
+        if let Some(u) = url {
+            cmd.env("ANTHROPIC_BASE_URL", u);
+        }
+        let child = cmd.spawn().expect("起 sleep");
+        let pid = child.id();
+        // 等 exec 完（环境在 exec 之后才是新程序的）：/proc/<pid>/cmdline 变成 sleep 那一刻。
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while std::fs::read(format!("/proc/{pid}/cmdline"))
+            .ok()
+            .and_then(|c| c.get(..5).map(<[u8]>::to_vec))
+            .as_deref()
+            != Some(b"sleep".as_slice())
+        {
+            assert!(std::time::Instant::now() < until, "sleep 起不来");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        let ticks = proc_starttime(pid).expect("starttime");
+        fs::write(
+            sessions.join(format!("{pid}.json")),
+            format!(r#"{{"sessionId":"{sid}","cwd":"/w","procStart":"{ticks}"}}"#),
+        )
+        .unwrap();
+        kids.push(child);
+    }
+    // 一条已死的：pid 不在 ⇒ null。
+    fs::write(
+        sessions.join("4194301.json"),
+        r#"{"sessionId":"sid-dead","cwd":"/w","procStart":"1"}"#,
+    )
+    .unwrap();
+    let lines = session_accounts(&claude, &root.join("no-accts"));
+    for k in &mut kids {
+        let _ = k.kill();
+        let _ = k.wait();
+    }
+    let by = sid_map(&lines);
+    for (sid, _, want) in &cases {
+        assert_eq!(by[*sid]["viaRelay"], *want, "{sid}：{:?}", by[*sid]);
+    }
+    assert_eq!(by["sid-dead"]["viaRelay"], serde_json::Value::Null);
+    let all = lines.join("\n");
+    assert!(
+        !all.contains(&key) && !all.contains("api.example.invalid"),
+        "上游地址（带钥匙）进了出参：{all}"
+    );
+    let _ = fs::remove_dir_all(&root);
 }
