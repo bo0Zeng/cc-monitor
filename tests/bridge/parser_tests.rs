@@ -186,9 +186,11 @@ fn unknown_type_is_salvaged_never_leaves_as_unknown() {
         }
         other => panic!("期望 Unrecognized，得到 {other:?}"),
     }
+    // 〔W5-RENDER R10 · `设计/17 §1.2`〕没有链身份 ⇒ 不 emit（它不进链，断不了链；「不静默」归 drift_ledger）。
+    //   原断言「必须 emit —— 否则链断」对**无身份**的这一形不成立；带身份的那一形见下一条。
     assert!(
-        r.is_displayable(),
-        "必须 emit —— 否则链断，见 branching.ts:24"
+        !r.is_displayable(),
+        "无链身份的看不懂记录在解析阶段滤掉（设计/17 §1.2）"
     );
 }
 
@@ -215,6 +217,10 @@ fn unknown_type_with_chain_identity_keeps_uuid_and_parent() {
         }
         other => panic!("期望 Unrecognized，得到 {other:?}"),
     }
+    assert!(
+        r.is_displayable(),
+        "带链身份的必须 emit —— 否则它的 children 成孤儿 root"
+    );
 }
 
 /// 已知 `type` 但字段解析失败（serde 返回 Err）且原文仍是合法 JSON → 照样抢救。
@@ -293,7 +299,13 @@ fn zero_information_loss_over_mixed_fixture() {
                         matches!(r, JsonlRecord::Unrecognized { .. }),
                         "该行应被抢救：{line}"
                     );
-                    assert!(r.is_displayable(), "抢救出来就必须 emit：{line}");
+                    // 〔W5-RENDER R10〕抢救出来的：带链身份 ⇔ emit（无身份的元数据在解析阶段滤掉，`设计/17 §1.2`）
+                    let ident = matches!(&r, JsonlRecord::Unrecognized { uuid, parent_uuid, .. } if uuid.is_some() || parent_uuid.is_some());
+                    assert_eq!(
+                        r.is_displayable(),
+                        ident,
+                        "抢救出来的：带链身份 ⇔ emit：{line}"
+                    );
                 }
             }
             Ok(None) => {

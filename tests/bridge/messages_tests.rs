@@ -352,3 +352,72 @@ fn system_record_keeps_uuid_for_branch_detection() {
         _ => panic!("expected System, got {r:?}"),
     }
 }
+
+/// 〔W5-RENDER R10〕`设计/17 §1.2` 逐字：「19% 的记录是纯元数据，字节只占 0.7% ⇒ **在解析阶段就滤掉**」「该在解析阶段滤掉，不进管线」。
+/// 判据（两向相等）：每一类记录（按变体 ＋ 链身份分）⇒ 进不进前端，与手写的期望表逐格相等。
+/// 期望表的异源：仍进前端的每一格都写得出前端读者（下面每行的注）；没读者的一格也不许进。
+/// `class_of` 是穷尽 `match`、不带 `_` ⇒ 以后加变体编译期就得在这里表态。
+#[test]
+fn displayable_classes_equal_the_table_with_a_reader_for_each() {
+    fn class_of(r: &JsonlRecord) -> &'static str {
+        match r {
+            JsonlRecord::User { .. } => "user",
+            JsonlRecord::Assistant { .. } => "assistant",
+            JsonlRecord::AiTitle { .. } => "ai-title",
+            JsonlRecord::CustomTitle { .. } => "custom-title",
+            JsonlRecord::System { .. } => "system",
+            JsonlRecord::Attachment { .. } => "attachment",
+            JsonlRecord::QueueOperation { .. } => "queue-operation",
+            JsonlRecord::PermissionMode {} => "permission-mode",
+            JsonlRecord::LastPrompt {} => "last-prompt",
+            JsonlRecord::FileHistorySnapshot {} => "file-history-snapshot",
+            JsonlRecord::Unrecognized {
+                uuid, parent_uuid, ..
+            } => {
+                if uuid.is_some() || parent_uuid.is_some() {
+                    "unrecognized+identity"
+                } else {
+                    "unrecognized-bare"
+                }
+            }
+            JsonlRecord::Unknown => "unknown",
+        }
+    }
+    let here = crate::origin::Origin("w5r-r10-probe".into());
+    let lines = [
+        r#"{"type":"user","uuid":"u1","timestamp":"t","message":{"role":"user","content":"q"}}"#,
+        r#"{"type":"assistant","uuid":"a1","timestamp":"t","message":{"role":"assistant","content":[]}}"#,
+        r#"{"type":"ai-title","aiTitle":"x","sessionId":"s"}"#,
+        r#"{"type":"custom-title","customTitle":"x","sessionId":"s"}"#,
+        r#"{"type":"system","timestamp":"t","uuid":"y1"}"#,
+        r#"{"type":"attachment","uuid":"at1","timestamp":"t"}"#,
+        r#"{"type":"queue-operation","operation":"enqueue","content":"c"}"#,
+        r#"{"type":"permission-mode","permissionMode":"x"}"#,
+        r#"{"type":"last-prompt","lastPrompt":"x"}"#,
+        r#"{"type":"file-history-snapshot","snapshot":{}}"#,
+        r#"{"type":"brand-new","uuid":"n1","parentUuid":"n0"}"#,
+        r#"{"type":"mode","mode":"normal","sessionId":"s"}"#,
+    ];
+    let mut got = std::collections::BTreeMap::new();
+    for l in lines {
+        let r = crate::parser::parse_line(&here, l).unwrap().unwrap();
+        got.insert(class_of(&r), r.is_displayable());
+    }
+    let want: std::collections::BTreeMap<&str, bool> = [
+        ("user", true),                   // 建卡
+        ("assistant", true),              // 建卡
+        ("ai-title", true),               // 标题（`routeMetaAndBranch` → onTitleUpdate）
+        ("custom-title", true),           // 同上
+        ("system", true),                 // api_error 细条卡 ＋ 进链
+        ("attachment", true),             // 进链（issue #8）
+        ("queue-operation", true),        // enqueue 喂折叠豁免 · remove 建卡（P0c）
+        ("permission-mode", false),       // 无读者
+        ("last-prompt", false),           // 无读者
+        ("file-history-snapshot", false), // 无读者
+        ("unrecognized+identity", true),  // 进链（F63 保险那一半）
+        ("unrecognized-bare", false),     // 〔R10〕无读者、不进链
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(got, want);
+}
