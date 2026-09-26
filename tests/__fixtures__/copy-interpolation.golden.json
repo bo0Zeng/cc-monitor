@@ -2,8 +2,7 @@
   "_": "〔DUP2 · 设计/01 §6.9〕文案表两个读口（前端 copy-table.ts::copyText · Rust copy-core::copy_text）的插值对拍金样。两侧各自读这一份逐条跑、对手写的 want（不是彼此对拍）：Rust tests/bridge/crates/copy-core/lib_tests.rs · TS tests/copy/copy-table.vitest.ts。只收合法插值（key 在表里 · 参数恰好是表里登记的 args）。zh 抄的是表里那一条的原文：表改了字，两侧先在「模板还是这一句」那一格红，照新句子改 want。",
   "_differences": [
     "缺键：TS 抛（程序员错误）· Rust 回 〔key〕（不许一句话缺了拖垮它所在的路）—— 设计/01 §6.9 认可的两个读口各自的处置，照现状登记。",
-    "参数对不上：TS 抛 · Rust 照填给了的、没给的原样留 {x}、多给的不用 —— 同上。",
-    "〔DUP2 现打〕值里含 {另一个参数名} 时：Rust 逐个 replace，后一个参数会把前一个值里的 {名} 再替换一遍；TS 一趟替换、值不再被扫。不在下面的样本里（两侧不一致），列给主会话拍（DUP2.md §5 ⑤）。"
+    "参数对不上：TS 抛 · Rust 照填给了的、没给的原样留 {x}、多给的不用 —— 同上。"
   ],
   "cases": [
     {
@@ -35,6 +34,13 @@
       "zh": "从 {source} 的 {sourcefile} 拷到 {target} 的 {targetfile}",
       "args": { "source": "本机", "sourcefile": "C:\\Users\\u\\.mcp.json", "target": "devbox", "targetfile": "$HOME/.mcp.json $& $1" },
       "want": "从 本机 的 C:\\Users\\u\\.mcp.json 拷到 devbox 的 $HOME/.mcp.json $& $1"
+    },
+    {
+      "_": "〔DUP3 · 主会话 09-26 裁：插值不该重新解释值〕值里带另一个参数的占位符：两个读口都一趟换完，值原样留着（此前 Rust 逐个 replace 会把 {target} 再换成 %1）。",
+      "key": "panePreview.head.title",
+      "zh": "预览画面 · [{origin}] tmux: {target}",
+      "args": { "origin": "{target}", "target": "%1" },
+      "want": "预览画面 · [{target}] tmux: %1"
     }
   ]
 }
