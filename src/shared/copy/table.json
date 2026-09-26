@@ -10369,11 +10369,6 @@
       "zh": "回答里少了 {k} 字段，两边版本可能对不上",
       "args": ["k"]
     },
-    "rsFilewinWorkspace.copyAcross.noBytes": {
-      "kind": "error",
-      "zh": "复制的回答里没有 bytes 字段，和约定的不一样",
-      "args": []
-    },
     "rsFilewinWorkspace.acrossArgs.notUnder": {
       "kind": "error",
       "zh": "{path} 不在 {root} 底下，复制不过去",
@@ -10393,21 +10388,6 @@
       "kind": "error",
       "zh": "两栏是同一个目录，复制过去就是它自己",
       "args": []
-    },
-    "rsFilewinWorkspace.copyToOther.notFile": {
-      "kind": "error",
-      "zh": "{name} 复制不了：只能复制文件（名字要是合法 UTF-8）",
-      "args": ["name"]
-    },
-    "rsFilewinWorkspace.copyToOther.gone": {
-      "kind": "error",
-      "zh": "列表里已经没有 {name} 了",
-      "args": ["name"]
-    },
-    "rsFilewinWorkspace.copyToOther.needOne": {
-      "kind": "error",
-      "zh": "要选中恰好一个文件（现在选中了 {n} 项）",
-      "args": ["n"]
     },
     "rsFilewinWorkspace.copyToOther.needSplit": {
       "kind": "error",
@@ -10588,6 +10568,326 @@
       "kind": "action",
       "zh": "覆盖",
       "args": []
+    },
+    "beFilesWrite.copy.modeFailed": {
+      "kind": "error",
+      "zh": "抄权限位到 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.copy.notRegular": {
+      "kind": "error",
+      "zh": "{path} 不是一份普通文件。只复制普通文件，复制目录要带 recursive",
+      "args": ["path"]
+    },
+    "beFilesWrite.copy.recursiveOverwrite": {
+      "kind": "error",
+      "zh": "recursive 与 overwrite 不能同时给。复制目录不合并、不覆盖，目标必须还不存在",
+      "args": []
+    },
+    "beFilesWrite.copyTree.kindLink": {
+      "kind": "body",
+      "zh": "一条符号链接",
+      "args": []
+    },
+    "beFilesWrite.copyTree.kindOther": {
+      "kind": "body",
+      "zh": "设备、管道或套接字",
+      "args": []
+    },
+    "beFilesWrite.copyTree.rootUnresolved": {
+      "kind": "error",
+      "zh": "目标根解析不了（{path}：{e}）",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.copyTree.srcIsRoot": {
+      "kind": "error",
+      "zh": "源就是目标根自己（{path}），复制目录要一个根底下的源",
+      "args": ["path"]
+    },
+    "beFilesWrite.copyTree.unreadable": {
+      "kind": "error",
+      "zh": "读不到 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.copyTree.cannotCopy": {
+      "kind": "error",
+      "zh": "{path} 是{what}，复制不了",
+      "args": ["path", "what"]
+    },
+    "beFilesWrite.copyTree.unlistable": {
+      "kind": "error",
+      "zh": "列不出 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.copyTree.listBroke": {
+      "kind": "error",
+      "zh": "列 {path} 时断了：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.copyTree.entryRefused": {
+      "kind": "error",
+      "zh": "{why}。复制目录整趟没做：这棵树里有一条路径解析不过，一个字节都没建",
+      "args": ["why"]
+    },
+    "beFilesWrite.copyTree.entryUncopyable": {
+      "kind": "error",
+      "zh": "{path} 是{what}。复制目录只建目录与普通文件，整趟没做，一个字节都没建",
+      "args": ["path", "what"]
+    },
+    "beFilesWrite.copyTree.crossMount": {
+      "kind": "error",
+      "zh": "{path} 在另一个文件系统上（挂载点）。复制目录不走进去，整趟没做，一个字节都没建",
+      "args": ["path"]
+    },
+    "beFilesWrite.copyTree.overCap": {
+      "kind": "error",
+      "zh": "{path} 底下超过 {cap} 条。一次不复制这么多，整趟没做，一个字节都没建",
+      "args": ["path", "cap"]
+    },
+    "beFilesWrite.copyTree.kindChanged": {
+      "kind": "error",
+      "zh": "{path} 在计划与动手之间换了种类，不复制",
+      "args": ["path"]
+    },
+    "beFilesWrite.copyTree.mkdirFailed": {
+      "kind": "error",
+      "zh": "建目录 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.copyTree.intoItself": {
+      "kind": "error",
+      "zh": "目标 {dst} 在源 {src} 里面，不能把一个目录复制进它自己",
+      "args": ["dst", "src"]
+    },
+    "beFilesWrite.copyTree.outsideRoot": {
+      "kind": "error",
+      "zh": "目标 {dst} 不在目标根 {root} 底下",
+      "args": ["dst", "root"]
+    },
+    "beFilesWrite.copyTree.undoneAll": {
+      "kind": "body",
+      "zh": "自己建的 {n} 条都撤掉了",
+      "args": ["n"]
+    },
+    "beFilesWrite.copyTree.undoneSome": {
+      "kind": "error",
+      "zh": "撤掉了 {n}/{m} 条，撤不掉的一条：{what}",
+      "args": ["n", "m", "what"]
+    },
+    "beFilesWrite.copyTree.stopped": {
+      "kind": "error",
+      "zh": "{why}。复制目录停在第 {i} 条（共 {total} 条），{tail}",
+      "args": ["why", "i", "total", "tail"]
+    },
+    "beFilesWrite.copyTree.modeNotCopied": {
+      "kind": "error",
+      "zh": "{why}。内容都复制完了，只是这个目录的权限位没抄上，复制出来的东西都在",
+      "args": ["why"]
+    },
+    "beFilesRead.size.unreadable": {
+      "kind": "error",
+      "zh": "这个路径读不到：{kind}",
+      "args": ["kind"]
+    },
+    "rsFilewinFind.freshness.skippedMounts": {
+      "kind": "body",
+      "zh": " · 有 {n} 个目录在另一个盘上，没进去，那底下的搜不到",
+      "args": ["n"]
+    },
+    "rsFilewinWorkspace.drag.hint": {
+      "kind": "body",
+      "zh": "复制 {n} 项到另一栏",
+      "args": ["n"]
+    },
+    "rsFilewinSize.label.size": {
+      "kind": "action",
+      "zh": "算大小",
+      "args": []
+    },
+    "rsFilewinSize.reply.missingField": {
+      "kind": "error",
+      "zh": "算大小的回答里没有 {field} 字段，两边版本可能对不上",
+      "args": ["field"]
+    },
+    "rsFilewinSize.outcome.line": {
+      "kind": "body",
+      "zh": "{name}：{human}（{bytes} 字节），{files} 个文件、{dirs} 个目录",
+      "args": ["name", "human", "bytes", "files", "dirs"]
+    },
+    "rsFilewinSize.outcome.links": {
+      "kind": "body",
+      "zh": "，{n} 条链接没算进去",
+      "args": ["n"]
+    },
+    "rsFilewinSize.outcome.mounts": {
+      "kind": "body",
+      "zh": "，{n} 个目录在另一个盘上，没进去",
+      "args": ["n"]
+    },
+    "rsFilewinSize.outcome.unreadable": {
+      "kind": "body",
+      "zh": "，{n} 个目录读不进去",
+      "args": ["n"]
+    },
+    "rsFilewinSize.outcome.failed": {
+      "kind": "error",
+      "zh": "{name} 算不出来：{why}",
+      "args": ["name", "why"]
+    },
+    "rsFilewinSize.outcome.sep": {
+      "kind": "body",
+      "zh": "；",
+      "args": []
+    },
+    "rsFilewinSize.ui.running": {
+      "kind": "body",
+      "zh": "正在那台机器上算 {name} 的大小 …",
+      "args": ["name"]
+    },
+    "rsFilewinShell.size.noRuntime": {
+      "kind": "error",
+      "zh": "算大小启动不了，请重开这个窗口",
+      "args": []
+    },
+    "rsFilewinShell.busy.sizing": {
+      "kind": "body",
+      "zh": "正在算 {name} 的大小",
+      "args": ["name"]
+    },
+    "rsFilewinShell.editor.findLabel": {
+      "kind": "control",
+      "zh": "查找",
+      "args": []
+    },
+    "rsFilewinShell.editor.findPrev": {
+      "kind": "action",
+      "zh": "上一个",
+      "args": []
+    },
+    "rsFilewinShell.editor.findNext": {
+      "kind": "action",
+      "zh": "下一个",
+      "args": []
+    },
+    "rsFilewinShell.editor.replaceLabel": {
+      "kind": "control",
+      "zh": "替换为",
+      "args": []
+    },
+    "rsFilewinShell.editor.replaceOne": {
+      "kind": "action",
+      "zh": "替换",
+      "args": []
+    },
+    "rsFilewinShell.editor.replaceAll": {
+      "kind": "action",
+      "zh": "全部替换",
+      "args": []
+    },
+    "rsFilewinShell.editor.findNone": {
+      "kind": "body",
+      "zh": "没找到「{needle}」",
+      "args": ["needle"]
+    },
+    "rsFilewinShell.editor.replacedAll": {
+      "kind": "body",
+      "zh": "替换了 {n} 处",
+      "args": ["n"]
+    },
+    "rsFilewinShell.editor.findBig": {
+      "kind": "body",
+      "zh": "大文件模式没有查找替换",
+      "args": []
+    },
+    "rsFilewinPicker.ui.browse": {
+      "kind": "action",
+      "zh": "选择…",
+      "args": []
+    },
+    "rsFilewinPicker.pick.none": {
+      "kind": "body",
+      "zh": "没有选到文件，框里的字没动",
+      "args": []
+    },
+    "rsFilewinPicker.pick.noRuntime": {
+      "kind": "error",
+      "zh": "选择框启动不了，请重开这个窗口",
+      "args": []
+    },
+    "rsFilewinShell.lossyCwd.refused": {
+      "kind": "error",
+      "zh": "这个目录的名字不是合法 UTF-8，{what}在这里做不了",
+      "args": ["what"]
+    },
+    "rsFilewinShell.lossyCwd.upload": {
+      "kind": "body",
+      "zh": "上传",
+      "args": []
+    },
+    "rsFilewinShell.lossyCwd.search": {
+      "kind": "body",
+      "zh": "搜索",
+      "args": []
+    },
+    "rsFilewinShell.lossyCwd.terminal": {
+      "kind": "body",
+      "zh": "在此打开终端",
+      "args": []
+    },
+    "beFilesCommit.exdev.noName": {
+      "kind": "error",
+      "zh": "目标 {rel} 没有文件名",
+      "args": ["rel"]
+    },
+    "beFilesCommit.exdev.copyFailed": {
+      "kind": "error",
+      "zh": "暂存区与目标不在同一个盘上，改走复制也没成：{e}。目标没动，暂存件还在",
+      "args": ["e"]
+    },
+    "rsFilewinCopy.ui.askOverwriteMany": {
+      "kind": "body",
+      "zh": "远端已经有这 {n} 个同名文件了，要覆盖吗？",
+      "args": ["n"]
+    },
+    "rsFilewinCopy.batch.listSep": {
+      "kind": "body",
+      "zh": "、",
+      "args": []
+    },
+    "rsFilewinCopy.batch.dirClash": {
+      "kind": "error",
+      "zh": "另一栏已经有同名的：{names}。目录不覆盖、不合并，这一摞一件都没做",
+      "args": ["names"]
+    },
+    "rsFilewinCopy.outcome.refused": {
+      "kind": "error",
+      "zh": "复制没做：{why}",
+      "args": ["why"]
+    },
+    "rsFilewinCopy.outcome.batchDone": {
+      "kind": "body",
+      "zh": "复制完成：{n} 项，{files} 个文件、{dirs} 个目录、{bytes} 字节。都在那台机器上复制，没经过你这台机器",
+      "args": ["n", "files", "dirs", "bytes"]
+    },
+    "rsFilewinCopy.outcome.batchSkipped": {
+      "kind": "body",
+      "zh": "；没覆盖、跳过了：{names}",
+      "args": ["names"]
+    },
+    "rsFilewinCopy.outcome.batchFailed": {
+      "kind": "error",
+      "zh": "；{name} 复制失败：{why}",
+      "args": ["name", "why"]
+    },
+    "rsFilewinCopy.remote.noCount": {
+      "kind": "error",
+      "zh": "复制的回答里没有 {field} 字段，和约定的不一样",
+      "args": ["field"]
+    },
+    "rsFilewinWorkspace.copyToOther.unaddressable": {
+      "kind": "error",
+      "zh": "{name} 复制不了（名字读不出来），这一摞一件都没做",
+      "args": ["name"]
     },
     "rsFilewinCopy.ui.askOverwrite": {
       "kind": "body",

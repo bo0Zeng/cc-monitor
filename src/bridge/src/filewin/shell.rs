@@ -109,12 +109,12 @@ use crate::copy_table::copy_text;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use super::copy::{is_copyable, CopyBoard, CopyJob, CopyPrompt};
+use super::copy::{CopyBoard, CopyJob, CopyPrompt};
 use super::find::{self, SearchBoard};
 use super::fonts::{self, FontState};
 use super::rows::{show_file_rows, show_hit_rows, HitTally, RenderTally};
 use super::select::{self, Action, Intent, Selection, TypeAhead};
-use super::source::{breadcrumbs, parent_dir, Line, Listed, SortBy, Source};
+use super::source::{breadcrumbs, Line, Listed, SortBy, Source};
 use super::transfer::{DropBoard, Pending};
 use super::writeops::{is_writable, WriteBoard, WriteOp, WritePrompt, MKDIR_LABEL};
 
@@ -357,6 +357,9 @@ pub struct Reveal {
 pub struct FileWindow {
     pub source: Source,
     pub cwd: String,
+    /// 〔W5-FILES · `设计/60 §6.2`「有损名的进目录…整条寻址链要换成字节」〕当前目录不是合法 UTF-8 时它的原始字节
+    /// （`cwd` 是它的有损显示串）。`None` ⇒ `cwd` 就是真字节。发出去的一律经 [`Self::cwd_path`] / [`Self::row_path`]。
+    pub cwd_raw: Option<Vec<u8>>,
     pub listing: Listing,
     pub tally: RenderTally,
     /// 〔第五刀〕命中那一摞这一帧画了什么。**与 [`Self::tally`] 刻意是两个类型** ——
@@ -384,6 +387,14 @@ pub struct FileWindow {
     seen_rounds: u64,
     /// `设计/60 §5` 第二段：零流量复制那一趟的状态机（**问覆盖 · 进度 · 裁决**）。
     pub copy_board: CopyBoard,
+    /// 〔W5-FILES · `设计/60 §6.2`〕算大小那一摞的看板（在算哪一项 · 上一摞的结局）。
+    pub size_board: super::size::SizeBoard,
+    /// 〔W5-FILES〕正在读的那一份的原始字节（到货时交给编辑面；`(显示路径, 字节)`）。
+    edit_raw: Option<(String, Vec<u8>)>,
+    /// 〔W5-FILES · `设计/60 §6.2`「原生选文件框」〕选择框（生产是操作系统自己的，判据换一个假的）＋ 结局落点 ＋ 下载那一问上「没选到」那句话。
+    pub picker: std::sync::Arc<dyn super::picker::Picker>,
+    pick_board: super::picker::PickBoard,
+    pick_notice: Option<String>,
     /// 「复制为」那个框。`None` = 没在问名字。**UI 线程自己的**（理由见 [`CopyPrompt`]）。
     copy_prompt: Option<CopyPrompt>,
     /// 已经消化过几趟复制（同 [`Self::seen_rounds`]，两条路各一个数）。
@@ -471,6 +482,9 @@ pub struct FileWindow {
     /// `false` ⇒ 不接键盘、不接拖入（[`Self::keys_blocked`] / [`Self::take_drops`]）。缺省 `true`：
     /// 单独建出来的目录视图（判据里那几百个）就是唯一那一个。谁来改它：[`super::workspace`]。
     pub focused: bool,
+    /// 〔W5-FILES · `设计/60 §6.2`「行拖到另一栏的手势」〕有一行（连同它所在的那一摞选中）被拖起、还没松手。
+    ///   松在哪儿由 [`super::workspace::Workspace`] 看（它才知道另一栏在哪）；它收摊时清掉这一格。
+    pub dragging: bool,
     /// 〔FW34〕起过几摞写操作（与 `write_board.rounds()` 比 ⇒ 有没有还没回话的；关标签那一问用）。
     writes_started: u64,
 }
@@ -533,6 +547,7 @@ impl FileWindow {
         Self {
             source,
             cwd,
+            cwd_raw: None,
             listing,
             tally: RenderTally::default(),
             hits_tally: HitTally::default(),
@@ -541,6 +556,11 @@ impl FileWindow {
             board: DropBoard::default(),
             seen_rounds: 0,
             copy_board: CopyBoard::default(),
+            size_board: super::size::SizeBoard::default(),
+            edit_raw: None,
+            picker: super::picker::native(),
+            pick_board: super::picker::PickBoard::default(),
+            pick_notice: None,
             copy_prompt: None,
             seen_copy_rounds: 0,
             font: FontState::NotInstalled,
@@ -567,6 +587,7 @@ impl FileWindow {
             new_file: None,
             shelf: None,
             focused: true,
+            dragging: false,
             writes_started: 0,
         }
     }
@@ -575,7 +596,8 @@ impl FileWindow {
     pub fn reload(&self) {
         let l = self.listing.clone();
         let mine = l.start();
-        let cwd = self.cwd.clone();
+        // 〔W5-FILES · 有损名全寻址〕发出去的是线上那一形（有损目录 ⇒ `{"b16": …}`）。
+        let cwd = self.cwd_path().wire();
         // 🔴〔第十二刀 2026-09-22〕**先问后端，问不到才退回旧路** ——
         //    用户指令的第 1 步，逐条理由住 `source.rs` 那一段头注。
         // 🔴〔F2 · 2026-09-24〕「问不到才退回旧路」那半句**拿掉了**（`D11`）：只问后端。
@@ -587,12 +609,19 @@ impl FileWindow {
                     store_if_current(&l, mine, Err(NO_LINE.to_string()));
                     return;
                 };
-                let source = self.source.clone();
+                let origin = self.source.origin();
                 // ⚠ 带**这一刻**选的那一档走。用户在飞行途中换了档 ⇒ [`Self::set_sort`]
                 //   会把落地的那一摞就地重排，所以两种顺序都不会错。
                 let by = self.sort_by;
                 h.spawn(async move {
-                    let r = super::source::list_dir(&line, &source, &cwd, by).await;
+                    let r = super::source::list_via_backend_at(
+                        &line,
+                        &origin,
+                        cwd,
+                        super::source::LS_LIMIT,
+                        by,
+                    )
+                    .await;
                     store_listed_if_current(&l, mine, r);
                 });
             }
@@ -615,9 +644,37 @@ impl FileWindow {
 
     /// 换到 `path` 并重列。**在飞的那几趟从此全部作废**（见 [`Listing::epoch`]）。
     pub fn navigate_to(&mut self, path: String) {
-        if path == self.cwd {
+        self.navigate_to_at(super::source::RemotePath::plain(&path));
+    }
+
+    /// 〔W5-FILES · 有损名全寻址〕当前目录（显示串 ＋ 可能有的字节）。
+    pub fn cwd_path(&self) -> super::source::RemotePath {
+        super::source::RemotePath::of(&self.cwd, self.cwd_raw.as_deref())
+    }
+
+    /// 〔W5-FILES〕列表里那一行的整条路径 ＝ 当前目录的字节 ＋ `/` ＋ 名字的字节（有损名用后端送的那一段字节）。
+    pub fn row_path(&self, r: &super::source::Listed) -> super::source::RemotePath {
+        join_path(&self.cwd_path(), &name_bytes(r))
+    }
+
+    /// 〔W5-FILES〕当前目录是有损的 ⇒ 这件事做不了（它要一条字符串路径），出声、回 `true`。
+    fn refused_in_lossy_cwd(&mut self, what: impl FnOnce() -> String) -> bool {
+        if self.cwd_raw.is_none() {
+            return false;
+        }
+        *self.listing.error.lock().unwrap() = Some(copy_text(
+            "rsFilewinShell.lossyCwd.refused",
+            &[("what", &what())],
+        ));
+        true
+    }
+
+    /// 〔W5-FILES · 有损名全寻址〕进一个目录（显示串 ＋ 可能有的字节）。与 [`Self::navigate_to`] 同一套收摊。
+    pub fn navigate_to_at(&mut self, at: super::source::RemotePath) {
+        if at == self.cwd_path() {
             return;
         }
+        let path = at.shown.clone();
         // 🔴〔第十刀〕换了目录，那一行就不在这儿了 ⇒ 高亮清掉。
         //    留着的话，新目录里**恰好同名**的另一个文件会被高亮 ——
         //    而用户会以为那就是他要找的那个。
@@ -630,6 +687,7 @@ impl FileWindow {
         self.menu = None;
         self.key_notice = None;
         self.cwd = path;
+        self.cwd_raw = at.raw;
         self.listing.invalidate();
         self.reload();
         // 〔FW34〕换目录时现读一次书签：别的窗口刚加的那几条从这里进来（小文件一次读，不是每帧）。
@@ -640,8 +698,9 @@ impl FileWindow {
 
     /// 上一级。已经在顶上就什么都不做（[`parent_dir`] 到顶回原值）。
     pub fn navigate_up(&mut self) {
-        let up = parent_dir(&self.cwd);
-        self.navigate_to(up);
+        // 〔W5-FILES〕按字节切（合法 UTF-8 时与 `parent_dir` 逐字节同）。
+        let up = self.cwd_path().parent();
+        self.navigate_to_at(up);
     }
 
     /// 换一种排序，并**把手上这一摞就地重排**。回值 = 真的换了（同一档 ⇒ `false`）。
@@ -695,6 +754,10 @@ impl FileWindow {
     /// 是前端剪贴板兜底干的活（`remote-launch-run.ts`），**这个窗口没有它**
     /// ⇒ 那半句在这儿是假的。如实登记为**没做**（旧面板那颗按钮同样没有）。
     pub fn open_terminal_here(&mut self, ctx: Option<egui::Context>) -> bool {
+        // 〔W5-FILES〕有损目录：`cd` 那一串是 shell 字符串，拼字节要另一套转义 ⇒ 不开、出声。
+        if self.refused_in_lossy_cwd(|| copy_text("rsFilewinShell.lossyCwd.terminal", &[])) {
+            return false;
+        }
         let Some(h) = self.rt.clone() else {
             *self.term_notice.lock().unwrap() =
                 Some(copy_text("rsFilewinShell.terminal.noRuntime", &[]).into());
@@ -731,13 +794,16 @@ impl FileWindow {
         let target = {
             let rows = self.listing.rows.lock().unwrap();
             match rows.get(i) {
-                Some(r) if r.is_dir => r.path.clone(),
+                // 〔W5-FILES〕有损名目录：没带字节就进不去（寻址不到）；带了 ⇒ 按字节进。
+                Some(r) if r.is_dir && (!r.lossy_name || r.raw_name.is_some()) => {
+                    join_path(&self.cwd_path(), &name_bytes(r))
+                }
                 _ => return false,
             }
         };
-        let before = self.cwd.clone();
-        self.navigate_to(target);
-        self.cwd != before
+        let before = self.cwd_path();
+        self.navigate_to_at(target);
+        self.cwd_path() != before
     }
 
     /// 现在高亮着哪一行的名字（`None` = 没有）。判据与界面看同一个值。
@@ -818,6 +884,10 @@ impl FileWindow {
     /// 平时是 `false`，要不要重走由**后端报的** `index_missing` / `stale` 决定
     /// （`设计/60 §3.5.2a`；周期那个数不在这一侧，见 [`super::find`] 头注 §四）。
     pub fn fire_search(&mut self, ctx: Option<egui::Context>, force_rebuild: bool) -> bool {
+        // 〔W5-FILES〕有损目录：索引的根与浏览名单是字符串，做不了 ⇒ 出声。
+        if self.refused_in_lossy_cwd(|| copy_text("rsFilewinShell.lossyCwd.search", &[])) {
+            return false;
+        }
         let needle = self.query.trim().to_string();
         self.search.attach(ctx);
         self.search.invalidate(&needle);
@@ -880,6 +950,10 @@ impl FileWindow {
     /// ⚠ 从前这句话是「没运行时 / 本机源」—— 本机源那一支不在了（见 `Source` 头注）。
     pub fn start_drop(&mut self, items: Vec<Pending>, ctx: Option<egui::Context>) -> bool {
         if items.is_empty() {
+            return false;
+        }
+        // 〔W5-FILES〕有损目录：上传的提交要一条字符串落点（传输台那一侧），做不了 ⇒ 出声。
+        if self.refused_in_lossy_cwd(|| copy_text("rsFilewinShell.lossyCwd.upload", &[])) {
             return false;
         }
         let Some(h) = self.rt.clone() else {
@@ -1045,11 +1119,15 @@ impl FileWindow {
         let row = {
             let rows = self.listing.rows.lock().unwrap();
             match rows.get(i) {
-                Some(r) if is_copyable(r) => r.clone(),
+                Some(r) if super::copy::copyable(r) => r.clone(),
                 _ => return false,
             }
         };
-        self.copy_prompt = Some(CopyPrompt::for_row(&self.cwd, &row));
+        let mut p = CopyPrompt::for_row(&self.cwd, &row);
+        // 〔W5-FILES · 有损名全寻址〕源与当前目录的字节跟着框走（合法 UTF-8 ⇒ 两格都是 `None`，与此前逐字节同）。
+        p.from_raw = self.row_path(&row).raw;
+        p.dir_raw = self.cwd_raw.clone();
+        self.copy_prompt = Some(p);
         true
     }
 
@@ -1086,17 +1164,6 @@ impl FileWindow {
     /// 这里只负责把「问谁 · 怎么问 · 怎么起」三个口接上去（同 [`Self::start_drop`]）。
     /// 而本函数接不上（**没运行时**）要**出声**，判据见 `shell_tests`。
     pub fn start_copy(&mut self, job: CopyJob, ctx: Option<egui::Context>) -> bool {
-        self.start_copy_via(job, ctx, false)
-    }
-
-    /// 〔FW34〕同 [`Self::start_copy`]，但目标在**另一个目录**（「复制到另一栏」）：
-    /// 三段一个字没变（探 → 一次问覆盖 → 才动手），只是动手那一下的参数换成跨目录那一形
-    /// （[`super::workspace::across_args`]）。起在**目标那一栏**上 ⇒ 问与结局画在那一侧。
-    pub fn start_copy_across(&mut self, job: CopyJob, ctx: Option<egui::Context>) -> bool {
-        self.start_copy_via(job, ctx, true)
-    }
-
-    fn start_copy_via(&mut self, job: CopyJob, ctx: Option<egui::Context>, across: bool) -> bool {
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
                 Some(copy_text("rsFilewinShell.copy.noRuntime", &[]).into());
@@ -1115,28 +1182,72 @@ impl FileWindow {
             let (probe_line, probe_origin) = (line.clone(), origin.clone());
             let ask_board = board.clone();
             let run_board = board.clone();
-            let out =
-                super::copy::run_copy(
-                    job,
-                    move |j| async move {
-                        super::copy::probe_target(&probe_line, &probe_origin, &j).await
-                    },
-                    move |j| {
-                        let rx = ask_board.ask(j);
-                        async move { rx.await.unwrap_or(false) }
-                    },
-                    // 〔F7a〕经通道问后端 `files-copy`；第二个参数是覆盖策略（问过且答了「覆盖」）。
-                    //   后端这一趟取消不掉 ⇒ 不再走取消那道闸（理由住 `copy.rs` 头注）。
-                    move |j, overwrite| async move {
-                        run_board.begin(&j.name);
-                        if across {
-                            super::workspace::copy_across(&line, &origin, &j, overwrite).await
-                        } else {
-                            super::copy::copy_remote(&line, &origin, &j, overwrite).await
-                        }
-                    },
-                )
-                .await;
+            let out = super::copy::run_copy(
+                job,
+                // 〔W5-FILES〕目录那一件不问覆盖（目录复制不合并）：目标已在由后端拒、原话摆出来。
+                move |j| async move {
+                    !j.is_dir && super::copy::probe_target(&probe_line, &probe_origin, &j).await
+                },
+                move |j| {
+                    let rx = ask_board.ask(j);
+                    async move { rx.await.unwrap_or(false) }
+                },
+                // 〔F7a〕经通道问后端 `files-copy`；第二个参数是覆盖策略（问过且答了「覆盖」）。
+                //   后端这一趟取消不掉 ⇒ 不再走取消那道闸（理由住 `copy.rs` 头注）。
+                move |j, overwrite| async move {
+                    run_board.begin(&j.name);
+                    super::copy::copy_remote(&line, &origin, &j, overwrite).await
+                },
+            )
+            .await;
+            board.finish(out);
+        });
+        true
+    }
+
+    /// 〔W5-FILES〕**一摞复制到这一栏**（「复制到另一栏」的按钮与拖，`Workspace::copy_to_other` 起在目标那一栏上）：
+    /// 三段在 [`super::copy::run_copy_batch`] 的结构里（逐件探 → 撞名目录整摞不做 → 撞名文件一次问完 → 逐件发），
+    /// 这里只接「问谁 · 怎么问 · 怎么起」三个口。参数是跨目录那一形（[`super::workspace::across_args`]）。
+    /// 〔FW34 那一版〕只收一件、只收文件；今天一件就是一摞里只有一件。
+    pub fn start_copy_batch(&mut self, jobs: Vec<CopyJob>, ctx: Option<egui::Context>) -> bool {
+        let Some(h) = self.rt.clone() else {
+            *self.listing.error.lock().unwrap() =
+                Some(copy_text("rsFilewinShell.copy.noRuntime", &[]));
+            return false;
+        };
+        let Some(line) = self.line.clone() else {
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
+            return false;
+        };
+        let origin = self.source.origin();
+        let board = self.copy_board.clone();
+        board.attach(ctx);
+        let total = jobs.len();
+        h.spawn(async move {
+            let (probe_line, probe_origin) = (line.clone(), origin.clone());
+            let ask_board = board.clone();
+            let run_board = board.clone();
+            let seq = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let out = super::copy::run_copy_batch(
+                jobs,
+                move |j| {
+                    let (l, o) = (probe_line.clone(), probe_origin.clone());
+                    async move { super::copy::probe_target(&l, &o, &j).await }
+                },
+                move |js| {
+                    let rx = ask_board.ask_many(js);
+                    async move { rx.await.unwrap_or(false) }
+                },
+                move |j, overwrite| {
+                    let (l, o, b) = (line.clone(), origin.clone(), run_board.clone());
+                    let k = seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                    async move {
+                        b.begin(&format!("{}（{k}/{total}）", j.name));
+                        super::workspace::copy_across(&l, &o, &j, overwrite).await
+                    }
+                },
+            )
+            .await;
             board.finish(out);
         });
         true
@@ -1338,6 +1449,8 @@ impl FileWindow {
         let board = self.write_board.clone();
         board.attach(ctx);
         self.writes_started += 1;
+        // 〔W5-FILES · 有损名全寻址〕写的对象恒是当前目录的直接子项 ⇒ 根就是当前目录；有损 ⇒ 根发字节。
+        let root_raw = self.cwd_raw.clone();
         h.spawn(async move {
             let ask_board = board.clone();
             let out = super::writeops::run_writes(
@@ -1349,7 +1462,11 @@ impl FileWindow {
                 move |op| {
                     let line = line.clone();
                     let origin = origin.clone();
-                    async move { super::writeops::apply_remote(&line, &origin, &op).await }
+                    let root_raw = root_raw.clone();
+                    async move {
+                        super::writeops::apply_remote_in(&line, &origin, &op, root_raw.as_deref())
+                            .await
+                    }
                 },
             )
             .await;
@@ -1396,6 +1513,59 @@ impl FileWindow {
             Some(super::download::Ask::Dest { text, .. }) => Some(text),
             _ => None,
         }
+    }
+
+    /// 〔W5-FILES · `设计/60 §6.2`「原生选文件框」〕起一趟原生选择框（在 tokio 那条线程上，不堵 UI 线程）。
+    /// 上传 ⇒ 选一个或几个文件；下载 ⇒ 选保存位置（建议名 ＝ 那一问里现在的名字）。接不上（没运行时）⇒ 说一句。回值 ＝ 真的起了。
+    pub fn start_pick(
+        &mut self,
+        purpose: super::picker::Purpose,
+        ctx: Option<egui::Context>,
+    ) -> bool {
+        use super::picker::{PickKind, Purpose};
+        let kind = match purpose {
+            Purpose::Upload => PickKind::OpenFiles,
+            Purpose::Download => PickKind::SaveFile {
+                suggested_name: self
+                    .pull_ask
+                    .as_ref()
+                    .map(|a| a.src_name().to_string())
+                    .unwrap_or_default(),
+            },
+        };
+        let Some(h) = self.rt.clone() else {
+            self.pick_notice = Some(copy_text("rsFilewinPicker.pick.noRuntime", &[]));
+            return false;
+        };
+        let board = self.pick_board.clone();
+        board.attach(ctx);
+        let picker = self.picker.clone();
+        h.spawn(async move {
+            let got = picker.pick(kind).await;
+            board.deliver(purpose, got);
+        });
+        true
+    }
+
+    /// 〔W5-FILES〕选择框的结局落回那一问：上传 ⇒ 路径接进框里；下载 ⇒ 保存位置填进「存到哪儿」。没选到 ⇒ 那一问上说一句、框不动。
+    pub fn settle_pick(&mut self) -> bool {
+        use super::picker::Purpose;
+        let Some((purpose, picked)) = self.pick_board.take() else {
+            return false;
+        };
+        match purpose {
+            Purpose::Upload => self.upload.take_picked(picked),
+            Purpose::Download => match picked.and_then(|v| v.into_iter().next()) {
+                Some(p) => {
+                    if let Some(text) = self.pull_dest_mut() {
+                        *text = p.to_string_lossy().to_string();
+                    }
+                    self.pick_notice = None;
+                }
+                None => self.pick_notice = Some(copy_text("rsFilewinPicker.pick.none", &[])),
+            },
+        }
+        true
     }
 
     /// 摆出第一问（「存到哪儿」，缺省填 `<本机 home>/<原名>`）。回值 = 真的摆出来了。
@@ -1547,13 +1717,18 @@ impl FileWindow {
             let rows = self.listing.rows.lock().unwrap();
             match rows.get(i) {
                 // ⚠ 拿的是**那五格**（同 `writable_row`）：读一份文本要的是路径、
-                //   名字与大小，链接与时间两格它一格都不读。
-                Some(r) => r.row.clone(),
+                //   名字与大小，链接与时间两格它一格都不读。〔W5-FILES〕外加整条路径的字节（有损名全寻址）。
+                Some(r) => (
+                    r.row.clone(),
+                    self.row_path(r),
+                    super::editor::why_not_editable_listed(r),
+                ),
                 None => return false,
             }
         };
+        let (row, at, refused) = row;
         // 🔴 本地预判 —— 出声，不灰置。
-        if let Some(why) = super::editor::why_not_editable(&row) {
+        if let Some(why) = refused {
             *self.listing.error.lock().unwrap() = Some(copy_text(
                 "rsFilewinShell.edit.refused",
                 &[("name", &row.name.to_string()), ("why", &why.to_string())],
@@ -1573,10 +1748,11 @@ impl FileWindow {
         let board = self.edits.clone();
         board.attach(ctx);
         board.begin_open(&row.path);
+        self.edit_raw = at.raw.clone().map(|b| (row.path.clone(), b));
         h.spawn(async move {
             use super::editor::Arrived;
-            // 〔F7a〕读文本经通道问后端（`files-read-text`），不再拨 SFTP。
-            let got = super::editor::read_text(&line, &origin, &row.path).await;
+            // 〔F7a〕读文本经通道问后端（`files-read-text`），不再拨 SFTP。〔W5-FILES〕路径按字节发。
+            let got = super::editor::read_text_at(&line, &origin, &at).await;
             board.deliver(match got {
                 Ok(Some(o)) => Arrived::Text {
                     path: row.path.clone(),
@@ -1610,7 +1786,14 @@ impl FileWindow {
                 text,
                 sha256,
             } => {
-                self.editing = Some(super::editor::Pane::opened(&path, &name, text, sha256));
+                let mut pane = super::editor::Pane::opened(&path, &name, text, sha256);
+                // 〔W5-FILES〕有损名：读的时候记下的字节交给编辑面（存盘走它）。
+                pane.raw_path = self
+                    .edit_raw
+                    .take()
+                    .filter(|(p, _)| *p == path)
+                    .map(|(_, b)| b);
+                self.editing = Some(pane);
             }
             Arrived::NotText { path } => {
                 *self.listing.error.lock().unwrap() = Some(super::editor::not_text_notice(&path));
@@ -1659,8 +1842,9 @@ impl FileWindow {
         board.attach(ctx);
         board.begin_save(&p.path);
         h.spawn(async move {
-            let r = super::editor::write_text(&line, &origin, &p.path, &p.text, p.expect_sha256())
-                .await;
+            let at = super::source::RemotePath::of(&p.path, p.raw_path.as_deref());
+            let r =
+                super::editor::write_text_at(&line, &origin, &at, &p.text, p.expect_sha256()).await;
             board.deliver_save(r);
         });
         true
@@ -1685,7 +1869,8 @@ impl FileWindow {
         board.attach(ctx);
         board.begin_save(&p.path);
         h.spawn(async move {
-            let r = super::editor::overwrite_anyway(&line, &origin, &p.path, &p.text).await;
+            let at = super::source::RemotePath::of(&p.path, p.raw_path.as_deref());
+            let r = super::editor::overwrite_anyway_at(&line, &origin, &at, &p.text).await;
             board.deliver_save(r);
         });
         true
@@ -1698,6 +1883,8 @@ impl FileWindow {
             return false;
         };
         let (path, name) = (p.path.clone(), p.name.clone());
+        let at = super::source::RemotePath::of(&path, p.raw_path.as_deref());
+        self.edit_raw = at.raw.clone().map(|b| (path.clone(), b));
         let (Some(h), Some(line)) = (self.rt.clone(), self.line.clone()) else {
             *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
             return false;
@@ -1709,7 +1896,7 @@ impl FileWindow {
         board.begin_open(&path);
         h.spawn(async move {
             use super::editor::Arrived;
-            let got = super::editor::read_text(&line, &origin, &path).await;
+            let got = super::editor::read_text_at(&line, &origin, &at).await;
             board.deliver(match got {
                 Ok(Some(o)) => Arrived::Text {
                     path,
@@ -1815,6 +2002,94 @@ impl FileWindow {
     /// 🔴〔第九刀〕画**编辑面**：在飞指示 ＋ 那一份文本 ＋ 存的结局 ＋ 关窗那一问。
     ///
     /// ⚠ 它是模态的（同别的几摞）：一份文本改着的时候不该同时去改目录结构。
+    /// 〔W5-FILES · `设计/60 §6.2`「查找替换」〕从编辑框此刻的光标 / 选区起找查找框里那几个字（往后找从选区尾起、往前找从选区头起，
+    /// 到头绕回）；找到 ⇒ 把它选中、焦点给编辑框；没找到 ⇒ 查找栏上说一句。大文件模式没有这件事（`§5.5`）。回值 ＝ 找到了。
+    pub fn find_in_editor(&mut self, ctx: &egui::Context, backward: bool) -> bool {
+        let id = super::bigfile::normal_editor_id();
+        let Some(p) = self.editing.as_mut() else {
+            return false;
+        };
+        if p.big.is_big() {
+            return false;
+        }
+        let mut st = egui::TextEdit::load_state(ctx, id).unwrap_or_default();
+        let (a, b) = st.cursor.char_range().map_or((0, 0), |r| {
+            let r = r.as_sorted_char_range();
+            (r.start.0, r.end.0)
+        });
+        let from = if backward { a } else { b };
+        match super::editor::find_from(&p.text, &p.find.needle, from, backward) {
+            Some((s, e)) => {
+                st.cursor.set_char_range(Some(egui::text::CCursorRange::two(
+                    egui::text::CCursor::new(s),
+                    egui::text::CCursor::new(e),
+                )));
+                st.store(ctx, id);
+                ctx.memory_mut(|m| m.request_focus(id));
+                p.find.notice = None;
+                true
+            }
+            None => {
+                p.find.notice = Some(copy_text(
+                    "rsFilewinShell.editor.findNone",
+                    &[("needle", &p.find.needle.to_string())],
+                ));
+                false
+            }
+        }
+    }
+
+    /// 〔W5-FILES〕编辑面查找栏那一格（判据与界面同一个口）。没开编辑面 ⇒ `None`。
+    pub fn find_bar_mut(&mut self) -> Option<&mut super::editor::FindBar> {
+        self.editing.as_mut().map(|p| &mut p.find)
+    }
+
+    /// 〔W5-FILES〕替换：`all` ⇒ 全文替换，说换了几处；否则 ⇒ 选区恰好是查找串就换掉它，再找下一个（不是 ⇒ 只找下一个）。
+    /// 回值 ＝ 换了几处。改的是编辑框那一份字（与敲键同一个 `String`）；存盘照旧要点「存」。
+    pub fn replace_in_editor(&mut self, ctx: &egui::Context, all: bool) -> usize {
+        let id = super::bigfile::normal_editor_id();
+        let Some(p) = self.editing.as_mut() else {
+            return 0;
+        };
+        if p.big.is_big() || p.find.needle.is_empty() {
+            return 0;
+        }
+        if all {
+            let (t, n) = super::editor::replace_all(&p.text, &p.find.needle, &p.find.with);
+            p.text = t;
+            p.find.notice = Some(if n == 0 {
+                copy_text(
+                    "rsFilewinShell.editor.findNone",
+                    &[("needle", &p.find.needle.to_string())],
+                )
+            } else {
+                copy_text(
+                    "rsFilewinShell.editor.replacedAll",
+                    &[("n", &n.to_string())],
+                )
+            });
+            return n;
+        }
+        let mut st = egui::TextEdit::load_state(ctx, id).unwrap_or_default();
+        let (a, b) = st.cursor.char_range().map_or((0, 0), |r| {
+            let r = r.as_sorted_char_range();
+            (r.start.0, r.end.0)
+        });
+        let picked: String = p.text.chars().skip(a).take(b.saturating_sub(a)).collect();
+        let mut n = 0;
+        if a < b && picked == p.find.needle {
+            p.text = super::editor::replace_chars(&p.text, a, b, &p.find.with);
+            let after = a + p.find.with.chars().count();
+            st.cursor.set_char_range(Some(egui::text::CCursorRange::one(
+                egui::text::CCursor::new(after),
+            )));
+            st.store(ctx, id);
+            n = 1;
+        }
+        self.find_in_editor(ctx, false);
+        n
+    }
+
     fn editor_ui(&mut self, ui: &mut egui::Ui) {
         // ── 在飞指示（读 / 存都要出声，否则「点了没反应」）──
         if let Some(p) = self.edits.opening() {
@@ -1874,6 +2149,12 @@ impl FileWindow {
             return;
         }
         let (mut save, mut close, mut overwrite, mut reopen) = (false, false, false, false);
+        // 〔W5-FILES · `设计/60 §6.2`〕查找替换：普通路径才有（大文件模式没有，`§5.5` 写明的边界）。Ctrl+F 把焦点给查找框。
+        let big = pane.big.is_big();
+        let mut find_act: Option<FindAct> = None;
+        if !big && ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::F)) {
+            ui.memory_mut(|m| m.request_focus(egui::Id::new(FIND_ID)));
+        }
         egui::Modal::new(egui::Id::new("filewin-editor")).show(ui.ctx(), |ui| {
             ui.heading(format!(
                 "{}{}",
@@ -1925,6 +2206,11 @@ impl FileWindow {
                     }
                 });
             }
+            if big {
+                ui.label(copy_text("rsFilewinShell.editor.findBig", &[]));
+            } else if let Some(p) = self.editing.as_mut() {
+                find_act = find_row(ui, &mut p.find);
+            }
             super::bigfile::show(ui, self.editing.as_mut());
             ui.horizontal(|ui| {
                 if ui
@@ -1941,6 +2227,23 @@ impl FileWindow {
                 }
             });
         });
+        if let Some(a) = find_act {
+            let ctx = ui.ctx().clone();
+            match a {
+                FindAct::Next => {
+                    self.find_in_editor(&ctx, false);
+                }
+                FindAct::Prev => {
+                    self.find_in_editor(&ctx, true);
+                }
+                FindAct::Replace => {
+                    self.replace_in_editor(&ctx, false);
+                }
+                FindAct::ReplaceAll => {
+                    self.replace_in_editor(&ctx, true);
+                }
+            }
+        }
         if save {
             let ctx = ui.ctx().clone();
             self.save_edit(Some(ctx));
@@ -2005,7 +2308,8 @@ impl FileWindow {
         let Some(ask) = self.pull_ask.clone() else {
             return;
         };
-        let (mut go, mut cancel) = (false, false);
+        let (mut go, mut cancel, mut browse) = (false, false, false);
+        let pick_notice = self.pick_notice.clone();
         egui::Modal::new(egui::Id::new("filewin-pull-prompt")).show(ui.ctx(), |ui| match ask {
             Ask::Dest { .. } => {
                 ui.heading(copy_text(
@@ -2017,6 +2321,16 @@ impl FileWindow {
                 };
                 ui.text_edit_singleline(text);
                 ui.label(&copy_text("rsFilewinShell.pull.dirHint", &[]));
+                // 〔W5-FILES · `设计/60 §6.2`〕原生选择框：选到的保存位置填进上面那个框，确定照旧走这一问的判定。
+                if ui
+                    .button(&copy_text("rsFilewinPicker.ui.browse", &[]))
+                    .clicked()
+                {
+                    browse = true;
+                }
+                if let Some(n) = &pick_notice {
+                    ui.colored_label(egui::Color32::from_rgb(0xFF, 0xA5, 0x00), n);
+                }
                 ui.horizontal(|ui| {
                     if ui
                         .button(&copy_text("rsFilewinShell.pull.ok", &[]))
@@ -2058,10 +2372,15 @@ impl FileWindow {
             }
         });
         if cancel {
+            self.pick_notice = None;
             self.cancel_pull();
         } else if go {
+            self.pick_notice = None;
             let ctx = ui.ctx().clone();
             self.confirm_pull(Some(ctx));
+        } else if browse {
+            let ctx = ui.ctx().clone();
+            self.start_pick(super::picker::Purpose::Download, Some(ctx));
         }
     }
 
@@ -2143,6 +2462,16 @@ impl FileWindow {
         }
     }
 
+    /// 〔W5-FILES〕选中的那一摞（按列表的显示序）。选中态按 `pick_key` 记，这里按同一把键取回行。
+    pub fn picked_rows(&self) -> Vec<Listed> {
+        let rows = self.listing.rows.lock().unwrap();
+        self.selection
+            .picked_indices(&rows)
+            .into_iter()
+            .filter_map(|i| rows.get(i).cloned())
+            .collect()
+    }
+
     /// 〔FW34〕按名字找那一行（O(n)：只在「选中的那一项换了」时调，不是每帧）。
     pub fn row_named(&self, name: &str) -> Option<Listed> {
         self.listing
@@ -2171,6 +2500,9 @@ impl FileWindow {
                 "rsFilewinShell.busy.io",
                 &[("path", &p.to_string())],
             ));
+        }
+        if let Some(n) = self.size_board.running() {
+            return Some(copy_text("rsFilewinShell.busy.sizing", &[("name", &n)]));
         }
         if let Some(n) = self.copy_board.running() {
             return Some(copy_text(
@@ -2372,6 +2704,8 @@ impl FileWindow {
             (Action::Edit, [i]) => self.begin_edit(*i, ctx),
             (Action::Copy, [i]) => self.begin_copy(*i),
             (Action::Download, [i]) => self.begin_pull(*i),
+            // 〔W5-FILES〕一项或多项。
+            (Action::Size, _) => self.start_sizes(&idx, ctx),
             (Action::Rename, [i]) => self.begin_rename(*i),
             // 〔FW5〕一项或多项：同一个框（多项时框上说件数）。
             (Action::Chmod, _) => self.begin_chmod_rows(&idx),
@@ -2419,6 +2753,59 @@ impl FileWindow {
             self.selection.click(&rows, i, mods);
         }
         self.key_notice = None;
+        true
+    }
+
+    /// 〔W5-FILES · `设计/60 §6.2`〕**胶水**：列表说「第 `i` 行被拖起了」→ 拖的是哪一摞（它在选中里 ⇒ 整摞；
+    /// 不在 ⇒ 改成只选它 —— 与右键同一个手感，[`select::Selection::pick_for_menu`]）→ 记下「在拖」。
+    /// 松手落在另一栏 ⇒ 工作区走「复制到另一栏」那一个入口（不另起一条复制路）。
+    pub fn apply_drag_start(&mut self) -> bool {
+        let Some(i) = self.tally.drag_started else {
+            return false;
+        };
+        {
+            let rows = self.listing.rows.lock().unwrap();
+            self.selection.pick_for_menu(&rows, i);
+        }
+        self.dragging = true;
+        true
+    }
+
+    /// 〔W5-FILES · `设计/60 §6.2`「算目录大小」〕选中的这几项逐项问后端 `files-size`（顺序发），跑完一句话摆出来。
+    /// 纯读 ⇒ 不重列目录。接不上（没运行时 / 没通道）⇒ 出声。回值 ＝ 真的起来了。
+    pub fn start_sizes(&mut self, idx: &[usize], ctx: Option<egui::Context>) -> bool {
+        let Some(h) = self.rt.clone() else {
+            *self.listing.error.lock().unwrap() =
+                Some(copy_text("rsFilewinShell.size.noRuntime", &[]));
+            return false;
+        };
+        let Some(line) = self.line.clone() else {
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
+            return false;
+        };
+        let items: Vec<(serde_json::Value, String)> = {
+            let rows = self.listing.rows.lock().unwrap();
+            // 〔W5-FILES · 有损名全寻址〕路径按字节发。
+            idx.iter()
+                .filter_map(|&i| rows.get(i))
+                .map(|r| (self.row_path(r).wire(), r.name.clone()))
+                .collect()
+        };
+        let origin = self.source.origin();
+        let board = self.size_board.clone();
+        board.attach(ctx);
+        h.spawn(async move {
+            let mut out = Vec::with_capacity(items.len());
+            for (path, name) in items {
+                board.begin(&name);
+                out.push(
+                    super::size::size_remote(&line, &origin, &path, &name)
+                        .await
+                        .map_err(|e| (name, e)),
+                );
+            }
+            board.finish(out);
+        });
         true
     }
 
@@ -2558,7 +2945,9 @@ impl FileWindow {
                 new_file = true;
             }
             // 〔F7c〕「上传」—— 选完走拖入那一条（`upload.rs` 头注）。
-            if ui.button(super::upload::UPLOAD_LABEL.as_str()).clicked() {
+            if ui.button(super::upload::UPLOAD_LABEL.as_str()).clicked()
+                && !self.refused_in_lossy_cwd(|| copy_text("rsFilewinShell.lossyCwd.upload", &[]))
+            {
                 self.upload.open();
             }
             // 🔴〔补齐五项〕「在此打开终端」—— 旧面板表头上那颗。
@@ -2608,10 +2997,12 @@ impl FileWindow {
         //      同住一处，逐条理由住那个函数的头注）—— 这一行**不许自己切**。
         ui.horizontal_wrapped(|ui| {
             ui.label(format!("{} :", self.source.label()));
+            // 〔W5-FILES〕有损目录里面包屑只画不点：那一摞前缀是有损串，点上去寻址不到（「上一级」照样按字节走）。
+            let lossy = self.cwd_raw.is_some();
             for (seg, full) in breadcrumbs(&self.cwd) {
                 // 当前这一级**不画成按钮**：点它什么都不会发生（`navigate_to` 同路径直接返回）
                 // ⇒ 画成按钮就是一颗点了没反应的按钮。
-                if full == self.cwd {
+                if full == self.cwd || lossy {
                     ui.strong(seg);
                 } else if ui.small_button(seg).clicked() {
                     go = Some(full);
@@ -2619,7 +3010,8 @@ impl FileWindow {
             }
         });
         // 〔FW34〕书签栏（★ 切换当前目录 ＋ 一排书签）。点了哪一条也收在帧尾跳（同面包屑）。
-        if let Some(shelf) = self.shelf.clone() {
+        // 〔W5-FILES〕有损目录里不画书签栏：书签落盘是字符串，收进去的会是一条寻址不到的书签。
+        if let Some(shelf) = self.shelf.clone().filter(|_| self.cwd_raw.is_none()) {
             if let Some(d) = shelf.bar_ui(ui, &self.cwd) {
                 go = Some(d);
             }
@@ -2677,6 +3069,7 @@ impl FileWindow {
         self.board.ui(ui);
         // `§5` 第二段那一摞：覆盖确认 ／ 进度 ／ **上一趟走的是哪条路**。同样模态、同样在前。
         self.copy_board.ui(ui);
+        self.size_board.ui(ui);
         self.copy_ui(ui);
         // 🔴〔第五刀〕`§4.6.4` 那一摞：一次问完的确认框 ／ 结果（〔FN1〕「被围栏挡住那几句话」那一段删了）。
         //    同样模态、同样画在列表之前。
@@ -2692,6 +3085,12 @@ impl FileWindow {
             let ctx = ui.ctx().clone();
             self.start_drop(items, Some(ctx));
         }
+        // 〔W5-FILES〕上传那一问上点了「选择…」⇒ 起原生选择框；选完的结局下一帧由 `settle_pick` 填回去。
+        if self.upload.take_browse() {
+            let ctx = ui.ctx().clone();
+            self.start_pick(super::picker::Purpose::Upload, Some(ctx));
+        }
+        self.settle_pick();
         // 🔴〔第九刀〕编辑那一摞：**先消化到货，再画** ——
         //    反了的话这一帧画的是上一帧的状态（读完了却还显示「正在读」）。
         self.settle_opened_edits();
@@ -2761,6 +3160,8 @@ impl FileWindow {
         self.apply_edit_click(Some(ctx.clone()));
         // 🔴〔FW2〕第六、七条胶水：单击改选中 · 右键摆菜单。然后画菜单（它在最上层）。
         self.apply_pick_click();
+        // 〔W5-FILES〕第八条胶水：拖起一行。
+        self.apply_drag_start();
         let at = ctx.input(|i| i.pointer.interact_pos()).unwrap_or_default();
         self.apply_menu_click(at);
         self.menu_ui(ui);
@@ -2944,3 +3345,82 @@ mod tests;
 #[cfg(test)]
 #[path = "../../../../tests/bridge/filewin/shell_keys_tests.rs"]
 mod keys_tests;
+
+/// 〔W5-FILES〕编辑面查找栏上按了哪一颗。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FindAct {
+    Next,
+    Prev,
+    Replace,
+    ReplaceAll,
+}
+
+/// 〔W5-FILES〕查找框的 egui id（Ctrl+F 把焦点给它）。
+const FIND_ID: &str = "filewin-editor-find";
+
+/// 〔W5-FILES · `设计/60 §6.2`〕编辑面那一截查找替换：查找框 · 上一个 · 下一个 · 替换框 · 替换 · 全部替换 · 上一下那句话。
+/// 在查找框里按回车 ＝「下一个」。回这一帧按了哪一颗。
+fn find_row(ui: &mut egui::Ui, f: &mut super::editor::FindBar) -> Option<FindAct> {
+    let mut act = None;
+    ui.horizontal(|ui| {
+        ui.label(copy_text("rsFilewinShell.editor.findLabel", &[]));
+        let r = ui.add(
+            egui::TextEdit::singleline(&mut f.needle)
+                .id(egui::Id::new(FIND_ID))
+                .desired_width(160.0),
+        );
+        if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            act = Some(FindAct::Next);
+        }
+        if ui
+            .button(copy_text("rsFilewinShell.editor.findPrev", &[]))
+            .clicked()
+        {
+            act = Some(FindAct::Prev);
+        }
+        if ui
+            .button(copy_text("rsFilewinShell.editor.findNext", &[]))
+            .clicked()
+        {
+            act = Some(FindAct::Next);
+        }
+        ui.label(copy_text("rsFilewinShell.editor.replaceLabel", &[]));
+        ui.add(egui::TextEdit::singleline(&mut f.with).desired_width(160.0));
+        if ui
+            .button(copy_text("rsFilewinShell.editor.replaceOne", &[]))
+            .clicked()
+        {
+            act = Some(FindAct::Replace);
+        }
+        if ui
+            .button(copy_text("rsFilewinShell.editor.replaceAll", &[]))
+            .clicked()
+        {
+            act = Some(FindAct::ReplaceAll);
+        }
+        if let Some(n) = &f.notice {
+            ui.label(n);
+        }
+    });
+    act
+}
+
+/// 〔W5-FILES · 有损名全寻址〕一行的名字的真字节：有损 ⇒ 后端送的那一段（`raw_name`），否则 ⇒ 名字的 UTF-8。
+pub fn name_bytes(r: &super::source::Listed) -> Vec<u8> {
+    r.raw_name
+        .clone()
+        .unwrap_or_else(|| r.name.as_bytes().to_vec())
+}
+
+/// 〔W5-FILES〕目录 ＋ `/` ＋ 名字（按字节拼；根上不重复那个 `/`）。
+pub fn join_path(dir: &super::source::RemotePath, name: &[u8]) -> super::source::RemotePath {
+    let mut b = dir.bytes();
+    while b.len() > 1 && b.last() == Some(&b'/') {
+        b.pop();
+    }
+    if b.last() != Some(&b'/') {
+        b.push(b'/');
+    }
+    b.extend_from_slice(name);
+    super::source::RemotePath::from_bytes(&b)
+}

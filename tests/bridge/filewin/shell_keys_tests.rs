@@ -478,7 +478,8 @@ fn perform_refuses_what_the_table_refuses_and_says_so() {
     let lossy = "\u{FFFD}x";
     // (行, 选中谁, 表里没有的那几件)
     let cases: Vec<(Vec<Row>, Vec<&str>, Vec<Action>)> = vec![
-        (vec![dir("sub")], vec!["sub"], vec![Edit, Copy, Download]),
+        // 〔W5-FILES〕目录能复制了（`设计/60 §6.2`）⇒ 「复制」不在拒绝表里。
+        (vec![dir("sub")], vec!["sub"], vec![Edit, Download]),
         (
             vec![row(lossy, false, 3, true)],
             vec![lossy],
@@ -679,21 +680,22 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
             vec![file("a.bin"), file("f.txt")],
             vec![],
             "f.txt",
-            vec!["编辑", "复制", "下载", "改名", "权限", "删除"],
+            vec!["编辑", "复制", "下载", "算大小", "改名", "权限", "删除"],
         ),
         (
             "一个目录",
             vec![file("a.bin"), dir("sub")],
             vec![],
             "sub",
-            vec!["打开", "改名", "权限", "删除"],
+            // 〔W5-FILES〕目录能复制了（`设计/60 §6.2`）。
+            vec!["打开", "复制", "算大小", "改名", "权限", "删除"],
         ),
         (
             "一个超编辑上限的文件",
             vec![file("a.bin"), row("h.bin", false, big, false)],
             vec![],
             "h.bin",
-            vec!["复制", "下载", "改名", "权限", "删除"],
+            vec!["复制", "下载", "算大小", "改名", "权限", "删除"],
         ),
         (
             "一个有损名文件",
@@ -707,14 +709,14 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
             vec![file("a.bin"), file("b.bin"), file("c.bin")],
             vec![("a.bin", NONE), ("c.bin", CTRL)],
             "c.bin",
-            vec!["改这 2 项的权限", "删除这 2 项"],
+            vec!["算大小", "改这 2 项的权限", "删除这 2 项"],
         ),
         (
             "右键落在选中外：换成只选它",
             vec![file("a.bin"), file("b.bin"), dir("c")],
             vec![("a.bin", NONE), ("b.bin", CTRL)],
             "c",
-            vec!["打开", "改名", "权限", "删除"],
+            vec!["打开", "复制", "算大小", "改名", "权限", "删除"],
         ),
         (
             "两项混着有损名",

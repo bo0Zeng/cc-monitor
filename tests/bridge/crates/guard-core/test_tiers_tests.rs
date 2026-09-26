@@ -106,9 +106,11 @@ const UNIT: &[&str] = &[
     "tests/bridge/filewin/create_tests.rs",
     "tests/bridge/filewin/editor_tests.rs",
     "tests/bridge/filewin/preview_tests.rs",
+    "tests/bridge/filewin/picker_tests.rs", // 〔W5-FILES〕原生选文件框（假选择框注入）
     "tests/bridge/filewin/rows_tests.rs",
     "tests/bridge/filewin/scale_tests.rs",
     "tests/bridge/filewin/shell_keys_tests.rs",
+    "tests/bridge/filewin/size_tests.rs", // 〔W5-FILES〕算大小（窗口那一侧）
     "tests/bridge/filewin/workspace_tests.rs",
     "tests/bridge/filewin/writeops_tests.rs",
     "tests/bridge/lib_batch_tests.rs",
@@ -530,6 +532,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/files/index_tests.rs",
     "tests/backend/files/raw_tests.rs",
     "tests/backend/files/scale_f2.rs",
+    "tests/backend/files/size_tests.rs", // 〔W5-FILES〕算目录大小（临时目录真走一棵树）
     "tests/backend/footprint_tests.rs",
     // 〔RM1f〕SCAN → 集成：多了一条真进程判据（`cancel` 真打断在飞的 `panorama`，替身小程序是真进程）
     "tests/backend/inbound_tests.rs",
