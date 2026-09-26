@@ -8,8 +8,8 @@
  *
  * 方法体逐字从 `tabs.ts` 搬来（原是 `TabManager` 的私有方法，或 `ensureTab` / `closeTab` /
  * `switchTo` / `onBatchEnd` / `onLine` 里的整段），唯一的改写：上面六样换成 `this.host.…`，
- * 三个静态常量的类名换成本类。**`materializeUntilFilled` 与 `MATERIALIZE_TAIL_K` 的写法一字未动** ——
- * `replay-tail-keep.vitest.ts` 按原文抽这两个数对拍 Rust 侧的 `REPLAY_TAIL_KEEP`。
+ * 三个静态常量的类名换成本类。`replay-tail-keep.vitest.ts` 按原文抽 `MATERIALIZE_TAIL_K` 与
+ * `MATERIALIZE_ROUNDS_PER_CALL`（〔W5-RENDER R7〕原先是 `materializeUntilFilled` 循环里的字面量 `4`）对拍 Rust 侧的 `REPLAY_TAIL_KEEP`。
  */
 import { MessageStream } from "./stream";
 import { reconcilePendingToolResults, type RenderContext } from "./cards";
