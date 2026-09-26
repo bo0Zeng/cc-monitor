@@ -184,32 +184,77 @@ pub(crate) fn transfer_dial(cfg: &RemoteConfig) -> Result<serde_json::Value, Str
 /// 关写半边（`shutdown` = 关链路）不受它管 —— 到点之后调用方照样要能把链路关掉。
 pub(crate) struct Bounded<S> {
     inner: S,
-    /// `(到点, 总时限 —— 只用来说话)`。`None` = 不设（长活那三形）。
-    due: Option<(std::pin::Pin<Box<tokio::time::Sleep>>, Duration)>,
+    /// 到点那一刻 ＋ 用来说话的几样。`None` = 不设（长活那三形）。
+    due: Option<Due>,
+}
+
+/// 〔W5-VIS · `设计/05 §3.3.2`「一个预算、多个归因点」〕期限只有一个，但到点时要说得出**卡在哪一段**：
+/// 同一个数盖着「握手」与「远端跑」两段（`设计/15 §3.6` 小病：弱网上握手慢一点就被判查询超时，而两种成因处置完全不同）。
+struct Due {
+    at: std::pin::Pin<Box<tokio::time::Sleep>>,
+    /// 总时限（只用来说话）。
+    total: Duration,
+    /// 起算那一刻（= 到点 − 总时限）。
+    started: tokio::time::Instant,
+    /// 握手做完的那一刻（[`Bounded::mark_shaken`]；`open` 读完 ack 就记）。`None` = 还在握手。
+    shaken: Option<tokio::time::Instant>,
 }
 
 impl<S> Bounded<S> {
     pub(crate) fn new(inner: S, due: Option<(tokio::time::Instant, Duration)>) -> Self {
         Bounded {
             inner,
-            due: due.map(|(at, total)| (Box::pin(tokio::time::sleep_until(at)), total)),
+            due: due.map(|(at, total)| Due {
+                at: Box::pin(tokio::time::sleep_until(at)),
+                total,
+                started: at.checked_sub(total).unwrap_or(at),
+                shaken: None,
+            }),
+        }
+    }
+
+    /// 〔W5-VIS〕握手（开链路 ＋ 拨号 ＋ 鉴权 ＋ ack）做完了：记下这一刻，到点时据此把总时限拆成两段说。
+    pub(crate) fn mark_shaken(&mut self) {
+        if let Some(d) = self.due.as_mut() {
+            d.shaken.get_or_insert_with(tokio::time::Instant::now);
         }
     }
 
     /// 到点了 ⇒ 那句话；没到 ⇒ `None`（顺手把「到点叫醒我」登记上）。
     fn expired(&mut self, cx: &mut std::task::Context<'_>) -> Option<std::io::Error> {
-        let (at, total) = self.due.as_mut()?;
-        std::future::Future::poll(at.as_mut(), cx)
+        let d = self.due.as_mut()?;
+        std::future::Future::poll(d.at.as_mut(), cx)
             .is_ready()
             .then(|| {
                 std::io::Error::new(
                     std::io::ErrorKind::TimedOut,
-                    copy_text(
-                        "rsDialHost.deadline.expired",
-                        &[("secs", &total.as_secs().to_string())],
+                    expiry_note(
+                        d.total,
+                        d.shaken.map(|t| t.saturating_duration_since(d.started)),
+                        tokio::time::Instant::now().saturating_duration_since(d.started),
                     ),
                 )
             })
+    }
+}
+
+/// 〔W5-VIS · `设计/05 §3.3.2`〕到点那句话：**一个预算、按段归因**。纯函数（判据直接喂时长，不睡墙钟）。
+/// `shaken` = 起算之后多久握完手（`None` = 到点时还在握手）；`waited` = 起算到此刻。
+pub(crate) fn expiry_note(total: Duration, shaken: Option<Duration>, waited: Duration) -> String {
+    let secs = total.as_secs().to_string();
+    match shaken {
+        None => copy_text("rsDialHost.deadline.expiredInShake", &[("secs", &secs)]),
+        Some(shake) => copy_text(
+            "rsDialHost.deadline.expired",
+            &[
+                ("secs", &secs),
+                ("shake", &format!("{:.1}", shake.as_secs_f64())),
+                (
+                    "run",
+                    &format!("{:.1}", waited.saturating_sub(shake).as_secs_f64()),
+                ),
+            ],
+        ),
     }
 }
 
@@ -358,6 +403,8 @@ async fn open(
             ))
         }
     };
+    // 〔W5-VIS〕握手做完了 ⇒ 记下这一刻：之后若总时限到点，那句话说得出「握手用了多久、远端跑了多久」。
+    r.get_mut().mark_shaken();
     // 竞速胜者记成 last-good（下次排首）。
     if let Some(won) = ack
         .endpoint
