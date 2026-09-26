@@ -375,19 +375,13 @@ pub fn exit_status(d: &Death) -> String {
     }
 }
 
-/// 四条话。**两两不同**，且每一条各自点名自己那条证据与该怎么办。
+/// 账行破折号后面那一截：**只摆证据的详情**（短摘要 = 判定 ＋ 退出状态，见 [`last_brief`]）。四条两两不同。
 ///
-/// ⚠ `KP3B` 的判定逐字是「四条文案**两两不同**」，不是「源码里出现了四个枚举名」。
-///
-/// 🔴 〔第四波 ST2 · `设计/70 §7` 第二刀 步 7〕**这四条只进日志，不进界面**，而且**不再产 markdown
-/// 与设计论证**。原来每条都带 `**下一步：…**`、「判据不可信的时候重起是放大器」这类写给开发文档的论证、
-/// 一处源码住址，外加「崩了」那一条把 exit 码说两遍（账行的 `退出状态=` 已经说过一遍）——
-/// 而那一整行经 `Health::last` 被拼进了设置面板（`70 §2.1` 五种病里占四种）。
-/// 今天：界面拿的是 [`last_brief`]（判定 ＋ 退出状态，一句短话）；这四条只随 [`ledger_line`] 落日志。
-pub fn death_copy(d: &Death) -> String {
+/// 〔PB1 · `设计/90 §4` 阶段 B · `70 §2.3`〕原来每条还带处方与论证（「先看它拒的是什么」「重起帮不上忙」…），删了。只进日志。
+pub fn death_detail(d: &Death) -> String {
     match d {
         Death::NeverStarted { reason, looked_at } => format!(
-            "从来没起来：{reason}（找过 {} 处：{}）。原因是启动那一侧原样转来的，照它说的去补。",
+            "{reason}；找过 {} 处：{}",
             looked_at.len(),
             looked_at
                 .iter()
@@ -395,16 +389,9 @@ pub fn death_copy(d: &Death) -> String {
                 .collect::<Vec<_>>()
                 .join(&copy_text("rsBackendPolicy.death.listSep", &[]))
         ),
-        Death::Refused { .. } => "被拒了：它一个字节都没说就自己退出了。原样重连只会发同一个参数、\
-             再被拒一次，先看它拒的是什么。"
-            .to_string(),
-        Death::Crashed { .. } => "崩了：说过话之后异常终止。重起之前先看是不是每次都停在同一处，\
-             同一处反复崩时重起帮不上忙。"
-            .to_string(),
-        Death::Misread { detail } => format!(
-            "读坏了：{detail}。这是 monitor 这一侧读的时候出错，不算它崩了一次；\
-             重新接上它，别去动那个进程。"
-        ),
+        Death::Refused { .. } => "它一个字节都没说就退出了".to_string(),
+        Death::Crashed { .. } => "说过话之后异常终止".to_string(),
+        Death::Misread { detail } => format!("monitor 这一侧读出错：{detail}"),
     }
 }
 
@@ -433,7 +420,7 @@ pub fn ledger_line(origin: &str, d: &Death) -> String {
         "[死亡账] origin={origin} 判定={} 退出状态={} —— {}",
         death_kind(d),
         exit_status(d),
-        death_copy(d)
+        death_detail(d)
     )
 }
 
