@@ -487,7 +487,12 @@ test("F01 漂移守卫：e2e shim 的 tmux 目标是 =名: 精确形态", () => 
 // 〔LR2〕搬家时顺手修了一处：它原来排在那份套件「失败就抛」那一行**之后**，失败只打一个 ✗、
 // 套件照样退出 0 —— 这条判据此前**红不了**。现在排在收尾检查之前。
 test("P3s-Y2：新造名字的路径，deriveTmuxName 的结果必须过铸造口", () => {
-  const files = ["remote-launch-run.ts", "settings/machine-card.ts"];
+  // 〔FE1〕「列名单 → 铸名」收进 `tmux-name-mint.ts` 之后，那两个入口（`remote-launch-run.ts` 起新会话 ·
+  //   `settings/machine-card.ts` 开新 Claude）不再自己派生名字，派生只剩 `remote-launch.ts::mintSessionTmuxName`
+  //   那一行（= `mintTmuxName(deriveTmuxName(cwd), existing)`，由 `tmux-name-mint.ts` 唯一调用，
+  //   `tests/launch-orchestration-single-home.vitest.ts` K1 两向钉）。⇒ 人群 = 三份文件里所有产名的那一行，
+  //   现打恰好 1（地板 `< 2` 换成相等：两个入口任一处又自己派生 ⇒ 数变 ⇒ 红）。
+  const files = ["remote-launch-run.ts", "settings/machine-card.ts", "remote-launch.ts"];
   let checked = 0;
   for (const f of files) {
     const src = readFileSync(resolve(srcDirOf(dirname(fileURLToPath(import.meta.url))), f), "utf8");
@@ -496,8 +501,10 @@ test("P3s-Y2：新造名字的路径，deriveTmuxName 的结果必须过铸造�
       const code = line.trim();
       if (code.startsWith("//") || code.startsWith("*") || code.startsWith("/*")) continue;
       if (!code.includes("deriveTmuxName(")) continue;
+      if (code.includes("function deriveTmuxName(")) continue; // 定义处，不是产名
       // ⚠ UI 文案不算产名（「留空则用 ${deriveTmuxName(cwd)}」只是给用户看建议名）。
-      if (code.includes("`") && !code.includes("mintTmuxName(")) continue;
+      //   〔CP2b · 4C〕文案进了文案表之后那句展示长成 `copyText("…", { name: deriveTmuxName(…) })` ⇒ 同样算展示。
+      if ((code.includes("`") || code.includes("copyText(")) && !code.includes("mintTmuxName(")) continue;
       checked += 1;
       if (!code.includes("mintTmuxName(")) {
         throw new Error(
@@ -509,7 +516,11 @@ test("P3s-Y2：新造名字的路径，deriveTmuxName 的结果必须过铸造�
     }
   }
   // 完备性自检：一处都没扫到 = 抽取器坏了（人群空时「全过」与「没测」长得一样）。
-  if (checked < 2) throw new Error(`只扫到 ${checked} 处 deriveTmuxName( —— 抽取器坏了，本条此刻无效`);
+  if (checked !== 1)
+    throw new Error(
+      `扫到 ${checked} 处产名的 deriveTmuxName(（现打应为 1：remote-launch.ts::mintSessionTmuxName）` +
+        ` —— 0 = 抽取器坏了；> 1 = 有入口又自己派生名字了（该走 tmux-name-mint.ts）`,
+    );
 });
 
 if (failed > 0) {

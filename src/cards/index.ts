@@ -61,6 +61,7 @@ import { isRemoteOrigin, type Origin } from "../ipc/origin";
 import type { ApiMessage } from "../generated/ApiMessage";
 import type { JsonlRecord } from "../generated/JsonlRecord";
 import type { Usage } from "../generated/Usage";
+import { copyText } from "../copy-table";
 
 // 本文件内部也用这些名字，所以 import + re-export 都要有：
 // **只写 `export type { … } from` 不会把名字带进本地作用域**（C02 栽过两次，C04c 又栽一次）。
@@ -306,7 +307,7 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
 function buildQueuedUserCard(text: string, timestamp: string | null): HTMLElement {
   const card = document.createElement("div");
   card.className = "card card-user card-user-queued";
-  card.appendChild(cardHeader("用户（排队时发出）", timestamp ?? ""));
+  card.appendChild(cardHeader(copyText("cards.queuedUser.title"), timestamp ?? ""));
 
   const body = document.createElement("div");
   body.className = "card-body";
@@ -348,7 +349,7 @@ export function addToToolGroup(group: ToolGroup, units: HTMLElement[]): void {
 }
 
 function updateToolGroupSummary(group: ToolGroup): void {
-  group.summary.textContent = `🔧 工具调用 · ${group.count} 个 · 自 ${formatTimestampShort(group.startedAt)}`;
+  group.summary.textContent = copyText("cards.toolGroup.summary", { count: group.count, since: formatTimestampShort(group.startedAt) });
 }
 
 function buildUserCard(
@@ -357,7 +358,7 @@ function buildUserCard(
 ): HTMLElement {
   const card = document.createElement("div");
   card.className = "card card-user";
-  card.appendChild(cardHeader("用户", rec.timestamp));
+  card.appendChild(cardHeader(copyText("cards.user.title"), rec.timestamp));
 
   const body = document.createElement("div");
   body.className = "card-body";
@@ -408,7 +409,7 @@ function renderBlock(
     case "thinking": {
       return makeCollapsible(
         "block-thinking",
-        `💭 思考 · ${block.thinking.length} 字`,
+        copyText("cards.thinking.title", { n: block.thinking.length }),
         () => {
           const body = document.createElement("div");
           body.className = "block-body block-body-md";
@@ -455,7 +456,7 @@ function renderBlock(
       console.warn("renderBlock: unknown block type", unknownType, block);
       const placeholder = document.createElement("div");
       placeholder.className = "block-unknown";
-      placeholder.textContent = `⚠️ 未知 block 类型: ${String(unknownType)}`;
+      placeholder.textContent = copyText("cards.renderBlock.unknownBlock", { type: String(unknownType) });
       return placeholder;
     }
   }
@@ -541,8 +542,8 @@ function buildRemoteFileLink(origin: string, filePath: string): HTMLElement {
   const el = document.createElement("button");
   el.type = "button";
   el.className = "tool-file-link";
-  el.textContent = `📂 在文件窗口打开：${filePath}`;
-  el.title = "在文件窗口里定位这个远端文件（可预览 / 下载）";
+  el.textContent = copyText("cards.remoteFile.open", { path: filePath });
+  el.title = copyText("cards.remoteFile.openHint");
   el.addEventListener("click", () => void openRemoteFileInSftp(origin, filePath));
   return el;
 }
@@ -550,7 +551,7 @@ function buildRemoteFileLink(origin: string, filePath: string): HTMLElement {
 async function openRemoteFileInSftp(origin: string, filePath: string): Promise<void> {
   const cfg = await resolveRemoteConfigByOrigin(origin);
   if (!cfg) {
-    showActionFailureToast("打开文件失败", `未找到远端主机配置：${origin}`);
+    showActionFailureToast(copyText("cards.remoteFile.openFailed"), copyText("cards.remoteFile.noMachine", { machine: origin }));
     return;
   }
   void openFileWindow(cfg, { revealFile: filePath });
@@ -803,14 +804,14 @@ function buildResultBody(
   const btnText = document.createElement("button");
   btnText.type = "button";
   btnText.className = "block-result-mode is-active";
-  btnText.textContent = "文本";
-  btnText.title = "原始文本（Pre 格式）";
+  btnText.textContent = copyText("cards.result.text");
+  btnText.title = copyText("cards.result.textHint");
 
   const btnMd = document.createElement("button");
   btnMd.type = "button";
   btnMd.className = "block-result-mode";
   btnMd.textContent = "Markdown";
-  btnMd.title = "Markdown 渲染（含 LaTeX / 代码高亮）";
+  btnMd.title = copyText("cards.result.markdownHint");
 
   toolbar.append(btnText, btnMd);
   host.appendChild(toolbar);
@@ -883,7 +884,7 @@ function buildTextBody(text: string): HTMLElement {
     expand.type = "button";
     expand.className = "block-body-show-full";
     const sizeKb = (text.length / 1024).toFixed(0);
-    expand.textContent = `显示完整内容 (${sizeKb} KB)`;
+    expand.textContent = copyText("cards.text.showAll", { kb: sizeKb });
     expand.addEventListener(
       "click",
       () => {
@@ -917,7 +918,7 @@ function buildMarkdownBody(text: string): HTMLElement {
     expand.type = "button";
     expand.className = "block-body-show-full";
     const sizeKb = (cleaned.length / 1024).toFixed(0);
-    expand.textContent = `渲染完整内容 (${sizeKb} KB)`;
+    expand.textContent = copyText("cards.markdown.renderAll", { kb: sizeKb });
     expand.addEventListener(
       "click",
       () => {
@@ -1056,7 +1057,7 @@ function firstLinePreview(text: string, max: number): string {
   const firstLine = text.split("\n").find((l) => l.trim().length > 0) ?? "";
   const trimmed = firstLine.trim();
   if (trimmed.length <= max) return trimmed;
-  return trimmed.slice(0, max - 1) + "…";
+  return copyText("cards.truncate.ellipsis", { text: trimmed.slice(0, max - 1) });
 }
 
 /** 从 Bash 失败 tool_result 文本里抠 exit code（Claude Code 会把它写成 "Exit code N" 一行） */
@@ -1187,7 +1188,7 @@ function summarizeInput(input: unknown): string {
 }
 
 function truncate(s: string, n: number): string {
-  return s.length > n ? s.slice(0, n) + "…" : s;
+  return s.length > n ? copyText("cards.truncate.ellipsis", { text: s.slice(0, n) }) : s;
 }
 
 function approximateSize(content: unknown): string {

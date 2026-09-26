@@ -280,8 +280,8 @@ dispatcher.bind("app.open-command-bar", () => commandBar.toggle());
 
 > ⚠⚠ **G3 订正（2026-08-04）：本节的「阶段②」已经是现在时了。**
 > 下面第 4 步把「取命令方式转后端 RPC」写成**未来动作**，而 **F04b（kill）与 F04c（send-keys）
-> 已经把生产主路切到后端 RPC**：`src/bridge/src/backend/control/backend_kill.rs` /
-> `backend_send_keys.rs`（分流判定在 `backend_route.rs`，三态而非二态）。
+> 已经把生产主路切到后端 RPC**：当年是 monitor 的两个发送端（杀会话 · 送键，分流判定在 `backend_route.rs`，三态而非二态）；
+> 〔C4e · 第四波 4C〕两个发送端连同 Tauri 命令迁到界面，今天是 `src/tmux-control.ts` 经通道直接说后端的 `kill` / `launch`。
 >
 > 🔴 **订正二（`K-R106` 2026-09-13 现打）：这一段原来那两句今天都假了。**
 > 原文逐字是「`src/session-backend.ts` 那条 shell 串**已降级为 C7 过渡期**的第二条路
@@ -298,8 +298,8 @@ dispatcher.bind("app.open-command-bar", () => commandBar.toggle());
 >
 > | 命令 | 今天的主路 | 改哪里 |
 > |---|---|---|
-> | `kill` | 后端 RPC（F04b） | `backend/control/backend_kill.rs`；**盘上没有第二条路** |
-> | `send-keys` | 后端 RPC（F04c） | `backend/control/backend_send_keys.rs`；同上 |
+> | `kill` | 后端 RPC（F04b；〔C4e〕界面经通道直接说） | `src/tmux-control.ts::killSession`（门在后端 `src/backend/control/gate.rs`）；**盘上没有第二条路** |
+> | `send-keys` | 后端 RPC（F04c；〔C4e〕界面经通道直接说） | `src/tmux-control.ts::sendKeys`（两个 mode 名的理由在它头注里）；同上 |
 > | `attach`（**本机**） | 🔴 **本机后端**〔`K-R106` 2026-09-13，用户逐字「归本机后端就好了啊」〕 | `src/bridge/src/history.rs::render_local_attach` ⇒ `ccm attach <名>`（走 `render_local_ccm` 那条既有渲染路）。⚠ 前端那条 `↗` 还没改成问它要 |
 > | `attach` / `new-session`（**远端兜底**） | 🔴 **后端渲染器**〔步 22b·B 2026-09-20，`设计/90 §4 E` 收官〕 | `src/bridge/src/backend/control/payload.rs::render_tmux_outer`（外层三格）＋ `render_payload`（内层载荷），同一条 tauri 命令 `render_launch_payload`（`outer` 缺席 = `container:"none"`，带 `outer` = tmux 那三格）。**改完必须改用例表的手写期望并重生成入库夹具**：`npm run gen:payload-golden`。〔LR2 2026-09-25〕TS 那份（`session-backend.ts` ＋ `launch-render-fallback.ts`）已删，这是唯一一份 |
 >

@@ -32,14 +32,14 @@ import {
   TERMINAL_FRONT_UNAVAILABLE_TITLE,
   TERMINAL_FRONT_UNAVAILABLE_DETAIL,
 } from "./terminal-front";
-import { computeTitleFor, type Tab, type TabsSummary } from "./tab-model";
+import { computeTitleFor, isBgKind, type Tab, type TabsSummary } from "./tab-model";
 import { ENDED, LIVE, RECONNECTABLE, isResumeOnly, hasTerminal, nextState, type StateEvent } from "./tab-session-state";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, originFromWire, type Origin } from "./ipc/origin";
 // 〔U2〕`Tab` 的形状与标题函数搬去了 `tab-model.ts`；这里原样 re-export，既有 import 面零改动。
 export type { Tab, TabsSummary } from "./tab-model";
 // 〔U2〕落点算术搬去了 `tab-drop.ts`；原样 re-export，`tabs.vitest.ts` 的 import 面零改动。
 export {
-  moveTabBlock,
+  moveTab,
   pickDropTarget,
   tabUnderY,
   commonDirName,
@@ -570,16 +570,15 @@ export class TabManager {
       }
       // v2.22.2 kind 冲突消解:同一 sid 可能有多份 pidfile(实证:cc-backend 的
       // bg-spare 备用进程复用**父会话的 sid**写 kind=bg)——宣告到达顺序不定,
-      // bg 先到会把真交互会话降格成 ⚙ 且树状挂到别的宿主下(用户截图实锤)。
-      // 规则:**interactive 恒压过 bg**——后到的 interactive 宣告在此升格纠正
-      // (重新按宿主定位 + 把同 cwd 孤儿 bg 拉回身后);反向(bg 后到)绝不降格。
-      if (kind === "interactive" && tab.kind !== null && tab.kind !== "interactive") {
-        tab.kind = "interactive";
+      // bg 先到会把真交互会话降格成 ⚙(用户截图实锤)。
+      // 规则:**interactive 恒压过 bg**——后到的 interactive 宣告在此升格纠正标题;
+      // 反向(bg 后到)绝不降格。
+      // 〔BG1 · V125「删掉树」〕升格**不动位置**:原先这里还把它摘下来按宿主重新挂树,
+      // 树删了之后位置与 kind 无关。
+      if (kind !== null && !isBgKind(kind) && isBgKind(tab.kind)) {
+        tab.kind = kind;
         tab.bgName = null;
         tab.title = this.computeTitle(tab);
-        const i = this.store.orderedIds.indexOf(sessionId);
-        if (i >= 0) this.store.orderedIds.splice(i, 1);
-        this.store.placeInOrder(tab);
         this.refreshTabBar();
       }
       // Batch5-F18：骨架 Tab（无行创建）的 parentPath 为空——首条带路径的行回填，
@@ -858,6 +857,23 @@ export class TabManager {
       }
     }
     if (changed) this.refreshTabBar();
+  }
+
+  /**
+   * 〔GP1 · 第四波〕这条会话所在的那台机器**看不见了**（`session-unseen`：到它的连接断了 / F5 时它还没报完清单）。
+   *
+   * 活的 / 可重连的 ⇒ 说不清（`nextState` 的 `unseen`）；已结束 / 记录没了不动。那台机器从「报完了清单」里摘掉 ——
+   * 之后才复活出来的固定 tab 不再直接落已结束，要等那台重连、再报一次（`markOriginSeen`）。
+   * 重连之后：还活着的由重宣告（`remote-session-added` → `ensureTab` 的 `remote-line`）翻回活，其余由
+   * `origin-sessions-listed` 落已结束（`设计/30 §3.5.7a`）。Tab 还没建 ⇒ 什么都不做（它建出来时由行 / 宣告定）。
+   */
+  markUnseen(sessionId: string): void {
+    const tab = this.store.tabs.get(sessionId);
+    if (!tab) return;
+    this.store.seenOrigins.delete(tab.origin);
+    if (!this.applyState(tab, "unseen")) return;
+    this.refreshTabBar();
+    this.emitTabStateProbe(tab);
   }
 
   /**
@@ -1198,8 +1214,10 @@ export class TabManager {
     // `refreshTabBar` 挂在活动路上（`updateActivity` / `archiveTab` / `ensureTab` 末尾都
     // 无条件调它），而这些事件在拖拽那一两秒里照常来。下面第 4 段那个排序循环一跑，
     // **指针底下的 tab 就被换掉了** —— 用户松手落到的不是他瞄的那一格。
-    // 已实证的两条路：① 会话跑完 ⇒ 归档 ⇒ 那个 tab 整个离开 `barEl`（抽屉是它的兄弟），
-    // 下面的全部上移一格；② 新 bg 会话宣告 ⇒ `placeInOrder` 从**中间**插进去。
+    // 会改 DOM 顺序的活动事件：新 tab 到达 ⇒ `placeInOrder` 按盘上那份顺序把它从**中间**插进去
+    // （6d 注入的就是这一形）。〔AR1〕原先这里列的第一条「会话跑完 ⇒ 归档 ⇒ tab 离开 `barEl`」
+    // 随归档抽屉删了（`设计/30 §A`）：会话结束今天只改那颗按钮的 class，tab 留在原位。
+    // 〔BG1〕原先还有「bg 挂到宿主之后」那一路，树删了（V125）。
     //
     // ⚠ 守的是 `d.dragging`（真起拖了）而不是 `this.drag` 在不在 —— 后者在「按下还没动」
     // 那一段也为真，那段本来就该照常刷新（它与点击没有区别）。

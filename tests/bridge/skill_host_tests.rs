@@ -689,7 +689,10 @@ fn the_ts_view_type_matches_this_struct() {
 #[test]
 fn every_spec_section_is_semantically_filled() {
     for spec in SKILLS {
-        assert!(!spec.id.is_empty() && !spec.label.is_empty(), "id/label 空");
+        assert!(
+            !spec.id.is_empty() && !(spec.label)().is_empty(),
+            "id/label 空"
+        );
         match &spec.discover {
             Discover::ClaudeSkill { dir, probe_file } => {
                 assert!(
@@ -717,11 +720,11 @@ fn every_spec_section_is_semantically_filled() {
                 assert!(!id.is_empty(), "{}: install 指向空 id", spec.id)
             }
             Install::NotSupported(why) => assert!(
-                why.len() > 20,
+                why().len() > 20,
                 "{}: install 标 NotSupported 但理由太短（{} 字节）—— \
                      如实登记要说清为什么、归谁",
                 spec.id,
-                why.len()
+                why().len()
             ),
         }
     }

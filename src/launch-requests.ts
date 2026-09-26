@@ -13,6 +13,7 @@ import type {
   LaunchModifiers,
   LaunchPlan,
 } from "./launch-plan.ts";
+import { copyText } from "./copy-table";
 
 export interface LaunchPlanBuild {
   ctx: LaunchContext;
@@ -28,7 +29,7 @@ function accountOf(configDir?: string, name?: string): LaunchAccount {
   return configDir ? { kind: "account", name, configDir } : { kind: "base" };
 }
 
-/** 对应 `buildResumeDirectCmd`：无容器（直连），resume 到当前登录 shell。
+/** 原先对应 `remote-launch.ts` 的 `buildResumeDirectCmd`（〔LR2〕那五个 builder 已删，生产走 `buildLaunchRenderRequest` → Rust）：无容器（直连），resume 到当前登录 shell。
  *
  *  🔴 **`设计/80 §8.4` 那张表里「今天做不到 ↗ 的那一档」就是这一格**（`container:{kind:"none"}`，
  *  `§6.1`/`§5 方案 A` 明确不覆盖它，因为它没有 tmux 可以挂 `@ccm_sid`）。
@@ -46,7 +47,7 @@ export function planResumeDirect(
 ): LaunchPlanBuild {
   const { configDir, accountName, modelOverride, rbindToken } = mods;
   if (!isValidSessionId(sid)) {
-    throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
+    throw new Error(copyText("launchRequests.bad.sid", { value: JSON.stringify(sid) }));
   }
   const ctx: LaunchContext = {
     transport: { kind: "ssh" },
@@ -62,7 +63,7 @@ export function planResumeDirect(
   return { ctx, plan: buildLaunchPlan(ctx) };
 }
 
-/** 对应 `buildResumeTmuxCmd`：新建/幂等接回 tmux，resume 进去。 */
+/** 原先对应 `remote-launch.ts` 的 `buildResumeTmuxCmd`（〔LR2〕那五个 builder 已删，生产走 `buildLaunchRenderRequest` → Rust）：新建/幂等接回 tmux，resume 进去。 */
 export function planResumeTmux(
   sid: string,
   cwd: string,
@@ -72,7 +73,7 @@ export function planResumeTmux(
 ): LaunchPlanBuild {
   const { configDir, accountName, modelOverride, rbindToken } = mods;
   if (!isValidSessionId(sid)) {
-    throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
+    throw new Error(copyText("launchRequests.bad.sid", { value: JSON.stringify(sid) }));
   }
   // F13（用户 2026-08-03：「要撞名检查」）：**这里原本有一个产名的默认值，已删。**
   //
@@ -89,7 +90,7 @@ export function planResumeTmux(
   // ⇒ 把这一路的 `name` 全改成必填，让 `tsc` 把「碰巧」变成「不可能」。
   const tmuxName = name;
   if (!/^[A-Za-z0-9_][A-Za-z0-9_-]*$/.test(tmuxName)) {
-    throw new Error(`非法 tmux 会话名（拒绝拼入命令）: ${JSON.stringify(tmuxName)}`);
+    throw new Error(copyText("launchRequests.bad.tmuxName", { value: JSON.stringify(tmuxName) }));
   }
   const ctx: LaunchContext = {
     transport: { kind: "ssh" },
@@ -105,7 +106,7 @@ export function planResumeTmux(
   return { ctx, plan: buildLaunchPlan(ctx) };
 }
 
-/** 对应 `buildResumeIntoExistingTmuxCmd`：往已存在的 idle tmux 就地送键，不 new-session。 */
+/** 原先对应 `remote-launch.ts` 的 `buildResumeIntoExistingTmuxCmd`（〔LR2〕那五个 builder 已删，生产走 `buildLaunchRenderRequest` → Rust）：往已存在的 idle tmux 就地送键，不 new-session。 */
 export function planResumeIntoExistingTmux(
   sid: string,
   name: string,
@@ -114,10 +115,10 @@ export function planResumeIntoExistingTmux(
 ): LaunchPlanBuild {
   const { configDir, accountName, modelOverride, rbindToken } = mods;
   if (!isValidSessionId(sid)) {
-    throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
+    throw new Error(copyText("launchRequests.bad.sid", { value: JSON.stringify(sid) }));
   }
   if (!/^[A-Za-z0-9_][A-Za-z0-9_-]*$/.test(name)) {
-    throw new Error(`非法 tmux 会话名（拒绝拼入命令）: ${JSON.stringify(name)}`);
+    throw new Error(copyText("launchRequests.bad.tmuxName", { value: JSON.stringify(name) }));
   }
   const ctx: LaunchContext = {
     transport: { kind: "ssh" },
@@ -133,7 +134,7 @@ export function planResumeIntoExistingTmux(
   return { ctx, plan: buildLaunchPlan(ctx) };
 }
 
-/** 对应 `buildLauncherCmd`：「在这台机开新 Claude」——新建/幂等接回 tmux，起全新会话。 */
+/** 原先对应 `remote-launch.ts` 的 `buildLauncherCmd`（〔LR2〕那五个 builder 已删，生产走 `buildLaunchRenderRequest` → Rust）：「在这台机开新 Claude」——新建/幂等接回 tmux，起全新会话。 */
 export function planLauncher(
   cwd: string,
   tmuxName: string,
@@ -143,7 +144,7 @@ export function planLauncher(
   const { configDir, accountName, modelOverride, rbindToken } = mods;
   const name = tmuxName.trim();
   if (!isValidNewTmuxName(name)) {
-    throw new Error(`非法 tmux 会话名（拒绝拼入命令）: ${JSON.stringify(name)}`);
+    throw new Error(copyText("launchRequests.bad.tmuxName", { value: JSON.stringify(name) }));
   }
   const ctx: LaunchContext = {
     transport: { kind: "ssh" },
@@ -189,11 +190,11 @@ export function planLauncher(
 export function validateLocalLaunch(action: LaunchAction, cwd: string | null): void {
   void cwd; // 保留在签名里：调用点按「动作 + 目录」成对传，未来若加 cwd 校验就落在这
   if (action.kind === "resume" && !isValidSessionId(action.sid)) {
-    throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(action.sid)}`);
+    throw new Error(copyText("launchRequests.bad.sid", { value: JSON.stringify(action.sid) }));
   }
 }
 
-/** 对应 `buildAttachCmd`：接回一个已存在的 tmux 会话，不启动任何东西。
+/** 原先对应 `remote-launch.ts` 的 `buildAttachCmd`（〔LR2〕那五个 builder 已删，生产走 `buildLaunchRenderRequest` → Rust）：接回一个已存在的 tmux 会话，不启动任何东西。
  *
  *  ⚠ **刻意不收 `mods`**（原状），于是也**不带启动期令牌** —— 不是漏了：
  *  attach 一个 agent 进程都不起，而令牌的唯一消费者是 agent 进程的 `environ`
@@ -201,7 +202,7 @@ export function validateLocalLaunch(action: LaunchAction, cwd: string | null): v
  *  同向的闸（万一将来这里开始收 `mods`，它也不会往 attach 里注一个没人读的敏感值）。 */
 export function planAttach(name: string): LaunchPlanBuild {
   if (!isValidTmuxName(name)) {
-    throw new Error(`非法 tmux 会话名(拒绝拼入命令): ${JSON.stringify(name)}`);
+    throw new Error(copyText("launchRequests.bad.tmuxName", { value: JSON.stringify(name) }));
   }
   const ctx: LaunchContext = {
     transport: { kind: "ssh" },

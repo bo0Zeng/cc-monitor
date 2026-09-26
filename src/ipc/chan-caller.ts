@@ -10,7 +10,8 @@
  *
  * ⚠ 本文件**不是**通信层成员（它造期限、解释载荷）；也不认识任何一条具体命令 —— 那是各调用方的事。
  */
-import { ChanError, type Budget } from "./chan";
+import { ChanError, type Budget, type CallError } from "./chan";
+import { copyText } from "../copy-table";
 
 /**
  * 造一个期限：从现在起 `ms` 毫秒（`performance.now()` 钟面的绝对时刻）。
@@ -41,7 +42,7 @@ export function readJson(body: Uint8Array): unknown {
 export function linesOf(body: Uint8Array): string[] {
   const v = readJson(body);
   const rows = v !== null && typeof v === "object" ? (v as { lines?: unknown }).lines : undefined;
-  if (!Array.isArray(rows)) throw new Error("应答里没有 `lines` —— 两端契约对不上");
+  if (!Array.isArray(rows)) throw new Error(copyText("chanCaller.linesOf.badShape"));
   return rows
     .filter((r): r is string => typeof r === "string")
     .map((r) => r.trim())
@@ -75,13 +76,35 @@ export function saidOf(e: unknown, oldBackendSays: string): string {
     case "peer": {
       if (err.why === "unsupported") return oldBackendSays;
       const r = refusalOf(err.body);
-      return r ? `那台机器的后端没有答出来（${r.code}）：${r.message}` : "那台机器的后端没有答出来";
+      return r ? copyText("chanCaller.said.errorCoded", { code: r.code, message: r.message }) : copyText("chanCaller.said.error");
     }
     case "hop":
       return err.why === "Overrun"
-        ? "等那台机器的后端答复超时了，这次先不显示"
-        : "现在够不着那台机器的后端（连接不在或断了），这次先不显示";
+        ? copyText("chanCaller.said.timeout")
+        : copyText("chanCaller.said.unreachable");
     case "ours":
-      return err.why === "Cancelled" ? "这次查询已撤回" : "查询没有完成（本程序内部出错）";
+      return err.why === "Cancelled" ? copyText("chanCaller.said.withdrawn") : copyText("chanCaller.said.internal");
+  }
+}
+
+/**
+ * 〔C4e · 第四波 4C〕这一次失败能不能**证明一个字节都没到对端**（F14 那条安全判定：只有这时才许换一条路重做）。
+ *
+ * 判准与 Rust `backend_route::route_call_error` 那一收拢**同一条**（跨语言金样 `tests/__fixtures__/reach-collapse.golden.json`
+ * 钉着两份：Rust 侧把 inbound 的每一种失败分层上线、连同它判出的「可回落」写成金样，本函数读同一份逐行判）：
+ * - `hop` 且 `reach == NotSent`（没有控制通道 · 在飞上限顶满 · 期限在发之前就过了）⇒ 能证明；
+ * - `peer/unsupported`（对端**事前**就说不认这条命令，一个字节没发）⇒ 能证明；
+ * - 其余（`reach` 是 `Unknown` / `Sent` · 对端说了「不行」· 撤了 · 本侧坏了）⇒ **拿不准就按最坏算**，不能证明。
+ *
+ * ⚠ 它**不认识任何一条具体命令**：说的只是通道那一跳的归因（`D7`），不是业务判断。
+ */
+export function provablyNotSent(err: CallError): boolean {
+  switch (err.layer) {
+    case "hop":
+      return err.reach === "NotSent";
+    case "peer":
+      return err.why === "unsupported";
+    case "ours":
+      return false;
   }
 }

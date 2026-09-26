@@ -23,6 +23,7 @@
 //! ⇒ **仓内那份 = 已装那份 + `P4b` 的修复**，是严格更新的一侧，且它 git 管着、判据钉着。
 //! ⇒ **仓内那份当真相源**，本模块把它推下去；反向（把已装那份 import 回仓）会把 `P4b` 撤销。
 
+use crate::copy_table::copy_text;
 use std::path::{Path, PathBuf};
 
 /// 内嵌的那些文件（条数以 `FILES.len()` 为准，判据对拍，不在散文里写数）。**单一事实源 = `src/shared/cc-bus/`**，这里只是编译期固化。
@@ -401,7 +402,7 @@ fn local_ccm_too_old_warning() -> Option<String> {
     //   把常量暴露出来给第二个调用方用，等于给那条判据开了个后门。
     let probe = crate::ccm_probe::probe_local_ccm_uncached(std::time::Duration::from_secs(3));
     if !probe.installed {
-        return Some("本机探不到 `ccm` —— 装出去的 `cc-spawn` 会报「找不到 ccm」。".into());
+        return Some(copy_text("rsCcBusDeploy.ccm.notFound", &[]).into());
     }
     let missing: Vec<&str> = CC_SPAWN_NEEDS
         .iter()
@@ -411,10 +412,7 @@ fn local_ccm_too_old_warning() -> Option<String> {
     if missing.is_empty() {
         return None;
     }
-    Some(format!(
-        "本机 ccm 缺能力 {missing:?} ⇒ 装出去的 `cc-spawn` 会以「ccm 版本太旧」退出。\
-         请把 `shared/ccm` 同步过去（顺序：ccm 先、cc-bus 后）。"
-    ))
+    Some(copy_text("rsCcBusDeploy.ccm.tooOld", &[]))
 }
 
 /// 上一条的 **Windows 对侧** —— 它**真探**，而且探的是**哪一份**说得清〔ccbus-win 09-24〕。
@@ -468,21 +466,19 @@ pub(crate) fn windows_ccm_precheck(
 ) -> String {
     // 〔CP1 台账 09-24〕这几句对用户可见（设置页 cc-bus 区）：不上 markdown 星号、不上 `{:?}` 数组形、
     //   不上工单号、不说内部推理 —— 台账那几行因此从「改」换成「保留」。
-    let join = |xs: &[&str]| xs.join("、");
+    let join = |xs: &[&str]| xs.join(&copy_text("rsCcBusDeploy.win.listSep", &[]));
     let needs = join(CC_SPAWN_NEEDS);
-    let path_caveat =
-        "这里查的是 cc-monitor 自己装的那一份 ccm。cc-spawn 实际调用的是 PATH 上的 ccm，\
-                       在 Windows 上查不到那一个是哪一份。";
+    let path_caveat = &copy_text("rsCcBusDeploy.win.pathCaveat", &[]);
     let Some((at, card)) = ours else {
-        return format!(
-            "本机还没有 cc-monitor 装的 ccm（应在 ~/.cc-monitor/bin/），查不了装出去的 cc-spawn 能不能用。\
-             cc-spawn 启动时需要 ccm 支持：{needs}，缺一项就会退出。请先在设置页装好本机后端，再装 cc-bus。"
+        return copy_text(
+            "rsCcBusDeploy.win.notInstalled",
+            &[("needs", &needs.to_string())],
         );
     };
     if !card.installed {
-        return format!(
-            "问了 cc-monitor 装的 ccm（{at}），它没有回答版本信息，查不了它能不能用。\
-             cc-spawn 启动时需要 ccm 支持：{needs}。"
+        return copy_text(
+            "rsCcBusDeploy.win.noVersion",
+            &[("at", &at.to_string()), ("needs", &needs.to_string())],
         );
     }
     let missing: Vec<&str> = CC_SPAWN_NEEDS
@@ -490,25 +486,46 @@ pub(crate) fn windows_ccm_precheck(
         .copied()
         .filter(|c| !card.capabilities.iter().any(|x| x == c))
         .collect();
-    let build = card.build.as_deref().unwrap_or("未知");
+    let unknown = copy_text("rsCcBusDeploy.win.unknown", &[]);
+    let build = card.build.as_deref().unwrap_or(&unknown);
     if build != want_build {
         let lack = if missing.is_empty() {
             String::new()
         } else {
-            format!("它还缺少：{}，cc-spawn 会因此退出。", join(&missing))
+            copy_text(
+                "rsCcBusDeploy.win.lack",
+                &[("list", &(join(&missing)).to_string())],
+            )
         };
-        return format!(
-            "cc-monitor 装的 ccm（{at}）不是这一版：它的版本是 {build}，这一版需要 {want_build}。\
-             {lack}请在设置页重装本机后端，再装 cc-bus。\n{path_caveat}"
+        return copy_text(
+            "rsCcBusDeploy.win.stale",
+            &[
+                ("at", &at.to_string()),
+                ("build", &build.to_string()),
+                ("wantBuild", &want_build.to_string()),
+                ("lack", &lack.to_string()),
+                ("pathCaveat", &path_caveat.to_string()),
+            ],
         );
     }
     if !missing.is_empty() {
-        return format!(
-            "cc-monitor 装的 ccm（{at}）版本对，但缺少：{}，cc-spawn 会因此退出。请在设置页重装本机后端。\n{path_caveat}",
-            join(&missing)
+        return copy_text(
+            "rsCcBusDeploy.win.missing",
+            &[
+                ("at", &at.to_string()),
+                ("list", &(join(&missing)).to_string()),
+                ("pathCaveat", &path_caveat.to_string()),
+            ],
         );
     }
-    format!("cc-monitor 装的 ccm（{at}）是这一版，cc-spawn 需要的 {needs} 都支持。\n{path_caveat}")
+    copy_text(
+        "rsCcBusDeploy.win.ok",
+        &[
+            ("at", &at.to_string()),
+            ("needs", &needs.to_string()),
+            ("pathCaveat", &path_caveat.to_string()),
+        ],
+    )
 }
 
 /// `cc-spawn` 开头那段能力协商要的东西 —— **与 `src/shared/cc-bus/scripts/cc-spawn` 同一份清单**。

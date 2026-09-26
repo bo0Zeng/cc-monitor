@@ -22,6 +22,7 @@
  */
 
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
+import { copyText } from "../copy-table";
 
 /**
  * S3：本机在账本里的 key。
@@ -50,11 +51,11 @@ export const MACHINE_FACETS: readonly MachineFacet[] = [
 ];
 
 export const FACET_LABELS: Record<MachineFacet, string> = {
-  connection: "连接",
+  connection: copyText("machineStatus.facet.connection"),
   backend: "backend",
   ccm: "ccm",
   acctIso: "acct-iso",
-  accounts: "账号",
+  accounts: copyText("machineStatus.facet.accounts"),
 };
 
 export interface FacetState {
@@ -149,10 +150,10 @@ export function formatAge(at: number, now: number = Date.now()): string {
   // 负数（时钟回拨 / 存档来自另一台机器）也落进这一档 —— 刻意**不**单独写一个
   // `if (d < 0)`：那条分支被这一条完全覆盖，是等价死码（变异验证当场证实：
   // 把它的条件改成永假，行为一字不变）。
-  if (d < MIN) return "刚刚";
-  if (d < HOUR) return `${Math.floor(d / MIN)} 分钟前`;
-  if (d < DAY) return `${Math.floor(d / HOUR)} 小时前`;
-  return `${Math.floor(d / DAY)} 天前`;
+  if (d < MIN) return copyText("machineStatus.age.justNow");
+  if (d < HOUR) return copyText("machineStatus.age.minutes", { n: Math.floor(d / MIN) });
+  if (d < DAY) return copyText("machineStatus.age.hours", { n: Math.floor(d / HOUR) });
+  return copyText("machineStatus.age.days", { n: Math.floor(d / DAY) });
 }
 
 /** 一个格子渲染成什么。`undefined` = 从没记录过。 */
@@ -162,13 +163,13 @@ export function describeFacet(
 ): { icon: string; text: string; tone: "ok" | "fail" | "na" | "unknown" } {
   if (!state) {
     // **不猜**。没测过就写没测过——填个好看的 ✓ 是在替用户下一个他没做过的结论。
-    return { icon: "·", text: "未测过", tone: "unknown" };
+    return { icon: copyText("machineStatus.facet.untestedIcon"), text: copyText("machineStatus.facet.untested"), tone: "unknown" };
   }
   if (state.kind === "na") {
     // 不适用没有新鲜度可言，不带时间。
-    return { icon: "—", text: state.detail ?? "不需要", tone: "na" };
+    return { icon: copyText("machineStatus.facet.naIcon"), text: state.detail ?? copyText("machineStatus.facet.na"), tone: "na" };
   }
-  const icon = state.kind === "ok" ? "✓" : "✗";
+  const icon = state.kind === "ok" ? copyText("machineStatus.facet.okIcon") : copyText("machineStatus.facet.failIcon");
   const head = state.detail ? `${state.detail} · ` : "";
   return {
     icon,

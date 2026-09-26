@@ -106,14 +106,14 @@ impl Base {
 
     pub(crate) fn parse(url: &str) -> Result<Base, BaseIssue> {
         let Some((scheme, rest)) = url.split_once("://") else {
-            return Err(BaseIssue(
-                "base_url 不是一个 URL（要 https:// 或 http:// 打头）",
-            ));
+            return Err(BaseIssue(copy_core::copy_static!(
+                "beRelayUpstream.parse.notUrl"
+            )));
         };
         let Some((_, tls)) = Base::SCHEMES.iter().find(|(s, _)| *s == scheme) else {
-            return Err(BaseIssue(
-                "base_url 的协议不认识（只认 https:// 与 http://）",
-            ));
+            return Err(BaseIssue(copy_core::copy_static!(
+                "beRelayUpstream.parse.badScheme"
+            )));
         };
         let tls = *tls;
         // ★ 这一行是本格的正主：authority 与**路径**从这里分家，
@@ -123,25 +123,30 @@ impl Base {
             None => (rest, ""),
         };
         if authority.is_empty() {
-            return Err(BaseIssue("base_url 里没有主机名"));
+            return Err(BaseIssue(copy_core::copy_static!(
+                "beRelayUpstream.parse.noHost"
+            )));
         }
         // ⚠ 查询串**没有路径也塞得进来**（`https://h?x=1` 里 authority 逐字是 `h?x=1`）
         //   ⇒ 这一格不查的话，那一形会被当成一个叫 `h?x=1` 的主机名接受下来。
         if authority.contains('?') || authority.contains('#') {
-            return Err(BaseIssue(
-                "base_url 里带了查询串或 # 片段 —— 基址只能是「协议 + 主机 + 可选的路径前缀」",
-            ));
+            return Err(BaseIssue(copy_core::copy_static!(
+                "beRelayUpstream.parse.hasQuery"
+            )));
         }
         let (host, port) = match authority.rsplit_once(':') {
             Some((h, p)) => (
                 h.to_string(),
-                p.parse::<u16>()
-                    .map_err(|_| BaseIssue("base_url 的端口读不懂（要 0-65535 的十进制数）"))?,
+                p.parse::<u16>().map_err(|_| {
+                    BaseIssue(copy_core::copy_static!("beRelayUpstream.parse.badPort"))
+                })?,
             ),
             None => (authority.to_string(), if tls { 443u16 } else { 80u16 }),
         };
         if host.is_empty() {
-            return Err(BaseIssue("base_url 里没有主机名"));
+            return Err(BaseIssue(copy_core::copy_static!(
+                "beRelayUpstream.parse.noHost"
+            )));
         }
         Ok(Base {
             tls,
@@ -237,9 +242,9 @@ fn normalize_prefix(raw: &str) -> Result<String, BaseIssue> {
         return Ok(String::new());
     }
     if raw.contains('?') || raw.contains('#') {
-        return Err(BaseIssue(
-            "base_url 里带了查询串或 # 片段 —— 基址只能是「协议 + 主机 + 可选的路径前缀」",
-        ));
+        return Err(BaseIssue(copy_core::copy_static!(
+            "beRelayUpstream.parse.hasQuery"
+        )));
     }
     let trimmed = raw.trim_end_matches('/');
     if trimmed.is_empty() {
@@ -247,9 +252,9 @@ fn normalize_prefix(raw: &str) -> Result<String, BaseIssue> {
         return Ok(String::new());
     }
     if trimmed.starts_with("//") {
-        return Err(BaseIssue(
-            "base_url 的路径前缀以 // 打头 —— 那在 HTTP 请求行里读作另一个主机名",
-        ));
+        return Err(BaseIssue(copy_core::copy_static!(
+            "beRelayUpstream.normalizePrefix.doubleSlash"
+        )));
     }
     Ok(trimmed.to_string())
 }

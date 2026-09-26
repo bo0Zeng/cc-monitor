@@ -54,6 +54,7 @@ import { clipForFile, clipForSymbol, type CoverageReading, type IndexStamp } fro
 import { DiagramPane, type DiagramHost } from "../panorama/diagram-view";
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
+import { copyText } from "../copy-table";
 
 /**
  * 文件详情要的那几样。气泡给得全（score / 符号数）；从团/模块图下钻进来的文件只有路径与所属节点，
@@ -219,8 +220,8 @@ export class PanoramaView implements OverlayHandle {
       this.switchRepo(null);
       this.updateRepoChrome();
       this.showMessage(
-        "无可索引的仓库",
-        "当前没有活跃会话，或活跃会话没有已知工作目录。切到一个本地会话再打开全景。",
+        copyText("panorama.evaluateRepo.noRepo"),
+        copyText("panorama.evaluateRepo.noRepoHint"),
       );
       return;
     }
@@ -293,7 +294,7 @@ export class PanoramaView implements OverlayHandle {
     this.sidebarEl.replaceChildren();
     this.sidebarEl.appendChild(this.sidebarHeader(title, subtitle));
     if (items.length === 0) {
-      this.sidebarEl.appendChild(makeSideNote("（没有可列的条目）"));
+      this.sidebarEl.appendChild(makeSideNote(copyText("panorama.showSideList.empty")));
       return;
     }
     const list = document.createElement("div");
@@ -313,10 +314,10 @@ export class PanoramaView implements OverlayHandle {
 
   /** 标题写清当前看的是哪个仓、从哪来的；「跟随会话」只在手选时出现。 */
   private updateRepoChrome(): void {
-    const src = this.repoOverride !== null ? "手选" : "跟随会话";
+    const src = this.repoOverride !== null ? copyText("panorama.repoChrome.manual") : copyText("panorama.repoChrome.follow");
     // 〔RM1c〕远端仓在标题上带机器名（同一个路径在两台机器上是两个仓）。
-    const where = isRemoteOrigin(this.origin) ? ` · 远端 ${this.origin}` : "";
-    this.titleEl.textContent = this.repo ? `代码全景 · ${basename(this.repo)}${where}（${src}）` : "代码全景";
+    const where = isRemoteOrigin(this.origin) ? copyText("panorama.repoChrome.remote", { machine: this.origin }) : "";
+    this.titleEl.textContent = this.repo ? copyText("panorama.repoChrome.title", { repo: basename(this.repo), where, src }) : copyText("panorama.chrome.title");
     this.titleEl.title = this.repo ? api.repoLabel(this.at(this.repo)) : "";
     this.followBtn.style.display = this.repoOverride !== null ? "" : "none";
   }
@@ -330,9 +331,9 @@ export class PanoramaView implements OverlayHandle {
   private async pickRepo(): Promise<void> {
     let picked: string | string[] | null;
     try {
-      picked = await openDialog({ directory: true, multiple: false, title: "选一个本机仓看代码全景" });
+      picked = await openDialog({ directory: true, multiple: false, title: copyText("panorama.pickRepo.dialogTitle") });
     } catch (e) {
-      showActionFailureToast("打不开选目录对话框", String(e));
+      showActionFailureToast(copyText("panorama.pickRepo.failed"), String(e));
       return;
     }
     if (typeof picked !== "string" || picked === "") return;
@@ -356,7 +357,7 @@ export class PanoramaView implements OverlayHandle {
     this.touchedFiles = null;
     this.pendingHighlight = null;
     this.updateHighlightLegend(0, 0);
-    this.showLoading("检查索引状态…");
+    this.showLoading(copyText("panorama.load.checking"));
     try {
       const st = await api.status(this.at(repo));
       if (seq !== this.loadSeq) return;
@@ -365,10 +366,10 @@ export class PanoramaView implements OverlayHandle {
       if (api.panoramaLoadDecision(st) === "enable-gate") {
         this.hideLoading();
         this.showMessage(
-          "尚未为本仓建立代码索引",
-          "全景图需先解析本仓代码（tree-sitter，大仓较慢）。索引是纯缓存，存在 cc-monitor 数据目录、不写进你的仓库。点下方按钮启用本仓代码分析。",
+          copyText("panorama.load.noIndexTitle"),
+          copyText("panorama.load.noIndexBody"),
           {
-            label: "建立索引（启用本仓代码分析）",
+            label: copyText("panorama.load.build"),
             // 显式一次性 disable，防连点（不依赖 hideMessage 的 display:none 隐式防护）。
             onClick: (btn) => {
               btn.disabled = true;
@@ -382,11 +383,11 @@ export class PanoramaView implements OverlayHandle {
       // opt-in——避免静默展示过期图）。非陈旧直接加载。
       if (st.stale) {
         const cancel = this.cancelHandle();
-        this.showLoading("索引已陈旧，重建中…", cancel.abort);
+        this.showLoading(copyText("panorama.load.stale"), cancel.abort);
         await api.index(this.at(repo), cancel.signal);
         if (seq !== this.loadSeq) return;
       }
-      this.showLoading("加载全景…");
+      this.showLoading(copyText("panorama.load.loading"));
       const ov = await api.overview(this.at(repo));
       if (seq !== this.loadSeq) return;
       this.applyOverview(ov, repo);
@@ -397,8 +398,8 @@ export class PanoramaView implements OverlayHandle {
         this.showIndexCancelled(repo);
         return;
       }
-      showActionFailureToast("全景加载失败", String(e));
-      this.showMessage("加载失败", String(e));
+      showActionFailureToast(copyText("panorama.load.failed"), String(e));
+      this.showMessage(copyText("panorama.load.failedShort"), String(e));
     }
   }
 
@@ -407,11 +408,11 @@ export class PanoramaView implements OverlayHandle {
     const seq = ++this.loadSeq;
     this.hideMessage();
     const cancel = this.cancelHandle();
-    this.showLoading("首次建立索引中…（大仓较慢，请稍候）", cancel.abort);
+    this.showLoading(copyText("panorama.enableAndIndex.indexing"), cancel.abort);
     try {
       await api.index(this.at(repo), cancel.signal);
       if (seq !== this.loadSeq) return;
-      this.showLoading("加载全景…");
+      this.showLoading(copyText("panorama.load.loading"));
       const ov = await api.overview(this.at(repo));
       if (seq !== this.loadSeq) return;
       this.applyOverview(ov, repo);
@@ -422,8 +423,8 @@ export class PanoramaView implements OverlayHandle {
         this.showIndexCancelled(repo);
         return;
       }
-      showActionFailureToast("建立索引失败", String(e));
-      this.showMessage("建立索引失败", String(e));
+      showActionFailureToast(copyText("panorama.enableAndIndex.failed"), String(e));
+      this.showMessage(copyText("panorama.enableAndIndex.failed"), String(e));
     }
   }
 
@@ -439,10 +440,10 @@ export class PanoramaView implements OverlayHandle {
   /** 〔RM1f〕建索引被人撤了：那一趟在后端已经停下；给一个重新开始的按钮。 */
   private showIndexCancelled(repo: string): void {
     this.showMessage(
-      "已取消建立索引",
-      "那一趟已经停下，这个仓的索引没有建完。想看全景时再点一次。",
+      copyText("panorama.showIndexCancelled.title"),
+      copyText("panorama.showIndexCancelled.hint"),
       {
-        label: "重新建立索引",
+        label: copyText("panorama.showIndexCancelled.rebuild"),
         onClick: (btn) => {
           btn.disabled = true;
           void this.enableAndIndex(repo);
@@ -461,8 +462,8 @@ export class PanoramaView implements OverlayHandle {
     this.fitView();
     if (this.layout.bubbles.length === 0) {
       this.showMessage(
-        "暂无可视化的脊柱文件",
-        "该仓的符号太少、或大部分文件解析失败——看顶部覆盖信号。仍可用上方搜索框查符号。",
+        copyText("panorama.applyOverview.emptyTitle"),
+        copyText("panorama.applyOverview.emptyHint"),
       );
     } else {
       this.hideMessage();
@@ -484,11 +485,11 @@ export class PanoramaView implements OverlayHandle {
    */
   async highlightSession(files: string[]): Promise<void> {
     if (!this.repo) {
-      showActionFailureToast("无法高亮", "当前没有在看的仓库，无法高亮会话改动。");
+      showActionFailureToast(copyText("panorama.highlightSession.cannotTitle"), copyText("panorama.highlightSession.noRepo"));
       return;
     }
     if (files.length === 0) {
-      showActionFailureToast("无改动可高亮", "该会话没有用编辑类工具改过文件。");
+      showActionFailureToast(copyText("panorama.highlightSession.nothingTitle"), copyText("panorama.highlightSession.nothing"));
       return;
     }
     const repo = this.repo;
@@ -510,7 +511,7 @@ export class PanoramaView implements OverlayHandle {
       this.scheduleDraw();
     } catch (e) {
       if (seq !== this.loadSeq) return;
-      showActionFailureToast("高亮会话改动失败", String(e));
+      showActionFailureToast(copyText("panorama.highlightSession.failed"), String(e));
     }
   }
 
@@ -529,11 +530,11 @@ export class PanoramaView implements OverlayHandle {
     const seq = ++this.loadSeq;
     this.refreshBtn.disabled = true;
     const cancel = this.cancelHandle();
-    this.showLoading("重建索引中…", cancel.abort);
+    this.showLoading(copyText("panorama.refresh.rebuilding"), cancel.abort);
     try {
       await api.reindex(this.at(repo), cancel.signal);
       if (seq !== this.loadSeq) return;
-      this.showLoading("加载全景…");
+      this.showLoading(copyText("panorama.load.loading"));
       const ov = await api.overview(this.at(repo));
       if (seq !== this.loadSeq) return;
       this.applyOverview(ov, repo);
@@ -544,7 +545,7 @@ export class PanoramaView implements OverlayHandle {
         this.showIndexCancelled(repo);
         return;
       }
-      showActionFailureToast("重建索引失败", String(e));
+      showActionFailureToast(copyText("panorama.refresh.failed"), String(e));
     } finally {
       if (seq === this.loadSeq) this.refreshBtn.disabled = false;
     }
@@ -564,21 +565,21 @@ export class PanoramaView implements OverlayHandle {
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
     closeBtn.className = "panorama-btn panorama-back";
-    closeBtn.textContent = "← 返回";
+    closeBtn.textContent = copyText("panorama.build.back");
     closeBtn.addEventListener("click", () => this.close());
     bar.appendChild(closeBtn);
 
     this.titleEl = document.createElement("span");
     this.titleEl.className = "panorama-title";
-    this.titleEl.textContent = "代码全景";
+    this.titleEl.textContent = copyText("panorama.chrome.title");
     bar.appendChild(this.titleEl);
 
     const pickBtn = document.createElement("button");
     pickBtn.type = "button";
     pickBtn.className = "panorama-btn";
     pickBtn.dataset.pano = "pick-repo";
-    pickBtn.textContent = "换仓…";
-    pickBtn.title = "自己挑一个本机目录看全景（不跟着活跃会话的工作目录走）";
+    pickBtn.textContent = copyText("panorama.build.pick");
+    pickBtn.title = copyText("panorama.build.pickHint");
     pickBtn.addEventListener("click", () => void this.pickRepo());
     bar.appendChild(pickBtn);
 
@@ -586,8 +587,8 @@ export class PanoramaView implements OverlayHandle {
     this.followBtn.type = "button";
     this.followBtn.className = "panorama-btn";
     this.followBtn.dataset.pano = "follow-session";
-    this.followBtn.textContent = "跟随会话";
-    this.followBtn.title = "撤掉手选的仓，回到活跃会话的工作目录";
+    this.followBtn.textContent = copyText("panorama.build.follow");
+    this.followBtn.title = copyText("panorama.build.followHint");
     this.followBtn.style.display = "none";
     this.followBtn.addEventListener("click", () => void this.followSession());
     bar.appendChild(this.followBtn);
@@ -596,7 +597,7 @@ export class PanoramaView implements OverlayHandle {
     this.searchInput = document.createElement("input");
     this.searchInput.type = "search";
     this.searchInput.className = "panorama-search";
-    this.searchInput.placeholder = "搜索符号（函数 / 方法 / 类名子串）· 回车";
+    this.searchInput.placeholder = copyText("panorama.build.search");
     let debounce: number | undefined;
     this.searchInput.addEventListener("input", () => {
       window.clearTimeout(debounce);
@@ -620,8 +621,8 @@ export class PanoramaView implements OverlayHandle {
     const fitBtn = document.createElement("button");
     fitBtn.type = "button";
     fitBtn.className = "panorama-btn";
-    fitBtn.textContent = "适配";
-    fitBtn.title = "重置视图，居中铺满";
+    fitBtn.textContent = copyText("panorama.build.fit");
+    fitBtn.title = copyText("panorama.build.fitHint");
     fitBtn.addEventListener("click", () => {
       this.fitView();
       this.scheduleDraw();
@@ -631,8 +632,8 @@ export class PanoramaView implements OverlayHandle {
     this.refreshBtn = document.createElement("button");
     this.refreshBtn.type = "button";
     this.refreshBtn.className = "panorama-btn";
-    this.refreshBtn.textContent = "刷新";
-    this.refreshBtn.title = "重建索引（改了代码后刷新全景）";
+    this.refreshBtn.textContent = copyText("panorama.build.refresh");
+    this.refreshBtn.title = copyText("panorama.build.refreshHint");
     this.refreshBtn.addEventListener("click", () => void this.refresh());
     bar.appendChild(this.refreshBtn);
 
@@ -640,8 +641,8 @@ export class PanoramaView implements OverlayHandle {
     const driftBtn = document.createElement("button");
     driftBtn.type = "button";
     driftBtn.className = "panorama-btn";
-    driftBtn.textContent = "文档漂移";
-    driftBtn.title = "仓里 .md 指向的目标文件/符号已失效（悬空链接）。反映上次索引快照，改了代码请先刷新。";
+    driftBtn.textContent = copyText("panorama.build.drift");
+    driftBtn.title = copyText("panorama.build.driftHint");
     driftBtn.addEventListener("click", () => void this.showDrift());
     bar.appendChild(driftBtn);
 
@@ -652,8 +653,8 @@ export class PanoramaView implements OverlayHandle {
     queueBtn.type = "button";
     queueBtn.className = "panorama-btn";
     queueBtn.dataset.pano = "ann-queue";
-    queueBtn.textContent = "批注审批";
-    queueBtn.title = "列出本仓全部批注：agent 提议、待你批准的在上；批准后 agent 才看得见。";
+    queueBtn.textContent = copyText("panorama.build.annotations");
+    queueBtn.title = copyText("panorama.build.annotationsHint");
     queueBtn.addEventListener("click", () => void this.showAnnotationQueue());
     bar.appendChild(queueBtn);
 
@@ -674,7 +675,7 @@ export class PanoramaView implements OverlayHandle {
     const clearBtn = document.createElement("button");
     clearBtn.type = "button";
     clearBtn.className = "panorama-btn panorama-highlight-clear";
-    clearBtn.textContent = "清除高亮";
+    clearBtn.textContent = copyText("panorama.build.clearHighlight");
     clearBtn.addEventListener("click", () => this.clearHighlight());
     this.highlightBarEl.appendChild(clearBtn);
     view.appendChild(this.highlightBarEl);
@@ -739,8 +740,7 @@ export class PanoramaView implements OverlayHandle {
     }
     const extra = total - shown;
     this.highlightTextEl.textContent =
-      `本会话改了 ${total} 个文件，图上高亮 ${shown} 个` +
-      (extra > 0 ? `（其余 ${extra} 个为非脊柱文件 / 不在本仓，未画）` : "");
+      copyText("panorama.highlightLegend.text", { total, shown, rest: (extra > 0 ? copyText("panorama.highlightLegend.rest", { extra }) : "") });
     this.highlightBarEl.style.display = "";
   }
 
@@ -758,10 +758,10 @@ export class PanoramaView implements OverlayHandle {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "panorama-btn";
-      btn.textContent = "取消";
+      btn.textContent = copyText("panorama.showLoading.cancel");
       btn.addEventListener("click", () => {
         btn.disabled = true;
-        label.textContent = "正在取消…";
+        label.textContent = copyText("panorama.showLoading.cancelling");
         onCancel();
       });
       this.loadingEl.appendChild(btn);
@@ -1057,8 +1057,7 @@ export class PanoramaView implements OverlayHandle {
     const meta = document.createElement("div");
     meta.className = "panorama-tt-meta";
     meta.textContent =
-      `score ${fmtScore(b.score)} · ${b.symbols} 符号 · ${b.subsystem}` +
-      (b.isEntry ? " · 入口点" : "");
+      copyText("panorama.showTooltip.meta", { score: fmtScore(b.score), symbols: b.symbols, subsystem: b.subsystem, entry: (b.isEntry ? copyText("panorama.showTooltip.entry") : "") });
     this.tooltipEl.appendChild(meta);
     const wrapRect = this.canvasWrap.getBoundingClientRect();
     let x = clientX - wrapRect.left + 14;
@@ -1082,25 +1081,25 @@ export class PanoramaView implements OverlayHandle {
     const repo = this.repo;
     const seq = ++this.searchSeq;
     this.openSidebar();
-    this.renderSidebarStatus("搜索中…");
+    this.renderSidebarStatus(copyText("panorama.runSearch.searching"));
     try {
       const syms = await api.search(this.at(repo), query, 40);
       if (seq !== this.searchSeq || this.repo !== repo) return;
       this.renderSearchResults(query, syms);
     } catch (e) {
       if (seq !== this.searchSeq) return;
-      this.renderSidebarStatus(`搜索失败：${String(e)}`);
-      showActionFailureToast("符号搜索失败", String(e));
+      this.renderSidebarStatus(copyText("panorama.runSearch.failedInline", { e: String(e) }));
+      showActionFailureToast(copyText("panorama.runSearch.failed"), String(e));
     }
   }
 
   private renderSearchResults(query: string, syms: Symbol[]): void {
     this.sidebarEl.replaceChildren();
     this.sidebarEl.appendChild(
-      this.sidebarHeader(`搜索「${query}」`, `${syms.length} 个符号`),
+      this.sidebarHeader(copyText("panorama.searchResults.title", { query }), copyText("panorama.searchResults.count", { n: syms.length })),
     );
     if (syms.length === 0) {
-      this.sidebarEl.appendChild(makeSideNote("无匹配符号。裸名不解析，试试函数/方法/类的名字子串。"));
+      this.sidebarEl.appendChild(makeSideNote(copyText("panorama.searchResults.none")));
       return;
     }
     this.sidebarEl.appendChild(this.buildSymbolList(syms));
@@ -1140,13 +1139,13 @@ export class PanoramaView implements OverlayHandle {
     const repo = this.repo;
     const seq = ++this.searchSeq;
     this.openSidebar();
-    this.renderSidebarStatus("加载符号详情…");
+    this.renderSidebarStatus(copyText("panorama.nodeDetail.loading"));
     try {
       // 索引读数与节点详情**同一刻取**：「复制给 agent」要说清这份详情是哪一次索引的（CP7）。
       const [nv, stamp] = await Promise.all([api.node(this.at(repo), id), this.stampOf(repo)]);
       if (seq !== this.searchSeq || this.repo !== repo) return;
       if (!nv) {
-        this.renderSidebarStatus(`未找到符号：${id}`);
+        this.renderSidebarStatus(copyText("panorama.nodeDetail.notFound", { id }));
         return;
       }
       this.selSymbol = id;
@@ -1154,8 +1153,8 @@ export class PanoramaView implements OverlayHandle {
       this.renderNodeDetail(nv, stamp);
     } catch (e) {
       if (seq !== this.searchSeq) return;
-      this.renderSidebarStatus(`加载失败：${String(e)}`);
-      showActionFailureToast("符号详情加载失败", String(e));
+      this.renderSidebarStatus(copyText("panorama.nodeDetail.failedInline", { e: String(e) }));
+      showActionFailureToast(copyText("panorama.nodeDetail.failed"), String(e));
     }
   }
 
@@ -1171,11 +1170,11 @@ export class PanoramaView implements OverlayHandle {
     const meta = document.createElement("div");
     meta.className = "panorama-node-meta";
     // F68：签名放最前（最有用）；后端拿不到（body 字段非标准/非可调用符号）则不显示这行。
-    if (s.signature) appendMetaRow(meta, "签名", s.signature, true);
-    appendMetaRow(meta, "全限定 id", s.id, true);
-    appendMetaRow(meta, "位置", `${s.file}:${s.start_line}-${s.end_line}`, true);
-    appendMetaRow(meta, "语言", s.lang, false);
-    appendMetaRow(meta, "类型", s.kind, false);
+    if (s.signature) appendMetaRow(meta, copyText("panorama.nodeDetail.signature"), s.signature, true);
+    appendMetaRow(meta, copyText("panorama.nodeDetail.qualifiedId"), s.id, true);
+    appendMetaRow(meta, copyText("panorama.nodeDetail.location"), `${s.file}:${s.start_line}-${s.end_line}`, true);
+    appendMetaRow(meta, copyText("panorama.nodeDetail.lang"), s.lang, false);
+    appendMetaRow(meta, copyText("panorama.nodeDetail.kind"), s.kind, false);
     detail.appendChild(meta);
     // CP7：复制给 agent —— 一次性文本，自带住址 ＋ 索引读数 ＋「看不见 / 分不清」那一行。
     // 覆盖读数与索引读数**同一刻定格**（渲染时），别让点击时新刷的 overview 配上旧详情。
@@ -1183,7 +1182,7 @@ export class PanoramaView implements OverlayHandle {
       const repo = this.repo;
       const coverage = this.coverageReading();
       detail.appendChild(
-        this.copyButton("复制给 agent", "copy-agent", () =>
+        this.copyButton(copyText("panorama.copyButton.agent"), "copy-agent", () =>
           clipForSymbol(
             { repo: api.repoLabel(this.at(repo)), stamp, coverage },
             s,
@@ -1197,11 +1196,11 @@ export class PanoramaView implements OverlayHandle {
 
     // callees（它调用了谁）
     detail.appendChild(
-      this.edgeSection("调用了（callees）", nv.callees, "to"),
+      this.edgeSection(copyText("panorama.nodeDetail.callees"), nv.callees, "to"),
     );
     // callers（谁调用了它）
     detail.appendChild(
-      this.edgeSection("被调用（callers）", nv.callers, "from"),
+      this.edgeSection(copyText("panorama.nodeDetail.callers"), nv.callers, "from"),
     );
 
     // P7b（全景 P4，#79）：**多跳**子图 / 影响面。
@@ -1217,13 +1216,13 @@ export class PanoramaView implements OverlayHandle {
       sec.className = "panorama-node-section";
       const h = document.createElement("div");
       h.className = "panorama-node-section-title";
-      h.textContent = `关联文档（${nv.docs.length}）`;
+      h.textContent = copyText("panorama.nodeDetail.docs", { n: nv.docs.length });
       sec.appendChild(h);
       for (const d of nv.docs) {
         const row = document.createElement("div");
         row.className = "panorama-doc-row";
         row.textContent = d.doc_path;
-        row.title = `来源：${d.source}${d.target_symbol ? ` · ${d.target_symbol}` : ""}`;
+        row.title = copyText("panorama.nodeDetail.docSource", { source: d.source, symbol: d.target_symbol ? ` · ${d.target_symbol}` : "" });
         sec.appendChild(row);
       }
       detail.appendChild(sec);
@@ -1242,7 +1241,7 @@ export class PanoramaView implements OverlayHandle {
     sec.className = "panorama-node-section";
     const h = document.createElement("div");
     h.className = "panorama-node-section-title";
-    h.textContent = `批注（${nv.annotations.length}）`;
+    h.textContent = copyText("panorama.annotation.head", { n: nv.annotations.length });
     sec.appendChild(h);
     for (const a of nv.annotations) {
       const row = document.createElement("div");
@@ -1255,12 +1254,12 @@ export class PanoramaView implements OverlayHandle {
       foot.className = "panorama-ann-foot";
       const author = document.createElement("span");
       author.className = "panorama-ann-author";
-      author.textContent = `${a.author} · ${originLabel(a.origin)}` + (a.status === "Proposed" ? " · 待批准" : "");
+      author.textContent = `${a.author} · ${originLabel(a.origin)}` + (a.status === "Proposed" ? copyText("panorama.annotation.pending") : "");
       foot.appendChild(author);
       const del = document.createElement("button");
       del.type = "button";
       del.className = "panorama-btn panorama-ann-del";
-      del.textContent = "删除";
+      del.textContent = copyText("panorama.annotation.delete");
       del.addEventListener("click", () =>
         void this.mutateAnnotation(() => api.removeAnnotation(this.at(this.repo ?? ""), a.id), s.id),
       );
@@ -1273,12 +1272,12 @@ export class PanoramaView implements OverlayHandle {
     form.className = "panorama-ann-form";
     const ta = document.createElement("textarea");
     ta.className = "panorama-ann-input";
-    ta.placeholder = "给这个符号写条批注…（落进仓库、可随代码提交）";
+    ta.placeholder = copyText("panorama.annotation.placeholder");
     form.appendChild(ta);
     const addBtn = document.createElement("button");
     addBtn.type = "button";
     addBtn.className = "panorama-btn";
-    addBtn.textContent = "添加批注";
+    addBtn.textContent = copyText("panorama.annotation.add");
     addBtn.addEventListener("click", () => {
       const bodyText = ta.value.trim();
       if (!bodyText) return;
@@ -1298,19 +1297,19 @@ export class PanoramaView implements OverlayHandle {
     sec.className = "panorama-node-section";
     const h = document.createElement("div");
     h.className = "panorama-node-section-title";
-    h.textContent = "关联文档";
+    h.textContent = copyText("panorama.docLink.title");
     sec.appendChild(h);
     const form = document.createElement("div");
     form.className = "panorama-ann-form";
     const input = document.createElement("input");
     input.type = "text";
     input.className = "panorama-ann-input";
-    input.placeholder = "把某 .md（仓库相对路径）关联到此符号…";
+    input.placeholder = copyText("panorama.docLink.placeholder");
     form.appendChild(input);
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "panorama-btn";
-    btn.textContent = "关联";
+    btn.textContent = copyText("panorama.docLink.link");
     btn.addEventListener("click", () => {
       const doc = input.value.trim();
       if (!doc) return;
@@ -1328,7 +1327,7 @@ export class PanoramaView implements OverlayHandle {
       await op();
       await this.openNodeDetail(symbolId);
     } catch (e) {
-      showActionFailureToast("批注操作失败", String(e));
+      showActionFailureToast(copyText("panorama.mutateAnnotation.failed"), String(e));
     }
   }
 
@@ -1342,7 +1341,7 @@ export class PanoramaView implements OverlayHandle {
     sec.className = "panorama-node-section panorama-subgraph";
     const h = document.createElement("div");
     h.className = "panorama-node-section-title";
-    h.textContent = "调用子图 / 影响面";
+    h.textContent = copyText("panorama.subgraph.title");
     sec.appendChild(h);
 
     const bar = document.createElement("div");
@@ -1352,7 +1351,7 @@ export class PanoramaView implements OverlayHandle {
     for (let d = 1; d <= MAX_DEPTH; d++) {
       const o = document.createElement("option");
       o.value = String(d);
-      o.textContent = `${d} 跳`;
+      o.textContent = copyText("panorama.subgraph.hops", { d });
       depthSel.appendChild(o);
     }
     const out = document.createElement("div");
@@ -1373,8 +1372,8 @@ export class PanoramaView implements OverlayHandle {
         // ⚠ 截断必须**说清**：截了不说，用户会把半份当成全部。
         head.textContent =
           l.truncated > 0
-            ? `第 ${l.depth} 跳（${l.ids.length} 条，还有 ${l.truncated} 条没显示）`
-            : `第 ${l.depth} 跳（${l.ids.length} 条）`;
+            ? copyText("panorama.subgraph.layerTruncated", { depth: l.depth, n: l.ids.length, truncated: l.truncated })
+            : copyText("panorama.subgraph.layer", { depth: l.depth, n: l.ids.length });
         out.appendChild(head);
         for (const id of l.ids) {
           const row = document.createElement("button");
@@ -1398,18 +1397,18 @@ export class PanoramaView implements OverlayHandle {
       out.replaceChildren();
       const loading = document.createElement("div");
       loading.className = "panorama-edge-empty";
-      loading.textContent = "读取中…";
+      loading.textContent = copyText("panorama.subgraph.loading");
       out.appendChild(loading);
       try {
         if (what === "subgraph") {
           const depth = clampDepth(Number(depthSel.value));
           const sgv = await api.subgraph(this.at(repo), symbol, depth);
           if (mine !== gen) return; // 期间点了别的，这次的结果作废
-          render(layerSubGraph(sgv, symbol), "（邻域为空）");
+          render(layerSubGraph(sgv, symbol), copyText("panorama.subgraph.emptyNeighbors"));
         } else {
           const imp = await api.impact(this.at(repo), symbol);
           if (mine !== gen) return;
-          render(layerImpact(imp), "（没有反向可达的调用者）");
+          render(layerImpact(imp), copyText("panorama.subgraph.noCallers"));
         }
       } catch (e) {
         if (mine !== gen) return;
@@ -1417,7 +1416,7 @@ export class PanoramaView implements OverlayHandle {
         const err = document.createElement("div");
         err.className = "panorama-edge-empty";
         // 「读不到」与「就是空的」是两件事，下一步完全不同 —— 别说成同一句。
-        err.textContent = `读不到：${String(e)}`;
+        err.textContent = copyText("panorama.subgraph.failed", { e: String(e) });
         out.appendChild(err);
       }
     };
@@ -1425,13 +1424,13 @@ export class PanoramaView implements OverlayHandle {
     const goSub = document.createElement("button");
     goSub.type = "button";
     goSub.className = "panorama-subgraph-go";
-    goSub.textContent = "展开子图";
+    goSub.textContent = copyText("panorama.subgraph.expand");
     goSub.addEventListener("click", () => void run("subgraph"));
     const goImp = document.createElement("button");
     goImp.type = "button";
     goImp.className = "panorama-impact-go";
-    goImp.textContent = "影响面";
-    goImp.title = "改这个符号会波及谁（反向可达的**全部**传递调用者，不是一跳）";
+    goImp.textContent = copyText("panorama.subgraph.impact");
+    goImp.title = copyText("panorama.subgraph.impactHint");
     goImp.addEventListener("click", () => void run("impact"));
     bar.append(depthSel, goSub, goImp);
     sec.append(bar, out);
@@ -1448,7 +1447,7 @@ export class PanoramaView implements OverlayHandle {
     if (edges.length === 0) {
       const empty = document.createElement("div");
       empty.className = "panorama-edge-empty";
-      empty.textContent = "（无 / 未解析）";
+      empty.textContent = copyText("panorama.edgeSection.none");
       sec.appendChild(empty);
       return sec;
     }
@@ -1495,11 +1494,11 @@ export class PanoramaView implements OverlayHandle {
     detail.className = "panorama-node-detail";
     const meta = document.createElement("div");
     meta.className = "panorama-node-meta";
-    appendMetaRow(meta, "文件", b.file, true);
+    appendMetaRow(meta, copyText("panorama.fileDetail.file"), b.file, true);
     if (b.score !== undefined) appendMetaRow(meta, "score", fmtScore(b.score), false);
-    if (b.symbols !== undefined) appendMetaRow(meta, "符号数", String(b.symbols), false);
-    appendMetaRow(meta, "子系统", b.subsystem, false);
-    if (b.isEntry) appendMetaRow(meta, "入口点", "是（entry point）", false);
+    if (b.symbols !== undefined) appendMetaRow(meta, copyText("panorama.fileDetail.symbols"), String(b.symbols), false);
+    appendMetaRow(meta, copyText("panorama.fileDetail.subsystem"), b.subsystem, false);
+    if (b.isEntry) appendMetaRow(meta, copyText("panorama.fileDetail.entry"), copyText("panorama.fileDetail.entryYes"), false);
     detail.appendChild(meta);
     this.sidebarEl.appendChild(detail);
 
@@ -1507,7 +1506,7 @@ export class PanoramaView implements OverlayHandle {
     // 异步拉，占位「加载中」；竞态用 searchSeq 代际（与搜索/节点详情同一侧栏世代）。
     const symWrap = document.createElement("div");
     symWrap.className = "panorama-file-symbols";
-    symWrap.appendChild(makeSideNote("加载符号…"));
+    symWrap.appendChild(makeSideNote(copyText("panorama.fileDetail.loading")));
     this.sidebarEl.appendChild(symWrap);
     void this.loadFileSymbols(b, symWrap);
   }
@@ -1525,7 +1524,7 @@ export class PanoramaView implements OverlayHandle {
       // CP7：文件那一级的「复制给 agent」（符号列表到手之后才有东西可复制）。
       const coverage = this.coverageReading();
       symWrap.appendChild(
-        this.copyButton("复制给 agent", "copy-agent", () =>
+        this.copyButton(copyText("panorama.copyButton.agent"), "copy-agent", () =>
           clipForFile(
             { repo: api.repoLabel(this.at(repo)), stamp, coverage },
             { ...b, symbols: b.symbols ?? syms.length },
@@ -1534,41 +1533,41 @@ export class PanoramaView implements OverlayHandle {
         ),
       );
       if (syms.length === 0) {
-        symWrap.appendChild(makeSideNote("该文件无已索引符号（符号太少 / 解析失败 / 非代码文件）。"));
+        symWrap.appendChild(makeSideNote(copyText("panorama.fileSymbols.none")));
         return;
       }
       const hd = document.createElement("div");
       hd.className = "panorama-sym-listhead";
-      hd.textContent = `${syms.length} 个符号 · 点击看 callers/callees`;
+      hd.textContent = copyText("panorama.fileSymbols.count", { n: syms.length });
       symWrap.appendChild(hd);
       symWrap.appendChild(this.buildSymbolList(syms));
     } catch (e) {
       if (seq !== this.searchSeq) return;
       symWrap.replaceChildren();
-      symWrap.appendChild(makeSideNote(`加载符号失败：${String(e)}`));
+      symWrap.appendChild(makeSideNote(copyText("panorama.fileSymbols.failed", { e: String(e) })));
     }
   }
 
   /** F71：文档漂移面板——列仓里 .md 指向已失效的悬空链接（doc → target + reason）。 */
   private async showDrift(): Promise<void> {
     if (!this.repo) {
-      showActionFailureToast("无法查漂移", "当前没有在看的仓库。");
+      showActionFailureToast(copyText("panorama.drift.cannotTitle"), copyText("panorama.noRepo.short"));
       return;
     }
     const repo = this.repo;
     const seq = ++this.searchSeq;
     this.openSidebar();
-    this.renderSidebarStatus("检查文档漂移…");
+    this.renderSidebarStatus(copyText("panorama.drift.checking"));
     try {
       const items = await api.drift(this.at(repo));
       if (seq !== this.searchSeq || this.repo !== repo) return;
       this.sidebarEl.replaceChildren();
-      this.sidebarEl.appendChild(this.sidebarHeader("文档漂移", `${items.length} 处悬空链接`));
+      this.sidebarEl.appendChild(this.sidebarHeader(copyText("panorama.drift.title"), copyText("panorama.drift.count", { n: items.length })));
       this.sidebarEl.appendChild(
-        makeSideNote("反映上次索引快照——改了代码请先「刷新」再查。"),
+        makeSideNote(copyText("panorama.drift.snapshotNote")),
       );
       if (items.length === 0) {
-        this.sidebarEl.appendChild(makeSideNote("没有悬空文档链接 ✓"));
+        this.sidebarEl.appendChild(makeSideNote(copyText("panorama.drift.none")));
         return;
       }
       const list = document.createElement("div");
@@ -1595,8 +1594,8 @@ export class PanoramaView implements OverlayHandle {
       this.sidebarEl.appendChild(list);
     } catch (e) {
       if (seq !== this.searchSeq) return;
-      this.renderSidebarStatus(`查漂移失败：${String(e)}`);
-      showActionFailureToast("文档漂移查询失败", String(e));
+      this.renderSidebarStatus(copyText("panorama.drift.failedInline", { e: String(e) }));
+      showActionFailureToast(copyText("panorama.drift.failed"), String(e));
     }
   }
 
@@ -1614,21 +1613,21 @@ export class PanoramaView implements OverlayHandle {
    */
   private async showAnnotationQueue(): Promise<void> {
     if (!this.repo) {
-      showActionFailureToast("无法列批注", "当前没有在看的仓库。");
+      showActionFailureToast(copyText("panorama.queue.cannotTitle"), copyText("panorama.noRepo.short"));
       return;
     }
     const repo = this.repo;
     const seq = ++this.searchSeq;
     this.openSidebar();
-    this.renderSidebarStatus("读取批注…");
+    this.renderSidebarStatus(copyText("panorama.queue.loading"));
     try {
       const all = await api.listAnnotations(this.at(repo));
       if (seq !== this.searchSeq || this.repo !== repo) return;
       this.renderAnnotationQueue(repo, all);
     } catch (e) {
       if (seq !== this.searchSeq) return;
-      this.renderSidebarStatus(`读取批注失败：${String(e)}`);
-      showActionFailureToast("读取批注失败", String(e));
+      this.renderSidebarStatus(copyText("panorama.queue.failedInline", { e: String(e) }));
+      showActionFailureToast(copyText("panorama.queue.failed"), String(e));
     }
   }
 
@@ -1637,16 +1636,16 @@ export class PanoramaView implements OverlayHandle {
     const active = all.filter((a) => a.status === "Active");
     this.sidebarEl.replaceChildren();
     this.sidebarEl.appendChild(
-      this.sidebarHeader("批注审批", `${proposed.length} 条待审 · ${active.length} 条已生效`),
+      this.sidebarHeader(copyText("panorama.queue.title"), copyText("panorama.queue.count", { proposed: proposed.length, active: active.length })),
     );
     this.sidebarEl.appendChild(
-      makeSideNote("待审 = agent 提议的；批准前 agent 看不见它。驳回会直接删掉那条（core 没有「驳回」状态）。"),
+      makeSideNote(copyText("panorama.queue.intro")),
     );
     // 状态既不是 Proposed 也不是 Active（core 将来加档）→ 不许静默吞掉，单独数出来。
     const other = all.length - proposed.length - active.length;
     if (other > 0) {
       this.sidebarEl.appendChild(
-        makeSideNote(`另有 ${other} 条批注的状态本页不认识（core 新加的档？），未列出。`),
+        makeSideNote(copyText("panorama.queue.unknown", { other })),
       );
     }
 
@@ -1661,7 +1660,7 @@ export class PanoramaView implements OverlayHandle {
       if (rows.length === 0) {
         const empty = document.createElement("div");
         empty.className = "panorama-edge-empty";
-        empty.textContent = pending ? "（没有待审的）" : "（还没有）";
+        empty.textContent = pending ? copyText("panorama.queue.noneProposed") : copyText("panorama.queue.noneActive");
         sec.appendChild(empty);
       }
       for (const a of rows) {
@@ -1679,22 +1678,22 @@ export class PanoramaView implements OverlayHandle {
         who.dataset.origin = a.origin;
         who.textContent =
           `${a.author} · ${originLabel(a.origin)} · ` +
-          (a.symbol ? `${a.file}#${a.symbol}` : `${a.file}（文件级）`);
+          (a.symbol ? `${a.file}#${a.symbol}` : copyText("panorama.queue.fileLevel", { file: a.file }));
         foot.appendChild(who);
         if (pending) {
           const ok = document.createElement("button");
           ok.type = "button";
           ok.className = "panorama-btn";
-          ok.textContent = "批准";
-          ok.title = "批准后变为生效，agent 才看得见";
+          ok.textContent = copyText("panorama.queue.approve");
+          ok.title = copyText("panorama.queue.approveHint");
           ok.addEventListener("click", () => void this.decideAnnotation(repo, a.id, "approve"));
           foot.appendChild(ok);
         }
         const del = document.createElement("button");
         del.type = "button";
         del.className = "panorama-btn panorama-ann-del";
-        del.textContent = pending ? "驳回" : "删除";
-        del.title = pending ? "驳回 = 删掉这条提议" : "删掉这条批注（落在仓里的文件一起删）";
+        del.textContent = pending ? copyText("panorama.queue.reject") : copyText("panorama.queue.delete");
+        del.title = pending ? copyText("panorama.queue.rejectHint") : copyText("panorama.queue.deleteHint");
         del.addEventListener("click", () => void this.decideAnnotation(repo, a.id, "remove"));
         foot.appendChild(del);
         row.appendChild(foot);
@@ -1702,8 +1701,8 @@ export class PanoramaView implements OverlayHandle {
       }
       return sec;
     };
-    this.sidebarEl.appendChild(section("待审", proposed, true));
-    this.sidebarEl.appendChild(section("已生效", active, false));
+    this.sidebarEl.appendChild(section(copyText("panorama.queue.proposedHead"), proposed, true));
+    this.sidebarEl.appendChild(section(copyText("panorama.queue.activeHead"), active, false));
   }
 
   /** 批准 / 驳回（删）一条批注，然后重列。返回 false = 那条已不在（别人先删了），如实报。 */
@@ -1718,10 +1717,10 @@ export class PanoramaView implements OverlayHandle {
           ? await api.approveAnnotation(this.at(repo), id)
           : await api.removeAnnotation(this.at(repo), id);
       if (!existed) {
-        showActionFailureToast("那条批注已不在", `id ${id} 在盘上已经没有了（可能别处先删了）。已重新列出。`);
+        showActionFailureToast(copyText("panorama.decide.goneTitle"), copyText("panorama.decide.gone"));
       }
     } catch (e) {
-      showActionFailureToast(what === "approve" ? "批准失败" : "删除失败", String(e));
+      showActionFailureToast(what === "approve" ? copyText("panorama.decide.approveFailed") : copyText("panorama.decide.deleteFailed"), String(e));
     }
     if (this.repo === repo) await this.showAnnotationQueue();
   }
@@ -1757,26 +1756,26 @@ export class PanoramaView implements OverlayHandle {
     btn.dataset.pano = key;
     btn.textContent = label;
     btn.title =
-      label === "复制给 agent"
-        ? "复制一段能贴进对话的文本：带仓、对象、索引读数，以及看不见 / 分不清多少"
-        : "复制上游画好的 Mermaid 原文";
+      label === copyText("panorama.copyButton.agent")
+        ? copyText("panorama.copyButton.agentHint")
+        : copyText("panorama.copyButton.mermaidHint");
     btn.addEventListener("click", () => {
       const text = make();
       if (text === "") {
-        showActionFailureToast("没有可复制的内容", "图还没画出来。");
+        showActionFailureToast(copyText("panorama.copyButton.emptyTitle"), copyText("panorama.copyButton.empty"));
         return;
       }
       const clip = navigator.clipboard;
       if (!clip) {
-        showActionFailureToast("复制失败", "这个环境没有剪贴板接口。");
+        showActionFailureToast(copyText("panorama.copyButton.failed"), copyText("panorama.copyButton.noClipboard"));
         return;
       }
       clip.writeText(text).then(
         () => {
-          btn.textContent = "已复制 ✓";
+          btn.textContent = copyText("panorama.copyButton.copied");
           window.setTimeout(() => (btn.textContent = label), 1500);
         },
-        (e: unknown) => showActionFailureToast("复制失败", String(e)),
+        (e: unknown) => showActionFailureToast(copyText("panorama.copyButton.failed"), String(e)),
       );
     });
     return btn;
@@ -1821,8 +1820,8 @@ export class PanoramaView implements OverlayHandle {
     const x = document.createElement("button");
     x.type = "button";
     x.className = "panorama-sidebar-close";
-    x.textContent = "✕";
-    x.title = "关闭侧栏 (Esc)";
+    x.textContent = copyText("panorama.sidebar.close");
+    x.title = copyText("panorama.sidebar.closeHint");
     x.addEventListener("click", () => this.closeSidebar());
     head.appendChild(x);
     return head;
@@ -1830,7 +1829,7 @@ export class PanoramaView implements OverlayHandle {
 
   private renderSidebarStatus(text: string): void {
     this.sidebarEl.replaceChildren();
-    this.sidebarEl.appendChild(this.sidebarHeader("符号", ""));
+    this.sidebarEl.appendChild(this.sidebarHeader(copyText("panorama.sidebarStatus.symbols"), ""));
     this.sidebarEl.appendChild(makeSideNote(text));
   }
 }
@@ -1845,7 +1844,7 @@ function basename(path: string): string {
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
   if (max <= 1) return s.slice(0, Math.max(0, max));
-  return s.slice(0, max - 1) + "…";
+  return copyText("panorama.truncate.ellipsis", { text: s.slice(0, max - 1) });
 }
 
 function fmtScore(n: number): string {
@@ -1859,36 +1858,36 @@ function fmtScore(n: number): string {
 function originLabel(o: Annotation["origin"]): string {
   switch (o) {
     case "Human":
-      return "人写";
+      return copyText("panorama.originLabel.human");
     case "Agent":
-      return "agent 提议";
+      return copyText("panorama.originLabel.agent");
     case "Unrecorded":
-      return "来源未记录";
+      return copyText("panorama.originLabel.unknown");
   }
 }
 
 function confidenceLabel(c: Confidence): string {
   switch (c) {
     case "Exact":
-      return "精确";
+      return copyText("panorama.confidenceLabel.exact");
     case "Dispatch":
-      return "派发";
+      return copyText("panorama.confidenceLabel.dispatch");
     case "Heuristic":
-      return "启发";
+      return copyText("panorama.confidenceLabel.heuristic");
     case "DynamicGuess":
-      return "动态猜测";
+      return copyText("panorama.confidenceLabel.dynamicGuess");
   }
 }
 function confidenceHint(c: Confidence): string {
   switch (c) {
     case "Exact":
-      return "Exact：全局唯一名匹配（不代表验证过 import/作用域）";
+      return copyText("panorama.confidenceHint.exact");
     case "Dispatch":
-      return "动态派发：候选是某个 trait / 接口在仓内的全部实现，运行时才定是哪一个";
+      return copyText("panorama.confidenceHint.dispatch");
     case "Heuristic":
-      return "Heuristic：多候选，启发式选定";
+      return copyText("panorama.confidenceHint.heuristic");
     case "DynamicGuess":
-      return "DynamicGuess：方法调用等接收者类型未知，尽力猜测";
+      return copyText("panorama.confidenceHint.dynamicGuess");
   }
 }
 

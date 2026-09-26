@@ -28,6 +28,7 @@
 //!   （小文件一次读，不是每帧；不上定时器、不 watch）。
 //! - 真 Windows 上 `LockFileEx` 那一支没跑过（本机只量了 Linux 的 `flock`）。
 
+use crate::copy_table::copy_text;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -135,19 +136,35 @@ pub fn read_book(file: &Path) -> Result<Book, String> {
     let raw = match std::fs::read_to_string(file) {
         Ok(s) => s,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Book::new()),
-        Err(e) => return Err(format!("书签读不出来：{e}")),
+        Err(e) => {
+            return Err(copy_text(
+                "rsFilewinBookmarks.read.failed",
+                &[("e", &e.to_string())],
+            ))
+        }
     };
-    serde_json::from_str(&raw).map_err(|e| format!("书签文件读不懂（{}）：{e}", file.display()))
+    serde_json::from_str(&raw).map_err(|e| {
+        copy_text(
+            "rsFilewinBookmarks.read.unreadable",
+            &[
+                ("file", &(file.display()).to_string()),
+                ("e", &e.to_string()),
+            ],
+        )
+    })
 }
 
 /// 拿锁。锁旁件没有就建一个（空文件，只拿来上锁）；锁随回值那个句柄一起放。
 fn lock_store(file: &Path) -> Result<std::fs::File, String> {
     let lock = lock_path(file);
     if let Some(dir) = lock.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| format!("书签存不了：{e}"))?;
+        std::fs::create_dir_all(dir)
+            .map_err(|e| copy_text("rsFilewinBookmarks.store.failed", &[("e", &e.to_string())]))?;
     }
-    let f = std::fs::File::create(&lock).map_err(|e| format!("书签存不了：{e}"))?;
-    f.lock().map_err(|e| format!("书签存不了：{e}"))?;
+    let f = std::fs::File::create(&lock)
+        .map_err(|e| copy_text("rsFilewinBookmarks.store.failed", &[("e", &e.to_string())]))?;
+    f.lock()
+        .map_err(|e| copy_text("rsFilewinBookmarks.store.failed", &[("e", &e.to_string())]))?;
     Ok(f)
 }
 
@@ -159,7 +176,8 @@ pub fn mutate<R>(file: &Path, f: impl FnOnce(&mut Book) -> R) -> Result<(R, Book
     let mut book = read_book(file)?;
     let r = f(&mut book);
     book.retain(|_, v| !v.is_empty());
-    crate::utils::atomic_write_json(file, &book).map_err(|e| format!("书签没存上：{e}"))?;
+    crate::utils::atomic_write_json(file, &book)
+        .map_err(|e| copy_text("rsFilewinBookmarks.mutate.failed", &[("e", &e.to_string())]))?;
     Ok((r, book))
 }
 
@@ -188,14 +206,18 @@ struct ShelfState {
 }
 
 /// 数据目录解不出来时书签栏上那一句。
-pub const NO_DATA_DIR: &str = "书签存不了：找不到本程序的数据目录";
+pub static NO_DATA_DIR: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinBookmarks.store.noDataDir", &[]));
 
 /// 书签栏上那颗切换按钮：当前目录不在书签里时。
-pub const ADD_LABEL: &str = "☆ 加书签";
+pub static ADD_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinBookmarks.label.add", &[]));
 /// 当前目录已经在书签里时。
-pub const DROP_LABEL: &str = "★ 取消书签";
+pub static DROP_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinBookmarks.label.drop", &[]));
 /// 每条书签后面那颗「删掉」。
-pub const REMOVE_LABEL: &str = "×";
+pub static REMOVE_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinBookmarks.label.remove", &[]));
 
 impl Shelf {
     /// 开窗时建：读一次那台机器的书签。
@@ -296,18 +318,26 @@ impl Shelf {
         let here = self.contains(cwd);
         ui.horizontal_wrapped(|ui| {
             if ui
-                .small_button(if here { DROP_LABEL } else { ADD_LABEL })
+                .small_button(if here {
+                    DROP_LABEL.as_str()
+                } else {
+                    ADD_LABEL.as_str()
+                })
                 .clicked()
             {
                 toggle = true;
             }
             for d in self.list() {
-                if ui.small_button(&d).on_hover_text("跳到这个目录").clicked() {
+                if ui
+                    .small_button(&d)
+                    .on_hover_text(&copy_text("rsFilewinBookmarks.bar.jumpHint", &[]))
+                    .clicked()
+                {
                     go = Some(d.clone());
                 }
                 if ui
-                    .small_button(REMOVE_LABEL)
-                    .on_hover_text("移出书签")
+                    .small_button(REMOVE_LABEL.as_str())
+                    .on_hover_text(&copy_text("rsFilewinBookmarks.bar.removeHint", &[]))
                     .clicked()
                 {
                     drop = Some(d);

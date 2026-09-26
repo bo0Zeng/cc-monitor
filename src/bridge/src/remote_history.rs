@@ -8,6 +8,7 @@
 //! INVARIANTS § 25：本路径是一次性读取（非 at-least-once 行流），SessionViewer
 //! 每次 load 全新实例，无重投幂等义务。
 
+use crate::copy_table::copy_text;
 use crate::messages::JsonlRecord;
 use crate::parser::parse_line;
 use crate::ssh_source::RemoteConfig;
@@ -34,15 +35,23 @@ const MAX_SESSION_BYTES: u64 = 256 * 1024 * 1024;
 ///
 /// 抽成纯函数是为了让它可判据：外面那圈是真 SSH 流，测不了。
 fn session_truncated_message(read_bytes: u64, lines_shown: u32) -> String {
-    format!(
-        "这个会话超过 {MAX_SESSION_BYTES} 字节上限，只读到前 {read_bytes} 字节（{lines_shown} 行）；\
-         后面的内容**没有显示**。完整历史仍在远端那个 jsonl 文件里。"
+    copy_text(
+        "rsRemoteHistory.session.truncated",
+        &[
+            ("max", &MAX_SESSION_BYTES.to_string()),
+            ("read", &read_bytes.to_string()),
+            ("lines", &lines_shown.to_string()),
+        ],
     )
 }
 
 pub(crate) fn require_cfg_by_label(label: &str) -> Result<RemoteConfig, String> {
-    crate::load_remote_config_by_label(label)
-        .ok_or_else(|| format!("远端 '{label}' 未配置或未启用"))
+    crate::load_remote_config_by_label(label).ok_or_else(|| {
+        copy_text(
+            "rsRemoteHistory.cfg.missing",
+            &[("label", &label.to_string())],
+        )
+    })
 }
 
 // 〔C4d · 第四波 4B〕逐次拨号那条路（`run_list_query`〔散文墓碑〕与它的老后端识别、超时）删了：
@@ -84,7 +93,10 @@ pub(crate) async fn stream_read_remote_session(
     // 前端，monitor 侧先做廉价校验（拒 `..` + 强制 .jsonl 后缀）。真正的越权读由后端侧
     // canonicalize + projects/ 前缀 + symlink 逃逸校验兜底，这里补齐不对称的防御缺口。
     if jsonl_path.contains("..") || !jsonl_path.ends_with(".jsonl") {
-        return Err(format!("非法会话路径: {jsonl_path}"));
+        return Err(copy_text(
+            "rsRemoteHistory.session.badPath",
+            &[("path", &jsonl_path.to_string())],
+        ));
     }
     let started = std::time::Instant::now();
     // 与本地 history.rs 的 file_stem 口径一致：剥**一个** ".jsonl" 后缀（strip_suffix
