@@ -315,7 +315,7 @@ Claude Code CLI 的 task tracker 持久文件。**monitor 只读不写**——�
 | `status` | string? | 会话状态枚举：`"busy"`（运行中 → 🟢）/ `"idle"`、`"shell"`（等输入 → 🔴）/ `"waiting"`（等用户决定 → 🟡）。**CLI 仅在状态转换时重写本文件**（信号天然稀疏）。旧版 CC 无此字段 → `null`，前端按未知处理（沿用原绿点） |
 | `waitingFor` | string? | 仅 `status=="waiting"` 时有，细分原因：`"permission prompt"` / `"dialog open"` / `"input needed"` / `"worker request"` / `"sandbox request"` |
 | `name` | string? | Claude 给会话起的语义名（aka aiTitle）。**已在用**：`session_map.rs::snapshot_active` 透传下游（有测试钉住），`session_added` 帧与 bridge 事件也带它 |
-| `kind` | string? | 会话类型（Batch6-F21 起双端消费）：`"interactive"` = 交互会话；`"bg"` = CC 2.1.x daemon 后台任务（`--fork-session`，另带 `jobId`）。**Batch7-F24 起 bg 门是配置门**：`showBgSessions` 开（默认）→ bg 正常算会话（建 Tab 带 ⚙ 标识 + 树状挂同 cwd 宿主后、行流出）；关 → 回 F21 行为（不建 Tab、行不流出；历史浏览器仍可看）。**缺失 = 旧 CC = 视为交互**（保守放行），本地 `session_map::scan_dir`（读启动时配置）与远端后端 kind 门（`--with-bg` 参数）规则一字一致 |
+| `kind` | string? | 会话类型（Batch6-F21 起双端消费）：`"interactive"` = 交互会话；`"bg"` = CC 2.1.x daemon 后台任务（`--fork-session`，另带 `jobId`）。**Batch7-F24 起 bg 门是配置门**：`showBgSessions` 开（默认）→ bg 正常算会话（建 Tab 带 ⚙ 标识、行流出；〔BG1 · V125〕与普通 Tab 平铺，不再挂同 cwd 宿主后）；关 → 回 F21 行为（不建 Tab、行不流出；历史浏览器仍可看）。**缺失 = 旧 CC = 视为交互**（保守放行），本地 `session_map::scan_dir`（读启动时配置）与远端后端 kind 门（`--with-bg` 参数）规则一字一致 |
 | `jobId` | string? | 仅 `kind:"bg"` 时有，后台任务 ID（monitor 不消费，仅留档） |
 
 ### 9.1 ★ `kind` 是**排他式**契约：不在白名单里就被隐藏（E72）
@@ -1572,24 +1572,64 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 写法：**写的那一刻读盘** → 只改 `accounts.<account>` 的 `api_key`（与给了的 `base_url`）那一两格（别的行与未知键一个不动）→ 临时文件**出生即只给本人**（O_EXCL）→ 写满 → 落盘 → 原子改名；失败删自己的临时文件。
 **错误码**：`bad_args`（缺字段 / 账号 id 当不了路由段 / key 空）· `bad_file`（现有文件解析不了 ⇒ **不覆盖**，人手编的内容不许被抹掉）· `io_failed`。
 
-#### `apikey-read`：文件级的状态 ＋ 表里有哪几行（**不读 stdin**）
+#### `apikey-read`：文件级的状态（**不读 stdin**）
 
 ```text
 → {"id":"k2","cmd":"apikey-read"}
-← {"kind":"reply","id":"k2","ok":true,"data":{"configured":false,"masked":"","path":"…/apikey-credentials.json","notice":null,"problem":null,"rows":["work"]}}
+← {"kind":"reply","id":"k2","ok":true,"data":{"configured":false,"masked":"","path":"…/apikey-credentials.json","notice":null,"problem":null}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `configured` · `masked` | ← | **顶层那一把**（历史格式那一行）配没配、掩码 —— 与 monitor 那一侧 `ApikeyCredentialsStatus` 同名同义 |
+| `configured` · `masked` | ← | **顶层那一把**（历史格式那一行）配没配、掩码 |
 | `path` | ← | 那份文件的绝对路径 |
 | `notice` | ← | 权限过宽 / 查不出来时的一句话（文件不在时 `null`）|
 | `problem` | ← | 读不动 / 解析不了时的一句话。🔴 **解析不了不退化成「没配」** |
-| `rows` | ← | 表里有哪几条账号 id（筛掉当不了路由段的；`base_url` 解析不了的那一类**筛不掉**，同 monitor 那一侧的口径）|
 
-**没有错误码**：读不动是一个**状态**（`problem`），照样 `ok:true`。
+**没有错误码**：读不动是一个**状态**（`problem`），照样 `ok:true`。界面经 `chan.call` 直接问它、按形状严格收（金样 `tests/__fixtures__/apikey.golden.json`）。
+〔US1 · 4D〕先前还回 `rows`（表里有哪几行）：它只给 monitor 起会话那一侧用，而那一侧的判断搬进了下面的 `launch-endpoint` ⇒ 退出线上。
 
 ⚠ **CLI 面也有它们**（`--apikey-key-set` / `--apikey-read`），从 `inbound::REGISTRY` 派生；`--apikey-key-set` 的入参**从 stdin 读**。
+
+#### `apikey-routing`：这几个号在这台的表里有没有行 · 这台的中转在不在（US1 · 4D）
+
+```text
+→ {"id":"k3","cmd":"apikey-routing","args":{"agent":"claude-code","configDirs":["/h/.claude-accts/work","/h/.claude-accts/me"]}}
+← {"kind":"reply","id":"k3","ok":true,"data":{"routed":["/h/.claude-accts/work"],"running":true}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `agent` | → | 这一家 agent 的路由名（凭据文件的行只属于 `claude-code`；别家 ⇒ `routed` 恒空）|
+| `configDirs` | → | 要问的那几个号的配置目录（id 由后端按 `acct-core` 那一份规则推，前端一个字都不推）|
+| `routed` | ← | 传进来的里面、**表里有对应行**的那几个（原样回）。「表里有行」= 上游选择装表真收进表的那几行（`base_url` 坏的那一行不算）|
+| `running` | ← | 这台机器上**我们的**中转在不在听（与 `relay-status` 同一个判准）|
+
+**错误码**：`bad_args`。界面经 `chan.call` 直接问（金样同上）。
+
+#### `launch-endpoint`：这个号这一发走哪、注入什么（US1 · 4D）
+
+起会话那一侧（本机与远端同一条）问一次：往 `ANTHROPIC_BASE_URL` 里写哪个中转地址，或者不写。决策表是 `设计/20 §3.2` 那一张（上游选择 `accounts/upstream/endpoint.rs::decide_launch` 是唯一实现）。
+
+```text
+→ {"id":"k4","cmd":"launch-endpoint","args":{"agent":"claude-code","account":{"kind":"named","configDir":"/h/.claude-accts/work"},"key":"<sid 或 nonce>","allSessions":false}}
+← {"kind":"reply","id":"k4","ok":true,"data":{"baseUrl":"http://127.0.0.1:8788/s/claude-code/work/<key>","listening":true,"whenDown":"refuse","account":"work"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `agent` | → | 这一家 agent 的路由名（第 1 段）|
+| `account` | → | `{"kind":"named","configDir":…}` · `{"kind":"base"}` · 缺席 / `null`（没表态）|
+| `key` | → | 第 3 段（流标签）：resume ⇒ sid；新开 ⇒ 起会话那一侧铸的 nonce。过不了段闸 ⇒ `bad_args` |
+| `allSessions` | → | 全量注入开关（`/t/` 那几格；默认关）|
+| `baseUrl` | ← | 注入的地址（不带钥匙；渲染成 `$(cat "$HOME/.cc-monitor/relay-key")` 那一形是起会话那一侧的事）；`null` = 不注入 |
+| `listening` | ← | 这台机器上我们的中转在不在听（只在 `baseUrl` 非空时探；为空时 `false`）|
+| `whenDown` | ← | 中转不在时：`refuse`（`/s/`，拒绝起会话）· `direct`（`/t/`，照旧直连）；`baseUrl` 为空时 `null` |
+| `account` | ← | `/s/` 那一格的表 id（拒绝时点名用）；否则 `null` |
+
+四个键恒在（形状恒定）。**错误码**：`bad_args`。远端「中转不在就起、有界等」那一截要定时器 ⇒ 在 monitor（`relay-status` → `relay-ensure` → 再问）。
+
+⚠ **CLI 面也有它们**（`--apikey-routing` / `--launch-endpoint`），从 `inbound::REGISTRY` 派生，入参从 stdin 读。
 
 #### 中转在「这台机器」上的进程（RM1a · 第四波，2026-09-24）
 

@@ -4,7 +4,7 @@
 //!
 //! | origin | 中转谁起、谁答「在不在」 |
 //! |---|---|
-//! | 本机 | 〔RL1 · V107〕**本机常驻后端进程里**（monitor 起后端时交端口，`local_backend_host::relay_host_envs`）；「在不在」走起会话那一侧**同一条缝**（`history::inject_facts` → 回环上连一次那个口）|
+//! | 本机 | 〔RL1 · V107〕**本机常驻后端进程里**（monitor 起后端时交端口，`local_backend_host::relay_host_envs`）；「在不在」〔US1〕由本机后端在 `launch-endpoint` 的成品里答 |
 //! | 某台远端 | 那台机器的后端：帧面 `relay-status`（口上有没有人在听）· `relay-ensure`（没有就起一个脱离的）|
 //!
 //! ⇒ monitor **从不**对本机发 `relay-ensure`：本机那一个住在常驻后端里，第二个去抢口只会让后端里那一个
@@ -20,7 +20,7 @@
 //! # 触发点〔RL1〕：**起远端会话、且要注入那一刻**（用到才起）
 //!
 //! 远端那台的中转只在「这次拉起要往 `ANTHROPIC_BASE_URL` 里写地址」时才起：`history::relay_endpoint_on`
-//! 先按「假如在跑」问一次判断口，要注入才经本模块 `listening_or_started`（在不在 → 起 → 有界等）。
+//! 先问那台后端要成品（`launch-endpoint`），要注入而那台的中转不在，才经本模块 `listening_or_started`（在不在 → 起 → 有界等）。
 //! 不挂在「长连接握手完成」上：那会让从不用中转的远端也常驻一个进程。
 //! RM1a 那条单独暴露给界面的 tauri `relay_ensure(origin)`（零调用方）随之退役。
 
@@ -47,10 +47,11 @@ pub(crate) struct RelayEnsured {
     pub(crate) started: bool,
 }
 
-/// 那台机器上的中转在不在（两台都是「那个口上有没有人在听」）。本机：缝里那个取值口；远端：`relay-status`。
+/// 那台**远端**机器上我们的中转在不在听（`relay-status`）。**本机拒**：本机那一个住在本机常驻后端里，
+/// 「在不在」由本机后端在 `launch-endpoint` 的成品里答（〔US1〕先前本机这一臂走起会话那一侧的缝、在回环上连一次）。
 pub(crate) async fn running_on(origin: &Origin) -> Result<bool, String> {
     match origin.route("relay_running_on")? {
-        Route::Local => Ok((crate::history::inject_facts().running)()),
+        Route::Local => Err(LOCAL_HAS_ITS_OWN.to_string()),
         Route::Remote(host) => {
             listening_from_wire(host, &call(host, CMD_STATUS, port_args()).await?)
         }

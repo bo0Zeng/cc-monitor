@@ -2,13 +2,10 @@
 //!
 //! # 买到的
 //!
-//! - 读的两个分派函数：本机那一臂**只进 `creds_store` / `history`**（不发帧），远端那一臂**只走发送口**。
+//! - 〔US1〕读的两个分派函数退役（读者换成那台后端）：本模块零本机读口。
 //! - 〔GP1 · 第四波〕写的那一个：两臂都交那台机器的后端（本机 ＝ 本机常驻后端）；本机那一臂**先核路径**，
 //!   那台后端写的不是本 monitor 认的那一份 ⇒ 零次 `apikey-key-set`（真 `InboundClient` × 照脚本答的假后端）。
 //! - 远端那一臂在「没有通道」「说不出账号 id」两种失败上**说得出话、话里不带明文**（真走生产函数）。
-//! - 应答解析跟着后端**声明的字段**走：后端 `REGISTRY` 里 `apikey-read` 那一行的 `fields`
-//!   （从后端源码现抠，不是本文件手抄）喂进解析器 ⇒ 解析得出；少任何一个必需字段 ⇒ 报错，
-//!   **不退化成「没配」**。
 //! - 命令名跨半边对拍：本侧两个常量 ⇔ 后端 `REGISTRY` 里的 `name:` 字面量。
 //!
 //! # 买不到的
@@ -47,44 +44,26 @@ fn arms_of(src: &str, anchor: &str) -> (String, String) {
     )
 }
 
-/// 〔GP1 · 第四波〕**读的两臂照旧本机读、写的那一臂两台同一条路**（主会话 09-25 裁「每台机器一个写者 ＝ 那台的后端」）。
+/// 〔GP1 · 第四波〕**写的那一臂两台同一条路**（主会话 09-25 裁「每台机器一个写者 ＝ 那台的后端」）。
 ///
-/// - `status_on` / `rows_on`：本机那一臂只进 `creds_store` / `inject_facts` 那条缝（起会话那一侧同步读盘，不加往返），
-///   远端那一臂只走发送口 —— RM1a 那条原样；
+/// - 〔US1〕读的两臂整删（读者换成那台后端），本条钉它们不回来；
 /// - `write_key_on`：两臂都交 `send_key`（发 `apikey-key-set`），**本机那一臂带 `Some(local_file()?)`**（先核那台后端写的就是
 ///   本 monitor 认的那一份），远端那一臂 `None`。行为那一半见下面两条台架判据。
 /// 〔墓碑 —— RM1a 那一版这里叫 `the_local_arm_never_sends_the_key_to_a_backend`〔散文墓碑〕，钉「本机那一臂只进 `creds_store` 的写口」。〕
 #[test]
 fn gp1_the_read_arms_stay_local_and_the_write_arm_goes_to_that_machines_backend() {
     let src = own_production();
-    for (anchor, local_call) in [
-        (
-            "pub(crate) async fn status_on(",
-            "crate::creds_store::read_status()",
-        ),
-        (
-            "pub(crate) async fn rows_on(",
-            "crate::history::inject_facts().rows",
-        ),
+    // 〔US1 · 4D〕读的那两个分派（`status_on` / `rows_on`）退役：读者换成那台后端（界面经通道问 `apikey-read` /
+    //   `apikey-routing`，起会话问 `launch-endpoint`）。本模块生产段从此零本机读口（零命中带正控：写臂那一行在）。
+    for gone in [
+        "status_on",
+        "rows_on",
+        "creds_store::read_status",
+        "inject_facts",
     ] {
-        let (local, remote) = arms_of(&src, anchor);
         assert!(
-            local.contains(local_call),
-            "`{anchor}` 的本机那一臂不是 `{local_call}`：{local}"
-        );
-        for sends in ["call(", "send_key(", "inbound_client"] {
-            assert!(
-                !local.contains(sends),
-                "`{anchor}` 的本机那一臂发了帧（`{sends}`）：{local}"
-            );
-        }
-        assert!(
-            remote.contains("call("),
-            "`{anchor}` 的远端那一臂没走发送口：{remote}"
-        );
-        assert!(
-            !remote.contains("creds_store::") && !remote.contains("inject_facts()"),
-            "`{anchor}` 的远端那一臂碰了本机那份文件：{remote}"
+            !guard_core::contains_word(&src, gone),
+            "读口又回到了 monitor：`{gone}`"
         );
     }
     let (local, remote) = arms_of(&src, "pub(crate) async fn write_key_on(");
@@ -195,7 +174,7 @@ mod gp1_rig {
 }
 
 fn gp1_read_reply(path: &str) -> serde_json::Value {
-    serde_json::json!({"configured": false, "masked": "", "path": path, "notice": null, "problem": null, "rows": []})
+    serde_json::json!({"configured": false, "masked": "", "path": path, "notice": null, "problem": null})
 }
 
 /// 〔GP1 · 第四波 · K1〕本机那一臂**先核路径、再写**：那台后端答的 `path` == 本 monitor 认的那一份 ⇒ 恰一次
@@ -316,28 +295,6 @@ fn the_remote_arm_says_what_went_wrong_without_the_plaintext() {
         .expect_err("说不出账号 id 还说写成了");
     assert!(err.contains("说不出这是哪个账号"), "实得：{err}");
     assert!(!err.contains(PLAIN), "报错里带着明文：{err}");
-
-    // 读口同样说得出话（不是静默当成「没配」）。
-    let err = tauri::async_runtime::block_on(status_on(&host)).expect_err("没有通道还读到了状态");
-    assert!(err.contains("rm1a-no-such-host-for-tests"), "实得：{err}");
-    let err = tauri::async_runtime::block_on(rows_on(&host)).expect_err("没有通道还读到了行");
-    assert!(err.contains("rm1a-no-such-host-for-tests"), "实得：{err}");
-}
-
-/// 从后端源码里现抠 `REGISTRY` 那一条的 `fields`（不是本文件手抄一份）。
-fn backend_fields_of(cmd: &str) -> Vec<String> {
-    let src = include_str!("../../src/backend/inbound.rs");
-    let at = src
-        .find(&format!("name: \"{cmd}\","))
-        .unwrap_or_else(|| panic!("后端 REGISTRY 里找不到 `{cmd}`"));
-    let rest = &src[at..];
-    let f = rest.find("fields: &[").expect("那一条没有 fields") + "fields: &[".len();
-    let end = rest[f..].find(']').expect("fields 没收尾") + f;
-    rest[f..end]
-        .split(',')
-        .map(|s| s.trim().trim_matches('"').to_string())
-        .filter(|s| !s.is_empty())
-        .collect()
 }
 
 #[test]
@@ -352,50 +309,6 @@ fn the_command_names_are_the_ones_the_backend_registers() {
     }
 }
 
-#[test]
-fn the_read_answer_is_parsed_from_the_fields_the_backend_declares() {
-    let fields = backend_fields_of(CMD_READ);
-    assert!(
-        fields.len() >= 5,
-        "抠出来的字段太少，抽取器坏了：{fields:?}"
-    );
-    // 按后端声明的每个字段造一份样本（值的类型按那一格的语义给）。
-    let sample_value = |k: &str| -> Value {
-        match k {
-            "configured" => json!(true),
-            "rows" => json!(["work", "other"]),
-            "notice" | "problem" => Value::Null,
-            _ => json!(format!("v-{k}")),
-        }
-    };
-    let mut full = serde_json::Map::new();
-    for k in &fields {
-        full.insert(k.clone(), sample_value(k));
-    }
-    let full = Value::Object(full);
-    let st = status_from_wire("h", &full).expect("按后端声明的字段造的应答解析不出来");
-    assert!(st.configured);
-    assert_eq!(st.masked, "v-masked");
-    assert_eq!(st.path, "v-path");
-    assert_eq!(rows_from_wire("h", &full).unwrap(), vec!["work", "other"]);
-
-    // 少任何一个必需字段 ⇒ 报错，**不退化成「没配」**。
-    for must in ["configured", "masked", "path"] {
-        let mut v = full.clone();
-        v.as_object_mut().unwrap().remove(must);
-        assert!(
-            status_from_wire("h", &v).is_err(),
-            "少了 `{must}` 还解析成功了 —— 那会被读成「没配」"
-        );
-    }
-    let mut v = full.clone();
-    v.as_object_mut().unwrap().remove("rows");
-    assert!(rows_from_wire("h", &v).is_err(), "少了 `rows` 还解析成功了");
-    // 类型不对同样报错。
-    let mut v = full.clone();
-    v["problem"] = json!(3);
-    assert!(
-        status_from_wire("h", &v).is_err(),
-        "`problem` 是数字还解析成功了"
-    );
-}
+// 〔US1 · 4D〕`the_read_answer_is_parsed_from_the_fields_the_backend_declares`〔散文墓碑〕退役：monitor 不再解析 `apikey-read`
+//   的状态（界面经通道直接收，形状由跨语言金样 `tests/__fixtures__/apikey.golden.json` 两侧对拍）；写前核路径那一格只读 `path`
+//   （`path_from_wire`，由上面 GP1 那两条台架量）。

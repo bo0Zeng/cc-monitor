@@ -64,7 +64,8 @@ pub(crate) fn classify(code: Option<i32>, stdout: String, stderr: String) -> Que
 ///
 /// ⚠ **不做重试、不做超时**：这两件都属调用方的策略（历史面愿意等、UI 探针不愿意），
 /// 而在这一层写死会让两种调用方之一必然错。如实记为诚实边界。
-// F10b 第一批起有生产调用方（`usage.rs`），不再需要 `allow(dead_code)`。
+// 〔AR1〕F10b 第一批起有生产调用方，不再需要 `allow(dead_code)`（第一批那个调用方是用量聚合轴，
+//   已随 `设计/50` 删了；今天的调用方以 `run_query(` 的引用为准，不在这里抄名单）。
 /// ⚠ **`spawn` 是注入进来的**〔`15 §5.1 A3`，09-18〕：起进程那一下的三个答案
 /// （要不要窗口 · 要不要随我死 · 错误往哪去）要落成平台原语，而平台原语进不了本层
 /// （`the_backend_half_stays_platform_agnostic` 的禁针 ＋ 平台例外表的递减棘轮）。
