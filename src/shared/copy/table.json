@@ -9924,6 +9924,11 @@
       "zh": "终端没打开：{why}",
       "args": ["why"]
     },
+    "rsFilewinShell.terminal.badCwd": {
+      "kind": "error",
+      "zh": "当前目录 {cwd} 开不了终端。要绝对路径，不含 .. 段、换行或 NUL",
+      "args": ["cwd"]
+    },
     "rsFilewinShell.terminal.noRuntime": {
       "kind": "error",
       "zh": "终端开不了，请重开这个窗口",
@@ -11412,6 +11417,11 @@
     "rsPayload.sessionMark.bad": {
       "kind": "error",
       "zh": "会话标记 {value} 含不许的字符（只许 A-Z a-z 0-9 _ -）",
+      "args": ["value"]
+    },
+    "rsPayload.cwd.bad": {
+      "kind": "error",
+      "zh": "工作目录 {value} 不能用。要绝对路径，不含 .. 段、换行或 NUL",
       "args": ["value"]
     },
     "rsPayload.cwd.empty": {
@@ -14107,6 +14117,16 @@
       "zh": "本机",
       "args": []
     },
+    "rsCcmInvocation.refusal.freeTextCwd": {
+      "kind": "error",
+      "zh": "工作目录 {value} 用不了。要绝对路径，不含 .. 段、换行或 NUL",
+      "args": ["value"]
+    },
+    "rsCcmInvocation.refusal.freeTextArg": {
+      "kind": "error",
+      "zh": "透传给 agent 的参数 {value} 用不了。里面不能有换行或 NUL",
+      "args": ["value"]
+    },
     "rsCcmInvocation.refusal.dimensionNeedsCap": {
       "kind": "error",
       "zh": "远端的后端太旧，不认 {dim} 这一项设置（缺 {cap}）",
@@ -16080,6 +16100,11 @@
       "zh": "attach 不支持 --tmux-size（接回的会话保持它自己的尺寸）",
       "args": []
     },
+    "bePlan.build.freeTextRefused": {
+      "kind": "error",
+      "zh": "{what} 的值 {value} 不能拼进命令。工作目录要绝对路径、不含 .. 段；哪一格都不能有换行或 NUL",
+      "args": ["what", "value"]
+    },
     "bePlan.build.attachDetach": {
       "kind": "error",
       "zh": "attach 与 --detach 不能一起用（attach 就是接进去）",
@@ -16522,6 +16547,11 @@
       "kind": "error",
       "zh": "本机后端还不知道怎么连到 [{machine}]。那台还没连上，或本机后端刚重启过，下次连上就好了。",
       "args": ["machine"]
+    },
+    "beRemoteAsk.argv.refused": {
+      "kind": "error",
+      "zh": "问 {machine} 的那条命令里有 {value}，不能拼进命令。里面不能有换行或 NUL",
+      "args": ["machine", "value"]
     },
     "beRemoteAsk.register.full": {
       "kind": "error",

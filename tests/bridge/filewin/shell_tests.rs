@@ -2397,11 +2397,40 @@ fn the_open_terminal_command_keeps_its_three_shapes() {
         ("/a b/c", "cd '/a b/c' && exec ${SHELL:-bash} -l"),
     ];
     for (input, want) in GOLDEN {
-        assert_eq!(build_open_terminal_cmd(input), *want, "入参 {input:?}");
+        assert_eq!(
+            build_open_terminal_cmd(input).as_deref(),
+            Ok(*want),
+            "入参 {input:?}"
+        );
     }
     // ⚠ 双引号那一条：模板自己**一个都不带**（`launch.rs` 拒掉含双引号的 `remote_cmd`）；
     //   路径里自带的双引号会原样进单引号里 ⇒ 那一形由 `launch.rs` 拒、窗口出声，不在这里兜。
-    assert!(!build_open_terminal_cmd("").contains('"'));
+    assert!(!build_open_terminal_cmd("").unwrap().contains('"'));
+}
+
+/// 〔TL3 · `INVARIANTS §47` ②〕「在此打开终端」的当前目录：自由文本路径，形式 ＋ 拒绝集（只收 NUL / CR / LF），**正反各一格**。
+/// 要求住址：`INVARIANTS §47` ②；主会话 09-26 按 V131 裁「自由文本路径……拒绝集只收控制字符（NUL / CR / LF）……不拒 shell 元字符」。
+#[test]
+fn the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold() {
+    for good in ["/home/u/Bob's notes", "/data/照片 (2019)", "/srv/a&b;c"] {
+        let cmd = build_open_terminal_cmd(good)
+            .unwrap_or_else(|e| panic!("真实好值被拒了：{good:?} ⇒ {e}"));
+        assert!(cmd.starts_with("cd '"), "{cmd}");
+    }
+    // CR 放在中间：放两头会被 trim 掉（取出来的值本就不含它）。
+    for bad in [
+        "relative/dir",
+        "/home/u/../etc",
+        "/home/u/x\nrm -rf ~",
+        "/home/u/x\ry",
+        "/home/u/x\0",
+    ] {
+        let e = build_open_terminal_cmd(bad).expect_err(&format!("坏值放行了：{bad:?}"));
+        assert!(
+            e.contains(&format!("{:?}", bad.trim())),
+            "那句话没说清是哪个目录：{e}"
+        );
+    }
 }
 
 // ════════════════════════════════════════════════════════════════════════
