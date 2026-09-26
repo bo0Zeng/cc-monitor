@@ -2184,6 +2184,7 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 | 账号配置目录（②） | `payload.rs::config_dir_command_safe` · `history.rs::validate_config_dir_ps` · 后端 `accounts_query.rs::is_safe_config_dir` | `history_tests.rs::the_config_dir_validator_rejects_every_injection_shape` · `accounts_query_tests.rs::unsafe_config_dirs_are_dropped` · `accounts_query_tests.rs::every_group_of_deceptive_characters_is_rejected_in_a_config_dir` |
 | 远端落点路径（②） | `mcp.rs::is_safe_remote_mcp_json` · `acct_iso_deploy.rs::is_safe_remote_acct_iso_dir` | `mcp_tests.rs::remote_mcp_path_guard_rejects_traversal_and_nonabsolute` · `acct_iso_deploy_tests.rs::safe_dir_rejects_dangerous` |
 | tmux attach 目标（②，只拒空） | `tmux.rs::is_safe_tmux_target` | `tmux_tests.rs::gate1_rejects_only_empty_target` |
+| 远端后端路径 `backendPath`（②，本仓自管的远端落点；〔TL3〕） | monitor `ssh_source.rs::RemoteConfig::backend_path_for_shell`（规则就是 `payload.rs::config_dir_command_safe`；流模式 · 测试连接的探针 · 部署 / 卸载 / 身份扫描都经它）· 后端 `remote_ask.rs::register`（可达表唯一写口，`accounts_query.rs::is_safe_config_dir`） | `ssh_source_tier1_tests.rs::the_backend_path_is_admitted_or_refused_before_it_is_spliced` · `ssh_source_tier1_tests.rs::a_bad_backend_path_is_refused_before_anything_is_dialed` · `remote_ask_tests.rs::the_reach_table_refuses_a_backend_path_that_must_not_be_spliced` · 读点人群 `lib_invariant_population_tests.rs::every_read_of_the_backend_path_field_is_registered` |
 
 **与邻居的关系**：`设计/00 §1.2` 管「quote 只有一份」—— 它是②形的一半，不管①形，也不管「本侧先判」；
 `§34` 管 tmux 破坏性命令的三道门 —— 那是**动作**的门，本条是**值**的门；`§31a` 管 tmux 目标的精确形态 `=<名>:`。三条都不是本条。
@@ -2197,7 +2198,7 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 
 ⚠ **它买不到的**：
 - **人群判据只数到「拼接点」这一层**〔TL2 · 4D 立，此前一条都没有〕：新长一处 quote ⇒ 红；但**不经 quote 的裸插值**（`format!` 直接把值塞进命令串）它看不见，
-  条件 quote 的包装（`qarg` · `argv` · `word` · `token`）经它的调用方不再逐个数；TS 一侧不在人群里。登记表里「只靠 quote」的文件今天有 9 份（外部值没有拒绝集 / 形式判定那一层），待裁。
+  条件 quote 的包装（`qarg` · `argv` · `word` · `token`）经它的调用方不再逐个数；TS 一侧不在人群里。登记表里「只靠 quote」的文件今天有 6 份（外部值没有拒绝集 / 形式判定那一层；〔TL3〕`backendPath` 一族补上之后 9 → 6，余下的是 cwd · 模型名 · sid · 自由文本 argv，卡在「自由文本路径拒不拒 shell 元字符」「模型名字符集」「sid 规则」三题，见 `调研/第四波记录/TL3.md §7.3`），待裁。
 - **②形不是白名单**：拒绝集只挡表里有的；表外的新危险字符（新的 Unicode 视觉欺骗段）要人补表。
 - **不判「这个值是不是外部来的」**：判据按已知入口写，一个被误认成「内部值」而免检的值，本条看不见。
 - **消息正文**（cc-bus 发的那段话）不在本条的放行判定里 —— 它经原语交给后端、不拼命令串，唯一的要求是「不空」。
