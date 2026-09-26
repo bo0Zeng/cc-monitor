@@ -108,7 +108,10 @@ pub(crate) fn register(table: &Table, args: &Value) -> Result<String, (&'static 
             "bad_args",
             copy_text(
                 "beRemoteAsk.register.backendPathRefused",
-                &[("origin", &o.to_string()), ("path", &format!("{backend:?}"))],
+                &[
+                    ("origin", &o.to_string()),
+                    ("path", &format!("{backend:?}")),
+                ],
             ),
         ));
     }

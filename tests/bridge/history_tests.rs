@@ -2518,8 +2518,7 @@ fn the_launch_side_really_asks_the_backend_and_uses_its_answer() {
 
     // ⑤ 「哪一次拉起」：resume 的 `key` 是这一次的 sid（`D7 阻-4` 刀 `S1`）。
     let _ = fake_asks();
-    let r9 = prefix_now(&LocalPsAction::Resume("sid-9".to_string()), Some(&acct_a))
-        .unwrap();
+    let r9 = prefix_now(&LocalPsAction::Resume("sid-9".to_string()), Some(&acct_a)).unwrap();
     assert_eq!(r9, relay_prefix_for(Some(&s_url("acct-a", "sid-9")), false));
     // ⑥ 新开：也真的问、也真的注入（刀 `S2`），`key` 是一次性 nonce（两次不同，也不是哪个 sid）。
     let n1 = prefix_now(&LocalPsAction::New, Some(&acct_a)).unwrap();
@@ -2727,15 +2726,10 @@ fn a_launch_that_needs_the_relay_is_refused_when_the_relay_is_not_running() {
         "错误得说出真正的原因：{e}"
     );
     // `/t/` 那一格（账号 0、开关开）同样不在 ⇒ 直连，不拒。
-    assert_eq!(
-        prefix_now(&action, Some(&LaunchAccount::Base)).unwrap(),
-        ""
-    );
+    assert_eq!(prefix_now(&action, Some(&LaunchAccount::Base)).unwrap(), "");
     // 非空对照：只把「中转在不在」翻过来，两格都注入。
     fake_table(&["acct-a"], true);
-    assert!(prefix_now(&action, Some(&acct_a))
-        .unwrap()
-        .contains("/s/"));
+    assert!(prefix_now(&action, Some(&acct_a)).unwrap().contains("/s/"));
     assert!(prefix_now(&action, Some(&LaunchAccount::Base))
         .unwrap()
         .contains("/t/claude-code/0/"));
@@ -3067,13 +3061,11 @@ fn the_launcher_plants_the_session_identity_into_the_process_environment() {
     // ③ **新开**那一支也落身份，而且两趟拿到的是两个不同的 nonce。
     //   `K-P5 §3 三` 现打：5 个起会话方**没有一处**在起新会话时知道 sid
     //   ⇒ 新开这一支才是本件的正主，它落不落身份不能靠 resume 那一支代言。
-    launch_now(&LocalPsAction::New, None, None, Some(&account), None)
-        .expect("新开这一趟不该失败");
+    launch_now(&LocalPsAction::New, None, None, Some(&account), None).expect("新开这一趟不该失败");
     let new_a = identity_segment(&last_sent())
         .expect("新开那一支送出去的串里没有身份 —— `New => String::new()` 那一刀的形状")
         .to_string();
-    launch_now(&LocalPsAction::New, None, None, Some(&account), None)
-        .expect("新开这一趟不该失败");
+    launch_now(&LocalPsAction::New, None, None, Some(&account), None).expect("新开这一趟不该失败");
     let new_b = identity_segment(&last_sent()).expect("同上").to_string();
     assert_ne!(
         new_a, new_b,
@@ -3370,7 +3362,9 @@ static ENTRY_SENT: std::sync::Mutex<Vec<(String, Option<String>)>> =
 static ENTRY_TURN: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn entry_sent() -> std::sync::MutexGuard<'static, Vec<(String, Option<String>)>> {
-    ENTRY_SENT.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    ENTRY_SENT
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 fn entry_recorder(cmd: &str, cwd: Option<&str>) -> Result<(), String> {

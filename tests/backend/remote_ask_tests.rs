@@ -284,8 +284,12 @@ async fn an_abandoned_ask_takes_its_inner_task_down_with_it() {
 #[test]
 fn the_reach_table_refuses_a_backend_path_that_must_not_be_spliced() {
     let t = Table::default();
-    for good in ["/home/u/.cc-monitor/bin/cc-monitor-backend", "/opt/my tools/b"] {
-        register(&t, &reach_args("ok", "h", good)).unwrap_or_else(|e| panic!("真实好值被拒了：{good:?} ⇒ {e:?}"));
+    for good in [
+        "/home/u/.cc-monitor/bin/cc-monitor-backend",
+        "/opt/my tools/b",
+    ] {
+        register(&t, &reach_args("ok", "h", good))
+            .unwrap_or_else(|e| panic!("真实好值被拒了：{good:?} ⇒ {e:?}"));
     }
     for bad in [
         "bin/b",
@@ -297,12 +301,13 @@ fn the_reach_table_refuses_a_backend_path_that_must_not_be_spliced() {
         "/home/u/x\nboom",
         "/home/u/x\u{202E}",
     ] {
-        let (code, msg) = register(&t, &reach_args("bad", "h", bad)).expect_err(&format!("坏值登进表了：{bad:?}"));
+        let (code, msg) = register(&t, &reach_args("bad", "h", bad))
+            .expect_err(&format!("坏值登进表了：{bad:?}"));
         assert_eq!(code, "bad_args");
-        assert!(msg.contains("bad") && msg.contains(&format!("{bad:?}")), "那句话没说清哪台 / 哪个值：{msg}");
+        assert!(
+            msg.contains("bad") && msg.contains(&format!("{bad:?}")),
+            "那句话没说清哪台 / 哪个值：{msg}"
+        );
     }
-    assert!(
-        !lock(&t).contains_key("bad"),
-        "拒了，却还是登进了可达表"
-    );
+    assert!(!lock(&t).contains_key("bad"), "拒了，却还是登进了可达表");
 }

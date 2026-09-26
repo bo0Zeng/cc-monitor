@@ -109,7 +109,9 @@ fn mask(src: &str) -> String {
         }
         // 原始字符串：r"…" / r#"…"# / br#"…"#（`r` 必须在词首，或紧跟词首的 `b`）
         let raw_start = c == 'r'
-            && (i == 0 || !is_ident(b[i - 1]) || (b[i - 1] == 'b' && (i < 2 || !is_ident(b[i - 2]))));
+            && (i == 0
+                || !is_ident(b[i - 1])
+                || (b[i - 1] == 'b' && (i < 2 || !is_ident(b[i - 2]))));
         if raw_start {
             let mut j = i + 1;
             while j < n && b[j] == '#' {
@@ -285,7 +287,9 @@ fn calls_of(body: &str) -> BTreeSet<(bool, String)> {
     let mut out = BTreeSet::new();
     let mut i = 0;
     while i < s.len() {
-        if !(s[i].is_ascii_alphabetic() || s[i] == b'_' || s[i] >= 0x80) || (i > 0 && is_ident_char(s[i - 1])) {
+        if !(s[i].is_ascii_alphabetic() || s[i] == b'_' || s[i] >= 0x80)
+            || (i > 0 && is_ident_char(s[i - 1]))
+        {
             i += 1;
             continue;
         }
@@ -370,7 +374,9 @@ fn analyze(files: &[(String, String)]) -> Analysis {
             .unwrap_or_else(|| panic!("{file}：`#[tauri::command` 后面找不到它修饰的 fn"));
         cmd_items.insert(next);
         let between = &texts[file][*tail..items[next].at];
-        let is_async = between.split(|c: char| !c.is_alphanumeric() && c != '_').any(|w| w == "async");
+        let is_async = between
+            .split(|c: char| !c.is_alphanumeric() && c != '_')
+            .any(|w| w == "async");
         if is_async {
             async_cmds.insert(key(next));
         } else {
@@ -383,7 +389,11 @@ fn analyze(files: &[(String, String)]) -> Analysis {
             return Vec::new();
         };
         if !method {
-            let same: Vec<usize> = defs.iter().copied().filter(|&d| items[d].file == items[cur].file).collect();
+            let same: Vec<usize> = defs
+                .iter()
+                .copied()
+                .filter(|&d| items[d].file == items[cur].file)
+                .collect();
             if !same.is_empty() {
                 return same;
             }
@@ -552,9 +562,15 @@ fn g_ambiguous() { rt.block_on(x) }
     assert_eq!((got.attrs, got.cmd_items), (3, 3));
     assert_eq!(
         got.sync_cmds,
-        BTreeSet::from(["fixture-a::a_sync".to_string(), "fixture-a::f_clean".to_string()])
+        BTreeSet::from([
+            "fixture-a::a_sync".to_string(),
+            "fixture-a::f_clean".to_string()
+        ])
     );
-    assert_eq!(got.async_cmds, BTreeSet::from(["fixture-a::d_async".to_string()]));
+    assert_eq!(
+        got.async_cmds,
+        BTreeSet::from(["fixture-a::d_async".to_string()])
+    );
     assert_eq!(
         got.reach,
         BTreeMap::from([(
@@ -572,6 +588,13 @@ fn the_mask_blanks_comments_and_literal_contents_but_keeps_code() {
     let m = mask(src);
     assert_eq!(m.chars().count(), src.chars().count(), "剥法改了长度");
     assert!(!m.contains("block_on("), "块注释里的针没剥：{m}");
-    assert_eq!(m.matches('{').count(), m.matches('}').count(), "字面量里的大括号漏了一只：{m}");
-    assert!(m.contains("<'x>") && m.contains("&'x str") && m.contains("f();"), "代码被剥坏了：{m}");
+    assert_eq!(
+        m.matches('{').count(),
+        m.matches('}').count(),
+        "字面量里的大括号漏了一只：{m}"
+    );
+    assert!(
+        m.contains("<'x>") && m.contains("&'x str") && m.contains("f();"),
+        "代码被剥坏了：{m}"
+    );
 }

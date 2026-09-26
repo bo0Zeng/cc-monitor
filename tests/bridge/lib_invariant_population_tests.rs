@@ -458,8 +458,8 @@ fn every_read_of_the_backend_path_field_is_registered() {
         if !rel.split('/').take(3).eq(["src", "bridge", "src"]) || !rel.ends_with(".rs") {
             continue;
         }
-        let n = body.matches(".backend_path").count()
-            - body.matches(".backend_path_for_shell").count();
+        let n =
+            body.matches(".backend_path").count() - body.matches(".backend_path_for_shell").count();
         if n > 0 {
             on_disk.insert(rel, n);
         }

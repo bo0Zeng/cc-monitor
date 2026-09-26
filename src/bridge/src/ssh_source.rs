@@ -288,7 +288,10 @@ impl RemoteConfig {
         } else {
             Err(copy_text(
                 "rsSshSource.backendPath.refused",
-                &[("machine", &self.origin_label()), ("path", &format!("{p:?}"))],
+                &[
+                    ("machine", &self.origin_label()),
+                    ("path", &format!("{p:?}")),
+                ],
             ))
         }
     }
