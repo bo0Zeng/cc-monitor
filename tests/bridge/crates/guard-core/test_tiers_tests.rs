@@ -72,7 +72,6 @@ const UNIT: &[&str] = &[
     "tests/backend/agents/claudecode/resume_tests.rs",
     "tests/backend/agents/codex/parse_tests.rs",
     "tests/backend/agents/codex/resume_tests.rs",
-    "tests/backend/control/resolve_query_tests.rs",
     "tests/backend/dial_pool_tests.rs",
     "tests/backend/observe/history_query_tail_tests.rs",
     "tests/backend/observe/turn_detect_tests.rs",
@@ -281,6 +280,7 @@ const SCAN: &[&str] = &[
     "tests/backend/control/gate_tests.rs",
     "tests/backend/control/kill_tests.rs",
     "tests/backend/control/launch_tests.rs",
+    "tests/backend/control/resolve_query_tests.rs", // 〔TL2 · V126〕UNIT → SCAN：跨仓承诺那一族读冻结金样与 IPC-PROTOCOL
     "tests/backend/dial_sftp_tests.rs",
     "tests/backend/dial_tests.rs",
     "tests/backend/files/module_boundary_guard.rs",
@@ -370,6 +370,7 @@ const SCAN: &[&str] = &[
     "tests/bridge/history_title_coverage.rs",
     "tests/bridge/hooks_diag_tests.rs",
     "tests/bridge/launcher_identity_registry_tests.rs",
+    "tests/bridge/lib_invariant_population_tests.rs", // 〔TL2〕§47 / §49 人群判据（读仓内源码）
     "tests/bridge/lib_mod_decl_hygiene_tests.rs",
     "tests/bridge/lib_remote_bind_prescan_tests.rs",
     "tests/bridge/lib_window_lifecycle_tests.rs",

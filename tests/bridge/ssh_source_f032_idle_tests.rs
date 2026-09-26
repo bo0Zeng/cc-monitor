@@ -609,3 +609,131 @@ fn gp1_the_unseen_arms_say_unseen_and_never_ended() {
     // 调用点：两个臂 ＋ F5 那一摞 == 3。
     assert_eq!(src.matches("emit_session_unseen(&handle,").count(), 3);
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// 〔TL2 · 4D · GP1 问 3〕重连后 tmux 还在的重新宣告为可重连
+// ════════════════════════════════════════════════════════════════════════
+//
+// 要求住址：主会话 4D 裁（`4d-lanes.md`「主会话本批裁的」）逐字「GP1 问 3：可重连 → 断连 → 重连后，
+// tmux 里还在的那几条重新宣告为可重连（不是落已结束）」；`设计/30 §3.5.6` 转移表（说不清 ＋ idle ⇒ 可重连 · 已结束 ＋ idle 不动）。
+
+/// G1 纯函数：断连前可重连的那几条里，这一轮没被宣告成活的 ⇒ 逐条 `Gone`（交 emitter 按新快照裁），保序去重。期望手写。
+#[test]
+fn tl2_reannounce_picks_the_idle_ones_that_did_not_come_back_alive() {
+    let pending: Vec<String> = ["a", "b", "c", "a"].iter().map(|s| s.to_string()).collect();
+    let got = reannounce_after_reconnect(&pending, |s| s == "b");
+    assert_eq!(got, vec![RemovedSid::gone("a"), RemovedSid::gone("c")]);
+    assert!(
+        reannounce_after_reconnect(&[], |_| false).is_empty(),
+        "空账 ⇒ 一条都不送"
+    );
+    assert!(
+        reannounce_after_reconnect(&pending, |_| true).is_empty(),
+        "全都重新活了 ⇒ 一条都不送"
+    );
+}
+
+/// G2 纯函数：`sessions_replayed` 到达时三种决定（手写表，四格）；断连时并账保序去重。
+#[test]
+fn tl2_the_replayed_decision_and_the_pending_merge_match_the_hand_written_table() {
+    for (empty, seen, want) in [
+        (true, false, OnReplayed::Listed),
+        (true, true, OnReplayed::Listed),
+        (false, true, OnReplayed::Reannounce),
+        (false, false, OnReplayed::Hold),
+    ] {
+        assert_eq!(
+            on_sessions_replayed(empty, seen),
+            want,
+            "pending_empty={empty} tmux_seen={seen}"
+        );
+    }
+    let mut pending = vec!["x".to_string()];
+    let idle: std::collections::HashSet<String> =
+        ["z", "y", "x"].iter().map(|s| s.to_string()).collect();
+    merge_pending(&mut pending, &idle);
+    assert_eq!(
+        pending,
+        vec!["x", "y", "z"],
+        "旧的在前、新的按字典序补、不重复"
+    );
+}
+
+/// G3 源码位置（流线程与 emitter 单测进不去 ⇒ 切臂体，同 GP1 R3′ / R4 的如实写法）：
+/// ① `run()` 断连那一段先并账、再把它们送成说不清；② `SessionsReplayed` 臂当场报清单的只有 `Listed` 那一支；
+/// ③ `TmuxSessions` 臂里放行那一段在 `record_tmux_raw` **之后**（emitter 裁时读的就是它）；
+/// ④ emitter 处理 `then_listed` 在 `removed` 与 `status_changed` 两个循环**之后**，且先记账再发。
+#[test]
+fn tl2_the_reannounce_is_ordered_before_the_listing_at_every_hop() {
+    let src = guard_core::production_code(include_str!("../../src/bridge/src/ssh_source.rs"));
+    let pos = |hay: &str, needle: &str| -> usize {
+        guard_core::find_pinned(hay, needle).unwrap_or_else(|e| panic!("`{needle}`：{e}"))
+    };
+    // ①
+    assert!(
+        pos(&src, "merge_pending(&mut pending_idle, &idle_here);")
+            < pos(
+                &src,
+                "disconnect_removals(announced.into_keys(), idle_here)"
+            ),
+        "断连时要先把可重连的记下来，再送成说不清"
+    );
+    // ②
+    let replayed = src
+        .split("Some(InboundFrame::SessionsReplayed) =>")
+        .nth(1)
+        .expect("那一臂不在了");
+    let arm = &replayed[..replayed
+        .find("Some(InboundFrame::")
+        .unwrap_or(replayed.len())];
+    let listed = arm
+        .find("OnReplayed::Listed =>")
+        .expect("Listed 那一支不在了");
+    let reann = arm
+        .find("OnReplayed::Reannounce =>")
+        .expect("Reannounce 那一支不在了");
+    let note = arm
+        .find("note_listed(&host_label)")
+        .expect("记账那一句不在了");
+    assert!(
+        listed < note && note < reann,
+        "`note_listed` 只许在 Listed 那一支里（别的两支经 emitter 报）"
+    );
+    assert_eq!(
+        arm.matches("emit_origin_listed(").count(),
+        1,
+        "当场报清单的只许一处"
+    );
+    // ③
+    let tmux = src
+        .split("Some(InboundFrame::TmuxSessions { raw, observation }) =>")
+        .nth(1)
+        .expect("流线程那一臂不在了（解析那一处不带 `=>`，切不到它）");
+    let tarm = &tmux[..tmux.find("Some(InboundFrame::").unwrap_or(tmux.len())];
+    assert!(
+        pos(tarm, "record_tmux_raw(&host_label, raw);") < pos(tarm, "send_reannounce("),
+        "放行那一段必须在存快照之后 —— emitter 裁的时候读的就是刚存进去的那一份"
+    );
+    // ④
+    let lib = guard_core::production_code(include_str!("../../src/bridge/src/lib.rs"));
+    let then = pos(&lib, "if let Some(origin) = change.then_listed {");
+    let removed_loops: Vec<usize> = lib
+        .match_indices("for removed in change.removed")
+        .map(|(i, _)| i)
+        .collect();
+    let status = lib
+        .match_indices("for act in change.status_changed")
+        .map(|(i, _)| i)
+        .max()
+        .expect("红绿灯那一循环不在了");
+    assert!(
+        removed_loops.iter().filter(|&&i| i < then).count() == 2 && status < then,
+        "emitter 报清单那一段要在两个 removed 循环与红绿灯循环之后（同一笔里先裁、后报）"
+    );
+    let tail = &lib[then..];
+    assert!(
+        pos(tail, "ssh_source::note_listed(&origin);")
+            < pos(tail, "ssh_source::emit_origin_listed(&handle, &origin);"),
+        "先记账（F5 对账读它）再发"
+    );
+}
