@@ -37,7 +37,7 @@
 import { commands } from "../ipc/commands";
 import { chan } from "../ipc/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
-import { LOCAL_ORIGIN } from "../ipc/origin";
+import { isLocalOrigin } from "../ipc/origin";
 import { showActionFailureToast } from "../error-toast"; // `K-R135`：用户级 PATH 那一格的失败要出声
 import { buildPasteBlock } from "../paste-block";
 import { ACTIVE_AGENT, listAgents } from "../agent-profile";
@@ -318,7 +318,7 @@ export function buildAliasManager(opts: {
   const shell = opts.platform;
   const copy = platformCopy()[shell];
   // 〔AL2〕只本机挂的几格（平台格 · 本机 ccm 入口 · 用系统编辑器打开）问的是 monitor 这台，远端不挂。
-  const local = opts.origin() === LOCAL_ORIGIN;
+  const local = isLocalOrigin(opts.origin());
   const wrap = el("details", "ccm-alias-gen machine-aliases");
   wrap.dataset.shell = shell;
   wrap.dataset.origin = opts.origin();
