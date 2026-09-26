@@ -744,7 +744,10 @@ fn the_token_value_never_reaches_a_log_macro() {
 }
 
 /// 〔SR1a · `设计/05 §13.6 ③`〕`accounts_changed`：认得出（无载荷，多余字段忽略）；
-/// 远端流收到它 ⇒ 发前端既有的 `remote-backend-ready`、带 `reason: "accounts_changed"`（恰好一处）。
+/// 远端流收到它 ⇒ 交给前端（恰好一处）。
+/// 〔DL1 · `设计/01 §2.2`「前端只有两个动作」〕交法从裸 Tauri 事件（`remote-backend-ready`）换成通道订阅：
+/// 那一臂调 `replay.accounts_changed`（订了这台 `accounts-changed` 的订阅收一格 `Frame`），且**整份** `ssh_source.rs`
+/// 生产段里那个裸事件的常量名零处（零命中带正控：同一个找法认得出这一臂真在调的那个名字）。
 #[test]
 fn accounts_changed_is_recognised_and_reaches_the_frontend_as_ready() {
     assert_eq!(
@@ -762,9 +765,21 @@ fn accounts_changed_is_recognised_and_reaches_the_frontend_as_ready() {
     // 臂体取到下一条 `Some(InboundFrame::` 臂为止（按字符切，不按字节数切 —— 中文注释会切在字中间）。
     let rest = &prod[arm + 1..];
     let body = &prod[arm..arm + 1 + rest.find("Some(InboundFrame::").unwrap_or(rest.len())];
+    let code = guard_core::strip_comment_lines(body);
+    assert_eq!(
+        code.matches("replay.accounts_changed(").count(),
+        1,
+        "accounts_changed 那一臂没经通道交给前端（`replay.accounts_changed` 不是恰好一处）"
+    );
+    let dead = ["REMOTE", "BACKEND", "READY"].join("_");
+    let whole = guard_core::strip_comment_lines(&prod);
     assert!(
-        body.contains("REMOTE_BACKEND_READY") && body.contains("\"reason\": \"accounts_changed\""),
-        "accounts_changed 那一臂没发 remote-backend-ready（或没带 reason）"
+        !guard_core::contains_word(&whole, &dead),
+        "`{dead}` 又出现在 ssh_source 生产段里 —— 那个裸事件回来了"
+    );
+    assert!(
+        guard_core::contains_word(&whole, "accounts_changed"),
+        "正控失败：同一个找法认不出这一臂真在调的名字 —— 上面的零命中不可信"
     );
 }
 

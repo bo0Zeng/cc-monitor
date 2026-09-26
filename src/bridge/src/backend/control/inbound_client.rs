@@ -359,6 +359,34 @@ impl InboundClient {
         args: Value,
         timeout: Duration,
     ) -> Result<Option<Value>, CallError> {
+        self.send_until(cmd, args, tokio::time::Instant::now() + timeout)
+            .await
+    }
+
+    /// 〔DL1 · `设计/05 §3.3.2`「一次调用一个绝对时刻」〕与 [`Self::call`] 同一件事，只是截止时刻由**调用方**给。
+    ///
+    /// 一件事由好几问组成时（分页读），发起方造一次截止时刻、每一问都拿**同一个**去等 ⇒ 越往后剩得越少，
+    /// 没有一问会重新拿一整份（`设计/15 §3.6` 病 2：「每 59 s 吐一个字节的对端能拖到无限」）。
+    /// 本函数**只用、不造**：写入 ＋ 等应答两段共用这一个时刻（上面「两段共用一个 deadline」同一条理由）。
+    /// [`Self::call`] 是它的薄壳（`now + timeout`），其余调用方行为逐字不变。
+    pub async fn call_until(
+        &self,
+        cmd: &str,
+        args: Value,
+        deadline: tokio::time::Instant,
+    ) -> Result<Option<Value>, CallError> {
+        self.send_until(cmd, args, deadline).await
+    }
+
+    /// [`Self::call`] 与 [`Self::call_until`] 共用的那一份：发一条命令、在 `deadline` 之前等它的结局。
+    async fn send_until(
+        &self,
+        cmd: &str,
+        args: Value,
+        deadline: tokio::time::Instant,
+    ) -> Result<Option<Value>, CallError> {
+        // 只为报错里那一格「等了多久」（`Timeout.after`）：这一问开始时还剩多少。
+        let timeout = deadline.saturating_duration_since(tokio::time::Instant::now());
         if !self.accepts(cmd) {
             return Err(CallError::Unsupported {
                 cmd: cmd.to_string(),
@@ -367,7 +395,6 @@ impl InboundClient {
         }
         let id = self.next_id();
         let rx = self.register(&id).ok_or(CallError::TooManyPending)?;
-        let deadline = tokio::time::Instant::now() + timeout;
         let line = WriteJob::Line(encode_request(&id, cmd, &args));
         match tokio::time::timeout_at(deadline, self.writes.send(line)).await {
             Ok(Ok(())) => {}

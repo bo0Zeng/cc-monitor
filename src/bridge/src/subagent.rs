@@ -116,7 +116,10 @@ impl Backend {
                 &[("who", &self.whose())],
             )));
         }
-        frame_query::run_routed(&self.origin, route)
+        // 〔DL1〕这一件的期限在这里造一次（按行一问 / 读整段各自的值见 `ArgvRoute::budget`），
+        //   分页读的每一页都拿同一个时刻去等。
+        let deadline = frame_query::Deadline::within(route.budget());
+        frame_query::run_routed(&self.origin, route, deadline)
             .await
             .map_err(QueryError::transport)
     }

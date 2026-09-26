@@ -27,6 +27,7 @@ vi.mock("../src/ipc/commands", () => ({ commands: new Proxy({}, { get: () => vi.
 vi.mock("../src/ipc/chan", async () => (await import("./test-support/chan-stream-fake.ts")).chanStreamModule);
 
 import { bindEvents, TAP_WINDOW } from "../src/events";
+import { ACCOUNTS_CHANGED_KIND, ACCOUNTS_CHANGED_WINDOW } from "../src/session-accounts-poll";
 import { chanStreamModule, streamFake } from "./test-support/chan-stream-fake.ts";
 
 const tap = (n: number): unknown => ({ origin: "<local>", stream: "sid", resp: 0, n, data: "{}" });
@@ -69,5 +70,52 @@ describe("〔TAP〕session-tap 走 subscribe（不是裸事件）", () => {
 
     rec.sink([{ t: "unseen", at: { idx: 1, tag: "read" }, why: "dropped" }]);
     expect(lost).toEqual(["<local>"]);
+  });
+});
+
+// 〔DL1 · 第五波〕`accounts-changed`（替掉裸事件 `remote-backend-ready`）与 tap 同一条帧路、同一处 `chan.subscribe`。
+// 守的要求：`设计/01 §2.2`「前端只有两个动作」· `设计/05 §15.3`「经通道 `subscribe`」· `§3.3.4`（credit 按格还）。
+// 设计住仓外 `调研/第四波记录/DL1.md §3`。
+describe("〔DL1〕accounts-changed 走 subscribe（不是裸事件）", () => {
+  beforeEach(() => {
+    subs.clear();
+    streamFake.reset();
+    chanStreamModule.chan.subscribe.mockClear();
+  });
+
+  it("每台一条 (机器, accounts-changed)、窗口 ACCOUNTS_CHANGED_WINDOW；seen / frame / gap ⇒ 刷（一批一次），frame 的 credit 当场还；unseen 不刷", async () => {
+    let refreshed = 0;
+    await bindEvents(
+      { onLine: () => {}, onSessionEnded: () => {}, onAccountsChanged: () => refreshed++ },
+      { accounts: ["<local>", "box-a"] },
+    );
+    expect(streamFake.subscriptions.map((s) => [s.origin, s.kind])).toEqual([
+      ["<local>", "accounts-changed"],
+      ["box-a", "accounts-changed"],
+    ]);
+    expect(ACCOUNTS_CHANGED_KIND).toBe("accounts-changed");
+    expect(chanStreamModule.chan.subscribe.mock.calls.map((c) => c[3])).toEqual([
+      ACCOUNTS_CHANGED_WINDOW,
+      ACCOUNTS_CHANGED_WINDOW,
+    ]);
+    // 没有叫 remote-backend-ready 的裸事件监听（零命中，正控：session-ended 那一个在）。
+    expect(subs.has(["remote", "backend", "ready"].join("-"))).toBe(false);
+    expect(subs.has("session-ended")).toBe(true);
+
+    const a = streamFake.subscriptions[1]!;
+    a.sink([{ t: "unseen", at: { idx: 1, tag: "read" }, why: "Dropped" }]);
+    expect(refreshed, "unseen 不该刷").toBe(0);
+    a.sink([{ t: "seen", from: null }]);
+    expect(refreshed).toBe(1);
+    a.sink([
+      { t: "frame", seq: 0, body: '{"accounts_changed":true}' },
+      { t: "frame", seq: 1, body: '{"accounts_changed":true}' },
+    ]);
+    expect(refreshed, "一批两格只刷一次").toBe(2);
+    expect(a.wants).toEqual([2]);
+    a.sink([{ t: "gap", fromSeq: 2, toSeq: 4 }]);
+    expect(refreshed).toBe(3);
+    expect(a.wants, "gap 不占 credit").toEqual([2]);
+    expect(streamFake.subscriptions[0]!.wants, "别台那条没动").toEqual([]);
   });
 });

@@ -4,6 +4,7 @@ import { chan, type Item, type Sub } from "./ipc/chan";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { showActionFailureToast } from "./error-toast";
+import { ACCOUNTS_CHANGED_KIND, ACCOUNTS_CHANGED_WINDOW, accountsChangedItems } from "./session-accounts-poll";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 // C02（rust-ts-boundary）：这 5 个 payload 类型**改成从生成物 re-export**，不再手写。
 // 源是 `src/bridge/src/bridge.rs` 的 `#[cfg_attr(test, derive(ts_rs::TS))]`。
@@ -105,6 +106,11 @@ export interface EventHandlers {
    * 〔TAP〕那台机器的 tap 流看不见了（订阅里的 `Unseen`：本机后端那条流断了）⇒ 那台上还开着的响应不会再有下文，活卡全撤。
    */
   onSessionTapLost?: (origin: Origin) => void;
+  /**
+   * 〔DL1 · `设计/01 §2.2`〕某台机器的账号清单**可能**变了（`accounts-changed` 流里的 `seen` / `frame` / `gap`，
+   * 一批只叫一次）⇒ 强制刷账号清单与 chip。替掉裸 Tauri 事件 `remote-backend-ready`。
+   */
+  onAccountsChanged?: () => void;
   /**
    * 〔FW1 · 第四波 4D · D-d〕活会话的记录文件不见了（`change` = `"gone"`）/ 被改过已从头重读（`"truncated"` / `"rewritten"`）。
    * 会话流里的一格（`{"file_notice": …}`），与行同序：重读出来的行排在它后面。
@@ -316,6 +322,11 @@ export interface BindEventsOptions {
    * 与会话行同一条帧路、同一套 credit（`设计/05 §15`）；窗口是 {@link TAP_WINDOW}。
    */
   taps?: ReadonlyArray<Origin>;
+  /**
+   * 〔DL1〕要订 `accounts-changed` 的机器（那台的长连接又通了 / 那台后端说账号清单变了 ⇒ {@link EventHandlers.onAccountsChanged}）。
+   * 与会话行 · tap 同一条帧路、同一处 `chan.subscribe`；窗口是 `ACCOUNTS_CHANGED_WINDOW`。
+   */
+  accounts?: ReadonlyArray<Origin>;
 }
 
 /**
@@ -748,6 +759,21 @@ export async function bindEvents(
     if (used > 0) hold.sub?.want(used);
   };
 
+  // 〔DL1〕`accounts-changed`：一批格 ⇒ 要不要刷（`accountsChangedItems` 答）；`frame` 占的 credit 当场还
+  //   （格可能先于 `subscribe` 的返回到达 ⇒ 那时欠着，下一批一起还）。
+  const onAccountsItems = (_origin: Origin, hold: StreamHold, items: Item[]): void => {
+    const { changed, frames } = accountsChangedItems(items);
+    if (frames > 0) {
+      if (hold.sub) {
+        hold.sub.want(frames + hold.owed);
+        hold.owed = 0;
+      } else {
+        hold.owed += frames;
+      }
+    }
+    if (changed) handlers.onAccountsChanged?.();
+  };
+
   // 〔CF2 · 第四波 4B〕会话流：起停那几个事件的监听都在了之后再订（订阅一登记，句柄就可能开始交格）。
   //   返回时 monitor 那一侧已经登记好 ⇒ 主界面接着发 `frontend-ready`（就绪点）不会落空。
   // 〔TAP〕`session-tap` 与会话行走**同一处** `chan.subscribe`（前端对通信层入口的调用点各恰好一处，`X6`）：
@@ -755,6 +781,12 @@ export async function bindEvents(
   const plan: { origin: Origin; kind: string; window: number; feed: typeof onStreamItems }[] = [
     ...(opts.streams ?? []).map(({ origin, kind }) => ({ origin, kind, window: STREAM_WINDOW, feed: onStreamItems })),
     ...(opts.taps ?? []).map((origin) => ({ origin, kind: "session-tap", window: TAP_WINDOW, feed: onTapItems })),
+    ...(opts.accounts ?? []).map((origin) => ({
+      origin,
+      kind: ACCOUNTS_CHANGED_KIND,
+      window: ACCOUNTS_CHANGED_WINDOW,
+      feed: onAccountsItems,
+    })),
   ];
   await Promise.all(
     plan.map(async ({ origin, kind, window, feed }) => {
