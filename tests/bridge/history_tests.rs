@@ -2201,7 +2201,10 @@ fn a_custom_launcher_goes_through_the_one_command_fragment_whitelist() {
         ("a~b", '~'),
     ] {
         let e = checked_launcher(Some(bad)).expect_err(bad);
-        assert!(e.contains(&format!("{c:?}")), "{bad:?}：那一句没说出是哪个字符：{e}");
+        assert!(
+            e.contains(&format!("{c:?}")),
+            "{bad:?}：那一句没说出是哪个字符：{e}"
+        );
     }
 }
 

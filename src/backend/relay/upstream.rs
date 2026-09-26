@@ -100,59 +100,15 @@ pub(crate) struct Base {
 }
 
 impl Base {
-    /// 认得的两种协议。**闭集只有这一个住址**〔`brief` 13b〕：
-    /// 报错文案与判据都从这里派生，不许再写第二份字面量。
-    pub(crate) const SCHEMES: &'static [(&'static str, bool)] = &[("https", true), ("http", false)];
-
+    /// 〔DUP3 · 主会话 09-26 裁 J9〕「base URL 能不能用」全仓只有一份，住共享 crate `upstream_url_core`（协议闭集 `SCHEMES` 也在那儿）；
+    /// 这里只把它的形状结论装成 `Base`、把理由翻成一句话（`K-R1`：理由来自解析器，逐形一句）。
     pub(crate) fn parse(url: &str) -> Result<Base, BaseIssue> {
-        let Some((scheme, rest)) = url.split_once("://") else {
-            return Err(BaseIssue(copy_core::copy_static!(
-                "beRelayUpstream.parse.notUrl"
-            )));
-        };
-        let Some((_, tls)) = Base::SCHEMES.iter().find(|(s, _)| *s == scheme) else {
-            return Err(BaseIssue(copy_core::copy_static!(
-                "beRelayUpstream.parse.badScheme"
-            )));
-        };
-        let tls = *tls;
-        // ★ 这一行是本格的正主：authority 与**路径**从这里分家，
-        //   而先前那一版把后半截整个扔了。
-        let (authority, raw_path) = match rest.find('/') {
-            Some(i) => (&rest[..i], &rest[i..]),
-            None => (rest, ""),
-        };
-        if authority.is_empty() {
-            return Err(BaseIssue(copy_core::copy_static!(
-                "beRelayUpstream.parse.noHost"
-            )));
-        }
-        // ⚠ 查询串**没有路径也塞得进来**（`https://h?x=1` 里 authority 逐字是 `h?x=1`）
-        //   ⇒ 这一格不查的话，那一形会被当成一个叫 `h?x=1` 的主机名接受下来。
-        if authority.contains('?') || authority.contains('#') {
-            return Err(BaseIssue(copy_core::copy_static!(
-                "beRelayUpstream.parse.hasQuery"
-            )));
-        }
-        let (host, port) = match authority.rsplit_once(':') {
-            Some((h, p)) => (
-                h.to_string(),
-                p.parse::<u16>().map_err(|_| {
-                    BaseIssue(copy_core::copy_static!("beRelayUpstream.parse.badPort"))
-                })?,
-            ),
-            None => (authority.to_string(), if tls { 443u16 } else { 80u16 }),
-        };
-        if host.is_empty() {
-            return Err(BaseIssue(copy_core::copy_static!(
-                "beRelayUpstream.parse.noHost"
-            )));
-        }
+        let u = upstream_url_core::parse(url).map_err(BaseIssue::of)?;
         Ok(Base {
-            tls,
-            host,
-            port,
-            path: normalize_prefix(raw_path)?,
+            tls: u.tls,
+            host: u.host,
+            port: u.port,
+            path: u.path,
         })
     }
 
@@ -198,65 +154,24 @@ impl Base {
     pub(crate) fn upstream_target(&self, rest: &str) -> String {
         format!("{}{}", self.path, rest)
     }
-
-    /// 这个基址指的是**本机回环**吗〔`K-R1`：本地部署那一格〕。
-    ///
-    /// # ⚠ 分母如实写 —— 它认两类，第二类是**约定**不是保证
-    ///
-    /// 1. **能解析成 IP 的**（含 `[::1]` 那种带方括号的写法）⇒ 走
-    ///    `IpAddr::is_loopback`，那是标准库按 RFC 判的，`127.0.0.0/8` 与 `::1` 都算。
-    /// 2. **逐字是 `localhost`** ⇒ 算。⚠ 它算回环靠的是「解析器把这个名字解到回环」，
-    ///    那是一条**约定**（`/etc/hosts` 与各平台的内建规则），**不是**本条证得了的事实。
-    ///    有人在 `hosts` 里把 `localhost` 指到别处，本条就说错了。**如实记，不假装。**
-    ///
-    /// ⇒ 别的名字（`my-box.local` / 一个真解到 `127.0.0.1` 的域名）本条一律说**不是**：
-    /// 那要 DNS 才判得了，而这里在**装表**那一刻跑（没起任何网络）。
-    /// 宁可把一条其实安全的配法拒掉并出声，不许把一条明文过网线的放行。
-    pub(crate) fn host_is_loopback(&self) -> bool {
-        let h = self.host.trim_start_matches('[').trim_end_matches(']');
-        match h.parse::<std::net::IpAddr>() {
-            Ok(ip) => ip.is_loopback(),
-            Err(_) => h.eq_ignore_ascii_case("localhost"),
-        }
-    }
 }
 
-/// 把 `base_url` 里那一截原始路径收成一个**前缀**：带前导 `/`、不带尾随 `/`、`""` = 没有。
-///
-/// # ⚠ 它只做「去掉没有意义的尾巴」，不做任何**猜测**
-///
-/// 与 `store::read_key` 那条纪律同源（逐字：人写进去什么，上游就该收到什么）：
-/// 尾随的 `/` 在一个**前缀**里不携带信息（拼上去只会多一个空段），去掉是安全的；
-/// 而「顺手补一段 `/v1`」「把重复的段合掉」这类清理**一律不做** —— 猜错一次的代价
-/// 是**静默打到另一个地方**，而那正是本格在治的病。
-///
-/// # 三形拒掉，逐形给理由（**都出声**，不许静默吞掉）
-///
-/// - **带 `?` 或 `#`**：查询串与片段是**这一次请求**的东西，不是基址的。
-///   放进来的话它会被拼在客户端真路径的**前面** ⇒ 拼出一个谁都不认识的目标。
-/// - **`//` 打头**：拼出来的请求行会以 `//` 起首，那在 HTTP 里读作 authority
-///   ⇒ 一个基址里的手滑变成「把请求发到别处」。〔`K-R9` 那一族：剥法与 `//`〕
-/// - ⚠ **中间的空段**（`/a//b`）**不拒**：那是人写下的东西，原样带着。如实记为射程外。
-fn normalize_prefix(raw: &str) -> Result<String, BaseIssue> {
-    if raw.is_empty() {
-        return Ok(String::new());
+impl BaseIssue {
+    /// 形状那几形各一句（句子住文案表；判定住 `upstream_url_core::parse`）。
+    pub(crate) fn of(i: upstream_url_core::ShapeIssue) -> BaseIssue {
+        use upstream_url_core::ShapeIssue as S;
+        BaseIssue(match i {
+            S::Whitespace => copy_core::copy_static!("beRelayUpstream.parse.whitespace"),
+            S::NotUrl => copy_core::copy_static!("beRelayUpstream.parse.notUrl"),
+            S::BadScheme => copy_core::copy_static!("beRelayUpstream.parse.badScheme"),
+            S::NoHost => copy_core::copy_static!("beRelayUpstream.parse.noHost"),
+            S::HasQuery => copy_core::copy_static!("beRelayUpstream.parse.hasQuery"),
+            S::BadPort => copy_core::copy_static!("beRelayUpstream.parse.badPort"),
+            S::DoubleSlash => {
+                copy_core::copy_static!("beRelayUpstream.normalizePrefix.doubleSlash")
+            }
+        })
     }
-    if raw.contains('?') || raw.contains('#') {
-        return Err(BaseIssue(copy_core::copy_static!(
-            "beRelayUpstream.parse.hasQuery"
-        )));
-    }
-    let trimmed = raw.trim_end_matches('/');
-    if trimmed.is_empty() {
-        // 整段就是一个或多个 `/` ⇒ 它说的是「根」，等价于没有前缀。
-        return Ok(String::new());
-    }
-    if trimmed.starts_with("//") {
-        return Err(BaseIssue(copy_core::copy_static!(
-            "beRelayUpstream.normalizePrefix.doubleSlash"
-        )));
-    }
-    Ok(trimmed.to_string())
 }
 
 /// 一条上游连接。两个变体都实现 `Read`/`Write` ⇒ 转发循环对 TLS 与否**一无所知**。

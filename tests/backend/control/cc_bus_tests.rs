@@ -705,14 +705,21 @@ fn senders_and_broadcast_recipients_are_judged_before_they_reach_cc_send() {
     for id in bad.iter().filter(|id| !id.trim().is_empty()) {
         let e = parse_send(&json!({ "to": "alpha_cc", "text": "x", "from": id })).expect_err(id);
         assert_eq!(e.0, "bad_id", "{id:?}：发消息的发件身份拒码不对（{e:?}）");
-        assert!(e.1.contains(&format!("{id:?}")), "{id:?}：那一句没点出是哪个值：{}", e.1);
+        assert!(
+            e.1.contains(&format!("{id:?}")),
+            "{id:?}：那一句没点出是哪个值：{}",
+            e.1
+        );
         let e = parse_broadcast(&json!({ "text": "x", "from": id })).expect_err(id);
         assert_eq!(e.0, "bad_id", "{id:?}：广播的发件身份拒码不对（{e:?}）");
         let entry = recipient_refused(id).unwrap_or_else(|| panic!("{id:?} 当广播收件人被放行了"));
         assert_eq!(entry["id"], json!(id), "{id:?}");
         assert_eq!(entry["error"], json!("bad_id"), "{id:?}");
         let detail = entry["detail"].as_str().expect("detail 是字符串");
-        assert!(detail.contains(&format!("{id:?}")), "{id:?}：那一句没点出是哪个值：{detail}");
+        assert!(
+            detail.contains(&format!("{id:?}")),
+            "{id:?}：那一句没点出是哪个值：{detail}"
+        );
     }
     // 空 / 纯空白的 `from` = 没给（照旧以后端处境里的身份发），不是 `bad_id`。
     for blank in ["", "  "] {

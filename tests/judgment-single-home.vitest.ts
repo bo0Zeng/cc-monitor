@@ -66,7 +66,7 @@ import { stripComments } from "./test-support/strip-comments.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7" | "J8"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19";
+  | "J17" | "J18" | "J19" | "J20";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -272,13 +272,31 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     ],
   },
   J9: {
-    what: "Base URL 形状 ＋ 明文只许回环",
-    homes: ["creds-core::check_base_url_shape", "src/backend/relay/upstream.rs::host_is_loopback"],
-    status: "open",
+    what: "上游 base URL 能不能用（形状 ＋ 协议闭集 ＋ 明文只许回环）",
+    // 〔DUP3 · 主会话 09-26 裁 J9 → 甲〕三截（写口 creds-core 形状关 · 中转 `Base::parse` · 装表的回环判定）收成一份进新 crate
+    //   `upstream-url-core`；界面 `checkBaseUrl` 成读生成物的薄壳（只剩「空 ⇒ 默认」与「按理由挑一句」）。
+    homes: ["upstream-url-core::usable", "upstream-url-core::parse", "upstream-url-core::upstream_is_loopback"],
+    status: "generated",
     defs: ["checkBaseUrl"],
-    needles: [],
-    owner: "主会话拍（DUP1.md §4 ①）",
-    why: "驱动新建 API 号表单的即时反馈（填错时「创建」逐字变灰）",
+    needles: [
+      { text: "new URL(s)", count: 0, file: "src/settings/account-new-form.ts" },
+      { text: "127(\\.\\d{1,3}){3}", count: 0 },
+    ],
+    gen: {
+      file: "src/generated/judgment-rules.ts",
+      exports: ["BASE_URL_ISSUE_PATTERNS", "baseUrlIssue", "BaseUrlIssue"],
+      importers: ["src/settings/account-new-form.ts"],
+    },
+    parity: {
+      via: "tests/__fixtures__/upstream-url.golden.json",
+      tests: ["tests/bridge/backend/control/payload_judgment_rules.rs", "tests/upstream-url-parity.vitest.ts"],
+    },
+    rustGone: ["src/backend/relay/upstream.rs::host_is_loopback", "src/bridge/crates/creds-core/src/store.rs::check_base_url_shape"],
+    // 中转那份不许再有自己的协议表 / 回环判定。
+    rustNeedles: [
+      { file: "src/backend/relay/upstream.rs", text: '("https", true)', count: 0 },
+      { file: "src/backend/relay/upstream.rs", text: "is_loopback()", count: 0 },
+    ],
   },
   J10: {
     what: "用户消息里的 CLI 注入噪声",
@@ -441,6 +459,15 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       tests: ["tests/backend/observe/accounts_query_tests.rs", "tests/accounts-decode.vitest.ts"],
     },
   },
+  J20: {
+    what: "中转进门请求的 Host 头是不是回环字面量（防 DNS 重绑）",
+    // 〔DUP3 · 主会话 09-26 裁（丙）〕与 J9 里上游那条回环判定是两个判定：这里只认三个字面量是设计，改名说清、分两行登记，不许并。
+    homes: ["src/backend/relay/door.rs::host_header_is_loopback_literal"],
+    status: "zero",
+    defs: [],
+    needles: [],
+    rustGone: ["src/backend/relay/door.rs::host_is_loopback"],
+  },
 };
 
 /** `NONE` = 登记时逐个读过规则、在 TS 生产段按规则搜过，没有孪生。 */
@@ -498,7 +525,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     ALL: NONE,
     AUTH_STYLE_FIELD: NONE,
     BASE_URL_FIELD: NONE,
-    check_base_url_shape: "J9",
     create_private: NONE,
     DEFAULT: NONE,
     expose_for_auth_header: NONE,
@@ -613,6 +639,15 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     launcher_refused_char: "J3",
     LAUNCHER_EXTRA: NONE,
     LAUNCHER_HOME_PREFIX: NONE,
+  },
+  // 〔DUP3 · J9〕上游 base URL 能不能用（新立；中转解析 · 上游选择装表 · 写口 · 界面生成物共用）。
+  "upstream-url-core": {
+    SCHEMES: NONE,
+    LOOPBACK_NAME: NONE,
+    code: NONE,
+    parse: "J9",
+    upstream_is_loopback: "J9",
+    usable: "J9",
   },
 };
 

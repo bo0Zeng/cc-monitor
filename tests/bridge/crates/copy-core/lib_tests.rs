@@ -115,7 +115,10 @@ fn the_interpolation_is_one_pass_and_never_rescans_a_value() {
     );
     // 正控：两个占位符都真换了（不是「一个都不换」）。
     assert_eq!(
-        copy_text("panePreview.head.title", &[("origin", "devbox"), ("target", "%1")]),
+        copy_text(
+            "panePreview.head.title",
+            &[("origin", "devbox"), ("target", "%1")]
+        ),
         "预览画面 · [devbox] tmux: %1"
     );
 }

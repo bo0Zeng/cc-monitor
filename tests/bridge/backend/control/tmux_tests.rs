@@ -245,7 +245,16 @@ fn gate1_admits_an_existing_target_by_the_one_gate_core_rule() {
         assert!(e.contains(cp), "{bad:?}：那一句没说出是哪个字符：{e}");
     }
     // 判定真是 gate-core 那一条（不是本侧又写了一份）：两者对同一批样本逐个同答。
-    for v in ["", "x", "si*", "a\u{0}b", "a\u{2060}b", "-lead", "a:b", "a.b"] {
+    for v in [
+        "",
+        "x",
+        "si*",
+        "a\u{0}b",
+        "a\u{2060}b",
+        "-lead",
+        "a:b",
+        "a.b",
+    ] {
         assert_eq!(
             gate1_admit_target(v).is_ok(),
             gate_core::existing_tmux_name_issue(v).is_none(),
