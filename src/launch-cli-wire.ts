@@ -19,10 +19,16 @@ export type CliWireContainer =
 /** `name` 缺失 = 只有 configDir 没有名字 ⇒ 说不出 `--account` ⇒ §35 短路。 */
 export type CliWireAccount = { kind: "base" } | { kind: "account"; name: string | null };
 
+/** 〔LR2 · R95b〕远端 `ccm` 探测结果的**三态**（Rust 对侧 `launch_wire.rs::WireCcmProbe`，按 `state` 判别）。
+ *  原来这一格是 `caps: string[] | null` 两态，「没探出来」一过线就被说成「没装」（`设计/80 §9.4`）。 */
+export type CliWireCcmProbe =
+  | { state: "installed"; caps: string[] }
+  | { state: "not-installed" }
+  | { state: "unknown"; error: string };
+
 export interface CliRenderRequest {
   isSsh: boolean;
-  /** `null` = 未装 ccm。 */
-  caps: string[] | null;
+  ccm: CliWireCcmProbe;
   action: CliWireAction;
   container: CliWireContainer;
   cwd: string | null;
@@ -43,7 +49,7 @@ export interface CliRenderResponse {
 
 /** U8a-2c-pre：兜底那支 `container:"none"` 的载荷渲染入参。
  *
- *  ⚠ 与 TS `launch-plan.ts::EnvOp` **同名同序**（那边是 IR，这边是上线形状）。
+ *  ⚠ 与 TS `launch-types.ts::EnvOp` **同名同序**（那边是 IR，这边是上线形状）。
  *  Rust 对侧 `launch_wire.rs::WireEnvOp` 带 `deny_unknown_fields` ⇒ 少一个变体
  *  就是一次「反序列化失败 → 静默走另一条渲染路」，所以两边必须一起加。 */
 export type WireEnvOp =

@@ -16,9 +16,8 @@ import {
   planAttach,
 } from "../src/launch-requests";
 import { buildLaunchPlan } from "../src/launch-plan.ts";
-import { renderFallback } from "../src/launch-render-fallback.ts";
-import { posixQuote } from "../src/shell-quote.ts";
-import type { LaunchAction, LaunchContext } from "../src/launch-plan.ts";
+import { buildLaunchRenderRequest } from "../src/remote-launch-run.ts";
+import type { LaunchAction, LaunchContext } from "../src/launch-types.ts";
 
 /** `设计/80 §8` 步 1：形状合法的启动期令牌（32 个小写 hex）。 */
 const TOK = "0f1e2d3c4b5a69788796a5b4c3d2e1f0";
@@ -188,26 +187,30 @@ describe("F08 下半：远端 resume 的会话容器", () => {
 // 「『直接起和 tmux 用同一套机制』不是要额外做的事，**是这个设计的自动结果**」。
 // 它之所以成立，是因为令牌走 `plan.env`（载荷），而 env 注入发生在**容器之外**。
 //
-// ⇒ 判据形状：**同一个 `rbindToken` 喂给四条 planXxx，四条渲出来的串里都得有那一串。**
+// ⇒ 判据形状：**同一个 `rbindToken` 喂给四条 planXxx，四条交给生产渲染命令的请求里
+// 都带着那一条 `export-rbind-token`，而且它在内层载荷（`env`）里、不在外层（`outer`）。**
 // `container:{kind:"none"}`（`planResumeDirect` —— `§6.1`/`§5 方案 A` 明确不覆盖、
 // 今天 `↗` 做不到的那一档）与 `container:{kind:"tmux"}` 的三格**一视同仁**。
 //
+// 〔LR2〕这一组原来比的是 TS 兜底渲染器渲出的**字节**；那份渲染器零生产调用、按 `设计/00 §2.5 ④`
+// 删了。现在比的是**生产**那一跳的请求（`buildLaunchRenderRequest`，`renderLaunchCommand` 用的同一个）；
+// 请求 → 字节那一段归 Rust：`payload-golden.json`「只有启动期令牌」与
+// `tmux-outer-golden.json`「create：启动期令牌」两条逐字节钉着（`launch_*_parity.rs`）。
+//
 // ⚠ **反空真**：每一条都配一个「不传令牌 ⇒ 零命中」的对照组。少了对照组，
-// 「渲染器把令牌硬编码进去」与「令牌真的从 ctx 流过来」在这把尺子上同形。
+// 「请求构造把令牌硬编码进去」与「令牌真的从 ctx 流过来」在这把尺子上同形。
 describe("设计/80 §8.4：EnvOp 容器无关 —— 两条起法都自动带上启动期令牌", () => {
-  /** 内层载荷里那一截的**字面形态**（手写，不从渲染器取 —— 恒等两侧同源会恒真）。 */
-  const INNER = `export CCM_RBIND_TOKEN='${TOK}'; `;
-  /** tmux 那三格的内层整条载荷会被 `posixQuote` 一次塞进 `send-keys` ⇒ 针要跟着被 quote 一层。 */
-  const INNER_IN_TMUX = posixQuote(INNER).slice(1, -1);
+  const TOKEN_OP = { kind: "export-rbind-token", value: TOK } as const;
+  const hasToken = (env: readonly { kind: string }[]): boolean =>
+    env.some((op) => op.kind === "export-rbind-token");
 
   it("★ `container:\"none\"`（planResumeDirect）—— 今天 ↗ 做不到的那一档，自动带上了", () => {
     const { plan } = planResumeDirect("abc-123", "/w", "claude", { rbindToken: TOK });
     expect(plan.container).toEqual({ kind: "none" });
-    expect(plan.env).toContainEqual({ kind: "export-rbind-token", value: TOK });
-    // 逐字节：`none` 那一格没有第二层 quote，针就是内层那一截原文。
-    expect(renderFallback(plan)).toBe(
-      `unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; ${INNER}cd '/w' && claude --resume abc-123`,
-    );
+    const req = buildLaunchRenderRequest(plan);
+    // 相等不是包含：排在全部 unset 之后（`RBIND_TOKEN_DIMENSION` 的 order 契约）。
+    expect(req.env).toEqual([{ kind: "unset-nested-env" }, TOKEN_OP]);
+    expect(req.outer).toBeUndefined();
   });
 
   it("★ tmux 那三格也带（create / send-into / new）—— 一行容器相关的代码都没写", () => {
@@ -218,13 +221,15 @@ describe("设计/80 §8.4：EnvOp 容器无关 —— 两条起法都自动带�
     ];
     for (const { plan } of tmuxBuilds) {
       expect(plan.container.kind).toBe("tmux");
-      expect(plan.env).toContainEqual({ kind: "export-rbind-token", value: TOK });
-      // 令牌进的是**内层载荷**，不是外层 tmux 命令（`§8.4`：EnvOp 作用在载荷上）。
-      expect(renderFallback(plan)).toContain(INNER_IN_TMUX);
+      const req = buildLaunchRenderRequest(plan);
+      // 令牌进的是**内层载荷**（`env`），外层 `outer` 那一格结构上就没有 env 字段（`§8.4`）。
+      expect(req.env).toContainEqual(TOKEN_OP);
+      expect(req.outer).toBeDefined();
+      expect(JSON.stringify(req.outer)).not.toContain(TOK);
     }
   });
 
-  it("★ 对照组：不传令牌 ⇒ 四条起法渲出来的串里 `CCM_RBIND_TOKEN` 零命中", () => {
+  it("★ 对照组：不传令牌 ⇒ 四条起法的请求里零 `export-rbind-token`", () => {
     const plans = [
       planResumeDirect("abc-123", "/w", "claude").plan,
       planResumeTmux("abc-123", "/w", "claude", "cc-p").plan,
@@ -232,7 +237,7 @@ describe("设计/80 §8.4：EnvOp 容器无关 —— 两条起法都自动带�
       planLauncher("/w", "cc-p", "claude").plan,
     ];
     for (const plan of plans) {
-      expect(renderFallback(plan).split("CCM_RBIND_TOKEN")).toHaveLength(1);
+      expect(hasToken(buildLaunchRenderRequest(plan).env)).toBe(false);
     }
   });
 
@@ -240,6 +245,6 @@ describe("设计/80 §8.4：EnvOp 容器无关 —— 两条起法都自动带�
     const { ctx, plan } = planAttach("cc-p");
     expect(ctx.rbindToken).toBeUndefined();
     expect(plan.env).toEqual([]);
-    expect(renderFallback(plan).split("CCM_RBIND_TOKEN")).toHaveLength(1);
+    expect(buildLaunchRenderRequest(plan).env).toEqual([]);
   });
 });

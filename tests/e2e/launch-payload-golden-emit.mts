@@ -1,10 +1,10 @@
-// U8c-1：把黄金串夹具写盘。用例与渲染逻辑都在 `src/launch-payload-golden.ts`（受 tsc 管），
+// U8c-1：把黄金串夹具写盘。用例与渲染逻辑都在 `tests/test-support/launch-payload-golden.ts`（受 tsc 管），
 // 本文件只负责落盘 —— 与 tests/e2e/ccm-print-parity-emit.mts 同一模式（emitter 不含判据）。
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { renderGoldenFixture } from "../../src/launch-payload-golden.ts";
+import { renderGoldenFixture } from "../test-support/launch-payload-golden.ts";
 import { renderCliGoldenFixture } from "../../src/launch-cli-golden.ts";
-import { renderTmuxOuterFixture } from "../../src/launch-tmux-outer-golden.ts";
+import { renderTmuxOuterFixture } from "../test-support/launch-tmux-outer-golden.ts";
 
 const OUT = new URL("../../src/bridge/src/backend/control/fixtures/payload-golden.json", import.meta.url);
 writeFileSync(OUT, renderGoldenFixture());

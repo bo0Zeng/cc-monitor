@@ -76,7 +76,12 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   ["test:remote-health", "tests/remote-health.test.ts", 5],
   // F04b +1：`isValidNewTmuxName` 也禁 `=`（别创建一个主路杀不掉的名字）。
   // `K-R96` +1（`KR96D3`：名字可读、sid 一个片段都不进去 + `@ccm_sid` 必须还在）。
-  ["test:remote-launch", "tests/remote-launch.test.ts", 44],
+  // 🔴 〔LR2〕**44 → 37**：五个 builder 删了（生产调用 0，`设计/00 §2.5 ④`），它们的用例改测生产的
+  //    `plan*` ＋ `buildLaunchRenderRequest`（字节归 Rust 夹具）；合并掉的几条：直起 cwd 引号并进第一条 ·
+  //    tmux cwd 引号并进空 cwd 那条 · `buildEnvPrefix` 三条收成「非法 configDir 在 plan 那一步就拒」一条 ·
+  //    `posixQuote` 一条随函数删 · `buildOpenTerminalCmd` 一条随函数删（期望搬进 Rust `shell_tests`）。
+  //    **37 → 39**：`session-backend.test.ts` 里两条与座无关的搬进来（F01 shim 漂移守卫 · P3s-Y2 铸名口数据流）。
+  ["test:remote-launch", "tests/remote-launch.test.ts", 39],
   ["test:format", "tests/format.test.ts", 11], // 〔F7b〕+1：basename 随老 SFTP 面板退役从 sftp/paths 搬进 format.ts，判据一起搬来
   ["test:history-cache", "tests/views/history-cache.test.ts", 8],
   ["test:history-prefs", "tests/views/history-prefs.test.ts", 18],
@@ -90,14 +95,19 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   // 名字名不副实），套件与脚本名同拍改。条数 6 → 5：`equivalentInputTokens` 那一例随 ② 轴
   // 退役（`RELATIVE_COST` 的唯一消费者是用量视图）。
   ["test:context-limit", "tests/views/context-limit.test.ts", 5],
-  ["test:session-backend", "tests/session-backend.test.ts", 10], // P3s-Y2 +1（新造名字必须过铸造口）
+  // 🔴 〔LR2〕原先这里有 `["test:session-backend", "tests/session-backend.test.ts", 10]`。TS 座
+  // `session-backend.ts` 零生产调用、删了 ⇒ 套件整删（**被测对象没了**，8 条测座本身）；外层 tmux 三格的字节由
+  // 入库夹具 `tmux-outer-golden.json` ＋ Rust `payload_tests.rs` 接着（对照见 `调研/第四波记录/LR2.md`）；
+  // 与座无关的 2 条（shim 漂移守卫 · 铸名口数据流）搬进了 `remote-launch.test.ts`。
   ["test:panorama-session-files", "tests/panorama/session-files.test.ts", 7],
   // 🔴 〔`设计/80 §8` 步 1 · 2026-09-23〕**28 → 38**：启动期令牌那一族 +10
   //    （形状闸逐格 · `""` 是坏数据不是「没有」· attach 不带 · cliFlags 恒 null ·
   //     两条顺序不变量 · buildLaunchPlan 数组顺序 · renderFallback 逐字节 · applies 两态）。
   // 🔴 〔LR1 · U8c-3〕**38 → 33**：`cliFlags` / `requiredCaps` 两格随 TS 渲染器从维度上删了
   //    （−5：account 两条 · model 两条 · rbind-token 一条；identity 那条只删了 cliFlags 那一行断言）。
-  ["test:launch-dimensions", "tests/launch-dimensions.test.ts", 33],
+  // 🔴 〔LR2〕**33 → 32**：wrap 折叠那条（比的是 TS 兜底渲染器的字节）删了 —— 折叠只在 Rust，
+  //    由 `payload-golden.json`「wrap 折叠」钉着；另四条比字节的改比 `EnvOp` 序列（条数不变）。
+  ["test:launch-dimensions", "tests/launch-dimensions.test.ts", 32],
   // 🔴 〔LR1 · U8c-3〕原先这里有 `["test:launch-render-cli", "tests/launch-render-cli.test.ts", 30]`。
   // TS 那份 `ccm …` 调用行渲染器删了 ⇒ 套件整删（**被测对象没了**）；它测的行为逐条由
   // Rust `ccm_invocation_tests.rs` 与入库夹具 `cli-golden.json` 接着（对照见 `调研/第四波记录/LR1.md`）。
@@ -122,7 +132,10 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
 // `tests/launch-render-cli.test.ts` 整份删除（30 条，TS 那份 `ccm …` 渲染器删了）；
 // 删前现打 251（地板比现打落后 1），删后现打 221 ⇒ 棘到现打值。
 // 〔LR1 子步 2〕**221 → 216**：`launch-dimensions.test.ts` −5（维度上的 `cliFlags` / `requiredCaps` 删了）。
-const TOTAL_FLOOR = 216;
+// 🔴 〔LR2〕**216 → 200**，理由同上（**被测对象没了**）：`tests/session-backend.test.ts` 整份删除（−10，TS 座删了）·
+// `remote-launch.test.ts` −7 ＋2（五个 builder / `posixQuote` / `buildOpenTerminalCmd` 删了，余下改测生产请求；
+// 座那份套件里与座无关的两条搬进来）· `launch-dimensions.test.ts` −1（wrap 折叠那条归 Rust 夹具）。删后现打 200 ⇒ 棘到现打值。
+const TOTAL_FLOOR = 200;
 
 /** 判定一条 npm 命令是不是「用 tsx 跑某个 `.test.ts`」。`tsx …` 与 `npx tsx …` 都算。 */
 const TSX_SUITE_CMD = /(^|\s)(npx\s+)?tsx\s+(--\S+\s+)*(\S+\.test\.ts)\s*$/;

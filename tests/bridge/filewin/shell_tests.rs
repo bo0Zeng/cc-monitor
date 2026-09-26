@@ -2374,36 +2374,20 @@ fn opening_a_terminal_with_no_runtime_says_so_on_the_window() {
     );
 }
 
-/// 🔴 **「在此打开终端」拼出来的那一串与旧面板逐字节相同 —— 跨语言对拍。**
+/// 🔴 **「在此打开终端」拼出来的那一串 —— 三种形状，期望串手写。**
 ///
-/// 两侧不同源：期望串**现读** `tests/remote-launch.test.ts` 里旧面板那条判据的三行
-/// （`buildOpenTerminalCmd` 的黄金样例），本侧喂同样的三个入参。
-/// TS 那一份哪天改了行为（它的判据也就跟着改了），这里当场红 —— 不再是「有账、没自动对拍」。
+/// 〔LR2〕这里原来是一条跨语言对拍：期望串现读 `tests/remote-launch.test.ts` 里旧面板那条判据的三行
+/// （TS `buildOpenTerminalCmd` 的黄金样例）。那份 TS 实现生产调用方 0（旧面板已退役），
+/// 主会话按 `设计/00 §2.5 ④` ＋ `90 §3`（前端零 shell 串）裁删 ⇒ 本函数成了唯一一份，
+/// 那三行的字节**原样**搬进来当期望（行为零变化）。
 #[test]
-fn the_open_terminal_command_equals_the_old_panels_byte_for_byte() {
-    const TS: &str = include_str!("../../../tests/remote-launch.test.ts");
-    const SHELL_LINE: &str = "const shell = \"exec ${SHELL:-bash} -l\";";
-    const GOLDEN: &[(&str, &str, &str)] = &[
-        (
-            "eq(buildOpenTerminalCmd(\"/home/pi/p\"), `cd '/home/pi/p' && ${shell}`);",
-            "/home/pi/p",
-            "cd '/home/pi/p' && exec ${SHELL:-bash} -l",
-        ),
-        (
-            "eq(buildOpenTerminalCmd(\"  \"), shell);",
-            "  ",
-            "exec ${SHELL:-bash} -l",
-        ),
-        (
-            "eq(buildOpenTerminalCmd(\"/a b/c\"), `cd '/a b/c' && ${shell}`);",
-            "/a b/c",
-            "cd '/a b/c' && exec ${SHELL:-bash} -l",
-        ),
+fn the_open_terminal_command_keeps_its_three_shapes() {
+    const GOLDEN: &[(&str, &str)] = &[
+        ("/home/pi/p", "cd '/home/pi/p' && exec ${SHELL:-bash} -l"),
+        ("  ", "exec ${SHELL:-bash} -l"),
+        ("/a b/c", "cd '/a b/c' && exec ${SHELL:-bash} -l"),
     ];
-    guard_core::pin_line(TS, SHELL_LINE).expect("TS 那条黄金样例里 `shell` 那一行变了");
-    for (ts_line, input, want) in GOLDEN {
-        guard_core::pin_line(TS, ts_line)
-            .unwrap_or_else(|e| panic!("TS 那一侧的黄金样例变了 —— 两份漂开了：{e}"));
+    for (input, want) in GOLDEN {
         assert_eq!(build_open_terminal_cmd(input), *want, "入参 {input:?}");
     }
     // ⚠ 双引号那一条：模板自己**一个都不带**（`launch.rs` 拒掉含双引号的 `remote_cmd`）；
