@@ -1663,15 +1663,15 @@ pub(crate) const LAUNCH_ID_VAR: &str = "CCM_LAUNCH_ID";
 /// 买到的只是「今天这几条输入两侧同答」；共用一份实现，**漂开根本没有位置可以发生**。
 /// ⇒ 这里刻意**不**写 `match action { Resume(sid) => sid.clone(), New => Uuid::new_v4() }`
 ///    这种「看起来一样」的第二份 —— 它与那一份的差别只在**白名单回落**那一格
-///    （sid 过不了 `relay_segment_is_safe` 时那一份回落到 nonce），而那一格恰恰是
+///    （sid 过不了段闸 `relay_route_core::segment_is_safe` 时那一份回落到 nonce），而那一格恰恰是
 ///    「本条真的调了那一份铸法吗」唯一能被判据翻出来的一维。
 ///
 /// # ⚠ 它欠的一笔账（如实登记，别读成缺陷也别读成没有）
 ///
 /// **新开**会话时，中转路由键与本 token 是**两个不同的 nonce**（同一份铸法被调了两次）——
-/// 中转路由键那一份在 `payload::apikey_endpoint_for` 里面，本文件够不着它算好的值。
-/// 今天不构成缺陷：`mint_route_key` 头注现打登记过「route key 对路由完全惰性、tee 今天零消费者」，
-/// 而身份 token 与它**不共享任何消费者**。要它们相等得改 `payload.rs`（本拍只许读它）。
+/// 中转路由键那一份在 [`launch_endpoint_args`] 里（作 `launch-endpoint` 的 `key` 交给那台后端），与本 token 各铸各的。
+/// 〔TL3〕先前这里写的是「在 `payload::apikey_endpoint_for` 里」—— US1 把上游选择搬进后端之后，铸它的那一口挪到了这边的入参组装。
+/// 今天不构成缺陷：`mint_route_key` 头注现打登记过「route key 对路由完全惰性」，而身份 token 与它**不共享任何消费者**。
 fn launch_identity_token(action: &LocalPsAction) -> String {
     let sid = match action {
         LocalPsAction::Resume(sid) => Some(sid.as_str()),
@@ -1911,53 +1911,43 @@ async fn launch_local_asking_backend(
 /// 〔TL3〕同步的活挪出 IPC 派发线程：`tokio::task::spawn_blocking`（`INVARIANTS §10` 实施口诀）。
 ///
 /// ⚠ 判据那三条缝（[`CcmProbeSource`] · [`InjectFactSources`] · [`LaunchSink`]）是**线程局部**的替身，
-/// 换线程就丢 ⇒ `#[cfg(test)]` 下把调用线程上装着的那几条带过去重装（`CarriedSeams`）。
-/// 生产路没有第二条：`spawn_blocking` 那一跳判据与生产走的是同一条。
+/// 换线程就丢 ⇒ 调用线程上装着的那几条由 [`carried_seams`] 带过去重装（生产构建里它什么都不带）。
+/// `spawn_blocking` 那一跳判据与生产走的是同一条。
 async fn off_the_ipc_thread<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, String> + Send + 'static,
 ) -> Result<T, String> {
-    #[cfg(test)]
-    let seams = CarriedSeams::here();
+    let carry = carried_seams();
     tokio::task::spawn_blocking(move || {
-        #[cfg(test)]
-        let _carried = seams.install();
+        let _carried = carry();
         work()
     })
     .await
     .map_err(|e| format!("spawn_blocking join: {e}"))?
 }
 
-/// 〔TL3〕调用线程上装着的替身（没装的格是 `None`），随 [`off_the_ipc_thread`] 换线程。
-#[cfg(test)]
-#[derive(Clone, Copy)]
-struct CarriedSeams {
-    probe: Option<CcmProbeSource>,
-    facts: Option<InjectFactSources>,
-    sink: Option<LaunchSink>,
+/// 生产构建：没有替身可带。
+#[cfg(not(test))]
+fn carried_seams() -> impl FnOnce() + Send {
+    || {}
 }
 
+/// 〔TL3〕调用线程上装着的替身（没装的格是 `None`）→ 一个在别的线程上重装它们的闭包；
+/// 三个守卫掉出作用域各自还原（线程池里的线程会被下一趟复用）。
+/// ⚠ 只这一个 `#[cfg(test)]` 支撑项（`structural_scan` 那张「测试专用支撑项只许降」的棘轮数着它）。
 #[cfg(test)]
-impl CarriedSeams {
-    fn here() -> Self {
-        Self {
-            probe: CCM_PROBE_OVERRIDE.with(std::cell::Cell::get),
-            facts: INJECT_FACTS_OVERRIDE.with(std::cell::Cell::get),
-            sink: LAUNCH_SINK_OVERRIDE.with(std::cell::Cell::get),
-        }
-    }
-
-    /// 在当前线程重装；三个守卫掉出作用域各自还原（线程池里的线程会被下一趟复用）。
-    fn install(
-        self,
-    ) -> (
-        Option<CcmProbeGuard>,
-        Option<InjectFactsGuard>,
-        Option<LaunchSinkGuard>,
-    ) {
+fn carried_seams() -> impl FnOnce() -> (
+    Option<CcmProbeGuard>,
+    Option<InjectFactsGuard>,
+    Option<LaunchSinkGuard>,
+) + Send {
+    let probe = CCM_PROBE_OVERRIDE.with(std::cell::Cell::get);
+    let facts = INJECT_FACTS_OVERRIDE.with(std::cell::Cell::get);
+    let sink = LAUNCH_SINK_OVERRIDE.with(std::cell::Cell::get);
+    move || {
         (
-            self.probe.map(override_ccm_probe),
-            self.facts.map(override_inject_facts),
-            self.sink.map(override_launch_sink),
+            probe.map(override_ccm_probe),
+            facts.map(override_inject_facts),
+            sink.map(override_launch_sink),
         )
     }
 }
