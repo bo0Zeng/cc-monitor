@@ -576,7 +576,7 @@ src/bridge/src/profile_installer.rs:351	\n动手的地方：用你自己的编�
 src/bridge/src/remote_branch.rs:50	远端后端版本过旧（不支持远端分叉）——请重新部署后端后再试（src/doc/REMOTE-PHASE0-DEPLOY.md）	改·§2.1	[对外] 远端分叉失败报错；句尾外泄源码仓内文档路径 src/doc/… 兼§2.4（破折号＋两个括号）→「远端后端版本过旧，不支持分叉。请在设置里重装这台机器的后端」
 src/bridge/src/remote_branch.rs:167	源会话 id	保留	[对外] validate_fork_id 报错里的对象名
 src/bridge/src/remote_branch.rs:168	消息 uuid	内部词→「消息 ID」	[对外] validate_fork_id 报错里的对象名；uuid 是实现词 新词:uuid
-src/bridge/src/remote_history.rs:48	这个会话超过 {MAX_SESSION_BYTES} 字节上限，只读到前 {read_bytes} 字节（{lines_shown} 行）；\n         后面的内容**没有显示**。完整历史仍在远端那个 jsonl 文件里。	内部词→「会话记录文件」	[对外] 会话截断提示；jsonl 是 R1 词 兼§2.4（markdown **）→「会话超过 {} 字节上限，只显示了前 {lines_shown} 行」
+src/bridge/src/history.rs:53	这个会话超过 {MAX_SESSION_BYTES} 字节上限，只显示了前 {lines_shown} 行（读到第 {read_bytes} 字节）；\n         后面的内容没有显示，完整记录仍在那台机器上的会话记录文件里。	保留	[对外] 〔LOC1b · 4D〕会话截断提示（本机远端读一整份会话合成一条，从 remote_history.rs 搬来）；按原裁决改完：jsonl → 「会话记录文件」、去掉 markdown 加粗，「远端」→「那台机器上」（本机也走这一句）
 src/bridge/src/sftp.rs:358	那一问没有答完	保留	[对外] 〔DP1〕判不了那台上那份后端是谁时的原因（接在「判不了 … 没有动它：」后面）；没有错误输出时如实说没答完
 src/bridge/src/sftp.rs:370	没有覆盖它。要换成这一版：先在机器页点「卸载后端」删掉它，再部署。	保留	[对外] 〔DP1〕那台落点上的东西不肯说自己是谁时的出路；先说结果（没覆盖），第二句是用户做得了、做了真会好的动作（机器页「卸载后端」按钮删掉那个文件 = 明确授权覆盖，已在回环 sshd 上走通）
 src/bridge/src/sftp.rs:372	那台上还没有后端	保留	[对外] 〔DP1〕部署原因（接在「已安装后端（…）到 {path}（…）」的括号里）
@@ -923,6 +923,8 @@ src/turn-notify.ts:118	会话已回到等待输入状态。	保留	[对外] 系�
 src/views/command-bar.ts:92	命令栏	保留	[对外] 命令栏输入框 aria-label
 src/views/grid-monitor.ts:348	未知	保留	[对外] 状态兜底值
 src/views/grid-monitor.ts:350	{…}（等待：{…}）	保留	[对外] 状态＋等待项
+src/views/history-search.ts:148	本机	保留	[不对外] 〔LOC1b · 4D〕只进 console.warn（搜索结果行解析失败时说是哪一台）
+src/views/history-search.ts:148	远端 [{…}]	保留	[不对外] 〔LOC1b · 4D〕只进 console.warn（同上，远端那一台）
 src/views/history.ts:319	(未知项目)	保留	[对外] 历史浏览器项目名兜底
 src/views/history.ts:527	项目	保留	[对外] 模式切换按钮名
 src/views/history.ts:527	按项目名 / 标题过滤（本地，即时）	保留	[对外] 模式切换按钮 title，括号短而有用

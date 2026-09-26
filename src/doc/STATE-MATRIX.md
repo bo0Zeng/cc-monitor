@@ -51,10 +51,8 @@
 - `lib.rs::open_log_file(state: State<'_, Arc<logging::LoggingState>>)`
 - `lib.rs::open_log_dir(state: State<'_, Arc<logging::LoggingState>>)`
 
-### `Arc<SearchIndex>` (issue #6)
-- `search.rs::search_history(query, include_tools, limit, index: State<'_, Arc<SearchIndex>>)`
-- `search.rs::get_search_index_status(index: State<'_, Arc<SearchIndex>>)`
-- `search.rs::rebuild_search_index(index: State<'_, Arc<SearchIndex>>)`
+### ~~`Arc<SearchIndex>` (issue #6)~~ 〔LOC1b · 第四波 4D〕已删
+本机全文搜索改问本机后端（帧命令 `history-search`，界面经通道问，与远端同一条路）；monitor 进程内那份索引与它的三条命令一起删了，这一格 State 不再有。
 
 ### 无 State 依赖（自包含 / 用 path 解析）
 - `config::load_config / save_config`（用 `paths::resolve_config_path`）

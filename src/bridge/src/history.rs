@@ -46,11 +46,12 @@ const MAX_SESSION_BYTES: u64 = 256 * 1024 * 1024;
 /// 此前（远端那一支还是一条 SSH 流时）读法是 `take(MAX)` ＋ `if n == 0 { break; }` —— 到限与正常 EOF
 /// **完全同形** ⇒ 前端拿到一份「看起来完整」的历史，而后面的内容**无声消失**；
 /// 同一份数据走后端的 `--fork-session` 却会**硬报错** —— 正是定框 **E5** 要消灭的「同一份数据走不同路得到不同答案」。
-/// 抽成纯函数是为了让它可判据。〔LOC1b〕去掉「远端」二字：本机也走这一句。
+/// 抽成纯函数是为了让它可判据。〔LOC1b〕去掉「远端」二字（本机也走这一句），并照 CP1 台账那一行的裁决改词
+/// （`jsonl` → 「会话记录文件」、去掉 markdown 加粗）。
 fn session_truncated_message(read_bytes: u64, lines_shown: u32) -> String {
     format!(
-        "这个会话超过 {MAX_SESSION_BYTES} 字节上限，只读到前 {read_bytes} 字节（{lines_shown} 行）；\
-         后面的内容**没有显示**。完整历史仍在那台机器上的 jsonl 文件里。"
+        "这个会话超过 {MAX_SESSION_BYTES} 字节上限，只显示了前 {lines_shown} 行（读到第 {read_bytes} 字节）；\
+         后面的内容没有显示，完整记录仍在那台机器上的会话记录文件里。"
     )
 }
 

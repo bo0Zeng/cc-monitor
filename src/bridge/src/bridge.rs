@@ -191,7 +191,7 @@ pub struct RemoteSessionAddedPayload {
     /// 机器标签（`[label]` Tab 前缀）。
     pub origin: String,
     /// Batch7-F24：pidfile 元信息透传（p1e backend 起有值；旧 backend → None）。
-    /// kind = "interactive"/"bg"（bg → ⚙ 标识 + 树状归属）。wire 帧侧因 enum tag
+    /// kind = "interactive"/"bg"（bg → ⚙ 标识；〔V125〕bg 平铺为普通 tab，不再挂宿主排成树）。wire 帧侧因 enum tag
     /// 占用叫 `session_kind`，bridge 事件 payload 无此约束，与本地 payload 统一叫 `kind`。
     pub kind: Option<String>,
     /// **E73（additive）：attach 进去对人有没有意义。**
@@ -249,7 +249,7 @@ pub struct FrontendReadyPayload {
 pub struct ActiveSessionPayload {
     pub session_id: String,
     pub cwd: String,
-    /// Batch7-F24：kind/name（bg → ⚙ 标识 + 树状归属；name 作 bg 标题）。
+    /// Batch7-F24：kind/name（bg → ⚙ 标识；name 作 bg 标题。〔V125〕bg 平铺为普通 tab，不再挂宿主排成树）。
     pub kind: Option<String>,
     pub name: Option<String>,
 }

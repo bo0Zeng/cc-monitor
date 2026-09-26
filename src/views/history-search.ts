@@ -5,8 +5,7 @@
  *
  * 〔C4a · 第四波 · 子步 3〕远端 fan-out ＋ 补 `origin` ＋ 合并从 Rust `search.rs` 搬到这里（每一件只有这一个家）。
  * 〔LOC1b · 第四波 4D〕**本机那一半也改问本机后端**（`chan.call(LOCAL_ORIGIN, "history-search", …)`）：
- * monitor 进程内那份内存索引（`search.rs::SearchIndex`〔散文墓碑〕与 `search_history` / `get_search_index_status` /
- * `rebuild_search_index` 三条命令）删了。要求住址：`设计/00 §2.5 ①`「历史 / 账号 / tmux / MCP 四个面，
+ * monitor 进程内那份内存索引（`search.rs::SearchIndex`〔散文墓碑〕与它的三条 Tauri 命令：搜索 · 查索引状态 · 重建索引）删了。要求住址：`设计/00 §2.5 ①`「历史 / 账号 / tmux / MCP 四个面，
  * 本机与远端走同一条代码路径」· `01 §6.8`「不存在本机一条、远端一条的同义双份」· `90 §4 F`「搜索收口到 search-core ＋ 后端」。
  * ⚠ 偏离 `05 §14.3` 表 E 行（「进程内索引 ⇒ 不迁」），主会话 09-25 按目标形裁（05 那一行由文档路改）。
  * 代价如实写：本机从此没有索引、每次现扫（读数在 `调研/第四波记录/LOC1b.md §3`）；「索引中」那一态与它的 1 秒重跑一起没了。

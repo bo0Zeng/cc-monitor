@@ -52,11 +52,12 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/lib.rs",
         "hub",
-        6,
+        4,
         "启动时解析 `claude_dir` 并派生 sessions/tasks 等目录往下传 —— \
              **一处入口，不读内容**。切后端之后仍要在（得告诉后端读哪儿）⇒ **不属**退役范围。\
              〔CF1 · 第四波 09-24〕**7 → 6**：projects 那一处（喂 monitor 自己那套 jsonl watcher）随 watcher 删了 ——\
-             本机会话内容改走本机后端的 `line` 帧，monitor 这一侧不再需要知道 projects 在哪。",
+             本机会话内容改走本机后端的 `line` 帧，monitor 这一侧不再需要知道 projects 在哪。\
+             〔LOC1b · 第四波 4D〕**6 → 4**：给全文索引构建线程交 `claude_dir` 那两行随本机内存索引删了（本机搜索改问本机后端）。",
     ),
     (
         "src/paths.rs",
@@ -109,21 +110,10 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     //   「backend 侧补一条 `--list-marketplaces`……那条一落地，本机改走后端、远端那半……也一起补平
     //   —— 一件事同时清两笔账」。落地的名字是帧命令 `plugins-marketplaces`（CLI 面 `--plugins-marketplaces`），
     //   本体从 `plugins.rs` 原样搬进后端 `observe/plugins_query.rs` ⇒ 本文件 0 处，整行摘掉。
-    (
-        "src/search.rs",
-        "reader",
-        4,
-        "全文索引构建时遍历 records 目录。\
-             ⚠ **〔F10b 第三批实测〕这一处刻意不退役，解锁条件明确** —— 它与前几批**不是同一类**：\
-             前几批是「查询直通」（monitor 只是转发 + 反序列化），而本文件维护一个\
-             **本地全文索引**（`build_blocking` 走一遍 records 建内存索引，之后每次搜索走内存）。\
-             而后端的 `--search` **没有索引**：它每次调用用 `WalkDir` 走一遍 \
-             `<claude_dir>/projects/**/*.jsonl`（见 `observe/search_query.rs` 头注）。\
-             ⇒ 迁它 = 把「建一次索引 + 内存查」换成「每次搜索 spawn 一个进程 + 走全部 jsonl」，\
-             **那是用性能换账面**，而本机恰好是用户搜得最多的那一侧。\
-             ★ **退役归「backend 侧也有索引」之后**（或一条能便宜地喂索引的查询）——那就是它的解锁条件。\
-             那对远端同样有价值 —— 今天远端每次搜索也在走全库。已进 `ROADMAP §5`。",
-    ),
+    // 〔LOC1b · 第四波 4D〕`src/search.rs` 那条 `reader`（4 处：全文索引构建时遍历 records 目录）**退役**，但**不是**按它自己写的
+    //   解锁条件（「backend 侧也有索引」）退的：主会话 09-25 按目标形裁（`00 §2.5 ①` 本机远端同一条代码路径 · `90 §4 F`
+    //   搜索收口到后端），本机搜索改问本机后端的 `history-search`、每次现扫。那一行担心的代价（「用性能换账面」）如实量过：
+    //   `调研/第四波记录/LOC1b.md §3`。本文件 0 处，整行摘掉。
     (
         "src/adapter.rs",
         "reader",
@@ -579,8 +569,8 @@ fn every_reader_names_its_retirement_owner() {
     }
     // 抽取器自检：一条 reader 都没认出来时上面全空转。
     assert_eq!(
-        readers, 6,
-        "`reader` 条数变了（**实测 6 条** —— ⚠ 这句话本身腐过一次：数字从 11 一路走到 7，\
+        readers, 5,
+        "`reader` 条数变了（**实测 5 条** —— ⚠ 这句话本身腐过一次：数字从 11 一路走到 7，\
              而这段文案一直写着「实测 10 条」，是 S11 那族出现在**判据自己的报错文案**里）。这个数就是 **F10 的真实工作面** —— \
              多一条要说明为什么又加了直读点，少一条说明退役了一处（把棘轮往下拧）。\n\
              ⚠ 棘轮史：11 → **10**（F10b 第一批，`usage.rs` 退役 —— 它改走本机后端的 `--usage`）\n\
@@ -623,7 +613,10 @@ fn every_reader_names_its_retirement_owner() {
              `session.tasks` 那笔欠账同拍结清）。本文件处数 3 → 0，整行摘掉。\n\
              → **6**〔RM1b · 第四波〕**真退役**：`plugins.rs` 那条（`P8a` 那次「往上走」加的）\
              按它自己写下的退役条件退掉 —— 后端补了 `plugins-marketplaces`，本机改走后端，\
-             `parity_ledger` `plugins.marketplaces` 同拍结清。本文件处数 5 → 0，整行摘掉。"
+             `parity_ledger` `plugins.marketplaces` 同拍结清。本文件处数 5 → 0，整行摘掉。\n\
+             → **5**〔LOC1b · 第四波 4D〕**退役，但不是按它自己写的解锁条件**：`search.rs` 那条（本机全文索引）——\
+             主会话 09-25 按目标形裁（`00 §2.5 ①` 本机远端同一条代码路径），本机搜索改问本机后端 `history-search`、\
+             每次现扫（「backend 侧也有索引」那个条件没兑现，代价读数在 `第四波记录/LOC1b.md §3`）。本文件处数 4 → 0，整行摘掉。"
     );
 }
 

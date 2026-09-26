@@ -1089,8 +1089,9 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
     // （`search-core`）⇒ **「两侧漂开」在结构上不再可能**，一条对拍相等的判据也就无从谈起
     // （它会变成「同一个数等于它自己」，恒绿）。
     // 把这件事焊住的判据换了个形状，住
-    // `src/bridge/src/search.rs::kou_jing_guard::the_search_kou_jing_has_exactly_one_home`：
-    // 它断言两侧生产段**都不许**再出现 `const MAIN_CAP` / `const TOOL_CAP` 之类的定义。
+    // `tests/bridge/search_kou_jing_guard.rs` 的 `the_search_kou_jing_has_exactly_one_home`：
+    // 它断言搜索那一侧（〔LOC1b〕今天只剩后端）生产段**不许**再出现 `const MAIN_CAP` / `const TOOL_CAP` 之类的定义，
+    // 并断言 monitor 生产树里零处再搜。
     // ⇒ 这两个数搬回任何一侧，当场红。
 
     // 对 E〔F9 续 09-24 立；F9c 第四波改钉〕：窗口的编辑上限**就是**后端读 / 提交存盘的天花板 ⇒ 钉相等。
