@@ -84,15 +84,15 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J1: {
     what: "鉴权方式是否阻塞可选 · 账号种类缺省",
     homes: ["acct-core::auth_ready", "acct-core::auth_kind_from_manifest"],
-    status: "open",
+    // 〔DUP1 子步 3〕删的是 `accounts.ts` 里「缺席 = 旧后端 ⇒ 回落 loggedIn / 当订阅号」那一形：
+    //   `authReady()` 包装（`a.authReady ?? a.loggedIn`）＋ `Account` 两格可缺。解码器早已逐键要求这两格。
+    status: "zero",
     defs: ["authReady"],
     needles: [
-      { text: "authReady ??", count: 1 },
-      { text: "authReady?:", count: 1 },
-      { text: "authKind?:", count: 1 },
+      { text: "authReady ??", count: 0 },
+      { text: "authReady?:", count: 0 },
+      { text: "authKind?:", count: 0 },
     ],
-    owner: "DUP1 子步 3",
-    why: "「缺席 = 旧后端 ⇒ 回落 loggedIn / 当订阅号」—— 解码器早已逐键要求这两格，回落不可达（D11 禁的退路形状）",
   },
   J2: {
     what: "configDir 能不能拼进命令",

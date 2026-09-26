@@ -40,12 +40,22 @@ export interface Account {
   /** `isolated`（正常）/ `in-place`（逃生口，前端应拒绝使用）/ `bare`（账号 0）。 */
   mode: string;
   exists: boolean;
-  /** 只是 stat 了 `.credentials.json` 在不在，**不代表凭据有效**；可用性走 `authReady`。 */
+  /** 只是 stat 了 `.credentials.json` 在不在，**不代表凭据有效**；可用性走 `authReady`。〔DUP1〕前端零处读它（收成品那一格除外）。 */
   loggedIn: boolean;
-  /** 缺席 = 对面没说（旧后端）⇒ 当订阅号（`KA6d`）。 */
-  authKind?: AuthKind;
-  /** 缺席 = 旧后端 ⇒ 回落到 `loggedIn`（见 [`authReady`]）。 */
-  authReady?: boolean;
+  /** 后端按 `acct_core::auth_kind_from_manifest` ＋ apikey 表并出的结论（缺省落订阅那一格也在那里判，`KA6d`）。 */
+  authKind: AuthKind;
+  /**
+   * 鉴权方式这一维**不再阻塞**这个号被选中 —— 规则住 `acct_core::auth_ready`，后端算好放进这一格，前端只读。
+   *
+   * ⚠ **`KA6b`（诚实边界）**：订阅那一支只是 stat 了 `.credentials.json` 在不在 —— 凭据过期 / 被吊销看不出来；
+   * api-key 那一支恒真（它不用那个文件），`true` 也不等于「真能连上」（`KA6a`，徽章那段文案说出来）。
+   *
+   * 〔DUP1 · `设计/90 §3` 判据 2〕这一格与 `authKind` 原来都是**可缺**的，缺了由 `accounts.ts::authReady`〔散文墓碑〕
+   * 回落到 `loggedIn`、`authKind` 读成订阅 —— 那是 `auth_ready` 订阅分支与 `auth_kind_from_manifest` 缺省那一格
+   * 在 TS 里的第二份，而且是「旧后端」的退路（`D11`）。解码器（`accounts-decode.ts`）早就逐键要求这两格、
+   * 缺了就抛 ⇒ 回落今天不可达，删了。
+   */
+  authReady: boolean;
 }
 
 /**
@@ -157,36 +167,6 @@ export function effectiveDefault(state: AccountsState): Account | null {
  */
 export function currentWorkingAccount(state: AccountsState): Account | null {
   return effectiveDefault(state);
-}
-
-/**
- * K-A1：**鉴权方式这一维不再阻塞这个号被选中吗。**
- *
- * 这是全仓**唯一**读 `loggedIn` 的地方（`KAY4` 的零命中守卫钉住这句话，
- * 判据住 `tests/account-availability-guard.vitest.ts`）。
- *
- * 规则本身**不在这儿** —— 它住 `acct_core::auth_ready`，两个 Rust 生产者调它、
- * 把结果放进 `authReady` 字段。本函数只做一件事：**对面没说时回落到旧行为**。
- *
- * `authReady === undefined` 只有一种来因：**旧 backend**（本字段之前的版本压根不出这个键，
- * monitor 会连任意版本的远端）。那时回落到 `loggedIn` = 逐字节旧行为。
- *
- * ⚠ **`KA6b`（诚实边界，第四轮补的标签）：这里回落到的 `loggedIn` 只是 stat 了一下
- * `.credentials.json` 在不在 —— 凭据过期 / 被吊销看不出来。**
- * 本件一格没改这件事：它改的是「按 kind 分别判」，不是「判得准不准」。
- * 真去验一次凭据归另一件（今天不存在、也没人认领；而且那要联网，撞用户 07-17
- * 「无 API key / 不联网」那条板）。
- * ⚠ 这个标签先前**只落在 Rust 侧 `auth_ready` 字段上**，`logged_in` 那一半只有实质、
- * 没有标签（D 阶段审计 `S3`）⇒ `grep KA6b` 找不到它那一半。当年 Rust 侧那份头注不在第四轮
- * 写区里（改它会连带重写那份生成物），所以标签补在 TS 这一侧**唯一读 `loggedIn` 的地方**。
- * 〔C4d〕那份 Rust 结构与生成物都退役了，账号形状今天手写在本文件（上面 `Account`）。
- * ⚠ 连带的诚实边界：旧后端那一侧，一个 api-key 号会被判成「未登录的订阅号」
- * ——那是**看得见**的降级（徽章写「未登录」，用户能修：更新远端后端）。
- * 刻意**不**为它加一个 `authKindAware` 能力标记：新后端恒出这两个键，
- * 那个标记的「不认识」分支在结构上不可达，写出来就是一段永远不跑的代码。
- */
-function authReady(a: Account): boolean {
-  return a.authReady ?? a.loggedIn;
 }
 
 /**
@@ -304,7 +284,7 @@ export function accountStatusBadge(
         copyText("accounts.badge.apikeyNoEndpointHint", { why }),
     };
   }
-  if (!authReady(a)) {
+  if (!a.authReady) {
     return {
       text: copyText("accounts.badge.notSignedIn"),
       warn: true,
@@ -328,7 +308,7 @@ export function accountLoginActionLabel(a: Account): { label: string; title: str
     };
   }
   return {
-    label: authReady(a) ? copyText("accounts.loginAction.loginTerminal") : copyText("accounts.loginAction.goLogin"),
+    label: a.authReady ? copyText("accounts.loginAction.loginTerminal") : copyText("accounts.loginAction.goLogin"),
     title: copyText("accounts.loginAction.loginHint"),
   };
 }
@@ -352,11 +332,11 @@ export function isSelectable(a: Account): boolean {
   //      送进 else 分支（拿 `opt.name === undefined` 去起会话）⇒ 加变体前必须先改它
   // 第 3 条卡 `tabs.ts` 红线 ⇒ 放开这条门槛要等红线松（见 features/Z02-PARTIAL.md）。
   //
-  // ★ **K-A1 把第二项从 `a.loggedIn` 换成了 `authReady(a)`。**
+  // ★ **K-A1 把第二项从 `a.loggedIn` 换成了后端算好的 `a.authReady`**（〔DUP1〕原先经一个带「旧后端回落」的包装读，包装删了）。
   // 订阅号那一支的值与 `loggedIn` **逐字节相同**（`acct_core::auth_ready` 的订阅分支就是
   // 「凭据文件在不在」）⇒ 订阅号一格没变，包括「缺凭据 ⇒ 不可选」那道保护（`KAY3`）。
   // 变的只有 api-key 号：它压根不用那个文件，所以不再因为缺文件而被判不可用（`KAY2`）。
-  return a.mode === "isolated" && authReady(a) && a.exists;
+  return a.mode === "isolated" && a.authReady && a.exists;
 }
 
 /** account-ux U8：可选账号列表（`isSelectable` 过滤）。休眠判据 / 计数一律走它，别各处再 filter 一遍。 */

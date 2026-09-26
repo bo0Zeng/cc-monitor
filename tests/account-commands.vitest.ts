@@ -15,6 +15,8 @@ function acct(p: Partial<Account>): Account {
     mode: "isolated",
     exists: true,
     loggedIn: true,
+    authKind: "subscription",
+    authReady: true,
     ...p,
   };
 }
@@ -55,7 +57,7 @@ describe("account-ux U8：Ctrl+K 账号命令", () => {
   it("不可选账号不出现在命令里", () => {
     const i = input({
       snapshot: {
-        accounts: [acct({ name: "wei" }), acct({ name: "amy", loggedIn: false })],
+        accounts: [acct({ name: "wei" }), acct({ name: "amy", loggedIn: false, authReady: false })],
         defaultName: "wei",
       },
     });

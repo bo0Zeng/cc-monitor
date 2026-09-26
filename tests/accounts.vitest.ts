@@ -43,6 +43,8 @@ function acct(p: Partial<Account>): Account {
     mode: "isolated",
     exists: true,
     loggedIn: true,
+    authKind: "subscription",
+    authReady: true,
     ...p,
   };
 }
@@ -142,7 +144,7 @@ describe("currentAccountForBadge（account-ux U6：current 不可选就不能拿
   // 下面三条 = MASTERPLAN U6 DoD 明列的「current 不可选不对齐」。不过滤的话：账号徽章
   // （F09 后唯一消费者）会指着一个系统自己永远不会 follow 过去的账号说"你不一致"。
   it("当前账号未登录 → null（对齐必失败，不能拿它判「不一致」）", () => {
-    const s = state({ accounts: [acct({ name: "b", loggedIn: false })], defaultName: "b" });
+    const s = state({ accounts: [acct({ name: "b", loggedIn: false, authReady: false })], defaultName: "b" });
     expect(currentWorkingAccount(s)?.name).toBe("b"); // effectiveDefault 照样给
     expect(currentAccountForBadge(s)).toBeNull(); // 但对齐面必须拒
   });
@@ -171,7 +173,7 @@ describe("accountColorsActive（account-ux U8：单账号/降级时账号色系�
     expect(accountColorsActive(state({ accounts: [] }))).toBe(false);
   });
   it("有 2 个账号但只有 1 个**可选** → 休眠（数的是可选数，不是总数）", () => {
-    const s = state({ accounts: [sel("wei"), acct({ name: "amy", loggedIn: false })] });
+    const s = state({ accounts: [sel("wei"), acct({ name: "amy", loggedIn: false, authReady: false })] });
     expect(s.accounts.length).toBe(2); // 总数够
     expect(accountColorsActive(s)).toBe(false); // 但可选数不够
   });
@@ -193,7 +195,7 @@ describe("resolveFollowAccount（跟随解析器，account-ux U1：粘性优先�
     accounts: [
       acct({ name: "z" }),
       acct({ name: "b" }),
-      acct({ name: "x", loggedIn: false }), // 不可选（未登录）
+      acct({ name: "x", loggedIn: false, authReady: false }), // 不可选（未登录）
     ],
   });
   it("lastAccount 可选 → 用 lastAccount（粘性优先，压过 current）", () => {
@@ -264,7 +266,7 @@ describe("isSelectable", () => {
     expect(isSelectable(acct({}))).toBe(true);
   });
   it("未登录 → 不可选", () => {
-    expect(isSelectable(acct({ loggedIn: false }))).toBe(false);
+    expect(isSelectable(acct({ loggedIn: false, authReady: false }))).toBe(false);
   });
   it("in-place → 不可选", () => {
     expect(isSelectable(acct({ mode: "in-place" }))).toBe(false);
@@ -581,7 +583,7 @@ describe("accountConfigDir（A4：账号名→configDir，仅可选账号）", (
   });
   it("不可选账号（in-place / 未登录 / 目录不在）→ null（绝不注入）", () => {
     expect(accountConfigDir(state({ accounts: [acct({ name: "z", mode: "in-place" })] }), "z")).toBeNull();
-    expect(accountConfigDir(state({ accounts: [acct({ name: "z", loggedIn: false })] }), "z")).toBeNull();
+    expect(accountConfigDir(state({ accounts: [acct({ name: "z", loggedIn: false, authReady: false })] }), "z")).toBeNull();
     expect(accountConfigDir(state({ accounts: [acct({ name: "z", exists: false })] }), "z")).toBeNull();
   });
   it("可选但 configDir 空 → null", () => {
@@ -601,7 +603,7 @@ describe("resolveAccount（F05：判别联合形态的账号解析，AccountReso
     });
   });
   it("显式选号但不可选 → {kind:'unavailable', requestedName}", () => {
-    const s = state({ accounts: [acct({ name: "z", loggedIn: false })] });
+    const s = state({ accounts: [acct({ name: "z", loggedIn: false, authReady: false })] });
     expect(resolveAccount(s, { explicit: "z" })).toEqual({
       kind: "unavailable",
       requestedName: "z",
@@ -622,7 +624,7 @@ describe("resolveAccount（F05：判别联合形态的账号解析，AccountReso
   //   `设计/01 §6.2`「「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」⇒ 改成 `unavailable`（pinned）。
   it("★ 〔FE1 · D-h〕跟随解析：lastAccount 不可选 → unavailable（pinned），**不下沉** current", () => {
     const s = state({
-      accounts: [acct({ name: "z", loggedIn: false }), acct({ name: "b", configDir: "/h/b" })],
+      accounts: [acct({ name: "z", loggedIn: false, authReady: false }), acct({ name: "b", configDir: "/h/b" })],
       defaultName: "b",
     });
     expect(resolveAccount(s, { follow: { lastAccount: "z" } })).toEqual({
@@ -640,7 +642,7 @@ describe("resolveAccount（F05：判别联合形态的账号解析，AccountReso
     });
   });
   it("跟随解析：**没有 pin** 且当前号不可选 → base（没有原账号，谈不上换号）", () => {
-    const s = state({ accounts: [acct({ name: "z", loggedIn: false })], defaultName: null });
+    const s = state({ accounts: [acct({ name: "z", loggedIn: false, authReady: false })], defaultName: null });
     expect(resolveAccount(s, { follow: {} })).toEqual({ kind: "base" });
   });
   it("既无 explicit 也无 follow → base（今天「默认起」逐字节旧行为）", () => {
@@ -716,7 +718,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     toastMock().mockReset();
     loadCfg.mockResolvedValue({ accounts: { defaultName: "b" } });
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => (
-      okRaw([acct({ name: "z", loggedIn: false }), acct({ name: "b", configDir: "/h/b" })])
+      okRaw([acct({ name: "z", loggedIn: false, authReady: false }), acct({ name: "b", configDir: "/h/b" })])
     ))));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("devbox", "z", run, { sessionId: "s1" });
@@ -773,7 +775,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     toastMock().mockReset();
     loadCfg.mockResolvedValue({ accounts: { defaultName: "b" } });
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => (
-      okRaw([acct({ name: "z", loggedIn: false }), acct({ name: "b", configDir: "/h/b" })])
+      okRaw([acct({ name: "z", loggedIn: false, authReady: false }), acct({ name: "b", configDir: "/h/b" })])
     ))));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("devbox", null, run, { sessionId: "s1", follow: { lastAccount: "z" } });
@@ -809,7 +811,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
   it("★ 〔FE1 · D-h〕follow：last 与 current 都不可选 → 不起；点提示 ⇒ 「不指定账号」起（三字段皆 undefined）", async () => {
     toastMock().mockReset();
     loadCfg.mockResolvedValue({}); // 无 defaultName
-    invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => (okRaw([acct({ name: "z", loggedIn: false })]))))); // 唯一账号不可选
+    invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => (okRaw([acct({ name: "z", loggedIn: false, authReady: false })]))))); // 唯一账号不可选
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("devbox", null, run, { sessionId: "s1", follow: { lastAccount: "z" } });
     expect(run).not.toHaveBeenCalled();
@@ -824,7 +826,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
   it("follow：**没有 pin**、当前号也不可选 → 照旧落基座起、不提示（没有原账号，谈不上换号）", async () => {
     toastMock().mockReset();
     loadCfg.mockResolvedValue({});
-    invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => (okRaw([acct({ name: "z", loggedIn: false })])))));
+    invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => (okRaw([acct({ name: "z", loggedIn: false, authReady: false })])))));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("devbox", null, run, { sessionId: "s1", follow: {} });
     expect(run).toHaveBeenCalledWith({ configDir: undefined, accountName: undefined, modelOverride: undefined });
@@ -999,20 +1001,12 @@ describe("K-A1 鉴权方式：api-key 号不再因为缺凭据文件而不可用
     expect(opts.map((o) => (o.kind === "account" ? o.name : "base"))).toEqual(["base", "z", "api"]);
   });
 
-  it("旧后端（两个键都缺）⇒ 逐字节旧行为：回落到 loggedIn", () => {
-    // 这是 `authReady` 为 `undefined` 的**唯一**来因。缺席 ⇒ 按 loggedIn 判。
-    const old = acct({ name: "o", loggedIn: true });
-    expect(old.authKind).toBeUndefined();
-    expect(old.authReady).toBeUndefined();
-    expect(isSelectable(old)).toBe(true);
-    expect(isSelectable(acct({ name: "o", loggedIn: false }))).toBe(false);
-  });
-
-  it("★ 只给 authKind 不给 authReady（对面只说了一半）⇒ 仍按 loggedIn 判，不自己推", () => {
-    // 规则的唯一住址是 `acct_core::auth_ready`；TS 侧**刻意不**重写一份
-    // 「kind 是 api-key 就当就绪」——那会变成第二处实现，两边一漂就没人看得见。
-    const half = acct({ name: "h", loggedIn: false, authKind: "api-key" });
-    expect(isSelectable(half)).toBe(false);
+  it("★〔DUP1〕只读后端算好的 authReady，不看 loggedIn（两个方向各一格）", () => {
+    // 规则的唯一住址是 `acct_core::auth_ready`；这两格原来是可缺的，缺了由一个 TS 包装回落到 loggedIn ——
+    // 那是订阅分支在 TS 里的第二份（`设计/90 §3` 判据 2，登记表 `tests/judgment-single-home.vitest.ts` J1）。
+    // 解码器早已逐键要求这两格，回落不可达，包装删了 ⇒ 两格与 loggedIn 反着给，结论跟 authReady 走。
+    expect(isSelectable(acct({ name: "o", loggedIn: true, authReady: false }))).toBe(false);
+    expect(isSelectable(acct({ name: "o", loggedIn: false, authKind: "api-key", authReady: true }))).toBe(true);
   });
 });
 
@@ -1045,10 +1039,10 @@ describe("K-A1 KA6a：api-key 号的 UI 文案不许说「已登录」", () => {
   it("订阅号那三态一格没变（阴性对照）", () => {
     expect(accountStatusBadge(acct({})).text).toBe("已登录");
     expect(accountStatusBadge(acct({})).warn).toBe(false);
-    expect(accountStatusBadge(acct({ loggedIn: false })).text).toBe("未登录");
+    expect(accountStatusBadge(acct({ loggedIn: false, authReady: false })).text).toBe("未登录");
     expect(accountStatusBadge(acct({ mode: "in-place" })).text).toBe("不支持切换");
     expect(accountLoginActionLabel(acct({})).label).toBe("登录终端");
-    expect(accountLoginActionLabel(acct({ loggedIn: false })).label).toBe("去登录");
+    expect(accountLoginActionLabel(acct({ loggedIn: false, authReady: false })).label).toBe("去登录");
   });
 
   it("逃生口优先于 api-key（in-place 压根不支持切号，先说那件事）", () => {
@@ -1203,7 +1197,7 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
   it("★ 订阅号一格不受影响（阴性对照：新参数不许改到别的 kind）", () => {
     for (const st of [undefined, { scope: "remote" } as const, { scope: "local", hasRow: true, running: true } as const]) {
       expect(accountStatusBadge(acct({}), st).text).toBe("已登录");
-      expect(accountStatusBadge(acct({ loggedIn: false }), st).text).toBe("未登录");
+      expect(accountStatusBadge(acct({ loggedIn: false, authReady: false }), st).text).toBe("未登录");
       expect(accountStatusBadge(acct({ mode: "in-place" }), st).text).toBe("不支持切换");
     }
   });
@@ -1231,7 +1225,7 @@ describe("K-H2b：本机起会话取账号那一口（行为）", () => {
   const A = acct({ name: "acct-a", configDir: "/h/.claude-alt/acct-a" });
   const B = acct({ name: "acct-b", configDir: "/h/.claude-alt/acct-b" });
   /** 不可选：缺凭据的订阅号（`isSelectable` 那条规则的既有形状）。 */
-  const dead = acct({ name: "acct-dead", configDir: "/h/.claude-alt/acct-dead", loggedIn: false });
+  const dead = acct({ name: "acct-dead", configDir: "/h/.claude-alt/acct-dead", loggedIn: false, authReady: false });
 
   beforeEach(() => __resetLocalLaunchSnapshotForTests());
 
