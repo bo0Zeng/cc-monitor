@@ -156,7 +156,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/hooks_diag.rs",
         "reader",
-        4,
+        2, // 〔SH1 · 4D〕4 → 2：远端那条拨号 shell 串（读 `~/.claude/settings.json` 的探测串 · 来源标签）改问那台后端，本机读盘那几行不动
         "hooks 诊断读 settings。退役归 F10 本体。\
              ⚠ 08-06 从 1 改到 7：原先只数到 `CLAUDE_CONFIG_DIR` 那一行，\
              而**真正读盘的那几行**（`~/.claude/settings.json` 的三条失败诊断文案 · \

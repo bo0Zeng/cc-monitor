@@ -35,7 +35,7 @@ enum Origin {
 const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     // ── 整条命令是常量/无插值字面量
     // 〔SH1 · V136〕`cc_bus.rs / fetch_remote_cc_bus`（`CC_BUS_CAT_CMD`）出去了：驾驶舱读名册改走后端 `bus-state`。
-    ("hooks_diag.rs", "diagnose_remote_cc_bus_hooks", Origin::Const, "`REMOTE_HOOKS_CMD`：只读探测"),
+    // 〔SH1〕`hooks_diag.rs / diagnose_remote_cc_bus_hooks` 出去了：事实改问那台后端（`footprint-probe` ＋ `files-peek`）。
     ("mcp.rs", "fetch_remote_claude_json", Origin::Const, "`CMD`：读远端 ~/.claude.json"),
     ("ccm_probe.rs", "probe_ccm_cli", Origin::Const, "`CCM_PROBE_CMD`：字面量，零插值。P3t-Y2 起本机探针与它**共用同一个常量**"),
     // 〔DP1 · 第四波〕`sftp.rs` 里只问 `uname -m` 的那一处走了：部署前问机器改问 `uname -s -m`（`byte_table::probe_key`），
@@ -187,8 +187,8 @@ fn every_remote_exec_declares_where_its_command_came_from() {
     }
     assert!(
         // 〔C4d · 第四波 4B〕逐次拨号那条路（`remote_history.rs` 那一处）删了 ⇒ −1；〔合并 C4d × 主线 cf3277f4〕主线 11（DP1 −1）＋ 本路 −1 ⇒ 10。
-        // 〔SH1〕驾驶舱两条 shell 读删了 ⇒ 10 → 8。
-        found.len() >= 8,
+        // 〔SH1〕驾驶舱两条 shell 读删了 ⇒ 10 → 8；钩子诊断远端那条改问后端 ⇒ 7。
+        found.len() >= 7,
         "全树只找到 {} 处 `connect_and_exec_cmd(` 调用（08-07 实测 16；\
              **`K-R112` 09-13 现打 14** —— 查在线与抓屏那两处改走后端帧面之后各少一处；\
              **`C1` 09-24 现打 12** —— 读会话与快照那两处改走长连接之后各少一处；\
@@ -330,8 +330,7 @@ const STILL_SHELL: &[(&str, &str, StillShell, &str)] = &[
      "〔LOC1a〕只剩部署那两步（跑 `cc-acct-iso-install.sh` · 核 `~/.local/bin` 看得见它）；装没装 / 片段两问已改问那台后端（`acct-iso-status` / `acct-iso-shellinit`）"),
     ("mcp.rs", "fetch_remote_claude_json", StillShell::Pending("适配层接口：`agents::Adapter` 长一格 MCP 读（或主会话裁抬 `agent_locality` 棘轮）"),
      "读那台 `~/.claude.json` 的 `mcpServers`（用户级）—— 后端要出成品得问适配层要 `.claude.json` 的布局，而通用层直呼适配层是只许降的棘轮；`files-peek` 上限 256 KiB 装不下重度用户的整份"),
-    ("hooks_diag.rs", "diagnose_remote_cc_bus_hooks", StillShell::Pending("cc-bus 读面那一族（件 E，同拍改）"),
-     "读那台 `settings.json` ＋ 探 `cc-register` 在不在 PATH：能换成 `files-peek` ＋ `footprint-probe`，诊断口径要按新两问重写，与 cc-bus 读面一起做"),
+    // 〔SH1〕`hooks_diag.rs` 那一行摘了：换成那台后端的 `files-peek` ＋ `footprint-probe`（解锁条件兑现）。
     // 〔W5-ALIAS · 现打后写清〕这一问答的是「那台**交互 shell** 的 PATH 上敲 `ccm` 找不找得到、是哪一版、会哪些」
     //   （`remote-launch-run.ts` 据此选 CLI 渲染器 —— pane 里敲的就是那个名字）。那台后端进程答不了交互 shell 的 PATH
     //   （rc 改过的环境它看不见，`footprint-probe` 的 `env.path` 同一个口径缺口）⇒ 今天换成后端具名命令会答错问题。

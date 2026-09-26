@@ -1104,6 +1104,13 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         "按行号取一段（一次 invoke 一问）：前端交「那一件还剩多少」（`left_ms`），过进程边界在这里换回绝对时刻 —— \
          造那一件期限的一手在前端（`tab-stream-view.ts` 的往上翻 / 丢格之后往后补）",
     ),
+    // 〔SH1 · V136〕远端钩子诊断：三趟（取环境 · 读 settings.json · 逐条 stat）共用一个总时限。
+    (
+        "hooks_diag.rs",
+        "diagnose_remote_cc_bus_hooks",
+        1,
+        "远端 cc-bus 钩子诊断问那台后端的三趟（`footprint-probe` ×2 ＋ `files-peek`）共用 `REMOTE_DIAG_BUDGET`（30 s）",
+    ),
 ];
 
 /// 一份生产段里 `Deadline::within(` 的每一处，按「所在的最近一个 `fn` 名」记账（定义那一行不算）。

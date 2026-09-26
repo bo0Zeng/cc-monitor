@@ -361,47 +361,49 @@ fn path_splitting_delegates_to_the_platform() {
     }
 }
 
-/// **远端探测解析**（T03 审计阻塞 3）。此前这段藏在 `#[tauri::command] async fn` 里，
-/// 要一条真 ssh 才走得到 = 不可测 = 没门禁；审计实测把远端 `home_path_exists` 改成
-/// `= true`，24 项照样全绿。
+/// 〔SH1 · V136〕远端的事实经那台后端问：要 stat 的路径全集按那台的家目录 / `PATH` 现算（纯）。
+/// 要求住址：`exec_site_registry_tests::STILL_SHELL` 那一行的解锁条件「换成 `files-peek` ＋ `footprint-probe`」· `设计/00 §1`「所有 SSH 由本机常驻后端持有」。
 #[test]
-fn remote_probe_uses_each_kind_of_evidence_precisely() {
-    // 两个程序都在 $HOME/.local/bin 下 `-x` 命中 + 都在 PATH 上
-    let (lenient, p) = parse_remote_probe(
-        "X\t/home/u/.local/bin/cc-register\nX\t/home/u/.local/bin/cc-bus-stop-hook\n\
-             P\t/home/u/.local/bin/cc-register\nP\t/home/u/.local/bin/cc-bus-stop-hook\n",
-    );
-    assert_eq!(p.home_path_exists, Some(true));
-    assert_eq!(p.on_path, Some(true));
-    assert_eq!(lenient.len(), 4, "宽容清单要含全部命中（B04-7 的决定不变）");
-
-    // **审计指出的真实假阴性**：只装在 /usr/local/bin 且在 PATH 上——
-    // 旧代码按 basename 匹配会把它算成 `$HOME` 路径存在 → `$HOME` 形态不警示 →
-    // 用户贴上去正是一个 path-missing 钩子。
-    let (_, p) =
-        parse_remote_probe("P\t/usr/local/bin/cc-register\nP\t/usr/local/bin/cc-bus-stop-hook\n");
+fn the_remote_facts_are_planned_from_that_machines_home_and_path() {
     assert_eq!(
-        p.home_path_exists,
-        Some(false),
-        "PATH 上有 ≠ $HOME/.local/bin 下有"
+        expand_on("$HOME/.local/bin/cc-register", "/home/u").as_deref(),
+        Some("/home/u/.local/bin/cc-register")
     );
-    assert_eq!(p.on_path, Some(true));
-
-    // 只有一个命中 → 不能说"都在"
-    let (_, p) = parse_remote_probe("X\t/home/u/.local/bin/cc-register\n");
-    assert_eq!(p.home_path_exists, Some(false));
-
-    // 新协议但一个都没找到 → 确定地说"都不在"
-    let (lenient, p) = parse_remote_probe("");
-    assert_eq!(p.home_path_exists, Some(false));
-    assert_eq!(p.on_path, Some(false));
-    assert!(lenient.is_empty());
-
-    // **旧协议（不打标记）→ 两项都说不知道**，不拿含混回报当精确证据
-    let (lenient, p) = parse_remote_probe("/home/u/.local/bin/cc-register\n");
-    assert_eq!(p.home_path_exists, None, "旧协议不许下结论");
-    assert_eq!(p.on_path, None);
-    assert_eq!(lenient.len(), 1, "但宽容清单仍要用它（诊断照旧宽容）");
+    assert_eq!(
+        expand_on("${HOME}/x", "/home/u/").as_deref(),
+        Some("/home/u/x")
+    );
+    assert_eq!(expand_on("~/x", "/home/u").as_deref(), Some("/home/u/x"));
+    assert_eq!(
+        expand_on("/opt/cc-register", "/home/u").as_deref(),
+        Some("/opt/cc-register")
+    );
+    assert_eq!(
+        expand_on("cc-register", "/home/u"),
+        None,
+        "裸命令名不 stat（走 PATH 那一支）"
+    );
+    assert_eq!(expand_on("$HOME/x", ""), None, "家目录都问不到 ⇒ 不猜");
+    let plan = stat_plan(
+        &[
+            "$HOME/.local/bin/cc-register".to_string(),
+            "cc-bus-stop-hook".to_string(),
+        ],
+        "/home/u",
+        "/usr/bin:/opt/b/:rel",
+    );
+    assert_eq!(
+        plan,
+        [
+            "/home/u/.local/bin/cc-bus-stop-hook",
+            "/home/u/.local/bin/cc-register",
+            "/opt/b/cc-bus-stop-hook",
+            "/opt/b/cc-register",
+            "/usr/bin/cc-bus-stop-hook",
+            "/usr/bin/cc-register",
+        ],
+        "PATH 按 `:` 切（远端恒 POSIX）、相对段不问、去重排序"
+    );
 }
 
 /// 两个字段现在**同一档口径**：`None` 一律不警示。
@@ -514,34 +516,24 @@ fn brace_home_form_is_not_a_false_alarm() {
     }
 }
 
-/// **B04-5**：`REMOTE_HOOKS_CMD` 此前**一条守卫都没有**。
-/// 对比 `cc_bus.rs` 的 `CC_BUS_CAT_CMD`：既有常量守卫又有调用点守卫。
-/// 「绝不写远端任何文件」这句话在 B04 里曾经是纯口头的。
+/// 〔SH1 · V136〕远端那条**不再起拨号 shell**：事实只经那台后端的 `footprint-probe` / `files-peek` 问（零 `connect_and_exec_cmd`）。
 #[test]
-fn remote_command_is_readonly_and_reaches_ssh_unmodified() {
-    // 常量本身：零插值、无写动词
-    assert!(!REMOTE_HOOKS_CMD.contains("{}"));
-    assert!(!REMOTE_HOOKS_CMD.contains("$1"));
-    for w in [
-        "rm ", "mv ", ">>", "tee ", "truncate", "chmod", "kill", "ln -s",
-    ] {
-        assert!(!REMOTE_HOOKS_CMD.contains(w), "只读命令里不该有 {w:?}");
-    }
-    assert!(REMOTE_HOOKS_CMD.contains(HOOKS_SPLIT_MARKER));
-    assert!(
-        REMOTE_HOOKS_CMD.trim_end().ends_with("true"),
-        "缺文件时仍须 rc=0"
-    );
-    // **调用点**：必须原样交给 SSH（包一层 format! 就不再是定值）
+fn the_remote_diagnosis_asks_that_machines_backend_not_a_dial_shell() {
     let code = non_test_code();
-    assert!(
-        code.contains("connect_and_exec_cmd(&cfg, REMOTE_HOOKS_CMD)"),
-        "定值命令必须原样交给 SSH"
+    assert_eq!(
+        code.matches("connect_and_exec").count(),
+        0,
+        "远端诊断又长回了一条拨号 shell"
     );
     assert_eq!(
-        code.matches("REMOTE_HOOKS_CMD").count(),
+        code.matches("\"footprint-probe\"").count(),
         2,
-        "常量只准出现两次：定义 + 唯一调用点"
+        "两趟 footprint-probe（取环境 · 逐条 stat）"
+    );
+    assert_eq!(
+        code.matches("Door::peek(").count(),
+        1,
+        "settings.json 经 files-peek 读一次"
     );
 }
 

@@ -12007,26 +12007,6 @@
       "zh": "{who} 的后端没连上，比对要经它来做（{why}）—— 一个字节都没动",
       "args": ["who", "why"]
     },
-    "rsHooksDiag.remote.timeout": {
-      "kind": "error",
-      "zh": "远端「{machine}」读取超时（30 秒）",
-      "args": ["machine"]
-    },
-    "rsHooksDiag.remote.tooBig": {
-      "kind": "error",
-      "zh": "远端 settings.json 超过 {cap} 字节上限，拒收。截断的 JSON 不能拿去解析。",
-      "args": ["cap"]
-    },
-    "rsHooksDiag.remote.readFailed": {
-      "kind": "error",
-      "zh": "读远端 settings.json 失败：{e}",
-      "args": ["e"]
-    },
-    "rsHooksDiag.remote.notConfigured": {
-      "kind": "error",
-      "zh": "远端「{machine}」未配置或未启用",
-      "args": ["machine"]
-    },
     "rsHooksDiag.local.noHome": {
       "kind": "body",
       "zh": "取不到 HOME",
@@ -12051,6 +12031,11 @@
       "kind": "body",
       "zh": "~/.claude/settings.json 不是合法 JSON —— 未改动它，请先自行修复",
       "args": []
+    },
+    "rsHooksDiag.remote.peekFailed": {
+      "kind": "error",
+      "zh": "读不到那台的 settings.json：{e}",
+      "args": ["e"]
     },
     "rsHooksDiag.diagnose.noSettings": {
       "kind": "body",
