@@ -274,7 +274,10 @@ jsonl watcher 与它的第二套游标 / seq 已删，本机会话的行也是�
 
 ## 6. session 探活双重校验（PID + procStart）
 
-`is_session_active(sid)` = `OpenProcess(QUERY_LIMITED) + GetExitCodeProcess == STILL_ACTIVE` + `GetProcessTimes` creation FILETIME 与 sessions/<PID>.json 里 `procStart` 字段（= .NET `DateTime.ToFileTime()` 字符串）100ms 容差比对。
+〔LOC1b · 第四波 4D〕这一格今天住**后端**（本机远端同一份）：`observe/watcher.rs` 宣告前的冒名检查（procStart 逐位相等 / 容差）＋
+`platform/pidwatch`（Linux pidfd · Windows 死亡事件）。monitor 那份 `is_session_active`〔散文墓碑〕（`OpenProcess(QUERY_LIMITED) + GetExitCodeProcess == STILL_ACTIVE`
+＋ `GetProcessTimes` creation FILETIME 与 sessions/<PID>.json 里 `procStart` 字段 100ms 容差比对）随本机判活改由本机后端的帧来删了；
+原则不变：判「同一个进程」要 PID ＋ 启动时刻两样。
 
 **为什么不能松动**：Windows PID 短期复用非常常见。仅靠 STILL_ACTIVE 会把"旧 PID 已被无关进程占用"误判为活跃 session → 僵尸 Tab。
 
@@ -1784,7 +1787,7 @@ no-op（真机反向实测：写错 starttime 时探针存活，不误伤无关�
      **仍未收敛**：后端侧 6 处 `read_dir`（`readonly_guard`×2 / `no_timer_guard`×2 /
      `layering_guard`×2 / `protocol_doc_guard`×1）+ monitor `parity_ledger.rs` 1 处，登记 U1a。
      顺带订正一条：`cfg_is_test_only` 现在认**复合 cfg**（`#[cfg(all(test, target_os = "linux"))]`）——
-     只认逐字 `#[cfg(test)]` 时，`session_map.rs::linux_liveness` 的 5 个 `#[test]`
+     只认逐字 `#[cfg(test)]` 时，`session_map.rs` 当年那个 Linux 判活测试模块（〔LOC1b〕随 monitor 自己那份判活删了）的 5 个 `#[test]`
      一直留在「生产段」里，是新加的 monitor 全树自检第一次跑就逮出来的。
      修这条时我又当场制造了同一类洞：新加的 `#[cfg(test)] mod guard_support;` 是**无花括号体的
      声明**，锚点照样匹配，收尾的列 0 右大括号一路找到 179 行某函数的收尾，把 `main.rs:26–179`

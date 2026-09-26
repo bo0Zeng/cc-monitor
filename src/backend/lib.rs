@@ -515,7 +515,11 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p3t-local-longconn-fork**（2026-09-25，第四波 4D LOC1a 合并那一拍）：子命令 ＋1 `--session-fork`、帧命令 ＋3（`session-fork` · `acct-iso-status` ·
 /// `acct-iso-shellinit`）—— 本机四处一次性 exec 改走 `<local>` 长连接、远端 acct-iso 改问那台后端。＋ 行为：`tasks-list` 应答 `{lines}` → 成品 `{tasks}`。
-pub const BUILD_ID: &str = "p3t-local-longconn-fork";
+///
+/// ★★★ **p3u-local-same-path**（2026-09-25，第四波 4D LOC1b 合并那一拍）：行为 —— `session_added` 多一个 additive 字段 `pid`
+/// （与 `rbind_token` 同闸，只有 `--with-rbind-token` 才带）· 按路径读会话的围栏也认 Codex 的记录根（根由适配层给）·
+/// 本机冷读 / 搜索 / 判活从此都问本机后端（monitor 侧删内存索引、`session_map` 的 notify / `/proc` / 2 s 心跳）。子命令没变，照 p1v 先例不加历史行。
+pub const BUILD_ID: &str = "p3u-local-same-path";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），

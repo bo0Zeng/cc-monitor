@@ -29,6 +29,7 @@ pub(crate) mod resume;
 pub(crate) const HISTORY: crate::agents::HistoryFace = crate::agents::HistoryFace {
     sessions: history::sessions,
     excerpt: history::first_user_excerpt,
+    root: history::records_root,
 };
 // 〔`设计/50` 删用量〕**原 `pub(crate) mod usage;` 删了。**
 // `agents/codex/usage.rs` 是用量**聚合轴**（②）的 Codex 半：它的唯一调用方是
