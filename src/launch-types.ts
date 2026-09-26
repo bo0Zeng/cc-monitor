@@ -46,7 +46,7 @@ export type LaunchAccount =
  * **R04③：`unset` 侧收窄到无参变体。**
  *
  * export 侧当初就刻意用了窄变体（`export-config-dir` 而非通用 `{op:"export";key;value}`），
- * 理由写在本文件头注第 3 条：防任何维度绕开 `isValidConfigDir` 往命令里塞任意变量名
+ * 理由写在 `launch-plan.ts` 头注第 3 条：防任何维度绕开 configDir 那道校验（渲染侧 `config_dir_command_safe`）往命令里塞任意变量名
  * （账号隔离审计 D7 的 extraEnv key 无校验风险）。**但同一条理由从未被应用到 unset 侧**
  * ——`{ kind:"unset"; keys: string[] }` 是个自由字符串数组，任何维度都能往里塞任意 token，
  * 而渲染器直接 `unset ${keys.join(" ")}` 拼进命令。
@@ -139,8 +139,8 @@ export interface LaunchPlan {
   container: LaunchContainer;
   cwd: string | null;
   env: EnvOp[];
-  /** 用户可配的原始启动器串（未 sanitize）——每个渲染器自己在嵌入点调用
-   *  `sanitizeRemoteLauncher`，IR 只存意图，不存"已按哪种转义规则处理过"的产物。 */
+  /** 用户可配的原始启动器串 —— IR 只存意图。〔DUP1〕「能不能裸拼进载荷」只在 Rust 渲染侧判（`payload.rs::render_payload`
+   *  那道闸，判不过拒）；前端只把空白读成默认启动器（`remote-launch-run.ts::launcherOrDefault`），不再判字符集。 */
   launcher: string;
   args: string[];
   identity?: { ccmSid: string };

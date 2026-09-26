@@ -1750,7 +1750,7 @@ fn windows_account_dirs_are_accepted_by_the_ps_side() {
 }
 
 /// ★ 非法 configDir **绝不拼进命令** —— 这条产物会进 shell，宽容一格就是注入面。
-/// 判据照抄 TS 侧 `isValidConfigDir`（`src/shell-quote.ts:41`），不重新发明。
+/// 判据与载荷渲染同一道闸（`payload.rs::config_dir_command_safe`），不重新发明。〔DUP1〕原先写的是「照抄 TS 侧 `isValidConfigDir`」〔散文墓碑〕，TS 那份删了。
 #[test]
 fn illegal_config_dir_is_refused_not_sanitized() {
     let bad = [

@@ -99,23 +99,21 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J2: {
     what: "configDir 能不能拼进命令",
     homes: [`${PAYLOAD_RS}::config_dir_command_safe`, "acct-core::is_deceptive_char"],
-    status: "open",
+    // 〔DUP1 子步 4〕删 `shell-quote.ts::isValidConfigDir`（Rust 拒绝集的逐项手抄）；账号维度原样推，渲染侧判。
+    status: "zero",
     defs: ["isValidConfigDir"],
     needles: [
-      { text: "\\u2060-\\u2064", count: 1 },
-      { text: 'includes("/../")', count: 1 },
+      { text: "\\u2060-\\u2064", count: 0 },
+      { text: 'includes("/../")', count: 0 },
     ],
-    owner: "DUP1 子步 4",
-    why: "与 Rust 同一字符集的手抄；载荷路 Rust 渲染时已判（REFUSE 标，不回落）",
   },
   J3: {
     what: "launcher 能不能裸拼进载荷",
     homes: [`${PAYLOAD_RS}::render_payload`],
-    status: "open",
+    // 〔DUP1 子步 5〕删 `shell-quote.ts::sanitizeRemoteLauncher`（同一字符集、却静默换成 claude —— D4 禁）；前端只留「空白 ⇒ 默认」。
+    status: "zero",
     defs: ["sanitizeRemoteLauncher"],
-    needles: [{ text: "[;|&$`<>\\r\\n]", count: 1 }],
-    owner: "DUP1 子步 5",
-    why: "同一字符集；TS 那份静默换成 claude（D4 禁），Rust 那份拒并说清",
+    needles: [{ text: "[;|&$`<>\\r\\n]", count: 0 }],
   },
   J4: {
     what: "POSIX 单引号",

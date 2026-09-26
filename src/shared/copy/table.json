@@ -4612,11 +4612,6 @@
       "zh": "非法模型名，不能拼进命令：{value}",
       "args": ["value"]
     },
-    "launchDimensions.bad.configDir": {
-      "kind": "error",
-      "zh": "非法 CLAUDE_CONFIG_DIR，不能拼进命令：{value}",
-      "args": ["value"]
-    },
     "launchDimensions.bad.ccmSid": {
       "kind": "error",
       "zh": "非法会话标记，不能拼进命令：{value}",

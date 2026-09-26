@@ -479,7 +479,8 @@ const SCAN: &[&str] = &[
     "tests/settings/plugins-section.vitest.ts",
     "tests/settings/remote-section.vitest.ts",
     "tests/settings/settings-source-markdown.vitest.ts",
-    "tests/shell-quote-deceptive-parity.vitest.ts",
+    // 〔DUP1〕`tests/shell-quote-deceptive-parity.vitest.ts` 删了：它拍的是 TS 那份 `isValidConfigDir` 对 Rust 欺骗字符集，
+    //   TS 那份按 `设计/90 §3` 判据 2 删了（拒绝集只在 Rust，`payload_tests.rs` 逐码位钉）。
     "tests/tab-session-state.vitest.ts",
     "tests/tabs-copy-terms.vitest.ts",
     "tests/tabs-split-graph.vitest.ts",

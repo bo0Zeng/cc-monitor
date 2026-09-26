@@ -404,8 +404,8 @@ pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
     // 不是攻击者）；② 与同函数 `args` 那道白名单**姿态一致**（不对称本身会误导下一个人）。
     // 真正的边界在别处：backend 的 `admit`（会话身份）+ 前端执行面（CSP / 能力表）。
     //
-    // 字符集镜像 TS 的 `sanitizeRemoteLauncher`（今天真正管着这条路的那份策略），
-    // 但按本函数的既有惯例**返回 `Err` 而不是静默回落**：拒绝要让调用方看得见。
+    // 字符集当年镜像 TS 的 `sanitizeRemoteLauncher`〔散文墓碑〕（〔DUP1〕那份按 `设计/90 §3` 判据 2 删了：同一字符集、
+    // 处置却是静默换成默认 launcher ⇒ **今天这里是这条判定唯一的家**），按本函数的既有惯例**返回 `Err` 而不是静默回落**：拒绝要让调用方看得见。
     // ⚠ 刻意**不复用** `history::sanitize_launcher` 的白名单 —— 它排掉了 `/`，
     // 而远端 launcher 合法地可以是 `/usr/local/bin/claude`（收太紧 = 把一个洞换成一个回归）。
     if let Some(c) = spec
