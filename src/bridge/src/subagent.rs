@@ -25,10 +25,10 @@
 //! 这与 `K28`（前端不许自己发明对外行为，一切对外都经后端）/ `K33`（一件事只许有一处实现）
 //! 同向：「有哪些候选」是**后端**回答的问题，本侧只负责在候选里挑。
 //!
-//! ⚠ **两条 transport 之间一条如实登记的差别**（不在本模块能收的范围里）：
-//! 远端那条（〔C4d〕今天是长连接的帧命令，`frame_query` 按行那一档 30s 期限 ＋ 单帧上限）有期限与上限；本机那条
-//! （`local_query::run_query`）**两样都没有** —— 那一层刻意把超时留给调用方（见它自己的头注）。
-//! subagent 通常是短命的侧任务、文件很小，但一个长跑的 subagent 可能撞上远端那 30s。
+//! ⚠ 〔LOC1a · 第四波 4D〕本机与远端**连传输都是同一条**（那台机器常驻后端的长连接，本机 = `<local>`）⇒
+//! 两条路同一个期限与上限（`frame_query` 按行那一档 30s ＋ 单帧上限）。此前本机那条 exec 一次性后端、
+//! 没有期限，那条「两条 transport 之间的差别」随之消失。
+//! subagent 通常是短命的侧任务、文件很小，但一个长跑的 subagent 可能撞上那 30s。
 //! 真要收，得把本命令改成**流式**（同 `history·rs::stream_read_session_jsonl` 那条 channel 路），
 //! 那会改它对前端的返回形状 —— 是另一件事，不在本件里顺手做。
 
@@ -48,100 +48,77 @@ pub struct SubagentLoadResult {
     pub records: Vec<JsonlRecord>,
 }
 
-/// **两条路唯一的差别**：谁去跑那条一次性查询。
+/// 那条查询**问哪台机器的后端**。
 ///
-/// 本机 = exec 一次本机后端拿 stdout；远端 = 经 ssh exec 同一个二进制。
-/// 定框 `C1` 逐字「本地 = 不走 ssh 的远端」——⇒ 子命令、参数、解析、挑选**全是同一份**。
+/// 〔LOC1a · 第四波 4D〕本机与远端从此**连传输都是同一条**：都走那台机器常驻后端的长连接
+/// （`frame_query::route_argv` → `run_routed`），本机就是 origin `<local>`（`设计/05 §14.6`：
+/// 「本机那几问从『exec 一次性本机后端』改走 `<local>` 长连接」· `INVARIANTS §40`「本地 ＝ 不走 ssh 的远端」）。
+/// 此前本机那一支每问一次 exec 一个本机后端进程（`local_query::run_query`〔散文墓碑〕，整份删了）。
 ///
-/// 〔`设计/10` 骨架 · 子步 3〕它从本模块私有升成 `pub(crate)`：骨架索引与按偏移取正文
-/// （`session_skeleton.rs`）问的是**同一个问题**「这条查询谁去跑」—— 另写一份本机/远端分流
-/// 就是 `K33` 说的第二处实现。**只改了可见性，一行行为没动。**
-pub(crate) enum Backend {
-    Local,
-    Remote(Box<crate::ssh_source::RemoteConfig>),
+/// 〔`设计/10` 骨架 · 子步 3〕它是 `pub(crate)`：骨架索引与按偏移取正文（`session_skeleton.rs`）问的是
+/// **同一个问题**「这条查询谁去跑」—— 另写一份就是 `K33` 说的第二处实现。
+pub(crate) struct Backend {
+    origin: crate::origin::Origin,
 }
 
 impl Backend {
-    /// 分过本机之后选后端：本机走本机后端，远端按 label 取那台远端的配置。
+    /// 分过本机之后选后端。
     ///
-    /// # 🔴 〔`设计/05 §8` 步 2，2026-09-20〕入参从 `Option<&str>` 换成 `Route`
+    /// # 🔴 〔`设计/05 §8` 步 2，2026-09-20〕入参是 `Route`，不是 `Option<&str>`
     ///
-    /// 上一拍这里逐字写着「`origin` 缺省 / **空串** = 本机」—— 两个「没说」的值
-    /// 都被**悄悄**归进了本机，而 `INVARIANTS §40` 逐字「本地 ＝ 不走 ssh 的远端」
-    /// ⇒ 本机是一个**具名**的 origin，「没说」不是它。
-    /// 那种归法不报错：调用方什么都不送，命令去动了本机的文件。
-    ///
-    /// ⇒ 「没说」从此在到这里**之前**就被拦掉，两道闸各一处：
-    /// 线上 `null` 由 `Origin` 的 `Deserialize` 拒（构造不出来）·
-    /// 空白名由 [`crate::origin::Origin::route`] 拒（拒的那句话点名命令）。
-    /// 本函数因此只收**已经分过本机**的 [`crate::origin::Route`] —— 它只有两个变体，
-    /// 「没说」在类型上到不了这里。
+    /// 「没说」（线上 `null` / 空白名）在到这里**之前**就被拦掉：`Origin` 的 `Deserialize` 拒 `null`，
+    /// [`crate::origin::Origin::route`] 拒空白名（拒的那句话点名命令）⇒ 「没说」在类型上到不了这里。
+    /// 远端那一支仍先核「这台配置过、启用着」（`require_cfg_by_label`）：没配置的名字当场说，不去问一条不存在的长连接。
     ///
     /// ⚠ 分流点仍然**恰好一处**（`subagent_tests.rs` 钉着 `fn for_origin(` 的处数）。
     pub(crate) fn for_origin(route: crate::origin::Route<'_>) -> Result<Self, String> {
         match route {
-            crate::origin::Route::Local => Ok(Backend::Local),
+            crate::origin::Route::Local => Ok(Backend {
+                origin: crate::origin::Origin::local(),
+            }),
             crate::origin::Route::Remote(host) => {
                 let cfg = crate::remote_history::require_cfg_by_label(host)?;
-                Ok(Backend::Remote(Box::new(cfg)))
+                Ok(Backend {
+                    origin: crate::origin::Origin(cfg.origin_label()),
+                })
             }
         }
     }
 
-    /// 报错文案里的「谁」—— 本机 / 哪台远端。
+    /// 报错文案里的「谁」—— 本机 / 哪台远端（与帧面那几句话同一个说法）。
     pub(crate) fn whose(&self) -> String {
-        match self {
-            Backend::Local => copy_text("rsSubagent.whose.local", &[]),
-            Backend::Remote(cfg) => copy_text(
-                "rsSubagent.whose.remote",
-                &[("machine", &(cfg.origin_label()).to_string())],
-            ),
-        }
+        crate::backend::control::frame_query::who(&self.origin)
     }
 
     /// 跑一条一次性查询。`argv[0]` 是子命令，其余是它的参数。
     ///
-    /// 出的是**逐行、已 trim、已剔空行**的输出 —— 两条路形状一致
-    /// （远端那条由 `frame_query` 的按行那一档保证，本机这条在 [`run_local_query`] 里对齐）。
+    /// 出的是**逐行、已 trim、已剔空行**的输出（`frame_query` 按行那一档保证）。
     ///
     /// 〔C2 · SE1 欠账〕失败带**种类**（[`QueryFailure`]）：调用方据种类决定「还要不要再要」，
-    /// 不解析 `message` 的文字。种类**在失败发生的那一层当场定**，不事后按文字猜：
-    /// 本机那条看退出码与后端自己印的那句 `unknown argument` · 远端拨号那条看首行是不是 hello ·
-    /// 帧面那条先问长连接认不认这条命令。
+    /// 不解析 `message` 的文字。种类在失败发生的那一层当场定：长连接在、却不认这条帧命令 ⇒ 老后端；其余 ⇒ 传输。
     pub(crate) async fn query(&self, argv: &[&str]) -> Result<Vec<String>, QueryError> {
-        match self {
-            Backend::Local => run_local_query(argv),
-            Backend::Remote(cfg) => {
-                // 〔`C1` · 09-24〕认得的形状走长连接（`frame_query::route_argv`）；
-                // 认不出的当场说（下面那一支；〔C4d〕逐次拨号那条路删了）。
-                if let Some(route) = crate::backend::control::frame_query::route_argv(argv) {
-                    let origin = crate::origin::Origin(cfg.origin_label());
-                    // 长连接在、却不认这条帧命令 ⇒ 对面的后端比这条查询老（结构性，再要也一样）。
-                    if crate::backend::control::frame_query::refuses(&origin, &route) {
-                        return Err(QueryError::old_backend(copy_text(
-                            "rsSubagent.query.tooOld",
-                            &[("machine", &(cfg.origin_label()).to_string())],
-                        )));
-                    }
-                    return crate::backend::control::frame_query::run_routed(&origin, route)
-                        .await
-                        .map_err(QueryError::transport);
-                }
-                // 〔C4d · 第四波 4B〕认不出的形状从前落到逐次拨号那条路（`run_list_query`〔散文墓碑〕），而那条路的
-                //   放行表 C4c 起就是空的 ⇒ 结局本来就是被拒。主会话 09-25 裁删那条路：这里**当场说**，不拨号、不回落。
-                //   这是本程序的 bug（调用方造了一条没上帧面的查询），不是远端的问题 ⇒ 结构性，再要也一样。
-                Err(QueryError::transport(copy_text(
-                    "rsSubagent.query.noFrameCmd",
-                    &[
-                        (
-                            "argv",
-                            &(argv.first().copied().unwrap_or_default()).to_string(),
-                        ),
-                        ("machine", &(cfg.origin_label()).to_string()),
-                    ],
-                )))
-            }
+        use crate::backend::control::frame_query;
+        // 认得的形状走长连接；认不出的当场说（〔C4d〕逐次拨号那条路删了，〔LOC1a〕exec 本机后端那条也删了）。
+        let Some(route) = frame_query::route_argv(argv) else {
+            // 这是本程序的 bug（调用方造了一条没上帧面的查询），不是那台后端的问题 ⇒ 结构性，再要也一样。
+            return Err(QueryError::transport(copy_text(
+                "rsSubagent.query.noFrameCmd",
+                &[
+                    ("argv", argv.first().copied().unwrap_or_default()),
+                    ("who", &self.whose()),
+                ],
+            )));
+        };
+        // 长连接在、却不认这条帧命令 ⇒ 对面的后端比这条查询老（结构性，再要也一样）。
+        if frame_query::refuses(&self.origin, &route) {
+            return Err(QueryError::old_backend(copy_text(
+                "rsSubagent.query.tooOld",
+                &[("who", &self.whose())],
+            )));
         }
+        frame_query::run_routed(&self.origin, route)
+            .await
+            .map_err(QueryError::transport)
     }
 }
 
@@ -149,11 +126,11 @@ impl Backend {
 ///
 /// | 种类 | 在哪一层定 | 含义 |
 /// |---|---|---|
-/// | `OldBackend` | 本机：退出码 2 ＋ 后端自己印的 `unknown argument: <子命令>` · 帧面：长连接不认这条命令 | **结构性**：同一台后端再要一次还是这样 |
-/// | `Transport` | 其余：起不了本机后端 · 超时 · 没有控制通道 · 后端退出码非 0（非上面那一形）· 没有帧命令的查询 | **瞬时**：下一次触发再要 |
+/// | `OldBackend` | 帧面：长连接在、却不认这条命令 | **结构性**：同一台后端再要一次还是这样 |
+/// | `Transport` | 其余：没有控制通道 · 超时 · 对端说不行 · 没有帧命令的查询 | **瞬时**：下一次触发再要 |
 ///
-/// 〔C4d · 第四波 4B〕原先还有一档 `Truncated`（「远端拨号：单行超上限被整行拒收」）与「远端拨号：首行是 hello」那一形 ——
-/// 两样都只在逐次拨号那条路上产出，那条路删了，它们随之没有产出者 ⇒ 摘掉（帧面的「装不下」是后端的 `too_large` 明拒，走 `Transport`）。
+/// 〔C4d · 第四波 4B〕原先还有一档 `Truncated`（逐次拨号那条路的单行超限）；〔LOC1a〕本机「退出码 2 ＋
+/// `unknown argument`」那一形随 exec 本机后端那条路一起没了（`local_failure_kind`〔散文墓碑〕删）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum QueryFailure {
     OldBackend,
@@ -193,69 +170,6 @@ impl From<QueryError> for String {
     fn from(e: QueryError) -> String {
         e.message
     }
-}
-
-/// 本机后端对「不认的子命令」印的那一句的前缀（后端 `main.rs` 一次性查询臂：
-/// `cc-monitor-backend query error: unknown argument: <arg>` ＋ 退出 2）。
-/// 判据从后端源码里现抠这一串，对拍两侧（`subagent_tests.rs`）。
-pub(crate) const UNKNOWN_ARGUMENT: &str = "unknown argument: ";
-
-/// 本机退出码 ＋ stderr ⇒ 种类。**纯函数**，判据直接喂。
-pub(crate) fn local_failure_kind(
-    code: Option<i32>,
-    stderr: &str,
-    subcommand: &str,
-) -> QueryFailure {
-    let unknown = format!("{UNKNOWN_ARGUMENT}{subcommand}");
-    if code == Some(2) && stderr.lines().any(|l| l.trim_end().ends_with(&unknown)) {
-        QueryFailure::OldBackend
-    } else {
-        QueryFailure::Transport
-    }
-}
-
-/// 本机那条 transport：exec 一次本机后端拿 stdout。
-///
-/// ⚠ 定框 §5：**「后端不在」与「查询失败」不许压成同一句话** ——
-/// 前者该提示用户装/起后端，后者该把原因原样端出来。
-fn run_local_query(argv: &[&str]) -> Result<Vec<String>, QueryError> {
-    use crate::backend::observe::local_query::{run_query, QueryOutcome};
-    match run_query(
-        env!("CCM_TARGET_TRIPLE"),
-        argv,
-        &*crate::spawn_managed::local_backend_one_shot_query(),
-    ) {
-        QueryOutcome::Ok(stdout) => Ok(nonempty_lines(&stdout)),
-        QueryOutcome::NoBackend(reason) => Err(QueryError::transport(copy_text(
-            "rsSubagent.localQuery.noBackend",
-            &[("reason", &reason.to_string())],
-        ))),
-        QueryOutcome::Failed { code, stderr } => {
-            let sub = argv[0];
-            let msg = stderr.trim();
-            Err(QueryError {
-                kind: local_failure_kind(code, &stderr, sub),
-                message: copy_text(
-                    "rsSubagent.localQuery.failed",
-                    &[
-                        ("sub", &sub.to_string()),
-                        ("code", &format!("{:?}", code)),
-                        ("msg", &msg.to_string()),
-                    ],
-                ),
-            })
-        }
-    }
-}
-
-/// 与帧面按行那一档（`frame_query::lines`）的出参形状对齐：逐行、trim 过、空行剔掉。
-fn nonempty_lines(stdout: &str) -> Vec<String> {
-    stdout
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .map(str::to_string)
-        .collect()
 }
 
 /// ⚠ 本机 ＝ `Origin::local()`（线上 `"<local>"`），**不是 `null`、不是空串**

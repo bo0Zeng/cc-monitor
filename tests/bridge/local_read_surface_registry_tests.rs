@@ -681,7 +681,7 @@ fn the_local_backend_contract_has_exactly_one_home_and_f10s_ratchet_is_untouched
 
     // ⚠ **刻意不在这里再钉一遍 `reader` 的条数。**
     // 那个数（今天 11）已经由同模块的
-    // `every_registered_file_declares_what_kind_of_read_it_is` 钉着；
+    // `every_reader_names_its_retirement_owner` 钉着（〔LOC1a〕这里原先点的名字全仓不存在，改指真在数它的那一条）；
     // 在这里抄第二份就是「判据存了真相源的副本」（定框 §4 逐字禁止）——
     // F11 的 E4 变异就是被那种副本骗过去的。
     //

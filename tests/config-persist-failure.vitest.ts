@@ -1,0 +1,107 @@
+/**
+ * 〔CFG1 · 4D〕**配置落盘失败要出声**（E §3.3 吞错普查：分组 / 固定 / 顺序 / 行为设置 / 快捷键 落盘失败只打 console）。
+ *
+ * 守的要求（住址）：`INVARIANTS §12`「**关键失败必须** …… 状态栏 toast 红色 3-5s 提示」。
+ * ⚠ 与 `设计/30 §C.3`「先改内存再落盘，落盘失败只记日志」相反 —— 主会话 09-25 按 §12 认可改成出声
+ *（后果是「重启后分组 / 固定 / 顺序没了」，正是用户看不见的那一类损失）；30 §C.3 那句由 DD2 改写。
+ *
+ * 形状：每一处写者注入一次失败 ⇒ toast **恰好一条**、标题 == 文案表里那句（期望从表里取 —— 表是对外文案的唯一来源，
+ * 这里要钉的是「出了、出的是这一句」，不是那句话本身怎么写）。反面对照：写成功 ⇒ 零条。
+ * 历史浏览器的星标 / 改名 / 隐藏三处在 `tests/views/history-actions.vitest.ts`（那边有现成的行替身）。
+ */
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const fail = vi.hoisted(() => ({ on: true }));
+const boom = async (): Promise<void> => {
+  if (fail.on) throw new Error("盘写不进去");
+};
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), Channel: class {} }));
+vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(), listen: vi.fn(async () => () => {}) }));
+vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
+vi.mock("../src/tab-collections", async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  setCollections: vi.fn(() => boom()),
+}));
+vi.mock("../src/tab-bar-state", async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  setPinned: vi.fn(() => boom()),
+  setTabOrder: vi.fn(() => boom()),
+}));
+vi.mock("../src/behavior", async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  setBehavior: vi.fn(() => boom()),
+}));
+vi.mock("../src/keybindings/store", () => ({ setKeybindings: vi.fn(() => boom()) }));
+vi.mock("../src/keybindings/registry", () => ({
+  dispatcher: { exportOverrides: () => ({}) },
+  KeybindingDispatcher: class {},
+}));
+
+import { showActionFailureToast } from "../src/error-toast";
+import { copyText } from "../src/copy-table";
+import { TabBarPrefs } from "../src/tab-bar-prefs";
+import { KeybindingsEditor } from "../src/keybindings/editor";
+import { SettingsPanel } from "../src/settings/panel";
+
+/** 设置面板「行为」那一格：绕过构造（整个面板太重），只摆 `onBehaviorToggle` 读的那几样。 */
+function behaviorPanel(): { onBehaviorToggle(): Promise<void> } {
+  const cb = (): { checked: boolean } => ({ checked: false });
+  const input = (): { value: string } => ({ value: "" });
+  return Object.assign(Object.create(SettingsPanel.prototype) as object, {
+    updateBringFrontEnabled: () => {},
+    renderResumePresets: () => {},
+    broadcastApplied: () => {},
+    autoFollowCheckbox: cb(),
+    bringFrontCheckbox: cb(),
+    showBgCheckbox: cb(),
+    notifyTurnEndCheckbox: cb(),
+    resumeLocalInput: input(),
+    resumeRemoteInput: input(),
+    resumeLocalPresets: [],
+    resumeRemotePresets: [],
+    forceLaunchPayloadRenderer: false,
+    showBgOriginal: false,
+  }) as unknown as { onBehaviorToggle(): Promise<void> };
+}
+
+const toast = vi.mocked(showActionFailureToast);
+
+function prefs(): TabBarPrefs {
+  const store = { orderedIds: [], tabs: new Map(), savedOrder: [] };
+  const host = { refreshTabBar: () => {} };
+  return new TabBarPrefs(store as never, host as never);
+}
+
+const CASES: readonly { name: string; run: () => Promise<void>; head: string }[] = [
+  { name: "分组", run: () => prefs().persistCollections([]), head: copyText("tabBar.persist.collectionsFailed") },
+  { name: "固定", run: () => prefs().persistPinned(), head: copyText("tabBar.persist.pinnedFailed") },
+  { name: "顺序", run: () => prefs().persistOrder(), head: copyText("tabBar.persist.orderFailed") },
+  { name: "行为设置", run: () => behaviorPanel().onBehaviorToggle(), head: copyText("settings.behavior.saveFailed") },
+  {
+    name: "快捷键",
+    run: () =>
+      (Object.create(KeybindingsEditor.prototype) as { persist(): Promise<void> }).persist(),
+    head: copyText("keybindings.persist.failed"),
+  },
+];
+
+describe("CFG1 J8 · 配置落盘失败出声", () => {
+  beforeEach(() => {
+    toast.mockClear();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  for (const c of CASES) {
+    it(`${c.name}：写失败 ⇒ 恰好一条 toast、标题是表里那句、原因带着；写成功 ⇒ 零条`, async () => {
+      fail.on = true;
+      await c.run();
+      expect(toast.mock.calls.map((a) => a[0])).toEqual([c.head]);
+      expect(String(toast.mock.calls[0]![1])).toContain("盘写不进去");
+      toast.mockClear();
+      fail.on = false;
+      await c.run();
+      expect(toast).not.toHaveBeenCalled();
+    });
+  }
+});
