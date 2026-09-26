@@ -310,7 +310,7 @@ mod tests {
         (
             "observe/accounts_query.rs",
             3,
-            "pidfile 目录 + 账号环境变量名 + `.claude.json` 信任判定",
+            "pidfile 目录 + 账号环境变量名（〔HX1〕与上游地址那个键同一处要，`SESSION_ENV_KEYS`）+ `.claude.json` 信任判定",
         ),
         (
             "observe/history_query.rs",
@@ -397,7 +397,7 @@ mod tests {
         ("会话文件命名", "observe/history_query.rs", 1, "`--list-subagents` 拿 `<stem>.jsonl` 找旁文件 ⇒ 找不到，**静默**返回空"),
         ("pidfile 目录", "observe/accounts_query.rs", 1, "`--session-accounts` 读 `<home>/sessions` ⇒ 读不到就 **静默**返回零行"),
         ("pidfile 目录", "observe/watcher.rs", 1, "判活只看 Claude 的 pidfile 目录 ⇒ 这家的会话恒判死"),
-        ("账号环境变量名", "observe/accounts_query.rs", 1, "按 `CLAUDE_CONFIG_DIR` 去读别人进程的环境 ⇒ 这家的账号维度**无法表达**"),
+        ("账号环境变量名", "observe/accounts_query.rs", 1, "按 `CLAUDE_CONFIG_DIR` 去读别人进程的环境 ⇒ 这家的账号维度**无法表达**；〔HX1 · D-f〕同一处还要上游地址那个键（`ANTHROPIC_BASE_URL`）⇒ 这家的会话 `viaRelay` 恒 `false`（停后端前那句「几条会断」会少数它）"),
         ("账号信任判定", "observe/accounts_query.rs", 1, "按 `.claude.json` 的 `projects[cwd].hasTrustDialogAccepted` 判 ⇒ 对这家恒判「不信任」"),
         ("判活 cmdline", "observe/watcher.rs", 1, "cmdline 兜底词表是 `claude`/`node` ⇒ 这家的进程被判成冒名"),
         ("解析本机 home", "observe/history_query.rs", 1, "〔`C1` · 09-24〕帧面那八条（`read_face`）的根从这里问 ⇒ 与 `main.rs` 那一句同形：**只有一个根**，第三家连被问到的机会都没有"),

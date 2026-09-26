@@ -84,7 +84,7 @@ pub fn parse_line(
 /// Phase 2 F1a：**按 agent kind 派发**的单行解析。Claude 走 [`parse_line`]（F63 缝不动、字节不变、
 /// 零回归）；Codex 走 `serde_json` + [`crate::codex_record::to_jsonl_record`]（消息映射进 `JsonlRecord`、
 /// event/token_count 等落 `Unrecognized` 保 raw）。契约同 [`parse_line`]：空行 `Ok(None)`、认识
-/// `Ok(Some)`、连 JSON 都不是 `Err`。发现层枚举时已知 kind（见 `adapter::records_roots`/`kind_of_path`）。
+/// `Ok(Some)`、连 JSON 都不是 `Err`。kind 由调用方给（〔LOC1b〕今天是按文件名形态判的 `adapter::kind_of_record_name`）。
 ///
 /// 〔ST3〕`origin` 只给 Claude 那一臂记账用（同 [`parse_line`]）。
 pub fn parse_for_kind(

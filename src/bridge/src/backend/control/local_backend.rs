@@ -617,11 +617,15 @@ const STDERR_CUT_MARK: &str = " …〔这一行超过单行上界，在此切开
 ///    而滚动日志是按天滚的；没有上界的话一次崩溃循环能把当天那份撑爆，
 ///    于是**下一次故障的线索反而被这一次的噪音淹掉**。
 ///
-/// 3. **级别一律 `warn`，绝不 `error`。** `logging.rs` 的 `ErrorEmitterLayer` 只拦
+/// 3. **级别按行首映射，但封顶 `warn`、绝不 `error`。** `logging.rs` 的 `ErrorEmitterLayer` 只拦
 ///    `Level::ERROR`，拦到就 emit `monitor-error` → 前端弹红色 toast。而这里搬的是
-///    **子进程说的话**，它自己的级别在文本里（后端那侧 `tracing_subscriber` 的 fmt 前缀），
-///    我们**没有**可靠办法把它还原成本进程的级别。
-///    ⇒ 拿不准就别替用户决定「这值得弹一个红框」：进日志文件，不进 toast。
+///    **子进程说的话**，它自己的级别在文本里（后端那侧 `tracing_subscriber` 的 fmt 前缀）。
+///    〔HX1 · 4D〕主会话裁（NT2 问 3 ＋ RT1 F3）「后端 stderr 进 monitor 日志按级别映射，不一律 WARN」⇒
+///    [`backend_stderr_level`] 认行首那个级别字：`INFO` / `DEBUG` / `TRACE` 照原级记，`WARN` 与 `ERROR` 记 `warn`，
+///    认不出（panic 信息、继承 stderr 的子进程的裸输出）记 `warn`（它们本来就是异常路径）。
+///    ⚠ `ERROR` 封顶在 `warn` 是**刻意的**（本条原话的理由不变）：拿不准就别替用户决定「这值得弹一个红框」
+///    —— 进日志文件，不进 toast。行里原样带着后端自己的 `ERROR` 字样，读日志的人看得见。
+///    〔旧话「级别一律 `warn`」—— HX1 起只剩 `WARN` / `ERROR` / 认不出那三格是 `warn`。〕
 ///    ⚠ 这一格是**刻意的诚实边界**：用户看得到的是日志文件，不是弹窗。真要某一类后端错误
 ///    弹到脸上，那是**按内容分类**的活（谁分类、分哪几类 = 一次产品裁定），不是这里加个 `if`。
 ///
@@ -659,10 +663,13 @@ pub(crate) fn drain_child_stderr_into_log(err: std::process::ChildStderr, pid: u
         if line.is_empty() {
             continue;
         }
-        if cut {
-            tracing::warn!("本机后端[pid {pid}] {line}{STDERR_CUT_MARK}");
-        } else {
-            tracing::warn!("本机后端[pid {pid}] {line}");
+        let mark = if cut { STDERR_CUT_MARK } else { "" };
+        match backend_stderr_level(line) {
+            tracing::Level::TRACE => tracing::trace!("本机后端[pid {pid}] {line}{mark}"),
+            tracing::Level::DEBUG => tracing::debug!("本机后端[pid {pid}] {line}{mark}"),
+            tracing::Level::INFO => tracing::info!("本机后端[pid {pid}] {line}{mark}"),
+            // `WARN` · `ERROR`（封顶，见约束 3）· 认不出的。
+            _ => tracing::warn!("本机后端[pid {pid}] {line}{mark}"),
         }
     }
     if unlogged > 0 {
@@ -672,6 +679,24 @@ pub(crate) fn drain_child_stderr_into_log(err: std::process::ChildStderr, pid: u
              ⚠ 别把它读成「后端只说了这些」：它说的比记下来的多。"
         );
     }
+}
+
+/// 〔HX1〕后端 stderr 一行 ⇒ 记进 monitor 日志用的级别（约束 3）。
+///
+/// 后端那侧是 `tracing_subscriber::fmt()` 的缺省格式：`<时间戳> <级别> <target>: <正文>`，级别右对齐补到 5 格
+/// （`" INFO"`）；〔HX1〕后端从此不往非终端上色，行首没有转义码。⇒ 看**前两个**空白分隔的词里有没有一个恰是级别字。
+/// `ERROR` 封顶成 `WARN`；认不出 ⇒ `WARN`。
+pub(crate) fn backend_stderr_level(line: &str) -> tracing::Level {
+    for word in line.split_whitespace().take(2) {
+        match word {
+            "TRACE" => return tracing::Level::TRACE,
+            "DEBUG" => return tracing::Level::DEBUG,
+            "INFO" => return tracing::Level::INFO,
+            "WARN" | "ERROR" => return tracing::Level::WARN,
+            _ => {}
+        }
+    }
+    tracing::Level::WARN
 }
 
 /// 见 [`StdioSink`]。`stdio` 为 `None` ⇒ 不接消费者（stdin 恒 `null`）。
@@ -922,20 +947,18 @@ pub fn supervise_with_stdio(
 ///
 /// **local_backend 不在就不设** —— 导一个指向空处的路径不会让 ccm 更聪明（它那边 `[ -x ]` 一样过不了），
 /// 只会让「这台机到底有没有本机后端」这个问题多一个假阳性来源。⇒ 空值 ≠ 未设（Z01 那条支点）。
-pub(crate) fn backend_bin_env_for_window(target_triple: &str) -> Option<(&'static str, String)> {
-    env_from_resolved(resolve_beside_this_exe(target_triple))
-}
-
-/// 上面那个函数的**纯**内核 —— 抽出来是为了两个分支都测得到。
 ///
-/// ⚠ 不抽的话判据只走得到 `Missing`（测试环境旁边没有本机后端），
-/// 于是「`Found` 时用的是 [`BACKEND_BIN_ENV`] 这个名字」这半**永远验不了** ——
-/// 那正是「判据的探针改变了被观察的路」的近亲：**探针到不了的分支等于没判据**。
-fn env_from_resolved(r: Resolved) -> Option<(&'static str, String)> {
-    match r {
-        Resolved::Found(p) => Some((BACKEND_BIN_ENV, p.to_string_lossy().into_owned())),
-        _ => None,
-    }
+/// # 〔LOC1a · 第四波 4D〕给的是**正在跑的那一份**，不是「exe 旁边那一份」
+///
+/// 此前这里自己 `resolve_beside_this_exe`：只认 exe 同目录那份文件，**不认自释放之后正在跑的那一份**
+/// （RT1 F2 / WIN1 报备：Windows 发版包里旁边没有 ⇒ 窗口里 `CCM_BACKEND_BIN` 一直不设）。
+/// 今天路径由**宿主**交进来：`local_backend_host::running_backend_bin` —— 常驻那条记在 `DETACHED`
+/// （起的 / 接管的都记着那份二进制），被监护那条记着起它时解析出的那一份（`D11`：后端是给定的，不另找一份）。
+/// 本层不认识宿主的句柄表 ⇒ 注入形，与 [`start_or_extract`] 的 `make_executable` 同一个先例。
+pub(crate) fn backend_bin_env_for_window(
+    running: Option<std::path::PathBuf>,
+) -> Option<(&'static str, String)> {
+    running.map(|p| (BACKEND_BIN_ENV, p.to_string_lossy().into_owned()))
 }
 
 pub fn resolve_beside_this_exe(target_triple: &str) -> Resolved {
@@ -1070,6 +1093,8 @@ pub fn extract_embedded_to(
     build_id: &str,
     bytes: &[u8],
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
+    // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform_fs::ensure_private_dir`）。
+    ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
 ) -> Result<PathBuf, String> {
     let dest = dir.join(local_extract_name(build_id));
     // 已经在且大小对得上 ⇒ 幂等跳过（不重写，省一次 IO，也不动 mtime）。
@@ -1078,12 +1103,7 @@ pub fn extract_embedded_to(
             return Ok(dest);
         }
     }
-    std::fs::create_dir_all(dir).map_err(|e| {
-        copy_text(
-            "rsLocalBackend.extract.mkdirFailed",
-            &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
-        )
-    })?;
+    ensure_dir(dir)?;
     // 先写临时文件再 rename：半截文件不许被当成可执行的后端（rename 在同一文件系统上原子）。
     // ★★ 临时名**带 pid**〔`P2t` 摸底 08-12〕：原来是**固定名**，两个同版本 monitor 同时释放
     // 会写同一个 `.partial` —— 一个写到一半、另一个 `rename` 走，出来的可能是**半截文件**，
@@ -1145,6 +1165,8 @@ pub fn place_local_panorama(
     file: &str,
     bytes: &[u8],
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
+    // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform_fs::ensure_private_dir`）。
+    ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
 ) -> Result<PathBuf, String> {
     let dest = dir.join(file);
     if let Ok(m) = std::fs::metadata(&dest) {
@@ -1155,12 +1177,7 @@ pub fn place_local_panorama(
             return Ok(dest);
         }
     }
-    std::fs::create_dir_all(dir).map_err(|e| {
-        copy_text(
-            "rsLocalBackend.extract.mkdirFailed",
-            &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
-        )
-    })?;
+    ensure_dir(dir)?;
     let tmp = dir.join(format!(".{file}.{}.partial", std::process::id()));
     sweep_stale_partials(dir, file);
     std::fs::write(&tmp, bytes).map_err(|e| {
@@ -1290,6 +1307,8 @@ pub fn install_local_ccm_entry(
     dir: &Path,
     backend_bin: &Path,
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
+    // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform_fs::ensure_private_dir`）。
+    ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
 ) -> Result<PathBuf, String> {
     let name = local_ccm_entry_name();
     let dest = dir.join(&name);
@@ -1311,12 +1330,7 @@ pub fn install_local_ccm_entry(
             return Ok(dest);
         }
     }
-    std::fs::create_dir_all(dir).map_err(|e| {
-        copy_text(
-            "rsLocalBackend.extract.mkdirFailed",
-            &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
-        )
-    })?;
+    ensure_dir(dir)?;
     let tmp = dir.join(format!(".{}.{}.partial", name, std::process::id()));
     sweep_stale_partials(dir, &name);
     std::fs::copy(backend_bin, &tmp).map_err(|e| {
@@ -1509,9 +1523,13 @@ fn read_capped_line_sync<R: std::io::BufRead>(
 /// - `--with-bg`：bg 会话也宣告、也发行 —— 本机会话内容从这条流来之后，少了它 bg 会话的内容就静默没了
 ///   （monitor 的 `showBgSessions` 缺省是开的）。显示与否在 monitor 那一侧按 `session_kind` 定。
 ///
-/// 两个字面量都必须是后端 `lib.rs::STREAM_FLAGS` 的成员（后端据它剥旗标；不认的会被当成一次性查询跑完就退）——
+/// - 〔LOC1b · 第四波 4D〕`--with-rbind-token`：索要给 ↗ 绑窗口的材料 —— `session_added` 带上 `pid`（与令牌同一道闸，
+///   `wire::Frame::SessionAdded::pid`）。本机判活改由本机后端的帧来之后，monitor 不再自己读 pidfile，
+///   本机 ↗ 按 pid 找父 PowerShell 绑窗口（`bind::SidHwndCache::record`）只能从这一格拿 pid。
+///
+/// 几个字面量都必须是后端 `lib.rs::STREAM_FLAGS` 的成员（后端据它剥旗标；不认的会被当成一次性查询跑完就退）——
 /// 由判据对拍后端源码。
-pub(crate) const LOCAL_STREAM_ARGS: &[&str] = &["--tail-only", "--with-bg"];
+pub(crate) const LOCAL_STREAM_ARGS: &[&str] = &["--tail-only", "--with-bg", "--with-rbind-token"];
 
 /// P3 刀 1 的**唯一**吸收点：本机后端推来的帧里，哪些要进账本。
 ///
@@ -1601,7 +1619,8 @@ pub(crate) fn absorb_local_frame(
         }
         // 〔U4b · 第四波 · G3〕本机活会话的容器事实：与远端流同一个口（`session_facts`）、同一个事件。
         // 〔CF1 · 2026-09-24〕记完容器，这一帧**照样交回**读循环 —— 它的 `path` / `lines` 是本机旁路快照的起点
-        //   （本机会话的行从此走这条流，见下面内容三种那一臂）；本机会话的起停仍归 `session_map`。
+        //   （本机会话的行从此走这条流，见下面内容三种那一臂）。
+        //   〔LOC1b · 第四波 4D〕本机会话的起停也从这一帧起（`ssh_source::local_lifecycle` ⇒ `session_map::feed`）。
         f @ InboundFrame::SessionAdded { .. } => {
             if let InboundFrame::SessionAdded { sid, container, .. } = &f {
                 crate::session_facts::note_container(sid, *container);
@@ -1636,8 +1655,16 @@ pub(crate) fn absorb_local_frame(
             end,
         } => crate::sftp_pool::deliver(&id, got, total, end),
         // 〔CF1〕内容三种（`session_added` 在上面那一臂记完容器也交回）：交回读循环，送进本机内容通道。
-        f @ (InboundFrame::Line { .. } | InboundFrame::SessionRemoved { .. }) => return Some(f),
-        // 其余帧（hello · 会话状态 · 溢出 …）本机这条流今天不消费。
+        // 〔LOC1b · 第四波 4D〕起停另两种（`session_status` 红绿灯 · `sessions_replayed` 清单报完了）也交回：
+        //   本机会话的起停改由本机后端的帧来（`session_map` 的本机活会话表），与内容走同一条有序通道 ——
+        //   「清单报完了」必须排在它前面那些宣告之后才有意义。此前这两种落在最后那个 `_ => {}` 里丢掉。
+        // 〔FW1 · D-d〕记录文件不见了 / 被改过 ⇒ 同一条内容通道（与行同序）。
+        f @ (InboundFrame::Line { .. }
+        | InboundFrame::SessionRemoved { .. }
+        | InboundFrame::SessionStatus { .. }
+        | InboundFrame::SessionsReplayed
+        | InboundFrame::SessionFileNotice { .. }) => return Some(f),
+        // 其余帧（hello · 溢出 …）本机这条流今天不消费。
         _ => {}
     }
     None
@@ -1954,6 +1981,8 @@ pub fn resolve_or_extract(
     extract_dir: &Path,
     embedded: Result<(&str, &[u8]), String>,
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
+    // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform_fs::ensure_private_dir`）。
+    ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
 ) -> Resolved {
     // 🔴 `K-R69`：整段解析包进一个**带标号的块**，只为在返回之前多做一件事
     //    （放本机那条 `ccm` 入口）。**刻意不抽成第二个函数** ——
@@ -1977,7 +2006,7 @@ pub fn resolve_or_extract(
                 };
             }
         };
-        match extract_embedded_to(extract_dir, build_id, bytes, make_executable) {
+        match extract_embedded_to(extract_dir, build_id, bytes, make_executable, ensure_dir) {
             Ok(p) => Resolved::Found(p),
             Err(e) => {
                 // 🔴 `K-R42` 硬要求①：**这一支不许被读成「这份产物没带后端」。**
@@ -2005,7 +2034,7 @@ pub fn resolve_or_extract(
     //    两份手写实现之间只会漂，而漂开的后果是同一台机器上两条路给出不同的答案。
     // ⚠ **它失败不许拖垮后端**：少一条终端命令 ≠ 后端起不来。诚实吼一声，照常返回。
     if let Resolved::Found(bin) = &resolved {
-        if let Err(e) = install_local_ccm_entry(extract_dir, bin, make_executable) {
+        if let Err(e) = install_local_ccm_entry(extract_dir, bin, make_executable, ensure_dir) {
             tracing::warn!("本机 ccm 入口没放下来（后端本身没事，只是终端里少一条 `ccm`）：{e}");
         }
     }
@@ -2022,12 +2051,20 @@ pub fn start_or_extract(
     extract_dir: &Path,
     embedded: Result<(&str, &[u8]), String>,
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
+    // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform_fs::ensure_private_dir`）。
+    ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
     on_event: Arc<dyn Fn(SuperviseEvent) + Send + Sync>,
     spawn: Arc<crate::spawn_managed::ManagedSpawn>,
     // 〔RL1 · V107〕交给后端的环境（中转端口 ＋ 凭据路径）由**宿主**给 —— 本层不认识中转，只原样转交。
     envs: Vec<(String, String)>,
 ) -> (Resolved, Option<SuperviseHandle>) {
-    let resolved = resolve_or_extract(target_triple, extract_dir, embedded, make_executable);
+    let resolved = resolve_or_extract(
+        target_triple,
+        extract_dir,
+        embedded,
+        make_executable,
+        ensure_dir,
+    );
     let Resolved::Found(bin) = resolved else {
         // 诚实降级：`reason` / `looked_at` 原样交回，这一层不再包一句自己的话。
         return (resolved, None);
