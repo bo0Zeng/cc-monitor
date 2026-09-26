@@ -451,12 +451,9 @@ mod tests {
     ///   〔SR1b · 第四波 · **3 → 4**〕`File::from_std` —— 把**已经过了路径解析、已经开好**的那个 std 句柄换成异步句柄
     ///   （传输台的下载落点：开那一下在同步函数里过路径解析，写那一路是异步的）。它不开任何东西、不改任何东西；
     ///   刻意不进全局只读表，理由同上（不替全后端放一个词）。
-    const MUTATING_FACE_AUX: &[&str] = &[
-        "File::from_std",
-        "MetadataExt",
-        "Permissions",
-        "symlink_metadata",
-    ];
+    ///   〔W5-FILES · 第五波 · **4 → 3**〕`MetadataExt` 摘走：设计让设备号的读走 `platform/`（`设计/60 §3.7`），
+    ///   它进了默认层的只读表（`every_fs_call_in_backend_production_is_read_only` 那张），不再是本层专属。
+    const MUTATING_FACE_AUX: &[&str] = &["File::from_std", "Permissions", "symlink_metadata"];
 
     /// 第三层模块**仍然不许**出现的东西。
     ///
@@ -2049,6 +2046,12 @@ mod tests {
             // P4f：`PermissionsExt` 只用来**读** `mode()`（判可执行位，找 cc-bus 命令用）。
             // ⚠ 与它同族的 `set_permissions` **不在**表里，那条仍然是写、仍然会红。
             "PermissionsExt",
+            // 〔W5-FILES · 第五波〕`MetadataExt`：unix 那个读元数据扩展，只用来**读**设备号（`dev()`）。
+            //   `设计/60 §3.7` 逐字「设备号要走 `platform/`」⇒ 读它的口住 `platform::paths::device_of`（默认层），
+            //   算目录大小 / 建索引「不进别的文件系统」靠它。它此前只在第三层专属表（`MUTATING_FACE_AUX`）里 ——
+            //   FW5 那时「不替全后端放一个读动词」；设计要它进 `platform/` ⇒ 挪到这里，第三层那张表随之摘掉它（4 → 3）。
+            //   ⚠ 它同族的写（`set_permissions` 等）不在本表，照旧红。
+            "MetadataExt",
             // 〔步 23b · 09-19〕`canonicalize`：**解路径，纯读**（`control/files_write.rs`
             // 的路径解析② 靠它把父目录解成真路径，再判一次「有没有跑出目标根」；〔FN1〕「落进那几棵树」那一判 V119 拿掉了）。
             // ⚠ 加这一条**不是**为了让写变容易 —— 恰恰相反，它买的是**多一道拒绝**。

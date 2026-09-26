@@ -118,6 +118,8 @@ pub const COMMANDS: &[&str] = &[
     "files-put",
     "files-read-text",
     "files-rename",
+    // 〔W5-FILES · 第五波〕读族第九条：算目录大小（`设计/60 §6.2`）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
+    "files-size",
     "files-stage-chunk",
     "files-stat",
     "files-write-text",
@@ -1399,6 +1401,28 @@ pub const REGISTRY: &[CommandSpec] = &[
             "unreadable",
         ],
         fields: &["bytes", "max_bytes", "path", "text"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::files::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔W5-FILES · 第五波〕读族第九条：算目录大小（`设计/60 §6.2`）。与同族那几条逐字同形、同在阻塞档。
+    CommandSpec {
+        name: "files-size",
+        doc_anchor: Some("#### `files-size`"),
+        codes: &["bad_path", "unreadable"],
+        fields: &[
+            "bytes",
+            "dirs",
+            "files",
+            "links",
+            "other",
+            "path",
+            "skipped_mounts",
+            "unreadable_dirs",
+        ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::files::answer_wire(&r.cmd, &r.args)

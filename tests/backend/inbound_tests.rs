@@ -504,6 +504,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 〔F7a · 第三波 09-24〕同族第七、第八条：`files-read-text` 读一整份文件（同步 I/O）。
         "files-read-text",
         "files-home",
+        // 〔W5-FILES〕读族第九条：走一整棵树（同步 I/O）。
+        "files-size",
         // 〔`C1` · 09-24〕只读查询面八条：全做文件 I/O（`history-search` 扫全库）。
         // 〔C4d · 第四波 4B〕`history-projects` / `history-sessions` 出列：它们出成品、远端那一支要等 ⇒ 真异步（见上面那一档）。
         "history-index",
@@ -596,6 +598,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-browse",
         "files-read-text",
         "files-home",
+        // 〔W5-FILES〕读族第九条：走一整棵树（同步 I/O）。
+        "files-size",
         "history-projects",
         "history-index",
         "history-user-inputs",
