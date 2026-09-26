@@ -187,8 +187,9 @@ fn the_ledger_half_of_the_launcher_population_matches_the_registry() {
     // 〔C4e 批 3b〕地板 99 → 94：cc-bus 查在线 · 发消息 · 派生 · 广播 · 收掉五条命令退役，单行三元组人群真少了 5 行（现打 94）。
     // 〔US1 · 第四波 4D〕地板 94 → 93：`read_apikey_credentials_status` / `apikey_routing_for` 两条退役（单行三元组人群真少了；现打 93）。
     // 〔LOC1a · 第四波 4D〕地板 93 → 92：`get_session_tasks` 退役（单行三元组人群真少了 1 行；现打 92）。
+    // 〔合并 LOC1b × 主线 290d8c33〕主线 92 ＋ LOC1b −3（全文搜索 · 查索引状态 · 重建索引）⇒ 89。
     assert!(
-        rows.len() >= 92,
+        rows.len() >= 89,
         "只从账本里抠到 {} 行单行三元组（09-02 现打 116）—— 抽取器坏了，本条会零命中地绿",
         rows.len()
     );
