@@ -30,6 +30,7 @@ import type { TasksUpdatePayload } from "./generated/TasksUpdatePayload";
 import type { SessionActivityPayload } from "./generated/SessionActivityPayload";
 import type { RemoteSessionAddedPayload } from "./generated/RemoteSessionAddedPayload";
 import type { SessionContainerPayload } from "./generated/SessionContainerPayload";
+import type { SessionTapPayload } from "./generated/SessionTapPayload";
 import type { OriginSessionsListedPayload } from "./generated/OriginSessionsListedPayload";
 // 本文件内部也用这些名字（8 处），所以 import + re-export 都要有：
 // 只写 `export type { … } from` 不会把名字带进本地作用域。
@@ -91,6 +92,12 @@ export interface EventHandlers {
    * `remote-added` 之后 ⇒ 处理它时，那台此刻全部的活会话都已宣告过（`设计/30 §3.5.7a`）。
    */
   onOriginSessionsListed?: (origin: string) => void;
+  /**
+   * 〔TAP · V124 · `设计/20 §8`〕中转抄出来的一个 SSE 事件（`session-tap`）。**直派，不进 queue**：
+   * 活卡是临时态，与行 / 起停事件之间不需要顺序（jsonl 那一轮到了整轮覆盖、墓碑挡迟到的 tap）；
+   * 进 queue 反倒会让 token 级的洪峰排在行前面。
+   */
+  onSessionTap?: (e: SessionTapPayload) => void;
   /**
    * v2.2 (issue #12 性能): 启动重放（jsonl-batch 第一块）到达时调一次。
    * TabManager 在此把所有 tab 的 BranchFolder 切到 batch 模式 + lazy hljs 开关。
@@ -632,6 +639,13 @@ export async function bindEvents(
     sub<OriginSessionsListedPayload>("origin-sessions-listed", (e) => {
       queue.push({ kind: "listed", origin: e.payload.origin });
       ensureScheduled();
+    }),
+  );
+
+  // 〔TAP · V124〕活卡：绕过 queue 直接派发（理由见 `onSessionTap` 头注）。
+  registrations.push(
+    sub<SessionTapPayload>("session-tap", (e) => {
+      handlers.onSessionTap?.(e.payload);
     }),
   );
 

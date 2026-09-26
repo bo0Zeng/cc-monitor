@@ -53,6 +53,7 @@ export type { DropTarget, TabRect } from "./tab-drop";
 import { TabMenu } from "./tab-menu";
 import { TabStore } from "./tab-store";
 import { TabStreamView } from "./tab-stream-view";
+import { LiveCards, type TapPayload } from "./live-card";
 import { TabBarPrefs } from "./tab-bar-prefs";
 import { TabBarDrag } from "./tab-bar-drag";
 import { TabBarView } from "./tab-bar-view";
@@ -148,6 +149,18 @@ export class TabManager {
       startForkedSession: (tab, res) => this.startForkedSession(tab, res),
     });
   }
+
+  /**
+   * 〔TAP · V124〕活卡：中转抄出来的 SSE 先上屏，jsonl 那一轮到了整轮覆盖（`live-card.ts`，`设计/20 §8`）。
+   * 路由只认「`stream` 就是这个 tab 的 sid、机器也对得上」；对不上 ⇒ 匿名流，不显示。
+   */
+  private readonly live = new LiveCards(
+    (origin, stream) => {
+      const t = this.store.tabs.get(stream);
+      return t && t.origin === origin ? t.sessionId : null;
+    },
+    (sid) => this.store.tabs.get(sid)?.stream.trailerElement ?? null,
+  );
 
   /**
    * 〔U2 · ④〕tab 栏的三份落盘偏好（集合 · 固定 · 顺序）住 `tab-bar-prefs.ts`。
@@ -322,6 +335,10 @@ export class TabManager {
       if (tab.processedUuids.has(uuid)) return;
       tab.processedUuids.add(uuid);
     }
+
+    // 〔TAP · V124〕jsonl 那一轮到了 ⇒ 同 `message.id` 的活卡整轮覆盖（撤掉）；挂在双重去重**之后**：
+    //   `设计/20 §8`「前端现有的去重层就是吸收层」—— 重投 / 快照重叠区的重复记录不会重复触发。
+    this.live.onRecord(tab.sessionId, payload.message);
 
     // 〔SE1〕大纲：只记一笔「这份会话又长了」（清单问后端要，这里不判、不攒）。
     this.view.noteOutlineLine(tab);
@@ -756,6 +773,7 @@ export class TabManager {
 
   /** session 退出（~/.claude/sessions/<PID>.json 被删）且容器也没了 —— 已结束，内容保留 */
   archiveTab(sessionId: string): void {
+    this.live.dropTab(sessionId); // 〔TAP〕结束了 ⇒ 它的活卡全撤
     const tab = this.store.tabs.get(sessionId);
     if (!tab) {
       // issue #19：Tab 还没被 ensureTab 建出来（归档信号早于 replay 行到达）——
@@ -811,6 +829,7 @@ export class TabManager {
    * 〔U4〕改之前这里只置 `tmuxIdle = true`、`status` 留在 live —— 活性一轴说了假话。
    */
   markTmuxIdle(sessionId: string): void {
+    this.live.dropTab(sessionId); // 〔TAP〕claude 退了 ⇒ 它的活卡全撤
     const tab = this.store.tabs.get(sessionId);
     if (!tab) {
       this.store.pendingTmuxIdle.add(sessionId);
@@ -820,6 +839,11 @@ export class TabManager {
     if (!this.applyState(tab, "idle")) return;
     this.refreshTabBar();
     this.emitTabStateProbe(tab); // F-E1:可重连(claude 退但 tmux 在)
+  }
+
+  /** 〔TAP · V124〕`session-tap`：中转抄出来的一个 SSE 事件（`events.ts` 直派）。 */
+  onSessionTap(p: TapPayload): void {
+    this.live.onTap(p);
   }
 
   /**
@@ -973,6 +997,7 @@ export class TabManager {
     const fallbackId =
       this.store.orderedIds[idx + 1] ?? this.store.orderedIds[idx - 1] ?? null;
 
+    this.live.dropTab(sessionId); // 〔TAP〕先撤活卡（它的 DOM 随流容器一起走）
     this.view.disposeTab(tab);
     this.store.tasksBySid.delete(sessionId);
     this.store.tabs.delete(sessionId);

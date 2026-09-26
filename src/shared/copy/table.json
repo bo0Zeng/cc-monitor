@@ -696,6 +696,26 @@
       "kind": "body",
       "zh": "留意：{value}",
       "args": ["value"]
+    },
+    "liveCard.state.streaming": {
+      "kind": "body",
+      "zh": "生成中…",
+      "args": []
+    },
+    "liveCard.state.awaitingRecord": {
+      "kind": "body",
+      "zh": "已生成，等待写入记录",
+      "args": []
+    },
+    "liveCard.block.thinking": {
+      "kind": "body",
+      "zh": "思考中…",
+      "args": []
+    },
+    "liveCard.block.toolUse": {
+      "kind": "body",
+      "zh": "准备调用 {tool}",
+      "args": ["tool"]
     }
   }
 }
