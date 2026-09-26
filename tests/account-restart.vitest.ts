@@ -1,5 +1,5 @@
 // A5：restartWithAccount 编排的纯逻辑单测（DESIGN §5 + §5.2 失败语义）。依赖全 mock，
-// confirm/awaitCompact 注入 → 不碰 window.confirm、不真延时。重点锁：kill 失败必须中止不续 resume。
+// confirm/awaitCompact 注入 → 不弹对话框、不真延时（②b 那一条特意不注入，走真的应用内对话框）。重点锁：kill 失败必须中止不续 resume。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // 〔C4e · 第四波 4C〕送键与杀会话从两条 Tauri 命令（`tmux_send_keys` / `kill_remote_tmux`〔散文墓碑〕）改成界面经通道直接说
@@ -40,6 +40,7 @@ import { getModelForAccount } from "../src/account-prefs";
 import { recordLastAccount } from "../src/launch-account";
 import { restartWithAccount, type RestartWithAccountOpts } from "../src/account-restart";
 import { showActionFailureToast } from "../src/error-toast";
+import { answerAskDialog } from "./test-support/ask-dialog-driver.ts";
 
 const resumeTmux = runRemoteResumeTmux as unknown as ReturnType<typeof vi.fn>;
 const acctConfigDir = accountConfigDir as unknown as ReturnType<typeof vi.fn>;
@@ -84,6 +85,21 @@ describe("restartWithAccount（A5 换号重启编排 · §5）", () => {
 
   it("② 用户取消 confirm → 不 kill、不 resume", async () => {
     await restartWithAccount(baseOpts({ confirm: () => false }));
+    expect(invokeMock).not.toHaveBeenCalledWith("kill_remote_tmux", expect.anything());
+    expect(resumeTmux).not.toHaveBeenCalled();
+  });
+
+  it("②b〔W5-UI〕确认的答案是异步到的（与真 app 同形）：答否 ⇒ 不 kill；不注入 ⇒ 弹应用内对话框、答否同样不 kill", async () => {
+    // 真 app 里 `window.confirm` 是插件注入的 async 替身、返回 Promise（恒真值）——同步 `if (!confirm(m))` 从来不拦。
+    await restartWithAccount(baseOpts({ confirm: async () => false }));
+    expect(invokeMock).not.toHaveBeenCalledWith("kill_remote_tmux", expect.anything());
+    expect(resumeTmux).not.toHaveBeenCalled();
+
+    const run = restartWithAccount(baseOpts({ confirm: undefined }));
+    await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).not.toBeNull());
+    expect(invokeMock, "还没答就动手了").not.toHaveBeenCalledWith("kill_remote_tmux", expect.anything());
+    await answerAskDialog(false);
+    await expect(run).resolves.toBe(false);
     expect(invokeMock).not.toHaveBeenCalledWith("kill_remote_tmux", expect.anything());
     expect(resumeTmux).not.toHaveBeenCalled();
   });

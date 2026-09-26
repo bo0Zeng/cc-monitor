@@ -1,8 +1,8 @@
-//! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md` 的 `--acct-iso-status` / `--acct-iso-shellinit` 两条
+//! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md` §10 入方向 `acct-iso-status` / `acct-iso-shellinit` 两小节
 //!
-//! 核原文：`--acct-iso-status` 条逐字「先查 `$HOME/.local/bin/cc-acct-iso`（install 脚本的软链落点）、再查 `PATH`」·
-//! 「**「没装」是答案不是错误**（exit 0，`looked` 说清查过哪儿）」；`--acct-iso-shellinit` 条逐字「退出码 0 时把它的 stdout **原样**吐出」，
-//! 失败码 `not_installed` · `timed_out` · `tool_failed` · `not_run` · `bad_args` —— 本族五条与这几句一一对上。〔JA1 点址 2026-09-24〕
+//! 核原文：`acct-iso-status` 条逐字「先查 `$HOME/.local/bin/cc-acct-iso`（install 脚本的软链落点）、再查 `PATH`」·
+//! 「**「没装」是答案不是错误**（`ok:true`、`installed:false`）」；`acct-iso-shellinit` 条逐字「退出码 0 时它的 stdout **原样**」，
+//! 错误码 `not_installed` · `timed_out` · `tool_failed` · `not_run` —— 本族与这几句一一对上。〔JA1 点址 2026-09-24 · LOC1a 09-25 随帧面改址〕
 
 use super::*;
 use crate::plugin::invoke::{Done, NotRun, TIMED_OUT_CODE};
@@ -22,12 +22,8 @@ fn the_fixed_candidate_is_the_install_scripts_link() {
 /// 装了 ⇒ 带路径、不带 `looked`。两支的键集**逐字相同**（前端按同一个形状读）。
 #[test]
 fn the_status_line_has_one_shape_for_both_answers() {
-    let yes: serde_json::Value = serde_json::from_str(&status_line(&Ok(PathBuf::from(
-        "/h/.local/bin/cc-acct-iso",
-    ))))
-    .unwrap();
-    let no: serde_json::Value =
-        serde_json::from_str(&status_line(&Err("找不到 `cc-acct-iso`：查过 /x".into()))).unwrap();
+    let yes = status_value(&Ok(PathBuf::from("/h/.local/bin/cc-acct-iso")));
+    let no = status_value(&Err("找不到 `cc-acct-iso`：查过 /x".into()));
     assert_eq!(yes["installed"], true);
     assert_eq!(yes["path"], "/h/.local/bin/cc-acct-iso");
     assert!(yes["looked"].is_null());
@@ -88,23 +84,22 @@ fn the_failure_codes_are_told_apart() {
     );
 }
 
-/// ★ 走**入口本体**：`--acct-iso-status` 恒 exit 0（「没装」也是答案，不是错误）；
-/// 认不得的动词 / 没有动词 exit 2，且 stderr 是一行 `{code,message}`、stdout 为空。
+/// ★ 走**帧面入口本体**：`acct-iso-status` 恒 `Ok`（「没装」也是答案，不是错误）；`acct-iso-shellinit` 要么 `Ok{snippet}`、
+/// 要么是那四个码之一（不许冒出别的码）。
 ///
-/// ⚠ 本条读的是**真进程环境**（`HOME` / `PATH`）：测试机上装没装 `cc-acct-iso` 会让
-/// status 那一行的内容不同 —— 所以只钉与环境无关的那一半（码 ＋ 形状）。
+/// ⚠ 本条读的是**真进程环境**（`HOME` / `PATH`）：测试机上装没装 `cc-acct-iso` 会让内容不同 ——
+/// 所以只钉与环境无关的那一半（码 ＋ 形状）。
 #[test]
-fn the_entry_point_keeps_its_exit_code_contract() {
-    let st = answer(&["--acct-iso-status".to_string()]);
-    assert_eq!(st.code, 0);
-    assert!(st.stderr.is_none());
-    let v: serde_json::Value = serde_json::from_str(st.stdout.trim()).expect("status 是一行 JSON");
-    assert!(v["installed"].is_boolean());
-    for bad in [vec!["--acct-iso-nope".to_string()], vec![]] {
-        let a = answer(&bad);
-        assert_eq!(a.code, 2);
-        assert!(a.stdout.is_empty());
-        let e: serde_json::Value = serde_json::from_str(a.stderr.as_deref().unwrap()).unwrap();
-        assert_eq!(e["code"], "bad_args");
+fn the_entry_point_keeps_its_answer_contract() {
+    let st = answer_wire_status().expect("status 从不报错");
+    assert!(st["installed"].is_boolean());
+    let keys = st.as_object().unwrap().keys().cloned().collect::<Vec<_>>();
+    assert_eq!(keys.len(), 3, "{st}");
+    match answer_wire_shellinit() {
+        Ok(v) => assert!(v["snippet"].is_string(), "{v}"),
+        Err((code, _)) => assert!(
+            ["not_installed", "timed_out", "tool_failed", "not_run"].contains(&code),
+            "冒出了登记外的码 {code}"
+        ),
     }
 }

@@ -126,16 +126,18 @@ powershell -NoProfile -File scripts\run.ps1 dev
 
 ```rust
 #[tauri::command]
-async fn monitor_get_active_ids(
-    session_map: tauri::State<'_, std::sync::Arc<session_map::SessionMap>>,
-) -> Result<Vec<String>, String> {
-    // SessionMap 提供哪些公开 API 见 src/bridge/src/session_map.rs；
-    // 这里假设你需要的方法已存在，否则先在 session_map.rs 暴露一个。
-    Ok(session_map.list_active_session_ids())
+async fn monitor_get_active_ids() -> Result<Vec<String>, String> {
+    // 本机活会话表（本机后端帧喂的，进程级一张）提供哪些公开 API 见 src/bridge/src/session_map.rs。
+    Ok(session_map::local()
+        .read()
+        .snapshot_active()
+        .into_iter()
+        .map(|a| a.session_id)
+        .collect())
 }
 ```
 
-⚠️ **示例 API 是说明性的**，落地前必须 `cargo check` 确认 `SessionMap` 上真有 `list_active_session_ids()`，没有就先在 `session_map.rs` 暴露。当前 `SessionMap` 公开方法见 `documentSymbol src/bridge/src/session_map.rs` 或 `pub fn` grep。
+⚠️ **示例是说明性的**，落地前必须 `cargo check`。本机活会话表（`session_map::LocalTable`）的公开方法见 `documentSymbol src/bridge/src/session_map.rs` 或 `pub fn` grep。
 
 2. **注册到 invoke_handler**（`lib.rs::run()` 内）：
 

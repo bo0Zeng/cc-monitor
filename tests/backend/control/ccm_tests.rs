@@ -780,4 +780,98 @@ fn the_alias_preview_refuses_in_the_words_of_ccm() {
     };
     assert_eq!(said, want, "拒的那句不是 ccm 自己的原话");
     assert_eq!(code(serde_json::json!({ "args": ["--cwd", "/p"] })), "ok");
+
+// ── 〔WIN1 · 第四波 4D · RT1 F7〕`--ccm-probe` 自报的能力 = 这台机器上做得到的那一份 ──────────
+//
+// 要求住址：`设计/96 §2` 第 2 层「能力清单从实现派生」（`lib.rs` 头注那张表逐字「**能力清单从实现派生，
+// `CAPABILITIES` 由它们汇总而来，不许手写**」）；读数出处 `第四波记录/RT1.md §8` F7 逐字「`ccm.exe --ccm-probe`
+// 在 Windows 上自报 `tmux, attach, detach, tmux-size, tmux-base, bus-register` 等能力 —— 这些在 Windows 上都做不到」。
+// 异源：Windows 那一格的期望是**手写的两张名单**（做得到 / 做不到），不从 `CCM_TMUX_CARRIED` 或
+// `ccm_launcher_with` 里抠 —— 否则两侧同源、恒真。
+// ⚠ 买不到：`TMUX_PLATFORM` 在本机是 `AskThePath`，Windows 那一档由入参模拟；真 `ccm.exe` 吐什么要真机
+//    （`第四波记录/WIN1.md` 的虚拟机读数）。
+
+fn caps_line(out: &str) -> std::collections::BTreeSet<String> {
+    out.lines()
+        .find_map(|l| l.strip_prefix("capabilities="))
+        .expect("`--ccm-probe` 没有 `capabilities=` 那一行")
+        .split(',')
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+#[test]
+fn on_windows_the_probe_does_not_claim_what_only_tmux_can_carry() {
+    let win = caps_line(&probe_output_for(
+        "C:\\x\\ccm.exe",
+        crate::TmuxPlatform::AbsentUnlessExeOnPath,
+    ));
+    let want_absent = [
+        "tmux",
+        "attach",
+        "detach",
+        "tmux-size",
+        "tmux-base",
+        "bus-register",
+        "ccm-sid",
+        "base-url-across-tmux",
+    ];
+    let want_present = [
+        "new",
+        "resume",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "print",
+        "backend-discover",
+        "account-via-backend",
+    ];
+    let want: std::collections::BTreeSet<String> =
+        want_present.iter().map(|s| s.to_string()).collect();
+    assert_eq!(
+        win, want,
+        "Windows 那一份 `--ccm-probe` 自报的能力与手写期望不等（两向）；做不到的那几条：{want_absent:?}"
+    );
+    // 正控：Linux（问 PATH 的那一档）上逐字是整张表 —— 两张手写名单的并集。
+    let linux = caps_line(&probe_output_for(
+        "/usr/local/bin/ccm",
+        crate::TmuxPlatform::AskThePath,
+    ));
+    let all: std::collections::BTreeSet<String> = want_present
+        .iter()
+        .chain(want_absent.iter())
+        .map(|s| s.to_string())
+        .collect();
+    assert_eq!(linux, all, "Linux 那一份应当逐字是整张 `CAPABILITIES`");
+}
+
+/// 生产那一口真的把**本二进制的**平台档交进去（不是回到整张表，也不是写死某一档）。
+#[test]
+fn the_real_probe_asks_this_binarys_own_platform() {
+    let me = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/control/ccm/mod.rs"
+    ));
+    let body = me
+        .split("pub(crate) fn probe_output(self_path: &str) -> String {")
+        .nth(1)
+        .and_then(|b| b.split("\n}\n").next())
+        .expect("找不到 `probe_output` —— 抽取器坏了");
+    assert_eq!(
+        body.trim(),
+        "probe_output_for(self_path, crate::TMUX_PLATFORM)",
+        "`probe_output` 要把本二进制的 `TMUX_PLATFORM` 交给内核"
+    );
+    assert_eq!(
+        me.matches("CAPABILITIES.join(").count(),
+        0,
+        "又把整张 `CAPABILITIES` 原样吐进 `--ccm-probe` 了（Windows 上会自报 tmux 那一族）"
+    );
+    // 本机读数：Linux 上生产那一份 == 问 PATH 那一档。
+    assert_eq!(
+        caps_line(&probe_output("/x/ccm")),
+        caps_line(&probe_output_for("/x/ccm", crate::TmuxPlatform::AskThePath))
+    );
 }

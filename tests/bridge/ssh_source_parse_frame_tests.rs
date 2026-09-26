@@ -372,6 +372,7 @@ fn known_kind_with_extra_fields_still_parses() {
             waiting_for: None,
             rbind_token: None,
             container: None,
+            pid: None,
         }
     );
 }
@@ -396,6 +397,7 @@ fn session_added_metadata_parses() {
             waiting_for: None,
             rbind_token: None,
             container: None,
+            pid: None,
         }
     );
 }
@@ -775,4 +777,67 @@ fn sessions_replayed_is_known() {
         parse_frame(r#"{"kind":"sessions_replayed"}"#),
         Some(InboundFrame::SessionsReplayed)
     );
+}
+
+/// 〔LOC1b · 第四波 4D〕`session_added.pid` 的读侧：装得进 u32 的非负整数才认，别的一律当没带（缺席 = 老后端 / 没索要）。
+#[test]
+fn loc1b_the_pid_on_session_added_is_read_only_when_it_is_a_real_pid() {
+    let pid_of = |line: &str| match parse_frame(line) {
+        Some(InboundFrame::SessionAdded { pid, .. }) => pid,
+        other => panic!("解不出 session_added：{other:?}"),
+    };
+    assert_eq!(
+        pid_of(r#"{"kind":"session_added","sid":"s","pid":4242}"#),
+        Some(4242)
+    );
+    assert_eq!(pid_of(r#"{"kind":"session_added","sid":"s"}"#), None);
+    assert_eq!(
+        pid_of(r#"{"kind":"session_added","sid":"s","pid":-1}"#),
+        None
+    );
+    assert_eq!(
+        pid_of(r#"{"kind":"session_added","sid":"s","pid":"42"}"#),
+        None
+    );
+    assert_eq!(
+        pid_of(r#"{"kind":"session_added","sid":"s","pid":4294967296}"#),
+        None
+    );
+}
+
+/// 〔FW1 · 第四波 4D · D-d〕两个新帧认得（帧串 == 后端 `watcher_tests::the_two_session_file_frames_have_exactly_these_bytes`）；
+/// `why` 认不出 / 缺字段 ⇒ 整帧跳过（不猜成哪一种）。
+#[test]
+fn the_session_file_frames_are_known_and_an_unknown_why_is_dropped() {
+    use crate::ssh_source::FileChange;
+    assert_eq!(
+        parse_frame(r#"{"kind":"session_file_gone","session_id":"s","path":"/p/s.jsonl"}"#),
+        Some(InboundFrame::SessionFileNotice {
+            sid: "s".into(),
+            path: "/p/s.jsonl".into(),
+            change: FileChange::Gone
+        })
+    );
+    for (why, want) in [
+        ("truncated", FileChange::Truncated),
+        ("rewritten", FileChange::Rewritten),
+    ] {
+        assert_eq!(
+            parse_frame(&format!(
+                r#"{{"kind":"session_file_reread","session_id":"s","path":"/p/s.jsonl","why":"{why}"}}"#
+            )),
+            Some(InboundFrame::SessionFileNotice {
+                sid: "s".into(),
+                path: "/p/s.jsonl".into(),
+                change: want
+            })
+        );
+    }
+    for bad in [
+        r#"{"kind":"session_file_reread","session_id":"s","path":"/p/s.jsonl","why":"moved"}"#,
+        r#"{"kind":"session_file_reread","session_id":"s","path":"/p/s.jsonl"}"#,
+        r#"{"kind":"session_file_gone","session_id":"s"}"#,
+    ] {
+        assert_eq!(parse_frame(bad), None, "{bad}");
+    }
 }
