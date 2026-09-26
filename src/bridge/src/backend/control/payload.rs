@@ -75,8 +75,8 @@ use std::fmt::Write as _;
 /// `history.rs` 那份逐字副本已删（E3），判据也要遍历这一份而不是再抄一遍。
 /// 〔DUP1〕字面量本身搬进 `acct_core::CONFIG_DIR_SHELL_META`（后端那份全表 `is_safe_config_dir` 原来也各抄一遍，
 /// 两份收成那一份）；这里留的是 monitor 这一侧唯一的那个名字，值取自它 —— 定义处仍恰好一处（`the_shell_metachar_blacklist_has_exactly_one_home`）。
-/// 〔DUP1〕只剩 Windows 那条路（`history.rs::has_bad_chars`）与判据在用 ⇒ 同那个函数一样只在 `windows` / `test` 下编（Linux 生产段不留死代码）。
-#[cfg(any(windows, test))]
+/// 〔DUP1〕生产段里已经没人读它了（判定整份在 `acct_core::config_dir_char_unsafe`），只剩判据在遍历 ⇒ 只在 `test` 下编（不留死代码）。
+#[cfg(test)]
 pub(crate) const SHELL_META_COMMON: &str = acct_core::CONFIG_DIR_SHELL_META;
 
 /// 一个字符能不能出现在**要拼进命令**的 config dir 里。
