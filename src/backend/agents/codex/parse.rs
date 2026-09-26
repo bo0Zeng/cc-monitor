@@ -2,7 +2,7 @@
 //!
 //! **backend↔monitor 不共享代码**（deliberate）：本模块在 `serde_json::Value` 上**独立重镜像** monitor
 //! `codex_record.rs` 的防御抽取，与 aterm 的 CodexRecordParser/CodexTurnEndDetector **golden-parity**
-//! （同 `turn_detect`/`usage_query` 套路）。Codex 格式未文档、每几 minor churn → 宽容抽取、逐行不崩、
+//! （同 `turn_detect` 套路；〔AR1〕原先并列的 `usage_query` 已随 `设计/50` 删了）。Codex 格式未文档、每几 minor churn → 宽容抽取、逐行不崩、
 //! 未知/缺失安全默认、alias 归一 `turn_*`↔`task_*`。
 //!
 //! 记录信封（本机实测 codex-cli 0.144.6）：`{"timestamp","type","payload":{...}}`。顶层 `type` ∈
@@ -11,9 +11,11 @@
 //! **本模块范围（渐进接线）**：DG4 = turn-end 边沿（event_msg task_complete/turn_complete → uuid=turn_id
 //! 缺→envelope timestamp 回退）。DG5（usage：token_count）复用本模块的信封助手，接线时加。
 
-// DG5 起本模块过半函数已被 usage_query 接线（发现/用量 helpers）；仅 turn-end 4 函数仍 staged（consumer
-// = DG1 per-kind process_jsonl 派发 / DG3 wire），故 blanket 模块 allow 收窄为那 4 个上的 per-fn allow
-// （Phase D 审计建议：blanket 会静默吞掉将来真死代码）。
+// 〔AR1 订正〕DG5 那一拍本模块过半函数由用量聚合轴接线；那条轴随 `设计/50` 删了之后，发现那几个
+// （`resolve_codex_dir` · `sessions_root` · `session_meta_cwd` · `codex_sid_from_path` · `unwrap_envelope`）
+// 的读者是 `agents/codex/`，token 那几个（`is_token_count` · `last_token_delta` · `turn_context_model`）今天在
+// 后端生产树里**零读者**，按 `设计/50 §3` 留给 codex 专项，别顺手清。turn-end 4 函数仍 staged（consumer
+// = DG1 per-kind process_jsonl 派发 / DG3 wire），带 per-fn allow（Phase D 审计：blanket 会静默吞掉将来真死代码）。
 
 use serde_json::Value;
 use std::path::{Path, PathBuf};

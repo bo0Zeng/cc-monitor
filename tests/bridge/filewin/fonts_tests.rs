@@ -173,12 +173,46 @@ fn drawn_files() -> Vec<(String, String)> {
 /// 人群里每一份文件的字面量里出现过的非 ASCII 字符。
 fn label_chars() -> std::collections::BTreeSet<char> {
     let mut set = std::collections::BTreeSet::new();
+    // 〔CP2b · 第四波 4C〕窗口上的字搬进了文案表（`src/shared/copy/table.json`），源码里只剩
+    //   `copy_text("key", …)` ⇒ 「窗口会画出去的字」= 源码字面量 ＋ 这些调用取的表条目原文。
+    //   只数字面量的话，抽完表之后这条会对着一个缩水的人群相等（它真画出去的字没被数到）。
+    let table: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            crate::guard_support::crate_src_root().join("../../shared/copy/table.json"),
+        )
+        .expect("读不到文案表"),
+    )
+    .expect("文案表不是 JSON");
+    let entries = table["entries"].as_object().expect("文案表没有 entries");
     for (_, src) in drawn_files() {
         for s in string_literals(&src) {
             set.extend(s.chars().filter(|c| !c.is_ascii()));
         }
+        for key in copy_text_keys(&src) {
+            let zh = entries[&key]["zh"]
+                .as_str()
+                .unwrap_or_else(|| panic!("文案表里没有 {key}"));
+            set.extend(zh.chars().filter(|c| !c.is_ascii()));
+        }
     }
     set
+}
+
+/// 〔CP2b〕源码里 `copy_text("key"` 的 key（取文口的调用形状由 `copy-table.vitest.ts` 钉着：key 必须是字面量）。
+fn copy_text_keys(src: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = src;
+    // rustfmt 会把长调用折成 `copy_text(\n    "key",` ⇒ 括号后面先跳空白再认引号。
+    while let Some(i) = rest.find("copy_text(") {
+        let after = rest[i + "copy_text(".len()..].trim_start();
+        if let Some(body) = after.strip_prefix('"') {
+            if let Some(j) = body.find('"') {
+                out.push(body[..j].to_string());
+            }
+        }
+        rest = &rest[i + 1..];
+    }
+    out
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -320,9 +354,12 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
     let scanned = label_chars();
     assert_eq!(
         scanned.len(),
-        352,
+        334,
         "现扫出 {} 个不同的非 ASCII 字符（2026-09-21 现打 249；第五刀之前是 205、\
+         〔MG1 合并 FN1 × CP2b 09-25：343 → 334，−9 零 ＋（FN1 那 −8 ＋ 同一句里的 `浏`；逐笔来路住 `fonts.rs` 的 `PROBE` 上方）〕\
+         〔CP2b 全量抽表 09-25：352 → 358，＋9 −3（量具改成字面量 ＋ 表条目）；filewin 第二份 358 → 343，＋9 −24（逐笔来路都住 `fonts.rs` 的 `PROBE` 上方）〕\
          `24f` 第四刀之前是 130）。\
+         〔FN1 · 第四波 4C · V119：352 → 344，恰好 −8、零 ＋（窗口那道围栏预判删了，「挡住了」那句话随之没了，逐笔来路住 `fonts.rs` 的 `PROBE` 上方）〕\
          〔F9c 与 FW34 合并 09-24：359 → 352（现打），−7 零 ＋（F9c 那 −9 里 `变 收` 仍被 `preview.rs` / `workspace.rs` 用着，留下）〕\
          〔FW34 09-24：328 → 337，恰好 ＋9、零 −（`× ★ ☆ 书 加 懂 找 移 签`，书签栏，逐笔来路住 `fonts.rs` 的 `PROBE` 上方）〕\
          〔FW34 预览 09-24：356 → 359，恰好 ＋3、零 −（`显 示 预`）〕\
@@ -392,8 +429,14 @@ fn without_a_cjk_font_the_probe_is_almost_entirely_unrenderable() {
     );
     assert_eq!(
         super::unrenderable(&ctx, &prop(), PROBE).len(),
-        338,
+        // 〔FN1 · 第四波 4C · V119〕338 → 330（现打），探针 352 → 344 字 —— 差额恰好 −8：
+        //   掉出探针的 `住 历 史 场 弄 挡 管 跑`（窗口那句「挡住了」）本来全都画不出。
+        // 〔MG1 合并 FN1 × CP2b〕329 → 320（现打），探针 343 → 334 字 —— 差额恰好 −9：掉出探针的 `住 历 史 场 弄 挡 浏 管 跑` 本来全都画不出。
+        320,
         "比例字体下画不出的字数变了（2026-09-21 现打 238 / 探针 {} 字；\
+         〔CP2b filewin 第二份 09-25：344 → **329**（现打），探针 358 → 343 —— 差额 −15 ＝ ＋9 −24 全是汉字，不装字体全画不出〕\
+         〔CP2b 全量抽表 09-25：338 → **344**（现打），探针 352 → 358 字 —— 差额 ＋6 ＝ 新进的 9 个汉字不装字体全画不出、\
+          掉出的 3 个（之 解 运）本来也画不出〕\
          〔F9c 与 FW34 合并 09-24：345 → **338**（现打），探针 359 → 352 字 —— 差额恰好 −7：掉出探针的\
           `么 反 号 控 斜 杠 至` 本来全都画不出〕\
          〔FW34 预览 09-24：342 → **345**，探针 356 → 359 —— ＋3 ＝ `显 示 预` 不装字体全画不出〕\
@@ -429,8 +472,12 @@ fn without_a_cjk_font_the_probe_is_almost_entirely_unrenderable() {
     );
     assert_eq!(
         super::unrenderable(&ctx, &mono(), PROBE).len(),
-        336,
+        // 〔FN1 · 第四波 4C · V119〕336 → 328（现打），与比例那一格同一个 −8；330 − 328 = 2 那条关系没动。
+        // 〔MG1 合并 FN1 × CP2b〕327 → 318（现打），与比例那一格同一个 −9。
+        318,
         "等宽字体下画不出的字数变了（2026-09-22 现打 300 —— 那时比比例少**两**个\
+         〔CP2b filewin 第二份 09-25：342 → **327**（现打），与比例那一格同一个 −15；329 − 327 = 2 那条关系没动〕\
+         〔CP2b 全量抽表 09-25：336 → **342**（现打），与比例那一格同一个 ＋6；344 − 342 = 2 那条关系没动〕\
          〔F9c 与 FW34 合并 09-24：343 → **336**（现打），与比例那一格同一个 −7；338 − 336 = 2 那条关系没动〕\
          〔F9c 第四波 09-24：316 → **307**（现打），与比例那一格同一个 −9；308 − 307 = 1 那条关系没动〕\
          （`→` 与第十二刀新进来的 `⇒`）；今天少**一**个，理由见下方本机侧退役那一条；\

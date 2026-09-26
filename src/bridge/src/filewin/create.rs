@@ -4,7 +4,7 @@
 //! # 一、后端那一半早就在了，这一刀只接窗口这一半
 //!
 //! `files-create`（F1 · 波 5）：在一个目标根底下 `O_EXCL` 新建一份文件，**不给 `content`
-//! 就是一份空文件**；先过写面那道会话数据围栏；目标已经在（哪怕只是一条 symlink）就失败，
+//! 就是一份空文件**；先过写面那道路径解析（〔FN1〕会话数据围栏 V119 拿掉了）；目标已经在（哪怕只是一条 symlink）就失败，
 //! 绝不覆盖。契约住 `src/doc/IPC-PROTOCOL.md` 的 `files-create` 那一节。
 //! ⇒ 本模块**一行写盘代码都没有**，它做三件事：要一个名字 · 切成 `(root, rel)` · 经
 //! [`super::source::ask`] 说那一条命令（窗口进程够后端只有那一处 `call`）。
@@ -20,7 +20,7 @@
 //!
 //! `WriteOp` 是刻意封闭的（那四条改动**既有**数据的操作）；它那条流水线的三段里，
 //! 本操作只用得上第三段：
-//! - ① 本地预判围栏：那道围栏的本地副本（`sftp_pool::is_protected_claude_data_path`）的去留
+//! - ① 本地预判围栏〔FN1 · V119：连同后端那一道一起删了，这一条今天是历史〕：那道围栏的本地副本（`sftp_pool::is_protected_claude_data_path`）的去留
 //!   正挂在 `boundary_tests::WINDOW_SIDE` 那一格上（`设计/60 §12.3`「本地预判围栏」）。
 //!   给它添一个新消费者是往**留**那一侧加码 ⇒ 本操作只靠**后端那一道**（它才是权威；
 //!   被拒那句原话经 [`super::source::said`] 原样画到窗口上）。
@@ -36,9 +36,11 @@
 use super::shell::{FileWindow, NO_LINE};
 use super::source::{Line, Origin};
 use super::writeops::{clean_name, join_remote, WriteOutcome, WRITE_BUDGET};
+use crate::copy_table::copy_text;
 
 /// 工具栏上那颗按钮的字面。**唯一住址** —— 判据按同一个常量去找它画出来的字。
-pub const NEW_FILE_LABEL: &str = "新建空文件";
+pub static NEW_FILE_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinCreate.label.newFile", &[]));
 
 /// 后端那条命令（`files-create`）。
 pub const CMD_CREATE: &str = "files-create";
@@ -62,8 +64,9 @@ impl NewFilePrompt {
     }
 
     /// 框上那一行提示。
-    pub fn heading() -> &'static str {
-        "在这个目录里新建一个空文件，叫："
+    /// 〔CP2b〕字从文案表取 ⇒ 回 `String`。
+    pub fn heading() -> String {
+        copy_text("rsFilewinCreate.heading.newFile", &[])
     }
 
     /// 框里那几个字 → 那份新文件的**完整路径**。
@@ -83,7 +86,7 @@ impl NewFilePrompt {
 
 /// 结果行 / 失败那一句里用的描述。
 pub fn label(path: &str) -> String {
-    format!("{NEW_FILE_LABEL} {path}")
+    format!("{} {path}", NEW_FILE_LABEL.as_str())
 }
 
 /// 真建一份 —— 经通道说 `files-create`，参数切成 `(root, rel)`，**不带 `content`**
@@ -149,11 +152,12 @@ impl FileWindow {
             }
         };
         let Some(h) = self.rt.clone() else {
-            *self.listing.error.lock().unwrap() = Some("新建不了，请重开这个窗口".into());
+            *self.listing.error.lock().unwrap() =
+                Some(copy_text("rsFilewinCreate.confirm.noRuntime", &[]).into());
             return false;
         };
         let Some(line) = self.line.clone() else {
-            *self.listing.error.lock().unwrap() = Some(NO_LINE.into());
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
             return false;
         };
         let origin = self.source.origin();
@@ -187,12 +191,18 @@ impl FileWindow {
             if let Some(text) = self.new_file_text_mut() {
                 ui.text_edit_singleline(text);
             }
-            ui.label("⚠ 只在这一个目录里 —— 不许带 `/`。已有同名的就不建，不会盖掉它。");
+            ui.label(&copy_text("rsFilewinCreate.ui.sameDirOnly", &[]));
             ui.horizontal(|ui| {
-                if ui.button("确定").clicked() {
+                if ui
+                    .button(&copy_text("rsFilewinCreate.ui.ok", &[]))
+                    .clicked()
+                {
                     go = true;
                 }
-                if ui.button("取消").clicked() {
+                if ui
+                    .button(&copy_text("rsFilewinCreate.ui.cancel", &[]))
+                    .clicked()
+                {
                     cancel = true;
                 }
             });

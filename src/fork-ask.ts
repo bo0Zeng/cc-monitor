@@ -20,6 +20,7 @@
 
 import type { ForkChoices } from "./fork-start";
 import type { ForkLaunchFacts } from "./fork-launch";
+import { copyText } from "./copy-table";
 
 /** 可选账号。`configDir === null` 即账号 0。 */
 export interface ForkAccountOption {
@@ -75,13 +76,13 @@ export function askForkLaunch(opts: ForkAskOptions): Promise<ForkChoices | null>
 
   const title = document.createElement("div");
   title.className = "fork-ask-title";
-  title.textContent = "起这条分叉会话";
+  title.textContent = copyText("forkAsk.askForkLaunch.title");
   modal.appendChild(title);
 
   const lead = document.createElement("div");
   lead.className = "fork-ask-lead";
   lead.textContent =
-    "分支文件已经生成，原会话不受影响。下面这几项从源会话身上查不出来，请确认后再起：";
+    copyText("forkAsk.askForkLaunch.intro");
   modal.appendChild(lead);
 
   const askAccount = opts.slots.includes("account");
@@ -94,12 +95,12 @@ export function askForkLaunch(opts: ForkAskOptions): Promise<ForkChoices | null>
     row.className = "fork-ask-row";
     const label = document.createElement("span");
     label.className = "fork-ask-label";
-    label.textContent = "账号";
+    label.textContent = copyText("forkAsk.field.account");
     accountSel = document.createElement("select");
     accountSel.className = "fork-ask-account";
     const zero = document.createElement("option");
     zero.value = ACCOUNT_ZERO_VALUE;
-    zero.textContent = "账号 0（不注入 CLAUDE_CONFIG_DIR）";
+    zero.textContent = copyText("forkAsk.account.base");
     accountSel.appendChild(zero);
     for (const a of opts.accounts) {
       if (a.configDir === null) continue; // 账号 0 已经在首位，别重复
@@ -130,7 +131,7 @@ export function askForkLaunch(opts: ForkAskOptions): Promise<ForkChoices | null>
     tmuxBox.checked = opts.defaultUseTmux;
     const label = document.createElement("span");
     label.className = "fork-ask-label";
-    label.textContent = "起在 tmux 里（断线可 attach 回来）";
+    label.textContent = copyText("forkAsk.field.tmux");
     row.append(tmuxBox, label);
     modal.appendChild(row);
   }
@@ -141,7 +142,7 @@ export function askForkLaunch(opts: ForkAskOptions): Promise<ForkChoices | null>
     row.className = "fork-ask-row";
     const label = document.createElement("span");
     label.className = "fork-ask-label";
-    label.textContent = "工作目录";
+    label.textContent = copyText("forkAsk.field.cwd");
     cwdInput = document.createElement("input");
     cwdInput.type = "text";
     cwdInput.className = "fork-ask-cwd";
@@ -154,11 +155,11 @@ export function askForkLaunch(opts: ForkAskOptions): Promise<ForkChoices | null>
   const cancel = document.createElement("button");
   cancel.type = "button";
   cancel.className = "fork-ask-cancel";
-  cancel.textContent = "取消";
+  cancel.textContent = copyText("forkAsk.askForkLaunch.cancel");
   const ok = document.createElement("button");
   ok.type = "button";
   ok.className = "fork-ask-ok";
-  ok.textContent = "起会话";
+  ok.textContent = copyText("forkAsk.askForkLaunch.launch");
   buttons.append(cancel, ok);
   modal.appendChild(buttons);
 

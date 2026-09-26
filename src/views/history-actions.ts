@@ -12,6 +12,8 @@
  * （star/rename/hide/delete 需要活的 entry+project 引用做缓存同步，搜索卡片没有）。
  */
 
+import { copyText } from "../copy-table";
+
 export type HistoryActionId =
   | "resume"
   | "new-session"
@@ -51,12 +53,12 @@ const needsEntry = (ctx: HistoryActionCtx): boolean => ctx.hasEntry;
 
 /** 动作表（稳定顺序 = 菜单顺序）。resume/new-session 恒可用；star/rename/hide/delete 需 entry。 */
 export const HISTORY_ACTION_DEFS: HistoryActionDef[] = [
-  { id: "resume", label: () => "在新终端 resume", enabled: () => true },
-  { id: "new-session", label: () => "在该目录起新会话", enabled: () => true },
-  { id: "star", label: (c) => (c.starred ? "取消标星" : "标星"), enabled: needsEntry },
-  { id: "rename", label: () => "重命名", enabled: needsEntry },
-  { id: "hide", label: (c) => (c.hidden ? "取消隐藏" : "隐藏"), enabled: needsEntry },
-  { id: "delete", label: () => "删除…", danger: true, enabled: needsEntry },
+  { id: "resume", label: () => copyText("historyActions.menu.resume"), enabled: () => true },
+  { id: "new-session", label: () => copyText("historyActions.menu.newInDir"), enabled: () => true },
+  { id: "star", label: (c) => (c.starred ? copyText("historyActions.menu.unstar") : copyText("historyActions.menu.star")), enabled: needsEntry },
+  { id: "rename", label: () => copyText("historyActions.menu.rename"), enabled: needsEntry },
+  { id: "hide", label: (c) => (c.hidden ? copyText("historyActions.menu.unhide") : copyText("historyActions.menu.hide")), enabled: needsEntry },
+  { id: "delete", label: () => copyText("historyActions.menu.delete"), danger: true, enabled: needsEntry },
 ];
 
 /** 某上下文下可用的动作（按 DEFS 稳定顺序过滤）。 */

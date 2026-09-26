@@ -90,7 +90,7 @@ describe("PN1b 选图（界面）", () => {
   it("P1 选项从注册表现读（CP2）：值 == [气泡, …注册表 id]；要符号的图没选符号时灰掉并说「先点一个符号」", async () => {
     const opts = [...select(v).options];
     expect(opts.map((o) => o.value)).toEqual(["", "k-clusters", "k-calls", "k-types", "k-new"]);
-    expect(opts.filter((o) => o.disabled).map((o) => o.textContent)).toEqual(["乙图（先点一个符号）"]);
+    expect(opts.filter((o) => o.disabled).map((o) => o.textContent)).toEqual(["乙图 · 先点一个符号"]);
     await probe(v).openNodeDetail("src/a/x.rs#f");
     await flush();
     expect([...select(v).options].filter((o) => o.disabled)).toEqual([]);
@@ -138,7 +138,7 @@ describe("PN1b 选图（界面）", () => {
     vi.mocked(api.diagram).mockResolvedValue(fx.view(fx.unknownShapeDiagram));
     await choose(v, "k-new");
     expect(q<HTMLElement>(v, ".panorama-diagram-note").textContent).toBe(
-      "这一版还画不出这种形状的图（shape=hexagon）。可以点「复制 Mermaid」拿到上游画好的文本。",
+      "这一版还画不出这种形状的图（hexagon）。可以点「复制 Mermaid」拿到上游画好的文本。",
     );
     expect(probe(v).root.querySelectorAll(".panorama-diagram-canvas svg").length).toBe(0);
     expect(q<HTMLElement>(v, '[data-pano="diagram-honesty"]').textContent).toBe(honestyLine(fx.honestyFull));
@@ -166,7 +166,7 @@ describe("PN1b 选图（界面）", () => {
     await choose(v, "k-types");
     q<SVGGElement>(v, '[data-node="A"]').dispatchEvent(new MouseEvent("click"));
     const rows = [...probe(v).sidebarEl.querySelectorAll('[data-pano="side-list"] button')];
-    expect(rows.map((r) => r.textContent)).toEqual(["A（类型本身）", "go()"]);
+    expect(rows.map((r) => r.textContent)).toEqual(["A · 类型本身", "go()"]);
     (rows[1] as HTMLButtonElement).click();
     await flush();
     expect(api.node).toHaveBeenLastCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" }, "src/a/x.rs#A::go");

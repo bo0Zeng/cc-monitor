@@ -188,7 +188,10 @@ vi.mock("../src/behavior", () => ({
   }),
 }));
 // A5：换号重启编排（单测在 account-restart.vitest）——这里 mock 成 spy，只验 tabs 侧守卫是否放行。
-vi.mock("../src/account-restart", () => ({
+// 〔FE1〕`restartLocateFailureMessage`（换号重启定位不到时那句话）从 `accounts.ts` 搬来了这里 —— 它是纯函数，用真身；
+//   只桩编排器本体。
+vi.mock("../src/account-restart", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/account-restart")>()),
   restartWithAccount: vi.fn().mockResolvedValue(undefined),
   DEFAULT_EXIT_WAIT_MS: 10_000, // tabs.ts awaitExitFor 默认参用；mock 需导出，否则 undefined
 }));
@@ -197,13 +200,15 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   accountReadCalls,
   historyCalls,
+  killCallsOf,
   sessionReadCalls,
   withAccountReads,
   withHistoryReads,
   withSessionReads,
 } from "./test-support/chan-fake";
 import { restartWithAccount } from "../src/account-restart";
-import { invalidateAccountsCache } from "../src/accounts";
+import { invalidateAccountsCache } from "../src/account-reads";
+import { __resetLocalLaunchSnapshotForTests, __setLocalLaunchSnapshotForTests } from "../src/launch-account";
 import { showActionFailureToast } from "../src/error-toast";
 import { __setHostOsForTests, type HostOs } from "../src/settings/host-os";
 import {
@@ -219,7 +224,7 @@ import {
   findIdleTmux,
   isCwdFallbackMatch,
   claudeExited,
-  moveTabBlock,
+  moveTab,
   applyDropToCollections,
   collectionsEqual,
   commonDirName,
@@ -318,37 +323,22 @@ describe("TabManager 生命周期", () => {
     expect(home(tm).store.tabs.get("sk-late")!.state).toEqual(ENDED);
   });
 
-  // === Batch7-F24：bg 会话树状 ===
+  // === Batch7-F24：bg 会话 ⚙ 标题（〔BG1 · V125「删掉树」〕不再挂宿主排成树：落位 / 拖拽 / 集合
+  //     与普通 tab 相同那一组在本文件末尾「〔BG1〕」describe.each 里，两种 tab 各跑一遍） ===
 
-  it("bg tab 挂到同 cwd 交互宿主之后（先宿主后 bg）", () => {
+  it("bg tab 平铺：顺序 == 到达序（不挂到同 cwd 交互 tab 之后），标题 ⚙ ＋ 任务名", () => {
     tm.createSkeletonTab("host-a", "/proj/a", LOCAL_ORIGIN, "interactive", null);
     tm.createSkeletonTab("other", "/proj/b", LOCAL_ORIGIN, "interactive", null);
     tm.createSkeletonTab("bg-a1", "/proj/a", LOCAL_ORIGIN, "bg", "评估任务");
     const order = home(tm).store.orderedIds;
-    expect(order).toEqual(["host-a", "bg-a1", "other"]);
+    expect(order).toEqual(["host-a", "other", "bg-a1"]);
     const bg = home(tm).store.tabs.get("bg-a1")!;
     expect(bg.title).toBe("⚙ 评估任务");
   });
 
-  it("孤儿 bg 先到、宿主后到 → 重锚到宿主之后", () => {
-    tm.createSkeletonTab("bg-x1", "/proj/x", LOCAL_ORIGIN, "bg", "t1");
-    tm.createSkeletonTab("noise", "/proj/n", LOCAL_ORIGIN, "interactive", null);
-    tm.createSkeletonTab("host-x", "/proj/x", LOCAL_ORIGIN, "interactive", null);
-    expect(home(tm).store.orderedIds).toEqual(["noise", "host-x", "bg-x1"]);
-  });
-
-  it("同 cwd 第二个交互宿主不搬走第一个宿主已挂的 bg 子串（多宿主取第一个）", () => {
-    tm.createSkeletonTab("host-a1", "/proj/a", LOCAL_ORIGIN, "interactive", null);
-    tm.createSkeletonTab("bg-a1", "/proj/a", LOCAL_ORIGIN, "bg", "t1");
-    tm.createSkeletonTab("bg-a2", "/proj/a", LOCAL_ORIGIN, "bg", "t2");
-    tm.createSkeletonTab("host-a2", "/proj/a", LOCAL_ORIGIN, "interactive", null);
-    expect(home(tm).store.orderedIds).toEqual(["host-a1", "bg-a1", "bg-a2", "host-a2"]);
-  });
-
-  it("远端 bg 带 origin 前缀且不跨 origin 认宿主", () => {
+  it("远端 bg 标题带 origin 前缀", () => {
     tm.createSkeletonTab("h-local", "/p", LOCAL_ORIGIN, "interactive", null);
     tm.createSkeletonTab("bg-remote", "/p", "pi", "bg", "远端任务");
-    // origin 不同 → 不挂本地宿主，顶层追加
     expect(home(tm).store.orderedIds).toEqual(["h-local", "bg-remote"]);
     expect(home(tm).store.tabs.get("bg-remote")!.title).toBe("[pi] ⚙ 远端任务");
   });
@@ -1104,9 +1094,9 @@ describe("TabManager 生命周期", () => {
 
   // === v2.22.2:同 sid kind 冲突消解(bg-spare 谎报父 sid) ===
 
-  it("kind 升格:bg 骨架先到,interactive 宣告后到 → 升格为宿主并重锚孤儿 bg", () => {
-    // 场景还原(用户截图):bg-spare 的宣告先到,父会话被建成 ⚙ 挂到同 cwd 的
-    // 别的交互会话(Excel)之下;interactive 宣告后到必须升格纠正。
+  it("kind 升格:bg 骨架先到,interactive 宣告后到 → 升格(标题去 ⚙),位置不动", () => {
+    // 场景还原(用户截图):bg-spare 的宣告先到,父会话被建成 ⚙;interactive 宣告后到必须升格纠正。
+    // 〔BG1 · V125〕原先升格还会把它摘下来按宿主重新挂树;树删了 ⇒ 位置与 kind 无关、不动。
     tm.createSkeletonTab("excel", "/proj/shengwu", LOCAL_ORIGIN, "interactive", null);
     tm.createSkeletonTab("parent", "/proj/shengwu", LOCAL_ORIGIN, "bg", "迁移服务"); // 谎报形态先到
     tm.createSkeletonTab("fork-empty", "/proj/shengwu", LOCAL_ORIGIN, "bg", "迁移服务"); // 空克隆
@@ -1117,9 +1107,7 @@ describe("TabManager 生命周期", () => {
     const p = home(tm).store.tabs.get("parent")!;
     expect(p.kind).toBe("interactive");
     expect(p.title).not.toContain("⚙");
-    // parent 升格为宿主:提出子树位、追加为交互 tab,孤儿 bg(fork-empty 原挂
-    // excel 子串)不被搬走——「多宿主取第一个」契约保持(excel 仍是先到宿主)
-    expect(home(tm).store.orderedIds).toEqual(["excel", "fork-empty", "parent"]);
+    expect(home(tm).store.orderedIds).toEqual(["excel", "parent", "fork-empty"]);
   });
 
   it("kind 不降格:interactive tab 后到 bg 宣告(spare 谎报)保持交互形态", () => {
@@ -1162,21 +1150,26 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
     expect(invoke).not.toHaveBeenCalledWith("resume_history_session", expect.anything());
   });
 
-  it("A4/F07：resumeTab 带账号名但账号库不可用 → 退化默认 + **onUnselectable toast（不静默吞）**", async () => {
+  // 〔FE1 · D-h〕先前这一条钉的是「退化默认 ＋ 提示」—— 提示完**按基座起**（提示说的「改用上次的账号 / 当前账号」与做的还不一致）。
+  //   今天：**不起**，提示说清读不到清单，点了才以「不指定账号」起（`设计/01 §6.2` ＋ D4）。
+  it("★ 〔FE1 · D-h〕resumeTab 带账号名但账号库不可用 → **不起**、一条提示；点了才以「不指定账号」起", async () => {
     tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
     tm.archiveTab("r1");
-    // tabs.vitest 的 invoke 默认返 undefined → fetchAccounts 视作不可用 → withAccount 退化默认。
-    // （accounts.vitest 的 withAccount 套件覆盖了"resolveAccount 自己的决策逻辑"，
-    // 但不覆盖"tabs.ts 的 run 回调是否真把 accountName 转传给了 runRemoteResume"这条
-    // 集成层接线——F05 Phase D 审计发现的真实覆盖缺口，下面新增一条测试补上。）
+    // tabs.vitest 的 invoke 默认返 undefined → fetchAccounts 视作不可用。
     await home(tm).actions.resumeTab("r1", "z");
-    expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", { configDir: undefined, accountName: undefined, modelOverride: undefined });
+    expect(runRemoteResume, "要的号说不清还起了 —— 静默换号").not.toHaveBeenCalled();
     expect(historyCalls(vi.mocked(invoke).mock.calls, "update_history_metadata")).toHaveLength(0);
-    // F07：显式选号解析不到 → 提示，别静默落基座（对齐 history.ts）。变异锚点：删 onUnselectable 回调 → 此测红。
-    expect(showActionFailureToast).toHaveBeenCalledWith(
-      "账号不可用",
-      expect.stringContaining("账号「z」当前不可选"),
-      expect.anything(),
+    const calls = vi.mocked(showActionFailureToast).mock.calls;
+    const hit = calls.find((c) => c[0] === "账号现在选不了，没有起会话");
+    expect(hit, "没有说清为什么没起").toBeTruthy();
+    expect(hit![1]).toContain("「z」");
+    hit![2]!.onClick!();
+    await vi.waitFor(() =>
+      expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", {
+        configDir: undefined,
+        accountName: undefined,
+        modelOverride: undefined,
+      }),
     );
   });
 
@@ -1265,7 +1258,12 @@ describe("audit-fixes F01 follow-resume pin 现读磁盘（修 B1 内存脏读�
     // 内存镜像里种一个**陈旧**值,证明 resume 不依赖它;磁盘(list_last_accounts)才是真相源。
     tm.setSessionAccounts([], new Map(), new Map([["r1", "STALE"]]));
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_last_accounts" ? Promise.resolve({ r1: "z" }) : Promise.resolve(undefined),
+      cmd === "list_last_accounts"
+        ? Promise.resolve({ r1: "z" })
+        // 〔FE1〕零会话 = 空表（线上真形状）；`undefined` 线上不存在，铸名会把它读成「没问到」而不起。
+        : cmd === "list_remote_tmux"
+          ? Promise.resolve([])
+          : Promise.resolve(undefined),
     ));
   });
 
@@ -1303,8 +1301,22 @@ describe("audit-fixes F01 follow-resume pin 现读磁盘（修 B1 内存脏读�
 
   // F04：tmux 后端的基座逃生口，与直连对称（两后端一致）。useBase → 不跟随、不读 pin、不注入。
   // 变异锚点：resumeTabTmux 的 follow 去掉 `useBase ?` → 又读 pin → list_last_accounts 被 invoke → 红。
+  // 〔FE1〕`设计/01 §5` D4：全新 resume 那一支要铸名，而 tmux 名单**没问到**（`list_remote_tmux` reject）
+  //   不是「零会话」—— 先前 `?? null` 把两者压成一个、空集铸名（#76 的形状）。⇒ 不起、出声。
+  //   正控就是上下那两条：名单回空表 ⇒ 照起、名字 = 基名 `proj-cc`。
+  it("★ 〔FE1〕tmux 全新 resume：名单没问到 ⇒ 不起、出声（不拿空集铸名）", async () => {
+    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
+      cmd === "list_remote_tmux" ? Promise.reject(new Error("ssh 抖动")) : Promise.resolve(undefined),
+    ));
+    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
+    tm.archiveTab("r1");
+    await home(tm).actions.resumeTabTmux("r1", undefined, true);
+    expect(runRemoteResumeTmux, "名单没问到还起了 —— 名字没避让").not.toHaveBeenCalled();
+    expect(vi.mocked(showActionFailureToast).mock.calls.map((c) => c[0])).toContain("没有起会话");
+  });
+
   it("用基座 resume（tmux，useBase）→ 不读 pin、不注入（起全新 tmux resume，cd undefined）", async () => {
-    // 默认 invoke 返 undefined → list_remote_tmux 无活会话/无 idle → 走 ② 全新 resume。
+    // list_remote_tmux 回空表 → 无活会话/无 idle → 走 ② 全新 resume。
     tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
     tm.archiveTab("r1");
     await home(tm).actions.resumeTabTmux("r1", undefined, true);
@@ -1516,7 +1528,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     ));
     tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", 0, LOCAL_ORIGIN);
     rightClick("k1abcdef");
-    expect(killBtn()?.textContent).toContain("检测 tmux");
+    expect(killBtn()?.textContent).toContain("正在找 tmux 会话");
     await flush();
     expect(killBtn()).toBeNull();
   });
@@ -1565,7 +1577,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     rightClick("k1abcdef");
     await flush();
     expect(resumeIntoBtn()?.textContent).toContain("i1-cc");
-    expect(killBtn()?.textContent).toContain("空 tmux");
+    expect(killBtn()?.textContent).toContain("空的 tmux 会话");
   });
 
   it("P3 刀3 反面：会话里还跑着 claude → **不给**就地 resume（别往活会话再送一遍载荷）", async () => {
@@ -1580,7 +1592,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     rightClick("k1abcdef");
     await flush();
     expect(resumeIntoBtn()).toBeNull();
-    expect(killBtn()?.textContent).toContain("kill tmux i1-cc");
+    expect(killBtn()?.textContent).toContain("tmux 会话 i1-cc");
   });
 
   it("P3 刀2-UI 本机 tab 右键：同身份命中 2 个 → 拒绝，不折叠成第一个", async () => {
@@ -1595,7 +1607,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", 0, LOCAL_ORIGIN);
     rightClick("k1abcdef");
     await flush();
-    expect(killBtn()?.textContent).toContain("拒绝");
+    expect(killBtn()?.textContent).toContain("不能杀");
     expect(killBtn()?.disabled).toBe(true);
   });
 
@@ -1657,7 +1669,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     tm.ensureTab("A", "/a", "p", 0, "hostA");
     rightClick("A");
     await flush();
-    expect(attachBtn()?.textContent).toContain("空 tmux cc-A1");
+    expect(attachBtn()?.textContent).toContain("空的 tmux 会话 cc-A1");
     expect(attachBtn()?.disabled).toBe(false);
   });
 
@@ -1745,7 +1757,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     const labels = menuLabels();
     expect(labels).toContain("Resume");
     expect(labels).toContain("tmux");
-    expect(labels).toContain("直连（不建 tmux）");
+    expect(labels).toContain("直连 · 不建 tmux 会话");
     expect(labels).not.toContain("Resume（直连）");
     expect(labels).not.toContain("Resume（tmux）");
     // tmux 叶子 → 先查 list_remote_tmux(默认 mock 返 undefined = 无活会话)→ 起全新 resume,
@@ -1761,7 +1773,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     });
     // 直连叶子 → runRemoteResume
     rightClick("r1");
-    clickItem("直连（不建 tmux）");
+    clickItem("直连 · 不建 tmux 会话");
     await flushMicro();
     // A4：默认 resume（无账号）→ 第 5 参 configDir=undefined（不注入，行为与旧版等价）。
     expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", { configDir: undefined, accountName: undefined, modelOverride: undefined });
@@ -1835,10 +1847,10 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     const labels = menuLabels();
     expect(labels).toContain("Resume");
     expect(labels).not.toContain("tmux");
-    expect(labels).not.toContain("直连（不建 tmux）");
+    expect(labels).not.toContain("直连 · 不建 tmux 会话");
   });
 
-  it("F09：账号数据就绪后（恰好 1 个可选账号）→ Resume flyout 追加「不指定账号（用远端 ~/.claude 那套凭据，不跟随当前账号）」，不追加具名账号", async () => {
+  it("F09：账号数据就绪后（恰好 1 个可选账号）→ Resume flyout 追加「不指定账号 · 用远端 ~/.claude 那套凭据」，不追加具名账号", async () => {
     invalidateAccountsCache(); // 防陈旧缓存命中挡住下面的自定义 mock
     vi.mocked(invoke).mockImplementation(withHistoryReads(withAccountReads((cmd: string) =>
       cmd === "list_remote_accounts"
@@ -1856,10 +1868,10 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     await flushMicro();
     await flushMicro();
     const labels = menuLabels();
-    expect(labels).toContain("不指定账号（用远端 ~/.claude 那套凭据，不跟随当前账号）");
+    expect(labels).toContain("不指定账号 · 用远端 ~/.claude 那套凭据");
     // 只有 1 个可选账号 → 不追加具名账号项（同旧版阈值，见 launch-menu.ts）。
     expect(labels).not.toContain("z");
-    clickItem("不指定账号（用远端 ~/.claude 那套凭据，不跟随当前账号）");
+    clickItem("不指定账号 · 用远端 ~/.claude 那套凭据");
     // 基座项本身也带 submenu（tmux/直连），点它只展开/切换，不直接执行——不该调用任何 resume。
     expect(runRemoteResumeTmux).not.toHaveBeenCalled();
     expect(runRemoteResume).not.toHaveBeenCalled();
@@ -1891,7 +1903,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     expect(labels).toContain("b");
     // 具名账号项各自也带 tmux/直连子选择——用 querySelectorAll 能拿到的叶子总数量佐证（顶层
     // tmux/直连 2 个 + 基座下 2 个 + z 下 2 个 + b 下 2 个 = 8 个 container 叶子）。
-    const containerLeafCount = labels.filter((l) => l === "tmux" || l === "直连（不建 tmux）").length;
+    const containerLeafCount = labels.filter((l) => l === "tmux" || l === "直连 · 不建 tmux 会话").length;
     expect(containerLeafCount).toBe(8);
     invalidateAccountsCache();
   });
@@ -1928,7 +1940,11 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
               { name: extraName ?? "b", email: "b@x", configDir: `/h/${extraName ?? "b"}`, isDefault: false, mode: "isolated", exists: true, loggedIn: true },
             ],
           })
-        : Promise.resolve(undefined),
+        // 〔FE1〕`list_remote_tmux` 回真实线上形状（零会话 = 空表）。先前落进 `undefined`（线上不存在的值），
+        //   铸名那一格把它读成「没问到」⇒ 不起 —— 桩要说一个真答案，别让它碰巧走通。
+        : cmd === "list_remote_tmux"
+          ? Promise.resolve([])
+          : Promise.resolve(undefined),
     )));
 
   const openArchivedMenu = async (): Promise<void> => {
@@ -1939,11 +1955,11 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     await flushMicro();
   };
 
-  it("R05：点「不指定账号（用远端 ~/.claude 那套凭据，不跟随当前账号）」下的直连 → useBase 生效（configDir 为空），#75 逃生口不退化", async () => {
+  it("R05：点「不指定账号 · 用远端 ~/.claude 那套凭据」下的直连 → useBase 生效（configDir 为空），#75 逃生口不退化", async () => {
     invalidateAccountsCache();
     twoAccounts();
     await openArchivedMenu();
-    clickLeafUnder("不指定账号（用远端 ~/.claude 那套凭据，不跟随当前账号）", "直连（不建 tmux）");
+    clickLeafUnder("不指定账号 · 用远端 ~/.claude 那套凭据", "直连 · 不建 tmux 会话");
     await flushMicro();
     expect(runRemoteResume).toHaveBeenCalledWith(
       "aya", "r1", "/home/pi/proj", "cct",
@@ -1956,7 +1972,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     invalidateAccountsCache();
     twoAccounts();
     await openArchivedMenu();
-    clickLeafUnder("b", "直连（不建 tmux）");
+    clickLeafUnder("b", "直连 · 不建 tmux 会话");
     await flushMicro();
     expect(runRemoteResume).toHaveBeenCalledWith(
       "aya", "r1", "/home/pi/proj", "cct",
@@ -1990,7 +2006,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     invalidateAccountsCache();
     twoAccounts("__base__");
     await openArchivedMenu();
-    clickLeafUnder("__base__", "直连（不建 tmux）");
+    clickLeafUnder("__base__", "直连 · 不建 tmux 会话");
     await flushMicro();
     expect(runRemoteResume).toHaveBeenCalledWith(
       "aya", "r1", "/home/pi/proj", "cct",
@@ -2006,7 +2022,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     rightClick("r2");
     await flushMicro();
     await flushMicro();
-    expect(menuLabels()).toContain("Restart（换号重启）");
+    expect(menuLabels()).toContain("换号重启");
     invalidateAccountsCache();
   });
 
@@ -2160,7 +2176,7 @@ describe("F09 活会话右键：Restart 一级项 + flyout（换号重启，无�
     rightClick("m1");
     await flushMicro();
     await flushMicro();
-    expect(menuLabels()).not.toContain("Restart（换号重启）");
+    expect(menuLabels()).not.toContain("换号重启");
   });
 
   it("≥2 可选账号 → 「Restart」一级项 + 每账号 flyout（直接重启/先压缩再重启），无 tmux/直连子选择", async () => {
@@ -2184,12 +2200,12 @@ describe("F09 活会话右键：Restart 一级项 + flyout（换号重启，无�
     await flushMicro();
     await flushMicro();
     const labels = menuLabels();
-    expect(labels).toContain("Restart（换号重启）");
+    expect(labels).toContain("换号重启");
     expect(labels).toContain("z");
     expect(labels).toContain("b");
     expect(labels).not.toContain("tmux");
-    expect(labels).not.toContain("直连（不建 tmux）");
-    expect(labels).not.toContain("不指定账号（用远端 ~/.claude 那套凭据，不跟随当前账号）"); // restart 从不给基座逃生口（旧版行为）
+    expect(labels).not.toContain("直连 · 不建 tmux 会话");
+    expect(labels).not.toContain("不指定账号 · 用远端 ~/.claude 那套凭据"); // restart 从不给基座逃生口（旧版行为）
     expect(labels).toContain("直接重启");
     expect(labels).toContain("先压缩上下文再重启");
 
@@ -2225,7 +2241,7 @@ describe("F09 活会话右键：Restart 一级项 + flyout（换号重启，无�
     await flushMicro();
     const restartBtn = [
       ...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? []),
-    ].find((b) => b.textContent === "Restart（换号重启）") as HTMLButtonElement | undefined;
+    ].find((b) => b.textContent === "换号重启") as HTMLButtonElement | undefined;
     expect(restartBtn).not.toBeUndefined();
     expect(restartBtn?.disabled).toBe(true);
   });
@@ -2313,8 +2329,8 @@ describe("K-P5g：tmux 定位不到时，那句提示真的由读回来的身份
   it("★★ 带着身份 token ⇒ 提示换了一条，且 token 一个字节都没进提示", async () => {
     const TOKEN = "0198f0d2-1111-4222-8333-444455556666";
     const [title, body] = await restartAndCatchToast(TOKEN);
-    expect(title).toBe("无法换号重启：tmux 标记丢了");
-    expect(body).toContain("带着本工具铸的身份标记");
+    expect(title).toBe("无法换号重启：找不到这个会话所在的终端");
+    expect(body).toContain("带着 cc-monitor 起会话时留下的身份标记");
     expect(body).not.toContain("或无法精确定位");
     // 🔴 死值验的落点：把生产段那一行改回写死的老文案（不读 `sessionAccountsByS`），
     //    本条当场红；而 `K-P5f` 已经买到的「读到了」那一族一条都不会红。
@@ -2436,8 +2452,9 @@ describe("auto-e2e F-E4 可注入 confirm seam（killRemoteTmux 行为等价）"
     await Promise.resolve();
     await Promise.resolve();
   };
-  const killCalls = (): unknown[] =>
-    vi.mocked(invoke).mock.calls.filter((c) => c[0] === "kill_remote_tmux");
+  // 〔C4e · 第四波 4C〕杀会话从 Tauri 命令 `kill_remote_tmux`〔散文墓碑〕改成界面经通道直接说后端的 `kill`
+  //   （`src/tmux-control.ts::killSession`）⇒ 这里数的是那一发 `chan_call`，译回旧形参 `[旧名, {origin, target}]`。
+  const killCalls = (): unknown[] => killCallsOf(vi.mocked(invoke).mock.calls);
 
   it("killRemoteTmux 默认（不传 opts）→ 仍调 window.confirm（默认交互零变化）", () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
@@ -2575,7 +2592,7 @@ describe("F79 杀死远端 tmux 会话（二次确认 + kill_remote_tmux）", ()
     const tm = home(makeTM()).actions;
     tm.killRemoteTmux("hostA", "cc-abc", false);
     await Promise.resolve();
-    const call = vi.mocked(invoke).mock.calls.find((c) => c[0] === "kill_remote_tmux");
+    const call = killCallsOf(vi.mocked(invoke).mock.calls)[0];
     expect(call).toBeTruthy();
     expect(call![1]).toMatchObject({ origin: "hostA", target: "cc-abc" });
     confirmSpy.mockRestore();
@@ -2584,9 +2601,7 @@ describe("F79 杀死远端 tmux 会话（二次确认 + kill_remote_tmux）", ()
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     const tm = home(makeTM()).actions;
     tm.killRemoteTmux("hostA", "cc-abc", false);
-    expect(
-      vi.mocked(invoke).mock.calls.some((c) => c[0] === "kill_remote_tmux"),
-    ).toBe(false);
+    expect(killCallsOf(vi.mocked(invoke).mock.calls)).toHaveLength(0);
     confirmSpy.mockRestore();
   });
   it("F79 审计修复：cwd 回退命中（viaCwd）→ 二次确认加强 caveat（可能杀同目录别的会话）", () => {
@@ -2868,7 +2883,7 @@ describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
     await flushMicro();
     await flushMicro();
     await flushMicro();
-    expect(menuItems().map((b) => b.textContent)).toContain("Restart（换号重启）");
+    expect(menuItems().map((b) => b.textContent)).toContain("换号重启");
     // 账号清单那一跳问的是**本机**，不是拿 `<local>` 去问远端。
     // 〔C4c〕经通道问 `<local>` 那条长连接的 `accounts-list`（`accountReadCalls` 把一发 `chan_call` 译回旧叫法）。
     const calls = (invoke as unknown as ReturnType<typeof vi.fn>).mock.calls;
@@ -2890,7 +2905,7 @@ describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
     expect(
       accountReadCalls((invoke as unknown as ReturnType<typeof vi.fn>).mock.calls, "list_local_accounts"),
     ).toHaveLength(0);
-    expect(menuItems().map((b) => b.textContent)).not.toContain("Restart（换号重启）");
+    expect(menuItems().map((b) => b.textContent)).not.toContain("换号重启");
   });
 
   it("本机会话精确 @ccm_sid 命中 → 编排器拿到 `<local>` ＋ 本机 resume 命令 ＋ 本机 tmux 名", async () => {
@@ -2986,7 +3001,7 @@ describe("A5 restartTabWithAccount 阻塞守卫（精确 @ccm_sid 命中才动�
     await home(tm).actions.restartTabWithAccount("target-sid", "z", false);
     expect(restartSpy).not.toHaveBeenCalled();
     expect(showActionFailureToast).toHaveBeenCalledWith(
-      "换号重启拒绝",
+      "不能换号重启",
       expect.stringContaining("2"),
       expect.objectContaining({ level: "info" }),
     );
@@ -3364,7 +3379,7 @@ describe("F15 每行代价的现状基线", () => {
   });
 });
 
-// ===== P7a-1（#61）：独立归档区 =====
+// ===== 已结束的 tab 留在原位（〔步 17·A〕原「P7a-1（#61）独立归档区」，抽屉已删）=====
 //
 // `#61` 正文自陈「状态机已经有了，缺的是那个「口」」。判据钉的是**分流**本身：
 // 主栏里没有它 **且** 抽屉里有它 —— 两面都钉，否则「两边各渲一份」也能过。
@@ -3411,24 +3426,22 @@ describe("已结束的 tab 留在原位灰着（原「P7a-1 独立归档区」�
 // 而那是一条**竖栏** ⇒ 空闲的不是「横向」，是 **`clientY` 从没被用过**。
 // 重排走纵向，与撕离天然不争同一根轴。
 
-describe("P7a-2 moveTabBlock（纯）", () => {
-  it("★ P7a2-Y1：整块搬到某个 sid 之前 / 末尾，落位逐项对得上", () => {
+describe("P7a-2 moveTab（纯）", () => {
+  it("★ P7a2-Y1：搬到某个 sid 之前 / 末尾，落位逐项对得上", () => {
     const o = ["a", "b", "c", "d"];
-    expect(moveTabBlock(o, ["c"], "a")).toEqual(["c", "a", "b", "d"]);
-    expect(moveTabBlock(o, ["a"], "d")).toEqual(["b", "c", "a", "d"]);
-    expect(moveTabBlock(o, ["a"], null)).toEqual(["b", "c", "d", "a"]);
-    // 多元素的块保持内部相对序。
-    expect(moveTabBlock(o, ["b", "c"], "a")).toEqual(["b", "c", "a", "d"]);
+    expect(moveTab(o, "c", "a")).toEqual(["c", "a", "b", "d"]);
+    expect(moveTab(o, "a", "d")).toEqual(["b", "c", "a", "d"]);
+    expect(moveTab(o, "a", null)).toEqual(["b", "c", "d", "a"]);
+    // 〔BG1〕原先这里还有一格「多元素的块保持内部相对序」—— 块随 bg 树一起删了。
     // 不改原数组。
     expect(o).toEqual(["a", "b", "c", "d"]);
   });
 
-  it("★ P7a2-Y1b：落点在块内 ⇒ **原样返回**（拖到自己身上不是一次重排）", () => {
+  it("★ P7a2-Y1b：落点就是它自己 ⇒ **原样返回**（拖到自己身上不是一次重排）", () => {
     const o = ["a", "b", "c"];
-    expect(moveTabBlock(o, ["b"], "b")).toEqual(o);
-    expect(moveTabBlock(o, ["a", "b"], "b")).toEqual(o);
+    expect(moveTab(o, "b", "b")).toEqual(o);
     // 把它算成「挪到末尾」是错的 —— 那会让一次误触把 tab 甩到最后。
-    expect(moveTabBlock(o, ["b"], "b")).not.toEqual(["a", "c", "b"]);
+    expect(moveTab(o, "b", "b")).not.toEqual(["a", "c", "b"]);
   });
 });
 
@@ -3481,23 +3494,8 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
     expect(order()).toEqual(["c", "a", "b"]);
   });
 
-  it("★ P7a2-Y3：拖交互 tab 时，它的 bg 子串**跟着走**（不许把树拆散）", () => {
-    // 造一棵真的树：宿主 + 两个同 cwd 的 bg 子项（`placeInOrder` 会把它们锚在宿主之后）。
-    tm.ensureTab("host", "/proj/a", "p", 0, LOCAL_ORIGIN);
-    tm.createSkeletonTab("bg1", "/proj/a", LOCAL_ORIGIN, "bg", "t1");
-    tm.createSkeletonTab("bg2", "/proj/a", LOCAL_ORIGIN, "bg", "t2");
-    tm.ensureTab("other", "/proj/z", "p", 0, LOCAL_ORIGIN);
-    flushBar();
-    stubRects();
-    expect(order()).toEqual(["host", "bg1", "bg2", "other"]);
-    // 把 other 拖到最上面 —— 它没有子项，只有它自己动。
-    dragTo("other", 10);
-    expect(order()).toEqual(["other", "host", "bg1", "bg2"]);
-    stubRects();
-    // 再把 host 拖到最上面：**整串跟着走**，顺序不许被打散。
-    dragTo("host", 10);
-    expect(order()).toEqual(["host", "bg1", "bg2", "other"]);
-  });
+  // 〔BG1 · V125「删掉树」〕原「★ P7a2-Y3：拖交互 tab 时它的 bg 子串跟着走」一格删了 ——
+  //   现在反过来钉：拖同 cwd 的宿主**只有它自己动**（本文件末尾「〔BG1〕」那组的 ②，两种 tab 各跑）。
 
   it("★ P7a2-D：拖动时**落点看得见**，撕离那一路不指示，拖完必须清掉", () => {
     tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
@@ -3558,38 +3556,43 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
   });
 
   /**
-   * ★ 6d（条 54）：**拖到一半，tab 不许自己跳位置。**
+   * ★ 6d（条 54 · `设计/30 §6 #4`）：**拖到一半，tab 不许自己跳位置。**
+   *
+   * `设计/30 §6 #4` 原文：「拖拽进行中注入一次活动事件 ⇒ 松手之前 `#tab-bar` 子节点顺序一次都不变；
+   * 松手后那一次重画必须补上（守卫是推迟不是丢弃）。住 `tests/tabs.vitest.ts`「6d」。」
    *
    * # 机制（已核实，不是推测）
    *
-   * `refreshTabBar` 全身**没有任何 `this.drag` 守卫**，而它挂在活动路上：
-   * `updateActivity` / `archiveTab` / `ensureTab` 末尾都无条件调它。
-   * ⇒ 拖到一半来一条活动事件，第 4 段那个「排序」循环就照 `orderedIds` 重排一次 DOM，
+   * `refreshTabBar` 挂在活动路上：`updateActivity` / `archiveTab` / `ensureTab` 末尾都无条件调它。
+   * 拖到一半来一条活动事件，第 4 段那个「排序」循环就照 `orderedIds` 重排一次 DOM，
    * **指针底下的那个 tab 当场被换掉** —— 用户松手落到的不是他瞄的那一格。
    *
-   * # 🔴 为什么注入的是「会话结束」而不是一条 `updateActivity`
+   * # 🔴 为什么注入的是「一个按盘上顺序该落在中间的新 tab 到了」
    *
-   * 反空真自检（`设计/01 §7.4`「扫到空集时要红，不是绿」）：
-   * 一条**不改 `orderedIds`、不改归档归属**的 `updateActivity`，
-   * 走完 `refreshTabBar` 之后 `refs.root === targetNext` 恒成立 ⇒ 一次 `insertBefore` 都不会发生
-   * ⇒ 那样写出来的判据**拿掉守卫也是绿的**，等于没买。
-   * 真会动 DOM 顺序的活动事件有两类，这里取第一类（第二类见下一格）：
-   *   ① **会话跑完 ⇒ 归档** —— 归档抽屉是 `barEl` 的**兄弟**（`ensureArchiveUi`），
-   *      那个 tab 会整个**离开** `#tab-bar`，它下面的全部上移一格；
-   *   ② **新会话/新 bg 宣告** —— `placeInOrder` 把 bg 锚在宿主之后 ⇒ 从**中间**插进去。
+   * 反空真自检（`设计/01 §7.4`「扫到空集时要红，不是绿」）：注入的事件必须**真的改 `orderedIds` 的中间位置**，
+   * 否则拿掉守卫 DOM 也不动，判据等于没买。
+   * 〔AR1 重锚〕上一版注入的是「会话结束」，理由是「归档抽屉是 `barEl` 的兄弟，那个 tab 会整个离开 `#tab-bar`」。
+   *   抽屉删了（`设计/30 §A`）⇒ 会话结束今天**只改那颗按钮的 class、不改顺序**，那一版咬住的只剩
+   *   「拖拽中零 DOM 写」（`barSnap` 连 `className` 一起比），不再是它自称的「跳位置」。
+   * ⇒ 换成今天真会从中间插进去的那一路：盘上那份顺序（`savedOrder`）给新到的 `d` 留了 `a` 与 `b` 之间那一格，
+   *   `ensureTab("d")` → `TabStore.placeInOrder` → `applySavedOrder` 把它放回那一格。这一路与 bg 树无关。
+   *   下面第一条断言就是反空真前置：拖拽中**模型已经变了**（`d` 在第二位），而 DOM 一次都没动。
    *
    * # 判据钉的是「顺序一次都不变」，不是「最终顺序对不对」
    *
    * 最终顺序在 `mouseup` 之后本来就会对（那时重画照样发生）。
    * 坏的是**拖拽窗口之内**那一次重排 —— 所以快照要在 `mouseup` 之前比。
    */
-  it("★ 6d：拖拽进行中来一条活动事件 ⇒ mouseup 之前 #tab-bar 子节点顺序一次都不变", () => {
+  it("★ 6d：拖拽进行中来一个该落在中间的新 tab ⇒ mouseup 之前 #tab-bar 子节点顺序一次都不变", () => {
     tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN); // 首个 tab ⇒ 它是 active（`switchTo(_, "auto")`）
     tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
     tm.ensureTab("c", "/c3", "p", 0, LOCAL_ORIGIN);
+    // 盘上那份顺序：`d` 还没到，它的那一格在 `a` 与 `b` 之间（`applySavedOrder` 头注：没到的留在 `savedOrder` 里等它）。
+    home(tm).store.savedOrder = ["a", "d", "b", "c"];
     flushBar();
     stubRects();
-    // 主栏子节点的「长相顺序」。用 textContent 而不是下标 —— 少一个、换一个都要能看出来。
+    expect(order(), "前置：d 没到之前顺序照旧").toEqual(["a", "b", "c"]);
+    // 主栏子节点的「长相顺序」。用 textContent 而不是下标 —— 少一个、换一个、多一个都要能看出来。
     const barSnap = (): string =>
       [...bar.children].map((e) => `${e.className}#${e.textContent ?? ""}`).join(" | ");
 
@@ -3604,8 +3607,14 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
     const during = barSnap();
     expect(during, "前置：三个 tab 都还在主栏里").toContain("tab ");
 
-    // ⬇ 拖拽进行中注入一次活动事件：b（**不是 active、在被拖的 c 上面**）的会话跑完了。
-    tm.archiveTab("b");
+    // ⬇ 拖拽进行中注入一次活动事件：新会话 d 宣告到了，盘上顺序把它放在 a 与 b 之间。
+    tm.ensureTab("d", "/c4", "p", 0, LOCAL_ORIGIN);
+    expect(order(), "反空真前置：模型真的从中间插进去了（拿掉守卫时 DOM 会跟着动）").toEqual([
+      "a",
+      "d",
+      "b",
+      "c",
+    ]);
 
     expect(barSnap(), "拖拽中 tab 不许自己跳位置：松手前 #tab-bar 的子节点顺序一次都不许变").toBe(
       during,
@@ -3615,18 +3624,54 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
     document.dispatchEvent(
       new MouseEvent("mouseup", { clientX: 10, clientY: 10, bubbles: true }),
     );
-    expect(barSnap(), "松手后归档那一格要落实，否则守卫就成了静默丢刷新").not.toBe(during);
-    // 🔴 〔步 17·A · 2026-09-19〕后置断言换了，**本条的正题一个字没动**。
-    //   原来这里断言「b 已搬进归档抽屉」。抽屉整个删了（用户逐字「没有归档这个东西」，
-    //   `设计/30 §A`「已定：删归档抽屉」）⇒ 新行为是**留在原位灰着**。
-    //   本条买的仍是条 54：**拖拽进行中 tab 不自己跳位置**；变的只是「松手后落实成什么」。
+    expect(barSnap(), "松手后 d 那一格要落实，否则守卫就成了静默丢刷新").not.toBe(during);
+    expect(order(), "拖动本身的结果照常落实（c 到 a 之前），d 留在盘上给它的那一格").toEqual([
+      "c",
+      "a",
+      "d",
+      "b",
+    ]);
     const barTabs = [...bar.children].filter((e) => e.classList.contains("tab"));
-    expect(barTabs.length, "三个 tab 必须都还在主栏里 —— 归档不再把谁搬走").toBe(3);
+    expect(barTabs.length, "四个 tab 都在主栏里").toBe(4);
+  });
+
+  /**
+   * ★ 6d 下半（`设计/30 §6 #4`「松手后那一次重画必须补上（守卫是推迟不是丢弃）」）。
+   *
+   * 〔AR1〕上一格松手落在别的 tab 上 ⇒ `applyDrop` 自己就会整刷一次，**盖住了**「推迟的那一次补没补」
+   *   （死值验现打：删掉 `teardownDrag` 里补刷那一句，上一格照样绿）。
+   * ⇒ 这一格走撕窗口那一路（`armed`）：它**不碰顺序、不刷栏**（`P7a2-Y2`），松手后唯一的刷新
+   *   只能来自 `teardownDrag` 补的那一次。补丢了 ⇒ 拖拽中到的 d 永远不出现在栏里。
+   */
+  it("★ 6d 下半：拖出右缘撕窗口 ⇒ 拖拽中被挡下的那次重画在松手时补上（d 出现在它那一格）", () => {
+    tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("c", "/c3", "p", 0, LOCAL_ORIGIN);
+    home(tm).store.savedOrder = ["a", "d", "b", "c"];
+    flushBar();
+    stubRects();
+    const barTabText = (): string[] =>
+      [...bar.children].filter((e) => e.classList.contains("tab")).map((e) => e.textContent ?? "");
+    const roots = [...bar.children].filter((e) => e.classList.contains("tab")) as HTMLElement[];
+    roots[2].dispatchEvent(
+      new MouseEvent("mousedown", { button: 0, clientX: 10, clientY: 0, bubbles: true }),
+    );
+    // clientX 远超 barRight+16 ⇒ armed
+    document.dispatchEvent(
+      new MouseEvent("mousemove", { buttons: 1, clientX: 9999, clientY: 100, bubbles: true }),
+    );
+    const during = barTabText();
+    tm.ensureTab("d", "/c4", "p", 0, LOCAL_ORIGIN);
+    expect(barTabText(), "拖拽中被挡下：d 还没进栏").toEqual(during);
+    expect(during.some((t) => t.includes("c4")), "前置：d 此刻不在栏里（否则下面那条恒真）").toBe(false);
+    document.dispatchEvent(
+      new MouseEvent("mouseup", { clientX: 9999, clientY: 100, bubbles: true }),
+    );
+    expect(order(), "撕窗口那一路不改顺序；d 在盘上给它的那一格").toEqual(["a", "d", "b", "c"]);
     expect(
-      barTabs.filter((e) => e.classList.contains("ended")).length,
-      "b 已结束 ⇒ 原位变淡（`.tab.ended`，〔U4〕原名 `.tab.archived`），而不是消失进另一个容器",
-    ).toBe(1);
-    expect(order(), "拖动本身的结果照常落实").toEqual(["c", "a", "b"]);
+      barTabText().map((t) => (t.match(/c\d/) ?? [""])[0]),
+      "推迟不是丢弃：松手后栏里按 orderedIds 摆出 d",
+    ).toEqual(["c1", "c4", "c2", "c3"]);
   });
 });
 
@@ -4004,7 +4049,8 @@ describe("步 17·D ⓪ 量具自检：落点函数真的在分三种，不是�
     { sid: "b", top: 28, height: 28 },
     { sid: "c", top: 56, height: 28 },
   ];
-  const none = new Set<string>();
+  /** 被拖的那一个不在这组矩形里（〔BG1〕原先这里是「被拖的那一块」空集）。 */
+  const none = "（没有）";
 
   it("🔴 三种语义**都出得来**，而且各自出在该出的地方", () => {
     // 一格里三条分开断言：合成一条的话，只要有一种出不来，另两种也能让它看起来对。
@@ -4043,13 +4089,13 @@ describe("步 17·D ⓪ 量具自检：落点函数真的在分三种，不是�
     ).toEqual({ kind: "before", sid: "a" });
   });
 
-  it("被拖的那一块整体不参与落点（落到自己身上不是一次重排）", () => {
-    expect(pickDropTarget(rects, 5, new Set(["a"]), null), "a 被拖着，落点该轮到 b").toEqual({
+  it("被拖的那一个不参与落点（落到自己身上不是一次重排）", () => {
+    expect(pickDropTarget(rects, 5, "a", null), "a 被拖着，落点该轮到 b").toEqual({
       kind: "before",
       sid: "b",
     });
     expect(
-      pickDropTarget(rects, 40, new Set(["b"]), "b"),
+      pickDropTarget(rects, 40, "b", "b"),
       "🔴 停留攒在自己身上也不许成组（不然拖一下自己就多一个组）",
     ).toEqual({ kind: "before", sid: "c" });
   });
@@ -4063,10 +4109,10 @@ describe("步 17·D ⓪ 量具自检：落点函数真的在分三种，不是�
   });
 
   it("`tabUnderY` 正反两控：压在矩形里才算，边界按左闭右开", () => {
-    expect(tabUnderY(rects, 28, new Set()), "28 是 b 的上沿 ⇒ 算 b").toBe("b");
-    expect(tabUnderY(rects, 27.9, new Set()), "27.9 还在 a 里").toBe("a");
-    expect(tabUnderY(rects, 999, new Set()), "谁都没压着要能说「没有」").toBeNull();
-    expect(tabUnderY(rects, 5, new Set(["a"])), "被拖的那块要排除").toBeNull();
+    expect(tabUnderY(rects, 28, none), "28 是 b 的上沿 ⇒ 算 b").toBe("b");
+    expect(tabUnderY(rects, 27.9, none), "27.9 还在 a 里").toBe("a");
+    expect(tabUnderY(rects, 999, none), "谁都没压着要能说「没有」").toBeNull();
+    expect(tabUnderY(rects, 5, "a"), "被拖的那个要排除").toBeNull();
   });
 
   it("两个常数就是 `§D.4` 写的那两个数（改了要有人知道）", () => {
@@ -4105,7 +4151,7 @@ describe("步 17·D ② 归属跟着落点宿主走（`§D.7` 的「拖出组」
   const cols = (list: TabCollection[]): TabCollection[] => JSON.parse(JSON.stringify(list));
 
   it("🆕 `onto` 到一个**没有组**的 tab ⇒ 现建一个组，两个都进去", () => {
-    const next = applyDropToCollections([], ["a"], { kind: "onto", sid: "b" }, "proj", "gX");
+    const next = applyDropToCollections([], "a", { kind: "onto", sid: "b" }, "proj", "gX");
     expect(next, "建组 + 两个成员，顺序 = 目标在前、被拖的在后").toEqual([
       { id: "gX", name: "proj", members: ["b", "a"] },
     ]);
@@ -4113,18 +4159,16 @@ describe("步 17·D ② 归属跟着落点宿主走（`§D.7` 的「拖出组」
 
   it("`onto` 到一个**已经在组里**的 tab ⇒ 进那个组，不新建", () => {
     const base = cols([{ id: "g1", name: "白天", members: ["b"] }]);
-    const next = applyDropToCollections(base, ["a"], { kind: "onto", sid: "b" }, "proj", "gX");
+    const next = applyDropToCollections(base, "a", { kind: "onto", sid: "b" }, "proj", "gX");
     expect(next).toEqual([{ id: "g1", name: "白天", members: ["b", "a"] }]);
   });
 
-  it("整块一起走（交互 tab 连同它的 bg 子串）—— 不许把子树劈成两半", () => {
-    const next = applyDropToCollections([], ["a", "a-bg"], { kind: "onto", sid: "b" }, "n", "gX");
-    expect(next[0].members).toEqual(["b", "a", "a-bg"]);
-  });
+  // 〔BG1 · V125「删掉树」〕原「整块一起走（交互 tab 连同它的 bg 子串）」一格删了 —— 归属只跟着被拖的
+  //   那一个走（本文件末尾「〔BG1〕」那组的 ③ ④，两种 tab 各跑）。
 
   it("🔴 `before` 一个**散 tab** ⇒ 从原来的组里**移出**（`§D.7` 的拖出组）", () => {
     const base = cols([{ id: "g1", name: "白天", members: ["a", "b"] }]);
-    const next = applyDropToCollections(base, ["a"], { kind: "before", sid: "z" }, "n", "gX");
+    const next = applyDropToCollections(base, "a", { kind: "before", sid: "z" }, "n", "gX");
     expect(next, "落点宿主是散 tab 区 ⇒ a 不再属于 g1").toEqual([
       { id: "g1", name: "白天", members: ["b"] },
     ]);
@@ -4132,13 +4176,13 @@ describe("步 17·D ② 归属跟着落点宿主走（`§D.7` 的「拖出组」
 
   it("`before` 一个**组里的 tab** ⇒ 进那个组（同一条规则的另一侧）", () => {
     const base = cols([{ id: "g1", name: "白天", members: ["b"] }]);
-    const next = applyDropToCollections(base, ["a"], { kind: "before", sid: "b" }, "n", "gX");
+    const next = applyDropToCollections(base, "a", { kind: "before", sid: "b" }, "n", "gX");
     expect(next).toEqual([{ id: "g1", name: "白天", members: ["b", "a"] }]);
   });
 
   it("`end` ⇒ 移出（末尾就是散 tab 区）", () => {
     const base = cols([{ id: "g1", name: "白天", members: ["a"] }]);
-    expect(applyDropToCollections(base, ["a"], { kind: "end" }, "n", "gX")).toEqual([
+    expect(applyDropToCollections(base, "a", { kind: "end" }, "n", "gX")).toEqual([
       { id: "g1", name: "白天", members: [] },
     ]);
   });
@@ -4146,12 +4190,12 @@ describe("步 17·D ② 归属跟着落点宿主走（`§D.7` 的「拖出组」
   it("🔴 反面控：什么都不该变的两种情形，**一个字节都不许变**", () => {
     const base = cols([{ id: "g1", name: "白天", members: ["a"] }]);
     expect(
-      applyDropToCollections(base, ["a"], { kind: "onto", sid: "a" }, "n", "gX"),
+      applyDropToCollections(base, "a", { kind: "onto", sid: "a" }, "n", "gX"),
       "压在自己身上不是一次合并",
     ).toEqual(base);
     const flat = cols([{ id: "g1", name: "白天", members: ["z"] }]);
     expect(
-      applyDropToCollections(flat, ["a"], { kind: "before", sid: "b" }, "n", "gX"),
+      applyDropToCollections(flat, "a", { kind: "before", sid: "b" }, "n", "gX"),
       "两个都是散 tab ⇒ 归属这一维没有任何事发生",
     ).toEqual(flat);
   });
@@ -4162,7 +4206,7 @@ describe("步 17·D ② 归属跟着落点宿主走（`§D.7` 的「拖出组」
       name: `组 ${i + 1}`,
       members: [] as string[],
     }));
-    const next = applyDropToCollections(full, ["a"], { kind: "onto", sid: "b" }, "新", "gX");
+    const next = applyDropToCollections(full, "a", { kind: "onto", sid: "b" }, "新", "gX");
     expect(next, "满了还建 ⇒ a 会挂在一个 `createCollection` 根本没造出来的 id 上").toEqual(full);
   });
 
@@ -4423,8 +4467,7 @@ describe("步 17·C 顺序落盘：读回来那一半", () => {
     await tm.loadPinned();
     await tm.loadOrder();
     for (const sid of arriving) {
-      // 每个 sid 一个自己的 cwd：避开 `placeInOrder` 的树状锚定（bg 挂宿主后面），
-      // 这一组量的是「盘上那份顺序」，不是那棵树。
+      // 每个 sid 一个自己的 cwd（〔BG1〕原先是为了避开 bg 树状锚定；树删了之后留着无害）。
       tm.ensureTab(sid, `/proj/${sid}`, `/p/${sid}.jsonl`, 0, LOCAL_ORIGIN, "interactive", null);
     }
   };
@@ -4969,6 +5012,166 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
   });
 });
 
+/**
+ * 〔GP1 · 第四波〕**远端断连 ⇒ 说不清，不是已结束**（`设计/30 §3.5.7a`「`Unseen` 不许被显示成已结束」·
+ * `调研/第四波记录/GP1.md §1`）。`session-unseen` → `TabManager.markUnseen`，TabManager 真走。
+ */
+describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
+  let tm: TabManager;
+  const tabOf = (sid: string): Tab => home(tm).store.tabs.get(sid)!;
+  const titles = (): string =>
+    [...document.querySelectorAll<HTMLElement>(".tab")].map((b) => b.title).join("\n");
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads(() => Promise.resolve(undefined))));
+    tm = makeTM();
+  });
+
+  it("★ 活 / 可重连 ⇒ 说不清（字里零处「已结束」）；已结束 / 记录没了不动", () => {
+    tm.ensureTab("u1", "/x", "p", 0, "pi"); // 活
+    tm.ensureTab("u2", "/x", "p", 0, "pi");
+    tm.markTmuxIdle("u2"); // 可重连
+    tm.markUnseen("u1");
+    tm.markUnseen("u2");
+    expect([tabOf("u1").state, tabOf("u2").state]).toEqual([UNSEEN, UNSEEN]);
+    // 两颗的提示句都说「说不清」、零处「已结束」（改之前断连那一刻这里是两句「这个会话已结束」）。
+    expect(titles().split("说不清").length - 1).toBe(2);
+    expect(titles()).not.toContain("已结束");
+    // 死透了的不动：已结束 / 记录没了收到 unseen 照旧（正控：这时才出现「已结束」）。
+    tm.ensureTab("u3", "/x", "p", 0, "pi");
+    tm.archiveTab("u3");
+    tm.ensureTab("u4", "/x", "p", 0, "pi");
+    tm.archiveTab("u4");
+    tm.markRecord("u4", false);
+    tm.markUnseen("u3");
+    tm.markUnseen("u4");
+    expect([tabOf("u3").state, tabOf("u4").state]).toEqual([ENDED, GONE]);
+    expect(titles()).toContain("已结束");
+  });
+
+  it("★ 重连之后：重宣告的翻回活；那台报完清单、没有它的 ⇒ 已结束", () => {
+    tm.ensureTab("r1", "/x", "p", 0, "pi");
+    tm.ensureTab("r2", "/x", "p", 0, "pi");
+    tm.markUnseen("r1");
+    tm.markUnseen("r2");
+    expect([tabOf("r1").state, tabOf("r2").state]).toEqual([UNSEEN, UNSEEN]);
+    tm.createSkeletonTab("r1", "/x", "pi"); // 重连后后端初扫重宣告 r1
+    tm.markOriginSeen("pi"); // `sessions_replayed` ⇒ 报完了，没有 r2
+    expect([tabOf("r1").state, tabOf("r2").state]).toEqual([LIVE, ENDED]);
+  });
+
+  it("★ 那台从「报完了」里摘掉：之后才复活的固定 tab 落说不清，不再直接落已结束", async () => {
+    tm.markOriginSeen("pi");
+    tm.ensureTab("s1", "/x", "p", 0, "pi");
+    tm.markUnseen("s1");
+    let disk: Record<string, unknown> = {
+      tabBar: { pinned: [{ sid: "s2", origin: "pi", title: "S", jsonlPath: "/p/s2.jsonl" }] },
+    };
+    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string, args?: unknown) => {
+      if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
+      if (cmd === "save_config") {
+        disk = JSON.parse(JSON.stringify((args as { value: unknown }).value));
+        return Promise.resolve(undefined);
+      }
+      return Promise.resolve(undefined);
+    })));
+    await tm.loadPinned();
+    expect(tabOf("s2").state).toEqual(UNSEEN);
+  });
+
+  it("★ 还没建的 tab 收到 unseen ⇒ 什么都不建", () => {
+    tm.markUnseen("nobody");
+    expect(home(tm).store.tabs.has("nobody")).toBe(false);
+  });
+});
+
+/**
+ * 〔GP1 · 第四波〕**resume 之前问记录，问的是这次 resume 要用的那个账号根**（`设计/30 §8` 第 4 条 ·
+ * `调研/第四波记录/GP1.md §4` H2）。期望的目录 == 交给起会话那一格的目录（同一次解析，两处读同一个值）。
+ */
+describe("〔GP1〕记录那一问带上这次 resume 的账号根", () => {
+  let tm: TabManager;
+  const probes = (): Record<string, unknown>[] =>
+    sessionReadCalls(vi.mocked(invoke).mock.calls, "probe_session_record");
+  const remoteAccounts = (accounts: unknown[]) => ({
+    available: true,
+    error: null,
+    meta: { enabled: true, acctsDir: "/h/.claude-accts", manifestPath: "/h/.claude-accts/accounts.json", updatedAt: null, sharedStore: null, count: accounts.length, error: null },
+    accounts,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    invalidateAccountsCache();
+    __resetLocalLaunchSnapshotForTests();
+    tm = makeTM();
+  });
+
+  it("★ 远端三支（直连 · tmux 就地 · tmux 全新）：带的是 withAccount 解析出的那个目录；基座 ⇒ 不带", async () => {
+    let accounts: unknown[] = [
+      { name: "z", email: "z@x.edu", configDir: "/h/.claude-accts/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true },
+    ];
+    let tmux: unknown[] = [];
+    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads(withAccountReads((cmd: string) => {
+      if (cmd === "list_remote_accounts") return Promise.resolve(remoteAccounts(accounts));
+      if (cmd === "list_last_accounts") return Promise.resolve({});
+      if (cmd === "list_remote_tmux") return Promise.resolve(tmux);
+      if (cmd === "probe_session_record") return Promise.resolve({ present: true, root: "/h/.claude-accts/z/projects" });
+      return Promise.resolve(undefined);
+    }))));
+    tm.ensureTab("k1", "/home/pi/proj", "/p/k1.jsonl", 0, "aya");
+    tm.archiveTab("k1");
+    await home(tm).actions.resumeTab("k1"); // 直连
+    await home(tm).actions.resumeTabTmux("k1"); // tmux 全新（没有空壳）
+    tmux = [{ name: "proj-cc", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "k1" }];
+    await home(tm).actions.resumeTabTmux("k1"); // tmux 就地（空壳还在）
+    expect(probes().map((p) => p.configDir)).toEqual([
+      "/h/.claude-accts/z",
+      "/h/.claude-accts/z",
+      "/h/.claude-accts/z",
+    ]);
+    // 同一次解析：交给起会话那一格的也是这个目录（异源：一边是记录那一问的请求体，一边是执行器的入参）。
+    expect(vi.mocked(runRemoteResume).mock.calls[0][4]).toMatchObject({ configDir: "/h/.claude-accts/z" });
+    // 基座（那台一个账号都没有）⇒ 不带，后端查它自己的家目录（与改之前逐字同一问）。
+    accounts = [];
+    invalidateAccountsCache();
+    vi.mocked(invoke).mockClear();
+    await home(tm).actions.resumeTab("k1");
+    expect(probes().map((p) => p.configDir)).toEqual([undefined]);
+  });
+
+  it("★ 本机：带的是本机起会话那一格解析出的账号目录（`localLaunchConfigDirSync`）", async () => {
+    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) => {
+      if (cmd === "probe_session_record") return Promise.resolve({ present: true, root: "/h/.claude-accts/acct-b/projects" });
+      return Promise.resolve(undefined);
+    })));
+    __setLocalLaunchSnapshotForTests(
+      {
+        origin: LOCAL_ORIGIN,
+        available: true,
+        error: null,
+        meta: null,
+        accounts: [
+          { name: "acct-b", email: null, configDir: "/h/.claude-accts/acct-b", isDefault: false, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true } as never,
+        ],
+        defaultName: "acct-b",
+        notice: null,
+      } as never,
+      {},
+    );
+    tm.ensureTab("k2", "/home/u/p", "/p/k2.jsonl", 0, LOCAL_ORIGIN);
+    tm.archiveTab("k2");
+    await home(tm).actions.resumeTab("k2");
+    expect(probes().map((p) => p.configDir)).toEqual(["/h/.claude-accts/acct-b"]);
+    // 同一个值也交给了起会话那一格（`resume_history_session` 的 `account.configDir`）。
+    const launched = vi.mocked(invoke).mock.calls.find((c) => c[0] === "resume_history_session");
+    expect(launched?.[1]).toMatchObject({ account: { configDir: "/h/.claude-accts/acct-b" } });
+  });
+});
+
 // 〔U4b · 第四波〕**接线判据**：`main.ts` 起步那几行（`list_active_sessions` 之后标本机清单报完 ·
 // 两个新事件交给 TabManager）没有 DOM 判据够得着（整个 `main.ts` 是入口脚本）⇒ 读源码数调用点，两向恰好一处。
 describe("〔U4b〕main.ts 接线", () => {
@@ -4980,6 +5183,15 @@ describe("〔U4b〕main.ts 接线", () => {
       n("onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container)"),
       n("onOriginSessionsListed: (origin) => tabs.markOriginSeen(origin)"),
     ]).toEqual([1, 1, 1]);
+  });
+  // 〔GP1 · 第四波〕「那台机器看不见了」两个窗口各接一处（主窗 ＋ 独立会话窗；入口脚本没有 DOM 判据够得着）。
+  it("★〔GP1〕session-unseen 接线：main.ts 恰一处 · entry-viewer.ts 恰一处", () => {
+    const n = (file: string, needle: string): number =>
+      readFileSync(resolve(REPO_ROOT, file), "utf8").split(needle).length - 1;
+    expect([
+      n("src/main.ts", "onSessionUnseen: (sessionId) => tabs.markUnseen(sessionId)"),
+      n("src/entry-viewer.ts", "if (s === sid) tabs.markUnseen(s);"),
+    ]).toEqual([1, 1]);
   });
 });
 
@@ -5223,5 +5435,90 @@ describe("〔CF2〕前端账本的上界", () => {
     expect(w.pendingCount).toBe(PENDING_KEEP);
     expect(w.peek(1)[0].seq, "留下的不是 seq 最高的那些").toBe(PENDING_CAP * 2 - PENDING_KEEP);
     expect(w.belowState, "出过账了却还说「到顶了」—— 往上翻不会去取").toEqual({ kind: "maybe" });
+  });
+});
+
+// ==========================================================================
+// 〔BG1 · V125〕bg 会话平铺：拖拽 / 集合 / 落位对 bg tab 与普通 tab **行为相同**
+//
+// 守的要求：`设计/99 §1` V125〔选〕「删掉树」原话 ——「后台（bg）会话不再自动挂到宿主下排成树：
+//   删 `placeInTree` 树状挂载、`dragBlockOf` 拖拽例外、`.tab-bg` 那套；bg 会话就是普通 tab、平铺」；
+//   `设计/30 §7`「自动归组 / 自动固定 —— 手动建，不要自动，纯手动」。
+//
+// 形状：**同一组用例两种 tab 各跑**（`describe.each`）。「同 cwd 的那一颗」（`sub`）一跑是普通 tab、
+//   一跑是 bg；期望是**同一份手写表**（不从实现生成）。宿主 `host` 与 `sub` 同 `(cwd, origin)` ——
+//   正是旧树认「宿主 ＋ bg 子串」的那个布景，所以每一格在树还在时 bg 那一跑都会红（起步 `25616061` 现打）。
+// ⚠ 标题不在本组里：`⚙ 任务名` 标题是 V125 没点名的一样（BG1.md §5 问 1），两跑标题本来就不同。
+// ==========================================================================
+describe.each([
+  ["普通 tab", "interactive"],
+  ["bg tab", "bg"],
+])("〔BG1〕同 cwd 的那一颗是%s ⇒ 落位 / 拖拽 / 集合与另一跑逐字相同", (_label, subKind) => {
+  let tm: TabManager;
+  const order = (): string[] => home(tm).store.orderedIds;
+  const colsOf = (): TabCollection[] => home(tm).prefs.collections;
+  /** `host` 与 `sub` 同 cwd；`other` 另一个项目。三颗按 `arriving` 的次序宣告。 */
+  const arrive = (arriving: string[]): void => {
+    for (const sid of arriving) {
+      if (sid === "host") tm.createSkeletonTab("host", "/proj/a", LOCAL_ORIGIN, "interactive", null);
+      if (sid === "sub") tm.createSkeletonTab("sub", "/proj/a", LOCAL_ORIGIN, subKind, "任务");
+      if (sid === "other") tm.createSkeletonTab("other", "/proj/z", LOCAL_ORIGIN, "interactive", null);
+    }
+  };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    tm = makeTM();
+    home(tm).prefs.collectionsLoaded = true;
+  });
+
+  it("① 到达落位 == 到达序（不挂到同 cwd 那颗后面）", () => {
+    arrive(["host", "other", "sub"]);
+    expect(order()).toEqual(["host", "other", "sub"]);
+    tm = makeTM();
+    arrive(["sub", "other", "host"]);
+    expect(order(), "先到的那颗不被后到的同 cwd 那颗拉走").toEqual(["sub", "other", "host"]);
+  });
+
+  it("② 真拖拽：拖 host 到最下面 ⇒ 只有 host 动", () => {
+    arrive(["host", "sub", "other"]);
+    (tm as unknown as { refreshTabBar: () => void }).refreshTabBar();
+    const bar = document.body.firstElementChild as HTMLElement;
+    const roots = [...bar.children].filter((e) => e.classList.contains("tab")) as HTMLElement[];
+    roots.forEach((el, i) => {
+      el.getBoundingClientRect = () =>
+        ({ top: i * 40, height: 40, bottom: i * 40 + 40, left: 0, right: 100 }) as DOMRect;
+    });
+    expect(order(), "前置：三颗按到达序").toEqual(["host", "sub", "other"]);
+    roots[0].dispatchEvent(
+      new MouseEvent("mousedown", { button: 0, clientX: 10, clientY: 0, bubbles: true }),
+    );
+    document.dispatchEvent(
+      new MouseEvent("mousemove", { buttons: 1, clientX: 10, clientY: 500, bubbles: true }),
+    );
+    document.dispatchEvent(new MouseEvent("mouseup", { clientX: 10, clientY: 500, bubbles: true }));
+    expect(order()).toEqual(["sub", "other", "host"]);
+  });
+
+  it("③ 拖 host `onto` other 成组 ⇒ 组里只有这两颗", () => {
+    arrive(["host", "sub", "other"]);
+    home(tm).dragger.applyDrop("host", { kind: "onto", sid: "other" });
+    expect(colsOf().map((c) => c.members)).toEqual([["other", "host"]]);
+    expect(order()).toEqual(["sub", "host", "other"]);
+  });
+
+  it("④ host 与 sub 同组，把 host 拖出组 ⇒ sub 留在组里", () => {
+    arrive(["host", "sub", "other"]);
+    home(tm).prefs.collections = [{ id: "g1", name: "白天", members: ["host", "sub"] }];
+    home(tm).dragger.applyDrop("host", { kind: "end" });
+    expect(colsOf()).toEqual([{ id: "g1", name: "白天", members: ["sub"] }]);
+    expect(order()).toEqual(["sub", "other", "host"]);
+  });
+
+  it("⑤ 同 sid 后到一份 interactive 宣告（升格）⇒ 位置不动", () => {
+    arrive(["host", "sub", "other"]);
+    tm.createSkeletonTab("sub", "/proj/a", LOCAL_ORIGIN, "interactive", null);
+    expect(home(tm).store.tabs.get("sub")!.kind).toBe("interactive");
+    expect(order()).toEqual(["host", "sub", "other"]);
   });
 });

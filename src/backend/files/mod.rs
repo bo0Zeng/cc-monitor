@@ -230,7 +230,8 @@ pub const CAPABILITIES: &[Capability] = &[
         impl_files: &["mod.rs", "raw.rs"],
         targets: TARGETS,
         args: &["path"],
-        fields: &["kind", "mtime_secs", "path", "readonly", "size"],
+        // 〔GP1 · 第四波〕+`mode`（unix 权限位低 12 位；非 unix 缺席）—— 文件窗口改权限那个框要显示现值（`设计/60 §7`）。
+        fields: &["kind", "mode", "mtime_secs", "path", "readonly", "size"],
         codes: &["bad_path", "unreadable"],
     },
     Capability {
@@ -585,6 +586,17 @@ fn answer_stat(args: &serde_json::Value) -> Answer {
         "readonly".to_string(),
         serde_json::json!(md.permissions().readonly()),
     );
+    // 〔GP1 · 第四波〕unix 权限位（低 12 位：rwx×3 ＋ setuid / setgid / sticky）—— 同一次 `metadata`、同样跟链接，
+    //   与本条其余几格同源。非 unix 平台**缺席**（不是 0：0 是一个真能设的权限值，报 0 等于说假话）；
+    //   那边改权限本来就回 `no_unix_mode`（`control/files_write.rs::change_mode`）。
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        out.insert(
+            "mode".to_string(),
+            serde_json::json!(md.permissions().mode() & 0o7777),
+        );
+    }
     if let Some(ms) = epoch_secs(md.modified()) {
         out.insert("mtime_secs".to_string(), serde_json::json!(ms));
     }
@@ -745,6 +757,7 @@ pub const READ_TEXT_MAX_BYTES: usize = 8 * 1024 * 1024;
 /// 读 —— 最多只多读一个字节就知道「超了」，不会把一个刚变成几个 G 的文件整个读进内存。
 /// ⚠ 它**不过会话数据围栏**：那道围栏立在写侧（「不许改坏正被 Claude 打开的那份」），
 /// 读一份会话记录进编辑框不改任何东西；存回去那一下才过围栏（写面那条会拒）。
+/// 〔FN1 · 第四波 4C · 用户 V119「文件管理器全部都可以改. 不需要任何围栏」〕写侧那道也拿掉了：存得回去。
 fn answer_read_text(args: &serde_json::Value) -> Answer {
     let path = path_arg(args)?;
     let max = args

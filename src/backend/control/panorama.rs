@@ -46,6 +46,7 @@
 //!   不在就说 `not_installed` ＋ 查过哪儿 —— **这两个码是推字节的触发条件**（monitor 那一侧的 `PUSH_ON`
 //!   与下面 `discover::find` / `negotiate` 两处映射出的码两向相等，判据读本文件）。
 
+use copy_core::copy_text;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
@@ -116,7 +117,8 @@ fn keep() -> u64 {
 ///
 /// ⚠ 只说「没装」，不许说「重装后端就有了」：重装后端**不带**这份小程序（它只推给开过远端全景的机器）。
 /// 〔RM1e〕monitor 听到 `not_installed` 会自己推一次再问（`panorama_call.rs`），推完仍缺才把这句话交到人眼前。
-const NOT_INSTALLED_HINT: &str = "这台机器上还没装代码全景组件。";
+static NOT_INSTALLED_HINT: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("bePanorama.notInstalledHint.say", &[]));
 
 /// 命令级错误：`(code, message)`。
 type CmdErr = (&'static str, String);
@@ -170,7 +172,7 @@ pub(crate) async fn answer(args: &Value) -> Result<Value, (String, String)> {
     let Some(home) = home else {
         return Err((
             "failed".to_string(),
-            "这台机器上解析不出家目录（HOME / USERPROFILE 都没有）—— 不知道把索引放哪".to_string(),
+            copy_text("bePanorama.answer.noHome", &[]),
         ));
     };
     answer_with(&fixed, &store_dir(&home), args)
@@ -184,30 +186,40 @@ pub(crate) async fn answer_with(
     store: &Path,
     args: &Value,
 ) -> Result<Value, CmdErr> {
-    let op = args
-        .get("op")
-        .and_then(Value::as_str)
-        .ok_or(("bad_args", "缺 `op`（要一个字符串）".to_string()))?;
+    let op = args.get("op").and_then(Value::as_str).ok_or((
+        "bad_args",
+        crate::common::contract::malformed("missing `op` (a string)"),
+    ))?;
     let Some((_, deadline)) = OPS.iter().find(|(n, _)| *n == op) else {
         return Err((
             "bad_args",
-            format!(
-                "不认识的全景 op `{op}`（认得的：{}）",
-                OPS.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(" · ")
-            ),
+            crate::common::contract::malformed(&format!(
+                "unknown panorama op `{op}` (known: {map})",
+                map = OPS.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")
+            )),
         ));
     };
     let repo = match args.get("repo") {
         None | Some(Value::Null) => None,
         Some(Value::String(s)) => Some(s.as_str()),
-        Some(_) => return Err(("bad_args", "`repo` 要一个字符串".to_string())),
+        Some(_) => {
+            return Err((
+                "bad_args",
+                crate::common::contract::malformed("`repo` must be a string"),
+            ))
+        }
     };
     let op_args = match args.get("args") {
         None | Some(Value::Null) => None,
         Some(v @ Value::Object(_)) => Some(v.to_string()),
-        Some(_) => return Err(("bad_args", "`args` 要一个 JSON 对象".to_string())),
+        Some(_) => {
+            return Err((
+                "bad_args",
+                crate::common::contract::malformed("`args` must be a JSON object"),
+            ))
+        }
     };
-    let bin = crate::plugin::discover::find(PLUGIN_NAME, fixed, false, NOT_INSTALLED_HINT)
+    let bin = crate::plugin::discover::find(PLUGIN_NAME, fixed, false, &NOT_INSTALLED_HINT)
         .map_err(|m| ("not_installed", m))?;
     // ② 问它会什么：要的就是这一次的 op。
     // 〔RM1f〕两次起进程都走可打断的那一形（探测也是：它卡住时同样要能被撤掉）。
@@ -219,11 +231,13 @@ pub(crate) async fn answer_with(
         Ok(d) => {
             return Err((
                 "failed",
-                format!(
-                    "`{}` 的能力探测没答上来（{}）：{}",
-                    bin.display(),
-                    describe_exit(d.code),
-                    d.diagnosis()
+                copy_text(
+                    "bePanorama.answerWith.probeFailed",
+                    &[
+                        ("bin", &(bin.display()).to_string()),
+                        ("how", &(describe_exit(d.code)).to_string()),
+                        ("detail", &(d.diagnosis()).to_string()),
+                    ],
                 ),
             ))
         }
@@ -251,19 +265,22 @@ fn not_run(bin: &Path, n: NotRun) -> CmdErr {
     match n {
         NotRun::ArgListTooLong => (
             "too_large",
-            "这次要查的文件太多，一次传不过去，少选几个再试".to_string(),
+            copy_text("bePanorama.notRun.tooManyFiles", &[]),
         ),
         NotRun::Failed(m) => {
             tracing::warn!("起不来 {}：{m}", bin.display());
-            ("failed", format!("代码全景组件没能启动：{m}"))
+            (
+                "failed",
+                copy_text("bePanorama.notRun.spawnFailed", &[("m", &m.to_string())]),
+            )
         }
     }
 }
 
 fn describe_exit(code: Option<i32>) -> String {
     match code {
-        Some(c) => format!("异常退出，码 {c}"),
-        None => "被中途终止".to_string(),
+        Some(c) => copy_text("bePanorama.describeExit.code", &[("c", &c.to_string())]),
+        None => copy_text("bePanorama.describeExit.signal", &[]),
     }
 }
 
@@ -280,17 +297,23 @@ pub(crate) fn classify(op: &str, deadline: u64, done: Done) -> Result<Value, Cmd
     if done.stdout.len() > crate::read_face::LINES_CAP_BYTES {
         return Err((
             "too_large",
-            format!(
-                "全景 `{op}` 的结果超过 {} 字节上限，没有返回（{} 字节）",
-                crate::read_face::LINES_CAP_BYTES,
-                done.stdout.len()
+            copy_text(
+                "bePanorama.classify.tooLarge",
+                &[
+                    ("op", &op.to_string()),
+                    ("size", &(done.stdout.len()).to_string()),
+                    ("cap", &(crate::read_face::LINES_CAP_BYTES).to_string()),
+                ],
             ),
         ));
     }
     if done.timed_out() {
         return Err((
             "timed_out",
-            format!("全景 `{op}` 超过 {deadline} 秒没做完，已经停掉（这一档的期限）"),
+            copy_text(
+                "bePanorama.classify.timedOut",
+                &[("op", &op.to_string()), ("deadline", &deadline.to_string())],
+            ),
         ));
     }
     let said = crate::plugin::invoke::first_line(&done.stdout);
@@ -308,7 +331,10 @@ pub(crate) fn classify(op: &str, deadline: u64, done: Done) -> Result<Value, Cmd
             let Some(v) = reply.as_ref().filter(|v| v.get("ok") == Some(&json!(true))) else {
                 return Err((
                     "failed",
-                    format!("全景 `{op}` 退出码 0，但应答不是 `{{\"ok\":true,…}}` 那一行：{said}"),
+                    copy_text(
+                        "bePanorama.classify.badReply",
+                        &[("op", op), ("said", &said)],
+                    ),
                 ));
             };
             Ok(json!({ "result": v.get("data").cloned().unwrap_or(Value::Null) }))
@@ -317,10 +343,13 @@ pub(crate) fn classify(op: &str, deadline: u64, done: Done) -> Result<Value, Cmd
         Some(PLUGIN_EXIT_FAILED) => Err(("failed", message())),
         other => Err((
             "failed",
-            format!(
-                "全景 `{op}` 没做成（{}）：{}",
-                describe_exit(other),
-                message()
+            copy_text(
+                "bePanorama.classify.failed",
+                &[
+                    ("op", &op.to_string()),
+                    ("how", &(describe_exit(other)).to_string()),
+                    ("message", &(message()).to_string()),
+                ],
             ),
         )),
     }
