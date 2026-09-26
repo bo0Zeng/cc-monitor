@@ -15,8 +15,8 @@
  * - **返回类型**：分**三桶**（Phase D 审计 Z2 订正——原来只写两桶，会把 34 个
  *   返回 `()` 的命令判成 `unknown`，那是净退化）：
  *   ① Rust 返回 `()` / `Result<(), _>` ⇒ `Promise<void>`（**34 个**）；
- *   ② 有 payload 但 TS 侧不读字段 ⇒ `unknown` **并在那一行注明**（**3 个**：
- *      `sftp_stat` · `rebuild_search_index` · `start_forward`）；
+ *   ② 有 payload 但 TS 侧不读字段 ⇒ `unknown` **并在那一行注明**（当时 **3 个**：
+ *      `sftp_stat` · 重建搜索索引那条（〔LOC1b〕随本机内存索引删了）· `start_forward`）；
  *   ③ TS 侧真消费字段 ⇒ 生成物类型（**81 个**）。
  *
  * ## 本文件今天覆盖多少
@@ -104,6 +104,7 @@ import type { ConnTestResult } from "../generated/ConnTestResult";
 import type { CcmProbeResult } from "../generated/CcmProbeResult";
 // `K-R69`：本机那条 `ccm` 入口这一格（我们那一份 · PATH 上那一份 · 判词 · 那句话）。
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
+import type { ConfigEdit } from "../generated/ConfigEdit";
 import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
 import type { DriftLedgerReport } from "../generated/DriftLedgerReport";
 import type { CcBusDeployReport } from "../generated/CcBusDeployReport";
@@ -122,8 +123,6 @@ import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
 import type { SessionLinesPage } from "../generated/SessionLinesPage";
 import type { PushResult } from "../generated/PushResult";
 import type { ResolvedHost } from "../generated/ResolvedHost";
-import type { SearchIndexStatus } from "../generated/SearchIndexStatus";
-import type { SearchResponse } from "../generated/SearchResponse";
 import type { LogFileInfo } from "../generated/LogFileInfo";
 import type { AssetsSynced } from "../generated/AssetsSynced";
 import type { McpServerEntry } from "../generated/McpServerEntry";
@@ -137,7 +136,6 @@ import type { McpSyncPreview } from "../generated/McpSyncPreview";
 import type { RestartHint } from "../generated/RestartHint";
 import type { SessionActivityPayload } from "../generated/SessionActivityPayload";
 import type { SubagentLoadResult } from "../generated/SubagentLoadResult";
-import type { TaskEntry } from "../generated/TaskEntry";
 
 /**
  * 类型化命令表。**键名必须逐字节等于 Rust 侧的命令名**，
@@ -214,8 +212,11 @@ export const commands = {
   /** 探测远端有没有装 `ccm` CLI 及其能力集。返回**线上形状**（TS 侧另有领域类型）⇒ 桶③。 */
   probe_ccm_cli: (args: { origin: string }) => invoke<CcmProbeResult>("probe_ccm_cli", args),
 
-  /** 写配置。Rust 返回 `Result<(), String>` ⇒ **桶①**。入参同样是不透明 JSON（见 `load_config`）。 */
-  save_config: (args: { value: Record<string, unknown> }) => invoke<void>("save_config", args),
+  /**
+   * 写配置：只交「改哪几条路径」（〔CFG1〕整份替换的 `save_config` 删了）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 〔散文墓碑〕
+   * 补丁的形状由生成物 `ConfigEdit` 钉（Rust `config.rs::ConfigEdit`）；值本身仍是不透明 JSON（见 `load_config`）。
+   */
+  patch_config: (args: { edits: ConfigEdit[] }) => invoke<void>("patch_config", args),
 
   /**
    * 写诊断配置。返回 `RestartHint` —— **它是个只有 unit variant 的外部标记枚举**
@@ -224,18 +225,6 @@ export const commands = {
    */
   set_diagnostics_config: (args: { cfg: DiagnosticsConfig }) =>
     invoke<RestartHint>("set_diagnostics_config", args),
-
-  /**
-   * 全文搜索历史。`afterMs`/`limit` 在 Rust 侧是 `Option<i64>`/`Option<usize>` ⇒ `number | null`。
-   * `afterMs` 是**毫秒时间戳**量纲（同 C03：2^53-1 ms ≈ 28.5 万年）。
-   */
-  search_history: (args: {
-    query: string;
-    includeTools: boolean;
-    scope: string | null;
-    afterMs: number | null;
-    limit: number | null;
-  }) => invoke<SearchResponse>("search_history", args),
 
   /**
    * devbench F03：列出接入的 skill 及其状态。
@@ -260,30 +249,9 @@ export const commands = {
    * 判定的真相源只有 `skill_host::resolve_editable` / `remote_editable_rel`。
    * `expected` = 打开时读到的那一份（CAS：盘上那份在这之后被改过 ⇒ 一个字节不写）。
    */
-  /**
-   * `K-H2a` `KS10`：从界面配一把 key。
-   *
-   * ⚠ 它和**人手编那份文件**是同一份文件的两个写者 —— 后端在**写的那一刻**才读盘，
-   * 未知键一个不吃、字段顺序按名字排、原子替换、写完立刻把文件收窄成只给本人。
-   *
-   * ⚠⚠ `K-H2c` `KH2C1`：**`configDir` 是承重的入参，别换成账号名。**
-   * 那把 key 落进 `accounts.<账号 id>` 那一格，而 `<账号 id>` 由 Rust 用**全仓唯一那份规则**
-   * （`history::apikey_account_id_of_dir`）从 `configDir` 推 —— 起会话那一侧调的是同一个函数。
-   * 前端**一个字都不许自己推那个 id**（`split('/').pop()` 那一形）：那是在长第二份规则，
-   * 漂开的那天症状是「设置里说走 apikey 端点改写、起会话时没走」，而两边看起来都没错。
-   *
-   * 〔RM1a · 第四波〕**收 `origin`**：key 落在会话跑的**那台机器**上 —— 本机进 monitor 自己那一份，
-   * 远端交那台机器的后端写（`apikey-key-set`）。先前远端账号页配的 key 落在本机，远端会话用不上。
-   */
-  // 〔第四波 ST2〕`baseUrl`：加账号表单 apikey 那一支的 Base URL（`设计/70 §4.4`）；缺席 = 用默认上游。
-  // 〔RM1a〕`origin`：key 与 Base URL 一起落在那台机器上（本机进 monitor 那一份，远端交那台的后端）。
-  write_apikey_credentials_key: (args: {
-    origin: Origin;
-    key: string;
-    configDir: string;
-    baseUrl?: string | null;
-  }) =>
-    invoke<void>("write_apikey_credentials_key", args),
+  // 〔HX2 · 第四波 4D〕墓碑：这里从前是 `write_apikey_credentials_key`〔散文墓碑〕（`K-H2a` `KS10`：从界面配一把 key）。
+  //   写 key 改走通道 `apikey-key-set`（`src/apikey-reads.ts::writeApikeyKey`），交那台机器的后端；`KH2C1` 那一条照旧成立 ——
+  //   前端交 `configDir`，账号 id 由后端按全仓唯一那份规则（`acct_core::apikey_account_id_of_dir`）推。
 
   write_skill_file: (args: {
     origin: Origin;
@@ -387,7 +355,7 @@ export const commands = {
   /**
    * 流式读会话 jsonl。Rust 返回 `Result<u32, String>`（条数）。
    *
-   * 🔴 **〔步 12·C 2026-09-20〕`stream_read_remote_session` 已退役，两条收成这一条。**
+   * 🔴 **〔步 12·C 2026-09-20〕`stream_read_remote_session`〔散文墓碑〕已退役，两条收成这一条。**〔LOC1b · 4D〕Rust 那一侧两支也合成了一条（本机也经本机后端 `history-read`）。
    *
    * 这一行原先逐字写着「**注意它与 `stream_read_session_jsonl` 的签名刻意不同**：
    * 远端这条 `origin: String` 是**必填**，本地那条**根本没有 origin**」——
@@ -421,9 +389,6 @@ export const commands = {
    */
   push_public_key: (args: { cfg: unknown; pubKeyPath: string | null }) =>
     invoke<PushResult>("push_public_key", args),
-
-  /** 重建搜索索引。返回新状态 ⇒ 生成物（桶③）。 */
-  rebuild_search_index: () => invoke<SearchIndexStatus>("rebuild_search_index"),
 
   /** 读本机 MCP server 清单（user/local/project 三档）。Rust 签名**无 `Result` 包装**。 */
   // 〔US1 · 第四波 4D〕`read_apikey_credentials_status` / `apikey_routing_for` 退役：界面经通道直接问那台后端
@@ -526,10 +491,8 @@ export const commands = {
    *  下那份旧的（用户逐字「原本的配置要手动删除」）。 */
   local_ccm_entry_status: () => invoke<LocalCcmEntry>("local_ccm_entry_status"),
 
-  /** 某会话的 TodoWrite 任务快照。`TaskEntry` C02 已生成 ⇒ **桶③**。 */
-  // 〔RM1b · 第四波〕收 `origin`：问那台机器的后端 `tasks-list`（本机逐字 `LOCAL_ORIGIN`）。
-  get_session_tasks: (args: { origin: Origin; sessionId: string }) =>
-    invoke<TaskEntry[]>("get_session_tasks", args),
+  // 〔LOC1a · 第四波 4D · C4e 批 4〕某会话的任务快照那一条退役：界面经通道直接问那台机器的后端 `tasks-list`
+  //   （后端出成品，`tasks-panel.ts::fetchSessionTasks` / `decodeTasks`）。
 
   /** 在远端起一个终端跑给定命令。Rust 返回 `Result<(), String>` ⇒ **桶①**。
    *  〔`设计/80 §8.7` 步 3 收尾，第二波 T4〕`rbindToken`：这次拉起铸的启动期令牌 ——
@@ -690,9 +653,10 @@ export const commands = {
 
   /**
    * 〔CF2 · 第四波 4B〕**按行号取一段正文** `[from, until)`（`until` 缺 ＝ 到末尾）—— 不依赖骨架索引的那条取回路。
-   * 唯一调用点：`TabStreamView.fetchBelow`（没接骨架的 tab 往上翻过了账本里最老那一条）。
+   * 调用点：`TabStreamView.fetchBelow`（没接骨架的 tab 往上翻过了账本里最老那一条）· `TabStreamView.recoverFromGap`（会话流丢格之后往后补）。
+   * 〔DL1〕`leftMs`：那一**件**事还剩多少毫秒（`设计/05 §3.3.2` 一件事一个绝对时刻；多问的那一件每问交剩下的，不重新计时）。
    */
-  read_session_lines: (args: { origin: Origin; jsonlPath: string; from: number; until?: number }) =>
+  read_session_lines: (args: { origin: Origin; jsonlPath: string; from: number; until?: number; leftMs: number }) =>
     invoke<SessionLinesPage>("read_session_lines", args),
 
   // 〔CF2 · 第四波 4B〕「接上骨架 ⇒ 重放缓冲只留尾巴」那一条（`replay_keep_tail_only`〔散文墓碑〕）退役：
@@ -726,9 +690,6 @@ export const commands = {
   /** 往远端 rc 里装别名块（〔MC1〕从前叫「装 ccm 助手」）。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
   install_remote_alias_block: (args: { cfg: unknown; profile: string }) =>
     invoke<string>("install_remote_alias_block", args),
-
-  /** 搜索索引状态。Rust 签名**无 `Result` 包装**（`-> SearchIndexStatus`）。 */
-  get_search_index_status: () => invoke<SearchIndexStatus>("get_search_index_status"),
 
   /** 当前活着的端口转发列表。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   list_forwards: () => invoke<ForwardStatus[]>("list_forwards"),

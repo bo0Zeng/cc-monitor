@@ -320,11 +320,13 @@ enum Whose {
 const FEEDERS: &[(&str, &str, Whose, &str)] = &[
     // 〔C4d · 第四波 4B〕`("history.rs", "analyze_jsonl")` 那一行摘了：本机历史清单搬进本机常驻后端（会话行由后端摘要，
     //   与远端同一个函数），monitor 不再为了列清单逐行解析本机 jsonl。
+    // 〔LOC1b · 第四波 4D〕本机远端的冷读合成一条：记账那一跳挪进 `SessionPager::page`（`history.rs`），
+    //   `stream_read_session_jsonl` 本身不再解析；远端那一支 `stream_read_remote_session`〔散文墓碑〕那一行随它删了。
     (
         "history.rs",
-        "stream_read_session_jsonl",
+        "page",
         Whose::Given,
-        "`route` 之后的本机那一支，交出去的是已分过的 `origin`",
+        "`SessionPager` 构造时收的 `origin`（这一份从哪台读来的：本机 / 那台远端）",
     ),
     (
         "lib.rs",
@@ -346,23 +348,14 @@ const FEEDERS: &[(&str, &str, Whose, &str)] = &[
         Whose::Given,
         "参数 `origin`，原样交给 `record`",
     ),
+    // 〔LOC1b · 第四波 4D〕`("search.rs", "build_one", Local)` 那一行摘了：本机搜索改问本机后端，monitor 内存索引删了。
+    // 〔LOC1b · 第四波 4D〕`("session_map.rs", "is_interactive", Local)` 换成下面这一行：本机判活改由本机后端的帧来之后，
+    //   「未登记的会话 kind」那一笔在本机那条流上记（monitor 不再自己扫 pidfile）。
     (
-        "remote_history.rs",
-        "stream_read_remote_session",
-        Whose::Given,
-        "那台的配置名（`cfg.origin_label()`）",
-    ),
-    (
-        "search.rs",
-        "build_one",
+        "ssh_source.rs",
+        "book_unknown_local_kind",
         Whose::Local,
-        "本机搜索索引：只读本机 jsonl",
-    ),
-    (
-        "session_map.rs",
-        "is_interactive",
-        Whose::Local,
-        "pidfile 只在本机 `~/.claude/sessions` 扫",
+        "本机那条流的 `session_added.session_kind`：只看本机（记在本机名下）",
     ),
     (
         "session_skeleton.rs",

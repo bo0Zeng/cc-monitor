@@ -365,13 +365,19 @@ fn what_can_be_done_matches_a_hand_written_table() {
         (
             "一个普通文件",
             vec![&file],
-            vec![Edit, Copy, Download, Rename, Chmod, Delete],
+            // 〔W5-FILES〕算大小（`files-size`，`设计/60 §6.2`）一格：名字寻址得到就给。
+            vec![Edit, Copy, Download, Size, Rename, Chmod, Delete],
         ),
-        ("一个目录", vec![&dir], vec![Open, Rename, Chmod, Delete]),
+        // 〔W5-FILES〕目录能复制了（后端 `recursive: true`，`设计/60 §6.2`）⇒ 多一格「复制」。
+        (
+            "一个目录",
+            vec![&dir],
+            vec![Open, Copy, Size, Rename, Chmod, Delete],
+        ),
         (
             "一个超编辑上限的文件",
             vec![&huge],
-            vec![Copy, Download, Rename, Chmod, Delete],
+            vec![Copy, Download, Size, Rename, Chmod, Delete],
         ),
         ("一个有损名文件（没有原始字节）", vec![&lossy], vec![]),
         (
@@ -382,15 +388,20 @@ fn what_can_be_done_matches_a_hand_written_table() {
         (
             "一个有损名文件（带原始字节）",
             vec![&lossy_raw],
-            vec![Rename, Chmod, Delete],
+            // 〔W5-FILES · 有损名全寻址（`设计/60 §6.2`）〕带着字节 ⇒ 编辑 / 复制 / 算大小也放开（线上走字节）；下载照旧不给（SFTP 寻址不到，§三 Q4）。
+            vec![Edit, Copy, Size, Rename, Chmod, Delete],
         ),
-        ("两项全可写", vec![&file, &dir], vec![Chmod, Delete]),
-        ("三项全可写", vec![&file, &dir, &huge], vec![Chmod, Delete]),
+        ("两项全可写", vec![&file, &dir], vec![Size, Chmod, Delete]),
+        (
+            "三项全可写",
+            vec![&file, &dir, &huge],
+            vec![Size, Chmod, Delete],
+        ),
         ("两项混着有损名", vec![&file, &lossy], vec![]),
         (
             "两项混着带字节的有损名",
             vec![&file, &lossy_raw],
-            vec![Chmod, Delete],
+            vec![Size, Chmod, Delete],
         ),
     ];
     for (what, picked, want) in cases {

@@ -127,10 +127,8 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           （`local_stdio_consumer`）。〔RL1〕先前那个 `stdio=None` 的薄壳随本机中转并进常驻后端删了，spawn 只剩这一个入口
           ★ 三条策略为什么是这三格：🔴 `设计/00 §1.5.2` 点名的那一处：它先前**同时**犯三个错（无 `CREATE_NO_WINDOW` · 无 job 绑定 · `stderr(Stdio::null())`），三格各对应一条策略。本层收注入参数，一个平台原语都不认识。",
      "Hidden · JobKillOnClose · ToLog（宿主注入：local_backend_supervised）"),
-    ("local_query.rs", "run_query", "backend 二进制 + 只读子命令",
-     "本机只读查询：`bin` 同上来自候选表，`args` 是本模块构造的固定子命令
-          ★ 三条策略为什么是这三格：与上一行只差最后一格：查询的 stderr **是返回值**（`QueryOutcome` 按它分类），接进滚动日志等于把调用方本来就拿得到的话再抄一遍。`Hidden` 那格先前是裸 `.output()`。",
-     "Hidden · JobKillOnClose · Captured（宿主注入：local_backend_one_shot_query）"),
+    // 〔LOC1a · 第四波 4D〕`local_query` 模块的 `run_query`〔散文墓碑〕那一行删了：本机那几问改走 `<local>` 长连接，
+    //   monitor 不再起一次性本机后端（`设计/05 §14.6`）。
     ("ssh_source.rs", "resolve_ssh_host", "`ssh -G <host>`",
      "解析 ssh_config 的别名 —— 只读一次配置，不建连接
           ★ 三条策略为什么是这三格：先前是裸 `.output()`：Windows 上 `ssh.exe` 是控制台子系统，每解析一次别名闪一个黑框。`Captured`：stderr 进「退出非 0」那句话。",
@@ -191,8 +189,9 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           `Inherit` 与 C2 那一版的拨号代理同形（SR1a 起它不再起进程）：它 stderr 上只有「窗口为什么没立起来」那一句，\
           接管它要再起一条泵。⚠ 代价如实记：装机那份 GUI app 没有 stderr 控制台 ⇒ 那句话今天会丢。",
      "Hidden · Detached · Inherit"),
-    ("local_backend_host.rs", "signal_term", "`kill -TERM <pid>`",
+    ("local_backend_host.rs", "send_signal", "`kill -TERM|-KILL <pid>`",
      "停掉一个**不是本 monitor 起的**常驻实例（上一次 monitor 脱离起的那个）。\
+          〔HX1 · D-a〕先 `-TERM` 请它收尾，等满还在才 `-KILL`（强杀前再核一次身份）；本 monitor 自己起的那个也用 `-TERM` 请它收尾（强杀走 `Child::kill`）。\
           必须起进程的理由是：monitor 今天**没有 `libc` 这条直接依赖**（它只在依赖树里），\
           为一次「停」按钮加一条直接依赖是更大的代价。\
           ⚠ 参数是**我们自己算出来的 pid**、零用户输入；而且杀之前先过 `kill_adopted` 的身份核对\
@@ -370,10 +369,12 @@ fn the_three_policies_each_site_declares_match_the_code() {
              今天那三处是：`build.rs` 两处（构建期）＋ 出口自己那一处。\
              多一处 = 有人给自己开了豁免；少一处 = 构建期那两条被并进来了（那是好事，改这个数）。"
     );
+    // 〔LOC1a · 第四波 4D〕地板 14 → 13：本机一次性查询那一个落点（`local_query` 模块的 `run_query`〔散文墓碑〕）随本机那几问
+    //   改走 `<local>` 长连接删了 ⇒ 人群恰好少一个（15 → 13 的另一个见失败读数，人群按现打为准）。
     assert!(
-        checked >= 14,
+        checked >= 13,
         "只对拍到 {checked} 个带策略的落点 —— 09-18 现打 14 个，\
-         〔第十三刀 09-23〕加了文件管理窗口那个独立进程之后 15 个。本条此刻在空转"
+         〔第十三刀 09-23〕加了文件管理窗口那个独立进程之后 15 个，〔LOC1a 09-25〕删一次性本机查询之后 13 个。本条此刻在空转"
     );
 }
 

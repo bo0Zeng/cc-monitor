@@ -225,9 +225,8 @@ fn inward_edges(prod: &str) -> BTreeSet<String> {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Kind {
     /// `platform/` —— 唯一允许平台原语的层。
-    /// ⚠ **今天零条边**（2026-09-24 现打）：这个模块直接用 `std` 与 `notify`，
-    /// 没走 `platform/`。零本身是读数，不是空类别 —— 允许它、今天不用它。
-    #[allow(dead_code)]
+    /// 〔W5-FILES · 第五波〕**第一条边**：设备号（`platform::paths::device_of`，`设计/60 §3.7`「设备号要走 `platform/`」）——
+    /// 算目录大小与建索引都要判「这一层是不是挂着另一个文件系统」。此前 2026-09-24 现打是零条。
     Platform,
     /// `common/` —— 两边都要、不含平台原语的纯工具。⚠ 今天同样零条边。
     #[allow(dead_code)]
@@ -253,6 +252,11 @@ enum Kind {
     /// （[`the_only_edge_outside_the_three_allowed_kinds_is_the_target_axis`]）；传输台**只经** `dial/sftp.rs`
     /// 够到拨号（手里不拿 `DialRequest`，拿的是那一份包出来的 `Dial`）。
     Transport,
+    /// 🔴 〔HX1 · 4D · 主会话裁〕**用户那三样之外的第三类**：后端建自家目录的那一个函数（`own_dir::ensure_private_dir`）。
+    ///
+    /// 暂存区（`~/.cc-monitor/staging`）是后端自己的目录、不是用户的；主会话裁「建自家目录收成一个小函数（0700、已存在不动）」
+    /// ⇒ 写面建暂存区那两层时调它，而不是自己按 umask 建。只许这一个符号，条数钉死 1。
+    OwnHome,
 }
 
 /// ★ **登记表**：模块生产段够到外面的符号，**逐条**。
@@ -271,6 +275,14 @@ const OUTWARD: &[(&str, Kind)] = &[
         "agents::claudecode::paths::session_file_for_delete",
         Kind::Fence,
     ),
+    // ── platform ──────────────────────────────────────────────────────
+    // 〔W5-FILES〕设备号（`设计/60 §3.7`）。
+    ("platform::paths::device_of", Kind::Platform),
+    // ── 〔HX1〕后端建自家目录（暂存区那两层）──────────────────────────
+    ("own_dir::ensure_private_dir", Kind::OwnHome),
+    // ── 平台 ────────────────────────────────────────────────────────
+    // 〔HX1 · 主会话裁拍板项 2〕覆盖写「属主不是后端这个用户 ⇒ 退回就地写」要问这台进程的 uid。
+    ("platform::paths::current_uid", Kind::Platform),
     // ── 汇总层的 target 轴（用户那三样之外，条数钉死）─────────────────
     ("TARGETS", Kind::LedgerAxis),
     ("Target", Kind::LedgerAxis),
@@ -415,6 +427,7 @@ fn the_only_edge_outside_the_three_allowed_kinds_is_the_target_axis() {
             Kind::Fence => THE_FENCES.contains(path),
             Kind::LedgerAxis => *path == "Target" || *path == "TARGETS",
             Kind::Transport => has_prefix(path, "dial::sftp::") || has_prefix(path, "wire::"),
+            Kind::OwnHome => *path == "own_dir::ensure_private_dir",
         };
         assert!(
             ok,
@@ -436,6 +449,12 @@ fn the_only_edge_outside_the_three_allowed_kinds_is_the_target_axis() {
         .iter()
         .filter(|(_, k)| *k == Kind::Transport)
         .count();
+    // 〔HX1〕建自家目录那一类：**相等**，恰好那一个函数。
+    let own_home = OUTWARD.iter().filter(|(_, k)| *k == Kind::OwnHome).count();
+    assert_eq!(
+        own_home, 1,
+        "建自家目录那一类的外向边从 1 条变成了 {own_home} 条"
+    );
     assert_eq!(
         transport, 4,
         "传输台的外向边从 4 条变成了 {transport} 条 —— 它只该要一条 sftp 会话（经 `dial/sftp.rs` 的 \

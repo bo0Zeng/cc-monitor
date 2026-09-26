@@ -28,7 +28,17 @@ vi.mock("../../src/remote-config", () => ({ readRemoteConfig: () => readRemoteCo
 
 import { readFileSync } from "node:fs";
 // 〔US1〕API key 那两问改走通道（`chan_call`，op = `apikey-read` / `apikey-routing`）：判据按 op 分派、回成品字节。
-import { chanArgsJson, chanReply, isChanCall } from "../test-support/chan-fake";
+import { chanArgsJson, chanReply, isChanCall, type ChanCallArgs } from "../test-support/chan-fake";
+
+// 〔HX2 · 第四波 4D〕写 key 改走通道（`chan_call`，op = `apikey-key-set`）：判据把那一发译回「交给哪台 ＋ 交了什么」
+//   （`{origin, configDir, key, baseUrl?}`），断言照旧是那个形状；先前是 Tauri 命令 `write_apikey_credentials_key`〔散文墓碑〕的实参。
+const isKeySet = (c: unknown, a: unknown): boolean => isChanCall(c as string, a, "apikey-key-set");
+const keySetArgs = (a: unknown): Record<string, unknown> => {
+  const x = a as ChanCallArgs;
+  return { origin: x.origin, ...(chanArgsJson(x) as Record<string, unknown>) };
+};
+/** 那台后端写完回的成品（形状照 `apikey-key-set`：`account · path · masked · baseUrl`）。 */
+const KEY_SET_REPLY = { account: "x", path: "/h/x.json", masked: "sk-****", baseUrl: null };
 import {
   AccountsSection,
   renderApikeyEditor,
@@ -780,19 +790,24 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     expect(
       // 〔ST2〕参数里可以多一格 baseUrl（表单那一路）；〔RM1a〕打头的是 origin（按这一页那台机器），
       // 接着照旧是 key 与它自己的 configDir。
-      /write_apikey_credentials_key\(\{\s*origin:\s*this\.machineOrigin\(\),\s*key,\s*configDir\b/.test(code),
+      // 〔HX2 · 4D〕今天那一处是经通道的发送口：`writeApikeyKey(这台, configDir, key, baseUrl)`。
+      /writeApikeyKey\(this\.machineOrigin\(\),\s*configDir,\s*key\b/.test(code),
       "那条写命令没把 configDir 一起交出去 —— 后端就只能落到顶层那一格",
     ).toBe(true);
   });
 
-  it("KS7 机检：那把 key 在前端**只流向一条命令**，绝不进 `save_config`", () => {
+  // 〔CFG1〕配置写口从 `save_config`（整份）换成 `patch_config`（按键补丁）〔散文墓碑〕—— 名字跟着换，否则这一格对一个已不存在的命令名恒绿。
+  it("KS7 机检：那把 key 在前端**只流向一条命令**，绝不进配置写口 `patch_config`", () => {
     const code = src();
     // ① 前端拿到的明文只出现在一处出口。
     const calls = [...code.matchAll(/commands\.(\w+)\(/g)].map((m) => m[1]);
-    expect(calls, "一条命令调用都没扫到 —— 抽取器坏了").toContain("write_apikey_credentials_key");
+    expect(calls.length, "一条命令调用都没扫到 —— 抽取器坏了").toBeGreaterThan(0);
+    // 〔HX2 · 4D〕那一处出口今天是经通道的发送口（`writeApikeyKey`），恰好一处；Tauri 那条写命令不在了。
+    expect([...code.matchAll(/\bwriteApikeyKey\(/g)].length, "key 的出口不是恰好一处").toBe(1);
+    expect(calls, "Tauri 那条写 key 的命令回来了").not.toContain("write_apikey_" + "credentials_key");
     expect(
-      calls.filter((c) => c === "save_config"),
-      "账号这一组里出现了 `save_config` —— key 有可能被塞进前端「读—改—写」整份的那份配置",
+      calls.filter((c) => c === "patch_config"),
+      "账号这一组里出现了 `patch_config` —— key 有可能被塞进前端的那份配置（config.json）",
     ).toEqual([]);
     // ② 那个字段名不许出现在本文件里（它是**后端那份文件**的 schema，不是前端配置的）。
     expect(
@@ -1620,6 +1635,7 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
       if (isChanCall(cmd as string, args, "apikey-read")) {
         return Promise.resolve(chanReply({ configured: false, masked: "", path: "/h/x.json", notice: null, problem: null }));
       }
+      if (isKeySet(cmd, args)) return Promise.resolve(chanReply(KEY_SET_REPLY));
       return Promise.resolve(undefined);
     });
     return calls;
@@ -1657,7 +1673,7 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
     const want = buildAcctIsoCmd({ kind: "add-apply", name: "b" });
     expect((launches[0][1] as { remoteCmd: string }).remoteCmd).toBe(want.ok ? want.cmd : "∅");
     // 号还没出现 ⇒ 一个字节都不写，但屏幕上说得出在等谁。
-    expect(calls.some(([c]) => c === "write_apikey_credentials_key")).toBe(false);
+    expect(calls.some(([c, a]) => isKeySet(c, a))).toBe(false);
     expect(el.querySelector(".accounts-new-pending")?.textContent).toContain("等 b 出现");
     expect(el.textContent, "key 的明文上了屏").not.toContain("sk-ant-FOR-B");
 
@@ -1671,9 +1687,9 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
     el.querySelector<HTMLButtonElement>("button.accounts-refresh")!.click();
     for (let i = 0; i < 6; i++) await tick();
 
-    const writes = calls.filter(([c]) => c === "write_apikey_credentials_key");
+    const writes = calls.filter(([c, a]) => isKeySet(c, a));
     // 〔RM1a〕key 落在**建号的那台机器**上：这一页站在 aya ⇒ origin 就是 aya（先前不收 origin，落本机）。
-    expect(writes.map(([, a]) => a)).toEqual([{ origin: "aya", key: "sk-ant-FOR-B", configDir: B_DIR }]);
+    expect(writes.map(([, a]) => keySetArgs(a))).toEqual([{ origin: "aya", key: "sk-ant-FOR-B", configDir: B_DIR }]);
     expect(el.querySelector(".accounts-new-pending"), "写完了还挂着「等」那一行").toBeNull();
     expect(el.querySelector("select")).toBeNull();
   });
@@ -1688,8 +1704,8 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
     );
     el.querySelector<HTMLButtonElement>("button.accounts-refresh")!.click();
     for (let i = 0; i < 6; i++) await tick();
-    const writes = calls.filter(([c]) => c === "write_apikey_credentials_key");
-    expect(writes.map(([, a]) => a)).toEqual([
+    const writes = calls.filter(([c, a]) => isKeySet(c, a));
+    expect(writes.map(([, a]) => keySetArgs(a))).toEqual([
       // 〔RM1a 合并〕key 与 Base URL 一起落在建号的那台机器上（这一页站在 aya）。
       { origin: "aya", key: "sk-ant-FOR-B", configDir: B_DIR, baseUrl: "https://api.example.com/v1" },
     ]);
@@ -1708,7 +1724,7 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
     );
     el.querySelector<HTMLButtonElement>("button.accounts-refresh")!.click();
     for (let i = 0; i < 6; i++) await tick();
-    expect(calls.some(([c]) => c === "write_apikey_credentials_key")).toBe(false);
+    expect(calls.some(([c, a]) => isKeySet(c, a))).toBe(false);
   });
 
   it("〔RM1a〕等着的那把 key 只认**建它的那台机器**：换到本机页、同名的号出现也不写；回到那台才写", async () => {
@@ -1725,7 +1741,7 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
     for (let i = 0; i < 8; i++) await tick();
     expect(fetchLocalAccountsMock, "没真切到本机页 —— 下面那条「没写」是空真").toHaveBeenCalled();
     expect(
-      calls.some(([c]) => c === "write_apikey_credentials_key"),
+      calls.some(([c, a]) => isKeySet(c, a)),
       "在 aya 上建的号，key 被写到了本机",
     ).toBe(false);
     // 回到 aya：号出现了 ⇒ 写给 aya。
@@ -1734,8 +1750,8 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
     );
     setCurrentMachine("aya");
     for (let i = 0; i < 8; i++) await tick();
-    const writes = calls.filter(([c]) => c === "write_apikey_credentials_key");
-    expect(writes.map(([, a]) => a)).toEqual([{ origin: "aya", key: "sk-ant-FOR-B", configDir: B_DIR }]);
+    const writes = calls.filter(([c, a]) => isKeySet(c, a));
+    expect(writes.map(([, a]) => keySetArgs(a))).toEqual([{ origin: "aya", key: "sk-ant-FOR-B", configDir: B_DIR }]);
   });
 
   it("「放弃」把等着的那把 key 丢掉：之后号出现也不写", async () => {
@@ -1751,7 +1767,7 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
     );
     el.querySelector<HTMLButtonElement>("button.accounts-refresh")!.click();
     for (let i = 0; i < 6; i++) await tick();
-    expect(calls.some(([c]) => c === "write_apikey_credentials_key")).toBe(false);
+    expect(calls.some(([c, a]) => isKeySet(c, a))).toBe(false);
   });
 });
 
@@ -1776,6 +1792,7 @@ describe("S3：本机页新建账号", () => {
         if (launch === "no-window") return Promise.reject(NO_WINDOW);
         if (launch === "fail") return Promise.reject(new Error("没有终端"));
       }
+      if (isKeySet(cmd, args)) return Promise.resolve(chanReply(KEY_SET_REPLY));
       return Promise.resolve(undefined);
     });
     return calls;
@@ -1851,13 +1868,13 @@ describe("S3：本机页新建账号", () => {
     await submit(el, "b", "sk-ant-FOR-B");
     const want = buildAcctIsoCmd({ kind: "add-apply", name: "b" });
     expect(writeText).toHaveBeenCalledWith(want.ok ? want.cmd : "∅");
-    expect(calls.some(([c]) => c === "write_apikey_credentials_key")).toBe(false);
+    expect(calls.some(([c, a]) => isKeySet(c, a))).toBe(false);
     expect(el.querySelector(".accounts-new-pending")?.textContent).toContain("等 b 出现");
     expect(el.textContent, "key 的明文上了屏").not.toContain("sk-ant-FOR-B");
     await refresh(el, [acct({ name: "z" }), acct({ name: "b", configDir: B_DIR })]);
-    const writes = calls.filter(([c]) => c === "write_apikey_credentials_key");
-    // 〔RM1a〕本机页 ⇒ origin 是后端那个本机串（本机那一份仍只由 monitor 写）。
-    expect(writes.map(([, a]) => a)).toEqual([
+    const writes = calls.filter(([c, a]) => isKeySet(c, a));
+    // 〔RM1a〕本机页 ⇒ origin 是后端那个本机串（〔HX2〕本机那一份由本机常驻后端写，经 `<local>` 那条长连接）。
+    expect(writes.map(([, a]) => keySetArgs(a))).toEqual([
       { origin: LOCAL_ORIGIN, key: "sk-ant-FOR-B", configDir: B_DIR },
     ]);
     expect(el.querySelector(".accounts-new-pending")).toBeNull();
@@ -1870,7 +1887,7 @@ describe("S3：本机页新建账号", () => {
     expect(writeText).toHaveBeenCalled();
     expect(el.querySelector(".accounts-new-pending")).toBeNull();
     await refresh(el, [acct({ name: "z" }), acct({ name: "b", configDir: B_DIR })]);
-    expect(calls.some(([c]) => c === "write_apikey_credentials_key")).toBe(false);
+    expect(calls.some(([c, a]) => isKeySet(c, a))).toBe(false);
   });
 
   it("★ 两种出错的提示分得开：既定设计是 info、真失败是 error，且标题不同", async () => {

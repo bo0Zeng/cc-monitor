@@ -141,7 +141,10 @@ fn the_markers_are_shared_exactly_where_they_should_be() {
         }
     }
     // ③ 标记确实是那几个常量本身（指过去，不是抄一份长得一样的）。
-    assert_eq!(remote.begin_marker, crate::sftp::CCM_PROFILE_BEGIN);
+    assert_eq!(
+        remote.begin_marker,
+        crate::profile_installer::CCM_PROFILE_BEGIN
+    );
     assert_eq!(windows.begin_marker, crate::profile_installer::BEGIN_MARKER);
 }
 
@@ -248,8 +251,11 @@ fn a_shape_that_declares_no_uninstall_really_has_none() {
     }
     // ② 反向自检：扫描器在真树上认得出一个真的卸载实现（零命中 ⇒ 下面全是空真）。
     assert!(
-        crate::structural_scan::fn_names_starting_with(file_of("sftp.rs"), &["uninstall"])
-            .contains(&"uninstall_remote_alias_block".to_string()),
+        crate::structural_scan::fn_names_starting_with(
+            file_of("profile_installer.rs"),
+            &["uninstall"]
+        )
+        .contains(&"uninstall_remote_alias_block".to_string()),
         "扫描器在真树上零命中 —— 本条此刻无效，先查剥法别改断言"
     );
 
@@ -308,154 +314,9 @@ fn a_shape_that_declares_no_uninstall_really_has_none() {
 // 〔AL1 · 2026-09-24〕`设计/71 §12.5`：**规则只有一份** —— 拼接与落盘序列的判据
 // ═══════════════════════════════════════════════════════════════════════
 
-/// 内存里的落点：数写了几次、能按需让某一步失败 / 让读回来的东西不对。
-struct MemStore {
-    file: std::cell::RefCell<Option<String>>,
-    backups: std::cell::RefCell<Vec<String>>,
-    replaces: std::cell::Cell<usize>,
-    removes: std::cell::Cell<usize>,
-    /// 第几次 `put_atomic` 失败（从 1 数；0 = 不失败）。
-    fail_replace_at: usize,
-    /// 第一次 `put_atomic` 写进去的东西被换成这一份（模拟传输损坏）。
-    corrupt_first_write: Option<String>,
-    fail_read: bool,
-}
-
-impl MemStore {
-    fn with(file: Option<&str>) -> Self {
-        MemStore {
-            file: std::cell::RefCell::new(file.map(str::to_string)),
-            backups: Default::default(),
-            replaces: Default::default(),
-            removes: Default::default(),
-            fail_replace_at: 0,
-            corrupt_first_write: None,
-            fail_read: false,
-        }
-    }
-}
-
-impl Store for MemStore {
-    fn label(&self) -> String {
-        "夹具文件".into()
-    }
-    async fn read(&self) -> Result<Option<String>, String> {
-        if self.fail_read {
-            return Err("读不出来".into());
-        }
-        Ok(self.file.borrow().clone())
-    }
-    async fn save_backup(&self, original: &str) -> Result<String, String> {
-        self.backups.borrow_mut().push(original.to_string());
-        Ok(format!("夹具备份{}", self.backups.borrow().len()))
-    }
-    async fn put_atomic(&self, content: &str) -> Result<(), String> {
-        let n = self.replaces.get() + 1;
-        self.replaces.set(n);
-        if n == self.fail_replace_at {
-            return Err("盘满了".into());
-        }
-        let put = match (&self.corrupt_first_write, n) {
-            (Some(c), 1) => c.clone(),
-            _ => content.to_string(),
-        };
-        *self.file.borrow_mut() = Some(put);
-        Ok(())
-    }
-    async fn delete_created(&self) -> Result<(), String> {
-        self.removes.set(self.removes.get() + 1);
-        *self.file.borrow_mut() = None;
-        Ok(())
-    }
-}
-
-fn run(store: &MemStore, keep_backup: bool, next: &str) -> Result<Applied, String> {
-    let next = next.to_string();
-    futures::executor::block_on(apply(store, keep_backup, |_| Ok(Some(next))))
-}
-
-/// 算出来与盘上逐字相同 ⇒ **一次写都没有、一份备份都没有**。
-#[test]
-fn nothing_is_written_when_the_plan_changes_nothing() {
-    let s = MemStore::with(Some("a\n"));
-    assert_eq!(run(&s, true, "a\n").unwrap(), Applied::Unchanged);
-    assert_eq!((s.replaces.get(), s.backups.borrow().len()), (0, 0));
-    // 计划说「没事可做」也一样。
-    let s = MemStore::with(Some("a\n"));
-    let r = futures::executor::block_on(apply(&s, true, |_| Ok(None))).unwrap();
-    assert_eq!(r, Applied::Unchanged);
-    assert_eq!(s.replaces.get(), 0);
-}
-
-/// 备份只给**用户的、非空的**文件：我们自己的文件（`keep_backup = false`）、空文件、新文件都不留。
-#[test]
-fn a_backup_is_kept_only_for_a_nonempty_user_file() {
-    let cases: [(Option<&str>, bool, usize); 4] = [
-        (Some("user\n"), true, 1),
-        (Some("user\n"), false, 0),
-        (Some(""), true, 0),
-        (None, true, 0),
-    ];
-    for (file, keep, want) in cases {
-        let s = MemStore::with(file);
-        let r = run(&s, keep, "new\n").unwrap();
-        assert_eq!(s.backups.borrow().len(), want, "{file:?} keep={keep}");
-        assert_eq!(
-            r,
-            Applied::Written {
-                backup: (want == 1).then(|| "夹具备份1".to_string()),
-                created: file.is_none(),
-            }
-        );
-    }
-}
-
-/// 🔴 读回来不对 ⇒ 回滚：原来有 ⇒ 写回原文；原来没有 ⇒ **删掉刚建的那份**
-/// （后者是远端那一侧 Phase G 审阅时登记下、一直没收的那条未收项）。
-#[test]
-fn a_write_that_reads_back_wrong_is_undone() {
-    let mut s = MemStore::with(Some("user\n"));
-    s.corrupt_first_write = Some("usXr\n".into());
-    let e = run(&s, true, "user\nblock\n").unwrap_err();
-    assert_eq!(s.file.borrow().as_deref(), Some("user\n"), "没回滚成原文");
-    assert!(e.contains("原文件已恢复"), "{e}");
-
-    let mut s = MemStore::with(None);
-    s.corrupt_first_write = Some("坏\n".into());
-    let e = run(&s, true, "block\n").unwrap_err();
-    assert_eq!(s.file.borrow().as_deref(), None, "刚建的那份没删");
-    assert_eq!(s.removes.get(), 1);
-    assert!(e.contains("刚建出来的那份已删掉"), "{e}");
-}
-
-/// 措辞只说**真发生了的事**：恢复也失败时要说「恢复也失败了」并给出备份在哪，不许说「已恢复」。
-#[test]
-fn the_undo_note_says_only_what_really_happened() {
-    // 写失败 ⇒ 回滚那一次 put_atomic 也失败（第 2 次）。
-    let mut s = MemStore::with(Some("user\n"));
-    s.fail_replace_at = 1;
-    let e = run(&s, true, "new\n").unwrap_err();
-    assert!(e.contains("盘满了") && e.contains("原文件已恢复"), "{e}");
-
-    let mut s = MemStore::with(Some("user\n"));
-    s.corrupt_first_write = Some("x\n".into());
-    s.fail_replace_at = 2;
-    let e = run(&s, true, "new\n").unwrap_err();
-    assert!(!e.contains("已恢复"), "恢复失败了却说已恢复：{e}");
-    assert!(
-        e.contains("恢复原文件也失败了") && e.contains("夹具备份1"),
-        "{e}"
-    );
-}
-
-/// 读不出来 ⇒ `Err`，**一个字节都不写**（把读不出来当空文件就是跳过备份 ＋ 整份覆盖）。
-#[test]
-fn an_unreadable_file_is_never_written() {
-    let mut s = MemStore::with(Some("user\n"));
-    s.fail_read = true;
-    assert!(run(&s, true, "new\n").is_err());
-    assert_eq!((s.replaces.get(), s.backups.borrow().len()), (0, 0));
-}
+// 〔W5-ALIAS · 第五波先行〕这里原来是落盘序列 `apply`〔散文墓碑〕的五条判据（相同不写 · 备份只给非空用户文件 ·
+//   读回不对就撤 · 撤的措辞只说真发生的事 · 读不出就不写）与它的内存落点。那一个序列删了（零调用方：用户文件经后端
+//   `files-put` 写，序列与这几条性质住后端 `control/files_write.rs::put_text` 与它的判据；远端 `ccm` 入口改走 `sftp::upload_verified`）。
 
 /// 两种排版都幂等；POSIX 块外一个字节都不动，PowerShell 保住 CRLF。
 #[test]
@@ -486,12 +347,15 @@ fn splicing_is_idempotent_and_keeps_every_user_line() {
     }
 }
 
-/// 🔴 **规则只有一个住址**：三家（本机别名文件 · 本机 rc/profile · 远端 rc）的生产段里，
-/// 「配对 ＋ 读回比对」的原语**零命中**，全部经 `fenced_block`；正控是 `fenced_block` 自己
-/// 恰好一处 `verify_readback(` 调用。
+/// 🔴 **规则只有一个住址**：两家（别名文件 `account_aliases.rs` · 别名块 `profile_installer.rs`，〔W5-ALIAS〕远端 rc 那一份
+/// 也搬进了后者）的生产段里，「配对 ＋ 读回比对」的原语**零命中**。
+/// 〔W5-ALIAS · 第五波先行〕正控换了：从前是本模块 `apply`〔散文墓碑〕里恰好一处 `verify_readback(`；那个序列删了
+/// （零调用方），「备份 · 原子替换 · 回读 · 回滚」今天只住后端 `control/files_write.rs::put_text` —— 正控钉它在、且恰好一处定义；
+/// 本模块生产段里**没有**任何异步落盘序列（`async fn` 零处）。别名块「写口只有一个」那条住
+/// `profile_installer_tests.rs::the_alias_block_is_written_through_exactly_one_door`。
 ///
 /// 死值验：往 `account_aliases.rs` 的写别名文件那一跳里放回一行
-/// `crate::verified_write::verify_and_rollback(` ⇒ 本条红在第一个断言。
+/// `verify_and_rollback(`（一个回滚写入器的调用形）⇒ 本条红在第一个断言。
 /// 〔TL1 · 4C〕原句点的是代装 rc 那一行的那一跳（`ensure_rc_source_line`〔散文墓碑〕），那一跳退役了。
 #[test]
 fn the_write_rule_has_exactly_one_home() {
@@ -517,22 +381,20 @@ fn the_write_rule_has_exactly_one_home() {
             }
         }
     }
-    // `sftp.rs` 另有两条**部署**路（后端二进制 / cc-acct-iso）走 `verify_readback`（〔SR1b〕读回比对的判定），
-    // 那是按字节比的另一件事、不在本条人群里 ⇒ 只扫别名 / rc 那一段。
-    let sftp = read("sftp.rs");
-    let from = guard_core::find_pinned(&sftp, "pub(crate) const CCM_PROFILE_BEGIN")
-        .expect("远端 rc 那一段的起点锚不住");
-    for n in needles {
-        if sftp[from..].contains(n) {
-            hits.push(format!("sftp.rs（rc 那一段）: {n}"));
-        }
-    }
     assert!(hits.is_empty(), "规则长出了第二个住址：{hits:?}");
-    // 正控：人群不是空的 —— 规则真在 `fenced_block` 里，而且恰好一处。
+    // 本模块只剩纯规划：一个异步落盘序列都不许长回来。
     let home = read("fenced_block.rs");
-    guard_core::find_pinned(
-        &home,
-        "crate::verified_write::verify_readback(&next, &back)",
-    )
-    .expect("序列里那一处读回比对不见了（或长成了两处）");
+    assert!(
+        !guard_core::contains_word(&home, "async"),
+        "`fenced_block.rs` 生产段里又有了异步函数 —— 落盘序列长回 monitor 了（它只住后端 `files-put`）"
+    );
+    // 正控：序列的那一个住址真的在（后端），而且恰好一处定义。
+    let backend = guard_core::production_code(
+        &std::fs::read_to_string(
+            crate::guard_support::repo_root().join("src/backend/control/files_write.rs"),
+        )
+        .unwrap(),
+    );
+    guard_core::find_pinned(&backend, "pub fn put_text(")
+        .expect("后端那一个写序列 `files_write.rs::put_text` 不见了（或长成了两处）");
 }

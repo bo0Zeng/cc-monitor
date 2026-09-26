@@ -408,10 +408,10 @@ pub(crate) async fn fenced_remote(
 /// 原子上传 `bytes` 到 `path`，权限 `mode`（只在 open-create 的属性里设一次）。
 ///
 /// 〔SR1b · 2026-09-24〕搬自 monitor `sftp.rs` 的 F08 原子上传（那一份随界面进程零 SFTP 删了），序列逐步相同：
-/// 写 `<path>.tmp`（先删残留，再 **EXCLUDE** 创建：临时件是一条预置的链接也不会跟过去 —— F89a 审计）
-/// → 旧目标**改名成 `.bak`**（不是删：「先删旧」一旦后续改名失败就丢原件，DN-7 订正过那句注释）
+/// 写 `<path>.<这一趟独有的后缀>.tmp`（〔HX2〕从前是固定 `<path>.tmp` ＋ 先删残留；**EXCLUDE** 创建：临时件是一条预置的链接也不会跟过去 —— F89a 审计）
+/// → 旧目标**改名成 `.<后缀>.bak`**（不是删：「先删旧」一旦后续改名失败就丢原件，DN-7 订正过那句注释）
 /// → 临时件上位 → 删 `.bak`。临时件与 `.bak` 都在目标**同一个父目录**里，那个父目录已经过了围栏。
-/// 标准 SFTP 的改名不覆盖（`russh-sftp` 没有 `posix-rename@openssh.com`）⇒ 只能这样近似原子（单写者、低频部署够用）。
+/// 标准 SFTP 的改名不覆盖（`russh-sftp` 没有 `posix-rename@openssh.com`）⇒ 只能这样近似原子。〔HX2〕两个部署者交错时临时件 / 备份件各是各的（唯一名）；仍剩的一格如实记：`rel → .bak` 与 `tmp → rel` 之间 `rel` 有一瞬不在。
 ///
 /// ⚠ **改名之后绝不 `set_metadata` 兜底 chmod** —— 真机 e2e 实证：OpenSSH sftp-server 上那一次 setstat 把刚上位的
 /// 后端**截成 0 字节** ⇒ 不可 exec → 连接 EOF → 标记变空 → 无限重部署。权限只在 open-create 的属性里设一次。
@@ -427,12 +427,16 @@ pub(crate) async fn put_atomic(
     mode: u32,
 ) -> Result<(), Refusal> {
     let rel = fenced_remote(s, path, Intent::File).await?;
-    let tmp = format!("{rel}.tmp");
+    // 〔HX2 · 主会话 D-b「临时件名唯一」〕临时件与备份件都带**这一趟独有**的后缀：两个部署者（两台 monitor 各自的常驻后端）
+    //   同时往同一个落点放字节时，谁也不删谁的那一份（从前是固定的 `<rel>.tmp` / `<rel>.bak` ＋「先删残留」—— 那一删删的可能是
+    //   别人正在写的那一份，审计 E3 子形 2）。仍 `EXCLUDE` 新建：真撞了名 ⇒ 当场失败，不会写进别人的那一份。
+    //   〔墓碑 —— 「先删残留」那一步没了：固定名时它清上一趟崩掉留下的那一份；唯一名之后崩掉的那一趟留下的临时件
+    //    没人认领（`put_atomic` 失败那几支会删自己的；进程被杀那一形留在 `~/.cc-monitor/bin/` 里，如实登记）。〕
+    let tmp = format!("{rel}.{}.tmp", trip_tag());
     let attrs = FileAttributes {
         permissions: Some(mode),
         ..Default::default()
     };
-    let _ = s.sftp().remove_file(tmp.clone()).await;
     let mut file = s
         .sftp()
         .open_with_flags_and_attributes(
@@ -442,36 +446,69 @@ pub(crate) async fn put_atomic(
         )
         .await
         .map_err(|e| io(format!("创建 ~/{tmp} 失败: {e}")))?;
-    file.write_all(bytes)
-        .await
-        .map_err(|e| io(format!("写 ~/{tmp} 失败: {e}")))?;
-    // `write_all` 只把 WRITE 包入队；ack 只在 flush / shutdown 里收（同 monitor 那一份的理由）。
-    file.flush()
-        .await
-        .map_err(|e| io(format!("flush ~/{tmp} 失败（写未确认）: {e}")))?;
-    file.shutdown()
-        .await
-        .map_err(|e| io(format!("关闭 ~/{tmp} 失败: {e}")))?;
-    drop(file);
-    let bak = if s.sftp().try_exists(rel.clone()).await.unwrap_or(false) {
-        let b = format!("{rel}.bak");
-        let _ = s.sftp().remove_file(b.clone()).await;
-        s.sftp()
-            .rename(rel.clone(), b.clone())
+    let written = async {
+        file.write_all(bytes)
             .await
-            .map_err(|e| io(format!("备份旧文件 ~/{rel} → ~/{b} 失败: {e}")))?;
+            .map_err(|e| io(format!("写 ~/{tmp} 失败: {e}")))?;
+        // `write_all` 只把 WRITE 包入队；ack 只在 flush / shutdown 里收（同 monitor 那一份的理由）。
+        file.flush()
+            .await
+            .map_err(|e| io(format!("flush ~/{tmp} 失败（写未确认）: {e}")))?;
+        file.shutdown()
+            .await
+            .map_err(|e| io(format!("关闭 ~/{tmp} 失败: {e}")))
+    }
+    .await;
+    drop(file);
+    if let Err(e) = written {
+        // 删的是**自己这一趟**建的那一份（名字只有这一趟知道）。
+        let _ = s.sftp().remove_file(tmp.clone()).await;
+        return Err(e);
+    }
+    let bak = if s.sftp().try_exists(rel.clone()).await.unwrap_or(false) {
+        let b = format!("{rel}.{}.bak", trip_tag());
+        if let Err(e) = s.sftp().rename(rel.clone(), b.clone()).await {
+            let _ = s.sftp().remove_file(tmp.clone()).await;
+            return Err(io(format!("备份旧文件 ~/{rel} → ~/{b} 失败: {e}")));
+        }
         Some(b)
     } else {
         None
     };
-    s.sftp()
-        .rename(tmp.clone(), rel.clone())
-        .await
-        .map_err(|e| io(format!("rename ~/{tmp} → ~/{rel} 失败: {e}")))?;
+    if let Err(e) = s.sftp().rename(tmp.clone(), rel.clone()).await {
+        let _ = s.sftp().remove_file(tmp.clone()).await;
+        // 〔HX2〕自己挪走的那份旧的：落点还空着 ⇒ 挪回去（不留一个没有后端的落点）；
+        //   落点已经被另一个部署者放上了新的 ⇒ 那份旧的没人要了，删掉（不留一个没人认领的备份件）。
+        if let Some(b) = bak {
+            if s.sftp().try_exists(rel.clone()).await.unwrap_or(true) {
+                let _ = s.sftp().remove_file(b).await;
+            } else {
+                let _ = s.sftp().rename(b, rel.clone()).await;
+            }
+        }
+        return Err(io(format!("rename ~/{tmp} → ~/{rel} 失败: {e}")));
+    }
     if let Some(b) = bak {
         let _ = s.sftp().remove_file(b).await;
     }
     Ok(())
+}
+
+/// 〔HX2〕一趟上传独有的后缀：pid ⊕ 纳秒 ⊕ 进程内计数（十六进制）。**不是**密码学随机 —— 它只要「两个部署者不撞」，
+/// 撞了由 `EXCLUDE` 当场挡住（失败，不是写进别人的那一份）。
+fn trip_tag() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    format!(
+        "{:x}-{:x}-{:x}",
+        std::process::id(),
+        nanos,
+        SEQ.fetch_add(1, Ordering::Relaxed)
+    )
 }
 
 /// 删一份文件。回「真删了」（不在 ⇒ `false`，不算错）。
@@ -488,16 +525,31 @@ pub(crate) async fn remove(s: &Session, path: &str) -> Result<bool, Refusal> {
 }
 
 /// 建**一层**目录（已在 ⇒ 什么都不做）。
+///
+/// 〔HX1 · 主会话裁 HX1 拍板项 4〕**这一趟建出来的**那一层当场收成只给本人（`own_dir::PRIVATE_DIR_MODE`，0700）——
+/// 远端第一个建 `~/.cc-monitor`（以及 `bin` / `staging`）的就是这里（部署），此前按服务端 umask 建（常见 0755）。
+/// 本机那一份是 `own_dir::ensure_private_dir`（它在本机文件系统上、这里调不到它）；两边共用同一个权限位常量。
+/// ⚠ 用 `set_metadata`（SETSTAT）只对**目录**、只带 `permissions` 一格 —— `put_atomic` 头注那条「改名之后绝不 setstat」
+/// 管的是刚上位的**文件**（那一次事故把后端截成 0 字节），目录没有长度，不在那条事故的射程里。
+/// 收不窄（服务端不认 SETSTAT）⇒ 说一句、不挡部署：目录已经建出来了，权限宽一点不是「建不成」。
 pub(crate) async fn make_dir(s: &Session, path: &str) -> Result<(), Refusal> {
     let rel = fenced_remote(s, path, Intent::Dir).await?;
     if s.sftp().try_exists(rel.clone()).await.unwrap_or(false) {
         return Ok(());
     }
     if let Err(e) = s.sftp().create_dir(rel.clone()).await {
-        // 并发的另一趟刚建好它 —— 那不算错。
+        // 并发的另一趟刚建好它 —— 那不算错（也不是这一趟建的 ⇒ 不去动它的权限位）。
         if !s.sftp().try_exists(rel.clone()).await.unwrap_or(false) {
             return Err(io(format!("建目录 ~/{rel} 失败: {e}")));
         }
+        return Ok(());
+    }
+    let private = FileAttributes {
+        permissions: Some(crate::own_dir::PRIVATE_DIR_MODE),
+        ..Default::default()
+    };
+    if let Err(e) = s.sftp().set_metadata(rel.clone(), private).await {
+        tracing::warn!("远端 ~/{rel} 建好了，但没能收成只给本人（{e}）—— 按服务端默认权限留着");
     }
     Ok(())
 }
@@ -678,7 +730,7 @@ async fn answer<R: AsyncRead + Unpin>(
                         ));
                     }
                 }
-                // 只在需要时补问（与 monitor `interpret_profile_read` 入参同形）：读不出 ⇒ 在不在；读到空 ⇒ 大小。
+                // 只在需要时补问：读不出 ⇒ 在不在；读到空 ⇒ 大小。
                 let (exists, size) = match &data {
                     None => (exists(s, path).await, None),
                     Some(d) if d.is_empty() => (None, metadata_size(s, path).await.flatten()),
