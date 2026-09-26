@@ -113,11 +113,11 @@ fn a_removal_passes_the_backends_cause_through_untouched() {
 #[test]
 fn the_list_is_complete_only_until_the_stream_ends() {
     let mut t = LocalTable::default();
-    assert!(!t.listed());
+    assert!(t.listed_active().is_none());
     assert_eq!(t.step(Lifecycle::Listed), vec![Out::Listed]);
-    assert!(t.listed());
+    assert!(t.listed_active().is_some());
     t.step(Lifecycle::StreamEnded { idle: vec![] });
-    assert!(!t.listed());
+    assert!(t.listed_active().is_none());
 }
 
 /// 〔主会话 09-25 补〕**流断 ⇒ 说不清，两形同一份期望**：本机那条流断了（表的流断臂）与远端断连 flush
