@@ -183,7 +183,7 @@ async fn an_upload_is_relayed_to_the_local_backend_and_its_frames_come_back_as_s
     assert_eq!(start["args"]["id"], "xfer-1");
     rig.frame(r#"{"kind":"transfer","id":"xfer-1","got":10,"total":30}"#);
     rig.frame(
-        r#"{"kind":"transfer","id":"xfer-1","got":30,"total":30,"end":{"state":"done","bytes":30}}"#,
+        r#"{"kind":"transfer","id":"xfer-1","got":30,"total":30,"end":{"state":"done","bytes":30,"sha256":"ab"}}"#,
     );
     let snaps = drain(s).await;
     assert_eq!(
@@ -191,7 +191,11 @@ async fn an_upload_is_relayed_to_the_local_backend_and_its_frames_come_back_as_s
         Some(&Snap {
             got: 30,
             total: 30,
-            end: Some(End::Done { bytes: 30 })
+            // 〔FW1〕上传那一路的整份摘要原样带着（形状由远端后端提交那一关判，中继不判）。
+            end: Some(End::Done {
+                bytes: 30,
+                sha256: Some("ab".into())
+            })
         })
     );
     // 收场之后中继摘掉（再订阅 = 没有这一趟）。
@@ -346,7 +350,10 @@ fn transfer_frames_parse_exactly_as_the_backend_writes_them() {
         ),
         (
             r#"{"kind":"transfer","id":"xfer-7","got":262144,"total":1000000,"end":{"state":"done","bytes":1000000}}"#,
-            Some(End::Done { bytes: 1_000_000 }),
+            Some(End::Done {
+                bytes: 1_000_000,
+                sha256: None,
+            }),
         ),
         (
             r#"{"kind":"transfer","id":"xfer-7","got":262144,"total":1000000,"end":{"state":"failed","why":"写暂存件失败"}}"#,

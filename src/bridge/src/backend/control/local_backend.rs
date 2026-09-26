@@ -1661,7 +1661,10 @@ pub(crate) fn absorb_local_frame(
             end,
         } => crate::sftp_pool::deliver(&id, got, total, end),
         // 〔CF1〕内容三种（`session_added` 在上面那一臂记完容器也交回）：交回读循环，送进本机内容通道。
-        f @ (InboundFrame::Line { .. } | InboundFrame::SessionRemoved { .. }) => return Some(f),
+        // 〔FW1 · D-d〕记录文件不见了 / 被改过 ⇒ 同一条内容通道（与行同序）。
+        f @ (InboundFrame::Line { .. }
+        | InboundFrame::SessionRemoved { .. }
+        | InboundFrame::SessionFileNotice { .. }) => return Some(f),
         // 其余帧（hello · 会话状态 · 溢出 …）本机这条流今天不消费。
         _ => {}
     }

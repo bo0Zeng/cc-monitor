@@ -44,7 +44,7 @@ import { __resetLocalLaunchSnapshotForTests, __setLocalLaunchSnapshotForTests } 
 import { resolvePendingLocalLaunches, __resetPendingLocalLaunchesForTests, __pendingLocalLaunchCountForTests } from "../../src/local-launch-backfill";
 import { historyCalls, isChanCall, linesReply, withAccountReads, withHistoryReads } from "../test-support/chan-fake";
 import { LOCAL_ORIGIN } from "../../src/ipc/origin";
-import { answerAskDialog, answerAskText } from "../test-support/ask-dialog-driver.ts";
+import { answerAskDialog, answerAskText, askDialogText, noAskDialog } from "../test-support/ask-dialog-driver.ts";
 import { showActionFailureToast } from "../../src/error-toast";
 import { copyText } from "../../src/copy-table";
 
@@ -317,6 +317,37 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     await Promise.resolve();
     await answerAskDialog(false);
     expect(invokeMock.mock.calls.some((c) => c[0] === "delete_history_session")).toBe(false);
+  });
+
+  // 〔FW1 · 第四波 4D · 主会话裁 D-e〕删会话前看活不活：活着（条目说活 / tab 栏里活）⇒ 多问一句；说不清（`isLive: null`）⇒ 也多问；
+  //   确定不活 ⇒ 照原来那一问。多问那句答「不」⇒ 一趟 delete 都不发。异源：问了什么由文案表现取、发没发由 invoke 记录判。
+  it("〔FW1〕删会话前看活不活：活 / 说不清多问一句，不活照旧；多问那句答不 ⇒ 不删", async () => {
+    // 〔W5-UI 之后〕问的是应用内对话框：当用户读正文、点真按钮（`ask-dialog-driver`），答案异步到，与真 app 同形。
+    const runOnce = async (over: Record<string, unknown>, liveInTabs: boolean, answers: boolean[]) => {
+      invokeMock.mockClear();
+      const asked: string[] = [];
+      const view = new HistoryView();
+      view.liveInTabs = () => liveInTabs;
+      const row = buildRow(view, entry(over), proj());
+      row.querySelector<HTMLButtonElement>(".history-action-danger")!.click();
+      await Promise.resolve();
+      for (const ok of answers) {
+        if (noAskDialog()) break;
+        asked.push(askDialogText());
+        await answerAskDialog(ok);
+      }
+      expect(noAskDialog(), "答完了还挂着一个对话框（问的比预期多）").toBe(true);
+      const deleted = invokeMock.mock.calls.some((c) => c[0] === "delete_history_session");
+      return { asked, deleted };
+    };
+    const live = copyText("sessionState.deleteLive.confirm", { label: "T" });
+    const unknown = copyText("sessionState.deleteUnknown.confirm", { label: "T" });
+    const plain = copyText("history.delete.confirmLocal", { label: "T" });
+    expect(await runOnce({ isLive: true }, false, [true, true])).toEqual({ asked: [live, plain], deleted: true });
+    expect(await runOnce({ isLive: false }, true, [true, true]), "tab 栏里活着却没多问").toEqual({ asked: [live, plain], deleted: true });
+    expect(await runOnce({ isLive: null }, false, [true, true])).toEqual({ asked: [unknown, plain], deleted: true });
+    expect(await runOnce({ isLive: false }, false, [true])).toEqual({ asked: [plain], deleted: true });
+    expect(await runOnce({ isLive: true }, false, [false]), "多问那句答了不，还是删了").toEqual({ asked: [live], deleted: false });
   });
 
   it("菜单开着按 Esc（经 handleEscape）→ 只关菜单，不误关整个历史视图", () => {

@@ -4191,6 +4191,15 @@ mod g6_dependency_signoff {
             "把上面那条的事件去抖之后再交出来 —— 同一条路上的第二段，同样只在读侧",
         ),
         (
+            "ring",
+            DEPS,
+            UNMEASURED,
+            "〔FW1 · 第四波 4D〕只用 `ring::digest::SHA256`：CAS 摘要形的唯一算法住址 \
+             `files/mod.rs::content_sha256`（纯内存算摘要）。它本来就在发布二进制里 \
+             （上面 `rustls` 的 provider · 下面 `russh` 同一棵），这一行只是把间接依赖提成直接依赖、零新包。\
+             写不写盘：本 crate 对它的用法一条写路径都不经它（用法签字，没扫它的源码）",
+        ),
+        (
             "rustls",
             DEPS,
             UNMEASURED,

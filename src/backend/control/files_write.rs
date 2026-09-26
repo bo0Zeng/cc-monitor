@@ -472,6 +472,57 @@ pub fn delete_file_expecting(
     Ok(target)
 }
 
+/// 〔FW1 · 第四波 4D · SU1 问 2〕**只删一个空目录**（`files-delete` 带 `expect: {"empty_dir": true}`）：
+/// 「我看到的是一个空目录，删它」—— 与带逐字节 `expect` 删文件那一形对称的 CAS。
+///
+/// - 目标（不跟链接地看）必须是一个**真目录**：是文件 / 链接 / 别的 ⇒ `Refused`（这一形只对目录）。
+/// - 不在 ⇒ `Stale`（看的时候还在）；**不空 ⇒ `Stale`**：`remove_dir` 自己就是原子的「空才删」，系统拒非空、
+///   本函数只把那一下翻成 `stale`（说的是「你看的时候它空，此刻不空了」）—— 没有先看后删的窗。
+/// - 删的动词与 [`delete_entry`] 删空目录那一支同一个（闭集里的「删空目录」），路径解析同一道。
+pub fn delete_empty_dir(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, WriteRefusal> {
+    let target = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
+    let md = match std::fs::symlink_metadata(&target) {
+        Ok(m) => m,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(WriteRefusal::Stale(format!(
+                "refuse delete: {} 已经不在了（看的时候还在）—— 什么都没删",
+                target.display()
+            )))
+        }
+        Err(e) => {
+            return Err(WriteRefusal::Io(format!(
+                "refuse write: 读不到 {}：{e}",
+                target.display()
+            )))
+        }
+    };
+    if !md.is_dir() {
+        return Err(WriteRefusal::Refused(format!(
+            "refuse delete: {} 不是一个目录 —— 「只删空目录」这一形只收目录（不收文件、不收链接）",
+            target.display()
+        )));
+    }
+    match std::fs::remove_dir(&target) {
+        Ok(()) => Ok(target),
+        Err(e) if e.kind() == std::io::ErrorKind::DirectoryNotEmpty => {
+            Err(WriteRefusal::Stale(format!(
+                "refuse delete: {} 里面还有东西 —— 只删空目录，一个字节没动",
+                target.display()
+            )))
+        }
+        Err(e) => Err(WriteRefusal::Io(format!(
+            "refuse write: 删目录 {} 失败：{e}",
+            target.display()
+        ))),
+    }
+}
+
+/// `files-delete` 的 `expect` 那一格（给了的话）：逐字节那一形 · 〔FW1〕「只删空目录」那一形。
+enum DeleteExpect {
+    Bytes(Vec<u8>),
+    EmptyDir,
+}
+
 /// 改 unix 权限位（只收低 12 位）。**跟链接** ⇒ 走 [`resolve_existing_in_root`]。
 ///
 /// ⚠ 非 unix 平台上**如实回失败**，不假装改成了（`Permissions` 在那边只有一个只读位）。
@@ -529,6 +580,109 @@ pub fn overwrite_text(
         )));
     }
     swap_in(root, rel, bytes, Some(md.permissions()))
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  〔FW1 · 第四波 4D · 2026-09-25〕CAS 的**摘要形**：`expect: {"sha256": "<64 位小写十六进制>"}`
+// ══════════════════════════════════════════════════════════════════════════
+//
+// 主会话裁 D-c「编辑器存盘带 CAS（`expect`）」＋ 09-25 认可摘要形：它**仍是 CAS**（比的是「我看的时候那一份」），
+// 只是换了表示 —— 逐字节形（`files-put` / `files-delete`）留给小写。为什么编辑器要摘要形：存盘分块那一支本来就是
+// 因为**一行装不下**（`设计/60 §5.1`，一行 1 MiB、编辑上限 8 MiB），逐字节的 `expect` 要么让装得进一行的门槛减半，
+// 要么让原文再分块送一遍（大文件存盘流量翻倍）。摘要定长，两支同形。
+//
+// 🔴 摘要**只在后端算**（读的那一趟 `files-read-text` 交出 `sha256`、写成之后应答里交新的）——窗口当不透明令牌存着再交回来，
+//   算法只有一个家：[`crate::files::content_sha256`]（住读族那一侧：读的那一趟要它，而读族不许伸手进写面 ——
+//   `readonly_guard` 「写面只有一扇门」那条钉着）。
+
+pub use crate::files::{content_sha256, SHA256_HEX_LEN};
+
+/// 取**必给**的摘要形 `expect`：恰好 `{"sha256": "<64 位小写十六进制>"}`，多一个键、少一个键、串的形状不对都拒（不猜）。
+pub fn sha256_expect_of(args: &serde_json::Value) -> Result<String, (&'static str, String)> {
+    let v = args.get("expect").ok_or((
+        "bad_args",
+        "少了 `expect` —— 覆盖写必须说清「我看的时候那一份」（`{\"sha256\": …}`，读那一趟交出来的那个）".to_string(),
+    ))?;
+    let bad = || {
+        (
+            "bad_args",
+            format!(
+                "`expect` 只收 `{{\"sha256\": \"<{SHA256_HEX_LEN} 位小写十六进制>\"}}`（给的是 {v}）"
+            ),
+        )
+    };
+    let obj = v.as_object().ok_or_else(bad)?;
+    if obj.len() != 1 {
+        return Err(bad());
+    }
+    let hex = obj
+        .get("sha256")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(bad)?;
+    if hex.len() != SHA256_HEX_LEN
+        || !hex
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return Err(bad());
+    }
+    Ok(hex.to_string())
+}
+
+/// 〔FW1〕**带 CAS 的覆盖写**：盘上那份的摘要 == `expect_sha256` 才交给 [`overwrite_text`]，否则一个字节不写。
+///
+/// - 目标不在 ⇒ `Stale`（看的时候还在）；不是普通文件 ⇒ `Refused`（同 [`overwrite_text`]）；
+///   「盘上有字节、读出来却是空的」⇒ `Io`（同读改写那一句，继续走就是拿新内容盖掉一份没读到的原文）。
+/// - 摘要不等 ⇒ `Stale`：调用方该让人决定（重开 / 仍然覆盖），不是重试同一份。
+/// - 比对与写之间仍有窗（TOCTOU，同本模块头注诚实边界第 1 条）：CAS 缩小的是「窗口读 → 后端写」那一整趟往返的窗。
+/// - **写法本身不在这里**：比完交给 [`overwrite_text`] 那一个原语（它怎么落盘由那一处定）。
+pub fn overwrite_text_expecting(
+    root: &Path,
+    rel: impl AsRef<Path>,
+    bytes: &[u8],
+    expect_sha256: &str,
+) -> Result<PathBuf, WriteRefusal> {
+    let rel = rel.as_ref();
+    let at = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
+    match std::fs::symlink_metadata(&at) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(WriteRefusal::Stale(format!(
+                "refuse write: {} 已经不在了（你打开的时候还在）—— 一个字节没写",
+                at.display()
+            )))
+        }
+        Err(e) => {
+            return Err(WriteRefusal::Io(format!(
+                "refuse write: 读不到 {}：{e}",
+                at.display()
+            )))
+        }
+        Ok(_) => {}
+    }
+    let real = resolve_existing_in_root(root, rel).map_err(WriteRefusal::Refused)?;
+    let md = std::fs::metadata(&real)
+        .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", real.display())))?;
+    if !md.is_file() {
+        return Err(WriteRefusal::Refused(format!(
+            "refuse write: {} 不是一份普通文件 —— 覆盖写只收普通文件",
+            real.display()
+        )));
+    }
+    let current = std::fs::read(&real)
+        .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不出 {}：{e}", real.display())))?;
+    if current.is_empty() && md.len() > 0 {
+        return Err(WriteRefusal::Io(format!(
+            "refuse write: {}",
+            hollow_read(&real, md.len())
+        )));
+    }
+    if content_sha256(&current) != expect_sha256 {
+        return Err(WriteRefusal::Stale(format!(
+            "refuse write: {} 在你打开之后被改过了 —— 一个字节没写",
+            real.display()
+        )));
+    }
+    overwrite_text(root, rel, bytes)
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1346,7 +1500,8 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
         what:
             "删一个文件或一个**空**目录（删的是链接本身，不跟过去）；〔FW5〕显式 `recursive: true` \
                才删整棵树 —— 逐条目过路径解析，任一条被拒整趟不动（`delete_tree`）；〔RM1e〕给了 `expect` \
-               ⇒ 只删一份普通文件、且盘上逐字节等于它才删（否则 `stale`，一个字节不动）",
+               ⇒ 只删一份普通文件、且盘上逐字节等于它才删（否则 `stale`，一个字节不动）；〔FW1〕`expect: {\"empty_dir\": true}` \
+               ⇒ 只删一个空目录（不空 / 不在 ⇒ `stale`；不是目录 ⇒ `refused`）",
         args: &["expect", "recursive", "rel", "root"],
         fields: &["path", "removed"],
         codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
@@ -1370,10 +1525,11 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     },
     ManageCommand {
         name: "files-write-text",
-        what: "覆盖写一份**已经在**的普通文件；**跟链接**，所以落点解到底再判一次",
-        args: &["content", "rel", "root"],
-        fields: &["bytes", "path"],
-        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        what: "覆盖写一份**已经在**的普通文件；**跟链接**，所以落点解到底再判一次；\
+               〔FW1〕`expect: {sha256}` **必给**：盘上那份的摘要对得上才写（否则 `stale`，一个字节不动），应答交新摘要",
+        args: &["content", "expect", "rel", "root"],
+        fields: &["bytes", "path", "sha256"],
+        codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
     },
     // ── 〔RW1 · 第四波 09-24〕用户文件的读改写 ＋ 删历史会话（用户裁「只管用户的文件、本机也管」）──
     ManageCommand {
@@ -1520,7 +1676,13 @@ fn answer_delete(args: &serde_json::Value) -> Answer {
                 "`expect` 不收 `null` —— 带 `expect` 的删说的是「读到的是这一份，删它」，不在就没有可删的".to_string(),
             ))
         }
-        Some(v) => Some(bytes_of(v, "expect")?),
+        // 〔FW1 · SU1 问 2〕恰好 `{"empty_dir": true}` ⇒ 只删空目录；别的对象形照旧按逐字节那一形取（`{"b16": …}`，认不出 ⇒ `bad_args`）。
+        Some(serde_json::Value::Object(o))
+            if o.len() == 1 && o.get("empty_dir") == Some(&serde_json::Value::Bool(true)) =>
+        {
+            Some(DeleteExpect::EmptyDir)
+        }
+        Some(v) => Some(DeleteExpect::Bytes(bytes_of(v, "expect")?)),
     };
     if recursive && expect.is_some() {
         return Err((
@@ -1531,11 +1693,12 @@ fn answer_delete(args: &serde_json::Value) -> Answer {
     }
     let (done, removed) = if recursive {
         delete_tree(&root, &rel).map_err(refusal)?
-    } else if let Some(want) = expect.as_deref() {
-        (
-            delete_file_expecting(&root, &rel, want).map_err(refusal)?,
-            1,
-        )
+    } else if let Some(want) = expect {
+        let done = match want {
+            DeleteExpect::Bytes(b) => delete_file_expecting(&root, &rel, &b),
+            DeleteExpect::EmptyDir => delete_empty_dir(&root, &rel),
+        };
+        (done.map_err(refusal)?, 1)
     } else {
         (delete_entry(&root, &rel).map_err(refusal)?, 1)
     };
@@ -1585,8 +1748,14 @@ fn answer_write_text(args: &serde_json::Value) -> Answer {
         "bad_args",
         "`content` 的形状不对 —— 只认字符串或 `{\"b16\": \"<十六进制>\"}`".to_string(),
     ))?;
-    let done = overwrite_text(&root, &rel, &bytes).map_err(refusal)?;
-    Ok(serde_json::json!({ "path": path_json(&done), "bytes": bytes.len() }))
+    // 〔FW1〕CAS **必给**：没有「不问就盖」这一形（同 `files-put`）。形状先判、再碰盘。
+    let expect = sha256_expect_of(args)?;
+    let done = overwrite_text_expecting(&root, &rel, &bytes, &expect).map_err(refusal)?;
+    Ok(serde_json::json!({
+        "path": path_json(&done),
+        "bytes": bytes.len(),
+        "sha256": content_sha256(&bytes),
+    }))
 }
 
 /// 取一个**正文**参数（字符串或 `{"b16": …}`）。
