@@ -61,6 +61,7 @@ import { KeybindingsEditor } from "../keybindings/editor";
 import { emit } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { SETTINGS_APPLIED_EVENT } from "./events";
+import { askConfirm } from "../ask-dialog";
 import { copyText } from "../copy-table";
 
 /**
@@ -690,7 +691,7 @@ export class SettingsPanel {
 
   private async resetAll(): Promise<void> {
     if (
-      !window.confirm(copyText("settingsPanel.appearance.resetConfirm"))
+      !(await askConfirm(copyText("settingsPanel.appearance.resetConfirm")))
     ) {
       return;
     }
@@ -718,6 +719,9 @@ export class SettingsPanel {
       }
     } catch (e) {
       console.warn("dialog open failed:", e);
+      // 〔W5-UI · 设计/70 §7 #4〕点了「选择…」却什么都没发生 ⇒ 说出来（落在同一块 banner 上）。
+      this.banner.textContent = copyText("settingsPanel.claudeDir.pickFailed", { e: String(e) });
+      this.banner.classList.add("settings-banner-show");
     }
   }
 

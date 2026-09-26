@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("../src/config", () => ({ loadConfig: vi.fn(), saveConfig: vi.fn() }));
+// 〔W5-UI〕记账失败要出声：只换 toast 这一个出口，判据读它收到了什么。
 // 〔FE1 · D-h〕账号选不了的那句提示由 `withAccount` 自己出（先前是调用方各带一个「账号不可用」回调）。
 vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 
@@ -671,9 +672,22 @@ describe("recordLastAccount（A4）", () => {
       patch: { lastAccount: "z" },
     });
   });
-  it("invoke 抛错 → 静默不抛（记忆非关键路径）", async () => {
+  it("invoke 抛错 → 不抛（记忆非关键路径，不挡 resume），但〔W5-UI〕说一句、点名是哪个号", async () => {
+    const toast = vi.mocked(showActionFailureToast);
+    toast.mockClear();
     invokeMock.mockRejectedValue(new Error("boom"));
     await expect(recordLastAccount("s1", "z")).resolves.toBeUndefined();
+    expect(toast, "记账失败没出声（原先只打 console）").toHaveBeenCalledTimes(1);
+    expect(toast.mock.calls[0][0]).toBe("没记下这次用的账号");
+    expect(toast.mock.calls[0][1]).toContain("「z」");
+  });
+  it("〔W5-UI〕正控：记成功 ⇒ 一句都不说", async () => {
+    const toast = vi.mocked(showActionFailureToast);
+    toast.mockClear();
+    invokeMock.mockImplementation(withHistoryReads(() => ({})));
+    await recordLastAccount("s1", "z");
+    expect(historyCalls(invokeMock.mock.calls, "update_history_metadata"), "前提：真记了一发").toHaveLength(1);
+    expect(toast).not.toHaveBeenCalled();
   });
 });
 

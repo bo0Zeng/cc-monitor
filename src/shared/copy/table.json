@@ -4782,11 +4782,6 @@
       "zh": "×",
       "args": []
     },
-    "tabBarView.group.namePrompt": {
-      "kind": "body",
-      "zh": "集合名：",
-      "args": []
-    },
     "tabDrop.group.defaultName": {
       "kind": "body",
       "zh": "组 {n}",
@@ -16803,6 +16798,56 @@
       "kind": "error",
       "zh": "读不到{machine}的账号清单，说不清账号「{name}」还能不能用，这次没有起。点这条提示改用「不指定账号」起。",
       "args": ["machine", "name"]
+    },
+    "askDialog.buttons.ok": {
+      "kind": "action",
+      "zh": "确定",
+      "args": []
+    },
+    "askDialog.buttons.cancel": {
+      "kind": "action",
+      "zh": "取消",
+      "args": []
+    },
+    "events.stream.closedTitle": {
+      "kind": "error",
+      "zh": "会话更新停了",
+      "args": []
+    },
+    "events.stream.closedLocal": {
+      "kind": "body",
+      "zh": "本机的会话不会再自动更新。重启 cc-monitor 可以重新接上。",
+      "args": []
+    },
+    "events.stream.closedRemote": {
+      "kind": "body",
+      "zh": "{machine} 上的会话不会再自动更新。重启 cc-monitor 可以重新接上。",
+      "args": ["machine"]
+    },
+    "launchAccount.lastAccount.notRecorded": {
+      "kind": "error",
+      "zh": "没记下这次用的账号",
+      "args": []
+    },
+    "launchAccount.lastAccount.notRecordedBody": {
+      "kind": "body",
+      "zh": "会话照常起了；下次恢复这条会话时不会自动选「{account}」。原因：{e}",
+      "args": ["account", "e"]
+    },
+    "settingsPanel.claudeDir.pickFailed": {
+      "kind": "error",
+      "zh": "选目录的窗口打不开：{e}。可以直接在输入框里填路径。",
+      "args": ["e"]
+    },
+    "remote.import.listFailed": {
+      "kind": "error",
+      "zh": "读不了 ~/.ssh/config：{e}。可以点「添加机器」手动填写。",
+      "args": ["e"]
+    },
+    "machineAliases.autoLaunch.unreadable": {
+      "kind": "error",
+      "zh": "读不到这项设置：{e}",
+      "args": ["e"]
     }
   }
 }

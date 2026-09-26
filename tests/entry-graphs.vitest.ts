@@ -41,9 +41,11 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { build, type Rollup } from "vite";
+import ts from "typescript";
 import { describe, it, expect, beforeAll } from "vitest";
 import { stripCodeComments } from "./evidence/S25-class-ledger.ts";
 import { REPO_ROOT } from "./test-support/repo-root.ts";
+import { productionTsFiles } from "./test-support/production-sources.ts";
 
 const TIMEOUT_MS = 180_000;
 
@@ -580,6 +582,10 @@ describe("子步 2 · CSS 按窗口拆（清单 ＝ 各 html 的 <link> 列表�
 //   ② 次序：JS 导入的 module 样式排在 html 链的全局样式**之后**。示范组件的 delta 与它叠的全局基类
 //      `.status-tasks` 同层同特异度（`font: inherit` 对 `font-variant-numeric` · `:hover` 对 `color`/`background`），
 //      谁后谁赢 —— 这条次序一翻，delta 静默失效。
+//      〔W5-UI · 主会话 09-25 裁〕次序**只对「叠在全局基类上的 delta」**要求：module 的类与某个全局类挂在同一个元素上，
+//      才有「同层同特异度谁后谁赢」这回事。不叠在任何全局类上的 module（元素只挂它自己的哈希类）不受次序约束 ——
+//      它被两个窗口共用时 vite 把它的 CSS 放进共享 chunk，那份样式排在全局之前，而那对它不构成任何覆盖关系。
+//      「叠不叠」由 [`moduleStacking`] 从导入方的 TS 里认（下面「叠没叠」那一格 == 手写表，两向）。
 // ⚠ 哈希名的形状认的是 vite 的默认 `_[local]_[hash]…`（现打 `_chip_16b8l_4`）；有人在 `vite.config.ts` 里改
 //   `css.modules.generateScopedName`，下面「恰有一个哈希名」那条会红 —— 那时照新形状改这里的正则。
 
@@ -608,6 +614,108 @@ function globalRulesAfterFirstModule(text: string, hashed: readonly string[]): s
     });
 }
 
+/**
+ * 〔W5-UI〕一份 module 叠没叠在全局基类上：在导入它的生产 TS 里，看它的类挂到了哪个元素上、那个元素还挂了什么。
+ *
+ * 认的挂法（按接收者的**源码文本**归到同一个元素：`btn.className = …` 与 `btn.classList.toggle(…)` 算同一个 `btn`）：
+ * - `<接收者>.className = <表达式>` —— 表达式里的字符串 / 模板字面量按空白切出类名，`s.<类>` 认成 module 类；
+ * - `<接收者>.classList.add / toggle / replace(…)` —— 实参同上（`remove` / `contains` 不算挂）。
+ * 某个接收者身上**同时**有这份 module 的类与一个全局类（`GLOBAL_CLASSES`）⇒ 叠。
+ * 🔴 保守的那一向：`s.<类>` 出现在上面两形**之外**（传给函数、塞进对象、拼进别的串……）⇒ 认不出挂到哪 ⇒ **按「叠」算**
+ *   （要求次序 —— 红得出来，不会静默放过）。同名接收者在不同函数里指不同元素 ⇒ 同样只会多判「叠」。
+ */
+function moduleStacking(
+  sources: ReadonlyArray<{ file: string; text: string }>,
+  modulePath: string,
+  globals: ReadonlySet<string>,
+): { stacked: boolean; why: string[] } {
+  const why: string[] = [];
+  for (const { file, text } of sources) {
+    const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const names = new Set<string>();
+    for (const st of sf.statements) {
+      if (
+        ts.isImportDeclaration(st) &&
+        ts.isStringLiteral(st.moduleSpecifier) &&
+        st.moduleSpecifier.text.endsWith(".module.css") &&
+        st.importClause?.name &&
+        resolve(REPO_ROOT, file, "..", st.moduleSpecifier.text) === resolve(REPO_ROOT, modulePath)
+      ) {
+        names.add(st.importClause.name.text);
+      }
+    }
+    if (names.size === 0) continue;
+    const isModRef = (n: ts.Node): boolean =>
+      ts.isPropertyAccessExpression(n) && ts.isIdentifier(n.expression) && names.has(n.expression.text);
+    /** 接收者文本 → 挂上去的 `{ module: 有没有, globals: 哪几个 }`。 */
+    const onEl = new Map<string, { module: boolean; globals: Set<string> }>();
+    const attached = new Set<ts.Node>();
+    const collect = (recv: string, exprs: readonly ts.Node[]): void => {
+      const e = onEl.get(recv) ?? { module: false, globals: new Set<string>() };
+      const walk = (n: ts.Node): void => {
+        if (isModRef(n)) {
+          e.module = true;
+          attached.add(n);
+          return;
+        }
+        if (ts.isStringLiteralLike(n) || ts.isTemplateHead(n) || ts.isTemplateMiddle(n) || ts.isTemplateTail(n)) {
+          for (const tok of n.text.split(/\s+/)) if (globals.has(tok)) e.globals.add(tok);
+        }
+        ts.forEachChild(n, walk);
+      };
+      exprs.forEach(walk);
+      onEl.set(recv, e);
+    };
+    const visit = (n: ts.Node): void => {
+      if (
+        ts.isBinaryExpression(n) &&
+        n.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isPropertyAccessExpression(n.left) &&
+        n.left.name.text === "className"
+      ) {
+        collect(n.left.expression.getText(sf), [n.right]);
+      } else if (
+        ts.isCallExpression(n) &&
+        ts.isPropertyAccessExpression(n.expression) &&
+        ["add", "toggle", "replace"].includes(n.expression.name.text) &&
+        ts.isPropertyAccessExpression(n.expression.expression) &&
+        n.expression.expression.name.text === "classList"
+      ) {
+        collect(n.expression.expression.expression.getText(sf), n.arguments);
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+    for (const [recv, e] of onEl) {
+      if (e.module && e.globals.size > 0) why.push(`${file}：${recv} 同挂 ${[...e.globals].join(" ")}`);
+    }
+    const loose = (n: ts.Node): void => {
+      if (isModRef(n) && !attached.has(n)) {
+        const parent = n.parent;
+        // `classList.remove(s.x)` / `classList.contains(s.x)` 不是挂，也不是认不出的用法。
+        const isRemoveLike =
+          ts.isCallExpression(parent) &&
+          ts.isPropertyAccessExpression(parent.expression) &&
+          ["remove", "contains"].includes(parent.expression.name.text);
+        if (!isRemoveLike) why.push(`${file}：认不出 ${n.getText(sf)} 挂到哪（按「叠」算）`);
+      }
+      ts.forEachChild(n, loose);
+    };
+    loose(sf);
+  }
+  return { stacked: why.length > 0, why };
+}
+
+/**
+ * 〔W5-UI〕每份 module 叠没叠在全局基类上 —— **手写**（期望不从 [`moduleStacking`] 派生）。新长一份 module ⇒ 这张表红，
+ * 回来写清它叠不叠、为什么。
+ */
+const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
+  "src/usage-hud.module.css": { stacked: true, why: "`.chip` 叠在全局 `.status-tasks` 上（usage-hud.ts 里 btn.className 同时挂 status-tasks 与 s.chip）" },
+  "src/ask-dialog.module.css": { stacked: false, why: "应用内对话框：遮罩 / 面板 / 正文 / 文本框 / 按钮行只挂自己的哈希类" },
+  "src/tab-group-rename.module.css": { stacked: false, why: "组头就地改名的输入框只挂自己的哈希类" },
+};
+
 describe("〔UC2〕CSS Modules 在构建产物里（设计/41 件 10）", () => {
   it("每份 .module.css 都进了某个窗口的模块图；每个类在产物 CSS 里恰有一个哈希名、原名不出现、哈希名在那个窗口的 JS 里真出现", () => {
     const mods = Object.keys(MODULE_CLASSES);
@@ -631,11 +739,32 @@ describe("〔UC2〕CSS Modules 在构建产物里（设计/41 件 10）", () => 
     expect(judged).toBeGreaterThan(0);
   });
 
-  it("次序：每个窗口产物 CSS 里，第一条 module 规则之后不再有全局样式的规则（module 的 delta 叠在全局基类之上）", () => {
+  it("〔W5-UI〕叠没叠：每份 module 由导入方 TS 认出的「叠在全局基类上」== 手写表（两向）；量具正反控", () => {
+    const sources = productionTsFiles("src").map((f) => ({ file: f.file, text: f.text }));
+    const got = Object.fromEntries(Object.keys(MODULE_CLASSES).map((f) => [f, moduleStacking(sources, f, GLOBAL_CLASSES).stacked]));
+    const want = Object.fromEntries(Object.entries(MODULE_STACKING).map(([f, v]) => [f, v.stacked]));
+    expect(got, "module 叠没叠变了 / 有 module 没进手写表 —— 回 MODULE_STACKING 写清").toEqual(want);
+    expect(Object.values(want).some(Boolean), "手写表里一份「叠」的都没有 —— 下面的次序判据零命中地绿").toBe(true);
+    // 量具正反控（合成源；`status-tasks` 必须真是全局类，否则正控空转）
+    expect(GLOBAL_CLASSES.has("status-tasks"), "正控用的全局类不在了 —— 换一个真全局类").toBe(true);
+    const probe = (body: string): boolean =>
+      moduleStacking([{ file: "src/probe.ts", text: `import s from "./probe.module.css";\n${body}` }], "src/probe.module.css", GLOBAL_CLASSES).stacked;
+    expect(probe("el.className = `status-tasks ${s.a}`;"), "同一句里叠").toBe(true);
+    expect(probe(`el.className = s.a; el.classList.add("status-tasks");`), "同一接收者分两句叠").toBe(true);
+    expect(probe(`el.classList.toggle(s.a, on); el.className = "status-tasks";`), "toggle 挂上去也算").toBe(true);
+    expect(probe(`help(s.a);`), "认不出挂到哪 ⇒ 按叠算（保守）").toBe(true);
+    expect(probe(`a.className = s.a; b.className = "status-tasks";`), "不同元素不算叠").toBe(false);
+    expect(probe(`a.className = s.a; a.classList.remove(s.a); a.className = "not-a-global-xyz";`), "非全局类 / remove 不算叠").toBe(false);
+  }, TIMEOUT_MS); // 全仓生产 TS 逐份建 AST：整套并跑时 5 s 默认期限不够（现打 7.7 s）
+
+  it("次序：每个窗口产物 CSS 里，第一条**叠在全局基类上的** module 规则之后不再有全局样式的规则（module 的 delta 叠在全局基类之上）", () => {
     let judged = 0;
     for (const win of Object.keys(WINDOWS) as Win[]) {
       const built = builtClasses(win);
-      const hashed = Object.values(MODULE_CLASSES).flatMap((ks) => ks.flatMap((k) => hashedOf(built, k)));
+      // 〔W5-UI · 主会话 09-25 裁〕只数叠在全局基类上的那几份（手写表；上一格钉它 == 量具）。
+      const hashed = Object.entries(MODULE_CLASSES)
+        .filter(([f]) => MODULE_STACKING[f]?.stacked !== false)
+        .flatMap(([, ks]) => ks.flatMap((k) => hashedOf(built, k)));
       if (hashed.length === 0) continue;
       const text = BUILT_CSS_BY_HTML[WINDOWS[win].html].join("\n");
       expect(globalRulesAfterFirstModule(text, hashed), `${win}：module 规则后面还跟着全局规则 —— 同特异度时全局压过 module`).toEqual([]);
