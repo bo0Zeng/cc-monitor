@@ -9116,6 +9116,21 @@
       "zh": "停后端失败",
       "args": []
     },
+    "backend.stop.relayConfirm": {
+      "kind": "body",
+      "zh": "有 {n} 条会话在走本机中转。停了本机后端之后，它们的每一次请求都会失败，直到再起后端。仍然停？",
+      "args": ["n"]
+    },
+    "backend.stop.relayMaybe": {
+      "kind": "body",
+      "zh": "有 {n} 条会话在走本机中转，另有 {k} 条说不清走不走。停了本机后端之后，走中转的会话每一次请求都会失败，直到再起后端。仍然停？",
+      "args": ["k", "n"]
+    },
+    "backend.stop.relayUnknown": {
+      "kind": "body",
+      "zh": "问不到现在有几条会话在走本机中转。停了本机后端之后，走中转的会话每一次请求都会失败，直到再起后端。仍然停？",
+      "args": []
+    },
     "backend.start.failed": {
       "kind": "error",
       "zh": "起后端失败",
