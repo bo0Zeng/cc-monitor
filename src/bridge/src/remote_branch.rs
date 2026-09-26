@@ -34,19 +34,17 @@ const FORK_BUDGET: std::time::Duration = std::time::Duration::from_secs(30);
 /// 它的作用是 **fail-fast**：一个明显不是 sid/uuid 的串没必要走一趟长连接才被后端拒。
 /// 字符集与共享那份 `branch_core::is_plain_sid` 一致（`[A-Za-z0-9-]`，长度 1..=64）。
 ///
-/// ⚠ **这里刻意没有改成直接调它**，理由如实写：本函数要把「长度不对」与「有非法字符」
-/// 分成**两句人话**（这是给用户看的 fail-fast 提示），而那份共享判定只交出一个 `bool`。
-/// 改成调它就得把两句话压成一句。⇒ **登记成一处已知的形状重复**，不假装收干净了。
+/// 〔DUP1 · `设计/90 §3` 判据 2 · `01 §5` D1〕判「行不行」的只有共享那一份（`shell_quote_core::session_id_ok`）；
+/// 这里只负责把「长度不对」与「形状不对」分成**两句人话**（给用户看的 fail-fast 提示），上界也取自同一个常量。
+/// 〔旧文要点：原先这里自己写了一份字符集，「登记成一处已知的形状重复」—— 今天不再重复。〕
 fn validate_fork_id(what: &str, s: &str) -> Result<(), String> {
-    // 上限与共享那份 `branch_core::is_plain_sid` 对齐（Phase G 审计：原来这边 128、那边 64，
-    // 65..=128 的 id 会白跑一趟才被拒；注释里引的函数名 `valid_sid` 也不存在）。
-    if s.is_empty() || s.len() > 64 {
+    if s.is_empty() || s.len() > shell_quote_core::SESSION_ID_MAX {
         return Err(copy_text(
             "rsRemoteBranch.forkId.badLength",
             &[("what", &what.to_string())],
         ));
     }
-    if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+    if !shell_quote_core::session_id_ok(s) {
         return Err(copy_text(
             "rsRemoteBranch.forkId.badChar",
             &[("what", &what.to_string())],

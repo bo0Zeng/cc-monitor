@@ -11,7 +11,7 @@
  * 是**静默账号被抹掉**，所以钉成模块加载即崩的断言（下方 `assertDimensionOrderInvariants`），
  * 而非留作注释纪律。
  */
-import { isValidModelName, isValidSessionId } from "./shell-quote.ts";
+import { isValidModelName } from "./shell-quote.ts";
 import { AGENT_PROFILE } from "./agent-profile.ts";
 import type { LaunchDimension } from "./launch-types.ts";
 import { copyText } from "./copy-table";
@@ -23,9 +23,8 @@ export const IDENTITY_DIMENSION: LaunchDimension = {
   order: 5,
   applies: (ctx) => ctx.ccmSid !== undefined,
   apply: (plan, ctx) => {
-    if (!isValidSessionId(ctx.ccmSid!)) {
-      throw new Error(copyText("launchDimensions.bad.ccmSid", { value: JSON.stringify(ctx.ccmSid) }));
-    }
+    // 〔DUP1 · `设计/90 §3` 判据 2〕这里原来先过 TS 的 `isValidSessionId`〔散文墓碑〕—— 今天原样推：
+    // 渲染侧判（外层 `@ccm_sid` · `--ccm-sid=` 都过 `shell_quote_core::session_id_ok`，判不过拒并说清）。
     plan.identity = { ccmSid: ctx.ccmSid! };
   },
 };

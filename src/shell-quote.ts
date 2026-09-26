@@ -1,5 +1,5 @@
 /**
- * 起会话输入的校验原语（纯函数，零依赖叶子模块）：sid · 模型名 · tmux 会话名。
+ * 起会话输入的校验原语（纯函数，零依赖叶子模块）：模型名 · tmux 会话名。
  *
  * 〔LR2〕这里原来还有三件**拼 shell 串**的东西：`posixQuote`（单引号包裹）、`buildEnvPrefix`
  * （`export CLAUDE_CONFIG_DIR='…'; `）与 `UNSET_CONFIG_DIR_PREFIX`。它们只给 TS 兜底渲染器
@@ -13,13 +13,9 @@
  * `sanitizeRemoteLauncher`〔散文墓碑〕（同 `payload.rs::render_payload` 那道闸的字符集，但它**静默换成 `claude`**，
  * 撞 `01 §5` D4）。两份删了：线上校验交渲染那一侧判，判不过带 `REFUSE:` 标拒、前端说出来，不回落。
  * 登记表 `tests/judgment-single-home.vitest.ts`（J2 · J3）。
+ * 〔DUP1 · 第二轮〕`isValidSessionId`〔散文墓碑〕同理删了（J5）：sid 规则只有一份，住 `shell_quote_core::session_id_ok`，
+ * 渲染侧（载荷 · 外层 · `ccm …` 调用行 · 本机拉起）与后端 ccm 各自在拼进命令之前判。
  */
-
-/** sessionId 白名单（UUID 及其变体形态）。拒前导 `-`：防伪造 sid 注入选项
- * （如 `--dangerously-skip-permissions` 会被 claude 当参数吃掉）。 */
-export function isValidSessionId(sid: string): boolean {
-  return /^[A-Za-z0-9_][A-Za-z0-9_-]{0,127}$/.test(sid);
-}
 
 /**
  * F07（unify-launch）：模型名白名单——覆盖"claude-opus-4-5-20260101"这类完整 ID 与"opus"这类

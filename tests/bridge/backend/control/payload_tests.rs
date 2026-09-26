@@ -1982,3 +1982,39 @@ fn a_free_text_cwd_passes_real_names_and_refuses_what_quote_cannot_hold() {
         }
     }
 }
+
+/// 〔DUP1 · `INVARIANTS §47` ①〕载荷那条线上 resume 的 sid（`resumeSid` 单报的那一个）与外层 `@ccm_sid`：
+/// 拼进载荷之前过 `shell_quote_core::session_id_ok`（全仓唯一一份；前端那份 `isValidSessionId` 按 `设计/90 §3` 判据 2 删了），
+/// 报的 sid 还得就是 `args` 第二格 —— **正反各一格**，拒的都带「拒」标（前端按标说出来、不回落）。
+/// 要求住址：`INVARIANTS §47` ①「字符集白名单（闭集，默认拒）＋ 不许 `-` 开头（选项注入）＋ 有长度上界的就钉上界」。
+#[test]
+fn a_resume_sid_and_a_session_mark_are_judged_before_they_enter_the_payload() {
+    use crate::backend::control::launch_wire::{render_launch_payload, PayloadRenderRequest};
+    let req = |args: &[&str],
+               resume_sid: Option<&str>,
+               ccm_sid: Option<&str>|
+     -> PayloadRenderRequest {
+        let mut v = serde_json::json!({
+            "env": [], "cwd": null, "launcher": "claude", "args": args,
+            "nestedEnv": [], "wrap": [], "resumeSid": resume_sid,
+        });
+        if let Some(s) = ccm_sid {
+            v["outer"] = serde_json::json!({"mode": "create", "name": "s1-cc", "quoting": "raw", "cwd": null, "ccmSid": s});
+        }
+        serde_json::from_value(v).expect("请求形状")
+    };
+    let uuid = "0473c3a0-1111-2222-3333-444455556666";
+    assert!(render_launch_payload(req(&["--resume", uuid], Some(uuid), None)).is_ok());
+    assert!(render_launch_payload(req(&["--resume", uuid], Some(uuid), Some(uuid))).is_ok());
+    for bad in ["--dangerously-skip-permissions", "a_b", "a;b"] {
+        let e = render_launch_payload(req(&["--resume", bad], Some(bad), None)).unwrap_err();
+        assert!(e.starts_with(REFUSE_TAG), "坏 sid 该带拒标：{e}");
+    }
+    let e = render_launch_payload(req(&["--resume", uuid], Some("other-1"), None)).unwrap_err();
+    assert!(
+        e.starts_with(REFUSE_TAG),
+        "报的 sid 与 args 第二格不同该拒：{e}"
+    );
+    let e = render_launch_payload(req(&["--resume", uuid], Some(uuid), Some("-x"))).unwrap_err();
+    assert!(e.starts_with(REFUSE_TAG), "坏 @ccm_sid 该拒：{e}");
+}

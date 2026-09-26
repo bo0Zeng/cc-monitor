@@ -456,6 +456,7 @@ export function buildPayloadRenderRequest(plan: LaunchPlan): PayloadRenderReques
         : [...plan.args],
     nestedEnv: [...AGENT_PROFILE.nestedEnvVars],
     wrap: plan.wrap.map((w) => ({ order: w.order, prelude: w.prelude })),
+    resumeSid: plan.action.kind === "resume" ? plan.action.sid : null,
   };
 }
 

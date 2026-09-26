@@ -577,16 +577,9 @@ pub enum TmuxOuter<'a> {
     Attach { target: TmuxTarget<'a> },
 }
 
-/// `@ccm_sid` 是裸拼进命令的，白名单与 TS 座声称调用方会保证的那一条同口径
-/// （座头注逐字「调用方须保证 `ccmSid` 为 `[A-Za-z0-9_-]`（座不做校验、裸拼）」）。
-///
-/// **本侧不信那句声称** —— 它是一句注释纪律，而这条路的上游是 webview。
-fn ccm_sid_safe(sid: &str) -> bool {
-    !sid.is_empty()
-        && sid
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
-}
+// 〔DUP1 · `INVARIANTS §47` ①〕`@ccm_sid` 是裸拼进命令的 ⇒ 过 sid 那一条放行判定（`shell_quote_core::session_id_ok`，
+// 全仓唯一一份）。这里原来有一份自己的白名单（`[A-Za-z0-9_-]`、无上界、不管前导 `-`），与 TS 座当年声称的那条同口径 ——
+// **本侧不信那句声称**的理由照旧（上游是 webview），换的只是「信谁」：信共享那一份，不再各写各的。
 
 /// 外层三格的编译。`payload` = **内层已渲染好的生料**（没 quote），本函数负责 quote。
 ///
@@ -635,7 +628,7 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
             let (set_sid, set_title) = match ccm_sid {
                 None => (String::new(), String::new()),
                 Some(s) => {
-                    if !ccm_sid_safe(s) {
+                    if !shell_quote_core::session_id_ok(s) {
                         return Err(refuse(copy_text(
                             "rsPayload.sessionMark.bad",
                             &[("value", &format!("{:?}", s))],

@@ -62,6 +62,21 @@ pub enum Refusal {
         slot: FreeTextSlot,
         value: String,
     },
+    /// 〔DUP1 · `INVARIANTS §47` ①〕一个**标识符**值过不了拼进命令之前的放行判定（闭集白名单 ＋ 不许 `-` 开头 ＋ 钉上界，
+    /// 判定住 `shell-quote-core`，全仓唯一一份）。`value` = 原值（`{:?}` 形）。
+    IdentifierRefused {
+        slot: IdentifierSlot,
+        value: String,
+    },
+}
+
+/// [`Refusal::IdentifierRefused`] 是哪一格（各有各的一句话，文案走表）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IdentifierSlot {
+    /// `resume <sid>`（`shell_quote_core::session_id_ok`）。
+    Sid,
+    /// `--ccm-sid=`（身份标记；同一条 sid 规则）。
+    CcmSid,
 }
 
 /// [`Refusal::FreeTextRefused`] 是哪一格（各有各的一句话，文案走表）。
@@ -111,6 +126,14 @@ impl Refusal {
                 slot: FreeTextSlot::AgentArg,
                 value,
             } => copy_text("rsCcmInvocation.refusal.freeTextArg", &[("value", value)]),
+            Refusal::IdentifierRefused {
+                slot: IdentifierSlot::Sid,
+                value,
+            } => copy_text("rsCcmInvocation.refusal.idSid", &[("value", value)]),
+            Refusal::IdentifierRefused {
+                slot: IdentifierSlot::CcmSid,
+                value,
+            } => copy_text("rsCcmInvocation.refusal.idCcmSid", &[("value", value)]),
         }
     }
 }
@@ -410,10 +433,24 @@ pub fn render_ccm_invocation(
 
     match spec.action {
         Action::Resume { sid } => {
+            // 〔DUP1 · §47 ①〕resume 的 sid 是标识符：共享那一份判（前端那份删了，`设计/90 §3` 判据 2）。
+            if !shell_quote_core::session_id_ok(sid) {
+                return Err(Refusal::IdentifierRefused {
+                    slot: IdentifierSlot::Sid,
+                    value: format!("{sid:?}"),
+                });
+            }
             tokens.push("resume".into());
             tokens.push(sid.to_string());
         }
         _ => tokens.push("new".into()),
+    }
+    // 〔DUP1 · §47 ①〕身份标记同一条 sid 规则（`--ccm-sid=` 由下面的 identity 维度吐）。
+    if let Some(s) = spec.ccm_sid.filter(|s| !shell_quote_core::session_id_ok(s)) {
+        return Err(Refusal::IdentifierRefused {
+            slot: IdentifierSlot::CcmSid,
+            value: format!("{s:?}"),
+        });
     }
     if let Container::Tmux { name, .. } = spec.container {
         tokens.push(format!("--tmux={name}"));

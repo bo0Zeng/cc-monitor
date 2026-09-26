@@ -1410,6 +1410,7 @@ plan，只要满足其余 CLI 渲染条件，会被 `renderCli` 吐成一条**�
 `LaunchPlanBuild`，其单测头注还写着"证明本地路径真的在用同一套维度注册表（不是套了个类型皮的
 假装）"——**那句话是假的**：跑了注册表，但结果没人要。已改名 `validateLocalLaunch` + 返回 `void`，
 让名字与事实一致。
+〔DUP1 · 第四波 4D〕`validateLocalLaunch`〔散文墓碑〕连同它唯一的一格（sid 字符集）删了（`设计/90 §3` 判据 2）：本机拉起那条路上 Rust 自己判 sid（`history.rs` 本机决策 → `shell_quote_core::session_id_ok`），前端不再判。下面「为什么不真接上」那段论证照旧成立。
 
 **为什么不"真接上"（理由经 R07 Phase D 审计订正——我原先引错了论据）**：
 初稿引的是 F06 的 `Get-Command` 论证（`features/F06-local-path-ir.md:27-30`）。那条**真实存在**，

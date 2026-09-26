@@ -38,7 +38,6 @@ import { liveRank, starRank, bumpCounted, isKnown } from "./counted";
 import { dispatcher } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
 import { runRemoteResume, runNewSessionRemote } from "../remote-launch-run";
-import { validateLocalLaunch } from "../launch-requests";
 import { isSelectable } from "../accounts";
 import { fetchAccounts } from "../account-reads";
 import { withAccount, localLaunchAccountSync, localLaunchAccountNameSync, primeLocalLaunchAccounts } from "../launch-account";
@@ -1584,12 +1583,8 @@ export class HistoryView {
     } else {
       try {
         // 本地：后端 new_local_session（cc 优先 + F34 自定义，无 sid/resume flag）。
-        // F06：走一遍本地 IR 构造（new 动作无 sid 可校验、恒不 throw，主要是让 transport:local
-        // 是真活过的路径，不是纯类型层面的死分支）。上面的 `getBehavior()` 排在此调用之前——
-        // 与 resume 分支「校验先于 IPC」的顺序考虑不同（那里 validateLocalLaunch 真的可能 throw，值得抢在
-        // 任何 IPC 之前跑），new 分支没有 sid 需要拦截，`getBehavior()` 是 remote 分支也要用的
-        // 共享读取，不为这里的顺序特意重排。
-        validateLocalLaunch({ kind: "new" }, ctx.cwd);
+        // 〔DUP1〕这里原来调一次 `validateLocalLaunch`〔散文墓碑〕（new 动作恒不 throw，只为「让本地那条路活过」）——
+        // 那个函数随它唯一的一格（sid 字符集，交 Rust 判）删了。
         // ★★ `K-H2b` `D1 阻-1`：起新会话这条主路同样一个账号都不传。
         //    ⚠ 它取的是**当前账号**（不是从别的会话继承 —— 那是 fork 的语义），
         //    与远端那条 `runNewSessionRemote` 的 `withAccount(origin, null, …, {follow:{}})`
