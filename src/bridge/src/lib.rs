@@ -126,6 +126,8 @@ mod dial_host;
 mod link_mux;
 // 〔CF1〕本机会话内容的入口通道：本机两条读循环把后端的内容帧送进来，交给与远端同一个 `ssh_source::LineIntake`。
 mod local_lines;
+// 〔W5-VIS · `设计/15 §3.4 ②`〕三条读帧循环共用的丢帧账（认不出的帧 · 非 UTF-8 行：计数、按 2 的幂次说、流结束出总账）。
+mod frame_tally;
 // T01：结构性扫描的可复用形式（枚举+逐个断言+计数自检+钉死逃生口）。
 // **只在测试期编译**——它的消费者全在 `#[cfg(test)]` 里（`sftp.rs` 的 tmux 目标守卫、
 // `tool_registry.rs` 的字段纪律）。这是测试支撑模块，不是被闲置的生产代码；

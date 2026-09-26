@@ -80,6 +80,7 @@ src/bridge/src/backend/control/backend_control.rs:212	{origin} 的流本来就�
 src/bridge/src/backend/control/inbound_client.rs:439	（错误应答 code={} message={}）	保留	[不对外] 只拼进 tracing::warn!（本文件 :444），日志
 src/bridge/src/backend/control/local_backend.rs:600	 …〔这一行超过单行上界，在此切开，下一条接着它〕	保留	[不对外] STDERR_CUT_MARK 只贴进 monitor 自己的滚动日志（logging.rs）
 src/bridge/src/backend/control/local_backend.rs:1226	#!/bin/sh\n# cc-monitor: {CCM_ENTRY_WORD} = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec {} {CCM_ENTRY_WORD} "$@"\n	保留	[不对外] 远端 ~/.local/bin/ccm 那个 shim 的文件内容（shebang ＋ 一行注释 ＋ 一行 exec），不上屏；〔MC1〕CCM_SELF 那一行删了
+src/bridge/src/backend/control/local_backend.rs:1783	本机后端（stdio 载体）	保留	[不对外] 〔W5-VIS〕FrameTally 的流名，只出现在丢帧账那几行日志里
 src/bridge/src/backend_policy.rs:400	[死亡账] origin={origin} 判定={} 退出状态={} —— {}	保留	[不对外] 〔CP2b 复核〕ST2 步 7 起界面只取 last_brief（判定＋退出状态），ledger_line 只经 DeathSink 落 monitor 日志；原裁「界面只取判定＋退出状态两格，日志行留在日志」已兑现 ⇒ 这一行今天不对外，不进文案表（原裁：改·§2.1 [可达存疑]）
 src/bridge/src/backend_policy.rs:504	脱离路：`attach_stream` 的流断了 ⇒ `reap_detached` 那条收尸线程 `wait()` 回来那一拍	保留	[不对外] DEATH_RECORD_SITES：判据用的登记表（记录点住址＋说明），生产代码不读
 src/bridge/src/backend_policy.rs:509	监护路：backend 那个 `on_event` **闭包**收到 `Exited` 那一拍。\n         它抽成一个返回闭包的函数，只为让 `KP3W3` 那三只假后端能跑**同一个闭包**\n         —— 内联的闭包测试够不着，那条行为判据就只能退回读源码	保留	[不对外] DEATH_RECORD_SITES 登记表说明
@@ -252,3 +253,7 @@ src/backend/lib.rs:1219	与帧面 `kill` 那一行是**同一条实现**（CLI �
 src/backend/lib.rs:1227	与帧面 `launch` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \n              派生到同一条登记）⇒ 同一个理由，将来与帧面那一行同拍还，**暂时不做**。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
 src/backend/lib.rs:1242	改的是 **unix 权限位**（低 12 位），命令自己声明了 `no_unix_mode` 码。Windows 上没有这套位\n              （那边是 ACL ＋ 只读属性），`change_mode` 在那里回 `no_unix_mode`、一个字节不动。\n              ⇒ 这一条本身**不该跨过去**；Windows 那边若要「改访问权限」，是另一条能力、另立一行〔FW5 分档：结构〕。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
 src/backend/lib.rs:1251	与帧面 `files-chmod` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \n              派生到同一条登记）⇒ 同一个理由：unix 权限位这一条**不该跨过去**。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
+src/bridge/src/frame_tally.rs:47	[{}] 跳过一帧认不出的（未知 kind / 坏帧），这条流上累计 {} 帧；这一帧开头：{}	保留	[不对外] 〔W5-VIS〕丢帧账：只经 tracing::warn! 进 monitor 日志
+src/bridge/src/frame_tally.rs:60	[{}] 一行含非 UTF-8 字节（这条流上累计 {} 行）；这一行开头：{}	保留	[不对外] 〔W5-VIS〕同上
+src/bridge/src/frame_tally.rs:72	[{}] 这条流结束：跳过了 {} 帧认不出的，{} 行含非 UTF-8 字节	保留	[不对外] 〔W5-VIS〕同上（流结束那一行总账）
+src/bridge/src/local_backend_host.rs:986	本机常驻后端（脱离载体）	保留	[不对外] 〔W5-VIS〕FrameTally 的流名，只出现在丢帧账那几行日志里
