@@ -249,6 +249,7 @@ import type { TabStreamView } from "../src/tab-stream-view";
 import type { TabSessionActions } from "../src/tab-session-actions";
 import { LOCAL_ORIGIN } from "../src/ipc/origin";
 import { copyText } from "../src/copy-table";
+import { recordFileWiring } from "../src/record-file-notice";
 
 // 〔S4 · 第四波〕`TabManager` 拆开之后各样东西住各自的家（store · tab 栏视图 · 拖拽 · 落盘偏好 · 流视图 · 会话动作）。
 // 判据**直接指向新家**；`TabManager` 上不再为旧判据留同名转交。TS 的 `private` 只在编译期，运行时这几个字段就在实例上。仅测试用。
@@ -5526,6 +5527,7 @@ describe.each([
 
 // ===== 〔FW1 · 第四波 4D · 主会话裁 D-d〕活会话的记录文件不见了 / 被改过 ⇒ 那个 tab 顶上说一句，不碰会话状态 =====
 // 要求住址：题面 `4d-lanes.md`「主会话本批裁的」D-d「删了 / 改名 ⇒ 出声（该 tab 说一句『记录文件不见了』），不崩、不误判结束」。
+// 接线（`record-file-notice.ts::recordFileWiring`）喂的是**真的** `TabManager.streamElOf` 与 `onLine`，与 `main.ts` 同一形。
 describe("〔FW1〕记录文件的出声", () => {
   const mk = (seq: number) => ({
     session_id: "rf-sid",
@@ -5535,28 +5537,32 @@ describe("〔FW1〕记录文件的出声", () => {
     message: { type: "assistant", uuid: `rf-${seq}` } as never,
   });
   const noticeText = (tm: TabManager): string | null => {
-    const tab = home(tm).store.tabs.get("rf-sid");
-    const first = tab?.streamEl.firstElementChild as HTMLElement | null;
+    const first = tm.streamElOf("rf-sid")?.firstElementChild as HTMLElement | null | undefined;
     return first && first.dataset.recordFileNotice !== undefined ? first.textContent : null;
   };
 
   it("「不见了」画在那个 tab 顶上、会话状态不动；又来一行 ⇒ 收掉；「已从头重读」那句留着", () => {
     const tm = makeTM();
-    tm.onLine(mk(0) as never);
+    const rf = recordFileWiring((sid) => tm.streamElOf(sid));
+    const line = (seq: number): void => {
+      tm.onLine(mk(seq) as never);
+      rf.afterLine("rf-sid");
+    };
+    line(0);
     const before = home(tm).store.tabs.get("rf-sid")!.state;
-    tm.noteRecordFile("rf-sid", "gone");
+    rf.onSessionFileNotice("rf-sid", "gone");
     expect(noticeText(tm)).toBe(copyText("sessionState.recordFile.gone"));
     expect(home(tm).store.tabs.get("rf-sid")!.state, "记录文件不见了就改了会话状态（误判结束）").toEqual(before);
-    tm.onLine(mk(1) as never);
+    line(1);
     expect(noticeText(tm), "又来了一行，「不见了」那句还挂着").toBeNull();
-    tm.noteRecordFile("rf-sid", "rewritten");
-    tm.onLine(mk(2) as never);
+    rf.onSessionFileNotice("rf-sid", "rewritten");
+    line(2);
     expect(noticeText(tm), "重读那句被下一行收掉了").toBe(copyText("sessionState.recordFile.rewritten"));
-    tm.noteRecordFile("rf-sid", "truncated");
+    rf.onSessionFileNotice("rf-sid", "truncated");
     expect(noticeText(tm), "新的一句没盖掉旧的").toBe(copyText("sessionState.recordFile.truncated"));
     // 认不出的取值 / 没有这个 tab ⇒ 不画、不抛。
-    tm.noteRecordFile("rf-sid", "moved");
+    rf.onSessionFileNotice("rf-sid", "moved");
     expect(noticeText(tm)).toBe(copyText("sessionState.recordFile.truncated"));
-    expect(() => tm.noteRecordFile("no-such-sid", "gone")).not.toThrow();
+    expect(() => rf.onSessionFileNotice("no-such-sid", "gone")).not.toThrow();
   });
 });

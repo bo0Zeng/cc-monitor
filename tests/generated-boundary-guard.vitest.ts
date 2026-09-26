@@ -218,6 +218,7 @@ describe("C01 边界生成物", () => {
       "SessionActivityPayload.ts", // C02
       "SessionContainerPayload.ts", // 〔U4b〕活会话住在什么容器里（`session-container`）
       "SessionEndedPayload.ts", //    C02
+      "SessionFileNoticePayload.ts", // 〔FW1 · 第四波 4D〕会话内容流里「记录文件不见了 / 被改过已从头重读」那一格的体
       "SessionHits.ts", // C04d 批6c
       "SessionIdlePayload.ts", //     C02
       "SessionLinesPage.ts", //       〔CF2 · 第四波 4B〕按行号取回的那一段（`read_session_lines`）

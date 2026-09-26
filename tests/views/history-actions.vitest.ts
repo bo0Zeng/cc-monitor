@@ -44,6 +44,7 @@ import { __resetLocalLaunchSnapshotForTests, __setLocalLaunchSnapshotForTests } 
 import { resolvePendingLocalLaunches, __resetPendingLocalLaunchesForTests, __pendingLocalLaunchCountForTests } from "../../src/local-launch-backfill";
 import { historyCalls, isChanCall, linesReply, withAccountReads, withHistoryReads } from "../test-support/chan-fake";
 import { LOCAL_ORIGIN } from "../../src/ipc/origin";
+import { copyText } from "../../src/copy-table";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const runNewRemote = runNewSessionRemote as unknown as ReturnType<typeof vi.fn>;
@@ -278,6 +279,36 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
       "本机删除没送 `<local>` —— Rust 侧 `Origin::route` 会拒（`null`/缺省都不是本机）",
     ).toBe("<local>");
     confirmSpy.mockRestore();
+  });
+
+  // 〔FW1 · 第四波 4D · 主会话裁 D-e〕删会话前看活不活：活着（条目说活 / tab 栏里活）⇒ 多问一句；说不清（`isLive: null`）⇒ 也多问；
+  //   确定不活 ⇒ 照原来那一问。多问那句答「不」⇒ 一趟 delete 都不发。异源：问了什么由文案表现取、发没发由 invoke 记录判。
+  it("〔FW1〕删会话前看活不活：活 / 说不清多问一句，不活照旧；多问那句答不 ⇒ 不删", async () => {
+    const runOnce = async (over: Record<string, unknown>, liveInTabs: boolean, answers: boolean[]) => {
+      invokeMock.mockClear();
+      const asked: string[] = [];
+      const confirmSpy = vi.spyOn(window, "confirm").mockImplementation((msg?: string) => {
+        asked.push(String(msg));
+        return answers[asked.length - 1] ?? true;
+      });
+      const view = new HistoryView();
+      view.liveInTabs = () => liveInTabs;
+      const row = buildRow(view, entry(over), proj());
+      row.querySelector<HTMLButtonElement>(".history-action-danger")!.click();
+      await Promise.resolve();
+      await Promise.resolve();
+      confirmSpy.mockRestore();
+      const deleted = invokeMock.mock.calls.some((c) => c[0] === "delete_history_session");
+      return { asked, deleted };
+    };
+    const live = copyText("sessionState.deleteLive.confirm", { label: "T" });
+    const unknown = copyText("sessionState.deleteUnknown.confirm", { label: "T" });
+    const plain = copyText("history.delete.confirmLocal", { label: "T" });
+    expect(await runOnce({ isLive: true }, false, [true, true])).toEqual({ asked: [live, plain], deleted: true });
+    expect(await runOnce({ isLive: false }, true, [true, true]), "tab 栏里活着却没多问").toEqual({ asked: [live, plain], deleted: true });
+    expect(await runOnce({ isLive: null }, false, [true, true])).toEqual({ asked: [unknown, plain], deleted: true });
+    expect(await runOnce({ isLive: false }, false, [true])).toEqual({ asked: [plain], deleted: true });
+    expect(await runOnce({ isLive: true }, false, [false]), "多问那句答了不，还是删了").toEqual({ asked: [live], deleted: false });
   });
 
   it("菜单开着按 Esc（经 handleEscape）→ 只关菜单，不误关整个历史视图", () => {
