@@ -15,6 +15,7 @@
  * 逐字不变，事件怎么在上面几份之间流转写在这里。拆分逐子步提交，每一步 `tabs.vitest` 全绿、断言不动。
  */
 import { isCompactRecord } from "./cards";
+import { clearGoneNotice, isRecordFileChange, showRecordFileNotice } from "./record-file-notice";
 import { runForkFlow } from "./fork-flow"; // G6：分叉完把新会话起起来（E78 起连反馈也在里面）
 import type { BranchResult } from "./generated/BranchResult";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
@@ -310,6 +311,8 @@ export class TabManager {
     // 老后端重连还会从 seq 0 重发整段。必须在 renderStreamRecord 之前、且覆盖 skip 记录
     // （attachment/isMeta/空 user 有 seq 但不入 timeline，timeline.has 漏判）。
     // 〔CF1〕本机会话的行也走后端的帧与旁路快照之后，这一道本机同样会命中（原先写「本地永不命中」）。
+    // 〔FW1 · D-d〕这个会话又来了一行 ⇒ 「记录文件不见了」那一句收掉（文件回来了）。放在去重之前：重投的行也说明它回来了。
+    clearGoneNotice(tab.streamEl);
     if (tab.seenSeqs.has(payload.seq)) return;
     tab.seenSeqs.add(payload.seq);
 
@@ -819,6 +822,17 @@ export class TabManager {
     if (!this.applyState(tab, "idle")) return;
     this.refreshTabBar();
     this.emitTabStateProbe(tab); // F-E1:可重连(claude 退但 tmux 在)
+  }
+
+  /**
+   * 〔FW1 · 第四波 4D · D-d〕这条会话的记录文件不见了 / 被改过已从头重读 ⇒ 它的 tab 顶上说一句（`record-file-notice.ts`）。
+   * **不碰会话状态**（判活不看 jsonl：不误判结束）。没有这个 tab / 认不出的取值 ⇒ 不画。
+   */
+  noteRecordFile(sessionId: string, change: string): void {
+    if (!isRecordFileChange(change)) return;
+    const tab = this.store.tabs.get(sessionId);
+    if (!tab) return;
+    showRecordFileNotice(tab.streamEl, change);
   }
 
   /**

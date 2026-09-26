@@ -3381,3 +3381,172 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
     initial_session_scan(&empty.join("sessions"), &mut state, &mut sink);
     assert_eq!(kinds(&mut rx), vec!["sessions_replayed"]);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+//  〔FW1 · 第四波 4D · 2026-09-25〕活会话的 jsonl 被删 / 改名 / 截短 / 原地改写（主会话裁 D-d）
+// ═══════════════════════════════════════════════════════════════════════════════════════
+//
+// 要求住址（逐字）：题面 `4d-lanes.md`「主会话本批裁的」D-d「V119 之后活会话的 jsonl 被改 / 删 / 改名：观察侧当它是
+// 『看的、不是管的』—— 删了 / 改名 ⇒ 出声（该 tab 说一句『记录文件不见了』），不崩、不误判结束；被截短 ⇒ 按截断重读」；
+// 主会话 09-25 补「原地整份改写且变长要堵：游标旁记末尾若干字节，每次续读前核，对不上 ⇒ 当被改写：从 0 重读并出声」。
+// 语料是结构性的假行（`{"n":…}`），不含任何真会话正文。
+
+/// 把这一趟收到的帧摊平成 `(kind, 细节)`：行帧给 `line:<raw>`，出声帧给它的 kind（重读带 why）。
+fn fw1_drain(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<String> {
+    let mut out = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        out.push(match f {
+            Frame::Line { raw, .. } => format!("line:{raw}"),
+            Frame::SessionFileGone { session_id, .. } => format!("gone:{session_id}"),
+            Frame::SessionFileReread {
+                session_id, why, ..
+            } => {
+                format!("reread:{session_id}:{why:?}")
+            }
+            other => format!("other:{}", other.loss_identity().kind),
+        });
+    }
+    out
+}
+
+fn fw1_rig(
+    tag: &str,
+) -> (
+    std::path::PathBuf,
+    std::path::PathBuf,
+    ReaderState,
+    FrameSink,
+    tokio::sync::mpsc::Receiver<Frame>,
+) {
+    let dir = std::env::temp_dir().join(format!("ccm-fw1-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let (tx, rx) = tokio::sync::mpsc::channel::<Frame>(256);
+    let sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(dir.join("projects"), false, false);
+    state.active_sids.insert("s-fw1".to_string());
+    let path = dir.join("s-fw1.jsonl");
+    (dir, path, state, sink, rx)
+}
+
+/// ★ **删了 ⇒ 出声一次、不崩、不误判结束；同名再出现从 0 读；再不见再说一次**。改名走了 ＝ 旧路径不见了，同一形。
+#[test]
+fn a_vanished_session_file_is_said_once_and_a_recreated_one_is_read_from_zero() {
+    let (dir, path, mut state, mut sink, mut rx) = fw1_rig("gone");
+    std::fs::write(&path, "{\"n\":1}\n{\"n\":2}\n").unwrap();
+    process_jsonl(&path, &mut state, &mut sink);
+    assert_eq!(fw1_drain(&mut rx), vec!["line:{\"n\":1}", "line:{\"n\":2}"]);
+
+    std::fs::remove_file(&path).unwrap();
+    process_jsonl(&path, &mut state, &mut sink);
+    process_jsonl(&path, &mut state, &mut sink); // 同一个「不在」再来一个事件 ⇒ 不重复说
+    assert_eq!(
+        fw1_drain(&mut rx),
+        vec!["gone:s-fw1"],
+        "删了之后不是恰好说一次"
+    );
+    assert!(
+        state.active_sids.contains("s-fw1"),
+        "记录文件没了就把会话当成结束了"
+    );
+
+    // agent 按路径追加 ⇒ 同名文件重新长出来，只有新行（比读到过的短也好、长也好，都从 0 读）。
+    std::fs::write(&path, "{\"n\":3}\n").unwrap();
+    process_jsonl(&path, &mut state, &mut sink);
+    assert_eq!(
+        fw1_drain(&mut rx),
+        vec!["line:{\"n\":3}"],
+        "重建之后不是从 0 读（或者多说了一句重读）"
+    );
+    std::fs::write(&path, "{\"n\":3}\n{\"n\":4-a-longer-line-than-before}\n").unwrap();
+    process_jsonl(&path, &mut state, &mut sink);
+    assert_eq!(
+        fw1_drain(&mut rx),
+        vec!["line:{\"n\":4-a-longer-line-than-before}"]
+    );
+
+    // 改名走了 ⇒ 旧路径不见了 ⇒ 再说一次（上一次「不在」已经被「又在了」清掉）。
+    std::fs::rename(&path, dir.join("elsewhere.jsonl")).unwrap();
+    process_jsonl(&path, &mut state, &mut sink);
+    assert_eq!(fw1_drain(&mut rx), vec!["gone:s-fw1"]);
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// ★ **截短 ⇒ 先出声（why = 截短）再从头重读**；行号照旧往上（`INVARIANTS §25`）。
+#[test]
+fn a_truncated_session_file_is_said_and_reread_from_zero() {
+    let (dir, path, mut state, mut sink, mut rx) = fw1_rig("trunc");
+    std::fs::write(&path, "{\"n\":1}\n{\"n\":2}\n{\"n\":3}\n").unwrap();
+    process_jsonl(&path, &mut state, &mut sink);
+    let _ = fw1_drain(&mut rx);
+    std::fs::write(&path, "{\"n\":9}\n").unwrap();
+    process_jsonl(&path, &mut state, &mut sink);
+    assert_eq!(
+        fw1_drain(&mut rx),
+        vec!["reread:s-fw1:Truncated", "line:{\"n\":9}"]
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// ★★ **原地整份改写且变长**（编辑器整份覆盖多了几个字）：长度没变短，截断判不出 ——
+/// 末尾指纹对不上 ⇒ 先出声（why = 改写）再从头重读；读到的是新文件的每一行，**没有**从旧偏移读出来的半行。
+/// 阴性对照：纯追加 ⇒ 不出声、只来新的那一行。
+#[test]
+fn an_in_place_rewrite_that_grew_is_caught_by_the_tail_fingerprint() {
+    let (dir, path, mut state, mut sink, mut rx) = fw1_rig("rewrite");
+    let before = "{\"n\":1,\"uuid\":\"aaaaaaaa-0001\"}\n{\"n\":2,\"uuid\":\"aaaaaaaa-0002\"}\n";
+    std::fs::write(&path, before).unwrap();
+    process_jsonl(&path, &mut state, &mut sink);
+    let _ = fw1_drain(&mut rx);
+
+    // 阴性：纯追加。
+    let appended = format!("{before}{{\"n\":3,\"uuid\":\"aaaaaaaa-0003\"}}\n");
+    std::fs::write(&path, &appended).unwrap();
+    process_jsonl(&path, &mut state, &mut sink);
+    assert_eq!(
+        fw1_drain(&mut rx),
+        vec!["line:{\"n\":3,\"uuid\":\"aaaaaaaa-0003\"}"],
+        "纯追加却被当成改写了"
+    );
+
+    // 改写：第一行多了几个字（整份平移），总长 ≥ 读到过的最长。
+    let rewritten = appended.replacen("\"n\":1,", "\"n\":1,\"edited\":true,", 1);
+    assert!(rewritten.len() >= appended.len());
+    std::fs::write(&path, &rewritten).unwrap();
+    process_jsonl(&path, &mut state, &mut sink);
+    let want: Vec<String> = std::iter::once("reread:s-fw1:Rewritten".to_string())
+        .chain(rewritten.lines().map(|l| format!("line:{l}")))
+        .collect();
+    assert_eq!(fw1_drain(&mut rx), want, "改写之后不是「出声 ＋ 整份重读」");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 两个新帧的线上形状（逐字节；异源 = 手写期望）＋ 丢了不可恢复（按身份报）。
+#[test]
+fn the_two_session_file_frames_have_exactly_these_bytes() {
+    use crate::wire::{to_line, RereadWhy};
+    let gone = Frame::SessionFileGone {
+        session_id: "s".into(),
+        path: "/p/s.jsonl".into(),
+    };
+    assert_eq!(
+        to_line(&gone).unwrap(),
+        "{\"kind\":\"session_file_gone\",\"session_id\":\"s\",\"path\":\"/p/s.jsonl\"}\n"
+    );
+    for (why, lit) in [
+        (RereadWhy::Truncated, "truncated"),
+        (RereadWhy::Rewritten, "rewritten"),
+    ] {
+        let f = Frame::SessionFileReread {
+            session_id: "s".into(),
+            path: "/p/s.jsonl".into(),
+            why,
+        };
+        assert_eq!(
+            to_line(&f).unwrap(),
+            format!("{{\"kind\":\"session_file_reread\",\"session_id\":\"s\",\"path\":\"/p/s.jsonl\",\"why\":\"{lit}\"}}\n")
+        );
+        assert!(!f.loss_is_recoverable());
+    }
+    assert!(!gone.loss_is_recoverable());
+}

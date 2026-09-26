@@ -207,6 +207,21 @@
       "zh": "现在看不见那台机器，说不清这个会话还在不在",
       "args": []
     },
+    "sessionState.recordFile.gone": {
+      "kind": "body",
+      "zh": "记录文件不见了。它被删掉或改了名，会话本身还在跑；文件回来后接着显示。",
+      "args": []
+    },
+    "sessionState.recordFile.truncated": {
+      "kind": "body",
+      "zh": "记录文件被改短了，已从头重读。",
+      "args": []
+    },
+    "sessionState.recordFile.rewritten": {
+      "kind": "body",
+      "zh": "记录文件被改过了，已从头重读。",
+      "args": []
+    },
     "sessionState.recordGone.title": {
       "kind": "error",
       "zh": "没法 resume：记录已不在",
