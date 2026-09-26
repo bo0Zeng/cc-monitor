@@ -249,7 +249,7 @@ impl SessionMap {
     }
 
     /// issue #23: 当前全部活跃会话的红绿灯快照。前端启动/F5 后拉一次做初始收敛
-    /// （session-activity 事件不进 replay buffer，刷新会丢——同 get_session_tasks
+    /// （session-activity 事件不进 replay buffer，刷新会丢——同任务快照那一问（`tasks-list`）
     /// 的「快照 + 事件增量」双路收敛模式）。
     pub fn snapshot_activity(&self) -> Vec<SessionActivity> {
         self.by_id

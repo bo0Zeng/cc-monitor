@@ -14,8 +14,8 @@
 //!
 //! 更早的来历（`N-F1c` 读口改问本机后端、C4c 本机清单与信任预检改走通道）见 git 历史与 `调研/第四波记录/C4c.md`。
 
-// `N-F1c`：本机那两问的传输。**只做调用方**，一个字都不改它的语义。
-use crate::backend::observe::local_query::{run_query, QueryOutcome};
+// 〔LOC1a · 第四波 4D〕本机那两问的传输：`<local>` 那条长连接（帧命令 `acct-iso-status` / `acct-iso-shellinit`）。
+//   此前每问 exec 一次本机后端（`local_query`〔散文墓碑〕，整份删了；`设计/05 §14.6`）。
 use crate::copy_table::copy_text;
 
 // 〔C4c · 第四波 4B〕本机账号清单那条 Tauri 命令（`list_local_accounts`）与它的三档结局（`LocalAccountsOutcome`）·
@@ -63,107 +63,30 @@ mod tests;
 // ─────────────────────────────────────────────────────────────────────────────
 //
 // 远端那两条（`acct_iso_deploy.rs::check_remote_acct_iso` / `remote_acct_iso_shellinit`）
-// 吃 `RemoteConfig`、经 SSH 跑一串 shell；本机这两条**问本机后端**
-// （`--acct-iso-status` / `--acct-iso-shellinit`，住后端账号域 `accounts/iso.rs`），
-// 与 `list_local_accounts` 同一种调用法 —— `NR2`「claude 真实跑在哪台机器，账号就归那台的后端管」。
+// 吃 `RemoteConfig`、问那台的后端；本机这两条**问本机常驻后端**（帧命令 `acct-iso-status` /
+// `acct-iso-shellinit`，本体住后端账号域 `accounts/iso.rs`），走 `<local>` 那条长连接 ——
+// `NR2`「claude 真实跑在哪台机器，账号就归那台的后端管」。
 // 出参类型与远端那条**逐字相同**（`AcctIsoStatus` / 片段文本），前端按同一个形状读。
+// 〔LOC1a〕远端那两条也改问那台的后端（同一个 `acct_iso_deploy::status_on` / `snippet_on`），不再经拨号链路跑 shell。
 
-/// 后端 stderr 那一行 `{code,message}` 里的 `message`；解析不了就原样带回（不猜）。
-fn backend_message(stderr: &str) -> String {
-    serde_json::from_str::<serde_json::Value>(stderr.trim())
-        .ok()
-        .and_then(|v| {
-            v.get("message")
-                .and_then(|m| m.as_str())
-                .map(str::to_string)
-        })
-        .unwrap_or_else(|| stderr.trim().to_string())
-}
-
-/// `--acct-iso-status` 的结局 → `AcctIsoStatus` —— **纯函数**。
-///
-/// 「没装」是 `Ok(installed:false)`（后端 exit 0 的那一支），不是 `Err`；
-/// `Err` 只给「问不出来」的两档（后端不在 / 查询失败 / 出参读不懂），且**不许**说成「没装」。
-pub(crate) fn classify_local_acct_iso(
-    outcome: QueryOutcome,
-) -> Result<crate::acct_iso_deploy::AcctIsoStatus, String> {
-    let stdout = match outcome {
-        QueryOutcome::Ok(s) => s,
-        QueryOutcome::NoBackend(reason) => {
-            return Err(copy_text(
-                "rsLocalAccounts.acctIso.noBackend",
-                &[("reason", &reason.to_string())],
-            ))
-        }
-        QueryOutcome::Failed { code, stderr } => {
-            return Err(copy_text(
-                "rsLocalAccounts.acctIso.failed",
-                &[
-                    ("code", &format!("{:?}", code)),
-                    ("message", &(backend_message(&stderr)).to_string()),
-                ],
-            ))
-        }
-    };
-    let v: serde_json::Value = serde_json::from_str(stdout.trim()).map_err(|e| {
-        copy_text(
-            "rsLocalAccounts.acctIso.unreadable",
-            &[("e", &e.to_string())],
-        )
-    })?;
-    let installed = v
-        .get("installed")
-        .and_then(serde_json::Value::as_bool)
-        .ok_or_else(|| copy_text("rsLocalAccounts.acctIso.noInstalled", &[]))?;
-    Ok(crate::acct_iso_deploy::AcctIsoStatus {
-        installed,
-        path: v.get("path").and_then(|p| p.as_str()).map(str::to_string),
-        vendor_id: crate::acct_iso_deploy::vendor_id().to_string(),
-    })
-}
-
-/// `acct-iso.check` 的本机对侧：这台机器装没装 `cc-acct-iso`。
+/// `acct-iso.check` 的本机对侧：这台机器装没装 `cc-acct-iso`（与远端那条同一个 `acct_iso_deploy::status_on`）。
 #[tauri::command]
 pub async fn check_local_acct_iso() -> Result<crate::acct_iso_deploy::AcctIsoStatus, String> {
-    tokio::task::spawn_blocking(|| {
-        classify_local_acct_iso(run_query(
-            env!("CCM_TARGET_TRIPLE"),
-            &["--acct-iso-status"],
-            &*crate::spawn_managed::local_backend_one_shot_query(),
-        ))
-    })
-    .await
-    .map_err(|e| {
-        copy_text(
-            "rsLocalAccounts.acctIso.notFinished",
-            &[("e", &e.to_string())],
-        )
-    })?
+    crate::acct_iso_deploy::status_on(&crate::origin::Origin::local()).await
 }
 
-/// `--acct-iso-shellinit` 的结局 → 片段 —— **纯函数**。
+/// `acct-iso-shellinit` 的结局 → 片段 —— **纯函数**。
 ///
 /// 围栏校验与远端那条**同一个判定**（`acct_iso_deploy::shellinit_fence_state`），
 /// 只是话按本机说（远端那句「先在『维护』里部署」对本机是一条走不通的路 ——
 /// 本机的安装口今天不存在，`LOCAL_ACCOUNTS_COPY.emptyNext` 逐字写着）。
-pub(crate) fn classify_local_shellinit(outcome: QueryOutcome) -> Result<String, String> {
+pub(crate) fn classify_local_shellinit(
+    got: Result<serde_json::Value, String>,
+) -> Result<String, String> {
     use crate::acct_iso_deploy::{shellinit_fence_state, FenceState};
     use crate::acct_iso_deploy::{SHELLINIT_FENCE_BEGIN, SHELLINIT_FENCE_END};
-    let out = match outcome {
-        QueryOutcome::Ok(s) => s,
-        QueryOutcome::NoBackend(reason) => {
-            return Err(copy_text(
-                "rsLocalAccounts.shellinit.noBackend",
-                &[("reason", &reason.to_string())],
-            ))
-        }
-        QueryOutcome::Failed { stderr, .. } => {
-            return Err(copy_text(
-                "rsLocalAccounts.shellinit.failed",
-                &[("message", &(backend_message(&stderr)).to_string())],
-            ))
-        }
-    };
+    let who = crate::backend::control::frame_query::who(&crate::origin::Origin::local());
+    let out = crate::acct_iso_deploy::snippet_of(&who, got)?;
     match shellinit_fence_state(&out) {
         FenceState::Complete => Ok(out),
         FenceState::Truncated => Err(copy_text(
@@ -183,18 +106,13 @@ pub(crate) fn classify_local_shellinit(outcome: QueryOutcome) -> Result<String, 
 /// `acct-iso.shellinit` 的本机对侧：这台机器的 `cc-acct-iso shellinit` 片段（**只读**，不代写 rc）。
 #[tauri::command]
 pub async fn local_acct_iso_shellinit() -> Result<String, String> {
-    tokio::task::spawn_blocking(|| {
-        classify_local_shellinit(run_query(
-            env!("CCM_TARGET_TRIPLE"),
-            &["--acct-iso-shellinit"],
-            &*crate::spawn_managed::local_backend_one_shot_query(),
-        ))
-    })
-    .await
-    .map_err(|e| {
-        copy_text(
-            "rsLocalAccounts.shellinit.notFinished",
-            &[("e", &e.to_string())],
+    classify_local_shellinit(
+        crate::backend::control::frame_query::call(
+            &crate::origin::Origin::local(),
+            "acct-iso-shellinit",
+            serde_json::json!({}),
+            crate::acct_iso_deploy::ACCT_ISO_BUDGET,
         )
-    })?
+        .await,
+    )
 }

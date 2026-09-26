@@ -130,10 +130,12 @@ fn every_remote_config_lookup_deals_with_the_local_origin_first() {
     //    与远端一视同仁）⇒ 这个人群**恰好少两处**。
     // 🔴 〔SR1b · 09-24〕地板 17 → **16**：`inproc_dial.rs` 里跳板那一跳的 `connect_via_jump`〔散文墓碑〕（查配置，只服务 SFTP）
     //    随那份文件整份删了（界面进程零 SSH）⇒ 这个人群**恰好少一处**（登记表那一行同拍还掉）。
+    // 🔴 〔LOC1a · 第四波 4D〕地板 16 → **15**：`remote_branch.rs::create_remote_branch_session` 不再自己去查远端配置
+    //    （分叉本机远端同一条帧命令，`client_for(origin)` 对 `<local>` 与远端一视同仁）⇒ 这个人群**恰好少一处**。
     assert!(
-        sites >= 16,
+        sites >= 15,
         "只数到 {sites} 处 `{CALL}` —— 抽取坏了，本断言在空转（08-12 实测 28 处，\
-             `K-R104` 09-13 现打 19，`K-R112` 09-13 现打 17，SR1b 09-24 现打 16）"
+             `K-R104` 09-13 现打 19，`K-R112` 09-13 现打 17，SR1b 09-24 现打 16，LOC1a 09-25 现打 15）"
     );
     // 反向自检之二：**函数定位不许大面积退回文件头**。
     // 退回文件头会让位置比较退化成「文件里有没有」——那比本护栏声称的弱，
@@ -159,7 +161,8 @@ fn every_remote_config_lookup_deals_with_the_local_origin_first() {
     // 〔RW1 · 第四波 09-24〕14 → **12**：`mcp.rs` 远端写 / 删两个分支随「用户文件改经后端写」不再查远端配置。
     // 〔SR1b · 第四波 09-24〕12 → **11**：`inproc_dial.rs` 里的 `connect_via_jump`〔散文墓碑〕（只服务 SFTP 的跳板查配置）随那份文件整份删了。
     // 〔C4c · 第四波 4B〕11 → **10**：账号面那一处查远端配置（`cfg_for`，原住 `accounts.rs`）随那两条命令改走通道删了〔散文墓碑〕。
-    const TRIAGE_DEBT_TODAY: usize = 10;
+    // 〔LOC1a · 第四波 4D〕10 → **9**：`remote_branch.rs::create_remote_branch_session` 不再查远端配置（分叉走帧命令 `session-fork`）。
+    const TRIAGE_DEBT_TODAY: usize = 9;
     assert_eq!(
         TRIAGE_DEBT.len(),
         TRIAGE_DEBT_TODAY,
