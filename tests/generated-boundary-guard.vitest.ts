@@ -47,6 +47,7 @@ const read = (p: string) => readFileSync(resolve(ROOT, p), "utf8");
 // 具体四例记在那个文件的头注里。
 import { REPO_ROOT } from "./test-support/repo-root";
 import { stripComments } from "./test-support/strip-comments";
+import { ACCOUNTS_CHANGED_KIND } from "../src/session-accounts-poll";
 
 /**
  * 剥注释——**方言必须显式给**（C04a Phase D 审计：Rust 的 `'a` 生命周期与 TS 的 `'…'`
@@ -633,7 +634,9 @@ describe("C02 事件名钉死", () => {
     //   `chan-items` 住 `chan/webview.rs::ITEMS_EVENT`、由 `src/ipc/chan.ts` 听 —— 它是通道那一跳的，不是 `bridge.rs` 的业务事件）。
     // 〔TAP · V124〕不加事件名：tap 走通道 `subscribe`（会话流 `session-tap`，`设计/05 §15`），不开裸 Tauri 事件（`01 §2.2`）。
     // 〔GP1 · 第四波〕12 → 13：`SESSION_UNSEEN`（"session-unseen"，那台机器看不见了 ⇒ 说不清）。由 `events.ts` 订阅。
-    expect(pairs.length, `期望恰好 13 个事件名常量，实得 ${pairs.length}`).toBe(13);
+    // 〔DL1 · 第五波〕13 → 12：`REMOTE_BACKEND_READY`（"remote-backend-ready"）退役 —— 前端经通道订每台的 `accounts-changed`
+    //   （`events.ts::bindEvents` 的 `accounts` 那一种流，句柄 `event_replay.rs`），`设计/01 §2.2`「前端只有两个动作」。
+    expect(pairs.length, `期望恰好 12 个事件名常量，实得 ${pairs.length}`).toBe(12);
 
     // 每个字面量必须在 TS 侧真的被订阅/emit（剥注释后再找，防散文里提过就算）
     const tsFiles = ["src/events.ts", "src/main.ts", "src/remote-health.ts"];
@@ -645,5 +648,34 @@ describe("C02 事件名钉死", () => {
       missing,
       `这些事件名在 Rust 侧声明了，TS 侧却没有任何订阅/emit——要么漏接，要么该删常量`,
     ).toEqual([]);
+  });
+});
+
+/**
+ * 〔DL1 · 第五波〕**最后一个裸事件 `remote-backend-ready` 迁 `subscribe`**（`accounts-changed`）—— 读源码的那两条（扫描层）。
+ * 守的要求：`设计/01 §2.2`「前端只有两个动作：`call` · `subscribe`」。行为那一半在 `events-tap.vitest.ts` 的 DL1 那组与
+ * `session-accounts-poll.vitest.ts`（纯函数）；Rust 句柄那一半在 `event_replay_tests::the_accounts_changed_stream_…`。设计 `调研/第四波记录/DL1.md §3`。
+ */
+describe("〔DL1〕accounts-changed：两侧同一个串 · 零裸事件", () => {
+  it("★ kind 串两侧相等：TS 常量 == Rust `event_replay.rs::ACCOUNTS_CHANGED_KIND`（从 Rust 源码抠，异源）", () => {
+    const rs = read("src/bridge/src/event_replay.rs");
+    // 变量名别叫 `m`：`scanning-guard-registry` 按名字认「磁盘语料变量」，同文件里别处的 `m.includes("…")` 会被误算进棘轮。
+    const pinned = rs.match(/pub const ACCOUNTS_CHANGED_KIND: &str = "([^"]+)";/);
+    expect(pinned, "Rust 那一侧的常量抠不出来").not.toBeNull();
+    expect(ACCOUNTS_CHANGED_KIND).toBe(pinned![1]);
+  });
+
+  it("★ 生产段零处再听裸事件 `remote-backend-ready`；main.ts 恰好一处经 `bindEvents` 订它（零命中带正控）", () => {
+    const strip = (t: string): string => t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+    const main = strip(read("src/main.ts"));
+    // 按处数比（相等），不用裸 `.includes`（`scanning-guard-registry` 那条棘轮只许降）。
+    const count = (hay: string, needle: string): number => hay.split(needle).length - 1;
+    const dead = ["remote", "backend", "ready"].join("-");
+    expect(count(main, `"${dead}"`), "main.ts 又在听那个裸事件").toBe(0);
+    expect(count(main, "accounts: machines,"), "main.ts 不是恰好一处订 accounts-changed（`bindEvents` 的 `accounts`）").toBe(1);
+    expect(count(main, "    onAccountsChanged,\n"), "main.ts 没把处理器交给 `bindEvents`").toBe(1);
+    // 正控：同一个剥法与数法认得出一处真在的裸 listen、认得出一处现造的死事件。
+    expect(count(main, 'listen("remote-session-added"'), "正控失败：数法认不出一处真在的 listen").toBe(1);
+    expect(count(strip(`listen("${dead}", f);`), `"${dead}"`), "正控失败：剥法把代码剥掉了").toBe(1);
   });
 });

@@ -1275,7 +1275,15 @@ async fn fetch_snapshot(
     let sid = &item.sid;
     let path = &item.path;
     let origin = crate::origin::Origin(host_label.to_string());
-    let plan = frame_query::tail(&origin, path, SNAPSHOT_TAIL_LINES as u64).await?;
+    // 〔DL1 · `设计/05 §3.3.2`〕快照是两件事、各一个期限：先问图（一问，`PAGE_BUDGET`）；
+    //   读正文（分页）在知道要读多少字节之后再造、按大小给（`frame_query::read_budget`），每一页都拿同一个时刻去等。
+    let plan = frame_query::tail(
+        &origin,
+        path,
+        SNAPSHOT_TAIL_LINES as u64,
+        frame_query::Deadline::within(frame_query::PAGE_BUDGET),
+    )
+    .await?;
     // 〔C2 · U3 第 3 件〕断线重连后从续点接着拉（`snapshot_resume` 头注），续点对不上才整份。
     let how = crate::snapshot_resume::plan_read(
         crate::snapshot_resume::cursor_of(&origin, sid).as_ref(),
@@ -1298,10 +1306,17 @@ async fn fetch_snapshot(
     let mut total_bytes: u64 = 0;
     let mut chunk: Vec<JsonlLine> = Vec::with_capacity(SNAPSHOT_CHUNK_LINES);
     let mut cancelled = false;
-    'read: for (from, upto) in walk.segments().to_vec() {
+    let segments = walk.segments().to_vec();
+    let body_bytes: u64 = segments
+        .iter()
+        .map(|(from, upto)| upto.saturating_sub(*from))
+        .sum();
+    let body =
+        frame_query::Deadline::within(frame_query::read_budget(body_bytes.min(SNAPSHOT_MAX_BYTES)));
+    'read: for (from, upto) in segments {
         let mut offset = from;
         while offset < upto {
-            let page = frame_query::read_page(&origin, path, offset, Some(upto)).await?;
+            let page = frame_query::read_page(&origin, path, offset, Some(upto), body).await?;
             total_bytes += page.next - offset;
             if total_bytes > SNAPSHOT_MAX_BYTES {
                 // 防御上限：不再继续拉（完整性校验会把截断判为失败 → toast）。
@@ -3256,14 +3271,10 @@ async fn stream_loop(
         if let Some(client) = attach_inbound_client(&host_label, &mut parked, frame.as_ref()) {
             inbound_guard.1 = Some(client.clone());
             inbound = Some(client);
-            // 〔`C1` · 09-24〕告诉前端「这台的长连接能问话了」：账号那两条查询从此走它，
-            // 前端的账号刷新（替掉那个 10 秒轮询的事件驱动刷新器）在这一刻强制拉一次。
-            if let Err(e) = app.emit(
-                crate::bridge::events::REMOTE_BACKEND_READY,
-                &serde_json::json!({ "origin": host_label }),
-            ) {
-                tracing::warn!("remote-backend-ready emit failed: {e}");
-            }
+            // 〔`C1` · 09-24〕「这台的长连接能问话了」—— 前端的账号刷新在这一刻强制拉一次。
+            // 〔DL1〕原先这里发一个裸 Tauri 事件（`remote-backend-ready`）；今天由下面 Hello 臂里既有的
+            //   `replay.origin_seen(.., true)` 说（订了这台 `accounts-changed` 的订阅原位收 `Seen`，`event_replay` 头注那张表）——
+            //   同一个时刻、同一个事实，只留一个家。
             // 〔AS2 · V113〕连上那一刻：让本机常驻后端沿池里那条 SSH 同步资产目录（后台跑，零判定）。
             let accepts = inbound
                 .as_ref()
@@ -3720,15 +3731,10 @@ async fn stream_loop(
             Some(f @ (InboundFrame::Reply { .. } | InboundFrame::Cancelled { .. })) => {
                 route_inbound_frame(&host_label, inbound.as_ref(), f);
             }
-            // 〔SR1a · `设计/05 §13.6 ③`〕那台的账号清单变了 ⇒ 发前端既有的「这台就绪」那一个事件
-            //   （账号表与 chip 听的就是它，`main.ts`），多带一个 `reason` 说清这一次为什么（additive）。
+            // 〔SR1a · `设计/05 §13.6 ③`〕那台的账号清单变了 ⇒ 告诉前端（账号表与 chip 据此重取）。
+            // 〔DL1〕经通道 `subscribe`：订了这台 `accounts-changed` 的订阅收一格 `Frame`（原先是一个裸 Tauri 事件）。
             Some(InboundFrame::AccountsChanged) => {
-                if let Err(e) = app.emit(
-                    crate::bridge::events::REMOTE_BACKEND_READY,
-                    &serde_json::json!({ "origin": host_label, "reason": "accounts_changed" }),
-                ) {
-                    tracing::warn!("remote-backend-ready（accounts_changed）emit failed: {e}");
-                }
+                replay.accounts_changed(&crate::origin::Origin(host_label.clone()));
             }
             // 〔FW1 · 第四波 4D · D-d〕那台一条活会话的记录文件不见了 / 被改过已从头重读 ⇒ 残批先冲、再交那个会话的内容流一格。
             Some(InboundFrame::SessionFileNotice { sid, path, change }) => {

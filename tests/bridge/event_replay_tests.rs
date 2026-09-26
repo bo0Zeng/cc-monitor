@@ -675,6 +675,91 @@ async fn stop_and_resubscribe_leave_no_orphans() {
     assert_eq!(r.inner.lock().subs.len(), 1, "旧的那条还挂着");
 }
 
+/// ★〔DL1 · K1〕**`accounts-changed` 那条流**（替掉裸事件 `remote-backend-ready`）只收三样：那台看不看得见（`Unseen` / `Seen`，
+/// 与同台 `session-lines` **同一个来源** `origin_seen`）· 那台账号清单变了（恰好一格 `Frame`，体是约定那一串）· 丢过几格（`Gap`）。
+///
+/// 守的要求：`设计/01 §2.2`「前端只有两个动作」· `设计/05 §3.3.5`（看不见 ⇒ 第一格 `Unseen`，订阅照样成立）·
+/// `§3.3.4`（丢必须说，`Gap` 在原位）· `§15.3`（kind 由宿主注入的那一侧认）。
+/// 两向隔离：会话行**不进** `accounts-changed`；账号那一格**不进** `session-lines`；别台的都不收。
+/// 期望手写（位置、格的种类、体的原文），不从被测的计划函数派生。
+#[tokio::test]
+async fn the_accounts_changed_stream_carries_only_reachability_and_account_notices() {
+    let (r, rec) = hub();
+    let box_a = crate::origin::Origin("box-a".into());
+    let box_b = crate::origin::Origin("box-b".into());
+    let by_sub = |rec: &Rec| -> Vec<(u64, &'static str, u64)> {
+        rec.0
+            .lock()
+            .unwrap()
+            .iter()
+            .flat_map(|(_, id, items)| {
+                items.iter().map(move |i| match i {
+                    WItem::Frame { seq, body } => {
+                        let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
+                        let kind = if v.get("line").is_some() {
+                            "line"
+                        } else if v == serde_json::json!({"accounts_changed": true}) {
+                            "accounts"
+                        } else {
+                            "other-frame"
+                        };
+                        (*id, kind, *seq)
+                    }
+                    WItem::Gap { from_seq, to_seq } => (*id, "gap", from_seq * 100 + to_seq),
+                    WItem::Unseen { .. } => (*id, "unseen", 0),
+                    WItem::Seen { .. } => (*id, "seen", 0),
+                    WItem::Closed { .. } => (*id, "closed", 0),
+                })
+            })
+            .collect()
+    };
+
+    // 看不见时订 ⇒ 每条第一格都是 `Unseen`（订阅照样成立）。
+    r.subscribe("w", 1, &box_a, "accounts-changed", None, 1);
+    r.subscribe("w", 2, &box_a, "session-lines", None, 10);
+    r.subscribe("w", 3, &box_b, "accounts-changed", None, 5);
+    assert_eq!(
+        by_sub(&rec),
+        vec![(1, "unseen", 0), (2, "unseen", 0), (3, "unseen", 0)]
+    );
+    rec.clear();
+
+    // 连上 ⇒ 这台的两条订阅都收 `Seen`（同一个来源）；别台的不收。
+    r.origin_seen(&box_a, true);
+    assert_eq!(by_sub(&rec), vec![(1, "seen", 0), (2, "seen", 0)]);
+    rec.clear();
+
+    // 账号清单变了 ⇒ 只有这台的 `accounts-changed` 收一格、位置 0、体是约定那一串。
+    r.accounts_changed(&box_a);
+    assert_eq!(by_sub(&rec), vec![(1, "accounts", 0)]);
+    rec.clear();
+
+    // 会话行 ⇒ 只进 `session-lines`（它过了就绪点之后）；`accounts-changed` 一格都不收，就绪点也不给它重放。
+    r.ready_point(None).await;
+    let mut remote_lines = lines("s", 0..2);
+    for p in &mut remote_lines {
+        p.origin = Some("box-a".into());
+    }
+    r.on_line_batch_awaited(remote_lines).await;
+    assert_eq!(by_sub(&rec), vec![(2, "line", 0), (2, "line", 1)]);
+    rec.clear();
+
+    // credit：第 1 条一开始只给了 1 格（已被上面那一格用掉）⇒ 再来一次就丢、位置照占；
+    // `want` 回来 ⇒ 原位说 `Gap[1, 2)`；之后那一格从位置 2 起。
+    r.accounts_changed(&box_a);
+    assert!(by_sub(&rec).is_empty(), "没 credit 却交了");
+    r.want("w", 1, 3);
+    assert_eq!(by_sub(&rec), vec![(1, "gap", 102)]);
+    rec.clear();
+    r.accounts_changed(&box_a);
+    assert_eq!(by_sub(&rec), vec![(1, "accounts", 2)]);
+    rec.clear();
+
+    // 断了 ⇒ `Unseen`（不是终点）。
+    r.origin_seen(&box_a, false);
+    assert_eq!(by_sub(&rec), vec![(1, "unseen", 0), (2, "unseen", 0)]);
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // 〔TAP · V124〕会话流 `session-tap`：同一张订阅表、同一套 credit 与 `Gap`（`设计/05 §15` · `§3.3.4` 级 2），
 // 不进留存（`history`）、不混进会话行那条流。设计住仓外 `调研/第四波记录/TAP.md §1.2 · §2`。期望手写。

@@ -136,6 +136,8 @@ const DEPS: Record<string, readonly string[]> = {
     "src/cards/index.ts",
     "src/copy-table.ts", // 〔CP2b〕上翻哨兵 · 查找失败那几句进了文案表
     "src/height-estimate.ts",
+    "src/ipc/chan-caller.ts", // 〔DL1〕丢格之后往后补那一件的期限：开头 `budgetWithin` 造一次（`设计/05 §3.3.2` 造期限的那一手）
+    "src/ipc/chan.ts", // 〔DL1〕同上：每问交 `remaining(budget)`（那一件还剩多少，不重新计时）
     "src/ipc/commands.ts",
     "src/record-timeline.ts",
     "src/render-stream-record.ts",

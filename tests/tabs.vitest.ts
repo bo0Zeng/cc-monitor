@@ -979,7 +979,8 @@ describe("TabManager 生命周期", () => {
     expect(t.window.pendingCount).toBe(0);
     // 〔CF2〕渲染窗口最老那一条是第 100 行（> 0）⇒ 下面可能还有：jsdom 恒不可滚 ⇒ 切入的 R-2 踢链当场问 [0, 100)
     expect(vi.mocked(invoke).mock.calls.filter((c) => c[0] === "read_session_lines")).toEqual([
-      ["read_session_lines", { origin: "<local>", jsonlPath: "/p/sentB.jsonl", from: 0, until: 100 }],
+      // 〔DL1〕`leftMs`：往上翻是一件一问，交这一问的整份期限（`TabStreamView.BELOW_BUDGET_MS`）
+      ["read_session_lines", { origin: "<local>", jsonlPath: "/p/sentB.jsonl", from: 0, until: 100, leftMs: 60_000 }],
     ]);
     expect(t.stream.contentElement.querySelector(".stream-more-above")?.textContent).toContain("正在取");
     await new Promise((r) => setTimeout(r, 0));
@@ -5338,13 +5339,14 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
     const spy = renderContentRecord as unknown as ReturnType<typeof vi.fn>;
     spy.mockClear();
     tm.switchTo("lb"); // jsdom 恒不可滚 ⇒ R-2 踢一脚
-    expect(asks()).toEqual([{ origin: "<local>", jsonlPath: "/p/lb.jsonl", from: 100, until: 300 }]);
+    expect(asks()).toEqual([{ origin: "<local>", jsonlPath: "/p/lb.jsonl", from: 100, until: 300, leftMs: 60_000 }]);
     await settle();
     // 回来的 200 条补上了屏（渲染窗口向下扩到 100）；之后接着问 [0, 100)，到第 0 行为止
     expect(t.window.floorSeq).toBe(0);
     expect(asks()).toEqual([
-      { origin: "<local>", jsonlPath: "/p/lb.jsonl", from: 100, until: 300 },
-      { origin: "<local>", jsonlPath: "/p/lb.jsonl", from: 0, until: 100 },
+      // 〔DL1〕`leftMs`：往上翻一件一问，交整份（`TabStreamView.BELOW_BUDGET_MS`）
+      { origin: "<local>", jsonlPath: "/p/lb.jsonl", from: 100, until: 300, leftMs: 60_000 },
+      { origin: "<local>", jsonlPath: "/p/lb.jsonl", from: 0, until: 100, leftMs: 60_000 },
     ]);
     const rendered = new Set(spy.mock.calls.map((c) => (c[0] as { seq: number }).seq));
     for (let s = 0; s < 300; s++) expect(rendered.has(s), `第 ${s} 行没上屏`).toBe(true);
@@ -5468,7 +5470,12 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
       asks()
         .filter((a) => (a as { jsonlPath: string }).jsonlPath === path)
         .map((a) => (a as { from: number; until?: number }));
-    expect(of("/p/gp.jsonl")).toEqual([
+    // 〔DL1〕`leftMs` 另判（下面那条「一件事一个总期限」）：这里只看问的是哪几段。
+    const noLeft = (a: object): object => {
+      const { leftMs: _left, ...rest } = a as { leftMs?: number };
+      return rest;
+    };
+    expect(of("/p/gp.jsonl").map(noLeft)).toEqual([
       { origin: "<local>", jsonlPath: "/p/gp.jsonl", from: 101 },
       { origin: "<local>", jsonlPath: "/p/gp.jsonl", from: 103 },
     ]);
@@ -5480,6 +5487,41 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
     expect(rendered).toEqual([101, 102, 103, 104]);
     expect(far.seenSeqs.has(7), "别的机器的 tab 被动了").toBe(true);
     expect(asks().every((a) => (a as { jsonlPath: string }).jsonlPath !== "/p/far.jsonl")).toBe(true);
+  });
+
+  /**
+   * 〔DL1 · `设计/05 §3.3.2`「一次调用一个绝对时刻……`Duration` 跨跳传递时每一跳都会重新开始计时 —— 那正是病 2 的机制」〕
+   * **往后补是一件事、一个总期限**：每一问交的是「那一件还剩多少」（越往后越少，不重新计时）；
+   * 总期限过了还没到末尾 ⇒ 不再问（停下、记一行）。正控：期限之内、到末尾就停（上面那条 S3′）。
+   * 钟面用替身（`performance.now` 每被读一次走 25 秒），不等真时间。
+   */
+  it("★ DL1：丢格之后往后补 —— 每问交剩下的、越来越少；总期限一过就不再问", async () => {
+    vi.mocked(invoke).mockImplementation(((cmd: string, a?: { from: number }) =>
+      Promise.resolve(
+        cmd === "read_session_lines"
+          ? // 第 30 行到头：期限一直在的话（每页重新计时那一形）会一路问到这里 —— 问 20 次、干净地红，而不是无限问下去把 worker 撑爆
+            { from: a!.from, next: a!.from + 1, eof: a!.from >= 30, payloads: [mk("dl", a!.from)] }
+          : undefined,
+      )) as never);
+    tm.onLine(mk("dl", 10));
+    let clock = 1_000_000;
+    const now = vi.spyOn(performance, "now").mockImplementation(() => (clock += 25_000));
+    try {
+      tm.onStreamGap("<local>");
+      await settle();
+    } finally {
+      now.mockRestore();
+    }
+    const lefts = asks()
+      .filter((a) => (a as { jsonlPath: string }).jsonlPath === "/p/dl.jsonl")
+      .map((a) => (a as { leftMs: number }).leftMs);
+    expect(lefts.length, "一问都没问 / 总期限没生效（一直在问）").toBeGreaterThan(0);
+    expect(lefts.length, "总期限 120 秒、钟每读一次走 25 秒 —— 问不过 5 次").toBeLessThanOrEqual(5);
+    expect(lefts[0], "第一问交的不是那一件的整份（减去起算到第一问之间走的那一格）").toBeLessThanOrEqual(120_000);
+    for (let i = 1; i < lefts.length; i++) {
+      expect(lefts[i], `第 ${i + 1} 问没比上一问少 —— 每页重新计时了`).toBeLessThan(lefts[i - 1]);
+    }
+    expect(lefts.every((l) => l > 0), "过了期限还在问").toBe(true);
   });
 
   it("★ L4：取回的历史行不把已结束的远端 tab 翻活；实时远端行照旧翻活（正控）", async () => {
