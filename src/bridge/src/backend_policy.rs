@@ -50,9 +50,10 @@ use serde_json::{json, Value};
 
 // 〔CP2b · 第四波〕这里原来有退出行为的四句（`EXIT_*`）、崩溃读数的四句（`HEALTH_*`）与它们的两张对拍表
 //   （`EXIT_COPY` / `HEALTH_COPY`）和表的清单（`CROSS_LANGUAGE_COPY`）—— Rust 这一份「只为与 TS 那份逐字对拍而存在」，
-//   非 test 构建里没有读者（gate `deadcode` 那 11 条）。文案表立起来之后两侧读**同一条表项**
-//   （`src/shared/copy/table.json` 的 `backendPolicy.exit.*` / `backendPolicy.health.*`），第二份副本与逐字对拍一起删；
-//   剩下要比的只有「两侧说读数时用的是不是同一批 key」，见 `tests::both_sides_describe_health_with_the_same_keys`。
+//   非 test 构建里没有读者（gate `deadcode` 那 11 条）。文案表立起来之后两侧读**同一条表项**，第二份副本与逐字对拍一起删。
+// 〔PB1 · `设计/90 §4` 阶段 B〕崩溃读数那三档的**判定**也搬到了这里（[`health_face`]，唯一一份）：
+//   后端出「健康」那一格的成品（状态 ＋ 格子里那一句 ＋ ⓘ ＋ `[详情]`），界面只排版。TS 那份三档与这里原来那份
+//   同逻辑的第二份一起并掉；那几句的 key 随之归本文件的面（`rsBackendPolicy.health.*`，`设计/91 §5.5`）。
 
 // 〔C4c · 第四波 4B〕界面那两条（问 / 改那台机器上的值）的期限 `EXIT_POLICY_BUDGET`〔散文墓碑〕随那两条 Tauri 命令一起走了：
 //   设置页经通道直接问后端（期限同值 10 秒，住 `settings/backend-section.ts`）。
@@ -181,9 +182,9 @@ pub fn kill_on_exit_now(origin: &Origin) -> bool {
 // `local_backend_host.rs::reap_detached`（`c.wait()` 返回那一拍）与
 // `backend/control/local_backend.rs::supervise_with_stdio`（读到 EOF 那一拍）。
 // 两处**都不在本件写区** ⇒ 交回里逐字点名，由 PM 落。
-// 同理 [`describe_health`] 那句话要显示出来得在 `settings/backend-section.ts` 加一行，
-// 那份文件也不在本件写区。
 // ⇒ **本段今天证的是「判据分得开、账写得下、写不进去会出声」，证不了「它已经被调用过」。**
+// 〔K-P3b〕上面那两处后来接上了（`DEATH_RECORD_SITES` 逐处点名）；读数经 `backend_status` 上界面，
+//   〔PB1〕那一格的成品由 [`health_face`] 出。
 // ══════════════════════════════════════════════════════════════════════════
 
 /// 那个进程**怎么没的** —— 这一维只装这一件事。
@@ -374,19 +375,13 @@ pub fn exit_status(d: &Death) -> String {
     }
 }
 
-/// 四条话。**两两不同**，且每一条各自点名自己那条证据与该怎么办。
+/// 账行破折号后面那一截：**只摆证据的详情**（短摘要 = 判定 ＋ 退出状态，见 [`last_brief`]）。四条两两不同。
 ///
-/// ⚠ `KP3B` 的判定逐字是「四条文案**两两不同**」，不是「源码里出现了四个枚举名」。
-///
-/// 🔴 〔第四波 ST2 · `设计/70 §7` 第二刀 步 7〕**这四条只进日志，不进界面**，而且**不再产 markdown
-/// 与设计论证**。原来每条都带 `**下一步：…**`、「判据不可信的时候重起是放大器」这类写给开发文档的论证、
-/// 一处源码住址，外加「崩了」那一条把 exit 码说两遍（账行的 `退出状态=` 已经说过一遍）——
-/// 而那一整行经 `Health::last` 被拼进了设置面板（`70 §2.1` 五种病里占四种）。
-/// 今天：界面拿的是 [`last_brief`]（判定 ＋ 退出状态，一句短话）；这四条只随 [`ledger_line`] 落日志。
-pub fn death_copy(d: &Death) -> String {
+/// 〔PB1 · `设计/90 §4` 阶段 B · `70 §2.3`〕原来每条还带处方与论证（「先看它拒的是什么」「重起帮不上忙」…），删了。只进日志。
+pub fn death_detail(d: &Death) -> String {
     match d {
         Death::NeverStarted { reason, looked_at } => format!(
-            "从来没起来：{reason}（找过 {} 处：{}）。原因是启动那一侧原样转来的，照它说的去补。",
+            "{reason}；找过 {} 处：{}",
             looked_at.len(),
             looked_at
                 .iter()
@@ -394,16 +389,9 @@ pub fn death_copy(d: &Death) -> String {
                 .collect::<Vec<_>>()
                 .join(&copy_text("rsBackendPolicy.death.listSep", &[]))
         ),
-        Death::Refused { .. } => "被拒了：它一个字节都没说就自己退出了。原样重连只会发同一个参数、\
-             再被拒一次，先看它拒的是什么。"
-            .to_string(),
-        Death::Crashed { .. } => "崩了：说过话之后异常终止。重起之前先看是不是每次都停在同一处，\
-             同一处反复崩时重起帮不上忙。"
-            .to_string(),
-        Death::Misread { detail } => format!(
-            "读坏了：{detail}。这是 monitor 这一侧读的时候出错，不算它崩了一次；\
-             重新接上它，别去动那个进程。"
-        ),
+        Death::Refused { .. } => "它一个字节都没说就退出了".to_string(),
+        Death::Crashed { .. } => "说过话之后异常终止".to_string(),
+        Death::Misread { detail } => format!("monitor 这一侧读出错：{detail}"),
     }
 }
 
@@ -432,7 +420,7 @@ pub fn ledger_line(origin: &str, d: &Death) -> String {
         "[死亡账] origin={origin} 判定={} 退出状态={} —— {}",
         death_kind(d),
         exit_status(d),
-        death_copy(d)
+        death_detail(d)
     )
 }
 
@@ -485,7 +473,7 @@ pub struct Recorded {
 ///
 /// ⇒ 「上次崩没崩」这句话今天答得出来的射程只有**这一个 monitor 进程活着的这段时间**，
 /// 而「答不出来」与「没崩过」不是一句话（`§0-1` 逐字：「这两句话差得很远，不许混用」）。
-/// 这就是 文案表 `backendPolicy.health.unknown` 那一格 存在的全部理由，也是 `exit: 待摸底` 第一问要的那个读数的边界。
+/// 这就是 [`health_face`] 「无记录」那一档存在的全部理由，也是 `exit: 待摸底` 第一问要的那个读数的边界。
 pub const LEDGER_IS_PROCESS_LOCAL: bool = true;
 
 /// 一台机的死亡账读数。**四个计数分开装** —— 「读坏了」不许被加进「崩了」。
@@ -594,26 +582,79 @@ pub fn health(origin: &str) -> Health {
         .unwrap_or_default()
 }
 
-/// 那句读数 —— 三档，与 TS 那侧 `describeBackendHealth` 逐格对应。
+/// 「健康」那一格的三档。线上就是这三个词（`data-health`），界面原样挂、不枚举。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HealthState {
+    /// 账上一条都没有 —— 答不出来（**不是**「没崩过」）。
+    Unknown,
+    /// 记到过事，一次崩溃都没有。
+    Clean,
+    /// 崩过。
+    Crashed,
+}
+
+/// 〔PB1 · `设计/90 §4` 阶段 B · `设计/70 §2.3`〕设置页「健康」那一格的**成品** —— 界面只排版，不判。
 ///
-/// ⚠ 第一档的判准是「**这本账上一条记录都没有**」，不是 `crashed == 0`。
+/// 线上就是这四个键（`backend_status` 的 `health`；形状由金样 `tests/__fixtures__/backend-health.golden.json`
+/// 两侧同读钉住）。四个计数与账行**不上线**：界面拿不到原料，也就没法再判一遍（`90 §3`「前端不做判定」）。
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct HealthFace {
+    /// 哪一档。`70 §2.2`「区分保留，用界面状态表达，不用散文表达」—— 界面挂到 DOM 状态上。
+    pub state: HealthState,
+    /// 格子里那一句（`70 §2.3`：「— 无记录」/「⚠ 崩过 N 次 · 最后一次：<判定，退出状态>」）。
+    pub summary: String,
+    /// ⓘ 里那条完整区分（「无记录 ≠ 没崩过」）。只有「无记录」有。
+    pub why: Option<String>,
+    /// `[详情]`：四个计数分开列 ＋ 完整记录在日志里。「无记录」没有（没东西可展开）。
+    pub detail: Option<String>,
+}
+
+/// ★ 那条区分的**唯一一处判定**：这台机的读数落在哪一档、每一档给界面什么。
+///
+/// ⚠ 第一档的判准是「**这本账上一条记录都没有**」（[`Health::seen`] `== 0`），不是 `crashed == 0`。
 /// 写成后者的话，一台从来没被记过的机器会被说成「一次都没崩过」——
-/// 那正是 `§0-1` 点名不许混用的那两句话。
-pub fn describe_health(h: &Health) -> String {
+/// 那正是 `§0-1` 点名不许混用的那两句话（`设计/70 §2.2`）。
+/// 「崩过」那一句接的是**短摘要**（[`last_brief`]），不是账行（日志行格式只落日志，`70 §2.4`）。
+pub fn health_face(h: &Health) -> HealthFace {
     if h.seen() == 0 {
-        return copy_text("backendPolicy.health.unknown", &[]);
+        return HealthFace {
+            state: HealthState::Unknown,
+            summary: copy_text("rsBackendPolicy.health.unknown", &[]),
+            why: Some(copy_text("rsBackendPolicy.health.unknownWhy", &[])),
+            detail: None,
+        };
     }
-    if h.crashed == 0 {
-        return copy_text("backendPolicy.health.clean", &[]);
-    }
-    let missing = copy_text("backendPolicy.health.lastMissing", &[]);
-    copy_text(
-        "backendPolicy.health.crashed",
+    let detail = Some(copy_text(
+        "rsBackendPolicy.health.detail",
         &[
             ("crashed", &h.crashed.to_string()),
-            ("last", h.last_brief.as_deref().unwrap_or(&missing)),
+            ("refused", &h.refused.to_string()),
+            ("neverStarted", &h.never_started.to_string()),
+            ("misread", &h.misread.to_string()),
         ],
-    )
+    ));
+    if h.crashed == 0 {
+        return HealthFace {
+            state: HealthState::Clean,
+            summary: copy_text("rsBackendPolicy.health.clean", &[]),
+            why: None,
+            detail,
+        };
+    }
+    let missing = copy_text("rsBackendPolicy.health.lastMissing", &[]);
+    HealthFace {
+        state: HealthState::Crashed,
+        summary: copy_text(
+            "rsBackendPolicy.health.crashed",
+            &[
+                ("crashed", &h.crashed.to_string()),
+                ("last", h.last_brief.as_deref().unwrap_or(&missing)),
+            ],
+        ),
+        why: None,
+        detail,
+    }
 }
 
 #[cfg(test)]

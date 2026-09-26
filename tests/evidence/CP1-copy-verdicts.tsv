@@ -171,10 +171,6 @@ src/backend/relay/listen.rs:319	[relay] 被交了中转端口却起不来（后�
 src/backend/relay/listen.rs:352	{ENV_PORT}={raw:?} 不是端口号（{e}）	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
 src/backend/relay/listen.rs:361	读不出绑到的地址：{e}	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
 src/backend/relay/listen.rs:372	起不来接受线程：{e}	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
-src/bridge/src/backend_policy.rs:447	从来没起来：{reason}（找过 {} 处：{}）。原因是启动那一侧原样转来的，照它说的去补。	保留	[不对外] death_copy 只随 ledger_line 落 monitor 日志（ST2 步 7：界面接 last_brief）；去掉了 markdown 与「本处不另写一份」那句论证
-src/bridge/src/backend_policy.rs:455	被拒了：它一个字节都没说就自己退出了。原样重连只会发同一个参数、\n             再被拒一次，先看它拒的是什么。	保留	[不对外] death_copy 只落日志；去掉了事故史、markdown、破折号
-src/bridge/src/backend_policy.rs:458	崩了：说过话之后异常终止。重起之前先看是不是每次都停在同一处，\n             同一处反复崩时重起帮不上忙。	保留	[不对外] death_copy 只落日志；去掉了「放大器」「自愈要治的那一格」论证与重复的 exit 码
-src/bridge/src/backend_policy.rs:462	读坏了：{detail}。这是 monitor 这一侧读的时候出错，不算它崩了一次；\n             重新接上它，别去动那个进程。	保留	[不对外] death_copy 只落日志；去掉了源码住址与 markdown
 src/backend/control/files_write.rs:724	回读 {} 字节，与写进去的 {} 字节不一致	保留	[对外] files-put 写后校验失败那句的中段（RW1：用户文件的写规则从 monitor 的 fenced_block::apply 搬来后端），两个数都是用户看得懂的字节数
 src/backend/control/files_write.rs:728	写完读不回来（{e}）	保留	[对外] 同上一族；读回失败时带系统原话，短
 src/backend/control/files_write.rs:735	原文件已恢复。	保留	[对外] 同上一族，逐字沿用 fenced_block::undo_note 已裁「保留」的那一句（RW1 把写规则搬到后端，话一个字没换）
@@ -272,3 +268,7 @@ src/bridge/src/tasks.rs:93	{who}的后端回的任务清单认不出来（{e}）
 src/bridge/src/filewin/fonts.rs:329	算链	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔W5-FILES〕算大小那几句的字）
 src/bridge/src/filewin/fonts.rs:331	查替	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔W5-FILES〕编辑面查找替换那几句的字）
 src/backend/dial/uses.rs:373	远端命令起来了，但交给它的那一行没送过去: {e}	保留	[可达存疑] 〔W5-AUX · 设计/96 §3.6〕capture 带 stdin 那一形：命令起来之后往它的 stdin 写那一行失败（链路断了），ack 的 error 会冒泡到「资产目录同步」那一句；无内部词（不说 stdin / exec / 命令行原文）
+src/bridge/src/backend_policy.rs:384	{reason}；找过 {} 处：{}	保留	[不对外] 〔PB1〕death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
+src/bridge/src/backend_policy.rs:392	它一个字节都没说就退出了	保留	[不对外] 〔PB1〕death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
+src/bridge/src/backend_policy.rs:393	说过话之后异常终止	保留	[不对外] 〔PB1〕death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
+src/bridge/src/backend_policy.rs:394	monitor 这一侧读出错：{detail}	保留	[不对外] 〔PB1〕death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
