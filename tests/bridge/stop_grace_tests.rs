@@ -30,6 +30,27 @@ fn sh(script: &str) -> std::process::Child {
     c
 }
 
+/// 判据红了（panic）也收掉 `sh`（第 21 条）—— 死值验 K11 实测：强杀那一步被刀掉之后，聋的那个 `sh` 一直活着、
+/// 还继承着测试进程的 stderr，把 cargo 的输出管子攥住不放。
+struct Reap(std::cell::RefCell<std::process::Child>);
+
+impl Drop for Reap {
+    fn drop(&mut self) {
+        let mut c = self.0.borrow_mut();
+        if matches!(c.try_wait(), Ok(None)) {
+            let _ = c.kill();
+        }
+        let _ = c.wait();
+    }
+}
+
+impl std::ops::Deref for Reap {
+    type Target = std::cell::RefCell<std::process::Child>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 fn term(pid: u32) -> Result<(), String> {
     let st = std::process::Command::new("kill")
         .args(["-TERM", &pid.to_string()])
@@ -42,9 +63,9 @@ fn term(pid: u32) -> Result<(), String> {
 #[cfg(unix)]
 fn s1_a_polite_child_stops_and_a_deaf_one_is_forced_and_gone() {
     // 听话的：收到 SIGTERM 就退。
-    let c = std::cell::RefCell::new(sh(
+    let c = Reap(std::cell::RefCell::new(sh(
         "trap 'exit 0' TERM; echo ready; while :; do sleep 0.05; done",
-    ));
+    )));
     let pid = c.borrow().id();
     let end = stop_gracefully(
         || term(pid),
@@ -62,7 +83,9 @@ fn s1_a_polite_child_stops_and_a_deaf_one_is_forced_and_gone() {
     assert_eq!(st.code(), Some(0), "它自己给的退出码");
 
     // 聋的：SIGTERM 被忽略 ⇒ 等满、强杀、它真没了（已收尸，不是 Z）。
-    let c = std::cell::RefCell::new(sh("trap '' TERM; echo ready; while :; do sleep 0.05; done"));
+    let c = Reap(std::cell::RefCell::new(sh(
+        "trap '' TERM; echo ready; while :; do sleep 0.05; done",
+    )));
     let pid = c.borrow().id();
     let end = stop_gracefully(
         || term(pid),
@@ -118,10 +141,10 @@ fn s2_a_zombie_counts_as_gone_for_the_adopted_path() {
         assert_eq!(proc_stat_says_zombie(stat), z, "{stat:?}");
     }
     // 真僵尸：子进程退了、我们还没收尸 ⇒ 状态字 Z ⇒ 算没了；收完尸 ⇒ /proc 没了 ⇒ 也算没了；活着 ⇒ 不算。
-    let mut c = sh("echo ready; exec sleep 30");
-    let pid = c.id();
+    let c = Reap(std::cell::RefCell::new(sh("echo ready; exec sleep 30")));
+    let pid = c.borrow().id();
     assert!(!adopted_gone(pid), "活着的被当成没了");
-    c.kill().expect("kill");
+    c.borrow_mut().kill().expect("kill");
     let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
     while !std::fs::read_to_string(format!("/proc/{pid}/stat"))
         .is_ok_and(|s| proc_stat_says_zombie(&s))
@@ -130,7 +153,7 @@ fn s2_a_zombie_counts_as_gone_for_the_adopted_path() {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     assert!(adopted_gone(pid), "僵尸没被当成没了");
-    let _ = c.wait();
+    let _ = c.borrow_mut().wait();
     assert!(adopted_gone(pid));
 }
 
