@@ -11481,7 +11481,7 @@
     },
     "rsPayload.launcher.injection": {
       "kind": "error",
-      "zh": "启动命令 {launcher} 含注入字符 {c}，不能拼进命令。它会被键进会话执行，一个 ; 或 | 就能另起一条命令；合法的是命令名或路径（可带空格分段）。",
+      "zh": "启动命令 {launcher} 里有不允许的字符 {c}，不能拼进命令。它会被键进会话执行；只许字母、数字、空格、-_./ 和开头的 ~/（命令名或路径，可带参数）。",
       "args": ["launcher", "c"]
     },
     "rsPayload.arg.notSafe": {
@@ -14917,8 +14917,8 @@
     },
     "rsHistory.launcher.badChars": {
       "kind": "error",
-      "zh": "拒绝 resume：自定义 resume 命令里有不允许的字符（只许字母、数字、-_. 和空格）：{launcher}",
-      "args": ["launcher"]
+      "zh": "拒绝 resume：自定义命令 {launcher} 含不允许的字符 {c}。只许字母、数字、空格、-_./ 和开头的 ~/",
+      "args": ["launcher", "c"]
     },
     "rsHistory.delete.notSessionFile": {
       "kind": "body",
@@ -17388,6 +17388,11 @@
       "kind": "error",
       "zh": "非法 tmux 目标（含控制字符或会被看错的字符 {c}）：{target}",
       "args": ["target", "c"]
+    },
+    "bePlan.build.launcherRefused": {
+      "kind": "error",
+      "zh": "{what} 的值 {value} 里有不允许的字符 {c}，不能拼进命令。启动器只许字母、数字、空格、-_./ 和开头的 ~/（命令名或路径，可带参数）",
+      "args": ["what", "value", "c"]
     }
   }
 }

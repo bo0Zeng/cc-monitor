@@ -1,5 +1,6 @@
 //! **POSIX 单引号 quote** —— Rust 侧唯一的一份实现；〔TL3〕外加它的伴生件：自由文本值在 quote 之前的拒绝集；
-//! 〔DUP1〕以及标识符类（sid · 模型名 · 账号名）的放行判定（`INVARIANTS §47` 的 ① ② 两层都住这里）。
+//! 〔DUP1〕以及标识符类（sid · 模型名 · 账号名）的放行判定（`INVARIANTS §47` 的 ① ② 两层都住这里）；
+//! 〔DUP3〕外加启动期令牌的形状（① 那一层）与命令片段类（启动器，§47 ③）那一张白名单。
 //!
 //! # 它为什么只剩一件事（P4b，§1.4b）
 //!
@@ -155,6 +156,34 @@ pub fn rbind_token_ok(token: &str) -> bool {
         && token
             .bytes()
             .all(|b| RBIND_TOKEN_ALPHABET.as_bytes().contains(&b))
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 〔DUP3 · 主会话 09-26 裁（乙；主会话代用户裁，用户可推翻）· `INVARIANTS §47` ③〕**命令片段类**：启动器。
+//
+// 启动器**不是一个词**：`ccr code`（带参数）· `claude --dangerously-skip-permissions` · `cct`（alias）· `/usr/local/bin/claude`（带路径）·
+// `~/bin/claude`（家目录下）都是真实用法 —— 它要被 shell **拆成词、按 alias / PATH 解析**，所以**不 quote**（quote 起来
+// `'ccr code'` 找不到命令、alias 不展开、PowerShell 要 `& '…'`）。不 quote 就只能**白名单**：同一个字符串原样拼进
+// bash（远端载荷 · 本机 POSIX）与 PowerShell（本机 Windows），白名单里每一个字符在两种 shell 里都不是元字符
+// （`;` `|` `&` `$` `(` `)` `<` `>` `{` `}` `@` `#` `,` 反引号 · 引号 · 换行一个都不在），空格就是要拆的词界。
+// `~` 只许打头、紧跟 `/`：POSIX 展开成家目录，PowerShell 的文件系统路径也认它；别处的 `~` 两种 shell 语义不同，拒。
+//
+// 先前三处三条规则（本机 `history.rs` 白名单不许 `/` · 远端载荷 `payload.rs` 拒绝集 · 后端 ccm `free_text_gate` 只拒 NUL / CR / LF），
+// 今天三处都调这一个（`设计/01 §6.8`：本机远端同一条）。空串不在这里判：各调用处「空 ⇒ 默认启动器」是 D3 缺省，不是判定。
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// 启动器在 ASCII 字母数字之外还放行的字符（空格是词界）。
+pub const LAUNCHER_EXTRA: &str = " -_./";
+
+/// 启动器里 `~` 唯一合法的位置：打头、紧跟 `/`（家目录下的路径）。
+pub const LAUNCHER_HOME_PREFIX: &str = "~/";
+
+/// 启动器（命令片段）里**第一个不许有的字符**；`None` = 整串都在白名单里（ASCII 字母数字 ∪ [`LAUNCHER_EXTRA`]，
+/// 外加打头的 [`LAUNCHER_HOME_PREFIX`]）。回那个字符，好让调用处**说清是哪一个**（拒就说清、不静默换）。
+pub fn launcher_refused_char(s: &str) -> Option<char> {
+    let body = s.strip_prefix(LAUNCHER_HOME_PREFIX).unwrap_or(s);
+    body.chars()
+        .find(|c| !(c.is_ascii_alphanumeric() || LAUNCHER_EXTRA.contains(*c)))
 }
 
 /// POSIX 单引号 quote：整体 `'…'` 包裹，内部 `'` 断开为 `'\''`。

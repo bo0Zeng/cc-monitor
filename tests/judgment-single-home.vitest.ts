@@ -163,12 +163,19 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     ],
   },
   J3: {
-    what: "launcher 能不能裸拼进载荷",
-    homes: [`${PAYLOAD_RS}::render_payload`],
+    what: "启动器（命令片段）能不能拼进命令（本机 · 远端载荷 · ccm 同一张白名单）",
+    // 〔DUP3 · 主会话 09-26 裁 · INVARIANTS §47 ③〕三处三条规则收成一张白名单，住共享 crate；本机那份私有函数删。
+    homes: ["shell-quote-core::launcher_refused_char"],
     // 〔DUP1 子步 5〕删 `shell-quote.ts::sanitizeRemoteLauncher`（同一字符集、却静默换成 claude —— D4 禁）；前端只留「空白 ⇒ 默认」。
     status: "zero",
     defs: ["sanitizeRemoteLauncher"],
     needles: [{ text: "[;|&$`<>\\r\\n]", count: 0 }],
+    rustGone: ["src/bridge/src/history.rs::sanitize_launcher"],
+    rustNeedles: [
+      { file: PAYLOAD_RS, text: "';' | '|' | '&'", count: 0 },
+      { file: "src/bridge/src/history.rs", text: "'-' | '_' | '.' | ' '", count: 0 },
+      { file: "src/backend/control/ccm/plan.rs", text: "free_text_ok(&o.launcher)", count: 0 },
+    ],
   },
   J4: {
     what: "POSIX 单引号 ＋ cc-acct-iso 那几条命令串",
@@ -602,6 +609,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     rbind_token_ok: "J8",
     RBIND_TOKEN_LEN: NONE,
     RBIND_TOKEN_ALPHABET: NONE,
+    // 〔DUP3 · J3〕启动器命令片段白名单（§47 ③）；两个常量是规则的一部分，TS 不抄 ⇒ NONE。
+    launcher_refused_char: "J3",
+    LAUNCHER_EXTRA: NONE,
+    LAUNCHER_HOME_PREFIX: NONE,
   },
 };
 

@@ -160,3 +160,50 @@ fn a_launch_token_is_exactly_thirty_two_lowercase_hex() {
         assert!(!rbind_token_ok(bad), "坏令牌放行了：{bad:?}");
     }
 }
+
+/// 〔DUP3 · `INVARIANTS §47` ③〕启动器（命令片段）：真实用法全过（带参数 · alias · 路径 · 家目录下），
+/// POSIX 与 PowerShell 两边的元字符一个都不进，`~` 只许打头紧跟 `/`；拒的时候回**那一个字符**。正反各一格。
+#[test]
+fn a_launcher_is_a_command_fragment_from_one_whitelist() {
+    for good in [
+        "claude",
+        "cct",
+        "ccr code",
+        "claude --dangerously-skip-permissions",
+        "cc -p 8",
+        "/usr/local/bin/claude",
+        "~/bin/claude --x",
+        "./node_modules/.bin/claude",
+        "my_agent-2.1",
+    ] {
+        assert_eq!(launcher_refused_char(good), None, "真实启动器被拒了：{good:?}");
+    }
+    for (bad, c) in [
+        ("claude;rm -rf ~", ';'),
+        ("claude | tee x", '|'),
+        ("claude && x", '&'),
+        ("$(evil)", '$'),
+        ("`evil`", '`'),
+        ("claude > x", '>'),
+        ("claude < x", '<'),
+        ("cla'ude", '\''),
+        ("cla\"ude", '"'),
+        ("claude\nrm", '\n'),
+        ("claude\rrm", '\r'),
+        ("claude\0", '\0'),
+        ("claude\t-x", '\t'),
+        ("(claude)", '('),
+        ("{claude}", '{'),
+        ("@claude", '@'),
+        ("claude,x", ','),
+        ("claude #x", '#'),
+        ("a~b", '~'),
+        ("~x", '~'),
+        ("~", '~'),
+        ("~/a~", '~'),
+        ("clé", 'é'),
+        ("c*", '*'),
+    ] {
+        assert_eq!(launcher_refused_char(bad), Some(c), "{bad:?}");
+    }
+}
