@@ -110,7 +110,7 @@ const TRIAGE_DEBT: &[(&str, &str)] = &[
     //   那份文件整份删了 —— 跳板配置今天由宿主 `dial_host.rs::request` 查（上面 `forward` 那一行同一个家）。
     // 🔴 〔步 8 · 归属 2026-09-19〕住址从 `tmux.rs` 改成 `backend/control/tmux.rs` ——
     //    **文件真的挪了**（`lib.rs` 顶层 → `backend/control/`），欠的那笔债一格没变。
-    ("backend/control/tmux.rs", "list_remote_tmux"),
+    // 〔SH1〕`backend/control/tmux.rs::list_remote_tmux` 那一行还掉了：列会话改问那台后端 `tmux-list`，不再查远端配置。
     // `K-R56`（09-11）：`tmux_send_keys`〔散文墓碑〕从这里**还掉了** —— 它当时在
     // `load_remote_config_by_label` 之前分本机（`Routed::NoChannel` 那一臂的早退）。
     // 〔C4e · 第四波 4C〕那条命令整个迁到界面（`src/tmux-control.ts::sendKeys`），当年钉它的行为判据随之退役。

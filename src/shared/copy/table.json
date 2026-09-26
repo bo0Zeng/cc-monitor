@@ -11494,16 +11494,6 @@
       "zh": "CCM_TMUX_UNPARSABLE 认不出远端 tmux 的会话列表：有一行只切出 {split} 段，少于 {fields} 段。远端 tmux 的输出被改写过（客户端不是 UTF-8 时，TAB 和非 ASCII 字符会变成 _）。这一趟的会话列表整份作废，不当成远端零会话。原样：{bad}",
       "args": ["split", "fields", "bad"]
     },
-    "rsTmux.list.failed": {
-      "kind": "error",
-      "zh": "读 tmux 列表失败：{e}",
-      "args": ["e"]
-    },
-    "rsTmux.list.noConfig": {
-      "kind": "error",
-      "zh": "找不到远端配置：{origin}",
-      "args": ["origin"]
-    },
     "rsBackendControl.handle.missing": {
       "kind": "error",
       "zh": "没有这台机器的记录：{origin}（启动时没登记过？）",
@@ -11888,6 +11878,16 @@
       "kind": "error",
       "zh": "{path} 切不出项目目录",
       "args": ["path"]
+    },
+    "rsTmux.list.shape": {
+      "kind": "error",
+      "zh": "{who}的 tmux 会话列表形状对不上 —— 两边版本不一样，先别重试",
+      "args": ["who"]
+    },
+    "beTmuxList.query.unobservable": {
+      "kind": "error",
+      "zh": "这一趟没看清这台的 tmux，稍后再试。输出被改写、超时或起不来都会这样 —— 不是没有会话",
+      "args": []
     },
     "beMcp.read.statFailed": {
       "kind": "error",

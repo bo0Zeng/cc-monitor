@@ -1118,6 +1118,13 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         1,
         "MCP 列表问那台后端（`mcp-read`，一问；值 `MCP_READ_BUDGET` 30 s —— 读一份 `.claude.json`，重度用户可数 MB）",
     ),
+    // 〔SH1〕列远端 tmux 会话问那台后端（`tmux-list`，一问）。
+    (
+        "backend/control/tmux.rs",
+        "list_remote_tmux",
+        1,
+        "列那台 tmux 会话（`tmux-list`，一问；值 `TMUX_LIST_BUDGET` 15 s —— 后端那一趟 `tmux ls` 自带 5 s 上界）",
+    ),
 ];
 
 /// 一份生产段里 `Deadline::within(` 的每一处，按「所在的最近一个 `fn` 名」记账（定义那一行不算）。

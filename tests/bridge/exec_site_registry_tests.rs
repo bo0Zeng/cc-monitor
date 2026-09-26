@@ -37,11 +37,21 @@ const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     // 〔SH1 · V136〕`cc_bus.rs / fetch_remote_cc_bus`（`CC_BUS_CAT_CMD`）出去了：驾驶舱读名册改走后端 `bus-state`。
     // 〔SH1〕`hooks_diag.rs / diagnose_remote_cc_bus_hooks` 出去了：事实改问那台后端（`footprint-probe` ＋ `files-peek`）。
     // 〔SH1 · V137〕`mcp.rs / fetch_remote_claude_json` 出去了：MCP 列表改问那台后端 `mcp-read`。
-    ("ccm_probe.rs", "probe_ccm_cli", Origin::Const, "`CCM_PROBE_CMD`：字面量，零插值。P3t-Y2 起本机探针与它**共用同一个常量**"),
+    (
+        "ccm_probe.rs",
+        "probe_ccm_cli",
+        Origin::Const,
+        "`CCM_PROBE_CMD`：字面量，零插值。P3t-Y2 起本机探针与它**共用同一个常量**",
+    ),
     // 〔DP1 · 第四波〕`sftp.rs` 里只问 `uname -m` 的那一处走了：部署前问机器改问 `uname -s -m`（`byte_table::probe_key`），
     //   走的是 `connect_and_exec_capture`（收全、有上限、带退出码）⇒ 不在本表人群（本表只数 `connect_and_exec_cmd(`）。
     // ── 受控构造器（构造器自己带校验/引用，各有行为判据）
-    ("pubkey.rs", "push_public_key", Origin::Builder("build_authorized_keys_cmd"), "公钥经 shell_quote"),
+    (
+        "pubkey.rs",
+        "push_public_key",
+        Origin::Builder("build_authorized_keys_cmd"),
+        "公钥经 shell_quote",
+    ),
     // 🔴 **`K-R112`（09-13）：这里原来有两行，两行都出去了** ——
     //    `cc_bus.rs / check_cc_bus_agent_online`（`Builder("build_online_cmd")`）与
     //    `tmux.rs / capture_remote_pane`（`Builder("build_capture_pane_cmd")`）。
@@ -69,13 +79,27 @@ const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     //    ⇒ 它们不再是「远端执行点」。
     // 🔴 〔C4d · 第四波 4B〕**逐次拨号那一行也出去了**（`remote_history.rs` 的 `run_list_query`〔散文墓碑〕）：
     //    它的放行表 C4c 起是空的，主会话 09-25 裁删 —— 同上面几笔的形状（那条一次性 SSH exec 整条没了）。
-    ("ssh_source.rs", "connect_and_exec", Origin::Quoted, "backend 路径经引用"),
-    ("tmux.rs", "list_remote_tmux", Origin::Quoted, "唯一插值是常量 `TMUX_LS_FMT`（双写点由 `tmux.rs`/backend 对拍守）；\
-          本函数不吃自由文本 —— 归 Quoted 是因为它在函数里拼，机检只要求「拼的地方要么有引用、要么插的是常量」"),
+    (
+        "ssh_source.rs",
+        "connect_and_exec",
+        Origin::Quoted,
+        "backend 路径经引用",
+    ),
+    // 〔SH1〕`tmux.rs / list_remote_tmux` 出去了：列会话改问那台后端 `tmux-list`。
     // ── 只转发，不构造（命令来自调用方）
-    ("ssh_source.rs", "connect_and_exec_cmd", Origin::PassThrough, "★ 这是原语**自己的定义**，不是调用点"),
+    (
+        "ssh_source.rs",
+        "connect_and_exec_cmd",
+        Origin::PassThrough,
+        "★ 这是原语**自己的定义**，不是调用点",
+    ),
     // 〔SH1 · V136〕`cc_bus.rs / exec_read` 出去了：读收件箱改走后端 `bus-inbox`。
-    ("acct_iso_deploy.rs", "exec_collect", Origin::PassThrough, "`cmd: &str` 入参；来历在调用方"),
+    (
+        "acct_iso_deploy.rs",
+        "exec_collect",
+        Origin::PassThrough,
+        "`cmd: &str` 入参；来历在调用方",
+    ),
 ];
 
 fn src_root() -> PathBuf {
@@ -187,8 +211,8 @@ fn every_remote_exec_declares_where_its_command_came_from() {
     }
     assert!(
         // 〔C4d · 第四波 4B〕逐次拨号那条路（`remote_history.rs` 那一处）删了 ⇒ −1；〔合并 C4d × 主线 cf3277f4〕主线 11（DP1 −1）＋ 本路 −1 ⇒ 10。
-        // 〔SH1〕驾驶舱两条 shell 读删了 ⇒ 10 → 8；钩子诊断远端那条改问后端 ⇒ 7；MCP 远端读改问后端 ⇒ 6。
-        found.len() >= 6,
+        // 〔SH1〕驾驶舱两条 shell 读删了 ⇒ 10 → 8；钩子诊断远端那条改问后端 ⇒ 7；MCP 远端读改问后端 ⇒ 6；列 tmux ⇒ 5。
+        found.len() >= 5,
         "全树只找到 {} 处 `connect_and_exec_cmd(` 调用（08-07 实测 16；\
              **`K-R112` 09-13 现打 14** —— 查在线与抓屏那两处改走后端帧面之后各少一处；\
              **`C1` 09-24 现打 12** —— 读会话与快照那两处改走长连接之后各少一处；\
@@ -337,8 +361,7 @@ const STILL_SHELL: &[(&str, &str, StillShell, &str)] = &[
     //   「那台后端自己会哪些」（hello 已带能力 ＋ build），届时这一处删、本行摘。
     ("ccm_probe.rs", "probe_ccm_cli", StillShell::Pending("W5-ENTRY（`W5-ALIAS.md §2.5` 件 E：ccm 就是后端，落地同拍删）"),
      "探那台交互 shell 的 PATH 上的 `ccm`：后端进程答不了交互 shell 的 PATH；件 E 让 ccm 恒是那台后端本体之后，这一问改问后端自己（hello）"),
-    ("tmux.rs", "list_remote_tmux", StillShell::Pending("后端新帧命令 `tmux-list`（本路未加：后端今天只推原始 `tmux ls` 行做对账）"),
-     "列那台 tmux 会话（attach 项 · 铸名避让）：换要后端长一条具名读命令，与 FE1 的铸名收口同一个消费者，列给主会话排"),
+    // 〔SH1〕`tmux.rs` 那一行摘了：后端新帧命令 `tmux-list`（同 watcher 那一趟 `tmux ls`），monitor 改问它。
     // 〔SH1 · V136〕`cc_bus.rs` 那两行（读名册 · 读收件箱）摘了：cc-bus 加了机器可读的读命令，后端 `bus-state` / `bus-inbox` 转调，界面经通道问。
 ];
 

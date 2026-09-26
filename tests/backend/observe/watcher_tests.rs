@@ -3612,3 +3612,23 @@ fn the_two_session_file_frames_have_exactly_these_bytes() {
     }
     assert!(!gone.loss_is_recoverable());
 }
+
+/// 〔SH1〕`tmux-list` 的四态折叠：没装 ≠ 零会话 ≠ 看不清（`list_remote_tmux` 头注那三档，搬到这一侧）。
+/// 要求住址：`INVARIANTS §49`「下溢必须出声 ＋ 这一行不许当好数据」· 题面「`list_remote_tmux` 改后端新帧命令 `tmux-list`」。
+#[test]
+fn the_tmux_list_query_keeps_not_installed_empty_and_unobservable_apart() {
+    assert_eq!(query_reply(TmuxObservation::NoTmux), Ok((false, vec![])));
+    assert_eq!(query_reply(TmuxObservation::NoServer), Ok((true, vec![])));
+    assert_eq!(
+        query_reply(TmuxObservation::ServerEmpty),
+        Ok((true, vec![]))
+    );
+    assert_eq!(
+        query_reply(TmuxObservation::Sessions("a\tb\n".to_string() + "c\td")),
+        Ok((true, vec!["a\tb".to_string(), "c\td".to_string()]))
+    );
+    assert!(
+        query_reply(TmuxObservation::Unobservable).is_err(),
+        "看不清绝不当成零会话"
+    );
+}

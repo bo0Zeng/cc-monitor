@@ -2327,7 +2327,7 @@ shell 套件那一侧 `e2e_gate_registry_tests.rs::no_e2e_suite_isolates_with_tm
 - 调用点带没带 UTF-8：`gate_tests.rs::both_tmux_call_sites_ask_for_a_utf8_client_before_the_subcommand` ·
   `watcher_tests.rs::every_sh_call_site_in_this_module_carries_the_utf8_env` ·
   `session_snapshot_tests.rs::the_one_list_sessions_call_asks_for_a_utf8_client_before_the_subcommand` ·
-  monitor 跨 SSH 那一处 `tmux_tests.rs::the_surviving_cross_ssh_tmux_read_asks_for_a_utf8_client_before_the_subcommand`。
+  〔SH1〕monitor 那条跨 SSH `tmux ls` 已改问那台后端的 `tmux-list`（同 `watcher.rs` 那一趟），monitor 侧零处跨 SSH 的 tmux 读。
 - 下溢出声：`gate_tests.rs::the_underflow_predicate_catches_the_real_dirty_bytes` · `watcher_tests.rs::the_underflow_predicate_only_fires_downward` ·
   `session_snapshot_tests.rs::a_tab_starved_line_is_dropped_instead_of_becoming_a_session` · `tmux_tests.rs::a_dirty_line_underflows_and_an_overflowing_line_is_still_dropped_today`。
 - 口径一个家：`tmux_utf8_tests.rs::each_kou_jing_has_exactly_one_home_and_it_is_this_file` · `tmux_utf8_tests.rs::both_consumer_layers_reference_the_home_instead_of_declaring_their_own` ·
