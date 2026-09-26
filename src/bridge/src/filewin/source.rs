@@ -361,6 +361,136 @@ pub fn breadcrumbs(path: &str) -> Vec<(String, String)> {
     out
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// 〔W5-FILES · 第五波〕**有损名全寻址**：一条远端路径的原始字节（`设计/60 §6.2`「整条寻址链要换成字节」）
+// ═══════════════════════════════════════════════════════════════════════
+//
+// 窗口里显示用的一律是有损串；**发出去的**（列目录 · 读 / 存文本 · 复制 · 算大小 · 写面的根）经 [`RemotePath::wire`]：
+// 路径是合法 UTF-8 ⇒ 字符串（与此前逐字相同）；不是 ⇒ `{"b16": …}`（后端 `files-*` 那一族早就收这一形）。
+// 按字节切的三个函数与 [`parent_dir`] / [`remote_basename`] / [`breadcrumbs`] 同住这里、同一个口径（恒用 `/`，尾斜杠不算一段）。
+
+/// 一条远端路径：显示串 ＋（路径不是合法 UTF-8 时）原始字节。`raw == None` ⇒ `shown` 就是真字节。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RemotePath {
+    pub shown: String,
+    pub raw: Option<Vec<u8>>,
+}
+
+impl RemotePath {
+    /// 一条合法 UTF-8 的路径。
+    pub fn plain(s: &str) -> Self {
+        Self {
+            shown: s.to_string(),
+            raw: None,
+        }
+    }
+
+    /// 从字节来：合法 UTF-8 ⇒ 等于 [`Self::plain`]；否则留住字节、显示有损串。
+    pub fn from_bytes(b: &[u8]) -> Self {
+        match std::str::from_utf8(b) {
+            Ok(s) => Self::plain(s),
+            Err(_) => Self {
+                shown: String::from_utf8_lossy(b).to_string(),
+                raw: Some(b.to_vec()),
+            },
+        }
+    }
+
+    /// 显示串 ＋ 可能有的字节（行上那两格的形状）。
+    pub fn of(shown: &str, raw: Option<&[u8]>) -> Self {
+        match raw {
+            Some(b) => Self::from_bytes(b),
+            None => Self::plain(shown),
+        }
+    }
+
+    /// 真字节。
+    pub fn bytes(&self) -> Vec<u8> {
+        self.raw
+            .clone()
+            .unwrap_or_else(|| self.shown.as_bytes().to_vec())
+    }
+
+    /// 发出去的那一形（字符串或 `{"b16": …}`）。
+    pub fn wire(&self) -> serde_json::Value {
+        wire_bytes(&self.bytes())
+    }
+
+    /// 上一级（按字节切）。
+    pub fn parent(&self) -> Self {
+        Self::from_bytes(&parent_bytes(&self.bytes()))
+    }
+
+    /// 尾段发出去的那一形。
+    pub fn tail_wire(&self) -> serde_json::Value {
+        wire_bytes(tail_bytes(&self.bytes()))
+    }
+
+    /// 这条路径是有损的（显示串寻址不到真字节）。
+    pub fn is_lossy(&self) -> bool {
+        self.raw.is_some()
+    }
+}
+
+/// 字节 → 发出去的那一形：合法 UTF-8 ⇒ 字符串；否则 ⇒ `{"b16": …}`（小写十六进制）。
+pub fn wire_bytes(b: &[u8]) -> serde_json::Value {
+    match std::str::from_utf8(b) {
+        Ok(s) => serde_json::Value::String(s.to_string()),
+        Err(_) => serde_json::json!({
+            super::find::HEX_KEY: b.iter().map(|x| format!("{x:02x}")).collect::<String>()
+        }),
+    }
+}
+
+fn trim_slashes(b: &[u8]) -> &[u8] {
+    let mut end = b.len();
+    while end > 0 && b[end - 1] == b'/' {
+        end -= 1;
+    }
+    &b[..end]
+}
+
+/// [`parent_dir`] 的字节版（同一个口径：根的上一级是根）。
+pub fn parent_bytes(b: &[u8]) -> Vec<u8> {
+    let t = trim_slashes(b);
+    match t.iter().rposition(|x| *x == b'/') {
+        Some(0) | None => b"/".to_vec(),
+        Some(i) => t[..i].to_vec(),
+    }
+}
+
+/// [`remote_basename`] 的字节版。
+pub fn tail_bytes(b: &[u8]) -> &[u8] {
+    let t = trim_slashes(b);
+    match t.iter().rposition(|x| *x == b'/') {
+        Some(i) => &t[i + 1..],
+        None => t,
+    }
+}
+
+/// 两个目录按**段**比的最长公共前缀（字节版；都只在根下相交 ⇒ `/`）—— `workspace::common_dir` 的字节版。
+pub fn common_dir_bytes(a: &[u8], b: &[u8]) -> Vec<u8> {
+    let segs = |x: &[u8]| -> Vec<Vec<u8>> {
+        x.split(|c| *c == b'/')
+            .filter(|s| !s.is_empty())
+            .map(<[u8]>::to_vec)
+            .collect()
+    };
+    let (sa, sb) = (segs(a), segs(b));
+    let mut out = Vec::new();
+    for (x, y) in sa.iter().zip(sb.iter()) {
+        if x != y {
+            break;
+        }
+        out.push(b'/');
+        out.extend_from_slice(x);
+    }
+    if out.is_empty() {
+        out.push(b'/');
+    }
+    out
+}
+
 /// epoch 天数 → 公历 `(年, 月, 日)`。
 ///
 /// 🔴 **它是 `crate::utils::days_from_civil` 的逆**（同一篇算法：Howard Hinnant
@@ -562,7 +692,10 @@ pub fn home_from_reply(d: &serde_json::Value) -> Result<String, String> {
 // - ✅〔F7a · 第三波 2026-09-24〕**开窗时解 home** 此前仍走 SFTP（住 monitor 那一侧，
 //   后端没有这一问）—— 现在问后端 `files-home`（[`home_from_reply`]），monitor 那一侧
 //   开窗一个 SFTP 都不拨了。
-// - **`Row` 仍然持字符串不持字节**（改它要动六个模块与四十来条判据，单独一刀）。
+// - **`Row` 仍然持字符串不持字节** —— 〔W5-FILES · 第五波〕那「单独一刀」没去改 `Row`，改的是**发出去的那一跳**：
+//   窗口记住当前目录的字节（`FileWindow::cwd_raw`）与行上名字的字节（`Listed::raw_name`），发路径一律经 [`RemotePath`]
+//   （进目录 · 列目录 · 上一级 · 读 / 存文本 · 复制 · 算大小 · 新建 · 写面的根）；显示照旧用有损串。
+//   仍然做不了、会出声的：有损目录里上传 / 搜索 / 开终端 / 书签；有损名下载（`设计/60 §4.1`：SFTP 库寻址不到）。
 
 /// 那条线上命令的名字。⚠ 能力名是 `files.ls`，线上名是 `files-ls`
 /// （两者刻意不同形，同 `find.rs` 头注那条）。
@@ -645,6 +778,24 @@ pub async fn list_via_backend(
     line: &Line,
     origin: &Origin,
     dir: &str,
+    limit: usize,
+    by: SortBy,
+) -> Result<(Vec<Listed>, bool), String> {
+    list_via_backend_at(
+        line,
+        origin,
+        serde_json::Value::String(dir.to_string()),
+        limit,
+        by,
+    )
+    .await
+}
+
+/// 〔W5-FILES · 有损名全寻址〕同 [`list_via_backend`]，目录由调用方给线上那一形（字符串或 `{"b16": …}`，[`RemotePath::wire`]）。
+pub async fn list_via_backend_at(
+    line: &Line,
+    origin: &Origin,
+    dir: serde_json::Value,
     limit: usize,
     by: SortBy,
 ) -> Result<(Vec<Listed>, bool), String> {

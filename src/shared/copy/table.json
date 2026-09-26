@@ -10804,6 +10804,26 @@
       "zh": "选择框启动不了，请重开这个窗口",
       "args": []
     },
+    "rsFilewinShell.lossyCwd.refused": {
+      "kind": "error",
+      "zh": "这个目录的名字不是合法 UTF-8，{what}在这里做不了",
+      "args": ["what"]
+    },
+    "rsFilewinShell.lossyCwd.upload": {
+      "kind": "body",
+      "zh": "上传",
+      "args": []
+    },
+    "rsFilewinShell.lossyCwd.search": {
+      "kind": "body",
+      "zh": "搜索",
+      "args": []
+    },
+    "rsFilewinShell.lossyCwd.terminal": {
+      "kind": "body",
+      "zh": "在此打开终端",
+      "args": []
+    },
     "rsFilewinCopy.ui.askOverwriteMany": {
       "kind": "body",
       "zh": "远端已经有这 {n} 个同名文件了，要覆盖吗？",

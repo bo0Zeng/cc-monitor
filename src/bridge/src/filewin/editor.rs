@@ -165,9 +165,22 @@ pub const REQUEST_ID_ROOM: usize = 1 + 32 + 1 + 20 + 1 + 20;
 /// 〔FW1 · 第四波 4D · D-c〕`expect` = 「我打开时那一份」的摘要（`files-read-text` 交的、或上一次存成时应答交的），
 /// 后端比盘上此刻那一份、对不上就 `stale`、一个字节不写。窗口只把它当不透明令牌原样交回（算法住后端一处）。
 pub fn save_args(path: &str, content: &str, expect_sha256: &str) -> serde_json::Value {
+    save_args_at(
+        &super::source::RemotePath::plain(path),
+        content,
+        expect_sha256,
+    )
+}
+
+/// 〔W5-FILES · 有损名全寻址〕同 [`save_args`]，路径可以带字节（`root` / `rel` 按字节切，有损那一段发 `{"b16": …}`）。
+pub fn save_args_at(
+    at: &super::source::RemotePath,
+    content: &str,
+    expect_sha256: &str,
+) -> serde_json::Value {
     serde_json::json!({
-        "root": super::source::parent_dir(path),
-        "rel": super::source::remote_basename(path),
+        "root": at.parent().wire(),
+        "rel": at.tail_wire(),
         "content": content,
         "expect": { "sha256": expect_sha256 },
     })
@@ -186,9 +199,26 @@ pub fn commit_args(
     bytes: usize,
     expect_sha256: &str,
 ) -> serde_json::Value {
+    commit_args_at(
+        &super::source::RemotePath::plain(path),
+        key,
+        chunks,
+        bytes,
+        expect_sha256,
+    )
+}
+
+/// 〔W5-FILES〕同 [`commit_args`]，路径可以带字节。
+pub fn commit_args_at(
+    at: &super::source::RemotePath,
+    key: &str,
+    chunks: usize,
+    bytes: usize,
+    expect_sha256: &str,
+) -> serde_json::Value {
     serde_json::json!({
-        "root": super::source::parent_dir(path),
-        "rel": super::source::remote_basename(path),
+        "root": at.parent().wire(),
+        "rel": at.tail_wire(),
         "key": key,
         "chunks": chunks,
         "bytes": bytes,
@@ -351,7 +381,23 @@ pub fn why_not_editable(r: &Row) -> Option<String> {
     None
 }
 
-/// 行上那颗「编辑」画不画。
+/// 〔W5-FILES · `设计/60 §6.2`「有损名的…编辑」〕**窗口里一行**为什么不能编辑：有损但带着原始字节 ⇒ 名字那一关放行
+/// （读 / 存走字节），其余几关（目录 · 超上限）照 [`why_not_editable`]。行上那颗按钮与右键菜单问的是它。
+pub fn why_not_editable_listed(l: &super::source::Listed) -> Option<String> {
+    if l.lossy_name && l.raw_name.is_some() {
+        let mut r = l.row.clone();
+        r.lossy_name = false;
+        return why_not_editable(&r);
+    }
+    why_not_editable(&l.row)
+}
+
+/// 〔W5-FILES〕[`why_not_editable_listed`] 的 `is_none()`。
+pub fn editable(l: &super::source::Listed) -> bool {
+    why_not_editable_listed(l).is_none()
+}
+
+/// 只有那五格时「编辑」画不画（窗口里一行走 [`editable`]）。
 ///
 /// ⚠ 它就是 [`why_not_editable`] 的 `is_none()` —— **刻意不另写一套条件**
 ///（那正是「按钮画了但点了没反应」那个静默态的来源；同 `download` 那一对
@@ -401,6 +447,8 @@ pub struct Pane {
     pub stale: bool,
     /// 〔F9〕大文件模式那一格（`None` 在里面 ＝ 普通路径）。逐条住 [`super::bigfile`] 头注。
     pub(crate) big: super::bigfile::BigSlot,
+    /// 〔W5-FILES · 有损名全寻址〕路径不是合法 UTF-8 时那份文件的整条原始字节（读 / 存都走它；`None` ⇒ `path` 就是真字节）。
+    pub raw_path: Option<Vec<u8>>,
     /// 〔W5-FILES · `设计/60 §6.2`「查找替换」〕编辑面上那一截查找替换的状态（只在普通路径上画；大文件模式没有，`§5.5`）。
     pub find: FindBar,
 }
@@ -466,6 +514,7 @@ impl Pane {
             last_save: None,
             stale: false,
             big: Default::default(),
+            raw_path: None,
             find: FindBar::default(),
         }
     }
@@ -677,7 +726,16 @@ pub async fn read_text(
     origin: &super::source::Origin,
     path: &str,
 ) -> Result<Option<Opened>, String> {
-    let args = serde_json::json!({ "path": path, "max_bytes": MAX_EDIT_BYTES });
+    read_text_at(line, origin, &super::source::RemotePath::plain(path)).await
+}
+
+/// 〔W5-FILES · 有损名全寻址〕同 [`read_text`]，路径可以带字节（`path` 发 `{"b16": …}`）。
+pub async fn read_text_at(
+    line: &super::source::Line,
+    origin: &super::source::Origin,
+    at: &super::source::RemotePath,
+) -> Result<Option<Opened>, String> {
+    let args = serde_json::json!({ "path": at.wire(), "max_bytes": MAX_EDIT_BYTES });
     opened_from_reply(
         super::source::ask_coded(line, origin, CMD_READ_TEXT, &args, READ_BUDGET).await,
     )
@@ -752,12 +810,32 @@ pub async fn write_text(
     content: &str,
     expect_sha256: &str,
 ) -> Result<Saved, SaveError> {
+    write_text_at(
+        line,
+        origin,
+        &super::source::RemotePath::plain(path),
+        content,
+        expect_sha256,
+    )
+    .await
+}
+
+/// 〔W5-FILES · 有损名全寻址〕同 [`write_text`]，路径可以带字节。一行装不装得下按真要发的那一形量。
+pub async fn write_text_at(
+    line: &super::source::Line,
+    origin: &super::source::Origin,
+    at: &super::source::RemotePath,
+    content: &str,
+    expect_sha256: &str,
+) -> Result<Saved, SaveError> {
     if content.len() > MAX_EDIT_BYTES {
         return Err(SaveError::Failed(over_cap_notice(content.len())));
     }
     let budget = super::writeops::WRITE_BUDGET;
-    let r = if fits_one_line(path, content) {
-        let args = save_args(path, content, expect_sha256);
+    let room = "0".repeat(SHA256_HEX_LEN);
+    let r = if request_line_len(CMD_WRITE_TEXT, &save_args_at(at, content, &room)) <= SAVE_LINE_CAP
+    {
+        let args = save_args_at(at, content, expect_sha256);
         super::source::ask_coded(line, origin, CMD_WRITE_TEXT, &args, budget).await
     } else {
         let key = uuid::Uuid::new_v4().simple().to_string();
@@ -768,7 +846,7 @@ pub async fn write_text(
                 .await
                 .map_err(|why| SaveError::Failed(chunk_failed_notice(seq, chunks.len(), &why)))?;
         }
-        let args = commit_args(path, &key, chunks.len(), content.len(), expect_sha256);
+        let args = commit_args_at(at, &key, chunks.len(), content.len(), expect_sha256);
         super::source::ask_coded(line, origin, CMD_COMMIT_TEXT, &args, budget).await
     };
     saved_from_reply(content, r)
@@ -822,7 +900,24 @@ pub async fn overwrite_anyway(
     path: &str,
     content: &str,
 ) -> Result<Saved, SaveError> {
-    let now = match read_text(line, origin, path).await {
+    overwrite_anyway_at(
+        line,
+        origin,
+        &super::source::RemotePath::plain(path),
+        content,
+    )
+    .await
+}
+
+/// 〔W5-FILES〕同 [`overwrite_anyway`]，路径可以带字节。
+pub async fn overwrite_anyway_at(
+    line: &super::source::Line,
+    origin: &super::source::Origin,
+    at: &super::source::RemotePath,
+    content: &str,
+) -> Result<Saved, SaveError> {
+    let path = at.shown.as_str();
+    let now = match read_text_at(line, origin, at).await {
         Ok(Some(o)) => o.sha256,
         Ok(None) => {
             return Err(SaveError::Failed(copy_text(
@@ -837,7 +932,7 @@ pub async fn overwrite_anyway(
             )))
         }
     };
-    write_text(line, origin, path, content, &now).await
+    write_text_at(line, origin, at, content, &now).await
 }
 
 #[cfg(test)]

@@ -36,7 +36,7 @@
 //!   [`Workspace::settle_drag`]）；判据喂的是合成指针事件，真鼠标买不到。
 //! - 后台标签（不在任何一栏上）的「一问」要切回去才看得见；标签名前那个「●」就是为这个。
 
-use super::copy::{is_copyable, CopyJob};
+use super::copy::CopyJob;
 use super::shell::FileWindow;
 use super::source::Listed;
 use crate::copy_table::copy_text;
@@ -367,7 +367,7 @@ impl Workspace {
             self.notice = Some(copy_text("rsFilewinSelect.refusal.none", &[]));
             return false;
         }
-        if let Some(r) = rows.iter().find(|r| !is_copyable(r)) {
+        if let Some(r) = rows.iter().find(|r| !super::copy::copyable(r)) {
             self.notice = Some(copy_text(
                 "rsFilewinWorkspace.copyToOther.unaddressable",
                 &[("name", &r.name.to_string())],
@@ -376,17 +376,29 @@ impl Workspace {
         }
         let other = 1 - self.focus;
         let dest_dir = self.pane_on(other).cwd.clone();
-        if dest_dir == from.cwd {
+        let dest_path = self.pane_on(other).cwd_path();
+        if dest_path == from.cwd_path() {
             self.notice = Some(copy_text("rsFilewinWorkspace.copyToOther.sameDir", &[]).into());
             return false;
         }
         let jobs: Vec<CopyJob> = rows
             .iter()
-            .map(|r| CopyJob {
-                from: r.path.clone(),
-                to: super::writeops::join_remote(&dest_dir, &r.name),
-                name: r.name.clone(),
-                is_dir: r.is_dir,
+            .map(|r| {
+                // 〔W5-FILES · 有损名全寻址〕源 ＝ 源那一栏当前目录的字节 ＋ 名字的字节；目标 ＝ 另一栏当前目录的字节 ＋ 同一个名字。
+                let src = from.row_path(r);
+                let dst = super::shell::join_path(&dest_path, &super::shell::name_bytes(r));
+                CopyJob {
+                    from: src.shown.clone(),
+                    to: if dst.is_lossy() {
+                        dst.shown.clone()
+                    } else {
+                        super::writeops::join_remote(&dest_dir, &r.name)
+                    },
+                    name: r.name.clone(),
+                    is_dir: r.is_dir,
+                    from_raw: src.raw,
+                    to_raw: dst.raw,
+                }
             })
             .collect();
         self.notice = None;
@@ -606,25 +618,28 @@ pub fn common_dir(a: &str, b: &str) -> String {
 ///   「那一行的路径」写法不一致时拼到别处去）—— 这里是另一件事（用户明说「放到另一栏那个目录」），
 ///   所以另起一个，不去放宽那一道。后端的 `from` / `to` 本来就收多段相对路径（逐段过词法围栏）。
 pub fn across_args(job: &CopyJob, overwrite: bool) -> Result<serde_json::Value, String> {
-    let root = common_dir(
-        &super::source::parent_dir(&job.from),
-        &super::source::parent_dir(&job.to),
-    );
-    let rel = |p: &str| -> Result<String, String> {
-        p.strip_prefix(root.as_str())
-            .map(|r| r.trim_start_matches('/').to_string())
-            .filter(|r| !r.is_empty())
-            .ok_or_else(|| {
-                copy_text(
-                    "rsFilewinWorkspace.acrossArgs.notUnder",
-                    &[("path", &p.to_string()), ("root", &root.to_string())],
-                )
-            })
+    // 〔W5-FILES · 有损名全寻址〕按**字节**切（合法 UTF-8 时与按串切逐字节同：`common_dir` 与它同一个按段比的口径）。
+    let (from, to) = (job.from_path(), job.to_path());
+    let root = super::source::common_dir_bytes(&from.parent().bytes(), &to.parent().bytes());
+    let root_path = super::source::RemotePath::from_bytes(&root);
+    let rel = |p: &super::source::RemotePath| -> Result<serde_json::Value, String> {
+        let b = p.bytes();
+        let cut = if root == b"/" { 1 } else { root.len() + 1 };
+        (b.starts_with(&root)
+            && b.len() > cut
+            && (root == b"/" || b.get(root.len()) == Some(&b'/')))
+        .then(|| super::source::wire_bytes(&b[cut..]))
+        .ok_or_else(|| {
+            copy_text(
+                "rsFilewinWorkspace.acrossArgs.notUnder",
+                &[("path", &p.shown), ("root", &root_path.shown)],
+            )
+        })
     };
     let mut v = serde_json::json!({
-        "root": root,
-        "from": rel(&job.from)?,
-        "to": rel(&job.to)?,
+        "root": root_path.wire(),
+        "from": rel(&from)?,
+        "to": rel(&to)?,
         "overwrite": overwrite,
     });
     super::copy::mark_recursive(&mut v, job);

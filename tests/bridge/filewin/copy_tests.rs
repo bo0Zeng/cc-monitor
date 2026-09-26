@@ -9,6 +9,8 @@ fn job() -> CopyJob {
         to: "/srv/data/big.bin.copy".to_string(),
         name: "big.bin.copy".to_string(),
         is_dir: false,
+        from_raw: None,
+        to_raw: None,
     }
 }
 
@@ -465,6 +467,8 @@ fn copy_args_split_the_paths_like_the_other_writes_and_refuse_a_second_directory
         to: "/srv/other/big.bin".into(),
         name: "big.bin".into(),
         is_dir: false,
+        from_raw: None,
+        to_raw: None,
     };
     assert!(
         copy_args(&elsewhere, false).is_err(),
@@ -503,6 +507,8 @@ async fn copying_goes_through_the_channel_with_the_overwrite_policy_on_the_wire(
         to: "/srv/refuse/b".into(),
         name: "b".into(),
         is_dir: false,
+        from_raw: None,
+        to_raw: None,
     };
     let e = copy_remote(&wired.line, &origin, &fenced, false)
         .await
@@ -535,7 +541,8 @@ fn the_real_adapter_asks_the_backend_and_touches_no_transfer_machinery() {
         "生产段只剩 {} 字节 —— 剥法把它剥没了，下面几条在空转",
         prod.len()
     );
-    for needle in ["source::ask(", "transfer::probe_remote("] {
+    // 〔W5-FILES · 有损名全寻址〕探目标换成 `probe_remote_at`（路径可以是字节；`probe_remote` 是它路径为串时的那一形，同一个口径）。
+    for needle in ["source::ask(", "transfer::probe_remote_at("] {
         assert_eq!(
             prod.matches(needle).count(),
             1,
@@ -576,6 +583,8 @@ fn named(name: &str, is_dir: bool) -> CopyJob {
         to: format!("/srv/b/{name}"),
         name: name.to_string(),
         is_dir,
+        from_raw: None,
+        to_raw: None,
     }
 }
 

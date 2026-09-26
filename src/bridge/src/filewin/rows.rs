@@ -29,9 +29,9 @@
 use crate::copy_table::copy_text;
 use egui::{ScrollArea, Ui};
 
-use super::copy::{is_copyable, COPY_LABEL};
+use super::copy::{copyable, COPY_LABEL};
 use super::download::{is_downloadable, DOWNLOAD_LABEL};
-use super::editor::{is_editable, EDIT_LABEL};
+use super::editor::{editable, EDIT_LABEL};
 use super::source::{format_mtime, Listed};
 use super::writeops::{is_writable, CHMOD_LABEL, DELETE_LABEL, RENAME_LABEL};
 
@@ -399,7 +399,8 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Listed, revealed: bool, mark: Ma
         // 窗口状态机那一侧（`begin_copy`）问的是同一个函数。
         // ⚠ `small_button`：普通 `Button` 的最小高度是 `interact_size.y`（默认 18），
         //   一行只有 `ROW_HEIGHT` 高，撑高了行与行会叠在一起（下一行就点不准了）。
-        let copy = if is_copyable(r) {
+        // 〔W5-FILES〕有损名带着字节也画（`copy::copyable`：线上走字节）。
+        let copy = if copyable(r) {
             Some(ui.small_button(COPY_LABEL.as_str()))
         } else {
             None
@@ -428,7 +429,7 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Listed, revealed: bool, mark: Ma
         //   的 `is_none()`（**刻意不另写一套条件**：那正是「按钮画了但点了没反应」
         //   那个静默态的来源）。⚠ 超上限那一档在这儿就不画了，
         //   而**为什么**不画由那一行被点时的那句话给（`begin_edit` 会说）。
-        let edit = if is_editable(r) {
+        let edit = if editable(r) {
             Some(ui.small_button(EDIT_LABEL.as_str()))
         } else {
             None

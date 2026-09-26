@@ -109,12 +109,12 @@ use crate::copy_table::copy_text;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use super::copy::{is_copyable, CopyBoard, CopyJob, CopyPrompt};
+use super::copy::{CopyBoard, CopyJob, CopyPrompt};
 use super::find::{self, SearchBoard};
 use super::fonts::{self, FontState};
 use super::rows::{show_file_rows, show_hit_rows, HitTally, RenderTally};
 use super::select::{self, Action, Intent, Selection, TypeAhead};
-use super::source::{breadcrumbs, parent_dir, Line, Listed, SortBy, Source};
+use super::source::{breadcrumbs, Line, Listed, SortBy, Source};
 use super::transfer::{DropBoard, Pending};
 use super::writeops::{is_writable, WriteBoard, WriteOp, WritePrompt, MKDIR_LABEL};
 
@@ -357,6 +357,9 @@ pub struct Reveal {
 pub struct FileWindow {
     pub source: Source,
     pub cwd: String,
+    /// 〔W5-FILES · `设计/60 §6.2`「有损名的进目录…整条寻址链要换成字节」〕当前目录不是合法 UTF-8 时它的原始字节
+    /// （`cwd` 是它的有损显示串）。`None` ⇒ `cwd` 就是真字节。发出去的一律经 [`Self::cwd_path`] / [`Self::row_path`]。
+    pub cwd_raw: Option<Vec<u8>>,
     pub listing: Listing,
     pub tally: RenderTally,
     /// 〔第五刀〕命中那一摞这一帧画了什么。**与 [`Self::tally`] 刻意是两个类型** ——
@@ -386,6 +389,8 @@ pub struct FileWindow {
     pub copy_board: CopyBoard,
     /// 〔W5-FILES · `设计/60 §6.2`〕算大小那一摞的看板（在算哪一项 · 上一摞的结局）。
     pub size_board: super::size::SizeBoard,
+    /// 〔W5-FILES〕正在读的那一份的原始字节（到货时交给编辑面；`(显示路径, 字节)`）。
+    edit_raw: Option<(String, Vec<u8>)>,
     /// 〔W5-FILES · `设计/60 §6.2`「原生选文件框」〕选择框（生产是操作系统自己的，判据换一个假的）＋ 结局落点 ＋ 下载那一问上「没选到」那句话。
     pub picker: std::sync::Arc<dyn super::picker::Picker>,
     pick_board: super::picker::PickBoard,
@@ -542,6 +547,7 @@ impl FileWindow {
         Self {
             source,
             cwd,
+            cwd_raw: None,
             listing,
             tally: RenderTally::default(),
             hits_tally: HitTally::default(),
@@ -551,6 +557,7 @@ impl FileWindow {
             seen_rounds: 0,
             copy_board: CopyBoard::default(),
             size_board: super::size::SizeBoard::default(),
+            edit_raw: None,
             picker: super::picker::native(),
             pick_board: super::picker::PickBoard::default(),
             pick_notice: None,
@@ -589,7 +596,8 @@ impl FileWindow {
     pub fn reload(&self) {
         let l = self.listing.clone();
         let mine = l.start();
-        let cwd = self.cwd.clone();
+        // 〔W5-FILES · 有损名全寻址〕发出去的是线上那一形（有损目录 ⇒ `{"b16": …}`）。
+        let cwd = self.cwd_path().wire();
         // 🔴〔第十二刀 2026-09-22〕**先问后端，问不到才退回旧路** ——
         //    用户指令的第 1 步，逐条理由住 `source.rs` 那一段头注。
         // 🔴〔F2 · 2026-09-24〕「问不到才退回旧路」那半句**拿掉了**（`D11`）：只问后端。
@@ -601,12 +609,19 @@ impl FileWindow {
                     store_if_current(&l, mine, Err(NO_LINE.to_string()));
                     return;
                 };
-                let source = self.source.clone();
+                let origin = self.source.origin();
                 // ⚠ 带**这一刻**选的那一档走。用户在飞行途中换了档 ⇒ [`Self::set_sort`]
                 //   会把落地的那一摞就地重排，所以两种顺序都不会错。
                 let by = self.sort_by;
                 h.spawn(async move {
-                    let r = super::source::list_dir(&line, &source, &cwd, by).await;
+                    let r = super::source::list_via_backend_at(
+                        &line,
+                        &origin,
+                        cwd,
+                        super::source::LS_LIMIT,
+                        by,
+                    )
+                    .await;
                     store_listed_if_current(&l, mine, r);
                 });
             }
@@ -629,9 +644,37 @@ impl FileWindow {
 
     /// 换到 `path` 并重列。**在飞的那几趟从此全部作废**（见 [`Listing::epoch`]）。
     pub fn navigate_to(&mut self, path: String) {
-        if path == self.cwd {
+        self.navigate_to_at(super::source::RemotePath::plain(&path));
+    }
+
+    /// 〔W5-FILES · 有损名全寻址〕当前目录（显示串 ＋ 可能有的字节）。
+    pub fn cwd_path(&self) -> super::source::RemotePath {
+        super::source::RemotePath::of(&self.cwd, self.cwd_raw.as_deref())
+    }
+
+    /// 〔W5-FILES〕列表里那一行的整条路径 ＝ 当前目录的字节 ＋ `/` ＋ 名字的字节（有损名用后端送的那一段字节）。
+    pub fn row_path(&self, r: &super::source::Listed) -> super::source::RemotePath {
+        join_path(&self.cwd_path(), &name_bytes(r))
+    }
+
+    /// 〔W5-FILES〕当前目录是有损的 ⇒ 这件事做不了（它要一条字符串路径），出声、回 `true`。
+    fn refused_in_lossy_cwd(&mut self, what: impl FnOnce() -> String) -> bool {
+        if self.cwd_raw.is_none() {
+            return false;
+        }
+        *self.listing.error.lock().unwrap() = Some(copy_text(
+            "rsFilewinShell.lossyCwd.refused",
+            &[("what", &what())],
+        ));
+        true
+    }
+
+    /// 〔W5-FILES · 有损名全寻址〕进一个目录（显示串 ＋ 可能有的字节）。与 [`Self::navigate_to`] 同一套收摊。
+    pub fn navigate_to_at(&mut self, at: super::source::RemotePath) {
+        if at == self.cwd_path() {
             return;
         }
+        let path = at.shown.clone();
         // 🔴〔第十刀〕换了目录，那一行就不在这儿了 ⇒ 高亮清掉。
         //    留着的话，新目录里**恰好同名**的另一个文件会被高亮 ——
         //    而用户会以为那就是他要找的那个。
@@ -644,6 +687,7 @@ impl FileWindow {
         self.menu = None;
         self.key_notice = None;
         self.cwd = path;
+        self.cwd_raw = at.raw;
         self.listing.invalidate();
         self.reload();
         // 〔FW34〕换目录时现读一次书签：别的窗口刚加的那几条从这里进来（小文件一次读，不是每帧）。
@@ -654,8 +698,9 @@ impl FileWindow {
 
     /// 上一级。已经在顶上就什么都不做（[`parent_dir`] 到顶回原值）。
     pub fn navigate_up(&mut self) {
-        let up = parent_dir(&self.cwd);
-        self.navigate_to(up);
+        // 〔W5-FILES〕按字节切（合法 UTF-8 时与 `parent_dir` 逐字节同）。
+        let up = self.cwd_path().parent();
+        self.navigate_to_at(up);
     }
 
     /// 换一种排序，并**把手上这一摞就地重排**。回值 = 真的换了（同一档 ⇒ `false`）。
@@ -709,6 +754,10 @@ impl FileWindow {
     /// 是前端剪贴板兜底干的活（`remote-launch-run.ts`），**这个窗口没有它**
     /// ⇒ 那半句在这儿是假的。如实登记为**没做**（旧面板那颗按钮同样没有）。
     pub fn open_terminal_here(&mut self, ctx: Option<egui::Context>) -> bool {
+        // 〔W5-FILES〕有损目录：`cd` 那一串是 shell 字符串，拼字节要另一套转义 ⇒ 不开、出声。
+        if self.refused_in_lossy_cwd(|| copy_text("rsFilewinShell.lossyCwd.terminal", &[])) {
+            return false;
+        }
         let Some(h) = self.rt.clone() else {
             *self.term_notice.lock().unwrap() =
                 Some(copy_text("rsFilewinShell.terminal.noRuntime", &[]).into());
@@ -745,13 +794,16 @@ impl FileWindow {
         let target = {
             let rows = self.listing.rows.lock().unwrap();
             match rows.get(i) {
-                Some(r) if r.is_dir => r.path.clone(),
+                // 〔W5-FILES〕有损名目录：没带字节就进不去（寻址不到）；带了 ⇒ 按字节进。
+                Some(r) if r.is_dir && (!r.lossy_name || r.raw_name.is_some()) => {
+                    join_path(&self.cwd_path(), &name_bytes(r))
+                }
                 _ => return false,
             }
         };
-        let before = self.cwd.clone();
-        self.navigate_to(target);
-        self.cwd != before
+        let before = self.cwd_path();
+        self.navigate_to_at(target);
+        self.cwd_path() != before
     }
 
     /// 现在高亮着哪一行的名字（`None` = 没有）。判据与界面看同一个值。
@@ -832,6 +884,10 @@ impl FileWindow {
     /// 平时是 `false`，要不要重走由**后端报的** `index_missing` / `stale` 决定
     /// （`设计/60 §3.5.2a`；周期那个数不在这一侧，见 [`super::find`] 头注 §四）。
     pub fn fire_search(&mut self, ctx: Option<egui::Context>, force_rebuild: bool) -> bool {
+        // 〔W5-FILES〕有损目录：索引的根与浏览名单是字符串，做不了 ⇒ 出声。
+        if self.refused_in_lossy_cwd(|| copy_text("rsFilewinShell.lossyCwd.search", &[])) {
+            return false;
+        }
         let needle = self.query.trim().to_string();
         self.search.attach(ctx);
         self.search.invalidate(&needle);
@@ -894,6 +950,10 @@ impl FileWindow {
     /// ⚠ 从前这句话是「没运行时 / 本机源」—— 本机源那一支不在了（见 `Source` 头注）。
     pub fn start_drop(&mut self, items: Vec<Pending>, ctx: Option<egui::Context>) -> bool {
         if items.is_empty() {
+            return false;
+        }
+        // 〔W5-FILES〕有损目录：上传的提交要一条字符串落点（传输台那一侧），做不了 ⇒ 出声。
+        if self.refused_in_lossy_cwd(|| copy_text("rsFilewinShell.lossyCwd.upload", &[])) {
             return false;
         }
         let Some(h) = self.rt.clone() else {
@@ -1059,11 +1119,15 @@ impl FileWindow {
         let row = {
             let rows = self.listing.rows.lock().unwrap();
             match rows.get(i) {
-                Some(r) if is_copyable(r) => r.clone(),
+                Some(r) if super::copy::copyable(r) => r.clone(),
                 _ => return false,
             }
         };
-        self.copy_prompt = Some(CopyPrompt::for_row(&self.cwd, &row));
+        let mut p = CopyPrompt::for_row(&self.cwd, &row);
+        // 〔W5-FILES · 有损名全寻址〕源与当前目录的字节跟着框走（合法 UTF-8 ⇒ 两格都是 `None`，与此前逐字节同）。
+        p.from_raw = self.row_path(&row).raw;
+        p.dir_raw = self.cwd_raw.clone();
+        self.copy_prompt = Some(p);
         true
     }
 
@@ -1385,6 +1449,8 @@ impl FileWindow {
         let board = self.write_board.clone();
         board.attach(ctx);
         self.writes_started += 1;
+        // 〔W5-FILES · 有损名全寻址〕写的对象恒是当前目录的直接子项 ⇒ 根就是当前目录；有损 ⇒ 根发字节。
+        let root_raw = self.cwd_raw.clone();
         h.spawn(async move {
             let ask_board = board.clone();
             let out = super::writeops::run_writes(
@@ -1396,7 +1462,11 @@ impl FileWindow {
                 move |op| {
                     let line = line.clone();
                     let origin = origin.clone();
-                    async move { super::writeops::apply_remote(&line, &origin, &op).await }
+                    let root_raw = root_raw.clone();
+                    async move {
+                        super::writeops::apply_remote_in(&line, &origin, &op, root_raw.as_deref())
+                            .await
+                    }
                 },
             )
             .await;
@@ -1647,13 +1717,18 @@ impl FileWindow {
             let rows = self.listing.rows.lock().unwrap();
             match rows.get(i) {
                 // ⚠ 拿的是**那五格**（同 `writable_row`）：读一份文本要的是路径、
-                //   名字与大小，链接与时间两格它一格都不读。
-                Some(r) => r.row.clone(),
+                //   名字与大小，链接与时间两格它一格都不读。〔W5-FILES〕外加整条路径的字节（有损名全寻址）。
+                Some(r) => (
+                    r.row.clone(),
+                    self.row_path(r),
+                    super::editor::why_not_editable_listed(r),
+                ),
                 None => return false,
             }
         };
+        let (row, at, refused) = row;
         // 🔴 本地预判 —— 出声，不灰置。
-        if let Some(why) = super::editor::why_not_editable(&row) {
+        if let Some(why) = refused {
             *self.listing.error.lock().unwrap() = Some(copy_text(
                 "rsFilewinShell.edit.refused",
                 &[("name", &row.name.to_string()), ("why", &why.to_string())],
@@ -1673,10 +1748,11 @@ impl FileWindow {
         let board = self.edits.clone();
         board.attach(ctx);
         board.begin_open(&row.path);
+        self.edit_raw = at.raw.clone().map(|b| (row.path.clone(), b));
         h.spawn(async move {
             use super::editor::Arrived;
-            // 〔F7a〕读文本经通道问后端（`files-read-text`），不再拨 SFTP。
-            let got = super::editor::read_text(&line, &origin, &row.path).await;
+            // 〔F7a〕读文本经通道问后端（`files-read-text`），不再拨 SFTP。〔W5-FILES〕路径按字节发。
+            let got = super::editor::read_text_at(&line, &origin, &at).await;
             board.deliver(match got {
                 Ok(Some(o)) => Arrived::Text {
                     path: row.path.clone(),
@@ -1710,7 +1786,14 @@ impl FileWindow {
                 text,
                 sha256,
             } => {
-                self.editing = Some(super::editor::Pane::opened(&path, &name, text, sha256));
+                let mut pane = super::editor::Pane::opened(&path, &name, text, sha256);
+                // 〔W5-FILES〕有损名：读的时候记下的字节交给编辑面（存盘走它）。
+                pane.raw_path = self
+                    .edit_raw
+                    .take()
+                    .filter(|(p, _)| *p == path)
+                    .map(|(_, b)| b);
+                self.editing = Some(pane);
             }
             Arrived::NotText { path } => {
                 *self.listing.error.lock().unwrap() = Some(super::editor::not_text_notice(&path));
@@ -1759,8 +1842,9 @@ impl FileWindow {
         board.attach(ctx);
         board.begin_save(&p.path);
         h.spawn(async move {
-            let r = super::editor::write_text(&line, &origin, &p.path, &p.text, p.expect_sha256())
-                .await;
+            let at = super::source::RemotePath::of(&p.path, p.raw_path.as_deref());
+            let r =
+                super::editor::write_text_at(&line, &origin, &at, &p.text, p.expect_sha256()).await;
             board.deliver_save(r);
         });
         true
@@ -1785,7 +1869,8 @@ impl FileWindow {
         board.attach(ctx);
         board.begin_save(&p.path);
         h.spawn(async move {
-            let r = super::editor::overwrite_anyway(&line, &origin, &p.path, &p.text).await;
+            let at = super::source::RemotePath::of(&p.path, p.raw_path.as_deref());
+            let r = super::editor::overwrite_anyway_at(&line, &origin, &at, &p.text).await;
             board.deliver_save(r);
         });
         true
@@ -1798,6 +1883,8 @@ impl FileWindow {
             return false;
         };
         let (path, name) = (p.path.clone(), p.name.clone());
+        let at = super::source::RemotePath::of(&path, p.raw_path.as_deref());
+        self.edit_raw = at.raw.clone().map(|b| (path.clone(), b));
         let (Some(h), Some(line)) = (self.rt.clone(), self.line.clone()) else {
             *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
             return false;
@@ -1809,7 +1896,7 @@ impl FileWindow {
         board.begin_open(&path);
         h.spawn(async move {
             use super::editor::Arrived;
-            let got = super::editor::read_text(&line, &origin, &path).await;
+            let got = super::editor::read_text_at(&line, &origin, &at).await;
             board.deliver(match got {
                 Ok(Some(o)) => Arrived::Text {
                     path,
@@ -2698,9 +2785,10 @@ impl FileWindow {
         };
         let items: Vec<(serde_json::Value, String)> = {
             let rows = self.listing.rows.lock().unwrap();
+            // 〔W5-FILES · 有损名全寻址〕路径按字节发。
             idx.iter()
                 .filter_map(|&i| rows.get(i))
-                .map(|r| (serde_json::Value::String(r.path.clone()), r.name.clone()))
+                .map(|r| (self.row_path(r).wire(), r.name.clone()))
                 .collect()
         };
         let origin = self.source.origin();
@@ -2857,7 +2945,9 @@ impl FileWindow {
                 new_file = true;
             }
             // 〔F7c〕「上传」—— 选完走拖入那一条（`upload.rs` 头注）。
-            if ui.button(super::upload::UPLOAD_LABEL.as_str()).clicked() {
+            if ui.button(super::upload::UPLOAD_LABEL.as_str()).clicked()
+                && !self.refused_in_lossy_cwd(|| copy_text("rsFilewinShell.lossyCwd.upload", &[]))
+            {
                 self.upload.open();
             }
             // 🔴〔补齐五项〕「在此打开终端」—— 旧面板表头上那颗。
@@ -2907,10 +2997,12 @@ impl FileWindow {
         //      同住一处，逐条理由住那个函数的头注）—— 这一行**不许自己切**。
         ui.horizontal_wrapped(|ui| {
             ui.label(format!("{} :", self.source.label()));
+            // 〔W5-FILES〕有损目录里面包屑只画不点：那一摞前缀是有损串，点上去寻址不到（「上一级」照样按字节走）。
+            let lossy = self.cwd_raw.is_some();
             for (seg, full) in breadcrumbs(&self.cwd) {
                 // 当前这一级**不画成按钮**：点它什么都不会发生（`navigate_to` 同路径直接返回）
                 // ⇒ 画成按钮就是一颗点了没反应的按钮。
-                if full == self.cwd {
+                if full == self.cwd || lossy {
                     ui.strong(seg);
                 } else if ui.small_button(seg).clicked() {
                     go = Some(full);
@@ -2918,7 +3010,8 @@ impl FileWindow {
             }
         });
         // 〔FW34〕书签栏（★ 切换当前目录 ＋ 一排书签）。点了哪一条也收在帧尾跳（同面包屑）。
-        if let Some(shelf) = self.shelf.clone() {
+        // 〔W5-FILES〕有损目录里不画书签栏：书签落盘是字符串，收进去的会是一条寻址不到的书签。
+        if let Some(shelf) = self.shelf.clone().filter(|_| self.cwd_raw.is_none()) {
             if let Some(d) = shelf.bar_ui(ui, &self.cwd) {
                 go = Some(d);
             }
@@ -3310,4 +3403,24 @@ fn find_row(ui: &mut egui::Ui, f: &mut super::editor::FindBar) -> Option<FindAct
         }
     });
     act
+}
+
+/// 〔W5-FILES · 有损名全寻址〕一行的名字的真字节：有损 ⇒ 后端送的那一段（`raw_name`），否则 ⇒ 名字的 UTF-8。
+pub fn name_bytes(r: &super::source::Listed) -> Vec<u8> {
+    r.raw_name
+        .clone()
+        .unwrap_or_else(|| r.name.as_bytes().to_vec())
+}
+
+/// 〔W5-FILES〕目录 ＋ `/` ＋ 名字（按字节拼；根上不重复那个 `/`）。
+pub fn join_path(dir: &super::source::RemotePath, name: &[u8]) -> super::source::RemotePath {
+    let mut b = dir.bytes();
+    while b.len() > 1 && b.last() == Some(&b'/') {
+        b.pop();
+    }
+    if b.last() != Some(&b'/') {
+        b.push(b'/');
+    }
+    b.extend_from_slice(name);
+    super::source::RemotePath::from_bytes(&b)
 }
