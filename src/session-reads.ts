@@ -21,6 +21,12 @@
  *
  * 每一问 30 秒（`X6`：调用点显式给）—— 与它们上一个住址（monitor `frame_query::LINES_BUDGET`）同值；
  * 盖的是「那台后端扫一遍会话 ＋ 回程」，不含握手（长连接早就连着）。
+ *
+ * # 〔STC · `设计/90 §4` 阶段 C〕第五问：会话事实（`history-facts`）
+ *
+ * 分叉血缘 · 改动文件集 · agent 列表 · 最新 usage 四样由后端读一遍文件出成品（`observe/facts_query.rs`），
+ * 此前是活 tab 在 `onLine` 旁路上一条一条攒的（`设计/10 §2.2`）。续传令牌就是**上一份成品原样**
+ * （[`readSessionFacts`] 的 `prior`）—— 本文件与调用方都不读它、不改它、不合并它，只原样交回去。
  */
 import { chan, ChanError, type CallError } from "./ipc/chan";
 import { budgetWithin, jsonBody, readJson, refusalOf, saidOf } from "./ipc/chan-caller";
@@ -96,6 +102,46 @@ export interface SessionIndexResult {
   rows: SkeletonFacts[];
 }
 
+/**
+ * 〔STC〕一次 agent 调用（后端 `facts_query::AgentFact`，键名一字不差）。`status` 只有 jsonl 看得出来的两态；
+ * 「中止」是界面对「会话落到不忙」这个事件的反应，不在成品里（`tab-session-facts.ts`）。
+ */
+export interface AgentFact {
+  id: string;
+  label: string;
+  agentType: string | null;
+  status: "running" | "done";
+  timestamp: string;
+  desc: string;
+}
+
+/** 〔STC〕最新 usage（后端 `facts_query::UsageFact`）：context 占用的原料，上限与百分比是排版（`views/context-limit.ts`）。 */
+export interface UsageFact {
+  promptTokens: number;
+  model: string | null;
+}
+
+/**
+ * 〔STC〕一份会话的事实（后端 `facts_query::SessionFacts`，**帧面成品的形状**；跨语言金样
+ * `tests/__fixtures__/session-reads.golden.json` 的 `history-facts` 一格）。它同时就是下一次的续传令牌。
+ */
+export interface SessionFacts {
+  /** 最后一个完整行的末字节。 */
+  end: number;
+  /** 源会话 sid；不是分叉来的 ⇒ `null`。 */
+  forkedFrom: string | null;
+  /** 写类工具碰过的文件，近因序（最近碰的在末尾）。 */
+  touchedFiles: string[];
+  /** 插入序。 */
+  agents: AgentFact[];
+  usage: UsageFact | null;
+}
+
+/** 〔STC〕会话事实的回包。`available == false` 时 `facts` 缺席、`failure` 是种类、`reason` 是给人看的原因（**不是错误**）。 */
+export type FactsResult =
+  | { available: true; facts: SessionFacts }
+  | { available: false; reason: string; failure: OutlineFailure };
+
 /** 查找一次最多列多少条。**显式带上**，不靠对面的缺省（对面换了缺省，「被砍过」的提示就对不上）。 */
 export const FIND_LIMIT = 500;
 
@@ -155,6 +201,55 @@ export function decodeIndex(v: unknown): { from: number; end: number; rows: Skel
     if (!isObj(r) || !isNum(r.o) || !isNum(r.n)) throw new ShapeError("history-index", copyText("sessionReads.missing.indexRow"));
   }
   return { from: v.from, end: v.end, rows: v.rows as SkeletonFacts[] };
+}
+
+/** 键集合恰好是 `keys`（多一格 / 缺一格都不收）。 */
+const exactKeys = (v: Record<string, unknown>, keys: readonly string[]): boolean => {
+  const got = Object.keys(v).sort();
+  const want = [...keys].sort();
+  return got.length === want.length && got.every((k, i) => k === want[i]);
+};
+
+/**
+ * 〔STC〕`history-facts` 的成品 ⇒ [`SessionFacts`]。**每一层键集合恰好是后端出的那一形**（多一格 / 缺一格 / 类型不对 ⇒ 抛
+ * 「两端契约对不上」）—— 这份成品要原样当续传令牌交回去，后端那一侧收它时同样按恰好的键集合拒（`prior_from`）。
+ */
+export function decodeFacts(v: unknown): SessionFacts {
+  const bad = (): never => {
+    throw new ShapeError("history-facts", copyText("sessionReads.missing.facts"));
+  };
+  if (!isObj(v) || !exactKeys(v, ["end", "forkedFrom", "touchedFiles", "agents", "usage"])) return bad();
+  if (!isNum(v.end) || !(v.forkedFrom === null || isStr(v.forkedFrom))) return bad();
+  if (!Array.isArray(v.touchedFiles) || !v.touchedFiles.every(isStr)) return bad();
+  if (!Array.isArray(v.agents)) return bad();
+  const agents = v.agents.map((a): AgentFact => {
+    if (
+      !isObj(a) ||
+      !exactKeys(a, ["id", "label", "agentType", "status", "timestamp", "desc"]) ||
+      ![a.id, a.label, a.timestamp, a.desc].every(isStr) ||
+      !(a.agentType === null || isStr(a.agentType)) ||
+      (a.status !== "running" && a.status !== "done")
+    ) {
+      return bad();
+    }
+    return {
+      id: a.id as string,
+      label: a.label as string,
+      agentType: a.agentType as string | null,
+      status: a.status,
+      timestamp: a.timestamp as string,
+      desc: a.desc as string,
+    };
+  });
+  let usage: UsageFact | null = null;
+  if (v.usage !== null) {
+    const u = v.usage;
+    if (!isObj(u) || !exactKeys(u, ["promptTokens", "model"]) || !isNum(u.promptTokens) || !(u.model === null || isStr(u.model))) {
+      return bad();
+    }
+    usage = { promptTokens: u.promptTokens, model: u.model as string | null };
+  }
+  return { end: v.end, forkedFrom: v.forkedFrom as string | null, touchedFiles: v.touchedFiles as string[], agents, usage };
 }
 
 // ─── 失败怎么说（唯一住址）───
@@ -227,6 +322,26 @@ export async function readSessionIndex(origin: Origin, jsonlPath: string, fromOf
   } catch (e) {
     const reason = reasonOf(e, "这台机器上的后端版本旧，还给不出骨架索引（重装后端之后就有）");
     return { available: false, reason, from: fromOffset, end: fromOffset, rows: [] };
+  }
+}
+
+/**
+ * 〔STC〕**会话事实**：`prior` = 上一次拿到的那份成品**原样**（续传令牌；`null` ⇒ 从字节 0 扫）。
+ * 要不到 ⇒ `available:false` ＋ 种类（分档同大纲：`oldBackend` 结构性 / 其余瞬时）＋ 一句人话。
+ */
+export async function readSessionFacts(
+  origin: Origin,
+  jsonlPath: string,
+  prior: SessionFacts | null,
+): Promise<FactsResult> {
+  try {
+    const body = jsonBody(prior ? { path: jsonlPath, prior } : { path: jsonlPath });
+    const budget = budgetWithin(READ_BUDGET_MS);
+    const reply = await chan.call(origin, "history-facts", body, budget);
+    return { available: true, facts: decodeFacts(readJson(reply)) };
+  } catch (e) {
+    const failure: OutlineFailure = e instanceof ChanError ? failureOf(e.error) : "transport";
+    return { available: false, reason: reasonOf(e, copyText("sessionReads.facts.oldBackend")), failure };
   }
 }
 

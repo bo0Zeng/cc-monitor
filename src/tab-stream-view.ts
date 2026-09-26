@@ -222,6 +222,7 @@ export class TabStreamView {
     // K-R45 乙：大纲跟着走（〔SE1〕`reset` 也让在途那趟回来后不许回写）。
     // 查找面板是 `streamRootEl` 的直接子节点，不随 `streamEl.remove()` 一起走。
     tab.outline.reset();
+    tab.facts.reset(); // 〔STC〕会话事实同理：在途那趟回来后不许回写
     this.finds.get(tab.sessionId)?.reset(); // 〔SE2〕在途的查找作废、出弹层栈
     this.finds.delete(tab.sessionId);
     tab.inputsEl.remove();
@@ -359,6 +360,10 @@ export class TabStreamView {
     // 〔`设计/10` 骨架〕active tab 此刻一定有渲染后缀了 ⇒ 要索引（在途/要过就不重复）
     if (active) this.requestSkeleton(active);
     if (active?.outline.needsFetch) this.refreshOutline(active); // 〔SE1〕大纲
+    // 〔STC〕会话事实：凡是「没要过或又长了」的 tab 都要一次（F5 之后每个 tab 首次整份扫，之后只读新写的一截）。
+    for (const t of this.store.tabs.values()) {
+      if (t.facts.needsFetch) void t.facts.refresh();
+    }
     return active;
   }
 
@@ -470,14 +475,18 @@ export class TabStreamView {
   }
 
   /**
-   * 〔SE1〕大纲：一条 live 记录到了 —— 记一笔「又长了」（O(1)，不判是不是用户输入）。
-   * 本 tab 是 active、非批期、而且**还一次都没要过**（首个 tab 建出来时路径可能还没到）⇒ 要一次。
+   * 〔SE1 · STC〕一条新记录到了 —— 大纲与会话事实各记一笔「又长了」（O(1)，**不读记录**：判不判、算什么都在后端）。
+   * - 大纲：本 tab 是 active、非批期、而且**还一次都没要过**（首个 tab 建出来时路径可能还没到）⇒ 要一次；
+   * - 会话事实（`设计/10 §2.2`）：非批期 ⇒ 要（不只 active：分叉 `↳` 在 tab 栏上、监控板每格都显示 context% 与 agent 数）；
+   *   在途时再叫只并成一趟（`FactsSource.refresh`），带着上一份成品只读新写的那一截。批期不要 —— 批结束统一要（`batchEnd`）。
    */
-  noteOutlineLine(tab: Tab): void {
+  noteGrew(tab: Tab): void {
     tab.outline.markStale();
+    tab.facts.markStale();
     if (!tab.outline.everFetched && !this.store.inBatch && this.store.activeId === tab.sessionId) {
       void tab.outline.refresh();
     }
+    if (!this.store.inBatch) void tab.facts.refresh();
   }
 
   /**

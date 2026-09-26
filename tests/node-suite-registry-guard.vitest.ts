@@ -91,7 +91,9 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   // 退役（`RELATIVE_COST` 的唯一消费者是用量视图）。
   ["test:context-limit", "tests/views/context-limit.test.ts", 5],
   ["test:session-backend", "tests/session-backend.test.ts", 10], // P3s-Y2 +1（新造名字必须过铸造口）
-  ["test:panorama-session-files", "tests/panorama/session-files.test.ts", 7],
+  // 🔴 〔STC · `设计/90 §4` 阶段 C〕原先这里有 `["test:panorama-session-files", "tests/panorama/session-files.test.ts", 7]`。
+  // 写类工具那张表与它的口径搬进了后端（会话事实由后端出成品）⇒ 被测对象 `collectEditedFiles` 删了、套件整删
+  // （**被测对象没了**，不是把测试删光了）；七条逐条搬进 `tests/backend/observe/facts_query_tests.rs::edit_tools_rules_moved_from_the_frontend_suite`。
   // 🔴 〔`设计/80 §8` 步 1 · 2026-09-23〕**28 → 38**：启动期令牌那一族 +10
   //    （形状闸逐格 · `""` 是坏数据不是「没有」· attach 不带 · cliFlags 恒 null ·
   //     两条顺序不变量 · buildLaunchPlan 数组顺序 · renderFallback 逐字节 · applies 两态）。
@@ -122,7 +124,9 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
 // `tests/launch-render-cli.test.ts` 整份删除（30 条，TS 那份 `ccm …` 渲染器删了）；
 // 删前现打 251（地板比现打落后 1），删后现打 221 ⇒ 棘到现打值。
 // 〔LR1 子步 2〕**221 → 216**：`launch-dimensions.test.ts` −5（维度上的 `cliFlags` / `requiredCaps` 删了）。
-const TOTAL_FLOOR = 216;
+// 〔STC〕**216 → 209**，往下走的第三次，理由同上（**被测对象没了**）：`tests/panorama/session-files.test.ts` 整份删除（7 条，
+// 写类工具口径搬进后端 `observe/facts_query.rs`，七条逐条搬成 Rust 判据）；删后现打 209 ⇒ 棘到现打值。
+const TOTAL_FLOOR = 209;
 
 /** 判定一条 npm 命令是不是「用 tsx 跑某个 `.test.ts`」。`tsx …` 与 `npx tsx …` 都算。 */
 const TSX_SUITE_CMD = /(^|\s)(npx\s+)?tsx\s+(--\S+\s+)*(\S+\.test\.ts)\s*$/;
