@@ -1,10 +1,13 @@
 //! 〔TL3 · 审计 F 🔴-6〕**读路径的越界围栏 —— observe 里唯一的家**（`设计/15 §4.2` · `§5.3 C5`）。
 //!
 //! 「路径必须在某个根之下」那道 `canonicalize` ＋ 前缀校验（挡 symlink 逃逸 / `../` 穿越）。
-//! 它先前有**两个家**：`history_query.rs` 里的具名围栏 [`fence_under_projects`]（头注逐字「别再造一份」）与
+//! 它先前有**两个家**：具名围栏 `history_query::fence_under_projects`（头注逐字「别再造一份」）与
 //! `search_query::search` 里的内联一份（头注逐字「复刻 history_query」）—— 而这次护的是**安全判定**：
 //! 强化其中一份（比如将来要挡一种新的逃逸形态）时另一份不会跟。
-//! 今天：具名那一份连名字搬到这里（`history_query` 三条按路径读的路照旧调它），`search_query` 的内联那份删了、改经 [`Fence`]。
+//! 今天：判定本体（解开根 · 解开目标 · 前缀比）只住这里的 [`Fence`]；`history_query::fence_under_projects` 只剩一行
+//! 「以 `projects/` 为根立一道 `Fence`」，`search_query` 的内联那份删了、改经 [`Fence`]。
+//! 「根是哪一个」（Claude 的 `projects/` · 各家合成历史面的记录根）是调用方的事 —— 本文件不认识任何一家 agent 的目录布局
+//! （通用层直呼适配层的地方逐条登记在 `agent_locality_guard`，本文件不往那张表上加一处）。
 //!
 //! # 为什么住 `observe/`，不进 `common/`
 //!
@@ -45,11 +48,6 @@ impl Fence {
         Ok(Self { root, what })
     }
 
-    /// 以这个 agent 家目录下的 `projects/` 为界（Claude 的会话记录树）。
-    pub(crate) fn projects(agent_home: &Path) -> Result<Self, String> {
-        Self::at(&crate::agents::claudecode::paths::projects_root(agent_home))
-    }
-
     /// 规范化之后的根（遍历从这里起，走到的每一条都在界内的前提才成立）。
     pub(crate) fn root(&self) -> &Path {
         &self.root
@@ -75,11 +73,6 @@ impl Fence {
         }
         Ok(target)
     }
-}
-
-/// `<agent_home>/projects/` 这道围栏放行一个候选路径（`history_query` 三条按路径读的路共用；名字随它从那份文件搬来）。
-pub(crate) fn fence_under_projects(agent_home: &Path, candidate: &Path) -> Result<PathBuf, String> {
-    Fence::projects(agent_home)?.admit(candidate)
 }
 
 #[cfg(test)]

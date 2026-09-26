@@ -139,7 +139,7 @@ fn search(
         return Ok(()); // 空查询 / 无 projects → 无输出（exit 0）
     }
     // 路径白名单根（read 的文件必须在其下，挡 symlink 逃逸）：observe 唯一那道围栏（`observe/fence.rs`）。
-    let fence = Fence::projects(agent_home)?;
+    let fence = Fence::at(&root)?;
 
     let files: Vec<PathBuf> = WalkDir::new(fence.root())
         .max_depth(2)

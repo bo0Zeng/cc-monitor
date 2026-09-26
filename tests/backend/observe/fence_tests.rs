@@ -134,12 +134,11 @@ impl Drop for Tree {
 #[test]
 fn the_fence_admits_inside_and_refuses_escapes_with_the_old_words() {
     let t = Tree::new("adm");
-    let fence = Fence::projects(&t.0).expect("projects/ 在，围栏该立得起来");
+    let fence = Fence::at(&t.0.join("projects")).expect("projects/ 在，围栏该立得起来");
     let inside = t.0.join("projects").join("p").join("a.jsonl").canonicalize().unwrap();
     // 放行：相对（按根拼）与绝对，回的都是解开之后的那条。
     assert_eq!(fence.admit(Path::new("p/a.jsonl")).unwrap(), inside);
     assert_eq!(fence.admit(&inside).unwrap(), inside);
-    assert_eq!(fence_under_projects(&t.0, Path::new("p/a.jsonl")).unwrap(), inside);
     // `..` 越界 ⇒ 拒，原话点名 projects。
     let e = fence.admit(Path::new("../outside/x.jsonl")).unwrap_err();
     assert!(e.starts_with("refusing to access outside projects dir: "), "{e}");
@@ -148,7 +147,7 @@ fn the_fence_admits_inside_and_refuses_escapes_with_the_old_words() {
     assert!(e.starts_with("path unavailable: "), "{e}");
     // 根不在 ⇒ 立不起来。
     let bare = t.0.join("outside");
-    let e = Fence::projects(&bare).err().expect("没有 projects/ 却立起来了");
+    let e = Fence::at(&bare.join("projects")).err().expect("没有 projects/ 却立起来了");
     assert!(e.starts_with("projects root unavailable: "), "{e}");
     // 别的根说它自己的名字（LOC1b 那种「各家合成历史面的记录根」用得上）。
     let e = Fence::at(&t.0.join("sessions")).err().expect("根不在却立起来了");
@@ -163,7 +162,7 @@ fn the_fence_refuses_a_symlink_that_escapes_the_root() {
     let t = Tree::new("sym");
     symlink(t.0.join("outside").join("x.jsonl"), t.0.join("projects").join("p").join("evil.jsonl")).unwrap();
     symlink(t.0.join("outside"), t.0.join("projects").join("away")).unwrap();
-    let fence = Fence::projects(&t.0).unwrap();
+    let fence = Fence::at(&t.0.join("projects")).unwrap();
     for c in ["p/evil.jsonl", "away/x.jsonl"] {
         let e = fence.admit(Path::new(c)).unwrap_err();
         assert!(e.starts_with("refusing to access outside projects dir: "), "{c}: {e}");

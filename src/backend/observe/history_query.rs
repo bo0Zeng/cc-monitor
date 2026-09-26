@@ -21,7 +21,7 @@
 // `projects_root` 跨 observe/control 两层 ⇒ `common/`；`mtime_ms` 两个调用点同属 observe
 // ⇒ U3 按 `common/` 自己的「≥2 层」门槛搬回 `observe/`。
 use crate::agents::claudecode::paths::projects_root;
-use crate::observe::fence::{fence_under_projects, Fence};
+use crate::observe::fence::Fence;
 use crate::observe::fs::mtime_ms;
 use copy_core::copy_text;
 use std::io::Write;
@@ -225,9 +225,15 @@ pub(crate) fn list_sessions_into(
 // **围栏住 `observe/fence.rs`**〔TL3 · 审计 F 🔴-6 · `设计/15 §4.2` / `§5.3 C5`〕：这里原来是具名围栏
 // `fence_under_projects` 的本体（「全文件唯一的一处 `canonicalize` + 前缀校验」，audit-0805 08-06 定框 E3 从
 // `list_sessions` 的内联副本收成一份）。E3 只收到了**本文件**，`search_query` 里还有一份内联的（头注逐字「复刻 history_query」）
-// ⇒ 那道围栏连名字搬去 observe 内部唯一的家，本文件三条按路径读的路照旧调它（`use` 在文件头），报错原话逐字不变。
+// ⇒ 判定本体（解开根 · 解开目标 · 前缀比）搬去 observe 内部唯一的家 `observe/fence.rs::Fence`；这里只剩「以 `projects/` 为根」
+//   那一行（根是哪一个属 Claude 的目录布局，留在认得它的这一侧），三条按路径读的路照旧调它，报错原话逐字不变。
 // 〔合并 LOC1b〕LOC1b 在这里把本体提成了「根是参数」的 `fence_under_root`（为各家合成历史面给的记录根）—— 那一形就是
 // `observe/fence.rs::Fence::at(根)?.admit(候选)`（报错取根目录名，与 LOC1b 那一版逐字同形），下面 [`validate_session_path_among`] 改调它。
+
+/// `<agent_home>/projects/` 这道围栏放行一个候选路径（本体在 [`Fence`]；`candidate` 相对按根拼、绝对直用）。
+fn fence_under_projects(agent_home: &Path, candidate: &Path) -> Result<std::path::PathBuf, String> {
+    Fence::at(&projects_root(agent_home))?.admit(candidate)
+}
 
 /// P7c-1：列一个父会话的 **subagent 候选**。
 ///
