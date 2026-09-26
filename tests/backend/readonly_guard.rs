@@ -235,11 +235,23 @@ mod tests {
              **零写盘**：注解只读（`history_annotations::load`）",
         ),
         (
+            "tap",
+            "〔TAP · V124〕tee 的消费侧（后端这一半）：进程级 tap 口 ＋ 每条流连接一条有界通道 ＋ 事件 → `tap` 帧。\
+             它归 backend-core 是因为中转住本机常驻后端这个进程（V107），帧从这个进程的 wire 出去。\
+             **零写盘**：只在内存里递事件",
+        ),
+        (
             "stderr_log",
             "〔NT2 · 第四波 4C · S1〕脱离常驻那条载体的后端：stderr 落进一份有上限、滚动的文件（`设计/15 §4.7 S1`）。\
              它归 backend-core 是因为那些诊断（host key 警告 · 中转起不来的原因 · watch 失败）**只在这个进程里**说得出来。\
              写的只有那两份诊断文件（当前 ＋ 旧的一份；路径由宿主交 `CCM_BACKEND_STDERR_LOG`，后端**自己的**状态，第四层登记，\
              见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
+        ),
+        (
+            "own_dir",
+            "〔HX1 · 4D · 主会话裁〕后端建**自家目录**（`~/.cc-monitor` 与它底下后端自己的几层）的那一个函数：建的那一下就是 0700、\
+             已在的不动。它归 backend-core 是因为第四层那几份（退出行为 · 资产目录 · 中转钥匙 · skill 装记录）与暂存区都要建那一层；\
+             写的只有目录本身（后端**自己的**状态，第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
         ),
         (
             "remote_ask",
@@ -251,6 +263,12 @@ mod tests {
             "feature_face",
             "〔RM1b · 第四波〕功能侧只读查询的帧面宿主（任务列表 …）—— 与 `read_face` 同形的一层壳：\
              本体在 `observe/`，它只解 `args`、装应答。**零写盘**",
+        ),
+        (
+            "fork_face",
+            "〔LOC1a · 第四波 4D〕帧面 `session-fork` 的宿主壳：找家目录（与 `read_face` 同一句）、交 `control/fork_write` 本体。\
+             它归 backend-core 是因为本体在 `control/` 而家目录的出处在 `observe/`（`control → observe` 反向不许）。\
+             **零写盘**：写的是本体（白名单层那一处 `O_EXCL` 新建），本文件只转交",
         ),
         (
             "footprint",
@@ -732,6 +750,12 @@ mod tests {
              不建目录、不截断、不追加。对外口（装它的 `install_from_env` · 交给 `tracing` 的 `stderr_writer`）只从 `main.rs` 进（与〔RK1〕`relay/listen.rs` 一样，是不走 `inbound.rs` 的门）",
         ),
         (
+            "own_dir.rs",
+            "〔HX1 · 4D · 主会话裁 HX1 拍板项 4〕**后端建自家目录的那一个函数**（`~/.cc-monitor` 与它底下后端自己的几层）：\
+             建的那一下就是 0700（`DirBuilder` 带权限位一次建成，只许住本模块）、已在的不动、只建一层。它建的是后端**自己的**目录，\
+             不是用户数据。第四层别的几份调它不算越门；第四层之外只有 `control/files_commit.rs` 建暂存区那一处（门）",
+        ),
+        (
             "skill_ledger.rs",
             "〔SU1 · 第四波 4C · V116〕**skill 装记录** `~/.cc-monitor/skill-installs.json`：从别的机器装到这台的 skill，装时写进了哪几个文件 \
              （各自的摘要 ＋ 装之前在不在）。用户裁「要，只删装时写进去的文件」—— 卸只删这里记着的。文件名 / 格式 / 落点都是本仓定的、\
@@ -779,6 +803,11 @@ mod tests {
              拿钥匙。它不是帧面命令 —— 钥匙是中转进门的前提，不是前端要改的值；只有绑上了口的那一个会写 ⇒ 不会两个中转抢着铸",
         ),
         (
+            "control/files_commit.rs",
+            "〔HX1〕暂存区 `~/.cc-monitor/staging` 那两层（上传件与存盘块的落点）要建 —— 它是第三层（文件管理写面）的成员、\
+             不是第四层，所以它是 `own_dir` 在第四层之外**唯一**的一扇门；只调建目录那一个函数，不碰第四层别的写口",
+        ),
+        (
             "main.rs",
             "〔NT2 · S1〕流模式起来那一刻（一次性子命令全部 `exit` 之后、选载体之前）装 stderr 诊断文件 —— \
              那一格没有命令可走（要接的正是这个进程此后说的每一句话），宿主交了路径才装",
@@ -816,7 +845,17 @@ mod tests {
         ("stderr_log.rs", "stderr_log::", "main.rs"),
         // 〔SU1〕一条写口 `answer_record` ⇒ 针取前缀同上两条；读口 `load_at` / `read_at` / `ledger_path` / `digest_of` 不在针上（`skill_install.rs` 读它合法）。
         ("skill_ledger.rs", "skill_ledger::answer_", "inbound.rs"),
+        // 〔HX1〕后端建自家目录的那一个函数：第四层别的几份调它不算（门检查本来就跳过第四层成员）；之外只有暂存区那一处。
+        (
+            "own_dir.rs",
+            "own_dir::ensure_private_dir",
+            "control/files_commit.rs",
+        ),
     ];
+
+    /// 〔HX1〕只许住 `own_dir.rs` 的两个词：带权限位建目录（`DirBuilder` ＋ unix 的 `DirBuilderExt`）。
+    /// 刻意不进 [`OWN_STATE_VERBS`]（不替第四层每一份都多放一个建目录的写法）。
+    const OWN_DIR_AUX: &[&str] = &["DirBuilder", "DirBuilderExt"];
 
     fn is_own_state(rel: &str) -> bool {
         OWN_STATE_MODULES.iter().any(|(p, _)| *p == rel)
@@ -1297,6 +1336,73 @@ mod tests {
         );
         for (p, why) in OWN_STATE_MODULES.iter().chain(OWN_STATE_DOORS) {
             assert!(why.trim().chars().count() >= 20, "`{p}` 没写清为什么");
+        }
+    }
+
+    /// 〔HX2〕第四层里**不做读—改—写、所以不拿跨进程锁**的那几份（`(模块, 为什么)`）。每一条都要答「两个进程同时写它会不会丢东西」。
+    const OWN_STATE_LOCK_EXEMPT: &[(&str, &str)] = &[(
+        "stderr_log.rs",
+        "〔NT2 · S1〕这是后端自己的 stderr **日志落点**，不是一份被读—改—写的状态：写它的只有 fd 2 指着它的那一个进程\
+         （路径由 monitor 起脱离那条载体时交，一台一个常驻后端 ⇒ 一份一个写者），`O_EXCL` 新建 ＋ 滚动时原子挪；\
+         没有「读出来、改一格、整份写回」那一步 ⇒ 没有「后写的盖掉先写的」可丢。在每一行 `tracing` 写之前拿目录锁只会白加一次系统调用",
+    ),
+    (
+        "own_dir.rs",
+        "〔HX1 · 4D〕后端建自家目录的那一个函数（`ensure_private_dir`）：只有「建一层目录、已在不动」这一个动词，没有一份文件被读—改—写；\
+         而且它正是拿锁之前那一步（锁的就是它建出来的目录）—— 它自己再拿锁是先有鸡还是先有蛋",
+    )];
+
+    /// 🔴 〔HX2 · 第四波 4D〕**第四层判据 ⑥：每一份都在跨进程锁里写 —— 人群两向相等。**
+    ///
+    /// 要求住址：题面 HX2 逐字「后端自有状态文件跨进程锁（`flock` 一类，Windows 对应）」；审计 `E-compat.md` §E6 · E14 · §3.1
+    /// （第四层读—改—写只有进程内锁 ⇒ 两个后端进程同时写，后写的整份盖掉先写的；资产目录首建生出幽灵机器；skill 装记录丢了补不回来）。
+    ///
+    /// 生产段里拿 `platform::lock::hold` 那把锁的后端文件 == 第四层登记的模块（两向；每份**恰好一处**）。
+    /// 同波别的路给第四层加一份（SU1 的 `skill_ledger.rs`）而没在写之前拿锁 ⇒ 这一条红（它本来就该红）。
+    /// ⚠ 判不了「锁拿在读之前」（数据流）—— 那一半靠各模块自己的行为判据（资产目录首建那一条）。
+    #[test]
+    fn hx2_every_own_state_module_writes_under_the_cross_process_lock() {
+        let root = crate::guard_support::src_root();
+        let needle = "platform::lock::hold(";
+        let mut holders: std::collections::BTreeMap<String, usize> = Default::default();
+        for path in core_files() {
+            let rel = path
+                .strip_prefix(&root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let src = std::fs::read_to_string(&path).expect("read rs file");
+            let n = guard_core::production_code(&src).matches(needle).count();
+            if n > 0 {
+                holders.insert(rel, n);
+            }
+        }
+        // 〔NT2 合进来之后〕登记的例外：第四层里**不做读—改—写**的那几份（`(模块, 为什么不用锁)`）。
+        let exempt: std::collections::BTreeSet<String> = OWN_STATE_LOCK_EXEMPT
+            .iter()
+            .map(|(p, _)| p.to_string())
+            .collect();
+        for (p, why) in OWN_STATE_LOCK_EXEMPT {
+            assert!(is_own_state(p), "锁的例外 `{p}` 不在第四层登记里 —— 挂空号");
+            assert!(why.chars().count() >= 20, "`{p}` 没写清为什么不用锁");
+        }
+        let want: std::collections::BTreeSet<String> = OWN_STATE_MODULES
+            .iter()
+            .map(|(p, _)| p.to_string())
+            .filter(|p| !exempt.contains(p))
+            .collect();
+        let got: std::collections::BTreeSet<String> = holders.keys().cloned().collect();
+        assert_eq!(
+            got, want,
+            "拿跨进程锁的模块 ≠ 第四层登记的模块。\n\
+             少了 ⇒ 那一份的读—改—写没有跨进程锁（两个后端进程同时写，后写的整份盖掉先写的）；\n\
+             多了 ⇒ 第四层之外有人拿这把锁（它只为后端自有状态文件存在）。"
+        );
+        for (m, n) in &holders {
+            assert_eq!(
+                *n, 1,
+                "`{m}` 里拿了 {n} 处锁 —— 每份一处（写口一个，锁一处）"
+            );
         }
     }
 
@@ -2215,6 +2321,10 @@ mod tests {
                         }
                         // 〔B2〕第四层那个闭集：只在第四层模块里放行。
                         if OWN_STATE_VERBS.contains(&full.as_str()) && is_own_state(&rel) {
+                            continue;
+                        }
+                        // 〔HX1〕带权限位建目录：只在建自家目录的那一个模块里放行。
+                        if OWN_DIR_AUX.contains(&full.as_str()) && rel == "own_dir.rs" {
                             continue;
                         }
                         // 🔴 〔波 5 ㈡〕第三层那个**闭集**：只在第三层模块里放行，别处照旧红。
@@ -3365,8 +3475,10 @@ mod g6_staged_zero {
     /// `(住址, 符号或判据名, 被钉的那个「零」逐字是什么, 今天钉它的判据（`—` = 今天没有）, 本 crate 够不够得着)`
     const STAGED_ZERO: &[(&str, &str, &str, &str, &str)] = &[
         (
-            "src/bridge/src/backend/control/launch_wire.rs",
-            "the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold",
+            // 〔LR2〕判据改名（原名说的「U8c-3 删不得」那半随 TS 兜底一族删了，只剩 `create-or-attach` 这一半）、
+            //   住址跟着判据走（剖分之后它就住 `tests/` 这份，旧住址是它当年的生产段宿主）。
+            "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
+            "the_create_or_attach_mode_is_sent_only_by_the_ccm_container_path",
             "生产段**不发** `create-or-attach` 这个 mode 串（运行时拼串防自指，配抽取器自检）",
             "自己就是那条判据",
             "跨 crate",
@@ -3790,15 +3902,8 @@ mod error_envelope_registry {
             "同上一行，另一档：参数不齐那一支。它与 `message` 分在两行上\
              ⇒ 键集那条判据的窗口必须够得着下一行（见 `every_envelope_carries_both_keys`）。",
         ),
-        (
-            "accounts/iso.rs",
-            "serde_json::json!({\"code\": code, \"message\": message})",
-            "〔`A3` 第二波〕本机 `cc-acct-iso` 两问的失败信封（一个闭包 `fail`，四档码共用）",
-            "与 `observe/accounts_query.rs` 那份**同形不同家**：它住账号域（`accounts/`），\
-             而那份住 observe、`control/` 的出口按分层它也引不到 ⇒ 收成一份要先动分层，\
-             同 `K-R103`「不收」那条的理由。⚠ 它**只产出**信封、不自己写 stderr —— \
-             写出去那一下在 `main.rs::emit_answer`（账号域的输出受中转日志白名单管 —— 其中上游选择那块挂在中转进程上，查询输出不是日志）。",
-        ),
+        // 〔LOC1a · 第四波 4D〕`accounts/iso.rs` 那一行（本机 `cc-acct-iso` 两问的 argv 形失败信封）删了：
+        //   两问上了帧面，失败走帧面的 `(code, message)` 应答，iso.rs 里不再自己拼信封。
         (
             "dial/sftp.rs",
             "serde_json::json!({ \"code\": code, \"message\": message })",
@@ -4189,6 +4294,15 @@ mod g6_dependency_signoff {
             DEPS,
             UNMEASURED,
             "把上面那条的事件去抖之后再交出来 —— 同一条路上的第二段，同样只在读侧",
+        ),
+        (
+            "ring",
+            DEPS,
+            UNMEASURED,
+            "〔FW1 · 第四波 4D〕只用 `ring::digest::SHA256`：CAS 摘要形的唯一算法住址 \
+             `files/mod.rs::content_sha256`（纯内存算摘要）。它本来就在发布二进制里 \
+             （上面 `rustls` 的 provider · 下面 `russh` 同一棵），这一行只是把间接依赖提成直接依赖、零新包。\
+             写不写盘：本 crate 对它的用法一条写路径都不经它（用法签字，没扫它的源码）",
         ),
         (
             "rustls",

@@ -6,14 +6,20 @@
 // 并钉 **localStorage 一个字都没写**。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const store = { cfg: {} as Record<string, unknown>, saves: 0 };
-vi.mock("../src/config", () => ({
-  loadConfig: vi.fn(async () => store.cfg),
-  saveConfig: vi.fn(async (c: Record<string, unknown>) => {
-    store.cfg = c;
-    store.saves += 1;
-  }),
-}));
+const store = vi.hoisted(() => ({ cfg: {} as Record<string, unknown>, saves: 0 }));
+// 〔CFG1〕写只交补丁（`patchConfig`）；按与 Rust 写口同一份金样的语义（`tests/config-patch-fake.ts`）应用到 `store.cfg`。
+vi.mock("../src/config", async (orig) => {
+  const actual = await orig<Record<string, unknown>>();
+  const { applyConfigEdits } = await import("./config-patch-fake");
+  return {
+    ...actual,
+    loadConfig: vi.fn(async () => store.cfg),
+    patchConfig: vi.fn(async (edits: Parameters<typeof applyConfigEdits>[1]) => {
+      store.cfg = JSON.parse(applyConfigEdits(JSON.stringify(store.cfg), edits)) as Record<string, unknown>;
+      store.saves += 1;
+    }),
+  };
+});
 
 import {
   sanitizeCollections,
@@ -104,7 +110,7 @@ describe("P7a-3 集合：存到哪儿", () => {
 
   it("★★ P7a3-Y1：写的是 `config.json` 那条路，**localStorage 一个字都不写**", async () => {
     await setCollections([c("a", "A", ["s1"])]);
-    expect(store.saves, "必须真的走 saveConfig").toBe(1);
+    expect(store.saves, "必须真的走 patchConfig").toBe(1);
     expect(store.cfg.tabCollections).toEqual([c("a", "A", ["s1"])]);
     // ⚠ 这一条才是本 DoD 的正题：localStorage 是最顺手的错路（tab 偏好全在那儿），
     // 而它住 WebView2 用户数据目录 —— 清一次缓存，用户手写的集合名就没了。

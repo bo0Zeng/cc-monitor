@@ -138,26 +138,38 @@ fn each_liveness_fact_has_exactly_one_windows_arm_that_delegates() {
 #[test]
 fn the_win32_process_reads_live_in_exactly_one_file() {
     let root = crate::guard_support::src_root();
-    let names = [
-        "OpenProcess",
-        "GetExitCodeProcess",
-        "GetProcessTimes",
-        "WaitForSingleObject",
-    ];
+    let names = ["OpenProcess", "GetExitCodeProcess", "GetProcessTimes"];
+    // 〔HX2 · 4D〕`WaitForSingleObject` 从这张名单里拆出去单列：它是 Win32 的**通用等待**，不只等进程 ——
+    //   `platform/lock.rs` 用它等第四层那把跨进程锁（命名互斥量）。那一格不是「又一份判活读法」，
+    //   所以它的人群单独两向相等（下面 `waiters`），而进程读法这三个名字的人群照旧只有 `win_proc.rs`。
     let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut waiters: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     let mut scanned = 0usize;
     for (path, raw) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
         scanned += 1;
         let prod = guard_core::production_code(&raw);
+        let rel = path
+            .strip_prefix(&root)
+            .expect("扫出来的都在后端源码树底下")
+            .to_string_lossy()
+            .replace('\\', "/");
         if names.iter().any(|n| guard_core::contains_word(&prod, n)) {
-            let rel = path
-                .strip_prefix(&root)
-                .expect("扫出来的都在后端源码树底下")
-                .to_string_lossy()
-                .replace('\\', "/");
-            seen.insert(rel);
+            seen.insert(rel.clone());
+        }
+        if guard_core::contains_word(&prod, "WaitForSingleObject") {
+            waiters.insert(rel);
         }
     }
+    let want_waiters: std::collections::BTreeSet<String> = [
+        "platform/win_proc.rs".to_string(),
+        "platform/lock.rs".to_string(),
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(
+        waiters, want_waiters,
+        "后端生产段里用 `WaitForSingleObject` 的文件集合变了（登记：等进程退出 · 等第四层的跨进程锁）"
+    );
     assert!(
         scanned > 50,
         "只扫到 {scanned} 份 `.rs` —— 遍历坏了，本条在空转"

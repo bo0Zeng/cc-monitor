@@ -207,11 +207,16 @@ pub fn backend_start(origin: String) -> Result<String, String> {
 /// ⚠ 远端这一侧是 `abort()` 那条流 —— 远端后端随之因管道破裂退出。
 /// 本层**不等它退**（我们在这台机上看不见那个进程），所以返回的是「已断流」不是「已停进程」。
 /// **文案不许把这两件事写成一件**（P2s-Y5）。
+///
+/// 〔HX1 · 4D〕本机那一支今天会**等**（SIGTERM → 最多约 35 秒 → 还在才强杀，`stop_grace`）⇒ 不能再是同步命令
+/// （同步命令跑在主线程上，等的那几秒整个界面卡住）：改成 `async`，等的那一段进阻塞线程池。
 #[tauri::command]
-pub fn backend_stop(origin: String) -> Result<String, String> {
+pub async fn backend_stop(origin: String) -> Result<String, String> {
     check_origin(&origin)?;
     if is_local(&origin) {
-        return crate::local_backend_host::stop_local_backend();
+        return tauri::async_runtime::spawn_blocking(crate::local_backend_host::stop_local_backend)
+            .await
+            .map_err(|e| e.to_string())?;
     }
     let mut g = remotes()
         .lock()

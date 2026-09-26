@@ -18,7 +18,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-vi.mock("../src/config", () => ({ loadConfig: vi.fn().mockResolvedValue({}), saveConfig: vi.fn() }));
+vi.mock("../src/config", () => ({ loadConfig: vi.fn().mockResolvedValue({}), patchConfig: vi.fn() })); // 〔CFG1〕写口换成按键补丁
 
 import { invoke } from "@tauri-apps/api/core";
 import { decodeAccountsList, decodeTrust } from "../src/accounts-decode";

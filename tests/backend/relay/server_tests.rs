@@ -4271,7 +4271,14 @@ fn rk1_the_minted_key_never_shows_up_in_logs_tee_argv_env_or_upstream() {
         ok.starts_with("HTTP/1.1 200"),
         "带现铸的钥匙 ⇒ 真转发：{ok:?}"
     );
-    let wrong = format!("{}0", &key[..key.len() - 1]);
+    // 〔09-25 修偶发红（HX2 报）〕原先恒把末位换成 `0`：真钥匙末位恰是 `0` 时两者相等，按构造 1/16 红。改成「末位换成一个必不同的十六进制字符」。
+    let last = key.as_bytes()[key.len() - 1];
+    let wrong = format!(
+        "{}{}",
+        &key[..key.len() - 1],
+        if last == b'0' { '1' } else { '0' }
+    );
+    assert_ne!(wrong, key, "错钥匙必须与真钥匙不同");
     let (bad, _) = send_raw(
         relay.addr,
         &format!("POST /{wrong}/s/claude-code/acctA/sid-leak/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 2\r\n\r\n{{}}"),

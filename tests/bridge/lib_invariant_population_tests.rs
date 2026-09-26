@@ -375,9 +375,6 @@ const QUOTE_SITES: &[QuoteRow] = &[
     ("src/bridge/src/launch.rs", 1, &[], "",
      "本侧渲染好的整条远端命令（拼它的那几处各自判过；这里只包一层 `bash -lic`）"),
     ("src/bridge/src/pubkey.rs", 1, &[("src/bridge/src/pubkey.rs", "sanitize_public_key")], "", ""),
-    ("src/bridge/src/remote_branch.rs", 3, &[("src/bridge/src/remote_branch.rs", "validate_fork_id")],
-     "那台后端的路径（源头 `backendPath`）",
-     ""),
     ("src/bridge/src/sftp.rs", 2, &[],
      "落点路径（那台 SFTP 答的 home ＋ 本侧常量）",
      "身份戳正则（构建期常量拼的）"),
@@ -430,5 +427,5 @@ fn every_file_that_quotes_a_value_into_a_shell_line_is_registered() {
     }
     // 读数（不是判据）：只靠 quote 的文件有几份 —— 报告里要写这个数，改了会在这里看到。
     let open = QUOTE_SITES.iter().filter(|r| !r.3.is_empty()).count();
-    assert_eq!(open, 10, "「有外部值只靠 quote」的文件数变了（登记 10 份）：多了是新缺口，少了是补上了 —— 改这个数并在提交信息里写清是哪份");
+    assert_eq!(open, 9, "「有外部值只靠 quote」的文件数变了（登记 9 份；〔LOC1a 合入〕remote_branch.rs 的 exec 那一趟删了 ⇒ 10 → 9）：多了是新缺口，少了是补上了 —— 改这个数并在提交信息里写清是哪份");
 }

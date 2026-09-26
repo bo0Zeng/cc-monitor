@@ -303,8 +303,10 @@ fn snap_item(seq: u64, snap: &crate::sftp_pool::Snap) -> Item {
             seq,
             body: json(serde_json::json!({ "got": snap.got, "total": snap.total })),
         },
-        Some(End::Done { bytes }) => Item::Closed {
-            by: By::Peer(json(serde_json::json!({ "state": "done", "bytes": bytes }))),
+        Some(End::Done { bytes, sha256 }) => Item::Closed {
+            by: By::Peer(json(
+                serde_json::json!({ "state": "done", "bytes": bytes, "sha256": sha256 }),
+            )),
         },
         Some(End::Failed(why)) => Item::Closed {
             by: By::Peer(json(serde_json::json!({ "state": "failed", "why": why }))),

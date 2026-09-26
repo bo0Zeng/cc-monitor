@@ -11,4 +11,12 @@ deleted: Array<string>,
 /**
  * 删了（或已经不在）却没从记录里摘掉的原因；摘了 ⇒ `null`。
  */
-recordFailed: string | null, };
+recordFailed: string | null, 
+/**
+ * 〔FW1 · 第四波 4D · 主会话裁 SU1 问 2〕skill 目录自己也删掉了（删完文件之后它空了）。`false` ⇒ 还在（里面还有别的 / 没走到这一步）。
+ */
+dirRemoved: boolean, 
+/**
+ * 〔FW1〕收空目录那一步出了「不空 / 不在」之外的错（原话）；没有 ⇒ `null`。
+ */
+dirFailed: string | null, };

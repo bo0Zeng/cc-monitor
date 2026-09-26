@@ -34,7 +34,7 @@
    │   本机后端 line 帧 ─local_lines─► LineIntake ─► messages::JsonlRecord│
    │       │ (与远端同一个收口，CF1)                 │                   │
    │       ▼                                        ▼                   │
-   │   session_map.rs (PID 探活)    event_replay::on_line_batch_awaited │
+   │   session_map.rs (本机活会话表，帧喂) event_replay::on_line_batch_awaited │
    │       │                                       │  交进各条订阅（CF2）│
    │       │                                       │  小→逐行格         │
    │       │                                       │  大→切块＋batch边界│
@@ -148,7 +148,7 @@
 | backend 分层（定框 §5） | 远端（后端）有吗 | monitor 侧今天的状态 |
 |---|---|---|
 | `control/` | 有 | **已交付** —— 两条改状态的远端 tmux 命令都走它（见 2.3） |
-| `observe/` | 有 | **已交付**〔2026-09-12 `K-R71`〕—— 目录建起来了，住户只有传输那一跳，见 2.2 |
+| `observe/` | 有 | **未做**〔2026-09-25 LOC1a：唯一的住户 —— 每问 exec 一次本机后端的那一跳 —— 删了，本机读面改走 `<local>` 长连接；空壳目录一并删〕—— 此前 2026-09-12 `K-R71` 建成，见 2.2 |
 | `platform/` | 有 | **待做** —— 但 backend 那一半今天**零平台面**，所以还不需要它（见 2.4） |
 | `common/` | 有 | **待做** —— **刻意不建**：monitor 侧的共用面住 `src/bridge/crates/*`（见 2.6） |
 
@@ -156,8 +156,8 @@
 后者是 C10 的判据（跨 target 编译）的事，今天**不成立**，见 2.4。
 
 ⚠ **「落地」这两个字的量法，四格分两种**〔`K-R73` 09-12〕：
-`control/` 与 `observe/` 各有「那个唯一的住户」，量的就是**那份文件在不在**；
-`platform/` 与 `common/` 今天**没有**那个唯一住户（指一个就是替未来的人做决定），
+`control/` 有「那个唯一的住户」，量的就是**那份文件在不在**（`observe/` 从前也是，〔LOC1a〕那个住户删了之后改成下一种）；
+`observe/` · `platform/` 与 `common/` 今天**没有**那个唯一住户（指一个就是替未来的人做决定），
 量的是**目录在 ∧ 里面至少有一个不是 `mod.rs` 的 `.rs`**。
 🔴 **一个只有 `mod.rs` 的空壳目录不算「没落地」，是直接红** ——
 空壳目录本身不说假话，但它让下一个人只要顺手把这一列改成「已交付」就全绿，
@@ -200,8 +200,11 @@ monitor 侧今天登记着 3 条，全部出自那一处跨线引用（本机一
 而它唯一的调用方在 `control/` ⇒ **凭空造出一条 `control → observe` 的边**，
 而 `layering_guard` 逐字禁止反向依赖（实测：照做时它当场红）。
 
-⚠ **monitor 侧的 `observe/` 2026-09-12 建起来了**（`K-R71`，第 4 波 4a）：它今天的**唯一住户**
-是本机一次性查询的传输 `backend/observe/local_query.rs` —— 那份文件从 F10a 起就是读面代码，
+🔴 **〔2026-09-25 LOC1a〕下面这一段的「唯一住户」今天没了**：本机那几问（子 agent · 按偏移读 · 分叉 · `cc-acct-iso` 两问）
+改走 `<local>` 那条长连接（`设计/05 §14.6`），每问 exec 一次本机后端的传输随之删掉，monitor 侧的 `observe/` 整条线（连空壳 `mod.rs`）一起删了。
+
+⚠ **monitor 侧的 `observe/` 2026-09-12 建起来了**（`K-R71`，第 4 波 4a）：它那时的**唯一住户**
+是本机一次性查询的传输（那份 `local_query`〔散文墓碑〕，2026-09-25 LOC1a 删）—— 那份文件从 F10a 起就是读面代码，
 只是先前挂在 `control/` 线上（它自己的头注第一句逐字写着「后端的**读面**是 14 条一次性
 查询子命令」）。⇒ 建这个目录是**把走错门的住户领回家**，不是新起一层。
 
@@ -332,7 +335,7 @@ monitor 与外部进程的所有通信都在 `~/.claude/claudecode-frontend/` �
 | 路径 | 写入方 | 读取方 | 用途 |
 |---|---|---|---|
 | `<claude_dir>/projects/<encoded-cwd>/<sid>.jsonl` | Claude Code CLI | 本机后端（`line` 帧，CF1 起）/ monitor `history.rs` | session 消息流，monitor 实时增量 + 历史浏览 |
-| `<claude_dir>/sessions/<PID>.json` | Claude Code CLI | monitor `session_map.rs` | 活跃 session 探活（PID + procStart 双校验；procStart 缺失时自动降级仅 STILL_ACTIVE，详 INVARIANTS § 18） |
+| `<claude_dir>/sessions/<PID>.json` | Claude Code CLI | 本机后端 `observe/watcher.rs`（〔LOC1b · 4D〕monitor 不再读：本机判活改由本机后端的 `session_added` / `session_removed` 帧来，与远端同一条） | 活跃 session 探活（PID + procStart 双校验，详 INVARIANTS § 18） |
 | `<claude_dir>/tasks/<sid>/<id>.json` (v2.3) | Claude Code CLI (`TaskCreate`/`TaskUpdate`/`TaskStop` 工具) | monitor `tasks.rs` | Tab task 面板数据源；附 `.lock` / `.highwatermark` 控制文件需忽略 |
 
 每个文件的字段定义、编码约束（UTF-8 无 BOM）、写入方原子性语义、握手时序图 → [IPC-PROTOCOL.md](IPC-PROTOCOL.md)。

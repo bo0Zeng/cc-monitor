@@ -50,6 +50,7 @@ import {
   type TabMenuItem,
 } from "./tab-context-menu";
 import { TMUX_CACHE_TTL_MS, type TabSessionActions } from "./tab-session-actions";
+import { askText } from "./ask-dialog";
 
 /** F74c(#60-B)：cwd 回退串味风险提示（attach 到可能是同目录别的会话前）。 */
 function warnCwdFallbackAttach(): void {
@@ -105,18 +106,18 @@ export class TabMenu {
       }));
     joinItems.push({
       label: copyText("tabMenu.collection.new"),
-      onClick: () => {
+      onClick: () => void (async () => {
         // 〔TL2 · E13〕到上界先说，再问名字（不让用户白填一次）。
         const full = createRefusal(this.host.collections());
         if (full) return sayCollectionRefusal(full);
-        const name = window.prompt(copyText("tabMenu.collection.namePrompt"));
+        const name = await askText(copyText("tabMenu.collection.namePrompt"));
         if (!name?.trim()) return;
         const id = newCollectionId();
         const withNew = createCollection(this.host.collections(), name, id);
         // 名字空/到上界时 `createCollection` 原样返回 ⇒ 别再往一个不存在的集合里塞成员。
         if (withNew.length === this.host.collections().length) return;
         void this.host.commitCollections(addMember(withNew, id, sid));
-      },
+      })(),
     });
     if (this.host.collectionsLoaded()) items.push({ label: copyText("tabMenu.collection.add"), submenu: joinItems });
     // 〔步 17·B · `§B.7`〕固定 —— 与「加入集合」同级。**这是唯一的入口**（不做自动固定）。

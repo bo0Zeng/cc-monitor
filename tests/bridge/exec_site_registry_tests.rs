@@ -292,3 +292,111 @@ fn every_remote_exec_declares_where_its_command_came_from() {
         );
     }
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 〔LOC1a · 第四波 4D〕**为什么还是一条拨号 shell**：逐处写理由，两向相等
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// 要求住址：`设计/00 §1`「所有 SSH 由本机常驻后端持有」· `设计/15 §2.2`「其余一次性 exec 点……**逐处仍要核**」·
+// 题面（4D LOC1a）「9 处 shell 能换后端具名命令的逐处换，换不了的写理由并登记」。
+//
+// 上面那张 `EXEC_SITES` 管「命令串从哪来」（注入面）；本表管另一件事：**这一处为什么还没换成那台后端的具名命令**。
+// 人群 = monitor 生产段里 `connect_and_exec_cmd(` ∪ `connect_and_exec_capture(` 的调用点（「文件::外层函数」，
+// 两个原语自己的定义不算），**两向相等**：多一处 = 又长出一条自拼 shell 的路（先回答它为什么不能是后端命令）；
+// 少一处 = 那一处换掉了（好事，删行）。
+//
+// 类别：`Bootstrap` —— 这一跳发生在那台的后端**还不存在 / 正在被装**的时候，问不了它；
+//       `Deploy` —— 装的是后端之外的工具（`05 §14.3` D 组「部署 …… 不迁」）；
+//       `Pending(归谁)` —— **能换**，本路没换，写清卡在哪、归谁（列给主会话）。
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StillShell {
+    Bootstrap,
+    Deploy,
+    Pending(&'static str),
+}
+
+const STILL_SHELL: &[(&str, &str, StillShell, &str)] = &[
+    ("ssh_source.rs", "connect_and_exec", StillShell::Bootstrap,
+     "起那台的**流模式后端本身**（长连接的另一头）—— 它就是后端，不能问后端要它自己"),
+    ("byte_table.rs", "probe_key", StillShell::Bootstrap,
+     "部署后端之前问那台 `uname -s -m`，据此挑哪一份二进制去装（那时还没有后端可问）"),
+    ("sftp.rs", "remote_identity", StillShell::Bootstrap,
+     "部署后端之前扫落点那一份的身份戳（判「是不是这一版」、要不要换）—— 被判的正是那台的后端本身"),
+    ("pubkey.rs", "push_public_key", StillShell::Bootstrap,
+     "把公钥推进那台 `authorized_keys`：密钥登录建立之前的一步（那台可能还没有后端）；写的是用户文件 ⇒ 装好后端之后该改经 `files-put`，登记在「要主会话拍」"),
+    ("acct_iso_deploy.rs", "exec_collect", StillShell::Deploy,
+     "〔LOC1a〕只剩部署那两步（跑 `cc-acct-iso-install.sh` · 核 `~/.local/bin` 看得见它）；装没装 / 片段两问已改问那台后端（`acct-iso-status` / `acct-iso-shellinit`）"),
+    ("mcp.rs", "fetch_remote_claude_json", StillShell::Pending("适配层接口：`agents::Adapter` 长一格 MCP 读（或主会话裁抬 `agent_locality` 棘轮）"),
+     "读那台 `~/.claude.json` 的 `mcpServers`（用户级）—— 后端要出成品得问适配层要 `.claude.json` 的布局，而通用层直呼适配层是只许降的棘轮；`files-peek` 上限 256 KiB 装不下重度用户的整份"),
+    ("hooks_diag.rs", "diagnose_remote_cc_bus_hooks", StillShell::Pending("cc-bus 读面那一族（件 E，同拍改）"),
+     "读那台 `settings.json` ＋ 探 `cc-register` 在不在 PATH：能换成 `files-peek` ＋ `footprint-probe`，诊断口径要按新两问重写，与 cc-bus 读面一起做"),
+    // 〔W5-ALIAS · 现打后写清〕这一问答的是「那台**交互 shell** 的 PATH 上敲 `ccm` 找不找得到、是哪一版、会哪些」
+    //   （`remote-launch-run.ts` 据此选 CLI 渲染器 —— pane 里敲的就是那个名字）。那台后端进程答不了交互 shell 的 PATH
+    //   （rc 改过的环境它看不见，`footprint-probe` 的 `env.path` 同一个口径缺口）⇒ 今天换成后端具名命令会答错问题。
+    //   件 E（`ccm` 就是后端本体、落点恒 `~/.cc-monitor/bin/ccm`，`第四波记录/W5-ALIAS.md §2.5`）落地之后，这一问退化成
+    //   「那台后端自己会哪些」（hello 已带能力 ＋ build），届时这一处删、本行摘。
+    ("ccm_probe.rs", "probe_ccm_cli", StillShell::Pending("W5-ENTRY（`W5-ALIAS.md §2.5` 件 E：ccm 就是后端，落地同拍删）"),
+     "探那台交互 shell 的 PATH 上的 `ccm`：后端进程答不了交互 shell 的 PATH；件 E 让 ccm 恒是那台后端本体之后，这一问改问后端自己（hello）"),
+    ("tmux.rs", "list_remote_tmux", StillShell::Pending("后端新帧命令 `tmux-list`（本路未加：后端今天只推原始 `tmux ls` 行做对账）"),
+     "列那台 tmux 会话（attach 项 · 铸名避让）：换要后端长一条具名读命令，与 FE1 的铸名收口同一个消费者，列给主会话排"),
+    ("cc_bus.rs", "fetch_remote_cc_bus", StillShell::Pending("cc-bus 读面（件 E：要主会话拍——给 cc-bus 加机器可读的读命令，写区外）"),
+     "读那台 `agents.tsv` / `spawned.tsv`：`bus-state` 答不出登记时间 / spawn 时间 / 坏行数，`95 §3.3` 不许后端读 cc-bus 的文件"),
+    ("cc_bus.rs", "exec_read", StillShell::Pending("cc-bus 读面（件 E，同上）"),
+     "`tail` 那台收件箱：cc-bus 没有「只读看尾巴」的命令（`cc-peek` 只看未读、带令牌语义）"),
+];
+
+fn still_shell_population() -> std::collections::BTreeSet<(String, String)> {
+    let files = guard_core::scan_tree!(&src_root(), &["rs"]);
+    let mut out = std::collections::BTreeSet::new();
+    for (path, src) in &files {
+        let prod = guard_core::production_code(src);
+        let lines: Vec<&str> = prod.lines().collect();
+        let stem = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap()
+            .to_string();
+        for (i, l) in lines.iter().enumerate() {
+            let t = l.trim_start();
+            if t.starts_with("pub async fn connect_and_exec_cmd(")
+                || t.starts_with("pub async fn connect_and_exec_capture(")
+            {
+                continue;
+            }
+            if l.contains("connect_and_exec_cmd(") || l.contains("connect_and_exec_capture(") {
+                out.insert((stem.clone(), enclosing_fn(&lines, i)));
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn every_remaining_dial_shell_says_why_it_is_not_a_backend_command() {
+    let found = still_shell_population();
+    // 正控：人群里真有东西（部署前那一问必在）—— 抽取器坏了会拿空集比。
+    assert!(
+        found.contains(&("byte_table.rs".to_string(), "probe_key".to_string())),
+        "抽取器没认出 `byte_table.rs::probe_key` —— 本条此刻在空转：{found:?}"
+    );
+    let want: std::collections::BTreeSet<(String, String)> = STILL_SHELL
+        .iter()
+        .map(|(f, n, _, _)| (f.to_string(), n.to_string()))
+        .collect();
+    assert_eq!(
+        found, want,
+        "monitor 里「经拨号链路跑 shell」的点与理由表对不上。\n\
+         多出来的 ⇒ 先回答它为什么不能是那台后端的一条具名命令（`设计/00 §1` · `15 §2.2`）；\n\
+         少了的 ⇒ 换掉了，删那一行。"
+    );
+    for (f, n, kind, why) in STILL_SHELL {
+        assert!(why.chars().count() >= 20, "`{f}::{n}` 的理由太短：{why}");
+        if let StillShell::Pending(owner) = kind {
+            assert!(
+                owner.chars().count() >= 4,
+                "`{f}::{n}` 是「能换未换」却没写归谁"
+            );
+        }
+    }
+}

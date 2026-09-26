@@ -52,6 +52,8 @@ PROMISED = [
      "`-p monitor` 的生产段 ＋ test 档过 `x86_64-pc-windows-gnu`"),
     ("本机 Windows x86_64", "winchk-backend", "run_gate winchk-backend ",
      "`src/backend` 那个 crate 过 `x86_64-pc-windows-gnu`（`--all-targets`）"),
+    ("本机 Windows x86_64", "winlink", "run_gate winlink ",
+     "`-p monitor` 的两个二进制在 `x86_64-pc-windows-gnu` 上**真链接**（dev；WIN1 · RT1 F1）"),
     ("远端 Linux（musl 两个 arch）", "muslbuild", "run_gate muslbuild ",
      "后端在两个 musl target 上**编得出静态字节**（与 `release.yml` 同一套 zig 版本）"),
     ("本机 Linux x86_64", "cargo", "run_gate_sum cargo ",
