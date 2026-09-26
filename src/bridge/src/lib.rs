@@ -1827,7 +1827,7 @@ async fn relay_endpoint_for_launch(
 /// 〔AL2〕`origin` 只决定撞名那一格查不查 `PATH`（远端不查）。
 #[tauri::command]
 fn aliases_render(
-    origin: origin::Origin,
+    origin: crate::origin::Origin,
     aliases: Vec<account_aliases::Alias>,
     shell: shell_dialect::Shell,
 ) -> Result<account_aliases::AliasRender, String> {
@@ -1840,7 +1840,7 @@ fn aliases_render(
 /// 〔AL2〕事实全问那台后端（`files-home` / `files-peek` / `files-stat`）；`rc_path` = 人另指的一份（过围栏后并进候选）。
 #[tauri::command]
 async fn aliases_read(
-    origin: origin::Origin,
+    origin: crate::origin::Origin,
     shell: shell_dialect::Shell,
     rc_path: Option<String>,
     bind_state: tauri::State<'_, Arc<bind::BindRegistry>>,
@@ -1860,7 +1860,7 @@ async fn aliases_read(
 /// 〔TL1〕`rc_path` 只查接没接上，不往里写（`71 §6.1`）。
 #[tauri::command]
 async fn aliases_install(
-    origin: origin::Origin,
+    origin: crate::origin::Origin,
     aliases: Vec<account_aliases::Alias>,
     rc_path: Option<String>,
     shell: shell_dialect::Shell,
@@ -1875,7 +1875,7 @@ async fn aliases_install(
 /// 〔AL2〕`origin` 只用来过 `dialect_promised`（远端 `.ps1` ⇒ 拒）。
 #[tauri::command]
 fn aliases_block_render(
-    origin: origin::Origin,
+    origin: crate::origin::Origin,
     rc_path: String,
     with_cc: bool,
 ) -> Result<String, String> {
@@ -1888,7 +1888,7 @@ fn aliases_block_render(
 /// 〔AL1d〕**别名块**第②跳：装进人选的那份启动文件（幂等，整块替换）；home 问那台后端、围栏按 `origin` 分两层。
 #[tauri::command]
 async fn aliases_block_install(
-    origin: origin::Origin,
+    origin: crate::origin::Origin,
     rc_path: String,
     with_cc: bool,
 ) -> Result<(), String> {
@@ -1904,7 +1904,10 @@ async fn aliases_block_install(
 
 /// 〔AL1d〕**别名块**卸掉（整块删，块外一个字节不动；围栏损坏 ⇒ 中止）。经那台后端写。
 #[tauri::command]
-async fn aliases_block_remove(origin: origin::Origin, rc_path: String) -> Result<(), String> {
+async fn aliases_block_remove(
+    origin: crate::origin::Origin,
+    rc_path: String,
+) -> Result<(), String> {
     origin.route("aliases_block_remove")?;
     let door = user_files::BackendDoor::new(origin.clone());
     let home = user_files::Door::home(&door).await?;

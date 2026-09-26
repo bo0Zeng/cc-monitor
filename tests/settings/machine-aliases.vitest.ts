@@ -606,7 +606,8 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
    * 每一发 `aliases_*` 与别名预览都带那台的 origin；首开集合相等（本机才答得了的那几发一发都没有）；
    * 平台格与「打开这份文件」不挂、块预览挂（`71 §8 #6`）；卸那颗叫「卸载 ccm」（V134）。
    */
-  it.skipIf(plat !== "posix")("〔AL2〕B5：远端卡是同一个组件，每一发都带那台的 origin，只本机的那几格不挂", async () => {
+  // 远端恒 POSIX（表 B）：不管这一轮 `plat` 是哪种，远端卡都按 `posix` 建（两轮各跑一遍，结论相同）。
+  it("〔AL2〕B5：远端卡是同一个组件，每一发都带那台的 origin，只本机的那几格不挂", async () => {
     const m = await import("../../src/settings/machine-aliases");
     const done: string[] = [];
     const el = m.buildAliasManager({
