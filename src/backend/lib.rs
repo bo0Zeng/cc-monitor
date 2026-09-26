@@ -1175,7 +1175,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         kind: GapKind::Structural,
         rationale: "给 tmux 那个窗格定尺寸。没有 tmux 就没有这一格；V109 那一族将来不论选哪种机制，\
               「会话的终端多大」都是另一种形状，**不照搬这一条** ⇒ 这一条本身不跨过去；\
-              那边的尺寸若要有，是**另一条**能力、另立一行〔PR1 分档：结构〕。
+              那边的尺寸若要有，是**另一条**能力、另立一行〔PR1 分档：结构〕。",
     },
     TargetGap {
         family: "ccm-launcher",
@@ -1296,7 +1296,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         kind: GapKind::Owed,
         rationale: "起会话今天是在 tmux 里开一个新会话（命令自己声明了 `no_tmux` 码）。\
               Windows 上没有 tmux ⇒ 平台默认做不到。「会话活在前端之外」在 Windows 上的机制\
-              未定（V109），**暂时不做**。
+              未定（V109），**暂时不做**。",
     },
     TargetGap {
         family: "cli-subcommands",
