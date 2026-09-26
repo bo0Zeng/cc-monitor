@@ -610,3 +610,92 @@ fn building_holds_the_store_exclusively_and_reads_share_it() {
     assert!(other.try_lock_shared().is_err(), "建索引时读锁居然拿到了");
     drop(w);
 }
+
+/// 〔W5-AUX · 97 #5〕**判据 CP5**：批注的状态是数据 —— **提议的批注 agent 看不见，批准之后才看得见**。
+///
+/// 要求住址：`设计/97 §2.3` 逐字「**判据 CP5**：批注的**状态**（谁写的 · 审没审 · agent 看不看得见）**必须是数据，不是文案**。
+/// 状态机住上游 `engine`（`propose_annotation` 写 `Proposed`、`approve_annotation` 改 `Active`、`annotations_for` 只回 `Active`）」；
+/// `§8` 逐字「CP5 在仓内没有执行链上的判据 —— 原先那条……真引擎判据住 monitor 的 `panorama_tests.rs`，随 monitor 摘引擎一起删了；……
+/// 要在小程序那一侧补一条（例如经 `list_annotations` / `node` 读回），还是认上游那条，没定」。本条就是「小程序那一侧补一条」
+/// （题面裁：W5-AUX「97 CP5 仓内判据」）。
+///
+/// 读回走的是**小程序自己的 op**（真引擎、真侧车文件，零 mock）：人那一侧 = `list_annotations`（审批队列读它，含 `Proposed`）；
+/// agent 那一侧 = `node` 的 `annotations`（上游 `Engine::node` 里就是 `annotations_for`，只回 `Active`）。
+/// 写由测试照计划原样落盘 —— 同生产里「引擎只算、文件管理来写」（V110）那一步，小程序自己一个字节不写。
+///
+/// 反空真：同一个 `node` 查询在批准之后**必须看得见**它 —— 否则「看不见」可能只是那一格恒空；
+/// 另加一条人写的（`plan_add_annotation`，直接 `Active`）当场就要看得见。
+#[test]
+fn a_proposed_annotation_stays_invisible_to_the_agent_until_it_is_approved() {
+    let repo = fixture_repo();
+    let store = Tmp::new("store");
+    let (r, s) = (repo.0.as_path(), store.0.as_path());
+    call("index", r, s, json!({})).unwrap();
+    let alpha = call("search", r, s, json!({"query": "alpha"})).unwrap()[0]["id"]
+        .as_str()
+        .expect("搜得到 alpha")
+        .to_string();
+    // 文件管理那一步：照计划原样落盘（before 就是 CAS 期望 —— 这里是独占夹具，逐字核一下即可）。
+    let apply = |planned: &Value| {
+        let e = &planned["edit"];
+        let p = r.join(e["rel"].as_str().expect("计划里有落点"));
+        let now = std::fs::read_to_string(&p).ok();
+        assert_eq!(now.as_deref(), e["before"].as_str(), "计划的 before 与盘上不符：{planned}");
+        if e["parents"] == json!(true) {
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        }
+        match e["after"].as_str() {
+            Some(t) => std::fs::write(&p, t).unwrap(),
+            None => std::fs::remove_file(&p).unwrap(),
+        }
+    };
+    let agent_sees = |id: &str| -> bool {
+        let node = call("node", r, s, json!({"symbol": alpha})).unwrap();
+        node["annotations"]
+            .as_array()
+            .unwrap_or_else(|| panic!("node 应答里没有 annotations 数组：{node}"))
+            .iter()
+            .any(|a| a["id"] == json!(id))
+    };
+    let queue_status = |id: &str| -> Value {
+        let all = call("list_annotations", r, s, json!({})).unwrap();
+        all.as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["id"] == json!(id))
+            .map(|a| a["status"].clone())
+            .unwrap_or(Value::Null)
+    };
+
+    // ① agent 提议 ⇒ 人那一侧的队列里有它（Proposed），agent 那一侧看不见。
+    let prop = call(
+        "plan_propose_annotation",
+        r,
+        s,
+        json!({"file": "src/lib.rs", "symbol": "alpha", "body": "这里可以缓存", "author": "agent-x"}),
+    )
+    .unwrap();
+    apply(&prop);
+    let pid = prop["value"].as_str().expect("提议回了 id").to_string();
+    assert_eq!(queue_status(&pid), json!("Proposed"), "审批队列里读不到这条提议，或状态不是数据里的 Proposed");
+    assert!(!agent_sees(&pid), "🔴 CP5：还没审的提议 agent 已经看得见了 —— agent 会读到自己的话并当成人的指示");
+
+    // ② 人批准 ⇒ 同一个 `node` 查询看得见了（反空真：「看不见」不是那一格恒空）。
+    let appr = call("plan_approve_annotation", r, s, json!({"id": pid})).unwrap();
+    apply(&appr);
+    assert_eq!(queue_status(&pid), json!("Active"), "批准之后状态没变成 Active");
+    assert!(agent_sees(&pid), "批准之后 agent 仍看不见 —— 要么状态机坏了，要么 `node` 那一格恒空（那上面「看不见」就证明不了任何事）");
+
+    // ③ 人直接写的 ⇒ 当场 Active、当场看得见（两条路都走一遍，不只靠批准那一条）。
+    let add = call(
+        "plan_add_annotation",
+        r,
+        s,
+        json!({"file": "src/lib.rs", "symbol": "alpha", "body": "热路径", "author": "me"}),
+    )
+    .unwrap();
+    apply(&add);
+    let hid = add["value"].as_str().unwrap().to_string();
+    assert_eq!(queue_status(&hid), json!("Active"));
+    assert!(agent_sees(&hid), "人写的批注 agent 看不见");
+}

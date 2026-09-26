@@ -251,7 +251,8 @@ jobs:
       # 〔F7b 09-24 棘 39 → 36〕老 SFTP 面板那整段 CSS 退役，带走 shared.css 里 3 条 rgba → rgb（现打 36）。
       # 〔UC2 · 第四波〕`no-descending-specificity` 打开之后，这个上限的口径是「**除它以外**的报错总数」；它自己的命中由
       #   `tests/css-ledger.vitest.ts` ④b 按例外表两向相等管（`npm run lint:css` 的裸总数因此比这个数大，别拿来对）。
-      # S25-STYLELINT-CEILING: 36
+      # 〔W5-AUX 09-25 棘 36 → 35〕`.status-tasks` 那条被 `font` 简写盖掉的死声明删了（现打 35）。
+      # S25-STYLELINT-CEILING: 35
       - name: stylelint (advisory, baseline)
         run: npm run lint:css || true
 

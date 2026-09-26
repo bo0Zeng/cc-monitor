@@ -151,7 +151,7 @@ export class CcBusHooksSection {
     this.checkRemoteBtn = btn;
     btn.type = "button";
     btn.className =
-      "settings-btn settings-btn-secondary cc-bus-hooks-check-remote";
+      "settings-btn cc-bus-hooks-check-remote";
     btn.textContent = copyText("ccBusHooks.build.checkRemote");
     btn.addEventListener("click", () => void this.checkRemote(btn));
     row.appendChild(btn);

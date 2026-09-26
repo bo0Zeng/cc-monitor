@@ -557,7 +557,10 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p4e-failure-visible**（2026-09-26，第五波 W5-VIS 合并那一拍）：行为 —— 备份沿用不上原文件权限位 ⇒ 删备份、整趟拒（`files_write`）·
 /// 读不动的会话逐份 warn、扫完出总数（`search_query`）· 认不出的帧 / 非 UTF-8 行计数出声（`frame_tally`）· 次要动作失败留一行日志。子命令没变，照 p1v 先例不加历史行。
-pub const BUILD_ID: &str = "p4e-failure-visible";
+///
+/// ★★★ **p4f-stdin-line**（2026-09-26，第五波 W5-AUX 合并那一拍）：行为 / 协议 —— CLI 修饰 `--stdin-line` ＋ `capture.stdin`：资产目录推送的载荷改经 stdin 一行交，
+/// 命令行不再带载荷（旧远端后端收到 `--stdin-line` 会一直读到 EOF、卡到调用方期限 ⇒ 必须 bump 让它被换掉）。`build_id_guard` 的指纹不数 `SUBCOMMAND_OPTIONS` ⇒ 没红，手动 bump。
+pub const BUILD_ID: &str = "p4f-stdin-line";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -1701,6 +1704,18 @@ pub const EMITS: &[&str] = &[
 /// 「令牌是敏感数据」（`§8.6 ③`），整段论证住 [`CAPABILITIES`] 的头注。
 pub const STREAM_FLAGS: &[&str] = &["--with-bg", "--tail-only", "--with-rbind-token"];
 
+/// 〔W5-AUX · `设计/96 §3.6`〕**「只读一行 stdin」的入口**：跟在子命令后面（`--assets-catalog-merge --stdin-line`）。
+///
+/// 为什么要它：远端那一跳（`remote_ask::DialRemote`，capture）**不关远端的 stdin** ⇒ 默认那种「读到 EOF」会一直等；
+/// 此前的出路是把载荷拼进命令行 `printf '%s\n' '<json>' | …`，那要求远端登录 shell 认 POSIX 单引号与管道 ——
+/// fish 一类不认（`'…\\…'` 在 fish 的单引号里会被当转义吃掉一个反斜杠，JSON 就坏了），而且一趟受 `sh -c` 那一个参数的上限。
+/// 有了它，命令行里只剩后端路径与两个旗标（不含载荷），载荷经 capture 写进远端进程的 stdin，本入口读到换行就动手。
+/// 上限同默认那一形（`control/cli_control.rs::MAX_CLI_STDIN`，超了拒、不截断）。
+///
+/// 住这里（argv 三分表旁边）而不住 `cli_control`：它是 [`SUBCOMMAND_OPTIONS`] 的一员；发它的一方（`asset_sync`）
+/// 只该认得这个字面量，不该因此在引用图上连到 CLI 面的分派口（`target_parity_guard` 那条「够不够得着 tmux」按文件级引用图走）。
+pub const STDIN_LINE_FLAG: &str = "--stdin-line";
+
 /// ③ 子命令自己的选项：只在某条 [`SUBCOMMANDS`] 之后才有意义，backend 顶层不解释它们。
 pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     "--accts-dir",
@@ -1716,6 +1731,8 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     // 〔SE2〕`--find-in-session` 的查询串（选项值，不是位置参数：查询本身可能以 `--` 起头）。
     "--query",
     "--scope",
+    // 〔W5-AUX · `设计/96 §3.6`〕CLI 控制面那一族（`--<帧命令>`）的「只读一行 stdin」修饰词。
+    STDIN_LINE_FLAG,
     "--until",
 ];
 

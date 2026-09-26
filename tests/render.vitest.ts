@@ -1,7 +1,12 @@
 // F73（issue #42）：多行块级 LaTeX 公式渲染。preprocessMath 纯函数（规整 + \[..\]/\(..\) 翻译 +
 // 代码保护）+ renderMarkdown 端到端（真 marked+katex，jsdom）。
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import katex from "katex";
+import { renderMessage } from "../src/cards";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
+  enhanceCard,
   needsMathPreprocess,
   preprocessMath,
   preprocessMathUnguarded,
@@ -286,5 +291,180 @@ describe("`设计/17 §2.6` preprocessMath 前置闸：快路必须与慢路逐�
     const plain = renderMarkdown("这一段里一个数学记号都没有。");
     expect(plain.includes("katex")).toBe(false);
     expect(plain.includes("这一段里一个数学记号都没有")).toBe(true);
+  });
+});
+
+/**
+ * 〔W5-RENDER R3〕`设计/10 §3.5` D3 逐字：「`currentLazy` 是模块单例，安全性依赖『同步调用栈』这条隐式不变量」。
+ * 修法：急 / 惰是两个 `Marked` 实例，模块里没有任何可变状态可串。
+ * 两格：① 源码顶层零 `let`（剥注释；正控：改之前那一行原文数得出 1）；② 两个实例交错调用互不串味。
+ */
+describe("D3 · 急 / 惰两个实例、模块零可变状态（`设计/10 §3.5`）", () => {
+  /** 剥注释后，数**顶格**（模块顶层）的 `let` 声明。 */
+  const topLevelLets = (src: string): number =>
+    src
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/[^\n]*/g, "")
+      .split("\n")
+      .filter((l) => /^let\s/.test(l)).length;
+
+  it("正控：改之前那一行原文数得出 1，缩进的局部 let 不算", () => {
+    expect(topLevelLets("let currentLazy = false;\nfunction f() {\n  let x = 1;\n}\n")).toBe(1);
+    expect(topLevelLets("// let a = 1;\n/* let b = 2; */\n")).toBe(0);
+  });
+
+  it("src/render.ts 模块顶层零 `let`", () => {
+    const src = readFileSync(resolve(__dirname, "../src/render.ts"), "utf8");
+    expect(src.length, "src/render.ts 读出来是空的 —— 本条会零命中地绿").toBeGreaterThan(1000);
+    expect(topLevelLets(src), "render.ts 又长出了模块级可变状态 —— `设计/10 §3.5` D3").toBe(0);
+  });
+
+  it("交错调用：急路恒同步高亮、惰路恒留占位", () => {
+    const md = "```ts\nconst a = 1;\n```";
+    for (let i = 0; i < 4; i++) {
+      const lazy = renderMarkdown(md, { lazy: true });
+      const eager = renderMarkdown(md);
+      expect(lazy).toContain("code-pending");
+      expect(lazy).not.toContain("hljs");
+      expect(eager).toContain("hljs");
+      expect(eager).not.toContain("code-pending");
+    }
+  });
+});
+
+/**
+ * 〔W5-RENDER R4〕`设计/10 §3.5` D1 逐字：「KaTeX 从不 lazy —— 含 `$$` 的长公式在重放期同步阻塞主线程
+ * （代码高亮有 lazy，数学没有）」。修法：惰路只出占位，`enhanceCard` 进视口时补算。
+ * 三格：① 惰路 ＋ 补算之后的 DOM 与急路逐字相同（异源：急路是 marked-katex-extension 自己的渲染器，
+ * 补算是 `render.ts::enhanceMath`）；② 惰路期间 `katex.renderToString` 零次、补算次数 == 急路次数；
+ * ③ 展开时才建的 thinking body 一律急路（不再留一块永远没人补的占位）。
+ */
+describe("D1 · 数学也 lazy（`设计/10 §3.5`）", () => {
+  const MATH = [
+    "行内 $x_i^2$ 与 $$y=\\sqrt{2}$$ 同行",
+    "\\(a+b\\) 与 \\[c=d\\]",
+    "结果是：\n$$\n\\begin{aligned}a&=b\\\\c&=d\\end{aligned}\n$$\n后文",
+    "$$\nE=mc^2\n$$",
+    "坏的 $\\frac{1}{$ 与 $$\\undefinedcmd$$",
+    "costs $5 and $10 total",
+    "- 列表里 $\\alpha$\n- 第二项 $$\\beta$$",
+    "| a | $b$ |\n|---|---|\n| $1$ | 2 |",
+  ];
+
+  it("惰路 ＋ enhanceCard == 急路（逐字）", () => {
+    let withPending = 0;
+    for (const md of MATH) {
+      const eager = document.createElement("div");
+      eager.innerHTML = renderMarkdown(md);
+      const lazy = document.createElement("div");
+      lazy.innerHTML = renderMarkdown(md, { lazy: true });
+      if (lazy.querySelector("[data-math-pending]")) withPending++;
+      enhanceCard(lazy);
+      expect(lazy.querySelector("[data-math-pending]"), md).toBeNull();
+      expect(lazy.innerHTML, md).toBe(eager.innerHTML);
+    }
+    // 反空真：语料里真有惰路留了占位的（「$5 and $10」那条按 nonStandard 也会被认成公式）
+    expect(withPending).toBeGreaterThanOrEqual(7);
+  });
+
+  it("惰路期间零次 renderToString；补算次数 == 急路次数", () => {
+    const md = MATH.join("\n\n");
+    const spy = vi.spyOn(katex, "renderToString");
+    try {
+      renderMarkdown(md);
+      const eagerCalls = spy.mock.calls.length;
+      spy.mockClear();
+      const lazy = document.createElement("div");
+      lazy.innerHTML = renderMarkdown(md, { lazy: true });
+      expect(spy.mock.calls.length).toBe(0);
+      enhanceCard(lazy);
+      expect(eagerCalls).toBeGreaterThan(5);
+      expect(spy.mock.calls.length).toBe(eagerCalls);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("展开时才建的 thinking body 走急路：零占位", () => {
+    const res = renderMessage(
+      {
+        type: "assistant",
+        uuid: "u1",
+        timestamp: "2026-01-01T00:00:00Z",
+        message: { role: "assistant", content: [{ type: "thinking", thinking: "想想 $x^2$\n\n```ts\nconst a = 1;\n```" }] },
+      } as never,
+      { parentPath: "/p/s.jsonl", origin: "<local>", toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map(), lazy: true } as never,
+    );
+    expect(res.kind).toBe("tool-group");
+    const d = (res as { units: HTMLElement[] }).units[0] as HTMLDetailsElement;
+    d.open = true;
+    d.dispatchEvent(new Event("toggle"));
+    expect(d.querySelector(".katex")).not.toBeNull();
+    expect(d.querySelector("[data-math-pending], .code-pending")).toBeNull();
+  });
+});
+
+/**
+ * 〔W5-RENDER R5〕`设计/10 §3.5` D2：IO 按滚动容器分（root 必填）。单元这一半：同 root 复用、不同 root 各一个、
+ * 回调里补算并 unobserve、`releaseEnhanceRoot` 断开且之后再 observe 会新建。真渲染管线上的那一半在
+ * `tests/views/session-viewer-scroll.vitest.ts`「D2」。
+ */
+describe("D2 · 每个滚动容器一个 IO（`设计/10 §3.5`）", () => {
+  class FakeIO {
+    static all: FakeIO[] = [];
+    readonly observed = new Set<Element>();
+    disconnected = false;
+    constructor(
+      readonly cb: IntersectionObserverCallback,
+      readonly opts: IntersectionObserverInit = {},
+    ) {
+      FakeIO.all.push(this);
+    }
+    observe(el: Element): void {
+      this.observed.add(el);
+    }
+    unobserve(el: Element): void {
+      this.observed.delete(el);
+    }
+    disconnect(): void {
+      this.disconnected = true;
+    }
+    fire(el: Element): void {
+      this.cb([{ isIntersecting: true, target: el } as unknown as IntersectionObserverEntry], this as never);
+    }
+  }
+
+  it("同 root 复用、不同 root 各一个；进视口即补算并 unobserve；release 之后新建", async () => {
+    FakeIO.all = [];
+    vi.stubGlobal("IntersectionObserver", FakeIO);
+    try {
+      const { observeForEnhance, releaseEnhanceRoot } = await import("../src/render");
+      const A = document.createElement("div");
+      const B = document.createElement("div");
+      const mk = (): HTMLElement => {
+        const el = document.createElement("div");
+        el.innerHTML = renderMarkdown("```ts\nconst a = 1;\n```", { lazy: true });
+        return el;
+      };
+      const [a1, a2, b1] = [mk(), mk(), mk()];
+      observeForEnhance(a1, A);
+      observeForEnhance(a2, A);
+      observeForEnhance(b1, B);
+      expect(FakeIO.all.map((io) => io.opts.root)).toEqual([A, B]);
+      const [ioA, ioB] = FakeIO.all;
+      expect([...ioA.observed]).toEqual([a1, a2]);
+      expect([...ioB.observed]).toEqual([b1]);
+      ioA.fire(a1);
+      expect(a1.querySelector(".code-pending")).toBeNull();
+      expect(a2.querySelector(".code-pending")).not.toBeNull();
+      expect([...ioA.observed]).toEqual([a2]);
+      releaseEnhanceRoot(A);
+      expect(ioA.disconnected).toBe(true);
+      observeForEnhance(mk(), A);
+      expect(FakeIO.all.length).toBe(3);
+      expect(FakeIO.all[2].opts.root).toBe(A);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

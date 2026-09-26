@@ -19,9 +19,11 @@ const boom = async (): Promise<void> => {
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), Channel: class {} }));
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(), listen: vi.fn(async () => () => {}) }));
 vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
-vi.mock("../src/tab-collections", async (orig) => ({
+// 〔GRP1 · V140〕分组的每一个动作把组表与几个 tab 的组 id 键装进一次 `patchConfig`（`TabBarPrefs.writeGroups`）⇒ 失败注入在写口这一层。
+//   别的几个写者在下面各自被替掉，不经这里。
+vi.mock("../src/config", async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
-  setCollections: vi.fn(() => boom()),
+  patchConfig: vi.fn(() => boom()),
 }));
 vi.mock("../src/tab-bar-state", async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
@@ -72,8 +74,16 @@ function prefs(): TabBarPrefs {
   return new TabBarPrefs(store as never, host as never);
 }
 
+/** 〔GRP1〕栏里一个 tab 在组 `g` 里 —— 解散它就是一次分组写。 */
+function groupedPrefs(): TabBarPrefs {
+  const store = { orderedIds: ["s"], tabs: new Map([["s", { sessionId: "s", group: "g" }]]), savedOrder: [] };
+  const p = new TabBarPrefs(store as never, { refreshTabBar: () => {} } as never);
+  p.collections = [{ id: "g", name: "n" }];
+  return p;
+}
+
 const CASES: readonly { name: string; run: () => Promise<void>; head: string }[] = [
-  { name: "分组", run: () => prefs().persistCollections([]), head: copyText("tabBar.persist.collectionsFailed") },
+  { name: "分组", run: () => groupedPrefs().dissolveGroup("g"), head: copyText("tabBar.persist.collectionsFailed") },
   { name: "固定", run: () => prefs().persistPinned(), head: copyText("tabBar.persist.pinnedFailed") },
   { name: "顺序", run: () => prefs().persistOrder(), head: copyText("tabBar.persist.orderFailed") },
   { name: "行为设置", run: () => behaviorPanel().onBehaviorToggle(), head: copyText("settings.behavior.saveFailed") },

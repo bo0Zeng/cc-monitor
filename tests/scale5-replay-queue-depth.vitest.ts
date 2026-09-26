@@ -619,3 +619,38 @@ describe("秤 5 · C：本文件镜像的那 3 个常量没有漂（读，不改
     }
   });
 });
+
+// ───────────────────────── D. 生产两处出队已换头指针 ─────────────────────────
+
+/**
+ * 〔W5-RENDER R1〕`设计/17 §2.10` 逐字：「`Array.prototype.shift()` 当队列（`events.ts` drain · `branching.ts` Kahn），
+ * 超线性是真的（V8 的 left-trim 快路不是无条件生效的）」「换头指针。顺手改」。
+ *
+ * B 段证的是「换头指针是等价替换」（复制品上）；本段钉的是**生产那两处真的换了**：两份源码（剥掉注释）里
+ * `.shift(` 零命中。正控：同一个剥注释 ＋ 数命中的函数，喂改之前的那两行原文各数得出 1 —— 抽取器瞎了会先在正控上红。
+ * 改前 / 改后读数（经生产 `bindEvents` 灌一块 20 000 条、空壳 `onLine` 的排空墙钟）住 `调研/第四波记录/W5-RENDER.md §6`。
+ */
+describe("秤 5 · D：生产两处出队不用 shift()（`设计/17 §2.10`）", () => {
+  const read = (rel: string): string =>
+    readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
+  /** 剥掉 `//` 行注释与块注释之后，数 `.shift(` 出现几次。 */
+  const shiftCalls = (src: string): number =>
+    src
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/[^\n]*/g, "")
+      .split(".shift(").length - 1;
+
+  it("正控：改之前的两行原文各数得出 1", () => {
+    expect(shiftCalls("      const item = queue.shift();\n")).toBe(1);
+    expect(shiftCalls("    const r = queue.shift()!;\n")).toBe(1);
+    expect(shiftCalls("// queue.shift()\n/* queue.shift() */\n")).toBe(0);
+  });
+
+  it("src/events.ts 与 src/branching.ts 生产段零 `.shift(`", () => {
+    for (const rel of ["../src/events.ts", "../src/branching.ts"]) {
+      const src = read(rel);
+      expect(src.length, `${rel} 读出来是空的 —— 本条会零命中地绿`).toBeGreaterThan(1000);
+      expect(shiftCalls(src), `${rel} 里又出现了 \`.shift(\` —— \`设计/17 §2.10\` 要头指针出队`).toBe(0);
+    }
+  });
+});

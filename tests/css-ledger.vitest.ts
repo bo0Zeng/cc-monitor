@@ -150,6 +150,9 @@ const FLOORS = {
  *
  * ⇒ 真正需要靠前缀才解释得通的，现打就是下面这 **10** 条（比那份 11 个清单还少一条：
  * `paste-block` 不在这里，当时的理由见 `KNOWN_DEAD` —— 那条死规则〔AR1〕已删）。**每条都带住址与理由，缺一条本表就不该有它。**
+ * 〔W5-AUX · `设计/41 §7` · 10 → 7〕`conf-` · `kind-` · `remote-gap-` 三族摘了：它们是**有限枚举状态拼成的类名族**，
+ *   按约定改走 `data-conf` / `data-kind`（`css-conventions` ⑧「同一个状态名不许同现于两种载体」逮到的，
+ *   `remote-gap-` 那一族同一个值还同时写进了 `data-kind`）⇒ 拼接点与 CSS 类都没了，前缀随之是死条目。
  *
  * ⚠ 本表有两条自检（见「登记表不许有死条目」那一格）：
  * ① 每条前缀今天仍要在代码里派生得出来（候选表里有）；
@@ -170,20 +173,8 @@ const ALLOWED_PREFIXES: readonly { prefix: string; why: string }[] = [
     why: "`src/cards/diff.ts:311` 按 diff 行的增删拼 `block-diff-add` / `-del`。",
   },
   {
-    prefix: "conf-",
-    why: "`src/views/panorama.ts:1201` 把全景节点的置信档拼成类名（exact/heuristic/dynamicguess），档位来自 code-picture 的返回。",
-  },
-  {
-    prefix: "kind-",
-    why: "`src/settings/data-section.ts:188` 按条目种类拼（dir/file/user）。",
-  },
-  {
     prefix: "pf-dot-",
     why: "`src/views/port-forward.ts:142` 按端口转发的健康状态拼（ok/err）。",
-  },
-  {
-    prefix: "remote-gap-",
-    why: "`src/settings/remote-section.ts:391` 按远端能力缺口的成因拼（missing/unknown）。",
   },
   {
     prefix: "remote-status-",
@@ -225,7 +216,9 @@ const KNOWN_DEAD: readonly { name: string; why: string }[] = [];
 //   （`rgba` → `rgb`；那一份 7 → 4，现打，不是 39−3 算的：全仓 `npx stylelint` 现打 36）。
 // 〔UC2 09-24〕`no-descending-specificity` 打开（`设计/41 §3` / `§12` 待拍 2）。它的命中**不进**本棘轮 ——
 //   另由 ④b 的两向相等登记表管（比棘轮严）；本上限仍是「除它以外」的报错总数，数值不动（现打 36）。
-const STYLELINT_CEILING = 36;
+// 〔W5-AUX · `设计/40 §8` 棘 36 → 35〕`styles.css` 的 `.status-tasks` 里那条被 `font: inherit` 整条盖掉的 `line-height: 16px` 删了
+//   （`css-conventions` ⑨「活规则里的死声明」逮到的；stylelint 的 `declaration-block-no-shorthand-property-overrides` 正是它，现打 35）。
+const STYLELINT_CEILING = 35;
 
 /**
  * ★ 〔UC2〕**`no-descending-specificity` 的例外登记表**（④b · `设计/41 §3` 待拍 2 · `设计/40 §8`「特异度冲突」）。
@@ -455,7 +448,7 @@ const PREFIX_COVERAGE_CEILING = 35;
  * **只许降。** 这 163 个是**混合人群**，如实说清楚，别当成 163 个缺陷：
  * - 大部分是**纯 JS 钩子** —— 挂上去只为 `querySelector` / 事件代理找得到它
  *   （`.sftp-close` · `.pf-start` · `.panorama-back` 这一族），本来就不需要样式；
- * - 一部分是**真悬空** —— 比如 `.settings-btn-secondary`（`src/settings/**` 53 处在挂它），
+ * - 一部分是**真悬空** —— 比如当年的 `.settings-btn-secondary`（`src/settings/**` 53 处在挂它〔W5-AUX 已摘，见下〕），
  *   CSS 里一条规则都没有。〔AR1 现打订正〕上一版说「同族的 `.settings-btn` / `.cc-bus-online` 都 styled ⇒
  *   多半是改名只改了一边」：`git log -S` 两个名字在 CSS 里**从来没有过规则**，`.cc-bus-online` 也没有 ——
  *   不是改名漏了一边，是一开始就只当标记挂。`cc-bus-online-*` 那几个状态类〔AR1〕已改成 `data-state`。
@@ -470,7 +463,10 @@ const PREFIX_COVERAGE_CEILING = 35;
 //   从没有过规则的类名（`cc-bus-online-unknown` / `-checking` / `-error`）按 `设计/41 §7` 约定 3 改成 `data-state`
 //   ⇒ 现打 147（少的就是这三个；`-yes` / `-no` 由模板拼、本来就不进这一数）。
 //   `.settings-btn-secondary`（53 处挂、git 史里从没有过规则、外观即 `.settings-btn` 默认）仍在这 147 里，理由见 `AR1.md §2`。
-const DANGLING_CEILING = 147;
+// 〔W5-AUX · AR1 拍板 3 · 09-25 棘 147 → 146〕主会话裁「删类名」：`.settings-btn-secondary` 从 `src/` 12 份文件里摘掉
+//   （现打 55 处字面量 ＋ `panel.ts::makeBtn` 那一处模板拼接；三个按钮助手的 `variant` 空串 = 默认那一种）⇒ 少的就是它这一个。
+//   外观不变：它从来没有规则，挂与不挂算出来的样式一样。
+const DANGLING_CEILING = 146;
 
 /** 本文件只在这儿读一次盘，后面各格共用。 */
 let cached: Ledger | null = null;

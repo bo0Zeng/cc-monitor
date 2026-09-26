@@ -305,7 +305,7 @@ export class MachineCard {
     const removeBtn = document.createElement("button");
     removeBtn.type = "button";
     removeBtn.className =
-      "settings-btn settings-btn-secondary remote-machine-remove";
+      "settings-btn remote-machine-remove";
     removeBtn.textContent = copyText("machineCard.build.delete");
     removeBtn.title = copyText("machineCard.build.deleteHint");
     removeBtn.addEventListener("click", (ev) => {
@@ -407,7 +407,7 @@ export class MachineCard {
     // 拒连，此前只能手动清空输入框、无风险告知）。仅在已固化指纹时显示。
     const resetFpBtn = document.createElement("button");
     resetFpBtn.type = "button";
-    resetFpBtn.className = "settings-btn settings-btn-secondary";
+    resetFpBtn.className = "settings-btn";
     resetFpBtn.textContent = copyText("machineCard.field.resetFingerprint");
     resetFpBtn.title =
       copyText("machineCard.field.resetFingerprintHint");
@@ -474,7 +474,8 @@ export class MachineCard {
     ): HTMLButtonElement => {
       const b = document.createElement("button");
       b.type = "button";
-      b.className = `settings-btn ${variant}`;
+      // 〔W5-AUX · AR1 拍板 3〕`variant` 空串 = 默认那一种（原先的 `settings-btn-secondary` 从没有过规则，已摘）。
+      b.className = variant ? `settings-btn ${variant}` : "settings-btn";
       b.textContent = label;
       b.title = title;
       b.addEventListener("click", onClick);
@@ -494,7 +495,7 @@ export class MachineCard {
     // F50：一键把本地公钥推到远端 authorized_keys（onboarding 免密）。
     const pushKeyBtn = mkBtn(
       copyText("machineCard.build.pushKey"),
-      "settings-btn-secondary",
+      "",
       copyText("machineCard.build.pushKeyHint"),
       () => void this.onPushPubkey(pushKeyBtn),
     );
@@ -519,7 +520,7 @@ export class MachineCard {
     connRow.appendChild(
       mkBtn(
         copyText("machineCard.build.launch"),
-        "settings-btn-secondary",
+        "",
         copyText("machineCard.build.launchHint"),
         () => this.openLauncherDialog(),
       ),
@@ -566,7 +567,7 @@ export class MachineCard {
     deployRow.appendChild(this.backendInstallButton);
     this.backendUninstallButton = mkBtn(
       copyText("machineCard.deploy.uninstall"),
-      "settings-btn-secondary",
+      "",
       copyText("machineCard.deploy.uninstallHint"),
       () => void this.onUninstallBackend(),
     );
