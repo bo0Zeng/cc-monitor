@@ -758,6 +758,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 〔U4b · 第四波〕活会话的容器（G3）· 某台机器的活会话清单报完了（说不清 → 已结束）。
     onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container),
     onOriginSessionsListed: (origin) => tabs.markOriginSeen(origin),
+    // 〔TAP · V124〕中转抄出来的 SSE 事件 → 活卡（jsonl 到了整轮覆盖）。
+    onSessionTap: (e) => tabs.onSessionTap(e),
     // 会话复活（resume）：后端 liveness 门控后才发，复活已归档的本地 Tab，免 F5。
     // Batch7-F24：无 Tab（= 运行中途**新出现**的本地会话）→ 建骨架——bg 会话必须
     // 从这条通道拿 kind/name（首行 onLine→ensureTab 不带 kind，会建成无 ⚙ 普通 tab）。
