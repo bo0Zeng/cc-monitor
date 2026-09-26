@@ -19,7 +19,6 @@ import { fileURLToPath } from "node:url";
 import { srcDirOf } from "./test-support/repo-root.ts";
 import { AGENT_PROFILE } from "../src/agent-profile.ts";
 import {
-  isValidSessionId,
   isValidTmuxName,
   isValidNewTmuxName,
 } from "../src/shell-quote.ts";
@@ -75,13 +74,8 @@ test("嵌套 env 列表：含四个标记、不含 CLAUDE_CONFIG_DIR；请求里
   eq(req(planResumeDirect("s1", "", "claude")).nestedEnv, AGENT_PROFILE.nestedEnvVars);
 });
 
-test("isValidSessionId：UUID 形态过、注入形态拒", () => {
-  eq(isValidSessionId("abc-123_DEF"), true);
-  eq(isValidSessionId(""), false);
-  eq(isValidSessionId("a; rm -rf /"), false);
-  eq(isValidSessionId("a".repeat(129)), false);
-  eq(isValidSessionId("--dangerously-skip-permissions"), false, "前导 - 拒（选项注入）");
-});
+// 〔DUP1 · `设计/90 §3` 判据 2〕这里原来是 `isValidSessionId`〔散文墓碑〕的五条断言。那份删了：sid 规则只有一份
+// （`shell_quote_core::session_id_ok`，Rust 侧 `lib_tests.rs` 正反各一格 ＋ 共用金样），渲染侧与后端 ccm 各自判。
 
 // 〔DUP1 · `设计/90 §3` 判据 2〕这里原来是 `sanitizeRemoteLauncher`〔散文墓碑〕的十条用例（空 → claude · 注入字符 → **静默换成** claude）。
 // 那份删了：字符集只在 Rust 载荷渲染判（`payload_tests.rs::the_launcher_is_refused_when_it_carries_injection_chars`，拒并说清），
@@ -104,6 +98,7 @@ test("直起：cwd 原样进请求（引号归 Rust）、resume flag 展开进 a
     args: RESUME("abc-123"),
     nestedEnv: AGENT_PROFILE.nestedEnvVars,
     wrap: [],
+    resumeSid: "abc-123", // 〔DUP1〕resume 的 sid 单报一次，渲染侧判
   });
   eq(req(planResumeDirect("s1", "/home/pi/a'b", "claude")).cwd, "/home/pi/a'b", "单引号原样交给后端");
 });
@@ -120,9 +115,13 @@ test("直起：自定义 launcher 透传、空白回退 claude、注入字符原
   eq(req(planResumeDirect("s1", "", "cct; curl evil")).launcher, "cct; curl evil");
 });
 
-test("直起：非法 sid throw（拒绝拼入命令）", () => {
-  throws(() => planResumeDirect("a; rm -rf /", "/p", "claude"));
-  throws(() => planResumeDirect("", "/p", "claude"));
+// 〔DUP1〕这条原来断「非法 sid ⇒ plan 那一步 throw」（TS 那份 `isValidSessionId`〔散文墓碑〕判的）。
+// 今天前端不判 sid：怪值原样上线，并在 `resumeSid` 里单报一次，渲染侧（`launch_wire.rs`）过共享那一份再核它就是 args 第二格。
+test("直起：sid 前端不判 —— 原样进 args，并在 resumeSid 单报一次（渲染侧判）", () => {
+  const r = req(planResumeDirect("a; rm -rf /", "/p", "claude"));
+  eq(r.args, [AGENT_PROFILE.resumeFlag, "a; rm -rf /"]);
+  eq(r.resumeSid, "a; rm -rf /");
+  eq(req(planResumeDirect("abc-123", "/p", "claude")).resumeSid, "abc-123");
 });
 
 // ───────── 〔LR2〕tmux 新建（create）：planResumeTmux → 请求 ─────────
@@ -137,6 +136,7 @@ test("tmux 新建：cwd 归外层 -c、内层没有 cd；@ccm_sid 带完整 sid�
     args: RESUME("abc-123"),
     nestedEnv: AGENT_PROFILE.nestedEnvVars,
     wrap: [],
+    resumeSid: "abc-123", // 〔DUP1〕resume 的 sid 单报一次，渲染侧判
     outer: { mode: "create", name: "abc-123-cc", quoting: "raw", cwd: "/home/pi/proj", ccmSid: "abc-123" },
   });
 });
@@ -166,6 +166,7 @@ test("就地复用：基座 → send-into 那一格、env 前置 unset-config-di
     args: RESUME("s1"),
     nestedEnv: AGENT_PROFILE.nestedEnvVars,
     wrap: [],
+    resumeSid: "s1", // 〔DUP1〕resume 的 sid 单报一次，渲染侧判
     outer: { mode: "send-into", name: "cc-s1", quoting: "raw" },
   });
 });
@@ -184,8 +185,8 @@ test("就地复用：带账号 → export-config-dir 覆盖，不前置 unset-co
   ]);
 });
 
-test("就地复用：非法 sid / 非法名 throw", () => {
-  throws(() => planResumeIntoExistingTmux("-bad", "cc-s1", "claude"), "非法 sid");
+test("就地复用：非法名 throw（〔DUP1〕sid 那一格交渲染侧判：原样上线、resumeSid 单报）", () => {
+  eq(req(planResumeIntoExistingTmux("-bad", "cc-s1", "claude")).resumeSid, "-bad");
   throws(() => planResumeIntoExistingTmux("s1", "cc-a b", "claude"), "含空格名");
   throws(() => planResumeIntoExistingTmux("s1", "-x", "claude"), "首字符 -");
 });
@@ -266,9 +267,10 @@ test("★★ KR96D3 铸名口:名字可读、sid 一个片段都不进去（用�
   eq(o?.name, name);
 });
 
-test("tmux 新建：非法 sid throw", () => {
-  throws(() => planResumeTmux("a; rm -rf /", "/p", "claude", "x-cc"));
-  throws(() => planResumeTmux("", "/p", "claude", "x-cc"));
+test("tmux 新建：sid 前端不判（〔DUP1〕原样上线；外层 @ccm_sid 与 resumeSid 都由渲染侧过共享那一份）", () => {
+  const r = req(planResumeTmux("a; rm -rf /", "/p", "claude", "x-cc"));
+  eq(r.resumeSid, "a; rm -rf /");
+  eq(r.outer && r.outer.mode === "create" ? r.outer.ccmSid : undefined, "a; rm -rf /");
 });
 
 test("F74 tmux 新建：显式 name → 用它作会话名（灰会话 fresh resume 不撞漂移名），@ccm_sid 仍是完整 sid", () => {
@@ -362,6 +364,7 @@ test("attach：名字按 quoted 交给后端、不带任何载荷字段；非法
     args: [],
     nestedEnv: AGENT_PROFILE.nestedEnvVars,
     wrap: [],
+    resumeSid: null, // 〔DUP1〕resume 的 sid 单报一次，渲染侧判
     outer: { mode: "attach", name: "cc-abc12345", quoting: "quoted" },
   });
   eq(req(planAttach("web 1")).outer?.name, "web 1", "空格名原样（引号归 Rust）");
@@ -388,6 +391,7 @@ test("起新会话：create 那一格、名字按 quoted、cwd 归外层、没�
     args: [],
     nestedEnv: AGENT_PROFILE.nestedEnvVars,
     wrap: [],
+    resumeSid: null, // 〔DUP1〕resume 的 sid 单报一次，渲染侧判
     outer: { mode: "create", name: "cc-proj", quoting: "quoted", cwd: "/home/pi/proj", ccmSid: null },
   });
 });

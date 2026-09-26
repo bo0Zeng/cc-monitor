@@ -25,7 +25,8 @@
           "CLAUDE_CODE_SESSION_ID",
           "CLAUDE_CODE_CHILD_SESSION"
         ],
-        "wrap": []
+        "wrap": [],
+        "resumeSid": null
       },
       "payload": "claude"
     },
@@ -47,7 +48,8 @@
           "CLAUDE_CODE_SESSION_ID",
           "CLAUDE_CODE_CHILD_SESSION"
         ],
-        "wrap": []
+        "wrap": [],
+        "resumeSid": null
       },
       "payload": "cd '/w' && claude"
     },
@@ -85,7 +87,8 @@
           "CLAUDE_CODE_SESSION_ID",
           "CLAUDE_CODE_CHILD_SESSION"
         ],
-        "wrap": []
+        "wrap": [],
+        "resumeSid": null
       },
       "payload": "export CLAUDE_CONFIG_DIR='/home/u/.claude-alt/z'; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; cd '/w' && claude"
     },
@@ -121,7 +124,8 @@
           "CLAUDE_CODE_SESSION_ID",
           "CLAUDE_CODE_CHILD_SESSION"
         ],
-        "wrap": []
+        "wrap": [],
+        "resumeSid": null
       },
       "payload": "unset CLAUDE_CONFIG_DIR; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; cd '/w' && claude"
     },
@@ -153,7 +157,8 @@
           "CLAUDE_CODE_SESSION_ID",
           "CLAUDE_CODE_CHILD_SESSION"
         ],
-        "wrap": []
+        "wrap": [],
+        "resumeSid": null
       },
       "payload": "export ANTHROPIC_MODEL='opus'; claude"
     },
@@ -181,7 +186,8 @@
           "CLAUDE_CODE_SESSION_ID",
           "CLAUDE_CODE_CHILD_SESSION"
         ],
-        "wrap": []
+        "wrap": [],
+        "resumeSid": null
       },
       "payload": "cd '/w' && claude --resume abc-123"
     },
@@ -213,7 +219,8 @@
           "CLAUDE_CODE_SESSION_ID",
           "CLAUDE_CODE_CHILD_SESSION"
         ],
-        "wrap": []
+        "wrap": [],
+        "resumeSid": null
       },
       "payload": "export CCM_RBIND_TOKEN='0f1e2d3c4b5a69788796a5b4c3d2e1f0'; cd '/w' && claude"
     },
@@ -273,7 +280,8 @@
           "CLAUDE_CODE_SESSION_ID",
           "CLAUDE_CODE_CHILD_SESSION"
         ],
-        "wrap": []
+        "wrap": [],
+        "resumeSid": null
       },
       "payload": "export CLAUDE_CONFIG_DIR='/home/u/.claude-alt/z'; export ANTHROPIC_MODEL='sonnet'; unset CLAUDE_CONFIG_DIR; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; export CCM_RBIND_TOKEN='0f1e2d3c4b5a69788796a5b4c3d2e1f0'; cd '/w' && claude"
     },
@@ -295,7 +303,8 @@
           "CLAUDE_CODE_SESSION_ID",
           "CLAUDE_CODE_CHILD_SESSION"
         ],
-        "wrap": []
+        "wrap": [],
+        "resumeSid": null
       },
       "payload": "cd '/home/用户/带 空格/proj' && claude"
     },
@@ -317,7 +326,8 @@
           "CLAUDE_CODE_SESSION_ID",
           "CLAUDE_CODE_CHILD_SESSION"
         ],
-        "wrap": []
+        "wrap": [],
+        "resumeSid": null
       },
       "payload": "cd '/tmp/it'\\''s here' && claude"
     },
@@ -365,7 +375,8 @@
             "order": 1,
             "prelude": "inner_setup"
           }
-        ]
+        ],
+        "resumeSid": null
       },
       "payload": "unset CLAUDE_CONFIG_DIR; cd '/w' && ( outer_setup; exec ( inner_setup; exec claude ) )"
     }

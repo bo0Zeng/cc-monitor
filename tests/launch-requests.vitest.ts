@@ -1,5 +1,5 @@
-// `validateLocalLaunch`（F06 引入，R07 改名）单测——锁死本地路径的**前置校验**：sid 字符集，
-// 以及 `transport:{kind:"local"}` 走一遍维度注册表不抛异常。纯函数，零 tauri/config 依赖，无需 mock。
+// 起会话请求构造（`planXxx`）的单测。〔DUP1〕开头那组原来测 `validateLocalLaunch`〔散文墓碑〕（本地路径的前置校验：sid 字符集），
+// 那个函数按 `设计/90 §3` 判据 2 删了；这里剩 `transport:{kind:"local"}` 走一遍维度注册表不抛异常，以及各请求的形状。纯函数，零 tauri/config 依赖，无需 mock。
 //
 // **R07 订正**：这段头注原写"证明本地路径真的在用同一套维度注册表（不是套了个类型皮的假装）"
 // ——**那句是假的**。4 个生产调用点全部把返回值当语句丢弃，真命令由 Rust 独立构造
@@ -8,7 +8,6 @@
 // 不是半成品。函数已随之改名并返回 `void`，见 `src/doc/INVARIANTS.md` §36。
 import { describe, it, expect } from "vitest";
 import {
-  validateLocalLaunch,
   planResumeDirect,
   planResumeTmux,
   planResumeIntoExistingTmux,
@@ -22,22 +21,8 @@ import type { LaunchAction, LaunchContext } from "../src/launch-types.ts";
 /** `设计/80 §8` 步 1：形状合法的启动期令牌（32 个小写 hex）。 */
 const TOK = "0f1e2d3c4b5a69788796a5b4c3d2e1f0";
 
-describe("validateLocalLaunch（本地路径的前置校验；F06 引入、R07 改名并收成纯校验）", () => {
-  it("非法 sid（含 shell 元字符 / 空串）→ throw，且抢在任何 IPC 之前（同其余 planXxx 的既有校验模式）", () => {
-    expect(() => validateLocalLaunch({ kind: "resume", sid: "a; rm -rf /" }, "/p")).toThrow(
-      /非法会话 ID/,
-    );
-    expect(() => validateLocalLaunch({ kind: "resume", sid: "" }, "/p")).toThrow(/非法会话 ID/);
-  });
-
-  // **这条是文档不是门禁**（Phase D 审计指出）：把 throw 整个删掉它照样绿，
-  // 结构上不存在能让它红的变异。留着是为了说明"合法输入不该被拦"，别把它算进守护。
-  it("合法输入不被拦（new 无 sid / resume 合法 sid / cwd 允许为 null）", () => {
-    expect(() => validateLocalLaunch({ kind: "resume", sid: "abc-123" }, "/home/p")).not.toThrow();
-    expect(() => validateLocalLaunch({ kind: "new" }, "/home/p")).not.toThrow();
-    expect(() => validateLocalLaunch({ kind: "new" }, null)).not.toThrow();
-  });
-});
+// 〔DUP1 · `设计/90 §3` 判据 2〕这里原来是 `validateLocalLaunch`〔散文墓碑〕的两条（sid 字符集 throw · 合法输入不拦）。
+// 它唯一的一格（sid）交 Rust 判（`history.rs` 本机决策 → `shell_quote_core::session_id_ok`），函数与四个调用点一起删了。
 
 // R07：这一组的被测对象**不是** `validateLocalLaunch`，是**维度注册表在 `transport:local` 下的行为**
 // ——它是 `src/doc/INVARIANTS.md` §36 那两条主张的证据。

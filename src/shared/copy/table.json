@@ -4612,11 +4612,6 @@
       "zh": "非法模型名，不能拼进命令：{value}",
       "args": ["value"]
     },
-    "launchDimensions.bad.ccmSid": {
-      "kind": "error",
-      "zh": "非法会话标记，不能拼进命令：{value}",
-      "args": ["value"]
-    },
     "launchMenu.account.base": {
       "kind": "action",
       "zh": "不指定账号 · 用远端 ~/.claude 那套凭据",
@@ -4625,11 +4620,6 @@
     "launchRequests.bad.tmuxName": {
       "kind": "error",
       "zh": "非法 tmux 会话名，不能拼进命令：{value}",
-      "args": ["value"]
-    },
-    "launchRequests.bad.sid": {
-      "kind": "error",
-      "zh": "非法会话 ID，不能拼进命令：{value}",
       "args": ["value"]
     },
     "launcherDiagnostics.diagnoseRemoteLauncher.bypassesCcm": {
@@ -11411,7 +11401,7 @@
     },
     "rsPayload.sessionMark.bad": {
       "kind": "error",
-      "zh": "会话标记 {value} 含不许的字符（只许 A-Z a-z 0-9 _ -）",
+      "zh": "会话标记 {value} 不合形状（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
       "args": ["value"]
     },
     "rsPayload.cwd.bad": {
@@ -11638,6 +11628,16 @@
       "kind": "error",
       "zh": "同时送了顶层工作目录和外层 tmux 的工作目录。tmux 那两格的工作目录归外层的 new-session -c，内层不加 cd；两个都送说明调用方搞混了，拒绝。",
       "args": []
+    },
+    "rsLaunchWire.resumeSid.bad": {
+      "kind": "error",
+      "zh": "会话 ID {value} 不合形状（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
+      "args": ["value"]
+    },
+    "rsLaunchWire.resumeSid.notInArgs": {
+      "kind": "error",
+      "zh": "要接着聊的会话 ID {value} 和要跑的参数对不上，请求格式不对",
+      "args": ["value"]
     },
     "rsLaunchWire.attach.withPayload": {
       "kind": "error",
@@ -13904,7 +13904,7 @@
     },
     "rsRemoteBranch.forkId.badChar": {
       "kind": "error",
-      "zh": "{what} 含非法字符（只许字母/数字/连字符）",
+      "zh": "{what} 含非法字符（只许字母/数字/连字符，且不以连字符开头）",
       "args": ["what"]
     },
     "rsRemoteBranch.forkId.badLength": {
@@ -14111,6 +14111,16 @@
       "kind": "body",
       "zh": "本机",
       "args": []
+    },
+    "rsCcmInvocation.refusal.idSid": {
+      "kind": "error",
+      "zh": "会话 ID {value} 不合形状（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
+      "args": ["value"]
+    },
+    "rsCcmInvocation.refusal.idCcmSid": {
+      "kind": "error",
+      "zh": "会话标记 {value} 不合形状（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
+      "args": ["value"]
     },
     "rsCcmInvocation.refusal.freeTextCwd": {
       "kind": "error",
@@ -15995,6 +16005,16 @@
       "zh": "请求格式不对：{detail}",
       "args": ["detail"]
     },
+    "beArgv.validate.badSid": {
+      "kind": "error",
+      "zh": "会话 ID {sid} 不合形状（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
+      "args": ["sid"]
+    },
+    "beArgv.validate.badCcmSid": {
+      "kind": "error",
+      "zh": "会话标记 {sid} 不合形状（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
+      "args": ["sid"]
+    },
     "beArgv.validate.noResume": {
       "kind": "error",
       "zh": "{agent} 不支持 resume",
@@ -17123,11 +17143,6 @@
       "kind": "error",
       "zh": "问不出 {machine} 上已有哪些 tmux 会话。新会话的名字可能撞上已有的、接进别的会话里，所以这次没有起。原因：{reason}",
       "args": ["machine", "reason"]
-    },
-    "localResume.build.failed": {
-      "kind": "error",
-      "zh": "无法构造 resume 命令",
-      "args": []
     },
     "localResume.launch.failed": {
       "kind": "error",

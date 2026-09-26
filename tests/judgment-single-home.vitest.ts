@@ -49,7 +49,8 @@ import { stripComments } from "./test-support/strip-comments.ts";
 
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7" | "J8"
-  | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16";
+  | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
+  | "J17" | "J18";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -128,16 +129,14 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J5: {
     what: "session id 形状",
-    homes: [
-      "branch-core::is_plain_sid",
-      "src/backend/control/resolve_query.rs::is_valid_session_id",
-      `${PAYLOAD_RS}::ccm_sid_safe`,
-    ],
-    status: "open",
-    defs: ["isValidSessionId"],
-    needles: [],
-    owner: "主会话拍（DUP1.md §4 ②）",
-    why: "Rust 侧五份规则互不相同，唯一住址待定；载荷路上拒前导 `-` 只有 TS 这一道",
+    // 〔DUP1 子步 6 · 主会话 09-26 交「J5 那一族统一」〕唯一住址 `shell-quote-core::session_id_ok`（今天各处规则的交集）：
+    //   `branch_core::is_plain_sid` 成它的再导出；monitor 载荷 `@ccm_sid` · 载荷线 `resumeSid` · `ccm …` 调用行 · 本机拉起 ·
+    //   分叉 id，后端 ccm argv 都调它。⚠ 后端 `resolve_query.rs::is_valid_session_id` 刻意没收：行为冻结给仓外 aterm（V126）。
+    //   TS：`isValidSessionId` 与只剩那一格的 `validateLocalLaunch` 删。
+    homes: ["shell-quote-core::session_id_ok", "src/backend/control/resolve_query.rs::is_valid_session_id"],
+    status: "zero",
+    defs: ["isValidSessionId", "validateLocalLaunch"],
+    needles: [{ text: "[A-Za-z0-9_-]{0,127}", count: 0 }],
   },
   J6: {
     what: "tmux 会话名形状",
@@ -231,6 +230,24 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     owner: "`90` 阶段 F（4D LOC1b）",
     why: "多机合并今天在前端；收口到 search-core ＋ 后端是阶段 F",
   },
+  J17: {
+    what: "模型名能不能交出去（`ANTHROPIC_MODEL` · `--model`）",
+    homes: ["shell-quote-core::model_name_ok"],
+    status: "open",
+    defs: ["isValidModelName"],
+    needles: [{ text: "[A-Za-z0-9._-]{1,128}", count: 1 }],
+    owner: "DUP1 子步 7",
+    why: "TS 那份会拒 sonnet[1m] 与 Bedrock / Vertex 名；Rust 侧此前零判定（主会话 09-26 交：两侧同一份、住共享 crate）",
+  },
+  J18: {
+    what: "账号名（`--account <名>`）",
+    homes: ["shell-quote-core::account_name_ok"],
+    status: "open",
+    defs: ["validateAcctName"],
+    needles: [],
+    owner: "主会话拍（DUP1.md §4 ①：新建账号表单逐字反馈）",
+    why: "TS 那份比建账号的工具宽（放行 `.` 与 33–64 位，建时由那个工具在终端里拒）；Rust 那份与工具逐字同",
+  },
   J16: {
     what: "账号种类的取值集",
     homes: ["acct-core::AUTH_KINDS"],
@@ -271,7 +288,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   "branch-core": {
     build_branch_records: NONE,
     find_session_file: NONE,
-    is_plain_sid: "J5",
+    // 〔DUP1〕`is_plain_sid` 成 `shell_quote_core::session_id_ok` 的再导出（`pub use`，不再是本 crate 的 `pub fn`）。
     SESSION_LOOKUP_DEPTH: NONE,
   },
   "codex-token-core": {
@@ -376,6 +393,15 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     free_text_ok: NONE,
     posix_free_path_ok: NONE,
     posix_quote: "J4",
+    // 〔DUP1〕`INVARIANTS §47` ① 标识符那一层。常量是规则的一部分（上界 · 放行的标点），TS 侧不抄它们：
+    //   模型名那两格由 monitor 现生成进 `src/generated/judgment-rules.ts`（生成物不是孪生）⇒ NONE。
+    SESSION_ID_MAX: NONE,
+    session_id_ok: "J5",
+    MODEL_NAME_MAX: NONE,
+    MODEL_NAME_EXTRA: NONE,
+    model_name_ok: "J17",
+    ACCOUNT_NAME_MAX: NONE,
+    account_name_ok: "J18",
   },
 };
 

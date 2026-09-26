@@ -4404,7 +4404,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔LOC1b · 第四波 4D〕本机搜索改问本机后端（monitor 内存索引删了）⇒ 界面那两份点旧命令 / 旧函数名的散文各挂墓碑；
         //   冷读本机远端合成一条 ⇒ 漂移账登记表那一行旁注挂一块。
         ("src/views/history-search.ts", 1),
-        ("src/views/history.ts", 2),
+        ("src/views/history.ts", 3), // 〔DUP1〕+1：新开那一支原先调的 `validateLocalLaunch`
         ("tests/bridge/drift_ledger_tests.rs", 1),
         ("src/bridge/src/remote_history.rs", 7), // 〔LOC1b〕+1：远端那一支的读会话函数随本机远端合成一条删了 · 远端全文搜索那份 fan-out ·〔合并 RW1〕+1：F11 改经远端后端删，远端那一支的头注一块 ·〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑 ·〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
         ("tests/bridge/local_read_surface_registry_tests.rs", 2), // 〔C4c〕+1：`accounts.rs` 那一行摘掉处的「降级说明」旧名 // 棘轮史里 E79 那一格
@@ -4497,7 +4497,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/spawn_managed.rs", 4), // 〔LOC1a〕+2：一次性本机查询那一格删了，点旧名的散文挂墓碑
         ("src/bridge/src/structural_scan.rs", 1),
         ("src/doc/ARCHITECTURE.md", 2), // 〔LOC1a〕+1：本机一次性 exec / 任务行解释 / 分叉 exec 那几条路删了，点旧名的散文挂墓碑
-        ("src/doc/INVARIANTS.md", 11), // 〔DUP1〕+1：U8c-1「变严的代价」那一节补一句「收口了，收法是删」 // 〔LOC1b〕+1：§6 探活双重校验那一格搬去后端，点 monitor 旧函数名那句挂一块 // 〔RW1〕+2：§1 例外 3 那道远端删会话守卫 · 例外 1 本机那道路径守卫（`validate_delete_target`）
+        ("src/doc/INVARIANTS.md", 12), // 〔DUP1〕+2：U8c-1「变严的代价」那一节补一句「收口了，收法是删」· §36 记 `validateLocalLaunch` 删了 // 〔LOC1b〕+1：§6 探活双重校验那一格搬去后端，点 monitor 旧函数名那句挂一块 // 〔RW1〕+2：§1 例外 3 那道远端删会话守卫 · 例外 1 本机那道路径守卫（`validate_delete_target`）
         //   〔LR2〕+3：§33b 产出方表 `session-backend.ts` 那格 · 三问表 ③ 那格 · 「删掉座的代价也换人了」那段 —— 点着随 TS 兜底一族删掉 / 改写的判据
         //   ⇒ 6（基）＋1（LOC1b）＋3（LR2）= 10
         ("src/doc/IPC-PROTOCOL.md", 5), // 〔CFG1〕+1：整份写口 `save_config` 删了，讲来历那一句挂墓碑
@@ -4510,7 +4510,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔SR1b · 2026-09-24〕2 → 3：远端写那一层「今天一处远端写都没有」那条判据随 V89 改写成
         //   「只住一份文件、只许两处」，旧名留一块墓碑（`TOMBSTONED` 同拍登记）。
         ("tests/backend/readonly_guard.rs", 3),
-        ("tests/bridge/backend/control/backend_kill_tests.rs", 2), // 〔C4e 批 2〕+1：头注点删掉的发送端 ＋ 拒绝文案那条退役的墓碑（原那一块换成它）
+        ("tests/bridge/backend/control/backend_kill_tests.rs", 3), // 〔DUP1〕+1：`@ccm_sid` 原先那份白名单 // 〔C4e 批 2〕+1：头注点删掉的发送端 ＋ 拒绝文案那条退役的墓碑（原那一块换成它）
         // 〔C4e 批 2〕`tests/bridge/backend/control/backend_send_keys_tests.rs` 那一行删了：整份随送键发送端迁到界面删掉（它钉的 mode 名 / 拒绝文案搬到界面与跨语言金样）。
         ("tests/bridge/backend/control/cc_bus_deploy_tests.rs", 1),
         // 〔BS1b 09-24〕2 → 7：`fn_body` 头注两处点那个删了的构造器 · 写面判据头注两处点那句删了的拒绝 ·
@@ -4647,7 +4647,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/control/cc_bus.rs", 1),
         //   几份 vitest 的 invoke 替身换成通道那一跳的翻译（`chan-fake.ts::tmuxControlShim`），头注点旧命令名。
         ("tests/account-restart.vitest.ts", 1),
-        ("tests/remote-launch-run.vitest.ts", 3),
+        ("tests/remote-launch-run.vitest.ts", 4), // 〔DUP1〕+1：非法 sid 那条改测「渲染侧拒」
         ("tests/send-into-backend.vitest.ts", 2),
         ("tests/tabs.vitest.ts", 1),
         ("tests/views/pane-preview.vitest.ts", 1),
@@ -4683,11 +4683,17 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/account-availability-guard.vitest.ts", 1),
         // 〔DUP1 · 4D〕同一判据 J2 / J3：TS 的 `isValidConfigDir`（渲染侧 configDir 拒绝集的手抄）与 `sanitizeRemoteLauncher`
         //   （同一字符集、却静默换成默认 launcher）删了，点它们的散文各挂一块。
-        ("src/shell-quote.ts", 2),
-        ("src/launch-dimensions.ts", 1),
-        ("tests/launch-dimensions.test.ts", 1),
-        ("tests/remote-launch.test.ts", 2),
+        ("src/shell-quote.ts", 3), // 〔DUP1〕+1：头注记 `isValidSessionId` 删了
+        ("src/launch-dimensions.ts", 2), // 〔DUP1〕+1：identity 维度原先先过 `isValidSessionId`
+        ("tests/launch-dimensions.test.ts", 2), // 〔DUP1〕+1：identity 那条改测「前端不判」
+        ("tests/remote-launch.test.ts", 4), // 〔DUP1〕+2：`isValidSessionId` 五条 · 直起非法 sid 那条
         ("tests/test-support/launch-payload-golden.ts", 1),
+        // 〔DUP1 · 第二轮〕sid 那一族（J5）：TS `isValidSessionId` 与只剩那一格的 `validateLocalLaunch` 删了、wire 多报一格 `resumeSid`。
+        ("src/bridge/src/backend/control/launch_wire.rs", 1),
+        ("src/launch-requests.ts", 2),
+        ("src/local-resume.ts", 1),
+        ("tests/launch-requests.vitest.ts", 2),
+        ("tests/launch-orchestration-single-home.vitest.ts", 1),
     ];
 
     /// **挂歪了 / 在谈这件机制本身**的那些行，逐份登记**行数**。

@@ -4,11 +4,10 @@
  * （调用方 toast 依赖这些文案）。`remote-launch.ts` 的 builder 改造后只剩「调这里 + 交渲染器」。
  */
 import { AGENT_PROFILE } from "./agent-profile.ts";
-import { isValidSessionId, isValidTmuxName, isValidNewTmuxName } from "./shell-quote.ts";
+import { isValidTmuxName, isValidNewTmuxName } from "./shell-quote.ts";
 import { buildLaunchPlan } from "./launch-plan.ts";
 import type {
   LaunchAccount,
-  LaunchAction,
   LaunchContext,
   LaunchModifiers,
   LaunchPlan,
@@ -46,9 +45,6 @@ export function planResumeDirect(
   mods: LaunchModifiers = {},
 ): LaunchPlanBuild {
   const { configDir, accountName, modelOverride, rbindToken } = mods;
-  if (!isValidSessionId(sid)) {
-    throw new Error(copyText("launchRequests.bad.sid", { value: JSON.stringify(sid) }));
-  }
   const ctx: LaunchContext = {
     transport: { kind: "ssh" },
     action: { kind: "resume", sid },
@@ -72,9 +68,6 @@ export function planResumeTmux(
   mods: LaunchModifiers = {},
 ): LaunchPlanBuild {
   const { configDir, accountName, modelOverride, rbindToken } = mods;
-  if (!isValidSessionId(sid)) {
-    throw new Error(copyText("launchRequests.bad.sid", { value: JSON.stringify(sid) }));
-  }
   // F13（用户 2026-08-03：「要撞名检查」）：**这里原本有一个产名的默认值，已删。**
   //
   // 它是撞名的根因之一：它产的 `<sid8>-cc` 与那个铸名口（`K-R96` 之前叫 `pickFreshTmuxName`，
@@ -114,9 +107,6 @@ export function planResumeIntoExistingTmux(
   mods: LaunchModifiers = {},
 ): LaunchPlanBuild {
   const { configDir, accountName, modelOverride, rbindToken } = mods;
-  if (!isValidSessionId(sid)) {
-    throw new Error(copyText("launchRequests.bad.sid", { value: JSON.stringify(sid) }));
-  }
   if (!/^[A-Za-z0-9_][A-Za-z0-9_-]*$/.test(name)) {
     throw new Error(copyText("launchRequests.bad.tmuxName", { value: JSON.stringify(name) }));
   }
@@ -160,39 +150,10 @@ export function planLauncher(
   return { ctx, plan: buildLaunchPlan(ctx) };
 }
 
-/**
- * 本地（Windows）路径在发起 IPC 之前的**前置校验**。**只做校验，不构造任何 IR。**
- *
- * **R07（原 `planLocal`，原返回 `LaunchPlanBuild`，原内部还跑一遍 `buildLaunchPlan`）。**
- * 原名 + 原返回值合起来暗示"本地路径也经这套 IR 产出命令"，而事实是：4 个生产调用点
- * （`views/history.ts` ×2、`views/session-viewer.ts`、`tabs.ts`）**全部把返回值当语句丢弃**，
- * 真命令由 Rust 独立构造（`invoke("resume_history_session")` / `invoke("new_local_session")`
- * → `history.rs::build_local_ps_command`，三个实参无一来自 plan）。
- *
- * **为什么连 `buildLaunchPlan` 那一遍也删掉**（Phase D 审计发现，初稿保留了它并声称是
- * "一道便宜的一致性检查"）：那个声称**零门禁守护**——审计实测把整段 ctx 构造 + 调用删掉、
- * 只留一句 `void cwd;`，`tsc` 与 `npm test` **705 全绿**（改造前同一变异红 5 条，
- * 因为那时返回类型让这次调用在**类型层**是承重的；改成 `void` 恰恰把类型层强制降级成了
- * 一句谁都能顺手删的裸语句）。而它想验的东西**别处已经在验**：
- * 当时 `launch-render-cli.test.ts` 有 `ctxOf({ transport: { kind: "local" } })` → `buildLaunchPlan` 的用例
- * （〔LR1〕那份套件随 TS 渲染器删了；`transport:local` 下 `buildLaunchPlan` 照走，由 `tests/launch-requests.vitest.ts` 管）。
- * 生产侧它纯属浪费，且是 **fail-closed 风险**——将来任何对 `transport:local` 抛异常的新维度，
- * 都会让本地 resume 彻底拉不起来，而收益是零。
- *
- * **为什么不"真接上"**（R07 明确否决的选项，**理由经 Phase D 审计订正**）：
- * 初稿引的是 F06 的 `Get-Command` 论证——那条**真实存在**（`F06-local-path-ir.md:27-30`），
- * 但它排除的是"**TS 全量渲染好字符串、Rust 只管 exec**"这一形态，**并不排除**
- * "TS 构造 IR、Rust 只做 `Get-Command` 那一步补全"。真正支撑否决的是 F06 §3.2 实现期修正：
- * **`plan.action`/`plan.cwd` 在当前维度注册表下恒等于输入，取回来没有信息增量**
- * （`plan.launcher` 更是恒 `""`，因为本地不传 `launcherOverride`）。
- * 即"不接"是因为**接了也拿不到新东西**，不是因为技术上不可能。见 `src/doc/INVARIANTS.md` §36。
- */
-export function validateLocalLaunch(action: LaunchAction, cwd: string | null): void {
-  void cwd; // 保留在签名里：调用点按「动作 + 目录」成对传，未来若加 cwd 校验就落在这
-  if (action.kind === "resume" && !isValidSessionId(action.sid)) {
-    throw new Error(copyText("launchRequests.bad.sid", { value: JSON.stringify(action.sid) }));
-  }
-}
+// 〔DUP1 · `设计/90 §3` 判据 2〕这里原来有 `validateLocalLaunch`〔散文墓碑〕—— 本机路径在发起 IPC 之前的「前置校验」，
+// 它唯一的一格是 sid 字符集（TS `isValidSessionId`〔散文墓碑〕）。本机拉起那条路上 Rust 侧自己判同一件事
+// （`history.rs` 本机决策那一处，今天调共享那一份 `shell_quote_core::session_id_ok`）⇒ 前端这份删了，四个调用点一起去掉。
+// R07 那段「为什么不真接上本地 IR」的论证原文住 `src/doc/INVARIANTS.md` §36。
 
 /** 原先对应 `remote-launch.ts` 的 `buildAttachCmd`（〔LR2〕那五个 builder 已删，生产走 `buildLaunchRenderRequest` → Rust）：接回一个已存在的 tmux 会话，不启动任何东西。
  *

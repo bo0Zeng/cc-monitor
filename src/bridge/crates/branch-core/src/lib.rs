@@ -137,14 +137,14 @@ use std::path::{Path, PathBuf};
 /// 而它们不是可分叉的会话 —— 同一件事的另一半是上面那条 sidechain 判据。
 pub const SESSION_LOOKUP_DEPTH: usize = 2;
 
-/// sid 的合法形状：非空、不超过 64、只许 `[A-Za-z0-9-]`。
+/// sid 的合法形状 —— 〔DUP1 · `设计/90 §3` 判据 2 · `01 §5` D1〕**规则只有一份**，住 `shell_quote_core::session_id_ok`
+/// （1..=64 位 · 首字符 ASCII 字母数字 · 其余 `[A-Za-z0-9-]`），这里是它的再导出，名字留着好让两侧调用方一个不动。
 ///
 /// 它挡掉 `..`、`/`、`\` 与任何能拼出别处路径的字符。理由不是「防手滑」：
 /// 后端是被远程调起来的，**少一个可被构造的路径入参就少一条路径穿越面**
 /// （`src/doc/INVARIANTS.md` §41.6 三条收窄里的第 3 条）。
-pub fn is_plain_sid(s: &str) -> bool {
-    !s.is_empty() && s.len() <= 64 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
-}
+/// 〔DUP1〕收进共享那一份时多挡了一样：前导 `-`（起会话那几条路要它，这条路只会更严不会更松）。
+pub use shell_quote_core::session_id_ok as is_plain_sid;
 
 /// **两侧唯一的一份「找文件」**：在记录树 `records_root` 下按 sid 找那份 `<sid>.jsonl`。
 ///

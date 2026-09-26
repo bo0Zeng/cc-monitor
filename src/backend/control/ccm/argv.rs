@@ -355,6 +355,20 @@ fn validate(o: &Opts) -> Result<(), Die> {
             &[("size", &o.tmux_size.to_string())],
         ));
     }
+    // 〔DUP1 · `INVARIANTS §47` ①〕标识符在拼进容器路那条 shell 串 / 交给 agent 之前先过放行判定
+    // （判定住 `shell-quote-core`，全仓唯一一份；quote 只管元字符，管不了 `-` 开头的选项注入）。
+    if o.action == Action::Resume && !shell_quote_core::session_id_ok(&o.sid) {
+        return die(copy_text(
+            "beArgv.validate.badSid",
+            &[("sid", &format!("{:?}", o.sid))],
+        ));
+    }
+    if !o.ccm_sid.is_empty() && !shell_quote_core::session_id_ok(&o.ccm_sid) {
+        return die(copy_text(
+            "beArgv.validate.badCcmSid",
+            &[("sid", &format!("{:?}", o.ccm_sid))],
+        ));
+    }
     if o.action == Action::Resume && crate::control::ccm::resume_flag(&o.agent).is_none() {
         return die(copy_text(
             "beArgv.validate.noResume",

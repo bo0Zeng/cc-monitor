@@ -66,10 +66,13 @@ test("identity：有 ccmSid → 设 plan.identity", () => {
   IDENTITY_DIMENSION.apply(plan, ctx);
   eq(plan.identity, { ccmSid: "abc-123" });
 });
-test("identity：非法 ccmSid → throw（拒绝拼入命令）", () => {
+// 〔DUP1 · `设计/90 §3` 判据 2〕这条原来是「非法 ccmSid → throw」（TS 那份 `isValidSessionId`〔散文墓碑〕判的）。
+// 今天前端不判：原样推进 plan，外层 `@ccm_sid` 与 `--ccm-sid=` 由渲染侧过 `shell_quote_core::session_id_ok`。
+test("identity：ccmSid 前端不判，原样推进 plan（判它的是 Rust 渲染侧）", () => {
   const ctx: LaunchContext = { ...baseCtx, ccmSid: "; rm -rf /" };
   const plan: LaunchPlan = { transport: ctx.transport, action: ctx.action, container: ctx.container, cwd: ctx.cwd, env: [], launcher: "", args: [], wrap: [] };
-  throws(() => IDENTITY_DIMENSION.apply(plan, ctx));
+  IDENTITY_DIMENSION.apply(plan, ctx);
+  eq(plan.identity, { ccmSid: "; rm -rf /" });
 });
 
 test("env-reset：仅在 tmux send-into 且无账号时生效", () => {

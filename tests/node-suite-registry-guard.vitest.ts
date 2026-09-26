@@ -83,7 +83,8 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   //    **37 → 39**：`session-backend.test.ts` 里两条与座无关的搬进来（F01 shim 漂移守卫 · P3s-Y2 铸名口数据流）。
   //    〔DUP1〕**39 → 38**（被测对象没了）：`sanitizeRemoteLauncher` 一条 · `isValidConfigDir` 一条随函数删（`设计/90 §3` 判据 2）；
   //    加一条「launcher 空白 ⇒ 默认、注入字符原样上线」（前端只剩缺省那一格）；「非法 configDir 拒」那条改测「前端不判、原样上线」（条数不变）。
-  ["test:remote-launch", "tests/remote-launch.test.ts", 38],
+  //    〔DUP1 · 第二轮〕**38 → 37**：`isValidSessionId` 那条随函数删；三条「非法 sid ⇒ throw」改测「前端不判、resumeSid 单报」（条数不变）。
+  ["test:remote-launch", "tests/remote-launch.test.ts", 37],
   ["test:format", "tests/format.test.ts", 11], // 〔F7b〕+1：basename 随老 SFTP 面板退役从 sftp/paths 搬进 format.ts，判据一起搬来
   ["test:history-cache", "tests/views/history-cache.test.ts", 8],
   ["test:history-prefs", "tests/views/history-prefs.test.ts", 18],
@@ -139,7 +140,8 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
 // 座那份套件里与座无关的两条搬进来）· `launch-dimensions.test.ts` −1（wrap 折叠那条归 Rust 夹具）。删后现打 200 ⇒ 棘到现打值。
 // 〔DUP1〕**200 → 199**，理由同上（**被测对象没了**）：`remote-launch.test.ts` −2 ＋1（TS 的 `sanitizeRemoteLauncher` /
 // `isValidConfigDir` 按 `设计/90 §3` 判据 2 删了，各带走一条；新加一条钉前端只剩「空白 ⇒ 默认启动器」）。删后现打 199 ⇒ 棘到现打值。
-const TOTAL_FLOOR = 199;
+// 〔DUP1 · 第二轮〕**199 → 198**，同上（被测对象没了）：`remote-launch.test.ts` 里 `isValidSessionId` 那条随函数删（J5）。
+const TOTAL_FLOOR = 198;
 
 /** 判定一条 npm 命令是不是「用 tsx 跑某个 `.test.ts`」。`tsx …` 与 `npx tsx …` 都算。 */
 const TSX_SUITE_CMD = /(^|\s)(npx\s+)?tsx\s+(--\S+\s+)*(\S+\.test\.ts)\s*$/;

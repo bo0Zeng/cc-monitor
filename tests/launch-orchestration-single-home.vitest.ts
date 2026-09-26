@@ -155,12 +155,20 @@ describe("K3 · 列不出 ⇒ 不铸名（三态不许压成两态）", () => {
     expect(sent().account).toEqual({ kind: "base" });
   });
 
-  it("本机 resume：sid 不合法 ⇒ 一次 IPC 都不发、出声、回 false", async () => {
-    reply([], undefined);
+  // 〔DUP1 · `设计/90 §3` 判据 2〕这条原来断「sid 不合法 ⇒ 一次 IPC 都不发」（前端那道 `validateLocalLaunch`〔散文墓碑〕判的）。
+  // 今天前端不判 sid：照发给本机后端，后端（`history.rs` 本机决策 → `shell_quote_core::session_id_ok`）拒 ⇒ 出声、回 false。
+  it("本机 resume：sid 不合法 ⇒ 前端不判、照发，后端拒 ⇒ 出声、回 false", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "list_local_tmux"
+        ? Promise.resolve([])
+        : cmd === "resume_history_session"
+          ? Promise.reject('refuse resume: invalid session_id "a b"')
+          : Promise.resolve(undefined),
+    );
     expect(
       await resumeLocalSession({ sid: "a b", cwd: "/p", account: { kind: "explicit", configDir: null, name: null } }),
     ).toBe(false);
-    expect(invokeMock).not.toHaveBeenCalled();
+    expect(invokeMock.mock.calls.map((c) => c[0])).toContain("resume_history_session");
     expect(vi.mocked(showActionFailureToast)).toHaveBeenCalledTimes(1);
   });
 });
