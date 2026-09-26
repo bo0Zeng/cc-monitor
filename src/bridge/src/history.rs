@@ -1934,21 +1934,23 @@ fn carried_seams() -> impl FnOnce() + Send {
 /// 〔TL3〕调用线程上装着的替身（没装的格是 `None`）→ 一个在别的线程上重装它们的闭包；
 /// 三个守卫掉出作用域各自还原（线程池里的线程会被下一趟复用）。
 /// ⚠ 只这一个 `#[cfg(test)]` 支撑项（`structural_scan` 那张「测试专用支撑项只许降」的棘轮数着它）。
+/// ccm 探测那条缝只在非 Windows 上有（`CcmProbeSource` 挂 `#[cfg(not(windows))]`）⇒ Windows 上那一格是空的。
 #[cfg(test)]
-fn carried_seams() -> impl FnOnce() -> (
-    Option<CcmProbeGuard>,
-    Option<InjectFactsGuard>,
-    Option<LaunchSinkGuard>,
-) + Send {
+fn carried_seams() -> impl FnOnce() -> Box<dyn std::any::Any> + Send {
+    #[cfg(not(windows))]
     let probe = CCM_PROBE_OVERRIDE.with(std::cell::Cell::get);
     let facts = INJECT_FACTS_OVERRIDE.with(std::cell::Cell::get);
     let sink = LAUNCH_SINK_OVERRIDE.with(std::cell::Cell::get);
     move || {
-        (
-            probe.map(override_ccm_probe),
+        #[cfg(not(windows))]
+        let probe = probe.map(override_ccm_probe);
+        #[cfg(windows)]
+        let probe = ();
+        Box::new((
+            probe,
             facts.map(override_inject_facts),
             sink.map(override_launch_sink),
-        )
+        ))
     }
 }
 
