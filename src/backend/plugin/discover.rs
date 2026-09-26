@@ -16,6 +16,7 @@
 //! 用户级的 `bin` 目录未必在 `PATH` 里（08-13 实测）⇒ 只靠 `PATH` 会出现
 //! 「明明装了却找不到」。所以固定候选先走一遍，`PATH` 只当兜底。
 
+use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
 /// 这个路径今天是不是一个能跑的文件。
@@ -113,13 +114,22 @@ pub(crate) fn not_installed_message(
     hint: &str,
 ) -> String {
     let places: Vec<String> = fixed.iter().map(|p| p.display().to_string()).collect();
-    format!(
-        "找不到 `{name}`：查过 {}，以及 PATH 上的 {path_dirs} 个目录。{hint}",
-        if places.is_empty() {
-            "<没有可查的固定位置：HOME 也没有>".to_string()
-        } else {
-            places.join(" · ")
-        }
+    copy_text(
+        "beDiscover.notInstalledMessage.notFound",
+        &[
+            ("name", &name.to_string()),
+            (
+                "places",
+                &(if places.is_empty() {
+                    copy_text("beDiscover.notInstalledMessage.noPlaces", &[])
+                } else {
+                    places.join(&copy_text("beDiscover.notInstalledMessage.placesSep", &[]))
+                })
+                .to_string(),
+            ),
+            ("pathDirs", &path_dirs.to_string()),
+            ("hint", &hint.to_string()),
+        ],
     )
 }
 

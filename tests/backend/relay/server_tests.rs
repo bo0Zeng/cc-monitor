@@ -2665,6 +2665,7 @@ fn response_head_keeps_framing_and_forces_close() {
 ///
 /// # 为什么源码扫描不够
 ///
+/// 〔AR1：那条源码扫描 `nodelay_guard` 已按 `设计/15 §2.1` B3 退役，本格是「关了 Nagle」唯一的判据〕
 /// `nodelay_guard` 数的是**文本**：`production_code()` 只剥掉 `#[cfg(test)]` 段与**行首**
 /// `//` 的行，字符串字面量 / 行尾注释 / 块注释里的同形文本**照样被数进去**。
 /// D2 实测（`D2NG1`）：把 `handle` 里真的 `down.set_nodelay(true)?;` **整个删掉**、
@@ -3372,7 +3373,8 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_acc
 /// 手写一份 JSON 只能证「**我以为写侧会产出的那个形状**能走通」——
 /// 写侧哪天换个形状（换个字段名 / 换一层嵌套 / 换个 id），这条判据**照绿**。
 ///
-/// ⇒ 这里调的是 `creds_store::write_key_at` 生产段里逐字那两个纯函数
+/// ⇒ 这里调的是写侧生产段里逐字那两个纯函数（〔GP1 · 第四波〕写侧 ＝ 每台机器那台后端的 `accounts/upstream/file_face.rs`，
+/// 本机也是；monitor 那侧当年的写口 `write_key_at`〔散文墓碑〕删了）
 /// （`store::merge_account_key` + `store::to_pretty_json`），两侧因此**在 `creds-core`
 /// 这个共同祖先上会合**：backend 单向依赖 `src/bridge/crates/*`，够得着它们。
 ///
@@ -3383,12 +3385,12 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_acc
 ///
 /// ⇒ **两条 DoD 合起来才是那条链**，各自都别读宽。这里没有被证到的两跳是：
 /// ① 界面那条 IPC 命令真的被点出去（`KH2C1` 前端那两堵墙，住 `accounts-section` 那一侧）；
-/// ② `write_key_at` 里**写盘那一段**（tmp / 原子替换 / 收窄）——
+/// ② 写口里**写盘那一段**（tmp / 原子替换 / 收窄）——
 ///    本条只走它算内容的那两步，写盘由 monitor 侧那几条既有判据分管。
 ///
 /// ⚠ 另有一跳**本来就不归本条**：id 是怎么从 `configDir` 推出来的
 /// （`history::apikey_account_id_of_dir`，住 monitor，backend 够不着）——
-/// 那一格由 `what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for` 钉。
+/// 那一格由 `file_face_tests::us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses` 钉（〔US1〕写口 → 人群 → 成品，都在后端）。
 /// **本条从「已经有了一个 id」那一刻接手。**
 #[cfg(unix)]
 fn creds_text_the_write_side_would_produce(rows: &[(&str, &str)]) -> String {

@@ -41,6 +41,7 @@ import { setKeybindings } from "./store";
 // F82a：键位改动落盘后广播，主窗口跨窗热应用（事件名在中立模块，避免与 settings/panel 循环）。
 import { emit } from "@tauri-apps/api/event";
 import { SETTINGS_APPLIED_EVENT } from "../settings/events";
+import { copyText } from "../copy-table";
 
 export class KeybindingsEditor implements OverlayHandle {
   private overlay: HTMLElement;
@@ -105,13 +106,13 @@ export class KeybindingsEditor implements OverlayHandle {
     titleBar.className = "kb-editor-titlebar";
     const title = document.createElement("span");
     title.className = "kb-editor-title";
-    title.textContent = "快捷键";
+    title.textContent = copyText("keybindingEditor.build.title");
     titleBar.appendChild(title);
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
     closeBtn.className = "kb-editor-close";
-    closeBtn.title = "关闭";
-    closeBtn.textContent = "×";
+    closeBtn.title = copyText("keybindingEditor.build.closeHint");
+    closeBtn.textContent = copyText("keybindingEditor.build.close");
     closeBtn.addEventListener("click", () => this.close());
     titleBar.appendChild(closeBtn);
     win.appendChild(titleBar);
@@ -120,7 +121,7 @@ export class KeybindingsEditor implements OverlayHandle {
     const hint = document.createElement("div");
     hint.className = "kb-editor-hint";
     hint.textContent =
-      "点 [改] 后按下你想要的组合键。Esc / Backspace 在录制中表示「解绑」。改动即时生效，无需重启。";
+      copyText("keybindingEditor.build.intro");
     win.appendChild(hint);
 
     // 表格容器
@@ -142,7 +143,7 @@ export class KeybindingsEditor implements OverlayHandle {
     const resetAll = document.createElement("button");
     resetAll.type = "button";
     resetAll.className = "kb-editor-reset-all";
-    resetAll.textContent = "全部重置默认";
+    resetAll.textContent = copyText("keybindingEditor.build.resetAll");
     resetAll.addEventListener("click", () => void this.onResetAll());
     footer.appendChild(resetAll);
     win.appendChild(footer);
@@ -198,7 +199,7 @@ export class KeybindingsEditor implements OverlayHandle {
     const recordBtn = document.createElement("button");
     recordBtn.type = "button";
     recordBtn.className = "kb-editor-btn-record";
-    recordBtn.textContent = "改";
+    recordBtn.textContent = copyText("keybindingEditor.buildActionRow.edit");
     recordBtn.disabled = !action.available;
     recordBtn.addEventListener("click", () => this.startRecording(action, chordCell));
     opCell.appendChild(recordBtn);
@@ -206,8 +207,8 @@ export class KeybindingsEditor implements OverlayHandle {
     const resetBtn = document.createElement("button");
     resetBtn.type = "button";
     resetBtn.className = "kb-editor-btn-reset";
-    resetBtn.textContent = "↺";
-    resetBtn.title = "恢复默认";
+    resetBtn.textContent = copyText("keybindingEditor.buildActionRow.reset");
+    resetBtn.title = copyText("keybindingEditor.buildActionRow.resetHint");
     resetBtn.disabled = !action.available;
     resetBtn.addEventListener("click", () => void this.resetOne(action));
     opCell.appendChild(resetBtn);
@@ -228,7 +229,7 @@ export class KeybindingsEditor implements OverlayHandle {
     }
     this.recordingCell = chordCell;
     chordCell.classList.add("kb-editor-recording");
-    chordCell.textContent = "请按下组合键…";
+    chordCell.textContent = copyText("keybindingEditor.startRecording.recording");
 
     dispatcher.startRecording((chord) => {
       // chord = null → Esc/Backspace，意味着「清空 / 解绑」
@@ -262,8 +263,7 @@ export class KeybindingsEditor implements OverlayHandle {
       // Esc 改 overlay.close 自己时：强警告
       if (id === "overlay.close") {
         const ok = window.confirm(
-          "你正在解绑「关闭弹层」的快捷键。解绑后所有弹层只能点 × 关闭，无法用键盘退出。\n\n" +
-            "确定要继续吗？",
+          copyText("keybindingEditor.applyChord.confirmUnbindClose"),
         );
         if (!ok) {
           this.refreshRow(id);
@@ -280,8 +280,7 @@ export class KeybindingsEditor implements OverlayHandle {
     if (id === "overlay.close" && chord !== "Escape") {
       const pretty = KeybindingDispatcher.prettyChord(chord);
       const ok = window.confirm(
-        `你正在把「关闭弹层」改成 ${pretty}。\n\n` +
-          "改后按 Esc 不再自动关弹层，必须按新键或点 × 才能关。\n\n确定吗？",
+        copyText("keybindingEditor.applyChord.confirmRebindClose", { pretty }),
       );
       if (!ok) {
         this.refreshRow(id);
@@ -296,8 +295,7 @@ export class KeybindingsEditor implements OverlayHandle {
       const ownerLabel = ownerAction?.label ?? owner;
       const pretty = KeybindingDispatcher.prettyChord(chord);
       const ok = window.confirm(
-        `${pretty} 当前是「${ownerLabel}」。要覆盖吗？\n\n` +
-          `「${ownerLabel}」会被解绑（变成「未绑定」）。`,
+        copyText("keybindingEditor.applyChord.confirmOverride", { pretty, ownerLabel }),
       );
       if (!ok) {
         this.refreshRow(id);
@@ -326,7 +324,7 @@ export class KeybindingsEditor implements OverlayHandle {
   }
 
   private async onResetAll(): Promise<void> {
-    if (!window.confirm("确定恢复全部快捷键到默认？所有自定义会丢失。")) return;
+    if (!window.confirm(copyText("keybindingEditor.onResetAll.confirmResetAll"))) return;
     for (const a of ACTIONS) {
       dispatcher.setOverride(a.id as ActionId, "");
     }

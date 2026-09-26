@@ -55,6 +55,7 @@
 
 use crate::backend::control::inbound_client::CallError;
 use crate::chan::wire as w;
+use crate::copy_table::copy_text;
 
 /// 一条走后端的控制命令的结局。**三态**，分界线见模块头注。
 #[derive(Debug, PartialEq, Eq)]
@@ -93,13 +94,11 @@ pub(crate) fn layer_call_error(e: &CallError, hop: u8) -> Layered {
     let at = |tag: &'static str| w::HopId { idx: hop, tag };
     let text = |s: String| Detail::Text(s);
     match e {
-        CallError::Unsupported { cmd, offered } => Layered {
+        CallError::Unsupported { .. } => Layered {
             error: w::CallError::Peer {
                 why: w::PeerFault::Unsupported,
             },
-            detail: text(format!(
-                "远端后端没声明 `{cmd}` 能力（它声明的是 {offered:?}）—— 多半是旧版本"
-            )),
+            detail: text(copy_text("rsBackendRoute.layer.unsupported", &[])),
         },
         CallError::TooManyPending => Layered {
             error: w::CallError::Hop {
@@ -107,7 +106,7 @@ pub(crate) fn layer_call_error(e: &CallError, hop: u8) -> Layered {
                 reach: w::Reach::NotSent,
                 why: w::HopFault::Overrun,
             },
-            detail: text("入方向同时在等的命令已达上限，这条没入队".into()),
+            detail: text(copy_text("rsBackendRoute.layer.tooMany", &[]).into()),
         },
         CallError::Disconnected => Layered {
             error: w::CallError::Hop {
@@ -203,9 +202,9 @@ pub(crate) fn route_call_error(e: &CallError, refusal: impl Fn(&str, &str) -> St
     match (provably_not_sent, detail) {
         (true, Detail::Text(s)) => Routed::NoChannel(s),
         (true, Detail::Remote { code, message }) => Routed::NoChannel(refusal(&code, &message)),
-        (false, Detail::Text(s)) => Routed::Refused(format!(
-            "{s} —— ⚠ 无法确认远端是否已经执行过这条命令，因此**不**再用另一条路重做一次；\
-             请刷新会话列表后再决定"
+        (false, Detail::Text(s)) => Routed::Refused(copy_text(
+            "rsBackendRoute.route.unsure",
+            &[("s", &s.to_string())],
         )),
         (false, Detail::Remote { code, message }) => Routed::Refused(refusal(&code, &message)),
     }
@@ -213,8 +212,9 @@ pub(crate) fn route_call_error(e: &CallError, refusal: impl Fn(&str, &str) -> St
 
 /// 没有控制通道（`client_for` 回 `None`）—— **一个字节都没发出去**，可回落。
 pub(crate) fn no_channel(origin: &str) -> Routed {
-    Routed::NoChannel(format!(
-        "[{origin}] 没有可用的控制通道（backend 未在场或长连接未握手）"
+    Routed::NoChannel(copy_text(
+        "rsBackendRoute.noChannel.message",
+        &[("origin", &origin.to_string())],
     ))
 }
 

@@ -219,7 +219,7 @@ describe("远端那一批的 fan-out（失败语义原样搬自 monitor 那一�
   it("全部失败 ⇒ 抛（与「没配远端」分开）", async () => {
     invokeMock.mockImplementation(byOrigin(["dev", "box"]));
     await expect(fetchRemoteProjects()).rejects.toThrow(
-      "所有远端历史查询失败（2 台）",
+      "2 台远端的历史都没拿到",
     );
   });
 });

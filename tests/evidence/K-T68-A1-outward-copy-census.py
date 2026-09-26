@@ -89,6 +89,7 @@ import json
 import re
 import sys
 import tempfile
+import unicodedata
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -107,6 +108,9 @@ EXCLUDED_DIRS = (
     "src/bridge/icons",
     "src/bridge/capabilities",
     "src/doc",                  # 文档
+    # 〔CP2c · 第四波 4C〕判据支撑库：只进 monitor / 后端的 `[dev-dependencies]`（与下面 `guard_support.rs`
+    # 被排除同一条理由 —— 判据支撑，不是生产面）。它的 `Err(…)` 是判据红时印给开发者看的，不是对外文案。
+    "src/bridge/crates/guard-core",
 )
 EXCLUDED_FILE_RE = re.compile(
     r"(\.vitest\.ts|\.test\.ts|\.spec\.ts|\.d\.ts)$"
@@ -132,6 +136,39 @@ RS_CHAR_LIT = re.compile(r"'(?:[^'\\\n]|\\(?:x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]{1,6}
 
 CJK = re.compile(r"[㐀-䶿一-鿿豈-﫿]")
 
+# 〔CP2b · 第四波 4C · 用户 09-24 裁「符号也进表」（99 §1 V99）〕**纯符号串**也是文案：
+# 剥掉空白后非空、无插值、每个字符都是「非 ASCII · 非汉字 · 非字母（Unicode L*）」的字面量
+# （「✕」「↗」「▶」「✓」「—」「×」「、」「…」）。只有标点与插值的模板（`{…}：{…}`）**不算** ——
+# 那是排版不是一句话，换语言时才要进表，而多语言 V98 裁了先不做（登记的缺口，写在 CP2b 记录 §1）。
+def is_symbol_text(text: str) -> bool:
+    s = re.sub(r"\s", "", text)
+    if not s or "{" in text:
+        return False
+    for ch in s:
+        if ord(ch) < 128 or CJK.match(ch) or unicodedata.category(ch).startswith("L"):
+            return False
+    return True
+
+
+def is_copy_text(text: str) -> bool:
+    """定义 (D) 的判准：含汉字，或是纯符号串（V99）。"""
+    return bool(CJK.search(text)) or is_symbol_text(text)
+
+
+# 〔CP2b〕**普查读表**（`91 §5.6`：「全量抽表那一波要同拍把左边改成『普查主集 ＋ 表条数』」）：
+# 出口里的 `copyText("key"…)`（TS）/ `copy_text("key"…)`（monitor Rust）也是一条对外文案 ——
+# 记成主集条目，`via="table"`，文本与 kind 取表里那一条。字面量那些记 `via="literal"`。
+# ⇒ 抽表不会把全集抽空：各桶的反空真地板照旧有意义。
+TABLE_PATH = REPO / "src" / "shared" / "copy" / "table.json"
+COPY_REF = re.compile(r"(?<![\w.])copy(?:Text|_text)\s*\(\s*\"([A-Za-z0-9.]+)\"")
+
+
+def load_copy_table() -> dict:
+    try:
+        return json.loads(TABLE_PATH.read_text(encoding="utf-8")).get("entries", {})
+    except (OSError, ValueError):
+        return {}
+
 # ── 地板：低于它说明尺子没切到东西，必须报空转而不是报 0 ──────────────────────
 FLOORS = {
     "files_scanned": 150,       # 扫到的生产文件数
@@ -146,6 +183,8 @@ FLOORS = {
     "kind_resolved": 50,        # 至少这么多条 kind 是靠 tag 回溯定下来的
     "kind_title": 5,            # `title` 档（R5 的射程）不能是空的
     "bucket_copy_field": 30,    # 第 2 层出口（文案字段）不能空转
+    # 〔CP2b〕普查读表的反空真：表里有条目、出口里有取文口调用，却一条 via=table 都没认出来 ⇒ 读表那一格瞎了。
+    "via_table": 50,
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -244,7 +283,8 @@ SINKS = [
     dict(id="show.prompt", lang="ts", bucket="confirm", mode="call", kind="body",
          re=re.compile(r"(?<![\w.])(?:window\.)?prompt\s*\(")),
     dict(id="show.status", lang="ts", bucket="dom-text", mode="call", kind="body",
-         re=re.compile(r"\.(?:showBanner|showLoading|showMessage|showResultText|"
+         # 〔CP2b〕`console.info(…)` 不是展示助手（定义 §二 第 2 条明写排除 console）—— 旧正则把它一起吃进了主集。
+         re=re.compile(r"(?<!console)\.(?:showBanner|showLoading|showMessage|showResultText|"
                        r"renderSidebarStatus|info|note|showToast)\s*\(")),
     dict(id="show.section", lang="ts", bucket="dom-text", mode="call", kind="title",
          re=re.compile(r"\.(?:safeBlock|buildGroup|edgeSection|sidebarHeader|cardHeader)\s*\(|"
@@ -920,6 +960,7 @@ def scan(root: Path):
     ccbus_excluded = 0
     files = production_files(root)
     scanned_lines = 0
+    table = load_copy_table()
 
     for path, rel in files:
         try:
@@ -935,6 +976,7 @@ def scan(root: Path):
         tagmap = build_tag_map(masked) if lang == "ts" else {}
 
         consumed = set()   # 已被某个出口吃掉的字面量起点
+        consumed_refs = set()  # 〔CP2b〕已被某个出口吃掉的 copyText / copy_text 调用起点
         for sink in SINKS:
             if sink["lang"] not in (lang, "both"):
                 continue
@@ -964,7 +1006,7 @@ def scan(root: Path):
                 for s, e, text in iter_strings(masked, lang, lo, hi):
                     if s in consumed:
                         continue
-                    if not CJK.search(text):
+                    if not is_copy_text(text):
                         if text.strip() and re.search(r"[A-Za-z]{2,}", text) and not re.fullmatch(
                             r"[\w./\-:#{}\[\]$… ]*", text
                         ):
@@ -993,7 +1035,24 @@ def scan(root: Path):
                         sink=sink["id"], kind=kind, kind_src=ksrc, lang=lang,
                         track=track_of(rel, lang), text=text,
                         params=text.count("{…}") + len(re.findall(r"\{[a-zA-Z_][\w.]*\}", text)),
-                        site=(rel, line_of(masked, m.start()), sink["id"]),
+                        site=(rel, line_of(masked, m.start()), sink["id"]), via="literal",
+                    ))
+                # 〔CP2b〕普查读表：出口里的取文口调用
+                for rm in COPY_REF.finditer(masked, lo, hi):
+                    if rm.start() in consumed_refs:
+                        continue
+                    consumed_refs.add(rm.start())
+                    got_any = True
+                    if is_ccbus:
+                        continue
+                    ent = table.get(rm.group(1), {})
+                    zh = ent.get("zh", "")
+                    entries.append(dict(
+                        file=rel, line=line_of(masked, rm.start()), bucket=sink["bucket"],
+                        sink=sink["id"], kind=ent.get("kind", "unresolved"), kind_src="table", lang=lang,
+                        track=track_of(rel, lang), text=zh,
+                        params=len(re.findall(r"\{[a-zA-Z_][\w.]*\}", zh)),
+                        site=(rel, line_of(masked, m.start()), sink["id"]), via="table", key=rm.group(1),
                     ))
                 if got_any:
                     pass
@@ -1001,7 +1060,7 @@ def scan(root: Path):
         # 残差：所有含汉字的字面量里，没被任何出口吃掉的那些
         encl_of = enclosing_calls(masked, lang)
         for s, e, text in iter_strings(masked, lang, 0, len(masked)):
-            if s in consumed or not CJK.search(text):
+            if s in consumed or not is_copy_text(text):
                 continue
             ctx = masked[max(0, s - 60):s]
             ctx = re.sub(r"\s+", " ", ctx).strip()[-48:]
@@ -1119,7 +1178,15 @@ def main_report(args) -> int:
     P("\n【面①】全集读数 —— 「列不出来」到此为止")
     t1 = [e for e in main if e["bucket"] != "copy-field"]
     t2 = [e for e in main if e["bucket"] == "copy-field"]
-    P(f"  🔴 对外文案**条目**（对账的左边，要与表里条数**相等**）      : {len(main)}")
+    P(f"  🔴 对外文案**条目**（字面量 ＋ 出口里的取文口调用）          : {len(main)}")
+    lit = [e for e in main if e.get("via") == "literal"]
+    via_tab = [e for e in main if e.get("via") == "table"]
+    table = load_copy_table()
+    P(f"     · 〔CP2b〕仍是源码字面量（via=literal，抽表的靶子）         : {len(lit)}")
+    P(f"       其中纯符号串（V99「符号也进表」）                      : {sum(1 for e in lit if is_symbol_text(e['text']))}")
+    P(f"     · 〔CP2b〕出口里经文案表取文（via=table）                  : {len(via_tab)}")
+    P(f"     文案表条数（src/shared/copy/table.json）                  : {len(table)}")
+    P(f"       其中 key 在某个出口里被直接引用的                       : {len({e.get('key') for e in via_tab})}")
     P(f"     · 第 1 层 直接渲染面（toast / DOM / 属性 / Err …）        : {len(t1)}")
     P(f"     · 第 2 层 文案字段（装进结构体再由渲染层取出来贴）        : {len(t2)}")
     P(f"     对外文案**调用点**（一处调用可带多条条目）                : {len(sites)}")
@@ -1348,6 +1415,7 @@ def main_report(args) -> int:
         "kind_resolved": sum(1 for e in main if e["kind_src"] == "tag"),
         "kind_title": kc.get("title", 0),
         "bucket_copy_field": bc.get("copy-field", 0),
+        "via_table": sum(1 for e in main if e.get("via") == "table"),
     }
     bad = []
     for k, floor in FLOORS.items():
@@ -1364,6 +1432,8 @@ def main_report(args) -> int:
 
     if args.json:
         P(json.dumps(dict(entries=len(main), sites=len(sites), files=len(efiles),
+                          literal=sum(1 for e in main if e.get("via") == "literal"),
+                          via_table=sum(1 for e in main if e.get("via") == "table"),
                           buckets=dict(bc), kinds=dict(kc), floors_failed=bad,
                           r1=len(r1_all), r5_title=len(r5_title), unresolved=unres),
                      ensure_ascii=False))

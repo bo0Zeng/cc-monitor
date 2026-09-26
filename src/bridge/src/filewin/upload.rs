@@ -23,9 +23,11 @@
 //! - 真窗口里的点击：判据喂的是状态机与判定（纯函数），按钮挂在工具栏上那一跳由 `shell_tests` 另判。
 
 use super::transfer::Pending;
+use crate::copy_table::copy_text;
 
 /// 工具栏上那颗按钮的字面。**唯一住址**（判据按同一个常量去找它画出来的字）。
-pub const UPLOAD_LABEL: &str = "上传";
+pub static UPLOAD_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinUpload.label.upload", &[]));
 
 /// 那一问正摆着的样子。`text` 是框里正在编辑的那几个字（一行一个本机路径）。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -58,16 +60,24 @@ pub fn judge_upload(text: &str, remote_dir: &str, is_file: impl Fn(&str) -> bool
         .filter(|l| !l.is_empty())
         .collect();
     if lines.is_empty() {
-        return UploadVerdict::Rejected("要传的文件是空的".to_string());
+        return UploadVerdict::Rejected(copy_text("rsFilewinUpload.judge.empty", &[]));
     }
     let mut out = Vec::with_capacity(lines.len());
     for l in lines {
         if !is_file(l) {
-            return UploadVerdict::Rejected(format!("{l} 不是本机上的一份文件"));
+            return UploadVerdict::Rejected(copy_text(
+                "rsFilewinUpload.judge.notLocalFile",
+                &[("path", &l.to_string())],
+            ));
         }
         match Pending::into_remote_dir(l, remote_dir) {
             Some(p) => out.push(p),
-            None => return UploadVerdict::Rejected(format!("{l} 取不到名字")),
+            None => {
+                return UploadVerdict::Rejected(copy_text(
+                    "rsFilewinUpload.judge.noName",
+                    &[("path", &l.to_string())],
+                ))
+            }
         }
     }
     UploadVerdict::Go(out)
@@ -138,8 +148,8 @@ impl UploadPrompt {
         let (mut go, mut cancel) = (false, false);
         let refused = self.refused.clone();
         egui::Modal::new(egui::Id::new("filewin-upload-prompt")).show(ui.ctx(), |ui| {
-            ui.heading("把本机的文件传到这个目录");
-            ui.label("本机路径（一行一个）");
+            ui.heading(&copy_text("rsFilewinUpload.ui.title", &[]));
+            ui.label(&copy_text("rsFilewinUpload.ui.paths", &[]));
             if let Some(text) = self.text_mut() {
                 ui.text_edit_multiline(text);
             }
@@ -147,10 +157,16 @@ impl UploadPrompt {
                 ui.colored_label(egui::Color32::RED, why);
             }
             ui.horizontal(|ui| {
-                if ui.button("确定").clicked() {
+                if ui
+                    .button(&copy_text("rsFilewinUpload.ui.ok", &[]))
+                    .clicked()
+                {
                     go = true;
                 }
-                if ui.button("取消").clicked() {
+                if ui
+                    .button(&copy_text("rsFilewinUpload.ui.cancel", &[]))
+                    .clicked()
+                {
                     cancel = true;
                 }
             });

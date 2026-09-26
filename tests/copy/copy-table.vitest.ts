@@ -111,6 +111,13 @@ export function refsIn(file: string, text: string): { refs: Ref[]; problems: str
 /** Rust 取文口自己住的文件：它里头的 `copy_text` 是定义，不是引用。 */
 const RS_HOME = "src/bridge/src/copy_table.rs";
 const RS_FN = "copy_text";
+/** 〔CP2c〕同一个取文口的 `&'static str` 形（`copy-core` 的宏）。 */
+const RS_STATIC = "copy_static";
+/**
+ * 〔CP2c〕取文口的**定义**住的两份文件：`copy-core` 的实现，与 monitor 那一层转发（`copy_core::copy_text(key, args)`，
+ * key 不是字面量 —— 它是转发，不是引用）。它们不进「引用」一侧。
+ */
+const RS_DEFINITIONS = new Set([RS_HOME, "src/bridge/crates/copy-core/src/lib.rs"]);
 
 /** 剥掉 `//` 行注释（字符串里的 `//` 不算）。块注释本仓生产段不用来写代码，按行注释剥足够。 */
 function stripRustLineComments(text: string): string {
@@ -146,8 +153,10 @@ export function rustRefsIn(file: string, text: string): { refs: Ref[]; problems:
     if (file === RS_HOME && before === "fn ") continue;
     // 别人的同名**方法**（`ui.ctx().copy_text(…)`，egui 的剪贴板）不是我们的取文口。
     if (before.endsWith(".")) continue;
-    if (/^\s*[;,}]/.test(after) || /^::/.test(after) || /use\s[^;]*$/.test(code.slice(code.lastIndexOf("\n", at) + 1, at))) {
-      if (/use\s[^;]*$/.test(code.slice(code.lastIndexOf("\n", at) + 1, at))) continue;
+    // 〔CP2b〕`\buse`：原先裸 `use\s` 把「OursFault::Misuse => copy_text(…)」这一行当成了 `use` 导入 ⇒ 那个调用点
+    //   从「引用」一侧漏掉、表里那条被报成死文案（现打逮到：filewin/source.rs 的 said.internal）。
+    if (/^\s*[;,}]/.test(after) || /^::/.test(after) || /\buse\s[^;]*$/.test(code.slice(code.lastIndexOf("\n", at) + 1, at))) {
+      if (/\buse\s[^;]*$/.test(code.slice(code.lastIndexOf("\n", at) + 1, at))) continue;
       problems.push(`${file}:${lineOf(at)}：${RS_FN} 被当值用了（不是直接调用）`);
       continue;
     }
@@ -204,6 +213,17 @@ export function rustRefsIn(file: string, text: string): { refs: Ref[]; problems:
     }
     refs.push({ file: `${file}:${lineOf(at)}`, key: km[1], args });
   }
+  // 〔CP2c〕`copy_static!("…")`：同一条文案给成 `&'static str`（后端几处类型刻意是 `&'static str`，
+  //   见 `copy-core` 那个宏的头注）。没有参数；key 必须是紧跟的字符串字面量，别的写法一律报「绕过」。
+  for (const m of code.matchAll(new RegExp(`\\b${RS_STATIC}!`, "g"))) {
+    const at = m.index ?? 0;
+    const km = /^\(\s*"([^"\\]*)"\s*\)/.exec(code.slice(at + RS_STATIC.length + 1));
+    if (!km) {
+      problems.push(`${file}:${lineOf(at)}：${RS_STATIC}! 的 key 不是字面量（或带了参数）`);
+      continue;
+    }
+    refs.push({ file: `${file}:${lineOf(at)}`, key: km[1], args: [] });
+  }
   return { refs, problems };
 }
 
@@ -242,9 +262,17 @@ describe("CP2a · 文案表 ↔ 生产代码引用", () => {
     .filter((f) => new RegExp(`\\b${FN}\\b`).test(f.text))
     .map((f) => refsIn(f.file, f.text));
   // 〔DP1〕Rust 读口的调用点。
-  const rsFiles = productionRsFiles("src/bridge/src");
+  // 〔CP2c · 第四波 4C〕射程从 monitor crate 扩到常驻后端与子 crate（后端也读同一份表、自己出句子 ——
+  //   `设计/91 §5.1` 决定 2「一份文件，两侧各读，零转换」；理由住 `调研/第四波记录/CP2c.md §2`）。
+  //   取文实现本身住 `copy-core`，monitor 的 `copy_table.rs` 只剩转发 ⇒ 这两份是定义不是引用，不进人群。
+  const rsFiles = [
+    ...productionRsFiles("src/bridge/src"),
+    ...productionRsFiles("src/backend"),
+    ...productionRsFiles("src/bridge/crates"),
+  ];
   const rsAll = rsFiles
-    .filter((f) => new RegExp(`\\b${RS_FN}\\b`).test(f.text))
+    .filter((f) => !RS_DEFINITIONS.has(f.file))
+    .filter((f) => new RegExp(`\\b(?:${RS_FN}\\b|${RS_STATIC}!)`).test(f.text))
     .map((f) => rustRefsIn(f.file, f.text));
   const rsRefs = rsAll.flatMap((x) => x.refs);
   const refs = [...all.flatMap((x) => x.refs), ...rsRefs];
@@ -254,6 +282,12 @@ describe("CP2a · 文案表 ↔ 生产代码引用", () => {
     expect(rsFiles.length, "一个 .rs 都没扫到").toBeGreaterThan(100);
     expect(rsFiles.map((f) => f.file)).toContain(RS_HOME);
     expect(rsRefs.length, "一个 copy_text 调用点都没找到 —— 读口没接上，或者读法坏了").toBeGreaterThan(0);
+     // 〔CP2c〕三棵树各自真的扫到了、也各自读到了调用点（扩根那一步没接上时，下面的两向相等会在缺角的集合上成立）。
+    for (const [root, n] of [["src/backend/", 100], ["src/bridge/crates/", 10]] as const) {
+      expect(rsFiles.filter((f) => f.file.startsWith(root)).length, `${root} 下一个 .rs 都没扫到`).toBeGreaterThan(n);
+    }
+    expect(rsRefs.some((r) => r.file.startsWith("src/backend/")), "常驻后端一个 copy_text 调用点都没读到").toBe(true);
+    for (const d of RS_DEFINITIONS) expect(rsFiles.map((f) => f.file)).toContain(d);
   });
 
   it("正控：扫到了生产源码，也扫到了取文口自己", () => {
@@ -313,6 +347,12 @@ describe("CP2a · 文案表判据自己会不会死（正控）", () => {
     expect(rustRefsIn("x.rs", 'copy_text("a.b.c", &[(name, n)]);').problems.join()).toMatch(/参数项/);
     expect(rustRefsIn("x.rs", "use crate::copy_table::copy_text;").problems).toEqual([]);
     expect(rustRefsIn("x.rs", "ui.ctx().copy_text(s.to_string());").refs).toEqual([]);
+    // 〔CP2b〕行里前面有个以 use 结尾的标识符（Misuse）不是 `use` 导入 —— 这个调用点照样得认出来。
+    expect(rustRefsIn("x.rs", 'Fault::Misuse => copy_text("a.b.c", &[]),').refs.map((r) => r.key)).toEqual(["a.b.c"]);
+    // 〔CP2c〕`&'static str` 形：字面量 key 认得出；非字面 key / 带参数 各被逮住。
+    expect(rustRefsIn("x.rs", 'let w = copy_static!("a.b.c");').refs.map((r) => [r.key, r.args])).toEqual([["a.b.c", []]]);
+    expect(rustRefsIn("x.rs", "copy_static!(KEY);").problems.join()).toMatch(/不是字面量/);
+    expect(rustRefsIn("x.rs", 'copy_static!("a.b.c", x);').problems.join()).toMatch(/不是字面量/);
   });
 
   it("对拍：表里多一条 / 代码多引一条 / 参数给错 —— 各红一次", () => {

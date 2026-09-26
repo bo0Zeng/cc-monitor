@@ -709,7 +709,10 @@ pub fn b64_encode(bytes: &[u8]) -> String {
 pub fn b64_decode(text: &str) -> Result<Vec<u8>, String> {
     let s = text.as_bytes();
     if s.len() % 4 != 0 {
-        return Err(format!("base64 长度 {} 不是 4 的倍数", s.len()));
+        return Err(crate::common::contract::malformed(&format!(
+            "base64 length {s_count} is not a multiple of 4",
+            s_count = s.len()
+        )));
     }
     let val = |c: u8| -> Option<u32> { B64.iter().position(|&x| x == c).map(|p| p as u32) };
     let mut out = Vec::with_capacity(s.len() / 4 * 3);
@@ -717,12 +720,18 @@ pub fn b64_decode(text: &str) -> Result<Vec<u8>, String> {
     for (qi, q) in s.chunks(4).enumerate() {
         let pad = q.iter().rev().take_while(|&&c| c == b'=').count();
         if pad > 2 || (pad > 0 && qi + 1 != quads) {
-            return Err("base64 补位不在末尾".to_string());
+            return Err(crate::common::contract::malformed(
+                "base64 padding is not at the end",
+            ));
         }
         let mut n: u32 = 0;
         for &c in &q[..4 - pad] {
-            let v =
-                val(c).ok_or_else(|| format!("base64 里有字母表外的字符 {:?}", char::from(c)))?;
+            let v = val(c).ok_or_else(|| {
+                crate::common::contract::malformed(&format!(
+                    "base64 has a character outside the alphabet: {char:?}",
+                    char = char::from(c)
+                ))
+            })?;
             n = (n << 6) | v;
         }
         n <<= 6 * pad as u32;

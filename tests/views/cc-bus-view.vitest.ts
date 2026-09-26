@@ -6,8 +6,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), Channel: class {} }));
-vi.mock("../../src/accounts", () => ({
+// 〔FE1〕读面拆去了 `account-reads.ts`，规则留在 `accounts.ts`：两处各桩各的。
+vi.mock("../../src/account-reads", () => ({
   fetchAccounts: vi.fn().mockResolvedValue({ accounts: [] }),
+}));
+vi.mock("../../src/accounts", () => ({
   selectableAccounts: () => [],
 }));
 const { pushed, popped } = vi.hoisted(() => ({

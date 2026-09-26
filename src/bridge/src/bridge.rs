@@ -78,6 +78,13 @@ pub mod events {
     /// 来源是本机常驻后端的 `tap` 帧，monitor 原样转（`session_tap.rs`）。前端**直派**（不进内容队列、不吃 credit）：
     /// 它是临时态（活卡），与行 / 起停事件之间不需要顺序 —— jsonl 那一轮到了就整轮覆盖（V24）。可丢；不进 replay buffer。
     pub const SESSION_TAP: &str = "session-tap";
+    /// 〔GP1 · 第四波〕**这条会话所在的那台机器看不见了 —— 说不清**（`{session_id}`）。
+    ///
+    /// 两个来处：① 到那台的连接断了（`ssh_source::run` 的断连 flush 一律 `RemovalCause::Unseen`，
+    /// emitter 裁 `RemovedDisposition::Unseen` 发它）；② F5 对账时那台还没报完清单（断着 / 还在初扫）。
+    /// 前端据此把活的 / 可重连的 tab 落「说不清」（`设计/30 §3.5.7a`：`Unseen` 不许被显示成已结束）；
+    /// 重连之后那台的重宣告把活着的翻回活、`origin-sessions-listed` 把其余的落已结束。不进 replay buffer。
+    pub const SESSION_UNSEEN: &str = "session-unseen";
     // FOCUS_SWITCH 已删除：Win11 默认终端 (WindowsTerminal.exe) 是单进程多窗口架构，
     // OS GetForegroundWindow 只能拿到 WT 主进程 PID，无法区分 tab/window 内跑哪个
     // claude session。在 WT 默认环境下永远不工作；非 WT 终端可工作但不值为少数场景维护。
@@ -162,6 +169,14 @@ pub struct SessionEndedPayload {
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 pub struct SessionIdlePayload {
+    pub session_id: String,
+}
+
+/// 〔GP1 · 第四波〕「说不清」事件（SESSION_UNSEEN）payload。独立命名，理由同 [`SessionIdlePayload`]：unseen ≠ ended。
+#[derive(Debug, Serialize, Clone)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+pub struct SessionUnseenPayload {
     pub session_id: String,
 }
 
