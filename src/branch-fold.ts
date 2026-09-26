@@ -60,6 +60,8 @@ export class BranchFolder {
   private lastMainBranch: Set<string> = new Set();
   /** 折叠 ID（每个 fold 的第一条 uuid） → 用户是否手动展开了 */
   private foldExpanded = new Map<string, boolean>();
+  /** 〔W5-RENDER R13〕每个 wrap 包它时有几条（标题上那个数）—— 差量重折判「这个 wrap 还原样可用吗」用 */
+  private wrapSize = new WeakMap<Element, number>();
   /**
    * v2.2 (issue #12 性能优化)：batch 模式。
    *
@@ -356,55 +358,90 @@ export class BranchFolder {
 
   // === 内部 DOM 操作 ===
 
-  /** 全量重建 fold 结构 */
+  /**
+   * 按主线集合重折 fold 结构 —— 〔W5-RENDER R13 · `设计/10 §3.4` C1〕**按段差量**，不再「全量 unwrap ＋ 重包」。
+   *
+   * 1. 现打**逻辑序列**：顶层子节点依次读；遇到 wrap 就读它 inner 里的卡（不搬）。
+   * 2. 目标段：逻辑序列里连续的 off-main 卡（带 `data-uuid` 且不在主线；无 `data-uuid` 的元素断段 —— 同原规则）。
+   * 3. 现存 wrap 若**恰好**等于某个目标段（inner 的卡 == 段成员、同序）⇒ 原地不动（展开态、DOM 都不碰）；
+   *    其余 wrap 解开（卡搬回 wrap 所在位置）；没有现成 wrap 的目标段新包一个。
+   *
+   * 原来每次重折都把全部 wrap 解开、再把全部 off-main 段重包：秤 4 E 段读数「每条一帧 69 条 / 3 个分叉 ⇒ 累计搬 684 个节点、
+   * 末次 24 个」—— 主线只是在尾巴上长了一条，折叠归属一张卡都没变，也要把 12 张折叠卡搬出去再搬回来。
+   * 现在 DOM 写只落在归属真变了的段上；扫描仍是 O(顶层子节点 ＋ 折叠卡数) 次读（不写）。
+   * 等价：差量结果与「平铺容器上从零折一遍」逐字相同（`tests/branch-fold-batching.vitest.ts`「C1」随机操作序列）。
+   */
   private rebuild(): void {
-    // 第 1 步：把所有 fold-wrap 解开 —— 把 inner 卡片 move 回 container 顶层
-    const undone = this.unwrapAllFolds();
-
-    // 第 2 步：扫 container.children，找连续的 off-main run
     const mainSet = this.lastMainBranch;
-    const children = Array.from(this.container.children);
-    let runStart: HTMLElement | null = null;
-    const runs: Array<{ start: HTMLElement; end: HTMLElement; uuids: string[] }> = [];
-
-    for (const child of children) {
+    // 第 1 步：逻辑序列（wrap 展开读，不搬）
+    const items: Array<{ el: HTMLElement; wrap: HTMLElement | null }> = [];
+    const innerCount = new Map<HTMLElement, number>();
+    for (const child of Array.from(this.container.children)) {
       const el = child as HTMLElement;
-      const uuid = el.getAttribute("data-uuid");
-      const isOffMain = !!uuid && !mainSet.has(uuid);
-      if (isOffMain) {
-        if (!runStart) {
-          runStart = el;
-          runs.push({ start: el, end: el, uuids: [uuid!] });
-        } else {
-          // 延伸当前 run
-          const last = runs[runs.length - 1];
-          last.end = el;
-          last.uuids.push(uuid!);
-        }
+      if (el.classList.contains(FOLD_WRAP_CLASS)) {
+        const inner = el.querySelector(`.${FOLD_BODY_INNER_CLASS}`);
+        const kids = inner ? Array.from(inner.children) : [];
+        innerCount.set(el, kids.length);
+        for (const k of kids) items.push({ el: k as HTMLElement, wrap: el });
       } else {
-        // 非 off-main：断开 run
-        runStart = null;
+        items.push({ el, wrap: null });
       }
     }
 
-    // 第 3 步：对每个 run 用 fold-wrap 包起来
-    let wrapped = 0;
-    for (const run of runs) {
-      wrapped += this.wrapRun(run.start, run.end, run.uuids);
+    // 第 2 步：目标段
+    const runs: Array<Array<{ el: HTMLElement; wrap: HTMLElement | null; uuid: string }>> = [];
+    let cur: (typeof runs)[number] | null = null;
+    for (const it of items) {
+      const uuid = it.el.getAttribute("data-uuid");
+      if (uuid && !mainSet.has(uuid)) {
+        if (!cur) {
+          cur = [];
+          runs.push(cur);
+        }
+        cur.push({ ...it, uuid });
+      } else {
+        cur = null;
+      }
     }
 
-    // 秤 4 仪表：这次 rebuild 一共搬了几个节点（解开搬回顶层 + 包进 wrap，两段都算）
+    // 第 3 步：恰好等于目标段的现存 wrap 留着；其余解开；缺的新包
+    const kept = new Set<HTMLElement>();
+    const todo: typeof runs = [];
+    for (const run of runs) {
+      const w = run[0].wrap;
+      // 「恰好等于」：段成员全在 w 里、w 里没有别的卡 —— 还要 w 的键（首条 uuid）与包它时记下的条数都没变：
+      // 有卡插进段首（`insertNode` 插在锚点前，锚点在段里就插进段里）会让键过期；段内一增一减会让标题上的条数过期。
+      if (
+        w &&
+        !kept.has(w) &&
+        run.every((it) => it.wrap === w) &&
+        innerCount.get(w) === run.length &&
+        w.getAttribute("data-fold-key") === run[0].uuid &&
+        this.wrapSize.get(w) === run.length
+      ) {
+        kept.add(w);
+      } else {
+        todo.push(run);
+      }
+    }
+    const undone = this.unwrapFolds([...innerCount.keys()].filter((w) => !kept.has(w)));
+    let wrapped = 0;
+    for (const run of todo) {
+      wrapped += this.wrapRun(run[0].el, run[run.length - 1].el, run.map((it) => it.uuid));
+    }
+
+    // 秤 4 仪表：这次 rebuild 搬了几个节点（解开搬回顶层 + 包进 wrap，两段都算）
     const led = branchLedger();
     if (!led) return;
     led.rebuilds++;
     led.rebuildNodesMoved += undone.moved + wrapped;
     if (led.rebuildSamples.length < LEDGER_SAMPLE_CAP) {
       led.rebuildSamples.push({
-        scanned: children.length,
+        scanned: items.length,
         unwrapped: undone.moved,
         unwrappedWraps: undone.wraps,
         wrapped,
-        wraps: runs.length,
+        wraps: todo.length,
         frame: led.frames,
       });
     } else {
@@ -431,7 +468,11 @@ export class BranchFolder {
 
   /** 返回值只给秤 4 仪表用：解开了几个 wrap、搬回顶层几个节点。 */
   private unwrapAllFolds(): { wraps: number; moved: number } {
-    const wraps = Array.from(this.container.querySelectorAll(`:scope > .${FOLD_WRAP_CLASS}`));
+    return this.unwrapFolds(Array.from(this.container.querySelectorAll(`:scope > .${FOLD_WRAP_CLASS}`)));
+  }
+
+  /** 解开给定的这几个 wrap（〔W5-RENDER R13〕差量重折只解归属变了的那几个）。 */
+  private unwrapFolds(wraps: ReadonlyArray<Element>): { wraps: number; moved: number } {
     let moved = 0;
     for (const wrap of wraps) {
       const inner = wrap.querySelector(`.${FOLD_BODY_INNER_CLASS}`);
@@ -465,6 +506,7 @@ export class BranchFolder {
     const wrap = document.createElement("div");
     wrap.className = FOLD_WRAP_CLASS;
     wrap.setAttribute("data-fold-key", foldKey);
+    this.wrapSize.set(wrap, uuids.length);
     // Batch13-F38:折叠态真值≈34px(header 一行);兜底 120px 偏大 3 倍。
     // 展开后由 content-visibility 的 auto 记忆接管,估值不再参与
     wrap.style.setProperty("contain-intrinsic-size", "auto 34px");
