@@ -2,7 +2,7 @@
 import type { Origin } from "./Origin";
 
 /**
- * 〔TAP · V124〕`session-tap` 的 payload：后端 `tap` 帧的字段原样 ＋ 哪台机器。
+ * 〔TAP · V124〕会话流 `session-tap`（通道 `subscribe`，`设计/05 §15`）里一格的体：后端 `tap` 帧的字段原样 ＋ 哪台机器。
  *
  * `stream` = 路由第三段（前端拿它对 tab 的 sid，对不上 ⇒ 匿名流、不显示）；`resp` · `n` 见后端 `wire::Frame::Tap`；
  * `data`（SSE 事件原文，一个 JSON 串）与 `end`（`"done"` / `"broken"`）恰有一个。

@@ -73,11 +73,6 @@ pub mod events {
     /// 宣告过了。前端据此把这台「固定、却没被报过」的 tab 从**说不清**落到**已结束**（`设计/30 §3.5.7a`）。
     /// 本机不走它：本机的清单是 `list_active_sessions`（前端起步就拉）。
     pub const ORIGIN_SESSIONS_LISTED: &str = "origin-sessions-listed";
-    /// 〔TAP · V124 · `设计/20 §8`〕**中转抄出来的一个 SSE 事件**（或一个响应的收尾），payload 见 [`super::SessionTapPayload`]。
-    ///
-    /// 来源是本机常驻后端的 `tap` 帧，monitor 原样转（`session_tap.rs`）。前端**直派**（不进内容队列、不吃 credit）：
-    /// 它是临时态（活卡），与行 / 起停事件之间不需要顺序 —— jsonl 那一轮到了就整轮覆盖（V24）。可丢；不进 replay buffer。
-    pub const SESSION_TAP: &str = "session-tap";
     /// 〔GP1 · 第四波〕**这条会话所在的那台机器看不见了 —— 说不清**（`{session_id}`）。
     ///
     /// 两个来处：① 到那台的连接断了（`ssh_source::run` 的断连 flush 一律 `RemovalCause::Unseen`，
@@ -236,7 +231,7 @@ pub struct SessionContainerPayload {
     pub container: String,
 }
 
-/// 〔TAP · V124〕`session-tap` 的 payload：后端 `tap` 帧的字段原样 ＋ 哪台机器。
+/// 〔TAP · V124〕会话流 `session-tap`（通道 `subscribe`，`设计/05 §15`）里一格的体：后端 `tap` 帧的字段原样 ＋ 哪台机器。
 ///
 /// `stream` = 路由第三段（前端拿它对 tab 的 sid，对不上 ⇒ 匿名流、不显示）；`resp` · `n` 见后端 `wire::Frame::Tap`；
 /// `data`（SSE 事件原文，一个 JSON 串）与 `end`（`"done"` / `"broken"`）恰有一个。

@@ -94,11 +94,15 @@ export interface EventHandlers {
    */
   onOriginSessionsListed?: (origin: string) => void;
   /**
-   * 〔TAP · V124 · `设计/20 §8`〕中转抄出来的一个 SSE 事件（`session-tap`）。**直派，不进 queue**：
-   * 活卡是临时态，与行 / 起停事件之间不需要顺序（jsonl 那一轮到了整轮覆盖、墓碑挡迟到的 tap）；
-   * 进 queue 反倒会让 token 级的洪峰排在行前面。
+   * 〔TAP · V124 · `设计/20 §8`〕中转抄出来的一个 SSE 事件：会话流 `session-tap`（通道 `subscribe`，`设计/05 §15`）里的一格。
+   * **不进 queue**：活卡是临时态，与行 / 起停事件之间不需要顺序（jsonl 那一轮到了整轮覆盖、墓碑挡迟到的 tap）；
+   * 进 queue 反倒会让 token 级的洪峰排在行前面。credit 在本格处理完当场还。
    */
   onSessionTap?: (e: SessionTapPayload) => void;
+  /**
+   * 〔TAP〕那台机器的 tap 流看不见了（订阅里的 `Unseen`：本机后端那条流断了）⇒ 那台上还开着的响应不会再有下文，活卡全撤。
+   */
+  onSessionTapLost?: (origin: Origin) => void;
   /**
    * 〔GP1 · 第四波〕这条会话所在的那台机器看不见了（`session-unseen`：连接断了 / F5 时那台还没报完清单）⇒ 说不清。
    * 进 queue：与行 / `remote-added` / `listed` 保序（断连那一刻之前的行先落，重连之后的重宣告与清单后到）。
@@ -149,6 +153,13 @@ export interface EventHandlers {
  * 落后超过一整个窗口的实时行被句柄丢掉、原位报 `gap`（`onStreamGap` 按行号补）。
  */
 export const STREAM_WINDOW = 20_000;
+
+/**
+ * 〔TAP · V124〕`session-tap` 订阅的 credit 窗口（格）：webview 这一跳在途的 tap 最多这么多格，超了 monitor 那一侧丢、
+ * 位置照占、原位 `Gap`（`05 §3.3.4` 级 2）。每格处理完当场还 ⇒ 正常节奏下窗口永远不会见底；只有 webview 卡住（最小化、
+ * 长任务）时才丢 —— 丢了由活卡的位置号 `n` 看出缺口、撤卡，jsonl 定稿。值与后端 tap 通道同一个量级（256）。
+ */
+export const TAP_WINDOW = 256;
 
 /** 〔CF2〕一条会话流订阅在本文件里的账：还没还的 credit。`sub` 在登记那一跳回来之前是 `null`。 */
 interface StreamHold {
@@ -291,6 +302,11 @@ export interface BindEventsOptions {
    * `bindEvents` 返回时 monitor 那一侧已经登记好（主界面接着发 `frontend-ready` 就是它们的就绪点）。
    */
   streams?: ReadonlyArray<{ origin: Origin; kind: string }>;
+  /**
+   * 〔TAP · V124〕要订 `session-tap` 的机器（中转住本机常驻后端 ⇒ 今天只有本机那一台有来源）。
+   * 与会话行同一条帧路、同一套 credit（`设计/05 §15`）；窗口是 {@link TAP_WINDOW}。
+   */
+  taps?: ReadonlyArray<Origin>;
 }
 
 /**
@@ -659,13 +675,6 @@ export async function bindEvents(
     }),
   );
 
-  // 〔TAP · V124〕活卡：绕过 queue 直接派发（理由见 `onSessionTap` 头注）。
-  registrations.push(
-    sub<SessionTapPayload>("session-tap", (e) => {
-      handlers.onSessionTap?.(e.payload);
-    }),
-  );
-
   // v2.3.0 issue #11: task-update 同样稀疏，绕过 queue 直接派发
   registrations.push(
     sub<TasksUpdatePayload>("task-update", (e) => {
@@ -682,6 +691,41 @@ export async function bindEvents(
 
   // 等所有 listener 在 Rust 侧注册完成再返回（防 emit-before-listen 丢事件）。
   await Promise.all(registrations);
+
+  // 〔TAP · V124〕`session-tap`：一格 = 一个 tap 事件（`SessionTapPayload`），当场交活卡、当场还 credit；
+  //   `Gap` 不补（位置号 `n` 在活卡那一侧看得出缺口）；`Unseen` ⇒ 那台的活卡全撤（开着的响应不会再有下文）。
+  await Promise.all(
+    (opts.taps ?? []).map(async (origin) => {
+      const hold: StreamHold = { sub: null, owed: 0 };
+      hold.sub = await chan.subscribe(origin, "session-tap", null, TAP_WINDOW, (items) => {
+        let used = 0;
+        for (const it of items) {
+          if (it.t === "frame") {
+            used += 1;
+            let p: SessionTapPayload | null = null;
+            try {
+              p = JSON.parse(it.body) as SessionTapPayload;
+            } catch {
+              p = null;
+            }
+            if (p !== null && typeof p === "object" && typeof p.stream === "string") {
+              handlers.onSessionTap?.(p);
+            } else {
+              console.warn("[events] tap 流里一格读不懂，跳过：", it.body.slice(0, 200));
+            }
+          } else if (it.t === "gap") {
+            console.info(`[events] tap 流 [${origin}] 丢了第 ${it.fromSeq}..${it.toSeq} 格（前端落后了）—— 活卡按位置号自己撤`);
+          } else if (it.t === "unseen") {
+            handlers.onSessionTapLost?.(origin);
+          } else if (it.t === "closed") {
+            console.warn(`[events] tap 流 [${origin}] 关了：`, it.by);
+            handlers.onSessionTapLost?.(origin);
+          }
+        }
+        if (used > 0) hold.sub?.want(used);
+      });
+    }),
+  );
 
   // 〔CF2 · 第四波 4B〕会话流：起停那几个事件的监听都在了之后再订（订阅一登记，句柄就可能开始交格）。
   //   返回时 monitor 那一侧已经登记好 ⇒ 主界面接着发 `frontend-ready`（就绪点）不会落空。

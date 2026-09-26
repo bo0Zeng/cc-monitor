@@ -73,6 +73,14 @@ pub trait ItemSink: Send + Sync {
 /// 〔CF2〕本文件认的流标签：一台机器的全部会话 / （带 `/<sid>`）只一个会话。
 pub const SESSION_LINES_KIND: &str = "session-lines";
 
+/// 〔TAP · V124〕本文件认的第二种流：一台机器上中转抄出来的 SSE 事件（体是 [`crate::bridge::SessionTapPayload`]）。
+///
+/// 与 `session-lines` 同一张订阅表、同一套 credit 与 `Gap`（`设计/05 §15`：一条帧路 ＋ `subscribe`），差别只有三处：
+/// ① **没有留存**：tap 不进 `history`，订阅当场就是实时的（没有就绪点、没有重放）；
+/// ② 只有整台机器那一形（前端按 `stream` 自己对 tab）；
+/// ③ 实时那一份照「有 credit 当场交、没 credit 丢、位置照占、原位 `Gap`」（级 2）—— tap 本来就可丢（V24：SSE 只保快）。
+pub const SESSION_TAP_KIND: &str = "session-tap";
+
 pub struct EventReplay {
     inner: Mutex<Inner>,
     /// 〔CF2〕有订阅拿到了 credit（或被撤了）—— 等 credit 的重放在这上面醒。
@@ -120,12 +128,14 @@ struct Sub {
     live: bool,
     /// 最后一次告诉它的「那台看不看得见」。
     told_seen: bool,
+    /// 〔TAP〕订的是 `session-tap`（中转抄出来的 SSE 事件），不是会话行。
+    tap: bool,
 }
 
 impl Sub {
     fn wants(&self, p: &JsonlLinePayload) -> bool {
         let origin = p.origin.as_deref().unwrap_or(crate::origin::LOCAL);
-        origin == self.origin && self.only.as_deref().is_none_or(|s| s == p.session_id)
+        !self.tap && origin == self.origin && self.only.as_deref().is_none_or(|s| s == p.session_id)
     }
 }
 
@@ -292,16 +302,25 @@ fn refused(code: &str, message: String) -> Item {
     }
 }
 
-/// 〔CF2〕`kind` ⇒ `None`（整台机器）/ `Some(sid)`（一个会话）。认不出 ⇒ `Err`。
-fn parse_kind(kind: &str) -> Result<Option<String>, ()> {
+/// 〔CF2〕`kind` ⇒ 会话行：`None`（整台机器）/ `Some(sid)`（一个会话）；〔TAP〕`session-tap` ⇒ [`Stream::Tap`]。认不出 ⇒ `Err`。
+#[derive(Debug, PartialEq, Eq)]
+enum Stream {
+    Lines(Option<String>),
+    Tap,
+}
+
+fn parse_kind(kind: &str) -> Result<Stream, ()> {
     if kind == SESSION_LINES_KIND {
-        return Ok(None);
+        return Ok(Stream::Lines(None));
+    }
+    if kind == SESSION_TAP_KIND {
+        return Ok(Stream::Tap);
     }
     match kind
         .strip_prefix(SESSION_LINES_KIND)
         .and_then(|r| r.strip_prefix('/'))
     {
-        Some(sid) if !sid.is_empty() => Ok(Some(sid.to_string())),
+        Some(sid) if !sid.is_empty() => Ok(Stream::Lines(Some(sid.to_string()))),
         _ => Err(()),
     }
 }
@@ -506,8 +525,9 @@ impl EventReplay {
             sink.deliver(label, id, vec![item]);
             return;
         }
-        let only = match parse_kind(kind) {
-            Ok(o) => o,
+        let (only, tap) = match parse_kind(kind) {
+            Ok(Stream::Lines(o)) => (o, false),
+            Ok(Stream::Tap) => (None, true),
             Err(()) => {
                 let item = refused("no-such-stream", format!("没有叫 `{kind}` 的流"));
                 sink.deliver(label, id, vec![item]);
@@ -528,7 +548,8 @@ impl EventReplay {
             inner.generation += 1;
             let generation = inner.generation;
             let seen = inner.seen.get(origin).copied().unwrap_or(false);
-            let immediate = only.is_some() || inner.ready_labels.contains(label);
+            // 〔TAP〕tap 没有留存 ⇒ 订阅当场就是实时的（没有就绪点要等）。
+            let immediate = tap || only.is_some() || inner.ready_labels.contains(label);
             let sub = Sub {
                 label: label.to_string(),
                 id,
@@ -540,8 +561,9 @@ impl EventReplay {
                 gap_from: None,
                 live: immediate,
                 told_seen: seen,
+                tap,
             };
-            let job = immediate.then(|| {
+            let job = (immediate && !tap).then(|| {
                 let mine: Vec<JsonlLinePayload> = inner
                     .history
                     .iter()
@@ -570,6 +592,35 @@ impl EventReplay {
                 this.replay_into(&*sink, &label, id, generation, mine, None)
                     .await;
             });
+        }
+    }
+
+    /// 〔TAP · V124〕中转抄出来的一个 SSE 事件（`session_tap::deliver` 经 `lib.rs` 装的出口调）：**不进 `history`**，
+    /// 交给订了那台机器 `session-tap` 的每一条订阅 —— 有 credit 当场交；没有 ⇒ 丢、位置照占、下一次交之前原位 `Gap`
+    /// （与会话行实时那一份同一个 [`plan_live`]）。**不等 credit、不攒**：tap 可丢（V24），攒着只会让活卡更晚。
+    pub fn on_tap(&self, payload: crate::bridge::SessionTapPayload) {
+        let origin = payload.origin.as_wire_str().to_string();
+        let (sink, plans) = {
+            let mut inner = self.inner.lock();
+            let Some(sink) = inner.sink.clone() else {
+                return;
+            };
+            let body = Body(serde_json::to_vec(&payload).unwrap_or_default());
+            let mut plans: Vec<(String, u64, Vec<Item>)> = Vec::new();
+            for sub in inner
+                .subs
+                .iter_mut()
+                .filter(|s| s.tap && s.live && s.origin == origin)
+            {
+                let items = plan_live(sub, vec![body.clone()]);
+                if !items.is_empty() {
+                    plans.push((sub.label.clone(), sub.id, items));
+                }
+            }
+            (sink, plans)
+        };
+        for (label, id, items) in plans {
+            sink.deliver(&label, id, items);
         }
     }
 

@@ -11,7 +11,6 @@
  *   不占 seq、不进去重集、不进大纲 / 查找 / 改动集 —— 全会话事实只读 json（`设计/10 §2.2`）。
  */
 import { copyText } from "./copy-table";
-import s from "./live-card.module.css";
 
 /** `session-tap` 的载荷（与 `src/generated/SessionTapPayload.ts` 同形；这里只取要用的几格）。 */
 export interface TapPayload {
@@ -58,6 +57,7 @@ export interface LiveCardState {
 
 interface Resp {
   key: string;
+  origin: string;
   sid: string;
   next: number;
   messageId: string | null;
@@ -127,6 +127,7 @@ export class LiveCore {
       }
       r = {
         key,
+        origin: p.origin,
         sid,
         next: 0,
         messageId: null,
@@ -182,6 +183,13 @@ export class LiveCore {
     const touched: Touched = new Set();
     for (const r of [...this.resps.values()]) if (r.sid === sid) this.kill(r, touched);
     this.tombs.delete(sid);
+    return touched;
+  }
+
+  /** 那台机器的 tap 流看不见了 ⇒ 那台的全部响应撤掉（开着的不会再有下文）。 */
+  dropOrigin(origin: string): Touched {
+    const touched: Touched = new Set();
+    for (const r of [...this.resps.values()]) if (r.origin === origin) this.kill(r, touched);
     return touched;
   }
 
@@ -334,16 +342,30 @@ export function renderCardText(card: LiveCardState): { head: string; body: strin
 export type TrailerOf = (sid: string) => HTMLElement | null;
 
 /**
+ * 把一个 tab 此刻的活卡画进它流尾巴上那一块（整块重画）。实现住 `live-card-view.ts`（带 `.module.css`），
+ * **由主窗口的入口装进来**（`TabManager.setLivePainter`）：本文件被主窗口与独立查看器两个入口共用（进共享块），
+ * 而 `.module.css` 进共享块会让它的规则排在主窗口全局样式之前（`entry-graphs` 的次序判据）—— 画法只有主窗口要
+ * （只有它订 `session-tap`），所以样式跟着画法住主窗口独有的那一块。
+ */
+export type LivePainter = (host: HTMLElement, cards: LiveCardState[]) => void;
+
+/**
  * 视图：每个被改过的 tab，把它流尾巴上那一块整块重画成此刻的活卡（张数 ≤ `LIVE_PER_TAB`，正文 ≤ `LIVE_TEXT_KEEP`）。
+ * 没装画法（独立查看器那一形）⇒ 只记账不画。
  */
 export class LiveCards {
   readonly core: LiveCore;
+  private painter: LivePainter | null = null;
 
   constructor(
     route: (origin: string, stream: string) => string | null,
     private readonly trailerOf: TrailerOf,
   ) {
     this.core = new LiveCore(route);
+  }
+
+  setPainter(p: LivePainter): void {
+    this.painter = p;
   }
 
   onTap(p: TapPayload): void {
@@ -358,27 +380,16 @@ export class LiveCards {
     this.paint(this.core.dropTab(sid));
   }
 
+  dropOrigin(origin: string): void {
+    this.paint(this.core.dropOrigin(origin));
+  }
+
   private paint(touched: Touched): void {
+    const painter = this.painter;
+    if (!painter) return;
     for (const sid of touched) {
       const host = this.trailerOf(sid);
-      if (!host) continue;
-      const cards = this.core.cardsOf(sid);
-      host.replaceChildren(
-        ...cards.map((c) => {
-          const { head, body } = renderCardText(c);
-          const el = document.createElement("div");
-          el.className = c.phase === "streaming" ? s.card : `${s.card} ${s.awaiting}`;
-          el.dataset.liveKey = c.key;
-          const h = document.createElement("div");
-          h.className = s.head;
-          h.textContent = head;
-          const b = document.createElement("div");
-          b.className = s.body;
-          b.textContent = body;
-          el.append(h, b);
-          return el;
-        }),
-      );
+      if (host) painter(host, this.core.cardsOf(sid));
     }
   }
 }
