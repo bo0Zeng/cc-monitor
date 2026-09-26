@@ -6,7 +6,7 @@
 //! 配置文件位置走 `paths::resolve_config_path` —— monitor 自己的设置永远在
 //! 默认 `~/.claude/claudecode-frontend/` 下，不跟随 `claudeDir` 字段变化。
 //!
-//! 🔴 〔CFG1 · 4D〕**写 `config.json` 只有一个口：[`patch_config_at`]。** 整份替换那一形（旧 `save_config`）删了。
+//! 🔴 〔CFG1 · 4D〕**写 `config.json` 只有一个口：[`patch_config_at`]。** 整份替换那一形（旧 `save_config`）删了。 〔散文墓碑〕
 //!
 //! 从前每个前端模块「读整份 → 改自己的键 → 整份写回」，主窗（tab 栏的分组 / 固定 / 顺序）与设置窗
 //! （行为 / 主题 / 快捷键 / 账号 / 远端）是同一进程里的两个 webview，两次读-改-写一交错，

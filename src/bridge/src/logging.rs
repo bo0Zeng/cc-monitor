@@ -494,7 +494,7 @@ fn write_diagnostics_to_config(
     cfg: &DiagnosticsConfig,
 ) -> Result<(), String> {
     // 〔CFG1 · 4D〕不再自己读-改-写整份：`config.json` 只有一个写函数（`config::patch_config_at`，
-    //   进程级锁 ＋ 只动 `diagnostics` 这一个键）。从前这里与前端的 `save_config` 各读各写，
+    //   进程级锁 ＋ 只动 `diagnostics` 这一个键）。从前这里与前端的 `save_config` 各读各写， 〔散文墓碑〕
     //   设置窗存诊断的同一拍主窗存 tab 栏 ⇒ 后写的整份盖掉先写的键。本文件那份 `atomic_replace` 副本随之删了。
     let value = serde_json::to_value(cfg).map_err(|e| e.to_string())?;
     let edit = crate::config::ConfigEdit::Set {

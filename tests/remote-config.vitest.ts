@@ -257,7 +257,7 @@ describe("S1：整表覆盖那条路必须**不可达**", () => {
     // S2 拆页时随手一调就会静默删机器。不导出 ⇒ 类型层面不可达，不靠人记着别用。
     const src = readFileSync(resolve(srcDirOf(__dirname), "remote-config.ts"), "utf8");
     // 反向自检：函数确实还在这个文件里（不是因为改名了才"没导出"）。
-    // 〔CFG1〕从前叫 `writeRemoteConfig`（读整份 → 换 `remote` → 整份写）；今天只出那一条 `set ["remote"]` 补丁。
+    // 〔CFG1〕从前叫 `writeRemoteConfig`（读整份 → 换 `remote` → 整份写）；今天只出那一条 `set ["remote"]` 补丁。 〔散文墓碑〕
     expect(src).toContain("function remoteEdit(");
     expect(src).not.toMatch(/export\s+(async\s+)?function\s+remoteEdit\b/);
     expect(src).not.toMatch(/export\s*\{[^}]*\bremoteEdit\b/);
