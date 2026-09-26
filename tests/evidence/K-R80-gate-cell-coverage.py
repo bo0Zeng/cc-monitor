@@ -488,13 +488,16 @@ cell(
     #   而 `gate.sh` 现打是 `run_gate_sum cargo 9`（workspace 长到 9 个成员那天没人回来改）。
     #   ⇒ 本尺子在**本件动它之前**就红着一条 `C2`（现打读数住
     #   `evidence/K-R115-deathvalue.md#§E`）。这不是本件弄红的，是本件顺手量到的。
-    anchor="run_gate_sum cargo 9 bash -c",
+    # 〔CP2c 09-25〕新共享 crate `copy-core` 进 workspace ⇒ 成员 9 → 10，`gate.sh` 那行同拍改成 `cargo 10`；
+    #   本锚点当时没人跟 ⇒ 合并列车那次门禁 `gate-selfdesc` C2 红，主会话在这里跟上。
+    # 〔US1 · 4D〕新共享 crate `relay-route-core` ⇒ 成员 10 → 11，`gate.sh` 同拍改 `cargo 11`，本锚点同拍跟上。
+    anchor="run_gate_sum cargo 11 bash -c",
     cwd="src-tauri/",
     cmd="cargo test --workspace --lib",
     **{
         "src/generated/": ("无", "〔现打 09-19〕这棵树是 `.ts`，Rust 那侧碰不到它 —— **盯「Rust 源改了而生成物没跟」的是 `generated` 那一格，不是本格**"),
         "tests/": ("部", "〔现打 09-19〕`tests/bridge/` 那 152 份 `.rs` 靠 `src/bridge/src/*.rs` 里的 `#[path]` 挂进 crate ⇒ 本格**编它们、跑它们**（步 7b 把测试段整批搬出生产树之后，两棵生产树的真 `#[test]` 是 0/0，测试全在这棵树里）。⚠ `.ts` 那一半本格看不见"),
-        "src/bridge/": (FULL, "9 个成员的 `--lib` 判据，合计求和 + 包数相等断言"
+        "src/bridge/": (FULL, "11 个成员的 `--lib` 判据，合计求和 + 包数相等断言（CP2c 加 `copy-core` 后 9 → 10 · US1 加 `relay-route-core` 后 10 → 11）"
                              "〔09-14 现打：`gate.sh` 那行是 `run_gate_sum cargo 9`；"
                              "上一版这里与锚点都写着 8〕"),
         VENDOR: blind("显式 `--exclude code-picture-core`（`C7`：vendor 不动）"),

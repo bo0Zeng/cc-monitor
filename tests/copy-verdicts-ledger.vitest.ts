@@ -45,8 +45,8 @@ type Report = {
   missing: number;
   extra: number;
   problems: string[];
-  floor_band: number;
-  floor_failed: boolean;
+  probe_ok: boolean;
+  probe_got: string[];
   missing_sample: string[];
   extra_sample: string[];
 };
@@ -91,9 +91,10 @@ describe("CP1 · 存疑带裁决台账与普查两向相等", () => {
         expect(why.startsWith("量具跑不起来")).toBe(true);
         return;
       }
-      // 反空真：人群自己先立住（地板在量具那边，跌破即退 3）。
-      expect(report.floor_failed, `存疑带只剩 ${report.band} 条 < 地板 ${report.floor_band} ⇒ 普查空转`).toBe(false);
-      expect(report.band).toBeGreaterThan(report.floor_band);
+      // 反空真：正控在量具那边（临时树里现造恰好一句存疑带样本，普查必须恰好认出它，没过即退 3）。
+      // 〔MG1 · 主会话 09-25 裁〕原来是地板 300：全量抽表之后存疑带本来就该变小（合并那一拍 241），地板把「抽对了」读成「尺子坏了」。
+      expect(report.probe_ok, `正控没过：普查在临时树里认出的是 ${JSON.stringify(report.probe_got)} ⇒ 普查空转`).toBe(true);
+      expect(report.band).toBeGreaterThan(0);
       expect(
         report.missing_sample,
         `普查里有 ${report.missing} 条存疑带文案**台账没裁**（新加的文案？）。` +

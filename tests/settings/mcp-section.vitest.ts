@@ -53,10 +53,10 @@ describe("F87 serverSummary", () => {
     expect(serverSummary({ command: "npx", args: ["-y", "@x/mcp"] })).toBe("stdio · npx -y @x/mcp");
     expect(serverSummary({ command: "server" })).toBe("stdio · server");
   });
-  it("未知形态 / 非对象 → (未知形态)", () => {
-    expect(serverSummary({})).toBe("(未知形态)");
-    expect(serverSummary(null)).toBe("(未知形态)");
-    expect(serverSummary("x")).toBe("(未知形态)");
+  it("未知形态 / 非对象 → 未知形态", () => {
+    expect(serverSummary({})).toBe("未知形态");
+    expect(serverSummary(null)).toBe("未知形态");
+    expect(serverSummary("x")).toBe("未知形态");
   });
 });
 

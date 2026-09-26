@@ -27,6 +27,8 @@ vi.mock("../../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 vi.mock("../../src/remote-config", () => ({ readRemoteConfig: () => readRemoteConfigMock() }));
 
 import { readFileSync } from "node:fs";
+// 〔US1〕API key 那两问改走通道（`chan_call`，op = `apikey-read` / `apikey-routing`）：判据按 op 分派、回成品字节。
+import { chanArgsJson, chanReply, isChanCall } from "../test-support/chan-fake";
 import {
   AccountsSection,
   renderApikeyEditor,
@@ -41,9 +43,11 @@ import {
   type MachineStatus,
 } from "../../src/settings/machine-status";
 import { computeGaps, summarizeGaps } from "../../src/settings/readiness";
-import type { ApikeyCredentialsStatus } from "../../src/ipc/commands";
+import type { ApikeyCredentialsStatus } from "../../src/apikey-reads";
 import { showActionFailureToast } from "../../src/error-toast";
 import * as accounts from "../../src/accounts";
+// 〔FE1〕读面从 `accounts.ts` 拆去了 `account-reads.ts`，桩打在它真住的模块上。
+import * as accountReads from "../../src/account-reads";
 import type { AccountsState, Account } from "../../src/accounts";
 import { setCurrentMachine, __resetMachineContextForTests } from "../../src/settings/machine-context";
 import { buildAcctIsoCmd } from "../../src/settings/acct-deploy";
@@ -144,9 +148,9 @@ beforeEach(() => {
   // `N-F1b`：默认给「这台机一个隔离账号都没有」——最保守的一档，
   // 想量别的态的用例自己在里面覆盖掉它。
   fetchLocalAccountsMock.mockReset().mockResolvedValue(localState({ accounts: [] }));
-  vi.spyOn(accounts, "fetchAccounts").mockImplementation(() => fetchAccountsMock());
-  vi.spyOn(accounts, "fetchLocalAccounts").mockImplementation(() => fetchLocalAccountsMock());
-  vi.spyOn(accounts, "invalidateAccountsCache").mockImplementation(() => {});
+  vi.spyOn(accountReads, "fetchAccounts").mockImplementation(() => fetchAccountsMock());
+  vi.spyOn(accountReads, "fetchLocalAccounts").mockImplementation(() => fetchLocalAccountsMock());
+  vi.spyOn(accountReads, "invalidateAccountsCache").mockImplementation(() => {});
 });
 
 /** 降级态**一律**不该长出 ready 态的三件套（表 / 横幅 / 维护区）——这正是 IA 重排最该防的回归。 */
@@ -318,7 +322,7 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
     const byName = (n: string) =>
       rows.find((r) => r.querySelector(".accounts-row-name")?.textContent === n)!;
     const apiBadge = byName(B).querySelector(".accounts-row-badge")!;
-    expect(apiBadge.textContent).toBe("api-key（未配置端点）");
+    expect(apiBadge.textContent).toBe("API key（未配置端点）");
     expect(apiBadge.textContent).not.toContain("已登录");
     expect(apiBadge.classList.contains("warn")).toBe(true);
     // hover 得把「选得中、起得来、但请求发不出去」说清楚。
@@ -458,7 +462,7 @@ describe("Z01 账号 0 在设置账号表里的呈现", () => {
     const el = await mount();
     const dirs = [...el.querySelectorAll(".accounts-row-dir")].map((d) => d.textContent);
     expect(dirs).toHaveLength(2);
-    expect(dirs[1]).toBe("（不设 CLAUDE_CONFIG_DIR）");
+    expect(dirs[1]).toBe("不设 CLAUDE_CONFIG_DIR");
     expect(dirs[1]).not.toBe("");
   });
 
@@ -706,9 +710,9 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
   });
 
   it("KH2C1：状态那一行说的是**这个号**配没配；顶层那一把只在文件那一块 —— 两处分开", () => {
-    expect(renderApikeyEditor(ACCTS[0], () => {}).editor.textContent).toContain("n1：apikey 表里已经有它那一行");
+    expect(renderApikeyEditor(ACCTS[0], () => {}).editor.textContent).toContain("n1：API key 表里已经有它那一行");
     // 非空对照：routed=false 那个必须翻面（这把尺子分得出两种结局）。
-    expect(renderApikeyEditor(ACCTS[1], () => {}).editor.textContent).toContain("n2：apikey 表里还没有它那一行");
+    expect(renderApikeyEditor(ACCTS[1], () => {}).editor.textContent).toContain("n2：API key 表里还没有它那一行");
     const legacy = renderApikeyFileBlock(status()).querySelector(".apikey-file-legacy");
     expect(legacy?.textContent, "顶层那一把没有单独显").toContain("sk-a**********WXYZ");
     expect(legacy!.textContent).toContain("不再往那一格写");
@@ -727,12 +731,12 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
         defaultName: "n1",
       }),
     );
-    invokeMock.mockImplementation((cmd: unknown) =>
+    invokeMock.mockImplementation((cmd: string, args: unknown) =>
       Promise.resolve(
-        cmd === "read_apikey_credentials_status"
-          ? status()
-          : cmd === "apikey_routing_for"
-            ? { routed: ["/h/.claude-alt/dir-one"] }
+        isChanCall(cmd, args, "apikey-read")
+          ? chanReply(status())
+          : isChanCall(cmd, args, "apikey-routing")
+            ? chanReply({ routed: ["/h/.claude-alt/dir-one"], running: true })
             : undefined,
       ),
     );
@@ -740,7 +744,7 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     expect(el.querySelector("select"), "账号分节里又长出了一个下拉").toBeNull();
     // 有 configDir 的两个号各有一颗按钮、一格编辑器；账号 0 没有（配了也不会被用上）。
     const toggles = [...el.querySelectorAll<HTMLButtonElement>("button.accounts-row-apikey-toggle")];
-    expect(toggles.map((b) => b.textContent)).toEqual(["换 apikey", "配 apikey"]);
+    expect(toggles.map((b) => b.textContent)).toEqual(["换 API key", "配 API key"]);
     const editors = [...el.querySelectorAll<HTMLElement>(".accounts-row-apikey")];
     expect(editors.length).toBe(2);
     expect(editors.every((e) => e.hidden)).toBe(true);
@@ -1250,7 +1254,7 @@ describe("S3：本机那一支接上 A3 的两条本机命令", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 〔第三波 S3〕本机清单上的徽章接上本机那一半的两格事实（`apikey_routing_for`）。
+// 〔第三波 S3〕本机清单上的徽章接上本机那一半的两格事实（〔US1〕经通道 `apikey-routing`）。
 // `accountStatusBadge` 的 `{ scope: "local" }` 三档自 `K-H2b` 起「有实现、没接线」。
 // ─────────────────────────────────────────────────────────────────────────────
 describe("S3：本机清单的徽章说本机那一半的真话", () => {
@@ -1266,8 +1270,10 @@ describe("S3：本机清单的徽章说本机那一半的真话", () => {
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
     setCurrentMachine(LOCAL_ORIGIN);
     fetchLocalAccountsMock.mockResolvedValue(localState({ accounts: [KEYED], defaultName: "k" }));
-    invokeMock.mockImplementation((cmd: string) =>
-      cmd === "apikey_routing_for" && routing ? routing() : Promise.resolve(undefined),
+    invokeMock.mockImplementation((cmd: string, args: unknown) =>
+      isChanCall(cmd, args, "apikey-routing") && routing
+        ? routing().then(chanReply)
+        : Promise.resolve(undefined),
     );
     const el = await mount();
     return el.querySelector<HTMLElement>(".accounts-local-row-badge")!;
@@ -1278,10 +1284,12 @@ describe("S3：本机清单的徽章说本机那一半的真话", () => {
     expect(b.textContent).toBe(
       accounts.accountStatusBadge(KEYED, { scope: "local", hasRow: true, running: true }).text,
     );
-    const asked = invokeMock.mock.calls.filter(([c]) => c === "apikey_routing_for");
+    const asked = invokeMock.mock.calls.filter(([c, a]) => isChanCall(c as string, a, "apikey-routing"));
     expect(asked).toHaveLength(1);
-    // 〔RM1a〕那条命令收了 origin；本机这一页问的仍是本机（逐字送后端那个本机串）。
-    expect(asked[0][1]).toEqual({ origin: LOCAL_ORIGIN, configDirs: [KEYED.configDir] });
+    // 本机这一页问的仍是本机（逐字送后端那个本机串）；`agent` 随请求带（后端不猜是哪一家）。
+    const a = asked[0][1] as Parameters<typeof chanArgsJson>[0];
+    expect(a.origin).toBe(LOCAL_ORIGIN);
+    expect(chanArgsJson(a)).toEqual({ agent: "claude-code", configDirs: [KEYED.configDir] });
   });
 
   it("★ 表里有它 ＋ 中转没跑 ⇒ 「中转未运行」；表里没它 ⇒ 说表里没它 —— 三档两两不同", async () => {
@@ -1525,7 +1533,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
         ),
       ),
       "老后端那一支",
-    ).toEqual({ accounts: { kind: "fail", detail: "backend 需更新" } });
+    ).toEqual({ accounts: { kind: "fail", detail: "后端需更新" } });
 
     expect(
       await remote(() => fetchAccountsMock.mockResolvedValue(state({ accounts: [] }))),
@@ -1609,8 +1617,8 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
       if (cmd === "launch_remote_terminal" && opts.launchFails) {
         return Promise.reject(new Error("没有终端"));
       }
-      if (cmd === "read_apikey_credentials_status") {
-        return Promise.resolve({ configured: false, masked: "", path: "/h/x.json", notice: null, problem: null });
+      if (isChanCall(cmd as string, args, "apikey-read")) {
+        return Promise.resolve(chanReply({ configured: false, masked: "", path: "/h/x.json", notice: null, problem: null }));
       }
       return Promise.resolve(undefined);
     });

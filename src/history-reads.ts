@@ -26,6 +26,7 @@ import { commands } from "./ipc/commands";
 import { chan } from "./ipc/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./ipc/origin";
+import { copyText } from "./copy-table";
 
 // ─── 成品的形状（后端 `history_join.rs`；逐格 == 从前 monitor 那两个 ts-rs 生成物）───
 
@@ -101,12 +102,12 @@ const orNull =
   (v: unknown): v is T | null =>
     v === null || p(v);
 
-/** 形状不对。给人看的那句不带内部名；哪一格不对只进 `detail`（日志）。 */
+/** 形状不对。给人看的那句不带内部名；哪一格不对只进 `detail`（日志 —— 〔CP2b〕只进日志的细目用英文写，不进文案表）。 */
 export class HistoryShapeError extends Error {
   readonly detail: string;
   constructor(what: string) {
     super(
-      "本机后端回的历史清单本程序读不懂，多半是两边版本对不上（重装后端试试）",
+      copyText("historyReads.shape.unreadable"),
     );
     this.name = "HistoryShapeError";
     this.detail = what;
@@ -171,7 +172,7 @@ function decodeShell(
     !Array.isArray(v.rows) ||
     !orNull(isStr)(v.notice)
   ) {
-    throw new HistoryShapeError(`${op} 的应答不是恰好 {rows, notice}`);
+    throw new HistoryShapeError(`${op} reply is not exactly {rows, notice}`);
   }
   return { rows: v.rows, notice: v.notice };
 }
@@ -197,7 +198,7 @@ export function decodeProjects(v: unknown): {
       (r.origin === undefined || isStr(r.origin));
     if (!ok)
       throw new HistoryShapeError(
-        `history-projects 里有一行形状不对：${JSON.stringify(r)}`,
+        `history-projects row has the wrong shape: ${JSON.stringify(r)}`,
       );
     return r as unknown as HistoryProject;
   });
@@ -240,7 +241,7 @@ export function decodeSessions(v: unknown): {
       (r.origin === undefined || isStr(r.origin));
     if (!ok)
       throw new HistoryShapeError(
-        `history-sessions 里有一行形状不对：${JSON.stringify(r)}`,
+        `history-sessions row has the wrong shape: ${JSON.stringify(r)}`,
       );
     return r as unknown as HistorySessionEntry;
   });
@@ -260,7 +261,7 @@ export function decodeEntry(v: unknown): EntryMetadata {
     orNull(isStr)(e.lastAccount);
   if (!ok)
     throw new HistoryShapeError(
-      `history-annotate 的应答形状不对：${JSON.stringify(v)}`,
+      `history-annotate reply has the wrong shape: ${JSON.stringify(v)}`,
     );
   return e as unknown as EntryMetadata;
 }
@@ -270,7 +271,7 @@ export function decodeLastAccounts(v: unknown): Record<string, string> {
   const m = isObj(v) && keysOk(v, ["accounts"], []) ? v.accounts : undefined;
   if (!isObj(m) || !Object.values(m).every(isStr)) {
     throw new HistoryShapeError(
-      `history-last-accounts 的应答形状不对：${JSON.stringify(v)}`,
+      `history-last-accounts reply has the wrong shape: ${JSON.stringify(v)}`,
     );
   }
   return m as Record<string, string>;
@@ -280,7 +281,7 @@ export function decodeLastAccounts(v: unknown): Record<string, string> {
 export function historyReasonOf(e: unknown): string {
   if (e instanceof HistoryShapeError)
     console.warn(`[history-reads] ${e.detail}`);
-  return saidOf(e, "本机后端版本旧，还答不了历史清单（重装后端之后就有）");
+  return saidOf(e, copyText("historyReads.reason.fallback"));
 }
 
 // ─── 问 ───
@@ -329,7 +330,7 @@ export async function fetchRemoteProjects(): Promise<RemoteProjectsResult> {
   const failed = per.filter((p) => p.error !== null);
   if (failed.length === per.length) {
     throw new Error(
-      `所有远端历史查询失败（${per.length} 台），最后一个错误：${failed[failed.length - 1].error}`,
+      copyText("historyReads.remote.allFailed", { count: per.length, error: String(failed[failed.length - 1].error) }),
     );
   }
   return {

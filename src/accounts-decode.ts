@@ -11,6 +11,7 @@
  * 跨语言金样 `tests/__fixtures__/accounts.golden.json` 钉着后端出的形状与这里收的形状（`tests/accounts-decode.vitest.ts`）。
  */
 import type { Account, AccountsMeta, AuthKind } from "./accounts";
+import { copyText } from "./copy-table";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
   v !== null && typeof v === "object" && !Array.isArray(v);
@@ -34,9 +35,9 @@ export function decodeAccountsList(v: unknown): {
   notice: string | null;
 } {
   const bad = (what: string): never => {
-    throw new Error(`账号清单的应答形状不对（${what}）—— 两端契约对不上`);
+    throw new Error(copyText("accountsDecode.bad.list", { what }));
   };
-  if (!isObj(v) || !sameKeys(v, ["meta", "accounts", "notice"])) return bad("顶层");
+  if (!isObj(v) || !sameKeys(v, ["meta", "accounts", "notice"])) return bad(copyText("accountsDecode.where.top"));
   const m = v.meta;
   if (
     !isObj(m) ||
@@ -77,7 +78,7 @@ export function decodeAccountsList(v: unknown): {
       !AUTH_KINDS.includes(a.authKind as AuthKind) ||
       typeof a.authReady !== "boolean"
     ) {
-      return bad(`第 ${i} 个账号`);
+      return bad(copyText("accountsDecode.where.nth", { i }));
     }
     return {
       name: a.name,
@@ -111,7 +112,7 @@ export function decodeTrust(v: unknown): { trusted: boolean; known: boolean } {
     typeof v.trusted !== "boolean" ||
     typeof v.known !== "boolean"
   ) {
-    throw new Error("信任预检的应答形状不对 —— 两端契约对不上");
+    throw new Error(copyText("accountsDecode.bad.trust"));
   }
   return { trusted: v.trusted, known: v.known };
 }

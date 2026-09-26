@@ -277,7 +277,7 @@ fn the_rc_path_cannot_escape_home() {
     for bad in ["/etc/profile", "/tmp/x.rc", ".bashrc"] {
         let e =
             run(install_in(&door(&h), &[al("alphacc", &[])], Some(bad), P)).expect_err("该被围栏拒");
-        assert!(e.starts_with("refuse profile path"), "{bad}：{e}");
+        assert!(e.starts_with("拒绝写这个配置文件"), "{bad}：{e}");
         assert!(
             !alias_file_in(&h.0, P).exists(),
             "围栏拒了还写了别名文件：{bad}"
@@ -580,10 +580,16 @@ fn every_combination_rule_stops_a_bad_alias_and_nothing_is_written() {
 /// 反向：用法里那几个「每次取值都不同」的（第三档）不许混进来。
 #[test]
 fn every_alias_flag_is_a_real_ccm_flag() {
-    let usage_src = std::fs::read_to_string(
+    // 〔CP2c〕`--help` 正文进了文案表（`beCcm.usage.body`）：后端 ccm 那份源码取的就是这一条，正文从表里读。
+    let ccm_src = std::fs::read_to_string(
         crate::guard_support::repo_root().join("src/backend/control/ccm/mod.rs"),
     )
-    .expect("读后端 ccm 用法");
+    .expect("读后端 ccm 源码");
+    assert!(
+        ccm_src.contains("\"beCcm.usage.body\""),
+        "后端 ccm 的 `--help` 不再取文案表里那一条 —— 下面读的就不是它的用法了"
+    );
+    let usage_src = crate::copy_table::copy_text("beCcm.usage.body", &[]);
     let from = guard_core::find_pinned(&usage_src, "选项\n").expect("用法里「选项」那一段锚不住");
     let usage = &usage_src[from..];
     for (flag, _) in ALIAS_FLAGS {
@@ -925,14 +931,14 @@ fn the_block_state_rides_on_the_candidates_it_was_installed_into() {
     assert!(hit.sourced, "{hit:?}");
 }
 
-/// 🔴 **P6**（读回口那一半）：人另指的「其它文件」过围栏 —— 跑出 home 的一律拒、原话带「refuse profile path」；
+/// 🔴 **P6**（读回口那一半）：人另指的「其它文件」过围栏 —— 跑出 home 的一律拒、原话带「拒绝写这个配置文件」；
 /// home 之内的并进候选、带回过了围栏之后的绝对路径（界面拿它认出刚指的是哪一份）。
 #[test]
 fn another_startup_file_goes_through_the_fence_before_it_is_read() {
     let h = tmp_home("other-rc");
     for bad in ["/etc/profile", "relative.rc", "~/../x.rc"] {
         let e = read_in(&h.0, P, Some(bad), 0).expect_err(bad);
-        assert!(e.starts_with("refuse profile path"), "{bad}：{e}");
+        assert!(e.starts_with("拒绝写这个配置文件"), "{bad}：{e}");
     }
     let ok = read_in(&h.0, P, Some("~/.config/x.rc"), 7).expect("home 之内的放行");
     let want = h.0.join(".config/x.rc").display().to_string();

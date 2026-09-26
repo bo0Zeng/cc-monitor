@@ -262,7 +262,7 @@ fn a_reply_that_breaks_the_contract_is_an_error_not_a_guess() {
             &Canned::ok(bad.clone()),
         ))
         .unwrap_err();
-        assert!(err == UNREADABLE_REPLY, "{bad} ⇒ {err}");
+        assert!(err == *UNREADABLE_REPLY, "{bad} ⇒ {err}");
     }
     let err = run(apply_with(
         &DiskDoor::new(&b),
@@ -274,7 +274,7 @@ fn a_reply_that_breaks_the_contract_is_an_error_not_a_guess() {
         &[],
     ))
     .unwrap_err();
-    assert!(err == UNREADABLE_REPLY, "实得：{err}");
+    assert!(err == *UNREADABLE_REPLY, "实得：{err}");
 }
 
 /// 🔴 头注「判定一处，住后端 · 这里一条规则都不写」：本模块生产段里**后端那几个闭集的线上名零命中**

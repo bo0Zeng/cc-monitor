@@ -1691,7 +1691,8 @@ fn the_extraction_refusal_is_a_different_sentence_from_having_no_backend_at_all(
 
     // ── 反向锚点：标记串不许来自夹具的名字 ───────────────────────────
     assert!(
-        !dir.to_string_lossy().contains(EXTRACTION_REFUSED_MARKER),
+        !dir.to_string_lossy()
+            .contains(EXTRACTION_REFUSED_MARKER.as_str()),
         "夹具目录名里含着标记串 ⇒ 下面那条 `contains` 会靠路径恒真，本条当场作废"
     );
 
@@ -1705,11 +1706,11 @@ fn the_extraction_refusal_is_a_different_sentence_from_having_no_backend_at_all(
         panic!("应当是 Missing");
     };
     assert!(
-        refused.contains(EXTRACTION_REFUSED_MARKER),
+        refused.contains(EXTRACTION_REFUSED_MARKER.as_str()),
         "「放不下来」那一句丢了它的标记 ⇒ 调用方与判据都再也分不出它和「没带后端」。\n逐字：{refused}"
     );
     assert!(
-        !absent.contains(EXTRACTION_REFUSED_MARKER),
+        !absent.contains(EXTRACTION_REFUSED_MARKER.as_str()),
         "「压根没带」那一句也带上了标记 ⇒ 标记不再区分任何东西，两句话又合成一句。\n逐字：{absent}"
     );
 
@@ -1768,7 +1769,7 @@ fn a_directory_it_cannot_create_really_takes_the_loud_path() {
         .expect_err("目标目录的父路径是个普通文件，它居然报了成功");
     let reason = extraction_failure_reason(&dir, &err);
     assert!(
-        reason.contains(EXTRACTION_REFUSED_MARKER),
+        reason.contains(EXTRACTION_REFUSED_MARKER.as_str()),
         "真失败走出来的那句话没有标记 ⇒ 它与「这份产物没带后端」又分不开了。\n逐字：{reason}"
     );
     assert!(

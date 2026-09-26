@@ -388,7 +388,7 @@ fn illegal_config_dir_never_reaches_the_command() {
         config_dir: "/a;rm -rf /",
     }))
     .unwrap_err();
-    assert!(e.contains("拒绝拼入命令"), "{e}");
+    assert!(e.contains("不能拼进命令"), "{e}");
 }
 
 #[test]
@@ -571,19 +571,19 @@ fn model_export_is_quoted() {
 
 /// 〔RL1 · 第四波〕R2：`EnvOp::ExportRelayBaseUrl` **只经那一个出口渲**、**形状不对就拒**。
 ///
-/// 异源在哪：合法的那一侧**不手写**，由构造口 `relay_base_url_in`（两种前缀 × 几个端口 × 几组段）现产；
+/// 异源在哪：合法的那一侧**不手写**，由构造口（〔US1〕共享 crate `relay_route_core::base_url`，后端上游选择拼的就是它）现产；
 /// 校验口 `relay_base_url_shape_ok` 必须**全收**，渲出来的字节必须**逐字节等于** `relay_env_prefix_posix(那一串)` ＋ launcher。
 /// 坏形逐格拒（带 `REFUSE:` 标）—— 渲错了的症状是「claude 每一发都连不上」，与网络故障同形。
 #[test]
 fn the_relay_url_env_op_renders_through_the_one_exporter_and_refuses_every_other_shape() {
     let mut good = Vec::new();
-    for mode in [RouteMode::Substitute, RouteMode::Passthrough] {
+    for mode in relay_route_core::RouteMode::ALL {
         for port in [1u16, RELAY_PORT, 65535] {
             for (a, b, c) in [
                 ("claude-code", "acct-a", "k-0123456789abcdef"),
                 ("claude-code", "0", "11111111-2222-3333-4444-555555555555"),
             ] {
-                good.push(relay_base_url_in(mode, port, a, b, c).expect("构造口"));
+                good.push(relay_route_core::base_url(port, mode, a, b, c).expect("构造口"));
             }
         }
     }
@@ -701,55 +701,9 @@ fn the_rbind_token_shape_gate_is_fail_closed_and_lowercase_only() {
 // `K-H2b`：接上注入点
 // ═════════════════════════════════════════════════════════════════════
 
-/// ★★ `KH2B4` 的 monitor 半 —— [`RELAY_ROUTE_SAMPLE`] 是**构造口真的产出的那一串**。
-///
-/// 它与后端侧那条 `include_str!` 本文件的判据一起，把两侧焊在同一行样例上：
-/// 谁改了这边的拼法而没改样例 ⇒ 本条红；样例改了而后端那边解析出别的段 ⇒ 那边红。
-#[test]
-fn the_relay_route_sample_is_what_the_builder_really_produces() {
-    // 期望值是**手写字面量**（不是拿被测函数算出来的，否则自证恒绿）。
-    assert_eq!(
-        relay_route_path("claude-code", "acct-a", "k-0123456789abcdef").unwrap(),
-        "/s/claude-code/acct-a/k-0123456789abcdef"
-    );
-    assert_eq!(
-        RELAY_ROUTE_SAMPLE,
-        relay_route_path("claude-code", "acct-a", "k-0123456789abcdef").unwrap(),
-        "跨半边那行样例与构造口漂开了 —— backend 侧那条判据量的就不是生产段的拼法了"
-    );
-}
-
-/// ★ **fail-closed**：任一段过不了白名单就当场拒，绝不拼一条会变成 404 的 URL。
-#[test]
-fn the_route_key_builder_refuses_a_segment_that_would_become_a_lookup_miss() {
-    // 非空对照排最前：先证明这把尺子认得合法的那一形，否则下面整个循环可能只是恒 `Err`。
-    assert!(
-        relay_route_path("claudecode", "acct-a", "sid-1").is_ok(),
-        "这把尺子是瞎的 —— 连合法的那一形都拒"
-    );
-    // 分母 = 我列出的这 6 形，**不是**「所有非法输入」。
-    for (a, acc, k) in [
-        ("", "acct", "sid"),
-        ("agent", "", "sid"),
-        ("agent", "acct", ""),
-        ("agent", "acct/other", "sid"),
-        ("agent", "..", "sid"),
-        ("agent", "has.dot", "sid"),
-    ] {
-        let r = relay_route_path(a, acc, k);
-        assert!(r.is_err(), "这一形不该拼得出来：{a:?}/{acc:?}/{k:?}");
-        assert!(
-            r.unwrap_err().starts_with(REFUSE_TAG),
-            "业务拒绝必须带标记，否则前端会把它当 IPC 异常去回落"
-        );
-    }
-    // 完整 URL 那一层也要跟着拒（别在外面又拼一次绕过去）。
-    assert!(relay_base_url(8788, "agent", "a/b", "sid").is_err());
-    assert_eq!(
-        relay_base_url(8788, "claude-code", "acct-a", "k-0123456789abcdef").unwrap(),
-        "http://127.0.0.1:8788/s/claude-code/acct-a/k-0123456789abcdef"
-    );
-}
+// 〔US1 · 第四波 4D〕这里原先是路由构造口与上游选择判断口的七条判据（样例对拍 · 段闸拒 · 有行没行 · 别家同 id ·
+//   凭据文件那一家 · 中转没跑就拒）：构造口与段闸进了共享 crate `relay_route_core`（它自己的判据）、判断口搬进后端
+//   `accounts/upstream/endpoint.rs`（`endpoint_tests` 逐格手写期望），起会话那一侧的执行由 `history_tests` 那几条量。
 
 /// ★★ `KH2B4`「**只有一个构造口**」的 monitor 半 —— 计数，不是「有没有一个函数」。
 ///
@@ -780,123 +734,111 @@ fn only_one_place_in_this_file_exports_the_relay_base_url() {
              ⇒ 两处各拼一遍就会各自答错同一个问题，而症状是中转回一个查不出来的 404。\n\
              要加第二处，先说清它为什么不能调 `relay_env_prefix_posix`。"
     );
-    // 〔`设计/20 §7` 步 4〕两个前缀（`/s/` 与 `/t/`）**共用一处拼串** —— 数的是那一处，
-    //   而两个前缀字面量各只被 `RouteMode::prefix` 翻译一次（多一处翻译 = 多一处可以拼错）。
-    assert_eq!(
-        prod.matches("format!(\"{}{agent}/{account}/{key}\"")
-            .count(),
-        1,
-        "路由键的拼串处不再是 1 处 —— 见 `relay_route_path` 头注：\n\
-             老三段键**不会被解析器拒掉**，它被重读成另一条四段路由、解析成功，\n\
-             挡它的是「表里查不到」而那在另一个文件里。"
+}
+
+/// ★★★ 〔US1 · 第四波 4D〕E4 ＋ E9：**monitor 生产树里零上游选择、零路由语法、零门牌字面量**。
+///
+/// 守的要求：B-decouple §2.1 必须拆 1（`APIKEY_TABLE_AGENT` · `AGENTS_WITH_DEFAULT_UPSTREAM` · 路由前缀 · 段闸 · 端口两边各一份）·
+/// `设计/05 §14.3`「业务解释只有一个家」· `设计/20 §5` 目标「端口 · 路由渲染 · 段的字符闸收进共享 crate，一份实现两侧 use」。
+///
+/// 人群：`src/bridge/src/**/*.rs` 生产段（剥注释与测试段）× 下面两张表，**零命中**；
+/// 正控（异源，证明尺子不瞎）：同一把尺子在后端上游选择 / 共享 crate 的生产段上**各数得到**每一样（逐名点住址）。
+/// 端口与钥匙路径那两样还要求后端生产段零字面量（它们只许 `use` 共享 crate）。
+#[test]
+fn us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let read =
+        |rel: &str| guard_core::production_code(&std::fs::read_to_string(root.join(rel)).unwrap());
+    // (名字, 它今天的家)
+    let words: [(&str, &str); 8] = [
+        (
+            "APIKEY_TABLE_AGENT",
+            "../backend/accounts/upstream/mod.rs::CREDENTIALS_FILE_AGENT",
+        ),
+        (
+            "AGENTS_WITH_DEFAULT_UPSTREAM",
+            "../backend/agents/mod.rs::default_upstreams",
+        ),
+        (
+            "apikey_endpoint_for",
+            "../backend/accounts/upstream/endpoint.rs::decide_launch",
+        ),
+        (
+            "relay_endpoint_for",
+            "../backend/accounts/upstream/endpoint.rs::decide_launch",
+        ),
+        (
+            "RelayAsk",
+            "../backend/accounts/upstream/endpoint.rs::decide_launch",
+        ),
+        (
+            "apikey_rows",
+            "../backend/accounts/upstream/file_face.rs::rows_at",
+        ),
+        (
+            "read_accounts",
+            "../backend/accounts/upstream/file_face.rs::read_at",
+        ),
+        (
+            "apikey_routed_subset",
+            "../backend/accounts/upstream/endpoint.rs::answer_routing_with",
+        ),
+    ];
+    let literals: [(&str, &str); 4] = [
+        ("\"/s/\"", "crates/relay-route-core/src/lib.rs"),
+        ("\"/t/\"", "crates/relay-route-core/src/lib.rs"),
+        ("8788", "crates/relay-route-core/src/lib.rs"),
+        (
+            "\".cc-monitor/relay-key\"",
+            "crates/relay-route-core/src/lib.rs",
+        ),
+    ];
+    let mut hits = Vec::new();
+    for (at, src) in guard_core::scan_tree_excluding(&root.join("src"), &["rs"], &[]) {
+        let prod = guard_core::production_code(&src);
+        for (w, _) in words {
+            if guard_core::contains_word(&prod, w) {
+                hits.push(format!("{} · `{w}`", at.display()));
+            }
+        }
+        for (l, _) in literals {
+            if prod.contains(l) {
+                hits.push(format!("{} · {l}", at.display()));
+            }
+        }
+    }
+    assert!(
+        hits.is_empty(),
+        "monitor 生产树里又长出了上游选择 / 路由语法 / 门牌字面量：\n  {}",
+        hits.join("\n  ")
     );
-    for konst in ["RELAY_ROUTE_PREFIX", "RELAY_PASSTHROUGH_PREFIX"] {
-        assert_eq!(
-            prod.matches(&format!("=> {konst},")).count(),
-            1,
-            "`{konst}` 不再恰好由 `RouteMode::prefix` 翻译一次"
+    // 正控：家里数得到（名字那一张：家文件里那个「今天的名字」在；字面量那一张：共享 crate 里在）。
+    for (w, home) in words {
+        let (file, sym) = home.split_once("::").unwrap();
+        assert!(
+            guard_core::contains_word(&read(file), sym),
+            "`{w}` 的家 {home} 里数不到 `{sym}` —— 尺子或住址坏了"
         );
     }
-}
-
-/// ★★★ `KH2B5`（`§0e` 裁一）：**没配第三方 key 的号一个字节都不受影响。**
-///
-/// 量法是**对照**：同一个函数、同一条路径，只有「表里有没有这一行」不同。
-#[test]
-fn an_account_with_no_row_in_the_apikey_table_is_not_routed_through_the_relay() {
-    let rows = vec!["acct-a".to_string()];
-    // ① 表里有这一行 ⇒ 注入（非空对照：证明这把尺子不是恒 `None`）。
-    let got = apikey_endpoint_for(Some("acct-a"), &rows, true, Some("sid-1"), "claude-code")
-        .expect("表里有行、中转在跑 ⇒ 该拼得出来");
-    assert_eq!(
-        got.as_deref(),
-        Some("http://127.0.0.1:8788/s/claude-code/acct-a/sid-1"),
-        "注入串不是预期的那一条"
-    );
-    // ② 表里**没有**这一行 ⇒ 一个字节都不注入。
-    assert_eq!(
-        apikey_endpoint_for(Some("acct-b"), &rows, true, Some("sid-1"), "claude-code").unwrap(),
-        None,
-        "订阅号（apikey 表里没有它这一行）被接进了中转 —— 那是纯风险零收益，\
-             而且它在中转那边只会拿到一个 404"
-    );
-    // ③ 调用方没说是哪个号 ⇒ 同样不注入（空值 ≠ 「用默认那一行」）。
-    assert_eq!(
-        apikey_endpoint_for(None, &rows, true, Some("sid-1"), "claude-code").unwrap(),
-        None
-    );
-    // ④ 一条空账号的行**也算有行**（`KL7` 第 3 条：keyless 透传是显式的一条路）。
-    //    这里靠的是「行在不在」，与那一行有没有 key 无关 —— 本函数收的就是 id 表。
-    let rows2 = vec!["acct-keyless".to_string()];
+    for (l, home) in literals {
+        assert!(
+            read(home).contains(l),
+            "共享 crate 里数不到 {l} —— 尺子是瞎的"
+        );
+    }
+    // 后端那一半：端口与钥匙路径只许 `use` 共享 crate（零字面量）。
+    let mut backend_hits = Vec::new();
+    for (at, src) in guard_core::scan_tree_excluding(&root.join("../backend"), &["rs"], &[]) {
+        let prod = guard_core::production_code(&src);
+        for l in ["8788", "\".cc-monitor/relay-key\""] {
+            if prod.contains(l) {
+                backend_hits.push(format!("{} · {l}", at.display()));
+            }
+        }
+    }
     assert!(
-        apikey_endpoint_for(Some("acct-keyless"), &rows2, true, None, "claude-code")
-            .unwrap()
-            .is_some()
-    );
-}
-
-/// ★★★ 〔条 49〕**别家拿同一个账号 id 起会话，不注入。**
-///
-/// 后端那张表的键是 agent ＋ 账号；凭据文件里的行今天只属于 [`APIKEY_TABLE_AGENT`] 那一家。
-/// ⇒ codex 的 3 号账号与 claude-code 的 3 号账号**不是同一行**：前者在表里一行都没有。
-/// 先前本函数只比账号 id ⇒ codex 那一发会被注入 `/s/codex/3/…`，而后端（拆键之前）
-/// 会拿 claude-code 那一行的上游与 key 去发 —— **错发到 Anthropic**。
-///
-/// 量法是**对照**：同一张表、同一个账号 id、同一个「中转在跑」，只有 agent 不同。
-#[test]
-fn another_agent_with_the_same_account_id_is_not_routed_to_that_row() {
-    let rows = vec!["3".to_string()];
-    // 非空对照：凭据文件那一家（手写字面量）拿这个 id ⇒ 注入。
-    assert!(
-        apikey_endpoint_for(Some("3"), &rows, true, None, "claude-code")
-            .unwrap()
-            .is_some(),
-        "这把尺子是瞎的：那一家自己的行都不注入"
-    );
-    // 别家同一个 id ⇒ 一个字节都不注入（照旧直连）。
-    assert_eq!(
-        apikey_endpoint_for(Some("3"), &rows, true, None, "codex").unwrap(),
-        None,
-        "codex 的 3 号被接到了 claude-code 那一行 —— 键里没有 agent"
-    );
-    // 而且它**不拒绝起会话**：中转没在跑时也照旧起得来（无行那一格的处置）。
-    assert_eq!(
-        apikey_endpoint_for(Some("3"), &rows, false, None, "codex").unwrap(),
-        None,
-        "别家的号被「中转没在跑」那道闸挡了 —— 它在表里根本没有行"
-    );
-}
-
-/// ★ [`APIKEY_TABLE_AGENT`] 就是 claude-code 那个适配器报出来的 `id()` —— **两侧异源**：
-/// 一侧是本文件的常量，一侧是适配器那个函数的返回值（起会话时 `adapter::active().id()` 走的就是它）。
-#[test]
-fn the_apikey_table_agent_is_the_claude_code_adapters_id() {
-    use crate::adapter::AgentAdapter;
-    assert_eq!(
-        APIKEY_TABLE_AGENT,
-        crate::adapter::claude_code::ClaudeCodeAdapter.id(),
-        "凭据文件那一家与起会话时报出来的 agent 名对不上 ⇒ 那一家自己的号永远不注入"
-    );
-}
-
-/// ★★ `KH2B2`②：**「中转没起来」不是静默的** —— 在起会话那一侧就说得出话。
-#[test]
-fn a_relay_that_is_not_running_is_refused_out_loud_at_launch_time() {
-    let rows = vec!["acct-a".to_string()];
-    let e = apikey_endpoint_for(Some("acct-a"), &rows, false, Some("sid-1"), "claude-code")
-        .expect_err("中转没在跑却照样渲染出去 —— 那会长成「claude 连不上 API」");
-    assert!(e.starts_with(REFUSE_TAG), "业务拒绝要带标记：{e}");
-    assert!(
-        e.contains("中转没在跑"),
-        "错误文案得说出真正的原因（不是一句通用失败）：{e}"
-    );
-    // 非空对照：同一条路径、只把「中转在跑」翻过来 ⇒ 不再报错。
-    assert!(apikey_endpoint_for(Some("acct-a"), &rows, true, Some("sid-1"), "claude-code").is_ok());
-    // ⚠ 表里没有这一行的号**不受这条闸影响** —— 中转没起来也照旧起得来。
-    assert_eq!(
-        apikey_endpoint_for(Some("acct-b"), &rows, false, None, "claude-code").unwrap(),
-        None,
-        "中转没起来把订阅号也挡了 —— 那正是「所有号都接」那条被否决的路的症状"
+        backend_hits.is_empty(),
+        "后端生产树里还有门牌字面量（该 use relay_route_core）：{backend_hits:?}"
     );
 }
 
@@ -912,13 +854,13 @@ fn the_key_segment_is_the_sid_when_resuming_and_a_nonce_when_starting_fresh() {
     let a = route_key_for_session(None);
     let b = route_key_for_session(None);
     assert!(
-        relay_segment_is_safe(&a),
+        relay_route_core::segment_is_safe(&a),
         "铸出来的 nonce 当不了路由段：{a:?}"
     );
     assert_ne!(a, b, "两次铸出同一个值 —— 那不是 nonce");
     // sid 当不了路由段时也回落到 nonce（不为一段惰性的标签把起会话整个拒掉）。
     let c = route_key_for_session(Some("has/slash"));
-    assert!(relay_segment_is_safe(&c));
+    assert!(relay_route_core::segment_is_safe(&c));
     assert_ne!(c, "has/slash");
 }
 
@@ -1075,8 +1017,16 @@ fn forwarded_by_container_path(plan_rs: &str) -> Vec<String> {
         if name.contains('{') {
             continue;
         }
+        // 〔US1 · RK1 报 2〕中转地址那一条的值经 `base_url_word`：认出是我们注入的（钥匙已展开）就渲回
+        //   `sq(钥匙之前)"$(cat …)"sq(钥匙之后)`，认不出就是 `sq(v)` —— 两段常量仍都经 `sq`（`plan_tests::
+        //   us1_an_inherited_keyed_relay_url_goes_inward_as_a_file_read_not_as_the_key` 用真 shell 钉住）。别的变量照旧只许 `sq(v)`。
+        let want_tail = if name == "ANTHROPIC_BASE_URL" {
+            "{}; {payload}\", base_url_word(v));"
+        } else {
+            "{}; {payload}\", sq(v));"
+        };
         assert_eq!(
-            tail, "{}; {payload}\", sq(v));",
+            tail, want_tail,
             "\n★ 容器路那条转发的形状跑偏了：{line:?}\n\
                  要的是 `payload = format!(\"export <VAR>={{}}; {{payload}}\", sq(v));` —— \
                  值必须经 `sq`，且拼在载荷**内侧**（前缀，不是后缀）。"
@@ -1209,7 +1159,7 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
     for anchor in [
         "let relay = relay_prefix_for_launch(action, account)?;",
         "let identity = launch_identity(action);",
-        "relay_env_prefix_posix(&u)",
+        "relay_env_prefix_posix(u)",
         "let prefix = launch_identity_env_prefix(&token,",
     ] {
         guard_core::find_pinned(&hist, anchor).unwrap_or_else(|e| {
@@ -1523,14 +1473,96 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
         }
     }
     // ★ 反面：本文件的 POSIX 那一处**必须真的接上了**（不然上面整张表可以全是「没接」）。
+    // 〔RK1〕钥匙段是读钥匙文件的命令替换（形状理由在 `RELAY_KEY_FILE_REL` 头注）。
     assert_eq!(
         relay_env_prefix_posix("http://127.0.0.1:8788/s/a/b/c"),
-        "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/a/b/c'; "
+        "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'\"$(cat \"$HOME/.cc-monitor/relay-key\")\"'/s/a/b/c'; "
     );
     assert_eq!(
         relay_env_prefix_ps("http://127.0.0.1:8788/s/a/b/c"),
-        "$env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/a/b/c'; "
+        "$env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/' + (Get-Content -Raw -LiteralPath (Join-Path $HOME '.cc-monitor/relay-key')).Trim() + '/s/a/b/c'; "
     );
+}
+
+/// 〔RK1 · `INVARIANTS §48.1`〕⑥ 渲染出来的 `export` **一个钥匙字节都不含**，而**真 shell** 展开之后
+/// `ANTHROPIC_BASE_URL` 逐字节 == `http://127.0.0.1:8788/<钥匙>/s/…`（钥匙从 `$HOME` 底下那一份现读）。
+/// 钥匙文件不在 ⇒ 展开成空段 `…8788//s/…` —— 中转会以 403 拒（出声），**不会**变成一条不过中转的直连。
+///
+/// 异源：钥匙是本判据现造的随机串、写进夹具家目录；期望 URL 由判据自己拼（不调渲染器）。
+#[cfg(unix)]
+#[test]
+fn the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_home() {
+    let home = std::env::temp_dir().join(format!(
+        "ccm-rk1-render-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let key = format!(
+        "{:032x}{:032x}",
+        uuid::Uuid::new_v4().as_u128(),
+        uuid::Uuid::new_v4().as_u128()
+    );
+    let url = relay_route_core::base_url(
+        RELAY_PORT,
+        relay_route_core::RouteMode::Substitute,
+        "claude-code",
+        "acct-a",
+        "sid-1",
+    )
+    .expect("构造口");
+    let prefix = relay_env_prefix_posix(&url);
+    assert_eq!(prefix.matches(&key).count(), 0, "渲染串里不许有钥匙");
+    assert!(!prefix.contains(&key[..8]), "连钥匙的前缀都不该有");
+    let run = |home: &std::path::Path| {
+        let out = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!("{prefix}printf '%s' \"$ANTHROPIC_BASE_URL\""))
+            .env("HOME", home)
+            .output()
+            .expect("起 sh");
+        String::from_utf8(out.stdout).expect("utf-8")
+    };
+    // 文件不在 ⇒ 空段。
+    std::fs::create_dir_all(&home).expect("夹具家目录");
+    assert_eq!(
+        run(&home),
+        "http://127.0.0.1:8788//s/claude-code/acct-a/sid-1",
+        "钥匙文件不在时应展开成空段（中转以 403 拒），不是别的"
+    );
+    // 文件在 ⇒ 逐字节 == 带钥匙的 URL。
+    std::fs::create_dir_all(home.join(".cc-monitor")).expect("建 .cc-monitor");
+    std::fs::write(home.join(RELAY_KEY_FILE_REL), &key).expect("写夹具钥匙");
+    assert_eq!(
+        run(&home),
+        format!("http://127.0.0.1:8788/{key}/s/claude-code/acct-a/sid-1"),
+        "真 shell 展开之后不是带钥匙的那条 URL"
+    );
+    // `/t/` 那一形同样。
+    let t = relay_route_core::base_url(
+        RELAY_PORT,
+        relay_route_core::RouteMode::Passthrough,
+        "claude-code",
+        "0",
+        "sid-2",
+    )
+    .expect("构造口");
+    let out = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(format!(
+            "{}printf '%s' \"$ANTHROPIC_BASE_URL\"",
+            relay_env_prefix_posix(&t)
+        ))
+        .env("HOME", &home)
+        .output()
+        .expect("起 sh");
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        format!("http://127.0.0.1:8788/{key}/t/claude-code/0/sid-2")
+    );
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 /// ★★★ `D6 阻-4` 的**人群闸**：谁绕开 `history::InjectFactSources` / `history::LaunchSink`
@@ -1541,14 +1573,14 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
 /// 上一拍（08-28）买那条缝时，`InjectFactSources` 的头注里逐字写着
 /// 「这两个取值口的**生产消费方恰好 2**」，并把那句话当成了闸。
 /// `D6` 的刀 `E5` 打穿它：在 `lib.rs` 加**第三个**消费方、绕开缝直接调
-/// `history::apikey_rows()` / `local_backend_host::relay_running()`
+/// 那两个取值口（当年是读凭据文件与连回环口那两个〔US1 起换成「问那台后端」一个〕）
 /// ⇒ **`1227 passed; 0 failed`、`GATE: OK`、四个数与干净树逐字相同。**
 /// ⇒ 那句头注买到的是「**这两处**走缝」，**没买到「所有人都得走缝」**。
 /// ★ PM `§8 裁四` 的定性：**治一个「今天数出来的 N」的过程中，长出了一个新的。**
 ///
 /// # 它钉的是**零调用点**（不是「今天有几个消费方」）
 ///
-/// 走缝的写法里，那几个函数只以**函数指针**出现（`rows: apikey_rows,`）——
+/// 走缝的写法里，那几个函数只以**函数指针**出现（〔US1〕`endpoint: ask_launch_endpoint,`）——
 /// **没有括号**。⇒ 只要断言「调用形在全树生产段里恰好只剩它们自己的定义行」，
 /// 这道闸就与「今天有几个消费方」**完全脱钩**：明天多十个消费方，只要都走缝，本条不动；
 /// 谁不走缝，第一次调用就把那个数顶上去。
@@ -1567,7 +1599,7 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
 ///   `history.rs` 自己的 `#[cfg(test)]` 段里 —— 那种**不经 `#[path]`** 的测试模块
 ///   `file!()` 会命中，缝自己那一份真会被摘出人群。⇒ 结论照旧，成因要说准。）
 /// - 它只看 Rust 侧。别的 crate（backend）够不着这几个符号（单向依赖）。
-/// - `let f = crate::history::apikey_rows; f()` 这一形由裸标识符那一半接住（会变成 3）。
+/// - `let f = crate::history::ask_launch_endpoint; f(…)` 这一形由裸标识符那一半接住（会变成 3）。
 #[test]
 fn nobody_reaches_the_relay_take_points_without_going_through_the_seam() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
@@ -1579,7 +1611,7 @@ fn nobody_reaches_the_relay_take_points_without_going_through_the_seam() {
         files.len()
     );
 
-    /// 裸标识符计数：`apikey_rows_at` 里的 `apikey_rows` 不算。
+    /// 裸标识符计数：标识符的前缀子串（`foo_at` 里的 `foo`）不算。
     fn bare(hay: &str, ident: &str) -> usize {
         hay.match_indices(ident)
             .filter(|(i, _)| {
@@ -1593,13 +1625,11 @@ fn nobody_reaches_the_relay_take_points_without_going_through_the_seam() {
     // (裸标识符, 调用形恰好几处, 裸标识符恰好几处)
     //
     // ⚠ **这两格仍然是计数制，别顺手统一成下面那种住址制**〔ccbus-win 09-10〕：
-    //   它们今天**没有第二类消费者** —— 除了缝，谁都不该调 `apikey_rows`（读文件）
-    //   / `relay_running`（问后端）。计数对它们仍然是对的答案。
+    //   它们今天**没有第二类消费者** —— 除了缝，谁都不该调 `ask_launch_endpoint`（问那台后端）。计数对它们仍然是对的答案。
     let mut counts = [
-        // 定义 1 处（`history.rs`）+ 缝里 `rows: apikey_rows,` 1 处。
-        ("apikey_rows", 1usize, 2usize, 0usize, 0usize),
-        // 定义 1 处（`local_backend_host.rs`）+ 缝里 `running: crate::local_backend_host::relay_running,` 1 处。
-        ("relay_running", 1, 2, 0, 0),
+        // 〔US1 · 4D〕「问那台后端要成品」：定义 1 处（`history.rs`）+ 缝里 `endpoint: ask_launch_endpoint,` 1 处。
+        //   （先前这里是 `apikey_rows`〔散文墓碑〕读文件 · `relay_running`〔散文墓碑〕连回环口两格 —— 两样事实搬进了那台后端。）
+        ("ask_launch_endpoint", 1usize, 2usize, 0usize, 0usize),
         // 〔`设计/20 §7` 步 4〕定义 1 处（`history.rs`）+ 缝里 `all_sessions: relay_all_sessions_switch,` 1 处。
         ("relay_all_sessions_switch", 1, 2, 0, 0),
     ];
@@ -1616,8 +1646,8 @@ fn nobody_reaches_the_relay_take_points_without_going_through_the_seam() {
     // ⇒ 一个数在回答两个从今天起答案不同的问题。这正是本条原文写的出路 ②
     //   「**重新裁定**并在这里说清为什么这一处可以不走」。
     //
-    // ⚠ **走缝是错的出路**：为了问一句「是不是 Windows」而调 `history::inject_facts()`，
-    //   会顺带跑 `apikey_rows()`（读文件）与 `relay_running()`（问后端）。
+    // ⚠ **走缝是错的出路**：`InjectFactSources` 是「起会话注入」那几件事的取值口，
+    //   它要问的只是平台（〔US1〕缝里今天是「问那台后端」那一格）。
     //
     // # 换制之后它比原来强在哪（**有读数，不是设想**）
     //
@@ -1641,9 +1671,8 @@ fn nobody_reaches_the_relay_take_points_without_going_through_the_seam() {
             "cc_bus.rs",
             1,
             "`resolve_bash` 的平台那一格〔ccbus-win 09-10〕。它不走缝的理由是\
-                 **缝答的不是它要问的东西**：`InjectFactSources` 是「中转」那三件事的取值口，\
-                 而这里只要「是不是 Windows」，走缝要顺带付 `apikey_rows()`（读文件）\
-                 与 `relay_running()`（问后端）两笔钱。\
+                 **缝答的不是它要问的东西**：`InjectFactSources` 是「起会话注入」那几件事的取值口，\
+                 而这里只要「是不是 Windows」。\
                  ⚠ 它**没有**因此自己写 `cfg!(windows)` —— 那句话仍然只有一个家，\
                  由 `cc_bus::tests::the_bash_cc_bus_runs_is_resolved_in_exactly_one_place` \
                  从另一头钉住（那条判据要求本文件里 `cfg!(windows)` 恰好 0 处）。",
@@ -1910,249 +1939,6 @@ fn the_launch_token_env_var_has_the_same_name_on_both_halves() {
     );
 }
 
-// ═════════════════════════════════════════════════════════════════════
-// `设计/20 §7` 步 4：全量注入（带开关，默认关）· 🔴 codex 不注
-// ═════════════════════════════════════════════════════════════════════
-
-/// 造一个问句（除了被翻的那一格，其余取「最容易注入」的值 ⇒ 每一格的 `None` 只能来自被翻的那一格）。
-fn ask<'a>(
-    account_id: Option<&'a str>,
-    label: Option<&'a str>,
-    rows: &'a [String],
-    running: bool,
-    agent: &'a str,
-    all_sessions: bool,
-) -> RelayAsk<'a> {
-    RelayAsk {
-        account_id,
-        passthrough_label: label,
-        rows,
-        running,
-        sid: Some("sid-1"),
-        agent,
-        all_sessions,
-    }
-}
-
-/// ★★★ **开关关着（默认）⇒ 与本件之前逐字节相同**：在一张输入格上，
-/// `relay_endpoint_for` 的答案 == `apikey_endpoint_for` 的答案（**相等**，两向都比）。
-///
-/// 分母：账号 {有行 · 无行 · 没表态} × 中转 {在 · 不在} × agent {claude-code · codex} = 12 格。
-#[test]
-fn with_the_switch_off_the_answer_is_exactly_what_the_apikey_gate_says() {
-    let rows = vec!["acct-a".to_string()];
-    let mut cells = 0usize;
-    for id in [Some("acct-a"), Some("acct-b"), None] {
-        for running in [true, false] {
-            for agent in ["claude-code", "codex"] {
-                let want = apikey_endpoint_for(id, &rows, running, Some("sid-1"), agent);
-                let got = relay_endpoint_for(&ask(id, id, &rows, running, agent, false));
-                assert_eq!(got, want, "开关关着，{id:?}/{running}/{agent} 这一格变了");
-                cells += 1;
-            }
-        }
-    }
-    assert_eq!(cells, 12, "分母不对");
-    // 反空真：这张格上**两种**答案都出现过（否则「相等」可能是两边恒 `None`）。
-    assert!(relay_endpoint_for(&ask(
-        Some("acct-a"),
-        Some("acct-a"),
-        &rows,
-        true,
-        "claude-code",
-        false
-    ))
-    .unwrap()
-    .is_some());
-    assert!(relay_endpoint_for(&ask(
-        Some("acct-a"),
-        Some("acct-a"),
-        &rows,
-        false,
-        "claude-code",
-        false
-    ))
-    .is_err());
-}
-
-/// ★★★ 🔴 **两向：开关开着，claude-code 的订阅号注 `/t/`，codex 一个字节都不注。**
-///
-/// 量法是**对照**：同一个账号、同一张表、同一个「中转在跑」、开关同为开，只有 agent 不同。
-/// codex 那一向是「全量注入」那一刀的同拍前置（`01 §2.5`）：注了 ⇒ 它的请求进中转 `/t/codex/…`
-/// ⇒ 后端没登记它的默认上游 ⇒ 502（先前那一版是错发到 Anthropic）。
-#[test]
-fn with_the_switch_on_claude_code_is_injected_and_codex_is_not() {
-    let rows = vec!["acct-a".to_string()];
-    // ① claude-code，表里没它（订阅号）⇒ `/t/`。期望值手写。
-    assert_eq!(
-        relay_endpoint_for(&ask(
-            Some("acct-b"),
-            Some("acct-b"),
-            &rows,
-            true,
-            "claude-code",
-            true
-        ))
-        .unwrap()
-        .as_deref(),
-        Some("http://127.0.0.1:8788/t/claude-code/acct-b/sid-1")
-    );
-    // ② codex，同一个号 ⇒ 不注。
-    assert_eq!(
-        relay_endpoint_for(&ask(Some("acct-b"), Some("acct-b"), &rows, true, "codex", true)).unwrap(),
-        None,
-        "🔴 codex 被注入了 —— 它没登记默认上游，每一发都会在中转那边被拒（或更早那一版：错发到 Anthropic）"
-    );
-    // ③ codex，拿一个在 apikey 表里的 id ⇒ 也不注（`/s/` 那一格按 agent 挡，`/t/` 这一格按登记挡）。
-    assert_eq!(
-        relay_endpoint_for(&ask(
-            Some("acct-a"),
-            Some("acct-a"),
-            &rows,
-            true,
-            "codex",
-            true
-        ))
-        .unwrap(),
-        None
-    );
-    // ④ claude-code 表里有这一行 ⇒ 仍是 `/s/`（开关不改「非它不可」那一格）。
-    assert_eq!(
-        relay_endpoint_for(&ask(
-            Some("acct-a"),
-            Some("acct-a"),
-            &rows,
-            true,
-            "claude-code",
-            true
-        ))
-        .unwrap()
-        .as_deref(),
-        Some("http://127.0.0.1:8788/s/claude-code/acct-a/sid-1")
-    );
-}
-
-/// ★★ **`/t/` 的降级是「照旧直连」，不是「拒绝起会话」**（`设计/20 §3.2` 第 2 行与第 4 行刻意不同）。
-#[test]
-fn a_stopped_relay_degrades_passthrough_to_nothing_but_still_refuses_substitution() {
-    let rows = vec!["acct-a".to_string()];
-    assert_eq!(
-        relay_endpoint_for(&ask(
-            Some("acct-b"),
-            Some("acct-b"),
-            &rows,
-            false,
-            "claude-code",
-            true
-        ))
-        .unwrap(),
-        None,
-        "中转没在跑，订阅号被拒了 —— 那是拿「有它更好」当「非它不可」"
-    );
-    assert!(
-        relay_endpoint_for(&ask(
-            Some("acct-a"),
-            Some("acct-a"),
-            &rows,
-            false,
-            "claude-code",
-            true
-        ))
-        .is_err(),
-        "有行的号在中转没跑时该当场拒（今天的行为）"
-    );
-}
-
-/// ★★ 账号标签的三格：与 apikey 表撞名 ⇒ 不注 · 当不了路由段 ⇒ 不注（不拒）· 说不出是哪个号 ⇒ 不注。
-#[test]
-fn a_passthrough_label_that_is_unsafe_or_collides_is_not_injected() {
-    let rows = vec!["0".to_string()];
-    // 非空对照：账号 0 的标签不撞名时 ⇒ 注。
-    assert_eq!(
-        relay_endpoint_for(&ask(
-            None,
-            Some(BASE_ACCOUNT_SEGMENT),
-            &[],
-            true,
-            "claude-code",
-            true
-        ))
-        .unwrap()
-        .as_deref(),
-        Some("http://127.0.0.1:8788/t/claude-code/0/sid-1")
-    );
-    // 撞名：后端 `/t/` 有行那一格会把这条会话自己的鉴权头送去那一行的第三方上游。
-    assert_eq!(
-        relay_endpoint_for(&ask(
-            None,
-            Some(BASE_ACCOUNT_SEGMENT),
-            &rows,
-            true,
-            "claude-code",
-            true
-        ))
-        .unwrap(),
-        None,
-        "账号 0 的标签撞上了 apikey 表里的一行，照样注入了"
-    );
-    // 当不了路由段 ⇒ 不注，且**不报错**。
-    assert_eq!(
-        relay_endpoint_for(&ask(
-            Some("has.dot"),
-            Some("has.dot"),
-            &[],
-            true,
-            "claude-code",
-            true
-        )),
-        Ok(None)
-    );
-    // 说不出是哪个号 ⇒ 不注。
-    assert_eq!(
-        relay_endpoint_for(&ask(None, None, &[], true, "claude-code", true)).unwrap(),
-        None
-    );
-}
-
-/// ★ [`RELAY_PASSTHROUGH_SAMPLE`] 是构造口真的产出的那一串（后端那条 `include_str!` 本文件的判据拿它去 `parse`）。
-#[test]
-fn the_passthrough_sample_is_what_the_builder_really_produces() {
-    assert_eq!(
-        relay_route_path_in(
-            RouteMode::Passthrough,
-            "claude-code",
-            "acct-a",
-            "k-0123456789abcdef"
-        )
-        .unwrap(),
-        "/t/claude-code/acct-a/k-0123456789abcdef"
-    );
-    assert_eq!(
-        RELAY_PASSTHROUGH_SAMPLE,
-        relay_route_path_in(
-            RouteMode::Passthrough,
-            "claude-code",
-            "acct-a",
-            "k-0123456789abcdef"
-        )
-        .unwrap()
-    );
-}
-
-/// ★ [`AGENTS_WITH_DEFAULT_UPSTREAM`] 里的每一家都是一个真适配器报出来的 `id()`（异源：常量 vs 适配器），
-/// 而 codex 适配器的 `id()` **不在**里面（两向）。
-#[test]
-fn the_agents_with_a_default_upstream_are_real_adapter_ids_and_codex_is_not_one() {
-    use crate::adapter::AgentAdapter;
-    let cc = crate::adapter::claude_code::ClaudeCodeAdapter.id();
-    let codex = crate::adapter::codex::CodexAdapter.id();
-    assert_eq!(
-        AGENTS_WITH_DEFAULT_UPSTREAM,
-        &[cc],
-        "登记表与 claude-code 适配器的名字对不上"
-    );
-    assert!(
-        !AGENTS_WITH_DEFAULT_UPSTREAM.contains(&codex),
-        "codex 被登记成有默认上游 —— 本仓零证据"
-    );
-}
+// 〔US1 · 第四波 4D〕`设计/20 §7` 步 4（全量注入带开关、codex 不注、撞名不注、两种降级分开）那一组判据随决策表搬进后端：
+//   `tests/backend/accounts/upstream/endpoint_tests.rs::us1_the_launch_table_matches_the_hand_written_one`（逐格手写期望）；
+//   「登记了默认上游的 agent」只在适配层那一格（NT2 · V25），monitor 这一侧的那份登记表整删。

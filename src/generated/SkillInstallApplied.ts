@@ -11,4 +11,8 @@ written: Array<string>,
 /**
  * 执行位没设上的那几个（Windows 那一台上恒如此；不算整趟失败）。
  */
-chmodFailed: Array<string>, };
+chmodFailed: Array<string>, 
+/**
+ * 〔SU1〕装好了但没记下来的原因（这一趟装的文件因此卸不掉）；记下了 ⇒ `null`。
+ */
+recordFailed: string | null, };

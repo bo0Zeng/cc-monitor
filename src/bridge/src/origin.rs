@@ -96,6 +96,7 @@
 //! 两侧都有金标准钉着（`the_two_surviving_wire_values_are_byte_identical`
 //! ＋ `an_unknown_shape_is_refused_not_guessed`）。
 
+use crate::copy_table::copy_text;
 use serde::de::{Error as DeError, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -141,7 +142,8 @@ impl<'de> Deserialize<'de> for Origin {
             fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
                 write!(
                     f,
-                    "一台机器的名字；本机是一个**具名**的 origin，逐字送 `\"{LOCAL}\"`（线上不再有 null）"
+                    "{}",
+                    copy_text("rsOrigin.expecting.name", &[("local", &LOCAL.to_string())])
                 )
             }
 
@@ -208,11 +210,12 @@ impl Origin {
     /// trim 会让今天找不到配置的 label 突然找得到，那是行为变更，不归本步。
     pub fn route(&self, command: &str) -> Result<Route<'_>, String> {
         if self.0.trim().is_empty() {
-            return Err(format!(
-                "`{command}` 收到的 origin 是一个**空白名**（线上 {:?}）。\
-                 「没给名字」不是「本机」—— `INVARIANTS §40` 逐字「本地 ＝ 不走 ssh 的远端」，\
-                 本机是一个**具名**的 origin，要逐字送 `\"{LOCAL}\"`。",
-                self.0
+            return Err(copy_text(
+                "rsOrigin.route.blank",
+                &[
+                    ("command", &command.to_string()),
+                    ("local", &LOCAL.to_string()),
+                ],
             ));
         }
         if self.0 == LOCAL {

@@ -13,9 +13,29 @@
 //! `argv::tests::the_ccm_argv_is_parsed_in_exactly_one_place` 机检（`KR48D2`）。
 
 use super::argv::{flag, parse_size, Action, CwdSpec, Die, Opts};
+use copy_core::copy_text;
 // `K-R96`：铸名避让那张 hash 表的**唯一**来源（字段模块私有 ⇒ 这里造不出第二份）。
 use crate::common::session_snapshot::TakenNames;
 use shell_quote_core::posix_quote as sq;
+
+/// 〔US1 · RK1 报 2〕把继承来的 `ANTHROPIC_BASE_URL` 显式化进新 pane 载荷时，`export … =` 右边那个 shell 词。
+///
+/// 继承来的值是上一个 pane 的 shell **展开过**的：我们注入的中转地址里那一段 `$(cat "$HOME/<钥匙文件>")`
+/// 已经变成了 64 位钥匙本身。原样 `export` ⇒ 钥匙进这一次 `tmux send-keys` 的 **argv**（同机别的用户 `ps` 看得见）、
+/// 进 pane 的 shell 历史与回滚。⇒ 认得出是我们注入的那一形（`relay_route_core::split_keyed_base_url`：回环字面量 ＋ 口 ＋
+/// 形状对的钥匙段 ＋ 构造口产得出的路由）就渲回与起会话那一侧（monitor `payload::relay_env_prefix_posix`）同形的
+/// `'<钥匙之前>'"$(cat "$HOME/<钥匙文件>")"'<钥匙之后>'`，在新 pane 里现读；认不出（用户自己的端点）⇒ 原样。
+fn base_url_word(v: &str) -> String {
+    match relay_route_core::split_keyed_base_url(v) {
+        Some((head, tail)) => format!(
+            "{}\"$(cat \"$HOME/{}\")\"{}",
+            sq(head),
+            relay_route_core::KEY_FILE_REL,
+            sq(tail)
+        ),
+        None => sq(v),
+    }
+}
 
 /// 这一趟能看见的**外界**。做成结构体的唯一理由：让整条计划面可以在单测里跑，
 /// **一个字节都不碰这台机器**（`K31`「只能做产品，不能动机器」）。
@@ -324,13 +344,10 @@ impl AccountTable {
     fn names(&self) -> String {
         // 🔴 「解析不动」优先于「是空的」—— 反了就又谎称「没有账号库」。
         if self.unreadable {
-            return format!(
-                "(那份 manifest 解析不动：它在盘上、有内容，但不是合法 JSON{})",
-                "；⚠ 若是在 Windows 上用 PowerShell 存的，先看看有没有 UTF-8 BOM"
-            );
+            return copy_text("bePlan.names.unreadable", &[]);
         }
         if self.accounts.is_empty() {
-            return "(无账号库)".to_string();
+            return copy_text("bePlan.names.none", &[]);
         }
         self.accounts
             .iter()
@@ -550,15 +567,22 @@ fn next_free_name(base: &str, taken: &[String]) -> String {
 /// 会话名的形状校验（**唯一一份** —— 显式名与基名都过这里）。
 pub(crate) fn validate_tmux_name(n: &str) -> Result<(), Die> {
     if n.is_empty() || n.starts_with('-') {
-        return Err(Die(format!("非法 tmux 会话名（空或以 - 开头）: '{n}'")));
+        return Err(Die(copy_text(
+            "bePlan.validateTmuxName.emptyOrDash",
+            &[("name", &n.to_string())],
+        )));
     }
     if n.chars().any(|c| "*?.:=".contains(c)) {
-        return Err(Die(format!(
-            "非法 tmux 会话名（含 glob 或 tmux 目标语法 * ? . : =）: '{n}'"
+        return Err(Die(copy_text(
+            "bePlan.validateTmuxName.targetSyntax",
+            &[("name", &n.to_string())],
         )));
     }
     if n.chars().any(|c| c.is_control()) {
-        return Err(Die(format!("非法 tmux 会话名（含控制字符）: '{n}'")));
+        return Err(Die(copy_text(
+            "bePlan.validateTmuxName.control",
+            &[("name", &n.to_string())],
+        )));
     }
     Ok(())
 }
@@ -617,11 +641,13 @@ pub(crate) fn resolve_account(
     if !o.account.is_empty() {
         return match table.config_dir_of(&o.account) {
             Some(d) => Ok((d, o.account.clone())),
-            None => Err(Die(format!(
-                "账号 '{}' 不可用（不在 {}，或其目录不存在）。可用: {}",
-                o.account,
-                env.accts_manifest,
-                table.names()
+            None => Err(Die(copy_text(
+                "bePlan.resolveAccount.unavailable",
+                &[
+                    ("account", &o.account.to_string()),
+                    ("manifestPath", &env.accts_manifest.to_string()),
+                    ("names", &(table.names()).to_string()),
+                ],
             ))),
         };
     }
@@ -641,8 +667,9 @@ pub(crate) fn resolve_account(
     };
     match table.config_dir_of(&def) {
         Some(d) => Ok((d, def)),
-        None => Err(Die(format!(
-            "默认账号 '{def}' 目录不存在（manifest 说它是 isDefault）。用 --base 起基座，或 --account <名> 指定。"
+        None => Err(Die(copy_text(
+            "bePlan.resolveAccount.defaultMissing",
+            &[("name", &def.to_string())],
         ))),
     }
 }
@@ -668,14 +695,10 @@ pub(crate) fn build(
         // `ccm attach foo --tmux --detach` 从前会**静默吞掉** `--detach` 照样 attach。
         // 静默忽略正是本工作区反复消灭的病。
         if o.detach {
-            return Err(Die(
-                "attach 动作与 --detach 矛盾（attach 的语义就是接进去）".into(),
-            ));
+            return Err(Die(copy_text("bePlan.build.attachDetach", &[]).into()));
         }
         if !o.tmux_size.is_empty() {
-            return Err(Die(
-                "attach 动作不支持 --tmux-size（接回既有会话，尺寸归它自己）".into(),
-            ));
+            return Err(Die(copy_text("bePlan.build.attachSize", &[]).into()));
         }
         return Ok(Plan::Attach {
             name: o.attach_name.clone(),
@@ -696,9 +719,7 @@ pub(crate) fn build(
         // 这条分支会让 `--detach` / `--tmux-size` 双双落空，而调用方要的是
         // 「建完就返回」，拿到的却是**阻塞式 exec** —— 语义完全相反。显式 die。
         if o.detach || !o.tmux_size.is_empty() {
-            return Err(Die(
-                "已在 tmux 内且未给会话名 → 会就地起而非建容器，--detach/--tmux-size 无法生效。请用 --tmux=<显式名>".into(),
-            ));
+            return Err(Die(copy_text("bePlan.build.inTmuxNoName", &[]).into()));
         }
         use_tmux = false;
     }
@@ -776,7 +797,7 @@ pub(crate) fn build(
             }
         }
         if let Some(v) = env.anthropic_base_url.as_deref().filter(|v| !v.is_empty()) {
-            payload = format!("export ANTHROPIC_BASE_URL={}; {payload}", sq(v));
+            payload = format!("export ANTHROPIC_BASE_URL={}; {payload}", base_url_word(v));
         }
         if let Some(v) = env.ccm_launch_id.as_deref().filter(|v| !v.is_empty()) {
             payload = format!("export CCM_LAUNCH_ID={}; {payload}", sq(v));
@@ -893,7 +914,7 @@ fn render_container(c: &Container) -> String {
     );
     seq.push_str(&format!(
         " || {{ printf {} {} >&2; exit 3; }}; }}",
-        sq(super::NAME_TAKEN_FMT),
+        sq(&super::NAME_TAKEN_FMT),
         sq(&c.name)
     ));
     seq.push_str(&format!(
@@ -947,7 +968,7 @@ pub(crate) fn render_container_tail(c: &Container) -> String {
     seq.push_str(&format!(
         " && {{ _ccm_e=$({{ {}; }} 2>&1 >/dev/null) || {{ printf '%s\\n' \"$_ccm_e\" >&2; printf {} {} >&2; exit 4; }}; }}",
         c.self_check,
-        sq(super::SELF_CHECK_FAILED_FMT),
+        sq(&super::SELF_CHECK_FAILED_FMT),
         sq(&c.name)
     ));
     // 🔴 下面那条**自带节拍的 shell 串**不是漏进来的，是 `C14` 逐字登记的那个例外

@@ -34,6 +34,7 @@ import { askForkLaunch } from "../src/fork-ask";
 import type { SessionAccount } from "../src/accounts";
 import { LOCAL_ORIGIN } from "../src/ipc/origin";
 import { isChanCall, linesReply } from "./test-support/chan-fake";
+import { copyTableTextsIn } from "./test-support/copy-refs.ts";
 
 type TmuxRow = {
   name: string;
@@ -119,7 +120,8 @@ describe("deriveForkSource", () => {
     const f = deriveForkSource(null, null, "s1", "/p");
     expect(f.source.sourceIsLive).toBe(false);
     expect(f.source.liveConfigDir).toBeUndefined();
-    expect(f.takenTmuxNames).toEqual([]);
+    // 〔FE1〕名单没取到 = `null`，**不是**空表（空表 = 「一个都没占」，拿它铸名就是不避让，#76 的形状）。
+    expect(f.takenTmuxNames).toBeNull();
     expect(f.source.sourceCwd, "cwd 来自 jsonl，与远端可达性无关").toBe("/p");
   });
 });
@@ -140,9 +142,11 @@ describe("E78：两个调用点不许各自再拼一遍", () => {
 
   it("★ 成功 toast 的文案只出现在 fork-flow.ts 里", () => {
     const marker = "已从这一轮分叉并起新会话";
-    expect(read("src/fork-flow.ts"), "接线层自己得有它，否则这条守卫在守空气").toContain(marker);
+    // 〔CP2b〕那句话进了文案表：「一个文件说的话」= 它的源码 ＋ 它经 copyText 取的表条目。
+    const spoken = (f: string): string => [read(f), ...copyTableTextsIn(read(f))].join("\n");
+    expect(spoken("src/fork-flow.ts"), "接线层自己得有它，否则这条守卫在守空气").toContain(marker);
     for (const f of CALL_SITES) {
-      expect(read(f), `${f} 又自己拼了一遍成功 toast`).not.toContain(marker);
+      expect(spoken(f), `${f} 又自己拼了一遍成功 toast`).not.toContain(marker);
     }
   });
 
