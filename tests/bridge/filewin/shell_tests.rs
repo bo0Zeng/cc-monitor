@@ -1,4 +1,5 @@
 use super::*;
+use crate::filewin::source::parent_dir;
 use crate::filewin::source::Row;
 
 /// 合成一份远端配置。**全字段合成**，不读任何真配置 ——
@@ -350,10 +351,17 @@ fn directories_lossy_names_and_out_of_range_rows_put_up_nothing() {
         lossy_name: true,
     };
     let mut w = remote_window_with_rows("/srv/data", vec![dir, lossy]);
-    assert!(!w.begin_copy(0), "目录也摆出了「复制为」框");
     assert!(!w.begin_copy(1), "有损名也摆出了「复制为」框");
     assert!(!w.begin_copy(99), "越界下标也摆出了框（或者 panic 了）");
     assert!(w.copy_prompt().is_none());
+    // 〔W5-FILES〕目录**摆得出**「复制为」框了（后端 `recursive: true`，`设计/60 §6.2`），框里记着「源是目录」
+    //   ⇒ 那一趟线上带 `recursive: true`（`copy_tests::a_directory_job_says_recursive_and_its_reply_must_count`）。
+    assert!(w.begin_copy(0), "目录摆不出「复制为」框");
+    let job = w
+        .copy_prompt()
+        .and_then(|p| p.to_job())
+        .expect("框里的名字该能用");
+    assert!(job.is_dir, "目录那一件没标成目录 —— 线上不会带 recursive");
 }
 
 /// 接不上就**出声**：远端源 ＋ 没有运行时 ⇒ 不许静默吞掉一趟复制。
@@ -1298,8 +1306,9 @@ fn the_window_starts_a_batch_through_the_shared_three_step_function() {
         "`writeops::run_writes(` 在 `shell.rs` 生产段里不是恰好一处 —— \
          多了就是长出了第二条确认流，少了就是这一条被绕过了"
     );
+    // 〔W5-FILES〕落点换成 `apply_remote_in`（根可以是当前目录的字节，有损名全寻址）；`apply_remote` 是它根为串时的那一形。
     assert_eq!(
-        prod.matches("writeops::apply_remote(").count(),
+        prod.matches("writeops::apply_remote_in(").count(),
         1,
         "做一件的落点不是恰好一处"
     );
@@ -2594,4 +2603,161 @@ async fn gp1_the_mode_probe_asks_files_stat_per_target_over_the_wire() {
         .collect();
     assert_eq!(asked, paths, "逐项各问一次、按序");
     std::fs::remove_dir_all(&dir).ok();
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 〔W5-FILES · 第五波〕有损名全寻址
+// 要求住址：`设计/60 §6.2`「有损名的进目录 / 复制 / 下载 / 编辑 —— 窗口的当前目录与这几条用的是整条路径字符串，
+// 整条寻址链要换成字节（`source.rs` 头注那一刀）；改名成正常名之后就都能做」。下载那一格按 `§4.1`（SFTP 库寻址不到）维持不做。
+// ════════════════════════════════════════════════════════════════════════
+
+fn hex(b: &[u8]) -> String {
+    b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
+async fn wait_for(wired: &crate::filewin::find::testing::Wired, cmd: &str, n: usize) {
+    for _ in 0..600 {
+        if wired.count(cmd) >= n {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    panic!("等了 3 秒线上还没有第 {n} 条 `{cmd}`：{:?}", wired.cmds());
+}
+
+fn last_args(wired: &crate::filewin::find::testing::Wired, cmd: &str) -> serde_json::Value {
+    wired
+        .log
+        .lock()
+        .unwrap()
+        .iter()
+        .rev()
+        .find(|r| r["cmd"] == cmd)
+        .map(|r| r["args"].clone())
+        .unwrap_or_else(|| panic!("线上没有 `{cmd}`"))
+}
+
+/// 进一个有损名目录（按字节）⇒ 列目录发 `{"b16": …}`；里面一个有损名文件：算大小 / 读文本 / 复制为 / 删除，
+/// 线上的路径（或根 ＋ 尾段）逐格等于手算的字节；上一级按字节回到 `/srv`；有损目录里上传 / 搜索 / 开终端出声、不上线。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_bytes() {
+    use crate::filewin::find::testing::{window_on, wire_up, Declared, FakeBackend};
+    use crate::filewin::select::{Action, Intent};
+    let wired = wire_up(
+        "w5-lossy",
+        FakeBackend::new(
+            &[
+                "files-ls",
+                "files-size",
+                "files-read-text",
+                "files-copy",
+                "files-stat",
+                "files-delete",
+            ],
+            Declared::default(),
+        ),
+    )
+    .await;
+    let mut w = window_on(&wired, "/srv");
+    let b16 = |b: &[u8]| serde_json::json!({ "b16": hex(b) });
+    let dir = Listed {
+        raw_name: Some(b"d\xff".to_vec()),
+        ..Listed::from(Row {
+            name: "d\u{FFFD}".into(),
+            path: "/srv/d\u{FFFD}".into(),
+            is_dir: true,
+            size: 0,
+            lossy_name: true,
+        })
+    };
+    *w.listing.rows.lock().unwrap() = vec![dir];
+    let before = wired.count("files-ls");
+    assert!(w.activate(0), "有损名目录（带字节）进不去");
+    assert_eq!(w.cwd_raw.as_deref(), Some(&b"/srv/d\xff"[..]));
+    wait_for(&wired, "files-ls", before + 1).await;
+    assert_eq!(last_args(&wired, "files-ls")["path"], b16(b"/srv/d\xff"));
+    // 里面一个有损名文件。
+    let file = Listed {
+        raw_name: Some(b"f\xfe".to_vec()),
+        ..Listed::from(Row {
+            name: "f\u{FFFD}".into(),
+            path: "/srv/d\u{FFFD}/f\u{FFFD}".into(),
+            is_dir: false,
+            size: 3,
+            lossy_name: true,
+        })
+    };
+    *w.listing.rows.lock().unwrap() = vec![file];
+    w.apply_intent(Intent::SelectAll, 0.0, None);
+    // 算大小。
+    assert!(w.perform(Action::Size, None), "{:?}", w.key_notice());
+    wait_for(&wired, "files-size", 1).await;
+    assert_eq!(
+        last_args(&wired, "files-size")["path"],
+        b16(b"/srv/d\xff/f\xfe")
+    );
+    // 读文本（编辑）。
+    assert!(
+        w.begin_edit(0, None),
+        "{:?}",
+        w.listing.error.lock().unwrap()
+    );
+    wait_for(&wired, "files-read-text", 1).await;
+    assert_eq!(
+        last_args(&wired, "files-read-text")["path"],
+        b16(b"/srv/d\xff/f\xfe")
+    );
+    // 复制为（同目录，新名字 g）。
+    assert!(w.begin_copy(0));
+    w.copy_prompt.as_mut().unwrap().new_name = "g".into();
+    assert!(w.confirm_copy(None));
+    wait_for(&wired, "files-copy", 1).await;
+    assert_eq!(
+        last_args(&wired, "files-copy"),
+        serde_json::json!({ "root": b16(b"/srv/d\xff"), "from": b16(b"f\xfe"), "to": "g", "overwrite": false })
+    );
+    assert_eq!(
+        last_args(&wired, "files-stat")["path"],
+        b16(b"/srv/d\xff/g"),
+        "探目标没按字节"
+    );
+    // 删除（写面：根是当前目录的字节）。
+    assert!(w.perform(Action::Delete, None));
+    for _ in 0..600 {
+        if w.write_board.is_asking() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert!(w.write_board.settle(true), "删除那一问没摆出来");
+    wait_for(&wired, "files-delete", 1).await;
+    assert_eq!(
+        last_args(&wired, "files-delete"),
+        serde_json::json!({ "root": b16(b"/srv/d\xff"), "rel": b16(b"f\xfe") })
+    );
+    // 有损目录里做不了的三件：出声、一条都不上线。
+    let sent = wired.cmds().len();
+    assert!(!w.fire_search(None, true));
+    assert!(!w.open_terminal_here(None));
+    assert!(!w.start_drop(
+        vec![crate::filewin::transfer::Pending::into_remote_dir("/tmp/x", "/srv").unwrap()],
+        None
+    ));
+    assert!(w
+        .listing
+        .error
+        .lock()
+        .unwrap()
+        .as_deref()
+        .unwrap_or("")
+        .contains("不是合法 UTF-8"));
+    assert_eq!(
+        wired.cmds().len(),
+        sent,
+        "做不了的那几件上了线：{:?}",
+        wired.cmds()
+    );
+    // 上一级：按字节回到 `/srv`（它是合法 UTF-8 ⇒ 字节那一格清掉）。
+    w.navigate_up();
+    assert_eq!((w.cwd.as_str(), w.cwd_raw.clone()), ("/srv", None));
 }

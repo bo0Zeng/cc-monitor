@@ -32,8 +32,9 @@
 //!
 //! # 买不到什么（逐条）
 //!
-//! - **跨盘的提交做不到**：暂存区与目标不在同一个文件系统上 ⇒ 改名回 `EXDEV`，原样带回。
-//!   要做就得「复制 ＋ 删」，而复制在第三层禁表里 —— 新形状，要单独论证。
+//! - 〔W5-FILES · 第五波 · `设计/60 §7 #7`〕**跨盘的提交做了**：改名回 `EXDEV` ⇒ 「复制 ＋ 删」（目标同目录 `O_EXCL` 暂存旁名 →
+//!   写满 → 换名上位 → 删暂存件；一步复制那个动词照旧在禁表上，由闭集里已有的几个拼出来），住 [`land_staged`]。
+//!   上一版这里写着「跨盘的提交做不到 …… 新形状，要单独论证」。
 //! - **「SFTP 的起始目录 == 这里的 `$HOME`」是前提**：`ChrootDirectory` / `internal-sftp -d`
 //!   那种机器上两边拼出来的暂存件不是同一份 ⇒ 本命令答「暂存件不在」，出声但做不成。
 //! - **占位与改名之间仍有一个窗**：别的进程在那一瞬往占位里写了东西，改名会把它盖掉。
@@ -65,6 +66,7 @@ use crate::control::files_write::{
     content_sha256, overwrite_text_expecting, resolve_in_root, sha256_expect_of, Answer,
     ManageCommand, WriteRefusal,
 };
+use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
 /// 暂存区相对 `$HOME` 的那一段。
@@ -171,6 +173,19 @@ pub fn commit_upload(
     overwrite: bool,
     expect_sha256: &str,
 ) -> Result<(PathBuf, u64), WriteRefusal> {
+    commit_upload_in(home, key, root, rel, overwrite, expect_sha256, false)
+}
+
+/// [`commit_upload`] 的本体。`cross_device` ＝ 判据注入「改名上位回 `EXDEV`」（跨盘在测试里造不出来）；生产恒 `false`。
+pub fn commit_upload_in(
+    home: &Path,
+    key: &str,
+    root: &Path,
+    rel: &str,
+    overwrite: bool,
+    expect_sha256: &str,
+    cross_device: bool,
+) -> Result<(PathBuf, u64), WriteRefusal> {
     let dest = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     let staged = staged_path(home, key)?;
     // 不跟链接地看暂存件一眼：它必须是一份普通文件（一条链接当「源」＝ 挪走链接指向之外的东西，不许）。
@@ -208,7 +223,7 @@ pub fn commit_upload(
         )));
     }
     if overwrite {
-        std::fs::rename(&staged, &dest).map_err(|e| {
+        land_staged(home, key, root, rel, &dest, cross_device).map_err(|e| {
             WriteRefusal::Io(format!(
                 "refuse write: 暂存件改名上位到 {} 失败：{e}",
                 dest.display()
@@ -227,7 +242,7 @@ pub fn commit_upload(
                 dest.display()
             ))
         })?;
-    if let Err(e) = std::fs::rename(&staged, &dest) {
+    if let Err(e) = land_staged(home, key, root, rel, &dest, cross_device) {
         // 撤掉自己那个 0 字节的占位（它是这一次刚建的，不是用户既有数据）。
         // 〔HX1 · E 吞错〕撤不掉 ⇒ 说出来：此前 `let _ =` 吞掉，用户目录里留一份 0 字节文件、报错一个字不提，重试撞「目标已经在了」。
         let undo = std::fs::remove_file(&dest);
@@ -238,6 +253,67 @@ pub fn commit_upload(
         )));
     }
     Ok((dest, bytes))
+}
+
+/// 〔W5-FILES · `设计/60 §7 #7`「跨盘提交 —— 要做就得『复制 ＋ 删』，一步复制在禁表里」〕把暂存件挪到 `dest`：
+/// 先改名上位（同盘，原子）；回 `EXDEV`（暂存区与目标不在同一个文件系统）⇒ **复制 ＋ 删**：
+/// 在目标**同目录**用 `O_EXCL` 建一个暂存旁名（过路径解析）→ 从暂存件读、写满 → 旁名改名上位（同目录，原子；
+/// 不覆盖那一支盖掉的是本次那个 `O_EXCL` 占位）→ 删暂存件。任一步失败 ⇒ 删掉旁名，暂存件留着（续传本钱，`§4.3` 失败留）。
+/// 权限位：同盘那一支给的是暂存件那一份（受 umask），跨盘新建的旁名同样是进程缺省 ⇒ 两支一致。
+/// 不添动词（改名 · `O_EXCL` 新建 · 写 · 删文件，全在闭集里）。
+fn land_staged(
+    home: &Path,
+    key: &str,
+    root: &Path,
+    rel: &str,
+    dest: &Path,
+    cross_device: bool,
+) -> Result<(), String> {
+    let staging = home.join(STAGING_DIR);
+    let staged = resolve_in_root(&staging, format!("{key}{PART_SUFFIX}"))?;
+    let side_rel = {
+        let p = Path::new(rel);
+        let name = p
+            .file_name()
+            .ok_or_else(|| copy_text("beFilesCommit.exdev.noName", &[("rel", rel)]))?;
+        let mut side = std::ffi::OsString::from(".");
+        side.push(name);
+        side.push(format!(".ccm-commit-{key}.part"));
+        p.with_file_name(side)
+    };
+    let side = resolve_in_root(root, &side_rel)?;
+    let moved = if cross_device {
+        Err(std::io::Error::from(std::io::ErrorKind::CrossesDevices))
+    } else {
+        std::fs::rename(&staged, dest)
+    };
+    match moved {
+        Ok(()) => return Ok(()),
+        Err(e) if e.kind() != std::io::ErrorKind::CrossesDevices => return Err(e.to_string()),
+        Err(_) => {}
+    }
+    let copied = (|| -> std::io::Result<()> {
+        let mut reader = std::fs::File::open(&staged)?;
+        let mut writer = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&side)?;
+        std::io::copy(&mut reader, &mut writer)?;
+        writer.sync_all()?;
+        drop(writer);
+        std::fs::rename(&side, dest)
+    })();
+    if let Err(e) = copied {
+        let _ = std::fs::remove_file(&side);
+        return Err(copy_text(
+            "beFilesCommit.exdev.copyFailed",
+            &[("e", &e.to_string())],
+        ));
+    }
+    // 目标已经落好；暂存件删不掉不算这一趟失败（不覆盖那一支失败时会撤占位 —— 那就把刚落好的删了）：
+    // 它是我们自己暂存区里的一份，孤儿扫（`sweep_stale`）按期限收。
+    let _ = std::fs::remove_file(&staged);
+    Ok(())
 }
 
 /// 〔HX1〕提交失败之后撤占位那一步的结局 ⇒ 接在报错后面的那半句。撤掉了 ⇒ 空（没什么要用户做的）。

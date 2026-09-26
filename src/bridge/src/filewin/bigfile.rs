@@ -343,6 +343,11 @@ const MAX_UNDO: usize = 1000;
 /// 普通路径那个 `TextEdit` 的 id —— 切进大文件模式那一下，从它的状态里把光标接过来。
 const NORMAL_ID: &str = "filewin-editor-text";
 
+/// 〔W5-FILES〕普通路径那个 `TextEdit` 的 id —— 编辑面的查找替换（`shell.rs`）要读 / 设它的选区。
+pub(crate) fn normal_editor_id() -> Id {
+    Id::new(NORMAL_ID)
+}
+
 /// 焦点在编辑面上时，方向键与 Tab 归编辑面（不拿去切焦点）。
 const FILTER: EventFilter = EventFilter {
     tab: true,

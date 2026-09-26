@@ -769,3 +769,160 @@ fn after_a_save_the_baseline_is_what_was_sent_and_the_digest_is_the_new_one() {
     assert_eq!(p.text, "sent + typed while saving", "stale 动了用户的字");
     assert_eq!(p.expect_sha256(), new_sha, "stale 不该动基准摘要");
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// 〔W5-FILES · 第五波〕编辑面的查找替换
+// 要求住址：`设计/60 §6.2`「标签页快捷键（Ctrl+T / Ctrl+W）· **查找替换** · 语法高亮 · 三击选行 —— 无排期」
+// ＋ `§5.5`「（大文件模式）没有三击选行、查找替换、语法高亮」（那一格维持边界、出声）。
+// ════════════════════════════════════════════════════════════════════════
+
+/// 纯函数逐格对手写表：往后 / 往前 / 绕回 / 中文按**字**计 / 空查找串。
+#[test]
+fn find_from_walks_forward_backward_and_wraps_in_chars() {
+    let t = "甲乙 foo 丙 foo";
+    let cases: &[(&str, usize, bool, Option<(usize, usize)>)] = &[
+        ("foo", 0, false, Some((3, 6))),
+        ("foo", 4, false, Some((9, 12))),
+        ("foo", 10, false, Some((3, 6))), // 绕回
+        ("foo", 9, true, Some((3, 6))),
+        ("foo", 3, true, Some((9, 12))), // 往前绕回
+        ("丙", 0, false, Some((7, 8))),
+        ("没有", 0, false, None),
+        ("", 0, false, None),
+    ];
+    for (needle, from, back, want) in cases {
+        assert_eq!(
+            find_from(t, needle, *from, *back),
+            *want,
+            "{needle:?} 从 {from} {}",
+            if *back { "往前" } else { "往后" }
+        );
+    }
+    assert_eq!(replace_all("a-b-c", "-", "+"), ("a+b+c".to_string(), 2));
+    assert_eq!(replace_all("abc", "", "x"), ("abc".to_string(), 0));
+    assert_eq!(replace_chars("甲乙丙", 1, 2, "XY"), "甲XY丙");
+}
+
+fn window_editing(text: &str) -> (crate::filewin::shell::FileWindow, egui::Context) {
+    let cfg = crate::ssh_source::RemoteConfig {
+        host: "example.invalid".into(),
+        label: "find".into(),
+        port: 22,
+        user: "nobody".into(),
+        key_path: None,
+        backend_path: "/nonexistent/cc-monitor-backend".into(),
+        host_key_fingerprint: None,
+        addresses: Vec::new(),
+        jump: None,
+    };
+    let mut w = crate::filewin::shell::FileWindow::seeded(
+        crate::filewin::source::Source::remote(cfg),
+        "/srv".to_string(),
+        None,
+        Vec::<crate::filewin::source::Row>::new(),
+    );
+    w.edits.deliver(Arrived::Text {
+        path: "/srv/a.txt".into(),
+        name: "a.txt".into(),
+        text: text.to_string(),
+        sha256: crate::filewin::find::testing::fake_sha256(""),
+    });
+    let ctx = egui::Context::default();
+    for _ in 0..2 {
+        crate::filewin::find::testing::frame_text(&ctx, &mut w, Vec::new());
+    }
+    assert!(w.editing().is_some(), "编辑面没立起来");
+    (w, ctx)
+}
+
+fn picked(ctx: &egui::Context) -> Option<(usize, usize)> {
+    egui::TextEdit::load_state(ctx, crate::filewin::bigfile::normal_editor_id())
+        .and_then(|s| s.cursor.char_range())
+        .map(|r| {
+            let r = r.as_sorted_char_range();
+            (r.start.0, r.end.0)
+        })
+}
+
+/// 窗口那条路：下一个 ⇒ 选中第一处、再下一个 ⇒ 第二处、上一个 ⇒ 回第一处；没有 ⇒ 查找栏上说「没找到」、选区不动；
+/// 替换 ⇒ 换掉选中那一处并选中下一处；全部替换 ⇒ 说换了几处、编辑框的字逐字等于手写期望。查找栏真画在编辑面上。
+#[test]
+fn find_and_replace_walk_the_editor_text_through_the_window() {
+    let (mut w, ctx) = window_editing("x=1\nx=2\ny=3\n");
+    let painted = crate::filewin::find::testing::frame_text(&ctx, &mut w, Vec::new());
+    for label in ["查找", "上一个", "下一个", "替换为", "全部替换"] {
+        assert!(
+            painted.iter().any(|t| t == label),
+            "编辑面上没画「{label}」"
+        );
+    }
+    w.find_bar_mut().expect("查找栏").needle = "x=".into();
+    assert!(w.find_in_editor(&ctx, false));
+    assert_eq!(picked(&ctx), Some((0, 2)));
+    assert!(w.find_in_editor(&ctx, false));
+    assert_eq!(picked(&ctx), Some((4, 6)));
+    assert!(w.find_in_editor(&ctx, true));
+    assert_eq!(picked(&ctx), Some((0, 2)));
+    w.find_bar_mut().unwrap().needle = "zz".into();
+    assert!(!w.find_in_editor(&ctx, false));
+    assert_eq!(picked(&ctx), Some((0, 2)), "没找到却挪了选区");
+    assert_eq!(
+        w.find_bar_mut().unwrap().notice.as_deref(),
+        Some("没找到「zz」")
+    );
+    // 替换：选中的恰是查找串 ⇒ 换掉它、选中下一处。
+    {
+        let f = w.find_bar_mut().unwrap();
+        f.needle = "x=".into();
+        f.with = "k=".into();
+    }
+    assert_eq!(w.replace_in_editor(&ctx, false), 1);
+    assert_eq!(w.editing().unwrap().text, "k=1\nx=2\ny=3\n");
+    assert_eq!(picked(&ctx), Some((4, 6)), "换完没选中下一处");
+    assert_eq!(w.replace_in_editor(&ctx, true), 1);
+    assert_eq!(w.editing().unwrap().text, "k=1\nk=2\ny=3\n");
+    assert_eq!(
+        w.find_bar_mut().unwrap().notice.as_deref(),
+        Some("替换了 1 处")
+    );
+    assert!(
+        w.editing().unwrap().dirty(),
+        "替换之后编辑面不算改过 —— 存不回去"
+    );
+}
+
+/// 大文件模式：查找栏不画，编辑面说一句「大文件模式没有查找替换」（`§5.5` 的边界）；方法也不动字。
+#[test]
+fn big_file_mode_has_no_find_and_says_so() {
+    let big = "a".repeat(300 * 1024);
+    let (mut w, ctx) = window_editing(&big);
+    assert!(w.editing().unwrap().big.is_big(), "语料没进大文件模式");
+    let painted = crate::filewin::find::testing::frame_text(&ctx, &mut w, Vec::new());
+    assert!(
+        painted.iter().any(|t| t == "大文件模式没有查找替换"),
+        "大文件模式没出声"
+    );
+    assert!(
+        !painted.iter().any(|t| t == "全部替换"),
+        "大文件模式也画了查找栏"
+    );
+    w.find_bar_mut().unwrap().needle = "a".into();
+    assert_eq!(w.replace_in_editor(&ctx, true), 0);
+    assert_eq!(w.editing().unwrap().text.len(), big.len());
+}
+
+/// 〔W5-FILES · 有损名全寻址（`设计/60 §6.2`「有损名的…编辑」）〕存盘那一行按字节切：有损目录 ⇒ `root` 发 `{"b16": …}`、
+/// 合法 UTF-8 的尾段照旧是字符串；读文本那一行的 `path` 同理（期望手写）。
+#[test]
+fn a_lossy_path_is_saved_by_its_bytes() {
+    let at = crate::filewin::source::RemotePath::from_bytes(b"/srv/d\xff/f.txt");
+    let v = save_args_at(&at, "x", SHA0);
+    assert_eq!(v["root"], serde_json::json!({ "b16": "2f7372762f64ff" }));
+    assert_eq!(v["rel"], "f.txt");
+    let plain = crate::filewin::source::RemotePath::plain("/srv/a.txt");
+    assert_eq!(
+        save_args_at(&plain, "x", SHA0),
+        save_args("/srv/a.txt", "x", SHA0),
+        "合法 UTF-8 那一形变了"
+    );
+}

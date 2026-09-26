@@ -433,6 +433,20 @@ pub async fn probe_remote(
     origin: &super::source::Origin,
     remote_path: &str,
 ) -> bool {
+    probe_remote_at(
+        line,
+        origin,
+        serde_json::Value::String(remote_path.to_string()),
+    )
+    .await
+}
+
+/// 〔W5-FILES · 有损名全寻址〕同 [`probe_remote`]（同一个口径：`stat` 失败算「不在」），路径由调用方给线上那一形（字符串或 `{"b16": …}`）。
+pub async fn probe_remote_at(
+    line: &super::source::Line,
+    origin: &super::source::Origin,
+    remote_path: serde_json::Value,
+) -> bool {
     super::source::ask(
         line,
         origin,
