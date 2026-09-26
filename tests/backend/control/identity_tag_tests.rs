@@ -410,3 +410,165 @@ fn container_maps_every_tag_outcome_to_the_hand_written_table() {
         assert_eq!(outcome.container(), *want, "结局 {outcome:?}");
     }
 }
+
+// ═══ 〔W5-VIS · `设计/15 §4.7 S2`〕打标失败说出来 ＋ `#[must_use]` ═══════════════════════════════
+//
+// 要求住址：`设计/15 §4.7 S2` 逐字「⇒ 失败那一形要说出来 ＋ `#[must_use]`（`§5.1 A2`；W5-VIS）」。
+
+/// 一个会失败 / 会成功的假 tmux（**绝对路径**交给 `set_sid`，不碰进程级 `PATH`）。
+///
+/// ⚠ 经 `/bin/sh <脚本>` 起、不直接 exec 脚本本身：刚写完就 exec 一个文件，撞上并行测试里别的线程
+/// 正在 fork（子进程在 fork 与 exec 之间还攥着那份写 fd）⇒ `ETXTBSY`（全量跑时现打逮到过一次）。
+/// `sh` 只是**读**它，不受这一条影响。
+fn fake_cmd(p: &std::path::Path) -> std::process::Command {
+    let mut c = std::process::Command::new("/bin/sh");
+    c.arg(p);
+    c
+}
+
+fn fake_tmux(tag: &str, script: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("ccm-w5vis-s2-{tag}-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("mkdir");
+    let p = dir.join("tmux");
+    std::fs::write(&p, script).expect("write fake tmux");
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    p
+}
+
+/// ★ S2 本体：**打不上的两形说，其余五形不说** —— 七个变体逐格相等（两向）。
+#[test]
+fn w5vis_s2_the_failure_note_speaks_for_exactly_the_two_untagged_forms() {
+    let sid = "9d66c46d-bf88-4f99-877e-455555555555";
+    let cases: Vec<(Outcome, Option<&str>)> = vec![
+        (
+            Outcome::Failed("tmux 报了一句 X".into()),
+            Some("tmux 报了一句 X"),
+        ),
+        (Outcome::RejectedSid, Some("sid 的形状不对")),
+        (Outcome::Tagged("$3".into()), None),
+        (Outcome::AlreadyCurrent, None),
+        (Outcome::NotInTmux, None),
+        (Outcome::PaneUnknown, None),
+        (Outcome::NoSuchPane, None),
+    ];
+    for (o, want) in cases {
+        let got = o.failure_note(4242, sid);
+        match want {
+            None => assert_eq!(got, None, "{o:?} 不是「打标失败」，不该说"),
+            Some(why) => {
+                let n = got.unwrap_or_else(|| panic!("{o:?} 是打标失败，却一个字都没说"));
+                for must in [why, "4242", sid, "wrong_owner"] {
+                    assert!(n.contains(must), "{o:?} 那句话里缺 `{must}`：{n}");
+                }
+            }
+        }
+    }
+}
+
+/// ★ S4 同形：`set-option` 失败时 **tmux 自己说的那句话进原因**（原先 stderr 丢进 `Stdio::null()`）。
+/// 真起一个假 tmux 子进程（退出码 · stderr 由它定，不看后端源码 —— 异源）。
+#[test]
+fn w5vis_s2_set_sid_carries_what_tmux_said() {
+    let said = "no server running on /tmp/tmux-1000/w5vis";
+    let bad = fake_tmux("bad", &format!("#!/bin/sh\necho '{said}' >&2\nexit 1\n"));
+    match set_sid(fake_cmd(&bad), "$9".into(), "abc") {
+        Outcome::Failed(why) => assert!(why.contains(said), "原因里没有 tmux 的原话：{why}"),
+        other => panic!("假 tmux 退出 1，结局却是 {other:?}"),
+    }
+    let mute = fake_tmux("mute", "#!/bin/sh\nexit 1\n");
+    match set_sid(fake_cmd(&mute), "$9".into(), "abc") {
+        Outcome::Failed(why) => assert!(why.contains("tmux 没说原因"), "{why}"),
+        other => panic!("{other:?}"),
+    }
+    // 正控：成功那一形仍是 `Tagged(句柄)`。
+    let good = fake_tmux("good", "#!/bin/sh\nexit 0\n");
+    assert_eq!(
+        set_sid(fake_cmd(&good), "$9".into(), "abc"),
+        Outcome::Tagged("$9".into())
+    );
+    // 起不来（程序不存在）⇒ 仍是 `Failed`，原因说清。
+    let gone = std::env::temp_dir().join("ccm-w5vis-s2-definitely-not-here/tmux");
+    match set_sid(std::process::Command::new(&gone), "$9".into(), "abc") {
+        Outcome::Failed(why) => assert!(why.contains("起不来 tmux"), "{why}"),
+        other => panic!("{other:?}"),
+    }
+    for d in ["bad", "mute", "good"] {
+        let _ = std::fs::remove_dir_all(
+            std::env::temp_dir().join(format!("ccm-w5vis-s2-{d}-{}", std::process::id())),
+        );
+    }
+}
+
+/// 接线：唯一调用点先经 `failure_note` 再取 `container`（不再是一条链 `tag(..).container()`）；
+/// `Outcome` 带 `#[must_use]`。两处都是**剥注释后的生产文本**，各带一个正控（合成语料里的旧形必须被认出）。
+#[test]
+fn w5vis_s2_the_only_caller_says_the_failure_and_the_outcome_is_must_use() {
+    fn caller_says_it(prod: &str) -> Result<(), String> {
+        let n = prod.matches("identity_tag::tag(").count();
+        if n != 1 {
+            return Err(format!(
+                "`identity_tag::tag(` 在 watcher 生产段里 {n} 处（要恰好 1）"
+            ));
+        }
+        let at = prod.find("identity_tag::tag(").unwrap();
+        let rest = &prod[at..];
+        let stmt_end = rest.find(';').ok_or("找不到那条语句的结尾")?;
+        if rest[..stmt_end].contains(".container()") {
+            return Err("结局在同一条语句里就被取了 `.container()` —— 失败那一形又被吞了".into());
+        }
+        let note = rest
+            .find(".failure_note(")
+            .ok_or("调用点后面没有 `.failure_note(`")?;
+        let cont = rest
+            .find(".container()")
+            .ok_or("调用点后面没有 `.container()`")?;
+        if note > cont {
+            return Err("`.failure_note(` 排在 `.container()` 之后".into());
+        }
+        Ok(())
+    }
+    fn must_use_on_outcome(prod: &str) -> Result<(), String> {
+        let n = prod.matches("#[must_use").count();
+        if n != 1 {
+            return Err(format!(
+                "`#[must_use` 在 identity_tag 生产段里 {n} 处（要恰好 1）"
+            ));
+        }
+        let at = prod.find("#[must_use").unwrap();
+        let next_item = prod[at..]
+            .lines()
+            .skip(1)
+            .find(|l| !l.trim_start().starts_with("#["))
+            .unwrap_or("");
+        if next_item.trim() != "pub(crate) enum Outcome {" {
+            return Err(format!(
+                "`#[must_use` 贴的不是 `enum Outcome`，而是 `{}`",
+                next_item.trim()
+            ));
+        }
+        Ok(())
+    }
+    let watcher = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/observe/watcher.rs"
+    ));
+    let tag_src = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/control/identity_tag.rs"
+    ));
+    caller_says_it(&watcher).unwrap_or_else(|e| panic!("{e}"));
+    must_use_on_outcome(&tag_src).unwrap_or_else(|e| panic!("{e}"));
+    // 正控：S2 之前的原形必须被认出（量具没瞎）。
+    let old_caller = format!(
+        "let container = crate::control::identity_tag::tag(pid, &sid).container();\n{}\n",
+        "sink.send(x);"
+    );
+    assert!(
+        caller_says_it(&old_caller).is_err(),
+        "旧的链式写法没被认出 —— 量具瞎了"
+    );
+    let no_must = tag_src.replacen("#[must_use", "#[doc", 1);
+    assert!(
+        must_use_on_outcome(&no_must).is_err(),
+        "摘掉 must_use 没被认出 —— 量具瞎了"
+    );
+}
