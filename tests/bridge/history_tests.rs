@@ -4076,20 +4076,29 @@ fn loc1b_one_pager_serves_both_sides_and_only_the_payload_origin_differs() {
     let path = "/h/.claude/projects/p/0b8f7a4e-0000-4000-8000-000000000001.jsonl";
     let mut local = SessionPager::new(&crate::origin::Origin::local(), path);
     let mut remote = SessionPager::new(&crate::origin::Origin("devbox".into()), path);
-    let (l, r) = (local.page(LOC1B_CLAUDE_PAGE), remote.page(LOC1B_CLAUDE_PAGE));
+    let (l, r) = (
+        local.page(LOC1B_CLAUDE_PAGE),
+        remote.page(LOC1B_CLAUDE_PAGE),
+    );
     // permission-mode 不可显示但占号（seq 0），空行不占号 ⇒ user=1、assistant=2。
     assert_eq!(l.iter().map(|p| p.seq).collect::<Vec<_>>(), vec![1, 2]);
     assert_eq!(r.iter().map(|p| p.seq).collect::<Vec<_>>(), vec![1, 2]);
     for (a, b) in l.iter().zip(&r) {
         assert_eq!(a.session_id, "0b8f7a4e-0000-4000-8000-000000000001");
-        assert_eq!((&a.session_id, &a.cwd, &a.path), (&b.session_id, &b.cwd, &b.path));
+        assert_eq!(
+            (&a.session_id, &a.cwd, &a.path),
+            (&b.session_id, &b.cwd, &b.path)
+        );
         assert_eq!(a.cwd.as_deref(), Some("/w"), "cwd 从首条 user 记录起往后带");
         assert_eq!(
             serde_json::to_value(&a.message).unwrap(),
             serde_json::to_value(&b.message).unwrap()
         );
     }
-    assert!(l.iter().all(|p| p.origin.is_none()), "本机载荷不带 origin（前端视为本机）");
+    assert!(
+        l.iter().all(|p| p.origin.is_none()),
+        "本机载荷不带 origin（前端视为本机）"
+    );
     assert!(r.iter().all(|p| p.origin.as_deref() == Some("devbox")));
 }
 
@@ -4098,8 +4107,13 @@ fn loc1b_one_pager_serves_both_sides_and_only_the_payload_origin_differs() {
 fn loc1b_numbering_continues_across_pages() {
     let path = "/h/.claude/projects/p/s.jsonl";
     let mut whole = SessionPager::new(&crate::origin::Origin::local(), path);
-    let one: Vec<u64> = whole.page(LOC1B_CLAUDE_PAGE).iter().map(|p| p.seq).collect();
-    let (head, tail) = LOC1B_CLAUDE_PAGE.split_at(LOC1B_CLAUDE_PAGE.find("{\"type\":\"assistant\"").unwrap());
+    let one: Vec<u64> = whole
+        .page(LOC1B_CLAUDE_PAGE)
+        .iter()
+        .map(|p| p.seq)
+        .collect();
+    let (head, tail) =
+        LOC1B_CLAUDE_PAGE.split_at(LOC1B_CLAUDE_PAGE.find("{\"type\":\"assistant\"").unwrap());
     let mut paged = SessionPager::new(&crate::origin::Origin::local(), path);
     let mut two: Vec<u64> = paged.page(head).iter().map(|p| p.seq).collect();
     two.extend(paged.page(tail).iter().map(|p| p.seq));
@@ -4111,7 +4125,8 @@ fn loc1b_numbering_continues_across_pages() {
 #[test]
 fn loc1b_the_agent_kind_comes_from_the_file_name_on_either_side() {
     let uuid = "0b8f7a4e-0000-4000-8000-000000000002";
-    let codex_path = format!("/far/away/.codex/sessions/2026/01/01/rollout-2026-01-01T00-00-00-{uuid}.jsonl");
+    let codex_path =
+        format!("/far/away/.codex/sessions/2026/01/01/rollout-2026-01-01T00-00-00-{uuid}.jsonl");
     let line = "{\"timestamp\":\"2026-01-01T00:00:00Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"x\"}]}}\n";
     let mut codex = SessionPager::new(&crate::origin::Origin("devbox".into()), &codex_path);
     let got = codex.page(line);
@@ -4122,10 +4137,15 @@ fn loc1b_the_agent_kind_comes_from_the_file_name_on_either_side() {
         "Codex 的 user 消息要映射成 User 记录：{:?}",
         got[0].message
     );
-    let mut claude = SessionPager::new(&crate::origin::Origin("devbox".into()), "/far/away/.claude/projects/p/s.jsonl");
+    let mut claude = SessionPager::new(
+        &crate::origin::Origin("devbox".into()),
+        "/far/away/.claude/projects/p/s.jsonl",
+    );
     let as_claude = claude.page(line);
     assert!(
-        !as_claude.iter().any(|p| matches!(p.message, crate::messages::JsonlRecord::User { .. })),
+        !as_claude
+            .iter()
+            .any(|p| matches!(p.message, crate::messages::JsonlRecord::User { .. })),
         "同一行按 Claude 解不该成 User —— 否则上一条没证明种类真的按名字分了"
     );
 }
@@ -4138,12 +4158,29 @@ fn loc1b_the_cold_read_command_has_no_local_branch_and_opens_no_file() {
     let start = prod
         .find("pub async fn stream_read_session_jsonl(")
         .expect("找不到那条命令 —— 本条空转");
-    let end = prod[start..].find("\n}\n").map(|k| start + k).expect("找不到函数尾");
+    let end = prod[start..]
+        .find("\n}\n")
+        .map(|k| start + k)
+        .expect("找不到函数尾");
     let body = &prod[start..end];
-    let needles = ["Route::Local", "Route::Remote", "is_local()", "File::open", "remote_history::"];
+    let needles = [
+        "Route::Local",
+        "Route::Remote",
+        "is_local()",
+        "File::open",
+        "remote_history::",
+    ];
     let hits = |s: &str| needles.iter().filter(|n| s.contains(*n)).count();
-    assert_eq!(hits(body), 0, "冷读命令体里又长出了按本机 / 远端分叉或自己开文件的那一形：\n{body}");
-    assert_eq!(body.matches("frame_query::read_page(").count(), 1, "取原文只经那台后端这一处");
+    assert_eq!(
+        hits(body),
+        0,
+        "冷读命令体里又长出了按本机 / 远端分叉或自己开文件的那一形：\n{body}"
+    );
+    assert_eq!(
+        body.matches("frame_query::read_page(").count(),
+        1,
+        "取原文只经那台后端这一处"
+    );
     // 正控：旧形状（本机分支自己开文件）会被认出来。
     let old = "if let crate::origin::Route::Remote(host) = origin.route(\"x\")? { return crate::remote_history::f(host).await; } let file = File::open(&target);";
     assert_eq!(hits(old), 3);

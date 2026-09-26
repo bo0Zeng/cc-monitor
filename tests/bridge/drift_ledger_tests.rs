@@ -349,11 +349,13 @@ const FEEDERS: &[(&str, &str, Whose, &str)] = &[
         "参数 `origin`，原样交给 `record`",
     ),
     // 〔LOC1b · 第四波 4D〕`("search.rs", "build_one", Local)` 那一行摘了：本机搜索改问本机后端，monitor 内存索引删了。
+    // 〔LOC1b · 第四波 4D〕`("session_map.rs", "is_interactive", Local)` 换成下面这一行：本机判活改由本机后端的帧来之后，
+    //   「未登记的会话 kind」那一笔在本机那条流上记（monitor 不再自己扫 pidfile）。
     (
-        "session_map.rs",
-        "is_interactive",
+        "ssh_source.rs",
+        "book_unknown_local_kind",
         Whose::Local,
-        "pidfile 只在本机 `~/.claude/sessions` 扫",
+        "本机那条流的 `session_added.session_kind`：只看本机（记在本机名下）",
     ),
     (
         "session_skeleton.rs",

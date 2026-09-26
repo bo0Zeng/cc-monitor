@@ -13202,6 +13202,11 @@
       "zh": "未找到远端配置：{machine}",
       "args": ["machine"]
     },
+    "rsLib.activeSessions.notListed": {
+      "kind": "error",
+      "zh": "本机后端还没报完活会话清单",
+      "args": []
+    },
     "rsLib.log.none": {
       "kind": "error",
       "zh": "没有 log 文件（log 文件未启用或还没产生）",

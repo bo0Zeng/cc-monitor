@@ -181,7 +181,8 @@ fn the_whole_session_reader_goes_through_the_one_numbering_home() {
         !guard_core::contains_word(&prod, "next_seq"),
         "history.rs：读路里又长出了自己的 `next_seq` 计数器"
     );
-    let remote = guard_core::production_code(include_str!("../../src/bridge/src/remote_history.rs"));
+    let remote =
+        guard_core::production_code(include_str!("../../src/bridge/src/remote_history.rs"));
     assert!(
         !remote.contains("numbered_displayable") && !remote.contains("parse_line"),
         "remote_history.rs 又长出了一个会话读者 —— 本机远端读一整份会话只许有 `history.rs` 那一条"

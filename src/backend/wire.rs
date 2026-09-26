@@ -356,6 +356,16 @@ pub enum Frame {
         /// 与本字段加进来之前一字不差。缺席的意思是「不知道」，**不是** `none`。
         #[serde(skip_serializing_if = "Option::is_none")]
         container: Option<SessionContainer>,
+        /// 〔LOC1b · 第四波 4D，additive〕那个 claude 进程的 **pid**。
+        ///
+        /// 给谁：本机 monitor 的「↗ 拉前」—— 本机判活改由本机后端的帧来之后（monitor 不再自己读 pidfile），
+        /// 它按 pid 找父 PowerShell 去绑窗口（`bind::SidHwndCache::record`，Windows）只能从这一格拿 pid。
+        ///
+        /// **与 [`Self::SessionAdded::rbind_token`] 同一道闸**：只在客户端发了 `--with-rbind-token` 时才带
+        /// （`ReaderState::with_rbind_token`）—— 两格是同一件事（给 ↗ 绑窗口的材料）的两半；没索要的客户端
+        /// 收到的字节与本字段加进来之前一字不差（仓外 aterm 那份按精确字节对的 fixture 因此不受影响，hello 也不变）。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pid: Option<u32>,
     },
     /// Batch9-F27：会话 status 变化（pidfile modify diff；CC 仅状态转换时重写，
     /// 天然稀疏）。远端红绿灯数据源；旧 monitor 未知 kind 忽略（additive）。

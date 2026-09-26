@@ -79,7 +79,7 @@ src/bridge/
 | **messages.rs** | `JsonlRecord` enum + `ApiMessage` + `ContentBlock` | `JsonlRecord::is_displayable()` |
 | **parser.rs** | 单行 JSONL → JsonlRecord | `parse_line(origin, raw)` |
 | **local_lines.rs** (CF1) | 本机会话内容的入口通道：本机两条读循环（常驻 TCP · stdio 监护）把本机后端发来的内容帧（`line` / `session_added` / `session_removed`）送进来，交给 `ssh_source::consume_local`，再进与远端同一个 `LineIntake`（攒批 ＋ 静默窗 ＋ 旁路快照 ＋ 续点）。有界通道 ⇒ 消费者跟不上时读循环停读、后端写阻塞（背压，不丢）。原先 monitor 自己那套 jsonl watcher（第二套游标与 seq）随 CF1 删了 | `install / deliver / deliver_blocking / stream_ended` |
-| **session_map.rs** | 读 sessions/<PID>.json + Win32 进程探活 + 心跳清死 session；**procStart 可选** —— Claude Code 偶发漏写时降级仅 STILL_ACTIVE 判活（详 INVARIANTS § 18）。**v2.6 procStart 比较走 `utils::NetTicks::parse_str` typed API**（newtype 单位隔离） | `SessionMap::load_with_changes() / is_session_active()` |
+| **session_map.rs** | 〔LOC1b · 第四波 4D〕**本机活会话表**：由本机常驻后端那条流的起停帧喂（`session_added` / `session_status` / `session_removed` / `sessions_replayed`，经 `ssh_source::consume_local`），纯核 `LocalTable::step` 出 `SessionChange` 给本机 emitter（与远端同一套裁决）；本机流断 ⇒ 活会话 ∪ 可重连一律 `Unseen`（与远端断连 flush 同一个函数）。从前这里是 monitor 自己的判活（读 pidfile ＋ Win32 / `/proc` 探活 ＋ 2 s 心跳），整份删了 | `local() / feed() / install_sink() / LocalTable::step` |
 | **bind.rs** | cc 集成的核心：监听 `ps-await/`、PS 改窗口标题、EnumWindows 找 marker、写 `ps-registry/`、`SidHwndCache` 持久化 sid↔hwnd、`bring_terminal_to_front` | `BindRegistry::spawn() / SidHwndCache::load() / bring_terminal_to_front` |
 | **profile_installer.rs** | 别名块（POSIX `cc` / `cct` · PowerShell `__ccm_bind` ＋ 可选 `cc`）的渲染 / 插入 / 卸载 / 现状 / 冲突检测；〔AL1d〕`$PROFILE` 在哪不归它（只有 `shell_dialect.rs` 答） | `block_state / render_block / install_to_profile / uninstall_from_profile / render_cc_code` |
 | **auto_launch.rs** | "用 cc 启动 claude 时自动开 monitor" 开关持久化（模块级函数，非 impl 方法） | `auto_launch::{load, save, get_config, set_enabled, update_monitor_path_on_startup}` |
@@ -194,7 +194,7 @@ src/bridge/
 |---|---|---|---|
 | （`chan/webview.rs::ITEMS_EVENT`） | `chan-items` | `{ sub, items }` | 〔CF2〕会话流的交格（原 `jsonl-line` / `jsonl-batch` 两个事件退役）；定向发给订阅所在的 webview |
 | `SESSION_ENDED` | `session-ended` | `SessionEndedPayload` | sessions/<PID>.json 被删（session 退出） |
-| `SESSION_STARTED` (resume 复活) | `session-started` | `SessionStartedPayload {session_id}` | 本地会话重新变活（sessions/<PID>.json 新增 **且 PID 探活通过**）时 emit——session-ended 的对称面；前端 `tabs.reviveTab` 复活已归档本地 Tab（`/resume` 免 F5）。`is_session_active` 门控避免崩溃残留旧 PID.json 误复活 |
+| `SESSION_STARTED` (resume 复活) | `session-started` | `SessionStartedPayload {session_id, cwd, kind, name}` | 本地会话（重新）变活：本机后端宣告了它（〔LOC1b〕本机判活改由本机后端的帧来；宣告前后端已核过进程与 `procStart`）时 emit——session-ended 的对称面；前端 `tabs.reviveTab` 复活已归档本地 Tab（`/resume` 免 F5），无 Tab 时建骨架 |
 | `TASKS_UPDATE` (v2.3.0 issue #11) | `task-update` | `TasksUpdatePayload {sessionId, tasks}` | tasks/<sid>/ 内任何文件变更（debounce 100ms + dedup by sid） |
 | `SESSION_ACTIVITY` (issue #23) | `session-activity` | `SessionActivityPayload {session_id, status, waiting_for}` | sessions/<PID>.json 的官方 status 字段变化时（CLI 仅状态转换时重写文件，天然稀疏；红绿灯：busy=绿 idle/shell=红 waiting=黄） |
 | `REMOTE_HEALTH` (SS-F, issue #32/#33) | `remote-health` | `RemoteHealthPayload {origin, kind, message}` | 远端健康提示：后端管道拥塞丢帧（kind=`overflow`，#32）/ 版本不符（kind=`version`，#33）→ 前端 remote-health.ts 按 origin 节流弹 toast |
