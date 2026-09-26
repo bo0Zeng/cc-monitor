@@ -1956,10 +1956,10 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 |---|---|---|
 | `origin` | → | 那台的名字（monitor 的 origin 名，本后端只当不透明的键用） |
 | `dial` | → | 那台的拨号请求（同 `link-open` 的 `dial`；只有路径，没有私钥本体）。用时会把 `use` 改成 `capture` |
-| `backend` | → | 那台上后端的路径 |
+| `backend` | → | 那台上后端的路径。〔TL3 · `INVARIANTS §47` ②〕这个值随后被拼进远端命令 ⇒ 登记之前先过放行判定（`accounts_query::is_safe_config_dir`：绝对路径 · 无 `..` 段 · 无 shell 元字符 / 控制字符 / 视觉欺骗字符），判不过 ⇒ `bad_args`、一条都不登记 |
 | `reach` | ← | 登记之后的可达表 `[{origin, machine}]`（同 `assets-sync` 的那一格） |
 
-**错误码**：`bad_args`（缺 `origin` / `origin` 空串 · 缺 `dial` / `backend` · 可达表满）。
+**错误码**：`bad_args`（缺 `origin` / `origin` 空串 · 缺 `dial` / `backend` · `backend` 过不了放行判定 · 可达表满）。
 ⚠ **CLI 面也有它**（`--remote-reach`，入参从 stdin 读），但一次性进程的可达表随进程退出就空 —— 真正的用法是常驻后端的帧面。
 
 #### `skill-read`：读来源那台上的一个 skill（AS2 · 第四波 4B，2026-09-25，**只读**）
