@@ -225,13 +225,25 @@ pub static NO_LINE: std::sync::LazyLock<String> =
 ///
 /// ⚠ **不用双引号**：`launch.rs` 会拒掉含双引号的 `remote_cmd`
 /// （PowerShell 原生传参畸变那道防线）—— 那一条与 TS 那份注释逐字同源。
-pub fn build_open_terminal_cmd(cwd: &str) -> String {
+///
+/// 〔TL3 · `INVARIANTS §47` ② · 主会话 09-26 按 V131 裁〕当前目录是那台列出来的**自由文本路径** ⇒ 拼进 `cd` 之前先过
+/// 形式 ＋ 拒绝集（`shell_quote_core::posix_free_path_ok`：POSIX 绝对 · 无 `..` 段 · 不含 NUL / CR / LF；**不拒 shell 元字符**，
+/// 交给那一处 quote）。判不过 ⇒ `Err`（那句话由窗口画出来），一个请求都不发。
+pub fn build_open_terminal_cmd(cwd: &str) -> Result<String, String> {
     let shell = "exec ${SHELL:-bash} -l";
     let c = cwd.trim();
     if c.is_empty() {
-        shell.to_string()
+        Ok(shell.to_string())
+    } else if !shell_quote_core::posix_free_path_ok(c) {
+        Err(copy_text(
+            "rsFilewinShell.terminal.badCwd",
+            &[("cwd", &format!("{c:?}"))],
+        ))
     } else {
-        format!("cd {} && {shell}", shell_quote_core::posix_quote(c))
+        Ok(format!(
+            "cd {} && {shell}",
+            shell_quote_core::posix_quote(c)
+        ))
     }
 }
 
@@ -764,7 +776,13 @@ impl FileWindow {
             return false;
         };
         let origin = self.source.origin();
-        let cmd = build_open_terminal_cmd(&self.cwd);
+        let cmd = match build_open_terminal_cmd(&self.cwd) {
+            Ok(c) => c,
+            Err(why) => {
+                *self.term_notice.lock().unwrap() = Some(why);
+                return false;
+            }
+        };
         let slot = self.term_notice.clone();
         *slot.lock().unwrap() = None;
         h.spawn(async move {

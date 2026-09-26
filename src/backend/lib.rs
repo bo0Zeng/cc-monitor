@@ -538,7 +538,11 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p3z-fence-home-backendpath**（2026-09-26，第四波 4D TL3 合并那一拍）：行为 —— 读路径围栏收成 `observe/fence.rs::Fence` 一个家（history / search 两个读者）·
 /// `remote-reach` 进门判 `backend` 形状、不合形回 `bad_args`。子命令没变，照 p1v 先例不加历史行。
-pub const BUILD_ID: &str = "p3z-fence-home-backendpath";
+///
+/// ★★★ **p4a-free-text-gate**（2026-09-26，第四波 4D TL3 续做合并那一拍）：行为 —— `ccm` 拒相对 / 带 `..` / 带换行的 `--cwd`，
+/// 也拒带 NUL / CR / LF 的启动器 · 透传参数 · 登记备注（`plan.rs::free_text_gate` / `inherited_gate`）· `remote_ask` 拒带换行的 argv（V131：拒绝集只收控制字符 ＋ 形式判定 ＋ 唯一 quote）。
+/// 代号 3 → 4（`p3z` 之后按 `(代号, 字母)` 序是 `p4a`，只升不降那条路据此判新旧）。子命令没变，照 p1v 先例不加历史行。
+pub const BUILD_ID: &str = "p4a-free-text-gate";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），

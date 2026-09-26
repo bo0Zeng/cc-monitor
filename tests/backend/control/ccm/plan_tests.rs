@@ -1323,3 +1323,68 @@ fn us1_an_inherited_keyed_relay_url_goes_inward_as_a_file_read_not_as_the_key() 
         );
     }
 }
+
+/// 〔TL3 · `INVARIANTS §47` ②〕自由文本那几格拼进 shell 之前的放行判定 —— **正反各一格**（§47「拒过头也算违反」）。
+///
+/// 要求住址：`INVARIANTS §47` ②「走唯一的 quote ＋ 这一种值的形式判定 ＋ 拒绝集」；主会话 09-26 按 V131 裁
+/// 「自由文本路径的拒绝集只收控制字符（NUL / CR / LF）、形式判定按各自语境（cwd / 目录要绝对路径等）、然后唯一一处 quote ——
+/// 不拒 shell 元字符」。模型名与 `--ccm-sid` 不在本条（交 DUP1）。
+#[test]
+fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
+    let build_of = |args: &[&str], e: &Env| {
+        let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        match parse(&a).expect("该解析得动") {
+            Parsed::Opts(o) => build(&o, e, &AccountTable::default(), None),
+            other => panic!("{other:?}"),
+        }
+    };
+    // 正：带 `'` `(` 空格 `&` 的真实目录名 · 透传参数里的元字符 · 备注里的中文与标点。
+    for args in [
+        vec!["--cwd", "/home/u/Bob's notes (2019)"],
+        vec!["--cwd", "/srv/a&b", "--", "--print", "a;b|c"],
+        vec![
+            "--tmux=n",
+            "--detach",
+            "--bus-register",
+            "--bus-note",
+            "给 aya 的备注（测试）",
+        ],
+    ] {
+        build_of(&args, &env()).unwrap_or_else(|e| panic!("真实好值被拒了：{args:?} ⇒ {}", e.0));
+    }
+    // 反：相对 · `..` 段 · 换行 / CR / NUL，分别落在工作目录 · 启动器 · 透传参数 · 备注。
+    for (args, what) in [
+        (vec!["--cwd", "rel/dir"], "--cwd"),
+        (vec!["--cwd", "/home/u/../etc"], "--cwd"),
+        (vec!["--cwd", "/home/u/x\ny"], "--cwd"),
+        (vec!["--launcher", "claude\rrm"], "--launcher"),
+        (vec!["--", "ok", "bad\0"], "--"),
+        (
+            vec![
+                "--tmux=n",
+                "--detach",
+                "--bus-register",
+                "--bus-note",
+                "a\nb",
+            ],
+            "--bus-note",
+        ),
+    ] {
+        let e = build_of(&args, &env())
+            .err()
+            .unwrap_or_else(|| panic!("坏值拼进去了：{args:?}"));
+        assert!(
+            e.0.contains(what),
+            "拒了，但没说清是哪一格（{what}）：{}",
+            e.0
+        );
+    }
+    // 继承来的那三个：只有容器路会把它们显式化进载荷 ⇒ 只在那条路上判；直路上一个用不上的怪值不挡（拒过头）。
+    let mut dirty = env();
+    dirty.anthropic_base_url = Some("http://x\nevil".into());
+    build_of(&[], &dirty).unwrap_or_else(|e| panic!("直路上用不上的继承值挡住了起会话：{}", e.0));
+    let e = build_of(&["--tmux=n"], &dirty)
+        .err()
+        .expect("容器路把带换行的继承值拼进载荷了");
+    assert!(e.0.contains("ANTHROPIC_BASE_URL"), "{}", e.0);
+}

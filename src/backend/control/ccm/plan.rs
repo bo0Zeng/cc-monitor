@@ -712,6 +712,67 @@ pub(crate) fn resolve_account(
     }
 }
 
+/// 〔TL3 · `INVARIANTS §47` ② · 主会话 09-26 按 V131 裁〕**自由文本**那几格拼进 shell（`--print` 那一串 · pane 里键入的载荷 ·
+/// 收尾那几段 `sh -c`）之前的放行判定：
+///
+/// | 格 | 形式（按本机语境） | 拒绝集 |
+/// |---|---|---|
+/// | 工作目录（`--cwd` / 当前目录） | 绝对路径（`Path::is_absolute`，Windows 上认 `C:\` 那一形）· 没有 `..` 段 | NUL / CR / LF |
+/// | 启动器 · 透传给 agent 的参数 · 登记备注 · 继承来的 `CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL` / `CCM_LAUNCH_ID` | — | NUL / CR / LF |
+///
+/// **不拒 shell 元字符**（`Bob's` · `(2019)` 照放，交给唯一的 quote）。拒绝集住 `shell_quote_core::free_text_ok`。
+/// ⚠ 模型名与 `--ccm-sid` **不在这里**：主会话裁交 DUP1（判定唯一住址那一路）统一定规则（`调研/第四波记录/TL3.md §7.3`）。
+/// ⚠ 继承来的那三个只在它们真会被拼进去的时候才判（容器路把它们显式化进载荷，[`inherited_gate`]）：
+///   环境里一个用不上的怪值不该挡住起会话（拒过头）。
+fn free_text_gate(cwd: &str, o: &Opts) -> Result<(), Die> {
+    let p = std::path::Path::new(cwd);
+    if !p.is_absolute()
+        || p.components().any(|c| c == std::path::Component::ParentDir)
+        || !shell_quote_core::free_text_ok(cwd)
+    {
+        return Err(refuse(flag::CWD, cwd));
+    }
+    if !shell_quote_core::free_text_ok(&o.launcher) {
+        return Err(refuse(flag::LAUNCHER, &o.launcher));
+    }
+    if let Some(a) = o
+        .passthru
+        .iter()
+        .find(|a| !shell_quote_core::free_text_ok(a))
+    {
+        return Err(refuse(flag::END, a));
+    }
+    if !shell_quote_core::free_text_ok(&o.bus_note) {
+        return Err(refuse(flag::BUS_NOTE, &o.bus_note));
+    }
+    Ok(())
+}
+
+/// 容器路要把继承来的那三个显式化进载荷（tmux 边界会吃掉它们）⇒ 那一刻才判（见 [`free_text_gate`]）。
+fn inherited_gate(env: &Env) -> Result<(), Die> {
+    for (what, v) in [
+        (
+            env.account_env.as_str(),
+            env.inherited_config_dir.as_deref(),
+        ),
+        ("ANTHROPIC_BASE_URL", env.anthropic_base_url.as_deref()),
+        ("CCM_LAUNCH_ID", env.ccm_launch_id.as_deref()),
+    ] {
+        if let Some(v) = v.filter(|v| !shell_quote_core::free_text_ok(v)) {
+            return Err(refuse(what, v));
+        }
+    }
+    Ok(())
+}
+
+/// 自由文本那几格判不过时的那句话（哪一格 · 原值）。
+fn refuse(what: &str, v: &str) -> Die {
+    Die(copy_text(
+        "bePlan.build.freeTextRefused",
+        &[("what", &what.to_string()), ("value", &format!("{v:?}"))],
+    ))
+}
+
 /// 从 [`Opts`] ＋ 外界 ⇒ [`Plan`]。**这是计划面的唯一入口。**
 ///
 /// `taken` = 那一刻**已被占用的会话名**（`R52` 裁定二那张 hash 表），
@@ -744,7 +805,13 @@ pub(crate) fn build(
     }
 
     let cwd = resolve_cwd(o, env);
+    free_text_gate(&cwd, o)?;
     let (config_dir, account) = resolve_account(o, env, table)?;
+    // 〔TL3 · §47〕账号配置目录（manifest 里来的）是本仓自管的路径，该走全表（`accounts_query::is_safe_config_dir`）——
+    //   但那一份住 `observe/`，`control → observe` 是禁止的方向（`observe/mod.rs` 头注）。挪家归 DUP1（J2）；今天先过自由文本那一层。
+    if !shell_quote_core::free_text_ok(&config_dir) {
+        return Err(refuse(&env.account_env, &config_dir));
+    }
     let launcher = if o.launcher.is_empty() {
         super::default_launcher(&o.agent).to_string()
     } else {
@@ -763,6 +830,7 @@ pub(crate) fn build(
     }
 
     if use_tmux {
+        inherited_gate(env)?;
         let (base, step_aside) = if !o.tmux_base.is_empty() {
             validate_tmux_name(&o.tmux_base)?;
             (o.tmux_base.clone(), true)

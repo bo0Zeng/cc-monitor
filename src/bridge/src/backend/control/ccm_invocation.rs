@@ -56,6 +56,19 @@ pub enum Refusal {
         dim: String,
         cap: String,
     },
+    /// 〔TL3 · `INVARIANTS §47` ②〕一个自由文本值过不了拼进命令之前的放行判定
+    /// （工作目录：POSIX 绝对 · 无 `..` 段 · 不含 NUL / CR / LF；透传参数：不含 NUL / CR / LF）。`value` = 原值（`{:?}` 形）。
+    FreeTextRefused {
+        slot: FreeTextSlot,
+        value: String,
+    },
+}
+
+/// [`Refusal::FreeTextRefused`] 是哪一格（各有各的一句话，文案走表）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FreeTextSlot {
+    Cwd,
+    AgentArg,
 }
 
 impl Refusal {
@@ -90,6 +103,14 @@ impl Refusal {
                 "rsCcmInvocation.refusal.dimensionNeedsCap",
                 &[("dim", &dim.to_string()), ("cap", &cap.to_string())],
             ),
+            Refusal::FreeTextRefused {
+                slot: FreeTextSlot::Cwd,
+                value,
+            } => copy_text("rsCcmInvocation.refusal.freeTextCwd", &[("value", value)]),
+            Refusal::FreeTextRefused {
+                slot: FreeTextSlot::AgentArg,
+                value,
+            } => copy_text("rsCcmInvocation.refusal.freeTextArg", &[("value", value)]),
         }
     }
 }
@@ -401,12 +422,30 @@ pub fn render_ccm_invocation(
     tokens.extend(dimension_flags(spec, caps)?);
 
     if let Some(cwd) = spec.cwd {
+        // 〔TL3 · §47 ②〕工作目录是自由文本路径：形式 ＋ 拒绝集（与载荷那条路同一个判定 `shell_quote_core::posix_free_path_ok`）。
+        if !shell_quote_core::posix_free_path_ok(cwd) {
+            return Err(Refusal::FreeTextRefused {
+                slot: FreeTextSlot::Cwd,
+                value: format!("{cwd:?}"),
+            });
+        }
         tokens.push("--cwd".into());
         tokens.push(cwd.to_string());
     }
     if spec.launcher != spec.default_launcher {
         tokens.push("--launcher".into());
         tokens.push(spec.launcher.to_string());
+    }
+    // 〔TL3 · §47 ②〕透传给 agent 的参数是自由文本：拒绝集只收 NUL / CR / LF（元字符交给 `argv` 里那一处 quote）。
+    if let Some(a) = spec
+        .args
+        .iter()
+        .find(|a| !shell_quote_core::free_text_ok(a))
+    {
+        return Err(Refusal::FreeTextRefused {
+            slot: FreeTextSlot::AgentArg,
+            value: format!("{a:?}"),
+        });
     }
     if !spec.args.is_empty() {
         tokens.push("--".into());
