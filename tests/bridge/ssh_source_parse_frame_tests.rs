@@ -847,3 +847,40 @@ fn a_tap_frame_becomes_the_session_tap_payload_field_for_field() {
         r#"{"origin":"<local>","stream":"sid","resp":4,"n":1,"data":"{}"}"#
     );
 }
+
+/// 〔FW1 · 第四波 4D · D-d〕两个新帧认得（帧串 == 后端 `watcher_tests::the_two_session_file_frames_have_exactly_these_bytes`）；
+/// `why` 认不出 / 缺字段 ⇒ 整帧跳过（不猜成哪一种）。
+#[test]
+fn the_session_file_frames_are_known_and_an_unknown_why_is_dropped() {
+    use crate::ssh_source::FileChange;
+    assert_eq!(
+        parse_frame(r#"{"kind":"session_file_gone","session_id":"s","path":"/p/s.jsonl"}"#),
+        Some(InboundFrame::SessionFileNotice {
+            sid: "s".into(),
+            path: "/p/s.jsonl".into(),
+            change: FileChange::Gone
+        })
+    );
+    for (why, want) in [
+        ("truncated", FileChange::Truncated),
+        ("rewritten", FileChange::Rewritten),
+    ] {
+        assert_eq!(
+            parse_frame(&format!(
+                r#"{{"kind":"session_file_reread","session_id":"s","path":"/p/s.jsonl","why":"{why}"}}"#
+            )),
+            Some(InboundFrame::SessionFileNotice {
+                sid: "s".into(),
+                path: "/p/s.jsonl".into(),
+                change: want
+            })
+        );
+    }
+    for bad in [
+        r#"{"kind":"session_file_reread","session_id":"s","path":"/p/s.jsonl","why":"moved"}"#,
+        r#"{"kind":"session_file_reread","session_id":"s","path":"/p/s.jsonl"}"#,
+        r#"{"kind":"session_file_gone","session_id":"s"}"#,
+    ] {
+        assert_eq!(parse_frame(bad), None, "{bad}");
+    }
+}

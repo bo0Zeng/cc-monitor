@@ -43,7 +43,10 @@ monitor 自己的设置（主题 / 字体 / claudeDir override / 诊断）。
 
 **位置**：`~/.claude/work/config.json`
 
-**写入方**：monitor 设置面板（前端 `theme.ts` / `paths.ts` / `diagnostics-section.ts` 通过 IPC `save_config` / `set_diagnostics_config`）
+**写入方**：monitor 的主窗与设置窗（前端各模块经 IPC `patch_config`；诊断经 `set_diagnostics_config`）。〔CFG1〕**只有一个写函数** `config.rs::patch_config_at`：
+写者只交「改哪几条路径」（`ConfigEdit`：`{op:"set", path, value}` / `{op:"remove", path}`，`path[0]` 是顶层键），
+它在一把进程级锁里现读盘、逐条应用、原子替换 ⇒ 谁写的键谁的值留在盘上。盘上那份读不懂 / 最外层不是对象 ⇒ 拒写、一个字节不动；
+路径为空 ⇒ 整批拒。整份替换的写口（旧 `save_config`）不存在。 〔散文墓碑〕
 **读取方**：monitor 启动时 `paths::resolve_claude_dir` + 前端启动时 `load_config` + `logging::init()` 读 `diagnostics` 子对象
 
 **Schema**（schema 收敛在 TS 端 / Rust logging 模块；其他 Rust 代码只读写 `serde_json::Value` 不解释）：
@@ -409,9 +412,11 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | `cancelled` | `id` | **U6b-1**：某条入方向命令**被取消了**（`id` = 被取消的那条）。同 `reply`：复用 tag 空间、完整语义在「入方向」小节（含「不可取消」时为什么回 `reply{ok:false,code:"not_cancellable"}` 而不是本帧）。⚠ 〔F06c 补〕同上，此前本表无此行 |
 | `accounts_changed` | —（无载荷） | **〔SR1a · `设计/05 §13.6 ③`〕这台机器上的账号清单变了**（watcher 盯账号 manifest 所在目录，一批文件事件里 manifest 动了几次都只发一帧）。客户端收到就重拉一次账号清单（`accounts-list`）—— 清单本身不在帧里，唯一出口仍是那条查询。manifest 所在目录起步时不在 / 后来被删掉重建 ⇒ 这一路听不见（已知边界，代价只是不推帧）。monitor 收到发前端既有的 `remote-backend-ready`（带 `reason: "accounts_changed"`），账号表与 chip 随之重取 |
 | `sessions_replayed` | —（无载荷） | **〔U4b · 第四波〕这台机器的活会话清单报完了**：`watch_loop` 的 Phase 1（同步扫 `sessions/`、对每个活 pidfile 发一帧 `session_added`）走完那一刻发**一次**，排在 Phase 1 所有帧之后、Phase 2 任何帧之前（同一个 sink、同一条线程）；`sessions/` 不在也照发（清单是空的，也是说完了）。**为什么要它**：客户端手里有一条「固定」的会话条目而这台还没报过它时，得分清「这台还没说完」（显示**说不清**）与「说完了、里面没有它」（显示**已结束**）—— `设计/30 §3.5.7a` 那张表的判据，此前线上没有任何东西分得开。丢了不可恢复（`overflow.lost` 带身份、subject 无）：客户端停在「说不清」，不会被说成已结束。monitor 收到发前端 `origin-sessions-listed {origin}`（与 `remote-session-added` 同一条线程、同序）|
+| `session_file_gone` | `session_id`, `path` | **〔FW1 · 第四波 4D · D-d〕活会话的记录文件不见了**（被删 / 被改名走了）。V119 之后文件管理器改得动活会话的 jsonl；观察侧当它是「看的、不是管的」：不崩、**不误判结束**（判活看 pidfile / pid，不看 jsonl），出声一次 —— 每次「在 → 不在」只发一帧；同时丢掉那份文件的游标 ⇒ 同名文件再出现（agent 按路径追加重建）从 0 读、`seq` 照旧往上，之后再不见才再发。丢了不可恢复（`overflow.lost` 带身份 subject = sid）。monitor 收到交给那个会话的内容流一格 `{"file_gone": …}`，该 tab 说「记录文件不见了」 |
+| `session_file_reread` | `session_id`, `path`, `why` | **〔FW1 · 第四波 4D · D-d〕活会话的记录文件被改过了、已从头重读**：`why` = `"truncated"`（比读到过的最长还短）/ `"rewritten"`（没变短，但游标之前那一截被原地改写过：游标旁记着已读前缀的末尾 64 字节，续读前核，对不上即是）。紧排在这一趟重读出来的 `line` 帧**之前**（同一个 sink、同一条线程）；重读的 `seq` 照旧往上（`INVARIANTS §25`），前端按 uuid 去重，本帧只负责出声。⚠ 买不到：长度一字不差的原地改写对得齐、不出声。丢了不可恢复（subject = sid）|
 | `link_data` | `link`, `data` | **〔SR1a〕一条链路的下行字节**（`data` = base64，标准字母表带补位；解码后 ≤ 32 KiB）。只在客户端开了链路（`link-open`）之后才出现；链路上的字节与 C2 拨号代理的 stdout 逐字节同形。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的「链路四条」 |
 | `link_end` | `link`, `error?` | **〔SR1a〕这条链路不会再有字节了**，后端已忘掉这个 id。`error` 缺席 = 正常收尾；在 = 非正常收尾的人话。拨不通**不**走这里（那是链路字节里那一行失败的 ack） |
-| `transfer` | `id`, `got`, `total`, `end?` | **〔SR1b〕一趟传输此刻的样子**（`transfer-start` 之后才出现）：每一帧是整份快照（`got` / `total` 字节），不是增量 ⇒ 后端按变更合并、堵住时只合并不堆积。带 `end` 的那一帧是这一趟的**最后一帧**：`{"state":"done","bytes"}` · `{"state":"failed","why"}` · `{"state":"cancelled"}`。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的「传输四条」 |
+| `transfer` | `id`, `got`, `total`, `end?` | **〔SR1b〕一趟传输此刻的样子**（`transfer-start` 之后才出现）：每一帧是整份快照（`got` / `total` 字节），不是增量 ⇒ 后端按变更合并、堵住时只合并不堆积。带 `end` 的那一帧是这一趟的**最后一帧**：`{"state":"done","bytes","sha256"?}` · `{"state":"failed","why"}` · `{"state":"cancelled"}`（〔FW1 · 第四波 4D〕`sha256` 只有上传那一路有：整份本机文件的摘要，窗口提交 `files-commit-upload` 时原样交回当 `expect`）。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的「传输四条」 |
 | `tap` | `stream`, `resp`, `n`, `data?`, `end?` | **〔TAP · V124 · `设计/20 §8`〕中转抄出来的一个 SSE 事件**（或一个响应的收尾）。只有**进程里住着中转的那个后端**（本机常驻）会发。`stream` = 路由第三段原样（resume ⇒ sid；新开 ⇒ 起会话时铸的 nonce），后端不解释；`resp` = 本进程第几个响应；`n` = 这一个响应里第几个事件，**从 0 连续** —— 每个事件先占号再投递，丢了的号不出现 ⇒ 接收侧看 `n` 连不连得上就知道缺在哪（原位缺口，`设计/05 §3.3.4`）。`data`（SSE `data:` 后那段原文，**一个 JSON 串**）与 `end`（`"done"` 上游说完 · `"broken"` 转发以错误收尾；这一帧的 `n` = 一共占了几个号）恰有一个。一个事件都没有的响应（非 SSE）不发。**可丢**：走后端自己那条有界 tap 通道（256 件、单件原文 ≤ 16 KiB），不挤出方向的内容帧、不回推中转；SSE 只保快，jsonl 保对（V24） |
 
 ### 入方向：流连接上的命令信封（U6b-1）
@@ -706,6 +711,24 @@ shell 串走 SSH、本机拒绝」的分叉。命名避让 / 登记进总线 / s
 ⚠ 期限同 `bus-send`：住在子进程里（`timeout` 前缀，默认 10 秒，`CC_BUS_TIMEOUT_SECS` 可调），后端零定时器。
 ⚠ **这是写面，而且有代价**：它起一个真 agent 进程。UI 侧必须先让用户确认（与收掉 agent 同一条纪律）。
 
+#### `session-fork`：从某条消息处分叉出一个新会话（〔LOC1a · 第四波 4D〕）
+
+```text
+→ {"id":"f1","cmd":"session-fork","args":{"sid":"0473c3a0-…","uuid":"9a1b2c3d-…"}}
+← {"kind":"reply","id":"f1","ok":true,"data":{"sessionId":"5f0e1d2c-…","jsonlPath":"/home/u/.claude/projects/-home-u-proj/5f0e1d2c-….jsonl"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `sid` | → | 源会话 id（只收 sid、不收路径：按 sid 在记录树里找那份文件，`branch_core::find_session_file`） |
+| `uuid` | → | 从哪条消息处分叉 |
+| `sessionId` / `jsonlPath` | ← | 新会话的 id 与落点（源文件同目录，`O_EXCL` 新建：撞了就失败，绝不覆盖） |
+
+与一次性子命令 `--fork-session <sid> <uuid>`（对 aterm 冻结的 argv 形）是**同一份本体**（`control/fork_write.rs::run_inner`：读 → `branch-core` 变换 → `O_EXCL` 落盘）。
+⚠ 名字刻意不叫 `fork-session`：帧面自动派生的 CLI 面会是 `--fork-session`，与那条冻结的 argv 形撞名；这一条的 CLI 面是 `--session-fork`（stdin 一段 JSON）。
+monitor 的本机与远端分叉都经那台机器常驻后端的长连接说这一条（`设计/05 §14.6`；此前本机每次 exec 一个本机后端、远端经拨号链路 exec `--fork-session`）。
+**错误码**：`bad_args`（`sid` / `uuid` 缺或不是非空串，一个字节都不写）· `fork_failed`（找不到 / 读不了 / 变换拒 / 落点已存在，原因原样带着）。
+
 #### `kill`：杀一个 tmux 会话（F04a，**第一条破坏性入方向命令**）
 
 ```text
@@ -852,7 +875,9 @@ pane 处于 **copy-mode**（用户滚了一下轮子）时 `send-keys` **照样�
 **错误码分两层**（U8a-2b 定，趁 `launch` 还没有仓外消费方）：
 **协议级**由 `inbound.rs` 独占 —— `bad_request`（信封 JSON 坏了）· `line_too_long` ·
 `unknown_command` · `duplicate_id` · `handler_panicked` · `not_cancellable`，语义是
-「客户端代码写错了，别重试」；**命令级**由各命令自己定，语义是「参数或环境的问题」。
+「客户端代码写错了，别重试」；〔HX1 · 4D〕另有一个**不是**「写错了」的协议级码 `shutting_down`：后端在收场
+（收到停机信号 / 对端走了 / 最后一个客户走了且退出行为是「结束」，先等在飞的阻塞档命令做完再退），这时新来的阻塞档命令
+一个字节不动、回它 —— 语义是「这一条没执行，重连之后再发」；它与命令无关，同样只有 `inbound.rs` 判得了。**命令级**由各命令自己定，语义是「参数或环境的问题」。
 所以 `launch` 的形状错误叫 `invalid_args` 而**不是** `bad_request`。
 （⚠ `resolve` 今天仍回命令级 `bad_request` —— 它与仓外 aterm 的一次性契约冻结在 2026-07-18，
 两条路复用同一个纯函数，改它会破坏那份契约。如实登记，不顺手改。）
@@ -1127,7 +1152,7 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 
 ```text
 → {"id":"f7","cmd":"files-read-text","args":{"path":"/home/u/p/a.md","max_bytes":262144}}
-← {"kind":"reply","id":"f7","ok":true,"data":{"path":"/home/u/p/a.md","text":"# hi\n","bytes":5}}
+← {"kind":"reply","id":"f7","ok":true,"data":{"path":"/home/u/p/a.md","text":"# hi\n","bytes":5,"sha256":"<64 位小写十六进制>"}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -1136,6 +1161,7 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 | `max_bytes` | → | 🔴 **必须给**：编辑上限是**调用方**的（它答的是「这个文本控件打字卡不卡」）。只收 `1..=8388608`（后端一趟肯交的天花板 8 MiB）；超出 ⇒ `bad_args`，**不替调用方夹小** |
 | `text` | ← | 整份内容（合法 UTF-8） |
 | `bytes` | ← | 字节数 |
+| `sha256` | ← | 〔FW1 · 第四波 4D〕交出去的那份字节的 SHA-256（64 位小写十六进制）。编辑器存回去时原样交回当 `expect: {"sha256": …}`（`files-write-text` / `files-commit-text` 的 CAS）；算法只住后端，调用方当不透明令牌 |
 
 🔴 **超上限整趟拒，不截断**（截断过的文本存回去会写坏文件）。大小判两次：`stat` 出来超了 ⇒ 拒；
 真读的时候比 `stat` 时大（文件正在长）⇒ 同样拒 —— 最多只多读一个字节就知道，不会把一个刚变大的文件整个读进内存。
@@ -1280,6 +1306,7 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 | `root` / `rel` | → | 目标根 ＋ 相对段。**删的是链接本身**，不跟过去 |
 | `recursive` | → | 〔FW5 · 第四波〕布尔，**缺省 `false`**。不给 ⇒ 射程与此前一个字节不差（非空目录 ⇒ `io_failed`）；给了不是布尔 ⇒ `bad_args`（不猜） |
 | `expect` | → | 〔RM1e · 第四波〕可选，字符串或 `{"b16": …}`：「我读到的是这一份」。给了 ⇒ 目标必须是一份**普通文件**（目录 / 链接 ⇒ `refused`），盘上逐字节等于它才删；不等或已经不在 ⇒ `stale`，一个字节不动。`null` ⇒ `bad_args`；与 `recursive: true` 同给 ⇒ `bad_args`。不给 ⇒ 行为不变 |
+| `expect`（空目录形） | → | 〔FW1 · 第四波 4D · SU1 问 2〕恰好 `{"empty_dir": true}`：「我看到的是一个空目录，删它」。目标（不跟链接地看）必须是**真目录**（文件 / 链接 ⇒ `refused`）；不空 ⇒ `stale`（`remove_dir` 自己拒非空，没有先看后删的窗）；不在 ⇒ `stale`。`{"empty_dir": false}` / 多一个键 ⇒ `bad_args`（按逐字节形取、取不出）；与 `recursive: true` 同给 ⇒ `bad_args`。卸 skill 删完装时写的文件之后用它收掉空目录 |
 | `path` | ← | 删掉的那一项 |
 | `removed` | ← | 这一趟真删掉了几条（含目标自己；不递归那一支恒 `1`） |
 
@@ -1315,23 +1342,30 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 #### `files-write-text`：覆盖写一份**已经在**的普通文件
 
 ```text
-→ {"id":"w6","cmd":"files-write-text","args":{"root":"/home/u/docs","rel":"a.md","content":"new text"}}
-← {"kind":"reply","id":"w6","ok":true,"data":{"path":"/home/u/docs/a.md","bytes":8}}
+→ {"id":"w6","cmd":"files-write-text","args":{"root":"/home/u/docs","rel":"a.md","content":"new text","expect":{"sha256":"<打开时 files-read-text 交的那个>"}}}
+← {"kind":"reply","id":"w6","ok":true,"data":{"path":"/home/u/docs/a.md","bytes":8,"sha256":"<写进去那份的>"}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `root` / `rel` | → | 目标根 ＋ 相对段。目标必须**已经在、且是普通文件**；新建请走 `files-create`（`O_EXCL`，两条路刻意分开） |
 | `content` | → | 字符串或 `{"b16":…}`。🔴 **必须给** —— 不给不默认成空（那等于把那份文件清空） |
+| `expect` | → | 〔FW1 · 第四波 4D · D-c〕🔴 **必须给**，恰好 `{"sha256": "<64 位小写十六进制>"}`：「我看的时候那一份」的摘要（`files-read-text` 交的那个）。盘上那份的摘要不等 ⇒ `stale`，一个字节不写；目标已经不在 ⇒ `stale`；缺了 / 形状不对 ⇒ `bad_args`。没有「不问就盖」这一形 |
 | `path` | ← | **解到底**的那个真路径（它跟链接，理由同 `files-chmod`） |
 | `bytes` | ← | 写进去了几个字节 |
+| `sha256` | ← | 〔FW1〕写进去那份的摘要 —— 调用方拿它当下一次存的 `expect`（连存两次不自撞） |
 
-⚠ 没有大小上限、没有「写之前那一版」的备份 —— 本面只做「写」这一件，编辑器的那些语义不在它里面。
+⚠ 没有大小上限、没有「写之前那一版」的备份 —— 本面只做「写」这一件。
+〔FW1〕CAS 用**摘要形**而不是 `files-put` / `files-delete` 那种逐字节形：编辑器存盘装不进一行时分块走（`files-commit-text`），
+逐字节的 `expect` 要么让一行的门槛减半、要么把原文也分块送一遍；摘要定长、两支同形。它仍是 CAS（比的是「我看的时候那一份」），只是换了表示。
+⚠ 比对与写之间仍有窗（TOCTOU）：CAS 缩小的是「读 → 写」那一整趟往返的窗。
+
+〔HX1 · 4D〕**原子地换**（主会话 D-a）：unix 上同目录 `O_EXCL` 暂存旁名写满、沿用原权限位、换名上位 ⇒ 写到一半失败或后端在写的中途被收掉，目标原封不动（旁边可能剩一份 `.<名>.ccm-put-<pid>-<序>.part`）。〔HX1 · 主会话裁〕**例外**：目标有硬链接（`nlink > 1`）或属主不是后端这个用户 ⇒ 退回**就地写**（保住硬链接与属主；非原子，后端日志记一句「这一次不是原子写，因为 …」）。已知代价：xattr / ACL 不跟过来。Windows 上照旧就地写（保 ACE）。
 
 #### `files-commit-upload`：把暂存区里一份传完的上传件挪进目标（F7c，2026-09-24）
 
 ```text
-→ {"id":"w7","cmd":"files-commit-upload","args":{"key":"0123456789abcdef0123456789abcdef","root":"/home/u/docs","rel":"a.bin","overwrite":false}}
+→ {"id":"w7","cmd":"files-commit-upload","args":{"key":"0123456789abcdef0123456789abcdef","root":"/home/u/docs","rel":"a.bin","overwrite":false,"expect":{"sha256":"<transfer 帧 end.sha256>"}}}
 ← {"kind":"reply","id":"w7","ok":true,"data":{"path":"/home/u/docs/a.bin","bytes":1048576}}
 ```
 
@@ -1343,6 +1377,7 @@ SFTP 缩成只做传输之后（`设计/60 §13`），上传**只写** `~/.cc-mo
 | `key` | → | 暂存件的键：**恰好 32 位小写十六进制**。暂存件路径由后端自己拼（`$HOME/.cc-monitor/staging/<key>.part`），调用方指不到暂存区之外任何文件 |
 | `root` / `rel` | → | 目标根 ＋ 相对段，先过写面那两道路径解析（词法 ＋ 父目录解 symlink；〔FN1〕「会话文件那一问」删了） |
 | `overwrite` | → | 🔴 **必须给**（`true` / `false`），不给默认值。`false` ⇒ 先 `O_EXCL` 占位（目标已在 ⇒ `io_failed`），再改名上位；`true` ⇒ 直接改名上位（同盘原子） |
+| `expect` | → | 〔FW1 · 第四波 4D〕🔴 **必须给**，恰好 `{"sha256": "<64 位小写十六进制>"}`：传输台上传时对**本机那份整份**算的摘要（`transfer` 帧 `end.sha256`，窗口原样交来）。改名上位**之前**对暂存件整份算一遍：不等 ⇒ `stale`、目标一个字节不动、**坏暂存件删掉**（调用方从 0 重传）；缺了 / 形状不对 ⇒ `bad_args`。为什么：续传只对尾块，看不见「前缀 ＋ 洞 ＋ 尾巴」（失败后晚到的写在中间留的洞，`设计/60 §7` 第 8 条） |
 | `path` | ← | 落点（父目录解过 symlink 的那一个） |
 | `bytes` | ← | 暂存件的字节数（改名不搬字节，这个数就是它在盘上的长度） |
 
@@ -1371,11 +1406,11 @@ SFTP 缩成只做传输之后（`设计/60 §13`），上传**只写** `~/.cc-mo
 ⚠ `O_EXCL` 新建：同一 `key` 的同一块已经在（重发 / 撞键）⇒ `io_failed`，一个字节不盖。写到一半失败 ⇒ 删掉自己刚建的那一份。
 - **CLI 面同样有它**：`--files-stage-chunk`，载荷走 stdin，与帧面的 `args` 同形。
 
-#### `files-commit-text`：按块读回、拼起来、原地覆盖（F9c · 第四波，2026-09-24）
+#### `files-commit-text`：按块读回、拼起来、覆盖写（F9c · 第四波，2026-09-24）
 
 ```text
-→ {"id":"w9","cmd":"files-commit-text","args":{"key":"0123456789abcdef0123456789abcdef","chunks":3,"bytes":3000000,"root":"/home/u/docs","rel":"big.log"}}
-← {"kind":"reply","id":"w9","ok":true,"data":{"path":"/home/u/docs/big.log","bytes":3000000}}
+→ {"id":"w9","cmd":"files-commit-text","args":{"key":"0123456789abcdef0123456789abcdef","chunks":3,"bytes":3000000,"root":"/home/u/docs","rel":"big.log","expect":{"sha256":"…"}}}
+← {"kind":"reply","id":"w9","ok":true,"data":{"path":"/home/u/docs/big.log","bytes":3000000,"sha256":"…"}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -1383,9 +1418,11 @@ SFTP 缩成只做传输之后（`设计/60 §13`），上传**只写** `~/.cc-mo
 | `key` | → | 与 `files-stage-chunk` 同一个键 |
 | `chunks` | → | 块数：读回 `0..chunks` 这几块。只收 `1..=bytes`（每块至少 1 字节） |
 | `bytes` | → | 拼起来**必须恰好**这么长；最多 8 MiB（`files-read-text` 一趟的天花板：存得回的要读得回来），超了 ⇒ `bad_args` |
-| `root` / `rel` | → | 目标，语义与 `files-write-text` **完全相同**：必须已经在、是普通文件；跟链接（解到底再判一次）；原地覆盖（权限位 / 属主不变） |
+| `root` / `rel` | → | 目标，语义与 `files-write-text` **完全相同**：必须已经在、是普通文件；跟链接（解到底再判一次）；原子地换（权限位沿用；〔HX1〕属主 / 硬链接不再保留，见 `files-write-text`） |
+| `expect` | → | 〔FW1〕🔴 **必须给**，与 `files-write-text` 的 `expect` 同形同义（摘要形 CAS）：盘上那份对不上 ⇒ `stale`，目标一个字节没动（块照样删掉） |
 | `path` | ← | 解到底的那个真路径 |
 | `bytes` | ← | 写进去的字节数 |
+| `sha256` | ← | 〔FW1〕写进去那份的摘要 |
 
 ⚠ 少一块 · 多出第 `chunks` 块 · 总长对不上 ⇒ `io_failed`，目标**一个字节没动**；某一块是链接或目录 ⇒ `refused`。
 ⚠ **不论成败**都删掉这一次的块；成功时顺手扫一遍暂存区的孤儿（`<key>.part` 与 `<key>.<seq>.chunk` 两种形状，7 天没动过的）。
@@ -1394,7 +1431,7 @@ SFTP 缩成只做传输之后（`设计/60 §13`），上传**只写** `~/.cc-mo
 #### `files-copy`：同根内复制一份普通文件（F7a · 第三波，2026-09-24）
 
 写面第七条。文件窗口的「复制」此前走 SFTP 那条零流量复制；现在经通道问后端 —— 复制发生在
-那台机器上、字节不过网，**「退回中转、花 2× 流量」那一形从此不存在**。
+那台机器上、字节不过网，**「退回经本机转发、花 2× 流量」那一形从此不存在**。
 
 ```text
 → {"id":"w7","cmd":"files-copy","args":{"root":"/home/u/docs","from":"a.md","to":"a.md.copy"}}
@@ -2092,6 +2129,38 @@ V116「要，只删装时写进去的文件」：装的时候记下写了哪几�
 **错误码**：`bad_args` · `unsafe_config_dir` · `unknown_config_dir` · `manifest_unavailable` · `no_home` · `failed`（读 / 解析那个账号的配置文件失败等 agent 那一层的码一律落它，原因原样带着 —— 通用层不认 agent 的名字）。
 与 `--account-trust` / `--account-trust-zero` 是**同一个函数的两个宿主**；CLI 面照例自动派生一个 `--accounts-trust`（stdin 一段 JSON）。
 
+#### `acct-iso-status`：这台机器装没装 `cc-acct-iso`（〔LOC1a · 第四波 4D〕，**不读 stdin**）
+
+```text
+→ {"id":"a1","cmd":"acct-iso-status","args":{}}
+← {"kind":"reply","id":"a1","ok":true,"data":{"installed":true,"path":"/home/u/.local/bin/cc-acct-iso","looked":null}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `installed` | ← | 找到了没有：先查 `$HOME/.local/bin/cc-acct-iso`（install 脚本的软链落点）、再查 `PATH`，与远端那条 `PATH="$HOME/.local/bin:$PATH" command -v cc-acct-iso` 同一个顺序 |
+| `path` | ← | 找到的那一份；没找到 ⇒ `null` |
+| `looked` | ← | 没找到时说清查过哪儿；找到了 ⇒ `null` |
+
+**「没装」是答案不是错误**（`ok:true`、`installed:false`）。按「可执行文件在不在」判 ⇒ 非 unix 上恒 `installed:false`。只读、不起进程。
+〔LOC1a〕此前是 argv 形一次性子命令 `--acct-iso-status`（单行 JSON、exit 0），唯一调用方是 monitor 每问 exec 一次本机后端；
+那条路删了之后它上了帧面，本机经 `<local>` 长连接问（`设计/05 §14.6`）。CLI 面照例自动派生同名 `--acct-iso-status`（信封形，不读 stdin）。
+
+#### `acct-iso-shellinit`：这台机器的 `cc-acct-iso shellinit` 片段（〔LOC1a · 第四波 4D〕，**不读 stdin**）
+
+```text
+→ {"id":"a2","cmd":"acct-iso-shellinit","args":{}}
+← {"kind":"reply","id":"a2","ok":true,"data":{"snippet":"# >>> cc-acct-iso >>>\n…\n# <<< cc-acct-iso <<<\n"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `snippet` | ← | 起一次本机 `cc-acct-iso shellinit`（经插件通用调用口：argv 直传不过 shell、`timeout` 前缀给子进程期限、环境白名单），退出码 0 时它的 stdout **原样** |
+
+BEGIN/END 围栏由 monitor 那侧校验（本命令不再写第二份围栏常量）。被起的那一条只读（`cmd_shellinit` 全是 `printf`）。
+**错误码**：`not_installed` · `timed_out` · `tool_failed` · `not_run`。
+〔LOC1a〕此前是 argv 形一次性子命令 `--acct-iso-shellinit`（片段吐 stdout、失败 exit 2 ＋ stderr 信封）；同上一节，改上帧面，CLI 面自动派生同名。
+
 #### `accounts-sessions`：正在跑的会话各属哪个账号（**不读 stdin**）
 
 ```text
@@ -2219,13 +2288,18 @@ V116「要，只删装时写进去的文件」：装的时候记下写了哪几�
 
 ```text
 → {"id":"t1","cmd":"tasks-list","args":{"sid":"0c1d…"}}
-← {"kind":"reply","id":"t1","ok":true,"data":{"lines":["{\"id\":\"1\",\"subject\":…}", …]}}
+← {"kind":"reply","id":"t1","ok":true,"data":{"tasks":[{"id":"1","subject":"…","status":"in_progress","blocks":[],"blockedBy":[],"activeForm":"…"}, …]}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `sid` | → | 会话 id。只许一段普通路径名（空 / 含分隔符 / `.` / `..` ⇒ `bad_args`） |
-| `lines` | ← | 每个任务一行：`<tasks>/<sid>/<数字>.json` 里那个 JSON 对象**原样**（后端不认字段），按那个数字升序 |
+| `tasks` | ← | 〔LOC1a · 第四波 4D〕**成品**：`<tasks>/<sid>/<数字>.json` 里每个任务一格，按那个数字升序（此前是原样对象的 `lines`，字段由 monitor 解） |
+| `id` / `subject` / `status` | ← | 每格必有、是串（缺 / 不是串的那个对象不算任务，跳过） |
+| `description` / `activeForm` | ← | 可缺（原文缺或 `null` ⇒ 这一格不出现），出现就是串 |
+| `blocks` / `blockedBy` | ← | 串的数组；原文缺 ⇒ `[]`（原文是 `null` / 别的类型 ⇒ 那个对象不算任务） |
+
+字段语义只住后端 `observe/tasks_query.rs::task_entry`；界面按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 两端契约对不上），线上形状由跨语言金样 `tests/__fixtures__/tasks-list.golden.json` 钉住。
 
 - 那个 sid **没有任务目录** ⇒ 空 `lines`（诚实的空）；目录**在但读不了** ⇒ `failed`（不说成「没有任务」）。
 - 半截 / 解不成对象的文件跳过（写者持锁那一刻读到半截是正常时序）；单个文件超过 1 MiB ⇒ 跳过并 `warn!` 点名。
@@ -2481,11 +2555,10 @@ rc=2
 > monitor 侧的 fan-out 消费者同拍删除。`SUBCOMMANDS` 27 → 25（另一条是 `--oneshot-session`）。〕
 
 - `--list-accounts [--accts-dir <p>]`（A2 多账号，`src/backend/observe/accounts_query.rs`）→ 读 cc-acct-iso 的 manifest（`$ACCTS_DIR/accounts.json`，契约 v1）。**首行** `{"kind":"accounts-meta","enabled":bool,"acctsDir","manifestPath","updatedAt","sharedStore","count","error"}`，其后每账号一行 `{name,email,configDir,isDefault,mode,exists,loggedIn}`。**"未启用多账号"是正常状态**：manifest 缺失/坏/版本不支持 → `enabled:false` + `error` 人话原因 + **exit 0**（不是错误）。`loggedIn` 仅 stat `.credentials.json` 存在性。账号库目录解析：`--accts-dir` > `~/.cc-acct-iso/config` 的 `ACCTS_DIR=`（**正则抠值，绝不 source**）> `$HOME/.claude-alt`
-- `--session-accounts [--accts-dir <p>]`（A2；`launchId` 是 `K-P5f`）→ 扫 `<claude_dir>/sessions/<PID>.json` 拿 pid，读 `/proc/<pid>/environ` **只抠两个写死的键**（`CLAUDE_CONFIG_DIR` 与 `CCM_LAUNCH_ID`；**键名不是参数**，所以这条查询不是「任意环境变量读」原语，也**绝不回传整个环境快照**），`CLAUDE_CONFIG_DIR` 反查 manifest 得账号名。每条一行 `{pid,sessionId,cwd,configDir,account,bare,alive,launchId}`。`account:null` = 查不到（**不猜**）；**`bare:true` = 进程活着、`/proc/<pid>/environ` 这一刻读得到、而没设 `CLAUDE_CONFIG_DIR`（裸起）——这个布尔的语义钉死在那一个变量上，加了第二个键也没有拓宽它**（没设 `CCM_LAUNCH_ID` 由 `launchId:null` 自己表达）。⚠ 「读得到」这个合取项是 `K-R21`（09-03）补的，**语义是收窄不是拓宽**：environ 在 exec 窗口里（60–140 µs）与进程成僵尸之后**读得到却回 0 字节 / 读不到**，从前那一刻会被报成斩钉截铁的 `account:"<账号0>"` + `bare:true`，而 `alive` 仍是 `true`（判活读的是 `/proc/<pid>/stat`，与 `environ` 不是同一次读）⇒ **一条真跑在别的账号下的会话会被报成账号 0 的，且无声无息**。现在那一刻报 `configDir:null` + `account:null` + `bare:false`（=「不知道」，**出参形状没变、没有新字段**）。`launchId` = 起会话方铸进这条会话进程环境的**身份 token**（写侧住 `history.rs::LAUNCH_ID_VAR`），`null` = **不作数**，五种原因合并且**刻意不区分**：没设 / 形状过不了白名单（`[A-Za-z0-9_-]`，1..=128）/ **同一个 token 落在一条以上活会话上** / 进程已死 / **读那一刻环境取不到**。⚠ 第五种是 `K-R21` 现打出来的，**它一直都在、只是从前混在「没设」里数不出来**（读侧那个 `Option` 装着四件事）——这不是新增了一种行为，是把「四种」这句旧话订正成实话；`configDir` 那一半已经把它拆出来了，身份这一半仍按「要区分就得给出参加状态位 = 改上线契约」那条裁定合并着。⚠ **`launchId` 不是硬真相**：它是**继承型**环境变量（claude spawn 的子进程原样继承），后端只能判「同一批里唯一」，判不出「确实是它的」——父会话已退出时那个继承值仍会被报出来。**additive**：老后端不出这个键，下游读成 `null`。⇒ 账号那一半（`configDir`/`account`/`bare`）仍是"某条**正在跑**的会话属于哪个账号"的唯一硬真相（会话 jsonl 里没有任何账号字段）；身份那一半（`launchId`）**不是**，别把上一句读到它头上
+- `--session-accounts [--accts-dir <p>]`（A2；`launchId` 是 `K-P5f`）→ 扫 `<claude_dir>/sessions/<PID>.json` 拿 pid，读 `/proc/<pid>/environ` **只抠三个写死的键**（`CLAUDE_CONFIG_DIR` · `CCM_LAUNCH_ID` ·〔HX1 · D-f〕`ANTHROPIC_BASE_URL`——最后那个的值带中转钥匙，只折成 `viaRelay` 一个布尔、值本身不出参；**键名不是参数**，所以这条查询不是「任意环境变量读」原语，也**绝不回传整个环境快照**），`CLAUDE_CONFIG_DIR` 反查 manifest 得账号名。每条一行 `{pid,sessionId,cwd,configDir,account,bare,alive,launchId,viaRelay}`（〔HX1〕`viaRelay` = 这条会话的上游地址是不是本机中转那一形：`true` / `false` / `null` = 不知道（进程已死 / 环境这一刻取不到）；机器页「停」本机后端之前据它数几条会断；老后端不出这个键 ⇒ 读成 `null`）。`account:null` = 查不到（**不猜**）；**`bare:true` = 进程活着、`/proc/<pid>/environ` 这一刻读得到、而没设 `CLAUDE_CONFIG_DIR`（裸起）——这个布尔的语义钉死在那一个变量上，加了第二个键也没有拓宽它**（没设 `CCM_LAUNCH_ID` 由 `launchId:null` 自己表达）。⚠ 「读得到」这个合取项是 `K-R21`（09-03）补的，**语义是收窄不是拓宽**：environ 在 exec 窗口里（60–140 µs）与进程成僵尸之后**读得到却回 0 字节 / 读不到**，从前那一刻会被报成斩钉截铁的 `account:"<账号0>"` + `bare:true`，而 `alive` 仍是 `true`（判活读的是 `/proc/<pid>/stat`，与 `environ` 不是同一次读）⇒ **一条真跑在别的账号下的会话会被报成账号 0 的，且无声无息**。现在那一刻报 `configDir:null` + `account:null` + `bare:false`（=「不知道」，**出参形状没变、没有新字段**）。`launchId` = 起会话方铸进这条会话进程环境的**身份 token**（写侧住 `history.rs::LAUNCH_ID_VAR`），`null` = **不作数**，五种原因合并且**刻意不区分**：没设 / 形状过不了白名单（`[A-Za-z0-9_-]`，1..=128）/ **同一个 token 落在一条以上活会话上** / 进程已死 / **读那一刻环境取不到**。⚠ 第五种是 `K-R21` 现打出来的，**它一直都在、只是从前混在「没设」里数不出来**（读侧那个 `Option` 装着四件事）——这不是新增了一种行为，是把「四种」这句旧话订正成实话；`configDir` 那一半已经把它拆出来了，身份这一半仍按「要区分就得给出参加状态位 = 改上线契约」那条裁定合并着。⚠ **`launchId` 不是硬真相**：它是**继承型**环境变量（claude spawn 的子进程原样继承），后端只能判「同一批里唯一」，判不出「确实是它的」——父会话已退出时那个继承值仍会被报出来。**additive**：老后端不出这个键，下游读成 `null`。⇒ 账号那一半（`configDir`/`account`/`bare`）仍是"某条**正在跑**的会话属于哪个账号"的唯一硬真相（会话 jsonl 里没有任何账号字段）；身份那一半（`launchId`）**不是**，别把上一句读到它头上
 - `--account-trust <configDir> <cwd> [--accts-dir <p>]`（A2）→ 换号 resume 前的信任预检（首次用某账号进某目录，CC 会弹信任确认、会卡住自动化）。单行 `{"trusted":bool,"known":bool,"error":null}`。**安全**：`configDir` 必须逐字 ∈ manifest 的账号列表，否则 exit 2 + stderr `{"code":"unknown_config_dir",...}`——避免退化成任意文件读原语；**只回三个布尔/字符串字段，绝不回传 `.claude.json` 内容**（内含 `mcpServers` 的环境变量，可能有 API key）
 - `--account-trust-zero <cwd>`（A2）→ **账号 0**（未启用多账号时那个原生身份）的信任预检，返回形状同 `--account-trust`。**为什么单开一个动词而不是给 `--account-trust` 传空 `configDir`**：账号 0 没有 config dir，而空串是被明令禁止的拼法（空值 ≠ 未设）；且它的 `.claude.json` 原生根是 `$HOME`、不在共享账号库里 ⇒ 路径来源本就不同，合并只能靠哨兵值区分，比多一个动词更易错。**不收任何文件/配置目录路径参数**：它收 `cwd`，但那只当 `projects` 里的**查表键**，`.claude.json` 的根写死 `$HOME` ⇒ 连"任意文件读"的面都没有（`account_trust_zero_takes_no_path_argument` 钉住）
-- `--acct-iso-status`（A3 第二波，`src/backend/accounts/iso.rs`）→ **这台机器**上装没装 `cc-acct-iso`。单行 `{"installed":bool,"path":string|null,"looked":string|null}`：先查 `$HOME/.local/bin/cc-acct-iso`（install 脚本的软链落点）、再查 `PATH`，与远端那条 `PATH="$HOME/.local/bin:$PATH" command -v cc-acct-iso` 同一个顺序；**「没装」是答案不是错误**（exit 0，`looked` 说清查过哪儿）。按「可执行文件在不在」判 ⇒ 非 unix 上恒 `installed:false`。只读、不起进程。
-- `--acct-iso-shellinit`（A3 第二波，同上）→ 起一次本机 `cc-acct-iso shellinit`（经插件通用调用口：argv 直传不过 shell、`timeout` 前缀给子进程期限、环境白名单），退出码 0 时把它的 stdout **原样**吐出（BEGIN/END 围栏由 monitor 那侧校验，本命令不再写第二份围栏常量）。失败 exit 2 + stderr `{"code","message"}`，`code` ∈ `not_installed` · `timed_out` · `tool_failed` · `not_run` · `bad_args`。被起的那一条只读（`cmd_shellinit` 全是 `printf`）。
+- `--acct-iso-status` / `--acct-iso-shellinit`（A3 第二波）〔LOC1a · 第四波 4D 改〕：argv 形那两条退役，上了帧面（见 §10 入方向 `acct-iso-status` / `acct-iso-shellinit` 两小节）；同名 CLI 面今天由帧面自动派生（信封形 `{"id":"cli","ok":…,"data":…}`，不读 stdin）。
 - `--fork-session <args>`（G2 branch-anywhere，`src/backend/control/fork_write.rs`）→ 从指定消息处分叉出一个新会话文件。**后端唯一的写盘入口**——其余一切子命令只读；`readonly_guard` 的写白名单按路径单独盯着 `control/fork_write.rs` 这一个文件（`src/doc/INVARIANTS.md` §41.6）
 - `--tmux-notify <backend_pid> <backend_starttime>`（P4b zero-poll-liveness）→ **不是查询**，是 tmux hook 子进程走的通路：校验身份后给正在跑的后端发一个信号叫它立刻重扫 tmux，**完全不碰文件系统**。两个参数缺一或非整数 ⇒ exit 2。**必须同时比对 starttime 而不只看 pid 存在**：后端退出后那个 pid 可能已被别的进程占用，误发信号轻则无效、重则打断无关进程（很多程序把该信号当自定义控制信号，默认处置直接终止）。身份对不上 ⇒ **静默 exit 0，不做事**
 
@@ -2565,6 +2638,9 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 
 **C4e 追加一条（09-25）**：`--bus-broadcast` —— 给总线上在线的成员群发一条（见上面它自己那一小节）。
 同上，与帧面同一个 `run`；**读 stdin**（那段 JSON 就是它的 `args`）。
+
+**LOC1a 追加三条（09-25）**：`--acct-iso-status` · `--acct-iso-shellinit`（不读 stdin；名字与退役的 argv 形同名，形状换成信封）·
+`--session-fork`（读 stdin）—— 见上面各自那一小节。同上，与帧面同一个 `run`。
 
 **步 `24f` 追加四条（09-20）**：`--files-ls` / `--files-stat` / `--files-find` /
 `--files-index-status` —— `files-read` 这一族的 CLI 面（逐条见上面各自那一小节）。
