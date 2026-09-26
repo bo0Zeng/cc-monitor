@@ -94,15 +94,16 @@ fn path_resolution_has_exactly_one_home() {
     );
     assert_eq!(
         n, 2,
-        "`canonicalize()` 在生产段出现了 {n} 处（应恰好 2：`fence_under_projects` 里\n\
+        "`canonicalize()` 在生产段出现了 {n} 处（应恰好 2：`fence_under_root` 里\n\
              一次解析 root、一次解析目标）。\n\
              多出来 = 又有人自己解析了一遍路径 —— 那就是第二份围栏，\n\
              它今天可能与 `fence_under_projects` 等价，但**强化一边时另一边不会跟**（E3）。\n\
              少了 = 围栏被简化了，去看它是不是还挡得住 symlink 逃逸。"
     );
     // 反向锚点：那两处确实在围栏函数里，不是散落在别处凑够了数。
+    // 〔LOC1b · 4D〕围栏本体从 `fence_under_projects` 提成 `fence_under_root`（根是参数，Codex 记录根也走它）⇒ 锚随本体换名，数不变。
     let f = prod
-        .find("fn fence_under_projects")
+        .find("fn fence_under_root")
         .expect("找不到围栏函数 —— 上面那个计数就失去了意义");
     // ⚠ **本文件里不许写「只含右大括号、没有左大括号」的字符串或注释**：
     // 括号配平扫描面里，一个不配对的大括号会把它的剥法提前收尾，
@@ -112,7 +113,7 @@ fn path_resolution_has_exactly_one_home() {
     assert_eq!(
         prod[f..body_end].matches("canonicalize()").count(),
         2,
-        "两处 `canonicalize()` 不在 `fence_under_projects` 里 —— 计数凑对了，位置没对"
+        "两处 `canonicalize()` 不在 `fence_under_root` 里 —— 计数凑对了，位置没对"
     );
 }
 
@@ -303,5 +304,69 @@ fn c4d_the_row_has_exactly_these_keys() {
             "updatedAtMs",
         ]
     );
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+// ── 〔LOC1b · 4D〕按路径读会话的围栏也认各家合成历史面给的记录根 ─────────────────────
+//
+// 守的要求：`设计/00 §2.5 ①` 逐字「历史 / 账号 / tmux / MCP 四个面，本机与远端走同一条代码路径」——
+// 本机冷读也改走后端的 `history-read` 之后，历史清单列得出的 Codex 会话必须经同一道围栏打得开。
+
+fn loc1b_tree(tag: &str) -> (PathBuf, PathBuf, PathBuf) {
+    let tmp = std::env::temp_dir().join(format!("ccm-loc1b-{tag}-{}", std::process::id()));
+    std::fs::remove_dir_all(&tmp).ok();
+    let home = tmp.join("claude");
+    fixture_project(&home, "p");
+    let codex_root = tmp.join("codex").join("sessions");
+    std::fs::create_dir_all(codex_root.join("2026")).unwrap();
+    (tmp, home, codex_root)
+}
+
+/// 两向：另外那几个根下的会话 ⇒ 放行；两类根都不在 ⇒ 拒（回 `projects/` 那一句）。
+#[test]
+fn loc1b_the_fence_admits_a_registered_history_root_and_nothing_else() {
+    let (tmp, home, codex_root) = loc1b_tree("fence");
+    let inside = write_jsonl(&codex_root.join("2026"), "rollout-x.jsonl", &["{}"]);
+    let outside_dir = tmp.join("elsewhere");
+    std::fs::create_dir_all(&outside_dir).unwrap();
+    let outside = write_jsonl(&outside_dir, "rollout-y.jsonl", &["{}"]);
+    let roots = vec![codex_root.clone()];
+
+    let ok = validate_session_path_among(&home, &roots, inside.to_str().unwrap());
+    assert_eq!(ok.unwrap(), inside.canonicalize().unwrap());
+
+    let refused = validate_session_path_among(&home, &roots, outside.to_str().unwrap());
+    assert!(
+        refused
+            .as_ref()
+            .is_err_and(|e| e.contains("outside projects dir")),
+        "{refused:?}"
+    );
+    // 正控：不给另外那个根 ⇒ 同一份也拒（放行确实来自那个根，不是围栏本来就漏）。
+    assert!(validate_session_path_among(&home, &[], inside.to_str().unwrap()).is_err());
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+/// 另外那几个根不收相对路径（相对路径的意思只在 `projects/` 下有定义）；非 `.jsonl` 照拒；符号链接逃出根照拒。
+#[test]
+fn loc1b_the_extra_roots_take_absolute_jsonl_paths_that_stay_inside() {
+    let (tmp, home, codex_root) = loc1b_tree("shape");
+    let roots = vec![codex_root.clone()];
+    write_jsonl(&codex_root, "rel.jsonl", &["{}"]);
+    assert!(validate_session_path_among(&home, &roots, "rel.jsonl").is_err());
+
+    let txt = write_jsonl(&codex_root, "notes.txt", &["x"]);
+    let e = validate_session_path_among(&home, &roots, txt.to_str().unwrap()).unwrap_err();
+    assert!(e.contains("non-jsonl"), "{e}");
+
+    #[cfg(unix)]
+    {
+        let secret_dir = tmp.join("secret");
+        std::fs::create_dir_all(&secret_dir).unwrap();
+        let secret = write_jsonl(&secret_dir, "s.jsonl", &["{}"]);
+        let link = codex_root.join("link.jsonl");
+        std::os::unix::fs::symlink(&secret, &link).unwrap();
+        assert!(validate_session_path_among(&home, &roots, link.to_str().unwrap()).is_err());
+    }
     std::fs::remove_dir_all(&tmp).ok();
 }

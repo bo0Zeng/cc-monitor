@@ -108,6 +108,8 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
   let blockAt: Set<string>;
   /** 〔TL1〕装着旧版别名块的那几份（装一次 = 换成新版 ⇒ 从这里摘掉）。 */
   let oldAt: Set<string>;
+  /** 〔W5-UI〕非 null ⇒ 读「自动打开 monitor」那项设置失败，拒绝原因就是它。 */
+  let autoLaunchFail: string | null;
 
   /** 〔AL1d〕一份候选（别名文件那一行与别名块共用）；`block` 是后端那一次扫描带回来的别名块现状。 */
   const cand = (
@@ -135,6 +137,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     problems = [];
     blockAt = new Set();
     oldAt = new Set();
+    autoLaunchFail = null;
     vi.resetModules();
     vi.doMock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn() }));
     // 〔W5-ALIAS〕预览走通道（`chan.call(origin, "ccm-print", …)`）：替身把每一发记进同一本账（`chan:<op>`），
@@ -217,6 +220,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
         },
         cc_get_auto_launch: () => {
           seen.push({ cmd: "cc_get_auto_launch" });
+          if (autoLaunchFail !== null) return Promise.reject(autoLaunchFail);
           return Promise.resolve({ auto_launch_enabled: false, monitor_exe_path: null });
         },
         ccm_user_path_status: () => {
@@ -530,6 +534,28 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     const last = [...seen].reverse().find((c) => c.cmd === "aliases_read")!.args as { rcPath: string };
     expect(last.rcPath).toBe("~/.config/x.rc");
   });
+
+  if (plat === "powershell") {
+    // 〔W5-UI · 设计/70 §7 #4〕读不到时别把「不知道」画成「没勾」。
+    it("读「自动打开 monitor」失败 ⇒ 复选框禁用、路径那格说读不到（原因原样）；读到 ⇒ 可点（正控）", async () => {
+      autoLaunchFail = "boom-autolaunch";
+      let el = await mount();
+      await open(el);
+      await flush();
+      const box = (): HTMLInputElement =>
+        el.querySelector<HTMLInputElement>(".settings-cc-autolaunch input[type=checkbox]")!;
+      const path = (): string => el.querySelector(".settings-cc-autolaunch-path-value")!.textContent ?? "";
+      expect(box().disabled, "读失败还让人勾 —— 画成了「关着」").toBe(true);
+      expect(path()).toContain("读不到这项设置");
+      expect(path()).toContain("boom-autolaunch");
+      autoLaunchFail = null;
+      el = await mount();
+      await open(el);
+      await flush();
+      expect(box().disabled).toBe(false);
+      expect(path()).not.toContain("读不到这项设置");
+    });
+  }
 
   if (plat === "posix") {
     it("POSIX：没有「同时装 cc 函数」那一问（`cc` 自带 `declare -f` 让着你）；没有用户级 PATH 那一格", async () => {

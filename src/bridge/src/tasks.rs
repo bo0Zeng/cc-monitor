@@ -7,18 +7,16 @@
 //!
 //! ## 〔RM1b · 第四波〕读这件事归后端 —— 本机与远端**同一条路**
 //!
-//! 此前本模块自己 `read_dir` 本机那个目录（`local_read_surface_registry` 里一条 `reader`），
-//! 远端会话的任务在远端机器上 ⇒ 远端 tab 永远拿不到（`parity_ledger` `session.tasks` 那笔欠账）。
-//! 现在「走目录、认 `<数字>.json`、剥 BOM、解成对象、按数字排」住后端
-//! （`src/backend/observe/tasks_query.rs`，帧命令 `tasks-list`），本模块只剩三件事：
+//! 「走目录、认 `<数字>.json`、剥 BOM、解成对象、按数字排」住后端（`src/backend/observe/tasks_query.rs`，帧命令 `tasks-list`）。
+//! 〔LOC1a · 第四波 4D · C4e 批 4〕**字段语义也搬过去了**：后端出成品 `{tasks: [...]}`（`tasks_query.rs::task_entry`），
+//! 界面经通道直接问（`src/tasks-panel.ts::fetchSessionTasks` / `decodeTasks`）；本模块那条 Tauri 命令（`get_session_tasks`〔散文墓碑〕）
+//! 与行解释（`parse_task_lines`〔散文墓碑〕）一起删了（`设计/05 §14.3`「业务解释只有一个家」）。本模块只剩：
 //!
-//! 1. [`get_session_tasks`] —— 按 `origin` 问那台机器的后端（本机逐字 `"<local>"`，
-//!    走的是同一个 `frame_query::lines`），拿回一行一个的原样 JSON 对象。
-//! 2. [`parse_task_lines`] —— **字段语义的唯一住址**：一行解不成 [`TaskEntry`] 就跳过那一行
-//!    （与搬家前「半截 JSON 单条跳过」同一口径；后端不认字段，只保证每行是一个对象）。
-//! 3. [`spawn_task_watcher`] —— **只在本机**：notify 监听 `tasks/` 递归，反推 session_id，
-//!    然后**经本机后端**重读那个 sid 再 emit `task-update`。watcher 自己不读任务文件的内容。
-//!
+//! 1. [`spawn_task_watcher`] —— **只在本机**：notify 监听 `tasks/` 递归，反推 session_id，
+//!    然后**经本机后端**（`<local>` 长连接）问那个 sid 的成品再 emit `task-update`。watcher 不读任务文件、不解释字段。
+//! 2. [`TaskEntry`] —— 成品一格的**线上形状**（ts-rs 类型的来源；推送载荷用它）。按形状严格收（`deny_unknown_fields`），
+//!    收不下 ⇒ 这一次不推并说一句「两端契约对不上」，不跳过、不猜。
+
 //! ## 边界
 //!
 //! - `tasks_root` 不存在（用户从没用过 Claude task tracker）→ watcher 不 spawn。
@@ -41,7 +39,7 @@ use tauri::{AppHandle, Emitter};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TaskEntry {
     pub id: String,
     pub subject: String,
@@ -68,36 +66,44 @@ pub struct TaskEntry {
     pub blocked_by: Vec<String>,
 }
 
-/// 后端回来的那几行 → [`TaskEntry`]。**字段语义的唯一住址**。
+/// 问 `origin` 那台机器的后端：这个会话的任务**成品**，按形状严格收成 [`TaskEntry`]。
 ///
-/// 一行解不成 `TaskEntry` ⇒ 跳过那一行（`trace!`）：后端只保证「每行是一个 JSON 对象、按任务号升序」，
-/// 缺 `id` / `subject` / `status` 的对象在这里被挡下 —— 与搬家前 `serde_json::from_str::<TaskEntry>`
-/// 失败即跳过是同一口径，顺序原样保留。
-pub fn parse_task_lines(lines: &[String]) -> Vec<TaskEntry> {
-    lines
-        .iter()
-        .filter_map(|l| match serde_json::from_str::<TaskEntry>(l) {
-            Ok(t) => Some(t),
-            Err(e) => {
-                tracing::trace!("任务行解不成 TaskEntry：{e}");
-                None
-            }
-        })
-        .collect()
-}
-
-/// 问 `origin` 那台机器的后端：这个会话的任务。本机与远端同一条路。
+/// 〔LOC1a〕只剩本机 watcher 一个调用方（界面经通道直接问）。收不下 ⇒ `Err`（不跳过某一条：
+/// 跳过是字段语义，那一份只住后端）。
 pub(crate) async fn fetch_session_tasks(
     origin: &Origin,
     session_id: &str,
 ) -> Result<Vec<TaskEntry>, String> {
-    let lines = crate::backend::control::frame_query::lines(
+    let who = crate::backend::control::frame_query::who(origin);
+    let data = crate::backend::control::frame_query::call(
         origin,
         "tasks-list",
         serde_json::json!({ "sid": session_id }),
+        TASKS_BUDGET,
     )
     .await?;
-    Ok(parse_task_lines(&lines))
+    decode_tasks(&who, data)
+}
+
+/// 这一问的期限（与已删的按行那一档同值）。
+const TASKS_BUDGET: Duration = Duration::from_secs(30);
+
+/// `tasks-list` 的 `data` → `Vec<TaskEntry>`。**纯函数**：顶层恰好一格 `tasks`，每格按 [`TaskEntry`] 严格收。
+pub(crate) fn decode_tasks(who: &str, data: serde_json::Value) -> Result<Vec<TaskEntry>, String> {
+    let bad = |e: String| format!("{who}的后端回的任务清单认不出来（{e}），多半是两边版本不一样");
+    let serde_json::Value::Object(mut o) = data else {
+        return Err(bad("not an object".into()));
+    };
+    if o.len() != 1 {
+        return Err(bad(format!(
+            "top-level keys other than `tasks`: {:?}",
+            o.keys().collect::<Vec<_>>()
+        )));
+    }
+    let tasks = o
+        .remove("tasks")
+        .ok_or_else(|| bad("missing `tasks`".into()))?;
+    serde_json::from_value::<Vec<TaskEntry>>(tasks).map_err(|e| bad(e.to_string()))
 }
 
 /// 启动 task watcher 线程。监听 `tasks_root` 递归变更，dedup by session_id 后
@@ -154,7 +160,7 @@ fn run_watcher(tasks_root: PathBuf, app: AppHandle) {
         }
 
         for sid in touched {
-            // 〔RM1b〕经本机后端重读（watcher 只知道「哪个 sid 变了」，不读内容）。
+            // 〔RM1b → LOC1a〕经本机后端问成品（watcher 只知道「哪个 sid 变了」，不读内容、不解释字段）。
             // 本线程是 notify 的 std 线程、不在 async 运行时里 ⇒ `block_on` 安全。
             let tasks =
                 match tauri::async_runtime::block_on(fetch_session_tasks(&Origin::local(), &sid)) {
@@ -190,18 +196,7 @@ fn session_id_from_change(changed: &Path, root: &Path) -> Option<String> {
     Some(s.to_string())
 }
 
-/// IPC：前端 Tab 创建时（以及远端 tab 被切到 / 面板展开时）拿一次快照。
-///
-/// 〔RM1b〕收 `origin`：本机逐字 `"<local>"`，远端是那台的 label —— 两侧同一条路
-/// （那台机器的后端 `tasks-list`）。`route` 只用来拦空白名（「没给名字」不是本机）。
-#[tauri::command]
-pub async fn get_session_tasks(
-    origin: Origin,
-    session_id: String,
-) -> Result<Vec<TaskEntry>, String> {
-    let _ = origin.route("get_session_tasks")?;
-    fetch_session_tasks(&origin, &session_id).await
-}
+// 〔LOC1a · 第四波 4D · C4e 批 4〕IPC 快照那条命令（`get_session_tasks`〔散文墓碑〕）退役：界面经通道直接问 `tasks-list`。
 
 #[cfg(test)]
 #[path = "../../../tests/bridge/tasks_tests.rs"]

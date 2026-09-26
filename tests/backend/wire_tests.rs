@@ -274,6 +274,7 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
                 waiting_for: None,
                 rbind_token: None,
                 container: None,
+                pid: None,
             },
             "session_added",
         ),
@@ -364,6 +365,23 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
             "transfer",
         ),
         (Frame::SessionsReplayed, "sessions_replayed"),
+        // 〔FW1 · 第四波 4D〕活会话的记录文件不见了 / 被改过已从头重读（逐字节形状另由
+        //   `watcher_tests::the_two_session_file_frames_have_exactly_these_bytes` 钉）。
+        (
+            Frame::SessionFileGone {
+                session_id: "s".into(),
+                path: "/p".into(),
+            },
+            "session_file_gone",
+        ),
+        (
+            Frame::SessionFileReread {
+                session_id: "s".into(),
+                path: "/p".into(),
+                why: crate::wire::RereadWhy::Rewritten,
+            },
+            "session_file_reread",
+        ),
     ];
 
     // ★ 人群自检：**样本必须覆盖 `Frame` 的每一个变体**〔audit-0805 08-06〕。
@@ -458,8 +476,19 @@ fn transfer_frames_have_exactly_these_bytes() {
             "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000}\n",
         ),
         (
-            f(Some(crate::wire::TransferEnd::Done { bytes: 1000000 })),
+            f(Some(crate::wire::TransferEnd::Done {
+                bytes: 1000000,
+                sha256: None,
+            })),
             "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"done\",\"bytes\":1000000}}\n",
+        ),
+        // 〔FW1 · 第四波 4D〕上传那一路的传完带整份摘要（提交时的对拍依据）；下载那一路没有 ⇒ 上一格原样不上线。
+        (
+            f(Some(crate::wire::TransferEnd::Done {
+                bytes: 1000000,
+                sha256: Some("ab".repeat(32)),
+            })),
+            "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"done\",\"bytes\":1000000,\"sha256\":\"abababababababababababababababababababababababababababababababab\"}}\n",
         ),
         (
             f(Some(crate::wire::TransferEnd::Failed { why: "写暂存件失败".into() })),
@@ -849,6 +878,7 @@ fn dg3_codex_fields_serialize_when_present() {
         waiting_for: None,
         rbind_token: None,
         container: None,
+        pid: None,
     })
     .unwrap();
     assert_eq!(
@@ -908,6 +938,7 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
         waiting_for: None,
         rbind_token: None,
         container: None,
+        pid: None,
     })
     .unwrap();
     assert_eq!(
@@ -1057,6 +1088,7 @@ fn session_added_rbind_token_is_additive_present_and_absent() {
         waiting_for: None,
         rbind_token: None,
         container: None,
+        pid: None,
     })
     .unwrap();
     assert_eq!(
@@ -1081,6 +1113,7 @@ fn session_added_rbind_token_is_additive_present_and_absent() {
         waiting_for: None,
         rbind_token: Some("0123456789abcdef0123456789abcdef".into()),
         container: None,
+        pid: None,
     })
     .unwrap();
     assert_eq!(
@@ -1113,6 +1146,7 @@ fn session_added_container_is_additive_with_two_literals() {
             waiting_for: None,
             rbind_token: None,
             container: c,
+            pid: None,
         })
         .unwrap()
     };
@@ -1134,5 +1168,34 @@ fn sessions_replayed_has_exactly_these_bytes() {
     assert_eq!(
         to_line(&Frame::SessionsReplayed).unwrap(),
         "{\"kind\":\"sessions_replayed\"}\n"
+    );
+}
+
+/// 〔LOC1b · 第四波 4D〕`session_added.pid` 的线上形：缺席 ⇒ 与本字段加进来之前逐字节相同；带上 ⇒ 排在最后、是个整数。
+#[test]
+fn loc1b_session_added_pid_is_additive() {
+    let frame = |pid: Option<u32>| {
+        to_line(&Frame::SessionAdded {
+            sid: "s".into(),
+            agent_kind: None,
+            liveness_confidence: None,
+            session_kind: None,
+            attachable: None,
+            cwd: None,
+            name: None,
+            path: None,
+            lines: None,
+            status: None,
+            waiting_for: None,
+            rbind_token: None,
+            container: None,
+            pid,
+        })
+        .unwrap()
+    };
+    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\"}\n");
+    assert_eq!(
+        frame(Some(4242)),
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"pid\":4242}\n"
     );
 }

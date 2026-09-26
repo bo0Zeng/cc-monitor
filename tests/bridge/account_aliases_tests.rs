@@ -946,3 +946,35 @@ fn another_startup_file_goes_through_the_fence_before_it_is_read() {
     assert!(ok.rc_candidates.iter().any(|c| c.path == want && !c.exists));
     assert_eq!(ok.bound_terminals, 7, "握手数原样带回（调用方给的）");
 }
+
+/// 〔WIN1 · 第四波 4D · RT1 F8〕别名文件那条**给人看、也写进启动文件那一行**的绝对路径逐段拼。
+///
+/// 要求住址：`设计/01 §3.1` 逐字「「怎么读到这个事实」   → platform      （各平台读法不同）」——
+/// `our_alias_file_rel` 是 `/` 分隔的**通用层结构**（交给后端的 `rel`），翻成本机路径是平台那一步；
+/// 读数出处 `第四波记录/RT1.md §8` F8 逐字「`aliases_read` 回的路径分隔符混用：`C:\Users\user\.cc-monitor/aliases.ps1`」。
+/// ⚠ 本机（Linux）上整串 `join` 与逐段 `join` 的结果逐字相同 ⇒ 行为这一半只能在真 Windows 上看
+///   （`第四波记录/WIN1.md` 虚拟机读数）；这里钉 ① Linux 上结果不变（两种 shell 各一格）② 生产那一口逐段拼的形状。
+#[test]
+fn the_alias_file_path_is_joined_segment_by_segment() {
+    let home = Path::new("/home/pi");
+    for sh in [Shell::Posix, Shell::PowerShell] {
+        assert_eq!(
+            alias_file_in(home, sh),
+            home.join(sh.dialect().our_alias_file_rel()),
+            "{sh:?}：本机上逐段拼与整串拼应当逐字相同"
+        );
+    }
+    let body = guard_core::production_code(include_str!("../../src/bridge/src/account_aliases.rs"));
+    let f = body
+        .split("pub fn alias_file_in(home: &Path, shell: Shell) -> PathBuf {")
+        .nth(1)
+        .and_then(|b| b.split("\n}\n").next())
+        .expect("找不到 `alias_file_in` 的函数体 —— 抽取器坏了");
+    guard_core::pin_line(f, ".split('/')").expect("逐段拼那一步（按 `/` 切开 `rel`）不在了");
+    guard_core::pin_line(f, ".fold(home.to_path_buf(), |p, seg| p.join(seg))")
+        .expect("逐段 `join` 那一步不在了");
+    assert!(
+        !guard_core::contains_word(f, "home.join(shell.dialect().our_alias_file_rel())"),
+        "又整串 `join` 了 —— Windows 上就是 `C:\\…\\.cc-monitor/aliases.ps1`"
+    );
+}

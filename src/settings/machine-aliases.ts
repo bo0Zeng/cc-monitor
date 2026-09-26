@@ -1159,7 +1159,12 @@ function buildPsExtras(): PsExtras {
       autoLaunchPathSpan.title = cfg.monitor_exe_path ?? "";
     } catch (e) {
       console.warn("cc_get_auto_launch failed:", e);
+      // 〔W5-UI · 设计/70 §7 #4〕读不到时别把「不知道」画成「没勾」：复选框禁用、路径那格说读不到。
+      autoLaunchCheckbox.disabled = true;
+      autoLaunchPathSpan.textContent = copyText("machineAliases.autoLaunch.unreadable", { e: String(e) });
+      return;
     }
+    autoLaunchCheckbox.disabled = false;
   };
   autoLaunchCheckbox.addEventListener("change", () => {
     const enabled = autoLaunchCheckbox.checked;

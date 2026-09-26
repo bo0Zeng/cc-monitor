@@ -488,16 +488,31 @@ pub(crate) async fn remove(s: &Session, path: &str) -> Result<bool, Refusal> {
 }
 
 /// 建**一层**目录（已在 ⇒ 什么都不做）。
+///
+/// 〔HX1 · 主会话裁 HX1 拍板项 4〕**这一趟建出来的**那一层当场收成只给本人（`own_dir::PRIVATE_DIR_MODE`，0700）——
+/// 远端第一个建 `~/.cc-monitor`（以及 `bin` / `staging`）的就是这里（部署），此前按服务端 umask 建（常见 0755）。
+/// 本机那一份是 `own_dir::ensure_private_dir`（它在本机文件系统上、这里调不到它）；两边共用同一个权限位常量。
+/// ⚠ 用 `set_metadata`（SETSTAT）只对**目录**、只带 `permissions` 一格 —— `put_atomic` 头注那条「改名之后绝不 setstat」
+/// 管的是刚上位的**文件**（那一次事故把后端截成 0 字节），目录没有长度，不在那条事故的射程里。
+/// 收不窄（服务端不认 SETSTAT）⇒ 说一句、不挡部署：目录已经建出来了，权限宽一点不是「建不成」。
 pub(crate) async fn make_dir(s: &Session, path: &str) -> Result<(), Refusal> {
     let rel = fenced_remote(s, path, Intent::Dir).await?;
     if s.sftp().try_exists(rel.clone()).await.unwrap_or(false) {
         return Ok(());
     }
     if let Err(e) = s.sftp().create_dir(rel.clone()).await {
-        // 并发的另一趟刚建好它 —— 那不算错。
+        // 并发的另一趟刚建好它 —— 那不算错（也不是这一趟建的 ⇒ 不去动它的权限位）。
         if !s.sftp().try_exists(rel.clone()).await.unwrap_or(false) {
             return Err(io(format!("建目录 ~/{rel} 失败: {e}")));
         }
+        return Ok(());
+    }
+    let private = FileAttributes {
+        permissions: Some(crate::own_dir::PRIVATE_DIR_MODE),
+        ..Default::default()
+    };
+    if let Err(e) = s.sftp().set_metadata(rel.clone(), private).await {
+        tracing::warn!("远端 ~/{rel} 建好了，但没能收成只给本人（{e}）—— 按服务端默认权限留着");
     }
     Ok(())
 }

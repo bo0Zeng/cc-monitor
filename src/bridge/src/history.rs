@@ -18,8 +18,6 @@ use crate::copy_table::copy_text;
 use crate::messages::JsonlRecord;
 use crate::paths;
 use serde::Serialize;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 
 // === 〔C4d · 第四波 4B〕历史清单与注解搬进了本机常驻后端 ===
@@ -35,20 +33,114 @@ use std::path::PathBuf;
 // 「迁移前后读出来的注解逐条相等」由结构占位夹具 `tests/__fixtures__/history-metadata.fixture.json` ＋ 旧读者产出的金样
 // `tests/__fixtures__/history-metadata.readout.golden.json` 钉着。
 
-/// issue #12: 流式版（取代已删的非流式 `read_session_jsonl`）。
+/// 读一整份会话的总量上限（从 `remote_history.rs` 搬来，〔LOC1b · 4D〕本机远端同一条）。
 ///
-/// 按 100 行一 chunk 边读边发，前端可在 ~500ms 内开始渲染首屏（即使整 jsonl
-/// 上千条 / 10MB+）。
+/// ⚠〔audit-0805 F06〕实测本机最大会话 **270,103,105 字节 / 92,967 行**（就是那次审计对话本身），
+/// 已经**越过** 256 MiB 这条线 1,667,649 字节；57 MB 以上的会话有 5 个，不是孤例。
+/// ⇒ 上限**会被真实数据打到**，所以「打到之后怎么办」不能是静默（[`session_truncated_message`]）。
+/// 〔LOC1b · 4D〕本机从前没有这条上限（monitor 自己 `File::open` 读到底）；本机冷读改走本机后端之后与远端同一条
+/// —— 主会话 09-25 认可「本机从此也受，超了明说」。
+const MAX_SESSION_BYTES: u64 = 256 * 1024 * 1024;
+
+/// 超限时给用户的话〔audit-0805 F06，定框 **E4/E5**〕。
 ///
-/// 取消：前端 drop channel 时 send 返 Err → break。
-/// 🔴 **〔步 12·C 2026-09-20〕本机 ＋ 远端两条合成了一条带 `origin` 的。**
+/// 此前（远端那一支还是一条 SSH 流时）读法是 `take(MAX)` ＋ `if n == 0 { break; }` —— 到限与正常 EOF
+/// **完全同形** ⇒ 前端拿到一份「看起来完整」的历史，而后面的内容**无声消失**；
+/// 同一份数据走后端的 `--fork-session` 却会**硬报错** —— 正是定框 **E5** 要消灭的「同一份数据走不同路得到不同答案」。
+/// 抽成纯函数是为了让它可判据。字住文案表（CP2c 抽过：键原是 `rsRemoteHistory.session.truncated`）；
+/// 〔LOC1b〕键随函数搬进本文件改名 `rsHistory.session.truncated`，「仍在远端」→「仍在那台机器上」（本机也走这一句）。
+fn session_truncated_message(read_bytes: u64, lines_shown: u32) -> String {
+    copy_text(
+        "rsHistory.session.truncated",
+        &[
+            ("max", &MAX_SESSION_BYTES.to_string()),
+            ("read", &read_bytes.to_string()),
+            ("lines", &lines_shown.to_string()),
+        ],
+    )
+}
+
+/// 一页原文 ⇒ 这一页里可显示的那几条（占号在先、过滤在后），带 per-file `seq`。**纯**：判据直接喂页。
 ///
-/// 这一对住 `真相源/97 §二 丙`（「措辞不同」那一档）：本机叫
-/// `stream_read_session_jsonl`、远端叫 `stream_read_remote_session`，**名字里没有一个
-/// 共同的词** ⇒ 按名字数分叉的量法看不见它。认出它靠的是两条实打的判据：
-/// ① 两侧的 chunk 口径**逐字对齐**（每 100 条一发、同一个 `JsonlLinePayload`、
-/// 同一套 per-file `seq`）；② 前端的 `SessionViewer` 对两条路**共用同一段消费代码**
-/// （`session-viewer.ts` 里那个三目就是全部差别）。
+/// 〔LOC1b · 4D〕本机远端同一份（从前两侧各写一遍循环体，靠注释「逐字对齐」）。
+/// agent 种类按**文件名形态**判（[`crate::adapter::kind_of_record_name`]）：远端路径也判得对，不依赖本机有没有那一家的根。
+pub(crate) struct SessionPager {
+    kind: crate::adapter::AgentKind,
+    session_id: String,
+    path: String,
+    payload_origin: Option<String>,
+    parse_origin: crate::origin::Origin,
+    numberer: crate::session_skeleton::LineNumberer,
+    cwd_seen: Option<String>,
+}
+
+impl SessionPager {
+    /// `origin` 是这一份从哪台读来的；载荷里的 `origin` 本机 `None`、远端 `Some(名字)`
+    /// （这处不对称是载荷那一层的事，`JsonlLinePayload::origin`，不在本路射程）。
+    pub(crate) fn new(origin: &crate::origin::Origin, jsonl_path: &str) -> Self {
+        let p = std::path::Path::new(jsonl_path);
+        let kind = crate::adapter::kind_of_record_name(p);
+        let session_id =
+            crate::adapter::session_id_from_path_with(crate::adapter::for_kind(kind).layout(), p)
+                .unwrap_or_default();
+        Self {
+            kind,
+            session_id,
+            path: jsonl_path.to_string(),
+            payload_origin: origin.host_name().map(str::to_string),
+            parse_origin: origin.clone(),
+            numberer: crate::session_skeleton::LineNumberer::default(),
+            cwd_seen: None,
+        }
+    }
+
+    pub(crate) fn session_id(&self) -> &str {
+        &self.session_id
+    }
+
+    /// 喂一页（切在行尾，末页可含残尾）。
+    pub(crate) fn page(&mut self, text: &str) -> Vec<crate::bridge::JsonlLinePayload> {
+        let mut out = Vec::new();
+        for line in text.lines() {
+            // 〔U3b〕seq = **可计行号**（与 watcher / 骨架索引同一个空间）：不可显示的记录照占号、不出 payload。
+            // 「占不占号」只有一个住址：`session_skeleton·rs::LineNumberer`。
+            // 〔ST3〕看不懂的行记在读来的那台名下。
+            let (kind, origin) = (self.kind, &self.parse_origin);
+            let Some((seq, rec)) =
+                crate::session_skeleton::numbered_displayable(&mut self.numberer, line, |b| {
+                    crate::parser::parse_for_kind(kind, origin, b)
+                })
+            else {
+                continue;
+            };
+            if let JsonlRecord::User { cwd, .. } = &rec {
+                if self.cwd_seen.is_none() {
+                    self.cwd_seen = cwd.clone();
+                }
+            }
+            out.push(crate::bridge::JsonlLinePayload {
+                session_id: self.session_id.clone(),
+                cwd: self.cwd_seen.clone(),
+                path: self.path.clone(),
+                seq,
+                origin: self.payload_origin.clone(),
+                message: rec,
+            });
+        }
+        out
+    }
+}
+
+/// issue #12: 流式读一整份会话（取代已删的非流式 `read_session_jsonl`；按 100 条一 chunk 边读边发，前端 ~500ms 内开始渲染首屏）。
+///
+/// 取消：前端 drop channel 时 send 返 Err → 停。
+///
+/// 🔴 **〔LOC1b · 第四波 4D〕本机与远端是同一条路**（`INVARIANTS §40`「本地＝不走 ssh 的远端」· `设计/00 §2.5 ①`）：
+/// 都经**那台机器的后端**帧命令 `history-read` 按字节分页取原文（一页 ≤1 MiB、切在行尾），monitor 解析。
+/// 从前本机那一支在这里自己 `File::open` 读 jsonl、自己验根（monitor 里的第二个会话读者，`local_read_surface_registry`
+/// 的针只认 `claude_dir` 没数到它）；远端那一支住 `remote_history.rs`。两支合成一条之后，围栏归后端
+/// （`observe/history_query.rs::validate_session_path`，Codex 的记录根也认），这里只留两侧同一道廉价预检。
+/// 代价如实写：本机后端不在 ⇒ 本机会话也读不了（`D11` 的兑现，同本机实时内容）。
 #[tauri::command]
 pub async fn stream_read_session_jsonl(
     origin: crate::origin::Origin,
@@ -56,97 +148,58 @@ pub async fn stream_read_session_jsonl(
     on_chunk: tauri::ipc::Channel<Vec<crate::bridge::JsonlLinePayload>>,
 ) -> Result<u32, String> {
     const CHUNK_SIZE: usize = 100;
-    if let crate::origin::Route::Remote(host) = origin.route("stream_read_session_jsonl")? {
-        return crate::remote_history::stream_read_remote_session(jsonl_path, host, on_chunk).await;
+    origin.route("stream_read_session_jsonl")?;
+    // 廉价预检（纵深防御；真正的越界由那台后端的围栏兜底）：拒 `..` ＋ 必须 `.jsonl`。
+    if jsonl_path.contains("..") || !jsonl_path.ends_with(".jsonl") {
+        return Err(copy_text(
+            "rsHistory.session.badPath",
+            &[("path", &jsonl_path.to_string())],
+        ));
     }
-    tokio::task::spawn_blocking(move || {
-        let started = std::time::Instant::now();
-        let target = PathBuf::from(&jsonl_path);
-        // Phase 2 F1a：按路径判 agent kind（Claude `~/.claude/projects` vs Codex `~/.codex/sessions`）。
-        // Claude 路径 kind=ClaudeCode → 根/session_id/解析与原字节一致（零回归）；Codex 走对应根 + 映射。
-        let kind = crate::adapter::kind_of_path(&target);
-        let root = crate::adapter::for_kind(kind)
-            .data_root()
-            .map(|dr| crate::adapter::records_dir_for(kind, &dr))
-            .ok_or("agent data dir not found")?;
-        if !target.starts_with(&root) {
-            return Err(format!(
-                "refuse: {} outside {}",
-                target.display(),
-                root.display()
-            ));
+    let started = std::time::Instant::now();
+    let mut pager = SessionPager::new(&origin, &jsonl_path);
+    let mut read_bytes: u64 = 0;
+    let mut chunk: Vec<crate::bridge::JsonlLinePayload> = Vec::with_capacity(CHUNK_SIZE);
+    let mut total = 0u32;
+    let mut offset: u64 = 0;
+    loop {
+        let page =
+            crate::backend::control::frame_query::read_page(&origin, &jsonl_path, offset, None)
+                .await?;
+        read_bytes += page.next - offset;
+        if read_bytes > MAX_SESSION_BYTES {
+            // F06：**不许静默截断**。同一份数据走后端的 `--fork-session` 会硬报错，
+            // 走这条路却假装读完了 —— 定框 E5 要的是「同一份数据走不同路得到同一个答案」。
+            return Err(session_truncated_message(read_bytes, total));
         }
-        if !crate::adapter::has_record_ext(&target) {
-            return Err("not a .jsonl file".into());
-        }
-
-        let session_id = crate::adapter::session_id_from_path_with(
-            crate::adapter::for_kind(kind).layout(),
-            &target,
-        )
-        .unwrap_or_default();
-        let file = File::open(&target).map_err(|e| format!("open {}: {e}", target.display()))?;
-        let reader = BufReader::new(file);
-        let path_str = target.to_string_lossy().into_owned();
-        let mut cwd_seen: Option<String> = None;
-        let mut buf: Vec<crate::bridge::JsonlLinePayload> = Vec::with_capacity(CHUNK_SIZE);
-        let mut total = 0u32;
-        // P5.1：history 流式读时同样给每行 seq（per-file 单调）。SessionViewer
-        // 用 RecordTimeline 排序时跟实时 tab 走同一套逻辑。
-        // 〔U3b〕seq = **可计行号**（与 watcher / 骨架索引同一个空间）：不可显示的记录照占号、
-        // 不出 payload。原先只给可显示的编号 ⇒ 查看器的 seq 与索引对不上、骨架接不上。
-        // 「占不占号」只有一个住址：`session_skeleton·rs::LineNumberer`。
-        let mut numberer = crate::session_skeleton::LineNumberer::default();
-
-        for line in reader.lines().map_while(Result::ok) {
-            let Some((seq, rec)) =
-                crate::session_skeleton::numbered_displayable(&mut numberer, &line, |b| {
-                    // 〔ST3〕这一支是 `route` 之后的本机那一支 ⇒ `origin` 就是本机。
-                    crate::parser::parse_for_kind(kind, &origin, b)
-                })
-            else {
-                continue;
-            };
-            if let JsonlRecord::User { cwd, .. } = &rec {
-                if cwd_seen.is_none() {
-                    cwd_seen = cwd.clone();
-                }
-            }
-            buf.push(crate::bridge::JsonlLinePayload {
-                session_id: session_id.clone(),
-                cwd: cwd_seen.clone(),
-                path: path_str.clone(),
-                seq,
-                // 历史浏览器读本地 jsonl，无远端来源标签。
-                origin: None,
-                message: rec,
-            });
+        for payload in pager.page(&page.text) {
+            chunk.push(payload);
             total += 1;
-            if buf.len() >= CHUNK_SIZE {
-                let chunk = std::mem::replace(&mut buf, Vec::with_capacity(CHUNK_SIZE));
-                if on_chunk.send(chunk).is_err() {
+            if chunk.len() >= CHUNK_SIZE {
+                let full = std::mem::replace(&mut chunk, Vec::with_capacity(CHUNK_SIZE));
+                if on_chunk.send(full).is_err() {
                     tracing::info!(
-                        "stream_read_session_jsonl({}): cancelled at {} records",
-                        session_id,
-                        total
+                        "stream_read_session_jsonl({}): 前端取消于 {total} 条",
+                        pager.session_id()
                     );
                     return Ok(total);
                 }
             }
         }
-        if !buf.is_empty() {
-            let _ = on_chunk.send(buf);
+        offset = page.next;
+        if page.eof {
+            break;
         }
-        tracing::info!(
-            "stream_read_session_jsonl({}): {} records in {}ms",
-            session_id,
-            total,
-            started.elapsed().as_millis()
-        );
-        Ok(total)
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking join: {e}"))?
+    }
+    if !chunk.is_empty() {
+        let _ = on_chunk.send(chunk);
+    }
+    tracing::info!(
+        "stream_read_session_jsonl({}): {total} records in {}ms",
+        pager.session_id(),
+        started.elapsed().as_millis()
+    );
+    Ok(total)
 }
 
 // 〔RW1 · 第四波 · 2026-09-24〕这里原来是本机删除的路径守卫 `validate_delete_target`〔散文墓碑〕（Batch4-F15：
@@ -324,7 +377,7 @@ pub async fn create_branch_session(
 // `write_branch_file`〔散文墓碑〕（`O_EXCL` 在本进程里写 `~/.claude/projects/<proj>/<new-sid>.jsonl`）。
 // 用户裁「只允许后端的文件管理部分写文件」也管本机 ⇒ 本机分叉与远端同一条路：exec 本机后端的
 // `--fork-session`（`src/backend/control/fork_write.rs`，写盘白名单层那一处 `O_EXCL`），
-// 结果解释与远端共用 `remote_branch::interpret_fork_exec` ⇒ 两件零调用方、删了。
+// 结果解释与远端共用 `remote_branch::interpret_fork_exec`〔散文墓碑〕（〔LOC1a〕随 exec 那条路一起删了，今天是帧命令 `session-fork`）⇒ 两件零调用方、删了。
 
 /// 在新终端窗口里 resume 一个历史会话。
 ///
@@ -1978,3 +2031,7 @@ mod title_coverage;
 #[cfg(test)]
 #[path = "../../../tests/bridge/history_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../tests/bridge/history_f06_tests.rs"]
+mod f06_tests;

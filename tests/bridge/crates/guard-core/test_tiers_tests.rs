@@ -56,6 +56,9 @@ use std::path::{Path, PathBuf};
 
 /// 单元层：不读仓内文本、不碰 OS 的测试文件。
 const UNIT: &[&str] = &[
+    "tests/config-lost-update.vitest.ts", // 〔CFG1〕J1 两 realm 11 写者同拍写 · J5 写者路径集合
+    "tests/config-persist-failure.vitest.ts", // 〔CFG1〕J8 落盘失败恰好一条 toast
+    "tests/events-stream-closed.vitest.ts", // 〔W5-UI〕会话流 closed 格 ⇒ 恰好一条 toast
     "tests/bridge/local_accounts_tests.rs", // 〔C4d〕从 `INTEGRATION` 挪来（见那一行的墓碑）
     "tests/account-color.vitest.ts",
     "tests/account-commands.vitest.ts",
@@ -112,10 +115,9 @@ const UNIT: &[&str] = &[
     "tests/bridge/lib_remote_config_tests.rs",
     "tests/bridge/messages_tests.rs",
     "tests/bridge/port_forward_tests.rs",
-    "tests/bridge/remote_branch_tests.rs",
     "tests/bridge/remote_history_tests.rs",
     "tests/bridge/session_facts_tests.rs",
-    "tests/bridge/session_map_f13_tests.rs",
+    // 〔LOC1b · 4D〕`session_map_f13_tests.rs` 与 `session_map_linux_liveness.rs` 随 monitor 自己那份本机判活删了。
     "tests/bridge/sftp_pool_tests.rs",
     "tests/bridge/ssh_link_tests.rs",
     "tests/bridge/ssh_source_batcher_tests.rs",
@@ -215,11 +217,10 @@ const UNIT: &[&str] = &[
     "tests/views/history-actions.test.ts",
     "tests/views/history-actions.vitest.ts",
     "tests/views/history-cache.test.ts",
-    "tests/views/history-close-stops-retry.vitest.ts",
+    // 〔LOC1b · 4D〕两份等本机索引的前端判据（`history-close-stops-retry` · `history-index-wait`）随那条 1 s 重跑链删了。
     "tests/views/history-counted.vitest.ts",
     "tests/views/history-state-chip.vitest.ts", // 〔AR1〕历史状态词只住 sessionState.*
     "tests/views/history-filter-collapse.vitest.ts",
-    "tests/views/history-index-wait.vitest.ts",
     "tests/views/history-prefs.test.ts",
     "tests/views/history-search-resume.vitest.ts",
     "tests/views/history-search-truncation.vitest.ts",
@@ -244,6 +245,12 @@ const UNIT: &[&str] = &[
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
 const SCAN: &[&str] = &[
+    "tests/tasks-decode.vitest.ts", // 〔LOC1a〕读跨语言金样 tasks-list.golden.json
+    "tests/bridge/remote_branch_tests.rs", // 〔LOC1a〕UNIT → SCAN：改走 `<local>` 长连接后判据读源码 / 脚本假后端（判别器判 SCAN）
+    "tests/record-file-notice.vitest.ts", // 〔FW1〕D-d：活会话 jsonl 不见了 / 被截短 / 被改写 ⇒ tab 顶一行提示
+    "tests/config-patch-fake.vitest.ts",  // 〔CFG1〕假盘对跨语言金样 config-patch.golden.json
+    "tests/tab-bar-width.vitest.ts",      // 〔CFG1〕J7 tab 栏宽度走存储接入层、零裸 localStorage
+    "tests/ask-dialog.vitest.ts", // 〔W5-UI〕D1 生产 TS 零原生 confirm/prompt（AST 扫）· D1b askConfirm/askText 必 await ＋ 调用方清单
     "tests/bg-flat.vitest.ts", // 〔BG1〕V125：tab 栏通用代码零 bg 分叉（扫 `src/tabs.ts` ＋ `src/tab-*.ts`）· CSS 零 `.tab-bg`
     "tests/account-availability-guard.vitest.ts",
     "tests/account-base-semantics.vitest.ts",
@@ -315,7 +322,6 @@ const SCAN: &[&str] = &[
     "tests/bridge/backend/control/inbound_client_tests.rs",
     "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
     "tests/bridge/backend/control/tmux_tests.rs",
-    "tests/bridge/backend/observe/local_query_tests.rs",
     "tests/bridge/backend_policy_tests.rs",
     "tests/bridge/backend_tests.rs",
     "tests/bridge/bus_identity_registry_tests.rs",
@@ -378,7 +384,8 @@ const SCAN: &[&str] = &[
     "tests/bridge/polling_registry_tests.rs",
     "tests/bridge/profile_installer_handshake_doc_guard.rs",
     "tests/bridge/quote_singleton_guard_tests.rs",
-    "tests/bridge/remote_history_f06_tests.rs",
+    "tests/bridge/history_f06_tests.rs", // 〔LOC1b · 4D〕从 `remote_history_f06_tests.rs` 改名（被测随本机远端合成一条搬进 `history.rs`）
+    "tests/bridge/session_map_tests.rs", // 〔LOC1b · 4D〕从 INTEGRATION 挪来：本机活会话表的真值表 ＋ 两条读源码的接线判据
     // 〔C4d〕`tests/bridge/remote_history_kr83_tests.rs` 删了（`K-R83` 那三条随 join 搬进后端 `history_join_tests.rs`）。
     "tests/bridge/remote_relay_tests.rs",
     "tests/bridge/remote_write_registry_tests.rs",
@@ -483,6 +490,11 @@ const SCAN: &[&str] = &[
 
 /// 集成层：碰 OS（起进程 · 套接字 · 真文件系统写 · 临时目录）。
 const INTEGRATION: &[&str] = &[
+    "tests/backend/own_dir_tests.rs", // 〔HX1 续〕O1–O3 自家目录一律 0700、建目录调用点两向登记
+    "tests/bridge/config_tests.rs",   // 〔CFG1〕J2/J3 12 线程 × 20 轮并发补丁写 · 补丁语义
+    "tests/backend/control/overwrite_atomic_tests.rs", // 〔HX1〕W1 ulimit -f 下子进程写到一半被 SIGXFSZ 杀，目标仍是旧整份
+    "tests/backend/drain_tests.rs", // 〔HX1〕D2 真子进程 ＋ 真 SIGTERM：在飞阻塞命令做完才退
+    "tests/bridge/stop_grace_tests.rs", // 〔HX1〕S1 真 sh 两形：trap exit ⇒ Stopped · trap '' ⇒ Forced
     "tests/backend/accounts/upstream/creds_tests.rs",
     "tests/backend/accounts/upstream/endpoint_tests.rs", // 〔US1〕上游选择出的两份成品（金样那条读夹具文件）
     "tests/backend/accounts/upstream/file_face_tests.rs",
@@ -593,9 +605,7 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/profile_installer_tests.rs",
     "tests/bridge/pubkey_tests.rs",
     "tests/bridge/scanning_guard_registry_tests.rs",
-    "tests/bridge/search_tests.rs",
-    "tests/bridge/session_map_linux_liveness.rs",
-    "tests/bridge/session_map_tests.rs",
+    // 〔LOC1b · 4D〕`search_tests.rs` 随 monitor 内存索引删了；`session_map_linux_liveness.rs` 随本机判活删了；`session_map_tests.rs` 挪进 SCAN（判据里多了读源码的那两条）。
     "tests/bridge/sftp_tests.rs",
     "tests/bridge/shared_crate_registry_tests.rs",
     "tests/bridge/shell_dialect_tests.rs",
@@ -618,6 +628,7 @@ const INTEGRATION: &[&str] = &[
 /// 支撑：测试树里**没有一条测试**的那几份（夹具 / helper）。不是一层，是让分区闭合的补集。
 /// ⚠ 一份真测试文件掉光了测试属性，判别器会把它判进这里 ⇒ 与登记不一致 ⇒ 红。
 const SUPPORT: &[&str] = &[
+    "tests/bridge/support/scripted_backend.rs", // 〔LOC1a〕`<local>` 上挂照脚本应答的假后端，数它收到的帧命令
     "tests/backend/files/index_testing.rs",
     "tests/backend/sftp_rig.rs",
     "tests/bridge/backend/control/backend_kill_creation_detect.rs",
@@ -716,6 +727,16 @@ enum Trigger {
 /// 真机层：逐条登记（`(文件, 测试名 / TS 那一处的条件, 触发者)`）。
 /// 人群 = 两棵 Rust 测试树里每一条 `#[ignore]` ＋ TS 测试里每一处 `skipIf` / `runIf` / `.skip(`。
 const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
+    (
+        "tests/backend/control/overwrite_atomic_tests.rs",
+        "w1_child",
+        Trigger::Filter { by: "tests/backend/control/overwrite_atomic_tests.rs", needle: "control::files_write::overwrite_atomic_tests::w1_child" },
+    ),
+    (
+        "tests/backend/drain_tests.rs",
+        "d2_child_harness",
+        Trigger::Filter { by: "tests/backend/drain_tests.rs", needle: "inbound::drain_tests::d2_child_harness" },
+    ),
     (
         "tests/backend/plugin_walk_fixture.rs",
         "a_plugin_started_here_never_sees_the_listen_port_or_token_inner",
