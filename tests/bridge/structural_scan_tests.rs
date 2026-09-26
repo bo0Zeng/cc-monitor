@@ -4505,6 +4505,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/settings/accounts-section.ts", 3),
         ("src/apikey-reads.ts", 1), // 〔HX2 · 4D〕写 key 改走通道：头注点旧命令名
         ("src/settings/account-new-form.ts", 1), // 〔HX2 · 4D〕同上 // 〔HX2 · 4D〕+1：写 key 改走通道那一行点旧命令名
+        ("src/settings/acct-deploy.ts", 2), // 〔DUP2 · J4〕头注记 `sq` · `buildAcctIsoCmd` 搬进了后端（帧命令 `acct-iso-cmd`）
         ("tests/backend/control/gate_tests.rs", 1),
         ("tests/backend/no_timer_guard.rs", 1),
         // 〔SR1b · 2026-09-24〕2 → 3：远端写那一层「今天一处远端写都没有」那条判据随 V89 改写成
@@ -4633,7 +4634,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/ccm_probe.rs", 1),
         ("src/tmux-control.ts", 1),
         // 〔C4e 批 3b〕cc-bus 驾驶舱写面五条改由界面经通道直接说：新家的头注点 monitor 那五条旧命令名。
-        ("src/cc-bus-control.ts", 1),
+        ("src/cc-bus-control.ts", 4), // 〔DUP2 · J12〕+3：TS 副本 `isValidBusId` / `refuseBadId` 删了（原处一行两块）· `checkSpawnShape` 头注点它一块
         ("src/bridge/src/backend/mod.rs", 2), // 〔LOC1a〕+1：`observe/` 那条线删了，`pub mod` 旁那一句 // 〔C4e 批 3b〕归属表里 `control/cc_bus.rs` 那一格点的写面四条旧命令名
         ("src/views/pane-preview.ts", 1),
         ("tests/bridge/backend/control/backend_route_tests.rs", 4), // 〔C4e 批 2〕+1：SENDERS 头三行（三个发送端）摘掉的那一块
@@ -4683,8 +4684,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/account-availability-guard.vitest.ts", 1),
         // 〔DUP1 · 4D〕同一判据 J2 / J3：TS 的 `isValidConfigDir`（渲染侧 configDir 拒绝集的手抄）与 `sanitizeRemoteLauncher`
         //   （同一字符集、却静默换成默认 launcher）删了，点它们的散文各挂一块。
-        ("src/shell-quote.ts", 4), // 〔DUP1〕+2：头注记 `isValidSessionId` · `isValidModelName` 删了
-        ("src/launch-dimensions.ts", 3), // 〔DUP1〕+2：identity 维度原先先过 `isValidSessionId` · model 维度原先先过 `isValidModelName`
+        ("src/shell-quote.ts", 6), // 〔DUP1〕+2：头注记 `isValidSessionId` · `isValidModelName` 删了 ·〔DUP2 · J6〕+2：两个 tmux 名谓词删了
+        ("src/launch-dimensions.ts", 4), // 〔DUP1〕+2：identity 维度原先先过 `isValidSessionId` · model 维度原先先过 `isValidModelName` ·〔DUP2〕+1：令牌形状的 TS 副本 `isValidRbindToken` 删了
         ("tests/launch-dimensions.test.ts", 3), // 〔DUP1〕+2：identity · model 两条改测「前端不判」
         ("tests/remote-launch.test.ts", 4), // 〔DUP1〕+2：`isValidSessionId` 五条 · 直起非法 sid 那条
         ("tests/test-support/launch-payload-golden.ts", 1),

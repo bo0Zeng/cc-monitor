@@ -4,14 +4,15 @@
  * 守的要求：`设计/05 §14.3` 逐字「正路是**把解释挪进后端、直接出成品**：后端帧命令的应答就是界面要的那个形状，
  * 前端经 `chan.call` 直接问、按形状收（不解释），monitor 那一份解释与发送点一起删」·「成品的两侧对拍：界面按形状严格收
  * （多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」，不猜）；线上形状由一份跨语言金样钉住」；
- * 另守 `INVARIANTS` 那条「调用方不能靠对端校验」（坏 id / 坏形状一个字节都不发，好的发得出去 —— 正反各一格）
+ * 另守 `INVARIANTS` 那条「调用方不能靠对端校验」（空正文 / 坏派生形状一个字节都不发，好的发得出去 —— 正反各一格；
+ * 〔DUP2 · J12〕id 的形状今天由后端在交给 cc-bus 之前判，界面只把 `bad_id` 说成人话）
  * 与 `设计/01 §5 D7`「失败要显式、归因要准确」（问不到 ≠ 不在线；发到几个 · 跳过几个 · 失败几个分开说）。
  *
  * | 性质 | 判据 |
  * |---|---|
  * | 五条的请求体 == 金样那一份；解码器读得懂后端真出的成品（后端那侧 `cc_bus_tests::the_bus_products_match_the_cross_language_golden` 对拍同一份，异源：Rust 构造器造、TS 解） | 「金样」 |
- * | agent id 规则 == monitor `is_valid_bus_id`（同一份 `ids`，Rust 侧 `the_bus_id_rule_agrees_with_the_front_end_on_the_shared_samples`） | 「id」 |
- * | 坏 id / 空正文 / 坏派生形状就地拒，一个字节都不发；好的发得出去 | 「发出去之前」 |
+ * | 〔DUP2〕界面不判 id：金样 `ids` 里坏的也原样交给后端；后端回 `bad_id` ⇒ 各动作一句、带后端原话（规则只有一份，后端那侧 `bus_ids_are_judged_here_before_they_reach_cc_bus` 读同一份 `ids`） | 「id」 |
+ * | 空正文 / 坏派生形状（tool · 目录）就地拒，一个字节都不发；好的发得出去 | 「发出去之前」 |
  * | 查在线只回确定的答案，问不到一律抛（结构上造不出灭灯） | 「查在线」 |
  * | 回值几态逐态一句、两两不同；破坏性的形状不认识 ⇒「不知道动没动」 | 「发消息」「收掉」「派生」「广播」 |
  * | 拒绝码（取自金样）逐码一句、两两不同、带后端原话；认不出的码原样带出去 | 「拒绝码」 |
@@ -32,7 +33,6 @@ import {
   broadcast,
   checkSpawnShape,
   decodeAgents,
-  isValidBusId,
   killAgent,
   MONITOR_BUS_ID,
   saidOfBroadcast,
@@ -175,27 +175,23 @@ describe("〔C4e〕金样：请求体 == 金样、解码器读得懂后端真出
   });
 });
 
-describe("〔C4e〕id：与 monitor 那一份同一条规则", () => {
-  it("★★ 金样 `ids`：该放的放、该拒的拒（Rust 侧读同一份）", () => {
+describe("〔DUP2 · J12〕id：界面不判，后端判（规则只有一份）", () => {
+  it("★★ 金样 `ids` 里坏的 id 也原样交给后端（查在线 · 发消息 · 收掉）；后端回 `bad_id` ⇒ 各一句、带后端原话", async () => {
     expect(IDS.ok.length * IDS.bad.length, "金样的 ids 空了 —— 下面是空转").toBeGreaterThan(0);
-    for (const id of IDS.ok) expect(isValidBusId(id), id).toBe(true);
-    for (const id of IDS.bad) expect(isValidBusId(id), JSON.stringify(id)).toBe(false);
+    const bad = IDS.bad.find((id) => id === "--help")!;
+    answer({ fail: refusedReply("bad_id", "BACKEND-SAYS") });
+    const send = await saidOf(() => sendMessage("aya", bad, "hi"));
+    const kill = await saidOf(() => killAgent("aya", bad));
+    expect(send).toMatch(/消息没有发出去/);
+    expect(kill).toMatch(/没有收掉/);
+    for (const s of [send, kill]) expect(s, "后端的原话被吃掉了").toContain("BACKEND-SAYS");
+    expect(sentCalls().map((c) => c[1]), "界面自己把坏 id 拦下了 —— 规则只许后端那一份").toEqual(["bus-send", "bus-kill"]);
+    const [sent, killed] = sentCalls().map((c) => c[2] as Record<string, unknown>);
+    expect([sent.to, killed.id], "交给后端的不是原样那个 id").toEqual([bad, bad]);
   });
 });
 
 describe("〔C4e〕发出去之前：调用方不能靠对端校验", () => {
-  it("★★ 坏 id 就地拒、一个字节都不发（查在线 · 发消息 · 收掉）；好 id 发得出去", async () => {
-    answer({ ok: KILL.reply });
-    for (const bad of IDS.bad) {
-      for (const act of [() => agentOnline("aya", bad), () => sendMessage("aya", bad, "hi"), () => killAgent("aya", bad)]) {
-        expect(await saidOf(act)).toMatch(/agent 名不合法/);
-      }
-    }
-    expect(invokeMock, "坏 id 也发出去了").not.toHaveBeenCalled();
-    await killAgent("aya", "alpha_cc");
-    expect(sentCalls().length, "好 id 没发出去 —— 判定被焊成恒拒了").toBe(1);
-  });
-
   it("★ 空正文就地拒（发消息 · 广播），一个字节都不发", async () => {
     answer({ ok: SEND.reply });
     expect(await saidOf(() => sendMessage("aya", "alpha_cc", "  \n"))).toMatch(/消息是空的/);
@@ -203,18 +199,20 @@ describe("〔C4e〕发出去之前：调用方不能靠对端校验", () => {
     expect(invokeMock).not.toHaveBeenCalled();
   });
 
-  it("★★ 派生的形状先核：tool / 目录非空、账号名过字符集；**不白名单 tool**（认不认归 cc-spawn）", async () => {
+  it("★★ 派生的形状先核：tool / 目录非空；**不白名单 tool**（认不认归 cc-spawn）；账号名交后端判（`bad_id` 说成人话）", async () => {
     answer({ ok: SPAWN.reply });
     expect(thrownBy(() => checkSpawnShape({ tool: "", dir: "/w", task: "" }))).toMatch(/没选派生哪种 agent/);
     expect(thrownBy(() => checkSpawnShape({ tool: "claude", dir: " ", task: "" }))).toMatch(/工作目录是空的/);
-    for (const bad of ["--help", "a b", "a;rm"]) {
-      expect(await saidOf(() => spawnAgent("aya", { tool: "claude", dir: "/w", task: "", account: bad }))).toMatch(/账号名不合法/);
-    }
     expect(invokeMock, "坏形状也发出去了").not.toHaveBeenCalled();
     // 没见过的 tool 照样放行 —— 本侧不维护第二份名单。
     expect(() => checkSpawnShape({ tool: "some-future-agent", dir: "/w", task: "" })).not.toThrow();
     await spawnAgent("aya", { tool: "some-future-agent", dir: "/w", task: "", account: "z" });
     expect(sentCalls().length).toBe(1);
+    // 〔DUP2 · J12〕坏账号名原样交给后端（界面不判），后端回 `bad_id` ⇒ 「没有派生：<后端那一句>」。
+    answer({ fail: refusedReply("bad_id", "BACKEND-SAYS") });
+    const said = await saidOf(() => spawnAgent("aya", { tool: "claude", dir: "/w", task: "", account: "--help" }));
+    expect(said).toMatch(/没有派生/);
+    expect(said).toContain("BACKEND-SAYS");
   });
 });
 

@@ -13,7 +13,6 @@ import {
   MODEL_DIMENSION,
   NESTED_ENV_RESET_DIMENSION,
   RBIND_TOKEN_DIMENSION,
-  isValidRbindToken,
   LAUNCH_DIMENSIONS,
   __testOnlyAssertDimensionOrderInvariants,
 } from "../src/launch-dimensions.ts";
@@ -310,12 +309,16 @@ test("rbind-token：没令牌 → 整格不生效（载荷逐字节等于今天�
 // 🔴 **空值 ≠ 未设**（Z01 的支点）。这一条是本族**第一次跑就逮到东西**的那条：
 //    `applies` 初版写的是 `!!ctx.rbindToken`，于是 `rbindToken: ""` 被读成
 //    「这次不带令牌」—— 一次铸币 bug 会静默地变成「↗ 不明原因失效」。
-//    现在 `""` 会让这个维度**触发**、在 `apply` 里 throw。
-test("rbind-token：`\"\"` 是坏数据不是「没有」—— applies 为真、apply 当场 throw", () => {
+//    现在 `""` 会让这个维度**触发**。〔DUP2 · J8〕形状不在 TS 判了（规则只有 Rust `payload.rs` 一份）：
+//    `""` 原样推进 plan，渲染侧那道闸拒（`payload_tests.rs` 那条 fail-closed 用例）—— 仍然不会被当成「没有」。
+test("rbind-token：`\"\"` 是坏数据不是「没有」—— applies 为真、原样推进 plan（渲染侧拒）", () => {
   eq(RBIND_TOKEN_DIMENSION.applies(tokCtx({ rbindToken: "" })), true);
   // 对照组：`undefined` 才是「诚实的没有」，它**不**触发（否则上面那条只是「恒触发」）。
   eq(RBIND_TOKEN_DIMENSION.applies(tokCtx({ rbindToken: undefined })), false);
-  throws(() => buildLaunchPlan(tokCtx({ rbindToken: "" })), "空令牌必须 throw");
+  eq(
+    buildLaunchPlan(tokCtx({ rbindToken: "" })).env.filter((op) => op.kind === "export-rbind-token"),
+    [{ kind: "export-rbind-token", value: "" }],
+  );
 });
 
 test("rbind-token：有令牌 → applies 为真，且推出 export-rbind-token", () => {
@@ -333,28 +336,9 @@ test("rbind-token：attach 那一档不带（一个 agent 进程都不起，注�
   eq(RBIND_TOKEN_DIMENSION.applies(tokCtx({ action: { kind: "resume", sid: "s1" } })), true);
 });
 
-test("rbind-token：形状闸逐格 —— 大写 / 长度差一 / 非 hex / 空 一律拒（不是「看起来校验了」）", () => {
-  // 正控先立：合法的那一个必须过（否则下面全红也说明不了什么）。
-  eq(isValidRbindToken(TOK), true);
-  const bad = [
-    TOK.toUpperCase(),          // 大写：刻意不收（本地表与 environ 读回来的串要能直接相等比较）
-    TOK.slice(0, 31),           // 31 位
-    `${TOK}0`,                  // 33 位
-    `${TOK.slice(0, 31)}g`,     // 非 hex
-    "",                         // 空
-    ` ${TOK}`,                  // 前导空白（`^…$` 锚点在不在）
-    `${TOK}\n`,                 // 尾随换行（JS 正则 `$` 的经典陷阱）
-    "0x0f1e2d3c4b5a69788796a5b",// 带 0x 前缀
-  ];
-  for (const b of bad) {
-    eq(isValidRbindToken(b), false, `这个本该被拒: ${JSON.stringify(b)}`);
-    const plan: LaunchPlan = { transport: baseCtx.transport, action: baseCtx.action, container: baseCtx.container, cwd: null, env: [], launcher: "", args: [], wrap: [] };
-    throws(
-      () => RBIND_TOKEN_DIMENSION.apply(plan, tokCtx({ rbindToken: b })),
-      `形状不对必须 throw，不许静默降级成「这次不带令牌」: ${JSON.stringify(b)}`,
-    );
-  }
-});
+// 〔DUP2 · J8〕这里原来有一条「rbind-token：形状闸逐格」（大写 / 长度差一 / 非 hex / 空 一律拒、apply 当场 throw）。
+// 被测的那道 TS 闸删了（令牌形状只剩 Rust `payload.rs::rbind_token_shape_ok` 一份；铸币口按生成物造）⇒ 逐格的坏样本
+// 由 Rust `payload_tests.rs` 那条 fail-closed 用例守，「铸出来的都在形状里」由 `tests/rbind-token-shape-parity.vitest.ts` 守。
 
 // 〔LR1 · U8c-3〕这里原来有一条「rbind-token：cliFlags 恒 null」。那一格是 TS 渲染器那一侧的闸，
 // 随它删了；生产那道闸（带令牌就不试 `ccm …`）由 `tests/remote-launch-run.vitest.ts`

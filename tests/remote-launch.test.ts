@@ -19,8 +19,6 @@ import { fileURLToPath } from "node:url";
 import { srcDirOf } from "./test-support/repo-root.ts";
 import { AGENT_PROFILE } from "../src/agent-profile.ts";
 import {
-  isValidTmuxName,
-  isValidNewTmuxName,
 } from "../src/shell-quote.ts";
 import { mintSessionTmuxName, mintTmuxName, deriveTmuxName } from "../src/remote-launch.ts";
 import {
@@ -50,14 +48,7 @@ function eq(actual: unknown, expected: unknown, msg?: string): void {
     throw new Error(`${msg ?? "eq"}: expected ${b}, got ${a}`);
   }
 }
-function throws(fn: () => void, msg?: string): void {
-  try {
-    fn();
-  } catch {
-    return;
-  }
-  throw new Error(msg ?? "expected throw, got none");
-}
+// 〔DUP2 · J6〕原来这里还有一个 `throws` 助手：它最后几个用户（tmux 会话名在 TS 那两个谓词上 throw）随谓词一起走了。
 
 console.log("remote-launch.test.ts");
 
@@ -185,10 +176,10 @@ test("就地复用：带账号 → export-config-dir 覆盖，不前置 unset-co
   ]);
 });
 
-test("就地复用：非法名 throw（〔DUP1〕sid 那一格交渲染侧判：原样上线、resumeSid 单报）", () => {
+test("就地复用：sid 与会话名都原样上线（〔DUP1〕sid · 〔DUP2 · J6〕会话名都交渲染侧判：gate-core 那一份 ＋ `raw` 的裸拼前提）", () => {
   eq(req(planResumeIntoExistingTmux("-bad", "cc-s1", "claude")).resumeSid, "-bad");
-  throws(() => planResumeIntoExistingTmux("s1", "cc-a b", "claude"), "含空格名");
-  throws(() => planResumeIntoExistingTmux("s1", "-x", "claude"), "首字符 -");
+  eq(req(planResumeIntoExistingTmux("s1", "cc-a b", "claude")).outer?.name, "cc-a b", "含空格名原样（Rust `raw` 那道裸拼前提拒）");
+  eq(req(planResumeIntoExistingTmux("s1", "-x", "claude")).outer?.name, "-x", "首字符 - 原样（寻址是 `=-x:`，Rust 判）");
 });
 
 test("#72 tmux 新建：@ccm_sid 用**完整 sid**（不是会话名前 8 位）", () => {
@@ -279,13 +270,13 @@ test("F74 tmux 新建：显式 name → 用它作会话名（灰会话 fresh res
   });
 });
 
-test("F74 tmux 新建：非法显式 name（空格/tmux 保留字符/注入/前导-）throw", () => {
-  throws(() => planResumeTmux("s1", "", "claude", "cc s1"), "空格");
-  throws(() => planResumeTmux("s1", "", "claude", "cc.s1"), "tmux 保留 .");
-  throws(() => planResumeTmux("s1", "", "claude", "cc:s1"), "tmux 保留 :");
-  throws(() => planResumeTmux("s1", "", "claude", "a;rm -rf /"), "注入");
-  throws(() => planResumeTmux("s1", "", "claude", "-d"), "前导-(tmux getopt arg 混淆)");
-  throws(() => planResumeTmux("s1", "", "claude", "-rf"), "前导-");
+// 〔DUP2 · J6〕这里原来是「F74 非法显式 name（空格 / tmux 保留字符 / 注入 / 前导 -）throw」：那道 TS 内联式子删了 ——
+// 名字的规则只有一份（gate-core 新建那一条：前导 `-` · `.:=*?` · 控制符 · 欺骗字符 · 超长），渲染侧判；`raw` 那一支另有裸拼前提
+// （空格 · `;` 进不去）。逐格坏样本归 Rust：`tests/bridge/crates/gate-core/lib_tests.rs` ＋ `payload_tests.rs`。这里只钉「原样上线」。
+test("F74 tmux 新建：显式 name 原样上线（形状交渲染侧判，〔DUP2〕）", () => {
+  for (const n of ["cc s1", "cc.s1", "cc:s1", "a;rm -rf /", "-d"]) {
+    eq(req(planResumeTmux("s1", "", "claude", n)).outer?.name, n, `原样：${JSON.stringify(n)}`);
+  }
 });
 
 test("F74 mintSessionTmuxName:基名空闲→基名;被占→加后缀取第一个空位", () => {
@@ -312,51 +303,18 @@ test("F74 mintSessionTmuxName:基名空闲→基名;被占→加后缀取第一�
 // 主会话按 `设计/00 §2.5 ④` ＋ `90 §3`（前端零 shell 串）裁删；三行期望原样搬进了
 // `tests/bridge/filewin/shell_tests.rs::the_open_terminal_command_keeps_its_three_shapes`。
 
-test("isValidTmuxName:普通过 / 空·控制字符·保留符·超长拒", () => {
-  eq(isValidTmuxName("cc-abc12345"), true);
-  eq(isValidTmuxName("my session"), true, "空格允许(posixQuote 包裹)");
-  eq(isValidTmuxName(""), false, "空拒");
-  eq(isValidTmuxName("a\tb"), false, "含 TAB 拒");
-  eq(isValidTmuxName("a\nb"), false, "含换行拒");
-  eq(isValidTmuxName("proj.git"), false, ". 拒(tmux 保留:window.pane 分隔)");
-  eq(isValidTmuxName("a:b"), false, ": 拒(tmux 保留:session 分隔)");
-  eq(isValidTmuxName("a".repeat(129)), false, "超长拒");
-  // F01：本谓词**刻意不禁 glob**——它把守 attach 已有会话（名字是用户建的、tmux 允许 glob 字符），
-  // 禁掉是行为回归且挡不住任何东西（`=名:` 已关闭 glob 这一级）。禁 glob 在创建路径，见下条。
-  eq(isValidTmuxName("st*ar"), true, "attach 路径允许 glob 字符（用户已存在的会话名）");
-  eq(isValidTmuxName("q?mark"), true, "同上");
-});
+// 〔DUP2 · 主会话 09-26 裁 J6〕这里原来有三条（TS 的两个 tmux 名谓词逐格：attach 那条的拒绝面 · F01 新建禁 glob ·
+// F04b 新建禁 `=`）。被测的两个谓词删了（`设计/90 §3` 判据 2），规则住 gate-core、只有一份 ⇒ 三条的期望原样搬进
+// `tests/bridge/crates/gate-core/lib_tests.rs`（新建 / 已有会话两条，正反各一格）；F04b「建得出来就杀得掉」的跨轨那条
+// 在 `tests/bridge/backend/control/backend_kill_tests.rs` 改钉 gate-core 那一个禁字集。
 
-test("F01 isValidNewTmuxName:创建路径额外禁 glob 元字符（第二道防线）", () => {
-  eq(isValidNewTmuxName("cc-abc12345"), true);
-  eq(isValidNewTmuxName("my session"), true, "空格仍允许");
-  eq(isValidNewTmuxName("a*b"), false, "* 拒（本工具永不把 glob 建进会话名）");
-  eq(isValidNewTmuxName("a?b"), false, "? 拒");
-  // 继承 isValidTmuxName 的全部拒绝面。
-  eq(isValidNewTmuxName(""), false);
-  eq(isValidNewTmuxName("a:b"), false);
-  eq(isValidNewTmuxName("proj.git"), false);
-});
-
-test("F04b isValidNewTmuxName:`=` 也拒 —— 别创建一个主路杀不掉的名字", () => {
-  // kill 的主路从 F04b 起走后端，而它的形状门拒 `:` 与 `=`（tmux 目标语法）。
-  // 切之前 SSH 那条路杀得掉 `proj=x-cc`，切之后后端回 `invalid_args` ⇒
-  // 那是一条真的（虽然窄的）回归。处置是「不让它被建出来」，不是给 kill 开回落特例。
-  eq(isValidNewTmuxName("proj=x-cc"), false, "= 拒（backend 的 kill 形状门不认它）");
-  eq(isValidNewTmuxName("a=b"), false, "同上");
-  // ⚠ attach 那条**刻意不跟着改**：那些名字不是我们建的，禁它只会把
-  // 「attach 到一个已存在的 a=b」从可用变成 throw，而挡不住任何东西。
-  eq(isValidTmuxName("a=b"), true, "attach 路径仍放行（名字不是我们建的）");
-});
-
-test("F01 起新会话：glob 名 throw（创建路径用 isValidNewTmuxName）/ attach 放行", () => {
-  throws(() => planLauncher("", "a*b", "claude"), "创建路径拒 glob 名");
-  throws(() => planLauncher("", "a?b", "claude"), "创建路径拒 glob 名");
+test("F01 起新会话：glob 名原样交给渲染侧（〔DUP2〕gate-core 新建那一条拒）/ attach 放行", () => {
+  eq(req(planLauncher("", "a*b", "claude")).outer?.name, "a*b", "新建名原样上线（Rust 那侧拒 glob）");
   // attach 已有会话不拒——那是用户自己建的名，且 `=名:` 已保证精确（那一半归 Rust 夹具）。
   eq(req(planAttach("st*ar")).outer, { mode: "attach", name: "st*ar", quoting: "quoted" });
 });
 
-test("attach：名字按 quoted 交给后端、不带任何载荷字段；非法名 throw", () => {
+test("attach：名字按 quoted 交给后端、不带任何载荷字段；名字的形状交渲染侧判（〔DUP2〕）", () => {
   eq(req(planAttach("cc-abc12345")), {
     env: [],
     cwd: null,
@@ -369,8 +327,8 @@ test("attach：名字按 quoted 交给后端、不带任何载荷字段；非法
   });
   eq(req(planAttach("web 1")).outer?.name, "web 1", "空格名原样（引号归 Rust）");
   eq(req(planAttach("a'b")).outer?.name, "a'b", "单引号原样（逃逸归 Rust）");
-  throws(() => planAttach(""), "空名 throw");
-  throws(() => planAttach("x\ny"), "含换行 throw");
+  // 〔DUP2 · J6〕空名 / 含换行不再在 TS throw：gate-core 已有会话那一条（非空 · 无控制符与欺骗字符）在渲染侧判。
+  eq(req(planAttach("x\ny")).outer?.name, "x\ny", "含换行原样（Rust 那侧拒）");
 });
 
 test("deriveTmuxName:basename / 尾斜杠 / 特殊字符换- / 空→session-cc", () => {
@@ -403,12 +361,11 @@ test("起新会话：空 cwd → 外层没有 cwd / 自定义命令透传 / 命�
   eq(req(planLauncher("", "cc-x", "claude; rm -rf /")).launcher, "claude; rm -rf /");
 });
 
-test("起新会话：名含空格原样（quoted）/ 非法名（空/TAB/. /:）throw", () => {
+test("起新会话：名含空格原样（quoted）/ 怪名也原样上线（〔DUP2 · J6〕gate-core 新建那一条在渲染侧拒）", () => {
   eq(req(planLauncher("", "my sess", "claude")).outer?.name, "my sess");
-  throws(() => planLauncher("/p", "", "claude"), "空名 throw");
-  throws(() => planLauncher("/p", "a\tb", "claude"), "含 TAB throw");
-  throws(() => planLauncher("/p", "proj.git", "claude"), ". 名 throw(tmux 保留)");
-  throws(() => planLauncher("/p", "a:b", "claude"), ": 名 throw(tmux 保留)");
+  for (const n of ["a\tb", "proj.git", "a:b"]) {
+    eq(req(planLauncher("/p", n, "claude")).outer?.name, n, `原样：${JSON.stringify(n)}`);
+  }
 });
 
 // ───────────────────────── A4：CLAUDE_CONFIG_DIR 账号前缀注入 ─────────────────────────

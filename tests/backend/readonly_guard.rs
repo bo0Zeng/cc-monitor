@@ -4419,6 +4419,13 @@ mod g6_dependency_signoff {
             "Codex `token_count` 事件 → token 增量的映射（纯数据）；仓内 crate，现打 0 处写面",
         ),
         (
+            // 〔DUP2 · J19〕agent 工具名的唯一一份（会话事实的 agent 列表按它认工具名）。
+            "agent-tools-core",
+            DEPS,
+            MEASURED_CLEAN,
+            "agent 的工具词表（一个常量 ＋ 一个查表函数，纯数据）；仓内 crate，现打 0 处写面",
+        ),
+        (
             "walkdir",
             DEPS,
             UNMEASURED,

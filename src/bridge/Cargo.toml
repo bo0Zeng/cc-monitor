@@ -22,6 +22,8 @@ members = [
     "crates/shell-quote-core",
     "crates/codex-token-core",
     "crates/copy-core",
+    # 〔DUP2 · J19〕agent 的工具词表（哪些工具名算「展开 = 子会话」）—— monitor 渲染与后端会话事实共用的唯一一份。
+    "crates/agent-tools-core",
 ]
 exclude = ["vendor/code-picture-core"]
 
@@ -114,6 +116,8 @@ uuid = { version = "1", features = ["v4"] }
 # G1（branch-anywhere）：分叉的记录变换，与远端后端共用同一份实现。
 branch-core = { path = "crates/branch-core" }
 codex-token-core = { path = "crates/codex-token-core" }
+# 〔DUP2 · J19〕agent 工具词表的唯一一份（claude 画像那一格 `agent_tools` 取它）。
+agent-tools-core = { path = "crates/agent-tools-core" }
 acct-core = { path = "crates/acct-core" }
 # 〔CP2c〕对外文案表的 Rust 取文口（唯一一份实现；`copy_table.rs` 转发它）。常驻后端与 creds-core 也链它。
 copy-core = { path = "crates/copy-core" }

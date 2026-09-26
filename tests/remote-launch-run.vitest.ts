@@ -953,8 +953,8 @@ describe("设计/80 §8.7 步 3：启动期令牌的铸币口", () => {
 
   // ─── ① 形状与熵 ───────────────────────────────────────────────────────────
   //
-  // ⚠ 断言里那条正则是**手写字面量**，不是 `isValidRbindToken` ——
-  //   用生产那个校验器的话，两侧同源：把它放宽成 `/^[0-9a-f]*$/` 判据跟着放宽，恒真。
+  // ⚠ 断言里那条正则是**手写字面量**，不共用生产的任何东西（〔DUP2〕铸币口今天按生成物造；TS 那份形状副本已删）——
+  //   用生产那一份的话，两侧同源：把它放宽成 `/^[0-9a-f]*$/` 判据跟着放宽，恒真。
   it("★ 铸出来的令牌是 32 个小写十六进制字符（判据里的形状是手写字面量，不共用生产校验器）", () => {
     for (let i = 0; i < 64; i += 1) {
       expect(mintRbindToken()).toMatch(/^[0-9a-f]{32}$/);
@@ -964,7 +964,9 @@ describe("设计/80 §8.7 步 3：启动期令牌的铸币口", () => {
   it("★★ 不可猜 ①：熵**真的**来自平台 CSPRNG（桩掉 getRandomValues，看产物随它变）", () => {
     const real = globalThis.crypto.getRandomValues.bind(globalThis.crypto);
     try {
-      // 桩成「全填 0xAB」⇒ 产物必须恰好是 "ab" × 16。
+      // 桩成「全填 0xAB」⇒ 产物必须恰好是 "b" × 32。
+      // 〔DUP2 · J8〕铸币口改成按生成物造（每一位一个字节、按字母表拒绝采样：0xAB % 16 = 11 ⇒ "b"），
+      //   原来是「16 字节渲成 hex」（⇒ "ab" × 16）。两条期望都是手写的，要的只是「产物随熵源变」。
       // 这一条逮的是**最致命的那个变异**：把熵源换成 `Math.random()` / 换成常量 /
       // 换成时间戳 —— 那些改动全都**照样产出 32 个小写十六进制字符**，
       // 只验形状的判据对它们一格都不响。
@@ -975,7 +977,7 @@ describe("设计/80 §8.7 步 3：启动期令牌的铸币口", () => {
         },
         configurable: true,
       });
-      expect(mintRbindToken()).toBe("ab".repeat(16));
+      expect(mintRbindToken()).toBe("b".repeat(32));
       // 再换一个值，证明上一条不是碰巧（`0xab` 被写死在生产里也会过上一条）。
       Object.defineProperty(globalThis.crypto, "getRandomValues", {
         value: (b: Uint8Array) => {
@@ -986,7 +988,7 @@ describe("设计/80 §8.7 步 3：启动期令牌的铸币口", () => {
         },
         configurable: true,
       });
-      expect(mintRbindToken()).toBe("000102030405060708090a0b0c0d0e0f");
+      expect(mintRbindToken()).toBe("0123456789abcdef0123456789abcdef");
     } finally {
       Object.defineProperty(globalThis.crypto, "getRandomValues", { value: real, configurable: true });
     }
@@ -1121,10 +1123,26 @@ describe("设计/80 §8.7 步 3：启动期令牌的铸币口", () => {
   });
 
   it("★★ **空令牌 ≠ 没有令牌**：显式传 `\"\"` 不许被悄悄补一个，必须诚实失败", async () => {
+    // 〔DUP2 · J8〕形状只剩 Rust 一份（`payload.rs::rbind_token_shape_ok`，渲染前那道闸）：TS 维度原样推、不再自己 throw。
+    //   ⇒ 这里照桩的口径（`launch-render-ipc-stub.ts` 头注：「要验拒绝就直接 mock 一次 reject」）让渲染那一跳按 Rust 的闸拒，
+    //   并核**交到渲染那一跳的正是那个 `""`**（没被悄悄补成新铸的）。
     const { launched } = routeLaunch();
+    const seen: string[] = [];
+    const base = invokeMock.getMockImplementation()!;
+    invokeMock.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "render_launch_payload") {
+        const req = (args as { req: PayloadRenderRequest }).req;
+        for (const op of req.env) if (op.kind === "export-rbind-token") seen.push(op.value);
+        if (req.env.some((op) => op.kind === "export-rbind-token" && op.value === "")) {
+          return Promise.reject("REFUSE: 启动令牌形状不对");
+        }
+      }
+      return base(cmd, args);
+    });
     stubClipboard(vi.fn().mockResolvedValue(undefined));
     const ok = await runRemoteResume("aya", "abc-123", "/w", "claude", { rbindToken: "" });
-    expect(ok, "空令牌被静默补成了一个新铸的 —— 那会把一次铸币 bug 藏起来（Z01 的支点）").toBe(false);
+    expect(seen, "空令牌被静默补成了一个新铸的 —— 那会把一次铸币 bug 藏起来（Z01 的支点）").toEqual([""]);
+    expect(ok).toBe(false);
     expect(launched, "空令牌居然拉起来了").toHaveLength(0);
     expect(toastMock).toHaveBeenCalled();
   });

@@ -17,6 +17,7 @@ import { isLocalOrigin, type Origin } from "./ipc/origin";
 //   〔FE1〕先前这个类型住本文件、是 `ipc/commands.ts` 的返回类型 ⇒ 通信层在类型上依赖账号域，七模块类型环靠这一条边闭合。
 import type { ApikeyRoutingView } from "./apikey-reads";
 import { copyText } from "./copy-table";
+import type { AuthKind } from "./generated/judgment-rules";
 
 // ---- 账号的形状：〔C4d · 第四波 4B〕从生成物改回手写，形状由后端成品 ＋ 跨语言金样定 ----
 //
@@ -26,9 +27,10 @@ import { copyText } from "./copy-table";
 // 形状今天由两样东西钉：后端 `observe/accounts_query.rs::list_product`（产）＋ 跨语言金样
 // `tests/__fixtures__/accounts.golden.json`（Rust 与 TS 两侧同读）＋ 解码器逐键核（多一格 / 缺一格 / 类型不对都抛）。
 // `AuthKind` 那两个字面量是 `acct-core` 的契约常量（`AUTH_KIND_SUBSCRIPTION` / `AUTH_KIND_API_KEY`）；
-// 后端改了它 ⇒ 金样跟着变 ⇒ 解码器认不出 ⇒ `accounts-decode.vitest.ts` 金样那条红。
+// 〔DUP2 · `设计/90 §3` 判据 2〕类型从生成物派生（`acct_core::AUTH_KINDS` 现生成进 `src/generated/judgment-rules.ts`），不再手写字面量；
+// 后端改了它 ⇒ 生成物与金样跟着变 ⇒ 解码器认不出旧的 ⇒ `accounts-decode.vitest.ts` 金样那条红。
 /** 一个账号的鉴权方式（`acct-core` 的契约字面量）。 */
-export type AuthKind = "subscription" | "api-key";
+export type { AuthKind };
 
 /** manifest 里的一个账号（后端已剔除 configDir 不安全的条目；逐键同后端成品）。 */
 export interface Account {

@@ -162,9 +162,16 @@ pub const UNSET_CONFIG_DIR_PREFIX: &str = "unset CLAUDE_CONFIG_DIR; ";
 /// （`tests/rbind-token-shape-parity.vitest.ts`，〔LR2〕从已删的兜底渲染器判据文件搬来）。改这个数 ⇒ TS 那条对拍当场红。
 pub const RBIND_TOKEN_LEN: usize = 32;
 
-/// 令牌形状：恰好 [`RBIND_TOKEN_LEN`] 个**小写**十六进制字符。
+/// 启动期令牌的字母表 —— **小写**十六进制（大写 `A`–`F` 刻意不在里面，见 [`rbind_token_shape_ok`]）。
 ///
-/// **不收大写**（`b'A'..=b'F'` 刻意不在放行集里）：形状只有一种写法，
+/// 〔DUP2 · `设计/90 §3` 判据 2〕单独提成常量：前端铸币口按它与 [`RBIND_TOKEN_LEN`] **造**令牌
+/// （两个值现生成进 `src/generated/judgment-rules.ts`，构造上造不出坏形状），不再各自写一份形状再自检。
+pub const RBIND_TOKEN_ALPHABET: &str = "0123456789abcdef";
+
+/// 令牌形状：恰好 [`RBIND_TOKEN_LEN`] 个 [`RBIND_TOKEN_ALPHABET`] 里的字符（32 个**小写**十六进制）。
+/// **全仓 monitor 这一侧唯一的一份**（〔DUP2〕`bind.rs` 原来那份逐字同的副本并进来了，那边是再导出）。
+///
+/// **不收大写**（`A`–`F` 刻意不在字母表里）：形状只有一种写法，
 /// 好让本地那张 `token → HWND` 表与从 `environ` 读回来的串能直接相等比较，
 /// 中间不留归一化步骤 —— 归一化是「两侧各写一遍、各写错一遍」的经典落点。
 ///
@@ -174,7 +181,7 @@ pub fn rbind_token_shape_ok(token: &str) -> bool {
     token.len() == RBIND_TOKEN_LEN
         && token
             .bytes()
-            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+            .all(|b| RBIND_TOKEN_ALPHABET.as_bytes().contains(&b))
 }
 
 /// 载荷里的一条环境操作。
@@ -536,40 +543,58 @@ impl<'a> TmuxTarget<'a> {
         }
     }
 
-    fn check(&self) -> Result<(), String> {
+    /// 〔DUP2 · 主会话 09-26 裁 J6〕名字的**规则**只有一份（`gate_core`）：`creating` ⇒ 新建那一条（非空 · 不以 `-` 开头 ·
+    /// 无 `*?.:=` · 无控制符与欺骗字符 · ≤128），否则（attach / 送进已在的会话）⇒ 已有会话那一条（V131 ②：拒绝集 ＋ 非空）。
+    /// 这里原来自己写了一份（`Raw` 放过前导 `-`；F01「不把 glob 建进名字」在这条路上只靠界面那一道 —— 界面那份删了，这里接上）。
+    /// 之后 `Raw` 那一支另有一道**渲染前提**：它是裸拼的（不加引号），只放行 tmux 名字那一族字符 —— 那不是名字的规则，是「能不能不加引号」。
+    fn check(&self, creating: bool) -> Result<(), String> {
         let v = self.value();
-        if v.is_empty() {
-            return Err(refuse(&copy_text("rsPayload.tmuxName.empty", &[])));
-        }
-        match self {
-            // 裸拼进命令 ⇒ 白名单必须是 tmux 名字那一族，一个字符都不许多。
-            Self::Raw(_) => {
-                if !v
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
-                {
-                    return Err(refuse(copy_text(
-                        "rsPayload.tmuxName.rawBad",
-                        &[("name", &format!("{:?}", v))],
-                    )));
-                }
-                Ok(())
+        let issue = if creating {
+            gate_core::new_tmux_name_issue(v)
+        } else {
+            gate_core::existing_tmux_name_issue(v)
+        };
+        match issue {
+            None => {}
+            Some(gate_core::TmuxNameIssue::Empty) => {
+                return Err(refuse(&copy_text("rsPayload.tmuxName.empty", &[])));
             }
             // quote 之后 shell 元字符都是字面量了，真正要挡的是控制符与视觉欺骗字符：
             // 前者会把一条命令劈成两条，后者让人眼看不出接的是哪个会话。
-            Self::Quoted(_) => {
-                if let Some(c) = v
-                    .chars()
-                    .find(|c| c.is_control() || acct_core::is_deceptive_char(*c))
-                {
-                    return Err(refuse(copy_text(
-                        "rsPayload.tmuxName.control",
-                        &[("name", &format!("{:?}", v)), ("c", &format!("{:?}", c))],
-                    )));
-                }
-                Ok(())
+            Some(gate_core::TmuxNameIssue::Control(c) | gate_core::TmuxNameIssue::Deceptive(c)) => {
+                return Err(refuse(copy_text(
+                    "rsPayload.tmuxName.control",
+                    &[("name", &format!("{:?}", v)), ("c", &format!("{:?}", c))],
+                )));
+            }
+            Some(
+                gate_core::TmuxNameIssue::LeadingDash
+                | gate_core::TmuxNameIssue::TargetSyntax(_)
+                | gate_core::TmuxNameIssue::TooLong,
+            ) => {
+                return Err(refuse(copy_text(
+                    "rsPayload.tmuxName.newShape",
+                    &[
+                        ("name", &format!("{:?}", v)),
+                        ("refused", gate_core::NEW_TMUX_NAME_REFUSED),
+                        ("max", &gate_core::NEW_TMUX_NAME_MAX.to_string()),
+                    ],
+                )));
             }
         }
+        // 裸拼进命令 ⇒ 白名单必须是 tmux 名字那一族，一个字符都不许多。
+        if let Self::Raw(_) = self {
+            if !v
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+            {
+                return Err(refuse(copy_text(
+                    "rsPayload.tmuxName.rawBad",
+                    &[("name", &format!("{:?}", v))],
+                )));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -614,7 +639,7 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
             cwd,
             ccm_sid,
         } => {
-            target.check()?;
+            target.check(true)?;
             // ⚠ **不许写 `ok_or_else`**：`every_business_rejection_is_tagged` 把它连同
             //   `ok_or` / `.map_err` 一起列成**禁令**（它们能产出一个没经 [`refuse`] 的错误串，
             //   而 TS 侧按 `REFUSE:` 标分流 ⇒ 不打标的拒绝会被当成 IPC 异常、回落到兜底渲染器
@@ -674,7 +699,7 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
         // 会话确实在（claude 已退、只剩交互 shell）⇒ **无条件** send-keys + attach，
         // 没有 new-session、没有短路。复用原名 = 不产 `cc-<sid8>-N` 孤儿（治 #76 根因）。
         TmuxOuter::SendInto { target } => {
-            target.check()?;
+            target.check(false)?;
             let p = match payload {
                 Some(p) => p,
                 None => return Err(refuse(&copy_text("rsPayload.outer.sendIntoNoPayload", &[]))),
@@ -688,7 +713,7 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
             ))
         }
         TmuxOuter::Attach { target } => {
-            target.check()?;
+            target.check(false)?;
             if payload.is_some() {
                 return Err(refuse(&copy_text("rsPayload.outer.attachWithPayload", &[])));
             }
