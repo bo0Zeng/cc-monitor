@@ -34,15 +34,15 @@ import { commands } from "./ipc/commands";
 import type { Origin } from "./ipc/origin";
 import { showActionFailureToast } from "./error-toast";
 import type { BranchResult } from "./generated/BranchResult";
+import { copyText } from "./copy-table";
 
 /** off-main 的卡片被 `BranchFolder` 包进这个容器里。判据的唯一锚点。 */
 export const FOLD_WRAP_SELECTOR = ".branch-fold-wrap";
 
 const TITLE_ON_MAIN =
-  "从这一轮创建分支（复制到这条为止 → 新会话，原会话不变，可 resume）";
+  copyText("branchButton.title.onMain");
 const TITLE_OFF_MAIN =
-  "从这一轮创建分支 —— ⚠ 这条属于**被 ESC 回退掉的**分支。\n" +
-  "分叉会把那条你当初放弃的对话复活成一个新会话（原会话仍然不变）。";
+  copyText("branchButton.title.offMain");
 
 /** 这张卡此刻是不是在「已被 ESC 回退」的折叠块里。**每次都现查**，见模块头注。 */
 export function isOffMainCard(el: Element): boolean {
@@ -81,7 +81,7 @@ export function attachBranchButton(
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "viewer-branch-btn";
-  btn.textContent = "⑂";
+  btn.textContent = copyText("branchButton.attachBranchButton.icon");
   btn.title = TITLE_ON_MAIN;
 
   // tooltip 在**指上去的那一刻**才定 —— 一条消息的主线归属会随后续对话变化
@@ -112,11 +112,11 @@ export function attachBranchButton(
           sourceSessionId: opts.sourceSessionId,
           messageUuid: opts.uuid,
         });
-        btn.textContent = "✓";
-        window.setTimeout(() => (btn.textContent = "⑂"), 2000);
+        btn.textContent = copyText("branchButton.attachBranchButton.done");
+        window.setTimeout(() => (btn.textContent = copyText("branchButton.attachBranchButton.icon")), 2000);
         opts.onForked(res);
       } catch (err) {
-        showActionFailureToast("创建分支失败", String(err));
+        showActionFailureToast(copyText("branchButton.attachBranchButton.failed"), String(err));
       } finally {
         btn.dataset.busy = "0";
       }

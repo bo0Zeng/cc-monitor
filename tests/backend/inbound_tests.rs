@@ -459,6 +459,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     for c in [
         "bus-list",
         "bus-send",
+        "bus-broadcast",
         "bus-kill",
         "bus-spawn",
         "bus-state",
@@ -530,6 +531,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 〔RM1a · 第四波〕上游选择那份凭据文件的两条：同步文件 I/O（读 / 原子写那一份）。
         "apikey-key-set",
         "apikey-read",
+        // 〔US1 · 第四波 4D〕上游选择出的两份成品：读一份凭据文件 ＋ 装一次表 ＋（要注入时）回环上探一次中转，同步阻塞。
+        "apikey-routing",
+        "launch-endpoint",
         // 〔RM1a · 第四波〕中转那两条：回环连一次 / 起一个进程。
         "relay-ensure",
         "relay-status",
@@ -541,6 +545,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 〔AS2〕skill「装到这台」两条：走目录 ＋ 读原文 ＋ stat。
         "skill-read",
         "skill-install-plan",
+        // 〔SU1 · 第四波 4C〕skill 卸三条：原子写装记录 · 读装记录 · 逐个读盘比摘要。
+        "skill-install-record",
+        "skill-installs",
+        "skill-uninstall-plan",
         // 〔C4d · 第四波 4B〕历史注解三条：读 / 原子写一份小文件（同步文件 I/O）。
         "history-annotate",
         "history-forget",
@@ -574,6 +582,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "link-close",
         "bus-list",
         "bus-send",
+        "bus-broadcast",
         "bus-kill",
         "bus-spawn",
         "bus-state",
@@ -617,6 +626,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "panorama",
         "apikey-key-set",
         "apikey-read",
+        "apikey-routing",  // 〔US1〕
+        "launch-endpoint", // 〔US1〕
         "relay-ensure",
         "relay-status",
         "footprint-probe",
@@ -625,6 +636,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "assets-catalog-merge",
         "skill-read",
         "skill-install-plan",
+        // 〔SU1 · 第四波 4C〕skill 卸三条，阻塞档。
+        "skill-install-record",
+        "skill-installs",
+        "skill-uninstall-plan",
         // 〔C4d · 第四波 4B〕历史注解三条，阻塞档。
         "history-annotate",
         "history-forget",

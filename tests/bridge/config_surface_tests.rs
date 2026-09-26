@@ -546,10 +546,11 @@ fn remote_host_never_resolves_to_a_local_path() {
     // 静默降级——审计实测单独改一条 host 就是全绿。改 TOOLS 时要来改这个数。
     // 〔TL1 · 4C〕4 → 5：`panorama` 推给远端那台的那一份（`~/.cc-monitor/bin/cc-monitor-panorama`，`Remote`）。
     assert_eq!(
-        checked, 5,
-        "Remote 条目数变了（真实应为 5）——改 TOOLS 就要来确认这个数。\
+        checked, 6,
+        "Remote 条目数变了（真实应为 6）——改 TOOLS 就要来确认这个数。\
              ★ P4c（08-12）5→4：`~/.cc-bus/` 转 Either（`P4a` 把读面做成本机可用）；\
-             〔TL1〕4→5：代码全景组件推给远端那一份"
+             〔TL1〕4→5：代码全景组件推给远端那一份；\
+             〔GP1 · 第四波〕5→6：`ccm` 多一行旧版入口 `~/.local/bin/ccm`（认出是我们放的就删；合并时按两边增量相加）"
     );
 }
 
@@ -615,6 +616,8 @@ fn every_host_declaration_is_pinned() {
         ("project-mcp", ".mcp.json", ProjectDir),
         // 〔AS2 · 第四波 4B〕资产目录里「装到这台」的 skill：装到哪台就写哪台（本机页与远端页都能装）⇒ `Either`。
         ("skill-install", "~/.claude/skills", Either),
+        // 〔SU1 · 第四波 4C〕同一格的第二个文件：那台后端自己的装记录（装到哪台就记在哪台）⇒ `Either`。
+        ("skill-install", "~/.cc-monitor/skill-installs.json", Either),
         ("powershell-profile", "$PROFILE", Client),
         // 〔`K-R62` 09-11〕本机 POSIX 那一格补上之后升进 `TOOLS` 的那一条。
         // `Client`：它写的是 **cc-monitor 跑着的这台**的 rc（远端那份 rc 归 `ccm` 那两行）。
@@ -625,6 +628,9 @@ fn every_host_declaration_is_pinned() {
         // Claude Code 跑在哪台，这份记录就在哪台（`remote_history.rs` 真的从远端读它），
         // 标 `Client` 会让远端会话的用户在这一页上看到一句假话。
         ("claude-code", "~/.claude/projects/", Either),
+        // 〔GP1 · 第四波〕`设计/01 §6.7b` 迁移 ② ③：旧版放在远端 `~/.local/bin/ccm` 的那一份，认出是我们放的就删。
+        //   `Remote`：我们只往远端那一格推过它（本机那条入口从来在 `~/.cc-monitor/bin`）。
+        ("ccm", "~/.local/bin/ccm", Remote),
     ];
     let mut actual: Vec<(&str, &str, HostScope)> = TOOLS
         .iter()
@@ -712,7 +718,7 @@ fn host_is_not_a_function_of_destination() {
 fn host_labels_are_distinct_and_truthful() {
     use HostScope::*;
     let all = [Client, Remote, Either, ProjectDir];
-    let labels: Vec<&str> = all.iter().map(|h| host_label(*h)).collect();
+    let labels: Vec<String> = all.iter().map(|h| host_label(*h)).collect();
     // 四个标签互不相同——相同就说明该合并了
     let uniq: std::collections::HashSet<_> = labels.iter().collect();
     assert_eq!(uniq.len(), 4, "四个 host 标签必须互不相同，实得 {labels:?}");
@@ -785,7 +791,8 @@ fn host_projection_preserves_the_richer_resolution() {
     .unwrap();
     match r {
         PathResolution::NeedsUserConfig { what } => {
-            assert!(what.contains("backend"), "实得 {what}");
+            // 〔CP2b〕界面上那一格的名字是「后端路径」（话进了文案表，按界面上的叫法认）。
+            assert!(what.contains("后端路径"), "实得 {what}");
         }
         other => panic!("远端投影把 NeedsUserConfig 吞成了 {other:?}"),
     }
@@ -927,7 +934,7 @@ fn user_configured_destinations_declare_a_placeholder_not_a_guess() {
                 n += 1;
                 assert!(token.starts_with('$'), "{}: {token:?} 不像占位符", t.id);
                 assert!(
-                    !what.trim().is_empty(),
+                    !what.get().trim().is_empty(),
                     "{}: 得告诉用户去哪儿看这个值",
                     t.id
                 );
@@ -1106,7 +1113,9 @@ fn the_same_name_under_three_probes_gives_three_different_cells() {
     let (_, blind) = observe_unmanaged(
         "tmux",
         EnvProbe::CannotProbe {
-            why: "这一支是死值验用的：把探测掐掉，看它会不会被显示成「缺」",
+            why: crate::tool_registry::Text(|| {
+                "这一支是死值验用的：把探测掐掉，看它会不会被显示成「缺」".to_string()
+            }),
         },
         &env,
     );
@@ -1169,7 +1178,10 @@ fn every_row_carries_its_tier_and_the_owed_one_never_reads_as_not_ours() {
     assert!(!owed.is_empty(), "这一页上一行「欠装口」都没有 —— 先查闭集");
     for r in &owed {
         assert!(
-            r.source_label.contains("该由 cc-monitor 自带"),
+            // 〔CP2b〕措辞照 CP1 台账改成「应随 cc-monitor 一起安装，暂未提供」（去掉内部编号 K38 与「装口」）；
+            // 两半仍都在：「应随 cc-monitor」＝该我们带，「暂未提供」＝还欠着。
+            r.source_label.contains("应随 cc-monitor 一起安装")
+                && r.source_label.contains("暂未提供"),
             "`{}` 的「从哪来」没说清这是我们该自带的东西，实得 {:?}",
             r.tool_id,
             r.source_label
@@ -1250,7 +1262,7 @@ fn rows_carry_the_host_label() {
         assert!(!r.host_label.is_empty(), "{} 缺 host 标签", r.path_declared);
     }
     // 四档措辞各不相同，且能看出"哪台"
-    let labels: std::collections::HashSet<_> = rows.iter().map(|r| r.host_label).collect();
+    let labels: std::collections::HashSet<_> = rows.iter().map(|r| r.host_label.as_str()).collect();
     assert!(
         labels.len() >= 3,
         "至少三种 host 出现在表里，实得 {labels:?}"
@@ -1489,6 +1501,8 @@ fn this_module_only_reads() {
     assert_eq!(
         uses_lines,
         vec![
+            // 〔CP2b〕文案表的取文口：只读编译期内嵌的那张表，不碰 fs。
+            "use crate::copy_table::copy_text;",
             "use crate::tool_registry::{",
             "use std::path::{Path, PathBuf};",
         ],

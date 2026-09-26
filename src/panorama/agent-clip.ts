@@ -16,6 +16,7 @@
  * 也不含图上的视觉选区（今天的图是文件气泡图，没有框选；选中单位就是一个文件或一个符号）。
  */
 import type { Annotation, Confidence, Edge, Symbol } from "./types";
+import { copyText } from "../copy-table";
 
 /** 哪一次索引（`panorama_status` 的读数）。`null` = 没取到，文本里会如实说「未取到」。 */
 export interface IndexStamp {
@@ -39,25 +40,23 @@ export interface ClipContext {
   coverage: CoverageReading | null;
 }
 
-export const CLIP_HEAD = "【代码全景 → agent】下面是某一次索引的快照，不是当前事实；用之前以代码为准。";
+export const CLIP_HEAD = copyText("agentClip.head.banner");
 
 /** 索引读数那一行。 */
 export function stampLine(stamp: IndexStamp | null): string {
-  if (!stamp) return "索引读数：未取到（查索引状态失败）—— 这段内容的时效未知";
-  if (stamp.indexedAt === null) return "索引读数：本仓没有索引记录 —— 这段内容的时效未知";
+  if (!stamp) return copyText("agentClip.stamp.failed");
+  if (stamp.indexedAt === null) return copyText("agentClip.stamp.none");
   const iso = new Date(stamp.indexedAt * 1000).toISOString();
   return (
-    `索引读数：${iso}（unix ${stamp.indexedAt}）` +
-    (stamp.stale ? " · ⚠ 索引已陈旧：源文件在这次索引之后改过" : "")
+    copyText("agentClip.stamp.line", { iso, indexedAt: stamp.indexedAt, stale: (stamp.stale ? copyText("agentClip.stamp.stale") : "") })
   );
 }
 
 /** CP4 前半：看不见多少。 */
 export function unseenLine(cov: CoverageReading | null): string {
-  if (!cov) return "看不见：未取到全仓覆盖读数（全景没加载完）—— 漏了多少未知";
+  if (!cov) return copyText("agentClip.unseen.unknown");
   return (
-    `看不见：全仓 ${cov.unresolved_calls} 处调用未解析 · ${cov.parse_errors} 个文件解析失败` +
-    ` · 全景图只画了 ${cov.drawn_files}/${cov.total_files} 个文件`
+    copyText("agentClip.unseen.counts", { unresolvedCalls: cov.unresolved_calls, parseErrors: cov.parse_errors, drawnFiles: cov.drawn_files, totalFiles: cov.total_files })
   );
 }
 
@@ -78,8 +77,7 @@ export function unsureLine(callers: Edge[], callees: Edge[]): string {
   const c = countConfidence(all);
   const unsure = c.Heuristic + c.DynamicGuess;
   return (
-    `分不清：本符号 ${all.length} 条直接边里 ${unsure} 条按名字凑` +
-    `（启发 ${c.Heuristic} · 动态猜测 ${c.DynamicGuess}），动态派发 ${c.Dispatch} 条，确定 ${c.Exact} 条`
+    copyText("agentClip.unsure.symbol", { allCount: all.length, unsure, heuristic: c.Heuristic, dynamicGuess: c.DynamicGuess, dispatch: c.Dispatch, exact: c.Exact })
   );
 }
 
@@ -96,17 +94,17 @@ export function clipForSymbol(
 ): string {
   const lines = [
     CLIP_HEAD,
-    `仓：${ctx.repo}`,
-    `对象：符号 ${s.id}（${s.kind} · ${s.lang} · ${s.file}:${s.start_line}-${s.end_line}）`,
+    copyText("agentClip.clip.repo", { repo: ctx.repo }),
+    copyText("agentClip.clip.symbolObject", { id: s.id, kind: s.kind, lang: s.lang, file: s.file, startLine: s.start_line, endLine: s.end_line }),
   ];
-  if (s.signature) lines.push(`签名：${s.signature}`);
+  if (s.signature) lines.push(copyText("agentClip.clip.signature", { signature: s.signature }));
   lines.push(stampLine(ctx.stamp), unseenLine(ctx.coverage), unsureLine(callers, callees));
-  lines.push(`调用了（callees，${callees.length}）：`);
+  lines.push(copyText("agentClip.clip.callees", { n: callees.length }));
   for (const e of callees) lines.push(edgeLine(e.to, e));
-  lines.push(`被调用（callers，${callers.length}）：`);
+  lines.push(copyText("agentClip.clip.callers", { n: callers.length }));
   for (const e of callers) lines.push(edgeLine(e.from, e));
   if (annotations.length > 0) {
-    lines.push(`生效批注（${annotations.length}）：`);
+    lines.push(copyText("agentClip.clip.annotations", { n: annotations.length }));
     for (const a of annotations) lines.push(`  - ${a.author}：${a.body}`);
   }
   return lines.join("\n");
@@ -120,12 +118,12 @@ export function clipForFile(
 ): string {
   const lines = [
     CLIP_HEAD,
-    `仓：${ctx.repo}`,
-    `对象：文件 ${f.file}（子系统「${f.subsystem}」· ${f.symbols} 个符号${f.isEntry ? " · 含入口点" : ""}）`,
+    copyText("agentClip.clip.repo", { repo: ctx.repo }),
+    copyText("agentClip.clip.fileObject", { file: f.file, subsystem: f.subsystem, symbols: f.symbols, entry: f.isEntry ? copyText("agentClip.clip.fileEntry") : "" }),
     stampLine(ctx.stamp),
     unseenLine(ctx.coverage),
-    "分不清：文件级没有边 —— 边的确定度要点进符号那一级看",
-    `符号（${symbols.length}）：`,
+    copyText("agentClip.unsure.file"),
+    copyText("agentClip.clip.symbols", { n: symbols.length }),
   ];
   for (const s of symbols) lines.push(`  - ${s.id}  ${s.kind}  L${s.start_line}`);
   return lines.join("\n");
@@ -145,10 +143,10 @@ export function clipForDiagram(
 ): string {
   return [
     CLIP_HEAD,
-    `仓：${ctx.repo}`,
-    `对象：图「${kind.title}」（kind=${kind.id}）` + (center ? ` · 中心符号 ${center}` : ""),
+    copyText("agentClip.clip.repo", { repo: ctx.repo }),
+    copyText("agentClip.clip.diagramObject", { title: kind.title, id: kind.id, center: (center ? copyText("agentClip.clip.diagramCenter", { symbol: center }) : "") }),
     stampLine(ctx.stamp),
-    `诚实信号：${honesty}`,
+    copyText("agentClip.clip.honesty", { honesty }),
     "Mermaid：",
     mermaid.trimEnd(),
   ].join("\n");

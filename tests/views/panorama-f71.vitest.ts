@@ -78,7 +78,7 @@ describe("F71 点文件列符号 + 文档漂移", () => {
     probe(v).openFileDetail(bubble("empty.ts"));
     await flush();
     expect(probe(v).sidebarEl.querySelectorAll(".panorama-sym-row").length).toBe(0);
-    expect(probe(v).sidebarEl.textContent).toContain("无已索引符号");
+    expect(probe(v).sidebarEl.textContent).toContain("没有已索引的符号");
   });
 
   it("文档漂移面板：列悬空链接 doc → target + reason", async () => {

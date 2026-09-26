@@ -46,8 +46,8 @@ fn the_three_ways_to_say_resume_land_on_the_same_intent() {
 /// 〔搬自 `ccm-cli`「resume 后跟 flag → 报错（别把 --tmux 当 sid）」与 attach 同形那条〕
 #[test]
 fn a_positional_action_never_swallows_the_next_flag_as_its_value() {
-    assert_eq!(err(&["resume", "--tmux"]), "resume 需要 <sid>");
-    assert_eq!(err(&["resume"]), "resume 需要 <sid>");
+    assert_eq!(err(&["resume", "--tmux"]), "resume 需要 <会话ID>");
+    assert_eq!(err(&["resume"]), "resume 需要 <会话ID>");
     assert_eq!(err(&["attach", "--tmux"]), "attach 需要 <会话名>");
     assert_eq!(err(&["attach"]), "attach 需要 <会话名>");
 }
@@ -61,14 +61,14 @@ fn the_combination_rules_all_fail_loudly() {
         err(&["--account", "z", "--base"]),
         "--account 与 --base 互斥"
     );
-    assert!(err(&["--detach"]).starts_with("--detach 需要配合 --tmux"));
+    assert!(err(&["--detach"]).starts_with("--detach 只能和 --tmux 一起用"));
     assert!(err(&["--tmux-size", "1x1"]).starts_with("--tmux-size 需要配合 --tmux"));
     assert!(err(&["--tmux=a", "--tmux-base", "b"]).starts_with("--tmux=<名> 与 --tmux-base"));
     assert!(err(&["--tmux", "--bus-register"]).starts_with("--bus-register 需要配合 --detach"));
     assert!(err(&["--bus-note", "x"]).starts_with("--bus-note 需要配合 --bus-register"));
     // 位置动作只认**第一个** token —— 排在旗标后面的 `resume` 是一个多余的位置参数
     assert!(err(&["--agent", "codex", "resume"]).starts_with("多余的位置参数"));
-    assert!(err(&["resume", "s", "--agent", "codex"]).starts_with("agent=codex 不支持 resume"));
+    assert!(err(&["resume", "s", "--agent", "codex"]).starts_with("codex 不支持 resume"));
     assert_eq!(
         err(&["foo"]),
         "多余的位置参数: foo（动作只能是 new/resume/attach 且必须在最前）"

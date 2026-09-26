@@ -28,7 +28,9 @@ vi.mock("../../src/ipc/commands", () => ({
       get: (_t, name: string) => (...args: unknown[]) => {
         ipcCalls.push(name);
         void args;
-        return Promise.resolve(ipcReplies.get(name));
+        const reply = ipcReplies.get(name);
+        // 〔FE1〕回一个 `Error` ⇒ 这条命令 reject（「没问到」那一形；线上是后端回 `Err`）。
+        return reply instanceof Error ? Promise.reject(reply) : Promise.resolve(reply);
       },
     },
   ),
@@ -806,9 +808,9 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const inConn = got!.connection.textContent ?? "";
     const inComp = got!.components.textContent ?? "";
     expect(inConn).toContain("主机 (host)");
-    expect(inComp).toContain("resume 命令（这台机器）");
+    expect(inComp).toContain("resume 命令 · 这台机器");
     // 反向：resume 命令**不该**留在连接那半
-    expect(inConn).not.toContain("resume 命令（这台机器）");
+    expect(inConn).not.toContain("resume 命令 · 这台机器");
   });
 
   /**
@@ -832,7 +834,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(labels(got.components)).toEqual(["部署后端", "卸载后端"]);
     expect(labels(got.tools)).toEqual(["装别名块", "卸载别名块"]);
     expect(got.tools.textContent).toContain("别名");
-    expect(labels(got.connection).filter((t) => t !== "重置为 TOFU")).toEqual([
+    expect(labels(got.connection).filter((t) => t !== "重置主机指纹")).toEqual([
       "测试连接",
       "推送公钥",
       "文件",
@@ -950,6 +952,47 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(st.connection?.kind).toBe("fail");
     expect(st.backend).toBeUndefined();
     ipcReplies.clear();
+  });
+
+  /**
+   * 〔FE1〕`设计/01 §5` D4「一条都不许静默忽略」：「开新 Claude」替用户派生的默认名要过铸名口，
+   * **名单没问到 ⇒ 不起、出声**。先前这里「列不出来就用空集铸名」—— 同一个 cwd 派生出同一个名字，
+   * 撞上远端 `create-or-attach` 的幂等闸，静默接进第一个会话（#76）。
+   * 正控：名单问到了（零会话 = 空表）⇒ 照常往下走到渲染那一跳。
+   */
+  const openLauncherAndStart = async (listing: unknown): Promise<void> => {
+    ipcCalls.length = 0;
+    ipcReplies.set("list_remote_tmux", listing);
+    const sec = await mount([mkH("a", "1.1.1.1")]);
+    const btns = [...sec.element.querySelectorAll<HTMLButtonElement>("button")];
+    btns.find((b) => b.textContent === "开新 Claude")!.click();
+    const back = document.querySelector<HTMLElement>(".launcher-back")!;
+    expect(back, "「开新 Claude」的对话框没开出来 —— 下面的断言会零命中地绿").toBeTruthy();
+    back.querySelector<HTMLInputElement>("input")!.value = "/home/u/proj";
+    [...back.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "开始")!.click();
+    for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
+  };
+
+  it("★ 〔FE1〕开新 Claude：远端 tmux 名单没问到 ⇒ 不起、出声（不拿空集铸名）", async () => {
+    document.body.innerHTML = "";
+    await openLauncherAndStart(new Error("ssh 抖动"));
+    expect(ipcCalls).toContain("list_remote_tmux");
+    expect(ipcCalls, "名单没问到还往下起了").not.toContain("render_launch_payload");
+    expect(ipcCalls).not.toContain("launch_remote_terminal");
+    const toast = document.body.textContent ?? "";
+    expect(toast).toContain("没有起会话");
+    expect(toast).toContain("ssh 抖动");
+    ipcReplies.clear();
+    document.body.innerHTML = "";
+  });
+
+  it("正控：名单问到了（零会话 = 空表）⇒ 往下走到渲染那一跳", async () => {
+    document.body.innerHTML = "";
+    await openLauncherAndStart([]);
+    expect(ipcCalls).toContain("render_launch_payload");
+    expect(document.body.textContent ?? "").not.toContain("没有起会话");
+    ipcReplies.clear();
+    document.body.innerHTML = "";
   });
 
   it("SSH 通了才给后端下结论（反向对照：别是恒不记）", async () => {

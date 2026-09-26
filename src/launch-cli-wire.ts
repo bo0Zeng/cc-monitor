@@ -56,30 +56,9 @@ export type WireEnvOp =
   | { kind: "unset-config-dir" }
   | { kind: "unset-nested-env" };
 
-/** U8a-2c-1：`backend_send_into` 的上线形状。Rust 对侧是
- *  `src/bridge/src/backend/control/backend_launch.rs`。
- *  ⚠ **没有 `mode` 字段** —— 这条通道只会说 `send-into`（`create-or-attach` 会新建会话 =
- *  issue #76 的失管会话形态），mode 由 Rust 侧写死并有判据钉住。 */
-export interface SendIntoRequest {
-  origin: string;
-  /** tmux 会话名（裸名；`=name:` 的精确匹配形态由后端侧加）。 */
-  name: string;
-  /** 内层载荷（`env 前缀 → argv`），由 `render_launch_payload` 产出。 */
-  payload: string;
-}
-
-/** `typed:false` 时 `reason` 必有值 —— 那是回落到「整串走终端」的唯一线索。 */
-export interface SendIntoResponse {
-  typed: boolean;
-  reason: string | null;
-  /** ★ F14：**调用方可不可以回落到那条整串**。语义严格是「**能证明这条命令根本没发出去**」，
-   *  不是「失败了」。⚠ 那条整串（`session-backend.ts` 的 `send-keys …; attach …`）**没有 §34 的门**
-   *  ⇒ 把一次 `wrong_owner` 或一次「backend 已键入但应答超时」回落过去，就是用一条无门的路重做一遍
-   *  （后者会把载荷**第二次**键入一个已经在跑 claude 的 pane ⇒ 被当成 prompt 提交、写进对话历史、
-   *  **不可撤销**）。⚠ 本类型是**手写**的（不是 ts-rs 生成）⇒ 字段名与 Rust 侧
-   *  `SendIntoResponse::may_fall_back`（serde camelCase）必须手动同步，由 Rust 侧那条判据钉住。 */
-  mayFallBack: boolean;
-}
+// 〔C4e · 第四波 4C〕这里原来住着 `backend_send_into`〔散文墓碑〕的上线形状（`SendIntoRequest` / `SendIntoResponse`）：
+//   就地 resume 那一次键入改由界面经通道直接问那台机器的后端（`src/tmux-control.ts::sendInto`，
+//   `launch{mode:"send-into"}`），F14 那条「能不能回落」的三态也随之住在那里（`SendIntoOutcome`）。
 
 /** `设计/90 §4 E`：**外层容器那一层**的上线形状。Rust 对侧是 `launch_wire.rs::WireTmuxOuter`
  *  （带 `deny_unknown_fields`）。

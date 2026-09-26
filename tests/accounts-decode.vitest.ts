@@ -18,11 +18,12 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-vi.mock("../src/config", () => ({ loadConfig: vi.fn().mockResolvedValue({}), saveConfig: vi.fn() }));
+vi.mock("../src/config", () => ({ loadConfig: vi.fn().mockResolvedValue({}), patchConfig: vi.fn() })); // 〔CFG1〕写口换成按键补丁
 
 import { invoke } from "@tauri-apps/api/core";
 import { decodeAccountsList, decodeTrust } from "../src/accounts-decode";
-import { __resetAccountsCacheForTest, checkTrust, deriveUi, fetchAccounts } from "../src/accounts";
+import { deriveUi } from "../src/accounts";
+import { __resetAccountsCacheForTest, checkTrust, fetchAccounts } from "../src/account-reads";
 import { LOCAL_ORIGIN } from "../src/ipc/origin";
 import { REPO_ROOT } from "./test-support/repo-root";
 import {
@@ -86,12 +87,12 @@ describe("严格收：形状不对就抛，不补值", () => {
   for (const [why, v] of cases) {
     it(why, () => {
       // JSON 往返一次：`undefined` 那几格在线上就是「缺席」。
-      expect(() => decodeAccountsList(JSON.parse(JSON.stringify(v)))).toThrow(/两端契约对不上/);
+      expect(() => decodeAccountsList(JSON.parse(JSON.stringify(v)))).toThrow(/两边版本可能对不上/);
     });
   }
   it("信任预检：缺一格 / 多一格都抛", () => {
-    expect(() => decodeTrust({ trusted: true })).toThrow(/两端契约对不上/);
-    expect(() => decodeTrust({ trusted: true, known: false, error: null })).toThrow(/两端契约对不上/);
+    expect(() => decodeTrust({ trusted: true })).toThrow(/两边版本可能对不上/);
+    expect(() => decodeTrust({ trusted: true, known: false, error: null })).toThrow(/两边版本可能对不上/);
   });
 });
 
@@ -138,6 +139,6 @@ describe("失败：折成 available:false ＋ 一句人话，不抛", () => {
     invokeMock.mockResolvedValue(linesReply(['{"kind":"accounts-meta","enabled":true}']));
     const st = await fetchAccounts("aya");
     expect(st.available).toBe(false);
-    expect(st.error).toMatch(/两端契约对不上/);
+    expect(st.error).toMatch(/两边版本可能对不上/);
   });
 });

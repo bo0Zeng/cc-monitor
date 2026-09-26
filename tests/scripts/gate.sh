@@ -1353,8 +1353,10 @@ run_gate winchk '不是数出来的数：`cargo check --all-targets --target x86
 run_gate winchk-backend '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `src/backend` 这一个 crate 的**生产段 ＋ test 档**（云端那 10 个错全在 test 档，所以 `--all-targets` 是承重的）。⚠ 本格用的是 `-gnu`，云端用的是 `-msvc`（沙箱里没有 zig，`ring` 的 build script 缺 `lib.exe`）⇒ **MSVC ABI 专属的那一类本行盖不到**；`src/bridge` 那棵树由上面 winchk 那一格盖' \
          bash -c 'cd src/backend && cargo check --all-targets --target x86_64-pc-windows-gnu 2>&1 && echo "winchk-backend: 1 passed"'
 
-# 9 个包 = `monitor` + 8 个共享 crate（〔TL1〕`vendor/code-picture-core` 早已不是成员 —— monitor 不再依赖它 —— 不用再 `--exclude`）。
-run_gate_sum cargo 9 bash -c 'cd src/bridge && cargo test --workspace --lib 2>&1'
+# 11 个包 = `monitor` + 10 个共享 crate（〔TL1〕`vendor/code-picture-core` 早已不是成员 —— monitor 不再依赖它 —— 不用再 `--exclude`）。
+# 〔CP2c〕9 → 10：加了 `copy-core`（对外文案表的 Rust 取文口）。
+# 〔US1 · 4D〕〔合并 US1 × 主线〕10 → 11：新共享 crate `relay-route-core`（中转门牌：端口 · 钥匙路径 · 路由语法，`设计/20 §5` 目标）。
+run_gate_sum cargo 11 bash -c 'cd src/bridge && cargo test --workspace --lib 2>&1'
 
 # ★★ `K-G3`（09-01）：上面那个合计**还缺一个分母** —— `src/bridge/embedded-backends/` 铺没铺。
 #
@@ -1559,8 +1561,14 @@ deadcode_t0=$(date +%s)
 #    推全景小程序字节（`panorama_bytes·rs::push_to`）拿它拼远端落点 `<home>/.cc-monitor/bin/cc-monitor-panorama`，
 #    它有了生产读者 ⇒ 出列。同拍 `panorama_bytes` 那两个 `cfg_attr(not(test), allow(dead_code))` 摘了（有了生产调用方），不进这个数。
 #    ⚠ 现打：本工作树 `cargo check -p monitor --message-format=short | grep -c "never used"` = 34。
-run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 34，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
-         bash -c 'pin=34; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
+# 🔴 **2026-09-25（第四波 CP2b · 文案全量抽表）：34 → 23，现打，逐条记**：降的 11 条正是 B2 合并那段点名的那一族 ——
+#    `backend_policy·rs` 的 `EXIT_KILLS` / `EXIT_UNATTENDED` / `EXIT_SELF_DIES` / `EXIT_UNREADABLE` / `EXIT_COPY` /
+#    `HEALTH_UNKNOWN` / `HEALTH_CLEAN` / `HEALTH_CRASHED` / `HEALTH_LAST_MISSING` / `HEALTH_COPY` / `CROSS_LANGUAGE_COPY`。
+#    它们「只为与 TS 那份逐字对拍而存在」；文案表立起来之后两侧读同一条表项（`backendPolicy.*`），Rust 副本与逐字对拍一起删了。
+#    ⚠ 现打：本工作树 `w4/cp2b` 的 `cargo check -p monitor --message-format=short | grep -c "never used"` = 23，
+#    与删之前那份 34 条逐行 diff 只差这 11 行（其余 23 条原样在）。本路不跑 gate，这个数是写区外动的，已报备。
+run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 23，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
+         bash -c 'pin=23; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
 n=$(printf "%s\n" "$out" | grep -c "never used"); \
 printf "%s\n" "$out" | tail -5; \
 if [ "$rc" -ne 0 ]; then printf "deadcode: cargo check 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \

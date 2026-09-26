@@ -33,6 +33,7 @@
 //! - 🔴 真远端：`remote_ask` 那一跳（capture）没对真 sshd 跑过；远端这一支在判据里是替身对面。
 //! - 远端判活仍是「不知道」（要多问那台一条 `--session-accounts`，留口没做）。
 
+use copy_core::copy_text;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
@@ -111,11 +112,10 @@ impl Liveness for NoLiveness {
 pub(crate) fn annotations(loaded: &Loaded) -> Result<&Table, String> {
     match loaded {
         Loaded::Read(t) => Ok(t),
-        Loaded::NoPath => {
-            Err("这个后端不知道星标 / 改名 / 隐藏记在哪（不是被界面起的那一个）".into())
-        }
-        Loaded::Unreadable(why) => Err(format!(
-            "星标 / 改名 / 隐藏的记录读不懂，这一次没有并上：{why}"
+        Loaded::NoPath => Err(copy_text("beHistoryJoin.annotations.unknown", &[]).into()),
+        Loaded::Unreadable(why) => Err(copy_text(
+            "beHistoryJoin.annotations.unparsable",
+            &[("why", &why.to_string())],
         )),
     }
 }
@@ -421,7 +421,10 @@ fn capped(v: Value) -> Result<Value, (&'static str, String)> {
     if n > cap {
         return Err((
             "too_large",
-            format!("这一份清单有 {n} 字节，超过一帧能装的 {cap} —— 拒收，不拿截断的当完整的用"),
+            copy_text(
+                "beHistoryJoin.capped.tooLarge",
+                &[("n", &n.to_string()), ("cap", &cap.to_string())],
+            ),
         ));
     }
     Ok(v)
@@ -490,8 +493,12 @@ pub(crate) fn local_sessions_with(
             .map(|(_, f)| *f)
             .ok_or((
                 "bad_args",
-                format!(
-                    "认不出这个项目键：{project_dir}（这台后端没有「{kind}」那一家的合成历史）"
+                copy_text(
+                    "beHistoryJoin.localSessionsWith.unknownProject",
+                    &[
+                        ("kind", &kind.to_string()),
+                        ("project", &project_dir.to_string()),
+                    ],
                 ),
             ))?;
         let sessions: Vec<Value> = (face.sessions)()
@@ -502,7 +509,12 @@ pub(crate) fn local_sessions_with(
         return capped(json!({ "rows": sessions, "notice": ann.err() }));
     }
     if !plain_dir_ok(project_dir) {
-        return Err(("bad_args", format!("项目目录名不合法：{project_dir}")));
+        return Err((
+            "bad_args",
+            crate::common::contract::malformed(&format!(
+                "invalid project directory name: {project_dir}"
+            )),
+        ));
     }
     let mut buf = Vec::new();
     crate::observe::history_query::list_sessions_into(home, project_dir, &mut buf)
@@ -536,7 +548,9 @@ fn origin_arg(args: &Value) -> Result<Option<&str>, (&'static str, String)> {
         Some(Value::String(s)) if !s.is_empty() => Ok(Some(s.as_str())),
         Some(_) => Err((
             "bad_args",
-            "`origin` 要一台机器的名字（缺席 = 这台）".to_string(),
+            crate::common::contract::malformed(
+                "`origin` must be a machine name (absent = this machine)",
+            ),
         )),
     }
 }
@@ -545,9 +559,15 @@ fn origin_arg(args: &Value) -> Result<Option<&str>, (&'static str, String)> {
 async fn blocking<T: Send + 'static>(
     f: impl FnOnce() -> Result<T, (&'static str, String)> + Send + 'static,
 ) -> Result<T, (&'static str, String)> {
-    tokio::task::spawn_blocking(f)
-        .await
-        .map_err(|e| ("failed", format!("本机那一趟没跑完：{e}")))?
+    tokio::task::spawn_blocking(f).await.map_err(|e| {
+        (
+            "failed",
+            copy_text(
+                "beHistoryJoin.blocking.unfinished",
+                &[("e", &e.to_string())],
+            ),
+        )
+    })?
 }
 
 /// 那台的一次性子命令问不出来 ⇒ `unreachable`（带那台的名字与原因）。
@@ -615,7 +635,10 @@ pub async fn answer_sessions_with(
         .get("project_dir")
         .and_then(Value::as_str)
         .filter(|d| !d.is_empty())
-        .ok_or(("bad_args", "缺 `project_dir`".to_string()))?
+        .ok_or((
+            "bad_args",
+            crate::common::contract::malformed("missing `project_dir`"),
+        ))?
         .to_string();
     match origin_arg(&args)? {
         None => {
@@ -634,7 +657,12 @@ pub async fn answer_sessions_with(
         }
         Some(o) => {
             if !plain_dir_ok(&dir) {
-                return Err(("bad_args", format!("项目目录名不合法：{dir}")));
+                return Err((
+                    "bad_args",
+                    crate::common::contract::malformed(&format!(
+                        "invalid project directory name: {dir}"
+                    )),
+                ));
             }
             let o = o.to_string();
             let out = asked(

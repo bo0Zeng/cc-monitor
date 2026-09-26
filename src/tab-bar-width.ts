@@ -10,6 +10,7 @@
  * 画面契约：`设计/30 §1`「显式宽度 = `--tab-bar-w`」。
  */
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
+import { copyText } from "./copy-table";
 
 /** 宽度夹在这两个值之间（px）。 */
 const MIN_W = 110;
@@ -33,7 +34,7 @@ export function mountTabBarResizer(): void {
   }
   const resizer = document.createElement("div");
   resizer.id = "tab-bar-resizer";
-  resizer.title = "拖拽调整 tab 栏宽度";
+  resizer.title = copyText("main.tabBar.resizeHint");
   // 拖动期间**不能**实时改 --tab-bar-w：网格列宽一变，消息区整棵布局树重排，
   // 而切 tab 零卡顿方案让所有 tab 的 DOM 都 visibility 保活在布局树里——每次
   // mousemove 全量重排 = 拖动巨卡。改为拖动时只画 fixed 参考线（repaint-only），

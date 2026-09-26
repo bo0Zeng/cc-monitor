@@ -31,7 +31,7 @@ import { resolve } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { REPO_ROOT } from "./test-support/repo-root.ts";
-import { loadTerms, scannerOf } from "./copy/copy-support.ts";
+import { loadTable, loadTerms, scannerOf } from "./copy/copy-support.ts";
 
 /** tab 层：拆之前的 `tabs.ts` 拆成的这 13 份（与 `tabs-split-graph.vitest.ts` 的登记表同一群）。 */
 const TAB_LAYER = [
@@ -65,6 +65,16 @@ export function stringLiterals(src: string): string[] {
   return out;
 }
 
+/**
+ * 〔CP2b · 全量抽表〕tab 层的界面文字搬进了文案表 ⇒ 「这 13 份说的话」= 它们的字面量 ＋ 它们经 `copyText("key")` 取的那些表条目。
+ * 只数字面量的话，抽完之后本判据就对着一个空集零命中（正控那条会先红，提醒这里要跟着改）。
+ */
+const TABLE = loadTable();
+function spokenIn(src: string): string[] {
+  const viaTable = [...src.matchAll(/\bcopyText\(\s*"([^"]+)"/g)].map((m) => TABLE[m[1]]?.zh ?? `〔表里没有 ${m[1]}〕`);
+  return [...stringLiterals(src), ...viaTable];
+}
+
 const terms = loadTerms();
 const scanner = (word: string): RegExp => {
   const t = terms.find((x) => x.word === word);
@@ -94,7 +104,7 @@ describe("〔U2〕tab 层的界面文字：拉前 / @ccm_sid / ccm 助手 /〔S4
   });
 
   it("★ 抽取器自检：13 份里抽得出字面量，且认得出改之后的新词", () => {
-    const all = TAB_LAYER.flatMap((f) => stringLiterals(readFileSync(resolve(REPO_ROOT, f), "utf8")));
+    const all = TAB_LAYER.flatMap((f) => spokenIn(readFileSync(resolve(REPO_ROOT, f), "utf8")));
     expect(all.length, "一个字面量都没抽到 —— 抽取器坏了").toBeGreaterThan(200);
     expect(all).toContain("切到终端窗口失败");
     expect(all).toContain("认不出这是哪个会话");
@@ -106,7 +116,7 @@ describe("〔U2〕tab 层的界面文字：拉前 / @ccm_sid / ccm 助手 /〔S4
   it("★ 零命中：13 份的字符串字面量里一处都没有", () => {
     const found: string[] = [];
     for (const f of TAB_LAYER) {
-      for (const s of stringLiterals(readFileSync(resolve(REPO_ROOT, f), "utf8"))) {
+      for (const s of spokenIn(readFileSync(resolve(REPO_ROOT, f), "utf8"))) {
         const h = hitsOf(s);
         if (h.length > 0) found.push(`${f}：「${s.slice(0, 60)}」命中 ${h.join(" / ")}`);
       }

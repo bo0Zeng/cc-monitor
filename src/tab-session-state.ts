@@ -28,7 +28,7 @@ import { copyText } from "./copy-table";
 
 /**
  * 活性：进程在不在。
- * - `unseen`：**说不清** —— 只由固定复活产出：那台机器还没把它的活会话清单报完（`设计/30 §3.5.7a`）。
+ * - `unseen`：**说不清** —— 由固定复活（那台机器还没把它的活会话清单报完）与〔GP1〕那台机器看不见了（连接断了）产出（`设计/30 §3.5.7a`）。
  *   它说的是「机器看不见」，**不是**「会话死了」：`Unseen` 不许被显示成已结束。
  */
 export type Liveness = "live" | "dead" | "unseen";
@@ -76,7 +76,7 @@ export const RECONNECTABLE: SessionState = Object.freeze({
 });
 /** 〔U4b · G1〕死了，连记录都没了 ⇒ 重开必失败。 */
 export const GONE: SessionState = Object.freeze({ liveness: "dead", recoverability: "gone" });
-/** 〔U4b · 说不清〕固定复活、那台机器还没把活会话清单报完。 */
+/** 〔U4b · 说不清〕固定复活、那台机器还没把活会话清单报完；〔GP1〕或那台机器看不见了。 */
 export const UNSEEN: SessionState = Object.freeze({ liveness: "unseen", recoverability: null });
 
 /**
@@ -89,6 +89,7 @@ export const UNSEEN: SessionState = Object.freeze({ liveness: "unseen", recovera
  * - 〔U4b〕`container-tmux` / `container-none`：`session-container`（后端 `session_added.container`）
  * - 〔U4b〕`record-gone` / `record-present`：resume 一跳问那台后端（`history-record`）的答案
  * - 〔U4b〕`seen-absent`：那台机器的活会话清单报完了、里面没有它（`origin-sessions-listed` / 本机 `list_active_sessions`）
+ * - 〔GP1〕`unseen`：那台机器看不见了（`session-unseen`：到它的连接断了 / F5 时它还没报完清单）
  */
 export type StateEvent =
   | "ended"
@@ -100,7 +101,8 @@ export type StateEvent =
   | "container-none"
   | "record-gone"
   | "record-present"
-  | "seen-absent";
+  | "seen-absent"
+  | "unseen";
 
 /**
  * 转移表（`U4b.md §1.3` 那张表逐格）。返回值与入参**是同一个对象** ⇔ 这次事件不改状态
@@ -113,6 +115,8 @@ export type StateEvent =
  * - 复活成活（`started` / `remote-line`）时容器一格回到 `null`：那是一个新进程，旧的容器类型不沿用，
  *   等它自己的 `session-container`。
  * - 容器事实只落在活着的会话上：死了的那一格由死的那一刻的裁决说了算。
+ * - 〔GP1〕`unseen` 只改「还有终端可去」的两态（活 · 可重连）：机器看不见了，它们此刻是死是活都说不清；
+ *   已结束 / 记录没了不动 —— 它们的死是那台机器看得见时亲口说的，看不见了推翻不了（`设计/30 §3.5.7a`）。
  */
 export function nextState(s: SessionState, ev: StateEvent): SessionState {
   switch (ev) {
@@ -135,6 +139,8 @@ export function nextState(s: SessionState, ev: StateEvent): SessionState {
       return s.liveness === "dead" && s.recoverability === "gone" ? ENDED : s;
     case "seen-absent":
       return s.liveness === "unseen" ? ENDED : s;
+    case "unseen":
+      return s.liveness === "live" || s.recoverability === "attachable" ? UNSEEN : s;
   }
 }
 

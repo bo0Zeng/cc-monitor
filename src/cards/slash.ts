@@ -25,6 +25,7 @@
 // 显式 .ts 扩展：slash.ts 被 bash.test.ts（node 直跑）间接 import，
 // node type-stripping 不做扩展名推断（tsconfig allowImportingTsExtensions 已开）。
 import { unescapeEntities } from "./bash.ts";
+import { copyText } from "../copy-table";
 
 export interface SlashCommand {
   name: string;
@@ -61,7 +62,7 @@ export function buildSlashCommandCard(
 
   const icon = document.createElement("span");
   icon.className = "slash-icon";
-  icon.textContent = "⌘";
+  icon.textContent = copyText("slash.card.icon");
   card.appendChild(icon);
 
   const name = document.createElement("span");

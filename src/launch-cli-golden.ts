@@ -88,21 +88,21 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
   { name: "需要 quote 的 cwd", caps: ALL_CAPS, ctx: base({ cwd: "/home/用户/带 空格" }),
     ok: true, out: "ccm new --base --cwd '/home/用户/带 空格'" },
   // ---- refusal 类（§33：表达不了就必须放弃） ----
-  { name: "未装 ccm", caps: null, ctx: base(), ok: false, out: "远端未装 ccm" },
+  { name: "未装 ccm", caps: null, ctx: base(), ok: false, out: "远端还没装后端" },
   { name: "本地 transport", caps: ALL_CAPS, ctx: base({ transport: { kind: "local" } }),
-    ok: false, out: "本地路径不走 CLI 渲染器" },
+    ok: false, out: "Windows 本机不用 ccm 命令起会话" },
   { name: "缺静态能力 tmux", caps: ALL_CAPS.filter((c) => c !== "tmux"), ctx: base(),
-    ok: false, out: "远端 ccm 缺能力 tmux" },
+    ok: false, out: "远端的后端太旧，不支持这样起会话（缺 tmux）" },
   { name: "#76 防线：send-into 无 CLI 等价语法", caps: ALL_CAPS, ctx: base({
       container: { kind: "tmux", name: "cc-x", nameQuoting: "raw", mode: "send-into" },
-    }), ok: false, out: "send-into（idle-tmux 就地复用）无 CLI 等价语法，诚实降级" },
+    }), ok: false, out: "ccm 命令没法在已有的 tmux 会话里就地起新会话" },
   { name: "§35 安全网：只有 configDir 没有名字 ⇒ 说不出 --account", caps: ALL_CAPS, ctx: base({
       account: { kind: "account", configDir: ACCT },
-    }), ok: false, out: "维度 account 无法用 CLI 语法表达（cliFlags 返回 null）" },
+    }), ok: false, out: "这一项设置（account）写不成 ccm 参数" },
   { name: "已触发的 model 维度要的能力缺失", caps: ALL_CAPS.filter((c) => c !== "model"), ctx: base({ modelOverride: "opus" }),
-    ok: false, out: "维度 model 需要远端 ccm 能力 model，但它不支持" },
+    ok: false, out: "远端的后端太旧，不认 model 这一项设置（缺 model）" },
   { name: "已触发的 account 维度要的能力缺失", caps: ALL_CAPS.filter((c) => c !== "account"), ctx: base(),
-    ok: false, out: "维度 account 需要远端 ccm 能力 account，但它不支持" },
+    ok: false, out: "远端的后端太旧，不认 account 这一项设置（缺 account）" },
   // ---- `ccm-print-parity` 的四个场景（那套 e2e 按名取 `out`，12 条断言钉着这几个值） ----
   { name: "print-parity:resumeTmuxWithIdentity", caps: ALL_CAPS, ctx: base({
       action: { kind: "resume", sid: "p1" },

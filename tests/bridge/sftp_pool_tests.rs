@@ -290,7 +290,8 @@ async fn an_old_local_backend_is_named_too_old_and_nothing_is_sent() {
     .await
     .expect_err("老后端不该开得了单");
     assert_eq!(code, "backend_unavailable");
-    assert!(e.contains("太旧") && e.contains("transfer-upload"), "{e}");
+    // 〔CP2b〕内部命令名（transfer-upload）不再上屏；「太旧」与出路（重开 monitor）留着。
+    assert!(e.contains("太旧"), "{e}");
     assert!(rig.seen.try_recv().is_err(), "对老后端发了请求");
 }
 
@@ -310,25 +311,28 @@ async fn without_a_local_backend_the_transfer_is_refused_out_loud() {
     assert!(e.contains("本机后端不在"), "{e}");
 }
 
-/// 🔴 踩线的本机落点 ⇒ 回的是**围栏那句话**，而且在转给后端**之前**（一条请求都不发）。
+/// 🔴〔FN1 · V119 翻面〕本机落点是一份会话记录的形状 ⇒ **照样转给本机后端开单**，落点原样带过去。
+///
+/// 从前这一条是「踩线的本机落点 ⇒ 回围栏那句话，而且在转给后端之前（一条请求都不发）」。
+/// 用户「文件管理器全部都可以改. 不需要任何围栏」⇒ monitor 这一侧开单时那一判删了。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_download_onto_a_live_session_file_is_refused_before_anything_is_sent() {
+async fn a_download_onto_a_session_file_is_forwarded_like_any_other() {
     let _g = crate::backend::control::inbound_client::local_origin_test_lock();
     let mut rig = rig(&ALL);
-    let protected = "/home/u/.claude/projects/dash-proj/abc-123.jsonl";
+    let session = "/home/u/.claude/projects/dash-proj/abc-123.jsonl";
     assert!(
-        crate::claude_data_fence::is_protected_claude_data_path(protected),
-        "夹具那条路径不被判定为受保护 —— 本条此刻在量别的东西"
+        crate::claude_data_fence::is_protected_claude_data_path(session),
+        "夹具那条路径不是会话记录的形状 —— 本条此刻在量别的东西"
     );
-    let (code, _) = transfer_call(
-        cfg("中继·围栏"),
+    transfer_call(
+        cfg("中继·会话落点"),
         TRANSFER_DOWNLOAD,
-        &serde_json::json!({ "remote_path": "/srv/whatever.txt", "local_path": protected }),
+        &serde_json::json!({ "remote_path": "/srv/whatever.txt", "local_path": session }),
     )
     .await
-    .expect_err("往会话文件上下载竟然开得了单");
-    assert_eq!(code, "refused");
-    assert!(rig.seen.try_recv().is_err(), "围栏拒之前就发了请求");
+    .expect("🔴 V119：往会话文件那个位置上下载，开不出单");
+    let sent = rig.next("transfer-download").await;
+    assert_eq!(sent["args"]["local_path"], session, "落点没有原样转给后端");
 }
 
 /// 解帧：后端 `wire_tests::transfer_frames_have_exactly_these_bytes` 那四形**逐字节**的线上串（异源：后端金标准）

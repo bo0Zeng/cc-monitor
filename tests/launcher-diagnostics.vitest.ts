@@ -37,7 +37,7 @@ describe("diagnoseRemoteLauncher", () => {
   it("诊断文案是只读提示，不含任何会被误当成命令/配置的内容，且指向别名那一块（Phase D 审计：两个 UI 曾互不指涉）", () => {
     const msg = diagnoseRemoteLauncher("cct");
     expect(msg).toContain("ccm");
-    expect(msg).toContain("账号/模型偏好");
+    expect(msg).toContain("账号和模型偏好");
     // 〔AL1〕从前指「下面的生成器」—— 生成器并进了机器页的「别名」，那句话跟着指过去。
     expect(msg).toContain("本机 → 工具 → 别名");
   });

@@ -141,78 +141,20 @@ export class TabStore {
   }
 
   /**
-   * Batch7-F24 树状排序：bg tab 插到同 (cwd, origin) 交互宿主（及其既有 bg 子项）
-   * 之后；无宿主则追加末尾。交互 tab 创建时反向重锚——把已存在的同 (cwd, origin)
-   * bg tab 拉到自己身后（骨架清单里 bg 可能先于宿主出现）。父子判定 v1 = cwd
-   * 归属（pidfile 无 parentSessionId 字段，精确父子留 backlog）。
-   */
-  /**
-   * 〔步 17·C · 2026-09-21〕新 tab 落位 = **先按树摆（`placeInTree`），再按盘上那份顺序摆**。
+   * 〔步 17·C · 2026-09-21〕新 tab 落位 = **追加到末尾，再按盘上那份顺序摆**。
    *
-   * 🔴 **这一层是那个 no-op 的第二半修法**：tab 是陆续到的，而 `loadOrder` 只跑一次
+   * 🔴 **后一半是那个 no-op 的第二半修法**：tab 是陆续到的，而 `loadOrder` 只跑一次
    *   ⇒ 只在 `loadOrder` 里应用一次，**后到的每一个 tab 都会落到末尾**，
    *   盘上给它留的那一格永远用不上（现打：会话到齐后顺序 == 到达序）。
-   * ⚠ 包成两层而不是往 `placeInTree` 里塞一句：它有 3 个 `return` 出口，
-   *   逐个补一句就是下一次「补漏了一个出口」。
    * ⚠ 这里**只动 `orderedIds`、不碰 DOM** —— 拖拽期间的重画抑制（★ 6d）由
-   *   `refreshTabBar` 那道守卫管，与本函数无关（今天 `placeInTree` 也是这个形状）。
+   *   `refreshTabBar` 那道守卫管，与本函数无关。
+   * 〔BG1 · V125「删掉树」〕bg 会话与普通 tab 走**同一条**落位：原先这里先把 bg 挂到同
+   *   `(cwd, origin)` 交互宿主之后排成树（Batch7-F24），用户裁删 —— 与 `设计/30 §7`
+   *   「不做自动归组、集合是唯一分类维」一致。本函数里零处按 kind 分叉（`tests/bg-flat.vitest.ts` 钉着）。
    */
   placeInOrder(tab: Tab): void {
-    this.placeInTree(tab);
-    this.applySavedOrder();
-  }
-
-  private placeInTree(tab: Tab): void {
-    const isBg = tab.kind !== null && tab.kind !== "interactive";
-    const sameHost = (t: Tab | undefined): boolean =>
-      !!t && t.cwd !== null && t.cwd === tab.cwd && t.origin === tab.origin;
-    if (isBg && tab.cwd) {
-      // 找宿主（交互 + 同 cwd/origin）——插到宿主连同其已有 bg 子串之后
-      for (let i = 0; i < this.orderedIds.length; i++) {
-        const t = this.tabs.get(this.orderedIds[i]);
-        if (sameHost(t) && (t!.kind === null || t!.kind === "interactive")) {
-          let j = i + 1;
-          while (j < this.orderedIds.length) {
-            const c = this.tabs.get(this.orderedIds[j]);
-            if (sameHost(c) && c!.kind !== null && c!.kind !== "interactive") j++;
-            else break;
-          }
-          this.orderedIds.splice(j, 0, tab.sessionId);
-          return;
-        }
-      }
-      this.orderedIds.push(tab.sessionId);
-      return;
-    }
-    // 交互 tab：追加，再把**真孤儿** bg 子项拉到身后（保持原相对序）。
-    // 已紧跟在先到宿主（同 cwd/origin 交互 tab）之后的 bg 子串不动——
-    // 计划契约"多宿主取第一个"（审计 D-R3：第二个同 cwd 交互会话不许搬走
-    // 第一个宿主已挂好的子树）。
     this.orderedIds.push(tab.sessionId);
-    if (tab.cwd) {
-      const orphans: string[] = [];
-      let anchored = false; // 当前扫描位置是否处于"sameHost 宿主的 bg 子串"内
-      for (const sid of this.orderedIds) {
-        if (sid === tab.sessionId) continue;
-        const t = this.tabs.get(sid);
-        const isBg = !!t && t.kind !== null && t.kind !== "interactive";
-        if (!isBg) {
-          anchored = sameHost(t) && (t!.kind === null || t!.kind === "interactive");
-          continue;
-        }
-        if (sameHost(t)) {
-          if (!anchored) orphans.push(sid);
-          // anchored 保持——宿主的 bg 子串延续
-        } else {
-          anchored = false; // 异族 bg 打断子串
-        }
-      }
-      if (orphans.length) {
-        this.orderedIds = this.orderedIds.filter((sid) => !orphans.includes(sid));
-        const at = this.orderedIds.indexOf(tab.sessionId) + 1;
-        this.orderedIds.splice(at, 0, ...orphans);
-      }
-    }
+    this.applySavedOrder();
   }
 
   /**

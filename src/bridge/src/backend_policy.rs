@@ -31,9 +31,7 @@
 //! ⇒ 「勾掉开关」在那一支上**真的**是「继续跑」。
 //!
 //! ⇒ 禁令换成**按状态分档**（`K-P1 KPY4`，由 `tests/settings/backend-section.vitest.ts` 机检）：
-//! 用户可见的那四句话有**唯一一个家**（`src/backend-policy.ts`），
-//! Rust 这一侧把同样的四条字面量放在下面，由 [`tests::the_exit_copy_is_the_same_string_on_both_sides`]
-//! 逐字对拍 —— 形状抄 `the_local_origin_is_the_same_string_on_both_sides`。
+//! 用户可见的那四句话有**唯一一个家**（〔CP2b〕文案表 `backendPolicy.exit.*`；TS 那侧 `src/backend-policy.ts` 按名字取）。
 //!
 //! ⚠⚠ **「无人监护」这半是用户裁定的一半，不许省**（`DECISIONS` `K14` 逐字：
 //! 「第一档必须在 UI 上如实说『继续跑，无人监护』，这是本裁定的一半，
@@ -46,84 +44,15 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
 use crate::backend::control::inbound_client;
+use crate::copy_table::copy_text;
 use crate::origin::Origin;
 use serde_json::{json, Value};
 
-/// ── `K-P1 KPY4`：退出行为的四句话。**用户可见文案的家在 TS 那侧**
-/// （`src/backend-policy.ts` 的 `EXIT_*`），这里这四条只为**逐字对拍**而存在。
-///
-/// ⚠ 别在这里加第五条而不动那边：对拍是**双向**的（两边条数与内容都比）。
-///
-/// ① 勾上「退出时结束它」。
-///
-/// ⚠ 它与那个复选框的**标签**刻意不是同一个串：标签说的是**这个开关是什么**，
-/// 这一句说的是**接下来会发生什么**。写成同一个串的话，「那四句只许有一个家」那条判据
-/// 会把复选框的标签算成第二个家 —— 而那**不是误报**：两处一模一样的串，
-/// 下一次改文案时一定只会改到一处。
-pub const EXIT_KILLS: &str = "monitor 退出时会结束它";
-/// ② 勾掉 + **真脱离了**。★ 这一句里的「无人监护」是 `K14` 背书的那半。
-pub const EXIT_UNATTENDED: &str =
-    "monitor 退出后它继续跑，无人监护：崩了不会自动重起；下次开 monitor 会接上它，接不上才起一个新的";
-/// ③ 勾掉 + **没脱离**（平台不支持 / 被关掉了 / 脱离失败）⇒ **保持今天那句，一字不改**。
-pub const EXIT_SELF_DIES: &str = "monitor 不主动结束它；它仍会在 monitor 退出后很快自行退出";
-/// ④〔B2 · 条 66 · `§3.3b ⑤`〕那台机器上的值**读不出来** ⇒ 按缺省办，并说出来这不是谁选的。
-pub const EXIT_UNREADABLE: &str =
-    "那台机器上的退出策略读不出来，按默认（不结束）办 —— 这不等于有人这么选过";
-
-/// 那四句（〔B2〕三句 ＋ 读不出来那一句）的顺序**与 TS 那侧逐条对齐**。对拍判据按名字取、按内容比，条数也比。
-///
-/// ⚠ 曾经有过第四档（「已经脱离了 ⇒ 这个勾管不到它」）。它是**一个缺口的产物**：
-/// 退出钩子当时只收被监护的那条路。缺口补上（`lib.rs` 的 `RunEvent::Exit` 现在两条都收）
-/// 之后那一档成了假话 ⇒ 随缺口一起删掉。**留档是为了下一个人别把它当成「少了一档」。**
-pub const EXIT_COPY: &[(&str, &str)] = &[
-    ("EXIT_KILLS", EXIT_KILLS),
-    ("EXIT_UNATTENDED", EXIT_UNATTENDED),
-    ("EXIT_SELF_DIES", EXIT_SELF_DIES),
-    ("EXIT_UNREADABLE", EXIT_UNREADABLE),
-];
-
-/// ── `K-P3 KP3C`：那句「无人监护」后面接的那个**读数**。用户可见文案的家同样在 TS 那侧
-/// （`src/backend-policy.ts` 的 `HEALTH_*`），这里这四条只为**逐字对拍**而存在。
-///
-/// ★★ 最要紧的是 [`HEALTH_UNKNOWN`]：它买的是 `K-P3` `§0-1` 那一格 ——
-/// 今天不是「它没崩过」，是「**没有任何东西在记它崩没崩**」，而 `§0-1` 逐字写着
-/// 「这两句话差得很远，件计划里不许混用」。⇒ 读数的默认档是**答不出来**，不是绿灯。
-/// 〔第四波 ST2 · `设计/70 §2.3`〕格子里只写「— 无记录」；那条区分（为什么这不等于没崩过）
-/// 进 ⓘ，住 TS 那侧的 `HEALTH_UNKNOWN_WHY` —— 区分保留，换成界面状态（`§2.2`：不能一起扫掉）。
-pub const HEALTH_UNKNOWN: &str = "— 无记录";
-/// 记到过事、但一次崩溃都没有。〔ST2 · 步 6〕读坏了几次进界面的 `[详情]`，这一句不再带占位符。
-pub const HEALTH_CLEAN: &str = "没崩过（这次 monitor 开着以来）";
-/// 崩过。`{crashed}` / `{last}` 是**两侧共用的占位符**；`{last}` 填 [`last_brief`]（不是账行）。
-pub const HEALTH_CRASHED: &str = "⚠ 崩过 {crashed} 次 · 最后一次：{last}";
-/// 崩过但那一次没留住 —— 也要说出口，不许拿空串糊过去。
-pub const HEALTH_LAST_MISSING: &str = "没留下记录";
-
-/// `KP3C` 的那四条，顺序**与 TS 那侧逐条对齐**。
-pub const HEALTH_COPY: &[(&str, &str)] = &[
-    ("HEALTH_UNKNOWN", HEALTH_UNKNOWN),
-    ("HEALTH_CLEAN", HEALTH_CLEAN),
-    ("HEALTH_CRASHED", HEALTH_CRASHED),
-    ("HEALTH_LAST_MISSING", HEALTH_LAST_MISSING),
-];
-
-/// ★ **跨语言逐字对拍的全部表** —— 一张表一件事，两张表不合并。
-///
-/// # `KP3C` 的题面说「加进 `EXIT_COPY` 那张表」，这里**没有照字面做**〔顶回来，已上报〕
-///
-/// `EXIT_COPY` 的头注逐字把自己定义成「**退出行为**的四句话」，而
-/// 「上次崩没崩」不是一句退出行为 —— 塞进去就是**一个值装了两件事**
-/// （本工作区最贵的那一类病，`lib.rs::TmuxPlatform` 的头注为同一条病拆过一次）。
-///
-/// ⇒ 本件兑现的是那句话的**承重那半**：[`EXIT_COPY`] 的头注逐字要的是
-/// 「别在这里加第五条而不动那边 —— 对拍是**双向**的（两边条数与内容都比）」。
-/// 新常量照样受同一条对拍管着，只是走**第二张表**。
-///
-/// 这张清单本身守的是**第三件事**：`K-P1 KPY6` 那条判据只认 `EXIT_COPY` 一张表，
-/// 所以「有人加了第三张跨语言表而没配对拍」它一个字都不会说。
-/// [`tests::every_cross_language_table_is_compared_on_both_sides`] 按这张清单派生人群，
-/// **表数也在断言里** ⇒ 加一张新表要同轮改两处：这里，和 TS 那份文件。
-pub const CROSS_LANGUAGE_COPY: &[(&str, &[(&str, &str)])] =
-    &[("EXIT_COPY", EXIT_COPY), ("HEALTH_COPY", HEALTH_COPY)];
+// 〔CP2b · 第四波〕这里原来有退出行为的四句（`EXIT_*`）、崩溃读数的四句（`HEALTH_*`）与它们的两张对拍表
+//   （`EXIT_COPY` / `HEALTH_COPY`）和表的清单（`CROSS_LANGUAGE_COPY`）—— Rust 这一份「只为与 TS 那份逐字对拍而存在」，
+//   非 test 构建里没有读者（gate `deadcode` 那 11 条）。文案表立起来之后两侧读**同一条表项**
+//   （`src/shared/copy/table.json` 的 `backendPolicy.exit.*` / `backendPolicy.health.*`），第二份副本与逐字对拍一起删；
+//   剩下要比的只有「两侧说读数时用的是不是同一批 key」，见 `tests::both_sides_describe_health_with_the_same_keys`。
 
 // 〔C4c · 第四波 4B〕界面那两条（问 / 改那台机器上的值）的期限 `EXIT_POLICY_BUDGET`〔散文墓碑〕随那两条 Tauri 命令一起走了：
 //   设置页经通道直接问后端（期限同值 10 秒，住 `settings/backend-section.ts`）。
@@ -146,23 +75,35 @@ async fn exit_policy_call(
         return Err(said(no_channel(origin)));
     };
     if !client.accepts(cmd) {
-        return Err(format!(
-            "[{origin}] 的后端还不认 `{cmd}` —— 「退出行为」搬到后端那台机器上之后才有这条命令，重装那台机器的后端就有了"
+        return Err(copy_text(
+            "rsBackendPolicy.call.tooOld",
+            &[("machine", &origin.to_string())],
         ));
     }
     let data = client.call(cmd, args, budget).await.map_err(|e| {
-        said(route_call_error(&e, |code, message| {
-            format!("[{origin}] `{cmd}` 失败（{code}）：{message}")
+        said(route_call_error(&e, |_code, message| {
+            copy_text(
+                "rsBackendPolicy.call.failed",
+                &[
+                    ("machine", &origin.to_string()),
+                    ("message", &message.to_string()),
+                ],
+            )
         }))
     })?;
-    data.ok_or_else(|| format!("[{origin}] `{cmd}` 的应答没有 data —— 两端契约对不上"))
+    data.ok_or_else(|| {
+        copy_text(
+            "rsBackendPolicy.call.noData",
+            &[("machine", &origin.to_string())],
+        )
+    })
 }
 
 /// 三态里给人看的那句话（同 `frame_query::said`）。`Done` 在本族走不到。
 fn said(r: Routed) -> String {
     match r {
         Routed::NoChannel(s) | Routed::Refused(s) => s,
-        Routed::Done => "问退出策略出了内部错误，没有拿到结果".to_string(),
+        Routed::Done => copy_text("rsBackendPolicy.call.internal", &[]),
     }
 }
 
@@ -313,7 +254,8 @@ pub struct DeathEvidence {
 ///
 /// ⚠ 它是一句「我不知道」，不是一句解释 —— 那一格真的没有事实可说，
 /// 编一个听起来合理的原因就是 `platform/fallback_guard.rs` 治的那一族。
-pub const NO_START_REASON: &str = "起不来，而调用方一句原因都没转过来（这一格今天没有事实可说）";
+pub static NO_START_REASON: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsBackendPolicy.death.noStartReason", &[]));
 
 /// 四件事，两两分得开。
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -388,12 +330,12 @@ pub fn verdict(ev: &DeathEvidence) -> Option<Death> {
 ///
 /// ⚠ 它不是四个变体名的 `Debug`：`K-H2b` 那条主线逐字禁掉的形状是「有名字 ≠ 接上了」，
 /// 而 `Debug` 输出会跟着重命名漂，账上的历史行就此对不上。
-pub fn death_kind(d: &Death) -> &'static str {
+pub fn death_kind(d: &Death) -> String {
     match d {
-        Death::NeverStarted { .. } => "从来没起来",
-        Death::Refused { .. } => "被拒了",
-        Death::Crashed { .. } => "崩了",
-        Death::Misread { .. } => "读坏了",
+        Death::NeverStarted { .. } => copy_text("rsBackendPolicy.death.neverStarted", &[]),
+        Death::Refused { .. } => copy_text("rsBackendPolicy.death.refused", &[]),
+        Death::Crashed { .. } => copy_text("rsBackendPolicy.death.crashed", &[]),
+        Death::Misread { .. } => copy_text("rsBackendPolicy.death.misread", &[]),
     }
 }
 
@@ -405,7 +347,8 @@ pub fn death_kind(d: &Death) -> &'static str {
 pub const STATUS_CONTROL_C_EXIT: u32 = 0xC000013A;
 
 /// 上面那个码的人话（`00 §1.5.3` 逐字）。进界面（`last_brief`）也进日志（`ledger_line`），同一个来源。
-pub const CONSOLE_CTRL_EXIT_SAID: &str = "被控制台事件杀死 —— 可能是那个弹出的终端窗口被关了";
+pub static CONSOLE_CTRL_EXIT_SAID: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsBackendPolicy.death.consoleCtrl", &[]));
 
 /// 一个退出码的说法：认得的码说人话，其余照旧是裸码。**判定只住这里**（`Refused` 与 `Crashed` 两臂共用）。
 fn exit_code_said(code: i32) -> String {
@@ -420,14 +363,14 @@ fn exit_code_said(code: i32) -> String {
 /// 那一行上的**退出状态**（`KP3A`① 要的两样之一）。
 pub fn exit_status(d: &Death) -> String {
     match d {
-        Death::NeverStarted { .. } => "没有退出状态（进程从来没存在过）".to_string(),
+        Death::NeverStarted { .. } => copy_text("rsBackendPolicy.status.neverExisted", &[]),
         Death::Refused { code } => exit_code_said(*code),
         Death::Crashed { how } => match how {
             Outcome::Exited(code) => exit_code_said(*code),
             Outcome::Signalled(sig) => format!("signal {sig}"),
-            Outcome::NeverSpawned => "没有退出状态".to_string(),
+            Outcome::NeverSpawned => copy_text("rsBackendPolicy.status.none", &[]),
         },
-        Death::Misread { .. } => "退出状态未知（是 monitor 这一侧读坏了，不是它报的）".to_string(),
+        Death::Misread { .. } => copy_text("rsBackendPolicy.status.misread", &[]),
     }
 }
 
@@ -449,7 +392,7 @@ pub fn death_copy(d: &Death) -> String {
                 .iter()
                 .map(|p| p.display().to_string())
                 .collect::<Vec<_>>()
-                .join(" · ")
+                .join(&copy_text("rsBackendPolicy.death.listSep", &[]))
         ),
         Death::Refused { .. } => "被拒了：它一个字节都没说就自己退出了。原样重连只会发同一个参数、\
              再被拒一次，先看它拒的是什么。"
@@ -542,7 +485,7 @@ pub struct Recorded {
 ///
 /// ⇒ 「上次崩没崩」这句话今天答得出来的射程只有**这一个 monitor 进程活着的这段时间**，
 /// 而「答不出来」与「没崩过」不是一句话（`§0-1` 逐字：「这两句话差得很远，不许混用」）。
-/// 这就是 [`HEALTH_UNKNOWN`] 存在的全部理由，也是 `exit: 待摸底` 第一问要的那个读数的边界。
+/// 这就是 文案表 `backendPolicy.health.unknown` 那一格 存在的全部理由，也是 `exit: 待摸底` 第一问要的那个读数的边界。
 pub const LEDGER_IS_PROCESS_LOCAL: bool = true;
 
 /// 一台机的死亡账读数。**四个计数分开装** —— 「读坏了」不许被加进「崩了」。
@@ -658,17 +601,19 @@ pub fn health(origin: &str) -> Health {
 /// 那正是 `§0-1` 点名不许混用的那两句话。
 pub fn describe_health(h: &Health) -> String {
     if h.seen() == 0 {
-        return HEALTH_UNKNOWN.to_string();
+        return copy_text("backendPolicy.health.unknown", &[]);
     }
     if h.crashed == 0 {
-        return HEALTH_CLEAN.to_string();
+        return copy_text("backendPolicy.health.clean", &[]);
     }
-    HEALTH_CRASHED
-        .replace("{crashed}", &h.crashed.to_string())
-        .replace(
-            "{last}",
-            h.last_brief.as_deref().unwrap_or(HEALTH_LAST_MISSING),
-        )
+    let missing = copy_text("backendPolicy.health.lastMissing", &[]);
+    copy_text(
+        "backendPolicy.health.crashed",
+        &[
+            ("crashed", &h.crashed.to_string()),
+            ("last", h.last_brief.as_deref().unwrap_or(&missing)),
+        ],
+    )
 }
 
 #[cfg(test)]

@@ -18,6 +18,7 @@
 //! 射程：锁是进程内的。两个 monitor 进程同写（Linux / macOS 今天没有单实例）仍在锁外；
 //! 那时每一次写仍是「锁内现读 ＋ 只改自己的路径」，丢更新的窗口缩到读与 rename 之间。
 
+use crate::copy_table::copy_text;
 use crate::paths;
 use serde::Deserialize;
 use serde_json::{Map, Value};
@@ -82,11 +83,10 @@ pub(crate) enum ConfigWriteError {
 impl std::fmt::Display for ConfigWriteError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ConfigWriteError::Unreadable { path, detail } => write!(
-                f,
-                "{} 读不懂（{detail}），这次的设置没有存：写回去会把这份文件里别的设置一起盖掉，先把它改成合法的 JSON",
-                path.display()
-            ),
+            ConfigWriteError::Unreadable { path, detail } => f.write_str(&copy_text(
+                "rsConfig.write.unreadable",
+                &[("path", &path.display().to_string()), ("e", detail)],
+            )),
             ConfigWriteError::BadEdit(m) | ConfigWriteError::Io(m) => f.write_str(m),
         }
     }
@@ -125,7 +125,7 @@ pub(crate) fn patch_config_at(path: &Path, edits: &[ConfigEdit]) -> Result<(), C
             Ok(_) => {
                 return Err(ConfigWriteError::Unreadable {
                     path: path.to_path_buf(),
-                    detail: "最外层不是一个对象".to_string(),
+                    detail: copy_text("rsConfig.write.notAnObject", &[]),
                 })
             }
             Err(e) => {
@@ -191,7 +191,8 @@ fn apply_edit(root: &mut Map<String, Value>, edit: &ConfigEdit) {
 /// 把 src 原子替换到 dst。
 ///
 /// ⚠ 〔`K-H2a` 08-27〕**从私有改成 `pub(crate)`，理由不是「顺手」**：
-/// `creds_store::write_key` 要一次原子替换，而它**不许自己写一个 `fs::rename`** ——
+/// 〔GP1 · 第四波〕那个调用方（`creds_store::write_key`〔散文墓碑〕）随本机凭据文件的写者换成本机常驻后端一起删了；
+/// 下面是它当年的理由，留作来历：它要一次原子替换，而它**不许自己写一个 `fs::rename`** ——
 /// `atomic_replace_registry` 按「`rename` / `MoveFileExW` 的**出现次数**」逐文件登记，
 /// 那张表不在 `K-H2a` 的写区。复用这一份 ⇒ 新文件里那两个字面量出现 **0** 次，
 /// 既不动那张表，也不给它挖洞。
