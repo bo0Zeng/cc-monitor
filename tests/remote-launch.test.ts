@@ -20,10 +20,8 @@ import { srcDirOf } from "./test-support/repo-root.ts";
 import { AGENT_PROFILE } from "../src/agent-profile.ts";
 import {
   isValidSessionId,
-  sanitizeRemoteLauncher,
   isValidTmuxName,
   isValidNewTmuxName,
-  isValidConfigDir,
 } from "../src/shell-quote.ts";
 import { mintSessionTmuxName, mintTmuxName, deriveTmuxName } from "../src/remote-launch.ts";
 import {
@@ -85,17 +83,14 @@ test("isValidSessionId：UUID 形态过、注入形态拒", () => {
   eq(isValidSessionId("--dangerously-skip-permissions"), false, "前导 - 拒（选项注入）");
 });
 
-test("sanitizeRemoteLauncher：空→claude、注入→claude、带参放行", () => {
-  eq(sanitizeRemoteLauncher(""), "claude");
-  eq(sanitizeRemoteLauncher("   "), "claude");
-  eq(sanitizeRemoteLauncher("cct"), "cct");
-  eq(sanitizeRemoteLauncher('cc --allowedTools "Bash(*)"'), 'cc --allowedTools "Bash(*)"', "引号/括号/星号放行");
-  eq(sanitizeRemoteLauncher("cc; rm -rf /"), "claude", "分号拒");
-  eq(sanitizeRemoteLauncher("cc | tee"), "claude", "管道拒");
-  eq(sanitizeRemoteLauncher("cc $(x)"), "claude", "展开拒");
-  eq(sanitizeRemoteLauncher("cc `x`"), "claude", "反引号拒");
-  eq(sanitizeRemoteLauncher("cc > /tmp/x"), "claude", "重定向拒");
-  eq(sanitizeRemoteLauncher("cc\nrm"), "claude", "换行拒");
+// 〔DUP1 · `设计/90 §3` 判据 2〕这里原来是 `sanitizeRemoteLauncher`〔散文墓碑〕的十条用例（空 → claude · 注入字符 → **静默换成** claude）。
+// 那份删了：字符集只在 Rust 载荷渲染判（`payload_tests.rs::the_launcher_is_refused_when_it_carries_injection_chars`，拒并说清），
+// 前端只剩「空白 ⇒ 默认启动器」这一格缺省（`remote-launch-run.ts::launcherOrDefault`，下面这条钉）。
+test("〔DUP1〕launcher：空白 ⇒ 默认启动器；带注入字符的原样上线（字符集只在 Rust 判，不再静默换成 claude）", () => {
+  eq(req(planResumeDirect("abc-123", "", "")).launcher, AGENT_PROFILE.defaultLauncher);
+  eq(req(planResumeDirect("abc-123", "", "   ")).launcher, AGENT_PROFILE.defaultLauncher);
+  eq(req(planResumeDirect("abc-123", "", " cct ")).launcher, "cct");
+  eq(req(planResumeDirect("abc-123", "", "cc; rm -rf /")).launcher, "cc; rm -rf /", "不许悄悄换成默认那个");
 });
 
 // ───────── 〔LR2〕直起（`container:"none"`）：planResumeDirect → 请求 ─────────
@@ -118,10 +113,11 @@ test("直起：cwd 空/空白 → 请求里没有 cwd（后端就不加 cd）", 
   eq(req(planResumeDirect("abc-123", "   ", "claude")).cwd, null);
 });
 
-test("直起：自定义 launcher 透传、空白回退 claude、注入 fail-closed 成 claude", () => {
+// 〔DUP1〕第三格原来断「注入 fail-closed 成 claude」（TS 那份静默换掉）；今天原样上线、由 Rust 载荷渲染拒（D4）。
+test("直起：自定义 launcher 透传、空白回退 claude、注入字符原样上线（Rust 那侧拒）", () => {
   eq(req(planResumeDirect("abc-123", "/home/pi/p", "cct")).launcher, "cct");
   eq(req(planResumeDirect("abc-123", "", "  ")).launcher, "claude");
-  eq(req(planResumeDirect("s1", "", "cct; curl evil")).launcher, "claude");
+  eq(req(planResumeDirect("s1", "", "cct; curl evil")).launcher, "cct; curl evil");
 });
 
 test("直起：非法 sid throw（拒绝拼入命令）", () => {
@@ -154,9 +150,9 @@ test("tmux 新建：空 cwd → 外层也没有 cwd（后端就不加 -c）；�
   eq(o && o.mode === "create" ? o.cwd : undefined, "/a'b");
 });
 
-test("tmux 新建：自定义 launcher 透传 / 注入 fail-closed claude", () => {
+test("tmux 新建：自定义 launcher 透传 / 注入字符原样上线（〔DUP1〕Rust 那侧拒，不再静默换成 claude）", () => {
   eq(req(planResumeTmux("s1", "", "cct", "s1-cc")).launcher, "cct");
-  eq(req(planResumeTmux("s1", "", "cct; curl evil", "s1-cc")).launcher, "claude");
+  eq(req(planResumeTmux("s1", "", "cct; curl evil", "s1-cc")).launcher, "cct; curl evil");
 });
 
 // audit-fixes F03（idle-tmux 就地复用，治 #76）：往已存在的空 tmux send-keys resume + attach，
@@ -396,11 +392,11 @@ test("起新会话：create 那一格、名字按 quoted、cwd 归外层、没�
   });
 });
 
-test("起新会话：空 cwd → 外层没有 cwd / 自定义命令透传 / 命令注入 fail-closed claude", () => {
+test("起新会话：空 cwd → 外层没有 cwd / 自定义命令透传 / 命令注入原样上线（〔DUP1〕Rust 那侧拒）", () => {
   const o = req(planLauncher("", "cc-x", "claude")).outer;
   eq(o && o.mode === "create" ? o.cwd : undefined, null);
   eq(req(planLauncher("", "cc-x", "claude --model opus")).launcher, "claude --model opus");
-  eq(req(planLauncher("", "cc-x", "claude; rm -rf /")).launcher, "claude");
+  eq(req(planLauncher("", "cc-x", "claude; rm -rf /")).launcher, "claude; rm -rf /");
 });
 
 test("起新会话：名含空格原样（quoted）/ 非法名（空/TAB/. /:）throw", () => {
@@ -414,30 +410,16 @@ test("起新会话：名含空格原样（quoted）/ 非法名（空/TAB/. /:）
 // ───────────────────────── A4：CLAUDE_CONFIG_DIR 账号前缀注入 ─────────────────────────
 // 〔LR2〕这里原来有三条 `buildEnvPrefix`（TS 那份 `export CLAUDE_CONFIG_DIR='…'; ` 前缀拼接）。
 // 它只给 TS 兜底渲染器用，随之删了；前缀的字节归 Rust（`payload-golden.json`「具名账号」那条），
-// 「非法 dir 拒绝拼入命令」这道闸在账号维度上（`ACCOUNT_DIMENSION.apply` ⇒ `isValidConfigDir`），下面那条接着钉。
+// 「非法 dir 拒绝拼入命令」这道闸〔DUP1〕今天只在拼命令的那一侧（Rust `payload.rs::config_dir_command_safe`）：
+// 前端那份逐项手抄的 `isValidConfigDir`〔散文墓碑〕删了（`设计/90 §3` 判据 2）。下面这条钉「前端真的不再判、原样上线」。
 const ACCT_DIR = "/home/z/.claude-accts/z";
 
-test("非法 configDir ⇒ plan 那一步就 throw（拒绝拼入命令）", () => {
+test("〔DUP1〕configDir 前端不判：怪值原样进上线请求，由 Rust 渲染侧拒", () => {
   for (const bad of ["relative/path", "/a/../b", "/a;rm -rf /", "/a'b", "/a$b", "/a`b"]) {
-    throws(() => planResumeDirect("abc-123", "", "claude", { configDir: bad }), `应拒 ${bad}`);
+    eq(req(planResumeDirect("abc-123", "", "claude", { configDir: bad })).env[0], { kind: "export-config-dir", value: bad }, `原样 ${bad}`);
   }
 });
 
-test("isValidConfigDir：绝对合法 true / 相对·根·..·元字符·unicode false", () => {
-  eq(isValidConfigDir("/home/z/.claude-accts/z"), true);
-  eq(isValidConfigDir("/a b/c"), true); // 空格合法（posixQuote 会包）
-  eq(isValidConfigDir("relative"), false);
-  eq(isValidConfigDir("/"), false);
-  eq(isValidConfigDir("/a/../b"), false);
-  eq(isValidConfigDir("/a/.."), false);
-  eq(isValidConfigDir("/a`b"), false);
-  eq(isValidConfigDir("/a​b"), false); // 零宽空格
-  eq(isValidConfigDir("/a‮b"), false); // 双向控制字符
-  // C1 控制区 0x80-0x9f（含 NEL 0x85）——对齐 backend char::is_control；fromCharCode 避免字面不可见字符。
-  eq(isValidConfigDir("/a" + String.fromCharCode(0x85) + "b"), false); // NEL
-  eq(isValidConfigDir("/a" + String.fromCharCode(0x90) + "b"), false); // C1 中段
-  eq(isValidConfigDir("/a" + String.fromCharCode(0x9f) + "b"), false); // C1 末
-});
 
 test("直起带 configDir → export-config-dir 在嵌套 env 清理之前（相等）；无 / 空串 → 只有清理", () => {
   eq(req(planResumeDirect("abc-123", "", "claude", { configDir: ACCT_DIR })).env, [

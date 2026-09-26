@@ -30,8 +30,8 @@
  * - **`resume` 的 `--resume <sid>` 展开在 TS 的请求构造里**（`buildPayloadRenderRequest`）。
  *   Rust 侧 `PayloadSpec.args` 收的是**展开后**的 argv，所以用例把 resume flag 直接写进 `args`
  *   —— 这样 spec ↔ plan 的映射是 1:1 的，夹具里看得见。
- * - **launcher 的 sanitize 也在 TS**（`sanitizeRemoteLauncher`）：Rust 侧收的是净化后的值。
- *   用例只用干净 launcher。
+ * - **launcher**：用例只用干净 launcher。〔DUP1〕原先这里写「sanitize 也在 TS（`sanitizeRemoteLauncher`〔散文墓碑〕）」——
+ *   TS 那份删了，字符集只在 Rust 载荷渲染判（判不过拒），前端只把空白读成默认启动器。
  *
  * 〔LR2〕住址从 `src/` 挪到 `tests/test-support/`：它的手写期望逐字就是整条 shell 命令，而 `设计/90 §3` 条 1
  * 要 `src/**\/*.ts` 零 shell 串（判据 `tests/launch-no-shell-in-ts.vitest.ts`，不开例外）。当年留在 `src/` 的理由

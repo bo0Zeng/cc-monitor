@@ -8,7 +8,7 @@
  * 为什么必须从生产链取：上一轮修复三门禁全绿却让 `send-keys` 完全失效——因为黄金串只断言
  * 「我写出了打算写的字符串」，从不断言「这条命令在 tmux 上的效果」。手搓等价命令会重蹈覆辙。
  *
- * launcher 用 `CCMPROBE`（纯字母词，过 `sanitizeRemoteLauncher`）而非 `claude`：真 claude 会启动并
+ * launcher 用 `CCMPROBE`（纯字母词，过 Rust 载荷渲染的 launcher 那道闸）而非 `claude`：真 claude 会启动并
  * 重绘/清屏，把打进去的载荷盖掉 → 「兄弟会话未被污染」的 grep 会给出**假 PASS**（本坑真实踩过）。
  * `CCMPROBE` 报 command not found 后留在屏幕上，可靠可 grep。
  *

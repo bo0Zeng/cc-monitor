@@ -1269,6 +1269,7 @@ U8c-1 摸底后拆成三步：
 `history.rs` 的 POSIX 校验换成 `acct-core` 并集之后，同一个含 `U+3000` 的 configDir：
 **本机 Rust 拉起拒绝、远端 TS 拉起放行**（TS `shell-quote.ts::isValidConfigDir` 仍是旧集合）。
 迁移前两侧都用旧集合、是一致的。⇒ **这是变严的诚实代价**，U8c-2/U8c-3 收编 TS 时一并收口。
+〔DUP1 · 第四波 4D〕收口了，收法是**删**：TS 那份 `isValidConfigDir`〔散文墓碑〕按 `设计/90 §3` 判据 2 删掉，configDir 只在拼命令的那一侧（`payload.rs::config_dir_command_safe`）判。
 
 ### 跨语言一致性靠什么保住（U8c-1 的核心交付）
 

@@ -93,10 +93,14 @@ test("account：注入合法 configDir", () => {
   ACCOUNT_DIMENSION.apply(plan, ctx);
   eq(plan.env, [{ kind: "export-config-dir", value: "/home/u/.claude-accts/z" }]);
 });
-test("account：非法 configDir → throw", () => {
+// 〔DUP1 · `设计/90 §3` 判据 2〕这条原来是「非法 configDir → throw」—— 判它的是 TS 那份 `isValidConfigDir`〔散文墓碑〕，
+// Rust 渲染侧 `config_dir_command_safe` 的逐项手抄。那份删了：前端不判、原样推，拼命令那一侧判
+// （`payload_tests.rs` 逐码位钉着拒绝集；带 `REFUSE:` 标，前端照拒说出来）。这里钉「前端真的不再判」。
+test("account：configDir 前端不判，原样推进 plan（判它的是 Rust 渲染侧）", () => {
   const ctx: LaunchContext = { ...baseCtx, account: { kind: "account", name: "z", configDir: "not-absolute" } };
   const plan: LaunchPlan = { transport: ctx.transport, action: ctx.action, container: ctx.container, cwd: ctx.cwd, env: [], launcher: "", args: [], wrap: [] };
-  throws(() => ACCOUNT_DIMENSION.apply(plan, ctx));
+  ACCOUNT_DIMENSION.apply(plan, ctx);
+  eq(plan.env, [{ kind: "export-config-dir", value: "not-absolute" }]);
 });
 // F05：applies 恒真（base 态也要在 CLI 语境下显式表态，不再只在 kind==="account" 时触发——
 // 这条修的是 F03 遗留的一个真实 bug，见 launch-dimensions.ts 头注/F05 计划 §2 第3条）。

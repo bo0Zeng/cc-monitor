@@ -141,7 +141,7 @@ fn every_business_rejection_is_tagged() {
 /// # 为什么用「拒绝这几个字符」而不是复用别处的白名单
 ///
 /// 仓里已有两份 launcher 策略，**各自服务不同的合法形状**：
-/// · TS 的 `sanitizeRemoteLauncher`：拒 ``[;|&$`<>\r\n]`` ⇒ 回落默认 launcher；
+/// · TS 的 `sanitizeRemoteLauncher`〔散文墓碑〕：拒 ``[;|&$`<>\r\n]`` ⇒ 回落默认 launcher（〔DUP1〕按 `设计/90 §3` 判据 2 删了 —— 同一字符集、处置却是静默换掉；今天字符集只在本函数）；
 /// · Rust 的 `history::sanitize_launcher`：白名单（字母数字 `- _ .` 空格）⇒ `Err`。
 ///
 /// 后者**排掉了 `/`**，而远端 launcher 合法地可以是 `/usr/local/bin/claude`；
