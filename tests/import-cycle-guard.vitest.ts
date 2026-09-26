@@ -247,10 +247,10 @@ describe("E80：生产代码不许有运行期 import 环", () => {
     const generatedTargets = [...new Set([...graph.values()].flat())].filter(isGenerated);
     expect(
       generatedTargets.length,
-      "今天有 2 份生成物被**运行期** import（`agent-profile-table`，K-R93；" +
-        "`launch-render-facts`，K-R95）—— " +
+      "今天有 3 份生成物被**运行期** import（`agent-profile-table`，K-R93；" +
+        "`launch-render-facts`，K-R95；`judgment-rules`，〔DUP1〕模型名的放行式子，零 import 的叶子）—— " +
         "这个数变了就在这里红一次，好让新的那一份也过一遍「它是不是叶子」",
-    ).toBe(2);
+    ).toBe(3);
     for (const g of generatedTargets) {
       expect(runtimeDeps(g), `${rel(g)} 不再是叶子 —— 它开始 import 别人了，可能成环`).toEqual([]);
     }
