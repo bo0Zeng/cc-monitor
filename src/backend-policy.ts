@@ -22,8 +22,13 @@
 // 「第一档必须在 UI 上如实说『继续跑，无人监护』，这是本裁定的一半，不许只做常驻不做这句话」）。
 //
 // 〔CP2b · 第四波〕下面那几句话的**家搬进了文案表**（`src/shared/copy/table.json` 的 `backendPolicy.*`）。
-//   这里的导出名照旧（界面与测试按名字取），值从表里取；Rust 那侧从前那份「同名同值、逐字对拍」的副本
-//   随之删掉 —— 两侧读的是同一条表项，第二份副本与对拍一起没了（`backend_policy.rs::describe_health` 直接取同一批 key）。
+//   这里的导出名照旧（界面与测试按名字取），值从表里取；Rust 那侧从前那份「同名同值、逐字对拍」的副本随之删掉。
+//
+// 〔PB1 · `设计/90 §4` 阶段 B〕崩溃读数（「健康」那一格）的三档判定与那几句**搬走了**：后端出成品
+//   （`backend_policy.rs::health_face`，状态 ＋ 一句 ＋ ⓘ ＋ `[详情]`），`settings/backend-section.ts` 只排版。
+//   这里原来那段（三档判定 · `[详情]` 判定 · 取文常量 · 读数接口）整段删了，判据 `judgment-single-home` 的 J21 钉它零实现。
+//   ⚠ 「退出行为」那四档还在这里：它的输入跨两半（后端的值 ＋ monitor 的 `detached`），挪到哪一半撞设计原文，
+//   停下报备在 `调研/第四波记录/PB1.md §4`，未裁之前原样不动。
 
 import { copyText } from "./copy-table";
 
@@ -71,106 +76,9 @@ export const EXIT_SELF_DIES = copyText("backendPolicy.exit.selfDies");
  *
  * ⚠ 它与「没人选过」（文件不在）**不是一回事**：没人选过就是缺省，说的是上面②③那两句；
  * 读不出来是「有一份东西在那儿、我们读不懂」，照缺省办，但不许装作那是一个选择。
- * 同一条道理仓里立过一次：`HEALTH_UNKNOWN` 逐字「『答不出来』不等于『没崩过』」。
+ * 同一条道理仓里立过一次：健康那一格「无记录」那一档（〔PB1〕今天住 `backend_policy.rs::health_face`）——「答不出来」不等于「没崩过」。
  */
 export const EXIT_UNREADABLE = copyText("backendPolicy.exit.unreadable");
-
-// ══════════════════════════════════════════════════════════════════════════
-// K-P3 KP3C（09-04）：**那句「无人监护」后面接的那个读数。**
-//
-// K14 逐字要的是「如实说『继续跑，无人监护』」，而 K-P1 KPY4 已经把那句话钉住了。
-// 本件加的那一半是：那句话后面要能接上一个**真读数**（上次崩没崩、崩过几次），
-// 而不是永远只是一句静态承诺。
-//
-// ★★ 这三句话最要紧的一句是 HEALTH_UNKNOWN，而它买的正是 K-P3 §0-1 那一格：
-//    今天不是「它没崩过」，是「**没有任何东西在记它崩没崩**」——
-//    §0-1 逐字：「这两句话差得很远，件计划里不许混用」。
-//    ⇒ 读数的默认档是**答不出来**，不是「没崩过」。把它写成后者就是把一句
-//    查不出来的事说成了一个绿灯。
-//
-// ⚠ 这三句**不进 describeExitBehavior 的返回值**。那个函数被
-//   `settings/backend-section.vitest.ts` 用**等号**逐格钉着（它自己逐字写着
-//   「不是「包含」而是「等于」——「包含」会放过「在正确那句后面又加了一句错的」」），
-//   在它后面接一句就是当场红那四格。⇒ 读数是**另一句话**，由界面另起一行说。
-//
-// 〔CP2b〕占位符（{crashed} / {last} …）住表项里，由 copyText 填；Rust 那侧 `describe_health` 取的是同一批 key，
-//   两侧用的 key 集合由 `backend_policy_tests.rs::both_sides_describe_health_with_the_same_keys` 比。
-// ══════════════════════════════════════════════════════════════════════════
-
-/**
- * ① 账上一条都没有 ⇒ **无记录**。
- *
- * ⚠ 这一格刻意不说「没崩过」。今天那本账**不跨 monitor 进程**
- * （唯一的持久账 `~/.cc-monitor/bin/wrap.log` 现打 2 行、停在 07-08、两行都 rc=0，
- * 而且仓里没有任何一处写它 —— 一本没有写者的孤账）。
- *
- * 🔴 〔第四波 ST2 · `设计/70 §2.3` · 第二刀 步 6〕原来这一格是 40 字的一整句
- * （「上次崩没崩：答不出来 —— 今天没有任何东西在跨 monitor 进程地记它崩没崩，而……」）。
- * `§2.2` 逐字：**区分本身是对的，不能一起扫掉** ⇒ 区分保留、换成界面状态：
- * 格子里只写「— 无记录」，那句「为什么这不等于没崩过」进 ⓘ（[`HEALTH_UNKNOWN_WHY`]）。
- */
-export const HEALTH_UNKNOWN = copyText("backendPolicy.health.unknown");
-/**
- * ①′ 「无记录」那一格的 ⓘ —— **那条区分的全部内容住这里**（`§2.2`：不许一起扫掉）。
- * 只在 TS 这一侧（Rust 那侧的 `describe_health` 不产它），所以不进跨语言表。
- */
-export const HEALTH_UNKNOWN_WHY = copyText("backendPolicy.health.unknownWhy");
-/** ② 记到过事，但**一次崩溃都没有**。读坏了几次、被拒几次进 `[详情]`（[`HEALTH_DETAIL`]）。 */
-export const HEALTH_CLEAN = copyText("backendPolicy.health.clean");
-/** ③ 崩过。带次数与最后那一次的**短摘要**（判定 ＋ 退出状态，后端 `last_brief`，不是账行）。 */
-export function healthCrashed(crashed: number, last: string): string {
-  return copyText("backendPolicy.health.crashed", { crashed: String(crashed), last });
-}
-/** ④ 崩过但那一次没留住（表被清过 / 锁毒化）—— 也要说出口，不许拿空串糊过去。 */
-export const HEALTH_LAST_MISSING = copyText("backendPolicy.health.lastMissing");
-/**
- * ⑤ `[详情]` 里那一段：四个计数**分开**列（「读坏了」不许被算成一次崩溃），外加完整记录去哪看。
- * 只在 TS 这一侧（界面专用），不进跨语言表。
- */
-// 〔CP2b〕整句住文案表 `backendPolicy.health.detail`（四个计数是它的占位符）。
-
-/**
- * 一台机的死亡账**读数**。四个计数分开装 —— 「读坏了」不许被算成一次崩溃。
- *
- * ⚠ 那一条是 B1 那次事故的全部内容（`backend/control/local_backend.rs:696` 与 `:1348`）：
- * 一个坏字节让 `InvalidData` 与 EOF 走同一条路 ⇒ 消费者返回 = 判死 ⇒ 记一次「崩溃」，
- * 三次之后整个进程周期不再起来，日志写「崩了 3 次」——源码逐字：「**一个错误的诊断**」。
- */
-export interface BackendHealth {
-  crashed: number;
-  refused: number;
-  neverStarted: number;
-  misread: number;
-  last: string | null;
-}
-
-/**
- * 那句读数 —— 三档。**纯函数**，三档在单测里逐格钉得死。
- *
- * ⚠ 第一档的判准是「**这本账上一条记录都没有**」，不是「crashed === 0」。
- * 写成后者的话，一台从来没被记过的机器会被说成「一次都没崩过」——
- * 那正是 §0-1 点名不许混用的那两句话。
- */
-export function describeBackendHealth(h: BackendHealth): string {
-  const seen = h.crashed + h.refused + h.neverStarted + h.misread;
-  if (seen === 0) return HEALTH_UNKNOWN;
-  if (h.crashed === 0) return HEALTH_CLEAN;
-  return healthCrashed(h.crashed, h.last ?? HEALTH_LAST_MISSING);
-}
-
-/**
- * `[详情]` 里那一段。**账上一条都没有 ⇒ `null`**（那时格子里是「— 无记录」＋ ⓘ，没有详情可展开）。
- */
-export function describeHealthDetail(h: BackendHealth): string | null {
-  const seen = h.crashed + h.refused + h.neverStarted + h.misread;
-  if (seen === 0) return null;
-  return copyText("backendPolicy.health.detail", {
-    crashed: String(h.crashed),
-    refused: String(h.refused),
-    neverStarted: String(h.neverStarted),
-    misread: String(h.misread),
-  });
-}
 
 /** 那个值现读出来的三态（与后端 `exit_policy::Read::state` 逐字对齐）。 */
 export type ExitPolicyState = "chosen" | "absent" | "unreadable";
