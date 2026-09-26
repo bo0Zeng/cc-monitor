@@ -3655,7 +3655,7 @@ fn the_new_session_command_the_frontend_calls_carries_the_account_and_the_cwd_th
 // ⚠ 也别为了让这一格有东西就换一批「好过的针」—— 那是拿一条恒真的判据冒充覆盖，
 // `assert_stripper_keeps` 正是为此在第一版上当场红的（读数见 `payload_tests` 那条的注释）。
 
-/// 全量注入开关**关着**（生产默认值）的替身。缝上那一格要一个函数指针。
+/// 全量注入开关**关着**（旋钮设成 `0` 那一形；生产默认开，RL2）的替身。缝上那一格要一个函数指针。
 fn all_sessions_off() -> bool {
     false
 }
@@ -3748,23 +3748,23 @@ fn launch_now(
     launch_local(action, launcher, cwd, account, tmux_name, relay)
 }
 
-/// ★★★ 〔`设计/20 §7` 步 4〕**开关由环境变量那一个值说了算，默认关。**
+/// ★★★ 〔`设计/20 §7` 步 4 · RL2（V135 真跑过一次）〕**开关默认开，环境变量恰好是 `0` 才关。**
 ///
 /// 本条只量取值口自己（缝上那一格由上面按地址对拍）。⚠ 它**不去改进程环境**：
-/// `cargo test` 多线程跑，改 `std::env` 会串到别的判据。⇒ 只断「今天这个进程里没设它 ⇒ 关」
-/// 这一向，并把「设成 1 ⇒ 开」那一向交给**名字与比较值**的字面量对拍（取值口只有一行）。
+/// `cargo test` 多线程跑，改 `std::env` 会串到别的判据。⇒ 只断「今天这个进程里没设它 ⇒ 开」
+/// 这一向，并把「设成 0 ⇒ 关」那一向交给**名字与比较值**的字面量对拍（取值口只有一行）。
 #[test]
-fn the_all_sessions_switch_is_off_unless_that_one_variable_says_1() {
+fn the_all_sessions_switch_is_on_unless_that_one_variable_says_0() {
     assert_eq!(RELAY_ALL_SESSIONS_ENV, "CCM_RELAY_ALL_SESSIONS");
     if std::env::var_os(RELAY_ALL_SESSIONS_ENV).is_none() {
         assert!(
-            !relay_all_sessions_switch(),
-            "环境里没有这个变量，开关却是开的 —— 默认关那一格破了"
+            relay_all_sessions_switch(),
+            "环境里没有这个变量，开关却是关的 —— 默认开那一格破了（RL2 · V135）"
         );
     } else {
         // 跑判据的人自己设了它：这一向判不了，照实说出来（不是「过了」）。
         println!(
-            "〔读数〕本进程环境里设了 {RELAY_ALL_SESSIONS_ENV} ⇒ 「没设就关」这一向本趟判不了"
+            "〔读数〕本进程环境里设了 {RELAY_ALL_SESSIONS_ENV} ⇒ 「没设就开」这一向本趟判不了"
         );
     }
 }
