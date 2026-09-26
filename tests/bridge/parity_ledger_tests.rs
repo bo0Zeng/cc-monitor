@@ -1042,7 +1042,7 @@ fn the_alias_capabilities_speak_through_one_command_family() {
         .filter(|c| {
             !sigs
                 .get(*c)
-                .is_some_and(|p| p.contains("origin: origin::Origin"))
+                .is_some_and(|p| p.contains("origin: crate::origin::Origin"))
         })
         .collect();
     assert!(
