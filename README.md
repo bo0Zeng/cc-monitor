@@ -277,7 +277,6 @@ cc-monitor/
 │       ├── tasks.rs        issue #11 tasks watcher
 │       ├── history.rs      历史浏览器 IPC（流式）+ F62 从某轮建分支（原生 forkedFrom 格式）
 │       ├── launch.rs       B14-F41 终端拉起单一入口（wt.exe→PowerShell）+ 远端 ssh 拉起
-│       ├── search.rs       issue #6 历史全文搜索（内存索引 + 远端合并）
 │       ├── ssh_source.rs   issue #15 russh 远端数据源（连接/鉴权/流帧 + 跳板 + daemonless 降级）
 │       ├── remote_history.rs 远端历史浏览 + 远端全文搜索（exec 后端子命令，多机 fan-out）
 │       ├── sftp.rs         SS-D 统一 SFTP 写层（#29 后端自动部署 + F11 删除 + F10 ccm）

@@ -119,7 +119,7 @@ const UNIT: &[&str] = &[
     "tests/bridge/port_forward_tests.rs",
     "tests/bridge/remote_history_tests.rs",
     "tests/bridge/session_facts_tests.rs",
-    "tests/bridge/session_map_f13_tests.rs",
+    // 〔LOC1b · 4D〕`session_map_f13_tests.rs` 与 `session_map_linux_liveness.rs` 随 monitor 自己那份本机判活删了。
     "tests/bridge/sftp_pool_tests.rs",
     "tests/bridge/ssh_link_tests.rs",
     "tests/bridge/ssh_source_batcher_tests.rs",
@@ -221,11 +221,10 @@ const UNIT: &[&str] = &[
     "tests/views/history-actions.test.ts",
     "tests/views/history-actions.vitest.ts",
     "tests/views/history-cache.test.ts",
-    "tests/views/history-close-stops-retry.vitest.ts",
+    // 〔LOC1b · 4D〕两份等本机索引的前端判据（`history-close-stops-retry` · `history-index-wait`）随那条 1 s 重跑链删了。
     "tests/views/history-counted.vitest.ts",
     "tests/views/history-state-chip.vitest.ts", // 〔AR1〕历史状态词只住 sessionState.*
     "tests/views/history-filter-collapse.vitest.ts",
-    "tests/views/history-index-wait.vitest.ts",
     "tests/views/history-prefs.test.ts",
     "tests/views/history-search-resume.vitest.ts",
     "tests/views/history-search-truncation.vitest.ts",
@@ -389,7 +388,8 @@ const SCAN: &[&str] = &[
     "tests/bridge/polling_registry_tests.rs",
     "tests/bridge/profile_installer_handshake_doc_guard.rs",
     "tests/bridge/quote_singleton_guard_tests.rs",
-    "tests/bridge/remote_history_f06_tests.rs",
+    "tests/bridge/history_f06_tests.rs", // 〔LOC1b · 4D〕从 `remote_history_f06_tests.rs` 改名（被测随本机远端合成一条搬进 `history.rs`）
+    "tests/bridge/session_map_tests.rs", // 〔LOC1b · 4D〕从 INTEGRATION 挪来：本机活会话表的真值表 ＋ 两条读源码的接线判据
     // 〔C4d〕`tests/bridge/remote_history_kr83_tests.rs` 删了（`K-R83` 那三条随 join 搬进后端 `history_join_tests.rs`）。
     "tests/bridge/remote_relay_tests.rs",
     "tests/bridge/remote_write_registry_tests.rs",
@@ -609,9 +609,7 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/profile_installer_tests.rs",
     "tests/bridge/pubkey_tests.rs",
     "tests/bridge/scanning_guard_registry_tests.rs",
-    "tests/bridge/search_tests.rs",
-    "tests/bridge/session_map_linux_liveness.rs",
-    "tests/bridge/session_map_tests.rs",
+    // 〔LOC1b · 4D〕`search_tests.rs` 随 monitor 内存索引删了；`session_map_linux_liveness.rs` 随本机判活删了；`session_map_tests.rs` 挪进 SCAN（判据里多了读源码的那两条）。
     "tests/bridge/sftp_tests.rs",
     "tests/bridge/shared_crate_registry_tests.rs",
     "tests/bridge/shell_dialect_tests.rs",

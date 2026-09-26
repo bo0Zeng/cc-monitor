@@ -236,9 +236,19 @@ pub(crate) fn list_sessions_into(
 ///
 /// `candidate` 相对路径按 root 拼；绝对路径直接用。
 fn fence_under_projects(agent_home: &Path, candidate: &Path) -> Result<std::path::PathBuf, String> {
-    let root = projects_root(agent_home)
+    fence_under_root(&projects_root(agent_home), candidate)
+}
+
+/// 〔LOC1b · 4D〕围栏的本体（从 [`fence_under_projects`] 里提出来，根是参数）：Claude 的 `projects/` 与
+/// 各家合成历史面给的记录根（[`validate_session_path_among`]）走**同一份** —— 仍是全文件唯一的一处 `canonicalize`（E3）。
+/// 报错那句话里的名字取根目录自己的名字（Claude 那一个 ⇒ 与此前逐字相同）。
+fn fence_under_root(root: &Path, candidate: &Path) -> Result<std::path::PathBuf, String> {
+    let what = root
+        .file_name()
+        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+    let root = root
         .canonicalize()
-        .map_err(|e| format!("projects root unavailable: {e}"))?;
+        .map_err(|e| format!("{what} root unavailable: {e}"))?;
     let joined = if candidate.is_absolute() {
         candidate.to_path_buf()
     } else {
@@ -249,7 +259,7 @@ fn fence_under_projects(agent_home: &Path, candidate: &Path) -> Result<std::path
         .map_err(|e| format!("path unavailable: {e}"))?;
     if !target.starts_with(&root) {
         return Err(format!(
-            "refusing to access outside projects dir: {}",
+            "refusing to access outside {what} dir: {}",
             target.display()
         ));
     }
@@ -358,11 +368,34 @@ pub(crate) fn list_subagents_into(
     Ok(())
 }
 
+/// 按路径读一份会话之前的围栏：Claude 的 `projects/` ∪ 注册表里各家合成历史面给的记录根（〔LOC1b · 4D〕）。
 fn validate_session_path(
     agent_home: &Path,
     jsonl_path: &str,
 ) -> Result<std::path::PathBuf, String> {
-    let target = fence_under_projects(agent_home, Path::new(jsonl_path))?;
+    validate_session_path_among(agent_home, &crate::agents::history_roots(), jsonl_path)
+}
+
+/// [`validate_session_path`] 的本体，「另外认哪几个根」是参数（判据喂临时目录，不去动进程环境）。
+///
+/// 〔LOC1b · 4D〕历史浏览器本机远端都会列出 Codex 会话（C4d 起后端合成），而本机冷读也改走后端之后，
+/// 这道围栏只认 `projects/` ⇒ 列得出、打不开。根由适配层给（`HistoryFace.root`），这里不写死路径。
+/// 另外那几个根**只收绝对路径**（相对路径的意思只在 `projects/` 下有定义）；
+/// 都不在 ⇒ 回 `projects/` 那一句拒绝（它是今天所有调用方认得的那一句）。
+fn validate_session_path_among(
+    agent_home: &Path,
+    extra_roots: &[std::path::PathBuf],
+    jsonl_path: &str,
+) -> Result<std::path::PathBuf, String> {
+    let candidate = Path::new(jsonl_path);
+    let target = match fence_under_projects(agent_home, candidate) {
+        Ok(t) => t,
+        Err(refused) if candidate.is_absolute() => extra_roots
+            .iter()
+            .find_map(|r| fence_under_root(r, candidate).ok())
+            .ok_or(refused)?,
+        Err(refused) => return Err(refused),
+    };
     if !crate::agents::claudecode::records::is_session_file(&target) {
         return Err("refusing to read non-jsonl file".into());
     }
