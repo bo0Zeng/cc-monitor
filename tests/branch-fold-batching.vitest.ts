@@ -375,7 +375,7 @@ describe("C1 · 差量重折 == 从零折（`设计/10 §3.4`）", () => {
     }
     expect(checked).toBe(300);
     expect(foldedSeen, "反空真：序列里真出现过折叠段").toBeGreaterThan(50);
-  });
+  }, 30_000); // 满载下全量套件里跑过 5 s
 
   it("主线没变 / 只在尾巴长一条主线卡：零搬动（DOM 一次写都没有）", () => {
     const el = document.createElement("div");
