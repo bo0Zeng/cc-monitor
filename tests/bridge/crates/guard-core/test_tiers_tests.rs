@@ -483,6 +483,9 @@ const SCAN: &[&str] = &[
 
 /// 集成层：碰 OS（起进程 · 套接字 · 真文件系统写 · 临时目录）。
 const INTEGRATION: &[&str] = &[
+    "tests/backend/control/overwrite_atomic_tests.rs", // 〔HX1〕W1 ulimit -f 下子进程写到一半被 SIGXFSZ 杀，目标仍是旧整份
+    "tests/backend/drain_tests.rs", // 〔HX1〕D2 真子进程 ＋ 真 SIGTERM：在飞阻塞命令做完才退
+    "tests/bridge/stop_grace_tests.rs", // 〔HX1〕S1 真 sh 两形：trap exit ⇒ Stopped · trap '' ⇒ Forced
     "tests/backend/accounts/upstream/creds_tests.rs",
     "tests/backend/accounts/upstream/endpoint_tests.rs", // 〔US1〕上游选择出的两份成品（金样那条读夹具文件）
     "tests/backend/accounts/upstream/file_face_tests.rs",
@@ -716,6 +719,16 @@ enum Trigger {
 /// 真机层：逐条登记（`(文件, 测试名 / TS 那一处的条件, 触发者)`）。
 /// 人群 = 两棵 Rust 测试树里每一条 `#[ignore]` ＋ TS 测试里每一处 `skipIf` / `runIf` / `.skip(`。
 const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
+    (
+        "tests/backend/control/overwrite_atomic_tests.rs",
+        "w1_child",
+        Trigger::Filter { by: "tests/backend/control/overwrite_atomic_tests.rs", needle: "control::files_write::overwrite_atomic_tests::w1_child" },
+    ),
+    (
+        "tests/backend/drain_tests.rs",
+        "d2_child_harness",
+        Trigger::Filter { by: "tests/backend/drain_tests.rs", needle: "inbound::drain_tests::d2_child_harness" },
+    ),
     (
         "tests/backend/plugin_walk_fixture.rs",
         "a_plugin_started_here_never_sees_the_listen_port_or_token_inner",
