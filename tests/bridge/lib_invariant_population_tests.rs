@@ -341,6 +341,14 @@ type QuoteRow = (
     &'static str,
 );
 const QUOTE_SITES: &[QuoteRow] = &[
+    // 〔DUP2 · J4〕cc-acct-iso 步骤那一行（帧命令 `acct-iso-cmd`，原先界面自己拼）：账号名过 `account_name_ok`（§47 ①），
+    //   凭据快照路径过 `check_snapshot_path`（规则照界面原样搬：非空 · 无 `"` · 无控制符 · 不以 `-` 开头），再走唯一的 quote。
+    ("src/backend/accounts/iso.rs", 6, &[
+        ("src/bridge/crates/shell-quote-core/src/lib.rs", "account_name_ok"),
+        ("src/backend/accounts/iso.rs", "check_snapshot_path"),
+     ],
+     "",
+     ""),
     // 〔TL3 · §47〕那台后端的路径在可达表唯一的写口 `remote_ask::register` 先过放行判定（后端那一份同族判定），第四列清空。
     ("src/backend/asset_sync.rs", 3, &[("src/backend/observe/accounts_query.rs", "is_safe_config_dir")],
      "",
