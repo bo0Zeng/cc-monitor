@@ -75,8 +75,16 @@ export class RecordTimeline {
   insert(entry: TimelineEntry): number {
     const idx = this.binarySearchInsertIdx(entry.seq);
     this.entries.splice(idx, 0, entry);
-    const nextEntry = this.entries[idx + 1];
-    this.stream.insertNode(entry.element, nextEntry?.element ?? null);
+    // 〔W5-RENDER R6 · `设计/10 §3.5` D4〕锚点 = 第一个**还在这条流里**的后继。已离场的（元素被摘出 DOM
+    // 却没出账）当场出账并出声 —— 原来拿它当锚，`insertNode` 只能降级成末尾追加，DOM 就此错序（rebuild 不重排卡，
+    // 不会自愈）。今天所有摘卡的路都同步出账（reconcile · 骨架占位），走到这里说明又多了一条没出账的路。
+    const content = this.stream.contentElement;
+    const j = idx + 1;
+    while (j < this.entries.length && !content.contains(this.entries[j].element)) {
+      console.warn(`[timeline] seq ${this.entries[j].seq} 的元素已不在流里却没出账 —— 当场出账（D4）`);
+      this.entries.splice(j, 1);
+    }
+    this.stream.insertNode(entry.element, this.entries[j]?.element ?? null);
     return idx;
   }
 
@@ -118,8 +126,8 @@ export class RecordTimeline {
   /**
    * F40b S-6:按 element 删 entry。reconcilePendingToolResults 把孤儿 fallback 卡
    * 从 DOM remove 后必须同步删账——否则该 entry 之后可能被二分插入选作 anchor
-   * (元素已不在 DOM → insertNode 只能降级尾部追加,顺序错位)。线性扫描(单次
-   * reconcile 移除数 ≤ pending 数,可忽略)。
+   * (〔W5-RENDER R6〕`insert` 现在会把这种离场条目当场出账并出声,不再降级尾部追加;同步删账仍是正路)。
+   * 线性扫描(单次 reconcile 移除数 ≤ pending 数,可忽略)。
    */
   removeByElement(el: HTMLElement): void {
     const idx = this.entries.findIndex((e) => e.element === el);
