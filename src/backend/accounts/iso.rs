@@ -4,6 +4,7 @@
 //! |---|---|---|
 //! | `acct-iso-status` | 装没装、装在哪 | monitor 经 SSH 跑 `PATH="$HOME/.local/bin:$PATH" command -v cc-acct-iso` |
 //! | `acct-iso-shellinit` | `cc-acct-iso shellinit` 吐的那段 rc 片段（原样） | monitor 经 SSH 跑 `cc-acct-iso shellinit` |
+//! | `acct-iso-cmd`（〔DUP2 · J4〕） | 一个部署 / 维护步骤在终端里要跑的那**一行**（已校验、已 quote；**只出这一行，不起进程、不碰盘**） | 同一条（本机远端都问那台自己的后端） |
 //!
 //! 〔LOC1a〕此前是两条 argv 形一次性子命令，唯一调用方是 monitor 每问 exec 一次本机后端（`local_query`〔散文墓碑〕，删了）；
 //! 本机那两问改走 `<local>` 长连接之后 argv 形那两臂零调用方 ⇒ 退役，只留帧面这一份（`设计/05 §14.6`）。
@@ -153,6 +154,164 @@ pub(crate) fn answer_wire_status() -> Result<serde_json::Value, (&'static str, S
 /// 〔LOC1a · 第四波 4D〕帧面 `acct-iso-shellinit → {snippet}`：片段原样（围栏校验仍归 monitor，理由见模块头注「诚实边界」）。
 pub(crate) fn answer_wire_shellinit() -> Result<serde_json::Value, (&'static str, String)> {
     shellinit_now().map(|snippet| serde_json::json!({ "snippet": snippet }))
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 〔DUP2 · 主会话 09-26 裁 J4〕`acct-iso-cmd`：**后端出这条命令，界面的预览与弹终端都经 `chan.call` 问它**。
+//
+// 此前这一行在界面里拼（`settings/acct-deploy.ts` 的一份 POSIX 单引号 ＋ 一个命令构造器 ＋ 一道快照路径校验）——
+// `设计/01 §1.1`「命令串……都不在前端」· `设计/90 §3` 判据 2（那份单引号是 `shell_quote_core::posix_quote` 的第二份）。
+// 先例：`ccm-print`（别名预览经通道问后端，W5-ALIAS）。
+//
+// 形状：入 `{step, name?, credFile?}`（键集合按 step 严格收）→ 回 `{cmd}`。只出这一行：**不起进程、不碰盘**
+// （跑它的是用户自己面前的那个终端 —— DESIGN §6：动凭据的一切走终端、用户看着跑）。
+// 两层校验照原样搬（规则不变，只换住址）：账号名过 `shell_quote_core::account_name_ok`（J18 那一份，与建号工具逐字同 ——
+// 原先界面那份比它宽）；快照路径 = 非空 · 无 `"` · 无 C0 / DEL / C1 · 不以 `-` 开头（`-` 开头会被 cc-acct-iso 当成选项，
+// 单引号挡不住选项解析；`"` 与控制符是 monitor `launch.rs` 远端那条命令的拒收面）；然后唯一的 quote。
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// `acct-iso-cmd` 入参里快照路径最长多少字节（表单产出的远小于它）。超了 ⇒ 契约错（`bad_args`）。
+pub(crate) const CMD_MAX_PATH_BYTES: usize = 4096;
+
+/// 一个部署 / 维护步骤（线上 `step` 那一格的七个取值）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Step {
+    /// `init <名>`：dry-run，零落盘。
+    InitPreview(String),
+    /// `init <名> --apply`：落盘迁移（用户在终端里看着跑）。
+    InitApply(String),
+    Verify,
+    Shellinit,
+    /// `sync --apply`。
+    SyncApply,
+    /// `add <名> [--from-credentials <快照>] --apply`。
+    AddApply {
+        name: String,
+        cred_file: Option<String>,
+    },
+    /// `run <名>`：这个号唯一的登录入口（去 `/login`）。
+    Login(String),
+}
+
+fn malformed(detail: &str) -> (&'static str, String) {
+    ("bad_args", crate::common::contract::malformed(detail))
+}
+
+/// 入参 ⇒ [`Step`]（**纯函数**）。形状不对（不认识的 step · 该有的格没有 · 多格 · 类型不对 · 超上界）⇒ `bad_args`（契约错，英文诊断）；
+/// 账号名 / 快照路径过不了 ⇒ `refused`（句子走表：用户真填得出来）。
+pub(crate) fn parse_cmd_args(args: &serde_json::Value) -> Result<Step, (&'static str, String)> {
+    let obj = args
+        .as_object()
+        .ok_or_else(|| malformed("args must be an object {step, name?, credFile?}"))?;
+    let step = obj
+        .get("step")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| malformed("missing `step` (a string)"))?;
+    let (needs_name, may_cred) = match step {
+        "init-preview" | "init-apply" | "login" => (true, false),
+        "add-apply" => (true, true),
+        "verify" | "shellinit" | "sync-apply" => (false, false),
+        other => return Err(malformed(&format!("unknown `step`: {other:?}"))),
+    };
+    for k in obj.keys() {
+        let known = k == "step" || (k == "name" && needs_name) || (k == "credFile" && may_cred);
+        if !known {
+            return Err(malformed(&format!(
+                "unexpected field `{k}` with step {step:?}"
+            )));
+        }
+    }
+    let name = if needs_name {
+        let n = obj
+            .get("name")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| malformed(&format!("step {step:?} needs `name` (a string)")))?;
+        if !shell_quote_core::account_name_ok(n) {
+            return Err((
+                "refused",
+                copy_text(
+                    "beIso.cmd.badName",
+                    &[
+                        ("name", &format!("{n:?}")),
+                        ("max", &shell_quote_core::ACCOUNT_NAME_MAX.to_string()),
+                    ],
+                ),
+            ));
+        }
+        n.to_string()
+    } else {
+        String::new()
+    };
+    let cred_file = match obj.get("credFile") {
+        None => None,
+        Some(v) => {
+            let p = v
+                .as_str()
+                .ok_or_else(|| malformed("`credFile` must be a string"))?;
+            if p.len() > CMD_MAX_PATH_BYTES {
+                return Err(malformed(&format!(
+                    "`credFile` is too long: {} bytes (max {CMD_MAX_PATH_BYTES})",
+                    p.len()
+                )));
+            }
+            check_snapshot_path(p)?;
+            Some(p.to_string())
+        }
+    };
+    Ok(match step {
+        "init-preview" => Step::InitPreview(name),
+        "init-apply" => Step::InitApply(name),
+        "login" => Step::Login(name),
+        "add-apply" => Step::AddApply { name, cred_file },
+        "verify" => Step::Verify,
+        "shellinit" => Step::Shellinit,
+        _ => Step::SyncApply,
+    })
+}
+
+/// 快照路径那道校验（规则逐条照原样搬，见本节头注）。
+fn check_snapshot_path(p: &str) -> Result<(), (&'static str, String)> {
+    let shown = format!("{p:?}");
+    let said = if p.is_empty() {
+        copy_text("beIso.cmd.snapshotEmpty", &[])
+    } else if p.contains('"') {
+        copy_text("beIso.cmd.snapshotQuote", &[("path", &shown)])
+    } else if p
+        .chars()
+        .any(|c| matches!(c, '\u{0}'..='\u{1f}' | '\u{7f}'..='\u{9f}'))
+    {
+        copy_text("beIso.cmd.snapshotControl", &[("path", &shown)])
+    } else if p.starts_with('-') {
+        copy_text("beIso.cmd.snapshotDash", &[("path", &shown)])
+    } else {
+        return Ok(());
+    };
+    Err(("refused", said))
+}
+
+/// [`Step`] ⇒ 终端里那一行（**纯函数**；值一律过唯一的 quote `shell_quote_core::posix_quote`）。
+pub(crate) fn render_cmd(step: &Step) -> String {
+    let q = shell_quote_core::posix_quote;
+    match step {
+        Step::InitPreview(n) => format!("{TOOL} init {}", q(n)),
+        Step::InitApply(n) => format!("{TOOL} init {} --apply", q(n)),
+        Step::Verify => format!("{TOOL} verify"),
+        Step::Shellinit => format!("{TOOL} shellinit"),
+        Step::SyncApply => format!("{TOOL} sync --apply"),
+        Step::AddApply { name, cred_file } => match cred_file {
+            Some(p) => format!("{TOOL} add {} --from-credentials {} --apply", q(name), q(p)),
+            None => format!("{TOOL} add {} --apply", q(name)),
+        },
+        Step::Login(n) => format!("{TOOL} run {}", q(n)),
+    }
+}
+
+/// 〔DUP2 · J4〕帧面 `acct-iso-cmd → {cmd}`（CLI 面由帧面自动派生，同名 `--acct-iso-cmd`，入参从 stdin 读）。
+pub(crate) fn answer_wire_cmd(
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, (&'static str, String)> {
+    let step = parse_cmd_args(args)?;
+    Ok(serde_json::json!({ "cmd": render_cmd(&step) }))
 }
 
 #[cfg(test)]

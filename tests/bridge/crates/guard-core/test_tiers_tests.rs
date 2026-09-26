@@ -67,7 +67,6 @@ const UNIT: &[&str] = &[
     "tests/accounts.vitest.ts",
     "tests/backend-policy.vitest.ts",
     "tests/backend/accounts/upstream/table_tests.rs",
-    "tests/backend/accounts/iso_tests.rs",
     "tests/backend/agents/claudecode/records_tests.rs",
     "tests/backend/agents/claudecode/resume_tests.rs",
     "tests/backend/agents/codex/parse_tests.rs",
@@ -249,6 +248,7 @@ const UNIT: &[&str] = &[
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
 const SCAN: &[&str] = &[
+    "tests/backend/accounts/iso_tests.rs", // 〔DUP2 · J4〕UNIT → SCAN：`acct-iso-cmd` 对跨语言金样（`include_str!` 读 `tests/__fixtures__/acct-iso-cmd.golden.json`）
     "tests/remote-launch.test.ts", // 〔LR2〕UNIT → SCAN：五个 builder 删后剩下的格读源码 / 夹具（判别器判 SCAN）
     "tests/tasks-decode.vitest.ts", // 〔LOC1a〕读跨语言金样 tasks-list.golden.json
     "tests/bridge/remote_branch_tests.rs", // 〔LOC1a〕UNIT → SCAN：改走 `<local>` 长连接后判据读源码 / 脚本假后端（判别器判 SCAN）

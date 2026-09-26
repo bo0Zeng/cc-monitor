@@ -103,3 +103,139 @@ fn the_entry_point_keeps_its_answer_contract() {
         ),
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 〔DUP2 · 主会话 09-26 裁 J4〕`acct-iso-cmd`：后端出那一行，界面零拼 shell 串。
+// 要求住址：`设计/01 §1.1`「命令串……都不在前端」· `设计/90 §3` 判据 2 · `src/doc/IPC-PROTOCOL.md` §10 `acct-iso-cmd` 一节。
+// 期望是**手写**的（原先界面那份 `buildAcctIsoCmd` 的逐字期望原样搬来，输出一个字节没变）。
+// ═══════════════════════════════════════════════════════════════════════════
+
+fn cmd_of(args: serde_json::Value) -> Result<String, (&'static str, String)> {
+    answer_wire_cmd(&args).map(|v| v["cmd"].as_str().expect("cmd 是字符串").to_string())
+}
+
+/// 七个步骤各一行，逐字（与界面那份原先的期望同字节）。
+#[test]
+fn every_step_renders_the_same_line_the_front_end_used_to_build() {
+    use serde_json::json;
+    let cases = [
+        (
+            json!({"step":"init-preview","name":"z"}),
+            "cc-acct-iso init 'z'",
+        ),
+        (
+            json!({"step":"init-apply","name":"z"}),
+            "cc-acct-iso init 'z' --apply",
+        ),
+        (json!({"step":"verify"}), "cc-acct-iso verify"),
+        (json!({"step":"shellinit"}), "cc-acct-iso shellinit"),
+        (json!({"step":"sync-apply"}), "cc-acct-iso sync --apply"),
+        (
+            json!({"step":"add-apply","name":"b"}),
+            "cc-acct-iso add 'b' --apply",
+        ),
+        (
+            json!({"step":"add-apply","name":"b","credFile":"/home/z/.claude/accounts/b.json"}),
+            "cc-acct-iso add 'b' --from-credentials '/home/z/.claude/accounts/b.json' --apply",
+        ),
+        (json!({"step":"login","name":"z"}), "cc-acct-iso run 'z'"),
+    ];
+    for (args, want) in cases {
+        assert_eq!(cmd_of(args.clone()).as_deref(), Ok(want), "{args}");
+    }
+    // 单引号进路径：唯一的 quote 断开成 `'\''`，结果不含双引号（monitor `launch.rs` 远端命令那道拒收面收得下）。
+    let got = cmd_of(json!({"step":"add-apply","name":"b","credFile":"/p/it's/x.json"})).unwrap();
+    assert!(got.contains("'/p/it'\\''s/x.json'"), "{got}");
+    assert!(!got.contains('"'), "{got}");
+}
+
+/// 账号名过共享那一份（与建号工具逐字同）：真实名字放行；`.` · 33 位 · `-` / `_` 开头 · 元字符拒（`refused`，句子点出值）。
+#[test]
+fn the_account_name_is_judged_by_the_one_shared_rule() {
+    use serde_json::json;
+    for ok in ["z", "work", "a_b-c", "A1", &"a".repeat(32)] {
+        cmd_of(json!({"step":"login","name":ok}))
+            .unwrap_or_else(|e| panic!("{ok:?} 被拒了：{e:?}"));
+    }
+    for bad in ["", "z.edu", "-x", "_x", "a;rm", "a b", &"a".repeat(33)] {
+        let e = cmd_of(json!({"step":"init-apply","name":bad})).expect_err(bad);
+        assert_eq!(e.0, "refused", "{bad:?}：{e:?}");
+        assert!(
+            e.1.contains(&format!("{bad:?}")),
+            "{bad:?}：那一句没点出是哪个值：{}",
+            e.1
+        );
+    }
+}
+
+/// 快照路径那道校验（规则照原样搬）：`"` · 控制符 · `-` 开头 · 空 各拒，句子各不相同；普通路径放行。
+#[test]
+fn the_snapshot_path_keeps_its_four_refusals() {
+    use serde_json::json;
+    let with = |p: &str| cmd_of(json!({"step":"add-apply","name":"b","credFile":p}));
+    with("/home/u/snap.json").expect("普通路径该放行");
+    let said: Vec<String> = ["", "a\"b", "a\u{7}b", "a\u{85}b", "--apply"]
+        .iter()
+        .map(|p| {
+            let e = with(p).expect_err(p);
+            assert_eq!(e.0, "refused", "{p:?}：{e:?}");
+            e.1
+        })
+        .collect();
+    // 控制符那两形（C0 · C1）说的是同一类；空 · 双引号 · 控制符 · `-` 开头四类两两不同。
+    assert!(
+        said[2].contains("控制字符") && said[3].contains("控制字符"),
+        "{said:?}"
+    );
+    let distinct: std::collections::BTreeSet<&str> = [
+        said[0].as_str(),
+        said[1].as_str(),
+        said[2].split('：').next().unwrap_or(""),
+        said[4].as_str(),
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(distinct.len(), 4, "{said:?}");
+}
+
+/// 契约错（调用方是界面，用户手敲不出来）⇒ `bad_args`：不认识的 step · 该带的没带 · 不该带的带了 · 类型不对 · 超上界。
+#[test]
+fn a_malformed_request_is_a_contract_error_not_a_refusal() {
+    use serde_json::json;
+    for bad in [
+        json!("不是对象"),
+        json!({}),
+        json!({"step":"deploy"}),
+        json!({"step":"login"}),
+        json!({"step":"verify","name":"z"}),
+        json!({"step":"init-apply","name":"z","credFile":"/p"}),
+        json!({"step":"add-apply","name":"b","credFile":1}),
+        json!({"step":"add-apply","name":"b","extra":true}),
+        json!({"step":"add-apply","name":"b","credFile":"/".repeat(CMD_MAX_PATH_BYTES + 1)}),
+    ] {
+        let e = cmd_of(bad.clone()).expect_err(&bad.to_string());
+        assert_eq!(e.0, "bad_args", "{bad}：{e:?}");
+    }
+}
+
+/// 跨语言金样：`tests/__fixtures__/acct-iso-cmd.golden.json` 的每一问喂给**生产**的 `answer_wire_cmd`，
+/// 答 == 金样里手写的 `cmd`（或拒码 == `code`）。界面那一侧拿同一份当「后端会怎么答」（`tests/test-support/acct-iso-cmd-fake.ts`）。
+#[test]
+fn the_acct_iso_cmd_answers_match_the_cross_language_golden() {
+    let g: serde_json::Value =
+        serde_json::from_str(include_str!("../../__fixtures__/acct-iso-cmd.golden.json"))
+            .expect("金样读不出来");
+    let cases = g["cases"].as_array().expect("金样缺 cases");
+    assert!(cases.len() >= 10, "金样只有 {} 条 —— 读坏了", cases.len());
+    let mut wrong = Vec::new();
+    for c in cases {
+        let got = answer_wire_cmd(&c["args"]);
+        match (c["cmd"].as_str(), c["code"].as_str(), &got) {
+            (Some(want), None, Ok(v))
+                if v["cmd"] == want && v.as_object().map(|o| o.len()) == Some(1) => {}
+            (None, Some(code), Err((got_code, _))) if *got_code == code => {}
+            _ => wrong.push(format!("{} ⇒ {got:?}", c["args"])),
+        }
+    }
+    assert_eq!(wrong, Vec::<String>::new(), "后端的答与金样对不上");
+}

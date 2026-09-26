@@ -652,6 +652,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "`ccm-print` 交来的一条别名里一个参数的字节数（别名表单产出的远小于它）",
         "拒收+回错",
     ),
+    // 〔DUP2 · J4〕cc-acct-iso 步骤那一行（`acct-iso-cmd`）入参里凭据快照路径最长多少。
+    (
+        "src/backend/accounts/iso.rs",
+        "CMD_MAX_PATH_BYTES",
+        4096,
+        "`acct-iso-cmd` 交来的凭据快照路径的字节数（新建账号表单产出的远小于它）",
+        "拒收+回错",
+    ),
     // 〔RM1a · 第四波〕「足迹」的这台机器那一半（`footprint-probe`，只读）那两个数。
     (
         "src/backend/footprint.rs",

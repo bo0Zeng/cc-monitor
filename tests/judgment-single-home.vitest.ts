@@ -171,15 +171,19 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     needles: [{ text: "[;|&$`<>\\r\\n]", count: 0 }],
   },
   J4: {
-    what: "POSIX 单引号",
-    homes: ["shell-quote-core::posix_quote"],
-    status: "open",
-    defs: ["sq"],
-    // 〔LR2 合入〕`shell-quote.ts::posixQuote` 随 TS 兜底一族删了 ⇒ 挪进 gone、指纹 2 → 1。
+    what: "POSIX 单引号 ＋ cc-acct-iso 那几条命令串",
+    // 〔DUP2 · 主会话 09-26 裁 J4〕后端出这条命令（帧命令 `acct-iso-cmd`，`src/backend/accounts/iso.rs::render_cmd`，值过唯一的 quote），
+    //   界面的逐字预览与弹终端都经 `chan.call` 问它 —— TS 零拼 shell 串。`acct-deploy.ts` 的 `sq` · `buildAcctIsoCmd` ·
+    //   快照路径那道 `validatePathArg` 一起删；账号名的即时反馈读生成物（J18）。
+    homes: ["shell-quote-core::posix_quote", "src/backend/accounts/iso.rs::render_cmd"],
+    status: "zero",
+    defs: ["sq", "buildAcctIsoCmd", "validatePathArg"],
+    // 〔LR2 合入〕`shell-quote.ts::posixQuote` 随 TS 兜底一族删了 ⇒ 挪进 gone。
     gone: ["posixQuote"],
-    needles: [{ text: "'\\\\''", count: 1 }],
-    owner: "主会话拍（DUP1.md §4 ①）",
-    why: "acct-deploy.ts::sq 驱动新建账号表单的逐字预览（即时反馈）",
+    needles: [
+      { text: "'\\\\''", count: 0 },
+      { text: "cc-acct-iso init", count: 0 },
+    ],
   },
   J5: {
     what: "session id 形状",

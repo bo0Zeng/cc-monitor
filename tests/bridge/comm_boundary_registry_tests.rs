@@ -2481,11 +2481,13 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     //    （合并 TAP 时从单独一处 `watchAccountsChanged` 收回 `bindEvents` 的 `plan`，照 TAP 那一形）⇒ 仍是 1。
     // 〔W5-ALIAS · 第五波先行〕＋1（合并主线 a6b10281 之后 34 → 35；那一拍两边各自写成 34、git 当同一行合了，现打 35）：`settings/machine-aliases.ts::previewAlias` 一处（别名预览 `ccm-print`，
     //    问本机常驻后端「这条别名实际会执行什么」，`设计/71 §2.3`）；显式给期限（`PREVIEW_BUDGET_MS`）。
+    // 〔DUP2 · J4〕36 → 37：`settings/acct-deploy.ts::askAcctIsoCmd` 一处（cc-acct-iso 步骤那一行问那台后端 `acct-iso-cmd`；
+    //    新建表单预览 · 启用向导预览 · 弹终端三个用处都经这一处）；显式给期限（`CMD_BUDGET_MS`）。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 36usize),
+            ("chan.call", 37usize),
             ("chan.subscribe", 1usize),
             ("subscribe", 1usize)
         ]
