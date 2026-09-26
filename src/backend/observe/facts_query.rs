@@ -21,7 +21,7 @@
 //! |---|---|
 //! | `forkedFrom` | `history_query::fork_origin`（与历史会话行同一个函数）；首条命中即锁定 |
 //! | `touchedFiles` | `assistant` 记录里写类工具（[`EDIT_TOOL_PATH_KEYS`]）的路径，去重、**近因序**（再碰一次移到末尾），至多 [`TOUCHED_FILES_KEEP`] 条 |
-//! | `agents` | `assistant` 里 agent 工具（[`AGENT_TOOLS`]）的 `tool_use` ⇒ `running`；`user` 里命中的 `tool_result` ⇒ `done`；超 [`AGENTS_SOFT_KEEP`] 从最老删非 running，再超 [`AGENTS_HARD_KEEP`] 删最老 |
+//! | `agents` | `assistant` 里 agent 工具（`agent_tools_core::CLAUDE_AGENT_TOOLS`）的 `tool_use` ⇒ `running`；`user` 里命中的 `tool_result` ⇒ `done`；超 [`AGENTS_SOFT_KEEP`] 从最老删非 running，再超 [`AGENTS_HARD_KEEP`] 删最老 |
 //! | `usage` | `assistant` 记录的 `message.usage` 三项 prompt token 之和 > 0 ⇒ `{promptTokens, model}`，文件序最后一条胜 |
 //!
 //! 「中止」不在这里：它是「会话落到不忙那一刻」这个**事件**的反应（`10 §2.2`「刚刚发生了什么留在流上」），住前端。
@@ -46,10 +46,8 @@ use serde_json::Value;
 // 〔DUP2 · 主会话 09-26 裁 J19〕agent 工具名**只有一份**，住共享 crate `agent_tools_core`（monitor 渲染 agent 卡用同一份）。
 //   此前这里一份、monitor `adapter.rs` 一份，两半不许编译期互咬（`设计/90 §0` 的 `C2`）、当时没有能放它的共享 crate ⇒
 //   靠一条异源对拍钉着（见 `调研/第四波记录/STC.md §1.3`）；今天按构造同一份，那条对拍退役。
+//   本文件不再留本地别名：认工具名那一处直呼 `agent_tools_core::is_claude_agent_tool`（留一个别名只会是死码）。
 // 写类工具表**只有这一份**（前端 `panorama/session-files.ts` 整份随搬家删了）。
-
-/// 展开 = 子会话的工具（Claude Code 的 `Task`，新版改名 `Agent`，两个都认）—— 共享那一份的别名，不是副本。
-pub(crate) const AGENT_TOOLS: &[&str] = &agent_tools_core::CLAUDE_AGENT_TOOLS;
 
 /// 写类工具 → 取路径的键。Edit / Write / MultiEdit 用 `file_path`；NotebookEdit 用 `notebook_path`。
 /// 与渲染那边的「写类」（`adapter.rs::CLAUDE_DIFF_TOOLS`，行级 diff）**不是同一个问题**：

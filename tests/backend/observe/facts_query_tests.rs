@@ -295,7 +295,7 @@ fn a_prior_of_the_wrong_shape_is_refused() {
 
 #[test]
 fn the_two_lookups_answer_from_their_tables() {
-    for t in AGENT_TOOLS {
+    for t in agent_tools_core::CLAUDE_AGENT_TOOLS {
         assert!(agent_tools_core::is_claude_agent_tool(t));
     }
     assert!(!agent_tools_core::is_claude_agent_tool("Bash"));
