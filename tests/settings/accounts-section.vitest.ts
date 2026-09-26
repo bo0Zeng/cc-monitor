@@ -89,6 +89,8 @@ function acct(p: Partial<Account>): Account {
     mode: "isolated",
     exists: true,
     loggedIn: true,
+    authKind: "subscription",
+    authReady: true,
     ...p,
   };
 }
@@ -276,7 +278,7 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
 
   it("当前账号不可选（未登录）→ 横幅如实说不可用 + 幽灵头像，不装作在生效", async () => {
     fetchAccountsMock.mockResolvedValue(
-      state({ accounts: [acct({ name: A, loggedIn: false })], defaultName: A }),
+      state({ accounts: [acct({ name: A, loggedIn: false, authReady: false })], defaultName: A }),
     );
     const el = await mount();
     const banner = el.querySelector(".accounts-current-banner")!;
@@ -384,7 +386,7 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
   it("★ KA6a 反面：缺凭据的订阅号仍写「未登录」（不许被 api-key 那一支一起放宽）", async () => {
     fetchAccountsMock.mockResolvedValue(
       ready({
-        accounts: [acct({ name: A }), acct({ name: B, loggedIn: false, authKind: "subscription" })],
+        accounts: [acct({ name: A }), acct({ name: B, loggedIn: false, authReady: false, authKind: "subscription" })],
       }),
     );
     const el = await mount();

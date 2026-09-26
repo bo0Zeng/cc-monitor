@@ -44,3 +44,93 @@ fn a_posix_free_path_is_absolute_without_parent_segments_and_nothing_quote_canno
         assert!(!posix_free_path_ok(bad), "坏值放行了：{bad:?}");
     }
 }
+
+/// 〔DUP1 · `INVARIANTS §47` ①〕sid：今天各处规则的交集，**正反各一格**（§47「拒过头也算违反」）。
+/// 要求住址：`设计/90 §3` 判据 2「凡是有对应 `*-core` crate 的判定，TS 侧零实现」· `INVARIANTS §47` ①「字符集白名单（闭集，默认拒）＋ 不许 `-` 开头（选项注入）＋ 有长度上界的就钉上界」。
+#[test]
+fn a_session_id_is_a_short_plain_token_that_never_starts_with_a_dash() {
+    for good in [
+        "0473c3a0-1111-2222-3333-444455556666",
+        "a",
+        "A1-b2",
+        &"a".repeat(SESSION_ID_MAX),
+    ] {
+        assert!(session_id_ok(good), "真实好值被拒了：{good:?}");
+    }
+    for bad in [
+        "",
+        "-abc",
+        "--dangerously-skip-permissions",
+        "a_b",
+        "a.b",
+        "a/b",
+        "../etc",
+        "a b",
+        "a;b",
+        "会话",
+        &"a".repeat(SESSION_ID_MAX + 1),
+    ] {
+        assert!(!session_id_ok(bad), "坏值放行了：{bad:?}");
+    }
+}
+
+/// 〔DUP1 · `INVARIANTS §47` ①〕模型名：真实模型名全过（主会话 09-26「真实模型名都放行」），**正反各一格**。
+#[test]
+fn real_model_names_pass_and_option_or_shell_shapes_do_not() {
+    for good in [
+        "opus",
+        "sonnet[1m]",
+        "claude-opus-4-5-20260101",
+        "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/abcdef123456",
+        "claude-sonnet-4-5@20250929",
+        "anthropic/claude-sonnet-4-5",
+    ] {
+        assert!(model_name_ok(good), "真实模型名被拒了：{good:?}");
+    }
+    for bad in [
+        "",
+        "-x",
+        "--model",
+        "[1m]",
+        ".opus",
+        "opus 4",
+        "a;b",
+        "a$b",
+        "a`b",
+        "a'b",
+        "a\nb",
+        "模型",
+        &"a".repeat(MODEL_NAME_MAX + 1),
+    ] {
+        assert!(!model_name_ok(bad), "坏值放行了：{bad:?}");
+    }
+    assert!(model_name_ok(&"a".repeat(MODEL_NAME_MAX)));
+}
+
+/// 〔DUP1 · `INVARIANTS §47` ①〕账号名：与建账号的那个工具（`cc-acct-iso` 的 `name_check`）逐字同，**正反各一格**。
+#[test]
+fn an_account_name_is_what_the_account_tool_would_have_created() {
+    for good in [
+        "work",
+        "z",
+        "acct-a",
+        "a_b",
+        "A1",
+        &"a".repeat(ACCOUNT_NAME_MAX),
+    ] {
+        assert!(account_name_ok(good), "真实账号名被拒了：{good:?}");
+    }
+    for bad in [
+        "",
+        "-a",
+        "_a",
+        "a.b",
+        "a b",
+        "a/b",
+        "账号",
+        &"a".repeat(ACCOUNT_NAME_MAX + 1),
+    ] {
+        assert!(!account_name_ok(bad), "坏值放行了：{bad:?}");
+    }
+}

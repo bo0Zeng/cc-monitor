@@ -1,5 +1,5 @@
 /**
- * 起会话输入的校验原语（纯函数，零依赖叶子模块）：sid · launcher · configDir · 模型名 · tmux 会话名。
+ * 起会话输入的校验原语（纯函数，零依赖叶子模块）：tmux 会话名。
  *
  * 〔LR2〕这里原来还有三件**拼 shell 串**的东西：`posixQuote`（单引号包裹）、`buildEnvPrefix`
  * （`export CLAUDE_CONFIG_DIR='…'; `）与 `UNSET_CONFIG_DIR_PREFIX`。它们只给 TS 兜底渲染器
@@ -7,64 +7,16 @@
  * 三件随之删 —— 拼串今天只在 Rust（`shell_quote_core::posix_quote` · `payload.rs`），
  * 前端零 shell 串（`设计/90 §3` 条 1，判据 `tests/launch-no-shell-in-ts.vitest.ts`）。
  * 留下的只做**校验**（拒绝拼入命令），真正拼进命令的那一步不在这里。
+ *
+ * 〔DUP1 · `设计/90 §3` 判据 2〕这里原来还有两个校验器，Rust 渲染侧各有一份同一条规则、渲染时自己判：
+ * `isValidConfigDir`〔散文墓碑〕（＝ `payload.rs::config_dir_command_safe`，字符集逐项同）与
+ * `sanitizeRemoteLauncher`〔散文墓碑〕（同 `payload.rs::render_payload` 那道闸的字符集，但它**静默换成 `claude`**，
+ * 撞 `01 §5` D4）。两份删了：线上校验交渲染那一侧判，判不过带 `REFUSE:` 标拒、前端说出来，不回落。
+ * 登记表 `tests/judgment-single-home.vitest.ts`（J2 · J3）。
+ * 〔DUP1 · 第二轮〕`isValidSessionId`〔散文墓碑〕同理删了（J5）：sid 规则只有一份，住 `shell_quote_core::session_id_ok`，
+ * 渲染侧（载荷 · 外层 · `ccm …` 调用行 · 本机拉起）与后端 ccm 各自在拼进命令之前判。
+ * `isValidModelName`〔散文墓碑〕也删了（J17）：规则住 `shell_quote_core::model_name_ok`；设置里写入点那一句读生成物。
  */
-import { AGENT_PROFILE } from "./agent-profile.ts";
-
-/** sessionId 白名单（UUID 及其变体形态）。拒前导 `-`：防伪造 sid 注入选项
- * （如 `--dangerously-skip-permissions` 会被 claude 当参数吃掉）。 */
-export function isValidSessionId(sid: string): boolean {
-  return /^[A-Za-z0-9_][A-Za-z0-9_-]{0,127}$/.test(sid);
-}
-
-/**
- * launcher 净化：空白 → `claude`；含注入向量字符 → fail-closed 回退 `claude`
- * （放行引号/括号/星号/方括号等合法参数字符）。
- */
-export function sanitizeRemoteLauncher(cmd: string | undefined): string {
-  const c = (cmd ?? "").trim();
-  if (!c) return AGENT_PROFILE.defaultLauncher;
-  if (/[;|&$`<>\r\n]/.test(c)) return AGENT_PROFILE.defaultLauncher;
-  return c;
-}
-
-/**
- * A4：CLAUDE_CONFIG_DIR 白名单。必须是绝对路径、无 `..` 段、无任何 shell 元字符/
- * 控制符/可欺骗 Unicode（与后端侧 `is_safe_config_dir` 对齐）。fail-closed：
- * 稍有可疑即判非法，绝不拼进远端命令。
- */
-export function isValidConfigDir(dir: string): boolean {
-  if (!dir.startsWith("/")) return false;
-  if (dir === "/" || dir.includes("/../") || dir.endsWith("/..")) return false;
-  // shell 元字符 / 引号 / 控制符（C0 + DEL + C1，对齐 backend Rust char::is_control）——一律拒
-  if (/['"\\`$;|&<>*?()!\u0000-\u001f\u007f-\u009f]/.test(dir)) return false;
-  // 可欺骗 Unicode（零宽 / 双向控制 / 各类空白 / BOM；NEL \u0085 已含在上面 C1 区）——一律拒。
-  //
-  // ⚠ **这一行必须与 `acct-core::is_deceptive_char` 是同一个集合**（S18）：
-  // U7-3 把那张表收进共享 crate 时，只给了两个**读 manifest** 的地方，
-  // **拼命令这条路当时漏了**；U8c-1 把 Rust 的命令面接上了并集，**而 TS 这边没跟** ——
-  // 于是同一个含 `U+3000` 的 configDir「本机 Rust 拉起拒绝、远端 TS 拉起放行」。
-  // 本行补齐那六段（`U+1680` · `U+2000..200A` · `U+202F` · `U+205F` · `U+2060..2064` · `U+3000`）。
-  //
-  // 两侧一致由 `shell-quote-deceptive-parity.vitest.ts` 钉住：它**读 Rust 源码**、
-  // 把每个码位真的喂给本函数 —— 是行为对拍，不是文本对拍。
-  if (
-    /[\u00a0\u1680\u2000-\u200f\u2028\u2029\u202a-\u202f\u205f\u2060-\u2064\u2066-\u2069\u3000\ufeff]/.test(
-      dir,
-    )
-  ) {
-    return false;
-  }
-  return true;
-}
-
-/**
- * F07（unify-launch）：模型名白名单——覆盖"claude-opus-4-5-20260101"这类完整 ID 与"opus"这类
- * 简写别名，拒一切 shell 元字符。只做注入安全校验，不做"这是不是真实存在的模型"的语义校验
- * （远端 `claude` 自己会在模型名不存在时报错，那是它的职责）。
- */
-export function isValidModelName(name: string): boolean {
-  return /^[A-Za-z0-9._-]{1,128}$/.test(name);
-}
 
 /**
  * F51:tmux 会话名合法性——非空、无控制字符(含 TAB 0x09 / 换行,防破坏 ls 解析或命令结构)、

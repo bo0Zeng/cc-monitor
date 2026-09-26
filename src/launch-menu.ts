@@ -54,7 +54,7 @@ export type NamedAccountModifier = Extract<AccountModifierOption, { kind: "accou
  *
  * F09 Phase D 审计（后端架构，重要）：`selectable` 只过 `isSelectable`（mode===isolated &&
  * **鉴权前提就绪** && exists —— K-A1 起第二项不再是裸 `loggedIn`，见
- * `accounts.ts::authReady`），**没有**复刻旧版 `appendAccountMenuItems` 那句 `if (!a.configDir)
+ * `Account.authReady`，后端按 `acct_core::auth_ready` 算好的那一格），**没有**复刻旧版 `appendAccountMenuItems` 那句 `if (!a.configDir)
  * continue`——这是有意的行为变化，不是遗漏：旧版对 `configDir` 落空的账号是**静默隐藏**菜单项
  * （用户看不到这个账号、不知道为什么），新版是**显示、点击后由 `withAccount` 说清**
  * （〔FE1 · D-h〕今天是 `launch-account.ts::refuseUnavailableAccount`：不起、说是哪个号选不了、给「改用当前账号」的

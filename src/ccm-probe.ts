@@ -36,7 +36,7 @@
  *
  * **降级方向没变**：拿不到 `installed` 一律走兜底渲染器（`remote-launch-run.ts`），
  * 探测是**可用性判断**、不是安全边界，fail-open 到被充分验证过的兜底渲染器仍是正确方向
- *（区别于 `isValidConfigDir` 这类必须 fail-closed 的安全校验）。
+ *（区别于 configDir 能不能拼进命令这类必须 fail-closed 的安全校验 —— 那一道住 `payload.rs::config_dir_command_safe`）。
  * 本次改的是**值**，不是处置 —— 别把这段读成「出错就不降级了」。
  */
 import { commands } from "./ipc/commands";

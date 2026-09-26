@@ -23,7 +23,7 @@ vi.mock("@tauri-apps/api/core", async () => {
 // 它是 `accounts.ts::isSelectable` 的**第二份实现**，只是住在测试侧 ——
 // 而 `KAY4` 那条零命中守卫的扫描面**按构造**排掉 `.vitest.` 文件（那一行正是「让判据
 // 读不到自己」的机制）⇒ 结构上看不见它。K-A1 把真身的第二项从 `a.loggedIn` 换成
-// `authReady(a)` 之后，这份副本**已经与真身语义相反**：一个 api-key 号
+// `authReady(a)`（〔DUP1〕今天直接读后端算好的 `a.authReady`）之后，这份副本**已经与真身语义相反**：一个 api-key 号
 // （`loggedIn:false` / `authReady:true`）在真身里可选、在这份替身里不可选
 // ⇒ 本节的 DOM 判据从那天起是照着**过期的规则**断的（D 阶段审计 `R4` 实测）。
 // ⇒ 改成 `vi.importActual` 把**真身整个铺进来**，只覆盖 `fetchAccounts` 一个导出。
@@ -666,14 +666,14 @@ describe("L2：spawn 必须表态用哪个账号（B03 审计重要-5）", () =>
     error: null,
     meta: null,
     accounts: [
-      { name: "z", email: "z@x", configDir: "/a/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true },
-      { name: "b", email: "b@x", configDir: "/a/b", isDefault: false, mode: "isolated", exists: true, loggedIn: true },
+      { name: "z", email: "z@x", configDir: "/a/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true },
+      { name: "b", email: "b@x", configDir: "/a/b", isDefault: false, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true },
       // 不可选的：未登录 / in-place 逃生口 —— 不该出现在下拉里
-      { name: "gone", email: "", configDir: "/a/g", isDefault: false, mode: "isolated", exists: true, loggedIn: false },
-      { name: "inplace", email: "", configDir: "/a/i", isDefault: false, mode: "in-place", exists: true, loggedIn: true },
+      { name: "gone", email: "", configDir: "/a/g", isDefault: false, mode: "isolated", exists: true, loggedIn: false, authKind: "subscription", authReady: false },
+      { name: "inplace", email: "", configDir: "/a/i", isDefault: false, mode: "in-place", exists: true, loggedIn: true, authKind: "subscription", authReady: true },
       // ★ K-A1 第四轮（`R4`）加的那一格：**api-key 号（没有订阅凭据、但鉴权前提就绪）
       // 是可选的**（`KAY2`）。它就是上面那份手抄副本与真身**结论相反**的那一格 ——
-      // 手抄版断 `a.loggedIn` ⇒ 判它不可选；真身断 `authReady(a)` ⇒ 判它可选。
+      // 手抄版断 `a.loggedIn` ⇒ 判它不可选；真身断 `a.authReady` ⇒ 判它可选。
       // ⇒ 这一格在，谁再把这里换回一份手抄的 `a.loggedIn` 过滤，下面那条当场红。
       {
         name: "apikey",
@@ -775,8 +775,8 @@ describe("L2：spawn 必须表态用哪个账号（B03 审计重要-5）", () =>
     ...ACCTS,
     origin: LOCAL_ORIGIN, // 〔C4b〕账号面的本机就是 `LOCAL_ORIGIN`（`"__local__"` 已退役）
     accounts: [
-      { name: "w", email: "w@x", configDir: "/l/w", isDefault: true, mode: "isolated", exists: true, loggedIn: true },
-      { name: "off", email: "", configDir: "/l/o", isDefault: false, mode: "isolated", exists: true, loggedIn: false },
+      { name: "w", email: "w@x", configDir: "/l/w", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true },
+      { name: "off", email: "", configDir: "/l/o", isDefault: false, mode: "isolated", exists: true, loggedIn: false, authKind: "subscription", authReady: false },
     ],
   };
   /** 按机器答账号：aya ⇒ ACCTS；后端那个本机串 ⇒ LOCAL。 */

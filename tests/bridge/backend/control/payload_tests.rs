@@ -141,7 +141,7 @@ fn every_business_rejection_is_tagged() {
 /// # 为什么用「拒绝这几个字符」而不是复用别处的白名单
 ///
 /// 仓里已有两份 launcher 策略，**各自服务不同的合法形状**：
-/// · TS 的 `sanitizeRemoteLauncher`：拒 ``[;|&$`<>\r\n]`` ⇒ 回落默认 launcher；
+/// · TS 的 `sanitizeRemoteLauncher`〔散文墓碑〕：拒 ``[;|&$`<>\r\n]`` ⇒ 回落默认 launcher（〔DUP1〕按 `设计/90 §3` 判据 2 删了 —— 同一字符集、处置却是静默换掉；今天字符集只在本函数）；
 /// · Rust 的 `history::sanitize_launcher`：白名单（字母数字 `- _ .` 空格）⇒ `Err`。
 ///
 /// 后者**排掉了 `/`**，而远端 launcher 合法地可以是 `/usr/local/bin/claude`；
@@ -1980,5 +1980,69 @@ fn a_free_text_cwd_passes_real_names_and_refuses_what_quote_cannot_hold() {
                 "{which}：拒了，但没打「拒」的标或没说清是哪个值：{e}"
             );
         }
+    }
+}
+
+/// 〔DUP1 · `INVARIANTS §47` ①〕载荷那条线上 resume 的 sid（`resumeSid` 单报的那一个）与外层 `@ccm_sid`：
+/// 拼进载荷之前过 `shell_quote_core::session_id_ok`（全仓唯一一份；前端那份 `isValidSessionId` 按 `设计/90 §3` 判据 2 删了），
+/// 报的 sid 还得就是 `args` 第二格 —— **正反各一格**，拒的都带「拒」标（前端按标说出来、不回落）。
+/// 要求住址：`INVARIANTS §47` ①「字符集白名单（闭集，默认拒）＋ 不许 `-` 开头（选项注入）＋ 有长度上界的就钉上界」。
+#[test]
+fn a_resume_sid_and_a_session_mark_are_judged_before_they_enter_the_payload() {
+    use crate::backend::control::launch_wire::{render_launch_payload, PayloadRenderRequest};
+    let req = |args: &[&str],
+               resume_sid: Option<&str>,
+               ccm_sid: Option<&str>|
+     -> PayloadRenderRequest {
+        let mut v = serde_json::json!({
+            "env": [], "cwd": null, "launcher": "claude", "args": args,
+            "nestedEnv": [], "wrap": [], "resumeSid": resume_sid,
+        });
+        if let Some(s) = ccm_sid {
+            v["outer"] = serde_json::json!({"mode": "create", "name": "s1-cc", "quoting": "raw", "cwd": null, "ccmSid": s});
+        }
+        serde_json::from_value(v).expect("请求形状")
+    };
+    let uuid = "0473c3a0-1111-2222-3333-444455556666";
+    assert!(render_launch_payload(req(&["--resume", uuid], Some(uuid), None)).is_ok());
+    assert!(render_launch_payload(req(&["--resume", uuid], Some(uuid), Some(uuid))).is_ok());
+    for bad in ["--dangerously-skip-permissions", "a_b", "a;b"] {
+        let e = render_launch_payload(req(&["--resume", bad], Some(bad), None)).unwrap_err();
+        assert!(e.starts_with(REFUSE_TAG), "坏 sid 该带拒标：{e}");
+    }
+    let e = render_launch_payload(req(&["--resume", uuid], Some("other-1"), None)).unwrap_err();
+    assert!(
+        e.starts_with(REFUSE_TAG),
+        "报的 sid 与 args 第二格不同该拒：{e}"
+    );
+    let e = render_launch_payload(req(&["--resume", uuid], Some(uuid), Some("-x"))).unwrap_err();
+    assert!(e.starts_with(REFUSE_TAG), "坏 @ccm_sid 该拒：{e}");
+}
+
+/// 〔DUP1 · `INVARIANTS §47` ①〕载荷的 `export ANTHROPIC_MODEL=`：共享那一份判（`shell_quote_core::model_name_ok`），
+/// 真实模型名全过、坏的带「拒」标 —— **正反各一格**。这一格原来「刻意宽容渲染」、只靠 quote（QUOTE_SITES 第四列那一条）。
+#[test]
+fn the_model_export_passes_real_names_and_refuses_the_rest() {
+    let render = |m: &str| {
+        render_payload(&PayloadSpec {
+            env: &[EnvOp::ExportModel { value: m }],
+            cwd: None,
+            launcher: "claude",
+            args: &[],
+            wrap: &[],
+        })
+    };
+    for good in [
+        "opus",
+        "sonnet[1m]",
+        "claude-sonnet-4-5@20250929",
+        "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    ] {
+        let p = render(good).unwrap_or_else(|e| panic!("真实模型名被拒了：{good:?} ⇒ {e}"));
+        assert!(p.contains("export ANTHROPIC_MODEL="), "{p}");
+    }
+    for bad in ["-x", "opus 4", "a;b", ""] {
+        let e = render(bad).unwrap_err();
+        assert!(e.starts_with(REFUSE_TAG), "坏模型名该带拒标：{bad:?} ⇒ {e}");
     }
 }

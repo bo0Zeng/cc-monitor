@@ -9,3 +9,5 @@ description = "会话分叉：按 sid 找那份会话文件 + 记录变换——
 # 一旦这里引入 tauri / tokio / 平台相关的东西，共享就破了。
 [dependencies]
 serde_json = "1"
+# 〔DUP1〕sid 形状的唯一一份住 `shell-quote-core::session_id_ok`（`INVARIANTS §47` ①），本 crate 再导出它。同族共享 crate、零依赖。
+shell-quote-core = { path = "../shell-quote-core" }

@@ -102,4 +102,8 @@ export interface PayloadRenderRequest {
   /** 缺席 = `container:"none"` 那一格（本命令原本的唯一形态，字节一个都没变）。
    *  Rust 侧是 `#[serde(default)] pub outer: Option<WireTmuxOuter>`。 */
   outer?: WireTmuxOuter;
+  /** 〔DUP1 · `INVARIANTS §47` ①〕resume 的 sid（`args` 第二格的同一个值，单独再报一次）；不是 resume ⇒ `null`。
+   *  渲染侧拿它过 `shell_quote_core::session_id_ok`、再核它就是 `args` 第二格 —— 前端不判 sid（`设计/90 §3` 判据 2）。
+   *  Rust 侧是 `#[serde(default)] pub resume_sid: Option<String>`。 */
+  resumeSid: string | null;
 }

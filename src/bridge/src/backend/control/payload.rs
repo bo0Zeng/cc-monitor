@@ -73,7 +73,11 @@ use std::fmt::Write as _;
 /// （POSIX `'…'` 无转义；PowerShell `'…'` 无插值），真正要挡的是能提前闭合引号或另起命令的那几个。
 /// 〔audit-0805 08-06〕提为 `pub(crate)`：它是**权威源**，
 /// `history.rs` 那份逐字副本已删（E3），判据也要遍历这一份而不是再抄一遍。
-pub(crate) const SHELL_META_COMMON: &str = "'\"`$;|&<>*?()!";
+/// 〔DUP1〕字面量本身搬进 `acct_core::CONFIG_DIR_SHELL_META`（后端那份全表 `is_safe_config_dir` 原来也各抄一遍，
+/// 两份收成那一份）；这里留的是 monitor 这一侧唯一的那个名字，值取自它 —— 定义处仍恰好一处（`the_shell_metachar_blacklist_has_exactly_one_home`）。
+/// 〔DUP1〕生产段里已经没人读它了（判定整份在 `acct_core::config_dir_char_unsafe`），只剩判据在遍历 ⇒ 只在 `test` 下编（不留死代码）。
+#[cfg(test)]
+pub(crate) const SHELL_META_COMMON: &str = acct_core::CONFIG_DIR_SHELL_META;
 
 /// 一个字符能不能出现在**要拼进命令**的 config dir 里。
 ///
@@ -88,22 +92,23 @@ pub(crate) const SHELL_META_COMMON: &str = "'\"`$;|&<>*?()!";
 /// ⚠ **诚实定级**：那是**纵深防御**的缺口，不是当时可利用的洞 —— configDir 的上游
 /// （本机 / 远端 manifest）都已经用并集把过一道。但「权威也保留本地校验」是这个仓自己
 /// 写在 `resolve_query.rs` 头注里的纪律（B2），少一层就是少一层。
+///
+/// 〔DUP1〕判定本身搬进 `acct_core::config_dir_char_unsafe`（全仓唯一一份；C1 那一段 `is_control()` 本来就含），这里转手；
+/// 只剩 Windows 那条路（`history.rs::has_bad_chars`）在用 ⇒ 只在 `windows` / `test` 下编。
+#[cfg(any(windows, test))]
 pub fn is_command_unsafe_char(c: char) -> bool {
-    c.is_control()
-        || ('\u{0080}'..='\u{009f}').contains(&c)
-        || SHELL_META_COMMON.contains(c)
-        || acct_core::is_deceptive_char(c)
+    acct_core::config_dir_char_unsafe(c)
 }
 
 /// **POSIX 命令面**的 config dir 校验：绝对 POSIX 路径、无 `..` 段、无反斜杠、
 /// 无元字符/控制符/视觉欺骗字符。
 ///
 /// fail-closed：稍有可疑即判非法，**绝不拼进命令**。
+///
+/// 〔DUP1 · `设计/90 §3` 判据 2〕规则住 `acct_core::config_dir_posix_ok`（全仓唯一一份，后端 ccm 那一侧也用得着），
+/// 名字留在这里给既有调用方（本机拉起 · 后端落点 · 两条渲染路）转手。
 pub fn config_dir_command_safe(dir: &str) -> bool {
-    if !dir.starts_with('/') || dir == "/" || dir.contains("/../") || dir.ends_with("/..") {
-        return false;
-    }
-    !dir.chars().any(|c| c == '\\' || is_command_unsafe_char(c))
+    acct_core::config_dir_posix_ok(dir)
 }
 
 /// 「这次拉起用哪个账号」—— **三态，不是两态**。
@@ -292,6 +297,15 @@ fn render_env_ops(ops: &[EnvOp]) -> Result<String, String> {
                 );
             }
             EnvOp::ExportModel { value } => {
+                // 〔DUP1 · `INVARIANTS §47` ①〕模型名是标识符：共享那一份判（`shell_quote_core::model_name_ok`，
+                // 真实模型名全过 —— `sonnet[1m]` · Bedrock `…-v1:0` · Vertex `…@2025…` · 网关 `anthropic/…`）。
+                // 这里原来「刻意宽容渲染」、只靠 quote；前端那份 `isValidModelName`〔散文墓碑〕删了（`设计/90 §3` 判据 2）。
+                if !shell_quote_core::model_name_ok(value) {
+                    return Err(refuse(copy_text(
+                        "rsPayload.model.bad",
+                        &[("value", &format!("{:?}", value))],
+                    )));
+                }
                 let _ = write!(
                     out,
                     "export ANTHROPIC_MODEL={}; ",
@@ -404,8 +418,8 @@ pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
     // 不是攻击者）；② 与同函数 `args` 那道白名单**姿态一致**（不对称本身会误导下一个人）。
     // 真正的边界在别处：backend 的 `admit`（会话身份）+ 前端执行面（CSP / 能力表）。
     //
-    // 字符集镜像 TS 的 `sanitizeRemoteLauncher`（今天真正管着这条路的那份策略），
-    // 但按本函数的既有惯例**返回 `Err` 而不是静默回落**：拒绝要让调用方看得见。
+    // 字符集当年镜像 TS 的 `sanitizeRemoteLauncher`〔散文墓碑〕（〔DUP1〕那份按 `设计/90 §3` 判据 2 删了：同一字符集、
+    // 处置却是静默换成默认 launcher ⇒ **今天这里是这条判定唯一的家**），按本函数的既有惯例**返回 `Err` 而不是静默回落**：拒绝要让调用方看得见。
     // ⚠ 刻意**不复用** `history::sanitize_launcher` 的白名单 —— 它排掉了 `/`，
     // 而远端 launcher 合法地可以是 `/usr/local/bin/claude`（收太紧 = 把一个洞换成一个回归）。
     if let Some(c) = spec
@@ -577,16 +591,9 @@ pub enum TmuxOuter<'a> {
     Attach { target: TmuxTarget<'a> },
 }
 
-/// `@ccm_sid` 是裸拼进命令的，白名单与 TS 座声称调用方会保证的那一条同口径
-/// （座头注逐字「调用方须保证 `ccmSid` 为 `[A-Za-z0-9_-]`（座不做校验、裸拼）」）。
-///
-/// **本侧不信那句声称** —— 它是一句注释纪律，而这条路的上游是 webview。
-fn ccm_sid_safe(sid: &str) -> bool {
-    !sid.is_empty()
-        && sid
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
-}
+// 〔DUP1 · `INVARIANTS §47` ①〕`@ccm_sid` 是裸拼进命令的 ⇒ 过 sid 那一条放行判定（`shell_quote_core::session_id_ok`，
+// 全仓唯一一份）。这里原来有一份自己的白名单（`[A-Za-z0-9_-]`、无上界、不管前导 `-`），与 TS 座当年声称的那条同口径 ——
+// **本侧不信那句声称**的理由照旧（上游是 webview），换的只是「信谁」：信共享那一份，不再各写各的。
 
 /// 外层三格的编译。`payload` = **内层已渲染好的生料**（没 quote），本函数负责 quote。
 ///
@@ -635,7 +642,7 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
             let (set_sid, set_title) = match ccm_sid {
                 None => (String::new(), String::new()),
                 Some(s) => {
-                    if !ccm_sid_safe(s) {
+                    if !shell_quote_core::session_id_ok(s) {
                         return Err(refuse(copy_text(
                             "rsPayload.sessionMark.bad",
                             &[("value", &format!("{:?}", s))],
@@ -818,3 +825,8 @@ pub fn relay_env_prefix_ps(base_url: &str) -> String {
 #[cfg(test)]
 #[path = "../../../../../tests/bridge/backend/control/payload_tests.rs"]
 mod tests;
+
+// 〔DUP1〕标识符放行判定的生成物（`src/generated/judgment-rules.ts`）与共用金样（`INVARIANTS §47` ①）。
+#[cfg(test)]
+#[path = "../../../../../tests/bridge/backend/control/payload_judgment_rules.rs"]
+mod judgment_rules;

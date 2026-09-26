@@ -65,7 +65,7 @@ const CREATION_PATHS: &[(&str, CreationVerdict, &str)] = &[
              （`launch-requests.ts::planLauncher`）；本侧收的仍是生料 ⇒ 自己再把一道门\
              （当年的 TS 座自陈「不做校验/转义」，这一侧从来不是那个姿态）。`TmuxTarget::check` 对 `Raw` 只放行 `[A-Za-z0-9_-]`\
              （构造上产不出 `:` `=` `*` `?` `.` 与控制字符），对 `Quoted` 拒控制符与视觉欺骗字符；\
-             `@ccm_sid` 另过 `ccm_sid_safe`（它是**裸拼**的）。三条都由 \
+             `@ccm_sid` 另过 `shell_quote_core::session_id_ok`（它是**裸拼**的；〔DUP1〕原先那份 `ccm_sid_safe`〔散文墓碑〕收进共享那一条）。三条都由 \
              `launch_tmux_outer_parity::tests::the_rust_side_refuses_what_the_typescript_seat_would_have_concatenated` 钉住",
     ),
 ];
