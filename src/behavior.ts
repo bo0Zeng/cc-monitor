@@ -11,7 +11,7 @@
  * 不解释 schema，所有 schema 收敛在前端 TS。
  */
 
-import { loadConfig, saveConfig } from "./config";
+import { loadConfig, patchConfig, setAt } from "./config";
 
 const KEY_AUTO_FOLLOW = "autoFollowUserActive";
 const KEY_BRING_FRONT = "bringMonitorToFrontOnUserActive";
@@ -159,16 +159,16 @@ export async function getBehavior(): Promise<BehaviorConfig> {
   }
 }
 
-/** 保存行为字段。merge 进现有 config 顶层，不动 theme / diagnostics 等。 */
+/** 保存行为字段。只交这 9 个顶层键（〔CFG1〕按键补丁），不动 theme / diagnostics 等。 */
 export async function setBehavior(next: BehaviorConfig): Promise<void> {
-  const cfg = (await loadConfig()) as Record<string, unknown>;
-  cfg[KEY_AUTO_FOLLOW] = next.autoFollowUserActive;
-  cfg[KEY_BRING_FRONT] = next.bringMonitorToFrontOnUserActive;
-  cfg[KEY_SHOW_BG] = next.showBgSessions;
-  cfg[KEY_RESUME_LOCAL] = next.resumeCommandLocal;
-  cfg[KEY_RESUME_REMOTE] = next.resumeCommandRemote;
-  cfg[KEY_RESUME_LOCAL_PRESETS] = next.resumeCommandLocalPresets;
-  cfg[KEY_RESUME_REMOTE_PRESETS] = next.resumeCommandRemotePresets;
-  cfg[KEY_NOTIFY_TURN_END] = next.notifyTurnEnd;
-  await saveConfig(cfg);
+  await patchConfig([
+    setAt([KEY_AUTO_FOLLOW], next.autoFollowUserActive),
+    setAt([KEY_BRING_FRONT], next.bringMonitorToFrontOnUserActive),
+    setAt([KEY_SHOW_BG], next.showBgSessions),
+    setAt([KEY_RESUME_LOCAL], next.resumeCommandLocal),
+    setAt([KEY_RESUME_REMOTE], next.resumeCommandRemote),
+    setAt([KEY_RESUME_LOCAL_PRESETS], next.resumeCommandLocalPresets),
+    setAt([KEY_RESUME_REMOTE_PRESETS], next.resumeCommandRemotePresets),
+    setAt([KEY_NOTIFY_TURN_END], next.notifyTurnEnd),
+  ]);
 }

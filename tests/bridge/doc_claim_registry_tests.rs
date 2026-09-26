@@ -745,10 +745,11 @@ fn each_registered_status_still_matches_reality() {
             // ⇒ 收窄成与 `control/` 那格同形：钉住那个**唯一的住户**。
             // ⚠ **这不是新判据，是把一条已有判据收窄到它自己声称守的性质** ——
             //   本格改动不加任何 `#[test]`，判据条数一格没涨。
+            // 〔LOC1a · 第四波 4D〕那个唯一的住户（`local_query.rs`〔散文墓碑〕）删了 ⇒ 这一格不再有「那一个」可钉，
+            //   量法改成与 `platform/` / `common/` 同形：目录在 ∧ 里面真有住户（空壳 `mod.rs` 不算）。
             "monitor-backend-observe-landed" => (
-                root.join("src/bridge/src/backend/observe/local_query.rs")
-                    .is_file(),
-                "monitor 侧 `backend/observe/` 在，且那个唯一的读面传输住在里面",
+                a_capability_line_has_landed(&root, "observe"),
+                "monitor 侧 `backend/observe/` 在，且里面**真有住户**（至少一个不是 `mod.rs` 的 `.rs`）",
             ),
             // 🔴 〔`K-R73` 09-12，PM 裁定二排期到本件〕**这两格原本是裸 `is_dir`** —— 原文逐字：
             //   `root.join("src/bridge/src/backend/platform").is_dir()` ＋ 说明串

@@ -28,18 +28,25 @@ import { readFileSync, existsSync } from "node:fs";
 
 const store = vi.hoisted(() => ({
   cfg: {} as Record<string, unknown>,
+  /** 每次写完之后盘上的整份。 */
   saved: [] as Record<string, unknown>[],
+  /** 每次写交来的补丁（〔CFG1〕写只交「改哪几条路径」）。 */
+  edits: [] as (readonly { op: string; path: string[] }[])[],
 }));
 
-vi.mock("../src/ipc/commands", () => ({
-  commands: {
-    load_config: vi.fn(async () => store.cfg),
-    save_config: vi.fn(async ({ value }: { value: Record<string, unknown> }) => {
-      store.saved.push(value);
-      store.cfg = value;
-    }),
-  },
-}));
+vi.mock("../src/ipc/commands", async () => {
+  const { applyConfigEdits } = await import("./config-patch-fake");
+  return {
+    commands: {
+      load_config: vi.fn(async () => store.cfg),
+      patch_config: vi.fn(async ({ edits }: { edits: Parameters<typeof applyConfigEdits>[1] }) => {
+        store.edits.push(edits);
+        store.cfg = JSON.parse(applyConfigEdits(JSON.stringify(store.cfg), edits)) as Record<string, unknown>;
+        store.saved.push(store.cfg);
+      }),
+    },
+  };
+});
 
 import {
   CONFIG_KEY_OWNERS,
@@ -87,12 +94,16 @@ const CENSUS: readonly string[] = [
   "resumeCommandLocalPresets",
   "resumeCommandRemotePresets",
   "notifyTurnEnd",
-  // 〔LR2〕`forceLaunchPayloadRenderer` 退役 ⇒ 这一行删，两份普查恒等地各少一键（18 → 17）。
+  // 〔LR2〕`forceLaunchPayloadRenderer` 退役 ⇒ 这一行删，两份普查恒等地各少一键。
+  // 〔CFG1 · 4D〕现打反扫 Rust 侧补一个：`src/bridge/src/logging.rs::write_diagnostics_to_config` 写的 `diagnostics`。
+  //   上面那句「Rust 侧另读三个」漏了它 ⇒ 存过一次诊断设置的用户，设置页「认不出的键」提示条会把它点名（假警报）。
+  "diagnostics",
 ];
 
 beforeEach(() => {
   store.cfg = {};
   store.saved = [];
+  store.edits = [];
   __resetUnknownConfigKeysForTests();
 });
 
@@ -109,8 +120,9 @@ describe("P12 ① 那个逃生口的两代落盘键都退役了（`forceLegacyLa
   it("★★ 写盘**只写行为那一族**（两向集合相等），两代退役键都不写", async () => {
     const before = await getBehavior();
     await setBehavior(before);
-    expect(store.saved.length, "`setBehavior` 根本没写盘").toBe(1);
-    const written = sorted(Object.keys(store.saved[0]));
+    expect(store.edits.length, "`setBehavior` 根本没写盘").toBe(1);
+    // 〔CFG1〕看它**交了哪几条路径**（不是写完之后盘上有什么 —— 那里还有别人的键）。
+    const written = sorted(store.edits[0]!.map((e) => e.path.join(".")));
     const owned = sorted(
       KNOWN_CONFIG_KEYS.filter((k) => CONFIG_KEY_OWNERS[k] === "src/behavior.ts"),
     );
@@ -154,12 +166,12 @@ describe("P12 ② 未知键要被数出来（`unknownKeysIn` / `loadConfig` 那�
     ).toEqual([RETIRED_KEY]);
   });
 
-  it("★ 反空真正控：把 [`CENSUS`] 那 17 个键整份喂进去 ⇒ 一个未知键都不许报", () => {
+  it("★ 反空真正控：把 [`CENSUS`] 那 18 个键整份喂进去 ⇒ 一个未知键都不许报", () => {
     const full: Record<string, unknown> = {};
     for (const k of CENSUS) full[k] = true;
     expect(
       unknownKeysIn(full),
-      "真实用户会写的那 17 个键里，有的被当成了未知键 —— 这把尺子会对着正常配置喊，" +
+      "真实用户会写的那 18 个键里，有的被当成了未知键 —— 这把尺子会对着正常配置喊，" +
         "而一把乱喊的尺子用不了几天就会被关掉",
     ).toEqual([]);
   });
@@ -195,7 +207,8 @@ describe("P12 ③ 登记表自己得是真的（否则上面每一条都在拿�
     const owners = new Set(Object.values(CONFIG_KEY_OWNERS));
     // 〔B2 · 条 66〕10 → 9：`src/backend-policy.ts` 不再是任何配置键的主人（`backendPolicy` 退役，
     //   「退出行为」那个值搬到后端所在那台机器上）。少的就是它这一个，别的主人一个没动。
-    expect(owners.size, `主人只剩 ${owners.size} 个（现打 9）`).toBe(9);
+    // 〔CFG1 · 4D〕9 → 10：补上 `src/bridge/src/logging.rs`（`diagnostics` 那一键的主人，Rust 写的）。多的就是它这一个。
+    expect(owners.size, `主人 ${owners.size} 个（现打 10）`).toBe(10);
   });
 
   it("★ 每个登记的主人文件真的在盘上，而且那个键名逐字出现在它里面", () => {

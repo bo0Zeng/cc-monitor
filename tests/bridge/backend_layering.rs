@@ -15,24 +15,10 @@ use std::path::{Path, PathBuf};
 /// 下面那条判据是 `assert_eq!(found, want)`：多一条、少一条都红。
 /// **「有正当例外」与「这条线随便穿」是两回事**，中间隔着的就是这个等号。
 /// 一条没人数的合法边会长成一张网 —— backend 那份头注逐字记着这句话。
-const ALLOWED_OBSERVE_TO_CONTROL: &[(&str, &str)] = &[
-    (
-        "crate::backend::control::local_backend::resolve_beside_this_exe",
-        "读面起本机后端拿 stdout 之前，先要知道那份本机后端在哪。\
-             「装在哪、找过哪儿、算不算找到」是控制面立的事实（起进程与看住它的那半住在那里），\
-             读面自己再解析一份路径就是第二个权威源",
-    ),
-    (
-        "crate::backend::control::local_backend::Resolved::Found",
-        "上面那次解析的**返回类型**的变体。⚠ 类型也要登记，不只是函数 —— \
-             它出现在读面的 `match` 里，和函数一样是接口面；漏登记等于「接口只算函数」",
-    ),
-    (
-        "crate::backend::control::local_backend::Resolved::Missing",
-        "同一个返回类型的另一支，带着 `reason` 与 `looked_at`。\
-             读面把「找过哪儿」原样转给调用方，不自己改写 —— 那句话是控制面产的",
-    ),
-];
+// 〔LOC1a · 第四波 4D〕**今天显式为零**：那三条边（`local_backend::resolve_beside_this_exe` 与它返回类型的两支）
+//   唯一的发起者是 `observe/local_query.rs`〔散文墓碑〕—— 读面起一次性本机后端之前先问控制面「它在哪」。
+//   本机那几问改走 `<local>` 长连接之后那个文件删了、`observe/` 整条线删了 ⇒ 三条边一起没了。
+const ALLOWED_OBSERVE_TO_CONTROL: &[(&str, &str)] = &[];
 
 fn backend_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("src/backend")
@@ -260,53 +246,20 @@ fn control_layer_must_not_reference_observe() {
 
 /// ★ **正向要显式列举且条数钉死**：`observe/` 只许用登记过的那几个 control 符号。
 ///
-/// 🔴 这一条**不是空真**：盘上今天真有 3 条这样的边（`K-R71` 归位时显形的那一处），
-/// 登记表非空 ⇒ `assert_eq!` 两边都有内容。
+/// 〔LOC1a · 第四波 4D〕monitor 侧的 `observe/` **今天不存在**（唯一住户删了、空壳目录一并删，理由在 `backend/mod.rs`）
+/// ⇒ 本条改判「这条线不在 ∧ 登记表为零」：它长回来（哪怕只是一个空 `mod.rs`）就红，逼人回来重立正向登记、
+/// 并回答「为什么这件事非得在 monitor 里读」。扫描器本身的牙仍由下面两条自检证（字符串 ＋ 活体夹具）。
 #[test]
 fn observe_to_control_interface_is_exactly_the_registered_set() {
-    let files = layer_sources("observe");
-    assert_collection_is_complete("observe", &files);
-    let mut found: Vec<String> = Vec::new();
-    for (_, code) in &files {
-        for sym in refs_to_layer(code, "control") {
-            if !found.contains(&sym) {
-                found.push(sym);
-            }
-        }
-    }
-    found.sort();
-    let mut want: Vec<String> = ALLOWED_OBSERVE_TO_CONTROL
-        .iter()
-        .map(|(s, _)| s.to_string())
-        .collect();
-    want.sort();
-    // 登记表空了 ⇒ 下面那个等号会变成「空 == 空」，恒绿。
     assert!(
-        !ALLOWED_OBSERVE_TO_CONTROL.is_empty(),
-        "登记表空了 —— 那条等号断言会退化成「空 == 空」，恒绿"
+        !backend_dir().join("observe").exists(),
+        "monitor 侧的 `backend/observe/` 长回来了 —— 先回答「为什么这件事非得在 monitor 里读」\
+         （`设计/05 §14.6`：本机读面走 `<local>` 长连接），再把正向登记与采集面自检一起立回来"
     );
-    // **登记项必须钉到符号级**：模块级登记（`crate::backend::control::local_backend`）
-    // 等于把整个模块的接口面都放开，而条数看不出区别。
-    for (e, why) in ALLOWED_OBSERVE_TO_CONTROL {
-        let tail = e
-            .strip_prefix("crate::backend::control::")
-            .unwrap_or_else(|| panic!("登记项必须以 `crate::backend::control::` 开头：{e}"));
-        assert!(
-            tail.contains("::"),
-            "登记项 `{e}` 只钉到**模块级** —— 那等于把整个模块的接口面都放开，\
-                 而条数看不出区别。必须钉到符号：`crate::backend::control::<模块>::<符号>`。"
-        );
-        assert!(
-            why.trim().chars().count() >= 20,
-            "登记项 `{e}` 没写清「为什么这件事非得由读面发起、控制面能不能自己做」"
-        );
-    }
     assert_eq!(
-        found, want,
-        "observe → control 的接口面与登记表对不上。\n\
-             **多出来的**：加进 `ALLOWED_OBSERVE_TO_CONTROL` 之前先回答\
-             「为什么这件事非得由读面发起、控制面能不能自己做」。\n\
-             **少了的**：那条边没了就把登记摘掉 —— 登记表腐烂比没有登记更糟。"
+        ALLOWED_OBSERVE_TO_CONTROL.len(),
+        0,
+        "observe → control 的登记表今天该是零（LOC1a 删了唯一的发起者与那条线）"
     );
 }
 

@@ -11,7 +11,12 @@ fn the_three_ports_are_one_command_each_and_all_take_origin() {
     ));
     const PORTS: &[&str] = &["backend_status", "backend_start", "backend_stop"];
     for p in PORTS {
-        let sig = format!("pub fn {p}(origin: String)");
+        // 〔HX1〕`backend_stop` 本机那一支要等（SIGTERM → ≤ 约 10 秒 → 强杀）⇒ 它是 `async`（同步命令跑在主线程上）。
+        let sig = if *p == "backend_stop" {
+            format!("pub async fn {p}(origin: String)")
+        } else {
+            format!("pub fn {p}(origin: String)")
+        };
         let at = guard_core::find_pinned(&src, &sig).unwrap_or_else(|e| {
             panic!(
                 "`{p}` 不是「恰好一处、且第一个参数是 origin」的形状（{e}）。\n\
@@ -120,7 +125,8 @@ fn an_empty_origin_is_refused_by_every_port() {
     for r in [
         backend_status("  ".into()).map(|_| ()),
         backend_start(" ".into()).map(|_| ()),
-        backend_stop("".into()).map(|_| ()),
+        // 〔HX1〕`backend_stop` 改成 `async`（本机那一支要等）⇒ 就地跑完它。
+        tauri::async_runtime::block_on(backend_stop("".into())).map(|_| ()),
     ] {
         assert!(
             r.is_err(),
@@ -131,7 +137,7 @@ fn an_empty_origin_is_refused_by_every_port() {
 
 #[test]
 fn an_unknown_remote_origin_says_so_instead_of_pretending() {
-    let e = backend_stop("从没注册过的机器".into()).unwrap_err();
+    let e = tauri::async_runtime::block_on(backend_stop("从没注册过的机器".into())).unwrap_err();
     assert!(
         e.contains("没有这台机器的记录"),
         "对不认识的 origin 应当明说没有把手，而不是返回一句像成功的话：{e}"

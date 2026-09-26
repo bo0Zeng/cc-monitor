@@ -52,8 +52,9 @@
 //! - `.credentials.json` **只 stat 存在性，绝不读内容**。
 //! - `.claude.json` 只取 `projects[<cwd>].hasTrustDialogAccepted` 一个布尔；
 //!   **绝不回传文件内容**——那里面有 `mcpServers` 的环境变量（可能含 API key）。
-//! - `/proc/<pid>/environ` 只抠**两个写死的键**（`CLAUDE_CONFIG_DIR` 与
-//!   `CCM_LAUNCH_ID`），**不回传整个环境快照**。
+//! - `/proc/<pid>/environ` 只抠**三个写死的键**（`CLAUDE_CONFIG_DIR` · `CCM_LAUNCH_ID` ·〔HX1 · D-f〕`ANTHROPIC_BASE_URL`），
+//!   **不回传整个环境快照**。`ANTHROPIC_BASE_URL` 的值带中转钥匙 ⇒ **只折成一个布尔**（`viaRelay`：是不是本机中转那一形地址），
+//!   值本身不出参、不进日志。
 //!   ⚠ `K-P5f` 加第二个键那一拍要求把「两个键」与「整个快照」的界说清楚，界在这里：
 //!   **键名是本文件里的两个常量**（`paths::CONFIG_DIR_ENV` 与 [`LAUNCH_ID_ENV`]），
 //!   **不接受任何调用方传进来的键名**。一旦键名成为一维参数，这条查询就退化成
@@ -443,6 +444,10 @@ struct SessionRow {
     /// 从 `/proc/<pid>/environ` 抠到、且过了 [`launch_id_is_safe`] 的原值。
     /// 还没过防冒名那一格 —— **别直接往出参里填这一格**。
     launch_id: Option<String>,
+    /// 〔HX1 · D-f〕这条会话的 `ANTHROPIC_BASE_URL` 是不是**本机中转那一形**（回环 ＋ 钥匙段 ＋ 路由，
+    /// `relay_route_core::split_keyed_base_url` 认得出）。`None` = 不知道（进程已死 / 环境这一刻取不到）。
+    /// 用途：机器页「停」本机后端之前数一数有几条会话会断（主会话 D-f）。
+    via_relay: Option<bool>,
 }
 
 /// 🔴🔴 **防冒名：不唯一的身份 token 一律不作数**〔`KP5FD5`〕。
@@ -760,6 +765,8 @@ pub(crate) fn live_session_ids(agent_home: &Path) -> std::collections::BTreeSet<
 
 /// `--session-accounts`：扫 `<claude_dir>/sessions/<PID>.json`，每条一行。
 fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
+    // 〔HX1 · D-f〕向适配层要「会话进程环境里该读哪两个键」只问这一次（账号 · 上游地址）。
+    let env_keys = crate::agents::claudecode::paths::SESSION_ENV_KEYS;
     // Z01：`None` 这个 key 是账号 0（configDir 缺席）。裸起会话过去归属不到任何账号
     // （`account: null` + `bare: true`），现在它有名字了。
     let by_dir: Vec<(Option<String>, String)> = load_manifest(accts_dir)
@@ -800,7 +807,7 @@ fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
         // + `bare:false` 今天就是一个可表达的状态 ⇒ 出参形状一个字节都没改）。
         // ⚠ 另两支（键不在 / 值是空串）**仍然合并**，理由在 `EnvRead` 的类型头注。
         let (cfg, cfg_env_unreadable) = if alive {
-            match proc_env_var(pid, crate::agents::claudecode::paths::CONFIG_DIR_ENV) {
+            match proc_env_var(pid, env_keys.config_dir) {
                 EnvRead::Value(v) => (Some(v), false),
                 EnvRead::Unset => (None, false),
                 EnvRead::Unreadable => (None, true),
@@ -823,6 +830,16 @@ fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
             proc_env_var(pid, LAUNCH_ID_ENV)
                 .value()
                 .filter(|v| launch_id_is_safe(v))
+        } else {
+            None
+        };
+        // 〔HX1 · D-f〕第三个键：只折成「走不走本机中转」一个布尔；值带钥匙，这一行之后就丢掉。
+        let via_relay = if alive {
+            match proc_env_var(pid, env_keys.base_url) {
+                EnvRead::Value(v) => Some(relay_route_core::split_keyed_base_url(&v).is_some()),
+                EnvRead::Unset => Some(false),
+                EnvRead::Unreadable => None,
+            }
         } else {
             None
         };
@@ -849,6 +866,7 @@ fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
             alive,
             cfg_env_unreadable,
             launch_id,
+            via_relay,
         });
     }
     // 🔴 防冒名那一格**只能在这里判**：它要看完整批才知道有没有撞（`KP5FD5`）。
@@ -885,6 +903,9 @@ fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
                 // 「四种」的旧话订正成实话。
                 // ⚠ 老后端不出这个键，下游读成 `None`（additive）。
                 "launchId": json_str(r.launch_id.as_deref()),
+                // 〔HX1 · D-f〕走不走本机中转：`true` / `false` / `null`（不知道：进程已死或环境这一刻取不到）。
+                // ⚠ 老后端不出这个键，下游读成 `null`（additive）。
+                "viaRelay": r.via_relay,
             })
             .to_string()
         })

@@ -6,8 +6,10 @@
 //! `tryRenderCli`（装了 ccm 时走，产 `ccm …`；〔LR1 · U8c-3〕TS 那份已删）与 `renderFallback`（没装时走，产裸载荷）。
 //!
 //! - **CLI 那支是真在跑的那支**（U8c-2b-0 摸底：装了 ccm 就直接 return，兜底根本不执行）；
-//! - **兜底那支切不动**：`container: tmux` 时它要外层 tmux 命令（`session-backend.ts`），
+//! - **兜底那支当时切不动**：`container: tmux` 时它要外层 tmux 命令（`session-backend.ts`），
 //!   而 `src/doc/INVARIANTS.md` §33b 写死了「删/搬 `session-backend.ts` 前必须先回答三件事」。
+//!   〔LR2〕后来切了（步 22b·B：外层三格进 `payload.rs::render_tmux_outer`），TS 那一族（兜底渲染器 ＋ 座）也删了；
+//!   本段以下是那次切换当时的记录。
 //!   🔴 **那三问今天不是当年那三问了**（`K-R105` 09-13 第四次复裁）：第三问
 //!   （daemonless 的远端要不要能起会话）**已随定框 `K35` / `K-R59` 退役**，
 //!   第一问的答案也在 `K-P2 D3`（09-03）之后变过一次。**三问的今天版只有一个家**：
