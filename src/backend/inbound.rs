@@ -914,7 +914,13 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "bus-kill",
         doc_anchor: Some("#### `bus-kill`"),
-        codes: &["invalid_args", "not_installed", "timed_out", "failed"],
+        codes: &[
+            "invalid_args",
+            "bad_id",
+            "not_installed",
+            "timed_out",
+            "failed",
+        ],
         fields: &["id", "killed", "stale_only"],
         takes_input: true,
         run: Run::Blocking(|r| crate::control::cc_bus::kill_for_inbound(&r.args).map(Some)),
@@ -924,6 +930,8 @@ pub const REGISTRY: &[CommandSpec] = &[
         doc_anchor: Some("#### `bus-send`"),
         codes: &[
             "invalid_args",
+            // 〔DUP2 · J12〕收件人的形状在交给 `cc-send` 之前就过不了（`INVARIANTS §47` ①）。
+            "bad_id",
             "not_installed",
             "rejected",
             "timed_out",
@@ -940,7 +948,13 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "bus-spawn",
         doc_anchor: Some("#### `bus-spawn`"),
-        codes: &["invalid_args", "not_installed", "timed_out", "failed"],
+        codes: &[
+            "invalid_args",
+            "bad_id",
+            "not_installed",
+            "timed_out",
+            "failed",
+        ],
         fields: &["id", "said", "spawned"],
         takes_input: true,
         run: Run::Blocking(|r| crate::control::cc_bus::spawn_for_inbound(&r.args).map(Some)),

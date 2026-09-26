@@ -13,10 +13,10 @@
       "want": "重新抓取"
     },
     {
-      "key": "ccBus.id.invalid",
-      "zh": "agent 名不合法，没有发出去：{id}",
+      "key": "ccBus.send.ghost",
+      "zh": "已投递给 {id}，但这个名字没在总线上登记过。今天没有进程会读它的收件箱，名字打错了吗？",
       "args": { "id": "a b'c" },
-      "want": "agent 名不合法，没有发出去：a b'c"
+      "want": "已投递给 a b'c，但这个名字没在总线上登记过。今天没有进程会读它的收件箱，名字打错了吗？"
     },
     {
       "key": "panePreview.head.title",

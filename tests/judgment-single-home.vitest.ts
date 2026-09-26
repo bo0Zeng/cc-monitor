@@ -265,12 +265,20 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J12: {
     what: "cc-bus agent id 形状",
-    homes: ["src/bridge/src/backend/control/cc_bus.rs::is_valid_bus_id"],
-    status: "open",
-    defs: ["isValidBusId"],
-    needles: [],
-    owner: "主会话拍（DUP1.md §4 ⑥）",
-    why: "`INVARIANTS §47`（V121，用户拍）那张「谁在守」表点名界面这一道；后端 bus-* 今天只核非空 —— 与判据 2 相抵",
+    // 〔DUP2 · 主会话 09-26 裁 J12 → 乙「挪进后端」〕唯一一份进共享 crate（`shell_quote_core::bus_id_ok`，规则逐字不变）：
+    //   monitor 读收件箱（`cc_bus.rs::is_valid_bus_id` 是它的再导出）· 后端 `bus-send` / `bus-kill` / `bus-spawn` 入口
+    //   在交给 `cc-send` / `cc-kill` / `cc-spawn` 之前判（拒码 `bad_id`）。界面那一份（发 / 收 / 查在线 / 派生账号名）删了；
+    //   `INVARIANTS §47` 那两格改写成「后端交给 cc-bus 之前」（报用户，用户可推翻）。
+    homes: ["shell-quote-core::bus_id_ok"],
+    status: "zero",
+    defs: ["isValidBusId", "refuseBadId"],
+    needles: [{ text: "/^[A-Za-z0-9_][A-Za-z0-9_-]*$/", count: 0, file: "src/cc-bus-control.ts" }],
+    // 两半各自接的是共享那一个（后端入口 · monitor 再导出），谁也没有自己再写一份字符集。
+    rustNeedles: [
+      { file: "src/backend/control/cc_bus.rs", text: "shell_quote_core::bus_id_ok(v)", count: 1 },
+      { file: "src/bridge/src/backend/control/cc_bus.rs", text: "pub use shell_quote_core::bus_id_ok as is_valid_bus_id;", count: 1 },
+      { file: "src/bridge/src/backend/control/cc_bus.rs", text: "c.is_ascii_alphanumeric() || c == '_' || c == '-'", count: 0 },
+    ],
   },
   J13: {
     what: "一次失败能否证明一个字节没发出",
@@ -532,6 +540,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 〔DUP2〕规则的一部分（放行的标点），现生成进 `judgment-rules.ts`（生成物不是孪生）⇒ NONE。
     ACCOUNT_NAME_EXTRA: NONE,
     account_name_ok: "J18",
+    // 〔DUP2 · J12〕cc-bus agent id（从 monitor `cc_bus.rs` 搬来，两半共用）。
+    bus_id_ok: "J12",
   },
 };
 
