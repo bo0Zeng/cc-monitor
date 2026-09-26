@@ -3454,3 +3454,101 @@ fn a_refusal_from_the_byte_table_reaches_the_missing_reason_and_writes_nothing()
     std::fs::remove_dir(&base)
         .unwrap_or_else(|e| panic!("拒绝了却往盘上写了东西（目录删不掉：{e}）"));
 }
+
+/// 〔HX1 · NT2 问 3 ＋ RT1 F3〕后端 stderr 进 monitor 日志**按行首级别映射**（`ERROR` 封顶 `WARN`，认不出 ⇒ `WARN`）。
+/// 守的要求：主会话 4D 裁「后端 stderr 进 monitor 日志按级别映射，不一律 WARN」（`4d-lanes.md`）；封顶的理由见
+/// `drain_child_stderr_into_log` 头注约束 3（`ERROR` 会弹红色 toast）。
+/// 形状：纯函数逐格相等（后端 fmt 缺省格式的五个级别 ＋ 认不出的三形）；再喂一个真子进程的 stderr 给生产那一个搬运函数，
+/// 收下来的 (级别, 正文) 两向相等。
+#[test]
+fn hx1_backend_stderr_lines_keep_their_level_capped_at_warn() {
+    use tracing::Level;
+    let cases: &[(&str, Level)] = &[
+        (
+            "2026-09-25T04:05:06.123456Z TRACE cc_monitor_backend: t",
+            Level::TRACE,
+        ),
+        (
+            "2026-09-25T04:05:06.123456Z DEBUG cc_monitor_backend: d",
+            Level::DEBUG,
+        ),
+        (
+            "2026-09-25T04:05:06.123456Z  INFO cc_monitor_backend: i",
+            Level::INFO,
+        ),
+        (
+            "2026-09-25T04:05:06.123456Z  WARN cc_monitor_backend: w",
+            Level::WARN,
+        ),
+        (
+            "2026-09-25T04:05:06.123456Z ERROR cc_monitor_backend: e",
+            Level::WARN,
+        ),
+        ("thread 'main' panicked at some place", Level::WARN),
+        ("some child said INFO later in the line", Level::WARN),
+        ("", Level::WARN),
+    ];
+    for (line, want) in cases {
+        assert_eq!(super::backend_stderr_level(line), *want, "{line:?}");
+    }
+
+    // 生产那一个搬运函数：真子进程的 stderr → 收下来的级别。
+    #[derive(Clone, Default)]
+    struct Buf(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+    impl std::io::Write for Buf {
+        fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(b);
+            Ok(b.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let buf = Buf::default();
+    let sink = buf.clone();
+    let sub = tracing_subscriber::fmt()
+        .with_writer(move || sink.clone())
+        .with_ansi(false)
+        .without_time()
+        .with_target(false)
+        .with_max_level(Level::TRACE)
+        .finish();
+    let mut child = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(
+            "echo '2026-09-25T00:00:00Z  INFO b: hello-info' >&2; \
+             echo '2026-09-25T00:00:00Z DEBUG b: hello-debug' >&2; \
+             echo '2026-09-25T00:00:00Z ERROR b: hello-error' >&2; \
+             echo 'bare-line' >&2",
+        )
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("起子进程");
+    let pid = child.id();
+    let err = child.stderr.take().expect("stderr");
+    tracing::subscriber::with_default(sub, || super::drain_child_stderr_into_log(err, pid));
+    let _ = child.wait();
+    let text = String::from_utf8(buf.0.lock().unwrap().clone()).expect("utf8");
+    let got: Vec<(String, String)> = text
+        .lines()
+        .map(|l| {
+            let l = l.trim_start();
+            let (lvl, rest) = l.split_once(' ').unwrap_or((l, ""));
+            let tag = ["hello-info", "hello-debug", "hello-error", "bare-line"]
+                .into_iter()
+                .find(|t| rest.contains(t))
+                .unwrap_or("?");
+            (lvl.to_string(), tag.to_string())
+        })
+        .collect();
+    let want: Vec<(String, String)> = [
+        ("INFO", "hello-info"),
+        ("DEBUG", "hello-debug"),
+        ("WARN", "hello-error"),
+        ("WARN", "bare-line"),
+    ]
+    .into_iter()
+    .map(|(a, b)| (a.to_string(), b.to_string()))
+    .collect();
+    assert_eq!(got, want, "日志全文：{text}");
+}
