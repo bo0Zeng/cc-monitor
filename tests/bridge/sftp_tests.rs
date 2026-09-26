@@ -1585,11 +1585,12 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         .pop()
         .unwrap();
     let want = std::fs::read(&up).unwrap();
-    assert_eq!(
-        last.end,
-        Some(crate::sftp_pool::End::Done {
-            bytes: want.len() as u64
-        })
+    // 〔FW1〕上传那一路的传完带整份摘要（64 位十六进制；算法对不对由后端那一侧对拍 `sha2`）。
+    assert!(
+        matches!(&last.end, Some(crate::sftp_pool::End::Done { bytes, sha256: Some(h) })
+            if *bytes == want.len() as u64 && h.len() == 64),
+        "{:?}",
+        last.end
     );
     let staged = std::fs::read(format!("{rhome}/.cc-monitor/staging/{key}.part")).unwrap();
     assert!(staged == want, "暂存件不是本机那份的字节");

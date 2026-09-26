@@ -620,3 +620,34 @@ async fn hx2_two_interleaved_deploys_leave_one_whole_copy_and_no_litter() {
         .collect();
     assert!(litter.is_empty(), "留下了临时件 / 备份件：{litter:?}");
 }
+
+/// 〔HX1 · 主会话裁 HX1 拍板项 4〕**部署这一趟建出来的远端目录收成只给本人**（`own_dir::PRIVATE_DIR_MODE`）；
+/// **已在的那一层一个字节不碰**（不对它发 SETSTAT）。守的要求：主会话裁「建自家目录 …… 远端 SFTP 部署建目录 …… 0700、已存在不动」。
+/// 形状：合成 SFTP 服务端逐条记改动（台架 `sftp_rig`），判服务端看到的，不信被测侧的自述。
+#[tokio::test]
+async fn hx1_the_dirs_a_deploy_creates_are_made_private_and_an_existing_one_is_left_alone() {
+    let fs = rig::home(false, false);
+    let (mut w, mut r) = link_on(fs.clone()).await;
+    let v = ask(
+        &mut w,
+        &mut r,
+        serde_json::json!({"op":"mkdirs","path": ".cc-monitor/bin"}),
+        None,
+    )
+    .await;
+    assert!(v.get("code").is_none(), "{v}");
+    let g = fs.lock().unwrap();
+    assert_eq!(
+        g.dir_modes.get(".cc-monitor/bin").copied(),
+        Some(crate::own_dir::PRIVATE_DIR_MODE),
+        "新建的 bin 没收成只给本人：{:?}",
+        g.mutated
+    );
+    assert!(
+        !g.mutated
+            .iter()
+            .any(|(verb, p)| verb == "setstat" && p == ".cc-monitor"),
+        "已在的 ~/.cc-monitor 被改了权限位：{:?}",
+        g.mutated
+    );
+}

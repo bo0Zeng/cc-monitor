@@ -1076,6 +1076,194 @@ fn the_direct_print_does_not_change_with_ccm_sid_or_the_token() {
     }
 }
 
+// ── 〔WIN1 · 第四波 4D〕Windows 本机那一格：`is_exec` · 家目录 · 路径分隔符 ──────────────
+//
+// 要求住址：`设计/01 §6.7a` 表 B 逐字「**本机 Windows**（x86_64） | ✅ **承诺**」；`设计/01 §3.1` 逐字
+// 「「怎么读到这个事实」   → platform      （各平台读法不同）」—— 「这个文件跑得起来吗」在 Windows 上的读法是 `PATHEXT`；
+// 读数出处 `真相源/106 §3.4` 逐字「`plan.rs::is_exec` 的 `#[cfg(not(unix))]` 分支是 `p.is_file()` ⇒ 在 Windows 上
+// **「可执行」退化成「存在」**」与「那句错误话术里的路径是 `C:\…\fakehome/.claude-accts/accounts.json` ——
+// **反斜杠与正斜杠混着**」（WN1 件 G）。
+// 异源：期望是手写的判定表（Windows `cmd.exe` 的 `PATHEXT` 语义），不从被测函数里抠。
+// ⚠ 买不到：`#[cfg(not(unix))]` 那一臂在本机不编译 —— 它「真的调了判定函数」由下面源码锚点钉，
+//    「在 Windows 上真这么判」要真机（`第四波记录/WIN1.md` 的虚拟机读数）。
+
+#[test]
+fn on_windows_runnable_means_a_file_whose_extension_is_in_pathext() {
+    use std::path::Path;
+    let cells: &[(bool, &str, Option<&str>, bool, &str)] = &[
+        (
+            true,
+            "C:/x/cc-register",
+            None,
+            false,
+            "没有扩展名的文件在 Windows 上跑不起来",
+        ),
+        (
+            true,
+            "C:/x/cc-register",
+            Some(".COM;.EXE;.BAT;.CMD;.PS1"),
+            false,
+            "PATHEXT 再长，无扩展名照样不行",
+        ),
+        (
+            true,
+            "C:/x/cc-register.cmd",
+            None,
+            true,
+            "PATHEXT 缺席 ⇒ 用 cmd.exe 的默认那一份",
+        ),
+        (
+            true,
+            "C:/x/cc-register.CMD",
+            Some(".com;.exe;.bat;.cmd"),
+            true,
+            "大小写不敏感",
+        ),
+        (
+            true,
+            "C:/x/cc-register.ps1",
+            None,
+            false,
+            "默认 PATHEXT 里没有 .PS1",
+        ),
+        (
+            true,
+            "C:/x/cc-register.ps1",
+            Some(".COM;.EXE;.PS1"),
+            true,
+            "用户加了 .PS1 就认",
+        ),
+        (true, "C:/x/tool.exe", Some(""), true, "空 PATHEXT 当缺席"),
+        (
+            true,
+            "C:/x/notes.txt",
+            Some(".COM;.EXE;.BAT;.CMD"),
+            false,
+            "扩展名不在表里",
+        ),
+        (
+            false,
+            "C:/x/tool.exe",
+            None,
+            false,
+            "不是文件（目录 / 不存在）就不是可执行",
+        ),
+    ];
+    for (is_file, p, pathext, want, why) in cells {
+        assert_eq!(
+            runnable_on_windows(*is_file, Path::new(p), *pathext),
+            *want,
+            "{p}（is_file={is_file}, PATHEXT={pathext:?}）：{why}"
+        );
+    }
+}
+
+/// 非 unix 那一臂**真的调了**上面那个判定、而且没退回 `is_file()` 一字了事。
+/// 两向：那一臂里判定函数恰好 1 处；`is_exec` 函数体里裸 `p.is_file()` 零处（正控：unix 臂的 `m.is_file()` 在）。
+#[test]
+fn the_non_unix_arm_of_is_exec_delegates_to_the_pathext_rule() {
+    let me = crate::guard_support::production_code(include_str!(
+        "../../../../src/backend/control/ccm/plan.rs"
+    ));
+    let body = me
+        .split("fn is_exec(p: &std::path::Path) -> bool {")
+        .nth(1)
+        .and_then(|b| b.split("\n}\n").next())
+        .expect("找不到 `is_exec` 的函数体 —— 抽取器坏了，下面几条会零命中地绿");
+    assert!(
+        body.contains("m.is_file() && m.permissions().mode() & 0o111 != 0"),
+        "正控：unix 臂那一句不在了 —— 抽取器切错了地方"
+    );
+    let arm = body
+        .split("#[cfg(not(unix))]")
+        .nth(1)
+        .expect("`is_exec` 没有非 unix 那一臂了");
+    assert_eq!(
+        arm.matches("runnable_on_windows(").count(),
+        1,
+        "非 unix 那一臂要恰好调一次 `runnable_on_windows`：\n{arm}"
+    );
+    assert_eq!(
+        arm.matches("p.is_file()").count(),
+        1,
+        "非 unix 那一臂里 `p.is_file()` 只许作为判定函数的第一个参数出现一次（退回裸 `is_file()` ⇒ 「可执行」又退化成「存在」）"
+    );
+    assert!(
+        arm.contains("runnable_on_windows(p.is_file(),"),
+        "`p.is_file()` 要喂进判定函数，不许单独当结论：\n{arm}"
+    );
+}
+
+#[test]
+fn the_home_is_home_then_userprofile_and_paths_under_it_are_joined_per_segment() {
+    let env_of = |pairs: &'static [(&'static str, &'static str)]| {
+        move |k: &str| {
+            pairs
+                .iter()
+                .find(|(n, _)| *n == k)
+                .map(|(_, v)| v.to_string())
+        }
+    };
+    assert_eq!(
+        home_of(env_of(&[
+            ("HOME", "/home/pi"),
+            ("USERPROFILE", "C:\\Users\\zbl")
+        ])),
+        "/home/pi"
+    );
+    assert_eq!(
+        home_of(env_of(&[("USERPROFILE", "C:\\Users\\zbl")])),
+        "C:\\Users\\zbl",
+        "Windows 默认没有 HOME"
+    );
+    assert_eq!(
+        home_of(env_of(&[("HOME", ""), ("USERPROFILE", "C:\\Users\\zbl")])),
+        "C:\\Users\\zbl",
+        "空 HOME 当缺席"
+    );
+    assert_eq!(home_of(env_of(&[])), "", "两个都没有 ⇒ 空串（照旧）");
+
+    // 本机（Linux）上逐段 join 与从前的 `format!("{home}/{rel}")` 逐字相等 —— 这一格不许变。
+    for rel in [".claude-accts/accounts.json", ".config/ccm/config"] {
+        assert_eq!(under_home("/home/pi", rel), format!("/home/pi/{rel}"));
+    }
+    assert_eq!(
+        under_home("", ".claude-accts/accounts.json"),
+        "/.claude-accts/accounts.json",
+        "空家目录照旧"
+    );
+
+    // 生产那一处真的走这两个函数，不再手拼 `{home}/…`。
+    let me = crate::guard_support::production_code(include_str!(
+        "../../../../src/backend/control/ccm/plan.rs"
+    ));
+    let from_process = me
+        .split("pub(crate) fn from_process() -> Self {")
+        .nth(1)
+        .and_then(|b| b.split("\n    }\n}\n").next())
+        .expect("找不到 `Env::from_process` —— 抽取器坏了");
+    assert_eq!(
+        from_process.matches("home_of(").count(),
+        1,
+        "家目录要经 `home_of` 取"
+    );
+    assert_eq!(
+        from_process.matches("under_home(&home,").count(),
+        2,
+        "配置文件与账号库两处都要经 `under_home` 拼"
+    );
+    assert_eq!(
+        from_process.matches("format!(\"{home}/").count(),
+        0,
+        "又手拼 `{{home}}/…` 了 —— Windows 上就是 `\\` 与 `/` 混拼"
+    );
+    assert_eq!(
+        from_process.matches("std::env::var(\"HOME\")").count(),
+        0,
+        "又只认 `HOME` 了 —— Windows 上默认没有它"
+    );
+}
+
 /// 〔US1 · RK1 报 2〕E10：继承来的中转地址（钥匙已展开）不许原样进载荷 —— 渲回 `$(cat "$HOME/…")` 形，
 /// 真 `sh` 在夹具家目录下展开后 == 原地址；认不出的（用户自己的端点 · 形状不对的）原样。
 /// 守的要求：`INVARIANTS §48.1a`（中转钥匙不进 argv）· RK1 记录 §5.7 第 3 条（主会话交本路）。

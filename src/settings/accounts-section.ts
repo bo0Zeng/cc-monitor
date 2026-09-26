@@ -38,6 +38,7 @@ import {
   deriveAcctIsoDir,
   type AcctIsoStep,
 } from "./acct-deploy";
+import { askConfirm } from "../ask-dialog";
 
 /**
  * apikey 那一格要显的**一个账号**。只带界面真正用得到的三样。
@@ -710,8 +711,10 @@ export class AccountsSection {
     }
     if (opts.danger) {
       const msg =
-        copyText("accounts.launchStep.confirm", { machine: this.origin, cmd: built.cmd, extra: (opts.confirmExtra ? `${opts.confirmExtra}\n\n` : "") });
-      if (!window.confirm(msg)) return false;
+        copyText("accounts.launchStep.confirm", { machine: this.origin, cmd: built.cmd, extra: (opts.confirmExtra ? `${opts.confirmExtra}
+
+` : "") });
+      if (!(await askConfirm(msg))) return false;
     }
     try {
       await commands.launch_remote_terminal({ origin: this.origin, remoteCmd: built.cmd });

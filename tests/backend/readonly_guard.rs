@@ -242,6 +242,12 @@ mod tests {
              见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
         ),
         (
+            "own_dir",
+            "〔HX1 · 4D · 主会话裁〕后端建**自家目录**（`~/.cc-monitor` 与它底下后端自己的几层）的那一个函数：建的那一下就是 0700、\
+             已在的不动。它归 backend-core 是因为第四层那几份（退出行为 · 资产目录 · 中转钥匙 · skill 装记录）与暂存区都要建那一层；\
+             写的只有目录本身（后端**自己的**状态，第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
+        ),
+        (
             "remote_ask",
             "〔C4d · 第四波 4B〕本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 内存可达表，\
              帧面 `remote-reach`。它归 backend-core 是因为 SSH 连接只住本机常驻后端（`dial/`）。**零写盘**：\
@@ -732,6 +738,12 @@ mod tests {
              不建目录、不截断、不追加。对外口（装它的 `install_from_env` · 交给 `tracing` 的 `stderr_writer`）只从 `main.rs` 进（与〔RK1〕`relay/listen.rs` 一样，是不走 `inbound.rs` 的门）",
         ),
         (
+            "own_dir.rs",
+            "〔HX1 · 4D · 主会话裁 HX1 拍板项 4〕**后端建自家目录的那一个函数**（`~/.cc-monitor` 与它底下后端自己的几层）：\
+             建的那一下就是 0700（`DirBuilder` 带权限位一次建成，只许住本模块）、已在的不动、只建一层。它建的是后端**自己的**目录，\
+             不是用户数据。第四层别的几份调它不算越门；第四层之外只有 `control/files_commit.rs` 建暂存区那一处（门）",
+        ),
+        (
             "skill_ledger.rs",
             "〔SU1 · 第四波 4C · V116〕**skill 装记录** `~/.cc-monitor/skill-installs.json`：从别的机器装到这台的 skill，装时写进了哪几个文件 \
              （各自的摘要 ＋ 装之前在不在）。用户裁「要，只删装时写进去的文件」—— 卸只删这里记着的。文件名 / 格式 / 落点都是本仓定的、\
@@ -779,6 +791,11 @@ mod tests {
              拿钥匙。它不是帧面命令 —— 钥匙是中转进门的前提，不是前端要改的值；只有绑上了口的那一个会写 ⇒ 不会两个中转抢着铸",
         ),
         (
+            "control/files_commit.rs",
+            "〔HX1〕暂存区 `~/.cc-monitor/staging` 那两层（上传件与存盘块的落点）要建 —— 它是第三层（文件管理写面）的成员、\
+             不是第四层，所以它是 `own_dir` 在第四层之外**唯一**的一扇门；只调建目录那一个函数，不碰第四层别的写口",
+        ),
+        (
             "main.rs",
             "〔NT2 · S1〕流模式起来那一刻（一次性子命令全部 `exit` 之后、选载体之前）装 stderr 诊断文件 —— \
              那一格没有命令可走（要接的正是这个进程此后说的每一句话），宿主交了路径才装",
@@ -816,7 +833,17 @@ mod tests {
         ("stderr_log.rs", "stderr_log::", "main.rs"),
         // 〔SU1〕一条写口 `answer_record` ⇒ 针取前缀同上两条；读口 `load_at` / `read_at` / `ledger_path` / `digest_of` 不在针上（`skill_install.rs` 读它合法）。
         ("skill_ledger.rs", "skill_ledger::answer_", "inbound.rs"),
+        // 〔HX1〕后端建自家目录的那一个函数：第四层别的几份调它不算（门检查本来就跳过第四层成员）；之外只有暂存区那一处。
+        (
+            "own_dir.rs",
+            "own_dir::ensure_private_dir",
+            "control/files_commit.rs",
+        ),
     ];
+
+    /// 〔HX1〕只许住 `own_dir.rs` 的两个词：带权限位建目录（`DirBuilder` ＋ unix 的 `DirBuilderExt`）。
+    /// 刻意不进 [`OWN_STATE_VERBS`]（不替第四层每一份都多放一个建目录的写法）。
+    const OWN_DIR_AUX: &[&str] = &["DirBuilder", "DirBuilderExt"];
 
     fn is_own_state(rel: &str) -> bool {
         OWN_STATE_MODULES.iter().any(|(p, _)| *p == rel)
@@ -1306,6 +1333,11 @@ mod tests {
         "〔NT2 · S1〕这是后端自己的 stderr **日志落点**，不是一份被读—改—写的状态：写它的只有 fd 2 指着它的那一个进程\
          （路径由 monitor 起脱离那条载体时交，一台一个常驻后端 ⇒ 一份一个写者），`O_EXCL` 新建 ＋ 滚动时原子挪；\
          没有「读出来、改一格、整份写回」那一步 ⇒ 没有「后写的盖掉先写的」可丢。在每一行 `tracing` 写之前拿目录锁只会白加一次系统调用",
+    ),
+    (
+        "own_dir.rs",
+        "〔HX1 · 4D〕后端建自家目录的那一个函数（`ensure_private_dir`）：只有「建一层目录、已在不动」这一个动词，没有一份文件被读—改—写；\
+         而且它正是拿锁之前那一步（锁的就是它建出来的目录）—— 它自己再拿锁是先有鸡还是先有蛋",
     )];
 
     /// 🔴 〔HX2 · 第四波 4D〕**第四层判据 ⑥：每一份都在跨进程锁里写 —— 人群两向相等。**
@@ -2277,6 +2309,10 @@ mod tests {
                         }
                         // 〔B2〕第四层那个闭集：只在第四层模块里放行。
                         if OWN_STATE_VERBS.contains(&full.as_str()) && is_own_state(&rel) {
+                            continue;
+                        }
+                        // 〔HX1〕带权限位建目录：只在建自家目录的那一个模块里放行。
+                        if OWN_DIR_AUX.contains(&full.as_str()) && rel == "own_dir.rs" {
                             continue;
                         }
                         // 🔴 〔波 5 ㈡〕第三层那个**闭集**：只在第三层模块里放行，别处照旧红。
@@ -4251,6 +4287,15 @@ mod g6_dependency_signoff {
             DEPS,
             UNMEASURED,
             "把上面那条的事件去抖之后再交出来 —— 同一条路上的第二段，同样只在读侧",
+        ),
+        (
+            "ring",
+            DEPS,
+            UNMEASURED,
+            "〔FW1 · 第四波 4D〕只用 `ring::digest::SHA256`：CAS 摘要形的唯一算法住址 \
+             `files/mod.rs::content_sha256`（纯内存算摘要）。它本来就在发布二进制里 \
+             （上面 `rustls` 的 provider · 下面 `russh` 同一棵），这一行只是把间接依赖提成直接依赖、零新包。\
+             写不写盘：本 crate 对它的用法一条写路径都不经它（用法签字，没扫它的源码）",
         ),
         (
             "rustls",

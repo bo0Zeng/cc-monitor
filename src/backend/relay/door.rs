@@ -105,11 +105,9 @@ pub(crate) fn ensure_key(path: &Path) -> Result<Key, String> {
     let dir = path
         .parent()
         .ok_or_else(|| format!("{} 没有父目录", path.display()))?;
-    if let Err(e) = std::fs::create_dir(dir) {
-        if e.kind() != std::io::ErrorKind::AlreadyExists {
-            return Err(format!("建 {} 失败：{e}", dir.display()));
-        }
-    }
+    // 〔HX1〕只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。〔HX2〕挪到拿锁之前：锁的是这个目录，它得先在。
+    crate::own_dir::ensure_private_dir(dir)
+        .map_err(|e| format!("建 {} 失败：{e}", dir.display()))?;
     let _lock = crate::platform::lock::hold(dir)?;
     if let Some(k) = read_key(path) {
         return Ok(k);

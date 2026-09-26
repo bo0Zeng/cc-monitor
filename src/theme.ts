@@ -8,7 +8,7 @@
  * - Rust config 命令不解释配置内容，只做原子 R/W
  */
 
-import { loadConfig, saveConfig } from "./config";
+import { loadConfig, patchConfig, setAt } from "./config";
 
 /**
  * 主题可配置项 —— 与 styles.css :root 的令牌一一对应。
@@ -91,10 +91,8 @@ export async function loadTheme(): Promise<ThemeConfig> {
   }
 }
 
-/** 保存并应用。会合并到现有 config 的 theme 字段，保留其它字段。 */
+/** 保存并应用。整键替换 config 的 `theme`（〔CFG1〕按键补丁），不碰其它键。 */
 export async function saveTheme(theme: ThemeConfig): Promise<void> {
-  const cfg = (await loadConfig()) as Record<string, unknown>;
-  cfg.theme = theme;
-  await saveConfig(cfg);
+  await patchConfig([setAt(["theme"], theme)]);
   applyTheme(theme);
 }

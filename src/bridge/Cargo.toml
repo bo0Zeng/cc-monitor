@@ -40,7 +40,7 @@ categories = ["development-tools", "visualization"]
 
 [lib]
 name = "monitor_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["rlib"]
 
 # 主二进制。🔴 **明写出来**：下面多了第二个 `[[bin]]`，而「自动发现 + 明写混用」
 # 是一个读起来要去查 cargo 文档才知道答案的形状 —— 两个都写死，谁都不用猜。

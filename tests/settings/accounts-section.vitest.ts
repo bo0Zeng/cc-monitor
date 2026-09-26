@@ -796,7 +796,8 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     ).toBe(true);
   });
 
-  it("KS7 机检：那把 key 在前端**只流向一条命令**，绝不进 `save_config`", () => {
+  // 〔CFG1〕配置写口从 `save_config`（整份）换成 `patch_config`（按键补丁）〔散文墓碑〕—— 名字跟着换，否则这一格对一个已不存在的命令名恒绿。
+  it("KS7 机检：那把 key 在前端**只流向一条命令**，绝不进配置写口 `patch_config`", () => {
     const code = src();
     // ① 前端拿到的明文只出现在一处出口。
     const calls = [...code.matchAll(/commands\.(\w+)\(/g)].map((m) => m[1]);
@@ -805,8 +806,8 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     expect([...code.matchAll(/\bwriteApikeyKey\(/g)].length, "key 的出口不是恰好一处").toBe(1);
     expect(calls, "Tauri 那条写 key 的命令回来了").not.toContain("write_apikey_" + "credentials_key");
     expect(
-      calls.filter((c) => c === "save_config"),
-      "账号这一组里出现了 `save_config` —— key 有可能被塞进前端「读—改—写」整份的那份配置",
+      calls.filter((c) => c === "patch_config"),
+      "账号这一组里出现了 `patch_config` —— key 有可能被塞进前端的那份配置（config.json）",
     ).toEqual([]);
     // ② 那个字段名不许出现在本文件里（它是**后端那份文件**的 schema，不是前端配置的）。
     expect(

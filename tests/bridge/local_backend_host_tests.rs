@@ -583,7 +583,12 @@ fn the_stop_command_really_calls_this_module() {
     let dc = guard_core::production_code(include_str!(
         "../../src/bridge/src/backend/control/backend_control.rs"
     ));
-    guard_core::find_pinned(&dc, "local_backend_host::stop_local_backend()").unwrap_or_else(|e| {
+    // 〔HX1〕停口改成 `async`、本机那一支交阻塞线程池跑（`spawn_blocking(…::stop_local_backend)`，传的是函数本身）。
+    guard_core::find_pinned(
+        &dc,
+        "spawn_blocking(crate::local_backend_host::stop_local_backend)",
+    )
+    .unwrap_or_else(|e| {
         panic!(
             "`backend_control` 的停口没有接到 `stop_local_backend`（{e}）——\n\
                  那么 UI 上的「停」对本机是个空动作，而它照样回一句成功的话。"
@@ -2722,8 +2727,8 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
 /// token 每次都不一样、够长，而且**不是空串**（空串会让 attach 那道门形同虚设）。
 #[test]
 fn every_token_is_fresh_and_long_enough() {
-    let a = fresh_token();
-    let b = fresh_token();
+    let a = fresh_token().expect("铸 token");
+    let b = fresh_token().expect("铸 token");
     assert_ne!(
         a, b,
         "两次拿到同一个 token —— 那说明熵源里没有「每次都变」的东西"
@@ -2971,10 +2976,12 @@ fn the_user_actionable_start_failures_all_reach_the_user() {
     //  ⇒ 人群从「所有人」缩成这三批，**性质没变**，所以这条不换靶。
     //  与 `local_backend.rs` 那条「换靶」不同形：那条的**目的**随 F05b 过期，必须换；
     //  本条改的只是红了之后说给人听的那句话。〕
+    // 〔HX1 · E §E4〕6 → 7：另一个 monitor 正连着那一臂（`Adopt::Busy`）—— 分在「用户动得了手」那一档（关掉另一个 monitor），
+    //   同拍调了 `note_start_refusal`（下面 ④ 那个数 3 → 4）。
     assert_eq!(
         prod.matches("StartOutcome::Failed {").count(),
-        6,
-        "`StartOutcome::Failed` 的构造点不是 6 处了 —— \n\
+        7,
+        "`StartOutcome::Failed` 的构造点不是 7 处了 —— \n\
              ★ **新增一处失败就要给它分档**：用户动得了手（删文件 / 停进程 / 改权限位）\n\
              ⇒ 调 `note_start_refusal` 把话说到眼前；\n\
              诚实降级（**这一份产物里没带 local_backend** 那种 —— 裸 exe / 开发树 / 释放内嵌也失败）\n\
@@ -2999,11 +3006,11 @@ fn the_user_actionable_start_failures_all_reach_the_user() {
              ★ 这句话现在是**直接转交给用户**的（不再只进日志），\n\
              它少了「下一步」这三个字，用户拿到的就只是一句「它坏了」。"
     );
-    // ④ 写记录只有一个入口，今天恰好两条路在用它。
+    // ④ 写记录只有一个入口，今天恰好三条路在用它（〔HX1 · E §E4〕+1：另一个 monitor 正连着那一臂 `Adopt::Busy`）。
     assert_eq!(
         prod.matches("note_start_refusal(").count(),
-        3,
-        "`note_start_refusal` 在生产段里不是 3 处（1 个定义 + 2 个调用点）——\n\
+        4,
+        "`note_start_refusal` 在生产段里不是 4 处（1 个定义 + 3 个调用点）——\n\
              少了 = 某一条「用户动得了手」的路退回了只写日志；\n\
              多了 = 又有一条路被分进这一档，回来把本条与那段分档说明一起改。"
     );
@@ -4152,5 +4159,231 @@ fn hx2_the_handed_names_are_exactly_what_the_backend_echoes() {
     assert_eq!(
         handed, mine,
         "生产交的那份环境不是恰好名单那几格（这台机器上数据目录解得出时）"
+    );
+}
+
+/// 〔HX1 · RK1 报 3〕token 取自**内核密码学随机数**，不再从时钟 / pid / 计数器里拼。
+/// 守的要求：`INVARIANTS §48.1` 逐字「钥匙由宿主生成（新生成时 128 位随机）」；RK1 报备 §5.7 第 4 条（纳秒 ⊕ pid ⊕ 计数器 ＋ mtime 泄露铸造时刻）。
+/// 形状：生产段 `fresh_token` 体内零命中那几样可推的熵源、恰好读 `/dev/urandom` 一处（零富余，带正控）。
+#[test]
+fn hx1_the_token_comes_from_the_kernel_csprng_not_from_clock_pid_or_counter() {
+    let prod =
+        guard_core::production_code(include_str!("../../src/bridge/src/local_backend_host.rs"));
+    let at = prod.find("fn fresh_token(").expect("fresh_token");
+    let end = prod[at..].find("\n}\n").map(|i| at + i).expect("函数尾");
+    let body = &prod[at..end];
+    let guessable = [
+        "SystemTime",
+        "process::id",
+        "AtomicU64",
+        "Instant",
+        "as_nanos",
+    ];
+    let hit: Vec<&str> = guessable
+        .iter()
+        .copied()
+        .filter(|n| body.contains(n))
+        .collect();
+    assert!(hit.is_empty(), "token 又从可推的东西里取熵了：{hit:?}");
+    assert_eq!(
+        body.matches("File::open(\"/dev/urandom\")").count(),
+        1,
+        "不再读内核随机数"
+    );
+    // 正控：旧形状那几样确实会被认出来。
+    let old = "let nanos = std::time::SystemTime::now(); let p = std::process::id();";
+    assert!(guessable.iter().any(|n| old.contains(n)));
+}
+
+/// 〔HX1 · RK1 小尾巴〕`~/.cc-monitor` 这一层**建的那一下**就是 0700；**已在的**不动（两向）。
+/// 守的要求：`4d-lanes.md` HX1 出处「RK1 小尾巴（`~/.cc-monitor` 首建权限按 umask ⇒ 0700）」。
+#[test]
+#[cfg(unix)]
+fn hx1_the_monitor_home_dir_is_born_private_and_an_existing_one_is_left_alone() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let mode =
+        |p: &std::path::Path| std::fs::metadata(p).expect("meta").permissions().mode() & 0o777;
+    let base = std::env::temp_dir().join(format!("ccm-hx1-home-{}", std::process::id()));
+    std::fs::remove_dir_all(&base).ok();
+    std::fs::create_dir_all(&base).expect("base");
+    let fresh = base.join("new").join(".cc-monitor");
+    crate::platform_fs::ensure_private_dir(&fresh).expect("建");
+    assert_eq!(mode(&fresh), 0o700);
+    // 生产那一条真路：token 文件落进一个还不存在的目录 ⇒ 那一层是 0700。
+    let via_token = base.join("tok").join(".cc-monitor");
+    ensure_listen_token(&via_token).expect("铸 token");
+    assert_eq!(mode(&via_token), 0o700);
+    let old = base.join("old");
+    std::fs::create_dir_all(&old).expect("预置");
+    std::fs::set_permissions(&old, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    crate::platform_fs::ensure_private_dir(&old).expect("已在");
+    assert_eq!(mode(&old), 0o755, "已在的那一层被改了权限");
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// 〔HX1 · E §E4〕第二个 monitor 撞上 `stream-busy`（另一个 monitor 正连着本机后端）⇒ 话说**真原因**：
+/// 点名「另一个 cc-monitor」、不说版本、不叫人结束那个后端进程（那里面住着另一个 monitor 的中转与全部 SSH）；
+/// 「口上是别人 / 版本对不上」那一臂的话**不动**（它的下一步就是结束那个进程）。
+/// 守的要求：审计 E §E4（「报错把原因说成了『升级后版本对不上』，这是归因错」）· `4d-lanes.md` HX1 出处「改说真原因」。
+/// 形状：两臂的话按表逐字取、两向（Busy 那句含「另一个 cc-monitor」且零命中「版本 / 结束那个进程 / 停掉」；Refused 那句仍含「结束那个进程」）；
+/// 接线：`adopt_with` 等满了、最后一次是 `stream-busy` ⇒ 回 `Adopt::Busy`（恰好一处），`start_detached` 那一臂取的是 busy 那两条表项。
+#[test]
+fn hx1_a_busy_stream_is_told_as_another_monitor_not_as_a_version_mismatch() {
+    let table: serde_json::Value =
+        serde_json::from_str(include_str!("../../src/shared/copy/table.json")).expect("表");
+    let zh = |k: &str| {
+        table["entries"][k]["zh"]
+            .as_str()
+            .unwrap_or_else(|| panic!("表里没有 {k}"))
+            .to_string()
+    };
+    for k in [
+        "rsLocalBackendHost.start.busyNotice",
+        "rsLocalBackendHost.start.busy",
+    ] {
+        let t = zh(k);
+        assert!(t.contains("另一个 cc-monitor"), "{k}：{t}");
+        for bad in ["版本", "结束那个进程", "停掉", "下一步"] {
+            assert!(!t.contains(bad), "{k} 里又出现了「{bad}」：{t}");
+        }
+    }
+    assert!(
+        zh("rsLocalBackendHost.start.refusedNotice").contains("结束那个进程"),
+        "口上是别人那一臂的话变了（它的下一步就是结束那个进程）"
+    );
+    let me =
+        guard_core::production_code(include_str!("../../src/bridge/src/local_backend_host.rs"));
+    guard_core::find_pinned(&me, "if last_busy {\n        return Adopt::Busy;")
+        .expect("等满之后按最后一次是否 busy 分臂");
+    let busy_arm = braced_block(&me, "Err(AttachErr::Busy(m)) => {", 20, 400);
+    assert!(
+        busy_arm.contains("last_busy = true;"),
+        "stream-busy 那一臂不再记「最后一次是 busy」：{busy_arm}"
+    );
+    assert_eq!(
+        me.matches("last_busy = true;").count(),
+        1,
+        "只有 stream-busy 那一臂能把它置真"
+    );
+    let arm = braced_block(&me, "Adopt::Busy => {", 300, 3000);
+    assert!(
+        arm.contains("\"rsLocalBackendHost.start.busyNotice\"")
+            && arm.contains("\"rsLocalBackendHost.start.busy\""),
+        "Busy 那一臂取的不是 busy 那两条：{arm}"
+    );
+    assert!(
+        !arm.contains("start.refused"),
+        "Busy 那一臂又取了 refused 的话"
+    );
+}
+
+/// 〔HX1 · 主会话裁 HX1 拍板项 4〕**monitor 生产段每一处建目录都登记在案，建后端自家目录（`~/.cc-monitor` 一族）的只有
+/// `platform_fs::ensure_private_dir` 一处**（本机起后端前 · token / pid 那一层 · 释放二进制 / 全景小程序 / ccm 入口那几处经注入）。
+/// 守的要求：主会话裁「建自家目录收成一个小函数 …… 判据：生产段建 `~/.cc-monitor` 的调用点 == 那个函数一处（两向，带正控）」。
+/// 形状：`src/bridge/src` 生产段里 `fs::create_dir(` / `fs::create_dir_all(` / `fs::DirBuilder::new(` 的所在 (文件, 函数) == 登记表（两向）；
+/// 登记表里「后端自家目录」那一格恰好是那一个函数；正控：合成语料里多一处必被认出。后端那一半另有一份（`own_dir_tests`）。
+#[test]
+fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_home() {
+    const OWN_HOME: &str = "后端自家目录";
+    const DIR_CREATORS: &[(&str, &str, &str)] = &[
+        ("platform_fs.rs", "ensure_private_dir", OWN_HOME),
+        (
+            "logging.rs",
+            "build_rolling_appender",
+            "monitor 数据目录下的 logs（滚动日志）",
+        ),
+        (
+            "lib.rs",
+            "open_log_dir",
+            "monitor 数据目录下的 logs（「打开日志目录」）",
+        ),
+        ("bind.rs", "spawn", "monitor 数据目录（绑定表）"),
+        (
+            "utils.rs",
+            "atomic_write_json",
+            "调用方给的 JSON 文件的父目录（monitor 数据目录一族）",
+        ),
+        (
+            "config.rs",
+            "patch_config_at",
+            "monitor 数据目录（config.json，〔CFG1〕加锁读改写那一处）",
+        ),
+        ("session_map.rs", "run_watcher", "被看的那个 sessions 目录"),
+        (
+            "filewin/bookmarks.rs",
+            "lock_store",
+            "monitor 数据目录（书签）",
+        ),
+        (
+            "local_backend_host.rs",
+            "spawn_detached",
+            "monitor 数据目录下的 logs/backend（交给脱离后端的 stderr 文件）",
+        ),
+    ];
+    fn creations(rel: &str, prod: &str) -> Vec<(String, String)> {
+        let needles = [
+            "fs::create_dir(",
+            "fs::create_dir_all(",
+            "fs::DirBuilder::new(",
+        ];
+        let mut out = Vec::new();
+        let mut cur = String::new();
+        for line in prod.lines() {
+            let head_of_line = line.trim_start();
+            for kw in [
+                "pub(crate) async fn ",
+                "pub async fn ",
+                "pub(crate) fn ",
+                "pub fn ",
+                "async fn ",
+                "fn ",
+            ] {
+                if let Some(rest) = head_of_line.strip_prefix(kw) {
+                    cur = rest
+                        .chars()
+                        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                        .collect();
+                    break;
+                }
+            }
+            if needles.iter().any(|n| line.contains(n)) {
+                out.push((rel.to_string(), cur.clone()));
+            }
+        }
+        out
+    }
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let files: Vec<(std::path::PathBuf, String)> = guard_core::scan_tree!(&root, &["rs"]);
+    assert!(files.len() >= 100, "只扫到 {} 份 —— 遍历坏了", files.len());
+    let mut found: Vec<(String, String)> = Vec::new();
+    for (path, src) in &files {
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        found.extend(creations(&rel, &guard_core::production_code(src)));
+    }
+    found.sort();
+    found.dedup();
+    let mut want: Vec<(String, String)> = DIR_CREATORS
+        .iter()
+        .map(|(f, n, _)| ((*f).to_string(), (*n).to_string()))
+        .collect();
+    want.sort();
+    assert_eq!(found, want, "monitor 生产段建目录的地方与登记表对不上 —— 建的若是 `~/.cc-monitor` 一族，改走 `platform_fs::ensure_private_dir`");
+    let home: Vec<&str> = DIR_CREATORS
+        .iter()
+        .filter(|(_, _, w)| *w == OWN_HOME)
+        .map(|(f, _, _)| *f)
+        .collect();
+    assert_eq!(home, vec!["platform_fs.rs"]);
+    // 正控。
+    assert_eq!(
+        creations(
+            "x.rs",
+            "fn sneaky() {\n    std::fs::create_dir_all(p).ok();\n}\n"
+        ),
+        vec![("x.rs".to_string(), "sneaky".to_string())]
     );
 }
