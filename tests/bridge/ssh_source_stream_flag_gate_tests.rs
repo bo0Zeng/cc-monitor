@@ -390,3 +390,16 @@ fn both_carriers_start_the_backend_with_the_same_stream_flags_the_backend_strips
         "local_backend_host·rs 里不许再有自己的 `\"--tail-only\"` 字面量"
     );
 }
+
+/// 〔LOC1b · 第四波 4D〕本机起参要带 `--with-rbind-token`：`session_added.pid` 跟令牌同一道闸
+/// （后端 `wire::Frame::SessionAdded::pid`），本机 ↗ 绑窗口只能从那一格拿 pid（monitor 不再自己读 pidfile）。
+/// 异源：旗标字面量从后端 `STREAM_FLAGS` 源码里摘，确认后端真剥它。
+#[test]
+fn loc1b_the_local_stream_asks_for_the_binding_material() {
+    use crate::backend::control::local_backend::LOCAL_STREAM_ARGS;
+    assert!(
+        LOCAL_STREAM_ARGS.contains(&"--with-rbind-token"),
+        "本机起参少了 `--with-rbind-token` ⇒ 本机 `session_added` 不带 pid ⇒ 本机 ↗ 按 PowerShell 父进程绑窗口那一跳没有 pid"
+    );
+    assert!(backend_stream_flags_cf1().contains("--with-rbind-token"));
+}

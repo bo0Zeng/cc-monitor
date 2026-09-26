@@ -800,8 +800,10 @@ window.addEventListener("DOMContentLoaded", async () => {
         s.name ?? null,
       );
     }
-    // 〔U4b · 说不清〕这就是本机的活会话清单（`session_map` 初扫完了）⇒ 本机的固定 tab 从说不清落地：
+    // 〔U4b · 说不清〕这就是本机的活会话清单 ⇒ 本机的固定 tab 从说不清落地：
     //   清单里有 ⇒ 活，没有 ⇒ 已结束。拉失败（下面 catch）⇒ 不标，照旧说不清 —— 说不清就说说不清。
+    //   〔LOC1b · 4D〕清单由本机后端的帧喂（本机后端还没报完 ⇒ 这一问明拒、落 catch）；报完的那一刻本机 emitter
+    //   另发 `origin-sessions-listed`（与远端同一个事件，上面 `onOriginSessionsListed` 那一格收）。
     tabs.markOriginSeen(LOCAL_ORIGIN, new Set(active.map((s) => s.session_id)));
   } catch (e) {
     console.warn("[skeleton] list_active_sessions failed:", e);

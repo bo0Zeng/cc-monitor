@@ -274,6 +274,7 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
                 waiting_for: None,
                 rbind_token: None,
                 container: None,
+                pid: None,
             },
             "session_added",
         ),
@@ -933,6 +934,7 @@ fn dg3_codex_fields_serialize_when_present() {
         waiting_for: None,
         rbind_token: None,
         container: None,
+        pid: None,
     })
     .unwrap();
     assert_eq!(
@@ -992,6 +994,7 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
         waiting_for: None,
         rbind_token: None,
         container: None,
+        pid: None,
     })
     .unwrap();
     assert_eq!(
@@ -1141,6 +1144,7 @@ fn session_added_rbind_token_is_additive_present_and_absent() {
         waiting_for: None,
         rbind_token: None,
         container: None,
+        pid: None,
     })
     .unwrap();
     assert_eq!(
@@ -1165,6 +1169,7 @@ fn session_added_rbind_token_is_additive_present_and_absent() {
         waiting_for: None,
         rbind_token: Some("0123456789abcdef0123456789abcdef".into()),
         container: None,
+        pid: None,
     })
     .unwrap();
     assert_eq!(
@@ -1197,6 +1202,7 @@ fn session_added_container_is_additive_with_two_literals() {
             waiting_for: None,
             rbind_token: None,
             container: c,
+            pid: None,
         })
         .unwrap()
     };
@@ -1218,5 +1224,34 @@ fn sessions_replayed_has_exactly_these_bytes() {
     assert_eq!(
         to_line(&Frame::SessionsReplayed).unwrap(),
         "{\"kind\":\"sessions_replayed\"}\n"
+    );
+}
+
+/// 〔LOC1b · 第四波 4D〕`session_added.pid` 的线上形：缺席 ⇒ 与本字段加进来之前逐字节相同；带上 ⇒ 排在最后、是个整数。
+#[test]
+fn loc1b_session_added_pid_is_additive() {
+    let frame = |pid: Option<u32>| {
+        to_line(&Frame::SessionAdded {
+            sid: "s".into(),
+            agent_kind: None,
+            liveness_confidence: None,
+            session_kind: None,
+            attachable: None,
+            cwd: None,
+            name: None,
+            path: None,
+            lines: None,
+            status: None,
+            waiting_for: None,
+            rbind_token: None,
+            container: None,
+            pid,
+        })
+        .unwrap()
+    };
+    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\"}\n");
+    assert_eq!(
+        frame(Some(4242)),
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"pid\":4242}\n"
     );
 }

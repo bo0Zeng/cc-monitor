@@ -40,7 +40,7 @@ pub(crate) fn range_argv(jsonl_path: &str, offset: u64, until: u64) -> Vec<Strin
     ]
 }
 
-/// 路径的廉价预检（与 `load_subagent` / `stream_read_remote_session` 同一条纪律）：
+/// 路径的廉价预检（与 `load_subagent` / `history·rs::stream_read_session_jsonl` 同一条纪律）：
 /// 真正的越权读由后端 `fence_under_projects` 兜底。
 fn precheck(jsonl_path: &str) -> Result<(), String> {
     if jsonl_path.contains("..") || !jsonl_path.ends_with(".jsonl") {
@@ -53,8 +53,8 @@ fn precheck(jsonl_path: &str) -> Result<(), String> {
 }
 
 /// 〔U3b〕**monitor 侧「这一行占不占 seq」的唯一住址** —— 与后端 `history_query·rs::line_counts`
-/// 同一口径（剥 BOM 再 `trim`，空了就不占号）。三个调用方：本机历史读（`history·rs::stream_read_session_jsonl`）·
-/// 远端历史读（`remote_history·rs::stream_read_remote_session`）· 按偏移取正文（[`range_payloads`]）。
+/// 同一口径（剥 BOM 再 `trim`，空了就不占号）。两个调用方：读一整份会话（`history·rs::SessionPager`，
+/// 〔LOC1b · 4D〕本机远端合成一条 —— 从前是本机 / 远端两个读者各调一次）· 按偏移取正文（[`range_payloads`]）。
 ///
 /// # 为什么要有它
 ///

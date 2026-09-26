@@ -1,5 +1,8 @@
 use super::*;
 
+// 〔LOC1b · 第四波 4D〕本文件从 `remote_history_f06_tests.rs` 改名、被测从 `remote_history.rs` 换成 `history.rs`：
+//   读一整份会话的上限与那句话随本机远端合成一条搬了过来（`history·rs::stream_read_session_jsonl`）。
+
 /// ★ **超限必须说话，而且要说清「少了什么」**〔audit-0805 F06，定框 E4/E5〕。
 ///
 /// 此前是 `take(MAX)` + `if n == 0 { break; }` —— 到限与正常 EOF **完全同形**，
@@ -19,8 +22,9 @@ fn the_truncation_message_says_what_is_missing_and_where_it_still_is() {
         "★ 要明说后面的内容没显示 —— 不说这句就等于还是在静默：{m}"
     );
     assert!(
-        m.contains("仍在远端"),
-        "★ 要告诉用户完整历史还在（这条与丢帧不同：数据没丢，是没读完）：{m}"
+        m.contains("仍在那台机器上"),
+        "★ 要告诉用户完整历史还在（这条与丢帧不同：数据没丢，是没读完）。\
+         〔LOC1b · 4D〕本机远端同一句（本机冷读也走那台后端），不再说「远端」：{m}"
     );
 }
 
@@ -64,7 +68,7 @@ fn the_truncation_message_says_what_is_missing_and_where_it_still_is() {
 /// 由体内那条 `assert_no_test_code` 钉着。
 #[test]
 fn the_cap_check_is_still_wired_not_just_declared() {
-    let raw = include_str!("../../src/bridge/src/remote_history.rs");
+    let raw = include_str!("../../src/bridge/src/history.rs");
     let prod = guard_core::production_source(raw);
 
     // 🔴 〔搬树 2026-09-18 · `设计/99 §2.5 P9` / `16 §4.1`〕**对照组退役，换成它今天真正的那道保障。**
@@ -79,13 +83,13 @@ fn the_cap_check_is_still_wired_not_just_declared() {
     // ⇒ 不是删掉一条检查，是把它换成**今天真的成立、而且仍然会红**的那一条：
     //   ① 语料真的读进来了（空串会让下面几条一起「找不到」—— 假红与假绿同形）；
     //   ② 被测那份文件里**一个 `#[test]` 都没有** —— 那就是「判据不会读到自己」
-    //      在剖分之后的**结构性**保障。有人把测试搬回 `remote_history.rs`，这一格当场红。
+    //      在剖分之后的**结构性**保障。有人把测试搬回 `history.rs`（〔LOC1b〕原先是 `remote_history.rs`），这一格当场红。
     assert!(
         raw.len() > 5_000,
-        "只读到 {} 字节的 `remote_history.rs` —— 本条在空转",
+        "只读到 {} 字节的 `history.rs` —— 本条在空转",
         raw.len()
     );
-    guard_core::assert_no_test_code("remote_history.rs", raw);
+    guard_core::assert_no_test_code("history.rs", raw);
 
     const COND: &str = "if read_bytes > MAX_SESSION_BYTES {";
 
