@@ -1571,7 +1571,17 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "files-browse",
         doc_anchor: Some("#### `files-browse`"),
         codes: &["bad_args", "bad_path"],
-        fields: &["added", "browse_watch_cap", "dirs", "rejected", "removed"],
+        // 〔W5-FILES〕+`watching` · `watch_failed` · `watch_error`（进程里那一个监听器跟上名单，`设计/60 §3.7`）。
+        fields: &[
+            "added",
+            "browse_watch_cap",
+            "dirs",
+            "rejected",
+            "removed",
+            "watch_error",
+            "watch_failed",
+            "watching",
+        ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::files::answer_wire(&r.cmd, &r.args)
