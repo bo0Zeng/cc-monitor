@@ -37,6 +37,7 @@ function fakeTab(sid: string, over: Partial<Tab> = {}): Tab {
     title: `标题-${sid}`,
     state: LIVE,
     pinned: false,
+    group: null, // 〔GRP1 · V140〕组员关系是 tab 自己的属性
     cwd: "/w",
     origin: LOCAL_ORIGIN,
     kind: null,
@@ -73,9 +74,12 @@ function rig(n: number, grouped = 0): Rig {
     if (remote) store.accountLastByS.set(sid, i % 4 === 1 ? "alice" : "bob");
   }
   store.activeId = "s0";
+  // 〔GRP1 · V140〕组表只有 `{id, name}`；前 `grouped` 个 tab 自己带组 id。
+  for (const sid of store.orderedIds.slice(0, grouped)) store.tabs.get(sid)!.group = "c1";
   const prefs = {
-    collections: grouped > 0 ? [{ id: "c1", name: "组一", members: store.orderedIds.slice(0, grouped) }] : [],
-    commitCollections: vi.fn().mockResolvedValue(undefined),
+    collections: grouped > 0 ? [{ id: "c1", name: "组一" }] : [],
+    dissolveGroup: vi.fn().mockResolvedValue(undefined),
+    renameGroup: vi.fn().mockResolvedValue(undefined),
   };
   const host: TabBarViewHost = {
     refreshTabBar: vi.fn(),
@@ -242,7 +246,8 @@ describe("P6：整刷不把 `barEl.children` 物化成数组", () => {
   });
   it("散 tab 仍排在**最后一个**组容器之后（`P7a3-Y2`「未归组的照常在后面」；两个组，第二个是后建的）", () => {
     const r = make(6, 2);
-    r.prefs.collections.push({ id: "c2", name: "组二", members: ["s2"] });
+    r.prefs.collections.push({ id: "c2", name: "组二" });
+    r.store.tabs.get("s2")!.group = "c2";
     r.view.refresh();
     const kids = [...r.bar.children];
     expect(kids.map((e) => (e.classList.contains("tab-group") ? "G" : "t")).join("")).toBe("GGttt");

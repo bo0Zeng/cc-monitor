@@ -14,13 +14,9 @@ import type { Tab } from "./tab-model";
 import { hasTerminal, isResumeOnly, type SessionState } from "./tab-session-state";
 import { copyText } from "./copy-table";
 import {
-  addMember,
-  collectionOf,
-  createCollection,
   createRefusal,
-  memberRefusal,
   newCollectionId,
-  removeMember,
+  type CollectionRefusal,
   type TabCollection,
 } from "./tab-collections";
 import { sayCollectionRefusal } from "./tab-bar-prefs";
@@ -70,7 +66,12 @@ export interface TabMenuHost {
   /** 这个实例拉过集合没有（撕离出来的 viewer 窗口从不拉 ⇒ 不给集合入口）。 */
   collectionsLoaded(): boolean;
   collections(): TabCollection[];
-  commitCollections(next: TabCollection[]): Promise<void>;
+  /** 〔GRP1 · V140〕这个 tab 在哪个组（读 `Tab.group`）。下面三个动作改完内存就重画、落盘由落盘偏好那一份做。 */
+  groupOf(sid: string): TabCollection | null;
+  joinGroup(sid: string, gid: string): void;
+  /** 建组并把这几个 tab 放进去；组数到上界 ⇒ 回拒绝原因、什么都不做。 */
+  foundGroup(sids: string[], name: string, id: string): CollectionRefusal | null;
+  leaveGroup(sid: string): void;
   /** 同上一条理由：没 `loadPinned` 过就不给固定入口。 */
   pinnedLoaded(): boolean;
   togglePin(sid: string): void;
@@ -92,17 +93,13 @@ export class TabMenu {
     ];
     // P7a-3（#61）：集合 —— **纯手动**〔用 08-11「手动建, 不要自动, 纯手动」〕。
     // 二级 flyout：现有集合各一条 + 「新建集合…」；已归组的再给一条「移出集合」。
-    const here = this.host.collectionsLoaded() ? collectionOf(this.host.collections(), sid) : null;
+    const here = this.host.collectionsLoaded() ? this.host.groupOf(sid) : null;
+    // 〔GRP1 · V140〕成员上界随成员名单一起作废 ⇒ 「那一组满了」这一句也没了，加进去就是改这个 tab 的组 id。
     const joinItems: TabMenuItem[] = this.host.collections()
       .filter((col) => col.id !== here?.id)
       .map((col) => ({
         label: col.name,
-        onClick: () => {
-          // 〔TL2 · E13〕那个集合满了 ⇒ 说出来（`addMember` 照旧原样返回，不写盘）。
-          const why = memberRefusal(this.host.collections(), col.id, sid);
-          if (why) return sayCollectionRefusal(why);
-          void this.host.commitCollections(addMember(this.host.collections(), col.id, sid));
-        },
+        onClick: () => this.host.joinGroup(sid, col.id),
       }));
     joinItems.push({
       label: copyText("tabMenu.collection.new"),
@@ -112,11 +109,9 @@ export class TabMenu {
         if (full) return sayCollectionRefusal(full);
         const name = await askText(copyText("tabMenu.collection.namePrompt"));
         if (!name?.trim()) return;
-        const id = newCollectionId();
-        const withNew = createCollection(this.host.collections(), name, id);
-        // 名字空/到上界时 `createCollection` 原样返回 ⇒ 别再往一个不存在的集合里塞成员。
-        if (withNew.length === this.host.collections().length) return;
-        void this.host.commitCollections(addMember(withNew, id, sid));
+        // 问名字那一会儿里别处又建满了 ⇒ 仍要说出来（判定在落盘偏好那一份里再过一次）。
+        const why = this.host.foundGroup([sid], name, newCollectionId());
+        if (why) sayCollectionRefusal(why);
       })(),
     });
     if (this.host.collectionsLoaded()) items.push({ label: copyText("tabMenu.collection.add"), submenu: joinItems });
@@ -135,7 +130,7 @@ export class TabMenu {
     if (here) {
       items.push({
         label: copyText("tabMenu.collection.remove", { name: here.name }),
-        onClick: () => void this.host.commitCollections(removeMember(this.host.collections(), sid)),
+        onClick: () => this.host.leaveGroup(sid),
       });
     }
     // F70（护城河）：本地会话 + 有改动集 → 「在全景高亮本会话改动」。远端（代码不在本机、

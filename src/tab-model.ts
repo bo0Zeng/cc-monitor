@@ -76,6 +76,16 @@ export interface Tab {
    */
   pinned: boolean;
   /**
+   * 〔GRP1 · `设计/99 §1` V140〕**这个 tab 在哪个组**（组 id；`null` = 散 tab）。
+   *
+   * 用户原话「分组不应该单独存会话记录. x就是没了, 不存在还要移出分组」⇒ 组员关系是 **tab 自己的属性**：
+   * 组表（`tab-collections.ts`）只存 `{id, name}`，「组里有谁」= `group` 等于那个 id 的 tab，现算。
+   * 🔴 内存里组员关系**唯一的住址**；落盘是 `tabBar.groupOf.<sid>`（`tab-bar-state.ts`）。
+   * 只经 `tab-bar-prefs.ts` 的那几个分组动作改（它们同时写盘）；tab 被 × 掉，这一格随 tab 一起没。
+   * 单值 ⇒ 「一个 tab 只属一个集合」结构上成立。与 `state` / `pinned` 正交（`设计/30 §1` 不变量 3）。
+   */
+  group: string | null;
+  /**
    * issue #23：红绿灯（与 `state` 正交）。null=未知（旧版 CC
    * 无 status 字段 / 远端 v1 暂无透传）→ 维持现状绿点。
    */
