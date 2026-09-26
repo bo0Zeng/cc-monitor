@@ -10479,6 +10479,126 @@
       "zh": "覆盖",
       "args": []
     },
+    "beFilesWrite.copy.modeFailed": {
+      "kind": "error",
+      "zh": "抄权限位到 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.copy.notRegular": {
+      "kind": "error",
+      "zh": "{path} 不是一份普通文件。只复制普通文件，复制目录要带 recursive",
+      "args": ["path"]
+    },
+    "beFilesWrite.copy.recursiveOverwrite": {
+      "kind": "error",
+      "zh": "recursive 与 overwrite 不能同时给。复制目录不合并、不覆盖，目标必须还不存在",
+      "args": []
+    },
+    "beFilesWrite.copyTree.kindLink": {
+      "kind": "body",
+      "zh": "一条符号链接",
+      "args": []
+    },
+    "beFilesWrite.copyTree.kindOther": {
+      "kind": "body",
+      "zh": "设备、管道或套接字",
+      "args": []
+    },
+    "beFilesWrite.copyTree.rootUnresolved": {
+      "kind": "error",
+      "zh": "目标根解析不了（{path}：{e}）",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.copyTree.srcIsRoot": {
+      "kind": "error",
+      "zh": "源就是目标根自己（{path}），复制目录要一个根底下的源",
+      "args": ["path"]
+    },
+    "beFilesWrite.copyTree.unreadable": {
+      "kind": "error",
+      "zh": "读不到 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.copyTree.cannotCopy": {
+      "kind": "error",
+      "zh": "{path} 是{what}，复制不了",
+      "args": ["path", "what"]
+    },
+    "beFilesWrite.copyTree.unlistable": {
+      "kind": "error",
+      "zh": "列不出 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.copyTree.listBroke": {
+      "kind": "error",
+      "zh": "列 {path} 时断了：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.copyTree.entryRefused": {
+      "kind": "error",
+      "zh": "{why}。复制目录整趟没做：这棵树里有一条路径解析不过，一个字节都没建",
+      "args": ["why"]
+    },
+    "beFilesWrite.copyTree.entryUncopyable": {
+      "kind": "error",
+      "zh": "{path} 是{what}。复制目录只建目录与普通文件，整趟没做，一个字节都没建",
+      "args": ["path", "what"]
+    },
+    "beFilesWrite.copyTree.crossMount": {
+      "kind": "error",
+      "zh": "{path} 在另一个文件系统上（挂载点）。复制目录不走进去，整趟没做，一个字节都没建",
+      "args": ["path"]
+    },
+    "beFilesWrite.copyTree.overCap": {
+      "kind": "error",
+      "zh": "{path} 底下超过 {cap} 条。一次不复制这么多，整趟没做，一个字节都没建",
+      "args": ["path", "cap"]
+    },
+    "beFilesWrite.copyTree.kindChanged": {
+      "kind": "error",
+      "zh": "{path} 在计划与动手之间换了种类，不复制",
+      "args": ["path"]
+    },
+    "beFilesWrite.copyTree.mkdirFailed": {
+      "kind": "error",
+      "zh": "建目录 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.copyTree.intoItself": {
+      "kind": "error",
+      "zh": "目标 {dst} 在源 {src} 里面，不能把一个目录复制进它自己",
+      "args": ["dst", "src"]
+    },
+    "beFilesWrite.copyTree.outsideRoot": {
+      "kind": "error",
+      "zh": "目标 {dst} 不在目标根 {root} 底下",
+      "args": ["dst", "root"]
+    },
+    "beFilesWrite.copyTree.undoneAll": {
+      "kind": "body",
+      "zh": "自己建的 {n} 条都撤掉了",
+      "args": ["n"]
+    },
+    "beFilesWrite.copyTree.undoneSome": {
+      "kind": "error",
+      "zh": "撤掉了 {n}/{m} 条，撤不掉的一条：{what}",
+      "args": ["n", "m", "what"]
+    },
+    "beFilesWrite.copyTree.stopped": {
+      "kind": "error",
+      "zh": "{why}。复制目录停在第 {i} 条（共 {total} 条），{tail}",
+      "args": ["why", "i", "total", "tail"]
+    },
+    "beFilesWrite.copyTree.modeNotCopied": {
+      "kind": "error",
+      "zh": "{why}。内容都复制完了，只是这个目录的权限位没抄上，复制出来的东西都在",
+      "args": ["why"]
+    },
+    "beFilesRead.size.unreadable": {
+      "kind": "error",
+      "zh": "这个路径读不到：{kind}",
+      "args": ["kind"]
+    },
     "rsFilewinCopy.ui.askOverwriteMany": {
       "kind": "body",
       "zh": "远端已经有这 {n} 个同名文件了，要覆盖吗？",
