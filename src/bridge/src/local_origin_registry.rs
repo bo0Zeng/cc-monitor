@@ -33,7 +33,8 @@
 //! - **不挡（08-12 由变异逼出来的第二格）**：**隔了一层包装的调用**。
 //!   `cc_bus.rs::cfg_of` 就是这种 —— 它自己直接调，所以本护栏看得见它；
 //!   而 `cc_bus_send` / `cc_bus_spawn` 调的是 `cfg_of`，**本护栏对它们是瞎的**。
-//!   实测：拿掉 `cc_bus_send` 的本机拒绝，本条**照样绿**（P4a 的变异 M5）。
+//!   实测：拿掉 `cc_bus_send` 的本机拒绝，本条**照样绿**（P4a 的变异 M5）。〔散文墓碑〕
+//!   〔C4e〕那两条命令今天都不在了（写面迁到界面经通道直接说后端），这一格的样本随之只剩历史。
 //!   ⇒ 那两条今天由两样东西兜着：`cfg_of` 自己的兜底分支（结构）+
 //!   `cc_bus::tests::the_write_face_refuses_local_before_it_asks_for_a_remote_config`（位置）。
 //!   要把包装那一层也纳进来，得先有一份「哪些函数是远端配置的包装」的表 ——
@@ -67,7 +68,7 @@ const REMOTE_ONLY: &[(&str, &str, &str)] = &[(
 )];
 
 /// ★★ **本轮没有逐条量过的存量**（`P4d-Y5` 08-12 立表 19 条；`P4a` 08-12 还掉 3 条 ⇒ 16；
-/// `K-R56` 09-11 还掉 1 条 —— `tmux.rs::tmux_send_keys`，它是 `K-R54` 逐处裁定表第 1 处
+/// `K-R56` 09-11 还掉 1 条 —— `tmux_send_keys`〔散文墓碑〕（〔C4e〕这条命令整个迁到界面了），它是 `K-R54` 逐处裁定表第 1 处
 /// 点名的那一条「`kill` 有的『本机不许回落』保护，`send-keys` 没有」⇒ **15**）。
 ///
 /// # 为什么它不是 [`REMOTE_ONLY`] 的一部分
@@ -110,9 +111,9 @@ const TRIAGE_DEBT: &[(&str, &str)] = &[
     // 🔴 〔步 8 · 归属 2026-09-19〕住址从 `tmux.rs` 改成 `backend/control/tmux.rs` ——
     //    **文件真的挪了**（`lib.rs` 顶层 → `backend/control/`），欠的那笔债一格没变。
     ("backend/control/tmux.rs", "list_remote_tmux"),
-    // `K-R56`（09-11）：`tmux.rs::tmux_send_keys` 从这里**还掉了** —— 它现在在
+    // `K-R56`（09-11）：`tmux_send_keys`〔散文墓碑〕从这里**还掉了** —— 它当时在
     // `load_remote_config_by_label` 之前分本机（`Routed::NoChannel` 那一臂的早退）。
-    // 行为那一半由 `tmux::tests::the_local_send_keys_never_falls_back_to_ssh` 钉着。
+    // 〔C4e · 第四波 4C〕那条命令整个迁到界面（`src/tmux-control.ts::sendKeys`），当年钉它的行为判据随之退役。
 ];
 
 #[cfg(test)]

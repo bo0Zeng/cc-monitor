@@ -29,8 +29,8 @@ import { commands } from "../ipc/commands";
 import { LOCAL_ORIGIN } from "../backend-policy";
 import { originFromWire } from "../ipc/origin";
 import { searchAllMachines } from "./history-search";
-// `K-R46`：本机 tmux 名的唯一算法口（铸名过 `mintTmuxName` + 「不知道就不铸」）。
-import { mintLocalTmuxName } from "../ipc/local-tmux-name";
+// 〔FE1〕本机 resume 的编排只有一份（铸名 · 账号 · 记 pin 都在里面）。
+import { resumeLocalSession } from "../local-resume";
 import { SessionViewer, type ViewerOptions } from "./session-viewer";
 // `K-R92`：那三格是三态（`null` = 不知道，不是 0）。排序档与加减都只许从这里走 ——
 // JS 会安静地把 `null` 当 0（`Number(null)` / `null > 0` / `null + 1`），那正是本件在治的病。
@@ -39,16 +39,10 @@ import { dispatcher } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
 import { runRemoteResume, runNewSessionRemote } from "../remote-launch-run";
 import { validateLocalLaunch } from "../launch-requests";
-import {
-  fetchAccounts,
-  isSelectable,
-  withAccount,
-  localLaunchAccountSync,
-  localLaunchAccountNameSync,
-  recordLocalLaunchAccount,
-  primeLocalLaunchAccounts,
-  rememberLocalLaunch,
-} from "../accounts";
+import { isSelectable } from "../accounts";
+import { fetchAccounts } from "../account-reads";
+import { withAccount, localLaunchAccountSync, localLaunchAccountNameSync, primeLocalLaunchAccounts } from "../launch-account";
+import { rememberLocalLaunch } from "../local-launch-backfill";
 import {
   actionsFor,
   type HistoryActionCtx,
@@ -57,6 +51,7 @@ import {
 import { getBehavior } from "../behavior";
 import { LS_KEYS, safeGetJson, safeSetJson, safeRemove } from "../local-storage";
 import { formatTimestampSmart } from "../format";
+import { copyText } from "../copy-table";
 import {
   shouldRefetchRemote,
   HISTORY_REMOTE_TTL_MS,
@@ -292,14 +287,14 @@ export class HistoryView {
   private updateSearchPlaceholder(): void {
     if (this.searchMode === "fulltext") {
       this.searchInput.placeholder =
-        "全文搜索会话内容（user 输入 + Claude 回复）· 回车搜索";
+        copyText("history.search.placeholderFulltext");
       return;
     }
     if (this.loadedAll) {
-      this.searchInput.placeholder = "搜索：项目 + 所有会话内容（ai-title / 首条消息 / sid）";
+      this.searchInput.placeholder = copyText("history.search.placeholderLoaded");
     } else {
       this.searchInput.placeholder =
-        "搜索：项目名 / 路径（已展开项目还匹配会话内容；或点「全量加载」全文搜）";
+        copyText("history.search.placeholderTree");
     }
   }
 
@@ -329,7 +324,7 @@ export class HistoryView {
       entry.aiTitle ??
       entry.firstUserExcerpt ??
       entry.sessionId.slice(0, 8);
-    const proj = entry.projectName || entry.projectPath || "(未知项目)";
+    const proj = entry.projectName || entry.projectPath || copyText("history.project.unknown");
     const subtitle =
       entry.projectPath && entry.projectPath !== proj
         ? `${proj}  ·  ${entry.projectPath}`
@@ -396,7 +391,7 @@ export class HistoryView {
     // 代际守卫：并发/交叠的 refresh（如 open 的 fan-out 在飞、用户又点刷新）只让最新一次落地，
     // 避免先发后回的旧结果用更旧数据 + 更小 loadedAt 覆盖新结果（对齐同文件 ftSeq 模式）。
     const seq = ++this.refreshSeq;
-    this.statusEl.textContent = "加载项目列表…";
+    this.statusEl.textContent = copyText("history.refresh.loadingProjects");
     this.listEl.replaceChildren();
     this.sessionCache.clear();
     this.loadingProjects.clear();
@@ -406,9 +401,9 @@ export class HistoryView {
       // 〔C4d〕问本机常驻后端（它并注解、判活、合成 Codex 项目）；注解没并上 ⇒ 说一声（星标 / 隐藏数显示成「不知道」）。
       const got = await fetchLocalProjects();
       local = got.projects;
-      if (got.notice) showActionFailureToast("星标 / 隐藏没并上", got.notice);
+      if (got.notice) showActionFailureToast(copyText("history.refresh.noticeTitle"), got.notice);
     } catch (e) {
-      if (seq === this.refreshSeq) this.statusEl.textContent = `加载失败：${historyReasonOf(e)}`;
+      if (seq === this.refreshSeq) this.statusEl.textContent = copyText("history.refresh.failed", { reason: historyReasonOf(e) });
       return;
     }
     if (seq !== this.refreshSeq) return; // 被更新的 refresh 抢占
@@ -436,8 +431,8 @@ export class HistoryView {
         this.remoteCache = null;
         safeRemove(LS_KEYS.historyRemoteSources); // F76b(#46):不完整快照不持久(免下次启动暖绘残缺列表)
         showActionFailureToast(
-          "远端部分来源加载失败",
-          `${res.failedHosts.join("、")}（下次打开将重试）`,
+          copyText("history.refresh.partialTitle"),
+          copyText("history.refresh.partialHosts", { hosts: res.failedHosts.join(copyText("history.refresh.hostSep")) }),
         );
       }
       this.projects = [...local, ...remote];
@@ -445,7 +440,7 @@ export class HistoryView {
     } catch (e) {
       if (seq !== this.refreshSeq) return;
       // 全部台失败（Err）→ 保住旧缓存不覆盖（force 也不预清，失败时降级复用更稳）；本地已渲染，仅 toast。
-      showActionFailureToast("远端历史加载失败", String(e));
+      showActionFailureToast(copyText("history.refresh.remoteFailed"), String(e));
     }
   }
 
@@ -475,7 +470,7 @@ export class HistoryView {
         if (this.isOpen) this.renderList();
       } catch (e) {
         console.warn(`sessions in ${key} failed:`, e);
-        showActionFailureToast(proj.origin ? "远端会话列表加载失败" : "会话列表加载失败", historyReasonOf(e));
+        showActionFailureToast(proj.origin ? copyText("history.sessions.remoteFailed") : copyText("history.sessions.failed"), historyReasonOf(e));
       } finally {
         this.loadingProjects.delete(key);
       }
@@ -500,7 +495,7 @@ export class HistoryView {
     const backBtn = document.createElement("button");
     backBtn.type = "button";
     backBtn.className = "history-back";
-    backBtn.textContent = "← 返回";
+    backBtn.textContent = copyText("history.build.back");
     backBtn.addEventListener("click", () => this.close());
     bar.appendChild(backBtn);
 
@@ -517,8 +512,8 @@ export class HistoryView {
       this.modeBtns[mode] = b;
       modeToggle.appendChild(b);
     };
-    mkModeBtn("tree", "项目", "按项目名 / 标题过滤（本地，即时）");
-    mkModeBtn("fulltext", "全文", "搜索所有会话的消息内容（回车触发）");
+    mkModeBtn("tree", copyText("history.build.modeTree"), copyText("history.build.modeTreeHint"));
+    mkModeBtn("fulltext", copyText("history.build.modeFulltext"), copyText("history.build.modeFulltextHint"));
     bar.appendChild(modeToggle);
 
     this.searchInput = document.createElement("input");
@@ -550,10 +545,10 @@ export class HistoryView {
 
     const sortSel = document.createElement("select");
     sortSel.className = "history-sort";
-    sortSel.title = "组内会话的排序方式";
+    sortSel.title = copyText("history.build.sortHint");
     const options: { value: SortMode; label: string }[] = [
-      { value: "updated_desc", label: "组内：最近更新" },
-      { value: "started_desc", label: "组内：最近创建" },
+      { value: "updated_desc", label: copyText("history.build.sortUpdated") },
+      { value: "started_desc", label: copyText("history.build.sortCreated") },
     ];
     for (const o of options) {
       const opt = document.createElement("option");
@@ -571,8 +566,8 @@ export class HistoryView {
     const expandAllBtn = document.createElement("button");
     expandAllBtn.type = "button";
     expandAllBtn.className = "history-refresh";
-    expandAllBtn.textContent = "展开/收起";
-    expandAllBtn.title = "切换所有项目组的展开状态";
+    expandAllBtn.textContent = copyText("history.build.expandAll");
+    expandAllBtn.title = copyText("history.build.expandAllHint");
     expandAllBtn.addEventListener("click", () => void this.toggleAll());
     bar.appendChild(expandAllBtn);
     this.treeOnlyEls.push(expandAllBtn);
@@ -581,9 +576,9 @@ export class HistoryView {
     this.loadAllBtn = document.createElement("button");
     this.loadAllBtn.type = "button";
     this.loadAllBtn.className = "history-refresh";
-    this.loadAllBtn.textContent = "全量加载";
+    this.loadAllBtn.textContent = copyText("history.loadAll.action");
     this.loadAllBtn.title =
-      "拉取所有项目的会话详情，加载后搜索可匹配 session 内容（ai-title / 首条消息 / sid）";
+      copyText("history.build.loadAllHint");
     this.loadAllBtn.addEventListener("click", () => void this.loadAllSessions());
     bar.appendChild(this.loadAllBtn);
     this.treeOnlyEls.push(this.loadAllBtn);
@@ -598,7 +593,7 @@ export class HistoryView {
     });
     hiddenLabel.appendChild(hiddenCheck);
     const hiddenText = document.createElement("span");
-    hiddenText.textContent = "显示已隐藏";
+    hiddenText.textContent = copyText("history.build.showHidden");
     hiddenLabel.appendChild(hiddenText);
     bar.appendChild(hiddenLabel);
     this.treeOnlyEls.push(hiddenLabel);
@@ -606,7 +601,7 @@ export class HistoryView {
     const refreshBtn = document.createElement("button");
     refreshBtn.type = "button";
     refreshBtn.className = "history-refresh";
-    refreshBtn.textContent = "刷新";
+    refreshBtn.textContent = copyText("history.build.refresh");
     // F76（#46）：刷新按钮 = 强制失效，无视 TTL 重新 fan-out 所有远端（保留用户主动强刷语义）。
     refreshBtn.addEventListener("click", () => void this.refresh(true));
     bar.appendChild(refreshBtn);
@@ -616,7 +611,7 @@ export class HistoryView {
     const toolsLabel = document.createElement("label");
     toolsLabel.className = "history-toggle";
     toolsLabel.title =
-      "默认只搜 user 输入 + Claude 回复文本；勾选后附加搜索工具调用 / 结果 / thinking";
+      copyText("history.build.includeToolsHint");
     const toolsCheck = document.createElement("input");
     toolsCheck.type = "checkbox";
     toolsCheck.addEventListener("change", () => {
@@ -625,7 +620,7 @@ export class HistoryView {
     });
     toolsLabel.appendChild(toolsCheck);
     const toolsText = document.createElement("span");
-    toolsText.textContent = "含工具内容";
+    toolsText.textContent = copyText("history.build.includeTools");
     toolsLabel.appendChild(toolsText);
     bar.appendChild(toolsLabel);
     this.fulltextOnlyEls.push(toolsLabel);
@@ -633,11 +628,11 @@ export class HistoryView {
     // 搜索范围：全部 / 只我的输入 / 只 Claude
     const scopeSel = document.createElement("select");
     scopeSel.className = "history-sort";
-    scopeSel.title = "搜索范围";
+    scopeSel.title = copyText("history.build.scopeHint");
     for (const o of [
-      { value: "all", label: "范围：全部" },
-      { value: "user", label: "范围：只我的输入" },
-      { value: "assistant", label: "范围：只 Claude" },
+      { value: "all", label: copyText("history.build.scopeAll") },
+      { value: "user", label: copyText("history.build.scopeUser") },
+      { value: "assistant", label: copyText("history.build.scopeClaude") },
     ]) {
       const opt = document.createElement("option");
       opt.value = o.value;
@@ -654,11 +649,11 @@ export class HistoryView {
     // 时间范围：全部 / 近 7 天 / 近 30 天
     const timeSel = document.createElement("select");
     timeSel.className = "history-sort";
-    timeSel.title = "时间范围";
+    timeSel.title = copyText("history.build.timeHint");
     for (const o of [
-      { value: "0", label: "时间：全部" },
-      { value: "7", label: "时间：近 7 天" },
-      { value: "30", label: "时间：近 30 天" },
+      { value: "0", label: copyText("history.build.timeAll") },
+      { value: "7", label: copyText("history.build.time7d") },
+      { value: "30", label: copyText("history.build.time30d") },
     ]) {
       const opt = document.createElement("option");
       opt.value = o.value;
@@ -676,8 +671,8 @@ export class HistoryView {
     const reindexBtn = document.createElement("button");
     reindexBtn.type = "button";
     reindexBtn.className = "history-refresh";
-    reindexBtn.textContent = "重新索引";
-    reindexBtn.title = "重新扫描所有会话内容建立搜索索引（有大量新会话时用）";
+    reindexBtn.textContent = copyText("history.reindex.action");
+    reindexBtn.title = copyText("history.build.reindexHint");
     reindexBtn.addEventListener("click", () => void this.rebuildIndex(reindexBtn));
     bar.appendChild(reindexBtn);
     this.fulltextOnlyEls.push(reindexBtn);
@@ -749,17 +744,17 @@ export class HistoryView {
   /** 全文模式但无关键词时，拉索引状态给个提示。 */
   private async showIndexIdleHint(): Promise<void> {
     this.resultsEl.replaceChildren();
-    this.statusEl.textContent = "查询索引状态…";
+    this.statusEl.textContent = copyText("history.indexHint.checking");
     try {
       // C04d 批 6c：原来是**更窄**的内联字面量（少了 Rust 侧的 `builtAtMs`）。
       // 换成生成物后那个字段也在类型里了——宽于原来、与线上一致。
       const st = await commands.get_search_index_status();
       if (this.searchMode !== "fulltext") return;
       this.statusEl.textContent = st.ready
-        ? `输入关键词搜索会话内容（已索引 ${st.indexedSessions} 个会话 / ${st.indexedMessages} 条消息）`
-        : `索引构建中…（已 ${st.indexedSessions} 个会话），稍候再搜`;
+        ? copyText("history.indexHint.ready", { sessions: st.indexedSessions, messages: st.indexedMessages })
+        : copyText("history.indexHint.building", { sessions: st.indexedSessions });
     } catch (e) {
-      this.statusEl.textContent = `索引状态获取失败：${String(e)}`;
+      this.statusEl.textContent = copyText("history.indexHint.failed", { e: String(e) });
     }
   }
 
@@ -775,7 +770,7 @@ export class HistoryView {
       void this.showIndexIdleHint();
       return;
     }
-    this.statusEl.textContent = "搜索中…";
+    this.statusEl.textContent = copyText("history.search.searching");
     try {
       // 〔C4a〕本机索引 ＋ 各台远端（远端那半经通道说 `history-search`），合并也在前端（`history-search.ts`）。
       const resp = await searchAllMachines({
@@ -794,7 +789,7 @@ export class HistoryView {
       this.renderSearchResults(resp, query);
     } catch (e) {
       if (seq !== this.ftSeq) return;
-      this.statusEl.textContent = `搜索失败：${String(e)}`;
+      this.statusEl.textContent = copyText("history.search.failed", { e: String(e) });
     }
   }
 
@@ -834,12 +829,10 @@ export class HistoryView {
   private waitForIndexThenSearch(seq: number, indexedSessions: number, tick: number): void {
     if (tick > HistoryView.INDEX_WAIT_MAX_TICKS) {
       this.statusEl.textContent =
-        `索引构建中…（已 ${indexedSessions} 个会话）—— 等了 ` +
-        `${HistoryView.INDEX_WAIT_MAX_TICKS} 秒仍未就绪，已停止自动重试。` +
-        `可以先用「按项目」模式浏览，或稍后重新搜索。`;
+        copyText("history.indexWait.gaveUp", { sessions: indexedSessions, seconds: HistoryView.INDEX_WAIT_MAX_TICKS });
       return;
     }
-    this.statusEl.textContent = `索引构建中…（已 ${indexedSessions} 个会话），${tick}s 后自动重试`;
+    this.statusEl.textContent = copyText("history.indexWait.retrying", { sessions: indexedSessions, tick });
     window.setTimeout(() => {
       // 存活判据与原来一致：`close()` 会递增 `ftSeq`（F14 第一刀），挂着的回调自行终止。
       if (seq !== this.ftSeq || this.searchMode !== "fulltext") return;
@@ -853,7 +846,7 @@ export class HistoryView {
         } catch (e) {
           // 查状态都失败了 ⇒ 说清楚再停，不要装作还在等（E4）。
           if (seq !== this.ftSeq) return;
-          this.statusEl.textContent = `索引状态查询失败：${String(e)}`;
+          this.statusEl.textContent = copyText("history.indexWait.failed", { e: String(e) });
           return;
         }
         if (seq !== this.ftSeq || this.searchMode !== "fulltext") return;
@@ -872,13 +865,14 @@ export class HistoryView {
     // 于是远端截断在这一行上一个字不说）。措辞也改准：被砍掉的是 **snippet**，
     // 不是命中 —— `totalHits` 一直报的是全量。
     const starved = resp.sessions.filter((x) => x.hitsTruncated).length;
-    this.statusEl.textContent =
-      `「${query}」匹配 ${resp.totalHits} 条 · ${resp.sessionCount} 个会话` +
-      (resp.truncated
-        ? `（snippet 预算已用完${starved > 0 ? `，${starved} 个会话只列了标题` : ""}——缩小关键词范围可看到更多）`
-        : "");
+    const { totalHits, sessionCount } = resp;
+    this.statusEl.textContent = !resp.truncated
+      ? copyText("history.search.summary", { query, totalHits, sessionCount })
+      : starved > 0
+        ? copyText("history.search.summaryStarved", { query, totalHits, sessionCount, starved })
+        : copyText("history.search.summaryTruncated", { query, totalHits, sessionCount });
     if (resp.sessions.length === 0) {
-      this.resultsEl.appendChild(makeStatusRow("无匹配。试试别的关键词，或勾选「含工具内容」扩大范围。"));
+      this.resultsEl.appendChild(makeStatusRow(copyText("history.search.noMatch")));
       return;
     }
     for (const s of resp.sessions) {
@@ -897,7 +891,7 @@ export class HistoryView {
       const host = document.createElement("span");
       host.className = "search-session-host";
       host.textContent = `[${s.origin}]`;
-      host.title = `远端机器：${s.origin}`;
+      host.title = copyText("history.searchSession.remoteHost", { origin: s.origin });
       header.appendChild(host);
     }
     const title = document.createElement("span");
@@ -911,17 +905,17 @@ export class HistoryView {
     header.appendChild(proj);
     const count = document.createElement("span");
     count.className = "search-session-count";
-    count.textContent = `${s.hitCount} 条命中 · ${formatTimestampSmart(s.updatedAt)}`;
+    count.textContent = copyText("history.searchSession.count", { hitCount: s.hitCount, time: formatTimestampSmart(s.updatedAt) });
     header.appendChild(count);
     // F85（#44）：搜索卡片直接 resume——复用 F96 的 `runResume`（hasEntry:false 的 ctx，
     // 只用 identity 段）。本地走 resume_history_session、远端走 runRemoteResume，尊重 F34 命令。
     const resume = document.createElement("button");
     resume.type = "button";
     resume.className = "search-session-resume";
-    resume.textContent = "↺";
+    resume.textContent = copyText("history.resume.icon");
     resume.title = s.origin
-      ? `在新终端拉起远端 [${s.origin}] resume（失败则复制命令）`
-      : "在新终端 resume 此会话";
+      ? copyText("history.resume.remoteHint", { origin: s.origin })
+      : copyText("history.resume.hint");
     // F85 + A4：搜索卡片 ctx（hasEntry:false，只用 identity 段）——resume 按钮与右键菜单共用。
     const cardCtx: RowActionCtx = {
       sessionId: s.sessionId,
@@ -958,10 +952,10 @@ export class HistoryView {
         more.classList.add("search-hit-more-truncated");
         more.textContent =
           s.hits.length === 0
-            ? `本会话 ${s.hitCount} 条命中，snippet 预算已用完、一条都没能显示 —— 点这里打开会话`
-            : `…还有 ${rest} 条命中未显示（snippet 预算已用完）—— 点这里打开会话`;
+            ? copyText("history.searchSession.allStarved", { hitCount: s.hitCount })
+            : copyText("history.searchSession.moreStarved", { rest });
       } else {
-        more.textContent = `…还有 ${rest} 条命中（本会话只列前 ${s.hits.length} 条）—— 点这里打开会话`;
+        more.textContent = copyText("history.searchSession.moreCapped", { rest, shown: s.hits.length });
       }
       // 🔴 无论哪一种，这一行自己就能打开会话：`hits: []` 时它是**唯一**的入口。
       more.addEventListener("click", () => {
@@ -987,7 +981,7 @@ export class HistoryView {
     const kind = document.createElement("span");
     kind.className = `search-hit-kind kind-${hit.kind}`;
     kind.textContent =
-      hit.kind === "user" ? "你" : hit.kind === "assistant" ? "Claude" : "工具";
+      hit.kind === "user" ? copyText("history.searchHit.you") : hit.kind === "assistant" ? "Claude" : copyText("history.searchHit.tool");
     row.appendChild(kind);
 
     // snippet：before + <mark>matched</mark> + after。全部用 textContent 防 XSS
@@ -1020,8 +1014,8 @@ export class HistoryView {
   private async rebuildIndex(btn: HTMLButtonElement): Promise<void> {
     const prev = btn.textContent;
     btn.disabled = true;
-    btn.textContent = "索引中…";
-    this.statusEl.textContent = "重新索引中…";
+    btn.textContent = copyText("history.reindex.running");
+    this.statusEl.textContent = copyText("history.reindex.status");
     try {
       await commands.rebuild_search_index();
       // 重建完后若有关键词则重搜，否则刷新空闲提示
@@ -1031,10 +1025,10 @@ export class HistoryView {
         await this.showIndexIdleHint();
       }
     } catch (e) {
-      this.statusEl.textContent = `重新索引失败：${String(e)}`;
+      this.statusEl.textContent = copyText("history.reindex.failed", { e: String(e) });
     } finally {
       btn.disabled = false;
-      btn.textContent = prev ?? "重新索引";
+      btn.textContent = prev ?? copyText("history.reindex.action");
     }
   }
 
@@ -1046,7 +1040,7 @@ export class HistoryView {
     this.renderOriginFilter(); // F03：同步来源筛选 chip 行
     if (this.projects.length === 0) {
       this.statusEl.textContent =
-        "尚无历史会话。新会话写入 <claude_dir>/projects/ 后会出现在这里。";
+        copyText("history.list.empty");
       return;
     }
 
@@ -1075,8 +1069,9 @@ export class HistoryView {
     const total = this.projects.reduce((n, p) => n + p.sessionCount, 0);
     const filteredTotal = sorted.reduce((n, p) => n + p.sessionCount, 0);
     this.statusEl.textContent =
-      `${sorted.length} 个项目 · ${filteredTotal} 个会话` +
-      (filteredTotal !== total ? ` / 共 ${total}` : "");
+      filteredTotal !== total
+        ? copyText("history.list.summaryFiltered", { projects: sorted.length, sessions: filteredTotal, total })
+        : copyText("history.list.summary", { projects: sorted.length, sessions: filteredTotal });
 
     // F02 多机 #30：是否分组取决于**存在**几个来源（this.projects），不随 F03 隐藏 / 搜索
     // 过滤而塌缩——否则隐藏到只剩 1 来源时分组结构会突然变扁平。被隐藏 / 过滤光的来源其
@@ -1097,7 +1092,7 @@ export class HistoryView {
     if (sorted.length === 0) {
       const hint = document.createElement("div");
       hint.className = "history-empty-hint";
-      hint.textContent = "无匹配项目 —— 检查上方搜索或来源筛选。";
+      hint.textContent = copyText("history.list.noMatch");
       this.listEl.appendChild(hint);
     }
   }
@@ -1208,16 +1203,16 @@ export class HistoryView {
     header.className = "history-origin-header";
     const indicator = document.createElement("span");
     indicator.className = "history-group-indicator";
-    indicator.textContent = "▸";
+    indicator.textContent = copyText("history.group.collapsedMark");
     header.appendChild(indicator);
     const name = document.createElement("span");
     name.className = "history-origin-name";
-    name.textContent = origin ? `[${origin}]` : "本地";
+    name.textContent = origin ? `[${origin}]` : copyText("history.originGroup.local");
     header.appendChild(name);
     const stats = document.createElement("span");
     stats.className = "history-group-stats";
     const sessionTotal = projects.reduce((n, p) => n + p.sessionCount, 0);
-    stats.textContent = `${projects.length} 个项目 · ${sessionTotal} 个会话`;
+    stats.textContent = copyText("history.originGroup.stats", { projects: projects.length, sessions: sessionTotal });
     header.appendChild(stats);
     details.appendChild(header);
 
@@ -1253,7 +1248,7 @@ export class HistoryView {
     this.originFilterBar.replaceChildren();
     const label = document.createElement("span");
     label.className = "history-origin-filter-label";
-    label.textContent = "来源：";
+    label.textContent = copyText("history.originFilter.label");
     this.originFilterBar.appendChild(label);
     for (const origin of this.orderOrigins(origins)) {
       const key = origin ?? "";
@@ -1261,8 +1256,8 @@ export class HistoryView {
       chip.type = "button";
       chip.className = "history-origin-chip";
       chip.classList.toggle("active", !this.hiddenOrigins.has(key));
-      chip.textContent = origin ? `[${origin}]` : "本地";
-      chip.title = origin ? `远端 ${origin} 的历史` : "本地历史";
+      chip.textContent = origin ? `[${origin}]` : copyText("history.originFilter.local");
+      chip.title = origin ? copyText("history.originFilter.remoteHint", { origin }) : copyText("history.originFilter.localHint");
       chip.addEventListener("click", () => {
         if (this.hiddenOrigins.has(key)) this.hiddenOrigins.delete(key);
         else this.hiddenOrigins.add(key);
@@ -1287,14 +1282,14 @@ export class HistoryView {
 
     const indicator = document.createElement("span");
     indicator.className = "history-group-indicator";
-    indicator.textContent = "▸"; // ▸ 折叠指示符（[open] 时 CSS 旋转 90deg）
+    indicator.textContent = copyText("history.group.collapsedMark"); // ▸ 折叠指示符（[open] 时 CSS 旋转 90deg）
     header.appendChild(indicator);
 
     // 项目名前不再加 📁 emoji —— 折叠指示器 + 项目名已经够清，多余的图标视觉噪声
 
     const name = document.createElement("span");
     name.className = "history-group-name";
-    name.textContent = proj.projectName || "(未知项目)";
+    name.textContent = proj.projectName || copyText("history.project.unknown");
     header.appendChild(name);
 
     // issue #16：远端项目组头加 [host] 徽标区分来源
@@ -1302,7 +1297,7 @@ export class HistoryView {
       const originBadge = document.createElement("span");
       originBadge.className = "history-origin-badge";
       originBadge.textContent = `[${proj.origin}]`;
-      originBadge.title = `远端数据来源：${proj.origin}（只读）`;
+      originBadge.title = copyText("history.projectGroup.remoteHint", { origin: proj.origin });
       header.appendChild(originBadge);
     }
 
@@ -1314,17 +1309,17 @@ export class HistoryView {
 
     const stats = document.createElement("span");
     stats.className = "history-group-stats";
-    const chips: string[] = [`${proj.sessionCount} 个会话`];
+    const chips: string[] = [copyText("history.projectGroup.sessions", { sessionCount: proj.sessionCount })];
     // `K-R92`：只在**算过了**的时候才说话。「不知道」这一档不出 chip ——
     // ⚠ 界面怎么把「不知道」显示出来（例如一个 `?` 徽标）是 `K-R66` 的面，本件不做；
     // 本件只保证这里不会拿一个没人查过的值去说「没有星标」「没有活会话」。
-    if (isKnown(proj.hasLive) && proj.hasLive) chips.push("● live");
+    if (isKnown(proj.hasLive) && proj.hasLive) chips.push(`● ${copyText("sessionState.live.name")}`);
     if (isKnown(proj.starredCount) && proj.starredCount > 0)
       chips.push(`★ ${proj.starredCount}`);
     if (this.showHidden && isKnown(proj.hiddenCount) && proj.hiddenCount > 0)
-      chips.push(`隐藏 ${proj.hiddenCount}`);
+      chips.push(copyText("history.projectGroup.hidden", { hiddenCount: proj.hiddenCount }));
     chips.push(formatTimestampSmart(proj.lastActivity));
-    stats.textContent = chips.join(" · ");
+    stats.textContent = chips.join(copyText("history.projectGroup.chipSep"));
     header.appendChild(stats);
 
     details.appendChild(header);
@@ -1340,7 +1335,7 @@ export class HistoryView {
       const isLoading = this.loadingProjects.has(projectKey(proj));
       if (cached === undefined) {
         // 还没开始加载（用户没展开过）
-        body.appendChild(makeStatusRow(isLoading ? "加载中…" : "点击加载…"));
+        body.appendChild(makeStatusRow(isLoading ? copyText("history.body.loading") : copyText("history.body.clickToLoad")));
         return;
       }
       const visible = cached
@@ -1349,13 +1344,13 @@ export class HistoryView {
       if (visible.length === 0) {
         // 流式加载初期 cache 可能是 [] —— 此时显示 "加载中" 而非 "无会话"
         if (isLoading) {
-          body.appendChild(makeStatusRow("加载中…"));
+          body.appendChild(makeStatusRow(copyText("history.body.loading")));
         } else {
           body.appendChild(
             makeStatusRow(
               cached.length === 0
-                ? "此项目下无会话（可能已全部物理删除）"
-                : "无匹配会话",
+                ? copyText("history.body.empty")
+                : copyText("history.body.noMatch"),
             ),
           );
         }
@@ -1382,7 +1377,7 @@ export class HistoryView {
       }
       // 流式加载未完成时，在已渲染条目下方加 "继续加载中…" 提示
       if (isLoading) {
-        body.appendChild(makeStatusRow("继续加载中…"));
+        body.appendChild(makeStatusRow(copyText("history.body.loadingMore")));
       }
     };
 
@@ -1433,7 +1428,7 @@ export class HistoryView {
     if (pending.length === 0) {
       this.loadedAll = true;
       this.updateSearchPlaceholder();
-      this.statusEl.textContent = `已加载全部 ${this.projects.length} 个项目`;
+      this.statusEl.textContent = copyText("history.loadAll.done", { projects: this.projects.length });
       return;
     }
 
@@ -1448,8 +1443,8 @@ export class HistoryView {
       for (const proj of pending) {
         this.enqueueLazyLoad(proj, () => {
           done += 1;
-          this.statusEl.textContent = `加载中 ${done}/${total} …`;
-          this.loadAllBtn.textContent = `加载 ${done}/${total}`;
+          this.statusEl.textContent = copyText("history.loadAll.progress", { done, total });
+          this.loadAllBtn.textContent = copyText("history.loadAll.progressButton", { done, total });
         });
       }
       await this.lazyDrained();
@@ -1459,7 +1454,7 @@ export class HistoryView {
       this.renderList();
     } finally {
       this.loadAllBtn.disabled = false;
-      this.loadAllBtn.textContent = baseLabel ?? "全量加载";
+      this.loadAllBtn.textContent = baseLabel ?? copyText("history.loadAll.action");
     }
   }
 
@@ -1480,7 +1475,7 @@ export class HistoryView {
       (p) => !this.sessionCache.has(projectKey(p)),
     );
     if (toLoad.length > 0) {
-      this.statusEl.textContent = `加载 ${toLoad.length} 个项目的会话…`;
+      this.statusEl.textContent = copyText("history.toggleAll.loading", { count: toLoad.length });
       // F07：原来是 `Promise.all(toLoad.map(…))` —— **无上限**。改走同一条队列。
       for (const proj of toLoad) this.enqueueLazyLoad(proj);
       await this.lazyDrained();
@@ -1595,7 +1590,7 @@ export class HistoryView {
     const e = ctx.entry;
     if (!e) return;
     const cur = e.customTitle ?? e.aiTitle ?? "";
-    const next = await askText("自定义标题（留空恢复默认）", { initial: cur });
+    const next = await askText(copyText("history.rename.prompt"), { initial: cur });
     if (next === null) return;
     try {
       // 〔C4d〕清空传**空串**（缺格 / `null` = 不改 —— 从前这里传 `null`，而 monitor 那份 patch 同样把 `null` 读成「不改」，
@@ -1644,7 +1639,7 @@ export class HistoryView {
           rowLastAccount = undefined;
         }
       }
-      // A4：带账号 resume 统一走 withAccount（resolve configDir → 不可选则 toast 降级默认 → record 源②）。
+      // A4：带账号 resume 统一走 withAccount（resolve configDir → 不可选则不起、说清〔FE1 · D-h〕→ record 源②）。
       await withAccount(
         origin,
         ctx.account ?? null,
@@ -1660,53 +1655,15 @@ export class HistoryView {
         },
         {
           sessionId: ctx.sessionId,
-          onUnselectable: (n) =>
-            showActionFailureToast(
-              "账号不可用",
-              `账号「${n}」当前不可选（未登录 / 非隔离 / 目录缺失），改用该会话上次的账号 / 当前账号 resume。`,
-              { level: "info", durationMs: 6000 },
-            ),
+          // 〔FE1 · D-h〕要的号选不了 ⇒ `withAccount` 自己不起、说清、给显式选择（先前这里的提示完按基座起）。
           follow: ctx.account ? undefined : { lastAccount: rowLastAccount },
         },
       );
     } else {
-      // F06：走一遍本地 IR 构造，sid 校验先于任何 IPC 往返（同其余 planXxx 早有的
-      // isValidSessionId 检查）；构造失败与拉起失败分两个 catch，headline 对齐远端
-      // `runRemoteResume` 的"无法构造 resume 命令"/"拉起失败"两分，不再共用一个"恢复失败"。
-      primeLocalLaunchAccounts(); // `D1 阻-1`：同上，不等待
-      try {
-        validateLocalLaunch({ kind: "resume", sid: ctx.sessionId }, ctx.cwd);
-      } catch (err) {
-        showActionFailureToast("无法构造 resume 命令", String(err));
-        return;
-      }
-      try {
-        // F34：用户自定义本地 resume 命令（如 cct）；空 = 后端默认（cc 检测→默认）
-        const behavior = await getBehavior();
-        // ★★ `K-R46`：**这条路先前一个 tmux 名都不传** —— 而后端**故意**拒绝自己铸名
-        //    （`history.rs` 的 `NO_TMUX_NAME`）⇒ 名字为 `None` ⇒ 渲染器早退 ⇒ 后端如实
-        //    降级回旧路 ⇒ 起出来的会话**不在一个具名 tmux 容器里**，于是 `list_local_tmux`
-        //    那一族（右键「杀死会话（kill tmux …）」/「就地 resume（复用空 tmux …）」）
-        //    对它一个都给不出来。tab 栏那条 resume 早就传了，历史页这条没有 ——
-        //    **架构上一条路、行为上两条**，本件补的就是这个。
-        //    ⚠ 铸名与「不知道就不铸」两格住 `ipc/local-tmux-name.ts`，别在这里重写。
-        //    〔`K-R96` 09-12〕名字从 cwd 派生（`<项目名>-cc`，用户 `R55` 裁定一）。
-        const tmuxName = await mintLocalTmuxName(ctx.cwd);
-        // ★★ `K-H2b` `D1 阻-1`：账号这一格先前是空的（历史页 resume 那条主路）。
-        //    取值口只有一个（`resolveLocalLaunchAccount`），resume 走那条会话上次的 pin ——
-        //    与上面远端那条 `withAccount(..., {follow:{lastAccount}})` **同形**。
-        await commands.resume_history_session({
-          sessionId: ctx.sessionId,
-          cwd: ctx.cwd,
-          launcher: behavior.resumeCommandLocal || null,
-          tmuxName,
-          account: localLaunchAccountSync(ctx.sessionId),
-        });
-        // `D3 阻-2`：本机这条路也要往 pin 里写（同 `tabs.ts` 那处，理由见取值口头注）。
-        recordLocalLaunchAccount(ctx.sessionId, localLaunchAccountNameSync(ctx.sessionId));
-      } catch (err) {
-        showActionFailureToast("恢复失败", String(err));
-      }
+      // 〔FE1〕本机 resume 的编排只有一份（`local-resume.ts`）：校验 sid → 铸名 → 起 → 记 pin。
+      //   这里先前逐字抄着一份（`K-R46` 补铸名 · `K-H2b` 补账号 · `D3 阻-2` 补记 pin，三次都是
+      //   「tab 栏那条早有了、这条没有」）。账号跟随这条会话上次的号 —— 与上面远端那条 `follow` **同形**。
+      await resumeLocalSession({ sid: ctx.sessionId, cwd: ctx.cwd, account: { kind: "follow" } });
     }
   }
 
@@ -1759,12 +1716,12 @@ export class HistoryView {
         });
         rememberLocalLaunch(launchId, localLaunchAccountNameSync(null));
         showActionFailureToast(
-          "已在该目录起新会话",
-          `新终端窗口正在 ${ctx.cwd} 启动。`,
+          copyText("history.newSession.started"),
+          copyText("history.newSession.startedDetail", { cwd: ctx.cwd }),
           { level: "info", durationMs: 6000 },
         );
       } catch (err) {
-        showActionFailureToast("起新会话失败", String(err));
+        showActionFailureToast(copyText("history.newSession.failed"), String(err));
       }
     }
   }
@@ -1777,11 +1734,11 @@ export class HistoryView {
     if (e.origin) {
       // 远端删除更危险（删的是别人机器上的文件）→ 二次确认。〔RW1〕删那一下由那台机器的后端做。
       const ok1 = await askConfirm(
-        `删除远端会话「${label}」（机器 ${e.origin}）？\n\n将由那台机器的后端物理删除这份会话记录，Claude Code 之后也无法 resume。\n此操作不可恢复。`,
+        copyText("history.delete.confirmRemote", { label, origin: e.origin }),
       );
       if (!ok1) return;
       const ok2 = await askConfirm(
-        `再次确认：永久删除远端 [${e.origin}] 的「${label}」？`,
+        copyText("history.delete.confirmRemoteAgain", { origin: e.origin, label }),
       );
       if (!ok2) return;
       try {
@@ -1792,12 +1749,12 @@ export class HistoryView {
           jsonlPath: e.jsonlPath,
         });
       } catch (err) {
-        showActionFailureToast("远端删除失败", String(err));
+        showActionFailureToast(copyText("history.delete.remoteFailed"), String(err));
         return;
       }
     } else {
       const ok = await askConfirm(
-        `物理删除会话「${label}」？\n\njsonl 文件会被直接删除，Claude Code 之后也无法 resume。\n此操作不可恢复。`,
+        copyText("history.delete.confirmLocal", { label }),
       );
       if (!ok) return;
       try {
@@ -1807,7 +1764,7 @@ export class HistoryView {
           jsonlPath: e.jsonlPath,
         });
       } catch (err) {
-        showActionFailureToast("删除失败", String(err));
+        showActionFailureToast(copyText("history.delete.failed"), String(err));
         return;
       }
     }
@@ -1905,8 +1862,8 @@ export class HistoryView {
       const item = document.createElement("button");
       item.type = "button";
       item.className = "history-context-item";
-      item.textContent = `用账号 ${a.name} resume`;
-      item.title = `以账号「${a.name}」${a.email ? ` · ${a.email}` : ""} 起该会话（注入其 CLAUDE_CONFIG_DIR）`;
+      item.textContent = copyText("history.accountResume.item", { name: a.name });
+      item.title = copyText("history.accountResume.hint", { name: a.name, email: a.email ? ` · ${a.email}` : "" });
       item.addEventListener("click", () => {
         this.closeEntryMenu();
         void this.runResume({ ...ctx, account: a.name });
@@ -1975,10 +1932,10 @@ export class HistoryView {
       toggle.type = "button";
       toggle.className = "history-fork-toggle";
       const expanded = this.expandedForks.has(e.sessionId);
-      toggle.textContent = expanded ? "▼" : "▶";
+      toggle.textContent = expanded ? copyText("history.fork.expandedMark") : copyText("history.fork.collapsedMark");
       toggle.title = expanded
-        ? `折叠 ${childCount} 个 fork 子会话`
-        : `展开 ${childCount} 个 fork 子会话`;
+        ? copyText("history.fork.collapseHint", { childCount })
+        : copyText("history.fork.expandHint", { childCount });
       toggle.addEventListener("click", (ev) => {
         ev.stopPropagation();
         if (this.expandedForks.has(e.sessionId)) {
@@ -2001,8 +1958,8 @@ export class HistoryView {
     if (orphan && e.forkedFromSessionId) {
       const orphanMark = document.createElement("span");
       orphanMark.className = "history-fork-orphan";
-      orphanMark.textContent = "↳";
-      orphanMark.title = `本会话从 ${e.forkedFromSessionId.slice(0, 8)} fork 而来，但原 session 已不在本项目（可能跨项目 fork 或已物理删除）`;
+      orphanMark.textContent = copyText("history.fork.orphanMark");
+      orphanMark.title = copyText("history.fork.orphanHint", { parent: e.forkedFromSessionId.slice(0, 8) });
       row.appendChild(orphanMark);
     }
 
@@ -2011,16 +1968,16 @@ export class HistoryView {
     if (e.isBg) {
       const bgMark = document.createElement("span");
       bgMark.className = "history-bg-badge";
-      bgMark.textContent = "⚙";
+      bgMark.textContent = copyText("history.entry.backgroundMark");
       bgMark.title =
-        "CC 后台分身会话（← / /bg / 退出转后台 fork 出的 worker，历史为主会话克隆）——续对话请 resume 主会话";
+        copyText("history.entry.backgroundHint");
       row.appendChild(bgMark);
     }
     const starBtn = document.createElement("button");
     starBtn.type = "button";
     starBtn.className = "history-star";
-    starBtn.textContent = e.starred ? "★" : "☆";
-    starBtn.title = e.starred ? "取消标星" : "标星";
+    starBtn.textContent = e.starred ? copyText("history.entry.starred") : copyText("history.entry.unstarred");
+    starBtn.title = e.starred ? copyText("history.entry.unstarHint") : copyText("history.entry.starHint");
     if (e.starred) starBtn.classList.add("is-starred");
     starBtn.addEventListener("click", (ev) => {
       ev.stopPropagation();
@@ -2058,12 +2015,11 @@ export class HistoryView {
     const meta = document.createElement("div");
     meta.className = "history-meta";
     meta.append(
-      // ⚠ `K-R92` 现打如实记：`isLive` 是三态（`null` = 这条路答不出），而这一格仍旧
-      // 把「不知道」显示成 `archived`。**这是本件刻意没做的那一半** —— 界面怎么把
-      // 「不知道」显示出来是 `K-R66` 的面（件文件 `§0b` 逐字：本件只到数据层）。
-      // 判据只判**排序与加减**不许把它当 0，显示这一格不在射程里；写在这里免得它变成暗账。
-      makeChip(e.isLive ? "live" : "archived", e.isLive ? "history-live" : ""),
-      makeChip(`${e.messageCountApprox} 条消息`),
+      // `isLive` 是三态（`null` = 这条路答不出，`K-R92`）。三态各一个词，全从 `sessionState.*` 取
+      // （`设计/30 §3.5.2`：说到会话状态的字只住那里；`§3.5.7a`：说不清不许说成已结束）。
+      // 〔AR1〕此前这一格显示英文 `live` / `archived`，而且把「不知道」也显示成 `archived`。
+      makeChip(livenessWord(e.isLive), e.isLive === true ? "history-live" : ""),
+      makeChip(copyText("history.entry.messages", { count: e.messageCountApprox })),
       makeChip(formatTimestampSmart(e.updatedAt)),
     );
     main.appendChild(meta);
@@ -2076,8 +2032,8 @@ export class HistoryView {
     const renameBtn = document.createElement("button");
     renameBtn.type = "button";
     renameBtn.className = "history-action";
-    renameBtn.textContent = "✎"; // ✎ pencil（BMP，非 emoji）
-    renameBtn.title = "重命名（中文 OK）";
+    renameBtn.textContent = copyText("history.entry.renameIcon"); // ✎ pencil（BMP，非 emoji）
+    renameBtn.title = copyText("history.entry.renameHint");
     renameBtn.addEventListener("click", (ev) => {
       ev.stopPropagation();
       void this.runOf("rename")(rowCtx);
@@ -2088,8 +2044,8 @@ export class HistoryView {
     hideBtn.type = "button";
     hideBtn.className = "history-action";
     // hidden 时按钮指示"恢复显示"用 +；显示时按钮指示"隐藏"用 –（en-dash U+2013）
-    hideBtn.textContent = e.hidden ? "+" : "–";
-    hideBtn.title = e.hidden ? "取消隐藏" : "隐藏（不删，但默认列表不显示）";
+    hideBtn.textContent = e.hidden ? "+" : copyText("history.entry.hideIcon");
+    hideBtn.title = e.hidden ? copyText("history.entry.unhideHint") : copyText("history.entry.hideHint");
     hideBtn.addEventListener("click", (ev) => {
       ev.stopPropagation();
       void this.runOf("hide")(rowCtx);
@@ -2099,11 +2055,11 @@ export class HistoryView {
     const resumeBtn = document.createElement("button");
     resumeBtn.type = "button";
     resumeBtn.className = "history-action";
-    resumeBtn.textContent = "↺"; // ↺ anticlockwise circle arrow ("replay")
+    resumeBtn.textContent = copyText("history.resume.icon"); // ↺ anticlockwise circle arrow ("replay")
     // F41：远端一键拉起（wt.exe → `ssh -t …`），失败回退 F09 复制命令；本地 wt.exe/PowerShell。
     resumeBtn.title = e.origin
-      ? `在新终端拉起远端 [${e.origin}] resume（失败则复制命令）`
-      : "在新终端 resume 此会话"; // F96：去硬编码启动命令（守「不许知道是哪个 agent」）
+      ? copyText("history.resume.remoteHint", { origin: e.origin })
+      : copyText("history.resume.hint"); // F96：去硬编码启动命令（守「不许知道是哪个 agent」）
     resumeBtn.addEventListener("click", (ev) => {
       ev.stopPropagation();
       void this.runOf("resume")(rowCtx);
@@ -2113,11 +2069,11 @@ export class HistoryView {
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
     deleteBtn.className = "history-action history-action-danger";
-    deleteBtn.textContent = "✕"; // ✕ multiplication X
+    deleteBtn.textContent = copyText("history.entry.deleteIcon"); // ✕ multiplication X
     // F11：远端会话删除经 SFTP（SS-G 用户数据写豁免，二次确认）；本地走既有物理删除。
     deleteBtn.title = e.origin
-      ? `删除远端 [${e.origin}] 的 jsonl（经 SFTP，不可恢复）`
-      : "物理删除 jsonl 文件（不可恢复）";
+      ? copyText("history.entry.deleteRemoteHint", { origin: e.origin })
+      : copyText("history.entry.deleteHint");
     deleteBtn.addEventListener("click", (ev) => {
       ev.stopPropagation();
       void this.runOf("delete")(rowCtx);
@@ -2242,3 +2198,11 @@ function loadPersistedRemoteCache(): RemoteSourceCache<HistoryProject> | null {
   return { projects, loadedAt: 0 };
 }
 
+/**
+ * 〔AR1〕历史条目的活性三态 → 说给用户的那个词（`设计/30 §3.5.2` · `§3.5.7a`）。
+ * `null` = 这条路答不出 ⇒「说不清」，不许落成「已结束」。
+ */
+function livenessWord(isLive: boolean | null): string {
+  if (isLive === null) return copyText("sessionState.unseen.name");
+  return isLive ? copyText("sessionState.live.name") : copyText("sessionState.ended.name");
+}

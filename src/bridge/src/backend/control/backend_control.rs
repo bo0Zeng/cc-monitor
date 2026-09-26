@@ -15,6 +15,7 @@
 //! 本机：杀掉被监护的子进程。远端：**断掉那条 SSH 流** —— 远端后端随之因管道破裂退出
 //! （与本机 153ms 自杀同一个机制，见 P2s §0a）。两者结果相同、路径不同，本层不为时序差异作保。
 
+use crate::copy_table::copy_text;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -56,7 +57,7 @@ fn is_local(origin: &str) -> bool {
 
 fn check_origin(origin: &str) -> Result<(), String> {
     if origin.trim().is_empty() {
-        return Err("origin 不许为空 —— 开关是 per-host 的，没有「全局」这一档".into());
+        return Err(copy_text("rsBackendControl.origin.empty", &[]).into());
     }
     Ok(())
 }
@@ -79,7 +80,9 @@ fn check_origin(origin: &str) -> Result<(), String> {
 #[tauri::command]
 pub fn backend_machines() -> Result<Vec<String>, String> {
     let mut out = vec![LOCAL_ORIGIN.to_string()];
-    let g = remotes().lock().map_err(|e| format!("锁毒化: {e}"))?;
+    let g = remotes()
+        .lock()
+        .map_err(|e| copy_text("rsBackendControl.lock.poisoned", &[("e", &e.to_string())]))?;
     let mut names: Vec<String> = g.keys().cloned().collect();
     names.sort();
     out.extend(names);
@@ -165,15 +168,24 @@ pub fn backend_start(origin: String) -> Result<String, String> {
         return match crate::local_backend_host::start_local_backend() {
             StartOutcome::Started(p) => Ok(format!("已起：{}", p.display())),
             StartOutcome::AlreadyRunning => Ok("本机后端已经在跑（C8①：每台机只许一个）".into()),
-            StartOutcome::Failed { reason, looked_at } => {
-                Err(format!("{reason}；找过 {looked_at:?}"))
-            }
+            StartOutcome::Failed { reason, looked_at } => Err(copy_text(
+                "rsBackendControl.start.notFound",
+                &[
+                    ("reason", &reason.to_string()),
+                    ("looked", &format!("{:?}", looked_at)),
+                ],
+            )),
         };
     }
-    let mut g = remotes().lock().map_err(|e| format!("锁毒化: {e}"))?;
-    let slot = g
-        .get_mut(&origin)
-        .ok_or_else(|| format!("没有这台机的把手：{origin}（启动时没注册过？）"))?;
+    let mut g = remotes()
+        .lock()
+        .map_err(|e| copy_text("rsBackendControl.lock.poisoned", &[("e", &e.to_string())]))?;
+    let slot = g.get_mut(&origin).ok_or_else(|| {
+        copy_text(
+            "rsBackendControl.handle.missing",
+            &[("origin", &origin.to_string())],
+        )
+    })?;
     // ⚠ **A2**：`JoinHandle` 完成之后**不会变成 `None`**〔D 阶段补审 08-11 修〕。
     // 原来判据是 `slot.handle.is_some()` ⇒ `ssh_source::run` 一旦返回（`lib.rs` 记 error 后
     // task 结束），此后每次点「起」都恒回「已经在跑」，而实际上**一条流都没有**；
@@ -201,10 +213,15 @@ pub fn backend_stop(origin: String) -> Result<String, String> {
     if is_local(&origin) {
         return crate::local_backend_host::stop_local_backend();
     }
-    let mut g = remotes().lock().map_err(|e| format!("锁毒化: {e}"))?;
-    let slot = g
-        .get_mut(&origin)
-        .ok_or_else(|| format!("没有这台机的把手：{origin}（启动时没注册过？）"))?;
+    let mut g = remotes()
+        .lock()
+        .map_err(|e| copy_text("rsBackendControl.lock.poisoned", &[("e", &e.to_string())]))?;
+    let slot = g.get_mut(&origin).ok_or_else(|| {
+        copy_text(
+            "rsBackendControl.handle.missing",
+            &[("origin", &origin.to_string())],
+        )
+    })?;
     match slot.handle.take() {
         Some(h) => {
             h.abort();

@@ -28,6 +28,7 @@
 //! **写口只有 [`register`] 一个**：`remote-reach`（每台远端流握手时 monitor 无条件交）与 `assets-sync`
 //! （顺手登记）都调它。
 
+use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -75,16 +76,19 @@ pub(crate) fn lock(t: &Table) -> std::sync::MutexGuard<'_, BTreeMap<String, Reac
 /// 同一台再记一次 ⇒ 换新的拨号请求与路径，`peer`（对面的资产目录 id）留着。
 /// 〔C4d〕这一段原样搬自 `asset_sync::answer_with`（AS2），逻辑一字不改；`remote-reach` 与 `assets-sync` 都经它。
 pub(crate) fn register(table: &Table, args: &Value) -> Result<String, (&'static str, String)> {
-    let o = args
-        .get("origin")
-        .and_then(Value::as_str)
-        .ok_or(("bad_args", "缺 `origin`（那台的名字）".to_string()))?;
+    let o = args.get("origin").and_then(Value::as_str).ok_or((
+        "bad_args",
+        crate::common::contract::malformed("missing `origin` (the machine name)"),
+    ))?;
     if o.is_empty() {
-        return Err(("bad_args", "`origin` 是空串".into()));
+        return Err((
+            "bad_args",
+            crate::common::contract::malformed("`origin` is empty").into(),
+        ));
     }
     let dial = args.get("dial").filter(|d| d.is_object()).ok_or((
         "bad_args",
-        "给了 `origin` 就要给 `dial`（一份拨号请求）".to_string(),
+        crate::common::contract::malformed("`origin` given without `dial` (a dial request)"),
     ))?;
     let backend = args
         .get("backend")
@@ -92,11 +96,19 @@ pub(crate) fn register(table: &Table, args: &Value) -> Result<String, (&'static 
         .filter(|b| !b.is_empty())
         .ok_or((
             "bad_args",
-            "给了 `origin` 就要给 `backend`（那台上后端的路径）".to_string(),
+            crate::common::contract::malformed(
+                "`origin` given without `backend` (the backend path on that machine)",
+            ),
         ))?;
     let mut t = lock(table);
     if !t.contains_key(o) && t.len() >= MAX_REACH {
-        return Err(("bad_args", format!("可达表已满（{MAX_REACH} 台）")));
+        return Err((
+            "bad_args",
+            copy_text(
+                "beRemoteAsk.register.full",
+                &[("max", &MAX_REACH.to_string())],
+            ),
+        ));
     }
     let peer = t.get(o).and_then(|r| r.peer.clone());
     t.insert(
@@ -142,8 +154,9 @@ pub fn command_line(backend: &str, argv: &[&str]) -> String {
 
 /// 够不到那台时给的那句话（不猜、不回落）。
 pub(crate) fn unreachable_message(machine: &str) -> String {
-    format!(
-        "本机后端还不知道怎么连到 [{machine}]：那台还没连上，或本机后端刚重启过（那台下次连上就好了）"
+    copy_text(
+        "beRemoteAsk.unreachableMessage.say",
+        &[("machine", &machine.to_string())],
     )
 }
 
@@ -179,12 +192,20 @@ async fn capped_line<R: tokio::io::AsyncBufRead + Unpin>(
         .take(cap + 1)
         .read_until(b'\n', &mut buf)
         .await
-        .map_err(|e| format!("读拨号链路失败：{e}"))?;
+        .map_err(|e| {
+            copy_text(
+                "beRemoteAsk.cappedLine.readFailed",
+                &[("e", &e.to_string())],
+            )
+        })?;
     if n == 0 {
         return Ok(None);
     }
     if buf.len() as u64 > cap {
-        return Err(format!("拨号链路上一行超过 {cap} 字节 —— 拒收"));
+        return Err(copy_text(
+            "beRemoteAsk.cappedLine.tooLong",
+            &[("cap", &cap.to_string())],
+        ));
     }
     Ok(Some(String::from_utf8_lossy(&buf).trim_end().to_string()))
 }
@@ -197,7 +218,9 @@ impl Remote for DialRemote {
     ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
         Box::pin(async move {
             let mut v = dial.clone();
-            let obj = v.as_object_mut().ok_or("拨号请求不是对象".to_string())?;
+            let obj = v.as_object_mut().ok_or(crate::common::contract::malformed(
+                "dial request is not an object",
+            ))?;
             obj.insert("use".into(), json!("capture"));
             obj.insert("command".into(), json!(command));
             obj.insert(
@@ -206,61 +229,89 @@ impl Remote for DialRemote {
             );
             obj.insert("stages".into(), json!(false));
             obj.insert("probe".into(), json!(false));
-            let req = crate::dial::parse_request_value(&v)
-                .map_err(|e| format!("拨号请求认不出来：{e}"))?;
-            // 上行那根管子我们一个字节都不写（capture 不读上行）；留着不关，直到拿到结果。
-            let (_up_w, up_r) = tokio::io::duplex(1024);
-            let (mut down_w, down_r) = tokio::io::duplex(64 * 1024);
-            let task = tokio::spawn(async move {
+            let req = crate::dial::parse_request_value(&v).map_err(|e| {
+                crate::common::contract::malformed(&format!("dial request unreadable: {e}"))
+            })?;
+            pull_over(move |up_r, mut down_w| async move {
                 let stages = crate::dial::StageSink::new(false);
                 crate::dial::uses::run(&req, &stages, up_r, &mut down_w).await;
-            });
-            let mut rd = BufReader::new(down_r);
-            let result = async {
-                let ack = capped_line(&mut rd, 64 * 1024)
-                    .await?
-                    .ok_or("拨号链路没回 ack 就断了")?;
-                let ack: Value =
-                    serde_json::from_str(&ack).map_err(|e| format!("ack 认不出来：{e}"))?;
-                if ack.get("ok").and_then(Value::as_bool) != Some(true) {
-                    return Err(format!(
-                        "连不上那台：{}",
-                        ack.get("error")
-                            .and_then(Value::as_str)
-                            .unwrap_or("（没说为什么）")
-                    ));
-                }
-                let got = capped_line(&mut rd, (PULL_MAX_BYTES as u64) * 8)
-                    .await?
-                    .ok_or("那台跑完没交结果就断了")?;
-                let got: Value =
-                    serde_json::from_str(&got).map_err(|e| format!("结果认不出来：{e}"))?;
-                let stdout = got.get("stdout").and_then(Value::as_str).unwrap_or("");
-                if stdout.contains(HELLO_MARKER) {
-                    return Err(
-                        "那台的后端太旧，不认资产目录（一次性子命令进了流模式）".to_string()
-                    );
-                }
-                if got.get("exit_status").and_then(Value::as_u64) != Some(0) {
-                    let stderr = got.get("stderr").and_then(Value::as_str).unwrap_or("");
-                    let said = serde_json::from_str::<Value>(stderr.trim())
-                        .ok()
-                        .and_then(|e| e.get("message").and_then(Value::as_str).map(str::to_string))
-                        .unwrap_or_else(|| stderr.trim().to_string());
-                    return Err(format!("那台的后端没办成：{said}"));
-                }
-                if stdout.len() >= PULL_MAX_BYTES {
-                    return Err(format!(
-                        "那台的目录超过 {PULL_MAX_BYTES} 字节 —— 拒收，不拿截断的用"
-                    ));
-                }
-                Ok(stdout.to_string())
-            }
-            .await;
-            task.abort();
-            result
+            })
+            .await
         })
     }
+}
+
+/// 〔NT2 · A4〕一个 `spawn` 出去的任务，**句柄被丢 ⇒ 任务被收**。
+///
+/// tokio 的 `JoinHandle` 被丢是**脱钩**（任务照跑），不是收。本模块的内层任务手里攥着池里那条 SSH 连接的一格通道：
+/// 调用方帧期限到点 ⇒ monitor 补发 `cancel` ⇒ 后端打断的是**外层** future（`Run::Async` 那一档）——
+/// 句柄若只是被丢，内层那一格就**永远占着**（远端不答的那一形），`设计/15 §3.2` 第 4 条红线说的正是这个。
+pub(crate) struct AbortOnDrop(pub(crate) tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+/// 经一条内存链路跑一趟 capture：`serve` 拿上行读端与下行写端（生产 = `dial::uses::run`），这里读 ack 与结果那一行。
+/// **抽出来是为了判据**：「外层被丢 ⇒ 内层一起收」不需要真 SSH 就验得动（`remote_ask_tests` 喂一个永不答的 `serve`）。
+pub(crate) async fn pull_over<F, Fut>(serve: F) -> Result<String, String>
+where
+    F: FnOnce(tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
+    Fut: Future<Output = ()> + Send + 'static,
+{
+    // 上行那根管子我们一个字节都不写（capture 不读上行）；留着不关，直到拿到结果。
+    let (_up_w, up_r) = tokio::io::duplex(1024);
+    let (down_w, down_r) = tokio::io::duplex(64 * 1024);
+    // 〔NT2〕随本函数（的 future）一起死：正常答完 / 出错返回 / 被 `cancel` 打断，三种收法同一个 `Drop`。
+    let _task = AbortOnDrop(tokio::spawn(serve(up_r, down_w)));
+    let mut rd = BufReader::new(down_r);
+    let ack = capped_line(&mut rd, 64 * 1024)
+        .await?
+        .ok_or_else(|| copy_text("beRemoteAsk.run.droppedBeforeReady", &[]))?;
+    let ack: Value = serde_json::from_str(&ack)
+        .map_err(|e| crate::common::contract::malformed(&format!("unreadable ack: {e}")))?;
+    if ack.get("ok").and_then(Value::as_bool) != Some(true) {
+        return Err(copy_text(
+            "beRemoteAsk.run.unreachable",
+            &[(
+                "why",
+                &(ack
+                    .get("error")
+                    .and_then(Value::as_str)
+                    .unwrap_or(&copy_text("beRemoteAsk.run.noReason", &[])))
+                .to_string(),
+            )],
+        ));
+    }
+    let got = capped_line(&mut rd, (PULL_MAX_BYTES as u64) * 8)
+        .await?
+        .ok_or_else(|| copy_text("beRemoteAsk.run.droppedBeforeResult", &[]))?;
+    let got: Value = serde_json::from_str(&got)
+        .map_err(|e| copy_text("beRemoteAsk.run.resultUnreadable", &[("e", &e.to_string())]))?;
+    let stdout = got.get("stdout").and_then(Value::as_str).unwrap_or("");
+    if stdout.contains(HELLO_MARKER) {
+        return Err(copy_text("beRemoteAsk.run.tooOld", &[]));
+    }
+    if got.get("exit_status").and_then(Value::as_u64) != Some(0) {
+        let stderr = got.get("stderr").and_then(Value::as_str).unwrap_or("");
+        let said = serde_json::from_str::<Value>(stderr.trim())
+            .ok()
+            .and_then(|e| e.get("message").and_then(Value::as_str).map(str::to_string))
+            .unwrap_or_else(|| stderr.trim().to_string());
+        return Err(copy_text(
+            "beRemoteAsk.run.failed",
+            &[("said", &said.to_string())],
+        ));
+    }
+    if stdout.len() >= PULL_MAX_BYTES {
+        return Err(copy_text(
+            "beRemoteAsk.run.tooLarge",
+            &[("max", &PULL_MAX_BYTES.to_string())],
+        ));
+    }
+    Ok(stdout.to_string())
 }
 
 #[cfg(test)]

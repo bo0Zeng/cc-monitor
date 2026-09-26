@@ -328,7 +328,7 @@ fn enter_opens_a_directory_edits_a_file_and_refuses_a_bunch() {
     d.pick(&mut w, "a.txt", NONE);
     d.key(&mut w, egui::Key::Enter, NONE);
     let e = w.listing.error.lock().unwrap().clone().unwrap_or_default();
-    assert!(e.contains("运行时"), "回车没落到编辑那一支：{e:?}");
+    assert!(e.contains("启动不了"), "回车没落到编辑那一支：{e:?}");
     assert_eq!(w.cwd, "/srv/data");
     // 多选：出声，不动。
     d.pick(&mut w, "b.txt", CTRL);
@@ -700,7 +700,7 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
             vec![file("a.bin"), row(lossy, false, 3, true)],
             vec![],
             lossy,
-            vec![MENU_EMPTY],
+            vec![MENU_EMPTY.as_str()],
         ),
         (
             "右键落在选中里：两项",
@@ -721,7 +721,7 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
             vec![row(lossy, false, 3, true), file("b.bin"), file("c.bin")],
             vec![(lossy, NONE), ("c.bin", CTRL)],
             "c.bin",
-            vec![MENU_EMPTY],
+            vec![MENU_EMPTY.as_str()],
         ),
     ];
     for (what, rows, pre, target, want) in cases {
@@ -744,7 +744,7 @@ fn every_menu_item_lands_on_the_row_it_was_opened_for() {
     let on_file: Vec<(&str, Check)> = vec![
         ("编辑", |w| {
             let e = w.listing.error.lock().unwrap().clone().unwrap_or_default();
-            e.contains("运行时").then_some(()).ok_or(e)
+            e.contains("启动不了").then_some(()).ok_or(e)
         }),
         ("复制", |w| match w.copy_prompt() {
             Some(p) if p.src_name == "f.txt" => Ok(()),
@@ -765,7 +765,7 @@ fn every_menu_item_lands_on_the_row_it_was_opened_for() {
         ("删除", |w| {
             // 没有运行时 ⇒ 那一摞起不来，而它**出声**（不静默吞掉一次删除）。
             let e = w.listing.error.lock().unwrap().clone().unwrap_or_default();
-            e.contains("运行时").then_some(()).ok_or(e)
+            e.contains("启动不了").then_some(()).ok_or(e)
         }),
     ];
     for (label, check) in on_file {
@@ -918,7 +918,7 @@ fn key_steps() -> Vec<KeyStep> {
         ("k.ctrl_a", &["key", "ctrl+a"], |k| k.picked.len() == 5),
         ("k.type_ze", &["type", "ze"], |k| p(k, &["zeta.bin"])),
         ("k.delete", &["key", "Delete"], |k| {
-            k.error.as_deref().is_some_and(|e| e.contains("运行时"))
+            k.error.as_deref().is_some_and(|e| e.contains("启动不了"))
         }),
         ("k.type_su", &["type", "su"], |k| p(k, &["sub"])),
         ("k.f2", &["key", "F2"], |k| {

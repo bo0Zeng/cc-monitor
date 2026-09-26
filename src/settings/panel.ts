@@ -52,7 +52,7 @@ import {
   type BehaviorConfig,
 } from "../behavior";
 import { diagnoseRemoteLauncher } from "../launcher-diagnostics";
-import { fetchLocalAccounts } from "../accounts"; // K-R49：别名是给**这台机器**的 shell 用的
+import { fetchLocalAccounts } from "../account-reads"; // K-R49：别名是给**这台机器**的 shell 用的
 import { buildAliasManager, localShell } from "./machine-aliases"; // 〔AL1〕机器页 ②「别名」（〔AL1c〕两个平台一份，含 PowerShell 的终端集成）
 import { dispatcher } from "../keybindings/registry";
 import { KeybindingsEditor } from "../keybindings/editor";
@@ -83,41 +83,43 @@ interface FieldSpec {
  * 字体预设。value 是完整 CSS font-family 字符串；label 是给用户看的名字。
  * 第一个永远是"默认"（value 留空 → 删除覆盖，回到 styles.css :root）。
  */
-const BASE_FONT_PRESETS: ReadonlyArray<{ label: string; value: string }> = [
-  { label: "默认（推荐）", value: "" },
+// 〔CP2b〕下面这几张表与几段说明都做成函数、用到时才取文：模块顶层一句取文口调用都不留。顶层有调用时，
+//   Rollup 把整个设置面板挪进主窗也加载的共享 chunk（entry-graphs「主窗挂得上却没链样式」现打 302 条）。
+const BASE_FONT_PRESETS = (): ReadonlyArray<{ label: string; value: string }> => [
+  { label: copyText("settingsPanel.font.default"), value: "" },
   { label: "Inter", value: "Inter, 'Segoe UI', system-ui, sans-serif" },
   {
     label: "Microsoft YaHei UI",
     value: "'Microsoft YaHei UI', 'PingFang SC', system-ui, sans-serif",
   },
   { label: "Segoe UI", value: "'Segoe UI', system-ui, sans-serif" },
-  { label: "系统默认", value: "system-ui, sans-serif" },
+  { label: copyText("settingsPanel.font.system"), value: "system-ui, sans-serif" },
 ];
 
-const MONO_FONT_PRESETS: ReadonlyArray<{ label: string; value: string }> = [
-  { label: "默认（推荐）", value: "" },
+const MONO_FONT_PRESETS = (): ReadonlyArray<{ label: string; value: string }> => [
+  { label: copyText("settingsPanel.font.default"), value: "" },
   { label: "JetBrains Mono", value: "'JetBrains Mono', Consolas, monospace" },
   { label: "Cascadia Code", value: "'Cascadia Code', Consolas, monospace" },
   { label: "Fira Code", value: "'Fira Code', Consolas, monospace" },
   { label: "Source Code Pro", value: "'Source Code Pro', Consolas, monospace" },
   { label: "Consolas", value: "Consolas, monospace" },
-  { label: "系统等宽", value: "monospace" },
+  { label: copyText("settingsPanel.font.systemMono"), value: "monospace" },
 ];
 
-const FIELDS: ReadonlyArray<FieldSpec> = [
-  { key: "font-base", label: "正文字体", type: "font-base", group: "font" },
-  { key: "font-mono", label: "等宽字体", type: "font-mono", group: "font" },
+const FIELDS = (): ReadonlyArray<FieldSpec> => [
+  { key: "font-base", label: copyText("settingsPanel.field.fontBase"), type: "font-base", group: "font" },
+  { key: "font-mono", label: copyText("settingsPanel.field.fontMono"), type: "font-mono", group: "font" },
   {
     key: "font-size-base",
-    label: "基础字号 (px)",
+    label: copyText("settingsPanel.field.fontSize"),
     type: "number",
     group: "font",
   },
-  { key: "bg", label: "主背景", type: "color", group: "color" },
-  { key: "bg-2", label: "次背景", type: "color", group: "color" },
-  { key: "card", label: "卡片", type: "color", group: "color" },
-  { key: "text", label: "主文本", type: "color", group: "color" },
-  { key: "text-2", label: "次文本", type: "color", group: "color" },
+  { key: "bg", label: copyText("settingsPanel.field.bg"), type: "color", group: "color" },
+  { key: "bg-2", label: copyText("settingsPanel.field.bg2"), type: "color", group: "color" },
+  { key: "card", label: copyText("settingsPanel.field.card"), type: "color", group: "color" },
+  { key: "text", label: copyText("settingsPanel.field.text"), type: "color", group: "color" },
+  { key: "text-2", label: copyText("settingsPanel.field.text2"), type: "color", group: "color" },
   // 🔴 〔2026-09-19 用户裁定：撤掉〕这里原先有「用户色」「Claude 色」两个取色器。
   //    它们**拖了界面不会有任何变化** —— 链子是通的（一路走到 `theme.ts` 真的把值
   //    写进 DOM 的那一步），但**全仓没有一条 CSS 读这两个变量**
@@ -128,9 +130,9 @@ const FIELDS: ReadonlyArray<FieldSpec> = [
   //    两条路：接上（让哪些元素跟着走）／撤掉。用户逐字「取色器撤掉」。
   //    ⚠ 撤的是**旋钮**，不是「配色可调」这件事 —— 另外七格（主背景/卡片/主文本/
   //      成功/警告/错误/次文本）都有真消费者，一个没动。
-  { key: "success", label: "成功", type: "color", group: "color" },
-  { key: "warn", label: "警告", type: "color", group: "color" },
-  { key: "error", label: "错误", type: "color", group: "color" },
+  { key: "success", label: copyText("settingsPanel.field.success"), type: "color", group: "color" },
+  { key: "warn", label: copyText("settingsPanel.field.warn"), type: "color", group: "color" },
+  { key: "error", label: copyText("settingsPanel.field.error"), type: "color", group: "color" },
 ];
 
 /** v2.4 issue #2：设置面板回调，行为类 toggle 改变时通知外部（TabManager 同步） */
@@ -144,56 +146,44 @@ export interface SettingsPanelOptions {
 
 // 各模块的 ? 图标 tooltip 文案（原来散在表单里的 .settings-hint 长文本收纳到这里）
 
-const BEHAVIOR_INFO_TEXT =
-  "自动跟随用户输入 + 拉前 monitor 窗口。\n\n" +
-  "「自动跟随」：watcher 反推—用户在 claude 里敲回车 → monitor 切到对应 session 的 Tab。" +
-  "只跟「真用户输入」（不跟工具返回、不跟 claude 流式回复）。你手动点 Tab 后 5 秒内不会被自动切抢回。\n\n" +
-  "「拉前 monitor」默认关：monitor 静静在后台切 Tab，不打断你正在用的其他窗口（浏览器/IDE）。" +
-  "开启后在终端输入时 monitor 浮上来抢焦。仅当「自动跟随」开启时生效。";
+const BEHAVIOR_INFO_TEXT = (): string =>
+  copyText("settingsPanel.info.behavior");
 
-const KEYBINDINGS_INFO_TEXT =
-  "自定义全部快捷键：Tab 切换 / 终端拉前 / 行为开关 / 弹层关闭 等约 17 项。\n\n" +
-  "改即生效，无需重启。点 [改] 后按下你想要的组合键。冲突会弹覆盖确认。";
+const KEYBINDINGS_INFO_TEXT = (): string =>
+  copyText("settingsPanel.info.keybindings");
 
 // S2：原 `INTEGRATION_INFO_TEXT` 是一段合写的文案，而它描述的两件事在新 IA 里**去了不同的页**
 // ——「Claude 数据目录」是 monitor 自己的配置（应用页），「PowerShell 集成」是某台机器上的
 // 启动器（机器页）。合着搬会让两页各有一半文案对不上眼前的内容，故按语义拆开。
-const DATA_DIR_INFO_TEXT =
-  "「Claude 数据目录」—— monitor 监听的 .claude 根目录（下含 projects/ 和 sessions/）。" +
-  "默认 ~/.claude 或 $CLAUDE_CONFIG_DIR。修改后需重启 monitor 生效。";
+const DATA_DIR_INFO_TEXT = (): string =>
+  copyText("settingsPanel.info.dataDir");
 // 〔AL1c · 4B〕「终端集成」并进了「别名」那一块（Windows 上它是 PowerShell 那一侧的别名块），说明跟着改口。
-const TERMINAL_INTEGRATION_INFO_TEXT =
-  "「别名」—— 一个名字加一组 ccm 参数，在终端里敲这个名字就等于敲 ccm 加上这组参数。" +
-  "Windows 上这一块还管终端集成：把 cc 命令注入到 $PROFILE，让你打 `cc` 而不是 `claude` 启动 " +
-  "Claude Code，自动跟 monitor 双向绑定（拉前终端按钮才能 work）。可一键安装/卸载。";
+const TERMINAL_INTEGRATION_INFO_TEXT = (): string =>
+  copyText("settingsPanel.info.aliases");
 
-const APPEARANCE_INFO_TEXT =
-  "字体（正文 / 等宽 / 字号）+ 颜色（背景 / 卡片 / 文字 / 成功 / 警告 / 错误）。改了当场生效。";
+const APPEARANCE_INFO_TEXT = (): string =>
+  copyText("settingsPanel.info.appearance");
 
-const REMOTE_INFO_TEXT =
-  "「远端 (SSH)」：monitor 经 SSH 连到远端主机，把那台机器上的会话也列进来。" +
-  "远端会话和本机会话显示方式相同。\n\n" +
-  "关闭（默认）时一切走本地，不受影响。启用 / 修改任意远端设置后需重启 monitor 才生效。" +
-  "配置不完整（缺 host / user / backendPath）时后端自动回退本地模式。";
+// 〔CP2b〕TL1 那一句改过之后这一段整段进表；做成取值器（模块顶层不留取文口调用）。
+const REMOTE_INFO_TEXT = (): string =>
+  copyText("settingsPanel.info.remote");
 
 // 🔴 `70 §10.3`/`§10.2` 改名 ＋ `§2.4` 纪律：两块的名字跟着改（「诊断」→「日志」·
 // 「数据存储」→「数据位置」），并且把 `tracing` 这个**内部标识符**拿掉
 //（`91 §2.1` 那一族 —— 用户不需要知道我们用的是哪个日志库）。
 // 〔ST2 · 步 15〕两块各成一个子页之后，这段说明也拆成两段，各归各页。
-const LOGS_INFO_TEXT =
-  "「日志」—— 让后端把细节写进日志文件，出问题时拿得到一份能发给作者的记录。";
-const DATA_PLACES_INFO_TEXT =
-  "「数据位置」—— 透明展示 monitor 自身写入的所有持久化路径：config.json / history-metadata.json / " +
-  "WebView2 UserDataFolder / localStorage keys 等。每项可点 [打开] 直接到文件管理器。" +
-  "纯展示，无危险操作。";
+const LOGS_INFO_TEXT = (): string =>
+  copyText("settingsPanel.info.logs");
+const DATA_PLACES_INFO_TEXT = (): string =>
+  copyText("settingsPanel.info.dataPlaces");
 
 // 〔ST2 · 步 15〕「应用」页自己剩下的两块（行为 / 快捷键）的说明。原来它们拼在「外观」那个折叠组的 ⓘ 里
 // （F82b：外观并了 行为 / 快捷键），折叠组撤掉之后各归各页。
-const APP_PAGE_INFO_TEXT =
-  "【行为】" + BEHAVIOR_INFO_TEXT + "\n\n【快捷键】" + KEYBINDINGS_INFO_TEXT;
+const APP_PAGE_INFO_TEXT = (): string =>
+  copyText("settingsPanel.info.appPage", { behavior: BEHAVIOR_INFO_TEXT(), keybindings: KEYBINDINGS_INFO_TEXT() });
 // S2：机器页的文案 = 怎么连上远端 + 这台机上的启动器集成。
-const MACHINES_PAGE_INFO_TEXT =
-  REMOTE_INFO_TEXT + "\n\n【别名】" + TERMINAL_INTEGRATION_INFO_TEXT;
+const MACHINES_PAGE_INFO_TEXT = (): string =>
+  copyText("settingsPanel.info.machinesPage", { remote: REMOTE_INFO_TEXT(), aliases: TERMINAL_INTEGRATION_INFO_TEXT() });
 // S2 删除：原 `REMOTE_GROUP_INFO_TEXT` 描述的是那个「留空占位」的空组（F82b 拍板的 4 组之一，
 // 后被 A3 借去放账号）。它逐字写着「当前尚无独立项…留空占位」「在上面的『连接』组」——
 // 那个组和那个「上面」都不存在了，留着就是一句会误导人的话。
@@ -205,11 +195,12 @@ const MACHINES_PAGE_INFO_TEXT =
  * 找「字体大小」要 4 步（点应用 → 往下找 → 展开外观 → 找到那一行）。两套隐藏机制叠着 ⇒
  * 用**已有的** `parentId` 一层子项替掉折叠组：点「外观」就到。
  */
-const APP_SUBPAGES = {
-  appearance: { id: "app-appearance", title: "外观" },
-  logs: { id: "app-logs", title: "日志" },
-  data: { id: "app-data", title: "数据位置" },
-} as const;
+const APP_SUBPAGES = () =>
+  ({
+  appearance: { id: "app-appearance", title: copyText("settingsPanel.nav.appearance") },
+  logs: { id: "app-logs", title: copyText("settingsPanel.nav.logs") },
+  data: { id: "app-data", title: copyText("settingsPanel.nav.dataPlaces") },
+}) as const;
 
 /** S2：落地页 id。主计划 §2.3 指定为「机器」。 */
 const SETTINGS_LANDING_ROUTE = "machines";
@@ -365,7 +356,7 @@ export class SettingsPanel {
       await this.openInner();
     } catch (e) {
       // 面板必须能打开——它是用户唯一的逃生口（里面有"打开 profile"之类的按钮）
-      this.banner.textContent = `部分设置项加载失败：${String(e)}`;
+      this.banner.textContent = copyText("settingsPanel.open.partialFailed", { e: String(e) });
       this.banner.classList.add("settings-banner-show");
       this.el.classList.add("open");
       this.isOpen = true;
@@ -478,7 +469,7 @@ export class SettingsPanel {
         const del = document.createElement("button");
         del.type = "button";
         del.className = "settings-btn settings-btn-secondary settings-preset-del";
-        del.textContent = "×";
+        del.textContent = copyText("settingsPanel.preset.remove");
         // ⚠ **正在生效的那条不给移除**：这张表的含义是「用过的命令」，
         // 而移除一条**此刻正在用**的命令是自相矛盾的 —— 保存时它必然又被记回来
         // （`withResumePreset` 会把输入框里的值并进去），用户会看见「点了没反应」。
@@ -486,8 +477,8 @@ export class SettingsPanel {
         const active = input.value.trim() === cmd;
         del.disabled = active;
         del.title = active
-          ? `${cmd} 正在生效 —— 换成别的命令之后才能把它从预设里移除。`
-          : `从预设里移除 ${cmd}`;
+          ? copyText("settingsPanel.preset.inUse", { cmd })
+          : copyText("settingsPanel.preset.removeHint", { cmd });
         del.addEventListener("click", () => void this.removeResumePreset(cmd, remote));
         wrap.append(chip, del);
         box.appendChild(wrap);
@@ -536,7 +527,7 @@ export class SettingsPanel {
       // 后端启动时读一次 —— 本地扫描过滤 + 远端 backend `--with-bg`）。改了却不供货，
       // 用户就只能靠记性知道「我刚才改的那个还没生效」。
       if (next.showBgSessions !== this.showBgOriginal) {
-        markRestartNeeded("显示后台任务会话");
+        markRestartNeeded(copyText("settingsPanel.behavior.hiddenTasks"));
         this.showBgOriginal = next.showBgSessions;
       }
       this.onBehaviorChange?.(next); // 同窗（主窗口浮层）直接同步 TabManager
@@ -615,7 +606,7 @@ export class SettingsPanel {
       })
       .catch((e: unknown) => {
         // 落不下就不关：窗口留着、说出原因，用户的改动还在输入框里。
-        this.banner.textContent = `保存失败：${String(e)}`;
+        this.banner.textContent = copyText("settingsPanel.close.saveFailed", { e: String(e) });
         this.banner.classList.add("settings-banner-show");
       });
   }
@@ -647,7 +638,7 @@ export class SettingsPanel {
           // 藏不掉就别假装藏了：窗口还在屏幕上，面板得回到能用的样子并说出原因。
           this.hiddenByUs = false;
           void this.open().then(() => {
-            this.banner.textContent = `关不掉这个窗口：${String(e)}`;
+            this.banner.textContent = copyText("settingsPanel.close.failed", { e: String(e) });
             this.banner.classList.add("settings-banner-show");
           });
         });
@@ -686,21 +677,21 @@ export class SettingsPanel {
     this.claudeDirOriginal = nextDir;
     // E62：给 S7 那条常驻条**供货**。这里的 banner 是一次性的（关窗即没），
     // 而「还没生效」是个会一直为真到重启为止的状态 —— 两者不是一回事，都要有。
-    markRestartNeeded("Claude 数据目录");
+    markRestartNeeded(copyText("settingsPanel.save.claudeDir"));
     this.banner.textContent =
-      "Claude 数据目录已更新 —— 需要重启 monitor 才能生效";
+      copyText("settingsPanel.claudeDir.updated");
     this.banner.classList.add("settings-banner-show");
   }
 
   /** 落盘失败时说出来（全即时的每一格都走它，不许静默吞）。 */
   private reportSaveFailure(what: string, e: unknown): void {
-    this.banner.textContent = `${what}没存下：${String(e)}`;
+    this.banner.textContent = copyText("settingsPanel.save.failed", { what, e: String(e) });
     this.banner.classList.add("settings-banner-show");
   }
 
   private async resetAll(): Promise<void> {
     if (
-      !await askConfirm("确定要恢复全部外观默认？已保存的颜色和字体偏好会丢失。")
+      !(await askConfirm(copyText("settingsPanel.appearance.resetConfirm")))
     ) {
       return;
     }
@@ -717,13 +708,13 @@ export class SettingsPanel {
       const selected = await openDialog({
         directory: true,
         multiple: false,
-        title: "选择 Claude 数据目录（含 projects 和 sessions 子目录）",
+        title: copyText("settingsPanel.claudeDir.pickTitle"),
       });
       if (typeof selected === "string" && selected) {
         this.claudeDirInput.value = selected;
         // 〔ST2 · 步 9〕选完就落（全即时）。
         await this.persistClaudeDir().catch((e: unknown) =>
-          this.reportSaveFailure("Claude 数据目录", e),
+          this.reportSaveFailure(copyText("settingsPanel.save.claudeDir"), e),
         );
       }
     } catch (e) {
@@ -738,7 +729,7 @@ export class SettingsPanel {
     this.claudeDirInput.value = "";
     // 〔ST2 · 步 9〕重置也是改了就落。
     void this.persistClaudeDir().catch((e: unknown) =>
-      this.reportSaveFailure("Claude 数据目录", e),
+      this.reportSaveFailure(copyText("settingsPanel.save.claudeDir"), e),
     );
   }
 
@@ -769,14 +760,14 @@ export class SettingsPanel {
     const header = document.createElement("div");
     header.className = "settings-header";
     const title = document.createElement("span");
-    title.textContent = "设置";
+    title.textContent = copyText("settingsPanel.header.title");
     header.appendChild(title);
 
     const close = document.createElement("button");
     close.className = "settings-close";
     close.type = "button";
-    close.textContent = "×";
-    close.title = "关闭（ESC 也行）";
+    close.textContent = copyText("settingsPanel.header.close");
+    close.title = copyText("settingsPanel.header.closeHint");
     // ST1：页头 × 与系统 X 同一条路 —— 有没保存的改动先拦一下（`70 §6` #1）。
     close.addEventListener("click", () => this.requestClose());
     header.appendChild(close);
@@ -824,19 +815,19 @@ export class SettingsPanel {
       orientation: "horizontal",
       hidePageHeader: true,
     });
-    tabs.addRoute({ id: `${pageId}#conn`, title: "连接", element: parts.connection });
-    tabs.addRoute({ id: `${pageId}#comp`, title: "组件", element: parts.components });
+    tabs.addRoute({ id: `${pageId}#conn`, title: copyText("settingsPanel.machineTab.connection"), element: parts.connection });
+    tabs.addRoute({ id: `${pageId}#comp`, title: copyText("settingsPanel.machineTab.components"), element: parts.components });
     const acct = document.createElement("div");
     const tools = document.createElement("div");
     // 〔ST2 · 协调方转主会话裁：别名统一放「工具」栏〕这台机器的别名那一块排在「工具」栏最前面，
     //   与本机页「工具 → 别名」同一个位置（per-machine 那几块由 `movePerMachineTo` 接在它后面）。
     tools.appendChild(parts.tools);
     const footprint = document.createElement("div");
-    tabs.addRoute({ id: `${pageId}#acct`, title: "账号", element: acct });
-    tabs.addRoute({ id: `${pageId}#tools`, title: "工具", element: tools });
+    tabs.addRoute({ id: `${pageId}#acct`, title: copyText("settingsPanel.machineTab.accounts"), element: acct });
+    tabs.addRoute({ id: `${pageId}#tools`, title: copyText("settingsPanel.machineTab.tools"), element: tools });
     // 步 14a（`70 §5.3` 那张图 · `§10.1`）：**第五栏「足迹」**。
     // ⚠ 它是**新增一栏**，不是把已有的某一栏搬个位置 —— 所以 `§10.4` 把它单列成 `14a`。
-    tabs.addRoute({ id: `${pageId}#footprint`, title: "足迹", element: footprint });
+    tabs.addRoute({ id: `${pageId}#footprint`, title: copyText("settingsPanel.machineTab.footprint"), element: footprint });
     this.machineTabSlots.set(pageId, { acct, tools, footprint });
     return tabs.element;
   }
@@ -868,15 +859,15 @@ export class SettingsPanel {
 
     // ---- 应用：改 monitor 自己的状态 ----
     const appPage = document.createElement("div");
-    appPage.appendChild(this.safeBlock("行为", () => this.buildBehaviorGroup()));
+    appPage.appendChild(this.safeBlock(copyText("settingsPanel.group.behavior"), () => this.buildBehaviorGroup()));
     appPage.appendChild(
-      this.safeBlock("快捷键", () => this.buildKeybindingsGroup()),
+      this.safeBlock(copyText("settingsPanel.group.keybindings"), () => this.buildKeybindingsGroup()),
     );
     router.addRoute({
       id: "app",
-      title: "应用",
+      title: copyText("settingsPanel.nav.app"),
       element: appPage,
-      infoTooltip: APP_PAGE_INFO_TEXT,
+      infoTooltip: APP_PAGE_INFO_TEXT(),
     });
 
     // 🔴 〔第四波 ST2 · `70 §6` #3 · 步 15〕原来这里是两个默认收起的折叠组（外观 · 日志与数据）。
@@ -885,28 +876,28 @@ export class SettingsPanel {
     const appearancePage = document.createElement("div");
     appearancePage.appendChild(
       this.buildGroup(
-        "字体",
-        FIELDS.filter((f) => f.group === "font"),
+        copyText("settingsPanel.group.fonts"),
+        FIELDS().filter((f) => f.group === "font"),
       ),
     );
     appearancePage.appendChild(
       this.buildGroup(
-        "颜色",
-        FIELDS.filter((f) => f.group === "color"),
+        copyText("settingsPanel.group.colors"),
+        FIELDS().filter((f) => f.group === "color"),
       ),
     );
     // 〔ST2 · 步 9〕原页脚的「恢复默认」：它只管外观，搬到外观这一页。
     const resetRow = document.createElement("div");
     resetRow.className = "settings-row settings-row-end";
     resetRow.appendChild(
-      this.makeBtn("恢复外观默认", "secondary", () => void this.resetAll()),
+      this.makeBtn(copyText("settingsPanel.appearance.reset"), "secondary", () => void this.resetAll()),
     );
     appearancePage.appendChild(resetRow);
     router.addRoute({
-      ...APP_SUBPAGES.appearance,
+      ...APP_SUBPAGES().appearance,
       element: appearancePage,
       parentId: "app",
-      infoTooltip: APPEARANCE_INFO_TEXT,
+      infoTooltip: APPEARANCE_INFO_TEXT(),
     });
 
     // ② 日志。🔴 `70 §10.3`：「诊断」→「日志」。**让名**给 `§5.3` 那个改名，否则设置面板里
@@ -915,7 +906,7 @@ export class SettingsPanel {
     const logsPage = document.createElement("div");
     logsPage.appendChild(
       this.safeBlock(
-        "日志",
+        copyText("settingsPanel.group.logs"),
         () => {
           const sec = new DiagnosticsSection({ headless: true });
           this.logsSection = sec;
@@ -925,12 +916,12 @@ export class SettingsPanel {
       ),
     );
     router.addRoute({
-      ...APP_SUBPAGES.logs,
+      ...APP_SUBPAGES().logs,
       element: logsPage,
       parentId: "app",
-      infoTooltip: LOGS_INFO_TEXT,
+      infoTooltip: LOGS_INFO_TEXT(),
     });
-    this.loadOnFirstVisit(APP_SUBPAGES.logs.id, () => this.logsSection?.loadNow());
+    this.loadOnFirstVisit(APP_SUBPAGES().logs.id, () => this.logsSection?.loadNow());
 
     // ③ 数据位置（＋ Claude 数据目录：「monitor 读哪、存哪」两件位置上的事放一页）。
     // 🔴 步 3b（`70 §10.2` 差项 2 · `§10.4` 第一刀）：**这一块原先的 `new` 在 `safeBlock` 外面。**
@@ -944,7 +935,7 @@ export class SettingsPanel {
     dataPage.appendChild(this.buildDataGroup());
     dataPage.appendChild(
       this.safeBlock(
-        "数据位置",
+        copyText("settingsPanel.group.dataPlaces"),
         () => {
           const sec = new DataSection({ headless: true });
           this.dataSection = sec;
@@ -954,13 +945,13 @@ export class SettingsPanel {
       ),
     );
     router.addRoute({
-      ...APP_SUBPAGES.data,
+      ...APP_SUBPAGES().data,
       element: dataPage,
       parentId: "app",
-      infoTooltip: DATA_DIR_INFO_TEXT + "\n\n" + DATA_PLACES_INFO_TEXT,
+      infoTooltip: DATA_DIR_INFO_TEXT() + "\n\n" + DATA_PLACES_INFO_TEXT(),
     });
     // 步 2：I/O 挂到「这一页首次可见」上 —— 〔步 15〕从「应用」一页三发，拆成两个子页各自的那几发。
-    this.loadOnFirstVisit(APP_SUBPAGES.data.id, () => this.dataSection?.loadNow());
+    this.loadOnFirstVisit(APP_SUBPAGES().data.id, () => this.dataSection?.loadNow());
 
     // ---- 机器：改**某一台机器**的状态 ----
     //
@@ -980,7 +971,7 @@ export class SettingsPanel {
       this.backendSection = backend;
     } catch (e) {
       machinesPage.appendChild(
-        this.safeBlock("后端", () => {
+        this.safeBlock(copyText("settingsPanel.group.backend"), () => {
           throw e;
         }),
       );
@@ -990,7 +981,7 @@ export class SettingsPanel {
     // 裸构造会让 `new SettingsPanel` 直接炸穿、**什么都没上屏**。
     // `this.remoteSection` 失败时留 `undefined`——`open()` 那边是 `?.refresh()`，天然容错。
     machinesPage.appendChild(
-      this.safeBlock("连接（远端）", () => {
+      this.safeBlock(copyText("settingsPanel.group.remote"), () => {
         // S4b：把路由器包成 `MachinePagesHost` 交给它 —— 每台机器的编辑表单去它自己那一页，
         // 列表里只留一行。分节不需要知道路由器长什么样，只要「开页 / 收页 / 跳过去」。
         const sec = new RemoteSection({
@@ -1074,7 +1065,7 @@ export class SettingsPanel {
         // 因为前者在 jsdom 里直接 `new AccountsSection()`，结构性地绕过了这一层。
         appliesTo: "both",
         tab: "acct",
-        ...this.loadableBlock("账号", () => new AccountsSection()),
+        ...this.loadableBlock(copyText("settingsPanel.group.accounts"), () => new AccountsSection()),
       },
       // 〔AL1c · 第四波 4B〕这里原来是本机页上单独一块「终端集成」（PowerShell `$PROFILE` 注入，S9 只在 Windows 上构造）。
       // 它并进了下面「别名」那一块（`设计/71 §7` W5：界面合成一份，平台是它的一个输入）——
@@ -1085,7 +1076,7 @@ export class SettingsPanel {
       {
         appliesTo: "local",
         tab: "tools",
-        el: this.safeBlock("别名", () =>
+        el: this.safeBlock(copyText("settingsPanel.group.aliases"), () =>
           buildAliasManager({
             platform: localShell(),
             loadAccounts: async () => (await fetchLocalAccounts()).accounts.map((a) => a.name),
@@ -1105,7 +1096,7 @@ export class SettingsPanel {
       {
         appliesTo: "both",
         tab: "tools",
-        ...this.loadableBlock("资产目录", () => new AssetsSection(() => assetInstallApi())),
+        ...this.loadableBlock(copyText("settingsPanel.group.assets"), () => new AssetsSection(() => assetInstallApi())),
       },
       // P8a：插件面（marketplace）只读枚举。
       // 〔RM1b · 第四波〕`appliesTo: "local"` → `"both"`：后端补了 `plugins-marketplaces`
@@ -1114,14 +1105,14 @@ export class SettingsPanel {
       {
         appliesTo: "both",
         tab: "tools",
-        ...this.loadableBlock("插件（marketplace）", () => new PluginsSection()),
+        ...this.loadableBlock(copyText("settingsPanel.group.plugins"), () => new PluginsSection()),
       },
       // B04：钩子诊断。**只读**——不替用户改 ~/.claude/settings.json（共享全局配置）。
       // 本机与远端都要诊断（§2.4 表里这一行两栏都写着「诊断 + 待贴片段」）。
       {
         appliesTo: "both",
         tab: "tools",
-        ...this.loadableBlock("cc-bus 钩子", () => new CcBusHooksSection()),
+        ...this.loadableBlock(copyText("settingsPanel.group.ccBusHooks"), () => new CcBusHooksSection()),
       },
       // 🔴 步 14a（`70 §10.1` · `§5.3` 那张图的第五栏）：**「足迹」**。
       //
@@ -1141,7 +1132,7 @@ export class SettingsPanel {
         appliesTo: "both",
         tab: "footprint",
         // 〔ST2〕字段 `footprintSection` 删了：它唯一的读者（每台机器页各放一发）随上面那次合批一起没了。
-        ...this.loadableBlock("足迹", () => new ConfigSurfaceSection()),
+        ...this.loadableBlock(copyText("settingsPanel.group.footprint"), () => new ConfigSurfaceSection()),
       },
       // 〔ST2 · 协调方转主会话裁「改动足迹并进机器页、漂移记账按机器分」〕原顶层「改动足迹」页剩下的那一块。
       //   与足迹同栏：两块答的都是「这台机器上发生了什么」。〔ST3〕账按机器分了：每台问自己那一本、
@@ -1149,7 +1140,7 @@ export class SettingsPanel {
       {
         appliesTo: "both",
         tab: "footprint",
-        ...this.loadableBlock("未识别的数据", () => new DriftLedgerSection()),
+        ...this.loadableBlock(copyText("settingsPanel.group.unknown"), () => new DriftLedgerSection()),
       },
     ];
     for (const b of this.perMachineBlocks) this.perMachineSlot.appendChild(b.el);
@@ -1182,7 +1173,7 @@ export class SettingsPanel {
     this.perMachineSlot.hidden = true;
     this.perMachineFallbackHint = makeSkeleton(
       "backend",
-      "正在列这台机器上的账号 / 工具…",
+      copyText("settingsPanel.machines.loading"),
     );
     machinesPage.appendChild(this.perMachineFallbackHint);
     machinesPage.appendChild(this.perMachineSlot);
@@ -1191,12 +1182,12 @@ export class SettingsPanel {
     // 也是唯一会注册机器页的人）。这一档就是设计意图里的「最坏情况」，当场亮兜底。
     // ⚠ 这一句必须排在 slot 与那块提示**建出来之后** —— 排在 `safeBlock` 紧后面的话，
     //   它会去读两个还没赋值的字段，把「RemoteSection 挂了」变成「整个面板挂了」。
-    if (!this.remoteSection) this.revealPerMachineFallback("机器列表这一块没能建起来");
+    if (!this.remoteSection) this.revealPerMachineFallback(copyText("settingsPanel.machines.buildFailed"));
     router.addRoute({
       id: "machines",
-      title: "机器",
+      title: copyText("settingsPanel.nav.machines"),
       element: machinesPage,
-      infoTooltip: MACHINES_PAGE_INFO_TEXT,
+      infoTooltip: MACHINES_PAGE_INFO_TEXT(),
     });
 
     // 🔴 〔第四波 ST2 · 用户 09-24 裁「并进机器页，删掉顶层页」〕**顶层「改动足迹」页没了。**
@@ -1316,14 +1307,13 @@ export class SettingsPanel {
     this.perMachineFallbackHint.removeAttribute("aria-busy");
     this.perMachineFallbackHint.dataset.fallback = "per-machine";
     this.perMachineFallbackHint.textContent =
-      `${why} —— 下面这几块本该在每台机器自己的页面上，` +
-      `现在临时留在这里。它们都还能用，只是位置不对。`;
+      copyText("settingsPanel.fallback.body", { why });
   }
 
   /** 步 3：`RemoteSection` 那趟 `refresh()` 收尾了（成或败）。一个页都没来 ⇒ 兜底。 */
   private onMachinePagesSettled(): void {
     if (this.machinePageRegistered) return;
-    this.revealPerMachineFallback("这台机器上的机器列表没读出来");
+    this.revealPerMachineFallback(copyText("settingsPanel.machines.unreadable"));
   }
 
   /**
@@ -1350,7 +1340,7 @@ export class SettingsPanel {
     autoRow.appendChild(this.autoFollowCheckbox);
     const autoLabel = document.createElement("span");
     autoLabel.className = "settings-checkbox-label";
-    autoLabel.textContent = "用户在终端里输入时自动切到对应 Tab";
+    autoLabel.textContent = copyText("settingsPanel.behavior.autoFollow");
     autoRow.appendChild(autoLabel);
     group.appendChild(autoRow);
 
@@ -1367,7 +1357,7 @@ export class SettingsPanel {
     frontRow.appendChild(this.bringFrontCheckbox);
     const frontLabel = document.createElement("span");
     frontLabel.className = "settings-checkbox-label";
-    frontLabel.textContent = "自动切 Tab 时同时把 monitor 窗口拉到前台";
+    frontLabel.textContent = copyText("settingsPanel.behavior.autoFront");
     frontRow.appendChild(frontLabel);
     group.appendChild(frontRow);
 
@@ -1385,7 +1375,7 @@ export class SettingsPanel {
     const bgLabel = document.createElement("span");
     bgLabel.className = "settings-checkbox-label";
     bgLabel.textContent =
-      "显示后台任务会话（⚙ 标识，挂在同项目会话之后；改动重启生效）";
+      copyText("settingsPanel.behavior.showHiddenTasks");
     bgRow.appendChild(bgLabel);
     group.appendChild(bgRow);
 
@@ -1402,7 +1392,7 @@ export class SettingsPanel {
     notifyRow.appendChild(this.notifyTurnEndCheckbox);
     const notifyLabel = document.createElement("span");
     notifyLabel.className = "settings-checkbox-label";
-    notifyLabel.textContent = "Claude 完成一轮时发系统通知（仅窗口在后台时）";
+    notifyLabel.textContent = copyText("settingsPanel.behavior.turnNotify");
     notifyRow.appendChild(notifyLabel);
     group.appendChild(notifyRow);
 
@@ -1429,9 +1419,9 @@ export class SettingsPanel {
       return [row, input];
     };
     const [localRow, localInput] = mkResumeRow(
-      "本地 resume 命令",
-      "默认：检测 cc，回退 claude",
-      "历史浏览器 ↺ 在本机新终端里 resume 会话用的命令。\n留空 = 自动检测 PowerShell 的 cc 函数，没有则用 claude。",
+      copyText("settingsPanel.behavior.localResume"),
+      copyText("settingsPanel.behavior.localResumeHint"),
+      copyText("settingsPanel.behavior.localResumeInfo"),
     );
     this.resumeLocalInput = localInput;
     group.appendChild(localRow);
@@ -1439,17 +1429,9 @@ export class SettingsPanel {
     this.resumeLocalPresetsBox.className = "settings-presets resume-presets-local";
     group.appendChild(this.resumeLocalPresetsBox);
     const [remoteRow, remoteInput] = mkResumeRow(
-      "远端 resume 命令",
-      "默认：claude",
-      "远端 resume / 起会话时实际敲的启动器。\n" +
-        // 〔MC1〕「ccm 启动器」这个词删掉（`设计/71 §13`）：ccm 入口由机器页「部署后端」放。
-        "推荐填 `ccm`（部署过后端就有）——tmux 与账号由 cc-monitor 经参数控制。\n" +
-        // `70 §2.4` ＋ `§8` #5：这里原来是 `**…**` —— **界面不渲染 markdown**，
-        // 那两对星号是连着一起显示给用户看的（截图 2 里那句 `**下一步：…**` 同一个病）。
-        // ⇒ 强调改由句子结构承担（`§2.3` 那条「强调由 DOM 结构承担」的同一条道理）。
-        "⚠ 别填 cct 这类自己建 tmux 的命令：它会另起一个 tmux，cc-monitor 设的账号 env\n" +
-        "落在那个 tmux 进程边界之外、被整个吃掉，「用账号 X resume」就不生效。\n" +
-        "留空 = claude。",
+      copyText("settingsPanel.behavior.remoteResume"),
+      copyText("settingsPanel.behavior.remoteResumeHint"),
+      copyText("settingsPanel.behavior.remoteResumeInfo"),
     );
     this.resumeRemoteInput = remoteInput;
     group.appendChild(remoteRow);
@@ -1490,7 +1472,7 @@ export class SettingsPanel {
     const openBtn = document.createElement("button");
     openBtn.type = "button";
     openBtn.className = "settings-btn";
-    openBtn.textContent = "打开快捷键编辑器";
+    openBtn.textContent = copyText("settingsPanel.keybindings.open");
     openBtn.addEventListener("click", () => {
       if (!this.kbEditor) this.kbEditor = new KeybindingsEditor();
       this.kbEditor.open();
@@ -1511,7 +1493,7 @@ export class SettingsPanel {
   private refreshKbChip(): void {
     if (!this.kbOverrideChip) return;
     const n = Object.keys(dispatcher.exportOverrides()).length;
-    this.kbOverrideChip.textContent = n > 0 ? `已自定义 ${n} 项` : "全部默认";
+    this.kbOverrideChip.textContent = n > 0 ? copyText("settingsPanel.keybindings.customized", { n }) : copyText("settingsPanel.keybindings.allDefault");
   }
 
   /** "Claude 数据目录" 子表单（F82b 起嵌在「集成」组里） */
@@ -1522,7 +1504,7 @@ export class SettingsPanel {
     // 子标题（跟同分组里的「PowerShell 集成」子标题对称）
     const heading = document.createElement("div");
     heading.className = "settings-group-title";
-    heading.textContent = "Claude 数据目录";
+    heading.textContent = copyText("settingsPanel.dataDir.title");
     group.appendChild(heading);
 
     // 行 1：标签 + 文本输入
@@ -1530,16 +1512,16 @@ export class SettingsPanel {
     row1.className = "settings-row settings-row-stack";
     const label = document.createElement("span");
     label.className = "settings-label";
-    label.textContent = "目录路径";
+    label.textContent = copyText("settingsPanel.dataDir.path");
     row1.appendChild(label);
     this.claudeDirInput = document.createElement("input");
     this.claudeDirInput.type = "text";
     this.claudeDirInput.className = "settings-input settings-input-wide";
-    this.claudeDirInput.placeholder = "默认：~/.claude  或  $CLAUDE_CONFIG_DIR";
+    this.claudeDirInput.placeholder = copyText("settingsPanel.dataDir.pathHint");
     // 〔ST2 · 步 9〕全即时：失焦 / 回车（`change`）就落。逐键写盘没意义（路径没打完是个半截串）。
     this.claudeDirInput.addEventListener("change", () => {
       void this.persistClaudeDir().catch((e: unknown) =>
-        this.reportSaveFailure("Claude 数据目录", e),
+        this.reportSaveFailure(copyText("settingsPanel.save.claudeDir"), e),
       );
     });
     row1.appendChild(this.claudeDirInput);
@@ -1551,14 +1533,14 @@ export class SettingsPanel {
     const pickBtn = document.createElement("button");
     pickBtn.type = "button";
     pickBtn.className = "settings-btn settings-btn-secondary";
-    pickBtn.textContent = "浏览…";
+    pickBtn.textContent = copyText("settingsPanel.dataDir.browse");
     pickBtn.addEventListener("click", () => void this.pickClaudeDir());
     row2.appendChild(pickBtn);
     const resetBtn = document.createElement("button");
     resetBtn.type = "button";
     resetBtn.className = "settings-btn settings-btn-secondary";
-    resetBtn.textContent = "重置";
-    resetBtn.title = "清空 → 回退到 $CLAUDE_CONFIG_DIR 或 ~/.claude";
+    resetBtn.textContent = copyText("settingsPanel.dataDir.reset");
+    resetBtn.title = copyText("settingsPanel.dataDir.resetHint");
     resetBtn.addEventListener("click", () => this.resetClaudeDir());
     row2.appendChild(resetBtn);
     group.appendChild(row2);
@@ -1640,7 +1622,7 @@ export class SettingsPanel {
       wrap.appendChild(heading);
       const msg = document.createElement("div");
       msg.className = "settings-block-failed-msg";
-      msg.textContent = `此区块加载失败：${String(e)}`;
+      msg.textContent = copyText("settingsPanel.safeBlock.failed", { e: String(e) });
       wrap.appendChild(msg);
       // 可复制——用户报障时要的是原文，不是转述
       const out = document.createElement("textarea");
@@ -1680,8 +1662,8 @@ export class SettingsPanel {
     const resetBtn = document.createElement("button");
     resetBtn.type = "button";
     resetBtn.className = "settings-field-reset";
-    resetBtn.textContent = "↺";
-    resetBtn.title = `恢复 "${f.label}" 默认值`;
+    resetBtn.textContent = copyText("settingsPanel.field.reset");
+    resetBtn.title = copyText("settingsPanel.field.resetHint", { label: f.label });
     resetBtn.addEventListener("click", (e) => {
       // row 是 <label>，点击会冒泡到关联的 input；阻止默认 + 阻止冒泡
       e.preventDefault();
@@ -1700,7 +1682,7 @@ export class SettingsPanel {
     applyThemeToken(f.key, undefined);
     this.syncOneInput(f);
     // 〔ST2 · 步 9〕单项恢复默认也是改了就落。
-    void this.persistTheme().catch((e: unknown) => this.reportSaveFailure("外观", e));
+    void this.persistTheme().catch((e: unknown) => this.reportSaveFailure(copyText("settingsPanel.save.appearance"), e));
   }
 
   /** 把单个 token 当前值（如果覆盖了）或 :root 计算值写到对应 input */
@@ -1730,7 +1712,7 @@ export class SettingsPanel {
 
   /** 〔ST2 · 步 9〕外观那一格落盘（失败说出来，不静默吞）。 */
   private commitTheme(): void {
-    void this.persistTheme().catch((e: unknown) => this.reportSaveFailure("外观", e));
+    void this.persistTheme().catch((e: unknown) => this.reportSaveFailure(copyText("settingsPanel.save.appearance"), e));
   }
 
   private buildControl(f: FieldSpec): HTMLInputElement | HTMLSelectElement {
@@ -1738,7 +1720,7 @@ export class SettingsPanel {
       const sel = document.createElement("select");
       sel.className = "settings-input settings-input-select";
       const presets =
-        f.type === "font-base" ? BASE_FONT_PRESETS : MONO_FONT_PRESETS;
+        f.type === "font-base" ? BASE_FONT_PRESETS() : MONO_FONT_PRESETS();
       for (const p of presets) {
         const opt = document.createElement("option");
         opt.value = p.value;
@@ -1804,7 +1786,7 @@ export class SettingsPanel {
 
   /** 把 this.current 的值写回所有 input；无覆盖的字段读 :root 计算值作为占位 */
   private syncInputs(): void {
-    for (const f of FIELDS) {
+    for (const f of FIELDS()) {
       this.syncOneInput(f);
     }
   }

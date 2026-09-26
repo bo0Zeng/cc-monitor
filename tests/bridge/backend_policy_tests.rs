@@ -85,143 +85,137 @@ fn without_a_channel_nothing_is_made_up() {
     assert!(!kill_on_exit_now(&o), "问不到必须按缺省（不结束）办");
 }
 
-/// ★★ `K-P1 KPY6`：**那几句话不许只改一处** —— 跨语言逐字对拍。
-///
-/// # 为什么是「逐字对拍」而不是 `grep -c`
-///
-/// `brief` 第 11 条逐字：判「动没动某个闭集」**不许用 `grep` 数加行**（多行字面量会漏）。
-/// 这里两侧都是**具名常量**，所以量法是「按名字取那一行的字面量，整串相等」——
-/// 形状抄仓里已有的那条 `the_local_origin_is_the_same_string_on_both_sides`。
-///
-/// # 它防的那个漂**不会有任何东西报错**
-///
-/// 前端改了措辞而 Rust 这侧没跟：两边都编得过、都跑得起来，
-/// 只有「这一句到底是谁说了算」这件事悄悄没了 —— 下一个人只会看到两句不一样的话。
-/// 一张跨语言表的对拍本体。〔`K-P3`：**纯重构**从上面那条判据里抽出来的，
-/// 两条判红条件（找不到那个名字 / 两侧字面不等）一个字没动 ——
-/// 抽出来只为让第二张表（`HEALTH_COPY`）与第三张、第四张走**同一份**比法，
-/// 而不是各写一份便宜近似（本仓 `E3`：一个事实恰好一个权威源）。〕
-fn compare_one_table(ts: &str, what: &str, table: &[(&str, &str)]) {
-    for (name, rust) in table {
-        let head = format!("export const {name} =");
-        // TS 那侧允许换行（prettier 会把长串折下来）⇒ 从声明处起取到第一个分号。
-        let at = ts
-            .find(&head)
-            .unwrap_or_else(|| panic!("前端那份里找不到 `{head}` —— 名字改了就来改这条"));
-        let decl = &ts[at..];
-        let end = decl
-            .find(';')
-            .expect("那一行不是 `export const X = …;` 的形状");
-        let lit = decl[..end]
-            .split('"')
-            .nth(1)
-            .unwrap_or_else(|| panic!("`{name}` 的值不是一个双引号字面量"));
-        assert_eq!(
-            lit, *rust,
-            "{what} 那句话两侧漂了（`{name}`）：\n  前端 {lit:?}\n  后端 {rust:?}\n\
-                 ⚠ 这种漂**不会有任何东西报错** —— 两边都编得过、都跑得起来，\n\
-                 只是「这一句谁说了算」悄悄没了。⇒ 改文案要**同一拍改两处**。"
-        );
+// 〔CP2b · 第四波〕这里原来有三条跨语言逐字对拍（退出行为那张表 · 按清单派生的「每张表都对拍」·
+//   读数那几句「只有一个家」的旧版）。
+//   它们比的是「Rust 那份副本 == TS 那份副本」；文案表立起来之后两侧读**同一条表项**，Rust 副本删了 ——
+//   再比就是同源恒等（恒真），所以连判据一起删，换成下面两条还有东西可比的：
+//   ① 两侧说读数时用的是不是**同一批 key**（逻辑还是两份：哪一档用哪一句，各自写着）；
+//   ② 那几句话的家**只有表一个**（从前的「唯一一个家是 backend-policy.ts」换了家）。
+
+/// 表项 key 的抽取：`copy_text(` / `copyText(` 后面（允许换行缩进）那个以前缀开头的 key，去重。
+fn keys_with_prefix(src: &str, call: &str, prefix: &str) -> std::collections::BTreeSet<String> {
+    let quoted = format!("\"{prefix}");
+    let open = format!("{call}(");
+    let mut out = std::collections::BTreeSet::new();
+    let mut from = 0usize;
+    while let Some(rel) = src[from..].find(&quoted) {
+        let q = from + rel;
+        let at = q + 1;
+        let end = src[at..].find('"').map(|k| at + k).unwrap_or(src.len());
+        if src[..q].trim_end().ends_with(&open) {
+            out.insert(src[at..end].to_string());
+        }
+        from = end;
     }
+    out
 }
 
+/// ★ ① 两侧说「崩没崩」的读数时，用的是**同一批表项**。
+///
+/// TS 那侧 `describeBackendHealth`（界面）与 Rust 那侧 `describe_health`（日志 / 测试）各写一份三档逻辑；
+/// 句子已经同源，会漂的只剩「哪一档取哪一句」。只在 TS 一侧的两句（ⓘ 那句 `unknownWhy`、
+/// `[详情]` 那句 `detail`）登记在下面，不进比较。
 #[test]
-fn the_exit_copy_is_the_same_string_on_both_sides() {
-    let ts = include_str!("../../src/backend-policy.ts");
-    compare_one_table(ts, "退出行为", EXIT_COPY);
-    // 抽取器自检：条数变了也要红（少一条 = 上面的循环少跑一圈，那正是「空转」）。
-    // 〔B2 · 条 66〕3 → 4：多了「读不出来」那一句（`EXIT_UNREADABLE`，`设计/01 §3.3b ⑤`）。
+fn both_sides_describe_health_with_the_same_keys() {
+    const TS_ONLY: &[&str] = &[
+        "backendPolicy.health.unknownWhy",
+        "backendPolicy.health.detail",
+    ];
+    let ts: std::collections::BTreeSet<String> = keys_with_prefix(
+        include_str!("../../src/backend-policy.ts"),
+        "copyText",
+        "backendPolicy.health.",
+    )
+    .into_iter()
+    .filter(|k| !TS_ONLY.contains(&k.as_str()))
+    .collect();
+    let rs = keys_with_prefix(
+        &guard_core::production_code(include_str!("../../src/bridge/src/backend_policy.rs")),
+        "copy_text",
+        "backendPolicy.health.",
+    );
+    // 反空真：今天是四档用的四句（unknown · clean · crashed · lastMissing）。
     assert_eq!(
-        EXIT_COPY.len(),
+        rs.len(),
         4,
-        "退出行为的档数变了 —— 回来重判，别让本条在少数几档上绿着"
-    );
-}
-
-/// ★★ `K-P3 KP3C`：**每一张**跨语言表都有对拍 —— 人群从 [`CROSS_LANGUAGE_COPY`] 派生。
-///
-/// 上面那条只认 `EXIT_COPY` 一张表 ⇒「有人加了第三张跨语言表而没配对拍」它一个字都不会说。
-/// 本条按清单派生，**表数与每张表的条数都在断言里**。
-#[test]
-fn every_cross_language_table_is_compared_on_both_sides() {
-    let ts = include_str!("../../src/backend-policy.ts");
-    // 抽取器自检：读不到那份文件的话下面整条是空转的。
-    assert!(
-        ts.len() > 500,
-        "`src/backend-policy.ts` 只读到 {} 字节 —— 人群坏了",
-        ts.len()
+        "Rust 那侧读数用到的表项不是 4 条：{rs:?} —— 抽取器坏了或档数变了，回来重判"
     );
     assert_eq!(
-        CROSS_LANGUAGE_COPY.len(),
-        2,
-        "跨语言表的张数变成 {} 了 —— 加一张就在这里加一条，别让新表在没有对拍的情况下上线。\n\
-             （`K-P1 KPY6` 那条判据只认 `EXIT_COPY`，第三张表它一个字都不会说。）",
-        CROSS_LANGUAGE_COPY.len()
+        ts, rs,
+        "两侧说读数时用的表项不一样 —— 某一档只有一侧有，或两侧拿了不同的句子"
     );
-    let mut compared = 0usize;
-    for (what, table) in CROSS_LANGUAGE_COPY {
+    // 正控：抽取器认得 TS 那侧只在界面用的两句（它们在，只是登记了不比）。
+    let all_ts = keys_with_prefix(
+        include_str!("../../src/backend-policy.ts"),
+        "copyText",
+        "backendPolicy.health.",
+    );
+    for k in TS_ONLY {
         assert!(
-            !table.is_empty(),
-            "`{what}` 是一张空表 —— 上面那个循环会零命中地绿"
+            all_ts.contains(*k),
+            "TS 那侧找不到登记为只在界面用的 {k} —— 抽取器瞎了或那句删了，回来改登记"
         );
-        compare_one_table(ts, what, table);
-        compared += table.len();
     }
-    // 反空真：两张表合起来今天恰好 8 条（EXIT 4 + HEALTH 4）。〔B2〕7 → 8：`EXIT_UNREADABLE` 那一句。
-    // 数变了就回来重判 —— 变小 = 有几条悄悄掉出了对拍面。
-    assert_eq!(
-        compared, 8,
-        "两侧对拍的常量总数是 {compared}（今天应为 8 = EXIT 4 + HEALTH 4）"
-    );
 }
 
-/// ★★ `KP3C`：那四条读数文案也**只许有一个家**。
+/// ★★ ② 退出行为与崩溃读数的那几句话**只有一个家：文案表**。
 ///
-/// # 为什么这一格由 Rust 侧补
-///
-/// TS 那侧 `settings/backend-section.vitest.ts` 的 `KPY4②` 是**手写的三条 `EXIT_*`**，
-/// 本件新增的读数文案不在它的分母里 —— 而那份文件不在本件写区
-/// ⇒ 这一格落在这儿。形状抄同文件那条 `the_unconditional_ban_is_gone_from_all_four_homes`。
-///
-/// ⚠ 人群里**刻意没有 `backend_policy.rs` 自己**：那份 Rust 镜像是**对拍的对象**，
-/// 不是第二个家（`EXIT_*` 的头注对同一件事已经论证过一次）。
+/// 人群：前端那两份（`backend-policy.ts` 取文 · `backend-section.ts` 画格子）＋ Rust 这两份
+/// （本文件的被测模块 · `backend_control.rs`）。表里 `backendPolicy.*` 的每一句都不许在人群里以原文出现 ——
+/// 出现 = 抄了第二份，下一次改文案一定只改到一处。
 #[test]
-fn the_health_copy_has_exactly_one_home() {
-    const HOMES: &[(&str, &str)] = &[
+fn the_backend_policy_copy_has_exactly_one_home() {
+    let homes: Vec<(&str, String)> = vec![
         (
             "src/backend-policy.ts",
-            include_str!("../../src/backend-policy.ts"),
+            guard_core::strip_comment_lines(include_str!("../../src/backend-policy.ts")),
         ),
         (
             "src/settings/backend-section.ts",
-            include_str!("../../src/settings/backend-section.ts"),
+            guard_core::strip_comment_lines(include_str!("../../src/settings/backend-section.ts")),
         ),
         (
             "backend_control.rs",
-            include_str!("../../src/bridge/src/backend/control/backend_control.rs"),
+            guard_core::production_code(include_str!(
+                "../../src/bridge/src/backend/control/backend_control.rs"
+            )),
+        ),
+        (
+            "backend_policy.rs",
+            guard_core::production_code(include_str!("../../src/bridge/src/backend_policy.rs")),
         ),
     ];
-    for (name, src) in HOMES {
+    for (name, src) in &homes {
         assert!(
             src.len() > 500,
             "{name} 只读到 {} 字节 —— 人群坏了",
             src.len()
         );
     }
-    for (name, lit) in HEALTH_COPY {
-        let homes: Vec<&str> = HOMES
+    let table: Value = serde_json::from_str(include_str!("../../src/shared/copy/table.json"))
+        .expect("文案表解不开");
+    let lines: Vec<(String, String)> = table["entries"]
+        .as_object()
+        .expect("文案表没有 entries")
+        .iter()
+        .filter(|(k, _)| k.starts_with("backendPolicy."))
+        .map(|(k, v)| (k.clone(), v["zh"].as_str().unwrap_or_default().to_string()))
+        .collect();
+    // 反空真：退出行为 4 句 + 读数 6 句（含只在界面用的 ⓘ 与 [详情]）。
+    assert_eq!(
+        lines.len(),
+        10,
+        "表里 backendPolicy.* 不是 10 条：{lines:?}"
+    );
+    for (key, zh) in &lines {
+        let hit: Vec<&str> = homes
             .iter()
-            .filter(|(_, src)| src.contains(*lit))
+            .filter(|(_, src)| src.contains(zh.as_str()))
             .map(|(n, _)| *n)
             .collect();
-        assert_eq!(
-            homes,
-            vec!["src/backend-policy.ts"],
-            "`{name}` 出现在 {} 个文件里：{homes:?}\n\
-                 ★ 用户可见文案的唯一一个家是 `src/backend-policy.ts`。\n\
-                 **少了**（空表）= 那句话根本不在它该在的家，两侧对拍会先红；\n\
-                 **多了** = 抄进了别处，而下一次改文案一定只会改到一处。",
-            homes.len()
+        assert!(
+            hit.is_empty(),
+            "`{key}` 那句原文又出现在 {hit:?} 里 —— 它的家是文案表，抄一份就是两个家"
         );
     }
 }
@@ -283,7 +277,7 @@ fn the_four_deaths_are_told_apart_by_evidence_not_by_name() {
     let shapes = four_shapes();
     // 反空真：四形都得在，少一形下面的去重计数会靠人群变小而恒绿。
     assert_eq!(shapes.len(), 4, "夹具只剩 {} 形 —— 人群坏了", shapes.len());
-    let mut kinds: Vec<&'static str> = Vec::new();
+    let mut kinds: Vec<String> = Vec::new();
     let mut copies: Vec<String> = Vec::new();
     for (what, ev) in &shapes {
         let d = verdict(ev).unwrap_or_else(|| {
@@ -544,7 +538,7 @@ fn the_reading_defaults_to_unknown_not_to_clean() {
     assert_eq!(never_touched.seen(), 0, "这台机的夹具串被别的测试用过了");
     assert_eq!(
         describe_health(&never_touched),
-        HEALTH_UNKNOWN,
+        crate::copy_table::copy_text("backendPolicy.health.unknown", &[]),
         "一条记录都没有的机器被说成了别的 —— `§0-1` 逐字：\n\
              「今天不是『它没崩过』，是『没有任何东西在记它崩没崩』…… \
              这两句话差得很远，不许混用」。"
@@ -570,7 +564,8 @@ fn the_reading_defaults_to_unknown_not_to_clean() {
         "读数没带出次数与最后那一行：{said}"
     );
     assert_ne!(
-        said, HEALTH_UNKNOWN,
+        said,
+        crate::copy_table::copy_text("backendPolicy.health.unknown", &[]),
         "记了两笔，读数还说「答不出来」—— 那句话就永远只是一句静态承诺了"
     );
     // 占位符必须真的被填掉（漏一个 `replace` 会把 `{crashed}` 原样端到用户眼前）。
@@ -1081,7 +1076,7 @@ fn what_reaches_the_settings_panel_carries_no_markdown_no_argument_no_log_format
         );
         // 判定词与退出状态都在（界面上要读得出「怎么死的、退出码多少」）。
         assert!(
-            brief.contains(death_kind(&d)) && brief.contains(&exit_status(&d)),
+            brief.contains(&death_kind(&d)) && brief.contains(&exit_status(&d)),
             "「{what}」的短摘要丢了判定或退出状态：{brief}"
         );
         // 进日志的那四条话也不许再带 markdown / 论证（它们不进界面，但 `70 §7` 步 7 逐字要后端「停止产」）。

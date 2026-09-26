@@ -36,6 +36,7 @@
 //! 常驻那条载体的流结束（`main.rs::serve_listening`）· monitor 退出臂现问一次（它收自己起的那两个子进程）。
 //! 逐条登记在 `tests::DECISION_SITES`。
 
+use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
 /// 后端在每台机器上的家目录名（相对用户家目录）。
@@ -162,12 +163,18 @@ fn render(kill: bool) -> String {
 /// 失败时把临时文件删掉，**不留垃圾、不静默**。
 fn write_at(path: &Path, kill: bool) -> Result<(), String> {
     use std::io::Write as _;
-    let dir = path
-        .parent()
-        .ok_or_else(|| format!("{} 没有父目录", path.display()))?;
+    let dir = path.parent().ok_or_else(|| {
+        copy_text(
+            "beExitPolicy.writeAt.noParent",
+            &[("path", &(path.display()).to_string())],
+        )
+    })?;
     if let Err(e) = std::fs::create_dir(dir) {
         if e.kind() != std::io::ErrorKind::AlreadyExists {
-            return Err(format!("建 {} 失败：{e}", dir.display()));
+            return Err(copy_text(
+                "beExitPolicy.writeAt.mkdirFailed",
+                &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
+            ));
         }
     }
     let tmp = dir.join(format!("{FILE_NAME}.{}.tmp", std::process::id()));
@@ -176,13 +183,31 @@ fn write_at(path: &Path, kill: bool) -> Result<(), String> {
             .write(true)
             .create_new(true)
             .open(&tmp)
-            .map_err(|e| format!("建临时文件 {} 失败：{e}", tmp.display()))?;
+            .map_err(|e| {
+                copy_text(
+                    "beExitPolicy.writeAt.tmpCreateFailed",
+                    &[("tmp", &(tmp.display()).to_string()), ("e", &e.to_string())],
+                )
+            })?;
         f.write_all(render(kill).as_bytes())
             .and_then(|()| f.sync_all())
-            .map_err(|e| format!("写临时文件 {} 失败：{e}", tmp.display()))?;
+            .map_err(|e| {
+                copy_text(
+                    "beExitPolicy.writeAt.tmpWriteFailed",
+                    &[("tmp", &(tmp.display()).to_string()), ("e", &e.to_string())],
+                )
+            })?;
         drop(f);
-        std::fs::rename(&tmp, path)
-            .map_err(|e| format!("把 {} 挪到 {} 失败：{e}", tmp.display(), path.display()))
+        std::fs::rename(&tmp, path).map_err(|e| {
+            copy_text(
+                "beExitPolicy.writeAt.renameFailed",
+                &[
+                    ("tmp", &(tmp.display()).to_string()),
+                    ("path", &(path.display()).to_string()),
+                    ("e", &e.to_string()),
+                ],
+            )
+        })
     })();
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp);
@@ -214,12 +239,12 @@ pub fn answer_set(args: &serde_json::Value) -> Result<serde_json::Value, (&'stat
         .and_then(|v| v.as_bool())
         .ok_or((
             "bad_args",
-            format!("少了 `{KEY_KILL_ON_EXIT}`，或它不是布尔"),
+            crate::common::contract::malformed(&format!(
+                "missing `{KEY_KILL_ON_EXIT}`, or it is not a bool"
+            )),
         ))?;
-    let path = policy_path().ok_or((
-        "io_failed",
-        "家目录解析不出来（HOME / USERPROFILE 都没有）—— 不猜一个路径去写".to_string(),
-    ))?;
+    let path =
+        policy_path().ok_or(("io_failed", copy_text("beExitPolicy.answerSet.noHome", &[])))?;
     write_at(&path, kill).map_err(|e| ("io_failed", e))?;
     Ok(wire(&read_at(&path), Some(&path)))
 }

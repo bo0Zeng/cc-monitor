@@ -34,6 +34,7 @@
 import { UserInputPanel, OUTLINE_LABEL, markJump, type JumpResult } from "./user-input-panel";
 import type { FindHit, FindResult } from "../session-reads";
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
+import { copyText } from "../copy-table";
 
 /** 两个模式。 */
 export type FindMode = "search" | "outline";
@@ -48,14 +49,14 @@ export interface SessionFindHost {
   readonly unjumpableHint: string;
 }
 
-const SEARCH_LABEL = "搜索";
-const PLACEHOLDER = "在这个会话里找，按 Enter";
-const TOOLS_LABEL = "含工具内容";
-const TOOLS_HINT = "默认只搜你的输入和 Claude 的回复；勾上之后也搜工具调用、工具输出与思考过程";
-const CLOSE_HINT = "关闭（Esc）";
-const IDLE_STATUS = "按 Enter 开始找";
-const BUSY_STATUS = "正在找…";
-const NONE_STATUS = "没有找到";
+const SEARCH_LABEL = copyText("sessionFind.box.searchLabel");
+const PLACEHOLDER = copyText("sessionFind.box.placeholder");
+const TOOLS_LABEL = copyText("sessionFind.box.tools");
+const TOOLS_HINT = copyText("sessionFind.box.toolsHint");
+const CLOSE_HINT = copyText("sessionFind.box.closeHint");
+const IDLE_STATUS = copyText("sessionFind.status.idle");
+const BUSY_STATUS = copyText("sessionFind.status.busy");
+const NONE_STATUS = copyText("sessionFind.status.none");
 
 export class SessionFindPanel {
   /** 整块（宿主挂到流上、跟着 tab 翻 `.active`）。 */
@@ -99,7 +100,7 @@ export class SessionFindPanel {
     const close = document.createElement("button");
     close.type = "button";
     close.className = "session-find-close";
-    close.textContent = "✕";
+    close.textContent = copyText("sessionFind.box.close");
     close.title = CLOSE_HINT;
     close.setAttribute("aria-label", CLOSE_HINT);
     close.addEventListener("click", () => this.close());
@@ -195,13 +196,13 @@ export class SessionFindPanel {
     }
     if (gen !== this.gen) return; // 迟到的旧结果
     if (!res.available) {
-      this.status.textContent = `现在查不了：${res.reason ?? ""}`;
+      this.status.textContent = copyText("sessionFind.runSearch.unavailable", { reason: res.reason ?? "" });
       return;
     }
     for (const h of res.hits) this.hits.appendChild(this.buildHit(h));
     const n = res.hits.length;
     this.status.textContent =
-      n === 0 ? NONE_STATUS : res.total > n ? `共 ${res.total} 条，只列了前 ${n} 条` : `${n} 条`;
+      n === 0 ? NONE_STATUS : res.total > n ? copyText("sessionFind.runSearch.truncated", { total: res.total, n }) : copyText("sessionFind.runSearch.count", { n });
   }
 
   /**

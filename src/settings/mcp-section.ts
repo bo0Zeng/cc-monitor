@@ -35,6 +35,7 @@ export type McpScope = "user" | "local" | "project";
 // （分组结果确实只有三档）。运行时**逐字节不变**。
 import type { McpServerEntry } from "../generated/McpServerEntry";
 import { askConfirm } from "../ask-dialog";
+import { copyText } from "../copy-table";
 
 export type { McpServerEntry };
 
@@ -74,7 +75,7 @@ export function serverSummary(server: unknown): string {
       return `stdio · ${s.command}${args ? " " + args : ""}`;
     }
   }
-  return "(未知形态)";
+  return copyText("mcp.serverSummary.unknown");
 }
 
 /** 解析 server 配置 JSON 文本：必须是对象。纯函数。 */
@@ -82,26 +83,27 @@ export function parseServerConfig(
   text: string,
 ): { ok: true; value: unknown } | { ok: false; error: string } {
   const t = text.trim();
-  if (!t) return { ok: false, error: "配置为空" };
+  if (!t) return { ok: false, error: copyText("mcp.parse.empty") };
   let v: unknown;
   try {
     v = JSON.parse(t);
   } catch (e) {
     return {
       ok: false,
-      error: `JSON 无效：${e instanceof Error ? e.message : String(e)}`,
+      error: copyText("mcp.parse.badJson", { message: e instanceof Error ? e.message : String(e) }),
     };
   }
   if (!v || typeof v !== "object" || Array.isArray(v))
-    return { ok: false, error: "配置必须是 JSON 对象" };
+    return { ok: false, error: copyText("mcp.parse.notObject") };
   return { ok: true, value: v };
 }
 
-const SCOPE_LABEL: Record<McpScope, string> = {
-  user: "用户",
-  local: "本项目(local)",
-  project: "项目 .mcp.json",
-};
+// 〔CP2b〕做成函数、用到时才取文（模块顶层不留取文口调用 —— 顶层调用会让 Rollup 把设置面板挪进主窗共享 chunk）。
+const SCOPE_LABEL = (): Record<McpScope, string> => ({
+  user: copyText("mcp.scope.user"),
+  local: copyText("mcp.scope.local"),
+  project: copyText("mcp.scope.project"),
+});
 
 /**
  * 〔AS2 · 第四波 4B · V113〕机器页「资产目录」那一块（`assets-section.ts`）要的「装」命令，**从这里递出去**：
@@ -115,6 +117,8 @@ export function assetInstallApi(): AssetInstallApi {
     mcpApply: (a) => commands.mcp_sync_apply(a),
     skillPreview: (a) => commands.skill_install_preview(a),
     skillApply: (a) => commands.skill_install_apply(a),
+    // 〔SU1 · 第四波 4C · V116〕卸：同一件（③ 装 / 卸 skill）的前端落点仍只在本文件。
+    skillUninstall: (a) => commands.skill_uninstall_apply(a),
   };
 }
 
@@ -192,8 +196,7 @@ export class McpSection {
     const hint = document.createElement("div");
     hint.className = "settings-hint";
     hint.textContent =
-      "读：跨 scope 展示 MCP 服务器（用户 / local / 项目）；配了远端可切「机器」跨机只读看远端 user scope。" +
-      "写：只增改删「本机项目 .mcp.json」——绝不动 ~/.claude.json；跨机器只经项目下面那一块「推 / 拉」。设置窗拿不到当前会话项目，请在下面填/选项目目录。";
+      copyText("mcp.build.intro");
     root.appendChild(hint);
 
     // F87b③：机器选择行（本机 / 各远端 origin）。仅当配了远端时由 loadMachines 填充；否则留空不显。
@@ -207,14 +210,14 @@ export class McpSection {
     this.dirRow = row;
     this.dirInput = document.createElement("input");
     this.dirInput.className = "settings-input";
-    this.dirInput.placeholder = "项目目录（含 .mcp.json 的项目根）";
+    this.dirInput.placeholder = copyText("mcp.build.projectDir");
     this.dirInput.setAttribute("list", "mcp-project-dirs");
     this.datalist = document.createElement("datalist");
     this.datalist.id = "mcp-project-dirs";
     const readBtn = document.createElement("button");
     readBtn.type = "button";
     readBtn.className = "settings-btn settings-btn-secondary";
-    readBtn.textContent = "读取";
+    readBtn.textContent = copyText("mcp.build.read");
     readBtn.addEventListener("click", () => void this.refresh());
     this.dirInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") void this.refresh();
@@ -253,7 +256,7 @@ export class McpSection {
     this.dirsBox.replaceChildren();
     const hint = document.createElement("div");
     hint.className = "settings-hint mcp-dirs-empty";
-    hint.textContent = "读不到这台机器的项目清单 —— 上面仍可手填任意路径。";
+    hint.textContent = copyText("mcp.dirs.failed");
     this.dirsBox.appendChild(hint);
   }
 
@@ -263,7 +266,7 @@ export class McpSection {
     this.dirsBox.replaceChildren();
     const hint = document.createElement("div");
     hint.className = "settings-hint mcp-dirs-empty";
-    hint.textContent = "读取中…";
+    hint.textContent = copyText("mcp.dirs.loading");
     this.dirsBox.appendChild(hint);
   }
 
@@ -289,7 +292,7 @@ export class McpSection {
       const empty = document.createElement("div");
       empty.className = "settings-hint mcp-dirs-empty";
       // 说清是「这台机器没用过项目」，不是「加载失败」——两者的下一步完全不同。
-      empty.textContent = "这台机器还没有用过的项目目录 —— 上面可以手填任意路径。";
+      empty.textContent = copyText("mcp.dirs.none");
       this.dirsBox.appendChild(empty);
     }
   }
@@ -337,11 +340,11 @@ export class McpSection {
     this.machineRow.replaceChildren();
     const label = document.createElement("span");
     label.className = "mcp-machine-label";
-    label.textContent = "机器：";
+    label.textContent = copyText("mcp.machine.label");
     this.machineRow.appendChild(label);
     const name = document.createElement("span");
     name.className = "mcp-machine-name";
-    name.textContent = isLocalOrigin(this.origin) ? "本机" : this.origin;
+    name.textContent = isLocalOrigin(this.origin) ? copyText("mcp.machine.local") : this.origin;
     this.machineRow.appendChild(name);
   }
 
@@ -363,7 +366,7 @@ export class McpSection {
     this.renderDirCandidatesLoading();
     // E59：按钮没了，改成更新那行只读显示。
     const name = this.machineRow.querySelector<HTMLElement>(".mcp-machine-name");
-    if (name) name.textContent = isLocalOrigin(origin) ? "本机" : origin;
+    if (name) name.textContent = isLocalOrigin(origin) ? copyText("mcp.machine.local") : origin;
     if (isLocalOrigin(origin)) void this.loadProjectCandidates();
     else void this.loadRemoteProjectCandidates(origin);
     await this.refresh();
@@ -401,7 +404,7 @@ export class McpSection {
     this.listBox.replaceChildren();
     const loading = document.createElement("div");
     loading.className = "settings-hint mcp-loading";
-    loading.textContent = `读取远端 [${origin}] 项目 ${dir} 的 .mcp.json…（SSH）`;
+    loading.textContent = copyText("mcp.remoteProject.reading", { machine: origin, dir });
     this.listBox.appendChild(loading);
     let entries: McpServerEntry[];
     try {
@@ -415,11 +418,11 @@ export class McpSection {
       const box = document.createElement("div");
       box.className = "mcp-remote-error";
       const line = document.createElement("div");
-      line.textContent = `读取远端 [${origin}] 项目 .mcp.json 失败：${String(e)}`;
+      line.textContent = copyText("mcp.remoteProject.failed", { machine: origin, e: String(e) });
       const retry = document.createElement("button");
       retry.type = "button";
       retry.className = "settings-btn settings-btn-secondary";
-      retry.textContent = "重试";
+      retry.textContent = copyText("mcp.reloadRemoteProject.retry");
       retry.addEventListener(
         "click",
         () => void this.reloadRemoteProject(origin, dir),
@@ -434,7 +437,7 @@ export class McpSection {
     head.className = "mcp-remote-head";
     const note = document.createElement("span");
     note.className = "settings-hint";
-    note.textContent = `远端 [${origin}] 项目 ${dir} · 可增/改/删（写远端 .mcp.json，SS-14）。`;
+    note.textContent = copyText("mcp.remoteProject.writable", { machine: origin, dir });
     this.listBox.prepend(head);
     head.appendChild(note);
   }
@@ -446,7 +449,7 @@ export class McpSection {
     const loading = document.createElement("div");
     loading.className = "settings-hint mcp-loading";
     loading.setAttribute("aria-busy", "true");
-    loading.textContent = "读取本机的 MCP 配置…";
+    loading.textContent = copyText("mcp.local.reading");
     this.listBox.replaceChildren(loading);
     let entries: McpServerEntry[];
     try {
@@ -456,7 +459,7 @@ export class McpSection {
     } catch (e) {
       loading.remove();
       if (this.origin !== startOrigin) return; // 期间已切走 → 静默丢弃
-      showActionFailureToast("读取 MCP 配置失败", String(e));
+      showActionFailureToast(copyText("mcp.local.failed"), String(e));
       return;
     }
     // 成功那一支不用撤：`renderList` 自己会整格重画（`replaceChildren`）。
@@ -471,7 +474,7 @@ export class McpSection {
     this.listBox.replaceChildren();
     const loading = document.createElement("div");
     loading.className = "settings-hint mcp-loading";
-    loading.textContent = `读取远端 [${origin}] 的 MCP 配置…（走 SSH，可能数秒）`;
+    loading.textContent = copyText("mcp.remote.reading", { machine: origin });
     this.listBox.appendChild(loading);
     let entries: McpServerEntry[];
     try {
@@ -489,7 +492,7 @@ export class McpSection {
     if (entries.length === 0) {
       const empty = document.createElement("div");
       empty.className = "settings-hint";
-      empty.textContent = `远端 [${origin}] 无 user scope MCP 配置（或 ~/.claude.json 缺失）。`;
+      empty.textContent = copyText("mcp.remote.empty", { machine: origin });
       this.listBox.appendChild(empty);
     }
   }
@@ -500,12 +503,12 @@ export class McpSection {
     const box = document.createElement("div");
     box.className = "mcp-remote-error";
     const line = document.createElement("div");
-    line.textContent = `读取远端 [${origin}] MCP 失败：${msg}`;
+    line.textContent = copyText("mcp.remote.failed", { machine: origin, msg });
     box.appendChild(line);
     const retry = document.createElement("button");
     retry.type = "button";
     retry.className = "settings-btn settings-btn-secondary";
-    retry.textContent = "重试";
+    retry.textContent = copyText("mcp.renderRemoteError.retry");
     retry.addEventListener("click", () => void this.reloadRemote(origin));
     box.appendChild(retry);
     this.listBox.appendChild(box);
@@ -519,12 +522,12 @@ export class McpSection {
     const note = document.createElement("span");
     note.className = "settings-hint";
     note.textContent =
-      "跨机 user scope（机器全局）MCP · 只读。要管理远端项目级的 .mcp.json：在上方项目目录填/选远端项目路径。";
+      copyText("mcp.remote.header");
     const refresh = document.createElement("button");
     refresh.type = "button";
     refresh.className =
       "settings-btn settings-btn-secondary mcp-remote-refresh";
-    refresh.textContent = "重新读取";
+    refresh.textContent = copyText("mcp.remote.reread");
     refresh.addEventListener("click", () => void this.reloadRemote(origin));
     head.append(note, refresh);
     return head;
@@ -567,9 +570,9 @@ export class McpSection {
     const readOnlySuffix = writable
       ? ""
       : remote
-        ? " · 只读（远端）"
-        : " · 只读";
-    title.textContent = `${SCOPE_LABEL[scope]}（${entries.length}）${readOnlySuffix}`;
+        ? copyText("mcp.scope.readOnlyRemote")
+        : copyText("mcp.scope.readOnly");
+    title.textContent = `${SCOPE_LABEL()[scope]}（${entries.length}）${readOnlySuffix}`;
     box.appendChild(title);
 
     for (const e of entries) {
@@ -591,7 +594,7 @@ export class McpSection {
       detail.className = "mcp-server-detail is-collapsed";
       const src = document.createElement("div");
       src.className = "mcp-server-src";
-      src.textContent = `来源：${e.sourcePath}`;
+      src.textContent = copyText("mcp.scope.source", { sourcePath: e.sourcePath });
       const pre = document.createElement("pre");
       pre.className = "mcp-server-json";
       detail.append(src, pre);
@@ -601,7 +604,7 @@ export class McpSection {
       jsonBtn.type = "button";
       jsonBtn.className = "settings-btn settings-btn-secondary mcp-json-toggle";
       jsonBtn.textContent = "JSON";
-      jsonBtn.title = "看完整配置 JSON + 来源文件";
+      jsonBtn.title = copyText("mcp.scope.detailHint");
       jsonBtn.addEventListener("click", () => {
         const collapsed = detail.classList.toggle("is-collapsed");
         if (!collapsed && !jsonBuilt) {
@@ -617,15 +620,15 @@ export class McpSection {
         const edit = document.createElement("button");
         edit.type = "button";
         edit.className = "settings-btn settings-btn-secondary mcp-edit";
-        edit.textContent = "编辑";
-        edit.title = "把这条填进下方表单改配置后保存（覆盖）。改名请删旧新增。";
+        edit.textContent = copyText("mcp.scope.edit");
+        edit.title = copyText("mcp.scope.editHint");
         edit.addEventListener("click", () => this.beginEdit(e.name, e.server));
         rowEl.appendChild(edit);
 
         const del = document.createElement("button");
         del.type = "button";
         del.className = "settings-btn settings-btn-danger mcp-del";
-        del.textContent = "删";
+        del.textContent = copyText("mcp.scope.delete");
         del.addEventListener("click", () => void this.removeEntry(dir, e.name));
         rowEl.appendChild(del);
       }
@@ -654,18 +657,18 @@ export class McpSection {
     const cancelBtn = document.createElement("button");
     cancelBtn.type = "button";
     cancelBtn.className = "settings-btn settings-btn-secondary";
-    cancelBtn.textContent = "取消编辑";
+    cancelBtn.textContent = copyText("mcp.form.cancelEdit");
     cancelBtn.addEventListener("click", () => this.cancelEdit());
     banner.appendChild(cancelBtn);
     this.editBanner = banner;
     this.editNameLabel = bLabel;
     const nameInput = document.createElement("input");
     nameInput.className = "settings-input";
-    nameInput.placeholder = "server 名";
+    nameInput.placeholder = copyText("mcp.form.name");
     const jsonInput = document.createElement("textarea");
     jsonInput.className = "settings-input mcp-json-input";
-    jsonInput.placeholder =
-      '{ "command": "npx", "args": ["-y", "@x/mcp"] }  或  { "type": "http", "url": "https://…" }';
+    // 〔CP2b〕两段 JSON 例子是代码、不是话（而且带花括号，进不了文案表）⇒ 只有中间那个「或」进表。
+    jsonInput.placeholder = copyText("mcp.form.jsonHint", { a: '{ "command": "npx", "args": ["-y", "@x/mcp"] }', b: '{ "type": "http", "url": "https://…" }' });
     jsonInput.rows = 3;
     // F87b②：暴露引用给「编辑」按钮预填（每次 reload 重建表单时刷新）。
     this.addNameInput = nameInput;
@@ -673,22 +676,22 @@ export class McpSection {
     const saveBtn = document.createElement("button");
     saveBtn.type = "button";
     saveBtn.className = "settings-btn";
-    saveBtn.textContent = "添加/更新到 .mcp.json";
+    saveBtn.textContent = copyText("mcp.form.save");
     if (!dir) {
       saveBtn.disabled = true;
-      saveBtn.title = "先填项目目录并「读取」";
+      saveBtn.title = copyText("mcp.form.needDir");
     }
     saveBtn.addEventListener("click", () => {
       const name = nameInput.value.trim();
       if (!name) {
-        showActionFailureToast("缺 server 名", "填一个 MCP server 名再保存。", {
+        showActionFailureToast(copyText("mcp.form.noName"), copyText("mcp.form.noNameBody"), {
           level: "info",
         });
         return;
       }
       const parsed = parseServerConfig(jsonInput.value);
       if (!parsed.ok) {
-        showActionFailureToast("配置无效", parsed.error, { level: "info" });
+        showActionFailureToast(copyText("mcp.form.badConfig"), parsed.error, { level: "info" });
         return;
       }
       void this.writeEntry(dir, name, parsed.value);
@@ -704,7 +707,7 @@ export class McpSection {
     this.addNameInput.readOnly = true;
     this.addJsonInput.value = JSON.stringify(server, null, 2);
     if (this.editBanner && this.editNameLabel) {
-      this.editNameLabel.textContent = `编辑中：${name}（改配置后保存覆盖；改名请删旧新增）`;
+      this.editNameLabel.textContent = copyText("mcp.form.editing", { name });
       this.editBanner.style.display = "";
     }
     this.addJsonInput.focus();
@@ -740,7 +743,7 @@ export class McpSection {
       });
     } catch (e) {
       if (this.origin === startOrigin)
-        showActionFailureToast("写入 .mcp.json 失败", String(e));
+        showActionFailureToast(copyText("mcp.write.failed"), String(e));
       return;
     }
     // F89a 审计修·重要：await 期间用户已切机器 → 不回填 dirInput、不 refresh（否则拿旧 dir 渲染新机器项目）。
@@ -751,9 +754,9 @@ export class McpSection {
 
   private async removeEntry(dir: string, name: string): Promise<void> {
     const startOrigin = this.origin;
-    const where = isLocalOrigin(startOrigin) ? "本机" : `远端 [${startOrigin}]`;
+    const where = isLocalOrigin(startOrigin) ? copyText("mcp.who.local") : copyText("mcp.who.remote", { machine: startOrigin });
     if (
-      !await askConfirm(`从${where}项目 .mcp.json 删除 MCP server「${name}」？`)
+      !(await askConfirm(copyText("mcp.remove.confirm", { where, name })))
     )
       return;
     try {
@@ -765,7 +768,7 @@ export class McpSection {
       });
     } catch (e) {
       if (this.origin === startOrigin)
-        showActionFailureToast("删除失败", String(e));
+        showActionFailureToast(copyText("mcp.remove.failed"), String(e));
       return;
     }
     if (this.origin !== startOrigin) return; // 期间切机器 → 丢弃回填/刷新

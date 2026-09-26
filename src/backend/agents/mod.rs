@@ -117,6 +117,29 @@ pub(crate) struct Adapter {
     ///
     /// ⚠ 收进注册表而不是让 `history_join.rs` 直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]。
     pub(crate) history: Option<HistoryFace>,
+    /// 〔NT2 · V25〕这一家的**默认上游**（中转 `/t/` 直通、表里没有那一行时发到哪）。`None` = 未登记 ⇒ 上游选择拒（502），不回落。
+    ///
+    /// 用户 2026-09-18 逐字「**写死, 跟着适配层**」（`99 §1` V25）：先前这一格住上游选择自己那张表
+    /// （`accounts::upstream` 的每 agent 一行表），与「跟着适配层」不是同一格（`设计/20 §3.1` 自陈待对齐）。
+    /// 今天上游选择**只从这里读**（`default_upstreams`）—— 加一家的默认上游，改的就是注册表里那一行。
+    pub(crate) upstream: Option<DefaultUpstream>,
+}
+
+/// 〔NT2 · V25〕一家的默认上游：路由里叫它什么 · 盖掉内置默认的那个旋钮 · 内置默认。三格焊在一起
+/// （分开取就写得出「A 家的旋钮配 B 家的默认值」—— 与上游选择那张表的 `Row` 焊住上游与 key 同一条理由）。
+pub(crate) struct DefaultUpstream {
+    /// 中转路由键第 1 段里这一家的名字（monitor 起会话拼 `/t/<它>/…`）。⚠ 与 [`Adapter::kind`]（wire 上的 `agent_kind`）
+    /// 是两个值域：Claude 在 wire 上叫 `claude`、在路由里叫 `claude-code` —— 各有各的既有契约，不在这里对齐。
+    pub(crate) route_id: &'static str,
+    /// 盖掉内置默认的环境变量名。**每家一个**（V26「每家一个」：不留「覆盖哪一家说不清」的全局旋钮）。
+    pub(crate) env: &'static str,
+    /// 没配 `env` 时这一家发到哪儿。
+    pub(crate) fallback: &'static str,
+}
+
+/// 〔NT2 · V25〕登记了默认上游的每一家：`(路由名, 那一格)`。**上游选择读默认上游的唯一入口**。
+pub(crate) fn default_upstreams() -> impl Iterator<Item = &'static DefaultUpstream> {
+    REGISTRY.iter().filter_map(|a| a.upstream.as_ref())
 }
 
 /// 〔C4d〕一家的合成历史面：函数指针（同 [`Adapter::home`]，不立 trait）。
@@ -192,12 +215,13 @@ pub(crate) fn skills_root() -> Option<PathBuf> {
 /// 一家拆成四行会让那个读数变成排版的函数。
 #[rustfmt::skip]
 pub(crate) const REGISTRY: &[Adapter] = &[
-    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None },
+    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM) },
     // ⚠ codex 那一格**今天借用同一个载体，这是如实登记的耦合、不是设计**：
     //   账号维度来自 `cc-acct-iso`（机器上只有一套账号库），而那套库切的就是这个变量。
     //   `ccm --agent codex --account b` 从来就是这个行为（`shared/ccm` 那侧也是无条件 export）。
     //   codex 自己并不读它 ⇒ 哪天账号维度按家拆开，改的就是这一行。
-    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: None, history: Some(codex::HISTORY) },
+    // 〔NT2 · V25〕codex **刻意不登记**默认上游：它的默认上游是哪一个、认不认 base URL 覆盖，本仓零证据（`C7`）⇒ 未登记即拒（fail-closed）。
+    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: None, history: Some(codex::HISTORY), upstream: None },
 ];
 
 /// 某一家的账号载体（环境变量名）。认不出这家 ⇒ `None`。

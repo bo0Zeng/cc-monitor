@@ -32,6 +32,7 @@
 //! 真要收，得把本命令改成**流式**（同 `stream_read_remote_session` 那条 channel 路），
 //! 那会改它对前端的返回形状 —— 是另一件事，不在本件里顺手做。
 
+use crate::copy_table::copy_text;
 use crate::messages::JsonlRecord;
 use crate::parser::parse_line;
 use std::path::{Path, PathBuf};
@@ -90,8 +91,11 @@ impl Backend {
     /// 报错文案里的「谁」—— 本机 / 哪台远端。
     pub(crate) fn whose(&self) -> String {
         match self {
-            Backend::Local => "本机".to_string(),
-            Backend::Remote(cfg) => format!("远端 [{}]", cfg.origin_label()),
+            Backend::Local => copy_text("rsSubagent.whose.local", &[]),
+            Backend::Remote(cfg) => copy_text(
+                "rsSubagent.whose.remote",
+                &[("machine", &(cfg.origin_label()).to_string())],
+            ),
         }
     }
 
@@ -114,10 +118,9 @@ impl Backend {
                     let origin = crate::origin::Origin(cfg.origin_label());
                     // 长连接在、却不认这条帧命令 ⇒ 对面的后端比这条查询老（结构性，再要也一样）。
                     if crate::backend::control::frame_query::refuses(&origin, &route) {
-                        return Err(QueryError::old_backend(format!(
-                            "远端 [{}] 的后端还不认 `{}` —— 重装那台机器的后端就有了",
-                            cfg.origin_label(),
-                            route.frame_cmd()
+                        return Err(QueryError::old_backend(copy_text(
+                            "rsSubagent.query.tooOld",
+                            &[("machine", &(cfg.origin_label()).to_string())],
                         )));
                     }
                     return crate::backend::control::frame_query::run_routed(&origin, route)
@@ -127,10 +130,15 @@ impl Backend {
                 // 〔C4d · 第四波 4B〕认不出的形状从前落到逐次拨号那条路（`run_list_query`〔散文墓碑〕），而那条路的
                 //   放行表 C4c 起就是空的 ⇒ 结局本来就是被拒。主会话 09-25 裁删那条路：这里**当场说**，不拨号、不回落。
                 //   这是本程序的 bug（调用方造了一条没上帧面的查询），不是远端的问题 ⇒ 结构性，再要也一样。
-                Err(QueryError::transport(format!(
-                    "`{}` 没有对应的帧命令，不再为它单拨一条 SSH（这是本程序的 bug，不是远端 [{}] 的问题）",
-                    argv.first().copied().unwrap_or_default(),
-                    cfg.origin_label()
+                Err(QueryError::transport(copy_text(
+                    "rsSubagent.query.noFrameCmd",
+                    &[
+                        (
+                            "argv",
+                            &(argv.first().copied().unwrap_or_default()).to_string(),
+                        ),
+                        ("machine", &(cfg.origin_label()).to_string()),
+                    ],
                 )))
             }
         }
@@ -218,15 +226,23 @@ fn run_local_query(argv: &[&str]) -> Result<Vec<String>, QueryError> {
         &*crate::spawn_managed::local_backend_one_shot_query(),
     ) {
         QueryOutcome::Ok(stdout) => Ok(nonempty_lines(&stdout)),
-        QueryOutcome::NoBackend(reason) => {
-            Err(QueryError::transport(format!("本机后端不在：{reason}")))
-        }
+        QueryOutcome::NoBackend(reason) => Err(QueryError::transport(copy_text(
+            "rsSubagent.localQuery.noBackend",
+            &[("reason", &reason.to_string())],
+        ))),
         QueryOutcome::Failed { code, stderr } => {
             let sub = argv[0];
             let msg = stderr.trim();
             Err(QueryError {
                 kind: local_failure_kind(code, &stderr, sub),
-                message: format!("本机后端 {sub} 查询失败（退出码 {code:?}）：{msg}"),
+                message: copy_text(
+                    "rsSubagent.localQuery.failed",
+                    &[
+                        ("sub", &sub.to_string()),
+                        ("code", &format!("{:?}", code)),
+                        ("msg", &msg.to_string()),
+                    ],
+                ),
             })
         }
     }
@@ -261,15 +277,22 @@ pub async fn load_subagent(
     // ⚠ `K-R94` 起这道校验**两条路都过** —— 改前只有远端那条有，而「同一个入参、两种把关」
     // 正是 `KR94D3` 说的那种两条路不一致。
     if parent_jsonl_path.contains("..") || !parent_jsonl_path.ends_with(".jsonl") {
-        return Err(format!("非法父会话路径: {parent_jsonl_path}"));
+        return Err(copy_text(
+            "rsSubagent.load.badParentPath",
+            &[("path", &parent_jsonl_path.to_string())],
+        ));
     }
 
     let list_argv = ["--list-subagents", parent_jsonl_path.as_str()];
     let listing = backend.query(&list_argv).await?;
     let Some(picked) = choose_subagent(&listing, &description, &tool_use_timestamp) else {
         let whose = backend.whose();
-        return Err(format!(
-            "{whose} 上没有 description={description:?} 的 subagent"
+        return Err(copy_text(
+            "rsSubagent.load.notFound",
+            &[
+                ("whose", &whose.to_string()),
+                ("description", &format!("{:?}", description)),
+            ],
         ));
     };
     let picked_str = picked.to_string_lossy().into_owned();

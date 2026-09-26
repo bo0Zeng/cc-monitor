@@ -212,10 +212,10 @@ describe("S2 设置面板分页结构", () => {
     }
     // ★ S4b-2：那四块**已从列表页搬到机器详情页**。
     // 🔴 〔第四波 ST2 · `70 §5.3` · 步 14〕「backend 开关」**不再单独占一块**：它并进了机器列表那一行
-    //   （四格挂在「连接（远端）」那块的列表行上，钉在 `machine-list-backend-cells.vitest.ts`）。
+    //   （四格挂在「远端连接」那块的列表行上，钉在 `machine-list-backend-cells.vitest.ts`）。
     //   ⇒ 列表页的块只剩一块（列表 ＋ 添加 ＋ 全局开关 ＋ 诊断都在它里面，`§8` #10）。
     // 〔ST2〕顶层「改动足迹」删掉之后，漂移记账那一块并进**每台机器子页的「足迹」栏**（见下面本机页那张表）。
-    expect(pageTitles("machines")).toEqual(["连接（远端）"]);
+    expect(pageTitles("machines")).toEqual(["远端连接"]);
     // 它们跟着「当前在看哪台机器」走；初始落在本机页上（与 machine-context 的初始值对齐）。
     expect(pageTitles("machine:（本机）")).toEqual([
       "账号",
@@ -394,7 +394,7 @@ describe("S2 设置面板分页结构", () => {
     expect(sk!.getAttribute("aria-busy")).toBe("true");
     // 隔离没有因此被打破：那几块**都还在 DOM 里**，只是先藏着、等机器页来了就搬走。
     expect(pageTitles("machines")).toEqual([
-      "连接（远端）",
+      "远端连接",
       "账号",
       "别名", // 〔AL1〕本机那一格的 ②，跟着 per-machine 那几块一起留在兜底落点（〔AL1c〕终端集成并进了它）
       "MCP",

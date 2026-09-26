@@ -30,6 +30,7 @@ import { commands } from "./ipc/commands";
 import { showActionFailureToast } from "./error-toast";
 import { enumeratePrefix, LS_KEYS, safeRemove } from "./local-storage";
 import type { RemoteHostConfig } from "./remote-config";
+import { copyText } from "./copy-table";
 
 /** 窗口开在哪（不给 ＝ 那台机器的 home）。 */
 export type FileWindowTarget = { readonly dir: string } | { readonly revealFile: string };
@@ -51,7 +52,7 @@ export async function openFileWindow(cfg: RemoteHostConfig, at?: FileWindowTarge
     for (const k of legacy?.keys ?? []) safeRemove(k);
     return true;
   } catch (e) {
-    showActionFailureToast("文件窗口打开失败", String(e));
+    showActionFailureToast(copyText("fileWindow.openFileWindow.failed"), String(e));
     return false;
   }
 }

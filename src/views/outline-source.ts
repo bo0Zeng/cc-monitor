@@ -38,6 +38,7 @@ import {
   type UserInputsResult,
 } from "../session-reads";
 import type { UserInputPanel } from "./user-input-panel";
+import { copyText } from "../copy-table";
 
 /** 这份清单问的是哪台机器上的哪份会话。拿不到（tab 还没收到路径）⇒ `null`，这一趟不要。 */
 export type OutlineWhere = () => { origin: Origin; jsonlPath: string } | null;
@@ -227,12 +228,12 @@ export class OutlineSource {
     try {
       res = await listUserInputs(where.origin, where.jsonlPath, this.end);
       if (gen !== this.gen) return;
-      if (!res) throw new Error("没有回包");
+      if (!res) throw new Error(copyText("outlineSource.run.noReply"));
       // 增量要不到（多半是越过 EOF = 截断/重写）或冒出已有的 uuid（重写但更长）⇒ 从 0 重要一份
       if (this.end > 0 && (!res.available || res.entries.some((e) => this.uuids.has(e.uuid)))) {
         res = await listUserInputs(where.origin, where.jsonlPath, 0);
         if (gen !== this.gen) return;
-        if (!res) throw new Error("没有回包");
+        if (!res) throw new Error(copyText("outlineSource.run.noReply"));
         base = 0;
       }
     } catch (e) {

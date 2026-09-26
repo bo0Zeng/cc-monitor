@@ -13,6 +13,7 @@
 //! ⚠ **不是「工具函数堆」** —— 只放「同一件事在两个平台上做法不同」的那种原语。
 //! 纯逻辑（路径拼接、命名规则）不许进来：那些在 backend 里就能测，搬进来反而丢了可测性。
 
+use crate::copy_table::copy_text;
 use std::path::Path;
 
 /// 置可执行位。
@@ -22,34 +23,16 @@ use std::path::Path;
 ///
 /// 这是 `backend/control/local_backend.rs::extract_embedded_to` 的注入参数：
 /// backend 那边只知道「写完要让它可执行」，不知道**这个平台上那句话怎么落**。
-/// 把一份文件收窄到**只给本人**。
-///
-/// # ★ 它为什么只是一层转发，而不是在这里写 `#[cfg(windows)]`
-///
-/// 本文件的存在理由是 `backend-split` `C10`〔用 08-01〕：「`platform/` 是**唯一**允许
-/// 平台原语与平台 cfg 的地方」。而 `K-H2a` 裁三（PM 08-27）把这条原语的**住址**定在了
-/// `crates/creds-core`，理由是**中转住 backend crate、它不依赖 `src/bridge`** ——
-/// 两边各写一份 `#[cfg(windows)]` 设 DACL，就是「**一个安全性质两个实现**」，
-/// 什么时候漂开没有任何东西会说。
-///
-/// ⇒ 真正的实现（Unix `0o600` / Windows `SetNamedSecurityInfoW` + 断继承 /
-/// 其余平台**诚实报错**）住 `creds_core::perm::make_private`，本函数是**调用点之一**。
-/// 签名与 `make_executable` 逐字同形：收一个路径、还一个 `Result<(), String>`，
-/// 调用方只知道「写完要让它只给本人」，不知道这个平台上那句话怎么落。
-///
-/// ⚠ **诚实边界**（与本文件头注 `10g` 同一条）：没有判据钉「平台原语只许住这一层」。
-/// `backend/mod.rs` 那条只扫 `backend/`，backend 的 `fallback_guard` 只扫 `platform/`,
-/// **两条都扫不到 `src/bridge/crates/`** ⇒ 有人在别处再写一个平台 cfg **不会红**。今天靠约定。
-pub fn make_private(p: &Path) -> Result<(), String> {
-    creds_core::perm::make_private(p)
-}
+// 〔GP1 · 第四波〕这里原来有 `make_private`〔散文墓碑〕（转发 `creds_core::perm::make_private`，把凭据文件收成只给本人）。
+// 唯一的调用方是 monitor 那侧的凭据写口，那个写口随「本机那一份也交本机常驻后端写」删了 ⇒ 它零调用、删掉。
+// 收窄那条原语照旧只住 `creds_core::perm`，今天只有后端账号域那一份写口在用。
 
 pub fn make_executable(p: &Path) -> Result<(), String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o700))
-            .map_err(|e| format!("置可执行位失败: {e}"))?;
+            .map_err(|e| copy_text("rsPlatformFs.chmod.failed", &[("e", &e.to_string())]))?;
     }
     #[cfg(not(unix))]
     {

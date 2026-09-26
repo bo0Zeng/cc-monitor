@@ -20,7 +20,7 @@
 //! | 留在 `server.rs` 的 | 钉住它的登记（都在写区外） |
 //! |---|---|
 //! | `DOWNSTREAM_DEADLINE` ＋ `apply_downstream_deadline` | 〔`P16` 订正〕那个**值**今天住本文件，`REGISTERED_DURATION_USES` 那两行的住址栏逐字 `"listen.rs"`；装它的那一手仍在 `server.rs`（改成收入参） |
-//! | `DEFAULT_PORT` | `src/bridge/src/backend/control/payload.rs` 的散文逐字点着 `src/backend/relay/server.rs::DEFAULT_PORT`，而 `structural_scan::every_symbol_address_in_the_sources_still_resolves` **真的判得了那条住址**（现打：搬走之后它当场红，诊断逐字「符号还在，但**搬家了**」） |
+//! | `DEFAULT_PORT` | `src/bridge/src/backend/control/payload.rs` 的散文逐字点着 `src/backend/relay/server.rs::DEFAULT_PORT`，而 `structural_scan::every_symbol_address_in_the_sources_still_resolves` **真的判得了那条住址**（现打：搬走之后它当场红，诊断逐字「符号还在，但**搬家了**」）。〔US1〕它的值今天是 `relay_route_core::PORT`（共享 crate，monitor 用同一个 const） |
 //! | `INFLIGHT_CONNECTIONS` | 同上，钉它的是 `src/bridge/src/local_backend_host.rs` 那句散文 |
 //! | `LOOPBACK` | 同上，钉它的是 **`src/backend/listen.rs`**（K-P1 那个常驻监听口，与本文件同名但是另一棵）那句「理由与 `…/relay/server.rs::LOOPBACK` 逐字同源」 |
 //!
@@ -28,7 +28,8 @@
 //! `src/bridge/` 那两句散文 ＋ `no_timer_guard` 那张表**同拍**改。
 
 use super::server::{self, Relay, DEFAULT_PORT, INFLIGHT_CONNECTIONS, LOOPBACK};
-use super::{tee::TeeSink, Startup};
+use super::{door, tee::TeeSink, Startup};
+use copy_core::copy_text;
 use std::net::{SocketAddr, TcpListener};
 use std::sync::atomic::Ordering::SeqCst;
 use std::sync::Arc;
@@ -273,13 +274,34 @@ fn prepare(
     //   那句为什么，今天是真的印出去了（上游选择装表时）。
     let Some(ready) = startup.check(get) else {
         eprintln!("[relay] bad upstream base url");
-        return Err("上游基址认不出（上游选择拒了启动配置）".to_string());
+        return Err(copy_text("beRelayListen.prepare.badUpstream", &[]));
     };
     let listener = match listen(port) {
         Ok(l) => l,
         Err(e) => {
             eprintln!("[relay] cannot bind loopback port {port}: {e}");
-            return Err(format!("绑不上回环口 {port}：{e}"));
+            return Err(copy_text(
+                "beRelayListen.prepare.bindFailed",
+                &[("port", &port.to_string()), ("e", &e.to_string())],
+            ));
+        }
+    };
+    // 〔RK1 · `INVARIANTS §48.1a`〕**绑上口之后、说「在听」之前**拿钥匙（读回，或铸一把落盘）：
+    //   ① 只有绑上了口的那一个会写 ⇒ 两个中转抢着铸构造上不存在；
+    //   ② 「在听」那句话说出去的时候钥匙文件已经在盘上 ⇒ 看着那句话去读钥匙的人（判据 · 那台机器的 shell）读得到。
+    //   拿不到 ⇒ **不起**（有口没钥匙 = 不设防的口；`listener` 在这里 drop，口当场放掉）。
+    //   ⚠ 报错里只有路径与原因，**永远没有钥匙值**（`door::Key` 不派生 `Debug`）。
+    let door = match door::key_path(get)
+        .ok_or_else(|| copy_text("beRelayListen.key.noHome", &[]))
+        .and_then(|p| door::ensure_key(&p))
+    {
+        Ok(k) => k,
+        Err(e) => {
+            eprintln!("[relay] refusing to listen without a relay key: {e}");
+            return Err(copy_text(
+                "beRelayListen.key.unavailable",
+                &[("e", &e.to_string())],
+            ));
         }
     };
     match listener.local_addr() {
@@ -289,7 +311,7 @@ fn prepare(
     // ⚠ 顺序：**起监听之后、进接受循环之前**。放在起监听之前的话，
     //   端口起不来那条支会先把凭据路径印出来，而那时它还不相干。
     let dest = ready.into_destinations(get, home, &mut std::io::stderr());
-    let relay = Relay::new(dest, tee, DOWNSTREAM_DEADLINE, UPSTREAM_DEADLINE);
+    let relay = Relay::new(dest, door, tee, DOWNSTREAM_DEADLINE, UPSTREAM_DEADLINE);
     Ok((listener, Arc::new(relay)))
 }
 

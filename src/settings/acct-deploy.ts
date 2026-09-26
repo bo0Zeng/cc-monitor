@@ -5,6 +5,8 @@
 // 安全（§9 + F8）：账号名过安全字符集白名单；路径参数 POSIX 单引号 + 拒双引号/控制字符
 // （与 launch.rs 的 remote_cmd 双引号/控制字符拒收对齐＝双层防线）。构建失败返回可读原因、不抛。
 
+import { copyText } from "../copy-table";
+
 const TOOL = "cc-acct-iso";
 
 /**
@@ -36,25 +38,25 @@ export type NameCheck = { ok: true } | { ok: false; reason: string };
 
 /** 账号名校验：非空、≤64、只含 `[A-Za-z0-9._-]`、不以 `-`/`.` 开头。 */
 export function validateAcctName(name: string): NameCheck {
-  if (!name) return { ok: false, reason: "账号名不能为空" };
-  if (name.length > 64) return { ok: false, reason: "账号名过长（≤64）" };
+  if (!name) return { ok: false, reason: copyText("acctDeploy.name.empty") };
+  if (name.length > 64) return { ok: false, reason: copyText("acctDeploy.name.tooLong") };
   if (!/^[A-Za-z0-9._-]+$/.test(name)) {
-    return { ok: false, reason: "账号名只能含字母、数字、点、下划线、连字符" };
+    return { ok: false, reason: copyText("acctDeploy.name.badChars") };
   }
   if (name.startsWith("-") || name.startsWith(".")) {
-    return { ok: false, reason: "账号名不能以「-」或「.」开头" };
+    return { ok: false, reason: copyText("acctDeploy.name.badStart") };
   }
   return { ok: true };
 }
 
 /** 路径/命令参数校验：非空、无双引号、无控制字符（launch.rs 会拒这些——双层防线）。 */
 function validatePathArg(p: string, label: string): string | null {
-  if (!p) return `${label}不能为空`;
-  if (p.includes('"')) return `${label}不能包含双引号`;
+  if (!p) return copyText("acctDeploy.path.empty", { label });
+  if (p.includes('"')) return copyText("acctDeploy.path.quote", { label });
   // eslint-disable-next-line no-control-regex
-  if (/[\u0000-\u001f\u007f-\u009f]/.test(p)) return `${label}不能包含控制字符`;
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(p)) return copyText("acctDeploy.path.control", { label });
   // 前导 `-` 会被 cc-acct-iso 误当命令选项（如 --apply）——单引号挡不住选项解析，直接拒。
-  if (p.startsWith("-")) return `${label}不能以「-」开头`;
+  if (p.startsWith("-")) return copyText("acctDeploy.path.dash", { label });
   return null;
 }
 
@@ -90,7 +92,7 @@ export function buildAcctIsoCmd(step: AcctIsoStep): BuildResult {
       if (!v.ok) return v;
       let cmd = `${TOOL} add ${sq(step.name)}`;
       if (step.credFile) {
-        const e = validatePathArg(step.credFile, "凭据快照路径");
+        const e = validatePathArg(step.credFile, copyText("acctDeploy.buildAcctIsoCmd.snapshotPath"));
         if (e) return { ok: false, reason: e };
         cmd += ` --from-credentials ${sq(step.credFile)}`;
       }

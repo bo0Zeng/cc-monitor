@@ -33,6 +33,7 @@ import type { SessionActivityPayload } from "./generated/SessionActivityPayload"
 import type { RemoteSessionAddedPayload } from "./generated/RemoteSessionAddedPayload";
 import type { SessionContainerPayload } from "./generated/SessionContainerPayload";
 import type { OriginSessionsListedPayload } from "./generated/OriginSessionsListedPayload";
+import type { SessionUnseenPayload } from "./generated/SessionUnseenPayload";
 // 本文件内部也用这些名字（8 处），所以 import + re-export 都要有：
 // 只写 `export type { … } from` 不会把名字带进本地作用域。
 export type {
@@ -93,6 +94,11 @@ export interface EventHandlers {
    * `remote-added` 之后 ⇒ 处理它时，那台此刻全部的活会话都已宣告过（`设计/30 §3.5.7a`）。
    */
   onOriginSessionsListed?: (origin: string) => void;
+  /**
+   * 〔GP1 · 第四波〕这条会话所在的那台机器看不见了（`session-unseen`：连接断了 / F5 时那台还没报完清单）⇒ 说不清。
+   * 进 queue：与行 / `remote-added` / `listed` 保序（断连那一刻之前的行先落，重连之后的重宣告与清单后到）。
+   */
+  onSessionUnseen?: (sessionId: string) => void;
   /**
    * v2.2 (issue #12 性能): 启动重放（jsonl-batch 第一块）到达时调一次。
    * TabManager 在此把所有 tab 的 BranchFolder 切到 batch 模式 + lazy hljs 开关。
@@ -177,7 +183,9 @@ type QueueItem =
     }
   // 〔U4b · 第四波〕容器事实 / 某台清单报完了 —— 同一 queue 保序（见 EventHandlers 里两条的注释）。
   | { kind: "container"; sessionId: string; container: string }
-  | { kind: "listed"; origin: string };
+  | { kind: "listed"; origin: string }
+  // 〔GP1 · 第四波〕那台机器看不见了 —— 同一 queue 保序（见 EventHandlers.onSessionUnseen）。
+  | { kind: "unseen"; sessionId: string };
 
 /**
  * 批量调度参数。replay 会一次性 emit 数千条 jsonl-line，同步处理会阻塞 click 派发数秒
@@ -432,6 +440,8 @@ export async function bindEvents(
         handlers.onSessionContainer?.(item.sessionId, item.container);
       } else if (item.kind === "listed") {
         handlers.onOriginSessionsListed?.(item.origin);
+      } else if (item.kind === "unseen") {
+        handlers.onSessionUnseen?.(item.sessionId);
       } else if (item.kind === "gap") {
         handlers.onStreamGap?.(item.origin);
       }
@@ -641,6 +651,13 @@ export async function bindEvents(
   registrations.push(
     sub<OriginSessionsListedPayload>("origin-sessions-listed", (e) => {
       queue.push({ kind: "listed", origin: e.payload.origin });
+      ensureScheduled();
+    }),
+  );
+  // 〔GP1 · 第四波〕那台机器看不见了 ⇒ 说不清。同进 queue（与行 / 宣告 / 清单保序）。
+  registrations.push(
+    sub<SessionUnseenPayload>("session-unseen", (e) => {
+      queue.push({ kind: "unseen", sessionId: e.payload.session_id });
       ensureScheduled();
     }),
   );

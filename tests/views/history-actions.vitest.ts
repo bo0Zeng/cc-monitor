@@ -38,15 +38,10 @@ vi.mock("../../src/format", () => ({ formatTimestampSmart: () => "时间" }));
 import { invoke } from "@tauri-apps/api/core";
 import { HistoryView } from "../../src/views/history";
 import { runNewSessionRemote } from "../../src/remote-launch-run";
-import {
-  invalidateAccountsCache,
-  resolvePendingLocalLaunches,
-  __resetPendingLocalLaunchesForTests,
-  __pendingLocalLaunchCountForTests,
-  __resetLocalLaunchSnapshotForTests,
-  __setLocalLaunchSnapshotForTests,
-  type AccountsState,
-} from "../../src/accounts";
+import type { AccountsState } from "../../src/accounts";
+import { invalidateAccountsCache } from "../../src/account-reads";
+import { __resetLocalLaunchSnapshotForTests, __setLocalLaunchSnapshotForTests } from "../../src/launch-account";
+import { resolvePendingLocalLaunches, __resetPendingLocalLaunchesForTests, __pendingLocalLaunchCountForTests } from "../../src/local-launch-backfill";
 import { historyCalls, isChanCall, linesReply, withAccountReads, withHistoryReads } from "../test-support/chan-fake";
 import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 import { answerAskDialog, answerAskText } from "../test-support/ask-dialog-driver.ts";

@@ -211,7 +211,7 @@ esac"#;
     // 装的这份不会这个 op：说出缺的那一个。
     let (c, m) = code_of(json!({"op": "diagram", "args": {"kind": "arch", "request": {}}}));
     assert_eq!(c, "unsupported");
-    assert!(m.contains("`diagram`"), "缺能力要点名缺的那个：{m}");
+    assert!(m.contains("「diagram」"), "缺能力要点名缺的那个：{m}");
     // 找不到：说清查过哪儿。
     let (c, m) = answer_now(&[dir.join("nowhere")], &store, &json!({"op": "status"})).unwrap_err();
     assert_eq!(c, "not_installed");
@@ -258,7 +258,10 @@ fn a_timeout_and_an_oversized_answer_are_said_as_such() {
     );
     assert_eq!(
         classify("status", 1, done(None, Vec::new())).unwrap_err(),
-        ("failed", "全景 `status` 没做成（被中途终止）：".to_string())
+        (
+            "failed",
+            "代码全景「status」没做成（被中途终止）：".to_string()
+        )
     );
     // 成功那一格：`data` 原样装进 `result`（`null` 也是一个答案：「没有这个符号」）。
     assert_eq!(

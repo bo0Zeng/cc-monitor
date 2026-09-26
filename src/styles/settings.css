@@ -2436,13 +2436,6 @@ body.settings-window-mode .settings-panel {
   overflow-x: auto;
 }
 
-.paste-block-warning {
-  border-left: 3px solid var(--warn);
-  padding: 4px 8px;
-  font-size: 12px;
-  color: var(--warn);
-}
-
 .paste-block-target,
 .paste-block-merge,
 .paste-block-activation {

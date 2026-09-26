@@ -2,27 +2,46 @@
 // confirm/awaitCompact 注入 → 不弹对话框、不真延时（②b 那一条特意不注入，走真的应用内对话框）。重点锁：kill 失败必须中止不续 resume。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+// 〔C4e · 第四波 4C〕送键与杀会话从两条 Tauri 命令（`tmux_send_keys` / `kill_remote_tmux`〔散文墓碑〕）改成界面经通道直接说
+//   后端的 `launch` / `kill`（`src/tmux-control.ts`）。本文件判的是换号重启的**编排**，不是通道那一跳 ⇒ 生产 `invoke` 换成一层
+//   翻译（`chan-fake.ts::tmuxControlShim`）：那两发 `chan_call` 照旧按旧名字交给 `invokeMock`，下面的断言一个字不用改。
+const invokeMock = vi.hoisted(() => vi.fn());
+vi.mock("@tauri-apps/api/core", async () => {
+  const { tmuxControlShim } = await import("./test-support/chan-fake");
+  return { invoke: tmuxControlShim(invokeMock, "tmux_send_keys") };
+});
 vi.mock("../src/remote-launch-run", () => ({
   runRemoteResumeTmux: vi.fn().mockResolvedValue(true),
 }));
 vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
-vi.mock("../src/accounts", () => ({
-  fetchAccounts: vi.fn().mockResolvedValue({ accounts: [] }),
+// 〔FE1〕`accounts.ts` 按域拆开：规则（`accountConfigDir`）留在 `accounts.ts`，读面去了 `account-reads.ts`，
+//   偏好去了 `account-prefs.ts`，记 pin 去了 `launch-account.ts` —— 各在真住的模块上桩；
+//   本机那一跳（`local-resume.ts`）要的载荷形状（`explicitLocalAccountWire`，键名来自生成物）用真身。
+vi.mock("../src/accounts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/accounts")>()),
   accountConfigDir: vi.fn(),
-  recordLastAccount: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("../src/account-reads", () => ({
+  fetchAccounts: vi.fn().mockResolvedValue({ accounts: [] }),
   checkTrust: vi.fn().mockResolvedValue({ available: true, trusted: true, known: true, error: null }),
+}));
+vi.mock("../src/account-prefs", () => ({
   getModelForAccount: vi.fn().mockResolvedValue(undefined), // F07：默认无模型偏好
 }));
+vi.mock("../src/launch-account", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/launch-account")>()),
+  recordLastAccount: vi.fn().mockResolvedValue(undefined),
+}));
 
-import { invoke } from "@tauri-apps/api/core";
 import { runRemoteResumeTmux } from "../src/remote-launch-run";
-import { accountConfigDir, recordLastAccount, checkTrust, getModelForAccount } from "../src/accounts";
+import { accountConfigDir } from "../src/accounts";
+import { checkTrust } from "../src/account-reads";
+import { getModelForAccount } from "../src/account-prefs";
+import { recordLastAccount } from "../src/launch-account";
 import { restartWithAccount, type RestartWithAccountOpts } from "../src/account-restart";
 import { showActionFailureToast } from "../src/error-toast";
 import { answerAskDialog } from "./test-support/ask-dialog-driver.ts";
 
-const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const resumeTmux = runRemoteResumeTmux as unknown as ReturnType<typeof vi.fn>;
 const acctConfigDir = accountConfigDir as unknown as ReturnType<typeof vi.fn>;
 const recordLast = recordLastAccount as unknown as ReturnType<typeof vi.fn>;
@@ -113,10 +132,12 @@ describe("restartWithAccount（A5 换号重启编排 · §5）", () => {
   it("③ compactFirst → 先 send /compact → 等完成 → kill → resume", async () => {
     const awaitCompact = vi.fn().mockResolvedValue(true);
     await restartWithAccount(baseOpts({ compactFirst: true, awaitCompact }));
+    // 〔C4e〕`/compact` 那一发从前省略 `enter`（缺省 = 带回车）；今天它是 mode `send-into`，翻译过来 `enter: true` 写明。
     expect(invokeMock).toHaveBeenCalledWith("tmux_send_keys", {
       origin: "devbox",
       target: "cc-s1abcdef",
       keys: "/compact",
+      enter: true,
     });
     expect(awaitCompact).toHaveBeenCalled();
     expect(invokeMock).toHaveBeenCalledWith("kill_remote_tmux", expect.anything());
@@ -281,7 +302,7 @@ describe("A3 本机换号重启（origin = <local>）", () => {
     expect(recordLast).not.toHaveBeenCalled();
     const toasts = vi.mocked(showActionFailureToast).mock.calls;
     const last = toasts.at(-1);
-    expect(last?.[0]).toBe("旧会话已结束，但新会话未能自动拉起");
+    expect(last?.[0]).toBe("旧会话已退出，但新会话没能自动起来");
     expect(String(last?.[1])).not.toContain("剪贴板");
     expect(String(last?.[1])).not.toContain("远端");
     // 本机那一跳自己先说了一次**为什么**没起来（后端的原话）。
