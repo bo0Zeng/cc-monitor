@@ -13457,6 +13457,11 @@
       "zh": "未找到远端配置：{machine}",
       "args": ["machine"]
     },
+    "rsLib.activeSessions.notListed": {
+      "kind": "error",
+      "zh": "本机后端还没报完活会话清单",
+      "args": []
+    },
     "rsLib.log.none": {
       "kind": "error",
       "zh": "没有 log 文件（log 文件未启用或还没产生）",
@@ -14240,26 +14245,6 @@
       "zh": "还没有历史会话。Claude Code 记下新会话之后会出现在这里。",
       "args": []
     },
-    "history.reindex.action": {
-      "kind": "action",
-      "zh": "重新索引",
-      "args": []
-    },
-    "history.reindex.failed": {
-      "kind": "error",
-      "zh": "重新索引失败：{e}",
-      "args": ["e"]
-    },
-    "history.reindex.status": {
-      "kind": "body",
-      "zh": "重新索引中…",
-      "args": []
-    },
-    "history.reindex.running": {
-      "kind": "action",
-      "zh": "索引中…",
-      "args": []
-    },
     "history.searchHit.tool": {
       "kind": "body",
       "zh": "工具",
@@ -14300,21 +14285,6 @@
       "zh": "无匹配。换个关键词，或勾上「含工具内容」扩大范围。",
       "args": []
     },
-    "history.indexWait.failed": {
-      "kind": "error",
-      "zh": "索引状态没查到：{e}",
-      "args": ["e"]
-    },
-    "history.indexWait.retrying": {
-      "kind": "body",
-      "zh": "索引构建中…（已 {sessions} 个会话），{tick} 秒后自动重试",
-      "args": ["sessions", "tick"]
-    },
-    "history.indexWait.gaveUp": {
-      "kind": "body",
-      "zh": "索引还没建好（已 {sessions} 个会话），等了 {seconds} 秒，不再自动重试。可以先按项目浏览，或过一会儿再搜。",
-      "args": ["sessions", "seconds"]
-    },
     "history.search.failed": {
       "kind": "error",
       "zh": "搜索失败：{e}",
@@ -14325,29 +14295,9 @@
       "zh": "搜索中…",
       "args": []
     },
-    "history.indexHint.failed": {
-      "kind": "error",
-      "zh": "索引状态没取到：{e}",
-      "args": ["e"]
-    },
-    "history.indexHint.building": {
+    "history.indexHint.idle": {
       "kind": "body",
-      "zh": "索引构建中…（已 {sessions} 个会话），稍候再搜",
-      "args": ["sessions"]
-    },
-    "history.indexHint.ready": {
-      "kind": "body",
-      "zh": "输入关键词搜索会话内容（已索引 {sessions} 个会话 / {messages} 条消息）",
-      "args": ["sessions", "messages"]
-    },
-    "history.indexHint.checking": {
-      "kind": "body",
-      "zh": "查询索引状态…",
-      "args": []
-    },
-    "history.build.reindexHint": {
-      "kind": "body",
-      "zh": "重新扫描所有会话、重建搜索索引（新会话很多时用）",
+      "zh": "输入关键词搜索会话内容",
       "args": []
     },
     "history.build.time30d": {
@@ -14680,25 +14630,25 @@
       "zh": "不是会话记录文件",
       "args": []
     },
+    "rsHistory.session.badPath": {
+      "kind": "error",
+      "zh": "会话路径不对：{path}",
+      "args": ["path"]
+    },
+    "rsHistory.session.truncated": {
+      "kind": "body",
+      "zh": "这个会话超过 {max} 字节上限，后面的内容没有显示。只读到了前 {read} 字节（{lines} 行），完整的会话记录仍在那台机器上。",
+      "args": ["max", "read", "lines"]
+    },
     "rsHistory.delete.idMismatch": {
       "kind": "error",
       "zh": "没有删除：会话 ID（{sessionId}）与那份文件的名字（{fileName}）对不上。一个字节都没动",
       "args": ["sessionId", "fileName"]
     },
-    "rsRemoteHistory.session.badPath": {
-      "kind": "error",
-      "zh": "会话路径不对：{path}",
-      "args": ["path"]
-    },
     "rsRemoteHistory.cfg.missing": {
       "kind": "error",
       "zh": "远端 [{label}] 没配置或没启用",
       "args": ["label"]
-    },
-    "rsRemoteHistory.session.truncated": {
-      "kind": "body",
-      "zh": "这个会话超过 {max} 字节上限，后面的内容没有显示。只读到了前 {read} 字节（{lines} 行），完整的会话记录仍在远端。",
-      "args": ["max", "read", "lines"]
     },
     "rsLocalAccounts.shellinit.noFence": {
       "kind": "error",

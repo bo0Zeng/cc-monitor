@@ -241,7 +241,7 @@ pub fn parse_iso8601_ms(s: &str) -> Option<i64> {
 /// 扫 `dir` 下所有 `*.json` 文件，反序列化为 `T`，按 `key_fn` 提取 key 入 HashMap。
 /// 解析失败 / 读失败的文件静默跳过。`dir` 不存在返空 map。
 ///
-/// 替代了 session_map.rs::scan_dir + bind.rs::scan_registry_dir 两处独立实现。
+/// 替代了当年 `session_map.rs` 扫 pidfile 目录那一处（〔LOC1b〕那份判活已删）+ bind.rs::scan_registry_dir 两处独立实现。
 pub fn scan_dir_jsons<T, K, F>(dir: &std::path::Path, key_fn: F) -> std::collections::HashMap<K, T>
 where
     T: serde::de::DeserializeOwned,

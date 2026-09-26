@@ -347,9 +347,9 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   "src/settings/config-surface-section.ts:442": // 〔CP2b〕同上
     "同一个包装，远端那台答不了时收起来（`showUnanswered`）",
   // 〔C4d〕行号随上方历史清单那几段改走通道挪了（1635 → 1617），那一处本身没动。
-  // 〔W5-UI〕`1612 → 1613`：`history.ts` 多一行 import（应用内对话框），那一处本身没动。
-  // 〔FW1 · 第四波 4D〕再 +5：`HistoryView` 顶上多了 `liveInTabs` 那一格（D-e 删会话前看活不活），那一处本身没动（合并时现打）。
-  "src/views/history.ts:1621":
+  // 〔W5-UI〕`1612 → 1613`：`history.ts` 多一行 import（应用内对话框）；〔FW1〕再 +5：`liveInTabs` 那一格；
+  // 〔LOC1b · 4D〕上方「重新索引」按钮与等索引那一族删掉 ⇒ 行号挪了（合并主线后现打 1505）。那一处本身没动。
+  "src/views/history.ts:1505":
     "`e.hidden = updated.hidden` —— 这一处根本不是「切某个组件的显隐」，是在把一条会话记录的 `hidden` 字段往回写",
 } as const;
 
