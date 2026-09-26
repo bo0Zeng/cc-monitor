@@ -131,7 +131,6 @@ const UNIT: &[&str] = &[
     "tests/bridge/tmux_reconcile_tests.rs",
     "tests/bridge/tool_registry_environment_tests.rs",
     "tests/bridge/tool_registry_not_managed_tests.rs",
-    "tests/bridge/verified_write_tests.rs",
     "tests/cards/api-error.test.ts",
     "tests/cards/bash-collapse.vitest.ts",
     "tests/cards/bash.test.ts",
@@ -466,7 +465,8 @@ const SCAN: &[&str] = &[
     "tests/settings/data-section.vitest.ts",
     "tests/settings/facet-producer-guard.vitest.ts",
     "tests/settings/assets-section.vitest.ts", // 〔AS2〕
-    "tests/settings/mcp-sync.vitest.ts",       // 〔AS1〕
+    "tests/settings/machine-aliases-naming.vitest.ts", // 〔W5-ALIAS〕读后端 `plan.rs` 原文对拍撞名退让
+    "tests/settings/mcp-sync.vitest.ts",               // 〔AS1〕
     "tests/settings/open-settings.vitest.ts",
     "tests/settings/plugins-section.vitest.ts",
     "tests/settings/remote-section.vitest.ts",

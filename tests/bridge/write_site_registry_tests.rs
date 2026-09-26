@@ -372,7 +372,7 @@ fn every_write_site_is_declared_and_installers_name_a_real_tool() {
         );
     }
     // 常驻自检：一条安装动作都没有时，上面那个循环空转，而它看起来照样绿。
-    // 〔RW1 · 第四波 09-24〕5 → 1（地板改成相等）：`ccm` 的三行（`fenced_block.rs::put_atomic` 与
+    // 〔RW1 · 第四波 09-24〕5 → 1（地板改成相等）：`ccm` 的三行（远端入口那一份落点原语与
     //   `profile_installer.rs` 两个原语）· `project-mcp` 的一行 · `cc-bus` 的一行（`cc_bus_deploy.rs::deploy_into`）
     //   随「用户文件改经后端写」走了，剩 `local_backend.rs::install_local_ccm_entry`（`ccm`，写的是我们自己的目录）。
     assert_eq!(

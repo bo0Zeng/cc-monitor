@@ -331,8 +331,13 @@ const STILL_SHELL: &[(&str, &str, StillShell, &str)] = &[
      "读那台 `~/.claude.json` 的 `mcpServers`（用户级）—— 后端要出成品得问适配层要 `.claude.json` 的布局，而通用层直呼适配层是只许降的棘轮；`files-peek` 上限 256 KiB 装不下重度用户的整份"),
     ("hooks_diag.rs", "diagnose_remote_cc_bus_hooks", StillShell::Pending("cc-bus 读面那一族（件 E，同拍改）"),
      "读那台 `settings.json` ＋ 探 `cc-register` 在不在 PATH：能换成 `files-peek` ＋ `footprint-probe`，诊断口径要按新两问重写，与 cc-bus 读面一起做"),
-    ("ccm_probe.rs", "probe_ccm_cli", StillShell::Pending("W5-ALIAS（`ccm` 入口 shim 删，V28）"),
-     "探那台 PATH 上的 `ccm`：被探的东西本身在 W5-ALIAS 里要删 / 改形，探法随它定"),
+    // 〔W5-ALIAS · 现打后写清〕这一问答的是「那台**交互 shell** 的 PATH 上敲 `ccm` 找不找得到、是哪一版、会哪些」
+    //   （`remote-launch-run.ts` 据此选 CLI 渲染器 —— pane 里敲的就是那个名字）。那台后端进程答不了交互 shell 的 PATH
+    //   （rc 改过的环境它看不见，`footprint-probe` 的 `env.path` 同一个口径缺口）⇒ 今天换成后端具名命令会答错问题。
+    //   件 E（`ccm` 就是后端本体、落点恒 `~/.cc-monitor/bin/ccm`，`第四波记录/W5-ALIAS.md §2.5`）落地之后，这一问退化成
+    //   「那台后端自己会哪些」（hello 已带能力 ＋ build），届时这一处删、本行摘。
+    ("ccm_probe.rs", "probe_ccm_cli", StillShell::Pending("W5-ENTRY（`W5-ALIAS.md §2.5` 件 E：ccm 就是后端，落地同拍删）"),
+     "探那台交互 shell 的 PATH 上的 `ccm`：后端进程答不了交互 shell 的 PATH；件 E 让 ccm 恒是那台后端本体之后，这一问改问后端自己（hello）"),
     ("tmux.rs", "list_remote_tmux", StillShell::Pending("后端新帧命令 `tmux-list`（本路未加：后端今天只推原始 `tmux ls` 行做对账）"),
      "列那台 tmux 会话（attach 项 · 铸名避让）：换要后端长一条具名读命令，与 FE1 的铸名收口同一个消费者，列给主会话排"),
     ("cc_bus.rs", "fetch_remote_cc_bus", StillShell::Pending("cc-bus 读面（件 E：要主会话拍——给 cc-bus 加机器可读的读命令，写区外）"),

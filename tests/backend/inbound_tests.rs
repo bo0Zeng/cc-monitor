@@ -543,6 +543,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "relay-status",
         // 〔RM1a · 第四波〕足迹那一条：一批 stat / 读几份小文件。
         "footprint-probe",
+        // 〔W5-ALIAS〕别名预览：读账号库 manifest ＋ 问会话快照。
+        "ccm-print",
         // 〔AS2 · 第四波 4B〕资产目录两条：扫盘 ＋ 原子写目录文件。
         "assets-catalog",
         "assets-catalog-merge",
@@ -638,6 +640,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "relay-ensure",
         "relay-status",
         "footprint-probe",
+        // 〔W5-ALIAS〕别名预览，阻塞档。
+        "ccm-print",
         // 〔AS2 · 第四波 4B〕资产目录两条，阻塞档。
         "assets-catalog",
         "assets-catalog-merge",

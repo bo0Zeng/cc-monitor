@@ -6027,7 +6027,7 @@
     },
     "machineCard.aliases.uninstall": {
       "kind": "action",
-      "zh": "卸载别名块",
+      "zh": "卸载 ccm",
       "args": []
     },
     "machineCard.aliases.installHint": {
@@ -9376,52 +9376,47 @@
       "zh": "文件窗口的启动参数写不出来：{e}",
       "args": ["e"]
     },
-    "rsSftp.ccmEntry.what": {
-      "kind": "body",
-      "zh": "远端 ~/{ccmCliRemotePath}",
-      "args": ["ccmCliRemotePath"]
-    },
-    "rsSftp.aliasBlock.written": {
+    "rsProfileInstaller.remoteAliasBlock.written": {
       "kind": "body",
       "zh": "别名块已写进 {profile}{backupNote}。重连 ssh 之后，终端里就有 cc / cct，以及「别名」里生成的那几条。",
       "args": ["profile", "backupNote"]
     },
-    "rsSftp.aliasBlock.backupNote": {
+    "rsProfileInstaller.remoteAliasBlock.backupNote": {
       "kind": "body",
       "zh": "，原文件备份在 {b}",
       "args": ["b"]
     },
-    "rsSftp.aliasBlock.upToDate": {
+    "rsProfileInstaller.remoteAliasBlock.upToDate": {
       "kind": "body",
       "zh": "{profile} 里的别名块已是最新，没有改动。",
       "args": ["profile"]
     },
-    "rsSftp.profile.what": {
+    "rsProfileInstaller.remoteProfile.what": {
       "kind": "body",
       "zh": "远端 ~/{profile}",
       "args": ["profile"]
     },
-    "rsSftp.aliasBlock.removed": {
+    "rsProfileInstaller.remoteAliasBlock.removed": {
       "kind": "body",
       "zh": "已从远端 {profile} 删掉别名块。",
       "args": ["profile"]
     },
-    "rsSftp.aliasBlock.removedWithBackup": {
+    "rsProfileInstaller.remoteAliasBlock.removedWithBackup": {
       "kind": "body",
       "zh": "已从远端 {profile} 删掉别名块（原文件备份在 {b}）。",
       "args": ["profile", "b"]
     },
-    "rsSftp.aliasBlock.noBlock": {
+    "rsProfileInstaller.remoteAliasBlock.noBlock": {
       "kind": "body",
       "zh": "远端 {profile} 里没有别名块，不用卸载。",
       "args": ["profile"]
     },
-    "rsSftp.aliasBlock.noProfile": {
+    "rsProfileInstaller.remoteAliasBlock.noProfile": {
       "kind": "body",
       "zh": "远端 {profile} 不存在，没有别名块可卸载。",
       "args": ["profile"]
     },
-    "rsSftp.profile.badName": {
+    "rsProfileInstaller.remoteProfile.badName": {
       "kind": "error",
       "zh": "profile 只能是 home 下的文件名（如 .bashrc / .zshrc）",
       "args": []
@@ -9558,21 +9553,6 @@
       "kind": "body",
       "zh": "远端还没装后端",
       "args": []
-    },
-    "rsSftp.profile.notUtf8": {
-      "kind": "error",
-      "zh": "{what} 不是合法 UTF-8（前 {validBytes} 字节合法，之后不是）。ccm 块的合并/删除是按文本做的，按有损文本写回会把这些字节永久换成 U+FFFD，连备份一起坏掉。已取消，未改动任何文件。",
-      "args": ["what", "validBytes"]
-    },
-    "rsSftp.profile.emptyRead": {
-      "kind": "error",
-      "zh": "{what} 在远端有 {n} 字节，但读回来是空的。已取消，未改动任何文件——继续走会用「空内容 + ccm 块」覆盖掉那 {n} 字节。",
-      "args": ["what", "n"]
-    },
-    "rsSftp.profile.unreadable": {
-      "kind": "error",
-      "zh": "读不出 {what}（文件可能存在但无权限 / 被占用 / 传输失败）。已取消，未改动任何文件。",
-      "args": ["what"]
     },
     "rsSftp.upload.badKept": {
       "kind": "error",
@@ -12093,56 +12073,6 @@
       "zh": "  第 {lineNo} 行  {text}{mark}\n",
       "args": ["lineNo", "text", "mark"]
     },
-    "rsFencedBlock.verify.failed": {
-      "kind": "error",
-      "zh": "写后校验失败：{detail} {undo}",
-      "args": ["detail", "undo"]
-    },
-    "rsFencedBlock.verify.unreadable": {
-      "kind": "body",
-      "zh": "写完读不回来（{e}），确认不了写对了没有。",
-      "args": ["e"]
-    },
-    "rsFencedBlock.verify.missing": {
-      "kind": "body",
-      "zh": "写完读回来，文件不见了。",
-      "args": []
-    },
-    "rsFencedBlock.apply.writeFailed": {
-      "kind": "error",
-      "zh": "写 {label} 失败：{e}。{undo}",
-      "args": ["label", "e", "undo"]
-    },
-    "rsFencedBlock.apply.backupFailed": {
-      "kind": "error",
-      "zh": "备份 {label} 失败，原文件没动：{e}",
-      "args": ["label", "e"]
-    },
-    "rsFencedBlock.undo.createdLeft": {
-      "kind": "body",
-      "zh": "刚建出来的那份没删掉，请手动删掉它。",
-      "args": []
-    },
-    "rsFencedBlock.undo.restoreFailed": {
-      "kind": "body",
-      "zh": "恢复原文件也失败了，请打开它看一眼。",
-      "args": []
-    },
-    "rsFencedBlock.undo.restoreFailedBackup": {
-      "kind": "body",
-      "zh": "恢复原文件也失败了，原文备份在 {backup}。",
-      "args": ["backup"]
-    },
-    "rsFencedBlock.undo.createdRemoved": {
-      "kind": "body",
-      "zh": "刚建出来的那份已删掉。",
-      "args": []
-    },
-    "rsFencedBlock.undo.restored": {
-      "kind": "body",
-      "zh": "原文件已恢复。",
-      "args": []
-    },
     "rsFencedBlock.pair.noEnd": {
       "kind": "error",
       "zh": "{what} 第 {line} 行有 cc-monitor BEGIN 标记，但其后找不到配对的 END。可能被手动改坏，或上次安装中断了。为避免误删你的内容，已中止；请手动修好该文件后重试。",
@@ -12508,16 +12438,6 @@
       "kind": "error",
       "zh": "{last}\n连着 {attempts} 趟都是读完之后盘上那份又变了，先停下。过一会儿再点一次。",
       "args": ["last", "attempts"]
-    },
-    "rsVerifiedWrite.verify.lenMismatch": {
-      "kind": "body",
-      "zh": "长度不匹配：期望 {expected} 字节，实际 {actual} 字节。",
-      "args": ["expected", "actual"]
-    },
-    "rsVerifiedWrite.verify.sameLenDiff": {
-      "kind": "body",
-      "zh": "长度相同（{bytes} 字节）但内容不同，首个差异在第 {at} 字节。",
-      "args": ["bytes", "at"]
     },
     "rsPlatformFs.chmod.failed": {
       "kind": "error",
@@ -13765,6 +13685,51 @@
     "machineAliases.posix.pasteTarget": {
       "kind": "body",
       "zh": "~/.bashrc（或你实际用的 shell 配置文件）",
+      "args": []
+    },
+    "machineAliases.aliasPreview.button": {
+      "kind": "action",
+      "zh": "预览",
+      "args": []
+    },
+    "machineAliases.aliasPreview.asking": {
+      "kind": "body",
+      "zh": "正在问这台机器的后端…",
+      "args": []
+    },
+    "machineAliases.aliasPreview.line": {
+      "kind": "body",
+      "zh": "从家目录的一个新终端里敲 {name} 时会执行：\n{line}",
+      "args": ["name", "line"]
+    },
+    "machineAliases.aliasPreview.failed": {
+      "kind": "error",
+      "zh": "预览不了：{reason}",
+      "args": ["reason"]
+    },
+    "machineAliases.aliasPreview.tooOld": {
+      "kind": "error",
+      "zh": "这台机器的后端还不认识预览，重启一次 cc-monitor 换上新后端再试",
+      "args": []
+    },
+    "machineAliases.tmuxNaming.none": {
+      "kind": "body",
+      "zh": "就在当前终端里起，不另开会话。",
+      "args": []
+    },
+    "machineAliases.tmuxNaming.auto": {
+      "kind": "body",
+      "zh": "自动取名：名字取自工作目录（目录名-cc），已经被占了就依次试 -2、-3 …；本来就在一个会话窗格里敲它时，直接在这个窗格里起。",
+      "args": []
+    },
+    "machineAliases.tmuxNaming.named": {
+      "kind": "body",
+      "zh": "用指定的名字：就用这个名；已经被占了就报错退出，不改名。",
+      "args": []
+    },
+    "machineAliases.tmuxNaming.base": {
+      "kind": "body",
+      "zh": "以某个名字为底：先试这个名，已经被占了就依次试 -2、-3 …",
       "args": []
     },
     "rsAccountAliases.install.nextStep": {
@@ -15754,6 +15719,11 @@
       "kind": "error",
       "zh": "{name} 需要一个值",
       "args": ["name"]
+    },
+    "beCcm.preview.noSession": {
+      "kind": "error",
+      "zh": "这组参数不起会话，没有要预览的命令（--help / --version / --ccm-probe 这一类）",
+      "args": []
     },
     "beCcm.execDirect.noLauncher": {
       "kind": "error",

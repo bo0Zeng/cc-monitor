@@ -108,8 +108,9 @@ mod sftp_pool;
 mod skill_host;
 mod skill_install; // 〔AS2 · 第四波 4B · V113〕skill「装到这台」：只编排 I/O（来源那台 skill-read → 被写那台 skill-install-plan 判 → files-put 带 expect），判定住后端
 mod user_files; // RW1（第四波）：monitor 够用户文件的唯一开口 —— 读·算·交给那台机器的后端，自己一个字节不落盘
-mod verified_write; // T01：统一的「备份→写→读回比对→回滚」；本机侧从长度比对升级为内容比对
-                    // SS-D 统一 SFTP 写层（issue #29 自动部署 F08；后续 F11/F10 复用）。
+                // 〔W5-ALIAS · 第五波先行〕`verified_write`〔散文墓碑〕模块删了：它的判定只剩 `fenced_block::apply`〔散文墓碑〕一个调用方，
+                //   那个序列删了之后零调用方；用户文件的回读比对只住后端 `files_write.rs::put_text`，部署物按字节比住 `sftp::verify_readback`。
+                // SS-D 统一 SFTP 写层（issue #29 自动部署 F08；后续 F11/F10 复用）。
 mod sftp;
 // SSH-remote Phase 0 (issue #15)：从 setup() 调用 —— 当 config.json 的
 // `remote.enabled = true` 时，ssh_source::run 作为**附加**数据源与本机那条流
@@ -1430,8 +1431,8 @@ pub fn run() {
             // 〔U3b〕接上骨架的会话，重放缓冲只留尾巴（`设计/10` 步 8）
             // F10：装 / 卸远端 rc 里的别名块（SFTP 写 profile，SS-H）。〔MC1〕从前叫「装/卸 ccm 助手」，
             // 推 `ccm` 入口那一半并进了下面的 `deploy_remote_backend`（`设计/71 §13.3`）。
-            sftp::install_remote_alias_block,
-            sftp::uninstall_remote_alias_block,
+            profile_installer::install_remote_alias_block,
+            profile_installer::uninstall_remote_alias_block,
             // F08c：部署 / 卸载远端后端（SFTP 写 ~/.cc-monitor/bin，SS-G 部署写豁免）。
             // 〔MC1〕部署那一条同时放 `ccm` 入口 —— 「部署后端」只有一个动作。
             sftp::deploy_remote_backend,
