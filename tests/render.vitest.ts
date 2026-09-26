@@ -403,3 +403,68 @@ describe("D1 · 数学也 lazy（`设计/10 §3.5`）", () => {
     expect(d.querySelector("[data-math-pending], .code-pending")).toBeNull();
   });
 });
+
+/**
+ * 〔W5-RENDER R5〕`设计/10 §3.5` D2：IO 按滚动容器分（root 必填）。单元这一半：同 root 复用、不同 root 各一个、
+ * 回调里补算并 unobserve、`releaseEnhanceRoot` 断开且之后再 observe 会新建。真渲染管线上的那一半在
+ * `tests/views/session-viewer-scroll.vitest.ts`「D2」。
+ */
+describe("D2 · 每个滚动容器一个 IO（`设计/10 §3.5`）", () => {
+  class FakeIO {
+    static all: FakeIO[] = [];
+    readonly observed = new Set<Element>();
+    disconnected = false;
+    constructor(
+      readonly cb: IntersectionObserverCallback,
+      readonly opts: IntersectionObserverInit = {},
+    ) {
+      FakeIO.all.push(this);
+    }
+    observe(el: Element): void {
+      this.observed.add(el);
+    }
+    unobserve(el: Element): void {
+      this.observed.delete(el);
+    }
+    disconnect(): void {
+      this.disconnected = true;
+    }
+    fire(el: Element): void {
+      this.cb([{ isIntersecting: true, target: el } as unknown as IntersectionObserverEntry], this as never);
+    }
+  }
+
+  it("同 root 复用、不同 root 各一个；进视口即补算并 unobserve；release 之后新建", async () => {
+    FakeIO.all = [];
+    vi.stubGlobal("IntersectionObserver", FakeIO);
+    try {
+      const { observeForEnhance, releaseEnhanceRoot } = await import("../src/render");
+      const A = document.createElement("div");
+      const B = document.createElement("div");
+      const mk = (): HTMLElement => {
+        const el = document.createElement("div");
+        el.innerHTML = renderMarkdown("```ts\nconst a = 1;\n```", { lazy: true });
+        return el;
+      };
+      const [a1, a2, b1] = [mk(), mk(), mk()];
+      observeForEnhance(a1, A);
+      observeForEnhance(a2, A);
+      observeForEnhance(b1, B);
+      expect(FakeIO.all.map((io) => io.opts.root)).toEqual([A, B]);
+      const [ioA, ioB] = FakeIO.all;
+      expect([...ioA.observed]).toEqual([a1, a2]);
+      expect([...ioB.observed]).toEqual([b1]);
+      ioA.fire(a1);
+      expect(a1.querySelector(".code-pending")).toBeNull();
+      expect(a2.querySelector(".code-pending")).not.toBeNull();
+      expect([...ioA.observed]).toEqual([a2]);
+      releaseEnhanceRoot(A);
+      expect(ioA.disconnected).toBe(true);
+      observeForEnhance(mk(), A);
+      expect(FakeIO.all.length).toBe(3);
+      expect(FakeIO.all[2].opts.root).toBe(A);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
