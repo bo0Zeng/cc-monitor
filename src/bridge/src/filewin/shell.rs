@@ -391,6 +391,8 @@ pub struct FileWindow {
     seen_rounds: u64,
     /// `设计/60 §5` 第二段：零流量复制那一趟的状态机（**问覆盖 · 进度 · 裁决**）。
     pub copy_board: CopyBoard,
+    /// 〔W5-FILES · `设计/60 §6.2`〕算大小那一摞的看板（在算哪一项 · 上一摞的结局）。
+    pub size_board: super::size::SizeBoard,
     /// 「复制为」那个框。`None` = 没在问名字。**UI 线程自己的**（理由见 [`CopyPrompt`]）。
     copy_prompt: Option<CopyPrompt>,
     /// 已经消化过几趟复制（同 [`Self::seen_rounds`]，两条路各一个数）。
@@ -551,6 +553,7 @@ impl FileWindow {
             board: DropBoard::default(),
             seen_rounds: 0,
             copy_board: CopyBoard::default(),
+            size_board: super::size::SizeBoard::default(),
             copy_prompt: None,
             seen_copy_rounds: 0,
             font: FontState::NotInstalled,
@@ -2226,6 +2229,9 @@ impl FileWindow {
                 &[("path", &p.to_string())],
             ));
         }
+        if let Some(n) = self.size_board.running() {
+            return Some(copy_text("rsFilewinShell.busy.sizing", &[("name", &n)]));
+        }
         if let Some(n) = self.copy_board.running() {
             return Some(copy_text(
                 "rsFilewinShell.busy.copying",
@@ -2426,6 +2432,8 @@ impl FileWindow {
             (Action::Edit, [i]) => self.begin_edit(*i, ctx),
             (Action::Copy, [i]) => self.begin_copy(*i),
             (Action::Download, [i]) => self.begin_pull(*i),
+            // 〔W5-FILES〕一项或多项。
+            (Action::Size, _) => self.start_sizes(&idx, ctx),
             (Action::Rename, [i]) => self.begin_rename(*i),
             // 〔FW5〕一项或多项：同一个框（多项时框上说件数）。
             (Action::Chmod, _) => self.begin_chmod_rows(&idx),
@@ -2488,6 +2496,43 @@ impl FileWindow {
             self.selection.pick_for_menu(&rows, i);
         }
         self.dragging = true;
+        true
+    }
+
+    /// 〔W5-FILES · `设计/60 §6.2`「算目录大小」〕选中的这几项逐项问后端 `files-size`（顺序发），跑完一句话摆出来。
+    /// 纯读 ⇒ 不重列目录。接不上（没运行时 / 没通道）⇒ 出声。回值 ＝ 真的起来了。
+    pub fn start_sizes(&mut self, idx: &[usize], ctx: Option<egui::Context>) -> bool {
+        let Some(h) = self.rt.clone() else {
+            *self.listing.error.lock().unwrap() =
+                Some(copy_text("rsFilewinShell.size.noRuntime", &[]));
+            return false;
+        };
+        let Some(line) = self.line.clone() else {
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
+            return false;
+        };
+        let items: Vec<(serde_json::Value, String)> = {
+            let rows = self.listing.rows.lock().unwrap();
+            idx.iter()
+                .filter_map(|&i| rows.get(i))
+                .map(|r| (serde_json::Value::String(r.path.clone()), r.name.clone()))
+                .collect()
+        };
+        let origin = self.source.origin();
+        let board = self.size_board.clone();
+        board.attach(ctx);
+        h.spawn(async move {
+            let mut out = Vec::with_capacity(items.len());
+            for (path, name) in items {
+                board.begin(&name);
+                out.push(
+                    super::size::size_remote(&line, &origin, &path, &name)
+                        .await
+                        .map_err(|e| (name, e)),
+                );
+            }
+            board.finish(out);
+        });
         true
     }
 
@@ -2746,6 +2791,7 @@ impl FileWindow {
         self.board.ui(ui);
         // `§5` 第二段那一摞：覆盖确认 ／ 进度 ／ **上一趟走的是哪条路**。同样模态、同样在前。
         self.copy_board.ui(ui);
+        self.size_board.ui(ui);
         self.copy_ui(ui);
         // 🔴〔第五刀〕`§4.6.4` 那一摞：一次问完的确认框 ／ 结果（〔FN1〕「被围栏挡住那几句话」那一段删了）。
         //    同样模态、同样画在列表之前。

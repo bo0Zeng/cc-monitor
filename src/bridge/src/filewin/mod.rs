@@ -265,6 +265,8 @@ pub mod scale;
 //    接到窗口上的那几跳住 `shell.rs`。逐条理由住那份文件的头注。
 pub mod select;
 pub mod shell;
+// 〔W5-FILES · 第五波〕**算大小**（`设计/60 §6.2`）：后端 `files-size` 的窗口那一侧（发 · 解 · 摆一句话）。
+pub mod size;
 pub mod source;
 pub mod transfer;
 // 〔F7c · 第三波 09-24〕工具栏「上传」那一问（`设计/60 §13`）：选完走拖入那一条。
