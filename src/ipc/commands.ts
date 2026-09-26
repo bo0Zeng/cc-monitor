@@ -267,36 +267,38 @@ export const commands = {
    * 预览与「复制去手贴」都只调这一条，后端一个字节都不写。
    */
   // 〔AL1c〕`shell` 必给：同一份清单渲染 / 读 / 写成哪种 shell 的方言（`71 §4.4`），不留缺省（缺了就是替人猜）。
-  aliases_render: (args: { aliases: Alias[]; shell: Shell }) =>
+  // 〔AL2 · 第四波 4D〕六条都带 `origin`（本机远端同一条命令，`设计/71 §6`）；远端那两条装 / 卸别名块并进 `aliases_block_*`。
+  aliases_render: (args: { origin: Origin; aliases: Alias[]; shell: Shell }) =>
     invoke<AliasRender>("aliases_render", args),
 
   /**
    * 〔AL1〕读回口：这台机器上那份别名文件今天有哪几条（认不出的行原文带原因列出来，不静默丢）。
    * 〔AL1d〕启动文件候选各带别名块的现状 ＋ 完成拉前握手的终端数；`rcPath` = 人另指的一份（过围栏后并进候选）。
    */
-  aliases_read: (args: { shell: Shell; rcPath?: string | null }) =>
+  aliases_read: (args: { origin: Origin; shell: Shell; rcPath?: string | null }) =>
     invoke<AliasListing>("aliases_read", args),
 
   /**
    * 〔AL1〕第②跳：**唯一的副作用**。收的是清单，后端用第①跳同一个渲染落盘 ⇒ 写的就是预览的那一份。
    * ⚠ `rcPath` 可选且没有默认值：用户的 shell 配置是哪一份只能由界面上的人选。
    */
-  aliases_install: (args: { aliases: Alias[]; rcPath?: string | null; shell: Shell }) =>
+  aliases_install: (args: { origin: Origin; aliases: Alias[]; rcPath?: string | null; shell: Shell }) =>
     invoke<AliasInstallReport>("aliases_install", args),
 
   /**
    * 〔AL1d · 第四波 4B〕**别名块**（`cc` / `cct` · `__ccm_bind`）第①跳：纯 —— 块 → 代码（装进一份空文件会写成什么）。
    * 两种方言都答，方言由 `rcPath` 那份文件的扩展名定（后端判，与装那一跳同一个判法）；`withCc` 只对 PowerShell 有意义。
    */
-  aliases_block_render: (args: { rcPath: string; withCc: boolean }) =>
+  aliases_block_render: (args: { origin: Origin; rcPath: string; withCc: boolean }) =>
     invoke<string>("aliases_block_render", args),
 
   /** 〔AL1d〕别名块装进人选的那份启动文件（方言按那份文件的扩展名定）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  aliases_block_install: (args: { rcPath: string; withCc: boolean }) =>
+  aliases_block_install: (args: { origin: Origin; rcPath: string; withCc: boolean }) =>
     invoke<void>("aliases_block_install", args),
 
   /** 〔AL1d〕别名块卸掉（整块删，块外一个字节不动）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  aliases_block_remove: (args: { rcPath: string }) => invoke<void>("aliases_block_remove", args),
+  aliases_block_remove: (args: { origin: Origin; rcPath: string }) =>
+    invoke<void>("aliases_block_remove", args),
 
   /**
    * 〔RM1c · 第四波〕代码全景**经那台机器的后端**走（V108 选 B）：发帧命令 `panorama`，拿回 `result`。
@@ -687,10 +689,6 @@ export const commands = {
   /** 批量导入 `~/.ssh/config` 的预览分组（F57）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   import_ssh_hosts: () => invoke<ImportGroup[]>("import_ssh_hosts"),
 
-  /** 往远端 rc 里装别名块（〔MC1〕从前叫「装 ccm 助手」）。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
-  install_remote_alias_block: (args: { cfg: unknown; profile: string }) =>
-    invoke<string>("install_remote_alias_block", args),
-
   /** 当前活着的端口转发列表。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   list_forwards: () => invoke<ForwardStatus[]>("list_forwards"),
 
@@ -792,10 +790,6 @@ export const commands = {
 
   /** 开独立设置窗口（非浮层）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   open_settings_window: () => invoke<void>("open_settings_window"),
-
-  /** 从远端 rc 里卸别名块。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
-  uninstall_remote_alias_block: (args: { cfg: unknown; profile: string }) =>
-    invoke<string>("uninstall_remote_alias_block", args),
 
   /** 卸远端后端。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
   uninstall_remote_backend: (args: { cfg: unknown }) =>

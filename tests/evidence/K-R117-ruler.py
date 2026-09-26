@@ -151,8 +151,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     # 〔DP1 · 第四波〕别名块那三格（从 ① 挪来，旧名 `ccm.install` / `ccm.uninstall` / `ccm.install-ui`）：
     #   `设计/71 §5`「② 别名：清单编辑 → 预览（纯）→ 写入 / 复制待贴」—— 别名块就是写入那一跳的一种落法，不是装后端。
     ("alias.block-install", (B2, "K33+K34+设计/71 §5",
-                             "往用户选的 rc / `$PROFILE` 里装 cc-monitor 那一段别名块（本机 `aliases_block_install` · 远端 "
-                             "`install_remote_alias_block`）—— 写入那一跳，与 `alias.manage` 分两格只为各归各的平价（`AL1d.md §2.2`）")),
+                             "往用户选的 rc / `$PROFILE` 里装 cc-monitor 那一段别名块（`aliases_block_install`，带 origin，"
+                             "本机远端同一条）—— 写入那一跳，与 `alias.manage` 分两格只为各归各的平价（`AL1d.md §2.2`）")),
     ("alias.block-remove", (B2, "K33+K34+设计/71 §5", "同上，卸那一侧")),
     ("alias.block-preview", (B2, "K33+K34+设计/71 §5", "装别名块之前的预览（纯渲染，不写盘）")),
     ("acct-iso.shellinit", (B2, "K33",
@@ -311,13 +311,12 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         #   ⇒ 改表是**跟上真相**，不是凑绿。
         "deploy_remote_backend",
         # 〔MC1 · 2026-09-24〕`install_remote_ccm_helper` / `uninstall_remote_ccm_helper` 改名成
-        #   `…_remote_alias_block`（「ccm 助手」这个词删掉，`设计/71 §13`）。本条红的时候逐字
-        #   「别改表去凑」—— 核过了，是「有人改了命令名」那一种（就是本路），改表是跟上真相。
-        "install_remote_alias_block",
-        "uninstall_remote_alias_block",
+        #   `…_remote_alias_block`（「ccm 助手」这个词删掉，`设计/71 §13`）。
+        # 〔AL2 · 第四波 4D〕那两条**不存在了**（并进 `aliases_block_install` / `_remove`，带 `origin`）：
+        #   `R8a` 红时核过，是「命令没了」那一种（同 S5 步 12·C 收尾那一形），人群跟着现实走、摘两行。
         "uninstall_remote_backend",
     ), "§3-3 第一行：后端写区 `sftp.rs`，收 4 条 —— 括号里逐字「`daemon.deploy`×2 ＋ "
-       "`ccm.install`/`ccm.uninstall` 的远端半」。现打这四条的住址恰好都在 `sftp.rs`")),
+       "`ccm.install`/`ccm.uninstall` 的远端半」。〔AL2〕远端半那两条并进了 `aliases_block_*`（带 origin），今天剩 2 条")),
     ("S2", ("①-本机半", (
         # 〔AL1d · 第四波 4B〕别名块那三条并进 `aliases_*` 同一族命令面（`调研/第四波记录/AL1d.md §2.1`），
         #   〔DP1〕能力 id 改成 `alias.block-*`、归档挪到 ②；切件分组（S2）是「那条命令住哪个写区」的历史读数，不随归档改。

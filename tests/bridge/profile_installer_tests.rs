@@ -1419,8 +1419,8 @@ fn the_user_path_status_uses_the_same_equality_as_the_generated_commands() {
 /// # 病是什么（`R80 §二` 的 `R2`，现打出来的，不是推理）
 ///
 /// `src/shared/ccm-aliases.sh` 是**一份文件、两个消费者**：本机走
-/// [`plan_install`] 的 POSIX 方言合进用户选的那份 rc，远端走
-/// `profile_installer::install_remote_alias_block` 合进远端 rc —— **合进去的是逐字同一份文本**。
+/// [`plan_install`] 的 POSIX 方言合进用户选的那份 rc，远端〔AL2〕也走同一个 [`plan_install`]（`aliases_block_install` 带远端 `origin`）
+/// —— **合进去的是逐字同一份文本**。
 /// 而两边的 `ccm` 落点**不是同一个目录**（`tool_registry::TOOLS` 现算：
 /// 本机 `.cc-monitor/bin`、远端 `.local/bin`）。
 /// ⇒ 那一行只写一个目录时，**它只可能对其中一边是对的**。
@@ -1961,7 +1961,7 @@ fn strip_aborts_on_malformed_begin_without_end() {
 /// 人群（从源码现打，monitor 生产段全树）：函数体里碰「别名块内容」的函数 —— 调合 / 剥 / 计划装卸 / 装卸入口
 /// （`merge_profile_block(` · `strip_profile_block(` · `plan_install(` · `plan_uninstall(` · `install_to_profile(` ·
 /// `uninstall_from_profile(`）的那几个。两向相等于下面这张手写表（异源：表是人按角色写的，右边是源码现扫）：
-/// - **写的**（四个）函数体里必须恰好一处 `crate::user_files::edit(`；
+/// - **写的**（〔AL2〕两个：远端那两条命令并进了转交那两条）函数体里必须恰好一处 `crate::user_files::edit(`；
 /// - **纯规划 / 预览**（三个）与**转交**（两条命令，交给写的那两个）一处写原语都不许有；
 /// - 全体都不许碰别的写原语（`.put(` · `std::fs::write` · `fenced_block::apply`〔散文墓碑〕）。
 ///
@@ -1984,16 +1984,7 @@ fn the_alias_block_is_written_through_exactly_one_door() {
             "uninstall_from_profile",
             Role::Writes,
         ),
-        (
-            "profile_installer.rs",
-            "install_remote_alias_block",
-            Role::Writes,
-        ),
-        (
-            "profile_installer.rs",
-            "uninstall_remote_alias_block",
-            Role::Writes,
-        ),
+        // 〔AL2 · 第四波 4D〕远端装 / 卸那两条（写的）删了：并进下面两条转交（带 `origin`）。
         ("lib.rs", "aliases_block_install", Role::Delegates),
         ("lib.rs", "aliases_block_remove", Role::Delegates),
     ];
