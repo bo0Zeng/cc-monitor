@@ -45,24 +45,12 @@ const EXEMPT: ReadonlyArray<readonly [file: string, why: string]> = [
       "（住进去等于让每个调用方都被动吃 8s 陈旧数据，包括 attach/kill 这些对新鲜度最敏感的）。",
   ],
   [
-    "fork-flow.ts",
-    "另一个模块，够不到 `TabManager` 的私有 `tmuxCache`。⚠ 它 `.catch(() => null)` " +
-      "把失败压成了「没有会话」—— 与 `fetchTmuxFresh` 刻意保留的三态相反。要收编得先把缓存" +
-      "搬成模块级 store（`tmux-sessions.ts` 头注已经点过这件事），那是另一件。",
-  ],
-  [
-    "settings/machine-card.ts",
-    "同上，另一个模块。⚠ **报告 I9′ 与核实台账都漏了这一处** —— 台账只点了 " +
-      "`tabs.ts:3360` 与 `fork-flow.ts:135`。登记在这里，免得下次又漏。",
-  ],
-  [
-    "remote-launch-run.ts",
-    "另一个模块，够不到 `TabManager` 的私有 `tmuxCache`（同 `fork-flow.ts` / `machine-card.ts`）。" +
-      "用途：`runNewSessionRemote` 起新会话前查一次「哪些名字被占了」，喂给 `mintTmuxName` 避让 —— " +
-      "**这一次取数的意义就是要最新的**（拿 8s 前的快照去避让，正好会让到一个刚被占掉的名字）。" +
-      "⚠ 它与 `machine-card.ts` 那处是**同一件事的两个入口**（历史页右键 / 设置面板「开新 Claude」)，" +
-      "两处都在做「派生名 → 铸名」；等 `tmux-sessions.ts` 头注说的模块级 store 落地，" +
-      "该一起收编，不是单独收这一个。",
+    "tmux-name-mint.ts",
+    "另一个模块，够不到 `TabManager` 的私有 `tmuxCache`。〔FE1 · 第四波 4D〕它是起会话铸名的唯一家：" +
+      "先前登记在这里的三条（`fork-flow.ts` · `settings/machine-card.ts` · `remote-launch-run.ts`）" +
+      "都是「列名单 → 铸名」的副本，三条里两条列不出就拿空集铸名（#76 的形状），一条 `.catch(() => null)` " +
+      "把「没问到」压成「没有会话」。收进这里之后三态保留（`TmuxListing`：known / unknown），" +
+      "**这一次取数的意义就是要最新的**（拿 8s 前的快照去避让，正好会让到一个刚被占掉的名字）。",
   ],
   // 〔墓碑·第二波 T4 09-24〕`tabs.ts::explainBringFrontFailure` 这一条删了：那个函数整个删了 ——
   //   它是 `设计/80 §8.7` 步 4 点名要收的「四套有没有终端的判断」之一（E73 那次远端 RPC），
@@ -117,10 +105,13 @@ describe("tmux 会话列表的取数点（audit-0805 F14 第五刀，E3）", () 
     const sites = fetchSites();
     const total = sites.reduce((a, s) => a + s.count, 0);
     // 抽取器自检：扫不到东西时下面的对拍会两边都空、静默变绿。
+    // 〔FE1〕地板 `≥ 4` 换成相等：包装层 1 ＋ `tab-session-actions.ts::fetchTmuxFresh` 1 ＋
+    //   `tmux-name-mint.ts::readTmuxListing` 1 = 3（少掉的是 fork-flow · machine-card · remote-launch-run 三份副本）。
+    //   抽取器坏了会少、有人新长一处会多，两个方向都红。
     expect(
       total,
-      `全仓只扫到 ${total} 个 list_remote_tmux 取数点（实测应为 5）—— 抽取器坏了`,
-    ).toBeGreaterThanOrEqual(4);
+      `全仓扫到 ${total} 个 list_remote_tmux 取数点（现打应为 3）—— 抽取器坏了，或新长了一处`,
+    ).toBe(3);
 
     const exemptFiles = new Set(EXEMPT.map(([f]) => f.split("::")[0]));
     const unregistered = sites.filter(

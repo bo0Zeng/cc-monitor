@@ -98,7 +98,7 @@ ck "--agent codex：换启动器 + 无嵌套 env + cc-bus 身份配方" \
    "if [ -n \"\${TMUX:-}\" ]; then _ccm_bus=\"\$(tmux display-message -p \"#S\" 2>/dev/null)\"; [ -n \"\$_ccm_bus\" ] && export CC_BUS_ID=\"\$_ccm_bus\"; unset _ccm_bus; fi; cd '/p' && exec codex" \
    "$(ccm --agent codex --cwd /p --print)"
 ck "--agent codex 不支持 resume → 报错" \
-   "ccm: agent=codex 不支持 resume（无 resume flag）" \
+   "ccm: codex 不支持 resume" \
    "$(ccm resume x --agent codex --cwd /p --print)"
 ck "--launcher 覆盖默认启动器" \
    "$UNSET; cd '/p' && exec mycc --resume s1" \
@@ -205,7 +205,7 @@ ck "resume 不做 auto 解析（cc-monitor 已 cd 到会话目录，再解析会
    "$UNSET; cd '$PWD' && $(RECIPE s1 "exec claude --resume s1")" \
    "$(ccm --resume s1 --print)"
 ck "resume 后跟 flag → 报错（别把 --tmux 当 sid）" \
-   "ccm: resume 需要 <sid>" \
+   "ccm: resume 需要 <会话ID>" \
    "$(ccm resume --tmux --print)"
 ck "attach 后跟 flag → 报错" \
    "ccm: attach 需要 <会话名>" \

@@ -32,6 +32,7 @@
 //! 真要收，得把本命令改成**流式**（同 `stream_read_remote_session` 那条 channel 路），
 //! 那会改它对前端的返回形状 —— 是另一件事，不在本件里顺手做。
 
+use crate::copy_table::copy_text;
 use crate::messages::JsonlRecord;
 use crate::parser::parse_line;
 use std::path::{Path, PathBuf};
@@ -100,18 +101,19 @@ impl Backend {
         // 认得的形状走长连接；认不出的当场说（〔C4d〕逐次拨号那条路删了，〔LOC1a〕exec 本机后端那条也删了）。
         let Some(route) = frame_query::route_argv(argv) else {
             // 这是本程序的 bug（调用方造了一条没上帧面的查询），不是那台后端的问题 ⇒ 结构性，再要也一样。
-            return Err(QueryError::transport(format!(
-                "`{}` 没有对应的帧命令（这是本程序的 bug，不是{}的问题）",
-                argv.first().copied().unwrap_or_default(),
-                self.whose()
+            return Err(QueryError::transport(copy_text(
+                "rsSubagent.query.noFrameCmd",
+                &[
+                    ("argv", argv.first().copied().unwrap_or_default()),
+                    ("who", &self.whose()),
+                ],
             )));
         };
         // 长连接在、却不认这条帧命令 ⇒ 对面的后端比这条查询老（结构性，再要也一样）。
         if frame_query::refuses(&self.origin, &route) {
-            return Err(QueryError::old_backend(format!(
-                "{}的后端还不认 `{}` —— 重装那台机器的后端就有了",
-                self.whose(),
-                route.frame_cmd()
+            return Err(QueryError::old_backend(copy_text(
+                "rsSubagent.query.tooOld",
+                &[("who", &self.whose())],
             )));
         }
         frame_query::run_routed(&self.origin, route)
@@ -189,15 +191,22 @@ pub async fn load_subagent(
     // ⚠ `K-R94` 起这道校验**两条路都过** —— 改前只有远端那条有，而「同一个入参、两种把关」
     // 正是 `KR94D3` 说的那种两条路不一致。
     if parent_jsonl_path.contains("..") || !parent_jsonl_path.ends_with(".jsonl") {
-        return Err(format!("非法父会话路径: {parent_jsonl_path}"));
+        return Err(copy_text(
+            "rsSubagent.load.badParentPath",
+            &[("path", &parent_jsonl_path.to_string())],
+        ));
     }
 
     let list_argv = ["--list-subagents", parent_jsonl_path.as_str()];
     let listing = backend.query(&list_argv).await?;
     let Some(picked) = choose_subagent(&listing, &description, &tool_use_timestamp) else {
         let whose = backend.whose();
-        return Err(format!(
-            "{whose} 上没有 description={description:?} 的 subagent"
+        return Err(copy_text(
+            "rsSubagent.load.notFound",
+            &[
+                ("whose", &whose.to_string()),
+                ("description", &format!("{:?}", description)),
+            ],
         ));
     };
     let picked_str = picked.to_string_lossy().into_owned();

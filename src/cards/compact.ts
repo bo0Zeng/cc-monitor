@@ -10,6 +10,8 @@
  * 点开才看全文。
  */
 
+import { copyText } from "../copy-table";
+
 const PREFIX = "This session is being continued from a previous conversation";
 
 export function isCompactSummary(text: string): boolean {
@@ -26,7 +28,7 @@ export function buildCompactSummaryCard(
 
   const s = document.createElement("summary");
   s.className = "card-compact-summary";
-  s.textContent = `📋 上下文摘要 · ${text.length.toLocaleString()} 字 · ${formatTime(timestamp)}`;
+  s.textContent = copyText("compact.summary.title", { n: text.length.toLocaleString(), time: formatTime(timestamp) });
   d.appendChild(s);
 
   let rendered = false;

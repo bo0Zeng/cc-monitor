@@ -464,6 +464,29 @@ chk "★ cc-spawn 退出码非 0（不是假成功）" "$([ "$_rb" -ne 0 ] && ec
 chk "★ 没有登记上总线" "$(cut -f1 "$_EW/bus/agents.tsv" 2>/dev/null | grep -cx 'bad_cc' || true)" "0"
 chk "  也没有报「已 spawn」" "$(printf '%s\n' "$_ob" | grep -c '^已 spawn: ' || true)" "0"
 
+echo "[18] ★ bus-broadcast：广播这个组合收进后端（C4e）—— 只发在线的、三个数分开、不发给自己"
+# 此前广播是 monitor 里的组合（列名单 ＋ 逐个发）；界面改经通道直接说后端之后收进后端。
+# 名册：一个活着（隔离 socket 上真有会话）· 一个会话没了 · 一个是 `from` 自己（也活着）。
+tmux new-session -d -s bcast_cc -c /tmp 'cat' 2>/dev/null
+tmux new-session -d -s bcme_cc -c /tmp 'cat' 2>/dev/null
+sleep 0.3
+printf 'bcast_cc\tbcast_cc:0.0\tts\t1\nbgone_cc\tbgone_cc:0.0\tts\t2\nbcme_cc\tbcme_cc:0.0\tts\t3\n' > "$BUS/agents.tsv"
+: > "$BUS/inbox/bcast_cc.jsonl"; : > "$BUS/inbox/bgone_cc.jsonl"; : > "$BUS/inbox/bcme_cc.jsonl"
+_b="$(printf '{"text":"来自后端的广播","from":"bcme_cc"}' | env CLAUDE_CONFIG_DIR="$CLA" \
+      CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" 30 "$D" --bus-broadcast 2>"$SANDBOX/berr.txt")"
+chk "★ 只投给在线的那一个（sent=1）" "$(printf '%s' "$_b" | jq -r .sent 2>/dev/null)" "1"
+chk "★ 会话没了的那一个计进 skipped_offline（不是悄悄丢掉）" "$(printf '%s' "$_b" | jq -r .skipped_offline 2>/dev/null)" "1"
+chk "  身份空间答得上 ⇒ liveness_unknown=false" "$(printf '%s' "$_b" | jq -r .liveness_unknown 2>/dev/null)" "false"
+chk "  没有失败的" "$(printf '%s' "$_b" | jq -c .failed 2>/dev/null)" "[]"
+chk "★ 在线那一个的收件箱真的收到了" "$(grep -c '来自后端的广播' "$BUS/inbox/bcast_cc.jsonl" 2>/dev/null || true)" "1"
+chk "★ 会话没了的那一个没被投（不再造幽灵收件箱）" "$(grep -c '来自后端的广播' "$BUS/inbox/bgone_cc.jsonl" 2>/dev/null || true)" "0"
+chk "★ 不发给自己（from）" "$(grep -c '来自后端的广播' "$BUS/inbox/bcme_cc.jsonl" 2>/dev/null || true)" "0"
+printf '{"text":"   "}' | env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
+  "$TIMEOUT" 30 "$D" --bus-broadcast >/dev/null 2>"$SANDBOX/berr.txt"
+chk "★ 空正文 ⇒ invalid_args（空广播不是缺省）" "$(jq -r .code < "$SANDBOX/berr.txt" 2>/dev/null)" "invalid_args"
+tmux kill-session -t '=bcast_cc' 2>/dev/null || true
+tmux kill-session -t '=bcme_cc' 2>/dev/null || true
+
 "$REALTMUX" -L "$_SOCK" kill-server 2>/dev/null || true
 
 echo

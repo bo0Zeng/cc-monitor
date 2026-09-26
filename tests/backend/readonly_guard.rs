@@ -2,7 +2,7 @@
 //!
 //! # `K-G6` `KG62`：性质与人群，两行逐字（**这两行各自只许有一句**，`g6_scope_pins` 钉着）
 //!
-//! - **它守的性质是**：backend **进程自身**不许改动用户既有数据 —— 例外只有两档、都逐文件登记：新增文件须 `O_EXCL` 且只许在白名单模块里（白名单层，`D1` 08-01）；改动既有数据只许在**文件管理那一面**、每一处先过 Claude 会话数据围栏、且只从登记的那一扇门进来（第三层，波 5 · 用户 09-23 逐字「现在只允许后端的文件管理部分写文件」）。〔B2 · 条 66〕另有一层**不是例外**、是把人群收回性质上：后端写**它自己的**状态文件（`~/.cc-monitor/backend.json` · 〔RM1a〕上游选择那份凭据文件，都不是用户数据）只许在逐文件登记的那几份模块里、动词闭集、只从一扇门进来（第四层）。⚠ `src/doc/INVARIANTS.md` §41.6 的「现措辞」今天**没有**第三层那一档 —— 改那条是产品裁决、不在本护栏写区，已报备。
+//! - **它守的性质是**：backend **进程自身**不许改动用户既有数据 —— 例外只有两档、都逐文件登记：新增文件须 `O_EXCL` 且只许在白名单模块里（白名单层，`D1` 08-01）；改动既有数据只许在**文件管理那一面**、每一处先过路径解析（不越根 ＋ 父目录解链接；〔FN1 · V119〕从前是「先过 Claude 会话数据围栏」，用户「文件管理器全部都可以改. 不需要任何围栏」之后那道拿掉了）、且只从登记的那一扇门进来（第三层，波 5 · 用户 09-23 逐字「现在只允许后端的文件管理部分写文件」）。〔B2 · 条 66〕另有一层**不是例外**、是把人群收回性质上：后端写**它自己的**状态文件（`~/.cc-monitor/backend.json` · 〔RM1a〕上游选择那份凭据文件，都不是用户数据）只许在逐文件登记的那几份模块里、动词闭集、只从一扇门进来（第四层）。⚠ `src/doc/INVARIANTS.md` §41.6 的「现措辞」今天**没有**第三层那一档 —— 改那条是产品裁决、不在本护栏写区，已报备。
 //! - **它扫的人群是**：本 crate `src/` 递归全部 `.rs` 的生产段**源码文本**里 `fs::` / `File::` / `OpenOptions` 命名空间的调用（默认层 + 只读白名单 + 逃生口），外加另一张表：`Command::new` 的起进程点。
 //!
 //! ⚠ **这两行今天不是同一件事，而「它们是同一件事」这一格钉不住 —— 靠纪律**（`KG62` 如实登记）：
@@ -11,7 +11,13 @@
 //! 同时又比性质**大**（backend 写一个与用户无关的自己的文件也会红）。
 //! ⇒ **它今天真能拦住的形状全表在 [`g6_reach`]，一个今天在盘上、形状相同却通过了的反例也在那里。**
 //!
-//! # 🔴 〔波 5 ㈡ · 2026-09-23〕**第三层** —— 判准从「不改既有数据」换成「改，但每一处都先过围栏、且只从声明过的那一面来」
+//! # 🔴 〔波 5 ㈡ · 2026-09-23〕**第三层** —— 判准从「不改既有数据」换成「改，但每一处都先过路径解析、且只从声明过的那一面来」
+//!
+//! 〔FN1 · 第四波 4C · 2026-09-25 · 用户 V119〕原话是「先过**围栏**」。用户「文件管理器全部都可以改. 不需要任何围栏」⇒
+//! 会话数据围栏拿掉了，③ 那一针换成**路径解析**（`files_write::resolve_in_root` / `resolve_existing_in_root`：
+//! 词法不越根 ＋ 父目录解链接后判落点 —— 那不限制改什么，只保证改的就是 `root ＋ rel` 那一格）。
+//! 判的形状一个字没变（逐顶格函数切块、剥注释、比位置）；新立一条
+//! [`tests::the_file_manager_face_never_asks_the_session_shape`]：后端生产树里问会话形状的函数恒等于删会话那一条。
 //!
 //! 用户逐字：「**现在只允许后端的文件管理部分写文件**」。这句话收窄的是**主语**（谁能写），
 //! 不是动作（能写什么）⇒ 动作是宽的（建目录 · 改名 · 删除 · 改权限 · 覆盖写），
@@ -21,7 +27,7 @@
 //!
 //! ⚠ 按 [`g6_doctrine`] 那张四格表，这一刀落在**「缩性质」**那一格，不是「加白名单」：
 //! 性质从「不改既有数据」缩成「不改既有数据，文件管理面除外」，
-//! **缩掉的那一半归谁**写在登记表上 —— 归那道 Claude 会话数据围栏 ＋ 本层四条判据。
+//! **缩掉的那一半归谁**写在登记表上 —— 归本层四条判据（〔FN1 · V119〕从前还有「那道 Claude 会话数据围栏」，用户拿掉了）。
 //! 「只缩不写归属 = 把那一半丢了」（那一格的 why 逐字）。
 //!
 //! # 〔`K-R79` 09-12〕上面那三条「小」里的第三条：**远端那一半今天有一层了**
@@ -199,7 +205,15 @@ mod tests {
             "skill_install",
             "〔AS2 · 第四波 4B · V113〕skill「装到这台」：帧面 `skill-read`（来源那台读 skill 的文件原文）· `skill-install-plan`\
              （要被写的那一台判：差异与闸原样用 `mcp_sync`，可疑项带那台的事实）。它归 backend-core 是因为文件与事实都在那台机器上。\
-             **零写盘**：写经 monitor → 那台后端 `files-put`（CAS）",
+             **零写盘**：写经 monitor → 那台后端 `files-put`（CAS）。〔SU1 · 第四波 4C · V116〕又多两条只读帧命令：\
+             `skill-installs`（这台记着哪几个从别处装来的）· `skill-uninstall-plan`（被卸那台逐文件比摘要、判删哪几个）；\
+             删经 monitor → 那台后端 `files-delete`（CAS），本模块仍零写盘",
+        ),
+        (
+            "skill_ledger",
+            "〔SU1 · 第四波 4C · V116〕skill 装记录：帧面 `skill-install-record`（装完记下写了哪几个文件 · 卸掉的摘掉）。\
+             它归 backend-core 是因为「这台上哪几个文件是装写进去的」是**那台机器上**的事实；写的只有后端**自己的**记录文件 \
+             `~/.cc-monitor/skill-installs.json`（第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
         ),
         (
             "asset_sync",
@@ -219,6 +233,13 @@ mod tests {
             "〔C4d · 第四波 4B〕历史跨机 join 的唯一的家：帧面 `history-projects` / `history-sessions` 出成品（记录树 ＋ 合成历史 ＋ \
              pidfile 判活 ＋ 远端经 `remote_ask`，并上注解）。它归 backend-core 是因为主会话 09-25 裁「join 只一个家，在本机常驻后端」。\
              **零写盘**：注解只读（`history_annotations::load`）",
+        ),
+        (
+            "stderr_log",
+            "〔NT2 · 第四波 4C · S1〕脱离常驻那条载体的后端：stderr 落进一份有上限、滚动的文件（`设计/15 §4.7 S1`）。\
+             它归 backend-core 是因为那些诊断（host key 警告 · 中转起不来的原因 · watch 失败）**只在这个进程里**说得出来。\
+             写的只有那两份诊断文件（当前 ＋ 旧的一份；路径由宿主交 `CCM_BACKEND_STDERR_LOG`，后端**自己的**状态，第四层登记，\
+             见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
         ),
         (
             "remote_ask",
@@ -388,7 +409,7 @@ mod tests {
     /// |---|---|---|---|
     /// | ① | 改动动词是**闭集** | [`MUTATING_FACE_VERBS`] ＋ `every_fs_call_in_backend_production_is_read_only`（表外动词照旧红，只在本层模块里放行表内那几个） | 换命名空间的写（`os::unix::fs::…`）——与默认层同一个洞 |
     /// | ② | 表外的改动在本层**照旧禁** | [`MUTATING_FACE_STILL_FORBIDDEN`]（含**递归删**：没签字） | 同上 |
-    /// | ③ | **每一处都先过围栏** | [`unfenced_mutations`]：函数里第一个改动动词之前，必须已经出现一次围栏调用 | 🔴 **数据流**：它判「先判后动」的**顺序**，判不了「动的就是判过的那一个」（`let _ = 围栏(a); 改(b)` 骗得过它）。那一半靠本模块自己的行为判据 |
+    /// | ③ | **每一处都先过路径解析** | [`unresolved_mutations`]：函数里第一个改动动词之前，必须已经出现一次路径解析调用 | 🔴 **数据流**：它判「先判后动」的**顺序**，判不了「动的就是判过的那一个」（`let _ = 路径解析(a); 改(b)` 骗得过它）。那一半靠本模块自己的行为判据 |
     /// | ④ | **只从文件管理那一面来** | [`MUTATING_FACE_DOORS`]：后端生产树里引用得到本层模块的文件，集合**恒等于**那一扇门；那扇门里够得到它的命令，集合**恒等于** `MANAGE_COMMANDS` | 宏拼出来的路径；`use` 之后改用短名（`use` 那一行本身带前缀，看得见） |
     ///
     /// ⚠ **它不判「这一面该不该有写能力」** —— 那是用户裁的（09-23 那句话），
@@ -397,36 +418,36 @@ mod tests {
         "control/files_write.rs",
         "文件管理面的写原语（`设计/60 §8.6` 第 2、3 步）：`O_EXCL` 新建 · 建目录 · 改名 · \
          删文件或空目录 · 改权限 · 覆盖写 · 〔F7a 09-24〕同根内复制（由 `O_EXCL` 新建 ＋ 换名 ＋ \
-         删自己刚建的那一份拼成，**不添动词**）· 〔FW5 09-24〕递归删（计划趟逐条目过围栏、\
-         执行趟只删计划里的且每条当场再判，由删文件 ＋ 删空目录拼成，**不添动词**）。每一件都先过 Claude 会话数据围栏 \
-         （`agents::claudecode::paths::is_protected_session_path`，与桥那一侧函数体逐字相同）\
-         ＋ 词法 ＋ 解 symlink 再判；会跟链接的两件（改权限 · 覆盖写）连最后一段也解到底。\
+         删自己刚建的那一份拼成，**不添动词**）· 〔FW5 09-24〕递归删（计划趟逐条目过路径解析、\
+         执行趟只删计划里的且每条当场再判，由删文件 ＋ 删空目录拼成，**不添动词**）。每一件都先过路径解析 \
+         （词法不越根 ＋ 解 symlink 再判落点；〔FN1 · V119〕会话数据围栏拿掉了）；\
+         会跟链接的几件（改权限 · 覆盖写 · 复制的源 · 读改写）连最后一段也解到底。\
          线上入口只有 `inbound.rs` 那几条 `files-*` 写命令（`MANAGE_COMMANDS` 逐条登记）",
     ), (
         // 〔F7c · 第三波 · 2026-09-24〕`设计/60 §13`：SFTP 缩成只做传输之后，上传只写暂存区，
         //   把暂存件挪进用户目标的**那一下**住这里 —— 同一句用户裁决（「只允许后端的文件管理部分写文件」）。
         "control/files_commit.rs",
         "上传的提交（`设计/60 §13`）：把 `~/.cc-monitor/staging/<key>.part` 改名上位到用户指定的目标。\
-         先过写面那道围栏（`files_write::fenced_target`，借用、不抄）；不覆盖那一支先 `O_EXCL` 占位再改名上位\
+         先过写面那道路径解析（`files_write::resolve_in_root`，借用、不抄）；不覆盖那一支先 `O_EXCL` 占位再改名上位\
          （改名失败撤掉自己那个 0 字节占位）。暂存件路径由本模块自己拼、`key` 只收 32 位十六进制 ⇒ \
          调用方指不到暂存区之外的源。〔F9c · 第四波〕存盘装不进一行时的块：`O_EXCL` 新建 \
-         `<key>.<seq>.chunk`（暂存区不在就先过围栏再建目录）· 读回拼起来交写面 `overwrite_text` 原地覆盖（不添动词）· \
-         删这一键的块（先过以暂存区为根的围栏）。线上入口只有 `inbound.rs` 那三条 \
+         `<key>.<seq>.chunk`（暂存区不在就先过路径解析再建目录）· 读回拼起来交写面 `overwrite_text` 原地覆盖（不添动词）· \
+         删这一键的块（先过以暂存区为根的路径解析）。线上入口只有 `inbound.rs` 那三条 \
          `files-commit-upload` / `files-stage-chunk` / `files-commit-text`（`COMMIT_COMMANDS`）",
     ), (
         // 〔SR1b · 第四波 · 2026-09-24〕用户 V89「SFTP 进本机常驻后端」：传输台搬进本机后端，下载的**本机落点**
         //   （用户选的路径）那一下写从 monitor 搬到这里 —— 同一句用户裁决（「只允许后端的文件管理部分写文件」）。
         "control/transfer.rs",
         "传输台（`设计/60 §4.2`）：下载的本机落点 —— `O_EXCL` 新建 `<落点>.part`（旧的尾块对不上先删）· \
-         续传时接着写那一份（不截断、不新建）· 传完改名上位 · 失败删 `.part`。每一处先过写面那道围栏 \
-         （`files_write::fenced_target`，根 = 落点的父目录，借用、不抄）。远端暂存区那一半一行都不在这里 \
+         续传时接着写那一份（不截断、不新建）· 传完改名上位 · 失败删 `.part`。每一处先过写面那道路径解析 \
+         （`files_write::resolve_in_root`，根 = 落点的父目录，借用、不抄）。远端暂存区那一半一行都不在这里 \
          （经 `dial/sftp.rs` 的写原语，只许两处）。线上入口只有 `inbound.rs` 那四条 `transfer-*` 硬臂 \
          （`transfer_command_names`）",
     )];
 
     /// 第三层模块**能用**的改动动词（`fs::` 之后那个词）。**闭集**。
     ///
-    /// ⚠ 每一个都要在 [`unfenced_mutations`] 的针里有对应的调用形 —— 由
+    /// ⚠ 每一个都要在 [`unresolved_mutations`] 的针里有对应的调用形 —— 由
     /// `every_third_layer_judge_reds_on_its_own_sample` 逐个喂样本钉住。
     pub(super) const MUTATING_FACE_VERBS: &[&str] = &[
         "create_dir",
@@ -448,8 +469,8 @@ mod tests {
     ///   它是**读**；刻意不进全局只读表，理由同 `symlink_metadata`（不替全后端放一个读动词）。
     ///   ⚠ **改动动词闭集（[`MUTATING_FACE_VERBS`]）一个没加**：递归删由「删文件」「删空目录」
     ///   两个既有动词逐条拼出，那个一步递归删的库函数照旧在 [`MUTATING_FACE_STILL_FORBIDDEN`] 上。
-    ///   〔SR1b · 第四波 · **3 → 4**〕`File::from_std` —— 把**已经过了围栏、已经开好**的那个 std 句柄换成异步句柄
-    ///   （传输台的下载落点：开那一下在同步函数里过围栏，写那一路是异步的）。它不开任何东西、不改任何东西；
+    ///   〔SR1b · 第四波 · **3 → 4**〕`File::from_std` —— 把**已经过了路径解析、已经开好**的那个 std 句柄换成异步句柄
+    ///   （传输台的下载落点：开那一下在同步函数里过路径解析，写那一路是异步的）。它不开任何东西、不改任何东西；
     ///   刻意不进全局只读表，理由同上（不替全后端放一个词）。
     const MUTATING_FACE_AUX: &[&str] = &[
         "File::from_std",
@@ -460,17 +481,18 @@ mod tests {
 
     /// 第三层模块**仍然不许**出现的东西。
     ///
-    /// 🔴 **一步递归删**在这里：围栏的射程是**一条路径**，它动的是一整棵子树 ——
-    /// 顶上那一条过得了围栏，底下藏着的一份会话文件照样被一起删掉；而且它的遍历不经过我们的围栏，
-    /// 删的是「那一刻盘上的东西」不是「判过的东西」。
+    /// 🔴 **一步递归删**在这里：路径解析的射程是**一条路径**，它动的是一整棵子树 ——
+    /// 它的遍历不经过我们的路径解析，删的是「那一刻盘上的东西」不是「判过的东西」
+    /// （〔FN1〕从前这里的例子是「底下藏着的一份会话文件照样被一起删掉」，那一道拦截 V119 拿掉了；
+    /// 「只删计划里的、每条当场再判」这条理由没变：两趟之间换进来的链接照样拦得住）。
     /// 〔FW5 · 第四波〕递归删**做了，但不靠它**：`control/files_write.rs::delete_tree` 两趟、
-    /// 逐条目过围栏、只用两个既有动词（设计住 `调研/第四波记录/FW5.md` 第一节）；
-    /// 「列举之后的改动在列举之后再过一次围栏」由 [`MUTATING_FACE_LISTERS`] 那条判据钉。
+    /// 逐条目过路径解析、只用两个既有动词（设计住 `调研/第四波记录/FW5.md` 第一节）；
+    /// 「列举之后的改动在列举之后再过一次路径解析」由 [`MUTATING_FACE_LISTERS`] 那条判据钉。
     /// ⚠ `fs::symlink(` 带左括号：不带的话它是 `symlink_metadata` 的前缀，会自伤。
     ///
     /// 🔴〔F7a · 第三波 09-24〕本层**有了复制**（`files-copy`），而一步复制那个动词**照旧在这张表上**：
-    /// 它目标是链接时跟过去写（围栏判的是链接本身那条路径 ⇒ 一条指向会话文件的链接就能借它
-    /// 盖掉那份记录），目标已在时就地截断重写（半途失败留半份）。复制由 `O_EXCL` 新建 ＋ 换名 ＋
+    /// 它目标是链接时跟过去写（路径解析判的是链接本身那条路径 ⇒ 一条指向根外的链接就能借它
+    /// 盖掉根外那一份），目标已在时就地截断重写（半途失败留半份）。复制由 `O_EXCL` 新建 ＋ 换名 ＋
     /// 删自己刚建的那一份**拼出来**（`control/files_write.rs::copy_entry` 头注逐条），
     /// ⇒ [`MUTATING_FACE_VERBS`] 一个字没变。
     pub(super) const MUTATING_FACE_STILL_FORBIDDEN: &[&str] = &[
@@ -486,12 +508,18 @@ mod tests {
         "create(true)",
     ];
 
-    /// 围栏调用的针。**本层模块的围栏入口只有这两个**（其余两道被它们串着）——
-    /// 〔RW1 · 第四波 09-24〕外加**删历史会话那一条自己的围栏** `fenced_session_file(`：
-    /// 它是会话文件围栏**唯一的例外**（只收 sid、落点由适配层按 sid 找），
+    /// 路径解析调用的针。**本层模块的路径解析入口只有这两个**（其余两道被它们串着）——
+    /// 〔FN1 · V119〕旧名 `FENCE_CALLS`，针旧名 `fenced_target(` / `fenced_existing(`：会话数据围栏拿掉之后
+    /// 它们只做路径解析，名字跟着改。
+    /// 〔RW1 · 第四波 09-24〕外加**删历史会话那一条自己的那一道** `fenced_session_file(`
+    /// （只收 sid、落点由适配层按 sid 找、必须**是**一份会话记录 —— 它是真围栏，限制的是删会话那一条自己）：
     /// 所以它**只许出现一处调用**（[`the_session_file_exception_lives_in_exactly_one_place`]）——
-    /// 拿它去给别的改动「过围栏」、把例外借给第二个函数，那一条当场红。
-    const FENCE_CALLS: &[&str] = &["fenced_target(", "fenced_existing(", "fenced_session_file("];
+    /// 拿它去给别的改动「过关」、借给第二个函数，那一条当场红。
+    const RESOLVE_CALLS: &[&str] = &[
+        "resolve_in_root(",
+        "resolve_existing_in_root(",
+        "fenced_session_file(",
+    ];
 
     /// 目录列举的针。
     const LISTING_CALL: &str = "read_dir(";
@@ -500,15 +528,15 @@ mod tests {
     ///
     /// # 它补的是判据 ③ 看不见的那一形
     ///
-    /// ③ 按函数判「第一个改动之前先有一次围栏」。一个函数**先**判顶上那一条、**再**列出底下整摞、
-    /// 然后一条一条删 —— ③ 照样绿，而底下每一条**都没过围栏**（递归删最该防的正是这一形：
+    /// ③ 按函数判「第一个改动之前先有一次路径解析」。一个函数**先**判顶上那一条、**再**列出底下整摞、
+    /// 然后一条一条删 —— ③ 照样绿，而底下每一条**都没过路径解析**（递归删最该防的正是这一形：
     /// 顶上的目录干净，底下藏着一份会话文件）。
     ///
     /// ⇒ 两条判据：
     /// 1. **人群恒等**（两向）：本层模块里出现 [`LISTING_CALL`] 的函数，集合 == 本表。
     ///    新长出一个列目录的函数而没登记 ⇒ 红（它得先说清它列完之后做什么）。
-    /// 2. **列举之后的改动，在列举之后必须再过一次围栏**（[`mutations_after_listing_unfenced`]）：
-    ///    函数里第一次列举之后的第一个改动，与那次列举之间要有一次围栏调用。
+    /// 2. **列举之后的改动，在列举之后必须再过一次路径解析**（[`mutations_after_listing_unresolved`]）：
+    ///    函数里第一次列举之后的第一个改动，与那次列举之间要有一次路径解析调用。
     ///    本表今天三条：一条**只列不删**（递归删的计划趟），两条**逐条目先判后删**（暂存区孤儿扫 · 存盘分块收尾）。
     ///
     /// ⚠ 漏判面同 ③：它判顺序，判不了「删的就是判过的那一个」（数据流）——
@@ -517,28 +545,28 @@ mod tests {
         (
             "control/files_commit.rs",
             "sweep_stale",
-            "暂存区孤儿扫：列暂存区，每一条先 `fenced_target`（以暂存区为根）再删 —— 逐条目先判后删",
+            "暂存区孤儿扫：列暂存区，每一条先 `resolve_in_root`（以暂存区为根）再删 —— 逐条目先判后删",
         ),
         // 〔F9c 与 FW5 合并 · 第四波〕FW5 立本表时 F9c 的 `drop_chunks` 还在另一棵树上 ⇒ 两边各自绿、合起来才红。
         (
             "control/files_commit.rs",
             "drop_chunks",
-            "存盘分块的收尾：列暂存区，只挑这一次的 `<key>.<块号>` 块，每一条先 `fenced_target`（以暂存区为根）、\
+            "存盘分块的收尾：列暂存区，只挑这一次的 `<key>.<块号>` 块，每一条先 `resolve_in_root`（以暂存区为根）、\
              且只删普通文件 —— 与孤儿扫同形，逐条目先判后删",
         ),
         (
             "control/files_write.rs",
             "plan_tree_within",
-            "递归删的计划趟：只列、逐条目过围栏、**一个改动都没有**；删那一下住 `remove_planned`（先过它自己那一条的围栏）",
+            "递归删的计划趟：只列、逐条目过路径解析、**一个改动都没有**；删那一下住 `remove_planned`（先过它自己那一条的路径解析）",
         ),
     ];
 
     /// 按**顶格** `fn` / `pub fn` 把一份生产段切成函数块，回 `(块起点, 块终点)`；
-    /// 第一块是第一个函数之前的那一段。[`unfenced_mutations`] 与列举那条判据共用这一份切法。
+    /// 第一块是第一个函数之前的那一段。[`unresolved_mutations`] 与列举那条判据共用这一份切法。
     fn fn_chunks(prod: &str) -> Vec<(usize, usize)> {
         let mut starts: Vec<usize> = Vec::new();
         let mut at = 0usize;
-        // ⚠ 循环变量刻意**不叫 `line`**（理由住 [`unfenced_mutations`] 那一段注释）。
+        // ⚠ 循环变量刻意**不叫 `line`**（理由住 [`unresolved_mutations`] 那一段注释）。
         for fn_row in prod.split_inclusive('\n') {
             let fn_row_t = fn_row.trim_end();
             let is_fn_head = fn_row_t
@@ -585,8 +613,8 @@ mod tests {
             .collect()
     }
 
-    /// 判据 2：列举之后、**列举与改动之间没有围栏**的那几处，逐条回 `函数名 → 那个改动`。
-    pub(super) fn mutations_after_listing_unfenced(prod: &str) -> Vec<String> {
+    /// 判据 2：列举之后、**列举与改动之间没有路径解析**的那几处，逐条回 `函数名 → 那个改动`。
+    pub(super) fn mutations_after_listing_unresolved(prod: &str) -> Vec<String> {
         let calls = mutation_calls();
         let mut bad = Vec::new();
         for (a, b) in fn_chunks(prod) {
@@ -602,7 +630,7 @@ mod tests {
             let Some((mk, which)) = first_mut else {
                 continue;
             };
-            let fenced_between = FENCE_CALLS
+            let fenced_between = RESOLVE_CALLS
                 .iter()
                 .filter_map(|f| after.find(f))
                 .any(|fk| fk < mk);
@@ -613,7 +641,7 @@ mod tests {
         bad
     }
 
-    /// 改动动词在源码里的**调用形**（[`unfenced_mutations`] 找的就是这些）。
+    /// 改动动词在源码里的**调用形**（[`unresolved_mutations`] 找的就是这些）。
     ///
     /// 由 [`MUTATING_FACE_VERBS`] **派生**，外加 `O_EXCL` 那一处的 `.open(` —— 不手写第二份。
     fn mutation_calls() -> Vec<String> {
@@ -658,7 +686,7 @@ mod tests {
     /// | ① | **按文件**登记（不按目录，同第三层那块墓碑的理由） | 相等断言（扫到的第四层模块数 == 本表条数） |
     /// | ② | 动词**闭集**：建那一层目录 · 原子挪 · 失败时删自己的临时文件 | [`OWN_STATE_VERBS`] ＋ `every_fs_call_in_backend_production_is_read_only` |
     /// | ③ | 表外写法照旧禁（覆盖写 / 截断 / 追加 / 复制 / 链接 / 改权限 / 删目录） | [`OWN_STATE_STILL_FORBIDDEN`] ＋ `.open(` 与 `O_EXCL` 配对 |
-    /// | ④ | **只从一扇门进来**：每一份的写口（[`OWN_STATE_WRITERS`]）只被 `inbound.rs` 引用 | `the_own_state_writer_is_reached_through_exactly_one_door` |
+    /// | ④ | **只从一扇门进来**：每一份的写口（[`OWN_STATE_WRITERS`]）只被**它自己那扇门**引用（门逐写口登记，今天三扇：`inbound.rs` 命令注册 ·〔RK1〕`relay/listen.rs` 中转起监听 ·〔NT2〕`main.rs` stderr 诊断文件） | `the_own_state_writer_is_reached_through_exactly_one_door` |
     /// | ⑤ | **只写那一份文件**：文件名在全部生产代码里只有这一个家 | `control::exit_policy::tests::the_file_name_has_exactly_one_home_in_all_production_code` |
     ///
     /// ⚠ 漏判面：它判不了「挪进去的那一下落在的就是那个名字」（数据流）——
@@ -695,6 +723,28 @@ mod tests {
              （会话记录本身一个字节不碰）。读不懂就拒写 → 只改那一条 → `O_EXCL` 临时文件 → 写满 → 原子挪过去；只建那一层目录；\
              失败删自己的临时文件。线上入口只有 `inbound.rs` 的 `history-annotate` / `history-forget`（＋ 派生的 CLI 面）",
         ),
+        (
+            "relay/door.rs",
+            "〔RK1 · `INVARIANTS §48.1`〕**中转钥匙** `~/.cc-monitor/relay-key`：中转口进门要出示的那一把。文件名 / 格式 / 落点 \
+             都是本仓定的、只有中转与起会话那一侧的 shell 读它 ⇒ 中转**自己的**状态，不是用户数据。读回；读不出或形状不对才铸 → \
+             临时文件出生即只给本人（`creds_core::perm::create_private`，O_EXCL）→ 写满 → 原子挪过去；只建 `~/.cc-monitor` 那一层；\
+             失败删自己的临时文件。入口只有中转**绑上口之后**那一处（`relay/listen.rs::prepare`）—— 不是帧面命令",
+        ),
+        (
+            "stderr_log.rs",
+            "〔NT2 · 第四波 4C · S1〕脱离常驻那条载体的后端自己的 **stderr 诊断文件**（当前 `stderr.log` ＋ 旧的一份 \
+             `stderr.old.log`；路径由 monitor 起脱离那条载体时交 `CCM_BACKEND_STDERR_LOG`，目录由它建好）。只有后端写、\
+             是后端自己说的话 ⇒ 后端**自己的**状态，不是用户数据。动词：`O_EXCL` 新建当前那份 · 原子挪成旧的（盖掉上一份旧的）；\
+             不建目录、不截断、不追加。对外口（装它的 `install_from_env` · 交给 `tracing` 的 `stderr_writer`）只从 `main.rs` 进（与〔RK1〕`relay/listen.rs` 一样，是不走 `inbound.rs` 的门）",
+        ),
+        (
+            "skill_ledger.rs",
+            "〔SU1 · 第四波 4C · V116〕**skill 装记录** `~/.cc-monitor/skill-installs.json`：从别的机器装到这台的 skill，装时写进了哪几个文件 \
+             （各自的摘要 ＋ 装之前在不在）。用户裁「要，只删装时写进去的文件」—— 卸只删这里记着的。文件名 / 格式 / 落点都是本仓定的、\
+             只有后端读它 ⇒ 后端**自己的**状态，不是用户数据（skill 目录里的文件本模块一个字节都不写不删）。`O_EXCL` 建临时文件 → \
+             写满 → 原子挪过去；只建 `~/.cc-monitor` 那一层；失败删自己的临时文件；读不懂的那份不覆盖。线上入口只有 `inbound.rs` 的 \
+             `skill-install-record`（＋ 派生的 CLI 面）",
+        ),
     ];
 
     /// 第四层模块**能用**的写动词（`fs::` 之后那个词）。**闭集**。
@@ -717,25 +767,61 @@ mod tests {
         "create(true)",
     ];
 
-    /// 第四层那扇门：后端生产树里**唯一**被允许引用写口的文件。
-    const OWN_STATE_DOORS: &[(&str, &str)] = &[(
-        "inbound.rs",
-        "命令注册那一处 —— `exit-policy-set` 与〔RM1a〕`apikey-key-set` 各一条（帧面与派生的 CLI 面共用）；\
-         〔AS2〕资产目录那两条（`assets-catalog` / `assets-catalog-merge`）；〔C4d〕历史注解那两条（`history-annotate` / `history-forget`）。\
-         前端改那两份只有这一条路（`§3.3b ③`：前端要改它，走一条后端命令）",
-    )];
+    /// 第四层的门：后端生产树里被允许引用写口的文件。**每个写口恰好一扇**（[`OWN_STATE_WRITERS`] 第三列），
+    /// 本表是门的全集（用到的门 == 本表，两向）。
+    /// 〔NT2 · S1〕先前只有 `inbound.rs` 一扇、所有写口共用（〔RK1〕同波另加了 `relay/listen.rs`，两路合并时并成这一张）；stderr 诊断文件的写口在进程起来那一刻装、此后跟着 `tracing` 滚（没有命令可走）⇒
+    /// 门改成「每个写口自己的那一扇」，`inbound.rs` 那几个写口照旧只许 `inbound.rs` 碰（一格没松）。
+    const OWN_STATE_DOORS: &[(&str, &str)] = &[
+        (
+            "inbound.rs",
+            "命令注册那一处 —— `exit-policy-set` 与〔RM1a〕`apikey-key-set` 各一条（帧面与派生的 CLI 面共用）；\
+             〔AS2〕资产目录那两条（`assets-catalog` / `assets-catalog-merge`）；〔C4d〕历史注解那两条（`history-annotate` / `history-forget`）；\
+             〔SU1〕skill 装记录那一条（`skill-install-record`）。\
+             前端改那两份只有这一条路（`§3.3b ③`：前端要改它，走一条后端命令）",
+        ),
+        (
+            "relay/listen.rs",
+            "〔RK1〕中转起监听那一处（`prepare`，本机常驻后端进程内那一形与 `--relay` 那一形共用）：**绑上口之后、说「在听」之前** \
+             拿钥匙。它不是帧面命令 —— 钥匙是中转进门的前提，不是前端要改的值；只有绑上了口的那一个会写 ⇒ 不会两个中转抢着铸",
+        ),
+        (
+            "main.rs",
+            "〔NT2 · S1〕流模式起来那一刻（一次性子命令全部 `exit` 之后、选载体之前）装 stderr 诊断文件 —— \
+             那一格没有命令可走（要接的正是这个进程此后说的每一句话），宿主交了路径才装",
+        ),
+    ];
 
     /// 〔RM1a〕第四层每一份模块的**写口**（`模块路径`, `写口的限定名尾巴`）。**与 [`OWN_STATE_MODULES`] 一一对应**
     /// （两向相等，由 `the_own_state_writer_is_reached_through_exactly_one_door` 钉）。
     /// 读口不在这里 —— 读不改世界，别处引用它合法。
-    const OWN_STATE_WRITERS: &[(&str, &str)] = &[
-        ("control/exit_policy.rs", "exit_policy::answer_set"),
-        ("accounts/upstream/file_face.rs", "file_face::answer_set"),
+    /// 〔NT2〕第三列 = 这个写口**唯一**的那扇门（[`OWN_STATE_DOORS`] 里的一行）。
+    const OWN_STATE_WRITERS: &[(&str, &str, &str)] = &[
+        (
+            "control/exit_policy.rs",
+            "exit_policy::answer_set",
+            "inbound.rs",
+        ),
+        (
+            "accounts/upstream/file_face.rs",
+            "file_face::answer_set",
+            "inbound.rs",
+        ),
         // 〔AS2〕三条写口同一个前缀（`answer_catalog` 现扫即记 · `answer_merge` 并进来再记，都会写）⇒ 针取前缀：
         // 本模块生产段里凡是 `answer_` 开头的公开入口都是写口，只许 `inbound.rs` 碰。
-        ("asset_catalog.rs", "asset_catalog::answer_"),
+        ("asset_catalog.rs", "asset_catalog::answer_", "inbound.rs"),
         // 〔C4d〕两条写口同一个前缀（`answer_annotate` · `answer_forget`）⇒ 针取前缀；读口 `last_accounts` / `load` 不在针上。
-        ("history_annotations.rs", "history_annotations::answer_"),
+        (
+            "history_annotations.rs",
+            "history_annotations::answer_",
+            "inbound.rs",
+        ),
+        // 〔RK1〕中转钥匙：门是中转起监听那一处，不是命令注册。
+        ("relay/door.rs", "door::ensure_key", "relay/listen.rs"),
+        // 〔NT2 · S1〕stderr 诊断文件：写口是装它的那一个函数，门是 `main.rs`。
+        // 针取模块前缀：装它（`install_from_env`）与滚它（`stderr_writer`，交给 `tracing`）都会写，都只许 `main.rs` 碰。
+        ("stderr_log.rs", "stderr_log::", "main.rs"),
+        // 〔SU1〕一条写口 `answer_record` ⇒ 针取前缀同上两条；读口 `load_at` / `read_at` / `ledger_path` / `digest_of` 不在针上（`skill_install.rs` 读它合法）。
+        ("skill_ledger.rs", "skill_ledger::answer_", "inbound.rs"),
     ];
 
     fn is_own_state(rel: &str) -> bool {
@@ -750,12 +836,12 @@ mod tests {
             .copied()
     }
 
-    /// 第三层判定 ③：**没先过围栏**的那几处改动，逐条回 `函数头 → 那个改动`。
+    /// 第三层判定 ③：**没先过路径解析**的那几处改动，逐条回 `函数头 → 那个改动`。
     ///
     /// 按**顶格** `fn` / `pub fn` 切成函数块（本层模块今天全是顶格函数；嵌套函数会被并进
     /// 外层那一块 —— 那只会让判定**更严**，不会更松）。块里第一个改动调用之前，
-    /// 必须已经出现一次 [`FENCE_CALLS`] 里的调用。第一个 `fn` 之前的改动一律算没过围栏。
-    pub(super) fn unfenced_mutations(prod: &str) -> Vec<String> {
+    /// 必须已经出现一次 [`RESOLVE_CALLS`] 里的调用。第一个 `fn` 之前的改动一律算没过路径解析。
+    pub(super) fn unresolved_mutations(prod: &str) -> Vec<String> {
         let calls = mutation_calls();
         // 〔FW5〕切块抽成了 [`fn_chunks`]（列举那条判据共用同一份切法，一条形状一个住址）。
         // ⚠ 那份切法里的循环变量刻意**不叫 `line`**：`needle_anchor_registry` 的语料变量识别是**按名字、
@@ -773,7 +859,7 @@ mod tests {
             let Some((mk, which)) = first_mut else {
                 continue;
             };
-            let first_fence = FENCE_CALLS.iter().filter_map(|f| chunk.find(f)).min();
+            let first_fence = RESOLVE_CALLS.iter().filter_map(|f| chunk.find(f)).min();
             if first_fence.is_none_or(|fk| fk > mk) {
                 let head = chunk.lines().next().unwrap_or("").trim().to_string();
                 bad.push(format!("{head}  →  {which}"));
@@ -897,7 +983,7 @@ mod tests {
             let src = std::fs::read_to_string(&path).expect("read rs file");
             let prod = crate::guard_support::production_source(&src);
 
-            // 🔴 〔波 5 ㈡〕第三层：改动既有数据，只许在这里，而且每一处先过围栏。
+            // 🔴 〔波 5 ㈡〕第三层：改动既有数据，只许在这里，而且每一处先过路径解析。
             if is_mutating_face(&rel) {
                 face += 1;
                 if let Err(why) = open_calls_are_all_exclusive(&prod) {
@@ -907,31 +993,31 @@ mod tests {
                     panic!(
                         "第三层模块 {} 含 `{pat}`。\n\
                          这一层放行的改动动词是一个**闭集**（`MUTATING_FACE_VERBS`），\n\
-                         `{pat}` 不在里面 —— 要加，先论证它为什么过得了「一条路径一道围栏」。",
+                         `{pat}` 不在里面 —— 要加，先论证它为什么过得了「一条路径一道路径解析」（〔FN1〕原话「一条路径一道围栏」）。",
                         path.display()
                     );
                 }
                 // ⚠ 这一判**剥注释**再判（`guard_core::production_code`），与上面两判不同口径：
                 //   上面两判不剥注释是 fail-closed（写进注释也算，宁可误红）；而这一判找的是
-                //   「围栏调用在改动调用**之前**」——注释里提一句 `fenced_target(` 就能把它喂饱，
+                //   「路径解析调用在改动调用**之前**」——注释里提一句 `resolve_in_root(` 就能把它喂饱，
                 //   不剥注释在这一判上是 **fail-open**。现打：第一版没剥，头注里一句散文
-                //   就被判成了「没过围栏的改动」（方向相反的那一形同样会发生）。
-                let bad = unfenced_mutations(&guard_core::production_code(&src));
+                //   就被判成了「没过路径解析的改动」（方向相反的那一形同样会发生）。
+                let bad = unresolved_mutations(&guard_core::production_code(&src));
                 if !bad.is_empty() {
                     panic!(
-                        "第三层模块 {} 里有改动**没先过围栏**：\n  {}\n\n\
-                         判准逐字：「改，但**每一处都先过围栏**、且只从声明过的那一面来」。\n\
-                         ⇒ 在那个函数里、第一个改动之前调一次 `fenced_target(` 或 `fenced_existing(`。",
+                        "第三层模块 {} 里有改动**没先过路径解析**：\n  {}\n\n\
+                         判准逐字：「改，但**每一处都先过路径解析**、且只从声明过的那一面来」。\n\
+                         ⇒ 在那个函数里、第一个改动之前调一次 `resolve_in_root(` 或 `resolve_existing_in_root(`。",
                         path.display(),
                         bad.join("\n  ")
                     );
                 }
-                // 〔FW5〕列举之后的改动，在列举之后必须再过一次围栏（[`MUTATING_FACE_LISTERS`] 头注）。
-                let bad = mutations_after_listing_unfenced(&guard_core::production_code(&src));
+                // 〔FW5〕列举之后的改动，在列举之后必须再过一次路径解析（[`MUTATING_FACE_LISTERS`] 头注）。
+                let bad = mutations_after_listing_unresolved(&guard_core::production_code(&src));
                 if !bad.is_empty() {
                     panic!(
-                        "第三层模块 {} 里有函数**列完目录之后没再过围栏就动手**：\n  {}\n\n\
-                         顶上判过一次不算数 —— 列出来的每一条都要自己过围栏\n\
+                        "第三层模块 {} 里有函数**列完目录之后没再过路径解析就动手**：\n  {}\n\n\
+                         顶上判过一次不算数 —— 列出来的每一条都要自己过路径解析\n\
                          （递归删最该防的正是这一形：顶上的目录干净，底下藏着一份会话文件）。",
                         path.display(),
                         bad.join("\n  ")
@@ -1198,21 +1284,30 @@ mod tests {
         let modules: std::collections::BTreeSet<&str> =
             OWN_STATE_MODULES.iter().map(|(p, _)| *p).collect();
         let writers: std::collections::BTreeSet<&str> =
-            OWN_STATE_WRITERS.iter().map(|(p, _)| *p).collect();
+            OWN_STATE_WRITERS.iter().map(|(p, _, _)| *p).collect();
         assert_eq!(
             modules, writers,
             "第四层登记的模块与写口表对不上 —— 每一份都得说清它的写口是哪个函数"
         );
-        for (_, needle) in OWN_STATE_WRITERS {
-            own_state_door_matches(&root, needle);
+        for (_, needle, door) in OWN_STATE_WRITERS {
+            own_state_door_matches(&root, needle, door);
         }
+        // 〔RK1〕门表与写口表里出现的门两向相等：登记了一扇没人走的门 / 写口指着一扇没登记的门 ⇒ 红。
+        let doors_used: std::collections::BTreeSet<&str> =
+            OWN_STATE_WRITERS.iter().map(|(_, _, d)| *d).collect();
+        let doors_registered: std::collections::BTreeSet<&str> =
+            OWN_STATE_DOORS.iter().map(|(d, _)| *d).collect();
+        assert_eq!(
+            doors_used, doors_registered,
+            "第四层的门表与写口表里用到的门对不上"
+        );
         for (p, why) in OWN_STATE_MODULES.iter().chain(OWN_STATE_DOORS) {
             assert!(why.trim().chars().count() >= 20, "`{p}` 没写清为什么");
         }
     }
 
     /// 一根写口针在后端生产树里的引用处 == 登记的那扇门（零命中守卫的本体）。
-    fn own_state_door_matches(root: &std::path::Path, needle: &str) {
+    fn own_state_door_matches(root: &std::path::Path, needle: &str, door: &str) {
         let mut scanned = 0usize;
         let mut found: std::collections::BTreeSet<String> = Default::default();
         for path in core_files() {
@@ -1241,10 +1336,7 @@ mod tests {
             scanned >= 60,
             "只扫到 {scanned} 份后端源文件 —— 遍历坏了，零命中守卫在空人群上恒绿"
         );
-        let want: std::collections::BTreeSet<String> = OWN_STATE_DOORS
-            .iter()
-            .map(|(p, _)| (*p).to_string())
-            .collect();
+        let want: std::collections::BTreeSet<String> = [door.to_string()].into_iter().collect();
         assert_eq!(
             found,
             want,
@@ -1505,11 +1597,13 @@ mod tests {
         );
     }
 
-    /// 🔴🔴 **〔RW1 · 第四波 09-24〕删历史会话是会话文件围栏唯一的例外 —— 它恰好住一处。**
+    /// 🔴🔴 **〔RW1 · 第四波 09-24〕删历史会话那一条自己的那一道 —— 它恰好住一处。**
     ///
     /// 用户裁「只允许后端的文件管理部分写文件」「也管本机」之后，删历史会话（本机此前是 monitor
-    /// 进程直删、远端此前是 SFTP 直删）改成后端**一条明确的命令** `files-delete-session`。
-    /// 写面其余每一条都被会话文件围栏挡在那几份文件外面；**只有这一条**能删会话文件，而且**只收 sid**。
+    /// 进程直删、远端此前是 SFTP 直删）改成后端**一条明确的命令** `files-delete-session`，**只收 sid**。
+    /// 〔FN1 · V119〕从前这里写「写面其余每一条都被会话文件围栏挡在那几份文件外面，只有这一条能删会话文件」——
+    /// 用户「文件管理器全部都可以改. 不需要任何围栏」之后，文件管理写面也删得掉会话文件；
+    /// 本条钉的仍是删会话**那一条**的形状（只收 sid、自己那一道恰好一处），它一个字节没动。
     ///
     /// 四件，各一刀（两侧异源：一侧是后端**源码文本**，一侧是写面的**常量表**与**真跑一趟**）：
     ///
@@ -1567,7 +1661,7 @@ mod tests {
                 "control/files_write.rs".to_string(),
                 "delete_session_with".to_string()
             )],
-            "\n会话文件围栏的例外（`{call}`）必须**恰好一处调用**、住 `delete_session_with`。\n\
+            "\n删会话那一道（`{call}`）必须**恰好一处调用**、住 `delete_session_with`。\n\
              多出来的每一处都是把「能删会话文件」借给了第二个函数。"
         );
         assert_eq!(
@@ -1594,6 +1688,103 @@ mod tests {
     }
 
     /// ★ 第三层登记的每一条都**真的在盘上、真的在改**（幽灵检查，照白名单那条同形）。
+    /// 🔴🔴 **〔FN1 · 第四波 4C · 2026-09-25〕文件管理写面不再问「这是不是一份会话记录」。**
+    ///
+    /// 住址：用户裁决 **V119**（`设计/99 §1`）原话「**文件管理器全部都可以改. 不需要任何围栏**」；
+    /// 本层判准 ③ 因此从「先过围栏」换成「先过路径解析」（本文件头注第三层那一节）。
+    ///
+    /// # 两向相等，人群按事实取样
+    ///
+    /// 人群：后端生产树里**调**会话形状判定（`is_session_record_path(` / `is_session_record_file(`，
+    /// 不算定义行）的 `(文件, 所在函数)`，逐行现打。
+    /// 期望：删历史会话那一条要的三处 —— 写面 `fenced_session_file`（「要删的必须**是**会话」）·
+    /// 适配层 `session_file_for_delete_in`（按 sid 找到之后再判一次形状）· 适配层 `is_session_record_path`
+    /// （`&Path` 门面，调字符串那一份）。期望取自 `files-delete-session` 那条既有裁决（RW1「只收 sid」），
+    /// 不从判定本家现推（异源）。
+    /// 多一处 ⇒ 有人把会话文件围栏接回了文件管理写面（或别的面）；少一处 ⇒ 删会话那一条的形状变了，
+    /// 那条命令不在 FN1 射程里，先去看是谁动的。
+    ///
+    /// 正控：同一个抽取器在一段合成的「写面又问了一次」上必须认出 `(文件, 函数)`；定义行不算调用。
+    #[test]
+    fn the_file_manager_face_never_asks_the_session_shape() {
+        fn session_shape_calls(rel: &str, prod: &str) -> Vec<(String, String)> {
+            let needles = [
+                format!("is_session_record_{}(", "path"),
+                format!("is_session_record_{}(", "file"),
+            ];
+            let mut cur_fn = String::new();
+            let mut out = Vec::new();
+            for row in prod.lines() {
+                let t = row.trim_start();
+                let is_def = t
+                    .strip_prefix("pub fn ")
+                    .or_else(|| t.strip_prefix("fn "))
+                    .or_else(|| t.strip_prefix("pub(crate) fn "));
+                if let Some(rest) = is_def {
+                    cur_fn = rest
+                        .chars()
+                        .take_while(|c| c.is_alphanumeric() || *c == '_')
+                        .collect();
+                    continue; // 定义行（签名）不算调用
+                }
+                if needles.iter().any(|n| row.contains(n.as_str())) {
+                    out.push((rel.to_string(), cur_fn.clone()));
+                }
+            }
+            out
+        }
+        // 正控：抽取器认得出合成的一处调用，也认得出定义行不是调用。
+        let fake = format!(
+            "pub fn is_session_record_{p}(t: &Path) -> bool {{\n    true\n}}\n\
+             pub fn make_dir(root: &Path) {{\n    if is_session_record_{p}(root) {{}}\n}}\n",
+            p = "path"
+        );
+        assert_eq!(
+            session_shape_calls("control/files_write.rs", &fake),
+            vec![("control/files_write.rs".to_string(), "make_dir".to_string())],
+            "抽取器在合成语料上认不出那一处调用 / 把定义行当成了调用 —— 下面那个集合不可信"
+        );
+
+        let root = crate::guard_support::src_root();
+        let mut found: std::collections::BTreeSet<(String, String)> = Default::default();
+        let mut scanned = 0usize;
+        for path in core_files() {
+            if path.file_name().and_then(|n| n.to_str()) == Some("readonly_guard.rs") {
+                continue;
+            }
+            scanned += 1;
+            let rel = path
+                .strip_prefix(&root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let src = std::fs::read_to_string(&path).expect("read rs file");
+            found.extend(session_shape_calls(
+                &rel,
+                &guard_core::production_code(&src),
+            ));
+        }
+        assert!(scanned >= 60, "只扫到 {scanned} 份后端源文件 —— 遍历坏了");
+        let want: std::collections::BTreeSet<(String, String)> = [
+            ("agents/claudecode/paths.rs", "is_session_record_path"),
+            ("agents/claudecode/paths.rs", "session_file_for_delete_in"),
+            ("control/files_write.rs", "fenced_session_file"),
+        ]
+        .iter()
+        .map(|(a, b)| (a.to_string(), b.to_string()))
+        .collect();
+        assert_eq!(
+            found,
+            want,
+            "\n🔴 后端里问「这是不是一份会话记录」的地方，不再恰是删历史会话那一条要的三处。\n\
+             多出来的（⇒ 有人把会话文件围栏接回了文件管理写面或别处，而用户 V119 原话是\n\
+             「文件管理器全部都可以改. 不需要任何围栏」）：{:?}\n\
+             少了的（⇒ 删会话那一条的形状变了；它不在 FN1 射程里，先去看是谁动的）：{:?}",
+            found.difference(&want).collect::<Vec<_>>(),
+            want.difference(&found).collect::<Vec<_>>()
+        );
+    }
+
     #[test]
     fn every_mutating_face_module_is_really_on_the_tree_and_really_mutates() {
         let src_dir = crate::guard_support::src_root();
@@ -1613,11 +1804,11 @@ mod tests {
                 "`{rel}` 的生产段里只找到 {} 种改动调用 —— 它今天不在改东西（那这条登记该摘）",
                 used.len()
             );
-            // 🔴 围栏调用必须真的在 —— 否则 `unfenced_mutations` 会把**每一处**都报出来，
+            // 🔴 路径解析调用必须真的在 —— 否则 `unresolved_mutations` 会把**每一处**都报出来，
             //    但一份「一处改动都没有」的文件也会让那条判据零命中地绿。
             assert!(
-                FENCE_CALLS.iter().any(|f| prod.contains(f)),
-                "`{rel}` 里一处围栏调用都没有"
+                RESOLVE_CALLS.iter().any(|f| prod.contains(f)),
+                "`{rel}` 里一处路径解析调用都没有"
             );
         }
     }
@@ -1664,32 +1855,32 @@ mod tests {
     /// 在真树上判不够：「判定采到了而且全过」与「判定什么都没采到」输出一样。
     #[test]
     fn every_third_layer_judge_reds_on_its_own_sample() {
-        // ③ 围栏顺序 —— 阳性：没围栏的改动。
+        // ③ 路径解析顺序 —— 阳性：没路径解析的改动。
         for v in MUTATING_FACE_VERBS {
             let sample = format!("pub fn f(p: &Path) {{\n    std::fs::{v}(p).ok();\n}}\n");
             assert_eq!(
-                unfenced_mutations(&sample).len(),
+                unresolved_mutations(&sample).len(),
                 1,
-                "`fs::{v}` 没围栏却没被报出来 —— 那个动词在针里缺席了"
+                "`fs::{v}` 没路径解析却没被报出来 —— 那个动词在针里缺席了"
             );
         }
         assert_eq!(
-            unfenced_mutations("fn f() {\n    x.open(p);\n}\n").len(),
+            unresolved_mutations("fn f() {\n    x.open(p);\n}\n").len(),
             1,
-            "`.open(` 没围栏却没被报出来"
+            "`.open(` 没路径解析却没被报出来"
         );
         // ③ 阴性：先判后动 ⇒ 零条。
         assert!(
-            unfenced_mutations(
-                "pub fn f(r: &Path) {\n    let t = fenced_target(r, \"a\")?;\n    std::fs::remove_file(&t).ok();\n}\n"
+            unresolved_mutations(
+                "pub fn f(r: &Path) {\n    let t = resolve_in_root(r, \"a\")?;\n    std::fs::remove_file(&t).ok();\n}\n"
             )
             .is_empty(),
-            "先过围栏再动手的样本被误报了 —— 这条判据会逼人去关掉它"
+            "先过路径解析再动手的样本被误报了 —— 这条判据会逼人去关掉它"
         );
         // ③ 顺序是承重的：先动后判 ⇒ 仍然红。
         assert_eq!(
-            unfenced_mutations(
-                "pub fn f(r: &Path) {\n    std::fs::rename(a, b).ok();\n    let _ = fenced_existing(r, \"a\");\n}\n"
+            unresolved_mutations(
+                "pub fn f(r: &Path) {\n    std::fs::rename(a, b).ok();\n    let _ = resolve_existing_in_root(r, \"a\");\n}\n"
             )
             .len(),
             1,
@@ -1697,21 +1888,21 @@ mod tests {
         );
         // ③ 切块是按函数的：第一个函数判过，不许替第二个函数作保。
         assert_eq!(
-            unfenced_mutations(
-                "fn a(r: &Path) {\n    fenced_target(r, \"x\").ok();\n}\nfn b() {\n    std::fs::write(p, b).ok();\n}\n"
+            unresolved_mutations(
+                "fn a(r: &Path) {\n    resolve_in_root(r, \"x\").ok();\n}\nfn b() {\n    std::fs::write(p, b).ok();\n}\n"
             )
             .len(),
             1,
-            "一个函数里的围栏替另一个函数作了保 —— 切块失效"
+            "一个函数里的路径解析替另一个函数作了保 —— 切块失效"
         );
-        // 〔FW5〕⑤ 列举之后没再过围栏 —— 阳性：顶上判一次、列出来整摞删（③ 对这一形是绿的）。
-        let top_only = "pub fn f(r: &Path) {\n    let t = fenced_target(r, \"a\")?;\n    for e in std::fs::read_dir(&t)? {\n        std::fs::remove_file(e?.path()).ok();\n    }\n}\n";
+        // 〔FW5〕⑤ 列举之后没再过路径解析 —— 阳性：顶上判一次、列出来整摞删（③ 对这一形是绿的）。
+        let top_only = "pub fn f(r: &Path) {\n    let t = resolve_in_root(r, \"a\")?;\n    for e in std::fs::read_dir(&t)? {\n        std::fs::remove_file(e?.path()).ok();\n    }\n}\n";
         assert!(
-            unfenced_mutations(top_only).is_empty(),
+            unresolved_mutations(top_only).is_empty(),
             "样本本身喂歪了：这一形本该骗得过 ③（那正是 ⑤ 存在的理由）"
         );
         assert_eq!(
-            mutations_after_listing_unfenced(top_only).len(),
+            mutations_after_listing_unresolved(top_only).len(),
             1,
             "顶上判一次、底下整摞删 —— ⑤ 没认出来"
         );
@@ -1722,15 +1913,15 @@ mod tests {
         );
         // ⑤ 阴性：列出来之后每一条先判后删 ⇒ 零条。
         assert!(
-            mutations_after_listing_unfenced(
-                "pub fn f(r: &Path) {\n    for e in std::fs::read_dir(r)? {\n        let t = fenced_target(r, e?.file_name())?;\n        std::fs::remove_file(&t).ok();\n    }\n}\n"
+            mutations_after_listing_unresolved(
+                "pub fn f(r: &Path) {\n    for e in std::fs::read_dir(r)? {\n        let t = resolve_in_root(r, e?.file_name())?;\n        std::fs::remove_file(&t).ok();\n    }\n}\n"
             )
             .is_empty(),
             "逐条目先判后删的样本被误报了"
         );
         // ⑤ 阴性：只列不删 ⇒ 零条（计划趟那一形）。
         assert!(
-            mutations_after_listing_unfenced(
+            mutations_after_listing_unresolved(
                 "pub fn f(r: &Path) {\n    for e in std::fs::read_dir(r)? {\n        let _ = e;\n    }\n}\n"
             )
             .is_empty(),
@@ -1904,7 +2095,7 @@ mod tests {
             // ⚠ 与它同族的 `set_permissions` **不在**表里，那条仍然是写、仍然会红。
             "PermissionsExt",
             // 〔步 23b · 09-19〕`canonicalize`：**解路径，纯读**（`control/files_write.rs`
-            // 的围栏② 靠它把父目录解成真路径，再判一次「有没有跑出目标根 / 落进那几棵树」）。
+            // 的路径解析② 靠它把父目录解成真路径，再判一次「有没有跑出目标根」；〔FN1〕「落进那几棵树」那一判 V119 拿掉了）。
             // ⚠ 加这一条**不是**为了让写变容易 —— 恰恰相反，它买的是**多一道拒绝**。
             // ⚠ 刻意走 `fs::` 这个前缀而不是同义的方法写法：后者**这条判据看不见**，
             //    靠换调用形状绕过白名单正是本护栏 08-06 逮到过的那种逃生口。
@@ -3228,7 +3419,7 @@ mod g6_staged_zero {
         // 用户 09-23 逐字裁「文件管理器该不该能改 `~/.claude` 里的东西. **可以.**」
         // ⇒ `设计/60 §8.7` 那道「两道栅栏宽窄不同」按丙（统一）裁，统一到**窄的那一档**
         // ⇒ `control/files_write.rs` 的两道围栏从 `is_inside_tree`（拒**整棵 `~/.claude*` 树**）
-        //   换成 `is_protected_session_path`（只拒那几份具体的会话文件），
+        //   换成 `is_session_record_path`（只拒那几份具体的会话文件），
         //   而 `is_inside_tree` 的**唯一生产消费者**就是那两处。
         //
         // ⚠ **为什么不删它**（本仓「不为旧配置留兼容」那条纪律这里不适用）：
@@ -3960,6 +4151,13 @@ mod g6_dependency_signoff {
              边界判据：`the_credentials_write_half_is_reached_only_from_the_account_file_face`",
         ),
         (
+            "copy-core",
+            DEPS,
+            MEASURED_CLEAN,
+            "〔CP2c〕对外文案表的 Rust 取文口（编译期内嵌 `src/shared/copy/table.json` ＋ 具名占位符替换，纯字符串变换）；\
+             与 monitor、creds-core 共用同一份；仓内 crate，现打 0 处写面",
+        ),
+        (
             "gate-core",
             DEPS,
             MEASURED_CLEAN,
@@ -4058,6 +4256,12 @@ mod g6_dependency_signoff {
             DEPS,
             MEASURED_CLEAN,
             "POSIX 单引号 quote 的唯一实现（纯字符串变换）；仓内 crate，现打 0 处写面",
+        ),
+        (
+            "relay-route-core",
+            DEPS,
+            MEASURED_CLEAN,
+            "〔US1〕中转门牌：端口 · 钥匙文件相对路径两个 const ＋ 路由语法（拼 / 拆 / 段闸，纯字符串）；仓内 crate、零依赖，现打 0 处写面、0 处 I/O",
         ),
         (
             "tokio",
@@ -4529,10 +4733,13 @@ mod g6_dependency_signoff {
             }
         }
         assert!(scanned >= 60, "只扫到 {scanned} 份后端源文件 —— 遍历坏了");
-        let want: std::collections::BTreeSet<String> =
-            ["accounts/upstream/file_face.rs".to_string()]
-                .into_iter()
-                .collect();
+        // 〔RK1〕第二份：中转钥匙那一份（`relay/door.rs`，第四层登记）—— 钥匙文件出生即只给本人，同一份实现。
+        let want: std::collections::BTreeSet<String> = [
+            "accounts/upstream/file_face.rs".to_string(),
+            "relay/door.rs".to_string(),
+        ]
+        .into_iter()
+        .collect();
         assert_eq!(
             found, want,
             "`creds-core` 的写半边（建私有文件 / 收窄权限）在本 crate 生产段里的引用处对不上：\n\
@@ -5587,7 +5794,7 @@ mod remote_write_layer {
     }
 
     /// ★★ 正题 ③：**那一份文件里，每个含远端改动的函数，第一个改动之前先过 `fenced_remote`**
-    /// （形状照第三层 ③ `unfenced_mutations`；漏判面同它：判顺序，判不了「动的就是判过的那一个」——
+    /// （形状照第三层 ③ `unresolved_mutations`；漏判面同它：判顺序，判不了「动的就是判过的那一个」——
     /// 那一半靠 `dial_sftp_tests` 的行为判据：合成服务端改动表的根集合 == 两处、越界零改动）。
     #[test]
     fn every_remote_mutation_in_that_file_is_fenced_first() {

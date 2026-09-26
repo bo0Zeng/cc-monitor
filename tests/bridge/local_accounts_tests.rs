@@ -44,19 +44,19 @@ fn the_local_acct_iso_status_tells_not_installed_from_cannot_ask() {
     assert!(!no.installed && no.path.is_none());
 
     let errs: Vec<String> = [
-        Err("[<local>] 没有可用的控制通道（backend 未在场或长连接未握手）".to_string()),
+        Err("本机 的后端没连上".to_string()),
         Ok(serde_json::json!({"path": null})),
         Ok(serde_json::json!("not an object")),
     ]
     .into_iter()
     .map(|o| classify_local_acct_iso(o).expect_err("问不出来的那几档必须是 Err"))
     .collect();
-    assert!(errs[0].contains("没有可用的控制通道"), "{}", errs[0]);
-    assert!(errs[1].contains("两端契约对不上") && errs[2].contains("两端契约对不上"));
+    assert!(errs[0].contains("后端没连上"), "{}", errs[0]);
+    assert!(errs[1].contains("缺了") && errs[2].contains("缺了"));
     for e in &errs {
         // 问不出来 ⇒ 句子以「查不出」或契约那句开头，绝不是一句「没装」的结论。
         assert!(
-            e.starts_with("查不出") || e.contains("两端契约对不上"),
+            e.starts_with("查不出") || e.contains("缺了"),
             "问不出来被说成了别的：{e}"
         );
     }
@@ -75,7 +75,7 @@ fn the_local_shellinit_uses_the_same_fence_judgment_with_local_words() {
     let errs: Vec<String> = [
         Ok(serde_json::json!({ "snippet": format!("{B}\nzcc() {{") })),
         Ok(serde_json::json!({ "snippet": "warn only" })),
-        Err("[<local>] 没有可用的控制通道（backend 未在场或长连接未握手）".to_string()),
+        Err("本机 的后端没连上".to_string()),
         Err("本机 查询失败（not_installed）：找不到 `cc-acct-iso`".to_string()),
         Ok(serde_json::json!({})),
     ]
@@ -85,7 +85,7 @@ fn the_local_shellinit_uses_the_same_fence_judgment_with_local_words() {
     assert!(errs[0].contains("不完整"));
     assert!(errs[1].contains("没能产出"));
     assert!(errs[3].contains("找不到 `cc-acct-iso`"));
-    assert!(errs[4].contains("两端契约对不上"));
+    assert!(errs[4].contains("缺了片段"));
     assert_eq!(
         errs.iter().collect::<std::collections::BTreeSet<_>>().len(),
         5,
@@ -120,11 +120,11 @@ fn the_two_local_acct_iso_commands_really_ask_the_backend() {
     let st = rt
         .block_on(check_local_acct_iso())
         .expect_err("没有本机后端通道却答出了装没装");
-    assert!(st.contains("没有可用的控制通道"), "{st}");
+    assert!(st.contains("后端没连上"), "{st}");
     let sn = rt
         .block_on(local_acct_iso_shellinit())
         .expect_err("没有本机后端通道却拿到了片段");
-    assert!(sn.contains("没有可用的控制通道"), "{sn}");
+    assert!(sn.contains("后端没连上"), "{sn}");
     // 通道在：真问了那两条
     let whole = format!("{B}\nzcc() {{ :; }}\n{E}\n");
     let rig = scripted::rig(

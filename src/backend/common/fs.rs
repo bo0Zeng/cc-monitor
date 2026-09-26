@@ -13,6 +13,7 @@
 //! 三条门槛（见 [`super`]）逐条对：**≥2 层用**（observe 3 个生产调用点 + control 1 个）·
 //! **平台无关**（纯 `std::fs`）· **无域知识**（不认识账号、会话、帧）。
 
+use copy_core::copy_text;
 use std::io::Read;
 use std::path::Path;
 
@@ -24,7 +25,7 @@ use std::path::Path;
 pub(crate) fn read_regular_capped(path: &Path, cap: u64) -> Result<Vec<u8>, String> {
     let meta = std::fs::metadata(path).map_err(|e| format!("{e}"))?;
     if !meta.is_file() {
-        return Err("不是常规文件（可能是 FIFO/设备/目录）".into());
+        return Err(copy_text("beFs.readRegularCapped.notRegular", &[]).into());
     }
     // ★〔audit-0805 F06〕**先看长度再决定读不读**。
     //
@@ -38,7 +39,13 @@ pub(crate) fn read_regular_capped(path: &Path, cap: u64) -> Result<Vec<u8>, Stri
     //   同时持有 1×+2×」，V1 在 glibc 上实测不成立，但后端是 **musl** 交叉编译的、
     //   musl 的 realloc 行为没测出来（`ROADMAP §5-4`）。走这条早退就根本不分配。
     if meta.len() > cap {
-        return Err(format!("超过 {cap} 字节上限（文件 {} 字节）", meta.len()));
+        return Err(copy_text(
+            "beFs.readRegularCapped.tooBigSized",
+            &[
+                ("cap", &cap.to_string()),
+                ("size", &(meta.len()).to_string()),
+            ],
+        ));
     }
     let f = std::fs::File::open(path).map_err(|e| format!("{e}"))?;
     let mut buf = Vec::new();
@@ -47,7 +54,10 @@ pub(crate) fn read_regular_capped(path: &Path, cap: u64) -> Result<Vec<u8>, Stri
         .read_to_end(&mut buf)
         .map_err(|e| format!("{e}"))?;
     if buf.len() as u64 > cap {
-        return Err(format!("超过 {cap} 字节上限"));
+        return Err(copy_text(
+            "beFs.readRegularCapped.tooBig",
+            &[("cap", &cap.to_string())],
+        ));
     }
     Ok(buf)
 }

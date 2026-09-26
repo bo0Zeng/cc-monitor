@@ -30,5 +30,5 @@ pub(crate) fn detach(cmd: &mut std::process::Command) -> Result<(), String> {
 #[cfg(not(unix))]
 pub(crate) fn detach(cmd: &mut std::process::Command) -> Result<(), String> {
     let _ = cmd;
-    Err("这台机器不是 unix：不知道怎么把子进程起成脱离的一组，没起".to_string())
+    Err(copy_core::copy_text("beDetach.detach.notUnix", &[]))
 }

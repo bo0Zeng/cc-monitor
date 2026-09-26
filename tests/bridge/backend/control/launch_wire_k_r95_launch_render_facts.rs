@@ -3,7 +3,7 @@
 //!
 //! # 为什么走生成物，而不是再开一条 IPC
 //!
-//! 与上一件 `K-R93` 同一个理由：消费点（`accounts.ts::localLaunchAccountSync` 的载荷键名）
+//! 与上一件 `K-R93` 同一个理由：消费点（`launch-account.ts::localLaunchAccountSync` 的载荷键名）
 //! 是**同步纯函数**，而 IPC 是异步的。⇒ 选生成物那条：
 //! **同样做到「后端改一处，前端手里那份跟着变」**。
 //!
@@ -27,7 +27,9 @@
 
 /// 🔴 `K-R95`：本机拉起载荷里「哪个号」那一格的**取值口**（〔LR1〕随下面那条判据从
 /// `launch_cli_parity.rs` 搬来 —— 它与 `ccm …` 渲染器无关）。
-const TS_ACCOUNTS: &str = include_str!("../../../../src/accounts.ts");
+/// 〔FE1 · 第四波 4D〕住址从 `src/accounts.ts` 换到 `src/launch-account.ts`：`accounts.ts` 按域拆开，
+/// 「起会话挑哪个号 ＋ 载荷上那一格的形状」归起停域那一份。
+const TS_ACCOUNTS: &str = include_str!("../../../../src/launch-account.ts");
 
 /// 生成物的头。`generated-boundary-guard.vitest.ts` 认两样东西：
 /// 「谁生成的」那一行 ＋「不许手改」那句话。
@@ -169,7 +171,7 @@ fn the_facts_the_frontend_holds_are_recomputed_from_the_backend_every_time() {
 }
 
 /// ★★ 🔴 `K-R95` `KR95D1` **刀③**（「前端退回自己拼 ⇒ 必须红」）：
-/// `accounts.ts` 真的用**计算键**读生成物那张表，而不是把三个键名再写一遍。
+/// `launch-account.ts`（〔FE1〕原 `accounts.ts`）真的用**计算键**读生成物那张表，而不是把三个键名再写一遍。
 ///
 /// # ⚠ 本条是**判写法**，登记在案 —— 别把它当成 `KR95D1` 的主判据
 ///
@@ -191,7 +193,7 @@ fn the_frontend_reads_the_account_wire_table_instead_of_writing_the_keys_out_aga
     ] {
         assert!(
             TS_ACCOUNTS.contains(needle),
-            "`src/accounts.ts` 里没有 `{needle}` —— 本机拉起载荷「哪个号」那一格\n\
+            "`src/launch-account.ts` 里没有 `{needle}` —— 本机拉起载荷「哪个号」那一格\n\
                  又变回前端自己拼了（`K28`：前端不许自己发明对外行为）。\n\
                  ⚠ 产出**逐字节相同**，所以除了本条没有任何东西看得见它。"
         );

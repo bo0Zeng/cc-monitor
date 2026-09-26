@@ -19,6 +19,7 @@ import { withPending } from "./pending";
 import { showActionFailureToast } from "../error-toast";
 import { formatBytes } from "../format";
 import { markRestartNeeded } from "./restart-notice"; // S7：待生效改动的唯一去处
+import { openPath } from "@tauri-apps/plugin-opener";
 
 // C04d 批 4：四个类型换成生成物（源 `logging.rs`）。手写版与生成物**逐字等价**
 // ——这一批零漂移，价值是防将来漂。
@@ -33,6 +34,7 @@ import { markRestartNeeded } from "./restart-notice"; // S7：待生效改动的
 // 现在由包装层的签名提供，调用点不再需要本地标注 —— 这正是包装层该有的效果
 // （它们仍被 `ipc/commands.ts` 与生成物之间的 import 链消费，不是死文件）。
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
+import { copyText } from "../copy-table";
 
 const LOG_LEVELS = ["trace", "debug", "info", "warn", "error", "off"] as const;
 
@@ -50,10 +52,9 @@ export interface DiagnosticsSectionOptions {
 //    前者正是 `§2.4` 那条纪律逐字禁的「**文件路径以外的源码住址**」，
 //    后者是 `91 §2.1` 那一族的**内部标识符外泄** —— 用户不需要知道我们用的是哪个日志库。
 //    ⇒ 说**用户看得见的事实**（日志写到哪、什么时候弹提示），不说我们是怎么实现的。
-const DIAGNOSTICS_INFO_TEXT =
-  "monitor 没有可以看的控制台窗口，所以后端的输出都写进日志文件：\n" +
-  "~/.claude/claudecode-frontend/logs/monitor.YYYY-MM-DD.log。\n" +
-  "出错时同时在右下角弹一条提示，点它直接打开日志文件。";
+// 〔CP2b〕做成函数、用到时才取文（模块顶层不留取文口调用 —— 顶层调用会让 Rollup 把设置面板挪进主窗共享 chunk）。
+const DIAGNOSTICS_INFO_TEXT = (): string =>
+  copyText("diagnostics.info.logs");
 
 export class DiagnosticsSection {
   private root: HTMLElement;
@@ -71,6 +72,10 @@ export class DiagnosticsSection {
   private pathSpan!: HTMLSpanElement;
   private sizeSpan!: HTMLSpanElement;
   private openFileBtn!: HTMLButtonElement;
+  /** 〔NT2 · S1〕本机常驻后端（脱离那条载体）的输出：路径 · 大小 · 打开。 */
+  private backendSpan!: HTMLSpanElement;
+  private openBackendBtn!: HTMLButtonElement;
+  private backendPath: string | null = null;
   /** `70 §11.3.3`：读不到当前设置时，原因落在这一块上（不再只进 console）。 */
   private readFailLine!: HTMLElement;
 
@@ -114,8 +119,8 @@ export class DiagnosticsSection {
       // ⚠ `§10.3` 逐字要求这次改名与 `§5.3` 那个改名**同拍**，怕的是中间有一段时间
       //   两个「诊断」并存。这一个先改了；〔ST1 · 09-24〕`§5.3` 那一半也落了
       //   （`remote-section.ts::renderGaps` 的块标题）。判据 `settings-unique-names.vitest.ts`（`§8 #11`）。
-      heading.textContent = "日志";
-      heading.appendChild(makeInfoIcon(DIAGNOSTICS_INFO_TEXT));
+      heading.textContent = copyText("diagnostics.build.title");
+      heading.appendChild(makeInfoIcon(DIAGNOSTICS_INFO_TEXT()));
       group.appendChild(heading);
     }
 
@@ -143,13 +148,11 @@ export class DiagnosticsSection {
     // ⚠ **「复选框标签要不要给 R5 开豁免」这件事本篇判不了**（`§10.5` #3：规矩禁祈使、
     //   检法只扫问号与口语词，两者不一致，是 `91 §4` 的洞）—— 这里只按建议改措辞，
     //   **不动 R5 的检法**，也不声称这一格已决。
-    logLabel.textContent = "日志文件";
+    logLabel.textContent = copyText("diagnostics.file.enable");
     logRow.appendChild(logLabel);
     logRow.appendChild(
       makeInfoIcon(
-        "按天滚动写入 monitor.YYYY-MM-DD.log，保留最近 3 天。\n" +
-          "关闭后已存在的日志文件不会被删除，但不再写新内容。\n" +
-          "改这一项要重启 monitor 才生效。",
+        copyText("diagnostics.file.enableHint"),
       ),
     );
     group.appendChild(logRow);
@@ -159,7 +162,7 @@ export class DiagnosticsSection {
     levelRow.className = "settings-row";
     const levelLabel = document.createElement("span");
     levelLabel.className = "settings-label";
-    levelLabel.textContent = "日志级别";
+    levelLabel.textContent = copyText("diagnostics.build.level");
     levelRow.appendChild(levelLabel);
     this.levelSelect = document.createElement("select");
     this.levelSelect.className = "settings-input";
@@ -173,11 +176,7 @@ export class DiagnosticsSection {
     levelRow.appendChild(this.levelSelect);
     levelRow.appendChild(
       makeInfoIcon(
-        "info（默认）：每个 IPC / watcher 关键步骤都记一行。\n" +
-          "debug：加细节，约 10× 体积。查疑难问题时短期开启用。\n" +
-          "warn / error：只记问题。\n" +
-          "off：完全不记。\n" +
-          "✓ 切换立即生效，无需重启。",
+        copyText("diagnostics.level.hint"),
       ),
     );
     group.appendChild(levelRow);
@@ -192,13 +191,11 @@ export class DiagnosticsSection {
     toastRow.appendChild(this.errorToastCheckbox);
     const toastLabel = document.createElement("span");
     toastLabel.className = "settings-checkbox-label";
-    toastLabel.textContent = "错误提示";
+    toastLabel.textContent = copyText("diagnostics.toast.enable");
     toastRow.appendChild(toastLabel);
     toastRow.appendChild(
       makeInfoIcon(
-        "勾选后：后端报错时右下角弹一条红色提示，6 秒自动消失，点它直接打开日志文件。\n" +
-          "限频 60 秒内最多 20 条，避免错误风暴时屏幕被刷满。\n" +
-          "改这一项立即生效，不用重启。",
+        copyText("diagnostics.toast.enableHint"),
       ),
     );
     group.appendChild(toastRow);
@@ -208,7 +205,7 @@ export class DiagnosticsSection {
     pathRow.className = "settings-row settings-row-stack";
     const pathLabel = document.createElement("span");
     pathLabel.className = "settings-label";
-    pathLabel.textContent = "文件位置";
+    pathLabel.textContent = copyText("diagnostics.file.location");
     pathRow.appendChild(pathLabel);
     this.pathSpan = document.createElement("span");
     this.pathSpan.className = "settings-cc-autolaunch-path-value";
@@ -220,7 +217,7 @@ export class DiagnosticsSection {
     // 从 `—` 变成一条可换行的长路径 ⇒ 它下面的东西往下掉。
     // ⇒ 只钉这一行的高度，别的不动（不欠的地方不假装补）。
     holdSkeletonHeight(pathRow, "logs");
-    this.pathSpan.textContent = "—";
+    this.pathSpan.textContent = copyText("diagnostics.build.empty");
     pathRow.appendChild(this.pathSpan);
     group.appendChild(pathRow);
 
@@ -228,42 +225,68 @@ export class DiagnosticsSection {
     sizeRow.className = "settings-row";
     const sizeLabel = document.createElement("span");
     sizeLabel.className = "settings-label";
-    sizeLabel.textContent = "当前文件大小";
+    sizeLabel.textContent = copyText("diagnostics.file.size");
     sizeRow.appendChild(sizeLabel);
     this.sizeSpan = document.createElement("span");
     this.sizeSpan.className = "settings-cc-stat-value";
-    this.sizeSpan.textContent = "—";
+    this.sizeSpan.textContent = copyText("diagnostics.build.empty");
     sizeRow.appendChild(this.sizeSpan);
     group.appendChild(sizeRow);
+
+    // 5. 〔NT2 · S1 · `15 §4.7 S1`〕本机常驻后端的输出。它脱离 monitor 常驻时没有别的地方可说话
+    //    （拨号的 host key 警告、中转起不来的原因都在它那里）⇒ 它自己落一份有上限、滚动的文件，这里看得到。
+    const backendRow = document.createElement("div");
+    backendRow.className = "settings-row settings-row-stack";
+    const backendLabel = document.createElement("span");
+    backendLabel.className = "settings-label";
+    backendLabel.textContent = copyText("diagnostics.backend.label");
+    backendRow.appendChild(backendLabel);
+    this.backendSpan = document.createElement("span");
+    this.backendSpan.className = "settings-cc-autolaunch-path-value";
+    this.backendSpan.style.fontFamily = "var(--font-mono, monospace)";
+    this.backendSpan.style.fontSize = "11px";
+    this.backendSpan.style.wordBreak = "break-all";
+    this.backendSpan.textContent = copyText("diagnostics.build.empty");
+    backendRow.appendChild(this.backendSpan);
+    this.openBackendBtn = document.createElement("button");
+    this.openBackendBtn.type = "button";
+    this.openBackendBtn.className = "settings-btn settings-btn-secondary";
+    this.openBackendBtn.textContent = copyText("diagnostics.backend.open");
+    this.openBackendBtn.disabled = true;
+    this.openBackendBtn.addEventListener("click", () =>
+      void withPending(this.openBackendBtn, copyText("diagnostics.build.opening"), () => this.openBackendFile()),
+    );
+    backendRow.appendChild(this.openBackendBtn);
+    group.appendChild(backendRow);
 
     const btnRow = document.createElement("div");
     btnRow.className = "settings-cc-profile-buttons";
     this.openFileBtn = document.createElement("button");
     this.openFileBtn.type = "button";
     this.openFileBtn.className = "settings-btn settings-btn-secondary";
-    this.openFileBtn.textContent = "打开日志文件";
+    this.openFileBtn.textContent = copyText("diagnostics.build.openFile");
     // 步 4·E（`70 §1.3 E`）：这三个都会走一次 IPC，期间按住对应的按钮。
     this.openFileBtn.addEventListener("click", () =>
-      void withPending(this.openFileBtn, "打开中…", () => this.openFile()),
+      void withPending(this.openFileBtn, copyText("diagnostics.build.opening"), () => this.openFile()),
     );
     btnRow.appendChild(this.openFileBtn);
 
     const openDirBtn = document.createElement("button");
     openDirBtn.type = "button";
     openDirBtn.className = "settings-btn settings-btn-secondary";
-    openDirBtn.textContent = "打开日志目录";
+    openDirBtn.textContent = copyText("diagnostics.build.openDir");
     openDirBtn.addEventListener("click", () =>
-      void withPending(openDirBtn, "打开中…", () => this.openDir()),
+      void withPending(openDirBtn, copyText("diagnostics.build.opening"), () => this.openDir()),
     );
     btnRow.appendChild(openDirBtn);
 
     const refreshBtn = document.createElement("button");
     refreshBtn.type = "button";
     refreshBtn.className = "settings-btn settings-btn-secondary";
-    refreshBtn.textContent = "刷新信息";
-    refreshBtn.title = "重新读日志目录看当前文件大小";
+    refreshBtn.textContent = copyText("diagnostics.build.refresh");
+    refreshBtn.title = copyText("diagnostics.build.refreshHint");
     refreshBtn.addEventListener("click", () =>
-      void withPending(refreshBtn, "读取中…", () => this.refresh()),
+      void withPending(refreshBtn, copyText("diagnostics.build.reading"), () => this.refresh()),
     );
     btnRow.appendChild(refreshBtn);
     group.appendChild(btnRow);
@@ -293,7 +316,7 @@ export class DiagnosticsSection {
     } catch (e) {
       // 这一路本来就会失败（`INVARIANTS §15`：日志子系统失败不许挡启动）⇒ 界面必须答得出「读不到」。
       this.setControlsReady(false);
-      this.readFailLine.textContent = `读不到当前的日志设置（${String(e)}），下面三项先不能改。点「刷新信息」重试。`;
+      this.readFailLine.textContent = copyText("diagnostics.refresh.settingsUnreadable", { e: String(e) });
       this.readFailLine.classList.add("settings-banner-show");
     }
     try {
@@ -304,13 +327,34 @@ export class DiagnosticsSection {
         this.sizeSpan.textContent = formatBytes(info.current_size_bytes);
         this.openFileBtn.disabled = false;
       } else {
-        this.pathSpan.textContent = `（日志目录：${info.dir} —— 还没产生日志文件）`;
-        this.sizeSpan.textContent = "—";
+        this.pathSpan.textContent = copyText("diagnostics.refresh.noFileYet", { dir: info.dir });
+        this.sizeSpan.textContent = copyText("diagnostics.refresh.empty");
         this.openFileBtn.disabled = true;
+      }
+      // 〔NT2 · S1〕本机后端那一份（新在前；有旧的一份也不列 —— 打开目录就看得见）。
+      const latest = info.backend_stderr[0];
+      if (latest) {
+        this.backendPath = latest.path;
+        this.backendSpan.textContent = `${latest.path}（${formatBytes(latest.size_bytes)}）`;
+        this.backendSpan.title = latest.path;
+        this.openBackendBtn.disabled = false;
+      } else {
+        this.backendPath = null;
+        this.backendSpan.textContent = copyText("diagnostics.backend.none");
+        this.openBackendBtn.disabled = true;
       }
     } catch (e) {
       console.warn("get_log_file_info failed:", e);
-      this.pathSpan.textContent = `（读不到日志目录：${String(e)}）`;
+      this.pathSpan.textContent = copyText("diagnostics.refresh.dirUnreadable", { e: String(e) });
+    }
+  }
+
+  private async openBackendFile(): Promise<void> {
+    if (!this.backendPath) return;
+    try {
+      await openPath(this.backendPath);
+    } catch (e) {
+      showActionFailureToast(copyText("diagnostics.backend.openFailed"), String(e));
     }
   }
 
@@ -335,16 +379,16 @@ export class DiagnosticsSection {
         //
         // 两者并存是刻意的：toast 是「刚刚这一下的回执」（事件），
         // 条子是「还欠着没生效」（状态）—— S7 的判据表分的正是这两类。
-        markRestartNeeded("日志文件开关");
+        markRestartNeeded(copyText("diagnostics.save.fileSwitch"));
         showActionFailureToast(
-          "设置已保存",
-          "改「日志文件」这一项要重启 monitor 才生效。",
+          copyText("diagnostics.save.done"),
+          copyText("diagnostics.save.restartNeeded"),
           { level: "info", durationMs: 6000 },
         );
       }
       await this.refresh();
     } catch (e) {
-      showActionFailureToast("保存日志设置失败", String(e));
+      showActionFailureToast(copyText("diagnostics.save.failed"), String(e));
       // 失败 → 回退到当前实际值
       await this.refresh();
     }
@@ -354,7 +398,7 @@ export class DiagnosticsSection {
     try {
       await commands.open_log_file();
     } catch (e) {
-      showActionFailureToast("打开日志文件失败", String(e));
+      showActionFailureToast(copyText("diagnostics.openFile.failed"), String(e));
     }
   }
 
@@ -362,7 +406,7 @@ export class DiagnosticsSection {
     try {
       await commands.open_log_dir();
     } catch (e) {
-      showActionFailureToast("打开日志目录失败", String(e));
+      showActionFailureToast(copyText("diagnostics.openDir.failed"), String(e));
     }
   }
 }

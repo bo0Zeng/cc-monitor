@@ -101,14 +101,13 @@ vi.mock("../../src/error-toast", () => ({ showActionFailureToast: () => {} }));
 
 import { BACKEND_COLUMNS, BackendSection } from "../../src/settings/backend-section";
 import { srcDirOf } from "../test-support/repo-root";
+import COPY_TABLE from "../../src/shared/copy/table.json";
 import {
   EXIT_KILLS,
   EXIT_SELF_DIES,
   EXIT_UNATTENDED,
   EXIT_UNREADABLE,
   HEALTH_CLEAN,
-  HEALTH_CRASHED,
-  HEALTH_DETAIL,
   HEALTH_LAST_MISSING,
   HEALTH_UNKNOWN,
   HEALTH_UNKNOWN_WHY,
@@ -118,8 +117,12 @@ import {
   describeHealthDetail,
 } from "../../src/backend-policy";
 
-/** 人群：这一区的用户可见文案今天住在哪几个文件里。**扩人群是翻转的一半。** */
-const COPY_POPULATION = ["backend-section.ts", "../../src/backend-policy.ts"] as const;
+/**
+ * 人群：这一区的用户可见文案今天住在哪几个文件里。**扩人群是翻转的一半。**
+ * 〔CP2b〕家搬进了文案表 ⇒ 人群 +1（`table.json`），而「唯一一个家」从 `backend-policy.ts` 换成表。
+ */
+const TABLE_REL = "../../src/shared/copy/table.json";
+const COPY_POPULATION = ["backend-section.ts", "../../src/backend-policy.ts", TABLE_REL] as const;
 
 function readPopulation(): { name: string; src: string }[] {
   return COPY_POPULATION.map((rel) => ({
@@ -196,10 +199,13 @@ describe("P2s backend 开关区", () => {
         .toBeGreaterThan(500);
     }
     // ⚠ `K-P3b KP3W4`③：人群扩到 `HEALTH_*` 四句 —— 它们与那三句同一条规矩，
-    //   而 `K-P3` 交付时这一格只由 Rust 那侧的 `the_health_copy_has_exactly_one_home` 看着
+    //   而 `K-P3` 交付时这一格只由 Rust 那侧的 `the_backend_policy_copy_has_exactly_one_home` 看着
     //   （那份 vitest 当时不在它的写区）。两侧各有一条不是重复：
     //   Rust 那条的人群含 `backend_control.rs`，这一条的人群是前端那两份。
     // 〔B2 · E3〕人群 +1：「读不出来」那一句（`设计/01 §3.3b ⑤`，三句变四句）。
+    // 〔CP2b〕HEALTH_CRASHED / HEALTH_DETAIL 两个带占位符的模板不再是导出常量（由 copyText 填），直接取表里那一格的原文。
+    const tableZh = (key: string): string =>
+      (COPY_TABLE.entries as Record<string, { zh: string }>)[key]!.zh;
     const literals = [
       EXIT_KILLS,
       EXIT_UNATTENDED,
@@ -207,19 +213,19 @@ describe("P2s backend 开关区", () => {
       EXIT_UNREADABLE,
       HEALTH_UNKNOWN,
       HEALTH_CLEAN,
-      HEALTH_CRASHED,
+      tableZh("backendPolicy.health.crashed"),
       HEALTH_LAST_MISSING,
       // 〔ST2 · 步 6〕长的那一半挪进 ⓘ / `[详情]` 之后多出来的两句，同一条规矩。
       HEALTH_UNKNOWN_WHY,
-      HEALTH_DETAIL,
+      tableZh("backendPolicy.health.detail"),
     ];
     for (const lit of literals) {
       const homes = files.filter((f) => visibleOf(f.src).includes(lit)).map((f) => f.name);
       expect(
         homes,
         `「${lit.slice(0, 16)}…」出现在 ${homes.length} 个文件里：${homes.join(" / ")}\n` +
-          "★ 那四句的唯一一个家是 `backend-policy.ts`。抄进别处 = 下一次只改一处。",
-      ).toEqual(["../../src/backend-policy.ts"]);
+          "★ 那几句的唯一一个家是文案表（table.json）。抄进别处 = 下一次只改一处。",
+      ).toEqual([TABLE_REL]);
     }
     // 反过来：这一区必须**真的在用**那个家，而不是自己拼一份。
     const section = files.find((f) => f.name === "backend-section.ts")!.src;
@@ -238,7 +244,7 @@ describe("P2s backend 开关区", () => {
     expect(
       hits.map((x) => x.name),
       "人群里一处「无人监护」都没有 —— 常驻做了、而界面没说，那正是 `K14` 点名不许的那一半。",
-    ).toEqual(["../../src/backend-policy.ts"]);
+    ).toContain(TABLE_REL); // 〔CP2b〕家是表；backend-policy.ts 里那行单行 JSDoc 也提到它（注释，不是第二个家）
   });
 
   it("本机永远在第一行——它不是另一种机器，只是不走 ssh 的那一台", async () => {
@@ -520,7 +526,7 @@ describe("〔ST2 · 设计/70 第二刀 步 6〕后端开关表格式四栏：�
     const s = new BackendSection({ headless: true });
     await flush();
     await flush();
-    const want = BACKEND_COLUMNS.map(([c]) => c);
+    const want = BACKEND_COLUMNS().map(([c]) => c);
     expect(want).toEqual(["state", "ops", "exit", "health"]);
     const head = s.element.querySelector<HTMLElement>('[data-backend-columns="head"]')!;
     expect([...head.children].map((c) => (c as HTMLElement).dataset.col)).toEqual(want);
