@@ -2472,6 +2472,8 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     //    任务快照从 monitor 的 Tauri 命令改走通道（C4e 批 4）；显式给期限。
     // 〔合并 HX1 × LOC1a〕两路各自 31 ＋ 1 ⇒ 31 ＋ 2 = 33。
     // 〔HX2 · 4D〕〔合并 HX2 × 主线 290d8c33〕主线 33 ＋ 1 ⇒ 34：`apikey-reads.ts::writeApikeyKey`（`apikey-key-set`，写 key 从 monitor 那条 Tauri 命令改走通道）；显式给期限。
+    // 〔STC · 第四波 4D〕〔合并 STC × 主线 39f5ab18〕主线 35 ＋ 1 ⇒ 36：`session-reads.ts::readSessionFacts`（`history-facts`，会话事实出成品 ——
+    //    此前是前端 `onLine` 旁路自己攒的，不是替掉一条 Tauri 命令）；显式给期限（`READ_BUDGET_MS`）。
     // 〔CF2 · 第四波 4B〕`chan.subscribe`（TS，主界面）恰好 1 处：`events.ts::bindEvents` 按 `streams` 订会话内容流
     //    （主窗口每台机器一条、独立窗口一条，都经这一处）。
     // 〔TAP〕`session-tap` 与会话行走同一处（`plan` 里多一种流），仍是 1。
@@ -2483,7 +2485,7 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 35usize),
+            ("chan.call", 36usize),
             ("chan.subscribe", 1usize),
             ("subscribe", 1usize)
         ]

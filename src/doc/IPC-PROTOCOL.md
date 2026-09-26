@@ -2422,6 +2422,28 @@ BEGIN/END 围栏由 monitor 那侧校验（本命令不再写第二份围栏常�
 **为什么上帧面**：与上面两条同一个处境（新子命令、此前在远端逐次拨号）；用户每按一次 Enter 就要一次。
 CLI 面随之自动多一条 `--history-find`。
 
+#### `history-facts`：会话事实（〔STC〕`设计/90 §4` 阶段 C · `设计/10 §2.2`）
+
+```text
+→ {"id":"q12","cmd":"history-facts","args":{"path":"/home/u/.claude/projects/-p/s.jsonl"}}
+← {"kind":"reply","id":"q12","ok":true,"data":{"end":5120088,"forkedFrom":null,"touchedFiles":["/p/a.ts"],"agents":[{"id":…,"label":…,"agentType":…,"status":"running","timestamp":…,"desc":…}],"usage":{"promptTokens":41250,"model":…}}}
+→ {"id":"q13","cmd":"history-facts","args":{"path":"…/s.jsonl","prior":{上一次的 data 原样}}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `path` | → | jsonl 路径（围栏同 `history-read`） |
+| `prior` | → | 可选：**上一次应答的 `data` 原样**（续传令牌）。缺席 / `null` ⇒ 从字节 0 扫；给了 ⇒ 从它的 `end` 接着扫、把新的一截累加在它上面（后端零状态）。形状必须恰好是本命令出的那一形（缺格 / 多格 / 类型不对 ⇒ `bad_args`）。它的 `end` 越过文件尾、或不在行边界上（文件第 `end-1` 字节不是换行）⇒ `failed`（文件被截断或重写过；调用方从 0 重要一份） |
+| `end` | ← | 最后一个完整行的末字节 |
+| `forkedFrom` | ← | 源会话 sid：首条带 `forkedFrom`（`sessionId` 与 `messageUuid` 都是串）的 user / assistant 记录；不是分叉来的 ⇒ `null`。判定与 `history-sessions` 行的 `forkedFromSessionId` 是同一个函数 |
+| `touchedFiles` | ← | 写类工具（Edit / Write / MultiEdit → `file_path`，NotebookEdit → `notebook_path`）碰过的文件，原样、去重、近因序（最近碰的在末尾），至多 1000 条（超 ⇒ 丢最久没碰的） |
+| `agents` | ← | agent 工具（`Agent` / `Task`）的调用，插入序：`status` ∈ `running`（还没见 `tool_result`）/ `done`；`label` = `description` ‖ `prompt` 首行前 80 字 ‖ 工具名；`agentType` = `subagent_type` 或 `null`；`timestamp` = 那条记录的时刻（没有 ⇒ 空串）；`desc` = trim 后的 `description`。超 30 条从最老删非 running 的，再超 200 条删最老的 |
+| `usage` | ← | 文件序最后一条 `input_tokens + cache_creation_input_tokens + cache_read_input_tokens > 0` 的 assistant 记录 ⇒ `{promptTokens, model}`（`model` 缺 ⇒ `null`）；一条都没有 ⇒ `null` |
+
+- 本体 `observe/facts_query.rs`（claude 的两张工具表也住那里：进适配层会让「加一个 agent 通用层要改几处」那只许降的棘轮涨一格）。「中止」不在这里（它是界面对「会话落到不忙」这个事件的反应）。
+- 整份超过 32 MiB ⇒ `too_large`（不截断）。界面经通道直接问（`src/session-reads.ts`），本机与远端同一条路；老后端不认 ⇒ `unsupported`（界面说「不可用」，不当成空）。
+- CLI 面随之自动多一条 `--history-facts`（stdin 一段 JSON ＝ `args`，stdout 一行 JSON ＝ `data`）。
+
 #### `resolve`：一次性 exec 与流命令**并存**（U6b-3）
 
 ```text

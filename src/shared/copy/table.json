@@ -4722,6 +4722,16 @@
       "zh": "这台机器上的后端版本旧，还不能在会话里查找。重装后端之后就有。",
       "args": []
     },
+    "sessionReads.facts.oldBackend": {
+      "kind": "error",
+      "zh": "这台机器上的后端版本旧，还给不出这些。重装后端之后就有。",
+      "args": []
+    },
+    "sessionReads.missing.facts": {
+      "kind": "error",
+      "zh": "缺了几格、多了几格，或有一格类型不对",
+      "args": []
+    },
     "sessionReads.missing.indexRow": {
       "kind": "error",
       "zh": "里有一行缺 o / n 字段",
@@ -4956,6 +4966,11 @@
       "kind": "body",
       "zh": "活跃会话 context 占用：模型「{model}」上限未知（{tok} tokens）",
       "args": ["model", "tok"]
+    },
+    "usageHud.render.factsUnavailable": {
+      "kind": "body",
+      "zh": "活跃会话的 context 占用、agent 列表、改动文件、分叉来源都要不到：{reason}",
+      "args": ["reason"]
     },
     "machineAliases.preview.close": {
       "kind": "action",

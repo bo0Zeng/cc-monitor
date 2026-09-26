@@ -135,6 +135,8 @@ pub const COMMANDS: &[&str] = &[
     "footprint-probe",
     // 〔C4d · 第四波 4B〕历史注解（星标 / 改名 / 隐藏 / 上次账号）的读写者换成本机常驻后端（第四层；文件原地不动）。
     "history-annotate",
+    // 〔STC · `设计/90 §4` 阶段 C〕会话事实出成品（分叉血缘 · 改动文件集 · agent 列表 · 最新 usage）。
+    "history-facts",
     "history-find",
     "history-forget",
     "history-index",
@@ -1969,6 +1971,28 @@ pub const REGISTRY: &[CommandSpec] = &[
     // 〔SR1a · 2026-09-24〕骨架索引与大纲清单上帧面（此前它们在远端走逐次拨号 —— `STILL_DIALED` 那两行）。
     // 同族同档（同步文件 I/O ⇒ 阻塞档）、同一个只读宿主（`read_face::answer`）。
     // 〔SR1a × SE2〕会话内查找上帧面（此前走逐次拨号 —— `STILL_DIALED` 那一行）。同族同档。
+    // 〔STC · `设计/90 §4` 阶段 C〕会话事实（`read_face.rs` 那一臂 ＋ `observe/facts_query.rs`）。同族同档、同一个只读宿主。
+    //   `prior` 是调用方上一次拿到的应答原样（续传令牌）；应答五格即成品。
+    CommandSpec {
+        name: "history-facts",
+        doc_anchor: Some("#### `history-facts`"),
+        codes: &["bad_args", "failed", "too_large"],
+        fields: &[
+            "agents",
+            "end",
+            "forkedFrom",
+            "path",
+            "prior",
+            "touchedFiles",
+            "usage",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     CommandSpec {
         name: "history-find",
         doc_anchor: Some("#### `history-find`"),

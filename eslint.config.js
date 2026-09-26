@@ -74,7 +74,9 @@ export default tseslint.config(
     // 补完实测：全仓当时是 7 个，与 `eslint src` 的基线**一致** —— 基线数字不变，覆盖面变大。
     // 〔AL1d · 第四波 4B · 09-24〕那天剩三处：`src/settings/machine-aliases.ts` 里那四处空 catch（原「终端集成」
     //   记住上次选择的 localStorage 写）随那段代码删了（`tests/eslint-baseline.vitest.ts` 的基线常量同拍 7 → 3）。
-    // 〔DUP1 · 第四波 4D〕今天全仓 2 个：`src/shell-quote.ts` 那处 `no-control-regex` 随 `isValidConfigDir` 删了（基线常量同拍 3 → 2）。
+    // 〔DUP1 · 第四波 4D〕那天剩两处：`src/shell-quote.ts` 那处 `no-control-regex` 随 `isValidConfigDir` 删了（基线常量同拍 3 → 2）。
+    // 〔STC · 第四波 4D〕今天全仓 1 个：`tests/panorama/session-files.test.ts` 随被测对象（写类工具口径搬进后端）整份删了，
+    //   它那一处未用变量跟着没了（合并 DUP1 时按「基数 3 ＋ 两边各 −1」算成 1，eslint 现打核过）。
     files: ["tests/e2e/**/*.mjs"],
     languageOptions: {
       globals: {

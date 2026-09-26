@@ -1,4 +1,33 @@
 {
+  "history-facts": {
+    "agents": [
+      {
+        "agentType": "Explore",
+        "desc": "scan",
+        "id": "tu-2",
+        "label": "scan",
+        "status": "done",
+        "timestamp": "t3"
+      },
+      {
+        "agentType": null,
+        "desc": "",
+        "id": "tu-3",
+        "label": "p1",
+        "status": "running",
+        "timestamp": "t4"
+      }
+    ],
+    "end": 729,
+    "forkedFrom": "src-0",
+    "touchedFiles": [
+      "/w/a.ts"
+    ],
+    "usage": {
+      "model": "m-g",
+      "promptTokens": 6
+    }
+  },
   "history-find": {
     "hits": [
       {

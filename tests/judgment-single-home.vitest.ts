@@ -50,7 +50,7 @@ import { stripComments } from "./test-support/strip-comments.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7" | "J8"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18";
+  | "J17" | "J18" | "J19";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -257,6 +257,19 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     needles: [],
     owner: "主会话拍（DUP1.md §4 ①：新建账号表单逐字反馈 —— 生成物 / 镜像 ＋ 对拍二选一）",
     why: "TS 那份比建账号的工具宽（放行 `.` 与 33–64 位，建时由那个工具在终端里拒）；Rust 那份与工具逐字同",
+  },
+  J19: {
+    what: "哪些工具名算「展开 = 子会话」（agent 工具）",
+    // 〔STC · 第四波 4D〕会话事实搬进后端之后，这张表在 Rust 有两个住址：monitor `adapter.rs::agent_profile_facts`
+    //   （经生成物 `src/generated/agent-profile-table.ts` 喂前端**渲染** agent 卡，TS 侧 `cards/subagent.ts::isAgentTool` 读的就是它）
+    //   与后端 `observe/facts_query.rs::is_agent_tool`（喂**会话事实**的 agent 列表）。两份由异源对拍钉着：
+    //   `tests/backend/observe/facts_query_tests.rs::the_agent_tools_equal_the_generated_profile_row`（后端常量 == 生成物里 claude 那一行）。
+    homes: ["src/backend/observe/facts_query.rs::is_agent_tool", "src/bridge/src/adapter.rs::agent_profile_facts"],
+    status: "open",
+    defs: ["isAgentTool"],
+    needles: [],
+    owner: "主会话拍（`调研/第四波记录/STC.md §1.3`：收成一份要一个两半都能依赖的 `*-core`，本路不自建）",
+    why: "两半不许编译期互咬（`设计/90 §0` C2），今天没有能放工具词表的共享 crate；TS 侧那一处读生成物、不手写规则",
   },
   J16: {
     what: "账号种类的取值集",

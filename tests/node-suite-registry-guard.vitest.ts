@@ -102,7 +102,9 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   // `session-backend.ts` 零生产调用、删了 ⇒ 套件整删（**被测对象没了**，8 条测座本身）；外层 tmux 三格的字节由
   // 入库夹具 `tmux-outer-golden.json` ＋ Rust `payload_tests.rs` 接着（对照见 `调研/第四波记录/LR2.md`）；
   // 与座无关的 2 条（shim 漂移守卫 · 铸名口数据流）搬进了 `remote-launch.test.ts`。
-  ["test:panorama-session-files", "tests/panorama/session-files.test.ts", 7],
+  // 🔴 〔STC · `设计/90 §4` 阶段 C〕原先这里有 `["test:panorama-session-files", "tests/panorama/session-files.test.ts", 7]`。
+  // 写类工具那张表与它的口径搬进了后端（会话事实由后端出成品）⇒ 被测对象 `collectEditedFiles` 删了、套件整删
+  // （**被测对象没了**，不是把测试删光了）；七条逐条搬进 `tests/backend/observe/facts_query_tests.rs::edit_tools_rules_moved_from_the_frontend_suite`。
   // 🔴 〔`设计/80 §8` 步 1 · 2026-09-23〕**28 → 38**：启动期令牌那一族 +10
   //    （形状闸逐格 · `""` 是坏数据不是「没有」· attach 不带 · cliFlags 恒 null ·
   //     两条顺序不变量 · buildLaunchPlan 数组顺序 · renderFallback 逐字节 · applies 两态）。
@@ -141,7 +143,9 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
 // 〔DUP1〕**200 → 199**，理由同上（**被测对象没了**）：`remote-launch.test.ts` −2 ＋1（TS 的 `sanitizeRemoteLauncher` /
 // `isValidConfigDir` 按 `设计/90 §3` 判据 2 删了，各带走一条；新加一条钉前端只剩「空白 ⇒ 默认启动器」）。删后现打 199 ⇒ 棘到现打值。
 // 〔DUP1 · 第二轮〕**199 → 198**，同上（被测对象没了）：`remote-launch.test.ts` 里 `isValidSessionId` 那条随函数删（J5）。
-const TOTAL_FLOOR = 198;
+// 〔STC〕**198 → 191**，同上（**被测对象没了**）：`tests/panorama/session-files.test.ts` 整份删除（7 条，写类工具口径搬进后端
+// `observe/facts_query.rs`，七条逐条搬成 Rust 判据）。合并时按「主线 198 − STC 7」算、删后现打 191 ⇒ 棘到现打值。
+const TOTAL_FLOOR = 191;
 
 /** 判定一条 npm 命令是不是「用 tsx 跑某个 `.test.ts`」。`tsx …` 与 `npx tsx …` 都算。 */
 const TSX_SUITE_CMD = /(^|\s)(npx\s+)?tsx\s+(--\S+\s+)*(\S+\.test\.ts)\s*$/;

@@ -114,6 +114,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/tmux-sessions.ts", // re-export
     "src/turn-notify.ts", // onLine：轮次结束通知
     "src/views/context-limit.ts", // snapshotSessions 的 context%
+    "src/views/facts-source.ts", // 〔STC〕ensureTab：每个 tab 一份会话事实的数据源（问后端 `history-facts`）
   ],
   // ① 形状：只有类型。
   "src/tab-model.ts": [],
@@ -126,8 +127,9 @@ const DEPS: Record<string, readonly string[]> = {
   "src/tab-session-state.ts": ["src/copy-table.ts"],
   // ② 路由：只写「上次的 tab」那一格 localStorage。〔U4〕已结束的不自动跟随 ⇒ `isResumeOnly`。
   "src/tab-router.ts": ["src/local-storage.ts", "src/tab-session-state.ts"],
-  // ① 事实抽取：agent 工具名判定 · 写类工具的文件路径。
-  "src/tab-session-facts.ts": ["src/cards/subagent.ts", "src/panorama/session-files.ts"],
+  // ① 〔STC〕会话事实的投影（后端出成品 ⇒ tab 上的 Map / Set / 两格）：只有类型依赖。
+  //   原先的两条（agent 工具名判定 `cards/subagent.ts` · 写类工具表 `panorama/session-files.ts`）随抽取器一起搬进了后端。
+  "src/tab-session-facts.ts": [],
   // ③ 实时流视图：渲染栈 ＋ 骨架 ＋ 大纲 ＋ 分叉按钮，经 ipc/commands 包装层要骨架索引与正文。
   //   〔SE2〕大纲的界面从直接建 `UserInputPanel` 换成建查找面板（它里面挂着大纲）⇒ `user-input-panel` 只剩类型依赖。
   "src/tab-stream-view.ts": [

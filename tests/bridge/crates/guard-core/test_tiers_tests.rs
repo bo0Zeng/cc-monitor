@@ -162,7 +162,7 @@ const UNIT: &[&str] = &[
     "tests/panorama/agent-clip.vitest.ts",
     "tests/panorama/d20-gate.vitest.ts",
     "tests/panorama/layout.vitest.ts",
-    "tests/panorama/session-files.test.ts",
+    // 〔STC〕`tests/panorama/session-files.test.ts` 出列：被测对象（写类工具口径）搬进后端，七条搬成 `tests/backend/observe/facts_query_tests.rs` 里一条。
     "tests/panorama/subgraph-layers.vitest.ts",
     "tests/reconcile-shell.vitest.ts",
     "tests/record-timeline.vitest.ts",
@@ -291,6 +291,8 @@ const SCAN: &[&str] = &[
     "tests/backend/main_stream_flag_tests.rs",
     "tests/backend/main_window_raise_guard.rs",
     "tests/backend/no_timer_guard.rs",
+    // 〔STC〕会话事实的口径与续传（纯字节）＋ 一条异源对拍读生成物 `src/generated/agent-profile-table.ts` ⇒ 判别器判扫描层。
+    "tests/backend/observe/facts_query_tests.rs",
     "tests/backend/panorama_locus_guard.rs",
     "tests/backend/platform/cfgless_guard.rs",
     "tests/backend/platform/fallback_guard.rs",
@@ -449,6 +451,8 @@ const SCAN: &[&str] = &[
     "tests/launch-tmux-outer-golden.vitest.ts",
     "tests/live-card.vitest.ts", // 〔TAP〕活卡：状态机 · 真 TabManager 三向相等 · 台架夹具（读 `tests/__fixtures__/tap-bench.json`）
     "tests/liveness-process-names-parity.vitest.ts",
+    // 〔STC〕`设计/90 §3` 判据 3：`onLine` 调用人群 ＋ 事实字段写者（读 `src/tabs.ts` 与 `src/**/*.ts` 的 AST）。
+    "tests/online-bypass-ledger.vitest.ts",
     // 〔TL3〕「是不是本机」只在 `src/ipc/origin.ts` 判（读生产段全集 ⇒ 扫描层）。
     "tests/origin-single-home.vitest.ts",
     "tests/panorama/api-remote.vitest.ts",
