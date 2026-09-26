@@ -20,7 +20,7 @@
 //!
 //! 片段的形态（默认号那行 `export` ＋ 每账号一个 `<名>cc()` ＋ 账号 0 的逃生口）是
 //! **`cc-acct-iso` 的知识**。在这里照抄一份就多一个跨语言双写点 —— 与远端那一侧
-//! `acct_iso_deploy.rs::remote_acct_iso_shellinit` 头注那条理由逐字相同：单一来源留在 bash。
+//! `acct_iso_deploy.rs::acct_iso_shellinit` 头注那条理由逐字相同：单一来源留在 bash（〔SH1〕本机远端合一之前它叫 `remote_acct_iso_shellinit`〔散文墓碑〕）。
 //!
 //! # 起进程只走插件通用调用口（`plugin::discover::find` ＋ `plugin::invoke::run`）
 //!

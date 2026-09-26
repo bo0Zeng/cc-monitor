@@ -1085,12 +1085,7 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         1,
         "问那台 `cc-acct-iso shellinit` 的片段（`acct-iso-shellinit`，一问）：`ACCT_ISO_BUDGET`",
     ),
-    (
-        "local_accounts.rs",
-        "local_acct_iso_shellinit",
-        1,
-        "本机那一侧的 shellinit 片段（同一条帧命令、问本机那条长连接，一问）：`ACCT_ISO_BUDGET`",
-    ),
+    // 〔SH1〕本机那一条 `local_acct_iso_shellinit`〔散文墓碑〕 那一行摘了：本机远端合成 `acct_iso_shellinit`，期限由 `snippet_on` 那一处造（已在表里）。
     (
         "remote_branch.rs",
         "fork_on",

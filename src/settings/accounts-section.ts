@@ -539,7 +539,7 @@ export class AccountsSection {
 
   /**
    * 〔第三波 S3 · A3 接线〕本机空态的「下一步」：先问本机后端**这台机器装没装 cc-acct-iso**
-   * （`check_local_acct_iso` → `--acct-iso-status`），再说下一步 —— 三个结局各说各的：
+   * （`acct_iso_status`，origin `<local>` → `--acct-iso-status`），再说下一步 —— 三个结局各说各的：
    *
    * | 问到的 | 这一格说什么 | 「下一步」那一行 |
    * |---|---|---|
@@ -554,7 +554,7 @@ export class AccountsSection {
     const iso = AccountsSection.line(box, "accounts-hint accounts-local-iso", "");
     let installed: boolean | null = null;
     try {
-      const st = await commands.check_local_acct_iso();
+      const st = await commands.acct_iso_status({ origin: BACKEND_LOCAL_ORIGIN });
       if (typeof st?.installed !== "boolean") throw new Error(String(st));
       installed = st.installed;
       iso.textContent = st.installed
@@ -571,11 +571,11 @@ export class AccountsSection {
   }
 
   /**
-   * 〔第三波 S3 · A3 接线〕本机的 rc 片段：`local_acct_iso_shellinit` → 待贴块。
+   * 〔第三波 S3 · A3 接线〕本机的 rc 片段：`acct_iso_shellinit`（origin `<local>`）→ 待贴块。
    *
    * 与远端那颗「生成 rc 片段…」（[`renderRcSnippet`]）同一个形状、同一条纪律：
    * **只读、不代写**（`paste-block.ts` 模块头：本组件没有任何写入路径）。
-   * 围栏已在 Rust 侧校验过一次（`local_accounts.rs::classify_local_shellinit`，与远端共用
+   * 围栏已在 Rust 侧校验过一次（`local_accounts.rs::local_fence`，与远端共用
    * `shellinit_fence_state`）；这里再校验一次，理由同远端那条：「能显示」与「能贴」是两件事。
    *
    * ⚠ 文案全走 `copyText`（`accountsLocal.rc.*`）：本机那一支上不许出现「远端」，
@@ -593,7 +593,7 @@ export class AccountsSection {
         btn.disabled = true;
         out.innerHTML = "";
         try {
-          const snippet = await commands.local_acct_iso_shellinit();
+          const snippet = await commands.acct_iso_shellinit({ origin: BACKEND_LOCAL_ORIGIN });
           out.appendChild(
             buildPasteBlock({
               text: () => snippet,
@@ -806,14 +806,14 @@ export class AccountsSection {
     if (host) {
       try {
         // 探测不依赖 dest（D 审计 S2/S5：只 command -v 一次 exec，任何配置下都能判 installed）。
-        const status = await commands.check_remote_acct_iso({ cfg: host });
+        const status = await commands.acct_iso_status({ origin: this.origin });
         if (!status.installed) {
           const dest = deriveAcctIsoDir(host.backendPath, host.user);
           this.renderNeedsDeploy(host, dest);
           return;
         }
       } catch (e) {
-        console.warn("check_remote_acct_iso failed, fall through to wizard:", e);
+        console.warn("acct_iso_status failed, fall through to wizard:", e);
       }
     }
     this.renderNotEnabled(manifestPath, reason);
@@ -1351,7 +1351,7 @@ export class AccountsSection {
     btn.textContent = copyText("accounts.rc.fetching");
     box.innerHTML = "";
     try {
-      const snippet = await commands.remote_acct_iso_shellinit({ cfg: host });
+      const snippet = await commands.acct_iso_shellinit({ origin: this.origin });
       box.appendChild(
         buildPasteBlock({
           text: () => snippet,
