@@ -1862,6 +1862,94 @@ impl FileWindow {
     /// 🔴〔第九刀〕画**编辑面**：在飞指示 ＋ 那一份文本 ＋ 存的结局 ＋ 关窗那一问。
     ///
     /// ⚠ 它是模态的（同别的几摞）：一份文本改着的时候不该同时去改目录结构。
+    /// 〔W5-FILES · `设计/60 §6.2`「查找替换」〕从编辑框此刻的光标 / 选区起找查找框里那几个字（往后找从选区尾起、往前找从选区头起，
+    /// 到头绕回）；找到 ⇒ 把它选中、焦点给编辑框；没找到 ⇒ 查找栏上说一句。大文件模式没有这件事（`§5.5`）。回值 ＝ 找到了。
+    pub fn find_in_editor(&mut self, ctx: &egui::Context, backward: bool) -> bool {
+        let id = super::bigfile::normal_editor_id();
+        let Some(p) = self.editing.as_mut() else {
+            return false;
+        };
+        if p.big.is_big() {
+            return false;
+        }
+        let mut st = egui::TextEdit::load_state(ctx, id).unwrap_or_default();
+        let (a, b) = st.cursor.char_range().map_or((0, 0), |r| {
+            let r = r.as_sorted_char_range();
+            (r.start.0, r.end.0)
+        });
+        let from = if backward { a } else { b };
+        match super::editor::find_from(&p.text, &p.find.needle, from, backward) {
+            Some((s, e)) => {
+                st.cursor.set_char_range(Some(egui::text::CCursorRange::two(
+                    egui::text::CCursor::new(s),
+                    egui::text::CCursor::new(e),
+                )));
+                st.store(ctx, id);
+                ctx.memory_mut(|m| m.request_focus(id));
+                p.find.notice = None;
+                true
+            }
+            None => {
+                p.find.notice = Some(copy_text(
+                    "rsFilewinShell.editor.findNone",
+                    &[("needle", &p.find.needle.to_string())],
+                ));
+                false
+            }
+        }
+    }
+
+    /// 〔W5-FILES〕编辑面查找栏那一格（判据与界面同一个口）。没开编辑面 ⇒ `None`。
+    pub fn find_bar_mut(&mut self) -> Option<&mut super::editor::FindBar> {
+        self.editing.as_mut().map(|p| &mut p.find)
+    }
+
+    /// 〔W5-FILES〕替换：`all` ⇒ 全文替换，说换了几处；否则 ⇒ 选区恰好是查找串就换掉它，再找下一个（不是 ⇒ 只找下一个）。
+    /// 回值 ＝ 换了几处。改的是编辑框那一份字（与敲键同一个 `String`）；存盘照旧要点「存」。
+    pub fn replace_in_editor(&mut self, ctx: &egui::Context, all: bool) -> usize {
+        let id = super::bigfile::normal_editor_id();
+        let Some(p) = self.editing.as_mut() else {
+            return 0;
+        };
+        if p.big.is_big() || p.find.needle.is_empty() {
+            return 0;
+        }
+        if all {
+            let (t, n) = super::editor::replace_all(&p.text, &p.find.needle, &p.find.with);
+            p.text = t;
+            p.find.notice = Some(if n == 0 {
+                copy_text(
+                    "rsFilewinShell.editor.findNone",
+                    &[("needle", &p.find.needle.to_string())],
+                )
+            } else {
+                copy_text(
+                    "rsFilewinShell.editor.replacedAll",
+                    &[("n", &n.to_string())],
+                )
+            });
+            return n;
+        }
+        let mut st = egui::TextEdit::load_state(ctx, id).unwrap_or_default();
+        let (a, b) = st.cursor.char_range().map_or((0, 0), |r| {
+            let r = r.as_sorted_char_range();
+            (r.start.0, r.end.0)
+        });
+        let picked: String = p.text.chars().skip(a).take(b.saturating_sub(a)).collect();
+        let mut n = 0;
+        if a < b && picked == p.find.needle {
+            p.text = super::editor::replace_chars(&p.text, a, b, &p.find.with);
+            let after = a + p.find.with.chars().count();
+            st.cursor.set_char_range(Some(egui::text::CCursorRange::one(
+                egui::text::CCursor::new(after),
+            )));
+            st.store(ctx, id);
+            n = 1;
+        }
+        self.find_in_editor(ctx, false);
+        n
+    }
+
     fn editor_ui(&mut self, ui: &mut egui::Ui) {
         // ── 在飞指示（读 / 存都要出声，否则「点了没反应」）──
         if let Some(p) = self.edits.opening() {
@@ -1921,6 +2009,12 @@ impl FileWindow {
             return;
         }
         let (mut save, mut close, mut overwrite, mut reopen) = (false, false, false, false);
+        // 〔W5-FILES · `设计/60 §6.2`〕查找替换：普通路径才有（大文件模式没有，`§5.5` 写明的边界）。Ctrl+F 把焦点给查找框。
+        let big = pane.big.is_big();
+        let mut find_act: Option<FindAct> = None;
+        if !big && ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::F)) {
+            ui.memory_mut(|m| m.request_focus(egui::Id::new(FIND_ID)));
+        }
         egui::Modal::new(egui::Id::new("filewin-editor")).show(ui.ctx(), |ui| {
             ui.heading(format!(
                 "{}{}",
@@ -1972,6 +2066,11 @@ impl FileWindow {
                     }
                 });
             }
+            if big {
+                ui.label(copy_text("rsFilewinShell.editor.findBig", &[]));
+            } else if let Some(p) = self.editing.as_mut() {
+                find_act = find_row(ui, &mut p.find);
+            }
             super::bigfile::show(ui, self.editing.as_mut());
             ui.horizontal(|ui| {
                 if ui
@@ -1988,6 +2087,23 @@ impl FileWindow {
                 }
             });
         });
+        if let Some(a) = find_act {
+            let ctx = ui.ctx().clone();
+            match a {
+                FindAct::Next => {
+                    self.find_in_editor(&ctx, false);
+                }
+                FindAct::Prev => {
+                    self.find_in_editor(&ctx, true);
+                }
+                FindAct::Replace => {
+                    self.replace_in_editor(&ctx, false);
+                }
+                FindAct::ReplaceAll => {
+                    self.replace_in_editor(&ctx, true);
+                }
+            }
+        }
         if save {
             let ctx = ui.ctx().clone();
             self.save_edit(Some(ctx));
@@ -3061,3 +3177,62 @@ mod tests;
 #[cfg(test)]
 #[path = "../../../../tests/bridge/filewin/shell_keys_tests.rs"]
 mod keys_tests;
+
+/// 〔W5-FILES〕编辑面查找栏上按了哪一颗。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FindAct {
+    Next,
+    Prev,
+    Replace,
+    ReplaceAll,
+}
+
+/// 〔W5-FILES〕查找框的 egui id（Ctrl+F 把焦点给它）。
+const FIND_ID: &str = "filewin-editor-find";
+
+/// 〔W5-FILES · `设计/60 §6.2`〕编辑面那一截查找替换：查找框 · 上一个 · 下一个 · 替换框 · 替换 · 全部替换 · 上一下那句话。
+/// 在查找框里按回车 ＝「下一个」。回这一帧按了哪一颗。
+fn find_row(ui: &mut egui::Ui, f: &mut super::editor::FindBar) -> Option<FindAct> {
+    let mut act = None;
+    ui.horizontal(|ui| {
+        ui.label(copy_text("rsFilewinShell.editor.findLabel", &[]));
+        let r = ui.add(
+            egui::TextEdit::singleline(&mut f.needle)
+                .id(egui::Id::new(FIND_ID))
+                .desired_width(160.0),
+        );
+        if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            act = Some(FindAct::Next);
+        }
+        if ui
+            .button(copy_text("rsFilewinShell.editor.findPrev", &[]))
+            .clicked()
+        {
+            act = Some(FindAct::Prev);
+        }
+        if ui
+            .button(copy_text("rsFilewinShell.editor.findNext", &[]))
+            .clicked()
+        {
+            act = Some(FindAct::Next);
+        }
+        ui.label(copy_text("rsFilewinShell.editor.replaceLabel", &[]));
+        ui.add(egui::TextEdit::singleline(&mut f.with).desired_width(160.0));
+        if ui
+            .button(copy_text("rsFilewinShell.editor.replaceOne", &[]))
+            .clicked()
+        {
+            act = Some(FindAct::Replace);
+        }
+        if ui
+            .button(copy_text("rsFilewinShell.editor.replaceAll", &[]))
+            .clicked()
+        {
+            act = Some(FindAct::ReplaceAll);
+        }
+        if let Some(n) = &f.notice {
+            ui.label(n);
+        }
+    });
+    act
+}

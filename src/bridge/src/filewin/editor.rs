@@ -401,6 +401,58 @@ pub struct Pane {
     pub stale: bool,
     /// 〔F9〕大文件模式那一格（`None` 在里面 ＝ 普通路径）。逐条住 [`super::bigfile`] 头注。
     pub(crate) big: super::bigfile::BigSlot,
+    /// 〔W5-FILES · `设计/60 §6.2`「查找替换」〕编辑面上那一截查找替换的状态（只在普通路径上画；大文件模式没有，`§5.5`）。
+    pub find: FindBar,
+}
+
+/// 〔W5-FILES〕编辑面那一截查找替换的状态。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FindBar {
+    /// 查找框里的字。
+    pub needle: String,
+    /// 替换框里的字。
+    pub with: String,
+    /// 上一下做完时说的那句话（没找到 · 替换了几处）。
+    pub notice: Option<String>,
+}
+
+/// 〔W5-FILES〕在 `text` 里从第 `from` 个**字**起找 `needle`（区分大小写、字面匹配，不做正则 —— 没人裁过）。
+///
+/// 往后找 ⇒ 从 `from` 起第一处，找不到从头绕回；往前找 ⇒ `from` 之前最后一处，找不到从尾绕回。
+/// 回 `(起, 止)`，单位是**字**（egui 光标的单位）。空的查找串 ⇒ `None`。
+pub fn find_from(text: &str, needle: &str, from: usize, backward: bool) -> Option<(usize, usize)> {
+    if needle.is_empty() {
+        return None;
+    }
+    let byte_at = |k: usize| -> usize { text.char_indices().nth(k).map_or(text.len(), |(b, _)| b) };
+    let char_at = |b: usize| -> usize { text[..b].chars().count() };
+    let at = byte_at(from);
+    let hit = if backward {
+        text[..at].rfind(needle).or_else(|| text.rfind(needle))
+    } else {
+        text[at..]
+            .find(needle)
+            .map(|b| b + at)
+            .or_else(|| text.find(needle))
+    }?;
+    let start = char_at(hit);
+    Some((start, start + needle.chars().count()))
+}
+
+/// 〔W5-FILES〕把 `text` 里所有的 `needle` 换成 `with`。回 `(新文本, 换了几处)`。空的查找串 ⇒ 原样、0 处。
+pub fn replace_all(text: &str, needle: &str, with: &str) -> (String, usize) {
+    if needle.is_empty() {
+        return (text.to_string(), 0);
+    }
+    let n = text.matches(needle).count();
+    (text.replace(needle, with), n)
+}
+
+/// 〔W5-FILES〕把第 `start..end` 个**字**换成 `with`。回新文本。
+pub fn replace_chars(text: &str, start: usize, end: usize, with: &str) -> String {
+    let byte_at = |k: usize| -> usize { text.char_indices().nth(k).map_or(text.len(), |(b, _)| b) };
+    let (a, b) = (byte_at(start), byte_at(end));
+    format!("{}{}{}", &text[..a], with, &text[b..])
 }
 
 impl Pane {
@@ -414,6 +466,7 @@ impl Pane {
             last_save: None,
             stale: false,
             big: Default::default(),
+            find: FindBar::default(),
         }
     }
 
