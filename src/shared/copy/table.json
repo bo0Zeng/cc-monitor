@@ -10714,6 +10714,51 @@
       "zh": "正在算 {name} 的大小",
       "args": ["name"]
     },
+    "rsFilewinShell.editor.findLabel": {
+      "kind": "control",
+      "zh": "查找",
+      "args": []
+    },
+    "rsFilewinShell.editor.findPrev": {
+      "kind": "action",
+      "zh": "上一个",
+      "args": []
+    },
+    "rsFilewinShell.editor.findNext": {
+      "kind": "action",
+      "zh": "下一个",
+      "args": []
+    },
+    "rsFilewinShell.editor.replaceLabel": {
+      "kind": "control",
+      "zh": "替换为",
+      "args": []
+    },
+    "rsFilewinShell.editor.replaceOne": {
+      "kind": "action",
+      "zh": "替换",
+      "args": []
+    },
+    "rsFilewinShell.editor.replaceAll": {
+      "kind": "action",
+      "zh": "全部替换",
+      "args": []
+    },
+    "rsFilewinShell.editor.findNone": {
+      "kind": "body",
+      "zh": "没找到「{needle}」",
+      "args": ["needle"]
+    },
+    "rsFilewinShell.editor.replacedAll": {
+      "kind": "body",
+      "zh": "替换了 {n} 处",
+      "args": ["n"]
+    },
+    "rsFilewinShell.editor.findBig": {
+      "kind": "body",
+      "zh": "大文件模式没有查找替换",
+      "args": []
+    },
     "rsFilewinCopy.ui.askOverwriteMany": {
       "kind": "body",
       "zh": "远端已经有这 {n} 个同名文件了，要覆盖吗？",
