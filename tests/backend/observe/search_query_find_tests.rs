@@ -170,15 +170,10 @@ fn find_and_global_search_agree_on_the_same_file() {
         };
         let mut budget = SnippetBudget::new(opts.limit);
         let q = Q.trim().to_lowercase();
-        let s = session_hits_in(
-            &p,
-            &std::fs::read_to_string(&p).expect("读夹具"),
-            &q,
-            &opts,
-            &mut budget,
-            0,
-        )
-        .expect("有命中");
+        // 〔SX1〕会话那一格来自索引：整份读进一格 `FileEntry`。
+        let mut entry = FileEntry::empty(None);
+        entry.take(None, &std::fs::read(&p).expect("读夹具"));
+        let s = session_hits_in(&p, &entry, &q, &opts, &mut budget, 0).expect("有命中");
         // `--search` 也列没有 uuid 的记录（uuid 记成空串）；本命令不列 —— 这是两者**唯一**刻意的差别
         let searched: Vec<(String, String, String, String)> = s["hits"]
             .as_array()
