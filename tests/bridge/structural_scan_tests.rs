@@ -4513,6 +4513,10 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/backend/relay/route_tests.rs", 1), // 〔US1 · 4D〕新贴：上游选择那半从 monitor 搬走时留下的墓碑
         ("tests/bridge/backend/control/payload_tests.rs", 2), // 〔US1 · 4D〕新贴：上游选择那半从 monitor 搬走时留下的墓碑
         ("tests/bridge/local_backend_host_tests.rs", 1), // 〔US1 · 4D〕新贴：上游选择那半从 monitor 搬走时留下的墓碑
+        // 〔DUP1 · 4D〕`设计/90 §3` 判据 2：`accounts.ts` 里 `auth_ready` 订阅分支的第二份（带「旧后端」回落的 `authReady()` 包装）删了，
+        //   点它的散文各挂一块：`Account.authReady` 字段头注那一处 · KAY4 判据头注第 4 条那一处。
+        ("src/accounts.ts", 1),
+        ("tests/account-availability-guard.vitest.ts", 1),
     ];
 
     /// **挂歪了 / 在谈这件机制本身**的那些行，逐份登记**行数**。
