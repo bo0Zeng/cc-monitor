@@ -1618,10 +1618,11 @@ impl FileWindow {
             // 〔F7a〕读文本经通道问后端（`files-read-text`），不再拨 SFTP。
             let got = super::editor::read_text(&line, &origin, &row.path).await;
             board.deliver(match got {
-                Ok(Some(text)) => Arrived::Text {
+                Ok(Some(o)) => Arrived::Text {
                     path: row.path.clone(),
                     name: row.name.clone(),
-                    text,
+                    text: o.text,
+                    sha256: o.sha256,
                 },
                 Ok(None) => Arrived::NotText { path: row.path },
                 Err(why) => Arrived::Failed {
@@ -1643,8 +1644,13 @@ impl FileWindow {
             return false;
         };
         match a {
-            Arrived::Text { path, name, text } => {
-                self.editing = Some(super::editor::Pane::opened(&path, &name, text));
+            Arrived::Text {
+                path,
+                name,
+                text,
+                sha256,
+            } => {
+                self.editing = Some(super::editor::Pane::opened(&path, &name, text, sha256));
             }
             Arrived::NotText { path } => {
                 *self.listing.error.lock().unwrap() = Some(super::editor::not_text_notice(&path));
@@ -1693,8 +1699,67 @@ impl FileWindow {
         board.attach(ctx);
         board.begin_save(&p.path);
         h.spawn(async move {
-            let r = super::editor::write_text(&line, &origin, &p.path, &p.text).await;
+            let r = super::editor::write_text(&line, &origin, &p.path, &p.text, p.expect_sha256())
+                .await;
             board.deliver_save(r);
+        });
+        true
+    }
+
+    /// 〔FW1 · D-c〕存盘撞上「盘上那份在你打开之后被改过了」之后，人点了**仍然覆盖**。回值 = 真的发出去了。
+    ///
+    /// 先重读一趟拿盘上此刻那一份的摘要、再以它为 `expect` 存（`editor::overwrite_anyway`）—— CAS 仍在。
+    pub fn overwrite_edit(&mut self, ctx: Option<egui::Context>) -> bool {
+        let Some(p) = self.editing.clone() else {
+            return false;
+        };
+        if p.over_cap() {
+            return self.save_edit(ctx);
+        }
+        let (Some(h), Some(line)) = (self.rt.clone(), self.line.clone()) else {
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
+            return false;
+        };
+        let origin = self.source.origin();
+        let board = self.edits.clone();
+        board.attach(ctx);
+        board.begin_save(&p.path);
+        h.spawn(async move {
+            let r = super::editor::overwrite_anyway(&line, &origin, &p.path, &p.text).await;
+            board.deliver_save(r);
+        });
+        true
+    }
+
+    /// 〔FW1 · D-c〕存盘撞上 stale 之后，人点了**丢掉我的改动、重新打开**：编辑面收掉、同一份重读一遍。
+    /// 回值 = 真的发出去了（拿不到运行时 / 通道 ⇒ 编辑面照旧留着，一个字不丢）。
+    pub fn reopen_edit(&mut self, ctx: Option<egui::Context>) -> bool {
+        let Some(p) = self.editing.as_ref() else {
+            return false;
+        };
+        let (path, name) = (p.path.clone(), p.name.clone());
+        let (Some(h), Some(line)) = (self.rt.clone(), self.line.clone()) else {
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
+            return false;
+        };
+        self.discard_edit();
+        let origin = self.source.origin();
+        let board = self.edits.clone();
+        board.attach(ctx);
+        board.begin_open(&path);
+        h.spawn(async move {
+            use super::editor::Arrived;
+            let got = super::editor::read_text(&line, &origin, &path).await;
+            board.deliver(match got {
+                Ok(Some(o)) => Arrived::Text {
+                    path,
+                    name,
+                    text: o.text,
+                    sha256: o.sha256,
+                },
+                Ok(None) => Arrived::NotText { path },
+                Err(why) => Arrived::Failed { path, why },
+            });
         });
         true
     }
@@ -1711,8 +1776,9 @@ impl FileWindow {
             return false;
         };
         match r {
-            Ok(()) => p.mark_saved(),
-            Err(why) => p.mark_failed(why),
+            Ok(s) => p.mark_saved(&s.sent, s.sha256),
+            Err(super::editor::SaveError::Stale(why)) => p.mark_stale(why),
+            Err(super::editor::SaveError::Failed(why)) => p.mark_failed(why),
         }
         true
     }
@@ -1847,7 +1913,7 @@ impl FileWindow {
             }
             return;
         }
-        let (mut save, mut close) = (false, false);
+        let (mut save, mut close, mut overwrite, mut reopen) = (false, false, false, false);
         egui::Modal::new(egui::Id::new("filewin-editor")).show(ui.ctx(), |ui| {
             ui.heading(format!(
                 "{}{}",
@@ -1888,6 +1954,17 @@ impl FileWindow {
                     ),
                 };
             }
+            // 〔FW1 · D-c〕盘上那份在打开之后被改过了 ⇒ 让人选，不替他选（编辑框的字一个不动）。
+            if pane.stale {
+                ui.horizontal(|ui| {
+                    if ui.button(super::editor::OVERWRITE_LABEL.as_str()).clicked() {
+                        overwrite = true;
+                    }
+                    if ui.button(super::editor::REOPEN_LABEL.as_str()).clicked() {
+                        reopen = true;
+                    }
+                });
+            }
             super::bigfile::show(ui, self.editing.as_mut());
             ui.horizontal(|ui| {
                 if ui
@@ -1907,6 +1984,12 @@ impl FileWindow {
         if save {
             let ctx = ui.ctx().clone();
             self.save_edit(Some(ctx));
+        } else if overwrite {
+            let ctx = ui.ctx().clone();
+            self.overwrite_edit(Some(ctx));
+        } else if reopen {
+            let ctx = ui.ctx().clone();
+            self.reopen_edit(Some(ctx));
         } else if close {
             self.close_edit();
         }

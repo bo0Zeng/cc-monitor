@@ -82,36 +82,30 @@ pub(crate) async fn call(
     args: Value,
     budget: Duration,
 ) -> Result<Value, String> {
+    let who = who(origin);
     let origin = origin.as_wire_str();
     let Some(client) = inbound_client::client_for(origin) else {
-        return Err(said(no_channel(origin)));
+        // 〔LOC1a〕说「谁」用同一个 [`who`]：本机那几问改走 `<local>` 之后，不许把 `<local>` 这个键原样说给人看。
+        return Err(said(no_channel(&who)));
     };
     // 能力协商放在发之前（同 `tmux::capture_via_backend`）：「这台的后端太旧」是问得出答案的，
     // 不许与超时同形。
     if !client.accepts(cmd) {
-        return Err(copy_text(
-            "rsFrameQuery.call.tooOld",
-            &[("origin", &origin.to_string())],
-        ));
+        return Err(copy_text("rsFrameQuery.call.tooOld", &[("who", &who)]));
     }
     let data = client.call(cmd, args, budget).await.map_err(|e| {
         said(route_call_error(&e, |code, message| {
             copy_text(
                 "rsFrameQuery.call.failed",
                 &[
-                    ("origin", &origin.to_string()),
+                    ("who", &who),
                     ("code", &code.to_string()),
                     ("message", &message.to_string()),
                 ],
             )
         }))
     })?;
-    data.ok_or_else(|| {
-        copy_text(
-            "rsFrameQuery.reply.badShape",
-            &[("origin", &origin.to_string())],
-        )
-    })
+    data.ok_or_else(|| copy_text("rsFrameQuery.reply.badShape", &[("who", &who)]))
 }
 
 /// 三态里给人看的那句话。`Done` 在本族走不到（查询不产「已完成」这一档）。
@@ -122,16 +116,29 @@ fn said(r: Routed) -> String {
     }
 }
 
+/// 报错里的「谁」：本机说「本机」，远端说「远端 [x]」〔LOC1a〕。
+///
+/// 本机那几问从 exec 一次性后端改走 `<local>` 长连接之后，同一句话本机远端共用 ——
+/// 不许把本机说成「远端 [<local>]」。
+pub(crate) fn who(origin: &Origin) -> String {
+    if origin.is_local() {
+        copy_text("rsFrameQuery.who.local", &[])
+    } else {
+        copy_text(
+            "rsFrameQuery.who.remote",
+            &[("machine", origin.as_wire_str())],
+        )
+    }
+}
+
 /// 按行那六条：`data.lines` 原样拿回（逐行、trim 过、剔空行 —— 与已删的逐次拨号那条路的出参同形）。
 pub(crate) async fn lines(origin: &Origin, cmd: &str, args: Value) -> Result<Vec<String>, String> {
     let data = call(origin, cmd, args, LINES_BUDGET).await?;
-    let origin = origin.as_wire_str();
-    let rows = data.get("lines").and_then(Value::as_array).ok_or_else(|| {
-        copy_text(
-            "rsFrameQuery.reply.badShape",
-            &[("origin", &origin.to_string())],
-        )
-    })?;
+    let who = who(origin);
+    let rows = data
+        .get("lines")
+        .and_then(Value::as_array)
+        .ok_or_else(|| copy_text("rsFrameQuery.reply.badShape", &[("who", &who)]))?;
     Ok(rows
         .iter()
         .filter_map(Value::as_str)
@@ -159,14 +166,11 @@ pub(crate) async fn tail(origin: &Origin, path: &str, n: u64) -> Result<TailPlan
         PAGE_BUDGET,
     )
     .await?;
-    let origin = origin.as_wire_str();
+    let who = who(origin);
     let num = |k: &str| {
-        data.get(k).and_then(Value::as_u64).ok_or_else(|| {
-            copy_text(
-                "rsFrameQuery.reply.badShape",
-                &[("origin", &origin.to_string())],
-            )
-        })
+        data.get(k)
+            .and_then(Value::as_u64)
+            .ok_or_else(|| copy_text("rsFrameQuery.reply.badShape", &[("who", &who)]))
     };
     let plan = TailPlan {
         total: num("total")?,
@@ -177,10 +181,7 @@ pub(crate) async fn tail(origin: &Origin, path: &str, n: u64) -> Result<TailPlan
     if plan.tail_from > plan.total || plan.split_at > plan.end {
         return Err(copy_text(
             "rsFrameQuery.reply.inconsistent",
-            &[
-                ("origin", &origin.to_string()),
-                ("plan", &format!("{:?}", plan)),
-            ],
+            &[("who", &who), ("plan", &format!("{:?}", plan))],
         ));
     }
     Ok(plan)
@@ -214,23 +215,17 @@ pub(crate) async fn read_page(
         args["until"] = json!(u);
     }
     let data = call(origin, "history-read", args, PAGE_BUDGET).await?;
-    let origin = origin.as_wire_str();
+    let who = who(origin);
     let text = data.get("text").and_then(Value::as_str);
     let next = data.get("next").and_then(Value::as_u64);
     let eof = data.get("eof").and_then(Value::as_bool);
     let (Some(text), Some(next), Some(eof)) = (text, next, eof) else {
-        return Err(copy_text(
-            "rsFrameQuery.reply.badShape",
-            &[("origin", &origin.to_string())],
-        ));
+        return Err(copy_text("rsFrameQuery.reply.badShape", &[("who", &who)]));
     };
     if !eof && next <= offset {
         return Err(copy_text(
             "rsFrameQuery.readPage.stuck",
-            &[
-                ("origin", &origin.to_string()),
-                ("offset", &offset.to_string()),
-            ],
+            &[("who", &who), ("offset", &offset.to_string())],
         ));
     }
     Ok(Page {
@@ -278,32 +273,24 @@ pub(crate) fn parse_session_lines(
     asked: u64,
     data: &Value,
 ) -> Result<LinesPage, String> {
-    let origin = origin.as_wire_str();
+    let who = who(origin);
     let from = data.get("from").and_then(Value::as_u64);
     let next = data.get("next").and_then(Value::as_u64);
     let eof = data.get("eof").and_then(Value::as_bool);
     let lines = data.get("lines").and_then(Value::as_array);
     let (Some(from), Some(next), Some(eof), Some(lines)) = (from, next, eof, lines) else {
-        return Err(copy_text(
-            "rsFrameQuery.reply.badShape",
-            &[("origin", &origin.to_string())],
-        ));
+        return Err(copy_text("rsFrameQuery.reply.badShape", &[("who", &who)]));
     };
     let lines: Vec<String> = lines
         .iter()
         .map(|l| l.as_str().map(str::to_string))
         .collect::<Option<_>>()
-        .ok_or_else(|| {
-            copy_text(
-                "rsFrameQuery.reply.badShape",
-                &[("origin", &origin.to_string())],
-            )
-        })?;
+        .ok_or_else(|| copy_text("rsFrameQuery.reply.badShape", &[("who", &who)]))?;
     if from != asked || next != from + lines.len() as u64 || (!eof && lines.is_empty()) {
         return Err(copy_text(
             "rsFrameQuery.lines.inconsistent",
             &[
-                ("origin", &origin.to_string()),
+                ("who", &who),
                 ("asked", &asked.to_string()),
                 ("from", &from.to_string()),
                 ("next", &next.to_string()),

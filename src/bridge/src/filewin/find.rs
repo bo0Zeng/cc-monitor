@@ -223,6 +223,8 @@ pub const STATUS_FIELDS: &[&str] = &[
     "browse_watches",
     "browse_watch_cap",
     "cold_first_build_secs",
+    // 〔W5-FILES · `设计/60 §3.7`〕后端没走进去的挂载点个数。
+    "skipped_mounts",
 ];
 
 /// 一条命中。**持有原始字节，不持有字符串**。
@@ -287,6 +289,8 @@ pub struct IndexStatus {
     /// 〔第四波 S4 · `设计/99 §2 Q5`〕后端**声明**的冷启动首建大约要几秒。
     /// 这一侧只在「首建那一趟」里把它画出来（[`first_build_line`]），不定它、不换算它。
     pub cold_first_build_secs: u64,
+    /// 〔W5-FILES · `设计/60 §3.7`〕根底下挂着的别的文件系统，后端没走进去的个数（那几个目录底下的搜不到）。
+    pub skipped_mounts: u64,
 }
 
 fn field(d: &Value, k: &str) -> Result<Value, String> {
@@ -382,6 +386,7 @@ pub fn decode_status(d: &Value) -> Result<IndexStatus, String> {
         browse_watches: need_u64(d, "browse_watches")?,
         browse_watch_cap: need_u64(d, "browse_watch_cap")?,
         cold_first_build_secs: need_u64(d, "cold_first_build_secs")?,
+        skipped_mounts: need_u64(d, "skipped_mounts")?,
     })
 }
 
@@ -456,6 +461,13 @@ pub fn freshness_line(s: &IndexStatus) -> String {
     }
     if s.truncated {
         t.push_str(&copy_text("rsFilewinFind.freshness.truncated", &[]));
+    }
+    // 〔W5-FILES · `设计/60 §3.7`〕没走进去的挂载点：那几个目录底下的东西搜不到 ⇒ 说出来（不静默少走）。
+    if s.skipped_mounts > 0 {
+        t.push_str(&copy_text(
+            "rsFilewinFind.freshness.skippedMounts",
+            &[("n", &s.skipped_mounts.to_string())],
+        ));
     }
     // 〔CP2b · CP1 裁「改·§2.1」〕原先这里还接一段「浏览中的目录挂着 N 个监听（上限 M）」—— 监听数 / 上限是
     //   内部资源读数，用户用不上 ⇒ 删去（裁词原话「删去这段」）。

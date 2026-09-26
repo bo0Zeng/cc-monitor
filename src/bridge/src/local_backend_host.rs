@@ -235,7 +235,7 @@ fn ensure_listen_token(dir: &std::path::Path) -> Result<String, String> {
             return Ok(t);
         }
     }
-    ensure_private_dir(dir)?;
+    crate::platform_fs::ensure_private_dir(dir)?;
     let token = fresh_token()?;
     // `create_new` = O_EXCL：两个 monitor 同时起时只有一个写得成，另一个回头读它写的那份。
     let mut opts = std::fs::OpenOptions::new();
@@ -309,27 +309,8 @@ fn fresh_token() -> Result<String, String> {
     Ok(buf.iter().map(|b| format!("{b:02x}")).collect())
 }
 
-/// 〔HX1 · RK1 小尾巴〕`~/.cc-monitor` 这一层（token · 「谁在听」· 释放出来的后端二进制都住这里）**建的那一下**就只给本人：
-/// unix 上 `0700`（`DirBuilder` 的 mode 在创建时生效，没有「先按 umask 建出来、再收窄」的那一段）。**已在的不动**
-/// —— 那可能是用户自己设的。别的平台照旧（那边不是 unix 权限位这一问）。
-fn ensure_private_dir(dir: &std::path::Path) -> Result<(), String> {
-    if dir.is_dir() {
-        return Ok(());
-    }
-    let mut b = std::fs::DirBuilder::new();
-    b.recursive(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt as _;
-        b.mode(0o700);
-    }
-    b.create(dir).map_err(|e| {
-        copy_text(
-            "rsLocalBackendHost.fs.mkdirFailed",
-            &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
-        )
-    })
-}
+// 〔HX1 · 拍板项 4〕`~/.cc-monitor` 这一层建的那一下就只给本人：那个函数住 `platform_fs::ensure_private_dir`，
+//   与释放后端二进制那几处（`backend/control/local_backend.rs`，经注入）共用一份。
 
 /// 记下「谁在听那个口」。**只有起它的那个宿主写**。
 ///
@@ -348,7 +329,7 @@ fn write_listen_pid(
     pid: u32,
     bin: &std::path::Path,
 ) -> Result<(), String> {
-    ensure_private_dir(dir)?;
+    crate::platform_fs::ensure_private_dir(dir)?;
     let p = pid_path(dir, port);
     let mut opts = std::fs::OpenOptions::new();
     opts.write(true).create(true).truncate(true);
@@ -716,6 +697,33 @@ pub struct DetachedHandle {
 /// 而那个窗口正是 `start_local_backend` 头注花了一整段治的那件事（双起）。
 /// ⇒ `LOCAL_BACKEND` 的锁是**两条路共用的那道门**，本表只在门内动。
 pub static DETACHED: std::sync::Mutex<Option<DetachedHandle>> = std::sync::Mutex::new(None);
+
+/// 〔LOC1a · 第四波 4D〕被监护那条路（非常驻：Windows / `CCM_NO_DETACH`）起来的那一份二进制。
+/// 常驻那条的记在 [`DETACHED`] 里（`bin`）；这一格只为被监护那条补上同一个事实。
+/// **锁序同 `DETACHED`**：只在持有 [`LOCAL_BACKEND`] 的锁时取。
+static SUPERVISED_BIN: std::sync::Mutex<Option<std::path::PathBuf>> = std::sync::Mutex::new(None);
+
+/// 〔LOC1a · 第四波 4D〕**正在跑的那份**本机常驻后端的二进制 —— 给终端窗口导 `CCM_BACKEND_BIN`（`D11`）。
+///
+/// 常驻那条（起的 / 接管的）⇒ `DETACHED.bin`（接管来的从 pid 文件第二行读回；读不回是空的 ⇒ `None`，不猜）；
+/// 被监护那条 ⇒ 起它时解析出的那一份。都不在 ⇒ `None`（窗口里不设，同「本机后端不在」）。
+/// 此前窗口那一格自己去找 exe 旁边那份文件，不认自释放之后正在跑的那一份（RT1 F2 / WIN1 报备）。
+pub(crate) fn running_backend_bin() -> Option<std::path::PathBuf> {
+    let g = LOCAL_BACKEND.lock().unwrap_or_else(|e| e.into_inner());
+    {
+        let d = DETACHED.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(h) = d.as_ref() {
+            return (!h.bin.as_os_str().is_empty()).then(|| h.bin.clone());
+        }
+    }
+    if g.is_none() {
+        return None;
+    }
+    SUPERVISED_BIN
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
 
 /// `K-P1-D1` `重-2`：**上一次「那个口上有东西，但接不上它」的下一步该干什么。**
 ///
@@ -1325,6 +1333,7 @@ fn resolve_backend_bin(
         embedded,
         // `backend-split` 的 C10：平台知识由宿主注入。
         &crate::platform_fs::make_executable,
+        &crate::platform_fs::ensure_private_dir,
     ) {
         Resolved::Found(p) => Ok(p),
         Resolved::Missing { reason, looked_at } => Err((reason, looked_at)),
@@ -1334,7 +1343,7 @@ fn resolve_backend_bin(
 /// 停掉常驻那个。**调用方必须已经持有 [`LOCAL_BACKEND`] 的锁**（锁序，见 [`DETACHED`]）。
 /// `None` = 没有常驻那个；`Some(Ok)` = 干净地停了；`Some(Err)` = 强杀了 / 没停掉（都要到用户眼前）。
 ///
-/// 🔴〔HX1 · 4D · 主会话 D-a〕**先请它自己收尾（SIGTERM）→ 等（≤ 约 10 秒）→ 还在才 SIGKILL**（[`crate::stop_grace`]）。
+/// 🔴〔HX1 · 4D · 主会话 D-a〕**先请它自己收尾（SIGTERM）→ 等（≤ 约 35 秒，比后端自己的退出排空期限多 5 秒）→ 还在才 SIGKILL**（[`crate::stop_grace`]）。
 /// 此前自己起的那个直接 `Child::kill`（SIGKILL）—— 后端正在写的那一条被当场腰斩（E §E2）；
 /// 接管来的那个只发一次 SIGTERM 就说「已停」，不等、不看它是不是真退了。
 /// 后端收到 SIGTERM 会先排空停不下来的那一档再退（`src/backend/inbound.rs::exit_after_drain`）。
@@ -1391,7 +1400,13 @@ fn stop_detached_locked() -> Option<Result<String, String>> {
         )),
         StopEnd::Forced => Err(copy_text(
             "rsLocalBackendHost.stop.forced",
-            &[("pid", &pid_s)],
+            &[
+                ("pid", &pid_s),
+                (
+                    "secs",
+                    &(u128::from(STOP_GRACE_TRIES) * STOP_POLL.as_millis() / 1000).to_string(),
+                ),
+            ],
         )),
         StopEnd::Stuck(why) => {
             let why = why.unwrap_or_else(|| copy_text("rsLocalBackendHost.stop.stillThere", &[]));
@@ -1691,7 +1706,7 @@ pub fn start_local_backend() -> StartOutcome {
     // 〔HX1 · RK1 小尾巴〕本机上第一个建 `~/.cc-monitor` 的就是这里（释放后端二进制之前）⇒ 先把这一层按「只给本人」建好；
     //   `bin/` 那一层由释放那一步照旧建。建不了不挡起后端（释放那一步会出声说它自己的失败）。
     if let Some(home_dir) = extract_dir.parent() {
-        if let Err(e) = ensure_private_dir(home_dir) {
+        if let Err(e) = crate::platform_fs::ensure_private_dir(home_dir) {
             tracing::warn!("{e}");
         }
     }
@@ -1741,6 +1756,7 @@ pub fn start_local_backend() -> StartOutcome {
         embedded,
         // `backend-split` 的 C10：平台知识由宿主注入，backend 那半不认识 `#[cfg(unix)]`。
         &crate::platform_fs::make_executable,
+        &crate::platform_fs::ensure_private_dir,
         // ★ `K-P3b`：backend 这条监护路的死亡账**就记在这个闭包里**（见它的头注）。
         backend_supervise_events(),
         // ★ `15 §5.1 A3`：起进程那一下的三条答案由**宿主**给（backend 那半不认识平台）。
@@ -1750,6 +1766,10 @@ pub fn start_local_backend() -> StartOutcome {
     );
     if let Some(h) = sup {
         *g = Some(h);
+        // 〔LOC1a〕记下被监护那一份的二进制（给窗口导 `CCM_BACKEND_BIN`，见 [`running_backend_bin`]）。
+        if let Resolved::Found(p) = &resolved {
+            *SUPERVISED_BIN.lock().unwrap_or_else(|e| e.into_inner()) = Some(p.clone());
+        }
     }
     // ★ `K-P3b`：另一个返回 `Failed` 的出口，同样从 `note_never_started` 过。
     note_never_started(match resolved {
@@ -1841,6 +1861,7 @@ pub fn stop_local_backend() -> Result<String, String> {
         Some(h) => {
             let pid = h.current_pid();
             h.stop();
+            *SUPERVISED_BIN.lock().unwrap_or_else(|e| e.into_inner()) = None;
             Ok(copy_text("rsLocalBackendHost.stop.local", &[]))
         }
         None => Ok(copy_text("rsLocalBackendHost.stop.notRunning", &[]).into()),

@@ -977,7 +977,7 @@ fn the_five_mutating_commands_are_reachable_and_fenced_on_the_command_face() {
     );
     ok(
         "files-write-text",
-        serde_json::json!({"root": r, "rel": "d/b.md", "content": "zz"}),
+        serde_json::json!({"root": r, "rel": "d/b.md", "content": "zz", "expect": {"sha256": content_sha256(b"a")}}),
     );
     #[cfg(unix)]
     ok(
@@ -999,7 +999,7 @@ fn the_five_mutating_commands_are_reachable_and_fenced_on_the_command_face() {
     assert!(root.join("projects/-x/n.jsonl").is_dir());
     ok(
         "files-write-text",
-        serde_json::json!({"root": r, "rel": "projects/-x/abc.jsonl", "content": "x"}),
+        serde_json::json!({"root": r, "rel": "projects/-x/abc.jsonl", "content": "x", "expect": {"sha256": content_sha256(&bytes)}}),
     );
     assert_eq!(std::fs::read(&live).expect("读会话"), b"x");
     #[cfg(unix)]
@@ -1032,7 +1032,7 @@ fn the_five_mutating_commands_are_reachable_and_fenced_on_the_command_face() {
         ),
         (
             "files-write-text",
-            serde_json::json!({"root": r, "rel": "../esc", "content": "x"}),
+            serde_json::json!({"root": r, "rel": "../esc", "content": "x", "expect": {"sha256": "0".repeat(SHA256_HEX_LEN)}}),
         ),
         (
             "files-chmod",
@@ -2367,4 +2367,205 @@ fn the_command_face_copies_a_directory_only_when_asked() {
         b"3"
     );
     std::fs::remove_dir_all(&base).ok();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+//  〔FW1 · 第四波 4D · 2026-09-25〕编辑器存盘的 CAS（摘要形 `expect: {"sha256": …}`）
+// ═══════════════════════════════════════════════════════════════════════════════════════
+//
+// 要求住址：主会话裁 D-c「编辑器存盘带 CAS（`expect`）」（题面 `4d-lanes.md`「主会话本批裁的」）＋ 09-25 认可摘要形；
+// `设计/60 §3.3`「读的那一刻与写的那一刻之间，盘上那份被别人改了 ⇒ `stale`，一个字节不写」（原写给 `files-put`，同一条理由）。
+
+/// 摘要的算法住后端一处；判据拿**另一份实现**（`sha2`，只在测试期链接）对拍 —— 异源，两侧同源恒真那一形排除。
+fn sha2_hex(bytes: &[u8]) -> String {
+    use sha2::Digest as _;
+    sha2::Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+#[test]
+fn the_cas_digest_is_plain_sha256_as_another_implementation_computes_it() {
+    for body in [
+        b"".as_slice(),
+        b"a",
+        "中文\n行尾\r\n".as_bytes(),
+        &[0u8; 100_000],
+    ] {
+        assert_eq!(content_sha256(body), sha2_hex(body));
+    }
+    assert_eq!(content_sha256(b"x").len(), SHA256_HEX_LEN);
+}
+
+/// ★ 读 → 存 → 再存：`files-read-text` 交的摘要就是盘上那份的；拿它存成；应答交的新摘要 == 新内容的，拿它再存也成（连存两次不自撞）。
+#[test]
+fn read_then_save_then_save_again_chains_on_the_digests_the_backend_hands_out() {
+    let root = temp_root("cas-chain");
+    std::fs::write(root.join("a.md"), b"one\n").expect("铺");
+    let path = root.join("a.md");
+    let read = crate::files::answer_wire(
+        "files-read-text",
+        &serde_json::json!({"path": path.to_str().unwrap(), "max_bytes": 1024}),
+    )
+    .expect("读");
+    let sha = read["sha256"]
+        .as_str()
+        .expect("读的应答里该有 sha256")
+        .to_string();
+    assert_eq!(sha, sha2_hex(b"one\n"), "读交出来的摘要不是盘上那份的");
+    let r = root.to_str().unwrap();
+    let got = answer_wire(
+        "files-write-text",
+        &serde_json::json!({"root": r, "rel": "a.md", "content": "two\n", "expect": {"sha256": sha}}),
+    )
+    .expect("拿读到的摘要存，该成");
+    assert_eq!(
+        got["sha256"],
+        sha2_hex(b"two\n"),
+        "应答交的新摘要不是写进去那份的"
+    );
+    assert_eq!(std::fs::read(&path).unwrap(), b"two\n");
+    answer_wire(
+        "files-write-text",
+        &serde_json::json!({"root": r, "rel": "a.md", "content": "three\n", "expect": {"sha256": got["sha256"]}}),
+    )
+    .expect("拿上一次应答的摘要再存，该成");
+    assert_eq!(std::fs::read(&path).unwrap(), b"three\n");
+}
+
+/// ★★ **读完之后盘上被别人改了 ⇒ `stale`，一个字节没写**（E §E11 那一形：窗口开着 `~/.bashrc`，机器页写了别名块，回窗口存）。
+/// 已经不在 ⇒ 同样 `stale`，而且不会被顺手建出来。
+#[test]
+fn a_save_over_a_file_changed_or_removed_since_it_was_read_is_stale_and_writes_nothing() {
+    let root = temp_root("cas-stale");
+    let r = root.to_str().unwrap();
+    std::fs::write(root.join("rc"), b"mine\n").expect("铺");
+    let seen = content_sha256(b"mine\n");
+    std::fs::write(root.join("rc"), b"mine\n# alias block\n").expect("别人在这期间写了");
+    let e = answer_wire(
+        "files-write-text",
+        &serde_json::json!({"root": r, "rel": "rc", "content": "mine edited\n", "expect": {"sha256": seen}}),
+    )
+    .expect_err("盘上已经变了，竟然写成了");
+    assert_eq!(e.0, "stale", "{e:?}");
+    assert_eq!(
+        std::fs::read(root.join("rc")).unwrap(),
+        b"mine\n# alias block\n",
+        "stale 却动了盘"
+    );
+
+    std::fs::remove_file(root.join("rc")).unwrap();
+    let e = answer_wire(
+        "files-write-text",
+        &serde_json::json!({"root": r, "rel": "rc", "content": "x", "expect": {"sha256": seen}}),
+    )
+    .expect_err("不在了，竟然写成了");
+    assert_eq!(e.0, "stale", "{e:?}");
+    assert!(!root.join("rc").exists(), "不在的那份被建出来了");
+}
+
+/// `expect` 必给、形状只收一种：缺了 · `null` · 字符串（逐字节形不给这条）· 大写 · 短一位 · 多一个键 ⇒ 全 `bad_args`，盘上一个字节不动。
+#[test]
+fn the_write_text_expect_is_required_and_takes_exactly_one_shape() {
+    let root = temp_root("cas-shape");
+    let r = root.to_str().unwrap();
+    std::fs::write(root.join("a"), b"keep").expect("铺");
+    let good = content_sha256(b"keep");
+    let bad = [
+        serde_json::json!({"root": r, "rel": "a", "content": "x"}),
+        serde_json::json!({"root": r, "rel": "a", "content": "x", "expect": null}),
+        serde_json::json!({"root": r, "rel": "a", "content": "x", "expect": "keep"}),
+        serde_json::json!({"root": r, "rel": "a", "content": "x", "expect": {"sha256": good.to_uppercase()}}),
+        serde_json::json!({"root": r, "rel": "a", "content": "x", "expect": {"sha256": &good[1..]}}),
+        serde_json::json!({"root": r, "rel": "a", "content": "x", "expect": {"sha256": good, "b16": "00"}}),
+    ];
+    for args in bad {
+        let e = answer_wire("files-write-text", &args).expect_err("形状不对竟然收了");
+        assert_eq!(e.0, "bad_args", "{args}: {e:?}");
+    }
+    assert_eq!(std::fs::read(root.join("a")).unwrap(), b"keep");
+    // 正控：同一份、形状对 ⇒ 写成（上面的拒不是因为别的）。
+    answer_wire(
+        "files-write-text",
+        &serde_json::json!({"root": r, "rel": "a", "content": "x", "expect": {"sha256": good}}),
+    )
+    .expect("形状对的那一份该写成");
+    assert_eq!(std::fs::read(root.join("a")).unwrap(), b"x");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+//  〔FW1 · 第四波 4D · 2026-09-25〕`files-delete` 的「只删空目录」一形（主会话裁 SU1 问 2）
+// ═══════════════════════════════════════════════════════════════════════════════════════
+//
+// 要求住址（逐字）：题面 `4d-lanes.md`「主会话本批裁的」「SU1 问 2：后端 `files-delete` 加显式『只删空目录』一形
+// （带 `expect: empty-dir`），卸 skill 最后删空目录」；`设计/60 §3.3` `files-delete` 那一条（`expect` 是删的 CAS）。
+
+/// ★ 空目录删掉；不空 ⇒ `stale`、里面一个字节不动；不在 ⇒ `stale`；是文件 / 指向目录的链接 ⇒ `refused`、原样留着。
+#[test]
+fn the_empty_dir_form_deletes_only_an_empty_real_directory() {
+    let root = temp_root("fw1-emptydir");
+    let r = root.to_str().unwrap();
+    let del = |rel: &str| {
+        answer_wire(
+            "files-delete",
+            &serde_json::json!({"root": r, "rel": rel, "expect": {"empty_dir": true}}),
+        )
+    };
+    std::fs::create_dir_all(root.join("empty")).unwrap();
+    del("empty").expect("空目录该删掉");
+    assert!(!root.join("empty").exists());
+
+    std::fs::create_dir_all(root.join("full")).unwrap();
+    std::fs::write(root.join("full/keep.md"), b"keep").unwrap();
+    let e = del("full").expect_err("不空竟然删了");
+    assert_eq!(e.0, "stale", "{e:?}");
+    assert_eq!(std::fs::read(root.join("full/keep.md")).unwrap(), b"keep");
+
+    let e = del("nope").expect_err("不在竟然成了");
+    assert_eq!(e.0, "stale", "{e:?}");
+
+    std::fs::write(root.join("afile"), b"x").unwrap();
+    let e = del("afile").expect_err("文件竟然按空目录删了");
+    assert_eq!(e.0, "refused", "{e:?}");
+    assert!(root.join("afile").exists());
+
+    #[cfg(unix)]
+    {
+        std::fs::create_dir_all(root.join("realdir")).unwrap();
+        std::os::unix::fs::symlink(root.join("realdir"), root.join("link")).unwrap();
+        let e = del("link").expect_err("指向目录的链接竟然按空目录删了");
+        assert_eq!(e.0, "refused", "{e:?}");
+        assert!(root.join("link").exists() && root.join("realdir").is_dir());
+    }
+}
+
+/// 形状只收恰好 `{"empty_dir": true}`：`false` ⇒ `bad_args`（逐字节形取不出）；多带一个 `b16` ⇒ 不是空目录形，
+/// 按逐字节形取（`{"b16": …}`）⇒ 目标是目录 ⇒ `refused`；与 `recursive` 同给 ⇒ `bad_args`。每一形都一个字节不动。
+#[test]
+fn the_empty_dir_form_takes_exactly_one_shape() {
+    let root = temp_root("fw1-emptydir-shape");
+    let r = root.to_str().unwrap();
+    std::fs::create_dir_all(root.join("d")).unwrap();
+    for (expect, code) in [
+        (serde_json::json!({"empty_dir": false}), "bad_args"),
+        (
+            serde_json::json!({"empty_dir": true, "b16": "00"}),
+            "refused",
+        ),
+    ] {
+        let e = answer_wire(
+            "files-delete",
+            &serde_json::json!({"root": r, "rel": "d", "expect": expect}),
+        )
+        .expect_err("形状不对竟然删了");
+        assert_eq!(e.0, code, "{expect}: {e:?}");
+    }
+    let e = answer_wire(
+        "files-delete",
+        &serde_json::json!({"root": r, "rel": "d", "recursive": true, "expect": {"empty_dir": true}}),
+    )
+    .expect_err("与 recursive 同给竟然收了");
+    assert_eq!(e.0, "bad_args");
+    assert!(root.join("d").is_dir(), "拒了却动了盘");
 }

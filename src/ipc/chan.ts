@@ -310,7 +310,14 @@ export const chan = {
     const sub: Sub = {
       want: (more) => {
         if (!sinks.has(id) || more <= 0) return;
-        void commands.chan_want({ id, more }).catch(() => {});
+        // 〔W5-UI · E §3.3〕信用报不上去 ⇒ monitor 那一侧再也不会交格（实时格没信用就丢）——原先这里吞掉，
+        //   流**静默停住**。按本对象的契约「说不了的在流里原位说」：撤单、交一格 `closed{ours: Broken}`
+        //   （与登记那一跳失败同一形），由消费方出声。
+        void commands.chan_want({ id, more }).catch(() => {
+          if (!sinks.delete(id)) return;
+          void commands.chan_stop({ id }).catch(() => {});
+          sink([BROKEN_ITEM]);
+        });
       },
       stop: () => {
         if (!sinks.delete(id)) return;

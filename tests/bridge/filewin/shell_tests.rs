@@ -282,7 +282,7 @@ fn finishing_a_drop_round_triggers_exactly_one_reload() {
         asked: 0,
         skipped: 0,
         ok: 1,
-        failed: Vec::new(),
+        ..Default::default()
     });
     assert!(w.settle_finished_drops(), "跑完一趟却不重列");
     assert!(!w.settle_finished_drops(), "同一趟重列了第二次");
@@ -1907,6 +1907,7 @@ async fn closing_a_dirty_pane_asks_before_throwing_the_typing_away() {
         path: "/srv/data/app.conf".into(),
         name: "app.conf".into(),
         text: "a=1\n".into(),
+        sha256: crate::filewin::find::testing::fake_sha256(""),
     });
     assert!(w.settle_opened_edits(), "到货了却没立起编辑面");
     assert!(w.editing().is_some());
@@ -1922,6 +1923,7 @@ async fn closing_a_dirty_pane_asks_before_throwing_the_typing_away() {
         path: "/srv/data/app.conf".into(),
         name: "app.conf".into(),
         text: "a=1\n".into(),
+        sha256: crate::filewin::find::testing::fake_sha256(""),
     });
     assert!(w.settle_opened_edits());
     *w.editing_text_mut().expect("编辑面不见了") = "a=2\n".into();
@@ -1971,6 +1973,7 @@ async fn a_refused_save_shows_the_reason_and_keeps_the_text() {
         path: jsonl.into(),
         name: "s.jsonl".into(),
         text: "{}\n".into(),
+        sha256: crate::filewin::find::testing::fake_sha256(""),
     });
     assert!(w.settle_opened_edits());
     *w.editing_text_mut().unwrap() = "改坏它\n".into();
@@ -2413,6 +2416,150 @@ fn the_open_terminal_command_equals_the_old_panels_byte_for_byte() {
     // ⚠ 双引号那一条：模板自己**一个都不带**（`launch.rs` 拒掉含双引号的 `remote_cmd`）；
     //   路径里自带的双引号会原样进单引号里 ⇒ 那一形由 `launch.rs` 拒、窗口出声，不在这里兜。
     assert!(!build_open_terminal_cmd("").contains('"'));
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 〔FW1 · 第四波 4D · 2026-09-25〕编辑器存盘 CAS（主会话裁 D-c ＋ 09-25 认可「stale 让用户选 仍然覆盖 / 丢掉重开」）
+// 要求住址：题面 `4d-lanes.md`「主会话本批裁的」D-c；`设计/60 §3.3`「读的那一刻与写的那一刻之间被别人改了 ⇒ stale，一个字节不写」。
+// ════════════════════════════════════════════════════════════════════════
+
+/// 真点一颗按钮（按它画出来的字找位置）：先一帧建 widget 表，再移过去，再点。
+fn click_label(ctx: &egui::Context, w: &mut FileWindow, label: &str, t0: f64) {
+    let _ = crate::filewin::find::testing::frame_text(ctx, w, Vec::new());
+    let painted = crate::filewin::copy::testing::painted_text(
+        ctx,
+        egui::vec2(1280.0, 800.0),
+        t0,
+        Vec::new(),
+        |ui| w.frame_body(ui),
+    );
+    let at = crate::filewin::copy::testing::rects_of(&painted, label);
+    assert_eq!(at.len(), 1, "这一帧上「{label}」不是恰好一颗：{at:?}");
+    let pos = at[0].center();
+    let _ = crate::filewin::copy::testing::painted_text(
+        ctx,
+        egui::vec2(1280.0, 800.0),
+        t0 + 0.1,
+        vec![egui::Event::PointerMoved(pos)],
+        |ui| w.frame_body(ui),
+    );
+    let _ = crate::filewin::copy::testing::painted_text(
+        ctx,
+        egui::vec2(1280.0, 800.0),
+        t0 + 0.2,
+        crate::filewin::rows::testing::click_at(pos),
+        |ui| w.frame_body(ui),
+    );
+}
+
+async fn until(what: &str, mut f: impl FnMut() -> bool) {
+    for _ in 0..400 {
+        if f() {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    panic!("等了 2 秒还没等到：{what}");
+}
+
+/// ★★ **E §E11 那一形**：窗口开着一份文件 → 别人（机器页写别名块 / agent）在这期间写了它 → 回窗口存
+/// ⇒ **不盖**：stale、编辑框一个字不动、盘上还是别人那一份、摆出「仍然覆盖」「丢掉改动，重新打开」两颗按钮；
+/// 真点「仍然覆盖」⇒ 先重读拿此刻那一份的摘要再存 ⇒ 盘上 == 我的字、不再 dirty；
+/// 再来一次、真点「丢掉改动，重新打开」⇒ 编辑框换成盘上此刻那一份。
+/// 合成后端按 CAS 答（`find_testing::FakeBackend::cas`），走真通道、真点击。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_save_over_a_file_someone_else_changed_asks_instead_of_overwriting() {
+    use crate::filewin::editor::{OVERWRITE_LABEL, REOPEN_LABEL};
+    let path = "/srv/data/app.conf";
+    let mut w = FileWindow::seeded(
+        Source::remote(synth_cfg("edit-cas")),
+        "/srv/data".to_string(),
+        tokio::runtime::Handle::try_current().ok(),
+        vec![Row {
+            name: "app.conf".into(),
+            path: path.into(),
+            is_dir: false,
+            size: 20,
+            lossy_name: false,
+        }],
+    );
+    let be = crate::filewin::find::testing::FakeBackend::new(
+        &["files-read-text", "files-write-text"],
+        crate::filewin::find::testing::Declared::default(),
+    );
+    let disk = be.disk.clone();
+    disk.lock().unwrap().insert(path.into(), "a=1\n".into());
+    let wired = crate::filewin::find::testing::wire_up("edit-cas", be).await;
+    w.attach_line(wired.line.clone());
+    let ctx = egui::Context::default();
+
+    assert!(w.begin_edit(0, None), "打开那一趟没发出去");
+    until("打开到货", || w.edits.opens() > 0).await;
+    assert!(w.settle_opened_edits());
+    *w.editing_text_mut().unwrap() = "a=2\n".into();
+
+    // 别人在这期间写了。
+    disk.lock()
+        .unwrap()
+        .insert(path.into(), "a=1\nalias x=y\n".into());
+    assert!(w.save_edit(None));
+    until("存的结局到货", || w.edits.saves() > 0).await;
+    assert!(w.settle_saved_edits());
+    {
+        let p = w.editing().expect("stale 之后编辑面不见了");
+        assert!(p.stale, "盘上被改过了，却没摆出让人选的那一步");
+        assert_eq!(p.text, "a=2\n", "stale 把用户敲的字弄丢了");
+        assert!(p.dirty());
+        match p.last_save.clone() {
+            Some(Err(why)) => assert!(why.contains("被改过"), "那句话没说清：{why}"),
+            other => panic!("{other:?}"),
+        }
+    }
+    assert_eq!(
+        disk.lock().unwrap()[path],
+        "a=1\nalias x=y\n",
+        "stale 却盖掉了别人那一份"
+    );
+
+    // 真点「仍然覆盖」。
+    click_label(&ctx, &mut w, &OVERWRITE_LABEL, 1.0);
+    until("覆盖那一趟的结局", || w.edits.saves() > 1).await;
+    assert!(w.settle_saved_edits());
+    let p = w.editing().unwrap();
+    assert_eq!(p.last_save, Some(Ok(())), "仍然覆盖没存成");
+    assert!(!p.stale && !p.dirty());
+    assert_eq!(
+        disk.lock().unwrap()[path],
+        "a=2\n",
+        "点了仍然覆盖，盘上不是我的字"
+    );
+    let cmds = wired.cmds();
+    assert_eq!(
+        cmds,
+        vec![
+            "files-read-text",
+            "files-write-text",
+            "files-read-text",
+            "files-write-text"
+        ],
+        "仍然覆盖不是「先重读拿摘要、再带它存」"
+    );
+
+    // 再撞一次 stale，这回真点「丢掉改动，重新打开」。
+    *w.editing_text_mut().unwrap() = "a=3\n".into();
+    disk.lock().unwrap().insert(path.into(), "theirs\n".into());
+    assert!(w.save_edit(None));
+    until("第三趟存的结局", || w.edits.saves() > 2).await;
+    assert!(w.settle_saved_edits());
+    assert!(w.editing().unwrap().stale);
+    let opens = w.edits.opens();
+    click_label(&ctx, &mut w, &REOPEN_LABEL, 2.0);
+    until("重新打开到货", || w.edits.opens() > opens).await;
+    assert!(w.settle_opened_edits());
+    let p = w.editing().expect("重新打开之后编辑面不见了");
+    assert_eq!(p.text, "theirs\n", "重新打开之后编辑框不是盘上此刻那一份");
+    assert!(!p.stale && !p.dirty());
+    assert_eq!(disk.lock().unwrap()[path], "theirs\n", "丢掉重开却动了盘");
 }
 
 /// 〔GP1 · 第四波〕改权限那个框：没有运行时 / 没有通道 ⇒ 现值那一趟**当场**落「读不到」（框上说出来，不静默、不猜），

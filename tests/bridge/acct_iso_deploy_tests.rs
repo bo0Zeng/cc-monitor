@@ -153,3 +153,104 @@ fn vendor_id_is_nonempty_trimmed() {
     assert_eq!(v, v.trim());
     assert!(!v.contains('\n'));
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 〔LOC1a · 第四波 4D〕远端 `acct-iso.*` 两问改问那台机器的后端（帧命令），monitor 只转交
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// 要求住址：`设计/05 §14.3` 逐字「B 组 …… `acct-iso.*` —— 本机那一侧的规则与状态仍在 monitor …… 与上游选择整体进后端一起做」
+// （审计 F 裁：远端那两问归 LOC1a）· `INVARIANTS §40`「本地 ＝ 不走 ssh 的远端」。
+// 异源：数的是假后端那一侧收到的帧命令（`scripted_backend::Rig::seen`），不是被测函数自己说的。
+
+#[path = "support/scripted_backend.rs"]
+mod scripted;
+
+/// ★ 远端两问真走那台的长连接（`acct-iso-status` / `acct-iso-shellinit`），一条拨号 shell 都不起；
+/// 没连上 ⇒ 说「没连上」、不装作「没装」；老后端（不认）⇒ 当场说、一个字节都不发。
+#[test]
+fn the_remote_acct_iso_questions_are_asked_of_that_machines_backend() {
+    use crate::acct_iso_deploy::{SHELLINIT_FENCE_BEGIN as B, SHELLINIT_FENCE_END as E};
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let _enter = rt.enter();
+    let label = "loc1a-acctiso-remote";
+    let cfg = RemoteConfig {
+        label: label.into(),
+        ..probe_cfg()
+    };
+    // 没连上
+    let e = rt
+        .block_on(check_remote_acct_iso(cfg.clone()))
+        .expect_err("那台没有通道，不该答出装没装");
+    assert!(
+        e.starts_with("查不出") && e.contains("没连上") && e.contains(label),
+        "{e}"
+    );
+    // 老后端：不认 ⇒ 当场说、不发
+    {
+        let rig = scripted::rig(label, &["ping"], vec![]);
+        let e = rt
+            .block_on(check_remote_acct_iso(cfg.clone()))
+            .expect_err("不认");
+        assert!(e.contains("太旧"), "{e}");
+        assert!(rig.cmds().is_empty(), "不认的命令照样发出去了");
+    }
+    // 连上且认：两问各一条，结果原样收
+    let whole = format!("{B}\nzcc() {{ :; }}\n{E}\n");
+    let rig = scripted::rig(
+        label,
+        &["acct-iso-status", "acct-iso-shellinit"],
+        vec![
+            (
+                "acct-iso-status",
+                Ok(
+                    serde_json::json!({"installed": false, "path": null, "looked": "查过 ~/.local/bin"}),
+                ),
+            ),
+            (
+                "acct-iso-shellinit",
+                Ok(serde_json::json!({ "snippet": whole.clone() })),
+            ),
+        ],
+    );
+    let st = rt
+        .block_on(check_remote_acct_iso(cfg.clone()))
+        .expect("答了");
+    assert!(!st.installed && st.path.is_none());
+    assert_eq!(
+        rt.block_on(remote_acct_iso_shellinit(cfg)).expect("片段"),
+        whole
+    );
+    assert_eq!(
+        rig.cmds(),
+        vec![
+            "acct-iso-status".to_string(),
+            "acct-iso-shellinit".to_string()
+        ]
+    );
+}
+
+/// 远端那两问的生产段里一条拨号 shell 都不剩（零命中 ＋ 正控：同一把尺子对部署那一步数得到）。
+#[test]
+fn the_remote_acct_iso_questions_no_longer_run_a_shell_over_the_dial() {
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/acct_iso_deploy.rs"));
+    let body = |sig: &str| -> String {
+        let at = prod.find(sig).unwrap_or_else(|| panic!("切不到 `{sig}`"));
+        let rest = &prod[at..];
+        rest[..rest.find("\n}\n").expect("函数没收尾")].to_string()
+    };
+    for sig in [
+        "pub async fn check_remote_acct_iso(",
+        "pub async fn remote_acct_iso_shellinit(",
+    ] {
+        let b = body(sig);
+        assert!(
+            !b.contains("exec_collect(") && !b.contains("command -v"),
+            "`{sig}` 又经拨号链路跑 shell 了：{b}"
+        );
+    }
+    // 正控：部署那一步今天仍是拨号 shell（装脚本），同一把尺子数得到它。
+    assert!(body("pub async fn deploy_remote_acct_iso(").contains("exec_collect("));
+}

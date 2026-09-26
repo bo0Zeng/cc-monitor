@@ -290,13 +290,19 @@ export function __setLocalLaunchSnapshotForTests(
 
 /**
  * A4：记录「这个会话上次用账号 X 起」到 history-metadata（源②，DESIGN §3）。history / tabs
- * 两处「带账号 resume」共用。失败静默——记忆是非关键路径，不该挡住 resume 本身。
+ * 两处「带账号 resume」共用。失败不挡 resume 本身（记忆是非关键路径），但**要说一句**
+ * 〔W5-UI · E §3.3〕：原先只打 console，下次 resume 的账号跟随悄悄失准，用户无从知道为什么。
  */
 export async function recordLastAccount(sessionId: string, account: string): Promise<void> {
   try {
     await annotate(sessionId, { lastAccount: account });
   } catch (e) {
     console.warn("record lastAccount failed:", e);
+    showActionFailureToast(
+      copyText("launchAccount.lastAccount.notRecorded"),
+      copyText("launchAccount.lastAccount.notRecordedBody", { account, e: String(e) }),
+      { level: "info", durationMs: 6000 },
+    );
   }
 }
 

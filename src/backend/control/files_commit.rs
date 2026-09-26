@@ -62,7 +62,8 @@
 //! 由 [`sweep_stale`] 按同一个期限收（它认得两种形状）。
 
 use crate::control::files_write::{
-    change_mode, overwrite_text, resolve_in_root, Answer, ManageCommand, WriteRefusal,
+    content_sha256, overwrite_text_expecting, resolve_in_root, sha256_expect_of, Answer,
+    ManageCommand, WriteRefusal,
 };
 use std::path::{Path, PathBuf};
 
@@ -106,10 +107,11 @@ pub const COMMIT_COMMANDS: &[ManageCommand] = &[
     ManageCommand {
         name: "files-commit-upload",
         what:
-            "把暂存区里一份传完的上传件挪进用户指定的目标（先过路径解析；不覆盖时 `O_EXCL` 占位再改名上位）",
-        args: &["key", "overwrite", "rel", "root"],
+            "把暂存区里一份传完的上传件挪进用户指定的目标（先过路径解析；〔FW1〕先核整份摘要 `expect: {sha256}`，\
+             不等 ⇒ 删掉坏暂存件、`stale`；不覆盖时 `O_EXCL` 占位再改名上位）",
+        args: &["expect", "key", "overwrite", "rel", "root"],
         fields: &["bytes", "path"],
-        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
     },
     // ── 〔F9c · 第四波〕存盘装不进一行时的两步（头注「第二种件」一节）──────────────
     ManageCommand {
@@ -122,10 +124,11 @@ pub const COMMIT_COMMANDS: &[ManageCommand] = &[
     ManageCommand {
         name: "files-commit-text",
         what: "按块号读回 `0..chunks` 块、拼起来、总长必须等于 `bytes`，再覆盖写目标（原子换，与 \
-               `files-write-text` 同一个原语：跟链接、只收已在的普通文件）；不论成败都删掉这些块",
-        args: &["bytes", "chunks", "key", "rel", "root"],
-        fields: &["bytes", "path"],
-        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+               `files-write-text` 同一个原语：跟链接、只收已在的普通文件）；〔FW1〕`expect: {sha256}` 必给，\
+               盘上那份对不上 ⇒ `stale`、一个字节不写；不论成败都删掉这些块",
+        args: &["bytes", "chunks", "expect", "key", "rel", "root"],
+        fields: &["bytes", "path", "sha256"],
+        codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
     },
 ];
 
@@ -155,12 +158,18 @@ pub fn staged_path(home: &Path, key: &str) -> Result<PathBuf, WriteRefusal> {
 /// **提交**：暂存件 → 目标。成功回 `(落点, 字节数)`。
 ///
 /// 第一件事是过路径解析（第三层 ③ 逐函数扫这个顺序）。
+///
+/// 〔FW1 · 第四波 4D · 主会话裁 09-25〕**改名上位之前先对整份摘要**：暂存件的 SHA-256 必须等于 `expect_sha256`
+/// （传输台对本机那份一边传一边算的，窗口原样交来）。不等 ⇒ 这份暂存件是坏的（「前缀 ＋ 洞 ＋ 尾巴」：失败后晚到的写
+/// 在中间留了洞、续传的尾块对拍看不见 —— `设计/60 §7` 第 8 条；或任何别的坏前缀）⇒ **删掉它**（留着只会被下一次续传接上）、
+/// `stale`、目标一个字节不动；调用方从 0 重传。⚠ 核与改名之间仍有窗（暂存区是我们自己的目录，窗里没人该碰它；如实登记）。
 pub fn commit_upload(
     home: &Path,
     key: &str,
     root: &Path,
     rel: &str,
     overwrite: bool,
+    expect_sha256: &str,
 ) -> Result<(PathBuf, u64), WriteRefusal> {
     let dest = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     let staged = staged_path(home, key)?;
@@ -178,6 +187,26 @@ pub fn commit_upload(
         )));
     }
     let bytes = meta.len();
+    let got = crate::files::file_sha256(&staged).map_err(|e| {
+        WriteRefusal::Io(format!(
+            "refuse write: 暂存件读不出来（{}：{e}）",
+            staged.display()
+        ))
+    })?;
+    if got != expect_sha256 {
+        let staging = home.join(STAGING_DIR);
+        let removed = resolve_in_root(&staging, format!("{key}{PART_SUFFIX}"))
+            .ok()
+            .is_some_and(|at| std::fs::remove_file(at).is_ok());
+        return Err(WriteRefusal::Stale(format!(
+            "refuse write: 传上来的那份和本机那份对不上（中间有坏块）—— 目标一个字节没动，{}，要从头重传",
+            if removed {
+                "坏的暂存件已删掉"
+            } else {
+                "坏的暂存件没删掉（下一次上传会先对尾块、对不上就从头来）"
+            }
+        )));
+    }
     if overwrite {
         std::fs::rename(&staged, &dest).map_err(|e| {
             WriteRefusal::Io(format!(
@@ -228,29 +257,17 @@ pub(crate) fn placeholder_note(dest: &Path, undo: &std::io::Result<()>) -> Strin
 ///
 /// 每一层**先过路径解析**（以上一层为根）再建 —— 第三层 ③ 逐函数扫这个顺序。
 /// ⚠ `~/.cc-monitor` 若是用户自己放的一条链接，跟过去（后端自己的家，与第四层 `exit_policy` 同一个家）。
-/// 〔HX1〕后端自己的目录（`~/.cc-monitor` 与暂存区）**建的那一下**给的权限位：只给本人。
-pub const PRIVATE_DIR_MODE: u32 = 0o700;
-
 fn ensure_staging(home: &Path) -> Result<PathBuf, WriteRefusal> {
     let mut at = home.to_path_buf();
     for seg in STAGING_DIR.split('/') {
         let next = resolve_in_root(&at, seg).map_err(WriteRefusal::Refused)?;
-        match std::fs::create_dir(&next) {
-            // 〔HX1 · RK1 小尾巴〕**这一趟建出来的**那一层当场收成只给本人（0700）—— 不然按 umask（常见 0755 / 0775），
-            //   同机别的用户列得出暂存区里有哪些上传。已在的一层不动（那可能是用户自己设的）。
-            //   借写面那一个改权限原语（`files_write::change_mode`，先过路径解析）；没有 unix 权限位的平台照旧（那边不是这一问）。
-            Ok(()) => match change_mode(&at, seg, PRIVATE_DIR_MODE) {
-                Ok(_) | Err(WriteRefusal::Unsupported(_)) => {}
-                Err(e) => return Err(e),
-            },
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(e) => {
-                return Err(WriteRefusal::Io(format!(
-                    "refuse write: 建暂存区 {} 失败：{e}",
-                    next.display()
-                )))
-            }
-        }
+        // 〔HX1〕这一趟建出来的那一层建的那一下就是 0700、已在的不动（`own_dir`：后端建自家目录的那一个函数）。
+        crate::own_dir::ensure_private_dir(&next).map_err(|e| {
+            WriteRefusal::Io(format!(
+                "refuse write: 建暂存区 {} 失败：{e}",
+                next.display()
+            ))
+        })?;
         if !std::fs::metadata(&next).is_ok_and(|m| m.is_dir()) {
             return Err(WriteRefusal::Refused(format!(
                 "refuse write: {} 在，但不是一个目录 —— 暂存区放不进去",
@@ -380,9 +397,13 @@ pub fn commit_text(
     bytes: u64,
     root: &Path,
     rel: &str,
-) -> Result<(PathBuf, u64), WriteRefusal> {
-    let r = gather_chunks(home, key, chunks, bytes)
-        .and_then(|body| overwrite_text(root, rel, &body).map(|at| (at, body.len() as u64)));
+    expect_sha256: &str,
+) -> Result<(PathBuf, u64, String), WriteRefusal> {
+    // 〔FW1〕与 `files-write-text` 同一道 CAS（`overwrite_text_expecting`）：两支存盘同一种结果，含「盘上被改过 ⇒ stale」。
+    let r = gather_chunks(home, key, chunks, bytes).and_then(|body| {
+        overwrite_text_expecting(root, rel, &body, expect_sha256)
+            .map(|at| (at, body.len() as u64, content_sha256(&body)))
+    });
     drop_chunks(home, key);
     r
 }
@@ -491,7 +512,9 @@ fn answer_commit_at(home: &Path, args: &serde_json::Value) -> Answer {
             "bad_args",
             "少了 `overwrite`（true / false）—— 覆盖不覆盖不给默认值".to_string(),
         ))?;
-    let (landed, bytes) = commit_upload(home, &key, &root, &rel, overwrite)
+    // 〔FW1〕整份摘要**必给**（传输台 done 帧交的那个）：没有「不核就上位」这一形。
+    let expect = sha256_expect_of(args)?;
+    let (landed, bytes) = commit_upload(home, &key, &root, &rel, overwrite, &expect)
         .map_err(|e| (e.code(), e.message().to_string()))?;
     // 暂存区清理「孤儿」那一格的事件：一次提交成功（`设计/60 §13.2 ④`）。
     let now = std::time::SystemTime::now()
@@ -565,7 +588,8 @@ fn answer_commit_text_at(home: &Path, args: &serde_json::Value) -> Answer {
             format!("`chunks` 是 {chunks}、`bytes` 是 {bytes} —— 每块至少 1 字节，块数只能在 1..=总长 之间"),
         ));
     }
-    let (landed, n) = commit_text(home, &key, chunks, bytes, &root, &rel)
+    let expect = sha256_expect_of(args)?;
+    let (landed, n, sha) = commit_text(home, &key, chunks, bytes, &root, &rel, &expect)
         .map_err(|e| (e.code(), e.message().to_string()))?;
     // 提交成功 ⇒ 顺手扫孤儿（同上传那一条的事件）。
     let now = std::time::SystemTime::now()
@@ -576,6 +600,7 @@ fn answer_commit_text_at(home: &Path, args: &serde_json::Value) -> Answer {
     Ok(serde_json::json!({
         "path": crate::files::raw::to_json(crate::files::raw::path_bytes(&landed)),
         "bytes": n,
+        "sha256": sha,
     }))
 }
 
