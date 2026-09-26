@@ -549,3 +549,13 @@ mod tests;
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/search_query_find_tests.rs"]
 mod find_tests;
+
+// 〔SX1〕J1：应答 == 起步树现扫实现冻结下来的金样（逐问逐行逐字节）。
+#[cfg(test)]
+#[path = "../../../tests/backend/observe/search_query_golden_tests.rs"]
+mod golden_tests;
+
+// 〔SX1〕秤：真规模本机历史上的冷首趟 / 热态（`#[ignore]` 读数，不是判据）。
+#[cfg(test)]
+#[path = "../../../tests/backend/observe/search_query_reading.rs"]
+mod reading;
