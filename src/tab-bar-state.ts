@@ -26,13 +26,14 @@
  *   🔴 这条不靠自觉：`writeSegKey` 是**两个键唯一的写口**（下面那个函数），
  *   而 `tests/tab-bar-state.vitest.ts` 对 `order`/`pinned` **各有一格**专盯它。
  */
-import { loadConfig, saveConfig } from "./config";
+import { loadConfig, patchConfig, setAt } from "./config";
 import type { Origin } from "./ipc/origin";
 
 const KEY = "tabBar";
 
 /**
- * 🔴 **段里两个键唯一的写口** —— 读出整段、只覆盖 `field` 这一个键、写回去。
+ * 🔴 **段里两个键唯一的写口** —— 只交 `tabBar.<field>` 这一条路径（〔CFG1〕按键补丁；从前是
+ * 「读出整段、只覆盖 `field`、写回去」，同一拍 order 与 pinned 各读各写仍会互盖，分组那一键更是整份被盖）。
  *
  * 为什么抽成一个函数而不是两处各写一遍：`§B` 与 `§C` 是**同一条不变量的两侧**
  * （「不写没别人的键」），两处各抄一份的话，将来只改一侧就是一次静默的互相清空。
@@ -40,15 +41,7 @@ const KEY = "tabBar";
  *   「先改内存再落盘，落盘失败只记日志」——日志由调用方打，不是这里吞掉）。
  */
 async function writeSegKey(field: "order" | "pinned", value: unknown): Promise<void> {
-  const cfg = (await loadConfig()) as Record<string, unknown>;
-  const prev = cfg[KEY];
-  const seg: Record<string, unknown> =
-    prev && typeof prev === "object" && !Array.isArray(prev)
-      ? { ...(prev as Record<string, unknown>) }
-      : {};
-  seg[field] = value;
-  cfg[KEY] = seg;
-  await saveConfig(cfg);
+  await patchConfig([setAt([KEY, field], value)]);
 }
 
 /**
