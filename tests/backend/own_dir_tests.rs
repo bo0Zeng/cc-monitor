@@ -10,6 +10,7 @@
 //! | O2 | 后端生产段**每一处建目录**（`fs::create_dir` · `create_dir_all` · `DirBuilder` · SFTP `.create_dir(`）的所在 (文件, 函数) 集合 == 登记表；登记表里建「后端自家目录」的那一格 == {`own_dir.rs::ensure_private_dir` · 远端 `dial/sftp.rs::make_dir`} | 两向相等 ＋ 正控（合成语料里多一处 `create_dir` 必被认出） |
 //! | O3 | 五个调用方（四份第四层 ＋ 暂存区）各经它恰好一处；远端那一处用的是同一个权限位常量 | 文本 |
 
+#[cfg(unix)]
 use super::*;
 
 #[test]
