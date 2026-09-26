@@ -75,6 +75,8 @@ use std::fmt::Write as _;
 /// `history.rs` 那份逐字副本已删（E3），判据也要遍历这一份而不是再抄一遍。
 /// 〔DUP1〕字面量本身搬进 `acct_core::CONFIG_DIR_SHELL_META`（后端那份全表 `is_safe_config_dir` 原来也各抄一遍，
 /// 两份收成那一份）；这里留的是 monitor 这一侧唯一的那个名字，值取自它 —— 定义处仍恰好一处（`the_shell_metachar_blacklist_has_exactly_one_home`）。
+/// 〔DUP1〕只剩 Windows 那条路（`history.rs::has_bad_chars`）与判据在用 ⇒ 同那个函数一样只在 `windows` / `test` 下编（Linux 生产段不留死代码）。
+#[cfg(any(windows, test))]
 pub(crate) const SHELL_META_COMMON: &str = acct_core::CONFIG_DIR_SHELL_META;
 
 /// 一个字符能不能出现在**要拼进命令**的 config dir 里。
@@ -91,7 +93,9 @@ pub(crate) const SHELL_META_COMMON: &str = acct_core::CONFIG_DIR_SHELL_META;
 /// （本机 / 远端 manifest）都已经用并集把过一道。但「权威也保留本地校验」是这个仓自己
 /// 写在 `resolve_query.rs` 头注里的纪律（B2），少一层就是少一层。
 ///
-/// 〔DUP1〕判定本身搬进 `acct_core::config_dir_char_unsafe`（全仓唯一一份；C1 那一段 `is_control()` 本来就含），这里转手。
+/// 〔DUP1〕判定本身搬进 `acct_core::config_dir_char_unsafe`（全仓唯一一份；C1 那一段 `is_control()` 本来就含），这里转手；
+/// 只剩 Windows 那条路（`history.rs::has_bad_chars`）在用 ⇒ 只在 `windows` / `test` 下编。
+#[cfg(any(windows, test))]
 pub fn is_command_unsafe_char(c: char) -> bool {
     acct_core::config_dir_char_unsafe(c)
 }
