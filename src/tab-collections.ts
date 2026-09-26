@@ -24,7 +24,7 @@
  *
  * **一个 tab 只属一个集合**（`U4` 正文建议「不能，保持树形，别一上来就做图」）。
  */
-import { loadConfig, saveConfig } from "./config";
+import { loadConfig, patchConfig, setAt } from "./config";
 import { copyText } from "./copy-table";
 
 const KEY = "tabCollections";
@@ -96,9 +96,7 @@ export async function getCollections(): Promise<TabCollection[]> {
 }
 
 export async function setCollections(list: readonly TabCollection[]): Promise<void> {
-  const cfg = (await loadConfig()) as Record<string, unknown>;
-  cfg[KEY] = sanitizeCollections(list);
-  await saveConfig(cfg);
+  await patchConfig([setAt([KEY], sanitizeCollections(list))]);
 }
 
 // ===== 纯操作（判据直接打这里）=====

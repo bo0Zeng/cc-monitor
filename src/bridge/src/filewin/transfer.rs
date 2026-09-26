@@ -170,6 +170,9 @@ pub struct DropOutcome {
     pub ok: usize,
     /// 传失败的那几件（名字 ＋ 报错原文）。
     pub failed: Vec<(String, String)>,
+    /// 〔FW1 · 第四波 4D〕提交时对不上整份摘要（暂存件中间有坏块）、**从头重传了一次**的那几件（名字）。
+    /// 重传成了也算在 `ok` 里，但这一句要画出来（主会话裁 09-25「从 0 重传并出声」）。
+    pub redone: Vec<String>,
 }
 
 /// 🔴 **正题**：拖入那一摞的全过程。三段的顺序就是这个函数的结构。
@@ -237,8 +240,7 @@ where
     let mut out = DropOutcome {
         asked,
         skipped,
-        ok: 0,
-        failed: Vec::new(),
+        ..Default::default()
     };
     for (p, r) in go.into_iter().zip(results.into_iter()) {
         match r {
@@ -480,6 +482,40 @@ pub async fn upload_remote(
     p: &Pending,
     board: &DropBoard,
 ) -> Result<(), String> {
+    match upload_once(line, origin, p, board).await {
+        // 〔FW1 · 第四波 4D · 主会话裁 09-25〕提交时对不上整份摘要 ⇒ 远端已经删掉那份坏暂存件 ⇒ **从头重传一次**并出声。
+        //   只重一次：第二次还对不上，多半不是一次偶发的洞（盘 / 网络在持续出错），照原话报失败，不原地打转。
+        Err(Once::Stale(_)) => {
+            board.note_redone(&p.name);
+            upload_once(line, origin, p, board)
+                .await
+                .map_err(Once::said)
+        }
+        other => other.map_err(Once::said),
+    }
+}
+
+/// 〔FW1〕一趟上传没成的两形：提交时摘要对不上（`stale`，远端已删掉坏暂存件 ⇒ 值得从头重传）· 别的（原话）。
+enum Once {
+    Stale(String),
+    Failed(String),
+}
+
+impl Once {
+    fn said(self) -> String {
+        match self {
+            Once::Stale(s) | Once::Failed(s) => s,
+        }
+    }
+}
+
+/// 开单 → 起跑并看 → 提交，一趟。提交带传输台交的整份摘要（`expect`），远端后端改名上位之前核它。
+async fn upload_once(
+    line: &super::source::Line,
+    origin: &super::source::Origin,
+    p: &Pending,
+    board: &DropBoard,
+) -> Result<(), Once> {
     let stop = board.cancels().stop_token();
     let opened = super::source::ask(
         line,
@@ -488,20 +524,25 @@ pub async fn upload_remote(
         &serde_json::json!({ "local_path": p.local_path }),
         OPEN_BUDGET,
     )
-    .await?;
-    let id = field(&opened, OP_UPLOAD, "id")?;
-    let key = field(&opened, OP_UPLOAD, "key")?;
+    .await
+    .map_err(Once::Failed)?;
+    let id = field(&opened, OP_UPLOAD, "id").map_err(Once::Failed)?;
+    let key = field(&opened, OP_UPLOAD, "key").map_err(Once::Failed)?;
     let name = p.name.clone();
     let sink = board.clone();
-    super::source::watch(
+    let watched = super::source::watch(
         line,
         origin,
         &format!("{KIND_PREFIX}{id}"),
         &stop,
         |got, total| sink.progress(&name, got, total),
     )
-    .await?;
-    super::source::ask(
+    .await
+    .map_err(Once::Failed)?;
+    let sha256 = watched
+        .sha256
+        .ok_or_else(|| Once::Failed(copy_text("rsFilewinTransfer.upload.noDigest", &[])))?;
+    super::source::ask_coded(
         line,
         origin,
         CMD_COMMIT,
@@ -510,11 +551,16 @@ pub async fn upload_remote(
             "root": super::source::parent_dir(&p.remote_path),
             "rel": super::source::remote_basename(&p.remote_path),
             "overwrite": p.overwrite,
+            "expect": { "sha256": sha256 },
         }),
         COMMIT_BUDGET,
     )
-    .await?;
-    Ok(())
+    .await
+    .map(|_| ())
+    .map_err(|f| match f.code.as_deref() {
+        Some("stale") => Once::Stale(f.said),
+        _ => Once::Failed(f.said),
+    })
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -549,6 +595,8 @@ struct Board {
     progress: Vec<(String, u64, u64)>,
     /// 上一趟的结果（画在窗口上，不是 `println!`）。
     last: Option<DropOutcome>,
+    /// 〔FW1〕这一趟里从头重传过的那几件（[`DropBoard::note_redone`] 记、[`DropBoard::finish`] 并进结局）。
+    redone: Vec<String>,
 }
 
 impl DropBoard {
@@ -602,9 +650,10 @@ impl DropBoard {
         self.poke();
     }
 
-    pub fn finish(&self, outcome: DropOutcome) {
+    pub fn finish(&self, mut outcome: DropOutcome) {
         let mut b = self.inner.lock().unwrap();
         b.progress.clear();
+        outcome.redone.append(&mut b.redone);
         b.last = Some(outcome);
         drop(b);
         self.rounds.fetch_add(1, Ordering::SeqCst);
@@ -613,6 +662,11 @@ impl DropBoard {
 
     pub fn rounds(&self) -> u64 {
         self.rounds.load(Ordering::SeqCst)
+    }
+
+    /// 〔FW1〕记一件「提交时对不上整份摘要、已从头重传」（这一趟收场时并进结局，画出来）。
+    pub fn note_redone(&self, name: &str) {
+        self.inner.lock().unwrap().redone.push(name.to_string());
     }
 
     pub fn last(&self) -> Option<DropOutcome> {
@@ -713,6 +767,20 @@ impl DropBoard {
             });
         }
         if let Some(o) = last {
+            // 〔FW1〕从头重传过的那几件：成没成都要说（一次坏块 = 那一趟的续传本钱白花了，而且可能是网络 / 盘在出错）。
+            if !o.redone.is_empty() {
+                ui.colored_label(
+                    egui::Color32::from_rgb(0xD0, 0x8A, 0x20),
+                    copy_text(
+                        "rsFilewinTransfer.ui.redone",
+                        &[(
+                            "names",
+                            &o.redone
+                                .join(&copy_text("rsFilewinTransfer.ui.failedSep", &[])),
+                        )],
+                    ),
+                );
+            }
             if !o.failed.is_empty() {
                 ui.colored_label(
                     egui::Color32::RED,

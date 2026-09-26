@@ -74,7 +74,7 @@ fn the_key_never_lands_in_the_config_file_the_frontend_rewrites_wholesale() {
     // 同一个目录是**可以**的（`§0a` 要的是「不进那份配置」，不是「不同目录」）。
     assert_eq!(cfg.parent(), creds.parent());
     // ★ 机检：`config.rs` 的生产段里不许出现那个字段名 ——
-    //   它一旦出现，就说明有人把 key 塞进 `load_config`/`save_config` 那条路了。
+    //   它一旦出现，就说明有人把 key 塞进 `load_config`/`patch_config` 那条路了（〔CFG1〕写口从整份换成按键补丁）。
     let cfg_src = guard_core::production_code(include_str!("../../src/bridge/src/config.rs"));
     assert!(
         !cfg_src.contains(store::KEY_FIELD),
@@ -85,27 +85,7 @@ fn the_key_never_lands_in_the_config_file_the_frontend_rewrites_wholesale() {
     assert!(store::TEMPLATE.contains(store::KEY_FIELD));
 }
 
-/// 从 `at` 之后的第一个 `{` 起按花括号配平切一整块。替掉 `.find("\n}")` 那种找收尾的写法
-/// （它撞 `needle_anchor_registry` 的递减棘轮，而且会在块里第一个顶格 `}` 上停住）。
-fn brace_block(src: &str, at: usize) -> Option<&str> {
-    let open = src[at..].find('{')? + at;
-    let b = src.as_bytes();
-    let (mut depth, mut i) = (0i32, open);
-    while i < src.len() {
-        match b[i] {
-            b'{' => depth += 1,
-            b'}' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(&src[open..=i]);
-                }
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    None
-}
+// 〔HX2 · 第四波 4D〕`brace_block`〔散文墓碑〕随它唯一的调用方（明文逐跳那一条）一起删了。
 
 // 〔GP1 · 第四波〕这里原来是两条写路判据（`KS10` 交错写不吃人手编的 · `K-R1` 配 key 不吃同一行的
 // `auth_style` / `base_url`），打的是 monitor 那侧的写口。写者换成了那台的后端 ⇒ 两条原样搬去后端那一份写口：
@@ -131,9 +111,12 @@ fn brace_block(src: &str, at: usize) -> Option<&str> {
 /// ⇒ 这一条钉的是结构：写侧只许**调**那一份唯一的规则，自己不许再取一次末段名。
 #[test]
 fn the_account_id_rule_is_not_reimplemented_on_the_write_side() {
-    // 〔GP1 · 第四波〕写侧推 id 的那一半今天住 `apikey_remote.rs`（`send_key`；本机远端两臂同一个），不再住 `creds_store.rs`。
-    let src = guard_core::production_code(include_str!("../../src/bridge/src/apikey_remote.rs"));
-    guard_core::assert_no_test_code("apikey_remote 写侧 id 规则", &src);
+    // 〔HX2 · 第四波 4D〕写侧推 id 的那一半今天住后端写口 `accounts/upstream/file_face.rs`（界面经通道交 `configDir`，
+    //   那台后端推）。〔GP1 那一版住 monitor `apikey_remote.rs`（`send_key`〔散文墓碑〕）；更早住 `creds_store.rs`。〕
+    let src = guard_core::production_code(include_str!(
+        "../../src/backend/accounts/upstream/file_face.rs"
+    ));
+    guard_core::assert_no_test_code("后端写口 id 规则", &src);
     // ① **调**那一份唯一的规则，恰好一处。
     assert_eq!(
         src.matches("apikey_account_id_of_dir(").count(),
@@ -165,41 +148,9 @@ fn the_account_id_rule_is_not_reimplemented_on_the_write_side() {
 // 〔GP1 · 第四波〕`KH2C3` 后半（顶层那一把不再是写入目标：结构 ＋ 行为两维）打的是 monitor 那侧写口；
 // 写口去了后端 ⇒ 原样搬去 `file_face_tests::gp1_the_write_side_never_targets_the_legacy_top_level_slot`。
 
-/// ★ 说不出 id 的时候**报错，不回落**。
-///
-/// 回落到顶层那一格的症状是「用户以为配给了 A，实际写进了 `default`」，
-/// 而 `default` 那一行**谁的会话都命中得了** —— 与 `K-H2` `KH2` 逐字禁的
-/// 「查不到就拿默认行顶上」是同一族。
-#[test]
-fn a_config_dir_that_names_no_account_is_refused_instead_of_falling_back() {
-    // 〔GP1 · 第四波〕入口换成生产那一个（`apikey_remote::write_key_on`，本机那一臂）：说不出 id ⇒ **一次往返都不做**就拒
-    //   （它排在「核路径」那一问与发帧之前），话里说清原因。
-    let local = crate::origin::Origin(crate::origin::LOCAL.to_string());
-    for bad in ["", "   ", "/"] {
-        let e = tauri::async_runtime::block_on(crate::apikey_remote::write_key_on(
-            &local,
-            bad,
-            "KEY-SHOULD-NOT-LAND".to_string(),
-            None,
-        ))
-        .expect_err("说不出账号却写成功了 —— 那一把落到哪儿了？");
-        assert!(e.contains("说不出这是哪个账号"), "报错没说清原因：{e}");
-        assert!(!e.contains("KEY-SHOULD-NOT-LAND"), "报错里带着明文：{e}");
-    }
-    // 非空对照：同一个入口喂一个说得出 id 的 configDir ⇒ 过了这一关、走到「问那台后端」那一步
-    //   （判据进程里没有本机那条长连接 ⇒ 报的是别的原因，不是「说不出账号」）。
-    let e = tauri::async_runtime::block_on(crate::apikey_remote::write_key_on(
-        &local,
-        "/h/.claude-alt/acct-ok",
-        "KEY-OK".to_string(),
-        None,
-    ))
-    .expect_err("判据进程里没有本机后端，不该写成");
-    assert!(
-        !e.contains("说不出这是哪个账号"),
-        "说得出 id 的也被当成说不出了：{e}"
-    );
-}
+// 〔HX2 · 第四波 4D〕「说不出 id 的时候报错、不回落」那一条（`a_config_dir_that_names_no_account_is_refused_instead_of_falling_back`〔散文墓碑〕）
+//   打的是 monitor 那侧入口 `apikey_remote::write_key_on`〔散文墓碑〕；推 id 搬进后端写口之后，同一组形状（空串 · 全空白 · `/` ·
+//   最后一段是 `..`）由后端那一份判：`file_face_tests::hx2_the_account_id_is_derived_here_from_the_config_dir`。
 
 /// 明文两个出口，各自**只许出现在哪棵树的哪个文件里**。
 ///
@@ -450,154 +401,58 @@ fn gp1_the_monitor_never_reaches_the_credentials_write_half() {
 
 // ================================================================ `K-H2` `KH7`
 
-/// 明文那个入参从 IPC 边界进来之后，一路上**每一跳**允许它出现的地方。
-///
-/// 每行 `(文件, 切窗口的锚点, 明文那个绑定叫什么, 它该出现的那几个写法)`。
-/// 绑定在窗口里出现的次数必须**等于**那几个写法的条数，而且每一条都在。
-/// ⚠ **加一行、或给某一行多登一个写法，都是放宽** —— 要先说清多出来的那一处是什么。
-///
-/// 〔RM1a · 第四波〕这张表从「每跳恰好 1 处」改成「每跳逐处登记」，**只为一格**：
-/// `apikey_remote::write_key_on` 按机器分两臂，明文在那个函数体里**就是**两处。其余每跳仍然恰好 1 处（表里各登一条）。
-/// 〔GP1 · 第四波〕两臂今天同一条路（都交 `send_key`，本机那一臂多带一格「该是哪一份文件」）；
-/// 本机那两跳（`creds_store` 的写口）随写者换成本机常驻后端一起退了 ⇒ 表少两行。
-/// `send_key` 装进 `args` 之后就是通用的帧面编码，本表管到那一跳为止。
-const PLAINTEXT_HOPS: &[(&str, &str, &str, &[&str])] = &[
-    (
-        "lib.rs",
-        "fn write_apikey_credentials_key(",
-        "key",
-        // 〔ST2 × RM1a〕Base URL（明文端点，不是凭据）跟着一起按机器走；明文 key 仍然只往下传这一次。
-        &["apikey_remote::write_key_on(&origin, &config_dir, key, base_url)"],
-    ),
-    (
-        "apikey_remote.rs",
-        "pub(crate) async fn write_key_on(",
-        "key",
-        &[
-            "send_key(LOCAL, config_dir, key, base_url, Some(local_file()?))",
-            "send_key(host, config_dir, key, base_url, None)",
-        ],
-    ),
-    (
-        "apikey_remote.rs",
-        "pub(crate) async fn send_key(",
-        "plain",
-        &["\"key\": plain"],
-    ),
-];
+// 〔HX2 · 第四波 4D〕墓碑：这里从前是 `PLAINTEXT_HOPS`〔散文墓碑〕与 `the_plaintext_argument_is_only_ever_handed_one_hop_further`〔散文墓碑〕
+//   （`K-H2` `KH7`：明文入参在 monitor 里每一跳只许被往下传登记过的那几次 —— Tauri 命令 `write_apikey_credentials_key`〔散文墓碑〕→
+//   `apikey_remote::write_key_on`〔散文墓碑〕→ `send_key`〔散文墓碑〕装进 `args.key`）。写 key 改走通道之后，明文在 monitor 里
+//   **没有具名绑定**了：它是 `chan_call` 转手的一段不透明字节。下面那一条把「没有」钉成零命中。
 
-/// 数一个**标识符**出现几次 —— 带词边界，不是子串。
+/// ★★★ 〔HX2 · 第四波 4D〕**monitor 生产段里没有一处能把明文 key 叫出名字的写口**（零命中，带正控）。
 ///
-/// ⚠ **这个助手是第一跑逼出来的，经过记下来**：第一版直接用 `matches(binding).count()`，
-/// 实测 `key` 在 `write_apikey_credentials_key` 的函数体里数出 **2** 次 ——
-/// 因为它调的那个函数**自己就叫 `write_key`**，`key` 是它的后缀。
-/// ⇒ 那一版数的根本不是「明文被碰了几次」，是「这几个字母出现了几次」。
-/// **本工作区最贵那族病的又一形：尺子的作用域对不上事实。**
-fn count_ident(hay: &str, ident: &str) -> usize {
-    fn is_ident_byte(c: u8) -> bool {
-        c.is_ascii_alphanumeric() || c == b'_'
-    }
-    let b = hay.as_bytes();
-    let (mut n, mut from) = (0usize, 0usize);
-    while let Some(rel) = hay[from..].find(ident) {
-        let at = from + rel;
-        from = at + ident.len();
-        let left_ok = at == 0 || !is_ident_byte(b[at - 1]);
-        let right = at + ident.len();
-        let right_ok = right >= b.len() || !is_ident_byte(b[right]);
-        if left_ok && right_ok {
-            n += 1;
-        }
-    }
-    n
-}
-
-/// ★★★ **`K-H2` `KH7` 的机检那一半**：明文入参**只许被往下传一次**，
-/// 一路上不许进日志、不许被拷进任何别的东西。
+/// 要求住址：`K-H2` `KH7`（明文只许被往下传登记过的那几次）—— 今天那几次在 monitor 里是**零**：界面经通道
+/// `chan.call(这台, "apikey-key-set", {configDir, key})` 交那台机器的后端（`src/apikey-reads.ts::writeApikeyKey`），
+/// monitor 只转不透明字节。一旦有人在 monitor 里再开一条收 key 的 Tauri 命令、或自己发 `apikey-key-set`，本条红。
 ///
-/// # 它补的是哪一格（别把它读大）
-///
-/// `KS6` 保的是 key **回**前端那个方向（`ApikeyCredentialsStatus` 在**类型上**装不下明文）。
-/// **去**后端那个方向 `write_apikey_credentials_key(key: String)` **入参就是明文**，
-/// 而 `K-H2a` 把它逐字登记成 **`判不了`**（`lib.rs` 那段头注：
-/// 「⇒ 它的身份是 **`判不了`**，不是「射程外」。**这两个词不是一回事**：
-/// 前者欠着一次测量，后者是已经裁过不做。」）。
-///
-/// 本条**没有**把那一格变成「判得了」。它买到的是**出口之后那一段**：
-/// 明文一进来就只有一条路可走 —— 一路传到 `SecretKey::new`，中间任何一处
-/// 多碰它一次都会红。
-///
-/// # ⚠⚠ 它**不保**什么（三条，逐条写死）
-///
-/// 1. **IPC 那一跳本身仍然判不了**：明文经 WebView 的消息通道序列化过来，
-///    那一段不在本仓的写区，本条一个字都没打过它。**原样延续 `K-H2a` 的登记。**
-/// 2. **不判语义**：`SecretKey::new(plain)` 里面把明文交给谁，编译器与本条都不管
-///    （那是 `K-H2a` 的 `mod sealed` + `KS2` 的活）。
-/// 3. **人群是这三个函数体**，不是「所有碰得到明文的代码」。第四跳出现时没有东西会红
-///    —— 加一跳就来加一行，那正是要的。
-///
-/// # 量法与分母
-///
-/// 窗口 = 每一跳那个函数的花括号块（**有界**），并配两条反空真自检
-/// （切不出来 ⇒ 红 · 跨进下一个 item ⇒ 红）。窗口里**先剥注释行**再数
-/// —— 判据只该看生效的代码，不该看解释它的话（`creds_guard` 那条 `harden` 判据
-/// 第一跑就是被自己的注释撞红的，同一条教训）。
+/// 人群 = monitor 生产段全部 `.rs`（`src/bridge/src`）。针 = 那条旧命令名 ＋ 帧命令名。正控：后端 `inbound.rs` 里那条帧命令数得到；
+/// 前端那一处发送口恰好一处（`src/apikey-reads.ts`）。
 #[test]
-fn the_plaintext_argument_is_only_ever_handed_one_hop_further() {
-    let sources: &[(&str, &str)] = &[
-        ("lib.rs", include_str!("../../src/bridge/src/lib.rs")),
-        (
-            "apikey_remote.rs",
-            include_str!("../../src/bridge/src/apikey_remote.rs"),
-        ),
+fn hx2_the_monitor_names_no_plaintext_key_on_the_way_to_the_backend() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let needles = [
+        format!("write_apikey_{}_key", "credentials"),
+        format!("\"apikey-{}-set\"", "key"),
     ];
-
-    for (file, anchor, binding, uses) in PLAINTEXT_HOPS {
-        let raw = sources
-            .iter()
-            .find(|(f, _)| f == file)
-            .map(|(_, s)| *s)
-            .unwrap_or_else(|| panic!("登记表里的文件 {file} 没被采集 —— 取法坏了"));
-        let src = guard_core::production_code(raw);
-        let at = guard_core::find_pinned(&src, anchor).unwrap_or_else(|e| {
-            panic!("切不出 {file} 的 `{anchor}`（{e}）—— 本条按红处理，不是绿")
-        });
-        let body = brace_block(&src, at)
-            .unwrap_or_else(|| panic!("{file} 的 `{anchor}` 花括号没配平 —— 按红处理"));
-
-        // 反空真自检㈠：窗口不许跨进下一个 item。
-        assert!(
-            !body.contains("\nfn ") && !body.contains("\npub"),
-            "{file} 的 `{anchor}` 窗口跨进了下一个 item —— 窗口无界，下面的断言不算数"
-        );
-        // 反空真自检㈡：窗口里**确实**有那个绑定（切错地方会让下面恒绿）。
-        let code = guard_core::strip_comment_lines(body);
-        assert!(
-            count_ident(&code, binding) > 0,
-            "{file} 的 `{anchor}` 窗口里根本没有 `{binding}` —— 切法坏了，本条在空转"
-        );
-
-        // ★ 正题：那个明文绑定出现的次数**等于**登记的写法条数（**按标识符数，不按子串**），
-        //   且每一条登记的写法都在。
-        let n = count_ident(&code, binding);
-        assert_eq!(
-            n,
-            uses.len(),
-            "{file} 的 `{anchor}` 里，明文绑定 `{binding}` 出现了 {n} 次，登记的是 {} 处。\n\
-                 ⚠ `K-H2` `KH7`：明文入参只许被往下传登记过的那几次。多碰一次就多一个出口 ——\n\
-                 进了一句日志 / 被拷进一个错误消息 / 被塞进一个结构体，都会撞这一条。\n\
-                 真要多一处，先在件计划里说清那一处是什么，别在这里把次数改大。\n\
-                 窗口（已剥注释）：{code}",
-            uses.len()
-        );
-        for only_use in *uses {
-            assert!(
-                code.contains(only_use),
-                "{file} 的 `{anchor}` 里没有登记的写法 `{only_use}` —— 靶子挪了。\n\
-                     窗口（已剥注释）：{code}"
-            );
+    let mut hits: Vec<String> = Vec::new();
+    let mut scanned = 0usize;
+    for (path, raw) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
+        scanned += 1;
+        let prod = guard_core::production_code(&raw);
+        for n in &needles {
+            if prod
+                .lines()
+                .any(|l| !l.trim_start().starts_with("//") && l.contains(n.as_str()))
+            {
+                hits.push(format!("{} · {n}", path.display()));
+            }
         }
     }
+    assert!(scanned > 100, "只扫到 {scanned} 份 —— 遍历坏了，本条在空转");
+    assert!(
+        hits.is_empty(),
+        "monitor 生产段又能叫出明文 key 的写口了：{hits:?}"
+    );
+    // 正控 ①：同一根针在后端命令表里数得到（针没瞎）。
+    let inbound = guard_core::production_code(include_str!("../../src/backend/inbound.rs"));
+    assert!(
+        inbound.contains(needles[1].as_str()),
+        "正控失败：后端命令表里也数不到那条帧命令"
+    );
+    // 正控 ②：前端发送口恰好一处。
+    let ts = include_str!("../../src/apikey-reads.ts");
+    assert_eq!(
+        ts.matches(needles[1].as_str()).count(),
+        1,
+        "前端发 apikey-key-set 的地方不是恰好一处"
+    );
 }
 
 // ── 〔第四波 ST2 · `设计/70 §4.4`〕加账号表单 apikey 那一支的 Base URL ─────────────────

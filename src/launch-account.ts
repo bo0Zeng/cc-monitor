@@ -9,7 +9,7 @@
  * 从 `accounts.ts` 拆出来（审计 B §6 必须拆 4：那个文件跨账号 · 起停 · 历史三个域）。
  * 守的要求：`设计/01 §5` D1「一个判定只有一个家」· `设计/01 §6.2`「「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」。
  */
-import type { LaunchModifiers } from "./launch-plan";
+import type { LaunchModifiers } from "./launch-types";
 // 🔴 `K-R95`（定框 `K28`：前端不许自己发明对外行为）：本机拉起载荷里「哪个号」那一格的
 // **wire 键名从后端来**，前端不再自己写 `{ kind: "named", configDir, name }` 这三个字面量。
 // 源：`src/bridge/src/backend/control/launch_wire.rs::export_bindings_launch_render_facts`
@@ -290,13 +290,19 @@ export function __setLocalLaunchSnapshotForTests(
 
 /**
  * A4：记录「这个会话上次用账号 X 起」到 history-metadata（源②，DESIGN §3）。history / tabs
- * 两处「带账号 resume」共用。失败静默——记忆是非关键路径，不该挡住 resume 本身。
+ * 两处「带账号 resume」共用。失败不挡 resume 本身（记忆是非关键路径），但**要说一句**
+ * 〔W5-UI · E §3.3〕：原先只打 console，下次 resume 的账号跟随悄悄失准，用户无从知道为什么。
  */
 export async function recordLastAccount(sessionId: string, account: string): Promise<void> {
   try {
     await annotate(sessionId, { lastAccount: account });
   } catch (e) {
     console.warn("record lastAccount failed:", e);
+    showActionFailureToast(
+      copyText("launchAccount.lastAccount.notRecorded"),
+      copyText("launchAccount.lastAccount.notRecordedBody", { account, e: String(e) }),
+      { level: "info", durationMs: 6000 },
+    );
   }
 }
 

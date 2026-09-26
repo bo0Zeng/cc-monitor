@@ -491,6 +491,8 @@ pub(crate) fn key_from_uname(
         return Err(Refusal::OsUnknown {
             why: if said.is_empty() {
                 copy_text("rsByteTable.key.noAnswer", &[])
+            } else if not_utf8(said) {
+                copy_text("rsByteTable.key.notUtf8", &[])
             } else {
                 copy_text("rsByteTable.key.said", &[("said", &said.to_string())])
             },
@@ -501,6 +503,9 @@ pub(crate) fn key_from_uname(
         [] => key_of("", ""),
         [os] => key_of(os, ""),
         [os, arch] => key_of(os, arch),
+        _ if not_utf8(stdout) => Err(Refusal::OsUnknown {
+            why: copy_text("rsByteTable.key.notUtf8", &[]),
+        }),
         _ => Err(Refusal::OsUnknown {
             why: copy_text(
                 "rsByteTable.key.unreadable",
@@ -508,6 +513,19 @@ pub(crate) fn key_from_uname(
             ),
         }),
     }
+}
+
+/// 〔WIN1 · RT1 F4〕那台机器的回话**不是 UTF-8** ⇒ 说 `rsByteTable.key.notUtf8` 那半句（接在「查了什么：问过它，」后面），
+/// 不照抄原文。
+///
+/// 真 Win11 现打（`第四波记录/RT1.md §1.2` 第 3 跳）：Windows 默认 shell 是 PowerShell，它按控制台代码页
+/// （中文系统是 GBK）报「无法将 uname 项识别为 cmdlet…」；回话在后端那一跳按 UTF-8 **有损**解
+/// （`dial/uses.rs`，认不出的字节成了 U+FFFD）⇒ 原样照抄进界面就是一串乱码。
+/// ⇒ 不照抄、也不猜代码页（GBK / Shift-JIS / 1252 都有可能，猜错了一样是乱码），只说「不是 UTF-8」
+/// 与它多半是什么。拒绝本身不变（`96 §7.1.4` 第 4 条：问不出 OS ＝ 拒绝）。
+/// 回话里有 U+FFFD ⇒ 那几个字节在后端按 UTF-8 解时就没解出来（有损解留下的记号）。
+fn not_utf8(s: &str) -> bool {
+    s.contains('\u{FFFD}')
 }
 
 /// 问远端那台的键。链路本身没通 ⇒ `Err`（普通失败：连都连不上，后面的流也起不来）；问得出答案 ⇒ `Ok(键或拒绝)`。

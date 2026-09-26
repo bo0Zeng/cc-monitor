@@ -85,7 +85,7 @@ fn every_field_goes_through_untouched() {
     assert_eq!(got.len(), 1);
     let back: serde_json::Value = serde_json::from_str(&got[0]).unwrap();
     let want: serde_json::Value = serde_json::from_str(body).unwrap();
-    // 两向：后端不认识的字段（`future`）也原样过去 —— 字段语义只在 monitor 一处。
+    // 两向：读那一层原样（`future` 也过去）—— 〔LOC1a〕字段语义只在下一层一处（`task_entry`，成品判据在 `feature_face_tests`）。
     assert_eq!(back, want);
 }
 

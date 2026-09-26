@@ -28,18 +28,25 @@ import { readFileSync, existsSync } from "node:fs";
 
 const store = vi.hoisted(() => ({
   cfg: {} as Record<string, unknown>,
+  /** 每次写完之后盘上的整份。 */
   saved: [] as Record<string, unknown>[],
+  /** 每次写交来的补丁（〔CFG1〕写只交「改哪几条路径」）。 */
+  edits: [] as (readonly { op: string; path: string[] }[])[],
 }));
 
-vi.mock("../src/ipc/commands", () => ({
-  commands: {
-    load_config: vi.fn(async () => store.cfg),
-    save_config: vi.fn(async ({ value }: { value: Record<string, unknown> }) => {
-      store.saved.push(value);
-      store.cfg = value;
-    }),
-  },
-}));
+vi.mock("../src/ipc/commands", async () => {
+  const { applyConfigEdits } = await import("./config-patch-fake");
+  return {
+    commands: {
+      load_config: vi.fn(async () => store.cfg),
+      patch_config: vi.fn(async ({ edits }: { edits: Parameters<typeof applyConfigEdits>[1] }) => {
+        store.edits.push(edits);
+        store.cfg = JSON.parse(applyConfigEdits(JSON.stringify(store.cfg), edits)) as Record<string, unknown>;
+        store.saved.push(store.cfg);
+      }),
+    },
+  };
+});
 
 import {
   CONFIG_KEY_OWNERS,
@@ -53,8 +60,8 @@ import { getBehavior, setBehavior } from "../src/behavior";
 
 /** 退役的那个旧名字。**逐字**写在这里 —— 本条判据的全部意义就是它出现时会红。 */
 const RETIRED_KEY = "forceLegacyLaunchRenderer";
-/** 它今天的名字。 */
-const LIVE_KEY = "forceLaunchPayloadRenderer";
+/** 〔LR2 2026-09-25〕它改名之后的名字也退役了（整个逃生口删了，理由在 `src/behavior.ts`）⇒ 同样是未知键。 */
+const RETIRED_KEY_2 = "forceLaunchPayloadRenderer";
 
 const sorted = (xs: readonly string[]): string[] => [...xs].sort();
 
@@ -87,38 +94,35 @@ const CENSUS: readonly string[] = [
   "resumeCommandLocalPresets",
   "resumeCommandRemotePresets",
   "notifyTurnEnd",
-  "forceLaunchPayloadRenderer",
+  // 〔LR2〕`forceLaunchPayloadRenderer` 退役 ⇒ 这一行删，两份普查恒等地各少一键。
+  // 〔CFG1 · 4D〕现打反扫 Rust 侧补一个：`src/bridge/src/logging.rs::write_diagnostics_to_config` 写的 `diagnostics`。
+  //   上面那句「Rust 侧另读三个」漏了它 ⇒ 存过一次诊断设置的用户，设置页「认不出的键」提示条会把它点名（假警报）。
+  "diagnostics",
 ];
 
 beforeEach(() => {
   store.cfg = {};
   store.saved = [];
+  store.edits = [];
   __resetUnknownConfigKeysForTests();
 });
 
-describe("P12 ① 落盘键改名：`forceLegacyLaunchRenderer` → `forceLaunchPayloadRenderer`", () => {
-  it("★ 新名字读得出来（盘上写 true ⇒ 逃生口真的开）", async () => {
-    store.cfg = { [LIVE_KEY]: true };
+describe("P12 ① 那个逃生口的两代落盘键都退役了（`forceLegacyLaunchRenderer` → `forceLaunchPayloadRenderer` → 删）", () => {
+  it("★★ 两代旧名字都**不留别名**：盘上写 true 也不驱动任何行为（行为配置里根本没有这一格）", async () => {
+    store.cfg = { [RETIRED_KEY]: true, [RETIRED_KEY_2]: true };
+    const b = (await getBehavior()) as unknown as Record<string, unknown>;
     expect(
-      (await getBehavior()).forceLaunchPayloadRenderer,
-      "新落盘键读不出来 —— 改名把这个逃生口改没了",
-    ).toBe(true);
+      [RETIRED_KEY, RETIRED_KEY_2].filter((k) => k in b),
+      "退役键还在被当成开关读 —— `no-legacy-compat` 要的是**退役**，不是留一个没人管的开关。",
+    ).toEqual([]);
   });
 
-  it("★★ 旧名字**不留别名**：盘上写 true 也不驱动任何行为", async () => {
-    store.cfg = { [RETIRED_KEY]: true };
-    expect(
-      (await getBehavior()).forceLaunchPayloadRenderer,
-      "旧键还在被当成开关读 —— `no-legacy-compat` 要的是**退役**，不是双名并存。\n" +
-        "（留别名等于这个名字永远改不完：两个住址都能开同一个开关，下一个人不知道该改哪个。）",
-    ).toBe(false);
-  });
-
-  it("★★ 写盘写的是新名字，而且**只写行为那一族**（两向集合相等）", async () => {
+  it("★★ 写盘**只写行为那一族**（两向集合相等），两代退役键都不写", async () => {
     const before = await getBehavior();
     await setBehavior(before);
-    expect(store.saved.length, "`setBehavior` 根本没写盘").toBe(1);
-    const written = sorted(Object.keys(store.saved[0]));
+    expect(store.edits.length, "`setBehavior` 根本没写盘").toBe(1);
+    // 〔CFG1〕看它**交了哪几条路径**（不是写完之后盘上有什么 —— 那里还有别人的键）。
+    const written = sorted(store.edits[0]!.map((e) => e.path.join(".")));
     const owned = sorted(
       KNOWN_CONFIG_KEYS.filter((k) => CONFIG_KEY_OWNERS[k] === "src/behavior.ts"),
     );
@@ -128,11 +132,9 @@ describe("P12 ① 落盘键改名：`forceLegacyLaunchRenderer` → `forceLaunch
         "两个方向都要看：多写了 = 它在动不属于自己的键；少写了 = 登记表里有个键没人写，" +
         "而那种键会在下次读盘时被当成未知键喊出来。",
     ).toEqual(owned);
-    expect(written).toContain(LIVE_KEY);
-    expect(
-      written,
-      `写盘里还有旧键 \`${RETIRED_KEY}\` —— 改名只改了读的那一半`,
-    ).not.toContain(RETIRED_KEY);
+    for (const k of [RETIRED_KEY, RETIRED_KEY_2]) {
+      expect(written, `写盘里还有退役键 \`${k}\` —— 退役只退了读的那一半`).not.toContain(k);
+    }
   });
 
   it("写盘**不吞掉**用户手写的未知键（未知 ≠ 该删）", async () => {
@@ -147,11 +149,11 @@ describe("P12 ① 落盘键改名：`forceLegacyLaunchRenderer` → `forceLaunch
 });
 
 describe("P12 ② 未知键要被数出来（`unknownKeysIn` / `loadConfig` 那一格）", () => {
-  it("🔴 旧键出现 ⇒ 数得出来，而且逐字就是它", () => {
+  it("🔴 旧键出现 ⇒ 数得出来，而且逐字就是它（两代退役键都算）", () => {
     expect(
-      unknownKeysIn({ [RETIRED_KEY]: true, theme: {} }),
-      `盘上放了退役键 \`${RETIRED_KEY}\` 而这里一个都没数出来 —— 「静默忽略」原样还在`,
-    ).toEqual([RETIRED_KEY]);
+      unknownKeysIn({ [RETIRED_KEY]: true, theme: {}, [RETIRED_KEY_2]: false }),
+      `盘上放了退役键而这里没全数出来 —— 「静默忽略」原样还在`,
+    ).toEqual([RETIRED_KEY, RETIRED_KEY_2]);
   });
 
   it("🔴 旧键出现 ⇒ **读盘那一步**就记下来了（在执行链上，不是纯函数自娱自乐）", async () => {
@@ -205,7 +207,8 @@ describe("P12 ③ 登记表自己得是真的（否则上面每一条都在拿�
     const owners = new Set(Object.values(CONFIG_KEY_OWNERS));
     // 〔B2 · 条 66〕10 → 9：`src/backend-policy.ts` 不再是任何配置键的主人（`backendPolicy` 退役，
     //   「退出行为」那个值搬到后端所在那台机器上）。少的就是它这一个，别的主人一个没动。
-    expect(owners.size, `主人只剩 ${owners.size} 个（现打 9）`).toBe(9);
+    // 〔CFG1 · 4D〕9 → 10：补上 `src/bridge/src/logging.rs`（`diagnostics` 那一键的主人，Rust 写的）。多的就是它这一个。
+    expect(owners.size, `主人 ${owners.size} 个（现打 10）`).toBe(10);
   });
 
   it("★ 每个登记的主人文件真的在盘上，而且那个键名逐字出现在它里面", () => {

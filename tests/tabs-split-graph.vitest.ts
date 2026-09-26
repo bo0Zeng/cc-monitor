@@ -66,7 +66,8 @@ export function runtimeImports(rel: string, src: string = read(rel)): string[] {
     }
     const base = resolve(dirname(abs), spec.replace(/\.ts$/, ""));
     let hit: string | null = null;
-    for (const cand of [`${base}.ts`, join(base, "index.ts")]) {
+    // 〔W5-UI〕带扩展名的非 TS 模块（`./x.module.css`）按原样认：它是真的运行期依赖（样式随模块图进窗口）。
+    for (const cand of [`${base}.ts`, join(base, "index.ts"), resolve(dirname(abs), spec)]) {
       try {
         if (statSync(cand).isFile()) {
           hit = cand;
@@ -94,6 +95,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/error-toast.ts", // bringActiveTerminalToFront：非 Windows 说一句实话
     "src/fork-flow.ts", // startForkedSession（E78：fork-flow.vitest 钉「tabs.ts 调 runForkFlow」）
     "src/ipc/origin.ts", // 〔C4a〕本机 / 远端只经这一处判（线上缺省 = 本机的那一下表示法转换也在这里）
+    "src/live-card.ts", // 〔TAP · V124〕中转抄出的流式活卡：tap 格进状态机、同 message.id 的 jsonl 落盘即撤卡
     "src/live-window.ts", // ensureTab：新 tab 的尾部窗口
     "src/tab-bar-drag.ts",
     "src/tab-bar-prefs.ts",
@@ -134,6 +136,8 @@ const DEPS: Record<string, readonly string[]> = {
     "src/cards/index.ts",
     "src/copy-table.ts", // 〔CP2b〕上翻哨兵 · 查找失败那几句进了文案表
     "src/height-estimate.ts",
+    "src/ipc/chan-caller.ts", // 〔DL1〕丢格之后往后补那一件的期限：开头 `budgetWithin` 造一次（`设计/05 §3.3.2` 造期限的那一手）
+    "src/ipc/chan.ts", // 〔DL1〕同上：每问交 `remaining(budget)`（那一件还剩多少，不重新计时）
     "src/ipc/commands.ts",
     "src/record-timeline.ts",
     "src/render-stream-record.ts",
@@ -151,6 +155,8 @@ const DEPS: Record<string, readonly string[]> = {
     "src/accounts.ts",
     "src/copy-table.ts", // 〔CP2b〕按钮上的图标 · 悬停提示 · 集合名提示进了文案表
     "src/ipc/origin.ts", // 〔C4a〕远端 tab 才挂 `.remote` / 走远端那条 ↗
+    "src/keybindings/registry.ts", // 〔W5-UI〕组头就地改名：改名时 Esc 走 overlay 栈
+    "src/tab-group-rename.module.css", // 〔W5-UI〕组头就地改名那个输入框的样式（UC2：新样式一律 module）
     "src/session-status.ts",
     "src/tab-collections.ts",
     "src/tab-session-state.ts", // 〔U4〕按钮上的两个状态类 · ↗ / 中键的两道门
@@ -168,10 +174,10 @@ const DEPS: Record<string, readonly string[]> = {
   // ④ 落盘偏好：集合 / 固定 / 顺序的盘上那一层。
   //   〔U4〕固定复活出来的是「已结束」· 落盘的「最后活动时刻」按活性判。
   //   〔U4〕固定复活的空态文字住文案表（说到会话状态的字一处定）。
-  //   〔TL2 · E13〕集合到上界说那一句的出口（`sayCollectionRefusal`）住这里 ⇒ 要 toast。
+  //   〔TL2 · E13〕集合到上界说那一句的出口（`sayCollectionRefusal`）也住这里。
   "src/tab-bar-prefs.ts": [
     "src/copy-table.ts",
-    "src/error-toast.ts",
+    "src/error-toast.ts", // 〔CFG1〕分组 / 固定 / 顺序落盘失败出声（INVARIANTS §12）·〔TL2 · E13〕集合到上界那一句
     "src/tab-bar-state.ts",
     "src/tab-collections.ts",
     "src/tab-session-state.ts",
@@ -179,6 +185,7 @@ const DEPS: Record<string, readonly string[]> = {
   // ⑤ 菜单放哪几项：账号 flyout · tmux 判据 · attach / 预览 · 菜单控件 · 会话动作。
   "src/tab-menu.ts": [
     "src/agent-profile.ts",
+    "src/ask-dialog.ts", // 〔W5-UI〕「新建集合…」问名字（原 `window.prompt`）
     "src/behavior.ts",
     "src/copy-table.ts", // 〔U4〕固定那一项的两句提示（说到会话状态）住文案表
     "src/error-toast.ts",
@@ -200,6 +207,7 @@ const DEPS: Record<string, readonly string[]> = {
   "src/tab-session-actions.ts": [
     "npm:@tauri-apps/plugin-opener",
     "src/account-restart.ts",
+    "src/ask-dialog.ts", // 〔W5-UI〕杀会话的确认（原 `window.confirm`：真 app 里恒真值，等于没问）
     "src/behavior.ts",
     "src/copy-table.ts", // 〔U4〕杀空 tmux / 杀会话的确认与回执（说到会话状态）住文案表
     "src/error-toast.ts",

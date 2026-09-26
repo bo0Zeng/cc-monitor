@@ -70,8 +70,8 @@ pub struct Snap {
 /// 怎么收场的。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum End {
-    /// 传完了。
-    Done { bytes: u64 },
+    /// 传完了。〔FW1 · 第四波 4D〕上传那一路带整份本机文件的摘要（窗口提交时原样交回当 `expect`）；下载那一路 `None`。
+    Done { bytes: u64, sha256: Option<String> },
     /// 失败（带下层原话）。上传那一路的暂存件**留着**给续传。
     Failed(String),
     /// 撤了（停订 / 连接断了）。上传那一路的暂存件已删。

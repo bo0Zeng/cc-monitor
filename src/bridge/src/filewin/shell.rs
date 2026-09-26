@@ -213,19 +213,12 @@ pub static NO_LINE: std::sync::LazyLock<String> =
 
 /// 「在此打开终端」要在那台远端上跑的那一串。
 ///
-/// # 🔴 它是**第二份**实现，如实登记（第一份在 TS 里）
+/// # 它今天是唯一一份
 ///
-/// 旧面板那颗同名按钮走的是 `src/remote-launch.ts::buildOpenTerminalCmd`，
 /// 逐字：`cd <quoted> && exec ${SHELL:-bash} -l`（`cwd` 为空 ⇒ 只有后半段）。
-/// 窗口这一侧在 Rust 里，够不着那一份 ⇒ 这里是第二份。
-///
-/// **两份漂开的症状**：两个面板上同名的按钮把你落在不同的目录 / 不同的 shell 里。
-/// 接住它的今天**只有一条**：本函数那两档由 `shell_tests` 钉成**逐字节相等**，
-/// 期望串与 TS 那一行**逐字相同**。⚠ 这不是一条跨语言判据 ——
-/// 真要那个，得在 `.vitest.ts` 那一侧加一份共享黄金夹具，而
-/// **`.vitest.ts` 在本刀的红线里**。⇒ 登记为「有账、没自动对拍」，
-/// 而它的**到期日是确定的**：旧面板退役那一刀 TS 那一份会跟着一起走，
-/// 那时这一份就成了唯一一份。
+/// 〔LR2〕旧面板那颗同名按钮的 TS 那份（`remote-launch.ts` 里）生产调用方 0，主会话按
+/// `设计/00 §2.5 ④` ＋ `90 §3`（前端零 shell 串）裁删 —— 原先这里登记的「到期日」（旧面板退役那一刀
+/// TS 那一份跟着走）到了。三种形状由 `shell_tests` 的手写期望逐字节钉着（原 TS 黄金样例的字节原样搬过去）。
 ///
 /// ⚠ 引号走 `shell_quote_core::posix_quote` —— Rust 侧唯一那一份
 /// （`quote_singleton_guard` 钉着「只许一个实现」）。**不许在这儿自己拼单引号。**
@@ -1585,10 +1578,11 @@ impl FileWindow {
             // 〔F7a〕读文本经通道问后端（`files-read-text`），不再拨 SFTP。
             let got = super::editor::read_text(&line, &origin, &row.path).await;
             board.deliver(match got {
-                Ok(Some(text)) => Arrived::Text {
+                Ok(Some(o)) => Arrived::Text {
                     path: row.path.clone(),
                     name: row.name.clone(),
-                    text,
+                    text: o.text,
+                    sha256: o.sha256,
                 },
                 Ok(None) => Arrived::NotText { path: row.path },
                 Err(why) => Arrived::Failed {
@@ -1610,8 +1604,13 @@ impl FileWindow {
             return false;
         };
         match a {
-            Arrived::Text { path, name, text } => {
-                self.editing = Some(super::editor::Pane::opened(&path, &name, text));
+            Arrived::Text {
+                path,
+                name,
+                text,
+                sha256,
+            } => {
+                self.editing = Some(super::editor::Pane::opened(&path, &name, text, sha256));
             }
             Arrived::NotText { path } => {
                 *self.listing.error.lock().unwrap() = Some(super::editor::not_text_notice(&path));
@@ -1660,8 +1659,67 @@ impl FileWindow {
         board.attach(ctx);
         board.begin_save(&p.path);
         h.spawn(async move {
-            let r = super::editor::write_text(&line, &origin, &p.path, &p.text).await;
+            let r = super::editor::write_text(&line, &origin, &p.path, &p.text, p.expect_sha256())
+                .await;
             board.deliver_save(r);
+        });
+        true
+    }
+
+    /// 〔FW1 · D-c〕存盘撞上「盘上那份在你打开之后被改过了」之后，人点了**仍然覆盖**。回值 = 真的发出去了。
+    ///
+    /// 先重读一趟拿盘上此刻那一份的摘要、再以它为 `expect` 存（`editor::overwrite_anyway`）—— CAS 仍在。
+    pub fn overwrite_edit(&mut self, ctx: Option<egui::Context>) -> bool {
+        let Some(p) = self.editing.clone() else {
+            return false;
+        };
+        if p.over_cap() {
+            return self.save_edit(ctx);
+        }
+        let (Some(h), Some(line)) = (self.rt.clone(), self.line.clone()) else {
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
+            return false;
+        };
+        let origin = self.source.origin();
+        let board = self.edits.clone();
+        board.attach(ctx);
+        board.begin_save(&p.path);
+        h.spawn(async move {
+            let r = super::editor::overwrite_anyway(&line, &origin, &p.path, &p.text).await;
+            board.deliver_save(r);
+        });
+        true
+    }
+
+    /// 〔FW1 · D-c〕存盘撞上 stale 之后，人点了**丢掉我的改动、重新打开**：编辑面收掉、同一份重读一遍。
+    /// 回值 = 真的发出去了（拿不到运行时 / 通道 ⇒ 编辑面照旧留着，一个字不丢）。
+    pub fn reopen_edit(&mut self, ctx: Option<egui::Context>) -> bool {
+        let Some(p) = self.editing.as_ref() else {
+            return false;
+        };
+        let (path, name) = (p.path.clone(), p.name.clone());
+        let (Some(h), Some(line)) = (self.rt.clone(), self.line.clone()) else {
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
+            return false;
+        };
+        self.discard_edit();
+        let origin = self.source.origin();
+        let board = self.edits.clone();
+        board.attach(ctx);
+        board.begin_open(&path);
+        h.spawn(async move {
+            use super::editor::Arrived;
+            let got = super::editor::read_text(&line, &origin, &path).await;
+            board.deliver(match got {
+                Ok(Some(o)) => Arrived::Text {
+                    path,
+                    name,
+                    text: o.text,
+                    sha256: o.sha256,
+                },
+                Ok(None) => Arrived::NotText { path },
+                Err(why) => Arrived::Failed { path, why },
+            });
         });
         true
     }
@@ -1678,8 +1736,9 @@ impl FileWindow {
             return false;
         };
         match r {
-            Ok(()) => p.mark_saved(),
-            Err(why) => p.mark_failed(why),
+            Ok(s) => p.mark_saved(&s.sent, s.sha256),
+            Err(super::editor::SaveError::Stale(why)) => p.mark_stale(why),
+            Err(super::editor::SaveError::Failed(why)) => p.mark_failed(why),
         }
         true
     }
@@ -1814,7 +1873,7 @@ impl FileWindow {
             }
             return;
         }
-        let (mut save, mut close) = (false, false);
+        let (mut save, mut close, mut overwrite, mut reopen) = (false, false, false, false);
         egui::Modal::new(egui::Id::new("filewin-editor")).show(ui.ctx(), |ui| {
             ui.heading(format!(
                 "{}{}",
@@ -1855,6 +1914,17 @@ impl FileWindow {
                     ),
                 };
             }
+            // 〔FW1 · D-c〕盘上那份在打开之后被改过了 ⇒ 让人选，不替他选（编辑框的字一个不动）。
+            if pane.stale {
+                ui.horizontal(|ui| {
+                    if ui.button(super::editor::OVERWRITE_LABEL.as_str()).clicked() {
+                        overwrite = true;
+                    }
+                    if ui.button(super::editor::REOPEN_LABEL.as_str()).clicked() {
+                        reopen = true;
+                    }
+                });
+            }
             super::bigfile::show(ui, self.editing.as_mut());
             ui.horizontal(|ui| {
                 if ui
@@ -1874,6 +1944,12 @@ impl FileWindow {
         if save {
             let ctx = ui.ctx().clone();
             self.save_edit(Some(ctx));
+        } else if overwrite {
+            let ctx = ui.ctx().clone();
+            self.overwrite_edit(Some(ctx));
+        } else if reopen {
+            let ctx = ui.ctx().clone();
+            self.reopen_edit(Some(ctx));
         } else if close {
             self.close_edit();
         }

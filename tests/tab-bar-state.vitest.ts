@@ -23,12 +23,12 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("../src/config", () => ({
-  loadConfig: vi.fn(),
-  saveConfig: vi.fn(),
-}));
+// 〔CFG1〕config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`
+// （补丁语义与 Rust 写口同一份金样，见 `tests/config-patch-fake.ts`）。
+vi.mock("../src/config", async (orig) => (await import("./config-patch-fake")).mockedConfigModule(orig));
 
-import { loadConfig, saveConfig } from "../src/config";
+import { loadConfig } from "../src/config";
+import { fakeCfg } from "./config-patch-fake";
 import {
   sanitizeOrder,
   getTabOrder,
@@ -44,7 +44,7 @@ import {
 import { LOCAL_ORIGIN } from "../src/ipc/origin";
 
 const mockLoad = vi.mocked(loadConfig);
-const mockSave = vi.mocked(saveConfig);
+const mockSave = fakeCfg.saved;
 
 /** 一条**字段齐全**的固定记录 —— 每格只改它关心的那一两个字段，其余不参与判定。 */
 function pin(over: Partial<PinnedTab> = {}): PinnedTab {

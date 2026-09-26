@@ -107,13 +107,22 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "〔RM1a〕中转按机器：monitor 发的两个命令名、解析的那几个字段必须就是后端登记表里声明的那几个 \
          —— 读它才能拿**后端声明的**字段造样本喂解析器（本侧手抄一份就成了两侧同源的恒等）",
     ),
+    // 〔HX2 · 第四波 4D〕`tests/bridge/apikey_remote_tests.rs → src/backend/inbound.rs` 那一条退役：命令名常量随写臂删了、那条对拍判据随之退役
+    //   （monitor 里零处叫得出那条帧命令，由 `creds_store_tests::hx2_the_monitor_names_no_plaintext_key_on_the_way_to_the_backend` 钉零命中）。
     (
         "monitor→backend",
-        "tests/bridge/apikey_remote_tests.rs",
+        "tests/bridge/config_tests.rs",
+        "src/backend/platform/lock.rs",
+        "〔HX2 · 第四波 4D〕`config.json` 的跨进程锁（monitor `platform_fs::hold_dir_lock`）与后端第四层那把（`platform/lock.rs::hold`）\
+         是两个 crate 各一份的**同一种锁**（两个 crate 没有能放平台原语的共享落点）——「同一种」只能同时读两份源码对拍：\
+         unix 都锁目录、Windows 互斥量名字的拼法逐字相同；只读一侧就成了自己跟自己比",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/creds_store_tests.rs",
         "src/backend/inbound.rs",
-        "〔RM1a〕上游选择那份凭据文件按机器读写：monitor 这边发的两个命令名、解析的那几个字段 \
-         必须就是后端登记表里声明的那几个 —— 读它才能拿**后端声明的**字段造样本喂解析器\
-         （本侧手抄一份就成了两侧同源的恒等）",
+        "〔HX2 · 第四波 4D〕写 key 改走通道之后，「monitor 生产段零处叫得出明文 key 的写口」那条零命中判据的**正控**要落在真命令表上 —— \
+         同一根针（帧命令名 `apikey-key-set`）在后端 `inbound.rs` 的登记里数得到，才说明零命中不是针瞎了",
     ),
     (
         "monitor→backend",
@@ -172,6 +181,14 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
+        "tests/bridge/stop_grace_tests.rs",
+        "src/backend/inbound.rs",
+        "〔HX1 · 4D〕**两个期限的先后**：后端自己兜的退出排空期限（`inbound::DRAIN_DEADLINE`）与 monitor「停」等它的时长\
+         （`stop_grace::STOP_GRACE_TRIES × STOP_POLL`）。monitor 等得比后端短 ⇒ 后端那句「哪几条没做完」永远被 SIGKILL 截断、\
+         **不会报错**；只有同时读两侧才验得了（现抠后端生产段那个字面量，恰好一处）。",
+    ),
+    (
+        "monitor→backend",
         "tests/bridge/logging_tests.rs",
         "src/backend/stderr_log.rs",
         "〔NT2 · S1〕**跨 crate 字面量对拍**：宿主交给脱离常驻那条载体的 `CCM_BACKEND_STDERR_LOG` 与后端读的那一个，\
@@ -187,6 +204,16 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          而两边漂了**不会报错** —— backend 会把它当成「没设」走 stdio 那条路，\
          宿主则等在一个永远没人 bind 的口上，日志里只有一句「连不上」。\
          ⇒ 只能同时读两侧的源码才验得了（形状抄 `the_local_origin_is_the_same_string_on_both_sides`）。",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/sftp_tests.rs",
+        "tests/backend/build_id_guard.rs",
+        "〔HX2 · 第四波 4D · 主会话 D-b〕**部署只升不降要 `BUILD_ID` 可比序**：`sftp::build_order` 住 monitor，\
+         而出过的每一个 `BUILD_ID` 只在后端那张 `SUBCOMMAND_HISTORY` 历史表里（每次加子命令追加一行）。\
+         `hx2_every_build_id_ever_shipped_has_an_order_and_the_history_climbs` 读它：每一行都解得出序、按表序严格爬升 ——\
+         下一次 bump 写出一个解不出序的形状，部署出去就永远不会被判「更新」而换上（两边各自绿、线上静默）。\
+         只能同时读序键实现（monitor）与历史表（后端测试树）才验得了。",
     ),
     (
         "monitor→backend",
@@ -245,16 +272,9 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          两个数住两棵依赖树（窗口的 `WINDOW_TRANSFER_LANES` · 后端的 `TRANSFER_LANE_CAP` / `SESSION_CHANNEL_CAP`）；\
          失效方向：窗口起的件数超过车道 ⇒ 多挂的订阅只是白排队；够着整条连接的通道闸 ⇒ 一个窗口把会话与查询饿死。",
     ),
-    (
-        "monitor→backend",
-        "tests/bridge/subagent_tests.rs",
-        "src/backend/observe/history_query.rs",
-        "★〔C2 · SE1 欠账 09-24 新增〕**「老后端」那一档的认法两侧同形** —— \
-         `subagent::tests::a_local_backend_that_does_not_know_the_subcommand_is_old_not_broken`。\
-         monitor 的 `local_failure_kind` 凭「退出 2 ＋ stderr 行尾是 `unknown argument: <子命令>`」判老后端，\
-         那一串的写侧是后端 `history_query::run` 的 `unknown argument: {other}` 与 `query error: {e}`。\
-         失效方向**很安静**：后端改一个字，本机老后端又全落回「瞬时」、前端重试到上限才停，两侧各自全绿。",
-    ),
+    // 〔LOC1a · 第四波 4D〕`tests/bridge/subagent_tests.rs` → 后端 `history_query.rs` 那一条边删了：它钉的是本机 exec 那条路
+    //   「退出 2 ＋ `unknown argument`」的认法（`local_failure_kind`〔散文墓碑〕），那条路改走 `<local>` 长连接之后
+    //   「老后端」由长连接的 `accepts` 当场判（与远端同一个判定），不再读后端 stderr 的措辞。
     (
         "monitor→backend",
         "tests/bridge/history_title_coverage.rs",
