@@ -5675,30 +5675,50 @@
       "zh": "缺",
       "args": []
     },
-    "acctDeploy.buildAcctIsoCmd.snapshotPath": {
-      "kind": "control",
-      "zh": "凭据快照路径",
+    "acctDeploy.cmd.refused": {
+      "kind": "error",
+      "zh": "命令拼不出来：{detail}",
+      "args": ["detail"]
+    },
+    "acctDeploy.cmd.contract": {
+      "kind": "error",
+      "zh": "那台机器的后端没读懂这一问，两边版本对不上：{detail}",
+      "args": ["detail"]
+    },
+    "acctDeploy.cmd.otherCode": {
+      "kind": "error",
+      "zh": "命令拼不出来（{code}）：{detail}",
+      "args": ["code", "detail"]
+    },
+    "acctDeploy.cmd.noReason": {
+      "kind": "error",
+      "zh": "命令拼不出来，那台机器的后端没说原因",
       "args": []
     },
-    "acctDeploy.path.dash": {
+    "beIso.cmd.badName": {
       "kind": "error",
-      "zh": "{label}不能以「-」开头",
-      "args": ["label"]
+      "zh": "账号名不合规：{name}。只能用字母、数字、下划线和连字符，以字母或数字开头，最长 {max} 个字符",
+      "args": ["name", "max"]
     },
-    "acctDeploy.path.control": {
+    "beIso.cmd.snapshotEmpty": {
       "kind": "error",
-      "zh": "{label}不能包含控制字符",
-      "args": ["label"]
+      "zh": "凭据快照路径是空的",
+      "args": []
     },
-    "acctDeploy.path.quote": {
+    "beIso.cmd.snapshotQuote": {
       "kind": "error",
-      "zh": "{label}不能包含双引号",
-      "args": ["label"]
+      "zh": "凭据快照路径不能含双引号：{path}",
+      "args": ["path"]
     },
-    "acctDeploy.path.empty": {
+    "beIso.cmd.snapshotControl": {
       "kind": "error",
-      "zh": "{label}不能为空",
-      "args": ["label"]
+      "zh": "凭据快照路径不能含控制字符：{path}",
+      "args": ["path"]
+    },
+    "beIso.cmd.snapshotDash": {
+      "kind": "error",
+      "zh": "凭据快照路径不能以「-」开头：{path}",
+      "args": ["path"]
     },
     "acctDeploy.name.shape": {
       "kind": "error",

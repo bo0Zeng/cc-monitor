@@ -86,6 +86,8 @@ pub const COMMANDS: &[&str] = &[
     // 〔C4c · 第四波 4B〕换号前的信任预检（替掉最后两条仍逐次拨号的 `--account-trust*`）。
     "accounts-trust",
     // 〔LOC1a · 第四波 4D〕这台机器的 `cc-acct-iso` 两问（本机那两条从 exec 一次性后端改走 `<local>` 长连接）。
+    // 〔DUP2 · J4〕一个 cc-acct-iso 步骤在终端里要跑的那一行（预览 · 弹终端都问它；界面零拼 shell 串）。
+    "acct-iso-cmd",
     "acct-iso-shellinit",
     "acct-iso-status",
     "apikey-key-set",
@@ -2135,6 +2137,23 @@ pub const REGISTRY: &[CommandSpec] = &[
             crate::accounts::iso::answer_wire_status()
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔DUP2 · 主会话 09-26 裁 J4〕**一个 cc-acct-iso 步骤在终端里要跑的那一行**（`设计/01 §1.1`「命令串……都不在前端」·
+    //   `设计/90 §3` 判据 2；先例 `ccm-print`）。纯函数：校验 ＋ 唯一的 quote，**不起进程、不碰盘** ⇒ 不进阻塞档（同 `ping` / `resolve`
+    //   那一形，在 runtime 上当场答完）。跑它的是用户面前那个终端（DESIGN §6）。
+    CommandSpec {
+        name: "acct-iso-cmd",
+        doc_anchor: Some("#### `acct-iso-cmd`"),
+        codes: &["bad_args", "refused"],
+        fields: &["cmd", "credFile", "name", "step"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::accounts::iso::answer_wire_cmd(&r.args)
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
         }),
     },
     CommandSpec {

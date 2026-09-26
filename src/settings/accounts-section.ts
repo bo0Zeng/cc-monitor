@@ -33,12 +33,13 @@ import { SETTINGS_APPLIED_EVENT } from "./events";
 // `N-F2`：本机那条路也要写进同一本账 ⇒ 连本机那个 key 一起取，别在这儿长第二个名字。
 import { recordFacet, LOCAL_MACHINE_KEY } from "./machine-status";
 import {
-  buildAcctIsoCmd,
+  askAcctIsoCmd,
   validateAcctName,
   deriveAcctIsoDir,
   type AcctIsoStep,
 } from "./acct-deploy";
 import { askConfirm } from "../ask-dialog";
+import { saidOfControl } from "../control-said";
 
 /**
  * apikey 那一格要显的**一个账号**。只带界面真正用得到的三样。
@@ -523,7 +524,7 @@ export class AccountsSection {
     // 只是跑命令的那一跳走本机（[`launchLocalStep`]）。apikey 那一支在本机**真的有用**：
     // apikey 表与中转本来就是本机的，起本机会话时按账号换上那把 key。
     box.appendChild(
-      renderNewAccountForm((req) => this.createAccount(req, "local"), {
+      renderNewAccountForm(BACKEND_LOCAL_ORIGIN, (req) => this.createAccount(req, "local"), {
         subscription: copyText("accountsLocal.new.subscriptionHint"),
         apikey: copyText("accountsLocal.new.apikeyHint"),
       }),
@@ -696,28 +697,30 @@ export class AccountsSection {
   }
 
   /**
-   * A6：在远端终端里跑一个部署/维护步骤——构建命令（校验失败即提示不动手）→ danger 步二次确认 →
-   * `launch_remote_terminal` 弹真实终端让用户看着跑（DESIGN §6，不经后端、不代跑）。
+   * A6：在远端终端里跑一个部署/维护步骤——问那台后端要命令（〔DUP2 · J4〕`acct-iso-cmd`；它拒了 / 问不到 ⇒ 提示、不动手）
+   * → danger 步二次确认 → `launch_remote_terminal` 弹真实终端让用户看着跑（DESIGN §6，不代跑）。
    */
   private async launchStep(
     step: AcctIsoStep,
     opts: { danger?: boolean; confirmExtra?: string } = {},
   ): Promise<boolean> {
     if (isLocalOrigin(this.origin)) return false;
-    const built = buildAcctIsoCmd(step);
-    if (!built.ok) {
-      showActionFailureToast(copyText("accounts.launchStep.cmdInvalid"), built.reason, { level: "error" });
+    let cmd: string;
+    try {
+      cmd = await askAcctIsoCmd(this.origin, step);
+    } catch (e) {
+      showActionFailureToast(copyText("accounts.launchStep.cmdInvalid"), saidOfControl(e), { level: "error" });
       return false;
     }
     if (opts.danger) {
       const msg =
-        copyText("accounts.launchStep.confirm", { machine: this.origin, cmd: built.cmd, extra: (opts.confirmExtra ? `${opts.confirmExtra}
+        copyText("accounts.launchStep.confirm", { machine: this.origin, cmd, extra: (opts.confirmExtra ? `${opts.confirmExtra}
 
 ` : "") });
       if (!(await askConfirm(msg))) return false;
     }
     try {
-      await commands.launch_remote_terminal({ origin: this.origin, remoteCmd: built.cmd });
+      await commands.launch_remote_terminal({ origin: this.origin, remoteCmd: cmd });
       showActionFailureToast(copyText("accounts.launchStep.launched"), copyText("accounts.launchStep.launchedNext"), {
         level: "info",
         durationMs: 5000,
@@ -743,13 +746,16 @@ export class AccountsSection {
    * - 真失败 ⇒ 命令照样复制给用户，但返回 `false`：与远端那条「终端没拉起来就不留 key」同一个口径。
    */
   private async launchLocalStep(step: AcctIsoStep): Promise<boolean> {
-    const built = buildAcctIsoCmd(step);
-    if (!built.ok) {
-      showActionFailureToast(copyText("accountsLocal.new.cmdInvalid"), built.reason, { level: "error" });
+    // 〔DUP2 · J4〕命令由本机后端出（与远端同一条 `acct-iso-cmd`，`origin` = 本机）。
+    let cmd: string;
+    try {
+      cmd = await askAcctIsoCmd(BACKEND_LOCAL_ORIGIN, step);
+    } catch (e) {
+      showActionFailureToast(copyText("accountsLocal.new.cmdInvalid"), saidOfControl(e), { level: "error" });
       return false;
     }
     try {
-      await commands.launch_remote_terminal({ origin: BACKEND_LOCAL_ORIGIN, remoteCmd: built.cmd });
+      await commands.launch_remote_terminal({ origin: BACKEND_LOCAL_ORIGIN, remoteCmd: cmd });
       showActionFailureToast(
         copyText("accountsLocal.new.launched"),
         copyText("accountsLocal.new.launchedNext"),
@@ -759,7 +765,7 @@ export class AccountsSection {
     } catch (err) {
       let copied = true;
       try {
-        await navigator.clipboard.writeText(built.cmd);
+        await navigator.clipboard.writeText(cmd);
       } catch {
         copied = false; // 命令在提示里照样看得见，可以手动复制
       }
@@ -773,7 +779,7 @@ export class AccountsSection {
           : copyText("accountsLocal.new.failedNotCopied");
       showActionFailureToast(
         headline,
-        copyText("accountsLocal.new.pasteBody", { reason: String(err), cmd: built.cmd }),
+        copyText("accountsLocal.new.pasteBody", { reason: String(err), cmd: cmd }),
         { level: byDesign ? "info" : "error", durationMs: 10000 },
       );
       return byDesign;
@@ -935,6 +941,8 @@ export class AccountsSection {
     wiz.appendChild(note);
 
     // —— 校验驱动的启用/禁用 + 预览 ——
+    // 〔DUP2 · J4〕两行命令由那台后端出（`acct-iso-cmd`，两问）：输入一变就问，只认最后一次的答案（序号，零定时器）。
+    let asked = 0;
     const sync = (): void => {
       const name = input.value.trim();
       const v = validateAcctName(name);
@@ -942,12 +950,24 @@ export class AccountsSection {
       err.textContent = name && !v.ok ? v.reason : "";
       for (const b of [bPreview, bApply, bShellinit]) b.disabled = !valid;
       // verify 不依赖名字（自检当前状态），恒可点。
-      const pv = valid ? buildAcctIsoCmd({ kind: "init-preview", name }) : null;
-      const ap = valid ? buildAcctIsoCmd({ kind: "init-apply", name }) : null;
-      preview.textContent =
-        pv && pv.ok && ap && ap.ok
-          ? copyText("accounts.sync.script", { cmd: pv.cmd, cmd2: ap.cmd })
-          : copyText("accounts.sync.empty");
+      const my = ++asked;
+      if (!valid) {
+        preview.textContent = copyText("accounts.sync.empty");
+        return;
+      }
+      void Promise.all([
+        askAcctIsoCmd(this.origin, { kind: "init-preview", name }),
+        askAcctIsoCmd(this.origin, { kind: "init-apply", name }),
+      ]).then(
+        ([cmd, cmd2]) => {
+          if (my === asked) preview.textContent = copyText("accounts.sync.script", { cmd, cmd2 });
+        },
+        (e: unknown) => {
+          if (my !== asked) return;
+          preview.textContent = copyText("accounts.sync.empty");
+          err.textContent = saidOfControl(e);
+        },
+      );
     };
     input.addEventListener("input", sync);
     bPreview.addEventListener("click", () =>
@@ -1088,7 +1108,7 @@ export class AccountsSection {
 
     // 🔴 `设计/70 §4.4`（A2）：**新建账号是一张常驻的表单**，不再藏在「维护」折叠组里、
     //    也不再是红色按钮。岔口（订阅 / 第三方 apikey）在表单里问。
-    this.body.appendChild(renderNewAccountForm((req) => this.createAccount(req)));
+    this.body.appendChild(renderNewAccountForm(this.origin, (req) => this.createAccount(req)));
     this.renderPendingKeys();
     // 表单交过 apikey、而这个号这一趟已经出现在列表里了 ⇒ 接着把 key 写进去。
     await this.flushPendingKeys(accounts);

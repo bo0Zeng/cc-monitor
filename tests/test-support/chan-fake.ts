@@ -5,6 +5,7 @@
  * monitor 回原样字节（`ArrayBuffer`）或 `{ err, body }`（`wire::err_to_wire` 的线上形状）。
  * 各判据 mock 的是 `@tauri-apps/api/core` 的 `invoke` —— 本文件只帮它们造「那一跳会回什么」。
  */
+import ACCT_ISO_CMD_GOLDEN from "../__fixtures__/acct-iso-cmd.golden.json";
 
 /** `chan_call` 的实参（判据按 `op` 分派）。 */
 export interface ChanCallArgs {
@@ -97,6 +98,44 @@ export const UNSUPPORTED = { err: "Unsupported", body: [] as number[] };
 /** 通道那一跳「对端说不行」（`Peer{Refused}`，体是后端的 `{code, message}`）。 */
 export function refusedReply(code: string, message: string): { err: string; body: number[] } {
   return { err: "Refused", body: Array.from(new TextEncoder().encode(JSON.stringify({ code, message }))) };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  〔DUP2 · J4〕帧命令 `acct-iso-cmd`（cc-acct-iso 步骤那一行由后端出）：「后端会怎么答」从跨语言金样里查
+// ════════════════════════════════════════════════════════════════════════════
+//
+// 金样 `tests/__fixtures__/acct-iso-cmd.golden.json` 的每一问，后端那侧逐条喂给生产的 `answer_wire_cmd` 对过
+// （`tests/backend/accounts/iso_tests.rs`）⇒ 这里**不在 JS 里再写一份渲染器**，只照金样答；金样里没有的请求当场抛
+// （判据该拿金样里的请求来问 —— 否则就是在 JS 里偷偷长出第二份命令构造）。
+
+interface AcctIsoCmdCase {
+  args: Record<string, unknown>;
+  cmd?: string;
+  code?: string;
+}
+const ACCT_ISO_CMD_CASES = (ACCT_ISO_CMD_GOLDEN as { cases: AcctIsoCmdCase[] }).cases;
+
+const canon = (v: unknown): string =>
+  JSON.stringify(v, (_k, x: unknown) =>
+    x && typeof x === "object" && !Array.isArray(x)
+      ? Object.fromEntries(Object.entries(x as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)))
+      : x,
+  );
+
+/** 金样里「这一问」那一条（按请求体逐格相等找）；没有 ⇒ 抛。 */
+export function acctIsoCmdCase(args: ChanCallArgs): AcctIsoCmdCase {
+  const want = canon(chanArgsJson(args));
+  const hit = ACCT_ISO_CMD_CASES.find((c) => canon(c.args) === want);
+  if (!hit) throw new Error(`acct-iso-cmd 金样里没有这一问：${want}（判据请用金样里的请求）`);
+  return hit;
+}
+
+/** 一发 `acct-iso-cmd` 的 `chan_call` ⇒ monitor 那一跳会回什么（成品字节；拒 ⇒ reject 通道的拒绝体）。 */
+export function acctIsoCmdInvoke(args: ChanCallArgs): Promise<ArrayBuffer> {
+  const c = acctIsoCmdCase(args);
+  return c.cmd !== undefined
+    ? Promise.resolve(chanReply({ cmd: c.cmd }))
+    : Promise.reject(refusedReply(c.code ?? "refused", `（金样）${c.code ?? "refused"}`));
 }
 
 /**

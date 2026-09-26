@@ -2220,6 +2220,27 @@ BEGIN/END 围栏由 monitor 那侧校验（本命令不再写第二份围栏常�
 **错误码**：`not_installed` · `timed_out` · `tool_failed` · `not_run`。
 〔LOC1a〕此前是 argv 形一次性子命令 `--acct-iso-shellinit`（片段吐 stdout、失败 exit 2 ＋ stderr 信封）；同上一节，改上帧面，CLI 面自动派生同名。
 
+#### `acct-iso-cmd`：一个 `cc-acct-iso` 步骤在终端里要跑的那一行（〔DUP2 · 第四波 4D〕2026-09-26，**只出一行、不起进程不碰盘**）
+
+设置「账号」那几块（新建账号表单 · 启用向导 · 维护 · 登录）要在那台机器的终端里跑的 `cc-acct-iso …` 由**这台后端**出
+（主会话 09-26 裁 J4：`设计/01 §1.1`「命令串……都不在前端」· `设计/90 §3` 判据 2；先例 `ccm-print`）。界面的逐字预览与「弹终端」都问它，
+拿到的一行原样上屏 / 原样交给 `launch_remote_terminal`（跑它的是用户面前那个终端，DESIGN §6）。本机远端同一条命令，`origin` 区分。
+
+```text
+→ {"id":"a3","cmd":"acct-iso-cmd","args":{"step":"add-apply","name":"z","credFile":"/home/u/snap.json"}}
+← {"kind":"reply","id":"a3","ok":true,"data":{"cmd":"cc-acct-iso add 'z' --from-credentials '/home/u/snap.json' --apply"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `step` | → | `init-preview` · `init-apply` · `verify` · `shellinit` · `sync-apply` · `add-apply` · `login`（七选一） |
+| `name` | → | 账号名：`init-*` · `add-apply` · `login` 必带，其余不许带。过 `shell_quote_core::account_name_ok`（与建号工具 `cc-acct-iso` 的 `name_check` 逐字同） |
+| `credFile` | → | 凭据快照路径：只有 `add-apply` 许带、可缺。非空 · 无 `"` · 无控制字符 · 不以 `-` 开头 · ≤ 4096 字节 |
+| `cmd` | ← | 那一行：值一律经唯一的 quote（`shell_quote_core::posix_quote`） |
+
+**错误码**：`bad_args`（契约错：不认识的 `step` · 该带的格没带 / 多带 · 类型不对 · 路径超上界；英文诊断）·
+`refused`（账号名 / 快照路径过不了，句子走表）。⚠ **CLI 面也有它**（`--acct-iso-cmd`），入参从 stdin 读。
+
 #### `accounts-sessions`：正在跑的会话各属哪个账号（**不读 stdin**）
 
 ```text

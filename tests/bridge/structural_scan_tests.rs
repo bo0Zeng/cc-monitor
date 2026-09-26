@@ -4505,6 +4505,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/settings/accounts-section.ts", 3),
         ("src/apikey-reads.ts", 1), // 〔HX2 · 4D〕写 key 改走通道：头注点旧命令名
         ("src/settings/account-new-form.ts", 1), // 〔HX2 · 4D〕同上 // 〔HX2 · 4D〕+1：写 key 改走通道那一行点旧命令名
+        ("src/settings/acct-deploy.ts", 2), // 〔DUP2 · J4〕头注记 `sq` · `buildAcctIsoCmd` 搬进了后端（帧命令 `acct-iso-cmd`）
         ("tests/backend/control/gate_tests.rs", 1),
         ("tests/backend/no_timer_guard.rs", 1),
         // 〔SR1b · 2026-09-24〕2 → 3：远端写那一层「今天一处远端写都没有」那条判据随 V89 改写成

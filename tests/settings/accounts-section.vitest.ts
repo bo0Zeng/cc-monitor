@@ -28,7 +28,16 @@ vi.mock("../../src/remote-config", () => ({ readRemoteConfig: () => readRemoteCo
 
 import { readFileSync } from "node:fs";
 // 〔US1〕API key 那两问改走通道（`chan_call`，op = `apikey-read` / `apikey-routing`）：判据按 op 分派、回成品字节。
-import { chanArgsJson, chanReply, isChanCall, type ChanCallArgs } from "../test-support/chan-fake";
+import { acctIsoCmdCase, acctIsoCmdInvoke, chanArgsJson, chanReply, isChanCall, type ChanCallArgs } from "../test-support/chan-fake";
+
+// 〔DUP2 · J4〕cc-acct-iso 那几条命令由那台后端出（`acct-iso-cmd`）：判据照跨语言金样答（后端那侧逐条对生产函数），
+//   不在 JS 里再写一份命令构造。`cmdAnswered` = 这一趟里最后一问、金样给的那一行（「终端里跑的就是后端答的那一行」）。
+const isAcctIsoCmd = (c: unknown, a: unknown): a is ChanCallArgs => isChanCall(c as string, a, "acct-iso-cmd");
+function cmdAnswered(calls: Array<[string, unknown]>): string {
+  const last = [...calls].reverse().find(([c, a]) => isAcctIsoCmd(c, a));
+  if (!last) throw new Error("这一趟一次 acct-iso-cmd 都没问 —— 下面那条「跑的是后端答的那一行」是空真");
+  return acctIsoCmdCase(last[1] as ChanCallArgs).cmd!;
+}
 
 // 〔HX2 · 第四波 4D〕写 key 改走通道（`chan_call`，op = `apikey-key-set`）：判据把那一发译回「交给哪台 ＋ 交了什么」
 //   （`{origin, configDir, key, baseUrl?}`），断言照旧是那个形状；先前是 Tauri 命令 `write_apikey_credentials_key`〔散文墓碑〕的实参。
@@ -60,7 +69,6 @@ import * as accounts from "../../src/accounts";
 import * as accountReads from "../../src/account-reads";
 import type { AccountsState, Account } from "../../src/accounts";
 import { setCurrentMachine, __resetMachineContextForTests } from "../../src/settings/machine-context";
-import { buildAcctIsoCmd } from "../../src/settings/acct-deploy";
 import { copyText } from "../../src/copy-table";
 import { NEW_ACCOUNT_COPY } from "../../src/settings/account-new-form";
 import { LOCAL_ORIGIN } from "../../src/backend-policy";
@@ -155,7 +163,9 @@ beforeEach(() => {
   readRemoteConfigMock.mockReset().mockResolvedValue({ enabled: true, hosts: [host()] });
   // 〔AL1 · 2026-09-24〕从前本机那一支挂着一块「按账号生成命令」（挂上去就先预览一次），
   // 这里要给那条命令一个形状对的最小答案。那一块搬去了机器页 ⇒ 所有命令照旧回 `undefined`。
-  invokeMock.mockReset().mockImplementation(() => Promise.resolve(undefined));
+  invokeMock.mockReset().mockImplementation((cmd: unknown, args: unknown) =>
+    isAcctIsoCmd(cmd, args) ? acctIsoCmdInvoke(args) : Promise.resolve(undefined),
+  );
   fetchAccountsMock.mockReset();
   // `N-F1b`：默认给「这台机一个隔离账号都没有」——最保守的一档，
   // 想量别的态的用例自己在里面覆盖掉它。
@@ -1638,6 +1648,7 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
         return Promise.resolve(chanReply({ configured: false, masked: "", path: "/h/x.json", notice: null, problem: null }));
       }
       if (isKeySet(cmd, args)) return Promise.resolve(chanReply(KEY_SET_REPLY));
+      if (isAcctIsoCmd(cmd, args)) return acctIsoCmdInvoke(args);
       return Promise.resolve(undefined);
     });
     return calls;
@@ -1659,6 +1670,7 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
     const keyIn = form.querySelector<HTMLInputElement>(".accounts-new-key input[type=password]")!;
     keyIn.value = key;
     keyIn.dispatchEvent(new Event("input"));
+    await tick(); // 〔DUP2 · J4〕等表单问完那台后端（命令答回来之前「创建」是灰的）
     [...form.querySelectorAll("button")].find((b) => b.textContent === "创建")!.click();
     await tick();
     await tick();
@@ -1672,8 +1684,8 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
 
     const launches = calls.filter(([c]) => c === "launch_remote_terminal");
     expect(launches.length).toBe(1);
-    const want = buildAcctIsoCmd({ kind: "add-apply", name: "b" });
-    expect((launches[0][1] as { remoteCmd: string }).remoteCmd).toBe(want.ok ? want.cmd : "∅");
+    expect((launches[0][1] as { remoteCmd: string }).remoteCmd).toBe(cmdAnswered(calls));
+    expect(cmdAnswered(calls)).toBe("cc-acct-iso add 'b' --apply");
     // 号还没出现 ⇒ 一个字节都不写，但屏幕上说得出在等谁。
     expect(calls.some(([c, a]) => isKeySet(c, a))).toBe(false);
     expect(el.querySelector(".accounts-new-pending")?.textContent).toContain("等 b 出现");
@@ -1795,6 +1807,7 @@ describe("S3：本机页新建账号", () => {
         if (launch === "fail") return Promise.reject(new Error("没有终端"));
       }
       if (isKeySet(cmd, args)) return Promise.resolve(chanReply(KEY_SET_REPLY));
+      if (isAcctIsoCmd(cmd, args)) return acctIsoCmdInvoke(args);
       return Promise.resolve(undefined);
     });
     return calls;
@@ -1821,6 +1834,7 @@ describe("S3：本机页新建账号", () => {
       keyIn.value = key;
       keyIn.dispatchEvent(new Event("input"));
     }
+    await tick(); // 〔DUP2 · J4〕等表单问完本机后端（命令答回来之前「创建」是灰的）
     [...form.querySelectorAll("button")].find((b) => b.textContent === NEW_ACCOUNT_COPY.create)!.click();
     await tick();
     await tick();
@@ -1860,16 +1874,17 @@ describe("S3：本机页新建账号", () => {
     await submit(el, "b");
     const launches = calls.filter(([c]) => c === "launch_remote_terminal");
     expect(launches).toHaveLength(1);
-    const want = buildAcctIsoCmd({ kind: "add-apply", name: "b" });
-    expect(launches[0][1]).toEqual({ origin: LOCAL_ORIGIN, remoteCmd: want.ok ? want.cmd : "∅" });
+    expect(launches[0][1]).toEqual({ origin: LOCAL_ORIGIN, remoteCmd: cmdAnswered(calls) });
+    // 〔DUP2 · J4〕命令问的是**本机**那台后端（同一条 `acct-iso-cmd`，`origin` 区分）。
+    const asked = calls.filter(([c, a]) => isAcctIsoCmd(c, a)).map(([, a]) => (a as ChanCallArgs).origin);
+    expect(new Set(asked)).toEqual(new Set([LOCAL_ORIGIN]));
   });
 
   it("★ Linux（后端说「刻意不开窗口」）⇒ 命令复制给用户；apikey 那一支照样等号出现、写给**它的** configDir", async () => {
     const calls = wire("no-window");
     const el = await mountLocal([acct({ name: "z" })]);
     await submit(el, "b", "sk-ant-FOR-B");
-    const want = buildAcctIsoCmd({ kind: "add-apply", name: "b" });
-    expect(writeText).toHaveBeenCalledWith(want.ok ? want.cmd : "∅");
+    expect(writeText).toHaveBeenCalledWith(cmdAnswered(calls));
     expect(calls.some(([c, a]) => isKeySet(c, a))).toBe(false);
     expect(el.querySelector(".accounts-new-pending")?.textContent).toContain("等 b 出现");
     expect(el.textContent, "key 的明文上了屏").not.toContain("sk-ant-FOR-B");
