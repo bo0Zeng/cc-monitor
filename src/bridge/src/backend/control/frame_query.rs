@@ -169,9 +169,7 @@ pub(crate) async fn tail(origin: &Origin, path: &str, n: u64) -> Result<TailPlan
         end: num("end")?,
     };
     if plan.tail_from > plan.total || plan.split_at > plan.end {
-        return Err(format!(
-            "{who} `history-tail` 的应答自相矛盾：{plan:?}"
-        ));
+        return Err(format!("{who} `history-tail` 的应答自相矛盾：{plan:?}"));
     }
     Ok(plan)
 }

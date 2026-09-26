@@ -34,14 +34,17 @@ fn the_golden_product_decodes_on_this_side() {
     assert_eq!(got[1].blocked_by, vec!["1"]);
     assert!(got[2].description.is_none() && got[2].blocks.is_empty());
     // 空清单 ⇒ 空（诚实的空，不是错）。
-    assert!(decode_tasks("本机", serde_json::json!({"tasks": []})).unwrap().is_empty());
+    assert!(decode_tasks("本机", serde_json::json!({"tasks": []}))
+        .unwrap()
+        .is_empty());
 }
 
 /// 按形状**严格**收：多一格 / 缺一格 / 类型不对 / 顶层不对 ⇒ `Err`「两端契约对不上」，**不跳过那一条**
 /// （跳过是字段语义，那一份只住后端）。
 #[test]
 fn a_product_of_the_wrong_shape_is_refused_not_skimmed() {
-    let ok = serde_json::json!({"id":"1","subject":"s","status":"pending","blocks":[],"blockedBy":[]});
+    let ok =
+        serde_json::json!({"id":"1","subject":"s","status":"pending","blocks":[],"blockedBy":[]});
     let with = |k: &str, v: serde_json::Value| {
         let mut t = ok.clone();
         t[k] = v;

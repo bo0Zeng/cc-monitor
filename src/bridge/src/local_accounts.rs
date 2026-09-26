@@ -83,7 +83,9 @@ pub(crate) fn classify_local_acct_iso(
     let installed = v
         .get("installed")
         .and_then(serde_json::Value::as_bool)
-        .ok_or_else(|| "本机后端回的 cc-acct-iso 状态里没有 installed —— 两端契约对不上".to_string())?;
+        .ok_or_else(|| {
+            "本机后端回的 cc-acct-iso 状态里没有 installed —— 两端契约对不上".to_string()
+        })?;
     Ok(crate::acct_iso_deploy::AcctIsoStatus {
         installed,
         path: v.get("path").and_then(|p| p.as_str()).map(str::to_string),

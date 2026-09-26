@@ -319,12 +319,8 @@ export async function fetchSessionTasks(
   const origin: Origin = tabOrigin;
   originBySid.set(sessionId, origin);
   try {
-    const reply = await chan.call(
-      origin,
-      "tasks-list",
-      jsonBody({ sid: sessionId }),
-      budgetWithin(TASKS_BUDGET_MS),
-    );
+    const budget = budgetWithin(TASKS_BUDGET_MS);
+    const reply = await chan.call(origin, "tasks-list", jsonBody({ sid: sessionId }), budget);
     return decodeTasks(readJson(reply));
   } catch (e) {
     console.warn(`[tasks-panel] fetch ${sessionId}@${origin} failed:`, e);

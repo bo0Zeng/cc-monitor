@@ -129,11 +129,8 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "observe/history_query.rs",
         include_str!("../../src/backend/observe/history_query.rs"),
     ),
-    // 〔`A3` 第二波〕`--acct-iso-status` / `--acct-iso-shellinit` 的分派住这里。
-    (
-        "accounts/iso.rs",
-        include_str!("../../src/backend/accounts/iso.rs"),
-    ),
+    // 〔LOC1a · 第四波 4D〕`accounts/iso.rs` 那一行摘了：`--acct-iso-status` / `--acct-iso-shellinit` 的 argv 形分派退役，
+    //   两问上了帧面（CLI 面由 `cli_control` 从 `REGISTRY` 派生，那一份早在本表里）。
     (
         "observe/accounts_query.rs",
         include_str!("../../src/backend/observe/accounts_query.rs"),

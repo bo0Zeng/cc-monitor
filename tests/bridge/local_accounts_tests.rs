@@ -135,14 +135,23 @@ fn the_two_local_acct_iso_commands_really_ask_the_backend() {
                 "acct-iso-status",
                 Ok(serde_json::json!({"installed": true, "path": "/h/x", "looked": null})),
             ),
-            ("acct-iso-shellinit", Ok(serde_json::json!({ "snippet": whole.clone() }))),
+            (
+                "acct-iso-shellinit",
+                Ok(serde_json::json!({ "snippet": whole.clone() })),
+            ),
         ],
     );
     assert!(rt.block_on(check_local_acct_iso()).expect("装了").installed);
-    assert_eq!(rt.block_on(local_acct_iso_shellinit()).expect("片段"), whole);
+    assert_eq!(
+        rt.block_on(local_acct_iso_shellinit()).expect("片段"),
+        whole
+    );
     assert_eq!(
         rig.cmds(),
-        vec!["acct-iso-status".to_string(), "acct-iso-shellinit".to_string()]
+        vec![
+            "acct-iso-status".to_string(),
+            "acct-iso-shellinit".to_string()
+        ]
     );
 }
 

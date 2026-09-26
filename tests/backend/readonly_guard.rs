@@ -232,6 +232,12 @@ mod tests {
              本体在 `observe/`，它只解 `args`、装应答。**零写盘**",
         ),
         (
+            "fork_face",
+            "〔LOC1a · 第四波 4D〕帧面 `session-fork` 的宿主壳：找家目录（与 `read_face` 同一句）、交 `control/fork_write` 本体。\
+             它归 backend-core 是因为本体在 `control/` 而家目录的出处在 `observe/`（`control → observe` 反向不许）。\
+             **零写盘**：写的是本体（白名单层那一处 `O_EXCL` 新建），本文件只转交",
+        ),
+        (
             "footprint",
             "〔RM1a · 第四波〕「足迹」的这台机器那一半：帧面 `footprint-probe` —— 这台机器的环境 · 一批路径的 stat · \
              一批文件里有没有某几个字样。它归 backend-core 是因为那些事实**只在那台机器上**；判定仍只住 monitor。**零写盘**",

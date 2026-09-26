@@ -195,16 +195,24 @@ fn the_frame_face_and_the_cli_face_are_one_fork() {
         std::fs::read_to_string(p).unwrap().replace(sid, "<SID>")
     };
     assert_eq!(
-        read_rows(via_wire["jsonlPath"].as_str().unwrap(), via_wire["sessionId"].as_str().unwrap()),
+        read_rows(
+            via_wire["jsonlPath"].as_str().unwrap(),
+            via_wire["sessionId"].as_str().unwrap()
+        ),
         read_rows(&via_cli.jsonl_path, &via_cli.session_id),
         "帧面与 CLI 落盘的内容不是同一份变换"
     );
-    let golden: serde_json::Value = serde_json::from_str(include_str!(
-        "../../__fixtures__/session-fork.golden.json"
-    ))
-    .unwrap();
-    assert_eq!(keys(&golden["product"]), keys(&via_wire), "金样的成品键集与真产出对不上");
-    assert_eq!(keys(&golden["request"]), vec!["sid".to_string(), "uuid".to_string()]);
+    let golden: serde_json::Value =
+        serde_json::from_str(include_str!("../../__fixtures__/session-fork.golden.json")).unwrap();
+    assert_eq!(
+        keys(&golden["product"]),
+        keys(&via_wire),
+        "金样的成品键集与真产出对不上"
+    );
+    assert_eq!(
+        keys(&golden["request"]),
+        vec!["sid".to_string(), "uuid".to_string()]
+    );
     std::fs::remove_dir_all(&root).ok();
 }
 

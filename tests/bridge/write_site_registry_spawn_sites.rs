@@ -127,7 +127,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           （`local_stdio_consumer`）。〔RL1〕先前那个 `stdio=None` 的薄壳随本机中转并进常驻后端删了，spawn 只剩这一个入口
           ★ 三条策略为什么是这三格：🔴 `设计/00 §1.5.2` 点名的那一处：它先前**同时**犯三个错（无 `CREATE_NO_WINDOW` · 无 job 绑定 · `stderr(Stdio::null())`），三格各对应一条策略。本层收注入参数，一个平台原语都不认识。",
      "Hidden · JobKillOnClose · ToLog（宿主注入：local_backend_supervised）"),
-    // 〔LOC1a · 第四波 4D〕`local_query.rs::run_query`〔散文墓碑〕那一行删了：本机那几问改走 `<local>` 长连接，
+    // 〔LOC1a · 第四波 4D〕`local_query` 模块的 `run_query`〔散文墓碑〕那一行删了：本机那几问改走 `<local>` 长连接，
     //   monitor 不再起一次性本机后端（`设计/05 §14.6`）。
     ("ssh_source.rs", "resolve_ssh_host", "`ssh -G <host>`",
      "解析 ssh_config 的别名 —— 只读一次配置，不建连接
@@ -368,7 +368,7 @@ fn the_three_policies_each_site_declares_match_the_code() {
              今天那三处是：`build.rs` 两处（构建期）＋ 出口自己那一处。\
              多一处 = 有人给自己开了豁免；少一处 = 构建期那两条被并进来了（那是好事，改这个数）。"
     );
-    // 〔LOC1a · 第四波 4D〕地板 14 → 13：本机一次性查询那一个落点（`local_query.rs::run_query`〔散文墓碑〕）随本机那几问
+    // 〔LOC1a · 第四波 4D〕地板 14 → 13：本机一次性查询那一个落点（`local_query` 模块的 `run_query`〔散文墓碑〕）随本机那几问
     //   改走 `<local>` 长连接删了 ⇒ 人群恰好少一个（15 → 13 的另一个见失败读数，人群按现打为准）。
     assert!(
         checked >= 13,

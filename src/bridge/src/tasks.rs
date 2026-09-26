@@ -95,7 +95,10 @@ pub(crate) fn decode_tasks(who: &str, data: serde_json::Value) -> Result<Vec<Tas
         return Err(bad("不是一个对象".into()));
     };
     if o.len() != 1 {
-        return Err(bad(format!("顶层的键不止 tasks：{:?}", o.keys().collect::<Vec<_>>())));
+        return Err(bad(format!(
+            "顶层的键不止 tasks：{:?}",
+            o.keys().collect::<Vec<_>>()
+        )));
     }
     let tasks = o.remove("tasks").ok_or_else(|| bad("缺 tasks".into()))?;
     serde_json::from_value::<Vec<TaskEntry>>(tasks).map_err(|e| bad(e.to_string()))
