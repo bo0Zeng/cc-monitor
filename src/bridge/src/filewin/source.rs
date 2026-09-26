@@ -70,6 +70,7 @@
 //! 这句话不是推的 —— [`tests::the_default_order_is_byte_for_byte_what_it_was_before`]
 //! 把**基线那一趟真跑出来的序**压成一个指纹钉在判据里（那个数是在基线提交上量的）。
 
+use crate::copy_table::copy_text;
 use std::path::Path;
 
 use crate::ssh_source::RemoteConfig;
@@ -286,11 +287,12 @@ impl SortBy {
     pub const ALL: [SortBy; 3] = [SortBy::Name, SortBy::Size, SortBy::Type];
 
     /// 下拉里那一格写什么。
-    pub fn label(self) -> &'static str {
+    /// 〔CP2b〕字从文案表取 ⇒ 回 `String`（原先是 `&'static str` 的字面量）。
+    pub fn label(self) -> String {
         match self {
-            SortBy::Name => "名称",
-            SortBy::Size => "大小",
-            SortBy::Type => "类型",
+            SortBy::Name => copy_text("rsFilewinSource.sort.name", &[]),
+            SortBy::Size => copy_text("rsFilewinSource.sort.size", &[]),
+            SortBy::Type => copy_text("rsFilewinSource.sort.type", &[]),
         }
     }
 }
@@ -433,7 +435,12 @@ pub fn format_mtime(secs: u64) -> String {
 /// 那一行按「非目录、大小 0」记下来 —— 列目录的用处是「看得见有什么」，
 /// 为一个读不到 stat 的条目把整屏打掉不划算。
 pub fn list_local(dir: &Path) -> Result<Vec<Listed>, String> {
-    let rd = std::fs::read_dir(dir).map_err(|e| format!("读目录失败: {e}"))?;
+    let rd = std::fs::read_dir(dir).map_err(|e| {
+        copy_text(
+            "rsFilewinSource.local.readDirFailed",
+            &[("e", &e.to_string())],
+        )
+    })?;
     let mut out: Vec<Listed> = Vec::new();
     for entry in rd.flatten() {
         let raw = entry.file_name();
@@ -483,11 +490,12 @@ pub fn list_local(dir: &Path) -> Result<Vec<Listed>, String> {
 pub fn start_dir_from_home(answer: &str) -> Result<String, String> {
     let t = answer.trim();
     if t.is_empty() {
-        return Err("远端把 home 解成了空路径 —— 没有起点可以开窗".into());
+        return Err(copy_text("rsFilewinSource.home.empty", &[]).into());
     }
     if !t.starts_with('/') {
-        return Err(format!(
-            "远端把 home 解成了一条相对路径 `{t}` —— 起点必须是绝对路径"
+        return Err(copy_text(
+            "rsFilewinSource.home.relative",
+            &[("path", &t.to_string())],
         ));
     }
     let trimmed = t.trim_end_matches('/');
@@ -513,12 +521,10 @@ pub const CMD_HOME: &str = "files-home";
 pub fn home_from_reply(d: &serde_json::Value) -> Result<String, String> {
     let raw = d
         .get("path")
-        .ok_or_else(|| format!("`{CMD_HOME}` 的应答里没有 `path`"))?;
+        .ok_or_else(|| copy_text("rsFilewinSource.home.noPath", &[]))?;
     let bytes = super::find::decode_path(raw)
-        .ok_or_else(|| "`path` 的形状不对 —— 只认字符串或 `{\"b16\": …}`".to_string())?;
-    let s = String::from_utf8(bytes).map_err(|_| {
-        format!("那台机器的 home 不是合法 UTF-8 —— 窗口的路径是字符串，寻址不到它（`{CMD_HOME}`）")
-    })?;
+        .ok_or_else(|| copy_text("rsFilewinSource.path.badShape", &[]))?;
+    let s = String::from_utf8(bytes).map_err(|_| copy_text("rsFilewinSource.home.notUtf8", &[]))?;
     start_dir_from_home(&s)
 }
 
@@ -592,9 +598,9 @@ pub const CMD_LS: &str = "files-ls";
 pub fn row_from_ls_entry(v: &serde_json::Value) -> Result<Listed, String> {
     let raw = v
         .get("path")
-        .ok_or_else(|| "`files-ls` 的一条 entry 里没有 `path`".to_string())?;
+        .ok_or_else(|| copy_text("rsFilewinSource.ls.noPath", &[]))?;
     let bytes = super::find::decode_path(raw)
-        .ok_or_else(|| "`path` 的形状不对 —— 只认字符串或 `{\"b16\": …}`".to_string())?;
+        .ok_or_else(|| copy_text("rsFilewinSource.path.badShape", &[]))?;
     // 🔴 有损与否看**字节**，不看转出来的那个串里有没有 U+FFFD。
     //    后者是一个猜：真叫 `\u{FFFD}` 的文件会被误判成有损。
     let lossy_name = std::str::from_utf8(&bytes).is_err();
@@ -669,10 +675,15 @@ pub fn rows_from_ls_data(d: &serde_json::Value, by: SortBy) -> Result<(Vec<Liste
     let arr = d
         .get("entries")
         .and_then(|v| v.as_array())
-        .ok_or_else(|| "`files-ls` 的 `entries` 不是一个数组".to_string())?;
+        .ok_or_else(|| copy_text("rsFilewinSource.ls.notArray", &[]))?;
     let mut out = Vec::with_capacity(arr.len());
     for (i, one) in arr.iter().enumerate() {
-        out.push(row_from_ls_entry(one).map_err(|e| format!("第 {i} 条 entry：{e}"))?);
+        out.push(row_from_ls_entry(one).map_err(|e| {
+            copy_text(
+                "rsFilewinSource.ls.badEntry",
+                &[("i", &i.to_string()), ("e", &e.to_string())],
+            )
+        })?);
     }
     // 🔴 **排序在这一侧，而且它只有一份** —— 后端不排（它答的是目录项，不是一屏）。
     //    「按什么排」由调用方给（用户在工具栏上选的那一档），算法只有 `sort_rows` 这一个家。
@@ -770,10 +781,12 @@ pub async fn ask_coded(
         until: std::time::Instant::now() + t,
         cancel: CancelToken::new(),
     };
-    let payload = Body(
-        serde_json::to_vec(args)
-            .map_err(|e| Failed::local(format!("`{cmd}` 的参数拼不出来：{e}")))?,
-    );
+    let payload = Body(serde_json::to_vec(args).map_err(|e| {
+        Failed::local(copy_text(
+            "rsFilewinSource.ask.badArgs",
+            &[("e", &e.to_string())],
+        ))
+    })?);
     let op = Op(cmd.to_string());
     let body = line
         .call(origin, &op, payload, budget)
@@ -782,12 +795,14 @@ pub async fn ask_coded(
             code: refused_code(&e),
             said: said(cmd, &e),
         })?;
-    let v: serde_json::Value = serde_json::from_slice(&body.0)
-        .map_err(|e| Failed::local(format!("`{cmd}` 的应答读不动：{e}")))?;
+    let v: serde_json::Value = serde_json::from_slice(&body.0).map_err(|e| {
+        Failed::local(copy_text(
+            "rsFilewinSource.ask.unreadable",
+            &[("e", &e.to_string())],
+        ))
+    })?;
     if v.is_null() {
-        return Err(Failed::local(format!(
-            "`{cmd}` 回了一条空应答，和约定的不一样"
-        )));
+        return Err(Failed::local(copy_text("rsFilewinSource.ask.empty", &[])));
     }
     Ok(v)
 }
@@ -830,7 +845,7 @@ pub async fn watch(
             }
         };
         let Some(item) = next else {
-            return Err("这一趟传输没说完就断了".to_string());
+            return Err(copy_text("rsFilewinSource.watch.cutShort", &[]));
         };
         match item {
             Item::Frame { body, .. } => {
@@ -846,11 +861,12 @@ pub async fn watch(
                 sub.want(1);
             }
             Item::Gap { .. } | Item::Seen { .. } => sub.want(1),
-            Item::Unseen { .. } => {
-                return Err("窗口到主程序那一段断了，这一趟传输也就撤了".to_string())
-            }
+            Item::Unseen { .. } => return Err(copy_text("rsFilewinSource.watch.hostGone", &[])),
             Item::Closed { by: By::Ours(why) } => {
-                return Err(format!("这一趟传输在本侧断了：{why:?}"))
+                return Err(copy_text(
+                    "rsFilewinSource.watch.localBreak",
+                    &[("why", &format!("{:?}", why))],
+                ))
             }
             Item::Closed { by: By::Peer(body) } => {
                 let v = json(&body.0);
@@ -907,32 +923,42 @@ pub fn said(cmd: &str, e: &crate::chan::wire::CallError) -> String {
                             .and_then(serde_json::Value::as_str)
                             .unwrap_or(""),
                     ),
-                    Err(_) => format!("`{cmd}` 被拒：{}", String::from_utf8_lossy(&body.0)),
+                    Err(_) => copy_text(
+                        "rsFilewinSource.said.refused",
+                        &[("detail", &(String::from_utf8_lossy(&body.0)).to_string())],
+                    ),
                 }
             }
-            PeerFault::Unsupported => format!("那台机器上的后端不认 `{cmd}`，多半是版本旧了"),
+            PeerFault::Unsupported => copy_text("rsFilewinSource.said.unknownCmd", &[]),
         },
         CallError::Hop { at, reach, why } => {
             let what = match why {
-                HopFault::Unreachable => "连不上",
-                HopFault::Dropped => "断了",
-                HopFault::Overrun => "超时了",
+                HopFault::Unreachable => &copy_text("rsFilewinSource.said.unreachable", &[]),
+                HopFault::Dropped => &copy_text("rsFilewinSource.said.broken", &[]),
+                HopFault::Overrun => &copy_text("rsFilewinSource.said.timeout", &[]),
             };
             let did = match reach {
-                Reach::NotSent => "这一趟没发出去",
-                Reach::Sent | Reach::Unknown => "对面可能已经做了",
+                Reach::NotSent => &copy_text("rsFilewinSource.said.notSent", &[]),
+                Reach::Sent | Reach::Unknown => &copy_text("rsFilewinSource.said.mayHaveRun", &[]),
             };
             let leg = if at.idx == 0 {
-                "窗口到主程序"
+                &copy_text("rsFilewinSource.said.legWindow", &[])
             } else {
-                "主程序到后端"
+                &copy_text("rsFilewinSource.said.legHost", &[])
             };
-            format!("`{cmd}` 没走通：{leg}那一段{what}，{did}")
+            copy_text(
+                "rsFilewinSource.said.hopFault",
+                &[
+                    ("leg", &leg.to_string()),
+                    ("what", &what.to_string()),
+                    ("did", &did.to_string()),
+                ],
+            )
         }
         CallError::Ours { why } => match why {
-            OursFault::Cancelled => format!("`{cmd}` 撤了"),
-            OursFault::Misuse => format!("`{cmd}` 的参数这一侧就拼错了"),
-            OursFault::Broken => format!("`{cmd}` 的应答对不上约定"),
+            OursFault::Cancelled => copy_text("rsFilewinSource.said.cancelled", &[]),
+            OursFault::Misuse => copy_text("rsFilewinSource.said.internal", &[]),
+            OursFault::Broken => copy_text("rsFilewinSource.said.badReply", &[]),
         },
     }
 }

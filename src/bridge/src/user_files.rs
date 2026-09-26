@@ -21,6 +21,7 @@
 
 use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
 use crate::backend::control::inbound_client::client_for;
+use crate::copy_table::copy_text;
 
 /// 一次 `files-peek` 读回来的。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -138,8 +139,12 @@ pub(crate) async fn edit<D: Door>(
             Err(e @ (Refused::Other(_) | Refused::Peer { .. })) => return Err(e.said()),
         }
     }
-    Err(format!(
-        "{last}（连着 {EDIT_ATTEMPTS} 趟都是读完之后盘上那份又变了，先停下 —— 过一会儿再点一次）"
+    Err(copy_text(
+        "rsUserFiles.edit.gaveUp",
+        &[
+            ("last", &last.to_string()),
+            ("attempts", &EDIT_ATTEMPTS.to_string()),
+        ],
     ))
 }
 
@@ -155,7 +160,12 @@ pub(crate) fn rel_under(home: &str, abs: &str) -> Result<String, String> {
         .strip_prefix(h)
         .and_then(|r| r.strip_prefix('/'))
         .filter(|r| !r.is_empty())
-        .ok_or_else(|| format!("{abs} 不在 home（{home}）底下 —— 只改 home 里的文件"))?;
+        .ok_or_else(|| {
+            copy_text(
+                "rsUserFiles.rel.outsideHome",
+                &[("abs", &abs.to_string()), ("home", &home.to_string())],
+            )
+        })?;
     Ok(rest.to_string())
 }
 
@@ -185,9 +195,9 @@ impl BackendDoor {
                 Routed::NoChannel(s) | Routed::Refused(s) => s,
                 Routed::Done => String::new(),
             };
-            return Err(Refused::Other(format!(
-                "{who} 的后端没连上，这一步要经它来写（{why}）—— 一个字节都没动。\
-                 先在设置里把这台机器的后端起起来再点一次"
+            return Err(Refused::Other(copy_text(
+                "rsUserFiles.ask.backendDown",
+                &[("who", &who.to_string()), ("why", &why.to_string())],
             )));
         };
         if !client.accepts(cmd) {
@@ -195,7 +205,7 @@ impl BackendDoor {
                 crate::backend::control::cc_bus::describe_backend_too_old_for(
                     wire,
                     cmd,
-                    "这一步没做",
+                    &copy_text("rsUserFiles.ask.notDone", &[]),
                 ),
             ));
         }
@@ -203,17 +213,21 @@ impl BackendDoor {
         // [`REQUEST_LINE_CAP`]）。装不下当场说清，不发 —— 发了只会换来一句 `line_too_long`。
         let line = crate::backend::control::inbound_client::encode_request("0", cmd, &args);
         if line.len() > REQUEST_LINE_CAP {
-            return Err(Refused::Other(format!(
-                "这份文件太大，一趟装不下（请求一行 {} 字节，上限 {REQUEST_LINE_CAP}）—— 一个字节都没动",
-                line.len()
+            return Err(Refused::Other(copy_text(
+                "rsUserFiles.ask.tooBig",
+                &[
+                    ("bytes", &(line.len()).to_string()),
+                    ("cap", &REQUEST_LINE_CAP.to_string()),
+                ],
             )));
         }
         // 对端说了话时它给的那个码（分流器递回来的 `(code, message)` 里认，不自己 match 错误枚举）。
         let peer_code: std::cell::RefCell<Option<String>> = std::cell::RefCell::new(None);
         match client.call(cmd, args, DOOR_TIMEOUT).await {
             Ok(Some(v)) => Ok(v),
-            Ok(None) => Err(Refused::Other(format!(
-                "{who} 的后端对 `{cmd}` 回了一条空应答"
+            Ok(None) => Err(Refused::Other(copy_text(
+                "rsUserFiles.ask.emptyReply",
+                &[("who", &who.to_string())],
             ))),
             Err(e) => {
                 let said = match route_call_error(&e, |code, message| {
@@ -263,7 +277,10 @@ impl Door for BackendDoor {
             .map_err(Refused::said)?;
         let p = path_text(v.get("path").unwrap_or(&serde_json::Value::Null));
         if p.is_empty() {
-            return Err(format!("{} 的后端没答出 home 在哪", self.machine()));
+            return Err(copy_text(
+                "rsUserFiles.home.unknown",
+                &[("machine", &(self.machine()).to_string())],
+            ));
         }
         Ok(p)
     }
@@ -384,7 +401,12 @@ impl Door for BackendDoor {
         let entries = v
             .get("entries")
             .and_then(serde_json::Value::as_array)
-            .ok_or_else(|| format!("{} 的后端答的目录列表不是一个数组", self.machine()))?;
+            .ok_or_else(|| {
+                copy_text(
+                    "rsUserFiles.list.notArray",
+                    &[("machine", &(self.machine()).to_string())],
+                )
+            })?;
         Ok(entries
             .iter()
             .map(|e| {

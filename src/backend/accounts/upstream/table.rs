@@ -67,6 +67,7 @@
 //! 这两句读起来像，差别正是 `KH2` 要守的全部。
 
 use crate::relay::{segment_is_safe, Base};
+use copy_core::copy_text;
 use creds_core::store::{AccountEntry, AuthStyle, AuthStyleSetting};
 
 // ★★ 🔴 〔`设计/20 §7` 步 2〕**`mod sealed` 删掉了** —— 换来的东西写在这里
@@ -218,6 +219,15 @@ impl RoutingTable {
         self.rows.get(&(agent.to_string(), account.to_string()))
     }
 
+    /// 〔US1〕这一家在表里有哪几条账号 id（有序）。**「表里有哪几行」的唯一出处**（`file_face::rows_at`）。
+    pub(crate) fn ids_of(&self, agent: &str) -> Vec<String> {
+        self.rows
+            .keys()
+            .filter(|(a, _)| a == agent)
+            .map(|(_, id)| id.clone())
+            .collect()
+    }
+
     /// 表里有几行。只给日志与判据用。
     pub(crate) fn len(&self) -> usize {
         self.rows.len()
@@ -251,8 +261,8 @@ pub(crate) struct Note {
 }
 
 /// 账号 id 当不了路由段。
-pub(crate) const WHY_ID_UNUSABLE: &str =
-    "账号 id 当不了路由段（只许字母数字与 - _，最长 128 字节）";
+pub(crate) static WHY_ID_UNUSABLE: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beUpstreamTable.whyIdUnusable.say", &[]));
 
 /// 🔴 **明文 http 只许连回环**〔`K-R1`；`裁-1` 08-25「只准 TLS」的那一格例外〕。
 ///
@@ -260,40 +270,40 @@ pub(crate) const WHY_ID_UNUSABLE: &str =
 /// ⇒ 回环上的明文放行。而**非回环 + 明文** = 那一行的 key 明着过网线
 /// ⇒ 拒掉并出声，不是「出声之后照发」：出声照发这一档在这里等于
 /// 「我告诉过你了」，而代价由用户付。
-pub(crate) const WHY_PLAINTEXT_OFF_LOOPBACK: &str =
-    "base_url 是明文 http 而主机不是本机回环 —— 那会把这一行的 key 明着发上网线。要么换 https，要么把上游放到本机回环上";
+pub(crate) static WHY_PLAINTEXT_OFF_LOOPBACK: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beUpstreamTable.whyPlaintextOffLoopback.say", &[]));
 
 /// `auth_style` 写了一个认不出的词。**刻意不回落成默认值**。
-pub(crate) const WHY_AUTH_STYLE_UNKNOWN: &str =
-    "auth_style 写的不是后端认得的值之一（认得的那几个见下面那行现算的清单）";
+pub(crate) static WHY_AUTH_STYLE_UNKNOWN: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beUpstreamTable.whyAuthStyleUnknown.say", &[]));
 
 /// `auth_style` 说「一个鉴权头都不发」，而同一行又配了一把 key。
 ///
 /// 两句话说的是相反的事 ⇒ **不猜哪一句是他的意思**：猜「用 key」就把一把真 key
 /// 发给一个声明了不要鉴权的端点；猜「不发」就让人以为配好的 key 在生效。
 /// ⇒ 拒掉并出声，让人自己删掉其中一句。
-pub(crate) const WHY_NO_AUTH_WITH_KEY: &str =
-    "这一条的 auth_style 说不发任何鉴权头，同一条却配了 api_key —— 两句话说的是相反的事，删掉其中一句";
+pub(crate) static WHY_NO_AUTH_WITH_KEY: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beUpstreamTable.whyNoAuthWithKey.say", &[]));
 
 /// 这一行的 `base_url` 带了路径前缀。
-pub(crate) const NOTE_PATH_PREFIX: &str =
-    "base_url 带路径前缀 ⇒ 上游收到的是「那个前缀 + 客户端自己的真路径」。若前缀与客户端的路径头一段重了，上游会看到重复的那一段（中转不替你合并）";
+pub(crate) static NOTE_PATH_PREFIX: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beUpstreamTable.notePathPrefix.say", &[]));
 
 /// 这一行用 `Authorization: Bearer` 换头。
 ///
 /// ⚠ 今天它**印不出来** —— 那正是 `AuthStyle::DEFAULT`，而默认那个不出声。
 /// 留着它不是仪式：`note_for_auth_style` 里那个穷尽 `match` 要求每个成员都有话说，
 /// 而把这一支写成「借用隔壁那句」的话，默认值哪天换了，它就开始报一句**假话**。
-pub(crate) const NOTE_AUTH_STYLE_BEARER: &str =
-    "这一条用 Authorization: Bearer 头把 key 交给上游，而客户端自带的鉴权头会被丢掉";
+pub(crate) static NOTE_AUTH_STYLE_BEARER: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beUpstreamTable.noteAuthStyleBearer.say", &[]));
 
 /// 这一行用 `x-api-key` 换头。
-pub(crate) const NOTE_AUTH_STYLE_X_API_KEY: &str =
-    "这一条用 x-api-key 头把 key 交给上游（不是默认那种），而客户端自带的鉴权头会被丢掉";
+pub(crate) static NOTE_AUTH_STYLE_X_API_KEY: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beUpstreamTable.noteAuthStyleXApiKey.say", &[]));
 
 /// 这一行一个鉴权头都不发。
-pub(crate) const NOTE_AUTH_STYLE_NO_AUTH: &str =
-    "这一条一个鉴权头都不发，客户端自带的那份也不转发 —— 这是给不校验凭据的本地部署用的那一档";
+pub(crate) static NOTE_AUTH_STYLE_NO_AUTH: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beUpstreamTable.noteAuthStyleNoAuth.say", &[]));
 
 /// 一个**非默认**的鉴权头形状该报哪一句；默认那个 ⇒ `None`（每次都印等于噪音）。
 ///
@@ -306,9 +316,9 @@ fn note_for_auth_style(style: AuthStyle) -> Option<&'static str> {
     }
     // ⚠ 穷尽 `match`：加一个成员**编译不过**，而不是静默地不出声。
     Some(match style {
-        AuthStyle::Bearer => NOTE_AUTH_STYLE_BEARER,
-        AuthStyle::XApiKey => NOTE_AUTH_STYLE_X_API_KEY,
-        AuthStyle::NoAuth => NOTE_AUTH_STYLE_NO_AUTH,
+        AuthStyle::Bearer => NOTE_AUTH_STYLE_BEARER.as_str(),
+        AuthStyle::XApiKey => NOTE_AUTH_STYLE_X_API_KEY.as_str(),
+        AuthStyle::NoAuth => NOTE_AUTH_STYLE_NO_AUTH.as_str(),
     })
 }
 
@@ -368,7 +378,7 @@ pub(crate) fn build(
         if !segment_is_safe(&e.id) {
             rejected.push(Rejected {
                 id: e.id,
-                why: WHY_ID_UNUSABLE,
+                why: WHY_ID_UNUSABLE.as_str(),
             });
             continue;
         }
@@ -393,7 +403,7 @@ pub(crate) fn build(
         if !base.tls && !base.host_is_loopback() {
             rejected.push(Rejected {
                 id: e.id,
-                why: WHY_PLAINTEXT_OFF_LOOPBACK,
+                why: WHY_PLAINTEXT_OFF_LOOPBACK.as_str(),
             });
             continue;
         }
@@ -403,7 +413,7 @@ pub(crate) fn build(
             AuthStyleSetting::Unknown => {
                 rejected.push(Rejected {
                     id: e.id,
-                    why: WHY_AUTH_STYLE_UNKNOWN,
+                    why: WHY_AUTH_STYLE_UNKNOWN.as_str(),
                 });
                 continue;
             }
@@ -411,7 +421,7 @@ pub(crate) fn build(
         if auth_style == AuthStyle::NoAuth && e.key.is_some() {
             rejected.push(Rejected {
                 id: e.id,
-                why: WHY_NO_AUTH_WITH_KEY,
+                why: WHY_NO_AUTH_WITH_KEY.as_str(),
             });
             continue;
         }
@@ -419,7 +429,7 @@ pub(crate) fn build(
         if !base.path.is_empty() {
             notes.push(Note {
                 id: e.id.clone(),
-                what: NOTE_PATH_PREFIX,
+                what: NOTE_PATH_PREFIX.as_str(),
             });
         }
         if let Some(what) = note_for_auth_style(auth_style) {

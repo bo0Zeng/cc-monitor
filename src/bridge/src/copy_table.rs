@@ -11,38 +11,18 @@
 //! - 参数是 `&[("名", 值)]` 的数组字面量，名的集合 == 表里那一条的 `args`；
 //! - 占位符只许具名 `{name}`。
 
-use std::sync::OnceLock;
+// 〔CP2c · 第四波 4C〕**取文实现搬进了共享 crate `copy-core`**（`src/bridge/crates/copy-core`）：
+// 常驻后端与 `creds-core` 也要出句子，而 `creds-core` 被两个宿主同时链接、够不着这里 ——
+// 各写一份就是 `91 §5.1` 的先例 B 形。本模块只剩转发，签名与语义一个字没变（调用点一个不动）。
+// 理由全文：`调研/第四波记录/CP2c.md §2.2`。
 
-/// 同一份表（前端 `copy-table.ts` 经 Vite 读它；这里编译期内嵌）。
-const TABLE_JSON: &str = include_str!("../../shared/copy/table.json");
+/// 同一份表（`copy-core` 编译期内嵌的那一份；判据核它与盘上逐字节相等）。
+#[cfg(test)]
+use copy_core::TABLE_JSON;
 
-fn entries() -> &'static serde_json::Map<String, serde_json::Value> {
-    static TABLE: OnceLock<serde_json::Map<String, serde_json::Value>> = OnceLock::new();
-    TABLE.get_or_init(|| {
-        serde_json::from_str::<serde_json::Value>(TABLE_JSON)
-            .ok()
-            .and_then(|v| v.get("entries").and_then(|e| e.as_object()).cloned())
-            .unwrap_or_default()
-    })
-}
-
-/// 取一条文案并填上具名占位符。
-///
-/// 表里没有这个 key ⇒ 回 `〔key〕`（走不到：`copy-table.vitest.ts` 把 `.rs` 的每个调用点与表两向对拍；
-/// 但不许 panic —— 一句话缺了不该拖垮它所在的那条路）。
+/// 取一条文案并填上具名占位符（转发 `copy_core::copy_text`：表里没有 ⇒ `〔key〕`，不 panic）。
 pub(crate) fn copy_text(key: &str, args: &[(&str, &str)]) -> String {
-    let Some(zh) = entries()
-        .get(key)
-        .and_then(|e| e.get("zh"))
-        .and_then(|z| z.as_str())
-    else {
-        return format!("〔{key}〕");
-    };
-    let mut out = zh.to_string();
-    for (name, value) in args {
-        out = out.replace(&format!("{{{name}}}"), value);
-    }
-    out
+    copy_core::copy_text(key, args)
 }
 
 #[cfg(test)]

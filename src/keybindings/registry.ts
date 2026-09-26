@@ -23,6 +23,7 @@
  */
 
 import { ACTIONS, findAction, type ActionId } from "./actions";
+import { copyText } from "../copy-table";
 
 export interface OverlayHandle {
   /** 栈顶时按 Esc 调用。返回 true 表示"已处理"，false 表示让 dispatcher 继续 pop */
@@ -75,7 +76,7 @@ export class KeybindingDispatcher {
 
   /** 把规范化 chord 串转给用户看的友好名 */
   static prettyChord(chord: string | null): string {
-    if (!chord) return "未绑定";
+    if (!chord) return copyText("registry.prettyChord.unbound");
     const parts = chord.split("+");
     const out: string[] = [];
     for (const p of parts) {

@@ -23,6 +23,7 @@
 //! 而那两件事在前端要走**不同的分支**。
 
 use super::ccm_invocation::{render_ccm_invocation, Action, CliAccount, CliSpec, Container};
+use crate::copy_table::copy_text;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
@@ -59,7 +60,7 @@ pub struct CliRenderRequest {
     /// 前端那一侧从 `K-R53` 起是**三态判别联合**（`ccm-probe.ts`：`installed` /
     /// `not-installed` / `unknown`，`unknown` 连缓存都不进，理由住那个文件的头注）。
     /// 而这里只有 `Some`/`None` ⇒ `unknown` **一过线就被压成「没装」**
-    /// ⇒ 后端回 `Refusal::NotInstalled`（逐字「远端未装 ccm」）。
+    /// ⇒ 后端回 `Refusal::NotInstalled`（逐字「远端还没装后端」，住文案表 `rsCcmInvocation.refusal.notInstalled`）。
     /// **一次 ssh 抖动，用户被告知「那台机器上没有 ccm」** —— 正是 `K-R53` 治掉的那一形，
     /// 只不过它换到了线上：值那一侧分得开，线上又合回去了。
     ///
@@ -360,10 +361,10 @@ pub fn render_launch_payload(req: PayloadRenderRequest) -> Result<String, String
     // （那边也是 `action.kind === "attach"` 第一个判）。
     if let Some(o @ super::payload::TmuxOuter::Attach { .. }) = &outer {
         if !req.env.is_empty() || !req.args.is_empty() || !req.launcher.is_empty() {
-            return Err(super::payload::refuse(
-                "attach 那一格带了载荷字段（env / args / launcher）—— 它一个 agent 进程都不起，\
-                 这几个字段只会被丢掉。请求形状对不上，拒。",
-            ));
+            return Err(super::payload::refuse(&copy_text(
+                "rsLaunchWire.attach.withPayload",
+                &[],
+            )));
         }
         return super::payload::render_tmux_outer(o, None);
     }
@@ -399,10 +400,10 @@ pub fn render_launch_payload(req: PayloadRenderRequest) -> Result<String, String
     //   `payload.rs::render_payload` 头注逐字写过这一条：「U8c-2 接 tmux 路径时
     //   **必须传 `cwd: None`**，否则会多出一段 `cd`」。这里就是那个落点。
     if outer.is_some() && req.cwd.is_some() {
-        return Err(super::payload::refuse(
-            "同时送了顶层 cwd 与外层容器 —— tmux 那两格的 cwd 归外层的 `new-session -c`，\
-             内层不加 `cd`。两个都送说明调用方把两层的 cwd 搞混了，拒。",
-        ));
+        return Err(super::payload::refuse(&copy_text(
+            "rsLaunchWire.cwd.both",
+            &[],
+        )));
     }
     let payload = super::payload::render_payload(&super::payload::PayloadSpec {
         env: &env,

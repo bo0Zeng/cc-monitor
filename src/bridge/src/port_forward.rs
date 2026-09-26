@@ -19,6 +19,7 @@
 //!
 //! v1 **即席**(不持久化 config)。
 
+use crate::copy_table::copy_text;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -77,13 +78,13 @@ fn next_id() -> String {
 /// 校验转发定义（纯逻辑,便于单测）。
 fn validate_spec(spec: &ForwardSpec) -> Result<(), String> {
     if spec.local_port == 0 {
-        return Err("本地端口必须 > 0".to_string());
+        return Err(copy_text("rsPortForward.spec.localPort", &[]));
     }
     if spec.remote_host.trim().is_empty() {
-        return Err("远端 host 不能为空".to_string());
+        return Err(copy_text("rsPortForward.spec.remoteHost", &[]));
     }
     if spec.remote_port == 0 {
-        return Err("远端端口必须 > 0".to_string());
+        return Err(copy_text("rsPortForward.spec.remotePort", &[]));
     }
     Ok(())
 }
@@ -139,7 +140,7 @@ pub async fn stop_forward(id: String) -> Result<(), String> {
         .lock()
         .unwrap()
         .remove(&id)
-        .ok_or_else(|| format!("未找到转发: {id}"))?;
+        .ok_or_else(|| copy_text("rsPortForward.stop.notFound", &[("id", &id.to_string())]))?;
     entry.pump.abort();
     Ok(())
 }
