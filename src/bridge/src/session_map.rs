@@ -228,11 +228,6 @@ impl LocalTable {
         self.by_id.get(sid).cloned()
     }
 
-    /// 这条流上本机的活会话清单报完了没有。
-    pub fn listed(&self) -> bool {
-        self.listed
-    }
-
     /// issue #23: 当前全部活会话的红绿灯快照（前端启动 / F5 后拉一次做初始收敛）。
     pub fn snapshot_activity(&self) -> Vec<SessionActivity> {
         let mut v: Vec<SessionActivity> = self
