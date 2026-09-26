@@ -904,9 +904,11 @@ e2e 的 shell 探针（`has-session` / `set-option` / `kill-session`）同样要
 （〔LR2〕那条随座的套件删之前搬进了 `tests/remote-launch.test.ts`，断言一字未改）；
 Rust 侧 `tmux_targets_use_exact_match` 钉死三个命令构造点（且显式断言**不含**裸目标，防被"简化"回去）。
 
-**第二道防线**：`isValidNewTmuxName`（**仅创建路径**）禁 glob 字符 `*`/`?` —— 本工具永远不把 glob 建进名字。
-attach 已有会话走宽松的 `isValidTmuxName`：那些名字不是我们建的，禁它既无收益（`=名:` 已关闭 glob 这一级，
-实测 `-t '=st*ar:'` rc=0 且精确）又是行为回归。
+**第二道防线**：〔DUP2 · 主会话 09-26 裁 J6〕规则只有一份，住共享 crate `gate-core`（原先界面两个谓词 ＋ 后端 `validate_tmux_name` ＋ 载荷 `TmuxTarget::check` 三家各写各的）。
+**新建**（本工具铸的名）走 `gate_core::new_tmux_name_issue`：禁 glob 字符 `*`/`?` 与目标语法 `.` `:` `=`、前导 `-`、控制符与视觉欺骗字符、超过 128 —— 本工具永远不把 glob 建进名字；
+monitor 载荷外层（`payload.rs` 的 `TmuxTarget::check`）· `ccm …` 调用行（`ccm_invocation.rs`）· 后端 `ccm/plan.rs::validate_tmux_name` 都调它，判不过带 `REFUSE:` 标拒。
+attach 已有会话走宽松的 `gate_core::existing_tmux_name_issue`（V131 ②：只拒空 · 控制符 · 视觉欺骗字符）：那些名字不是我们建的，禁 glob 既无收益（`=名:` 已关闭 glob 这一级，
+实测 `-t '=st*ar:'` rc=0 且精确；DUP2 在隔离 socket 上复测过 `=a*` 不命中 `a*a`、`=-x` 不当选项，读数 `调研/第四波记录/DUP2.md §0.1`）又是行为回归。
 
 ## 32. 本仓只有暗色主题——别声称"明暗两套都覆盖了"（仓库级事实）
 
@@ -1310,8 +1312,8 @@ U8c-1 摸底后拆成三步：
 1. **Gate 1（恒强制）** —— 家在调用方那一侧（〔C4e〕`src/tmux-control.ts::rejectEmptyTarget`，抓屏 · 送键 · 杀会话三条共用；
    monitor 的 `src/bridge/src/backend/control/tmux.rs::gate1_reject_empty` 同一判定，今天只剩跨轨锚点 `exact_target` 在用）：只拒**空** target
    （`=:` 会被 tmux 解析成「当前会话」，是唯一真正危险的默认值）。**不额外收紧字符集**——
-   glob/元字符交给 `shell_quote` 安全引号化，字符集收紧是 TS 侧 `isValidNewTmuxName`
-   （仅创建路径）/`isValidTmuxName`（attach 故意宽松）的职责，见 §31a「第二道防线」。
+   glob/元字符交给 `shell_quote` 安全引号化，字符集收紧是 `gate-core` 那两条的职责（〔DUP2〕新建 `new_tmux_name_issue` /
+   attach 故意宽松的 `existing_tmux_name_issue`；原先是 TS 侧两个谓词），见 §31a「第二道防线」。
    ⚠ **`K-R72` 把这个谓词从 `exact_target` 里分出来（不是复制一份）**：`exact_target` 产的是
    给 shell 用的精确串 `'=<名>:'`，而送键 / 杀会话今天不拼 shell 串 —— 让它们为一次校验去要
    一个用不上的串就是「一个值装了两件事」。〔C4e〕三条路（capture-pane · send-keys · kill）迁到界面之后
@@ -2182,7 +2184,7 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 | cc-bus agent id（①；〔DUP2〕**后端交给 `cc-send` / `cc-kill` 之前**） | `shell_quote_core::bus_id_ok`（全仓唯一一份）：后端 `control/cc_bus.rs` 的 `parse_send` / `parse_kill` 入口（拒码 `bad_id`）· monitor `cc_bus.rs` 读收件箱那一条（名字仍叫 `is_valid_bus_id`，是它的再导出）。查在线不把 id 交给任何人，不判 | 后端 `cc_bus_tests.rs::bus_ids_are_judged_here_before_they_reach_cc_bus`（金样 `tests/__fixtures__/cc-bus-control.golden.json` 的 `ids` 正反两向，拒在起进程之前）· monitor `cc_bus_tests.rs::rejects_leading_dash_ids_from_real_disk` · `cc_bus_tests.rs::rejects_shell_metachars_and_control` · `cc_bus_tests.rs::accepts_real_ids` · `cc_bus_tests.rs::builders_reject_bad_ids_at_the_call_site` · `cc_bus_tests.rs::the_bus_id_rule_agrees_with_the_shared_samples`（同一份 `ids`）· `tests/cc-bus-control.vitest.ts`（界面不判、原样交；`bad_id` 逐动作一句、带后端原话） |
 | 派生时的账号名（①；〔DUP2〕**后端交给 `cc-spawn` 之前**） | 同一个 `shell_quote_core::bus_id_ok`：后端 `parse_spawn` 入口（拒码 `bad_id`；〔C4e〕那一道原住界面 `checkSpawnShape`，界面今天只判「选了 tool · 目录非空」） | 后端 `cc_bus_tests.rs::bus_ids_are_judged_here_before_they_reach_cc_bus` · `tests/cc-bus-control.vitest.ts`（含「不许白名单 agent 种类」那一格） |
 | 唯一的 quote（②） | `ssh_source.rs::shell_quote` | `cc_bus_tests.rs::quote_roundtrip_is_the_real_property` |
-| ccm 建的 tmux 会话名（①，后端） | `plan.rs::validate_tmux_name` | `plan_tests.rs::a_session_name_that_would_confuse_tmux_is_refused` |
+| 本工具新建的 tmux 会话名（①；〔DUP2 · J6〕monitor 载荷外层 · `ccm …` 调用行 · 后端 ccm） | `gate_core::new_tmux_name_issue`（全仓唯一一份）：monitor `payload.rs` 的 `TmuxTarget::check`（新建那一格）· `ccm_invocation.rs` 的 `--tmux=`（`Refusal::IdentifierRefused`）· 后端 `plan.rs::validate_tmux_name`（只管说哪一句）。attach / 送进已有会话走 `gate_core::existing_tmux_name_issue`（②：拒绝集 ＋ 非空，寻址 `=<名>:`） | `gate-core lib_tests::a_new_session_name_passes_real_names_and_refuses_what_would_confuse_tmux` · `lib_tests::an_existing_session_name_is_refused_only_for_what_quote_and_exact_match_cannot_hold` · `payload_tests.rs::a_tmux_name_follows_the_create_or_existing_rule_from_gate_core` · `ccm_invocation_tests.rs::a_tmux_name_is_judged_before_it_becomes_a_ccm_argument` · `plan_tests.rs::a_session_name_that_would_confuse_tmux_is_refused` |
 | 分叉的 sid / 消息 uuid（①） | `remote_branch.rs::validate_fork_id`（〔DUP1〕判定取 `shell-quote-core::session_id_ok`，两句人话留在这里） | `remote_branch_tests.rs::fork_ids_are_whitelisted` |
 | session id（①：resume 的 sid · `@ccm_sid` / `--ccm-sid` · 按 sid 找会话文件；〔DUP1 · 主会话 09-26「J5 那一族统一」〕六份收成一份，规则取交集） | `shell-quote-core::session_id_ok`（`branch_core::is_plain_sid` 是它的再导出）· 接在载荷外层 · 载荷线 `resumeSid` · `ccm_invocation` · 本机拉起 · 后端 `ccm/argv.rs::validate`。⚠ 后端 `resolve` 那条（`resolve_query.rs::is_valid_session_id`）刻意不收：行为冻结给仓外 aterm（`V126`） | `shell-quote-core lib_tests::a_session_id_is_a_short_plain_token_that_never_starts_with_a_dash` · `payload_tests.rs::a_resume_sid_and_a_session_mark_are_judged_before_they_enter_the_payload` · `ccm_invocation_tests.rs::an_identifier_is_refused_before_it_becomes_a_ccm_argument` · 后端 `argv_tests.rs::a_session_id_is_judged_before_it_goes_anywhere` |
 | 模型名（①；〔DUP1 · 主会话 09-26「两侧同一份、真实模型名都放行」〕） | `shell-quote-core::model_name_ok` · 接在载荷 `ExportModel` · `ccm_invocation` 的 `--model` · 后端 `ccm/argv.rs::validate`；前端写入点读生成物 `src/generated/judgment-rules.ts`（同一组常量现生成） | `shell-quote-core lib_tests::real_model_names_pass_and_option_or_shell_shapes_do_not` · `payload_judgment_rules.rs::the_shared_golden_agrees_with_the_one_rule` ＋ `tests/identifier-rules-parity.vitest.ts`（两侧对同一份金样）· `payload_tests.rs::the_model_export_passes_real_names_and_refuses_the_rest` |

@@ -84,7 +84,7 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   //    〔DUP1〕**39 → 38**（被测对象没了）：`sanitizeRemoteLauncher` 一条 · `isValidConfigDir` 一条随函数删（`设计/90 §3` 判据 2）；
   //    加一条「launcher 空白 ⇒ 默认、注入字符原样上线」（前端只剩缺省那一格）；「非法 configDir 拒」那条改测「前端不判、原样上线」（条数不变）。
   //    〔DUP1 · 第二轮〕**38 → 37**：`isValidSessionId` 那条随函数删；三条「非法 sid ⇒ throw」改测「前端不判、resumeSid 单报」（条数不变）。
-  ["test:remote-launch", "tests/remote-launch.test.ts", 37],
+  ["test:remote-launch", "tests/remote-launch.test.ts", 34], // 〔DUP2 · J6〕−3：TS 两个 tmux 名谓词的三条逐格搬进 gate-core
   ["test:format", "tests/format.test.ts", 11], // 〔F7b〕+1：basename 随老 SFTP 面板退役从 sftp/paths 搬进 format.ts，判据一起搬来
   ["test:history-cache", "tests/views/history-cache.test.ts", 8],
   ["test:history-prefs", "tests/views/history-prefs.test.ts", 18],
@@ -147,7 +147,9 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
 // `observe/facts_query.rs`，七条逐条搬成 Rust 判据）。合并时按「主线 198 − STC 7」算、删后现打 191 ⇒ 棘到现打值。
 // 〔DUP2〕**191 → 190**，同上（**被测对象没了**）：`launch-dimensions.test.ts` −1（「rbind-token：形状闸逐格」那条 —— TS 的
 // `isValidRbindToken` 与维度 `apply` 里那道自检按 `设计/90 §3` 判据 2 删了，逐格坏样本归 Rust `payload_tests.rs`）。删后现打 190 ⇒ 棘到现打值。
-const TOTAL_FLOOR = 190;
+// 〔DUP2 · J6〕**190 → 187**，同上：`remote-launch.test.ts` −3（TS 的 `isValidTmuxName` / `isValidNewTmuxName` 删了，三条逐格
+// ——attach 拒绝面 · F01 新建禁 glob · F04b 新建禁 `=`——原样搬进 `tests/bridge/crates/gate-core/lib_tests.rs`）。删后现打 187 ⇒ 棘到现打值。
+const TOTAL_FLOOR = 187;
 
 /** 判定一条 npm 命令是不是「用 tsx 跑某个 `.test.ts`」。`tsx …` 与 `npx tsx …` 都算。 */
 const TSX_SUITE_CMD = /(^|\s)(npx\s+)?tsx\s+(--\S+\s+)*(\S+\.test\.ts)\s*$/;

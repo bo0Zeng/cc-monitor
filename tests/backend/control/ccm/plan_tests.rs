@@ -336,12 +336,21 @@ fn the_session_name_reads_like_a_project_and_the_sid_rides_the_tmux_option() {
 /// 〔搬自 `ccm-cli` 名字校验那一族〕—— 会话名会被拼进 tmux 目标语法，是一条注入面。
 ///
 /// 〔IV1 · V121〕要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；①形。
+///
+/// 〔DUP2 · J6〕规则今天住 gate-core（全仓唯一一份）；本函数只剩「说哪一句」。多出来两格（欺骗字符 · 超过 128）各一条，
+/// 正控加两个真实会走的名字（带空格 · 中文），免得三句话焊成恒拒。
 #[test]
 fn a_session_name_that_would_confuse_tmux_is_refused() {
-    assert!(validate_tmux_name("ok-name").is_ok());
+    for ok in ["ok-name", "my session", "项目", &"a".repeat(128)] {
+        assert!(validate_tmux_name(ok).is_ok(), "{ok:?} 该建得出来");
+    }
     for bad in ["", "-lead", "a*b", "a?b", "a.b", "a:b", "a=b", "a\u{1}b"] {
         assert!(validate_tmux_name(bad).is_err(), "'{bad}' 不该被放行");
     }
+    let deceptive = validate_tmux_name("a\u{202e}b").expect_err("欺骗字符该拒");
+    assert!(deceptive.0.contains("看不见的字符"), "{}", deceptive.0);
+    let long = validate_tmux_name(&"a".repeat(129)).expect_err("超过 128 该拒");
+    assert!(long.0.contains("128"), "{}", long.0);
 }
 
 /// 〔搬自 `ccm-print-parity` 全 5 个场景 ＋ `ccm-cli` R08 那 5 条〕

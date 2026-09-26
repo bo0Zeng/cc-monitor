@@ -4622,11 +4622,6 @@
       "zh": "不指定账号 · 用远端 ~/.claude 那套凭据",
       "args": []
     },
-    "launchRequests.bad.tmuxName": {
-      "kind": "error",
-      "zh": "非法 tmux 会话名，不能拼进命令：{value}",
-      "args": ["value"]
-    },
     "launcherDiagnostics.diagnoseRemoteLauncher.bypassesCcm": {
       "kind": "body",
       "zh": "这条命令没经过 ccm，账号和模型偏好不会生效。要用这些，改填 ccm 或含 ccm 的自定义命令，或者在机器页「本机 → 工具 → 别名」里生成一条。",
@@ -11439,6 +11434,11 @@
       "zh": "tmux 会话名 {name} 含控制符或视觉欺骗字符 {c}，不能拼进命令。",
       "args": ["name", "c"]
     },
+    "rsPayload.tmuxName.newShape": {
+      "kind": "error",
+      "zh": "新建的会话名不合规：{name}。不能以 - 开头，不能含 {refused} 这几个字符，最长 {max} 个字符",
+      "args": ["name", "refused", "max"]
+    },
     "rsPayload.tmuxName.rawBad": {
       "kind": "error",
       "zh": "tmux 会话名 {name} 声明成原样拼接，却含不许的字符（只许 A-Z a-z 0-9 _ -）",
@@ -14142,6 +14142,16 @@
       "zh": "模型名 {value} 用不了（字母数字开头，只许字母数字与 . _ - : @ / [ ]，最长 256）",
       "args": ["value"]
     },
+    "rsCcmInvocation.refusal.idTmuxName": {
+      "kind": "error",
+      "zh": "会话名 {value} 建不了。不能以 - 开头，不能含 {refused} 这几个字符，最长 {max} 个字符",
+      "args": ["value", "refused", "max"]
+    },
+    "rsCcmInvocation.refusal.freeTextAttach": {
+      "kind": "error",
+      "zh": "要接回的会话名 {value} 用不了。里面不能有控制字符或看不见的字符",
+      "args": ["value"]
+    },
     "rsCcmInvocation.refusal.idAccount": {
       "kind": "error",
       "zh": "账号名 {value} 用不了（字母数字开头，只许字母数字与 _ -，最长 32）",
@@ -16169,6 +16179,16 @@
       "kind": "error",
       "zh": "账号 '{account}' 不可用（不在 {manifestPath}，或其目录不存在）。可用: {names}",
       "args": ["account", "manifestPath", "names"]
+    },
+    "bePlan.validateTmuxName.deceptive": {
+      "kind": "error",
+      "zh": "非法 tmux 会话名（含看不见的字符）: '{name}'",
+      "args": ["name"]
+    },
+    "bePlan.validateTmuxName.tooLong": {
+      "kind": "error",
+      "zh": "非法 tmux 会话名（超过 {max} 个字符）: '{name}'",
+      "args": ["name", "max"]
     },
     "bePlan.validateTmuxName.control": {
       "kind": "error",

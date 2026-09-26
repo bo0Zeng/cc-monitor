@@ -194,12 +194,21 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J6: {
     what: "tmux 会话名形状",
-    homes: ["src/backend/control/ccm/plan.rs::validate_tmux_name", `${PAYLOAD_RS}::check`],
-    status: "open",
+    // 〔DUP2 · 主会话 09-26 裁 J6〕唯一一份进 `gate-core`：**新建**（本工具铸的名，`§47` ①）· **已有会话**（attach / 送进已在的，
+    //   V131 ②：拒绝集 ＋ 非空，寻址恒 `=<名>:`）。monitor 载荷外层（`payload.rs::check`）· `ccm …` 调用行 · 后端
+    //   `ccm/plan.rs::validate_tmux_name`（成只管「说哪一句」的薄壳）都调它；TS 两个谓词与两处内联式子删。
+    homes: ["gate-core::new_tmux_name_issue", "gate-core::existing_tmux_name_issue"],
+    status: "zero",
     defs: ["isValidTmuxName", "isValidNewTmuxName"],
-    needles: [{ text: "/^[A-Za-z0-9_][A-Za-z0-9_-]*$/", count: 2, file: "src/launch-requests.ts" }],
-    owner: "主会话拍（DUP1.md §4 ②）",
-    why: "Rust 侧三份规则互不相同，唯一住址待定；载荷路上 F01「不建带 glob 的名字」只有 TS 这一道",
+    needles: [
+      { text: "/^[A-Za-z0-9_][A-Za-z0-9_-]*$/", count: 0, file: "src/launch-requests.ts" },
+      { text: "[*?=]", count: 0 },
+    ],
+    // 禁字集字面量只住 gate-core 一处；后端 plan.rs 那份自己的不许长回来。
+    rustNeedles: [
+      { file: "src/bridge/crates/gate-core/src/lib.rs", text: '"*?.:="', count: 1 },
+      { file: "src/backend/control/ccm/plan.rs", text: '"*?.:="', count: 0 },
+    ],
   },
   J7: {
     what: "tmux 名派生 ＋ 撞名避让",
@@ -481,6 +490,11 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     gate2: NONE,
     is_ccm_tmux_name: NONE,
     needs_remote_sid: NONE,
+    // 〔DUP2 · J6〕tmux 会话名的两条规则（全仓唯一一份）与它们的常量。
+    new_tmux_name_issue: "J6",
+    existing_tmux_name_issue: "J6",
+    NEW_TMUX_NAME_MAX: NONE,
+    NEW_TMUX_NAME_REFUSED: NONE,
   },
   "relay-route-core": {
     ALL: NONE,
