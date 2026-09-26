@@ -11,9 +11,7 @@
  * `this.tabButtons` 换成本类收到的同一张按钮表 `this.buttons`，入口 `beginTabDrag` 改名 `begin`。
  */
 import {
-  applyDropToCollections,
-  collectionsEqual,
-  dropRefusal,
+  groupMoveForDrop,
   defaultGroupName,
   moveTab,
   pickDropTarget,
@@ -351,26 +349,23 @@ export class TabBarDrag {
     // 〔BG1 · V125「删掉树」〕只拖被按下的那一个：原先这里先算「一块」（交互 tab 连同紧跟其后的
     //   同 `(cwd, origin)` bg 子串）再整块改顺序与归属 —— 树删了，bg tab 与普通 tab 拖法相同。
     // ① 集合归属跟着落点宿主走（`§D.7` 的「拖出组」与「拖进组」是同一条规则的两侧）。
+    //   〔GRP1 · V140〕组员关系是 tab 自己的属性 ⇒ 只改被拖那个 tab（现建组时连落点那个）的 `group`，
+    //   先改内存（下面统一重画一次），再由落盘偏好把那几条补丁一次写掉；归属没变（`stay`）⇒ 零写。
     if (this.prefs.collectionsLoaded) {
-      const other = target.kind === "end" ? null : this.store.tabs.get(target.sid);
-      const nextCols = applyDropToCollections(
-        this.prefs.collections,
-        sid,
-        target,
-        defaultGroupName(
+      const move = groupMoveForDrop((s) => this.store.tabs.get(s)?.group ?? null, sid, target);
+      if (move.kind === "found") {
+        const name = defaultGroupName(
           this.store.tabs.get(sid)?.cwd ?? null,
-          other?.cwd ?? null,
+          this.store.tabs.get(move.with)?.cwd ?? null,
           this.prefs.collections.map((c) => c.name),
-        ),
-        newCollectionId(),
-      );
-      // 〔TL2 · E13〕该进组却没进（到上界）⇒ 说出来；顺序那一半照常做。
-      const why = dropRefusal(nextCols, sid, target);
-      if (why) sayCollectionRefusal(why);
-      // 没变就不写盘：拖动是高频动作，每拖一下都改一次 `config.json` 是白写。
-      if (!collectionsEqual(this.prefs.collections, nextCols)) {
-        this.prefs.collections = nextCols; // 先改内存（下面统一重画一次），再落盘
-        void this.prefs.persistCollections(nextCols);
+        );
+        // 〔TL2 · E13〕组数到上界、没建出来 ⇒ 说出来；顺序那一半照常做。
+        const why = this.prefs.foundGroup([move.with, sid], name, newCollectionId());
+        if (why) sayCollectionRefusal(why);
+      } else if (move.kind === "join") {
+        void this.prefs.joinGroup(sid, move.gid);
+      } else if (move.kind === "leave") {
+        void this.prefs.leaveGroup(sid);
       }
     }
     // ② 顺序。`onto` 的落位 = 插到目标**之前**（组里成员的相对次序由 `orderedIds` 定，
@@ -392,7 +387,7 @@ export class TabBarDrag {
     //   ⇒ 同一个栏里两种寿命：**你建的分组活过重启，你拖的顺序活不过**。
     //   `tab-collections.ts` 立集合落盘的理由是「用户手写的真相，不是能重算的缓存」，
     //   而拖动排序**完全符合那条判据** ⇒ 不给它同样的待遇，那条理由就是选择性适用的。
-    // ⚠ 形状照 `commitCollections`：**先改内存再落盘**（上面两行已做完），
+    // ⚠ 形状照分组那几个动作（`tab-bar-prefs.ts`）：**先改内存再落盘**（上面两行已做完），
     //   落盘失败只记日志 —— 顺序丢一次远好过拖动卡一下。
     void this.prefs.persistOrder();
   }

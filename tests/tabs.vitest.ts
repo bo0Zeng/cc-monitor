@@ -230,8 +230,7 @@ import {
   isCwdFallbackMatch,
   claudeExited,
   moveTab,
-  applyDropToCollections,
-  collectionsEqual,
+  groupMoveForDrop,
   commonDirName,
   defaultGroupName,
   pickDropTarget,
@@ -241,7 +240,7 @@ import {
   type Tab,
   type TabRect,
 } from "../src/tabs";
-import { COLLECTION_CAP, MEMBER_CAP, type TabCollection } from "../src/tab-collections";
+import { COLLECTION_CAP, type TabCollection } from "../src/tab-collections";
 import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, RECONNECTABLE, UNSEEN } from "../src/tab-session-state";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -269,6 +268,20 @@ interface TMHomes {
   actions: TabSessionActions;
 }
 const home = (tm: TabManager): TMHomes => tm as unknown as TMHomes;
+
+/**
+ * 〔GRP1 · `设计/99 §1` V140〕摆一份分组：组表只有 `{id, name}`，组员 = `Tab.group`（tab 自己的属性）。
+ * `tabs` 里的 sid 必须已经在栏里；没列到的 tab 一律散着。
+ */
+function setGroups(tm: TabManager, groups: { id: string; name: string; tabs?: string[] }[]): void {
+  home(tm).prefs.collections = groups.map(({ id, name }) => ({ id, name }));
+  for (const t of home(tm).store.tabs.values()) t.group = null;
+  for (const g of groups) for (const sid of g.tabs ?? []) home(tm).store.tabs.get(sid)!.group = g.id;
+}
+/** 〔GRP1〕组 `gid` 里此刻有谁（按栏里的顺序）。 */
+function membersOf(tm: TabManager, gid: string): string[] {
+  return home(tm).store.orderedIds.filter((sid) => home(tm).store.tabs.get(sid)?.group === gid);
+}
 
 function makeTM(): TabManager {
   document.body.innerHTML = "";
@@ -3547,9 +3560,7 @@ describe("P7a-3 集合分组渲染", () => {
   });
   const flushBar = (): void =>
     (tm as unknown as { refreshTabBar: () => void }).refreshTabBar();
-  const setCols = (cols: unknown): void => {
-    home(tm).prefs.collections = cols as TabCollection[];
-  };
+  const setCols = (cols: { id: string; name: string; tabs?: string[] }[]): void => setGroups(tm, cols);
   const order = (): string[] => home(tm).store.orderedIds;
 
   // ── 🔴 〔步 17·A · 2026-09-19〕墓碑：五条测「归档抽屉」的判据整块删除 ──────
@@ -3573,7 +3584,7 @@ describe("P7a-3 集合分组渲染", () => {
     tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
     tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
     tm.ensureTab("c", "/c3", "p", 0, LOCAL_ORIGIN);
-    setCols([{ id: "g1", name: "白天", members: ["a", "c"] }]);
+    setCols([{ id: "g1", name: "白天", tabs: ["a", "c"] }]);
     flushBar();
 
     const group = bar.querySelector<HTMLElement>(".tab-group")!;
@@ -3588,14 +3599,15 @@ describe("P7a-3 集合分组渲染", () => {
 
   // ── 〔W5-UI〕P-extra 组头就地改名（`设计/30 §3.3` 逐字「组头就地 `<input>`：Enter 提交 / Esc 取消 / blur 提交」）──
   describe("P-extra 组头就地改名", () => {
-    const renameWrites = (): TabCollection[][] =>
-      (home(tm).prefs.commitCollections as unknown as Mock).mock.calls.map((c) => c[0] as TabCollection[]);
+    // 〔GRP1〕改名只经 `TabBarPrefs.renameGroup`（组表那一条补丁）⇒ 数它收到的 (id, 新名)。
+    const renameWrites = (): { id: string; name: string }[] =>
+      (home(tm).prefs.renameGroup as unknown as Mock).mock.calls.map((c) => ({ id: c[0] as string, name: c[1] as string }));
     let promptSpy: ReturnType<typeof vi.spyOn>;
     const open = (): HTMLInputElement => {
       tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
-      setCols([{ id: "g1", name: "白天", members: ["a"] }]);
+      setCols([{ id: "g1", name: "白天", tabs: ["a"] }]);
       flushBar();
-      home(tm).prefs.commitCollections = vi.fn().mockResolvedValue(undefined) as never;
+      home(tm).prefs.renameGroup = vi.fn().mockResolvedValue(undefined) as never;
       bar.querySelector<HTMLElement>(".tab-group-name")!.click();
       const input = bar.querySelector<HTMLInputElement>(".tab-group-head input")!;
       expect(input, "组头没换成输入框").toBeTruthy();
@@ -3625,8 +3637,7 @@ describe("P7a-3 集合分组渲染", () => {
       const input = open();
       input.value = "  夜里 ";
       key(input, "Enter");
-      expect(renameWrites()).toHaveLength(1);
-      expect(renameWrites()[0].find((c) => c.id === "g1")!.name).toBe("夜里");
+      expect(renameWrites()).toEqual([{ id: "g1", name: "夜里" }]);
       expect(bar.querySelector(".tab-group-head input")).toBeNull();
       expect(bar.querySelector<HTMLElement>(".tab-group-name")!.hidden).toBe(false);
     });
@@ -3644,8 +3655,7 @@ describe("P7a-3 集合分组渲染", () => {
       const input = open();
       input.value = "傍晚";
       input.blur();
-      expect(renameWrites()).toHaveLength(1);
-      expect(renameWrites()[0].find((c) => c.id === "g1")!.name).toBe("傍晚");
+      expect(renameWrites()).toEqual([{ id: "g1", name: "傍晚" }]);
     });
 
     it("空名 / 与现名相同 ⇒ 不写（只认一次：Enter 之后的 blur 不再写）", () => {
@@ -3705,8 +3715,8 @@ describe("P7a-3 集合分组渲染", () => {
       document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
       for (let i = 0; i < 5; i++) await Promise.resolve();
     };
-    const many = (n: number): TabCollection[] =>
-      Array.from({ length: n }, (_, i) => ({ id: `c${i}`, name: `组${i}`, members: [] }));
+    const many = (n: number): { id: string; name: string }[] =>
+      Array.from({ length: n }, (_, i) => ({ id: `c${i}`, name: `组${i}` }));
     setCols(many(COLLECTION_CAP));
     await clickNew();
     expect(noAskDialog(), "满了还让用户白填一次名字").toBe(true);
@@ -3720,40 +3730,36 @@ describe("P7a-3 集合分组渲染", () => {
     expect(showActionFailureToast).not.toHaveBeenCalled();
   });
 
-  it("〔TL2 · E13〕右键「加入集合 › 某组」那一组满了 ⇒ 说一句、不写盘；没满 ⇒ 加进去", async () => {
+  // 〔GRP1 · `设计/99 §1` V140〕成员上界随成员名单一起作废 ⇒ 原「那一组满了 ⇒ 说一句」一格删了（被测的东西不在了）；
+  //   换成「加入 / 移出就是改这个 tab 自己的组 id」正反各一格。
+  it("〔GRP1〕右键「加入集合 › 某组」⇒ 这个 tab 的 `group` 就是那一组、一句话都不说；「移出」⇒ 回到散 tab", async () => {
     tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
     await tm.loadCollections();
-    const join = (): void => {
+    const click = (sid: string, label: string): void => {
       flushBar();
-      const root = [...bar.children].find((e) => e.classList.contains("tab")) as HTMLElement;
+      const root = home(tm).bar.tabButtons.get(sid)!.root;
       root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
       const btn = [...document.querySelectorAll(".tab-context-menu button")].find(
-        (e) => e.textContent === "满的",
+        (e) => e.textContent === label,
       ) as HTMLButtonElement | undefined;
-      expect(btn, "菜单里要有那一组（否则本判据在空转）").toBeTruthy();
+      expect(btn, `菜单里要有「${label}」（否则本判据在空转）`).toBeTruthy();
       btn!.click();
       document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
     };
-    const filled = (n: number): TabCollection[] => [
-      { id: "g", name: "满的", members: Array.from({ length: n }, (_, i) => `m${i}`) },
-    ];
-    setCols(filled(MEMBER_CAP));
-    join();
-    expect(vi.mocked(showActionFailureToast).mock.calls.map((c) => String(c[0]))).toEqual(["没有加进「满的」"]);
-    expect(home(tm).prefs.collections[0].members.includes("a")).toBe(false);
-
-    vi.mocked(showActionFailureToast).mockClear();
-    setCols(filled(MEMBER_CAP - 1));
-    join();
-    await Promise.resolve();
+    setCols([{ id: "g", name: "白天", tabs: ["b"] }]);
+    click("a", "白天");
     expect(showActionFailureToast).not.toHaveBeenCalled();
-    expect(home(tm).prefs.collections[0].members.includes("a"), "没满就该加进去（正控）").toBe(true);
+    expect(membersOf(tm, "g"), "a 该进组（b 原本就在）").toEqual(["a", "b"]);
+    click("a", "移出「白天」");
+    expect(membersOf(tm, "g"), "移出只动 a").toEqual(["b"]);
+    expect(home(tm).store.tabs.get("a")!.group).toBeNull();
   });
 
   it("★ P7a3-D：组在前、未归组的在后（DoD 逐字如此，实现不许自己反过来）", () => {
     tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN); // 归组
     tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN); // 散的
-    setCols([{ id: "g1", name: "白天", members: ["a"] }]);
+    setCols([{ id: "g1", name: "白天", tabs: ["a"] }]);
     flushBar();
     const kids = [...bar.children];
     const gi = kids.findIndex((e) => e.classList.contains("tab-group"));
@@ -3767,7 +3773,7 @@ describe("P7a-3 集合分组渲染", () => {
   it("★ P7a3-Y3：解散集合**一个会话都不许少**", () => {
     tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
     tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
-    setCols([{ id: "g1", name: "白天", members: ["a"] }]);
+    setCols([{ id: "g1", name: "白天", tabs: ["a"] }]);
     flushBar();
     const before = [...order()];
     expect(bar.querySelector(".tab-group")).toBeTruthy();
@@ -3778,11 +3784,13 @@ describe("P7a-3 集合分组渲染", () => {
     expect(order(), "集合是个视图，不是容器").toEqual(before);
     expect(bar.querySelector(".tab-group"), "组容器该没了").toBeNull();
     expect([...bar.children].filter((e) => e.classList.contains("tab"))).toHaveLength(2);
+    expect(home(tm).store.tabs.get("a")!.group, "〔GRP1〕解散 ⇒ 组员回到散 tab").toBeNull();
   });
 
+  // 〔GRP1 · V140〕「空」今天只剩一种来路：重启后组员还没到（意图）—— 组表里有它就画。
   it("空集合也留着 —— 刚建的集合不该看不见", () => {
     tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
-    setCols([{ id: "g1", name: "空的", members: [] }]);
+    setCols([{ id: "g1", name: "空的" }]);
     flushBar();
     expect(bar.querySelector(".tab-group")).toBeTruthy();
     expect(bar.querySelectorAll(".tab-group-list > .tab")).toHaveLength(0);
@@ -4145,77 +4153,49 @@ describe("步 17·D ① 默认组名（`§D.6`）—— 这条路上不能弹 `w
 });
 
 describe("步 17·D ② 归属跟着落点宿主走（`§D.7` 的「拖出组」与「拖进组」是同一条规则）", () => {
-  const cols = (list: TabCollection[]): TabCollection[] => JSON.parse(JSON.stringify(list));
+  // 〔GRP1 · `设计/99 §1` V140〕组员关系是 tab 自己的属性 ⇒ 这里不再重算整张组表（原 `applyDropToCollections` /
+  //   `collectionsEqual` 随成员名单一起删），纯函数 `groupMoveForDrop` 只回「被拖那个 tab 怎么动」。
+  //   每一格对应原来的一格；「建组到上界」那一格挪到了 ④（上界现在由 `TabBarPrefs.foundGroup` 判）。
+  const groupOf =
+    (m: Record<string, string>) =>
+    (sid: string): string | null =>
+      m[sid] ?? null;
 
-  it("🆕 `onto` 到一个**没有组**的 tab ⇒ 现建一个组，两个都进去", () => {
-    const next = applyDropToCollections([], "a", { kind: "onto", sid: "b" }, "proj", "gX");
-    expect(next, "建组 + 两个成员，顺序 = 目标在前、被拖的在后").toEqual([
-      { id: "gX", name: "proj", members: ["b", "a"] },
-    ]);
+  it("🆕 `onto` 到一个**没有组**的 tab ⇒ 与它现建一个组", () => {
+    expect(groupMoveForDrop(groupOf({}), "a", { kind: "onto", sid: "b" })).toEqual({ kind: "found", with: "b" });
   });
 
   it("`onto` 到一个**已经在组里**的 tab ⇒ 进那个组，不新建", () => {
-    const base = cols([{ id: "g1", name: "白天", members: ["b"] }]);
-    const next = applyDropToCollections(base, "a", { kind: "onto", sid: "b" }, "proj", "gX");
-    expect(next).toEqual([{ id: "g1", name: "白天", members: ["b", "a"] }]);
+    expect(groupMoveForDrop(groupOf({ b: "g1" }), "a", { kind: "onto", sid: "b" })).toEqual({ kind: "join", gid: "g1" });
   });
 
   // 〔BG1 · V125「删掉树」〕原「整块一起走（交互 tab 连同它的 bg 子串）」一格删了 —— 归属只跟着被拖的
   //   那一个走（本文件末尾「〔BG1〕」那组的 ③ ④，两种 tab 各跑）。
 
   it("🔴 `before` 一个**散 tab** ⇒ 从原来的组里**移出**（`§D.7` 的拖出组）", () => {
-    const base = cols([{ id: "g1", name: "白天", members: ["a", "b"] }]);
-    const next = applyDropToCollections(base, "a", { kind: "before", sid: "z" }, "n", "gX");
-    expect(next, "落点宿主是散 tab 区 ⇒ a 不再属于 g1").toEqual([
-      { id: "g1", name: "白天", members: ["b"] },
-    ]);
+    expect(
+      groupMoveForDrop(groupOf({ a: "g1", b: "g1" }), "a", { kind: "before", sid: "z" }),
+      "落点宿主是散 tab 区 ⇒ a 不再属于 g1",
+    ).toEqual({ kind: "leave" });
   });
 
   it("`before` 一个**组里的 tab** ⇒ 进那个组（同一条规则的另一侧）", () => {
-    const base = cols([{ id: "g1", name: "白天", members: ["b"] }]);
-    const next = applyDropToCollections(base, "a", { kind: "before", sid: "b" }, "n", "gX");
-    expect(next).toEqual([{ id: "g1", name: "白天", members: ["b", "a"] }]);
+    expect(groupMoveForDrop(groupOf({ b: "g1" }), "a", { kind: "before", sid: "b" })).toEqual({ kind: "join", gid: "g1" });
   });
 
   it("`end` ⇒ 移出（末尾就是散 tab 区）", () => {
-    const base = cols([{ id: "g1", name: "白天", members: ["a"] }]);
-    expect(applyDropToCollections(base, "a", { kind: "end" }, "n", "gX")).toEqual([
-      { id: "g1", name: "白天", members: [] },
-    ]);
+    expect(groupMoveForDrop(groupOf({ a: "g1" }), "a", { kind: "end" })).toEqual({ kind: "leave" });
   });
 
-  it("🔴 反面控：什么都不该变的两种情形，**一个字节都不许变**", () => {
-    const base = cols([{ id: "g1", name: "白天", members: ["a"] }]);
+  it("🔴 反面控：什么都不该变的两种情形 ⇒ `stay`（零写盘：拖动是高频动作）", () => {
     expect(
-      applyDropToCollections(base, "a", { kind: "onto", sid: "a" }, "n", "gX"),
+      groupMoveForDrop(groupOf({ a: "g1" }), "a", { kind: "onto", sid: "a" }),
       "压在自己身上不是一次合并",
-    ).toEqual(base);
-    const flat = cols([{ id: "g1", name: "白天", members: ["z"] }]);
+    ).toEqual({ kind: "stay" });
     expect(
-      applyDropToCollections(flat, "a", { kind: "before", sid: "b" }, "n", "gX"),
+      groupMoveForDrop(groupOf({ z: "g1" }), "a", { kind: "before", sid: "b" }),
       "两个都是散 tab ⇒ 归属这一维没有任何事发生",
-    ).toEqual(flat);
-  });
-
-  it("🔴 建组到上界（32 个）⇒ **原样返回**，不许把 tab 塞进一个不存在的集合", () => {
-    const full = Array.from({ length: 32 }, (_, i) => ({
-      id: `g${i}`,
-      name: `组 ${i + 1}`,
-      members: [] as string[],
-    }));
-    const next = applyDropToCollections(full, "a", { kind: "onto", sid: "b" }, "新", "gX");
-    expect(next, "满了还建 ⇒ a 会挂在一个 `createCollection` 根本没造出来的 id 上").toEqual(full);
-  });
-
-  it("`collectionsEqual` 正反两控（它是「没变就不写盘」那道门）", () => {
-    const a = cols([{ id: "g1", name: "n", members: ["x", "y"] }]);
-    expect(collectionsEqual(a, cols(a)), "同一份判成不同 ⇒ 每拖一下都白写一次盘").toBe(true);
-    expect(
-      collectionsEqual(a, [{ id: "g1", name: "n", members: ["y", "x"] }]),
-      "成员次序变了也是变了",
-    ).toBe(false);
-    expect(collectionsEqual(a, [{ id: "g1", name: "改了", members: ["x", "y"] }])).toBe(false);
-    expect(collectionsEqual(a, []), "长度不同").toBe(false);
+    ).toEqual({ kind: "stay" });
   });
 });
 
@@ -4235,9 +4215,7 @@ describe("步 17·D ③ 组里的 tab 真的参与落点（`§D.2` 缺口一）"
   it("🔴 量具自检 ＋ 正题：`tabRects()` 量到的集合 == 栏里所有 tab（**含组里的**）", () => {
     tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
     tm.ensureTab("b", "/c1", "p", 0, LOCAL_ORIGIN);
-    home(tm).prefs.collections = [
-      { id: "g1", name: "白天", members: ["b"] },
-    ];
+    setGroups(tm, [{ id: "g1", name: "白天", tabs: ["b"] }]);
     home(tm).prefs.collectionsLoaded = true;
     (tm as unknown as { refreshTabBar: () => void }).refreshTabBar();
 
@@ -4280,7 +4258,7 @@ describe("步 17·D ④ 一次落点把顺序与归属**一起**落实（`applyD
     tm.ensureTab("b", "/home/u/proj/y", "p", 0, LOCAL_ORIGIN);
     home(tm).dragger.applyDrop("a", { kind: "onto", sid: "b" });
     expect(colsOf().length, "没建组").toBe(1);
-    expect(colsOf()[0].members, "成员不对").toEqual(["b", "a"]);
+    expect(membersOf(tm, colsOf()[0].id), "成员不对（按栏里的顺序：a 已插到 b 之前）").toEqual(["a", "b"]);
     expect(colsOf()[0].name, "默认名该走「共同前缀目录名」那一条（`§D.6` ①）").toBe("proj");
     expect(order(), "顺序也要落实：a 插到 b 之前").toEqual(["a", "b"]);
   });
@@ -4290,57 +4268,43 @@ describe("步 17·D ④ 一次落点把顺序与归属**一起**落实（`applyD
     // 而「把组里的 tab 原地拖出来」恰好就是顺序不变、归属变。
     tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
     tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
-    home(tm).prefs.collections = [
-      { id: "g1", name: "白天", members: ["a"] },
-    ];
+    setGroups(tm, [{ id: "g1", name: "白天", tabs: ["a"] }]);
     home(tm).dragger.applyDrop("a", { kind: "before", sid: "b" }); // a 本来就在 b 前面 ⇒ 顺序不变
     expect(order(), "顺序确实没变（前提成立，这一格才有意义）").toEqual(["a", "b"]);
-    expect(colsOf()[0].members, "🔴 归属那一半被「没变化就 return」吞了").toEqual([]);
+    expect(membersOf(tm, "g1"), "🔴 归属那一半被「没变化就 return」吞了").toEqual([]);
   });
 
   it("`end` ⇒ 拖出组并落到末尾", () => {
     tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
     tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
-    home(tm).prefs.collections = [
-      { id: "g1", name: "白天", members: ["a"] },
-    ];
+    setGroups(tm, [{ id: "g1", name: "白天", tabs: ["a"] }]);
     home(tm).dragger.applyDrop("a", { kind: "end" });
     expect(order()).toEqual(["b", "a"]);
-    expect(colsOf()[0].members).toEqual([]);
+    expect(membersOf(tm, "g1")).toEqual([]);
+    expect(colsOf(), "〔V140 · 主会话裁 Q1〕拖出的是在栏里的最后一个 ⇒ 组消失").toEqual([]);
   });
 
   // 〔TL2 · E13〕要求住址：`设计/01 §5 D4`「一条都不许静默忽略」—— 到上界时这一下没做成，要说出来（正反各一格）。
-  it("〔TL2 · E13〕拖进一个满了的组 ⇒ 说一句「没有加进」；差一个没满 ⇒ 不出声、加进去", () => {
-    const full = Array.from({ length: MEMBER_CAP }, (_, i) => `m${i}`);
-    tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
-    tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
-    home(tm).prefs.collections = [{ id: "g1", name: "白天", members: ["b", ...full.slice(1)] }];
-    home(tm).dragger.applyDrop("a", { kind: "onto", sid: "b" });
-    expect(colsOf()[0].members.includes("a"), "满了还加进去了 ⇒ 上界没守住").toBe(false);
-    const said = vi.mocked(showActionFailureToast).mock.calls.map((c) => String(c[0]));
-    expect(said, "满了却一句话都没说（E13）").toEqual(["没有加进「白天」"]);
-
-    vi.clearAllMocks();
-    home(tm).prefs.collections = [{ id: "g1", name: "白天", members: ["b", ...full.slice(2)] }];
-    home(tm).dragger.applyDrop("a", { kind: "onto", sid: "b" });
-    expect(colsOf()[0].members.includes("a"), "差一个没满 ⇒ 该加进去").toBe(true);
-    expect(showActionFailureToast, "没满却出声了（正控）").not.toHaveBeenCalled();
-  });
-
+  // 〔GRP1 · V140〕原「拖进一个满了的组 ⇒ 说一句『没有加进』」一格删了：成员上界随成员名单一起作废（被测的东西不在了）。
   it("〔TL2 · E13〕集合数到上界时拖放建组 ⇒ 说一句「没有建新集合」；差一个 ⇒ 建出来、不出声", () => {
     const many = (n: number): TabCollection[] =>
-      Array.from({ length: n }, (_, i) => ({ id: `c${i}`, name: `组${i}`, members: [] }));
+      Array.from({ length: n }, (_, i) => ({ id: `c${i}`, name: `组${i}` }));
     tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
     tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
     home(tm).prefs.collections = many(COLLECTION_CAP);
     home(tm).dragger.applyDrop("a", { kind: "onto", sid: "b" });
     expect(colsOf().length).toBe(COLLECTION_CAP);
     expect(vi.mocked(showActionFailureToast).mock.calls.map((c) => String(c[0]))).toEqual(["没有建新集合"]);
+    expect(
+      [home(tm).store.tabs.get("a")!.group, home(tm).store.tabs.get("b")!.group],
+      "没建出组 ⇒ 两个都不许挂在一个不存在的组 id 上",
+    ).toEqual([null, null]);
 
     vi.clearAllMocks();
     home(tm).prefs.collections = many(COLLECTION_CAP - 1);
     home(tm).dragger.applyDrop("a", { kind: "onto", sid: "b" });
     expect(colsOf().length, "差一个没满 ⇒ 该建出来").toBe(COLLECTION_CAP);
+    expect(membersOf(tm, colsOf()[COLLECTION_CAP - 1].id), "建出来的组里恰是这两个").toEqual(["a", "b"]);
     expect(showActionFailureToast).not.toHaveBeenCalled();
   });
 
@@ -4351,6 +4315,7 @@ describe("步 17·D ④ 一次落点把顺序与归属**一起**落实（`applyD
     tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
     home(tm).dragger.applyDrop("b", { kind: "onto", sid: "a" });
     expect(colsOf(), "没读过盘还敢建组 ⇒ 下一次落盘会把用户的集合全冲掉").toEqual([]);
+    expect(home(tm).store.tabs.get("b")!.group, "〔GRP1〕组 id 也一个字不动").toBeNull();
     expect(order(), "顺序这一半照常").toEqual(["b", "a"]);
   });
 });
@@ -4434,7 +4399,7 @@ describe("步 17·D ⑤ 停留 250ms 才成组（假手势打真事件链）", (
     document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
     const cols = home(tm).prefs.collections;
     expect(cols.length, "松手了却没建组 ⇒ 视觉反馈与真实后果脱钩（比没做更坏）").toBe(1);
-    expect(cols[0].members).toEqual(["b", "a"]);
+    expect(membersOf(tm, cols[0].id), "〔GRP1〕组员 = 带这个组 id 的 tab（a 已插到 b 之前）").toEqual(["a", "b"]);
     expect(cols[0].name, "默认名走 `§D.6` ①：两个 cwd 的共同前缀目录名").toBe("proj");
   });
 
@@ -5605,15 +5570,16 @@ describe.each([
   it("③ 拖 host `onto` other 成组 ⇒ 组里只有这两颗", () => {
     arrive(["host", "sub", "other"]);
     home(tm).dragger.applyDrop("host", { kind: "onto", sid: "other" });
-    expect(colsOf().map((c) => c.members)).toEqual([["other", "host"]]);
+    expect(colsOf().map((c) => membersOf(tm, c.id))).toEqual([["host", "other"]]);
     expect(order()).toEqual(["sub", "host", "other"]);
   });
 
   it("④ host 与 sub 同组，把 host 拖出组 ⇒ sub 留在组里", () => {
     arrive(["host", "sub", "other"]);
-    home(tm).prefs.collections = [{ id: "g1", name: "白天", members: ["host", "sub"] }];
+    setGroups(tm, [{ id: "g1", name: "白天", tabs: ["host", "sub"] }]);
     home(tm).dragger.applyDrop("host", { kind: "end" });
-    expect(colsOf()).toEqual([{ id: "g1", name: "白天", members: ["sub"] }]);
+    expect(colsOf()).toEqual([{ id: "g1", name: "白天" }]);
+    expect(membersOf(tm, "g1")).toEqual(["sub"]);
     expect(order()).toEqual(["sub", "other", "host"]);
   });
 
@@ -5883,5 +5849,171 @@ describe("〔FW1〕记录文件的出声", () => {
     rf.onSessionFileNotice("rf-sid", "moved");
     expect(noticeText(tm)).toBe(copyText("sessionState.recordFile.truncated"));
     expect(() => rf.onSessionFileNotice("no-such-sid", "gone")).not.toThrow();
+  });
+});
+
+// ==========================================================================
+// 〔GRP1〕守 `设计/99 §1` V140 原话「分组不应该单独存会话记录. x就是没了, 不存在还要移出分组」。
+// 题面四条判据：J1 盘上零处会话 id 名单形状的组员表（带正控）· J2 × 之后盘与内存零残留 ·
+// J3 最后一个成员关掉组消失 · J4 重启后只有还在栏里的 tab 带组。真 TabManager ＋ 内存假盘，读盘对拍。
+// ==========================================================================
+/** 盘上所有「装着 `sids` 里某个 sid 的数组」的路径（点分）—— J1 的扫描。 */
+function sidArrays(v: unknown, sids: ReadonlySet<string>, path = ""): string[] {
+  if (Array.isArray(v)) {
+    const here = v.some((x) => typeof x === "string" && sids.has(x)) ? [path] : [];
+    return [...here, ...v.flatMap((x, i) => sidArrays(x, sids, `${path}.${i}`))];
+  }
+  if (v && typeof v === "object") {
+    return Object.entries(v).flatMap(([k, x]) => sidArrays(x, sids, path ? `${path}.${k}` : k));
+  }
+  return [];
+}
+
+describe("〔GRP1 · V140〕组员关系是 tab 自己的属性", () => {
+  let tm: TabManager;
+  let disk: Record<string, unknown>;
+  const flushDisk = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+  const groupOfOnDisk = (): Record<string, string> =>
+    ((disk.tabBar as Record<string, unknown> | undefined)?.groupOf ?? {}) as Record<string, string>;
+  const add = (...sids: string[]): void => {
+    for (const sid of sids) tm.ensureTab(sid, `/w/${sid}`, "p", 0, LOCAL_ORIGIN);
+  };
+  const close = (sid: string): void => {
+    tm.archiveTab(sid); // × 只关已结束的
+    tm.closeTab(sid);
+  };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    disk = {};
+    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string, args?: unknown) => {
+      if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
+      if (cmd === "patch_config") {
+        disk = JSON.parse(applyConfigEdits(JSON.stringify(disk), (args as { edits: Edit[] }).edits));
+      }
+      return Promise.resolve(undefined);
+    }));
+    tm = makeTM();
+  });
+
+  it("J1 · 走遍写组的入口，盘上零处 sid 名单形状的组员表（组表每项恰 {id,name}；装 sid 的数组只有顺序表）", async () => {
+    const sids = new Set(["a", "b", "c", "d"]);
+    disk = { tabCollections: [{ id: "old", name: "旧", members: ["a", "b"] }] };
+    expect(sidArrays(disk, sids), "正控：同一把扫描认得出旧形状").toEqual(["tabCollections.0.members"]);
+    await tm.loadCollections();
+    add("a", "b", "c", "d");
+    const check = async (step: string): Promise<void> => {
+      await flushDisk();
+      for (const g of disk.tabCollections as object[]) expect(Object.keys(g).sort(), step).toEqual(["id", "name"]);
+      expect(sidArrays(disk, sids).filter((p) => p !== "tabBar.order"), step).toEqual([]);
+    };
+    home(tm).dragger.applyDrop("a", { kind: "onto", sid: "b" }); // 拖放现建
+    await check("拖放现建");
+    const g = home(tm).store.tabs.get("a")!.group!;
+    home(tm).dragger.applyDrop("c", { kind: "before", sid: "a" }); // 拖放进组
+    await check("拖放进组");
+    home(tm).dragger.applyDrop("c", { kind: "end" }); // 拖出
+    await check("拖出");
+    void home(tm).prefs.joinGroup("d", g);
+    void home(tm).prefs.renameGroup(g, "改");
+    await check("右键加入 · 改名");
+    close("d");
+    await check("×");
+    void home(tm).prefs.leaveGroup("a");
+    void home(tm).prefs.dissolveGroup("old");
+    await check("右键移出 · 解散");
+    expect(sidArrays(disk, sids), "两向：顺序表确实被扫到了").toEqual(["tabBar.order"]);
+  });
+
+  it("J2 · × 之后盘与内存零残留；同 sid resume 回来是散 tab（正控：意图里的 c 到了照样进组）", async () => {
+    disk = { tabCollections: [{ id: "g", name: "白天" }], tabBar: { groupOf: { a: "g", b: "g", c: "g" } } };
+    await tm.loadCollections();
+    add("a", "b");
+    const hits = (): number =>
+      JSON.stringify({ t: disk.tabCollections, g: groupOfOnDisk() }).split('"a"').length - 1;
+    expect(hits(), "正控：× 之前恰一处 groupOf.a").toBe(1);
+    close("a");
+    await flushDisk();
+    expect(hits()).toBe(0);
+    expect(groupOfOnDisk()).toEqual({ b: "g", c: "g" });
+    expect(home(tm).store.tabs.has("a")).toBe(false);
+    expect(home(tm).prefs.savedGroupOf.has("a")).toBe(false);
+    expect(membersOf(tm, "g")).toEqual(["b"]);
+    add("a", "c");
+    expect(home(tm).store.tabs.get("a")!.group, "resume 回来不许回组").toBeNull();
+    expect(home(tm).store.tabs.get("c")!.group).toBe("g");
+  });
+
+  it("J3 · 组里最后一个在栏里的关掉 ⇒ 组消失（盘 · 内存 · 栏），指向它的意图一并摘；还有成员时不许消失", async () => {
+    disk = { tabCollections: [{ id: "g", name: "白天" }], tabBar: { groupOf: { a: "g", b: "g", x: "g" } } };
+    await tm.loadCollections();
+    add("a", "b");
+    const bar = document.body.firstElementChild as HTMLElement;
+    close("a");
+    await flushDisk();
+    expect(disk.tabCollections, "还有 b ⇒ 组在").toEqual([{ id: "g", name: "白天" }]);
+    expect(bar.querySelectorAll(".tab-group")).toHaveLength(1);
+    close("b");
+    await flushDisk();
+    expect(disk.tabCollections).toEqual([]);
+    expect(groupOfOnDisk(), "没到的 x 指向它的那条也摘").toEqual({});
+    expect(home(tm).prefs.collections).toEqual([]);
+    expect([...home(tm).prefs.savedGroupOf]).toEqual([]);
+    expect(bar.querySelectorAll(".tab-group")).toHaveLength(0);
+  });
+
+  it("J3b · 拖出 / 右键移出 / 挪去别组：组里在栏里的都走了 ⇒ 组消失（盘 · 内存）；还有一个 ⇒ 在", async () => {
+    disk = {
+      tabCollections: [
+        { id: "g", name: "白天" },
+        { id: "h", name: "夜里" },
+      ],
+      tabBar: { groupOf: { a: "g", b: "g", c: "h", x: "g" } },
+    };
+    await tm.loadCollections();
+    add("a", "b", "c");
+    const ids = (): string[] => (disk.tabCollections as { id: string }[]).map((g) => g.id);
+    home(tm).dragger.applyDrop("a", { kind: "end" }); // 拖出，b 还在
+    await flushDisk();
+    expect(ids(), "还有 b ⇒ g 在").toEqual(["g", "h"]);
+    void home(tm).prefs.leaveGroup("b"); // 右键移出最后一个
+    await flushDisk();
+    expect(ids()).toEqual(["h"]);
+    expect(groupOfOnDisk(), "没到的 x 指向 g 的那条也摘").toEqual({ c: "h" });
+    home(tm).dragger.applyDrop("c", { kind: "onto", sid: "a" }); // 挪去与 a 现建的新组，h 空了
+    await flushDisk();
+    expect(ids().includes("h"), "挪走最后一个 ⇒ h 消失").toBe(false);
+    expect(home(tm).prefs.collections.map((g) => g.id)).toEqual(ids());
+  });
+
+  it.each([
+    ["固定复活先于读组表", true],
+    ["读组表先于固定复活", false],
+  ])("J4 · 重启后只有还在栏里的 tab 带组（%s）", async (_label, pinnedFirst) => {
+    disk = {
+      tabCollections: [
+        { id: "G", name: "甲" },
+        { id: "H", name: "乙" },
+      ],
+      tabBar: {
+        groupOf: { a: "G", b: "G", c: "H", p: "H" },
+        pinned: [{ sid: "p", jsonlPath: "/j/p", origin: LOCAL_ORIGIN, title: "P" }],
+      },
+    };
+    if (pinnedFirst) {
+      await tm.loadPinned();
+      await tm.loadCollections();
+    } else {
+      await tm.loadCollections();
+      await tm.loadPinned();
+    }
+    add("a", "c"); // b 不来
+    const carried = Object.fromEntries(
+      [...home(tm).store.tabs.values()].filter((t) => t.group !== null).map((t) => [t.sessionId, t.group]),
+    );
+    expect(carried).toEqual({ a: "G", c: "H", p: "H" });
+    expect(home(tm).store.tabs.has("b")).toBe(false);
+    expect(membersOf(tm, "G")).toEqual(["a"]);
+    expect(membersOf(tm, "H")).toEqual(["p", "c"]);
   });
 });
