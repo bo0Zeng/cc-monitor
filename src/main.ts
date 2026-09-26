@@ -756,6 +756,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 〔U4b · 第四波〕活会话的容器（G3）· 某台机器的活会话清单报完了（说不清 → 已结束）。
     onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container),
     onOriginSessionsListed: (origin) => tabs.markOriginSeen(origin),
+    // 〔FW1 · 第四波 4D · D-d〕记录文件不见了 / 被改过已从头重读 ⇒ 那个 tab 顶上说一句。
+    onSessionFileNotice: (sessionId, change) => tabs.noteRecordFile(sessionId, change),
     // 〔GP1 · 第四波〕那台机器看不见了 ⇒ 说不清（不是已结束）。
     onSessionUnseen: (sessionId) => tabs.markUnseen(sessionId),
     // 会话复活（resume）：后端 liveness 门控后才发，复活已归档的本地 Tab，免 F5。

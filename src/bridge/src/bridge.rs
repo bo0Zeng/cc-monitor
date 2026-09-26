@@ -139,6 +139,23 @@ pub struct JsonlLinePayload {
 pub enum SessionStreamFrame {
     Line(JsonlLinePayload),
     Batch(BatchEdge),
+    /// 〔FW1 · 第四波 4D · 主会话裁 D-d〕这个会话的记录文件不见了 / 被改过已从头重读（后端 `session_file_gone` /
+    /// `session_file_reread`）。与行同一条流、同序（行先冲出去再交它）⇒ 前端落到那个 tab 上说一句话。
+    /// ⚠ 不进留存：F5 之后那句话没了（已知缺口，主会话 09-25 认）。
+    FileNotice(SessionFileNoticePayload),
+}
+
+/// 〔FW1〕[`SessionStreamFrame::FileNotice`] 的体。
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+pub struct SessionFileNoticePayload {
+    pub session_id: String,
+    /// 那台机器（本机 `<local>`）—— 与行的 `origin` 同一格语义，订阅按它分流。
+    pub origin: String,
+    pub path: String,
+    /// `"gone"` / `"truncated"` / `"rewritten"`（[`crate::ssh_source::FileChange::as_wire`]）。
+    pub change: String,
 }
 
 /// 〔CF2〕成批那一段的哪一头。

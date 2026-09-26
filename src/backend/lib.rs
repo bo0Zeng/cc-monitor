@@ -1577,6 +1577,10 @@ pub const EMITS: &[&str] = &[
     // 〔U4b · 第四波〕活会话清单报完了（watch_loop Phase 1 走完那一刻发一次，登记 = 承诺真发，已接线）。
     // 固定复活的 tab 靠它分「说不清」与「已结束」（`设计/30 §3.5.7a`）。
     "sessions_replayed",
+    // 〔FW1 · 第四波 4D · D-d〕活会话的记录文件不见了 / 被改过已从头重读（`process_jsonl` 真发，登记 = 承诺真发，已接线）。
+    // 旧 monitor / 仓外 aterm 不认 ⇒ 忽略（additive）。
+    "session_file_gone",
+    "session_file_reread",
     // 〔SR1a〕链路的下行字节与收尾（`dial/link.rs` 的两台泵真发，登记 = 承诺真发）。
     // 只在 monitor 开了链路之后才出现；旧 monitor / 仓外 aterm 不认这两个 kind ⇒ 忽略（additive）。
     "link_data",
