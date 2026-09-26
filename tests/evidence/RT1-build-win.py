@@ -11,10 +11,9 @@
 ⚠ monitor 本体两处与 `cargo build` 裸跑不同，都照发版那一条补上：
   · `--features tauri/custom-protocol`：`cargo tauri build` 替你加的那一格；不加 ⇒ exe 去连 `devUrl`
     （`localhost:24174`），窗口里是一张「拒绝连接」页（2026-09-25 现打过一次）。
-  · 🔴 `[lib] crate-type` **临时**收成 `["rlib"]`（编完 `finally` 里原样拷回并 touch）：`-gnu` 交叉链接
-    `monitor_lib.dll`（cdylib 那一格）现打 `ld: error: export ordinal too large`（release 125946 / dev 241784，
-    PE 导出表上限 65535）——**两个 profile 都链不过**。exe 链的是 rlib，那个 dll 不进部署（`真相源/106 §4.1`）。
-    发版的 Windows 那一格走 `windows-latest` 原生构建，不受这条影响；门禁 `winchk` 只 `cargo check`，看不见它。
+  · 〔WIN1〕`[lib] crate-type` 从前要在这里**临时**收成 `["rlib"]`（`-gnu` 交叉链接 `monitor_lib.dll`
+    报 `export ordinal too large`，RT1 F1）；WIN1 已把它在 `Cargo.toml` 里收成 `["rlib"]`（全仓没有移动端，
+    `cdylib` / `staticlib` 零消费者），门禁 `winlink` 那一格真链接 ⇒ 这里只**核**它还是 `["rlib"]`，不再改文件。
 
 产物（全在 .build/ 与 src/bridge/native-backend/ 下，两处都被 gitignore）：
   .build/bridge/x86_64-pc-windows-gnu/release/{monitor.exe,cc-monitor-filewin.exe,WebView2Loader.dll}
@@ -46,17 +45,13 @@ def main():
         shutil.copyfile(os.path.join(ROOT, src), os.path.join(NATIVE, name))
         with open(os.path.join(NATIVE, name + ".target"), "w") as f:
             f.write(T + "\n")
-    toml = os.path.join(ROOT, "src", "bridge", "Cargo.toml")
-    orig = open(toml, "rb").read()
-    anchor = b'crate-type = ["staticlib", "cdylib", "rlib"]'
-    assert orig.count(anchor) == 1, "crate-type 锚串不是恰好 1 处"
+    toml = open(os.path.join(ROOT, "src", "bridge", "Cargo.toml"), "rb").read()
+    assert toml.count(b'crate-type = ["rlib"]') == 1, \
+        "crate-type 不再是 [\"rlib\"] —— cdylib 回来了 ⇒ -gnu 交叉链接会红在 export ordinal too large（RT1 F1）"
     try:
-        open(toml, "wb").write(orig.replace(anchor, b'crate-type = ["rlib"]'))
         run(["cargo", "build", "--release", "--locked", "-p", "monitor", "--target", T,
              "--features", "tauri/custom-protocol"], os.path.join(ROOT, "src", "bridge"))
     finally:
-        open(toml, "wb").write(orig)
-        os.utime(toml)
         # 铺进去的是 **Windows** 字节（`.target` = windows-gnu）：留着 ⇒ 本机 Linux 构建在
         # `build.rs::embed_native_backend` 的 ① 号校验上当场 panic（2026-09-25 现打过一次）。用完即撤。
         shutil.rmtree(NATIVE, ignore_errors=True)

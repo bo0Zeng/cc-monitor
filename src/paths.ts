@@ -6,7 +6,7 @@
  * 时一次性 resolve，运行时不再读 env / config。
  */
 
-import { loadConfig, saveConfig } from "./config";
+import { loadConfig, patchConfig, removeAt, setAt } from "./config";
 
 const KEY = "claudeDir";
 
@@ -31,11 +31,7 @@ export async function getClaudeDirOverride(): Promise<string | null> {
 
 /** 保存 claudeDir 字段。传 null 删除字段（回到 env / 默认）。 */
 export async function setClaudeDirOverride(dir: string | null): Promise<void> {
-  const cfg = (await loadConfig()) as Record<string, unknown>;
-  if (dir === null || dir.trim() === "") {
-    delete cfg[KEY];
-  } else {
-    cfg[KEY] = dir.trim();
-  }
-  await saveConfig(cfg);
+  await patchConfig([
+    dir === null || dir.trim() === "" ? removeAt([KEY]) : setAt([KEY], dir.trim()),
+  ]);
 }

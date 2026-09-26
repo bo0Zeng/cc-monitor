@@ -172,6 +172,14 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
+        "tests/bridge/stop_grace_tests.rs",
+        "src/backend/inbound.rs",
+        "〔HX1 · 4D〕**两个期限的先后**：后端自己兜的退出排空期限（`inbound::DRAIN_DEADLINE`）与 monitor「停」等它的时长\
+         （`stop_grace::STOP_GRACE_TRIES × STOP_POLL`）。monitor 等得比后端短 ⇒ 后端那句「哪几条没做完」永远被 SIGKILL 截断、\
+         **不会报错**；只有同时读两侧才验得了（现抠后端生产段那个字面量，恰好一处）。",
+    ),
+    (
+        "monitor→backend",
         "tests/bridge/logging_tests.rs",
         "src/backend/stderr_log.rs",
         "〔NT2 · S1〕**跨 crate 字面量对拍**：宿主交给脱离常驻那条载体的 `CCM_BACKEND_STDERR_LOG` 与后端读的那一个，\
@@ -245,16 +253,9 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          两个数住两棵依赖树（窗口的 `WINDOW_TRANSFER_LANES` · 后端的 `TRANSFER_LANE_CAP` / `SESSION_CHANNEL_CAP`）；\
          失效方向：窗口起的件数超过车道 ⇒ 多挂的订阅只是白排队；够着整条连接的通道闸 ⇒ 一个窗口把会话与查询饿死。",
     ),
-    (
-        "monitor→backend",
-        "tests/bridge/subagent_tests.rs",
-        "src/backend/observe/history_query.rs",
-        "★〔C2 · SE1 欠账 09-24 新增〕**「老后端」那一档的认法两侧同形** —— \
-         `subagent::tests::a_local_backend_that_does_not_know_the_subcommand_is_old_not_broken`。\
-         monitor 的 `local_failure_kind` 凭「退出 2 ＋ stderr 行尾是 `unknown argument: <子命令>`」判老后端，\
-         那一串的写侧是后端 `history_query::run` 的 `unknown argument: {other}` 与 `query error: {e}`。\
-         失效方向**很安静**：后端改一个字，本机老后端又全落回「瞬时」、前端重试到上限才停，两侧各自全绿。",
-    ),
+    // 〔LOC1a · 第四波 4D〕`tests/bridge/subagent_tests.rs` → 后端 `history_query.rs` 那一条边删了：它钉的是本机 exec 那条路
+    //   「退出 2 ＋ `unknown argument`」的认法（`local_failure_kind`〔散文墓碑〕），那条路改走 `<local>` 长连接之后
+    //   「老后端」由长连接的 `accepts` 当场判（与远端同一个判定），不再读后端 stderr 的措辞。
     (
         "monitor→backend",
         "tests/bridge/history_title_coverage.rs",

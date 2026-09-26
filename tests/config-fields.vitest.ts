@@ -26,13 +26,19 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const store = vi.hoisted(() => ({ cfg: {} as Record<string, unknown>, saved: [] as unknown[] }));
 
-vi.mock("../src/config", () => ({
-  loadConfig: vi.fn(async () => store.cfg),
-  saveConfig: vi.fn(async (v: unknown) => {
-    store.saved.push(v);
-    store.cfg = v as Record<string, unknown>;
-  }),
-}));
+// 〔CFG1〕写只交补丁（`patchConfig`）；这里按与 Rust 写口同一份金样的语义（`tests/config-patch-fake.ts`）应用到 `store.cfg`。
+vi.mock("../src/config", async (orig) => {
+  const actual = await orig<Record<string, unknown>>();
+  const { applyConfigEdits } = await import("./config-patch-fake");
+  return {
+    ...actual,
+    loadConfig: vi.fn(async () => store.cfg),
+    patchConfig: vi.fn(async (edits: Parameters<typeof applyConfigEdits>[1]) => {
+      store.cfg = JSON.parse(applyConfigEdits(JSON.stringify(store.cfg), edits)) as Record<string, unknown>;
+      store.saved.push(store.cfg);
+    }),
+  };
+});
 vi.mock("../src/keybindings/actions", () => ({
   findAction: (id: string) => (["tab.next", "tab.close-archived"].includes(id) ? { id } : undefined),
 }));
