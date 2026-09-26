@@ -289,57 +289,20 @@ fn a_prior_of_the_wrong_shape_is_refused() {
     }
 }
 
-/// 生成物里 `agent: "<名>"` 那一行之后第一个 `<键>: [...]` 的数组（取字面量里的串，按原序）。
-fn generated_array(table: &str, agent: &str, key: &str) -> Vec<String> {
-    let at = table
-        .find(&format!("agent: \"{agent}\""))
-        .unwrap_or_else(|| {
-            panic!("生成物里找不到 agent {agent:?} 那一行 —— 生成物的形状变了，本对拍在空转")
-        });
-    let rest = &table[at..];
-    let k = rest
-        .find(&format!("{key}: ["))
-        .unwrap_or_else(|| panic!("{agent:?} 那一行里找不到 `{key}: [` —— 生成物的形状变了"));
-    let body = &rest[k + key.len() + 3..];
-    let body = &body[..body.find(']').expect("数组没有收尾的 `]`")];
-    body.split(',')
-        .map(|s| s.trim().trim_matches('"').to_string())
-        .filter(|s| !s.is_empty())
-        .collect()
-}
-
-/// ★ 后端这份 agent 工具名 == monitor 那份（经生成物 `src/generated/agent-profile-table.ts`，门禁 `generated` 那一格
-/// 守着它 == `adapter.rs`）。两边任一边改了而另一边没跟 ⇒ 红（异源：一侧是本 crate 的常量，另一侧是 monitor 的生成物）。
-#[test]
-fn the_agent_tools_equal_the_generated_profile_row() {
-    let table = include_str!("../../../src/generated/agent-profile-table.ts");
-    let mut want = generated_array(table, "claude", "agentTools");
-    want.sort();
-    let mut got: Vec<String> = AGENT_TOOLS.iter().map(|s| s.to_string()).collect();
-    got.sort();
-    assert_eq!(
-        got, want,
-        "后端 `AGENT_TOOLS` 与生成物里 claude 的 `agentTools` 不相等"
-    );
-}
-
-/// 正控：同一个取数函数对一段手写的样本取得出东西（取数坏了在这里先红，而不是让上一条恒等）。
-#[test]
-fn the_generated_array_reader_sees_a_synthetic_row() {
-    let sample = "{ agent: \"x\", agentTools: null }, { agent: \"claude\", other: [\"no\"], agentTools: [\"B\", \"A\"], y: [] }";
-    assert_eq!(
-        generated_array(sample, "claude", "agentTools"),
-        vec!["B", "A"]
-    );
-}
+// 〔DUP2 · 主会话 09-26 裁 J19〕这里原来有一条异源对拍（后端的 agent 工具名 == 生成物 `agent-profile-table.ts` 里 claude 那一行）
+// ＋ 它的取数助手与取数正控。两份收成一份进共享 crate `agent_tools_core` 之后，两半按构造是同一个常量 ⇒ 那条对拍恒真、随之退役
+// （判定本身的正反两格住 `tests/bridge/crates/agent-tools-core/lib_tests.rs`；「只有一份」由 `tests/judgment-single-home.vitest.ts` 的 J19 钉）。
 
 #[test]
 fn the_two_lookups_answer_from_their_tables() {
     for t in AGENT_TOOLS {
-        assert!(is_agent_tool(t));
+        assert!(agent_tools_core::is_claude_agent_tool(t));
     }
-    assert!(!is_agent_tool("Bash"));
-    assert!(!is_agent_tool("task"), "大小写敏感：工具名原样比对");
+    assert!(!agent_tools_core::is_claude_agent_tool("Bash"));
+    assert!(
+        !agent_tools_core::is_claude_agent_tool("task"),
+        "大小写敏感：工具名原样比对"
+    );
     for (name, key) in EDIT_TOOL_PATH_KEYS {
         assert_eq!(edit_path_key(name), Some(*key));
     }

@@ -56,6 +56,8 @@ use std::path::{Path, PathBuf};
 
 /// 单元层：不读仓内文本、不碰 OS 的测试文件。
 const UNIT: &[&str] = &[
+    "tests/bridge/crates/agent-tools-core/lib_tests.rs", // 〔DUP2 · J19〕新共享 crate `agent-tools-core` 的判定（纯函数）
+    "tests/backend/observe/facts_query_tests.rs", // 〔DUP2 · J19〕SCAN → UNIT：读生成物那条异源对拍随两份收成一份退役，余下全是行为判据
     "tests/bridge/apikey_remote_tests.rs", // 〔HX2〕写臂那几条（读源码对拍）退役，只剩发送口一条行为判据（SCAN → UNIT）
     "tests/config-lost-update.vitest.ts",  // 〔CFG1〕J1 两 realm 11 写者同拍写 · J5 写者路径集合
     "tests/config-persist-failure.vitest.ts", // 〔CFG1〕J8 落盘失败恰好一条 toast
@@ -292,7 +294,6 @@ const SCAN: &[&str] = &[
     "tests/backend/main_window_raise_guard.rs",
     "tests/backend/no_timer_guard.rs",
     // 〔STC〕会话事实的口径与续传（纯字节）＋ 一条异源对拍读生成物 `src/generated/agent-profile-table.ts` ⇒ 判别器判扫描层。
-    "tests/backend/observe/facts_query_tests.rs",
     "tests/backend/panorama_locus_guard.rs",
     "tests/backend/platform/cfgless_guard.rs",
     "tests/backend/platform/fallback_guard.rs",

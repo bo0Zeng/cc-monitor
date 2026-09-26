@@ -369,16 +369,26 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J19: {
     what: "哪些工具名算「展开 = 子会话」（agent 工具）",
-    // 〔STC · 第四波 4D〕会话事实搬进后端之后，这张表在 Rust 有两个住址：monitor `adapter.rs::agent_profile_facts`
-    //   （经生成物 `src/generated/agent-profile-table.ts` 喂前端**渲染** agent 卡，TS 侧 `cards/subagent.ts::isAgentTool` 读的就是它）
-    //   与后端 `observe/facts_query.rs::is_agent_tool`（喂**会话事实**的 agent 列表）。两份由异源对拍钉着：
-    //   `tests/backend/observe/facts_query_tests.rs::the_agent_tools_equal_the_generated_profile_row`（后端常量 == 生成物里 claude 那一行）。
-    homes: ["src/backend/observe/facts_query.rs::is_agent_tool", "src/bridge/src/adapter.rs::agent_profile_facts"],
-    status: "open",
+    // 〔DUP2 · 主会话 09-26 裁 J19〕两个 Rust 住址（后端 `observe/facts_query.rs` 喂会话事实 · monitor `adapter.rs` 喂渲染 agent 卡，
+    //   `调研/第四波记录/STC.md §1.3`）收成一份进新立的共享 crate `agent-tools-core`（两半编译期不许互咬 —— `设计/90 §0` C2 ——
+    //   共享 crate 是唯一合法的形；现有 core 没有一个的身份是「工具词表」，理由见 `调研/第四波记录/DUP2.md §2`）。
+    //   两边都成它的别名，异源对拍（后端常量 == 生成物里 claude 那一行）随之退役。
+    //   TS 侧 `cards/subagent.ts::isAgentTool` 是按生成物（`agent-profile-table.ts`，由 monitor 从这份现生成）求值的薄壳。
+    homes: ["agent-tools-core::is_claude_agent_tool", "agent-tools-core::CLAUDE_AGENT_TOOLS"],
+    status: "generated",
     defs: ["isAgentTool"],
-    needles: [],
-    owner: "主会话拍（`调研/第四波记录/STC.md §1.3`：收成一份要一个两半都能依赖的 `*-core`，本路不自建）",
-    why: "两半不许编译期互咬（`设计/90 §0` C2），今天没有能放工具词表的共享 crate；TS 侧那一处读生成物、不手写规则",
+    needles: [{ text: 'new Set(["Agent", "Task"])', count: 0 }],
+    gen: {
+      file: "src/generated/agent-profile-table.ts",
+      exports: ["AGENT_PROFILE_TABLE"],
+      importers: ["src/agent-profile.ts"],
+    },
+    parity: { via: "src/bridge/crates/agent-tools-core/src/lib.rs", tests: ["tests/agent-profile-parity.vitest.ts"] },
+    rustGone: ["src/backend/observe/facts_query.rs::is_agent_tool"],
+    rustNeedles: [
+      { file: "src/backend/observe/facts_query.rs", text: '&["Agent", "Task"]', count: 0 },
+      { file: "src/bridge/src/adapter.rs", text: '&["Agent", "Task"]', count: 0 },
+    ],
   },
   J16: {
     what: "账号种类的取值集",
@@ -433,6 +443,11 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     is_deceptive_char: "J2",
     MANIFEST_NAME: NONE,
     SUPPORTED_SCHEMA: NONE,
+  },
+  // 〔DUP2 · J19〕agent 的工具词表（新立；monitor 渲染与后端会话事实共用）。
+  "agent-tools-core": {
+    CLAUDE_AGENT_TOOLS: "J19",
+    is_claude_agent_tool: "J19",
   },
   "branch-core": {
     build_branch_records: NONE,

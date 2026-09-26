@@ -43,14 +43,13 @@ use serde_json::Value;
 // 搬进适配层 `agents/claudecode/` 就要从这里直呼它 ⇒ `agent_locality_guard::NEW_AGENT_GAP_BASELINE` 26 → 27，
 // 而那是只许降的棘轮 ⇒ 不抬。收进接口（`L2`/`S6`）时这两张随本文件一起走。
 //
-// ⚠ agent 工具名今天有两个 Rust 住址：monitor `adapter.rs::CLAUDE_AGENT_TOOLS`（经生成物
-// `src/generated/agent-profile-table.ts` 喂前端**渲染** agent 卡）与这里（喂**会话事实**）。两半不许在编译期互咬
-// （`设计/90 §0` 的 `C2`），今天没有能放它的共享 crate ⇒ 由一条异源对拍钉住（本文件测试：这里 == 生成物里 claude 那一行
-// 的 `agentTools`）。登记在「判定 → 唯一住址」那张表（DUP1，`tests/judgment-single-home.vitest.ts` 的 J19，`open`：收成一份等主会话拍），见 `调研/第四波记录/STC.md §1.3`。
+// 〔DUP2 · 主会话 09-26 裁 J19〕agent 工具名**只有一份**，住共享 crate `agent_tools_core`（monitor 渲染 agent 卡用同一份）。
+//   此前这里一份、monitor `adapter.rs` 一份，两半不许编译期互咬（`设计/90 §0` 的 `C2`）、当时没有能放它的共享 crate ⇒
+//   靠一条异源对拍钉着（见 `调研/第四波记录/STC.md §1.3`）；今天按构造同一份，那条对拍退役。
 // 写类工具表**只有这一份**（前端 `panorama/session-files.ts` 整份随搬家删了）。
 
-/// 展开 = 子会话的工具（Claude Code 的 `Task`，新版改名 `Agent`，两个都认）。
-pub(crate) const AGENT_TOOLS: &[&str] = &["Agent", "Task"];
+/// 展开 = 子会话的工具（Claude Code 的 `Task`，新版改名 `Agent`，两个都认）—— 共享那一份的别名，不是副本。
+pub(crate) const AGENT_TOOLS: &[&str] = &agent_tools_core::CLAUDE_AGENT_TOOLS;
 
 /// 写类工具 → 取路径的键。Edit / Write / MultiEdit 用 `file_path`；NotebookEdit 用 `notebook_path`。
 /// 与渲染那边的「写类」（`adapter.rs::CLAUDE_DIFF_TOOLS`，行级 diff）**不是同一个问题**：
@@ -61,10 +60,6 @@ pub(crate) const EDIT_TOOL_PATH_KEYS: &[(&str, &str)] = &[
     ("MultiEdit", "file_path"),
     ("NotebookEdit", "notebook_path"),
 ];
-
-fn is_agent_tool(name: &str) -> bool {
-    AGENT_TOOLS.contains(&name)
-}
 
 fn edit_path_key(name: &str) -> Option<&'static str> {
     EDIT_TOOL_PATH_KEYS
@@ -247,7 +242,7 @@ fn note_record(f: &mut SessionFacts, v: &Value) {
                             touch(f, p);
                         }
                     }
-                    if is_agent_tool(name) {
+                    if agent_tools_core::is_claude_agent_tool(name) {
                         if let Some(id) = b.get("id").and_then(Value::as_str) {
                             upsert_agent(f, agent_of(id, name, b.get("input"), timestamp));
                         }
