@@ -10659,6 +10659,61 @@
       "zh": "复制 {n} 项到另一栏",
       "args": ["n"]
     },
+    "rsFilewinSize.label.size": {
+      "kind": "action",
+      "zh": "算大小",
+      "args": []
+    },
+    "rsFilewinSize.reply.missingField": {
+      "kind": "error",
+      "zh": "算大小的回答里没有 {field} 字段，两边版本可能对不上",
+      "args": ["field"]
+    },
+    "rsFilewinSize.outcome.line": {
+      "kind": "body",
+      "zh": "{name}：{human}（{bytes} 字节），{files} 个文件、{dirs} 个目录",
+      "args": ["name", "human", "bytes", "files", "dirs"]
+    },
+    "rsFilewinSize.outcome.links": {
+      "kind": "body",
+      "zh": "，{n} 条链接没算进去",
+      "args": ["n"]
+    },
+    "rsFilewinSize.outcome.mounts": {
+      "kind": "body",
+      "zh": "，{n} 个目录在另一个盘上，没进去",
+      "args": ["n"]
+    },
+    "rsFilewinSize.outcome.unreadable": {
+      "kind": "body",
+      "zh": "，{n} 个目录读不进去",
+      "args": ["n"]
+    },
+    "rsFilewinSize.outcome.failed": {
+      "kind": "error",
+      "zh": "{name} 算不出来：{why}",
+      "args": ["name", "why"]
+    },
+    "rsFilewinSize.outcome.sep": {
+      "kind": "body",
+      "zh": "；",
+      "args": []
+    },
+    "rsFilewinSize.ui.running": {
+      "kind": "body",
+      "zh": "正在那台机器上算 {name} 的大小 …",
+      "args": ["name"]
+    },
+    "rsFilewinShell.size.noRuntime": {
+      "kind": "error",
+      "zh": "算大小启动不了，请重开这个窗口",
+      "args": []
+    },
+    "rsFilewinShell.busy.sizing": {
+      "kind": "body",
+      "zh": "正在算 {name} 的大小",
+      "args": ["name"]
+    },
     "rsFilewinCopy.ui.askOverwriteMany": {
       "kind": "body",
       "zh": "远端已经有这 {n} 个同名文件了，要覆盖吗？",

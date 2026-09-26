@@ -459,6 +459,8 @@ pub enum Action {
     Copy,
     /// 往外拖（「存到哪儿」那一问）。
     Download,
+    /// 〔W5-FILES · `设计/60 §6.2`〕算大小（后端 `files-size`）—— 一项或多项。
+    Size,
     Rename,
     /// 改权限 —— 〔FW5〕对一项或多项（头注 §三）。
     Chmod,
@@ -479,6 +481,7 @@ impl Action {
             Action::Edit => super::editor::EDIT_LABEL.to_string(),
             Action::Copy => super::copy::COPY_LABEL.to_string(),
             Action::Download => super::download::DOWNLOAD_LABEL.to_string(),
+            Action::Size => super::size::SIZE_LABEL.to_string(),
             Action::Rename => super::writeops::RENAME_LABEL.to_string(),
             Action::Chmod if n > 1 => {
                 copy_text("rsFilewinSelect.label.chmodMany", &[("n", &n.to_string())])
@@ -498,7 +501,7 @@ impl Action {
 /// `is_downloadable` / `is_writable`）—— 行上那几颗按钮画不画问的正是同几个函数
 /// ⇒ 「行上有那颗按钮」与「菜单上有那一项」对单选**逐项同源**。
 ///
-/// 回值按固定顺序（打开/编辑 · 复制 · 下载 · 改名 · 权限 · 删除）。空 ⇒ 什么都做不了。
+/// 回值按固定顺序（打开/编辑 · 复制 · 下载 · 〔W5-FILES〕算大小 · 改名 · 权限 · 删除）。空 ⇒ 什么都做不了。
 pub fn actions_for(picked: &[&Listed]) -> Vec<Action> {
     let mut out = Vec::new();
     match picked {
@@ -515,6 +518,10 @@ pub fn actions_for(picked: &[&Listed]) -> Vec<Action> {
             if is_downloadable(r) {
                 out.push(Action::Download);
             }
+            // 〔W5-FILES〕算大小：名字寻址得到就给（文件也收，后端回它自己）。
+            if !r.lossy_name {
+                out.push(Action::Size);
+            }
             if is_writable(r) {
                 out.push(Action::Rename);
                 out.push(Action::Chmod);
@@ -522,6 +529,10 @@ pub fn actions_for(picked: &[&Listed]) -> Vec<Action> {
             }
         }
         many => {
+            // 〔W5-FILES〕多项也能算大小 —— 同样要**每一项**都寻址得到（`设计/60 §6.3`）。
+            if many.iter().all(|r| !r.lossy_name) {
+                out.push(Action::Size);
+            }
             // 🔴 多项只有权限与删除，而且要**每一项都能写**才给：
             //    给「删除这 3 项」却只删 2 项（有损名那一项悄悄跳过），
             //    与「选中态 == 批量那一摞」这条相等正相反。

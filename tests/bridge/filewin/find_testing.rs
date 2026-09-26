@@ -524,6 +524,27 @@ impl FakeBackend {
                     ),
                 )
             }
+            // 〔W5-FILES〕算大小：只记下来、回一组定值；`path` 里带 `refuse` ⇒ 按「读不到」拒。
+            "files-size" => {
+                let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                if path.contains("refuse") {
+                    return (
+                        false,
+                        Some("unreadable".into()),
+                        Some("这个路径读不到：PermissionDenied".into()),
+                        None,
+                    );
+                }
+                (
+                    true,
+                    None,
+                    None,
+                    Some(serde_json::json!({
+                        "path": path, "bytes": 2048, "files": 3, "dirs": 2, "links": 1,
+                        "other": 0, "skipped_mounts": 0, "unreadable_dirs": 0,
+                    })),
+                )
+            }
             // 〔F7a · 第三波 09-24〕复制：只记下来、不落盘；`root` 里带 `refuse` ⇒ 按围栏那一档拒，
             //   否则回一个定值字节数（判据要的是「那个数原样带回来」）。
             "files-copy" => {
