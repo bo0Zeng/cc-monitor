@@ -273,6 +273,19 @@ pub(crate) static WHY_ID_UNUSABLE: std::sync::LazyLock<String> =
 pub(crate) static WHY_PLAINTEXT_OFF_LOOPBACK: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("beUpstreamTable.whyPlaintextOffLoopback.say", &[]));
 
+/// 〔DUP3 · J9〕一条 `base_url` 能用 ⇒ 装成 `Base`；不能用 ⇒ 那一句（装表与写口 `file_face.rs` 共用）。
+/// 明文只许回环判的是**这一刻的字面**，不是「连出去之后落到哪」（解析到回环的域名照样拒）。
+pub(crate) fn base_if_usable(url: &str) -> Result<Base, &'static str> {
+    let base = Base::parse(url).map_err(|i| i.0)?;
+    match upstream_url_core::usable(url) {
+        Err(upstream_url_core::Unusable::PlaintextOffLoopback) => {
+            Err(WHY_PLAINTEXT_OFF_LOOPBACK.as_str())
+        }
+        // 形状那几形上面 `Base::parse` 已经说过（同一个 `parse`）。
+        _ => Ok(base),
+    }
+}
+
 /// `auth_style` 写了一个认不出的词。**刻意不回落成默认值**。
 pub(crate) static WHY_AUTH_STYLE_UNKNOWN: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("beUpstreamTable.whyAuthStyleUnknown.say", &[]));
@@ -382,31 +395,18 @@ pub(crate) fn build(
             });
             continue;
         }
+        // 〔DUP3 · J9〕「能不能用」（形状 ＋ 明文只许回环）只有一份：`upstream_url_core::usable`，与写口 · 界面同一条。
+        //   ★ `K-R1`：理由**来自判定自己**（逐形一句），不是调用方现编一句万能的话。
         let base = match e.base_url.as_deref() {
             None => default_base.clone(),
-            Some(u) => match Base::parse(u) {
+            Some(u) => match base_if_usable(u) {
                 Ok(b) => b,
-                // ★ `K-R1`：理由**来自解析器自己**，不是调用方现编一句万能的话。
-                //   先前这里写死「base_url 解析不了（要 https:// 或 http://）」，
-                //   而那句话在「端口读不懂」「带了查询串」这几形上是**假的指引**。
-                Err(issue) => {
-                    rejected.push(Rejected {
-                        id: e.id,
-                        why: issue.0,
-                    });
+                Err(why) => {
+                    rejected.push(Rejected { id: e.id, why });
                     continue;
                 }
             },
         };
-        // 🔴 明文只许回环。⚠ 它判的是**装表这一刻的字面**，不是「连出去之后落到哪」——
-        //    一个解析到回环的域名本条照样拒（`Base::host_is_loopback` 的头注写清了分母）。
-        if !base.tls && !base.host_is_loopback() {
-            rejected.push(Rejected {
-                id: e.id,
-                why: WHY_PLAINTEXT_OFF_LOOPBACK.as_str(),
-            });
-            continue;
-        }
         let auth_style = match e.auth_style {
             AuthStyleSetting::Absent => AuthStyle::DEFAULT,
             AuthStyleSetting::Known(s) => s,

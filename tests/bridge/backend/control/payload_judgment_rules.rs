@@ -110,7 +110,159 @@ fn render_judgment_rules() -> String {
         "export const RBIND_TOKEN_LEN = {};\n",
         shell_quote_core::RBIND_TOKEN_LEN
     ));
+    // 〔DUP3 · J9〕上游 base URL：新建 API 号表单逐字那一句读它（`checkBaseUrl` 只剩「空 ⇒ 默认」与「按 code 说哪句」）。
+    let table = base_url_issue_patterns();
+    let pats: Vec<[&str; 2]> = table.iter().map(|(c, p)| [*c, p.as_str()]).collect();
+    let pats = serde_json::to_string(&pats).expect("字符串序列化不会失败");
+    s.push_str(
+        "\n/** 上游 base URL 用不用得了 —— 规则住 `upstream_url_core::usable`。有序表：第一条命中的就是理由，都不命中 = 能用。 */\n",
+    );
+    s.push_str(&format!(
+        "export const BASE_URL_ISSUE_PATTERNS = {pats} as const;\n"
+    ));
+    s.push_str("/** 见 [`BASE_URL_ISSUE_PATTERNS`]。 */\n");
+    s.push_str("export type BaseUrlIssue = (typeof BASE_URL_ISSUE_PATTERNS)[number][0];\n\n");
+    s.push_str(
+        "const BASE_URL_ISSUE_RES = BASE_URL_ISSUE_PATTERNS.map(([c, p]) => [c, new RegExp(p)] as const);\n\n",
+    );
+    s.push_str(
+        "/** 见 [`BASE_URL_ISSUE_PATTERNS`]（调用方先 trim；空串 = 用默认上游，不在这里）。 */\n",
+    );
+    s.push_str(
+        "export function baseUrlIssue(s: string): BaseUrlIssue | null {\n  for (const [c, re] of BASE_URL_ISSUE_RES) if (re.test(s)) return c;\n  return null;\n}\n",
+    );
     s
+}
+
+// ─── 〔DUP3 · J9〕上游 base URL 能不能用（`upstream_url_core::usable`）的式子 ────────────────────────────
+// 有序表：每条「假定前面各条都没命中」，与 `parse` / `usable` 的检查顺序一一对应；数据（空白字符全集 · 协议闭集 ·
+// 端口上界 · 回环名）从 core / 标准库现取。IPv4 / IPv6 回环的写法按标准库解析器的语法生成（`127/8` · 值 == `::1`）。
+
+/// 正则里的元字符 ⇒ 转义（字面量用）。
+fn re_escape(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            if "\\^$.|?*+()[]{}/".contains(c) {
+                format!("\\{c}")
+            } else {
+                c.to_string()
+            }
+        })
+        .collect()
+}
+
+/// `char::is_whitespace` 的全集（在全部标量上现枚举）⇒ 字符类。
+fn whitespace_class() -> String {
+    let mut s = String::from("[");
+    for u in 0u32..=0x10FFFF {
+        if char::from_u32(u).is_some_and(char::is_whitespace) {
+            assert!(u <= 0xFFFF, "BMP 之外出现了空白字符 —— 式子得带 u 旗");
+            s.push_str(&format!("\\u{u:04X}"));
+        }
+    }
+    s.push(']');
+    s
+}
+
+/// 「≤ `max` 的十进制，可带 `+`、可带前导 0」—— `u16::from_str` 的口径（端口那一格）。
+fn decimal_at_most(max: u32) -> String {
+    let d: Vec<u32> = max
+        .to_string()
+        .chars()
+        .map(|c| c.to_digit(10).expect("十进制"))
+        .collect();
+    let n = d.len();
+    let mut alts = vec![format!("[0-9]{{1,{}}}", n - 1)];
+    for i in 0..n {
+        if d[i] > 0 {
+            let prefix: String = d[..i].iter().map(|x| x.to_string()).collect();
+            let rest = n - i - 1;
+            let tail = if rest > 0 {
+                format!("[0-9]{{{rest}}}")
+            } else {
+                String::new()
+            };
+            alts.push(format!("{prefix}[0-{}]{tail}", d[i] - 1));
+        }
+    }
+    alts.push(max.to_string());
+    format!("\\+?0*(?:{})", alts.join("|"))
+}
+
+/// 回环主机的写法（剥方括号之前）：`\[*` ＋ 本体 ＋ `\]*`（`upstream_is_loopback` 剥的是全部前导 `[` 与尾随 `]`）。
+/// `with_v6` = 本体里有没有 IPv6 那几形（它们带 `:`，只能出现在「最后一个 `:` 之前」那一格）。
+fn loopback_host(with_v6: bool) -> String {
+    let name: String = upstream_url_core::LOOPBACK_NAME
+        .chars()
+        .map(|c| format!("[{}{}]", c.to_ascii_lowercase(), c.to_ascii_uppercase()))
+        .collect();
+    // `Ipv4Addr` 的口径：四段、每段 0–255、不许前导 0；`is_loopback` = 首段 127。
+    let o = "(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]|[0-9])";
+    let v4 = format!("127\\.{o}\\.{o}\\.{o}");
+    let mut alts = vec![name, v4];
+    if with_v6 {
+        // `Ipv6Addr` 的口径：组 = 1–4 位十六进制；`::` 至少代表一组；尾部可嵌 IPv4（占两组）；`is_loopback` = 值为 1。
+        let (z, one, v4one) = ("0{1,4}", "0{0,3}1", "0\\.0\\.0\\.1");
+        let mut v6 = vec![
+            format!("(?:{z}:){{7}}{one}"),
+            format!("(?:{z}:){{6}}{v4one}"),
+        ];
+        for h in 0..=6usize {
+            let head = match h {
+                0 => String::new(),
+                1 => z.to_string(),
+                _ => format!("{z}(?::{z}){{{}}}", h - 1),
+            };
+            let mut tails = vec![format!("(?:{z}:){{0,{}}}{one}", 6 - h)];
+            if h <= 5 {
+                tails.push(format!("(?:{z}:){{0,{}}}{v4one}", 5 - h));
+            }
+            v6.push(format!("{head}::(?:{})", tails.join("|")));
+        }
+        alts.push(format!("(?:{})", v6.join("|")));
+    }
+    format!("\\[*(?:{})\\]*", alts.join("|"))
+}
+
+/// J9 的有序式子表：`[code, 式子]`。
+fn base_url_issue_patterns() -> Vec<(&'static str, String)> {
+    use upstream_url_core::{ShapeIssue as S, Unusable as U, SCHEMES};
+    let all: Vec<String> = SCHEMES.iter().map(|(s, _)| re_escape(s)).collect();
+    let plain: Vec<String> = SCHEMES
+        .iter()
+        .filter(|(_, tls)| !tls)
+        .map(|(s, _)| re_escape(s))
+        .collect();
+    let port = decimal_at_most(u32::from(u16::MAX));
+    vec![
+        (S::Whitespace.code(), whitespace_class()),
+        (S::NotUrl.code(), "^(?![\\s\\S]*://)".to_string()),
+        (
+            S::BadScheme.code(),
+            format!("^(?!(?:{})://)", all.join("|")),
+        ),
+        (S::NoHost.code(), "^[^:]*://(?:/|$)".to_string()),
+        (S::HasQuery.code(), "^[^:]*://[^/]*[?#]".to_string()),
+        (
+            S::BadPort.code(),
+            format!("^[^:]*://[^/]*:(?!{port}(?:/|$))[^:/]*(?:/|$)"),
+        ),
+        (S::NoHost.code(), "^[^:]*://:[^:/]*(?:/|$)".to_string()),
+        (S::HasQuery.code(), "[?#]".to_string()),
+        (
+            S::DoubleSlash.code(),
+            "^[^:]*://[^/]*//[\\s\\S]*[^/]".to_string(),
+        ),
+        (
+            U::PlaintextOffLoopback.code(),
+            format!(
+                "^(?:{})://(?!(?:{}:[^:/]*|{})(?:/|$))",
+                plain.join("|"),
+                loopback_host(true),
+                loopback_host(false)
+            ),
+        ),
+    ]
 }
 
 /// 生成 `src/generated/judgment-rules.ts`。
@@ -153,5 +305,26 @@ fn the_shared_golden_agrees_with_the_one_rule() {
         }
     }
     assert!(seen > 30, "金样只有 {seen} 条 —— 读坏了");
+    assert_eq!(wrong, Vec::<String>::new(), "Rust 那一份与共用金样对不上");
+}
+
+/// 〔DUP3 · J9〕共用金样 `tests/__fixtures__/upstream-url.golden.json` 逐条：`upstream_url_core::usable` 的结论 == 手写的 want
+/// （TS 那一侧 `tests/upstream-url-parity.vitest.ts` 读同一份跑生成的式子 ⇒ 两侧各对金样，不是彼此对拍）。
+#[test]
+fn the_upstream_url_golden_agrees_with_the_one_rule() {
+    let raw = include_str!("../../../__fixtures__/upstream-url.golden.json");
+    let g: serde_json::Value = serde_json::from_str(raw).expect("金样不是合法 JSON");
+    let cases = g["cases"].as_array().expect("金样缺 cases");
+    assert!(cases.len() > 40, "金样只有 {} 条 —— 读坏了", cases.len());
+    let mut wrong = Vec::new();
+    for c in cases {
+        let url = c["url"].as_str().expect("url 是字符串");
+        let got = upstream_url_core::usable(url)
+            .err()
+            .map(upstream_url_core::Unusable::code);
+        if got != c["want"].as_str() {
+            wrong.push(format!("{url:?}：得 {got:?}，金样 {:?}", c["want"]));
+        }
+    }
     assert_eq!(wrong, Vec::<String>::new(), "Rust 那一份与共用金样对不上");
 }

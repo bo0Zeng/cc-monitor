@@ -1464,6 +1464,10 @@ fn a_launcher_is_one_command_fragment_from_the_shared_whitelist() {
             .err()
             .unwrap_or_else(|| panic!("坏启动器拼进去了：{bad:?}"));
         assert!(e.0.contains("--launcher"), "没说清是哪一格：{}", e.0);
-        assert!(e.0.contains(&format!("{c:?}")), "{bad:?}：没说出是哪个字符：{}", e.0);
+        assert!(
+            e.0.contains(&format!("{c:?}")),
+            "{bad:?}：没说出是哪个字符：{}",
+            e.0
+        );
     }
 }

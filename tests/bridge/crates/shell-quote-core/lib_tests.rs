@@ -176,7 +176,11 @@ fn a_launcher_is_a_command_fragment_from_one_whitelist() {
         "./node_modules/.bin/claude",
         "my_agent-2.1",
     ] {
-        assert_eq!(launcher_refused_char(good), None, "真实启动器被拒了：{good:?}");
+        assert_eq!(
+            launcher_refused_char(good),
+            None,
+            "真实启动器被拒了：{good:?}"
+        );
     }
     for (bad, c) in [
         ("claude;rm -rf ~", ';'),

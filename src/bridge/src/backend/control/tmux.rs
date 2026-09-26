@@ -475,15 +475,15 @@ fn gate1_admit_target(target: &str) -> Result<(), String> {
             "rsTmux.target.empty",
             &[("target", &format!("{:?}", target))],
         )),
-        Some(
-            gate_core::TmuxNameIssue::Control(c) | gate_core::TmuxNameIssue::Deceptive(c),
-        ) => Err(copy_text(
-            "rsTmux.target.badChar",
-            &[
-                ("target", &format!("{:?}", target)),
-                ("c", &format!("U+{:04X}", c as u32)),
-            ],
-        )),
+        Some(gate_core::TmuxNameIssue::Control(c) | gate_core::TmuxNameIssue::Deceptive(c)) => {
+            Err(copy_text(
+                "rsTmux.target.badChar",
+                &[
+                    ("target", &format!("{:?}", target)),
+                    ("c", &format!("U+{:04X}", c as u32)),
+                ],
+            ))
+        }
         // 「已有会话」那一条只回上面三种（前导 `-` · 目标语法 · 超长是新建那一条的事）。
         Some(other) => Err(copy_text(
             "rsTmux.target.badChar",

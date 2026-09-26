@@ -413,7 +413,9 @@ fn parse_send(args: &serde_json::Value) -> Result<(String, String, Option<String
 ///
 /// 〔DUP3 · 主会话 09-26 裁 · `INVARIANTS §47`「交给对端之前本侧先判」〕先前 `from` 原样交给 `cc-send`、一格都不判 ——
 /// 它与收件人是同一种值（agent id），同样是交给对端去寻址的。`bus-send` 与 `bus-broadcast` 共用这一处。
-fn given_sender(obj: &serde_json::Map<String, serde_json::Value>) -> Result<Option<String>, CmdErr> {
+fn given_sender(
+    obj: &serde_json::Map<String, serde_json::Value>,
+) -> Result<Option<String>, CmdErr> {
     let from = obj
         .get("from")
         .and_then(|v| v.as_str())

@@ -246,6 +246,7 @@ const UNIT: &[&str] = &[
     "tests/views/session-viewer-scroll.vitest.ts",
     "tests/views/session-viewer-skeleton.vitest.ts",
     "tests/views/user-input-panel.vitest.ts",
+    "tests/bridge/crates/upstream-url-core/lib_tests.rs", // 〔DUP3 · J9〕新共享 crate `upstream-url-core` 的判定（纯函数）
 ];
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
@@ -503,6 +504,7 @@ const SCAN: &[&str] = &[
     "tests/views/inbox-view.vitest.ts",
     "tests/views/live-user-inputs.vitest.ts",
     "tests/views/session-viewer-user-inputs.vitest.ts",
+    "tests/upstream-url-parity.vitest.ts", // 〔DUP3 · J9〕读共用金样（仓内文本）⇒ 扫描层
 ];
 
 /// 集成层：碰 OS（起进程 · 套接字 · 真文件系统写 · 临时目录）。

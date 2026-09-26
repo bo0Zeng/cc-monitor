@@ -203,7 +203,7 @@ pub(crate) fn admit(head: &RequestHead, key: &Key) -> Verdict {
         .iter()
         .filter(|(k, _)| k.eq_ignore_ascii_case("host"));
     match (hosts.next(), hosts.next()) {
-        (Some((_, h)), None) if host_is_loopback(h) => {}
+        (Some((_, h)), None) if host_header_is_loopback_literal(h) => {}
         _ => return Verdict::NotLoopbackHost,
     }
     let Some(after) = head.target.strip_prefix('/') else {
@@ -220,7 +220,9 @@ pub(crate) fn admit(head: &RequestHead, key: &Key) -> Verdict {
 }
 
 /// `Host` 那一格是不是回环字面量：`127.0.0.1` · `localhost` · `[::1]`，可带 `:<十进制口>`。大小写不敏感。
-pub(crate) fn host_is_loopback(raw: &str) -> bool {
+/// 〔DUP3 · 主会话 09-26 裁（丙）〕防 DNS 重绑，只认三个字面量是设计；与上游那条「这个地址在不在本机」
+/// （`upstream_url_core::upstream_is_loopback`，整个 `127/8`）是两个判定，不许并。
+pub(crate) fn host_header_is_loopback_literal(raw: &str) -> bool {
     let h = raw.trim().to_ascii_lowercase();
     let name = if let Some(r) = h.strip_prefix('[') {
         match r.split_once(']') {
