@@ -366,10 +366,24 @@ pub(crate) fn classify_send(code: Option<i32>, detail: &str) -> Result<(), (Stri
     }
 }
 
+/// 〔DUP2 · 主会话 09-26 裁 J12 · `INVARIANTS §47` ①〕agent id / 账号名在交给 `cc-send` / `cc-kill` / `cc-spawn` **之前**先过形状判定
+/// （`shell_quote_core::bus_id_ok`：非空 · 不以 `-` 开头 · 只含 `[A-Za-z0-9_-]`，全仓唯一一份）。判不过 ⇒ `bad_id`，一个进程都不起。
+///
+/// 为什么在这里判、而不是「交给 cc-bus 自己去拒」：`§47` 逐字「**『对端会校验』不是理由**」—— 收掉一个 agent 的后果是杀一棵进程树；
+/// 界面那一道（C4e 第四次搬家住在 `src/cc-bus-control.ts`）按 `设计/90 §3` 判据 2 删了，「本侧」从此是真把 id 交出去的这一侧（第五次搬家）。
+/// ⚠ 判的是**形状**，不是**成员资格**：「这个名字登没登记过」仍归 cc-bus（`registered` 那一格照旧如实回）。
+/// `said` 收那个值的 `{:?}` 形、给出那一句（文案走表：key 在各调用处写字面量，`copy-table.vitest.ts` 按调用点两向对拍）。
+fn refuse_bad_bus_id(v: &str, said: impl FnOnce(&str) -> String) -> Result<(), CmdErr> {
+    if shell_quote_core::bus_id_ok(v) {
+        return Ok(());
+    }
+    Err(("bad_id", said(&format!("{v:?}"))))
+}
+
 /// 形状校验：这组参数能不能构成一次有意义的调用。
 ///
-/// ⚠ 与 `kill::parse_name` 同一条纪律：**这不是安全边界**（argv 直传不过 shell），
-/// 更**不是**收件人合法性检查 —— 那归 cc-bus（见 [`classify_send`]）。
+/// ⚠ 与 `kill::parse_name` 同一条纪律：argv 直传不过 shell。〔DUP2〕`to` 的**形状**在这里判（[`refuse_bad_bus_id`]，§47 ①）；
+/// 收件人**是否存在**（成员资格）仍归 cc-bus —— 见 [`classify_send`]。
 fn parse_send(args: &serde_json::Value) -> Result<(String, String, Option<String>), CmdErr> {
     let obj = args
         .as_object()
@@ -385,6 +399,9 @@ fn parse_send(args: &serde_json::Value) -> Result<(String, String, Option<String
     if to.trim().is_empty() {
         return Err(("invalid_args", "`to` 是空的".to_string()));
     }
+    refuse_bad_bus_id(to, |v| {
+        copy_core::copy_text("beCcBus.parse.badRecipient", &[("id", v)])
+    })?;
     // ★ `from` 可选：**不给就是今天的行为**（cc-whoami 在后端的处境里解不出身份 ⇒ `unknown`）。
     //   给了就以那个身份发 —— 收信人才知道是谁，回复才有地方去。
     //   ⚠ 合法性仍归 cc-bus（`cc-whoami` 自己会消毒成 `[A-Za-z0-9_-]`），这里只判形状。
@@ -625,15 +642,20 @@ pub(crate) fn kill_for_inbound(
 }
 
 /// `bus-kill` 的入参 —— 纯函数〔C4e：从 [`kill_for_inbound`] 里原样抽出（逻辑不动），跨语言金样拿它核请求样例〕。
+/// 〔DUP2 · J12〕交给 `cc-kill` 之前先过形状判定（[`refuse_bad_bus_id`]）—— 这是破坏性的那一条，更不能靠对端。
 pub(crate) fn parse_kill(args: &serde_json::Value) -> Result<String, (String, String)> {
-    Ok(args
+    let id = args
         .as_object()
         .and_then(|o| o.get("id"))
         .and_then(|v| v.as_str())
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| ("invalid_args".to_string(), "缺 `id`".to_string()))?
-        .to_string())
+        .ok_or_else(|| ("invalid_args".to_string(), "缺 `id`".to_string()))?;
+    refuse_bad_bus_id(id, |v| {
+        copy_core::copy_text("beCcBus.parse.badKillId", &[("id", v)])
+    })
+    .map_err(|(c, m)| (c.to_string(), m))?;
+    Ok(id.to_string())
 }
 
 /// 〔C4e · 第四波 4C〕`bus-kill` 的成品 `{id, killed, stale_only}` —— 从 [`kill_for_inbound`] 里原样抽出来（逻辑不动），
@@ -854,10 +876,11 @@ pub(crate) struct SpawnArgs {
 
 /// 形状校验 —— 纯函数。
 ///
-/// ⚠ 与 [`parse_send`] 同一条纪律：**这不是安全边界**（argv 直传不过 shell）。
+/// ⚠ 与 [`parse_send`] 同一条纪律：argv 直传不过 shell。
 /// 它判的是「这组参数能不能构成一次**有意义且表过态**的调用」：
 /// `tool` 非空（**是哪几种 agent 不在这里判** —— 见下）· `dir` 非空 ·
-/// `account` 与 `base:true` **恰好给一个**（都不给 ⇒ 拒：那是替用户选了默认号）。
+/// `account` 与 `base:true` **恰好给一个**（都不给 ⇒ 拒：那是替用户选了默认号）·
+/// 〔DUP2〕给了 `account` 就先过形状判定（[`refuse_bad_bus_id`]，`§47` ①）。
 pub(crate) fn parse_spawn(args: &serde_json::Value) -> Result<SpawnArgs, CmdErr> {
     let obj = args
         .as_object()
@@ -878,6 +901,12 @@ pub(crate) fn parse_spawn(args: &serde_json::Value) -> Result<SpawnArgs, CmdErr>
     }
     let base = obj.get("base").and_then(|v| v.as_bool()).unwrap_or(false);
     let account = s("account");
+    // 〔DUP2 · J12〕账号名交给 `cc-spawn --account` 之前先过同一条形状判定（C4e 那一道原来住界面 `checkSpawnShape`）。
+    if !account.is_empty() {
+        refuse_bad_bus_id(account, |v| {
+            copy_core::copy_text("beCcBus.parse.badAccount", &[("account", v)])
+        })?;
+    }
     let account =
         match (account.is_empty(), base) {
             (false, false) => Some(account.to_string()),

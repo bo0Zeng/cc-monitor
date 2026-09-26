@@ -189,3 +189,308 @@ fn resolve_from_json_propagates_validation_errors() {
         "unsafe_launch_candidate"
     );
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// 〔V126 · TL2〕`resolve` / `--resolve` 是给仓外 aterm 的**跨仓承诺**
+// ════════════════════════════════════════════════════════════════════════
+//
+// 要求住址：用户裁决 **`V126`**（`设计/99 §1`，2026-09-25）逐字「后端 `resolve` 帧命令与 `--resolve`
+// 子命令（给 aterm 冻结的跨仓契约）保留；在设计里登记为跨仓承诺并加判据钉住形状」；
+// 契约正文住 `src/doc/IPC-PROTOCOL.md` §10「`resolve`」一节的「跨仓承诺」小节。
+//
+// 为什么这一族要比上面那几条更硬：仓内**零调用方**（`D §D7`）⇒ 改坏了**仓里没有任何东西会红**，
+// 消费方在仓外、按字节读。上面那几条只核几个字段名与几条错误码；这一族把**整份线上形状**钉在
+// 一份冻结金样上（`tests/__fixtures__/resolve-contract.golden.json`），并与那一节文档三方对拍。
+//
+// 异源：金样是冻结字节（手写、不从实现生成）· 代码侧读**生产**纯函数与源码 · 文档侧读 IPC-PROTOCOL 那一节。
+
+fn v126_golden() -> Value {
+    let p =
+        crate::guard_support::repo_root().join("tests/__fixtures__/resolve-contract.golden.json");
+    let raw = std::fs::read_to_string(&p)
+        .unwrap_or_else(|e| panic!("读不到冻结金样 {}：{e}", p.display()));
+    serde_json::from_str(&raw).expect("冻结金样不是 JSON")
+}
+
+fn v126_list(g: &Value, key: &str) -> Vec<String> {
+    let v: Vec<String> = g[key]
+        .as_array()
+        .unwrap_or_else(|| panic!("金样缺 `{key}`"))
+        .iter()
+        .map(|x| x.as_str().expect("金样列表里只放字符串").to_string())
+        .collect();
+    assert!(!v.is_empty(), "金样 `{key}` 是空的 —— 下面的两向相等会空真");
+    v
+}
+
+fn v126_sorted(mut v: Vec<String>) -> Vec<String> {
+    v.sort();
+    v.dedup();
+    v
+}
+
+/// 本文件所在的生产源码（剥掉测试段与注释）。
+fn v126_prod_src() -> String {
+    let raw = include_str!("../../../src/backend/control/resolve_query.rs");
+    guard_core::strip_comment_lines(&crate::guard_support::production_code(raw))
+}
+
+/// 〔V126〕R1 样例逐字节：金样每条请求过**生产** `resolve_from_json` ⇒ 成品串逐字节 == 金样；
+/// 错误样例 ⇒ 码 == 金样；成品的键集 ⊆ 承诺的出参字段、`capabilities` 键集 == 四名、`mode` ∈ 承诺的取值。
+#[test]
+fn v126_every_frozen_sample_still_produces_the_same_bytes() {
+    let g = v126_golden();
+    let plan_fields = v126_list(&g, "plan_fields");
+    let caps = v126_sorted(v126_list(&g, "capabilities"));
+    let modes = v126_list(&g, "modes");
+    let samples = g["samples"].as_array().expect("金样缺 samples");
+    let (mut ok, mut err) = (0, 0);
+    for s in samples {
+        let req = s["request"].as_str().expect("request 是串");
+        let got = resolve_from_json(req);
+        if let Some(want) = s["product"].as_str() {
+            ok += 1;
+            let out = got.unwrap_or_else(|e| panic!("冻结样例 {req} 该成功，却回了 {e:?}"));
+            assert_eq!(out, want, "冻结样例 {req} 的成品字节变了 —— 这是一次跨仓契约变更（IPC-PROTOCOL §10 跨仓承诺小节）");
+            let v: Value = serde_json::from_str(&out).unwrap();
+            for k in v.as_object().unwrap().keys() {
+                assert!(plan_fields.contains(k), "成品里多出一个承诺外的键 `{k}`");
+            }
+            let got_caps = v126_sorted(
+                v["capabilities"]
+                    .as_object()
+                    .unwrap()
+                    .keys()
+                    .cloned()
+                    .collect(),
+            );
+            assert_eq!(got_caps, caps, "capabilities 的键集 ≠ 承诺的四名");
+            assert!(
+                modes.iter().any(|m| v["mode"] == m.as_str()),
+                "mode 不在承诺的取值里：{}",
+                v["mode"]
+            );
+        } else {
+            err += 1;
+            let want = s["error"]
+                .as_str()
+                .expect("样例要么有 product 要么有 error");
+            let e = got.expect_err("冻结的错误样例该失败");
+            assert_eq!(e.0, want, "冻结错误样例 {req} 的码变了");
+        }
+    }
+    assert!(
+        ok >= 1 && err >= 1,
+        "金样里成功 / 失败两形都要有（ok={ok} err={err}），否则这条只判了一半"
+    );
+}
+
+/// 生产源码里一个 camelCase 结构体的**线上字段名**（标识符 camelCase 化；结构体前必须紧挨着 `rename_all = "camelCase"`，
+/// 没有它标识符就不是线上名）。
+fn v126_wire_fields(src: &str, decl: &str) -> Vec<String> {
+    let start = src
+        .find(decl)
+        .unwrap_or_else(|| panic!("生产段里找不到 `{decl}`"));
+    let head = &src[..start];
+    let attr_at = head
+        .rfind("#[serde(rename_all = \"camelCase\")]")
+        .unwrap_or_else(|| panic!("`{decl}` 前没有 camelCase 属性"));
+    assert!(
+        !head[attr_at..].contains("struct "),
+        "离 `{decl}` 最近的 camelCase 属性属于别的结构体"
+    );
+    let body = &src[start..start + src[start..].find("\n}").expect("结构体没收尾")];
+    // 字段上的 `serde(rename…)` / `alias` 会让线上名与标识符分家 —— 那样下面读标识符就是在读错的东西
+    //（`ResumeSpec.claude_dir` 头注逐字：「除非再挂一条 `serde(rename)` —— 那是把一条契约拆成两个真相源」）。
+    for bad in ["rename", "alias"] {
+        assert!(
+            !body.contains(bad),
+            "`{decl}` 的字段上挂了 serde `{bad}` —— 线上名不再等于标识符"
+        );
+    }
+    let fields: Vec<String> = body
+        .lines()
+        .skip(1)
+        .filter_map(|l| {
+            let t = l.trim();
+            if t.starts_with('#') {
+                return None;
+            }
+            let (name, _) = t.split_once(':')?;
+            let mut out = String::new();
+            let mut up = false;
+            for ch in name.trim().chars() {
+                if ch == '_' {
+                    up = true;
+                } else if up {
+                    out.extend(ch.to_uppercase());
+                    up = false;
+                } else {
+                    out.push(ch);
+                }
+            }
+            Some(out)
+        })
+        .collect();
+    assert!(
+        !fields.is_empty(),
+        "`{decl}` 一个字段都没读出来 —— 下面的相等会空真"
+    );
+    fields
+}
+
+/// 〔V126〕R2 三个线上结构体的字段名（生产源码现读）== 金样（两向）：
+/// `ResumeSpec` == `request_fields` · `CommandPlan` == `plan_fields` · `Capabilities` == `capabilities`。
+/// 样例逐字节（R1）看不见**缺席即省略**的那几个出参（`launchLabel` / `substitutedFrom` 今天恒缺席），这一条补上。
+#[test]
+fn v126_the_wire_field_names_are_the_frozen_ones() {
+    let src = v126_prod_src();
+    let g = v126_golden();
+    for (decl, key) in [
+        ("struct ResumeSpec {", "request_fields"),
+        ("struct CommandPlan {", "plan_fields"),
+        ("struct Capabilities {", "capabilities"),
+    ] {
+        assert_eq!(
+            v126_sorted(v126_wire_fields(&src, decl)),
+            v126_sorted(v126_list(&g, key)),
+            "`{decl}` 的线上字段 ≠ 冻结金样 `{key}`（两向）—— 改名 / 增删字段都是跨仓契约变更"
+        );
+    }
+}
+
+/// 〔V126〕R3 错误码全集：生产段交给错误出口的码字面量集合 == 金样 `error_codes`（两向）；
+/// 流那条的登记表 `codes` == 全集减去只属于一次性那条的；信封只有 `code` / `message` 两键、退出码 == 金样。
+#[test]
+fn v126_the_error_codes_and_the_envelope_are_the_frozen_ones() {
+    let g = v126_golden();
+    let src = v126_prod_src();
+    // 码的出口只有两形：`(码, 消息)` 元组（`Err((…))` / `map_err(|e| (…))`）与 `emit_err(码, …)` ——
+    // 两形都是「`(` 之后（隔着空白）紧跟一个蛇形字面量、再跟 `,`」。元组可能折行，所以跳空白。
+    let mut found = Vec::new();
+    for (i, _) in src.match_indices('(') {
+        let after = src[i + 1..].trim_start();
+        let Some(rest) = after.strip_prefix('"') else {
+            continue;
+        };
+        let Some(end) = rest.find('"') else { continue };
+        let lit = &rest[..end];
+        let tail = rest[end + 1..].trim_start();
+        if tail.starts_with(',')
+            && lit.contains('_')
+            && lit.chars().all(|c| c.is_ascii_lowercase() || c == '_')
+        {
+            found.push(lit.to_string());
+        }
+    }
+    let codes = v126_sorted(v126_list(&g, "error_codes"));
+    assert_eq!(
+        v126_sorted(found),
+        codes,
+        "生产段真会回的错误码 ≠ 冻结金样（两向）"
+    );
+
+    let oneshot_only = v126_list(&g, "oneshot_only_codes");
+    let stream_want: Vec<String> = codes
+        .iter()
+        .filter(|c| !oneshot_only.contains(c))
+        .cloned()
+        .collect();
+    let spec = crate::inbound::REGISTRY
+        .iter()
+        .find(|c| c.name == "resolve")
+        .expect("inbound::REGISTRY 里没有 `resolve` —— 跨仓承诺的流那条入口没了");
+    assert_eq!(
+        v126_sorted(spec.codes.iter().map(|s| s.to_string()).collect()),
+        stream_want,
+        "流那条 `resolve` 的登记码 ≠ 承诺全集 − 只属于一次性那条的"
+    );
+
+    let env: Value = serde_json::from_str(&error_envelope("bad_request", "m".into())).unwrap();
+    let keys = v126_sorted(env.as_object().unwrap().keys().cloned().collect());
+    assert_eq!(
+        keys,
+        v126_sorted(v126_list(&g, "error_envelope")),
+        "错误信封的键 ≠ 承诺"
+    );
+    assert_eq!(env["code"], "bad_request");
+    assert_eq!(
+        i64::from(ERROR_EXIT),
+        g["error_exit"].as_i64().expect("金样缺 error_exit"),
+        "一次性那条的错误退出码 ≠ 承诺"
+    );
+    assert!(
+        src.contains("fn emit_err(") && src.contains("ERROR_EXIT\n"),
+        "`emit_err` 不再以 `ERROR_EXIT` 收尾 —— 退出码与承诺脱钩了"
+    );
+}
+
+/// 〔V126〕R4 两条入口都在：流命令（`inbound::REGISTRY` 的 `resolve`，经 `resolve_json_for_inbound`）·
+/// 一次性（`main.rs` 分派那一臂 ＋ `SUBCOMMANDS` 有 `--resolve`）。仓内零调用方 ⇒ 删掉哪一条仓里都不会有别的东西红。
+#[test]
+fn v126_both_entry_points_of_the_commitment_are_still_wired() {
+    assert!(
+        crate::SUBCOMMANDS.contains(&"--resolve"),
+        "`SUBCOMMANDS` 里没有 `--resolve`（一次性那条入口）"
+    );
+    let main = guard_core::strip_comment_lines(include_str!("../../../src/backend/main.rs"));
+    guard_core::pin_line(
+        &main,
+        "Some(\"--resolve\") => control::resolve_query::run(&agent_home, &args),",
+    )
+    .unwrap_or_else(|e| panic!("`main.rs` 分派里 `--resolve` 那一臂不在了：{e}"));
+    let inbound = guard_core::strip_comment_lines(&crate::guard_support::production_code(
+        include_str!("../../../src/backend/inbound.rs"),
+    ));
+    let at = inbound
+        .find("name: \"resolve\",")
+        .expect("`inbound.rs` 里找不到 `resolve` 那一格");
+    let tail = &inbound[at..];
+    let cell = &tail[..tail.find("\n    },").expect("那一格没收尾")];
+    assert!(
+        cell.contains("resolve_query::resolve_json_for_inbound("),
+        "流那条 `resolve` 不再经 `resolve_json_for_inbound` —— 两条路不再共用一个纯函数"
+    );
+}
+
+/// 〔V126〕R5 文档那一节与金样两向相等：`IPC-PROTOCOL.md`「跨仓承诺」小节里四行列表
+/// （入参 / 出参 / `capabilities` 四名 / 错误码）逐行取反引号里的名字 == 金样四个集合。
+#[test]
+fn v126_the_protocol_doc_lists_exactly_the_frozen_shape() {
+    let doc =
+        std::fs::read_to_string(crate::guard_support::repo_root().join("src/doc/IPC-PROTOCOL.md"))
+            .expect("读不到 IPC-PROTOCOL.md");
+    let start = doc
+        .find("##### ★ 跨仓承诺（`V126`")
+        .expect("IPC-PROTOCOL 里找不到「跨仓承诺（V126）」小节");
+    let sec = &doc[start..];
+    let sec = &sec[..sec[5..].find("\n#").map(|i| i + 5).unwrap_or(sec.len())];
+    let names_after = |lead: &str| -> Vec<String> {
+        let line = sec
+            .lines()
+            .find(|l| l.starts_with(lead))
+            .unwrap_or_else(|| panic!("小节里找不到以 {lead} 开头的那一行"));
+        let body = &line[line
+            .find('：')
+            .map(|i| i + '：'.len_utf8())
+            .expect("那一行没有「：」")..];
+        body.split('`')
+            .skip(1)
+            .step_by(2)
+            .map(str::to_string)
+            .collect()
+    };
+    let g = v126_golden();
+    for (lead, key) in [
+        ("- **入参**", "request_fields"),
+        ("- **出参**", "plan_fields"),
+        ("- **`capabilities` 四名**", "capabilities"),
+        ("- **错误码**", "error_codes"),
+    ] {
+        assert_eq!(
+            v126_sorted(names_after(lead)),
+            v126_sorted(v126_list(&g, key)),
+            "IPC-PROTOCOL 跨仓承诺小节「{lead}」那一行 ≠ 冻结金样 `{key}`（两向）"
+        );
+    }
+}

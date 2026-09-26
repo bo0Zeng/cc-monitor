@@ -35,6 +35,7 @@ import { withAccount } from "../launch-account";
 import { runRemoteLauncher } from "../remote-launch-run";
 import type { ConnTestResult } from "../generated/ConnTestResult";
 import type { ResolvedHost } from "../generated/ResolvedHost";
+import { askConfirm } from "../ask-dialog";
 import { copyText } from "../copy-table";
 
 /** 一行：label（上）+ 宽文本 input（下）。change 触发 onChange。 */
@@ -414,7 +415,7 @@ export class MachineCard {
     resetFpBtn.textContent = copyText("machineCard.field.resetFingerprint");
     resetFpBtn.title =
       copyText("machineCard.field.resetFingerprintHint");
-    resetFpBtn.addEventListener("click", () => this.onResetFingerprint());
+    resetFpBtn.addEventListener("click", () => void this.onResetFingerprint());
     this.fingerprintInput.parentElement?.appendChild(resetFpBtn);
     const syncResetVisibility = (): void => {
       resetFpBtn.style.display = shouldShowResetFingerprint(
@@ -647,13 +648,13 @@ export class MachineCard {
    * 接受新主机密钥;若此刻正被中间人攻击,会信任攻击者的密钥。仅当确知服务器合法换过
    * host key 时才该重置。
    */
-  private onResetFingerprint(): void {
+  private async onResetFingerprint(): Promise<void> {
     const host =
       this.hostInput.value.trim() || this.labelInput.value.trim() || copyText("machineCard.resetFingerprint.thisHost");
     if (
-      !window.confirm(
+      !(await askConfirm(
         copyText("machineCard.resetFingerprint.confirm", { host }),
-      )
+      ))
     ) {
       return;
     }
@@ -1071,9 +1072,9 @@ export class MachineCard {
       return;
     }
     if (
-      !window.confirm(
+      !(await askConfirm(
         copyText("machineCard.uninstall.confirm", { host: cfg.host, path: cfg.backendPath }),
-      )
+      ))
     ) {
       return;
     }
@@ -1089,7 +1090,7 @@ export class MachineCard {
     this.recordFacet("backend", { kind: "fail", detail: copyText("machineCard.status.uninstalled") });
   }
 
-  /** ②「卸载别名块」—— 从远端 ~/.bashrc 删掉 cc-monitor 那一块（二次确认）。 */
+  /** ②「卸载 ccm」（V80 · V134：名字按用户原裁；做的事是从远端 ~/.bashrc 删掉 cc-monitor 那一块别名块，二次确认）。 */
   private async onUninstallAliasBlock(): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user) {
@@ -1097,9 +1098,9 @@ export class MachineCard {
       return;
     }
     if (
-      !window.confirm(
+      !(await askConfirm(
         copyText("machineCard.aliases.uninstallConfirm", { host: cfg.host }),
-      )
+      ))
     ) {
       return;
     }

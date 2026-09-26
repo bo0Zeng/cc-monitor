@@ -16,7 +16,7 @@
  *
  * 〔SU1 · 第四波 4C · V116〕**卸**：用户裁「要，只删装时写进去的文件」（装完改过的先问）。这一块末尾多一小节
  * 「从别的机器装来的 skill」：列这台后端记着的（帧命令 `skill-installs`），每条一颗「卸」→ 看（`skill-uninstall-plan`，
- * 逐文件的态与「要不要问」都是这台后端答的）→ 勾 → 卸（`skill_uninstall_apply`，同样由宿主递进来）。只删文件，目录留着。
+ * 逐文件的态与「要不要问」都是这台后端答的）→ 勾 → 卸（`skill_uninstall_apply`，同样由宿主递进来）。只删装时写的文件，〔FW1〕删完之后空了的目录（装时建的子目录 ＋ skill 目录自己）也收掉；里面还有别的就留着。
  *
  * 纯函数（`decodeCatalog` · `reachOf` · `skillDefaultTake` · `skillApplyArgs` · `hereText` · `skillSuspectText` ·
  * `decodeInstalls` · `decodeUninstallPlan` · `uninstallDefaultTake` · `uninstallApplyArgs`）零 DOM，node 可测。
@@ -557,7 +557,11 @@ export class AssetsSection {
         const { take, confirm } = uninstallApplyArgs(p.rows, checked);
         try {
           const done = await this.apiOf().skillUninstall({ to, dir: p.dir, seen: p.seen, take, confirm });
-          result.textContent = copyText("assets.uninstall.done", { n: String(done.deleted.length), dir: done.dir });
+          // 〔FW1 · SU1 问 2〕删完文件之后目录空了 ⇒ 也删掉了；还在 ⇒ 说里面还有别的（收空目录那一步的原话另接在后面）。
+          result.textContent = done.dirRemoved
+            ? copyText("assets.uninstall.doneDirRemoved", { n: String(done.deleted.length), dir: done.dir })
+            : copyText("assets.uninstall.done", { n: String(done.deleted.length), dir: done.dir });
+          if (done.dirFailed) result.textContent += " " + done.dirFailed;
           if (done.recordFailed) result.textContent += " " + done.recordFailed;
         } catch (e) {
           result.textContent = copyText("assets.uninstall.failed", { reason: e instanceof Error ? e.message : String(e) });

@@ -198,16 +198,33 @@ export function computeGaps(input: ReadinessInput): Gap[] {
   return [...blocking, ...optional];
 }
 
-/** 一句人话摘要，给折叠标题用。空列表返回 `null`（调用方据此整块不渲染）。 */
+/**
+ * 一句人话摘要，给折叠标题用。空列表返回 `null`（调用方据此整块不渲染）。
+ *
+ * 〔W5-VIS · `设计/15 §4.5` 缺口三〕**摘要按轻重分开说**：「必需：…；可选：…」。
+ * 原先只分「确认缺 / 没测过」，blocking 的后端与 optional 的 ccm 在摘要那一行读起来一模一样
+ * （信息在 `Gap.severity` 里，只是摘要没说）。每一档里照旧区分「缺」与「没测过」；只有一档就只说那一档。
+ */
 export function summarizeGaps(gaps: Gap[]): string | null {
   if (gaps.length === 0) return null;
-  const missing = gaps.filter((g) => g.kind === "missing").length;
-  const unknown = gaps.length - missing;
-  const parts: string[] = [];
-  // **措辞刻意区分**：确认缺的说「缺」，没测过的说「没测过」。
-  if (missing > 0) parts.push(copyText("readiness.gaps.missing", { missing }));
-  if (unknown > 0) parts.push(copyText("readiness.gaps.unknown", { unknown }));
-  return parts.join(copyText("readiness.gaps.sep"));
+  const groups: string[] = [];
+  for (const severity of ["blocking", "optional"] as const) {
+    const inGroup = gaps.filter((g) => g.severity === severity);
+    if (inGroup.length === 0) continue;
+    const missing = inGroup.filter((g) => g.kind === "missing").length;
+    const unknown = inGroup.length - missing;
+    const parts: string[] = [];
+    // **措辞刻意区分**：确认缺的说「缺」，没测过的说「没测过」。
+    if (missing > 0) parts.push(copyText("readiness.gaps.missing", { missing }));
+    if (unknown > 0) parts.push(copyText("readiness.gaps.unknown", { unknown }));
+    const joined = parts.join(copyText("readiness.gaps.sep"));
+    groups.push(
+      severity === "blocking"
+        ? copyText("readiness.gaps.blocking", { parts: joined })
+        : copyText("readiness.gaps.optional", { parts: joined }),
+    );
+  }
+  return groups.join(copyText("readiness.gaps.groupSep"));
 }
 
 /** 一条条目的显示文案。 */

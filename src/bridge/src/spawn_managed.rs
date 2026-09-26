@@ -423,18 +423,8 @@ pub fn local_backend_supervised() -> std::sync::Arc<ManagedSpawn> {
     )
 }
 
-/// 本机后端那条**一次性只读查询**的路：`backend::observe::local_query::run_query` 收它。
-///
-/// 与上一条只差最后一格：查询的 stderr **是返回值**（`QueryOutcome` 按它分类），
-/// 接进滚动日志反而会把「调用方本来就拿得到的那句话」再抄一遍。
-/// `Hidden` 那格在这里同样是**先前没人回答过**的 —— 它先前是一句裸 `.output()`。
-pub fn local_backend_one_shot_query() -> std::sync::Arc<ManagedSpawn> {
-    managed_spawner(
-        ConsolePolicy::Hidden,
-        Lifetime::JobKillOnClose,
-        StderrSink::Captured,
-    )
-}
+// 〔LOC1a · 第四波 4D〕本机后端那条**一次性只读查询**的路（`local_backend_one_shot_query`〔散文墓碑〕，给
+// `local_query::run_query`〔散文墓碑〕用）删了：本机那几问改走 `<local>` 长连接（`设计/05 §14.6`），monitor 不再起一次性后端。
 
 // ══════════════════════════════════════════════════════════════════════════
 // 异步那一侧（`tokio::process`）

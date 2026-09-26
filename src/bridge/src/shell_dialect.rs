@@ -341,11 +341,11 @@ impl ShellDialect for Posix {
 
     /// 两条路各查一次，报出来的话里带住址，用户才知道自己在盖掉什么：
     /// ① `src/shared/ccm-aliases.sh` 里自带的那几个（今天是 `cc` / `cct`）——**问的是那份文件本身**
-    ///    （`sftp::builtin_alias_names`），不在这里抄一份名字清单；
+    ///    （`profile_installer::builtin_alias_names`），不在这里抄一份名字清单；
     /// ② `PATH` 上真有一个同名程序 —— 🔴 `cc` 在多数机器上是 C 编译器（`/usr/bin/cc`），
     ///    而自带那份别名只检查「有没有同名**函数**」、不检查程序。
     fn name_taken(&self, name: &str) -> Option<String> {
-        if crate::sftp::builtin_alias_names().contains(&name) {
+        if crate::profile_installer::builtin_alias_names().contains(&name) {
             return Some(copy_text(
                 "rsShellDialect.posix.nameTakenBuiltin",
                 &[("name", &name.to_string())],
@@ -622,7 +622,9 @@ impl ShellDialect for PowerShell {
     /// 撞上它们的别名定义了也敲不到。要问得真准得起一个 PowerShell 跑 `Get-Command`，本机没有（W1 那一族）⇒
     /// 如实不查，不编一份内建别名清单出来。
     fn name_taken(&self, name: &str) -> Option<String> {
-        let block = crate::profile_installer::render_cc_code("cc", true);
+        // 只问模板里定义了哪几个函数 —— 与数据目录无关，喂一个占位目录。
+        let block =
+            crate::profile_installer::render_cc_code("cc", true, std::path::Path::new("/_"));
         let ours = block.lines().any(|l| {
             l.trim_start()
                 .strip_prefix("function ")

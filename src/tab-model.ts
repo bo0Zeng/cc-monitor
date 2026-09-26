@@ -13,6 +13,7 @@ import type { TailWindow } from "./live-window";
 import type { SkeletonView } from "./skeleton-view";
 import type { UserInputPanel } from "./views/user-input-panel";
 import type { OutlineSource } from "./views/outline-source";
+import type { FactsSource } from "./views/facts-source";
 import type { AgentEntry } from "./agents-panel";
 import type { Origin } from "./ipc/origin";
 import type { SessionState } from "./tab-session-state";
@@ -41,8 +42,8 @@ export interface Tab {
   /** Claude 给出的语义标题（JSONL 里 `ai-title` 记录的 aiTitle 字段），出现一次就锁定 */
   aiTitle: string | null;
   /**
-   * issue #63①：本会话是从哪个会话 fork 来的（首条带 `forkedFrom` 的记录的 `forkedFrom.sessionId`，
-   * 出现一次就锁定，同 aiTitle）。null = 非 fork。用于给 tab 标题加 `↳` 血缘徽标 + tooltip——否则 fork
+   * issue #63①：本会话是从哪个会话 fork 来的（首条带 `forkedFrom` 的 user / assistant 记录的 `forkedFrom.sessionId`，
+   * 出现一次就锁定，同 aiTitle；〔STC〕判定住后端 `history_query::fork_origin`，与历史树同一份）。null = 非 fork。用于给 tab 标题加 `↳` 血缘徽标 + tooltip——否则 fork
    * 出来的会话与原会话是**同名独立 tab**、肉眼分不清（活 tab 层原本只按 sessionId keyed、完全不看
    * `forkedFrom`，它此前只在历史树用）。
    */
@@ -83,21 +84,25 @@ export interface Tab {
   //   它说的是可恢复性那一轴 ⇒ 并进 `state`：`RECONNECTABLE`（死 ＋ 容器还在）。
   /**
    * issue #23（第二增量）：本会话的 subagent 列表（tool_use id → entry，插入序）。
-   * jsonl 流里配对 Task/Agent 的 tool_use（running）与 tool_result（done）；
-   * 变 idle/归档时把仍 running 的标 aborted。上限 30，超出删最老的非 running。
+   * 〔STC〕**后端出成品**（`history-facts` 的 `agents`：配对 Task/Agent 的 tool_use 与 tool_result、上界都在后端），
+   * 经 `tab-session-facts.ts::applyFacts` 整份落下来；前端只多一件事：会话落到不忙那一刻仍 running 的标 aborted（事件）。
    */
   agents: Map<string, AgentEntry>;
-  /** F70：本会话写类工具（Edit/Write/MultiEdit/NotebookEdit）碰过的文件路径（原样、去重）。
-   * onLine 增量累进，供「点会话 → 全景图高亮它改过的节点」。纯内存、不落盘（守 §28）。 */
+  /** 〔STC〕被判中止过的 agent id（`tab-session-facts.ts::abortRunningAgents` 记下）—— 之后的成品里它仍是 running 也显示中止。 */
+  agentsAborted: Set<string>;
+  /** F70：本会话写类工具（Edit/Write/MultiEdit/NotebookEdit）碰过的文件路径（原样、去重、近因序）。
+   * 〔STC〕后端出成品（`history-facts` 的 `touchedFiles`），供「点会话 → 全景图高亮它改过的节点」。纯内存、不落盘（守 §28）。 */
   touchedFiles: Set<string>;
   /** F88b：本会话**最新一条带 usage 的 assistant 记录**的 prompt token（input+cache 合计）与
-   *  model——供 HUD 算 context 占用%。onLine 捕获、纯内存。null=尚无带 usage 的 assistant 记录。 */
+   *  model——供 HUD 算 context 占用%。〔STC〕后端按**文件序**取最后一条（成品的 `usage`），不再看到达序。
+   *  null=尚无带 usage 的 assistant 记录（或事实还没到）。 */
   latestPromptTokens: number | null;
   latestModel: string | null;
-  /** F88b（审计）：产出上面两值的记录 seq。重放/远端重投的 onLine **投递序不保证升序**
-   *  （timeline 靠 seq 排序而非到达序），故 trackUsage 只在 seq ≥ 此值时覆盖，保证「最新」= 最大 seq
-   *  而非最后到达。init -1（任何 seq≥0 首次即可写）。 */
-  latestUsageSeq: number;
+  /**
+   * 〔STC · `设计/90 §4` 阶段 C〕这份会话的事实从哪来：问后端要（`views/facts-source.ts`）。
+   * 上面四样（分叉血缘 · agent 列表 · 改动文件集 · 最新 usage）只经它落下来 —— `onLine` 上不再有旁路记账员。
+   */
+  facts: FactsSource;
   streamEl: HTMLElement;
   stream: MessageStream;
   /** 父 JSONL 路径（subagent 加载需要） */
@@ -175,7 +180,7 @@ export interface Tab {
    * issue #26：已处理记录的 uuid 集——onLine 入口的 at-least-once 幂等
    * （违反此约束见 src/doc/INVARIANTS.md § 25）。截断重读换新 seq 重投时 seenSeqs 放行，
    * 若不按 uuid 拒掉，每条记录会以更大的 seq 在 timeline 末尾再渲染一遍（整段内容
-   * 翻倍），且 trackAgents/unread 等副作用也会被重投误触发——故在入口整体拒掉。
+   * 翻倍），且事件 / unread 等副作用也会被重投误触发——故在入口整体拒掉（〔STC〕会话事实不在前端攒了，这一格只剩渲染与事件）。
    * 无 uuid 的记录（ai-title/mode 等元信息）不占集合、照常处理（它们本身幂等；
    * 已知微小残留：无 uuid 的 system 细条理论上可翻倍，影响面可忽略）。closeTab 时 clear。
    */

@@ -1608,6 +1608,9 @@ fn walk_repo(root: &std::path::Path, keep: &dyn Fn(&std::path::Path, &str) -> bo
         "dist",
         "coverage",
         ".vite",
+        // 〔主会话 09-26 · DUP2 报备〕施工纪律第 21 条的各路编译产物 / 临时脚本目录（仓内不提交，`info/exclude` 挡着）：
+        //   放一个 `.sh` 进去，`shell_lint_registry` 就红一条「没被 lint 也没登记」。
+        ".scratch",
     ];
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];

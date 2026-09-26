@@ -63,6 +63,8 @@ const REGISTERED: &[&str] = &[
     "files.index.status",
     "files.ls",
     "files.read.text",
+    // 〔W5-FILES · 第五波〕出处 `设计/60 §6.2`「算目录大小」；`设计/96 §2.9` 那张表同样还没跟上（本路不写设计篇，报备主会话补一行）。
+    "files.size",
     "files.stat",
 ];
 
@@ -766,6 +768,13 @@ fn every_declared_arg_is_really_read_by_the_parser() {
     //   ⚠ 顺序承重：`files.browse` 会往 overlay 里加东西、`files.index.rebuild` 会把
     //   常驻那一份整份换掉 ⇒ 两者都排在 `files.find` 之后，免得前一条把后一条的地基抽了。
     let probes: Vec<(&str, &str, serde_json::Value, serde_json::Value)> = vec![
+        // 〔W5-FILES〕`files.size` 的 `path`：整棵 vs 其中一个子目录，数必然不同。
+        (
+            "files.size",
+            "path",
+            serde_json::json!({ "path": p(&fx.root) }),
+            serde_json::json!({ "path": p(&sub) }),
+        ),
         (
             "files.ls",
             "path",
@@ -878,8 +887,9 @@ fn every_declared_arg_is_really_read_by_the_parser() {
         checked += 1;
     }
     // 〔F7a〕探针对数恒等：8 → 10（`files.read.text` 的 `path` · `max_bytes` 两对）。
+    // 〔W5-FILES〕10 → 11（`files.size` 的 `path` 一对）。
     assert_eq!(
-        checked, 10,
+        checked, 11,
         "行使的探针对数变了 —— 本条的射程跟着变了，先查探针表"
     );
     std::fs::remove_dir_all(&text_dir).ok();

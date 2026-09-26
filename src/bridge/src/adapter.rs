@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentKind {
     ClaudeCode,
-    /// Codex（F1a 起 production 构造：`enabled_kinds`/`kind_of_path` 按会话根 `~/.codex` 派发）。
+    /// Codex（〔LOC1b〕今天由 `kind_of_record_name` 按文件名形态派发）。
     Codex,
 }
 
@@ -35,14 +35,10 @@ pub enum SidStrategy {
 /// 文件型 agent 的会话源布局(目录 / 命名约定)。把散落的「知道 CC 目录结构」字面量收这里,
 /// 消除会话发现层(live / history / search / remote 四链)对具体子目录名的硬编码。
 pub struct SessionLayout {
-    /// 会话记录子目录(CC = `"projects"`)。
-    pub sessions_subdir: &'static str,
-    /// 活性 pidfile 子目录(CC = `"sessions"`)。
-    pub liveness_subdir: &'static str,
+    // 〔LOC1b · 第四波 4D〕「会话记录子目录」「活性 pidfile 子目录」「会话记录扩展名」三格删了：它们的读者只有
+    //   monitor 自己读本机会话 / 判活那几个函数（已删，见下面那块墓碑）；那几件事今天问本机后端，目录布局归后端 `agents/`。
     /// 任务追踪子目录(CC = `"tasks"`),可选。
     pub tasks_subdir: Option<&'static str>,
-    /// 会话记录扩展名(CC = `"jsonl"`)。
-    pub record_ext: &'static str,
     /// 从记录文件路径取 sid 的策略(CC = `Stem`;Codex = `CodexRollout`)。
     pub sid_strategy: SidStrategy,
     // 〔CF1 · 2026-09-24〕「扫描时跳过的路径段」那一格（CC = `subagents`）随 monitor 自己那套 jsonl watcher 删了 ——
@@ -89,73 +85,26 @@ pub fn active() -> &'static dyn AgentAdapter {
     for_kind(AgentKind::ClaudeCode)
 }
 
-/// F-MA:agent 数据根下的**会话记录**目录(CC = `<root>/projects`)。收敛散落的 `.join("projects")`。
-pub fn records_dir(data_root: &Path) -> PathBuf {
-    data_root.join(active().layout().sessions_subdir)
-}
+// 〔LOC1b · 第四波 4D〕这里原来还有八个「替本机读盘找根 / 判记录文件」的函数（`records_dir` · `records_dir_for` · `enabled_kinds` ·
+//   `records_roots` · `kind_of_path` · `liveness_dir` · `has_record_ext` · `session_id_from_path`，都〔散文墓碑〕）：它们唯一的调用方是
+//   monitor 自己读本机会话 / 判活 / 建索引的那几份实现，而冷读 · 判活 · 搜索都改问本机后端了（本机远端同一条路）⇒ 零调用方，删。
+//   按 agent 找记录目录 / 判记录文件的活今天住后端的适配层（`src/backend/agents/`）。
 
-/// Phase 2 F1a：**按 kind** 的会话记录目录(`<data_root>/<sessions_subdir>`;Claude=projects、Codex=sessions)。
-pub fn records_dir_for(kind: AgentKind, data_root: &Path) -> PathBuf {
-    data_root.join(for_kind(kind).layout().sessions_subdir)
-}
-
-/// Phase 2 F1a：本机**启用的 agent 种类**。Claude 恒启用;Codex 仅当其数据根的会话目录存在
-/// (`~/.codex/sessions` 或 `$CODEX_HOME/sessions`)——不装 Codex 的机器上不纳入、零行为变化。
-pub fn enabled_kinds() -> Vec<AgentKind> {
-    let mut kinds = vec![AgentKind::ClaudeCode];
-    let codex = for_kind(AgentKind::Codex);
-    if let Some(root) = codex.data_root() {
-        if root.join(codex.layout().sessions_subdir).is_dir() {
-            kinds.push(AgentKind::Codex);
-        }
+/// 〔LOC1b · 4D〕按记录文件的**名字形态**判 [`AgentKind`]：`rollout-<ts>-<uuid>.jsonl` ⇒ Codex，其余 ⇒ Claude。
+///
+/// 从前另有一个按本机根前缀判的 `kind_of_path`〔散文墓碑〕；本函数不看本机有没有那一家的根 —— 冷读本机远端合成一条之后，远端的路径也要判得对
+/// （那台机器的 Codex 根在哪，本机不知道）。形态口径与 [`session_id_from_path_with`] 的 `CodexRollout` 同一个函数。
+pub fn kind_of_record_name(p: &Path) -> AgentKind {
+    if codex_sid_from_rollout(p).is_some() {
+        AgentKind::Codex
+    } else {
+        AgentKind::ClaudeCode
     }
-    kinds
-}
-
-/// Phase 2 F1a：所有启用 kind 的 `(kind, 会话记录根目录)`。发现层遍历它、按 kind 用对应 layout
-/// 扫 + 解析(`parse_line` for Claude / `codex_record::to_jsonl_record` for Codex)。**显式传 kind**
-/// (发现层枚举时即知 kind、无需按路径反解),per-file op 走 `session_id_from_path_with(for_kind(k).layout())`。
-pub fn records_roots() -> Vec<(AgentKind, PathBuf)> {
-    enabled_kinds()
-        .into_iter()
-        .filter_map(|k| {
-            for_kind(k)
-                .data_root()
-                .map(|root| (k, records_dir_for(k, &root)))
-        })
-        .collect()
-}
-
-/// Phase 2 F1a：按记录文件路径判其 [`AgentKind`]（在哪个启用 kind 的会话根下）。都不在 → 默认
-/// `ClaudeCode`（**零回归**：非 Codex 路径 = 原 Claude 行为；调用方仍会对该 kind 的根做前缀校验）。
-pub fn kind_of_path(p: &Path) -> AgentKind {
-    for (kind, root) in records_roots() {
-        if p.starts_with(&root) {
-            return kind;
-        }
-    }
-    AgentKind::ClaudeCode
-}
-
-/// F-MA:agent 数据根下的**活性 pidfile** 目录(CC = `<root>/sessions`)。
-pub fn liveness_dir(data_root: &Path) -> PathBuf {
-    data_root.join(active().layout().liveness_subdir)
 }
 
 /// F-MA:agent 数据根下的**任务追踪**目录(CC = `<root>/tasks`);该 agent 无此概念则 `None`。
 pub fn tasks_dir(data_root: &Path) -> Option<PathBuf> {
     active().layout().tasks_subdir.map(|s| data_root.join(s))
-}
-
-/// F-MA:路径扩展名是不是该 agent 的会话记录扩展(CC = `jsonl`)。
-pub fn has_record_ext(p: &Path) -> bool {
-    p.extension().and_then(|e| e.to_str()) == Some(active().layout().record_ext)
-}
-
-/// F-MA:从记录文件路径取 session_id(CC = `file_stem`)。约定不成立则 `None`。
-/// **F1 仍走 `active()`（=Claude，零回归）**；`_with` 供 per-kind 测 + 后续 multi-kind 派发。
-pub fn session_id_from_path(p: &Path) -> Option<String> {
-    session_id_from_path_with(active().layout(), p)
 }
 
 /// Phase 2：按 layout 的 [`SidStrategy`] 取 sid（供 per-kind 派发/测）。
@@ -214,7 +163,7 @@ fn is_uuid(s: &str) -> bool {
 // `None` = **这一格今天没人考据过**；`Some(&[])` = 考据过、确实是空的。
 // 把这两个值合并就是 `K-R92` 那一形（「一个值装了两件事」），`KR93D3` 明令禁止。
 
-/// 盘上**所有**的 agent 种类 —— 与 [`enabled_kinds`]（本机装了哪几个）**不是同一个问题**。
+/// 盘上**所有**的 agent 种类 —— 与「本机装了哪几个」（从前的 `enabled_kinds`〔散文墓碑〕）**不是同一个问题**。
 /// 加一个 `AgentKind` 而忘了这里 ⇒ [`agent_profile_facts`] 的 `match` 编译不过。
 pub const ALL_AGENT_KINDS: [AgentKind; 2] = [AgentKind::ClaudeCode, AgentKind::Codex];
 
@@ -241,7 +190,8 @@ pub struct AgentProfileFacts {
 }
 
 /// 子 agent 工具（展开 = 子会话）。〔`K-R93` 从 `src/agent-profile.ts` 搬来，值逐字未改〕
-static CLAUDE_AGENT_TOOLS: &[&str] = &["Agent", "Task"];
+/// 〔DUP2 · J19〕值住共享 crate `agent_tools_core`（后端会话事实的 agent 列表用同一份；两半编译期不许互咬 ⇒ 共享 crate）。
+static CLAUDE_AGENT_TOOLS: &[&str] = &agent_tools_core::CLAUDE_AGENT_TOOLS;
 /// 交互工具（agent 在等用户决定）。〔同上〕
 static CLAUDE_INTERACTIVE_TOOLS: &[&str] = &["AskUserQuestion", "ExitPlanMode"];
 /// 写类工具（行级 diff）。〔同上〕

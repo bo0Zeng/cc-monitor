@@ -13,8 +13,9 @@
  * 机器列表顶上说「远端配置认不出：…」（`remote-config.ts::REMOTE_CONFIG_UNRECOGNIZED`）。
  *
  * 设计（对齐 behavior.ts / diagnostics-section.ts 范式）：
- * - 读写走 config.ts 的 loadConfig / saveConfig（schema-agnostic 透传）。
- * - **MERGE 而非覆盖**：保存时先 loadConfig 拿到完整 config，只替换 `remote` 子对象。
+ * - 读走 config.ts 的 loadConfig；写经 `remote-config.ts::patchRemoteConfig`（schema-agnostic 透传）。
+ * - **只动 `remote` 这一个键**：〔CFG1〕写口是按键补丁（`config.ts::patchConfigFrom` 现读 → 只交 `set ["remote"]`），
+ *   盘上别的键不经这里。
  * - 改动后需**重启 monitor 才生效**（数据源在 setup() 启动时定型），保存后 banner 提示。
  * - 每次输入 change 立即保存（无"未保存"中间态）→ refresh() 可安全从 config 重建卡片。
  *
@@ -673,6 +674,7 @@ export class RemoteSection {
   /** 从 ~/.ssh/config 拉别名清单填进导入下拉。空 → 禁用下拉 + 提示。 */
   private async populateAliases(): Promise<void> {
     let aliases: string[] = [];
+    let unreadable: string | null = null;
     try {
       // 同 `mcp-section` 那处：**别只防 reject**，`invoke` 也可能 resolve 成 `undefined`
       // → 下面 `aliases.length` 抛（T07 审计④）。
@@ -680,6 +682,8 @@ export class RemoteSection {
       if (Array.isArray(got)) aliases = got;
     } catch (e) {
       console.warn("list_ssh_host_aliases failed:", e);
+      // 〔W5-UI · 设计/70 §7 #4〕读失败与「真没有别名」原先同形（都是空下拉 ＋ 「未找到」）⇒ 分开说。
+      unreadable = String(e);
     }
 
     this.importSelect.innerHTML = "";
@@ -691,7 +695,9 @@ export class RemoteSection {
     if (aliases.length === 0) {
       this.importSelect.disabled = true;
       this.importHint.textContent =
-        copyText("remote.aliases.none");
+        unreadable !== null
+          ? copyText("remote.import.listFailed", { e: unreadable })
+          : copyText("remote.aliases.none");
       this.importHint.style.display = "block";
       return;
     }
@@ -787,6 +793,7 @@ export class RemoteSection {
     );
     toolbar.appendChild(enabledRow);
     group.appendChild(toolbar);
+    toolbar.insertAdjacentElement("afterend", this.importHint);
 
     // ★ S5 / E56：「还差什么」——新用户一站式的落点。
     // **只读 S3 的账本，不发任何请求**（§1-2）；空的时候整块不渲染，不打扰老用户。
@@ -855,7 +862,8 @@ export class RemoteSection {
     this.importHint = document.createElement("div");
     this.importHint.className = "settings-hint";
     this.importHint.style.display = "none";
-    toolbar.insertAdjacentElement("afterend", this.importHint);
+    // 〔W5-UI〕挂载挪到 `toolbar` 进了 `group` 之后（`buildBody` 那一句）：这里调用时 `toolbar` 还没有父节点，
+    //   `insertAdjacentElement("afterend")` 是空操作 ⇒ 这块提示从来没进过 DOM（「未找到」「读不了」都没人看得见）。
   }
 
   /** 选了别名 → resolve_ssh_host → 新增一台机器并填好 → 保存。 */
@@ -1156,7 +1164,7 @@ export class RemoteSection {
     try {
       // ★ S1：**局部合并，不再整表覆盖**。
       //
-      // 老写法是 `writeRemoteConfig(next)` —— 把 `cfg.remote` 整个换成本编辑器手上这份。
+      // 老写法是 `writeRemoteConfig(next)` —— 把 `cfg.remote` 整个换成本编辑器手上这份。 〔散文墓碑〕
       // 它今天之所以不出事，纯粹是因为 `collect()` 恰好映射了**全部**卡片：
       // **正确性来自 UI 的巧合，不是来自构造**。S2 一旦把机器拆成一页一台，
       // 同一句调用就会把不在本页的机器**静默删光**。
@@ -1228,7 +1236,7 @@ export class RemoteSection {
 /** 把一个任意 JSON 对象规整成 RemoteHostConfig（缺失/类型不对走默认）。 */
 // F12：`coerceAddresses` / `coerceHost` / `readRemoteConfig` / `findHostByOrigin` /
 // `resolveRemoteConfigByOrigin` / 写入口已移入 `src/remote-config.ts`（数据层）。
-// S1：写入口 = `patchRemoteConfig`（局部合并）；整表覆盖的 `writeRemoteConfig` 已收回该文件内部、不再导出。
+// S1：写入口 = `patchRemoteConfig`（局部合并）；整表覆盖的 `writeRemoteConfig` 已收回该文件内部、不再导出（〔CFG1〕今天连函数都没了，只剩不导出的 `remoteEdit` 出那一条补丁）。 〔散文墓碑〕
 // `sameHost` / `sameRemote`（下方）是 UI dirty-check，留本文件。
 
 function sameHost(a: RemoteHostConfig, b: RemoteHostConfig): boolean {

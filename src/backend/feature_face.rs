@@ -18,8 +18,8 @@
 //!
 //! - 住顶层、不住 `observe/`：`inbound.rs` 不许出现 `observe::`；本文件只做换壳，
 //!   读的本体在 `observe/`（那一层今天就是 Claude 专属的）。
-//! - `tasks-list` 的应答**按行**：`{"lines": [...]}` —— monitor 侧用既有的 `frame_query::lines` 收，
-//!   **不新增发送端**。〔C4b〕`plugins-marketplaces` 的应答是**成品**（整份 survey），界面经通道直接问。
+//! - 两条的应答都是**成品**：〔C4b〕`plugins-marketplaces` 整份 survey；〔LOC1a〕`tasks-list` → `{tasks: [...]}`
+//!   （字段语义住 `observe/tasks_query.rs::task_entry`），界面经通道直接问、按形状收。
 //!   整份超过 [`crate::read_face::LINES_CAP_BYTES`] ⇒ `too_large`（不截断）。
 //! - 不拨号、不起进程、不写盘。
 
@@ -42,7 +42,8 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
                 "bad_args",
                 crate::common::contract::malformed("missing `sid` (a string)"),
             ))?;
-            lines(crate::observe::tasks_query::session_task_lines(home, sid)?)
+            // 〔LOC1a · 第四波 4D · C4e 批 4〕应答**是成品** `{tasks: [...]}`（此前是原样对象的 `lines`，字段由 monitor 解）。
+            capped(json!({ "tasks": crate::observe::tasks_query::session_tasks(home, sid)? }))
         }
         // 〔C4b · 第四波 4B〕应答**就是成品**：整份 survey `{entries, file_absent}`（此前是「恰一行」的 `lines`，
         //   monitor 那一侧再核一遍「恰一行 ＋ 拒收未知字段 ＋ 必填」—— 那一份解释删了，界面经通道直接问、按形状收，
@@ -82,9 +83,9 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
     }
 }
 
-/// 收成 `{"lines": [...]}`，过同一个整份上限。
-fn lines(rows: Vec<String>) -> Answer {
-    let size: usize = rows.iter().map(|l| l.len() + 1).sum();
+/// 整份过同一个上限（不截断）。
+fn capped(v: Value) -> Answer {
+    let size = v.to_string().len();
     if size > crate::read_face::LINES_CAP_BYTES {
         return Err((
             "too_large",
@@ -97,7 +98,7 @@ fn lines(rows: Vec<String>) -> Answer {
             ),
         ));
     }
-    Ok(json!({ "lines": rows }))
+    Ok(v)
 }
 
 #[cfg(test)]

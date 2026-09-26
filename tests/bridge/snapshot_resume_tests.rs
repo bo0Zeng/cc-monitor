@@ -63,6 +63,7 @@ fn cursor(path: &str, anchor_total: u64, anchor_end: u64, next: u64) -> Cursor {
         anchor_total,
         anchor_end,
         next,
+        witness: None,
     }
 }
 
@@ -206,4 +207,197 @@ fn the_snapshot_path_is_wired_through_the_cursor() {
         guard_core::find_pinned(&prod, anchor)
             .unwrap_or_else(|e| panic!("ssh_source 生产段里 `{anchor}` 不是恰好一处：{e}"));
     }
+}
+
+// ═══ 〔W5-VIS · `设计/15 §3.4 ②`〕截断 / 改写检测：续传之前先核锚那一行 ═══════════════════════════
+//
+// 要求住址：`设计/15 §3.4 ②`（逐字）「它另一半用处 —— **截断检测**（远端 jsonl 在断连期间被截断/分叉，
+// `(sid,seq)` 会指向不同的行而没有东西会发现）—— **仍开**（W5-VIS）」。
+
+/// 把一份全文按 `page` 字节左右切成若干页（每页切在行尾 —— 同 `frame_query::Page` 的约定），回 `(页起点, 页文本)`。
+fn pages(text: &str, from: usize, upto: usize, page: usize) -> Vec<(u64, String)> {
+    let mut out = Vec::new();
+    let mut at = from;
+    while at < upto {
+        let want = (at + page).min(upto);
+        let cut = text[at..upto]
+            .char_indices()
+            .filter(|(i, c)| *c == '\n' && at + i + 1 >= want)
+            .map(|(i, _)| at + i + 1)
+            .next()
+            .unwrap_or(upto);
+        out.push((at as u64, text[at..cut].to_string()));
+        at = cut;
+    }
+    out
+}
+
+/// 照生产那一遍（`fetch_snapshot`）走：逐页 `page_lines` → 可计行 → `WitnessPick`。
+fn pick_over(text: &str, how: &Read, plan: &TailPlan, page: usize) -> Option<Option<Witness>> {
+    let walk = Walk::new(how, plan);
+    let mut pick = WitnessPick::default();
+    for (from, upto) in walk.segments().to_vec() {
+        for (off, body) in pages(text, from as usize, upto as usize, page) {
+            for (line, span) in page_lines(off, &body) {
+                if !line.trim_start_matches('\u{feff}').trim().is_empty() {
+                    pick.see(upto, plan.end, line, span);
+                }
+            }
+        }
+    }
+    pick.done()
+}
+
+/// ① 逐行的字节区间：CRLF · 多字节 · 空行都与**从原文独立数出**的区间相等；有损解码（U+FFFD）之后本页余下说不准 ⇒ `None`；
+/// 页末没有换行的残尾 ⇒ `None`。
+#[test]
+fn w5vis_page_lines_gives_each_line_its_raw_byte_span() {
+    let text = "{\"a\":1}\r\n\n  \n{\"中文\":\"é\"}\n{\"z\":0}\n";
+    let got = page_lines(100, text);
+    let mut want = Vec::new();
+    let mut start = 0usize;
+    for (i, _) in text.match_indices('\n') {
+        let raw = &text[start..i];
+        want.push((
+            raw.trim_end_matches('\r'),
+            Some((100 + start as u64, 101 + i as u64)),
+        ));
+        start = i + 1;
+    }
+    assert_eq!(got, want, "区间与原文独立数出的不相等");
+    let lossy = "{\"a\":1}\n{\"b\":\"\u{FFFD}\"}\n{\"c\":3}\n{\"torn";
+    let got = page_lines(0, lossy);
+    assert_eq!(got[0].1, Some((0, 8)));
+    assert_eq!(
+        (got[1].1, got[2].1, got[3].1),
+        (None, None, None),
+        "替换字符之后与残尾都该说不准：{got:?}"
+    );
+}
+
+/// ② ★ 见证两向：快照走完挑出来的见证 == 文件最后一个可计行（区间由夹具独立数出）；
+/// 盘上只是**追加**了新行 ⇒ 还是那一行（续传照接）；**整份改写而且变长**（上一道「没变短」拦不住的那一形）⇒ 不是了。
+#[test]
+fn w5vis_the_witness_tells_an_append_from_a_rewrite_that_grew() {
+    let (text, rows) = fixture(120);
+    let plan = plan_of(&text, &rows, 40);
+    for page in [64usize, 1_000, 1 << 20] {
+        let w = pick_over(&text, &Read::Full, &plan, page)
+            .expect("末端那一段读到了可计行")
+            .expect("全是 UTF-8，区间说得准");
+        let (last_start, last_body) = rows.last().unwrap();
+        assert_eq!(
+            (w.start, w.end),
+            (*last_start, *last_start + last_body.len() as u64 + 1),
+            "页大小 {page}：见证不是最后一个可计行"
+        );
+        assert!(witness_holds(&w, &text[w.start as usize..w.end as usize]));
+        // 追加：前缀原样 ⇒ 同一行。
+        let appended = format!("{text}{{\"more\":1}}\n");
+        assert!(witness_holds(
+            &w,
+            &appended[w.start as usize..w.end as usize]
+        ));
+        // 整份改写而且变长：最后那一行改了一个字、后面又追加了很多 ⇒ 文件比锚长（`plan_read` 照续传），但见证对不上。
+        let mut rewritten = text.clone();
+        let at = w.start as usize + 2;
+        rewritten.replace_range(at..at + 1, "#");
+        rewritten.push_str(&"{\"grown\":true}\n".repeat(50));
+        assert!(rewritten.len() > text.len());
+        assert!(
+            !witness_holds(&w, &rewritten[w.start as usize..w.end as usize]),
+            "页大小 {page}：改写过的那一行没被认出"
+        );
+    }
+    // 读回来的那一段多了一个换行（已不是恰好一行）⇒ 不是。
+    let w = Witness {
+        start: 0,
+        end: 4,
+        hash: line_hash("abc"),
+    };
+    assert!(witness_holds(&w, "abc\n") && witness_holds(&w, "abc\r\n"));
+    assert!(!witness_holds(&w, "ab\nc\n") && !witness_holds(&w, "abc"));
+}
+
+/// ③ 三形：末端那一段一行可计行都没读到 ⇒ 旧见证照留（锚那一行没变）；读到了但说不准 ⇒ 清掉；读到了 ⇒ 换新。
+/// 立锚那一步也把旧见证带过去（不在 `note_snapshot_done` 里悄悄丢掉）。
+#[test]
+fn w5vis_the_witness_is_kept_cleared_or_replaced_by_what_the_walk_saw() {
+    let o = &Origin("w5vis-host".into());
+    let s = "w5vis-sid";
+    let plan = TailPlan {
+        total: 3,
+        tail_from: 0,
+        split_at: 0,
+        end: 30,
+    };
+    let w1 = Witness {
+        start: 20,
+        end: 30,
+        hash: 7,
+    };
+    note_snapshot_done(o, s, "/p.jsonl", &plan);
+    note_witness(o, s, Some(Some(w1.clone())));
+    assert_eq!(cursor_of(o, s).unwrap().witness, Some(w1.clone()));
+    note_snapshot_done(o, s, "/p.jsonl", &plan);
+    note_witness(o, s, None);
+    assert_eq!(
+        cursor_of(o, s).unwrap().witness,
+        Some(w1),
+        "没读到新行却把见证丢了"
+    );
+    note_witness(o, s, Some(None));
+    assert_eq!(
+        cursor_of(o, s).unwrap().witness,
+        None,
+        "说不准的那一次没清掉旧见证"
+    );
+    // 续传一段、末端那一段里没有可计行（只长了空行）⇒ `None`。
+    let text = "{\"a\":1}\n\n\n";
+    let p = TailPlan {
+        total: 1,
+        tail_from: 0,
+        split_at: 0,
+        end: text.len() as u64,
+    };
+    let how = Read::Resume {
+        from_byte: 8,
+        upto: p.end,
+        first_seq: 1,
+        skip_below: 1,
+    };
+    assert_eq!(pick_over(text, &how, &p, 64), None);
+    forget(o, s);
+}
+
+/// ④ 接线（剥注释后的 `ssh_source` 生产段，锚各恰好一处）：续传之前先读回见证那一段并核（在 `Walk::new` 之前）；
+/// 对不上 ⇒ 续点作废、改整份、交「被改过」那一格；走读时挑见证、立锚之后记下。正控：缺核那一步的合成语料必须被认出。
+#[test]
+fn w5vis_fetch_snapshot_checks_the_witness_before_it_resumes() {
+    fn wired(prod: &str) -> Result<(), String> {
+        let at = |a: &str| guard_core::find_pinned(prod, a).map_err(|e| format!("`{a}`：{e}"));
+        let check = at("crate::snapshot_resume::witness_holds(&w, &page.text)")?;
+        let walk = at("crate::snapshot_resume::Walk::new(&how, &plan)")?;
+        let full = at("how = crate::snapshot_resume::Read::Full;")?;
+        let told = at("change: FileChange::Rewritten.as_wire().to_string(),")?;
+        let forgot = at("crate::snapshot_resume::forget(&origin, sid);")?;
+        at("pick.see(upto, plan.end, line, span);")?;
+        let done = at("crate::snapshot_resume::note_snapshot_done(&origin, sid, path, &plan);")?;
+        let noted = at("crate::snapshot_resume::note_witness(&origin, sid, pick.done());")?;
+        if !(check < forgot && forgot < told && told < full && full < walk) {
+            return Err("核 → 作废 → 出声 → 改整份 → 走读 的次序不对".into());
+        }
+        if noted < done {
+            return Err("见证在立锚之前就记了（立锚会带着旧的盖过去）".into());
+        }
+        Ok(())
+    }
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/ssh_source.rs"));
+    wired(&prod).unwrap_or_else(|e| panic!("{e}"));
+    let old = prod.replacen(
+        "crate::snapshot_resume::witness_holds(&w, &page.text)",
+        "true",
+        1,
+    );
+    assert!(wired(&old).is_err(), "摘掉核那一步没被认出 —— 量具瞎了");
 }

@@ -133,7 +133,13 @@
 //! 与步 3（本地半 ps-await 认 token）都不在本刀射程里。
 //! **本模块买到的是**：一个已经带着那个变量的进程，后端读得出它、并把它放上 wire。
 
-/// 一次打标的结局。**返回而不是吞掉** —— 调用方今天丢弃它，但日志与测试要看得见。
+/// 一次打标的结局。**返回而不是吞掉** —— 唯一调用点（`observe/watcher.rs::process_session_added`）
+/// 先经 [`Outcome::failure_note`] 把打不上的那两形说出来，再取 [`Outcome::container`]。
+///
+/// 〔W5-VIS · `设计/15 §4.7 S2`〕`#[must_use]`：`@ccm_sid` 是破坏性动作**唯一认的事实**（打错 ＝ 杀错），
+/// 标没写上 ⇒ Gate 2 不过 ⇒ kill / 送键回 `wrong_owner`，而「为什么进不去」整条链零线索 ——
+/// 这个结局被整个丢掉时编译器要说话。
+#[must_use = "打标的结局要经 `failure_note` 说出来（打不上 ⇒ 之后 kill / 送键被身份门拒，设计/15 §4.7 S2）"]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Outcome {
     /// 打上了（或从「没有」变成了新值）。带上落地的 `#{session_id}` 句柄。
@@ -162,6 +168,33 @@ pub(crate) enum Outcome {
 }
 
 impl Outcome {
+    /// 〔W5-VIS · `设计/15 §4.7 S2`〕**打不上的那两形说出来**：一句给日志的话；其余五形回 `None`。
+    ///
+    /// | 结局 | 说不说 | 为什么 |
+    /// |---|---|---|
+    /// | `Failed(原因)` | 说，带原因 | tmux 起不来 / 报错 ⇒ 标没写上 |
+    /// | `RejectedSid` | 说 | sid 形状不对、fail closed ⇒ 标没写上 |
+    /// | `Tagged` / `AlreadyCurrent` | 不说 | 打上了 |
+    /// | `NotInTmux` / `PaneUnknown` / `NoSuchPane` | 不说 | 没有可打的会话（不在 tmux 里 / 不知道 / 默认 socket 不认），不是「打标失败」 |
+    ///
+    /// 后果那半句写死在这里：标没写上的会话，之后经后端的 kill 与送键过不了身份门（`wrong_owner`）。
+    pub(crate) fn failure_note(&self, pid: u32, sid: &str) -> Option<String> {
+        let why = match self {
+            Outcome::Failed(why) => why.clone(),
+            Outcome::RejectedSid => {
+                "sid 的形状不对（只认字母、数字、`-`、`_`，长度 1–128），不往 tmux 里写".to_string()
+            }
+            Outcome::Tagged(_)
+            | Outcome::AlreadyCurrent
+            | Outcome::NotInTmux
+            | Outcome::PaneUnknown
+            | Outcome::NoSuchPane => return None,
+        };
+        Some(format!(
+            "会话身份标没打上（pid {pid} · sid {sid}）：{why} —— 之后对这个会话的 kill / 送键会被身份门拒（wrong_owner）"
+        ))
+    }
+
     /// 〔U4b · 第四波〕**打标那一次探测的结局 → 这条会话的容器**（`session_added.container`）。
     ///
     /// | 结局 | 容器 | 为什么 |
@@ -364,15 +397,28 @@ pub(crate) fn tag(pid: u32, sid: &str) -> Outcome {
     // ★ 对 `#{session_id}` **句柄**下手，不对名字 —— 与 `gate` / `kill` 同一条纪律：
     // 名字在探测与动手之间可能被重新绑定到别的会话，句柄不会（server 生命周期内唯一、不复用）。
     let target = probed.session_id.clone();
-    match std::process::Command::new("tmux")
+    set_sid(std::process::Command::new("tmux"), target, sid)
+}
+
+/// 真写那一下：`set-option -t <句柄> <事实键> <sid>`。
+///
+/// 〔W5-VIS · `设计/15 §4.7 S4` 同形〕tmux 的 stderr **收下来进原因**（原先丢进 `Stdio::null()`，
+/// 失败只剩一个退出码 —— 「为什么没打上」要靠猜）。`cmd` 由调用方造（生产 = `Command::new("tmux")`），
+/// 判据换一个假 tmux 的绝对路径进来，不碰进程级 `PATH`（`gate_tests` 头注写过为什么不能 `set_var`）。
+fn set_sid(mut cmd: std::process::Command, target: String, sid: &str) -> Outcome {
+    match cmd
         .args(["set-option", "-t", &target, "@ccm_sid", sid])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
+        .stderr(std::process::Stdio::piped())
+        .output()
     {
-        Ok(st) if st.success() => Outcome::Tagged(target),
-        Ok(st) => Outcome::Failed(format!("tmux set-option 退出码 {st}")),
+        Ok(out) if out.status.success() => Outcome::Tagged(target),
+        Ok(out) => Outcome::Failed(format!(
+            "tmux set-option 退出码 {}：{}",
+            out.status,
+            super::launch::said_of(&out.stderr)
+        )),
         Err(e) => Outcome::Failed(format!("起不来 tmux：{e}")),
     }
 }

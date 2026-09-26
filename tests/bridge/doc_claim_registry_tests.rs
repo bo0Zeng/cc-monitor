@@ -286,8 +286,11 @@ fn the_outer_layer_producers_are_in_the_state_the_doc_claims() {
     let root = repo_root();
     let checks: &[(&str, bool)] = &[
         (
-            "session-backend.ts（TS 生产远端主路）",
-            root.join("src/session-backend.ts").is_file(),
+            // 🔴 〔LR2 2026-09-25〕**「必须在」翻成「必须不在」**（同 `K-R104` 那一格的处置）：
+            //    TS 座按 `设计/00 §2.5 ④` 删了（外层三格只剩 `payload::render_tmux_outer` 一个家），
+            //    `INVARIANTS §33b` 产出方表那一行同拍改记「已删」。长回来 ⇒ 红。
+            "session-backend.ts（TS 座，LR2 已删 —— 必须不在）",
+            !root.join("src/session-backend.ts").is_file(),
         ),
         (
             "control/launch.rs（backend argv）",
@@ -389,7 +392,8 @@ fn the_three_questions_in_33b_have_todays_answers() {
     };
 
     // ── 量法 ② ────────────────────────────────────────────────────────────
-    // 座本身（`session-backend.ts`）不算 —— 它是被问的那一层，不是问的人。
+    // 〔LR2〕座本身（`session-backend.ts`）删了；量法照旧数「生产 TS 里还有谁问座要 attach」——
+    // 座长回来、又有人问它要，这一问的判词就翻回「前端仍产」。
     let seat_attach = format!("SESSION_BACKEND.{}", "attach");
     let mut askers: Vec<String> = Vec::new();
     let mut scanned_ts = 0usize;
@@ -399,7 +403,7 @@ fn the_three_questions_in_33b_have_todays_answers() {
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-        // 座本身不算 —— 它是被问的那一层，不是问的人。
+        // 座本身不算 —— 它是被问的那一层，不是问的人（〔LR2〕今天它不在盘上，这一格留着给「长回来」那天）。
         if name.ends_with(".test.ts")
             || name.ends_with(".vitest.ts")
             || name == "session-backend.ts"
@@ -741,10 +745,11 @@ fn each_registered_status_still_matches_reality() {
             // ⇒ 收窄成与 `control/` 那格同形：钉住那个**唯一的住户**。
             // ⚠ **这不是新判据，是把一条已有判据收窄到它自己声称守的性质** ——
             //   本格改动不加任何 `#[test]`，判据条数一格没涨。
+            // 〔LOC1a · 第四波 4D〕那个唯一的住户（`local_query.rs`〔散文墓碑〕）删了 ⇒ 这一格不再有「那一个」可钉，
+            //   量法改成与 `platform/` / `common/` 同形：目录在 ∧ 里面真有住户（空壳 `mod.rs` 不算）。
             "monitor-backend-observe-landed" => (
-                root.join("src/bridge/src/backend/observe/local_query.rs")
-                    .is_file(),
-                "monitor 侧 `backend/observe/` 在，且那个唯一的读面传输住在里面",
+                a_capability_line_has_landed(&root, "observe"),
+                "monitor 侧 `backend/observe/` 在，且里面**真有住户**（至少一个不是 `mod.rs` 的 `.rs`）",
             ),
             // 🔴 〔`K-R73` 09-12，PM 裁定二排期到本件〕**这两格原本是裸 `is_dir`** —— 原文逐字：
             //   `root.join("src/bridge/src/backend/platform").is_dir()` ＋ 说明串
@@ -915,6 +920,26 @@ fn every_code_symbol_named_in_the_docs_still_resolves() {
             "run_tmux_reconcile_poller",
             "`INVARIANTS.md` 那句逐字写着它**已删**（audit-fixes F03.2）—— 历史句，\
                  删掉反而丢掉「为什么今天没有 poller」的解释",
+        ),
+        // 〔LR2 2026-09-25〕下面四条：`INVARIANTS.md` §33b 的沿革段逐字点着它们 —— 它们是 TS 兜底一族的
+        //   「存续理由」判据与两把尺子，随那一族（`launch-render-fallback.ts` · `session-backend.ts` · 五个 builder）
+        //   按 `设计/00 §2.5 ④` 删了。那几句是「那一族当年靠什么站着」的解释，改写会丢线索（同 `build_usage_probe_cmd`）；
+        //   「那一族长回来」由 `tests/launch-no-shell-in-ts.vitest.ts` 挡着。
+        (
+            "the_ts_fallback_renderer_now_stands_on_its_own_consumers",
+            "〔LR2〕历史句：TS 兜底渲染器的「存续理由」判据，那一族删了",
+        ),
+        (
+            "the_retired_premise_left_a_tombstone_that_is_still_on_the_board",
+            "〔LR2〕历史句：上一条的看守，同一拍删了",
+        ),
+        (
+            "TS_FALLBACK_KEEPERS",
+            "〔LR2〕历史句：尺子A（兜底一族的消费者处数表），同一拍删了",
+        ),
+        (
+            "TS_FALLBACK_REACH",
+            "〔LR2〕历史句：尺子B（兜底一族有没有生产调用方），同一拍删了",
         ),
         (
             "build_usage_probe_cmd",
@@ -1158,6 +1183,26 @@ fn every_repo_path_named_in_the_docs_still_resolves() {
             "**历史句**〔LR1 · U8c-3 09-25〕：`INVARIANTS §33` 三处「验证」逐字记着当时那几刀下在\
                  哪套测试上（R04① · #76 防线）。套件随 TS 渲染器删了，今天的验证住址逐条写在\
                  §33 末尾的 LR1 更新段",
+        ),
+        // 〔LR2 2026-09-25〕下面四条：TS 兜底一族（座 · 兜底渲染器）与它们的两份套件按 `设计/00 §2.5 ④` 删了。
+        //   `INVARIANTS §31 / §31a / §33 / §33b` 与 `CONTRIBUTING` 那一节点它们的句子都是**沿革**
+        //   （「阶段①问前端座」「门禁腐过一次」「四处同源」「双渲染器」），每处旁边都补了〔LR2〕那句今天的住址；
+        //   删掉路径，读的人就不知道今天那条规矩当初是对着哪一份立的。
+        (
+            "src/session-backend.ts",
+            "**历史句**〔LR2〕：TS 座，已删（外层三格今天只在 `payload.rs`）",
+        ),
+        (
+            "src/launch-render-fallback.ts",
+            "**历史句**〔LR2〕：TS 兜底渲染器，已删",
+        ),
+        (
+            "tests/session-backend-gate.vitest.ts",
+            "**历史句**〔LR2〕：`§31` 第①条的旧机检，已由 `tests/launch-no-shell-in-ts.vitest.ts` 接替",
+        ),
+        (
+            "tests/session-backend.test.ts",
+            "**历史句**〔LR2〕：座的套件，已删（与座无关的两条搬进 `tests/remote-launch.test.ts`）",
         ),
         (
             "src/cards/memory-recall.ts",
@@ -2471,4 +2516,170 @@ fn the_registry_file_itself_stays_out_of_that_population() {
     );
     // 非空对照：针本身是有效的（同一把尺子在别处确实抓得到东西）。
     assert!(!env_key_claim_lines().is_empty());
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 〔TL2 · 4D · IV1 余〕代码里点到的 `INVARIANTS §N` 必须真有那一节
+// ════════════════════════════════════════════════════════════════════════
+
+/// `INVARIANTS.md` 里的节号 → 那一节的正文（到下一个同级或更高级标题为止）。
+/// 节号认 `## N.` / `### N.M` / `## 24bis.` / `### 17a.` 这几形标题行。
+fn invariant_sections() -> std::collections::BTreeMap<String, String> {
+    let mut out: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    let mut cur: Option<(String, usize)> = None;
+    for line in INVARIANTS.lines() {
+        let level = line.chars().take_while(|&c| c == '#').count();
+        let id = if (2..=4).contains(&level) && line[level..].starts_with(' ') {
+            let rest = line[level..].trim_start();
+            let id = section_id_prefix(rest);
+            (!id.is_empty() && rest[id.len()..].starts_with(['.', ' '])).then_some(id)
+        } else {
+            None
+        };
+        match id {
+            Some(id) => {
+                out.entry(id.clone()).or_default();
+                cur = Some((id, level));
+            }
+            None => {
+                if level >= 2 {
+                    if cur.as_ref().is_some_and(|(_, l)| level <= *l) {
+                        cur = None;
+                    }
+                } else if let Some((id, _)) = &cur {
+                    let body = out.get_mut(id).unwrap();
+                    body.push_str(line);
+                    body.push('\n');
+                }
+            }
+        }
+    }
+    out
+}
+
+/// 从串首取一个节号：数字 ＋ 可选小写字母（`a` / `bis`）＋ 可选 `.数字`。取不到给空串。
+fn section_id_prefix(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut i = 0;
+    while i < b.len() && b[i].is_ascii_digit() {
+        i += 1;
+    }
+    if i == 0 {
+        return String::new();
+    }
+    while i < b.len() && b[i].is_ascii_lowercase() {
+        i += 1;
+    }
+    if i + 1 < b.len() && b[i] == b'.' && b[i + 1].is_ascii_digit() {
+        i += 1;
+        while i < b.len() && b[i].is_ascii_digit() {
+            i += 1;
+        }
+    }
+    s[..i].to_string()
+}
+
+/// 一段文本里 `INVARIANTS[.md][`] [§] N` 形的引用（节号原样）。
+fn invariant_refs_in(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for (at, _) in text.match_indices("INVARIANTS") {
+        // `INVARIANTS` 与 `§` 之间只许有 `.md` · 反引号 · 空格这几样（至多 5 个字符）。
+        let rest = &text[at + "INVARIANTS".len()..];
+        let Some(sect) = rest
+            .char_indices()
+            .take(6)
+            .find(|&(_, c)| c == '§')
+            .map(|(i, _)| i)
+        else {
+            continue;
+        };
+        if !rest[..sect].chars().all(|c| ".md` ".contains(c)) {
+            continue;
+        }
+        let r = rest[sect + '§'.len_utf8()..].trim_start_matches(' ');
+        let id = section_id_prefix(r);
+        if !id.is_empty() {
+            out.push(id);
+        }
+    }
+    out
+}
+
+/// 一个引用落不落得到：`§N`（含 `Na` / `Nbis`）必须是一个标题；`§N.M` 要么是标题，
+/// 要么是 `§N` 正文里行首的 `M.` 编号条（例：`§21.3` = 第 21 节的第 3 条，那一节没有子标题）。
+fn invariant_ref_resolves(secs: &std::collections::BTreeMap<String, String>, id: &str) -> bool {
+    if secs.contains_key(id) {
+        return true;
+    }
+    let Some((major, minor)) = id.split_once('.') else {
+        return false;
+    };
+    secs.get(major).is_some_and(|body| {
+        body.lines()
+            .any(|l| l.trim_start().starts_with(&format!("{minor}. ")))
+    })
+}
+
+/// 〔TL2 · 4D〕要求住址：`INVARIANTS`「修改本文档」第 2 条（生产模块头注要引 `§ N`）· `设计/01 §7.4`
+/// 「每个判据族点得出它守的是哪条要求」· 共用纪律 19（判据头注写明它守的要求住址，`INVARIANTS §N` 是三种之一）。
+///
+/// IV1 交上来的缺口逐字：「判据 → 条这一向**没有机检**：`INVARIANTS §N` 被判据头注点到时，没有东西核那一节存在」。
+/// 人群 = 两棵树（`src/` ＋ `tests/`）全部代码文件里的引用（盘上全集，不按判据族挑）；每一条都得落到一节上。
+/// ⚠ 它核「那一节存在」，**不**核「那一节说的是这件事」（那一向判不动，如实写在这里）。
+#[test]
+fn every_invariants_section_cited_in_code_exists() {
+    let secs = invariant_sections();
+    // 正控：节号表读得出，且三种形状各在（否则认法坏了）。
+    for id in ["2", "2.1", "24bis", "17a", "41.6", "49"] {
+        assert!(
+            secs.contains_key(id),
+            "INVARIANTS 的节号表里没有 `{id}` —— 标题认法坏了（读到 {} 节）",
+            secs.len()
+        );
+    }
+    let root = repo_root();
+    let mut total = 0usize;
+    let mut bad = Vec::new();
+    let exts = ["rs", "ts", "mts", "js", "py", "sh"];
+    let files = guard_core::scan_tree_excluding(&root.join("src"), &exts, &[])
+        .into_iter()
+        .chain(guard_core::scan_tree_excluding(
+            &root.join("tests"),
+            &exts,
+            &[],
+        ));
+    for (p, text) in files {
+        let rel = p
+            .strip_prefix(&root)
+            .unwrap_or(&p)
+            .to_string_lossy()
+            .replace('\\', "/");
+        if rel.contains("/vendor/")
+            || rel.contains("/node_modules/")
+            || rel.contains("/__fixtures__/")
+        {
+            continue;
+        }
+        for id in invariant_refs_in(&text) {
+            total += 1;
+            if !invariant_ref_resolves(&secs, &id) {
+                bad.push(format!("{rel}  §{id}"));
+            }
+        }
+    }
+    assert!(
+        total > 100,
+        "只扫到 {total} 处 `INVARIANTS §N` 引用 —— 根没对上，本条在空转"
+    );
+    // 反向自检：一条合成的悬空引用必须被判出（针用 format! 拼，别让本文件自己进人群）。
+    let ghost = format!("见 INVARIANTS {}999", '§');
+    let ids = invariant_refs_in(&ghost);
+    assert_eq!(ids, vec!["999".to_string()], "引用认法坏了");
+    assert!(!invariant_ref_resolves(&secs, &ids[0]), "悬空引用没被判出");
+    assert!(
+        bad.is_empty(),
+        "这些地方点了一个 `INVARIANTS` 里不存在的节（共扫 {total} 处）：\n  {}\n\
+         ⇒ 改号 / 删节之后引用没跟上；或节号写错。改成真在的那一节。",
+        bad.join("\n  ")
+    );
 }
