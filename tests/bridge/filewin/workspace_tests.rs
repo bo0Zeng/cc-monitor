@@ -17,7 +17,8 @@
 //! | [`splitting_and_unsplitting`] | 开双栏 ⇒ 右栏落在焦点那栏的目录上、焦点给它；收 ⇒ 回一栏 | 期望手写 |
 //! | [`right_click_menus_open_on_both_sides`] | 两栏各右键一次，两次菜单**都真的摆出来**（序号是进程级的，两栏不撞） | 菜单那一块的矩形从 egui 的内存里读 |
 //! | [`copy_across_speaks_files_copy_with_a_common_root`] | 线上那一行 `files-copy` 的 `root` / `from` / `to` 逐格相等（合成后端） | 期望手写；实得是合成后端真收到的那一行 |
-//! | [`copy_across_refuses_what_it_cannot_do_and_sends_nothing`] | 没开双栏 / 选了两项 / 选了目录 / 两栏同目录 ⇒ 出声、线上零条（带正控：合法那一形恰好一条） | 零命中读的是线上那本账 |
+//! | [`copy_across_refuses_what_it_cannot_do_and_sends_nothing`] | 没开双栏 / 没选 / 选中里有有损名 / 两栏同目录 ⇒ 出声、线上零条（带正控：合法那一摞恰好两条） | 零命中读的是线上那本账 |
+//! | [`copy_across_takes_the_whole_selection_and_a_directory_goes_recursive`] | 〔W5-FILES · `设计/60 §6.2`〕一摞（文件 ＋ 目录）⇒ 线上两行逐格相等，目录那行带 `recursive: true` | 期望手写；实得是合成后端真收到的 |
 //! | [`across_args_cuts_paths_at_the_common_directory`] | 公共前缀那一刀逐格相等（含只在根下相交的那一形） | 期望手写 |
 //! | [`ctrl_t_and_ctrl_w_open_and_close_tabs_on_the_focused_side`] | 〔W5-FILES · `设计/60 §6.2` 标签页快捷键 ＋ `§6.3` 键盘四道闸〕Ctrl+T / Ctrl+W 只作用于焦点那一栏（两栏各自的标签数逐格相等）；有一问摆着 ⇒ 零作用；不按 Ctrl 的 T ⇒ 零作用 | 标签数读的是各栏自己的表；期望手写 |
 //!
@@ -434,6 +435,8 @@ async fn copy_across_speaks_files_copy_with_a_common_root() {
     assert_eq!(ws.pane_on(0).copy_board.rounds(), 0);
 }
 
+/// 〔W5-FILES〕做不了的那几形：没开双栏 / 一项都没选 / 选了有损名 / 两栏同目录 ⇒ 出声、线上零条（带正控）。
+/// 〔FW34 那一版〕「选了目录」「选了两项」也在这里 —— 今天那两形**做得了**（见下一条），从阴性挪成了正控。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn copy_across_refuses_what_it_cannot_do_and_sends_nothing() {
     use crate::filewin::select::Intent;
@@ -445,40 +448,29 @@ async fn copy_across_refuses_what_it_cannot_do_and_sends_nothing() {
     // ② 一项都没选。
     ws.focus_side(0);
     assert!(!ws.copy_to_other(None));
-    // ③ 选了目录（第二行）。
-    ws.pane_on_mut(0).apply_intent(
-        Intent::Step {
-            by: 1,
-            extend: false,
-        },
-        0.0,
-        None,
-    );
-    ws.pane_on_mut(0).apply_intent(
-        Intent::Step {
-            by: 1,
-            extend: false,
-        },
-        0.0,
-        None,
-    );
-    assert_eq!(ws.pane_on(0).picked_name(), Ok("d".to_string()));
-    assert!(!ws.copy_to_other(None));
-    // ④ 两项。
+    assert!(ws.notice().is_some());
+    // ③ 选中的一摞里有一个有损名 ⇒ 整摞不做。
+    {
+        let mut rows = ws.pane_on(0).listing.rows.lock().unwrap();
+        rows.push(
+            Row {
+                lossy_name: true,
+                ..file("\u{FFFD}odd", "/srv/a")
+            }
+            .into(),
+        );
+    }
     ws.pane_on_mut(0).apply_intent(Intent::SelectAll, 0.0, None);
-    assert_eq!(ws.pane_on(0).picked_name(), Err(2));
     assert!(!ws.copy_to_other(None));
-    // ⑤ 两栏同一个目录。
-    ws.pane_on_mut(1).navigate_to("/srv/a".into());
-    ws.pane_on_mut(0).apply_intent(
-        Intent::Step {
-            by: -1,
-            extend: false,
-        },
-        0.0,
-        None,
+    assert!(
+        ws.notice().unwrap_or("").contains("\u{FFFD}odd"),
+        "没点名是哪一项：{:?}",
+        ws.notice()
     );
-    assert_eq!(ws.pane_on(0).picked_name(), Ok("x.txt".to_string()));
+    ws.pane_on(0).listing.rows.lock().unwrap().pop();
+    // ④ 两栏同一个目录。
+    ws.pane_on_mut(1).navigate_to("/srv/a".into());
+    ws.pane_on_mut(0).apply_intent(Intent::SelectAll, 0.0, None);
     assert!(!ws.copy_to_other(None));
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     assert_eq!(
@@ -487,11 +479,47 @@ async fn copy_across_refuses_what_it_cannot_do_and_sends_nothing() {
         "做不了的那几形上了线：{:?}",
         wired.cmds()
     );
-    // 正控：换回别的目录 ⇒ 恰好一条。
+    // 正控：换回别的目录 ⇒ 两项（一个文件、一个目录）各恰好一条。
     ws.pane_on_mut(1).navigate_to("/srv/b".into());
-    assert!(ws.copy_to_other(None));
+    assert!(ws.copy_to_other(None), "起不来：{:?}", ws.notice());
     settle_copy(ws.pane_on(1)).await;
-    assert_eq!(wired.count("files-copy"), 1);
+    assert_eq!(wired.count("files-copy"), 2);
+}
+
+/// 〔W5-FILES〕要求住址：`设计/60 §6.2`「复制目录 · 批量复制」＋ `§6.3`「多选时要每一项都能…才给」。
+///
+/// 左栏选中一个文件 ＋ 一个目录 ⇒ 线上两行 `files-copy` 逐格相等：文件那一行与 FW34 那一形逐字同（不多一个键），
+/// 目录那一行多 `recursive: true`、`overwrite: false`；结局一句把两件的条数加起来（合成后端：文件 1/0、目录 3/2）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn copy_across_takes_the_whole_selection_and_a_directory_goes_recursive() {
+    let (wired, mut ws) = across_rig("w5-across-batch").await;
+    ws.focus_side(0);
+    ws.pane_on_mut(0)
+        .apply_intent(crate::filewin::select::Intent::SelectAll, 0.0, None);
+    assert!(ws.copy_to_other(None), "起不来：{:?}", ws.notice());
+    settle_copy(ws.pane_on(1)).await;
+    let copies: Vec<serde_json::Value> = wired
+        .log
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|r| r["cmd"] == "files-copy")
+        .map(|r| r["args"].clone())
+        .collect();
+    assert_eq!(
+        copies,
+        vec![
+            serde_json::json!({"root": "/srv", "from": "a/x.txt", "to": "b/x.txt", "overwrite": false}),
+            serde_json::json!({"root": "/srv", "from": "a/d", "to": "b/d", "overwrite": false, "recursive": true}),
+        ],
+        "线上那两行与期望不等"
+    );
+    let last = ws.pane_on(1).copy_board.last().expect("没有结局");
+    let said = crate::filewin::copy::outcome_notice(&last).text;
+    assert!(
+        said.contains("复制完成 2 项（4 个文件 · 2 个目录 · 84 字节）"),
+        "结局那句没把两件加起来：{said}"
+    );
 }
 
 #[test]
@@ -500,6 +528,7 @@ fn across_args_cuts_paths_at_the_common_directory() {
         from: from.into(),
         to: to.into(),
         name: crate::filewin::source::remote_basename(to).into(),
+        is_dir: false,
     };
     let cases: &[(&str, &str, (&str, &str, &str))] = &[
         ("/srv/a/x", "/srv/b/x", ("/srv", "a/x", "b/x")),
@@ -548,7 +577,11 @@ fn ctrl_t_and_ctrl_w_open_and_close_tabs_on_the_focused_side() {
     assert_eq!(ws.active_on(1), 1, "开完没切过去");
     assert_eq!(ws.pane_on(1).cwd, "/r", "新标签没落在这一栏当前的目录上");
     d.frame(&mut ws, vec![ctrl(egui::Key::W)]);
-    assert_eq!(tab_counts(&ws), vec![1, 1], "Ctrl+W 没关掉焦点那一栏的当前标签");
+    assert_eq!(
+        tab_counts(&ws),
+        vec![1, 1],
+        "Ctrl+W 没关掉焦点那一栏的当前标签"
+    );
     // 最后一个关不掉，并且出声。
     d.frame(&mut ws, vec![ctrl(egui::Key::W)]);
     assert_eq!(tab_counts(&ws), vec![1, 1]);
@@ -573,5 +606,9 @@ fn ctrl_t_and_ctrl_w_open_and_close_tabs_on_the_focused_side() {
     // 正控：框收掉之后同一个键开得出来；焦点换到左栏之后落在左栏。
     ws.focus_side(0);
     d.frame(&mut ws, vec![ctrl(egui::Key::T)]);
-    assert_eq!(tab_counts(&ws), vec![2, 1], "焦点换到左栏之后 Ctrl+T 没落在左栏");
+    assert_eq!(
+        tab_counts(&ws),
+        vec![2, 1],
+        "焦点换到左栏之后 Ctrl+T 没落在左栏"
+    );
 }

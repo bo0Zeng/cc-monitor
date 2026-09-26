@@ -1082,17 +1082,6 @@ impl FileWindow {
     /// 这里只负责把「问谁 · 怎么问 · 怎么起」三个口接上去（同 [`Self::start_drop`]）。
     /// 而本函数接不上（**没运行时**）要**出声**，判据见 `shell_tests`。
     pub fn start_copy(&mut self, job: CopyJob, ctx: Option<egui::Context>) -> bool {
-        self.start_copy_via(job, ctx, false)
-    }
-
-    /// 〔FW34〕同 [`Self::start_copy`]，但目标在**另一个目录**（「复制到另一栏」）：
-    /// 三段一个字没变（探 → 一次问覆盖 → 才动手），只是动手那一下的参数换成跨目录那一形
-    /// （[`super::workspace::across_args`]）。起在**目标那一栏**上 ⇒ 问与结局画在那一侧。
-    pub fn start_copy_across(&mut self, job: CopyJob, ctx: Option<egui::Context>) -> bool {
-        self.start_copy_via(job, ctx, true)
-    }
-
-    fn start_copy_via(&mut self, job: CopyJob, ctx: Option<egui::Context>, across: bool) -> bool {
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
                 Some("复制要一个 tokio 运行时，这个窗口没拿到".into());
@@ -1111,28 +1100,72 @@ impl FileWindow {
             let (probe_line, probe_origin) = (line.clone(), origin.clone());
             let ask_board = board.clone();
             let run_board = board.clone();
-            let out =
-                super::copy::run_copy(
-                    job,
-                    move |j| async move {
-                        super::copy::probe_target(&probe_line, &probe_origin, &j).await
-                    },
-                    move |j| {
-                        let rx = ask_board.ask(j);
-                        async move { rx.await.unwrap_or(false) }
-                    },
-                    // 〔F7a〕经通道问后端 `files-copy`；第二个参数是覆盖策略（问过且答了「覆盖」）。
-                    //   后端这一趟取消不掉 ⇒ 不再走取消那道闸（理由住 `copy.rs` 头注）。
-                    move |j, overwrite| async move {
-                        run_board.begin(&j.name);
-                        if across {
-                            super::workspace::copy_across(&line, &origin, &j, overwrite).await
-                        } else {
-                            super::copy::copy_remote(&line, &origin, &j, overwrite).await
-                        }
-                    },
-                )
-                .await;
+            let out = super::copy::run_copy(
+                job,
+                // 〔W5-FILES〕目录那一件不问覆盖（目录复制不合并）：目标已在由后端拒、原话摆出来。
+                move |j| async move {
+                    !j.is_dir && super::copy::probe_target(&probe_line, &probe_origin, &j).await
+                },
+                move |j| {
+                    let rx = ask_board.ask(j);
+                    async move { rx.await.unwrap_or(false) }
+                },
+                // 〔F7a〕经通道问后端 `files-copy`；第二个参数是覆盖策略（问过且答了「覆盖」）。
+                //   后端这一趟取消不掉 ⇒ 不再走取消那道闸（理由住 `copy.rs` 头注）。
+                move |j, overwrite| async move {
+                    run_board.begin(&j.name);
+                    super::copy::copy_remote(&line, &origin, &j, overwrite).await
+                },
+            )
+            .await;
+            board.finish(out);
+        });
+        true
+    }
+
+    /// 〔W5-FILES〕**一摞复制到这一栏**（「复制到另一栏」的按钮与拖，`Workspace::copy_to_other` 起在目标那一栏上）：
+    /// 三段在 [`super::copy::run_copy_batch`] 的结构里（逐件探 → 撞名目录整摞不做 → 撞名文件一次问完 → 逐件发），
+    /// 这里只接「问谁 · 怎么问 · 怎么起」三个口。参数是跨目录那一形（[`super::workspace::across_args`]）。
+    /// 〔FW34 那一版〕只收一件、只收文件；今天一件就是一摞里只有一件。
+    pub fn start_copy_batch(&mut self, jobs: Vec<CopyJob>, ctx: Option<egui::Context>) -> bool {
+        let Some(h) = self.rt.clone() else {
+            *self.listing.error.lock().unwrap() =
+                Some("复制要一个 tokio 运行时，这个窗口没拿到".into());
+            return false;
+        };
+        let Some(line) = self.line.clone() else {
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.into());
+            return false;
+        };
+        let origin = self.source.origin();
+        let board = self.copy_board.clone();
+        board.attach(ctx);
+        let total = jobs.len();
+        h.spawn(async move {
+            let (probe_line, probe_origin) = (line.clone(), origin.clone());
+            let ask_board = board.clone();
+            let run_board = board.clone();
+            let seq = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let out = super::copy::run_copy_batch(
+                jobs,
+                move |j| {
+                    let (l, o) = (probe_line.clone(), probe_origin.clone());
+                    async move { super::copy::probe_target(&l, &o, &j).await }
+                },
+                move |js| {
+                    let rx = ask_board.ask_many(js);
+                    async move { rx.await.unwrap_or(false) }
+                },
+                move |j, overwrite| {
+                    let (l, o, b) = (line.clone(), origin.clone(), run_board.clone());
+                    let k = seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                    async move {
+                        b.begin(&format!("{}（{k}/{total}）", j.name));
+                        super::workspace::copy_across(&l, &o, &j, overwrite).await
+                    }
+                },
+            )
+            .await;
             board.finish(out);
         });
         true
@@ -1966,6 +1999,16 @@ impl FileWindow {
             1 => self.selection.names().pop().ok_or(0),
             n => Err(n),
         }
+    }
+
+    /// 〔W5-FILES〕选中的那一摞（按列表的显示序）。选中态按 `pick_key` 记，这里按同一把键取回行。
+    pub fn picked_rows(&self) -> Vec<Listed> {
+        let rows = self.listing.rows.lock().unwrap();
+        self.selection
+            .picked_indices(&rows)
+            .into_iter()
+            .filter_map(|i| rows.get(i).cloned())
+            .collect()
     }
 
     /// 〔FW34〕按名字找那一行（O(n)：只在「选中的那一项换了」时调，不是每帧）。

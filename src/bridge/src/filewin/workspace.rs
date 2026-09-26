@@ -337,31 +337,27 @@ impl Workspace {
         self.preview = on.then(super::preview::Preview::default);
     }
 
-    /// 🔴 **复制到另一栏**：焦点那一栏选中的恰好一个文件 → 另一栏当前目录、同名。
+    /// 🔴 **复制到另一栏**：焦点那一栏选中的**那一摞**（文件与目录都行）→ 另一栏当前目录、同名。
     ///
-    /// 走现成那条复制流水线（先探目标 → 已在就问一次覆盖 → 才动手；后端 `files-copy`，围栏在后端），
-    /// 只是参数换成跨目录那一形（[`across_args`]），**起在目标那一栏上**
-    /// ⇒ 问与结局画在目标那一侧，跑完那一栏重列目录。回值 ＝ 真的起来了。
+    /// 〔W5-FILES · `设计/60 §6.2`「复制目录 · 批量复制」〕此前只收「恰好一个文件」。今天走一摞复制
+    /// （[`super::copy::run_copy_batch`]：逐件探目标 → 撞名的目录整摞不做 → 撞名的文件一次问完 → 逐件发），
+    /// 后端 `files-copy`（目录带 `recursive: true`），**起在目标那一栏上** ⇒ 问与结局画在那一侧，跑完那一栏重列目录。
+    /// `§6.3`：每一项都能复制才给（有损名那一项在，整摞不做、出声）。回值 ＝ 真的起来了。
     pub fn copy_to_other(&mut self, ctx: Option<egui::Context>) -> bool {
         if self.sides.len() != 2 {
             self.notice = Some("要先开双栏".into());
             return false;
         }
         let from = self.pane_on(self.focus);
-        let name = match from.picked_name() {
-            Ok(n) => n,
-            Err(n) => {
-                self.notice = Some(format!("要选中恰好一个文件（现在选中了 {n} 项）"));
-                return false;
-            }
-        };
-        let Some(row) = from.row_named(&name) else {
-            self.notice = Some(format!("列表里已经没有 {name} 了"));
+        let rows = from.picked_rows();
+        if rows.is_empty() {
+            self.notice = Some("还没有选中任何一项".into());
             return false;
-        };
-        if !is_copyable(&row) {
+        }
+        if let Some(r) = rows.iter().find(|r| !is_copyable(r)) {
             self.notice = Some(format!(
-                "{name} 复制不了：只能复制文件（名字要是合法 UTF-8）"
+                "{} 复制不了（名字读不出来），这一摞一件都没做",
+                r.name
             ));
             return false;
         }
@@ -371,13 +367,17 @@ impl Workspace {
             self.notice = Some("两栏是同一个目录，复制过去就是它自己".into());
             return false;
         }
-        let job = CopyJob {
-            from: row.path.clone(),
-            to: super::writeops::join_remote(&dest_dir, &name),
-            name,
-        };
+        let jobs: Vec<CopyJob> = rows
+            .iter()
+            .map(|r| CopyJob {
+                from: r.path.clone(),
+                to: super::writeops::join_remote(&dest_dir, &r.name),
+                name: r.name.clone(),
+                is_dir: r.is_dir,
+            })
+            .collect();
         self.notice = None;
-        self.pane_on_mut(other).start_copy_across(job, ctx)
+        self.pane_on_mut(other).start_copy_batch(jobs, ctx)
     }
 
     /// 标签上写什么：当前目录的最后一段（根就写 `/`）；手上有事的前面加「●」。
@@ -556,21 +556,23 @@ pub fn across_args(job: &CopyJob, overwrite: bool) -> Result<serde_json::Value, 
             .filter(|r| !r.is_empty())
             .ok_or_else(|| format!("{p} 不在 {root} 底下，复制不过去"))
     };
-    Ok(serde_json::json!({
+    let mut v = serde_json::json!({
         "root": root,
         "from": rel(&job.from)?,
         "to": rel(&job.to)?,
         "overwrite": overwrite,
-    }))
+    });
+    super::copy::mark_recursive(&mut v, job);
+    Ok(v)
 }
 
-/// 跨目录复制那一趟（经通道问后端 `files-copy`）。回复制了几个字节。
+/// 跨目录复制那一趟（经通道问后端 `files-copy`）。回这一件复制了什么（〔W5-FILES〕目录那一件是整棵）。
 pub async fn copy_across(
     line: &super::source::Line,
     origin: &super::source::Origin,
     job: &CopyJob,
     overwrite: bool,
-) -> Result<u64, String> {
+) -> Result<super::copy::Copied, String> {
     let args = across_args(job, overwrite)?;
     let d = super::source::ask(
         line,
@@ -580,14 +582,7 @@ pub async fn copy_across(
         super::copy::COPY_BUDGET,
     )
     .await?;
-    d.get("bytes")
-        .and_then(serde_json::Value::as_u64)
-        .ok_or_else(|| {
-            format!(
-                "`{}` 的应答里没有 `bytes`，和约定的不一样",
-                super::copy::CMD_COPY
-            )
-        })
+    super::copy::copied_from_reply(job, &d)
 }
 
 impl eframe::App for Workspace {

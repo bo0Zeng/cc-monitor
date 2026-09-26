@@ -89,10 +89,20 @@ fn the_two_row_gates_agree_today_and_say_so_when_they_stop() {
     let any_false = corpus.iter().any(|r| !is_downloadable(r));
     assert!(any_true && any_false, "语料退化了 —— 本条此刻是空真的");
 
+    // 〔W5-FILES〕**刻意只放开了复制那一侧**：目录能复制（后端 `recursive: true`，`设计/60 §6.2`），
+    //   下载仍只收文件（没有「递归下载」这条路）⇒ 两道闸恰好在「名字寻址得到的目录」这一格上分开，其余逐格相等。
     for r in &corpus {
+        let copy = crate::filewin::copy::is_copyable(r);
+        if r.is_dir && !r.lossy_name {
+            assert!(
+                copy && !is_downloadable(r),
+                "目录那一格的差异不是「能复制、不能下载」"
+            );
+            continue;
+        }
         assert_eq!(
             is_downloadable(r),
-            crate::filewin::copy::is_copyable(r),
+            copy,
             "两道闸对 `{}`（目录={} 有损={}）给了不同答案。\n\
              ⇒ 它们开始漂了。这不一定是 bug —— 回去读 `is_downloadable` 的头注：\n\
                如果是**刻意**只放开一侧（例：递归下载），把本条改成写明那一格的差异；\n\
