@@ -324,7 +324,7 @@ pub async fn create_branch_session(
 // `write_branch_file`〔散文墓碑〕（`O_EXCL` 在本进程里写 `~/.claude/projects/<proj>/<new-sid>.jsonl`）。
 // 用户裁「只允许后端的文件管理部分写文件」也管本机 ⇒ 本机分叉与远端同一条路：exec 本机后端的
 // `--fork-session`（`src/backend/control/fork_write.rs`，写盘白名单层那一处 `O_EXCL`），
-// 结果解释与远端共用 `remote_branch::interpret_fork_exec` ⇒ 两件零调用方、删了。
+// 结果解释与远端共用 `remote_branch::interpret_fork_exec`〔散文墓碑〕（〔LOC1a〕随 exec 那条路一起删了，今天是帧命令 `session-fork`）⇒ 两件零调用方、删了。
 
 /// 在新终端窗口里 resume 一个历史会话。
 ///

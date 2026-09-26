@@ -2098,7 +2098,8 @@ fn nothing_in_the_production_path_wakes_itself_up() {
 ///    （它那边 `[ -x ]` 一样过不了），只会给「这台机有没有本机后端」多一个假阳性来源。
 #[test]
 fn the_window_env_uses_the_one_home_and_stays_silent_without_a_local_backend() {
-    let found = super::env_from_resolved(super::Resolved::Found("/tmp/x/ccm-remote".into()));
+    // 〔LOC1a〕路径由宿主交进来（正在跑的那一份）：给了 ⇒ 那一对；没给 ⇒ 不设。
+    let found = super::backend_bin_env_for_window(Some("/tmp/x/ccm-remote".into()));
     let (k, v) = found.expect("Found 必须给出一对 env");
     assert_eq!(
         k,
@@ -2107,10 +2108,7 @@ fn the_window_env_uses_the_one_home_and_stays_silent_without_a_local_backend() {
     );
     assert_eq!(v, "/tmp/x/ccm-remote", "值必须是解析出来的那条真路径");
 
-    let missing = super::env_from_resolved(super::Resolved::Missing {
-        reason: "测试".into(),
-        looked_at: vec![],
-    });
+    let missing = super::backend_bin_env_for_window(None);
     assert!(
         missing.is_none(),
         "local_backend 不在时必须**什么都不设**，而不是设一个空值 —— \n\

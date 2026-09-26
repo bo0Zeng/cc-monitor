@@ -115,7 +115,6 @@ const UNIT: &[&str] = &[
     "tests/bridge/lib_remote_config_tests.rs",
     "tests/bridge/messages_tests.rs",
     "tests/bridge/port_forward_tests.rs",
-    "tests/bridge/remote_branch_tests.rs",
     "tests/bridge/remote_history_tests.rs",
     "tests/bridge/session_facts_tests.rs",
     "tests/bridge/session_map_f13_tests.rs",
@@ -248,6 +247,8 @@ const UNIT: &[&str] = &[
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
 const SCAN: &[&str] = &[
+    "tests/tasks-decode.vitest.ts", // 〔LOC1a〕读跨语言金样 tasks-list.golden.json
+    "tests/bridge/remote_branch_tests.rs", // 〔LOC1a〕UNIT → SCAN：改走 `<local>` 长连接后判据读源码 / 脚本假后端（判别器判 SCAN）
     "tests/record-file-notice.vitest.ts", // 〔FW1〕D-d：活会话 jsonl 不见了 / 被截短 / 被改写 ⇒ tab 顶一行提示
     "tests/config-patch-fake.vitest.ts",  // 〔CFG1〕假盘对跨语言金样 config-patch.golden.json
     "tests/tab-bar-width.vitest.ts",      // 〔CFG1〕J7 tab 栏宽度走存储接入层、零裸 localStorage
@@ -323,7 +324,6 @@ const SCAN: &[&str] = &[
     "tests/bridge/backend/control/inbound_client_tests.rs",
     "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
     "tests/bridge/backend/control/tmux_tests.rs",
-    "tests/bridge/backend/observe/local_query_tests.rs",
     "tests/bridge/backend_policy_tests.rs",
     "tests/bridge/backend_tests.rs",
     "tests/bridge/bus_identity_registry_tests.rs",
@@ -630,6 +630,7 @@ const INTEGRATION: &[&str] = &[
 /// 支撑：测试树里**没有一条测试**的那几份（夹具 / helper）。不是一层，是让分区闭合的补集。
 /// ⚠ 一份真测试文件掉光了测试属性，判别器会把它判进这里 ⇒ 与登记不一致 ⇒ 红。
 const SUPPORT: &[&str] = &[
+    "tests/bridge/support/scripted_backend.rs", // 〔LOC1a〕`<local>` 上挂照脚本应答的假后端，数它收到的帧命令
     "tests/backend/files/index_testing.rs",
     "tests/backend/sftp_rig.rs",
     "tests/bridge/backend/control/backend_kill_creation_detect.rs",
