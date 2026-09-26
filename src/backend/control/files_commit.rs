@@ -45,12 +45,14 @@
 //!
 //! 文件窗口存一份装不进一条请求行的文本（后端入方向一行 1 MiB，`inbound.rs::MAX_LINE_BYTES`）时，
 //! 把它切成几块逐块送进暂存区（`<key>.<seq>.chunk`，**`O_EXCL` 新建**：一块只写一次），
-//! 再由 `files-commit-text` 按块号读回、拼起来、核总长，交给写面那一份原地覆盖
+//! 再由 `files-commit-text` 按块号读回、拼起来、核总长，交给写面那一份覆盖写
 //! （`files_write::overwrite_text`，**一字不抄**）。设计全文住 `调研/第四波记录/F9c.md`。
 //!
-//! ⚠ 为什么不是「改名上位」（上面那种件的提交）：存盘是**改一份已经在的文件**，原地覆盖保留
-//! 权限位 / 属主 / 硬链接、链接跟过去写、跨盘照常；改名上位三样全换掉（`EXDEV` 还会失败）。
-//! 同一份文件 1 MiB 上下存出两种结果不行 ⇒ 提交这一下与 `files-write-text` 走**同一个原语**。
+//! ⚠ 为什么不是「把暂存件改名上位」（上面那种件的提交）：暂存区与目标可能不在同一个盘（`EXDEV`），
+//! 而且那样权限位不沿用、链接会被顶掉。同一份文件 1 MiB 上下存出两种结果不行 ⇒ 提交这一下与 `files-write-text` 走**同一个原语**。
+//! 🪦〔HX1 · 4D〕原话「存盘是改一份已经在的文件，**原地覆盖**保留权限位 / 属主 / 硬链接……」—— 那个原语今天是
+//! **同目录暂存旁名 ＋ 换名上位**（主会话 D-a：覆盖写一律原子化）：权限位沿用、链接解到底、不跨盘；属主 / 硬链接不再保留，
+//! 代价全文在 `files_write::overwrite_text` 头注。
 //! ⚠ 为什么一块一份文件、不往一份上续写：续写、截断、「在就打开不在就建」那几种开法都在第三层禁表上，
 //! 而且每开一个写句柄都得配一个 `O_EXCL` ⇒ 「一块一份、`O_EXCL` 新建」**一个动词不加**。
 //! （护栏是不剥注释的子串扫描，这里刻意不写那几种开法的字面名字 —— 同 `files_write` 头注那条。）
@@ -60,8 +62,8 @@
 //! 由 [`sweep_stale`] 按同一个期限收（它认得两种形状）。
 
 use crate::control::files_write::{
-    content_sha256, overwrite_text_expecting, resolve_in_root, sha256_expect_of, Answer,
-    ManageCommand, WriteRefusal,
+    change_mode, content_sha256, overwrite_text_expecting, resolve_in_root, sha256_expect_of,
+    Answer, ManageCommand, WriteRefusal,
 };
 use std::path::{Path, PathBuf};
 
@@ -121,7 +123,7 @@ pub const COMMIT_COMMANDS: &[ManageCommand] = &[
     },
     ManageCommand {
         name: "files-commit-text",
-        what: "按块号读回 `0..chunks` 块、拼起来、总长必须等于 `bytes`，再原地覆盖目标（与 \
+        what: "按块号读回 `0..chunks` 块、拼起来、总长必须等于 `bytes`，再覆盖写目标（原子换，与 \
                `files-write-text` 同一个原语：跟链接、只收已在的普通文件）；〔FW1〕`expect: {sha256}` 必给，\
                盘上那份对不上 ⇒ `stale`、一个字节不写；不论成败都删掉这些块",
         args: &["bytes", "chunks", "expect", "key", "rel", "root"],
@@ -227,13 +229,26 @@ pub fn commit_upload(
         })?;
     if let Err(e) = std::fs::rename(&staged, &dest) {
         // 撤掉自己那个 0 字节的占位（它是这一次刚建的，不是用户既有数据）。
-        let _ = std::fs::remove_file(&dest);
+        // 〔HX1 · E 吞错〕撤不掉 ⇒ 说出来：此前 `let _ =` 吞掉，用户目录里留一份 0 字节文件、报错一个字不提，重试撞「目标已经在了」。
+        let undo = std::fs::remove_file(&dest);
         return Err(WriteRefusal::Io(format!(
-            "refuse write: 暂存件改名上位到 {} 失败：{e}",
-            dest.display()
+            "refuse write: 暂存件改名上位到 {} 失败：{e}{}",
+            dest.display(),
+            placeholder_note(&dest, &undo)
         )));
     }
     Ok((dest, bytes))
+}
+
+/// 〔HX1〕提交失败之后撤占位那一步的结局 ⇒ 接在报错后面的那半句。撤掉了 ⇒ 空（没什么要用户做的）。
+pub(crate) fn placeholder_note(dest: &Path, undo: &std::io::Result<()>) -> String {
+    match undo {
+        Ok(()) => String::new(),
+        Err(e) => format!(
+            "；目标位置留下了一个 0 字节的空文件 {}，没能删掉：{e}。它不是你的数据，删掉后再试",
+            dest.display()
+        ),
+    }
 }
 
 // ═══════════════ 〔F9c · 第四波〕存盘的块：写一块 · 读回拼起来提交 · 删掉 ═══════════════
@@ -242,16 +257,27 @@ pub fn commit_upload(
 ///
 /// 每一层**先过路径解析**（以上一层为根）再建 —— 第三层 ③ 逐函数扫这个顺序。
 /// ⚠ `~/.cc-monitor` 若是用户自己放的一条链接，跟过去（后端自己的家，与第四层 `exit_policy` 同一个家）。
+/// 〔HX1〕后端自己的目录（`~/.cc-monitor` 与暂存区）**建的那一下**给的权限位：只给本人。
+pub const PRIVATE_DIR_MODE: u32 = 0o700;
+
 fn ensure_staging(home: &Path) -> Result<PathBuf, WriteRefusal> {
     let mut at = home.to_path_buf();
     for seg in STAGING_DIR.split('/') {
         let next = resolve_in_root(&at, seg).map_err(WriteRefusal::Refused)?;
-        if let Err(e) = std::fs::create_dir(&next) {
-            if e.kind() != std::io::ErrorKind::AlreadyExists {
+        match std::fs::create_dir(&next) {
+            // 〔HX1 · RK1 小尾巴〕**这一趟建出来的**那一层当场收成只给本人（0700）—— 不然按 umask（常见 0755 / 0775），
+            //   同机别的用户列得出暂存区里有哪些上传。已在的一层不动（那可能是用户自己设的）。
+            //   借写面那一个改权限原语（`files_write::change_mode`，先过路径解析）；没有 unix 权限位的平台照旧（那边不是这一问）。
+            Ok(()) => match change_mode(&at, seg, PRIVATE_DIR_MODE) {
+                Ok(_) | Err(WriteRefusal::Unsupported(_)) => {}
+                Err(e) => return Err(e),
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(e) => {
                 return Err(WriteRefusal::Io(format!(
                     "refuse write: 建暂存区 {} 失败：{e}",
                     next.display()
-                )));
+                )))
             }
         }
         if !std::fs::metadata(&next).is_ok_and(|m| m.is_dir()) {
@@ -374,7 +400,7 @@ fn drop_chunks(home: &Path, key: &str) {
     }
 }
 
-/// **提交存盘**：读回 `0..chunks` 块 ⇒ 原地覆盖 `root/rel`（写面那一份原语，路径解析在它里面）。
+/// **提交存盘**：读回 `0..chunks` 块 ⇒ 覆盖写 `root/rel`（写面那一份原子换的原语，路径解析在它里面）。
 /// 回 `(落点, 字节数)`。**不论成败**都删掉这一次的块。
 pub fn commit_text(
     home: &Path,
