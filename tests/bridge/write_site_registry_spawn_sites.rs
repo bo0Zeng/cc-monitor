@@ -189,8 +189,9 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           `Inherit` 与 C2 那一版的拨号代理同形（SR1a 起它不再起进程）：它 stderr 上只有「窗口为什么没立起来」那一句，\
           接管它要再起一条泵。⚠ 代价如实记：装机那份 GUI app 没有 stderr 控制台 ⇒ 那句话今天会丢。",
      "Hidden · Detached · Inherit"),
-    ("local_backend_host.rs", "signal_term", "`kill -TERM <pid>`",
+    ("local_backend_host.rs", "send_signal", "`kill -TERM|-KILL <pid>`",
      "停掉一个**不是本 monitor 起的**常驻实例（上一次 monitor 脱离起的那个）。\
+          〔HX1 · D-a〕先 `-TERM` 请它收尾，等满还在才 `-KILL`（强杀前再核一次身份）；本 monitor 自己起的那个也用 `-TERM` 请它收尾（强杀走 `Child::kill`）。\
           必须起进程的理由是：monitor 今天**没有 `libc` 这条直接依赖**（它只在依赖树里），\
           为一次「停」按钮加一条直接依赖是更大的代价。\
           ⚠ 参数是**我们自己算出来的 pid**、零用户输入；而且杀之前先过 `kill_adopted` 的身份核对\

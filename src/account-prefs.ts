@@ -2,10 +2,11 @@
  * 〔FE1 · 第四波 4D〕**账号偏好**：本机 config.json 里 `accounts` 那一段 —— 「我这台 cc-monitor 起新会话默认用哪个号」
  * （`defaultName`）与「每个号默认用哪个模型」（`modelByAccount`）。本机、不跨机器同步。
  *
- * 从 `accounts.ts` 拆出来（审计 B §6 必须拆 4；守的要求 `设计/01 §5` D1）。⚠ 写口今天仍是「读整份 → 改一个键 → 整份写回」；
- * 按键补丁的单一写口归 CFG1（`config.json` 丢更新），本文件只挪住址、不改写法。
+ * 从 `accounts.ts` 拆出来（审计 B §6 必须拆 4；守的要求 `设计/01 §5` D1）。
+ * 〔CFG1 · 4D〕写口改成按键补丁（`config.ts::patchConfig`）：每个写者只交 `accounts.<自己那一格>` 这一条路径，
+ * 不再「读整份 → 改一个键 → 整份写回」（E §E1：两次读-改-写一交错，后写的整份盖掉先写的键）。
  */
-import { loadConfig, saveConfig } from "./config";
+import { loadConfig, patchConfig, removeAt, setAt } from "./config";
 import { isValidModelName } from "./shell-quote";
 import { copyText } from "./copy-table";
 
@@ -26,20 +27,11 @@ export async function getDefaultName(): Promise<string | null> {
   return null;
 }
 
-/** 写本机默认账号名。null = 清除（回退跟随 manifest）。枚举全字段写回，防静默丢失。 */
+/** 写本机默认账号名。null = 清除（回退跟随 manifest）。只动 `accounts.defaultName` 这一条路径（〔CFG1〕）。 */
 export async function setDefaultName(name: string | null): Promise<void> {
-  const cfg = (await loadConfig()) as Record<string, unknown>;
-  const prev =
-    cfg[CFG_KEY] && typeof cfg[CFG_KEY] === "object"
-      ? (cfg[CFG_KEY] as Record<string, unknown>)
-      : {};
-  cfg[CFG_KEY] = {
-    ...prev,
-    defaultName: name ?? undefined,
-  };
-  // undefined 键会被 serde_json 序列化时忽略——等效于删除
-  if (name === null) delete (cfg[CFG_KEY] as Record<string, unknown>).defaultName;
-  await saveConfig(cfg);
+  await patchConfig([
+    name === null ? removeAt([CFG_KEY, "defaultName"]) : setAt([CFG_KEY, "defaultName"], name),
+  ]);
 }
 
 const MODEL_MAP_KEY = "modelByAccount";
@@ -74,20 +66,9 @@ export async function setModelForAccount(name: string, model: string | null): Pr
   if (model && !isValidModelName(model)) {
     throw new Error(copyText("accounts.setModel.invalid", { model: JSON.stringify(model) }));
   }
-  const cfg = (await loadConfig()) as Record<string, unknown>;
-  const prev =
-    cfg[CFG_KEY] && typeof cfg[CFG_KEY] === "object"
-      ? (cfg[CFG_KEY] as Record<string, unknown>)
-      : {};
-  const prevMap =
-    prev[MODEL_MAP_KEY] && typeof prev[MODEL_MAP_KEY] === "object"
-      ? (prev[MODEL_MAP_KEY] as Record<string, string>)
-      : {};
-  const nextMap = { ...prevMap };
-  if (model) nextMap[name] = model;
-  else delete nextMap[name];
-  cfg[CFG_KEY] = { ...prev, [MODEL_MAP_KEY]: nextMap };
-  await saveConfig(cfg);
+  // 〔CFG1〕只动 `accounts.modelByAccount.<name>` 这一条路径：别的账号、`defaultName` 都不经这里。
+  const path = [CFG_KEY, MODEL_MAP_KEY, name] as const;
+  await patchConfig([model ? setAt(path, model) : removeAt(path)]);
 }
 
 // ------------------------------------------------------------ 带缓存的取数

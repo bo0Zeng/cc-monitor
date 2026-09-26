@@ -57,7 +57,7 @@
 - `search.rs::rebuild_search_index(index: State<'_, Arc<SearchIndex>>)`
 
 ### 无 State 依赖（自包含 / 用 path 解析）
-- `config::load_config / save_config`（用 `paths::resolve_config_path`）
+- `config::load_config / patch_config`（用 `paths::resolve_config_path`；写经进程级锁，见 `config.rs::patch_config_at`）
 - `launch::launch_remote_terminal`（B14-F41；用 `lib::load_remote_config_by_label` 读配置文件）
 - `subagent::load_subagent`
 - `aliases_block_render / aliases_block_install / aliases_block_remove`（`rc_path` 参数直接进；装 / 卸经本机后端写）

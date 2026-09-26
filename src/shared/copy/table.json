@@ -4782,11 +4782,6 @@
       "zh": "×",
       "args": []
     },
-    "tabBarView.group.namePrompt": {
-      "kind": "body",
-      "zh": "集合名：",
-      "args": []
-    },
     "tabDrop.group.defaultName": {
       "kind": "body",
       "zh": "组 {n}",
@@ -12882,6 +12877,16 @@
       "zh": "主题 / 字体 / Claude 配置目录 / 诊断开关",
       "args": []
     },
+    "rsConfig.write.unreadable": {
+      "kind": "error",
+      "zh": "{path} 读不懂（{e}），这次的设置没有存。写回去会把这份文件里别的设置一起盖掉，先把它改成合法的 JSON",
+      "args": ["path", "e"]
+    },
+    "rsConfig.write.notAnObject": {
+      "kind": "error",
+      "zh": "最外层不是一个对象",
+      "args": []
+    },
     "rsLogging.diagnostics.badConfig": {
       "kind": "error",
       "zh": "{path} 读不懂（{e}），诊断设置没有存。写回去会把这份文件里别的设置一起盖掉，先把它改成合法的 JSON",
@@ -13090,6 +13095,11 @@
     "rsByteTable.key.noAnswer": {
       "kind": "error",
       "zh": "它没有答",
+      "args": []
+    },
+    "rsByteTable.key.notUtf8": {
+      "kind": "error",
+      "zh": "它的回答不是 UTF-8 编码，多半是 Windows 的 PowerShell 或 cmd 在说没有 uname 这个命令",
       "args": []
     },
     "rsFootprintRemote.call.internal": {
@@ -15205,6 +15215,16 @@
       "zh": "本机后端已停（常驻，pid={pid}）",
       "args": ["pid"]
     },
+    "rsLocalBackendHost.stop.forced": {
+      "kind": "error",
+      "zh": "本机后端 10 秒内没收完手上的活，已强制结束（pid={pid}）。那一刻在跑的写可能没做完。",
+      "args": ["pid"]
+    },
+    "rsLocalBackendHost.stop.stillThere": {
+      "kind": "error",
+      "zh": "强制结束之后它还在",
+      "args": []
+    },
     "rsLocalBackendHost.adopt.waited": {
       "kind": "error",
       "zh": "{last}（等了 {tries}×{interval}ms 还是这样）",
@@ -15234,6 +15254,16 @@
       "kind": "error",
       "zh": "端口 {port} 上已经有程序，但接不上它：{why}。不会再起第二个，也不会换端口。要重来，先把那个进程停掉",
       "args": ["port", "why"]
+    },
+    "rsLocalBackendHost.start.busy": {
+      "kind": "error",
+      "zh": "端口 {port} 上的本机后端正被另一个 cc-monitor 连着，这一个接不上",
+      "args": ["port"]
+    },
+    "rsLocalBackendHost.start.busyNotice": {
+      "kind": "error",
+      "zh": "本机后端正被另一个 cc-monitor 连着，这一个没有接上。关掉另一个 cc-monitor 再打开这一个。",
+      "args": []
     },
     "rsLocalBackendHost.start.refusedNotice": {
       "kind": "error",
@@ -15359,6 +15389,11 @@
       "kind": "error",
       "zh": "建目录 {dir} 失败：{e}",
       "args": ["dir", "e"]
+    },
+    "rsLocalBackendHost.token.noRandom": {
+      "kind": "error",
+      "zh": "取不到系统随机数（{e}），生成不了本机后端的连接钥匙",
+      "args": ["e"]
     },
     "rsLocalBackendHost.fs.createFailed": {
       "kind": "error",
@@ -16158,6 +16193,11 @@
       "zh": "后端内部出错，这条命令没做完：{e}",
       "args": ["e"]
     },
+    "beInbound.drain.shuttingDown": {
+      "kind": "error",
+      "zh": "后端正在退出，这条命令没有执行；重新连上之后再试",
+      "args": []
+    },
     "beAccountsQuery.trustProductAt.unparsable": {
       "kind": "error",
       "zh": "读不懂信任状态：{e}",
@@ -16683,6 +16723,96 @@
       "kind": "error",
       "zh": "读不到{machine}的账号清单，说不清账号「{name}」还能不能用，这次没有起。点这条提示改用「不指定账号」起。",
       "args": ["machine", "name"]
+    },
+    "askDialog.buttons.ok": {
+      "kind": "action",
+      "zh": "确定",
+      "args": []
+    },
+    "askDialog.buttons.cancel": {
+      "kind": "action",
+      "zh": "取消",
+      "args": []
+    },
+    "events.stream.closedTitle": {
+      "kind": "error",
+      "zh": "会话更新停了",
+      "args": []
+    },
+    "events.stream.closedLocal": {
+      "kind": "body",
+      "zh": "本机的会话不会再自动更新。重启 cc-monitor 可以重新接上。",
+      "args": []
+    },
+    "events.stream.closedRemote": {
+      "kind": "body",
+      "zh": "{machine} 上的会话不会再自动更新。重启 cc-monitor 可以重新接上。",
+      "args": ["machine"]
+    },
+    "launchAccount.lastAccount.notRecorded": {
+      "kind": "error",
+      "zh": "没记下这次用的账号",
+      "args": []
+    },
+    "launchAccount.lastAccount.notRecordedBody": {
+      "kind": "body",
+      "zh": "会话照常起了；下次恢复这条会话时不会自动选「{account}」。原因：{e}",
+      "args": ["account", "e"]
+    },
+    "settingsPanel.claudeDir.pickFailed": {
+      "kind": "error",
+      "zh": "选目录的窗口打不开：{e}。可以直接在输入框里填路径。",
+      "args": ["e"]
+    },
+    "remote.import.listFailed": {
+      "kind": "error",
+      "zh": "读不了 ~/.ssh/config：{e}。可以点「添加机器」手动填写。",
+      "args": ["e"]
+    },
+    "machineAliases.autoLaunch.unreadable": {
+      "kind": "error",
+      "zh": "读不到这项设置：{e}",
+      "args": ["e"]
+    },
+    "tabBar.persist.collectionsFailed": {
+      "kind": "error",
+      "zh": "分组没存上，重启后会回到上次存下的分组",
+      "args": []
+    },
+    "tabBar.persist.pinnedFailed": {
+      "kind": "error",
+      "zh": "固定没存上，重启后会回到上次存下的固定",
+      "args": []
+    },
+    "tabBar.persist.orderFailed": {
+      "kind": "error",
+      "zh": "顺序没存上，重启后会回到上次存下的顺序",
+      "args": []
+    },
+    "settings.behavior.saveFailed": {
+      "kind": "error",
+      "zh": "行为设置没存上",
+      "args": []
+    },
+    "keybindings.persist.failed": {
+      "kind": "error",
+      "zh": "快捷键没存上，重启后会回到上次存下的键位",
+      "args": []
+    },
+    "history.star.failed": {
+      "kind": "error",
+      "zh": "星标没改成",
+      "args": []
+    },
+    "history.rename.failed": {
+      "kind": "error",
+      "zh": "标题没改成",
+      "args": []
+    },
+    "history.hide.failed": {
+      "kind": "error",
+      "zh": "隐藏没改成",
+      "args": []
     }
   }
 }
