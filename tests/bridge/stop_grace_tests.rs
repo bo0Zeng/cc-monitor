@@ -223,3 +223,30 @@ fn s3_every_force_kill_goes_through_the_graceful_wait() {
     // 正控：数法认得出一处裸 `.kill()`。
     assert_eq!("let _ = c.kill();".matches(".kill()").count(), 1);
 }
+
+/// 〔HX1 · 主会话裁拍板项 1〕**monitor 等得比后端的退出排空期限久一点**（多 1–10 秒）：后端先把「哪几条没做完」说出来、
+/// 自己退；monitor 的强杀只兜后端连那一步都走不到的形状。等得比它短 ⇒ 后端那一行永远说不出来（被 SIGKILL 截断）；
+/// 等得远比它长 ⇒ 按钮白禁用。守的要求：主会话裁「后端自己兜一个退出排空期限 …… 到点仍未排空 ⇒ 记一行日志说哪几条没做完」。
+/// 形状：跨半边 —— 现抠后端生产段 `DRAIN_DEADLINE` 的毫秒字面量（恰好一处），与本模块两个常量的乘积比。
+#[test]
+fn s4_the_monitor_waits_a_little_longer_than_the_backend_drains() {
+    let be = guard_core::production_code(include_str!("../../src/backend/inbound.rs"));
+    let anchor = "DRAIN_DEADLINE: std::time::Duration = std::time::Duration::from_millis(";
+    assert_eq!(
+        be.matches(anchor).count(),
+        1,
+        "后端那个期限的声明不是恰好一处"
+    );
+    let tail = &be[be.find(anchor).expect("声明") + anchor.len()..];
+    let lit: String = tail
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '_')
+        .filter(|c| *c != '_')
+        .collect();
+    let backend_ms: u128 = lit.parse().expect("毫秒字面量");
+    let ours_ms = u128::from(STOP_GRACE_TRIES) * STOP_POLL.as_millis();
+    assert!(
+        ours_ms > backend_ms && ours_ms <= backend_ms + 10_000,
+        "monitor 等 {ours_ms}ms，后端排空期限 {backend_ms}ms —— 应当多 1–10 秒"
+    );
+}

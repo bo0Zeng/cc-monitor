@@ -172,6 +172,14 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
+        "tests/bridge/stop_grace_tests.rs",
+        "src/backend/inbound.rs",
+        "〔HX1 · 4D〕**两个期限的先后**：后端自己兜的退出排空期限（`inbound::DRAIN_DEADLINE`）与 monitor「停」等它的时长\
+         （`stop_grace::STOP_GRACE_TRIES × STOP_POLL`）。monitor 等得比后端短 ⇒ 后端那句「哪几条没做完」永远被 SIGKILL 截断、\
+         **不会报错**；只有同时读两侧才验得了（现抠后端生产段那个字面量，恰好一处）。",
+    ),
+    (
+        "monitor→backend",
         "tests/bridge/logging_tests.rs",
         "src/backend/stderr_log.rs",
         "〔NT2 · S1〕**跨 crate 字面量对拍**：宿主交给脱离常驻那条载体的 `CCM_BACKEND_STDERR_LOG` 与后端读的那一个，\

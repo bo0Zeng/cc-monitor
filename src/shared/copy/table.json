@@ -15297,8 +15297,8 @@
     },
     "rsLocalBackendHost.stop.forced": {
       "kind": "error",
-      "zh": "本机后端 10 秒内没收完手上的活，已强制结束（pid={pid}）。那一刻在跑的写可能没做完。",
-      "args": ["pid"]
+      "zh": "本机后端 {secs} 秒内没收完手上的活，已强制结束（pid={pid}）。那一刻在跑的写可能没做完。",
+      "args": ["pid", "secs"]
     },
     "rsLocalBackendHost.stop.stillThere": {
       "kind": "error",
