@@ -4633,7 +4633,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/ccm_probe.rs", 1),
         ("src/tmux-control.ts", 1),
         // 〔C4e 批 3b〕cc-bus 驾驶舱写面五条改由界面经通道直接说：新家的头注点 monitor 那五条旧命令名。
-        ("src/cc-bus-control.ts", 1),
+        ("src/cc-bus-control.ts", 4), // 〔DUP2 · J12〕+3：TS 副本 `isValidBusId` / `refuseBadId` 删了（原处一行两块）· `checkSpawnShape` 头注点它一块
         ("src/bridge/src/backend/mod.rs", 2), // 〔LOC1a〕+1：`observe/` 那条线删了，`pub mod` 旁那一句 // 〔C4e 批 3b〕归属表里 `control/cc_bus.rs` 那一格点的写面四条旧命令名
         ("src/views/pane-preview.ts", 1),
         ("tests/bridge/backend/control/backend_route_tests.rs", 4), // 〔C4e 批 2〕+1：SENDERS 头三行（三个发送端）摘掉的那一块

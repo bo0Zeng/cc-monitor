@@ -1037,11 +1037,6 @@
       "zh": "会话名或要键入的内容是空的，这次没有发出去。",
       "args": []
     },
-    "ccBus.id.invalid": {
-      "kind": "error",
-      "zh": "agent 名不合法，没有发出去：{id}",
-      "args": ["id"]
-    },
     "ccBus.online.notInstalled": {
       "kind": "error",
       "zh": "问不到 {id} 在不在线：那台机器上找不到 cc-bus（{detail}）",
@@ -1071,6 +1066,36 @@
       "kind": "error",
       "zh": "消息是空的，没有发出去。",
       "args": []
+    },
+    "ccBus.send.badId": {
+      "kind": "error",
+      "zh": "消息没有发出去：{detail}",
+      "args": ["detail"]
+    },
+    "ccBus.kill.badId": {
+      "kind": "error",
+      "zh": "没有收掉：{detail}",
+      "args": ["detail"]
+    },
+    "ccBus.spawn.badId": {
+      "kind": "error",
+      "zh": "没有派生：{detail}",
+      "args": ["detail"]
+    },
+    "beCcBus.parse.badRecipient": {
+      "kind": "error",
+      "zh": "收件人不是合法的 agent 名。只许字母、数字、下划线和连字符，不许以 - 开头：{id}",
+      "args": ["id"]
+    },
+    "beCcBus.parse.badKillId": {
+      "kind": "error",
+      "zh": "要收掉的不是合法的 agent 名。只许字母、数字、下划线和连字符，不许以 - 开头：{id}",
+      "args": ["id"]
+    },
+    "beCcBus.parse.badAccount": {
+      "kind": "error",
+      "zh": "账号名不合法。只许字母、数字、下划线和连字符，不许以 - 开头：{account}",
+      "args": ["account"]
     },
     "ccBus.send.invalidArgs": {
       "kind": "error",
@@ -1181,11 +1206,6 @@
       "kind": "error",
       "zh": "工作目录是空的，没有派生。",
       "args": []
-    },
-    "ccBus.spawn.badAccount": {
-      "kind": "error",
-      "zh": "账号名不合法，没有派生：{account}",
-      "args": ["account"]
     },
     "ccBus.spawn.invalidArgs": {
       "kind": "error",

@@ -116,6 +116,20 @@ pub fn account_name_ok(s: &str) -> bool {
         && cs.all(|c| c.is_ascii_alphanumeric() || ACCOUNT_NAME_EXTRA.contains(c))
 }
 
+/// **cc-bus agent id**（发消息的收件人 · 收掉的那个 · 派生时的账号名 · 读收件箱时的文件名）：非空 · 不以 `-` 开头 ·
+/// 只含 `[A-Za-z0-9_-]`。**没有上界**（今天就没有；照原样搬，不顺手加）。
+///
+/// 〔DUP2 · 主会话 09-26 裁 J12 · `INVARIANTS §47` ①〕从 monitor `backend/control/cc_bus.rs` 里的 `is_valid_bus_id` 搬来（规则逐字不变；那个名字今天是本函数的再导出），
+/// 住这里是因为两半都要它：monitor 读收件箱 · 后端 `bus-send` / `bus-kill` / `bus-spawn` 在把 id 交给 `cc-send` / `cc-kill` /
+/// `cc-spawn` **之前**先判（界面那一份删了，`设计/90 §3` 判据 2）。关键的一条是拒前导 `-`：`--help` 在盘上真出现过
+/// （`~/.cc-bus/inbox/--help.jsonl`），拼进 `cc-send` 就被当成一个 flag。
+pub fn bus_id_ok(s: &str) -> bool {
+    !s.is_empty()
+        && !s.starts_with('-')
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
 /// POSIX 单引号 quote：整体 `'…'` 包裹，内部 `'` 断开为 `'\''`。
 ///
 /// 与 TS `shell-quote.ts::posixQuote` 逐字节同义（对拍夹具里有带引号的样本）。

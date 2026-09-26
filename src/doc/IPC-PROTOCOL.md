@@ -561,7 +561,7 @@ pane 根进程 pid）+ 登记的完整地址。08-13 实测过不核的后果：
 ⚠ 它做的事比后端的 `kill` 多：杀会话 + 进程树 + 清名册 + 清台账 + 清那个 id 的状态。
 「多窗口要不要拦」是产品判断（账本 `U18` 待裁）；今天照收，`cc-kill` 会把窗口数打出来。
 
-错误码：`invalid_args`（id 非法/缺）· `not_installed` · `timed_out` · `failed`。
+错误码：`invalid_args`（缺 id，或 `cc-kill` 自己拒了）· `bad_id`（〔DUP2〕id 的形状过不了 `shell_quote_core::bus_id_ok` —— 空 · `-` 开头 · `[A-Za-z0-9_-]` 以外的字符；**交给 `cc-kill` 之前**就拒，一个进程都不起，`INVARIANTS §47` ①）· `not_installed` · `timed_out` · `failed`。
 
 #### `bus-send`：发一条消息（P4f）
 
@@ -591,6 +591,7 @@ pane 根进程 pid）+ 登记的完整地址。08-13 实测过不核的后果：
 | 码 | 什么情况 | 来源 |
 |---|---|---|
 | `invalid_args` | 缺 `to`/`text`，或 cc-send 判定收件人非法 | 形状校验 / `cc-send` rc=2 |
+| `bad_id` | 〔DUP2〕收件人的形状过不了 `shell_quote_core::bus_id_ok`（空 · `-` 开头 · `[A-Za-z0-9_-]` 以外的字符）—— **交给 `cc-send` 之前**就拒（`INVARIANTS §47` ①） | 后端入口 |
 | `rejected` | 被路由层拦下（ACL / 限流 / 去重 / 灭环），`bus.log` 里有对应一行 | `cc-send` rc=3 |
 | `not_installed` | 找不到 `cc-send` | 查找规则全落空 |
 | `timed_out` | 子进程跑过了期限被结束（默认 10 秒，`CC_BUS_TIMEOUT_SECS` 可调） | 子进程退出码 124 |
@@ -603,7 +604,9 @@ pane 根进程 pid）+ 登记的完整地址。08-13 实测过不核的后果：
 不这么做的后果实测过：`cc-send` 卡在 flock 上时后端 **无限等**，
 而这两条是阻塞档、`cancel` 对 `spawn_blocking` 是空操作 ⇒ 一个 worker 被占死。
 
-**收件人合法性归 cc-bus 自己**，后端这一层不再写第二份白名单 —— 两处规则会漂。
+**收件人是否存在（成员资格）归 cc-bus 自己**，后端不维护第二份名单（`registered` 那一格如实回）。
+〔DUP2 · 主会话 09-26 裁 J12〕**收件人的形状**不再「交给 cc-send 去拒」：`INVARIANTS §47`「对端会校验不是理由」⇒ 后端入口先判（`bad_id`），
+规则住共享 crate `shell_quote_core::bus_id_ok`（全仓唯一一份，monitor 读收件箱也用它）—— 不是第二份白名单，是那一份换了住址。
 
 ★ **这两条命令都是转调本机的 cc-bus 命令，后端不读 cc-bus 的任何数据文件**
 （地址簿 / 收件箱 / 已读位置）。用户 08-13 逐字说过「后面我可能要改ccbus」⇒
@@ -704,6 +707,7 @@ shell 串走 SSH、本机拒绝」的分叉。命名避让 / 登记进总线 / s
 | 码 | 什么情况 |
 |---|---|
 | `invalid_args` | 缺 `tool`/`dir`、账号没表态或两样都给；或 `cc-spawn` 自己 rc=2（目录不存在 · 不认的 tool · ccm 太旧） |
+| `bad_id` | 〔DUP2〕给的 `account` 形状过不了 `shell_quote_core::bus_id_ok` —— **交给 `cc-spawn` 之前**就拒（`INVARIANTS §47` ①） |
 | `not_installed` | 找不到 `cc-spawn` |
 | `timed_out` | 子进程跑过期限被结束。🔴 **会话可能已经起来了**（`cc-spawn` 是建完会话才回显的）⇒ 先 `bus-state` 看一眼，**别直接重试**：重试会再起一个真 agent |
 | `failed` | 其它退出码 / 被信号打断 |
