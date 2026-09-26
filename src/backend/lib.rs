@@ -535,7 +535,10 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p3y-files-inplace**（2026-09-26，第五波 W5-FILES 合并那一拍）：子命令 ＋1 `--files-size`、帧命令 ＋1 `files-size`。＋ 行为：复制保权限位 ·
 /// `files-copy` 收 `recursive`（计划趟逐条目解析、整趟拒 / 执行趟逐条目再解析、中途失败撤回本趟所建）· 索引不跨文件系统 · `files-browse` 真挂 watcher
 /// （应答多 `watching` / `watch_failed` / `watch_error`）· 暂存件跨盘提交退回「复制后删」（`EXDEV`）· 非 UTF-8 名按字节寻址。
-pub const BUILD_ID: &str = "p3y-files-inplace";
+///
+/// ★★★ **p3z-fence-home-backendpath**（2026-09-26，第四波 4D TL3 合并那一拍）：行为 —— 读路径围栏收成 `observe/fence.rs::Fence` 一个家（history / search 两个读者）·
+/// `remote-reach` 进门判 `backend` 形状、不合形回 `bad_args`。子命令没变，照 p1v 先例不加历史行。
+pub const BUILD_ID: &str = "p3z-fence-home-backendpath";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
