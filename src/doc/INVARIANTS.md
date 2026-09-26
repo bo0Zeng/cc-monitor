@@ -194,8 +194,10 @@ monitor 进程**一个字节都不直接写用户文件**。rc / `$PROFILE` / �
 **谁在守**：`paths_tests.rs::with_nothing_set_it_is_the_documented_default`（本条正文那一半）· `paths_tests.rs::an_absolute_override_is_used_verbatim` ·
 `paths_tests.rs::an_empty_value_means_unset_not_broken` · `paths_tests.rs::a_relative_override_refuses_instead_of_quietly_using_the_real_profile` ·
 `paths_tests.rs::no_home_and_no_override_is_still_none` · `paths_tests.rs::nothing_else_in_the_monitor_tree_builds_that_path_itself`（全树只经一处派生）。
-⚠ **它买不到的**：常驻后端按**家目录**认、不按数据目录 ⇒ 一个隔离跑的 monitor 会接上真 profile 那个 monitor 起的常驻后端，经它写的几样（历史注解 · 上游选择那份凭据文件）就可能写穿到真 profile。
-本机凭据文件那一路已由 GP1「先核路径再写」挡住；历史注解那一路与「常驻后端身份带上数据目录」是 HX2 的件（`GP1.md` 交主会话第 4 条）。
+⚠ **常驻后端那一格**：常驻后端的监听口仍按 Claude **家目录**算，隔离跑的 monitor 会敲到真 profile 那个 monitor 起的常驻后端；
+接不接由宿主比「它的数据身份」—— hello 回显的那几格宿主环境（凭据文件路径 · 历史注解路径）与这一趟要交的逐格相等才接，
+不等 ⇒ 出声拒绝、不接、不另起（〔HX2〕`local_backend_host.rs::hello_verdict`；此前是 E10 / GP1 交主会话第 4 条那个写穿缺口）。
+⇒ 隔离跑要么换 Claude 家目录（`CLAUDE_CONFIG_DIR`，口跟着变），要么先停真 profile 那个。
 
 ### 2.1 真相 vs 缓存必须分得清（F65 / issue #58 单向门④）
 
